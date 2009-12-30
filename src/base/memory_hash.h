@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -109,8 +109,10 @@ extern const void *mht_put (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put_data (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put_new (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put2 (MHT_TABLE * ht, const void *key, void *data);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern const void *mht_put2_data (MHT_TABLE * ht, const void *key,
 				  void *data);
+#endif
 extern const void *mht_put2_new (MHT_TABLE * ht, const void *key, void *data);
 extern int mht_rem (MHT_TABLE * ht, const void *key,
 		    int (*rem_func) (const void *key, void *data, void *args),

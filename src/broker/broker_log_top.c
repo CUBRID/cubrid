@@ -199,8 +199,7 @@ log_top_query (int argc, char *argv[], int arg_start)
 	    break;
 	}
 #else
-      if (log_top (fp, filename) < 0)
-	return -1;
+      log_top (fp, filename);
       fclose (fp);
 #endif
     }
@@ -288,26 +287,31 @@ log_top (FILE * fp, char *filename)
       if (read_flag)
 	{
 	  if (ut_get_line (fp, linebuf_tstr, &linebuf, &lineno) <= 0)
-	    break;
+	    {
+	      break;
+	    }
 	}
       read_flag = 1;
 
       if (!IS_CAS_LOG_CMD (linebuf))
 	continue;
 
+      if (strncmp (linebuf + 23, "END OF LOG", 10) == 0)
+	{
+	  break;
+	}
+
       GET_CUR_DATE_STR (cur_date, linebuf);
       GET_MSG_START_PTR (msg_p, linebuf);
       if (strncmp (msg_p, "execute", 7) == 0
 	  || strncmp (msg_p, "execute_all", 11) == 0
-	  || strncmp (msg_p, "execute_call", 12) == 0)
+	  || strncmp (msg_p, "execute_call", 12) == 0
+	  || strncmp (msg_p, "execute_batch", 13) == 0)
 	{
 	  int qi_idx;
 	  char *query_p;
+	  int end_block_flag = 0;
 
-          if (strncmp (msg_p, "execute_batch", 13) == 0)
-          {
-            break;
-          }
 	  /*
 	   * execute log format:
 	   * <execute_cmd> srv_h_id <handle_id> <query_string>
@@ -331,25 +335,54 @@ log_top (FILE * fp, char *filename)
 	  t_string_add (sql_buf, query_p, strlen (query_p));
 	  t_string_add (cas_log_buf, linebuf, strlen (linebuf));
 
-	  if (read_multi_line_sql
-	      (fp, linebuf_tstr, &linebuf, &lineno, sql_buf, cas_log_buf) < 0)
+	  if (read_multi_line_sql (fp, linebuf_tstr, &linebuf, &lineno,
+				   sql_buf, cas_log_buf) < 0)
 	    {
 	      break;
 	    }
-	  if (read_bind_value
-	      (fp, linebuf_tstr, &linebuf, &lineno, cas_log_buf) < 0)
+	  if (read_bind_value (fp, linebuf_tstr, &linebuf, &lineno,
+			       cas_log_buf) < 0)
 	    {
 	      break;
 	    }
 
 	  GET_MSG_START_PTR (msg_p, linebuf);
 
+	  /* skip query_cancel */
 	  if (strncmp (msg_p, "query_cancel", 12) == 0)
 	    {
 	      if (ut_get_line (fp, linebuf_tstr, &linebuf, &lineno) <= 0)
 		{
 		  break;
 		}
+	    }
+
+	  if (strncmp (msg_p, "execute", 7) != 0)
+	    {
+	      while (1)
+		{
+		  if (ut_get_line (fp, linebuf_tstr, &linebuf, &lineno) <= 0)
+		    {
+		      break;
+		    }
+		  GET_MSG_START_PTR (msg_p, linebuf);
+		  if (strncmp (msg_p, "***", 3) == 0)
+		    {
+		      end_block_flag = 1;
+		      if (ut_get_line (fp, linebuf_tstr, &linebuf, &lineno) <=
+			  0)
+			{
+			  /* ut_get_line error, just break; */
+			  break;
+			}
+		      break;
+		    }
+		}
+	    }
+
+	  if (end_block_flag == 1)
+	    {
+	      continue;
 	    }
 
 	  query_info_buf[qi_idx].sql =

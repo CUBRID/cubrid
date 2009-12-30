@@ -693,37 +693,55 @@ odbc_get_stmt_attr (ODBC_STATEMENT * stmt,
     case SQL_ATTR_PARAM_BIND_OFFSET_PTR:
       odbc_get_desc_field (stmt->apd, 0, SQL_DESC_BIND_OFFSET_PTR,
 			   value_ptr, buffer_length, &tmp_length);
-      *length_ptr = (SQLINTEGER) tmp_length;
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = (SQLINTEGER) tmp_length;
+	}
       break;
 
     case SQL_ATTR_PARAM_BIND_TYPE:
       odbc_get_desc_field (stmt->apd, 0, SQL_DESC_BIND_TYPE,
 			   value_ptr, buffer_length, &tmp_length);
-      *length_ptr = (SQLINTEGER) tmp_length;
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = (SQLINTEGER) tmp_length;
+	}
       break;
 
     case SQL_ATTR_PARAM_OPERATION_PTR:
       odbc_get_desc_field (stmt->apd, 0, SQL_DESC_ARRAY_STATUS_PTR,
 			   value_ptr, buffer_length, &tmp_length);
-      *length_ptr = (SQLINTEGER) tmp_length;
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = (SQLINTEGER) tmp_length;
+	}
       break;
 
     case SQL_ATTR_PARAM_STATUS_PTR:
       odbc_get_desc_field (stmt->ipd, 0, SQL_DESC_ARRAY_STATUS_PTR,
 			   value_ptr, buffer_length, &tmp_length);
-      *length_ptr = (SQLINTEGER) tmp_length;
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = (SQLINTEGER) tmp_length;
+	}
       break;
 
     case SQL_ATTR_PARAMS_PROCESSED_PTR:
       odbc_get_desc_field (stmt->ipd, 0, SQL_DESC_ROWS_PROCESSED_PTR,
 			   value_ptr, buffer_length, &tmp_length);
-      *length_ptr = (SQLINTEGER) tmp_length;
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = (SQLINTEGER) tmp_length;
+	}
       break;
 
     case SQL_ATTR_PARAMSET_SIZE:
       odbc_get_desc_field (stmt->apd, 0, SQL_DESC_ARRAY_SIZE,
 			   value_ptr, buffer_length, &tmp_length);
-      *length_ptr = (SQLINTEGER) tmp_length;
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = (SQLINTEGER) tmp_length;
+	}
       break;
 
     case SQL_ATTR_RETRIEVE_DATA:
@@ -738,31 +756,46 @@ odbc_get_stmt_attr (ODBC_STATEMENT * stmt,
     case SQL_ROWSET_SIZE:	// for 2.x backward compatiablity
       odbc_get_desc_field (stmt->ard, 0, SQL_DESC_ARRAY_SIZE,
 			   value_ptr, buffer_length, &tmp_length);
-      *length_ptr = (SQLINTEGER) tmp_length;
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = (SQLINTEGER) tmp_length;
+	}
       break;
 
     case SQL_ATTR_ROW_BIND_OFFSET_PTR:
       odbc_get_desc_field (stmt->ard, 0, SQL_DESC_BIND_OFFSET_PTR,
 			   value_ptr, buffer_length, &tmp_length);
-      *length_ptr = (SQLINTEGER) tmp_length;
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = (SQLINTEGER) tmp_length;
+	}
       break;
 
     case SQL_ATTR_ROW_BIND_TYPE:
       odbc_get_desc_field (stmt->ard, 0, SQL_DESC_BIND_TYPE,
 			   value_ptr, buffer_length, &tmp_length);
-      *length_ptr = (SQLINTEGER) tmp_length;
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = (SQLINTEGER) tmp_length;
+	}
       break;
 
     case SQL_ATTR_ROW_STATUS_PTR:
       odbc_get_desc_field (stmt->ird, 0, SQL_DESC_ARRAY_STATUS_PTR,
 			   value_ptr, buffer_length, &tmp_length);
-      *length_ptr = (SQLINTEGER) tmp_length;
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = (SQLINTEGER) tmp_length;
+	}
       break;
 
     case SQL_ATTR_ROWS_FETCHED_PTR:
       odbc_get_desc_field (stmt->ird, 0, SQL_DESC_ROWS_PROCESSED_PTR,
 			   value_ptr, buffer_length, &tmp_length);
-      *length_ptr = (SQLINTEGER) tmp_length;
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = (SQLINTEGER) tmp_length;
+	}
       break;
 
     case SQL_ATTR_ROW_NUMBER:

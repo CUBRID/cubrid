@@ -40,7 +40,10 @@ enum CSS_ER_WINSOCK
   CSS_ER_WINSOCK_BLOCKING_HOOK = -4
 };
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int css_get_wsa_error (void);
+#endif
+
 extern int css_windows_startup (void);
 extern void css_windows_shutdown (void);
 extern int css_gethostname (char *passed_name, int length);

@@ -490,7 +490,9 @@ static int tp_atoudatetime (const DB_VALUE * src, DB_DATETIME * temp);
 static int tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp);
 static int tp_atof (const DB_VALUE * src, double *num_value);
 static int tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static char *tp_itoa (int value, char *string, int radix);
+#endif
 static char *tp_ltoa (DB_BIGINT value, char *string, int radix);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string,
 		       int max_size);
@@ -3775,6 +3777,7 @@ tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value)
   return status;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tp_itoa - int to string representation for given radix
  *    return: string pointer (given or malloc'd)
@@ -3829,6 +3832,7 @@ tp_itoa (int value, char *string, int radix)
   *sp = '\0';
   return string;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tp_ltoa - bigint to string representation for given radix

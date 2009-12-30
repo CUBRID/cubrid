@@ -64,7 +64,9 @@ extern void xboot_notify_unregister_client (THREAD_ENTRY * thread_p,
 #endif /* SERVER_MODE */
 
 extern const char *boot_db_name (void);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern const char *boot_db_full_name (void);
+#endif
 extern HFID *boot_find_root_heap (void);
 
 extern VOLID boot_find_next_permanent_volid (THREAD_ENTRY * thread_p);

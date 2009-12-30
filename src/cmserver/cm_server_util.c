@@ -284,10 +284,8 @@ static T_FSERVER_TASK_INFO task_info[] = {
   {"access_list_info", TS2_ACCESSLISTINFO, 0,
    DEF_TASK_FUNC (ts2_access_list_info), FSVR_UC},
   {"checkfile", TS_CHECKFILE, 0, DEF_TASK_FUNC (ts_check_file), FSVR_NONE},
-  {"registerlocaldb", TS_REGISTERLOCALDB, 1,
-   DEF_TASK_FUNC (ts_localdb_operation), FSVR_SA_CS},
-  {"removelocaldb", TS_REMOVELOCALDB, 1, DEF_TASK_FUNC (ts_localdb_operation),
-   FSVR_SA_CS},
+  {"registerlocaldb", TS_REGISTERLOCALDB, 0, NULL, FSVR_NONE},
+  {"removelocaldb", TS_REMOVELOCALDB, 0, NULL, FSVR_NONE},
   {"addtrigger", TS_ADDNEWTRIGGER, 1, DEF_TASK_FUNC (ts_trigger_operation),
    FSVR_SA_CS},
   {"altertrigger", TS_ALTERTRIGGER, 1, DEF_TASK_FUNC (ts_trigger_operation),
@@ -613,7 +611,11 @@ send_msg_with_file (SOCKET sock_fd, char *filename)
     return;
 
 #ifdef	_DEBUG_
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (log_filepath, "%s/tmp/getfile.log", sco.szCubrid);
+#else
+  sprintf (log_filepath, "%s/getfile.log", CUBRID_TMPDIR);
+#endif
   log_file = fopen (log_filepath, "w+");
 #endif
 
@@ -1616,9 +1618,10 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file,
   BOOL res;
   int i, cmd_arg_len;
   char cmd_arg[1024];
-  FILE *fp;
-  int saved_0_fd, saved_1_fd, saved_2_fd;
   BOOL inherit_flag = FALSE;
+  HANDLE hStdIn = INVALID_HANDLE_VALUE;
+  HANDLE hStdOut = INVALID_HANDLE_VALUE;
+  HANDLE hStdErr = INVALID_HANDLE_VALUE;
 
   if (exit_status != NULL)
     *exit_status = 0;
@@ -1633,63 +1636,62 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file,
 
   if (stdin_file)
     {
-      saved_0_fd = dup (0);
-      fp = fopen (stdin_file, "r");
-      if (fp)
+      hStdIn =
+	CreateFile (stdin_file, GENERIC_READ, FILE_SHARE_READ, NULL,
+		    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+      if (hStdIn != INVALID_HANDLE_VALUE)
 	{
-	  dup2 (fileno (fp), 0);
-	  fclose (fp);
+	  SetHandleInformation (hStdIn, HANDLE_FLAG_INHERIT,
+				HANDLE_FLAG_INHERIT);
+	  start_info.dwFlags = STARTF_USESTDHANDLES;
+	  start_info.hStdInput = hStdIn;
+	  inherit_flag = TRUE;
 	}
-      start_info.dwFlags = STARTF_USESTDHANDLES;
-      start_info.hStdInput = GetStdHandle (STD_INPUT_HANDLE);
-      inherit_flag = TRUE;
     }
   if (stdout_file)
     {
-      saved_1_fd = dup (1);
-      unlink (stdout_file);
-      fp = fopen (stdout_file, "w");
-      if (fp)
+      hStdOut =
+	CreateFile (stdout_file, GENERIC_WRITE, FILE_SHARE_READ, NULL,
+		    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+      if (hStdOut != INVALID_HANDLE_VALUE)
 	{
-	  dup2 (fileno (fp), 1);
-	  fclose (fp);
+	  SetHandleInformation (hStdOut, HANDLE_FLAG_INHERIT,
+				HANDLE_FLAG_INHERIT);
+	  start_info.dwFlags = STARTF_USESTDHANDLES;
+	  start_info.hStdOutput = hStdOut;
+	  inherit_flag = TRUE;
 	}
-      start_info.dwFlags = STARTF_USESTDHANDLES;
-      start_info.hStdOutput = GetStdHandle (STD_OUTPUT_HANDLE);
-      inherit_flag = TRUE;
     }
   if (stderr_file)
     {
-      saved_2_fd = dup (2);
-      unlink (stderr_file);
-      fp = fopen (stderr_file, "w");
-      if (fp)
+      hStdErr =
+	CreateFile (stderr_file, GENERIC_WRITE,
+		    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		    NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+      if (hStdErr != INVALID_HANDLE_VALUE)
 	{
-	  dup2 (fileno (fp), 2);
-	  fclose (fp);
+	  SetHandleInformation (hStdErr, HANDLE_FLAG_INHERIT,
+				HANDLE_FLAG_INHERIT);
+	  start_info.dwFlags = STARTF_USESTDHANDLES;
+	  start_info.hStdError = hStdErr;
+	  inherit_flag = TRUE;
 	}
-      start_info.dwFlags = STARTF_USESTDHANDLES;
-      start_info.hStdError = GetStdHandle (STD_ERROR_HANDLE);
-      inherit_flag = TRUE;
     }
 
   res = CreateProcess (argv[0], cmd_arg, NULL, NULL, inherit_flag,
-		       0, NULL, NULL, &start_info, &proc_info);
+		       CREATE_NO_WINDOW, NULL, NULL, &start_info, &proc_info);
 
-  if (stdin_file)
+  if (hStdIn != INVALID_HANDLE_VALUE)
     {
-      dup2 (saved_0_fd, 0);
-      close (saved_0_fd);
+      CloseHandle (hStdIn);
     }
-  if (stdout_file)
+  if (hStdOut != INVALID_HANDLE_VALUE)
     {
-      dup2 (saved_1_fd, 1);
-      close (saved_1_fd);
+      CloseHandle (hStdOut);
     }
-  if (stderr_file)
+  if (hStdErr != INVALID_HANDLE_VALUE)
     {
-      dup2 (saved_2_fd, 2);
-      close (saved_2_fd);
+      CloseHandle (hStdErr);
     }
 
   if (res == FALSE)
@@ -2046,12 +2048,20 @@ make_default_env (void)
   FILE *fd;
 
   /* create log/manager directory */
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (strbuf, "%s/%s", sco.szCubrid, DBMT_LOG_DIR);
+#else
+  sprintf (strbuf, "%s", DBMT_LOG_DIR);
+#endif
   if ((retval = uCreateDir (strbuf)) != ERR_NO_ERROR)
     return retval;
 
   /* create var/manager direcory */
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (strbuf, "%s/%s", sco.szCubrid, DBMT_PID_DIR);
+#else
+  sprintf (strbuf, "%s", DBMT_PID_DIR);
+#endif
   if ((retval = uCreateDir (strbuf)) != ERR_NO_ERROR)
     return retval;
 

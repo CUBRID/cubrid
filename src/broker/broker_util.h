@@ -34,10 +34,12 @@
 
 #if !defined(LIBCAS_FOR_JSP)
 extern char *trim (char *str);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int ut_file_lock (char *lock_file);
 extern void ut_file_unlock (char *);
-extern int ut_access_log (int as_index, struct timeval * start_time, char err_flag,
-			  int e_offset);
+#endif
+extern int ut_access_log (int as_index, struct timeval *start_time,
+			  char err_flag, int e_offset);
 extern int ut_kill_process (int pid, char *br_name, int as_index);
 extern void ut_cd_work_dir (void);
 

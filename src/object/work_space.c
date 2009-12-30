@@ -1022,22 +1022,7 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
 
   vid_info = WS_VID_INFO (mop);
   keys = &vid_info->keys;
-  /* DB_TYPE_STRING is used for ldb's with OID's */
-  if (vid_class_has_intrinsic_oid (class_))
-    {
-      if (!newkey)
-	{
-	  /*
-	   * must be from vid_record_update.
-	   * so, do what the old ws_rehash_vmop did.
-	   */
-	  if (DB_VALUE_TYPE (keys) == DB_TYPE_NULL)
-	    {
-	      db_make_string (keys, NULL);
-	    }
-	  return true;
-	}
-    }
+
   slot = mht_valhash (keys, ws_Mop_table_size);
 
   for (found = ws_Mop_table[slot].head, prev = NULL;
@@ -1051,74 +1036,63 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
       return false;
     }
 
-  if (vid_class_has_intrinsic_oid (class_))
+  /* get new relational key */
+  no_keys = 0;
+  for (att = class_->attributes; att != NULL;
+       att = (SM_ATTRIBUTE *) att->header.next)
     {
-      /* must be from a bulk OO flush call site */
-      no_keys = 1;
-      if (newkey)
+      if (att->flags & SM_ATTFLAG_VID)
 	{
-	  new_key = *newkey;
+	  ++no_keys;
 	}
     }
-  else
+  if (no_keys > 1)
     {
-      /* get new relational key */
-      no_keys = 0;
+      db_make_sequence (&new_key, set_create_sequence (no_keys));
+    }
+
+  for (key_index = 0; key_index < no_keys; ++key_index)
+    {
       for (att = class_->attributes; att != NULL;
 	   att = (SM_ATTRIBUTE *) att->header.next)
 	{
-	  if (att->flags & SM_ATTFLAG_VID)
+	  if ((att->flags & SM_ATTFLAG_VID)
+	      && (classobj_get_prop (att->properties, SM_PROPERTY_VID_KEY,
+				     &val)))
 	    {
-	      ++no_keys;
-	    }
-	}
-      if (no_keys > 1)
-	{
-	  db_make_sequence (&new_key, set_create_sequence (no_keys));
-	}
-
-      for (key_index = 0; key_index < no_keys; ++key_index)
-	{
-	  for (att = class_->attributes; att != NULL;
-	       att = (SM_ATTRIBUTE *) att->header.next)
-	    {
-	      if ((att->flags & SM_ATTFLAG_VID)
-		  && (classobj_get_prop (att->properties, SM_PROPERTY_VID_KEY,
-					 &val)))
+	      att_seq_val = DB_GET_INTEGER (&val);
+	      if (att_seq_val == key_index)
 		{
-		  att_seq_val = DB_GET_INTEGER (&val);
-		  if (att_seq_val == key_index)
+		  /* Sets won't work as key components */
+		  mem = inst + att->offset;
+		  db_value_domain_init (&val, att->type->id,
+					att->domain->precision,
+					att->domain->scale);
+		  PRIM_GETMEM (att->type, att->domain, mem, &val);
+		  if ((DB_VALUE_TYPE (value) == DB_TYPE_STRING)
+		      && (DB_GET_STRING (value) == NULL))
 		    {
-		      /* Sets won't work as key components */
-		      mem = inst + att->offset;
-		      db_value_domain_init (&val, att->type->id,
-					    att->domain->precision,
-					    att->domain->scale);
-		      PRIM_GETMEM (att->type, att->domain, mem, &val);
-		      if ((DB_VALUE_TYPE (value) == DB_TYPE_STRING)
-			  && (DB_GET_STRING (value) == NULL))
-			{
-			  DB_MAKE_NULL (value);
-			}
-
-		      if (no_keys > 1)
-			{
-			  if (set_put_element (db_get_set (&new_key),
-					       key_index, &val) < 0)
-			    {
-			      return false;
-			    }
-			}
-		      else
-			{
-			  pr_clone_value (&val, &new_key);
-			}
-		      pr_clear_value (&val);
+		      DB_MAKE_NULL (value);
 		    }
+
+		  if (no_keys > 1)
+		    {
+		      if (set_put_element (db_get_set (&new_key),
+					   key_index, &val) < 0)
+			{
+			  return false;
+			}
+		    }
+		  else
+		    {
+		      pr_clone_value (&val, &new_key);
+		    }
+		  pr_clear_value (&val);
 		}
 	    }
 	}
     }
+
   pr_clear_value (keys);
   pr_clone_value (&new_key, keys);
   pr_clear_value (&new_key);
@@ -1151,6 +1125,7 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
   return true;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ws_new_mop - optimized version of ws_mop when OID being entered into the
  * workspace is guarenteed to be unique.
@@ -1203,6 +1178,7 @@ ws_new_mop (OID * oid, MOP class_mop)
 
   return (mop);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * ws_perm_oid - change the OID of a MOP
@@ -2346,6 +2322,7 @@ ws_drop_classname (MOBJ classobj)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ws_reset_classname_cache - clear the class name cache since this must be
  * reverified for the next transaction.
@@ -2369,6 +2346,7 @@ ws_reset_classname_cache (void)
       (void) mht_clear (Classname_cache);
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * ws_find_class - search in the workspace classname cache for the MOP of
@@ -2602,6 +2580,7 @@ ws_clear (void)
   ws_clear_internal (false);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ws_vid_clear - decaches all virtual objects in the workspace and clear all
  * locks
@@ -2634,6 +2613,7 @@ ws_vid_clear (void)
 	}
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * ws_has_updated - see if there are any dirty objects in the workspace
@@ -2773,6 +2753,7 @@ abort_it:
   ws_gc_disable ();
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ws_cache_dirty - caches an object and also marks it as dirty
  *    return: void
@@ -2786,6 +2767,7 @@ ws_cache_dirty (MOBJ obj, MOP op, MOP class_)
   ws_cache (obj, op, class_);
   ws_dirty (op);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * ws_cache_with_oid - first find or create a MOP for the object's OID and
@@ -3641,22 +3623,7 @@ ws_dump_mops (void)
   fprintf (stdout, "\n");
 }
 
-/*
- * ws_makemop
- *
- * arguments:
- *	 volid: volume identifier
- *	pageid: page identifier
- *	slotid: slot identifier
- *
- * returns/side-effects: object pointer
- *
- * description:
- *    This will build (or find) a MOP whose OID contains the indicated
- *    identifiers.  This is intended as a debugging functions to get a
- *    handle on an object pointer given the three OID numbers.
- */
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ws_makemop - find or create a MOP whose OID contains the indicated
  * identifiers
@@ -3664,6 +3631,11 @@ ws_dump_mops (void)
  *    volid(in): volumn id
  *    pageid(in): page id
  *    slotid(in): slot id
+ *
+ * description:
+ *    This will build (or find) a MOP whose OID contains the indicated
+ *    identifiers.  This is intended as a debugging functions to get a
+ *    handle on an object pointer given the three OID numbers.
  *
  * Note:
  *    This is intended as a debugging functions to get a
@@ -3703,6 +3675,7 @@ ws_count_mops (void)
     }
   return (count);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * WORKSPACE STATISTICS
@@ -3974,6 +3947,7 @@ ws_get_prop (MOP op, int key, DB_BIGINT * value)
   return status;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ws_rem_prop - remove an object property
  *    return: -1 if error, 0 if property not found, 1 if successful
@@ -4012,6 +3986,7 @@ ws_rem_prop (MOP op, int key)
     }
   return status;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * ws_flush_properties - frees all property of an object
@@ -4040,9 +4015,8 @@ int
 ws_has_dirty_objects (MOP op, int *isvirt)
 {
   *isvirt = (op && !op->deleted && op->object
-	     && (((SM_CLASS *) (op->object))->class_type == SM_VCLASS_CT
-		 || ((SM_CLASS *) (op->object))->class_type ==
-		 SM_LDBVCLASS_CT));
+	     && (((SM_CLASS *) (op->object))->class_type == SM_VCLASS_CT));
+
   return (op && !op->deleted && op->object && op->dirty_link
 	  && op->dirty_link != Null_object);
 }
@@ -4540,6 +4514,7 @@ error:
 }
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * nlist_find_or_append - searches for a name or appends the element.
  *    return: error code
@@ -4605,6 +4580,7 @@ nlist_find_or_append (DB_NAMELIST ** list, const char *name,
   *position = psn;
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 /*
@@ -4986,6 +4962,7 @@ ml_size (DB_OBJLIST * list)
 }
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ml_filter - maps a function over the mops in a list selectively removing
  * elements based on the results of the filter function.
@@ -5026,6 +5003,7 @@ ml_filter (DB_OBJLIST ** list, MOPFILTER filter, void *args)
 	}
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * DB_OBJLIST AREA ALLOCATION

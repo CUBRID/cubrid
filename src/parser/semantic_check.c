@@ -127,7 +127,6 @@ static PT_NODE *pt_get_common_type_for_union (PARSER_CONTEXT * parser,
 					      PT_NODE * att1, PT_NODE * att2,
 					      SEMAN_COMPATIBLE_INFO * cinfo,
 					      int idx, bool * need_cast);
-static int has_mixed_obj_elements (PT_NODE * attr);
 static PT_NODE *pt_make_string_value (PARSER_CONTEXT * parser,
 				      const char *value_string);
 static PT_NODE *pt_append_statements_on_add_attribute
@@ -720,7 +719,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
 
 /*
  * pt_get_class_type () - return a class instance's type
- *   return:  PT_CLASS, PT_VCLASS, PT_LDBVCLASS, or PT_MISC_DUMMY
+ *   return:  PT_CLASS, PT_VCLASS, or PT_MISC_DUMMY
  *   cls(in): a class instance
  */
 static PT_MISC_TYPE
@@ -2033,40 +2032,6 @@ out_of_mem:
 }
 
 /*
- * has_mixed_obj_elements () - does this set/sequence attribute mix
- *                             object elements with non-object elements?
- *   return:  true if set mixes object elements with non-object elements
- *   attr(in): a set/sequence attribute definition
- */
-static int
-has_mixed_obj_elements (PT_NODE * attr)
-{
-  PT_NODE *dtyp;
-  int has_obj, non_obj;
-
-  /* is it a set/sequence type attribute? */
-  if (!attr || !pt_is_set_type (attr))
-    return 0;
-
-  /* set() is equivalent to set(object, int, anything, goes) */
-  if (!attr->data_type)
-    return 1;
-
-  /* does it mix object elements with non-object elements? */
-  non_obj = 0;
-  has_obj = 0;
-  for (dtyp = attr->data_type; dtyp; dtyp = dtyp->next)
-    {
-      if (dtyp->type_enum == PT_TYPE_OBJECT)
-	has_obj = 1;
-      else
-	non_obj = 1;
-    }
-
-  return (non_obj & has_obj);
-}
-
-/*
  * pt_make_string_value () -
  *   return:  return a PT_NODE for the string value
  *   parser(in): parser context
@@ -3139,15 +3104,6 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	    }
 	}
 
-      /* a proxy that has an attr type of heterogeneous
-       * set/sequence of object/non-object elements is an error
-       */
-      if (class_type == PT_LDBVCLASS && has_mixed_obj_elements (def))
-	{
-	  PT_ERRORm (parser, att, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_WANT_NO_OBJ_IN_SETS);
-	}
-
       /* we don't allow sets/multisets/sequences of vclasses */
       if (pt_is_set_type (def))
 	{
@@ -3203,21 +3159,6 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 		  break;
 		case PT_VCLASS:
 		  /* an attribute of a vclass must be of type vclass or class */
-		  break;
-		case PT_LDBVCLASS:
-		  /* an attribute of a proxy must be of type proxy */
-		  if (db_is_vclass (cls))
-		    {
-		      PT_ERRORmf (parser, att,
-				  MSGCAT_SET_PARSER_SEMANTIC,
-				  MSGCAT_SEMANTIC_CAN_NOT_BE_VCLASS, att_nam);
-		    }
-		  else if (db_is_class (cls))
-		    {
-		      PT_ERRORmf (parser, att,
-				  MSGCAT_SET_PARSER_SEMANTIC,
-				  MSGCAT_SEMANTIC_CAN_NOT_BE_CLASS, att_nam);
-		    }
 		  break;
 		default:
 		  break;
@@ -3391,7 +3332,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   switch (code)
     {
     case PT_ADD_ATTR_MTHD:
-      if (type == PT_VCLASS || type == PT_LDBVCLASS)
+      if (type == PT_VCLASS)
 	{
 	  for (attr =
 	       alter->info.alter.alter_clause.
@@ -5984,7 +5925,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 }
 
 /*
- * pt_check_create_entity () - semantic check a create class/vclass/proxy
+ * pt_check_create_entity () - semantic check a create class/vclass
  *   return:  none
  *   parser(in): the parser context used to derive the statement
  *   node(in): a create statement
@@ -6565,7 +6506,10 @@ pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node,
 
 	case PT_EXPR:
 	  if (node->info.expr.op == PT_INST_NUM
-	      || node->info.expr.op == PT_ROWNUM)
+	      || node->info.expr.op == PT_ROWNUM
+	      || node->info.expr.op == PT_PRIOR
+	      || node->info.expr.op == PT_CONNECT_BY_ROOT
+	      || node->info.expr.op == PT_SYS_CONNECT_BY_PATH)
 	    {
 	      if (info->depth == 0)
 		{		/* not in subqueries */
@@ -6573,6 +6517,30 @@ pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node,
 			      MSGCAT_SET_PARSER_SEMANTIC,
 			      MSGCAT_SEMANTIC_NOT_SINGLE_VALUED,
 			      pt_short_print (parser, node));
+		}
+	    }
+	  else if (node->info.expr.op == PT_LEVEL
+		   || node->info.expr.op == PT_CONNECT_BY_ISCYCLE
+		   || node->info.expr.op == PT_CONNECT_BY_ISLEAF)
+	    {
+	      if (info->depth == 0)
+		{		/* not in subqueries */
+		  for (group = info->group_by; group; group = group->next)
+		    {
+		      expr = group->info.sort_spec.expr;
+		      if (expr->node_type == PT_EXPR
+			  && expr->info.expr.op == node->info.expr.op)
+			{
+			  break;
+			}
+		    }
+		  if (group == NULL)
+		    {
+		      PT_ERRORmf (parser, node,
+				  MSGCAT_SET_PARSER_SEMANTIC,
+				  MSGCAT_SEMANTIC_NOT_SINGLE_VALUED,
+				  pt_short_print (parser, node));
+		    }
 		}
 	    }
 	  else
@@ -7779,7 +7747,7 @@ pt_semantic_check (PARSER_CONTEXT * parser, PT_NODE * node)
  *   p(in): a PT_NAME node
  *
  * Note :
- * Finds CLASS LDBVCLASS VCLASS VIEW only
+ * Finds CLASS VCLASS VIEW only
  */
 static DB_OBJECT *
 pt_find_class (PARSER_CONTEXT * parser, PT_NODE * p)

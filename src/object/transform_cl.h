@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -53,11 +53,13 @@ extern MOBJ tf_disk_to_class (RECDES * record);
 
 extern int tf_object_size (MOBJ classobj, MOBJ obj);
 extern int tf_class_size (MOBJ classobj);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void tf_dump_class_size (MOBJ classobj);
-
+#endif
 
 /* new hacks for bulk temporary OID upgrading */
 extern OID *tf_need_permanent_oid (OR_BUF * buf, DB_OBJECT * obj);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int tf_find_temporary_oids (LC_OIDSET * oidset, MOBJ classobj,
 				   MOBJ obj);
 
@@ -65,6 +67,7 @@ extern int tf_find_temporary_oids (LC_OIDSET * oidset, MOBJ classobj,
 extern int tf_set_size (DB_SET * set);
 extern int tf_pack_set (DB_SET * set, char *buffer, int buffer_size,
 			int *actual_bytes);
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* temporary integration kludge */
 extern int tf_Allow_fixups;

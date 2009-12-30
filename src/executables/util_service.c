@@ -45,6 +45,7 @@
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif
+#include "environment_variable.h"
 
 typedef enum
 {
@@ -133,6 +134,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {ADMIN, UTIL_OPTION_UNLOADDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_COMPACTDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_PARAMDUMP, MASK_ADMIN},
+  {ADMIN, UTIL_OPTION_STATDUMP, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_CHANGEMODE, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_COPYLOGDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_APPLYLOGDB, MASK_ADMIN},
@@ -190,6 +192,17 @@ static void print_message (FILE * output, int message_id, ...);
 static void print_result (const char *util_name, int status,
 			  int command_type);
 static bool is_terminated_process (const int pid);
+static char *make_exec_abspath (char *buf, int buf_len, char *cmd);
+
+static char *
+make_exec_abspath (char *buf, int buf_len, char *cmd)
+{
+  buf[0] = '\0';
+
+  (void) envvar_bindir_file (buf, buf_len, cmd);
+
+  return buf;
+}
 
 static void
 print_result (const char *util_name, int status, int command_type)
@@ -277,6 +290,29 @@ main (int argc, char *argv[])
 {
   int util_type, command_type;
   int status;
+#if defined (DO_NOT_USE_CUBRIDENV)
+  char *envval;
+  char path[PATH_MAX];
+
+  envval = getenv (envvar_prefix ());
+  if (envval != NULL)
+    {
+      fprintf (stderr, "CAUTION : "
+	       "The environment variable $%s is set to %s.\n"
+	       "          But, built-in prefix (%s) will be used.\n\n",
+	       envvar_prefix (), envval, envvar_root ());
+    }
+
+  envval = envvar_get ("DATABASES");
+  if (envval != NULL)
+    {
+      fprintf (stderr, "CAUTION : "
+	       "The environment variable $%s_%s is set to %s.\n"
+	       "          But, built-in prefix (%s) will be used.\n\n",
+	       envvar_prefix (), "DATABASES", envval,
+	       envvar_vardir_file (path, PATH_MAX, ""));
+    }
+#endif
 
   Argv = (const char **) argv;
   if (argc == 2)
@@ -383,8 +419,8 @@ main (int argc, char *argv[])
       return EXIT_FAILURE;
 #else /* WINDOWS */
       status = process_repl_server (command_type, (char *) argv[3],
-                                    (char *) argv[4], argc,
-                                    (const char **) argv);
+				    (char *) argv[4], argc,
+				    (const char **) argv);
 #endif /* !WINDOWS */
       break;
     case REPL_AGENT:
@@ -393,7 +429,7 @@ main (int argc, char *argv[])
       return EXIT_FAILURE;
 #else /* WINDOWS */
       status = process_repl_agent (command_type, (char *) argv[3],
-                                   (char *) argv[4]);
+				   (char *) argv[4]);
 #endif /* !WINDOWs */
       break;
     default:
@@ -472,8 +508,7 @@ proc_execute (const char *file, const char *args[], bool wait_child,
       *out_pid = 0;
     }
 
-  (void) snprintf (executable_path, PATH_MAX, "%s\\%s\\%s", ROOT_DIR,
-		   EXECUTABLE_BIN_DIR, file);
+  (void) envvar_bindir_file (executable_path, PATH_MAX, file);
 
   for (i = 0, cmd_arg_len = 0; args[i]; i++)
     {
@@ -528,9 +563,7 @@ proc_execute (const char *file, const char *args[], bool wait_child,
       *out_pid = 0;
     }
 
-  /* save executable path */
-  (void) snprintf (executable_path, PATH_MAX, "%s/%s/%s", ROOT_DIR,
-		   EXECUTABLE_BIN_DIR, file);
+  (void) envvar_bindir_file (executable_path, PATH_MAX, file);
 
   /* do not process SIGCHLD, a child process will be defunct */
   if (wait_child)
@@ -762,8 +795,11 @@ check_server (const char *type, const char *server_name)
 {
   FILE *input;
   char buf[4096], *token, *save_ptr, *delim = (char *) " ";
+  char cmd[PATH_MAX];
 
-  input = popen (UTIL_COMMDB_NAME " " COMMDB_ALL_STATUS, "r");
+  make_exec_abspath (cmd, PATH_MAX,
+		     (char *) UTIL_COMMDB_NAME " " COMMDB_ALL_STATUS);
+  input = popen (cmd, "r");
   if (input == NULL)
     {
       return false;
@@ -1097,12 +1133,13 @@ static bool
 is_manager_running (unsigned int sleep_time)
 {
   FILE *input;
-  char buf[16];
+  char buf[16], cmd[PATH_MAX];
 
   sleep (sleep_time);
 
   /* check cub_auto */
-  input = popen (UTIL_CUB_AUTO_NAME " " "getpid", "r");
+  make_exec_abspath (cmd, PATH_MAX, (char *) UTIL_CUB_AUTO_NAME " " "getpid");
+  input = popen (cmd, "r");
   if (input == NULL)
     {
       return false;
@@ -1118,7 +1155,8 @@ is_manager_running (unsigned int sleep_time)
   pclose (input);
 
   /* chech cub_js */
-  input = popen (UTIL_CUB_JS_NAME " " "getpid", "r");
+  make_exec_abspath (cmd, PATH_MAX, (char *) UTIL_CUB_JS_NAME " " "getpid");
+  input = popen (cmd, "r");
   if (input == NULL)
     {
       return false;

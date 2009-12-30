@@ -3392,11 +3392,13 @@ ignore_repeat (void)
 }
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int
 validate_input_file (void *fname, FILE * outfp)
 {
   return (fname == NULL) && isatty (fileno (stdin));
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 static char *
@@ -3802,6 +3804,7 @@ echo_vstr (const char *str, int length)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * echo_devnull() -
  * return : void
@@ -3813,6 +3816,7 @@ echo_devnull (const char *str, int length)
 {
   /* Do nothing */
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * pp_set_echo() -
@@ -4184,6 +4188,7 @@ emit_line_directive (void)
   need_line_directive = false;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ignore_token() -
  * return : void
@@ -4286,6 +4291,7 @@ echo_string_constant (const char *str, int length)
   ECHO_STR (result, length);
   free_and_init (result);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * esql_yy_sync_lineno() -

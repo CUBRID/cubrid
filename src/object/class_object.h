@@ -418,8 +418,7 @@ typedef enum
 typedef enum
 {
   SM_CLASS_CT,			/* default SQL/X class */
-  SM_VCLASS_CT,			/* SQL/M virtual class */
-  SM_LDBVCLASS_CT,		/* component db virtual class */
+  SM_VCLASS_CT,			/* component db virtual class */
   SM_ADT_CT			/* Abstract data type-psuedo class */
 } SM_CLASS_TYPE;
 
@@ -433,18 +432,6 @@ typedef enum
   SM_CLASSFLAG_WITHCHECKOPTION = 2,	/* a view with check option */
   SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
 } SM_CLASS_FLAG;
-
-/*
- *    These identify whether a proxy vclass is to be added, removed, or
- *    updated in the cache of proxies.
- */
-typedef enum
-{
-  CACHE_NA,
-  CACHE_ADD,
-  CACHE_DROP,
-  CACHE_UPDATE
-} SM_PROXY_CACHE;
 
 /*
  *    These are used to tag the "meta" objects
@@ -824,7 +811,6 @@ struct sm_template
   MOP partition_of;
   DB_ATTRIBUTE *partition_parent_atts;	/* partition parent class attributes
 					   (if creating partition child class) */
-  SM_PROXY_CACHE flag;		/* add, drop, or update cache entry */
 };
 
 
@@ -934,11 +920,7 @@ extern const int SM_MAX_STRING_LENGTH;
 #define SM_PROPERTY_NOT_NULL "*N"
 #define SM_PROPERTY_REVERSE_UNIQUE "*RU"
 #define SM_PROPERTY_REVERSE_INDEX "*RI"
-#define SM_PROPERTY_LDB_NAME "*L_NM"
-#define SM_PROPERTY_LDB_INTRINSIC_OID "*L_ISX"	/* for backward compatibility */
-#define SM_PROPERTY_LDB_ID "*L_ID"
 #define SM_PROPERTY_VID_KEY "*V_KY"
-#define SM_PROPERTY_LDB_OBJ "*L_OBJ"
 #define SM_PROPERTY_PRIMARY_KEY "*P"
 #define SM_PROPERTY_PARTITION "*PT"
 #define SM_PROPERTY_FOREIGN_KEY "*FK"
@@ -1104,8 +1086,10 @@ extern void classobj_free_query_spec (SM_QUERY_SPEC *);
 extern SM_TEMPLATE *classobj_make_template (const char *name, MOP op,
 					    SM_CLASS * class_);
 extern void classobj_free_template (SM_TEMPLATE * template_ptr);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int classobj_add_template_reference (SM_TEMPLATE * template_ptr,
 					    MOP obj);
+#endif
 
 /* Class */
 extern SM_CLASS *classobj_make_class (const char *name);
@@ -1166,8 +1150,10 @@ extern void classobj_print (SM_CLASS * class_);
 /* primary key */
 extern SM_CLASS_CONSTRAINT *classobj_find_class_primary_key (SM_CLASS *
 							     class_);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int classobj_count_class_foreign_key (SM_CLASS * class_);
 extern int classobj_count_cons_attributes (SM_CLASS_CONSTRAINT * cons);
+#endif
 
 extern SM_CLASS_CONSTRAINT
   * classobj_find_cons_primary_key (SM_CLASS_CONSTRAINT * cons_list);

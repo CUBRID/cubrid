@@ -57,12 +57,17 @@ static void set_spacedb_info (T_SPACEDB_INFO * vol_info, int volid,
 			      char *purpose, int total_page, int free_page,
 			      char *vol_name);
 static int parse_volume_line (T_SPACEDB_INFO * vol_info, char *str_buf);
+static int read_cmserver_err_log (char *err_log_file);
 
 char *
 cubrid_cmd_name (char *buf)
 {
   buf[0] = '\0';
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (buf, "%s/%s%s", sco.szCubrid, CUBRID_DIR_BIN, UTIL_ADMIN_NAME);
+#else
+  sprintf (buf, "%s/%s", CUBRID_BINDIR, UTIL_ADMIN_NAME);
+#endif
   return buf;
 }
 
@@ -78,7 +83,11 @@ cmd_csql (char *dbname, char *uid, char *passwd, T_CUBRID_MODE mode,
   int argc = 0;
 
   cmd_name[0] = '\0';
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (cmd_name, "%s/%s%s", sco.szCubrid, CUBRID_DIR_BIN, UTIL_CSQL_NAME);
+#else
+  sprintf (cmd_name, "%s/%s", CUBRID_BINDIR, UTIL_CSQL_NAME);
+#endif
   argv[argc++] = cmd_name;
   argv[argc++] = get_cubrid_mode_opt (mode);
   if (uid)
@@ -109,8 +118,12 @@ cmd_csql (char *dbname, char *uid, char *passwd, T_CUBRID_MODE mode,
   argv[argc++] = dbname;
   argv[argc++] = NULL;
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (out_file, "%s/tmp/DBMT_util_003.%d", sco.szCubrid,
 	   (int) getpid ());
+#else
+  sprintf (out_file, "%s/DBMT_util_003.%d", CUBRID_TMPDIR, (int) getpid ());
+#endif
   INIT_CUBRID_ERROR_FILE (cubrid_err_file);
   SET_TRANSACTION_NO_WAIT_MODE_ENV ();
 
@@ -200,8 +213,12 @@ cmd_commdb (void)
   sprintf (out_file, "%s/DBMT_util_001.%d", sco.dbmt_tmp_dir,
 	   (int) getpid ());
   cmd_name[0] = '\0';
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (cmd_name, "%s/%s%s", sco.szCubrid,
 	   CUBRID_DIR_BIN, UTIL_COMMDB_NAME);
+#else
+  sprintf (cmd_name, "%s/%s", CUBRID_BINDIR, UTIL_COMMDB_NAME);
+#endif
 
   argv[0] = cmd_name;
   argv[1] = COMMDB_SERVER_STATUS;
@@ -219,42 +236,34 @@ int
 cmd_start_server (char *dbname, char *err_buf, int err_buf_size)
 {
   char err_log_file[512];
-  int pid, ret_val, i;
+  int pid;
+  int ret_val;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  char cubrid_error_log_env[512];
   const char *argv[5];
-  struct tm start_tm, *tm_p;
-  time_t start_time;
+  int unlink_ret;
+  extern int errno;
 
 #ifdef HPUX
   char jvm_env_string[32];
 #endif
 
   cmd_start_master ();
+  sprintf (err_log_file, "%s/cmserverstart.%d.err", sco.dbmt_tmp_dir,
+	   (int) getpid ());
 
-  start_time = time (NULL);
-  tm_p = localtime (&start_time);
-  if (tm_p == NULL)
-    {
-      if (err_buf)
-	{
-	  snprintf (err_buf, err_buf_size - 1, "system error : %s %s %s",
-		    UTIL_CUBRID_NAME, PRINT_CMD_START, dbname);
-	}
-      return -1;
-    }
-  start_tm = *tm_p;
-
-  sprintf (err_log_file, "%s/%s/%s_%04d%02d%02d_%02d%02d.err", sco.szCubrid,
-	   CUBRID_ERROR_LOG_DIR, dbname, start_tm.tm_year + 1900,
-	   start_tm.tm_mon + 1, start_tm.tm_mday, start_tm.tm_hour,
-	   start_tm.tm_min);
-  unlink (err_log_file);
-  sprintf (cubrid_error_log_env, "CUBRID_ERROR_LOG=%s", err_log_file);
-  putenv (cubrid_error_log_env);
+/* unset CUBRID_ERROR_LOG environment variable, using default value */
+#if defined(WINDOWS)
+  putenv ("CUBRID_ERROR_LOG=");
+#else
+  unsetenv ("CUBRID_ERROR_LOG");
+#endif
 
   cmd_name[0] = '\0';
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (cmd_name, "%s/%s%s", sco.szCubrid, CUBRID_DIR_BIN, UTIL_CUBRID);
+#else
+  sprintf (cmd_name, "%s/%s", CUBRID_BINDIR, UTIL_CUBRID);
+#endif
 
   argv[0] = cmd_name;
   argv[1] = PRINT_CMD_SERVER;
@@ -271,7 +280,7 @@ cmd_start_server (char *dbname, char *err_buf, int err_buf_size)
   putenv (jvm_env_string);
 #endif
 
-  pid = run_child (argv, 0, NULL, NULL, NULL, NULL);	/* start server */
+  pid = run_child (argv, 1, NULL, err_log_file, NULL, NULL);	/* start server */
 
 #ifdef HPUX
   putenv ("LD_PRELOAD=");
@@ -282,28 +291,16 @@ cmd_start_server (char *dbname, char *err_buf, int err_buf_size)
       if (err_buf)
 	sprintf (err_buf, "system error : %s %s %s %s", cmd_name,
 		 PRINT_CMD_SERVER, PRINT_CMD_START, dbname);
+      unlink (err_log_file);
       return -1;
     }
 
-  SLEEP_MILISEC (3, 0);
+  ret_val = read_cmserver_err_log (err_log_file);
+  unlink_ret = unlink (err_log_file);
 
-  for (i = 0; i < 10; i++)
-    {
-      ret_val = read_error_file (err_log_file, err_buf, err_buf_size);
+  if (ret_val == 0)
+    return 0;
 
-      if (ret_val < 0)
-	return ret_val;
-
-      /* check database active succeed */
-      if (uIsDatabaseActive (dbname))
-	{
-	  return ret_val;
-	}
-
-      SLEEP_MILISEC (3, 0);
-    }
-
-  /* if doesn't active when check 10 times then return error. */
   if (err_buf)
     sprintf (err_buf, "system error : %s %s %s %s", cmd_name,
 	     PRINT_CMD_SERVER, PRINT_CMD_START, dbname);
@@ -320,10 +317,10 @@ cmd_start_diag (char *err_buf, int err_buf_size)
   char param[10];
   int pid;
 
-#if defined(WINDOWS)
-  sprintf (cmd_name, "%s/bin/diag.exe", sco.szCubrid);
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  sprintf (cmd_name, "%s/bin/diag%s", sco.szCubrid, DBMT_EXE_EXT);
 #else
-  sprintf (cmd_name, "%s/bin/diag", sco.szCubrid);
+  sprintf (cmd_name, "%s/diag%s", CUBRID_BINDIR, DBMT_EXE_EXT);
 #endif
 
   sprintf (param, "start");
@@ -358,7 +355,11 @@ cmd_stop_server (char *dbname, char *err_buf, int err_buf_size)
     memset (err_buf, 0, err_buf_size);
 
   cmd_name[0] = '\0';
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (cmd_name, "%s/%s%s", sco.szCubrid, CUBRID_DIR_BIN, UTIL_CUBRID);
+#else
+  sprintf (cmd_name, "%s/%s", CUBRID_BINDIR, UTIL_CUBRID);
+#endif
 
   argv[0] = cmd_name;
   argv[1] = PRINT_CMD_SERVER;
@@ -399,8 +400,12 @@ cmd_start_master (void)
   const char *argv[2];
 
   cmd_name[0] = '\0';
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (cmd_name, "%s/%s%s", sco.szCubrid,
 	   CUBRID_DIR_BIN, UTIL_MASTER_NAME);
+#else
+  sprintf (cmd_name, "%s/%s", CUBRID_BINDIR, UTIL_MASTER_NAME);
+#endif
   argv[0] = cmd_name;
   argv[1] = NULL;
 
@@ -933,4 +938,34 @@ set_spacedb_info (T_SPACEDB_INFO * vol_info, int volid, char *purpose,
 
   stat (vol_name, &statbuf);
   vol_info->date = statbuf.st_mtime;
+}
+
+static int
+read_cmserver_err_log (char *err_file)
+{
+  FILE *fp;
+  char buf[1024];
+  char *strp;
+
+  fp = fopen (err_file, "r");
+  if (fp == NULL)
+    return 0;
+
+  while (1)
+    {
+      memset (buf, 0, sizeof (buf));
+      if (fgets (buf, sizeof (buf), fp) == NULL)
+	break;
+      if (strncmp (buf, "++", 2) == 0)
+	{
+	  if ((strp = strchr (buf, ':')) && strstr (strp, "fail"))
+	    {
+	      fclose (fp);
+	      return -1;
+	    }
+	}
+    }
+
+  fclose (fp);
+  return 0;
 }

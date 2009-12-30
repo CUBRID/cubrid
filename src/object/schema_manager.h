@@ -59,12 +59,15 @@ extern const char TEXT_CONSTRAINT_PREFIX[];
 extern MOP sm_Root_class_mop;
 extern HFID *sm_Root_class_hfid;
 extern const char *sm_Root_class_name;
+extern bool sm_Disable_updating_statistics;
 
 extern int sm_finish_class (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_update_class (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_delete_class_mop (MOP op);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int sm_delete_class (const char *name);
+#endif
 
 extern int sm_add_index (MOP classop,
 			 const char **attnames,
@@ -160,7 +163,9 @@ extern int sm_update_all_statistics (void);
 extern const char *sm_class_name (MOP op);
 
 extern int sm_is_subclass (MOP classmop, MOP supermop);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int sm_object_size (MOP op);
+#endif
 extern int sm_object_size_quick (SM_CLASS * class_, MOBJ obj);
 extern SM_CLASS_CONSTRAINT *sm_class_constraints (MOP classop);
 

@@ -55,8 +55,10 @@ extern const char *rel_name (void);
 extern const char *rel_release_string (void);
 extern const char *rel_major_release_string (void);
 extern const char *rel_build_number (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern const char *rel_copyright_header (void);
 extern const char *rel_copyright_body (void);
+#endif
 extern float rel_disk_compatible (void);
 extern void rel_set_disk_compatible (float level);
 extern int rel_bit_platform (void);

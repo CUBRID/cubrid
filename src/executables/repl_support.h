@@ -305,7 +305,8 @@ extern int repl_start_daemon (void);
 extern void repl_signal_process (SIGNAL_HANDLER_FUNCTION routine);
 extern const char *repl_error (int error);
 extern void repl_error_flush (FILE * fp, bool serveryn);
-extern void repl_error_push (int file_id, int line_num, int code, char *arg);
+extern void repl_error_push (int file_id, int line_num, int code,
+			     const char *arg);
 extern int repl_io_truncate (int vdes, int pagesize, PAGEID pageid);
 extern int repl_io_rename (char *active_copy_log, int *active_vol,
 			   char *archive_copy_log, int *archive_vol);

@@ -89,8 +89,10 @@ static int No_optimization = 0;
 #endif
 static int Verbose_commit = 0;
 static int Estimated_size = 5000;
-static int Disable_statistics = 0;
+static bool Disable_statistics = false;
+#if 0
 static bool obsolete_Disable_statistics = false;
+#endif
 static int Periodic_commit = 0;
 /* Don't ignore logging */
 static int Ignore_logging = 0;
@@ -408,7 +410,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   Estimated_size = utility_get_option_int_value (arg_map,
 						 LOAD_ESTIMATED_SIZE_S);
   Verbose = utility_get_option_bool_value (arg_map, LOAD_VERBOSE_S);
-  obsolete_Disable_statistics =
+  Disable_statistics =
     utility_get_option_bool_value (arg_map, LOAD_NO_STATISTICS_S);
   Periodic_commit = utility_get_option_int_value (arg_map,
 						  LOAD_PERIODIC_COMMIT_S);
@@ -965,6 +967,7 @@ error_return:
   return status;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * loaddb_dba - loaddb in dba mode
  *    return:  NO_ERROR if successful, error code otherwise
@@ -976,7 +979,7 @@ loaddb_dba (UTIL_FUNCTION_ARG * arg)
 {
   return loaddb_internal (arg, 1);
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * loaddb_user - loaddb in user mode

@@ -56,8 +56,6 @@
     a = ws_copy_string(b); \
   } while(0)
 
-#define COMPARE_LDB_NAMES strcmp
-
 static int find_method (SM_TEMPLATE * template_, const char *name,
 			int class_method, SM_METHOD ** methodp);
 static SM_COMPONENT *find_component (SM_TEMPLATE * template_,
@@ -657,8 +655,6 @@ get_domain (SM_TEMPLATE * tmp, const char *domain_string, DB_DOMAIN ** domain)
  * check_domain_class_type() - see if a class is of the appropriate type for
  *    an attribute. Basically, the class types must be the same although
  *    virtual classes can have domains that are of any class type.
- *    In addition, if the domain is a proxy vclass, the ldb's of the
- *    domain and the containing class must be the same.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   template(in): class template
  *   domain_classobj(in): class to examine
@@ -669,9 +665,6 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
-  DB_VALUE ldb1, ldb2;
-  int same_ldb;
-  char *ldb1_str, *ldb2_str;
 
   /* If its a class, the domain can only be "object" or another class */
   if (template_->class_type == SM_CLASS_CT)
@@ -685,55 +678,6 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
 		  class_->header.name);
 	}
     }
-  /* If its a proxy, the domain can only be another proxy on the same ldb */
-  else if (template_->class_type == SM_LDBVCLASS_CT)
-    {
-      if (domain_classobj == NULL)
-	{
-	  /* can't have a proxy domain of type "object" */
-	  ERROR0 (error, ER_SM_INCOMPATIBLE_PROXY_DOMAIN);
-	}
-      else if (!(error = au_fetch_class_force (domain_classobj, &class_,
-					       AU_FETCH_READ)))
-	{
-	  if (template_->class_type != class_->class_type)
-	    {
-	      ERROR1 (error, ER_SM_INCOMPATIBLE_PROXY_DOMAIN_NAME,
-		      class_->header.name);
-	    }
-	  else
-	    {
-	      /* make sure they're on the same ldb */
-	      same_ldb = 0;
-	      if (classobj_get_prop (template_->properties,
-				     SM_PROPERTY_LDB_NAME, &ldb1) > 0)
-		{
-		  if (classobj_get_prop (class_->properties,
-					 SM_PROPERTY_LDB_NAME, &ldb2) > 0)
-		    {
-		      /* is it appropriate to use case insensitive comparison here ? */
-		      ldb1_str = DB_GET_STRING (&ldb1);
-		      ldb2_str = DB_GET_STRING (&ldb2);
-
-		      if (ldb1_str != NULL && ldb2_str != NULL
-			  && COMPARE_LDB_NAMES (ldb1_str, ldb2_str) == 0)
-			{
-			  same_ldb = 1;
-			}
-		      pr_clear_value (&ldb2);
-		    }
-		  pr_clear_value (&ldb1);
-		}
-
-	      if (!same_ldb)
-		{
-		  ERROR1 (error, ER_SM_INCOMPATIBLE_PROXY_DIFF_LDBS,
-			  class_->header.name);
-		}
-	    }
-	}
-    }
-  /* else, if its a vclass, anything is allowed */
 
   return error;
 }
@@ -1013,6 +957,7 @@ smt_add_attribute (SM_TEMPLATE * template_,
 				 ID_ATTRIBUTE));
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 int
 smt_add_shared_attribute (SM_TEMPLATE * template_,
 			  const char *name,
@@ -1030,6 +975,7 @@ smt_add_class_attribute (SM_TEMPLATE * template_,
   return (smt_add_attribute_any (template_, name, domain_string, domain,
 				 ID_CLASS_ATTRIBUTE));
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * smt_add_set_attribute_domain() - Adds a domain to an attribute whose
@@ -1738,7 +1684,7 @@ smt_add_constraint (SM_TEMPLATE * template_, const char **att_names,
        *  Check for possible errors
        *
        *    - We do not allow UNIQUE constraints on any attribute of
-       *      a virtual or proxy class.
+       *      a virtual class.
        *    - We do not allow UNIQUE constraints on shared attributes.
        *    - We only allow unique constraints on indexable data types.
        */
@@ -1822,8 +1768,7 @@ smt_add_constraint (SM_TEMPLATE * template_, const char **att_names,
 
       /*
        *  We do not support NOT NULL constraints for;
-       *    - normal (not class and shared) attributes of virtual
-       *      or proxy classes
+       *    - normal (not class and shared) attributes of virtual classes
        *    - multiple attributes
        *    - class attributes without default value
        */
@@ -2445,6 +2390,7 @@ smt_delete_any (SM_TEMPLATE * template_, const char *name,
   return (error);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * smt_delete()
  * smt_class_delete() - These are type specific deletion functions.
@@ -2465,6 +2411,7 @@ smt_class_delete (SM_TEMPLATE * template_, const char *name)
 {
   return (smt_delete_any (template_, name, ID_CLASS));
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* TEMPLATE SUPERCLASS FUNCTIONS */
 /*
@@ -3054,18 +3001,16 @@ smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
   query_spec = classobj_make_query_spec (specification);
 
   if (query_spec == NULL)
-    error = er_errid ();
+    {
+      error = er_errid ();
+    }
   else
     {
       ct = template_->class_type;
-      if (ct == SM_VCLASS_CT
-	  || (ct == SM_LDBVCLASS_CT
-	      && WS_LIST_LENGTH (template_->query_spec) == 0))
-	{
-	  WS_LIST_APPEND (&template_->query_spec, query_spec);
-	  if (ct == SM_LDBVCLASS_CT)
-	    template_->flag = CACHE_ADD;
-	}
+      if (ct == SM_VCLASS_CT)
+        {
+          WS_LIST_APPEND (&template_->query_spec, query_spec);
+        }
       else
 	{
 	  error = ER_SM_INVALID_CLASS;
@@ -3076,6 +3021,7 @@ smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
   return (error);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * smt_reset_query_spec() - Clears the query_spec list of a template.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -3092,6 +3038,7 @@ smt_reset_query_spec (SM_TEMPLATE * template_)
 
   return (error);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * smt_drop_query_spec() - Removes a query_spec from a template.
@@ -3130,33 +3077,8 @@ smt_drop_query_spec (SM_TEMPLATE * def, const int index)
       else
 	prev->next = found->next;
       classobj_free_query_spec (found);
-      if (def->class_type == SM_LDBVCLASS_CT)
-	def->flag = CACHE_DROP;
     }
   return (error);
-}
-
-/*
- * smt_set_object_id() - Sets object_id in a template.
- *   return: NO_ERROR on success, non-zero for ERROR
- *   template(in/out): schema template
- *   id_list(in): attribute name list
- */
-
-int
-smt_set_object_id (SM_TEMPLATE * template_, DB_NAMELIST * id_list)
-{
-  int error = NO_ERROR;
-  SM_CLASS_TYPE ct;
-
-  ct = template_->class_type;
-  if (ct != SM_LDBVCLASS_CT)
-    {
-      error = ER_SM_INVALID_CLASS;
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
-    }
-
-  return error;
 }
 
 /* VIRTUAL SCHEMA OPERATION TEMPLATE FUNCTIONS */
@@ -3257,10 +3179,6 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
 	}
 
       classobj_free_query_spec (found);
-      if (def->class_type == SM_LDBVCLASS_CT)
-	{
-	  def->flag = CACHE_UPDATE;
-	}
     }
 
   return (error);

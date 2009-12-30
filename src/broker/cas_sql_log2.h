@@ -56,7 +56,7 @@
 	do {							\
 	  if (SQL_LOG2_VALUE) {					\
 	    if ((SQL_LOG2_VALUE) & SQL_LOG2_HISTO) {		\
-	      histo_print();					\
+	      histo_print(NULL);				\
 	    }							\
 	    printf("\n");					\
 	    sql_log2_flush();					\

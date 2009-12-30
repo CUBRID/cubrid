@@ -48,14 +48,10 @@
 #include "connection_error.h"
 #include "message_catalog.h"
 #include "log_impl.h"
-
+#include "perf_monitor.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
-
-#if defined(DIAG_DEVEL)
-#include "perf_monitor.h"
-#endif /* DIAG_DEVEL */
 
 enum net_req_act
 {
@@ -874,6 +870,12 @@ net_server_init (void)
     sthread_kill_tran_index;
   net_Requests[NET_SERVER_CSS_KILL_TRANSACTION].name =
     "NET_SERVER_CSS_KILL_TRANSACTION";
+  net_Requests[NET_SERVER_CSS_DUMP_CS_STAT].action_attribute =
+    CHECK_AUTHORIZATION;
+  net_Requests[NET_SERVER_CSS_DUMP_CS_STAT].processing_function =
+    sthread_dump_cs_stat;
+  net_Requests[NET_SERVER_CSS_DUMP_CS_STAT].name =
+    "NET_SERVER_CSS_DUMP_CS_STAT";
 
   /*
    * query processing
@@ -978,6 +980,23 @@ net_server_init (void)
    */
   net_Requests[NET_SERVER_SHUTDOWN].action_attribute = CHECK_AUTHORIZATION;
   net_Requests[NET_SERVER_SHUTDOWN].name = "NET_SERVER_SHUTDOWN";
+
+  /*
+   * monitor
+   */
+  net_Requests[NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS].action_attribute =
+    CHECK_AUTHORIZATION;
+  net_Requests[NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS].processing_function =
+    smnt_server_copy_global_stats;
+  net_Requests[NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS].name =
+    "NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS";
+
+  net_Requests[NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS].action_attribute =
+    CHECK_AUTHORIZATION;
+  net_Requests[NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS].processing_function =
+    smnt_server_reset_global_stats;
+  net_Requests[NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS].name =
+    "NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS";
 }
 
 /*
@@ -1067,9 +1086,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
   int status = CSS_NO_ERRORS;
   int error_code;
   CSS_CONN_ENTRY *conn;
-#if defined(DIAG_DEVEL)
-  struct timeval diag_start_time, diag_end_time;
-#endif /* DIAG_DEVEL */
+  struct timeval diag_start_time, diag_end_time, diag_elapsed_time;
 
   if (buffer == NULL && size > 0)
     {
@@ -1154,14 +1171,8 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
 #if defined (DIAG_DEVEL)
       SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CLI_REQUEST, 1,
 		      DIAG_VAL_SETTYPE_INC, NULL);
-      if (request == NET_SERVER_QM_QUERY_EXECUTE
-	  || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE
-	  || request == NET_SERVER_QM_QUERY_EXECUTE_ASYNC
-	  || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC)
-	{
-	  DIAG_GET_TIME (diag_executediag, diag_start_time);
-	}
 #endif /* DIAG_DEVEL */
+      gettimeofday (&diag_start_time, NULL);
     }
   if (net_Requests[request].action_attribute & IN_TRANSACTION)
     {
@@ -1169,6 +1180,10 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
     }
 
   /* call a request processing function */
+  if (thread_p->tran_index > 0)
+    {
+      mnt_net_requests (thread_p);
+    }
   func = net_Requests[request].processing_function;
   assert (func != NULL);
   if (func)
@@ -1179,13 +1194,14 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
   /* check the defined action attribute */
   if (net_Requests[request].action_attribute & SET_DIAGNOSTICS_INFO)
     {
+      gettimeofday (&diag_end_time, NULL);
+      DIFF_TIMEVAL (diag_start_time, diag_end_time, diag_elapsed_time);
 #if defined (DIAG_DEVEL)
       if (request == NET_SERVER_QM_QUERY_EXECUTE
 	  || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE
 	  || request == NET_SERVER_QM_QUERY_EXECUTE_ASYNC
 	  || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE_ASYNC)
 	{
-	  DIAG_GET_TIME (diag_executediag, diag_end_time);
 	  SET_DIAG_VALUE_SLOW_QUERY (diag_executediag, diag_start_time,
 				     diag_end_time, 1,
 				     DIAG_VAL_SETTYPE_INC, NULL);

@@ -182,6 +182,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_LEAST:
     case T_GREATEST:
+    case T_SYS_CONNECT_BY_PATH:
       /* fetch both lhs and rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
 			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -221,6 +222,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_DRANDOM:
     case T_EXP:
     case T_SQRT:
+    case T_PRIOR:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr,
 			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
@@ -229,6 +231,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_CONNECT_BY_ROOT:
+    case T_QPRIOR:
     case T_RAND:
     case T_DRAND:
     case T_SYS_DATE:
@@ -315,6 +319,32 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_UNMINUS:
       if (qdata_unary_minus_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_PRIOR:
+      if (!qdata_copy_db_value (arithptr->value, peek_right))
+	{
+	  goto error;
+	}
+      break;
+
+    case T_CONNECT_BY_ROOT:
+      if (!qdata_evaluate_connect_by_root (thread_p,
+					   (void *) arithptr->thirdptr->xasl,
+					   arithptr->rightptr,
+					   arithptr->value, vd))
+	{
+	  goto error;
+	}
+      break;
+
+    case T_QPRIOR:
+      if (!qdata_evaluate_qprior (thread_p,
+				  (void *) arithptr->thirdptr->xasl,
+				  arithptr->rightptr, arithptr->value, vd))
 	{
 	  goto error;
 	}
@@ -984,6 +1014,28 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  }
 
 	tp_value_coerce (arithptr->value, arithptr->value, regu_var->domain);
+	break;
+      }
+
+    case T_SYS_CONNECT_BY_PATH:
+      {
+	if (!qdata_evaluate_sys_connect_by_path (thread_p,
+						 (void *) arithptr->thirdptr->
+						 xasl, arithptr->leftptr,
+						 peek_right, arithptr->value,
+						 vd))
+	  {
+	    goto error;
+	  }
+
+	if (tp_value_coerce (arithptr->value, arithptr->value, regu_var->domain)
+	    != DOMAIN_COMPATIBLE)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		    pr_type_name (PRIM_TYPE (arithptr->value)),
+		    pr_type_name (regu_var->domain->type->id));
+	    goto error;
+	  }
 	break;
       }
 

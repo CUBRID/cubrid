@@ -73,8 +73,7 @@ log_top_tran (int argc, char *argv[], int arg_start)
 	  fprintf (stderr, "%s[%s]\n", strerror (errno), filename);
 	  return -1;
 	}
-      if (log_top (fp, filename) < 0)
-	return -1;
+      log_top (fp, filename);
       fclose (fp);
     }
 
@@ -112,6 +111,11 @@ log_top (FILE * fp, char *filename)
 
       if (IS_CAS_LOG_CMD (linebuf))
 	{
+	  if (strncmp (linebuf + 23, "END OF LOG", 10) == 0)
+	    {
+	      break;
+	    }
+
 	  GET_CUR_DATE_STR (cur_date, linebuf);
 	  if (start_date[0] == '\0')
 	    strcpy (start_date, cur_date);
@@ -130,11 +134,11 @@ log_top (FILE * fp, char *filename)
 
       t_string_add (str_buf, linebuf, (int) strlen (linebuf));
 
-      if (strncmp (linebuf, "***", 3) == 0)
+      if (IS_CAS_LOG_CMD (linebuf) && (strncmp (linebuf + 23, "***", 3) == 0))
 	{
 	  float runtime;
 
-	  if (sscanf (linebuf + 4, "%f", &runtime) == 1)
+	  if (sscanf (linebuf + 27, "%*s %*s %f", &runtime) == 1)
 	    {
 	      T_LOG_INFO tmpinfo;
 	      char *log_str;

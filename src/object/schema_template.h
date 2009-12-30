@@ -57,6 +57,7 @@ extern int smt_add_attribute_any (SM_TEMPLATE * template_,
 extern int smt_add_attribute (SM_TEMPLATE * template_,
 			      const char *name,
 			      const char *domain_string, DB_DOMAIN * domain);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int smt_add_shared_attribute (SM_TEMPLATE * template_,
 				     const char *name,
 				     const char *domain_string,
@@ -65,6 +66,7 @@ extern int smt_add_class_attribute (SM_TEMPLATE * template_,
 				    const char *name,
 				    const char *domain_string,
 				    DB_DOMAIN * domain);
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 extern int smt_add_set_attribute_domain (SM_TEMPLATE * template_,
 					 const char *name,
@@ -142,8 +144,10 @@ extern int smt_rename_any (SM_TEMPLATE * template_, const char *name,
 /* Deletion functions */
 extern int smt_delete_any (SM_TEMPLATE * template_, const char *name,
 			   SM_NAME_SPACE name_space);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int smt_delete (SM_TEMPLATE * template_, const char *name);
 extern int smt_class_delete (SM_TEMPLATE * template_, const char *name);
+#endif
 
 /* Superclass functions */
 extern int smt_add_super (SM_TEMPLATE * template_, MOP super_class);
@@ -182,15 +186,14 @@ extern int smt_delete_class_resolution (SM_TEMPLATE * template_,
 extern int smt_add_query_spec (SM_TEMPLATE * template_,
 			       const char *specification);
 extern int smt_drop_query_spec (SM_TEMPLATE * template_, const int index);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int smt_reset_query_spec (SM_TEMPLATE * template_);
+#endif
 extern int smt_change_query_spec (SM_TEMPLATE * def, const char *query,
 				  const int index);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void smt_downcase_all_class_info (void);
 #endif
-
-/* Object_id functions */
-extern int smt_set_object_id (SM_TEMPLATE * template_, DB_NAMELIST * id_list);
 
 #endif /* _SCHEMA_TEMPLATE_H_ */

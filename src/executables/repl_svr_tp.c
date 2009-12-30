@@ -1176,6 +1176,7 @@ repl_svr_check_shutdown ()
   return result;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * repl_svr_shutdown_immediately() - send the signal to the main thread to
  *                                   shutdown the process
@@ -1193,6 +1194,7 @@ repl_svr_shutdown_immediately ()
 {
   exit (-1);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * repl_svr_shutdown_by_signal() - shutdown the process

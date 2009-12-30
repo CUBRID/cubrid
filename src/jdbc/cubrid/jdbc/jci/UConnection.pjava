@@ -322,7 +322,10 @@ public class UConnection
       client = socket;
       client.setTcpNoDelay(true);
 #if !defined(SERVER_SIDE_JDBC)
-      client.setSoTimeout(SOCKET_TIMEOUT);
+      if (altHosts != null)
+      {
+        client.setSoTimeout(SOCKET_TIMEOUT);
+      }
 #endif
 
       out = client.getOutputStream();
@@ -1711,12 +1714,14 @@ public class UConnection
 
   synchronized public void setAutoCommit(boolean autoCommit)
   {
-#ifndef SERVER_SIDE_JDBC
-    if (lastAutoCommit != autoCommit)
+    if (!isServerSideJdbc)
     {
-      lastAutoCommit = autoCommit;
+      if (lastAutoCommit != autoCommit)
+      {
+	lastAutoCommit = autoCommit;
+      }
     }
-#endif
+
     /*
      * errorHandler = new UError(); if (isClosed == true){
      * errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED); return; } try{
@@ -1966,7 +1971,10 @@ public class UConnection
     {
       client = new Socket(InetAddress.getByName(ip), port);
       client.setTcpNoDelay(true);
-      client.setSoTimeout(SOCKET_TIMEOUT);
+      if (altHosts != null)
+      {
+        client.setSoTimeout(SOCKET_TIMEOUT);
+      }
 
       out = client.getOutputStream();
       output = new DataOutputStream(client.getOutputStream());

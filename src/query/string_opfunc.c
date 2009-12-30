@@ -1762,6 +1762,7 @@ db_string_substring (const MISC_OPERAND substr_operand,
   return error_status;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * db_string_byte_length
  *
@@ -1959,6 +1960,7 @@ db_string_char_length (const DB_VALUE * string, DB_VALUE * char_count)
 
   return error_status;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 

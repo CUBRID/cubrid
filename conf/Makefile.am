@@ -18,6 +18,6 @@
 #
 
 
-confdir = @CONF_DIR@
+confdir = @CUBRID_CONFDIR@
 conf_DATA = cubrid.conf cubrid_broker.conf
 

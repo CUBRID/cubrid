@@ -116,6 +116,9 @@ extern int PRM_LOG_CHECKPOINT_NPAGES;
 #define PRM_NAME_LOG_CHECKPOINT_INTERVAL_MINUTES "checkpoint_interval_in_mins"
 extern int PRM_LOG_CHECKPOINT_INTERVAL_MINUTES;
 
+#define PRM_NAME_LOG_BACKGROUND_ARCHIVING "background_archiving"
+extern bool PRM_LOG_BACKGROUND_ARCHIVING;
+
 #define PRM_NAME_LOG_ISOLATION_LEVEL "isolation_level"
 extern int PRM_LOG_ISOLATION_LEVEL;
 
@@ -208,6 +211,9 @@ extern int PRM_PB_NUM_LRU_CHAINS;
 
 #define PRM_NAME_PAGE_FLUSH_THREAD_WAKEUP_INTERVAL "page_flush_thread_wakeup_interval_in_secs"
 extern int PRM_PAGE_FLUSH_THREAD_WAKEUP_INTERVAL;
+
+#define PRM_NAME_NUM_PAGES_PER_BGFLUSH "num_pages_per_bgflush"
+extern int PRM_NUM_PAGES_PER_BGFLUSH;
 
 #define PRM_NAME_ORACLE_STYLE_OUTERJOIN "oracle_style_outerjoin"
 extern bool PRM_ORACLE_STYLE_OUTERJOIN;
@@ -376,6 +382,9 @@ extern bool *PRM_EVENT_ACTIVATION;
 
 #define PRM_NAME_READ_ONLY_MODE "read_only"
 extern bool PRM_READ_ONLY_MODE;
+
+#define PRM_NAME_MNT_WAITING_THREAD "monitor_waiting_thread"
+extern int PRM_MNT_WAITING_THREAD;
 
 #define PRM_NAME_SERVICE_SERVICE_LIST "service::service"
 extern const char *PRM_SERVICE_SERVICE_LIST;

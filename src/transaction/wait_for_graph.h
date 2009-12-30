@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -63,10 +63,12 @@ extern int wfg_insert_out_edges (THREAD_ENTRY * thread_p,
 				 int (*cycle_resolution_fn) (int tran_index,
 							     void *args),
 				 void *args);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int wfg_remove_out_edges (THREAD_ENTRY * thread_p,
 				 const int waiter_tran_index,
 				 const int num_holders,
 				 const int *htran_indices_p);
+#endif
 extern int wfg_get_status (int *num_edges_p, int *num_waiters_p);
 extern int wfg_detect_cycle (THREAD_ENTRY * thread_p,
 			     WFG_CYCLE_CASE * cycle_case,
@@ -78,6 +80,7 @@ extern int wfg_get_tran_entries (THREAD_ENTRY * thread_p,
 
 /* Transaction group interfaces */
 extern int wfg_alloc_tran_group (THREAD_ENTRY * thread_p);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int wfg_insert_holder_tran_group (THREAD_ENTRY * thread_p,
 					 const int tran_group_index,
 					 const int holder_tran_index);
@@ -92,6 +95,7 @@ extern int wfg_insert_waiter_tran_group (THREAD_ENTRY * thread_p,
 								     void
 								     *args),
 					 void *args);
+#endif
 extern int wfg_remove_waiter_tran_group (THREAD_ENTRY * thread_p,
 					 const int tran_group_index,
 					 const int waiter_tran_index);

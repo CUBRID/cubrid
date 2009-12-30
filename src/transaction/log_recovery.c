@@ -4909,7 +4909,6 @@ log_recovery_notpartof_archives (THREAD_ENTRY * thread_p, int start_arv_num,
   char logarv_name_first[PATH_MAX];	/* Archive name  */
   int i;
   const char *catmsg;
-  char *catmsg_dup;
   int error_code;
 
 
@@ -4964,29 +4963,12 @@ log_recovery_notpartof_archives (THREAD_ENTRY * thread_p, int start_arv_num,
 				     MSGCAT_LOG_LOGINFO_REMOVE_REASON);
 	    if (catmsg == NULL)
 	      {
-		return;
+		catmsg = "REMOVE: %d %s to \n%d %s.\nREASON: %s\n";
 	      }
-
-	    catmsg_dup = strdup (catmsg);
-	    if (catmsg_dup != NULL)
-	      {
-		error_code =
-		  logpb_dump_log_info (log_Name_info, true, catmsg_dup,
-				       start_arv_num, logarv_name,
-				       start_arv_num, logarv_name,
-				       info_reason);
-		free_and_init (catmsg_dup);
-	      }
-	    else
-	      {
-		/* NOTE: catmsg..may get corrupted if the function calls the
-		 * catalog
-		 */
-		error_code = logpb_dump_log_info (log_Name_info, true, catmsg,
-						  start_arv_num, logarv_name,
-						  start_arv_num, logarv_name,
-						  info_reason);
-	      }
+	    error_code = log_dump_log_info (log_Name_info, true, catmsg,
+					    start_arv_num, logarv_name,
+					    start_arv_num, logarv_name,
+					    info_reason);
 	    if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
 	      {
 		return;
@@ -5002,29 +4984,12 @@ log_recovery_notpartof_archives (THREAD_ENTRY * thread_p, int start_arv_num,
 				     MSGCAT_LOG_LOGINFO_REMOVE_REASON);
 	    if (catmsg == NULL)
 	      {
-		return;
+		catmsg = "REMOVE: %d %s to \n%d %s.\nREASON: %s\n";
 	      }
-
-	    catmsg_dup = strdup (catmsg);
-	    if (catmsg_dup != NULL)
-	      {
-		error_code =
-		  logpb_dump_log_info (log_Name_info, true, catmsg_dup,
-				       start_arv_num, logarv_name_first,
-				       i - 1, logarv_name, info_reason);
-		free_and_init (catmsg_dup);
-	      }
-	    else
-	      {
-		/* NOTE: catmsg..may get corrupted if the function calls the
-		 * catalog
-		 */
-		error_code = logpb_dump_log_info (log_Name_info, true, catmsg,
-						  start_arv_num,
-						  logarv_name_first, i - 1,
-						  logarv_name, info_reason);
-	      }
-
+	    error_code = log_dump_log_info (log_Name_info, true, catmsg,
+					    start_arv_num,
+					    logarv_name_first, i - 1,
+					    logarv_name, info_reason);
 	    if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
 	      {
 		return;

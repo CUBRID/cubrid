@@ -235,6 +235,7 @@ net_read_header (SOCKET sock_fd, MSG_HEADER * header)
   return retval;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int
 net_write_header (SOCKET sock_fd, MSG_HEADER * header)
 {
@@ -245,6 +246,7 @@ net_write_header (SOCKET sock_fd, MSG_HEADER * header)
 
   return 0;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 init_msg_header (MSG_HEADER * header)

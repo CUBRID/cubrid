@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "porting.h"
 #ifndef HAVE_STRLCPY
@@ -38,10 +39,9 @@
 #include "environment_variable.h"
 
 /* available root directory symbols; NULL terminated array */
-static const char *envvar_Prefixes[] = {
-  "CUBRID", NULL
-};
+static const char envvar_Prefix_name[] = "CUBRID";
 static const char *envvar_Prefix = NULL;
+static const char *envvar_Root = NULL;
 
 #define _ENVVAR_MAX_LENGTH      255
 
@@ -52,24 +52,35 @@ static const char *envvar_Prefix = NULL;
 const char *
 envvar_prefix (void)
 {
-  const char **candidate;
-
   if (!envvar_Prefix)
     {
-      for (candidate = envvar_Prefixes; *candidate; candidate++)
+#if !defined (DO_NOT_USE_CUBRIDENV)
+      envvar_Root = getenv (envvar_Prefix_name);
+      if (envvar_Root != NULL)
 	{
-	  if (getenv (*candidate) != NULL)
+#if !defined (WINDOWS)
+	  if (access (envvar_Root, F_OK) != 0)
 	    {
-	      envvar_Prefix = *candidate;
-	      return envvar_Prefix;
+	      fprintf (stderr, "The directory in $%s is invalid. (%s)\n",
+		       envvar_Prefix_name, envvar_Root);
+	      fflush (stderr);
+	      exit (1);
 	    }
+#endif
+
+	  envvar_Prefix = envvar_Prefix_name;
+	  return envvar_Prefix;
 	}
 
       fprintf (stderr,
 	       "The root directory environment variable $%s is not set.\n",
-	       envvar_Prefixes[0]);
+	       envvar_Prefix_name);
       fflush (stderr);
       exit (1);
+#else
+      envvar_Prefix = envvar_Prefix_name;
+      envvar_Root = CUBRID_PREFIXDIR;
+#endif
     }
 
   return envvar_Prefix;
@@ -82,8 +93,12 @@ envvar_prefix (void)
 const char *
 envvar_root (void)
 {
-  const char *root = getenv (envvar_prefix ());
-  return root;
+  if (envvar_Root == NULL)
+    {
+      envvar_prefix ();
+    }
+
+  return envvar_Root;
 }
 
 /*
@@ -299,4 +314,157 @@ envvar_expand (const char *string, char *buffer, size_t maxlen)
   *buffer = '\0';
 
   return NO_ERROR;
+}
+
+char *
+envvar_bindir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/bin/%s", envvar_Root, filename);
+#else
+  snprintf (path, size, "%s/%s", CUBRID_BINDIR, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
+}
+
+char *
+envvar_libdir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/lib/%s", envvar_Root, filename);
+#else
+  snprintf (path, size, "%s/%s", CUBRID_LIBDIR, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
+}
+
+char *
+envvar_javadir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/java/%s", envvar_Root, filename);
+#else
+  snprintf (path, size, "%s/%s", CUBRID_JAVADIR, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
+}
+
+char *
+envvar_localedir_file (char *path, size_t size, const char *langpath,
+		       const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/msg/%s/%s", envvar_Root, langpath, filename);
+#else
+  snprintf (path, size, "%s/%s/%s", CUBRID_LOCALEDIR, langpath, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
+}
+
+char *
+envvar_confdir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/conf/%s", envvar_Root, filename);
+#else
+  snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
+}
+
+char *
+envvar_vardir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/var/%s", envvar_Root, filename);
+#else
+  snprintf (path, size, "%s/%s", CUBRID_VARDIR, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
+}
+
+char *
+envvar_tmpdir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/tmp/%s", envvar_Root, filename);
+#else
+  snprintf (path, size, "%s/%s", CUBRID_TMPDIR, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
+}
+
+char *
+envvar_logdir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/log/%s", envvar_Root, filename);
+#else
+  snprintf (path, size, "%s/%s", CUBRID_LOGDIR, filename);
+#endif
+
+  path[size - 1] = '\0';
+  return path;
 }

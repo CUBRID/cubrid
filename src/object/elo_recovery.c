@@ -765,6 +765,7 @@ end:
   return (shadow_pathname);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * esm_process_savepoint() - creates new shadow files for all open FBOs
  *      return: none
@@ -804,6 +805,7 @@ esm_process_system_savepoint (void)
       temp->savepoint_detected = SYSTEM_SPECIFIED_DETECTED;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * esm_make_dropped_shadow_file() - Creates a shadow file for an FBO

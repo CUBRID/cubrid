@@ -464,6 +464,7 @@ esm_define_esm_classes (void)
   (void) locator_has_heap (glo_class);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /* This routine just an aid to testing/adding new methods. */
 
 /*
@@ -485,3 +486,4 @@ esm_add_method (char *class_name, char *method_name,
       ADD_METHOD (class_obj, method_name, implementation_name);
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */

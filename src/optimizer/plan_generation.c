@@ -692,6 +692,22 @@ init_list_scan_proc (QO_ENV * env,
 				     SCAN_PROC,
 				     listfile,
 				     namelist, access_pred, poslist);
+
+      if (env->pt_tree->node_type == PT_SELECT 
+	  && env->pt_tree->info.query.q.select.connect_by)
+	{
+	  pt_set_level_node_etc (QO_ENV_PARSER (env),
+				 if_pred, &xasl->level_val);
+	  pt_set_isleaf_node_etc (QO_ENV_PARSER (env),
+				  if_pred, &xasl->isleaf_val);
+	  pt_set_iscycle_node_etc (QO_ENV_PARSER (env),
+				   if_pred, &xasl->iscycle_val);
+	  pt_set_connect_by_operator_node_etc (QO_ENV_PARSER (env),
+					       if_pred, xasl);
+	  pt_set_qprior_node_etc (QO_ENV_PARSER (env),
+				  if_pred, xasl);
+	}
+
       xasl = add_if_predicate (env, xasl, if_pred);
       xasl = add_after_join_predicate (env, xasl, after_join_pred);
       xasl = add_instnum_predicate (env, xasl, instnum_pred);
@@ -753,6 +769,17 @@ add_access_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
 
   if_pred = make_if_pred_from_plan (env, plan);
   instnum_pred = make_instnum_pred_from_plan (env, plan);
+
+  if (env->pt_tree->node_type == PT_SELECT 
+      && env->pt_tree->info.query.q.select.connect_by)
+    {
+      pt_set_level_node_etc (parser, if_pred, &xasl->level_val);
+      pt_set_isleaf_node_etc (parser, if_pred, &xasl->isleaf_val);
+      pt_set_iscycle_node_etc (parser, if_pred, &xasl->iscycle_val);
+      pt_set_connect_by_operator_node_etc (parser, if_pred, xasl);
+      pt_set_qprior_node_etc (parser, if_pred, xasl);
+    }
+
   xasl = add_if_predicate (env, xasl, if_pred);
   xasl = add_instnum_predicate (env, xasl, instnum_pred);
 

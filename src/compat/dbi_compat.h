@@ -1210,7 +1210,18 @@
 #define ER_BO_CLIENT_CONNECTED                      -972
 #define ER_BO_SERVER_STATUS                         -973
 
-#define ER_LAST_ERROR                               -974
+#define ER_LOG_ARCHIVE_CREATED                      -974
+
+#define ER_REPL_MULTI_UPDATE_UNIQUE_VIOLATION       -975
+
+#define ER_FILE_TABLE_OVERFLOW                      -976
+
+#define ER_LOG_CHECKPOINT_STARTED                   -977
+#define ER_LOG_CHECKPOINT_FINISHED                  -978
+
+#define ER_QPROC_CYCLE_DETECTED                     -979
+
+#define ER_LAST_ERROR                               -980
 
 #define DB_TRUE 1
 #define DB_FALSE 0
@@ -2330,8 +2341,8 @@ typedef enum
   DB_TYPE_C_POINTER,
   DB_TYPE_C_ERROR,
   DB_TYPE_C_IDENTIFIER,
-  DB_TYPE_C_BIGINT,
   DB_TYPE_C_DATETIME,
+  DB_TYPE_C_BIGINT,
   DB_TYPE_C_LAST,		/* last for iteration   */
   DB_TYPE_C_UTIME = DB_TYPE_C_TIMESTAMP
 } DB_TYPE_C;
@@ -2365,19 +2376,7 @@ struct db_c_date
   int day;
 };
 
-typedef struct db_c_datetime DB_C_DATETIME;
-struct db_c_datetime
-{
-  int year;
-  int month;
-  int day;
-
-  int hour;
-  int minute;
-  int second;
-  int millisecond;
-};
-
+typedef DB_DATETIME DB_C_DATETIME;
 typedef DB_TIMESTAMP DB_C_TIMESTAMP;
 typedef DB_MONETARY DB_C_MONETARY;
 typedef unsigned char *DB_C_NUMERIC;

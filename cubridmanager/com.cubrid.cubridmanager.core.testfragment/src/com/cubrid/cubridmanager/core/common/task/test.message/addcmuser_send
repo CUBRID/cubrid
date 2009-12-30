@@ -1,8 +1,0 @@
-task:adddbmtuser
-token:8ec1ab8a91333c78dc7d4eacced8890a2534aae14043e4a5b9796bef95f4fcc17926f07dd201b6aa
-targetid:pang
-password:1111
-casauth:admin
-dbcreate:admin
-statusmonitorauth:monitor
-

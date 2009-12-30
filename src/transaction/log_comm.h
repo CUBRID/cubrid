@@ -38,6 +38,8 @@
   ((struct manylogs *) ((char *)log_areaptr->mem + log_areaptr->length - \
                                   DB_SIZEOF(struct manylogs)))
 
+#define TIME_SIZE_OF_DUMP_LOG_INFO 30
+
 /*
  * STATES OF TRANSACTIONS
  */
@@ -205,4 +207,6 @@ extern LOG_COPY *log_copy_area_malloc_recv (int num_records,
 					    int packed_descriptors_length,
 					    char **contents_ptr,
 					    int contents_length);
+extern int log_dump_log_info (const char *logname_info,
+			      bool also_stdout, const char *fmt, ...);
 #endif /* _LOG_COMM_H_ */

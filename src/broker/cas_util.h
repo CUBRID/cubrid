@@ -37,7 +37,7 @@ extern char *ut_trim (char *);
 extern void ut_tolower (char *str);
 extern void ut_timeval_diff (struct timeval *start, struct timeval *end,
 			     int *res_sec, int *res_msec);
-extern int ut_check_timeout (struct timeval *start_time, int timeout_sec,
+extern int ut_check_timeout (struct timeval *start_time, int timeout_msec,
 			     int *res_sec, int *res_msec);
 
 #endif /* _CAS_UTIL_H_ */

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -142,9 +142,12 @@ struct or_class
 
 extern int or_class_repid (RECDES * record);
 extern void or_class_hfid (RECDES * record, HFID * hfid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void or_class_statistics (RECDES * record, OID * oid);
 extern int or_class_subclasses (RECDES * record,
 				int *array_size, OID ** array_ptr);
+extern int or_classrep_needs_indexes (OR_CLASSREP * rep);
+#endif
 extern int or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record,
 				    int attrid,
 				    BTID * btid,
@@ -152,7 +155,6 @@ extern int or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record,
 				    HFID ** hfids, int *num_heaps);
 extern OR_CLASSREP *or_get_classrep (RECDES * record, int repid);
 extern OR_CLASSREP *or_get_classrep_noindex (RECDES * record, int repid);
-extern int or_classrep_needs_indexes (OR_CLASSREP * rep);
 extern OR_CLASSREP *or_classrep_load_indexes (OR_CLASSREP * rep,
 					      RECDES * record);
 extern void or_free_classrep (OR_CLASSREP * rep);

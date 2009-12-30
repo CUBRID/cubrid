@@ -27,6 +27,8 @@
 
 #ident "$Id$"
 
+#include <stdio.h>
+
 #include "dbdef.h"
 #include "replication.h"
 #include "server_interface.h"
@@ -99,7 +101,9 @@ extern int locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid,
 				       BTID * pk_btid, int cache_attr_id,
 				       char *fk_name);
 extern int heap_create (HFID * hfid, const OID * class_oid);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_destroy (const HFID * hfid);
+#endif
 extern int heap_destroy_newly_created (const HFID * hfid);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
@@ -131,7 +135,9 @@ extern void log_dump_stat (FILE * outfp);
 
 extern TRAN_STATE tran_server_commit (bool retain_lock);
 extern TRAN_STATE tran_server_abort (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern bool tran_is_blocked (int tran_index);
+#endif
 extern int tran_server_has_updated (void);
 extern int tran_server_is_active_and_has_updated (void);
 extern int tran_wait_server_active_trans (void);
@@ -270,19 +276,25 @@ extern void qmgr_dump_query_cache (FILE * outfp);
 extern int qmgr_get_query_info (DB_QUERY_RESULT * query_result, int *done,
 				int *count, int *error, char **error_string);
 extern int qmgr_sync_query (DB_QUERY_RESULT * query_result, int wait);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int qp_get_sys_timestamp (DB_VALUE * value);
+#endif
 extern int qp_get_serial_next_value (DB_VALUE * value, DB_VALUE * oid);
 extern int qp_get_serial_current_value (DB_VALUE * value, DB_VALUE * oid);
 
-extern int mnt_server_start_stats (void);
+extern int mnt_server_start_stats (bool for_all_trans);
 extern int mnt_server_stop_stats (void);
 extern void mnt_server_reset_stats (void);
+extern void mnt_server_reset_global_stats (void);
 extern void mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats);
+extern void mnt_server_copy_global_stats (MNT_SERVER_EXEC_GLOBAL_STATS *
+					  to_stats);
 extern int catalog_is_acceptable_new_representation (OID * class_id,
 						     HFID * hfid,
 						     int *can_accept);
 extern int thread_kill_tran_index (int kill_tran_index, char *kill_user,
 				   char *kill_host, int kill_pid);
+extern void thread_dump_cs_stat (FILE * outfp);
 
 extern int logtb_get_pack_tran_table (char **buffer_p, int *size_p);
 extern void logtb_dump_trantable (FILE * outfp);
@@ -302,22 +314,27 @@ extern int repl_set_info (REPL_INFO * repl_info);
 extern int logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr);
 
 extern bool histo_is_supported (void);
-extern int histo_start (void);
+extern int histo_start (bool for_all_trans);
 extern int histo_stop (void);
-extern void histo_print (void);
+extern void histo_print (FILE * stream);
+extern void histo_print_global_stats (FILE * stream);
 extern void histo_clear (void);
-extern void histo_add_entry (int request, int data_sent);
-extern void histo_request_finished (int request, int data_received);
-extern int histo_total_interfaces (void);
-extern int histo_hit (int index);
-extern const char *histo_get_name (int index);
+extern void histo_clear_global_stats (void);
+
+extern int net_histo_start (bool for_all_trans);
+extern int net_histo_stop (void);
+extern void net_histo_print (FILE * stream);
+extern void net_histo_print_global_stats (FILE * stream);
+extern void net_histo_clear (void);
+extern void net_histo_clear_global_stats (void);
+
 extern int net_client_request_no_reply (int request, char *argbuf,
 					int argsize);
 extern int net_client_request (int request, char *argbuf, int argsize,
 			       char *replybuf, int replysize, char *databuf,
 			       int datasize, char *replydata,
 			       int replydatasize);
-#if 0
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int net_client_request_send_large_data (int request, char *argbuf,
 					       int argsize, char *replybuf,
 					       int replysize, char *databuf,
@@ -353,23 +370,28 @@ extern int net_client_request_with_callback (int request, char *argbuf,
 					     int *replydatasize_ptr1,
 					     char **replydata_ptr2,
 					     int *replydatasize_ptr2);
-extern int net_client_request_with_context (LOGWR_CONTEXT * ctx_ptr,
-					    int request, char *argbuf,
-					    int argsize, char *replybuf,
-					    int replysize, char *databuf1,
-					    int datasize1, char *databuf2,
-					    int datasize2,
-					    char **replydata_ptr1,
-					    int *replydatasize_ptr1,
-					    char **replydata_ptr2,
-					    int *replydatasize_ptr2);
-extern int net_client_get_next_pages (int rc, char *replybuf, int replysize,
-				      int length);
+extern int net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
+						  int request, char *argbuf,
+						  int argsize, char *replybuf,
+						  int replysize,
+						  char *databuf1,
+						  int datasize1,
+						  char *databuf2,
+						  int datasize2,
+						  char **replydata_ptr1,
+						  int *replydatasize_ptr1,
+						  char **replydata_ptr2,
+						  int *replydatasize_ptr2);
+extern int net_client_get_next_log_pages (int rc, char *replybuf,
+					  int replysize, int length);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int net_client_request3 (int request, char *argbuf, int argsize,
 				char *replybuf, int replysize, char *databuf,
 				int datasize, char **replydata_ptr,
 				int *replydatasize_ptr, char **replydata_ptr2,
 				int *replydatasize_ptr2);
+#endif
+
 extern int net_client_request_recv_copyarea (int request, char *argbuf,
 					     int argsize, char *replybuf,
 					     int replysize,
@@ -378,7 +400,7 @@ extern int net_client_request_recv_logarea (int request, char *argbuf,
 					    int argsize, char *replybuf,
 					    int replysize,
 					    LOG_COPY ** reply_log_area);
-#if 0
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int net_client_request_recv_large_data (int request, char *argbuf,
 					       int argsize, char *replybuf,
 					       int replysize, char *databuf,
@@ -410,7 +432,9 @@ extern int net_client_ping_server (int client_val, int *server_val);
 extern int net_client_ping_server_with_handshake (bool check_capabilities);
 
 /* Startup/Shutdown */
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void net_client_shutdown_server (void);
+#endif
 extern int net_client_init (const char *dbname, const char *hostname);
 extern int net_client_final (void);
 

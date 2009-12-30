@@ -1166,7 +1166,7 @@ has_vclass_domains (DB_OBJECT * vclass)
 
 
 /*
- * emit_query_specs - Emit the object ids for a virtual class on an ldb.
+ * emit_query_specs - Emit the object ids for a virtual class.
  *    return:
  *    classes(in):
  */
@@ -1307,7 +1307,6 @@ emit_query_specs (DB_OBJLIST * classes)
 
 /*
  * emit_query_specs_has_using_index - Emit the object ids for a virtual class
- * on an ldb.
  *    return:
  *    vclass_list_has_using_index():
  */

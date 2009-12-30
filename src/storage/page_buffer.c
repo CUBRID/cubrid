@@ -92,7 +92,11 @@
    victim candidates(fcnt == 0) from the bottom of LRU list.
    and flushes them if they are in dirty state.
    Only PGBUF_VICTIM_CLEAN_COUNT victim candidates would be checked. */
-#define PGBUF_VICTIM_CLEAN_COUNT             50
+#if defined (WINDOWS)
+#define PGBUF_VICTIM_CLEAN_COUNT	50
+#else /* WINDOWS */
+#define PGBUF_VICTIM_CLEAN_COUNT	(int) (PRM_PB_NBUFFERS * 0.1)
+#endif /* !WINDOWS */
 
 /* maximum number of try in case of failure in allocating a BCB */
 #define PGBUF_SLEEP_MAX                    10
@@ -411,6 +415,7 @@ struct pgbuf_buffer_pool
   PGBUF_BUFFER_HASH *buf_hash_table;	/* buffer hash table */
   PGBUF_BUFFER_LOCK *buf_lock_table;	/* buffer lock table */
   int num_LRU_list;
+  int last_flushed_LRU_list_idx;
   PGBUF_LRU_LIST *buf_LRU_list;
   PGBUF_INVALID_LIST buf_invalid_list;	/* buffer invalid BCB list */
 
@@ -2001,23 +2006,25 @@ int
 pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p)
 #endif				/* NDEBUG */
 {
-  int i, clean_count;
-  int cand_count;
   PGBUF_BUFFER *bufptr;
   PGBUF_BUFFER *prev_bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST victim_cand_list[PGBUF_VICTIM_CLEAN_COUNT];
-  int lru_idx = 0;
+  int i, clean_count, cand_count, total_flushed_count;
+  int lru_idx, start_lru_idx;
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
 
-another_LRU_list:
-  if (lru_idx == pb_Pool.num_LRU_list)
+  lru_idx = pb_Pool.last_flushed_LRU_list_idx + 1;
+  if (lru_idx >= pb_Pool.num_LRU_list)
     {
-      return NO_ERROR;
+      lru_idx = 0;
     }
+  start_lru_idx = lru_idx;
 
-try_again:
+  total_flushed_count = 0;
+
+find_and_flush:
   clean_count = cand_count = 0;
 
   MUTEX_LOCK_VIA_BUSY_WAIT (rv, pb_Pool.buf_LRU_list[lru_idx].LRU_mutex);
@@ -2093,7 +2100,9 @@ try_again:
 	  continue;
 	}
 
-      /* the invoker is holding bufptr->BCB_mutex */
+      /* pgbuf_flush_bcb() will release bufptr->BCB_mutex
+       * regardless of its return value.
+       */
 #if !defined(NDEBUG)
       if (pgbuf_flush_bcb (thread_p, bufptr, false,
 			   caller_file, caller_line) != NO_ERROR)
@@ -2103,30 +2112,61 @@ try_again:
 	{
 	  return ER_FAILED;
 	}
-      /* Above function released bufptr->BCB_mutex
-       * irrespective of the return value.
-       */
+
+      total_flushed_count++;
     }
 
+#if 0
   /* check if page flush is needed without holding LRU mutex */
   bufptr = pb_Pool.buf_LRU_list[lru_idx].LRU_bottom;
   for (i = 0; i < 5; i++)
     {
       if (bufptr == NULL || bufptr->zone == PGBUF_LRU_1_ZONE)
 	{
-	  return NO_ERROR;
+#if 0
+	  if (fileio_synchronize_all (!PRM_SUPPRESS_FSYNC, false) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+#endif
+	  break;
 	}
 
       if ((bufptr->fcnt == 0) && (bufptr->dirty == true)
 	  && (bufptr->latch_mode != PGBUF_LATCH_FLUSH))
 	{
-	  goto try_again;
+	  goto find_and_flush;
 	}
       bufptr = bufptr->prev_BCB;
     }
+#endif
+
+  /* Note that we don't hold the mutex, however it will not be an issue. 
+   * Also note that we are updating the last_flushed_LRU_list_idx 
+   * whether the list has flushed or not.
+   */
+  pb_Pool.last_flushed_LRU_list_idx = lru_idx;
 
   lru_idx++;
-  goto another_LRU_list;
+  if (lru_idx >= pb_Pool.num_LRU_list)
+    {
+      lru_idx = 0;
+    }
+
+  /* check if we've visited all of the lists
+   * or flushed certain amount of buffers 
+   */
+  if (lru_idx == start_lru_idx
+      || total_flushed_count >= PRM_NUM_PAGES_PER_BGFLUSH)
+    {
+      er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidate: "
+		    "flush %d pages from (%d) to (%d) list.",
+		    total_flushed_count, start_lru_idx,
+		    pb_Pool.last_flushed_LRU_list_idx);
+      return NO_ERROR;
+    }
+
+  goto find_and_flush;
 }
 
 /*
@@ -3030,6 +3070,7 @@ pgbuf_initialize_lru_list (void)
   int i;
 
   /* set the number of LRU lists */
+  pb_Pool.last_flushed_LRU_list_idx = -1;
   pb_Pool.num_LRU_list = PRM_PB_NUM_LRU_CHAINS;
   if (pb_Pool.num_LRU_list == 0)
     {
@@ -3055,8 +3096,7 @@ pgbuf_initialize_lru_list (void)
       pb_Pool.buf_LRU_list[i].LRU_top = NULL;
       pb_Pool.buf_LRU_list[i].LRU_bottom = NULL;
       pb_Pool.buf_LRU_list[i].LRU_middle = NULL;
-      pb_Pool.buf_LRU_list[i].LRU_1_zone_cnt
-	= -(pb_Pool.num_buffers / (2 * pb_Pool.num_LRU_list));
+      pb_Pool.buf_LRU_list[i].LRU_1_zone_cnt = 0;
     }
 
   return NO_ERROR;
@@ -5555,7 +5595,7 @@ pgbuf_invalidate_bcb_from_lru (PGBUF_BUFFER * bufptr)
 }
 
 /*
- * pb_relocate_top_LRU () - Relocate given BCB into the top of LRU list
+ * pgbuf_relocate_top_lru () - Relocate given BCB into the top of LRU list
  *   return: NO_ERROR
  *   bufptr(in): pointer to buffer page
  *
@@ -5632,7 +5672,8 @@ pgbuf_relocate_top_lru (PGBUF_BUFFER * bufptr)
 
       temp_bufptr = pb_Pool.buf_LRU_list[lru_idx].LRU_middle;
       while (temp_bufptr != NULL
-	     && pb_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt > 0)
+	     && (pb_Pool.buf_LRU_list[lru_idx].LRU_1_zone_cnt >
+		 PGBUF_LRU_1_ZONE_THRESHOLD))
 	{
 	  temp_bufptr->zone = PGBUF_LRU_2_ZONE;
 	  pb_Pool.buf_LRU_list[lru_idx].LRU_middle = temp_bufptr->prev_BCB;

@@ -46,11 +46,15 @@
 #include "set_object.h"
 #include "page_buffer.h"
 
+#include "query_executor.h"
+
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
 #define NOT_NULL_VALUE(a, b)	((a) ? (a) : (b))
 #define INITIAL_OID_STACK_SIZE  1
+
+#define	SYS_CONNECT_BY_PATH_MEM_STEP	256
 
 static int qdata_dummy (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 			int num_args, DB_VALUE ** args);
@@ -91,8 +95,6 @@ static int qdata_add_numeric_to_monetary (DB_VALUE * numeric_val_p,
 					  DB_VALUE * result_p);
 static int qdata_add_monetary (double d1, double d2, DB_CURRENCY type,
 			       DB_VALUE * result_p);
-static int qdata_add_int_to_time (DB_VALUE * time_val_p,
-				  unsigned int add_time, DB_VALUE * result_p);
 static int qdata_add_bigint_to_time (DB_VALUE * time_val_p,
 				     DB_BIGINT add_time, DB_VALUE * result_p);
 static int qdata_add_short_to_utime_asymmetry (DB_VALUE * utime_val_p,
@@ -176,6 +178,8 @@ static int qdata_add_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p,
 				    TP_DOMAIN * domain_p);
 static int qdata_coerce_result_to_domain (DB_VALUE * result_p,
 					  TP_DOMAIN * domain_p);
+static int qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p,
+				 TP_DOMAIN * domain_p);
 
 static int qdata_subtract_short (short s1, short s2, DB_VALUE * result_p);
 static int qdata_subtract_int (int i1, int i2, DB_VALUE * result_p);
@@ -2129,37 +2133,21 @@ qdata_add_monetary (double d1, double d2, DB_CURRENCY type,
 }
 
 static int
-qdata_add_int_to_time (DB_VALUE * time_val_p, unsigned int add_time,
-		       DB_VALUE * result_p)
-{
-  unsigned int result, utime;
-  DB_TIME *time;
-  int hour, minute, second;
-
-  time = DB_GET_TIME (time_val_p);
-  utime = (unsigned int) *time % SECONDS_OF_ONE_DAY;
-
-  result = (utime + add_time) % SECONDS_OF_ONE_DAY;
-
-  db_time_decode (&result, &hour, &minute, &second);
-  DB_MAKE_TIME (result_p, hour, minute, second);
-
-  return NO_ERROR;
-}
-
-static int
 qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time,
 			  DB_VALUE * result_p)
 {
-  unsigned int result, utime;
-  DB_TIME *time;
+  DB_TIME utime, result;
   int hour, minute, second;
 
-  time = DB_GET_TIME (time_val_p);
-  utime = ((DB_BIGINT) * time) % SECONDS_OF_ONE_DAY;
+  utime = *(DB_GET_TIME (time_val_p)) % SECONDS_OF_ONE_DAY;
+  if (add_time < 0)
+    {
+      return qdata_subtract_time (utime,
+				  (DB_TIME) ((-add_time) %
+					     SECONDS_OF_ONE_DAY), result_p);
+    }
 
   result = (utime + add_time) % SECONDS_OF_ONE_DAY;
-
   db_time_decode (&result, &hour, &minute, &second);
   DB_MAKE_TIME (result_p, hour, minute, second);
 
@@ -2243,7 +2231,7 @@ qdata_add_short_to_utime (DB_VALUE * utime_val_p, short s,
 			  DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
   DB_UTIME *utime;
-  unsigned int utmp, u1, u2;
+  int utmp, u1, u2;
 
   utime = DB_GET_UTIME (utime_val_p);
 
@@ -2253,11 +2241,11 @@ qdata_add_short_to_utime (DB_VALUE * utime_val_p, short s,
 						 result_p, domain_p);
     }
 
-  u1 = (unsigned int) s;
-  u2 = (unsigned int) *utime;
+  u1 = (int) s;
+  u2 = (int) *utime;
   utmp = u1 + u2;
 
-  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp))
+  if (OR_CHECK_ADD_OVERFLOW (u1, u2, utmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
 	      0);
@@ -2273,7 +2261,7 @@ qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i, DB_VALUE * result_p,
 			TP_DOMAIN * domain_p)
 {
   DB_UTIME *utime;
-  unsigned int utmp, u1, u2;
+  int utmp, u1, u2;
 
   utime = DB_GET_UTIME (utime_val_p);
 
@@ -2283,11 +2271,11 @@ qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i, DB_VALUE * result_p,
 					       result_p, domain_p);
     }
 
-  u1 = (unsigned int) i;
-  u2 = (unsigned int) *utime;
+  u1 = (int) i;
+  u2 = (int) *utime;
   utmp = u1 + u2;
 
-  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp))
+  if (OR_CHECK_ADD_OVERFLOW (u1, u2, utmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
 	      0);
@@ -2335,13 +2323,16 @@ qdata_add_short_to_datetime (DB_VALUE * datetime_val_p, short s,
 {
   DB_DATETIME *datetime;
   DB_DATETIME tmp;
+  int error = NO_ERROR;
 
   datetime = DB_GET_DATETIME (datetime_val_p);
 
-  db_add_int_to_datetime (datetime, s, &tmp);
-
-  DB_MAKE_DATETIME (result_p, &tmp);
-  return NO_ERROR;
+  error = db_add_int_to_datetime (datetime, s, &tmp);
+  if (error == NO_ERROR)
+    {
+      DB_MAKE_DATETIME (result_p, &tmp);
+    }
+  return error;
 }
 
 static int
@@ -2350,13 +2341,16 @@ qdata_add_int_to_datetime (DB_VALUE * datetime_val_p, int i,
 {
   DB_DATETIME *datetime;
   DB_DATETIME tmp;
+  int error = NO_ERROR;
 
   datetime = DB_GET_DATETIME (datetime_val_p);
 
-  db_add_int_to_datetime (datetime, i, &tmp);
-
-  DB_MAKE_DATETIME (result_p, &tmp);
-  return NO_ERROR;
+  error = db_add_int_to_datetime (datetime, i, &tmp);
+  if (error == NO_ERROR)
+    {
+      DB_MAKE_DATETIME (result_p, &tmp);
+    }
+  return error;
 }
 
 static int
@@ -2365,13 +2359,16 @@ qdata_add_bigint_to_datetime (DB_VALUE * datetime_val_p, DB_BIGINT bi,
 {
   DB_DATETIME *datetime;
   DB_DATETIME tmp;
+  int error = NO_ERROR;
 
   datetime = DB_GET_DATETIME (datetime_val_p);
 
-  db_add_int_to_datetime (datetime, bi, &tmp);
-
-  DB_MAKE_DATETIME (result_p, &tmp);
-  return NO_ERROR;
+  error = db_add_int_to_datetime (datetime, bi, &tmp);
+  if (error == NO_ERROR)
+    {
+      DB_MAKE_DATETIME (result_p, &tmp);
+    }
+  return error;
 }
 
 static int
@@ -2393,7 +2390,7 @@ qdata_add_short_to_date (DB_VALUE * date_val_p, short s, DB_VALUE * result_p,
   u2 = (unsigned int) *date;
   utmp = u1 + u2;
 
-  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp))
+  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || utmp > DB_DATE_MAX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
 	      0);
@@ -2426,7 +2423,7 @@ qdata_add_int_to_date (DB_VALUE * date_val_p, int i, DB_VALUE * result_p,
   u2 = (unsigned int) *date;
   utmp = u1 + u2;
 
-  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp))
+  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || utmp > DB_DATE_MAX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
 	      0);
@@ -2460,7 +2457,7 @@ qdata_add_bigint_to_date (DB_VALUE * date_val_p, DB_BIGINT bi,
   u2 = *date;
   utmp = u1 + u2;
 
-  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || utmp > UINT_MAX)
+  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || utmp > DB_DATE_MAX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_HAPPENED,
 	      0);
@@ -2509,7 +2506,7 @@ qdata_add_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p,
 				 (DB_GET_MONETARY (dbval_p))->type, result_p);
 
     case DB_TYPE_TIME:
-      return qdata_add_int_to_time (dbval_p, s, result_p);
+      return qdata_add_bigint_to_time (dbval_p, (DB_BIGINT) s, result_p);
 
     case DB_TYPE_UTIME:
       return qdata_add_short_to_utime (dbval_p, s, result_p, domain_p);
@@ -2563,7 +2560,7 @@ qdata_add_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p,
 				 (DB_GET_MONETARY (dbval_p))->type, result_p);
 
     case DB_TYPE_TIME:
-      return qdata_add_int_to_time (dbval_p, i, result_p);
+      return qdata_add_bigint_to_time (dbval_p, (DB_BIGINT) i, result_p);
 
     case DB_TYPE_UTIME:
       return qdata_add_int_to_utime (dbval_p, i, result_p, domain_p);
@@ -2903,12 +2900,14 @@ qdata_add_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p,
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_add_int_to_time (time_val_p, DB_GET_SHORT (dbval_p),
-				    result_p);
+      return qdata_add_bigint_to_time (time_val_p,
+				       (DB_BIGINT) DB_GET_SHORT (dbval_p),
+				       result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_int_to_time (time_val_p, DB_GET_INT (dbval_p),
-				    result_p);
+      return qdata_add_bigint_to_time (time_val_p,
+				       (DB_BIGINT) DB_GET_INT (dbval_p),
+				       result_p);
 
     case DB_TYPE_BIGINT:
       return qdata_add_bigint_to_time (time_val_p, DB_GET_BIGINT (dbval_p),
@@ -3019,6 +3018,25 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
 		  pr_type_name (PRIM_TYPE (result_p)),
+		  pr_type_name (domain_p->type->id));
+	  return ER_TP_CANT_COERCE;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+static int
+qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p,
+		      TP_DOMAIN * domain_p)
+{
+  if (domain_p != NULL)
+    {
+      if (tp_value_cast (dbval_p, result_p, domain_p, false)
+	  != DOMAIN_COMPATIBLE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		  pr_type_name (PRIM_TYPE (dbval_p)),
 		  pr_type_name (domain_p->type->id));
 	  return ER_TP_CANT_COERCE;
 	}
@@ -3365,7 +3383,7 @@ qdata_subtract_utime_to_short_asymmetry (DB_VALUE * utime_val_p, short s,
 	  return ER_FAILED;
 	}
 
-      (*utime)--;
+      (*utime)++;
       s++;
     }
 
@@ -3390,7 +3408,7 @@ qdata_subtract_utime_to_int_asymmetry (DB_VALUE * utime_val_p, int i,
 	  return ER_FAILED;
 	}
 
-      (*utime)--;
+      (*utime)++;
       i++;
     }
 
@@ -3492,7 +3510,7 @@ qdata_subtract_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p,
   short s;
   DB_TYPE type2;
   DB_VALUE dbval_tmp;
-  DB_TIME *timeval;
+  DB_TIME *timeval, timetmp;
   DB_DATE *date;
   unsigned int u1, u2, utmp;
   DB_UTIME *utime;
@@ -3537,10 +3555,18 @@ qdata_subtract_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p,
 				      result_p);
 
     case DB_TYPE_TIME:
+      if (s < 0)
+	{
+	  timetmp = s + SECONDS_OF_ONE_DAY;
+	}
+      else
+	{
+	  timetmp = s;
+	}
       timeval = DB_GET_TIME (dbval_p);
-      return qdata_subtract_time ((unsigned int) s,
-				  ((unsigned int) *timeval %
-				   SECONDS_OF_ONE_DAY), result_p);
+      return qdata_subtract_time (timetmp,
+				  (DB_TIME) (*timeval % SECONDS_OF_ONE_DAY),
+				  result_p);
 
     case DB_TYPE_UTIME:
       utime = DB_GET_UTIME (dbval_p);
@@ -3631,10 +3657,18 @@ qdata_subtract_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p,
 				      result_p);
 
     case DB_TYPE_TIME:
+      if (i < 0)
+	{
+	  i = (i % SECONDS_OF_ONE_DAY) + SECONDS_OF_ONE_DAY;
+	}
+      else
+	{
+	  i %= SECONDS_OF_ONE_DAY;
+	}
       timeval = DB_GET_TIME (dbval_p);
-      return qdata_subtract_time ((unsigned int) (i % SECONDS_OF_ONE_DAY),
-				  (unsigned int) *timeval %
-				  SECONDS_OF_ONE_DAY, result_p);
+      return qdata_subtract_time ((DB_TIME) i,
+				  (DB_TIME) (*timeval % SECONDS_OF_ONE_DAY),
+				  result_p);
 
     case DB_TYPE_UTIME:
       utime = DB_GET_UTIME (dbval_p);
@@ -3726,10 +3760,17 @@ qdata_subtract_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p,
 				      result_p);
 
     case DB_TYPE_TIME:
+      if (bi < 0)
+	{
+	  bi = (bi % SECONDS_OF_ONE_DAY) + SECONDS_OF_ONE_DAY;
+	}
+      else
+	{
+	  bi %= SECONDS_OF_ONE_DAY;
+	}
       timeval = DB_GET_TIME (dbval_p);
-      return qdata_subtract_time ((unsigned int) (bi % SECONDS_OF_ONE_DAY),
-				  (unsigned int) ((*timeval) %
-						  SECONDS_OF_ONE_DAY),
+      return qdata_subtract_time ((DB_TIME) bi,
+				  (DB_TIME) (*timeval % SECONDS_OF_ONE_DAY),
 				  result_p);
 
     case DB_TYPE_UTIME:
@@ -3991,6 +4032,7 @@ qdata_subtract_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p,
 {
   DB_TYPE type;
   DB_TIME *timeval, *timeval1;
+  int subval;
 
   timeval = DB_GET_TIME (time_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
@@ -3998,24 +4040,34 @@ qdata_subtract_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p,
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_subtract_time ((unsigned int) (*timeval %
-						  SECONDS_OF_ONE_DAY),
-				  (unsigned int) DB_GET_SHORT (dbval_p),
-				  result_p);
+      subval = (int) DB_GET_SHORT (dbval_p);
+      if (subval < 0)
+	{
+	  return qdata_add_bigint_to_time (time_val_p, (DB_BIGINT) (-subval),
+					   result_p);
+	}
+      return qdata_subtract_time ((DB_TIME) (*timeval % SECONDS_OF_ONE_DAY),
+				  (DB_TIME) subval, result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_subtract_time ((unsigned int) (*timeval %
-						  SECONDS_OF_ONE_DAY),
-				  (unsigned int) (DB_GET_INT (dbval_p) %
-						  SECONDS_OF_ONE_DAY),
-				  result_p);
+      subval = (int) (DB_GET_INT (dbval_p) % SECONDS_OF_ONE_DAY);
+      if (subval < 0)
+	{
+	  return qdata_add_bigint_to_time (time_val_p, (DB_BIGINT) (-subval),
+					   result_p);
+	}
+      return qdata_subtract_time ((DB_TIME) (*timeval % SECONDS_OF_ONE_DAY),
+				  (DB_TIME) subval, result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_subtract_time ((unsigned int) (*timeval %
-						  SECONDS_OF_ONE_DAY),
-				  (unsigned int) (DB_GET_BIGINT (dbval_p) %
-						  SECONDS_OF_ONE_DAY),
-				  result_p);
+      subval = (int) (DB_GET_BIGINT (dbval_p) % SECONDS_OF_ONE_DAY);
+      if (subval < 0)
+	{
+	  return qdata_add_bigint_to_time (time_val_p, (DB_BIGINT) (-subval),
+					   result_p);
+	}
+      return qdata_subtract_time ((DB_TIME) (*timeval % SECONDS_OF_ONE_DAY),
+				  (DB_TIME) subval, result_p);
 
     case DB_TYPE_TIME:
       timeval1 = DB_GET_TIME (dbval_p);
@@ -4212,7 +4264,7 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p,
   unsigned int u1, u2, utmp;
   short s2;
   int i2;
-  DB_BIGINT bi2;
+  DB_BIGINT bi1, bi2, bitmp;
   int day, month, year;
 
   date = DB_GET_DATE (date_val_p);
@@ -4234,7 +4286,7 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p,
 
       u2 = (unsigned int) s2;
       utmp = u1 - u2;
-      if (OR_CHECK_UNS_SUB_UNDERFLOW (u1, u2, utmp))
+      if (OR_CHECK_UNS_SUB_UNDERFLOW (u1, u2, utmp) || utmp < DB_DATE_MIN)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DATE_UNDERFLOW,
 		  0);
@@ -4246,7 +4298,7 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p,
       break;
 
     case DB_TYPE_BIGINT:
-      u1 = (unsigned int) *date;
+      bi1 = (DB_BIGINT) * date;
       bi2 = DB_GET_BIGINT (dbval_p);
 
       if (bi2 < 0)
@@ -4257,15 +4309,16 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p,
 							   domain_p);
 	}
 
-      u2 = (int) bi2;
-      utmp = u1 - u2;
-      if (OR_CHECK_UNS_SUB_UNDERFLOW (u1, u2, utmp))
+      bitmp = bi1 - bi2;
+      if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, bitmp)
+	  || OR_CHECK_UINT_OVERFLOW (bitmp) || bitmp < DB_DATE_MIN)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DATE_UNDERFLOW,
 		  0);
 	  return ER_FAILED;
 	}
 
+      utmp = (unsigned int) bitmp;
       db_date_decode (&utmp, &month, &day, &year);
       DB_MAKE_DATE (result_p, month, day, year);
       break;
@@ -4283,7 +4336,7 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p,
 
       u2 = (unsigned int) i2;
       utmp = u1 - u2;
-      if (OR_CHECK_UNS_SUB_UNDERFLOW (u1, u2, utmp))
+      if (OR_CHECK_UNS_SUB_UNDERFLOW (u1, u2, utmp) || utmp < DB_DATE_MIN)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DATE_UNDERFLOW,
 		  0);
@@ -5554,12 +5607,11 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
       itmp = DB_GET_INT (dbval_p);
       if (itmp == INT_MIN)
 	{
-	  DB_MAKE_BIGINT (result_p, (-1) * (DB_BIGINT) itmp);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_UMINUS,
+		  0);
+	  return ER_QPROC_OVERFLOW_UMINUS;
 	}
-      else
-	{
-	  DB_MAKE_INT (result_p, (-1) * itmp);
-	}
+      DB_MAKE_INT (result_p, (-1) * itmp);
       break;
 
     case DB_TYPE_BIGINT:
@@ -5568,7 +5620,7 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_UMINUS,
 		  0);
-	  return ER_FAILED;
+	  return ER_QPROC_OVERFLOW_UMINUS;
 	}
       DB_MAKE_BIGINT (result_p, (-1) * bitmp);
       break;
@@ -5602,12 +5654,11 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
       stmp = DB_GET_SHORT (dbval_p);
       if (stmp == SHRT_MIN)
 	{
-	  DB_MAKE_INT (result_p, (-1) * (int) stmp);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_UMINUS,
+		  0);
+	  return ER_QPROC_OVERFLOW_UMINUS;
 	}
-      else
-	{
-	  DB_MAKE_SHORT (result_p, (-1) * stmp);
-	}
+      DB_MAKE_SHORT (result_p, (-1) * stmp);
       break;
 
     default:
@@ -7048,9 +7099,8 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype,
   n = 0;
   while (operand)
     {
-      if (fetch_copy_dbval
-	  (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple,
-	   &dbval) != NO_ERROR)
+      if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL,
+			    obj_oid_p, tuple, &dbval) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -7455,4 +7505,608 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype,
   set_make_collection (result_p, collection_p);
 
   return NO_ERROR;
+}
+
+/*
+ * qdata_evaluate_connect_by_root () - CONNECT_BY_ROOT operator evaluation func
+ *    return:
+ *  xasl_p(in):
+ *  regu_p(in):
+ *  result_val_p(in/out):
+ *  vd(in):
+ */
+bool
+qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p,
+				void *xasl_p,
+				REGU_VARIABLE * regu_p,
+				DB_VALUE * result_val_p, VAL_DESCR * vd)
+{
+  QFILE_TUPLE tpl;
+  QFILE_LIST_ID *list_id_p;
+  QFILE_LIST_SCAN_ID s_id;
+  QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
+  QFILE_TUPLE_POSITION p_pos, *bitval;
+  QPROC_DB_VALUE_LIST valp;
+  DB_VALUE p_pos_dbval;
+  XASL_NODE *xasl, *xptr;
+  int length, i;
+
+  /* sanity checks */
+  if (regu_p->type != TYPE_CONSTANT)
+    {
+      return false;
+    }
+
+  xasl = (XASL_NODE *) xasl_p;
+  if (!xasl)
+    {
+      return false;
+    }
+
+  if (!XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
+    {
+      return false;
+    }
+
+  xptr = xasl->connect_by_ptr;
+  if (!xptr)
+    {
+      return false;
+    }
+
+  tpl = xptr->proc.connect_by.curr_tuple;
+
+  /* walk the parents up to root */
+
+  list_id_p = xptr->list_id;
+
+  if (qfile_open_list_scan (list_id_p, &s_id) != NO_ERROR)
+    {
+      return false;
+    }
+
+  /* we start with tpl itself */
+  tuple_rec.tpl = tpl;
+
+  do
+    {
+      /* get the parent node */
+      if (qexec_get_tuple_column_value (tuple_rec.tpl,
+					xptr->outptr_list->valptr_cnt -
+					PCOL_PARENTPOS_TUPLE_OFFSET,
+					&p_pos_dbval,
+					&tp_Bit_domain) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &s_id);
+	  return false;
+	}
+
+      bitval = (QFILE_TUPLE_POSITION *) DB_GET_BIT (&p_pos_dbval, &length);
+
+      if (bitval)
+	{
+	  p_pos.status = s_id.status;
+	  p_pos.position = S_ON;
+	  p_pos.vpid = bitval->vpid;
+	  p_pos.offset = bitval->offset;
+	  p_pos.tpl = NULL;
+	  p_pos.tplno = bitval->tplno;
+
+	  if (qfile_jump_scan_tuple_position (thread_p, &s_id, &p_pos,
+					      &tuple_rec, PEEK) != S_SUCCESS)
+	    {
+	      qfile_close_scan (thread_p, &s_id);
+	      return false;
+	    }
+	}
+    }
+  while (bitval);		/* the parent tuple pos is null for the root node */
+
+  qfile_close_scan (thread_p, &s_id);
+
+  /* here tuple_rec.tpl is the root tuple; get the required column */
+
+  for (i = 0, valp = xptr->val_list->valp; valp; i++, valp = valp->next)
+    {
+      if (valp->val == regu_p->value.dbvalptr)
+	{
+	  break;
+	}
+    }
+
+  if (i >= xptr->val_list->val_cnt)
+    {
+      return false;
+    }
+
+  if (qexec_get_tuple_column_value (tuple_rec.tpl, i, result_val_p,
+				    regu_p->domain) != NO_ERROR)
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * qdata_evaluate_qprior () - PRIOR in SELECT list evaluation func
+ *    return:
+ *  xasl_p(in):
+ *  regu_p(in):
+ *  result_val_p(in/out):
+ *  vd(in):
+ */
+bool
+qdata_evaluate_qprior (THREAD_ENTRY * thread_p,
+		       void *xasl_p,
+		       REGU_VARIABLE * regu_p,
+		       DB_VALUE * result_val_p, VAL_DESCR * vd)
+{
+  QFILE_TUPLE tpl;
+  QFILE_LIST_ID *list_id_p;
+  QFILE_LIST_SCAN_ID s_id;
+  QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
+  QFILE_TUPLE_POSITION p_pos, *bitval;
+  DB_VALUE p_pos_dbval;
+  XASL_NODE *xasl, *xptr;
+  int length;
+
+  xasl = (XASL_NODE *) xasl_p;
+
+  /* sanity checks */
+  if (!xasl)
+    {
+      return false;
+    }
+
+  if (!XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
+    {
+      return false;
+    }
+
+  xptr = xasl->connect_by_ptr;
+  if (!xptr)
+    {
+      return false;
+    }
+
+  tpl = xptr->proc.connect_by.curr_tuple;
+
+  list_id_p = xptr->list_id;
+
+  if (qfile_open_list_scan (list_id_p, &s_id) != NO_ERROR)
+    {
+      return false;
+    }
+
+  tuple_rec.tpl = tpl;
+
+  /* get the parent node */
+  if (qexec_get_tuple_column_value (tuple_rec.tpl,
+				    xptr->outptr_list->valptr_cnt -
+				    PCOL_PARENTPOS_TUPLE_OFFSET, &p_pos_dbval,
+				    &tp_Bit_domain) != NO_ERROR)
+    {
+      qfile_close_scan (thread_p, &s_id);
+      return false;
+    }
+
+  bitval = (QFILE_TUPLE_POSITION *) DB_GET_BIT (&p_pos_dbval, &length);
+
+  if (bitval)
+    {
+      p_pos.status = s_id.status;
+      p_pos.position = S_ON;
+      p_pos.vpid = bitval->vpid;
+      p_pos.offset = bitval->offset;
+      p_pos.tpl = NULL;
+      p_pos.tplno = bitval->tplno;
+
+      if (qfile_jump_scan_tuple_position (thread_p, &s_id, &p_pos,
+					  &tuple_rec, PEEK) != S_SUCCESS)
+	{
+	  qfile_close_scan (thread_p, &s_id);
+	  return false;
+	}
+    }
+  else
+    {
+      /* the parent tuple pos is null for the root node */
+      tuple_rec.tpl = NULL;
+    }
+
+  qfile_close_scan (thread_p, &s_id);
+
+  if (tuple_rec.tpl != NULL)
+    {
+      /* fetch val list from the parent tuple */
+      if (fetch_val_list (thread_p,
+			  xptr->proc.connect_by.prior_regu_list_pred,
+			  vd, NULL, NULL, tuple_rec.tpl, PEEK) != NO_ERROR)
+	{
+	  return false;
+	}
+      if (fetch_val_list (thread_p,
+			  xptr->proc.connect_by.prior_regu_list_rest,
+			  vd, NULL, NULL, tuple_rec.tpl, PEEK) != NO_ERROR)
+	{
+	  return false;
+	}
+
+      /* replace values in T_QPRIOR argument with values from parent tuple */
+      qexec_replace_prior_regu_vars_prior_expr (thread_p, regu_p, xptr, xptr);
+
+      /* evaluate the modified regu_p */
+      if (fetch_copy_dbval (thread_p, regu_p, vd, NULL, NULL,
+			    tuple_rec.tpl, result_val_p) != NO_ERROR)
+	{
+	  return false;
+	}
+    }
+  else
+    {
+      DB_MAKE_NULL (result_val_p);
+    }
+
+  return true;
+}
+
+/*
+ * qdata_evaluate_sys_connect_by_path () - SYS_CONNECT_BY_PATH function
+ *	evaluation func
+ *    return:
+ *  select_xasl(in):
+ *  regu_p1(in): column
+ *  regu_p2(in): character
+ *  result_val_p(in/out):
+ */
+bool
+qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
+				    void *xasl_p,
+				    REGU_VARIABLE * regu_p,
+				    DB_VALUE * value_char,
+				    DB_VALUE * result_p, VAL_DESCR * vd)
+{
+  QFILE_TUPLE tpl;
+  QFILE_LIST_ID *list_id_p;
+  QFILE_LIST_SCAN_ID s_id;
+  QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
+  QFILE_TUPLE_POSITION p_pos, *bitval;
+  QPROC_DB_VALUE_LIST valp;
+  DB_VALUE p_pos_dbval, cast_value, arg_dbval;
+  XASL_NODE *xasl, *xptr;
+  int length, i;
+  char *result_path = NULL, *path_tmp = NULL;
+  int len_result_path, len_tmp = 0, len;
+  char *sep = NULL;
+  DB_VALUE *arg_dbval_p;
+  DB_VALUE **save_values = NULL;
+  bool use_extended = false; /* flag for using extended form, accepting an
+			      * expression as the first argument of
+			      * SYS_CONNECT_BY_PATH() */
+
+  /* sanity checks */
+  xasl = (XASL_NODE *) xasl_p;
+  if (!xasl)
+    {
+      return false;
+    }
+
+  if (!XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
+    {
+      return false;
+    }
+
+  xptr = xasl->connect_by_ptr;
+  if (!xptr)
+    {
+      return false;
+    }
+
+  tpl = xptr->proc.connect_by.curr_tuple;
+
+  /* column */
+  if (regu_p->type != TYPE_CONSTANT)
+    {
+      /* NOTE: if the column is non-string, a cast will be made (see T_CAST).
+       *  This is specific to sys_connect_by_path because the result is always
+       *  varchar (by comparison to connect_by_root which has the result of the
+       *  root specifiec column). The cast is propagated from the parser tree
+       *  into the regu variabile, which has the TYPE_INARITH type with arithptr
+       *  with type T_CAST and right argument the real column, which will be
+       *  further used for column retrieving in the xasl->val_list->valp.
+       */
+
+      if (regu_p->type == TYPE_INARITH)
+	{
+	  if (regu_p->value.arithptr
+	      && regu_p->value.arithptr->opcode == T_CAST)
+	    {
+	      /* correct column */
+	      regu_p = regu_p->value.arithptr->rightptr;
+	    }
+	}
+    }
+
+  /* set the flag for using extended form, but keep the single-column argument
+   * code too for being faster for its particular case
+   */
+  if (regu_p->type != TYPE_CONSTANT)
+    {
+      use_extended = true;
+    }
+  else
+    {
+      arg_dbval_p = &arg_dbval;
+      DB_MAKE_NULL (arg_dbval_p);
+    }
+
+  /* character */
+  i = strlen (value_char->data.ch.medium.buf);
+  sep = (char *) db_private_alloc (thread_p, sizeof (char) * (i+1));
+  if (sep == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, i + 1);
+      goto error;
+    }
+
+  sep[0] = 0;
+  if (i > 0)
+    {
+      strcpy (sep, value_char->data.ch.medium.buf);
+    }
+
+  /* walk the parents up to root */
+
+  list_id_p = xptr->list_id;
+
+  if (qfile_open_list_scan (list_id_p, &s_id) != NO_ERROR)
+    {
+      goto error2;
+    }
+
+  if (!use_extended)
+    {
+      /* column index */
+      for (i = 0, valp = xptr->val_list->valp; valp; i++, valp = valp->next)
+	{
+	  if (valp->val == regu_p->value.dbvalptr)
+	    {
+	      break;
+	    }
+	}
+
+      if (i >= xptr->val_list->val_cnt)
+	{
+	  goto error;
+	}
+    }
+  else
+    {
+      /* save val_list */
+      if (xptr->val_list->val_cnt > 0)
+	{
+	  save_values =
+	    (DB_VALUE**) db_private_alloc (thread_p, sizeof (DB_VALUE*) *
+					  xptr->val_list->val_cnt);
+	  if (save_values == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      sizeof (DB_VALUE*) * xptr->val_list->val_cnt);
+	      goto error;
+	    }
+
+	  memset (save_values, 0, sizeof (DB_VALUE*) * xptr->val_list->val_cnt);
+	  for (i = 0, valp = xptr->val_list->valp;
+	      valp && i < xptr->val_list->val_cnt; i++, valp = valp->next)
+	    {
+	      save_values[i] = db_value_copy (valp->val);
+	    }
+	}
+    }
+
+  /* we start with tpl itself */
+  tuple_rec.tpl = tpl;
+
+  len_result_path = SYS_CONNECT_BY_PATH_MEM_STEP;
+  result_path =
+    (char *) db_private_alloc (thread_p, sizeof (char) * len_result_path);
+  if (result_path == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, len_result_path);
+      goto error;
+    }
+
+  strcpy (result_path, "");
+
+  do
+    {
+      if (!use_extended)
+	{
+	  /* get the required column */
+	  if (qexec_get_tuple_column_value (tuple_rec.tpl, i, arg_dbval_p,
+					    regu_p->domain) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      else
+	{
+	  /* fetch value list */
+	  if (fetch_val_list (thread_p, xptr->proc.connect_by.regu_list_pred,
+			      vd, NULL, NULL, tuple_rec.tpl, PEEK) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  if (fetch_val_list (thread_p, xptr->proc.connect_by.regu_list_rest,
+			      vd, NULL, NULL, tuple_rec.tpl, PEEK) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  /* evaluate argument expression */
+	  if (fetch_peek_dbval (thread_p, regu_p, vd, NULL, NULL,
+				tuple_rec.tpl, &arg_dbval_p) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+
+      /* cast result to string */
+      if (qdata_cast_to_domain (arg_dbval_p, &cast_value, &tp_String_domain)
+	  != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      len = (strlen (sep) + cast_value.data.ch.medium.size
+	     + strlen (result_path) + 1);
+      if (len > len_tmp)
+	{
+	  len_tmp = len;
+	  path_tmp =
+	    (char *) db_private_alloc (thread_p, sizeof (char) * len_tmp);
+	  if (path_tmp == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, len_tmp);
+	      goto error;
+	    }
+	}
+
+      strcpy (path_tmp, sep);
+      strcat (path_tmp, cast_value.data.ch.medium.buf);
+
+      strcat (path_tmp, result_path);
+
+      while (strlen (path_tmp) + 1 > len_result_path)
+	{
+	  len_result_path += SYS_CONNECT_BY_PATH_MEM_STEP;
+	  db_private_free_and_init (thread_p, result_path);
+	  result_path =
+	    (char *) db_private_alloc (thread_p, sizeof (char)*len_result_path);
+	  if (result_path == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, len_result_path);
+	      goto error;
+	    }
+	}
+
+      strcpy (result_path, path_tmp);
+
+      /* get the parent node */
+      if (qexec_get_tuple_column_value (tuple_rec.tpl,
+					xptr->outptr_list->valptr_cnt -
+					PCOL_PARENTPOS_TUPLE_OFFSET,
+					&p_pos_dbval,
+					&tp_Bit_domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      bitval = (QFILE_TUPLE_POSITION *) DB_GET_BIT (&p_pos_dbval, &length);
+
+      if (bitval)
+	{
+	  p_pos.status = s_id.status;
+	  p_pos.position = S_ON;
+	  p_pos.vpid = bitval->vpid;
+	  p_pos.offset = bitval->offset;
+	  p_pos.tpl = NULL;
+	  p_pos.tplno = bitval->tplno;
+
+	  if (qfile_jump_scan_tuple_position (thread_p, &s_id, &p_pos,
+					      &tuple_rec, PEEK) != S_SUCCESS)
+	    {
+	      goto error;
+	    }
+	}
+    }
+  while (bitval);  /* the parent tuple pos is null for the root node */
+
+  qfile_close_scan (thread_p, &s_id);
+
+  DB_MAKE_STRING (result_p, result_path);
+
+  if (use_extended)
+    {
+      /* restore val_list */
+      if (xptr->val_list->val_cnt > 0)
+	{
+	  for (i = 0, valp = xptr->val_list->valp;
+	      valp && i < xptr->val_list->val_cnt; i++, valp = valp->next)
+	    {
+	      if (db_value_clear (valp->val) != NO_ERROR)
+		{
+		  goto error2;
+		}
+	      if (db_value_clone (save_values[i], valp->val) != NO_ERROR)
+		{
+		  goto error2;
+		}
+	    }
+
+	  for (i = 0; i < xptr->val_list->val_cnt; i++)
+	    {
+	      if (save_values[i])
+		{
+		  if (db_value_free (save_values[i]) != NO_ERROR)
+		    {
+		      goto error2;
+		    }
+		  save_values[i] = NULL;
+		}
+	    }
+	  db_private_free_and_init (thread_p, save_values);
+	}
+    }
+
+  if (path_tmp)
+    {
+      db_private_free_and_init (thread_p, path_tmp);
+    }
+
+  if (sep)
+    {
+      db_private_free_and_init (thread_p, sep);
+    }
+
+  return true;
+
+error:
+  qfile_close_scan (thread_p, &s_id);
+
+  if (save_values)
+    {
+      for (i = 0; i < xptr->val_list->val_cnt; i++)
+	{
+	  if (save_values[i])
+	    {
+	      db_value_free (save_values[i]);
+	    }
+	  db_private_free_and_init (thread_p, save_values);
+	}
+    }
+
+error2:
+  if (result_path)
+    {
+      db_private_free_and_init (thread_p, result_path);
+    }
+
+  if (path_tmp)
+    {
+      db_private_free_and_init (thread_p, path_tmp);
+    }
+
+  if (sep)
+    {
+      db_private_free_and_init (thread_p, sep);
+    }
+
+  return false;
 }

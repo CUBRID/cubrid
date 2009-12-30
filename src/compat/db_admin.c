@@ -57,6 +57,7 @@
 #include "execute_statement.h"
 #include "glo_class.h"
 #include "network_interface_cl.h"
+#include "connection_support.h"
 
 #include "dbval.h"		/* this must be the last header file included!!! */
 
@@ -2307,9 +2308,15 @@ db_disable_first_user (void)
   return NO_ERROR;
 }
 
+/*
+ * db_get_host_connected() - return the host name connected
+ * return : host name or NULL
+ */
 char *
 db_get_host_connected (void)
 {
+  /*CHECK_CONNECT_NULL ();*/
+
 #if defined(CS_MODE)
   return boot_get_host_connected ();
 #else
@@ -2317,3 +2324,27 @@ db_get_host_connected (void)
 #endif
 }
 
+ /*
+  * db_get_ha_server_state() - get the connected server's HA state
+  * return : number defined in HA_SERVER_STATE
+  * buffer(out) : buffer where the string of the HA state to be stored.
+  * maxlen(in)  : the length of 'buffer' argument.
+  */
+int
+db_get_ha_server_state (char *buffer, int maxlen)
+{
+  int ha_state;
+
+  CHECK_CONNECT_ERROR ();
+
+#if defined(CS_MODE)
+  ha_state = boot_get_ha_server_state ();
+#else
+  ha_state = -1;
+#endif
+  if (buffer)
+    {
+      strncpy (buffer, css_ha_server_state_string (ha_state), maxlen);
+    }
+  return ha_state;
+}

@@ -20,4 +20,4 @@
 
 AUTOMAKE_OPTIONS = foreign
 
-SUBDIRS = include cas sa cs cubrid util broker cmserver conf msg jdbc java cubridmanager/com.cubrid.cubridmanager.build demo
+SUBDIRS = include cas sa cs cubrid util broker cmserver conf msg jdbc java demo

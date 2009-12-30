@@ -121,31 +121,52 @@ sys_config_init (void)
 int
 uReadEnvVariables (char *progname, FILE * log_fp)
 {
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sco.szCubrid = getenv ("CUBRID");
 
   sco.szCubrid_databases = getenv ("CUBRID_DATABASES");
+#else
+  sco.szCubrid = CUBRID_PREFIXDIR;
 
+  sco.szCubrid_databases = CUBRID_VARDIR;
+#endif
   sco.szProgname = strdup (progname);	/* not an env variable */
   if (sco.szCubrid == NULL)
     {
+#if !defined (DO_NOT_USE_CUBRIDENV)
       fprintf (log_fp, "ERROR : Environment variable CUBRID not set.\n");
+#else
+      fprintf (log_fp, "ERROR : CUBRID prefix directory was not set.\n");
+#endif
       return -1;
     }
   if (sco.szCubrid_databases == NULL)
     {
+#if !defined (DO_NOT_USE_CUBRIDENV)
       fprintf (log_fp,
 	       "ERROR : Environment variable CUBRID_DATABASES not set.\n");
+#else
+      fprintf (log_fp, "ERROR : CUBRID databases directory was not set.\n");
+#endif
       return -1;
     }
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sco.dbmt_tmp_dir =
     (char *) malloc (strlen (sco.szCubrid) + strlen (DBMT_TMP_DIR) + 2);
+#else
+  sco.dbmt_tmp_dir = (char *) malloc (strlen (CUBRID_TMPDIR) + 1);
+#endif
   if (sco.dbmt_tmp_dir == NULL)
     {
       perror ("malloc");
       return -1;
     }
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (sco.dbmt_tmp_dir, "%s/%s", sco.szCubrid, DBMT_TMP_DIR);
+#else
+  sprintf (sco.dbmt_tmp_dir, "%s", CUBRID_TMPDIR);
+#endif
 
   return 1;
 }
@@ -156,7 +177,7 @@ int
 uReadSystemConfig (void)
 {
   FILE *conf_file;
-  char cbuf[1024];
+  char cbuf[PATH_MAX];
   char ent_name[128], ent_val[128];
   int cm_port = 0;
 
@@ -254,7 +275,7 @@ uCheckSystemConfig (FILE * log_fp)
   struct stat statbuf;
   uid_t userid, ownerid;
 #endif
-  char filepath[1024];
+  char filepath[PATH_MAX];
 
 #if !defined(WINDOWS)
   /* CUBRID user id check */
@@ -301,13 +322,25 @@ uCheckSystemConfig (FILE * log_fp)
       < 0)
     return -1;
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (filepath, "%s/%s", sco.szCubrid, DBMT_LOG_DIR);
+#else
+  sprintf (filepath, "%s", DBMT_LOG_DIR);
+#endif
   if (check_path (filepath, log_fp) < 0)
     return -1;
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (filepath, "%s/%s", sco.szCubrid, DBMT_CONF_DIR);
+#else
+  sprintf (filepath, "%s", DBMT_CONF_DIR);
+#endif
   if (check_path (filepath, log_fp) < 0)
     return -1;
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (filepath, "%s/%s", sco.szCubrid, DBMT_TMP_DIR);
+#else
+  sprintf (filepath, "%s", DBMT_TMP_DIR);
+#endif
   if (check_path (filepath, log_fp) < 0)
     return -1;
 
@@ -324,9 +357,14 @@ conf_get_dbmt_file (T_DBMT_FILE_ID dbmt_fid, char *buf)
     {
       if (dbmt_fid == dbmt_file[i].fid)
 	{
+#if !defined (DO_NOT_USE_CUBRIDENV)
 	  sprintf (buf, "%s/%s/%s",
 		   sco.szCubrid, dbmt_file[i].dir_name,
 		   dbmt_file[i].file_name);
+#else
+	  sprintf (buf, "%s/%s",
+		   dbmt_file[i].dir_name, dbmt_file[i].file_name);
+#endif
 	  break;
 	}
     }
@@ -354,7 +392,7 @@ conf_get_dbmt_file2 (T_DBMT_FILE_ID dbmt_fid, char *buf)
 int
 auto_conf_delete (T_DBMT_FILE_ID fid, char *dbname)
 {
-  char conf_file[512], tmpfile[512];
+  char conf_file[PATH_MAX], tmpfile[512];
   char conf_dbname[128];
   char strbuf[MAX_JOB_CONFIG_FILE_LINE_LENGTH];
   FILE *infp, *outfp;
@@ -388,7 +426,7 @@ auto_conf_delete (T_DBMT_FILE_ID fid, char *dbname)
 int
 auto_conf_rename (T_DBMT_FILE_ID fid, char *src_dbname, char *dest_dbname)
 {
-  char conf_file[512], tmpfile[512];
+  char conf_file[PATH_MAX], tmpfile[512];
   char conf_dbname[128];
   char strbuf[1024], *p;
   FILE *infp, *outfp;

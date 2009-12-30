@@ -154,6 +154,7 @@ hm_srv_handle_free_all ()
   max_handle_id = 0;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 void
 hm_srv_handle_set_pooled ()
 {
@@ -168,6 +169,7 @@ hm_srv_handle_set_pooled ()
       srv_handle->is_pooled = 1;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 hm_qresult_clear (T_QUERY_RESULT * q_result)

@@ -2657,6 +2657,7 @@ set_copy (DB_COLLECTION * set)
  *
  */
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int
 set_clear (DB_COLLECTION * set)
 {
@@ -2686,6 +2687,7 @@ set_clear (DB_COLLECTION * set)
 #endif
   return (error);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * set_free() -
@@ -2998,6 +3000,7 @@ error:
 
 /* call this when you know the elements are ok */
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * set_add_element_quick() -
  *      return: error code
@@ -3011,6 +3014,7 @@ set_add_element_quick (DB_COLLECTION * set, DB_VALUE * value)
 {
   return set_add_element (set, value);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * set_add_element_quick() -
@@ -3355,6 +3359,7 @@ set_isempty (DB_COLLECTION * set)
   return (isempty);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * set_is_all_null() -
  *      return: Boolean value.
@@ -3438,6 +3443,7 @@ set_has_null (DB_COLLECTION * set)
 #endif
   return (hasnull);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * set_ismember() -
@@ -4499,6 +4505,7 @@ set_iterator_value (SET_ITERATOR * it)
     }
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * set_iterator_finished() -
  *      return: int
@@ -4511,6 +4518,7 @@ set_iterator_finished (SET_ITERATOR * it)
 {
   return (it == NULL) || (it->value == NULL);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * set_iterator_next() -
@@ -4757,7 +4765,7 @@ setobj_sort (COL * col)
 
 
 #if !defined(SERVER_MODE)
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * setobj_find_temporary_oids() -
  *      return: error
@@ -4833,7 +4841,8 @@ setobj_find_temporary_oids (SETOBJ * col, LC_OIDSET * oidset)
 
   return error;
 }
-#endif
+#endif /* ENABLE_UNUSED_FUNCTION */
+#endif /* !SERVER_MODE */
 
 /* SET DOMAIN MAINTENANCE */
 /*

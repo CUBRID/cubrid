@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -78,7 +78,9 @@ extern MOBJ locator_fetch_nested (MOP mop, DB_FETCH_MODE purpose,
 				  int prune_level, int quit_on_errors);
 extern int locator_flush_class (MOP class_mop);
 extern int locator_flush_instance (MOP mop);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int locator_flush_and_decache_instance (MOP mop);
+#endif
 extern int locator_flush_all_instances (MOP class_mop, bool decache);
 extern int locator_flush_for_multi_update (MOP class_mop);
 extern int locator_all_flush (void);

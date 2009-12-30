@@ -97,6 +97,7 @@ esm_open (char *name)
   return return_path;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * esm_create() - does nothing at this point
  *      return: always returns 0
@@ -125,6 +126,7 @@ esm_destroy (char *pathname)
       unlink (pathname);
     }
 }
+#endif
 
 /*
  * esm_get_size() - opens the fbo, seeks to the end of the file,

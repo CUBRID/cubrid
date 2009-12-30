@@ -137,6 +137,9 @@ extern int yycolumn_end;
 										return COMMITTED; }
 [cC][oO][mM][pP][lL][eE][tT][iI][oO][nN]				{ begin_token(yytext);   return COMPLETION; }
 [cC][oO][nN][nN][eE][cC][tT]						{ begin_token(yytext);   return CONNECT; }
+[cC][oO][nN][nN][eE][cC][tT][_][bB][yY][_][iI][sS][cC][yY][cC][lL][eE]	{ begin_token(yytext);   return CONNECT_BY_ISCYCLE; }
+[cC][oO][nN][nN][eE][cC][tT][_][bB][yY][_][iI][sS][lL][eE][aA][fF]		{ begin_token(yytext);   return CONNECT_BY_ISLEAF; }
+[cC][oO][nN][nN][eE][cC][tT][_][bB][yY][_][rR][oO][oO][tT]				{ begin_token(yytext);   return CONNECT_BY_ROOT; }
 [cC][oO][nN][nN][eE][cC][tT][iI][oO][nN]				{ begin_token(yytext);   return CONNECTION; }
 [cC][oO][nN][sS][tT][rR][aA][iI][nN][tT]				{ begin_token(yytext);   return CONSTRAINT; }
 [cC][oO][nN][sS][tT][rR][aA][iI][nN][tT][sS]				{ begin_token(yytext);   return CONSTRAINTS; }
@@ -475,6 +478,7 @@ extern int yycolumn_end;
 [sS][eE][tT][nN][eE][qQ]						{ begin_token(yytext);   return SETNEQ; }
 [sS][eE][tT]_[oO][fF]							{ begin_token(yytext);   return SET_OF; }
 [sS][hH][aA][rR][eE][dD]						{ begin_token(yytext);   return SHARED; }
+[sS][iI][bB][lL][iI][nN][gG][sS]					{ begin_token(yytext);   return SIBLINGS; }
 [sS][hH][oO][rR][tT]							{ begin_token(yytext);   return SmallInt; }
 [sS][iI][mM][iI][lL][aA][rR]						{ begin_token(yytext);   return SIMILAR; }
 [sS][iI][zZ][eE]							{ begin_token(yytext);   return SIZE_; }
@@ -510,6 +514,7 @@ extern int yycolumn_end;
 [sS][uU][pP][eE][rR][cC][lL][aA][sS][sS]				{ begin_token(yytext);   return SUPERCLASS; }
 [sS][uU][pP][eE][rR][sS][eE][tT]					{ begin_token(yytext);   return SUPERSET; }
 [sS][uU][pP][eE][rR][sS][eE][tT][eE][qQ]				{ begin_token(yytext);   return SUPERSETEQ; }
+[sS][yY][sS][_][cC][oO][nN][nN][eE][cC][tT][_][bB][yY][_][pP][aA][tT][hH]	{ begin_token(yytext);   return SYS_CONNECT_BY_PATH; }
 [sS][yY][sS]_[dD][aA][tT][eE]						{ begin_token(yytext);   return SYS_DATE; }
 [sS][yY][sS][dD][aA][tT][eE]						{ begin_token(yytext);   return SYS_DATE; }
 [sS][yY][sS]_[tT][iI][mM][eE]						{ begin_token(yytext);   return SYS_TIME_; }

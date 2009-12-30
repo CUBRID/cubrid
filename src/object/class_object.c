@@ -2918,6 +2918,7 @@ classobj_find_class_primary_key (SM_CLASS * class_)
   return classobj_find_cons_primary_key (class_->constraints);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * classobj_count_class_foreign_key()
  *   return:
@@ -2953,6 +2954,7 @@ classobj_count_cons_attributes (SM_CLASS_CONSTRAINT * cons)
   for (i = 0; cons->attributes[i]; i++);
   return i;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * classobj_is_possible_constraint()
@@ -5094,7 +5096,6 @@ classobj_make_template (const char *name, MOP op, SM_CLASS * class_)
   template_ptr->method_files = NULL;
   template_ptr->loader_commands = NULL;
   template_ptr->query_spec = NULL;
-  template_ptr->flag = CACHE_NA;
   template_ptr->instance_attributes = NULL;
   template_ptr->shared_attributes = NULL;
   template_ptr->ext_references = NULL;
@@ -5221,6 +5222,7 @@ memory_error:
   return NULL;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * classobj_add_template_reference() - The template keeps a list of all MOPS that
  *    are placed inside the template in an external objlist format so they will
@@ -5237,6 +5239,7 @@ classobj_add_template_reference (SM_TEMPLATE * template_ptr, MOP obj)
 {
   return ml_ext_add (&template_ptr->ext_references, obj, NULL);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* SM_CLASS */
 /*

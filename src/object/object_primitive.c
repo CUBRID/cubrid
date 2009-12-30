@@ -1704,6 +1704,7 @@ pr_copy_value (DB_VALUE * value)
   return (new_);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pr_share_value - This is used to copy the contents of one value
  * container to another WITHOUT introducing a new copy of any indirect
@@ -1737,6 +1738,7 @@ pr_share_value (DB_VALUE * src, DB_VALUE * dst)
     }
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 #if !defined (SERVER_MODE)
 /*
@@ -7056,7 +7058,7 @@ pr_mem_size (PR_TYPE * type)
   return (type->size);
 }
 
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pr_disk_size - Determine the number of bytes of disk storage required for
  * a value.
@@ -7084,7 +7086,7 @@ pr_disk_size (PR_TYPE * type, void *mem)
     }
   return (size);
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * pr_total_mem_size - returns the total amount of storage used for a memory

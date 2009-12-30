@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -74,9 +74,13 @@ extern OID *regu_oid_array_alloc (int size);
 extern HFID *regu_hfid_array_alloc (int size);
 
 extern int regu_dbval_init (DB_VALUE * ptr);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern char *regu_string_alloc (int length);
 extern char *regu_string_db_alloc (int length);
 extern char *regu_string_ws_alloc (int length);
+extern int regu_cp_listid (QFILE_LIST_ID * dst_list_id,
+			   QFILE_LIST_ID * src_list_id);
+#endif
 extern char *regu_strdup (const char *srptr, char *(*alloc) (int));
 extern int regu_strcmp (const char *name1, const char *name2,
 			int (*function_strcmp) (const char *, const char *));
@@ -91,8 +95,6 @@ extern ACCESS_SPEC_TYPE *regu_spec_alloc (TARGET_TYPE type);
 extern void regu_index_init (INDX_INFO * ptr);
 extern void regu_keyrange_init (KEY_RANGE * ptr);
 extern SORT_LIST *regu_sort_list_alloc (void);
-extern int regu_cp_listid (QFILE_LIST_ID * dst_list_id,
-			   QFILE_LIST_ID * src_list_id);
 extern void regu_free_listid (QFILE_LIST_ID * list_id);
 extern void regu_free_domain (SM_DOMAIN * ptr);
 extern SM_DOMAIN *regu_cp_domain (SM_DOMAIN * ptr);

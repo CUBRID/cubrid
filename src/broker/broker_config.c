@@ -194,7 +194,7 @@ check_port_number (T_BROKER_INFO * br_info, int num_brs)
 static void
 dir_repath (char *path)
 {
-  char tmp_str[256];
+  char tmp_str[PATH_MAX];
 
   trim (path);
 
@@ -209,7 +209,7 @@ dir_repath (char *path)
 #endif
 
   strcpy (tmp_str, path);
-  sprintf (path, "%s/%s", get_cubrid_home (), tmp_str);
+  snprintf (path, PATH_MAX, "%s/%s", get_cubrid_home (), tmp_str);
 }
 
 /*
@@ -277,11 +277,11 @@ broker_config_read_internal (const char *conf_file,
 #if defined (WINDOWS)
   char appl_server_port_assigned[MAX_BROKER_NUM];
 #endif
-  int lineno = 0;
-  int errcode = 0;
-
   INI_TABLE *ini;
   int tmp_int;
+  float tmp_float;
+  int lineno = 0;
+  int errcode = 0;
 
   ini = ini_parser_load (conf_file);
   if (ini == NULL)
@@ -385,8 +385,8 @@ broker_config_read_internal (const char *conf_file,
 	ini_gethex (ini, sec_name, "APPL_SERVER_SHM_ID", 0, &lineno);
 
       br_info[num_brs].appl_server_max_size =
-	ini_getuint (ini, sec_name, "APPL_SERVER_MAX_SIZE",
-		     DEFAULT_SERVER_MAX_SIZE, &lineno);
+	ini_getint (ini, sec_name, "APPL_SERVER_MAX_SIZE",
+		    DEFAULT_SERVER_MAX_SIZE, &lineno);
       br_info[num_brs].appl_server_max_size *= 1024;	/* K bytes */
 
       br_info[num_brs].session_timeout =
@@ -400,6 +400,7 @@ broker_config_read_internal (const char *conf_file,
 	      ini_getstr (ini, sec_name, "ERROR_LOG_DIR", DEFAULT_ERR_DIR,
 			  &lineno));
       strcpy (br_info[num_brs].access_log_file, CUBRID_BASE_DIR);
+      strcpy (br_info[num_brs].error_log_file, CUBRID_BASE_DIR);
 
       br_info[num_brs].log_backup =
 	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "LOG_BACKUP",
@@ -435,22 +436,31 @@ broker_config_read_internal (const char *conf_file,
 			 DEFAULT_SQL_LOG_MAX_SIZE, MAX_SQL_LOG_MAX_SIZE,
 			 &lineno);
 
-      br_info[num_brs].long_query_time =
-	ini_getuint (ini, sec_name, "LONG_QUERY_TIME",
-		     DEFAULT_LONG_QUERY_TIME, &lineno);
-      if (br_info[num_brs].long_query_time < 0)
+      tmp_float = ini_getfloat (ini, sec_name, "LONG_QUERY_TIME",
+				(float) DEFAULT_LONG_QUERY_TIME, &lineno);
+      if (tmp_float <= 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
+      else
+	{
+	  /* change float to msec */
+	  br_info[num_brs].long_query_time = (int) (tmp_float * 1000.0);
+	}
 
-      br_info[num_brs].long_transaction_time =
-	ini_getuint (ini, sec_name, "LONG_TRANSACTION_TIME",
-		     DEFAULT_LONG_TRANSACTION_TIME, &lineno);
-      if (br_info[num_brs].long_transaction_time < 0)
+      tmp_float = ini_getfloat (ini, sec_name, "LONG_TRANSACTION_TIME",
+				(float) DEFAULT_LONG_TRANSACTION_TIME,
+				&lineno);
+      if (tmp_float <= 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
+	}
+      else
+	{
+	  /* change float to msec */
+	  br_info[num_brs].long_transaction_time = (int) (tmp_float * 1000.0);
 	}
 
       br_info[num_brs].auto_add_appl_server =
@@ -860,9 +870,10 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	  fprintf (fp, "SQL_LOG\t\t\t=%s\n", tmp_str);
 	}
       fprintf (fp, "SQL_LOG_MAX_SIZE\t=%d\n", br_info[i].sql_log_max_size);
-      fprintf (fp, "LONG_QUERY_TIME\t\t=%d\n", br_info[i].long_query_time);
-      fprintf (fp, "LONG_TRANSACTION_TIME\t=%d\n",
-	       br_info[i].long_transaction_time);
+      fprintf (fp, "LONG_QUERY_TIME\t\t=%.2f\n",
+	       (br_info[i].long_query_time / 1000.0));
+      fprintf (fp, "LONG_TRANSACTION_TIME\t=%.2f\n",
+	       (br_info[i].long_transaction_time / 1000.0));
       tmp_str = get_conf_string (br_info[i].auto_add_appl_server, tbl_on_off);
       if (tmp_str)
 	{

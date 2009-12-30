@@ -1572,6 +1572,7 @@ css_init (char *server_name, int name_length, int port_id)
   return status;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_shutdown() - Shuts down the communication interface
  *   return:
@@ -1584,6 +1585,7 @@ css_shutdown (int exit_reason)
 {
   thread_exit (exit_reason);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * css_send_data_to_client() - send a data buffer to the server
@@ -2028,6 +2030,7 @@ css_add_client_version_string (THREAD_ENTRY * thread_p,
   return ver_str;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_get_client_version_string() - retrieve the version_string from socket
  *                                   queue entry structure
@@ -2048,6 +2051,7 @@ css_get_client_version_string (void)
       return NULL;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * css_cleanup_server_queues () -
@@ -2062,6 +2066,7 @@ css_cleanup_server_queues (unsigned int eid)
   css_remove_all_unexpected_packets (&css_Conn_array[idx]);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_number_of_clients() - Returns the number of clients connected to
  *                           the server
@@ -2088,7 +2093,7 @@ css_number_of_clients (void)
 
   return n;
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 /*
  * css_wait_worker_thread_on_jobq () -
  *   return:
@@ -2282,6 +2287,8 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p,
 		  css_ha_server_state_string (ha_Server_state),
 		  css_ha_server_state_string (new_state));
 	  ha_Server_state = new_state;
+	  /* sync up the current HA state with the system parameter */
+	  PRM_HA_SERVER_STATE = ha_Server_state;
 	  break;
 	}
     }
@@ -2310,7 +2317,8 @@ css_wait_ha_active_state (THREAD_ENTRY * thread_p)
 		    "thread_suspend_with_other_mutex()[%d] tran_index %d\n",
 		    ha_Server_state_waiting_num - 1, thread_p->tran_index);
       thread_suspend_with_other_mutex (thread_p,
-				       &ha_Server_state_waiting_mutex);
+				       &ha_Server_state_waiting_mutex,
+				       INF_WAIT, NULL);
     }
   MUTEX_UNLOCK (ha_Server_state_waiting_mutex);
 }

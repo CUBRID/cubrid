@@ -110,6 +110,8 @@ extern void hm_qresult_clear (T_QUERY_RESULT * q_result);
 extern void hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag);
 extern void hm_session_free (T_SRV_HANDLE * srv_handle);
 extern void hm_col_update_info_clear (T_COL_UPDATE_INFO * col_update_info);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void hm_srv_handle_set_pooled (void);
+#endif
 
 #endif /* _CAS_HANDLE_H_ */

@@ -98,7 +98,6 @@ static int refresh_sec = 0;
 static bool br_monitor_flag = false;
 static int last_access_sec = 0;
 static bool tty_mode = false;
-static bool tty_print_header = true;
 static bool full_info_flag = false;
 
 static int max_col_len = 0;
@@ -608,9 +607,10 @@ appl_monitor (char *br_vector)
 		}
 	      print_newline ();
 
-	      str_out (" LONG_TRANSACTION_TIME:%d",
-		       shm_appl->long_transaction_time);
-	      str_out (", LONG_QUERY_TIME:%d", shm_appl->long_query_time);
+	      str_out (" LONG_TRANSACTION_TIME:%.2f",
+		       (shm_appl->long_transaction_time / 1000.0));
+	      str_out (", LONG_QUERY_TIME:%.2f",
+		       (shm_appl->long_query_time / 1000.0));
 
 	      if (shm_br->br_info[i].appl_server == APPL_SERVER_CAS)
 		{
@@ -795,9 +795,9 @@ appl_monitor (char *br_vector)
 
 		      if (shm_appl->as_info[j].database_name[0] != '\0')
 			{
-			  col_len += sprintf (line_buf + col_len, "%16.16s ",
-					      shm_appl->as_info[j].
-					      database_name);
+			  col_len +=
+			    sprintf (line_buf + col_len, "%16.16s ",
+				     shm_appl->as_info[j].database_name);
 			  col_len +=
 			    sprintf (line_buf + col_len, "%16.16s ",
 				     shm_appl->as_info[j].database_host);
@@ -820,6 +820,9 @@ appl_monitor (char *br_vector)
 			    sprintf (line_buf + col_len, "%16c %16c %19c ",
 				     '-', '-', '-');
 			}
+		      col_len +=
+			sprintf (line_buf + col_len, "%15.15s ",
+				 shm_appl->as_info[j].clt_ip_addr);
 		    }
 
 		  if (col_len >= max_col_len)
@@ -879,6 +882,7 @@ br_monitor (char *br_vector)
   INT64 num_tx_cur = 0, num_qx_cur = 0;
   INT64 num_lt_cur = 0, num_lq_cur = 0, num_eq_cur = 0;
   INT64 tps = 0, qps = 0, lts = 0, lqs = 0, eqs = 0;
+  static unsigned int tty_print_header = 0;
 
   buf_len = 0;
   buf_len += sprintf (buf + buf_len, "  %-12s", "NAME");
@@ -898,16 +902,15 @@ br_monitor (char *br_vector)
   buf_len += sprintf (buf + buf_len, "%8s", "LONG-Q");
   buf_len += sprintf (buf + buf_len, "%6s", "ERR-Q");
 
-  if (tty_mode == false || tty_print_header == true)
+  if (tty_mode == false || (tty_print_header++ % 20 == 0))
     {
       str_out ("%s", buf);
       print_newline ();
       for (i = strlen (buf); i > 0; i--)
 	str_out ("%s", "=");
-      tty_print_header = false;
+      print_newline ();
     }
 
-  print_newline ();
   if (num_tx_olds == NULL)
     {
       num_tx_olds = (INT64 *) calloc (sizeof (INT64), shm_br->num_broker);
@@ -1031,8 +1034,10 @@ br_monitor (char *br_vector)
 	      num_eq_olds[i] = num_eq_cur;
 	      str_out (" %4ld", tps);
 	      str_out (" %4ld", qps);
-	      str_out (" %4ld/%-2d", lts, shm_appl->long_transaction_time);
-	      str_out (" %4ld/%-2d", lqs, shm_appl->long_query_time);
+	      str_out (" %4ld/%-.1f", lts,
+		       (shm_appl->long_transaction_time / 1000.0));
+	      str_out (" %4ld/%-.1f", lqs,
+		       (shm_appl->long_query_time / 1000.0));
 	      str_out (" %4ld", eqs);
 	      print_newline ();
 
@@ -1071,8 +1076,8 @@ time_format (int t, char *time_str)
 static void
 print_header (bool use_pdh_flag)
 {
-  char buf[128];
-  char line_buf[128];
+  char buf[256];
+  char line_buf[256];
   int col_len = 0;
   int i;
 
@@ -1110,6 +1115,7 @@ print_header (bool use_pdh_flag)
       col_len += sprintf (buf + col_len, "%16s ", "DB");
       col_len += sprintf (buf + col_len, "%16s ", "HOST");
       col_len += sprintf (buf + col_len, "%19s ", "LAST CONNECT TIME");
+      col_len += sprintf (buf + col_len, "%15s ", "CLIENT IP");
     }
 
   for (i = 0; i < col_len; i++)

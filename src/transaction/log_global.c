@@ -104,7 +104,14 @@ LOG_GLOBAL log_Gl = {
   {NULL, MUTEX_INITIALIZER,
    COND_INITIALIZER, MUTEX_INITIALIZER,
    COND_INITIALIZER, MUTEX_INITIALIZER,
-   false}
+   false},
+
+  /* background archiving info */
+  {NULL_PAGEID, NULL_PAGEID, NULL_VOLDES
+#if defined(SERVER_MODE)
+   , MUTEX_INITIALIZER
+#endif /* SERVER_MODE */
+   }
 };
 
 /* Name of the database and logs */
@@ -117,3 +124,4 @@ char log_Name_active[PATH_MAX];
 char log_Name_info[PATH_MAX];
 char log_Name_bkupinfo[PATH_MAX];
 char log_Name_volinfo[PATH_MAX];
+char log_Name_bg_archive[PATH_MAX];

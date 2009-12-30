@@ -128,15 +128,15 @@ struct er_spec
 typedef struct er_fmt ER_FMT;
 struct er_fmt
 {
-  int err_id;                   /* The int associated with the msg */
+  int err_id;			/* The int associated with the msg */
   char *fmt;			/* A printf-style format for the msg */
   ER_SPEC *spec;		/* Pointer to real array; points to
 				   spec_buf if nspecs < DIM(spec_buf) */
   int fmt_length;		/* The strlen() of fmt */
-  int must_free;                /* TRUE if fmt must be free_and_initd */
+  int must_free;		/* TRUE if fmt must be free_and_initd */
   int nspecs;			/* The number of format specs in fmt */
   int spec_top;			/* The capacity of spec */
-  ER_SPEC spec_buf[4];		/* Array of format specs for args */
+  ER_SPEC spec_buf[16];		/* Array of format specs for args */
 };
 
 typedef struct er_msg ER_MSG;
@@ -174,8 +174,10 @@ extern er_log_handler_t er_register_log_handler (er_log_handler_t f);
 
 extern int er_errid (void);
 extern int er_severity (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int er_nlevels (void);
 extern const char *er_file_line (int *line_no);
+#endif
 extern const char *er_msg (void);
 extern void er_all (int *err_id, int *severity, int *nlevels,
 		    int *line_no, const char **file_name, const char **msg);

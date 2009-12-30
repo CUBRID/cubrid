@@ -35,4 +35,22 @@ extern const char *envvar_get (const char *);
 extern int envvar_set (const char *, const char *);
 extern int envvar_expand (const char *, char *, size_t);
 
+extern char *envvar_bindir_file (char *path, size_t size,
+				 const char *filename);
+extern char *envvar_libdir_file (char *path, size_t size,
+				 const char *filename);
+extern char *envvar_javadir_file (char *path, size_t size,
+				  const char *filename);
+extern char *envvar_localedir_file (char *path, size_t size,
+				    const char *langpath,
+				    const char *filename);
+extern char *envvar_confdir_file (char *path, size_t size,
+				  const char *filename);
+extern char *envvar_vardir_file (char *path, size_t size,
+				 const char *filename);
+extern char *envvar_tmpdir_file (char *path, size_t size,
+				 const char *filename);
+extern char *envvar_logdir_file (char *path, size_t size,
+				 const char *filename);
+
 #endif /* _ENVIRONMENT_VARIABLE_H_ */

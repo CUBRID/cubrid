@@ -548,7 +548,7 @@ repl_signal_process (SIGNAL_HANDLER_FUNCTION routine)
  *   arg(in)
  */
 void
-repl_error_push (int file_id, int line_num, int code, char *arg)
+repl_error_push (int file_id, int line_num, int code, const char *arg)
 {
   REPL_ERR *temp = (REPL_ERR *) malloc (DB_SIZEOF (REPL_ERR));
   if (temp == NULL)

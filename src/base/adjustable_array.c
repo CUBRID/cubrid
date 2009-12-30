@@ -393,6 +393,7 @@ adj_ar_length (const ADJ_ARRAY * adj_array_p)
   return adj_array_p->cur_length;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * adj_ar_get_nth_buffer() - return the nth buffer pointer of ADJ_ARRAY
  *   return: NULL if the specified n is out of buffer range,
@@ -412,3 +413,5 @@ adj_ar_get_nth_buffer (const ADJ_ARRAY * adj_array_p, int n)
 
   return NULL;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
+

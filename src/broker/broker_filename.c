@@ -37,28 +37,31 @@
 #endif
 
 #include "broker_filename.h"
+#include "environment_variable.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 256
 #endif
 
-static char cubrid_dir[PATH_MAX] = "";
+static char cubrid_Dir[PATH_MAX] = "";
 
-#define NUM_CUBRID_FILE		17
+#define NUM_CUBRID_FILE		15
 static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
-  {FID_CUBRID_BROKER_CONF, CUBRID_CONF_DIR, "cubrid_broker.conf"},
-  {FID_UV_ERR_MSG, CUBRID_CONF_DIR, "uv_er.msg"},
-  {FID_V3_OUTFILE_DIR, CUBRID_TMP_DIR, ""},
-  {FID_CAS_TMPGLO_DIR, CUBRID_TMP_DIR, ""},
-  {FID_CAS_TMP_DIR, CUBRID_TMP_DIR, ""},
-  {FID_SOCK_DIR, CUBRID_SOCK_DIR, ""},
-  {FID_AS_PID_DIR, CUBRID_ASPID_DIR, ""},
-  {FID_ADMIND_PID, CUBRID_ASPID_DIR, "casd.pid"},
-  {FID_SQL_LOG_DIR, CUBRID_LOG_DIR, ""},
-  {FID_ADMIND_LOG, CUBRID_LOG_DIR, "cas_admind.log"},
-  {FID_MONITORD_LOG, CUBRID_LOG_DIR, "cas_monitord.log"},
-  {FID_ER_HTML, CUBRID_CONF_DIR, "uw_er.html"},
-  {FID_CUBRID_ERR_DIR, CUBRID_ERR_DIR, ""}
+  {FID_CUBRID_BROKER_CONF, ""},
+  {FID_UV_ERR_MSG, ""},
+  {FID_V3_OUTFILE_DIR, ""},
+  {FID_CAS_TMPGLO_DIR, ""},
+  {FID_CAS_TMP_DIR, ""},
+  {FID_VAR_DIR, ""},
+  {FID_SOCK_DIR, ""},
+  {FID_AS_PID_DIR, ""},
+  {FID_ADMIND_PID, ""},
+  {FID_SQL_LOG_DIR, ""},
+  {FID_SQL_LOG2_DIR, ""},
+  {FID_ADMIND_LOG, ""},
+  {FID_MONITORD_LOG, ""},
+  {FID_ER_HTML, ""},
+  {FID_CUBRID_ERR_DIR, ""}
 };
 
 void
@@ -69,60 +72,180 @@ set_cubrid_home ()
   p = getenv_cubrid_broker ();
   if (p)
     {
-      strcpy (cubrid_dir, p);
+      strcpy (cubrid_Dir, p);
       return;
     }
   getcwd (dirname, sizeof (dirname));
-  snprintf (cubrid_dir, sizeof (cubrid_dir) - 1, "%s/..", dirname);
+  snprintf (cubrid_Dir, sizeof (cubrid_Dir) - 1, "%s/..", dirname);
 }
 
 char *
 get_cubrid_home ()
 {
-  if (cubrid_dir[0] == '\0')
+  if (cubrid_Dir[0] == '\0')
     {
       set_cubrid_home ();
     }
-  return cubrid_dir;
+  return cubrid_Dir;
 }
 
 
 void
 set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 {
-  int i;
+  int value_len;
+  bool repath = true;
 
-  for (i = 0; i < NUM_CUBRID_FILE; i++)
+  if (value == NULL)
     {
-      if (fid == cubrid_file[i].fid)
+      return;
+    }
+
+  if (value[0] == '/')
+    {
+      repath = false;
+    }
+#if defined (WINDOWS)
+  if (isalpha (value[0]) && value[1] == ':')
+    {
+      repath = false;
+    }
+#endif
+
+
+  switch (fid)
+    {
+    case FID_V3_OUTFILE_DIR:
+    case FID_CAS_TMPGLO_DIR:
+    case FID_CAS_TMP_DIR:
+    case FID_VAR_DIR:
+    case FID_SOCK_DIR:
+    case FID_AS_PID_DIR:
+    case FID_SQL_LOG_DIR:
+    case FID_SQL_LOG2_DIR:
+    case FID_CUBRID_ERR_DIR:
+      value_len = strlen (value);
+      if (value[value_len] == '/' || value[value_len] == '\\')
 	{
-	  strcpy (cubrid_file[i].dir_name, value);
-	  break;
+	  if (repath)
+	    {
+	      snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s/%s",
+			get_cubrid_home (), value);
+	    }
+	  else
+	    {
+	      snprintf (cubrid_file[fid].file_name, PATH_MAX, value);
+	    }
 	}
+      else
+	{
+	  if (repath)
+	    {
+	      snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s/%s/",
+			get_cubrid_home (), value);
+	    }
+	  else
+	    {
+	      snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s/", value);
+	    }
+	}
+      break;
+    default:
+      if (repath)
+	{
+	  snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s/%s",
+		    get_cubrid_home (), value);
+	}
+      else
+	{
+	  snprintf (cubrid_file[fid].file_name, PATH_MAX, value);
+	}
+      break;
     }
 }
 
 char *
 get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf)
 {
-  int i;
-
   buf[0] = '\0';
 
-  if (cubrid_dir[0] == '\0')
+  if (cubrid_Dir[0] == '\0')
     {
       set_cubrid_home ();
     }
 
-  for (i = 0; i < NUM_CUBRID_FILE; i++)
+  if (strlen (cubrid_file[fid].file_name) > 0)
     {
-      if (fid == cubrid_file[i].fid)
-	{
-	  sprintf (buf, "%s/%s/%s", cubrid_dir,
-		   cubrid_file[i].dir_name, cubrid_file[i].file_name);
-	  break;
-	}
+      snprintf (buf, PATH_MAX, cubrid_file[fid].file_name);
+      return buf;
     }
+
+  switch (fid)
+    {
+    case FID_CUBRID_BROKER_CONF:
+      envvar_confdir_file (buf, PATH_MAX, "cubrid_broker.conf");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_UV_ERR_MSG:
+      envvar_confdir_file (buf, PATH_MAX, "uv_er.msg");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_V3_OUTFILE_DIR:
+      envvar_tmpdir_file (buf, PATH_MAX, "");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_CAS_TMPGLO_DIR:
+      envvar_tmpdir_file (buf, PATH_MAX, "");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_CAS_TMP_DIR:
+      envvar_tmpdir_file (buf, PATH_MAX, "");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_VAR_DIR:
+      envvar_vardir_file (buf, PATH_MAX, "");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_SOCK_DIR:
+      envvar_vardir_file (buf, PATH_MAX, "CUBRID_SOCK/");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_AS_PID_DIR:
+      envvar_vardir_file (buf, PATH_MAX, "as_pid/");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_ADMIND_PID:
+      envvar_vardir_file (buf, PATH_MAX, "as_pid/casd.pid");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_SQL_LOG_DIR:
+      envvar_logdir_file (buf, PATH_MAX, "broker/sql_log/");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_SQL_LOG2_DIR:
+      envvar_logdir_file (buf, PATH_MAX, "broker/sql_log/query/");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_ADMIND_LOG:
+      envvar_logdir_file (buf, PATH_MAX, "broker/sql_log/cas_admind.log");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_MONITORD_LOG:
+      envvar_logdir_file (buf, PATH_MAX, "broker/sql_log/cas_monitord.log");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_ER_HTML:
+      envvar_confdir_file (buf, PATH_MAX, "uw_er.html");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_CUBRID_ERR_DIR:
+      envvar_logdir_file (buf, PATH_MAX, "broker/error_log/");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    default:
+      break;
+    }
+
   return buf;
 }
 
@@ -131,7 +254,7 @@ getenv_cubrid_broker ()
 {
   char *p;
 
-  p = getenv ("CUBRID");
+  p = envvar_root ();
 
   return p;
 }

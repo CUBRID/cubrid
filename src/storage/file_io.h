@@ -380,6 +380,10 @@ extern void fileio_dismount (int vdes);
 extern void fileio_dismount_all (void);
 extern void *fileio_read (int vdes, void *io_pgptr, PAGEID pageid);
 extern void *fileio_write (int vdes, void *io_pgptr, PAGEID pageid);
+extern void *fileio_read_pages (int vol_fd, char *io_pages_p, PAGEID page_id,
+				int num_pages);
+extern void *fileio_write_pages (int vol_fd, char *io_pages_p, PAGEID page_id,
+				 int num_pages);
 extern void *fileio_writev (int vdes, void **arrayof_io_pgptr,
 			    PAGEID start_pageid, DKNPAGES npages);
 extern int fileio_synchronize (int vdes, bool force_flag);
@@ -393,6 +397,7 @@ extern void *fileio_write_user_area (int vdes, PAGEID pageid,
 extern bool fileio_is_volume_exist_and_file (const char *vlabel);
 extern DKNPAGES fileio_get_number_of_volume_pages (int vdes);
 extern const char *fileio_get_volume_label (VOLID volid);
+extern VOLID fileio_get_volume_id (int vdes);
 extern VOLID fileio_find_volume_id_with_label (const char *vlabel);
 extern int fileio_get_volume_descriptor (VOLID volid);
 extern bool fileio_map_mounted (THREAD_ENTRY * thread_p,
@@ -429,6 +434,9 @@ extern void fileio_make_log_active_temp_name (char *logactive_tmpname,
 extern void fileio_make_log_archive_name (char *logarchive_name,
 					  const char *log_path,
 					  const char *dbname, int arvnum);
+extern void fileio_make_log_archive_temp_name (char *log_archive_temp_name_p,
+					       const char *log_path_p,
+					       const char *db_name_p);
 extern void fileio_make_log_info_name (char *loginfo_name,
 				       const char *log_path,
 				       const char *dbname);

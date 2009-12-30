@@ -83,10 +83,17 @@ extern unsigned int css_send_error_to_server (char *host,
 extern unsigned int css_send_data_to_server (char *host,
 					     unsigned int eid, char *buffer,
 					     int buffer_size);
-extern unsigned int css_receive_data_from_server (unsigned int eid,
-						  char **buffer, int *size);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern unsigned int css_receive_error_from_server (unsigned int eid,
 						   char **buffer, int *size);
+#endif
+extern unsigned int css_receive_data_from_server (unsigned int eid,
+						  char **buffer, int *size);
+extern unsigned int css_receive_data_from_server_with_timeout (unsigned int
+							       eid,
+							       char **buffer,
+							       int *size,
+							       int timeout);
 extern void css_terminate (bool server_error);
 extern void css_cleanup_client_queues (char *host_name);
 

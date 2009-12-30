@@ -118,7 +118,7 @@ $set 5 MSGCAT_SET_ERROR
 53 오브젝트의 OID가 주어졌을 때 오브젝트 %1$d|%2$d|%3$d 을(를) 가지고 옵니다.
 54 내부 에러: trying to manipulate an object of %1$d pages long. The maximum size allowed for an object is %2$d pages.
 55 내부 에러: A page cycle reference was detected on page %1$d|%2$d of heap file %3$d|%4$d|%5$d.
-56 내부 에러: unknown extendible hashing file (Volid: %1$d Fileid: $2$d) page (Volid: %3$d Pageid: %4$d) was specified.
+56 내부 에러: unknown extendible hashing file (Volid: %1$d Fileid: %2$d) page (Volid: %3$d Pageid: %4$d) was specified.
 57 키가 extendible hash table 내에 존재하지 않습니다.
 58 문자열 "%1$s" 은(는) slotted page에서 처리하기에는 너무 깁니다.
 59 내부 에러: the specified key type %1$d is not valid for the extendible hashing structure.
@@ -131,7 +131,7 @@ $set 5 MSGCAT_SET_ERROR
 66 내부 에러: unknown force operation %1$d for object %2$d|%3$d|%4$d.
 67 내부 에러: a heap file has not been allocated to store object %1$d|%2$d|%3$d.
 68 내부 에러: different classnames for class with oid = %1$d|%2$d|%3$d were found. Found classnames are "%4$s", "%5$s" using classname hash table and heap, respectively.
-69 내부 에러: different class object identifers were found for class with name "%1$s". Found OIDS are %2$d|%3$d|%4$d, %5$d|%6$d|%7$d using classname hash table and heap, respectively.
+69 내부 에러: different class object identifiers were found for class with name "%1$s". Found OIDS are %2$d|%3$d|%4$d, %5$d|%6$d|%7$d using classname hash table and heap, respectively.
 70 내부 에러: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in classname hash table.
 71 내부 에러: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in its heap.
 72 트랜잭션이(인덱스 %1$d, %2$s@%3$s|%4$d) 시스템에 의해 취소되었습니다.
@@ -287,7 +287,7 @@ $set 5 MSGCAT_SET_ERROR
 222 %2$d 보다 큰 문자열을 "%1$s" 애트리뷰트에 할당하려고 합니다.
 223 %2$d 값이 smallint 애트리뷰트 "%1$s"에 비해 너무 큽니다.
 224 데이터베이스가 다시 시작되지 않았습니다.
-225 NON NULL 제약성을 가진 애트리뷰트 "%1$s"에 값이 없습니다.
+225 NOT NULL 제약성을 가진 애트리뷰트 "%1$s"에 값이 없습니다.
 226 클래스에 비어 있는 컴포넌트 리스트가 있습니다.
 227 애트리뷰트 "%1$s"에 값을 여러 번 할당하려고 합니다.
 228 %2$d 개의 인자로 메소드 "%1$s"을(를) 호출하려고 합니다. 최대 %3$d 개의 인자까지 허용됩니다.
@@ -342,7 +342,7 @@ $set 5 MSGCAT_SET_ERROR
 277 "%1$s"에 잘못된 오퍼레이션입니다. 클래스 "%2$s"(으)로부터 상속되었습니다.
 278 클래스 "%4$s"은(는) "%1$s"에  대한 호환되지 않는 도메인을 가집니다. 이들은 클래스 "%2$s"와 "%3$s"(으)로부터 상속되었습니다.
 279 클래스 "%4$s"에서 클래스 "%2$s"(으)로부터 상속된 "%1$s"은(는) 주어진 데로 처리될 수 없습니다. 클래스 "%3$s"(으)로부터의 정의가 더 상세합니다.
-280 클래스 "%3$s"에 호환성 없는 도메인을 가진 로칼 정의가 존재하기 때문에 "%1$s"은(는) 클래스 "%2$s"(으)로부터 상속될 수 없습니다.
+280 클래스 "%3$s"에 호환성 없는 도메인을 가진 로컬 정의가 존재하기 때문에 "%1$s"은(는) 클래스 "%2$s"(으)로부터 상속될 수 없습니다.
 281 클래스 "%3$s"의 클래스 "%2$s"(으)로부터 상속된 "%1$s"은(는) alias되었지만, 다른 source로부터의 substitute는 존재하지 않습니다.
 282 클래스 "%4$s"의 클래스 "%3$s"(으)로부터 상속된 "%1$s"은(는) 클래스 "%2$s"에 대한 alias substitute 역할을 할 수 없습니다. 도메인 호환성이 없습니다.
 283 클래스 "%4$s"의 클래스 "%3$s"(으)로부터 상속된 "%1$s"은(는) 클래스 "%2$s"에 대한 alias substitute 역할을 할 수 없습니다. 정의된 도메인이 덜 상세합니다. 
@@ -419,7 +419,7 @@ $set 5 MSGCAT_SET_ERROR
 354 socket에 새로운 프로세스 소유자를 지정할 수 없습니다. 
 355 socket 스트림을 생성할 수 없습니다.
 356 UNIX 도메인 소켓을 위한 파일 '%1$s' (이)가 존재하지 않습니다.
-357 로칼 어드레스를 바인드할 수 없습니다... 중지.
+357 로컬 어드레스를 바인드할 수 없습니다... 중지.
 358 Accept 실패
 359 데이타그램 bind 에러.
 360 데이타그램 accept 에러.
@@ -431,10 +431,10 @@ $set 5 MSGCAT_SET_ERROR
 366 서버 오류: %1$s
 367 서버 %1$s은(는) 이미 존재합니다.
 368 %1$s에 대한 연결 시도 중 통신 에러.
-369 MOP를 더 이상 할당할 수 없습니다.
-370 Sbrk 실패, 코드 = %1$d.
-371 Mark stack apparently overwritten.
-372 MOP shortfall in reclamation.
+369 사용하지 않는 에러코드입니다.
+370 사용하지 않는 에러코드입니다.
+371 사용하지 않는 에러코드입니다.
+372 사용하지 않는 에러코드입니다.
 373 읽는 도중 예기치 않은 EOF입니다: %1$d.
 374 %1$d 또는 %2$d을(를) 읽는 도중 예기치 않은 EOF입니다.
 375 Conversion error on (0x%1$c%2$c) %3$d and %4$d converted to %5$d.
@@ -606,13 +606,13 @@ $set 5 MSGCAT_SET_ERROR
 541 볼륨 %1$s"에 대한 free 페이지 수가 일치하지 않습니다. 볼륨 헤더에 의해 %2$d를, 비트맵에 의해 %3$d를 얻었습니다. 
 542 용량 "%1$s"에 대한 free 섹터 수가 일치하지 않습니다. 볼륨 헤더에 의해 %2$d를, 비트맵에 의해 %3$d를 얻었습니다.
 543 볼륨 "%1$s"에 대한 디스크 헤더가 불완전합니다.
-544 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Btree key %6$s entry for object OID: %7$d|%8$d|%9$d was not found on B+tree: %10$d|%11$d|%12$d.
-545 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Key and OID: %6$d|%7$d|%8$d entry on B+tree: %9$d|%10$d|%11$d is incorrect.The object does not exist.
+544 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). B+tree key %6$s entry for object OID: %7$d|%8$d|%9$d was not found on B+tree: %10$d|%11$d|%12$d.
+545 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Key and OID: %6$d|%7$d|%8$d entry on B+tree: %9$d|%10$d|%11$d is incorrect. The object does not exist.
 546 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). expecting %6$d OID entry values, but %7$d were found on B+tree: %8$d|%9$d|%10$d.
 547 서버 release %1$s은(는) 클라이언트 release %2$s와(과) 다릅니다.
 548 프락시 클래스 "%1$s"에 object_id가 정의되지 않았습니다.
 549 프락시 인스턴스를 찾을 수 없습니다.
-550 알 수 없는 savpoint 이름 %1$s입니다.
+550 알 수 없는 savepoint 이름 %1$s입니다.
 551 볼륨 정보 경로 파일 "%1$s"을(를) 찾을 수 없습니다. 내부 테이블로부터 읽기를 계속합니다.
 552 date 연산 언더플로우 발생.
 553 time 연산 언더플로우 발생.
@@ -629,7 +629,7 @@ $ LOADDB
 563 내부 클래스 %1$s에 대한 참조가 NULL로 변환되었습니다.
 564 %2$s의 애트리뷰트 %1$s은(는) UNIQUE 제약 조건에 위배됩니다.
 565 constructor 메소드 %1$s이(가) 클래스 %2$s에 정의되어 있지 않습니다.
-566 사용되지 않는 에러 번호입니다.
+566 사용하지 않는 에러코드입니다.
 567 너무 많은 constructor 메소드 인자가 주어졌습니다. %1$d 개를 예상합니다.
 568 constructor 메소드 인자가 부족합니다. %1$d 개를 예상했으나, %2$d 개가 주어졌습니다. 
 569 애트리뷰트 값이 부족합니다. %1$d 개를 예상했으나, %2$d 개가 주어졌습니다.
@@ -647,7 +647,7 @@ $ LOADDB
 581 수정 불가능한 시점에서 데이터베이스를 수정하려고 하고 있습니다.
 582 알 수 없는 볼륨 사용 용도 %1$d입니다. 정상적인 값은 %2$d ~ %3$d입니다.
 583 유효하지 않은 페이지 수(%1$d)를 할당하려고 하고 있습니다. 
-584 내부 에러: A loop was detected in the  file table of file %1$d in volume "%2$s". The loop may be caused by page %3$d|%4$d.
+584 내부 에러: A loop was detected in the file table of file %1$d in volume "%2$s". The loop may be caused by page %3$d|%4$d.
 585 알 수 없는 heap %1$s|%2$d|%3$d
 586 내부 에러: Unable to update chain header in VPID %1$d|%2$d for heap %3$d in volume "%4$s".
 587 "%1$s" volinfo 파일의 영구 볼륨 엔트리들이 정렬되어 있지 않습니다. 엔트리 %2$d: %3$d %4$s이(가) 순서를 벗어 났습니다.
@@ -706,7 +706,7 @@ $ LOADDB
 640 시스템 에러: 트랜잭션이 active한 상태가 아닐 때에는 세이브포인트를 설정할 수 없습니다.
 641 세이브포인트 이름이 주어져야 합니다. 
 642 시스템 에러: there is not an active top system operation for current transaction.
-643 May be a system error: Commiting/Aborting transaction = %1$d (index = %2$d) which has permanent operations\n attached to it. Will attach those system operations to the transaction
+643 May be a system error: Committing/Aborting transaction = %1$d (index = %2$d) which has permanent operations\n attached to it. Will attach those system operations to the transaction
 644 시스템 에러: Log manager does not known either undo/redo function for rcvindex = %1$d
 645 시스템 에러: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
 646 시스템 에러: It seems that a compensating record is missing for logical logging rcvindex = %s\n. Without this compensating record crash recovery will not be done correctly
@@ -727,10 +727,10 @@ $ LOADDB
 661 이벤트 처리 프로세스 "%1$s"에 write할 수 없습니다.
 662 이벤트 처리 메카니즘을 초기화할 수 없습니다.
 663 경고 :  이벤트 처리 구성 파일 "%1$s"의 %2$d 라인이 너무 길어서 단절되었습니다.
-664 이벤트 처리 캐카니즘 시작됨.
+664 이벤트 처리 메카니즘 시작됨.
 665 이벤트 처리 pipe가 손상되었습니다. "%1$s"
 666 이벤트 처리 메카니즘 중지됨.
-667 클래스 '%1$s'에 상응하는 C++ 클래스를 찾을 수 업습니다.
+667 클래스 '%1$s'에 상응하는 C++ 클래스를 찾을 수 없습니다.
 668 내부 에러 : Unknown domain type '%1$d'.
 669 최대 클라이언트 수 %1$d이(가) 초과되어 서버가 연결을 거부하였습니다.
 670 오퍼레이션은 하나 또는 그 이상의 UNIQUE 제약 사항을 위반하였습니다.
@@ -757,7 +757,7 @@ $ LOADDB
 691 유효하지 않은 iterator를 사용하려고 하고 있습니다.
 692 연관되지 않은 collection에 iterator를 사용하려고 하고 있습니다.
 693 numeric 데이터 타입에 오버플로우 발생.
-694 시스템 에러: Btree를 로드할 수 없습니다.
+694 시스템 에러: B+tree를 로드할 수 없습니다.
 695 클라이언트를 종료하는데 잘못된 인터페이스를 사용하였습니다.
 696 알 수 없는 트랜잭션 입니다. (index %1$d, %2$s@%3$s|%4$d)
 697 주어진 트랜잭션 인덱스 (index %1$d, %2$s@%3$s|%4$d)는 현재 트랜잭션 인덱스 (index %5$d, %6$s@%7$s|%8$d)와 맞지 않습니다. 주어진 트랜잭션은 이미 종료되었고 해당 트랜잭션 인덱스는 다른 트랜잭션에 의해 사용되고 있습니다. 
@@ -800,7 +800,7 @@ $ LOADDB
 734 내부 에러: Header of file VFID %1$d|%2$d(Volume "%3$s") is corrupted.
 735 알 수 없는 트랜잭션 인덱스 %1$d입니다.
 736 서비스 내지는 포트 번호를 지정해야 합니다. 윈속 에러: %1$d.
-737 알 수 없는 TCP 서비스 입니다: %1$s. 윈속 에러: %1$d.
+737 알 수 없는 TCP 서비스 입니다: %1$s. 윈속 에러: %2$d.
 738 socket 스트림을 생성할 수 없습니다. 윈속 에러: %1$d.
 739 주소에 bind할 수 없습니다... 재시도 중. 윈속 에러: %1$d.
 740 주소에 bind할 수 없습니다... 취소 중. 윈속 에러: %1$d.
@@ -880,7 +880,7 @@ $ LOADDB
 814 pthread_cond_broadcast() 호출 실패.
 815 pthread_key_create() 호출 실패.
 816 pthread_key_delete() 호출 실패.
-817 pthread_set_specific() 호출 실패.
+817 pthread_setspecific() 호출 실패.
 818 pthread_getspecific() 호출 실패.
 819 pthread_once() 호출 실패.
 820 connection에 대한 mutex를 초기화할 수 없습니다.
@@ -921,7 +921,7 @@ $ LOADDB
 855 경고: 둘 이상의 스레드가 하나의 트랜잭션(%d)를 위해 lock-waiting 중입니다.
 856 경고: 이상한 로크 대기 상태(%d|%d), 스레드는 (%d|%d), 트랜잭션은 (%d).
 857 볼륨 "%2$s"의 %1$d 페이지를 잘라내는 도중에 I/O 에러 발생.
-858 서버 재수행시 볼륨 "%2$s"는 알 수 없는 볼륨입니다. 
+858 서버 재수행시 볼륨 "%1$s"는 알 수 없는 볼륨입니다. 
 859 페이지(%d|%d)에 대한 래치 획득 요청이 취소되었습니다.
 860 현 트랜잭션의 상태(%1$s)가 잘못되어 글로벌 트랜잭션에 참여할 수 없습니다.
 861 현 트랜잭션(식별자 %1$d)은 글로벌 트랜잭션에 참여하고 있지 않으므로 prepare 할 수 없습니다.
@@ -929,9 +929,17 @@ $ LOADDB
 863 글로벌 트랜잭션(식별자 %1$d)의 사용자 정보가 없습니다.
 864 backupdb/restoredb verbose 파일 '%s' 을 열 수 없습니다. 
 865 타입을 알 수 없는 input markers 때문에 문장을 수행할 수 없습니다.
+866 사용하지 않는 에러코드입니다.
+867 사용하지 않는 에러코드입니다.
+868 사용하지 않는 에러코드입니다.
+869 사용하지 않는 에러코드입니다.
+870 사용하지 않는 에러코드입니다.
+871 사용하지 않는 에러코드입니다.
+872 사용하지 않는 에러코드입니다.
 873 PKI 인증 에러입니다. "%1$s"
 874 power() 함수의 인자가 유효하지 않습니다.
 875 power 수행 중 오버플로우가 발생했습니다.
+876 사용하지 않는 에러코드입니다.
 877 언로드 할 자료가 없습니다.
 878 데이터베이스 위치 파일 "%1$s"에 오류가 있습니다.
 879 파일 '%s' 권한을 가져오지 못했습니다.
@@ -1031,9 +1039,13 @@ $ LOADDB
 973 서버 상태 %1$s
 974 %2$d에서 %3$d까지의 페이지들을 archive하기 위한 archive 로그 "%1$s"를 생성했습니다.
 975 현재 버전의 복제는 하나의 UPDATE 질의로 여러 레코드를 변경시키는 것이 UNIQUE 제약을 위반하는 경우 허용되지 않습니다.
-976 내부 에러: 파일 테이블의 사이즈가 초과했습니다. (할당된 사이즈: %1$d, 사용된 사이즈: %2$d) 발생한 테이블 페이지의 위치 %3$d|%4$d (볼륨명 : "5$s")
+976 내부 에러: 파일 테이블의 사이즈가 초과했습니다. (할당된 사이즈: %1$d, 사용된 사이즈: %2$d) 발생한 테이블 페이지의 위치 %3$d|%4$d (볼륨명 : "%5$s")
+977 체크포인트가 시작되었습니다. (페이지 %d)
+978 체크포인트가 완료되었습니다. (페이지 %d)
+979 CONNECT BY 질의문 수행 중에 루프가 발견되었습니다.
+980 쓰레드가 %2$d msec 동안 %1$s 대기했습니다.
 
-977 마지막 에러
+981 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):
@@ -1125,6 +1137,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 61 not equal 연산자는 '!=' 이 아니라 '<>' 입니다.
 62 허용되지 않는 음수값입니다.
 63 reference rule 이 중복되었습니다.
+64 SYS_CONNECT_BY_PATH needs two parameters and the second must be a string literal.
 
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
@@ -1322,6 +1335,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 192 외래키 'ON CACHE OBJECT'절로 생성된 속성 '%s'에는 사용자가 직접 값을 할당할 수는 없습니다.
 193 인덱스 키 리스트에 중복된 속성 이름이 허용되지 않습니다.  속성 이름인 '%s' (이)가 두 번 이상 나열 되었습니다.
 194 함수 %s 은(는) 정의되어 있지 않거나, 파라미터 갯수가 틀립니다.
+195 '%s' can only be used in hierarchical queries. Specify a CONNECT BY clause.
+196 '%s' is not allowed here.
+197 Using CONNECT_BY_ISCYCLE is only allowed if the query has a CONNECT BY NOCYCLE clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.
@@ -1592,3 +1608,4 @@ $set 16 MSGCAT_SET_LOG
 27 입력 오류, %d와 %d 사이의 값을 선택하시오.\n
 28 복구 시점(%s)은 반드시 백업 시점(%s) 이후로 지정해야 합니다. \n
 29 COMMENT: 로그 페이지 %d 이전까지만 포함하는 아카이브 로그 %s 는 HA 유틸리티에서 더 이상 사용되지 않습니다.
+30 아카이브 로그의 개수가 허용 최대치를 초과했습니다.

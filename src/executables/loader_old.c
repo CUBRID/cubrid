@@ -1997,6 +1997,7 @@ ldr_add_attribute (const char *attname)
 }
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ldr_add_class_attribute - Adds a class attribute to the current class
  * description.
@@ -2037,6 +2038,7 @@ ldr_add_class_attribute (const char *attname)
     }
   return (error);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 /*
@@ -2204,6 +2206,7 @@ ldr_invalid_object (void)
 }
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ldr_invalid_file - called by upper layer user when invalid input file met.
  *    return: void
@@ -2219,6 +2222,7 @@ ldr_invalid_file (void)
   reset_loader_state ();
   Loader.errors++;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 /*
@@ -2763,6 +2767,7 @@ ldr_class_name (void)
 }
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ldr_constructor_name -  Returns the name of the constructor method
  * currently defined  for the class.
@@ -2778,6 +2783,7 @@ ldr_constructor_name (void)
 
   return (name);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 /*
@@ -2805,6 +2811,7 @@ ldr_att_domain_name (void)
 }
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ldr_expected_values - returns the number of values that are expected
  * to be specified to complete an instance description.
@@ -2820,6 +2827,7 @@ ldr_expected_values (void)
 
   return count;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 /*

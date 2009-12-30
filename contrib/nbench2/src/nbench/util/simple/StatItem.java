@@ -26,7 +26,7 @@ public class StatItem {
 
 	public void merge(StatItem item) {
 		tot += item.tot;
-		succ += item.tot;
+		succ += item.succ;
 		fail += item.fail;
 		if (min > item.min) {
 			min = item.min;

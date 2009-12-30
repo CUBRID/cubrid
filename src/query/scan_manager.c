@@ -428,37 +428,80 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 {
   int cur_n, next_n;
   KEY_VAL_RANGE *curp, *nextp;
-  ROP_TYPE cur_op1, cur_op2, next_op1, next_op2, cmp;
+  ROP_TYPE cur_op1, cur_op2, next_op1, next_op2;
+  ROP_TYPE cmp_1, cmp_2, cmp_3, cmp_4;
+  bool is_mergeable;
+
+  cmp_1 = cmp_2 = cmp_3 = cmp_4 = ROP_NA;
 
   curp = key_vals;
   cur_n = 0;
   while (key_cnt > 1 && cur_n < key_cnt - 1)
     {
-
       range_to_rop (&cur_op1, &cur_op2, curp->range);
 
       nextp = curp + 1;
       next_n = cur_n + 1;
       while (next_n < key_cnt)
 	{
-
 	  range_to_rop (&next_op1, &next_op2, nextp->range);
 
 	  /* check if the two key ranges are mergable */
-	  if (compare_val_op (&curp->key2, cur_op2,
-			      &nextp->key1, next_op1) == ROP_LT ||
-	      compare_val_op (&curp->key1, cur_op1,
-			      &nextp->key2, next_op2) == ROP_GT)
+	  is_mergeable = true;	/* init */
+          cmp_1 = cmp_2 = cmp_3 = cmp_4 = ROP_NA;
+
+	  if (is_mergeable == true)
+	    {
+	      cmp_1 =
+		compare_val_op (&curp->key2, cur_op2, &nextp->key1, next_op1);
+	      if (cmp_1 == ROP_NA || cmp_1 == ROP_LT)
+		{
+		  is_mergeable = false;	/* error or disjoint */
+		}
+	    }
+
+	  if (is_mergeable == true)
+	    {
+	      cmp_2 =
+		compare_val_op (&curp->key1, cur_op1, &nextp->key2, next_op2);
+	      if (cmp_2 == ROP_NA || cmp_2 == ROP_GT)
+		{
+		  is_mergeable = false;	/* error or disjoint */
+		}
+	    }
+
+	  if (is_mergeable == true)
+	    {
+	      /* determine the lower bound of the merged key range */
+	      cmp_3 =
+		compare_val_op (&curp->key1, cur_op1, &nextp->key1, next_op1);
+	      if (cmp_3 == ROP_NA)
+		{
+		  is_mergeable = false;
+		}
+	    }
+
+	  if (is_mergeable == true)
+	    {
+	      /* determine the upper bound of the merged key range */
+	      cmp_4 =
+		compare_val_op (&curp->key2, cur_op2, &nextp->key2, next_op2);
+	      if (cmp_4 == ROP_NA)
+		{
+		  is_mergeable = false;
+		}
+	    }
+
+	  if (is_mergeable == false)
 	    {
 	      /* they are disjoint */
 	      nextp++;
 	      next_n++;
-	      continue;
+	      continue;		/* skip and go ahead */
 	    }
 
 	  /* determine the lower bound of the merged key range */
-	  cmp = compare_val_op (&curp->key1, cur_op1, &nextp->key1, next_op1);
-	  if (cmp == ROP_GT_ADJ || cmp == ROP_GT)
+	  if (cmp_3 == ROP_GT_ADJ || cmp_3 == ROP_GT)
 	    {
 	      pr_clear_value (&curp->key1);
 	      curp->key1 = nextp->key1;	/* bitwise copy */
@@ -471,8 +514,7 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	    }
 
 	  /* determine the upper bound of the merged key range */
-	  cmp = compare_val_op (&curp->key2, cur_op2, &nextp->key2, next_op2);
-	  if (cmp == ROP_LT || cmp == ROP_LT_ADJ)
+	  if (cmp_4 == ROP_LT || cmp_4 == ROP_LT_ADJ)
 	    {
 	      pr_clear_value (&curp->key2);
 	      curp->key2 = nextp->key2;	/* bitwise copy */

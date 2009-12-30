@@ -38,7 +38,6 @@
 
 #include "thread_impl.h"
 
-/* perf_monitor_1.h */
 #include <time.h>
 #if !defined(WINDOWS)
 #include <sys/time.h>
@@ -136,13 +135,19 @@ enum t_diag_server_type
 };
 typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
 
-/* perf_monitor_2.h */
 /*
  * Server execution statistic structure
  */
 typedef struct mnt_server_exec_stats MNT_SERVER_EXEC_STATS;
 struct mnt_server_exec_stats
 {
+  /* Execution statistics for the file io */
+  unsigned int file_num_opens;
+  unsigned int file_num_creates;
+  unsigned int file_num_ioreads;
+  unsigned int file_num_iowrites;
+  unsigned int file_num_iosynches;
+
   /* Execution statistics for the page buffer manager */
   unsigned int pb_num_fetches;
   unsigned int pb_num_dirties;
@@ -166,23 +171,87 @@ struct mnt_server_exec_stats
   unsigned int lk_num_waited_on_pages;
   unsigned int lk_num_waited_on_objects;
 
-  /* Execution statistics for adding volumes */
-  unsigned int io_num_format_volume;
+  /* Execution statistics for transactions */
+  unsigned int tran_num_commits;
+  unsigned int tran_num_rollbacks;
+  unsigned int tran_num_savepoints;
+  unsigned int tran_num_start_topops;
+  unsigned int tran_num_end_topops;
+  unsigned int tran_num_interrupts;
+
+  /* Execution statistics for the btree manager */
+  unsigned int bt_num_inserts;
+  unsigned int bt_num_deletes;
+  unsigned int bt_num_updates;
+
+  /* Execution statistics for network communication */
+  unsigned int net_num_requests;
 
 #if defined (SERVER_MODE)
   MUTEX_T lock;
 #endif				/* SERVER_MODE */
 };
 
+typedef struct mnt_server_exec_global_stats MNT_SERVER_EXEC_GLOBAL_STATS;
+struct mnt_server_exec_global_stats
+{
+  /* Execution statistics for the file io */
+  UINT64 file_num_opens;
+  UINT64 file_num_creates;
+  UINT64 file_num_ioreads;
+  UINT64 file_num_iowrites;
+  UINT64 file_num_iosynches;
+
+  /* Execution statistics for the page buffer manager */
+  UINT64 pb_num_fetches;
+  UINT64 pb_num_dirties;
+  UINT64 pb_num_ioreads;
+  UINT64 pb_num_iowrites;
+
+  /* Execution statistics for the log manager */
+  UINT64 log_num_ioreads;
+  UINT64 log_num_iowrites;
+  UINT64 log_num_appendrecs;
+  UINT64 log_num_archives;
+  UINT64 log_num_checkpoints;
+
+  /* Execution statistics for the lock manager */
+  UINT64 lk_num_acquired_on_pages;
+  UINT64 lk_num_acquired_on_objects;
+  UINT64 lk_num_converted_on_pages;
+  UINT64 lk_num_converted_on_objects;
+  UINT64 lk_num_re_requested_on_pages;
+  UINT64 lk_num_re_requested_on_objects;
+  UINT64 lk_num_waited_on_pages;
+  UINT64 lk_num_waited_on_objects;
+
+  /* Execution statistics for transactions */
+  UINT64 tran_num_commits;
+  UINT64 tran_num_rollbacks;
+  UINT64 tran_num_savepoints;
+  UINT64 tran_num_start_topops;
+  UINT64 tran_num_end_topops;
+  UINT64 tran_num_interrupts;
+
+  /* Execution statistics for the btree manager */
+  UINT64 bt_num_inserts;
+  UINT64 bt_num_deletes;
+  UINT64 bt_num_updates;
+
+  /* Execution statistics for network communication */
+  UINT64 net_num_requests;
+};
+
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
 				   FILE * stream);
+extern void mnt_server_dump_global_stats (const MNT_SERVER_EXEC_GLOBAL_STATS
+					  * stats, FILE * stream);
 
 extern void mnt_get_current_times (time_t * cpu_usr_time,
 				   time_t * cpu_sys_time,
 				   time_t * elapsed_time);
 
-/* perf_monitor_sky_2.h */
-#if !defined(SERVER_MODE)
+#if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */
 typedef struct mnt_exec_stats MNT_EXEC_STATS;
 struct mnt_exec_stats
@@ -191,17 +260,19 @@ struct mnt_exec_stats
   time_t cpu_start_sys_time;
   time_t elapsed_start_time;
   MNT_SERVER_EXEC_STATS *server_stats;	/* A copy of server statistics */
+  MNT_SERVER_EXEC_GLOBAL_STATS server_global_stats;
 };
 
-extern int mnt_start_stats (void);
+extern int mnt_start_stats (bool for_all_trans);
 extern int mnt_stop_stats (void);
 extern void mnt_reset_stats (void);
+extern void mnt_reset_global_stats (void);
 extern void mnt_print_stats (FILE * stream);
+extern void mnt_print_global_stats (FILE * stream);
 extern MNT_EXEC_STATS *mnt_get_stats (void);
+extern MNT_SERVER_EXEC_GLOBAL_STATS *mnt_get_global_stats (void);
+#endif /* CS_MODE || SA_MODE */
 
-#endif /* !SERVER_MODE */
-
-/* perf_monitor_earth_1.h */
 #if defined(SERVER_MODE)
 
 typedef enum t_diag_obj_type T_DIAG_OBJ_TYPE;
@@ -305,9 +376,41 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value,
 			    T_DIAG_VALUE_SETTYPE settype, char *err_buf);
 #endif /* SERVER_MODE */
 
-/* perf_monitor_earth_2.h */
-#if !defined(CS_MODE)
+#ifndef DIFF_TIMEVAL
+#define DIFF_TIMEVAL(start, end, elapsed) \
+    do { \
+      (elapsed).tv_sec = (end).tv_sec - (start).tv_sec; \
+      (elapsed).tv_usec = (end).tv_usec - (start).tv_usec; \
+      if ((elapsed).tv_usec < 0) \
+        { \
+          (elapsed).tv_sec--; \
+          (elapsed).tv_usec += 1000000; \
+        } \
+    } while (0)
+#endif
+
+#define MONITOR_WAITING_THREAD(elpased) \
+    (PRM_MNT_WAITING_THREAD > 0 \
+     && ((elpased).tv_sec * 1000 + (elpased).tv_usec / 1000) \
+         > PRM_MNT_WAITING_THREAD)
+
+#if defined(SERVER_MODE) || defined (SA_MODE)
 extern int mnt_Num_tran_exec_stats;
+
+/*
+ * Statistics at file io level
+ */
+#define mnt_file_opens(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_opens(thread_p)
+#define mnt_file_creates(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_creates(thread_p)
+#define mnt_file_ioreads(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_ioreads(thread_p)
+#define mnt_file_iowrites(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_iowrites(thread_p)
+#define mnt_file_iosynches(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_iosynches(thread_p)
+
 /*
  * Statistics at page level
  */
@@ -355,18 +458,49 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_lk_waited_on_objects(thread_p)
 
 /*
- * Disk allocation level
+ * Transaction Management level
  */
-#define mnt_io_format_vols(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_io_format_vols(thread_p)
+#define mnt_tran_commits(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_commits(thread_p)
+#define mnt_tran_rollbacks(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_rollbacks(thread_p)
+#define mnt_tran_savepoints(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_savepoints(thread_p)
+#define mnt_tran_start_topops(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_start_topops(thread_p)
+#define mnt_tran_end_topops(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_end_topops(thread_p)
+#define mnt_tran_interrupts(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_tran_interrupts(thread_p)
+
+/*
+ * Statistics at btree level
+ */
+#define mnt_bt_inserts(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_inserts(thread_p)
+#define mnt_bt_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_deletes(thread_p)
+#define mnt_bt_updates(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_updates(thread_p)
+
+/*
+ * Network Communication level
+ */
+#define mnt_net_requests(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_net_requests(thread_p)
 
 
+extern void mnt_server_reflect_local_stats (THREAD_ENTRY * thread_p);
 extern MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY * thread_p);
 
 extern int mnt_server_init (int num_tran_indices);
 extern void mnt_server_final (void);
 extern void mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream);
-
+extern void mnt_x_file_opens (THREAD_ENTRY * thread_p);
+extern void mnt_x_file_creates (THREAD_ENTRY * thread_p);
+extern void mnt_x_file_ioreads (THREAD_ENTRY * thread_p);
+extern void mnt_x_file_iowrites (THREAD_ENTRY * thread_p);
+extern void mnt_x_file_iosynches (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_fetches (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_dirties (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_ioreads (THREAD_ENTRY * thread_p);
@@ -384,7 +518,57 @@ extern void mnt_x_lk_re_requested_on_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_re_requested_on_objects (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_waited_on_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_waited_on_objects (THREAD_ENTRY * thread_p);
-extern void mnt_x_io_format_vols (THREAD_ENTRY * thread_p);
-#endif /* !CS_MODE */
+extern void mnt_x_tran_commits (THREAD_ENTRY * thread_p);
+extern void mnt_x_tran_rollbacks (THREAD_ENTRY * thread_p);
+extern void mnt_x_tran_savepoints (THREAD_ENTRY * thread_p);
+extern void mnt_x_tran_start_topops (THREAD_ENTRY * thread_p);
+extern void mnt_x_tran_end_topops (THREAD_ENTRY * thread_p);
+extern void mnt_x_tran_interrupts (THREAD_ENTRY * thread_p);
+extern void mnt_x_bt_inserts (THREAD_ENTRY *thread_p);
+extern void mnt_x_bt_deletes (THREAD_ENTRY *thread_p);
+extern void mnt_x_bt_updates (THREAD_ENTRY *thread_p);
+extern void mnt_x_net_requests (THREAD_ENTRY * thread_p);
+
+#else /* SERVER_MODE || SA_MODE */
+
+#define mnt_file_opens(thread_p)
+#define mnt_file_creates(thread_p)
+#define mnt_file_ioreads(thread_p)
+#define mnt_file_iowrites(thread_p)
+#define mnt_file_iosynches(thread_p)
+
+#define mnt_pb_fetches(thread_p)
+#define mnt_pb_dirties(thread_p)
+#define mnt_pb_ioreads(thread_p)
+#define mnt_pb_iowrites(thread_p)
+
+#define mnt_log_ioreads(thread_p)
+#define mnt_log_iowrites(thread_p)
+#define mnt_log_appendrecs(thread_p)
+#define mnt_log_archives(thread_p)
+#define mnt_log_checkpoints(thread_p)
+
+#define mnt_lk_acquired_on_pages(thread_p)
+#define mnt_lk_acquired_on_objects(thread_p)
+#define mnt_lk_converted_on_pages(thread_p)
+#define mnt_lk_converted_on_objects(thread_p)
+#define mnt_lk_re_requested_on_pages(thread_p)
+#define mnt_lk_re_requested_on_objects(thread_p)
+#define mnt_lk_waited_on_pages(thread_p)
+#define mnt_lk_waited_on_objects(thread_p)
+
+#define mnt_tran_commits(thread_p)
+#define mnt_tran_rollbacks(thread_p)
+#define mnt_tran_savepoints(thread_p)
+#define mnt_tran_start_topops(thread_p)
+#define mnt_tran_end_topops(thread_p)
+#define mnt_tran_interrupts(thread_p)
+
+#define mnt_bt_inserts(thread_p)
+#define mnt_bt_deletes(thread_p)
+#define mnt_bt_updates(thread_p)
+
+#define mnt_net_requests(hread_p)
+#endif /* CS_MODE */
 
 #endif /* _PERF_MONITOR_H_ */

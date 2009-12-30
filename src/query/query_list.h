@@ -56,6 +56,56 @@ typedef enum
   QPROC_NO_SINGLE_OUTER		/* 1 NULL row or n qualified rows */
 } QPROC_SINGLE_FETCH;
 
+/*
+ * CACHE TIME RELATED DEFINITIONS
+ */
+
+typedef struct cache_time CACHE_TIME;
+struct cache_time
+{
+  int sec;
+  int usec;
+};
+
+#define CACHE_TIME_EQ(T1, T2)               \
+        (((T1)->sec != 0) &&                \
+         ((T1)->sec == (T2)->sec) &&        \
+         ((T1)->usec == (T2)->usec))
+
+#define CACHE_TIME_RESET(T)     \
+        do {                    \
+          (T)->sec = 0;         \
+          (T)->usec = 0;        \
+        } while (0)
+
+#define CACHE_TIME_MAKE(CT, TV)         \
+        do {                            \
+          (CT)->sec = (TV)->tv_sec;     \
+          (CT)->usec = (TV)->tv_usec;   \
+        } while (0)
+
+#define OR_CACHE_TIME_SIZE      (OR_INT_SIZE * 2)
+
+#define OR_PACK_CACHE_TIME(PTR, T)                      \
+        do {                                            \
+          if (T) {                                      \
+            PTR = or_pack_int(PTR, (T)->sec);           \
+            PTR = or_pack_int(PTR, (T)->usec);          \
+          }                                             \
+          else {                                        \
+            PTR = or_pack_int(PTR, 0);                  \
+            PTR = or_pack_int(PTR, 0);                  \
+          }                                             \
+        } while (0)
+
+#define OR_UNPACK_CACHE_TIME(PTR, T)                    \
+        do {                                            \
+          if (T) {                                      \
+            PTR = or_unpack_int(PTR, &((T)->sec));      \
+            PTR = or_unpack_int(PTR, &((T)->usec));     \
+          }                                             \
+        } while (0)
+
 /* XASL FILE IDENTIFICATION */
 
 typedef struct xasl_id XASL_ID;
@@ -63,30 +113,63 @@ struct xasl_id
 {
   VPID first_vpid;		/* first page real identifier */
   VFID temp_vfid;		/* temp file volume and file identifier */
+  CACHE_TIME time_stored;	/* when this XASL plan stored */
 };				/* XASL plan file identifier */
 
-#define XASL_ID_SET_NULL(xasl_id) \
+#define XASL_ID_SET_NULL(X) \
     do { \
-        (xasl_id)->first_vpid.pageid = NULL_PAGEID;\
-        (xasl_id)->first_vpid.volid  = NULL_VOLID;\
-        (xasl_id)->temp_vfid.fileid = NULL_FILEID;\
-        (xasl_id)->temp_vfid.volid = NULL_VOLID;\
+        (X)->first_vpid.pageid = NULL_PAGEID;\
+        (X)->first_vpid.volid  = NULL_VOLID;\
+        (X)->temp_vfid.fileid = NULL_FILEID;\
+        (X)->temp_vfid.volid = NULL_VOLID;\
+        /*CACHE_TIME_RESET(&((X)->time_stored))*/ \
+        (X)->time_stored.sec = 0;\
+        (X)->time_stored.usec = 0;\
     } while (0)
 
-#define XASL_ID_IS_NULL(xasl_id) \
-    ((xasl_id)->first_vpid.pageid == NULL_PAGEID)
+#define XASL_ID_IS_NULL(X) \
+    ((X)->first_vpid.pageid == NULL_PAGEID)
 
-#define XASL_ID_COPY(xasl_id1, xasl_id2) \
-    *(xasl_id1) = *(xasl_id2)
+#define XASL_ID_COPY(X1, X2) \
+    *(X1) = *(X2)
 
-#define XASL_ID_EQ(xasl_id1, xasl_id2) \
-    ((xasl_id1) == (xasl_id2) || \
-      /*VPID_EQ(&((xasl_id1)->first_vpid), &((xasl_id2)->first_vpid))*/ \
-     ((xasl_id1)->first_vpid.pageid == (xasl_id2)->first_vpid.pageid && \
-       (xasl_id1)->first_vpid.volid == (xasl_id2)->first_vpid.volid && \
-      /*VFID_EQ(&((xasl_id1)->temp_vfid), &((xasl_id2)->temp_vfid))*/ \
-       (xasl_id1)->temp_vfid.fileid == (xasl_id2)->temp_vfid.fileid && \
-        (xasl_id1)->temp_vfid.volid == (xasl_id2)->temp_vfid.volid))
+/* do not compare with X.time_stored */
+#define XASL_ID_EQ(X1, X2) \
+    ((X1) == (X2) || \
+      /*VPID_EQ(&((X1)->first_vpid), &((X2)->first_vpid))*/ \
+     ((X1)->first_vpid.pageid == (X2)->first_vpid.pageid && \
+       (X1)->first_vpid.volid == (X2)->first_vpid.volid && \
+      /*VFID_EQ(&((X1)->temp_vfid), &((X2)->temp_vfid))*/ \
+      (X1)->temp_vfid.fileid == (X2)->temp_vfid.fileid && \
+       (X1)->temp_vfid.volid == (X2)->temp_vfid.volid))
+
+#define OR_XASL_ID_SIZE         (OR_LOID_SIZE + OR_CACHE_TIME_SIZE)
+
+/* pack XASL file id (XASL_ID)
+     - borrow LOID structure only for transmission purpose
+ */
+#define OR_PACK_XASL_ID(PTR, X)                                \
+        do {                                                   \
+          CACHE_TIME _t;                                       \
+                                                               \
+          PTR = or_pack_loid (PTR, (LOID *) (X));              \
+          CACHE_TIME_RESET (&_t);                              \
+          if (X)                                               \
+            {                                                  \
+              _t = (X)->time_stored;                           \
+            }                                                  \
+          OR_PACK_CACHE_TIME (PTR, &_t);                       \
+        } while (0)
+
+/* unpack XASL file id (XASL_ID)
+     - borrow LOID structure only for transmission purpose
+     - NULL XASL_ID will be returned when cache not found
+ */
+#define OR_UNPACK_XASL_ID(PTR, X)                              \
+        do {                                                   \
+          PTR = or_unpack_loid (PTR, (LOID *) (X));            \
+          OR_UNPACK_CACHE_TIME (PTR, &((X)->time_stored));     \
+        } while (0)
 
 /* PAGE CONSTANTS */
 
@@ -574,55 +657,5 @@ enum
 #define DO_NOT_KEEP_PLAN_CACHE(flag)    !((flag) & KEEP_PLAN_CACHE)
 
 typedef int QUERY_FLAG;
-
-/*
- * CACHE TIME RELATED DEFINITIONS
- */
-
-typedef struct cache_time CACHE_TIME;
-struct cache_time
-{
-  int sec;
-  int usec;
-};
-
-#define CACHE_TIME_EQ(T1, T2)               \
-        (((T1)->sec != 0) &&                \
-         ((T1)->sec == (T2)->sec) &&        \
-         ((T1)->usec == (T2)->usec))
-
-#define CACHE_TIME_RESET(T)     \
-        do {                    \
-          (T)->sec = 0;         \
-          (T)->usec = 0;        \
-        } while (0)
-
-#define CACHE_TIME_MAKE(CT, TV)         \
-        do {                            \
-          (CT)->sec = (TV)->tv_sec;     \
-          (CT)->usec = (TV)->tv_usec;   \
-        } while (0)
-
-#define OR_CACHE_TIME_SIZE      (OR_INT_SIZE * 2)
-
-#define OR_PACK_CACHE_TIME(PTR, T)                      \
-        do {                                            \
-          if (T) {                                      \
-            PTR = or_pack_int(PTR, (T)->sec);        \
-            PTR = or_pack_int(PTR, (T)->usec);       \
-          }                                             \
-          else {                                        \
-            PTR = or_pack_int(PTR, 0);                  \
-            PTR = or_pack_int(PTR, 0);                  \
-          }                                             \
-        } while (0)
-
-#define OR_UNPACK_CACHE_TIME(PTR, T)                    \
-        do {                                            \
-          if (T) {                                      \
-            PTR = or_unpack_int(PTR, &((T)->sec));      \
-            PTR = or_unpack_int(PTR, &((T)->usec));     \
-          }                                             \
-        } while (0)
 
 #endif /* _QUERY_LIST_H_ */

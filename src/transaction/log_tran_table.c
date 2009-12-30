@@ -871,6 +871,9 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   tdes->modified_class_list = NULL;
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
+  tdes->num_new_files = 0;
+  tdes->num_new_tmp_files = 0;
+  tdes->num_new_tmp_tmp_files = 0;
 }
 
 /*
@@ -1554,6 +1557,9 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
+  tdes->num_new_files = 0;
+  tdes->num_new_tmp_files = 0;
+  tdes->num_new_tmp_tmp_files = 0;
 }
 
 /*
@@ -1594,6 +1600,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->fl_mark_repl_recidx = -1;
   tdes->repl_records = NULL;
   tdes->first_save_entry = NULL;
+  tdes->num_new_files = 0;
+  tdes->num_new_tmp_files = 0;
+  tdes->num_new_tmp_tmp_files = 0;
 }
 
 /*
@@ -1669,6 +1678,7 @@ logtb_find_tran_index (THREAD_ENTRY * thread_p, TRANID trid)
   return tran_index;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * logtb_find_tran_index_host_pid - find index of transaction
  *
@@ -1713,6 +1723,7 @@ logtb_find_tran_index_host_pid (THREAD_ENTRY * thread_p,
 
   return tran_index;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * logtb_find_tranid - find TRANID of transaction index
@@ -1793,6 +1804,7 @@ logtb_set_client_ids_all (LOG_CLIENTIDS * client, int client_type,
   client->process_id = process_id;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * logtb_count_clients_with_type - count number of transaction indices
  *                                 with client type
@@ -1821,6 +1833,7 @@ logtb_count_clients_with_type (THREAD_ENTRY * thread_p, int client_type)
   TR_TABLE_CS_EXIT ();
   return count;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * logtb_count_clients - count number of transaction indices
@@ -2329,6 +2342,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
 	      pgbuf_force_to_check_for_interrupts ();
 	    }
 
+	  mnt_tran_interrupts (thread_p);
 	  return true;
 	}
     }
@@ -2758,6 +2772,7 @@ logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p)
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * logtb_set_current_tran_index - set index of current transaction
  *
@@ -2792,6 +2807,7 @@ logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
   return index;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * logtb_set_loose_end_tdes -

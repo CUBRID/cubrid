@@ -26,6 +26,9 @@
 #include "config.h"
 
 #include <assert.h>
+#if !defined(WINDOWS)
+#include <sys/time.h>
+#endif /* !WINDOWS */
 
 #include "log_comm.h"
 #include "memory_alloc.h"
@@ -33,6 +36,7 @@
 #include "error_manager.h"
 #include "porting.h"
 #include "environment_variable.h"
+#include "system_parameter.h"
 #include "misc_string.h"
 #include "intl_support.h"
 #include "log_impl.h"
@@ -424,4 +428,87 @@ log_copy_area_malloc_recv (int num_records, char **packed_descriptors,
 
   return log_area;
 
+}
+
+/*
+ * log_dump_log_info - Dump log information
+ *
+ * return: nothing
+ *
+ *   logname_info(in): Name of the log information file
+ *   also_stdout(in):
+ *   fmt(in): Format for the variable list of arguments (like printf)
+ *   va_alist: Variable number of arguments
+ *
+ * NOTE:Dump some log information
+ */
+int
+log_dump_log_info (const char *logname_info, bool also_stdout,
+		   const char *fmt, ...)
+{
+  FILE *fp;			/* Pointer to file                   */
+  va_list ap;			/* Point to each unnamed arg in turn */
+  time_t log_time;
+  struct tm log_tm;
+  struct tm *log_tm_p = &log_tm;
+  struct timeval tv;
+  char time_array[128];
+  char time_array_of_log_info[255];
+
+  va_start (ap, fmt);
+
+  if (logname_info == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  fp = fopen (logname_info, "a");
+  if (fp == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1,
+	      logname_info);
+      va_end (ap);
+      return ER_LOG_MOUNT_FAIL;
+    }
+
+  log_time = time (NULL);
+#if defined (SERVER_MODE) && !defined (WINDOWS)
+  log_tm_p = localtime_r (&log_time, &log_tm);
+#else /* SERVER_MODE && !WINDOWS */
+  log_tm_p = localtime (&log_time);
+#endif /* SERVER_MODE && !WINDOWS */
+  if (log_tm_p == NULL)
+    {
+      strcpy (time_array_of_log_info, "Time: 00/00/00 00:00:00.000 - ");
+    }
+  else
+    {
+      gettimeofday (&tv, NULL);
+      strftime (time_array, 128, "%m/%d/%y %H:%M:%S", log_tm_p);
+      snprintf (time_array_of_log_info, 255, "Time: %s.%03ld - ",
+		time_array, tv.tv_usec / 1000);
+    }
+
+  if (strlen (time_array_of_log_info) != TIME_SIZE_OF_DUMP_LOG_INFO)
+    {
+      strcpy (time_array_of_log_info, "Time: 00/00/00 00:00:00.000 - ");
+    }
+
+  fprintf (fp, "%s", time_array_of_log_info);
+
+  (void) vfprintf (fp, fmt, ap);
+  fflush (fp);
+  fclose (fp);
+
+#if !defined(NDEBUG)
+  if (also_stdout && PRM_LOG_TRACE_DEBUG)
+    {
+      va_start (ap, fmt);
+      (void) vfprintf (stdout, fmt, ap);
+    }
+#endif
+
+  va_end (ap);
+
+  return NO_ERROR;
 }

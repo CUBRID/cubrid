@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -48,7 +48,9 @@ extern int ldr_update_statistics (void);
 
 extern void ldr_invalid_class (void);
 extern void ldr_invalid_object (void);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void ldr_invalid_file (void);
+#endif
 extern void ldr_internal_error (void);
 
 /* class definition */
@@ -56,7 +58,9 @@ extern void ldr_internal_error (void);
 extern int ldr_start_class (MOP class, const char *classname);
 extern int ldr_restrict_attributes (int type);
 extern int ldr_add_attribute (const char *attname);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int ldr_add_class_attribute (const char *attname);
+#endif
 extern int ldr_set_constructor (const char *name);
 extern int ldr_add_argument (const char *name);
 extern int ldr_add_instance (int id);
@@ -81,7 +85,9 @@ extern SM_DOMAIN *ldr_att_domain (void);
 extern const char *ldr_class_name (void);
 extern const char *ldr_constructor_name (void);
 extern const char *ldr_att_domain_name (void);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int ldr_expected_values (void);
+#endif
 
 /* Callback functions  */
 

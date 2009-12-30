@@ -433,42 +433,194 @@ ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
 EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS"
 EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC"
 
+AC_MSG_CHECKING(whether to use CUBRID environment variable)
+AC_ARG_ENABLE([cubridenv],
+	AS_HELP_STRING([--enable-cubridenv],
+		       [Using CUBRID environment variable @<:@default=yes@:>@]),
+	[case "$enableval" in
+	  yes)
+	    ;;
+	   no)
+	    COMMON_DEFS="$COMMON_DEFS -DDO_NOT_USE_CUBRIDENV"
+	    ;;
+	  *)
+	    AC_MSG_ERROR([bad value ${enableval} for --enable-cubridenv])
+	    ;;
+	  esac],
+	  [enableval=yes])
+AC_MSG_RESULT($enableval)
+AM_CONDITIONAL([DISABLE_CUBRIDENV], [test "x$enableval" = "xno"])
+
 # install dir
-DIR_DEFS="-DCUBRID_PREFIXDIR=\\\"\$(prefix)\\\" -DCUBRID_BINDIR=\\\"\$(bindir)\\\" -DCUBRID_LIBDIR=\\\"\$(libdir)\\\""
-if test "x$CONF_DIR" == "x"
-then
-	CONF_DIR="${prefix}/conf"
-fi
-DIR_DEFS="$DIR_DEFS -DCUBRID_CONFDIR=\\\"$CONF_DIR\\\""
+AC_MSG_CHECKING(for bindir)
+AS_IF([test "$bindir" != '${exec_prefix}/bin'],
+      [AC_MSG_ERROR(Do not use --bindir option ($bindir). It must be PREFIX/bin)])
+AC_MSG_RESULT($bindir)
 
-if test "x$JAVA_DIR" == "x"
-then
-	JAVA_DIR="${prefix}/java"
-fi
-DIR_DEFS="$DIR_DEFS -DCUBRID_JAVADIR=\\\"$JAVA_DIR\\\""
+AC_MSG_CHECKING(for libdir)
+AS_IF([test "$libdir" != '${exec_prefix}/lib'],
+      [AC_MSG_ERROR(Do not use --libdir option ($libdir). It must be PREFIX/lib)])
+AC_MSG_RESULT($libdir)
 
-if test "x$JDBC_DIR" == "x"
-then
-	JDBC_DIR="${prefix}/jdbc"
-fi
-DIR_DEFS="$DIR_DEFS -DCUBRID_JDBCDIR=\\\"$JDBC_DIR\\\""
+AC_MSG_CHECKING(for localstatedir)
+#AS_IF([test "$localstatedir" != '${prefix}/var'],
+#      [AC_MSG_ERROR(Do not use --localstatedir option ($localstatedir). It must be PREFIX/var)])
+AC_MSG_RESULT($localstatedir)
 
-if test "x$DEMO_DIR" == "x"
-then
-	DEMO_DIR="${prefix}/demo"
-fi
+DIR_DEFS="-DCUBRID_PREFIXDIR=\\\"\$(prefix)\\\" -DCUBRID_BINDIR=\\\"\$(bindir)\\\" -DCUBRID_LIBDIR=\\\"\$(libdir)\\\" -DCUBRID_VARDIR=\\\"\$(localstatedir)\\\""
 
-if test "x$MSG_DIR" == "x"
-then
-	MSG_DIR="${prefix}/msg"
-fi
-DIR_DEFS="$DIR_DEFS -DCUBRID_LOCALEDIR=\\\"$MSG_DIR\\\""
+AC_MSG_CHECKING(for confdir)
+AC_ARG_WITH([confdir],
+	AS_HELP_STRING([--with-confdir=PATH],
+		       [Directory containing configuration files @<:@default=PREFIX/conf@:>@]),
+	[case "$withval" in
+	   no)
+	    AC_MSG_ERROR(Need CONFDIR.)
+	    ;;
+	  yes)
+	    CUBRID_CONFDIR="\$(prefix)/conf"
+	    ;;
+	  *)
+	    CUBRID_CONFDIR="$withval"
+	    ;;
+	  esac],
+	[CUBRID_CONFDIR="\$(prefix)/conf"])
+AC_MSG_RESULT($CUBRID_CONFDIR)
 
-if test "x$VAR_DIR" == "x"
-then
-	VAR_DIR="${prefix}/var"
-fi
-DIR_DEFS="$DIR_DEFS -DCUBRID_VARDIR=\\\"$VAR_DIR\\\""
+DIR_DEFS="$DIR_DEFS -DCUBRID_CONFDIR=\\\"$CUBRID_CONFDIR\\\""
+
+AC_MSG_CHECKING(for jspdir)
+AC_ARG_WITH([jspdir],
+	AS_HELP_STRING([--with-jspdir=PATH],
+		       [Directory containing JSP server files @<:@default=PREFIX/java@:>@]),
+	[case "$withval" in
+	   no)
+	    AC_MSG_ERROR(Need JSPDIR.)
+	    ;;
+	  yes)
+	    CUBRID_JAVADIR="\$(prefix)/java"
+	    ;;
+	  *)
+	    CUBRID_JAVADIR="$withval"
+	    ;;
+	  esac],
+	[CUBRID_JAVADIR="\$(prefix)/java"])
+AC_MSG_RESULT($CUBRID_JAVADIR)
+
+DIR_DEFS="$DIR_DEFS -DCUBRID_JAVADIR=\\\"$CUBRID_JAVADIR\\\""
+
+AC_MSG_CHECKING(for jdbcdir)
+AC_ARG_WITH([jdbcdir],
+	AS_HELP_STRING([--with-jdbcdir=PATH],
+		       [Directory containing JDBC files @<:@default=PREFIX/jdbc@:>@]),
+	[case "$withval" in
+	   no)
+	    AC_MSG_ERROR(Need JDBCDIR.)
+	    ;;
+	  yes)
+	    CUBRID_JDBCDIR="\$(prefix)/ndbc"
+	    ;;
+	  *)
+	    CUBRID_JDBCDIR="$withval"
+	    ;;
+	  esac],
+	[CUBRID_JDBCDIR="\$(prefix)/jdbc"])
+AC_MSG_RESULT($CUBRID_JDBCDIR)
+
+DIR_DEFS="$DIR_DEFS -DCUBRID_JDBCDIR=\\\"$CUBRID_JDBCDIR\\\""
+
+AC_MSG_CHECKING(for demodir)
+AC_ARG_WITH([demodir],
+	AS_HELP_STRING([--with-demodir=PATH],
+		       [Directory containing demo files @<:@default=PREFIX/demo@:>@]),
+	[case "$withval" in
+	   no)
+	    AC_MSG_ERROR(Need DEMODIR.)
+	    ;;
+	  yes)
+	    CUBRID_DEMODIR="\$(prefix)/ndbc"
+	    ;;
+	  *)
+	    CUBRID_DEMODIR="$withval"
+	    ;;
+	  esac],
+	[CUBRID_DEMODIR="\$(prefix)/demo"])
+AC_MSG_RESULT($CUBRID_DEMODIR)
+
+AC_MSG_CHECKING(for msgdir)
+AC_ARG_WITH([msgdir],
+	AS_HELP_STRING([--with-msgdir=PATH],
+		       [Directory containing message files @<:@default=PREFIX/msg@:>@]),
+	[case "$withval" in
+	   no)
+	    AC_MSG_ERROR(Need MSGDIR.)
+	    ;;
+	  yes)
+	    CUBRID_LOCALEDIR="\$(prefix)/msg"
+	    ;;
+	  *)
+	    CUBRID_LOCALEDIR="$withval"
+	    ;;
+	  esac],
+	[CUBRID_LOCALEDIR="\$(prefix)/msg"])
+AC_MSG_RESULT($CUBRID_LOCALEDIR)
+DIR_DEFS="$DIR_DEFS -DCUBRID_LOCALEDIR=\\\"$CUBRID_LOCALEDIR\\\""
+
+AC_MSG_CHECKING(for compatdir)
+AC_ARG_WITH([compatdir],
+	AS_HELP_STRING([--with-compatdir=PATH],
+		       [Directory containing compatibility files @<:@default=PREFIX/compat@:>@]),
+	[case "$withval" in
+	   no)
+	    AC_MSG_ERROR(Need COMPATDIR.)
+	    ;;
+	  yes)
+	    CUBRID_COMPATDIR="\$(prefix)/compat"
+	    ;;
+	  *)
+	    CUBRID_COMPATDIR="$withval"
+	    ;;
+	  esac],
+	[CUBRID_COMPATDIR="\$(prefix)/compat"])
+AC_MSG_RESULT($CUBRID_COMPATDIR)
+
+AC_MSG_CHECKING(for logdir)
+AC_ARG_WITH([logdir],
+	AS_HELP_STRING([--with-logdir=PATH],
+		       [Directory containing log files @<:@default=PREFIX/log@:>@]),
+	[case "$withval" in
+	   no)
+	    AC_MSG_ERROR(Need LOGDIR.)
+	    ;;
+	  yes)
+	    CUBRID_LOGDIR="\$(prefix)/log"
+	    ;;
+	  *)
+	    CUBRID_LOGDIR="$withval"
+	    ;;
+	  esac],
+	[CUBRID_LOGDIR="\$(prefix)/log"])
+AC_MSG_RESULT($CUBRID_LOGDIR)
+DIR_DEFS="$DIR_DEFS -DCUBRID_LOGDIR=\\\"$CUBRID_LOGDIR\\\""
+
+AC_MSG_CHECKING(for tmpdir)
+AC_ARG_WITH([tmpdir],
+	AS_HELP_STRING([--with-tmpdir=PATH],
+		       [Directory containing temporary files @<:@default=PREFIX/tmp@:>@]),
+	[case "$withval" in
+	   no)
+	    AC_MSG_ERROR(Need TMPDIR.)
+	    ;;
+	  yes)
+	    CUBRID_TMPDIR="\$(prefix)/tmp"
+	    ;;
+	  *)
+	    CUBRID_TMPDIR="$withval"
+	    ;;
+	  esac],
+	[CUBRID_TMPDIR="\$(prefix)/tmp"])
+AC_MSG_RESULT($CUBRID_TMPDIR)
+DIR_DEFS="$DIR_DEFS -DCUBRID_TMPDIR=\\\"$CUBRID_TMPDIR\\\""
 
 AC_SUBST([BUILD_NUMBER])
 AC_SUBST([SYS_DEFS])
@@ -489,11 +641,13 @@ AC_SUBST([CCI_LIB])
 AC_SUBST([ESQL_LIB])
 AC_SUBST([BIT_MODEL])
 AC_SUBST([DIR_DEFS])
-AC_SUBST([CONF_DIR])
-AC_SUBST([JAVA_DIR])
-AC_SUBST([JDBC_DIR])
-AC_SUBST([DEMO_DIR])
-AC_SUBST([MSG_DIR])
+AC_SUBST([CUBRID_CONFDIR])
+AC_SUBST([CUBRID_JAVADIR])
+AC_SUBST([CUBRID_JDBCDIR])
+AC_SUBST([CUBRID_DEMODIR])
+AC_SUBST([CUBRID_LOCALEDIR])
+AC_SUBST([CUBRID_COMPATDIR])
+AC_SUBST([CUBRID_TMPDIR])
 
 AH_TOP([
 #ifndef _CONFIG_H_
@@ -522,7 +676,6 @@ AC_CONFIG_FILES([Makefile
 	demo/Makefile
 	jdbc/Makefile
 	java/Makefile
-	cubridmanager/com.cubrid.cubridmanager.build/Makefile
 	])
 
 AC_OUTPUT

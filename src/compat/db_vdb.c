@@ -85,7 +85,6 @@ static int db_execute_and_keep_statement_local (DB_SESSION * session,
 						DB_QUERY_RESULT ** result);
 static DB_OBJLIST *db_get_all_chosen_classes (int (*p) (MOBJ o));
 static int is_vclass_object (MOBJ class_);
-static int is_vclass_object_on_ldb (MOBJ class_);
 static char *get_reasonable_predicate (DB_ATTRIBUTE * att);
 
 /*
@@ -1242,7 +1241,6 @@ db_get_query_type_list (DB_SESSION * session, int stmt_ndx)
 	    case CUBRID_STMT_GET_TIMEOUT:
 	    case CUBRID_STMT_GET_OPT_LVL:
 	    case CUBRID_STMT_GET_TRIGGER:
-	    case CUBRID_STMT_GET_LDB:
 	      /* the type of result of some command is integer */
 	      qtype->db_type = DB_TYPE_INTEGER;
 	      break;
@@ -1728,7 +1726,6 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	    case CUBRID_STMT_GET_TIMEOUT:
 	    case CUBRID_STMT_GET_OPT_LVL:
 	    case CUBRID_STMT_GET_TRIGGER:
-	    case CUBRID_STMT_GET_LDB:
 	    case CUBRID_STMT_EVALUATE:
 	    case CUBRID_STMT_CALL:
 	    case CUBRID_STMT_INSERT:
@@ -2135,18 +2132,6 @@ is_vclass_object (MOBJ class_)
 }
 
 /*
- * is_vclass_object_on_ldb() -
- * return:
- * class(in) :
- */
-static int
-is_vclass_object_on_ldb (MOBJ class_)
-{
-  return sm_get_class_type ((SM_CLASS *) class_) == SM_LDBVCLASS_CT;
-}
-
-
-/*
  * db_get_all_vclasses_on_ldb() - This function returns list of all ldb
  *    virtual classes
  * return : list of all ldb virtual class objects if all OK,
@@ -2155,11 +2140,7 @@ is_vclass_object_on_ldb (MOBJ class_)
 DB_OBJLIST *
 db_get_all_vclasses_on_ldb (void)
 {
-  DB_OBJLIST *retval;
-
-  retval = db_get_all_chosen_classes (is_vclass_object_on_ldb);
-
-  return (retval);
+  return NULL;
 }
 
 /*
@@ -2285,10 +2266,10 @@ get_reasonable_predicate (DB_ATTRIBUTE * att)
 }
 
 /*
- * db_validate() - This function checks if a {class|vclass|proxy} definition
+ * db_validate() - This function checks if a {class|vclass} definition
  *    is reasonable
  * returns  : an ER status code if an error was found, NO_ERROR otherwise.
- * vc(in) : a {class|vclass|proxy} object
+ * vc(in) : a {class|vclass} object
  */
 int
 db_validate (DB_OBJECT * vc)

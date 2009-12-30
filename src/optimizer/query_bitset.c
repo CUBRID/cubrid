@@ -241,6 +241,7 @@ bitset_difference (BITSET * dst, const BITSET * src)
 }
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * bitset_invert () -
  *   return:
@@ -258,6 +259,7 @@ bitset_invert (BITSET * dst)
       dst->setp[nwords] = ~dst->setp[nwords];
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 /*
@@ -410,6 +412,7 @@ bitset_cardinality (const BITSET * s)
 }
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * bitset_position () -
  *   return:
@@ -441,6 +444,7 @@ bitset_position (const BITSET * s, int x)
 
   return pos;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 /*

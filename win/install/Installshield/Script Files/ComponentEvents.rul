@@ -12,11 +12,7 @@ function CUBRID_Installing()
 
 begin
     if( CreateRegistrySet ("CUBRID") < 0 ) then
-    	if ( nvCodePage = 949 ) then
-			MessageBox ("큐브리드 사용을 위한 레지스트리 구성을 생성할 수 없습니다.",SEVERE);
-    	else
-			MessageBox ("Unable to create registry set for CUBRID.",SEVERE);
-		endif;
+    	MessageBox (@SCRIPT_STR_0044,SEVERE);
 		abort;
 	endif;
 
@@ -69,11 +65,7 @@ begin
 	LongPathToQuote (Service_Path, TRUE);
 	
 	if( LaunchAppAndWait (PROGRAM, "-i " + Service_Path, WAIT ) < 0) then  
-		if ( nvCodePage = 949 ) then 
-			MessageBox("윈도우 서비스에 등록되지 않았습니다. : " + PROGRAM, WARNING);
-		else
-			MessageBox("Sorry, Failed to register with Windows Service : " + PROGRAM, WARNING);
-		endif;
+		MessageBox(@SCRIPT_STR_0045 + " : " + PROGRAM, WARNING);
 	endif;
 
 	// Start CUBRIDService
@@ -83,13 +75,8 @@ begin
 
 	Delay(1);
               
-    if ( nvCodePage = 949 ) then
-		svResult = "샘플 데이터베이스(demodb)를 생성하겠습니까?";
-		szCaption = "샘플 데이터베이스(demodb)를 확인하십시오. ";
-    else
-		svResult = "Do you want to make sample databases(demodb)?";
-		szCaption = "Confirm make demodb";
-	endif;
+	svResult = @SCRIPT_STR_0046;
+	szCaption = @SCRIPT_STR_0047;
 	nResult = SprintfBox(MB_YESNO,szCaption,"%s",svResult);
 
 	if (nResult == IDYES) then
@@ -128,11 +115,7 @@ function cubridmanager_Installing()
 begin
     // registry 
     if( CreateRegistrySet ("cubridmanager") < 0 ) then
-    	if ( nvCodePage = 949 ) then
-			MessageBox ("큐브리드 매니저 클라이언트를 위한 레지스트리 구성을 생성할 수 없습니다.",SEVERE);
-    	else
-			MessageBox ("Unable to create registry set for CUBRID Manager Client.",SEVERE);
-		endif;
+    	MessageBox (@SCRIPT_STR_0048,SEVERE);
 		abort;
 	endif;
 
@@ -279,7 +262,7 @@ function ODBC_Installing()
 begin
     // registry 
     if( CreateRegistrySet ("ODBC") < 0 ) then
-		MessageBox ("Unable to create registry set.",SEVERE);
+		MessageBox (@SCRIPT_STR_0049,SEVERE);
 	endif;
 
     // registry 
@@ -301,7 +284,7 @@ begin
 	PROGRAM = TARGETDIR + "\\bin\\CUBRIDProvider.dll";
 	LongPathToQuote (PROGRAM, TRUE);
 	if(LaunchAppAndWait("regsvr32.exe", "/s " + PROGRAM, WAIT) < 0)then
-		MessageBox("Sorry, Failed to register CUBRIDProvider", WARNING);
+		MessageBox(@SCRIPT_STR_0051, WARNING);
 	endif;
 end;
 
@@ -312,6 +295,6 @@ begin
 	PROGRAM = TARGETDIR + "\\bin\\CUBRIDProvider.dll";
 	LongPathToQuote(PROGRAM, TRUE);
 	if(LaunchAppAndWait("regsvr32.exe", "/s /u " + PROGRAM, WAIT) < 0)then
-		MessageBox("Sorry, Failed to remove CUBRIDProvider from the register.", WARNING);
+		MessageBox(@SCRIPT_STR_0050, WARNING);
 	endif;
 end;

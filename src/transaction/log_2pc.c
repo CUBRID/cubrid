@@ -1321,6 +1321,7 @@ error:
 
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_2pc_append_recv_ack - Acknowledgement received from a participant
  *
@@ -1425,6 +1426,7 @@ log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index)
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * log_2pc_prepare_global_tran - Prepare the transaction to commit

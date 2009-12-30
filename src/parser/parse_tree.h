@@ -387,6 +387,9 @@
            (op) == PT_IS_NULL || \
            (op) == PT_IS_NOT_NULL || \
            (op) == PT_EXISTS || \
+           (op) == PT_PRIOR || \
+           (op) == PT_CONNECT_BY_ROOT || \
+	   (op) == PT_QPRIOR || \
            (op) == PT_UNARY_MINUS) ? true : false )
 
 #define PT_IS_N_COLUMN_UPDATE_EXPR(n) \
@@ -403,6 +406,30 @@
          (op) == PT_TRUNC || (op) == PT_INSTR || \
          (op) == PT_LEAST || (op) == PT_GREATEST)
 
+#define PT_IS_PRIOR_NODE(x) ((x) && (x)->info.expr.arg1 && \
+				(x)->info.expr.arg1->info.expr.op == PT_PRIOR)
+
+#define PT_REQUIRES_HIERARCHICAL_QUERY(op) \
+        ( ((op) == PT_LEVEL || \
+           (op) == PT_CONNECT_BY_ISCYCLE || \
+           (op) == PT_CONNECT_BY_ISLEAF || \
+           (op) == PT_PRIOR || \
+           (op) == PT_CONNECT_BY_ROOT  || \
+	   (op) == PT_QPRIOR || \
+           (op) == PT_SYS_CONNECT_BY_PATH) ? true : false )
+
+#define PT_IS_NUMBERING_AFTER_EXECUTION(op) \
+        ( ((op) == PT_INST_NUM || \
+           (op) == PT_ROWNUM || \
+           (op) == PT_GROUPBY_NUM || \
+           (op) == PT_ORDERBY_NUM) ? true : false )
+
+#define PT_IS_SERIAL(op) \
+        ( ((op) == PT_CURRENT_VALUE || \
+           (op) == PT_NEXT_VALUE) ? true : false )
+
+#define PT_IS_EXPR_NODE_WITH_OPERATOR(n, op_type) \
+        ( (PT_IS_EXPR_NODE (n)) ? ((n)->info.expr.op == (op_type)) : false )
 
 
 #if !defined (SERVER_MODE)
@@ -520,20 +547,11 @@ enum pt_custom_print
   PT_SUPPRESS_RESOLVED = 0x2,
   PT_SUPPRESS_META_ATTR_CLASS = 0x4,
   PT_SUPPRESS_INTO = 0x8,
-  PT_INGRES_PRINT = 0x10,
-  PT_ORACLE_PRINT = 0x20,
   PT_SUPPRESS_SELECTOR = 0x40,
   PT_SUPPRESS_SELECT_LIST = 0x80,
-  PT_RDB_PRINT = 0x100,
   PT_SUPPRESS_QUOTES = 0x200,
-  PT_DYNAMIC_SQL = 0x400,
-  PT_SYBASE_PRINT = 0x800,
-  PT_INFORMIX_PRINT = 0x1000,
-  PT_SUPRA_PRINT = 0x2000,
-  PT_SUPPRESS_SETS = 0x4000,
   PT_PAD_BYTE = 0x8000,
   PT_CONVERT_RANGE = 0x10000,
-  PT_LDB_PRINT = 0x20000,
   PT_INTERNAL_PRINT = 0x40000
 };
 
@@ -551,7 +569,6 @@ enum pt_node_type
   PT_CREATE_USER = CUBRID_STMT_CREATE_USER,
   PT_CREATE_TRIGGER = CUBRID_STMT_CREATE_TRIGGER,
   PT_CREATE_SERIAL = CUBRID_STMT_CREATE_SERIAL,
-  PT_DROP_LDB = CUBRID_STMT_DROP_DATABASE,
   PT_DROP = CUBRID_STMT_DROP_CLASS,
   PT_DROP_INDEX = CUBRID_STMT_DROP_INDEX,
   PT_DROP_USER = CUBRID_STMT_DROP_USER,
@@ -579,15 +596,12 @@ enum pt_node_type
   PT_SCOPE = CUBRID_STMT_SCOPE,
   PT_SET_TRIGGER = CUBRID_STMT_SET_TRIGGER,
   PT_GET_TRIGGER = CUBRID_STMT_GET_TRIGGER,
-  PT_SET_LDB = CUBRID_STMT_SET_LDB,
-  PT_GET_LDB = CUBRID_STMT_GET_LDB,
   PT_SAVEPOINT = CUBRID_STMT_SAVEPOINT,
   PT_PREPARE_TO_COMMIT = CUBRID_STMT_PREPARE,
   PT_ATTACH = CUBRID_STMT_ATTACH,
   PT_USE = CUBRID_STMT_USE,
   PT_REMOVE_TRIGGER = CUBRID_STMT_REMOVE_TRIGGER,
   PT_RENAME_TRIGGER = CUBRID_STMT_RENAME_TRIGGER,
-  PT_ON_LDB = CUBRID_STMT_ON_LDB,
 
   PT_CREATE_STORED_PROCEDURE = CUBRID_STMT_CREATE_STORED_PROCEDURE,
   PT_DROP_STORED_PROCEDURE = CUBRID_STMT_DROP_STORED_PROCEDURE,
@@ -712,7 +726,6 @@ typedef enum
   PT_GRANT_OPTION,
   PT_NO_GRANT_OPTION,
   PT_CLASS,
-  PT_LDBVCLASS,
   PT_VCLASS,
   PT_VID_ATTR,
   PT_OID_ATTR,
@@ -769,8 +782,6 @@ typedef enum
   PT_EXPRESSION,
   PT_TRIGGER_TRACE,		/* trigger options */
   PT_TRIGGER_DEPTH,
-  PT_NORMAL_REGISTER_LDB,
-  PT_ALTER_REGISTER_LDB,
   PT_IS_CALL_STMT,		/* is the method a call statement */
   PT_IS_MTHD_EXPR,		/* is the method call part of an expr */
   PT_IS_CLASS_MTHD,		/* is the method a class method */
@@ -782,12 +793,6 @@ typedef enum
   PT_PATH_INNER,		/* types of join which may emulate path */
   PT_PATH_OUTER,
   PT_PATH_OUTER_WEASEL,
-  PT_PROXY_FOREIGN_ATTR,	/* an otherwise normal attribute, which indicates a
-				 * relational proxy attribute used as a psuedo OID
-				 * to another table. This allows the foreign reference
-				 * value to be visible, and still used to emulate and
-				 * path expressions.
-				 */
   PT_ADT,			/* class-like user defined type */
   PT_LOCAL,			/* local or cascaded view check option */
   PT_CASCADED,
@@ -822,10 +827,6 @@ typedef enum
   PT_MINUTE,
   PT_SECOND,
   PT_MILLISECOND,
-
-  PT_LDB_MAX_ACTIVE,
-  PT_LDB_MIN_ACTIVE,
-  PT_LDB_DECAY_CONSTANT,
 
   PT_SIMPLE_CASE,
   PT_SEARCHED_CASE,
@@ -875,7 +876,8 @@ typedef enum
   PT_HINT_REL_LOCK = 0x0800,	/* 0000 1000 0000 0000 *//* release_lock */
   PT_HINT_QUERY_CACHE = 0x1000,	/* 0001 0000 0000 0000 *//* query_cache */
   PT_HINT_REEXECUTE = 0x2000,	/* 0010 0000 0000 0000 *//* reexecute */
-  PT_HINT_JDBC_CACHE = 0x4000	/* 0100 0000 0000 0000 *//* jdbc_cache */
+  PT_HINT_JDBC_CACHE = 0x4000,	/* 0100 0000 0000 0000 *//* jdbc_cache */
+  PT_HINT_NO_STATS = 0x8000     /* 1000 0000 0000 0000 *//* no_stats */
 } PT_HINT_ENUM;
 
 
@@ -976,7 +978,8 @@ typedef enum
   PT_GT_INF, PT_LT_INF,		/* internal use only */
   PT_SETEQ, PT_SETNEQ, PT_SUPERSETEQ, PT_SUPERSET, PT_SUBSET, PT_SUBSETEQ,
   PT_PLUS, PT_MINUS,
-  PT_TIMES, PT_DIVIDE, PT_UNARY_MINUS,
+  PT_TIMES, PT_DIVIDE, PT_UNARY_MINUS, PT_PRIOR, PT_QPRIOR,
+    PT_CONNECT_BY_ROOT,
   PT_ASSIGN,			/* as in x=y */
   PT_BETWEEN_AND,
   PT_BETWEEN_GE_LE, PT_BETWEEN_GE_LT, PT_BETWEEN_GT_LE, PT_BETWEEN_GT_LT,
@@ -993,6 +996,8 @@ typedef enum
   PT_TO_TIME, PT_TO_TIMESTAMP, PT_TO_DATETIME,
   PT_CURRENT_VALUE, PT_NEXT_VALUE,
   PT_INST_NUM, PT_ROWNUM, PT_ORDERBY_NUM,
+  PT_CONNECT_BY_ISCYCLE, PT_CONNECT_BY_ISLEAF, PT_LEVEL,
+    PT_SYS_CONNECT_BY_PATH,
   PT_EXTRACT,
   PT_LIKE_ESCAPE,
   PT_CAST,
@@ -1155,13 +1160,14 @@ typedef PT_NODE *(*PT_NODE_WALK_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree,
 typedef void (*PT_NODE_APPLY_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree,
 					PT_NODE_FUNCTION f, void *arg);
 
-typedef PARSER_VARCHAR *(*PT_PRINT_VALUE_FUNC)
-  (PARSER_CONTEXT * parser, const PT_NODE * val);
+typedef PARSER_VARCHAR *(*PT_PRINT_VALUE_FUNC) (PARSER_CONTEXT * parser,
+						const PT_NODE * val);
 typedef PT_NODE *(*PARSER_INIT_NODE_FUNC) (PT_NODE *);
-typedef PARSER_VARCHAR *(*PARSER_PRINT_NODE_FUNC)
-  (PARSER_CONTEXT * parser, PT_NODE * node);
-typedef PT_NODE *(*PARSER_APPLY_NODE_FUNC)
-  (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
+typedef PARSER_VARCHAR *(*PARSER_PRINT_NODE_FUNC) (PARSER_CONTEXT * parser,
+						   PT_NODE * node);
+typedef PT_NODE *(*PARSER_APPLY_NODE_FUNC) (PARSER_CONTEXT * parser,
+					    PT_NODE * p,
+					    PT_NODE_FUNCTION g, void *arg);
 
 extern PARSER_INIT_NODE_FUNC *pt_init_f;
 extern PARSER_PRINT_NODE_FUNC *pt_print_f;
@@ -1169,6 +1175,15 @@ extern PARSER_APPLY_NODE_FUNC *pt_apply_f;
 
 /* This is for loose reference to init node function vector */
 typedef void (*PARSER_GENERIC_VOID_FUNCTION) ();
+
+typedef struct must_be_filtering_info MUST_BE_FILTERING_INFO;
+
+struct must_be_filtering_info
+{
+  UINTPTR first_spec_id;
+  bool must_be_filtering;
+  bool has_second_spec_id;
+};
 
 struct semantic_chk_info
 {
@@ -1196,7 +1211,6 @@ struct view_cache_info
   char **expressions;
   int number_of_attrs;
   DB_AUTH authorization;
-  char sent;			/* has proxy info been sent to driver? */
 };
 
 struct parser_hint
@@ -1212,7 +1226,7 @@ struct pt_alter_info
 {
   PT_NODE *entity_name;		/* PT_NAME */
   PT_ALTER_CODE code;		/* value will be PT_ADD_ATTR, PT_DROP_ATTR ... */
-  PT_MISC_TYPE entity_type;	/* PT_VCLASS, PT_LDBVCLASS ... */
+  PT_MISC_TYPE entity_type;	/* PT_VCLASS, ... */
   struct
   {
     PT_NODE *sup_class_list;	/* PT_NAME */
@@ -1259,6 +1273,7 @@ struct pt_alter_info
   } alter_clause;
   PT_NODE *constraint_list;	/* constraints from ADD and CHANGE clauses */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
+  PT_HINT_ENUM hint;            /* hint flag */
 };
 
 /* ALTER USER INFO */
@@ -1324,6 +1339,7 @@ struct pt_create_entity_info
   PT_NODE *constraint_list;	/* PT_CONSTRAINT (list) */
   PT_NODE *partition_info;	/* PT_PARTITION_INFO */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
+  PT_HINT_ENUM hint;            /* hint flag */
 };
 
 /* CREATE/DROP INDEX INFO */
@@ -1334,6 +1350,7 @@ struct pt_index_info
   PT_NODE *index_name;		/* PT_NAME */
   int reverse;			/* REVERSE */
   char unique;			/* UNIQUE specified? */
+  PT_HINT_ENUM hint;            /* hint flag */
 };
 
 /* CREATE USER INFO */
@@ -1650,7 +1667,6 @@ struct pt_insert_info
   PT_MISC_TYPE is_subinsert;	/* 0 or PT_IS_SUBINSERT(for printing)   */
   PT_MISC_TYPE is_value;	/* 0 or PT_VALUE : VALUE clause present */
   PT_NODE *where;		/* for view with check option checking */
-  PT_NODE *ldb_insert;		/* PT_INSERT in ldb terms */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_HINT_ENUM hint;		/* hint flag */
@@ -1807,6 +1823,9 @@ struct pt_select_info
   PT_NODE *from;		/* PT_SPEC (list) */
   PT_NODE *where;		/* PT_EXPR        */
   PT_NODE *group_by;		/* PT_EXPR (list) */
+  PT_NODE *connect_by;		/* PT_EXPR */
+  PT_NODE *start_with;		/* PT_EXPR */
+  PT_NODE *after_cb_filter;	/* PT_EXPR */
   PT_NODE *having;		/* PT_EXPR        */
   PT_NODE *using_index;		/* PT_NAME (list) */
   PT_NODE *with_increment;	/* PT_NAME (list) */
@@ -1821,6 +1840,7 @@ struct pt_select_info
   PT_HINT_ENUM hint;
   int flavor;
   short flag;			/* flags */
+  unsigned has_nocycle:1;	/* CONNECT BY NOCYCLE */
 };
 
 #define PT_SELECT_INFO_ANSI_JOIN    1	/* has ANSI join? */
@@ -1850,6 +1870,7 @@ struct pt_query_info
   unsigned reexecute:1;		/* should be re-executed; not from the result caceh */
   unsigned do_cache:1;		/* do cache the query result */
   unsigned do_not_cache:1;	/* do not cache the query result */
+  unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
   PT_NODE *into_list;		/* PT_VALUE (list) */
@@ -2243,6 +2264,7 @@ struct parser_node
   unsigned use_plan_cache:1;	/* used for plan cache */
   unsigned use_query_cache:1;
   unsigned is_hidden_column:1;
+  unsigned is_paren:1;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 
@@ -2294,10 +2316,6 @@ struct parser_context
   QUERY_ID query_id;		/* id assigned to current query */
   DB_VALUE *host_variables;	/* host variables place holder;
 				   DB_VALUE array */
-  PT_NODE *input_values;	/* temporary place-holder for ldb
-				 * host variables. >> NOT TO BE CONFUSED
-				 * with CUBRID Host variables above
-				 * in host_variables << */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
   int dbval_cnt;		/* to be assigned to XASL */
@@ -2309,8 +2327,6 @@ struct parser_context
   struct symbol_info *symbols;	/* a place to keep information
 				 * used in generating query processing
 				 * (xasl) procedures. */
-  struct start_proc *start_list;	/* to keep sqlm start procs reentrantly */
-  struct xasl_node *read_list;	/* to keep sqlm read procs reentrantly */
   char **lcks_classes;
 
   size_t input_buffer_length;
@@ -2326,16 +2342,7 @@ struct parser_context
   int num_lcks_classes;
   PT_INCLUDE_OID_TYPE oid_included;	/* for update cursors */
 
-  unsigned dont_prt:1;		/* asserted to avoid expensive pt_append_str calls
-				 * in pt_ldb_print when gathering ldb input host
-				 * vars into parser->input_values.
-				 */
   unsigned has_internal_error:1;	/* 0 or 1 */
-  unsigned exclude_native:1;	/* 1 iff ldb scope excludes gdb */
-  unsigned dont_prt_xasl:1;	/* used only in pt_to_read_prod as src for
-				 * setting dont_prt just before pt_ldb_print.
-				 */
-  unsigned dont_flush:1;	/* asserted to avoid flushing */
   unsigned abort:1;		/* this flag is for aborting a transaction */
   /* if deadlock occurs during query execution */
   unsigned set_host_var:1;	/* 1 iff the user has set host variables */

@@ -170,6 +170,7 @@ co_code_id (int code)
   return ((-code) % CO_MAX_CODE) + 1;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * co_report() - print current condition messageto the given file
  *   return: none
@@ -289,6 +290,7 @@ co_report (FILE * file, CO_SEVERITY severity)
       abort ();
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * co_message() - return a message for the current condition
@@ -383,6 +385,7 @@ co_code (void)
   return co_Current_code;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * co_put_detail() - change the current condition detail level.
  *   return: condition code
@@ -414,6 +417,7 @@ co_put_detail (CO_DETAIL level)
   return error;
 
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * co_final() - clean up all memory allocated in this module

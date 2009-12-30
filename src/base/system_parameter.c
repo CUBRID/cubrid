@@ -82,8 +82,6 @@
 #endif
 #define PATH_CURRENT    '.'
 
-#define CONF_FILE_DIR   "conf"
-
 #define ER_LOG_FILE_DIR	"server"
 #if !defined (CS_MODE)
 static const char sysprm_error_log_file[] = "cub_server.err";
@@ -244,6 +242,9 @@ int PRM_LOG_CHECKPOINT_INTERVAL_MINUTES = INT_MIN;
 static int prm_log_checkpoint_interval_minutes_default = 720;
 static int prm_log_checkpoint_interval_minutes_lower = 1;
 
+bool PRM_LOG_BACKGROUND_ARCHIVING = true;
+static bool prm_log_background_archiving_default = true;
+
 int PRM_LOG_ISOLATION_LEVEL = INT_MIN;
 static int prm_log_isolation_level_default = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
 static int prm_log_isolation_level_lower =
@@ -356,7 +357,12 @@ static int prm_pb_num_LRU_chains_upper = 1000;
 
 int PRM_PAGE_FLUSH_THREAD_WAKEUP_INTERVAL = INT_MIN;
 static int prm_page_flush_thread_wakeup_interval_default = 0;
-static int prm_page_flush_thread_wakeup_interval_lower = 0;
+static int prm_page_flush_thread_wakeup_interval_lower = -1;
+
+int PRM_NUM_PAGES_PER_BGFLUSH = INT_MIN;
+static int prm_num_pages_per_bgflush_default = 100;
+static int prm_num_pages_per_bgflush_lower = 0;
+static int prm_num_pages_per_bgflush_upper = 10000;
 
 bool PRM_ORACLE_STYLE_OUTERJOIN = false;
 static bool prm_oracle_style_outerjoin_default = false;
@@ -454,7 +460,7 @@ static int prm_log_group_commit_interval_msecs_default = 0;
 static int prm_log_group_commit_interval_msecs_lower = 0;
 
 int PRM_LOG_BG_FLUSH_INTERVAL_MSECS = INT_MIN;
-static int prm_log_bg_flush_interval_msecs_default = 50;
+static int prm_log_bg_flush_interval_msecs_default = 1000;
 static int prm_log_bg_flush_interval_msecs_lower = 0;
 
 int PRM_LOG_BG_FLUSH_NUM_PAGES = INT_MIN;
@@ -547,6 +553,10 @@ static bool *prm_event_activation_default = NULL;
 
 bool PRM_READ_ONLY_MODE = false;
 static bool prm_read_only_mode_default = false;
+
+int PRM_MNT_WAITING_THREAD = INT_MIN;
+static int prm_mnt_waiting_thread_default = 0;
+static int prm_mnt_waiting_thread_lower = 0;
 
 const char *PRM_SERVICE_SERVICE_LIST = "";
 static const char *prm_service_service_list_default = NULL;
@@ -696,6 +706,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_log_checkpoint_interval_minutes_default,
    (void *) &PRM_LOG_CHECKPOINT_INTERVAL_MINUTES,
    (void *) NULL, (void *) &prm_log_checkpoint_interval_minutes_lower,
+   (char *) NULL},
+  {PRM_NAME_LOG_BACKGROUND_ARCHIVING,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER |
+    PRM_USER_CHANGE),
+   (void *) &prm_log_background_archiving_default,
+   (void *) &PRM_LOG_BACKGROUND_ARCHIVING,
+   (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_LOG_ISOLATION_LEVEL,
    (PRM_REQUIRED | PRM_KEYWORD | PRM_DEFAULT | PRM_FOR_CLIENT |
@@ -900,6 +917,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL,
    (void *) &prm_page_flush_thread_wakeup_interval_lower,
    (char *) NULL},
+  {PRM_NAME_NUM_PAGES_PER_BGFLUSH,
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (void *) &prm_num_pages_per_bgflush_default,
+   (void *) &PRM_NUM_PAGES_PER_BGFLUSH,
+   (void *) &prm_num_pages_per_bgflush_upper,
+   (void *) &prm_num_pages_per_bgflush_lower,
+   (char *) NULL},
   {PRM_NAME_ORACLE_STYLE_OUTERJOIN,
    (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT |
     PRM_USER_CHANGE | PRM_HIDDEN),
@@ -1034,7 +1058,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_mode_lower,
    (char *) NULL},
   {PRM_NAME_HA_SERVER_STATE,
-   (PRM_KEYWORD | PRM_DEFAULT | PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_KEYWORD | PRM_DEFAULT | PRM_FOR_SERVER),
    (void *) &prm_ha_server_state_default,
    (void *) &PRM_HA_SERVER_STATE,
    (void *) &prm_ha_server_state_upper,
@@ -1266,6 +1290,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_read_only_mode_default,
    (void *) &PRM_READ_ONLY_MODE,
    (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_MNT_WAITING_THREAD,
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER | PRM_USER_CHANGE |
+    PRM_HIDDEN),
+   (void *) &prm_mnt_waiting_thread_default,
+   (void *) &PRM_MNT_WAITING_THREAD,
+   (void *) NULL, (void *) &prm_mnt_waiting_thread_lower,
    (char *) NULL},
   {PRM_NAME_SERVICE_SERVICE_LIST,
    (PRM_STRING | PRM_DEFAULT | PRM_FOR_SERVER),
@@ -1530,7 +1561,7 @@ sysprm_load_and_init (const char *db_name, const char *conf_file)
 {
   char *base_db_name;
   char file_being_dealt_with[PATH_MAX];
-  const char *root_path;
+  const char *conf_path;
   unsigned int i;
   struct stat stat_buf;
   int r;
@@ -1577,10 +1608,9 @@ sysprm_load_and_init (const char *db_name, const char *conf_file)
 #endif /* !CS_MODE */
 
   /*
-   * Read installation configuration file - $CUBRID/conf/cubrid.conf
-   * or use conf_file if exist
+   * Read installation configuration file (cubrid.conf)
+   * or use CUBRID_CONF_FILE env variable
    */
-  root_path = envvar_root ();
 
   if (conf_file == NULL)
     {
@@ -1597,19 +1627,10 @@ sysprm_load_and_init (const char *db_name, const char *conf_file)
       /* use user specified config path and file */
       strcpy (file_being_dealt_with, conf_file);
     }
-  else if (root_path != NULL)
-    {
-#if defined (WINDOWS)
-      sprintf (file_being_dealt_with, "%s\\%s\\%s",
-	       root_path, CONF_FILE_DIR, sysprm_conf_file_name);
-#else /* WINDOWS */
-      sprintf (file_being_dealt_with, "%s/%s/%s",
-	       root_path, CONF_FILE_DIR, sysprm_conf_file_name);
-#endif /* !WINDOWS */
-    }
   else
     {
-      strcpy (file_being_dealt_with, sysprm_conf_file_name);
+      envvar_confdir_file (file_being_dealt_with, PATH_MAX,
+			   sysprm_conf_file_name);
     }
 
   if (stat (file_being_dealt_with, &stat_buf) != 0)
@@ -1634,11 +1655,7 @@ sysprm_load_and_init (const char *db_name, const char *conf_file)
    */
   if (conf_file == NULL)
     {
-#if defined (WINDOWS)
-      sprintf (file_being_dealt_with, ".\\%s", sysprm_conf_file_name);
-#else /* WINDOWS */
-      sprintf (file_being_dealt_with, "./%s", sysprm_conf_file_name);
-#endif /* WINDOWS */
+      sprintf (file_being_dealt_with, "%s", sysprm_conf_file_name);
       if (stat (file_being_dealt_with, &stat_buf) == 0)
 	{
 #if !defined(CS_MODE)
@@ -2931,6 +2948,8 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *ha_server_state_prm;
   SYSPRM_PARAM *replication_prm;
   SYSPRM_PARAM *auto_restart_server_prm;
+  SYSPRM_PARAM *log_background_archiving_prm;
+  SYSPRM_PARAM *log_media_failure_support_prm;
 
   char newval[LINE_MAX];
   int max_clients;
@@ -2955,6 +2974,10 @@ prm_tune_parameters (void)
   ha_server_state_prm = prm_find (PRM_NAME_HA_SERVER_STATE, NULL);
   replication_prm = prm_find (PRM_NAME_REPLICATION_MODE, NULL);
   auto_restart_server_prm = prm_find (PRM_NAME_AUTO_RESTART_SERVER, NULL);
+  log_background_archiving_prm =
+    prm_find (PRM_NAME_LOG_BACKGROUND_ARCHIVING, NULL);
+  log_media_failure_support_prm =
+    prm_find (PRM_NAME_LOG_MEDIA_FAILURE_SUPPORT, NULL);
 
   /* Check that max clients has been set */
   assert (max_clients_prm != NULL);
@@ -3103,6 +3126,11 @@ prm_tune_parameters (void)
   (void) prm_set_default (replication_prm);
 #endif
 #endif
+
+  if (!log_media_failure_support_prm)
+    {
+      prm_set (log_background_archiving_prm, "no");
+    }
 
   return;
 }

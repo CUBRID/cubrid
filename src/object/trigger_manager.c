@@ -887,6 +887,7 @@ remove_deferred_context (TR_DEFERRED_CONTEXT * context)
   free_and_init (context);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tr_set_savepoint() - This establishes a new context for scheduling deferred
  *                      trigger activities.
@@ -942,6 +943,7 @@ tr_abort_to_savepoint (void *savepoint_id)
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* TRIGGER STATE STRUCTURES */
 
@@ -2078,6 +2080,7 @@ tr_update_user_cache (void)
   return (error);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tr_invalidate_user_cache() - This is called to invalidate the user trigger
  *                              cache and cause it to be recalculated the next
@@ -2095,7 +2098,7 @@ tr_invalidate_user_cache (void)
 {
   tr_User_triggers_valid = 0;
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* SCHEMA CACHE */
 
@@ -2554,7 +2557,7 @@ tr_validate_schema_cache (TR_SCHEMA_CACHE * cache)
   return (error);
 }
 
-#if 0
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tr_reset_schema_cache() - This is called by functions that alter triggers
  *                           in such a way that the schema caches need
@@ -2588,7 +2591,7 @@ tr_reset_schema_cache (TR_SCHEMA_CACHE * cache)
     }
   return (error);
 }
-#endif /* 0 */
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * reorder_schema_caches() - This finds all the schema caches that point to
@@ -4939,6 +4942,7 @@ error_return:
   return er_errid ();
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tr_prepare() - This begins the preparation for trigger evaluation.
  *    It may be called multiple times before calling tr_before().
@@ -4978,6 +4982,7 @@ tr_prepare (TR_STATE ** state_p, TR_TRIGLIST * triggers)
 
   return (error);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tr_prepare_class() - This is used to prepare a trigger state for an event
@@ -5329,6 +5334,7 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
     }
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tr_check_timeout_triggers() - This is called whenever a lock timeout ocurrs.
  *    return: none
@@ -5346,6 +5352,7 @@ tr_check_timeout_triggers (void)
     }
   (void) run_user_triggers (TR_EVENT_TIMEOUT, TR_TIME_AFTER);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tr_check_abort_triggers() - This is called whenever the client is
@@ -6342,6 +6349,7 @@ get_user_name (DB_OBJECT * user)
   return namebuf;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tr_dump_all_triggers() - This is intended to support the unloaddb/loaddb
  *                          utilities.
@@ -6429,6 +6437,7 @@ tr_dump_all_triggers (FILE * fp, bool quoted_id_flag)
 
   return error;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * is_required_trigger() -
@@ -7064,6 +7073,8 @@ tr_set_execution_state (bool new_state)
   return (old_state);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
+
 /*
  * tr_downcase_all_trigger_info() -/
  *    return: int
@@ -7106,3 +7117,5 @@ tr_downcase_all_trigger_info (void)
   ml_ext_free (list);
   return ((mop == NULL) ? NO_ERROR : ER_FAILED);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
+

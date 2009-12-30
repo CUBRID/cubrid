@@ -4786,6 +4786,7 @@ exit_on_error:
 }
 #endif
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ehash_estimate_npages_needed () - Estimate number of hash pages needed
  *   return: int npages
@@ -4859,6 +4860,7 @@ ehash_estimate_npages_needed (THREAD_ENTRY * thread_p, int total_keys,
 
   return bucket_pages + dir_pages;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 static int
 ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p,

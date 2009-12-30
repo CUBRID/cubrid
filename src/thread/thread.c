@@ -1079,6 +1079,7 @@ thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
   thread_p->tran_index = tran_index;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 void
 thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 {
@@ -1091,6 +1092,7 @@ thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index)
       thread_p->tran_index = tran_index;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * thread_get_current_conn_entry() -
@@ -1130,6 +1132,7 @@ thread_lock_entry (THREAD_ENTRY * thread_p)
   return r;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * thread_lock_entry_with_tran_index() -
  *   return:
@@ -1154,6 +1157,7 @@ thread_lock_entry_with_tran_index (int tran_index)
 
   return r;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * thread_unlock_entry() -
@@ -1190,8 +1194,10 @@ int
 thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p)
 {
   int r;
+  int old_status;
 
-  assert (thread_p->status == TS_RUN);
+  assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
+  old_status = thread_p->status;
   thread_p->status = TS_WAIT;
 
   r = COND_WAIT (thread_p->wakeup_cond, thread_p->th_entry_lock);
@@ -1211,7 +1217,7 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p)
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 #endif /* WINDOWS */
-  thread_p->status = TS_RUN;
+  thread_p->status = old_status;
 
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
   if (r != 0)
@@ -1235,13 +1241,15 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY *
 						thread_p, void *time_p)
 {
   int r;
+  int old_status;
 #if defined(WINDOWS)
   int tmp_timespec;
 #else /* WINDOWS */
   struct timespec tmp_timespec;
 #endif /* WINDOWS */
 
-  assert (thread_p->status == TS_RUN);
+  assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
+  old_status = thread_p->status;
   thread_p->status = TS_WAIT;
 
 #if defined(WINDOWS)
@@ -1272,7 +1280,7 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY *
     }
 #endif /* WINDOWS */
 
-  thread_p->status = TS_RUN;
+  thread_p->status = old_status;
 
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
   if (r != 0)
@@ -1285,6 +1293,7 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY *
   return r;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * thread_suspend_wakeup_and_unlock_entry_with_tran_index() -
  *   return: 0 if no error, or error code
@@ -1295,6 +1304,7 @@ thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index)
 {
   THREAD_ENTRY *thread_p;
   int r;
+  int old_status;
 
   thread_p = thread_find_entry_by_tran_index (tran_index);
   if (thread_p == NULL)
@@ -1306,7 +1316,8 @@ thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index)
    * this function must be called by current thread
    * also, the lock must have already been acquired before.
    */
-  assert (thread_p->status == TS_RUN);
+  assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
+  old_status = thread_p->status;
   thread_p->status = TS_WAIT;
 
   r = COND_WAIT (thread_p->wakeup_cond, thread_p->th_entry_lock);
@@ -1326,7 +1337,7 @@ thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index)
     }
 #endif /* WINDOWS */
 
-  thread_p->status = TS_RUN;
+  thread_p->status = old_status;
 
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
   if (r != 0)
@@ -1338,6 +1349,7 @@ thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index)
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * thread_wakeup() -
@@ -1444,13 +1456,21 @@ thread_wait (THREAD_ENTRY * thread_p, CSS_THREAD_FN func, CSS_THREAD_ARG arg)
  *   thread_p(in):
  *   mutex_p():
  */
+#if defined (WINDOWS)
 int
-thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p)
+thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p,
+				 int timeout, int *to)
+#else /* WINDOWS */
+int
+thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p,
+				 int timeout, struct timespec *to)
+#endif				/* WINDOWS */
 {
   int r;
+  int old_status;
 
   assert (thread_p != NULL);
-  assert (thread_p->status == TS_RUN);
+  old_status = thread_p->status;
 
   MUTEX_LOCK (r, thread_p->th_entry_lock);
   if (r != 0)
@@ -1462,7 +1482,7 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p)
 
   thread_p->status = TS_WAIT;
 
-  r = MUTEX_UNLOCK (*mutex_p);
+  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1471,17 +1491,24 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p)
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
-  r = COND_WAIT (thread_p->wakeup_cond, thread_p->th_entry_lock);
+  if (timeout == INF_WAIT)
+    {
+      r = COND_WAIT (thread_p->wakeup_cond, *mutex_p);
+    }
+  else
+    {
+      r = COND_TIMEDWAIT (thread_p->wakeup_cond, *mutex_p, *to);
+    }
+
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_WAIT, 0);
-      MUTEX_UNLOCK (thread_p->th_entry_lock);
       return ER_CSS_PTHREAD_COND_WAIT;
     }
 
 #if defined(WINDOWS)
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
+  MUTEX_LOCK (r, *mutex_p);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1490,7 +1517,7 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p)
     }
 #endif /* WINDOWS */
 
-  MUTEX_LOCK (r, *mutex_p);
+  MUTEX_LOCK (r, thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1499,7 +1526,7 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p)
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  thread_p->status = TS_RUN;
+  thread_p->status = old_status;
 
   r = MUTEX_UNLOCK (thread_p->th_entry_lock);
   if (r != 0)
@@ -1606,6 +1633,7 @@ thread_get_comm_request_id (THREAD_ENTRY * thread_p)
   return thread_p->rid;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * thread_set_comm_request_id() - sets the comm system request id to the client request
   *                     that started the thread
@@ -1624,6 +1652,7 @@ thread_set_comm_request_id (unsigned int request_id)
 
   thread_p->rid = request_id;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * thread_has_threads() - check if any thread is processing job of transaction
@@ -2217,6 +2246,11 @@ thread_checkpoint_thread (void *arg_p)
 	}
 
       logpb_checkpoint (tsd_ptr);
+      if (PRM_LOG_BACKGROUND_ARCHIVING)
+	{
+	  (void) logpb_background_archiving (tsd_ptr);
+	}
+
     }
 
   er_clear ();
@@ -2300,6 +2334,12 @@ thread_page_flush_thread (void *arg_p)
       er_clear ();
 
       wakeup_interval_in_secs = PRM_PAGE_FLUSH_THREAD_WAKEUP_INTERVAL;
+      if (0 > wakeup_interval_in_secs)
+	{
+	  thread_sleep (1, 0);
+	  continue;
+	}
+
       if (0 < wakeup_interval_in_secs)
 	{
 #if defined(WINDOWS)
@@ -2472,7 +2512,6 @@ thread_log_flush_thread (void *arg_p)
 
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
-  min_wait_time = thread_get_LFT_min_wait_time ();
   gettimeofday (&start_time, NULL);
 
   MUTEX_LOCK (rv, thread_Log_flush_thread.lock);
@@ -2484,6 +2523,7 @@ thread_log_flush_thread (void *arg_p)
       gettimeofday (&work_time, NULL);
       work_elapsed = LOG_GET_ELAPSED_TIME (work_time, start_time);
 
+      min_wait_time = thread_get_LFT_min_wait_time ();
       diff_wait_time = (int) (min_wait_time - work_elapsed * 1000);
       if (diff_wait_time < 0)
 	{
@@ -2595,9 +2635,15 @@ thread_log_flush_thread (void *arg_p)
 
       if (is_background_flush)
 	{
-	  LOG_CS_ENTER (tsd_ptr);
-	  logpb_flush_pages_background (tsd_ptr);
-	  LOG_CS_EXIT ();
+	  LOG_MUTEX_LOCK (rv, log_Gl.flush_info.flush_mutex);
+	  if (log_Gl.flush_info.num_toflush > 2)
+	    {
+	      LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
+	      LOG_CS_ENTER (tsd_ptr);
+	      logpb_flush_pages_background (tsd_ptr);
+	      LOG_CS_EXIT ();
+	    }
+	  LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
 	}
       else
 	{

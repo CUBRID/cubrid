@@ -152,7 +152,9 @@ extern HL_HEAPID db_create_ostk_heap (int chunk_size);
 extern void db_destroy_ostk_heap (HL_HEAPID heap_id);
 
 extern void *db_ostk_alloc (HL_HEAPID heap_id, size_t size);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void db_ostk_free (HL_HEAPID heap_id, void *ptr);
+#endif
 
 extern HL_HEAPID db_create_private_heap (void);
 extern void db_clear_private_heap (THREAD_ENTRY * thread_p,

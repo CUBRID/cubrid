@@ -18,7 +18,7 @@
 #define IDC_STATIC (-1)
 #endif
 
-#include "odbc_version.i"
+#include "../../win/version.h"
 
 /////////////////////////////////////////////////////////////////////////////
 #undef APSTUDIO_READONLY_SYMBOLS

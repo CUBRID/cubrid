@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -280,7 +280,9 @@ extern int tr_prepare_statement (TR_STATE ** state_p,
 				 DB_TRIGGER_EVENT event,
 				 DB_OBJECT * class_, int attcount,
 				 const char **attnames);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int tr_prepare (TR_STATE ** state_p, TR_TRIGLIST * triggers);
+#endif
 extern int tr_prepare_class (TR_STATE ** state_p,
 			     TR_SCHEMA_CACHE * cache, DB_TRIGGER_EVENT event);
 
@@ -297,11 +299,15 @@ extern void tr_abort (TR_STATE * state);
 
 extern int tr_check_commit_triggers (DB_TRIGGER_TIME time);
 extern void tr_check_rollback_triggers (DB_TRIGGER_TIME time);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void tr_check_timeout_triggers (void);
+#endif
 extern void tr_check_abort_triggers (void);
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int tr_set_savepoint (void *savepoint_id);
 extern int tr_abort_to_savepoint (void *savepoint_id);
+#endif
 
 /* Deferred activity control */
 
@@ -377,16 +383,17 @@ extern const char *tr_event_as_string (DB_TRIGGER_EVENT event);
 extern const char *tr_status_as_string (DB_TRIGGER_STATUS status);
 extern int tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp,
 			    bool quoted_id_flag);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int tr_dump_all_triggers (FILE * fp, bool quoted_id_flag);
+#endif
 extern int tr_dump_selective_triggers (FILE * fp, bool quoted_id_flag,
 				       DB_OBJLIST * classes);
 
 extern void tr_free_trigger_list (TR_TRIGLIST * list);
 
-#if 0
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int tr_reset_schema_cache (TR_SCHEMA_CACHE * cache);
-#endif /* 0 */
-
 extern int tr_downcase_all_trigger_info (void);
+#endif
 
 #endif /* _TRIGGER_MANAGER_H_ */

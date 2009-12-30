@@ -162,6 +162,7 @@ net_buf_cp_bigint (T_NET_BUF * net_buf, DB_BIGINT value, int *begin_offset)
   return 0;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 void
 net_buf_overwrite_bigint (T_NET_BUF * net_buf, int offset, DB_BIGINT value)
 {
@@ -171,6 +172,7 @@ net_buf_overwrite_bigint (T_NET_BUF * net_buf, int offset, DB_BIGINT value)
   value = net_htoni64 (value);
   memcpy (net_buf->data + NET_BUF_HEADER_SIZE + offset, &value, 8);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 int
 net_buf_cp_float (T_NET_BUF * net_buf, float value)

@@ -164,13 +164,17 @@ extern int thread_kill_all_workers (void);
 extern void thread_final_manager (void);
 
 extern int thread_lock_entry (THREAD_ENTRY * entry);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int thread_lock_entry_with_tran_index (int tran_index);
+#endif
 extern int thread_unlock_entry (THREAD_ENTRY * p);
 extern int thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * p);
 extern int
 thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * p, void *t);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int thread_suspend_wakeup_and_unlock_entry_with_tran_index (int
 								   tran_index);
+#endif
 extern int thread_wakeup (THREAD_ENTRY * p);
 extern int thread_wakeup_with_tran_index (int tran_index);
 
@@ -190,12 +194,16 @@ extern int thread_num_worker_threads (void);
 extern int thread_num_total_threads (void);
 extern int thread_get_client_id (THREAD_ENTRY * thread_p);
 extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void thread_set_comm_request_id (unsigned int rid);
+#endif
 extern int thread_get_current_entry_index (void);
 extern int thread_get_current_tran_index (void);
 extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p,
 					   int tran_index);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index);
+#endif
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
@@ -209,8 +217,15 @@ extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
 extern void thread_wakeup_checkpoint_thread (void);
 extern void thread_wakeup_oob_handler_thread (void);
 
+#if defined (WINDOWS)
 extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p,
-					    MUTEX_T * mutexp);
+					    MUTEX_T * mutexp,
+					    int timeout, int *to);
+#else /* WINDOWS */
+extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p,
+					    MUTEX_T * mutexp,
+					    int timeout, struct timespec *to);
+#endif /* WINDOWS */
 extern void thread_print_entry_info (THREAD_ENTRY * p);
 extern void thread_dump_threads (void);
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);

@@ -203,6 +203,9 @@ char *hint_p, hint_str[JP_MAXNAME];
 #token COMMITTED
 #token COMPLETION
 #token CONNECT
+#token CONNECT_BY_ISCYCLE
+#token CONNECT_BY_ISLEAF
+#token CONNECT_BY_ROOT
 #token CONNECTION
 #token CONSTRAINT
 #token CONSTRAINTS
@@ -501,6 +504,7 @@ char *hint_p, hint_str[JP_MAXNAME];
 #token SETNEQ
 #token SET_OF
 #token SHARED
+#token SIBLINGS
 #token SIGNAL
 #token SIMILAR
 #token SIZE
@@ -531,6 +535,7 @@ char *hint_p, hint_str[JP_MAXNAME];
 #token SUPERSET
 #token SUPERSETEQ
 #token SWITCH
+#token SYS_CONNECT_BY_PATH
 #token SYS_DATE
 #token SYS_TIME_
 #token SYS_TIMESTAMP
@@ -872,6 +877,15 @@ static int groupbynum_check = 0;
 static int orderbynum_check = 0;
 static int within_join_condition = 0;
 
+/* xxx_check: 0 not allowed
+              1 allowed */
+static int sysconnectbypath_check = 0;
+static int prior_check = 0;
+static int connectbyroot_check = 0;
+static int serial_check = 1;
+static int pseudocolumn_check = 1;
+static int subquery_check = 1;
+
 /* check Oracle style outer-join operatior: '(+)' */
 static bool found_Oracle_outer = false;
 
@@ -995,10 +1009,19 @@ parse_one_statement (int state)
 start "statement list"
 	:
 	  << PT_NODE *node; >>
-	  ( 		<< statement_OK = 1; >>
-	    << instnum_check = 0;
+	  ( << statement_OK = 1; >>
+	    <<
+	       instnum_check = 0;
 	       groupbynum_check = 0;
-	       orderbynum_check = 0; >>
+	       orderbynum_check = 0;
+	       within_join_condition = 0;
+	       sysconnectbypath_check = 0;
+	       prior_check = 0;
+	       connectbyroot_check = 0;
+	       serial_check = 1;
+	       subquery_check = 1;
+	       pseudocolumn_check = 1;
+	    >>
             << select_level = -1; >>
 	    statement_	<< if (statement_OK)
 			     this_parser->statement_number++;
@@ -1460,12 +1483,18 @@ join_specification < [PT_NODE *sopt] "join specification"
         ;
 
 join_condition "join condition"
-        : << int saved_wjc, saved_ic; >>
-          ON_ << saved_wjc = within_join_condition; within_join_condition = 1;
-                 saved_ic = instnum_check; instnum_check = 1; >>
+        : << int saved_wjc, saved_ic, saved_psc; >>
+          ON_ <<
+                 saved_wjc = within_join_condition; within_join_condition = 1;
+                 saved_ic = instnum_check; instnum_check = 1;
+                 saved_psc = pseudocolumn_check; pseudocolumn_check = 0;
+              >>
           search_condition
-              << within_join_condition = saved_wjc;
-                 instnum_check = saved_ic; >>
+              <<
+                 within_join_condition = saved_wjc;
+                 instnum_check = saved_ic;
+                 pseudocolumn_check = saved_psc;
+              >>
         ;
 
 table_specification "table specification"
@@ -3962,10 +3991,30 @@ esql_query_statement "csql query"
 
 csql_query "csql query"
 	: << PT_NODE *node;
-             bool saved_cannot_cache;
 
-             saved_cannot_cache = cannot_cache;
-             cannot_cache = false;
+	     bool saved_cannot_cache = cannot_cache;
+	     int saved_instnum_check = instnum_check;
+	     int saved_groupbynum_check = groupbynum_check;
+	     int saved_orderbynum_check = orderbynum_check;
+	     int saved_within_join_condition = within_join_condition;
+	     int saved_sysconnectbypath_check = sysconnectbypath_check;
+	     int saved_prior_check = prior_check;
+	     int saved_connectbyroot_check = connectbyroot_check;
+	     int saved_serial_check = serial_check;
+	     int saved_subquery_check = subquery_check;
+	     int saved_pseudocolumn_check = pseudocolumn_check;
+	     
+	     cannot_cache = false;
+	     instnum_check = 0;
+	     groupbynum_check = 0;
+	     orderbynum_check = 0;
+	     within_join_condition = 0;
+	     sysconnectbypath_check = 0;
+	     prior_check = 0;
+	     connectbyroot_check = 0;
+	     serial_check = 1;
+	     subquery_check = 1;
+	     pseudocolumn_check = 1;
           >>
           select_expression orderby_clause
           << node = pt_pop(this_parser);
@@ -3978,6 +4027,20 @@ csql_query "csql query"
                 pt_push(this_parser, node);
              }
              cannot_cache = saved_cannot_cache;
+	     instnum_check = saved_instnum_check;
+	     groupbynum_check = saved_groupbynum_check;
+	     orderbynum_check = saved_orderbynum_check;
+	     within_join_condition = saved_within_join_condition;
+	     sysconnectbypath_check = saved_sysconnectbypath_check;
+	     prior_check = saved_prior_check;
+	     connectbyroot_check = saved_connectbyroot_check;
+	     serial_check = saved_serial_check;
+	     subquery_check = saved_subquery_check;
+	     pseudocolumn_check = saved_pseudocolumn_check;
+	     if (subquery_check == 0)
+		PT_ERRORmf(this_parser, pt_top(this_parser),
+		    MSGCAT_SET_PARSER_SEMANTIC,
+		    MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
           >>
 	;
 
@@ -4031,6 +4094,7 @@ select_statement "select statement"
 	       char *hint_comment;
                bool is_dummy_select = false; /* init */
                bool found_ANSI_join;
+               bool has_nocycle = false;
 	       bool saved_fo = found_Oracle_outer; /* save */
                if (select_level >= 0) select_level++;
                hidden_incr_list = NULL;
@@ -4108,6 +4172,22 @@ select_statement "select statement"
                }
             >>
 	  }
+	  {
+	    { startwith_clause
+	      << if (q) {
+                   q->info.query.q.select.start_with = n = pt_pop(this_parser);
+                   if (n) is_dummy_select = false; /* not dummy */
+                 }
+              >>
+	    }
+	    connectby_clause > [has_nocycle]
+	      << if (q) {
+                   q->info.query.q.select.connect_by = n = pt_pop(this_parser);
+                   q->info.query.q.select.has_nocycle = has_nocycle;
+                   if (n) is_dummy_select = false; /* not dummy */
+                 }
+              >>
+	  }
 	  { groupby_clause
             << if (q) {
                  q->info.query.q.select.group_by = n = pt_pop(this_parser);
@@ -4159,8 +4239,8 @@ all_distinct < [PT_MISC_TYPE defaultAll] > [PT_MISC_TYPE isAll]
 	;
 
 select__list "select list"
-        : << int saved_ic, saved_gc, saved_oc; >>
-        ( << PT_NODE *node_=parser_new_node(this_parser, PT_VALUE); >>
+        : << int saved_ic, saved_gc, saved_oc, saved_sc, saved_cc, saved_pc; >>
+        ( << PT_NODE *node_ = parser_new_node(this_parser, PT_VALUE); >>
           STAR
                 << if(node_) node_->type_enum = PT_TYPE_STAR;
                    pt_push(this_parser, node_);
@@ -4169,11 +4249,19 @@ select__list "select list"
         | << saved_ic = instnum_check;
              saved_gc = groupbynum_check;
              saved_oc = orderbynum_check;
-             instnum_check = groupbynum_check = orderbynum_check = 2; >>
+             instnum_check = groupbynum_check = orderbynum_check = 2;
+             saved_sc = sysconnectbypath_check; sysconnectbypath_check = 1;
+             saved_pc = prior_check; prior_check = 1;
+             saved_cc = connectbyroot_check; connectbyroot_check = 1;
+          >>
           alias_enabled_expression_list
           << instnum_check = saved_ic;
              groupbynum_check = saved_gc;
-             orderbynum_check = saved_oc; >>
+             orderbynum_check = saved_oc;
+             sysconnectbypath_check = saved_sc;
+             connectbyroot_check = saved_cc;
+             prior_check = saved_pc;
+          >>
         ;
 
 alias_enabled_expression_list "alias enabled expression list"
@@ -4307,12 +4395,64 @@ parameter_ > [PT_NODE *name] "interpreter parameter"
 	;
 
 where_clause "where clause"
-        : << int saved_ic; >>
+        : << int saved_ic, saved_cc, saved_sc, saved_pc; >>
           WHERE
-          << saved_ic = instnum_check; instnum_check = 1; >>
+          <<
+	    saved_ic = instnum_check; instnum_check = 1;
+	    saved_sc = sysconnectbypath_check; sysconnectbypath_check = 1;
+	    saved_cc = connectbyroot_check; connectbyroot_check = 1;
+	    assert (saved_cc == 0);
+	    saved_pc = prior_check; prior_check = 1;
+	    assert (saved_pc == 0);
+          >>
           search_condition
-          << instnum_check = saved_ic; >>
+          <<
+	    instnum_check = saved_ic;
+	    sysconnectbypath_check = saved_sc;
+	    connectbyroot_check = saved_cc;
+	    prior_check = saved_pc;
+		  >>
 	;
+
+connectby_clause > [bool hasnocycle] "connect by clause"
+        : <<
+	    int saved_pc, saved_sc, saved_psc, saved_sqc;
+	    $hasnocycle = false;
+	  >>
+          CONNECT BY { NOCYCLE << $hasnocycle = true; >> }
+          <<
+	    saved_pc = prior_check;
+	    saved_sc = serial_check;
+	    saved_psc = pseudocolumn_check;
+	    saved_sqc = subquery_check;
+	    prior_check = 1;
+	    serial_check = 0;
+	    pseudocolumn_check = 0;
+	    subquery_check = 0;
+	  >>
+          search_condition
+          <<
+	    prior_check = saved_pc;
+	    serial_check = saved_sc;
+	    pseudocolumn_check = saved_psc;
+	    subquery_check = saved_sqc;
+          >>
+    ;
+
+startwith_clause "start with clause"
+        : <<
+	    int saved_psc;
+	  >>
+          START_ WITH
+          <<
+            saved_psc = pseudocolumn_check;
+            pseudocolumn_check = 0;
+          >>
+          search_condition
+          <<
+            pseudocolumn_check = saved_psc;
+          >>
+    ;
 
 groupby_clause "group by clause"
     : GROUP BY group_spec_list
@@ -4356,8 +4496,47 @@ groupby_term "group by expression"
     ;
 
 groupby_factor "group by expression"
-    : PLUS  groupby_primary
+    : << int saved_pc, saved_cc, saved_psc, saved_sc; >>
+      PLUS  groupby_primary
     | MINUS groupby_primary << PFOP(PT_UNARY_MINUS); >>
+    | 
+      <<
+        saved_pc = prior_check; prior_check = 0;
+	saved_cc = connectbyroot_check; connectbyroot_check = 0;
+	saved_psc = pseudocolumn_check; pseudocolumn_check = 0;
+	saved_sc = sysconnectbypath_check; sysconnectbypath_check = 0;
+      >>
+      PRIOR groupby_primary
+      <<
+        PFOP(PT_PRIOR);
+	prior_check = saved_pc;
+	connectbyroot_check = saved_cc;
+	pseudocolumn_check = saved_psc;
+	sysconnectbypath_check = saved_sc;
+	if (prior_check == 0)
+	    PT_ERRORmf(this_parser, pt_top(this_parser),
+	      MSGCAT_SET_PARSER_SEMANTIC,
+	      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "PRIOR");
+      >>
+    | 
+      <<
+        saved_pc = prior_check; prior_check = 0;
+	saved_cc = connectbyroot_check; connectbyroot_check = 0;
+	saved_psc = pseudocolumn_check; pseudocolumn_check = 0;
+	saved_sc = sysconnectbypath_check; sysconnectbypath_check = 0;
+      >>
+      CONNECT_BY_ROOT groupby_primary
+      <<
+        PFOP(PT_CONNECT_BY_ROOT);
+	prior_check = saved_pc;
+	connectbyroot_check = saved_cc;
+	pseudocolumn_check = saved_psc;
+	sysconnectbypath_check = saved_sc;
+	if (connectbyroot_check == 0)
+	    PT_ERRORmf(this_parser, pt_top(this_parser),
+	      MSGCAT_SET_PARSER_SEMANTIC,
+	      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "CONNECT_BY_ROOT");
+      >>
     | groupby_primary
     ;
 
@@ -4379,6 +4558,7 @@ groupby_primary "group by expression"
     | cast_func
     | case_expr
     | extract_expr
+    | pseudo_column
     | literal_w_o_param
 /* function_call being subsumed by path_expression--see path_link */
     | path_expression
@@ -4503,11 +4683,35 @@ orderby_clause "order by clause"
         :   << PT_NODE *stmt = pt_pop(this_parser);
                PT_NODE *n, *order, *list = NULL, *temp, *col;
                char *n_str, *c_str;
-               bool found_star;
-               int saved_oc, index_of_col; >>
-          { ORDER BY sort_spec_list
-            << if (stmt) {
+               bool found_star, order_siblings = false;
+               int saved_oc, index_of_col, saved_pc, saved_cc, saved_sc, saved_psc; >>
+          { ORDER
+            { SIBLINGS << order_siblings = true; >> }
+            <<
+		saved_pc = prior_check;
+		if (!order_siblings) prior_check = 1;
+		saved_cc = connectbyroot_check;
+		if (!order_siblings) connectbyroot_check = 1;
+		saved_sc = sysconnectbypath_check;
+		if (!order_siblings) sysconnectbypath_check = 1;
+		saved_psc = pseudocolumn_check;
+		if (order_siblings) pseudocolumn_check = 0;
+            >>
+            BY sort_spec_list
+            <<
+               prior_check = saved_pc;
+               connectbyroot_check = saved_cc;
+               sysconnectbypath_check = saved_sc;
+               pseudocolumn_check = saved_psc;
+            >>
+            <<
+               if (stmt) {
                   stmt->info.query.order_by = order = pt_pop(this_parser);
+                  stmt->info.query.order_siblings = order_siblings;
+                  if (order_siblings && stmt->info.query.q.select.connect_by == NULL) {
+		    PT_ERRORmf(this_parser, stmt, MSGCAT_SET_PARSER_SEMANTIC,
+		        MSGCAT_SEMANTIC_NOT_HIERACHICAL_QUERY, "SIBLINGS");
+                  }
                   if (order) {/* not dummy */
                      PT_SELECT_INFO_CLEAR_FLAG(stmt, PT_SELECT_INFO_DUMMY);
                      if (pt_is_query(stmt)) {
@@ -4645,8 +4849,47 @@ term "expression"
 	;
 
 factor "expression"
-	: PLUS  primary
+	: << int saved_pc, saved_cc, saved_psc, saved_sc; >>
+	  PLUS  primary
         | MINUS primary << PFOP(PT_UNARY_MINUS); >>
+        | 
+	  <<
+	    saved_pc = prior_check; prior_check = 0;
+	    saved_cc = connectbyroot_check; connectbyroot_check = 0;
+	    saved_psc = pseudocolumn_check; pseudocolumn_check = 0;
+	    saved_sc = sysconnectbypath_check; sysconnectbypath_check = 0;
+	  >>
+	  PRIOR primary
+	  <<
+	    PFOP(PT_PRIOR);
+	    prior_check = saved_pc;
+	    connectbyroot_check = saved_cc;
+	    pseudocolumn_check = saved_psc;
+	    sysconnectbypath_check = saved_sc;
+	    if (prior_check == 0)
+	        PT_ERRORmf(this_parser, pt_top(this_parser),
+		    MSGCAT_SET_PARSER_SEMANTIC,
+		    MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "PRIOR");
+	  >>
+        | 
+	  <<
+	    saved_pc = prior_check; prior_check = 0;
+	    saved_cc = connectbyroot_check; connectbyroot_check = 0;
+	    saved_psc = pseudocolumn_check; pseudocolumn_check = 0;
+	    saved_sc = sysconnectbypath_check; sysconnectbypath_check = 0;
+	  >>
+	  CONNECT_BY_ROOT primary
+	  <<
+	    PFOP(PT_CONNECT_BY_ROOT);
+	    prior_check = saved_pc;
+	    connectbyroot_check = saved_cc;
+	    pseudocolumn_check = saved_psc;
+	    sysconnectbypath_check = saved_sc;
+	    if (connectbyroot_check == 0)
+	        PT_ERRORmf(this_parser, pt_top(this_parser),
+		    MSGCAT_SET_PARSER_SEMANTIC,
+		    MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "CONNECT_BY_ROOT");
+	  >>
         |       primary
 	;
 
@@ -4670,6 +4913,7 @@ primary "expression"
 	| cast_func
 	| case_expr
 	| extract_expr
+        | pseudo_column
         | instnum_func
         | orderbynum_func
 /* parameters are subsumed by path_expression */
@@ -5420,6 +5664,31 @@ char_func "expression"
 	  |
 	    UPPER l_paren expression_ Right_Paren
             << PFOP(PT_UPPER); >>
+	  | << PT_NODE *tmp, *val; int saved_pc, saved_cc, saved_sc, saved_psc; >>
+	  	SYS_CONNECT_BY_PATH l_paren
+	  	<<
+	  	    saved_pc = prior_check; prior_check = 0;
+	  	    saved_cc = connectbyroot_check; connectbyroot_check = 0;
+	  	    saved_sc = sysconnectbypath_check; sysconnectbypath_check = 0;
+	  	    saved_psc = pseudocolumn_check; pseudocolumn_check = 0;
+	  	>>
+	  	expression_
+	  	<<
+			PFOP(PT_SYS_CONNECT_BY_PATH);
+			tmp = pt_top(this_parser);
+			PICE(tmp);
+			sysconnectbypath_check = saved_sc;
+			pseudocolumn_check = saved_psc;
+			if (sysconnectbypath_check == 0)
+			    PT_ERRORmf(this_parser, tmp,
+			      MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
+			      "SYS_CONNECT_BY_PATH");
+			prior_check = saved_pc;
+			connectbyroot_check = saved_cc;
+		>>
+		"," char_string_literal > [val] << pt_push(this_parser, val); PSOP; >>
+		Right_Paren
 	  |
 	  	TRANSLATE l_paren expression_  << PFOP(PT_TRANSLATE); >>
 			"," expression_ << PSOP; >>
@@ -5491,6 +5760,27 @@ char_func "expression"
 	    CHR l_paren expression_ Right_Paren
             << PFOP(PT_CHR); >>
 	;
+
+pseudo_column "expression"
+    :   << PT_NODE *node; PT_OP_TYPE optype; >>
+        ( CONNECT_BY_ISCYCLE
+          << optype = PT_CONNECT_BY_ISCYCLE; >>
+        | CONNECT_BY_ISLEAF
+          << optype = PT_CONNECT_BY_ISLEAF; >>
+        | LEVEL
+          << optype = PT_LEVEL; >>
+        )
+        <<
+            node = parser_new_node(this_parser, PT_EXPR);
+            if (node) {
+                node->info.expr.op = optype;
+            }
+            if (pseudocolumn_check == 0)
+		PT_ERRORmf(this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		    MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Pseudo-column");
+            pt_push(this_parser, node);
+        >>
+        ;
 
 instnum_func "expression"
     :   << PT_NODE *node; bool rownum; >>
@@ -6454,6 +6744,11 @@ path_expression "path expression"
 				serial_value->info.expr.arg1 = name_str;
 				serial_value->info.expr.arg2 = NULL;
 				PICE(serial_value);
+				if (serial_check == 0)
+				    PT_ERRORmf(this_parser, serial_value,
+					MSGCAT_SET_PARSER_SEMANTIC,
+					MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
+					"serial");
 				pt_push(this_parser, serial_value);
 				parser_free_node(this_parser, dot);
 
@@ -6487,6 +6782,11 @@ path_expression "path expression"
 				serial_value->info.expr.arg1 = name_str;
 				serial_value->info.expr.arg2 = NULL;
 				PICE(serial_value);
+				if (serial_check == 0)
+				    PT_ERRORmf(this_parser, serial_value,
+					MSGCAT_SET_PARSER_SEMANTIC,
+					MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
+					"serial");
 				pt_push(this_parser, serial_value);
 				parser_free_node(this_parser, dot);
 
@@ -6953,6 +7253,13 @@ identifier "identifier"
 		   which are marked as reserved in the sqlm_keywords[] table
 	 	   but which are allowed here for trigger support.
         */
+        /*
+         * much of these are commented because of too many ambiguities,
+         * which crash the antlr (stack exceedes 2GB);
+         * this is a temporary solution, until we switch to bison.
+         */
+        
+	  /*
 	  | ABORT	<< q = pt_makename($1.text); >>
 	  | ABS	        << q = pt_makename($1.text); >>
 	  | ACTIVE	<< q = pt_makename($1.text); >>
@@ -6966,9 +7273,9 @@ identifier "identifier"
 	  | COMMITTED	<< q = pt_makename($1.text); >>
 	  | COST	<< q = pt_makename($1.text); >>
 	  | DECAY_CONSTANT << q = pt_makename($1.text); >>
-	  | DECODE_	<< q = pt_makename($1.text); >>
+	  | DECODE_	<< q = pt_makename($1.text); >>*/
 	  | DECR	<< q = pt_makename($1.text); >>
-	  | DECREMENT	<< q = pt_makename($1.text); >>
+	  /*| DECREMENT	<< q = pt_makename($1.text); >>
 	  | DECRYPT	<< q = pt_makename($1.text); >>
 	  | DEFINED	<< q = pt_makename($1.text); >>
 	  | DIRECTORY	<< q = pt_makename($1.text); >>
@@ -6983,20 +7290,20 @@ identifier "identifier"
 	  | GE_LE	<< q = pt_makename($1.text); >>
 	  | GE_LT	<< q = pt_makename($1.text); >>
 	  | GREATEST	<< q = pt_makename($1.text); >>
-          | GROUPBY_NUM << q = pt_makename($1.text); >>
+          | GROUPBY_NUM << q = pt_makename($1.text); >>*/
           | GROUPS      << q = pt_makename($1.text); >>
-          | GT_INF      << q = pt_makename($1.text); >>
+          /*| GT_INF      << q = pt_makename($1.text); >>
           | GT_LE       << q = pt_makename($1.text); >>
-          | GT_LT       << q = pt_makename($1.text); >>
+          | GT_LT       << q = pt_makename($1.text); >>*/
 	  | HASH	<< q = pt_makename($1.text); >>
-	  | HOST	<< q = pt_makename($1.text); >>
+	  /*| HOST	<< q = pt_makename($1.text); >>
 	  | IDENTIFIED	<< q = pt_makename($1.text); >>
-	  | INACTIVE	<< q = pt_makename($1.text); >>
+	  | INACTIVE	<< q = pt_makename($1.text); >>*/
           | INCR        << q = pt_makename($1.text); >>
-	  | INCREMENT	<< q = pt_makename($1.text); >>
-	  | INFINITE	<< q = pt_makename($1.text); >>
+	  /*| INCREMENT	<< q = pt_makename($1.text); >>
+	  | INFINITE	<< q = pt_makename($1.text); >>*/
 	  | INFO	<< q = pt_makename($1.text); >>
-	  | INF_LE	<< q = pt_makename($1.text); >>
+	  /*| INF_LE	<< q = pt_makename($1.text); >>
 	  | INF_LT	<< q = pt_makename($1.text); >>
 	  | INSENSITIVE	<< q = pt_makename($1.text); >>
 	  | INSTANCES	<< q = pt_makename($1.text); >>
@@ -7022,15 +7329,19 @@ identifier "identifier"
 	  | MIN_ACTIVE	<< q = pt_makename($1.text); >>
           | MODULUS     << q = pt_makename($1.text); >>
           | MONTHS_BETWEEN << q = pt_makename($1.text); >>
+	  */
 	  | NAME	<< q = pt_makename($1.text); >>
 	  | NEW		<< q = pt_makename($1.text); >>	/* allowed for triggers */
+	  /*
 	  | NOCYCLE	<< q = pt_makename($1.text); >>
 	  | NOMAXVALUE	<< q = pt_makename($1.text); >>
 	  | NOMINVALUE	<< q = pt_makename($1.text); >>
 	  | NVL	        << q = pt_makename($1.text); >>
 	  | NVL2	<< q = pt_makename($1.text); >>
 	  | OBJECT_ID	<< q = pt_makename($1.text); >>
+	  */
           | OLD		<< q = pt_makename($1.text); >>	/* allowed for triggers */
+	  /*
 	  | ORDERBY_NUM	<< q = pt_makename($1.text); >>
 	  | PARTITION   << q = pt_makename($1.text); >>
 	  | PARTITIONING << q = pt_makename($1.text); >>
@@ -7040,9 +7351,9 @@ identifier "identifier"
 	  | PRINT	<< q = pt_makename($1.text); >>
 	  | PRIORITY	<< q = pt_makename($1.text); >>
           | RAND        << q = pt_makename($1.text); >>
-          | RANDOM      << q = pt_makename($1.text); >>
+          | RANDOM      << q = pt_makename($1.text); >>*/
           | RANGE       << q = pt_makename($1.text); >>
-          | REBUILD     << q = pt_makename($1.text); >>
+          /*| REBUILD     << q = pt_makename($1.text); >>
 	  | REJECT	<< q = pt_makename($1.text); >>
 	  | REMOVE    	<< q = pt_makename($1.text); >>
 	  | REORGANIZE	<< q = pt_makename($1.text); >>
@@ -7066,9 +7377,11 @@ identifier "identifier"
 	  | SUBSTRB	<< q = pt_makename($1.text); >>
 	  | SWITCH	<< q = pt_makename($1.text); >>
 	  | SYSTEM	<< q = pt_makename($1.text); >>
+	  */
 << #if 0 /* disable TEXT */ >>
           | TEXT        << q = pt_makename($1.text); >>
 << #endif /* 0 */ >>
+	  /*
 	  | THAN   	<< q = pt_makename($1.text); >>
 	  | TIMEOUT	<< q = pt_makename($1.text); >>
 	  | TO_CHAR	<< q = pt_makename($1.text); >>
@@ -7082,6 +7395,7 @@ identifier "identifier"
 	  | UNCOMMITTED	<< q = pt_makename($1.text); >>
 	  | VARIANCE	<< q = pt_makename($1.text); >>
 	  | WORKSPACE   << q = pt_makename($1.text); >>
+	  */
 	  )
 		<<
 		    if (p) p->info.name.original = q;

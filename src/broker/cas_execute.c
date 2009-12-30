@@ -1051,7 +1051,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
     {
 #if !defined(WINDOWS)
       cas_log_query_info_next ();
-      histo_print ();
+      histo_print (NULL);
       cas_log_query_info_end ();
 #ifndef LIBCAS_FOR_JSP
       SQL_LOG2_EXEC_APPEND (as_info->cur_sql_log2, stmt_id, n,
@@ -6200,7 +6200,6 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag,
     {
       case_stmt = "CASE WHEN is_system_class = 'YES' THEN 0 \
 		      WHEN class_type = 'CLASS' THEN 2 \
-		      WHEN class_type = 'PROXY' THEN 3 \
 		      ELSE 1 END";
     }
   else
@@ -6209,7 +6208,7 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag,
 		      WHEN class_type = 'CLASS' THEN 2 \
 		      ELSE 1 END";
     }
-  where_vclass = "class_type in {'VCLASS', 'PROXY'}";
+  where_vclass = "class_type = 'VCLASS'";
 
   STRING_APPEND (sql_p, avail_size,
 		 "SELECT class_name, CAST(%s AS short) FROM db_class ",

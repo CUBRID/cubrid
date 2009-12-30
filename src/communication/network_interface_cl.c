@@ -1430,6 +1430,7 @@ heap_create (HFID * hfid, const OID * class_oid)
 #endif /* !CS_MODE */
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * heap_destroy -
  *
@@ -1479,6 +1480,7 @@ heap_destroy (const HFID * hfid)
   return success;
 #endif /* !CS_MODE */
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_destroy_newly_created -
@@ -2559,6 +2561,7 @@ tran_server_abort (void)
 #endif /* !CS_MODE */
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tran_is_blocked -
  *
@@ -2609,6 +2612,7 @@ tran_is_blocked (int tran_index)
   return blocked;
 #endif /* !CS_MODE */
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tran_server_has_updated -
@@ -5411,10 +5415,9 @@ qmgr_prepare_query (const char *query_str, const OID * user_oid,
 {
 #if defined(CS_MODE)
   int success = NO_ERROR;
-  LOID loid;
   int req_error, request_size;
   char *request, *reply, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOID_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -5442,14 +5445,11 @@ qmgr_prepare_query (const char *query_str, const OID * user_oid,
 				  (char *) xasl_buffer, size, NULL, 0);
   if (!req_error)
     {
-      /* first argument should be XASL_ID
-         borrow LOID structure only for transmission purpose */
       ptr = or_unpack_int (reply, &success);
       if (success == NO_ERROR)
 	{
-	  ptr = or_unpack_loid (ptr, &loid);
 	  /* NULL XASL_ID will be returned when cache not found */
-	  (void) memcpy ((void *) xasl_id, (void *) &loid, sizeof (XASL_ID));
+	  OR_UNPACK_XASL_ID (ptr, xasl_id);
 	}
       else
 	{
@@ -5524,7 +5524,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   int req_error, senddata_size, replydata_size1, replydata_size2;
   char *request, *reply, *senddata = NULL;
   char *replydata1 = NULL, *replydata2 = NULL, *ptr;
-  OR_ALIGNED_BUF (OR_LOID_SIZE + OR_INT_SIZE * 3 +
+  OR_ALIGNED_BUF (OR_XASL_ID_SIZE + OR_INT_SIZE * 3 +
 		  OR_CACHE_TIME_SIZE) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_PTR_ALIGNED_SIZE
 		  + OR_CACHE_TIME_SIZE) a_reply;
@@ -5556,9 +5556,9 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
     }
 
   /* pack XASL file id (XASL_ID), number of parameter values,
-     size of the send data, and query execution mode flag as a request data;
-     borrow LOID structure only for transmission purpose */
-  ptr = or_pack_loid (request, (LOID *) xasl_id);
+     size of the send data, and query execution mode flag as a request data */
+  ptr = request;
+  OR_PACK_XASL_ID (ptr, xasl_id);
   ptr = or_pack_int (ptr, dbval_cnt);
   ptr = or_pack_int (ptr, senddata_size);
   ptr = or_pack_int (ptr, flag);
@@ -5823,12 +5823,13 @@ qmgr_drop_query_plan (const char *query_str, const OID * user_oid,
   int status = ER_FAILED;
   int req_error, request_size;
   char *request, *reply, *ptr;
-  OR_ALIGNED_BUF (OR_LOID_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_XASL_ID_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (query_str) + OR_OID_SIZE + OR_LOID_SIZE
-    + OR_INT_SIZE;
+  request_size =
+    length_const_string (query_str) + OR_OID_SIZE + OR_XASL_ID_SIZE +
+    OR_INT_SIZE;
 
   request = (char *) malloc (request_size);
   if (!request)
@@ -5840,9 +5841,8 @@ qmgr_drop_query_plan (const char *query_str, const OID * user_oid,
   ptr = pack_const_string (request, query_str);
   /* pack OID of the current user */
   ptr = or_pack_oid (ptr, (OID *) user_oid);
-  /* pack XASL file id (XASL_ID)
-     - borrow LOID structure only for transmision purpose */
-  ptr = or_pack_loid (ptr, (LOID *) xasl_id);
+  /* pack XASL file id (XASL_ID) */
+  OR_PACK_XASL_ID (ptr, xasl_id);
   /* pack 'delete' flag */
   ptr = or_pack_int (ptr, drop);
 
@@ -5899,8 +5899,8 @@ qmgr_drop_all_query_plans (void)
   int status = ER_FAILED;
   int req_error, request_size;
   char *request, *reply;
-  OR_ALIGNED_BUF (OR_LOID_SIZE) a_request;
-  OR_ALIGNED_BUF (OR_LOID_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_XASL_ID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_XASL_ID_SIZE) a_reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
   request_size = OR_INT_SIZE;
@@ -6158,6 +6158,7 @@ qmgr_sync_query (DB_QUERY_RESULT * query_result, int wait)
 #endif /* !CS_MODE */
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * qp_get_sys_timestamp -
  *
@@ -6203,6 +6204,7 @@ qp_get_sys_timestamp (DB_VALUE * value)
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * qp_get_serial_current_value -
@@ -6373,33 +6375,36 @@ qp_get_serial_next_value (DB_VALUE * value, DB_VALUE * oid)
  * NOTE:
  */
 int
-mnt_server_start_stats (void)
+mnt_server_start_stats (bool for_all_trans)
 {
 #if defined(CS_MODE)
   int status = ER_FAILED;
   int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request;
   char *reply;
 
+  request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
+  or_pack_int (request, for_all_trans);
   req_error = net_client_request (NET_SERVER_MNT_SERVER_START_STATS,
-				  NULL, 0, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				  NULL, 0);
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				  NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &status);
     }
 
   return (status);
-
 #else /* CS_MODE */
   int success = ER_FAILED;
 
   ENTER_SERVER ();
 
-  success = xmnt_server_start_stats (NULL);
+  success = xmnt_server_start_stats (NULL, for_all_trans);
 
   EXIT_SERVER ();
 
@@ -6476,6 +6481,36 @@ mnt_server_reset_stats (void)
 }
 
 /*
+ * mnt_server_reset_global_stats -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+void
+mnt_server_reset_global_stats (void)
+{
+#if defined(CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;	/* need dummy reply message */
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error = net_client_request (NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS,
+				  NULL, 0, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				  NULL, 0);
+#else /* CS_MODE */
+  ENTER_SERVER ();
+
+  xmnt_server_reset_global_stats ();
+
+  EXIT_SERVER ();
+#endif /* !CS_MODE */
+}
+
+/*
  * mnt_server_copy_stats -
  *
  * return:
@@ -6507,6 +6542,43 @@ mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats)
   ENTER_SERVER ();
 
   xmnt_server_copy_stats (NULL, to_stats);
+
+  EXIT_SERVER ();
+#endif /* !CS_MODE */
+}
+
+/*
+ * mnt_server_copy_global_stats -
+ *
+ * return:
+ *
+ *   to_stats(in):
+ *
+ * NOTE:
+ */
+void
+mnt_server_copy_global_stats (MNT_SERVER_EXEC_GLOBAL_STATS * to_stats)
+{
+#if defined(CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (GLOBAL_STAT_SIZE_PACKED) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error = net_client_request (NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS,
+				  NULL, 0, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply),
+				  NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      net_unpack_global_stats (reply, to_stats);
+    }
+#else /* CS_MODE */
+
+  ENTER_SERVER ();
+
+  xmnt_server_copy_global_stats (NULL, to_stats);
 
   EXIT_SERVER ();
 #endif /* !CS_MODE */
@@ -6629,6 +6701,34 @@ thread_kill_tran_index (int kill_tran_index, char *kill_user,
   er_log_debug (ARG_FILE_LINE,
 		"css_kill_client: THIS IS ONLY a C/S function");
   return ER_FAILED;
+#endif /* !CS_MODE */
+}
+
+/*
+ * thread_dump_cs_stat -
+ *
+ * return:
+ *
+ *   outfp(in):
+ */
+void
+thread_dump_cs_stat (FILE * outfp)
+{
+#if defined(CS_MODE)
+  int req_error;
+
+  if (outfp == NULL)
+    {
+      outfp = stdout;
+    }
+
+  req_error = net_client_request_recv_stream (NET_SERVER_CSS_DUMP_CS_STAT,
+                                              NULL, 0, NULL, 0,
+                                              NULL, 0, outfp);
+#else /* CS_MODE */
+  er_log_debug (ARG_FILE_LINE,
+                "thread_dump_cs_stat: THIS IS ONLY a C/S function");
+  return;
 #endif /* !CS_MODE */
 }
 
@@ -7435,6 +7535,7 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 	  /* If the server is in previous step to do archiving and
 	     the last page in active log is completed, get the next page of it */
 	  first_pageid_torecv = logwr_Gl.last_recv_pageid + 1;
+	  logwr_Gl.force_flush = true;
 	}
       else
 	{
@@ -7482,13 +7583,15 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   ptr = or_pack_int (ptr, ctx_ptr->last_error);
 
   req_error =
-    net_client_request_with_context (ctx_ptr,
-				     NET_SERVER_LOGWR_GET_LOG_PAGES,
-				     request, OR_ALIGNED_BUF_SIZE (a_request),
-				     reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				     NULL, 0, NULL, 0,
-				     &replydata1, &replydata_size1,
-				     &replydata2, &replydata_size2);
+    net_client_request_with_logwr_context (ctx_ptr,
+					   NET_SERVER_LOGWR_GET_LOG_PAGES,
+					   request,
+					   OR_ALIGNED_BUF_SIZE (a_request),
+					   reply,
+					   OR_ALIGNED_BUF_SIZE (a_reply),
+					   NULL, 0, NULL, 0, &replydata1,
+					   &replydata_size1, &replydata2,
+					   &replydata_size2);
 
   logwr_Gl.mode = save_mode;
 
@@ -7497,6 +7600,11 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
       error = req_error;
       if (error == ER_NET_SERVER_CRASHED)
 	{
+	  if (logwr_Gl.mode == LOGWR_MODE_SEMISYNC)
+	    {
+	      logwr_Gl.force_flush = true;
+	      logwr_write_log_pages ();
+	    }
 	  /* Write the server is dead at the log header */
 	  logwr_Gl.hdr.ha_server_state = HA_SERVER_STATE_DEAD;
 	  logwr_flush_header_page ();
@@ -7512,34 +7620,68 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 #endif /* !CS_MODE */
 }
 
-/* stub for histogram */
-#if defined(SA_MODE)
 bool
 histo_is_supported (void)
 {
-  return false;
+  return PRM_ENABLE_HISTO;
 }
 
 int
-histo_start (void)
+histo_start (bool for_all_trans)
 {
-  return NO_ERROR;
+#if defined (CS_MODE)
+  return net_histo_start (for_all_trans);
+#else /* CS_MODE */
+  return mnt_start_stats (for_all_trans);
+#endif /* !CS_MODE */
 }
 
 int
 histo_stop (void)
 {
-  return NO_ERROR;
+#if defined (CS_MODE)
+  return net_histo_stop ();
+#else /* CS_MODE */
+  return mnt_stop_stats ();
+#endif /* !CS_MODE */
 }
 
 void
-histo_print (void)
+histo_print (FILE * stream)
 {
+#if defined (CS_MODE)
+  net_histo_print (stream);
+#else /* CS_MODE */
+  mnt_print_stats (stream);
+#endif /* !CS_MODE */
+}
+
+void
+histo_print_global_stats (FILE * stream)
+{
+#if defined (CS_MODE)
+  net_histo_print_global_stats (stream);
+#else /* CS_MODE */
+  mnt_print_global_stats (stream);
+#endif /* !CS_MODE */
 }
 
 void
 histo_clear (void)
 {
-  printf ("\nHistograms not enabled in standalone mode.\n");
+#if defined (CS_MODE)
+  net_histo_clear ();
+#else /* CS_MODE */
+  mnt_reset_stats ();
+#endif /* !CS_MODE */
 }
-#endif /* SA_MODE */
+
+void
+histo_clear_global_stats (void)
+{
+#if defined (CS_MODE)
+  net_histo_clear_global_stats ();
+#else /* CS_MODE */
+  mnt_reset_global_stats ();
+#endif /* !CS_MODE */
+}

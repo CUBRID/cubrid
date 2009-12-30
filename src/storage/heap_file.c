@@ -102,7 +102,7 @@
 #define HEAP_DEBUG_ISVALID_SCANRANGE(scan_range) \
   heap_scanrange_isvalid(scan_range)
 
-#else /* not CUBRID_DEBUG */
+#else /* CUBRID_DEBUG */
 #define HEAP_ISVALID_OID(oid) \
   (HEAP_ISJUNK_OID(oid)       \
    ? DISK_INVALID             \
@@ -110,7 +110,7 @@
 
 #define HEAP_DEBUG_ISVALID_SCANRANGE(scan_range) (DISK_VALID)
 
-#endif /* not CUBRID_DEBUG */
+#endif /* !CUBRID_DEBUG */
 
 typedef enum
 {
@@ -136,7 +136,9 @@ typedef enum
  */
 
 
-#define HEAP_NUM_BEST_SPACESTATS  10
+#define HEAP_NUM_BEST_SPACESTATS_PLUS_LAST_VPID  10
+#define HEAP_NUM_BEST_SPACESTATS   9
+#define HEAP_LAST_VPID_HINT_INDEX  9
 #define HEAP_BEST1                 0
 #define HEAP_BEST2_START           1
 
@@ -175,7 +177,7 @@ struct heap_hdr_stats
 #else
     int head;			/* Head of best circular array             */
 #endif
-    HEAP_BESTSPACE best[HEAP_NUM_BEST_SPACESTATS];
+    HEAP_BESTSPACE best[HEAP_NUM_BEST_SPACESTATS_PLUS_LAST_VPID];
   } estimates;			/* Probabely, the set of pages with more free
 				 * space on the heap. Changes to any values
 				 * of this array (either page or the free
@@ -430,6 +432,7 @@ struct heap_chnguess
 
 static int heap_Maxslotted_reclength;
 static int heap_Slotted_overhead = 12;
+static const int heap_Find_best_page_limit = 100;
 
 static HEAP_CLASSREPR_CACHE *heap_Classrepr = NULL;
 static HEAP_CHNGUESS heap_Guesschn_area = { NULL, NULL, NULL, false, 0,
@@ -526,7 +529,7 @@ static bool heap_link_to_new (THREAD_ENTRY * thread_p, const VFID * vfid,
 			      HEAP_CHAIN_TOLAST * link);
 
 static bool heap_vpid_init_new (THREAD_ENTRY * thread_p, const VFID * vfid,
-				const VPID * vpid, INT32 ignore_napges,
+				const VPID * vpid, INT32 ignore_npages,
 				void *xchain);
 static bool heap_vpid_init_newset (THREAD_ENTRY * thread_p, const VFID * vfid,
 				   const VPID * first_alloc_vpid,
@@ -2413,11 +2416,11 @@ static int
 heap_stats_update (THREAD_ENTRY * thread_p, const HFID * hfid,
 		   VPID * lotspace_vpid, int free_space)
 {
-  HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure    */
+  HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure */
   PAGE_PTR hdr_pgptr = NULL;	/* Page pointer to header page */
-  VPID vpid;			/* Page-volume identifier      */
-  RECDES recdes;		/* Header record descriptor    */
-  LOG_DATA_ADDR addr;		/* Address of logging data     */
+  VPID vpid;			/* Page-volume identifier */
+  RECDES recdes;		/* Header record descriptor */
+  LOG_DATA_ADDR addr;		/* Address of logging data */
   int i, best;
   DISK_ISVALID new_valid;
   int ret = NO_ERROR;
@@ -2428,10 +2431,9 @@ heap_stats_update (THREAD_ENTRY * thread_p, const HFID * hfid,
       return ER_FAILED;
     }
 
-
   if (new_valid == DISK_VALID && log_is_tran_in_system_op (thread_p) == true)
     {
-      return NO_ERROR;		/* nop */
+      return NO_ERROR;
     }
 
   /* Retrieve the header of heap */
@@ -2442,23 +2444,18 @@ heap_stats_update (THREAD_ENTRY * thread_p, const HFID * hfid,
    * We do not want to wait for the following operation.
    * So, if we cannot lock the page return.
    */
-
   hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 			 PGBUF_CONDITIONAL_LATCH);
   if (hdr_pgptr == NULL)
     {
-      /*
-       * Page is busy or other type of error
-       */
+      /* Page is busy or other type of error */
       return NO_ERROR;
     }
 
   /*
-   * Peek the header record to find stadistics for insertion. Update the
-   * statistics directly. This is OK, since the header page has been locked
-   * in exclusive mode.
+   * Peek the header record to find statistics for insertion.
+   * Update the statistics directly.
    */
-
   if (spage_get_record (hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes,
 			PEEK) != S_SUCCESS)
     {
@@ -2466,7 +2463,6 @@ heap_stats_update (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 
   heap_hdr = (HEAP_HDR_STATS *) recdes.data;
-
   best = heap_hdr->estimates.head;
 
   if (free_space >= heap_stats_get_min_freespace (heap_hdr)
@@ -2498,6 +2494,7 @@ heap_stats_update (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  heap_hdr->estimates.num_other_high_best++;	/* this is a guess */
 	  heap_hdr->estimates.num_high_best--;	/* this is a guess */
 	}
+
       /*
        * Now substitute the entry with the new information
        */
@@ -2532,12 +2529,9 @@ heap_stats_update (THREAD_ENTRY * thread_p, const HFID * hfid,
       hdr_pgptr = NULL;
     }
 
-end:
-
   return ret;
 
 exit_on_error:
-
   if (hdr_pgptr)
     {
       pgbuf_unfix (thread_p, hdr_pgptr);
@@ -2548,7 +2542,8 @@ exit_on_error:
     {
       ret = ER_FAILED;
     }
-  goto end;
+
+  return ret;
 }
 
 /*
@@ -2588,7 +2583,6 @@ heap_stats_update_all (THREAD_ENTRY * thread_p, const HFID * hfid,
       return ER_FAILED;
     }
 
-
   if (new_valid == DISK_VALID && log_is_tran_in_system_op (thread_p) == true)
     {
       return NO_ERROR;
@@ -2599,26 +2593,22 @@ heap_stats_update_all (THREAD_ENTRY * thread_p, const HFID * hfid,
   vpid.pageid = hfid->hpgid;
 
   /*
-   * We do not want to wait for the following operation. So, if we cannot lock
-   * the page return.
+   * We do not want to wait for the following operation.
+   * So, if we cannot lock the page return.
    */
-
   hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 			 PGBUF_CONDITIONAL_LATCH);
   if (hdr_pgptr == NULL)
     {
-      /*
-       * Page is busy or other type of error
-       */
+      /* Page is busy or other type of error */
       goto exit_on_error;
     }
 
   /*
-   * Peek the header record to find stadistics for insertion. Update the
+   * Peek the header record to find statistics for insertion. Update the
    * statistics directly. This is OK, since the header page has been locked
    * in exclusive mode.
    */
-
   if (spage_get_record (hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes,
 			PEEK) != S_SUCCESS)
     {
@@ -2629,10 +2619,7 @@ heap_stats_update_all (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   min_freespace = heap_stats_get_min_freespace (heap_hdr);
 
-  /*
-   * Do we need to update the best space statistics
-   */
-
+  /* Do we need to update the best space statistics */
   if (num_best >= 0 && bestspace != NULL)
     {
       heap_hdr->estimates.num_high_best = num_best;
@@ -2677,17 +2664,14 @@ heap_stats_update_all (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
     }
 
-  /*
-   * Do we need to update the other best space statistics
-   */
-
+  /* Do we need to update the other best space statistics */
   if (num_other_best >= 0)
     {
       heap_hdr->estimates.num_other_high_best = num_other_best;
     }
 
-  if (num_pages >= heap_hdr->estimates.num_pages ||
-      num_recs == heap_hdr->estimates.num_recs)
+  if (num_pages >= heap_hdr->estimates.num_pages
+      || num_recs == heap_hdr->estimates.num_recs)
     {
       heap_hdr->estimates.num_pages = num_pages;
       heap_hdr->estimates.num_recs = num_recs;
@@ -2710,12 +2694,9 @@ heap_stats_update_all (THREAD_ENTRY * thread_p, const HFID * hfid,
   pgbuf_set_dirty (thread_p, hdr_pgptr, FREE);
   hdr_pgptr = NULL;
 
-end:
-
   return ret;
 
 exit_on_error:
-
   if (hdr_pgptr)
     {
       pgbuf_unfix (thread_p, hdr_pgptr);
@@ -2726,7 +2707,8 @@ exit_on_error:
     {
       ret = ER_FAILED;
     }
-  goto end;
+
+  return ret;
 }
 
 /*
@@ -2807,7 +2789,6 @@ heap_stats_copy_cache_to_hdr (THREAD_ENTRY * thread_p,
   scan_cache->collect_nrecs = 0;
   scan_cache->collect_recs_sumlen = 0;
 
-
   if (new_valid == DISK_INVALID
       || log_is_tran_in_system_op (thread_p) == false)
     {
@@ -2824,16 +2805,15 @@ heap_stats_copy_cache_to_hdr (THREAD_ENTRY * thread_p,
 
       for (i = 0; i < scan_cache->collect_nbest; i++)
 	{
-
 	  if (scan_cache->collect_best[i].freespace <= min_freespace)
 	    {
 	      heap_hdr->estimates.num_other_high_best--;
 	      continue;
 	    }
 
-	  if (ncopies >= HEAP_NUM_BEST_SPACESTATS ||
-	      VPID_EQ (&scan_cache->collect_best[i].vpid,
-		       &heap_hdr->estimates.best[HEAP_BEST1].vpid))
+	  if (ncopies >= HEAP_NUM_BEST_SPACESTATS
+	      || VPID_EQ (&scan_cache->collect_best[i].vpid,
+			  &heap_hdr->estimates.best[HEAP_BEST1].vpid))
 	    {
 	      continue;
 	    }
@@ -2966,14 +2946,14 @@ heap_stats_quick_num_fit_in_bestspace (HEAP_BESTSPACE * bestspace,
 }
 
 /*
- * heap_stats_find_page_in_bestspace () - Find a page within bestspace statistics with the
- *                          needed space
+ * heap_stats_find_page_in_bestspace () - Find a page within bestspace
+ * 					  statistics with the needed space
  *   return: HEAP_FINDPSACE (found, not found, or error)
  *   bestspace(in): Array of best pages along with their freespace
  *                  (The freespace fields may be updated as a SIDE EFFECT)
  *   num_entries(in): Number of estimated entries in bestspace.
  *   idx_badspace(out): An index into bestspace with no so good space.
- *   num_high_best(/inout): Number of pages in the bestspace that we believe
+ *   num_high_best(in/out): Number of pages in the bestspace that we believe
  *                          have at least HEAP_DROP_FREE_SPACE.
  *   idx_found(out): Set to the index in the bestspace where space is found.
  *   needed_space(in): The needed space.
@@ -3054,73 +3034,71 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 		{
 		case NO_ERROR:
 		  /*
-		     // may return with LOCK_RESUMED_TIMEOUT, but it is not an error.
+		   * may return with LOCK_RESUMED_TIMEOUT, but it's not an error
 		   */
 		  break;
 
 		case ER_LK_PAGE_TIMEOUT:
-		  {
-		    /*
-		     * The page is busy, continue instead of waiting.
-		     */
-		    break;
-		  }
-
-		default:
-		  {
-		    /*
-		     * Something went wrong, we are unable to fetch this page.
-		     * Set its space to zero and finish
-		     */
-		    bestspace[*idx_found].freespace = 0;
-		    /* Fall throurh */
-		  }
+		  /*
+		   * The page is busy, continue instead of waiting.
+		   */
+		  er_log_debug (ARG_FILE_LINE,
+				"heap_stats_find_page_in_bestspace: "
+				"heap_scan_pb_lock_and_fetch() "
+				"vpid { pagid %d volid %d} "
+				"returned ER_LK_PAGE_TIMEOUT",
+				bestspace[*idx_found].vpid.pageid,
+				bestspace[*idx_found].vpid.volid);
+		  break;
 
 		case ER_INTERRUPT:
-		  {
-		    found = HEAP_FINDSPACE_ERROR;
-		    break;
-		  }
+		  found = HEAP_FINDSPACE_ERROR;
+		  break;
+
+		default:
+		  /*
+		   * Something went wrong, we are unable to fetch this page.
+		   * Set its space to zero and finish
+		   */
+		  bestspace[*idx_found].freespace = 0;
+		  found = HEAP_FINDSPACE_ERROR;
+		  break;
 		}
 	    }
 	  else
 	    {
 	      /*
-	       * Make sure that the page has the actual space. This is needed since
-	       * the heap header space statistics are not necessarily accurate
+	       * Make sure that the page has the actual space.
+	       * This is needed since the heap header space statistics
+	       * are not necessarily accurate.
 	       */
-
-	      ishigh_best =
-		((bestspace[*idx_found].freespace >
-		  HEAP_DROP_FREE_SPACE) ? true : false);
+	      if (bestspace[*idx_found].freespace > HEAP_DROP_FREE_SPACE)
+		{
+		  ishigh_best = true;
+		}
+	      else
+		{
+		  ishigh_best = false;
+		}
 
 	      bestspace[*idx_found].freespace =
 		spage_max_space_for_new_record (thread_p, *pgptr);
+
+	      if (ishigh_best == true
+		  && (bestspace[*idx_found].freespace < HEAP_DROP_FREE_SPACE))
+		{
+		  *num_high_best -= 1;
+		  if (*num_high_best < 0)
+		    {
+		      *num_high_best = 0;
+		    }
+		}
 	      if (bestspace[*idx_found].freespace >= needed_space)
 		{
-		  if (ishigh_best == true
-		      && (bestspace[*idx_found].freespace <
-			  HEAP_DROP_FREE_SPACE))
-		    {
-		      *num_high_best -= 1;
-		      if (*num_high_best < 0)
-			*num_high_best = 0;
-		    }
-
 		  found = HEAP_FINDSPACE_FOUND;
 		}
 	      else
 		{
-		  if (ishigh_best == true
-		      && (bestspace[*idx_found].freespace <
-			  HEAP_DROP_FREE_SPACE))
-		    {
-		      *num_high_best -= 1;
-		      if (*num_high_best < 0)
-			{
-			  *num_high_best = 0;
-			}
-		    }
 		  pgbuf_unfix (thread_p, *pgptr);
 		  *pgptr = NULL;
 		}
@@ -3139,6 +3117,8 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	    {
 	      /* Start from worst space that it is know going backwards (RING) */
 	      *idx_found = *idx_badspace;
+	      assert (0 <= *idx_found
+		      && *idx_found < HEAP_NUM_BEST_SPACESTATS);
 	    }
 	  else
 	    {
@@ -3146,6 +3126,8 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
 	      if (*idx_found <= 0)
 		{
 		  *idx_found = num_entries - 1;
+		  assert (0 <= *idx_found
+			  && *idx_found < HEAP_NUM_BEST_SPACESTATS);
 		}
 	    }
 	}
@@ -3201,21 +3183,22 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 			   int needed_space, bool isnew_rec, int newrec_size,
 			   HEAP_SCANCACHE * scan_cache)
 {
-  VPID vpid;			/* Volume and page identifiers     */
+  VPID vpid;			/* Volume and page identifiers */
   VPID *vpid_pgptr;
-  PAGE_PTR pgptr = NULL;	/* The page with the best space    */
-  LOG_DATA_ADDR addr_hdr;	/* Address of logging data         */
+  PAGE_PTR pgptr = NULL;	/* The page with the best space */
+  LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
   RECDES hdr_recdes;		/* Record descriptor to point to
 				 * space statistics
 				 */
-  HEAP_HDR_STATS *heap_hdr;	/* Heap header                     */
+  HEAP_HDR_STATS *heap_hdr;	/* Heap header */
   int idx_found;
-  int totalspace;
+  int total_space;
   int cur_freespace = 0;
   int idxbadspace;
   int ignore2 = 0;
   int ignore3 = 0;
   bool update_bestestimates = false;
+  int num_active_bestpages, age, i;
 
   /*
    * Try to use the space cache for as much information as possible to avoid
@@ -3233,15 +3216,14 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
       pgptr = scan_cache->pgptr;
       scan_cache->pgptr = NULL;
 
-      totalspace = (needed_space + heap_Slotted_overhead +
-		    scan_cache->unfill_space);
+      total_space = (needed_space + heap_Slotted_overhead +
+		     scan_cache->unfill_space);
 
       if (pgptr == NULL
 	  || ((cur_freespace = spage_max_space_for_new_record (thread_p,
 							       pgptr)) <
-	      totalspace))
+	      total_space))
 	{
-
 	  if (pgptr != NULL)
 	    {
 	      /*
@@ -3274,7 +3256,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 						     scan_cache->
 						     collect_nbest,
 						     &idxbadspace, &ignore2,
-						     &ignore3, totalspace,
+						     &ignore3, total_space,
 						     scan_cache,
 						     &pgptr) ==
 		  HEAP_FINDSPACE_ERROR)
@@ -3343,7 +3325,6 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
 
-
   if (scan_cache != NULL && update_bestestimates == true)
     {
       /*
@@ -3369,10 +3350,19 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
   heap_hdr->estimates.recs_sumlen += (float) newrec_size;
 
-  /* Take in consideration the unfill factor for pages with objects */
+  /* Take into consideration the unfill factor for pages with objects */
+  total_space = needed_space + heap_Slotted_overhead + heap_hdr->unfill_space;
 
-  totalspace = needed_space + heap_Slotted_overhead + heap_hdr->unfill_space;
+  num_active_bestpages = 0;
+  for (i = 0; i < HEAP_NUM_BEST_SPACESTATS; i++)
+    {
+      if (!VPID_ISNULL (&heap_hdr->estimates.best[i].vpid))
+	{
+	  num_active_bestpages++;
+	}
+    }
 
+  age = 0;
   while (true)
     {
       pgptr = NULL;
@@ -3383,7 +3373,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 						&heap_hdr->estimates.head,
 						&heap_hdr->estimates.
 						num_high_best, &idx_found,
-						totalspace, scan_cache,
+						total_space, scan_cache,
 						&pgptr) ==
 	  HEAP_FINDSPACE_ERROR)
 	{
@@ -3394,6 +3384,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 
       if (pgptr != NULL)
 	{
+	  /* found the page */
 	  break;
 	}
       else
@@ -3401,6 +3392,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  if (needed_space < HEAP_DROP_FREE_SPACE
 	      && heap_hdr->estimates.num_other_high_best > 1)
 	    {
+	      VPID *hdr_vpidp;
 
 	      if (file_new_isvalid (thread_p, &hfid->vfid) == DISK_VALID
 		  && log_is_tran_in_system_op (thread_p) == true)
@@ -3409,22 +3401,32 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 					sizeof (*heap_hdr), heap_hdr);
 		}
 
+	      hdr_vpidp = pgbuf_get_vpid_ptr (addr_hdr.pgptr);
+	      er_log_debug (ARG_FILE_LINE, "heap_stats_find_best_page: "
+			    "call heap_stats_sync_bestspace() "
+			    "hfid { vfid  { fileid %d volid %d } hpgid %d } "
+			    "hdr_vpid { pageid %d volid %d } "
+			    "scanall %d cancycle %d ",
+			    hfid->vfid.fileid, hfid->vfid.volid, hfid->hpgid,
+			    hdr_vpidp->pageid, hdr_vpidp->volid, 0,
+			    !update_bestestimates);
 	      if (heap_stats_sync_bestspace (thread_p, hfid, heap_hdr,
-					     pgbuf_get_vpid_ptr (addr_hdr.
-								 pgptr),
-					     false,
-					     (update_bestestimates ==
-					      false ? true : false)) !=
+					     hdr_vpidp, false,
+					     !update_bestestimates) !=
 		  NO_ERROR)
 		{
 		  pgbuf_unfix (thread_p, addr_hdr.pgptr);
 		  addr_hdr.pgptr = NULL;
 		  return NULL;
 		}
+
 	      if (heap_hdr->estimates.num_high_best > 0)
 		{
 		  update_bestestimates = false;
-		  continue;
+		  if (age++ < num_active_bestpages)
+		    {
+		      continue;
+		    }
 		}
 	    }
 	  break;
@@ -3443,11 +3445,10 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
   else
     {
       /*
-       * Noone of the best pages has the needed space, allocate a new page
-       * Set the head to the index with the smallest free space..which may not
+       * None of the best pages has the needed space, allocate a new page.
+       * Set the head to the index with the smallest free space, which may not
        * be accurate.
        */
-
 
       if (file_new_isvalid (thread_p, &hfid->vfid) == DISK_VALID
 	  && log_is_tran_in_system_op (thread_p) == true)
@@ -3457,8 +3458,10 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
 
       pgptr = heap_vpid_alloc (thread_p, hfid, addr_hdr.pgptr, heap_hdr,
-			       totalspace, scan_cache);
-      assert (pgptr != NULL || er_errid () == ER_INTERRUPT);
+			       total_space, scan_cache);
+      assert (pgptr != NULL
+	      || er_errid () == ER_INTERRUPT
+	      || er_errid () == ER_FILE_NOT_ENOUGH_PAGES_IN_DATABASE);
     }
 
   if (scan_cache != NULL)
@@ -3507,9 +3510,10 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 			   HEAP_HDR_STATS * heap_hdr, VPID * hdr_vpid,
 			   bool scanall, bool cancycle)
 {
-  int i, best, num_other_best;
+  int i, best, num_other_best, start_pos;
   PAGE_PTR pgptr = NULL;
   VPID vpid;
+  VPID start_vpid = { NULL_PAGEID, NULL_VOLID };
   VPID next_vpid = { NULL_PAGEID, NULL_VOLID };
   VPID last_vpid = { NULL_PAGEID, NULL_VOLID };
   VPID stopat_vpid = { NULL_PAGEID, NULL_VOLID };
@@ -3520,6 +3524,14 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
   int min_freespace;
   int ret = NO_ERROR;
   int npages, nrecords, rec_length;
+  int num_iterations = 0, max_iterations;
+  HEAP_BESTSPACE *best_pages_hint_p;
+#if defined (CUBRID_DEBUG)
+  struct timeval s_tv, e_tv;
+  float elapsed;
+
+  gettimeofday (&s_tv, NULL);
+#endif /* CUBRID_DEBUG */
 
   min_freespace = heap_stats_get_min_freespace (heap_hdr);
 
@@ -3544,15 +3556,19 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
 
       for (i = HEAP_NUM_BEST_SPACESTATS - 1; i >= HEAP_BEST2_START; i--)
-	if (!VPID_ISNULL (&heap_hdr->estimates.best[i].vpid))
-	  {
-	    next_vpid = heap_hdr->estimates.best[i].vpid;
-	    if (cancycle == true)
-	      {
-		stopat_vpid = next_vpid;
-	      }
-	    break;
-	  }
+	{
+	  if (!VPID_ISNULL (&heap_hdr->estimates.best[i].vpid))
+	    {
+	      next_vpid = heap_hdr->estimates.best[i].vpid;
+	      start_vpid = next_vpid;
+	      start_pos = i;
+	      if (cancycle == true)
+		{
+		  stopat_vpid = next_vpid;
+		}
+	      break;
+	    }
+	}
     }
 
   if (VPID_ISNULL (&next_vpid))
@@ -3562,6 +3578,8 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
        */
       next_vpid.volid = hfid->vfid.volid;
       next_vpid.pageid = hfid->hpgid;
+      start_vpid = next_vpid;
+      start_pos = -1;
       cancycle = false;
     }
 
@@ -3570,6 +3588,13 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
    * since the best space array is only used for hints, and it is OK
    * if it is a little bit wrong.
    */
+  best_pages_hint_p = heap_hdr->estimates.best;
+
+  num_iterations = 0;
+  max_iterations = MIN (heap_hdr->estimates.num_pages * 0.2,
+			heap_Find_best_page_limit);
+  max_iterations = MAX (max_iterations, HEAP_NUM_BEST_SPACESTATS);
+
   while (!VPID_ISNULL (&next_vpid) || cancycle == true)
     {
       if (cancycle == true && VPID_ISNULL (&next_vpid))
@@ -3587,6 +3612,25 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	     && !VPID_ISNULL (&next_vpid)
 	     && (cancycle == true || !VPID_EQ (&next_vpid, &stopat_vpid)))
 	{
+	  if (scanall == false)
+	    {
+	      if (++num_iterations > max_iterations)
+		{
+		  er_log_debug (ARG_FILE_LINE, "heap_stats_sync_bestspace: "
+				"num_iterations %d best %d "
+				"next_vpid { pageid %d volid %d }\n",
+				num_iterations, best, next_vpid.pageid,
+				next_vpid.volid);
+
+		  if (start_pos != -1)
+		    {
+		      /* update bestspace hint not to scan these pages again */
+		      best_pages_hint_p[start_pos].vpid = vpid;
+		      best_pages_hint_p[start_pos].freespace = free_space;
+		    }
+		  break;
+		}
+	    }
 
 	  vpid = next_vpid;
 	  pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
@@ -3616,38 +3660,36 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	    {
 	      if (best < HEAP_NUM_BEST_SPACESTATS)
 		{
-
 		  if (scanall != true && cancycle == true
-		      && !VPID_EQ (&heap_hdr->estimates.best[HEAP_BEST1].vpid,
+		      && !VPID_EQ (&best_pages_hint_p[HEAP_BEST1].vpid,
 				   &last_vpid))
 		    {
 		      /*
-		       * Make the current page the last for bestspace purposes. If
-		       * current page is the last one on the heap, then you can reset
-		       * the space, otherwise leave it as it is.
+		       * Make the current page the last for bestspace purposes.
+		       * If current page is the last one on the heap,
+		       * then you can reset the space,
+		       * otherwise leave it as it is.
 		       */
-		      if (!
-			  (VPID_EQ
-			   (&heap_hdr->estimates.best[HEAP_BEST1].vpid,
-			    hdr_vpid)))
+		      if (!VPID_EQ (&best_pages_hint_p[HEAP_BEST1].vpid,
+				    hdr_vpid))
 			{
-			  heap_hdr->estimates.best[best].vpid =
-			    heap_hdr->estimates.best[HEAP_BEST1].vpid;
-			  heap_hdr->estimates.best[best].freespace =
-			    heap_hdr->estimates.best[HEAP_BEST1].freespace;
+			  best_pages_hint_p[best].vpid =
+			    best_pages_hint_p[HEAP_BEST1].vpid;
+			  best_pages_hint_p[best].freespace =
+			    best_pages_hint_p[HEAP_BEST1].freespace;
 			  best++;
 			}
-		      heap_hdr->estimates.best[HEAP_BEST1].vpid = vpid;
+		      best_pages_hint_p[HEAP_BEST1].vpid = vpid;
 		      if (VPID_EQ (&vpid, &last_vpid))
 			{
-			  heap_hdr->estimates.best[HEAP_BEST1].freespace =
+			  best_pages_hint_p[HEAP_BEST1].freespace =
 			    free_space;
 			}
 		    }
 		  else
 		    {
-		      heap_hdr->estimates.best[best].freespace = free_space;
-		      heap_hdr->estimates.best[best].vpid = vpid;
+		      best_pages_hint_p[best].freespace = free_space;
+		      best_pages_hint_p[best].vpid = vpid;
 		      best++;
 		    }
 		  heap_hdr->estimates.num_high_best++;
@@ -3655,13 +3697,14 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 		  if (scanall == false)
 		    {
 		      /*
-		       * We do not care about synchronizing a bunch of pages at this
-		       * moment. That is, it may not be worth while to continue finding
-		       * other pages with good space since they may be far from the
-		       * current page. That is, avoid scanning a lot of pages that may
-		       * not have space. Hopefully, the statistics will be reset before
-		       * more space is needed. If more space is needed at a later
-		       * point, we will continue from this point.
+		       * We do not care about synchronizing a bunch of pages
+		       * at this moment. That is, it may not be worth while
+		       * to continue finding other pages with good space
+		       * since they may be far from the current page.
+		       * That is, avoid scanning a lot of pages that may not
+		       * have space. Hopefully, the statistics will be reset
+		       * before more space is needed. If more space is needed
+		       * at a later point, we will continue from this point.
 		       */
 		      VPID_SET_NULL (&next_vpid);
 		      cancycle = false;
@@ -3679,10 +3722,16 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
       VPID_SET_NULL (&next_vpid);
     }
 
+  er_log_debug (ARG_FILE_LINE, "heap_stats_sync_bestspace: "
+		"scans from {%d|%d} to {%d|%d}, num_iterations(%d) "
+		"max_iterations(%d)\n",
+		start_vpid.volid, start_vpid.pageid, vpid.volid, vpid.pageid,
+		num_iterations, max_iterations);
+
   for (i = best; i < HEAP_NUM_BEST_SPACESTATS; i++)
     {
-      VPID_SET_NULL (&heap_hdr->estimates.best[i].vpid);
-      heap_hdr->estimates.best[i].freespace = 0;
+      VPID_SET_NULL (&best_pages_hint_p[i].vpid);
+      best_pages_hint_p[i].freespace = 0;
     }
 
   heap_hdr->estimates.head = best;
@@ -3734,6 +3783,15 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  heap_hdr->estimates.recs_sumlen = recs_sumlen;
 	}
     }
+
+#if defined (CUBRID_DEBUG)
+  gettimeofday (&e_tv, NULL);
+  elapsed = (float) (e_tv.tv_sec - s_tv.tv_sec) * 1000000;
+  elapsed += (float) (e_tv.tv_usec - s_tv.tv_usec);
+  elapsed /= 1000000;
+  er_log_debug (ARG_FILE_LINE,
+		"heap_stats_sync_bestspace: elapsed time %.6f", elapsed);
+#endif /* CUBRID_DEBUG */
 
   return ret;
 }
@@ -3854,7 +3912,7 @@ heap_link_to_new (THREAD_ENTRY * thread_p, const VFID * vfid,
  *   return: bool
  *   vfid(in): File where the new page belongs
  *   new_vpid(in): The new page
- *   ignore_napges(in): Number of contiguous allocated pages
+ *   ignore_npages(in): Number of contiguous allocated pages
  *                      (Ignored in this function. We allocate only one page)
  *   xlink(in): Chain to next and previous page
  *
@@ -3862,7 +3920,7 @@ heap_link_to_new (THREAD_ENTRY * thread_p, const VFID * vfid,
  */
 static bool
 heap_vpid_init_new (THREAD_ENTRY * thread_p, const VFID * vfid,
-		    const VPID * new_vpid, INT32 ignore_napges, void *xlink)
+		    const VPID * new_vpid, INT32 ignore_npages, void *xlink)
 {
   LOG_DATA_ADDR addr;
   HEAP_CHAIN_TOLAST *link;
@@ -4330,7 +4388,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 		 int needed_space, HEAP_SCANCACHE * scan_cache)
 {
   VPID vpid;			/* Volume and page identifiers */
-  LOG_DATA_ADDR addr;		/* Address of logging data     */
+  LOG_DATA_ADDR addr;		/* Address of logging data */
   PAGE_PTR new_pgptr = NULL;
   PAGE_PTR best_pgptr = NULL;
   const VPID *hdr_vpid;
@@ -4339,7 +4397,8 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
   int best;
   int min_freespace;
   HEAP_CHAIN_TOLAST tolast;
-
+  HEAP_BESTSPACE *best_pages_hint_p;
+  VPID last_vpid;
 
   addr.vfid = &hfid->vfid;
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
@@ -4357,13 +4416,22 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
    */
 
   best_pgptr = NULL;
+  best_pages_hint_p = heap_hdr->estimates.best;
 
   /*
    * If current best1 space page is not the header page, best1 space page
    * becomes one of the pages in the best page set
    */
+  last_vpid = best_pages_hint_p[HEAP_LAST_VPID_HINT_INDEX].vpid;
+  if (VPID_ISNULL (&last_vpid))
+    {
+      if (file_find_last_page (thread_p, &hfid->vfid, &last_vpid) == NULL)
+	{
+	  last_vpid = best_pages_hint_p[HEAP_BEST1].vpid;
+	}
+    }
 
-  if (!(VPID_EQ (&heap_hdr->estimates.best[HEAP_BEST1].vpid, hdr_vpid)))
+  if (!VPID_EQ (&last_vpid, hdr_vpid))
     {
       /*
        * Fetch the current best1 space page and see if it does not point to
@@ -4373,9 +4441,9 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
        * heap, or we have preallocate several pages.
        */
 
-      vpid = heap_hdr->estimates.best[HEAP_BEST1].vpid;
+      vpid = last_vpid;
 
-      while (!(VPID_ISNULL (&vpid)))
+      while (!VPID_ISNULL (&vpid))
 	{
 	  if (best_pgptr != NULL)
 	    {
@@ -4385,20 +4453,18 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 
 	  best = heap_hdr->estimates.head;
 	  /*
-	   * Record the current page as a good page to look for space only if its
-	   * space is at least min free space to add a new record. May be what we
-	   * need here is HEAP_DROP_FREE_SPACE.
+	   * Record the current page as a good page to look for space only if
+	   * its space is at least min free space to add a new record.
+	   * May be what we need here is HEAP_DROP_FREE_SPACE.
 	   */
-	  if ((heap_hdr->estimates.best[HEAP_BEST1].freespace >
-	       min_freespace)
-	      && (heap_hdr->estimates.best[HEAP_BEST1].freespace >
-		  heap_hdr->estimates.best[best].freespace))
+	  if (best_pages_hint_p[HEAP_BEST1].freespace > min_freespace
+	      && best_pages_hint_p[HEAP_BEST1].freespace >
+	      best_pages_hint_p[best].freespace)
 	    {
-
-	      heap_hdr->estimates.best[best].vpid =
-		heap_hdr->estimates.best[HEAP_BEST1].vpid;
-	      heap_hdr->estimates.best[best].freespace =
-		heap_hdr->estimates.best[HEAP_BEST1].freespace;
+	      best_pages_hint_p[best].vpid =
+		best_pages_hint_p[HEAP_BEST1].vpid;
+	      best_pages_hint_p[best].freespace =
+		best_pages_hint_p[HEAP_BEST1].freespace;
 
 	      heap_hdr->estimates.head++;
 	      if (heap_hdr->estimates.head >= HEAP_NUM_BEST_SPACESTATS)
@@ -4415,7 +4481,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 	      return NULL;
 	    }
 
-	  /* Get the chain record and put it in recdes...which points to chain */
+	  /* Get the chain record and put it in recdes, which points to chain */
 	  if (spage_get_record (best_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
 				&recdes, PEEK) != S_SUCCESS)
 	    {
@@ -4428,31 +4494,29 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  /* Get next page */
 	  peek_chain = (HEAP_CHAIN *) recdes.data;
 
-	  if (!(VPID_EQ (&vpid, &heap_hdr->estimates.best[HEAP_BEST1].vpid)))
+	  if (!VPID_EQ (&vpid, &best_pages_hint_p[HEAP_BEST1].vpid))
 	    {
-	      heap_hdr->estimates.best[HEAP_BEST1].vpid = vpid;
-	      heap_hdr->estimates.best[HEAP_BEST1].freespace =
+	      best_pages_hint_p[HEAP_BEST1].vpid = vpid;
+	      best_pages_hint_p[HEAP_BEST1].freespace =
 		spage_max_space_for_new_record (thread_p, best_pgptr);
 	      heap_hdr->estimates.num_high_best++;
-	      if (needed_space <
-		  heap_hdr->estimates.best[HEAP_BEST1].freespace)
+	      if (needed_space < best_pages_hint_p[HEAP_BEST1].freespace)
 		{
 		  /*
 		   * Don't allocate a new page.
-		   * Update header statistics to point to this page as the best1 space
-		   * page and return this page.
+		   * Update header statistics to point to this page
+		   * as the best1 space page and return this page.
 		   *
-		   * If current page points to another page, assume that this second
-		   * page has good space too.
+		   * If current page points to another page, assume that
+		   * this second page has good space too.
 		   */
 		  if (!VPID_ISNULL (&peek_chain->next_vpid))
 		    {
 		      /* Again assume that this page is good */
 		      best = heap_hdr->estimates.head;
 
-		      heap_hdr->estimates.best[best].vpid =
-			peek_chain->next_vpid;
-		      heap_hdr->estimates.best[best].freespace =
+		      best_pages_hint_p[best].vpid = peek_chain->next_vpid;
+		      best_pages_hint_p[best].freespace =
 			HEAP_DROP_FREE_SPACE;
 
 		      heap_hdr->estimates.head++;
@@ -4462,6 +4526,10 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
 			  heap_hdr->estimates.head = HEAP_BEST2_START;
 			}
 		    }
+
+		  /* last page hint */
+		  best_pages_hint_p[HEAP_LAST_VPID_HINT_INDEX].vpid = vpid;
+
 		  return best_pgptr;
 		}
 	    }
@@ -4481,12 +4549,11 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
   else
     {
-      if (!(VPID_ISNULL (&heap_hdr->next_vpid)))
+      if (!VPID_ISNULL (&heap_hdr->next_vpid))
 	{
-	  /* The following space is just a hint.... */
-	  heap_hdr->estimates.best[HEAP_BEST1].vpid = heap_hdr->next_vpid;
-	  heap_hdr->estimates.best[HEAP_BEST1].freespace =
-	    HEAP_DROP_FREE_SPACE;
+	  /* The following space is just a hint */
+	  best_pages_hint_p[HEAP_BEST1].vpid = heap_hdr->next_vpid;
+	  best_pages_hint_p[HEAP_BEST1].freespace = HEAP_DROP_FREE_SPACE;
 	  heap_hdr->estimates.num_high_best++;
 	  return heap_vpid_alloc (thread_p, hfid, hdr_pgptr, heap_hdr,
 				  needed_space, scan_cache);
@@ -4494,10 +4561,9 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 
   /*
-   * Now allocate a new page as close as possible to the last allocated heap
-   * page.
+   * Now allocate a new page as close as possible to the last allocated page.
    * Note that a new page is allocated when the best1 space page in the
-   * statistics is the actual last page on the heap...
+   * statistics is the actual last page on the heap.
    */
 
   /*
@@ -4510,7 +4576,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
   tolast.heap_hdr = heap_hdr;
 
   if (file_alloc_pages (thread_p, &hfid->vfid, &vpid, 1,
-			&heap_hdr->estimates.best[HEAP_BEST1].vpid,
+			&best_pages_hint_p[HEAP_BEST1].vpid,
 			heap_vpid_init_new, &tolast) == NULL)
     {
       /* Unable to allocate a new page */
@@ -4544,17 +4610,18 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
     }
 
   /*
-   * Now update header statistics for best1 space page
-   * The changes to the statistics are not logged. They are fixed
-   * automatically sooner or later
+   * Now update header statistics for best1 space page.
+   * The changes to the statistics are not logged.
+   * They are fixed automatically sooner or later.
    */
 
-
-  heap_hdr->estimates.best[HEAP_BEST1].vpid = vpid;
-  heap_hdr->estimates.best[HEAP_BEST1].freespace =
+  best_pages_hint_p[HEAP_BEST1].vpid = vpid;
+  best_pages_hint_p[HEAP_BEST1].freespace =
     spage_max_space_for_new_record (thread_p, new_pgptr);
+  /* last page hint */
+  best_pages_hint_p[HEAP_LAST_VPID_HINT_INDEX].vpid = vpid;
   heap_hdr->estimates.num_high_best++;
-  heap_hdr->estimates.num_pages += 1;
+  heap_hdr->estimates.num_pages++;
 
   addr.pgptr = hdr_pgptr;
   log_skip_tailsa_logging (thread_p, &addr);
@@ -4694,6 +4761,15 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
     }
 
+  if (VPID_EQ (&heap_hdr.estimates.best[HEAP_LAST_VPID_HINT_INDEX].vpid,
+	       rm_vpid))
+    {
+      /* If the page is the last page of the heap file, update the hint */
+      heap_hdr.estimates.best[HEAP_LAST_VPID_HINT_INDEX].vpid =
+	rm_chain->prev_vpid;
+      ishdr_updated = true;
+    }
+
   /*
    * Is previous page the header page ?
    */
@@ -4714,9 +4790,8 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
       hdr_recdes.data = (char *) &heap_hdr;
       hdr_recdes.area_size = sizeof (heap_hdr);
 
-      sp_success =
-	spage_update (thread_p, hdr_addr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
-		      &hdr_recdes);
+      sp_success = spage_update (thread_p, hdr_addr.pgptr,
+				 HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes);
       if (sp_success != SP_SUCCESS)
 	{
 	  /*
@@ -4751,14 +4826,14 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  hdr_recdes.data = (char *) &heap_hdr;
 	  hdr_recdes.area_size = sizeof (heap_hdr);
 
-	  sp_success =
-	    spage_update (thread_p, hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
-			  &hdr_recdes);
+	  sp_success = spage_update (thread_p, hdr_pgptr,
+				     HEAP_HEADER_AND_CHAIN_SLOTID,
+				     &hdr_recdes);
 	  if (sp_success != SP_SUCCESS)
 	    {
 	      /*
-	       * This look like a system error, size did not change, so why did it
-	       * fail
+	       * This look like a system error, size did not change, 
+	       * so why did it fail
 	       */
 	      if (sp_success != SP_ERROR)
 		{
@@ -4781,9 +4856,8 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 
       /* NOW check the PREVIOUS page */
 
-      if (spage_get_record
-	  (addr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes,
-	   PEEK) != S_SUCCESS)
+      if (spage_get_record (addr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			    &recdes, PEEK) != S_SUCCESS)
 	{
 	  /* Look like a system error. Unable to obtain header record */
 	  goto error;
@@ -4806,9 +4880,8 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 
       /* Now change the record */
 
-      sp_success =
-	spage_update (thread_p, addr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
-		      &recdes);
+      sp_success = spage_update (thread_p, addr.pgptr,
+				 HEAP_HEADER_AND_CHAIN_SLOTID, &recdes);
       if (sp_success != SP_SUCCESS)
 	{
 	  /*
@@ -4849,9 +4922,8 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 	}
 
       /* Get the chain record */
-      if (spage_get_record
-	  (addr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes,
-	   PEEK) != S_SUCCESS)
+      if (spage_get_record (addr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			    &recdes, PEEK) != S_SUCCESS)
 	{
 	  /* Look like a system error. Unable to obtain header record */
 	  goto error;
@@ -4872,9 +4944,8 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
       recdes.type = REC_HOME;
       recdes.data = (char *) &chain;
 
-      sp_success =
-	spage_update (thread_p, addr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
-		      &recdes);
+      sp_success = spage_update (thread_p, addr.pgptr,
+				 HEAP_HEADER_AND_CHAIN_SLOTID, &recdes);
       if (sp_success != SP_SUCCESS)
 	{
 	  /*
@@ -4898,6 +4969,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
   /* Free the page to be deallocated and deallocate the page */
   pgbuf_unfix (thread_p, rm_pgptr);
   rm_pgptr = NULL;
+
   if (file_dealloc_page (thread_p, &hfid->vfid, rm_vpid) != NO_ERROR)
     {
       goto error;
@@ -5282,7 +5354,8 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, int exp_npgs,
     }
 
   heap_hdr.estimates.head = HEAP_BEST2_START;
-  for (i = heap_hdr.estimates.head; i < HEAP_NUM_BEST_SPACESTATS; i++)
+  for (i = heap_hdr.estimates.head;
+       i < HEAP_NUM_BEST_SPACESTATS_PLUS_LAST_VPID; i++)
     {
       VPID_SET_NULL (&heap_hdr.estimates.best[i].vpid);
       heap_hdr.estimates.best[i].freespace = 0;
@@ -5503,7 +5576,8 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid)
 	}
 
       heap_hdr->estimates.head = HEAP_BEST2_START;
-      for (i = heap_hdr->estimates.head; i < HEAP_NUM_BEST_SPACESTATS; i++)
+      for (i = heap_hdr->estimates.head;
+	   i < HEAP_NUM_BEST_SPACESTATS_PLUS_LAST_VPID; i++)
 	{
 	  VPID_SET_NULL (&heap_hdr->estimates.best[i].vpid);
 	  heap_hdr->estimates.best[i].freespace = 0;
@@ -6266,9 +6340,9 @@ heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * oid,
       map_recdes.area_size = sizeof (ovf_oid);
       map_recdes.data = (char *) &ovf_oid;
 
-      if (heap_insert_with_lock_internal
-	  (thread_p, hfid, oid, &class_oid, &map_recdes, scan_cache, true,
-	   recdes->length) != NO_ERROR)
+      if (heap_insert_with_lock_internal (thread_p, hfid, oid, &class_oid,
+					  &map_recdes, scan_cache, true,
+					  recdes->length) != NO_ERROR)
 	{
 	  /* Something went wrong, delete the overflow record */
 	  (void) heap_ovf_delete (thread_p, hfid, &ovf_oid);
@@ -6410,16 +6484,16 @@ try_again:
 	}
       else
 	{
-	  if (!HFID_EQ (&scan_cache->hfid, hfid) ||
-	      OID_ISNULL (&scan_cache->class_oid))
+	  if (!HFID_EQ (&scan_cache->hfid, hfid)
+	      || OID_ISNULL (&scan_cache->class_oid))
 	    {
 	      OID class_oid;
 	      /*
 	       * A different heap is used or we did not know the class.
 	       */
 	      or_class_oid (recdes, &class_oid);
-	      if (heap_scancache_reset_modify
-		  (thread_p, scan_cache, hfid, &class_oid) != NO_ERROR)
+	      if (heap_scancache_reset_modify (thread_p, scan_cache, hfid,
+					       &class_oid) != NO_ERROR)
 		{
 		  goto error;
 		}
@@ -6996,9 +7070,11 @@ try_again:
 	      log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr,
 					  &forward_recdes, recdes);
 	    }
+
 	  (void) heap_ovf_delete (thread_p, hfid, &forward_oid);
 	  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
 	}
+
       pgbuf_unfix (thread_p, hdr_pgptr);
       hdr_pgptr = NULL;
       break;
@@ -7016,12 +7092,10 @@ try_again:
 	  || spage_is_updatable (thread_p, addr.pgptr, oid->slotid,
 				 recdes) == false)
 	{
-
 	  /*
 	   * DOES NOT FIT ON HOME PAGE (OID page) ANY LONGER,
 	   * a new home must be found.
 	   */
-
 
 	  /* Header of heap */
 	  vpid.volid = hfid->vfid.volid;
@@ -7087,13 +7161,14 @@ try_again:
 	      /*
 	       * Relocate the object. Find a new home
 	       */
+	      int len;
+
+	      len = recdes->length - spage_get_record_length (addr.pgptr,
+							      oid->slotid);
 	      recdes->type = REC_NEWHOME;
 	      if (heap_insert_internal (thread_p, hfid, &new_forward_oid,
 					recdes, scan_cache, false,
-					(recdes->length -
-					 spage_get_record_length
-					 (addr.pgptr,
-					  oid->slotid))) != NO_ERROR)
+					len) != NO_ERROR)
 		{
 		  /* Problems finding a new home. Return without any updates */
 		  goto error;
@@ -7201,8 +7276,8 @@ try_again:
 	  log_append_undoredo_recdes (thread_p, RVHF_UPDATE, &addr,
 				      &forward_recdes, recdes);
 
-	  sp_success =
-	    spage_update (thread_p, addr.pgptr, oid->slotid, recdes);
+	  sp_success = spage_update (thread_p, addr.pgptr, oid->slotid,
+				     recdes);
 	  if (sp_success != SP_SUCCESS)
 	    {
 	      /*
@@ -7216,7 +7291,7 @@ try_again:
 		}
 #if defined(CUBRID_DEBUG)
 	      er_log_debug (ARG_FILE_LINE,
-			    "heap_updte: ** SYSTEM_ERROR ** update"
+			    "heap_update: ** SYSTEM_ERROR ** update"
 			    " operation failed even when have already checked"
 			    " for space");
 #endif
@@ -7252,7 +7327,6 @@ try_again:
   if (heap_Guesschn != NULL && heap_Classrepr->rootclass_hfid != NULL
       && HFID_EQ ((hfid), heap_Classrepr->rootclass_hfid))
     {
-
       if (log_add_to_modified_class_list (thread_p, oid) != NO_ERROR)
 	{
 	  goto error;
@@ -7273,9 +7347,6 @@ try_again:
   return oid;
 
 error:
-  /*
-   ******
-   */
   if (addr.pgptr != NULL)
     {
       pgbuf_unfix (thread_p, addr.pgptr);
@@ -7393,11 +7464,9 @@ heap_delete_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
   RECDES forward_recdes;
   RECDES undo_recdes;
   DISK_ISVALID oid_valid;
-
   int again_count = 0;
   int again_max = 20;
   VPID home_vpid;
-
 
   oid_valid = HEAP_ISVALID_OID (oid);
   if (oid_valid != DISK_VALID)
@@ -7588,9 +7657,8 @@ try_again:
       /* Remove home and forward (relocated) objects */
 
       /* Find the content of the record for logging purposes */
-      if (spage_get_record
-	  (forward_addr.pgptr, forward_oid.slotid, &undo_recdes,
-	   PEEK) != S_SUCCESS)
+      if (spage_get_record (forward_addr.pgptr, forward_oid.slotid,
+			    &undo_recdes, PEEK) != S_SUCCESS)
 	{
 	  /* Unable to keep forward imagen of object for logging */
 	  goto error;
@@ -7632,8 +7700,8 @@ try_again:
       if (free_space < HEAP_DROP_FREE_SPACE)
 	{
 	  /* Check if the space drop to the desired space for statistics */
-	  free_space =
-	    spage_max_space_for_new_record (thread_p, forward_addr.pgptr);
+	  free_space = spage_max_space_for_new_record (thread_p,
+						       forward_addr.pgptr);
 	  if (free_space > HEAP_DROP_FREE_SPACE)
 	    {
 	      (void) heap_stats_update (thread_p, hfid, &vpid, free_space);
@@ -7767,6 +7835,7 @@ try_again:
 	}
       pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
       break;
+
     case REC_MARKDELETED:
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3,
@@ -7791,9 +7860,6 @@ try_again:
   return oid;
 
 error:
-  /*
-   ******
-   */
   if (addr.pgptr != NULL)
     {
       pgbuf_unfix (thread_p, addr.pgptr);
@@ -8000,8 +8066,8 @@ heap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
   hdr_recdes.area_size = sizeof (heap_hdr);
 
   if (spage_get_record (hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes,
-			COPY) != S_SUCCESS ||
-      file_find_last_page (thread_p, &hfid->vfid, &prv_vpid) == NULL)
+			COPY) != S_SUCCESS
+      || file_find_last_page (thread_p, &hfid->vfid, &prv_vpid) == NULL)
     {
       goto exit_on_error;
     }
@@ -8930,7 +8996,6 @@ heap_scancache_force_modify (THREAD_ENTRY * thread_p,
       if (spage_get_record (hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes,
 			    PEEK) == S_SUCCESS)
 	{
-
 	  heap_hdr = (HEAP_HDR_STATS *) recdes.data;
 	  if (heap_stats_copy_cache_to_hdr (thread_p, heap_hdr, scan_cache) ==
 	      NO_ERROR)
@@ -8953,12 +9018,9 @@ heap_scancache_force_modify (THREAD_ENTRY * thread_p,
       hdr_pgptr = NULL;
     }
 
-end:
-
   return ret;
 
 exit_on_error:
-
   if (hdr_pgptr)
     {
       pgbuf_unfix (thread_p, hdr_pgptr);
@@ -8969,7 +9031,8 @@ exit_on_error:
     {
       ret = ER_FAILED;
     }
-  goto end;
+
+  return ret;
 }
 
 /*
@@ -9596,7 +9659,7 @@ static SCAN_CODE
 heap_get_if_diff_chn (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
 		      int ispeeking, int chn)
 {
-  RECDES chn_recdes;		/* Used when we need to compare the cache 
+  RECDES chn_recdes;		/* Used when we need to compare the cache
 				 * coherency number and we are not peeking
 				 */
   SCAN_CODE scan;
@@ -9627,7 +9690,7 @@ heap_get_if_diff_chn (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
 	  /*
 	   * Note that we could copy the recdes.data from chn_recdes.data, but
 	   * I don't think it is much difference here, and we will have to deal
-	   * with all not fit conditions and so on, so we decide to use 
+	   * with all not fit conditions and so on, so we decide to use
 	   * spage_get_record instead.
 	   */
 	  scan = spage_get_record (pgptr, slotid, recdes, COPY);
@@ -9637,6 +9700,7 @@ heap_get_if_diff_chn (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes,
   return scan;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_get_chn () - Get the chn of the object
  *   return: chn or NULL_CHN
@@ -9667,6 +9731,7 @@ heap_get_chn (THREAD_ENTRY * thread_p, const OID * oid)
 
   return chn;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_get () - Retrieve or peek an object
@@ -9998,8 +10063,8 @@ heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes,
 	      /*
 	       * Allocate an area to hold the object. Assume that the object
 	       * will fit in two pages for not better estimates. We could call
-	       * heap_ovf_get_length, but it may be better to just guess and 
-	       * realloc if needed. 
+	       * heap_ovf_get_length, but it may be better to just guess and
+	       * realloc if needed.
 	       * We could also check the estimates for average object length,
 	       * but again, it may be expensive and may not be accurate
 	       * for this object.
@@ -10067,8 +10132,7 @@ heap_get (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes,
 /*
  * heap_get_with_class_oid () - Retrieve or peek an object and get its class oid
  *   return: SCAN_CODE
- *           (Either of S_SUCCESS, S_DOESNT_FIT,
- *                      S_DOESNT_EXIST, S_ERROR)
+ *           (Either of S_SUCCESS, S_DOESNT_FIT, S_DOESNT_EXIST, S_ERROR)
  *   oid(in): Object identifier
  *   recdes(in/out): Record descriptor
  *   scan_cache(in/out): Scan cache or NULL
@@ -10101,9 +10165,7 @@ heap_get_with_class_oid (THREAD_ENTRY * thread_p, const OID * oid,
 
 /*
  * heap_next () - Retrieve or peek next object
- *   return: SCAN_CODE
- *           (Either of S_SUCCESS, S_DOESNT_FIT, S_END,
- *                      S_ERROR)
+ *   return: SCAN_CODE (Either of S_SUCCESS, S_DOESNT_FIT, S_END, S_ERROR)
  *   hfid(in):
  *   class_oid(in):
  *   next_oid(in/out): Object identifier of current record.
@@ -10133,7 +10195,7 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   int continue_looking;
 
 #if defined(CUBRID_DEBUG)
-  if (scan_cache == NULL && ispeeking == true)
+  if (scan_cache == NULL && ispeeking == PEEK)
     {
       er_log_debug (ARG_FILE_LINE, "heap_next: Using wrong interface."
 		    " scan_cache cannot be NULL when peeking.");
@@ -10161,7 +10223,7 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
   if (scan_cache == NULL)
     {
-      /* It is possible only in case of ispeeking == false(COPY). */
+      /* It is possible only in case of ispeeking == COPY */
       if (recdes->data == NULL)
 	{
 	  er_log_debug (ARG_FILE_LINE, "heap_next: Using wrong interface."
@@ -10204,10 +10266,9 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  vpid.pageid = oid.pageid;
 
 	  /*
-	   * Fetch the page where the object of OID is stored. Use previous scan
-	   * page whenever possible, otherwise, deallocate the page
+	   * Fetch the page where the object of OID is stored. Use previous
+	   * scan page whenever possible, otherwise, deallocate the page.
 	   */
-
 	  if (scan_cache != NULL)
 	    {
 	      pgptr = NULL;
@@ -10245,8 +10306,10 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		      scan_cache->pgptr = NULL;
 		      return S_ERROR;
 		    }
-		  if (heap_scancache_update_hinted_when_lots_space
-		      (thread_p, scan_cache, pgptr) != NO_ERROR)
+		  if (heap_scancache_update_hinted_when_lots_space (thread_p,
+								    scan_cache,
+								    pgptr)
+		      != NO_ERROR)
 		    {
 		      pgbuf_unfix (thread_p, pgptr);
 		      pgptr = NULL;
@@ -10276,8 +10339,8 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
 	  /*
 	   * Find the next object. Skip relocated records (i.e., new_home
-	   * records). This records must be accessed through the relocation record
-	   * (i.e., the object).
+	   * records). This records must be accessed through the relocation
+	   * record (i.e., the object).
 	   */
 
 	  while (((scan = spage_next_record (pgptr, &oid.slotid,
@@ -10320,7 +10383,6 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	    {
 	      break;
 	    }
-
 	}
 
       /*
@@ -10373,9 +10435,8 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	    }
 #endif
 
-	  if (scan_cache != NULL && ispeeking == false
-	      && recdes->data == NULL)
-	    {			/* COPY */
+	  if (scan_cache != NULL && ispeeking == COPY && recdes->data == NULL)
+	    {
 	      /* It is guaranteed that scan_cache is not NULL. */
 	      if (scan_cache->area == NULL)
 		{
@@ -10399,7 +10460,7 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
 	  if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	    {
-	      if (ispeeking == true)
+	      if (ispeeking == PEEK)
 		{
 		  scan = spage_get_record (pgptr, forward_oid.slotid, recdes,
 					   PEEK);
@@ -10432,18 +10493,18 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  /* Now get the content of the multipage object. */
 	  /* Try to reuse the previously allocated area */
 	  if (scan_cache != NULL
-	      && (ispeeking == true || recdes->data == NULL))
+	      && (ispeeking == PEEK || recdes->data == NULL))
 	    {
 	      /* It is guaranteed that scan_cache is not NULL. */
 	      if (scan_cache->area == NULL)
 		{
 		  /*
 		   * Allocate an area to hold the object. Assume that the object
-		   * will fit in two pages for not better estimates. We could call
-		   * heap_ovf_get_length, but it may be better to just guess and realloc if
-		   * needed. We could also check the estimates for average object
-		   * length, but again, it may be expensive and may not be accurate
-		   * for this object.
+		   * will fit in two pages for not better estimates.
+		   * We could call heap_ovf_get_length, but it may be better
+		   * to just guess and realloc if needed. We could also check
+		   * the estimates for average object length, but again,
+		   * it may be expensive and may not be accurate for the object.
 		   */
 		  scan_cache->area_size = DB_PAGESIZE * 2;
 		  scan_cache->area = (char *) db_private_alloc (thread_p,
@@ -10458,9 +10519,8 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      recdes->data = scan_cache->area;
 	      recdes->area_size = scan_cache->area_size;
 
-	      while ((scan =
-		      heap_ovf_get (thread_p, &forward_oid, recdes,
-				    NULL_CHN)) == S_DOESNT_FIT)
+	      while ((scan = heap_ovf_get (thread_p, &forward_oid, recdes,
+					   NULL_CHN)) == S_DOESNT_FIT)
 		{
 		  /*
 		   * The object did not fit into such an area, reallocate a new
@@ -10490,14 +10550,13 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  break;
 
 	case REC_HOME:
-	  if (scan_cache != NULL && ispeeking == false
-	      && recdes->data == NULL)
-	    {			/* COPY */
+	  if (scan_cache != NULL && ispeeking == COPY && recdes->data == NULL)
+	    {
 	      /* It is guaranteed that scan_cache is not NULL. */
 	      if (scan_cache->area == NULL)
 		{
 		  /* Allocate an area to hold the object. Assume that
-		     the object will fit in two pages for not better estimates.
+		   * the object will fit in two pages for not better estimates.
 		   */
 		  scan_cache->area_size = DB_PAGESIZE * 2;
 		  scan_cache->area = (char *) db_private_alloc (thread_p,
@@ -10516,7 +10575,7 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
 	  if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	    {
-	      if (ispeeking == true)
+	      if (ispeeking == PEEK)
 		{
 		  scan = spage_get_record (pgptr, oid.slotid, recdes, PEEK);
 		}
@@ -10551,10 +10610,11 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       if (scan == S_SUCCESS)
 	{
 	  /*
-	   * Make sure that the found object is an instance of the desired class.
-	   * if it is not continue looking. The following statemant should not be
-	   * needed when the object was found at REC_HOME since this check was done
-	   * above. The test is left here for compatibility reasons of other types
+	   * Make sure that the found object is an instance of the desired
+	   * class. If it is not continue looking. The following statement
+	   * should not be needed when the object was found at REC_HOME
+	   * since this check was done above. The test is left here for
+	   * compatibility reasons of other types
 	   */
 	  if (class_oid == NULL || OID_ISNULL (class_oid) ||
 	      or_isinstance (recdes, class_oid) == true)
@@ -10573,9 +10633,7 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
 /*
  * heap_prev () - Retrieve or peek previous object
- *   return: SCAN_CODE
- *           (Either of S_SUCCESS, S_DOESNT_FIT, S_END,
- *                      S_ERROR)
+ *   return: SCAN_CODE (Either of S_SUCCESS, S_DOESNT_FIT, S_END, S_ERROR)
  *   hfid(in):
  *   class_oid(in):
  *   prev_oid(in/out): Object identifier of current record.
@@ -10605,7 +10663,7 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   int continue_looking;
 
 #if defined(CUBRID_DEBUG)
-  if (scan_cache == NULL && ispeeking == true)
+  if (scan_cache == NULL && ispeeking == PEEK)
     {
       er_log_debug (ARG_FILE_LINE, "heap_prev: Using wrong interface."
 		    " scan_cache cannot be NULL when peeking.");
@@ -10633,7 +10691,7 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
   if (scan_cache == NULL)
     {
-      /* It is possible only in case of ispeeking == false(COPY). */
+      /* It is possible only in case of ispeeking == COPY */
       if (recdes->data == NULL)
 	{
 	  er_log_debug (ARG_FILE_LINE, "heap_prev: Using wrong interface."
@@ -10847,9 +10905,8 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	    }
 #endif
 
-	  if (scan_cache != NULL && ispeeking == false
-	      && recdes->data == NULL)
-	    {			/* COPY */
+	  if (scan_cache != NULL && ispeeking == COPY && recdes->data == NULL)
+	    {
 	      /* It is guaranteed that scan_cache is not NULL. */
 	      if (scan_cache->area == NULL)
 		{
@@ -10873,7 +10930,7 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
 	  if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	    {
-	      if (ispeeking == true)
+	      if (ispeeking == PEEK)
 		{
 		  scan = spage_get_record (pgptr, forward_oid.slotid, recdes,
 					   PEEK);
@@ -10908,7 +10965,7 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  /* Now get the content of the multipage object. */
 	  /* Try to reuse the previously allocated area */
 	  if (scan_cache != NULL
-	      && (ispeeking == true || recdes->data == NULL))
+	      && (ispeeking == PEEK || recdes->data == NULL))
 	    {
 	      /* It is guaranteed that scan_cache is not NULL. */
 	      if (scan_cache->area == NULL)
@@ -10967,9 +11024,8 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  break;
 
 	case REC_HOME:
-	  if (scan_cache != NULL && ispeeking == false
-	      && recdes->data == NULL)
-	    {			/* COPY */
+	  if (scan_cache != NULL && ispeeking == COPY && recdes->data == NULL)
+	    {
 	      /* It is guaranteed that scan_cache is not NULL. */
 	      if (scan_cache->area == NULL)
 		{
@@ -10993,7 +11049,7 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
 	  if (scan_cache != NULL && scan_cache->cache_last_fix_page == true)
 	    {
-	      if (ispeeking == true)
+	      if (ispeeking == PEEK)
 		{
 		  scan = spage_get_record (pgptr, oid.slotid, recdes, PEEK);
 		}
@@ -11051,9 +11107,7 @@ heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
 /*
  * heap_first () - Retrieve or peek first object of heap
- *   return: SCAN_CODE
- *           (Either of S_SUCCESS, S_DOESNT_FIT, S_END,
- *                      S_ERROR)
+ *   return: SCAN_CODE (Either of S_SUCCESS, S_DOESNT_FIT, S_END, S_ERROR)
  *   hfid(in):
  *   class_oid(in):
  *   oid(in/out): Object identifier of current record.
@@ -11189,6 +11243,7 @@ exit_on_error:
   goto end;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_cmp () - Compare heap object with current content
  *   return: int (> 0 recdes is larger,
@@ -11233,6 +11288,7 @@ heap_cmp (THREAD_ENTRY * thread_p, const OID * oid, RECDES * recdes)
 
   return compare;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_scanrange_start () - Initialize a scanrange cursor
@@ -12434,6 +12490,7 @@ heap_get_class_name_of_instance (THREAD_ENTRY * thread_p,
   return copy_classname;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_get_class_name_with_is_class () - Find if object is a class.
  * if a class, returns its name, otherwise, get the name of its class
@@ -12494,6 +12551,7 @@ heap_get_class_name_with_is_class (THREAD_ENTRY * thread_p, const OID * oid,
 
   return copy_classname;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_attrinfo_start () - Initialize an attribute information structure
@@ -16074,6 +16132,10 @@ heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr)
 	       heap_hdr->estimates.best[i].freespace);
     }
   fprintf (fp, "\n");
+
+  fprintf (fp, "LAST_VPID = %4d|%4d,\n",
+	   heap_hdr->estimates.best[HEAP_LAST_VPID_HINT_INDEX].vpid.volid,
+	   heap_hdr->estimates.best[HEAP_LAST_VPID_HINT_INDEX].vpid.pageid);
 
   return ret;
 }

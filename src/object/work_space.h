@@ -469,7 +469,9 @@ extern void ws_area_init (void);
 extern MOP ws_mop (OID * oid, MOP class_mop);
 extern MOP ws_vmop (MOP class_mop, int flags, DB_VALUE * keys);
 extern bool ws_rehash_vmop (MOP mop, MOBJ class_obj, DB_VALUE * newkey);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern MOP ws_new_mop (OID * oid, MOP class_mop);
+#endif
 extern void ws_perm_oid (MOP mop, OID * newoid);
 extern DB_VALUE *ws_keys (MOP vid, unsigned int *flags);
 
@@ -511,18 +513,24 @@ extern void ws_release_instance (MOP class_mop);
 
 /* object cache */
 extern void ws_cache (MOBJ obj, MOP mop, MOP class_mop);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void ws_cache_dirty (MOBJ obj, MOP mop, MOP class_mop);
+#endif
 extern MOP ws_cache_with_oid (MOBJ obj, OID * oid, MOP class_mop);
 extern void ws_decache (MOP mop);
 extern void ws_decache_all_instances (MOP classmop);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void ws_vid_clear (void);
+#endif
 
 /* Class name cache */
 extern MOP ws_find_class (const char *name);
 extern void ws_add_classname (MOBJ classobj, MOP classmop,
 			      const char *cl_name);
 extern void ws_drop_classname (MOBJ classobj);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void ws_reset_classname_cache (void);
+#endif
 
 /* MOP accessor functions */
 extern OID *ws_oid (MOP mop);
@@ -557,8 +565,10 @@ extern void ws_decache_allxlockmops_but_norealclasses (void);
 /* Debugging functions */
 extern void ws_dump (FILE * fpp);
 extern void ws_dump_mops (void);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern MOP ws_makemop (int volid, int pageid, int slotid);
 extern int ws_count_mops (void);
+#endif
 
 /* String utilities */
 extern char *ws_copy_string (const char *str);
@@ -567,7 +577,9 @@ extern void ws_free_string (const char *str);
 /* Property lists */
 
 extern int ws_get_prop (MOP op, int key, DB_BIGINT * value);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int ws_rem_prop (MOP op, int key);
+#endif
 extern int ws_put_prop (MOP op, int key, DB_BIGINT value);
 
 /*
@@ -654,7 +666,9 @@ extern int ml_remove (DB_OBJLIST ** list, MOP mop);
 extern void ml_free (DB_OBJLIST * list);
 extern int ml_size (DB_OBJLIST * list);
 extern DB_OBJLIST *ml_copy (DB_OBJLIST * list);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void ml_filter (DB_OBJLIST ** list, MOPFILTER filter, void *args);
+#endif
 
 /*
  * These are external MOP lists that are passed beyond the db_ layer into

@@ -272,8 +272,6 @@ static PT_NODE *mq_translate_local (PARSER_CONTEXT * parser,
 				    PT_NODE * statement, void *void_arg,
 				    int *continue_walk);
 static PT_NODE *mq_collapse_dot (PARSER_CONTEXT * parser, PT_NODE * tree);
-static PT_NODE *mq_set_ldb_name (PARSER_CONTEXT * parser, PT_NODE * node,
-				 void *void_arg, int *continue_walk);
 static PT_NODE *mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec,
 			      PT_NODE * attributes, DB_OBJECT * vclass_object,
 			      int cascaded_check);
@@ -301,7 +299,6 @@ static PT_NODE *mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *mq_lookup_symbol (PARSER_CONTEXT * parser,
 				  PT_NODE * attr_list, PT_NODE * attr);
 
-static int mq_is_vclass_on_oo_ldb (DB_OBJECT * vclass_object);
 static PT_NODE *mq_coerce_resolved (PARSER_CONTEXT * parser, PT_NODE * node,
 				    void *void_arg, int *continue_walk);
 static PT_NODE *mq_set_all_ids (PARSER_CONTEXT * parser, PT_NODE * node,
@@ -397,13 +394,6 @@ static PT_NODE *mq_fetch_expression_for_real_class_update (PARSER_CONTEXT *
 static PT_NODE *mq_set_names_dbobject (PARSER_CONTEXT * parser,
 				       PT_NODE * node, void *void_arg,
 				       int *continue_walk);
-static int mq_update_attribute_local (DB_OBJECT * vclass_object,
-				      const char *attr_name,
-				      DB_OBJECT * real_class_object,
-				      DB_VALUE * virtual_value,
-				      DB_VALUE * real_value,
-				      const char **real_name,
-				      int translate_proxy, int db_auth);
 static PT_NODE *mq_fetch_one_real_class_get_cache (DB_OBJECT * vclass_object,
 						   PARSER_CONTEXT **
 						   query_cache);
@@ -1797,7 +1787,6 @@ mq_substitute_subquery_list_in_statement (PARSER_CONTEXT *
 
   while (query_spec)
     {
-      /* NULL is allowed on return for excluded ldbs. */
       result = mq_substitute_subquery_in_statement
 	(parser, statement, query_spec, class_, order_by, what_for);
 
@@ -1833,8 +1822,6 @@ mq_translatable_class (PARSER_CONTEXT * parser, PT_NODE * class_)
       return 1;
     }
 
-  /* This case includes classes, classes in ldbs, proxies when
-   * translation disabled.  */
   return 0;
 }
 
@@ -2116,11 +2103,6 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 			    {
 			      tree_union = substituted;
 			    }
-			}
-		      else
-			{
-			  /* a subquery with no substitution is
-			   * from an excluded ldb */
 			}
 		    }
 		  else
@@ -2719,11 +2701,18 @@ pt_check_copypush_subquery (PARSER_CONTEXT * parser, PT_NODE * query)
   switch (query->node_type)
     {
     case PT_SELECT:
-      if (pt_has_aggregate (parser, query))
+      if (query->info.query.order_by && query->info.query.orderby_for)
 	{
-	  if (query->info.query.q.select.group_by == NULL)
+	  copy_cnt++;		/* found not-pushable query */
+	}
+      else
+	{
+	  if (pt_has_aggregate (parser, query))
 	    {
-	      copy_cnt++;	/* found not-pushable query */
+	      if (query->info.query.q.select.group_by == NULL)
+		{
+		  copy_cnt++;	/* found not-pushable query */
+		}
 	    }
 	}
       break;
@@ -2731,9 +2720,8 @@ pt_check_copypush_subquery (PARSER_CONTEXT * parser, PT_NODE * query)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      copy_cnt += pt_check_copypush_subquery (parser,
-					      query->info.query.q.union_.
-					      arg1);
+      copy_cnt +=
+	pt_check_copypush_subquery (parser, query->info.query.q.union_.arg1);
       copy_cnt +=
 	pt_check_copypush_subquery (parser, query->info.query.q.union_.arg2);
       break;
@@ -2784,22 +2772,29 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query,
 	}
 
       /* copy and put it in query's search condition */
-      if (pt_has_aggregate (parser, query))
+      if (query->info.query.order_by && query->info.query.orderby_for)
 	{
-	  if (query->info.query.q.select.group_by)
-	    {
-	      /* push into HAVING clause */
-	      query->info.query.q.select.having =
-		parser_append_node (push_term_list,
-				    query->info.query.q.select.having);
-	    }
+	  ;
 	}
       else
 	{
-	  /* push into WHERE clause */
-	  query->info.query.q.select.where =
-	    parser_append_node (push_term_list,
-				query->info.query.q.select.where);
+	  if (pt_has_aggregate (parser, query))
+	    {
+	      if (query->info.query.q.select.group_by)
+		{
+		  /* push into HAVING clause */
+		  query->info.query.q.select.having =
+		    parser_append_node (push_term_list,
+					query->info.query.q.select.having);
+		}
+	    }
+	  else
+	    {
+	      /* push into WHERE clause */
+	      query->info.query.q.select.where =
+		parser_append_node (push_term_list,
+				    query->info.query.q.select.where);
+	    }
 	}
       break;
 
@@ -3621,9 +3616,6 @@ mq_push_paths_select (PARSER_CONTEXT * parser, PT_NODE * statement,
 			{
 			  /* this is non-updatable, or turns into a union,
 			   * It must be rewritten to a derived path join.
-			   * We don't rewrite ldb paths because
-			   * we have a more efficient, if less general
-			   * way to do that.
 			   */
 			  *paths = path->next;
 			  path->next = NULL;
@@ -4022,87 +4014,6 @@ mq_collapse_dot (PARSER_CONTEXT * parser, PT_NODE * tree)
     }
 
   return collapse;
-}
-
-/*
- * mq_set_ldb_name() - sets name resolution information in local subqueries
- *   return:
- *   parser(in):
- *   node(in):
- *   void_arg(in):
- *   continue_walk(in/out):
- */
-static PT_NODE *
-mq_set_ldb_name (PARSER_CONTEXT * parser, PT_NODE * node,
-		 void *void_arg, int *continue_walk)
-{
-  PT_NODE *range = (PT_NODE *) void_arg;
-  PT_NODE *arg1, *arg2, *next;
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (node->node_type == PT_DOT_)
-    {
-      arg1 = node->info.dot.arg1;
-      arg2 = node->info.dot.arg2;
-      if (arg1 && arg2 && arg2->node_type == PT_NAME)
-	{
-	  /* collapse range variables out of path expressions.
-	     It should be done before the name handling below.
-	     Is it a path expression of the form range.foo ?
-	     If so, convert it to PT_NAME foo.  */
-	  if (arg1->node_type == PT_NAME
-	      && (intl_mbs_casecmp (range->info.name.original,
-				    arg1->info.name.original) == 0))
-	    {
-	      /* it is, collapse this node into a name node. */
-	      next = node->next;
-	      node = mq_set_ldb_name (parser, arg2, void_arg, continue_walk);
-	      node->next = next;
-	    }
-	  else
-	    {
-	      node->info.dot.arg1 =
-		mq_set_ldb_name (parser, arg1, void_arg, continue_walk);
-
-	      node = mq_collapse_dot (parser, node);
-	    }
-	}
-
-      *continue_walk = PT_LIST_WALK;
-    }
-  else if (node->node_type == PT_NAME)
-    {
-      if (node->info.name.spec_id == 0)
-	{
-	  node->info.name.spec_id = range->info.name.spec_id;
-
-	  node->info.name.resolved = range->info.name.original;
-
-	  if (intl_mbs_casecmp (range->info.name.original,
-				node->info.name.original) == 0)
-	    {
-	      /* an oid reference -moved to the "resolved" side. */
-	      node->info.name.original = "";
-	    }
-	}
-
-      *continue_walk = PT_LIST_WALK;
-    }
-  else if (node->node_type == PT_FUNCTION)
-    {
-      node->spec_ident = range->info.name.spec_id;
-    }
-  else if (node->node_type == PT_SELECT)
-    {
-      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_RUNTIME,
-		 MSGCAT_RUNTIME_NO_PROXY_SUBQUERY);
-    }
-  else if (node->node_type == PT_DATA_TYPE)
-    {
-      *continue_walk = PT_LIST_WALK;
-    }
-
-  return node;
 }
 
 /*
@@ -5153,36 +5064,6 @@ mq_generate_name (PARSER_CONTEXT * parser, const char *root, int *version)
 }
 
 /*
- * mq_is_vclass_on_oo_ldb() - checks that the class object has an oo style
- *                            intrinsic object id
- *   return: 1 on oo style intrinsic object id
- *   vclass_object(in):
- */
-static int
-mq_is_vclass_on_oo_ldb (DB_OBJECT * vclass_object)
-{
-  DB_NAMELIST *oid_attrs;
-  int retval = 0;
-
-  oid_attrs = db_get_object_id (vclass_object);
-
-  if (!oid_attrs)
-    {
-      retval = 0;
-    }
-  else
-    {
-      if (oid_attrs->name && !oid_attrs->name[0])
-	{
-	  /* this is for ldb's */
-	  retval = 1;
-	}
-      db_namelist_free (oid_attrs);
-    }
-  return (retval);
-}
-
-/*
  * mq_coerce_resolved() - re-sets PT_NAME node resolution to match
  *                        a new printable name
  *   return:
@@ -5205,7 +5086,6 @@ mq_coerce_resolved (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
       if (node->info.name.spec_id == range->info.name.spec_id	/* same entity spec */
 	  && node->info.name.resolved	/* and has a resolved name, */
 	  && node->info.name.meta_class != PT_CLASS
-	  && node->info.name.meta_class != PT_LDBVCLASS
 	  && node->info.name.meta_class != PT_VCLASS)
 	{
 	  /* set the attribute resolved name */
@@ -5279,7 +5159,6 @@ mq_reset_all_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
       node->info.name.spec_id = (UINTPTR) spec;
       if (node->info.name.resolved	/* has a resolved name */
 	  && node->info.name.meta_class != PT_CLASS
-	  && node->info.name.meta_class != PT_LDBVCLASS
 	  && node->info.name.meta_class != PT_VCLASS)
 	{
 	  /* set the attribute resolved name */
@@ -5580,8 +5459,7 @@ mq_referenced_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
       && node->info.name.spec_id == spec->info.spec.id)
     {
       node->info.name.spec_id = (UINTPTR) spec;
-      if (node->info.name.meta_class != PT_LDBVCLASS
-	  && node->info.name.meta_class != PT_VCLASS)
+      if (node->info.name.meta_class != PT_VCLASS)
 	{
 	  info->referenced = 1;
 	  *continue_walk = PT_STOP_WALK;
@@ -6286,13 +6164,6 @@ mq_path_spec_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
  *   root_spec(in):
  *
  * Note:
- * eg ldb vclass foo ( a ... ) as select 42+b... from ldb.foo1
- *    ldb vclass baa ( x foo ... ) select x1, ... from ldb.baa1
- *
- *      "select x.a from baa" has been translated by the above to
- *  "select x1.a from ldb.baa1"
- *  Now "a" nneds to be translated to "42+b", to result in
- *  "select 42+x1.b from ldb.baa1"
  *
  * The list of immediate sub-paths must be re-distributed amoung the
  * resulting real path specs. In the trivial case in which there is
@@ -6389,8 +6260,7 @@ mq_translate_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
 	       *          1) relational proxies can inherently only refer
 	       *             to one table.
 	       */
-	      if (db_is_class (real_class->info.name.db_object)
-		  || mq_is_vclass_on_oo_ldb (real_class->info.name.db_object))
+	      if (db_is_class (real_class->info.name.db_object))
 		{
 		  /* find all the rest of the matches */
 		  for (; flat != NULL; flat = flat->next)
@@ -8570,7 +8440,7 @@ mq_is_updatable (DB_OBJECT * class_object)
  * mq_is_updatable_att() -
  *   return: true if vmop's att_nam is updatable
  *   parser(in): the parser context
- *   vmop(in): proxy/vclass object
+ *   vmop(in): vclass object
  *   att_nam(in): one of vmop's attribute names
  *   rmop(in): real (base) class object
  */
@@ -8852,7 +8722,7 @@ mq_oid (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
- * mq_update_attribute_local() -
+ * mq_update_attribute -
  *   return: NO_ERROR on success, non-zero for ERROR
  *   vclass_object(in): the "mop" of the virtual instance's vclass
  *   attr_name(in): the attribute of the virtual instance to update
@@ -8860,15 +8730,13 @@ mq_oid (PARSER_CONTEXT * parser, PT_NODE * spec)
  *   virtual_value(in): the value to put in the virtual instance
  *   real_value(out): contains value to set it to
  *   real_name(out): contains name of real instance attribute to set
- *   translate_proxy(in):
  *   db_auth(in):
  */
-static int
-mq_update_attribute_local (DB_OBJECT * vclass_object, const char *attr_name,
-			   DB_OBJECT * real_class_object,
-			   DB_VALUE * virtual_value, DB_VALUE * real_value,
-			   const char **real_name, int translate_proxy,
-			   int db_auth)
+int
+mq_update_attribute (DB_OBJECT * vclass_object, const char *attr_name,
+		     DB_OBJECT * real_class_object,
+		     DB_VALUE * virtual_value, DB_VALUE * real_value,
+		     const char **real_name, int db_auth)
 {
   PT_NODE real;
   PT_NODE attr;
@@ -8955,35 +8823,10 @@ mq_update_attribute_local (DB_OBJECT * vclass_object, const char *attr_name,
 }
 
 /*
- * mq_update_attribute() -
- *   return: NO_ERROR on success, non-zero for ERROR
- *   vclass_object(in): the "mop" of the virtual instance's vclass
- *   attr_name(in): the attribute of the virtual instance to update
- *   real_class_object(in): the "mop" of the virtual instance's real class
- *   virtual_value(in): the value to put in the virtual instance
- *   real_value(out): contains value to set it to
- *   real_name(out): contains name of real instance attribute to set
- *   db_auth(in):
- */
-int
-mq_update_attribute (DB_OBJECT * vclass_object, const char *attr_name,
-		     DB_OBJECT * real_class_object, DB_VALUE * virtual_value,
-		     DB_VALUE * real_value, const char **real_name,
-		     int db_auth)
-{
-  return mq_update_attribute_local (vclass_object,
-				    attr_name,
-				    real_class_object,
-				    virtual_value,
-				    real_value, real_name, false, db_auth);
-}
-
-/*
  * mq_fetch_one_real_class_get_cache() -
  *   return: a convienient real class DB_OBJECT* of an updatable virtual class
  *          NULL for non-updatable
  *   vclass_object(in): the "mop" of the virtual class
- *   translate_proxy(in): whether to translate proxy or not
  *   query_cache(out): parser holding cached parse trees
  */
 static PT_NODE *
@@ -9273,7 +9116,7 @@ mq_mget_exprs (DB_OBJECT ** objects, int rows, char **exprs,
  *      classes of the virtual class d_class
  *   return: 1 if s_class is a real class of the view d_class
  *   parser(in): the parser context
- *   s_class(in): a PT_NAME node representing a class_, vclass, or proxy
+ *   s_class(in): a PT_NAME node representing a class_, vclass
  *   d_class(in): a PT_NAME node representing a view
  */
 int

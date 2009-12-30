@@ -6724,6 +6724,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       /* nothing more to do -- this is not an error */
       pgbuf_unfix (thread_p, P);
       P = NULL;
+      mnt_bt_deletes (thread_p);
       return key;
     }
 
@@ -7620,6 +7621,7 @@ key_deletion:
 	}
     }
 
+  mnt_bt_deletes (thread_p);
   return key;
 
 error:
@@ -9711,6 +9713,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
       /* nothing more to do -- this is not an error */
       pgbuf_unfix (thread_p, P);
       P = NULL;
+      mnt_bt_inserts (thread_p);
       return key;
     }
 
@@ -10579,6 +10582,7 @@ key_insertion:
 				 true);
     }
 
+  mnt_bt_inserts (thread_p);
   return key;
 
 error:
@@ -10672,6 +10676,7 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key,
 
 end:
 
+  mnt_bt_updates (thread_p);
   return ret;
 
 exit_on_error:

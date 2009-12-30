@@ -343,11 +343,16 @@ extern int xqmgr_sync_query (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 #endif
 
 /* server execution statistics */
-extern int xmnt_server_start_stats (THREAD_ENTRY * thread_p);
+extern int xmnt_server_start_stats (THREAD_ENTRY * thread_p,
+				    bool for_all_trans);
 extern void xmnt_server_stop_stats (THREAD_ENTRY * thread_p);
 extern void xmnt_server_copy_stats (THREAD_ENTRY * thread_p,
 				    MNT_SERVER_EXEC_STATS * to_stats);
+extern void xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
+					   MNT_SERVER_EXEC_GLOBAL_STATS *
+					   to_stats);
 extern void xmnt_server_reset_stats (THREAD_ENTRY * thread_p);
+extern void xmnt_server_reset_global_stats (void);
 
 /* catalog manager interface */
 

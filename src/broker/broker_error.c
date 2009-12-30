@@ -133,6 +133,7 @@ uw_get_error_message (int error_code, int os_error_code)
   return (err_msg_buf);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 const char *
 uw_error_message (int error_code)
 {
@@ -162,6 +163,7 @@ uw_os_err_msg (int os_err_code, char *err_msg)
   else
     err_msg[0] = '\0';
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 static int
 get_error_msg (int err_code, char *msg_buf)

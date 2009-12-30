@@ -1023,13 +1023,18 @@ pt_lambda_with_arg (PARSER_CONTEXT * parser, PT_NODE * tree_with_names,
     if (name_node->node_type == PT_EXPR
 	&& name_node->info.expr.op == PT_ORDERBY_NUM)
     {
-      if (corresponding_tree
-	  && corresponding_tree->node_type == PT_FUNCTION
-	  && (corresponding_tree->info.function.function_type ==
-	      PT_GROUPBY_NUM))
+      if (corresponding_tree)
 	{
-	  /* change orderby_num() to groupby_num() */
-	  arg_ok = true;
+	  if ((corresponding_tree->node_type == PT_FUNCTION
+	       && corresponding_tree->info.function.function_type ==
+	       PT_GROUPBY_NUM)
+	      || (corresponding_tree->node_type == PT_EXPR
+		  && corresponding_tree->info.expr.op == PT_INST_NUM))
+	    {
+	      /* change orderby_num() to groupby_num() */
+	      /* change orderby_num() to inst_num() */
+	      arg_ok = true;
+	    }
 	}
     }
 
@@ -1906,6 +1911,7 @@ parser_init_node (PT_NODE * node)
       node->use_plan_cache = 0;
       node->use_query_cache = 0;
       node->is_hidden_column = 0;
+      node->is_paren = 0;
       /* initialize  node info field */
       memset (&(node->info), 0, sizeof (node->info));
 
@@ -1986,25 +1992,22 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
       return 0;
     }
 
-  if (!parser->dont_prt)
-    {
-      q = pt_print_bytes (parser, p);
+  q = pt_print_bytes (parser, p);
 
-      while (p->next)
-	{			/* print in the original order ... */
-	  p = p->next;
-	  r = pt_print_bytes (parser, p);
-	  if (r)
+  while (p->next)
+    {				/* print in the original order ... */
+      p = p->next;
+      r = pt_print_bytes (parser, p);
+      if (r)
+	{
+	  if (q)
 	    {
-	      if (q)
-		{
-		  q = pt_append_bytes (parser, q, ", ", 2);
-		}
-	      q = pt_append_varchar (parser, q, r);
+	      q = pt_append_bytes (parser, q, ", ", 2);
 	    }
+	  q = pt_append_varchar (parser, q, r);
 	}
-
     }
+
   return q;
 }
 
@@ -2030,34 +2033,33 @@ pt_print_bytes_spec_list (PARSER_CONTEXT * parser, const PT_NODE * p)
     {				/* print in the original order ... */
       p = p->next;
       r = pt_print_bytes (parser, p);
-      if (!parser->dont_prt)
+
+      if (p->node_type == PT_SPEC)
 	{
-	  if (p->node_type == PT_SPEC)
+	  switch (p->info.spec.join_type)
 	    {
-	      switch (p->info.spec.join_type)
-		{
-		case PT_JOIN_NONE:
-		  q = pt_append_bytes (parser, q, ", ", 2);
-		  break;
-		case PT_JOIN_CROSS:
-		  /*case PT_JOIN_NATURAL: -- dose not supprt */
-		case PT_JOIN_INNER:
-		case PT_JOIN_LEFT_OUTER:
-		case PT_JOIN_RIGHT_OUTER:
-		case PT_JOIN_FULL_OUTER:
-		  break;
-		  /*case PT_JOIN_UNION: -- dose not supprt */
-		default:
-		  q = pt_append_bytes (parser, q, ", ", 2);
-		  break;
-		}
-	    }
-	  else
-	    {
+	    case PT_JOIN_NONE:
 	      q = pt_append_bytes (parser, q, ", ", 2);
+	      break;
+	    case PT_JOIN_CROSS:
+	      /*case PT_JOIN_NATURAL: -- dose not supprt */
+	    case PT_JOIN_INNER:
+	    case PT_JOIN_LEFT_OUTER:
+	    case PT_JOIN_RIGHT_OUTER:
+	    case PT_JOIN_FULL_OUTER:
+	      break;
+	      /*case PT_JOIN_UNION: -- dose not supprt */
+	    default:
+	      q = pt_append_bytes (parser, q, ", ", 2);
+	      break;
 	    }
-	  q = pt_append_varchar (parser, q, r);
 	}
+      else
+	{
+	  q = pt_append_bytes (parser, q, ", ", 2);
+	}
+
+      q = pt_append_varchar (parser, q, r);
     }
   return q;
 }
@@ -2138,28 +2140,24 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
       return NULL;
     }
 
-  if (!parser->dont_prt)
-    {
-      for (n = p; n; n = n->next)
-	{			/* print in the original order ... */
-	  r1 = pt_print_bytes (parser, n);
-	  if (n->node_type == PT_EXPR && !n->info.expr.paren_type
-	      && n->or_next)
-	    {
-	      /* found non-parenthesis OR */
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
-	  else
-	    {
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+  for (n = p; n; n = n->next)
+    {				/* print in the original order ... */
+      r1 = pt_print_bytes (parser, n);
+      if (n->node_type == PT_EXPR && !n->info.expr.paren_type && n->or_next)
+	{
+	  /* found non-parenthesis OR */
+	  q = pt_append_nulstring (parser, q, "(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
+      else
+	{
+	  q = pt_append_varchar (parser, q, r1);
+	}
 
-	  if (n->next)
-	    {
-	      q = pt_append_nulstring (parser, q, " and ");
-	    }
+      if (n->next)
+	{
+	  q = pt_append_nulstring (parser, q, " and ");
 	}
     }
 
@@ -2289,8 +2287,6 @@ pt_show_node_type (PT_NODE * node)
       return "DROP";
     case PT_DROP_INDEX:
       return "DROP_INDEX";
-    case PT_DROP_LDB:
-      return "DROP LDB";
     case PT_DROP_USER:
       return "DROP_USER";
     case PT_DROP_TRIGGER:
@@ -2537,8 +2533,6 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "with no grant option";
     case PT_CLASS:
       return "class";
-    case PT_LDBVCLASS:
-      return "vclass";
     case PT_VCLASS:
       return "vclass";
     case PT_NORMAL:
@@ -2754,6 +2748,12 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "/";
     case PT_UNARY_MINUS:
       return "-";
+    case PT_PRIOR:
+      return "prior ";
+    case PT_CONNECT_BY_ROOT:
+      return "connect_by_root ";
+    case PT_QPRIOR:
+      return "prior ";
     case PT_ASSIGN:
       return "=";
     case PT_MODULUS:
@@ -2822,6 +2822,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "replace ";
     case PT_TRANSLATE:
       return "translate ";
+    case PT_SYS_CONNECT_BY_PATH:
+      return "sys_connect_by_path ";
     case PT_ADD_MONTHS:
       return "add_months ";
     case PT_LAST_DAY:
@@ -2864,6 +2866,12 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "rownum ";
     case PT_ORDERBY_NUM:
       return "orderby_num";
+    case PT_CONNECT_BY_ISCYCLE:
+      return "connect_by_iscycle ";
+    case PT_CONNECT_BY_ISLEAF:
+      return "connect_by_isleaf ";
+    case PT_LEVEL:
+      return "level ";
     case PT_CURRENT_USER:
       return "current_user ";
     case PT_LOCAL_TRANSACTION_ID:
@@ -2939,27 +2947,6 @@ pt_show_function (FUNC_TYPE c)
       return "class";
     default:
       return "unknown function";
-    }
-}
-
-/*
- * pt_show_oid_type() -
- *   return:
- *   t(in):
- */
-const char *
-pt_show_oid_type (DB_OBJECT_ID_TYPE t)
-{
-  switch (t)
-    {
-    case DB_OID_INTRINSIC:
-      return "intrinsic";
-    case DB_OID_USER_DEFINED:
-      return "user defined";
-    case 0:
-      return "default";
-    default:
-      return "unknown object_id type";
     }
 }
 
@@ -4397,14 +4384,20 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
 
   /* ALTER VCLASS XYZ ... */
   r1 = pt_print_bytes (parser, p->info.alter.entity_name);
-  if (!parser->dont_prt)
+  q = pt_append_nulstring (parser, q, "alter ");
+  if (p->info.alter.hint != PT_HINT_NONE)
     {
-      q = pt_append_nulstring (parser, q, "alter ");
-      q = pt_append_nulstring (parser, q,
-			       pt_show_misc_type (p->info.alter.entity_type));
-      q = pt_append_nulstring (parser, q, " ");
-      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, "/*+");
+      if (p->info.alter.hint & PT_HINT_NO_STATS)
+	{
+	  q = pt_append_nulstring (parser, q, " NO_STATS");
+	}
+      q = pt_append_nulstring (parser, q, " */ ");
     }
+  q = pt_append_nulstring (parser, q,
+			   pt_show_misc_type (p->info.alter.entity_type));
+  q = pt_append_nulstring (parser, q, " ");
+  q = pt_append_varchar (parser, q, r1);
 
   switch (p->info.alter.code)
     {
@@ -4412,60 +4405,43 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_ADD_QUERY:
       r1 = pt_print_bytes_l (parser, p->info.alter.alter_clause.query.query);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " add query ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " add query ");
+      q = pt_append_varchar (parser, q, r1);
       break;
     case PT_DROP_QUERY:
-      r1 = pt_print_bytes_l
-	(parser, p->info.alter.alter_clause.query.query_no_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " drop query ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      r1 = pt_print_bytes_l (parser,
+			     p->info.alter.alter_clause.query.query_no_list);
+      q = pt_append_nulstring (parser, q, " drop query ");
+      q = pt_append_varchar (parser, q, r1);
       break;
     case PT_MODIFY_QUERY:
-      r1 = pt_print_bytes_l
-	(parser, p->info.alter.alter_clause.query.query_no_list);
+      r1 = pt_print_bytes_l (parser,
+			     p->info.alter.alter_clause.query.query_no_list);
       r2 = pt_print_bytes_l (parser, p->info.alter.alter_clause.query.query);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " change query ");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_varchar (parser, q, r2);
-	}
+      q = pt_append_nulstring (parser, q, " change query ");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_varchar (parser, q, r2);
       break;
     case PT_ADD_ATTR_MTHD:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " add ");
-	}
+      q = pt_append_nulstring (parser, q, " add ");
       attrs = p->info.alter.alter_clause.attr_mthd.attr_def_list;
       if (attrs)
 	{
 	  if (attrs->info.attr_def.attr_type == PT_META_ATTR)
 	    {
-	      if (!parser->dont_prt)
-		{
-		  q = pt_append_nulstring (parser, q, "class ");
-		  parser->custom_print = parser->custom_print |
-		    PT_SUPPRESS_META_ATTR_CLASS;
-		}
+	      q = pt_append_nulstring (parser, q, "class ");
+	      parser->custom_print = parser->custom_print |
+		PT_SUPPRESS_META_ATTR_CLASS;
 	    }
-	  r1 = pt_print_bytes_l
-	    (parser, p->info.alter.alter_clause.attr_mthd.attr_def_list);
-	  if (!parser->dont_prt)
+	  r1 = pt_print_bytes_l (parser,
+				 p->info.alter.alter_clause.attr_mthd.
+				 attr_def_list);
+	  q = pt_append_nulstring (parser, q, "attribute ");
+	  q = pt_append_varchar (parser, q, r1);
+	  if (attrs->info.attr_def.attr_type == PT_META_ATTR)
 	    {
-	      q = pt_append_nulstring (parser, q, "attribute ");
-	      q = pt_append_varchar (parser, q, r1);
-	      if (attrs->info.attr_def.attr_type == PT_META_ATTR)
-		{
-		  parser->custom_print = parser->custom_print &
-		    ~PT_SUPPRESS_META_ATTR_CLASS;
-		}
+	      parser->custom_print = parser->custom_print &
+		~PT_SUPPRESS_META_ATTR_CLASS;
 	    }
 	}
 
@@ -4474,14 +4450,11 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r1 = pt_print_bytes_l (parser, p->info.alter.constraint_list);
 	  if (r1)
 	    {
-	      if (!parser->dont_prt)
+	      if (attrs)
 		{
-		  if (attrs)
-		    {
-		      q = pt_append_bytes (parser, q, ", ", 2);
-		    }
-		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_bytes (parser, q, ", ", 2);
 		}
+	      q = pt_append_varchar (parser, q, r1);
 	    }
 	}
 
@@ -4489,28 +4462,19 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  r1 = pt_print_bytes_l
 	    (parser, p->info.alter.alter_clause.attr_mthd.mthd_def_list);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " method ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_nulstring (parser, q, " method ");
+	  q = pt_append_varchar (parser, q, r1);
 	}
       if (p->info.alter.alter_clause.attr_mthd.mthd_file_list)
 	{
 	  r2 = pt_print_bytes_l
 	    (parser, p->info.alter.alter_clause.attr_mthd.mthd_file_list);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " file ");
-	      q = pt_append_varchar (parser, q, r2);
-	    }
+	  q = pt_append_nulstring (parser, q, " file ");
+	  q = pt_append_varchar (parser, q, r2);
 	}
       break;
     case PT_DROP_ATTR_MTHD:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " drop ");
-	}
+      q = pt_append_nulstring (parser, q, " drop ");
       if (p->info.alter.alter_clause.attr_mthd.attr_mthd_name_list)
 	{
 	  names = p->info.alter.alter_clause.attr_mthd.attr_mthd_name_list;
@@ -4519,15 +4483,9 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
 	      r1 = pt_print_bytes (parser, names);
 	      if (names->info.name.meta_class == PT_META_ATTR)
 		{
-		  if (!parser->dont_prt)
-		    {
-		      q = pt_append_nulstring (parser, q, " class ");
-		    }
+		  q = pt_append_nulstring (parser, q, " class ");
 		}
-	      if (!parser->dont_prt)
-		{
-		  q = pt_append_varchar (parser, q, r1);
-		}
+	      q = pt_append_varchar (parser, q, r1);
 	      names = names->next;
 	    }
 	}
@@ -4535,18 +4493,12 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  r2 = pt_print_bytes_l
 	    (parser, p->info.alter.alter_clause.attr_mthd.mthd_file_list);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " file ");
-	      q = pt_append_varchar (parser, q, r2);
-	    }
+	  q = pt_append_nulstring (parser, q, " file ");
+	  q = pt_append_varchar (parser, q, r2);
 	}
       break;
     case PT_MODIFY_ATTR_MTHD:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " change ");
-	}
+      q = pt_append_nulstring (parser, q, " change ");
       if (p->info.alter.alter_clause.attr_mthd.attr_def_list)
 	{
 	  if (p->info.alter.alter_clause.attr_mthd.attr_type == PT_META_ATTR)
@@ -4555,34 +4507,26 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
 		pt_print_bytes_l (parser,
 				  p->info.alter.alter_clause.attr_mthd.
 				  attr_def_list);
-	      if (!parser->dont_prt)
-		{
-		  q = pt_append_nulstring (parser, q, " class");
-		  q = pt_append_nulstring (parser, q, " attribute ");
-		  q = pt_append_varchar (parser, q, r1);
-		}
+	      q = pt_append_nulstring (parser, q, " class");
+	      q = pt_append_nulstring (parser, q, " attribute ");
+	      q = pt_append_varchar (parser, q, r1);
 	    }
 	}
       if (p->info.alter.alter_clause.attr_mthd.mthd_def_list)
 	{
 	  r2 = pt_print_bytes_l
 	    (parser, p->info.alter.alter_clause.attr_mthd.mthd_def_list);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " method ");
-	      q = pt_append_varchar (parser, q, r2);
-	    }
+	  q = pt_append_nulstring (parser, q, " method ");
+	  q = pt_append_varchar (parser, q, r2);
 	}
       break;
     case PT_RENAME_ATTR_MTHD:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " rename ");
-	  q = pt_append_nulstring
-	    (parser, q, pt_show_misc_type
-	     (p->info.alter.alter_clause.rename.element_type));
-	  q = pt_append_nulstring (parser, q, " ");
-	}
+      q = pt_append_nulstring (parser, q, " rename ");
+      q = pt_append_nulstring
+	(parser, q, pt_show_misc_type
+	 (p->info.alter.alter_clause.rename.element_type));
+      q = pt_append_nulstring (parser, q, " ");
+
       switch (p->info.alter.alter_clause.rename.element_type)
 	{
 	default:
@@ -4592,127 +4536,91 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r1 =
 	    pt_print_bytes (parser,
 			    p->info.alter.alter_clause.rename.old_name);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring
-		(parser, q, pt_show_misc_type
-		 (p->info.alter.alter_clause.rename.meta));
-	      q = pt_append_nulstring (parser, q, " ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_nulstring
+	    (parser, q, pt_show_misc_type
+	     (p->info.alter.alter_clause.rename.meta));
+	  q = pt_append_nulstring (parser, q, " ");
+	  q = pt_append_varchar (parser, q, r1);
 	  break;
 	case PT_FUNCTION_RENAME:
 	  r1 = pt_print_bytes (parser,
 			       p->info.alter.alter_clause.rename.old_name);
 	  r2 = pt_print_bytes (parser,
 			       p->info.alter.alter_clause.rename.mthd_name);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, " of ");
-	      q = pt_append_nulstring
-		(parser, q,
-		 pt_show_misc_type (p->info.alter.alter_clause.rename.meta));
-	      q = pt_append_nulstring (parser, q, " ");
-	      q = pt_append_varchar (parser, q, r2);
-	    }
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, " of ");
+	  q = pt_append_nulstring
+	    (parser, q,
+	     pt_show_misc_type (p->info.alter.alter_clause.rename.meta));
+	  q = pt_append_nulstring (parser, q, " ");
+	  q = pt_append_varchar (parser, q, r2);
 	case PT_FILE_RENAME:
 	  r1 = pt_print_bytes (parser,
 			       p->info.alter.alter_clause.rename.old_name);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_varchar (parser, q, r1);
 	  break;
 	}
       r1 =
 	pt_print_bytes (parser, p->info.alter.alter_clause.rename.new_name);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " as ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " as ");
+      q = pt_append_varchar (parser, q, r1);
       break;
     case PT_MODIFY_DEFAULT:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " change ");
-	}
+      q = pt_append_nulstring (parser, q, " change ");
       names = p->info.alter.alter_clause.ch_attr_def.attr_name_list;
       defaults = p->info.alter.alter_clause.ch_attr_def.data_default_list;
       while (names && defaults)
 	{
 	  r1 = pt_print_bytes (parser, names);
 	  r2 = pt_print_bytes (parser, defaults);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, " default ");
-	      q = pt_append_varchar (parser, q, r2);
-	    }
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, " default ");
+	  q = pt_append_varchar (parser, q, r2);
 	  names = names->next;
 	  defaults = defaults->next;
 	}
       break;
     case PT_ADD_SUPCLASS:
       r1 = pt_print_bytes_l (parser, p->info.alter.super.sup_class_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " add superclass ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " add superclass ");
+      q = pt_append_varchar (parser, q, r1);
       if (p->info.alter.super.resolution_list)
 	{
 	  r2 = pt_print_bytes_l (parser, p->info.alter.super.resolution_list);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " inherit ");
-	      q = pt_append_varchar (parser, q, r2);
-	    }
+	  q = pt_append_nulstring (parser, q, " inherit ");
+	  q = pt_append_varchar (parser, q, r2);
 	}
       break;
     case PT_DROP_SUPCLASS:
       if (p->info.alter.super.sup_class_list)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.alter.super.sup_class_list);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " drop superclass ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_nulstring (parser, q, " drop superclass ");
+	  q = pt_append_varchar (parser, q, r1);
 	}
       break;
     case PT_DROP_RESOLUTION:
       if (p->info.alter.super.resolution_list)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.alter.super.resolution_list);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " drop inherit ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_nulstring (parser, q, " drop inherit ");
+	  q = pt_append_varchar (parser, q, r1);
 	}
       break;
     case PT_RENAME_RESOLUTION:
       if (p->info.alter.super.resolution_list)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.alter.super.resolution_list);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " inherit ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_nulstring (parser, q, " inherit ");
+	  q = pt_append_varchar (parser, q, r1);
 	}
       break;
     case PT_DROP_CONSTRAINT:
       if (p->info.alter.constraint_list)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.alter.constraint_list);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " drop constraint ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_nulstring (parser, q, " drop constraint ");
+	  q = pt_append_varchar (parser, q, r1);
 	}
       break;
     case PT_APPLY_PARTITION:
@@ -4720,18 +4628,12 @@ pt_print_alter (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  r1 = pt_print_bytes_l (parser,
 				 p->info.alter.alter_clause.partition.info);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " partition by ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_nulstring (parser, q, " partition by ");
+	  q = pt_append_varchar (parser, q, r1);
 	}
       break;
     case PT_REMOVE_PARTITION:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " remove partitioning ");
-	}
+      q = pt_append_nulstring (parser, q, " remove partitioning ");
       break;
     }
   return q;
@@ -4779,31 +4681,29 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = 0, *r1, *r2;
   r1 = pt_print_bytes (parser, p->info.index.indexed_class);
   r2 = pt_print_bytes_l (parser, p->info.index.column_names);
-  if (!parser->dont_prt)
+
+  b = pt_append_nulstring (parser, b, "alter");
+  if (p->info.index.reverse)
     {
-      b = pt_append_nulstring (parser, b, "alter");
-      if (p->info.index.reverse)
-	{
-	  b = pt_append_nulstring (parser, b, " reverse");
-	}
-      if (p->info.index.unique)
-	{
-	  b = pt_append_nulstring (parser, b, " unique");
-	}
-      b = pt_append_nulstring (parser, b, " index ");
-      if (p->info.index.index_name)
-	{
-	  const char *index_name =
-	    p->info.index.index_name->info.name.original;
-	  b = pt_append_bytes (parser, b, index_name, strlen (index_name));
-	}
-      b = pt_append_nulstring (parser, b, " on ");
-      b = pt_append_varchar (parser, b, r1);
-      b = pt_append_nulstring (parser, b, " (");
-      b = pt_append_varchar (parser, b, r2);
-      b = pt_append_nulstring (parser, b, ") ");
-      b = pt_append_nulstring (parser, b, "rebuild");
+      b = pt_append_nulstring (parser, b, " reverse");
     }
+  if (p->info.index.unique)
+    {
+      b = pt_append_nulstring (parser, b, " unique");
+    }
+  b = pt_append_nulstring (parser, b, " index ");
+  if (p->info.index.index_name)
+    {
+      const char *index_name = p->info.index.index_name->info.name.original;
+      b = pt_append_bytes (parser, b, index_name, strlen (index_name));
+    }
+  b = pt_append_nulstring (parser, b, " on ");
+  b = pt_append_varchar (parser, b, r1);
+  b = pt_append_nulstring (parser, b, " (");
+  b = pt_append_varchar (parser, b, r2);
+  b = pt_append_nulstring (parser, b, ") ");
+  b = pt_append_nulstring (parser, b, "rebuild");
+
   return b;
 }
 
@@ -4851,17 +4751,13 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = 0, *r1;
 
   r1 = pt_print_bytes (parser, p->info.alter_user.user_name);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "alter user ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, "alter user ");
+  b = pt_append_varchar (parser, b, r1);
+
   r1 = pt_print_bytes (parser, p->info.alter_user.password);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, " password ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, " password ");
+  b = pt_append_varchar (parser, b, r1);
+
   return b;
 }
 
@@ -4908,21 +4804,16 @@ pt_print_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = NULL, *r1;
 
   r1 = pt_print_bytes_l (parser, p->info.alter_trigger.trigger_spec_list);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "alter trigger ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, "alter trigger ");
+  b = pt_append_varchar (parser, b, r1);
+
   if (p->info.alter_trigger.trigger_priority)
     {
       r1 = pt_print_bytes (parser, p->info.alter_trigger.trigger_priority);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " priority ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " priority ");
+      b = pt_append_varchar (parser, b, r1);
     }
-  else if (!parser->dont_prt)
+  else
     {
       b = pt_append_nulstring (parser, b, " status ");
       b = pt_append_nulstring (parser, b, pt_show_misc_type
@@ -4967,18 +4858,11 @@ pt_init_attach (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_attach (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  if (!parser->dont_prt)
-    {
-      char s[PT_MEMB_BUF_SIZE];
+  char s[PT_MEMB_BUF_SIZE];
 
-      sprintf (s, "attach %d ", p->info.attach.trans_id);
+  sprintf (s, "attach %d ", p->info.attach.trans_id);
 
-      return pt_append_nulstring (parser, NULL, s);
-    }
-  else
-    {
-      return NULL;
-    }
+  return pt_append_nulstring (parser, NULL, s);
 }
 
 /* ATTR_DEF */
@@ -5030,16 +4914,13 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
   char s[PT_MEMB_BUF_SIZE];
 
   if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS)
-      && p->info.attr_def.attr_type == PT_META_ATTR && !parser->dont_prt)
+      && p->info.attr_def.attr_type == PT_META_ATTR)
     {
       q = pt_append_nulstring (parser, q, " class ");
     }
   r1 = pt_print_bytes (parser, p->info.attr_def.attr_name);
-  if (!parser->dont_prt)
-    {
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, " ");
-    }
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, " ");
 
   switch (p->type_enum)
     {
@@ -5047,32 +4928,25 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->data_type)
 	{
 	  r1 = pt_print_bytes (parser, p->data_type);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_varchar (parser, q, r1);
 	}
-      else if (!parser->dont_prt)
+      else
 	{
 	  q = pt_append_nulstring (parser, q, "object");
 	}
       break;
     case PT_TYPE_NUMERIC:
-      if (!parser->dont_prt)
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+      if (p->data_type)
 	{
-	  q = pt_append_nulstring (parser, q,
-				   pt_show_type_enum (p->type_enum));
-	  if (p->data_type)
+	  /* only show non-default parameter */
+	  if (p->data_type->info.data_type.precision != 15 ||
+	      p->data_type->info.data_type.dec_precision != 0)
 	    {
-	      /* only show non-default parameter */
-	      if (p->data_type->info.data_type.precision != 15 ||
-		  p->data_type->info.data_type.dec_precision != 0)
-		{
-		  sprintf (s, "(%d,%d)",
-			   p->data_type->info.data_type.precision,
-			   p->data_type->info.data_type.dec_precision);
-		  q = pt_append_nulstring (parser, q, s);
-		}
+	      sprintf (s, "(%d,%d)",
+		       p->data_type->info.data_type.precision,
+		       p->data_type->info.data_type.dec_precision);
+	      q = pt_append_nulstring (parser, q, s);
 	    }
 	}
       break;
@@ -5083,71 +4957,55 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
     case PT_TYPE_FLOAT:
-      if (!parser->dont_prt)
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+      if (p->data_type)
 	{
-	  q = pt_append_nulstring (parser, q,
-				   pt_show_type_enum (p->type_enum));
-	  if (p->data_type)
+	  bool show_precision;
+	  int precision;
+
+	  precision = p->data_type->info.data_type.precision;
+	  switch (p->type_enum)
 	    {
-	      bool show_precision;
-	      int precision;
+	    case PT_TYPE_CHAR:
+	    case PT_TYPE_NCHAR:
+	    case PT_TYPE_BIT:
+	      /* fixed data type: always show parameter  */
+	      show_precision = true;
+	      break;
+	    default:
+	      /* variable data type:
+	         only show non-maximum(i.e., default) parameter */
+	      show_precision = (precision == TP_FLOATING_PRECISION_VALUE)
+		? (false)
+		: (p->type_enum == PT_TYPE_VARCHAR)
+		? (precision != DB_MAX_VARCHAR_PRECISION)
+		: (p->type_enum == PT_TYPE_VARNCHAR)
+		? (precision != DB_MAX_VARNCHAR_PRECISION)
+		: (p->type_enum == PT_TYPE_VARBIT)
+		? (precision != DB_MAX_VARBIT_PRECISION) : (precision != 7);
+	    }
 
-	      precision = p->data_type->info.data_type.precision;
-	      switch (p->type_enum)
-		{
-		case PT_TYPE_CHAR:
-		case PT_TYPE_NCHAR:
-		case PT_TYPE_BIT:
-		  /* fixed data type: always show parameter  */
-		  show_precision = true;
-		  break;
-		default:
-		  /* variable data type:
-		     only show non-maximum(i.e., default) parameter */
-		  show_precision = (precision == TP_FLOATING_PRECISION_VALUE)
-		    ? (false)
-		    : (p->type_enum == PT_TYPE_VARCHAR)
-		    ? (precision != DB_MAX_VARCHAR_PRECISION)
-		    : (p->type_enum == PT_TYPE_VARNCHAR)
-		    ? (precision != DB_MAX_VARNCHAR_PRECISION)
-		    : (p->type_enum == PT_TYPE_VARBIT)
-		    ? (precision != DB_MAX_VARBIT_PRECISION)
-		    : (precision != 7);
-		}
-
-	      if (show_precision == true)
-		{
-		  sprintf (s, "(%d)", precision);
-		  q = pt_append_nulstring (parser, q, s);
-		}
+	  if (show_precision == true)
+	    {
+	      sprintf (s, "(%d)", precision);
+	      q = pt_append_nulstring (parser, q, s);
 	    }
 	}
       break;
     case PT_TYPE_DOUBLE:
-      if (!parser->dont_prt)
-	{
-	  q =
-	    pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
-	}
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       break;
     case PT_TYPE_NONE:
       /* no type is a blank attr def, as in view creation */
       break;
     default:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q,
-				   pt_show_type_enum (p->type_enum));
-	}
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       if (p->data_type)
 	{
 	  r1 = pt_print_bytes_l (parser, p->data_type);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
+	  q = pt_append_nulstring (parser, q, "(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
 	}
       break;
     }
@@ -5155,19 +5013,13 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.attr_def.data_default)
     {
       r1 = pt_print_bytes (parser, p->info.attr_def.data_default);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_varchar (parser, q, r1);
     }
 
   if (p->info.attr_def.auto_increment)
     {
       r1 = pt_print_bytes (parser, p->info.attr_def.auto_increment);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_varchar (parser, q, r1);
     }
 
   /*  The constraint information is no longer available in the attribute
@@ -5178,7 +5030,7 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
      q=pt_append_nulstring(parser, q, " unique ");
    */
 
-  if (p->info.attr_def.constrain_not_null && !parser->dont_prt)
+  if (p->info.attr_def.constrain_not_null)
     {
       q = pt_append_nulstring (parser, q, " not null ");
     }
@@ -5228,21 +5080,15 @@ static PARSER_VARCHAR *
 pt_print_auth_cmd (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1;
-  if (!parser->dont_prt)
-    {
-      q =
-	pt_append_nulstring (parser, q,
-			     pt_show_priv (p->info.auth_cmd.auth_cmd));
-    }
+  q = pt_append_nulstring (parser, q,
+			   pt_show_priv (p->info.auth_cmd.auth_cmd));
+
   if (p->info.auth_cmd.attr_mthd_list)
     {
       r1 = pt_print_bytes_l (parser, p->info.auth_cmd.attr_mthd_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, "(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
     }
   return q;
 }
@@ -5287,13 +5133,10 @@ pt_print_commit_work (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL;
 
-  if (!parser->dont_prt)
+  q = pt_append_nulstring (parser, q, "commit work");
+  if (p->info.commit_work.retain_lock)
     {
-      q = pt_append_nulstring (parser, q, "commit work");
-      if (p->info.commit_work.retain_lock)
-	{
-	  q = pt_append_nulstring (parser, q, " retain lock");
-	}
+      q = pt_append_nulstring (parser, q, " retain lock");
     }
 
   return q;
@@ -5377,22 +5220,26 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
   unsigned int save_custom;
 
   r1 = pt_print_bytes (parser, p->info.create_entity.entity_name);
-  if (!parser->dont_prt)
+  q = pt_append_nulstring (parser, q, "create ");
+  if (p->info.create_entity.hint != PT_HINT_NONE)
     {
-      q = pt_append_nulstring (parser, q, "create ");
-      q = pt_append_nulstring
-	(parser, q, pt_show_misc_type (p->info.create_entity.entity_type));
-      q = pt_append_nulstring (parser, q, " ");
-      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, "/*+");
+      if (p->info.create_entity.hint & PT_HINT_NO_STATS)
+	{
+	  q = pt_append_nulstring (parser, q, " NO_STATS");
+	}
+      q = pt_append_nulstring (parser, q, " */ ");
     }
+  q = pt_append_nulstring
+    (parser, q, pt_show_misc_type (p->info.create_entity.entity_type));
+  q = pt_append_nulstring (parser, q, " ");
+  q = pt_append_varchar (parser, q, r1);
+
   if (p->info.create_entity.supclass_list)
     {
       r1 = pt_print_bytes_l (parser, p->info.create_entity.supclass_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " under ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " under ");
+      q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.create_entity.class_attr_def_list)
     {
@@ -5401,12 +5248,9 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
 	(PT_SUPPRESS_RESOLVED | PT_SUPPRESS_META_ATTR_CLASS);
       r1 = pt_print_bytes_l (parser,
 			     p->info.create_entity.class_attr_def_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " class attribute ( ");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, " ) ");
-	}
+      q = pt_append_nulstring (parser, q, " class attribute ( ");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, " ) ");
 
       parser->custom_print = save_custom;
     }
@@ -5420,11 +5264,9 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.create_entity.attr_def_list);
       parser->custom_print = save_custom;
 
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " ( ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " ( ");
+      q = pt_append_varchar (parser, q, r1);
+
       /* Don't print out not-null constraints */
       constraint = p->info.create_entity.constraint_list;
       while (constraint
@@ -5434,8 +5276,7 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  constraint = constraint->next;
 	}
-      if (p->info.create_entity.attr_def_list && constraint
-	  && !parser->dont_prt)
+      if (p->info.create_entity.attr_def_list && constraint)
 	{
 	  q = pt_append_nulstring (parser, q, ", ");
 	}
@@ -5443,10 +5284,8 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
       if (constraint)
 	{
 	  r1 = pt_print_bytes (parser, constraint);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_varchar (parser, q, r1);
+
 	  constraint = constraint->next;
 	  while (constraint)
 	    {
@@ -5462,19 +5301,15 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
 		{
 		  /* Have a list */
 		  r1 = pt_print_bytes (parser, constraint);
-		  if (!parser->dont_prt)
-		    {
-		      q = pt_append_bytes (parser, q, ", ", 2);
-		      q = pt_append_varchar (parser, q, r1);
-		    }
+		  q = pt_append_bytes (parser, q, ", ", 2);
+		  q = pt_append_varchar (parser, q, r1);
+
 		  constraint = constraint->next;
 		}
 	    }
 	}
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " ) ");
-	}
+
+      q = pt_append_nulstring (parser, q, " ) ");
     }
   if (p->info.create_entity.object_id_list)
     {
@@ -5483,30 +5318,22 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       r1 = pt_print_bytes_l (parser, p->info.create_entity.object_id_list);
       parser->custom_print = save_custom;
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " object_id ( ");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, " ) ");
-	}
+
+      q = pt_append_nulstring (parser, q, " object_id ( ");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, " ) ");
     }
   if (p->info.create_entity.method_def_list)
     {
       r1 = pt_print_bytes_l (parser, p->info.create_entity.method_def_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " method ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " method ");
+      q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.create_entity.method_file_list)
     {
       r1 = pt_print_bytes_l (parser, p->info.create_entity.method_file_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " file ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " file ");
+      q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.create_entity.resolution_list)
     {
@@ -5514,52 +5341,34 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       r1 = pt_print_bytes_l (parser, p->info.create_entity.resolution_list);
       parser->custom_print = save_custom;
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " inherit ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " inherit ");
+      q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.create_entity.as_query_list)
     {
       r1 = pt_print_bytes_l (parser, p->info.create_entity.as_query_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " as ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " as ");
+      q = pt_append_varchar (parser, q, r1);
     }
   /* this is out of date */
   if (p->info.create_entity.update)
     {
       r1 = pt_print_bytes_l (parser, p->info.create_entity.update);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " update ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " update ");
+      q = pt_append_varchar (parser, q, r1);
     }
 
-  if (p->info.create_entity.entity_type == PT_VCLASS ||
-      p->info.create_entity.entity_type == PT_LDBVCLASS)
+  if (p->info.create_entity.entity_type == PT_VCLASS)
     {
       /* the ';' is not strictly speaking ANSI */
-      if (!(parser->custom_print &
-	    (PT_INGRES_PRINT | PT_ORACLE_PRINT | PT_RDB_PRINT))
-	  && !parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, ";");
-	}
+      q = pt_append_nulstring (parser, q, ";");
     }
 
   if (p->info.create_entity.partition_info)
     {
       r1 = pt_print_bytes_l (parser, p->info.create_entity.partition_info);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " partition by ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " partition by ");
+      q = pt_append_varchar (parser, q, r1);
     }
   return q;
 }
@@ -5606,33 +5415,41 @@ static PARSER_VARCHAR *
 pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1, *r2;
+
   r1 = pt_print_bytes (parser, p->info.index.indexed_class);
   r2 = pt_print_bytes_l (parser, p->info.index.column_names);
-  if (!parser->dont_prt)
+
+  b = pt_append_nulstring (parser, b, "create");
+  if (p->info.index.hint != PT_HINT_NONE)
     {
-      b = pt_append_nulstring (parser, b, "create");
-      if (p->info.index.reverse)
+      b = pt_append_nulstring (parser, b, " /*+");
+      if (p->info.index.hint & PT_HINT_NO_STATS)
 	{
-	  b = pt_append_nulstring (parser, b, " reverse");
+	  b = pt_append_nulstring (parser, b, " NO_STATS");
 	}
-      if (p->info.index.unique)
-	{
-	  b = pt_append_nulstring (parser, b, " unique");
-	}
-      b = pt_append_nulstring (parser, b, " index");
-      if (p->info.index.index_name)
-	{
-	  const char *index_name =
-	    p->info.index.index_name->info.name.original;
-	  b = pt_append_nulstring (parser, b, " ");
-	  b = pt_append_bytes (parser, b, index_name, strlen (index_name));
-	}
-      b = pt_append_nulstring (parser, b, " on ");
-      b = pt_append_varchar (parser, b, r1);
-      b = pt_append_nulstring (parser, b, " (");
-      b = pt_append_varchar (parser, b, r2);
-      b = pt_append_nulstring (parser, b, ") ");
+      b = pt_append_nulstring (parser, b, " */ ");
     }
+  if (p->info.index.reverse)
+    {
+      b = pt_append_nulstring (parser, b, " reverse");
+    }
+  if (p->info.index.unique)
+    {
+      b = pt_append_nulstring (parser, b, " unique");
+    }
+  b = pt_append_nulstring (parser, b, " index");
+  if (p->info.index.index_name)
+    {
+      const char *index_name = p->info.index.index_name->info.name.original;
+      b = pt_append_nulstring (parser, b, " ");
+      b = pt_append_bytes (parser, b, index_name, strlen (index_name));
+    }
+  b = pt_append_nulstring (parser, b, " on ");
+  b = pt_append_varchar (parser, b, r1);
+  b = pt_append_nulstring (parser, b, " (");
+  b = pt_append_varchar (parser, b, r2);
+  b = pt_append_nulstring (parser, b, ") ");
+
   return b;
 }
 
@@ -5683,38 +5500,28 @@ static PARSER_VARCHAR *
 pt_print_create_user (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1;
+
   r1 = pt_print_bytes (parser, p->info.create_user.user_name);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "create user ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, "create user ");
+  b = pt_append_varchar (parser, b, r1);
+
   if (p->info.create_user.password)
     {
       r1 = pt_print_bytes (parser, p->info.create_user.password);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " password ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " password ");
+      b = pt_append_varchar (parser, b, r1);
     }
   if (p->info.create_user.groups)
     {
       r1 = pt_print_bytes (parser, p->info.create_user.groups);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " groups ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " groups ");
+      b = pt_append_varchar (parser, b, r1);
     }
   if (p->info.create_user.members)
     {
       r1 = pt_print_bytes (parser, p->info.create_user.members);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " members ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " members ");
+      b = pt_append_varchar (parser, b, r1);
     }
   return b;
 }
@@ -5769,61 +5576,43 @@ pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
   r1 = pt_print_bytes (parser, p->info.create_trigger.trigger_name);
-  if (!parser->dont_prt)
-    {
-      q = pt_append_nulstring (parser, q, "create trigger ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+  q = pt_append_nulstring (parser, q, "create trigger ");
+  q = pt_append_varchar (parser, q, r1);
 
-  if (p->info.create_trigger.trigger_status != PT_MISC_DUMMY
-      && !parser->dont_prt)
+  if (p->info.create_trigger.trigger_status != PT_MISC_DUMMY)
     {
       q = pt_append_nulstring (parser, q, " status ");
       q = pt_append_nulstring (parser, q, pt_show_misc_type
 			       (p->info.create_trigger.trigger_status));
     }
-  if (!parser->dont_prt)
-    {
-      q = pt_append_nulstring (parser, q, " ");
-    }
+
+  q = pt_append_nulstring (parser, q, " ");
 
   if (p->info.create_trigger.trigger_priority)
     {
       r1 = pt_print_bytes (parser, p->info.create_trigger.trigger_priority);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " priority ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " priority ");
+      q = pt_append_varchar (parser, q, r1);
     }
 
   r1 = pt_print_bytes (parser, p->info.create_trigger.trigger_event);
-  if (!parser->dont_prt)
-    {
-      q = pt_append_nulstring (parser, q, " ");
-      q = pt_append_nulstring (parser, q, pt_show_misc_type
-			       (p->info.create_trigger.condition_time));
-      q = pt_append_nulstring (parser, q, " ");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, " ");
-    }
+  q = pt_append_nulstring (parser, q, " ");
+  q = pt_append_nulstring (parser, q, pt_show_misc_type
+			   (p->info.create_trigger.condition_time));
+  q = pt_append_nulstring (parser, q, " ");
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, " ");
 
   if (p->info.create_trigger.trigger_condition)
     {
       r1 = pt_print_bytes (parser, p->info.create_trigger.trigger_condition);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "if ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, "if ");
+      q = pt_append_varchar (parser, q, r1);
     }
 
-  if (!parser->dont_prt)
-    {
-      q = pt_append_nulstring (parser, q, " execute ");
-    }
-  if (p->info.create_trigger.action_time != PT_MISC_DUMMY
-      && !parser->dont_prt)
+  q = pt_append_nulstring (parser, q, " execute ");
+
+  if (p->info.create_trigger.action_time != PT_MISC_DUMMY)
     {
       q = pt_append_nulstring (parser, q, pt_show_misc_type
 			       (p->info.create_trigger.action_time));
@@ -5831,10 +5620,7 @@ pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   r1 = pt_print_bytes (parser, p->info.create_trigger.trigger_action);
-  if (!parser->dont_prt)
-    {
-      q = pt_append_varchar (parser, q, r1);
-    }
+  q = pt_append_varchar (parser, q, r1);
 
   return q;
 }
@@ -5876,11 +5662,6 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2, *r3;
 
-  if (parser->dont_prt)
-    {
-      return q;
-    }
-
   r1 = pt_print_bytes (parser, p->info.sp.name);
   q = pt_append_nulstring (parser, q, "create ");
   q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sp.type));
@@ -5916,11 +5697,6 @@ static PARSER_VARCHAR *
 pt_print_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
-
-  if (parser->dont_prt)
-    {
-      return q;
-    }
 
   r1 = pt_print_bytes_l (parser, p->info.sp.name);
   q = pt_append_nulstring (parser, q, "drop ");
@@ -5967,11 +5743,6 @@ static PARSER_VARCHAR *
 pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
-
-  if (parser->dont_prt)
-    {
-      return q;
-    }
 
   r1 = pt_print_bytes (parser, p->info.sp_param.name);
   q = pt_append_varchar (parser, q, r1);
@@ -6045,23 +5816,22 @@ pt_print_partition (PARSER_CONTEXT * parser, PT_NODE * p)
       r2 = pt_print_bytes_l (parser, p->info.partition.parts);
     }
   sprintf (buf, " %s ( ", pt_show_partition_type (p->info.partition.type));
-  if (!parser->dont_prt)
+
+  q = pt_append_nulstring (parser, q, buf);
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, " ) ");
+  if (p->info.partition.type == PT_PARTITION_HASH)
     {
-      q = pt_append_nulstring (parser, q, buf);
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, " ) ");
-      if (p->info.partition.type == PT_PARTITION_HASH)
-	{
-	  q = pt_append_nulstring (parser, q, " partitions ");
-	  q = pt_append_varchar (parser, q, r2);
-	}
-      else
-	{
-	  q = pt_append_nulstring (parser, q, " ( ");
-	  q = pt_append_varchar (parser, q, r2);
-	  q = pt_append_nulstring (parser, q, " ) ");
-	}
+      q = pt_append_nulstring (parser, q, " partitions ");
+      q = pt_append_varchar (parser, q, r2);
     }
+  else
+    {
+      q = pt_append_nulstring (parser, q, " ( ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, " ) ");
+    }
+
   return q;
 }
 
@@ -6107,31 +5877,30 @@ pt_print_parts (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.parts.name);
   r2 = pt_print_bytes_l (parser, p->info.parts.values);
-  if (!parser->dont_prt)
+
+  q = pt_append_nulstring (parser, q, " partition ");
+  q = pt_append_varchar (parser, q, r1);
+  if (p->info.partition.type == PT_PARTITION_LIST)
     {
-      q = pt_append_nulstring (parser, q, " partition ");
-      q = pt_append_varchar (parser, q, r1);
-      if (p->info.partition.type == PT_PARTITION_LIST)
+      q = pt_append_nulstring (parser, q, " values in ( ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, " ) ");
+    }
+  else
+    {
+      q = pt_append_nulstring (parser, q, " values less than");
+      if (r2 != NULL)
 	{
-	  q = pt_append_nulstring (parser, q, " values in ( ");
+	  q = pt_append_nulstring (parser, q, " ( ");
 	  q = pt_append_varchar (parser, q, r2);
 	  q = pt_append_nulstring (parser, q, " ) ");
 	}
       else
 	{
-	  q = pt_append_nulstring (parser, q, " values less than");
-	  if (r2 != NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, " ( ");
-	      q = pt_append_varchar (parser, q, r2);
-	      q = pt_append_nulstring (parser, q, " ) ");
-	    }
-	  else
-	    {
-	      q = pt_append_nulstring (parser, q, " maxvalue ");
-	    }
+	  q = pt_append_nulstring (parser, q, " maxvalue ");
 	}
     }
+
   return q;
 }
 
@@ -6180,79 +5949,52 @@ pt_print_create_serial (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1;
 
   r1 = pt_print_bytes (parser, p->info.serial.serial_name);
-  if (!parser->dont_prt)
-    {
-      q = pt_append_nulstring (parser, q, "create serial ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+  q = pt_append_nulstring (parser, q, "create serial ");
+  q = pt_append_varchar (parser, q, r1);
 
   if (p->info.serial.start_val)
     {
       r1 = pt_print_bytes (parser, p->info.serial.start_val);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " start with ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " start with ");
+      q = pt_append_varchar (parser, q, r1);
     }
 
   if (p->info.serial.increment_val)
     {
       r1 = pt_print_bytes (parser, p->info.serial.increment_val);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " increment by ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " increment by ");
+      q = pt_append_varchar (parser, q, r1);
     }
 
   if (p->info.serial.min_val)
     {
       r1 = pt_print_bytes (parser, p->info.serial.min_val);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " minvalue ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " minvalue ");
+      q = pt_append_varchar (parser, q, r1);
     }
   else if (p->info.serial.no_min == 1)
     {
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " nominvalue ");
-	}
+      q = pt_append_nulstring (parser, q, " nominvalue ");
     }
 
   if (p->info.serial.max_val)
     {
       r1 = pt_print_bytes (parser, p->info.serial.max_val);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " maxvalue ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " maxvalue ");
+      q = pt_append_varchar (parser, q, r1);
     }
   else if (p->info.serial.no_max == 1)
     {
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " nomaxvalue ");
-	}
+      q = pt_append_nulstring (parser, q, " nomaxvalue ");
     }
 
   if (p->info.serial.cyclic)
     {
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " cycle ");
-	}
+      q = pt_append_nulstring (parser, q, " cycle ");
     }
   else if (p->info.serial.no_cyclic == 1)
     {
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " nocycle ");
-	}
+      q = pt_append_nulstring (parser, q, " nocycle ");
     }
   return q;
 }
@@ -6269,69 +6011,45 @@ pt_print_alter_serial (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1;
 
   r1 = pt_print_bytes (parser, p->info.serial.serial_name);
-  if (!parser->dont_prt)
-    {
-      q = pt_append_nulstring (parser, q, "alter serial ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+  q = pt_append_nulstring (parser, q, "alter serial ");
+  q = pt_append_varchar (parser, q, r1);
 
   if (p->info.serial.increment_val)
     {
       r1 = pt_print_bytes (parser, p->info.serial.increment_val);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " increment by ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " increment by ");
+      q = pt_append_varchar (parser, q, r1);
     }
 
   if (p->info.serial.min_val)
     {
       r1 = pt_print_bytes (parser, p->info.serial.min_val);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " minvalue ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " minvalue ");
+      q = pt_append_varchar (parser, q, r1);
     }
   else if (p->info.serial.no_min == 1)
     {
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " nomaxvalue ");
-	}
+      q = pt_append_nulstring (parser, q, " nomaxvalue ");
     }
 
   if (p->info.serial.max_val)
     {
       r1 = pt_print_bytes (parser, p->info.serial.max_val);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " maxvalue ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " maxvalue ");
+      q = pt_append_varchar (parser, q, r1);
     }
   else if (p->info.serial.no_max == 1)
     {
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " nomaxvalue ");
-	}
+      q = pt_append_nulstring (parser, q, " nomaxvalue ");
     }
 
   if (p->info.serial.cyclic)
     {
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " cycle ");
-	}
+      q = pt_append_nulstring (parser, q, " cycle ");
     }
   else if (p->info.serial.no_cyclic == 1)
     {
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " nocycle ");
-	}
+      q = pt_append_nulstring (parser, q, " nocycle ");
     }
   return q;
 
@@ -6349,11 +6067,8 @@ pt_print_drop_serial (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1;
 
   r1 = pt_print_bytes (parser, p->info.serial.serial_name);
-  if (!parser->dont_prt)
-    {
-      q = pt_append_nulstring (parser, q, "drop serial ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+  q = pt_append_nulstring (parser, q, "drop serial ");
+  q = pt_append_varchar (parser, q, r1);
 
   return q;
 }
@@ -6455,22 +6170,19 @@ static PARSER_VARCHAR *
 pt_print_data_default (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1;
-  if (!parser->dont_prt)
+
+  if (p->info.data_default.shared == PT_SHARED)
     {
-      if (p->info.data_default.shared == PT_SHARED)
-	{
-	  q = pt_append_nulstring (parser, q, " shared ");
-	}
-      else if (p->info.data_default.shared == PT_DEFAULT)
-	{
-	  q = pt_append_nulstring (parser, q, " default ");
-	}
+      q = pt_append_nulstring (parser, q, " shared ");
     }
+  else if (p->info.data_default.shared == PT_DEFAULT)
+    {
+      q = pt_append_nulstring (parser, q, " default ");
+    }
+
   r1 = pt_print_bytes (parser, p->info.data_default.default_value);
-  if (!parser->dont_prt)
-    {
-      q = pt_append_varchar (parser, q, r1);
-    }
+  q = pt_append_varchar (parser, q, r1);
+
   return q;
 }
 
@@ -6525,32 +6237,25 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
     {
     case PT_TYPE_OBJECT:
       r1 = pt_print_bytes (parser, p->info.data_type.entity);
-      if (!parser->dont_prt)
+      if (p->info.data_type.entity)
 	{
-	  if (p->info.data_type.entity)
-	    {
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-	  else
-	    {
-	      q = pt_append_nulstring (parser, q, "object");
-	    }
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, "object");
 	}
       break;
 
     case PT_TYPE_NUMERIC:
-      if (!parser->dont_prt)
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
+      if (p->info.data_type.precision != 15
+	  || p->info.data_type.dec_precision != 0)
 	{
-	  q =
-	    pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
-	  if (p->info.data_type.precision != 15
-	      || p->info.data_type.dec_precision != 0)
-	    {
-	      sprintf (buf, "(%d,%d)",
-		       p->info.data_type.precision,
-		       p->info.data_type.dec_precision);
-	      q = pt_append_nulstring (parser, q, buf);
-	    }
+	  sprintf (buf, "(%d,%d)",
+		   p->info.data_type.precision,
+		   p->info.data_type.dec_precision);
+	  q = pt_append_nulstring (parser, q, buf);
 	}
       break;
     case PT_TYPE_NCHAR:
@@ -6560,67 +6265,54 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
     case PT_TYPE_FLOAT:
-      if (!parser->dont_prt)
-	{
-	  bool show_precision;
-	  int precision;
+      {
+	bool show_precision;
+	int precision;
 
-	  q = pt_append_nulstring (parser, q,
-				   pt_show_type_enum (p->type_enum));
+	q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
 
-	  precision = p->info.data_type.precision;
-	  switch (p->type_enum)
-	    {
-	    case PT_TYPE_CHAR:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_BIT:
-	      /* fixed data type: always show parameter */
-	      show_precision = true;
-	      break;
-	    default:
-	      /* variable data type:
-	       * only show non-maximum(i.e., default) parameter
-	       */
-	      show_precision = (precision == TP_FLOATING_PRECISION_VALUE)
-		? (false)
-		: (p->type_enum == PT_TYPE_VARCHAR)
-		? (precision != DB_MAX_VARCHAR_PRECISION)
-		: (p->type_enum == PT_TYPE_VARNCHAR)
-		? (precision != DB_MAX_VARNCHAR_PRECISION)
-		: (p->type_enum == PT_TYPE_VARBIT)
-		? (precision != DB_MAX_VARBIT_PRECISION) : (precision != 7);
-	    }
+	precision = p->info.data_type.precision;
+	switch (p->type_enum)
+	  {
+	  case PT_TYPE_CHAR:
+	  case PT_TYPE_NCHAR:
+	  case PT_TYPE_BIT:
+	    /* fixed data type: always show parameter */
+	    show_precision = true;
+	    break;
+	  default:
+	    /* variable data type:
+	     * only show non-maximum(i.e., default) parameter
+	     */
+	    show_precision = (precision == TP_FLOATING_PRECISION_VALUE)
+	      ? (false)
+	      : (p->type_enum == PT_TYPE_VARCHAR)
+	      ? (precision != DB_MAX_VARCHAR_PRECISION)
+	      : (p->type_enum == PT_TYPE_VARNCHAR)
+	      ? (precision != DB_MAX_VARNCHAR_PRECISION)
+	      : (p->type_enum == PT_TYPE_VARBIT)
+	      ? (precision != DB_MAX_VARBIT_PRECISION) : (precision != 7);
+	  }
 
-	  if (show_precision == true)
-	    {
-	      sprintf (buf, "(%d)", precision);
-	      q = pt_append_nulstring (parser, q, buf);
-	    }
-	}
+	if (show_precision == true)
+	  {
+	    sprintf (buf, "(%d)", precision);
+	    q = pt_append_nulstring (parser, q, buf);
+	  }
+      }
       break;
     case PT_TYPE_DOUBLE:
-      if (!parser->dont_prt)
-	{
-	  q =
-	    pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
-	}
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       break;
 
     default:
-      if (!parser->dont_prt)
-	{
-	  q =
-	    pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
-	}
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       if (p->data_type)
 	{
 	  r1 = pt_print_bytes_l (parser, p->data_type);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
+	  q = pt_append_nulstring (parser, q, "(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
 	}
     }
   return q;
@@ -6675,48 +6367,45 @@ static PARSER_VARCHAR *
 pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1, *r2;
+
   r1 = pt_print_bytes (parser, p->info.delete_.class_name);
   r2 = pt_print_bytes_l (parser, p->info.delete_.spec);
-  if (!parser->dont_prt)
+
+  q = pt_append_nulstring (parser, q, "delete");
+  if (p->info.delete_.hint != PT_HINT_NONE)
     {
-      q = pt_append_nulstring (parser, q, "delete");
-      if (p->info.delete_.hint != PT_HINT_NONE)
+      q = pt_append_nulstring (parser, q, "/*+");
+      if (p->info.delete_.hint & PT_HINT_LK_TIMEOUT
+	  && p->info.delete_.waitsecs_hint)
 	{
-	  q = pt_append_nulstring (parser, q, "/*+");
-	  if (p->info.delete_.hint & PT_HINT_LK_TIMEOUT
-	      && p->info.delete_.waitsecs_hint)
-	    {
-	      q = pt_append_nulstring (parser, q, " LOCK_TIMEOUT(");
-	      r1 = pt_print_bytes (parser, p->info.delete_.waitsecs_hint);
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
-	  if (p->info.delete_.hint & PT_HINT_NO_LOGGING)
-	    {
-	      q = pt_append_nulstring (parser, q, " NO_LOGGING");
-	    }
-	  if (p->info.delete_.hint & PT_HINT_REL_LOCK)
-	    {
-	      q = pt_append_nulstring (parser, q, " RELEAES_LOCK");
-	    }
-	  q = pt_append_nulstring (parser, q, " */");
-	}
-      if (r1)
-	{
-	  q = pt_append_nulstring (parser, q, " ");
+	  q = pt_append_nulstring (parser, q, " LOCK_TIMEOUT(");
+	  r1 = pt_print_bytes (parser, p->info.delete_.waitsecs_hint);
 	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
 	}
-      q = pt_append_nulstring (parser, q, " from ");
-      q = pt_append_varchar (parser, q, r2);
+      if (p->info.delete_.hint & PT_HINT_NO_LOGGING)
+	{
+	  q = pt_append_nulstring (parser, q, " NO_LOGGING");
+	}
+      if (p->info.delete_.hint & PT_HINT_REL_LOCK)
+	{
+	  q = pt_append_nulstring (parser, q, " RELEAES_LOCK");
+	}
+      q = pt_append_nulstring (parser, q, " */");
     }
+  if (r1)
+    {
+      q = pt_append_nulstring (parser, q, " ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+  q = pt_append_nulstring (parser, q, " from ");
+  q = pt_append_varchar (parser, q, r2);
+
   if (p->info.delete_.search_cond)
     {
       r1 = pt_print_and_list (parser, p->info.delete_.search_cond);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " where ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " where ");
+      q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.delete_.using_index)
     {
@@ -6724,31 +6413,21 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  if (p->info.delete_.using_index->info.name.resolved == NULL)
 	    {
-	      if (!parser->dont_prt)
-		{
-		  q = pt_append_nulstring (parser, q, " using index none");
-		}
+	      q = pt_append_nulstring (parser, q, " using index none");
 	    }
 	  else
 	    {
 	      r1 =
 		pt_print_bytes_l (parser, p->info.delete_.using_index->next);
-	      if (!parser->dont_prt)
-		{
-		  q = pt_append_nulstring (parser, q,
-					   " using index all except ");
-		  q = pt_append_varchar (parser, q, r1);
-		}
+	      q = pt_append_nulstring (parser, q, " using index all except ");
+	      q = pt_append_varchar (parser, q, r1);
 	    }
 	}
       else
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.delete_.using_index);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " using index ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_nulstring (parser, q, " using index ");
+	  q = pt_append_varchar (parser, q, r1);
 	}
     }
   return q;
@@ -6797,6 +6476,7 @@ pt_init_difference (PT_NODE * p)
   p->info.query.reexecute = 0;
   p->info.query.do_cache = 0;
   p->info.query.do_not_cache = 0;
+  p->info.query.order_siblings = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -6813,51 +6493,40 @@ static PARSER_VARCHAR *
 pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
+
   r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
-  if (!parser->dont_prt)
-    {
-      q = pt_append_nulstring (parser, q, "(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring
-	(parser, q, parser->custom_print & PT_ORACLE_PRINT ?
-	 " minus " : " except ");
-    }
-  if (p->info.query.all_distinct == PT_ALL && !parser->dont_prt)
+  q = pt_append_nulstring (parser, q, "(");
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, " except ");
+
+  if (p->info.query.all_distinct == PT_ALL)
     {
       q = pt_append_nulstring (parser, q, "all ");
     }
+
   r1 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
-  if (!parser->dont_prt)
-    {
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-    }
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, ")");
+
   if (p->info.query.order_by)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.order_by);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " order by ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " order by ");
+      q = pt_append_varchar (parser, q, r1);
     }
+
   if (p->info.query.orderby_for)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " for ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " for ");
+      q = pt_append_varchar (parser, q, r1);
     }
+
   if (p->info.query.for_update)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.for_update);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " for update of ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " for update of ");
+      q = pt_append_varchar (parser, q, r1);
     }
   return q;
 }
@@ -6903,17 +6572,17 @@ static PARSER_VARCHAR *
 pt_print_dot (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1, *r2;
+
   r1 = pt_print_bytes (parser, p->info.dot.arg1);
   r2 = pt_print_bytes (parser, p->info.dot.arg2);
-  if (!parser->dont_prt)
+
+  b = pt_append_varchar (parser, b, r1);
+  if (r2)
     {
-      b = pt_append_varchar (parser, b, r1);
-      if (r2)
-	{
-	  b = pt_append_nulstring (parser, b, ".");
-	  b = pt_append_varchar (parser, b, r2);
-	}
+      b = pt_append_nulstring (parser, b, ".");
+      b = pt_append_varchar (parser, b, r2);
     }
+
   return b;
 }
 
@@ -6960,15 +6629,13 @@ pt_print_drop (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = 0, *r1;
   unsigned int save_custom = parser->custom_print;
 
-  if (!parser->dont_prt)
-    {
-      parser->custom_print |= PT_SUPPRESS_RESOLVED;
-      r1 = pt_print_bytes_l (parser, p->info.drop.spec_list);
-      parser->custom_print = save_custom;
+  parser->custom_print |= PT_SUPPRESS_RESOLVED;
+  r1 = pt_print_bytes_l (parser, p->info.drop.spec_list);
+  parser->custom_print = save_custom;
 
-      q = pt_append_nulstring (parser, q, "drop ");
-      q = pt_append_varchar (parser, q, r1);
-    }
+  q = pt_append_nulstring (parser, q, "drop ");
+  q = pt_append_varchar (parser, q, r1);
+
   return q;
 }
 
@@ -7017,35 +6684,43 @@ pt_print_drop_index (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.index.indexed_class);
   r2 = pt_print_bytes_l (parser, p->info.index.column_names);
-  if (!parser->dont_prt)
+
+  b = pt_append_nulstring (parser, b, "drop");
+  if (p->info.index.hint != PT_HINT_NONE)
     {
-      b = pt_append_nulstring (parser, b, "drop");
-      if (p->info.index.reverse)
+      b = pt_append_nulstring (parser, b, " /*+");
+      if (p->info.index.hint & PT_HINT_NO_STATS)
 	{
-	  b = pt_append_nulstring (parser, b, " reverse");
+	  b = pt_append_nulstring (parser, b, " NO_STATS");
 	}
-      if (p->info.index.unique)
+      b = pt_append_nulstring (parser, b, " */ ");
+    }
+  if (p->info.index.reverse)
+    {
+      b = pt_append_nulstring (parser, b, " reverse");
+    }
+  if (p->info.index.unique)
+    {
+      b = pt_append_nulstring (parser, b, " unique");
+    }
+  b = pt_append_nulstring (parser, b, " index ");
+  if (p->info.index.index_name)
+    {
+      index_name = p->info.index.index_name->info.name.original;
+      b = pt_append_bytes (parser, b, index_name, strlen (index_name));
+    }
+  if (r1)
+    {
+      b = pt_append_nulstring (parser, b, (index_name ? " on " : "on "));
+      b = pt_append_varchar (parser, b, r1);
+      if (r2)
 	{
-	  b = pt_append_nulstring (parser, b, " unique");
-	}
-      b = pt_append_nulstring (parser, b, " index ");
-      if (p->info.index.index_name)
-	{
-	  index_name = p->info.index.index_name->info.name.original;
-	  b = pt_append_bytes (parser, b, index_name, strlen (index_name));
-	}
-      if (r1)
-	{
-	  b = pt_append_nulstring (parser, b, (index_name ? " on " : "on "));
-	  b = pt_append_varchar (parser, b, r1);
-	  if (r2)
-	    {
-	      b = pt_append_nulstring (parser, b, " (");
-	      b = pt_append_varchar (parser, b, r2);
-	      b = pt_append_nulstring (parser, b, ") ");
-	    }
+	  b = pt_append_nulstring (parser, b, " (");
+	  b = pt_append_varchar (parser, b, r2);
+	  b = pt_append_nulstring (parser, b, ") ");
 	}
     }
+
   return b;
 }
 
@@ -7091,11 +6766,9 @@ pt_print_drop_user (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = 0, *r1;
 
   r1 = pt_print_bytes (parser, p->info.drop_user.user_name);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "drop user ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, "drop user ");
+  b = pt_append_varchar (parser, b, r1);
+
   return b;
 }
 
@@ -7140,11 +6813,9 @@ pt_print_drop_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = NULL, *r1;
 
   r1 = pt_print_bytes_l (parser, p->info.drop_trigger.trigger_spec_list);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "drop trigger ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, "drop trigger ");
+  b = pt_append_varchar (parser, b, r1);
+
   return b;
 }
 
@@ -7189,11 +6860,9 @@ pt_print_drop_variable (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = 0, *r1;
 
   r1 = pt_print_bytes_l (parser, p->info.drop_variable.var_names);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "drop variable ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, "drop variable ");
+  b = pt_append_varchar (parser, b, r1);
+
   return b;
 }
 
@@ -7261,45 +6930,27 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.spec.natural)
     {
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " natural ");
-	}
+      q = pt_append_nulstring (parser, q, " natural ");
     }
   switch (p->info.spec.join_type)
     {
     case PT_JOIN_NONE:
       break;
     case PT_JOIN_CROSS:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " cross join ");
-	}
+      q = pt_append_nulstring (parser, q, " cross join ");
       break;
       /*case PT_JOIN_NATURAL: -- dose not support */
     case PT_JOIN_INNER:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " inner join ");
-	}
+      q = pt_append_nulstring (parser, q, " inner join ");
       break;
     case PT_JOIN_LEFT_OUTER:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " left outer join ");
-	}
+      q = pt_append_nulstring (parser, q, " left outer join ");
       break;
     case PT_JOIN_RIGHT_OUTER:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " right outer join ");
-	}
+      q = pt_append_nulstring (parser, q, " right outer join ");
       break;
     case PT_JOIN_FULL_OUTER:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " full outer join ");
-	}
+      q = pt_append_nulstring (parser, q, " full outer join ");
       break;
       /*case PT_JOIN_UNION: -- dose not support */
     default:
@@ -7311,16 +6962,10 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "(");
-	}
+      q = pt_append_nulstring (parser, q, "(");
       r1 = pt_print_bytes_l (parser, p->info.spec.flat_entity_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       parser->custom_print = save_custom;
     }
   /* check if a sublist */
@@ -7328,16 +6973,10 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "(");
-	}
+      q = pt_append_nulstring (parser, q, "(");
       r1 = pt_print_bytes_l (parser, p->info.spec.entity_name);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       parser->custom_print = save_custom;
     }
   /* else is a single class entity spec */
@@ -7347,68 +6986,45 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print |= PT_SUPPRESS_META_ATTR_CLASS;
       if (p->info.spec.meta_class == PT_META_CLASS)
 	{
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " class ");
-	    }
+	  q = pt_append_nulstring (parser, q, " class ");
 	}
       else if (p->info.spec.only_all == PT_ALL)
 	{
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " all ");
-	    }
+	  q = pt_append_nulstring (parser, q, " all ");
 	}
       r1 = pt_print_bytes (parser, p->info.spec.entity_name);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_varchar (parser, q, r1);
       parser->custom_print = save_custom;
       if (p->info.spec.except_list)
 	{
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_SUPPRESS_RESOLVED;
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " (except ");
-	    }
+	  q = pt_append_nulstring (parser, q, " (except ");
 	  r1 = pt_print_bytes_l (parser, p->info.spec.except_list);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_varchar (parser, q, r1);
 	  parser->custom_print = save_custom;
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
+	  q = pt_append_nulstring (parser, q, ")");
 	}
     }
   else
     {				/* should be a derived table */
       if (p->info.spec.derived_table_type == PT_IS_SET_EXPR)
 	{
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, "table");
-	    }
+	  q = pt_append_nulstring (parser, q, "table");
 	}
       r1 = pt_print_bytes_l (parser, p->info.spec.derived_table);
-      if (!parser->dont_prt)
+
+      if (p->info.spec.derived_table_type == PT_IS_SUBQUERY
+	  && r1->bytes[0] == '(' && r1->bytes[r1->length - 1] == ')')
 	{
-	  if (p->info.spec.derived_table_type == PT_IS_SUBQUERY
-	      && r1->bytes[0] == '(' && r1->bytes[r1->length - 1] == ')')
-	    {
-	      /* skip unnecessary nested parenthesis of derived-query */
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-	  else
-	    {
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
+	  /* skip unnecessary nested parenthesis of derived-query */
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, "(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
 	}
     }
 
@@ -7421,11 +7037,8 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	  && p->info.spec.range_var->info.name.original[0])
 	{
 	  r1 = pt_print_bytes (parser, p->info.spec.range_var);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_nulstring (parser, q, " ");
+	  q = pt_append_varchar (parser, q, r1);
 	}
       parser->custom_print = save_custom;
     }
@@ -7434,46 +7047,34 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       r1 = pt_print_bytes_l (parser, p->info.spec.as_attr_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " (");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, " (");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       parser->custom_print = save_custom;
     }
 
   if (p->info.spec.lock_hint)
     {
-      if (!parser->dont_prt)
+      q = pt_append_nulstring (parser, q, " WITH (");
+      if (p->info.spec.lock_hint & LOCKHINT_READ_UNCOMMITTED)
 	{
-	  q = pt_append_nulstring (parser, q, " WITH (");
-	  if (p->info.spec.lock_hint & LOCKHINT_READ_UNCOMMITTED)
-	    {
-	      q = pt_append_nulstring (parser, q, "READ UNCOMMITTED");
-	    }
-	  /* other lock hint may be added here */
-	  q = pt_append_nulstring (parser, q, ")");
+	  q = pt_append_nulstring (parser, q, "READ UNCOMMITTED");
 	}
+      /* other lock hint may be added here */
+      q = pt_append_nulstring (parser, q, ")");
     }
 
   if (p->info.spec.on_cond)
     {
       r1 = pt_print_and_list (parser, p->info.spec.on_cond);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " on ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " on ");
+      q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.spec.using_cond)
     {
       r1 = pt_print_and_list (parser, p->info.spec.using_cond);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " using ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " using ");
+      q = pt_append_varchar (parser, q, r1);
     }
 
   return q;
@@ -7495,23 +7096,17 @@ pt_print_class_name (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.spec.entity_name && p->info.spec.entity_name->next)
     {
       r1 = pt_print_bytes (parser, p->info.spec.entity_name);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_varchar (parser, q, r1);
     }
   /* else is a single class entity spec */
   else if (p->info.spec.entity_name)
     {
-      if (p->info.spec.meta_class == PT_META_CLASS && !parser->dont_prt)
+      if (p->info.spec.meta_class == PT_META_CLASS)
 	{
 	  q = pt_append_nulstring (parser, q, " class ");
 	}
       r1 = pt_print_bytes (parser, p->info.spec.entity_name);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_varchar (parser, q, r1);
     }
   return q;
 }
@@ -7556,20 +7151,16 @@ static PARSER_VARCHAR *
 pt_print_evaluate (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
+
   r1 = pt_print_bytes (parser, p->info.evaluate.expression);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "evaluate ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, "evaluate ");
+  b = pt_append_varchar (parser, b, r1);
+
   if (p->info.evaluate.into_var)
     {
       r1 = pt_print_bytes (parser, p->info.evaluate.into_var);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " into ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " into ");
+      b = pt_append_varchar (parser, b, r1);
     }
   return b;
 }
@@ -7658,18 +7249,13 @@ pt_print_event_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
 
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, pt_show_event_type
-			       (p->info.event_spec.event_type));
-    }
+  b = pt_append_nulstring (parser, b, pt_show_event_type
+			   (p->info.event_spec.event_type));
+
   if (p->info.event_spec.event_target)
     {
       r1 = pt_print_bytes (parser, p->info.event_spec.event_target);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_varchar (parser, b, r1);
     }
   return b;
 }
@@ -7717,20 +7303,15 @@ pt_print_event_target (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = NULL, *r1;
 
   r1 = pt_print_bytes (parser, p->info.event_target.class_name);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, " on ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, " on ");
+  b = pt_append_varchar (parser, b, r1);
+
   if (p->info.event_target.attribute)
     {
       r1 = pt_print_bytes (parser, p->info.event_target.attribute);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, "(");
-	  b = pt_append_varchar (parser, b, r1);
-	  b = pt_append_nulstring (parser, b, ")");
-	}
+      b = pt_append_nulstring (parser, b, "(");
+      b = pt_append_varchar (parser, b, r1);
+      b = pt_append_nulstring (parser, b, ")");
     }
   return b;
 }
@@ -7776,11 +7357,9 @@ pt_print_execute_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = NULL, *r1;
 
   r1 = pt_print_bytes_l (parser, p->info.execute_trigger.trigger_spec_list);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "execute deferred trigger ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, "execute deferred trigger ");
+  b = pt_append_varchar (parser, b, r1);
+
   return b;
 }
 
@@ -7830,7 +7409,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
   PT_NODE *t, *or_next;
   int print_from = 0;
 
-  if (p->info.expr.paren_type == 1 && !parser->dont_prt)
+  if (p->info.expr.paren_type == 1)
     {
       q = pt_append_nulstring (parser, q, "(");
     }
@@ -7839,742 +7418,613 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     {
     case PT_UNARY_MINUS:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "-");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, "-");
+      q = pt_append_varchar (parser, q, r1);
+      break;
+    case PT_PRIOR:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " prior ");
+      q = pt_append_varchar (parser, q, r1);
+      break;
+    case PT_CONNECT_BY_ROOT:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " connect_by_root ");
+      q = pt_append_varchar (parser, q, r1);
+      break;
+    case PT_QPRIOR:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " prior ");
+      q = pt_append_varchar (parser, q, r1);
       break;
     case PT_NOT:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " not ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " not ");
+      q = pt_append_varchar (parser, q, r1);
       break;
     case PT_EXISTS:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " exists ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " exists ");
+      q = pt_append_varchar (parser, q, r1);
       break;
     case PT_MODULUS:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_nulstring (parser, q, " mod(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ", ");
-	  q = pt_append_varchar (parser, q, r2);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_nulstring (parser, q, " mod(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_RAND:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " rand()");
-	}
+      q = pt_append_nulstring (parser, q, " rand()");
       break;
     case PT_DRAND:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " drand()");
-	}
+      q = pt_append_nulstring (parser, q, " drand()");
       break;
     case PT_RANDOM:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " random()");
-	}
+      q = pt_append_nulstring (parser, q, " random()");
       break;
     case PT_DRANDOM:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " drandom()");
-	}
+      q = pt_append_nulstring (parser, q, " drandom()");
       break;
     case PT_FLOOR:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_nulstring (parser, q, " floor(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " floor(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_CEIL:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_nulstring (parser, q, " ceil(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " ceil(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_SIGN:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_nulstring (parser, q, " sign(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " sign(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_ABS:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_nulstring (parser, q, " abs(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " abs(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_POWER:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_nulstring (parser, q, " power(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ", ");
-	  q = pt_append_varchar (parser, q, r2);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_nulstring (parser, q, " power(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_ROUND:
-      if (!parser->dont_prt)
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_nulstring (parser, q, " round(");
+      q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2 != NULL)
 	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_nulstring (parser, q, " round(");
-	  q = pt_append_varchar (parser, q, r1);
-	  if (p->info.expr.arg2 != NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      q = pt_append_varchar (parser, q, r2);
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
+	  q = pt_append_nulstring (parser, q, ", ");
+	  q = pt_append_varchar (parser, q, r2);
 	}
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_LOG:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_nulstring (parser, q, " log(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ", ");
-	  q = pt_append_varchar (parser, q, r2);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_nulstring (parser, q, " log(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_EXP:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_nulstring (parser, q, " exp(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " exp(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_SQRT:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_nulstring (parser, q, " sqrt(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " sqrt(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_TRUNC:
-      if (!parser->dont_prt)
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_nulstring (parser, q, " trunc(");
+      q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2 != NULL)
 	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_nulstring (parser, q, " trunc(");
-	  q = pt_append_varchar (parser, q, r1);
-	  if (p->info.expr.arg2 != NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      q = pt_append_varchar (parser, q, r2);
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
-	}
-      break;
-    case PT_CHR:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_nulstring (parser, q, " chr(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
-      break;
-    case PT_INSTR:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_nulstring (parser, q, " instr(");
-	  q = pt_append_varchar (parser, q, r1);
 	  q = pt_append_nulstring (parser, q, ", ");
 	  q = pt_append_varchar (parser, q, r2);
-	  if (p->info.expr.arg3 != NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      r3 = pt_print_bytes (parser, p->info.expr.arg3);
-	      q = pt_append_varchar (parser, q, r3);
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
 	}
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_CHR:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " chr(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_INSTR:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_nulstring (parser, q, " instr(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r2);
+      if (p->info.expr.arg3 != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, ", ");
+	  r3 = pt_print_bytes (parser, p->info.expr.arg3);
+	  q = pt_append_varchar (parser, q, r3);
+	}
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_POSITION:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " position(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, " in ");
-	  q = pt_append_varchar (parser, q, r2);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, " position(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, " in ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_SUBSTRING:
-      if (!parser->dont_prt)
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      if (p->info.expr.qualifier == PT_SUBSTR_ORG)
 	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	  if (p->info.expr.qualifier == PT_SUBSTR_ORG)
+	  q = pt_append_nulstring (parser, q, " substring(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, " from ");
+	  q = pt_append_varchar (parser, q, r2);
+	  if (p->info.expr.arg3)
 	    {
-	      q = pt_append_nulstring (parser, q, " substring(");
+	      r1 = pt_print_bytes (parser, p->info.expr.arg3);
+	      q = pt_append_nulstring (parser, q, " for ");
 	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, " from ");
-	      q = pt_append_varchar (parser, q, r2);
-	      if (p->info.expr.arg3)
-		{
-		  r1 = pt_print_bytes (parser, p->info.expr.arg3);
-		  q = pt_append_nulstring (parser, q, " for ");
-		  q = pt_append_varchar (parser, q, r1);
-		}
-	      q = pt_append_nulstring (parser, q, ")");
 	    }
-	  else if (p->info.expr.qualifier == PT_SUBSTR)
+	  q = pt_append_nulstring (parser, q, ")");
+	}
+      else if (p->info.expr.qualifier == PT_SUBSTR)
+	{
+	  q = pt_append_nulstring (parser, q, " substr(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ", ");
+	  q = pt_append_varchar (parser, q, r2);
+	  if (p->info.expr.arg3)
 	    {
-	      q = pt_append_nulstring (parser, q, " substr(");
-	      q = pt_append_varchar (parser, q, r1);
+	      r1 = pt_print_bytes (parser, p->info.expr.arg3);
 	      q = pt_append_nulstring (parser, q, ", ");
-	      q = pt_append_varchar (parser, q, r2);
-	      if (p->info.expr.arg3)
-		{
-		  r1 = pt_print_bytes (parser, p->info.expr.arg3);
-		  q = pt_append_nulstring (parser, q, ", ");
-		  q = pt_append_varchar (parser, q, r1);
-		}
-	      q = pt_append_nulstring (parser, q, ")");
+	      q = pt_append_varchar (parser, q, r1);
 	    }
+	  q = pt_append_nulstring (parser, q, ")");
 	}
       break;
     case PT_OCTET_LENGTH:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " octet_length(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, " octet_length(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_BIT_LENGTH:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " bit_length(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, " bit_length(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_CHAR_LENGTH:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " char_length(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, " char_length(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_LOWER:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " lower(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, " lower(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_UPPER:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " upper(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, " upper(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_EXTRACT:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (!parser->dont_prt)
+      q = pt_append_nulstring (parser, q, " extract(");
+      switch (p->info.expr.qualifier)
 	{
-	  q = pt_append_nulstring (parser, q, " extract(");
-	  switch (p->info.expr.qualifier)
-	    {
-	    case PT_YEAR:
-	      q = pt_append_nulstring (parser, q, "year ");
-	      break;
-	    case PT_MONTH:
-	      q = pt_append_nulstring (parser, q, "month ");
-	      break;
-	    case PT_DAY:
-	      q = pt_append_nulstring (parser, q, "day ");
-	      break;
-	    case PT_HOUR:
-	      q = pt_append_nulstring (parser, q, "hour ");
-	      break;
-	    case PT_MINUTE:
-	      q = pt_append_nulstring (parser, q, "minute ");
-	      break;
-	    case PT_SECOND:
-	      q = pt_append_nulstring (parser, q, "second ");
-	      break;
-	    case PT_MILLISECOND:
-	      q = pt_append_nulstring (parser, q, "millisecond ");
-	      break;
-	    default:
-	      break;
-	    }
-	  q = pt_append_nulstring (parser, q, " from ");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
+	case PT_YEAR:
+	  q = pt_append_nulstring (parser, q, "year ");
+	  break;
+	case PT_MONTH:
+	  q = pt_append_nulstring (parser, q, "month ");
+	  break;
+	case PT_DAY:
+	  q = pt_append_nulstring (parser, q, "day ");
+	  break;
+	case PT_HOUR:
+	  q = pt_append_nulstring (parser, q, "hour ");
+	  break;
+	case PT_MINUTE:
+	  q = pt_append_nulstring (parser, q, "minute ");
+	  break;
+	case PT_SECOND:
+	  q = pt_append_nulstring (parser, q, "second ");
+	  break;
+	case PT_MILLISECOND:
+	  q = pt_append_nulstring (parser, q, "millisecond ");
+	  break;
+	default:
+	  break;
 	}
+      q = pt_append_nulstring (parser, q, " from ");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_CURRENT_VALUE:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q,
-				   (char *) p->info.expr.arg1->info.value.
-				   data_value.str->bytes);
-	  q = pt_append_nulstring (parser, q, ".current_value");
-	}
+      q = pt_append_nulstring (parser, q,
+			       (char *) p->info.expr.arg1->info.value.
+			       data_value.str->bytes);
+      q = pt_append_nulstring (parser, q, ".current_value");
       break;
 
     case PT_NEXT_VALUE:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q,
-				   (char *) p->info.expr.arg1->info.value.
-				   data_value.str->bytes);
-	  q = pt_append_nulstring (parser, q, ".next_value");
-	}
+      q = pt_append_nulstring (parser, q,
+			       (char *) p->info.expr.arg1->info.value.
+			       data_value.str->bytes);
+      q = pt_append_nulstring (parser, q, ".next_value");
       break;
 
     case PT_TO_NUMBER:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " to_number(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, " to_number(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
 
-	  if (p->info.expr.arg2 != NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
+      if (p->info.expr.arg2 != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, ", ");
+	  r1 = pt_print_bytes (parser, p->info.expr.arg2);
+	  q = pt_append_varchar (parser, q, r1);
 	}
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_TO_DATE:
-      if (!parser->dont_prt)
-	{
-	  int flags;
-	  q = pt_append_nulstring (parser, q, " to_date(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
+      {
+	int flags;
+	q = pt_append_nulstring (parser, q, " to_date(");
+	r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	q = pt_append_varchar (parser, q, r1);
 
-	  flags = p->info.expr.arg3->info.value.data_value.i;
-	  if (!(flags & 1))
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	      q = pt_append_varchar (parser, q, r1);
-	      if (flags & 2)
-		{
-		  q = pt_append_nulstring (parser, q, ", 'en_US'");
-		}
-	      else if (flags & 4)
-		{
-		  q = pt_append_nulstring (parser, q, ", 'ko_KR'");
-		}
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+	flags = p->info.expr.arg3->info.value.data_value.i;
+	if (!(flags & 1))
+	  {
+	    q = pt_append_nulstring (parser, q, ", ");
+	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
+	    q = pt_append_varchar (parser, q, r1);
+	    if (flags & 2)
+	      {
+		q = pt_append_nulstring (parser, q, ", 'en_US'");
+	      }
+	    else if (flags & 4)
+	      {
+		q = pt_append_nulstring (parser, q, ", 'ko_KR'");
+	      }
+	  }
+	q = pt_append_nulstring (parser, q, ")");
+      }
       break;
 
     case PT_TO_TIME:
-      if (!parser->dont_prt)
-	{
-	  int flags;
-	  q = pt_append_nulstring (parser, q, " to_time(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
+      {
+	int flags;
+	q = pt_append_nulstring (parser, q, " to_time(");
+	r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	q = pt_append_varchar (parser, q, r1);
 
-	  flags = p->info.expr.arg3->info.value.data_value.i;
-	  if (!(flags & 1))
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	      q = pt_append_varchar (parser, q, r1);
-	      if (flags & 2)
-		{
-		  q = pt_append_nulstring (parser, q, ", 'en_US'");
-		}
-	      else if (flags & 4)
-		{
-		  q = pt_append_nulstring (parser, q, ", 'ko_KR'");
-		}
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+	flags = p->info.expr.arg3->info.value.data_value.i;
+	if (!(flags & 1))
+	  {
+	    q = pt_append_nulstring (parser, q, ", ");
+	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
+	    q = pt_append_varchar (parser, q, r1);
+	    if (flags & 2)
+	      {
+		q = pt_append_nulstring (parser, q, ", 'en_US'");
+	      }
+	    else if (flags & 4)
+	      {
+		q = pt_append_nulstring (parser, q, ", 'ko_KR'");
+	      }
+	  }
+	q = pt_append_nulstring (parser, q, ")");
+      }
       break;
 
     case PT_TO_TIMESTAMP:
-      if (!parser->dont_prt)
-	{
-	  int flags;
-	  q = pt_append_nulstring (parser, q, " to_timestamp(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
+      {
+	int flags;
+	q = pt_append_nulstring (parser, q, " to_timestamp(");
+	r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	q = pt_append_varchar (parser, q, r1);
 
-	  flags = p->info.expr.arg3->info.value.data_value.i;
-	  if (!(flags & 1))
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	      q = pt_append_varchar (parser, q, r1);
-	      if (flags & 2)
-		{
-		  q = pt_append_nulstring (parser, q, ", 'en_US'");
-		}
-	      else if (flags & 4)
-		{
-		  q = pt_append_nulstring (parser, q, ", 'ko_KR'");
-		}
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+	flags = p->info.expr.arg3->info.value.data_value.i;
+	if (!(flags & 1))
+	  {
+	    q = pt_append_nulstring (parser, q, ", ");
+	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
+	    q = pt_append_varchar (parser, q, r1);
+	    if (flags & 2)
+	      {
+		q = pt_append_nulstring (parser, q, ", 'en_US'");
+	      }
+	    else if (flags & 4)
+	      {
+		q = pt_append_nulstring (parser, q, ", 'ko_KR'");
+	      }
+	  }
+	q = pt_append_nulstring (parser, q, ")");
+      }
       break;
 
     case PT_TO_DATETIME:
-      if (!parser->dont_prt)
-	{
-	  int flags;
-	  q = pt_append_nulstring (parser, q, " to_datetime(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
+      {
+	int flags;
+	q = pt_append_nulstring (parser, q, " to_datetime(");
+	r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	q = pt_append_varchar (parser, q, r1);
 
-	  flags = p->info.expr.arg3->info.value.data_value.i;
-	  if (!(flags & 1))
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	      q = pt_append_varchar (parser, q, r1);
-	      if (flags & 2)
-		{
-		  q = pt_append_nulstring (parser, q, ", 'en_US'");
-		}
-	      else if (flags & 4)
-		{
-		  q = pt_append_nulstring (parser, q, ", 'ko_KR'");
-		}
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+	flags = p->info.expr.arg3->info.value.data_value.i;
+	if (!(flags & 1))
+	  {
+	    q = pt_append_nulstring (parser, q, ", ");
+	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
+	    q = pt_append_varchar (parser, q, r1);
+	    if (flags & 2)
+	      {
+		q = pt_append_nulstring (parser, q, ", 'en_US'");
+	      }
+	    else if (flags & 4)
+	      {
+		q = pt_append_nulstring (parser, q, ", 'ko_KR'");
+	      }
+	  }
+	q = pt_append_nulstring (parser, q, ")");
+      }
       break;
 
     case PT_TO_CHAR:
-      if (!parser->dont_prt)
-	{
-	  int flags;
-	  q = pt_append_nulstring (parser, q, " to_char(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
+      {
+	int flags;
+	q = pt_append_nulstring (parser, q, " to_char(");
+	r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	q = pt_append_varchar (parser, q, r1);
 
-	  flags = p->info.expr.arg3->info.value.data_value.i;
-	  if (!(flags & 1))
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	      q = pt_append_varchar (parser, q, r1);
-	      if (flags & 2)
-		{
-		  q = pt_append_nulstring (parser, q, ", 'en_US'");
-		}
-	      else if (flags & 4)
-		{
-		  q = pt_append_nulstring (parser, q, ", 'ko_KR'");
-		}
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+	flags = p->info.expr.arg3->info.value.data_value.i;
+	if (!(flags & 1))
+	  {
+	    q = pt_append_nulstring (parser, q, ", ");
+	    r1 = pt_print_bytes (parser, p->info.expr.arg2);
+	    q = pt_append_varchar (parser, q, r1);
+	    if (flags & 2)
+	      {
+		q = pt_append_nulstring (parser, q, ", 'en_US'");
+	      }
+	    else if (flags & 4)
+	      {
+		q = pt_append_nulstring (parser, q, ", 'ko_KR'");
+	      }
+	  }
+	q = pt_append_nulstring (parser, q, ")");
+      }
       break;
 
     case PT_SYS_DATE:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " SYS_DATE ");
-	}
+      q = pt_append_nulstring (parser, q, " SYS_DATE ");
       break;
 
     case PT_SYS_TIME:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " SYS_TIME ");
-	}
+      q = pt_append_nulstring (parser, q, " SYS_TIME ");
       break;
 
     case PT_SYS_TIMESTAMP:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " SYS_TIMESTAMP ");
-	}
+      q = pt_append_nulstring (parser, q, " SYS_TIMESTAMP ");
       break;
 
     case PT_SYS_DATETIME:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " SYS_DATETIME ");
-	}
+      q = pt_append_nulstring (parser, q, " SYS_DATETIME ");
       break;
 
     case PT_CURRENT_USER:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " CURRENT_USER ");
-	}
+      q = pt_append_nulstring (parser, q, " CURRENT_USER ");
       break;
 
     case PT_MONTHS_BETWEEN:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " months_between(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, " months_between(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
 
-	  q = pt_append_nulstring (parser, q, ", ");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, ", ");
+      r1 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_LAST_DAY:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " last_day(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, " last_day(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_ADD_MONTHS:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " add_months(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, " add_months(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
 
-	  q = pt_append_nulstring (parser, q, ", ");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, ", ");
+      r1 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_SYS_CONNECT_BY_PATH:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_nulstring (parser, q, " sys_connect_by_path(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_REPLACE:
-      if (!parser->dont_prt)
+      q = pt_append_nulstring (parser, q, " replace(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+
+      q = pt_append_nulstring (parser, q, ", ");
+      r1 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r1);
+
+      if (p->info.expr.arg3 != NULL)
 	{
-	  q = pt_append_nulstring (parser, q, " replace(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
-
-	  q = pt_append_nulstring (parser, q, ", ");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_varchar (parser, q, r1);
-
-	  if (p->info.expr.arg3 != NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      r1 = pt_print_bytes (parser, p->info.expr.arg3);
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
-	}
-      break;
-
-    case PT_TRANSLATE:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " translate(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
-
-	  q = pt_append_nulstring (parser, q, ", ");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_varchar (parser, q, r1);
-
 	  q = pt_append_nulstring (parser, q, ", ");
 	  r1 = pt_print_bytes (parser, p->info.expr.arg3);
 	  q = pt_append_varchar (parser, q, r1);
-
-	  q = pt_append_nulstring (parser, q, ")");
 	}
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_TRANSLATE:
+      q = pt_append_nulstring (parser, q, " translate(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+
+      q = pt_append_nulstring (parser, q, ", ");
+      r1 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r1);
+
+      q = pt_append_nulstring (parser, q, ", ");
+      r1 = pt_print_bytes (parser, p->info.expr.arg3);
+      q = pt_append_varchar (parser, q, r1);
+
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_LPAD:
-      if (!parser->dont_prt)
+      q = pt_append_nulstring (parser, q, " lpad(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+
+      q = pt_append_nulstring (parser, q, ", ");
+      r1 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r1);
+
+      if (p->info.expr.arg3 != NULL)
 	{
-	  q = pt_append_nulstring (parser, q, " lpad(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
-
 	  q = pt_append_nulstring (parser, q, ", ");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg2);
+	  r1 = pt_print_bytes (parser, p->info.expr.arg3);
 	  q = pt_append_varchar (parser, q, r1);
-
-	  if (p->info.expr.arg3 != NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      r1 = pt_print_bytes (parser, p->info.expr.arg3);
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
 	}
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_RPAD:
-      if (!parser->dont_prt)
+      q = pt_append_nulstring (parser, q, " rpad(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+
+      q = pt_append_nulstring (parser, q, ", ");
+      r1 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r1);
+
+      if (p->info.expr.arg3 != NULL)
 	{
-	  q = pt_append_nulstring (parser, q, " rpad(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
-
 	  q = pt_append_nulstring (parser, q, ", ");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg2);
+	  r1 = pt_print_bytes (parser, p->info.expr.arg3);
 	  q = pt_append_varchar (parser, q, r1);
-
-	  if (p->info.expr.arg3 != NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      r1 = pt_print_bytes (parser, p->info.expr.arg3);
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-
-	  q = pt_append_nulstring (parser, q, ")");
 	}
+
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_LTRIM:
-      if (!parser->dont_prt)
+      q = pt_append_nulstring (parser, q, " ltrim(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2 != NULL)
 	{
-	  q = pt_append_nulstring (parser, q, " ltrim(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	  q = pt_append_nulstring (parser, q, ", ");
+	  r1 = pt_print_bytes (parser, p->info.expr.arg2);
 	  q = pt_append_varchar (parser, q, r1);
-	  if (p->info.expr.arg2 != NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
 	}
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_RTRIM:
-      if (!parser->dont_prt)
+      q = pt_append_nulstring (parser, q, " rtrim(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2 != NULL)
 	{
-	  q = pt_append_nulstring (parser, q, " rtrim(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	  q = pt_append_nulstring (parser, q, ", ");
+	  r1 = pt_print_bytes (parser, p->info.expr.arg2);
 	  q = pt_append_varchar (parser, q, r1);
-	  if (p->info.expr.arg2 != NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, ", ");
-	      r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-	  q = pt_append_nulstring (parser, q, ")");
 	}
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_TRIM:
-      if (!parser->dont_prt)
+      q = pt_append_nulstring (parser, q, " trim(");
+      switch (p->info.expr.qualifier)
 	{
-	  q = pt_append_nulstring (parser, q, " trim(");
-	  switch (p->info.expr.qualifier)
-	    {
-	    case PT_LEADING:
-	      q = pt_append_nulstring (parser, q, "leading ");
-	      print_from = 1;
-	      break;
-	    case PT_TRAILING:
-	      q = pt_append_nulstring (parser, q, "trailing ");
-	      print_from = 1;
-	      break;
-	    case PT_BOTH:
-	      q = pt_append_nulstring (parser, q, "both ");
-	      print_from = 1;
-	      break;
-	    default:
-	      break;
-	    }
+	case PT_LEADING:
+	  q = pt_append_nulstring (parser, q, "leading ");
+	  print_from = 1;
+	  break;
+	case PT_TRAILING:
+	  q = pt_append_nulstring (parser, q, "trailing ");
+	  print_from = 1;
+	  break;
+	case PT_BOTH:
+	  q = pt_append_nulstring (parser, q, "both ");
+	  print_from = 1;
+	  break;
+	default:
+	  break;
 	}
+
       if (p->info.expr.arg2)
 	{
 	  r1 = pt_print_bytes (parser, p->info.expr.arg2);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_varchar (parser, q, r1);
 	}
       if (p->info.expr.arg2 || print_from)
 	{
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " from ");
-	    }
+	  q = pt_append_nulstring (parser, q, " from ");
 	}
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_CAST:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       r2 = pt_print_bytes (parser, p->info.expr.cast_type);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " cast(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, " as ");
-	  q = pt_append_varchar (parser, q, r2);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, " cast(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, " as ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_CASE:
       switch (p->info.expr.qualifier)
@@ -8585,29 +8035,27 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r3 = pt_print_bytes (parser, p->info.expr.arg1);
 	  r4 = (p->info.expr.arg2->type_enum == PT_TYPE_NULL) ? NULL
 	    : pt_print_bytes (parser, p->info.expr.arg2);
-	  if (!parser->dont_prt)
+
+	  if (!p->info.expr.continued_case)
 	    {
-	      if (!p->info.expr.continued_case)
-		{
-		  q = pt_append_nulstring (parser, q, "case ");
-		  q = pt_append_varchar (parser, q, r1);
-		}
-	      q = pt_append_nulstring (parser, q, " when ");
-	      q = pt_append_varchar (parser, q, r2);
-	      q = pt_append_nulstring (parser, q, " then ");
-	      q = pt_append_varchar (parser, q, r3);
-	      if (r4)
-		{
-		  if (p->info.expr.arg2->node_type != PT_EXPR
-		      || p->info.expr.arg2->info.expr.op != PT_CASE
-		      || !p->info.expr.arg2->info.expr.continued_case)
-		    q = pt_append_nulstring (parser, q, " else ");
-		  q = pt_append_varchar (parser, q, r4);
-		}
-	      if (!p->info.expr.continued_case)
-		{
-		  q = pt_append_nulstring (parser, q, " end");
-		}
+	      q = pt_append_nulstring (parser, q, "case ");
+	      q = pt_append_varchar (parser, q, r1);
+	    }
+	  q = pt_append_nulstring (parser, q, " when ");
+	  q = pt_append_varchar (parser, q, r2);
+	  q = pt_append_nulstring (parser, q, " then ");
+	  q = pt_append_varchar (parser, q, r3);
+	  if (r4)
+	    {
+	      if (p->info.expr.arg2->node_type != PT_EXPR
+		  || p->info.expr.arg2->info.expr.op != PT_CASE
+		  || !p->info.expr.arg2->info.expr.continued_case)
+		q = pt_append_nulstring (parser, q, " else ");
+	      q = pt_append_varchar (parser, q, r4);
+	    }
+	  if (!p->info.expr.continued_case)
+	    {
+	      q = pt_append_nulstring (parser, q, " end");
 	    }
 	  break;
 	case PT_SEARCHED_CASE:
@@ -8615,28 +8063,26 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r2 = pt_print_bytes (parser, p->info.expr.arg1);
 	  r3 = (p->info.expr.arg2->type_enum == PT_TYPE_NULL) ? NULL
 	    : pt_print_bytes (parser, p->info.expr.arg2);
-	  if (!parser->dont_prt)
+
+	  if (!p->info.expr.continued_case)
 	    {
-	      if (!p->info.expr.continued_case)
-		{
-		  q = pt_append_nulstring (parser, q, "case");
-		}
-	      q = pt_append_nulstring (parser, q, " when ");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, " then ");
-	      q = pt_append_varchar (parser, q, r2);
-	      if (r3)
-		{
-		  if (p->info.expr.arg2->node_type != PT_EXPR
-		      || p->info.expr.arg2->info.expr.op != PT_CASE
-		      || !p->info.expr.arg2->info.expr.continued_case)
-		    q = pt_append_nulstring (parser, q, " else ");
-		  q = pt_append_varchar (parser, q, r3);
-		}
-	      if (!p->info.expr.continued_case)
-		{
-		  q = pt_append_nulstring (parser, q, " end");
-		}
+	      q = pt_append_nulstring (parser, q, "case");
+	    }
+	  q = pt_append_nulstring (parser, q, " when ");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, " then ");
+	  q = pt_append_varchar (parser, q, r2);
+	  if (r3)
+	    {
+	      if (p->info.expr.arg2->node_type != PT_EXPR
+		  || p->info.expr.arg2->info.expr.op != PT_CASE
+		  || !p->info.expr.arg2->info.expr.continued_case)
+		q = pt_append_nulstring (parser, q, " else ");
+	      q = pt_append_varchar (parser, q, r3);
+	    }
+	  if (!p->info.expr.continued_case)
+	    {
+	      q = pt_append_nulstring (parser, q, " end");
 	    }
 	  break;
 	default:
@@ -8645,415 +8091,377 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_NULLIF:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "nullif(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ", ");
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_varchar (parser, q, r2);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, "nullif(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_COALESCE:
-      if (!parser->dont_prt)
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      if (p->info.expr.continued_case == 1)
 	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  if (p->info.expr.continued_case == 1)
+	  q = pt_append_nulstring (parser, q, "coalesce(");
+	}
+      q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
+	{
+	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
+	  if (r2)
 	    {
-	      q = pt_append_nulstring (parser, q, "coalesce(");
+	      q = pt_append_nulstring (parser, q, ", ");
+	      q = pt_append_varchar (parser, q, r2);
 	    }
-	  q = pt_append_varchar (parser, q, r1);
-	  if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
-	    {
-	      r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	      if (r2)
-		{
-		  q = pt_append_nulstring (parser, q, ", ");
-		  q = pt_append_varchar (parser, q, r2);
-		}
-	    }
-	  if (p->info.expr.continued_case == 1)
-	    {
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
+	}
+      if (p->info.expr.continued_case == 1)
+	{
+	  q = pt_append_nulstring (parser, q, ")");
 	}
       break;
 
     case PT_NVL:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "nvl(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ", ");
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_varchar (parser, q, r2);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, "nvl(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_NVL2:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "nvl2(");
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ", ");
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	  q = pt_append_varchar (parser, q, r2);
-	  q = pt_append_nulstring (parser, q, ", ");
-	  r3 = pt_print_bytes (parser, p->info.expr.arg3);
-	  q = pt_append_varchar (parser, q, r3);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, "nvl2(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ", ");
+      r3 = pt_print_bytes (parser, p->info.expr.arg3);
+      q = pt_append_varchar (parser, q, r3);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_DECODE:
-      if (!parser->dont_prt)
+      r1 = pt_print_bytes (parser, p->info.expr.arg3->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg3->info.expr.arg2);
+      r3 = pt_print_bytes (parser, p->info.expr.arg1);
+      r4 = (p->info.expr.arg2->type_enum == PT_TYPE_NULL) ? NULL
+	: pt_print_bytes (parser, p->info.expr.arg2);
+      if (!p->info.expr.continued_case)
 	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg3->info.expr.arg1);
-	  r2 = pt_print_bytes (parser, p->info.expr.arg3->info.expr.arg2);
-	  r3 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r4 = (p->info.expr.arg2->type_enum == PT_TYPE_NULL) ? NULL
-	    : pt_print_bytes (parser, p->info.expr.arg2);
-	  if (!p->info.expr.continued_case)
-	    {
-	      q = pt_append_nulstring (parser, q, "decode(");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-	  q = pt_append_nulstring (parser, q, ", ");
-	  q = pt_append_varchar (parser, q, r2);
-	  q = pt_append_nulstring (parser, q, ", ");
-	  q = pt_append_varchar (parser, q, r3);
-	  if (r4)
-	    {
-	      if (p->info.expr.arg2->node_type != PT_EXPR
-		  || p->info.expr.arg2->info.expr.op != PT_DECODE
-		  || !p->info.expr.arg2->info.expr.continued_case)
-		q = pt_append_nulstring (parser, q, ", ");
-	      {
-		q = pt_append_varchar (parser, q, r4);
-	      }
-	    }
-	  if (!p->info.expr.continued_case)
-	    {
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
+	  q = pt_append_nulstring (parser, q, "decode(");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r3);
+      if (r4)
+	{
+	  if (p->info.expr.arg2->node_type != PT_EXPR
+	      || p->info.expr.arg2->info.expr.op != PT_DECODE
+	      || !p->info.expr.arg2->info.expr.continued_case)
+	    q = pt_append_nulstring (parser, q, ", ");
+	  {
+	    q = pt_append_varchar (parser, q, r4);
+	  }
+	}
+      if (!p->info.expr.continued_case)
+	{
+	  q = pt_append_nulstring (parser, q, ")");
 	}
       break;
 
     case PT_LEAST:
-      if (!parser->dont_prt)
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      if (p->info.expr.continued_case == 1)
 	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  if (p->info.expr.continued_case == 1)
+	  q = pt_append_nulstring (parser, q, "least(");
+	}
+      q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
+	{
+	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
+	  if (r2)
 	    {
-	      q = pt_append_nulstring (parser, q, "least(");
+	      q = pt_append_nulstring (parser, q, ", ");
+	      q = pt_append_varchar (parser, q, r2);
 	    }
-	  q = pt_append_varchar (parser, q, r1);
-	  if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
-	    {
-	      r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	      if (r2)
-		{
-		  q = pt_append_nulstring (parser, q, ", ");
-		  q = pt_append_varchar (parser, q, r2);
-		}
-	    }
-	  if (p->info.expr.continued_case == 1)
-	    {
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
+	}
+      if (p->info.expr.continued_case == 1)
+	{
+	  q = pt_append_nulstring (parser, q, ")");
 	}
       break;
 
     case PT_GREATEST:
-      if (!parser->dont_prt)
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      if (p->info.expr.continued_case == 1)
 	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  if (p->info.expr.continued_case == 1)
+	  q = pt_append_nulstring (parser, q, "greatest(");
+	}
+      q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
+	{
+	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
+	  if (r2)
 	    {
-	      q = pt_append_nulstring (parser, q, "greatest(");
+	      q = pt_append_nulstring (parser, q, ", ");
+	      q = pt_append_varchar (parser, q, r2);
 	    }
-	  q = pt_append_varchar (parser, q, r1);
-	  if (p->info.expr.arg2 && p->info.expr.arg2->is_hidden_column == 0)
-	    {
-	      r2 = pt_print_bytes (parser, p->info.expr.arg2);
-	      if (r2)
-		{
-		  q = pt_append_nulstring (parser, q, ", ");
-		  q = pt_append_varchar (parser, q, r2);
-		}
-	    }
-	  if (p->info.expr.continued_case == 1)
-	    {
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
+	}
+      if (p->info.expr.continued_case == 1)
+	{
+	  q = pt_append_nulstring (parser, q, ")");
 	}
       break;
 
     case PT_BETWEEN_INF_LE:
     case PT_BETWEEN_INF_LT:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "min");
-	  q =
-	    pt_append_nulstring (parser, q,
-				 pt_show_binopcode (p->info.expr.op));
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, "min");
+      q =
+	pt_append_nulstring (parser, q, pt_show_binopcode (p->info.expr.op));
+      q = pt_append_varchar (parser, q, r1);
       break;
     case PT_BETWEEN_GE_INF:
     case PT_BETWEEN_GT_INF:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_varchar (parser, q, r1);
-	  q =
-	    pt_append_nulstring (parser, q,
-				 pt_show_binopcode (p->info.expr.op));
-	  q = pt_append_nulstring (parser, q, "max");
-	}
+      q = pt_append_varchar (parser, q, r1);
+      q =
+	pt_append_nulstring (parser, q, pt_show_binopcode (p->info.expr.op));
+      q = pt_append_nulstring (parser, q, "max");
       break;
 
     case PT_INST_NUM:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "inst_num()");
-	}
+      q = pt_append_nulstring (parser, q, "inst_num()");
       break;
 
     case PT_ROWNUM:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "rownum");
-	}
+      q = pt_append_nulstring (parser, q, "rownum");
       break;
 
     case PT_ORDERBY_NUM:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "orderby_num()");
-	}
+      q = pt_append_nulstring (parser, q, "orderby_num()");
+      break;
+
+    case PT_CONNECT_BY_ISCYCLE:
+      q = pt_append_nulstring (parser, q, "connect_by_iscycle");
+      break;
+
+    case PT_CONNECT_BY_ISLEAF:
+      q = pt_append_nulstring (parser, q, "connect_by_isleaf");
+      break;
+
+    case PT_LEVEL:
+      q = pt_append_nulstring (parser, q, "level");
       break;
 
     case PT_PATH_EXPR_SET:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes_l (parser, p->info.expr.arg1);
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      r1 = pt_print_bytes_l (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
       break;
 
     case PT_INCR:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_nulstring (parser, q, " incr(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " incr(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_DECR:
-      if (!parser->dont_prt)
-	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	  q = pt_append_nulstring (parser, q, " decr(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " decr(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_RANGE:
       if (parser->custom_print & PT_CONVERT_RANGE)
 	{
 	  r4 = pt_print_bytes (parser, p->info.expr.arg1);
-	  if (!parser->dont_prt)
+	  if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
 	    {
-	      if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
+	      q = pt_append_nulstring (parser, q, "(");
+	    }
+	  for (t = p->info.expr.arg2; t; t = t->or_next)
+	    {
+	      switch (t->info.expr.op)
 		{
-		  q = pt_append_nulstring (parser, q, "(");
-		}
-	      for (t = p->info.expr.arg2; t; t = t->or_next)
-		{
-		  switch (t->info.expr.op)
+		case PT_BETWEEN_GE_LE:
+		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
+		  r2 = pt_print_bytes (parser, t->info.expr.arg2);
+		  if (!p->info.expr.paren_type)
 		    {
-		    case PT_BETWEEN_GE_LE:
-		      r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		      r2 = pt_print_bytes (parser, t->info.expr.arg2);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, "(");
-			}
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_GE));
-		      q = pt_append_varchar (parser, q, r1);
-		      q = pt_append_nulstring (parser, q, " and ");
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_LE));
-		      q = pt_append_varchar (parser, q, r2);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, ")");
-			}
-		      break;
-		    case PT_BETWEEN_GE_LT:
-		      r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		      r2 = pt_print_bytes (parser, t->info.expr.arg2);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, "(");
-			}
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_GE));
-		      q = pt_append_varchar (parser, q, r1);
-		      q = pt_append_nulstring (parser, q, " and ");
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_LT));
-		      q = pt_append_varchar (parser, q, r2);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, ")");
-			}
-		      break;
-		    case PT_BETWEEN_GT_LE:
-		      r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		      r2 = pt_print_bytes (parser, t->info.expr.arg2);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, "(");
-			}
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_GT));
-		      q = pt_append_varchar (parser, q, r1);
-		      q = pt_append_nulstring (parser, q, " and ");
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_LE));
-		      q = pt_append_varchar (parser, q, r2);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, ")");
-			}
-		      break;
-		    case PT_BETWEEN_GT_LT:
-		      r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		      r2 = pt_print_bytes (parser, t->info.expr.arg2);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, "(");
-			}
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_GT));
-		      q = pt_append_varchar (parser, q, r1);
-		      q = pt_append_nulstring (parser, q, " and ");
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_LT));
-		      q = pt_append_varchar (parser, q, r2);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, ")");
-			}
-		      break;
-		    case PT_BETWEEN_EQ_NA:
-		      r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, "(");
-			}
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_EQ));
-		      q = pt_append_varchar (parser, q, r1);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, ")");
-			}
-		      break;
-		    case PT_BETWEEN_INF_LE:
-		      r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, "(");
-			}
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_LE));
-		      q = pt_append_varchar (parser, q, r1);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, ")");
-			}
-		      break;
-		    case PT_BETWEEN_INF_LT:
-		      r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, "(");
-			}
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_LT));
-		      q = pt_append_varchar (parser, q, r1);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, ")");
-			}
-		      break;
-		    case PT_BETWEEN_GE_INF:
-		      r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, "(");
-			}
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_GE));
-		      q = pt_append_varchar (parser, q, r1);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, ")");
-			}
-		      break;
-		    case PT_BETWEEN_GT_INF:
-		      r1 = pt_print_bytes (parser, t->info.expr.arg1);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, "(");
-			}
-		      q = pt_append_varchar (parser, q, r4);
-		      q = pt_append_nulstring (parser, q,
-					       pt_show_binopcode (PT_GT));
-		      q = pt_append_varchar (parser, q, r1);
-		      if (!p->info.expr.paren_type)
-			{
-			  q = pt_append_nulstring (parser, q, ")");
-			}
-		      break;
-		    default:
-		      break;
+		      q = pt_append_nulstring (parser, q, "(");
 		    }
-		  if (t->or_next)
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_GE));
+		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_nulstring (parser, q, " and ");
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_LE));
+		  q = pt_append_varchar (parser, q, r2);
+		  if (!p->info.expr.paren_type)
 		    {
-		      q = pt_append_nulstring (parser, q, " or ");
+		      q = pt_append_nulstring (parser, q, ")");
 		    }
+		  break;
+		case PT_BETWEEN_GE_LT:
+		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
+		  r2 = pt_print_bytes (parser, t->info.expr.arg2);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, "(");
+		    }
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_GE));
+		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_nulstring (parser, q, " and ");
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_LT));
+		  q = pt_append_varchar (parser, q, r2);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, ")");
+		    }
+		  break;
+		case PT_BETWEEN_GT_LE:
+		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
+		  r2 = pt_print_bytes (parser, t->info.expr.arg2);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, "(");
+		    }
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_GT));
+		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_nulstring (parser, q, " and ");
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_LE));
+		  q = pt_append_varchar (parser, q, r2);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, ")");
+		    }
+		  break;
+		case PT_BETWEEN_GT_LT:
+		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
+		  r2 = pt_print_bytes (parser, t->info.expr.arg2);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, "(");
+		    }
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_GT));
+		  q = pt_append_varchar (parser, q, r1);
+		  q = pt_append_nulstring (parser, q, " and ");
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_LT));
+		  q = pt_append_varchar (parser, q, r2);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, ")");
+		    }
+		  break;
+		case PT_BETWEEN_EQ_NA:
+		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, "(");
+		    }
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_EQ));
+		  q = pt_append_varchar (parser, q, r1);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, ")");
+		    }
+		  break;
+		case PT_BETWEEN_INF_LE:
+		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, "(");
+		    }
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_LE));
+		  q = pt_append_varchar (parser, q, r1);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, ")");
+		    }
+		  break;
+		case PT_BETWEEN_INF_LT:
+		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, "(");
+		    }
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_LT));
+		  q = pt_append_varchar (parser, q, r1);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, ")");
+		    }
+		  break;
+		case PT_BETWEEN_GE_INF:
+		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, "(");
+		    }
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_GE));
+		  q = pt_append_varchar (parser, q, r1);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, ")");
+		    }
+		  break;
+		case PT_BETWEEN_GT_INF:
+		  r1 = pt_print_bytes (parser, t->info.expr.arg1);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, "(");
+		    }
+		  q = pt_append_varchar (parser, q, r4);
+		  q = pt_append_nulstring (parser, q,
+					   pt_show_binopcode (PT_GT));
+		  q = pt_append_varchar (parser, q, r1);
+		  if (!p->info.expr.paren_type)
+		    {
+		      q = pt_append_nulstring (parser, q, ")");
+		    }
+		  break;
+		default:
+		  break;
 		}
-	      if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
+	      if (t->or_next)
 		{
-		  q = pt_append_nulstring (parser, q, ")");
+		  q = pt_append_nulstring (parser, q, " or ");
 		}
+	    }
+	  if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
+	    {
+	      q = pt_append_nulstring (parser, q, ")");
 	    }
 	  /* break case PT_RANGE */
 	  break;
@@ -9062,29 +8470,26 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     default:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
-      if (!parser->dont_prt)
+
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q,
+			       pt_show_binopcode (p->info.expr.op));
+      if (r2
+	  && (r2->bytes[0] == '-') && q && (q->bytes[q->length - 1] == '-'))
 	{
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q,
-				   pt_show_binopcode (p->info.expr.op));
-	  if (r2
-	      && (r2->bytes[0] == '-')
-	      && q && (q->bytes[q->length - 1] == '-'))
-	    {
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r2);
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
-	  if (p->info.expr.op == PT_RANGE)
-	    {
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r2);
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
-	  else
-	    {
-	      q = pt_append_varchar (parser, q, r2);
-	    }
+	  q = pt_append_nulstring (parser, q, "(");
+	  q = pt_append_varchar (parser, q, r2);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
+      if (p->info.expr.op == PT_RANGE)
+	{
+	  q = pt_append_nulstring (parser, q, "(");
+	  q = pt_append_varchar (parser, q, r2);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
+      else
+	{
+	  q = pt_append_varchar (parser, q, r2);
 	}
       break;
     }
@@ -9094,7 +8499,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       or_next = t->or_next;
       t->or_next = NULL;
       r1 = pt_print_bytes (parser, t);
-      if (!parser->dont_prt && r1)
+      if (r1)
 	{
 	  q = pt_append_nulstring (parser, q, " or ");
 	  q = pt_append_varchar (parser, q, r1);
@@ -9102,7 +8507,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       t->or_next = or_next;
     }
 
-  if (p->info.expr.paren_type == 1 && !parser->dont_prt)
+  if (p->info.expr.paren_type == 1)
     {
       q = pt_append_nulstring (parser, q, ")");
     }
@@ -9149,7 +8554,7 @@ pt_print_file_path (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = 0, *r1;
 
   r1 = pt_print_bytes (parser, p->info.file_path.string);
-  if (p->info.file_path.string && !parser->dont_prt)
+  if (p->info.file_path.string)
     {
       q = pt_append_varchar (parser, q, r1);
     }
@@ -9204,44 +8609,30 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
   if (code == PT_GENERIC)
     {
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, p->info.function.generic_name);
-	  q = pt_append_nulstring (parser, q, "(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, p->info.function.generic_name);
+      q = pt_append_nulstring (parser, q, "(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
     }
   else if (code < PT_TOP_AGG_FUNC)
     {
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, pt_show_function (code));
-	  q = pt_append_nulstring (parser, q, "(");
-	}
+      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, "(");
+
       if (code == PT_COUNT_STAR)
 	{
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, "*");
-	    }
+	  q = pt_append_nulstring (parser, q, "*");
 	}
       else
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
-	  if (!parser->dont_prt)
+	  if (p->info.function.all_or_distinct == PT_DISTINCT)
 	    {
-	      if (p->info.function.all_or_distinct == PT_DISTINCT)
-		{
-		  q = pt_append_nulstring (parser, q, "distinct ");
-		}
-	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, "distinct ");
 	    }
+	  q = pt_append_varchar (parser, q, r1);
 	}
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, ")");
     }
   else if (code == F_SET || code == F_MULTISET || code == F_SEQUENCE)
     {
@@ -9250,49 +8641,36 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 	  /* this is tagged as an "in" clause right hand side
 	   * Print it as a parenthesized list */
 	  r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
+	  q = pt_append_nulstring (parser, q, "(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
 	}
       else
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
-	  if (!parser->dont_prt)
+	  if (code != F_SEQUENCE)
 	    {
-	      if (code != F_SEQUENCE)
-		{
-		  q =
-		    pt_append_nulstring (parser, q, pt_show_function (code));
-		}
-	      q = pt_append_nulstring (parser, q, "{");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, "}");
+	      q = pt_append_nulstring (parser, q, pt_show_function (code));
 	    }
+	  q = pt_append_nulstring (parser, q, "{");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, "}");
 	}
     }
   else if (code == F_CLASS_OF)
     {
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, pt_show_function (code));
-	  q = pt_append_nulstring (parser, q, " ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, " ");
+      q = pt_append_varchar (parser, q, r1);
     }
   else
     {
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, pt_show_function (code));
-	  q = pt_append_nulstring (parser, q, "(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, "(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
     }
   return q;
 }
@@ -9341,28 +8719,20 @@ pt_print_get_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
   PT_MISC_TYPE option;
 
   option = p->info.get_opt_lvl.option;
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "get optimization ");
-      b = pt_append_nulstring (parser, b, pt_show_misc_type (option));
-    }
+  b = pt_append_nulstring (parser, b, "get optimization ");
+  b = pt_append_nulstring (parser, b, pt_show_misc_type (option));
+
   if (p->info.get_opt_lvl.args)
     {
       r1 = pt_print_bytes (parser, p->info.get_opt_lvl.args);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " ");
+      b = pt_append_varchar (parser, b, r1);
     }
   if (p->info.get_opt_lvl.into_var)
     {
       r1 = pt_print_bytes (parser, p->info.get_opt_lvl.into_var);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " into ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " into ");
+      b = pt_append_varchar (parser, b, r1);
     }
   return b;
 }
@@ -9407,20 +8777,15 @@ pt_print_get_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
 
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "get trigger ");
-      b = pt_append_nulstring
-	(parser, b, pt_show_misc_type (p->info.get_trigger.option));
-    }
+  b = pt_append_nulstring (parser, b, "get trigger ");
+  b = pt_append_nulstring
+    (parser, b, pt_show_misc_type (p->info.get_trigger.option));
+
   if (p->info.get_trigger.into_var)
     {
       r1 = pt_print_bytes (parser, p->info.get_trigger.into_var);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " into ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " into ");
+      b = pt_append_varchar (parser, b, r1);
     }
   return b;
 }
@@ -9465,20 +8830,15 @@ pt_print_get_xaction (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
 
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "get transaction ");
-      b = pt_append_nulstring
-	(parser, b, pt_show_misc_type (p->info.get_xaction.option));
-    }
+  b = pt_append_nulstring (parser, b, "get transaction ");
+  b = pt_append_nulstring
+    (parser, b, pt_show_misc_type (p->info.get_xaction.option));
+
   if (p->info.get_xaction.into_var)
     {
       r1 = pt_print_bytes (parser, p->info.get_xaction.into_var);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " into ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " into ");
+      b = pt_append_varchar (parser, b, r1);
     }
   return b;
 }
@@ -9536,16 +8896,14 @@ pt_print_grant (PARSER_CONTEXT * parser, PT_NODE * p)
   r2 = pt_print_bytes_l (parser, p->info.grant.spec_list);
   parser->custom_print = save_custom;
   r3 = pt_print_bytes_l (parser, p->info.grant.user_list);
-  if (!parser->dont_prt)
-    {
-      q = pt_append_nulstring (parser, q, "grant ");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, " on ");
-      q = pt_append_varchar (parser, q, r2);
-      q = pt_append_nulstring (parser, q, " to ");
-      q = pt_append_varchar (parser, q, r3);
-    }
-  if (p->info.grant.grant_option == PT_GRANT_OPTION && !parser->dont_prt)
+  q = pt_append_nulstring (parser, q, "grant ");
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, " on ");
+  q = pt_append_varchar (parser, q, r2);
+  q = pt_append_nulstring (parser, q, " to ");
+  q = pt_append_varchar (parser, q, r3);
+
+  if (p->info.grant.grant_option == PT_GRANT_OPTION)
     {
       q = pt_append_nulstring (parser, q, " with grant option ");
     }
@@ -9592,51 +8950,48 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL;
   char s[PT_MEMB_BUF_SIZE];
 
-  if (!parser->dont_prt)
+  if (parser->print_db_value)
     {
-      if (parser->print_db_value)
+      if (p->info.host_var.var_type == PT_HOST_IN)
 	{
-	  if (p->info.host_var.var_type == PT_HOST_IN)
+	  PT_NODE *save_error_msgs;
+
+	  /* keep previous error, and print value
+	   * if error occurs, reset and go ahead
+	   * for example:
+	   * curently, it is impossiable to occurs
+	   * anyway, add this code for safety
+	   */
+
+	  save_error_msgs = parser->error_msgs;
+	  parser->error_msgs = NULL;
+
+	  q = (*parser->print_db_value) (parser, p);
+
+	  if (q)
 	    {
-	      PT_NODE *save_error_msgs;
-
-	      /* keep previous error, and print value
-	       * if error occurs, reset and go ahead
-	       * for example:
-	       * curently, it is impossiable to occurs
-	       * anyway, add this code for safety
-	       */
-
-	      save_error_msgs = parser->error_msgs;
-	      parser->error_msgs = NULL;
-
-	      q = (*parser->print_db_value) (parser, p);
-
-	      if (q)
-		{
-		  if (parser->error_msgs)
-		    {
-		      parser_free_tree (parser, parser->error_msgs);
-		    }
-		  parser->error_msgs = save_error_msgs;	/* restore */
-
-		  return q;
-		}
 	      if (parser->error_msgs)
 		{
 		  parser_free_tree (parser, parser->error_msgs);
 		}
 	      parser->error_msgs = save_error_msgs;	/* restore */
-	    }
-	}
 
-      q = pt_append_nulstring (parser, q, " ");
-      q = pt_append_nulstring (parser, q, p->info.host_var.str);
-      /* for internal print, print a host variable with its index */
-      sprintf (s, ":%d", p->info.host_var.index);
-      q = pt_append_nulstring (parser, q, s);
-      q = pt_append_nulstring (parser, q, " ");
+	      return q;
+	    }
+	  if (parser->error_msgs)
+	    {
+	      parser_free_tree (parser, parser->error_msgs);
+	    }
+	  parser->error_msgs = save_error_msgs;	/* restore */
+	}
     }
+
+  q = pt_append_nulstring (parser, q, " ");
+  q = pt_append_nulstring (parser, q, p->info.host_var.str);
+  /* for internal print, print a host variable with its index */
+  sprintf (s, ":%d", p->info.host_var.index);
+  q = pt_append_nulstring (parser, q, s);
+  q = pt_append_nulstring (parser, q, " ");
 
   return q;
 }
@@ -9698,64 +9053,57 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.insert.spec);
   r2 = pt_print_bytes_l (parser, p->info.insert.attr_list);
-  if (!parser->dont_prt)
+
+  if (p->info.insert.is_subinsert == PT_IS_SUBINSERT)
     {
-      if (p->info.insert.is_subinsert == PT_IS_SUBINSERT)
-	{
-	  b = pt_append_nulstring (parser, b, "(");
-	}
-      b = pt_append_nulstring (parser, b, "insert ");
-      if (p->info.insert.hint != PT_HINT_NONE)
-	{
-	  b = pt_append_nulstring (parser, b, "/*+");
-	  if ((p->info.insert.hint & PT_HINT_LK_TIMEOUT)
-	      && p->info.insert.waitsecs_hint)
-	    {
-	      b = pt_append_nulstring (parser, b, " LOCK_TIMEOUT(");
-	      r1 = pt_print_bytes (parser, p->info.insert.waitsecs_hint);
-	      b = pt_append_varchar (parser, b, r1);
-	      b = pt_append_nulstring (parser, b, ")");
-	    }
-	  if (p->info.insert.hint & PT_HINT_NO_LOGGING)
-	    {
-	      b = pt_append_nulstring (parser, b, " NO_LOGGING");
-	    }
-	  if (p->info.insert.hint & PT_HINT_REL_LOCK)
-	    {
-	      b = pt_append_nulstring (parser, b, " RELEAES_LOCK");
-	    }
-	  b = pt_append_nulstring (parser, b, " */");
-	}
-      b = pt_append_nulstring (parser, b, "into ");
-      b = pt_append_varchar (parser, b, r1);
-      if (r2)
-	{
-	  b = pt_append_nulstring (parser, b, " (");
-	  b = pt_append_varchar (parser, b, r2);
-	  b = pt_append_nulstring (parser, b, ") ");
-	}
-      else
-	{
-	  b = pt_append_nulstring (parser, b, " ");
-	}
+      b = pt_append_nulstring (parser, b, "(");
     }
+  b = pt_append_nulstring (parser, b, "insert ");
+  if (p->info.insert.hint != PT_HINT_NONE)
+    {
+      b = pt_append_nulstring (parser, b, "/*+");
+      if ((p->info.insert.hint & PT_HINT_LK_TIMEOUT)
+	  && p->info.insert.waitsecs_hint)
+	{
+	  b = pt_append_nulstring (parser, b, " LOCK_TIMEOUT(");
+	  r1 = pt_print_bytes (parser, p->info.insert.waitsecs_hint);
+	  b = pt_append_varchar (parser, b, r1);
+	  b = pt_append_nulstring (parser, b, ")");
+	}
+      if (p->info.insert.hint & PT_HINT_NO_LOGGING)
+	{
+	  b = pt_append_nulstring (parser, b, " NO_LOGGING");
+	}
+      if (p->info.insert.hint & PT_HINT_REL_LOCK)
+	{
+	  b = pt_append_nulstring (parser, b, " RELEAES_LOCK");
+	}
+      b = pt_append_nulstring (parser, b, " */");
+    }
+  b = pt_append_nulstring (parser, b, "into ");
+  b = pt_append_varchar (parser, b, r1);
+  if (r2)
+    {
+      b = pt_append_nulstring (parser, b, " (");
+      b = pt_append_varchar (parser, b, r2);
+      b = pt_append_nulstring (parser, b, ") ");
+    }
+  else
+    {
+      b = pt_append_nulstring (parser, b, " ");
+    }
+
   switch (p->info.insert.is_value)
     {
     case PT_IS_DEFAULT_VALUE:
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, "default values");
-	}
+      b = pt_append_nulstring (parser, b, "default values");
       break;
 
     case PT_IS_VALUE:
       r1 = pt_print_bytes_l (parser, p->info.insert.value_clause);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, "values (");
-	  b = pt_append_varchar (parser, b, r1);
-	  b = pt_append_nulstring (parser, b, ")");
-	}
+      b = pt_append_nulstring (parser, b, "values (");
+      b = pt_append_varchar (parser, b, r1);
+      b = pt_append_nulstring (parser, b, ")");
       break;
 
     case PT_IS_SUBQUERY:
@@ -9767,10 +9115,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 	    (PT_MISC_TYPE) 0;
 	}
       r1 = pt_print_bytes (parser, p->info.insert.value_clause);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_varchar (parser, b, r1);
       break;
 
     }
@@ -9780,32 +9125,22 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
       if (!(parser->custom_print & PT_SUPPRESS_INTO))
 	{
 	  r1 = pt_print_bytes (parser, p->info.insert.into_var);
-	  if (!parser->dont_prt)
-	    {
-	      b = pt_append_nulstring (parser, b, " into ");
-	      b = pt_append_varchar (parser, b, r1);
-	    }
+	  b = pt_append_nulstring (parser, b, " into ");
+	  b = pt_append_varchar (parser, b, r1);
 	}
     }
 
   if (p->info.insert.is_subinsert == PT_IS_SUBINSERT)
     {
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, ") ");
-	}
+      b = pt_append_nulstring (parser, b, ") ");
     }
 
-  /* here we are using PT_SUPPRESS_INTO as an indicator for printing to ldb's */
   if (!(parser->custom_print & PT_SUPPRESS_INTO) && p->info.insert.where)
     {
       r1 = pt_print_and_list (parser, p->info.insert.where);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, "\n-- check condition: ");
-	  b = pt_append_varchar (parser, b, r1);
-	  b = pt_append_nulstring (parser, b, "\n");
-	}
+      b = pt_append_nulstring (parser, b, "\n-- check condition: ");
+      b = pt_append_varchar (parser, b, r1);
+      b = pt_append_nulstring (parser, b, "\n");
     }
   return b;
 }
@@ -9852,6 +9187,7 @@ pt_init_intersection (PT_NODE * p)
   p->info.query.vspec_as_derived = 0;
   p->info.query.reexecute = 0;
   p->info.query.do_not_cache = 0;
+  p->info.query.order_siblings = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -9871,47 +9207,36 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
   r2 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
-  if (!parser->dont_prt)
+  q = pt_append_nulstring (parser, q, "(");
+  q = pt_append_varchar (parser, q, r1);
+  if (p->info.query.all_distinct == PT_ALL)
     {
-      q = pt_append_nulstring (parser, q, "(");
-      q = pt_append_varchar (parser, q, r1);
-      if (p->info.query.all_distinct == PT_ALL)
-	{
-	  q = pt_append_nulstring (parser, q, " intersect all ");
-	}
-      else
-	{
-	  q = pt_append_nulstring (parser, q, " intersect ");
-	}
-      q = pt_append_varchar (parser, q, r2);
-      q = pt_append_nulstring (parser, q, ")");
+      q = pt_append_nulstring (parser, q, " intersect all ");
     }
+  else
+    {
+      q = pt_append_nulstring (parser, q, " intersect ");
+    }
+  q = pt_append_varchar (parser, q, r2);
+  q = pt_append_nulstring (parser, q, ")");
+
   if (p->info.query.order_by)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.order_by);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " order by ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " order by ");
+      q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.query.orderby_for)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " for");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " for");
+      q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.query.for_update)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.for_update);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " for update of ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " for update of ");
+      q = pt_append_varchar (parser, q, r1);
     }
   return q;
 }
@@ -9956,21 +9281,18 @@ pt_print_auto_increment (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1, *r2;
 
-  if (!parser->dont_prt)
-    {
-      r1 = pt_print_bytes (parser, p->info.auto_increment.start_val);
-      r2 = pt_print_bytes (parser, p->info.auto_increment.increment_val);
+  r1 = pt_print_bytes (parser, p->info.auto_increment.start_val);
+  r2 = pt_print_bytes (parser, p->info.auto_increment.increment_val);
 
-      b = pt_append_nulstring (parser, b, " AUTO_INCREMENT");
-      if ((p->info.auto_increment.start_val)
-	  && (p->info.auto_increment.increment_val))
-	{
-	  b = pt_append_nulstring (parser, b, "(");
-	  b = pt_append_varchar (parser, b, r1);
-	  b = pt_append_nulstring (parser, b, ", ");
-	  b = pt_append_varchar (parser, b, r2);
-	  b = pt_append_nulstring (parser, b, ") ");
-	}
+  b = pt_append_nulstring (parser, b, " AUTO_INCREMENT");
+  if ((p->info.auto_increment.start_val)
+      && (p->info.auto_increment.increment_val))
+    {
+      b = pt_append_nulstring (parser, b, "(");
+      b = pt_append_varchar (parser, b, r1);
+      b = pt_append_nulstring (parser, b, ", ");
+      b = pt_append_varchar (parser, b, r2);
+      b = pt_append_nulstring (parser, b, ") ");
     }
 
   return b;
@@ -10019,49 +9341,40 @@ pt_print_isolation_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
 
-  if (!parser->dont_prt)
+  b = pt_append_nulstring (parser, b, "isolation level ");
+  if (p->info.isolation_lvl.schema == PT_SERIALIZABLE
+      && p->info.isolation_lvl.instances == PT_SERIALIZABLE)
     {
-      b = pt_append_nulstring (parser, b, "isolation level ");
-      if (p->info.isolation_lvl.schema == PT_SERIALIZABLE
-	  && p->info.isolation_lvl.instances == PT_SERIALIZABLE)
+      b = pt_append_nulstring (parser, b, " serializable ");
+    }
+  else
+    {
+      if (p->info.isolation_lvl.schema != PT_NO_ISOLATION_LEVEL)
 	{
-	  b = pt_append_nulstring (parser, b, " serializable ");
+	  b = pt_append_nulstring
+	    (parser, b, pt_show_misc_type (p->info.isolation_lvl.schema));
+	  b = pt_append_nulstring (parser, b, " schema");
 	}
-      else
+      if (p->info.isolation_lvl.instances != PT_NO_ISOLATION_LEVEL)
 	{
 	  if (p->info.isolation_lvl.schema != PT_NO_ISOLATION_LEVEL)
 	    {
-	      b = pt_append_nulstring
-		(parser, b, pt_show_misc_type (p->info.isolation_lvl.schema));
-	      b = pt_append_nulstring (parser, b, " schema");
+	      b = pt_append_nulstring (parser, b, ",");
 	    }
-	  if (p->info.isolation_lvl.instances != PT_NO_ISOLATION_LEVEL)
-	    {
-	      if (p->info.isolation_lvl.schema != PT_NO_ISOLATION_LEVEL)
-		{
-		  b = pt_append_nulstring (parser, b, ",");
-		}
-	      b = pt_append_nulstring
-		(parser, b,
-		 pt_show_misc_type (p->info.isolation_lvl.instances));
-	      b = pt_append_nulstring (parser, b, " instances ");
-	    }
+	  b = pt_append_nulstring
+	    (parser, b, pt_show_misc_type (p->info.isolation_lvl.instances));
+	  b = pt_append_nulstring (parser, b, " instances ");
 	}
     }
+
   if (p->info.isolation_lvl.level)
     {
       r1 = pt_print_bytes (parser, p->info.isolation_lvl.level);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_varchar (parser, b, r1);
     }
   if (p->info.isolation_lvl.async_ws)
     {
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, ", async workspace ");
-	}
+      b = pt_append_nulstring (parser, b, ", async workspace ");
     }
 
   return b;
@@ -10119,25 +9432,21 @@ pt_print_method_call (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.method_call.method_name);
   r2 = pt_print_bytes_l (parser, p->info.method_call.arg_list);
-  if (!parser->dont_prt)
+
+  if (p->info.method_call.call_or_expr == PT_IS_CALL_STMT)
     {
-      if (p->info.method_call.call_or_expr == PT_IS_CALL_STMT)
-	{
-	  q = pt_append_nulstring (parser, q, "call ");
-	}
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, "(");
-      q = pt_append_varchar (parser, q, r2);
-      q = pt_append_nulstring (parser, q, ")");
+      q = pt_append_nulstring (parser, q, "call ");
     }
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, "(");
+  q = pt_append_varchar (parser, q, r2);
+  q = pt_append_nulstring (parser, q, ")");
+
   if (p->info.method_call.on_call_target)
     {
       r1 = pt_print_bytes (parser, p->info.method_call.on_call_target);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " on ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " on ");
+      q = pt_append_varchar (parser, q, r1);
     }
   return q;
 }
@@ -10192,54 +9501,40 @@ pt_print_method_def (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = 0, *r1;
 
   r1 = pt_print_bytes (parser, p->info.method_def.method_name);
-  if (!parser->dont_prt)
+
+  if (p->info.method_def.mthd_type == PT_META_ATTR)
     {
-      if (p->info.method_def.mthd_type == PT_META_ATTR)
-	{
-	  q = pt_append_nulstring (parser, q, " class  ");
-	}
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, "( ");
+      q = pt_append_nulstring (parser, q, " class  ");
     }
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, "( ");
+
   if (p->info.method_def.method_args_list)
     {
       r1 = pt_print_bytes_l (parser, p->info.method_def.method_args_list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_varchar (parser, q, r1);
     }
-  if (!parser->dont_prt)
-    {
-      q = pt_append_nulstring (parser, q, ") ");
-    }
+
+  q = pt_append_nulstring (parser, q, ") ");
+
   if (p->type_enum != PT_TYPE_NONE)
     {
       if (p->data_type)
 	{
 	  r1 = pt_print_bytes (parser, p->data_type);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_varchar (parser, q, r1);
 	}
       else
 	{
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q,
-				       pt_show_type_enum (p->type_enum));
-	    }
+	  q = pt_append_nulstring (parser, q,
+				   pt_show_type_enum (p->type_enum));
 	}
     }
   if (p->info.method_def.function_name)
     {
       r1 = pt_print_bytes (parser, p->info.method_def.function_name);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " function ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " function ");
+      q = pt_append_varchar (parser, q, r1);
     }
   return q;
 }
@@ -10290,154 +9585,109 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1;
   unsigned int save_custom = parser->custom_print;
 
-  if (!parser->dont_prt)
-    {
-      if (parser->print_db_value)
-	{
-	  if (p->info.name.meta_class == PT_PARAMETER
-	      && !p->info.name.resolved)
-	    {
-	      if (parser->custom_print & PT_DYNAMIC_SQL)
-		{
-		  PT_NODE *save_error_msgs;
-
-
-		  save_error_msgs = parser->error_msgs;
-		  parser->error_msgs = NULL;
-
-		  q = (*parser->print_db_value) (parser, p);
-
-		  if (q)
-		    {
-		      if (parser->error_msgs)
-			{
-			  parser_free_tree (parser, parser->error_msgs);
-			}
-		      parser->error_msgs = save_error_msgs;	/* restore */
-
-		      return q;
-		    }
-		  if (parser->error_msgs)
-		    {
-		      parser_free_tree (parser, parser->error_msgs);
-		    }
-		  parser->error_msgs = save_error_msgs;	/* restore */
-		}
-	    }
-	}
-    }
-
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
 
-  if (!parser->dont_prt)
+  if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS)
+      && (p->info.name.meta_class == PT_META_CLASS))
     {
-      if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS)
-	  && (p->info.name.meta_class == PT_META_CLASS))
-	{
-	  q = pt_append_nulstring (parser, q, "class ");
-	}
+      q = pt_append_nulstring (parser, q, "class ");
+    }
 
-      if (p->info.name.meta_class == PT_CLASSOID_ATTR)
-	{
-	  q = pt_append_nulstring (parser, q, "class(");
-	}
+  if (p->info.name.meta_class == PT_CLASSOID_ATTR)
+    {
+      q = pt_append_nulstring (parser, q, "class(");
+    }
 
-      if (p->info.name.meta_class == PT_PARAMETER)
-	{
-	  q = pt_append_nulstring (parser, q, ":");
-	}
+  if (p->info.name.meta_class == PT_PARAMETER)
+    {
+      q = pt_append_nulstring (parser, q, ":");
+    }
 
-      if (p->info.name.meta_class == PT_OID_ATTR)
+  if (p->info.name.meta_class == PT_OID_ATTR)
+    {
+      /* print the correlation name, which may be in one of two
+         locations, before and after name resolution. */
+      if (p->info.name.original && p->info.name.original[0])
 	{
-	  /* print the correlation name, which may be in one of two
-	     locations, before and after name resolution. */
-	  if (p->info.name.original && p->info.name.original[0])
-	    {
-	      q = pt_append_name (parser, q, p->info.name.original);
-	    }
-	  else if (p->info.name.resolved)
-	    {
-	      q = pt_append_name (parser, q, p->info.name.resolved);
-	    }
+	  q = pt_append_name (parser, q, p->info.name.original);
 	}
-      else
-	/* do not print 'resolved' for PT_PARAMETER(i.e, 'out parameter') */
-      if (!(parser->custom_print & PT_SUPPRESS_RESOLVED)
-	    && (p->info.name.resolved && p->info.name.resolved[0])
-	    && p->info.name.meta_class != PT_CLASS
-	    && p->info.name.meta_class != PT_PARAMETER
-	    && p->info.name.meta_class != PT_HINT_NAME)
+      else if (p->info.name.resolved)
 	{
-	  /* Print both resolved name and original name
-	   * If there is a non-zero length resolved name, print it,
-	   * followed by ".".
-	   */
 	  q = pt_append_name (parser, q, p->info.name.resolved);
-	  /* this is to catch OID_ATTR's which don't have their meta class set
-	   * correctly. It should probably not by unconditional.
-	   */
-	  if (p->info.name.meta_class != PT_META_CLASS
-	      && p->info.name.original && p->info.name.original[0])
-	    {
-	      q = pt_append_nulstring (parser, q, ".");
-	      q = pt_append_name (parser, q, p->info.name.original);
-	      if (p->info.name.meta_class == PT_INDEX_NAME)
-		{
-		  if (p->etc == (void *) 1)
-		    {
-		      q = pt_append_nulstring (parser, q, "(+)");
-		    }
-		  if (p->etc == (void *) -1)
-		    {
-		      q = pt_append_nulstring (parser, q, "(-)");
-		    }
-		}
-	    }
-	}
-      else
-	{
-	  /* here we print whatever the length */
-	  if (p->info.name.original)
-	    {
-	      q = pt_append_name (parser, q, p->info.name.original);
-	      if (p->info.name.meta_class == PT_INDEX_NAME)
-		{
-		  if (p->etc == (void *) 1)
-		    {
-		      q = pt_append_nulstring (parser, q, "(+)");
-		    }
-		  if (p->etc == (void *) -1)
-		    {
-		      q = pt_append_nulstring (parser, q, "(-)");
-		    }
-		}
-	    }
-	}
-      if (p->info.name.meta_class == PT_CLASSOID_ATTR)
-	{
-	  q = pt_append_nulstring (parser, q, ")");
 	}
     }
+  else
+    /* do not print 'resolved' for PT_PARAMETER(i.e, 'out parameter') */
+  if (!(parser->custom_print & PT_SUPPRESS_RESOLVED)
+	&& (p->info.name.resolved && p->info.name.resolved[0])
+	&& p->info.name.meta_class != PT_CLASS
+	&& p->info.name.meta_class != PT_PARAMETER
+	&& p->info.name.meta_class != PT_HINT_NAME)
+    {
+      /* Print both resolved name and original name
+       * If there is a non-zero length resolved name, print it,
+       * followed by ".".
+       */
+      q = pt_append_name (parser, q, p->info.name.resolved);
+      /* this is to catch OID_ATTR's which don't have their meta class set
+       * correctly. It should probably not by unconditional.
+       */
+      if (p->info.name.meta_class != PT_META_CLASS
+	  && p->info.name.original && p->info.name.original[0])
+	{
+	  q = pt_append_nulstring (parser, q, ".");
+	  q = pt_append_name (parser, q, p->info.name.original);
+	  if (p->info.name.meta_class == PT_INDEX_NAME)
+	    {
+	      if (p->etc == (void *) 1)
+		{
+		  q = pt_append_nulstring (parser, q, "(+)");
+		}
+	      if (p->etc == (void *) -1)
+		{
+		  q = pt_append_nulstring (parser, q, "(-)");
+		}
+	    }
+	}
+    }
+  else
+    {
+      /* here we print whatever the length */
+      if (p->info.name.original)
+	{
+	  q = pt_append_name (parser, q, p->info.name.original);
+	  if (p->info.name.meta_class == PT_INDEX_NAME)
+	    {
+	      if (p->etc == (void *) 1)
+		{
+		  q = pt_append_nulstring (parser, q, "(+)");
+		}
+	      if (p->etc == (void *) -1)
+		{
+		  q = pt_append_nulstring (parser, q, "(-)");
+		}
+	    }
+	}
+    }
+  if (p->info.name.meta_class == PT_CLASSOID_ATTR)
+    {
+      q = pt_append_nulstring (parser, q, ")");
+    }
+
   if (!(parser->custom_print & PT_SUPPRESS_SELECTOR))
     {
       if (p->info.name.path_correlation)
 	{
 	  r1 = pt_print_bytes (parser, p->info.name.path_correlation);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " {");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, "}");
-	    }
+	  q = pt_append_nulstring (parser, q, " {");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, "}");
 	}
     }
 
   if (p->type_enum == PT_TYPE_STAR)
     {
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, ".*");
-	}
+      q = pt_append_nulstring (parser, q, ".*");
     }
 
   parser->custom_print = save_custom;
@@ -10480,16 +9730,10 @@ pt_init_prepare_to_commit (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_prepare_to_commit (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  if (!parser->dont_prt)
-    {
-      char s[PT_MEMB_BUF_SIZE];
+  char s[PT_MEMB_BUF_SIZE];
 
-      sprintf (s, "prepare to commit %d ",
-	       p->info.prepare_to_commit.trans_id);
-      return pt_append_nulstring (parser, NULL, s);
-    }
-  else
-    return NULL;
+  sprintf (s, "prepare to commit %d ", p->info.prepare_to_commit.trans_id);
+  return pt_append_nulstring (parser, NULL, s);
 }
 
 /* REMOVE_TRIGGER */
@@ -10533,11 +9777,9 @@ pt_print_remove_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = NULL, *r1;
 
   r1 = pt_print_bytes_l (parser, p->info.remove_trigger.trigger_spec_list);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "drop deferred trigger ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, "drop deferred trigger ");
+  b = pt_append_varchar (parser, b, r1);
+
   return b;
 }
 
@@ -10587,16 +9829,13 @@ pt_print_rename (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.rename.old_name);
   r2 = pt_print_bytes (parser, p->info.rename.new_name);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "rename ");
-      b = pt_append_nulstring
-	(parser, b, pt_show_misc_type (p->info.rename.entity_type));
-      b = pt_append_nulstring (parser, b, " ");
-      b = pt_append_varchar (parser, b, r1);
-      b = pt_append_nulstring (parser, b, " as ");
-      b = pt_append_varchar (parser, b, r2);
-    }
+  b = pt_append_nulstring (parser, b, "rename ");
+  b = pt_append_nulstring
+    (parser, b, pt_show_misc_type (p->info.rename.entity_type));
+  b = pt_append_nulstring (parser, b, " ");
+  b = pt_append_varchar (parser, b, r1);
+  b = pt_append_nulstring (parser, b, " as ");
+  b = pt_append_varchar (parser, b, r2);
   return b;
 }
 
@@ -10645,13 +9884,11 @@ pt_print_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = 0, *r1, *r2;
   r1 = pt_print_bytes (parser, p->info.rename_trigger.old_name);
   r2 = pt_print_bytes (parser, p->info.rename_trigger.new_name);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "rename trigger ");
-      b = pt_append_varchar (parser, b, r1);
-      b = pt_append_nulstring (parser, b, " as ");
-      b = pt_append_varchar (parser, b, r2);
-    }
+  b = pt_append_nulstring (parser, b, "rename trigger ");
+  b = pt_append_varchar (parser, b, r1);
+  b = pt_append_nulstring (parser, b, " as ");
+  b = pt_append_varchar (parser, b, r2);
+
   return b;
 }
 
@@ -10705,25 +9942,21 @@ pt_print_resolution (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.resolution.attr_mthd_name);
   r2 = pt_print_bytes (parser, p->info.resolution.of_sup_class_name);
-  if (!parser->dont_prt)
+  if (p->info.resolution.attr_type == PT_META_ATTR)
     {
-      if (p->info.resolution.attr_type == PT_META_ATTR)
-	{
-	  q = pt_append_nulstring (parser, q, " class ");
-	}
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, " of ");
-      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, " class ");
     }
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, " of ");
+  q = pt_append_varchar (parser, q, r2);
+
   if (p->info.resolution.as_attr_mthd_name)
     {
       r1 = pt_print_bytes (parser, p->info.resolution.as_attr_mthd_name);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " as ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " as ");
+      q = pt_append_varchar (parser, q, r1);
     }
+
   return q;
 }
 
@@ -10780,15 +10013,13 @@ pt_print_revoke (PARSER_CONTEXT * parser, PT_NODE * p)
   r2 = pt_print_bytes_l (parser, p->info.revoke.spec_list);
   parser->custom_print = save_custom;
   r3 = pt_print_bytes_l (parser, p->info.revoke.user_list);
-  if (!parser->dont_prt)
-    {
-      q = pt_append_nulstring (parser, q, "revoke ");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, " on ");
-      q = pt_append_varchar (parser, q, r2);
-      q = pt_append_nulstring (parser, q, " from ");
-      q = pt_append_varchar (parser, q, r3);
-    }
+  q = pt_append_nulstring (parser, q, "revoke ");
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, " on ");
+  q = pt_append_varchar (parser, q, r2);
+  q = pt_append_nulstring (parser, q, " from ");
+  q = pt_append_varchar (parser, q, r3);
+
   return q;
 }
 
@@ -10835,15 +10066,12 @@ pt_print_rollback_work (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1;
 
-  if (!parser->dont_prt)
+  q = pt_append_nulstring (parser, q, "rollback work");
+  if (p->info.rollback_work.save_name)
     {
-      q = pt_append_nulstring (parser, q, "rollback work");
-      if (p->info.rollback_work.save_name)
-	{
-	  r1 = pt_print_bytes (parser, p->info.rollback_work.save_name);
-	  q = pt_append_nulstring (parser, q, " to savepoint ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      r1 = pt_print_bytes (parser, p->info.rollback_work.save_name);
+      q = pt_append_nulstring (parser, q, " to savepoint ");
+      q = pt_append_varchar (parser, q, r1);
     }
 
   return q;
@@ -10891,11 +10119,9 @@ pt_print_savepoint (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = NULL, *r1;
 
   r1 = pt_print_bytes (parser, p->info.savepoint.save_name);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "savepoint ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, "savepoint ");
+  b = pt_append_varchar (parser, b, r1);
+
   return b;
 }
 
@@ -10941,13 +10167,11 @@ pt_print_scope (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.scope.stmt);
   r2 = pt_print_bytes (parser, p->info.scope.from);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "scope ");
-      b = pt_append_varchar (parser, b, r1);
-      b = pt_append_nulstring (parser, b, " from ");
-      b = pt_append_varchar (parser, b, r2);
-    }
+  b = pt_append_nulstring (parser, b, "scope ");
+  b = pt_append_varchar (parser, b, r1);
+  b = pt_append_nulstring (parser, b, " from ");
+  b = pt_append_varchar (parser, b, r2);
+
   return b;
 }
 
@@ -10966,33 +10190,47 @@ pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p,
 {
   p->info.query.q.select.list = g (parser, p->info.query.q.select.list, arg);
   p->info.query.q.select.from = g (parser, p->info.query.q.select.from, arg);
-  p->info.query.q.select.where =
-    g (parser, p->info.query.q.select.where, arg);
-  p->info.query.q.select.group_by =
-    g (parser, p->info.query.q.select.group_by, arg);
-  p->info.query.q.select.having =
-    g (parser, p->info.query.q.select.having, arg);
-  p->info.query.q.select.using_index =
-    g (parser, p->info.query.q.select.using_index, arg);
-  p->info.query.q.select.with_increment =
-    g (parser, p->info.query.q.select.with_increment, arg);
-  p->info.query.q.select.ordered =
-    g (parser, p->info.query.q.select.ordered, arg);
-  p->info.query.q.select.use_nl =
-    g (parser, p->info.query.q.select.use_nl, arg);
-  p->info.query.q.select.use_idx =
-    g (parser, p->info.query.q.select.use_idx, arg);
-  p->info.query.q.select.use_merge =
-    g (parser, p->info.query.q.select.use_merge, arg);
-  p->info.query.q.select.waitsecs_hint =
-    g (parser, p->info.query.q.select.waitsecs_hint, arg);
+  p->info.query.q.select.where = g (parser, p->info.query.q.select.where,
+				    arg);
+  p->info.query.q.select.connect_by = g (parser,
+					 p->info.query.q.select.connect_by,
+					 arg);
+  p->info.query.q.select.start_with = g (parser,
+					 p->info.query.q.select.start_with,
+					 arg);
+  p->info.query.q.select.after_cb_filter = g (parser,
+					      p->info.query.q.select.
+					      after_cb_filter, arg);
+  p->info.query.q.select.group_by = g (parser,
+				       p->info.query.q.select.group_by, arg);
+  p->info.query.q.select.having = g (parser, p->info.query.q.select.having,
+				     arg);
+  p->info.query.q.select.using_index = g (parser,
+					  p->info.query.q.select.using_index,
+					  arg);
+  p->info.query.q.select.with_increment = g (parser,
+					     p->info.query.q.select.
+					     with_increment, arg);
+  p->info.query.q.select.ordered = g (parser, p->info.query.q.select.ordered,
+				      arg);
+  p->info.query.q.select.use_nl = g (parser, p->info.query.q.select.use_nl,
+				     arg);
+  p->info.query.q.select.use_idx = g (parser, p->info.query.q.select.use_idx,
+				      arg);
+  p->info.query.q.select.use_merge = g (parser,
+					p->info.query.q.select.use_merge,
+					arg);
+  p->info.query.q.select.waitsecs_hint = g (parser,
+					    p->info.query.q.select.
+					    waitsecs_hint, arg);
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
   p->info.query.order_by = g (parser, p->info.query.order_by, arg);
   p->info.query.orderby_for = g (parser, p->info.query.orderby_for, arg);
   p->info.query.for_update = g (parser, p->info.query.for_update, arg);
   p->info.query.qcache_hint = g (parser, p->info.query.qcache_hint, arg);
-  p->info.query.q.select.check_where =
-    g (parser, p->info.query.q.select.check_where, arg);
+  p->info.query.q.select.check_where = g (parser,
+					  p->info.query.q.select.check_where,
+					  arg);
   return p;
 }
 
@@ -11020,6 +10258,7 @@ pt_init_select (PT_NODE * p)
   p->info.query.q.select.waitsecs_hint = NULL;
   p->info.query.q.select.jdbc_life_time = NULL;
   p->info.query.q.select.flag = 0;
+  p->info.query.q.select.has_nocycle = 0;
   p->info.query.order_by = 0;
   p->info.query.orderby_for = 0;
   p->info.query.for_update = 0;
@@ -11031,6 +10270,7 @@ pt_init_select (PT_NODE * p)
   p->info.query.vspec_as_derived = 0;
   p->info.query.reexecute = 0;
   p->info.query.do_not_cache = 0;
+  p->info.query.order_siblings = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   return p;
@@ -11046,7 +10286,7 @@ static PARSER_VARCHAR *
 pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1;
-  PT_NODE *temp;
+  PT_NODE *temp, *where_list;
   bool set_paren = false;	/* init */
 
   if (p->info.query.is_subquery == PT_IS_SUBQUERY
@@ -11058,177 +10298,165 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       set_paren = true;
     }
 
-  if (!parser->dont_prt)
+  if (set_paren)
     {
-      if (set_paren)
+      q = pt_append_nulstring (parser, q, "(");
+    }
+
+  q = pt_append_nulstring (parser, q, "select ");
+
+  if (p->info.query.q.select.hint != PT_HINT_NONE
+      || (p->info.query.hint != PT_HINT_NONE
+	  && p->info.query.hint != PT_HINT_REEXECUTE))
+    {
+      q = pt_append_nulstring (parser, q, "/*+ ");
+      if (p->info.query.hint & PT_HINT_QUERY_CACHE)
 	{
-	  q = pt_append_nulstring (parser, q, "(");
-	}
-
-      q = pt_append_nulstring (parser, q, "select ");
-
-      if (p->info.query.q.select.hint != PT_HINT_NONE
-	  || (p->info.query.hint != PT_HINT_NONE
-	      && p->info.query.hint != PT_HINT_REEXECUTE))
-	{
-	  q = pt_append_nulstring (parser, q, "/*+ ");
-	  if (p->info.query.hint & PT_HINT_QUERY_CACHE)
+	  /* query cache */
+	  q = pt_append_nulstring (parser, q, "QUERY_CACHE");
+	  if (p->info.query.qcache_hint)
 	    {
-	      /* query cache */
-	      q = pt_append_nulstring (parser, q, "QUERY_CACHE");
-	      if (p->info.query.qcache_hint)
-		{
-		  r1 = pt_print_bytes (parser, p->info.query.qcache_hint);
-		  q = pt_append_nulstring (parser, q, "(");
-		  q = pt_append_varchar (parser, q, r1);
-		  q = pt_append_nulstring (parser, q, ") ");
-		}
-	      else
-		{
-		  q = pt_append_nulstring (parser, q, " ");
-		}
-	    }
-	  if (p->info.query.q.select.hint & PT_HINT_ORDERED)
-	    {
-	      /* force join left-to-right */
-	      q = pt_append_nulstring (parser, q, "ORDERED");
-	      if (p->info.query.q.select.ordered)
-		{
-		  r1 = pt_print_bytes_l (parser,
-					 p->info.query.q.select.ordered);
-		  q = pt_append_nulstring (parser, q, "(");
-		  q = pt_append_varchar (parser, q, r1);
-		  q = pt_append_nulstring (parser, q, ") ");
-		}
-	      else
-		{
-		  q = pt_append_nulstring (parser, q, " ");
-		}
-	    }
-
-#if 0
-	  if (p->info.query.q.select.hint & PT_HINT_W)
-	    {
-	      /* -- not used */
-	      q = pt_append_nulstring (parser, q, "W ");
-	    }
-	  if (p->info.query.q.select.hint & PT_HINT_X)
-	    {
-	      /* -- not used */
-	      q = pt_append_nulstring (parser, q, "X ");
-	    }
-	  if (p->info.query.q.select.hint & PT_HINT_Y)
-	    {
-	      /* -- not used */
-	      q = pt_append_nulstring (parser, q, "Y ");
-	    }
-#endif /* 0 */
-
-	  if (p->info.query.q.select.hint & PT_HINT_USE_NL)
-	    {
-	      /* force nl-join */
-	      q = pt_append_nulstring (parser, q, "USE_NL");
-	      if (p->info.query.q.select.use_nl)
-		{
-		  r1 = pt_print_bytes_l (parser,
-					 p->info.query.q.select.use_nl);
-		  q = pt_append_nulstring (parser, q, "(");
-		  q = pt_append_varchar (parser, q, r1);
-		  q = pt_append_nulstring (parser, q, ") ");
-		}
-	      else
-		{
-		  q = pt_append_nulstring (parser, q, " ");
-		}
-	    }
-	  if (p->info.query.q.select.hint & PT_HINT_USE_IDX)
-	    {
-	      /* force idx-join */
-	      q = pt_append_nulstring (parser, q, "USE_IDX");
-	      if (p->info.query.q.select.use_idx)
-		{
-		  r1 = pt_print_bytes_l (parser,
-					 p->info.query.q.select.use_idx);
-		  q = pt_append_nulstring (parser, q, "(");
-		  q = pt_append_varchar (parser, q, r1);
-		  q = pt_append_nulstring (parser, q, ") ");
-		}
-	      else
-		{
-		  q = pt_append_nulstring (parser, q, " ");
-		}
-	    }
-	  if (p->info.query.q.select.hint & PT_HINT_USE_MERGE)
-	    {
-	      /* force merge-join */
-	      q = pt_append_nulstring (parser, q, "USE_MERGE");
-	      if (p->info.query.q.select.use_merge)
-		{
-		  r1 = pt_print_bytes_l (parser,
-					 p->info.query.q.select.use_merge);
-		  q = pt_append_nulstring (parser, q, "(");
-		  q = pt_append_varchar (parser, q, r1);
-		  q = pt_append_nulstring (parser, q, ") ");
-		}
-	      else
-		{
-		  q = pt_append_nulstring (parser, q, " ");
-		}
-	    }
-
-#if 0
-	  if (p->info.query.q.select.hint & PT_HINT_USE_HASH)
-	    {
-	      /* -- not used */
-	      q = pt_append_nulstring (parser, q, "USE_HASH ");
-	    }
-#endif /* 0 */
-	  if (p->info.query.q.select.hint & PT_HINT_LK_TIMEOUT
-	      && p->info.query.q.select.waitsecs_hint)
-	    {
-	      /* lock timeout */
-	      q = pt_append_nulstring (parser, q, "LOCK_TIMEOUT(");
-	      r1 = pt_print_bytes (parser,
-				   p->info.query.q.select.waitsecs_hint);
+	      r1 = pt_print_bytes (parser, p->info.query.qcache_hint);
+	      q = pt_append_nulstring (parser, q, "(");
 	      q = pt_append_varchar (parser, q, r1);
 	      q = pt_append_nulstring (parser, q, ") ");
 	    }
-
-	  q = pt_append_nulstring (parser, q, "*/ ");
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
 	}
-
-      if (p->info.query.all_distinct == PT_ALL)
+      if (p->info.query.q.select.hint & PT_HINT_ORDERED)
 	{
-	  /* left out "all", its the default. */
+	  /* force join left-to-right */
+	  q = pt_append_nulstring (parser, q, "ORDERED");
+	  if (p->info.query.q.select.ordered)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.query.q.select.ordered);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
 	}
-      else if (p->info.query.all_distinct == PT_DISTINCT)
+
+#if 0
+      if (p->info.query.q.select.hint & PT_HINT_W)
 	{
-	  q = pt_append_nulstring (parser, q, "distinct ");
+	  /* -- not used */
+	  q = pt_append_nulstring (parser, q, "W ");
 	}
+      if (p->info.query.q.select.hint & PT_HINT_X)
+	{
+	  /* -- not used */
+	  q = pt_append_nulstring (parser, q, "X ");
+	}
+      if (p->info.query.q.select.hint & PT_HINT_Y)
+	{
+	  /* -- not used */
+	  q = pt_append_nulstring (parser, q, "Y ");
+	}
+#endif /* 0 */
+
+      if (p->info.query.q.select.hint & PT_HINT_USE_NL)
+	{
+	  /* force nl-join */
+	  q = pt_append_nulstring (parser, q, "USE_NL");
+	  if (p->info.query.q.select.use_nl)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.query.q.select.use_nl);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
+	}
+      if (p->info.query.q.select.hint & PT_HINT_USE_IDX)
+	{
+	  /* force idx-join */
+	  q = pt_append_nulstring (parser, q, "USE_IDX");
+	  if (p->info.query.q.select.use_idx)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.query.q.select.use_idx);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
+	}
+      if (p->info.query.q.select.hint & PT_HINT_USE_MERGE)
+	{
+	  /* force merge-join */
+	  q = pt_append_nulstring (parser, q, "USE_MERGE");
+	  if (p->info.query.q.select.use_merge)
+	    {
+	      r1 = pt_print_bytes_l (parser,
+				     p->info.query.q.select.use_merge);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
+	}
+
+#if 0
+      if (p->info.query.q.select.hint & PT_HINT_USE_HASH)
+	{
+	  /* -- not used */
+	  q = pt_append_nulstring (parser, q, "USE_HASH ");
+	}
+#endif /* 0 */
+      if (p->info.query.q.select.hint & PT_HINT_LK_TIMEOUT
+	  && p->info.query.q.select.waitsecs_hint)
+	{
+	  /* lock timeout */
+	  q = pt_append_nulstring (parser, q, "LOCK_TIMEOUT(");
+	  r1 = pt_print_bytes (parser, p->info.query.q.select.waitsecs_hint);
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ") ");
+	}
+
+      q = pt_append_nulstring (parser, q, "*/ ");
     }
+
+  if (p->info.query.all_distinct == PT_ALL)
+    {
+      /* left out "all", its the default. */
+    }
+  else if (p->info.query.all_distinct == PT_DISTINCT)
+    {
+      q = pt_append_nulstring (parser, q, "distinct ");
+    }
+
   if (!(parser->custom_print & PT_SUPPRESS_SELECT_LIST) ||
       p->info.query.is_subquery == PT_IS_SUBQUERY)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.q.select.list);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_varchar (parser, q, r1);
     }
   else
     {
-      if (!parser->dont_prt)
+      temp = p->info.query.q.select.list;
+      while (temp)
 	{
-	  temp = p->info.query.q.select.list;
-	  while (temp)
+	  q = pt_append_nulstring (parser, q, "NA");
+	  if (temp->next)
 	    {
-	      q = pt_append_nulstring (parser, q, "NA");
-	      if (temp->next)
-		{
-		  q = pt_append_nulstring (parser, q, ",");
-		}
-	      temp = temp->next;
+	      q = pt_append_nulstring (parser, q, ",");
 	    }
+	  temp = temp->next;
 	}
     }
 
@@ -11237,143 +10465,166 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.query.into_list)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.query.into_list);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " into ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_nulstring (parser, q, " into ");
+	  q = pt_append_varchar (parser, q, r1);
 	}
     }
 
   r1 = pt_print_bytes_spec_list (parser, p->info.query.q.select.from);
-  if (!parser->dont_prt)
+  q = pt_append_nulstring (parser, q, " from ");
+  q = pt_append_varchar (parser, q, r1);
+
+  if (p->info.query.q.select.after_cb_filter)
     {
-      q = pt_append_nulstring (parser, q, " from ");
+      /* We need to print out the filter too. There's no special syntax for it,
+         the filter is part of the where clause. */
+      where_list = parser_append_node (p->info.query.q.select.after_cb_filter,
+				       p->info.query.q.select.where);
+    }
+  else
+    {
+      where_list = p->info.query.q.select.where;
+    }
+
+  if (where_list)
+    {
+      r1 = pt_print_and_list (parser, where_list);
+      q = pt_append_nulstring (parser, q, " where ");
       q = pt_append_varchar (parser, q, r1);
     }
-  if (p->info.query.q.select.where)
+
+  if (p->info.query.q.select.after_cb_filter)
     {
-      r1 = pt_print_and_list (parser, p->info.query.q.select.where);
-      if (!parser->dont_prt)
+      if (p->info.query.q.select.where)
 	{
-	  q = pt_append_nulstring (parser, q, " where ");
-	  q = pt_append_varchar (parser, q, r1);
+	  /* We appended the filtering expression to the join expression and we
+	     need to cut that link. */
+	  assert (where_list == p->info.query.q.select.where);
+	  while (where_list->next != p->info.query.q.select.after_cb_filter)
+	    {
+	      where_list = where_list->next;
+	    }
+	  where_list->next = NULL;
+	}
+      else
+	{
+	  assert (where_list == p->info.query.q.select.after_cb_filter);
 	}
     }
+
+  if (p->info.query.q.select.start_with)
+    {
+      r1 = pt_print_and_list (parser, p->info.query.q.select.start_with);
+      q = pt_append_nulstring (parser, q, " start with ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  if (p->info.query.q.select.connect_by)
+    {
+      r1 = pt_print_and_list (parser, p->info.query.q.select.connect_by);
+      if (p->info.query.q.select.has_nocycle)
+	{
+	  q = pt_append_nulstring (parser, q, " connect by nocycle ");
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, " connect by ");
+	}
+      q = pt_append_varchar (parser, q, r1);
+    }
+
   if (p->info.query.q.select.group_by)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.q.select.group_by);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " group by ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " group by ");
+      q = pt_append_varchar (parser, q, r1);
     }
+
   if (p->info.query.q.select.having)
     {
       r1 = pt_print_and_list (parser, p->info.query.q.select.having);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " having ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " having ");
+      q = pt_append_varchar (parser, q, r1);
     }
+
   if (p->info.query.q.select.using_index)
     {
       if (p->info.query.q.select.using_index->info.name.original == NULL)
 	{
 	  if (p->info.query.q.select.using_index->info.name.resolved == NULL)
 	    {
-	      if (!parser->dont_prt)
-		{
-		  q = pt_append_nulstring (parser, q, " using index none");
-		}
+	      q = pt_append_nulstring (parser, q, " using index none");
 	    }
 	  else
 	    {
 	      r1 = pt_print_bytes_l (parser,
 				     p->info.query.q.select.using_index->
 				     next);
-	      if (!parser->dont_prt)
-		{
-		  q = pt_append_nulstring (parser, q,
-					   " using index all except ");
-		  q = pt_append_varchar (parser, q, r1);
-		}
+	      q = pt_append_nulstring (parser, q, " using index all except ");
+	      q = pt_append_varchar (parser, q, r1);
 	    }
 	}
       else
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.query.q.select.using_index);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, " using index ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
+	  q = pt_append_nulstring (parser, q, " using index ");
+	  q = pt_append_varchar (parser, q, r1);
 	}
     }
+
   if (p->info.query.q.select.with_increment)
     {
-      if (!parser->dont_prt)
-	{
-	  temp = p->info.query.q.select.with_increment;
-	  q = pt_append_nulstring (parser, q,
-				   ((temp->node_type == PT_EXPR
-				     && temp->info.expr.op == PT_DECR)
-				    ? "with decrement for "
-				    : "with increment for "));
-	  q = pt_append_varchar (parser, q,
-				 pt_print_bytes_l (parser,
-						   p->info.query.q.select.
-						   with_increment));
-	}
+      temp = p->info.query.q.select.with_increment;
+      q = pt_append_nulstring (parser, q,
+			       ((temp->node_type == PT_EXPR
+				 && temp->info.expr.op == PT_DECR)
+				? "with decrement for "
+				: "with increment for "));
+      q = pt_append_varchar (parser, q,
+			     pt_print_bytes_l (parser,
+					       p->info.query.q.select.
+					       with_increment));
     }
+
   if (p->info.query.order_by)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.order_by);
-      if (!parser->dont_prt)
+      if (p->info.query.order_siblings)
+	{
+	  q = pt_append_nulstring (parser, q, " order siblings by ");
+	}
+      else
 	{
 	  q = pt_append_nulstring (parser, q, " order by ");
-	  q = pt_append_varchar (parser, q, r1);
 	}
+      q = pt_append_varchar (parser, q, r1);
     }
+
   if (p->info.query.orderby_for)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " for ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " for ");
+      q = pt_append_varchar (parser, q, r1);
     }
+
   if (p->info.query.for_update)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.for_update);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " for update of ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " for update of ");
+      q = pt_append_varchar (parser, q, r1);
     }
 
-  if (!parser->dont_prt)
+  if (set_paren)
     {
-      if (set_paren)
-	{
-	  q = pt_append_nulstring (parser, q, ")");
-	}
+      q = pt_append_nulstring (parser, q, ")");
     }
 
-  /* here we are using PT_SUPPRESS_INTO as an indicator for printing to ldb's */
   if (!(parser->custom_print & PT_SUPPRESS_INTO)
       && p->info.query.q.select.check_where)
     {
       r1 = pt_print_and_list (parser, p->info.query.q.select.check_where);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "\n-- check condition: ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, "\n-- check condition: ");
+      q = pt_append_varchar (parser, q, r1);
     }
   return q;
 }
@@ -11425,18 +10676,17 @@ pt_print_set_opt_lvl (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       r2 = pt_print_bytes (parser, p->info.set_opt_lvl.val->next);
     }
-  if (!parser->dont_prt)
+
+  b = pt_append_nulstring (parser, b, "set optimization ");
+  b = pt_append_nulstring (parser, b, pt_show_misc_type (option));
+  b = pt_append_nulstring (parser, b, " ");
+  b = pt_append_varchar (parser, b, r1);
+  if (option == PT_OPT_COST)
     {
-      b = pt_append_nulstring (parser, b, "set optimization ");
-      b = pt_append_nulstring (parser, b, pt_show_misc_type (option));
       b = pt_append_nulstring (parser, b, " ");
-      b = pt_append_varchar (parser, b, r1);
-      if (option == PT_OPT_COST)
-	{
-	  b = pt_append_nulstring (parser, b, " ");
-	  b = pt_append_varchar (parser, b, r2);
-	}
+      b = pt_append_varchar (parser, b, r2);
     }
+
   return b;
 }
 
@@ -11479,18 +10729,14 @@ pt_print_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
 
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "set parameters ");
-    }
+  b = pt_append_nulstring (parser, b, "set parameters ");
+
   if (p->info.set_sys_params.val)
     {
       r1 = pt_print_bytes (parser, p->info.set_sys_params.val);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_varchar (parser, b, r1);
     }
+
   return b;
 }
 
@@ -11533,37 +10779,30 @@ pt_print_set_trigger (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
 
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "set trigger ");
-      b = pt_append_nulstring
-	(parser, b, pt_show_misc_type (p->info.set_trigger.option));
-    }
+  b = pt_append_nulstring (parser, b, "set trigger ");
+  b = pt_append_nulstring
+    (parser, b, pt_show_misc_type (p->info.set_trigger.option));
+
   if (p->info.set_trigger.option == PT_TRIGGER_TRACE
       && p->info.set_trigger.val
       && p->info.set_trigger.val->info.value.data_value.i <= 0)
     {
-      if (!parser->dont_prt)
+      if (p->info.set_trigger.val->info.value.data_value.i == 0)
 	{
-	  if (p->info.set_trigger.val->info.value.data_value.i == 0)
-	    {
-	      b = pt_append_nulstring (parser, b, " off");
-	    }
-	  else
-	    {
-	      b = pt_append_nulstring (parser, b, " on");
-	    }
+	  b = pt_append_nulstring (parser, b, " off");
+	}
+      else
+	{
+	  b = pt_append_nulstring (parser, b, " on");
 	}
     }
   else
     {
       r1 = pt_print_bytes (parser, p->info.set_trigger.val);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " ");
+      b = pt_append_varchar (parser, b, r1);
     }
+
   return b;
 }
 
@@ -11608,11 +10847,9 @@ pt_print_set_xaction (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = NULL, *r1;
 
   r1 = pt_print_bytes_l (parser, p->info.set_xaction.xaction_modes);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "set transaction ");
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_nulstring (parser, b, "set transaction ");
+  b = pt_append_varchar (parser, b, r1);
+
   return b;
 }
 
@@ -11660,14 +10897,12 @@ pt_print_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = 0, *r1;
 
   r1 = pt_print_bytes (parser, p->info.sort_spec.expr);
-  if (!parser->dont_prt)
+  q = pt_append_varchar (parser, q, r1);
+  if (p->info.sort_spec.asc_or_desc == PT_DESC)
     {
-      q = pt_append_varchar (parser, q, r1);
-      if (p->info.sort_spec.asc_or_desc == PT_DESC)
-	{
-	  q = pt_append_nulstring (parser, q, " desc ");
-	}
+      q = pt_append_nulstring (parser, q, " desc ");
     }
+
   return q;
 }
 
@@ -11711,34 +10946,23 @@ pt_print_timeout (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = NULL, *r1;
   PT_NODE *val;
 
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "lock timeout ");
-    }
+  b = pt_append_nulstring (parser, b, "lock timeout ");
   val = p->info.timeout.val;
+
   if (val)
     {
       if (val->info.value.data_value.i == -1)
 	{
-	  if (!parser->dont_prt)
-	    {
-	      b = pt_append_nulstring (parser, b, "infinite");
-	    }
+	  b = pt_append_nulstring (parser, b, "infinite");
 	}
       else if (val->info.value.data_value.i == 0)
 	{
-	  if (!parser->dont_prt)
-	    {
-	      b = pt_append_nulstring (parser, b, "off");
-	    }
+	  b = pt_append_nulstring (parser, b, "off");
 	}
       else
 	{
 	  r1 = pt_print_bytes (parser, p->info.timeout.val);
-	  if (!parser->dont_prt)
-	    {
-	      b = pt_append_varchar (parser, b, r1);
-	    }
+	  b = pt_append_varchar (parser, b, r1);
 	}
     }
   return b;
@@ -11790,28 +11014,19 @@ pt_print_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p)
     {
     case PT_REJECT:
     case PT_INVALIDATE_XACTION:
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, pt_show_misc_type
-				   (p->info.trigger_action.action_type));
-	}
+      b = pt_append_nulstring (parser, b, pt_show_misc_type
+			       (p->info.trigger_action.action_type));
       break;
     case PT_PRINT:
       r1 = pt_print_bytes (parser, p->info.trigger_action.string);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, pt_show_misc_type
-				   (p->info.trigger_action.action_type));
-	  b = pt_append_nulstring (parser, b, " ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, pt_show_misc_type
+			       (p->info.trigger_action.action_type));
+      b = pt_append_nulstring (parser, b, " ");
+      b = pt_append_varchar (parser, b, r1);
       break;
     case PT_EXPRESSION:
       r1 = pt_print_bytes (parser, p->info.trigger_action.expression);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_varchar (parser, b, r1);
       break;
     default:
       break;
@@ -11862,10 +11077,8 @@ pt_print_trigger_spec_list (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = NULL, *r1;
 
   r1 = pt_print_bytes_l (parser, p->info.trigger_spec_list.trigger_name_list);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_varchar (parser, b, r1);
-    }
+  b = pt_append_varchar (parser, b, r1);
+
   return b;
 }
 
@@ -11911,6 +11124,7 @@ pt_init_union_stmt (PT_NODE * p)
   p->info.query.vspec_as_derived = 0;
   p->info.query.reexecute = 0;
   p->info.query.do_not_cache = 0;
+  p->info.query.order_siblings = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -11930,45 +11144,35 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
   r2 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
-  if (!parser->dont_prt)
+  q = pt_append_nulstring (parser, q, "(");
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, " union ");
+  if (p->info.query.all_distinct == PT_ALL)
     {
-      q = pt_append_nulstring (parser, q, "(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, " union ");
-      if (p->info.query.all_distinct == PT_ALL)
-	{
-	  q = pt_append_nulstring (parser, q, "all ");
-	}
-      q = pt_append_varchar (parser, q, r2);
-      q = pt_append_nulstring (parser, q, ")");
+      q = pt_append_nulstring (parser, q, "all ");
     }
+  q = pt_append_varchar (parser, q, r2);
+  q = pt_append_nulstring (parser, q, ")");
+
   if (p->info.query.order_by)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.order_by);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " order by ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " order by ");
+      q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.query.orderby_for)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " for ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " for ");
+      q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.query.for_update)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.for_update);
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, " for update of ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
+      q = pt_append_nulstring (parser, q, " for update of ");
+      q = pt_append_varchar (parser, q, r1);
     }
+
   return q;
 }
 
@@ -12025,65 +11229,50 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
 
-  if (!parser->dont_prt)
+  b = pt_append_nulstring (parser, b, "update ");
+
+  if (p->info.update.hint != PT_HINT_NONE)
     {
-      b = pt_append_nulstring (parser, b, "update ");
-    }
-  if (!parser->dont_prt)
-    {
-      if (p->info.update.hint != PT_HINT_NONE)
+      b = pt_append_nulstring (parser, b, "/*+");
+      if (p->info.update.hint & PT_HINT_LK_TIMEOUT
+	  && p->info.update.waitsecs_hint)
 	{
-	  b = pt_append_nulstring (parser, b, "/*+");
-	  if (p->info.update.hint & PT_HINT_LK_TIMEOUT
-	      && p->info.update.waitsecs_hint)
-	    {
-	      b = pt_append_nulstring (parser, b, " LOCK_TIMEOUT(");
-	      r1 = pt_print_bytes (parser, p->info.update.waitsecs_hint);
-	      b = pt_append_varchar (parser, b, r1);
-	      b = pt_append_nulstring (parser, b, ")");
-	    }
-	  if (p->info.update.hint & PT_HINT_NO_LOGGING)
-	    {
-	      b = pt_append_nulstring (parser, b, " NO_LOGGING");
-	    }
-	  if (p->info.update.hint & PT_HINT_REL_LOCK)
-	    {
-	      b = pt_append_nulstring (parser, b, " RELEAES_LOCK");
-	    }
-	  b = pt_append_nulstring (parser, b, " */");
+	  b = pt_append_nulstring (parser, b, " LOCK_TIMEOUT(");
+	  r1 = pt_print_bytes (parser, p->info.update.waitsecs_hint);
+	  b = pt_append_varchar (parser, b, r1);
+	  b = pt_append_nulstring (parser, b, ")");
 	}
+      if (p->info.update.hint & PT_HINT_NO_LOGGING)
+	{
+	  b = pt_append_nulstring (parser, b, " NO_LOGGING");
+	}
+      if (p->info.update.hint & PT_HINT_REL_LOCK)
+	{
+	  b = pt_append_nulstring (parser, b, " RELEAES_LOCK");
+	}
+      b = pt_append_nulstring (parser, b, " */");
     }
+
   if (!IS_UPDATE_OBJ (p))
     {
       r1 = pt_print_bytes (parser, p->info.update.spec);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_varchar (parser, b, r1);
     }
   else
     {
       r1 = pt_print_bytes (parser, p->info.update.object_parameter);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, "object ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
-    }
-  r1 = pt_print_bytes_l (parser, p->info.update.assignment);
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, " set ");
+      b = pt_append_nulstring (parser, b, "object ");
       b = pt_append_varchar (parser, b, r1);
     }
+  r1 = pt_print_bytes_l (parser, p->info.update.assignment);
+  b = pt_append_nulstring (parser, b, " set ");
+  b = pt_append_varchar (parser, b, r1);
+
   if (p->info.update.search_cond)
     {
       r1 = pt_print_and_list (parser, p->info.update.search_cond);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " where ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " where ");
+      b = pt_append_varchar (parser, b, r1);
     }
   if (p->info.update.using_index)
     {
@@ -12091,44 +11280,30 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  if (p->info.update.using_index->info.name.resolved == NULL)
 	    {
-	      if (!parser->dont_prt)
-		{
-		  b = pt_append_nulstring (parser, b, " using index none");
-		}
+	      b = pt_append_nulstring (parser, b, " using index none");
 	    }
 	  else
 	    {
 	      r1 = pt_print_bytes_l (parser,
 				     p->info.update.using_index->next);
-	      if (!parser->dont_prt)
-		{
-		  b = pt_append_nulstring (parser, b,
-					   " using index all except ");
-		  b = pt_append_varchar (parser, b, r1);
-		}
+	      b = pt_append_nulstring (parser, b, " using index all except ");
+	      b = pt_append_varchar (parser, b, r1);
 	    }
 	}
       else
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.update.using_index);
-	  if (!parser->dont_prt)
-	    {
-	      b = pt_append_nulstring (parser, b, " using index ");
-	      b = pt_append_varchar (parser, b, r1);
-	    }
+	  b = pt_append_nulstring (parser, b, " using index ");
+	  b = pt_append_varchar (parser, b, r1);
 	}
     }
 
-  /* here we are using PT_SUPPRESS_INTO as an indicator for printing to ldb's */
   if (!(parser->custom_print & PT_SUPPRESS_INTO)
       && p->info.update.check_where)
     {
       r1 = pt_print_and_list (parser, p->info.update.check_where);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, "\n-- check condition: ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, "\n-- check condition: ");
+      b = pt_append_varchar (parser, b, r1);
     }
   return b;
 }
@@ -12175,23 +11350,21 @@ pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1;
 
-  if (!parser->dont_prt)
+  b = pt_append_nulstring (parser, b, "update statistics on ");
+  if (p->info.update_stats.all_classes > 0)
     {
-      b = pt_append_nulstring (parser, b, "update statistics on ");
-      if (p->info.update_stats.all_classes > 0)
-	{
-	  b = pt_append_nulstring (parser, b, "all classes");
-	}
-      else if (p->info.update_stats.all_classes < 0)
-	{
-	  b = pt_append_nulstring (parser, b, "catalog classes");
-	}
-      else
-	{
-	  r1 = pt_print_bytes_l (parser, p->info.update_stats.class_list);
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, "all classes");
     }
+  else if (p->info.update_stats.all_classes < 0)
+    {
+      b = pt_append_nulstring (parser, b, "catalog classes");
+    }
+  else
+    {
+      r1 = pt_print_bytes_l (parser, p->info.update_stats.class_list);
+      b = pt_append_varchar (parser, b, r1);
+    }
+
   return b;
 }
 
@@ -12238,35 +11411,24 @@ pt_print_get_stats (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1;
 
-  if (!parser->dont_prt)
-    {
-      b = pt_append_nulstring (parser, b, "get statistics ");
-    }
+  b = pt_append_nulstring (parser, b, "get statistics ");
+
   if (p->info.get_stats.args)
     {
       r1 = pt_print_bytes (parser, p->info.get_stats.args);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_varchar (parser, b, r1);
     }
   if (p->info.get_stats.class_)
     {
       r1 = pt_print_bytes (parser, p->info.get_stats.class_);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " on ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " on ");
+      b = pt_append_varchar (parser, b, r1);
     }
   if (p->info.get_stats.into_var)
     {
       r1 = pt_print_bytes (parser, p->info.get_stats.into_var);
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, " into ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
+      b = pt_append_nulstring (parser, b, " into ");
+      b = pt_append_varchar (parser, b, r1);
     }
   return b;
 }
@@ -12316,52 +11478,40 @@ pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.use.use_list)
     {
       r1 = pt_print_bytes_l (parser, p->info.use.use_list);
-      if (!parser->dont_prt)
+      b = pt_append_nulstring (parser, b, "use ");
+      b = pt_append_varchar (parser, b, r1);
+      if (p->info.use.relative == PT_DEFAULT)
 	{
-	  b = pt_append_nulstring (parser, b, "use ");
-	  b = pt_append_varchar (parser, b, r1);
-	  if (p->info.use.relative == PT_DEFAULT)
-	    {
-	      b = pt_append_nulstring (parser, b, " with default");
-	    }
-	  else if (p->info.use.relative == PT_CURRENT)
-	    {
-	      b = pt_append_nulstring (parser, b, " with current");
-	    }
+	  b = pt_append_nulstring (parser, b, " with default");
+	}
+      else if (p->info.use.relative == PT_CURRENT)
+	{
+	  b = pt_append_nulstring (parser, b, " with current");
 	}
     }
   else if (p->info.use.exclude_list)
     {
       r1 = pt_print_bytes_l (parser, p->info.use.exclude_list);
-      if (!parser->dont_prt)
+      b = pt_append_nulstring (parser, b, "exclude ");
+      b = pt_append_varchar (parser, b, r1);
+      if (p->info.use.relative == PT_DEFAULT)
 	{
-	  b = pt_append_nulstring (parser, b, "exclude ");
-	  b = pt_append_varchar (parser, b, r1);
-	  if (p->info.use.relative == PT_DEFAULT)
-	    {
-	      b = pt_append_nulstring (parser, b, " from default");
-	    }
-	  else if (p->info.use.relative == PT_CURRENT)
-	    {
-	      b = pt_append_nulstring (parser, b, " from current");
-	    }
+	  b = pt_append_nulstring (parser, b, " from default");
+	}
+      else if (p->info.use.relative == PT_CURRENT)
+	{
+	  b = pt_append_nulstring (parser, b, " from current");
 	}
     }
   else if (p->info.use.relative == PT_DEFAULT)
     {
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, "use default");
-	}
+      b = pt_append_nulstring (parser, b, "use default");
     }
   else
     {
-      if (!parser->dont_prt)
-	{
-	  b = pt_append_nulstring (parser, b, "use all");
-	}
+      b = pt_append_nulstring (parser, b, "use all");
     }
-  if (p->info.use.as_default && !parser->dont_prt)
+  if (p->info.use.as_default)
     {
       b = pt_append_nulstring (parser, b, " as default");
     }
@@ -12420,20 +11570,6 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
   char s[PT_MEMB_PRINTABLE_BUF_SIZE];
   const char *r;
 
-  if (!parser->dont_prt)
-    {
-      if (parser->print_db_value)
-	{
-	  if (p->type_enum != PT_TYPE_LOGICAL)
-	    {
-	      if (parser->custom_print & PT_LDB_PRINT)
-		{
-		  return (*parser->print_db_value) (parser, p);
-		}
-	    }
-	}
-    }
-
   switch (p->type_enum)
     {
     case PT_TYPE_SET:
@@ -12444,36 +11580,25 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  /* this is tagged as an "in" clause right hand side
 	   * Print it as a parenthesized list */
 	  r1 = pt_print_bytes_l (parser, p->info.value.data_value.set);
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, "(");
-	      q = pt_append_varchar (parser, q, r1);
-	      q = pt_append_nulstring (parser, q, ")");
-	    }
+	  q = pt_append_nulstring (parser, q, "(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
 	}
       else
 	{
-	  if (!parser->dont_prt)
+	  if (p->type_enum != PT_TYPE_SEQUENCE)
 	    {
-	      if (p->type_enum != PT_TYPE_SEQUENCE)
-		{
-		  q = pt_append_nulstring
-		    (parser, q, pt_show_type_enum (p->type_enum));
-		}
-	      q = pt_append_nulstring (parser, q, "{");
+	      q = pt_append_nulstring
+		(parser, q, pt_show_type_enum (p->type_enum));
 	    }
+	  q = pt_append_nulstring (parser, q, "{");
+
 	  if (p->info.value.data_value.set)
 	    {
 	      r1 = pt_print_bytes_l (parser, p->info.value.data_value.set);
-	      if (!parser->dont_prt)
-		{
-		  q = pt_append_varchar (parser, q, r1);
-		}
+	      q = pt_append_varchar (parser, q, r1);
 	    }
-	  if (!parser->dont_prt)
-	    {
-	      q = pt_append_nulstring (parser, q, "}");
-	    }
+	  q = pt_append_nulstring (parser, q, "}");
 	}
       break;
 
@@ -12484,84 +11609,69 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_INTEGER:
     case PT_TYPE_BIGINT:
     case PT_TYPE_SMALLINT:
-      if (!parser->dont_prt)
+      if (p->info.value.text)
 	{
-	  if (p->info.value.text)
-	    {
-	      r = p->info.value.text;
-	    }
-	  else
-	    {
-	      switch (p->type_enum)
-		{
-		case PT_TYPE_FLOAT:
-		  sprintf (s, "%g", p->info.value.data_value.f);
-		  break;
-		case PT_TYPE_DOUBLE:
-		  sprintf (s, "%g", p->info.value.data_value.d);
-		  break;
-		case PT_TYPE_INTEGER:
-		  sprintf (s, "%ld", p->info.value.data_value.i);
-		  break;
-		case PT_TYPE_BIGINT:
-		  sprintf (s, "%lld",
-			   (long long) p->info.value.data_value.bigint);
-		  break;
-		case PT_TYPE_LOGICAL:
-		  sprintf (s, "%ld <> 0", p->info.value.data_value.i);
-		  break;
-		case PT_TYPE_SMALLINT:
-		  sprintf (s, "%ld", p->info.value.data_value.i);
-		  break;
-		default:
-		  s[0] = '\0';
-		  break;
-		}
-	      r = s;
-	    }
-	  q = pt_append_nulstring (parser, q, r);
+	  r = p->info.value.text;
 	}
+      else
+	{
+	  switch (p->type_enum)
+	    {
+	    case PT_TYPE_FLOAT:
+	      sprintf (s, "%g", p->info.value.data_value.f);
+	      break;
+	    case PT_TYPE_DOUBLE:
+	      sprintf (s, "%g", p->info.value.data_value.d);
+	      break;
+	    case PT_TYPE_INTEGER:
+	      sprintf (s, "%ld", p->info.value.data_value.i);
+	      break;
+	    case PT_TYPE_BIGINT:
+	      sprintf (s, "%lld",
+		       (long long) p->info.value.data_value.bigint);
+	      break;
+	    case PT_TYPE_LOGICAL:
+	      sprintf (s, "%ld <> 0", p->info.value.data_value.i);
+	      break;
+	    case PT_TYPE_SMALLINT:
+	      sprintf (s, "%ld", p->info.value.data_value.i);
+	      break;
+	    default:
+	      s[0] = '\0';
+	      break;
+	    }
+	  r = s;
+	}
+      q = pt_append_nulstring (parser, q, r);
       break;
 
     case PT_TYPE_DATE:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "date ");
-	  q = pt_append_string_prefix (parser, q, p);
-	  q = pt_append_quoted_string (parser, q, p->info.value.text,
-				       ((p->info.value.text)
-					? strlen (p->info.value.text) : 0));
-	}
+      q = pt_append_nulstring (parser, q, "date ");
+      q = pt_append_string_prefix (parser, q, p);
+      q = pt_append_quoted_string (parser, q, p->info.value.text,
+				   ((p->info.value.text)
+				    ? strlen (p->info.value.text) : 0));
       break;
     case PT_TYPE_TIME:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "time ");
-	  q = pt_append_string_prefix (parser, q, p);
-	  q = pt_append_quoted_string (parser, q, p->info.value.text,
-				       ((p->info.value.text)
-					? strlen (p->info.value.text) : 0));
-	}
+      q = pt_append_nulstring (parser, q, "time ");
+      q = pt_append_string_prefix (parser, q, p);
+      q = pt_append_quoted_string (parser, q, p->info.value.text,
+				   ((p->info.value.text)
+				    ? strlen (p->info.value.text) : 0));
       break;
     case PT_TYPE_TIMESTAMP:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "timestamp ");
-	  q = pt_append_string_prefix (parser, q, p);
-	  q = pt_append_quoted_string (parser, q, p->info.value.text,
-				       ((p->info.value.text)
-					? strlen (p->info.value.text) : 0));
-	}
+      q = pt_append_nulstring (parser, q, "timestamp ");
+      q = pt_append_string_prefix (parser, q, p);
+      q = pt_append_quoted_string (parser, q, p->info.value.text,
+				   ((p->info.value.text)
+				    ? strlen (p->info.value.text) : 0));
       break;
     case PT_TYPE_DATETIME:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "datetime ");
-	  q = pt_append_string_prefix (parser, q, p);
-	  q = pt_append_quoted_string (parser, q, p->info.value.text,
-				       ((p->info.value.text)
-					? strlen (p->info.value.text) : 0));
-	}
+      q = pt_append_nulstring (parser, q, "datetime ");
+      q = pt_append_string_prefix (parser, q, p);
+      q = pt_append_quoted_string (parser, q, p->info.value.text,
+				   ((p->info.value.text)
+				    ? strlen (p->info.value.text) : 0));
       break;
     case PT_TYPE_CHAR:
     case PT_TYPE_NCHAR:
@@ -12576,40 +11686,39 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	      break;
 	    }
 	}
-      if (!parser->dont_prt)
-	{
-	  PT_NODE *dt;
-	  PARSER_VARCHAR *tmp = NULL;
-	  char s[PT_MEMB_BUF_SIZE];
 
-	  tmp = pt_append_string_prefix (parser, tmp, p);
-	  if (p->info.value.data_value.str)
-	    {
-	      tmp = pt_append_quoted_string
-		(parser, tmp,
-		 (char *) p->info.value.data_value.str->bytes,
-		 p->info.value.data_value.str->length);
-	    }
-	  else
-	    {
-	      tmp = pt_append_nulstring (parser, tmp, "\"\"");
-	    }
+      {
+	PT_NODE *dt;
+	PARSER_VARCHAR *tmp = NULL;
+	char s[PT_MEMB_BUF_SIZE];
 
-	  dt = p->data_type;
-	  if (dt
-	      && dt->info.data_type.precision != TP_FLOATING_PRECISION_VALUE)
-	    {
-	      q = pt_append_nulstring (parser, q, "cast(");
-	      q = pt_append_varchar (parser, q, tmp);
-	      sprintf (s, " as %s(%d))", pt_show_type_enum (p->type_enum),
-		       dt->info.data_type.precision);
-	      q = pt_append_nulstring (parser, q, s);
-	    }
-	  else
-	    {
-	      q = pt_append_varchar (parser, q, tmp);
-	    }
-	}
+	tmp = pt_append_string_prefix (parser, tmp, p);
+	if (p->info.value.data_value.str)
+	  {
+	    tmp = pt_append_quoted_string
+	      (parser, tmp,
+	       (char *) p->info.value.data_value.str->bytes,
+	       p->info.value.data_value.str->length);
+	  }
+	else
+	  {
+	    tmp = pt_append_nulstring (parser, tmp, "\"\"");
+	  }
+
+	dt = p->data_type;
+	if (dt && dt->info.data_type.precision != TP_FLOATING_PRECISION_VALUE)
+	  {
+	    q = pt_append_nulstring (parser, q, "cast(");
+	    q = pt_append_varchar (parser, q, tmp);
+	    sprintf (s, " as %s(%d))", pt_show_type_enum (p->type_enum),
+		     dt->info.data_type.precision);
+	    q = pt_append_nulstring (parser, q, s);
+	  }
+	else
+	  {
+	    q = pt_append_varchar (parser, q, tmp);
+	  }
+      }
       break;
 
     case PT_TYPE_VARCHAR:	/* have to check for embedded quotes */
@@ -12625,19 +11734,17 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	      break;
 	    }
 	}
-      if (!parser->dont_prt)
+
+      q = pt_append_string_prefix (parser, q, p);
+      if (p->info.value.data_value.str)
 	{
-	  q = pt_append_string_prefix (parser, q, p);
-	  if (p->info.value.data_value.str)
-	    {
-	      q = pt_append_quoted_string
-		(parser, q, (char *) p->info.value.data_value.str->bytes,
-		 p->info.value.data_value.str->length);
-	    }
-	  else
-	    {
-	      q = pt_append_nulstring (parser, q, "\"\"");
-	    }
+	  q = pt_append_quoted_string
+	    (parser, q, (char *) p->info.value.data_value.str->bytes,
+	     p->info.value.data_value.str->length);
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, "\"\"");
 	}
       break;
     case PT_TYPE_MONETARY:
@@ -12650,60 +11757,53 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	      break;
 	    }
 	}
-      if (!parser->dont_prt)
-	{
-	  PT_MONETARY *val;
 
-	  val = &(p->info.value.data_value.money);
-	  if (!(parser->custom_print & PT_SUPPRESS_CURRENCY))
-	    {
-	      sprintf (s, "%s%.2f",
-		       lang_currency_symbol (pt_currency_to_db (val->type)),
-		       val->amount);
+      {
+	PT_MONETARY *val;
+
+	val = &(p->info.value.data_value.money);
+	if (!(parser->custom_print & PT_SUPPRESS_CURRENCY))
+	  {
+	    sprintf (s, "%s%.2f",
+		     lang_currency_symbol (pt_currency_to_db (val->type)),
+		     val->amount);
 #if defined(HPUX)
-	      /* workaround for HP's broken printf */
-	      if (strstr (s, "++") || strstr (s, "--"))
+	    /* workaround for HP's broken printf */
+	    if (strstr (s, "++") || strstr (s, "--"))
 #else /* HPUX */
-	      if (strstr (s, "Inf"))
+	    if (strstr (s, "Inf"))
 #endif /* HPUX */
-		{
-		  sprintf (s, "%s%.2f",
-			   lang_currency_symbol (pt_currency_to_db
-						 (val->type)),
-			   (val->amount > 0 ? DBL_MAX : -DBL_MAX));
-		}
-	    }
-	  else
-	    {
-	      sprintf (s, "%.2f", val->amount);
+	      {
+		sprintf (s, "%s%.2f",
+			 lang_currency_symbol (pt_currency_to_db
+					       (val->type)),
+			 (val->amount > 0 ? DBL_MAX : -DBL_MAX));
+	      }
+	  }
+	else
+	  {
+	    sprintf (s, "%.2f", val->amount);
 #if defined(HPUX)
-	      /* workaround for HP's broken printf */
-	      if (strstr (s, "++") || strstr (s, "--"))
+	    /* workaround for HP's broken printf */
+	    if (strstr (s, "++") || strstr (s, "--"))
 #else /* HPUX */
-	      if (strstr (s, "Inf"))
+	    if (strstr (s, "Inf"))
 #endif /* HPUX */
-		{
-		  sprintf (s, "%.2f", (val->amount > 0 ? DBL_MAX : -DBL_MAX));
-		}
-	    }
-	  q = pt_append_nulstring (parser, q, s);
-	}
+	      {
+		sprintf (s, "%.2f", (val->amount > 0 ? DBL_MAX : -DBL_MAX));
+	      }
+	  }
+	q = pt_append_nulstring (parser, q, s);
+      }
       break;
     case PT_TYPE_NULL:
     case PT_TYPE_NA:
     case PT_TYPE_STAR:		/* as in count (*) */
     case PT_TYPE_OBJECT:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q,
-				   pt_show_type_enum (p->type_enum));
-	}
+      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
       break;
     default:
-      if (!parser->dont_prt)
-	{
-	  q = pt_append_nulstring (parser, q, "-- Unknown value type --");
-	}
+      q = pt_append_nulstring (parser, q, "-- Unknown value type --");
       break;
     }
   return q;
@@ -12847,11 +11947,6 @@ static PARSER_VARCHAR *
 pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1, *r2, *r3;
-
-  if (parser->dont_prt)
-    {
-      return b;
-    }
 
   if (p->info.constraint.name)
     {

@@ -113,14 +113,12 @@ static int xts_save_cache_attrinfo (const HEAP_CACHE_ATTRINFO * ptr);
 /* there are currently no pointers to these type of structures in xasl
  * so there is no need to have a seperate restore function.
  */
-static int xts_save_read_info (const READ_PROC_NODE * ptr);
 static int xts_save_merge_list_info (const MERGELIST_PROC_NODE * ptr);
 static int xts_save_ls_merge_info (const QFILE_LIST_MERGE_INFO * ptr);
 static int xts_save_update_info (const UPDATE_PROC_NODE * ptr);
 static int xts_save_delete_info (const DELETE_PROC_NODE * ptr);
 static int xts_save_insert_info (const INSERT_PROC_NODE * ptr);
 #endif
-static int xts_save_start_proc (const START_PROC * ptr);
 static int xts_save_db_value_array (DB_VALUE ** ptr, int size);
 static int xts_save_int_array (int *ptr, int size);
 static int xts_save_hfid_array (HFID * ptr, int size);
@@ -144,8 +142,6 @@ static char *xts_process_buildvalue_proc (char *ptr,
 static char *xts_process_mergelist_proc (char *ptr,
 					 const MERGELIST_PROC_NODE *
 					 merge_list_info);
-static char *xts_process_read_proc (char *ptr,
-				    const READ_PROC_NODE * read_info);
 static char *xts_process_ls_merge_info (char *ptr,
 					const QFILE_LIST_MERGE_INFO *
 					qfile_list_merge_info);
@@ -155,8 +151,6 @@ static char *xts_process_delete_proc (char *ptr,
 				      const DELETE_PROC_NODE * delete_proc);
 static char *xts_process_insert_proc (char *ptr,
 				      const INSERT_PROC_NODE * insert_proc);
-static char *xts_process_start_proc (char *ptr,
-				     const START_PROC * start_proc);
 static char *xts_process_outptr_list (char *ptr,
 				      const OUTPTR_LIST * outptr_list);
 static char *xts_process_selupd_list (char *ptr,
@@ -215,6 +209,9 @@ static char *xts_process_sort_list (char *ptr, const SORT_LIST * sort_list);
 static char *xts_process_method_sig_list (char *ptr,
 					  const METHOD_SIG_LIST *
 					  method_sig_list);
+static char *xts_process_connectby_proc (char *ptr,
+					 const CONNECTBY_PROC_NODE *
+					 connectby_proc);
 
 static int xts_sizeof_xasl_node (const XASL_NODE * ptr);
 static int xts_sizeof_cache_attrinfo (const HEAP_CACHE_ATTRINFO * ptr);
@@ -222,13 +219,11 @@ static int xts_sizeof_union_proc (const UNION_PROC_NODE * ptr);
 static int xts_sizeof_fetch_proc (const FETCH_PROC_NODE * ptr);
 static int xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * ptr);
 static int xts_sizeof_buildvalue_proc (const BUILDVALUE_PROC_NODE * ptr);
-static int xts_sizeof_read_proc (const READ_PROC_NODE * ptr);
 static int xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * ptr);
 static int xts_sizeof_ls_merge_info (const QFILE_LIST_MERGE_INFO * ptr);
 static int xts_sizeof_update_proc (const UPDATE_PROC_NODE * ptr);
 static int xts_sizeof_delete_proc (const DELETE_PROC_NODE * ptr);
 static int xts_sizeof_insert_proc (const INSERT_PROC_NODE * ptr);
-static int xts_sizeof_start_proc (const START_PROC * ptr);
 static int xts_sizeof_outptr_list (const OUTPTR_LIST * ptr);
 static int xts_sizeof_selupd_list (const SELUPD_LIST * ptr);
 static int xts_sizeof_pred_expr (const PRED_EXPR * ptr);
@@ -259,6 +254,7 @@ static int xts_sizeof_function_type (const FUNCTION_TYPE * ptr);
 static int xts_sizeof_srlist_id (const QFILE_SORTED_LIST_ID * ptr);
 static int xts_sizeof_sort_list (const SORT_LIST * ptr);
 static int xts_sizeof_method_sig_list (const METHOD_SIG_LIST * ptr);
+static int xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * ptr);
 
 static int xts_mark_ptr_visited (const void *ptr, int offset);
 static int xts_get_offset_visited_ptr (const void *ptr);
@@ -1601,73 +1597,6 @@ end:
  */
 
 static int
-xts_save_read_info (const READ_PROC_NODE * read_proc)
-{
-  int offset;
-  int size;
-  OR_ALIGNED_BUF (sizeof (*read_proc) * 2) a_buf;
-  char *buf = OR_ALIGNED_BUF_START (a_buf);
-  char *buf_p = NULL;
-  bool is_buf_alloced = false;
-
-  if (read_proc == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  offset = xts_get_offset_visited_ptr (read_proc);
-  if (offset != ER_FAILED)
-    {
-      return offset;
-    }
-
-  size = xts_sizeof_read_proc (read_proc);
-  if (size == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  offset = xts_reserve_location_in_stream (size);
-  if (offset == ER_FAILED
-      || xts_mark_ptr_visited (read_proc, offset) == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
-    {
-      buf_p = buf;
-    }
-  else
-    {
-      buf_p = (char *) malloc (size);
-      if (buf_p == NULL)
-	{
-	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return ER_FAILED;
-	}
-
-      is_buf_alloced = true;
-    }
-
-  if (xts_process_read_info (buf_p, read_proc) == NULL)
-    {
-      offset = ER_FAILED;
-      goto end;
-    }
-
-  memcpy (&xts_Stream_buffer[offset], buf_p, size);
-
-end:
-  if (is_buf_alloced)
-    {
-      free_and_init (buf_p);
-    }
-
-  return offset;
-}
-
-static int
 xts_save_merge_list_info (const MERGELIST_PROC_NODE * mergelist_proc)
 {
   int offset;
@@ -2062,73 +1991,6 @@ xts_save_method_sig_list (const METHOD_SIG_LIST * method_sig_list)
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
 end:
-  if (is_buf_alloced)
-    {
-      free_and_init (buf_p);
-    }
-
-  return offset;
-}
-
-static int
-xts_save_start_proc (const START_PROC * start_proc)
-{
-  int offset;
-  int size;
-  OR_ALIGNED_BUF (sizeof (*start_proc) * 2) a_buf;
-  char *buf = OR_ALIGNED_BUF_START (a_buf);
-  char *buf_p = NULL;
-  bool is_buf_alloced = false;
-
-  if (start_proc == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  offset = xts_get_offset_visited_ptr (start_proc);
-  if (offset != ER_FAILED)
-    {
-      return offset;
-    }
-
-  size = xts_sizeof_start_proc (start_proc);
-  if (size == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  offset = xts_reserve_location_in_stream (size);
-  if (offset == ER_FAILED
-      || xts_mark_ptr_visited (start_proc, offset) == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
-    {
-      buf_p = buf;
-    }
-  else
-    {
-      buf_p = (char *) malloc (size);
-      if (buf_p == NULL)
-	{
-	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return ER_FAILED;
-	}
-
-      is_buf_alloced = true;
-    }
-
-  buf = xts_process_start_proc (buf_p, start_proc);
-  if (buf == NULL)
-    {
-      return ER_FAILED;
-    }
-  assert (buf <= buf_p + size);
-
-  memcpy (&xts_Stream_buffer[offset], buf_p, size);
-
   if (is_buf_alloced)
     {
       free_and_init (buf_p);
@@ -2632,13 +2494,6 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->is_single_tuple);
 
-  offset = xts_save_start_proc (xasl->start_proc);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
   ptr = or_pack_int (ptr, xasl->option);
 
   offset = xts_save_outptr_list (xasl->outptr_list);
@@ -2649,13 +2504,6 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_selupd_list (xasl->selected_upd_list);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  offset = xts_save_start_proc (xasl->start_list);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -2763,6 +2611,55 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_xasl_node (xasl->connect_by_ptr);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_db_value (xasl->level_val);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable (xasl->level_regu);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_db_value (xasl->isleaf_val);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable (xasl->isleaf_regu);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_db_value (xasl->iscycle_val);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable (xasl->iscycle_regu);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   for (cnt = 0, access_spec = xasl->curr_spec; access_spec;
        access_spec = access_spec->next, cnt++)
     ;				/* empty */
@@ -2813,6 +2710,14 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 	}
       break;
 
+    case CONNECTBY_PROC:
+      ptr = xts_process_connectby_proc (ptr, &xasl->proc.connect_by);
+      if (ptr == NULL)
+	{
+	  return NULL;
+	}
+      break;
+
     case UPDATE_PROC:
       ptr = xts_process_update_proc (ptr, &xasl->proc.update);
       if (ptr == NULL)
@@ -2857,15 +2762,6 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       break;
 
     case SCAN_PROC:
-      break;
-
-    case READ_MPROC:
-    case READ_PROC:
-      ptr = xts_process_read_proc (ptr, &xasl->proc.read);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     default:
@@ -3222,38 +3118,6 @@ xts_process_ls_merge_info (char *ptr,
 }
 
 static char *
-xts_process_read_proc (char *ptr, const READ_PROC_NODE * read_info)
-{
-  int offset, count;
-
-  count = read_info->count;
-  ptr = or_pack_int (ptr, count);
-
-  offset = xts_save_domain_array (read_info->domains, count);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  offset = xts_save_oid_array (read_info->proxy_id, count);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  offset = xts_save_oid_array (read_info->view_id, count);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  return ptr;
-}
-
-static char *
 xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
 {
   int offset;
@@ -3396,58 +3260,6 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
   ptr = or_pack_int (ptr, insert_info->release_lock);
 
   offset = xts_save_partition_info (insert_info->partition);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  return ptr;
-}
-
-static char *
-xts_process_start_proc (char *ptr, const START_PROC * start_proc)
-{
-  int offset;
-
-  offset = xts_save_string_with_length (start_proc->sql_command,
-					start_proc->stmtLength);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  ptr = or_pack_int (ptr, start_proc->stmtLength);
-
-  offset = xts_save_string (start_proc->ldb);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  ptr = pack_long (ptr, start_proc->comp_dbid);
-
-  ptr = pack_long (ptr, start_proc->command_id);
-
-  offset = xts_save_start_proc (start_proc->next);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  offset = xts_save_xasl_node (start_proc->read_proc);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  ptr = or_pack_int (ptr, start_proc->vals_len);
-
-  offset = xts_save_input_vals (start_proc->input_vals, start_proc->vals_len);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -4491,6 +4303,101 @@ xts_process_method_sig_list (char *ptr,
   return or_pack_method_sig_list (ptr, (void *) method_sig_list);
 }
 
+static char *
+xts_process_connectby_proc (char *ptr,
+			    const CONNECTBY_PROC_NODE * connectby_proc)
+{
+  int offset;
+
+  offset = xts_save_pred_expr (connectby_proc->start_with_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_pred_expr (connectby_proc->after_connect_by_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_list_id (connectby_proc->input_list_id);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_list_id (connectby_proc->start_with_list_id);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (connectby_proc->regu_list_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (connectby_proc->regu_list_rest);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_val_list (connectby_proc->prior_val_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_outptr_list (connectby_proc->prior_outptr_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (connectby_proc->prior_regu_list_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (connectby_proc->prior_regu_list_rest);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset =
+    xts_save_regu_variable_list (connectby_proc->after_cb_regu_list_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset =
+    xts_save_regu_variable_list (connectby_proc->after_cb_regu_list_rest);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  return ptr;
+}
+
 /*
  * xts_sizeof_xasl_node () -
  *   return:
@@ -4513,11 +4420,9 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     OR_INT_SIZE +		/* ordbynum_flag */
     PTR_SIZE +			/* single_tuple */
     OR_INT_SIZE +		/* is_single_tuple */
-    PTR_SIZE +			/* start_proc */
     OR_INT_SIZE +		/* option */
     PTR_SIZE +			/* outptr_list */
     PTR_SIZE +			/* selected_upd_list */
-    PTR_SIZE +			/* start_list */
     PTR_SIZE +			/* val_list */
     PTR_SIZE +			/* merge_val_list */
     PTR_SIZE +			/* aptr_list */
@@ -4530,6 +4435,13 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     OR_INT_SIZE +		/* instnum_flag */
     PTR_SIZE +			/* fptr_list */
     PTR_SIZE +			/* scan_ptr */
+    PTR_SIZE +			/* connect_by_ptr */
+    PTR_SIZE +			/* level_val */
+    PTR_SIZE +			/* level_regu */
+    PTR_SIZE +			/* isleaf_val */
+    PTR_SIZE +			/* isleaf_regu */
+    PTR_SIZE +			/* iscycle_val */
+    PTR_SIZE +			/* iscycle_regu */
     OR_INT_SIZE +		/* next_scan_on */
     OR_INT_SIZE +		/* next_scan_block_on */
     OR_INT_SIZE +		/* cat_fetched */
@@ -4585,6 +4497,15 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
       size += tmp_size;
       break;
 
+    case CONNECTBY_PROC:
+      tmp_size = xts_sizeof_connectby_proc (&xasl->proc.connect_by);
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
+      break;
+
     case UPDATE_PROC:
       tmp_size = xts_sizeof_update_proc (&xasl->proc.update);
       if (tmp_size == ER_FAILED)
@@ -4626,16 +4547,6 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     case OBJFETCH_PROC:
     case SETFETCH_PROC:
       tmp_size = xts_sizeof_fetch_proc (&xasl->proc.fetch);
-      if (tmp_size == ER_FAILED)
-	{
-	  return ER_FAILED;
-	}
-      size += tmp_size;
-      break;
-
-    case READ_MPROC:
-    case READ_PROC:
-      tmp_size = xts_sizeof_read_proc (&xasl->proc.read);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -4751,22 +4662,6 @@ xts_sizeof_buildvalue_proc (const BUILDVALUE_PROC_NODE * build_value)
     PTR_SIZE +			/* agg_list */
     PTR_SIZE +			/* outarith_list */
     OR_INT_SIZE;		/* is_always_false */
-
-  return size;
-}
-
-/*
- * xts_sizeof_read_proc () -
- *   return:
- *   ptr(in)    :
- */
-static int
-xts_sizeof_read_proc (const READ_PROC_NODE * read_info)
-{
-  int size = 0;
-
-  size += OR_INT_SIZE +		/* count */
-    3 * PTR_SIZE;		/* 3 array pointers */
 
   return size;
 }
@@ -4895,29 +4790,6 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
     OR_INT_SIZE +		/* no_logging */
     OR_INT_SIZE +		/* release_lock */
     PTR_SIZE;			/* partition_info */
-
-  return size;
-}
-
-/*
- * xts_sizeof_start_proc () -
- *   return:
- *   ptr(in)    :
- */
-static int
-xts_sizeof_start_proc (const START_PROC * start_proc)
-{
-  int size = 0;
-
-  size += PTR_SIZE +		/* sql_command */
-    OR_INT_SIZE +		/* stmtLength */
-    PTR_SIZE +			/* ldb */
-    LONG_SIZE +			/* comd_dbid */
-    LONG_SIZE +			/* command_id */
-    PTR_SIZE +			/* next */
-    PTR_SIZE +			/* read_proc */
-    OR_INT_SIZE +		/* vals_len */
-    PTR_SIZE;			/* input_vals */
 
   return size;
 }
@@ -5717,6 +5589,32 @@ static int
 xts_sizeof_method_sig_list (const METHOD_SIG_LIST * method_sig_lis)
 {
   return or_method_sig_list_length ((void *) method_sig_lis);
+}
+
+/*
+ * xts_sizeof_connectby_proc () -
+ *   return:
+ *   ptr(in)    :
+ */
+static int
+xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * connectby)
+{
+  int size = 0;
+
+  size += PTR_SIZE +		/* start_with_pred */
+    PTR_SIZE +			/* after_connect_by_pred */
+    PTR_SIZE +			/* input_list_id */
+    PTR_SIZE +			/* start_with_list_id */
+    PTR_SIZE +			/* regu_list_pred */
+    PTR_SIZE +			/* regu_list_rest */
+    PTR_SIZE +			/* prior_val_list */
+    PTR_SIZE +			/* prior_outptr_list */
+    PTR_SIZE +			/* prior_regu_list_pred */
+    PTR_SIZE +			/* prior_regu_list_rest */
+    PTR_SIZE +			/* after_cb_regu_list_pred */
+    PTR_SIZE;			/* after_cb_regu_list_rest */
+
+  return size;
 }
 
 /*

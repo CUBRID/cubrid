@@ -1,10 +1,10 @@
-라이선스 권리
+License Agreement
 
 Copyright (C) 2008 - 2009 Search Solution Corporation. All rights reserved by Search Solution.
 
 CUBRID is registered trademark of Search Solution Corporation.
 
-이 프로그램은 구성요소에 따라 GNU GPL v2 또는 BSD 라이선스 하에 제공됩니다. 자세한 사항은 큐브리드 홈페이지(http://www.cubrid.com)를 참조하시기 바랍니다.
+CUBRID is licensed under the GNU GPL v2 or higher or BSD License according to its respective components. For more information, please refer to the CUBRID Web site (http://www.cubrid.org).
 
 -------------------------------------------------------------------------------------------------------------------------------------------
 

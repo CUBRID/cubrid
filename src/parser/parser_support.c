@@ -107,6 +107,13 @@ static PT_NODE *pt_collect_host_info (PARSER_CONTEXT * parser, PT_NODE * node,
 static PT_NODE *pt_collect_parameters (PARSER_CONTEXT * parser,
 				       PT_NODE * node, void *param_list,
 				       int *continue_walk);
+static PT_NODE *pt_must_be_filtering (PARSER_CONTEXT * parser, PT_NODE * node,
+				      void *arg, int *continue_walk);
+static bool pt_is_filtering_predicate (PARSER_CONTEXT * parser,
+				       PT_NODE * predicate);
+static PT_NODE *pt_is_filtering_skip_and_or (PARSER_CONTEXT * parser,
+					     PT_NODE * node, void *arg,
+					     int *continue_walk);
 
 static void *regu_bytes_alloc (int length);
 static void regu_dbvallist_init (QPROC_DB_VALUE_LIST ptr);
@@ -709,12 +716,10 @@ pt_is_ddl_statement (const PT_NODE * node)
 	{
 	case PT_ALTER:
 	case PT_ALTER_SERIAL:
-	  /*case PT_REGISTER_LDB:?? */
 	case PT_CREATE_ENTITY:
 	case PT_CREATE_INDEX:
 	case PT_CREATE_TRIGGER:
 	case PT_CREATE_SERIAL:
-	  /*case PT_DROP_LDB:?? */
 	case PT_DROP:
 	case PT_DROP_TRIGGER:
 	case PT_DROP_SERIAL:
@@ -788,6 +793,33 @@ pt_is_attr (PT_NODE * node)
 	}
     }
   return false;
+}
+
+/*
+ * pt_is_pseudocolumn_node() -
+ *    return:
+ *  tree(in/out):
+ *  arg(in/out):
+ *  continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_pseudocolumn_node (PARSER_CONTEXT * parser, PT_NODE * tree,
+			 void *arg, int *continue_walk)
+{
+  int *found = (int *) arg;
+
+  if (tree->node_type == PT_EXPR)
+    {
+      if (tree->info.expr.op == PT_LEVEL
+	  || tree->info.expr.op == PT_CONNECT_BY_ISLEAF
+	  || tree->info.expr.op == PT_CONNECT_BY_ISCYCLE)
+	{
+	  *found = 1;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return tree;
 }
 
 /*
@@ -1481,6 +1513,214 @@ pt_object_part (const PT_NODE * node)
     }
 
   return NULL;
+}
+
+/*
+ * pt_must_be_filtering () - Finds expressions that are incompatible with
+ *     executing joins before a hierarchical query (connect by). If such
+ *     expressions are found the predicate must be executed after connect by
+ *     (it is a filtering predicate, not a join predicate).
+ *     In addition, it figures out if the predicate refers to only one spec_id
+ *     or more. This is needed to correctly classify the predicate as a join
+ *     predicate.
+ */
+static PT_NODE *
+pt_must_be_filtering (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+		      int *continue_walk)
+{
+  MUST_BE_FILTERING_INFO *info = (MUST_BE_FILTERING_INFO *) arg;
+
+  if (info->must_be_filtering)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  if (PT_IS_QUERY (node))
+    {
+      info->must_be_filtering = true;
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  if (PT_IS_NAME_NODE (node))
+    {
+      if (node->info.name.spec_id != 0
+	  && node->info.name.correlation_level == 0)
+	{
+	  if (info->first_spec_id == 0)
+	    {
+	      info->first_spec_id = node->info.name.spec_id;
+	    }
+	  else if (info->first_spec_id != node->info.name.spec_id)
+	    {
+	      info->has_second_spec_id = true;
+	    }
+	}
+      *continue_walk = PT_CONTINUE_WALK;
+      return node;
+    }
+
+  if (PT_IS_EXPR_NODE (node)
+      && (PT_IS_SERIAL (node->info.expr.op)
+	  || PT_IS_NUMBERING_AFTER_EXECUTION (node->info.expr.op)
+	  || PT_REQUIRES_HIERARCHICAL_QUERY (node->info.expr.op)))
+    {
+      info->must_be_filtering = true;
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+  *continue_walk = PT_CONTINUE_WALK;
+
+  return node;
+}
+
+/*
+ * pt_is_filtering_predicate ()
+ *   return: Whether the given predicate is to be executed as filtering after
+ *           the hierarchical query or as a join predicate before the
+ *           hierarchical query.
+ */
+static bool
+pt_is_filtering_predicate (PARSER_CONTEXT * parser, PT_NODE * predicate)
+{
+  MUST_BE_FILTERING_INFO info;
+
+  info.must_be_filtering = false;
+  info.first_spec_id = 0;
+  info.has_second_spec_id = false;
+
+  parser_walk_tree (parser, predicate, pt_must_be_filtering, &info,
+		    NULL, NULL);
+
+  if (!info.has_second_spec_id)
+    {
+      /* It's not a join predicate as it has references to one spec only. */
+      return true;
+    }
+  else
+    {
+      /* It references more than one spec (like a join predicate), but we
+         consider it to be a filtering predicate if it contains certain
+         expressions. */
+      return info.must_be_filtering;
+    }
+}
+
+/*
+ * pt_is_filtering_skip_and_or () Checks for the existence of at least a
+ *   filtering predicate in a tree of predicates.
+ */
+static PT_NODE *
+pt_is_filtering_skip_and_or (PARSER_CONTEXT * parser, PT_NODE * node,
+			     void *arg, int *continue_walk)
+{
+  bool *already_found_filtering = (bool *) arg;
+
+  if (*already_found_filtering)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_AND)
+      || PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_OR))
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+      return node;
+    }
+
+  if (pt_is_filtering_predicate (parser, node))
+    {
+      *already_found_filtering = true;
+    }
+
+  *continue_walk = PT_STOP_WALK;
+
+  return node;
+}
+
+/*
+ * pt_is_filtering_expression ()
+ *   return: Whether the given expression is to be executed as filtering after
+ *           the hierarchical query or as a join expression before the
+ *           hierarchical query.
+ *           Unfortunately this expression can contain PT_AND and PT_OR because
+ *           CNF is not performed in some cases; see TRANSFORM_CNF_OR_COMPACT.
+ *           Because of this we must dig inside the tree to find the predicates.
+ */
+static bool
+pt_is_filtering_expression (PARSER_CONTEXT * parser, PT_NODE * expression)
+{
+  PT_NODE *or_next_save;
+  bool result = false;
+
+  assert (expression->next == NULL);
+
+  or_next_save = expression->or_next;
+  expression->or_next = NULL;
+
+  parser_walk_tree (parser, expression, pt_is_filtering_skip_and_or, &result,
+		    NULL, NULL);
+
+  expression->or_next = or_next_save;
+  return result;
+}
+
+/*
+ * pt_is_filtering_expression ()
+ *   return: Splits the given predicate list into two: a part to be executed
+ *           before the hierarchical query as it defines the join conditions and
+ *           a second part to be executed as filtering after the connect by
+ *           execution.
+ */
+void
+pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates,
+		     PT_NODE ** join_part, PT_NODE ** after_cb_filter)
+{
+  PT_NODE *current_conj, *current_pred;
+  PT_NODE *next_conj = NULL, *next_pred = NULL;
+
+  for (current_conj = predicates; current_conj != NULL;
+       current_conj = next_conj)
+    {
+      bool has_filter_pred = false;
+
+      assert (PT_IS_EXPR_NODE (current_conj));
+      /* It is either fully CNF or not at all. */
+      assert (!(current_conj->next != NULL
+		&& (PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_AND)
+		    || PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_OR))));
+
+      next_conj = current_conj->next;
+      current_conj->next = NULL;
+
+      for (current_pred = current_conj; current_pred != NULL;
+	   current_pred = current_pred->or_next)
+	{
+	  assert (PT_IS_EXPR_NODE (current_pred));
+	  /* It is either fully CNF or not at all. */
+	  assert (!(current_pred->or_next != NULL
+		    && (PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred, PT_AND)
+			|| PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred,
+							  PT_OR))));
+
+	  if (pt_is_filtering_expression (parser, current_pred))
+	    {
+	      has_filter_pred = true;
+	      break;
+	    }
+	}
+
+      if (has_filter_pred)
+	{
+	  *after_cb_filter = parser_append_node (current_conj,
+						 *after_cb_filter);
+	}
+      else
+	{
+	  *join_part = parser_append_node (current_conj, *join_part);
+	}
+    }
 }
 
 /*
@@ -2232,7 +2472,7 @@ pt_get_proxy_spec_name (const char *qspec)
   static size_t namelen = 256;
 
   name = tblname;
-  /* extract ldb table name from proxy query spec */
+
   if (qspec
       && (parser = parser_create_parser ())
       && (qtree = parser_parse_string (parser, qspec))
@@ -2426,6 +2666,7 @@ regu_bytes_alloc (int length)
     return ptr;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * regu_string_alloc () - Memory allocation function for CHAR *.
  *   return: char *
@@ -2467,6 +2708,7 @@ regu_string_ws_alloc (int length)
 
   return (ptr = (char *) db_ws_alloc (length));
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * regu_strdup () - Duplication function for string.
@@ -3336,8 +3578,6 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
       break;
 
     case SCAN_PROC:
-    case READ_MPROC:
-    case READ_PROC:
       break;
 
     case UPDATE_PROC:
@@ -3347,6 +3587,12 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
       break;
 
     case INSERT_PROC:
+      break;
+
+    case CONNECTBY_PROC:
+      /* allocate CONNECT BY internal list files */
+      ptr->proc.connect_by.input_list_id = regu_listid_alloc ();
+      ptr->proc.connect_by.start_with_list_id = regu_listid_alloc ();
       break;
     }
 }
@@ -3680,6 +3926,7 @@ regu_listid_init (QFILE_LIST_ID * ptr)
   QFILE_CLEAR_LIST_ID (ptr);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * regu_cp_listid () -
  *   return: bool
@@ -3693,6 +3940,7 @@ regu_cp_listid (QFILE_LIST_ID * dst_list_id, QFILE_LIST_ID * src_list_id)
 {
   return cursor_copy_list_id (dst_list_id, src_list_id);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * regu_free_listid () -
@@ -4557,6 +4805,7 @@ regu_set_error_with_zero_args (int err_type)
   qp_Packing_er_code = err_type;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * regu_set_error_with_one_args () -
  *   return:
@@ -4583,3 +4832,4 @@ regu_set_global_error (void)
 {
   qp_Packing_er_code = ER_REGU_SYSTEM;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */

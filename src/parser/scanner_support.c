@@ -27,6 +27,7 @@
 
 #include <math.h>
 
+#include "porting.h"
 #include "parser_message.h"
 
 #define JP_MAXNAME          256
@@ -96,7 +97,7 @@ pt_nextchar (void)
 /*
  * pt_cleanup_hint () - cleanup hint arg_list
  *   parser(in): parser context
- *   hint_table(in): hint table to cleanup 
+ *   hint_table(in): hint table to cleanup
  */
 void
 pt_cleanup_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
@@ -126,7 +127,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
   /* read hint info */
   for (i = 0; hint_table[i].tokens; i++)
     {
-      if (strstr (text, hint_table[i].tokens))
+      if (stristr (text, hint_table[i].tokens))
 	{
 
 	  switch (hint_table[i].hint)
@@ -273,6 +274,21 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.query.q.select.jdbc_life_time =
 		    hint_table[i].arg_list;
 		  hint_table[i].arg_list = NULL;
+		}
+	      break;
+	    case PT_HINT_NO_STATS:	/* no stats */
+	      if (node->node_type == PT_CREATE_ENTITY)
+		{
+		  node->info.create_entity.hint |= hint_table[i].hint;
+		}
+	      else if (node->node_type == PT_ALTER)
+		{
+		  node->info.alter.hint |= hint_table[i].hint;
+		}
+	      else if (node->node_type == PT_CREATE_INDEX
+		       || node->node_type == PT_DROP_INDEX)
+		{
+		  node->info.index.hint |= hint_table[i].hint;
 		}
 	      break;
 	    default:

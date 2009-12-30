@@ -173,6 +173,11 @@ $ csql help messages
 \tdeferred               - deferred trigger information\n\
 \tworkspace              - workspace information\n\
 \tlock                   - lock information (client-server mode)\n\
-\tstats class-name       - class statistics information\n
+\tstats class-name       - class statistics information\n\
+\ttrantable              - transaction information\n\
+\tlogstat                - log information\n\
+\tcsstat                 - critical section information\n\
+\tplan                   - plan cache information\n\
+\tqcache                 - query cache information\n
 235 <Partitions>
 236 A class name is required.

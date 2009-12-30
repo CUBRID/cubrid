@@ -1,0 +1,3 @@
+#db-name	vol-path		db-host		log-path
+qa2		/home1/qa/databases/qa2	d8g674:d8g675	/home1/qa/databases/qa2
+qa1		/home1/qa/databases/qa1	d8g674:d8g675	/home1/qa/databases/qa1

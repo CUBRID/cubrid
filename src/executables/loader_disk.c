@@ -429,6 +429,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
   return (error);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * disk_insert_instance_using_mobj - inserts a new object in the database
  * given a memory object  and class object
@@ -590,3 +591,4 @@ disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
 
   return (error);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */

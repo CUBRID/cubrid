@@ -40,9 +40,10 @@
    as returned by sizeof().  Note that MEMORY_STAT_SIZE and PACKED_STAT_SIZE
    are not necesarily the same although they will be in most cases.
 */
-#define STAT_SIZE_MEMORY 72
-#define STAT_SIZE_PACKED OR_INT_SIZE * 18
+#define STAT_SIZE_PACKED (OR_INT_SIZE * 32)
+#define STAT_SIZE_MEMORY STAT_SIZE_PACKED
 
+#define GLOBAL_STAT_SIZE_PACKED (OR_INT64_SIZE * 32)
 
 /* These define the requests that the server will respond to */
 enum net_server_request
@@ -199,6 +200,12 @@ enum net_server_request
   NET_SERVER_SHUTDOWN,
 
   NET_SERVER_REPL_BTREE_FIND_UNIQUE,
+
+  NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS,
+  NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS,
+
+  NET_SERVER_CSS_DUMP_CS_STAT,
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
@@ -219,6 +226,11 @@ enum net_server_request
 
 extern char *net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
 extern char *net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
+
+extern char *net_pack_global_stats (char *buf,
+				    MNT_SERVER_EXEC_GLOBAL_STATS * stats);
+extern char *net_unpack_global_stats (char *buf,
+				      MNT_SERVER_EXEC_GLOBAL_STATS * stats);
 
 /* Server startup */
 extern int net_server_start (const char *name);

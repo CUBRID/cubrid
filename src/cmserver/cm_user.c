@@ -232,8 +232,12 @@ dbmt_user_write_cubrid_pass (T_DBMT_USER * dbmt_user, char *_dbmt_error)
   char strbuf[1024];
   int lock_fd;
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (tmpfile, "%s/tmp/DBMT_util_pass.%d", sco.szCubrid,
 	   (int) getpid ());
+#else
+  sprintf (tmpfile, "%s/DBMT_util_pass.%d", CUBRID_TMPDIR, (int) getpid ());
+#endif
   fp = fopen (tmpfile, "w");
   if (fp == NULL)
     {
@@ -339,8 +343,12 @@ dbmt_user_write_pass (T_DBMT_USER * dbmt_user, char *_dbmt_error)
   FILE *fp;
   int i, lock_fd;
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (tmpfile, "%s/tmp/DBMT_util_pass.%d", sco.szCubrid,
 	   (int) getpid ());
+#else
+  sprintf (tmpfile, "%s/DBMT_util_pass.%d", CUBRID_TMPDIR, (int) getpid ());
+#endif
   fp = fopen (tmpfile, "w");
   if (fp == NULL)
     {

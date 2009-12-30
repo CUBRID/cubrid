@@ -101,9 +101,6 @@ syslog (long priority, const char *message, ...)
 #endif
 #define PATH_CURRENT    '.'
 
-#define ER_LOG_DIR  	"log"
-#define ER_LOG_SUFFIX   ".err"
-
 /*
  * These are done via complied constants rather than the message
  * catalog, because they must be avilable if the message catalog is not
@@ -265,6 +262,7 @@ static const char *er_Msglog_file_name = NULL;
 static FILE *er_Msglog = NULL;
 
 static ER_FMT er_fmt_list[(-ER_LAST_ERROR) + 1];
+static int er_fmt_msg_fail_count = -ER_LAST_ERROR;
 #if !defined (SERVER_MODE)
 static ER_MSG ermsg = { 0, 0, NULL, 0, 0, NULL, NULL, NULL, 0 };
 static ER_MSG *er_Msg = NULL;
@@ -313,8 +311,9 @@ static int er_study_spec (const char *conversion_spec, char *simple_spec,
 			  int *position, int *width, int *va_class);
 static void er_study_fmt (ER_FMT * fmt);
 static size_t er_estimate_size (ER_FMT * fmt, va_list * ap);
-static ER_FMT *er_find_fmt (int err_id);
+static ER_FMT *er_find_fmt (int err_id, int num_args);
 static void er_init_fmt (ER_FMT * fmt);
+static ER_FMT *er_create_fmt_msg (ER_FMT * fmt, int err_id, const char *msg);
 static void er_clear_fmt (ER_FMT * fmt);
 #if defined (SERVER_MODE)
 static int er_make_room (int size, THREAD_ENTRY * th_entry);
@@ -552,19 +551,19 @@ er_event_final (void)
 int
 er_init (const char *msglog_file_name, int exit_ask)
 {
-  unsigned int i;
+  int i;
   int r;
+  const char *msg;
+  MSG_CATD msg_catd;
 
-#if defined (SA_MODE)
-  /*
-   * If the error module has already been initialized, shutted down before
-   * it is initialized again.
-   */
-  if (er_Msg != NULL)
+  if (er_hasalready_initiated)
     {
+#if defined (SERVER_MODE)
+      er_final (1);
+#else
       er_final ();
+#endif
     }
-#endif /* SA_MODE */
 
   for (i = 0; i < DIM (er_builtin_msg); i++)
     {
@@ -580,6 +579,32 @@ er_init (const char *msglog_file_name, int exit_ask)
   for (i = 0; i < abs (ER_LAST_ERROR); i++)
     {
       er_init_fmt (&er_fmt_list[i]);
+    }
+
+  msg_catd = msgcat_get_descriptor (MSGCAT_CATALOG_CUBRID);
+  if (msg_catd != NULL)
+    {
+      er_fmt_msg_fail_count = 0;
+      for (i = 2; i < abs (ER_LAST_ERROR); i++)
+	{
+	  msg = msgcat_gets (msg_catd, MSGCAT_SET_ERROR, i, NULL);
+	  if (msg == NULL || msg[0] == '\0')
+	    {
+	      er_fmt_msg_fail_count++;
+	      continue;
+	    }
+	  else
+	    {
+	      if (er_create_fmt_msg (&er_fmt_list[i], -i, msg) == NULL)
+		{
+		  er_fmt_msg_fail_count++;
+		}
+	    }
+	}
+    }
+  else
+    {
+      er_fmt_msg_fail_count = abs (ER_LAST_ERROR) - 2;
     }
 
   r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
@@ -619,9 +644,7 @@ er_init (const char *msglog_file_name, int exit_ask)
       if (msglog_file_name[0] != PATH_SEPARATOR
 	  && msglog_file_name[0] != PATH_CURRENT)
 	{
-	  snprintf (er_Log_file_name, PATH_MAX - 1, "%s%c%s%c%s",
-		    envvar_root (), PATH_SEPARATOR, ER_LOG_DIR,
-		    PATH_SEPARATOR, msglog_file_name);
+	  envvar_logdir_file (er_Log_file_name, PATH_MAX, msglog_file_name);
 	}
       else
 	{
@@ -670,7 +693,7 @@ er_file_open (const char *path)
   tpath = strdup (path);
   while (1)
     {
-      if (dirname_r (tpath, dir, PATH_MAX) > 0 && access (dir, 0) < 0)
+      if (dirname_r (tpath, dir, PATH_MAX) > 0 && access (dir, F_OK) < 0)
 	{
 	  if (mkdir (dir, 0777) < 0 && errno == ENOENT)
 	    {
@@ -758,7 +781,7 @@ er_start (THREAD_ENTRY * th_entry)
 {
   int status = NO_ERROR;
   int r;
-  unsigned int i;
+  int i;
 
   if (er_hasalready_initiated == false)
     {
@@ -881,7 +904,7 @@ static int
 er_start (void)
 {
   int status = NO_ERROR;
-  unsigned int i;
+  int i;
 
   /* Make sure that the behavior of the module has been defined */
 
@@ -998,7 +1021,7 @@ er_start (void)
 void
 er_final (bool do_global_final)
 {
-  unsigned int i;
+  int i;
   int r;
   THREAD_ENTRY *th_entry;
 
@@ -1076,7 +1099,7 @@ exit:
 void
 er_final (void)
 {
-  unsigned int i;
+  int i;
 
   er_event_final ();
 
@@ -1359,7 +1382,7 @@ er_set_internal (int severity, const char *file_name, const int line_no,
    * Get hold of the compiled format string for this message and get an
    * estimate of the size of the buffer required to print it.
    */
-  er_fmt = er_find_fmt (err_id);
+  er_fmt = er_find_fmt (err_id, num_args);
   if (er_fmt == NULL)
     {
       /*
@@ -1374,21 +1397,6 @@ er_set_internal (int severity, const char *file_name, const int line_no,
       err_id = ER_FAILED;	/* invalid error id handling */
     }
 
-
-  /*
-   * Be sure that we have the same number of arguments before calling
-   * er_estimate_size().  Because it uses straight va_arg() and friends
-   * to grab its arguments, it is vulnerable to argument mismatches
-   * (e.g., too few arguments, ints in string positions, etc).  This
-   * won't save us when someone passes an integer argument where the
-   * format says to expect a string, but it will save us if someone
-   * just plain forgets how many args there are.
-   */
-  if (er_fmt->nspecs != num_args)
-    {
-      er_log_debug (ARG_FILE_LINE, er_cached_msg[ER_LOG_SUSPECT_FMT], err_id);
-      er_internal_msg (er_fmt, err_id, ER_ER_SUBSTITUTE_MSG);
-    }
   new_size = er_estimate_size (er_fmt, ap_ptr);
 
   /*
@@ -1404,11 +1412,10 @@ er_set_internal (int severity, const char *file_name, const int line_no,
    */
 #if defined (SERVER_MODE)
   if (er_make_room (new_size + 1, th_entry) == ER_FAILED)
-    {
 #else /* SERVER_MODE */
   if (er_make_room (new_size + 1) == ER_FAILED)
-    {
 #endif /* SERVER_MODE */
+    {
       return ER_FAILED;
     }
 
@@ -1452,6 +1459,18 @@ er_set_internal (int severity, const char *file_name, const int line_no,
   if (PRM_ER_STOP_ON_ERROR == err_id)
     {
       er_stop_on_error ();
+    }
+
+  if (severity == ER_NOTIFICATION_SEVERITY)
+    {
+      er_Msg->err_id = NO_ERROR;
+      er_Msg->severity = ER_WARNING_SEVERITY;
+      er_Msg->file_name = er_cached_msg[ER_ER_UNKNOWN_FILE];
+      er_Msg->line_no = -1;
+      if (er_Msg->msg_area != NULL)
+	{
+	  er_Msg->msg_area[0] = '\0';
+	}
     }
 
   return NO_ERROR;
@@ -1784,6 +1803,7 @@ er_severity (void)
 #endif /* SERVER_MODE */
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * er_nlevels - Get number of levels of the last error
  *   return: number of levels
@@ -1829,6 +1849,7 @@ er_file_line (int *line_no)
       return NULL;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * er_msg - Retrieve current error message
@@ -2248,7 +2269,11 @@ er_stack_push (void)
   /*
    * Now make er_Msg be the new thing.
    */
+#if defined (SERVER_MODE)
+  th_entry->er_Msg = new_msg;
+#else
   er_Msg = new_msg;
+#endif
 
   return NO_ERROR;
 }
@@ -2279,7 +2304,11 @@ er_stack_pop (void)
     }
 
   old_msg = er_Msg;
+#if defined (SERVER_MODE)
+  th_entry->er_Msg = er_Msg->stack;
+#else
   er_Msg = er_Msg->stack;
+#endif
 
 #if defined (SERVER_MODE)
   ER_FREE_AREA (old_msg->msg_area, th_entry);
@@ -2722,12 +2751,13 @@ er_estimate_size (ER_FMT * fmt, va_list * ap)
  *       And this thread should not release the mutex before return.
  */
 static ER_FMT *
-er_find_fmt (int err_id)
+er_find_fmt (int err_id, int num_args)
 {
   const char *msg;
   ER_FMT *fmt;
   int msg_length;
   int r;
+  bool entered_critical_section = false;
 
   if (err_id < ER_FAILED && err_id > ER_LAST_ERROR)
     {
@@ -2739,20 +2769,19 @@ er_find_fmt (int err_id)
       fmt = &er_fmt_list[-ER_FAILED];
     }
 
-  if (fmt->fmt == NULL)
+  if (er_fmt_msg_fail_count > 0)
     {
       r = csect_enter (NULL, CSECT_ER_MSG_CACHE, INF_WAIT);
       if (r != NO_ERROR)
 	{
 	  return NULL;
 	}
+      entered_critical_section = true;
+    }
 
-      /* check one more time */
-      if (fmt->fmt != NULL)
-	{
-	  csect_exit (CSECT_ER_MSG_CACHE);
-	  return fmt;
-	}
+  if (fmt->fmt == NULL)
+    {
+      assert (er_fmt_msg_fail_count > 0);
 
       msg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_ERROR, -err_id);
       if (msg == NULL || msg[0] == '\0')
@@ -2762,29 +2791,61 @@ er_find_fmt (int err_id)
 	  msg = er_cached_msg[ER_ER_MISSING_MSG];
 	}
 
-      msg_length = strlen (msg);
+      fmt = er_create_fmt_msg (fmt, err_id, msg);
 
-      fmt->fmt = (char *) ER_MALLOC (msg_length + 1);
-      if (fmt->fmt == NULL)
+      if (fmt != NULL)
 	{
-	  er_internal_msg (fmt, err_id, ER_ER_MISSING_MSG);
-	  csect_exit (CSECT_ER_MSG_CACHE);
-	  return NULL;
+	  /*
+	   * Be sure that we have the same number of arguments before calling
+	   * er_estimate_size().  Because it uses straight va_arg() and friends
+	   * to grab its arguments, it is vulnerable to argument mismatches
+	   * (e.g., too few arguments, ints in string positions, etc).  This
+	   * won't save us when someone passes an integer argument where the
+	   * format says to expect a string, but it will save us if someone
+	   * just plain forgets how many args there are.
+	   */
+	  if (fmt->nspecs != num_args)
+	    {
+	      er_log_debug (ARG_FILE_LINE, er_cached_msg[ER_LOG_SUSPECT_FMT],
+			    err_id);
+	      er_internal_msg (fmt, err_id, ER_ER_SUBSTITUTE_MSG);
+	    }
 	}
+      er_fmt_msg_fail_count--;
+    }
 
-      fmt->fmt_length = msg_length;
-      fmt->must_free = 1;
-
-      strcpy (fmt->fmt, msg);
-
-      /*
-       * Now study the format specs and squirrel away info about them.
-       */
-      er_study_fmt (fmt);
-      fmt->err_id = err_id;
-
+  if (entered_critical_section == true)
+    {
       csect_exit (CSECT_ER_MSG_CACHE);
     }
+
+  return fmt;
+}
+
+static ER_FMT *
+er_create_fmt_msg (ER_FMT * fmt, int err_id, const char *msg)
+{
+  int msg_length;
+
+  msg_length = strlen (msg);
+
+  fmt->fmt = (char *) ER_MALLOC (msg_length + 1);
+  if (fmt->fmt == NULL)
+    {
+      er_internal_msg (fmt, err_id, ER_ER_MISSING_MSG);
+      return NULL;
+    }
+
+  fmt->fmt_length = msg_length;
+  fmt->must_free = 1;
+
+  strcpy (fmt->fmt, msg);
+
+  /*
+   * Now study the format specs and squirrel away info about them.
+   */
+  er_study_fmt (fmt);
+  fmt->err_id = err_id;
 
   return fmt;
 }

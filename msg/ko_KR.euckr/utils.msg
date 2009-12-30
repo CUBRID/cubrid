@@ -63,6 +63,7 @@ $       38      paramdump
 $       39      changemode
 $       40      copylogdb
 $       41      applylogdb
+$       43      statdump
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 `%c'이(가) 데이터베이스 이름 `%s'에 포함되어 있습니다\n
@@ -101,6 +102,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     loaddb\n\
     unloaddb\n\
     paramdump\n\
+    statdump\n\
     changemode\n\
     copylogdb\n\
     applylogdb\n\
@@ -152,6 +154,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     spacedb\n\
     unloaddb\n\
     paramdump\n\
+    statdump\n\
     changemode\n\
     copylogdb\n\
     applylogdb\n\
@@ -402,11 +405,12 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
   -v, --verbose                 많은 상태 정보를 출력, 기본값: 출력하지 않음\n\
   -c, --periodic-commit=COUNT   주기적인 커밋에 대한 카운트, 기본값: 적재 중 커밋하지 않음\n\
       --no-oid                  OID 사용 안 함\n\
+      --no-statistics           로딩 후에 통계 정보 갱신하지 않음\n\
   -s, --schema-file=FILE[:LINE] 파일[:라인] 정보로 스키마 생성\n\
   -i, --index-file=FILE[:LINE]  파일[:라인] 정보로 인덱스 생성\n\
   -d, --data-file=FILE          적재할 데이터 파일\n\
       --error-control-file=FILE 적재 시 발생하는 에러에 대한 제어 파일\n\
-      --ignore-class-file=ARG  적재하지 않을 클래스 이름이 있는 파일\n
+      --ignore-class-file=FILE  적재하지 않을 클래스 이름이 있는 파일\n
 121 \
 load_noopt: 이 도구는 더 이상 추가 지원되지 않습니다. 사용에 유의 바랍니다.\n\
 사용법: load_noopt [옵션] <데이터베이스 이름>\n\
@@ -800,7 +804,7 @@ plandump: 쿼리 플랜 표시 및 관리\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
-11 Cannot open output file `%s'\n
+11 출력 파일 `%s'을 열 수 없습니다.\n
 21 System parameters to be used by the client program.\n
 22 System parameters loaded by the server '%s'\n
 23 System parameters to be used in standalone mode.\n
@@ -822,6 +826,7 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 22 The server `%s''s current HA running mode is %s.\n
 23 The server `%s''s HA running mode is changed to \"%s\".\n
 24 서버가 HA 모드로 설정되지 않았습니다.\n
+58 HA 기능이 지원되지 않는 플랫폼입니다.\n
 59 changemode는 스탠드얼론 모드에서 실행할 수 없습니다.\n
 60 \
 changemode: Display or change the server's HA running mode.\n\
@@ -836,6 +841,7 @@ $set 40 MSGCAT_UTIL_SET_COPYLOGDB
 11 Worng value \"%s\" for the copylogdb's running mode.\n
 21 Enter DBA password:
 22 서버가 HA 모드로 설정되지 않았습니다.\n
+58 HA 기능이 지원되지 않는 플랫폼입니다.\n
 59 copylogdb는 스탠드얼론 모드에서 실행할 수 없습니다.\n
 60 \
 copylogdb: Copy log pages from the server.\n\
@@ -844,11 +850,12 @@ usage: %s copylogdb [OPTION] database-name\n\
 valid options:\n\
   -L, --log-path=PATH         directory PATH for copied log volumes\n\
   -m, --mode=MODE             operation mode; default: sync\n\
-                              MODE: sync or async\n
+                              MODE: sync or semisync or async\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Enter DBA password:
 22 서버가 HA 모드로 설정되지 않았습니다.\n
+58 HA 기능이 지원되지 않는 플랫폼입니다.\n
 59 applylogdb는 스탠드얼론 모드에서 실행할 수 없습니다.\n
 60 \
 applylogdb: Apply copied log to the server.\n\
@@ -857,3 +864,14 @@ usage: %s applylogdb [OPTION] database-name\n\
 valid options:\n\
   -L, --log-path=PATH         directory PATH of copied log volumes\n\
       --max-mem-size=SIZE     maximum process SIZE in MB; max 1000\n
+
+$set 43 MSGCAT_UTIL_SET_STATDUMP
+11 출력 파일 `%s'을 열 수 없습니다.\n
+59 statdump는 스탠드얼론 모드에서 실행할 수 없습니다.\n
+60 \
+statdump: Dump global statistics.\n\
+usage: %s statdump [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
+  -i, --interval=S             print stats every S secs\n

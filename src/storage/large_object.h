@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -34,7 +34,9 @@
 
 extern void largeobjmgr_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid,
 			      int n);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern bool largeobjmgr_check (THREAD_ENTRY * thread_p, LOID * loid);
+#endif
 
 extern int largeobjmgr_rv_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int largeobjmgr_rv_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);

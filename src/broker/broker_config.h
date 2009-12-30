@@ -36,6 +36,7 @@
 #define	DEFAULT_AS_MIN_NUM	5
 #define	DEFAULT_AS_MAX_NUM	40
 
+#if defined (WINDOWS)
 #if __WORDSIZE == 64
 #define	DEFAULT_SERVER_MAX_SIZE	80
 #elif __WORDSIZE == 32
@@ -43,6 +44,10 @@
 #else
 #error "Error __WORDSIZE"
 #endif
+#else
+#define	DEFAULT_SERVER_MAX_SIZE	0
+#endif
+
 #define	DEFAULT_TIME_TO_KILL	120	/* seconds */
 #define SQL_LOG_TIME_MAX	-1
 
@@ -120,8 +125,8 @@ struct t_broker_info
   int err_code;
   int os_err_code;
   int sql_log_max_size;
-  int long_query_time;
-  int long_transaction_time;
+  int long_query_time;		/* msec */
+  int long_transaction_time;	/* msec */
 #if defined (WINDOWS)
   int pdh_workset;
   float pdh_pct_cpu;

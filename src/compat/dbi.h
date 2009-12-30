@@ -945,4 +945,5 @@ extern int db_decode_object (const char *string, DB_OBJECT ** object);
 extern int db_set_system_parameters (const char *data);
 extern int db_get_system_parameters (char *data, int len);
 extern char *db_get_host_connected (void);
+extern int db_get_ha_server_state (char *buffer, int maxlen);
 #endif /* _DBI_H_ */

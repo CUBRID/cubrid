@@ -23,6 +23,9 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "broker_log_top", "broker_log_top\broker_log_top.vcproj", "{050B18F6-00EF-47C8-AD71-8C2BB422F5E8}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cub_broker", "cub_broker\cub_broker.vcproj", "{70485C3A-4249-42B5-87C7-46A7038420F7}"
+	ProjectSection(ProjectDependencies) = postProject
+		{1426F074-E2F1-4541-B0FC-9D2A817C40B0} = {1426F074-E2F1-4541-B0FC-9D2A817C40B0}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "broker_changer", "broker_changer\broker_changer.vcproj", "{3C02AE90-88CF-4D09-93FE-B6CE6452B6BE}"
 	ProjectSection(ProjectDependencies) = postProject

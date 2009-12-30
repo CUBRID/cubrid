@@ -1070,6 +1070,7 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl_p, int size,
   DKNPAGES nth_page, num_pages;
   PAGE_PTR cur_page_p, prev_page_p;
   int xasl_page_size, total_pages, page_index, n;
+  struct timeval time_stored;
 
   XASL_ID_SET_NULL (xasl_id_p);
 
@@ -1161,6 +1162,10 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl_p, int size,
       qfile_set_dirty_page_and_skip_logging (thread_p, prev_page_p, NULL,
 					     FREE);
     }
+
+  /* save stored time */
+  (void) gettimeofday (&time_stored, NULL);
+  CACHE_TIME_MAKE (&xasl_id_p->time_stored, &time_stored);
 
   return total_pages;
 
@@ -2323,7 +2328,7 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 #endif /* 0 */
 		      thread_suspend_with_other_mutex
 			(tfile_vfid_p->membuf_thread_p,
-			 &tfile_vfid_p->membuf_mutex);
+			 &tfile_vfid_p->membuf_mutex, INF_WAIT, NULL);
 		    }
 		  MUTEX_UNLOCK (tfile_vfid_p->membuf_mutex);
 
@@ -2484,8 +2489,8 @@ qfile_add_item_to_list (THREAD_ENTRY * thread_p, char *item_p, int item_size,
       list_id_p->tpl_descr.item_size = item_size;
       list_id_p->tpl_descr.tpl_size = tuple_length;
 
-      if (qfile_generate_tuple_into_list
-	  (thread_p, list_id_p, T_SINGLE_BOUND_ITEM) != NO_ERROR)
+      if (qfile_generate_tuple_into_list (thread_p, list_id_p,
+					  T_SINGLE_BOUND_ITEM) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -2700,9 +2705,8 @@ qfile_advance (THREAD_ENTRY * thread_p, ADVANCE_FUCTION advance_func,
 {
   SCAN_CODE scan_result;
 
-  scan_result =
-    (*advance_func) (thread_p, scan_p, side_p, last_scan_p, last_side_p,
-		     &side_file_p->type_list);
+  scan_result = (*advance_func) (thread_p, scan_p, side_p, last_scan_p,
+				 last_side_p, &side_file_p->type_list);
   switch (scan_result)
     {
     case S_SUCCESS:
@@ -2786,8 +2790,8 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p,
 
   if (rhs_file_p)
     {
-      rhs_file_p =
-	qfile_sort_list (thread_p, rhs_file_p, NULL, distinct_or_all);
+      rhs_file_p = qfile_sort_list (thread_p, rhs_file_p, NULL,
+				    distinct_or_all);
       if (rhs_file_p == NULL)
 	{
 	  goto error;
@@ -2867,9 +2871,9 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p,
     {
       if (!have_lhs)
 	{
-	  if (qfile_advance
-	      (thread_p, advance_func, &lhs, &last_lhs, lhs_scan_p,
-	       last_lhs_scan_p, lhs_file_p, &have_lhs) != NO_ERROR)
+	  if (qfile_advance (thread_p, advance_func, &lhs, &last_lhs,
+			     lhs_scan_p, last_lhs_scan_p, lhs_file_p,
+			     &have_lhs) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -2877,9 +2881,9 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p,
 
       if (!have_rhs)
 	{
-	  if (qfile_advance
-	      (thread_p, advance_func, &rhs, &last_rhs, rhs_scan_p,
-	       last_rhs_scan_p, rhs_file_p, &have_rhs) != NO_ERROR)
+	  if (qfile_advance (thread_p, advance_func, &rhs, &last_rhs,
+			     rhs_scan_p, last_rhs_scan_p, rhs_file_p,
+			     &have_rhs) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -3143,6 +3147,7 @@ qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tuple_record_p, int tuple_size)
 
   return NO_ERROR;
 }
+
 
 /*
  * qfile_print_list () - Dump the content of the list file to the standard output
@@ -6528,4 +6533,90 @@ qfile_get_list_cache_entry_param_values (QFILE_LIST_CACHE_ENTRY * ent)
 #else /* SERVER_MODE */
   return (DB_VALUE *) ((char *) ent + sizeof (QFILE_LIST_CACHE_ENTRY));
 #endif /* SERVER_MODE */
+}
+
+/*
+ * qfile_add_tuple_get_pos_in_list () - The given tuple is added to the end of
+ *    the list file. The position in the list file is returned.
+ *  return:
+ *  list_id(in):
+ *  tuple(in):
+ *  tuple_pos(out):
+ */
+int
+qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p,
+				 QFILE_LIST_ID * list_id_p, QFILE_TUPLE tuple,
+				 QFILE_TUPLE_POSITION * tuple_pos)
+{
+  PAGE_PTR cur_page_p, new_page_p, prev_page_p;
+  int tuple_length;
+  char *page_p, *tuple_p;
+  int offset, tuple_page_size;
+
+  /* TODO: Do we really want to check the interrupt for every tuple */
+  if ((list_id_p == NULL)
+      || (qmgr_interrupt_query (thread_p, list_id_p->query_id) == true))
+    {
+      return ER_FAILED;
+    }
+
+  QFILE_CHECK_LIST_FILE_IS_CLOSED (list_id_p);
+
+  cur_page_p = list_id_p->last_pgptr;
+  tuple_length = QFILE_GET_TUPLE_LENGTH (tuple);
+
+  if (qfile_allocate_new_page_if_need (thread_p, list_id_p, &cur_page_p,
+				       tuple_length, false) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  page_p = (char *) cur_page_p + list_id_p->last_offset;
+  tuple_page_size = MIN (tuple_length, qfile_Max_tuple_page_size);
+  memcpy (page_p, tuple, tuple_page_size);
+
+  /* get the information for our QFILE_TUPLE_POSITION */
+  if (tuple_pos)
+    {
+      tuple_pos->offset = list_id_p->last_offset;
+      tuple_pos->tpl = page_p;
+      tuple_pos->tplno = list_id_p->tuple_cnt;
+      tuple_pos->vpid = list_id_p->last_vpid;
+    }
+
+  offset = ((tuple_length + list_id_p->last_offset) > DB_PAGESIZE ?
+	    DB_PAGESIZE : tuple_length);
+  qfile_add_tuple_to_list_id (list_id_p, page_p, tuple_length, offset);
+
+  prev_page_p = cur_page_p;
+  for (offset = tuple_page_size, tuple_p = (char *) tuple + offset;
+       offset < tuple_length;
+       offset += tuple_page_size, tuple_p += tuple_page_size)
+    {
+      new_page_p = qfile_allocate_new_ovf_page (thread_p, list_id_p,
+						cur_page_p, prev_page_p,
+						tuple_length, offset,
+						&tuple_page_size);
+      if (new_page_p == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      memcpy ((char *) new_page_p + QFILE_PAGE_HEADER_SIZE, tuple_p,
+	      tuple_page_size);
+
+      prev_page_p = new_page_p;
+    }
+
+  if (prev_page_p != cur_page_p)
+    {
+      QFILE_PUT_OVERFLOW_VPID_NULL (prev_page_p);
+      qfile_set_dirty_page (thread_p, prev_page_p, FREE,
+			    list_id_p->tfile_vfid);
+    }
+
+  qfile_set_dirty_page (thread_p, cur_page_p, DONT_FREE,
+			list_id_p->tfile_vfid);
+
+  return NO_ERROR;
 }

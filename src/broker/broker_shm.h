@@ -239,8 +239,8 @@ struct t_shm_appl_server
   int max_string_length;
   int job_queue_size;
   int sql_log_max_size;
-  int long_query_time;
-  int long_transaction_time;
+  int long_query_time;		/* msec */
+  int long_transaction_time;	/* msec */
   INT64 dummy1;
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
   INT64 dummy2;

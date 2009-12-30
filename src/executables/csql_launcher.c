@@ -280,11 +280,8 @@ main (int argc, char *argv[])
       utility_load_print_error (stderr);
       goto exit_on_error;
     }
-  return (*csql) (argv[0], &csql_arg);
 
-print_usage:
-  utility_csql_usage ();
-  error = EXIT_FAILURE;
+  error = (*csql) (argv[0], &csql_arg);
 
 exit_on_end:
   if (csql_arg.user_name != NULL)
@@ -307,7 +304,13 @@ exit_on_end:
     {
       free ((void *) csql_arg.command);
     }
+
   return error;
+
+print_usage:
+  utility_csql_usage ();
+  error = EXIT_FAILURE;
+  goto exit_on_end;
 
 exit_on_error:
   error = ER_GENERIC_ERROR;

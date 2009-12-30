@@ -3998,6 +3998,9 @@ conver_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_BETWEEN_AND:
 	case PT_INCR:
 	case PT_DECR:
+	case PT_PRIOR:
+	case PT_CONNECT_BY_ROOT:
+	case PT_QPRIOR:
 	  return node;
 
 	case PT_CAST:
@@ -5069,6 +5072,8 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
 {
   PT_NODE *condeval = NULL;
   bool support_op = true;
+  int num_markers;
+  bool unbound_hostvar = false;
 
   condeval = parser_copy_tree_list (ppi->parser, cond);
   if (condeval == NULL)
@@ -5086,23 +5091,29 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
 						   &support_op);
       if (support_op == false)
 	{
-	  return false;
+	  goto exit_on_end;
 	}
       if (condeval->info.expr.arg2->node_type != PT_VALUE)
 	{
-	  PT_NODE *node = pt_semantic_type (ppi->parser,
-					    condeval->info.expr.arg2, NULL);
+	  PT_NODE *node;
+	  node = pt_semantic_type (ppi->parser,
+				   condeval->info.expr.arg2, NULL);
 	  if (node == NULL)
 	    {
-	      return false;
+	      goto exit_on_end;
 	    }
 
 	  condeval->info.expr.arg2 = node;
 	}
 
-      if (condeval->info.expr.arg2->node_type == PT_HOST_VAR)
-	{
-	  return true;
+      num_markers = 0;
+      (void) parser_walk_leaves (ppi->parser, condeval->info.expr.arg2,
+				 pt_count_input_markers,
+				 &num_markers, NULL, NULL);
+      if (num_markers > 0)
+	{			/* found input marker, give up */
+	  unbound_hostvar = true;
+	  goto exit_on_end;
 	}
     }
 
@@ -5111,9 +5122,8 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
     {
       parser_free_tree (ppi->parser, ppi->parser->error_msgs);
       ppi->parser->error_msgs = NULL;
-      parser_free_tree (ppi->parser, condeval);
 
-      return false;
+      goto exit_on_end;
     }
 
   if (condeval->info.expr.arg2
@@ -5128,7 +5138,7 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
 			   condeval->info.expr.arg1->type_enum,
 			   condeval->info.expr.arg1->data_type) != NO_ERROR)
 	{
-	  return false;
+	  goto exit_on_end;
 	}
     }
 
@@ -5154,9 +5164,14 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
       break;
     }
 
-  parser_free_tree (ppi->parser, condeval);
+exit_on_end:
 
-  return false;
+  if (condeval)
+    {
+      parser_free_tree (ppi->parser, condeval);
+    }
+
+  return unbound_hostvar;
 }
 
 /*

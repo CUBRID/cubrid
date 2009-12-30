@@ -29,7 +29,9 @@
 
 #include "connection_defs.h"
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int css_net_send_no_block (SOCKET fd, const char *buffer, int size);
+#endif
 
 extern int css_readn (SOCKET fd, char *ptr, int nbytes, int timeout);
 extern void css_read_remaining_bytes (SOCKET fd, int len);
@@ -105,11 +107,13 @@ extern int css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid,
 #endif /* SERVER_MODE */
 extern int css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid,
 			   const char *buffer, int buffer_size);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int css_local_host_name (CSS_CONN_ENTRY * conn, char *hostname,
 				size_t namelen);
+
 extern int css_peer_host_name (CSS_CONN_ENTRY * conn, char *hostname,
 			       size_t namelen);
-
+#endif
 extern const char *css_ha_server_state_string (HA_SERVER_STATE state);
 
 #endif /* _CONNECTION_SUPPORT_H_ */

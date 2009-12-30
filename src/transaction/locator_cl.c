@@ -51,12 +51,6 @@
 #include "execute_statement.h"
 
 #define WS_SET_FOUND_DELETED(mop) WS_SET_DELETED(mop)
-#define MAXPMOPS 400
-/* collect any proxy mops by proxy. Put them into proxy mop arrays.
- * Handle the most common case efficiently via auto arrays but fall
- * back to dynamically allocated arrays if necessary.
- */
-#define SDIM 4
 
 /* Mflush structures */
 typedef struct locator_mflush_temp_oid LOCATOR_MFLUSH_TEMP_OID;
@@ -4833,6 +4827,7 @@ locator_flush_instance (MOP mop)
   return locator_internal_flush_instance (mop, DONT_DECACHE);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * locator_flush_and_decache_instance () - Flush a dirty instance and decache it
  *
@@ -4852,6 +4847,7 @@ locator_flush_and_decache_instance (MOP mop)
 {
   return locator_internal_flush_instance (mop, DECACHE);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * locator_flush_all_instances () - Flush dirty instances of a class
@@ -5011,7 +5007,7 @@ locator_all_flush (void)
   int error_code;
   int map_status;
 
-  /* flush dirty proxy/vclass objects */
+  /* flush dirty vclass objects */
   if (vid_allflush () != NO_ERROR)
     {
       error_code = ER_FAILED;
@@ -5565,6 +5561,7 @@ locator_update_instance (MOP mop)
   return object;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * locator_update_tree_classes () - Prepare a tree of classes for update
  *
@@ -5585,6 +5582,7 @@ locator_update_tree_classes (MOP * classes_mop_set, int num_classes)
   return locator_lock_set (num_classes, classes_mop_set, X_LOCK, X_LOCK,
 			   true);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * locator_assign_permanent_oid () -  Assign a permanent_oid

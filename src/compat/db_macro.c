@@ -4615,12 +4615,16 @@ coerce_binary_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
       break;
     case DB_TYPE_DATE:
       db_value_put_encoded_date (value, (DB_DATE *) buf);
+      break;
     case DB_TYPE_TIME:
       db_value_put_encoded_time (value, (DB_TIME *) buf);
+      break;
     case DB_TYPE_TIMESTAMP:
       db_make_timestamp (value, *(DB_TIMESTAMP *) buf);
+      break;
     case DB_TYPE_DATETIME:
       db_make_datetime (value, (DB_DATETIME *) buf);
+      break;
     default:
       status = C_TO_VALUE_UNSUPPORTED_CONVERSION;
       break;

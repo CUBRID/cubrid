@@ -667,6 +667,7 @@ glo_copy_dirheader (LARGEOBJMGR_DIRHEADER * new_dir_header_p,
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int
 glo_copy_dirmap (LARGEOBJMGR_DIRMAP_ENTRY * new_dirmap_p,
 		 OLD_DIRMAP_ENTRY * old_dirmap_p)
@@ -676,6 +677,7 @@ glo_copy_dirmap (LARGEOBJMGR_DIRMAP_ENTRY * new_dirmap_p,
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 static int
 glo_copy_dir (LARGEOBJMGR_DIRENTRY * new_dir_p, OLD_DIRENTRY * old_dir_p)

@@ -847,20 +847,26 @@ extern char *or_class_name (RECDES * record);
 /* Pointer based decoding functions */
 extern int or_set_element_offset (char *setptr, int element);
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_get_bound_bit (char *bound_bits, int element);
 extern void or_put_bound_bit (char *bound_bits, int element, int bound);
+#endif
 
 /* Data packing functions */
 extern char *or_pack_int (char *ptr, int number);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_pack_bigint (char *ptr, DB_BIGINT number);
+#endif
 extern char *or_pack_int64 (char *ptr, INT64 number);
 extern char *or_pack_float (char *ptr, float number);
 extern char *or_pack_double (char *ptr, double number);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_pack_time (char *ptr, DB_TIME time);
-extern char *or_pack_utime (char *ptr, DB_UTIME utime);
-extern char *or_pack_short (char *ptr, short number);
 extern char *or_pack_date (char *ptr, DB_DATE date);
 extern char *or_pack_monetary (char *ptr, DB_MONETARY * money);
+#endif
+extern char *or_pack_utime (char *ptr, DB_UTIME utime);
+extern char *or_pack_short (char *ptr, short number);
 extern char *or_pack_string (char *ptr, const char *string);
 extern char *or_pack_string_with_length (char *ptr, char *string, int length);
 extern char *or_pack_errcode (char *ptr, int error);
@@ -880,11 +886,13 @@ extern char *or_pack_set_header (char *buf, DB_TYPE stype, DB_TYPE etype,
 				 int bound_bits, int size);
 extern char *or_pack_method_sig_list (char *ptr, void *method_sig_list);
 extern char *or_pack_set_node (char *ptr, void *set_node);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_pack_elo (char *ptr, void *elo);
 extern char *or_pack_string_array (char *buffer, int count,
 				   const char **string_array);
 extern char *or_pack_db_value_array (char *buffer, int count, DB_VALUE * val);
 extern char *or_pack_int_array (char *buffer, int count, int *int_array);
+#endif
 
 /* should be using the or_pack_value family instead ! */
 extern char *or_pack_db_value (char *buffer, DB_VALUE * var);
@@ -893,17 +901,21 @@ extern int or_db_value_size (DB_VALUE * var);
 
 /* Data unpacking functions */
 extern char *or_unpack_int (char *ptr, int *number);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_unpack_bigint (char *ptr, DB_BIGINT * number);
+#endif
 extern char *or_unpack_int64 (char *ptr, INT64 * number);
 extern char *or_unpack_int_array (char *ptr, int n, int **number_array);
 extern char *or_unpack_longint (char *ptr, int *number);
 extern char *or_unpack_short (char *ptr, short *number);
 extern char *or_unpack_float (char *ptr, float *number);
 extern char *or_unpack_double (char *ptr, double *number);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_unpack_time (char *ptr, DB_TIME * time);
-extern char *or_unpack_utime (char *ptr, DB_UTIME * utime);
 extern char *or_unpack_date (char *ptr, DB_DATE * date);
 extern char *or_unpack_monetary (char *ptr, DB_MONETARY * money);
+#endif
+extern char *or_unpack_utime (char *ptr, DB_UTIME * utime);
 extern char *or_unpack_string (char *ptr, char **string);
 extern char *or_unpack_string_nocopy (char *ptr, char **string);
 extern char *or_unpack_errcode (char *ptr, int *error);
@@ -925,12 +937,13 @@ extern char *or_unpack_var_table (char *ptr, int nvars, OR_VARINFO * vars);
 extern char *or_unpack_method_sig_list (char *ptr,
 					void **method_sig_list_ptr);
 extern char *or_unpack_set_node (char *ptr, void *set_node_ptr);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_unpack_string_array (char *buffer, char ***string_array,
 				     int *cnt);
 extern char *or_unpack_db_value_array (char *buffer, DB_VALUE ** val,
 				       int *count);
 extern char *or_unpack_elo (char *ptr, void **elo_ptr);
-
+#endif
 extern char *or_pack_ptr (char *ptr, UINTPTR ptrval);
 extern char *or_unpack_ptr (char *ptr, UINTPTR * ptrval);
 
@@ -947,10 +960,12 @@ extern int or_packed_varchar_length (int charlen);
 extern int or_listid_length (void *listid);
 extern int or_method_sig_list_length (void *method_sig_list_ptr);
 extern int or_set_node_length (void *set_node_ptr);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_elo_length (void *elo_ptr);
 extern int or_packed_string_array_length (int count,
 					  const char **string_array);
 extern int or_packed_db_value_array_length (int count, DB_VALUE * val);
+#endif
 
 extern void or_encode (char *buffer, const char *source, int size);
 extern void or_decode (const char *buffer, char *dest, int size);
@@ -974,7 +989,9 @@ extern int or_put_utime (OR_BUF * buf, DB_UTIME * timeval);
 extern int or_put_date (OR_BUF * buf, DB_DATE * date);
 extern int or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary);
 extern int or_put_string (OR_BUF * buf, char *string);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_put_binary (OR_BUF * buf, DB_BINARY * binary);
+#endif
 extern int or_put_data (OR_BUF * buf, char *data, int length);
 extern int or_put_oid (OR_BUF * buf, OID * oid);
 extern int or_put_loid (OR_BUF * buf, LOID * loid);
@@ -1009,14 +1026,18 @@ extern int or_advance (OR_BUF * buf, int offset);
 extern int or_seek (OR_BUF * buf, int psn);
 extern int or_pad (OR_BUF * buf, int length);
 extern int or_length_string (char *string);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_length_binary (DB_BINARY * binary);
+#endif
 
 extern int or_get_varchar_length (OR_BUF * buf, int *intval);
 extern int or_get_align32 (OR_BUF * buf);
 extern int or_get_align64 (OR_BUF * buf);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_get_varchar (OR_BUF * buf, int *length_ptr);
-extern int or_get_varbit_length (OR_BUF * buf, int *intval);
 extern char *or_get_varbit (OR_BUF * buf, int *length_ptr);
+#endif
+extern int or_get_varbit_length (OR_BUF * buf, int *intval);
 
 extern OR_VARINFO *or_get_var_table (OR_BUF * buf, int nvars,
 				     char *(*allocator) (int));

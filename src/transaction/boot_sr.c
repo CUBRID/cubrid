@@ -448,6 +448,7 @@ boot_db_name (void)
   return fileio_get_base_file_name (boot_Db_full_name);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * boot_db_full_name () - return current database full name.
  *
@@ -458,6 +459,7 @@ boot_db_full_name ()
 {
   return boot_Db_full_name;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * bo_maxpages_for_newvol () - find max pages that can be used to define a new
@@ -1575,6 +1577,9 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 	   * must add system pages of temp volumes.
 	   */
 	  int possible_max_npages;
+
+	  er_clear (); /* clear error that was set by disk_expand_tmp() */
+
 	  possible_max_npages = MIN (ext_npages + boot_Temp_volumes_sys_pages,
 				     VOL_MAX_NPAGES);
 	  temp_volid = boot_add_volume (thread_p, temp_vol_fullname,
@@ -3078,16 +3083,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
    * recovery managers
    */
 
-#if defined(SERVER_MODE)
   mnt_server_final ();
+  mnt_server_init (PRM_CSS_MAX_CLIENTS + 1);
+#if defined(SERVER_MODE)
   sysprm_load_and_init (boot_Db_full_name, NULL);
 
   /* reinit msg catalog to reflect PRM_MAX_THREADS */
   msgcat_final ();
   if (msgcat_init () != NO_ERROR)
     return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
-
-  mnt_server_init (PRM_CSS_MAX_CLIENTS + 1);
 
   error_code = css_init_conn_list ();
   if (error_code != NO_ERROR)
@@ -3552,25 +3556,6 @@ xboot_register_client (THREAD_ENTRY * thread_p,
     }
 #endif /* SA_MODE */
 
-#if defined(SERVER_MODE)
-  /* Check the server's state for HA action for this client */
-  if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
-    {
-      if (css_check_ha_server_state_for_client (thread_p, 1) != NO_ERROR)
-	{
-	  er_log_debug (ARG_FILE_LINE, "xboot_register_client: "
-			"css_check_ha_server_state_for_client() error\n");
-	  *tran_state = TRAN_UNACTIVE_UNKNOWN;
-	  return NULL_TRAN_INDEX;
-	}
-    }
-  if (client_credential->client_type == BOOT_CLIENT_LOG_APPLIER)
-    {
-      css_notify_ha_log_applier_state (thread_p,
-				       HA_LOG_APPLIER_STATE_UNREGISTERED);
-    }
-#endif /* SERVER_MODE */
-
   /* Assign a transaction index to the client */
   tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE,
 					client_credential, tran_state,
@@ -3595,7 +3580,27 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 	      4, client_credential->program_name,
 	      client_credential->process_id, client_credential->host_name,
 	      tran_index);
+      return tran_index;
     }
+
+#if defined(SERVER_MODE)
+  /* Check the server's state for HA action for this client */
+  if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
+    {
+      if (css_check_ha_server_state_for_client (thread_p, 1) != NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE, "xboot_register_client: "
+			"css_check_ha_server_state_for_client() error\n");
+	  *tran_state = TRAN_UNACTIVE_UNKNOWN;
+	  return NULL_TRAN_INDEX;
+	}
+    }
+  if (client_credential->client_type == BOOT_CLIENT_LOG_APPLIER)
+    {
+      css_notify_ha_log_applier_state (thread_p,
+				       HA_LOG_APPLIER_STATE_UNREGISTERED);
+    }
+#endif /* SERVER_MODE */
 
   return tran_index;
 }
@@ -3665,6 +3670,11 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
       if (LOG_ISTRAN_ACTIVE (tdes))	/*logtb_is_current_active (thread_p) */
 	{
 	  (void) xtran_server_abort (thread_p);
+	}
+
+      if (mnt_Num_tran_exec_stats > 0)
+	{
+	  mnt_server_reflect_local_stats (thread_p);
 	}
 
       /* Release the transaction index */

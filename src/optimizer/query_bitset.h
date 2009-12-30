@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -95,13 +95,15 @@ extern void bitset_remove (BITSET *, int);
 extern void bitset_union (BITSET *, const BITSET *);
 extern void bitset_intersect (BITSET *, const BITSET *);
 extern void bitset_difference (BITSET *, const BITSET *);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void bitset_invert (BITSET *);
+extern int bitset_position (const BITSET *, int);
+#endif
 extern int bitset_subset (const BITSET *, const BITSET *);
 extern int bitset_intersects (const BITSET *, const BITSET *);
 extern int bitset_is_empty (const BITSET *);
 extern int bitset_is_equivalent (const BITSET *, const BITSET *);
 extern int bitset_cardinality (const BITSET *);
-extern int bitset_position (const BITSET *, int);
 extern int bitset_iterate (const BITSET *, BITSET_ITERATOR *);
 extern int bitset_next_member (BITSET_ITERATOR *);
 extern int bitset_first_member (const BITSET *);

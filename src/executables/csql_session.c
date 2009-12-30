@@ -134,10 +134,7 @@ static HELP_CMD_TABLE csql_Help_cmd_table[] = {
   {"trigger", DB_HELP_TRIGGER},
   {"update", DB_HELP_UPDATE},
   {"create vclass", DB_HELP_PROXY},
-  {"drop ldb", DB_HELP_DROPLDB},
   {"exclude", DB_HELP_EXCLUDE},
-  {"proxy", DB_HELP_PROXY},
-  {"register", DB_HELP_REGISTER},
   {"use", DB_HELP_USE},
   {"partition", DB_HELP_PARTITION},
   {"stored procedure", DB_HELP_STORED_PROCEDURE},
@@ -771,7 +768,7 @@ csql_help_info (const char *command, int aucommit_flag)
       (!strcasecmp (tok, "schema") || !strcasecmp (tok, "trigger") ||
        !strcasecmp (tok, "deferred") || !strcasecmp (tok, "workspace") ||
        !strcasecmp (tok, "lock") || !strcasecmp (tok, "stats") ||
-       !strcasecmp (tok, "logstat") ||
+       !strcasecmp (tok, "logstat") || !strcasecmp (tok, "csstat") ||
        !strcasecmp (tok, "plan") || !strcasecmp (tok, "qcache") ||
        !strcasecmp (tok, "trantable")))
     {

@@ -91,6 +91,10 @@ extern void qfile_close_list (THREAD_ENTRY * thread_p,
 			      QFILE_LIST_ID * list_id);
 extern int qfile_add_tuple_to_list (THREAD_ENTRY * thread_p,
 				    QFILE_LIST_ID * list_id, QFILE_TUPLE tpl);
+extern int qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p,
+					    QFILE_LIST_ID * list_id,
+					    QFILE_TUPLE tpl,
+					    QFILE_TUPLE_POSITION * tuple_pos);
 extern int qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p,
 					     QFILE_LIST_ID * list_id,
 					     PAGE_PTR ovfl_tpl_pg,
@@ -199,8 +203,7 @@ extern QFILE_LIST_ID *qfile_combine_two_list (THREAD_ENTRY * thread_p,
 					      QFILE_LIST_ID * lhs_file,
 					      QFILE_LIST_ID * rhs_file,
 					      int flag);
-extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec,
-				   int tpl_size);
+extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec, int tpl_size);
 extern void qfile_print_list (THREAD_ENTRY * thread_p,
 			      QFILE_LIST_ID * list_id);
 extern QFILE_LIST_ID *qfile_duplicate_list (THREAD_ENTRY * thread_p,

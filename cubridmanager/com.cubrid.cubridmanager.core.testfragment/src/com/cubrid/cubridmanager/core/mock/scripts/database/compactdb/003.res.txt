@@ -1,4 +1,0 @@
-task:compactdb
-status:failure
-note:Database "notexistdb" is unknown, or the file "databases.txt" cannot be accessed.
-

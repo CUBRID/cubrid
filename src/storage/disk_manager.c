@@ -184,7 +184,9 @@ static int disk_vhdr_set_vol_remarks (DISK_VAR_HEADER * vhdr,
 static void disk_bit_set (unsigned char *c, unsigned int n);
 static void disk_bit_clear (unsigned char *c, unsigned int n);
 static bool disk_bit_is_set (unsigned char *c, unsigned int n);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static bool disk_bit_is_cleared (unsigned char *c, unsigned int n);
+#endif
 
 #if defined(SERVER_MODE)
 static int disk_cache_check_noaccess (THREAD_ENTRY * thread_p, void *ignore);
@@ -336,6 +338,7 @@ disk_bit_is_set (unsigned char *c, unsigned int n)
   return (*c & (1 << n)) ? true : false;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * disk_bit_is_cleared () - Check N-th bit of given byte. Is the bit cleared ?
  *   return: true/false
@@ -349,6 +352,7 @@ disk_bit_is_cleared (unsigned char *c, unsigned int n)
 {
   return !disk_bit_is_set (c, n);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* TODO: check not use */
 //#if 0

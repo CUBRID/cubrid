@@ -18,7 +18,7 @@
 #
 
 
-compatdir = @prefix@/compat
+compatdir = @CUBRID_COMPATDIR@
 
 SRC = $(top_srcdir)/src
 COMPAT_DIR = $(SRC)/compat
@@ -133,7 +133,6 @@ compat_SCRIPTS = start_cubrid stop_cubrid
 
 install-exec-hook:
 	test -z "$(DESTDIR)$(compatdir)" || mkdir -p "$(DESTDIR)$(compatdir)"
-	cd $(DESTDIR)$(compatdir) && $(LN_S) -f ../bin/cub_server$(EXEEXT) server$(EXEEXT)
 	cd $(DESTDIR)$(compatdir) && $(LN_S) -f start_cubrid start_server
 	cd $(DESTDIR)$(compatdir) && $(LN_S) -f stop_cubrid stop_server
 

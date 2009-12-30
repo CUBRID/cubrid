@@ -206,7 +206,9 @@ int sigprocmask (int how, sigset_t * set, sigset_t * oldset);
  */
 extern void pc_init (void);
 extern void pc_final (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int lock_region (int fd, int cmd, long offset, long size);
+#endif
 extern int free_space (const char *);
 
 #define _longjmp                longjmp
@@ -301,7 +303,11 @@ extern char *getpass (const char *prompt);
 #endif
 
 extern int utona (unsigned int u, char *s, size_t n);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int itona (int i, char *s, size_t n);
+#endif
+
+extern char *stristr (const char *s, const char *find);
 
 #define strlen(s1)  ((int) strlen(s1))
 #define CAST_STRLEN (int)

@@ -30,6 +30,7 @@
 #include <string.h>
 #include <time.h>
 #include <stdarg.h>
+#include <sys/stat.h>
 
 void WriteLog( char* p_logfile, char* p_format, ... );
 void GetCurDateTime( char* p_buf, char* p_form );
@@ -205,74 +206,55 @@ void WriteLog( char* p_logfile, char* p_format, ... )
 {
 	va_list str;
 	char    old_logfile[256];
-	char  	cur_time[25];
-	long    f_size;
-	long    f_pos;
+	char	cur_time[25];
 	FILE*   logfile_fd = NULL;
+	struct  _stat stat_buf;
 	errno_t err;
-
 
 #define _MAX_LOGFILE_SIZE_	102400
 
-
-	while( 1 )
+	if (p_logfile != NULL)
 	{
-		if( p_logfile == NULL )
-			logfile_fd = stderr;
-		else
-			err = fopen_s(&logfile_fd, p_logfile , "a+" );
+		if ((_stat(p_logfile, &stat_buf) == 0) &&
+			(stat_buf.st_size >= _MAX_LOGFILE_SIZE_) )
+		{
+			strcpy_s(old_logfile, p_logfile );
+			strcat_s(old_logfile, ".bak" );
 
-	
-		if( logfile_fd == NULL )
+			remove(old_logfile);
+
+			if (rename( p_logfile, old_logfile ) != 0)
+			{
+				fprintf(stderr,"WriteLog:rename error\n");
+				return;
+			}
+		}
+
+		fopen_s(&logfile_fd, p_logfile, "a+");
+		
+		if ( logfile_fd == NULL )
 		{
 			fprintf(stderr,"WriteLog:Can't open logfile [%s][%d]\n",
-                                       p_logfile, errno );
+				p_logfile, errno );
 			return;
 		}
-		else
-		{
-			f_pos  = ftell( logfile_fd );
-
-			fseek( logfile_fd, 0, SEEK_END );
-			f_size = ftell( logfile_fd );
-
-			fseek( logfile_fd, f_pos, SEEK_SET );
-
-			if( f_size > _MAX_LOGFILE_SIZE_ )
-			{
-				fclose( logfile_fd );
-	
-				strcpy_s( old_logfile, p_logfile );
-				GetCurDateTime( cur_time,"%Y%m%d%H:%M:%S" );
-				strcat_s( old_logfile, "." );
-				strcat_s( old_logfile, cur_time);
-				strcat_s( old_logfile, ".OLD"  );
-
-				rename( p_logfile, old_logfile );
-			}
-			else
-				break;
-		}
 	}
-
+	else
+	{
+		logfile_fd = stderr;
+	}
 
 #ifndef __DEBUG
 	GetCurDateTime( cur_time,"%Y%m%d %H:%M:%S" );
 	fprintf( logfile_fd, "[%s] ", cur_time );
 #endif
 
-
-
 	va_start( str, p_format );
-
 	vfprintf( logfile_fd, p_format, str );
-
 	va_end( str );
 
 	if( p_logfile != NULL )
 		fclose( logfile_fd );
-
-
 }
 
 

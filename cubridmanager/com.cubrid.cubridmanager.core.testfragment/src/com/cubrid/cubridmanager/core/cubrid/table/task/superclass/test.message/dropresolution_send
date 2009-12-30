@@ -1,8 +1,0 @@
-task:dropresolution
-token:8ec1ab8a91333c785622fbd9dd93f6864e00b045626fab9d2b587c165ed6cd827926f07dd201b6aa
-dbname:demodb
-classname:testresolution
-super:super1
-name:description
-category:instance
-

@@ -72,20 +72,19 @@ enum
 
 typedef struct css_critical_section
 {
+  const char *name;
   MUTEX_T lock;			/* read/write monitor lock */
   int rwlock;			/* >0 = # readers, <0 = writer, 0 = none */
-  unsigned int waiting_writers; /* # of waiting writers */
+  unsigned int waiting_writers;	/* # of waiting writers */
   COND_T readers_ok;		/* start waiting readers */
-  COND_T writer_ok;		/* start a waiting writer */
-  COND_T promoter_ok;           /* start a waiting promoter */
+  THREAD_ENTRY *waiting_writers_queue;	/* queue of waiting writers */
+  THREAD_ENTRY *waiting_promoters_queue;	/* queue of waiting promoters */
   THREAD_T owner;		/* CS owner writer */
   int tran_index;		/* transaction id acquiring CS */
-#ifdef CSECT_STATISTICS
   unsigned int total_enter;
   unsigned int total_nwaits;	/* total # of waiters */
-  struct timeval mutex_wait;
+  struct timeval max_wait;
   struct timeval total_wait;
-#endif				/* CSECT_STATISTICS */
 } CSS_CRITICAL_SECTION;
 
 extern int csect_initialize (void);
@@ -119,6 +118,8 @@ extern int csect_promote_critical_section (THREAD_ENTRY * thread_p,
 extern int csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
 
 extern int csect_check_own (int cs_index);
+
+extern void csect_dump_statistics (FILE *fp);
 
 #if !defined(SERVER_MODE)
 #define csect_initialize_critical_section(a)

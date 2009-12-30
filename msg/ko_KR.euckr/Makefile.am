@@ -18,7 +18,7 @@
 #
 
 
-ko_KR.euckrdir = @MSG_DIR@/ko_KR.euckr
+ko_KR.euckrdir = @CUBRID_LOCALEDIR@/ko_KR.euckr
 ko_KR.euckr_DATA = cubrid.msg cubrid.cat csql.msg csql.cat utils.msg utils.cat \
 	esql.msg esql.cat syntax.txt
 

@@ -3091,7 +3091,6 @@ boot_define_view_class (void)
 	   "SELECT c.class_name, CAST(c.owner.name AS VARCHAR(255)),"
 	   " CASE c.class_type WHEN 0 THEN 'CLASS'"
 	   " WHEN 1 THEN 'VCLASS'"
-	   " WHEN 2 THEN 'PROXY'"
 	   " ELSE 'UNKNOW' END,"
 	   " CASE WHEN MOD(c.is_system_class, 2) = 1 THEN 'YES' ELSE 'NO' END,"
 	   " CASE WHEN c.sub_classes IS NULL THEN 'NO' ELSE NVL((SELECT 'YES'"
@@ -4587,6 +4586,7 @@ exit_on_error:
   return error_code;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * boot_rebuild_catalog_classes :
  *
@@ -4608,6 +4608,7 @@ boot_rebuild_catalog_classes (const char *dbname)
 
   return boot_build_catalog_classes (dbname);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* SA_MODE */
 
 #if defined(CS_MODE)
@@ -4615,5 +4616,11 @@ char *
 boot_get_host_connected (void)
 {
   return boot_Host_connected;
+}
+
+int
+boot_get_ha_server_state (void)
+{
+  return boot_Server_credential.ha_server_state;
 }
 #endif /* CS_MODE */

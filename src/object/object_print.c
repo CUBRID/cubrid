@@ -1344,59 +1344,6 @@ obj_print_help_class (MOP op)
 						   MSGCAT_SET_HELP,
 						   MSGCAT_HELP_VCLASS_HEADER));
 	  break;
-	case SM_LDBVCLASS_CT:
-	  /* compose the proxy name header line */
-	  buffer =
-	    pt_append_nulstring (parser, NULL,
-				 msgcat_message (MSGCAT_CATALOG_CUBRID,
-						 MSGCAT_SET_HELP,
-						 MSGCAT_HELP_LDB_VCLASS_HEADER));
-	  buffer =
-	    pt_append_nulstring (parser, buffer,
-				 (nam = db_get_vclass_ldb_name (op)));
-	  obj_id = db_get_object_id (op);
-	  if (obj_id)
-	    {
-	      is_cubrid = !strcmp (obj_id->name, "");
-	      buffer = pt_append_nulstring (parser, buffer,
-					    (is_cubrid ? " (intrinsic oid's)"
-					     : " (emulated oid's)"));
-	    }
-	  info->class_type =
-	    obj_print_copy_string ((char *) pt_get_varchar_bytes (buffer));
-
-	  /* compose the proxy object_id line */
-	  buffer = pt_append_nulstring (parser, NULL, "<Object id> ");
-	  if (obj_id)
-	    {
-	      if (is_cubrid)
-		{
-		  buffer = pt_append_nulstring (parser, buffer, "intrinsic");
-		}
-	      else
-		{
-		  buffer = pt_append_nulstring (parser, buffer, "( ");
-		  for (o = obj_id; o;)
-		    {
-		      if (o->name)
-			{
-			  buffer =
-			    pt_append_nulstring (parser, buffer, o->name);
-			}
-		      o = o->next;
-		      buffer = pt_append_nulstring (parser, buffer,
-						    (o
-						     && o->
-						     name ? ", " : " )"));
-		    }
-		}
-	      info->object_id =
-		obj_print_copy_string ((char *)
-				       pt_get_varchar_bytes (buffer));
-	    }
-	  db_string_free (nam);
-	  db_namelist_free (obj_id);
-	  break;
 	}
 
       if (class_->inheritance != NULL)
@@ -2432,6 +2379,7 @@ help_fprint_obj (FILE * fp, MOP obj)
     }
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * help_print_obj () - Prints a description of a class or instance object
  *                     to stdout.
@@ -2444,6 +2392,7 @@ help_print_obj (MOP obj)
 {
   help_fprint_obj (stdout, obj);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* COMMAND HELP */
 
@@ -2716,9 +2665,6 @@ help_command (DB_HELP_COMMAND cmd)
     case DB_HELP_DROP:
       keyword = "DROP";
       break;
-    case DB_HELP_DROPLDB:
-      keyword = "DROP LDB";
-      break;
     case DB_HELP_EXCLUDE:
       keyword = "EXCLUDE";
       break;
@@ -2739,9 +2685,6 @@ help_command (DB_HELP_COMMAND cmd)
       break;
     case DB_HELP_PROXY:
       keyword = "CREATE VCLASS";
-      break;
-    case DB_HELP_REGISTER:
-      keyword = "REGISTER";
       break;
     case DB_HELP_RENAME:
       keyword = "RENAME";
@@ -2795,6 +2738,7 @@ help_command (DB_HELP_COMMAND cmd)
   return (help);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * help_fprint_command () - Describes a command to a file.
  *   return: none
@@ -2857,6 +2801,7 @@ help_print_command (DB_HELP_COMMAND cmd)
 {
   help_fprint_command (stdout, cmd);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* CLASS LIST HELP */
 
@@ -2952,6 +2897,7 @@ help_class_names (const char *qualifier)
   return (names);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * help_base_class_names () - Returns an array containing the names of
  *                            all base classes in the system.
@@ -2995,7 +2941,7 @@ help_base_class_names (void)
 
   return (names);
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * help_free_names () - Frees an array of class names built by
@@ -3055,6 +3001,7 @@ help_fprint_class_names (FILE * fp, const char *qualifier)
     }
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * help_print_class_names () - Prints the names of all classes
  *                             in the system to stdout.
@@ -3067,6 +3014,7 @@ help_print_class_names (const char *qualifier)
 {
   help_fprint_class_names (stdout, qualifier);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 /* MISC HELP FUNCTIONS */
@@ -3122,6 +3070,7 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
   return (total);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * help_fprint_all_classes () - Describe all classes in the system.
  *   return: none
@@ -3206,6 +3155,7 @@ help_fprint_resident_instances (FILE * fp, MOP op)
 	}
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* GENERAL INFO */
 
@@ -3356,6 +3306,10 @@ help_print_info (const char *command, FILE * fpp)
   else if (MATCH_TOKEN (buffer, "logstat"))
     {
       log_dump_stat (fpp);
+    }
+  else if (MATCH_TOKEN (buffer, "csstat"))
+    {
+      thread_dump_cs_stat (fpp);
     }
   else if (MATCH_TOKEN (buffer, "plan"))
     {
@@ -3606,9 +3560,8 @@ describe_bit_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
       tbuf[2] = '\0';
       buffer = pt_append_nulstring (parser, buffer, tbuf);
     }
-  /*  If we don't have a full byte on the end, pad if were sending this to
-   *  an ldb (PT_PAD_BYTE is set), otherwise, just print the nibble.
-   */
+
+  /* If we don't have a full byte on the end, print the nibble. */
   if (nibbles < nibble_length)
     {
       if (parser->custom_print & PT_PAD_BYTE)
@@ -4139,7 +4092,6 @@ help_sprint_value (const DB_VALUE * value, char *buffer, int max_length)
 
   return (length);
 }
-
 
 /*
  * dbg_value() -  This is primarily for debugging

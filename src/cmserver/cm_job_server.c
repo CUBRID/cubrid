@@ -489,7 +489,7 @@ service_start (void)
 	  nv_add_nvp (cli_response, "task", nv_get_val (cli_request, "task"));
 	  nv_add_nvp (cli_response, "status", "failure");
 	  nv_add_nvp (cli_response, "note",
-		      "This job can not be performed now. Please try again later.");
+		      "Cannot execute the current operation because the previous operation is already running.");
 
 	  ut_send_response (newsockfd, cli_response);
 
@@ -520,7 +520,11 @@ service_start (void)
 
       /* write request to file */
       nv_writeto (cli_request, req_filename);
+#if !defined (DO_NOT_USE_CUBRIDENV)
       sprintf (cmd_name, "%s/bin/cub_job%s", sco.szCubrid, DBMT_EXE_EXT);
+#else
+      sprintf (cmd_name, "%s/cub_job%s", CUBRID_BINDIR, DBMT_EXE_EXT);
+#endif
       argv[0] = cmd_name;
       argv[1] = req_filename;
       argv[2] = res_filename;
@@ -688,6 +692,7 @@ main (int argc, char **argv)
 #endif
 
 #if defined(WINDOWS)
+  FreeConsole ();
   start_log_fp = fopen ("cub_jsstart.log", "w");
   if (start_log_fp == NULL)
     start_log_fp = stdout;

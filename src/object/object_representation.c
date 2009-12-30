@@ -58,7 +58,9 @@
 static TP_DOMAIN *unpack_domain (OR_BUF * buf, int *is_null);
 static char *or_pack_method_sig (char *ptr, void *method_sig_ptr);
 static char *or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static char *unpack_str_array (char *buffer, char ***string_array, int count);
+#endif
 
 /*
  * classobj_get_prop - searches a property list for a value with the given name
@@ -422,6 +424,7 @@ or_chn (RECDES * record)
  *
  */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_get_bound_bit - Extracts the bound bit for a particular element.
  *    return: bound bit (0 or 1) for element
@@ -464,6 +467,7 @@ or_put_bound_bit (char *bound_bits, int element, int bound)
       *byte = value & ~mask;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* !SERVER_MODE */
 
 /*
@@ -711,6 +715,7 @@ or_put_varchar (OR_BUF * buf, char *string, int charlen)
   return rc;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_get_varchar - get varchar from or buffer
  *    return: varchar pointer read from the or buffer. or NULL for error
@@ -764,6 +769,7 @@ or_get_varchar (OR_BUF * buf, int *length_ptr)
       return new_;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * or_get_varchar_length - get varchar length from or buffer
@@ -932,6 +938,7 @@ or_put_varbit (OR_BUF * buf, char *string, int bitlen)
 
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_get_varbit - get varbit from or buffer
  *    return: NO_ERROR or error code
@@ -986,6 +993,7 @@ or_get_varbit (OR_BUF * buf, int *length_ptr)
 
   return new_;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * or_get_varbit_length - get varbit length from or buffer
@@ -1764,6 +1772,7 @@ or_length_string (char *string)
   return (len);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_put_binary - Writes a binary array into the translation buffer.
  *    return: NO_ERROR or error code
@@ -1831,6 +1840,7 @@ or_length_binary (DB_BINARY * binary)
     }
   return (len);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * or_pad - This advances the translation pointer and adds bytes of zero.
@@ -2023,6 +2033,7 @@ or_unpack_int (char *ptr, int *number)
   return (ptr + OR_INT_SIZE);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_pack_bigint - write bigint value to ptr
  *    return: advanced buffer pointer
@@ -2046,6 +2057,7 @@ or_unpack_bigint (char *ptr, DB_BIGINT * number)
 {
   return or_unpack_int64 (ptr, number);
 }
+#endif
 
 /*
  * or_pack_int64 - write INT64 value to ptr
@@ -2215,6 +2227,7 @@ or_unpack_double (char *ptr, double *number)
   return (ptr + OR_DOUBLE_SIZE);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_pack_time - write a DB_TIME value
  *    return: advanced buffer pointer
@@ -2240,6 +2253,7 @@ or_unpack_time (char *ptr, DB_TIME * time)
   OR_GET_TIME (ptr, time);
   return (ptr + OR_TIME_SIZE);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * or_pack_utime - write a DB_UTIME value
@@ -2267,6 +2281,7 @@ or_unpack_utime (char *ptr, DB_UTIME * utime)
   return (ptr + OR_UTIME_SIZE);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_pack_date - write a DB_DATE value
  *    return: advanced buffer pointer
@@ -2318,6 +2333,7 @@ or_unpack_monetary (char *ptr, DB_MONETARY * money)
   OR_GET_MONETARY (ptr, money);
   return (ptr + OR_MONETARY_SIZE);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * or_unpack_int_array - extracts a array of integers from a buffer
@@ -5805,7 +5821,7 @@ or_method_sig_list_length (void *method_sig_list_ptr)
  * ELO PACKING
  */
 
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_pack_elo - write a ELO value
  *    return: advanced buffer pointer
@@ -5869,6 +5885,7 @@ or_elo_length (void *elo_ptr)
   length += OR_INT_SIZE;
   return length;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * GENERIC DB_VALUE PACKING
@@ -5911,6 +5928,7 @@ or_unpack_db_value (char *buffer, DB_VALUE * val)
   return or_unpack_value (buffer, val);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_packed_string_array_length - get the amount of space needed to pack an
  * array of strings.
@@ -6128,6 +6146,7 @@ or_unpack_db_value_array (char *buffer, DB_VALUE ** val, int *count)
 
   return (ptr);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * or_pack_ptr - write pointer value to ptr

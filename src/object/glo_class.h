@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -216,8 +216,10 @@ def_class_signature (DB_OBJECT * class_obj, const char *method_name,
 		     const char *arg6, const char *arg7, const char *arg8);
 
 extern void esm_define_esm_classes (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void esm_add_method (char *class_name, char *method_name,
 			    char *implementation_name);
+#endif
 
 extern DB_OBJECT *esm_find_holder_object (const char *pathname);
 extern int esm_find_glo_count (DB_OBJECT * holder_p, int *object_count);

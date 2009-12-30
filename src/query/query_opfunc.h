@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -167,7 +167,9 @@ extern int qdata_evaluate_function (THREAD_ENTRY * thread_p,
 				    OID * obj_oid, QFILE_TUPLE tpl);
 
 extern void regu_set_error_with_zero_args (int err_type);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void regu_set_error_with_one_args (int err_type, const char *infor);
+#endif
 extern void regu_set_global_error (void);
 
 extern int query_prepare (const char *qstr,
@@ -184,5 +186,21 @@ extern int query_prepare_and_execute (char *stream,
 				      DB_VALUE * varptr,
 				      QFILE_LIST_ID ** result,
 				      QUERY_FLAG flag);
+
+extern bool qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p,
+					    void *xasl_p,
+					    REGU_VARIABLE * regu_p,
+					    DB_VALUE * result_val_p,
+					    VAL_DESCR * vd);
+extern bool qdata_evaluate_qprior (THREAD_ENTRY * thread_p,
+				   void *xasl_p,
+				   REGU_VARIABLE * regu_p,
+				   DB_VALUE * result_val_p, VAL_DESCR * vd);
+extern bool qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
+						void *xasl_p,
+						REGU_VARIABLE * regu_p,
+						DB_VALUE * value_char,
+						DB_VALUE * result_p,
+						VAL_DESCR * vd);
 
 #endif /* _QUERY_OPFUNC_H_ */

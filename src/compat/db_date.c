@@ -1506,7 +1506,7 @@ db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT bi2,
 	  return ER_QPROC_TIME_UNDERFLOW;
 	}
 
-      db_add_int_to_datetime (dt1, -bi2, result_datetime);
+      return db_add_int_to_datetime (dt1, -bi2, result_datetime);
     }
 
   bi1 = ((DB_BIGINT) dt1->date) * MILLISECONDS_OF_ONE_DAY + dt1->time;
@@ -1519,7 +1519,8 @@ db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT bi2,
     }
 
   tmp_bi = (DB_BIGINT) (result_bi / MILLISECONDS_OF_ONE_DAY);
-  if (OR_CHECK_INT_OVERFLOW (tmp_bi))
+  if (OR_CHECK_INT_OVERFLOW (tmp_bi)
+      || tmp_bi > DB_DATE_MAX || tmp_bi < DB_DATE_MIN)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
       return ER_QPROC_TIME_UNDERFLOW;
@@ -1566,7 +1567,8 @@ db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT bi2,
     }
 
   tmp_bi = (DB_BIGINT) (result_bi / MILLISECONDS_OF_ONE_DAY);
-  if (OR_CHECK_INT_OVERFLOW (tmp_bi))
+  if (OR_CHECK_INT_OVERFLOW (tmp_bi)
+      || tmp_bi > DB_DATE_MAX || tmp_bi < DB_DATE_MIN)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
       return ER_QPROC_TIME_UNDERFLOW;

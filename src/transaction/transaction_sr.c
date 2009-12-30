@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -72,20 +72,13 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
    * Execute some few remaining actions before the log manager is notified of
    * the commit
    */
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   state = log_commit (thread_p, tran_index, retain_lock);
 
   (void) locator_drop_transient_class_name_entries (thread_p, tran_index,
 						    NULL);
-
-  /* We assume that this server thread has done everything to complete
-   * this transaction except releasing any ldb drivers bound to this
-   * client. Early unbinding of drivers can awake waiting thread(s)
-   * that may cause the server to reach an illegal state such as
-   * trying to do a savepoint in the middle of a 2PC.
-   */
-
   return state;
 }
 
@@ -118,6 +111,7 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
    * Execute some few remaining actions before the log manager is notified of
    * the commit
    */
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   state = log_abort (thread_p, tran_index);
@@ -633,8 +627,8 @@ loop:
   prev_thrd_cnt = thread_has_threads (tran_index, client_id);
   if (prev_thrd_cnt > 0)
     {
-      if (!logtb_is_interrupt_tran
-	  (thread_p, false, &continue_check, tran_index))
+      if (!logtb_is_interrupt_tran (thread_p, false, &continue_check,
+				    tran_index))
 	{
 	  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
 	}

@@ -611,8 +611,7 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
       return node;
     }
 
-  /* only add to the array, if not there already in this lock mode.
-   * also, don't add to the array if it is a ldb class name. */
+  /* only add to the array, if not there already in this lock mode. */
   if (!pt_in_lck_array (lcks,
 			node->info.spec.entity_name->info.name.original))
     {

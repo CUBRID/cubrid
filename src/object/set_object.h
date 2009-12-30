@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -159,7 +159,9 @@ extern DB_COLLECTION *set_create_with_domain (TP_DOMAIN * domain,
 					      int initial_size);
 extern DB_COLLECTION *set_make_reference (void);
 extern DB_COLLECTION *set_copy (DB_COLLECTION * set);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int set_clear (DB_COLLECTION * set);
+#endif
 extern void set_free (DB_COLLECTION * set);
 extern DB_COLLECTION *set_coerce (DB_COLLECTION * set, TP_DOMAIN * domain,
 				  bool implicit_coercion);
@@ -179,7 +181,9 @@ extern int set_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
 				     TP_DOMAIN * dbvals_domain_list,
 				     TP_DOMAIN * domain);
 extern int set_add_element (DB_COLLECTION * set, DB_VALUE * value);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int set_add_element_quick (DB_COLLECTION * set, DB_VALUE * value);
+#endif
 extern int set_put_element (DB_COLLECTION * set, int index, DB_VALUE * value);
 extern int set_insert_element (DB_COLLECTION * set, int index,
 			       DB_VALUE * value);
@@ -207,8 +211,10 @@ extern void set_make_collection (DB_VALUE * value, DB_COLLECTION * col);
 extern int set_cardinality (DB_COLLECTION * set);
 extern int set_size (DB_COLLECTION * set);
 extern bool set_isempty (DB_COLLECTION * set);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern bool set_is_all_null (DB_COLLECTION * set);
 extern bool set_has_null (DB_COLLECTION * set);
+#endif
 extern bool set_ismember (DB_COLLECTION * set, DB_VALUE * value);
 extern int set_issome (DB_VALUE * value, DB_COLLECTION * set,
 		       PT_OP_TYPE op, int do_coercion);
@@ -280,10 +286,14 @@ extern int col_drop_nulls (COL * col);
 extern int col_permanent_oids (COL * col);
 
 extern int set_tform_disk_set (DB_COLLECTION * ref, COL ** setptr);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int set_iterator_finished (SET_ITERATOR * it);
+#endif
 
 #if !defined(SERVER_MODE)
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int setobj_find_temporary_oids (SETOBJ * col, LC_OIDSET * oidset);
+#endif
 extern void setobj_gc (SETOBJ * set, void (*gcmarker) (MOP));
 extern void set_gc (SETREF * ref, void (*gcmarker) (MOP));
 #endif

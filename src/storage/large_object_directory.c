@@ -2282,8 +2282,9 @@ largeobjmgr_dir_insert (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 	  pg_reg_len = ((empty_shift_cnt + (empty_shift_ind - ds->curdir.idx))
 			* sizeof (LARGEOBJMGR_DIRENTRY));
 	  addr.pgptr = ds->curdir.pgptr;
-	  addr.offset = (PGLENGTH) ((char *) ds->curdir.idxptr -
-				    (char *) ds->curdir.pgptr);
+	  addr.offset =
+	    (PGLENGTH) ((char *) (ds->curdir.idxptr + empty_shift_cnt) -
+			(char *) ds->curdir.pgptr);
 
 	  log_append_undoredo_data (thread_p, RVLOM_DIR_PG_REGION, &addr,
 				    pg_reg_len,

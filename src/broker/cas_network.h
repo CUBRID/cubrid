@@ -294,7 +294,9 @@ extern int net_write_from_file (SOCKET sock_fd, int file_size,
 extern void net_timeout_set (int timeout_sec);
 extern void init_msg_header (MSG_HEADER * header);
 extern int net_read_header (SOCKET sock_fd, MSG_HEADER * header);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int net_write_header (SOCKET sock_fd, MSG_HEADER * header);
+#endif
 
 extern int net_timeout_flag;
 

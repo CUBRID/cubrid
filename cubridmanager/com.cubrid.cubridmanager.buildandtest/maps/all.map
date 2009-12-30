@@ -1,8 +1,0 @@
-feature@com.cubrid.cubridmanager.feature=COPY,E:/dev/eclipse/workspace,com.cubrid.cubridmanager.feature
-plugin@com.cubrid.cubridmanager.app=COPY,E:/dev/eclipse/workspace,com.cubrid.cubridmanager.app
-plugin@com.cubrid.cubridmanager.core=COPY,E:/dev/eclipse/workspace,com.cubrid.cubridmanager.core
-plugin@com.cubrid.cubridmanager.help=COPY,E:/dev/eclipse/workspace,com.cubrid.cubridmanager.help
-plugin@com.cubrid.cubridmanager.ui=COPY,E:/dev/eclipse/workspace,com.cubrid.cubridmanager.ui
-feature@com.cubrid.cubridmanager.testfeature=COPY,E:/dev/eclipse/workspace,com.cubrid.cubridmanager.testfeature
-fragment@com.cubrid.cubridmanager.core.testfragment=COPY,E:/dev/eclipse/workspace,com.cubrid.cubridmanager.core.testfragment
-fragment@com.cubrid.cubridmanager.ui.testfragment=COPY,E:/dev/eclipse/workspace,com.cubrid.cubridmanager.ui.testfragment

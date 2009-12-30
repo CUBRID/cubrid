@@ -1,8 +1,8 @@
 
-%define cubrid_version 8.2.0.1060
-%define build_version  8.2.0
+%define cubrid_version 8.2.1.0215
+%define build_version  8.2.1
 %define cubrid_vendor  Search Solution Corporation
-%define release        rhel5
+%define release        el5
 %define cubrid_user    cubrid
 
 Summary:       CUBRID: a very fast and reliable SQL database server
@@ -20,6 +20,7 @@ Vendor:        %{cubrid_vendor}
 Packager:      cubrid developer <cubrid@nhn.com>
 Requires:      ncurses
 Requires:      libstdc++
+BuildRequires: gcc-c++
 BuildRequires: elfutils-libelf-devel
 BuildRequires: ncurses-devel
 BuildRequires: libstdc++-devel
@@ -36,10 +37,9 @@ or visit http://www.cubrid.com/developer for more information.
 
 
 %build
-CUBRID_COMMON_CONFIGURE="
-	--prefix=%{buildroot}/opt/cubrid \
+CUBRID_COMMON_CONFIGURE="--prefix=%{buildroot}/opt/cubrid"
 %ifarch x86_64
-	--enable-64bit"
+	CUBRID_COMMON_CONFIGURE="${CUBRID_COMMON_CONFIGURE} --enable-64bit"
 %endif
 
 ./configure $CUBRID_COMMON_CONFIGURE
@@ -236,10 +236,16 @@ install -c -m 755 %{SOURCE2} %{buildroot}%{_sysconfdir}/profile.d/cubrid.csh
 if [ -z "`getent passwd %{cubrid_user}`" ] && ! [ -z "`getent group %{cubrid_user}`" ]; then
     %{_sbindir}/groupdel %{cubrid_user} 2> /dev/null || :
 fi
-useradd -d /opt/cubrid -s /bin/bash %{cubrid_user}
-mkdir /opt/cubrid/log
-mkdir /opt/cubrid/var
-mkdir /opt/cubrid/tmp
+
+if [ -z "`getent passwd %{cubrid_user}`" ]; then
+    groupadd -r %{cubrid_user} 
+    useradd -g %{cubrid_user} -d /opt/cubrid -s /bin/bash -c "CUBRID user" %{cubrid_user}
+fi
+
+mkdir -p /opt/cubrid/log
+mkdir -p /opt/cubrid/var
+mkdir -p /opt/cubrid/tmp
+mkdir -p /opt/cubrid/databases
 chown cubrid:cubrid -R /opt/cubrid
 #install -d /var/log/cubrid
 #install -d /var/run/cubrid
@@ -292,8 +298,9 @@ chown cubrid:cubrid -R /opt/cubrid
 #echo "sed -e $REG_EXP --in-place %{_sysconfdir}/profile.d/cubrid.csh"
 #eval sed --in-place -e $REG_EXP %{_sysconfdir}/profile.d/cubrid.csh
 
-echo "Thank you for installing the CUBRID Database System! 
-Visit http://www.cubrid.com/cubrid_guide.html for more information."
+echo "
+Thank you for installing the CUBRID Database System! 
+Visit http://www.cubrid.com/developer for more information."
 
 
 %preun
@@ -304,9 +311,10 @@ Visit http://www.cubrid.com/cubrid_guide.html for more information."
 #groupdel cubrid
 
 #rm -rf /var/lib/cubrid /var/log/cubrid /var/run/cubrid
-rm -rf /opt/cubrid/log
-rm -rf /opt/cubrid/var
-rm -rf /opt/cubrid/tmp
+#rm -rf /opt/cubrid/log
+#rm -rf /opt/cubrid/var
+#rm -rf /opt/cubrid/tmp
+#rm -rf /opt/cubrid/databases
 
 #rm %{_sysconfdir}/profile.d/cubrid.sh
 #rm %{_sysconfdir}/profile.d/cubrid.csh

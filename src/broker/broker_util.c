@@ -53,13 +53,14 @@
 #include "broker_env_def.h"
 #include "broker_util.h"
 #include "broker_filename.h"
+#include "environment_variable.h"
 
 #if !defined(LIBCAS_FOR_JSP)
 static char db_err_log_file[PATH_MAX];
 static char as_pid_file_name[PATH_MAX] = "";
 
 int
-ut_access_log (int as_index, struct timeval * start_time, char error_flag,
+ut_access_log (int as_index, struct timeval *start_time, char error_flag,
 	       int error_log_offset)
 {
   FILE *fp;
@@ -115,25 +116,25 @@ ut_access_log (int as_index, struct timeval * start_time, char error_flag,
 
 #ifdef V3_TEST
   fprintf (fp,
-           "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
-           "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %d\n",
-           as_index + 1, clt_ip, clt_appl, script,
-           (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
-           (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
-           ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
-           ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour,
-           ct2.tm_min, ct2.tm_sec,
-           (int) getpid (), err_str, error_file_offset, uts_size());
+	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
+	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %d\n",
+	   as_index + 1, clt_ip, clt_appl, script,
+	   (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
+	   (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
+	   ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
+	   ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour,
+	   ct2.tm_min, ct2.tm_sec,
+	   (int) getpid (), err_str, error_file_offset, uts_size ());
 #else
   fprintf (fp,
-           "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
-           "%02d/%02d/%02d %02d:%02d:%02d %d %s %d\n",
-           as_index + 1, clt_ip, clt_appl, script,
-           (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
-           (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
-           ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
-           ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour,
-           ct2.tm_min, ct2.tm_sec, (int) getpid (), err_str, -1);
+	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
+	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d\n",
+	   as_index + 1, clt_ip, clt_appl, script,
+	   (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
+	   (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
+	   ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
+	   ct1.tm_sec, ct2.tm_year, ct2.tm_mon + 1, ct2.tm_mday, ct2.tm_hour,
+	   ct2.tm_min, ct2.tm_sec, (int) getpid (), err_str, -1);
 #endif
 
   fclose (fp);
@@ -172,6 +173,7 @@ trim (char *str)
   return (str);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int
 ut_file_lock (char *lock_file)
 {
@@ -205,6 +207,7 @@ ut_file_unlock (char *lock_file)
 {
   unlink (lock_file);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 #if defined(WINDOWS)
 int
@@ -310,15 +313,9 @@ run_child (const char *appl_name)
 void
 ut_cd_work_dir ()
 {
-  char *p;
+  char path[PATH_MAX];
 
-  p = getenv_cubrid_broker ();
-
-  if (p)
-    {
-      chdir (p);
-      chdir ("bin");
-    }
+  chdir (envvar_bindir_file (path, PATH_MAX, ""));
 }
 
 #ifdef V3_TEST
@@ -426,7 +423,7 @@ ut_time_string (char *buf)
   if (tm_p)
     {
       tm = *tm_p;
-  }
+    }
 #else
   tm_p = localtime_r (&tb.time, &tm);
 #endif
@@ -466,7 +463,7 @@ ut_time_string (char *buf)
 int
 gettimeofday (struct timeval *tp, void *tzp)
 {
-#if 1                           /* _ftime() version */
+#if 1				/* _ftime() version */
   struct _timeb tm;
   _ftime (&tm);
   tp->tv_sec = tm.time;

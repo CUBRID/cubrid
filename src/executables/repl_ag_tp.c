@@ -158,10 +158,12 @@ static int repl_ag_truncate_copy_log (MASTER_INFO * minfo, PAGEID flushed,
 static int repl_ag_archive_by_file_copy (MASTER_INFO * minfo, PAGEID flushed,
 					 char *buf, char *archive_path,
 					 PAGEID last_pageid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int repl_ag_archive_by_file_rename (MASTER_INFO * minfo,
 					   PAGEID flushed, char *buf,
 					   char *archive_path,
 					   PAGEID last_pageid);
+#endif
 #if 0
 static void repl_ag_delete_min_trantable (MASTER_INFO * minfo);
 #endif
@@ -413,6 +415,23 @@ repl_ag_get_slave_info (int *s_idx)
   if (s_idx != NULL)
     *s_idx = *slave_info;
   return sInfo[*slave_info];
+}
+
+/*
+ * repl_ag_get_master_map () -
+ */
+MASTER_MAP *
+repl_ag_get_master_map (int idx)
+{
+  SLAVE_INFO *slave;
+
+  slave = repl_ag_get_slave_info (NULL);
+  if (slave == NULL)
+    {
+      return NULL;
+    }
+
+  return &(slave->masters[idx]);
 }
 
 /*
@@ -710,6 +729,7 @@ repl_ag_archive_by_file_copy (MASTER_INFO * minfo,
   return error;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * repl_ag_archive_by_file_rename() - archive the copy log using file rename
  *   return: NO_ERROR or error code
@@ -782,6 +802,7 @@ repl_ag_archive_by_file_rename (MASTER_INFO * minfo,
   close (archive_vol);
   return error;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * repl_ag_delete_min_trantable() - drop the transaction entry which has a
@@ -1048,6 +1069,10 @@ repl_reconnect (char *dbname, char *userid, char *passwd, bool first)
   if (error != NO_ERROR)
     {
       error = REPL_AGENT_CANT_CONNECT_TO_SLAVE;
+    }
+  else
+    {
+      db_set_lock_timeout (-1);
     }
 
   return error;
@@ -1424,20 +1449,33 @@ repl_tr_log_record_process (void *arg,
       break;
 
     case LOG_UNLOCK_COMMIT:
-    case LOG_COMMIT_TOPOPE:
-      /* add the repl_list to the commit_list  */
-      error = repl_ag_add_unlock_commit_log (lrec->trid, final, m_idx);
+      error = repl_ag_add_commit_log (lrec->trid, final, m_idx, lrec->type);
       if (error != NO_ERROR)
 	{
 	  pb->need_shutdown = true;
 	}
-      REPL_CHECK_THREAD_ERROR (APPLY_THREAD, true,
-			       REPL_AGENT_INTERNAL_ERROR, NULL, arg);
+      REPL_CHECK_THREAD_ERROR (APPLY_THREAD, true, REPL_AGENT_INTERNAL_ERROR,
+			       NULL, arg);
+      break;
 
-      if (lrec->type != LOG_COMMIT_TOPOPE)
+    case LOG_COMMIT_TOPOPE:
+      error = repl_ag_add_commit_log (lrec->trid, final, m_idx, lrec->type);
+      if (error != NO_ERROR)
 	{
-	  break;
+	  pb->need_shutdown = true;
 	}
+      REPL_CHECK_THREAD_ERROR (APPLY_THREAD, true, REPL_AGENT_INTERNAL_ERROR,
+			       NULL, arg);
+      if (LSA_GT (final, &sinfo->masters[m_idx].final_lsa))
+	{
+	  error =
+	    repl_ag_apply_commit_list (&lsa_apply, m_idx, &sinfo->old_time);
+	}
+      else
+	{
+	  repl_ag_clear_repl_item_by_tranid (sinfo, lrec->trid, m_idx, false);
+	}
+      break;
 
     case LOG_COMMIT:
       if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
@@ -1452,75 +1490,31 @@ repl_tr_log_record_process (void *arg,
       /* apply the replication log to the slave */
       if (LSA_GT (final, &sinfo->masters[m_idx].final_lsa))
 	{
-	  if (lrec->type == LOG_COMMIT_TOPOPE)
+	  error =
+	    repl_ag_retrieve_eot_time (pg_ptr, final, m_idx, &master_time);
+	  if (error == NO_ERROR)
 	    {
-	      master_time = -1;
+	      error =
+		repl_ag_set_commit_log (lrec->trid, final, m_idx,
+					master_time);
 	    }
 	  else
 	    {
-	      error = repl_ag_retrieve_eot_time (pg_ptr, final, m_idx,
-						 &master_time);
-	    }
-
-	  if (error == NO_ERROR)
-	    {
-	      error = repl_ag_set_commit_log (lrec->trid, final, m_idx,
-					      master_time);
-	    }
-
-	  if (error != NO_ERROR)
-	    {
 	      pb->need_shutdown = true;
 	    }
-
 	  REPL_CHECK_THREAD_ERROR (APPLY_THREAD, true,
 				   REPL_AGENT_INTERNAL_ERROR, NULL, arg);
 
-	  do
+	  error =
+	    repl_ag_apply_commit_list (&lsa_apply, m_idx, &sinfo->old_time);
+	  if (error == NO_ERROR && !LSA_ISNULL (&lsa_apply))
 	    {
-	      error = repl_ag_apply_commit_list (&lsa_apply, m_idx,
-						 &sinfo->old_time,
-						 lrec->type == LOG_COMMIT);
-	      if (error == REPL_AGENT_CANT_CONNECT_TO_SLAVE)
-		{
-		  /* If errors, all threads related this slave db would fail also,
-		   * Don't generate archive
-		   */
-		  pb->start_to_archive = false;
-		  switch (error)
-		    {
-		    case ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED:
-		      REPL_CHECK_THREAD_ERROR (APPLY_THREAD, true,
-					       REPL_AGENT_SLAVE_STOP,
-					       sinfo->conn.dbname, arg);
-		      break;
-		    case ER_LK_UNILATERALLY_ABORTED:
-		      REPL_CHECK_THREAD_ERROR (APPLY_THREAD, true,
-					       REPL_AGENT_NEED_MORE_WS,
-					       sinfo->conn.dbname, arg);
-		      break;
-		    default:
-		      REPL_CHECK_THREAD_ERROR (APPLY_THREAD, true,
-					       REPL_AGENT_REPLICATION_BROKEN,
-					       sinfo->conn.dbname, arg);
-		      break;
-
-		    }
-		}
-	      if (!LSA_ISNULL (&lsa_apply))
-		{
-		  LSA_COPY (&(sinfo->masters[m_idx].final_lsa), &lsa_apply);
-		}
+	      LSA_COPY (&(sinfo->masters[m_idx].final_lsa), &lsa_apply);
 	    }
-	  while (!LSA_ISNULL (&lsa_apply));	/* if lsa_apply is not null then
-						 * there is the replication log
-						 * applying to the slave
-						 */
 	}
       else
 	{
-	  repl_ag_clear_repl_item_by_tranid (sinfo, lrec->trid, m_idx,
-					     lrec->type == LOG_COMMIT);
+	  repl_ag_clear_repl_item_by_tranid (sinfo, lrec->trid, m_idx, true);
 	}
       break;
 
@@ -2781,7 +2775,7 @@ repl_ag_log_dump (int log_fd, int io_pagesize)
 	      repl_ag_log_dump_node_insert (&head, &tail, dump_node);
 	    }
 
-	  if (dump_node->type == LOG_COMMIT)
+	  if (dump_node->type == LOG_COMMIT || dump_node->type == LOG_ABORT)
 	    {
 	      repl_ag_log_dump_node_delete (&head, &tail, dump_node);
 	      dump_node = NULL;

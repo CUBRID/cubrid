@@ -174,7 +174,9 @@ extern int au_set_password (MOP user, const char *password);
 
 extern const char *au_user_name (void);
 extern char *au_user_name_dup (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int au_user_password (char *buffer);
+#endif
 
 /* grant/revoke */
 extern int au_grant (MOP user, MOP class_mop, DB_AUTH type,
@@ -213,8 +215,10 @@ extern void au_dump (void);
 extern void au_dump_to_file (FILE * fp);
 extern void au_dump_user (MOP user, FILE * fp);
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /* used by test code, should be changed to au_dump . . . */
 extern void au_print_class_auth (MOP class_mop);
+#endif
 
 /* called only at initialization time to get the static methods linked */
 extern void au_link_static_methods (void);

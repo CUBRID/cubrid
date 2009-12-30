@@ -58,8 +58,11 @@ static char *make_sql_log_filename (char *filename_buf,
 				    size_t buf_size, const char *br_name,
 				    int as_index);
 static void cas_log_backup (void);
+
+#if defined (ENABLE_UNUSED_FUNCTION)
 static void cas_log_rename (int run_time, time_t cur_time, char *br_name,
 			    int as_index);
+#endif
 static void cas_log_write_internal (unsigned int seq_num, const char *fmt,
 				    va_list ap);
 static void cas_log_write2_internal (const char *fmt, va_list ap);
@@ -110,7 +113,7 @@ cas_log_open (char *br_name, int as_index)
 
   if (log_fp != NULL)
     {
-      cas_log_close (false);
+      cas_log_close (true);
     }
 
   if (shm_appl->sql_log_mode != SQL_LOG_MODE_NONE)
@@ -171,7 +174,6 @@ cas_log_close (bool flag)
       if (flag)
 	{
 	  fseek (log_fp, saved_log_fpos, SEEK_SET);
-	  cas_log_write_internal (0, "END OF LOG\n\n", "");
 	  ftruncate (fileno (log_fp), saved_log_fpos);
 	}
       fclose (log_fp);
@@ -194,6 +196,7 @@ cas_log_backup (void)
   rename (log_filepath, backup_filepath);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static void
 cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index)
 {
@@ -210,6 +213,7 @@ cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index)
 	    tmp_tm.tm_min, tmp_tm.tm_sec, run_time);
   rename (log_filepath, new_filepath);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 cas_log_end (int mode, int run_time_sec, int run_time_msec)
@@ -246,7 +250,8 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 		   shm_appl->sql_log_mode == SQL_LOG_MODE_NOTICE)
 	    {
 	      /* check timeout */
-	      if (run_time_sec < shm_appl->long_transaction_time)
+	      if ((run_time_sec * 1000 + run_time_msec) <
+		  shm_appl->long_transaction_time)
 		{
 		  abandon = true;
 		}
@@ -268,16 +273,16 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 
       if (abandon)
 	{
+	  cas_log_write_internal (0, "END OF LOG\n\n", "");
 	  fseek (log_fp, saved_log_fpos, SEEK_SET);
 	}
       else
 	{
 	  if (run_time_sec >= 0 && run_time_msec >= 0)
 	    {
-	      fprintf (log_fp, "*** %d.%03d\n\n", run_time_sec,
-		       run_time_msec);
+	      cas_log_write (0, false, "*** elapsed time %d.%03d\n",
+			     run_time_sec, run_time_msec);
 	    }
-	  fflush (log_fp);
 	  saved_log_fpos = ftell (log_fp);
 
 	  if ((saved_log_fpos / 1000) > shm_appl->sql_log_max_size)
@@ -285,6 +290,12 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	      cas_log_close (true);
 	      cas_log_backup ();
 	      cas_log_open (NULL, 0);
+	    }
+	  else
+	    {
+	      cas_log_write_internal (0, "END OF LOG\n\n", "");
+	      fflush (log_fp);
+	      fseek (log_fp, saved_log_fpos, SEEK_SET);
 	    }
 	}
     }
@@ -500,6 +511,8 @@ cas_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 #endif
 
 #ifdef CAS_ERROR_LOG
+
+#if defined (ENABLE_UNUSED_FUNCTION)
 void
 cas_error_log (int err_code, char *err_msg_str, int client_ip_addr)
 {
@@ -542,6 +555,7 @@ cas_error_log (int err_code, char *err_msg_str, int client_ip_addr)
   cas_log_error_flag = 1;
 #endif /* LIBCAS_FOR_JSP */
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 #endif
 
 int

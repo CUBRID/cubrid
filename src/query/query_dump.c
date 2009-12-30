@@ -65,7 +65,6 @@ static bool qdump_print_insert_proc_node (INSERT_PROC_NODE * ptr);
 static const char *qdump_target_type_string (TARGET_TYPE type);
 static const char *qdump_access_method_string (ACCESS_METHOD access);
 static bool qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list);
-static bool qdump_print_start_proc (START_PROC * start_proc);
 static const char *qdump_key_range_string (RANGE range);
 static bool qdump_print_key_info (KEY_INFO * key_info);
 static const char *qdump_range_type_string (RANGE_TYPE range_type);
@@ -162,6 +161,9 @@ qdump_print_xasl_type (XASL_NODE * xasl_p)
       break;
     case INSERT_PROC:
       type_string_p = "insert_proc";
+      break;
+    case CONNECTBY_PROC:
+      type_string_p = "connectby_proc";
       break;
     default:
       return false;
@@ -500,55 +502,6 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
   fprintf (foutput, "\n-->next access spec:");
   qdump_print_access_spec (spec_list_p->next);
   fprintf (foutput, "\n");
-
-  return true;
-}
-
-/*
- * qdump_print_start_proc () -
- *   return:
- *   start_proc(in):
- */
-static bool
-qdump_print_start_proc (START_PROC * start_proc_p)
-{
-  if (start_proc_p == NULL)
-    {
-      return true;
-    }
-
-  fprintf (foutput, "%p\n", start_proc_p);
-
-  if (start_proc_p->sql_command && start_proc_p->stmtLength > 0)
-    {
-      fprintf (foutput, "\tsql command:(%ld)%*s\n",
-	       start_proc_p->command_id,
-	       start_proc_p->stmtLength, start_proc_p->sql_command);
-    }
-
-  if (start_proc_p->ldb)
-    {
-      fprintf (foutput, "\tldb:(%ld)%s\n",
-	       start_proc_p->comp_dbid, start_proc_p->ldb);
-    }
-
-  if (start_proc_p->input_vals && start_proc_p->vals_len
-      && start_proc_p->vals_cnt > 0)
-    {
-      fprintf (foutput, "\tinput vals:(%d)%*s\n",
-	       start_proc_p->vals_cnt,
-	       start_proc_p->vals_len, start_proc_p->input_vals);
-    }
-
-  if (start_proc_p->read_proc)
-    {
-      fprintf (foutput, "-->read proc:%p\n", start_proc_p->read_proc);
-    }
-
-  if (start_proc_p->next)
-    {
-      fprintf (foutput, "-->next start proc:%p\n", start_proc_p->next);
-    }
 
   return true;
 }
@@ -2011,6 +1964,7 @@ qdump_check_node (XASL_NODE * xasl_p,
   qdump_check_node (xasl_p->scan_ptr, chk_nodes);
   qdump_check_node (xasl_p->dptr_list, chk_nodes);
   qdump_check_node (xasl_p->fptr_list, chk_nodes);
+  qdump_check_node (xasl_p->connect_by_ptr, chk_nodes);
   qdump_check_node (xasl_p->next, chk_nodes);
 }
 
@@ -2228,6 +2182,97 @@ qdump_print_build_value_node (XASL_NODE * xasl_p)
   return true;
 }
 
+static bool
+qdump_print_connect_by_proc_node (XASL_NODE * xasl_p)
+{
+  CONNECTBY_PROC_NODE *node_p = &xasl_p->proc.connect_by;
+
+  if (node_p->start_with_pred)
+    {
+      fprintf (foutput, "-->start with predicate:");
+      qdump_print_predicate (node_p->start_with_pred);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->after_connect_by_pred)
+    {
+      fprintf (foutput, "-->after connect by predicate:");
+      qdump_print_predicate (node_p->after_connect_by_pred);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->input_list_id)
+    {
+      fprintf (foutput, "-->input list id:");
+      qdump_print_listi_d (node_p->input_list_id);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->start_with_list_id)
+    {
+      fprintf (foutput, "-->start with list id:");
+      qdump_print_listi_d (node_p->start_with_list_id);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->regu_list_pred)
+    {
+      fprintf (foutput, "-->connect by regu list pred:");
+      qdump_print_regu_variable_list (node_p->regu_list_pred);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->regu_list_rest)
+    {
+      fprintf (foutput, "-->connect by regu list rest:");
+      qdump_print_regu_variable_list (node_p->regu_list_rest);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->prior_val_list)
+    {
+      fprintf (foutput, "-->prior val list:");
+      qdump_print_value_list (node_p->prior_val_list);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->prior_outptr_list)
+    {
+      qdump_print_outlist ("prior output ptrlist", node_p->prior_outptr_list);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->prior_regu_list_pred)
+    {
+      fprintf (foutput, "-->prior regu list pred:");
+      qdump_print_regu_variable_list (node_p->prior_regu_list_pred);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->prior_regu_list_rest)
+    {
+      fprintf (foutput, "-->prior regu list rest:");
+      qdump_print_regu_variable_list (node_p->prior_regu_list_rest);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->after_cb_regu_list_pred)
+    {
+      fprintf (foutput, "-->after connect by regu list pred:");
+      qdump_print_regu_variable_list (node_p->after_cb_regu_list_pred);
+      fprintf (foutput, "\n");
+    }
+
+  if (node_p->after_cb_regu_list_rest)
+    {
+      fprintf (foutput, "-->after connect by regu list rest:");
+      qdump_print_regu_variable_list (node_p->after_cb_regu_list_rest);
+      fprintf (foutput, "\n");
+    }
+
+  return true;
+}
+
 /*
  * qdump_print_xasl () -
  *   return:
@@ -2366,11 +2411,6 @@ qdump_print_xasl (XASL_NODE * xasl_p)
       fprintf (foutput, "\n");
     }
 
-  if (xasl_p->start_list)
-    {
-      fprintf (foutput, "-->start list:%p\n", xasl_p->start_list);
-    }
-
   if (xasl_p->spec_list)
     {
       fprintf (foutput, "-->access spec:");
@@ -2417,6 +2457,11 @@ qdump_print_xasl (XASL_NODE * xasl_p)
       fprintf (foutput, "-->fptr list:%p\n", xasl_p->fptr_list);
     }
 
+  if (xasl_p->connect_by_ptr)
+    {
+      fprintf (foutput, "-->connect_by ptr:%p\n", xasl_p->connect_by_ptr);
+    }
+
   if (xasl_p->after_join_pred)
     {
       fprintf (foutput, "-->after_join predicate:");
@@ -2452,6 +2497,63 @@ qdump_print_xasl (XASL_NODE * xasl_p)
 	{
 	  fprintf (foutput, "-->instnum CONTINUE\n");
 	}
+    }
+
+  if (xasl_p->level_val)
+    {
+      fprintf (foutput, "-->level val:");
+      fprintf (foutput, "<addr:%p|", xasl_p->level_val);
+      fprintf (foutput, "type:%s",
+	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
+				       (xasl_p->level_val)));
+      fprintf (foutput, "|value:");
+      qdump_print_db_value (xasl_p->level_val);
+      fprintf (foutput, ">\n");
+    }
+
+  if (xasl_p->level_regu)
+    {
+      fprintf (foutput, "-->level regu:");
+      qdump_print_value (xasl_p->level_regu);
+      fprintf (foutput, "\n");
+    }
+
+  if (xasl_p->isleaf_val)
+    {
+      fprintf (foutput, "-->isleaf val:");
+      fprintf (foutput, "<addr:%p|", xasl_p->isleaf_val);
+      fprintf (foutput, "type:%s",
+	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
+				       (xasl_p->isleaf_val)));
+      fprintf (foutput, "|value:");
+      qdump_print_db_value (xasl_p->isleaf_val);
+      fprintf (foutput, ">\n");
+    }
+
+  if (xasl_p->isleaf_regu)
+    {
+      fprintf (foutput, "-->isleaf regu:");
+      qdump_print_value (xasl_p->isleaf_regu);
+      fprintf (foutput, "\n");
+    }
+
+  if (xasl_p->iscycle_val)
+    {
+      fprintf (foutput, "-->iscycle val:");
+      fprintf (foutput, "<addr:%p|", xasl_p->iscycle_val);
+      fprintf (foutput, "type:%s",
+	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
+				       (xasl_p->iscycle_val)));
+      fprintf (foutput, "|value:");
+      qdump_print_db_value (xasl_p->iscycle_val);
+      fprintf (foutput, ">\n");
+    }
+
+  if (xasl_p->iscycle_regu)
+    {
+      fprintf (foutput, "-->iscycle regu:");
+      qdump_print_value (xasl_p->iscycle_regu);
+      fprintf (foutput, "\n");
     }
 
   fprintf (foutput, "-->current spec:");
@@ -2490,17 +2592,11 @@ qdump_print_xasl (XASL_NODE * xasl_p)
       qdump_print_merge_list_proc_node (&xasl_p->proc.mergelist);
       break;
 
-    case SCAN_PROC:
+    case CONNECTBY_PROC:
+      qdump_print_connect_by_proc_node (xasl_p);
       break;
 
-    case READ_MPROC:
-    case READ_PROC:
-      fprintf (foutput, "-->start proc:");
-      if (xasl_p->start_proc)
-	{
-	  qdump_print_start_proc (xasl_p->start_proc);
-	}
-
+    case SCAN_PROC:
       break;
 
     case UPDATE_PROC:
@@ -2532,6 +2628,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
   qdump_print_xasl (xasl_p->scan_ptr);
   qdump_print_xasl (xasl_p->dptr_list);
   qdump_print_xasl (xasl_p->fptr_list);
+  qdump_print_xasl (xasl_p->connect_by_ptr);
 
   if (xasl_p->type == BUILDLIST_PROC)
     {

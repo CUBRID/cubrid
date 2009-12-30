@@ -3036,11 +3036,14 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     else
       {				/* at == 0 */
 	a_keys = 1;		/* init as full range */
-	term =
-	  QO_ENV_TERM ((a->info)->env,
-		       bitset_first_member (&(a->plan_un.scan.terms)));
-	a_keys = (int) ceil (1.0 / QO_TERM_SELECTIVITY (term));
-	a_keys = MIN (a_cum->pkeys[0], a_keys);
+	if (a_last > 0)
+	  {
+	    term =
+	      QO_ENV_TERM ((a->info)->env,
+			   bitset_first_member (&(a->plan_un.scan.terms)));
+	    a_keys = (int) ceil (1.0 / QO_TERM_SELECTIVITY (term));
+	    a_keys = MIN (a_cum->pkeys[0], a_keys);
+	  }
       }
 
     if (a_cum->leafs <= a_keys)
@@ -3067,11 +3070,14 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     else
       {				/* bt == 0 */
 	b_keys = 1;		/* init as full range */
-	term =
-	  QO_ENV_TERM ((b->info)->env,
-		       bitset_first_member (&(b->plan_un.scan.terms)));
-	b_keys = (int) ceil (1.0 / QO_TERM_SELECTIVITY (term));
-	b_keys = MIN (b_cum->pkeys[0], b_keys);
+	if (b_last > 0)
+	  {
+	    term =
+	      QO_ENV_TERM ((b->info)->env,
+			   bitset_first_member (&(b->plan_un.scan.terms)));
+	    b_keys = (int) ceil (1.0 / QO_TERM_SELECTIVITY (term));
+	    b_keys = MIN (b_cum->pkeys[0], b_keys);
+	  }
       }
 
     if (b_cum->leafs <= b_keys)
@@ -8758,24 +8764,44 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
   PT_NODE *dummy;
   QO_NODE *nodep;
   QO_SEGMENT *segp;
+  QO_ATTR_INFO *info;
 
   if (attr->node_type == PT_DOT_)
-    attr = attr->info.dot.arg2;
+    {
+      attr = attr->info.dot.arg2;
+    }
 
   QO_ASSERT (env, attr->node_type == PT_NAME);
 
-  if ((nodep = lookup_node (attr, env, &dummy)) == NULL)
-    return 0;
-  if ((segp = lookup_seg (nodep, attr, env)) == NULL)
-    return 0;
-  if (QO_SEG_INFO (segp) == NULL)
-    return 0;
-  if (!QO_SEG_INFO (segp)->cum_stats.is_indexed)
-    return 0;
+  nodep = lookup_node (attr, env, &dummy);
+  if (nodep == NULL)
+    {
+      return 0;
+    }
+
+  segp = lookup_seg (nodep, attr, env);
+  if (segp == NULL)
+    {
+      return 0;
+    }
+
+  info = QO_SEG_INFO (segp);
+  if (info == NULL)
+    {
+      return 0;
+    }
+
+  if (info->cum_stats.is_indexed != true)
+    {
+      return 0;
+    }
+
+  QO_ASSERT (env, info->cum_stats.key_size > 0
+	     && info->cum_stats.pkeys != NULL);
 
   /* return number of the first partial-key of the index on the attribute
      shown in the expression */
-  return QO_SEG_INFO (segp)->cum_stats.pkeys[0];
+  return info->cum_stats.pkeys[0];
 }
 
 /*

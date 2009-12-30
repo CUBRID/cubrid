@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -125,12 +125,16 @@ extern int db_string_substring (const MISC_OPERAND substr_operand,
 				const DB_VALUE * start_position,
 				const DB_VALUE * extraction_length,
 				DB_VALUE * sub_string);
+
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int db_string_byte_length (const DB_VALUE * string,
 				  DB_VALUE * byte_count);
 extern int db_string_bit_length (const DB_VALUE * string,
 				 DB_VALUE * bit_count);
 extern int db_string_char_length (const DB_VALUE * string,
 				  DB_VALUE * char_count);
+#endif
+
 extern int db_string_lower (const DB_VALUE * string, DB_VALUE * lower_string);
 extern int db_string_upper (const DB_VALUE * string, DB_VALUE * upper_string);
 extern int db_string_trim (const MISC_OPERAND tr_operand,

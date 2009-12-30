@@ -93,7 +93,7 @@
 typedef struct schema_def
 {
 
-  /* This is the default qualifier for class/vclass/proxy names */
+  /* This is the default qualifier for class/vclass names */
   char name[DB_MAX_SCHEMA_LENGTH + 4];
 
   /* The only user who can delete this schema. */
@@ -117,7 +117,7 @@ typedef struct schema_def
  *
  * description:
  *    This is the current schema.  The schema name in this structure is the
- *    default qualifier for any class/vclass/proxy names which are not
+ *    default qualifier for any class/vclass names which are not
  *    explicitly qualified.
  *    This structure should only be changed with sc_set_current_schema which
  *    currently is called only from AU_SET_USER
@@ -265,6 +265,9 @@ const char *sm_Root_class_name = ROOTCLASS_NAME;
 /* Heap file identifier for the root class */
 HFID *sm_Root_class_hfid = &sm_Root_class.header.heap;
 
+/* Flag to do update statistics */
+bool sm_Disable_updating_statistics = false;
+
 static unsigned int schema_version_number = 0;
 
 static int domain_search (MOP dclass_mop, MOP class_mop);
@@ -277,7 +280,6 @@ static int alter_trigger_hierarchy (DB_OBJECT * classop,
 				    int class_attribute,
 				    DB_OBJECT * target_class,
 				    DB_OBJECT * trigger, int drop_it);
-static const char *sm_get_class_name_internal (MOP op, bool return_null);
 static int find_attribute_op (MOP op, const char *name,
 			      SM_CLASS ** classp, SM_ATTRIBUTE ** attp);
 static int lock_query_subclasses (DB_OBJLIST ** subclasses, MOP op,
@@ -468,10 +470,9 @@ static int check_catalog_space (MOP classmop, SM_CLASS * class_);
 static int flatten_subclasses (DB_OBJLIST * subclasses, MOP deleted_class);
 static void abort_subclasses (DB_OBJLIST * subclasses);
 static int update_subclasses (DB_OBJLIST * subclasses);
-static int verify_object_id (SM_TEMPLATE * template_);
 static int lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_);
 static int update_class (SM_TEMPLATE * template_, MOP * classmop,
-			 int auto_res, int verify_oid);
+			 int auto_res);
 static void remove_class_triggers (MOP classop, SM_CLASS * class_);
 static int sm_exist_index (MOP classop, const char *idxname, BTID * btid);
 static char *sm_default_constraint_name (const char *class_name,
@@ -492,31 +493,25 @@ static DB_OBJLIST *sm_get_base_classes (int external_list);
 static DB_OBJLIST *sm_get_all_objects (DB_OBJECT * op);
 static TP_DOMAIN *sm_get_set_domain (MOP classop, int att_id);
 
-static const char *sm_get_class_name (MOP op);
-static const char *sm_get_class_name_not_null (MOP op);
-
-static int sm_has_constraint (MOBJ classobj, SM_ATTRIBUTE_FLAG constraint);
-
-static int sm_get_att_domain (MOP op, const char *name, TP_DOMAIN ** domain);
-static const char *sm_type_name (DB_TYPE id);
 static DB_OBJLIST *sm_query_lock (MOP classop, DB_OBJLIST * exceptions,
 				  int only, int update);
-static int sm_update_trigger_cache (DB_OBJECT * class_,
-				    const char *attribute,
-				    int class_attribute, void *cache);
-
 
 static void sm_reset_descriptors (MOP class_);
-
-static int sm_object_disk_size (MOP op);
 static void sm_print (MOP classmop);
 
+#if defined(ENABLE_UNUSED_FUNCTION)
+static const char *sm_get_class_name_internal (MOP op, bool return_null);
+static const char *sm_get_class_name (MOP op);
+static const char *sm_get_class_name_not_null (MOP op);
+static int sm_update_trigger_cache (DB_OBJECT * class_,
+                                    const char *attribute,
+                                    int class_attribute, void *cache);
 static const char *sc_current_schema_name (void);
-
-
-
-
-
+static int sm_object_disk_size (MOP op);
+static int sm_has_constraint (MOBJ classobj, SM_ATTRIBUTE_FLAG constraint);
+static int sm_get_att_domain (MOP op, const char *name, TP_DOMAIN ** domain);
+static const char *sm_type_name (DB_TYPE id);
+#endif
 
 /*
  * sc_set_current_schema()
@@ -568,10 +563,11 @@ sc_set_current_schema (MOP user)
   return error;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sc_current_schema_name() - Returns current schema name which is
  *                            the default qualifier for otherwise
- *                            unqualified class/vclass/proxy names
+ *                            unqualified class/vclass names
  *      return: pointer to current schema name
  *
  */
@@ -581,7 +577,7 @@ sc_current_schema_name (void)
 {
   return (const char *) &(Current_Schema.name);
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * sm_add_static_method() - Adds an element to the static link table.
@@ -2703,15 +2699,6 @@ sm_rename_class (MOP op, const char *new_name)
 	}
       else
 	{
-	  if (class_->class_type == SM_LDBVCLASS_CT)
-	    {
-	      /* do not update system catalog table.
-	       */
-	      ws_clean (op);
-	      /* reserve to update system catalog table */
-	      ws_dirty (op);
-	    }
-
 	  class_->header.name = newname;
 	  error = sm_flush_objects (op);
 
@@ -3497,6 +3484,11 @@ sm_update_statistics (MOP classop)
   int error = NO_ERROR;
   SM_CLASS *class_;
 
+  if (sm_Disable_updating_statistics == true)
+    {
+      return NO_ERROR;
+    }
+
   /* only try to get statistics if we know the class has been flushed
      if it has a temporary oid, it isn't flushed and there are no statistics */
 
@@ -3665,6 +3657,7 @@ sm_get_trigger_cache (DB_OBJECT * classop,
   return (error);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sm_update_trigger_cache() - This adds or modifies the trigger cache pointer
  *    in the schema.  The class is also marked as dirty so
@@ -3704,6 +3697,7 @@ sm_update_trigger_cache (DB_OBJECT * classop,
     }
   return (error);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * sm_active_triggers() - Quick check to see if the class has active triggers.
@@ -4110,6 +4104,7 @@ sm_class_name (MOP op)
   return (name);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sm_get_class_name_internal()
  * sm_get_class_name()
@@ -4154,6 +4149,7 @@ sm_get_class_name_not_null (MOP op)
 {
   return sm_get_class_name_internal (op, false);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * sm_is_subclass() - Checks to see if one class is a subclass of another.
@@ -4187,6 +4183,7 @@ sm_is_subclass (MOP classmop, MOP supermop)
   return (found);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sm_object_size() - Walk through the instance or class and tally up
  *    the number of bytes used for storing the various object components.
@@ -4233,7 +4230,7 @@ sm_object_size (MOP op)
     }
   return (size);
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 /*
  * sm_object_size_quick() - Calculate the memory size of an instance.
  *    Called only by the workspace statistics functions.
@@ -4265,6 +4262,7 @@ sm_object_size_quick (SM_CLASS * class_, MOBJ obj)
   return (size);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sm_object_disk_size() - Calculates the disk size of an object.
  *    General information function that should be pretty accurate but
@@ -4306,6 +4304,7 @@ sm_object_disk_size (MOP op)
 
   return (size);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * sm_dump() - Debug function to dump internal information about class objects.
@@ -4432,6 +4431,7 @@ sm_has_indexes (MOBJ classobj)
   return has_indexes;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sm_has_constraint() - This is used to determine if a constraint is
  *    associated with a particular class.
@@ -4459,6 +4459,7 @@ sm_has_constraint (MOBJ classobj, SM_ATTRIBUTE_FLAG constraint)
     }
   return has_constraint;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * sm_class_constraints() - Return a pointer to the class constraint cache.
@@ -4540,6 +4541,7 @@ find_attribute_op (MOP op, const char *name,
   return (error);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sm_get_att_domain() - Get the domain descriptor for an attribute.
  *    This should be replaced with sm_get_att_info.
@@ -4564,6 +4566,7 @@ sm_get_att_domain (MOP op, const char *name, TP_DOMAIN ** domain)
 
   return (error);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * sm_get_att_name() - Get the name of an attribute with its id.
@@ -4635,6 +4638,7 @@ sm_att_type_id (MOP classop, const char *name)
   return (type);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sm_type_name() - Accesses the primitive type name for a type identifier.
  *    Used by the interpreter for error messages during semantic checking.
@@ -4655,6 +4659,7 @@ sm_type_name (DB_TYPE id)
 
   return NULL;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * sm_att_class() - Returns the domain class of an attribute if its basic type
@@ -5185,7 +5190,6 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 		  break;
 
 		case SM_VCLASS_CT:
-		case SM_LDBVCLASS_CT:
 		  if (vid_flush_all_instances (obj, decache) != NO_ERROR)
 		    error = er_errid ();
 		  break;
@@ -5218,7 +5222,6 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 		      break;
 
 		    case SM_VCLASS_CT:
-		    case SM_LDBVCLASS_CT:
 		      if (vid_flush_all_instances (obj, decache) != NO_ERROR)
 			error = er_errid ();
 		      break;
@@ -5258,7 +5261,6 @@ sm_flush_and_decache_objects (MOP obj, int decache)
 			      break;
 
 			    case SM_VCLASS_CT:
-			    case SM_LDBVCLASS_CT:
 			      if (vid_flush_all_instances (obj, decache) !=
 				  NO_ERROR)
 				error = er_errid ();
@@ -10206,7 +10208,6 @@ install_new_representation (MOP classop, SM_CLASS * class_,
 	      break;
 
 	    case SM_VCLASS_CT:
-	    case SM_LDBVCLASS_CT:
 	      if (vid_flush_all_instances (classop, true) != NO_ERROR)
 		return (er_errid ());
 	      break;
@@ -10735,58 +10736,6 @@ update_subclasses (DB_OBJLIST * subclasses)
 }
 
 /*
- * verify_object_id() - Verify the object_id for the class.  If none has been
- *              set, indicate that all attributes form the object_id
- *   return: NO_ERROR on success, non-zero for ERROR
- *   template(in): schema templat
- */
-
-static int
-verify_object_id (SM_TEMPLATE * template_)
-{
-  int error = NO_ERROR;
-  SM_ATTRIBUTE *att;
-  int no_keys;
-  DB_VALUE val;
-
-  if ((template_) && (template_->class_type == SM_LDBVCLASS_CT))
-    {
-      no_keys = 0;
-      for (att = template_->attributes; att != NULL;
-	   att = (SM_ATTRIBUTE *) att->header.next)
-	{
-	  if (vid_att_in_obj_id (att))
-	    ++no_keys;
-	}
-
-      if (no_keys > 0)
-	return NO_ERROR;
-
-      if (classobj_get_prop
-	  (template_->properties, SM_PROPERTY_LDB_INTRINSIC_OID, &val) > 0)
-	{
-	  if (DB_GET_INTEGER (&val))
-	    {
-	      return NO_ERROR;
-	    }
-	}
-
-      no_keys = 0;
-      for (att = template_->attributes; att != NULL;
-	   att = (SM_ATTRIBUTE *) att->header.next)
-	{
-	  if ((error = vid_set_att_obj_id (template_->name, att, no_keys))
-	      != NO_ERROR)
-	    return error;
-	  ++no_keys;
-	}
-    }
-  return NO_ERROR;
-
-}
-
-
-/*
  * lockhint_subclasses() - This is called early during the processing of
  *    sm_update_class. It will use the new subclass lattice locking function
  *    to try to get all the locks we need before we proceed.  This will
@@ -10872,7 +10821,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
 
 static int
 update_class (SM_TEMPLATE * template_, MOP * classmop,
-	      int auto_res, int verify_oid)
+	      int auto_res)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -11036,12 +10985,6 @@ update_class (SM_TEMPLATE * template_, MOP * classmop,
       goto end;
     }
 
-  /* Verify that a VID object_id is correct. */
-  if (verify_oid)
-    {
-      error = verify_object_id (flat);
-    }
-
   /* the next sequence of operations is extremely critical,
      if any errors are detected, we'll have to abort the current
      transaction or the database will be left in an inconsistent
@@ -11114,7 +11057,7 @@ end:
 int
 sm_finish_class (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return (update_class (template_, classmop, 0, 1));
+  return update_class (template_, classmop, 0);
 }
 
 /*
@@ -11128,7 +11071,7 @@ sm_finish_class (SM_TEMPLATE * template_, MOP * classmop)
 int
 sm_update_class (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return (update_class (template_, classmop, 0, 0));
+  return update_class (template_, classmop, 0);
 }
 
 /*
@@ -11142,7 +11085,7 @@ sm_update_class (SM_TEMPLATE * template_, MOP * classmop)
 int
 sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return (update_class (template_, classmop, 1, 0));
+  return update_class (template_, classmop, 1);
 }
 
 /*
@@ -11442,6 +11385,7 @@ fail_end:
   return (error);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * sm_delete_class() - Delete a class by name.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -11462,6 +11406,7 @@ sm_delete_class (const char *name)
 
   return (error);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* INDEX FUNCTIONS */
 /*

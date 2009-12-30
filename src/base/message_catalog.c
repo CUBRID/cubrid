@@ -481,8 +481,6 @@ load_msgcat (const char *path)
 }
 #endif /* !HAVE_NL_TYPES_H */
 
-#define CAT_FILE_DIR    "msg"
-
 /* system message catalog definition */
 struct msgcat_def
 {
@@ -616,14 +614,12 @@ msgcat_open (const char *name)
   char path[PATH_MAX];
 
   /* $CUBRID/msg/$LANG/'name' */
-  snprintf (path, PATH_MAX, "%s/%s/%s/%s", envvar_root (), CAT_FILE_DIR,
-	    lang_name (), name);
+  envvar_localedir_file (path, PATH_MAX, lang_name (), name);
   catd = catopen (path, 0);
   if (catd == NULL)
     {
       /* try once more as default language */
-      snprintf (path, PATH_MAX, "%s/%s/%s/%s", envvar_root (), CAT_FILE_DIR,
-		LANG_NAME_DEFAULT, name);
+      envvar_localedir_file (path, PATH_MAX, LANG_NAME_DEFAULT, name);
       catd = catopen (path, 0);
       if (catd == NULL)
 	{
@@ -644,6 +640,19 @@ msgcat_open (const char *name)
   msg_catd->catd = (void *) catd;
 
   return msg_catd;
+}
+
+/*
+ * msgcat_get_descriptor - get a message catalog descriptor
+ *   return: message catalog descriptor MSG_CATD
+ *   cat_id(in): message id (number)
+ *
+ * Note:
+ */
+MSG_CATD
+msgcat_get_descriptor (int cat_id)
+{
+  return (msgcat_System[cat_id].msg_catd);
 }
 
 /*
@@ -701,14 +710,12 @@ msgcat_open_file (const char *name)
   char path[PATH_MAX];
 
   /* $CUBRID/msg/$LANG/'name' */
-  snprintf (path, PATH_MAX, "%s/%s/%s/%s", envvar_root (), CAT_FILE_DIR,
-	    lang_name (), name);
+  envvar_localedir_file (path, PATH_MAX, lang_name (), name);
   fp = fopen (path, "r");
   if (fp == NULL)
     {
       /* try once more as default language */
-      snprintf (path, PATH_MAX, "%s/%s/%s/%s", envvar_root (), CAT_FILE_DIR,
-		LANG_NAME_DEFAULT, name);
+      envvar_localedir_file (path, PATH_MAX, LANG_NAME_DEFAULT, name);
       fp = fopen (path, "r");
     }
 

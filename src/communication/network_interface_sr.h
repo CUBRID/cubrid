@@ -102,8 +102,11 @@ extern void slog_client_complete_postpone (THREAD_ENTRY * thread_p,
 extern void slog_client_complete_undo (THREAD_ENTRY * thread_p,
 				       unsigned int rid, char *request,
 				       int reqlen);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void slogtb_has_updated (THREAD_ENTRY * thread_p, unsigned int rid,
 				char *request, int reqlen);
+#endif
+
 extern void slogtb_set_interrupt (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
 extern void slogtb_reset_wait_secs (THREAD_ENTRY * thread_p, unsigned int rid,
@@ -289,8 +292,14 @@ extern void smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void smnt_server_reset_stats (THREAD_ENTRY * thread_p,
 				     unsigned int rid, char *request,
 				     int reqlen);
+extern void smnt_server_reset_global_stats (THREAD_ENTRY * thread_p,
+					    unsigned int rid, char *request,
+					    int reqlen);
 extern void smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid,
 				    char *request, int reqlen);
+extern void smnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
+					   unsigned int rid,
+					   char *request, int reqlen);
 extern void sct_can_accept_new_repr (THREAD_ENTRY * thread_p,
 				     unsigned int rid, char *request,
 				     int reqlen);
@@ -317,6 +326,9 @@ extern void tm_restart_event_handler (unsigned int, char *, int);
 extern void sthread_kill_tran_index (THREAD_ENTRY * thread_p,
 				     unsigned int rid, char *request,
 				     int reqlen);
+extern void sthread_dump_cs_stat (THREAD_ENTRY * thread_p,
+				  unsigned int rid, char *request,
+				  int reqlen);
 extern void slogtb_get_pack_tran_table (THREAD_ENTRY * thread_p,
 					unsigned int rid, char *request,
 					int reqlen);

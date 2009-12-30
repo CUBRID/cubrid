@@ -288,6 +288,7 @@ error:
 }
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * area_destroy - Removes an area
  *   return: none
@@ -322,6 +323,7 @@ area_destroy (AREA * area)
     free_and_init (area->name);
   free_and_init (area);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 /*

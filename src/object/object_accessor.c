@@ -135,8 +135,6 @@ static int obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_,
 static int obj_set_temp (DB_OBJECT * obj, SM_ATTRIBUTE * att,
 			 DB_VALUE * value);
 
-static int must_have_intrinsic_oid (MOP op);
-
 static void argstate_from_list (ARGSTATE * state, DB_VALUE_LIST * arglist);
 static void argstate_from_array (ARGSTATE * state, DB_VALUE ** argarray);
 static void argstate_from_va (ARGSTATE * state, va_list args, int nargs);
@@ -1890,50 +1888,6 @@ obj_alloc (SM_CLASS * class_, int bound_bit_status)
 }
 
 /*
- * must_have_intrinsic_oid -
- *    return: NO_ERROR if all OK, an er code otherwise
- *    op(in): class pointer
- *
- * Note:
- *
- *    requires: op is a class
- *    modifies: er state
- *    effects : if op is a proxy then make sure its ldb supports intrinsic
- *		object identity
- *
- */
-static int
-must_have_intrinsic_oid (MOP op)
-{
-  SM_CLASS *cls;
-  int rc;
-
-  if (locator_is_class (op, DB_FETCH_READ) != true)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_NOT_A_CLASS, 0);
-      return er_errid ();
-    }
-
-  rc = au_fetch_class (op, &cls, AU_FETCH_READ, AU_SELECT);
-  if (rc != NO_ERROR)
-    {
-      return rc;
-    }
-
-  if (sm_get_class_type (cls) != SM_LDBVCLASS_CT
-      || vid_class_has_intrinsic_oid (cls))
-    {
-      return NO_ERROR;
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_OBJECT_ID_NOT_SET, 1,
-	      sm_class_name (op));
-      return er_errid ();
-    }
-}
-
-/*
  * obj_create - Creates a new instance of a class.
  *    return: new object
  *    classop(in):  class or instance pointer
@@ -1952,13 +1906,6 @@ obj_create (MOP classop)
   MOP new_mop;
 
   new_mop = NULL;
-  /* obj_create is not a valid function on relational proxies since
-   * it does not provide non-null values for the object-id attributes
-   */
-  if (must_have_intrinsic_oid (classop) != NO_ERROR)
-    {
-      return new_mop;
-    }
 
   obj_template = obt_def_object (classop);
   if (obj_template != NULL)
@@ -3001,6 +2948,7 @@ obj_desc_send_va (MOP obj, SM_DESCRIPTOR * desc,
   return error;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * obj_send_stack - This invokes a method where the arguments are passed
  *                  directly on the stack
@@ -3054,6 +3002,7 @@ obj_desc_send_stack (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, ...)
   va_end (args);
   return (error);
 }
+#endif /*ENABLE_UNUSED_FUNCTION */
 
 /*
  * obj_send_method_list - This invokes a method where the arguments are
@@ -3178,6 +3127,7 @@ obj_send_list (MOP obj, const char *name,
   return error;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /* obsolete, some tests use this, need to change them */
 
 /*
@@ -3195,6 +3145,7 @@ obj_send (MOP obj, const char *name, DB_VALUE * returnval,
 {
   return (obj_send_list (obj, name, returnval, arglist));
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * obj_desc_send_list - Call a method using a descritor with arguments in a list
@@ -4353,6 +4304,7 @@ notfound:
   return obj;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * obj_isclass - Tests to see if an object is a class object.
  *    return: non-zero if object is a class object
@@ -4387,6 +4339,7 @@ obj_isclass (MOP obj)
 
   return (is_class);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * obj_isinstance - Tests to see if an object is an instance object.
@@ -4541,7 +4494,7 @@ obj_lock (MOP op, int for_write)
   return (error);
 }
 
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * obj_find_unique_id - This function is used to identify attributes
  *                      which posses a UNIQUE constraint and to
@@ -4596,3 +4549,4 @@ obj_find_unique_id (MOP op, const char *att_name,
 
   return error;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */

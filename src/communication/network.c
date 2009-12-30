@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -48,6 +48,16 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   char *ptr;
 
   ptr = buf;
+  OR_PUT_INT (ptr, stats->file_num_opens);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->file_num_creates);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->file_num_ioreads);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->file_num_iowrites);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->file_num_iosynches);
+  ptr += OR_INT_SIZE;
   OR_PUT_INT (ptr, stats->pb_num_fetches);
   ptr += OR_INT_SIZE;
   OR_PUT_INT (ptr, stats->pb_num_dirties);
@@ -82,7 +92,25 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT_SIZE;
   OR_PUT_INT (ptr, stats->lk_num_waited_on_objects);
   ptr += OR_INT_SIZE;
-  OR_PUT_INT (ptr, stats->io_num_format_volume);
+  OR_PUT_INT (ptr, stats->tran_num_commits);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->tran_num_rollbacks);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->tran_num_savepoints);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->tran_num_start_topops);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->tran_num_end_topops);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->tran_num_interrupts);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->bt_num_inserts);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->bt_num_deletes);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->bt_num_updates);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, stats->net_num_requests);
   ptr += OR_INT_SIZE;
 
   return (ptr);
@@ -104,6 +132,16 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   char *ptr;
 
   ptr = buf;
+  stats->file_num_opens = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  stats->file_num_creates = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  stats->file_num_ioreads = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  stats->file_num_iowrites = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  stats->file_num_iosynches = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
   stats->pb_num_fetches = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
   stats->pb_num_dirties = OR_GET_INT (ptr);
@@ -138,8 +176,195 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT_SIZE;
   stats->lk_num_waited_on_objects = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
-  stats->io_num_format_volume = OR_GET_INT (ptr);
+  stats->tran_num_commits = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
+  stats->tran_num_rollbacks = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  stats->tran_num_savepoints = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  stats->tran_num_start_topops = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  stats->tran_num_end_topops = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  stats->tran_num_interrupts = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  stats->bt_num_inserts = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  stats->bt_num_deletes = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  stats->bt_num_updates = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  stats->net_num_requests = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+
+  return (ptr);
+}
+
+/*
+ * net_pack_global_stats -
+ *
+ * return:
+ *
+ *   buf(in):
+ *   stats(in):
+ *
+ * NOTE: This must match STAT_SIZE_MEMORY & STAT_SIZE_PACKED
+ *
+ */
+char *
+net_pack_global_stats (char *buf, MNT_SERVER_EXEC_GLOBAL_STATS * stats)
+{
+  char *ptr;
+
+  ptr = buf;
+  OR_PUT_INT64 (ptr, stats->file_num_opens);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->file_num_creates);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->file_num_ioreads);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->file_num_iowrites);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->file_num_iosynches);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->pb_num_fetches);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->pb_num_dirties);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->pb_num_ioreads);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->pb_num_iowrites);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->log_num_ioreads);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->log_num_iowrites);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->log_num_appendrecs);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->log_num_archives);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->log_num_checkpoints);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->lk_num_acquired_on_pages);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->lk_num_acquired_on_objects);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->lk_num_converted_on_pages);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->lk_num_converted_on_objects);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->lk_num_re_requested_on_pages);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->lk_num_re_requested_on_objects);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->lk_num_waited_on_pages);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->lk_num_waited_on_objects);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->tran_num_commits);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->tran_num_rollbacks);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->tran_num_savepoints);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->tran_num_start_topops);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->tran_num_end_topops);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->tran_num_interrupts);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->bt_num_inserts);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->bt_num_deletes);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->bt_num_updates);
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, stats->net_num_requests);
+  ptr += OR_INT64_SIZE;
+
+  return (ptr);
+}
+
+/*
+ * net_unpack_global_stats -
+ *
+ * return:
+ *
+ *   buf(in):
+ *   stats(in):
+ *
+ * NOTE: This must match STAT_SIZE_MEMORY & STAT_SIZE_PACKED
+ */
+char *
+net_unpack_global_stats (char *buf, MNT_SERVER_EXEC_GLOBAL_STATS * stats)
+{
+  char *ptr;
+
+  ptr = buf;
+  stats->file_num_opens = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->file_num_creates = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->file_num_ioreads = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->file_num_iowrites = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->file_num_iosynches = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->pb_num_fetches = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->pb_num_dirties = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->pb_num_ioreads = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->pb_num_iowrites = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->log_num_ioreads = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->log_num_iowrites = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->log_num_appendrecs = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->log_num_archives = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->log_num_checkpoints = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->lk_num_acquired_on_pages = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->lk_num_acquired_on_objects = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->lk_num_converted_on_pages = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->lk_num_converted_on_objects = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->lk_num_re_requested_on_pages = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->lk_num_re_requested_on_objects = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->lk_num_waited_on_pages = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->lk_num_waited_on_objects = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->tran_num_commits = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->tran_num_rollbacks = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->tran_num_savepoints = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->tran_num_start_topops = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->tran_num_end_topops = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->tran_num_interrupts = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->bt_num_inserts = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->bt_num_deletes = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->bt_num_updates = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
+  stats->net_num_requests = OR_GET_INT64 (ptr);
+  ptr += OR_INT64_SIZE;
 
   return (ptr);
 }

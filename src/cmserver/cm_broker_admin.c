@@ -234,9 +234,17 @@ uca_init (char *err_msg)
   memset (uca_err_msg, 0, sizeof (uca_err_msg));
 
 #if defined(WINDOWS)
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (path, "%s/bin/%s", sco.szCubrid, UC_ADMIN_SO);
 #else
+  sprintf (path, "%s/%s", CUBRID_BINDIR, UC_ADMIN_SO);
+#endif
+#else
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (path, "%s/lib/%s", sco.szCubrid, UC_ADMIN_SO);
+#else
+  sprintf (path, "%s/%s", CUBRID_LIBDIR, UC_ADMIN_SO);
+#endif
 #endif
   ucadm = SH_LIB_LOAD (path);
   if (ucadm == NULL)
@@ -360,6 +368,7 @@ uca_job_first (char *br_name, int job_id, char *err_msg)
   return 0;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 int
 uca_job_q_size (char *br_name, char *err_msg)
 {
@@ -367,6 +376,7 @@ uca_job_q_size (char *br_name, char *err_msg)
   return (((T_UC_JOB_QUEUE_F) uc_admin_f[UC_ADM_JOB_Q_SIZE].func_p) (br_name,
 								     err_msg));
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 int
 uca_as_info (char *br_name, T_DM_UC_INFO * br_info,
@@ -611,8 +621,13 @@ uca_get_file (T_UNICAS_FILE_ID uc_fid, char *buf)
     {
       if (uc_fid == unicas_file[i].fid)
 	{
+#if !defined (DO_NOT_USE_CUBRIDENV)
 	  sprintf (buf, "%s/%s/%s", sco.szCubrid,
 		   unicas_file[i].dir_name, unicas_file[i].file_name);
+#else
+	  sprintf (buf, "%s/%s", unicas_file[i].dir_name,
+		   unicas_file[i].file_name);
+#endif
 	  break;
 	}
     }
@@ -630,7 +645,11 @@ uca_get_conf_path (const char *filename, char *buf)
   if (buf[2] == '/' || buf[2] == '\\')
     return buf;
 #endif
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (buf, "%s/%s", sco.szCubrid, filename);
+#else
+  sprintf (buf, "%s/%s", CUBRID_PREFIXDIR, filename);
+#endif
   return buf;
 }
 

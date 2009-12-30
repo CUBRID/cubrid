@@ -134,12 +134,8 @@ begin
     // 현재 System의 Code page를 가져온다.
     nvCodePage = GetACP();
    	
-  	if (nResult < 0) then    
-  		if( nvCodePage = 949 ) then
-	   		MessageBox("큐브리드가 이미 설치되어 있습니다. 먼저 제어판의 '프로그램 제거'기능을 통해 이전 버전을 제거한 후 다시 시도해주기 바랍니다.", SEVERE); 
-  		else
-	   		MessageBox("CUBRID is already installed. First of all, please remove old version in Control Panel. And then, retry setup.", SEVERE);
-        endif;
+  	if (nResult < 0) then
+  		MessageBox(@SCRIPT_STR_0001, SEVERE); 
         exit;
 	endif;	
 	
@@ -149,9 +145,8 @@ begin
 	remove_completely = FALSE;
 	
 	if (nResult = IDOK) then 
-	    szMsg = "데이터베이스와 설정파일을 모두 삭제 하시겠습니까?\r\n" + 
-	            "데이터베이스를 다시 사용하려면 '아니오'를 선택하시기 바랍니다.";
-	    szCaption = "데이터베이스 삭제 확인";
+	    szMsg = @SCRIPT_STR_0002;
+	    szCaption = @SCRIPT_STR_0003;
 	    nResult = SprintfBox(MB_YESNO, szCaption, "%s", szMsg);
 	    if (nResult = IDYES) then
 			remove_completely = TRUE;
@@ -172,22 +167,20 @@ function OnMaintUIAfter()
 	int	   ExitCode;
 	BOOL   bOpt1, bOpt2;
 begin
-	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "tmp", NOWAIT, SW_HIDE, -1, ExitCode) ;
-	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "var", NOWAIT, SW_HIDE, -1, ExitCode) ;
-	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "log", NOWAIT, SW_HIDE, -1, ExitCode) ;
-	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "cubridmanager", NOWAIT, SW_HIDE, -1, ExitCode) ;
-	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "doc", NOWAIT, SW_HIDE, -1, ExitCode) ;
+	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "tmp", WAIT, SW_HIDE, -1, ExitCode) ;
+	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "var", WAIT, SW_HIDE, -1, ExitCode) ;
+	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "log", WAIT, SW_HIDE, -1, ExitCode) ;
+	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "cubridmanager", WAIT, SW_HIDE, -1, ExitCode) ;
+	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "doc", WAIT, SW_HIDE, -1, ExitCode) ;
    
 	if (remove_completely = TRUE) then
-		RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR^"conf", NOWAIT, SW_HIDE, -1, ExitCode) ;
-		RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR^"databases", NOWAIT, SW_HIDE, -1, ExitCode) ;
-		RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /Q" + TARGETDIR, NOWAIT, SW_HIDE, -1, ExitCode) ;
+		RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR^"conf", WAIT, SW_HIDE, -1, ExitCode) ;
+		RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR^"databases", WAIT, SW_HIDE, -1, ExitCode) ;
 	endif;
 	
 	DeleteProgramFolder ("CUBRID");
-	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /Q " + TARGETDIR, NOWAIT, SW_HIDE, -1, ExitCode) ;
-
-   	SdFinish("", "Uninstall operation has been completed.", "", "", "", bOpt1, bOpt2);
+	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /Q " + TARGETDIR, WAIT, SW_HIDE, -1, ExitCode) ;
+   	SdFinish("", @SCRIPT_STR_0004, "", "", "", bOpt1, bOpt2);
 end;
 
 //////////////////////////////////////////////////////////////////////////////
@@ -256,29 +249,16 @@ Dlg_Start:
 
 Dlg_SdWelcome:
     szTitle = "CUBRID " + ST_CUBRID_VERSION + " for Windows";       
-    if (nvCodePage = 949 ) then
-    	szMsg   = "본 설치 프로그램은 컴퓨터에 큐브리드를 설치할 것입니다.\n\n"+
-    	          "CUBRID 2008 R1.x 또는 이하 버전에서 생성된 큐브리드 데이터베이스는\n"+
-    	          "CUBRID " + ST_CUBRID_VERSION + "와 호환되지 않습니다. CUBRID " +
-    	          ST_CUBRID_VERSION + " 에서 사용하려면\n마이그레이션이 필요합니다.";
-    else
-    	szMsg   = "\n\nThis program will install CUBRID on your computer\n";    	
-	endif;
+    szMsg = @SCRIPT_STR_0005;                                
+    StrReplace(szMsg, "TOKEN", ST_CUBRID_VERSION, 0);
 
     nResult = SdWelcome( szTitle, szMsg );
     if (nResult = BACK) goto Dlg_Start;
 
 Dlg_SdAskDestPath: 
-	if ( nvCodePage = 949 ) then
-	    SetDialogTitle (DLG_ASK_PATH, "설치 디렉토리 입력"); 
-	    szMsg = "큐브리드를 설치할 대상 디렉토리를 입력하십시오.\n";
-//    	szMsg = "호환 가능한 이전 버전의 큐브리드 데이터베이스를 현재 설치되는 큐브리드에서도 재사용할 수 있습니다. 이를 위해서는 이전 버전의 큐브리드가 설치된 대상 디렉토리에  반드시 설치되어야 합니다.\n";
-	else
-	    SetDialogTitle (DLG_ASK_PATH, "Enter the target directory"); 
-	    szMsg = "Please enter the target directory";
-//    	szMsg = "Note that a database used in an old version of CUBRID could be reused in the new installation. To achieve this, you must specify the target directory as the same as the directory under which the old version of CUBRID used to be installed.\n";
-    endif;
-    
+    SetDialogTitle (DLG_ASK_PATH, @SCRIPT_STR_0006);
+    szMsg = @SCRIPT_STR_0007;
+
     if ( AskPath( szMsg, TARGETDIR, szTarget ) = BACK ) then
        if (bNKey) then 
           goto Dlg_SdAskDestPath;
@@ -288,36 +268,23 @@ Dlg_SdAskDestPath:
     endif;
 
     if (szTarget % " ") then
-    	if ( nvCodePage = 949 ) then
-    		MessageBox("대상 디렉토리 경로명에는 공백이 포함될 수 없습니다.", SEVERE);
-    	else
-    		MessageBox("White Space in The Destination Directory Path is Invalid.", SEVERE);
-    	endif;
+        MessageBox(@SCRIPT_STR_0008, SEVERE);
     	TARGETDIR = szTarget;
     	goto Dlg_SdAskDestPath;
     endif;
 
     if (ExistsDir (szTarget) = EXISTS) then
-    	if ( nvCodePage = 949 ) then
-    		szMsg = "입력한 디렉토리 " + szTarget + "는 이미 존재합니다. 설치를 계속 진행한다면 이전 버전의 파일들이 본 버전의 파일로 덮어쓰기 될 것입니다. 계속 진행하시겠습니까?";
-    	else
-    		szMsg = "The directory " + szTarget + " already exists.  Older files will be overwritten if you continue.  Do you wish to continue?";
-    	endif;
-       if (AskYesNo (szMsg, NO) = NO) then
+	   	szMsg = @SCRIPT_STR_0009;
+	   	
+	   	if (AskYesNo (szMsg, NO) = NO) then
           szMsg = "";
           goto Dlg_SdAskDestPath;  
-       endif;
+        endif;
     else 
-      if (CreateDir (szTarget) < 0) then
-          if ( nvCodePage = 949 ) then
-           	MessageBox (szTarget + "디렉토리를 생성할 수 없습니다. 다시 시도하십시오.", SEVERE);   
-          else
-          	MessageBox ("Unable to create directory " + szTarget + "\nPlease try again.", SEVERE);   
-          endif;
-          goto Dlg_SdAskDestPath;        
-       
-      endif;   
-      
+    	if (CreateDir (szTarget) < 0) then
+			MessageBox (szTarget + @SCRIPT_STR_0010, SEVERE);
+        	goto Dlg_SdAskDestPath;        
+        endif;
     endif;
     
     TARGETDIR = szTarget;
@@ -325,29 +292,20 @@ Dlg_SdAskDestPath:
     SHELL_OBJECT_FOLDER = @FOLDER_NAME;             
 
 Dlg_SdLicense:                               
-	if (nvCodePage = 949 ) then
-    	szLicenseFile = SUPPORTDIR ^ "license.txt";
-	    szTitle    = "CUBRID " + ST_CUBRID_VERSION + "  라이선스";
-    	szMsg      = "라이선스 동의서" ;
-    else
-    	szLicenseFile = SUPPORTDIR ^ "license_eng.txt";
-	    szTitle    = "CUBRID " + ST_CUBRID_VERSION + " License";
-	    szMsg      = "License agreement";
-    endif ;      
-	szQuestion = "";
-	nResult = SdLicense2(szTitle, "예 동의합니다", "아니오", szLicenseFile, FALSE);
-    if (nResult = BACK) goto Dlg_SdAskDestPath;
+   	szLicenseFile = SUPPORTDIR ^ "license.txt";
+    szTitle    = "CUBRID " + ST_CUBRID_VERSION + "  " + @SCRIPT_STR_0011;
+   	szMsg      = @SCRIPT_STR_0012;
     
+	szQuestion = "";
+	nResult = SdLicense2(szTitle, @SCRIPT_STR_0013, @SCRIPT_STR_0014, szLicenseFile, FALSE);
+    if (nResult = BACK) goto Dlg_SdAskDestPath;
+
 Dlg_SetupType:
    	nvSize = 0;
 
 	// if windows가 95, 98, ME 버젼이면 대화상자 보여주고 다음 단계로 넘어간다.
 	if (SYSINFO.WIN9X.bWin9X) then
-		if ( nvCodePage = 949 ) then 
-			MessageBox("Windows 9X, Windows ME에서는 큐브리드 서버를 설치할 수 없고,\r\n 오직 클라이언트 구성요소만 설치 가능합니다.", WARNING);
-		else
-			MessageBox("CUBRID Server is not available in this OS(Windows 9X, Windows ME).\n\rOnly Client Components will be installed.", WARNING);
-		endif;
+		MessageBox(@SCRIPT_STR_0015, WARNING);
 		nSetupType = "CLIENT_ONLY";
 		FeatureSetupTypeSet(MEDIA, "CLIENT_ONLY");
 
@@ -360,13 +318,9 @@ Dlg_SetupType:
         endif;		
 	else
 		nSetupType = "ALL";
-		if ( nvCodePage = 949 ) then
-	    	szTitle    = "CUBRID " + ST_CUBRID_VERSION + " 설치 유형";
-    		szMsg      = "설치유형을 선택 하십시오.";
-		else
-	    	szTitle    = "CUBRID " + ST_CUBRID_VERSION + " Setup Type";
-    		szMsg      = "Select the setup type";
-    	endif;
+		szTitle    = "CUBRID " + ST_CUBRID_VERSION + " " + @SCRIPT_STR_0017;
+   		szMsg      = @SCRIPT_STR_0018;
+
 	    nResult = SdSetupTypeEx ( szTitle , szMsg , "" , nSetupType , 0 );
 
 	    if (nResult = BACK) then
@@ -382,30 +336,16 @@ Dlg_SetupType:
     endif;
 
     if (nSetupType = "ALL") then
-    	if ( nvCodePage = 949 ) then
-    		szSummaryMsg = "설치타입: 큐브리드 서버 컴포넌트와 클라이언트 컴포넌트";
-    	else
-    		szSummaryMsg = "Setup Type : CUBRID Server Components and Client Components";
-    	endif;
-   	else             
-   		if ( nvCodePage = 949 ) then
-			szSummaryMsg = "설치타입: 큐브리드 클라이언트 컴포넌트";
-   		else
-			szSummaryMsg = "Setup Type : CUBRID Client Components";
-		endif;
+    	szSummaryMsg = @SCRIPT_STR_0019;
+   	else                         
+    	szSummaryMsg = @SCRIPT_STR_0020;
    	endif;
-
-	if ( nvCodePage = 949 ) then
-		szMsg = "다른 버전의 큐브리드가 각각 다른 기기에서 이용될 경우, \r\n큐브리드 서버" 
-				+ szVersionName + " 은 큐브리드 클라이언트 " 
-				+ szVersionName + " 과만 호환됩니다.\r\n계속 진행하시겠습니까?" ;
-		szTitle = "호환성 정보";
-	else
-		szMsg = "In case a different version of the CUBRID product is being used in other machines,\r\nplease note that the CUBRID "
-				+ szVersionName + " servers are only compatible with the CUBRID "
-				+ szVersionName + " clients and vice versa.\r\nDo you want to continue?";
-		szTitle = "Compatibility information";
-	endif;
+  
+    szMsg = @SCRIPT_STR_0021;
+    StrReplace(szMsg, "TOKEN", ST_CUBRID_VERSION, 0);
+    
+    szTitle = @SCRIPT_STR_0022;
+    
 	nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
 
 	if (nResult == IDNO) then
@@ -413,22 +353,13 @@ Dlg_SetupType:
    	endif;
 
 Dlg_AskShortcutPath:
-	if ( nvCodePage = 949 ) then
-	  szTitle = "바로가기 아이콘 생성";
-	  szMsg = "바로 가기 아이콘을 생성하시려면 다음 옵션을 선택하시기 바랍니다.";
-	  szTextDeskTopIcon = "데스크탑 아이콘 생성";
-	  szTextQuickLaunchIcon = "빠른 실행 아이콘 생성";
-	  szTextStartMenuIcon = "시작 메뉴 아이콘 생성";
-	else
-	  szTitle = "Additional Options";
-	  szMsg = "Select Additional Options below for make shortcut icon.";
-      szTextDeskTopIcon = "Make Desktop Icon";
-	  szTextQuickLaunchIcon = "Make Quick Launch Icon";
-	  szTextStartMenuIcon = "Make Start Menu Icon";
-	endif;
+	szTitle = @SCRIPT_STR_0023;
+	szMsg = @SCRIPT_STR_0024;
+	szTextDeskTopIcon = @SCRIPT_STR_0025;
+	szTextQuickLaunchIcon = @SCRIPT_STR_0026;
+	szTextStartMenuIcon = @SCRIPT_STR_0027;
 	
 	SetDialogTitle(DLG_ASK_OPTIONS, szTitle);
-
 
  	nResult = AskOptions (NONEXCLUSIVE, szMsg,
 						szTextDeskTopIcon, nvCheckDeskTopIcon,
@@ -445,50 +376,31 @@ Dlg_AskShortcutPath:
 
 Dlg_SdStartCopy:
 	if ( nvCodePage = 949 ) then
-	   	szTitle = "CUBRID " + ST_CUBRID_VERSION + " 설치를 시작합니다";
+	   	szTitle = "CUBRID " + ST_CUBRID_VERSION + " " + @SCRIPT_STR_0028;
 	else
-    	szTitle = "Start Install the CUBRID " + ST_CUBRID_VERSION;
+    	szTitle = @SCRIPT_STR_0028 + " CUBRID " + ST_CUBRID_VERSION;
 	endif;
     //The following is an example of how to add a string(svName) to a list(listStartCopy).
     //eg. ListAddString(listStartCopy,svName,AFTER);
     listStartCopy = ListCreate( STRINGLIST );
-    
-	if ( nvCodePage = 949 ) then
-		ListAddString(listStartCopy, "대상 디렉토리 : " + TARGETDIR, AFTER);
-		ListAddString(listStartCopy, szSummaryMsg, AFTER);
-		ListAddString(listStartCopy, "바로가기 아이콘 : ", AFTER);
-	
-		// Add short cut icon information that will be added.
-		if (nvCheckDeskTopIcon = TRUE) then
-			ListAddString(listStartCopy, "   데스크탑 아이콘 생성", AFTER);
-		endif;
-			
-		if (nvCheckQuickLaunchIcon = TRUE) then
-			ListAddString(listStartCopy, "   빠른실행 아이콘 생성", AFTER);
-		endif;
-			
-		if (nvCheckStartMenuIcon = TRUE) then
-			ListAddString(listStartCopy, "   시작 메뉴 아이콘 생성", AFTER);
-		endif;	  
-	else
-		ListAddString(listStartCopy, "Target Directory : " + TARGETDIR, AFTER);
-		ListAddString(listStartCopy, szSummaryMsg, AFTER);
-		ListAddString(listStartCopy, "Short Cut Icon : ", AFTER);
-	
-		// Add short cut icon information that will be added.
-		if (nvCheckDeskTopIcon = TRUE) then
-			ListAddString(listStartCopy, "   Make Desktop Icon", AFTER);
-		endif;
-			
-		if (nvCheckQuickLaunchIcon = TRUE) then
-			ListAddString(listStartCopy, "   Make QuickLaunch Icon", AFTER);
-		endif;
-			
-		if (nvCheckStartMenuIcon = TRUE) then
-			ListAddString(listStartCopy, "   Make StartMenu Icon", AFTER);
-		endif;
+
+	ListAddString(listStartCopy, @SCRIPT_STR_0029 + TARGETDIR, AFTER);
+	ListAddString(listStartCopy, szSummaryMsg, AFTER);
+	ListAddString(listStartCopy, @SCRIPT_STR_0030, AFTER);
+
+	// Add short cut icon information that will be added.
+	if (nvCheckDeskTopIcon = TRUE) then
+		ListAddString(listStartCopy, "   " + @SCRIPT_STR_0025, AFTER);
 	endif;
-	    		
+			
+	if (nvCheckQuickLaunchIcon = TRUE) then
+		ListAddString(listStartCopy, "   " + @SCRIPT_STR_0026, AFTER);
+	endif;
+			
+	if (nvCheckStartMenuIcon = TRUE) then
+		ListAddString(listStartCopy, "   " + @SCRIPT_STR_0027, AFTER);
+	endif;	  
+
     nResult = SdStartCopy( szTitle, "", listStartCopy );
 
     if (nResult = BACK) goto Dlg_AskShortcutPath;
@@ -499,30 +411,39 @@ Dlg_SdStartCopy:
     // 1. check registry key(redistributable)      
     nvType = REGDB_STRING;
     szValue = "";
-    
-   	szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{9B775AA1-7B10-379A-9B16-7E373790568C}";
+
+    // 2. check System is 64bit OS
+    if (SYSINFO.bIsWow64) then
+      if ( nvCodePage = 949 ) then
+	      szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{484D36AC-327E-390E-85C8-9F2B176BA2B6}";
+      else
+	      szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{350AA351-21FA-3270-8B7A-835434E766AD}";
+      endif;
+    else
+      if ( nvCodePage = 949 ) then
+	      szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{9B775AA1-7B10-379A-9B16-7E373790568C}";
+      else
+	      szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{FF66E9F6-83E7-3A3E-AF14-8DE9A809A6A4}";
+      endif;
+    endif;
 
     RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
 	nResult = RegDBGetKeyValueEx (szKey, "DisplayVersion", nvType, szValue, nvSize);
 	if (nResult < 0) then
 	//		SprintfBox(WARNING, "", "SendMessageTimeout failed in RefreshEnvironment, Error %d", GetLastError());
 	    
-	    szTitle = "Microsoft Visual C++ 2008 재배포 가능 패키지";
-	    szMsg = "Microsoft Visual C++ 2008 재배포 패키지가 설치되어 있지 않습니다.\r\n" +
-	            "계속 설치를 진행할 경우 CUBRID 2008의 일부 구성요소가 정상적으로 동작하지 않을 수 있습니다.\r\n" +
-	            "(상세 정보는 CUBRID 다운로드 페이지에서 확인 가능합니다.)\r\n\r\n" + 
-	            "CUBRID 2008 설치를 중단 하시겠습니까?";
+	    szTitle = @SCRIPT_STR_0034;
+	    szMsg = @SCRIPT_STR_0035;
 
 		nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
         if (nResult = IDYES) then
-	        exit;
+	        abort;
 	    endif;
     endif;
     
     /* check if jvm is installed */
     if (RunProgram("javaw.exe", "", WAIT, SW_HIDE, -1, ExitCode) < 0) then
-		szMsg = "JAVA가 설치되어 있지 않거나 사용할 수 없는 상태이기 때문에 CUBRID 설치 완료 후 CUBRID Manager를 사용할 수 없습니다.\r\n" +
-    			"CUBRID Manager를 사용하려면 CUBRID 설치 후 JAVA를 설치하시기 바랍니다.\r\n";
+		szMsg = @SCRIPT_STR_0036;
         MessageBox (szMsg, INFORMATION); 
     endif;
 
@@ -542,8 +463,8 @@ Dlg_SdStartCopy:
     endif;
      
     if (old_conf = TRUE) then
-	    szTitle = "설정 파일 유지";
-	    szMsg = "설정파일(.conf또는 .pass파일)이 이미 존재합니다.\r\n기존 파일을 유지하시겠습니까?";
+	    szTitle = @SCRIPT_STR_0031;
+	    szMsg = @SCRIPT_STR_0037;
 	    
 		nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
 	    if (nResult = IDNO) then
@@ -596,14 +517,11 @@ begin
 	if (ExistsDir(szFile) == EXISTS) then // 디렉토리일때
 		return ERR_IGNORE;
 	else                                  // 파일일때
-		if ( nvCodePage = 949 ) then
-	 		msg = "잠금된 파일(" + szFile + ")이 발견되었습니다.\r\n큐브리드 서비스를 중지시키고, 모든 클라이언트 프로그램과 큐브리드 서비스 트레이를 종료후 계속 진행하십시오.\r\n";
-	 		msg = msg + "계속 진행하시겠습니까?";
-		else
-	 		msg = "Locked file detected(" + szFile + ").\r\n" + " Please stop CUBRID service and terminate all client programs and CUBRID Service Tray. And then, retry uninstallation.";
-	 	endif;
-       if (AskYesNo (msg, YES) = NO) then
-            msg = "삭제가 중단되었습니다.\r\n큐브리드 서비스를 중지시키고, 모든 클라이언트 프로그램과 큐브리드 서비스 트레이를 종료후, 다시 삭제해 주시기 바랍니다. ";
+		msg = @SCRIPT_STR_0038;
+		StrReplace(msg, "TOKEN", szFile, 0);
+		
+		if (AskYesNo (msg, YES) = NO) then
+		    msg = @SCRIPT_STR_0039;
             MessageBox(msg, WARNING);
        		exit;
        else
@@ -655,6 +573,12 @@ begin
    nOption   = SYS_BOOTMACHINE;
    szMsg2    = "Click Finish to exit %P setup.";
    nReserved = 0;
+   
+   if (SYSINFO.WINNT.bWin2000 = FALSE) then
+   		PROGRAM = TARGETDIR + "\\bin\\dbghelp.dll";
+		LongPathToQuote(PROGRAM, TRUE);
+		LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + PROGRAM, WAIT) ;
+   endif;
 
 Dlg_Completed:
 	// Make ShortCut icon
@@ -682,7 +606,7 @@ Dlg_Completed:
 	    	szQuickLaunchPath=szAppDataPath^"Microsoft\\Internet Explorer\\Quick Launch";
         	AddFolderIcon(szQuickLaunchPath,"CUBRID Manager Client",szProgramEMC,TARGETDIR^"\\cubridmanager","",0,"",REPLACE);
         else
-        	MessageBox("Adding Quick Launch Icon has been failed!", WARNING);
+        	MessageBox(@SCRIPT_STR_0041, WARNING);
     	endif;
 
     	UnUseDLL(WINSYSDIR ^ "Shell32.dll");
@@ -698,7 +622,13 @@ Dlg_Completed:
 		CreateProgramFolder(szDocTempFolder);
 					
 		szDocCUBRIDManual = TARGETDIR^"\\\cubridmanager\\plugins\\com.cubrid.cubridmanager.help_"
-		                    + VERSION_STRING + "\\html\\index.htm";
+		                    + VERSION_STRING;
+		if ( nvCodePage = 949 ) then
+			szDocCUBRIDManual = szDocCUBRIDManual + "\\nl\\ko\\KR";
+		endif;
+		
+		szDocCUBRIDManual = szDocCUBRIDManual + "\\html\\index.htm";
+		
 		LongPathToQuote( szDocCUBRIDManual, TRUE);
 		AddFolderIcon (szDocTempFolder, "CUBRID Manual", szDocCUBRIDManual , TARGETDIR^"\\doc", "", 0, "", REPLACE);
 		AddFolderIcon (TARGETDIR^"\\doc", "CUBRID Manual", szDocCUBRIDManual , TARGETDIR^"\\doc", "", 0, "", REPLACE);
@@ -715,8 +645,10 @@ Dlg_Completed:
 	Delay(1);
 	
 	SdFinish(szTitle, "", "", "", "", bOpt1, bOpt2);
-	
-	RunProgram(PROGRAMFILES^"Internet Explorer\\iexplore.exe","http://www.cubrid.com/developer.cub", NOWAIT, SW_SHOW, -1, ExitCode);
+
+	if ( nvCodePage = 949 ) then
+		RunProgram(PROGRAMFILES^"Internet Explorer\\iexplore.exe","http://www.cubrid.com/developer.cub", NOWAIT, SW_SHOW, -1, ExitCode);
+	endif;
 
     if (nSetupType = "ALL") then
 		// 인스톨후 CUBRID Service Tray 를 실행.
@@ -729,13 +661,6 @@ Dlg_Completed:
 		LaunchAppAndWait (PROGRAM, "-start", NOWAIT);
 	endif;
 	
-/*
-	setupfilecopy_program = SRCDIR^"\\cubsetupcopy.bat";
-	setupfilecopy_param = SRCDIR;                       
-	LongPathToQuote(setupfilecopy_program, TRUE);
-	LongPathToQuote(setupfilecopy_param, TRUE);
-	RunProgram(setupfilecopy_program, "-d " + setupfilecopy_param, NOWAIT, SW_HIDE, -1, ExitCode);
-*/
     REGDB_OPTIONS = REGDB_OPTIONS & ~REGDB_OPTION_WOW64_64KEY;
     return 0;
 end;
@@ -766,6 +691,7 @@ begin
 	distfilename = conffilename+"-dist";
 	versionfilename = conffilename + "."+szVersionName;
 	
+	LongPathToQuote(confcopy_program, TRUE);	
 	LongPathToQuote(conffilename, TRUE);
 	LongPathToQuote(distfilename, TRUE);
 	LongPathToQuote(versionfilename, TRUE);

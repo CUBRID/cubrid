@@ -38,24 +38,15 @@
 #define NAME_UC_SHM			"broker_shm"
 #endif
 
-#define CUBRID_CONF_DIR			"conf"
-#define CUBRID_TMP_DIR			"tmp"
-#define CUBRID_VAR_DIR			"var"
-#define CUBRID_SOCK_DIR			"var/CUBRID_SOCK"
-#define CUBRID_ASPID_DIR		"var/as_pid"
-#define CUBRID_BASE_DIR                 "log/broker"
-#define CUBRID_LOG_DIR			"log/broker/sql_log"
-#define CUBRID_ERR_DIR		        "log/broker/error_log"
+#define CUBRID_BASE_DIR                 "log/broker/"
 
 #ifdef DISPATCHER
 #define ERROR_MSG_FILE			"uw_er.msg"
 #endif
 
-#define SQL_LOG2_DIR			"query"
-
 /* default values */
-#define DEFAULT_LOG_DIR			CUBRID_LOG_DIR
-#define DEFAULT_ERR_DIR			CUBRID_ERR_DIR
+#define DEFAULT_LOG_DIR			"log/broker/sql_log/"
+#define DEFAULT_ERR_DIR			"log/broker/error_log/"
 
 typedef enum t_cubrid_file_id T_CUBRID_FILE_ID;
 enum t_cubrid_file_id
@@ -65,10 +56,12 @@ enum t_cubrid_file_id
   FID_V3_OUTFILE_DIR,
   FID_CAS_TMPGLO_DIR,
   FID_CAS_TMP_DIR,
+  FID_VAR_DIR,
   FID_SOCK_DIR,
   FID_AS_PID_DIR,
   FID_ADMIND_PID,
   FID_SQL_LOG_DIR,
+  FID_SQL_LOG2_DIR,
   FID_ADMIND_LOG,
   FID_MONITORD_LOG,
   FID_ER_HTML,
@@ -79,7 +72,6 @@ typedef struct t_cubrid_file_info T_CUBRID_FILE_INFO;
 struct t_cubrid_file_info
 {
   T_CUBRID_FILE_ID fid;
-  char dir_name[PATH_MAX];
   char file_name[PATH_MAX];
 };
 

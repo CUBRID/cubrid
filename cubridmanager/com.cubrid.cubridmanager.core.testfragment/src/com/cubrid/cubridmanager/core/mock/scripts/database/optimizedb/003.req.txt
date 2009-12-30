@@ -1,4 +1,0 @@
-task:optimizedb
-token:4504b930fc1be99bbb4757189638f90f5d747a1554196855918e032c738469ff7926f07dd201b6aa
-dbname:notexistdb
-

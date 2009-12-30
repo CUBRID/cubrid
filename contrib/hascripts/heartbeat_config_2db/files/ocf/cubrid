@@ -170,6 +170,9 @@ cubrid_info() {
 	# there a better way to find out CUBRID_OWNER?
 	[ x = "x$CUBRID_OWNER" ] &&
 		CUBRID_OWNER=`ls -ld $CUBRID_HOME/bin/cubrid 2>/dev/null | awk 'NR==1{print $3}'`
+
+	CUBRID_CWD=$CUBRID_HOME/.heartbeat
+	su $CUBRID_OWNER -c "mkdir -p $CUBRID_CWD 2>&1"
 }
 
 testcubridenv() {
@@ -194,6 +197,7 @@ setcubridenv() {
 	export DATABASE_NAME CUBRID_HOME CUBRID_OWNER
 	export CUBRID CUBRID_DATABASES
 	export LD_LIBRARY_PATH LIBPATH PATH
+	export CUBRID_CWD
 }
 
 
@@ -225,7 +229,7 @@ instance_live() {
 }
 
 is_cubrid_active() {
-	[ -e /tmp/cubrid/${DATABASE_NAME}.ha_state ] && cat /tmp/cubrid/${DATABASE_NAME}.ha_state | grep -wqs "ACTIVE"
+	[ -e ${CUBRID_CWD}/${DATABASE_NAME}.ha_state ] && tail -1 ${CUBRID_CWD}/${DATABASE_NAME}.ha_state | grep -wqs "promote"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ] 
 	then
@@ -234,6 +238,11 @@ is_cubrid_active() {
 
 	su $CUBRID_OWNER -c "cub_commdb -c ${DATABASE_NAME}" | grep -w ${DATABASE_NAME} | grep -wqs "active"
 	RETVAL=$?
+	if [ $RETVAL -ne 0 ]
+	then
+		output=`su $CUBRID_OWNER -c "cub_commdb -c ${DATABASE_NAME}"` # for debug 
+		ocf_log err $output
+	fi
 	return $RETVAL
 }
 
@@ -251,22 +260,23 @@ is_cubrid_recovery() {
 	then
 		return 1
 	else
+		output=`su $CUBRID_OWNER -c "cub_commdb -P"` # for debug
+		ocf_log err $output
 		return 0
 	fi
 }
 
 is_cubrid_promoted() {
-	[ -e /tmp/cubrid/${DATABASE_NAME}.ha_state ] && cat /tmp/cubrid/${DATABASE_NAME}.ha_state | grep -wqs "ACTIVE"
+	[ -e ${CUBRID_CWD}/${DATABASE_NAME}.ha_state ] && tail -1 ${CUBRID_CWD}/${DATABASE_NAME}.ha_state | grep -wqs "promote"
 }
 
-set_cubrid_promoted() {
-	echo "ACTIVE `date`" > /tmp/cubrid/${DATABASE_NAME}.ha_state
+set_cubrid_state() {
+	su $CUBRID_OWNER -c "echo $(date +"%Y-%m-%d %H:%M:%S") $@  >> ${CUBRID_CWD}/${DATABASE_NAME}.ha_state"
 }
 
-unset_cubrid_promoted() {
-	rm -f /tmp/cubrid/${DATABASE_NAME}.ha_state
+cubrid_log() {
+	su $CUBRID_OWNER -c "echo $(date +"%Y-%m-%d %H:%M:%S") pid = $$. $@  >> ${CUBRID_CWD}/cubrid_${DATABASE_NAME}.ocflog"
 }
-
 
 CUBRID_ACTIVE=1
 CUBRID_TO_BE_ACTIVE=2
@@ -297,16 +307,20 @@ check_cubrid_state() {
 
 cubrid_start() {
 	typeset status output
+
+	cubrid_log "enter ocf::cubrid::cubrid_start."
+
 	if is_master_up; then
 		: nothing to be done
 	else
-		output=`su $CUBRID_OWNER -c "cub_master >/dev/null 2>&1 &"`
+		output=`su $CUBRID_OWNER -c "cd $CUBRID_CWD ;  cub_master >/dev/null 2>&1 &"`
 	fi
 	
 	if is_master_up; then
 		: nothing to be done
 	else
 		ocf_log err "CUBRID master not started: $output"
+		cubrid_log "exit  ocf::cubrid::cubrid_start. ret = OCF_ERR_GENERIC."
 		return $OCF_ERR_GENERIC
 	fi
 
@@ -314,19 +328,22 @@ cubrid_start() {
 	if is_cubrid_up; then
 		: nothing to be done, we can leave right now
 		ocf_log info "CUBRID instance $DATABASE_NAME already running"
+		cubrid_log "exit  ocf::cubrid::cubrid_start. ret = OCF_SUCCESS."
 		return $OCF_SUCCESS
 	else
 		#output=`su $CUBRID_OWNER -c "cubrid server start ${DATABASE_NAME} >/dev/null 2>&1"`
-		output=`su $CUBRID_OWNER -c "cub_server ${DATABASE_NAME} >/dev/null 2>&1 &"`
-		unset_cubrid_promoted
+		output=`su $CUBRID_OWNER -c "cd $CUBRID_CWD ;  cub_server ${DATABASE_NAME} >/dev/null 2>&1 &"`
 	fi
 
 	if is_cubrid_up; then
 		: cool, we are up and running
 		ocf_log info "CUBRID instance $DATABASE_NAME started: $output"
+		set_cubrid_state start
+		cubrid_log "exit  ocf::cubrid::cubrid_start. ret = OCF_SUCCESS."
 		return $OCF_SUCCESS
 	else
 		ocf_log err "CUBRID instance $DATABASE_NAME not started: $output"
+		cubrid_log "exit  ocf::cubrid::cubrid_start. ret = OCF_ERR_GENERIC."
 		return $OCF_ERR_GENERIC
 	fi
 }
@@ -336,21 +353,27 @@ cubrid_start() {
 #
 cubrid_stop() {
 	typeset status output
+
+	cubrid_log "enter ocf::cubrid::cubrid_stop."
+
 	if is_cubrid_up; then
 		#output=`su $CUBRID_OWNER -c "cubrid server stop ${DATABASE_NAME} >/dev/null 2>&1"`
 		output=`su $CUBRID_OWNER -c "cub_commdb -S ${DATABASE_NAME} >/dev/null 2>&1"`
-		unset_cubrid_promoted
 	else
 		ocf_log info "CUBRID instance $DATABASE_NAME already stopped"
+		cubrid_log "exit  ocf::cubrid::cubrid_stop. ret = OCF_SUCCESS."
 		return $OCF_SUCCESS
 	fi
 	cubrid_kill  # kill any processes left
 	if is_cubrid_up; then
 		ocf_log err "CUBRID instance $DATABASE_NAME not stopped: $output"
+		cubrid_log "exit  ocf::cubrid::cubrid_stop. ret = OCF_ERR_GENERIC."
 		return $OCF_ERR_GENERIC
 	else
 		ocf_log info "CUBRID instance $DATABASE_NAME stopped: $output"
 		sleep 1  # give em a chance to cleanup
+		set_cubrid_state stop
+		cubrid_log "exit  ocf::cubrid::cubrid_stop. ret = OCF_SUCCESS."
 		return $OCF_SUCCESS
 	fi
 }
@@ -359,13 +382,27 @@ cubrid_stop() {
 #
 cubrid_promote() {
 	typeset status output
+
+	cubrid_log "enter ocf::cubrid::cubrid_promote."
+
 	if is_cubrid_up; then
 		ocf_log info "CUBRID instance $DATABASE_NAME promoting..."
-		su $CUBRID_OWNER -c "cubrid changemode -m active $DATABASE_NAME@localhost"
+
+		for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+			su $CUBRID_OWNER -c "cubrid changemode -m active $DATABASE_NAME@localhost" | grep -w ${DATABASE_NAME} | grep -wqs "active"
+			RETVAL=$?
+			if [ $RETVAL -eq 0 ]; then 
+				break 
+			fi
+			sleep 10
+		done
+
 		ocf_log info "CUBRID instance $DATABASE_NAME promoted"
-		set_cubrid_promoted
+		set_cubrid_state promote
+		cubrid_log "exit  ocf::cubrid::cubrid_promote. ret = OCF_SUCCESS."
 		return $OCF_SUCCESS
 	else
+		cubrid_log "exit  ocf::cubrid::cubrid_promote. ret = OCF_NOT_RUNNING."
 		return $OCF_NOT_RUNNING
 	fi
 }
@@ -374,17 +411,23 @@ cubrid_promote() {
 #
 cubrid_demote() {
 	typeset status output
+
+	cubrid_log "enter ocf::cubrid::cubrid_demote."
+
 	if is_cubrid_up; then
 		check_cubrid_state
 		if [ $? -eq $CUBRID_ACTIVE ]; then
 			ocf_log info "CUBRID instance $DATABASE_NAME demoting..."
 			su $CUBRID_OWNER -c "cubrid changemode -m standby $DATABASE_NAME@localhost"
 			ocf_log info "CUBRID instance $DATABASE_NAME demoted"
-			unset_cubrid_promoted
 		fi
+		set_cubrid_state demote	
+		cubrid_log "exit  ocf::cubrid::cubrid_demote. ret = OCF_SUCCESS."
 		return $OCF_SUCCESS
 	else
 		ocf_log info "CUBRID instance $DATABASE_NAME already stopped"
+		set_cubrid_state demote	
+		cubrid_log "exit  ocf::cubrid::cubrid_demote. ret = OCF_SUCCESS."
 		return $OCF_SUCCESS
 	fi
 }
@@ -454,12 +497,14 @@ cubrid_notify() {
 # kill the database processes (if any left)
 # give them 60 secs to exit cleanly (12 times 5)
 cubrid_kill() {
-	pkill -TERM -u $CUBRID_OWNER -f "cub_server ${DATABASE_NAME}"
-	for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+	cubrid_log "enter ocf::cubrid::cubrid_kill."
+	for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36; do
 		is_cubrid_up || return
 		sleep 5
 	done
 	pkill -KILL -u $CUBRID_OWNER -f "cub_server ${DATABASE_NAME}"
+	cubrid_log "exit  ocf::cubrid::cubrid_kill."
+	sleep 5
 }
 
 #
@@ -561,7 +606,6 @@ then
   exit $OCF_ERR_PERM
 fi
 
-mkdir -p /tmp/cubrid
 
 # What kind of method was invoked?
 case "$1" in

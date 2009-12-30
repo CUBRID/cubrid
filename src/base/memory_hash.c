@@ -1445,12 +1445,14 @@ mht_put2_new (MHT_TABLE * ht, const void *key, void *data)
   return mht_put2_internal (ht, key, data, MHT_OPT_INSERT_ONLY);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 const void *
 mht_put2_data (MHT_TABLE * ht, const void *key, void *data)
 {
   assert (ht != NULL && key != NULL);
   return mht_put2_internal (ht, key, data, MHT_OPT_KEEP_KEY);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * mht_put2 - Insert an entry associating key with data;

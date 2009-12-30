@@ -59,8 +59,6 @@ static int vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p,
 					  DB_VALUE * source_value,
 					  DB_VALUE * destination_value,
 					  int *has_object);
-static bool vid_class_has_object_id (SM_CLASS * class_p);
-
 
 /*
  * vid_get_class_object() - get class object given its class mop
@@ -118,7 +116,6 @@ vid_is_new_oobj (MOP mop)
 
   return_code = mop && mop->is_vid
     && ws_find (mop->class_mop, (MOBJ *) & class_p) != WS_FIND_MOP_DELETED
-    && vid_class_has_intrinsic_oid (class_p)
     && (mop->oid_info.vid_info->flags & VID_NEW);
 
   return return_code;
@@ -571,12 +568,12 @@ vid_flush_and_rehash_lbl (DB_VALUE * value)
 }
 
 /*
- * vid_allflush() - flush all dirty proxy/vclass objects
+ * vid_allflush() - flush all dirty vclass objects
  *    return: NO_ERROR or ER_FAILED
  *
  * Note:
- *   modifies: all dirty proxy/vclass objects and their target ldbs
- *   effects : flush all dirty proxy/vclass objects to their target ldbs
+ *   modifies: all dirty vclass objects
+ *   effects : flush all dirty vclass objects
  */
 int
 vid_allflush (void)
@@ -631,68 +628,6 @@ vid_gc_vmop (MOP mop, void (*gcmarker) (MOP))
 }				/* vid_gc_vmop */
 
 /*
- * vid_add_base_instance() - INSERT A VIRTUAL OBJECT BASE INSTANCE
- *    return: MOP
- *    instance(in): Instance object to add
- *    class_mop(in): Mop of class which will hold the instance
- *
- *
- * Note:
- *      Create a MOP for the object, which is a base instance of the
- *      class indicated by class_mop.
- */
-MOP
-vid_add_base_instance (MOBJ instance, MOP class_mop)
-{
-  MOP mop;			/* Mop of newly created instance  */
-  SM_CLASS *class_p;		/* The class object               */
-  DB_VALUE key;			/* The key for the mop            */
-  int flags;
-
-  /* Get the class for the instance */
-  class_p = (SM_CLASS *) locator_fetch_class (class_mop, DB_FETCH_READ);
-
-  if (class_p == NULL)
-    {
-      return NULL;
-    }
-
-  /*
-   * Insert the instance, set it dirty and cache the lock.. we need to cache
-   * the lock since it was not acquired directly. Actually, it has not been
-   * requested. It is set when the instance is flushed
-   */
-
-  if (!vid_class_has_object_id (class_p))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_OBJECT_ID_NOT_SET,
-	      1, class_p->header.name);
-      return NULL;
-    }
-
-  if (vid_class_has_intrinsic_oid (class_p))
-    {
-      flags = VID_NEW | VID_UPDATABLE | VID_BASE | VID_INSERTING;
-    }
-  else
-    {
-      flags = VID_NEW | VID_UPDATABLE | VID_BASE;
-    }
-  db_make_null (&key);
-  mop = ws_vmop (class_mop, VID_NEW | VID_UPDATABLE | VID_BASE, &key);
-  if (!mop)
-    {
-      return NULL;
-    }
-  ws_cache (instance, mop, class_mop);
-  ws_dirty (mop);
-  ws_set_lock (mop, X_LOCK);
-
-  return mop;
-
-}
-
-/*
  * vid_add_virtual_instance() - INSERT A VIRTUAL OBJECT VIRTUAL INSTANCE
  *
  *    return: MOP
@@ -720,14 +655,7 @@ vid_add_virtual_instance (MOBJ instance, MOP vclass_mop,
       return NULL;
     }
 
-  if (bclass->class_type == SM_LDBVCLASS_CT)
-    {
-      bmop = vid_add_base_instance (instance, bclass_mop);
-    }
-  else
-    {
-      bmop = locator_add_instance (instance, bclass_mop);
-    }
+  bmop = locator_add_instance (instance, bclass_mop);
 
   if (bmop)
     {
@@ -876,8 +804,7 @@ vid_is_base_instance (MOP mop)
 
 /*
  * vid_base_instance() - Returns the object or tuple instance for which
- *                       the given instance of a virtual class on ldb
- *                       is defined.
+ *                       the given instance of a virtual class.
  *
  *    return: DB_OBJECT
  *    mop(in): Virtual class instance
@@ -1137,73 +1064,6 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
 	}
     }
   if (att1 != NULL || att2 != NULL)
-    {
-      return false;
-    }
-
-  return true;
-}
-
-/*
- * vid_class_has_intrinsic_oid() - Returns 1 if the class has intrinsic
- *                                 object identity. Otherwise returns 0
- *    return: int
- *    class_p(in): SM_CLASS *
- */
-bool
-vid_class_has_intrinsic_oid (SM_CLASS * class_p)
-{
-  DB_VALUE value;
-
-  if (!(class_p && class_p->properties))
-    {
-      return false;
-    }
-
-  if (classobj_get_prop
-      (class_p->properties, SM_PROPERTY_LDB_INTRINSIC_OID, &value) <= 0)
-    {
-      return false;
-    }
-
-  if (DB_GET_INTEGER (&value))
-    {
-      return true;
-    }
-
-  return false;
-
-}				/* vid_class_has_intrinsic_oid */
-
-/*
- * vid_class_has_object_id() - Returns true if the class has the appropriate
- *                             object_id set.
- *                             Otherwise, returns false.
- *    return: bool
- *    class_p(in): SM_CLASS *
- */
-static bool
-vid_class_has_object_id (SM_CLASS * class_p)
-{
-  int no_keys;
-  SM_ATTRIBUTE *attribute_p;
-
-  if (vid_class_has_intrinsic_oid (class_p))
-    {
-      return true;
-    }
-
-  no_keys = 0;
-  for (attribute_p = class_p->attributes; attribute_p != NULL;
-       attribute_p = (SM_ATTRIBUTE *) attribute_p->header.next)
-    {
-      if (attribute_p->flags & SM_ATTFLAG_VID)
-	{
-	  ++no_keys;
-	}
-    }
-
-  if (no_keys <= 0)
     {
       return false;
     }
@@ -1472,12 +1332,6 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
   DB_VALUE value;
   MOP mop;
   SM_CLASS_TYPE class_type;
-#if defined(ENABLE_LDB)
-  char *mem;
-  LOCK lock;
-  MOBJ inst;
-  SM_ATTRIBUTE *attribute_p;
-#endif /* ENABLE_LDB */
 
   /* make sure we have reasonable arguments */
   if (!class_mop || !class_p)
@@ -1501,27 +1355,6 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
     {
       /* select x from vclass x */
     }
-#if defined(ENABLE_LDB)
-  else if (class_type == SM_LDBVCLASS_CT)
-    {
-      /* "select x, * from proxy x" */
-      for (attribute_p = class_p->attributes; attribute_p != NULL;
-	   attribute_p = (SM_ATTRIBUTE *) attribute_p->header.next)
-	{
-	  strcat (query, ",");
-	  /* make sure query has room */
-
-	  if (strlen (query) + strlen (attribute_p->header.name) >= 2000)
-	    {
-	      return NULL;
-	    }
-	  else
-	    {
-	      strcat (query, attribute_p->header.name);
-	    }
-	}
-    }
-#endif /* ENABLE_LDB */
 
   if (strlen (query) + strlen (class_name) + 7 >= 2000)
     {
@@ -1576,57 +1409,6 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
       new1->op = mop = DB_GET_OBJECT (&value);
       new1->next = objlst;
       objlst = new1;
-
-#if defined(ENABLE_LDB)
-      /*
-       * install the proxy instance into this client workspace.
-       * (we'd like to do this for vclass instances too. But,
-       * creating vclass instances has its own subtleties, eg, see
-       * vid_build_virtual_mop that we're still not familiar with.)
-       */
-      if (class_type == SM_LDBVCLASS_CT)
-	{
-	  /* allocate object instance */
-	  inst = obj_alloc (class_p, 0);
-	  if (inst == NULL)
-	    {
-	      ml_ext_free (objlst);
-	      return NULL;
-	    }
-
-	  /*
-	   * although we may encounter an error that will require setting
-	   * mop->object back to NULL, it must be set here for the
-	   * subsequent obj_assign_value call.
-	   */
-	  mop->object = inst;
-
-	  /* fill in instances's attribute values */
-	  for (attribute_p = class_p->attributes; attribute_p != NULL;
-	       attribute_p = (SM_ATTRIBUTE *) attribute_p->header.next)
-
-	    {
-	      if (db_query_get_tuple_value_by_name
-		  (qres, (char *) attribute_p->header.name, &value) < 0)
-		{
-		  db_ws_free (inst);
-		  inst = NULL;
-		  ml_ext_free (objlst);
-		  return NULL;
-		}
-	      mem = inst + attribute_p->offset;
-	      obj_assign_value (mop, attribute_p, mem, &value);
-	    }
-
-	  /* S_LOCK the instance */
-	  lock = ws_get_lock (mop);
-	  assert (lock >= NULL_LOCK);
-	  lock = lock_Conv[S_LOCK][lock];
-	  assert (lock != NA_LOCK);
-
-	  ws_set_lock (mop, lock);
-	}
-#endif /* ENABLE_LDB */
     }
 
   /* recycle query results */
@@ -2366,9 +2148,7 @@ vid_decode_object (const char *string, DB_OBJECT ** object)
       or_decode (&string[1], (char *) &obj_id, OR_OID_SIZE);
       *object = ws_mop (&obj_id, NULL);
       break;
-    case DB_INSTANCE_OF_A_PROXY:
     case DB_INSTANCE_OF_A_VCLASS_OF_A_CLASS:
-    case DB_INSTANCE_OF_A_VCLASS_OF_A_PROXY:
     case DB_INSTANCE_OF_NONUPDATABLE_OBJECT:
       /* decode vobj_len */
       or_decode (&string[1], (char *) &vobj_len, OR_INT_SIZE);

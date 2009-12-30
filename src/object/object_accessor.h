@@ -151,8 +151,6 @@ extern int obj_desc_get (MOP op, SM_DESCRIPTOR * desc, DB_VALUE * value);
 extern int obj_send_va (MOP obj, const char *name, DB_VALUE * returnval,
 			va_list args);
 
-extern int obj_send_stack (MOP obj, const char *name,
-			   DB_VALUE * returnval, ...);
 extern int obj_send_list (MOP obj, const char *name, DB_VALUE * returnval,
 			  DB_VALUE_LIST * arglist);
 extern int obj_send_array (MOP obj, const char *name,
@@ -161,8 +159,6 @@ extern int obj_send_array (MOP obj, const char *name,
 
 extern int obj_desc_send_va (MOP obj, SM_DESCRIPTOR * desc,
 			     DB_VALUE * returnval, va_list args);
-extern int obj_desc_send_stack (MOP obj, SM_DESCRIPTOR * desc,
-				DB_VALUE * returnval, ...);
 extern int obj_desc_send_list (MOP obj, SM_DESCRIPTOR * desc,
 			       DB_VALUE * returnval, DB_VALUE_LIST * arglist);
 extern int obj_desc_send_array (MOP obj, SM_DESCRIPTOR * desc,
@@ -170,14 +166,19 @@ extern int obj_desc_send_array (MOP obj, SM_DESCRIPTOR * desc,
 extern int obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc,
 				      DB_VALUE * returnval, int nargs,
 				      DB_VALUE ** argarray);
-
+#if defined(ENABLE_UNUSED_FUNCTION)
+extern int obj_send_stack (MOP obj, const char *name,
+                           DB_VALUE * returnval, ...);
+extern int obj_desc_send_stack (MOP obj, SM_DESCRIPTOR * desc,
+                                DB_VALUE * returnval, ...);
 /* backward compatibility, should use obj_send_list() */
 extern int obj_send (MOP obj, const char *name, DB_VALUE * returnval,
 		     DB_VALUE_LIST * arglist);
+extern int obj_isclass (MOP obj);
+#endif
 
 /* Tests */
 
-extern int obj_isclass (MOP obj);
 extern int obj_isinstance (MOP obj);
 extern int obj_is_instance_of (MOP obj, MOP class_mop);
 
@@ -222,9 +223,10 @@ extern MOP obj_find_multi_desc (MOP op, int size,
 
 extern int obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem,
 			  DB_VALUE * source, DB_VALUE * dest);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int obj_find_unique_id (MOP op, const char *att_name,
 			       BTID * id_array, int id_array_size,
 			       int *total_ids);
-
+#endif
 
 #endif /* _OBJECT_ACCESSOR_H_ */

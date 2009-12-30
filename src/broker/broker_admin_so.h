@@ -113,8 +113,8 @@ struct t_br_info
   int session_timeout;
   int as_max_size;
   int time_to_kill;
-  int long_query_time;
-  int long_transaction_time;
+  int long_query_time;		/* msec */
+  int long_transaction_time;	/* msec */
   char keep_connection;
   char status;
   char auto_add_flag;

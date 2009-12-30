@@ -675,6 +675,7 @@ pc_final (void)
 {
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * lock_region() - lock/unlock region of a file
  *   return: 0 if success, -1 otherwise
@@ -692,6 +693,7 @@ lock_region (int fd, int cmd, long offset, long size)
     }
   return lockf (fd, cmd, size);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* free_space -
  *   return:
@@ -973,6 +975,7 @@ utona (unsigned int u, char *s, size_t n)
   return (t - s);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int
 itona (int i, char *s, size_t n)
 {
@@ -996,6 +999,33 @@ itona (int i, char *s, size_t n)
     {
       return utona (i, s, n);
     }
+}
+#endif /* ENABLE_UNUSED_FUNCTION */
+
+char *
+stristr (const char *s, const char *find)
+{
+  char c, sc;
+  size_t len;
+
+  if ((c = *find++) != '0')
+    {
+      len = strlen (find);
+      do
+	{
+	  do
+	    {
+	      if ((sc = *s++) == '\0')
+		{
+		  return NULL;
+		}
+	    }
+	  while (toupper (sc) != toupper (c));
+	}
+      while (strncasecmp (s, find, len) != 0);
+      s--;
+    }
+  return (char *) s;
 }
 
 /*

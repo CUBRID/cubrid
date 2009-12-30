@@ -145,6 +145,7 @@ main (int argc, char **argv)
   char err_msg[1024];
 
 #if defined(WINDOWS)
+  FreeConsole ();
   start_log_fp = fopen ("cub_autostart.log", "w");
   if (start_log_fp == NULL)
     start_log_fp = stdout;
@@ -871,7 +872,11 @@ setup_casstate (userdata * ud)
   for (i = 0; i < MAX_UNICAS_PROC; ++i)
     ud->casvect[i] = 0;
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (caspiddir, "%s/var/as_pid", sco.szUnicas_home);
+#else
+  sprintf (caspiddir, "%s/as_pid", CUBRID_VARDIR);
+#endif
   dp = opendir (caspiddir);
 
   while ((dirp = readdir (dp)) != NULL)
@@ -879,7 +884,11 @@ setup_casstate (userdata * ud)
       if (dirp->d_name[0] == '.')
 	continue;
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
       sprintf (filepath, "%s/var/as_pid/%s", sco.szUnicas_home, dirp->d_name);
+#else
+      sprintf (filepath, "%s/as_pid/%s", CUBRID_VARDIR, dirp->d_name);
+#endif
       if ((infile = fopen (filepath, "r")) != NULL)
 	{
 	  if (fscanf (infile, "%d", &as_pid) == 1)

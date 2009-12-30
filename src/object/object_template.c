@@ -1814,18 +1814,10 @@ create_template_object (OBJ_TEMPLATE * template_ptr)
    */
   if (class_->class_type != SM_VCLASS_CT)
     {
-      /* real or LDBV instance */
       obj = obj_alloc (class_, 0);
       if (obj != NULL)
 	{
-	  if (class_->class_type == SM_LDBVCLASS_CT)
-	    {
-	      mop = vid_add_base_instance (obj, template_ptr->classobj);
-	    }
-	  else
-	    {
-	      mop = locator_add_instance (obj, template_ptr->classobj);
-	    }
+          mop = locator_add_instance (obj, template_ptr->classobj);
 	}
     }
   else
@@ -2643,6 +2635,7 @@ obt_enable_unique_checking (bool new_state)
   return (old_state);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * obt_retain_after_finish
  *    return: none
@@ -2657,6 +2650,7 @@ obt_retain_after_finish (OBJ_TEMPLATE * template_ptr)
       template_ptr->discard_on_finish = 0;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * obt_update_internal

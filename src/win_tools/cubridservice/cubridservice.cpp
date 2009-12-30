@@ -30,6 +30,7 @@
 #include <stdarg.h>
 #include <io.h>
 #include <Tlhelp32.h>
+#include <sys/stat.h>
 
 void WriteLog( char* p_logfile, char* p_format, ... );
 void GetCurDateTime( char* p_buf, char* p_form );
@@ -75,6 +76,7 @@ int checkCmautoProcess(int pid)
     return 0;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 BOOL checkCmauto()
 {
 	char *envCMHome;
@@ -107,6 +109,7 @@ BOOL checkCmauto()
 
 	return FALSE;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 int main(int argc, char* argv[])
 {
@@ -120,7 +123,7 @@ int main(int argc, char* argv[])
 
 	if(!StartServiceCtrlDispatcher(stbl))
 	{
-		WriteLog(sLogFile,"(%d)CUBRIDService가 서비스에 등록 되지 않았습니다.\n", GetLastError() );
+		WriteLog(sLogFile,"StartServiceCtrlDispatcher : error (%d)\n", GetLastError() );
 		return 0;
 	}
 
@@ -136,7 +139,7 @@ void vKingCHStart(DWORD argc, LPTSTR* argv)
 
 	if(g_hXSS ==0)
 	{
-		WriteLog(sLogFile,"(%d)CUBRIDService가 서비스 컨트롤 핸들을 설치할 수 없습니다\n", GetLastError() );
+		WriteLog(sLogFile,"RegisterServiceCtrlHandlerA : error (%d)\n", GetLastError() );
 		return ;
 	}
 
@@ -197,7 +200,6 @@ void vHandler(DWORD opcode)
 {
 	if(opcode == g_XSS)
 	{
-		WriteLog(sLogFile,"(%d)CUBRIDService가 현재 상태와 같은 제어 코드일 경우는 처리할 필요가 없다.\n");
 		return;
 	}
 
@@ -239,76 +241,54 @@ void WriteLog( char* p_logfile, char* p_format, ... )
 {
 	va_list str;
 	char    old_logfile[256];
-	char  	cur_time[25];
-	long    f_size;
-	long    f_pos;
+	char	cur_time[25];
 	FILE*   logfile_fd;
-
+	struct  _stat stat_buf;
 
 #define _MAX_LOGFILE_SIZE_	102400
-
-
-	while( 1 )
-	{
-		/* Prepare Log File */
-		if( p_logfile == NULL )
-			logfile_fd = stderr;
-		else
-			logfile_fd = fopen( p_logfile , "a+" );
-
 	
-		if( logfile_fd == NULL )
+	if (p_logfile != NULL)
+	{
+		if ((_stat(p_logfile, &stat_buf) == 0) &&
+			(stat_buf.st_size >= _MAX_LOGFILE_SIZE_) )
+		{
+			strcpy_s(old_logfile, p_logfile );
+			strcat_s(old_logfile, ".bak" );
+
+			remove(old_logfile);
+
+			if (rename( p_logfile, old_logfile ) != 0)
+			{
+				fprintf(stderr,"WriteLog:rename error\n");
+				return;
+			}
+		}
+
+		fopen_s(&logfile_fd, p_logfile, "a+");
+		
+		if ( logfile_fd == NULL )
 		{
 			fprintf(stderr,"WriteLog:Can't open logfile [%s][%d]\n",
-                                       p_logfile, errno );
+				p_logfile, errno );
 			return;
 		}
-		else
-		{
-			f_pos  = ftell( logfile_fd );
-
-			fseek( logfile_fd, 0, SEEK_END );
-			f_size = ftell( logfile_fd );
-
-			fseek( logfile_fd, f_pos, SEEK_SET );
-
-			/* If LogFile grows too long */
-			if( f_size > _MAX_LOGFILE_SIZE_ )
-			{
-				fclose( logfile_fd );
-	
-				strcpy( old_logfile, p_logfile );
-				GetCurDateTime( cur_time,"%Y%m%d%H:%M:%S" );
-				strcat( old_logfile, "." );
-				strcat( old_logfile, cur_time);
-				strcat( old_logfile, ".OLD"  );
-
-				rename( p_logfile, old_logfile );
-			}
-			else
-				break;
-		}
 	}
-	/* while End ! */
-
+	else
+	{
+		logfile_fd = stderr;
+	}
 
 #ifndef __DEBUG
 	GetCurDateTime( cur_time,"%Y%m%d %H:%M:%S" );
 	fprintf( logfile_fd, "[%s] ", cur_time );
 #endif
 
-
-
 	va_start( str, p_format );
-
 	vfprintf( logfile_fd, p_format, str );
-
 	va_end( str );
 
 	if( p_logfile != NULL )
 		fclose( logfile_fd );
-
-
 }
 
 

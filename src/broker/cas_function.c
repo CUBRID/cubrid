@@ -283,7 +283,7 @@ fn_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       for (i = 3; i < CAS_FN_ARG_ARGC; i++)
 	{
 	  NET_ARG_GET_INT (deferred_close_handle, CAS_FN_ARG_ARGV[i]);
-	  cas_log_write (0, true, "close_req_handle srv_h_id %d",
+	  cas_log_write (0, false, "close_req_handle srv_h_id %d",
 			 deferred_close_handle);
 	  hm_srv_handle_free (deferred_close_handle);
 	}
@@ -302,8 +302,7 @@ fn_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   query_timeout = 0;
 #endif /* LIBCAS_FOR_JSP */
   cas_log_write_nonl (QUERY_SEQ_NUM_NEXT_VALUE (),
-		      (deferred_close_handle == -1) ? true : false,
-		      "prepare %d ", flag);
+		      false, "prepare %d ", flag);
   cas_log_write_query_string (sql_stmt, sql_size - 1);
 
 #ifndef LIBCAS_FOR_JSP
@@ -492,8 +491,8 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
 #ifndef LIBCAS_FOR_JSP
   query_timeout = ut_check_timeout (&query_start_time,
-			      shm_appl->long_query_time,
-			      &elapsed_sec, &elapsed_msec);
+				    shm_appl->long_query_time,
+				    &elapsed_sec, &elapsed_msec);
   if (query_timeout >= 0)
     {
       as_info->num_long_queries %= MAX_DIAG_DATA_VALUE;
@@ -1646,7 +1645,7 @@ fn_get_query_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
 #if !defined(WINDOWS)
       cas_log_query_info_next ();
-      histo_print ();
+      histo_print (NULL);
       cas_log_query_info_end ();
 #endif
     }

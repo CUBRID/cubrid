@@ -137,6 +137,7 @@ css_finalize_list (CSS_LIST * list)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_list_isempty() - check if list is empty
  *   return: true if it is empty, or false
@@ -147,6 +148,7 @@ css_list_isempty (CSS_LIST * list)
 {
   return (list->count == 0);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * css_add_list() - add an element to last of the list
@@ -192,6 +194,7 @@ css_add_list (CSS_LIST * list, void *item)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_add_list_to_head() - add an element to head of the list
  *   return: 0 if success, or error code
@@ -238,6 +241,7 @@ css_add_list_to_head (CSS_LIST * list, void *item)
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * compare_data() - compare function for list traverse
@@ -251,6 +255,7 @@ compare_data (void *data, void *compare)
   return ((data == compare) ? TRAV_STOP_DELETE : TRAV_CONT);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_remove_list() - remove the first entry matching the value of item
  *   return: 0 if success, or error code
@@ -262,6 +267,7 @@ css_remove_list (CSS_LIST * list, void *item)
 {
   return css_traverse_list (list, compare_data, item);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * css_remove_list_from_head() - remove the first entry of the list

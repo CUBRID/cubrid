@@ -1074,6 +1074,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 	  }
       }
     us.close ();
+    endTransaction ();
 
     // sort한다.
     rs.sortTuples (new CUBRIDComparator ("getTables"));
@@ -1348,6 +1349,8 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 
 	rs.addTuple (value);
       }
+    us.close ();
+    endTransaction ();
 
     // sort한다.
     rs.sortTuples (new CUBRIDComparator ("getColumns"));
@@ -1417,6 +1420,8 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 
 	rs.addTuple (value);
       }
+    us.close ();
+    endTransaction ();
 
     rs.sortTuples (new CUBRIDComparator ("getColumnPrivileges"));
     return rs;
@@ -1485,6 +1490,8 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 
 	rs.addTuple (value);
       }
+    us.close ();
+    endTransaction ();
 
     rs.sortTuples (new CUBRIDComparator ("getTablePrivileges"));
     return rs;
@@ -1557,8 +1564,13 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
       }
 
     // unique가 없을때
-    if (min == 2100000000)
-      return rs;
+    if (min == 2100000000) 
+      {
+        us.close ();
+	endTransaction ();
+
+        return rs;
+      }
 
     UStatement us2 = null;
     synchronized (u_con)
@@ -1672,6 +1684,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 
 	rs.addTuple (value);
       }
+    us.close ();
+    us2.close ();
+    endTransaction ();
 
     rs.sortTuples (new CUBRIDComparator ("getBestRowIdentifier"));
     return rs;
@@ -1702,28 +1717,29 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
     return new CUBRIDResultSetWithoutQuery (8, types, names, nullable);
   }
 
-  /*
-   * empty ResultSet
-   */
   public synchronized ResultSet getPrimaryKeys (String catalog, String schema,
-						String table) throws
+                                                String table) throws
     SQLException
   {
     checkIsOpen ();
 
-    String[] names =
-    {
-    "TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "COLUMN_NAME",
-	"KEY_SEQ", "PK_NAME"};
-    int[] types = { UUType.U_TYPE_VARCHAR, UUType.U_TYPE_VARCHAR,
-      UUType.U_TYPE_VARCHAR, UUType.U_TYPE_VARCHAR, UUType.U_TYPE_SHORT,
-      UUType.U_TYPE_VARCHAR
-    };
-    boolean[]nullable =
-    {
-    true, true, false, false, false, true};
+    if (table == null)
+      {
+        throw new CUBRIDException (CUBRIDJDBCErrorCode.invalid_table_name);
+      }
 
-    return new CUBRIDResultSetWithoutQuery (6, types, names, nullable);
+    String sql = "SELECT NULL AS TABLE_CAT,";
+    sql += " NULL AS TABLE_SCHEM,";
+    sql += " a.class_name AS TABLE_NAME,";
+    sql += " b.key_attr_name AS COLUMN_NAME,";
+    sql += " b.key_order+1 AS KEY_SEQ,";
+    sql += " a.index_name AS PK_NAME ";
+    sql += " FROM db_index a, db_index_key b ";
+    sql += " WHERE a.index_name = b.index_name  AND a.is_primary_key = 'YES' ";
+    sql += " AND a.class_name = '" + table.toLowerCase() + "' ";
+    sql += " ORDER BY COLUMN_NAME";
+
+    return con.createStatement().executeQuery( sql );
   }
 
   /*
@@ -2121,6 +2137,8 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 
 	rs.addTuple (value);
       }
+    us.close ();
+    endTransaction ();
 
     rs.sortTuples (new CUBRIDComparator ("getIndexInfo"));
     return rs;
@@ -2428,6 +2446,8 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 
 	rs.addTuple (value);
       }
+    us.close ();
+    endTransaction ();
 
     rs.sortTuples (new CUBRIDComparator ("getSuperTables"));
     return rs;
@@ -2532,6 +2552,14 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
     if (is_closed)
       {
 	throw new CUBRIDException (CUBRIDJDBCErrorCode.dbmetadata_closed);
+      }
+  }
+
+  private synchronized void endTransaction ()
+  {
+    if (u_con.getAutoCommit () == true)
+      {
+        u_con.endTransaction (true);
       }
   }
 }

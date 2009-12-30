@@ -106,9 +106,14 @@ EXPORTS
 	patchdb
 	checkdb
 	alterdbhost
+	paramdump
+	changemode
+	copylogdb
+	applylogdb
+	statdump
 
 ;
-;	enalbe below two functions when
+;	enable below two functions when
 ;	 #if defined(ENABLE_UNUSED_FUNCTION) is on
 ;
 ;	estimatedb_data
@@ -704,4 +709,6 @@ EXPORTS
     dbt_set_label
     dbt_set_loader_commands
     dbt_set_object_id
-	rel_bit_platform
+    rel_bit_platform
+    envvar_root
+    envvar_bindir_file

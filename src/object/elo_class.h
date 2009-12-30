@@ -103,6 +103,7 @@ extern int elo_compress (DB_ELO * elo);
 /* Stream interface */
 
 extern ELO_STREAM *elo_open (DB_OBJECT * glo, const char *mode);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern char *elo_gets (char *s, int n, ELO_STREAM * elo_stream);
 extern int elo_close (ELO_STREAM * elo_stream);
 extern int elo_puts (const char *s, ELO_STREAM * elo_stream);
@@ -110,5 +111,6 @@ extern int elo_seek (ELO_STREAM * elo_stream, INT64 offset, int origin);
 extern int elo_putc (int c, ELO_STREAM * elo_stream);
 extern int elo_getc (ELO_STREAM * elo_stream);
 extern int elo_setvbuf (ELO_STREAM * elo_stream, char *buf, int buf_size);
+#endif
 
 #endif /* _ELO_CLASS_H_ */

@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -54,10 +54,12 @@ enum
 
 extern int css_initialize_list (CSS_LIST * ptr, int free_count);
 extern int css_finalize_list (CSS_LIST * ptr);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern bool css_list_isempty (CSS_LIST * ptr);
-extern int css_add_list (CSS_LIST * ptr, void *item);
 extern int css_add_list_to_head (CSS_LIST * ptr, void *item);
 extern int css_remove_list (CSS_LIST * ptr, void *item);
+#endif
+extern int css_add_list (CSS_LIST * ptr, void *item);
 extern void *css_remove_list_from_head (CSS_LIST * ptr);
 extern int css_traverse_list (CSS_LIST * ptr, int (*func) (void *, void *),
 			      void *arg);

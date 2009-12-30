@@ -42,7 +42,11 @@
 
 #define ERR_MSG_SIZE	1024
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
 #define CUBRID_ERROR_LOG_DIR		"log/server"
+#else
+#define CUBRID_ERROR_LOG_DIR		CUBRID_LOGDIR "/server"
+#endif
 
 #define CUBRID_DATABASE_TXT	"databases.txt"
 #define CUBRID_CUBRID_CONF	"cubrid.conf"
@@ -60,10 +64,12 @@
 
 #define CUBRID_CMD_NAME_LEN	128
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
 #if defined(WINDOWS)
 #define CUBRID_DIR_BIN          "bin\\"
 #else
 #define CUBRID_DIR_BIN          "bin/"
+#endif
 #endif
 
 typedef enum

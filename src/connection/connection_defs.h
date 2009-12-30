@@ -428,7 +428,8 @@ struct css_mapping_entry
 #endif
   unsigned short id;		/* host id to help identify the connection */
 };
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void css_shutdown (int exit_reason);
+#endif
 
 #endif /* _CONNECTION_DEFS_H_ */

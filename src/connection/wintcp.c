@@ -62,6 +62,7 @@ static int max_socket_fds = _SYS_OPEN;
 
 static unsigned int css_fd_error (SOCKET fd);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_get_wsa_error() - return the last WSA error
  *   return: the last WSA error
@@ -73,6 +74,7 @@ css_get_wsa_error (void)
 {
   return css_Wsa_error;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * css_windows_blocking_hook() - blocking hook function

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -272,7 +272,9 @@ extern int pr_is_variable_type (DB_TYPE type);
 
 /* Size calculators */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int pr_disk_size (PR_TYPE * type, void *mem);
+#endif
 extern int pr_mem_size (PR_TYPE * type);
 extern int pr_total_mem_size (PR_TYPE * type, void *mem);
 extern int pr_value_mem_size (DB_VALUE * value);
@@ -282,7 +284,9 @@ extern int pr_value_mem_size (DB_VALUE * value);
 extern DB_VALUE *pr_make_value (void);
 extern DB_VALUE *pr_copy_value (DB_VALUE * var);
 extern int pr_clone_value (DB_VALUE * src, DB_VALUE * dest);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int pr_share_value (DB_VALUE * src, DB_VALUE * dest);
+#endif
 #define PR_SHARE_VALUE(src, dst)                                            \
     {                                                                       \
 	if (src && dst && src != dst) {					    \

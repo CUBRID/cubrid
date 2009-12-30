@@ -397,7 +397,11 @@ aj_autohistory_handler (void *ajp, time_t prev_check_time, time_t cur_time)
 	{
 	  time_to_str (mytime, "%04d%02d%02d.%02d%02d%02d", timestr,
 		       TIME_STR_FMT_DATE_TIME);
+#if !defined (DO_NOT_USE_CUBRIDENV)
 	  sprintf (strbuf, "%s/logs/_dbmt_history.%s", sco.szCubrid, timestr);
+#else
+	  sprintf (strbuf, "%s/_dbmt_history.%s", CUBRID_LOGDIR, timestr);
+#endif
 	  hsp->hfile = fopen (strbuf, "w");
 	}
       /* recrod system information */
@@ -1088,7 +1092,11 @@ aj_execquery (autoexecquery_node * c)
     }
 
   cmd_name[0] = '\0';
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (cmd_name, "%s/%s%s", sco.szCubrid, CUBRID_DIR_BIN, UTIL_CSQL_NAME);
+#else
+  sprintf (cmd_name, "%s/%s", CUBRID_BINDIR, UTIL_CSQL_NAME);
+#endif
   argc = 0;
   argv[argc++] = cmd_name;
   argv[argc++] = c->dbname;
@@ -1113,9 +1121,11 @@ aj_execquery (autoexecquery_node * c)
   if (!_isRegisteredDB (c->dbname))
     {
       /* database is not exist */
-      sprintf (error_buffer, "Database(%s) not found", c->dbname);
-      _aj_autoexecquery_error_log (c, ERR_GENERAL_ERROR, error_buffer);
-      return;
+      /*
+         sprintf (error_buffer, "Database(%s) not found", c->dbname);
+         _aj_autoexecquery_error_log (c, ERR_GENERAL_ERROR, error_buffer);
+         return;
+       */
     }
 
   db_mode = uDatabaseMode (c->dbname);
@@ -1200,7 +1210,11 @@ _aj_autoexecquery_error_log (autoexecquery_node * node, int error_code,
   char strbuf[128];
 
   tt = time (&tt);
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (logfile, "%s/log/manager/auto_execquery.log", sco.szCubrid);
+#else
+  sprintf (logfile, "%s/manager/auto_execquery.log", CUBRID_LOGDIR);
+#endif
 
   outfile = fopen (logfile, "a");
   if (outfile == NULL)
@@ -1270,7 +1284,11 @@ _aj_autobackupdb_error_log (autobackupdb_node * n, char *errmsg)
   char strbuf[128];
 
   tt = time (&tt);
+#if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (logfile, "%s/log/manager/auto_backupdb.log", sco.szCubrid);
+#else
+  sprintf (logfile, "%s/manager/auto_backupdb.log", CUBRID_LOGDIR);
+#endif
 
   outfile = fopen (logfile, "a");
   if (outfile == NULL)
@@ -1434,6 +1452,9 @@ aj_backupdb (autobackupdb_node * n)
       _aj_autobackupdb_error_log (n, buf);
       return;
     }
+
+  sprintf (buf, "backupdb(%s): success", n->dbname);
+  _aj_autobackupdb_error_log (n, buf);	/* log success info to notify cubrid manager user */
 
   /* update statistics */
   if (n->onoff == 0 && n->updatestatus)

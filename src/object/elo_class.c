@@ -965,6 +965,7 @@ elo_open (DB_OBJECT * glo, const char *mode)
   return (return_value);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * elo_close() - closes and deallocates the elo stream
  *      return: Returns the number of bytes written or a negative number
@@ -989,6 +990,7 @@ elo_close (ELO_STREAM * elo_stream)
   db_ws_free ((void *) elo_stream);
   return (return_value);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * elo_flush() -
@@ -1016,6 +1018,7 @@ elo_flush (ELO_STREAM * elo_stream)
   return (bytes_written);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * elo_seek() - seeks to the requested location in the stream.
  *      return:
@@ -1278,6 +1281,7 @@ elo_setvbuf (ELO_STREAM * elo_stream, char *buf, int buf_size)
 
   return (0);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * elo_copy_to_char() - copies at most length characters from source to target

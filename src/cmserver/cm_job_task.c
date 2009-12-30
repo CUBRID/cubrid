@@ -183,12 +183,10 @@ static int trigger_info_sa (const char *dbname, const char *uid,
 static void replace_colon (char *path);
 #endif
 static int revoke_all_from_user (DB_OBJECT * user);
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int op_get_objectid_attlist (DB_NAMELIST ** att_list,
 				    char *att_comma_list);
-static int op_make_ldbinput_file_register (nvplist * req,
-					   char *input_filename);
-static int op_make_ldbinput_file_remove (nvplist * req, char *input_filename);
+#endif
 static int op_make_triggerinput_file_add (nvplist * req,
 					  char *input_filename);
 static int op_make_triggerinput_file_drop (nvplist * req,
@@ -2368,10 +2366,12 @@ ts2_get_unicas_info (nvplist * in, nvplist * out, char *_dbmt_error)
 				uc_info.info.br_info[i].num_long_query);
 	      nv_add_nvp_int64 (out, "error_query",
 				uc_info.info.br_info[i].num_error_query);
-	      nv_add_nvp_int (out, "long_tran_time",
-			      uc_info.info.br_info[i].long_transaction_time);
-	      nv_add_nvp_int (out, "long_query_time",
-			      uc_info.info.br_info[i].long_query_time);
+	      nv_add_nvp_float (out, "long_tran_time",
+				(uc_info.info.br_info[i].
+				 long_transaction_time / 1000.0), "%.2f");
+	      nv_add_nvp_float (out, "long_query_time",
+				(uc_info.info.br_info[i].
+				 long_query_time / 1000.0), "%.2f");
 
 	      switch (uc_info.info.br_info[i].keep_connection)
 		{
@@ -3128,6 +3128,7 @@ ts2_get_broker_conf (nvplist * in, nvplist * out, char *_dbmt_error)
   return ERR_NO_ERROR;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int
 compare_br_conf (T_DM_UC_BR_CONF * br_conf, char *name, char *value)
 {
@@ -3146,6 +3147,7 @@ compare_br_conf (T_DM_UC_BR_CONF * br_conf, char *name, char *value)
     }
   return 0;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 int
 ts2_set_broker_conf (nvplist * in, nvplist * out, char *_dbmt_error)
@@ -3851,13 +3853,23 @@ ts_set_sysparam (nvplist * req, nvplist * res, char *_dbmt_error)
 
   if (strcmp (conf_name, "cubridconf") == 0)
     {
+#if !defined (DO_NOT_USE_CUBRIDENV)
       snprintf (conf_path, PATH_MAX - 1, "%s/conf/%s", sco.szCubrid,
 		CUBRID_CUBRID_CONF);
+#else
+      snprintf (conf_path, PATH_MAX - 1, "%s/%s", CUBRID_CONFDIR,
+		CUBRID_CUBRID_CONF);
+#endif
     }
   else if (strcmp (conf_name, "cmconf") == 0)
     {
+#if !defined (DO_NOT_USE_CUBRIDENV)
       snprintf (conf_path, PATH_MAX - 1, "%s/conf/%s", sco.szCubrid,
 		CUBRID_DBMT_CONF);
+#else
+      snprintf (conf_path, PATH_MAX - 1, "%s/%s", CUBRID_CONFDIR,
+		CUBRID_DBMT_CONF);
+#endif
     }
   else
     {
@@ -3905,13 +3917,23 @@ ts_get_all_sysparam (nvplist * req, nvplist * res, char *_dbmt_error)
 
   if (strcmp (conf_name, "cubridconf") == 0)
     {
+#if !defined (DO_NOT_USE_CUBRIDENV)
       snprintf (conf_path, PATH_MAX - 1, "%s/conf/%s", sco.szCubrid,
 		CUBRID_CUBRID_CONF);
+#else
+      snprintf (conf_path, PATH_MAX - 1, "%s/%s", CUBRID_CONFDIR,
+		CUBRID_CUBRID_CONF);
+#endif
     }
   else if (strcmp (conf_name, "cmconf") == 0)
     {
+#if !defined (DO_NOT_USE_CUBRIDENV)
       snprintf (conf_path, PATH_MAX - 1, "%s/conf/%s", sco.szCubrid,
 		CUBRID_DBMT_CONF);
+#else
+      snprintf (conf_path, PATH_MAX - 1, "%s/%s", CUBRID_CONFDIR,
+		CUBRID_DBMT_CONF);
+#endif
     }
   else
     {
@@ -4584,8 +4606,13 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
       FILE *outfile = NULL;
       char dstrbuf[PATH_MAX];
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
       snprintf (dstrbuf, PATH_MAX - 1, "%s/conf/%s", sco.szCubrid,
 		CUBRID_CUBRID_CONF);
+#else
+      snprintf (dstrbuf, PATH_MAX - 1, "%s/%s", CUBRID_CONFDIR,
+		CUBRID_CUBRID_CONF);
+#endif
       infile = fopen (dstrbuf, "r");
       if (infile == NULL)
 	{
@@ -5905,8 +5932,7 @@ ts_backupdb (nvplist * req, nvplist * res, char *_dbmt_error)
 
   unlink (inputfilepath);
 
-  if (read_csql_error_file (cubrid_err_file, _dbmt_error, DBMT_ERROR_MSG_SIZE)
-      < 0)
+  if (read_error_file (cubrid_err_file, _dbmt_error, DBMT_ERROR_MSG_SIZE) < 0)
     {
       return ERR_WITH_MSG;
     }
@@ -6985,7 +7011,11 @@ tsGetHistoryFileList (nvplist * req, nvplist * res, char *_dbmt_error)
   char dirbuf[PATH_MAX], fpathbuf[PATH_MAX];
   char *cur_file;
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (dirbuf, PATH_MAX - 1, "%s/logs", sco.szCubrid);
+#else
+  snprintf (dirbuf, PATH_MAX - 1, "%s", CUBRID_LOGDIR);
+#endif
 
 #if defined(WINDOWS)
   snprintf (find_file, PATH_MAX - 1, "%s/*", dirbuf);
@@ -7016,8 +7046,12 @@ tsGetHistoryFileList (nvplist * req, nvplist * res, char *_dbmt_error)
       if (!strncmp ("_dbmt_history.", cur_file, strlen ("_dbmt_history.")))
 	{
 	  nv_add_nvp (res, "name", cur_file);
+#if !defined (DO_NOT_USE_CUBRIDENV)
 	  snprintf (fpathbuf, PATH_MAX - 1, "%s/logs/%s", sco.szCubrid,
 		    cur_file);
+#else
+	  snprintf (fpathbuf, PATH_MAX - 1, "%s/%s", CUBRID_LOGDIR, cur_file);
+#endif
 	  stat (fpathbuf, &statbuf);
 	  nv_add_nvp_int (res, "size", statbuf.st_size);
 	  nv_add_nvp_time (res, "update", statbuf.st_mtime,
@@ -7046,7 +7080,11 @@ tsReadHistoryFile (nvplist * req, nvplist * res, char *_dbmt_error)
       sprintf (_dbmt_error, "%s", "file name");
       return ERR_PARAM_MISSING;
     }
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (fnamebuf, PATH_MAX - 1, "%s/logs/%s", sco.szCubrid, fname);
+#else
+  snprintf (fnamebuf, PATH_MAX - 1, "%s/%s", CUBRID_LOGDIR, fname);
+#endif
 
   nv_add_nvp (res, "open", "view");
   if ((infile = fopen (fnamebuf, "r")) != NULL)
@@ -7084,8 +7122,13 @@ tsGetEnvironment (nvplist * req, nvplist * res, char *_dbmt_error)
 	    (int) getpid ());
 
   cmd_name[0] = '\0';
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s%s", sco.szCubrid,
 	    CUBRID_DIR_BIN, UTIL_CUBRID_REL_NAME);
+#else
+  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s", CUBRID_BINDIR,
+	    UTIL_CUBRID_REL_NAME);
+#endif
 
   argv[0] = cmd_name;
   argv[1] = NULL;
@@ -7108,8 +7151,13 @@ tsGetEnvironment (nvplist * req, nvplist * res, char *_dbmt_error)
 
   snprintf (tmpfile, PATH_MAX - 1, "%s/DBMT_task_015.%d", sco.dbmt_tmp_dir,
 	    (int) getpid ());
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/cubrid_broker%s",
 	    sco.szCubrid, DBMT_EXE_EXT);
+#else
+  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/cubrid_broker%s",
+	    CUBRID_BINDIR, DBMT_EXE_EXT);
+#endif
 
   argv[0] = cmd_name;
   argv[1] = "--version";
@@ -7614,8 +7662,13 @@ ts_get_log_info (nvplist * req, nvplist * res, char *_dbmt_error)
       nv_add_nvp (res, "close", "log");
     }
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (find_file, PATH_MAX - 1, "%s/%s", sco.szCubrid,
 	    CUBRID_ERROR_LOG_DIR);
+#else
+  snprintf (find_file, PATH_MAX - 1, "%s/%s", CUBRID_LOGDIR,
+	    CUBRID_ERROR_LOG_DIR);
+#endif
 #if defined(WINDOWS)
   snprintf (&find_file[strlen (find_file)], PATH_MAX - strlen (find_file) - 1,
 	    "/*");
@@ -7650,8 +7703,12 @@ ts_get_log_info (nvplist * req, nvplist * res, char *_dbmt_error)
 	{
 	  continue;
 	}
+#if !defined (DO_NOT_USE_CUBRIDENV)
       snprintf (buf, sizeof (buf) - 1, "%s/%s/%s", sco.szCubrid,
 		CUBRID_ERROR_LOG_DIR, fname);
+#else
+      snprintf (buf, sizeof (buf) - 1, "%s/%s", CUBRID_ERROR_LOG_DIR, fname);
+#endif
       if (stat (buf, &statbuf) == 0)
 	{
 	  nv_add_nvp (res, "open", "log");
@@ -8571,8 +8628,13 @@ ts_get_autobackupdb_error_log (nvplist * req, nvplist * res,
     backupid[256];
   FILE *infile;
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (logfile, PATH_MAX - 1, "%s/log/manager/auto_backupdb.log",
 	    sco.szCubrid);
+#else
+  snprintf (logfile, PATH_MAX - 1, "%s/manager/auto_backupdb.log",
+	    CUBRID_LOGDIR);
+#endif
   if ((infile = fopen (logfile, "r")) == NULL)
     {
       return ERR_NO_ERROR;
@@ -8620,8 +8682,13 @@ ts_get_autoexecquery_error_log (nvplist * req, nvplist * res,
     time[512], dbname[256], username[256], query_id[256], error_code[256];
   FILE *infile;
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (logfile, PATH_MAX - 1, "%s/log/manager/auto_execquery.log",
 	    sco.szCubrid);
+#else
+  snprintf (logfile, PATH_MAX - 1, "%s/manager/auto_execquery.log",
+	    CUBRID_LOGDIR);
+#endif
   if ((infile = fopen (logfile, "r")) == NULL)
     return ERR_NO_ERROR;
 
@@ -8689,8 +8756,13 @@ op_db_user_pass_check (char *dbname, char *dbuser, char *dbpass)
 	    TS_GETACCESSRIGHT, (int) getpid ());
 
   cmd_name[0] = '\0';
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s%s", sco.szCubrid,
 	    CUBRID_DIR_BIN, UTIL_CSQL_NAME);
+#else
+  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s", CUBRID_BINDIR,
+	    UTIL_CSQL_NAME);
+#endif
   argc = 0;
   argv[argc++] = cmd_name;
   argv[argc++] = dbname;
@@ -10078,142 +10150,6 @@ _ts_get_error_log_param (char *dbname)
 }
 
 int
-ts_localdb_operation (nvplist * req, nvplist * res, char *_dbmt_error)
-{
-  char *task, *dbname, *dbuser, *dbpasswd;
-  char cmd_name[CUBRID_CMD_NAME_LEN];
-  const char *argv[11];
-  char input_file[PATH_MAX];
-  char *cubrid_err_file;
-  int retval, argc;
-  T_DB_SERVICE_MODE db_mode;
-
-  task = nv_get_val (req, "task");
-
-  if (task != NULL)
-    {
-      if (strcmp (task, "registerlocaldb") == 0)
-	{
-	  snprintf (input_file, PATH_MAX - 1, "%s/dbmt_task_%d_%d",
-		    sco.dbmt_tmp_dir, TS_REGISTERLOCALDB, (int) getpid ());
-	}
-      else if (strcmp (task, "removelocaldb") == 0)
-	{
-	  snprintf (input_file, PATH_MAX - 1, "%s/dbmt_task_%d_%d",
-		    sco.dbmt_tmp_dir, TS_REMOVELOCALDB, (int) getpid ());
-	}
-      else
-	{
-	  input_file[0] = '\0';
-	}
-    }
-
-  dbname = nv_get_val (req, "_DBNAME");
-  dbuser = nv_get_val (req, "_DBID");
-  dbpasswd = nv_get_val (req, "_DBPASSWD");
-
-  cmd_name[0] = '\0';
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s%s", sco.szCubrid,
-	    CUBRID_DIR_BIN, UTIL_CSQL_NAME);
-
-  argc = 0;
-  argv[argc++] = cmd_name;
-  argv[argc++] = dbname;
-  argv[argc++] = NULL;
-  argv[argc++] = "--" CSQL_INPUT_FILE_L;
-  argv[argc++] = input_file;
-  if (dbuser)
-    {
-      argv[argc++] = "--" CSQL_USER_L;
-      argv[argc++] = dbuser;
-      if (dbpasswd)
-	{
-	  argv[argc++] = "--" CSQL_PASSWORD_L;
-	  argv[argc++] = dbpasswd;
-	}
-    }
-  argv[argc++] = "--" CSQL_NO_AUTO_COMMIT_L;
-
-  for (; argc < 11; argc++)
-    {
-      argv[argc] = NULL;
-    }
-
-  if (!_isRegisteredDB (dbname))
-    {
-      return ERR_DB_NONEXISTANT;
-    }
-
-  db_mode = uDatabaseMode (dbname);
-
-  if (db_mode == DB_SERVICE_MODE_SA)
-    {
-      sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
-    }
-
-  if (db_mode == DB_SERVICE_MODE_CS)
-    {
-      /* run csql command with -cs option */
-      argv[2] = "--" CSQL_CS_MODE_L;
-    }
-
-  if (db_mode == DB_SERVICE_MODE_NONE)
-    {
-      /* run csql command with -sa option */
-      argv[2] = "--" CSQL_SA_MODE_L;
-    }
-
-  /* register ldb with csql command */
-  /* csql -sa -i input_file dbname  */
-
-  if (task != NULL)
-    {
-      if (strcmp (task, "registerlocaldb") == 0)
-	{
-	  if (op_make_ldbinput_file_register (req, input_file) == 0)
-	    {
-	      strcpy (_dbmt_error, argv[0]);
-	      return ERR_TMPFILE_OPEN_FAIL;
-	    }
-	}
-      else if (strcmp (task, "removelocaldb") == 0)
-	{
-	  if (op_make_ldbinput_file_remove (req, input_file) == 0)
-	    {
-	      strcpy (_dbmt_error, argv[0]);
-	      return ERR_TMPFILE_OPEN_FAIL;
-	    }
-	}
-    }
-
-  INIT_CUBRID_ERROR_FILE (cubrid_err_file);
-  SET_TRANSACTION_NO_WAIT_MODE_ENV ();
-
-  retval = run_child (argv, 1, NULL, NULL, cubrid_err_file, NULL);	/* csql - register new ldb */
-  if (strlen (input_file) > 0)
-    {
-      unlink (input_file);
-    }
-
-  if (read_csql_error_file (cubrid_err_file, _dbmt_error, DBMT_ERROR_MSG_SIZE)
-      < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  if (retval < 0)
-    {
-      strcpy (_dbmt_error, argv[0]);
-      return ERR_SYSTEM_CALL;
-    }
-
-  nv_add_nvp (res, "dbname", dbname);
-
-  return ERR_NO_ERROR;
-}
-
-int
 ts_trigger_operation (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *task, *dbname, *dbuser, *dbpasswd;
@@ -10250,8 +10186,13 @@ ts_trigger_operation (nvplist * req, nvplist * res, char *_dbmt_error)
   dbpasswd = nv_get_val (req, "_DBPASSWD");
 
   cmd_name[0] = '\0';
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s%s", sco.szCubrid,
 	    CUBRID_DIR_BIN, UTIL_CSQL_NAME);
+#else
+  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s", CUBRID_BINDIR,
+	    UTIL_CSQL_NAME);
+#endif
   argc = 0;
   argv[argc++] = cmd_name;
   argv[argc++] = dbname;
@@ -10460,8 +10401,13 @@ class_info_sa (const char *dbname, const char *uid, const char *passwd,
   char cli_ver[10];
   char opcode[10];
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (outfile, PATH_MAX - 1, "%s/tmp/DBMT_class_info.%d", sco.szCubrid,
 	    (int) getpid ());
+#else
+  snprintf (outfile, PATH_MAX - 1, "%s/DBMT_class_info.%d", CUBRID_TMPDIR,
+	    (int) getpid ());
+#endif
   snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
 
   if (uid == NULL)
@@ -10474,8 +10420,13 @@ class_info_sa (const char *dbname, const char *uid, const char *passwd,
     }
 
   snprintf (cli_ver, sizeof (cli_ver) - 1, "%d", CLIENT_VERSION);
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/cub_jobsa%s",
 	    sco.szCubrid, DBMT_EXE_EXT);
+#else
+  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/cub_jobsa%s",
+	    CUBRID_BINDIR, DBMT_EXE_EXT);
+#endif
   snprintf (opcode, sizeof (opcode) - 1, "%d", EMS_SA_CLASS_INFO);
   argv[0] = cmd_name;
   argv[1] = opcode;
@@ -10582,7 +10533,7 @@ revoke_all_from_user (DB_OBJECT * user)
   return ERR_NO_ERROR;
 }
 
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int
 op_get_objectid_attlist (DB_NAMELIST ** att_list, char *att_comma_list)
 {
@@ -10618,6 +10569,7 @@ op_get_objectid_attlist (DB_NAMELIST ** att_list, char *att_comma_list)
 
   return 1;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 #ifdef	_DEBUG_
 void *
@@ -10627,109 +10579,6 @@ debug_malloc (size_t size)
   return malloc (size);
 }
 #endif
-
-static int
-op_make_ldbinput_file_register (nvplist * req, char *input_filename)
-{
-  char *name, *host_name, *name_in_host, *database_type, *user_name;
-  char *password, *directory;
-  char *max_active, *min_active, *decay_constant, *oid_string;
-
-  FILE *input_file;
-
-  if (input_filename == NULL)
-    {
-      return 0;
-    }
-
-  input_file = fopen (input_filename, "w+");
-  if (input_file == NULL)
-    {
-      return 0;
-    }
-
-  name = nv_get_val (req, "ldbname");
-  host_name = nv_get_val (req, "hostname");
-  name_in_host = nv_get_val (req, "nameinhost");
-  database_type = nv_get_val (req, "type");
-  user_name = nv_get_val (req, "username");
-  password = nv_get_val (req, "password");
-  directory = nv_get_val (req, "directory");
-  max_active = nv_get_val (req, "maxactive");
-  min_active = nv_get_val (req, "minactive");
-  decay_constant = nv_get_val (req, "decayvalue");
-  oid_string = nv_get_val (req, "objectid");
-
-/*	  fprintf(input_file, ";autocommit off\n");*/
-  fprintf (input_file, "REGISTER LDB %s\n", name);
-  fprintf (input_file, "NAME\t'%s'\n", name_in_host);
-  fprintf (input_file, "TYPE\t'%s'\n", database_type);
-  fprintf (input_file, "HOST\t'%s'\n", host_name);
-
-  if (user_name)
-    {
-      fprintf (input_file, "USER\t'%s'\n", user_name);
-      if (password)
-	{
-	  fprintf (input_file, "PASSWORD\t'%s'\n", password);
-	}
-      else
-	fprintf (input_file, "PASSWORD\t''\n");
-    }
-  if (max_active)
-    {
-      fprintf (input_file, "MAX_ACTIVE\t%s\n", max_active);
-    }
-  if (min_active)
-    {
-      fprintf (input_file, "MIN_ACTIVE\t%s\n", min_active);
-    }
-  if (decay_constant)
-    {
-      fprintf (input_file, "DECAY_CONSTANT\t%s\n", decay_constant);
-    }
-  if (directory)
-    {
-      fprintf (input_file, "DIRECTORY\t'%s'\n", directory);
-    }
-  if (oid_string)
-    {
-      fprintf (input_file, "OBJECT_ID\t%s\n", oid_string);
-    }
-
-  fprintf (input_file, "\n\ncommit\n");
-  fclose (input_file);
-
-  return 1;
-}
-
-
-static int
-op_make_ldbinput_file_remove (nvplist * req, char *input_filename)
-{
-  char *name;
-
-  FILE *input_file;
-  if (input_filename == NULL)
-    {
-      return 0;
-    }
-
-  input_file = fopen (input_filename, "w+");
-  if (input_file == NULL)
-    {
-      return 0;
-    }
-
-  name = nv_get_val (req, "ldbname");
-/*	  fprintf(input_file,";autocommit off\n");*/
-  fprintf (input_file, "DROP LDB %s\n", name);
-  fprintf (input_file, "\n\ncommit\n");
-
-  fclose (input_file);
-
-  return 1;
-}
 
 static int
 op_make_triggerinput_file_add (nvplist * req, char *input_filename)
@@ -11778,8 +11627,13 @@ trigger_info_sa (const char *dbname, const char *uid, const char *passwd,
   char cmd_name[128];
   const char *argv[10];
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (outfile, PATH_MAX - 1, "%s/tmp/DBMT_trigger_info.%d",
 	    sco.szCubrid, (int) getpid ());
+#else
+  snprintf (outfile, PATH_MAX - 1, "%s/DBMT_trigger_info.%d",
+	    CUBRID_TMPDIR, (int) getpid ());
+#endif
   snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
 
   if (uid == NULL)
@@ -11791,8 +11645,13 @@ trigger_info_sa (const char *dbname, const char *uid, const char *passwd,
       passwd = "";
     }
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/cub_sainfo%s",
 	    sco.szCubrid, DBMT_EXE_EXT);
+#else
+  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/cub_sainfo%s",
+	    CUBRID_BINDIR, DBMT_EXE_EXT);
+#endif
   argv[0] = cmd_name;
   argv[1] = dbname;
   argv[2] = uid;
@@ -11903,8 +11762,13 @@ ts_get_file (nvplist * req, nvplist * res, char *_dbmt_error)
 	  /* execute gzip */
 	  if (get_filename_from_path (filename, file) > 0)
 	    {
+#if !defined (DO_NOT_USE_CUBRIDENV)
 	      snprintf (com_filename, PATH_MAX - 1, "%s/tmp/%s_%d.gz",
 			sco.szCubrid, file, (int) getpid ());
+#else
+	      snprintf (com_filename, PATH_MAX - 1, "%s/%s_%d.gz",
+			CUBRID_TMPDIR, file, (int) getpid ());
+#endif
 	      argv[0] = "gzip";
 	      argv[1] = "-c";
 	      argv[2] = filename;
@@ -12001,8 +11865,13 @@ op_get_cubrid_ver (char *buffer)
   snprintf (tmpfile, PATH_MAX - 1, "%s/DBMT_temp.%d", sco.dbmt_tmp_dir,
 	    (int) getpid ());
   cmd_name[0] = '\0';
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s%s", sco.szCubrid,
 	    CUBRID_DIR_BIN, UTIL_CUBRID_REL_NAME);
+#else
+  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s", CUBRID_BINDIR,
+	    UTIL_CUBRID_REL_NAME);
+#endif
 
   argv[0] = cmd_name;
   argv[1] = NULL;
@@ -12185,13 +12054,15 @@ ts_set_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error)
 	  while (fgets (line, sizeof (line), conf_file))
 	    {
 	      char query_id[64];
-	      if (sscanf (line, "%*s %63s ", query_id) < 1)
+	      char db_name[64];
+	      if (sscanf (line, "%63s %63s ", db_name, query_id) < 1)
 		{
 		  continue;
 		}
-	      if (strcmp (query_id, conf_item[1]) != 0)
+	      if (strcmp (db_name, conf_item[0]) != 0
+		  || strcmp (query_id, conf_item[1]) != 0)
 		{
-		  /* write temp file if query_id is different */
+		  /* write temp file if db_name or query_id is different */
 		  fputs (line, temp_file);
 		}
 	    }
@@ -13130,8 +13001,13 @@ ts_analyzecaslog (nvplist * cli_request, nvplist * cli_response,
 
   /* set prarameter with logfile and execute broker_log_top */
   /* execute at current directory and copy result to $CUBRID/tmp directory */
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/broker_log_top%s",
 	    sco.szCubrid, DBMT_EXE_EXT);
+#else
+  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/broker_log_top%s",
+	    CUBRID_BINDIR, DBMT_EXE_EXT);
+#endif
   arg_index = 0;
   argv[arg_index++] = cmd_name;
   if (option_t && !strcmp (option_t, "yes"))
@@ -13454,8 +13330,13 @@ ts_executecasrunner (nvplist * cli_request, nvplist * cli_response,
   /* execute broker_log_converter why logfile is created */
   snprintf (log_converter_res, PATH_MAX - 1, "%s/log_converted_%lu.q_res",
 	    sco.dbmt_tmp_dir, th_id);
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/broker_log_converter%s",
 	    sco.szCubrid, DBMT_EXE_EXT);
+#else
+  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/broker_log_converter%s",
+	    CUBRID_BINDIR, DBMT_EXE_EXT);
+#endif
 
   i = 0;
   argv[i] = cmd_name;
@@ -13470,8 +13351,13 @@ ts_executecasrunner (nvplist * cli_request, nvplist * cli_response,
     }
 
   /* execute broker_log_runner through logfile that converted */
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/broker_log_runner%s",
 	    sco.szCubrid, DBMT_EXE_EXT);
+#else
+  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/broker_log_runner%s",
+	    CUBRID_BINDIR, DBMT_EXE_EXT);
+#endif
   i = 0;
   argv[i] = cmd_name;
   argv[++i] = "-I";
@@ -13660,7 +13546,12 @@ get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname, char *err_buf)
     {
       return -1;
     }
+#if !defined (DO_NOT_USE_CUBRIDENV)
   envpath = getenv ("CUBRID_DATABASES");
+#else
+  envpath = sco.szCubrid_databases;
+  //envpath = CUBRID_VARDIR;
+#endif
   if (envpath == NULL || strlen (envpath) == 0)
     {
       return -1;
@@ -13969,16 +13860,26 @@ user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser,
   char cmd_name[512];
   char *outmsg = NULL, *errmsg = NULL;
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (outfile, PATH_MAX - 1, "%s/tmp/DBMT_ems_sa.%d", sco.szCubrid,
 	    (int) getpid ());
+#else
+  snprintf (outfile, PATH_MAX - 1, "%s/DBMT_ems_sa.%d", CUBRID_TMPDIR,
+	    (int) getpid ());
+#endif
   snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
   unlink (outfile);
   unlink (errfile);
 
   snprintf (opcode, sizeof (opcode) - 1, "%d", EMS_SA_DBMT_USER_LOGIN);
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/cub_jobsa%s",
 	    sco.szCubrid, DBMT_EXE_EXT);
+#else
+  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/cub_jobsa%s",
+	    CUBRID_BINDIR, DBMT_EXE_EXT);
+#endif
 
   argv[0] = cmd_name;
   argv[1] = opcode;

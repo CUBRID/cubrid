@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -175,21 +175,6 @@
 
 typedef struct xasl_node XASL_NODE;
 
-typedef struct start_proc START_PROC;
-struct start_proc
-{
-  const char *sql_command;	/* sql command to be executed */
-  int stmtLength;
-  const char *ldb;		/* ldb execute command on */
-  unsigned long comp_dbid;	/* component database identifier */
-  long command_id;		/* returned command identifier */
-  START_PROC *next;		/* next node in the list */
-  XASL_NODE *read_proc;		/* back link to read proc */
-  int vals_len;			/* byte length of input_vals */
-  char *input_vals;		/* packed input parameters */
-  int vals_cnt;			/* count of input_vals */
-};				/* Start procedure block */
-
 /*
  * Access specification information
  */
@@ -351,21 +336,6 @@ struct mergelist_proc_node
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
 };
 
-typedef struct read_proc_node READ_PROC_NODE;
-struct read_proc_node
-{
-  /* these ought to be a longs too, probably */
-  int count;			/* length of all arrays */
-  TP_DOMAIN **domains;		/* expected domain list */
-  OID *proxy_id;		/* proxy id list */
-  OID *view_id;			/* view id list */
-  /* for the 1st driver read */
-  unsigned short slave_id;	/* key for connecting the read request */
-  /* and getting the results             */
-  unsigned short read_status;	/* for the read status of a XASL node  */
-  unsigned short *ldb_read_status;	/* for the ldb READ status             */
-};
-
 typedef struct update_proc_node UPDATE_PROC_NODE;
 struct update_proc_node
 {
@@ -411,6 +381,24 @@ struct delete_proc_node
   int release_lock;		/* release lock */
 };
 
+typedef struct connectby_proc_node CONNECTBY_PROC_NODE;
+struct connectby_proc_node
+{
+  PRED_EXPR *start_with_pred;	/* START WITH predicate */
+  PRED_EXPR *after_connect_by_pred;	/* after CONNECT BY predicate */
+  QFILE_LIST_ID *input_list_id;	/* CONNECT BY input list file */
+  QFILE_LIST_ID *start_with_list_id;	/* START WITH list file */
+  REGU_VARIABLE_LIST regu_list_pred;	/* positional regu list for fetching val list */
+  REGU_VARIABLE_LIST regu_list_rest;	/* rest of regu vars */
+  VAL_LIST *prior_val_list;	/* val list for use with parent tuple */
+  OUTPTR_LIST *prior_outptr_list;	/* out list for use with parent tuple */
+  REGU_VARIABLE_LIST prior_regu_list_pred;	/* positional regu list for parent tuple */
+  REGU_VARIABLE_LIST prior_regu_list_rest;	/* rest of regu vars */
+  REGU_VARIABLE_LIST after_cb_regu_list_pred;	/* regu list for after_cb pred */
+  REGU_VARIABLE_LIST after_cb_regu_list_rest;	/* rest of regu vars */
+  QFILE_TUPLE curr_tuple;	/* needed for operators and functions */
+};
+
 typedef enum
 {
   UNION_PROC,
@@ -422,11 +410,10 @@ typedef enum
   BUILDVALUE_PROC,
   SCAN_PROC,
   MERGELIST_PROC,
-  READ_PROC,
   UPDATE_PROC,
   DELETE_PROC,
   INSERT_PROC,
-  READ_MPROC
+  CONNECTBY_PROC
 } PROC_TYPE;
 
 typedef enum
@@ -464,15 +451,11 @@ struct xasl_node
 
   VAL_LIST *single_tuple;	/* single tuple result */
 
-  START_PROC *start_proc;	/* corresponding start procedure
-				 * for READ_PROC or READ_MPROC
-				 */
   int is_single_tuple;		/* single tuple subquery? */
 
   QUERY_OPTIONS option;		/* UNIQUE option */
   OUTPTR_LIST *outptr_list;	/* output pointer list */
   SELUPD_LIST *selected_upd_list;	/* click counter related */
-  START_PROC *start_list;	/* start procedure blocks lists */
   ACCESS_SPEC_TYPE *spec_list;	/* access spec. list */
   ACCESS_SPEC_TYPE *merge_spec;	/* merge spec. node */
   VAL_LIST *val_list;		/* output-value list */
@@ -486,6 +469,18 @@ struct xasl_node
   DB_VALUE *instnum_val;	/* inst_num() value result */
   XASL_NODE *fptr_list;		/* after OBJFETCH_PROC list */
   XASL_NODE *scan_ptr;		/* SCAN_PROC pointer */
+
+  XASL_NODE *connect_by_ptr;	/* CONNECT BY xasl pointer */
+  DB_VALUE *level_val;		/* LEVEL value result */
+  REGU_VARIABLE *level_regu;	/* regu variable used for fetching
+				 * level_val from tuple; not to be confused
+				 * with the LEVEL expr regu var from
+				 * select list or where preds!
+				 */
+  DB_VALUE *isleaf_val;		/* CONNECT_BY_ISLEAF value result */
+  REGU_VARIABLE *isleaf_regu;	/* CONNECT_BY_ISLEAF regu variable */
+  DB_VALUE *iscycle_val;	/* CONNECT_BY_ISCYCLE value result */
+  REGU_VARIABLE *iscycle_regu;	/* CONNECT_BY_ISCYCLE regu variable */
 
   ACCESS_SPEC_TYPE *curr_spec;	/* current spec. node */
   int instnum_flag;		/* stop or continue scan? */
@@ -516,10 +511,10 @@ struct xasl_node
     BUILDLIST_PROC_NODE buildlist;	/* BUILDLIST_PROC */
     BUILDVALUE_PROC_NODE buildvalue;	/* BUILDVALUE_PROC */
     MERGELIST_PROC_NODE mergelist;	/* MERGELIST_PROC */
-    READ_PROC_NODE read;	/* READ_PROC */
     UPDATE_PROC_NODE update;	/* UPDATE_PROC */
     INSERT_PROC_NODE insert;	/* INSERT_PROC */
     DELETE_PROC_NODE delete_;	/* DELETE_PROC */
+    CONNECTBY_PROC_NODE connect_by;	/* CONNECTBY_PROC */
   } proc;
 
   double cardinality;		/* estimated cardinality of result */
@@ -541,6 +536,8 @@ struct xasl_node
 #define XASL_ZERO_CORR_LEVEL       4	/* is zero-level uncorrelated subquery ? */
 #define XASL_TOP_MOST_XASL         8	/* this is a top most XASL */
 #define XASL_TO_BE_CACHED         16	/* the result will be cached */
+#define	XASL_HAS_NOCYCLE	  32	/* NOCYCLE is specified */
+#define	XASL_HAS_CONNECT_BY	  64	/* has CONNECT BY clause */
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -624,7 +621,7 @@ struct xasl_cache_ent
   int n_oid_list;		/* size of the class OID list */
   int ref_count;		/* how many times this entry used */
   int dbval_cnt;		/* number of DB_VALUE parameters of the XASL */
-  int list_ht_no;		/* memory hash table for query result(lsit file)
+  int list_ht_no;		/* memory hash table for query result(list file)
 				   cache generated by this XASL
 				   referencing by DB_VALUE parameters bound to
 				   the result */
@@ -714,5 +711,17 @@ extern int stx_map_stream_to_xasl (THREAD_ENTRY * thread_p,
 				   int xasl_stream_size,
 				   void **xasl_unpack_info_ptr);
 extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
+
+extern int qexec_get_tuple_column_value (QFILE_TUPLE tpl,
+					 int index,
+					 DB_VALUE * valp, TP_DOMAIN * domain);
+extern int qexec_set_tuple_column_value (QFILE_TUPLE tpl,
+					 int index,
+					 DB_VALUE * valp, TP_DOMAIN * domain);
+extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p,
+						      REGU_VARIABLE * regu,
+						      XASL_NODE * xasl,
+						      XASL_NODE *
+						      connect_by_ptr);
 
 #endif /* _QUERY_EXECUTOR_H_ */

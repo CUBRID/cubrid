@@ -40,6 +40,8 @@
 #include "connection_list_cl.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
+#else /* WINDOWS */
+#include "tcp.h"
 #endif /* WINDOWS */
 #include "transaction_cl.h"
 #include "error_manager.h"
@@ -582,12 +584,54 @@ css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid)
 unsigned int
 css_receive_data_from_server (unsigned int eid, char **buffer, int *size)
 {
+  return css_receive_data_from_server_with_timeout (eid, buffer, size, 0);
+}
+
+/*
+ * css_receive_data_from_server_with_timeout() - return data that was sent by the server
+ *   return:
+ *   eid(in): enquiry id
+ *   buffer(out): data buffer to be returned
+ *   size(out): size of data buffer that was returned
+ *   timeout(in) : timeout in mili-second
+ */
+unsigned int
+css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
+					   int *size, int timeout)
+{
   CSS_MAP_ENTRY *entry;
   int errid;
+  fd_set rfds;
+#if !defined (WINDOWS)
+  struct timeval tv;
+#endif /* WINDOWS */
+  int n;
 
   entry = css_return_entry_from_eid (eid, css_Client_anchor);
   if (entry != NULL)
     {
+#if !defined (WINDOWS)
+      if ((timeout > 0) && (entry->conn != NULL)
+	  && (entry->conn->status == CONN_OPEN))
+	{
+	  FD_ZERO (&rfds);
+	  FD_SET (entry->conn->fd, &rfds);
+	  tv.tv_sec = timeout / 1000;
+	  tv.tv_usec = (timeout % 1000) * 1000;
+	  n = select (FD_SETSIZE, &rfds, NULL, NULL, &tv);
+	  if (n == 0)
+	    {
+	      if (css_peer_alive (entry->conn->fd, timeout))
+		{
+		  return INTERRUPTED_READ;
+		}
+	      else
+		{
+		  return SERVER_ABORTED;
+		}
+	    }
+	}
+#endif /* WINDOWS */
       css_Errno = css_receive_data (entry->conn, CSS_RID_FROM_EID (eid),
 				    buffer, size);
       if (css_Errno == NO_ERRORS)
@@ -633,6 +677,7 @@ css_receive_data_from_server (unsigned int eid, char **buffer, int *size)
   return css_Errno;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_receive_error_from_server() - return error data from the server
  *   return:
@@ -673,6 +718,7 @@ css_receive_error_from_server (unsigned int eid, char **buffer, int *size)
   css_Errno = SERVER_WAS_NOT_FOUND;
   return css_Errno;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * css_terminate() - "gracefully" terminate all requests

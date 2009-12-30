@@ -197,6 +197,7 @@ static void root_to_disk (OR_BUF * buf, ROOT_CLASS * root);
 static int root_size (MOBJ rootobj);
 static ROOT_CLASS *disk_to_root (OR_BUF * buf);
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tf_find_temporary_oids - walks over the memory representation of an
  * instance and finds all the temporary OIDs within it and adds them to the
@@ -266,7 +267,7 @@ tf_find_temporary_oids (LC_OIDSET * oidset, MOBJ classobj, MOBJ obj)
 
   return error;
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * optimize_sets - Called before the transformation begins to ensure that
@@ -3616,7 +3617,7 @@ tf_class_size (MOBJ classobj)
   return (size);
 }
 
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tf_dump_class_size - Debugging function to display disk size information
  * for a class.
@@ -3719,7 +3720,7 @@ tf_dump_class_size (MOBJ classobj)
 
   fprintf (stdout, "TOTAL: %d\n", size);
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tag_component_namespace - restore the appropriate name_space tags for
@@ -4374,6 +4375,7 @@ tf_object_size (MOBJ classobj, MOBJ obj)
   return (size);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tf_set_size - calculates the number of bytes that are required to store
  * the disk representation of a set.
@@ -4487,3 +4489,4 @@ tf_pack_set (DB_SET * set, char *buffer, int buffer_size, int *actual_bytes)
 
   return (error);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */

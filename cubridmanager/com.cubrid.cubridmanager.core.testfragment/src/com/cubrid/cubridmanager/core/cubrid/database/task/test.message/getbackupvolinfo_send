@@ -1,6 +1,0 @@
-task:backupvolinfo
-token:8ec1ab8a91333c78027cd4ba9109d0c1f23ae179b1fcf013b9796bef95f4fcc17926f07dd201b6aa
-dbname:demodb
-level:0
-pathname:C:\CUBRID\databases\demodb\backup\demodb_backup_lv0
-

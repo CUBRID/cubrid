@@ -469,6 +469,19 @@ static GETOPT_LONG ua_Paramdump_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_Statdump_Option_Map[] = {
+  {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
+  {STATDUMP_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {STATDUMP_INTERVAL_S, {ARG_INTEGER}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Statdump_Option[] = {
+  {STATDUMP_OUTPUT_FILE_L, 1, 0, STATDUMP_OUTPUT_FILE_S},
+  {STATDUMP_INTERVAL_L, 1, 0, STATDUMP_INTERVAL_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_ARG_MAP ua_Changemode_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {CHANGEMODE_MODE_S, {ARG_STRING}, {0}},
@@ -559,6 +572,8 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_Compact_Option, ua_Compact_Option_Map},
   {PARAMDUMP, SA_CS, 1, UTIL_OPTION_PARAMDUMP, "paramdump",
    ua_Paramdump_Option, ua_Paramdump_Option_Map},
+  {STATDUMP, CS_ONLY, 1, UTIL_OPTION_STATDUMP, "statdump",
+   ua_Statdump_Option, ua_Statdump_Option_Map},
   {CHANGEMODE, CS_ONLY, 1, UTIL_OPTION_CHANGEMODE, "changemode",
    ua_Changemode_Option, ua_Changemode_Option_Map},
   {COPYLOGDB, CS_ONLY, 1, UTIL_OPTION_COPYLOGDB, "copylogdb",

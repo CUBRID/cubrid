@@ -472,22 +472,27 @@ text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt,
   int nbytes, size;
   va_list ap;
 
-  if (!buflen)
-    {
-      va_start (ap, fmt);
-    }
+  assert (buflen >= 0);
 
 start:
   size = tout->iosize - tout->count;	/* free space size */
 
-  nbytes = buflen ? buflen	/* unformatted print */
-    : vsnprintf (tout->ptr, size, fmt, ap);
+  if (buflen)
+    {
+      nbytes = buflen;		/* unformatted print */
+    }
+  else
+    {
+      va_start (ap, fmt);
+      nbytes = vsnprintf (tout->ptr, size, fmt, ap);
+      va_end (ap);
+    }
 
   if (nbytes > 0)
     {
       if (nbytes < size)
 	{			/* OK */
-	  if (buflen)
+	  if (buflen > 0)
 	    {			/* unformatted print */
 	      memcpy (tout->ptr, buf, buflen);
 	      *(tout->ptr + buflen) = '\0';	/* Null terminate */
@@ -503,10 +508,6 @@ start:
     }
 
 exit_on_end:
-  if (!buflen)
-    {
-      va_end (ap);
-    }
   return error;
 
 exit_on_error:

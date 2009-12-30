@@ -28,8 +28,12 @@
 #ident "$Id$"
 
 #include "broker_config.h"
+#include "environment_variable.h"
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int admin_isstarted_cmd (int);
+#endif
+
 int admin_start_cmd (T_BROKER_INFO *, int, int);
 int admin_stop_cmd (int);
 int admin_add_cmd (int, char *);

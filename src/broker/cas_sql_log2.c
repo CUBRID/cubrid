@@ -62,8 +62,8 @@ sql_log2_init (char *br_name, int index, int sql_log_value,
   if (log_reuse_flag == false || sql_log2_file[0] == '\0')
     {
       sprintf (sql_log2_file, "%s/%s.%d.%d.%d",
-	       SQL_LOG2_DIR, br_name, index + 1, (int) time (NULL),
-	       log_count++);
+	       get_cubrid_file (FID_SQL_LOG2_DIR, dirname),
+	       br_name, index + 1, (int) time (NULL), log_count++);
     }
   get_cubrid_file (FID_SQL_LOG_DIR, dirname);
   snprintf (filename, sizeof (filename) - 1, "%s%s", dirname, sql_log2_file);
@@ -82,7 +82,7 @@ sql_log2_get_filename ()
 #if defined(WINDOWS)
   return "";
 #else
-    return (sql_log2_file == NULL) ? "" : sql_log2_file;
+  return (sql_log2_file == NULL) ? "" : sql_log2_file;
 #endif
 }
 

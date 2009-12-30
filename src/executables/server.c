@@ -65,7 +65,6 @@ static void crash_handler (int signo, siginfo_t * siginfo, void *dummyp);
 
 static const char *database_name = "";
 
-#define EXECUTABLE_BIN_DIR      "bin"
 static char executable_path[PATH_MAX];
 
 #if !defined(WINDOWS)
@@ -118,19 +117,19 @@ CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name)
   PROCESS_INFORMATION pi;
   BOOL fSuccess;
   char cmd_line[PATH_MAX];
+  TCHAR DumpFile[MAX_PATH] = { 0, };
   TCHAR DumpPath[MAX_PATH] = { 0, };
   SYSTEMTIME SystemTime;
   HANDLE FileHandle;
 
   GetLocalTime (&SystemTime);
 
-  sprintf (DumpPath, "%s\\%s\\%d-%d-%d %d_%d_%d.dmp",
-	   envvar_root (),
-	   EXECUTABLE_BIN_DIR,
+  sprintf (DumpFile, "%d-%d-%d %d_%d_%d.dmp",
 	   SystemTime.wYear,
 	   SystemTime.wMonth,
 	   SystemTime.wDay,
 	   SystemTime.wHour, SystemTime.wMinute, SystemTime.wSecond);
+  envvar_bindir_file (DumpPath, MAX_PATH, DumpFile);
 
   FileHandle = CreateFile (DumpPath,
 			   GENERIC_WRITE,
@@ -269,6 +268,8 @@ main (int argc, char **argv)
 #endif
 
 #if defined(WINDOWS)
+  FreeConsole ();
+
   __try
   {
 #else /* WINDOWS */
@@ -298,15 +299,7 @@ main (int argc, char **argv)
 
   /* save executable path */
   binary_name = basename (argv[0]);
-#if defined (WINDOWS)
-  (void) snprintf (executable_path, PATH_MAX, "%s\\%s\\%s", envvar_root (),
-		   EXECUTABLE_BIN_DIR, binary_name);
-
-
-#else /* WINDOWS */
-  (void) snprintf (executable_path, PATH_MAX, "%s/%s/%s", envvar_root (),
-		   EXECUTABLE_BIN_DIR, binary_name);
-#endif /* !WINDOWS */
+  (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
   /* save database name */
   database_name = argv[1];
 

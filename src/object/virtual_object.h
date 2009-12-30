@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -53,7 +53,6 @@ extern int vid_flush_and_rehash (MOP mop);
 extern DB_VALUE *vid_flush_and_rehash_lbl (DB_VALUE * value);
 extern int vid_allflush (void);
 extern void vid_gc_vmop (MOP mop, void (*gcmarker) (MOP));
-extern MOP vid_add_base_instance (MOBJ instance, MOP class_mop);
 extern MOP vid_add_virtual_instance (MOBJ instance, MOP vclass_mop,
 				     MOP bclass_mop, SM_CLASS * bclass);
 extern MOP vid_build_virtual_mop (MOP bmop, MOP vclass_mop);
@@ -68,7 +67,6 @@ extern int vid_record_update (MOP mop, SM_CLASS * class_p,
 			      SM_ATTRIBUTE * attribute_p);
 extern bool vid_compare_non_updatable_objects (MOP mop1, MOP mop2);
 
-extern bool vid_class_has_intrinsic_oid (SM_CLASS * class_p);
 extern void vid_rem_instance (MOP mop);
 extern void vid_decache_instance (MOP mop);
 extern void vid_get_keys (MOP mop, DB_VALUE * value);

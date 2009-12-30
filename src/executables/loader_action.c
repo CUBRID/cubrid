@@ -828,6 +828,7 @@ act_time (char *token, int ttype)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * act_datetime - assign a date value
  *    return: void
@@ -864,6 +865,7 @@ act_datetime (char *token)
 	}
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * act_string - assign a string value

@@ -18,6 +18,6 @@
 #
 
 
-msgdir = @MSG_DIR@
+msgdir = @CUBRID_LOCALEDIR@
 
 SUBDIRS = en_US ko_KR.euckr ko_KR.utf8

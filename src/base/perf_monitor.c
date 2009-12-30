@@ -84,7 +84,7 @@
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
-#if !defined(SERVER_MODE)
+#if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistics */
 static MNT_EXEC_STATS mnt_Stats;
 static bool mnt_Iscollecting_stats = false;
@@ -93,7 +93,6 @@ static void mnt_client_reset_stats (void);
 #if defined(CS_MODE)
 /* Server execution statistics */
 static MNT_SERVER_EXEC_STATS mnt_Server_stats;
-
 #endif /* CS_MODE */
 
 /*
@@ -101,16 +100,18 @@ static MNT_SERVER_EXEC_STATS mnt_Server_stats;
  *   return: NO_ERROR or ER_FAILED
  */
 int
-mnt_start_stats (void)
+mnt_start_stats (bool for_all_trans)
 {
-  int err;
+  int err = NO_ERROR;
 
-  /* Restart the statistics */
-  err = mnt_server_start_stats ();
-  if (err != ER_FAILED)
+  if (mnt_Iscollecting_stats != true)
     {
-      mnt_Iscollecting_stats = true;
-      mnt_client_reset_stats ();
+      err = mnt_server_start_stats (for_all_trans);
+      if (err != ER_FAILED)
+	{
+	  mnt_Iscollecting_stats = true;
+	  mnt_client_reset_stats ();
+	}
     }
   return err;
 }
@@ -149,6 +150,19 @@ mnt_reset_stats (void)
 }
 
 /*
+ * mnt_reset_global_stats - Reset server global statistics
+ *   return: none
+ */
+void
+mnt_reset_global_stats (void)
+{
+  if (mnt_Iscollecting_stats != false)
+    {
+      mnt_server_reset_global_stats ();
+    }
+}
+
+/*
  * mnt_client_reset_stats - Reset the client statistics
  *   return: none
  */
@@ -169,7 +183,9 @@ MNT_EXEC_STATS *
 mnt_get_stats ()
 {
   if (mnt_Iscollecting_stats != true)
-    return NULL;
+    {
+      return NULL;
+    }
   else
     {
       /* Refresh statistics from server */
@@ -181,6 +197,26 @@ mnt_get_stats ()
 #endif /* SA_MODE */
 
       return &mnt_Stats;
+    }
+}
+
+/*
+ * mnt_get_global_stats - Get the recorded client statistics
+ *   return: client statistics
+ */
+MNT_SERVER_EXEC_GLOBAL_STATS *
+mnt_get_global_stats (void)
+{
+  if (mnt_Iscollecting_stats != true)
+    {
+      return NULL;
+    }
+  else
+    {
+      /* Refresh statistics from server */
+      mnt_server_copy_global_stats (&mnt_Stats.server_global_stats);
+
+      return &mnt_Stats.server_global_stats;
     }
 }
 
@@ -198,9 +234,12 @@ mnt_print_stats (FILE * stream)
   time_t elapsed_total_time;
 
   if (stream == NULL)
-    stream = stdout;
+    {
+      stream = stdout;
+    }
 
-  if ((stats = mnt_get_stats ()) != NULL)
+  stats = mnt_get_stats ();
+  if (stats != NULL)
     {
       mnt_get_current_times (&cpu_total_usr_time, &cpu_total_sys_time,
 			     &elapsed_total_time);
@@ -218,7 +257,26 @@ mnt_print_stats (FILE * stream)
     }
 }
 
-#endif /* !SERVER_MODE */
+/*
+ * mnt_print_global_stats - Print the global statistics
+ *   return:
+ *   stream(in): if NULL is given, stdout is used
+ */
+void
+mnt_print_global_stats (FILE * stream)
+{
+  MNT_SERVER_EXEC_GLOBAL_STATS *stats;
+
+  if (stream == NULL)
+    stream = stdout;
+
+  stats = mnt_get_global_stats ();
+  if (stats != NULL)
+    {
+      mnt_server_dump_global_stats (stats, stream);
+    }
+}
+#endif /* CS_MODE || SA_MODE */
 
 #if defined(SERVER_MODE)
 #if defined(WINDOWS)
@@ -446,7 +504,7 @@ uReadDiagSystemConfig (DIAG_SYS_CONFIG * config, char *err_buf)
   config->Executediag = 0;
   config->server_long_query_time = 0;
 
-  cubrid_home = getenv ("CUBRID");
+  cubrid_home = envvar_root ();
 
   if (cubrid_home == NULL)
     {
@@ -457,7 +515,7 @@ uReadDiagSystemConfig (DIAG_SYS_CONFIG * config, char *err_buf)
       return -1;
     }
 
-  snprintf (file_path, sizeof (file_path), "%s/conf/cm.conf", cubrid_home);
+  envvar_confdir_file (file_path, PATH_MAX, "cm.conf");
 
   conf_file = fopen (file_path, "r");
 
@@ -515,7 +573,9 @@ static int
 get_volumedir (char *vol_dir, const char *dbname)
 {
   FILE *databases_txt;
+#if !defined (DO_NOT_USE_CUBRIDENV)
   const char *envpath;
+#endif
   char db_txt[PATH_MAX];
   char cbuf[PATH_MAX * 2];
   char volname[MAX_SERVER_NAMELENGTH];
@@ -525,6 +585,7 @@ get_volumedir (char *vol_dir, const char *dbname)
       return -1;
     }
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
   envpath = envvar_get ("DATABASES");
   if (envpath == NULL || strlen (envpath) == 0)
     {
@@ -532,6 +593,9 @@ get_volumedir (char *vol_dir, const char *dbname)
     }
 
   sprintf (db_txt, "%s/%s", envpath, DATABASES_FILENAME);
+#else
+  envvar_vardir_file (db_txt, PATH_MAX, DATABASES_FILENAME);
+#endif
   databases_txt = fopen (db_txt, "r");
   if (databases_txt == NULL)
     {
@@ -1272,7 +1336,7 @@ set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYPE settype,
 }
 #endif /* SERVER_MODE */
 
-#if !defined(CS_MODE)
+#if defined(SERVER_MODE) || defined(SA_MODE)
 int mnt_Num_tran_exec_stats = 0;
 
 /* Server execution statistics on each transactions */
@@ -1280,14 +1344,30 @@ struct mnt_server_table
 {
   int num_tran_indices;
   MNT_SERVER_EXEC_STATS **stats;
+  MNT_SERVER_EXEC_GLOBAL_STATS global_stats;
 #if defined (SERVER_MODE)
   MUTEX_T lock;
 #endif				/* SERVER_MODE */
 };
 static struct mnt_server_table mnt_Server_table = {
-  0, NULL
+  0, NULL,
+  {
+   /* file io */
+   0, 0, 0, 0, 0,
+   /* page buffer manager */
+   0, 0, 0, 0,
+   /* log manager */
+   0, 0, 0, 0, 0,
+   /* lock manager */
+   0, 0, 0, 0, 0, 0, 0, 0,
+   /* transactions */
+   0, 0, 0, 0, 0, 0,
+   /* btree manager */
+   0, 0, 0,
+   /* network communication */
+   0}
 #if defined (SERVER_MODE)
-    , MUTEX_INITIALIZER
+  , MUTEX_INITIALIZER
 #endif /* SERVER_MODE */
 };
 
@@ -1319,14 +1399,17 @@ mnt_server_init (int num_tran_indices)
       return ER_FAILED;
     }
 
-  if ((mnt_Server_table.stats = malloc (size)) == NULL)
+  mnt_Server_table.stats = malloc (size);
+  if (mnt_Server_table.stats == NULL)
     {
       MUTEX_UNLOCK (mnt_Server_table.lock);
       return ER_FAILED;
     }
 
   for (i = 0; i < num_tran_indices; i++)
-    mnt_Server_table.stats[i] = NULL;
+    {
+      mnt_Server_table.stats[i] = NULL;
+    }
   mnt_Server_table.num_tran_indices = num_tran_indices;
   mnt_Num_tran_exec_stats = 0;
   MUTEX_UNLOCK (mnt_Server_table.lock);
@@ -1371,9 +1454,9 @@ mnt_server_final (void)
  *   return: NO_ERROR or ER_FAILED
  */
 int
-xmnt_server_start_stats (THREAD_ENTRY * thread_p)
+xmnt_server_start_stats (THREAD_ENTRY * thread_p, bool for_all_trans)
 {
-  int tran_index;
+  int i, tran_index;
 #if defined (SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
@@ -1382,34 +1465,61 @@ xmnt_server_start_stats (THREAD_ENTRY * thread_p)
   assert (tran_index >= 0);
 
   MUTEX_LOCK (rv, mnt_Server_table.lock);
-  /* Get an statistic block for current transaction if one is not available */
-  if (mnt_Server_table.num_tran_indices > tran_index)
+
+  if (for_all_trans == false)
     {
-      if (mnt_Server_table.stats[tran_index] == NULL)
+      /* Get an statistic block for current transaction if one is not available */
+      if (mnt_Server_table.num_tran_indices > tran_index)
 	{
-	  if ((mnt_Server_table.stats[tran_index] =
-	       malloc (sizeof (MNT_SERVER_EXEC_STATS))) == NULL)
+	  if (mnt_Server_table.stats[tran_index] == NULL)
+	    {
+	      mnt_Server_table.stats[tran_index] =
+		malloc (sizeof (MNT_SERVER_EXEC_STATS));
+	      if (mnt_Server_table.stats[tran_index] == NULL)
+		{
+		  MUTEX_UNLOCK (mnt_Server_table.lock);
+		  return ER_FAILED;
+		}
+	      MUTEX_INIT (mnt_Server_table.stats[tran_index]->lock);
+	    }
+	}
+
+      if (mnt_Server_table.stats[0] == NULL)
+	{
+	  mnt_Server_table.stats[0] = malloc (sizeof (MNT_SERVER_EXEC_STATS));
+	  if (mnt_Server_table.stats[0] == NULL)
 	    {
 	      MUTEX_UNLOCK (mnt_Server_table.lock);
 	      return ER_FAILED;
 	    }
-	  MUTEX_INIT (mnt_Server_table.stats[tran_index]->lock);
+	  MUTEX_INIT (mnt_Server_table.stats[0]->lock);
+	  mnt_server_reset_stats_internal (mnt_Server_table.stats[0]);
 	}
-    }
 
-  if (mnt_Server_table.stats[0] == NULL)
+      /* Restart the statistics */
+      mnt_server_reset_stats_internal (mnt_Server_table.stats[tran_index]);
+    }
+  else
     {
-      if ((mnt_Server_table.stats[0] =
-	   malloc (sizeof (MNT_SERVER_EXEC_STATS))) == NULL)
+      for (i = 0; i < mnt_Server_table.num_tran_indices; i++)
 	{
-	  MUTEX_UNLOCK (mnt_Server_table.lock);
-	  return ER_FAILED;
-	}
-      MUTEX_INIT (mnt_Server_table.stats[0]->lock);
-    }
+	  if (mnt_Server_table.stats[i] != NULL)
+	    {
+	      continue;
+	    }
 
-  /* Restart the statistics */
-  mnt_server_reset_stats_internal (mnt_Server_table.stats[tran_index]);
+	  mnt_Server_table.stats[i] =
+	    (MNT_SERVER_EXEC_STATS *) malloc (sizeof (MNT_SERVER_EXEC_STATS));
+	  if (mnt_Server_table.stats[i] == NULL)
+	    {
+	      MUTEX_UNLOCK (mnt_Server_table.lock);
+	      return ER_FAILED;
+	    }
+
+	  MUTEX_INIT (mnt_Server_table.stats[i]->lock);
+	  mnt_server_reset_stats_internal (mnt_Server_table.stats[i]);
+	}
+    }
 
   mnt_Num_tran_exec_stats++;
 
@@ -1440,16 +1550,99 @@ xmnt_server_stop_stats (THREAD_ENTRY * thread_p)
     {
       MUTEX_DESTROY (mnt_Server_table.stats[tran_index]->lock);
       free_and_init (mnt_Server_table.stats[tran_index]);
-      mnt_Server_table.stats[tran_index] = NULL;
       mnt_Num_tran_exec_stats--;
     }
   MUTEX_UNLOCK (mnt_Server_table.lock);
 }
 
 /*
+ * mnt_server_reflect_local_stats - Reflect the recorded server statistics
+ *				    to the global server statistics
+ */
+void
+mnt_server_reflect_local_stats (THREAD_ENTRY * thread_p)
+{
+  int tran_index;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+  MNT_SERVER_EXEC_STATS *p = NULL;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0);
+
+  MUTEX_LOCK (rv, mnt_Server_table.lock);
+  if (mnt_Server_table.num_tran_indices > tran_index)
+    {
+      p = mnt_Server_table.stats[tran_index];
+    }
+
+  if (p == NULL)
+    {
+      MUTEX_UNLOCK (mnt_Server_table.lock);
+      return;
+    }
+
+  MUTEX_LOCK (rv, p->lock);
+
+  mnt_Server_table.global_stats.file_num_opens += p->file_num_opens;
+  mnt_Server_table.global_stats.file_num_creates += p->file_num_creates;
+  mnt_Server_table.global_stats.file_num_ioreads += p->file_num_ioreads;
+  mnt_Server_table.global_stats.file_num_iowrites += p->file_num_iowrites;
+  mnt_Server_table.global_stats.file_num_iosynches += p->file_num_iosynches;
+
+  mnt_Server_table.global_stats.pb_num_fetches += p->pb_num_fetches;
+  mnt_Server_table.global_stats.pb_num_dirties += p->pb_num_dirties;
+  mnt_Server_table.global_stats.pb_num_ioreads += p->pb_num_ioreads;
+  mnt_Server_table.global_stats.pb_num_iowrites += p->pb_num_iowrites;
+
+  mnt_Server_table.global_stats.log_num_ioreads += p->log_num_ioreads;
+  mnt_Server_table.global_stats.log_num_iowrites += p->log_num_iowrites;
+  mnt_Server_table.global_stats.log_num_appendrecs += p->log_num_appendrecs;
+  mnt_Server_table.global_stats.log_num_archives += p->log_num_archives;
+  mnt_Server_table.global_stats.log_num_checkpoints += p->log_num_checkpoints;
+
+  mnt_Server_table.global_stats.lk_num_acquired_on_pages +=
+    p->lk_num_acquired_on_pages;
+  mnt_Server_table.global_stats.lk_num_acquired_on_objects +=
+    p->lk_num_acquired_on_objects;
+  mnt_Server_table.global_stats.lk_num_converted_on_pages +=
+    p->lk_num_converted_on_pages;
+  mnt_Server_table.global_stats.lk_num_converted_on_objects +=
+    p->lk_num_converted_on_objects;
+  mnt_Server_table.global_stats.lk_num_re_requested_on_pages +=
+    p->lk_num_re_requested_on_pages;
+  mnt_Server_table.global_stats.lk_num_re_requested_on_objects +=
+    p->lk_num_re_requested_on_objects;
+  mnt_Server_table.global_stats.lk_num_waited_on_pages +=
+    p->lk_num_waited_on_pages;
+  mnt_Server_table.global_stats.lk_num_waited_on_objects +=
+    p->lk_num_waited_on_objects;
+
+  mnt_Server_table.global_stats.tran_num_commits += p->tran_num_commits;
+  mnt_Server_table.global_stats.tran_num_rollbacks += p->tran_num_rollbacks;
+  mnt_Server_table.global_stats.tran_num_savepoints += p->tran_num_savepoints;
+  mnt_Server_table.global_stats.tran_num_start_topops +=
+    p->tran_num_start_topops;
+  mnt_Server_table.global_stats.tran_num_end_topops += p->tran_num_end_topops;
+  mnt_Server_table.global_stats.tran_num_interrupts += p->tran_num_interrupts;
+
+  mnt_Server_table.global_stats.bt_num_inserts += p->bt_num_inserts;
+  mnt_Server_table.global_stats.bt_num_deletes += p->bt_num_deletes;
+  mnt_Server_table.global_stats.bt_num_updates += p->bt_num_updates;
+
+  mnt_Server_table.global_stats.net_num_requests += p->net_num_requests;
+
+  mnt_server_reset_stats_internal (p);
+
+  MUTEX_UNLOCK (p->lock);
+
+  MUTEX_UNLOCK (mnt_Server_table.lock);
+}
+
+/*
  * mnt_server_get_stats - Get the recorded server statistics for the current
  *                        transaction index
- *   return: server statistics
  */
 MNT_SERVER_EXEC_STATS *
 mnt_server_get_stats (THREAD_ENTRY * thread_p)
@@ -1465,9 +1658,13 @@ mnt_server_get_stats (THREAD_ENTRY * thread_p)
 
   MUTEX_LOCK (rv, mnt_Server_table.lock);
   if (mnt_Server_table.num_tran_indices > tran_index)
-    p = mnt_Server_table.stats[tran_index];
+    {
+      p = mnt_Server_table.stats[tran_index];
+    }
   else
-    p = NULL;
+    {
+      p = NULL;
+    }
   MUTEX_UNLOCK (mnt_Server_table.lock);
 
   return p;
@@ -1488,7 +1685,8 @@ xmnt_server_copy_stats (THREAD_ENTRY * thread_p,
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((from_stats = mnt_server_get_stats (thread_p)) == NULL)
+  from_stats = mnt_server_get_stats (thread_p);
+  if (from_stats == NULL)
     {
       mnt_server_reset_stats_internal (to_stats);
     }
@@ -1498,6 +1696,98 @@ xmnt_server_copy_stats (THREAD_ENTRY * thread_p,
       *to_stats = *from_stats;	/* Structure copy */
       MUTEX_UNLOCK (from_stats->lock);
     }
+}
+
+/*
+ * xmnt_server_copy_global_stats - Copy recorded system wide statistics
+ *   return: none
+ *   to_stats(out): buffer to copy
+ */
+void
+xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
+			       MNT_SERVER_EXEC_GLOBAL_STATS * to_stats)
+{
+  MNT_SERVER_EXEC_STATS *p;
+  int i;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  MUTEX_LOCK (rv, mnt_Server_table.lock);
+
+  for (i = 0; i < mnt_Server_table.num_tran_indices; i++)
+    {
+      p = mnt_Server_table.stats[i];
+      if (p == NULL)
+	{
+	  continue;
+	}
+
+      MUTEX_LOCK (rv, p->lock);
+
+      mnt_Server_table.global_stats.file_num_opens += p->file_num_opens;
+      mnt_Server_table.global_stats.file_num_creates += p->file_num_creates;
+      mnt_Server_table.global_stats.file_num_ioreads += p->file_num_ioreads;
+      mnt_Server_table.global_stats.file_num_iowrites += p->file_num_iowrites;
+      mnt_Server_table.global_stats.file_num_iosynches +=
+	p->file_num_iosynches;
+
+      mnt_Server_table.global_stats.pb_num_fetches += p->pb_num_fetches;
+      mnt_Server_table.global_stats.pb_num_dirties += p->pb_num_dirties;
+      mnt_Server_table.global_stats.pb_num_ioreads += p->pb_num_ioreads;
+      mnt_Server_table.global_stats.pb_num_iowrites += p->pb_num_iowrites;
+
+      mnt_Server_table.global_stats.log_num_ioreads += p->log_num_ioreads;
+      mnt_Server_table.global_stats.log_num_iowrites += p->log_num_iowrites;
+      mnt_Server_table.global_stats.log_num_appendrecs +=
+	p->log_num_appendrecs;
+      mnt_Server_table.global_stats.log_num_archives += p->log_num_archives;
+      mnt_Server_table.global_stats.log_num_checkpoints +=
+	p->log_num_checkpoints;
+
+      mnt_Server_table.global_stats.lk_num_acquired_on_pages +=
+	p->lk_num_acquired_on_pages;
+      mnt_Server_table.global_stats.lk_num_acquired_on_objects +=
+	p->lk_num_acquired_on_objects;
+      mnt_Server_table.global_stats.lk_num_converted_on_pages +=
+	p->lk_num_converted_on_pages;
+      mnt_Server_table.global_stats.lk_num_converted_on_objects +=
+	p->lk_num_converted_on_objects;
+      mnt_Server_table.global_stats.lk_num_re_requested_on_pages +=
+	p->lk_num_re_requested_on_pages;
+      mnt_Server_table.global_stats.lk_num_re_requested_on_objects +=
+	p->lk_num_re_requested_on_objects;
+      mnt_Server_table.global_stats.lk_num_waited_on_pages +=
+	p->lk_num_waited_on_pages;
+      mnt_Server_table.global_stats.lk_num_waited_on_objects +=
+	p->lk_num_waited_on_objects;
+
+      mnt_Server_table.global_stats.tran_num_commits += p->tran_num_commits;
+      mnt_Server_table.global_stats.tran_num_rollbacks +=
+	p->tran_num_rollbacks;
+      mnt_Server_table.global_stats.tran_num_savepoints +=
+	p->tran_num_savepoints;
+      mnt_Server_table.global_stats.tran_num_start_topops +=
+	p->tran_num_start_topops;
+      mnt_Server_table.global_stats.tran_num_end_topops +=
+	p->tran_num_end_topops;
+      mnt_Server_table.global_stats.tran_num_interrupts +=
+	p->tran_num_interrupts;
+
+      mnt_Server_table.global_stats.bt_num_inserts += p->bt_num_inserts;
+      mnt_Server_table.global_stats.bt_num_deletes += p->bt_num_deletes;
+      mnt_Server_table.global_stats.bt_num_updates += p->bt_num_updates;
+
+      mnt_Server_table.global_stats.net_num_requests += p->net_num_requests;
+
+      mnt_server_reset_stats_internal (p);
+
+      MUTEX_UNLOCK (p->lock);
+    }
+
+  *to_stats = mnt_Server_table.global_stats;	/* Structure copy */
+
+  MUTEX_UNLOCK (mnt_Server_table.lock);
 }
 
 /*
@@ -1513,7 +1803,8 @@ xmnt_server_reset_stats (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       mnt_server_reset_stats_internal (stats);
@@ -1529,6 +1820,12 @@ xmnt_server_reset_stats (THREAD_ENTRY * thread_p)
 static void
 mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats)
 {
+  stats->file_num_opens = 0;
+  stats->file_num_creates = 0;
+  stats->file_num_ioreads = 0;
+  stats->file_num_iowrites = 0;
+  stats->file_num_iosynches = 0;
+
   stats->pb_num_fetches = 0;
   stats->pb_num_dirties = 0;
   stats->pb_num_ioreads = 0;
@@ -1549,7 +1846,73 @@ mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats)
   stats->lk_num_waited_on_pages = 0;
   stats->lk_num_waited_on_objects = 0;
 
-  stats->io_num_format_volume = 0;
+  stats->tran_num_commits = 0;
+  stats->tran_num_rollbacks = 0;
+  stats->tran_num_savepoints = 0;
+  stats->tran_num_start_topops = 0;
+  stats->tran_num_end_topops = 0;
+  stats->tran_num_interrupts = 0;
+
+  stats->bt_num_inserts = 0;
+  stats->bt_num_deletes = 0;
+  stats->bt_num_updates = 0;
+
+  stats->net_num_requests = 0;
+}
+
+/*
+ * xmnt_server_reset_global_stats - Reset the server global statistics
+ *   return: none
+ */
+void
+xmnt_server_reset_global_stats (void)
+{
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  MUTEX_LOCK (rv, mnt_Server_table.lock);
+
+  mnt_Server_table.global_stats.file_num_opens = 0;
+  mnt_Server_table.global_stats.file_num_creates = 0;
+  mnt_Server_table.global_stats.file_num_ioreads = 0;
+  mnt_Server_table.global_stats.file_num_iowrites = 0;
+  mnt_Server_table.global_stats.file_num_iosynches = 0;
+
+  mnt_Server_table.global_stats.pb_num_fetches = 0;
+  mnt_Server_table.global_stats.pb_num_dirties = 0;
+  mnt_Server_table.global_stats.pb_num_ioreads = 0;
+  mnt_Server_table.global_stats.pb_num_iowrites = 0;
+
+  mnt_Server_table.global_stats.log_num_ioreads = 0;
+  mnt_Server_table.global_stats.log_num_iowrites = 0;
+  mnt_Server_table.global_stats.log_num_appendrecs = 0;
+  mnt_Server_table.global_stats.log_num_archives = 0;
+  mnt_Server_table.global_stats.log_num_checkpoints = 0;
+
+  mnt_Server_table.global_stats.lk_num_acquired_on_pages = 0;
+  mnt_Server_table.global_stats.lk_num_acquired_on_objects = 0;
+  mnt_Server_table.global_stats.lk_num_converted_on_pages = 0;
+  mnt_Server_table.global_stats.lk_num_converted_on_objects = 0;
+  mnt_Server_table.global_stats.lk_num_re_requested_on_pages = 0;
+  mnt_Server_table.global_stats.lk_num_re_requested_on_objects = 0;
+  mnt_Server_table.global_stats.lk_num_waited_on_pages = 0;
+  mnt_Server_table.global_stats.lk_num_waited_on_objects = 0;
+
+  mnt_Server_table.global_stats.tran_num_commits = 0;
+  mnt_Server_table.global_stats.tran_num_rollbacks = 0;
+  mnt_Server_table.global_stats.tran_num_savepoints = 0;
+  mnt_Server_table.global_stats.tran_num_start_topops = 0;
+  mnt_Server_table.global_stats.tran_num_end_topops = 0;
+  mnt_Server_table.global_stats.tran_num_interrupts = 0;
+
+  mnt_Server_table.global_stats.bt_num_inserts = 0;
+  mnt_Server_table.global_stats.bt_num_deletes = 0;
+  mnt_Server_table.global_stats.bt_num_updates = 0;
+
+  mnt_Server_table.global_stats.net_num_requests = 0;
+
+  MUTEX_UNLOCK (mnt_Server_table.lock);
 }
 
 /*
@@ -1565,11 +1928,124 @@ mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) == NULL)
-    return;
+  stats = mnt_server_get_stats (thread_p);
+  if (stats == NULL)
+    {
+      return;
+    }
   MUTEX_LOCK (rv, stats->lock);
   mnt_server_dump_stats (stats, stream);
   MUTEX_UNLOCK (stats->lock);
+}
+
+/*
+ * mnt_x_file_opens - Increase file_num_opens counter of the current
+ *                    transaction index
+ *   return: none
+ */
+void
+mnt_x_file_opens (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->file_num_opens++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_file_creates - Increase file_num_creates counter of the current
+ *                    transaction index
+ *   return: none
+ */
+void
+mnt_x_file_creates (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->file_num_creates++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_file_ioreads - Increase file_num_ioreads counter of the current
+ *                    transaction index
+ *   return: none
+ */
+void
+mnt_x_file_ioreads (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->file_num_ioreads++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_file_iowrites - Increase file_num_iowrites counter of the current
+ *                    transaction index
+ *   return: none
+ */
+void
+mnt_x_file_iowrites (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->file_num_iowrites++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_file_iosynches - Increase file_num_iosynches counter of the current
+ *                    transaction index
+ *   return: none
+ */
+void
+mnt_x_file_iosynches (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->file_num_iosynches++;
+      MUTEX_UNLOCK (stats->lock);
+    }
 }
 
 /*
@@ -1585,7 +2061,8 @@ mnt_x_pb_fetches (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->pb_num_fetches++;
@@ -1606,7 +2083,8 @@ mnt_x_pb_dirties (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->pb_num_dirties++;
@@ -1627,7 +2105,8 @@ mnt_x_pb_ioreads (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->pb_num_ioreads++;
@@ -1648,7 +2127,8 @@ mnt_x_pb_iowrites (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->pb_num_iowrites++;
@@ -1669,7 +2149,8 @@ mnt_x_log_ioreads (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->log_num_ioreads++;
@@ -1690,7 +2171,8 @@ mnt_x_log_iowrites (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->log_num_iowrites++;
@@ -1711,7 +2193,8 @@ mnt_x_log_appendrecs (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->log_num_appendrecs++;
@@ -1732,7 +2215,8 @@ mnt_x_log_archives (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->log_num_archives++;
@@ -1753,7 +2237,8 @@ mnt_x_log_checkpoints (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->log_num_checkpoints++;
@@ -1774,7 +2259,8 @@ mnt_x_lk_acquired_on_pages (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->lk_num_acquired_on_pages++;
@@ -1795,7 +2281,8 @@ mnt_x_lk_acquired_on_objects (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->lk_num_acquired_on_objects++;
@@ -1816,7 +2303,8 @@ mnt_x_lk_converted_on_pages (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->lk_num_converted_on_pages++;
@@ -1837,7 +2325,8 @@ mnt_x_lk_converted_on_objects (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->lk_num_converted_on_objects++;
@@ -1858,7 +2347,8 @@ mnt_x_lk_re_requested_on_pages (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->lk_num_re_requested_on_pages++;
@@ -1879,7 +2369,8 @@ mnt_x_lk_re_requested_on_objects (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->lk_num_re_requested_on_objects++;
@@ -1900,7 +2391,8 @@ mnt_x_lk_waited_on_pages (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->lk_num_waited_on_pages++;
@@ -1921,7 +2413,8 @@ mnt_x_lk_waited_on_objects (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
       stats->lk_num_waited_on_objects++;
@@ -1930,26 +2423,225 @@ mnt_x_lk_waited_on_objects (THREAD_ENTRY * thread_p)
 }
 
 /*
- * mnt_x_io_format_vols - Increase io_num_format_volume counter of the current
- *                        transaction index
+ * mnt_x_tran_commits - Increase tran_num_commits counter of the current
+ *                      transaction index
  *   return: none
  */
 void
-mnt_x_io_format_vols (THREAD_ENTRY * thread_p)
+mnt_x_tran_commits (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
 #if defined (SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((stats = mnt_server_get_stats (thread_p)) != NULL)
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
-      stats->io_num_format_volume++;
+      stats->tran_num_commits++;
       MUTEX_UNLOCK (stats->lock);
     }
 }
-#endif
+
+/*
+ * mnt_x_tran_rollbacks - Increase tran_num_rollbacks counter of the current
+ *                        transaction index
+ *   return: none
+ */
+void
+mnt_x_tran_rollbacks (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->tran_num_rollbacks++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_tran_savepoints - Increase tran_num_savepoints counter of the current
+ *                         transaction index
+ *   return: none
+ */
+void
+mnt_x_tran_savepoints (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->tran_num_savepoints++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_tran_start_topops - Increase tran_num_start_topops counter of the
+ *                           current transaction index
+ *   return: none
+ */
+void
+mnt_x_tran_start_topops (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->tran_num_start_topops++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_tran_end_topops - Increase tran_num_end_topops counter of the current
+ *                         transaction index
+ *   return: none
+ */
+void
+mnt_x_tran_end_topops (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->tran_num_end_topops++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_tran_interrupts - Increase tran_num_interrupts counter of the current
+ *                         transaction index
+ *   return: none
+ */
+void
+mnt_x_tran_interrupts (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->tran_num_interrupts++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_bt_inserts - Increase bt_num_inserts counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_bt_inserts (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->bt_num_inserts++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_bt_deletes - Increase bt_num_deletes counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_bt_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->bt_num_deletes++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_bt_updates - Increase bt_num_updates counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_bt_updates (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->bt_num_updates++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_net_requests - Increase net_num_requests counter of the current
+ *                      transaction index
+ *   return: none
+ */
+void
+mnt_x_net_requests (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+#if defined (SERVER_MODE)
+  int rv;
+#endif /* SERVER_MODE */
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      MUTEX_LOCK (rv, stats->lock);
+      stats->net_num_requests++;
+      MUTEX_UNLOCK (stats->lock);
+    }
+}
+#endif /* SERVER_MODE || SA_MODE */
 
 /*
  * mnt_server_dump_stats - Print the given server statistics
@@ -1961,9 +2653,22 @@ void
 mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream)
 {
   if (stream == NULL)
-    stream = stdout;
+    {
+      stream = stdout;
+    }
 
   fprintf (stream, "\n *** SERVER EXECUTION STATISTICS *** \n");
+
+  fprintf (stream, "Num_file_opens                = %10u\n",
+	   stats->file_num_opens);
+  fprintf (stream, "Num_file_creates              = %10u\n",
+	   stats->file_num_creates);
+  fprintf (stream, "Num_file_ioreads              = %10u\n",
+	   stats->file_num_ioreads);
+  fprintf (stream, "Num_file_iowrites             = %10u\n",
+	   stats->file_num_iowrites);
+  fprintf (stream, "Num_file_iosynches            = %10u\n",
+	   stats->file_num_iosynches);
 
   fprintf (stream, "Num_data_page_fetches         = %10u\n",
 	   stats->pb_num_fetches);
@@ -2002,8 +2707,126 @@ mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream)
   fprintf (stream, "Num_object_locks_waits        = %10u\n",
 	   stats->lk_num_waited_on_objects);
 
-  fprintf (stream, "Num_format_volume             = %10u\n",
-	   stats->io_num_format_volume);
+  fprintf (stream, "Num_tran_commits              = %10u\n",
+	   stats->tran_num_commits);
+  fprintf (stream, "Num_tran_rollbacks            = %10u\n",
+	   stats->tran_num_rollbacks);
+  fprintf (stream, "Num_tran_savepoints           = %10u\n",
+	   stats->tran_num_savepoints);
+  fprintf (stream, "Num_tran_start_topops         = %10u\n",
+	   stats->tran_num_start_topops);
+  fprintf (stream, "Num_tran_end_topops           = %10u\n",
+	   stats->tran_num_end_topops);
+  fprintf (stream, "Num_tran_interrupts           = %10u\n",
+	   stats->tran_num_interrupts);
+
+  fprintf (stream, "Num_btree_inserts             = %10u\n",
+	   stats->bt_num_inserts);
+  fprintf (stream, "Num_btree_deletes             = %10u\n",
+	   stats->bt_num_deletes);
+  fprintf (stream, "Num_btree_updates             = %10u\n",
+	   stats->bt_num_updates);
+
+  fprintf (stream, "Num_network_requests          = %10u\n",
+	   stats->net_num_requests);
+}
+
+/*
+ * mnt_server_dump_global_stats - Print the given server global statistics
+ *   return: none
+ *   stats(in) server statistics to print
+ *   stream(in): if NULL is given, stdout is used
+ */
+void
+mnt_server_dump_global_stats (const MNT_SERVER_EXEC_GLOBAL_STATS * stats,
+			      FILE * stream)
+{
+  float hit_ratio;
+
+  if (stream == NULL)
+    {
+      stream = stdout;
+    }
+
+  fprintf (stream, "\n *** SERVER EXECUTION GLOBAL STATISTICS *** \n");
+
+  fprintf (stream, "Num_file_opens                = %llu\n",
+	   (unsigned long long) stats->file_num_opens);
+  fprintf (stream, "Num_file_creates              = %llu\n",
+	   (unsigned long long) stats->file_num_creates);
+  fprintf (stream, "Num_file_ioreads              = %llu\n",
+	   (unsigned long long) stats->file_num_ioreads);
+  fprintf (stream, "Num_file_iowrites             = %llu\n",
+	   (unsigned long long) stats->file_num_iowrites);
+  fprintf (stream, "Num_file_iosynches            = %llu\n",
+	   (unsigned long long) stats->file_num_iosynches);
+
+  fprintf (stream, "Num_data_page_fetches         = %llu\n",
+	   (unsigned long long) stats->pb_num_fetches);
+  fprintf (stream, "Num_data_page_dirties         = %llu\n",
+	   (unsigned long long) stats->pb_num_dirties);
+  fprintf (stream, "Num_data_page_ioreads         = %llu\n",
+	   (unsigned long long) stats->pb_num_ioreads);
+  fprintf (stream, "Num_data_page_iowrites        = %llu\n",
+	   (unsigned long long) stats->pb_num_iowrites);
+
+  fprintf (stream, "Num_log_page_ioreads          = %llu\n",
+	   (unsigned long long) stats->log_num_ioreads);
+  fprintf (stream, "Num_log_page_iowrites         = %llu\n",
+	   (unsigned long long) stats->log_num_iowrites);
+  fprintf (stream, "Num_log_append_records        = %llu\n",
+	   (unsigned long long) stats->log_num_appendrecs);
+  fprintf (stream, "Num_log_archives              = %llu\n",
+	   (unsigned long long) stats->log_num_archives);
+  fprintf (stream, "Num_log_checkpoints           = %llu\n",
+	   (unsigned long long) stats->log_num_checkpoints);
+
+  fprintf (stream, "Num_page_locks_acquired       = %llu\n",
+	   (unsigned long long) stats->lk_num_acquired_on_pages);
+  fprintf (stream, "Num_object_locks_acquired     = %llu\n",
+	   (unsigned long long) stats->lk_num_acquired_on_objects);
+  fprintf (stream, "Num_page_locks_converted      = %llu\n",
+	   (unsigned long long) stats->lk_num_converted_on_pages);
+  fprintf (stream, "Num_object_locks_converted    = %llu\n",
+	   (unsigned long long) stats->lk_num_converted_on_objects);
+  fprintf (stream, "Num_page_locks_re-requested   = %llu\n",
+	   (unsigned long long) stats->lk_num_re_requested_on_pages);
+  fprintf (stream, "Num_object_locks_re-requested = %llu\n",
+	   (unsigned long long) stats->lk_num_re_requested_on_objects);
+  fprintf (stream, "Num_page_locks_waits          = %llu\n",
+	   (unsigned long long) stats->lk_num_waited_on_pages);
+  fprintf (stream, "Num_object_locks_waits        = %llu\n",
+	   (unsigned long long) stats->lk_num_waited_on_objects);
+
+  fprintf (stream, "Num_tran_commits              = %llu\n",
+	   (unsigned long long) stats->tran_num_commits);
+  fprintf (stream, "Num_tran_rollbacks            = %llu\n",
+	   (unsigned long long) stats->tran_num_rollbacks);
+  fprintf (stream, "Num_tran_savepoints           = %llu\n",
+	   (unsigned long long) stats->tran_num_savepoints);
+  fprintf (stream, "Num_tran_start_topops         = %llu\n",
+	   (unsigned long long) stats->tran_num_start_topops);
+  fprintf (stream, "Num_tran_end_topops           = %llu\n",
+	   (unsigned long long) stats->tran_num_end_topops);
+  fprintf (stream, "Num_tran_interrupts           = %llu\n",
+	   (unsigned long long) stats->tran_num_interrupts);
+
+  fprintf (stream, "Num_btree_inserts             = %llu\n",
+	   (unsigned long long) stats->bt_num_inserts);
+  fprintf (stream, "Num_btree_deletes             = %llu\n",
+	   (unsigned long long) stats->bt_num_deletes);
+  fprintf (stream, "Num_btree_updates             = %llu\n",
+	   (unsigned long long) stats->bt_num_updates);
+
+  fprintf (stream, "Num_network_requests          = %llu\n",
+	   (unsigned long long) stats->net_num_requests);
+
+  if (stats->pb_num_fetches > 0)
+    {
+      hit_ratio = (((float) (stats->pb_num_fetches - stats->pb_num_ioreads) /
+		    stats->pb_num_fetches) * 100.0);
+      fprintf (stream, "\nHit ratio of Page Buffer = %5.2f%%\n", hit_ratio);
+    }
 }
 
 /*

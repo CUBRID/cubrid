@@ -1029,6 +1029,7 @@ largeobjmgr_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid, int n)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * largeobjmgr_check () - Check to see if given LO is in a correct state and report
  *                any problems found
@@ -1040,6 +1041,7 @@ largeobjmgr_check (THREAD_ENTRY * thread_p, LOID * loid)
 {
   return largeobjmgr_dir_check (thread_p, loid);
 }
+#endif
 
 /*
  * largeobjmgr_write_entry () - Write indicated portion of entry data from buffer

@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -21,7 +21,7 @@
 /*
  * elo_recovery.h - external definitions for FBO recovery functions
  *
- * Note: 
+ * Note:
  */
 
 #ifndef _ELO_RECOVERY_H_
@@ -39,7 +39,9 @@ extern void esm_delete_shadow_entry (const DB_OBJECT * holder_p);
 extern char *esm_make_shadow_file (DB_OBJECT * holder_p);
 extern int esm_make_dropped_shadow_file (DB_OBJECT * holder_p);
 extern int esm_get_shadow_file_name (DB_OBJECT * glo_p, char **path);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void esm_process_savepoint (void);
 extern void esm_process_system_savepoint (void);
+#endif
 
 #endif /* _ELO_RECOVERY_H_ */

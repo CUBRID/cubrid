@@ -57,11 +57,14 @@ extern int ini_getint (INI_TABLE * ini, const char *sec, const char *key,
 		       int def, int *lineno);
 extern int ini_getuint (INI_TABLE * ini, const char *sec, const char *key,
 			int def, int *lineno);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int ini_getuint_min (INI_TABLE * ini, const char *sec, const char *key,
 			    int def, int min, int *lineno);
+#endif
 extern int ini_getuint_max (INI_TABLE * ini, const char *sec, const char *key,
 			    int def, int max, int *lineno);
 extern int ini_gethex (INI_TABLE * ini, const char *sec, const char *key,
 		       int def, int *lineno);
-
+extern float ini_getfloat (INI_TABLE * ini, const char *sec, const char *key,
+			   float def, int *lineno);
 #endif /* _INI_PARSER_H_ */

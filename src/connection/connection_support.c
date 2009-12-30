@@ -273,6 +273,7 @@ css_set_networking_error (SOCKET fd)
 }
 #endif
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_net_send_no_block () - Sends blocks of zero length packets
  *   return:
@@ -363,7 +364,7 @@ css_net_send_no_block (SOCKET fd, const char *buffer, int size)
   return NO_ERRORS;
 #endif /* WINDOWS */
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 /*
  * css_readn() - read "n" bytes from a descriptor.
  *   return: count of bytes actually read
@@ -1480,6 +1481,14 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request,
   NET_HEADER local_header = DEFAULT_HEADER_DATA;
   NET_HEADER data_header = DEFAULT_HEADER_DATA;
 
+#if defined(SERVER_MODE)
+  if (conn != NULL && conn->status == CONN_CLOSING)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
+	      1, "connection status: CONN_CLOSING");
+    }
+#endif
+
   if (!conn || conn->status != CONN_OPEN)
     {
       return CONNECTION_CLOSED;
@@ -1859,6 +1868,12 @@ css_send_two_data (CSS_CONN_ENTRY * conn, unsigned short rid,
   NET_HEADER header1 = DEFAULT_HEADER_DATA;
   NET_HEADER header2 = DEFAULT_HEADER_DATA;
 
+  if (conn != NULL && conn->status == CONN_CLOSING)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
+	      1, "connection status: CONN_CLOSING");
+    }
+
   if (!conn || conn->status != CONN_OPEN)
     {
       return (CONNECTION_CLOSED);
@@ -1898,6 +1913,12 @@ css_send_three_data (CSS_CONN_ENTRY * conn, unsigned short rid,
   NET_HEADER header1 = DEFAULT_HEADER_DATA;
   NET_HEADER header2 = DEFAULT_HEADER_DATA;
   NET_HEADER header3 = DEFAULT_HEADER_DATA;
+
+  if (conn != NULL && conn->status == CONN_CLOSING)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
+	      1, "connection status: CONN_CLOSING");
+    }
 
   if (!conn || conn->status != CONN_OPEN)
     {
@@ -1949,6 +1970,12 @@ css_send_four_data (CSS_CONN_ENTRY * conn, unsigned short rid,
   NET_HEADER header3 = DEFAULT_HEADER_DATA;
   NET_HEADER header4 = DEFAULT_HEADER_DATA;
 
+  if (conn != NULL && conn->status == CONN_CLOSING)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
+	      1, "connection status: CONN_CLOSING");
+    }
+
   if (!conn || conn->status != CONN_OPEN)
     {
       return (CONNECTION_CLOSED);
@@ -1994,6 +2021,12 @@ css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid,
   NET_HEADER *headers;
   int i, rc;
 
+  if (conn != NULL && conn->status == CONN_CLOSING)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
+	      1, "connection status: CONN_CLOSING");
+    }
+
   if (!conn || conn->status != CONN_OPEN)
     {
       return (CONNECTION_CLOSED);
@@ -2034,6 +2067,14 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer,
   NET_HEADER header = DEFAULT_HEADER_DATA;
   int rc;
 
+#if defined(SERVER_MODE)
+  if (conn != NULL && conn->status == CONN_CLOSING)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
+	      1, "connection status: CONN_CLOSING");
+    }
+#endif
+
   if (!conn || conn->status != CONN_OPEN)
     {
       return (CONNECTION_CLOSED);
@@ -2057,6 +2098,7 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer,
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_local_host_name -
  *   return: enum css_error_code (See connectino_defs.h)
@@ -2104,6 +2146,7 @@ css_peer_host_name (CSS_CONN_ENTRY * conn, char *hostname, size_t namelen)
 
   return NO_ERRORS;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * css_ha_server_state_string

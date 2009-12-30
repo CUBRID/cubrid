@@ -516,8 +516,14 @@ esm_Glo_print_read (DB_OBJECT * esm_glo_object_p,
   char *buffer;
   DB_VALUE db_buffer;
 
-  length = DB_GET_INTEGER (argument_length);
+  if ((argument_length == NULL)
+      || (DB_VALUE_TYPE (argument_length) != DB_TYPE_INTEGER))
+    {
+      db_make_int (return_argument_p, -1);
+      return;
+    }
 
+  length = DB_GET_INTEGER (argument_length);
   if (length <= 0)
     {
       db_make_int (return_argument_p, -1);

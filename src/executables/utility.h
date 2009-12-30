@@ -73,7 +73,8 @@ typedef enum
   MSGCAT_UTIL_SET_CHANGEMODE = 39,
   MSGCAT_UTIL_SET_COPYLOGDB = 40,
   MSGCAT_UTIL_SET_APPLYLOGDB = 41,
-  MSGCAT_UTIL_SET_LOGFILEDUMP = 42
+  MSGCAT_UTIL_SET_LOGFILEDUMP = 42,
+  MSGCAT_UTIL_SET_STATDUMP = 43
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -495,6 +496,7 @@ typedef enum
   CHANGEMODE_MSG_SERVER_MODE = 22,
   CHANGEMODE_MSG_SERVER_MODE_CHANGED = 23,
   CHANGEMODE_MSG_NOT_HA_MODE = 24,
+  CHANGEMODE_MSG_HA_NOT_SUPPORT = 58,
   CHANGEMODE_MSG_NOT_IN_STANDALONE = 59,
   CHANGEMODE_MSG_USAGE = 60
 } MSGCAT_CHANGEMODE_MSG;
@@ -505,6 +507,7 @@ typedef enum
   COPYLOGDB_MSG_BAD_MODE = 11,
   COPYLOGDB_MSG_DBA_PASSWORD = 21,
   COPYLOGDB_MSG_NOT_HA_MODE = 22,
+  COPYLOGDB_MSG_HA_NOT_SUPPORT = 58,
   COPYLOGDB_MSG_NOT_IN_STANDALONE = 59,
   COPYLOGDB_MSG_USAGE = 60
 } MSGCAT_COPYLOGDB_MSG;
@@ -514,6 +517,7 @@ typedef enum
 {
   APPLYLOGDB_MSG_DBA_PASSWORD = 21,
   APPLYLOGDB_MSG_NOT_HA_MODE = 22,
+  APPLYLOGDB_MSG_HA_NOT_SUPPORT = 58,
   APPLYLOGDB_MSG_NOT_IN_STANDALONE = 59,
   APPLYLOGDB_MSG_USAGE = 60
 } MSGCAT_APPLYLOGDB_MSG;
@@ -524,6 +528,13 @@ typedef enum
   LOGFILEDUMP_MSG_USAGE = 60
 } MSGCAT_LOGFILEDUMP_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_STATMDUMP */
+typedef enum
+{
+  STATDUMP_MSG_BAD_OUTPUT = 11,
+  STATDUMP_MSG_NOT_IN_STANDALONE = 59,
+  STATDUMP_MSG_USAGE = 60
+} MSGCAT_STATDUMP_MSG;
 
 typedef void *DSO_HANDLE;
 
@@ -552,6 +563,7 @@ typedef enum
   UNLOADDB,
   COMPACTDB,
   PARAMDUMP,
+  STATDUMP,
   CHANGEMODE,
   COPYLOGDB,
   APPLYLOGDB,
@@ -601,10 +613,6 @@ typedef struct
 } UTIL_MAP;
 
 #define OPTION_STRING_TABLE                     10000
-
-#define ROOT_DIR                getenv ("CUBRID")
-
-#define EXECUTABLE_BIN_DIR      "bin"
 
 #if defined(WINDOWS)
 #define UTIL_EXE_EXT            ".exe"
@@ -688,6 +696,7 @@ typedef struct
 #define UTIL_OPTION_UNLOADDB                    "unloaddb"
 #define UTIL_OPTION_COMPACTDB                   "compactdb"
 #define UTIL_OPTION_PARAMDUMP                   "paramdump"
+#define UTIL_OPTION_STATDUMP                    "statdump"
 #define UTIL_OPTION_CHANGEMODE                  "changemode"
 #define UTIL_OPTION_COPYLOGDB                   "copylogdb"
 #define UTIL_OPTION_APPLYLOGDB                  "applylogdb"
@@ -1008,6 +1017,12 @@ typedef struct
 #define PARAMDUMP_CS_MODE_S                     'C'
 #define PARAMDUMP_CS_MODE_L                     "CS-mode"
 
+/* statdump option list */
+#define STATDUMP_OUTPUT_FILE_S                 'o'
+#define STATDUMP_OUTPUT_FILE_L                 "output-file"
+#define STATDUMP_INTERVAL_S                    'i'
+#define STATDUMP_INTERVAL_L                    "interval"
+
 /* changemode option list */
 #define CHANGEMODE_MODE_S                       'm'
 #define CHANGEMODE_MODE_L                       "mode"
@@ -1084,7 +1099,9 @@ typedef struct
 typedef int (*UTILITY_FUNCTION) (UTIL_FUNCTION_ARG *);
 
 extern int compactdb (UTIL_FUNCTION_ARG * arg_map);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int loaddb_dba (UTIL_FUNCTION_ARG * arg_map);
+#endif
 extern int loaddb_user (UTIL_FUNCTION_ARG * arg_map);
 extern int unloaddb (UTIL_FUNCTION_ARG * arg_map);
 extern int backupdb (UTIL_FUNCTION_ARG * arg_map);
@@ -1112,6 +1129,7 @@ extern int estimatedb_index (UTIL_FUNCTION_ARG * arg_map);
 extern int estimatedb_hash (UTIL_FUNCTION_ARG * arg_map);
 extern int alterdbhost (UTIL_FUNCTION_ARG * arg_map);
 extern int paramdump (UTIL_FUNCTION_ARG * arg_map);
+extern int statdump (UTIL_FUNCTION_ARG * arg_map);
 extern int changemode (UTIL_FUNCTION_ARG * arg_map);
 extern int copylogdb (UTIL_FUNCTION_ARG * arg_map);
 extern int applylogdb (UTIL_FUNCTION_ARG * arg_map);

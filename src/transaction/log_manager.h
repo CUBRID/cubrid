@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -61,6 +61,8 @@
 #define LOG_DBLOG_BKUPINFO_VOLID (LOG_DBFIRST_VOLID - 3)
 /* Volid of active log */
 #define LOG_DBLOG_ACTIVE_VOLID   (LOG_DBFIRST_VOLID - 2)
+/* Volid of background archive logs */
+#define LOG_DBLOG_BG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 21)
 /* Volid of archive logs */
 #define LOG_DBLOG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 20)
 /* Volid of copies */
@@ -93,9 +95,11 @@ extern void
 log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname,
 		const char *logpath, const char *prefix_logname,
 		int ismedia_crash, time_t * stopat);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int log_update_compatibility_and_release (THREAD_ENTRY * thread_p,
 						 float compatibility,
 						 char release[]);
+#endif
 extern void log_abort_all_active_transaction (THREAD_ENTRY * thread_p);
 extern void log_final (THREAD_ENTRY * thread_p);
 extern void
@@ -154,19 +158,23 @@ extern void log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p,
 					 const RECDES * undo_recdes,
 					 const RECDES * redo_recdes);
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_append_undo_recdes (THREAD_ENTRY * thread_p,
 				    LOG_RCVINDEX rcvindex,
 				    LOG_DATA_ADDR * addr,
 				    const RECDES * recdes);
+#endif
 extern void log_append_undo_recdes2 (THREAD_ENTRY * thread_p,
 				     LOG_RCVINDEX rcvindex, const VFID * vfid,
 				     PAGE_PTR pgptr, PGLENGTH offset,
 				     const RECDES * recdes);
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_append_redo_recdes (THREAD_ENTRY * thread_p,
 				    LOG_RCVINDEX rcvindex,
 				    LOG_DATA_ADDR * addr,
 				    const RECDES * recdes);
+#endif
 extern void log_append_redo_recdes2 (THREAD_ENTRY * thread_p,
 				     LOG_RCVINDEX rcvindex, const VFID * vfid,
 				     PAGE_PTR pgptr, PGLENGTH offset,
@@ -237,8 +245,10 @@ extern PGLENGTH log_get_io_page_size (THREAD_ENTRY * thread_p,
 extern int log_rv_copy_char (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void log_rv_dump_char (FILE * fp, int length, void *data);
 extern int log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,
 				int flush_data_pages);
+#endif
 extern void log_append_run_postpone (THREAD_ENTRY * thread_p,
 				     LOG_RCVINDEX rcvindex,
 				     LOG_DATA_ADDR * addr,

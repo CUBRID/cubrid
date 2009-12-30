@@ -2449,6 +2449,7 @@ numeric_internal_double_to_num (double adouble,
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * numeric_coerce_double_to_num () -
  *   return:
@@ -2471,6 +2472,7 @@ numeric_coerce_double_to_num (double adouble,
    */
   return numeric_internal_double_to_num (adouble, 16, num, prec, scale);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * numeric_coerce_string_to_num () -

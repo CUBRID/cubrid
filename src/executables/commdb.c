@@ -97,7 +97,9 @@ static int send_for_server_stats (CSS_CONN_ENTRY * conn);
 static int send_for_driver_stats (CSS_CONN_ENTRY * conn);
 static int send_for_repl_stats (CSS_CONN_ENTRY * conn);
 static int send_for_all_stats (CSS_CONN_ENTRY * conn);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int send_for_server_downtime (CSS_CONN_ENTRY * conn);
+#endif
 static int return_integer_data (CSS_CONN_ENTRY * conn,
 				unsigned short request_id);
 static int send_for_request_count (CSS_CONN_ENTRY * conn);
@@ -309,6 +311,7 @@ send_for_all_stats (CSS_CONN_ENTRY * conn)
   return (send_request_no_args (conn, GET_ALL_LIST));
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * send_for_server_downtime() - send request for master shutdown time or
  *                              release string
@@ -320,6 +323,7 @@ send_for_server_downtime (CSS_CONN_ENTRY * conn)
 {
   return (send_request_no_args (conn, GET_SHUTDOWN_TIME));
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * return_integer_data() - receive integer data response

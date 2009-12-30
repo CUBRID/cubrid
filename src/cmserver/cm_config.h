@@ -39,10 +39,17 @@
 #define AUTOUNICAS_CONF_ENTRY_NUM	9
 #define AUTOEXECQUERY_CONF_ENTRY_NUM	7
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
 #define DBMT_CONF_DIR                   "conf"
 #define DBMT_LOG_DIR                    "log/manager"
 #define DBMT_PID_DIR                    "var/manager"
 #define DBMT_TMP_DIR                    "tmp"
+#else
+#define DBMT_CONF_DIR                   CUBRID_CONFDIR
+#define DBMT_LOG_DIR                    CUBRID_VARDIR "/manager"
+#define DBMT_PID_DIR                    CUBRID_VARDIR "/manager"
+#define DBMT_TMP_DIR                    CUBRID_TMPDIR
+#endif
 
 #define DBMT_CUB_JS_PID                 "cub_js.pid"
 #define DBMT_CUB_AUTO_PID               "cub_auto.pid"
@@ -92,7 +99,7 @@ typedef enum
 typedef struct
 {
   T_DBMT_FILE_ID fid;
-  char dir_name[16];
+  char dir_name[PATH_MAX];
   char file_name[32];
 } T_DBMT_FILE_INFO;
 

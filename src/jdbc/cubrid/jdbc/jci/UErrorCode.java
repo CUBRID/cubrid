@@ -127,7 +127,7 @@ abstract public class UErrorCode
     messageString.put(new Integer(ER_NO_MORE_DATA), "Invalid cursor position");
     messageString.put(new Integer(ER_TYPE_CONVERSION), "Type conversion error");
     messageString.put(new Integer(ER_BIND_INDEX),
-        "Parameter index is out of range");
+        "Missing or invalid position of the bind variable provided");
     messageString.put(new Integer(ER_NOT_BIND),
         "Attempt to execute the query when not all the parameters are binded");
     messageString.put(new Integer(ER_WAS_NULL), "Internal Error: NULL value");

@@ -141,11 +141,6 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in,
 
   subquery = parser_copy_tree (parser, subquery_in);
 
-  /* this is a no-op if the subquery is already translated to ldb.
-   * If we are getting here from an mq_evaluate_expression which is
-   * passing in a 'workspace' centric expression, then we need to
-   * finish translating this to ldb tables.
-   */
   subquery = mq_translate (parser, subquery);
   if (subquery == NULL)
     {
@@ -959,11 +954,6 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
       /* cannot directly evaluate tree, since this may modifiy it */
       temp = parser_copy_tree (parser, tree);
 
-      /* this is a no-op if the query is already translated to ldb.
-       * If we are getting here from an mq_evaluate_expression which is
-       * passing in a 'workspace' centric expression, then we need to
-       * finish translating this to ldb tables.
-       */
       temp = mq_translate (parser, temp);
 
       if (!temp)
@@ -1516,11 +1506,6 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
       /* cannot directly evaluate tree, since this may modifiy it */
       temp = parser_copy_tree (parser, tree);
 
-      /* this is a no-op if the query is already translated to ldb.
-       * If we are getting here from an mq_evaluate_expression which is
-       * passing in a 'workspace' centric expression, then we need to
-       * finish translating this to ldb tables.
-       */
       temp = mq_translate (parser, temp);
 
       if (!temp)

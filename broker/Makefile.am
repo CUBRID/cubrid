@@ -17,8 +17,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-
-compatdir = @prefix@/compat
+compatdir=@CUBRID_COMPATDIR@
 
 SRC = $(top_srcdir)/src
 COMPAT_DIR = $(SRC)/compat
@@ -43,7 +42,7 @@ QATOOLS_DIR = $(SRC)/qatools
 INCLUDES = @SRC_INC@ @EXT_INC@
 DEFS = @SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
 	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@
-BROKER_CAS_LIBS = -lcurses @CS_LIB@ @CCI_LIB@
+BROKER_CAS_LIBS = @CS_LIB@ @CCI_LIB@
 
 bin_PROGRAMS = cub_broker cubrid_broker cub_cas \
 	broker_monitor broker_changer \

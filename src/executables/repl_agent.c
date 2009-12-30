@@ -165,6 +165,13 @@ extern int repl_Pipe_to_master;
     }                                                                         \
   } while(0)
 
+#define IS_APPLICABLE(commit) \
+  (commit) != NULL && \
+  ((commit->type) == LOG_COMMIT || (commit->type) == LOG_COMMIT_TOPOPE)
+
+#define IS_PERF_LOGGING(master_time, slave_time, old_time, perf_poll_interval) \
+  (master_time) > 0 && \
+  ((perf_poll_interval) <= 0 || ((slave_time) - (old_time)) > (perf_poll_interval))
 
 /*
  * This process should have four arguments when it runs.
@@ -2493,6 +2500,8 @@ repl_get_current (OR_BUF * buf, SM_CLASS * sm_class,
 	    {
 	      free_and_init (vars);
 	    }
+	  REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT, REPL_AGENT_QUERY_ERROR,
+				er_msg ());
 	  return error;
 	}
       if (debug_Dump_info & REPL_DEBUG_VALUE_CHECK)
@@ -2529,6 +2538,8 @@ repl_get_current (OR_BUF * buf, SM_CLASS * sm_class,
       if (error != NO_ERROR)
 	{
 	  free_and_init (vars);
+	  REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT, REPL_AGENT_QUERY_ERROR,
+				er_msg ());
 	  return error;
 	}
       if (debug_Dump_info & REPL_DEBUG_VALUE_CHECK)
@@ -2715,6 +2726,7 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
   sinfo = repl_ag_get_slave_info (NULL);
   if (sinfo == NULL)
     {
+      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
       return REPL_AGENT_INTERNAL_ERROR;
     }
 
@@ -2726,6 +2738,7 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
 			      sinfo->log_data, sinfo->rec_type, &ovfyn);
   if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
     {
+      REPL_ERR_LOG (REPL_FILE_AGENT, error);
       return error;
     }
   REPL_CHECK_ERR_ERROR (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
@@ -2733,7 +2746,7 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
   AU_SAVE_AND_DISABLE (au_save);
   if (recdes.type == REC_ASSIGN_ADDRESS || recdes.type == REC_RELOCATION)
     {
-      error = REPL_AGENT_INTERNAL_ERROR;
+      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
       goto error_rtn;
     }
 
@@ -2750,7 +2763,8 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
   class_obj = db_find_class (item->class_name);
   if (class_obj == NULL)
     {
-      error = REPL_AGENT_INTERNAL_ERROR;
+      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT, REPL_AGENT_QUERY_ERROR,
+			    er_msg ());
       goto error_rtn;
     }
 
@@ -2764,14 +2778,16 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
     }
   if (inst_tp == NULL)
     {
-      error = REPL_AGENT_INTERNAL_ERROR;
+      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT, REPL_AGENT_QUERY_ERROR,
+			    er_msg ());
       goto error_rtn;
     }
 
   mclass = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTREAD);
   if (mclass == NULL)
     {
-      error = REPL_AGENT_INTERNAL_ERROR;
+      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT, REPL_AGENT_QUERY_ERROR,
+			    er_msg ());
       goto error_rtn;
     }
 
@@ -2783,7 +2799,8 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
 
   if (dbt_finish_object (inst_tp) == NULL)
     {
-      error = REPL_AGENT_INTERNAL_ERROR;
+      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT, REPL_AGENT_QUERY_ERROR,
+			    er_msg ());
       goto error_rtn;
     }
   AU_RESTORE (au_save);
@@ -2793,8 +2810,8 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
       repl_debug_object2string (class_obj, &item->key, &debug_workspace_data);
       if (debug_workspace_data != NULL)
 	{
-	  if (strcmp (debug_record_data->data, debug_workspace_data->data) !=
-	      0)
+	  if (strcmp (debug_record_data->data,
+		      debug_workspace_data->data) != 0)
 	    {
 	      fprintf (debug_Log_fd,
 		       "VALUE ERROR: PUT VALUE(%s)\nWORKSPACE(%s)\n",
@@ -2830,14 +2847,6 @@ error_rtn:
       dbt_abort_object (inst_tp);
     }
 
-  if (error > 0)
-    {
-      REPL_ERR_LOG (REPL_FILE_AGENT, error);
-    }
-  else
-    {
-      REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_QUERY_ERROR);
-    }
   repl_ag_release_page_buffer (old_pageid, m_idx);
   return error;
 }
@@ -2943,6 +2952,7 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 					    REPL_AGENT_INTERNAL_ERROR, area);
 	    apply->repl_tail->class_name = class_name;
 	    apply->repl_tail->item_type = repl_log->rcvindex;
+	    apply->repl_tail->log_type = log_type;
 	  }
 	break;
       }
@@ -2958,6 +2968,7 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 	    ptr = or_unpack_string (ptr, &str_value);
 	    db_make_string (&apply->repl_tail->key, str_value);
 	    apply->repl_tail->key.need_clear = true;
+	    apply->repl_tail->log_type = log_type;
 	  }
 	break;
       }
@@ -2967,7 +2978,6 @@ repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 	REPL_ERR_RETURN (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
       }
     }
-  apply->repl_tail->log_type = log_type;
 
   if (release_yn == 1)
     {
@@ -3033,7 +3043,7 @@ repl_ag_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa, int m_idx,
 }
 
 /*
- * repl_ag_add_unlock_commit_log() - add the unlock_commit log to the
+ * repl_ag_add_commit_log() - add the unlock_commit log to the
  *                                   commit list
  *   return: NO_ERROR or error code
  *   tranid: the target transaction id
@@ -3059,7 +3069,7 @@ repl_ag_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa, int m_idx,
  *    APPLY thread processes the mutex lock
  */
 int
-repl_ag_add_unlock_commit_log (int tranid, LOG_LSA * lsa, int idx)
+repl_ag_add_commit_log (int tranid, LOG_LSA * lsa, int idx, int log_type)
 {
   SLAVE_INFO *sinfo;
   REPL_APPLY *apply;
@@ -3084,7 +3094,7 @@ repl_ag_add_unlock_commit_log (int tranid, LOG_LSA * lsa, int idx)
   commit = (REPL_COMMIT *) malloc (sizeof (REPL_COMMIT));
   REPL_CHECK_ERR_NULL (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR, commit);
   commit->next = NULL;
-  commit->type = LOG_UNLOCK_COMMIT;
+  commit->type = log_type;
   LSA_COPY (&commit->log_lsa, lsa);
   commit->tranid = tranid;
   commit->master_time = -1;
@@ -3316,52 +3326,58 @@ repl_ag_log_perf_info (char *master_dbname, int tranid,
  *      called by APPLY thread
  */
 int
-repl_ag_apply_commit_list (LOG_LSA * lsa, int idx, time_t * old_time,
-			   bool clear_tran)
+repl_ag_apply_commit_list (LOG_LSA * lsa, int idx, time_t * old_time)
 {
-  SLAVE_INFO *sinfo;
+  MASTER_MAP *master;
   REPL_COMMIT *commit;
   int error = NO_ERROR;
   time_t slave_time;
   int m_idx;
+  bool clear_tran;
 
-  sinfo = repl_ag_get_slave_info (NULL);
-  if (sinfo == NULL)
+  master = repl_ag_get_master_map (idx);
+  if (master == NULL)
     {
       return REPL_AGENT_INTERNAL_ERROR;
     }
 
-  m_idx = repl_ag_get_master_info_index (sinfo->masters[idx].m_id);
-
+  m_idx = repl_ag_get_master_info_index (master->m_id);
   LSA_SET_NULL (lsa);
 
-  commit = sinfo->masters[idx].commit_head;
-  if (commit && commit->type == LOG_COMMIT)
+  for (commit = master->commit_head; IS_APPLICABLE (commit);)
     {
+      clear_tran = commit->type == LOG_COMMIT;
       error = repl_ag_apply_repl_log (commit->tranid, idx,
-				      &sinfo->masters[idx].total_rows,
-				      clear_tran);
-
-      /* compute the delay time and save it ! */
-      time (&slave_time);
-      if (commit->master_time > 0
-	  && (sinfo->masters[idx].perf_poll_interval <= 0
-	      || (slave_time - (*old_time)) >
-	      sinfo->masters[idx].perf_poll_interval))
+				      &(master->total_rows), clear_tran);
+      if (error != NO_ERROR)
 	{
-	  repl_ag_log_perf_info (mInfo[m_idx]->conn.dbname,
-				 commit->tranid,
-				 &commit->master_time, &slave_time);
-	  time (old_time);
+	  master->commit_head = commit->next;
+	  if (master->commit_head == NULL)
+	    {
+	      master->commit_tail = NULL;
+	    }
+	  free_and_init (commit);
+	  REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
+	  return error;
 	}
 
+      time (&slave_time);
+      if (IS_PERF_LOGGING (commit->master_time, slave_time, *old_time,
+			   master->perf_poll_interval))
+	{
+	  repl_ag_log_perf_info (mInfo[m_idx]->conn.dbname, commit->tranid,
+				 &commit->master_time, &slave_time);
+	  *old_time = slave_time;
+	}
       LSA_COPY (lsa, &commit->log_lsa);
 
-      sinfo->masters[idx].commit_head = commit->next;
-      if (sinfo->masters[idx].commit_head == NULL)
-	sinfo->masters[idx].commit_tail = NULL;
-
+      master->commit_head = commit->next;
+      if (master->commit_head == NULL)
+	{
+	  master->commit_tail = NULL;
+	}
       free_and_init (commit);
+      commit = master->commit_head;
     }
 
   return error;
@@ -3470,6 +3486,7 @@ repl_write_error_db_info (REPL_ITEM * item, int error)
   PARSER_VARCHAR *buf = NULL;
   PARSER_CONTEXT *parser;
   char error_string[1024];
+  char key_string[256];
 
   parser = parser_create_parser ();
   if (parser != NULL)
@@ -3477,16 +3494,18 @@ repl_write_error_db_info (REPL_ITEM * item, int error)
       buf = describe_value (parser, NULL, &item->key);
     }
 
-  sprintf (error_string, "[%s,%s] %s", item->class_name,
-	   buf ? (const char *) pt_get_varchar_bytes (buf) : "",
-	   db_error_string (1));
-  if (error > 0)
+  if (error > 0 && error != REPL_AGENT_QUERY_ERROR)
     {
-      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT, error, error_string);
+      REPL_ERR_LOG (REPL_FILE_AGENT, error);
     }
   else
     {
-      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR,
+      snprintf (key_string, 255, "%s",
+		buf ? (const char *) pt_get_varchar_bytes (buf) : "");
+      snprintf (error_string, 1023, "[%s,%s] %s", item->class_name,
+		key_string, db_error_string (1));
+
+      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT, REPL_AGENT_QUERY_ERROR,
 			    error_string);
     }
   repl_error_flush (err_Log_fp, false);
@@ -5818,6 +5837,8 @@ main (int argc, char **argv)
   repl_ag_thread_end ();
 
 error_exit:
+  repl_error_flush (err_Log_fp, false);
+
   if (restart_Agent)
     {
       repl_restart_agent (argv[0], true);

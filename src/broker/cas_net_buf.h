@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -115,7 +115,9 @@ extern int net_buf_cp_str (T_NET_BUF *, const char *, int);
 extern int net_buf_cp_int (T_NET_BUF *, int, int *);
 extern void net_buf_overwrite_int (T_NET_BUF *, int, int);
 extern int net_buf_cp_bigint (T_NET_BUF *, DB_BIGINT, int *);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void net_buf_overwrite_bigint (T_NET_BUF *, int, DB_BIGINT);
+#endif
 extern int net_buf_cp_float (T_NET_BUF *, float);
 extern int net_buf_cp_double (T_NET_BUF *, double);
 extern int net_buf_cp_short (T_NET_BUF *, short);

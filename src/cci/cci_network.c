@@ -86,10 +86,12 @@
 
 static int connect_srv (unsigned char *ip_addr, int port, char is_first,
 			SOCKET * ret_sock);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int net_send_int (SOCKET sock_fd, int value);
+#endif
 static int net_recv_int (SOCKET sock_fd, int *value);
-static int net_send_str (SOCKET sock_fd, char *buf, int size);
-static int net_recv_str (SOCKET sock_fd, char *buf, int size);
+static int net_recv_stream (SOCKET sock_fd, char *buf, int size);
+static int net_send_stream (SOCKET sock_fd, char *buf, int size);
 static void init_msg_header (MSG_HEADER * header);
 static int net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header);
 static int net_recv_msg_header (SOCKET sock_fd, MSG_HEADER * header);
@@ -159,14 +161,14 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
       return CCI_ER_CONNECT;
     }
 
-  if (WRITE_TO_SOCKET (srv_sock_fd, client_info, SRV_CON_CLIENT_INFO_SIZE) <
+  if (net_send_stream (srv_sock_fd, client_info, SRV_CON_CLIENT_INFO_SIZE) <
       0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto connect_srv_error;
     }
 
-  if (READ_FROM_SOCKET (srv_sock_fd, (char *) &err_code, 4) <= 0)
+  if (net_recv_stream (srv_sock_fd, (char *) &err_code, 4) < 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto connect_srv_error;
@@ -188,7 +190,7 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
 	}
     }
 
-  if (WRITE_TO_SOCKET (srv_sock_fd, db_info, SRV_CON_DB_INFO_SIZE) < 0)
+  if (net_send_stream (srv_sock_fd, db_info, SRV_CON_DB_INFO_SIZE) < 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto connect_srv_error;
@@ -208,8 +210,8 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
       err_code = CCI_ER_NO_MORE_MEMORY;
       goto connect_srv_error;
     }
-  if (net_recv_str (srv_sock_fd, msg_buf, *(msg_header.msg_body_size_ptr)) <
-      0)
+  if (net_recv_stream (srv_sock_fd, msg_buf, *(msg_header.msg_body_size_ptr))
+      < 0)
     {
       FREE_MEM (msg_buf);
       err_code = CCI_ER_COMMUNICATION;
@@ -267,13 +269,13 @@ net_cancel_request (unsigned char *ip_addr, int port, int pid)
       return CCI_ER_CONNECT;
     }
 
-  if (WRITE_TO_SOCKET (srv_sock_fd, msg, sizeof (msg)) < 0)
+  if (net_send_stream (srv_sock_fd, msg, sizeof (msg)) < 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto cancel_error;
     }
 
-  if (READ_FROM_SOCKET (srv_sock_fd, (char *) &err_code, 4) <= 0)
+  if (net_recv_stream (srv_sock_fd, (char *) &err_code, 4) < 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto cancel_error;
@@ -315,7 +317,7 @@ net_check_cas_request (T_CON_HANDLE * con_handle)
   msg[7] = con_handle->cas_info[CAS_INFO_RESERVED_3];
   msg[8] = CAS_FC_CHECK_CAS;
 
-  if (net_send_str (con_handle->sock_fd, msg, sizeof (msg)) < 0)
+  if (net_send_stream (con_handle->sock_fd, msg, sizeof (msg)) < 0)
     return -1;
 
   if (net_recv_msg_header (con_handle->sock_fd, &msg_header) < 0)
@@ -336,7 +338,6 @@ net_check_cas_request (T_CON_HANDLE * con_handle)
   return ret_value;
 }
 
-
 int
 net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
 {
@@ -352,7 +353,7 @@ net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size)
   if (net_send_msg_header (con_handle->sock_fd, &send_msg_header) < 0)
     return CCI_ER_COMMUNICATION;
 
-  if (net_send_str (con_handle->sock_fd, msg, size) < 0)
+  if (net_send_stream (con_handle->sock_fd, msg, size) < 0)
     return CCI_ER_COMMUNICATION;
 
   return 0;
@@ -385,7 +386,7 @@ net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
   if (tmp_p == NULL)
     return CCI_ER_NO_MORE_MEMORY;
 
-  if (net_recv_str
+  if (net_recv_stream
       (con_handle->sock_fd, tmp_p, *(recv_msg_header.msg_body_size_ptr)) < 0)
     {
       FREE_MEM (tmp_p);
@@ -449,7 +450,11 @@ net_send_file (SOCKET sock_fd, char *filename, int filesize)
 	  close (fd);
 	  return CCI_ER_FILE;
 	}
-      net_send_str (sock_fd, read_buf, read_len);
+      if (net_send_stream (sock_fd, read_buf, read_len) < 0)
+	{
+	  close (fd);
+	  return CCI_ER_FILE;
+	}
       remain_size -= read_len;
     }
 
@@ -467,7 +472,7 @@ net_recv_file (SOCKET sock_fd, int file_size, int out_fd)
   while (file_size > 0)
     {
       read_len = (int) MIN (file_size, SSIZEOF (read_buf));
-      if (net_recv_str (sock_fd, read_buf, read_len) < 0)
+      if (net_recv_stream (sock_fd, read_buf, read_len) < 0)
 	{
 	  return CCI_ER_COMMUNICATION;
 	}
@@ -481,20 +486,21 @@ net_recv_file (SOCKET sock_fd, int file_size, int out_fd)
 /************************************************************************
  * IMPLEMENTATION OF PRIVATE FUNCTIONS	 				*
  ************************************************************************/
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int
 net_send_int (SOCKET sock_fd, int value)
 {
   value = htonl (value);
-  return (WRITE_TO_SOCKET (sock_fd, (char *) &value, 4));
+  return (net_send_stream (sock_fd, (char *) &value, 4));
 }
+#endif
 
 static int
 net_recv_int (SOCKET sock_fd, int *value)
 {
   int read_value;
 
-  if (READ_FROM_SOCKET (sock_fd, (char *) &read_value, 4) < 4)
+  if (net_recv_stream (sock_fd, (char *) &read_value, 4) < 0)
     {
       return CCI_ER_COMMUNICATION;
     }
@@ -506,13 +512,7 @@ net_recv_int (SOCKET sock_fd, int *value)
 }
 
 static int
-net_send_str (SOCKET sock_fd, char *buf, int size)
-{
-  return (WRITE_TO_SOCKET (sock_fd, buf, size));
-}
-
-static int
-net_recv_str (SOCKET sock_fd, char *buf, int size)
+net_recv_stream (SOCKET sock_fd, char *buf, int size)
 {
   int read_len, tot_read_len = 0;
 
@@ -534,7 +534,7 @@ net_recv_str (SOCKET sock_fd, char *buf, int size)
 static int
 net_recv_msg_header (SOCKET sock_fd, MSG_HEADER * header)
 {
-  if (net_recv_str (sock_fd, header->buf, MSG_HEADER_SIZE) < 0)
+  if (net_recv_stream (sock_fd, header->buf, MSG_HEADER_SIZE) < 0)
     {
       return CCI_ER_COMMUNICATION;
     }
@@ -551,11 +551,31 @@ static int
 net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header)
 {
   *(header->msg_body_size_ptr) = htonl (*(header->msg_body_size_ptr));
-  if (net_send_str (sock_fd, header->buf, MSG_HEADER_SIZE) < 0)
+  if (net_send_stream (sock_fd, header->buf, MSG_HEADER_SIZE) < 0)
     {
       return CCI_ER_COMMUNICATION;
     }
 
+  return 0;
+}
+
+static int
+net_send_stream (SOCKET sock_fd, char *msg, int size)
+{
+  int write_len;
+  while (size > 0)
+    {
+      write_len = WRITE_TO_SOCKET (sock_fd, msg, size);
+      if (write_len <= 0)
+	{
+#ifdef _DEBUG
+	  printf ("write error\n");
+#endif
+	  return CCI_ER_COMMUNICATION;
+	}
+      msg += write_len;
+      size -= write_len;
+    }
   return 0;
 }
 

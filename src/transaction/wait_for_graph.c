@@ -834,6 +834,7 @@ wfg_remove_waiter_list_of_holder_edge (WFG_NODE * node_p,
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * wfg_remove_out_edges : remove edges from the node waiter_tran_index
  *              to each node in holders.
@@ -940,7 +941,9 @@ end:
   csect_exit (CSECT_WFG);
   return error_code;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * wfg_get_status : get statistic from WFG.
  *
@@ -961,6 +964,7 @@ wfg_get_status (int *num_edges_p, int *num_waiters_p)
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * wfg_detect_cycle : finds all elementary cycles in the WFG and
@@ -1319,6 +1323,7 @@ wfg_dump (THREAD_ENTRY * thread_p)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * wfg_alloc_tran_group :
  *
@@ -1735,6 +1740,7 @@ end:
 
   return error_code;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * wfg_detect_ordinary_cycle :finds elementary cycles in the ordinary WFG. I.e.,

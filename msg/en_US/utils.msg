@@ -63,6 +63,7 @@ $       38      paramdump
 $       39      changemode
 $       40      copylogdb
 $       41      appylogdb
+$       43      statdump
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Invalid length or character `%c' in database name `%s'\n
@@ -101,6 +102,7 @@ Available admin utility-name:\n\
     loaddb\n\
     unloaddb\n\
     paramdump\n\
+    statdump\n\
     changemode\n\
     copylogdb\n\
     applylogdb\n\
@@ -152,6 +154,7 @@ Available administrator's utilities:\n\
     spacedb\n\
     unloaddb\n\
     paramdump\n\
+    statdump\n\
     changemode\n\
     copylogdb\n\
     applylogdb\n\
@@ -403,11 +406,12 @@ valid options:\n\
   -v, --verbose                 enable verbose status messages; default: disabled\n\
   -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
       --no-oid                  don't use OID\n\
+      --no-statistics           do not update the statistics while loading\n\
   -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
   -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
   -d, --data-file=FILE          load data with FILE\n\
       --error-control-file=FILE FILE to control error(s) during loading\n\
-      --ignore-class-file=ARG  input file of class names that skip load\n
+      --ignore-class-file=FILE  input file of class names that skip load\n
 121 \
 load_noopt: This utility is deprecated. Be careful to use.\n\
 usage: load_noopt [OPTION] database-name\n\
@@ -820,6 +824,7 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 22 The server `%s''s current HA running mode is %s.\n
 23 The server `%s''s HA running mode is changed to \"%s\".\n
 24 The server was not set to HA mode.\n
+58 HA feature is not supported in this platform.\n
 59 changemode cannot run as standlone mode.\n
 60 \
 changemode: Display or change the server's HA running mode.\n\
@@ -834,6 +839,7 @@ $set 40 MSGCAT_UTIL_SET_COPYLOGDB
 11 Worng value \"%s\" for the copylogdb's running mode.\n
 21 Enter DBA password:
 22 The server was not set to HA mode.\n
+58 HA feature is not supported in this platform.\n
 59 copylogdb cannot run as standlone mode.\n
 60 \
 copylogdb: Copy log pages from the server.\n\
@@ -842,11 +848,12 @@ usage: %s copylogdb [OPTION] database-name\n\
 valid options:\n\
   -L, --log-path=PATH         directory PATH for copied log volumes\n\
   -m, --mode=MODE             operation mode; default: sync\n\
-                              MODE: sync or async\n
+                              MODE: sync or semisync or async\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Enter DBA password:
 22 The server was not set to HA mode.\n
+58 HA feature is not supported in this platform.\n
 59 applylogdb cannot run as standlone mode.\n
 60 \
 applylogdb: Apply copied log to the server.\n\
@@ -855,3 +862,14 @@ usage: %s applylogdb [OPTION] database-name\n\
 valid options:\n\
   -L, --log-path=PATH         directory PATH of copied log volumes\n\
       --max-mem-size=SIZE     maximum process SIZE in MB; max 1000\n
+
+$set 43 MSGCAT_UTIL_SET_STATDUMP
+11 Cannot open output file `%s'\n
+59 statdump cannot run as standlone mode.\n
+60 \
+statdump: Dump global statistics.\n\
+usage: %s statdump [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
+  -i, --interval=S             print stats every S secs\n

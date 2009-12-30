@@ -127,10 +127,12 @@ static void css_daemon_start (void);
 struct timeval *css_Master_timeout = NULL;
 static int css_Master_timeout_value_in_seconds = 4;
 static int css_Master_timeout_value_in_microseconds = 500;
+#if defined(DEBUG)
 static int css_Active_server_count = 0;
+#endif
 
 time_t css_Start_time;
-int css_Total_server_count = 0;
+int css_Total_request_count = 0;
 
 /* socket for incomming client requests */
 SOCKET css_Master_socket_fd[2] = { INVALID_SOCKET, INVALID_SOCKET };
@@ -196,10 +198,12 @@ css_master_timeout (void)
 	{
 	  if (temp->pid == pid)
 	    {
+#if defined(DEBUG)
 	      if (css_Active_server_count > 0)
 		{
 		  css_Active_server_count--;
 		}
+#endif
 	      css_remove_entry_by_conn (temp->conn_ptr,
 					&css_Master_socket_anchor);
 	      break;
@@ -335,7 +339,9 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid,
       if (datagram != NULL && css_tcp_master_datagram (datagram, &server_fd))
 	{
 	  datagram_conn = css_make_conn (server_fd);
+#if defined(DEBUG)
 	  css_Active_server_count++;
+#endif
 	  css_add_request_to_socket_queue (datagram_conn, false,
 					   server_name, server_fd, READ_WRITE,
 					   0, &css_Master_socket_anchor);
@@ -467,7 +473,9 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 	{
 #if defined(WINDOWS)
 	  css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED);
+#if defined(DEBUG)
 	  css_Active_server_count++;
+#endif
 	  css_add_request_to_socket_queue (conn, false, server_name,
 					   conn->fd, READ_WRITE, 0,
 					   &css_Master_socket_anchor);
@@ -527,6 +535,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	      /* reject a server with a duplicate name */
 	      css_reject_server_request (conn, SERVER_ALREADY_EXISTS);
 	    }
+	  css_free_conn (conn);
 	}
       else
 	{
@@ -539,7 +548,9 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	  if (css_net_recv (conn->fd, (char *) &buffer, &name_length, -1) ==
 	      NO_ERRORS)
 	    {
+#if defined(DEBUG)
 	      css_Active_server_count++;
+#endif
 	      entry = css_add_request_to_socket_queue (conn, false,
 						       server_name, conn->fd,
 						       READ_WRITE, 0,
@@ -581,8 +592,20 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 			}
 		    }
 		}
+	      else
+		{
+		  css_free_conn (conn);
+		}
+	    }
+	  else
+	    {
+	      css_free_conn (conn);
 	    }
 	}
+    }
+  else
+    {
+      css_free_conn (conn);
     }
   if (server_name != NULL)
     {
@@ -712,7 +735,7 @@ css_process_new_connection (SOCKET fd)
   unsigned short rid;
 
   buffer_size = sizeof (NET_HEADER);
-  css_Total_server_count++;
+  css_Total_request_count++;
   conn = css_make_conn (fd);
   if (conn == NULL)
     {
@@ -740,8 +763,13 @@ css_process_new_connection (SOCKET fd)
 	  css_register_new_server2 (conn, rid);
 	  break;
 	default:
+	  css_free_conn (conn);
 	  break;
 	}
+    }
+  else
+    {
+      css_free_conn (conn);
     }
 }
 
@@ -815,10 +843,12 @@ again:
     {
       if (!IS_INVALID_SOCKET (temp->fd) && fcntl (temp->fd, F_GETFL, 0) < 0)
 	{
+#if defined(DEBUG)
 	  if (css_Active_server_count > 0)
 	    {
 	      css_Active_server_count--;
 	    }
+#endif
 	  css_remove_entry_by_conn (temp->conn_ptr,
 				    &css_Master_socket_anchor);
 	  goto again;
@@ -865,10 +895,12 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 		}
 	      else
 		{
+#if defined(DEBUG)
 		  if (css_Active_server_count > 0)
 		    {
 		      css_Active_server_count--;
 		    }
+#endif
 		  css_remove_entry_by_conn (temp->conn_ptr,
 					    &css_Master_socket_anchor);
 		}
@@ -914,10 +946,12 @@ again:
 					     (temp->conn_ptr->status ==
 					      CONN_CLOSED))))
 	{
+#if defined(DEBUG)
 	  if (css_Active_server_count > 0)
 	    {
 	      css_Active_server_count--;
 	    }
+#endif
 	  FD_CLR (temp->fd, fd_var);
 	  if (temp->fd == css_Master_socket_fd[0] ||
 	      temp->fd == css_Master_socket_fd[1])
@@ -991,6 +1025,8 @@ main (int argc, char **argv)
     }
 
 #if defined(WINDOWS)
+  FreeConsole ();
+
   if (css_windows_startup () < 0)
     {
       printf ("Unable to initialize Winsock.\n");

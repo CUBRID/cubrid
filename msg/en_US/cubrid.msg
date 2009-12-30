@@ -118,7 +118,7 @@ $set 5 MSGCAT_SET_ERROR
 53 Fetching object %1$d|%2$d|%3$d when only its OID has been assigned.
 54 Internal error: trying to manipulate an object of %1$d pages long.  The maximum size allowed for an object is %2$d pages.
 55 Internal error: A page cycle reference was detected on page %1$d|%2$d of heap file %3$d|%4$d|%5$d.
-56 Internal error: unknown extendible hashing file (Volid: %1$d Fileid: $2$d) page (Volid: %3$d Pageid: %4$d) was specified.
+56 Internal error: unknown extendible hashing file (Volid: %1$d Fileid: %2$d) page (Volid: %3$d Pageid: %4$d) was specified.
 57 Key does not exist in the extendible hashing structure.
 58 String "%1$s" is too long to fit in a slotted page.
 59 Internal error: the specified key type %1$d is not valid for the extendible hashing structure.
@@ -131,7 +131,7 @@ $set 5 MSGCAT_SET_ERROR
 66 Internal error: unknown force operation %1$d for object %2$d|%3$d|%4$d.
 67 Internal error: a heap file has not been allocated to store object %1$d|%2$d|%3$d.
 68 Internal error: different classnames for class with oid = %1$d|%2$d|%3$d were found. Found classnames are "%4$s", "%5$s" using classname hash table and heap, respectively.
-69 Internal error: different class object identifers were found for class with name "%1$s". Found OIDS are %2$d|%3$d|%4$d, %5$d|%6$d|%7$d using classname hash table and heap, respectively.
+69 Internal error: different class object identifiers were found for class with name "%1$s". Found OIDS are %2$d|%3$d|%4$d, %5$d|%6$d|%7$d using classname hash table and heap, respectively.
 70 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in classname hash table.
 71 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in its heap.
 72 Your transaction (index %1$d, %2$s@%3$s|%4$d) has been unilaterally aborted by the system.
@@ -150,7 +150,7 @@ $set 5 MSGCAT_SET_ERROR
 85 The prefix name "%1$s" is not the same as "%2$s" on the log disk.  The log may have been renamed outside the database domain.
 86 Database is incompatible with current "%1$s" release "%2$s".
 87 There are recovery actions that must recovered using "%1$s" release "%2$s" instead of release "%3$s". After the recovery, the database can be run on release "%4$s".
-88 Release string "%1$s" is larger  than %2$d. Internal error .. must change header log.
+88 Release string "%1$s" is larger than %2$d. Internal error .. must change header log.
 89 Log "%1$s" does not belong to the given database.
 90 Redo logging is always a page level logging operation.  A data page pointer must be given as part of the address.
 91 Postpone logging is always a page level logging operation.  A data page pointer must be given as part of the address.
@@ -196,7 +196,7 @@ $set 5 MSGCAT_SET_ERROR
 131 Database system error.
 132 Feature not implemented in the current release: %1$s.
 133 Nested set constant not allowed.
-134 It is illegal to mix class attributes and non-class attributes in the same update.
+134 Not allowed to use both class attributes and non-class attributes in a single update.
 135 Invalid statement for oid columns: %1$s.
 136 Unimplemented function "%1$s".
 137 Corrupted authorization objects.
@@ -205,7 +205,7 @@ $set 5 MSGCAT_SET_ERROR
 140 Operation "%1$s" can only be performed by the DBA or a DBA group member.
 141 Cannot add "%1$s" as a member of "%2$s".
 142 Adding member causes the user hierarchy to become a cyclic graph.
-143 Encountered class with no owner.
+143 Encountered a class with no owner.
 144 Unable to access user object.
 145 Cannot issue grant/revoke commands to yourself.
 146 Cannot issue GRANT/REVOKE to owner of a class.
@@ -229,7 +229,7 @@ $set 5 MSGCAT_SET_ERROR
 164 User "%1$s" already exists.
 165 User "%1$s" is invalid.
 166 Invalid user specified.
-167 Must be class owner to perform operation.
+167 DBA, members of DBA group and class owner can perform the operation.
 168 Member not found.
 169 Cannot remove user %s from the database.
 170 No user logged in.
@@ -269,12 +269,12 @@ $set 5 MSGCAT_SET_ERROR
 204 Function called with missing or invalid arguments.
 205 Attribute "%1$s" cannot be made NULL.
 206 Attribute "%1$s" does not have the UNIQUE constraint.
-207 Class "%1$s" has object size of zero.
+207 Class "%1$s" has a zero-size object.
 208 Method "%1$s" not found.
 209 No attribute or method with name "%1$s" was found.
 210 Internal error: processing object template.
 211 Attribute was deleted while building object template.
-212 Attribute "%1$s" could not be set without violating the UNIQUE constraint.
+212 Attribute "%1$s" violates the UNIQUE constraint.
 213 Invalid UNIQUE table entry encountered.
 214 A domain conflict exists on attribute "%1$s".
 215 Attribute with id %1$d not found.
@@ -287,14 +287,14 @@ $set 5 MSGCAT_SET_ERROR
 222 Attempt to assign string value greater than %2$d characters to attribute "%1$s".
 223 Value %2$d is too large for smallint attribute "%1$s".
 224 A database has not been restarted.
-225 Missing value for attribute "%1$s" with the NON NULL constraint.
+225 Missing value for attribute "%1$s" with the NOT NULL constraint.
 226 Empty component list in class.
 227 Attempt to assign value to attribute "%1$s" more than once.
 228 Method "%1$s" called with %2$d arguments.  The system allows a maximum of %3$d arguments.
 229 Method "%1$s" requires argument %2$d to be within the domain "%3$s".  An invalid value of domain "%4$s" was given.
 230 Attribute "%1$s" cannot be assigned a string of length %2$d.  The maximum allowable string length is %3$d.
 231 Invalid API operation attempted on a temporary object.
-232 Attempt to use object template over a transaction
+232 Not allowed to use object templates over multiple transactions.
 233 Cannot create class with basic type name "%1$s".
 234 Method file "%1$s" not found.
 235 %1$d unresolved method functions after linking.
@@ -307,8 +307,8 @@ $set 5 MSGCAT_SET_ERROR
 242 Signature for %2$s not found for method "%1$s".
 243 Argument %2$d of method "%1$s" is undefined.
 244 Domain name "%1$s" is not the name of a class or basic type.
-245 The name "%1$s" has already been used as the name of an attribute.
-246 The name "%1$s" has already been used as the name of a method.
+245 The name "%1$s" has already been used as an attribute name.
+246 The name "%1$s" has already been used as a method name.
 247 Invalid arguments to schema manager internal function.
 248 The attribute domain "%1$s" is not suitable for use with the UNIQUE integrity constraint.
 249 The requested operation on class "%1$s" can only be performed before instances are created.
@@ -362,9 +362,9 @@ $set 5 MSGCAT_SET_ERROR
 297 Alias name "%1$s" is used more than once.
 298 In class "%1$s", a resolution for "%2$s" of "%3$s"' is not allowed.  That class is not a super class.
 299 "%1$s" is a reserved word and cannot be used as an attribute, method, or class name.
-300 Attribute "%1$s" cannot be defined with both a DEFAULT value and the UNIQUE integrity constraint.
+300 Attribute "%1$s" cannot be defined with DEFAULT and UNIQUE constraints together.
 301 Attribute "%1$s" cannot be defined with a length constraint of %2$d.  The maximum length constraint is %3$d.
-302 Could not add element to a set.
+302 Cannot add element to a set.
 303 Value already exists in set.
 304 Set index %1$d is out of bounds.
 305 Sequence index %1$d is out of bounds.
@@ -405,10 +405,10 @@ $set 5 MSGCAT_SET_ERROR
 340 Cannot fork child process.
 341 Cannot exec child process.
 342 Cannot change process group.
-343 Request_id's used up.
+343 Request_id is already used.
 344 %1$s.
-345 Error reading shutdown message from master.
-346 Error reading stop shutdown message from master.
+345 Error occurred during reading a shutdown message from master.
+346 Error occurred during reading a stop shutdown message from master.
 347 Could not establish a pipe to the master server.
 348 Must specify either service or port identifier.
 349 Unknown service for TCP: %1$s.
@@ -431,13 +431,17 @@ $set 5 MSGCAT_SET_ERROR
 366 Error from server: %1$s
 367 Server %1$s already exists.
 368 Communication error during connect for %1$s.
+369 Unused error code.
+370 Unused error code.
+371 Unused error code.
+372 Unused error code.
 373 Premature EOF during read: %1$d.
 374 Premature EOF during read of %1$d or %2$d.
 375 Conversion error on (0x%1$c%2$c) %3$d and %4$d converted to %5$d.
-376 Error finding class public.
-377 Error %1$d adding attribute "%2$s" to multimedia hierarchy.
-378 Error %1$d adding method "%2$s" implemented as "%3$s" to multimedia hierarchy.
-379 Error %1$d adding superclass to multimedia hierarchy.
+376 No public class found.
+377 Error %1$d: failed to add attribute "%2$s" to multimedia hierarchy.
+378 Error %1$d: failed to add method "%2$s" implemented as "%3$s" to multimedia hierarchy.
+379 Error %1$d: failed to add a superclass to multimedia hierarchy.
 380 Dynamic loader already initialized.
 381 Dynamic loader not initialized.
 382 Dynamic loader improperly initialized.
@@ -454,15 +458,15 @@ $set 5 MSGCAT_SET_ERROR
 393 Dynamic loader daemon has disappeared.
 394 Range endpoint not between 0 and 256.
 395 Illegal subexpression specified.
-396 Octal digit in escape out of range.
+396 Octal digit out of range exists in escape.
 397 Regular expression not delimited properly.
 398 Text search called before expression compiled.
-399 Unbalanced parentheses in regular expression.
-400 Parentheses too deeply nested in regular expression.
+399 A unmatched parenthesis is found in the regular expression.
+400 Parentheses too deeply nested in the regular expression.
 401 More than two numbers specified in a range.
-402 Unmatched {.
+402 A unmatched curly brace is found in the regular expession.
 403 First number in range expression is larger than second.
-404 Unbalanced [ in regular expression.
+404 A unmatched bracket is found in the regular expression.
 405 The regular expression was too long to compile.
 406 Invalid B+tree index identifier: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
 407 Unknown key %1$s referenced in B+tree index {vfid: (%2$d, %3$d), rt_pgid: %4$d, key_type: %5$s}.
@@ -480,7 +484,7 @@ $set 5 MSGCAT_SET_ERROR
 419 Class has reached maximum representations count: %1$d.
 420 Class %1$d|%2$d|%3$d already had representations.
 421 Representations Directory Missing in Catalog for Class: %1$d|%2$d|%3$d.
-422 Representation Information Record  Missing in Catalog for Class - Repr_Id: %1$d|%2$d|%3$d - %4$d.
+422 Representation Information Record Missing in Catalog for Class - Repr_Id: %1$d|%2$d|%3$d - %4$d.
 423 Invalid session.
 424 No statement to execute.
 425 Incompatible data type for attribute "%1$s" of class "%2$s".
@@ -504,20 +508,20 @@ $set 5 MSGCAT_SET_ERROR
 443 Tuple value index %1$d is out of range.
 444 Invalid attribute name: "%1$s".
 445 Value list index %1$d is out of range.
-446 There are query result structures closed by transaction manager but not closed by the application.
-447 An operation has been attempted on a closed query result structure.
+446 There are query result structures closed by transaction manager but not closed by the application. 
+447 Attempted to operate a query result structure already closed.
 448 Tuple sizes are currently restricted to be no larger than a page.
 449 Unknown query identifier: %1$d.
 450 Invalid set operator: %1$d.
 451 Heap file with no instances.
 452 Invalid XASL tree node content.
-453 No more access specification nodes.
+453 No more acess specification nodes.
 454 Invalid data type referenced.
 455 No more query file pages left.
 456 Data type references are incompatible.
 457 Invalid query result type.
-458 Overflow happened in addition context.
-459 Query result does not contain a single tuple.
+458 Overflow occurred in addition context.
+459 Query result contains more than a single tuple. 
 460 Too few input host variables provided.
 461 More host variables are given than result columns.
 462 Result value is NULL, but there is no indicator variable.
@@ -602,13 +606,13 @@ $set 5 MSGCAT_SET_ERROR
 541 Number of free pages for volume "%1$s" is inconsistent. %2$d and %3$d were found according to volume header and bitmap, respectively.
 542 Number of free sectors for volume "%1$s" is inconsistent. %2$d and %3$d were found according to volume header and bitmap, respectively.
 543 Disk header for volume "%1$s" is inconsistent.
-544 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Btree key %6$s entry for object OID: %7$d|%8$d|%9$d was not found on B+tree: %10$d|%11$d|%12$d.
-545 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Key and OID: %6$d|%7$d|%8$d entry on B+tree: %9$d|%10$d|%11$d is incorrect.The object does not exist.
+544 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). B+tree key %6$s entry for object OID: %7$d|%8$d|%9$d was not found on B+tree: %10$d|%11$d|%12$d.
+545 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Key and OID: %6$d|%7$d|%8$d entry on B+tree: %9$d|%10$d|%11$d is incorrect. The object does not exist.
 546 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). expecting %6$d OID entry values, but %7$d were found on B+tree: %8$d|%9$d|%10$d.
 547 Server release %1$s is different from client release %2$s.
 548 There is no object_id defined for proxy class "%1$s".
 549 The proxy instance was not found.
-550 Unknown savpoint name %1$s
+550 Unknown savepoint name %1$s
 551 Unable to locate volume information path file "%1$s"... Continue reading from internal tables
 552 Date arithmetic underflow.
 553 Time arithmetic underflow.
@@ -623,9 +627,9 @@ $ LOADDB
 561 Nested sets are not allowed.
 562 System class %1$s cannot be populated using the database loader.
 563 Reference to internal class %1$s converted to NULL.
-564 Violation of the UNIQUE constraint for attribute %1$s of %2$s.
+564 Violated the UNIQUE constraint for attribute %1$s of %2$s.
 565 Constructor method %1$s is not defined on class %2$s.
-566 Unused error id.
+566 Unused error code.
 567 Too many constructor method arguments supplied.  Expected %1$d.
 568 Missing constructor method parameters.  Expected %1$d, found %2$d.
 569 Missing attribute values.  Expected %1$d, found %2$d.
@@ -640,7 +644,7 @@ $ LOADDB
 578 Reference to class %3$s is not compatible with the domain of argument %1$d \n of constructor %2$s.
 579 Target domain must include type "object" to allow references to classes.
 580 Attribute %1$s is not defined for class %2$s.
-581 Attempt was made to update the database when updates are disabled.
+581 Attempted to update the database when updates are disabled. 
 582 Unknown storage purpose %1$d. Valid range is from %2$d to %3$d.
 583 Trying to allocate an invalid number (%1$d) of pages.
 584 Internal Error: A loop was detected in the file table of file %1$d in volume "%2$s". The loop may be caused by page %3$d|%4$d.
@@ -654,14 +658,14 @@ $ LOADDB
 592 The attribute domain "%1$s" of a proxy virtual class \nand the proxy virtual class must be on the same local database.
 593 A non-updatable virtual instance has been reclaimed and cannot be rebuilt.
 594 An object_id clause must be supplied without using attributes (%1$s) of approximate data types (float or double).
-595 The database name "%1$s" is too long. Name of database should be less than  %2$d characters
+595 The database name "%1$s" is too long. Database name should be less than %2$d characters.
 596 The %1$d pages of total temporary space allowed have been exceeded.
 597 Number of pages for heap file %1$d|%2$d|%3$d is inconsistent. \n%4$d and %5$d were found according to heap chain and file table, respectively.
 598 Number of files is inconsistent. %1$d were expected, %2$d were found
 599 An I/O error occurred while synchronizing state of volume "%1$s".
 600 Function "%1$s" not implemented on the PC.
 601 "%1$s".
-602 dl error: "%1$s" is multiply defined.
+602 dl error: "%1$s" is defined more than once.
 603 Internal Error: Sector/page table of file VFID %1$d|%2$d seems corrupted.
 604 Internal Error: An allocation set for file VFID %1$d|%2$d(Volume "%3$s") seems inconsistent in %4$d deleted or marked deleted pages and %5$d page holes in table
 605 Internal Error: Inconsistent number of marked deleted pages for file VFID %1$d|%2$d(Volume "%3$s"). Expected %4$d, Found %5$d.
@@ -690,19 +694,19 @@ $ LOADDB
 628 Invalid currency type: %1$d.
 629 Pagesize %1$d is not a power of 2 or pagesize is too small. Pagesize of %2$d is used instead.
 630 Conversion not supported by %1$s.
-631 Statement would violate one or more attribute NOT NULL constraints.
-632 %1$s does not seem to be a backup volume.
+631 SQL statement violated NOT NULL constraint.
+632 %1$s is not a backup volume.
 633 %1$s is a backup of database %2$s created on %3$s instead of given database %4$s created on %5$s
 634 A database volume/file was expected in backup.
 635 WARNING: Log Buffer pool of %1$d buffers seems very small for current environment.\n It is possible that some buffers are not freed by the system due to an UNKNOWN ERROR\n or that there are many concurrent transactions being aborted at the same time. The log buffer pool is expanded with %2$d more buffers.
-636 WARNING Num_buffers %1$d is too small. The minumum value of %2$d was assumed.
+636 WARNING Num_buffers %1$d is too small. The minimum value of %2$d was assumed.
 637 System error: freeing a log buffer too much. Fix count is set to zero.
 638 Warning: Flushing an unupdatable log archive pageid = %1$d
 639 System error: Previous log sequence page %1$d is not the delayed flush page %2$d.
 640 System Error: a savepoint cannot be added when the transaction is not active (e.g., during commit or rollback).
 641 A name must be given for a savepoint.
 642 System Error: there is not an active top system operation for current transaction.
-643 May be a system error: Commiting/Aborting transaction = %1$d (index = %2$d) which has permanent operations\n attached to it. Will attach those system operations to the transaction
+643 May be a system error: Committing/Aborting transaction = %1$d (index = %2$d) which has permanent operations\n attached to it. Will attach those system operations to the transaction
 644 SYSTEM ERROR: Log manager does not known either undo/redo function for rcvindex = %1$d
 645 SYSTEM ERROR: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
 646 SYSTEM ERROR: It seems that a compensating record is missing for logical logging rcvindex = %s\n. Without this compensating record crash recovery will not be done correctly
@@ -725,36 +729,36 @@ $ LOADDB
 663 Warning : Line too long in event handler configuration file, "%1$s", line %2$d, truncating
 664 Event handling mechanism started.
 665 Event handler pipe broken, "%1$s"
-666 Event handling mechanism stoped.
+666 Event handling mechanism stopped.
 667 Cannot match class '%1$s' with corresponding C++ class.
 668 Internal error: Unknown domain type '%1$d'.
 669 Server refused client connection : max clients, (%1$d), exceeded.
 670 Operation would have caused one or more unique constraint violations.
-671 A network read/write error ocurred for socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d)
+671 A network read/write error occurred for socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d)
 672 Socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d) is closed.
 673 Your connection to the server has been closed since the server is going down immediately.
-674 There is not enough active threads to continue current server execution. Current number of active threads is %1$d. You may need up to %2$d threads for aclean server execution in your environment. Transaction index %3$d has been timed out to continue server execution.
+674 There is not enough active threads to continue current server execution. Current number of active threads is %1$d. You may need up to %2$d threads for clean server execution in your environment. Transaction index %3$d has been timed out to continue server execution.
 675 Cannot read the database location file, '%1$s'.
 676 Database '%1$s', cannot be found in the database location file, '%2$s'
 677 Failed to connect to database server, '%1$s', on the following host(s): %2$s
 678 Internal error. Client restart module received NULL database server name.
-679 This C++ transaction has already been 'begun'.
+679 This C++ transaction has already begun.
 680 Attempted to exceed maximum C++ transaction nesting level (%d).
-681 %s transaction' was attempted on a C++ transaction that hasn't been 'begun'.
+681 %s transaction was attempted on a C++ transaction that hasn't begun.
 682 Cannot %s C++ transaction until all subordinate transactions are completed.
-683 Attempt to create string with illegal length - %d
+683 Attempted to create string with illegal length - %d
 684 Method returned user-defined error code %d.
 685 Class "%1$s" is invalid.
 686 Notification : the event handler has been restarted.
-687 No cast available for (%s *) to (%s *).
+687 Not allows to cast (%s *) to (%s *).
 688 Subscript out of range.  Attempt to access element %ld. Collection size = %ld.
 689 Internal error. Iterator contains corrupt state.
 690 Attempt to dereference an uninitialized instance of odb_Ref<>.
 691 Attempt to use an invalid iterator.
 692 Attempt to use an iterator with an unrelated collection.
 693 Overflow occurred on data type Numeric.
-694 SYSTEM ERROR: Unable to load Btree.
-695 Bad interface to kill client has been used.
+694 SYSTEM ERROR: Unable to load B+tree.
+695 Wrong interface has been used to kill a client.
 696 Unknown transaction (index %1$d, %2$s@%3$s|%4$d).
 697 Given transaction index (index %1$d, %2$s@%3$s|%4$d) does not match with current transaction index (index %5$d, %6$s@%7$s|%8$d). Likely, the given transaction has finished and its transaction index was re-assigned to another transaction.
 698 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). the number of OIDs in the unique hierarchy: %6$d does not equal the number of OIDs: %7$d found in the unique B+tree plus the number of NULLs: %8$d found in the unique hierarchy for B+tree: %9$d|%10$d|%11$d.
@@ -770,33 +774,33 @@ $ LOADDB
 708 Unable to expand temporary disk volume "%1$s" with %2$d pages (%3$ld Kbytes) due to insufficient space. Current space available is %4$d pages (%5$ld Kbytes).
 709 Constraint "%1$s" not found.
 710 Invalid constraint.
-711 An object with the supplied attribute value could not be located.
+711 An object with the supplied attribute value doesn't exist.
 712 Constraint" %1$s" already exists.
 713 An index does not exist on this attribute.
 714 Query failed due to insufficient temporary file space.
-715 Schema failed to verify: %1$s
+715 Failed to verify schema: %1$s
 716 NOT NULL constraints are not allowed in virtual or proxy classes.
 717 UNIQUE constraints are not allowed in virtual or proxy classes.
 718 Invalid gadget.
 719 The number of attributes(%d) and values(%d) are not equal.
 720 Cannot use a gadget to insert into a virtual or proxy class.
-721 Insert results in more than one row.
+721 Insert query yields more than one row.
 722 Wrong number of attributes for NOT NULL constraint.
 723 Cannot modify the domain of an existing attribute.
 724 Invalid parameter(s) for default constraint name generation.
 725 Internal error: expected temporary oid and encountered permanent oid.
-726 Unique constraint must be added using a separate alter statement\nonce instances have been created.  For example, instead of:\n\talter table1 add attribute a int unique;\nuse:\n\talter table1 add attribute a int;\n\talter table1 add unique(a);
+726 UNIQUE constraint must be added using a separate alter statement\nonce instances have been created.  For example, instead of:\n\talter table1 add attribute a int unique;\nuse:\n\talter table1 add attribute a int;\n\talter table1 add unique(a);
 727 Invalid trigger event.
 728 Query failed because temporary file vfid is invalid for transaction %1$d.
-729 Overflow happened in subtraction context.
-730 Overflow happened in multiplication context.
-731 Overflow happened in division context.
-732 Overflow happened in unary minus context.
-733 Overflow happened in coercion context.
+729 Overflow occurred in subtraction context.
+730 Overflow occurred in multiplication context.
+731 Overflow occurred in division context.
+732 Overflow occurred in unary minus context.
+733 Overflow occurred in coercion context.
 734 Internal Error: Header of file VFID %1$d|%2$d(Volume "%3$s") is corrupted.
 735 Unknown transaction index %1$d.
 736 Must specify either service or port identifier. Winsock error: %1$d.
-737 Unknown service for TCP: %1$s. Winsock error: %1$d.
+737 Unknown service for TCP: %1$s. Winsock error: %2$d.
 738 Cannot create socket stream. Winsock error: %1$d.
 739 Cannot bind local address... retrying. Winsock error: %1$d.
 740 Cannot bind local address... aborting. Winsock error: %1$d.
@@ -808,8 +812,8 @@ $ LOADDB
 746 Invalid garbage collection callback.
 747 Invalid garbage collection callback ticket.
 748 Invalid object pointer encountered by db_gc_mark_object.
-749 Number of fetched instances do not match: %1$d expected, %2$d received.
-750 Number of fetched attributes do not match: %1$d expected, %2$d received.
+749 The number of fetched instances are not matched: %1$d expected, %2$d received.
+750 The number of fetched instances are not matched: %1$d expected, %2$d received.
 751 The OID of a new object isn't available in a BEFORE INSERT trigger.
 752 Error restoring backup unit_num %d.
 753 Error restoring backup unit_num %d, pageid %d exceeds total number of pages %d for volid %d.
@@ -876,7 +880,7 @@ $ LOADDB
 814 pthread_cond_broadcast() failed.
 815 pthread_key_create() failed.
 816 pthread_key_delete() failed.
-817 pthread_set_specific() failed.
+817 pthread_setspecific() failed.
 818 pthread_getspecific() failed.
 819 pthread_once() failed.
 820 Cannot initialize mutex for connection.
@@ -887,7 +891,7 @@ $ LOADDB
 825 pread() call failed.
 826 pwrite() call failed.
 827 Connection list traverse function returned invalid value.
-828 Invalid critical section index is used.
+828 Invalid critical section of the index was given.
 829 This mutex lock has been unlocked already.
 830 Cannot allocate query entry any more. Maximum allocatable entries are %d.
 831 All transaction descriptors(%d) are in use. Raise up max_clients parameter.
@@ -896,28 +900,28 @@ $ LOADDB
 834 There are some mismatches between source string "%1$s" and format string "%2$s" given in to_number().
 835 Undefined statistics item.
 836 LATCH ON PAGE(%d|%d) TIMEDOUT
-837 Cannot drop user, who owns database object(class/trigger/serial etc)s.
+837 Cannot drop the user who owns database objects(class/trigger/serial etc). 
 838 Cannot open more than %d index scans simultaneously.
 839 "%s": Unknown system parameter or bad value.
 840 Cannot change system parameter "%s".
 841 Requested operation can be executed by only sole client(transaction).
 842 Cannot cache lock of object %1$d|%2$d|%3$d.
-843 Bad arguments in %s, a %s was passed.
+843 Wrong arguments in %s, a %s was passed.
 844 Unknown isolation(%d) is found. The transaction index is %d.
 845 Invalid object type(%d) is found. The lockable object is %d|%d|%d.
 846 %s of tran(%d) is not found in the holder list of an object(%d|%d|%d).
 847 %s on a %s(%d|%d|%d) is not found in the transaction(%d) hold list(cnt=%d).
 848 %s on an object(%d|%d|%d) is not found in the transaction(%d) non2pl list.
-849 Tring to abort a transaction(%d) twice.
+849 Trying to abort a transaction(%d) twice.
 850 Tran(%d) is neither lock holder nor lock waiter of an object(%d|%d|%d).
-851 Lock resource (%s) allocation fail..
+851 Failed to allocate lock resource (%s). 
 852 Total holders mode(%d) of an empty lock holder list is not NULL_LOCK.
 853 For an object(%d|%d|%d), tran(%d) of Uncommitted Read held fault lock(%s).
 854 WARNING: No lock holder, but lock waiters exist. refer to %s.
 855 WARNING: Two or more threads are lock-waiting for one transaction(%d).
 856 WARNING: Strange lockwait state(%d|%d), thread(%d|%d) and transaction(%d).
 857 An I/O error occurred while truncating page %1$d of volume "%2$s".
-858 Volume "%2$s" is unknown at server restart".
+858 Volume "%1$s" is unknown at server restart.
 859 LATCH ON PAGE(%d|%d) ABORTED
 860 Cannot make current transaction as a part of a global transaction because its state is '%1$s'.
 861 Cannot prepare to commit the current transaction with transaction identifier %1$d because that transaction is not made as a part of a global transaction.
@@ -925,23 +929,31 @@ $ LOADDB
 863 Cannot get the user information of the global transaction with the identifier %1$d because it is not set.
 864 Cannot open backupdb/restoredb verbose file '%s'.
 865 Cannot execute statement due to unknown type input markers.
+866 Unused error code.
+867 Unused error code.
+868 Unused error code.
+869 Unused error code.
+870 Unused error code.
+871 Unused error code.
+872 Unused error code.
 873 PKI authentication error "%1$s".
 874 Argument of power() is out of range.
 875 Overflow happened in power context.
+876 Unused error code.
 877 No data to be unloaded.
 878 Invalid database location file, '%1$s'.
 879 Cannot get permission: '%s'.
 880 Cannot change permission '%s'.
 881 Cannot get lock file '%s(FILE ID:%d)'.
 882 Cannot release lock file 'FILE ID:%d'.
-883 Failure to get '%s' file status.
-884 Volext-pathname '%s' is write permission denied.
+883 Failed to get '%s' file status.
+884 Volext-pathname '%s' is not permitted to write.
 885 Failure to move from '%s' to '%s'.  Use the same device(disk).
 886 "%1$s" caused unique constraint violation.
 887 Stored procedure '%s' is already exist.
 888 Parameter count is invalid. expected: %d, actual: %d
 889 Stored procedure execute error: %s
-890 Partition work failed.
+890 Partition failed.
 891 Appropriate partition does not exist.
 892 Primary key "%2$s" already defined for class "%1$s".
 893 Attribute '%1$s', a member of the primary key, could not be dropped.
@@ -987,7 +999,7 @@ $ LOADDB
 933 It is not able to repair an inconsistency of the number of free sectors for the volume "%1$s".  Because %2$d sectors obtained from the volume header is inconsistent with %3$d sectors from the bitmap.
 934 Null domain referenced.
 935 Argument of %s function is out of range.
-936 Overflow happened in exp context.
+936 Overflow occurred in exp context.
 937 Database error.
 938 Invalid argument.
 939 There are too many connection.
@@ -1028,8 +1040,12 @@ $ LOADDB
 974 Archive log "%1$s" is created to archive pages from %2$d to %3$d.
 975 Current version of replication does not allow changing multiple rows with a single UPDATE statement which can violate the UNIQUE constraint.
 976 Internal error: Table size overflow (allocated size: %1$d, accessed size: %2$d) at file table page %3$d|%4$d(volume "%5$s")
+977 Checkpoint started (page %d).
+978 Checkpoint finished (page %d).
+979 CONNECT BY loop in user data.
+980 A thread is waiting in %1$s more than %2$d msec.
 
-977 Last Error
+981 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):
@@ -1121,6 +1137,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 61 not equal operator is not '!=' but '<>'
 62 invalid minus value (or minus value in list)
 63 duplicated reference rule
+64 SYS_CONNECT_BY_PATH needs two parameters and the second must be a string literal.
 
 
 
@@ -1319,6 +1336,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 192 Not a user but the system can assign the attribute '%s' created by 'ON CACHE OBJECT' of foreign key.
 193 Cannot use duplicate attribute names in index key list. Attribute name '%s' listed more than once.
 194 Function %s is undefined or given wrong number of parameter.
+195 '%s' can only be used in hierarchical queries. Specify a CONNECT BY clause.
+196 '%s' is not allowed here.
+197 Using CONNECT_BY_ISCYCLE is only allowed if the query has a CONNECT BY NOCYCLE clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.
@@ -1592,3 +1612,4 @@ including those from the current backup level and higher.\n
 27 Error in input, choose a value between %d and %d.\n
 28 The time(%s) specified must be after the time(%s) of the specified backup.\n
 29 COMMENT: Log archive %s, which contains log pages before %d, is not needed any longer by any HA utilities.\n
+30 Number of active log archives has been exceeded the max desired number.

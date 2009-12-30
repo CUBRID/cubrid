@@ -66,6 +66,8 @@ static int copylogdb_keyword (int *keyval_p, char **keystr_p);
 static void backupdb_sig_interrupt_handler (int sig_no);
 static int spacedb_get_size_str (char *buf, int num_pages,
 				 T_SPACEDB_SIZE_UNIT size_unit);
+static void print_timestamp (FILE * outfp);
+
 /*
  * backupdb() - backupdb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -1490,7 +1492,7 @@ error_exit:
 }
 
 /*
- * paramparam() - paramparam main routine
+ * paramdump() - paramdump main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
  */
 int
@@ -1602,6 +1604,134 @@ error_exit:
   return EXIT_FAILURE;
 }
 
+static void
+print_timestamp (FILE * outfp)
+{
+  time_t tloc;
+  struct tm tmloc;
+  char str[80];
+
+  tloc = time (NULL);
+  utility_localtime (&tloc, &tmloc);
+  strftime (str, 80, "%a %B %d %H:%M:%S %Z %Y", &tmloc);
+  fprintf (outfp, "\n\t%s\n", str);
+}
+
+/*
+ * statdump() - statdump main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+statdump (UTIL_FUNCTION_ARG * arg)
+{
+#if defined (CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  const char *output_file = NULL;
+  int interval;
+  FILE *outfp = NULL;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_statdump_usage;
+    }
+
+  database_name = utility_get_option_string_value (arg_map,
+						   OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_statdump_usage;
+    }
+
+  output_file = utility_get_option_string_value (arg_map,
+						 STATDUMP_OUTPUT_FILE_S, 0);
+  interval = utility_get_option_int_value (arg_map, STATDUMP_INTERVAL_S);
+  if (interval < 0)
+    {
+      goto print_statdump_usage;
+    }
+
+  if (output_file == NULL)
+    {
+      outfp = stdout;
+    }
+  else
+    {
+      outfp = fopen (output_file, "w");
+      if (outfp == NULL)
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_STATDUMP,
+					   STATDUMP_MSG_BAD_OUTPUT),
+		   output_file);
+	  goto error_exit;
+	}
+    }
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  /* should have little copyright herald message ? */
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("dba", NULL);
+
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  histo_start (true);
+  do
+    {
+      print_timestamp (outfp);
+      histo_print_global_stats (outfp);
+      histo_clear_global_stats ();
+      sleep (interval);
+    }
+  while (interval > 0);
+  histo_stop ();
+
+  db_shutdown ();
+
+  if (outfp != stdout)
+    {
+      fclose (outfp);
+    }
+
+  return EXIT_SUCCESS;
+
+print_statdump_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_STATDUMP,
+				   STATDUMP_MSG_USAGE),
+	   basename (arg->argv0));
+
+error_exit:
+  if (outfp != stdout && outfp != NULL)
+    {
+      fclose (outfp);
+    }
+  return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_STATDUMP,
+				   STATDUMP_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
+}
+
+#if defined (ENABLE_UNUSED_FUNCTION)
 /* check ha_mode is turned on in the server */
 static int
 check_server_ha_mode (void)
@@ -1624,6 +1754,7 @@ check_server_ha_mode (void)
     }
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * changemode_keyword() - get keyword value or string of the server mode
@@ -1655,6 +1786,13 @@ changemode_keyword (int *keyval_p, char **keystr_p)
 int
 changemode (UTIL_FUNCTION_ARG * arg)
 {
+#if defined (WINDOWS)
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_CHANGEMODE,
+				   CHANGEMODE_MSG_HA_NOT_SUPPORT),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#else /* WINDOWS */
 #if defined (CS_MODE)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
@@ -1787,6 +1925,7 @@ error_exit:
 	   basename (arg->argv0));
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
+#endif /* !WINDOWS */
 }
 
 /*
@@ -1818,7 +1957,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
 #if defined (WINDOWS)
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				   MSGCAT_UTIL_SET_COPYLOGDB,
-				   COPYLOGDB_MSG_NOT_IN_STANDALONE),
+				   COPYLOGDB_MSG_HA_NOT_SUPPORT),
 	   basename (arg->argv0));
   return EXIT_FAILURE;
 #else /* WINDOWS */
@@ -1976,7 +2115,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 #if defined (WINDOWS)
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				   MSGCAT_UTIL_SET_APPLYLOGDB,
-				   APPLYLOGDB_MSG_NOT_IN_STANDALONE),
+				   APPLYLOGDB_MSG_HA_NOT_SUPPORT),
 	   basename (arg->argv0));
 
   return EXIT_FAILURE;
@@ -2057,6 +2196,8 @@ retry:
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
     }
+  /* set lock timeout to infinite */
+  db_set_lock_timeout (-1);
 
   if (PRM_HA_MODE == HA_MODE_OFF)
     {

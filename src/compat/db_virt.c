@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -186,38 +186,7 @@ db_create_vclass (const char *name)
 char *
 db_get_vclass_ldb_name (DB_OBJECT * op)
 {
-
-  const char *name = NULL;
-  SM_CLASS *class_;
-  SM_CLASS_TYPE ct;
-  DB_VALUE val;
-
-  CHECK_CONNECT_NULL ();
-
-  if (locator_is_class (op, DB_FETCH_READ))
-    {
-      if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
-	{
-	  if (class_)
-	    {
-	      ct = sm_get_class_type (class_);
-	      if (ct == SM_LDBVCLASS_CT)
-		{
-		  if (class_->properties)
-		    {
-		      if (classobj_get_prop
-			  (class_->properties, SM_PROPERTY_LDB_NAME,
-			   &val) > 0)
-			{
-			  name = ws_copy_string (DB_GET_STRING (&val));
-			  pr_clear_value (&val);
-			}
-		    }
-		}
-	    }
-	}
-    }
-  return ((char *) name);
+  return NULL;
 }
 
 /*
@@ -358,7 +327,6 @@ db_is_updatable_object (DB_OBJECT * obj)
 	  switch (class_->class_type)
 	    {
 	    case SM_CLASS_CT:
-	    case SM_LDBVCLASS_CT:
 	      return 1;
 	    case SM_VCLASS_CT:
 	      retval = (int) mq_is_updatable (obj);
@@ -422,7 +390,6 @@ db_is_updatable_attribute (DB_OBJECT * obj, const char *attr_name)
       switch (class_->class_type)
 	{
 	case SM_CLASS_CT:
-	case SM_LDBVCLASS_CT:
 	  return 1;
 	case SM_VCLASS_CT:
 	  class_obj = db_get_class (obj);
@@ -673,23 +640,7 @@ db_query_spec_string (DB_QUERY_SPEC * query_spec)
 DB_NAMELIST *
 db_get_object_id (MOP vclass)
 {
-  int error = NO_ERROR;
-  DB_NAMELIST *retval;
-
-  CHECK_CONNECT_NULL ();
-
-  if (vclass == NULL)
-    {
-      error = ER_OBJ_INVALID_ARGUMENTS;
-    }
-  else
-    {
-      error = ER_SM_INVALID_CLASS;
-    }
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-  retval = NULL;
-
-  return retval;
+  return NULL;
 }
 
 /*

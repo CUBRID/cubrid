@@ -2013,6 +2013,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   QUERY_EXEC_MODE old_exec_mode;
+  bool old_disable_update_stats;
 
   /* If it is an internally created statement,
      set it's host variable info again to search host variables at parent parser */
@@ -2029,13 +2030,19 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
        * process them. For any other node, return an error.
        */
 
+      old_disable_update_stats = sm_Disable_updating_statistics;
+
       switch (statement->node_type)
 	{
 	case PT_ALTER:
+	  sm_Disable_updating_statistics =
+	    (statement->info.alter.hint & PT_HINT_NO_STATS)
+	    ? true : old_disable_update_stats;
 	  error = do_check_internal_statements (parser, statement,
 						/* statement->info.alter.
 						   internal_stmts, */
 						do_alter);
+	  sm_Disable_updating_statistics = old_disable_update_stats;
 	  break;
 
 	case PT_ATTACH:
@@ -2051,14 +2058,22 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_CREATE_ENTITY:
+	  sm_Disable_updating_statistics =
+	    (statement->info.create_entity.hint & PT_HINT_NO_STATS)
+	    ? true : old_disable_update_stats;
 	  error = do_check_internal_statements (parser, statement,
 						/* statement->info.create_entity.
 						   internal_stmts, */
 						do_create_entity);
+	  sm_Disable_updating_statistics = old_disable_update_stats;
 	  break;
 
 	case PT_CREATE_INDEX:
+	  sm_Disable_updating_statistics =
+	    (statement->info.index.hint & PT_HINT_NO_STATS)
+	    ? true : old_disable_update_stats;
 	  error = do_create_index (parser, statement);
+	  sm_Disable_updating_statistics = old_disable_update_stats;
 	  break;
 
 	case PT_EVALUATE:
@@ -2081,11 +2096,19 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP_INDEX:
+	  sm_Disable_updating_statistics =
+	    (statement->info.index.hint & PT_HINT_NO_STATS)
+	    ? true : old_disable_update_stats;
 	  error = do_drop_index (parser, statement);
+	  sm_Disable_updating_statistics = old_disable_update_stats;
 	  break;
 
 	case PT_ALTER_INDEX:
+	  sm_Disable_updating_statistics =
+	    (statement->info.index.hint & PT_HINT_NO_STATS)
+	    ? true : old_disable_update_stats;
 	  error = do_alter_index (parser, statement);
+	  sm_Disable_updating_statistics = old_disable_update_stats;
 	  break;
 
 	case PT_DROP_VARIABLE:
@@ -2337,6 +2360,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
   QUERY_EXEC_MODE old_exec_mode;
+  bool old_disable_update_stats;
+
 
   /* If it is an internally created statement,
      set it's host variable info again to search host variables at parent parser */
@@ -2349,18 +2374,29 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* for the subset of nodes which represent top level statements,
      process them; for any other node, return an error */
+
+  old_disable_update_stats = sm_Disable_updating_statistics;
+
   switch (statement->node_type)
     {
     case PT_CREATE_ENTITY:
+      sm_Disable_updating_statistics =
+	(statement->info.create_entity.hint & PT_HINT_NO_STATS)
+	? true : old_disable_update_stats;
       /* err = do_create_entity(parser, statement); */
       /* execute internal statements before and after do_create_entity() */
       err = do_check_internal_statements (parser, statement,
 					  /* statement->info.create_entity.
 					     internal_stmts, */
 					  do_create_entity);
+      sm_Disable_updating_statistics = old_disable_update_stats;
       break;
     case PT_CREATE_INDEX:
+      sm_Disable_updating_statistics =
+	(statement->info.index.hint & PT_HINT_NO_STATS)
+	? true : old_disable_update_stats;
       err = do_create_index (parser, statement);
+      sm_Disable_updating_statistics = old_disable_update_stats;
       break;
     case PT_CREATE_SERIAL:
       err = do_create_serial (parser, statement);
@@ -2372,14 +2408,22 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_create_user (parser, statement);
       break;
     case PT_ALTER:
+      sm_Disable_updating_statistics =
+	(statement->info.alter.hint & PT_HINT_NO_STATS)
+	? true : old_disable_update_stats;
       /* err = do_alter(parser, statement); */
       /* execute internal statements before and after do_alter() */
       err = do_check_internal_statements (parser, statement,
 					  /* statement->info.alter.
 					     internal_stmts, */ do_alter);
+      sm_Disable_updating_statistics = old_disable_update_stats;
       break;
     case PT_ALTER_INDEX:
+      sm_Disable_updating_statistics =
+	(statement->info.index.hint & PT_HINT_NO_STATS)
+	? true : old_disable_update_stats;
       err = do_alter_index (parser, statement);
+      sm_Disable_updating_statistics = old_disable_update_stats;
       break;
     case PT_ALTER_SERIAL:
       err = do_alter_serial (parser, statement);
@@ -2398,7 +2442,11 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 					  do_drop);
       break;
     case PT_DROP_INDEX:
+      sm_Disable_updating_statistics =
+	(statement->info.index.hint & PT_HINT_NO_STATS)
+	? true : old_disable_update_stats;
       err = do_drop_index (parser, statement);
+      sm_Disable_updating_statistics = old_disable_update_stats;
       break;
     case PT_DROP_SERIAL:
       err = do_drop_serial (parser, statement);
@@ -3291,7 +3339,7 @@ do_commit (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
- * do_rollback_savepoints() - Rollback savepoints of named ldbs
+ * do_rollback_savepoints() - Rollback savepoints
  *   return: Error code
  *   parser(in): Parser context
  *   sp_nane(in): Savepoint name
@@ -3315,8 +3363,6 @@ do_rollback_savepoints (PARSER_CONTEXT * parser, const char *sp_name)
  *
  * Note: If a savepoint name is given, the transaction is rolled back to
  *   the savepoint, otherwise the entire transaction is rolled back.
- *   The function requires ldbnames is a list of ldbs
- *   and effects doing savepoints of named ldbs
  */
 int
 do_rollback (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -7421,8 +7467,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* check if this statement is not necessary to execute,
-         e.g. false where or not prepared correctly;
-         Note that in LDB case, the statement was not prepared. */
+         e.g. false where or not prepared correctly */
       if (!statement->info.update.do_class_attrs && !statement->xasl_id)
 	{
 	  statement->etc = NULL;
@@ -7975,7 +8020,7 @@ has_unique_constraint (DB_OBJECT * mop)
 }
 
 /*
- * delete_real_class() - Deletes objects or rows in ldb class or ldb table
+ * delete_real_class() - Deletes objects or rows
  *   return: Error code if delete fails
  *   parser(in/out): Parser context
  *   spec(in): Class spec to delete
@@ -8417,8 +8462,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* check if this statement is not necessary to execute,
-         e.g. false where or not prepared correctly;
-         Note that in LDB case, the statement was not prepared. */
+         e.g. false where or not prepared correctly */
       if (!statement->xasl_id)
 	{
 	  statement->etc = NULL;
@@ -9616,7 +9660,8 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 			    {
 			      /* don't get descriptors for shared attrs of views */
 			      if (!attr->info.name.db_object
-				  || !db_is_vclass (attr->info.name.db_object))
+				  || !db_is_vclass (attr->info.name.
+						    db_object))
 				{
 				  error = db_get_attribute_descriptor
 				    (class_->info.name.db_object,
@@ -9680,8 +9725,8 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 			  else
 			    {
 			      error = do_insert_partition_cache (&pic, attr,
-								 attr_descs[k],
-								 val);
+								 attr_descs
+								 [k], val);
 			    }
 			}
 
@@ -9708,8 +9753,8 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 
 		  if (obj && error >= NO_ERROR)
 		    {
-		      error = 
-			mq_evaluate_check_option (parser, 
+		      error =
+			mq_evaluate_check_option (parser,
 						  statement->info.insert.where,
 						  obj, class_);
 		    }
@@ -11026,7 +11071,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* flush necessary objects before execute */
-  if (!parser->dont_flush && ws_has_updated ())
+  if (ws_has_updated ())
     {
       (void) parser_walk_tree (parser, statement, pt_flush_classes, NULL,
 			       NULL, NULL);

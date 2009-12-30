@@ -27,8 +27,13 @@
 
 #ident "$Id$"
 
+#if !defined (DO_NOT_USE_CUBRIDENV)
 #define BROKER_LOG_DIR  "log/broker"
 #define UNICAS_CONF_DIR	"conf"
+#else
+#define BROKER_LOG_DIR  CUBRID_LOGDIR "/broker"
+#define UNICAS_CONF_DIR	CUBRID_CONFDIR
+#endif
 #define UNICAS_SQL_LOG_DIR "sql_log"
 
 typedef enum
@@ -156,7 +161,9 @@ int uca_off (char *br_name, char *err_msg);
 int uca_suspend (char *br_name, char *err_msg);
 int uca_resume (char *br_name, char *err_msg);
 int uca_job_first (char *br_name, int job_id, char *err_msg);
+#if defined(ENABLE_UNUSED_FUNCTION)
 int uca_job_q_size (char *br_name, char *err_msg);
+#endif
 int uca_as_info (char *br_name, T_DM_UC_INFO * br_info,
 		 T_DM_UC_INFO * job_info, char *err_msg);
 void uca_as_info_free (T_DM_UC_INFO * br_info, T_DM_UC_INFO * job_info);

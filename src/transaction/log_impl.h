@@ -252,6 +252,7 @@
 						   page. This page is backed up in
 						   all archive logs
 						 */
+#define LOGPB_IO_NPAGES                  4
 
 #define LOG_READ_NEXT_TRANID (log_Gl.hdr.next_trid)
 #define LOG_HAS_LOGGING_BEEN_IGNORED() \
@@ -346,6 +347,7 @@ extern int db_Disable_modifications;
 #define MSGCAT_LOG_INPUT_RANGE_ERROR                    27
 #define MSGCAT_LOG_UPTODATE_ERROR                       28
 #define MSGCAT_LOG_LOGINFO_COMMENT_UNUSED_ARCHIVE_NAME	29
+#define MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED	30
 
 typedef enum log_flush LOG_FLUSH;
 enum log_flush
@@ -705,6 +707,10 @@ struct log_tdes
   LOG_LSA repl_insert_lsa;	/* insert target lsa */
   LOG_LSA repl_update_lsa;	/* update target lsa */
   void *first_save_entry;	/* first save entry for the transaction */
+
+  int num_new_files;	/* # of new files created */
+  int num_new_tmp_files;	/* # of new FILE_TMP files created */
+  int num_new_tmp_tmp_files;	/* # of new FILE_TMP_TMP files created */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -1269,6 +1275,17 @@ struct log_archives
   int *unav_archives;		/* Unavailable archives          */
 };
 
+typedef struct background_archiving_info BACKGROUND_ARCHIVING_INFO;
+struct background_archiving_info
+{
+  int start_page_id;
+  int current_page_id;
+  int vdes;
+#if defined (SERVER_MODE)
+  MUTEX_T bg_archiving_mutex;
+#endif				/* SERVER_MODE */
+};
+
 /* Global structure to trantable, log buffer pool, etc */
 typedef struct log_global LOG_GLOBAL;
 struct log_global
@@ -1304,6 +1321,8 @@ struct log_global
   LOG_GROUP_COMMIT_INFO group_commit_info;
   /* remote log writer information */
   LOGWR_INFO writer_info;
+  /* background log archiving info */
+  BACKGROUND_ARCHIVING_INFO bg_archive_info;
 };
 
 /* logging statistics */
@@ -1417,6 +1436,7 @@ extern char log_Name_active[];
 extern char log_Name_info[];
 extern char log_Name_bkupinfo[];
 extern char log_Name_volinfo[];
+extern char log_Name_bg_archive[];
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (void);
@@ -1448,6 +1468,10 @@ extern LOG_PAGE *logpb_fetch_page (THREAD_ENTRY * thread_p, PAGEID pageid,
 extern LOG_PAGE *logpb_read_page_from_file (THREAD_ENTRY * thread_p,
 					    PAGEID pageid,
 					    LOG_PAGE * log_pgptr);
+extern int logpb_read_page_from_active_log (THREAD_ENTRY * thread_p,
+					    PAGEID pageid,
+					    int num_pages,
+					    LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_write_page_to_disk (THREAD_ENTRY * thread_p,
 					   LOG_PAGE * log_pgptr,
 					   PAGEID logical_pageid);
@@ -1476,11 +1500,11 @@ extern void logpb_append_data (THREAD_ENTRY * thread_p, int length,
 extern void logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
 				 const LOG_CRUMB * crumbs);
 extern void logpb_end_append (THREAD_ENTRY * thread_p);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void logpb_remove_append (LOG_TDES * tdes);
+#endif
 extern void logpb_create_log_info (const char *logname_info,
 				   const char *db_fullname);
-extern int logpb_dump_log_info (const char *logname_info,
-				int also_stdout, const char *fmt, ...);
 extern bool logpb_find_volume_info_exist (void);
 extern int logpb_create_volume_info (const char *db_fullname);
 extern int logpb_recreate_volume_info (THREAD_ENTRY * thread_p);
@@ -1500,10 +1524,11 @@ extern bool logpb_is_page_in_archive (PAGEID pageid);
 extern bool logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p);
 extern int logpb_get_archive_number (THREAD_ENTRY * thread_p, PAGEID pageid);
 extern void logpb_decache_archive_info (void);
-extern int logpb_fetch_header_from_archive (THREAD_ENTRY * thread_p,
-					    PAGEID pageid,
-					    struct log_arv_header
-					    *ret_arvhdr);
+extern LOG_PAGE *logpb_fetch_from_archive (THREAD_ENTRY * thread_p,
+                                           PAGEID pageid,
+                                           LOG_PAGE * log_pgptr,
+                                           int *ret_arv_num,
+                                           struct log_arv_header *arv_hdr);
 extern void logpb_remove_archive_logs (THREAD_ENTRY * thread_p,
 				       const char *info_reason);
 extern void logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area,
@@ -1565,6 +1590,7 @@ extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p,
 					   VOLID volid);
 extern void logpb_initialize_logging_statistics (void);
 extern void logpb_flush_pages_background (THREAD_ENTRY * thread_p);
+extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
 void xlogpb_dump_stat (FILE * outfp);
 
 extern void logpb_dump (FILE * out_fp);
@@ -1620,8 +1646,10 @@ extern TRAN_STATE log_2pc_prepare (THREAD_ENTRY * thread_p);
 extern int log_2pc_recovery_prepared (THREAD_ENTRY * thread_p, int gtrids[],
 				      int size);
 extern int log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int log_2pc_append_recv_ack (THREAD_ENTRY * thread_p,
 				    int particp_index);
+#endif
 extern TRAN_STATE log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p,
 					       int gtrid);
 extern void log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks,
@@ -1675,9 +1703,11 @@ extern void logtb_free_tran_index_with_undo_lsa (THREAD_ENTRY * thread_p,
 extern void logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_find_tran_index (THREAD_ENTRY * thread_p, TRANID trid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int logtb_find_tran_index_host_pid (THREAD_ENTRY * thread_p,
 					   const char *host_name,
 					   int process_id);
+#endif
 extern TRANID logtb_find_tranid (int tran_index);
 extern TRANID logtb_find_current_tranid (THREAD_ENTRY * thread_p);
 extern void logtb_set_client_ids_all (LOG_CLIENTIDS * client, int client_type,
@@ -1686,8 +1716,10 @@ extern void logtb_set_client_ids_all (LOG_CLIENTIDS * client, int client_type,
 				      const char *program_name,
 				      const char *login_name,
 				      const char *host_name, int process_id);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int logtb_count_clients_with_type (THREAD_ENTRY * thread_p,
 					  int client_type);
+#endif
 extern int logtb_count_clients (THREAD_ENTRY * thread_p);
 extern int logtb_find_client_type (int tran_index);
 extern char *logtb_find_client_name (int tran_index);
@@ -1722,8 +1754,10 @@ extern void logtb_enable_replication (THREAD_ENTRY * thread_p);
 extern void logtb_disable_update (THREAD_ENTRY * thread_p);
 extern void logtb_enable_update (THREAD_ENTRY * thread_p);
 extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int logtb_set_current_tran_index (THREAD_ENTRY * thread_p,
 					 int tran_index);
+#endif
 extern int logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p);
 extern LOG_LSA *log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY *
 							thread_p);

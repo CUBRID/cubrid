@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -126,8 +126,6 @@ typedef enum help_commands
   DB_HELP_STATISTICS,
   DB_HELP_RENAME,
 
-  DB_HELP_REGISTER,
-  DB_HELP_DROPLDB,
   DB_HELP_EXCLUDE,
   DB_HELP_USE,
   DB_HELP_PROXY,
@@ -186,28 +184,36 @@ extern void help_free_names (char **names);
 /* Class/Instance printing */
 
 extern void help_fprint_obj (FILE * fp, MOP obj);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void help_print_obj (MOP obj);
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* Command help */
 
 extern COMMAND_HELP *help_command_name (const char *name);
 extern COMMAND_HELP *help_command (DB_HELP_COMMAND cmd);
 extern void help_free_command (COMMAND_HELP * help);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void help_print_command (DB_HELP_COMMAND cmd);
 extern void help_fprint_command (FILE * fp, DB_HELP_COMMAND cmd);
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* Class name help */
 
 extern char **help_class_names (const char *qualifier);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern char **help_base_class_names (void);
+extern void help_print_class_names (const char *qualifier);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern void help_free_class_names (char **names);
 extern void help_fprint_class_names (FILE * fp, const char *qualifier);
-extern void help_print_class_names (const char *qualifier);
 
 /* Misc help */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void help_fprint_all_classes (FILE * fp);
 extern void help_fprint_resident_instances (FILE * fp, MOP op);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern void help_print_info (const char *command, FILE * fpp);
 extern int help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen);
 

@@ -124,6 +124,7 @@ rel_build_number (void)
   return build_number;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * rel_copyright_header - Copyright header from the message catalog
  *   return: static char string
@@ -153,6 +154,7 @@ rel_copyright_body (void)
 			 MSGCAT_GENERAL_COPYRIGHT_BODY);
   return (name) ? name : copyright_body;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * rel_disk_compatible - Disk compatibility level
@@ -396,12 +398,15 @@ rel_is_log_compatible (const char *writer_rel_str, const char *reader_rel_str)
  */
 static COMPATIBILITY_RULE net_compatibility_rules[] = {
   /* zero indicates the end of the table */
-  {2.1, 2.0, REL_BACKWARD_COMPATIBLE, NULL},
+  {2.2, 2.1, REL_FORWARD_COMPATIBLE, NULL},
+  {2.1, 2.2, REL_BACKWARD_COMPATIBLE, NULL},
+  /*{2.1, 2.0, REL_FORWARD_COMPATIBLE, NULL},*/
+  /*{2.0, 2.1, REL_BACKWARD_COMPATIBLE, NULL},*/
   {0.0, 0.0, REL_NOT_COMPATIBLE, NULL}
 };
 
 /*
- * rel_is_net_compatibile - Compare the release strings from
+ * rel_is_net_compatible - Compare the release strings from
  *                          the server and client to determine compatibility.
  * return: REL_COMPATIBILITY
  *  REL_NOT_COMPATIBLE if the client and the server are not compatible
@@ -417,8 +422,8 @@ static COMPATIBILITY_RULE net_compatibility_rules[] = {
  *   server_rel_str(in): server's release string
  */
 REL_COMPATIBILITY
-rel_is_net_compatibile (const char *client_rel_str,
-			const char *server_rel_str)
+rel_is_net_compatible (const char *client_rel_str,
+		       const char *server_rel_str)
 {
   COMPATIBILITY_RULE *rule;
   REL_COMPATIBILITY compat;
@@ -461,8 +466,8 @@ rel_is_net_compatibile (const char *client_rel_str,
   for (rule = &net_compatibility_rules[0];
        rule->base_level != 0 && compat == REL_NOT_COMPATIBLE; rule++)
     {
-      if (rule->base_level == client_level
-	  && rule->apply_level == server_level)
+      if (rule->base_level == server_level
+	  && rule->apply_level == client_level)
 	{
 	  compat = rule->compatibility;
 	}

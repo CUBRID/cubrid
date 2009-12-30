@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -64,6 +64,7 @@ struct table_info
  */
 typedef enum
 { UNBOX_AS_VALUE, UNBOX_AS_TABLE } UNBOX;
+
 typedef struct symbol_info SYMBOL_INFO;
 struct symbol_info
 {
@@ -76,9 +77,8 @@ struct symbol_info
   VAL_LIST *listfile_value_list;
   UNBOX listfile_unbox;
   int listfile_attr_offset;
+  PT_NODE *query_node;		/* the query node that is being translated */
 };
-
-
 
 typedef struct aggregate_info AGGREGATE_INFO;
 struct aggregate_info
@@ -94,48 +94,38 @@ struct aggregate_info
 };
 
 typedef enum
-{ NOT_COMPATIBLE = 0, LDB_COMPATIBLE, ENTITY_COMPATIBLE,
+{ NOT_COMPATIBLE = 0, ENTITY_COMPATIBLE,
   NOT_COMPATIBLE_NO_RESET
 } COMPATIBLE_LEVEL;
 typedef struct
 {
   UINTPTR spec_id;		/* id of entity to be compatible with */
-  const char *ldb;		/* ldb to be compatible with */
   PT_NODE *spec;		/* to allow for recursion on subquery */
   PT_NODE *root;		/* the root of this compatibility test */
   COMPATIBLE_LEVEL compatible;	/* how compatible is the sub-tree */
 } COMPATIBLE_INFO;
-
 
 extern char *query_plan_dump_filename;
 extern FILE *query_plan_dump_fp;
 
 extern REGU_VARIABLE *pt_to_regu_variable (PARSER_CONTEXT * p, PT_NODE * node,
 					   UNBOX unbox);
-
-
 extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * p, PT_NODE * node);
 extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * p,
 					    PT_NODE * node, int *argp);
-
 extern XASL_NODE *parser_generate_xasl (PARSER_CONTEXT * p, PT_NODE * node);
-
 extern PARSER_VARCHAR *pt_print_node_value (PARSER_CONTEXT * parser,
 					    const PT_NODE * val);
-
 extern TP_DOMAIN *pt_xasl_type_enum_to_domain (const PT_TYPE_ENUM type);
 extern TP_DOMAIN *pt_xasl_node_to_domain (PARSER_CONTEXT * parser,
 					  const PT_NODE * node);
-
 extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser,
 				     PT_NODE * select_list, PT_NODE * from,
 				     PT_NODE * class_specs, PT_NODE * where,
 				     PT_NODE * using_index, int server_op);
-
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node,
 				     int has_uniques,
 				     PT_NODE * non_null_attrs);
-
 extern XASL_NODE *pt_to_update_xasl (PARSER_CONTEXT * parser,
 				     PT_NODE * statement,
 				     PT_NODE * select_names,
@@ -144,74 +134,65 @@ extern XASL_NODE *pt_to_update_xasl (PARSER_CONTEXT * parser,
 				     PT_NODE * const_vals, int no_valis,
 				     int no_consts, int has_uniques,
 				     PT_NODE ** non_null_attrs);
-
 extern XASL_NODE *pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
-
 extern XASL_NODE *pt_append_xasl (XASL_NODE * to, XASL_NODE * from_list);
-
 extern XASL_NODE *pt_remove_xasl (XASL_NODE * xasl_list, XASL_NODE * remove);
-
 extern ACCESS_SPEC_TYPE *pt_to_spec_list (PARSER_CONTEXT * parser,
 					  PT_NODE * flat,
 					  PT_NODE * where_key_part,
 					  PT_NODE * where_part,
 					  QO_XASL_INDEX_INFO * indx,
 					  PT_NODE * src_derived_table);
-
 extern XASL_NODE *pt_to_fetch_proc (PARSER_CONTEXT * parser, PT_NODE * spec,
 				    PT_NODE * pred);
-
 extern VAL_LIST *pt_to_val_list (PARSER_CONTEXT * parser, UINTPTR id);
-
 extern XASL_NODE *pt_skeleton_buildlist_proc (PARSER_CONTEXT * parser,
 					      PT_NODE * namelist);
-
 extern XASL_NODE *ptqo_to_scan_proc (PARSER_CONTEXT * parser,
 				     XASL_NODE * xasl,
 				     PT_NODE * spec,
 				     PT_NODE * where_key_part,
 				     PT_NODE * where_part,
 				     QO_XASL_INDEX_INFO * info);
-
 extern XASL_NODE *ptqo_to_list_scan_proc (PARSER_CONTEXT * parser,
 					  XASL_NODE * xasl,
 					  PROC_TYPE type,
 					  XASL_NODE * listfile,
 					  PT_NODE * namelist,
 					  PT_NODE * pred, int *poslist);
-
 extern SORT_LIST *ptqo_single_orderby (PARSER_CONTEXT * parser);
-
 extern XASL_NODE *ptqo_to_merge_list_proc (PARSER_CONTEXT * parser,
 					   XASL_NODE * left,
 					   XASL_NODE * right,
 					   JOIN_TYPE join_type);
 extern void pt_set_dptr (PARSER_CONTEXT * parser, PT_NODE * node,
 			 XASL_NODE * xasl, UINTPTR id);
-
-
 extern PT_NODE *pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * tree,
 				  void *arg, int *continue_walk);
-
-
 extern int pt_is_single_tuple (PARSER_CONTEXT * parser,
 			       PT_NODE * select_node);
-
-
 extern QFILE_TUPLE_VALUE_POSITION pt_to_pos_descr (PARSER_CONTEXT * parser,
 						   PT_NODE * node,
 						   PT_NODE * root);
-
-
-
 extern void pt_set_numbering_node_etc (PARSER_CONTEXT * parser,
 				       PT_NODE * node_list,
 				       DB_VALUE ** instnum_valp,
 				       DB_VALUE ** ordbynum_valp);
-
-
+extern void pt_set_level_node_etc (PARSER_CONTEXT * parser,
+				   PT_NODE * node_list,
+				   DB_VALUE ** level_valp);
+extern void pt_set_isleaf_node_etc (PARSER_CONTEXT * parser,
+				    PT_NODE * node_list,
+				    DB_VALUE ** isleaf_valp);
+extern void pt_set_iscycle_node_etc (PARSER_CONTEXT * parser,
+				     PT_NODE * node_list,
+				     DB_VALUE ** iscycle_valp);
+extern void pt_set_connect_by_operator_node_etc (PARSER_CONTEXT * parser,
+						 PT_NODE * node_list,
+						 XASL_NODE * xasl);
+extern void pt_set_qprior_node_etc (PARSER_CONTEXT * parser,
+				    PT_NODE * node_list, XASL_NODE * xasl);
 extern XASL_NODE *pt_gen_simple_merge_plan (PARSER_CONTEXT * parser,
 					    XASL_NODE * xasl,
 					    PT_NODE * select_node);
-
 #endif /* _XASL_GENERATION_H_ */

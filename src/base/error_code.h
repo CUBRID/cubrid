@@ -1208,6 +1208,14 @@
 
 #define ER_FILE_TABLE_OVERFLOW                      -976
 
-#define ER_LAST_ERROR                               -977
+#define ER_LOG_CHECKPOINT_STARTED                   -977
+#define ER_LOG_CHECKPOINT_FINISHED                  -978
+
+#define	ER_QPROC_CYCLE_DETECTED			    -979
+#define ER_MNT_WAITING_THREAD                       -980
+
+#define ER_LAST_ERROR                               -981
+
+/* must be appended error code to compat/dbi_compat.h */
 
 #endif /* _ERROR_CODE_H_ */

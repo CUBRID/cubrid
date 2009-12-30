@@ -1,9 +1,0 @@
-task:DIAG_DEL:getdiagdata
-status:DIAG_DEL:success
-note:DIAG_DEL:none
-cas_mon:DIAG_DEL:start
-cas_mon_req:DIAG_DEL:0
-cas_mon_act_session:DIAG_DEL:0
-cas_mon_tran:DIAG_DEL:0
-cas_mon:DIAG_DEL:end
-END__DIAGDATA

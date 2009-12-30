@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -112,7 +112,9 @@ extern void area_final (void);
 /* area definition */
 extern AREA *area_create (const char *name, size_t element_size,
 			  size_t alloc_count, bool need_gc);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void area_destroy (AREA * area);
+#endif
 
 /* allocation functions */
 extern void *area_alloc (AREA * area);

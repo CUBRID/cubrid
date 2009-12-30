@@ -186,6 +186,7 @@
 	if(res.next()) {
 	  OUT.count = res.getInt(1);
 	} else {
+          res.close();
 	  throw 'impl_2: no select resultset';
 	}
 	res.close();
@@ -259,6 +260,7 @@
 	if(res.next()) {
 		OUT.count = res.getInt(1);
 	} else {
+		res.close();
 		throw 'impl_5: no result';
 	}
 	res.close();
@@ -270,6 +272,7 @@
 	if(res.next()) {
 		OUT.obj_id = 'object_' + IN.table_id + '' + res.getInt(1);
 	} else {
+		res.close();
 		throw 'impl_6: no result';
 	}
 	res.close();
@@ -282,6 +285,7 @@
 	if(res.next()) {
 		OUT.cment_no = res.getInt(1);
 	} else {
+		res.close();
 		throw 'impl_7: no result';
 	}
 	res.close();
@@ -324,9 +328,10 @@
 	stmt.setString(4, '' + IN.obj_id);
 	
 	n = stmt.executeUpdate();
-	
+	OUT.errmsg = null;
 	if(n != 1) {
-		throw 'updateCommentObjForNewComment semantic error';
+		//throw 'updateCommentObjForNewComment semantic error';
+		OUT.errmsg = 'updateCommentObjForNewComment semantic error';
 	}
 </frame-script>
 <frame-script impl="impl_10">

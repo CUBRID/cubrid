@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -73,9 +73,11 @@ extern int tran_2pc_recovery_prepared (int gtrids[], int size);
 extern int tran_2pc_attach_global_tran (int gtrid);
 extern int tran_2pc_prepare_global_tran (int gtrid);
 extern int tran_start_topop (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int tran_end_topop (LOG_RESULT_TOPOP result);
-extern void tran_free_savepoint_list (void);
 extern int tran_get_savepoints (DB_NAMELIST ** savepoint_list);
+#endif
+extern void tran_free_savepoint_list (void);
 extern int tran_savepoint (const char *savept_name, bool user);
 extern int tran_abort_upto_savepoint (const char *savepoint_name);
 extern int tran_internal_abort_upto_savepoint (const char *savepoint_name,

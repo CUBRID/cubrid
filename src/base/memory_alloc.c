@@ -210,6 +210,7 @@ db_ostk_alloc (HL_HEAPID heap_id, size_t size)
   return ptr;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * db_ostk_free () - call free function for the ostk heap
  *   return:
@@ -224,6 +225,7 @@ db_ostk_free (HL_HEAPID heap_id, void *ptr)
       hl_ostk_free (heap_id, ptr);
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * db_create_private_heap () - create a thread specific heap

@@ -21,11 +21,12 @@
              </attributes>
            </instance_attributes>
            <operations>
-             <op id="cubrid_DB_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_1_stop" name="stop" timeout="30" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_1_monitor_master" name="monitor" interval="10" timeout="30" start_delay="3" role="Master" disabled="false"/>
-             <op id="cubrid_DB_1_monitor_started" name="monitor" interval="5" timeout="30" start_delay="3" disabled="false" role="Started"/>
-             <op id="cubrid_DB_1_monitor_slave" name="monitor" interval="15" timeout="30" start_delay="3" role="Slave" disabled="false"/>
+             <op id="cubrid_DB_1_start" name="start" timeout="60" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_stop" name="stop" timeout="300" start_delay="0" disabled="false" role="Started"/>
+			 <op id="cubrid_DB_1_promote" name="promote" timeout="180" start_delay="0" disabled="false" role="Master"/>
+             <op id="cubrid_DB_1_monitor_master" name="monitor" interval="10" timeout="600" start_delay="3" role="Master" disabled="false"/>
+             <op id="cubrid_DB_1_monitor_started" name="monitor" interval="5" timeout="600" start_delay="3" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_monitor_slave" name="monitor" interval="15" timeout="600" start_delay="3" role="Slave" disabled="false"/>
            </operations>
            <meta_attributes id="cubrid_DB_1:0_meta_attrs">
              <attributes/>
@@ -57,11 +58,12 @@
              </attributes>
            </instance_attributes>
            <operations>
-             <op id="cubrid_DB_2_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_2_stop" name="stop" timeout="30" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_2_monitor_master" name="monitor" interval="10" timeout="30" start_delay="3" role="Master" disabled="false"/>
-             <op id="cubrid_DB_2_monitor_started" name="monitor" interval="5" timeout="30" start_delay="3" disabled="false" role="Started"/>
-             <op id="cubrid_DB_2_monitor_slave" name="monitor" interval="15" timeout="30" start_delay="3" role="Slave" disabled="false"/>
+             <op id="cubrid_DB_2_start" name="start" timeout="60" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_stop" name="stop" timeout="300" start_delay="0" disabled="false" role="Started"/>
+			 <op id="cubrid_DB_2_promote" name="promote" timeout="180" start_delay="0" disabled="false" role="Master"/>
+             <op id="cubrid_DB_2_monitor_master" name="monitor" interval="10" timeout="600" start_delay="3" role="Master" disabled="false"/>
+             <op id="cubrid_DB_2_monitor_started" name="monitor" interval="5" timeout="600" start_delay="3" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_monitor_slave" name="monitor" interval="15" timeout="600" start_delay="3" role="Slave" disabled="false"/>
            </operations>
            <meta_attributes id="cubrid_DB_2:0_meta_attrs">
              <attributes/>
@@ -91,9 +93,9 @@
              </attributes>
            </instance_attributes>
            <operations>
-             <op id="cubrid_DB_1_0_lw_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_1_0_lw_1_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_1_0_lw_1_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_0_lw_1_start" name="start" timeout="60" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_0_lw_1_stop" name="stop" timeout="90" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_0_lw_1_monitor" name="monitor" interval="10" timeout="600" start_delay="10" disabled="false" role="Started"/>
            </operations>
          </primitive>
          <primitive id="cubrid_DB_1_0_la_1" class="ocf" type="cubrid-la" provider="heartbeat">
@@ -106,9 +108,9 @@
                <nvpair id="cubrid_DB_1_0_la_1_user" name="user" value="CUBRID_USER"/> </attributes>
            </instance_attributes>
            <operations>
-             <op id="cubrid_DB_1_0_la_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_1_0_la_1_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_1_0_la_1_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_0_la_1_start" name="start" timeout="60" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_0_la_1_stop" name="stop" timeout="90" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_0_la_1_monitor" name="monitor" interval="10" timeout="600" start_delay="10" disabled="false" role="Started"/>
            </operations>
          </primitive>
          <instance_attributes id="group_cubrid_DB_1_0_ldup_1">
@@ -135,9 +137,9 @@
              </attributes>
            </instance_attributes>
            <operations>
-             <op id="cubrid_DB_1_1_lw_0_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_1_1_lw_0_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_1_1_lw_0_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_1_lw_0_start" name="start" timeout="60" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_1_lw_0_stop" name="stop" timeout="90" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_1_lw_0_monitor" name="monitor" interval="10" timeout="600" start_delay="10" disabled="false" role="Started"/>
            </operations>
          </primitive>
          <primitive id="cubrid_DB_1_1_la_0" class="ocf" type="cubrid-la" provider="heartbeat">
@@ -151,9 +153,9 @@
              </attributes>
            </instance_attributes>
            <operations>
-             <op id="cubrid_DB_1_1_la_0_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_1_1_la_0_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_1_1_la_0_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_1_la_0_start" name="start" timeout="60" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_1_la_0_stop" name="stop" timeout="90" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_1_1_la_0_monitor" name="monitor" interval="10" timeout="600" start_delay="10" disabled="false" role="Started"/>
            </operations>
          </primitive>
          <instance_attributes id="group_cubrid_DB_1_1_ldup_0">
@@ -180,9 +182,9 @@
              </attributes>
            </instance_attributes>
            <operations>
-             <op id="cubrid_DB_2_0_lw_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_2_0_lw_1_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_2_0_lw_1_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_0_lw_1_start" name="start" timeout="60" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_0_lw_1_stop" name="stop" timeout="90" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_0_lw_1_monitor" name="monitor" interval="10" timeout="600" start_delay="10" disabled="false" role="Started"/>
            </operations>
          </primitive>
          <primitive id="cubrid_DB_2_0_la_1" class="ocf" type="cubrid-la" provider="heartbeat">
@@ -195,9 +197,9 @@
                <nvpair id="cubrid_DB_2_0_la_1_user" name="user" value="CUBRID_USER"/> </attributes>
            </instance_attributes>
            <operations>
-             <op id="cubrid_DB_2_0_la_1_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_2_0_la_1_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_2_0_la_1_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_0_la_1_start" name="start" timeout="60" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_0_la_1_stop" name="stop" timeout="90" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_0_la_1_monitor" name="monitor" interval="10" timeout="600" start_delay="10" disabled="false" role="Started"/>
            </operations>
          </primitive>
          <instance_attributes id="group_cubrid_DB_2_0_ldup_1">
@@ -224,9 +226,9 @@
              </attributes>
            </instance_attributes>
            <operations>
-             <op id="cubrid_DB_2_1_lw_0_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_2_1_lw_0_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_2_1_lw_0_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_1_lw_0_start" name="start" timeout="60" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_1_lw_0_stop" name="stop" timeout="90" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_1_lw_0_monitor" name="monitor" interval="10" timeout="600" start_delay="10" disabled="false" role="Started"/>
            </operations>
          </primitive>
          <primitive id="cubrid_DB_2_1_la_0" class="ocf" type="cubrid-la" provider="heartbeat">
@@ -240,9 +242,9 @@
              </attributes>
            </instance_attributes>
            <operations>
-             <op id="cubrid_DB_2_1_la_0_start" name="start" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_2_1_la_0_stop" name="stop" timeout="15" start_delay="0" disabled="false" role="Started"/>
-             <op id="cubrid_DB_2_1_la_0_monitor" name="monitor" interval="10" timeout="30" start_delay="10" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_1_la_0_start" name="start" timeout="60" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_1_la_0_stop" name="stop" timeout="90" start_delay="0" disabled="false" role="Started"/>
+             <op id="cubrid_DB_2_1_la_0_monitor" name="monitor" interval="10" timeout="600" start_delay="10" disabled="false" role="Started"/>
            </operations>
          </primitive>
          <instance_attributes id="group_cubrid_DB_2_1_ldup_0">

@@ -66,7 +66,6 @@ static int process_request (SOCKET sock_fd, T_NET_BUF * net_buf,
 			    T_REQ_INFO * req_info);
 
 #if defined(WINDOWS)
-#define EXECUTABLE_BIN_DIR "bin"
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
 #endif
 
@@ -345,6 +344,7 @@ main (int argc, char *argv[])
 
 	t = ut_uchar2ipstr ((unsigned char *) (&client_ip_addr));
 	cas_log_write_and_end (0, false, "CLIENT IP %s", t);
+	strncpy (as_info->clt_ip_addr, t, 19);
 	setsockopt (client_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
 		    sizeof (one));
 
@@ -376,7 +376,9 @@ main (int argc, char *argv[])
 	else
 	  {
 	    char *db_err_msg = NULL, *url;
+	    struct timeval cas_start_time;
 
+	    gettimeofday (&cas_start_time, NULL);
 	    db_name = read_buf;
 
 	    db_user = db_name + SRV_CON_DBNAME_SIZE;
@@ -418,18 +420,16 @@ main (int argc, char *argv[])
 
 		goto error1;
 	      }
-	    cas_log_write (0, true, "connect db %s user %s url %s", db_name,
-			   db_user, url);
+	    cas_log_write_and_end (0, false, "connect db %s user %s url %s",
+				   db_name, db_user, url);
 
 	    ux_set_default_setting ();
 
 	    as_info->auto_commit_mode = FALSE;
 	    cas_log_write_and_end (0, false, "DEFAULT isolation_level %d, "
-				   "lock_timeout %d, auto_commit %s",
+				   "lock_timeout %d",
 				   cas_default_isolation_level,
-				   cas_default_lock_timeout,
-				   as_info->auto_commit_mode ? "true"
-				   : "false");
+				   cas_default_lock_timeout);
 
 	    as_info->cur_keep_con = KEEP_CON_OFF;
 	    broker_info[BROKER_INFO_KEEP_CONNECTION] =
@@ -537,7 +537,7 @@ main (int argc, char *argv[])
 
 	    if (shm_appl->access_log == ON)
 	      {
-		cas_access_log (&tran_start_time, shm_as_index,
+		cas_access_log (&cas_start_time, shm_as_index,
 				client_ip_addr);
 	      }
 
@@ -550,6 +550,7 @@ main (int argc, char *argv[])
 	as_info->close_flag = 1;
 #endif
 
+	as_info->clt_ip_addr[0] = '\0';
 	cas_log_write_and_end (0, true, "disconnect");
 	cas_log_write2 (sql_log2_get_filename ());
 	cas_log_write_and_end (0, false, "STATE idle");
@@ -1127,8 +1128,12 @@ restart_is_needed (void)
 	return 0;
     }
 #else /* WINDOWS */
-  if (as_info->psize >
-      MAX (psize_at_start * 2, shm_appl->appl_server_max_size))
+  int max_process_size;
+
+  max_process_size = (shm_appl->appl_server_max_size > 0) ?
+    shm_appl->appl_server_max_size : (psize_at_start * 2);
+
+  if (as_info->psize > max_process_size)
     {
       return 1;
     }
@@ -1144,19 +1149,19 @@ restart_is_needed (void)
 LONG WINAPI
 CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
 {
+  TCHAR DumpFile[MAX_PATH] = { 0, };
   TCHAR DumpPath[MAX_PATH] = { 0, };
   SYSTEMTIME SystemTime;
   HANDLE FileHandle;
 
   GetLocalTime (&SystemTime);
 
-  sprintf (DumpPath, "%s\\%s\\%d-%d-%d %d_%d_%d.dmp",
-	   get_cubrid_home (),
-	   EXECUTABLE_BIN_DIR,
+  sprintf (DumpFile, "%d-%d-%d %d_%d_%d.dmp",
 	   SystemTime.wYear,
 	   SystemTime.wMonth,
 	   SystemTime.wDay,
 	   SystemTime.wHour, SystemTime.wMinute, SystemTime.wSecond);
+  envvar_bindir_file (DumpPath, MAX_PATH, DumpFile);
 
   FileHandle = CreateFile (DumpPath,
 			   GENERIC_WRITE,

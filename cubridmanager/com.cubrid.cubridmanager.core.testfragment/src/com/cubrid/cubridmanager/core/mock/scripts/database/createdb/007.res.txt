@@ -1,5 +1,0 @@
-task:createdb
-status:failure
-note:Couldn't create database.
-Database "demodb" already exists.
-

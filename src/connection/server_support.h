@@ -45,7 +45,9 @@ extern void *css_master_thread (void);
 extern unsigned int css_send_error_to_client (CSS_CONN_ENTRY * conn,
 					      unsigned int eid, char *buffer,
 					      int buffer_size);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int css_number_of_clients (void);
+#endif
 extern unsigned int
 css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid,
 			 char *buffer, int buffer_size);
@@ -86,7 +88,9 @@ extern int css_init (char *server_name, int server_name_length,
 		     int connection_id);
 extern char *css_add_client_version_string (THREAD_ENTRY * thread_p,
 					    const char *version_string);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern char *css_get_client_version_string (void);
+#endif
 extern void css_cleanup_server_queues (unsigned int eid);
 extern void css_end_server_request (CSS_CONN_ENTRY * conn);
 

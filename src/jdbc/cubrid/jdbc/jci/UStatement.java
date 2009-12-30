@@ -2340,13 +2340,7 @@ public class UStatement
     UError localError;
 
     localError = new UError();
-    if (bindParameter == null)
-    {
-      localError.setErrorCode(UErrorCode.ER_IS_CLOSED);
-      errorHandler = localError;
-      return;
-    }
-    if (index < 0 || index >= parameterNumber)
+    if (bindParameter == null || index < 0 || index >= parameterNumber)
     {
       localError.setErrorCode(UErrorCode.ER_BIND_INDEX);
       errorHandler = localError;

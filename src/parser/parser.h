@@ -237,8 +237,9 @@ extern "C"
 			      PT_NODE * dest,
 			      PT_TYPE_ENUM desired_type,
 			      PT_NODE * elem_type_list);
-  PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg,
-				 PT_TYPE_ENUM new_type, int p, int s);
+  extern PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser,
+					PT_NODE * arg, PT_TYPE_ENUM new_type,
+					int p, int s);
 
   extern PT_NODE *pt_bind_type_from_dbval (PARSER_CONTEXT *, PT_NODE *,
 					   DB_VALUE *);
@@ -315,7 +316,6 @@ extern "C"
   extern const char *pt_show_function (FUNC_TYPE c);
   extern const char *pt_show_misc_type (PT_MISC_TYPE p);	/* return  misc_type */
   extern const char *pt_show_node_type (PT_NODE * p);	/*return node_type */
-  extern const char *pt_show_oid_type (DB_OBJECT_ID_TYPE t);
   extern const char *pt_show_priv (PT_PRIV_TYPE t);
 
   extern PT_NODE *pt_lambda_with_arg (PARSER_CONTEXT * parser_ptr,
@@ -327,9 +327,6 @@ extern "C"
   extern PT_NODE *pt_lambda (PARSER_CONTEXT * parser_ptr,
 			     PT_NODE * expression,
 			     PT_NODE * name, PT_NODE * named_expression);
-
-  extern const char *pt_in_same_ldb (PARSER_CONTEXT * parser, PT_NODE * node,
-				     PT_NODE * spec);
 
   extern PT_NODE *pt_resolve_names (PARSER_CONTEXT * parser,
 				    PT_NODE * statement,
@@ -403,6 +400,8 @@ extern "C"
   extern int pt_resolved (const PT_NODE * expr);
   extern bool pt_false_where (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern PT_NODE *pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where);
+  extern PT_NODE *pt_where_type_keep_true (PARSER_CONTEXT * parser,
+					   PT_NODE * where);
   extern bool pt_false_search_condition (PARSER_CONTEXT * parser,
 					 const PT_NODE * statement);
   extern const char *mq_generate_name (PARSER_CONTEXT * parser,
@@ -497,6 +496,9 @@ extern "C"
   extern PT_NODE *pt_is_aggregate_node_post (PARSER_CONTEXT * parser,
 					     PT_NODE * tree, void *arg,
 					     int *continue_walk);
+  extern PT_NODE *pt_is_pseudocolumn_node (PARSER_CONTEXT * parser,
+					   PT_NODE * tree, void *arg,
+					   int *continue_walk);
   extern int pt_is_ddl_statement (const PT_NODE * node);
   extern int pt_is_method_call (PT_NODE * node);
   extern int pt_is_attr (PT_NODE * node);
@@ -542,6 +544,11 @@ extern "C"
   extern const char *pt_string_part (const PT_NODE * tbl);
   extern PT_NODE *pt_values_part (const PT_NODE * insert_statement);
   extern PT_NODE *pt_where_part (const PT_NODE * stmt);
+
+  extern void pt_split_join_preds (PARSER_CONTEXT * parser,
+				   PT_NODE * predicates,
+				   PT_NODE ** join_part,
+				   PT_NODE ** after_cb_filter);
 
   extern void pt_set_node_etc (PT_NODE * node, const void *etc);
   extern void pt_null_etc (PT_NODE * node);

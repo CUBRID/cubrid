@@ -218,7 +218,7 @@ static const int MAX_UNLINK_RETRY = 15;
 static const int DAEMON_NOT_SPAWNED = -1;
 static const int DAEMON_NOT_AVAILABLE = -2;
 
-static const char DAEMON_NAME[] = "bin/dl_daemon";
+static const char DAEMON_NAME[] = "dl_daemon";
 
 /* number of handles to allocate per extent */
 static const int HANDLES_PER_EXTENT = 10;
@@ -904,25 +904,12 @@ dl_find_daemon (DYNAMIC_LOADER * this_)
 
   assert (this_ != NULL);
 
-  path = (char *) envvar_root ();
+  path = this_->daemon.daemon_name;
+  envvar_bindir_file (path, PATH_MAX, DAEMON_NAME);
+
   if (path && path[0] != '\0')
     {
-      int buf_len;
-      char *buf = this_->daemon.daemon_name;
-      int buf_size = sizeof (this_->daemon.daemon_name);
-
-      strncpy (buf, path, buf_size);
-      buf_len = strnlen (buf, buf_size);
-
-      if (buf_len && buf[buf_len - 1] != '/' && buf_len < buf_size - 1)
-	{
-	  buf[buf_len] = '/';
-	  buf[buf_len + 1] = '\0';
-	  buf_len++;
-	}
-
-      strncat (buf, DAEMON_NAME, buf_size - buf_len);
-      if (access (buf, X_OK) == 0)
+      if (access (path, X_OK) == 0)
 	{
 	  return;
 	}

@@ -31,6 +31,7 @@
 #include "cas_common.h"
 #include "broker_log_time.h"
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int
 log_time_make (char *str, T_LOG_TIME * ltm)
 {
@@ -63,3 +64,4 @@ log_time_diff (T_LOG_TIME * t1, T_LOG_TIME * t2)
   diff += (t2->msec - t1->msec);
   return diff;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */

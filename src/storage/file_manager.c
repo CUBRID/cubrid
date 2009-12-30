@@ -312,7 +312,8 @@ static INT16 file_find_goodvol (THREAD_ENTRY * thread_p, INT16 hint_volid,
 				DISK_SETPAGE_TYPE setpage_type,
 				FILE_TYPE file_type);
 static int file_new_declare_as_old_internal (THREAD_ENTRY * thread_p,
-					     const VFID * vfid, int tran_id);
+					     const VFID * vfid, int tran_id,
+					     bool hold_csect);
 static DISK_ISVALID file_isnew_with_type (THREAD_ENTRY * thread_p,
 					  const VFID * vfid,
 					  FILE_TYPE * file_type);
@@ -752,25 +753,25 @@ file_cache_newfile (THREAD_ENTRY * thread_p, const VFID * vfid,
   FILE_NEWFILE *entry;
   FILE_NEW_FILES_HASH_KEY key;
   int tran_index;
+  LOG_TDES *tdes;
 
   /* If the entry already exists (page reused), then remove it
      from the list and allocate a new entry. */
   VFID_COPY (&key.vfid, vfid);
   key.tran_index = tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) !=
-      NO_ERROR)
+  if (csect_enter (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
     {
       return NULL;
     }
-  entry = (FILE_NEWFILE *) mht_get (file_Tracker->newfiles.mht, &key);
-  csect_exit (CSECT_FILE_NEWFILE);
 
+  entry = (FILE_NEWFILE *) mht_get (file_Tracker->newfiles.mht, &key);
   if (entry != NULL)
     {
-      if (file_new_declare_as_old_internal (thread_p, vfid, entry->tran_index)
-	  != NO_ERROR)
+      if (file_new_declare_as_old_internal (thread_p, vfid, entry->tran_index,
+					    true) != NO_ERROR)
 	{
+	  csect_exit (CSECT_FILE_NEWFILE);
 	  return NULL;
 	}
     }
@@ -778,6 +779,7 @@ file_cache_newfile (THREAD_ENTRY * thread_p, const VFID * vfid,
   entry = (FILE_NEWFILE *) malloc (sizeof (*entry));
   if (entry == NULL)
     {
+      csect_exit (CSECT_FILE_NEWFILE);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      sizeof (*entry));
       return NULL;
@@ -787,12 +789,6 @@ file_cache_newfile (THREAD_ENTRY * thread_p, const VFID * vfid,
   entry->tran_index = tran_index;
   entry->file_type = file_type;
   entry->has_undolog = false;
-
-  if (csect_enter (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
-    {
-      free_and_init (entry);
-      return NULL;
-    }
 
   /* Add the entry to the list and hash table */
   entry->next = NULL;
@@ -816,6 +812,17 @@ file_cache_newfile (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   csect_exit (CSECT_FILE_NEWFILE);
 
+  tdes = LOG_FIND_TDES (tran_index);
+  if (file_type == FILE_TMP)
+    {
+      tdes->num_new_tmp_files++;
+    }
+  else if (file_type == FILE_TMP_TMP)
+    {
+      tdes->num_new_tmp_tmp_files++;
+    }
+  tdes->num_new_files++;
+
   return vfid;
 }
 
@@ -831,13 +838,15 @@ file_cache_newfile (THREAD_ENTRY * thread_p, const VFID * vfid,
  */
 static int
 file_new_declare_as_old_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
-				  int tran_id)
+				  int tran_id, bool hold_csect)
 {
   FILE_NEWFILE *entry, *tmp;
   FILE_NEW_FILES_HASH_KEY key;
   int success = ER_FAILED;
+  LOG_TDES *tdes = NULL;
 
-  if (csect_enter (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
+  if (hold_csect == false
+      && csect_enter (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -857,12 +866,13 @@ file_new_declare_as_old_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
       entry = (FILE_NEWFILE *) mht_get (file_Tracker->newfiles.mht, &key);
     }
 
+  tdes = LOG_FIND_TDES (tran_id);
+
   while (entry != NULL)
     {
       if (entry->tran_index == tran_id
 	  && (vfid == NULL || VFID_EQ (&entry->vfid, vfid)))
 	{
-
 	  success = NO_ERROR;
 
 	  /* Remove the entry from the list */
@@ -894,6 +904,17 @@ file_new_declare_as_old_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
 	   * with the entry
 	   */
 	  (void) mht_rem (file_Tracker->newfiles.mht, tmp, NULL, NULL);
+
+	  if (tmp->file_type == FILE_TMP)
+	    {
+	      tdes->num_new_tmp_files--;
+	    }
+	  else if (tmp->file_type == FILE_TMP_TMP)
+	    {
+	      tdes->num_new_tmp_tmp_files--;
+	    }
+	  tdes->num_new_files--;
+
 	  free_and_init (tmp);
 
 	  if (vfid != NULL)
@@ -909,7 +930,10 @@ file_new_declare_as_old_internal (THREAD_ENTRY * thread_p, const VFID * vfid,
 	}
     }
 
-  csect_exit (CSECT_FILE_NEWFILE);
+  if (hold_csect == false)
+    {
+      csect_exit (CSECT_FILE_NEWFILE);
+    }
 
   return success;
 }
@@ -930,7 +954,7 @@ file_new_declare_as_old (THREAD_ENTRY * thread_p, const VFID * vfid)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  return file_new_declare_as_old_internal (thread_p, vfid, tran_index);
+  return file_new_declare_as_old_internal (thread_p, vfid, tran_index, false);
 }
 
 /*
@@ -1113,7 +1137,6 @@ file_new_destroy_all_tmp (THREAD_ENTRY * thread_p, FILE_TYPE tmp_type)
 	      || entry->file_type == FILE_EITHER_TMP)
 	  && (tmp_type == FILE_EITHER_TMP || tmp_type == entry->file_type))
 	{
-
 	  p = (FILE_NEWFILE *) malloc (sizeof (*entry));
 	  if (p == NULL)
 	    {
@@ -5455,7 +5478,6 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 			FILE_PAGE_TABLE) != NO_ERROR)
     {
       pgbuf_unfix (thread_p, from_pgptr);
-      from_pgptr = NULL;
       return NULL;
     }
 
@@ -5471,6 +5493,7 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 			    PGBUF_UNCONDITIONAL_LATCH);
       if (to_pgptr == NULL)
 	{
+	  pgbuf_unfix (thread_p, from_pgptr);
 	  return NULL;
 	}
 
@@ -5490,6 +5513,7 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
       /* to-page is the next page pointed by from-page */
       if (file_ftabvpid_next (fhdr, from_pgptr, &to_vpid) != NO_ERROR)
 	{
+	  pgbuf_unfix (thread_p, from_pgptr);
 	  return NULL;
 	}
 
@@ -5497,6 +5521,7 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 			    PGBUF_UNCONDITIONAL_LATCH);
       if (to_pgptr == NULL)
 	{
+	  pgbuf_unfix (thread_p, from_pgptr);
 	  return NULL;
 	}
 
@@ -5525,15 +5550,15 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   if (file_find_limits (to_pgptr, allocset, &to_outptr, &to_aid_ptr,
 			FILE_PAGE_TABLE) != NO_ERROR)
     {
+      pgbuf_unfix (thread_p, from_pgptr);
       pgbuf_unfix (thread_p, to_pgptr);
-      to_pgptr = NULL;
       return NULL;
     }
-  length = 0;
 
   /* Before we move anything to the to_page, we need to log whatever is there
      just in case of a crash.. we will need to recover the shift... */
 
+  length = 0;
   addr.pgptr = to_pgptr;
   addr.offset = CAST_BUFLEN ((char *) to_outptr - (char *) to_pgptr);
   log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr,
@@ -5557,13 +5582,13 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	  chain = (FILE_FTAB_CHAIN *) (from_pgptr + FILE_FTAB_CHAIN_OFFSET);
 	  from_vpid = chain->prev_ftbvpid;
 	  pgbuf_unfix (thread_p, from_pgptr);
-	  from_pgptr = NULL;
 
 	  from_pgptr = pgbuf_fix (thread_p, &from_vpid, OLD_PAGE,
 				  PGBUF_LATCH_WRITE,
 				  PGBUF_UNCONDITIONAL_LATCH);
 	  if (from_pgptr == NULL)
 	    {
+	      pgbuf_unfix (thread_p, to_pgptr);
 	      return NULL;
 	    }
 
@@ -5573,12 +5598,11 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	   * Note that we are shifting from the right.. so from_outptr is to the
 	   * left, that is the beginning of portion...
 	   */
-	  if (file_find_limits
-	      (from_pgptr, allocset, &from_outptr, &from_aid_ptr,
-	       FILE_PAGE_TABLE) != NO_ERROR)
+	  if (file_find_limits (from_pgptr, allocset, &from_outptr,
+				&from_aid_ptr, FILE_PAGE_TABLE) != NO_ERROR)
 	    {
 	      pgbuf_unfix (thread_p, from_pgptr);
-	      from_pgptr = NULL;
+	      pgbuf_unfix (thread_p, to_pgptr);
 	      return NULL;
 	    }
 	}
@@ -5607,12 +5631,12 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	  chain = (FILE_FTAB_CHAIN *) (to_pgptr + FILE_FTAB_CHAIN_OFFSET);
 	  to_vpid = chain->prev_ftbvpid;
 	  pgbuf_set_dirty (thread_p, to_pgptr, FREE);
-	  to_pgptr = NULL;
 
 	  to_pgptr = pgbuf_fix (thread_p, &to_vpid, OLD_PAGE,
 				PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (to_pgptr == NULL)
 	    {
+	      pgbuf_unfix (thread_p, from_pgptr);
 	      return NULL;
 	    }
 	  /*
@@ -5624,8 +5648,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	  if (file_find_limits (to_pgptr, allocset, &to_outptr, &to_aid_ptr,
 				FILE_PAGE_TABLE) != NO_ERROR)
 	    {
+	      pgbuf_unfix (thread_p, from_pgptr);
 	      pgbuf_unfix (thread_p, to_pgptr);
-	      to_pgptr = NULL;
 	      return NULL;
 	    }
 
@@ -5658,6 +5682,7 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
   pgbuf_unfix (thread_p, from_pgptr);
   from_pgptr = NULL;
+
   if (length != 0)
     {
       addr.pgptr = to_pgptr;

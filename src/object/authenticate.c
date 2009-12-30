@@ -5331,6 +5331,7 @@ au_user_name (void)
   return name;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * au_user_password - This returns the unencrypted password for the active user.
  *    return: error code
@@ -5388,7 +5389,7 @@ au_user_password (char *buffer)
 
   return error;
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * CLASS ACCESSING
@@ -7390,6 +7391,7 @@ au_dump_user (MOP user, FILE * fp)
    */
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * au_print_class_auth() - Dumps authorization information for
  *                         a particular class.
@@ -7471,6 +7473,7 @@ au_print_class_auth (MOP class_mop)
       free_and_init (query);
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * au_dump_to_file() - Dump all authorization information including

@@ -1340,13 +1340,5 @@ dbt_change_query_spec (DB_CTMPL * def,
 int
 dbt_set_object_id (DB_CTMPL * def, DB_NAMELIST * id_list)
 {
-  int error = NO_ERROR;
-
-  CHECK_CONNECT_ERROR ();
-  CHECK_2ARGS_ERROR (def, id_list);
-  CHECK_MODIFICATION_ERROR ();
-
-  error = smt_set_object_id (def, id_list);
-
-  return (error);
+  return NO_ERROR;
 }

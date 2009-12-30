@@ -18,6 +18,16 @@
 #
 
 
-demodir = @DEMO_DIR@
+demodir = @CUBRID_DEMODIR@
 demo_DATA = demodb_objects demodb_schema
 demo_SCRIPTS =  make_cubrid_demo.sh
+
+databasedir = ${localstatedir}
+database_DATA = # EMPTY
+
+if DISABLE_CUBRIDENV
+install-data-hook :
+	@SED@ -i \
+	  -e 's|-z "$$CUBRID"|! -d @CUBRID_DEMODIR@|g' \
+	  -e 's|$$CUBRID|@CUBRID_DEMODIR@|g' $(DESTDIR)$(demodir)/$(demo_SCRIPTS)
+endif

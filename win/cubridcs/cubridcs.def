@@ -172,6 +172,7 @@ EXPORTS
     db_get_tran_settings
     db_get_type_name
     db_get_host_connected
+    db_get_ha_server_state
     db_grant
     db_identifier
     db_include_oid
@@ -314,12 +315,19 @@ EXPORTS
     dbt_put
     dirname
     envvar_get
+    envvar_root
+    envvar_bindir_file
+    envvar_confdir_file
+    envvar_vardir_file
+    envvar_logdir_file
+    envvar_tmpdir_file
     er_clear
     er_final
     er_init
     er_set
     getopt_long
     ini_findsec
+    ini_getfloat
     ini_gethex
     ini_getint
     ini_getsecname
@@ -361,6 +369,11 @@ EXPORTS
     plandump
     unloaddb
     csql
+    paramdump
+    changemode
+    copylogdb
+    applylogdb
+    statdump
 ;
 ; libesql reference's functions
 ;

@@ -132,10 +132,19 @@
 #define LOG_IS_NO_NEED_TO_SET_LSA(RCVI, PGPTR) \
    ((RCVI) == RVDK_LINK_PERM_VOLEXT && pgbuf_is_lsa_temporary(PGPTR))
 
-   /*
-    * The maximum number of times to try to undo a log record.
-    * It is only used by the log_undo_rec_restartable() function.
-    */
+#define LOG_TOPOP_STACK_INIT_SIZE 1024
+
+typedef struct log_topop_range LOG_TOPOP_RANGE;
+struct log_topop_range
+{
+  LOG_LSA start_lsa;
+  LOG_LSA end_lsa;
+};
+
+/*
+ * The maximum number of times to try to undo a log record.
+ * It is only used by the log_undo_rec_restartable() function.
+ */
 static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 
 /* true: Skip logging, false: Don't skip logging */
@@ -175,10 +184,10 @@ static bool log_can_skip_redo_logging (LOG_RCVINDEX rcvindex,
 				       LOG_DATA_ADDR * addr);
 static void log_append_commit_postpone (THREAD_ENTRY * thread_p,
 					LOG_TDES * tdes,
-					LOG_LSA * start_posplsa);
+					LOG_LSA * start_postpone_lsa);
 static void log_append_topope_commit_postpone (THREAD_ENTRY * thread_p,
 					       LOG_TDES * tdes,
-					       LOG_LSA * start_posplsa);
+					       LOG_LSA * start_postpone_lsa);
 static void log_append_topope_commit_client_loose_ends (THREAD_ENTRY *
 							thread_p,
 							LOG_TDES * tdes);
@@ -328,10 +337,11 @@ static int log_undo_rec_restartable (THREAD_ENTRY * thread_p,
 				     LOG_RCVINDEX rcvindex, LOG_RCV * rcv);
 static void log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			  const LOG_LSA * upto_lsa_ptr);
-static void log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-				     LOG_LSA * start_posplsa,
-				     LOG_LSA * nxtop_lastparent_lsa,
-				     LOG_LSA * nxtop_result_lsa);
+static int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+				    LOG_LSA * start_postpone_lsa,
+				    LOG_TOPOP_RANGE ** out_nxtop_range_stack);
+static int log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
+				LOG_PAGE * log_pgptr);
 static void log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa);
 static bool log_realloc_data_ptr (int *data_length, int length);
 static TRAN_STATE
@@ -779,7 +789,6 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 {
   LOG_PAGE *loghdr_pgptr;	/* Pointer to log header */
   const char *catmsg;
-  char *catmsg_dup;
   int error_code;
   VOLID volid1, volid2;
 
@@ -916,19 +925,12 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 
   catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
 			   MSGCAT_SET_LOG, MSGCAT_LOG_LOGINFO_ACTIVE);
-  catmsg_dup = strdup (catmsg);
-  if (catmsg_dup != NULL)
+  if (catmsg == NULL)
     {
-      error_code = logpb_dump_log_info (log_Name_info, false, catmsg_dup,
-					log_Name_active, npages);
-      free_and_init (catmsg_dup);
+      catmsg = "ACTIVE: %s %d pages\n";
     }
-  else
-    {
-      /* NOTE: catmsg..may get corrupted if the function calls the catalog */
-      error_code = logpb_dump_log_info (log_Name_info, false, catmsg,
-					log_Name_active, npages);
-    }
+  error_code = log_dump_log_info (log_Name_info, false, catmsg,
+				  log_Name_active, npages);
   if (error_code == NO_ERROR || error_code == ER_LOG_MOUNT_FAIL)
     {
       volid1 = logpb_add_volume (NULL, LOG_DBLOG_BKUPINFO_VOLID,
@@ -1453,6 +1455,39 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 
   logpb_initialize_logging_statistics ();
   log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+
+  if (PRM_LOG_BACKGROUND_ARCHIVING)
+    {
+      int vdes = NULL_VOLDES;
+      BACKGROUND_ARCHIVING_INFO *bg_arv_info;
+
+      bg_arv_info = &log_Gl.bg_archive_info;
+      bg_arv_info->start_page_id = NULL_PAGEID;
+      bg_arv_info->current_page_id = NULL_PAGEID;
+
+      bg_arv_info->vdes = fileio_format (thread_p, log_Db_fullname,
+					 log_Name_bg_archive,
+					 LOG_DBLOG_BG_ARCHIVE_VOLID,
+					 log_Gl.hdr.npages + 1, false, false,
+					 false);
+      if (bg_arv_info->vdes != NULL_VOLDES)
+	{
+	  bg_arv_info->start_page_id = log_Gl.hdr.nxarv_pageid;
+	  bg_arv_info->current_page_id = log_Gl.hdr.nxarv_pageid;
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"Unable to create temporary archive log %s\n",
+			log_Name_bg_archive);
+	}
+
+      if (bg_arv_info->vdes != NULL_VOLDES)
+	{
+	  (void) logpb_background_archiving (thread_p);
+	}
+    }
+
   LOG_CS_EXIT ();
 
   return error_code;
@@ -1481,6 +1516,7 @@ error:
 
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_update_compatibility_and_release -
  *
@@ -1506,6 +1542,7 @@ log_update_compatibility_and_release (THREAD_ENTRY * thread_p,
 
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 /*
@@ -1569,9 +1606,6 @@ log_abort_all_active_transaction (THREAD_ENTRY * thread_p)
   CSS_JOB_ENTRY *job_entry = NULL;
   int *abort_thread_running;
   static int already_called = 0;
-#if defined(CSECT_STATISTICS)
-  extern void csect_dump_statistics (void);
-#endif /* CSECT_STATISTICS */
 
   if (already_called)
     {
@@ -1637,9 +1671,6 @@ loop:
 	    {
 	      free_and_init (abort_thread_running);
 	    }
-#if defined(CSECT_STATISTICS)
-	  csect_dump_statistics ();
-#endif /* CSECT_STATISTICS */
 	  _exit (0);
 	}
       goto loop;
@@ -1789,11 +1820,17 @@ log_final (THREAD_ENTRY * thread_p)
 
   logtb_undefine_trantable (thread_p);
 
+  if (PRM_LOG_BACKGROUND_ARCHIVING)
+    {
+      if (log_Gl.bg_archive_info.vdes != NULL_VOLDES)
+	{
+	  fileio_dismount (log_Gl.bg_archive_info.vdes);
+	  log_Gl.bg_archive_info.vdes = NULL_VOLDES;
+	}
+    }
 
   /* Dismount the active log volume */
-
   fileio_dismount (log_Gl.append.vdes);
-
   log_Gl.append.vdes = NULL_VOLDES;
 
   free_and_init (log_Gl.loghdr_pgptr);
@@ -3254,6 +3291,7 @@ log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 			      num_redo_crumbs, undo_crumbs, redo_crumbs);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_append_undo_recdes - LOG UNDO (BEFORE) RECORD DESCRIPTOR
  *
@@ -3271,6 +3309,7 @@ log_append_undo_recdes (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   log_append_undo_recdes2 (thread_p, rcvindex, addr->vfid, addr->pgptr,
 			   addr->offset, recdes);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 log_append_undo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
@@ -3298,6 +3337,7 @@ log_append_undo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_append_redo_recdes - LOG REDO (AFTER) RECORD DESCRIPTOR
  *
@@ -3315,6 +3355,7 @@ log_append_redo_recdes (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   log_append_redo_recdes2 (thread_p, rcvindex, addr->vfid, addr->pgptr,
 			   addr->offset, recdes);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 log_append_redo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
@@ -4429,6 +4470,9 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
   LSA_COPY (&tdes->savept_lsa, &tdes->tail_lsa);
 
   LOG_CS_EXIT ();
+
+  mnt_tran_savepoints (thread_p);
+
   return &tdes->savept_lsa;
 }
 
@@ -4640,6 +4684,8 @@ log_start_system_op (THREAD_ENTRY * thread_p)
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].client_posp_lsa);
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].client_undo_lsa);
 
+  mnt_tran_start_topops (thread_p);
+
   return &tdes->topops.stack[tdes->topops.last].lastparent_lsa;
 }
 
@@ -4815,6 +4861,8 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
     {
       csect_exit_critical_section (&tdes->cs_topop);
     }
+
+  mnt_tran_end_topops (thread_p);
 
   return state;
 }
@@ -5037,7 +5085,7 @@ log_can_skip_redo_logging (LOG_RCVINDEX rcvindex,
  */
 static void
 log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-			    LOG_LSA * start_posplsa)
+			    LOG_LSA * start_postpone_lsa)
 {
   struct log_start_postpone *start_posp;	/* Start postpone actions */
 
@@ -5049,7 +5097,7 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*start_posp));
 
   start_posp = (struct log_start_postpone *) LOG_APPEND_PTR ();
-  LSA_COPY (&start_posp->posp_lsa, start_posplsa);
+  LSA_COPY (&start_posp->posp_lsa, start_postpone_lsa);
 
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*start_posp));
 
@@ -5078,7 +5126,7 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  */
 static void
 log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-				   LOG_LSA * start_posplsa)
+				   LOG_LSA * start_postpone_lsa)
 {
   struct log_topope_start_postpone *top_start_posp;	/* Start postpone
 							 * of top system
@@ -5094,7 +5142,7 @@ log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   top_start_posp = (struct log_topope_start_postpone *) LOG_APPEND_PTR ();
   LSA_COPY (&top_start_posp->lastparent_lsa,
 	    &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
-  LSA_COPY (&top_start_posp->posp_lsa, start_posplsa);
+  LSA_COPY (&top_start_posp->posp_lsa, start_postpone_lsa);
 
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*top_start_posp));
 
@@ -5640,7 +5688,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
 
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
-  (void) file_new_destroy_all_tmp (thread_p, FILE_EITHER_TMP);
+  if (tdes->num_new_tmp_files + tdes->num_new_tmp_tmp_files > 0)
+    {
+      (void) file_new_destroy_all_tmp (thread_p, FILE_EITHER_TMP);
+    }
+  assert (tdes->num_new_tmp_files == 0 && tdes->num_new_tmp_tmp_files == 0);
 
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
@@ -5662,7 +5714,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 	  tdes->first_save_entry = NULL;
 	}
 
-      (void) file_new_declare_as_old (thread_p, NULL);
+      if (tdes->num_new_files > 0)
+	{
+	  (void) file_new_declare_as_old (thread_p, NULL);
+	}
+      assert (tdes->num_new_files == 0);
 
       log_free_modifed_class_list (thread_p, tdes, false);
 
@@ -5712,7 +5768,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 	  tdes->first_save_entry = NULL;
 	}
 
-      (void) file_new_declare_as_old (thread_p, NULL);
+      if (tdes->num_new_files > 0)
+	{
+	  (void) file_new_declare_as_old (thread_p, NULL);
+	}
+      assert (tdes->num_new_files == 0);
 
       if (retain_lock != true)
 	{
@@ -5762,20 +5822,29 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, true);
 
   tdes->state = TRAN_UNACTIVE_ABORTED;
+
   /*
    * Delete only temporary files created on volumes with temporary purposes
    * Temporary files created on volumes with permananet purposes
    * (e.g., generic) are cleaned by undo records.
    */
+  if (tdes->num_new_tmp_tmp_files > 0)
+    {
+      (void) file_new_destroy_all_tmp (thread_p, FILE_TMP_TMP);
+    }
+  assert (tdes->num_new_tmp_tmp_files == 0);
 
-  (void) file_new_destroy_all_tmp (thread_p, FILE_TMP_TMP);
   (void) file_typecache_clear ();
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
       /* Transaction updated data */
       log_rollback (thread_p, tdes, NULL);
 
-      (void) file_new_declare_as_old (thread_p, NULL);
+      if (tdes->num_new_files > 0)
+	{
+	  (void) file_new_declare_as_old (thread_p, NULL);
+	}
+      assert (tdes->num_new_files == 0);
 
       log_free_modifed_class_list (thread_p, tdes, true);
 
@@ -5801,7 +5870,11 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       /*
        * Transaction did not update anything or we are not logging
        */
-      (void) file_new_declare_as_old (thread_p, NULL);
+      if (tdes->num_new_files > 0)
+	{
+	  (void) file_new_declare_as_old (thread_p, NULL);
+	}
+      assert (tdes->num_new_files == 0);
 
       if (tdes->first_save_entry != NULL)
 	{
@@ -5955,6 +6028,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       logpb_decache_archive_info ();
       LOG_CS_EXIT ();
 
+#if 0				/* temporarily disabled */
       /*
        * Checkpoint to flush data pages. This will alleviate the use of
        * the log archive in the event of a system crash.
@@ -5966,6 +6040,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
 #else /* SERVER_MODE */
       (void) logpb_checkpoint (thread_p);
 #endif /* SERVER_MODE */
+#endif
     }
 
 #if defined (CUBRID_DEBUG)
@@ -5990,6 +6065,8 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
 	  logpb_flush_header (thread_p);
 	}
     }
+
+  mnt_tran_commits (thread_p);
 
   return state;
 }
@@ -6115,6 +6192,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
       logpb_decache_archive_info ();
       LOG_CS_EXIT ();
 
+#if 0				/* temporarily disabled */
       /*
        * Checkpoint to flush datapages. This will alleviate the use of the log
        * archive in the event of a system crash. The log archive may be needed
@@ -6125,6 +6203,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
 #else /* SERVER_MODE */
       (void) logpb_checkpoint (thread_p);
 #endif /* SERVER_MODE */
+#endif
     }
 
 #if defined (CUBRID_DEBUG)
@@ -6133,6 +6212,8 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
       pgbuf_dump_if_any_fixed ();
     }
 #endif /* CUBRID_DEBUG */
+
+  mnt_tran_rollbacks (thread_p);
 
   return state;
 }
@@ -6821,12 +6902,11 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_LSA *end_rangelsa;	/* Stop looking for cleint records
 				 * at this address
 				 */
-  LOG_LSA nxtop_lastparent_lsa;	/* Start address of a top system
-				 * operation
-				 */
-  LOG_LSA nxtop_result_lsa;	/* End address of top system
-				 * operation
-				 */
+
+  LOG_TOPOP_RANGE nxtop_array[LOG_TOPOP_STACK_INIT_SIZE];
+  LOG_TOPOP_RANGE *nxtop_stack = NULL;
+  LOG_TOPOP_RANGE *nxtop_range = NULL;
+  int nxtop_count = 0;
   bool isdone;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -6835,26 +6915,32 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LSA_COPY (&end_clientlsa, &tdes->tail_lsa);
   LSA_COPY (&next_start_clientlsa, next_lsa);
 
+  nxtop_stack = nxtop_array;
+  nxtop_count = log_get_next_nested_top (thread_p, tdes, next_lsa,
+					 &nxtop_stack);
+
   while (!LSA_ISNULL (&next_start_clientlsa))
     {
       LSA_COPY (&start_rangelsa, &next_start_clientlsa);
-      log_get_next_nested_top (thread_p, tdes, &start_rangelsa,
-			       &nxtop_lastparent_lsa, &nxtop_result_lsa);
-      if (!LSA_ISNULL (&nxtop_lastparent_lsa))
+
+      if (nxtop_count > 0)
 	{
-	  if (LSA_GE (&nxtop_lastparent_lsa, &start_rangelsa))
+	  nxtop_count--;
+	  nxtop_range = &(nxtop_stack[nxtop_count]);
+
+	  if (LSA_LT (&start_rangelsa, &(nxtop_range->start_lsa)))
 	    {
-	      end_rangelsa = &nxtop_lastparent_lsa;
-	      LSA_COPY (&next_start_clientlsa, &nxtop_result_lsa);
+	      end_rangelsa = &(nxtop_range->start_lsa);
+	      LSA_COPY (&next_start_clientlsa, &(nxtop_range->end_lsa));
 	    }
-	  else if (LSA_EQ (&next_start_clientlsa, &nxtop_result_lsa))
+	  else if (LSA_EQ (&start_rangelsa, &(nxtop_range->end_lsa)))
 	    {
 	      end_rangelsa = &end_clientlsa;
 	      LSA_SET_NULL (&next_start_clientlsa);
 	    }
 	  else
 	    {
-	      LSA_COPY (&next_start_clientlsa, &nxtop_result_lsa);
+	      LSA_COPY (&next_start_clientlsa, &(nxtop_range->end_lsa));
 	      continue;
 	    }
 	}
@@ -6863,7 +6949,6 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	  end_rangelsa = &end_clientlsa;
 	  LSA_SET_NULL (&next_start_clientlsa);
 	}
-
 
       /*
        * GO FORWARD from the next_lsa (if any) or from the address indicated in
@@ -7022,7 +7107,7 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			  log_area = log_alloc_client_copy_area (area_length);
 			  if (log_area == NULL)
 			    {
-			      return NULL;
+			      goto error;
 			    }
 			  area_length =
 			    (log_area->length - sizeof (*manylogs) +
@@ -7131,6 +7216,11 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	}
     }
 
+  if (nxtop_stack != nxtop_array && nxtop_stack != NULL)
+    {
+      free_and_init (nxtop_stack);
+    }
+
   return log_area;
 
 error:
@@ -7138,6 +7228,11 @@ error:
   /* The following is done due to a potential loop */
   LSA_SET_NULL (next_lsa);
   LSA_SET_NULL (&forward_lsa);
+
+  if (nxtop_stack != nxtop_array && nxtop_stack != NULL)
+    {
+      free_and_init (nxtop_stack);
+    }
 
   return NULL;
 }
@@ -7667,7 +7762,7 @@ log_repl_data_dump (FILE * out_fp, int length, void *data)
 
   ptr = data;
   ptr = or_unpack_string_nocopy (ptr, &class_name);
-  ptr = or_unpack_value (ptr, &value);
+  ptr = or_unpack_mem_value (ptr, &value);
 
   parser = parser_create_parser ();
   if (parser != NULL)
@@ -9663,121 +9758,146 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
- * log_get_nxnested_top - Get next top system action
+ * log_get_next_nested_top - Get top system action list
  *
- * return: nothing
+ * return: top system action count
  *
  *   tdes(in): Transaction descriptor
- *   start_posplsa(in): Where to start looking for postpone records
- *   nxtop_lastparent_lsa(in/out): Set as a side effect to starting address
- *                        of next top system action.
- *   nxtop_result_lsa(in/out): Set as a side effect to ending address of next
- *                        top system action.
+ *   start_postpone_lsa(in): Where to start looking for postpone records
+ *   out_nxtop_range_stack(in/out): Set as a side effect to topop range stack.
  *
  * NOTE: Find a nested top system operation which start after
- *              start_posplsa and before end_posplsa.
+ *              start_postpone_lsa and before tdes->tail_lsa.
  */
-static void
+static int
 log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-			 LOG_LSA * start_posplsa,
-			 LOG_LSA * nxtop_lastparent_lsa,
-			 LOG_LSA * nxtop_result_lsa)
+			 LOG_LSA * start_postpone_lsa,
+			 LOG_TOPOP_RANGE ** out_nxtop_range_stack)
 {
   struct log_topop_result *top_result;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   struct log_rec *log_rec;
-  LOG_LSA log_lsa;
-
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-
-  LSA_SET_NULL (nxtop_result_lsa);
-  LSA_SET_NULL (nxtop_lastparent_lsa);
+  LOG_LSA tmp_log_lsa;
+  LOG_LSA top_result_lsa;
+  LOG_LSA prev_last_parent_lsa;
+  LOG_TOPOP_RANGE *nxtop_stack;
+  LOG_TOPOP_RANGE *prev_nxtop_stack;
+  int nxtop_count = 0;
+  int nxtop_stack_size = 0;
+  PAGEID last_fetch_page_id = NULL_PAGEID;
 
   if (LSA_ISNULL (&tdes->tail_topresult_lsa)
-      || !LSA_GT (&tdes->tail_topresult_lsa, start_posplsa))
+      || !LSA_GT (&tdes->tail_topresult_lsa, start_postpone_lsa))
     {
-      return;
+      return 0;
     }
 
-  /*
-   * There may be some nested top system operations that are committed
-   * and aborted in the desired region
-   */
+  LSA_COPY (&top_result_lsa, &tdes->tail_topresult_lsa);
+  LSA_SET_NULL (&prev_last_parent_lsa);
 
-  LSA_COPY (&log_lsa, &tdes->tail_topresult_lsa);
-
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  nxtop_stack = *out_nxtop_range_stack;
+  nxtop_stack_size = LOG_TOPOP_STACK_INIT_SIZE;
 
   do
     {
-      /*
-       * fetch the result of top system operation to find out its starting
-       * point
-       */
-
-
-      if (LSA_ISNULL (nxtop_result_lsa)
-	  || (log_lsa.pageid < nxtop_lastparent_lsa->pageid
-	      || (log_lsa.pageid == nxtop_lastparent_lsa->pageid
-		  && log_lsa.offset < nxtop_lastparent_lsa->offset)))
+      if (nxtop_count >= nxtop_stack_size)
 	{
-	  LSA_COPY (nxtop_result_lsa, &log_lsa);
+	  prev_nxtop_stack = nxtop_stack;
+
+	  nxtop_stack_size *= 2;
+	  nxtop_stack = (LOG_TOPOP_RANGE *) malloc (nxtop_stack_size *
+						    sizeof (LOG_TOPOP_RANGE));
+	  if (nxtop_stack == NULL)
+	    {
+	      if (prev_nxtop_stack != *out_nxtop_range_stack)
+		{
+		  free_and_init (prev_nxtop_stack);
+		}
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+				 "log_get_next_nested_top");
+	      return 0;
+	    }
+
+	  memcpy (nxtop_stack, prev_nxtop_stack,
+		  (nxtop_stack_size / 2) * sizeof (LOG_TOPOP_RANGE));
+
+	  if (prev_nxtop_stack != *out_nxtop_range_stack)
+	    {
+	      free_and_init (prev_nxtop_stack);
+	    }
 	}
 
-      if (logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr) == NULL)
+      if (last_fetch_page_id != top_result_lsa.pageid)
 	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "log_get_nxnested_top");
-	  return;
+	  if (logpb_fetch_page (thread_p, top_result_lsa.pageid,
+				log_pgptr) == NULL)
+	    {
+	      if (nxtop_stack != *out_nxtop_range_stack)
+		{
+		  free_and_init (nxtop_stack);
+		}
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+				 "log_get_next_nested_top");
+	      return 0;
+	    }
 	}
 
       log_rec =
-	(struct log_rec *) ((char *) log_pgptr->area + log_lsa.offset);
+	(struct log_rec *) ((char *) log_pgptr->area + top_result_lsa.offset);
+
       if (log_rec->type == LOG_COMMIT_TOPOPE
 	  || log_rec->type == LOG_ABORT_TOPOPE)
 	{
 	  /* Read the DATA HEADER */
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa,
+	  LSA_COPY (&tmp_log_lsa, &top_result_lsa);
+	  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), &tmp_log_lsa,
 			      log_pgptr);
-	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_result),
-					    &log_lsa, log_pgptr);
-	  top_result = ((struct log_topop_result *) ((char *) log_pgptr->area
-						     + log_lsa.offset));
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
+					    sizeof (struct log_topop_result),
+					    &tmp_log_lsa, log_pgptr);
+	  top_result = (struct log_topop_result *) ((char *) log_pgptr->area
+						    + tmp_log_lsa.offset);
+	  last_fetch_page_id = tmp_log_lsa.pageid;
 
 	  /*
-	   * SEE ABOVE comment about resetting addresses. That is, nested against
-	   * sequential.
+	   * There may be some nested top system operations that are committed
+	   * and aborted in the desired region
 	   */
-
-	  if (LSA_ISNULL (nxtop_lastparent_lsa)
-	      || LSA_LT (&top_result->lastparent_lsa, nxtop_lastparent_lsa))
+	  if (LSA_ISNULL (&prev_last_parent_lsa)
+	      || LSA_LE (&top_result_lsa, &prev_last_parent_lsa))
 	    {
-	      LSA_COPY (nxtop_lastparent_lsa, &top_result->lastparent_lsa);
+	      LSA_COPY (&(nxtop_stack[nxtop_count].start_lsa),
+			&top_result->lastparent_lsa);
+	      LSA_COPY (&(nxtop_stack[nxtop_count].end_lsa), &top_result_lsa);
+	      nxtop_count++;
+
+	      LSA_COPY (&prev_last_parent_lsa, &top_result->lastparent_lsa);
 	    }
 
-	  /* Find address of previous nested top system operations */
-	  LSA_COPY (&log_lsa, &top_result->prv_topresult_lsa);
+	  LSA_COPY (&top_result_lsa, &top_result->prv_topresult_lsa);
 	}
       else
 	{
-#if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE,
-			"log_get_nextnested_top: ** SYSTEM ERROR"
-			" Bad address to top system operation result %d|%d\n",
-			log_lsa.pageid, log_lsa.offset);
-#endif /* CUBRID_DEBUG */
-	  LSA_SET_NULL (nxtop_result_lsa);
-	  LSA_SET_NULL (nxtop_lastparent_lsa);
-	  log_lsa.pageid = NULL_PAGEID;
+	  if (nxtop_stack != *out_nxtop_range_stack)
+	    {
+	      free_and_init (nxtop_stack);
+	    }
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "log_get_next_nested_top");
+	  return 0;
 	}
     }
-  while (log_lsa.pageid != NULL_PAGEID
-	 && (log_lsa.pageid > start_posplsa->pageid
-	     || (log_lsa.pageid == start_posplsa->pageid
-		 && log_lsa.offset > start_posplsa->offset)));
+  while (top_result_lsa.pageid != NULL_PAGEID
+	 && LSA_GT (&top_result_lsa, start_postpone_lsa));
 
-  return;
+  *out_nxtop_range_stack = nxtop_stack;
+
+  return nxtop_count;
 }
 
 /*
@@ -9804,410 +9924,416 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  */
 void
 log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-		 LOG_LSA * start_posplsa, LOG_RECTYPE posp_type,
+		 LOG_LSA * start_postpone_lsa, LOG_RECTYPE postpone_type,
 		 bool skip_head)
 {
-  LOG_LSA end_posplsa;		/* The last postpone record of
+  LOG_LSA end_postpone_lsa;	/* The last postpone record of
 				 * transaction cannot be after this
 				 * address
 				 */
-  LOG_LSA start_rangelsa;	/* start looking for posptpone records
+  LOG_LSA start_seek_lsa;	/* start looking for posptpone records
 				 * at this address
 				 */
-  LOG_LSA *end_rangelsa;	/* Stop looking for postpone records
+  LOG_LSA *end_seek_lsa;	/* Stop looking for postpone records
 				 * at this address
 				 */
-  LOG_LSA next_start_posplsa;	/* Next address to look for postpone
+  LOG_LSA next_start_seek_lsa;	/* Next address to look for postpone
 				 * records. Usually the end of a top
 				 * system operation.
 				 */
-  LOG_LSA nxtop_lastparent_lsa;	/* Start address of a top system
-				 * operation
-				 */
-  LOG_LSA nxtop_result_lsa;	/* End address of top system operation */
-  LOG_LSA ref_lsa;		/* The address of a postpone record    */
-  LOG_LSA forward_lsa;		/* Next log-record to check            */
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
-  LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where LSA is
-				 * located
-				 */
   LOG_LSA log_lsa;
-  struct log_rec *log_rec;	/* A log record                        */
+  LOG_LSA forward_lsa;
+
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *aligned_log_pgbuf;
+  LOG_PAGE *log_pgptr = NULL;
+  struct log_rec *log_rec;
+  bool isdone;
+
+  LOG_TOPOP_RANGE nxtop_array[LOG_TOPOP_STACK_INIT_SIZE];
+  LOG_TOPOP_RANGE *nxtop_stack = NULL;
+  LOG_TOPOP_RANGE *nxtop_range = NULL;
+  int nxtop_count = 0;
+
+  if (LSA_ISNULL (start_postpone_lsa))
+    {
+      return;
+    }
+
+  if (skip_head == false)
+    {
+      /* Log the transaction as committed with postpone actions and then
+       * start executing the postpone actions.
+       */
+      if (postpone_type == LOG_COMMIT_WITH_POSTPONE)
+	{
+	  log_append_commit_postpone (thread_p, tdes, start_postpone_lsa);
+	}
+      else
+	{
+	  log_append_topope_commit_postpone (thread_p, tdes,
+					     start_postpone_lsa);
+	}
+    }
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  LSA_COPY (&end_postpone_lsa, &tdes->tail_lsa);
+  LSA_COPY (&next_start_seek_lsa, start_postpone_lsa);
+
+  nxtop_stack = nxtop_array;
+  nxtop_count = log_get_next_nested_top (thread_p, tdes, start_postpone_lsa,
+					 &nxtop_stack);
+
+  while (!LSA_ISNULL (&next_start_seek_lsa))
+    {
+      LSA_COPY (&start_seek_lsa, &next_start_seek_lsa);
+
+      if (nxtop_count > 0)
+	{
+	  nxtop_count--;
+	  nxtop_range = &(nxtop_stack[nxtop_count]);
+
+	  if (LSA_LT (&start_seek_lsa, &(nxtop_range->start_lsa)))
+	    {
+	      end_seek_lsa = &(nxtop_range->start_lsa);
+	      LSA_COPY (&next_start_seek_lsa, &(nxtop_range->end_lsa));
+	    }
+	  else if (LSA_EQ (&start_seek_lsa, &(nxtop_range->end_lsa)))
+	    {
+	      end_seek_lsa = &end_postpone_lsa;
+	      LSA_SET_NULL (&next_start_seek_lsa);
+	    }
+	  else
+	    {
+	      LSA_COPY (&next_start_seek_lsa, &(nxtop_range->end_lsa));
+	      continue;
+	    }
+	}
+      else
+	{
+	  end_seek_lsa = &end_postpone_lsa;
+	  LSA_SET_NULL (&next_start_seek_lsa);
+	}
+
+      /*
+       * Start doing postpone operation for this range
+       */
+
+      LSA_COPY (&forward_lsa, &start_seek_lsa);
+
+      isdone = false;
+      while (!LSA_ISNULL (&forward_lsa) && !isdone)
+	{
+	  /* Fetch the page where the postpone LSA record is located */
+	  log_lsa.pageid = forward_lsa.pageid;
+	  if ((logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr)) ==
+	      NULL)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+				 "log_do_postpone");
+	      goto end;
+	    }
+
+	  while (forward_lsa.pageid == log_lsa.pageid)
+	    {
+	      if (LSA_GT (&forward_lsa, end_seek_lsa))
+		{
+		  /* Finsh at this point */
+		  isdone = true;
+		  break;
+		}
+	      /*
+	       * If an offset is missing, it is because we archive an incomplete
+	       * log record. This log_record was completed later. Thus, we have to
+	       * find the offset by searching for the next log_record in the page
+	       */
+	      if (forward_lsa.offset == NULL_OFFSET)
+		{
+		  skip_head = false;
+		  forward_lsa.offset = log_pgptr->hdr.offset;
+		  if (forward_lsa.offset == NULL_OFFSET)
+		    {
+		      /* Continue at next pageid */
+		      if (logpb_is_page_in_archive (log_lsa.pageid))
+			{
+			  forward_lsa.pageid = log_lsa.pageid + 1;
+			}
+		      else
+			{
+			  forward_lsa.pageid = NULL_PAGEID;
+			}
+		      continue;
+		    }
+		}
+
+	      /* Find the postpone log record to execute */
+	      log_lsa.offset = forward_lsa.offset;
+	      log_rec =
+		(struct log_rec *) ((char *) log_pgptr->area +
+				    log_lsa.offset);
+
+	      /* Find the next log record in the log */
+	      LSA_COPY (&forward_lsa, &log_rec->forw_lsa);
+
+
+	      if (forward_lsa.pageid == NULL_PAGEID
+		  && logpb_is_page_in_archive (log_lsa.pageid))
+		{
+		  forward_lsa.pageid = log_lsa.pageid + 1;
+		}
+
+	      if (log_rec->trid == tdes->trid && !skip_head)
+		{
+		  switch (log_rec->type)
+		    {
+		    case LOG_CLIENT_NAME:
+		    case LOG_UNDOREDO_DATA:
+		    case LOG_DIFF_UNDOREDO_DATA:
+		    case LOG_UNDO_DATA:
+		    case LOG_REDO_DATA:
+		    case LOG_DBEXTERN_REDO_DATA:
+		    case LOG_RUN_POSTPONE:
+		    case LOG_COMPENSATE:
+		    case LOG_LCOMPENSATE:
+		    case LOG_CLIENT_USER_UNDO_DATA:
+		    case LOG_CLIENT_USER_POSTPONE_DATA:
+		    case LOG_SAVEPOINT:
+		    case LOG_DUMMY_HEAD_POSTPONE:
+		    case LOG_REPLICATION_DATA:
+		    case LOG_REPLICATION_SCHEMA:
+		    case LOG_UNLOCK_COMMIT:
+		    case LOG_UNLOCK_ABORT:
+		    case LOG_DUMMY_HA_SERVER_STATE:
+		      break;
+
+		    case LOG_POSTPONE:
+		      if (log_run_postpone_op (thread_p, &log_lsa, log_pgptr)
+			  != NO_ERROR)
+			{
+			  goto end;
+			}
+		      break;
+
+		    case LOG_WILL_COMMIT:
+		    case LOG_COMMIT_WITH_POSTPONE:
+		    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
+		    case LOG_2PC_PREPARE:
+		    case LOG_2PC_START:
+		    case LOG_2PC_COMMIT_DECISION:
+		      /* This is it */
+		      LSA_SET_NULL (&forward_lsa);
+		      break;
+
+		    case LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
+		    case LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
+		    case LOG_COMMIT_TOPOPE:
+		    case LOG_ABORT_TOPOPE:
+		      if (!LSA_EQ (&log_lsa, &start_seek_lsa))
+			{
+#if defined(CUBRID_DEBUG)
+			  er_log_debug (ARG_FILE_LINE,
+					"log_do_postpone: SYSTEM ERROR.."
+					" Bad log_rectype = %d\n (%s)."
+					" Maybe BAD POSTPONE RANGE\n",
+					log_rec->type,
+					log_to_string (log_rec->type));
+#endif /* CUBRID_DEBUG */
+			  ;	/* Nothing */
+			}
+		      break;
+
+		    case LOG_END_OF_LOG:
+		      if (forward_lsa.pageid == NULL_PAGEID
+			  && logpb_is_page_in_archive (log_lsa.pageid))
+			{
+			  forward_lsa.pageid = log_lsa.pageid + 1;
+			}
+		      break;
+
+		    case LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS:
+		    case LOG_COMMIT:
+		    case LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS:
+		    case LOG_ABORT:
+		    case LOG_RUN_NEXT_CLIENT_UNDO:
+		    case LOG_RUN_NEXT_CLIENT_POSTPONE:
+		    case LOG_START_CHKPT:
+		    case LOG_END_CHKPT:
+		    case LOG_2PC_ABORT_DECISION:
+		    case LOG_2PC_ABORT_INFORM_PARTICPS:
+		    case LOG_2PC_COMMIT_INFORM_PARTICPS:
+		    case LOG_2PC_RECV_ACK:
+		    case LOG_DUMMY_CRASH_RECOVERY:
+		    case LOG_DUMMY_FILLPAGE_FORARCHIVE:
+		    case LOG_SMALLER_LOGREC_TYPE:
+		    case LOG_LARGER_LOGREC_TYPE:
+		    default:
+#if defined(CUBRID_DEBUG)
+		      er_log_debug (ARG_FILE_LINE,
+				    "log_do_postpone: SYSTEM ERROR.."
+				    "Bad log_rectype = %d (%s)... ignored\n",
+				    log_rec->type,
+				    log_to_string (log_rec->type));
+#endif /* CUBRID_DEBUG */
+		      break;
+		    }
+		}
+
+	      /*
+	       * We can fix the lsa.pageid in the case of log_records without
+	       * forward address at this moment.
+	       */
+
+	      if (forward_lsa.offset == NULL_OFFSET
+		  && forward_lsa.pageid != NULL_PAGEID
+		  && forward_lsa.pageid < log_lsa.pageid)
+		{
+		  forward_lsa.pageid = log_lsa.pageid;
+		}
+
+	      skip_head = false;
+	    }
+	}
+    }
+
+end:
+  if (nxtop_stack != nxtop_array && nxtop_stack != NULL)
+    {
+      free_and_init (nxtop_stack);
+    }
+
+  return;
+}
+
+static int
+log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
+		     LOG_PAGE * log_pgptr)
+{
+  LOG_LSA ref_lsa;		/* The address of a postpone record    */
   struct log_redo *redo;	/* A redo log record                   */
   LOG_RCV rcv;			/* Recovery structure for execution    */
   VPID rcv_vpid;		/* Location of data to redo            */
   LOG_RCVINDEX rcvindex;	/* The recovery index                  */
   LOG_DATA_ADDR rvaddr;
   char *area = NULL;
-  bool isdone;
 
-  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  LSA_COPY (&ref_lsa, log_lsa);
 
-  if (!LSA_ISNULL (start_posplsa))
+  /* Get the DATA HEADER */
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_pgptr);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_redo),
+				    log_lsa, log_pgptr);
+
+  redo = (struct log_redo *) ((char *) log_pgptr->area + log_lsa->offset);
+
+  rcvindex = redo->data.rcvindex;
+  rcv_vpid.volid = redo->data.volid;
+  rcv_vpid.pageid = redo->data.pageid;
+  rcv.offset = redo->data.offset;
+  rcv.length = redo->length;
+
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_redo), log_lsa, log_pgptr);
+
+  if (rcv_vpid.volid == NULL_VOLID
+      || rcv_vpid.pageid == NULL_PAGEID
+      || (disk_isvalid_page (thread_p, rcv_vpid.volid,
+			     rcv_vpid.pageid) != DISK_VALID))
     {
-      /* The last posptone record cannot be after the current tail */
-      LSA_COPY (&end_posplsa, &tdes->tail_lsa);
-      LSA_COPY (&next_start_posplsa, start_posplsa);
-
-      if (skip_head == false)
-	{
-	  /* Log the transaction as committed with postpone actions and then
-	   * start executing the postpone actions.
-	   */
-	  if (posp_type == LOG_COMMIT_WITH_POSTPONE)
-	    {
-	      log_append_commit_postpone (thread_p, tdes, start_posplsa);
-	    }
-	  else
-	    {
-	      log_append_topope_commit_postpone (thread_p, tdes,
-						 start_posplsa);
-	    }
-	}
-
-      log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
-
-      while (!LSA_ISNULL (&next_start_posplsa))
-	{
-	  LSA_COPY (&start_rangelsa, &next_start_posplsa);
-	  log_get_next_nested_top (thread_p, tdes, &start_rangelsa,
-				   &nxtop_lastparent_lsa, &nxtop_result_lsa);
-	  if (!LSA_ISNULL (&nxtop_lastparent_lsa))
-	    {
-	      if (LSA_GE (&nxtop_lastparent_lsa, &start_rangelsa))
-		{
-		  end_rangelsa = &nxtop_lastparent_lsa;
-		  LSA_COPY (&next_start_posplsa, &nxtop_result_lsa);
-		}
-	      else if (LSA_EQ (&next_start_posplsa, &nxtop_result_lsa))
-		{
-		  end_rangelsa = &end_posplsa;
-		  LSA_SET_NULL (&next_start_posplsa);
-		}
-	      else
-		{
-		  LSA_COPY (&next_start_posplsa, &nxtop_result_lsa);
-		  continue;
-		}
-	    }
-	  else
-	    {
-	      end_rangelsa = &end_posplsa;
-	      LSA_SET_NULL (&next_start_posplsa);
-	    }
-
-	  /*
-	   * Start doing postpone operation for this range
-	   */
-
-	  /* GO FORWARD */
-	  LSA_COPY (&forward_lsa, &start_rangelsa);
-
-	  isdone = false;
-	  while (!LSA_ISNULL (&forward_lsa) && !isdone)
-	    {
-	      /* Fetch the page where the postpone LSA record is located */
-	      log_lsa.pageid = forward_lsa.pageid;
-	      if ((logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr)) ==
-		  NULL)
-		{
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-				     "log_do_postpone");
-		  return;
-		}
-
-	      while (forward_lsa.pageid == log_lsa.pageid)
-		{
-		  if (LSA_GT (&forward_lsa, end_rangelsa))
-		    {
-		      /* Finsh at this point */
-		      isdone = true;
-		      break;
-		    }
-		  /*
-		   * If an offset is missing, it is because we archive an incomplete
-		   * log record. This log_record was completed later. Thus, we have to
-		   * find the offset by searching for the next log_record in the page
-		   */
-		  if (forward_lsa.offset == NULL_OFFSET)
-		    {
-		      skip_head = false;
-		      forward_lsa.offset = log_pgptr->hdr.offset;
-		      if (forward_lsa.offset == NULL_OFFSET)
-			{
-			  /* Continue at next pageid */
-			  if (logpb_is_page_in_archive (log_lsa.pageid))
-			    {
-			      forward_lsa.pageid = log_lsa.pageid + 1;
-			    }
-			  else
-			    {
-			      forward_lsa.pageid = NULL_PAGEID;
-			    }
-			  continue;
-			}
-		    }
-
-		  /* Find the postpone log record to execute */
-		  log_lsa.offset = forward_lsa.offset;
-		  log_rec =
-		    (struct log_rec *) ((char *) log_pgptr->area +
-					log_lsa.offset);
-
-		  /* Find the next log record in the log */
-		  LSA_COPY (&forward_lsa, &log_rec->forw_lsa);
-
-
-		  if (forward_lsa.pageid == NULL_PAGEID
-		      && logpb_is_page_in_archive (log_lsa.pageid))
-		    {
-		      forward_lsa.pageid = log_lsa.pageid + 1;
-		    }
-
-		  if (log_rec->trid == tdes->trid && !skip_head)
-		    {
-		      switch (log_rec->type)
-			{
-			case LOG_CLIENT_NAME:
-			case LOG_UNDOREDO_DATA:
-			case LOG_DIFF_UNDOREDO_DATA:
-			case LOG_UNDO_DATA:
-			case LOG_REDO_DATA:
-			case LOG_DBEXTERN_REDO_DATA:
-			case LOG_RUN_POSTPONE:
-			case LOG_COMPENSATE:
-			case LOG_LCOMPENSATE:
-			case LOG_CLIENT_USER_UNDO_DATA:
-			case LOG_CLIENT_USER_POSTPONE_DATA:
-			case LOG_SAVEPOINT:
-			case LOG_DUMMY_HEAD_POSTPONE:
-			case LOG_REPLICATION_DATA:
-			case LOG_REPLICATION_SCHEMA:
-			case LOG_UNLOCK_COMMIT:
-			case LOG_UNLOCK_ABORT:
-			case LOG_DUMMY_HA_SERVER_STATE:
-			  break;
-
-			case LOG_POSTPONE:
-			  /* Add a run postpone record to describe the postpone record */
-
-			  LSA_COPY (&ref_lsa, &log_lsa);
-
-			  /* Get the DATA HEADER */
-			  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec),
-					      &log_lsa, log_pgptr);
-			  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
-							    sizeof (*redo),
-							    &log_lsa,
-							    log_pgptr);
-
-			  redo = (struct log_redo *) ((char *) log_pgptr->area
-						      + log_lsa.offset);
-			  rcvindex = redo->data.rcvindex;
-			  rcv_vpid.volid = redo->data.volid;
-			  rcv_vpid.pageid = redo->data.pageid;
-			  rcv.offset = redo->data.offset;
-			  rcv.length = redo->length;
-
-			  LOG_READ_ADD_ALIGN (thread_p, sizeof (*redo),
-					      &log_lsa, log_pgptr);
-
-			  if (rcv_vpid.volid == NULL_VOLID
-			      || rcv_vpid.pageid == NULL_PAGEID
-			      || (disk_isvalid_page (thread_p, rcv_vpid.volid,
-						     rcv_vpid.pageid) !=
-				  DISK_VALID))
-			    {
-			      break;
-			    }
-
-			  rcv.pgptr = pgbuf_fix_with_retry (thread_p,
-							    &rcv_vpid,
-							    OLD_PAGE,
-							    PGBUF_LATCH_WRITE,
-							    10);
-
-			  /* GET AFTER DATA */
-
-			  /*
-			   * If data is contained in only one buffer, pass pointer
-			   * directly. Otherwise, allocate a contiguous area, copy the
-			   * data and pass this area. At the end deallocate the area
-			   */
-
-			  rvaddr.offset = rcv.offset;
-			  rvaddr.pgptr = rcv.pgptr;
-
-			  if (log_lsa.offset + rcv.length <
-			      (int) LOGAREA_SIZE)
-			    {
-			      rcv.data = (char *) log_pgptr->area
-				+ log_lsa.offset;
-			    }
-			  else
-			    {
-			      /* Need to copy the data into a contiguous area */
-			      area = (char *) malloc (rcv.length);
-			      if (area == NULL)
-				{
-				  logpb_fatal_error (thread_p, true,
-						     ARG_FILE_LINE,
-						     "log_do_postpone");
-				  if (rcv.pgptr != NULL)
-				    {
-				      pgbuf_unfix (thread_p, rcv.pgptr);
-				    }
-				  return;
-				}
-			      /* Copy the data */
-			      logpb_copy_from_log (thread_p, area, rcv.length,
-						   &log_lsa, log_pgptr);
-			      rcv.data = area;
-			    }
-
-
-			  /*
-			   * if rcvindex is RVDK_IDDEALLOC_WITH_VOLHEADER,
-			   * Don't append same log like others.
-			   * because it modify two pages (volume header & bit map)
-			   * so, we must append two WAL logs for each page later
-			   * (after below RV_fun call ends successfully)
-			   */
-			  /* Now call the REDO recovery function */
-			  if (rcv.pgptr != NULL
-			      || (rcv_vpid.volid == NULL_VOLID
-				  && rcv_vpid.pageid == NULL_PAGEID))
-			    {
-			      if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
-				{
-				  (void)
-				    disk_rv_alloctable_with_volheader
-				    (thread_p, &rcv, &ref_lsa);
-				}
-			      else
-				{
-				  /*
-				   * Write the corresponding run postpone record for
-				   * the postpone action
-				   */
-				  log_append_run_postpone (thread_p, rcvindex,
-							   &rvaddr, &rcv_vpid,
-							   rcv.length,
-							   rcv.data,
-							   &ref_lsa);
-
-				  /* Now call the REDO recovery function */
-				  (void) (*RV_fun[rcvindex].
-					  redofun) (thread_p, &rcv);
-				}
-			    }
-			  else
-			    {
-			      /*
-			       * Unable to fetch page of volume... May need media recovery
-			       * on such page
-			       */
-			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				      ER_LOG_MAYNEED_MEDIA_RECOVERY, 1,
-				      fileio_get_volume_label (rcv_vpid.
-							       volid));
-			    }
-
-			  if (area != NULL)
-			    {
-			      free_and_init (area);
-			      area = NULL;
-			    }
-			  if (rcv.pgptr != NULL)
-			    {
-			      pgbuf_unfix (thread_p, rcv.pgptr);
-			    }
-
-			  break;
-
-			case LOG_WILL_COMMIT:
-			case LOG_COMMIT_WITH_POSTPONE:
-			case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
-			case LOG_2PC_PREPARE:
-			case LOG_2PC_START:
-			case LOG_2PC_COMMIT_DECISION:
-			  /* This is it */
-			  LSA_SET_NULL (&forward_lsa);
-			  break;
-
-			case LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-			case LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
-			case LOG_COMMIT_TOPOPE:
-			case LOG_ABORT_TOPOPE:
-			  if (!LSA_EQ (&log_lsa, &start_rangelsa))
-			    {
-#if defined(CUBRID_DEBUG)
-			      er_log_debug (ARG_FILE_LINE,
-					    "log_do_postpone: SYSTEM ERROR.."
-					    " Bad log_rectype = %d\n (%s)."
-					    " Maybe BAD POSTPONE RANGE\n",
-					    log_rec->type,
-					    log_to_string (log_rec->type));
-#endif /* CUBRID_DEBUG */
-			      ;	/* Nothing */
-			    }
-			  break;
-
-			case LOG_END_OF_LOG:
-			  if (forward_lsa.pageid == NULL_PAGEID
-			      && logpb_is_page_in_archive (log_lsa.pageid))
-			    {
-			      forward_lsa.pageid = log_lsa.pageid + 1;
-			    }
-			  break;
-
-			case LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS:
-			case LOG_COMMIT:
-			case LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS:
-			case LOG_ABORT:
-			case LOG_RUN_NEXT_CLIENT_UNDO:
-			case LOG_RUN_NEXT_CLIENT_POSTPONE:
-			case LOG_START_CHKPT:
-			case LOG_END_CHKPT:
-			case LOG_2PC_ABORT_DECISION:
-			case LOG_2PC_ABORT_INFORM_PARTICPS:
-			case LOG_2PC_COMMIT_INFORM_PARTICPS:
-			case LOG_2PC_RECV_ACK:
-			case LOG_DUMMY_CRASH_RECOVERY:
-			case LOG_DUMMY_FILLPAGE_FORARCHIVE:
-			case LOG_SMALLER_LOGREC_TYPE:
-			case LOG_LARGER_LOGREC_TYPE:
-			default:
-#if defined(CUBRID_DEBUG)
-			  er_log_debug (ARG_FILE_LINE,
-					"log_do_postpone: SYSTEM ERROR.."
-					"Bad log_rectype = %d (%s)... ignored\n",
-					log_rec->type,
-					log_to_string (log_rec->type));
-#endif /* CUBRID_DEBUG */
-			  break;
-			}
-		    }
-
-		  /*
-		   * We can fix the lsa.pageid in the case of log_records without
-		   * forward address at this moment.
-		   */
-
-		  if (forward_lsa.offset == NULL_OFFSET
-		      && forward_lsa.pageid != NULL_PAGEID
-		      && forward_lsa.pageid < log_lsa.pageid)
-		    {
-		      forward_lsa.pageid = log_lsa.pageid;
-		    }
-
-		  skip_head = false;
-		}
-	    }
-	}
+      return NO_ERROR;
     }
 
-  return;
+  rcv.pgptr = pgbuf_fix_with_retry (thread_p, &rcv_vpid, OLD_PAGE,
+				    PGBUF_LATCH_WRITE, 10);
+
+  /* GET AFTER DATA */
+
+  /*
+   * If data is contained in only one buffer, pass pointer
+   * directly. Otherwise, allocate a contiguous area, copy the
+   * data and pass this area. At the end deallocate the area
+   */
+
+  rvaddr.offset = rcv.offset;
+  rvaddr.pgptr = rcv.pgptr;
+
+  if (log_lsa->offset + rcv.length < (int) LOGAREA_SIZE)
+    {
+      rcv.data = (char *) log_pgptr->area + log_lsa->offset;
+    }
+  else
+    {
+      /* Need to copy the data into a contiguous area */
+      area = (char *) malloc (rcv.length);
+      if (area == NULL)
+	{
+	  if (rcv.pgptr != NULL)
+	    {
+	      pgbuf_unfix (thread_p, rcv.pgptr);
+	    }
+
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "log_do_postpone");
+
+	  return ER_FAILED;
+	}
+
+      /* Copy the data */
+      logpb_copy_from_log (thread_p, area, rcv.length, log_lsa, log_pgptr);
+      rcv.data = area;
+    }
+
+  /*
+   * if rcvindex is RVDK_IDDEALLOC_WITH_VOLHEADER,
+   * Don't append same log like others.
+   * because it modify two pages (volume header & bit map)
+   * so, we must append two WAL logs for each page later
+   * (after below RV_fun call ends successfully)
+   */
+
+  /* Now call the REDO recovery function */
+  if (rcv.pgptr != NULL
+      || (rcv_vpid.volid == NULL_VOLID && rcv_vpid.pageid == NULL_PAGEID))
+    {
+      if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
+	{
+	  (void) disk_rv_alloctable_with_volheader (thread_p, &rcv, &ref_lsa);
+	}
+      else
+	{
+	  /*
+	   * Write the corresponding run postpone record for
+	   * the postpone action
+	   */
+	  log_append_run_postpone (thread_p, rcvindex,
+				   &rvaddr, &rcv_vpid,
+				   rcv.length, rcv.data, &ref_lsa);
+
+	  /* Now call the REDO recovery function */
+	  (void) (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
+	}
+    }
+  else
+    {
+      /*
+       * Unable to fetch page of volume... May need media recovery
+       * on such page
+       */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
+	      1, fileio_get_volume_label (rcv_vpid.volid));
+    }
+
+  if (area != NULL)
+    {
+      free_and_init (area);
+    }
+
+  if (rcv.pgptr != NULL)
+    {
+      pgbuf_unfix (thread_p, rcv.pgptr);
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -10584,6 +10710,7 @@ log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_simulate_crash - Simulate a system crash
  *
@@ -10633,6 +10760,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, NULL_TRAN_INDEX);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * log_realloc_data_ptr -

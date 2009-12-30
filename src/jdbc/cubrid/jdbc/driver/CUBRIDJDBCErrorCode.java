@@ -76,10 +76,11 @@ public class CUBRIDJDBCErrorCode
   public static int xa_connection_closed = 35;
   public static int xa_illegal_operation = 36;
   public static int oid_closed = 37;
+  public static int invalid_table_name = 38;
 
   public static String[] err_msg = 
   {
-      /*
+      /**
        * 0
        */
       "",
@@ -164,7 +165,7 @@ public class CUBRIDJDBCErrorCode
       /**
        * 15 잘못된 index가 넘어왔을 때 출력된다.
        */
-      "The index is out of range.",
+      "Missing or invalid position of the bind variable provided.",
 
       /**
        * 16 잘못된 column name이 넘어왔을 때 출력된다.
@@ -262,25 +263,30 @@ public class CUBRIDJDBCErrorCode
        */
       "Authentication failure",
 
-      /*
+      /**
        * 34 PooledConnection이 닫히면 출력된다.
        */
       "Attempt to operate on a closed PooledConnection.",
 
-      /*
+      /**
        * 35 XAConnection이 닫히면 출력된다.
        */
       "Attempt to operate on a closed XAConnection.",
 
-      /*
+      /**
        * 36 xa : setAutoCommit, commit, rollback 호출될 때
        */
       "Illegal operation in a distributed transaction",
 
-      /*
+      /**
        * 37 CUBRIDOID와 관련된 Connection 닫히면 출력된다.
        */
-      "Attempt to access a CUBRIDOID associated with a Connection which has been closed."
+      "Attempt to access a CUBRIDOID associated with a Connection which has been closed.",
+
+      /**
+       * 38 invalid table name specified.
+       */
+      "The table name is invalid."
   };
 
   public static String getMessage(int code)

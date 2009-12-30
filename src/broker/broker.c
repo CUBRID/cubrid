@@ -207,23 +207,6 @@ struct t_clt_table
   char ip_addr[IP_ADDR_STR_LEN];
 };
 
-typedef struct t_client_info T_CLIENT_INFO;
-struct t_client_info
-{
-  int as_index;
-  int content_length;
-  int session_id;
-  int env_buf_size;
-  int env_buf_alloc_size;
-  char clt_ip_addr[IP_ADDR_STR_LEN];
-  char *path_info;
-  char *clt_appl_name;
-  char *delimiter_str;
-  char *out_file_name;
-  char *env_buf;
-};
-
-
 static void cleanup (int signo);
 static int init_env (void);
 
@@ -1228,6 +1211,14 @@ stop_appl_server (int as_index)
 {
   ut_kill_process (shm_appl->as_info[as_index].pid,
 		   shm_br->br_info[br_index].name, as_index);
+
+#if defined(WINDOWS)
+  /* [CUBRIDSUS-2068] make the broker sleep for 0.1 sec
+     when stopping the cas in order to  prevent communication
+     error occurred on windows. */
+  SLEEP_MILISEC (0, 100);
+#endif
+
   shm_appl->as_info[as_index].pid = 0;
   shm_appl->as_info[as_index].last_access_time = time (NULL);
   return 0;
@@ -1241,6 +1232,12 @@ restart_appl_server (int as_index)
 #if defined(WINDOWS)
   ut_kill_process (shm_appl->as_info[as_index].pid,
 		   shm_br->br_info[br_index].name, as_index);
+
+  /* [CUBRIDSUS-2068] make the broker sleep for 0.1 sec
+     when stopping the cas in order to  prevent communication
+     error occurred on windows. */
+  SLEEP_MILISEC (0, 100);
+
   new_pid = run_appl_server (as_index);
   shm_appl->as_info[as_index].pid = new_pid;
 #else
@@ -1278,9 +1275,7 @@ restart_appl_server (int as_index)
 	}
     }
 
-  if (shm_appl->as_info[as_index].psize <= 0
-      || (shm_appl->as_info[as_index].psize >
-	  shm_br->br_info[br_index].appl_server_max_size))
+  if (shm_appl->as_info[as_index].psize <= 0)
     {
       if (shm_appl->as_info[as_index].pid > 0)
 	{

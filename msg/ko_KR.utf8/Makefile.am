@@ -18,7 +18,7 @@
 #
 
 
-ko_KR.utf8dir = @MSG_DIR@/ko_KR.utf8
+ko_KR.utf8dir = @CUBRID_LOCALEDIR@/ko_KR.utf8
 ko_KR.utf8_DATA = cubrid.msg cubrid.cat csql.msg csql.cat utils.msg utils.cat \
 	esql.msg esql.cat syntax.txt
 

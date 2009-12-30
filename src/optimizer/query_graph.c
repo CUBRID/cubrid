@@ -2575,6 +2575,14 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
       *continue_walk = PT_LIST_WALK;
       break;
 
+    case PT_EXPR:
+      if (tree->info.expr.op == PT_SYS_CONNECT_BY_PATH
+	  || tree->info.expr.op == PT_CONNECT_BY_ROOT)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+      break;
+
     default:
       break;
     }
@@ -2862,6 +2870,10 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_SQRT:
     case PT_ABS:
     case PT_CHR:
+
+    case PT_LEVEL:
+    case PT_CONNECT_BY_ISLEAF:
+    case PT_CONNECT_BY_ISCYCLE:
 
     case PT_IS_NULL:
     case PT_IS_NOT_NULL:
@@ -3173,6 +3185,7 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 		  && is_pseudo_const (env,
 				      expr->info.expr.arg2)) ? true : false;
 	case PT_UNARY_MINUS:
+	case PT_QPRIOR:
 	  return is_pseudo_const (env, expr->info.expr.arg1);
 	case PT_BETWEEN_AND:
 	case PT_BETWEEN_GE_LE:
@@ -4129,15 +4142,6 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
 	}
       else if (smclass->stats->heap_size == 0)
 	{
-	  /*
-	   * Be careful here: if this is a proxy for some ldb, it will
-	   * look like an empty class, when in reality it may be
-	   * something huge.  Make sure that we use the big estimate in
-	   * that case.
-	   *
-	   * If it's not a proxy and it seems to have a heap associated
-	   * with it, assume that the statistics manager is confused.
-	   */
 	  if (!info->normal_class
 	      || (((hfid = sm_get_heap (info->mop)) && !HFID_IS_NULL (hfid))))
 	    {

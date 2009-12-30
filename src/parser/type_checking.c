@@ -258,6 +258,12 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_INST_NUM:
     case PT_ROWNUM:
     case PT_ORDERBY_NUM:
+    case PT_CONNECT_BY_ISCYCLE:
+    case PT_CONNECT_BY_ISLEAF:
+    case PT_LEVEL:
+    case PT_CONNECT_BY_ROOT:
+    case PT_SYS_CONNECT_BY_PATH:
+    case PT_QPRIOR:
     case PT_CURRENT_USER:
     case PT_LOCAL_TRANSACTION_ID:
     case PT_CHR:
@@ -624,6 +630,31 @@ always_false:
   return where;
 }
 
+/*
+ * pt_where_type_keep_true () - The same as pt_where_type but if the expression
+ *   is true it is folded to a true value rather than a NULL.
+ */
+PT_NODE *
+pt_where_type_keep_true (PARSER_CONTEXT * parser, PT_NODE * where)
+{
+  PT_NODE *save_where = where;
+
+  where = pt_where_type (parser, where);
+  if (where == NULL && save_where != NULL)
+    {
+      /* TODO: The line/column number is lost. */
+      where = parser_new_node (parser, PT_VALUE);
+      if (where == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return NULL;
+	}
+      where->type_enum = PT_TYPE_LOGICAL;
+      where->info.value.data_value.i = 1;
+      (void) pt_value_to_db (parser, where);
+    }
+  return where;
+}
 
 /*
  * pt_false_where () - Test for constant folded where in select
@@ -647,6 +678,28 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case PT_SELECT:
+
+      /* If the "connect by" condition is false the query still has to return
+       * all the "start with" tuples. Therefore we do not check that
+       * "connect by" is false.
+       */
+      if (node->info.query.q.select.start_with)
+	{
+	  where = node->info.query.q.select.start_with;
+	  if (pt_false_search_condition (parser, where) == true)
+	    {
+	      return true;
+	    }
+	}
+      if (node->info.query.q.select.after_cb_filter)
+	{
+	  where = node->info.query.q.select.after_cb_filter;
+	  if (pt_false_search_condition (parser, where) == true)
+	    {
+	      return true;
+	    }
+	}
+
       if (node->info.query.orderby_for)
 	{
 	  where = node->info.query.orderby_for;
@@ -849,6 +902,24 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  parser_free_tree (parser, subq->group_by);
 	  subq->group_by = NULL;
+	}
+
+      if (subq->connect_by)
+	{
+	  parser_free_tree (parser, subq->connect_by);
+	  subq->connect_by = NULL;
+	}
+
+      if (subq->start_with)
+	{
+	  parser_free_tree (parser, subq->start_with);
+	  subq->start_with = NULL;
+	}
+
+      if (subq->after_cb_filter)
+	{
+	  parser_free_tree (parser, subq->after_cb_filter);
+	  subq->after_cb_filter = NULL;
 	}
 
       if (subq->having)
@@ -1240,6 +1311,13 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
       else
 	{
+	  node->info.query.q.select.connect_by =
+	    pt_where_type_keep_true (parser,
+				     node->info.query.q.select.connect_by);
+	  node->info.query.q.select.start_with =
+	    pt_where_type (parser, node->info.query.q.select.start_with);
+	  node->info.query.q.select.after_cb_filter =
+	    pt_where_type (parser, node->info.query.q.select.after_cb_filter);
 	  node->info.query.q.select.having =
 	    pt_where_type (parser, node->info.query.q.select.having);
 	  node->info.query.orderby_for =
@@ -1485,9 +1563,14 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  arg1_hv = arg1;
 	}
 
-      /* special case handling for unary minus on host var (-?) */
+      /* Special case handling for unary operators on host variables
+       * (-?) or (prior ?) or (connect_by_root ?)
+       */
       if (arg1->node_type == PT_EXPR
-	  && arg1->info.expr.op == PT_UNARY_MINUS
+	  && (arg1->info.expr.op == PT_UNARY_MINUS
+	      || arg1->info.expr.op == PT_PRIOR
+	      || arg1->info.expr.op == PT_CONNECT_BY_ROOT
+	      || arg1->info.expr.op == PT_QPRIOR)
 	  && arg1->type_enum == PT_TYPE_MAYBE
 	  && arg1->info.expr.arg1->node_type == PT_HOST_VAR
 	  && arg1->info.expr.arg1->type_enum == PT_TYPE_MAYBE)
@@ -1527,9 +1610,14 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  arg2_hv = arg2;
 	}
 
-      /* special case handling for unary minus on host var (-?) */
+      /* Special case handling for unary operators on host variables
+       * (-?) or (prior ?) or (connect_by_root ?)
+       */
       if (arg2->node_type == PT_EXPR
-	  && arg2->info.expr.op == PT_UNARY_MINUS
+	  && (arg2->info.expr.op == PT_UNARY_MINUS
+	      || arg2->info.expr.op == PT_PRIOR
+	      || arg2->info.expr.op == PT_CONNECT_BY_ROOT
+	      || arg2->info.expr.op == PT_QPRIOR)
 	  && arg2->type_enum == PT_TYPE_MAYBE
 	  && arg2->info.expr.arg1->node_type == PT_HOST_VAR
 	  && arg2->info.expr.arg1->type_enum == PT_TYPE_MAYBE)
@@ -1840,6 +1928,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case PT_STRCAT:
+    case PT_SYS_CONNECT_BY_PATH:
       if (arg1_hv && arg1_type == PT_TYPE_MAYBE)
 	{
 	  d = tp_domain_resolve_default (DB_TYPE_STRING);
@@ -2060,6 +2149,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case PT_STRCAT:
+    case PT_SYS_CONNECT_BY_PATH:
       {
 	PT_TYPE_ENUM new_type;
 	PT_NODE *new_att;
@@ -2268,6 +2358,16 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  node->type_enum = PT_TYPE_NONE;
 	}
+      break;
+
+    case PT_PRIOR:
+      node->type_enum = node->info.expr.arg1->type_enum;
+      break;
+    case PT_CONNECT_BY_ROOT:
+      node->type_enum = node->info.expr.arg1->type_enum;
+      break;
+    case PT_QPRIOR:
+      node->type_enum = node->info.expr.arg1->type_enum;
       break;
 
     case PT_ASSIGN:
@@ -3809,6 +3909,9 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_INST_NUM:
     case PT_ROWNUM:
     case PT_ORDERBY_NUM:
+    case PT_LEVEL:
+    case PT_CONNECT_BY_ISCYCLE:
+    case PT_CONNECT_BY_ISLEAF:
       node->type_enum = PT_TYPE_INTEGER;
       break;
 
@@ -4582,6 +4685,9 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     }
 
   if (op == PT_MINUS || op == PT_PLUS || op == PT_STRCAT
+      || op == PT_SYS_CONNECT_BY_PATH
+      || op == PT_PRIOR || op == PT_CONNECT_BY_ROOT
+      || op == PT_QPRIOR
       || op == PT_UNARY_MINUS || op == PT_FLOOR
       || op == PT_CEIL || op == PT_ABS || op == PT_ROUND
       || op == PT_TRUNC || op == PT_CASE
@@ -4639,6 +4745,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
       break;
 
     case PT_STRCAT:
+    case PT_SYS_CONNECT_BY_PATH:
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
       dt->info.data_type.dec_precision = 0;
       dt->info.data_type.units = 0;
@@ -4725,6 +4832,9 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_ABS:
     case PT_ROUND:
     case PT_TRUNC:
+    case PT_PRIOR:
+    case PT_CONNECT_BY_ROOT:
+    case PT_QPRIOR:
       dt->info.data_type.precision = arg1_prec;
       dt->info.data_type.dec_precision = arg1_dec_prec;
       dt->info.data_type.units = arg1_units;
@@ -5333,6 +5443,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       else
 	db_make_int (result, true);	/* not false = true */
       break;
+
+    case PT_PRIOR:
+    case PT_QPRIOR:
+    case PT_CONNECT_BY_ROOT:
+      if (db_value_clone (arg1, result) != NO_ERROR)
+	{
+	  return 0;
+	}
+      break;
+
+    case PT_SYS_CONNECT_BY_PATH:
+      return 0;
 
     case PT_UNARY_MINUS:
       switch (typ1)
@@ -7897,6 +8019,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		       && op != PT_TO_DATETIME
 		       && op != PT_TRANSLATE && op != PT_REPLACE
 		       && op != PT_BETWEEN && op != PT_NOT_BETWEEN
+		       && op != PT_SYS_CONNECT_BY_PATH
 		       && op != PT_NULLIF && op != PT_COALESCE
 		       && op != PT_NVL && op != PT_NVL2 && op != PT_DECODE)
 		   || (opd3 && (opd3->type_enum == PT_TYPE_NA

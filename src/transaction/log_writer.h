@@ -56,6 +56,7 @@ struct logwr_global
 
   char db_name[PATH_MAX];
   char log_path[PATH_MAX];
+  char loginf_path[PATH_MAX];
   char active_name[PATH_MAX];
   int append_vdes;
 
@@ -70,10 +71,18 @@ struct logwr_global
   LOGWR_MODE mode;
   LOGWR_ACTION action;
 
+  PAGEID last_chkpt_pageid;
   PAGEID last_recv_pageid;
   PAGEID last_arv_fpageid;
   PAGEID last_arv_lpageid;
   int last_arv_num;
+  int last_deleted_arv_num;
+
+  bool force_flush;
+  struct timeval last_flush_time;
+  /* background log archiving info */
+  BACKGROUND_ARCHIVING_INFO bg_archive_info;
+  char bg_archive_name[PATH_MAX];
 };
 
 #define LOGWR_AT_NEXT_ARCHIVE_PAGE_ID(pageid) \

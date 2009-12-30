@@ -218,8 +218,10 @@ static const char *ko_time_string (const DB_TIME * the_time);
 static int ko_time_value (int *the_hour, int *the_min, int *the_sec);
 static const char *ko_mtime_string (int hour, int minute, int second,
 				    int millisecond);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int ko_mtime_value (int *the_hour, int *the_min, int *the_sec,
 			   int *the_msec);
+#endif
 static const char *ko_timestamp_string (const DB_TIMESTAMP * the_timestamp);
 static int ko_timestamp_value (int *the_month, int *the_day,
 			       int *the_year, int *the_hour,
@@ -260,9 +262,11 @@ static const char *local_timestamp_string (const DB_TIMESTAMP *
 					   the_timestamp);
 static int local_timestamp_value (int *, int *, int *, int *, int *, int *);
 static const char *local_datetime_string (const DB_DATETIME * the_timestamp);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int local_datetime_value (int *the_month, int *the_day, int *the_year,
 				 int *the_hour, int *the_min, int *the_sec,
 				 int *the_msec);
+#endif
 
 static const wchar_t *cnv_wcs (const char *mbs);
 static ADJ_ARRAY *cnv_get_string_buffer (int nchars);
@@ -1514,6 +1518,7 @@ ko_mtime_string (int hour, int minute, int second, int millisecond)
   return mtime_string;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * ko_mtime_value() - Scan tokens and parse a time value in the Korean time
  *    format. If a valid value can't be found, then return an error condition.
@@ -1598,6 +1603,7 @@ ko_mtime_value (int *the_hour, int *the_min, int *the_sec, int *the_msec)
 
   return error;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * ko_timestamp_string() - Return a string representing the given timestamp in
@@ -2383,6 +2389,7 @@ local_datetime_string (const DB_DATETIME * the_datetime)
   return value;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * local_datetime_value() -
  * return:
@@ -2424,6 +2431,7 @@ local_datetime_value (int *the_month,
 
   return value;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  *                            Basic Utility Functions
@@ -4497,6 +4505,7 @@ fmt_timestamp_value (const char *descriptor,
   return error;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * fmt_datetime_string() -
  * return:
@@ -4594,6 +4603,7 @@ fmt_datetime_value (const char *descriptor,
 
   return error;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tfmt_new() - Converts a date/time/timestamp format string into an array of
@@ -7237,7 +7247,7 @@ db_value_string (const DB_VALUE * value, const char *format,
 
 
 #if !defined(SERVER_MODE)
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * db_value_to_string() - Return a string representing the given value in
  *     the given format. If an error occurs, then return NULL.
@@ -7281,7 +7291,7 @@ db_value_to_string (const DB_VALUE * value, const char *format)
 
   return error ? NULL : (const char *) buffer;
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* !SERVER_MODE */
 
 /*

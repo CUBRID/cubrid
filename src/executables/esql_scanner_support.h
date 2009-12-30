@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -282,10 +282,11 @@ static KEYWORD_TABLE preprocessor_table = { preprocessor_keywords,
   DIM (preprocessor_keywords)
 };
 
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 static void ignore_token (void);
 static void count_embedded_newlines (void);
 static void echo_string_constant (const char *, int);
+#endif
 
 int check_c_identifier (char *name);
 int check_identifier (KEYWORD_TABLE * keywords, char *name);

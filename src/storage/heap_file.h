@@ -216,11 +216,11 @@ extern int heap_classrepr_dump_anyfixed (void);
 extern int heap_manager_initialize (void);
 extern int heap_manager_finalize (void);
 extern int heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid,
-				 OID * oid, int expected_length);
+				OID * oid, int expected_length);
 extern int heap_assign_address_with_class_oid (THREAD_ENTRY * thread_p,
-						const HFID * hfid, OID * oid,
-						int expected_length,
-						OID * class_oid);
+					       const HFID * hfid, OID * oid,
+					       int expected_length,
+					       OID * class_oid);
 extern OID *heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid,
 			 OID * oid, RECDES * recdes,
 			 HEAP_SCANCACHE * scan_cache);
@@ -252,7 +252,9 @@ extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p,
 extern int heap_hint_expected_num_objects (THREAD_ENTRY * thread_p,
 					   HEAP_SCANCACHE * scan_cache,
 					   int nobjs, int avg_objsize);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int heap_get_chn (THREAD_ENTRY * thread_p, const OID * oid);
+#endif
 extern SCAN_CODE heap_get (THREAD_ENTRY * thread_p, const OID * oid,
 			   RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 			   int ispeeking, int chn);
@@ -274,8 +276,10 @@ extern SCAN_CODE heap_last (THREAD_ENTRY * thread_p, const HFID * hfid,
 			    HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern int heap_get_alloc (THREAD_ENTRY * thread_p, const OID * oid,
 			   RECDES * recdes);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int heap_cmp (THREAD_ENTRY * thread_p, const OID * oid,
 		     RECDES * recdes);
+#endif
 extern int heap_scanrange_start (THREAD_ENTRY * thread_p,
 				 HEAP_SCANRANGE * scan_range,
 				 const HFID * hfid, const OID * class_oid,
@@ -328,9 +332,11 @@ extern char *heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p,
 						char *guess_classname);
 extern char *heap_get_class_name_of_instance (THREAD_ENTRY * thread_p,
 					      const OID * inst_oid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern char *heap_get_class_name_with_is_class (THREAD_ENTRY * thread_p,
 						const OID * oid,
 						int *isclass);
+#endif
 extern int heap_attrinfo_start (THREAD_ENTRY * thread_p,
 				const OID * class_oid,
 				int requested_num_attrs,

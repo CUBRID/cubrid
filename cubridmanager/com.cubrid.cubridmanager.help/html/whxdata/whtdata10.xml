@@ -1,9 +1,0 @@
-﻿<?xml version='1.0' encoding='utf-8' ?>
-<tocdata>
-<item name="시리얼 생성" url="syntax/syntax_serial_create.htm" />
-<item name="시리얼을 읽고 갱신" url="syntax/syntax_serial_update.htm" />
-<item name="시리얼 변경" url="syntax/syntax_serial_alter.htm" />
-<item name="시리얼 삭제" url="syntax/syntax_serial_delete.htm" />
-<item name="시리얼 권한 부여" url="syntax/syntax_serial_authority.htm" />
-
-</tocdata>

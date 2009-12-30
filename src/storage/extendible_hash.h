@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -53,8 +53,10 @@ extern int eh_capacity (EHID * ehid, int *num_recs,
 			int *avg_overhead_per_page);
 #endif
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int ehash_estimate_npages_needed (THREAD_ENTRY * thread_p,
 					 int total_nkeys, int avg_key_size);
+#endif
 extern int ehash_map (THREAD_ENTRY * thread_p, EHID * ehid,
 		      int (*fun) (THREAD_ENTRY * thread_p, void *, void *,
 				  void *args), void *args);

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -372,10 +372,6 @@ qo_analyze_path_join (PARSER_CONTEXT * parser, PT_NODE * path_spec, void *arg,
  *   node(in): node to test for path conversion
  *   arg(in):
  *   continue_walk(in):
- *
- * Note: For path specs of ldbs which do not support path expressions,
- * 	and are equivilent to a join, rewrite the spec into a join,
- * 	augmenting the where clause as needed.
  */
 static PT_NODE *
 qo_convert_path_to_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
@@ -403,6 +399,7 @@ qo_convert_path_to_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   return node;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * qo_rewrite_as_join () - Given a statement, a path root, a path spec ptr,
  *			rewrite the statement into a join with the path spec
@@ -432,8 +429,9 @@ qo_rewrite_as_join (PARSER_CONTEXT * parser, PT_NODE * root,
 				qo_convert_path_to_name, path_spec, NULL,
 				NULL);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * qo_rewrite_as_derived () - Given a statement, a path root, a path spec ptr,
  *			   rewrite the spec to be a table derived from a join
@@ -542,6 +540,7 @@ qo_rewrite_as_derived (PARSER_CONTEXT * parser, PT_NODE * root,
   path_spec->info.spec.derived_table = query;
   path_spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * qo_convert_attref_to_dotexpr_pre () -
@@ -837,22 +836,8 @@ qo_construct_new_set (PARSER_CONTEXT * parser, PT_NODE * node)
       set->info.function.function_type = F_SEQUENCE;
       set->info.function.arg_list = arg;
       set->type_enum = PT_TYPE_SEQUENCE;
-      if ((targ->data_type)
-	  && (targ->data_type->info.data_type.entity)
-	  && (targ->data_type->info.data_type.entity->info.name.meta_class ==
-	      PT_LDBVCLASS))
-	{
-	  /* If this view defined on the union of proxies,
-	   * set data type of proxy object
-	   * into the data type of expression arguments
-	   * for escaping type mismatch error in pt_to_pred_expr.
-	   */
-	  set->data_type = parser_copy_tree_list (parser, targ->data_type);
-	}
-      else
-	{
-	  set->data_type = parser_copy_tree_list (parser, arg->data_type);
-	}
+
+      set->data_type = parser_copy_tree_list (parser, arg->data_type);
     }
 
   return set;
@@ -1247,6 +1232,10 @@ qo_is_reduceable_const (PT_NODE * expr)
  *   node(in):
  *   wherep(in):
  *
+ *  Obs: modified to support PRIOR operator as follows:
+ *    -> PRIOR field = exp1 AND PRIOR field = exp2 => 
+ *	 PRIOR field = exp1 AND exp1 = exp2
+ *    -> PRIOR ? -> replace with ?
  */
 static void
 qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
@@ -1325,6 +1314,14 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (expr->info.expr.op == PT_RANGE)
 	    {
 	      arg2 = arg2->info.expr.arg1;
+	    }
+
+	  /* if arg1 is expression with PRIOR, move arg1 to the arg1 of PRIOR */
+
+	  if (arg1->node_type == PT_EXPR && arg1->info.expr.op == PT_PRIOR
+	      && pt_is_attr (arg1->info.expr.arg1))
+	    {
+	      arg1 = arg1->info.expr.arg1;
 	    }
 
 	  if (pt_is_attr (arg1))
@@ -1791,6 +1788,9 @@ qo_reduce_order_by_for (PARSER_CONTEXT * parser, PT_NODE * node)
       return error;
     }
 
+  ord_num = NULL;
+  grp_num = NULL;
+
   /* move orderby_num() to groupby_num() */
   if (node->info.query.orderby_for)
     {
@@ -1798,6 +1798,10 @@ qo_reduce_order_by_for (PARSER_CONTEXT * parser, PT_NODE * node)
       if (!(ord_num = parser_new_node (parser, PT_EXPR))
 	  || !(grp_num = parser_new_node (parser, PT_FUNCTION)))
 	{
+	  if (ord_num)
+	    {
+	      parser_free_tree (parser, ord_num);
+	    }
 	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	  goto exit_on_error;
@@ -2087,6 +2091,58 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	      need_merge_check = false;	/* clear */
 	    }
 	}
+      else
+	{
+	  if (node->info.query.order_by == NULL)
+	    {
+	      /* move orderby_num() to inst_num() */
+	      if (node->info.query.orderby_for)
+		{
+		  PT_NODE *ord_num, *ins_num;
+
+		  ord_num = NULL;
+		  ins_num = NULL;
+
+		  /* generate orderby_num(), inst_num() */
+		  if (!(ord_num = parser_new_node (parser, PT_EXPR))
+		      || !(ins_num = parser_new_node (parser, PT_EXPR)))
+		    {
+		      if (ord_num)
+			{
+			  parser_free_tree (parser, ord_num);
+			}
+		      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+				 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      goto exit_on_error;
+		    }
+
+		  ord_num->type_enum = PT_TYPE_INTEGER;
+		  ord_num->info.expr.op = PT_ORDERBY_NUM;
+		  PT_EXPR_INFO_SET_FLAG (ord_num, PT_EXPR_INFO_ORDERBYNUM_C);
+
+		  ins_num->type_enum = PT_TYPE_INTEGER;
+		  ins_num->info.expr.op = PT_INST_NUM;
+		  PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
+
+		  /* replace orderby_num() to inst_num() */
+		  node->info.query.orderby_for =
+		    pt_lambda_with_arg (parser, node->info.query.orderby_for,
+					ord_num, ins_num,
+					false /* loc_check: DEFAULT */ ,
+					0 /* type: DEFAULT */ ,
+					false /* dont_replace: DEFAULT */ );
+
+		  node->info.query.q.select.where =
+		    parser_append_node (node->info.query.orderby_for,
+					node->info.query.q.select.where);
+
+		  node->info.query.orderby_for = NULL;
+
+		  parser_free_tree (parser, ord_num);
+		  parser_free_tree (parser, ins_num);
+		}
+	    }
+	}
     }
 
 exit_on_end:
@@ -2127,11 +2183,22 @@ exit_on_error:
  *  	7. where b = -a or c = a           -->  where a = -b or a = c
  *  	8. where b = a or c = a            -->  where a = b or a = c
  *  	9. where a = b or b = c or d = b   -->  where b = a or b = c or b = d
+ *
+ * Obs: modified to support PRIOR
+ * 	examples:
+ *  	0. connect by 5 = prior a          -->  connect by prior a = 5
+ *  	1. connect by -5 = prior (-a)      -->  connect by prior a = 5
+ *	...
+ *	prior(-attr) between opd1 and opd2 --> 
+ *      prior(-attr) >= opd1 AND prior(-attr) <= opd2 --> 
+ *	prior (attr) <= -opd1 AND prior(attr) >= -opd2 -->
+ *	prior (attr) between -opd2 and -opd1
  */
 static void
 qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 {
   PT_NODE *cnf_node, *dnf_node, *arg1, *arg2, *arg1_arg1, *arg2_arg1;
+  PT_NODE *arg1_prior_father, *arg2_prior_father;
   PT_OP_TYPE op_type;
   PT_NODE *attr, *attr_list;
   int arg1_cnt, arg2_cnt;
@@ -2164,7 +2231,16 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	      break;		/* immediately, exit loop */
 	    }
 
+	  arg1_prior_father = arg2_prior_father = NULL;
+
 	  arg1 = dnf_node->info.expr.arg1;
+	  /*  go in PRIOR argument but memorize it for further node manag */
+	  if (pt_is_expr_node (arg1) && arg1->info.expr.op == PT_PRIOR)
+	    {
+	      arg1_prior_father = arg1;
+	      arg1 = arg1->info.expr.arg1;
+	    }
+
 	  arg1_arg1 = ((pt_is_expr_node (arg1)
 			&& arg1->info.expr.op == PT_UNARY_MINUS)
 		       ? arg1->info.expr.arg1 : NULL);
@@ -2197,6 +2273,14 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	    }
 
 	  arg2 = dnf_node->info.expr.arg2;
+
+	  /*  go in PRIOR argument but memorize it for further node manag */
+	  if (pt_is_expr_node (arg2) && arg2->info.expr.op == PT_PRIOR)
+	    {
+	      arg2_prior_father = arg2;
+	      arg2 = arg2->info.expr.arg1;
+	    }
+
 	  while (pt_is_expr_node (arg2)
 		 && arg2->info.expr.op == PT_UNARY_MINUS)
 	    {
@@ -2263,10 +2347,24 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	  if (dnf_node->node_type != PT_EXPR)
 	    continue;
 
+	  arg1_prior_father = arg2_prior_father = NULL;
+
 	  /* filter out unary minus nodes */
 	  while ((arg1 = dnf_node->info.expr.arg1)
 		 && (arg2 = dnf_node->info.expr.arg2))
 	    {
+	      /*  go in PRIOR argument but memorize it for further node manag */
+	      if (pt_is_expr_node (arg1) && arg1->info.expr.op == PT_PRIOR)
+		{
+		  arg1_prior_father = arg1;
+		  arg1 = arg1->info.expr.arg1;
+		}
+
+	      if (pt_is_expr_node (arg2) && arg2->info.expr.op == PT_PRIOR)
+		{
+		  arg2_prior_father = arg2;
+		  arg2 = arg2->info.expr.arg1;
+		}
 
 	      op_type = pt_converse_op (dnf_node->info.expr.op);
 	      arg1_arg1 = ((pt_is_expr_node (arg1)
@@ -2278,6 +2376,18 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 
 	      if (arg1_arg1 && arg2_arg1)
 		{
+		  /* Delete both minus from prior also. */
+		  if (arg1_prior_father)
+		    {
+		      arg1_prior_father->info.expr.arg1 =
+			arg1_prior_father->info.expr.arg1->info.expr.arg1;
+		    }
+		  if (arg2_prior_father)
+		    {
+		      arg2_prior_father->info.expr.arg1 =
+			arg2_prior_father->info.expr.arg1->info.expr.arg1;
+		    }
+
 		  /* term in the form of '-something op -something' */
 		  dnf_node->info.expr.arg1 = arg1->info.expr.arg1;
 		  arg1->info.expr.arg1 = NULL;
@@ -2285,6 +2395,17 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		  dnf_node->info.expr.arg2 = arg2->info.expr.arg1;
 		  arg2->info.expr.arg1 = NULL;
 		  parser_free_tree (parser, arg2);
+
+		  /* both minus operators are gone but they were written over 
+		     the prior operator so we must add them again. */
+		  if (arg1_prior_father)
+		    {
+		      dnf_node->info.expr.arg1 = arg1_prior_father;
+		    }
+		  if (arg2_prior_father)
+		    {
+		      dnf_node->info.expr.arg2 = arg2_prior_father;
+		    }
 		}
 	      else if (op_type != 0 && arg1_arg1
 		       && (pt_is_attr (arg1_arg1)
@@ -2292,11 +2413,28 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 			       && arg1_arg1->info.expr.op == PT_UNARY_MINUS))
 		       && pt_is_const (arg2))
 		{
-		  /* term in the form of '-attr op const' or
-		     '-(-something) op const' */
-		  dnf_node->info.expr.arg1 = arg1->info.expr.arg1;
-		  arg1->info.expr.arg1 = arg2;
-		  dnf_node->info.expr.arg2 = arg1;
+		  /* arg1 was with prior, make the modifications in prior
+		     and move the prior to dnf_node->info.expr.arg2 */
+
+		  /* prior (-attr) op const => prior attr op -const */
+		  if (arg1_prior_father)
+		    {
+		      /* cut - from prior -attr */
+		      arg1_prior_father->info.expr.arg1 =
+			arg1->info.expr.arg1;
+
+		      dnf_node->info.expr.arg1 = arg1_prior_father;
+		      arg1->info.expr.arg1 = arg2;
+		      dnf_node->info.expr.arg2 = arg1;
+		    }
+		  else
+		    {
+		      /* term in the form of '-attr op const' or
+		         '-(-something) op const' */
+		      dnf_node->info.expr.arg1 = arg1->info.expr.arg1;
+		      arg1->info.expr.arg1 = arg2;
+		      dnf_node->info.expr.arg2 = arg1;
+		    }
 		}
 	      else if (op_type != 0 && arg2_arg1
 		       && (pt_is_attr (arg2->info.expr.arg1)
@@ -2304,11 +2442,28 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 			       && arg2_arg1->info.expr.op == PT_UNARY_MINUS))
 		       && pt_is_const (arg1))
 		{
-		  /* term in the form of 'const op -attr' or
-		     'const op -(-something)' */
-		  dnf_node->info.expr.arg2 = arg2->info.expr.arg1;
-		  arg2->info.expr.arg1 = arg1;
-		  dnf_node->info.expr.arg1 = arg2;
+		  /* arg2 was with prior, make the modifications in prior
+		     and move the prior to dnf_node->info.expr.arg1 */
+
+		  /* const op prior (-attr) => -const op prior attr */
+		  if (arg2_prior_father)
+		    {
+		      /* cut - from prior -attr */
+		      arg2_prior_father->info.expr.arg1 =
+			arg2_prior_father->info.expr.arg1->info.expr.arg1;
+
+		      dnf_node->info.expr.arg2 = arg2_prior_father;
+		      arg2->info.expr.arg1 = arg1;
+		      dnf_node->info.expr.arg1 = arg2;
+		    }
+		  else
+		    {
+		      /* term in the form of 'const op -attr' or
+		         'const op -(-something)' */
+		      dnf_node->info.expr.arg2 = arg2->info.expr.arg1;
+		      arg2->info.expr.arg1 = arg1;
+		      dnf_node->info.expr.arg1 = arg2;
+		    }
 		}
 	      else
 		{
@@ -2322,6 +2477,21 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	  op_type = dnf_node->info.expr.op;
 	  arg1 = dnf_node->info.expr.arg1;
 	  arg2 = dnf_node->info.expr.arg2;
+
+	  arg1_prior_father = arg2_prior_father = NULL;
+	  /* if arg1 or arg2 is PT_PRIOR, go in its argument */
+	  if (pt_is_expr_node (arg1) && arg1->info.expr.op == PT_PRIOR)
+	    {
+	      /* keep its parent so when swapping the two elements, 
+	         swap with its father */
+	      arg1_prior_father = arg1;
+	      arg1 = arg1->info.expr.arg1;
+	    }
+	  if (pt_is_expr_node (arg2) && arg2->info.expr.op == PT_PRIOR)
+	    {
+	      arg2_prior_father = arg2;
+	      arg2 = arg2->info.expr.arg1;
+	    }
 
 	  if (op_type == PT_AND)
 	    {
@@ -2382,9 +2552,30 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		  /* swap */
 		  if (arg1_cnt < arg2_cnt)
 		    {
+		      /* check if arg1 and/or arg2 have PRIOR above them. 
+		         If so, swap the arg with the prior also */
+		      if (arg1_prior_father)
+			{
+			  arg1 = arg1_prior_father;
+			}
+		      if (arg2_prior_father)
+			{
+			  arg2 = arg2_prior_father;
+			}
+
 		      dnf_node->info.expr.arg1 = arg2;
 		      dnf_node->info.expr.arg2 = arg1;
 		      dnf_node->info.expr.op = op_type;
+
+		      /* change back arg1 and arg2 */
+		      if (arg1_prior_father)
+			{
+			  arg1 = arg1_prior_father->info.expr.arg1;
+			}
+		      if (arg2_prior_father)
+			{
+			  arg2 = arg2_prior_father->info.expr.arg1;
+			}
 		    }
 		}
 	      else
@@ -2392,9 +2583,31 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		  /* term in the form of 'non-attr op attr' */
 
 		  /* swap */
+
+		  /* check if arg1 and/or arg2 have PRIOR above them. 
+		     If so, swap the arg with the prior also */
+		  if (arg1_prior_father)
+		    {
+		      arg1 = arg1_prior_father;
+		    }
+		  if (arg2_prior_father)
+		    {
+		      arg2 = arg2_prior_father;
+		    }
+
 		  dnf_node->info.expr.arg1 = arg2;
 		  dnf_node->info.expr.arg2 = arg1;
 		  dnf_node->info.expr.op = op_type;
+
+		  /* change back arg1 and arg2 */
+		  if (arg1_prior_father)
+		    {
+		      arg1 = arg1_prior_father->info.expr.arg1;
+		    }
+		  if (arg2_prior_father)
+		    {
+		      arg2 = arg2_prior_father->info.expr.arg1;
+		    }
 		}
 	    }
 	}
@@ -2420,15 +2633,26 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
   PT_NODE *node, *sibling, *prev, *fold;
   DB_VALUE value;
   bool found;
+  PT_NODE *node_prior, *sibling_prior;
 
   /* traverse CNF list and keep track of the pointer to previsous node */
   prev = NULL;
   while ((node = (prev ? prev->next : *wherep)))
     {
+      node_prior = NULL;
+      if (PT_IS_PRIOR_NODE (node))
+	{
+	  node_prior = node->info.expr.arg1->info.expr.arg1;
+	}
+      else
+	{
+	  node_prior = node->info.expr.arg1;
+	}
+
       if (node->node_type != PT_EXPR
 	  || (node->info.expr.op != PT_IS_NULL
 	      && node->info.expr.op != PT_IS_NOT_NULL)
-	  || !pt_is_attr (node->info.expr.arg1) || node->or_next != NULL)
+	  || !pt_is_attr (node_prior) || node->or_next != NULL)
 	{
 	  /* niether expression node, IS NULL/IS NOT NULL node, one predicate
 	     term, nor LHS is an attribute */
@@ -2443,14 +2667,36 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	{
 	  if (sibling == node
 	      || sibling->node_type != PT_EXPR || sibling->or_next != NULL)
-	    continue;
+	    {
+	      continue;
+	    }
 
 	  if (sibling->info.expr.location != node->info.expr.location)
-	    continue;
+	    {
+	      continue;
+	    }
 
-	  if (pt_check_path_eq (parser, node->info.expr.arg1,
-				sibling->info.expr.arg1) == 0
-	      || pt_check_path_eq (parser, node->info.expr.arg1,
+	  sibling_prior = NULL;
+	  if (PT_IS_PRIOR_NODE (sibling))
+	    {
+	      sibling_prior = sibling->info.expr.arg1->info.expr.arg1;
+	    }
+	  else
+	    {
+	      sibling_prior = sibling->info.expr.arg1;
+	    }
+
+	  /* just one node from node and sibling contains the PRIOR -> 
+	     do nothing, they are not comparable */
+	  if ((PT_IS_PRIOR_NODE (node) && !PT_IS_PRIOR_NODE (sibling))
+	      || (!PT_IS_PRIOR_NODE (node) && PT_IS_PRIOR_NODE (sibling)))
+	    {
+	      continue;
+	    }
+
+	  if (pt_check_path_eq (parser, node_prior,
+				sibling_prior) == 0
+	      || pt_check_path_eq (parser, node_prior,
 				   sibling->info.expr.arg2) == 0)
 	    {
 	      found = true;
@@ -2515,6 +2761,10 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
   PT_NODE *node, *arg2;
   PT_OP_TYPE op_type1, op_type2;
   int find_const, find_attr;
+  int is_prior = 0;
+  PT_NODE *arg_prior, *arg_prior_start;
+
+  arg_prior = arg_prior_start = NULL;
 
   switch (start->info.expr.op)
     {
@@ -2540,6 +2790,12 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
   find_const = pt_is_const_expr_node (arg2);
   find_attr = pt_is_attr (start->info.expr.arg2);
 
+  arg_prior_start = start->info.expr.arg1;	/* original value */
+  if (arg_prior_start->info.expr.op == PT_PRIOR)
+    {
+      arg_prior_start = arg_prior_start->info.expr.arg1;
+    }
+
   /* search CNF list */
   for (node = start; node; node = node->next)
     {
@@ -2550,12 +2806,21 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
       if (node->info.expr.location != start->info.expr.location)
 	continue;
 
+      is_prior = PT_IS_PRIOR_NODE (node) ? 1 : 0;
+      if (is_prior)
+	{
+	  arg_prior = node->info.expr.arg1->info.expr.arg1;
+	}
+      else
+	{
+	  arg_prior = node->info.expr.arg1;
+	}
+
       if (node->info.expr.op == op_type1 || node->info.expr.op == op_type2)
 	{
 	  if (find_const
-	      && pt_is_attr (node->info.expr.arg1)
-	      && (pt_check_path_eq (parser, start->info.expr.arg1,
-				    node->info.expr.arg1) == 0))
+	      && pt_is_attr (arg_prior)
+	      && (pt_check_path_eq (parser, arg_prior_start, arg_prior) == 0))
 	    {
 	      /* skip out unary minus expr */
 	      arg2 = node->info.expr.arg2;
@@ -2571,9 +2836,9 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
 		}
 	    }
 	  if (find_attr
-	      && pt_is_attr (node->info.expr.arg1)
+	      && pt_is_attr (arg_prior)
 	      && pt_is_attr (node->info.expr.arg2)
-	      && (pt_check_path_eq (parser, start->info.expr.arg1,
+	      && (pt_check_path_eq (parser, arg_prior_start,
 				    node->info.expr.arg1) == 0)
 	      && (pt_check_class_eq (parser, start->info.expr.arg2,
 				     node->info.expr.arg2) == 0))
@@ -2607,11 +2872,16 @@ qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
   int location;
   DB_VALUE *lower_val, *upper_val;
   DB_VALUE_COMPARE_RESULT cmp;
+  int is_prior = 0;
 
   /* traverse CNF list */
   for (node = *wherep; node; node = node->next)
     {
-      if (node->node_type != PT_EXPR || !pt_is_attr (node->info.expr.arg1)
+      is_prior = (PT_IS_PRIOR_NODE (node)
+		  && pt_is_attr (node->info.expr.arg1->info.expr.arg1));
+
+      if (node->node_type != PT_EXPR
+	  || (!pt_is_attr (node->info.expr.arg1) && !is_prior)
 	  || node->or_next != NULL)
 	{
 	  /* neither expression node, LHS is attribute, nor one predicate
@@ -2636,8 +2906,17 @@ qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	  continue;
 	}
       if (!pair)
-	/* there's no pair comparison term having the same attribute */
-	continue;
+	{
+	  /* there's no pair comparison term having the same attribute */
+	  continue;
+	}
+
+      if ((PT_IS_PRIOR_NODE (lower) && !PT_IS_PRIOR_NODE (upper))
+	  || (!PT_IS_PRIOR_NODE (lower) && PT_IS_PRIOR_NODE (upper)))
+	{
+	  /* one of the bounds does not contain prior */
+	  continue;
+	}
 
       /* the node will be converted to BETWEEN node and the pair node will be
          converted to the right operand(arg2) of BETWEEN node denoting the
@@ -2821,6 +3100,7 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
   bool found_unbound;
   PARSER_VARCHAR *str, *new_str;
   int i, j;
+  PT_NODE *arg1_prior;
 
   /* traverse CNF list */
   for (cnf_node = *wherep; cnf_node; cnf_node = cnf_node->next)
@@ -2831,8 +3111,18 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
       /* traverse DNF list */
       for (dnf_node = cnf_node; dnf_node; dnf_node = dnf_node->or_next)
 	{
+	  arg1_prior = NULL;
+	  if (PT_IS_PRIOR_NODE (dnf_node))
+	    {
+	      arg1_prior = dnf_node->info.expr.arg1->info.expr.arg1;
+	    }
+	  else
+	    {
+	      arg1_prior = dnf_node->info.expr.arg1;
+	    }
+
 	  if (dnf_node->node_type != PT_EXPR
-	      || !pt_is_attr (dnf_node->info.expr.arg1)
+	      || !pt_is_attr (arg1_prior)
 	      || dnf_node->info.expr.op != PT_LIKE)
 	    {
 	      /* neither expression node, LHS is attribute, nor LIKE pred. */
@@ -3055,6 +3345,17 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *between_and, *sibling, *last, *prev, *in_arg2;
   PT_OP_TYPE op_type;
+  PT_NODE *node_prior, *sibling_prior;
+
+  node_prior = sibling_prior = NULL;
+  if (PT_IS_PRIOR_NODE (node))
+    {
+      node_prior = node->info.expr.arg1->info.expr.arg1;
+    }
+  else
+    {
+      node_prior = node->info.expr.arg1;
+    }
 
   /* convert the given node to RANGE node */
 
@@ -3141,22 +3442,42 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
   prev = node;
   while ((sibling = prev->or_next))
     {
+      sibling_prior = NULL;
+      if (PT_IS_PRIOR_NODE (sibling))
+	{
+	  sibling_prior = sibling->info.expr.arg1->info.expr.arg1;
+	  if (!PT_IS_PRIOR_NODE (node))
+	    {
+	      /* sibling has prior, node hasn't */
+	      prev = prev->or_next;
+	      continue;
+	    }
+	}
+      else
+	{
+	  sibling_prior = sibling->info.expr.arg1;
+	  if (PT_IS_PRIOR_NODE (node))
+	    {
+	      /* sibling hasn't prior, node has */
+	      prev = prev->or_next;
+	      continue;
+	    }
+	}
+      /* if node had prior check that sibling also contains prior and 
+         vice-versa */
 
       if (sibling->node_type != PT_EXPR
-	  || (!pt_is_attr (sibling->info.expr.arg1)
-	      && !pt_is_instnum (sibling->info.expr.arg1)))
+	  || (!pt_is_attr (sibling_prior) && !pt_is_instnum (sibling_prior)))
 	{
 	  /* neither an expression node, nor LHS is an attribute */
 	  prev = prev->or_next;
 	  continue;
 	}
 
-      if (node->info.expr.arg1->node_type !=
-	  sibling->info.expr.arg1->node_type
-	  || (pt_is_attr (node->info.expr.arg1)
-	      && pt_is_attr (sibling->info.expr.arg1)
-	      && pt_check_path_eq (parser, node->info.expr.arg1,
-				   sibling->info.expr.arg1)))
+      if ((node_prior->node_type != sibling_prior->node_type)
+	  || (pt_is_attr (node_prior)
+	      && pt_is_attr (sibling_prior)
+	      && pt_check_path_eq (parser, node_prior, sibling_prior)))
 	{
 	  /* pt_check_path_eq() return non-zero if two are different */
 	  prev = prev->or_next;
@@ -3731,6 +4052,7 @@ static void
 qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 {
   PT_NODE *cnf_node, *dnf_node, *cnf_prev, *dnf_prev;
+  PT_NODE *arg1_prior;
 
   /* traverse CNF list and keep track of the pointer to previous node */
   cnf_prev = NULL;
@@ -3741,10 +4063,18 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
       dnf_prev = NULL;
       while ((dnf_node = (dnf_prev ? dnf_prev->or_next : cnf_node)))
 	{
+	  arg1_prior = NULL;
+	  if (PT_IS_PRIOR_NODE (dnf_node))
+	    {
+	      arg1_prior = dnf_node->info.expr.arg1->info.expr.arg1;
+	    }
+	  else
+	    {
+	      arg1_prior = dnf_node->info.expr.arg1;
+	    }
 
 	  if (dnf_node->node_type != PT_EXPR
-	      || (!pt_is_attr (dnf_node->info.expr.arg1)
-		  && !pt_is_instnum (dnf_node->info.expr.arg1)))
+	      || (!pt_is_attr (arg1_prior) && !pt_is_instnum (arg1_prior)))
 	    {
 	      /* neither expression node nor LHS is an attribute */
 	      dnf_prev = dnf_prev ? dnf_prev->or_next : dnf_node;
@@ -3753,7 +4083,7 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
 	  if (dnf_node == cnf_node && dnf_node->or_next == NULL
 	      && dnf_node->info.expr.op == PT_EQ
-	      && !pt_is_instnum (dnf_node->info.expr.arg1))
+	      && !pt_is_instnum (arg1_prior))
 	    {
 	      /* do not convert one predicate '=' term to RANGE */
 	      dnf_prev = dnf_prev ? dnf_prev->or_next : dnf_node;
@@ -4195,18 +4525,27 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 {
   PT_NODE *node, *sibling, *node_prev, *sibling_prev;
   int location;
+  PT_NODE *arg1_prior, *sibling_prior;
 
   /* traverse CNF list and keep track of the pointer to previsous node */
   node_prev = NULL;
   while ((node = (node_prev ? node_prev->next : *wherep)))
     {
+      arg1_prior = NULL;
+      if (PT_IS_PRIOR_NODE (node))
+	{
+	  arg1_prior = node->info.expr.arg1->info.expr.arg1;
+	}
+      else
+	{
+	  arg1_prior = node->info.expr.arg1;
+	}
 
       if (node->node_type != PT_EXPR
 	  || node->info.expr.op != PT_RANGE || node->or_next != NULL
 	  /* NOTE: Due to implementation complexity, handle one predicate
 	     term only. */
-	  || (!pt_is_attr (node->info.expr.arg1)
-	      && !pt_is_instnum (node->info.expr.arg1)))
+	  || (!pt_is_attr (arg1_prior) && !pt_is_instnum (arg1_prior)))
 	{
 	  /* neither expression node, RANGE node, one predicate term, nor
 	     LHS is an attribute */
@@ -4257,12 +4596,35 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
       while ((sibling = sibling_prev->next))
 	{
+	  sibling_prior = NULL;
+	  if (PT_IS_PRIOR_NODE (sibling))
+	    {
+	      sibling_prior = sibling->info.expr.arg1->info.expr.arg1;
+	      if (!PT_IS_PRIOR_NODE (node))
+		{
+		  /* sibling has prior, node hasn't */
+		  sibling_prev = sibling_prev->next;
+		  continue;
+		}
+	    }
+	  else
+	    {
+	      sibling_prior = sibling->info.expr.arg1;
+	      if (PT_IS_PRIOR_NODE (node))
+		{
+		  /* sibling hasn't prior, node has */
+		  sibling_prev = sibling_prev->next;
+		  continue;
+		}
+	    }
+	  /* if node had prior check that sibling also contains prior and 
+	     vice-versa */
 
 	  if (sibling->node_type != PT_EXPR
 	      || sibling->info.expr.op != PT_RANGE
 	      || sibling->or_next != NULL
-	      || (!pt_is_attr (sibling->info.expr.arg1)
-		  && !pt_is_instnum (sibling->info.expr.arg1)))
+	      || (!pt_is_attr (sibling_prior)
+		  && !pt_is_instnum (sibling_prior)))
 	    {
 	      /* neither an expression node, RANGE node, one predicate term,
 	         nor LHS is an attribute */
@@ -4276,12 +4638,10 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	      continue;
 	    }
 
-	  if (node->info.expr.arg1->node_type !=
-	      sibling->info.expr.arg1->node_type
-	      || (pt_is_attr (node->info.expr.arg1)
-		  && pt_is_attr (sibling->info.expr.arg1)
-		  && pt_check_path_eq (parser, node->info.expr.arg1,
-				       sibling->info.expr.arg1)))
+	  if ((arg1_prior->node_type != sibling_prior->node_type)
+	      || (pt_is_attr (arg1_prior)
+		  && pt_is_attr (sibling_prior)
+		  && pt_check_path_eq (parser, arg1_prior, sibling_prior)))
 	    {
 	      /* pt_check_path_eq() return non-zero if two are different */
 	      sibling_prev = sibling_prev->next;
@@ -4859,11 +5219,13 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   PT_NODE *new_spec, *new_attr, *new_func;
   int *idx = (int *) arg;
   bool do_rewrite;
-  PT_NODE *save_next, *tmp;
+  PT_NODE *save_next, *arg1_next, *new_attr_next, *tmp;
   PT_OP_TYPE saved_op_type;
 
   if (node->node_type != PT_SELECT)
-    return node;
+    {
+      return node;
+    }
 
   /* traverse CNF list */
   for (cnf_node = node->info.query.q.select.where; cnf_node;
@@ -5007,9 +5369,13 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      saved_op_type = cnf_node->info.expr.op;
 
 	      if (PT_IS_SET_TYPE (new_attr))
-		;		/* leave op as it is */
+		{
+		  ;		/* leave op as it is */
+		}
 	      else
-		cnf_node->info.expr.op = PT_EQ;
+		{
+		  cnf_node->info.expr.op = PT_EQ;
+		}
 
 	      if (new_attr != NULL)
 		{
@@ -5024,7 +5390,7 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      /* create the following 'attr op attr' */
 	      for (tmp = NULL;
 		   arg1 && new_attr;
-		   arg1 = arg1->next, new_attr = new_attr->next)
+		   arg1 = arg1_next, new_attr = new_attr_next)
 		{
 		  tmp = parser_new_node (parser, PT_EXPR);
 		  if (tmp == NULL)
@@ -5033,12 +5399,22 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		      return NULL;
 		    }
 
+		  /* save, cut-off link */
+		  arg1_next = arg1->next;
+		  arg1->next = NULL;
+		  new_attr_next = new_attr->next;
+		  new_attr_next = NULL;
+
 		  tmp->info.expr.arg1 = arg1;
 		  tmp->info.expr.arg2 = new_attr;
 		  if (PT_IS_SET_TYPE (new_attr))
-		    tmp->info.expr.op = saved_op_type;
+		    {
+		      tmp->info.expr.op = saved_op_type;
+		    }
 		  else
-		    tmp->info.expr.op = PT_EQ;
+		    {
+		      tmp->info.expr.op = PT_EQ;
+		    }
 		  cnf_node = parser_append_node (tmp, cnf_node);
 		}
 
@@ -5125,7 +5501,7 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      break;
 	    }
 	}
-    }
+    }				/* for (cnf_node = ...) */
 
   *continue_walk = PT_LIST_WALK;
 
@@ -5205,6 +5581,7 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 {
   PT_NODE *cnf_node, *dnf_node, *value_list, *between_and;
   int before_count;
+  PT_NODE *node_prior;
 
   value_list = NULL;
   before_count = parser->auto_param_count;
@@ -5216,19 +5593,29 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
       /* traverse DNF list  */
       for (dnf_node = cnf_node; dnf_node; dnf_node = dnf_node->or_next)
 	{
+	  node_prior = NULL;
+	  if (PT_IS_PRIOR_NODE (dnf_node))
+	    {
+	      node_prior = dnf_node->info.expr.arg1->info.expr.arg1;
+	    }
+	  else
+	    {
+	      node_prior = dnf_node->info.expr.arg1;
+	    }
 
 	  /* if neither it is expression node nor LHS is an attribute */
 	  if (dnf_node->node_type != PT_EXPR)
-	    continue;
-	  if (!pt_is_attr (dnf_node->info.expr.arg1)
-	      && !pt_is_instnum (dnf_node->info.expr.arg1)
-	      && !pt_is_orderbynum (dnf_node->info.expr.arg1))
+	    {
+	      continue;
+	    }
+	  if (!pt_is_attr (node_prior)
+	      && !pt_is_instnum (node_prior)
+	      && !pt_is_orderbynum (node_prior))
 	    {
 	      continue;
 	    }
 	  /* if it is partition prunning key */
-	  if (!where->partition_pruned
-	      && qo_is_partition_attr (dnf_node->info.expr.arg1))
+	  if (!where->partition_pruned && qo_is_partition_attr (node_prior))
 	    {
 	      continue;
 	    }
@@ -5371,13 +5758,32 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   int level, seqno = 0;
   PT_NODE *next, *pred, **wherep, **havingp, *dummy;
   PT_NODE *t_node, *spec;
+  PT_NODE **startwithp, **connectbyp, **aftercbfilterp;
 
   dummy = NULL;
-  wherep = havingp = &dummy;
+  wherep = havingp = startwithp = connectbyp = aftercbfilterp = &dummy;
 
   switch (node->node_type)
     {
     case PT_SELECT:
+      if (node->info.query.q.select.connect_by != NULL
+	  && !PT_IS_VALUE_NODE (node->info.query.q.select.where))
+	{
+	  PT_NODE *join_part = NULL;
+	  PT_NODE *after_connectby_filter_part = NULL;
+
+	  /* We need to separate the join predicates before we perform rewriting
+	     and optimizations so that they don't get mixed up with
+	     the filtering predicates (to be applied after connect by). */
+	  pt_split_join_preds (parser, node->info.query.q.select.where,
+			       &join_part, &after_connectby_filter_part);
+
+	  node->info.query.q.select.where = join_part;
+	  assert (node->info.query.q.select.after_cb_filter == NULL);
+	  node->info.query.q.select.after_cb_filter =
+	    after_connectby_filter_part;
+	}
+
       /* Put all join conditions together with WHERE clause for rewrite
          optimization. But we can distinguish a join condition from
          each other and from WHERE clause by location information
@@ -5410,6 +5816,18 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	}
       wherep = &node->info.query.q.select.where;
       havingp = &node->info.query.q.select.having;
+      if (node->info.query.q.select.start_with)
+	{
+	  startwithp = &node->info.query.q.select.start_with;
+	}
+      if (node->info.query.q.select.connect_by)
+	{
+	  connectbyp = &node->info.query.q.select.connect_by;
+	}
+      if (node->info.query.q.select.after_cb_filter)
+	{
+	  aftercbfilterp = &node->info.query.q.select.after_cb_filter;
+	}
       break;
 
     case PT_UPDATE:
@@ -5524,7 +5942,8 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       /* rewrite optimization on WHERE, HAVING clause
        */
 
-      if (!*wherep && !*havingp)
+      if (!*wherep && !*havingp && !*aftercbfilterp && !*startwithp
+	  && !*connectbyp)
 	{
 	  if (node->node_type != PT_SELECT)
 	    {
@@ -5543,9 +5962,25 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
       /* convert to CNF and tag tagable terms */
       if (*wherep)
-	*wherep = pt_cnf (parser, *wherep);
+	{
+	  *wherep = pt_cnf (parser, *wherep);
+	}
       if (*havingp)
-	*havingp = pt_cnf (parser, *havingp);
+	{
+	  *havingp = pt_cnf (parser, *havingp);
+	}
+      if (*startwithp)
+	{
+	  *startwithp = pt_cnf (parser, *startwithp);
+	}
+      if (*connectbyp)
+	{
+	  *connectbyp = pt_cnf (parser, *connectbyp);
+	}
+      if (*aftercbfilterp)
+	{
+	  *aftercbfilterp = pt_cnf (parser, *aftercbfilterp);
+	}
 
       /* in HAVING clause with GROUP BY,
        * move non-aggregate terms to WHERE clause
@@ -5555,6 +5990,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	{
 	  PT_NODE *prev, *cnf, *next;
 	  PT_AGG_INFO info;
+	  int has_pseudocolumn;
 
 	  prev = NULL;		/* init */
 	  for (cnf = *havingp; cnf; cnf = next)
@@ -5570,13 +6006,26 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 				       pt_is_aggregate_node, &info,
 				       pt_is_aggregate_node_post, &info);
 
+	      /* Note: Do not move the cnf node if it contains a pseudo-column!
+	       */
+	      if (!info.agg_found)
+		{
+		  has_pseudocolumn = 0;
+		  (void) parser_walk_tree (parser, cnf,
+					   pt_is_pseudocolumn_node,
+					   &has_pseudocolumn, NULL, NULL);
+		  if (has_pseudocolumn)
+		    {
+		      info.agg_found = true;
+		    }
+		}
+
 	      /* Not found aggregate funciton in cnf node.
 	       * So, move it from HAVING clause to WHERE clause.
 	       */
 	      if (!info.agg_found)
 		{
-		  /* delete cnf node from HAVING clause
-		   */
+		  /* delete cnf node from HAVING clause */
 		  if (!prev)
 		    {		/* very the first node */
 		      *havingp = next;
@@ -5586,8 +6035,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		      prev->next = next;
 		    }
 
-		  /* add cnf node to WHERE clause
-		   */
+		  /* add cnf node to WHERE clause */
 		  *wherep = parser_append_node (*wherep, cnf);
 		}
 	      else
@@ -5605,44 +6053,155 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	qo_reduce_equality_terms (parser, node, wherep);
       if (*havingp)
 	qo_reduce_equality_terms (parser, node, havingp);
+      /*  we don't reduce equality terms for startwith and connectby. This optimization
+       *  for every A after a statement like A = 5, replaced the column with the 
+       *  scalar 5. If the column is in an ORDER BY clause, the sorting may not 
+       *  occur on column A because it's always 5. This behavior is incorrect
+       *  when running a hierarchical query because there may be a A = 5 in the
+       *  START WITH part or CONNECT BY part but the ORDER BY on A should sort 
+       *  all elements from all levels, column A being different.
+       */
+      if (*aftercbfilterp)
+	{
+	  qo_reduce_equality_terms (parser, node, aftercbfilterp);
+	}
 
       /* convert terms of the form 'const op attr' to 'attr op const' */
       if (*wherep)
-	qo_converse_sarg_terms (parser, *wherep);
+	{
+	  qo_converse_sarg_terms (parser, *wherep);
+	}
       if (*havingp)
-	qo_converse_sarg_terms (parser, *havingp);
+	{
+	  qo_converse_sarg_terms (parser, *havingp);
+	}
+      if (*startwithp)
+	{
+	  qo_converse_sarg_terms (parser, *startwithp);
+	}
+      if (*connectbyp)
+	{
+	  qo_converse_sarg_terms (parser, *connectbyp);
+	}
+      if (*aftercbfilterp)
+	{
+	  qo_converse_sarg_terms (parser, *aftercbfilterp);
+	}
+
       /* reduce a pair of comparsion terms into one BETWEEN term */
       if (*wherep)
-	qo_reduce_comp_pair_terms (parser, wherep);
+	{
+	  qo_reduce_comp_pair_terms (parser, wherep);
+	}
       if (*havingp)
-	qo_reduce_comp_pair_terms (parser, havingp);
+	{
+	  qo_reduce_comp_pair_terms (parser, havingp);
+	}
+      if (*startwithp)
+	{
+	  qo_reduce_comp_pair_terms (parser, startwithp);
+	}
+      if (*connectbyp)
+	{
+	  qo_reduce_comp_pair_terms (parser, connectbyp);
+	}
+      if (*aftercbfilterp)
+	{
+	  qo_reduce_comp_pair_terms (parser, aftercbfilterp);
+	}
+
       /* convert a leftmost LIKE term to a BETWEEN (GE_LT) term */
       if (*wherep)
-	qo_rewrite_like_terms (parser, wherep);
+	{
+	  qo_rewrite_like_terms (parser, wherep);
+	}
       if (*havingp)
-	qo_rewrite_like_terms (parser, havingp);
+	{
+	  qo_rewrite_like_terms (parser, havingp);
+	}
+      if (*startwithp)
+	{
+	  qo_rewrite_like_terms (parser, startwithp);
+	}
+      if (*connectbyp)
+	{
+	  qo_rewrite_like_terms (parser, connectbyp);
+	}
+      if (*aftercbfilterp)
+	{
+	  qo_rewrite_like_terms (parser, aftercbfilterp);
+	}
 
       /* convert comparison terms to RANGE */
       if (*wherep)
-	qo_convert_to_range (parser, wherep);
+	{
+	  qo_convert_to_range (parser, wherep);
+	}
       if (*havingp)
-	qo_convert_to_range (parser, havingp);
+	{
+	  qo_convert_to_range (parser, havingp);
+	}
+      if (*startwithp)
+	{
+	  qo_convert_to_range (parser, startwithp);
+	}
+      if (*connectbyp)
+	{
+	  qo_convert_to_range (parser, connectbyp);
+	}
+      if (*aftercbfilterp)
+	{
+	  qo_convert_to_range (parser, aftercbfilterp);
+	}
 
       /* narrow search range by applying range intersection */
       if (*wherep)
-	qo_apply_range_intersection (parser, wherep);
+	{
+	  qo_apply_range_intersection (parser, wherep);
+	}
       if (*havingp)
-	qo_apply_range_intersection (parser, havingp);
+	{
+	  qo_apply_range_intersection (parser, havingp);
+	}
+      if (*startwithp)
+	{
+	  qo_apply_range_intersection (parser, startwithp);
+	}
+      if (*connectbyp)
+	{
+	  qo_apply_range_intersection (parser, connectbyp);
+	}
+      if (*aftercbfilterp)
+	{
+	  qo_apply_range_intersection (parser, aftercbfilterp);
+	}
 
       /* remove meaningless IS NULL/IS NOT NULL terms */
       if (*wherep)
-	qo_fold_is_and_not_null (parser, wherep);
+	{
+	  qo_fold_is_and_not_null (parser, wherep);
+	}
       if (*havingp)
-	qo_fold_is_and_not_null (parser, havingp);
+	{
+	  qo_fold_is_and_not_null (parser, havingp);
+	}
+      if (*startwithp)
+	{
+	  qo_fold_is_and_not_null (parser, startwithp);
+	}
+      if (*connectbyp)
+	{
+	  qo_fold_is_and_not_null (parser, connectbyp);
+	}
+      if (*aftercbfilterp)
+	{
+	  qo_fold_is_and_not_null (parser, aftercbfilterp);
+	}
 
       if (node->node_type == PT_SELECT)
 	{
 	  int continue_walk;
+
 	  /* rewrite outer join to inner join */
 	  qo_rewrite_outerjoin (parser, node, NULL, &continue_walk);
 
@@ -5697,11 +6256,29 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  /* auto-parameterize
 	     convert value in expression to host variable (input marker) */
 	  if (*wherep)
-	    qo_do_auto_parameterize (parser, *wherep);
+	    {
+	      qo_do_auto_parameterize (parser, *wherep);
+	    }
 	  if (*havingp)
-	    qo_do_auto_parameterize (parser, *havingp);
+	    {
+	      qo_do_auto_parameterize (parser, *havingp);
+	    }
+	  if (*startwithp)
+	    {
+	      qo_do_auto_parameterize (parser, *startwithp);
+	    }
+	  if (*connectbyp)
+	    {
+	      qo_do_auto_parameterize (parser, *connectbyp);
+	    }
+	  if (*aftercbfilterp)
+	    {
+	      qo_do_auto_parameterize (parser, *aftercbfilterp);
+	    }
 	  if (node->node_type == PT_SELECT && node->info.query.orderby_for)
-	    qo_do_auto_parameterize (parser, node->info.query.orderby_for);
+	    {
+	      qo_do_auto_parameterize (parser, node->info.query.orderby_for);
+	    }
 	}
     }
 

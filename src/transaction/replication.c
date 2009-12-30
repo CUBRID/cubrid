@@ -66,7 +66,7 @@ repl_data_insert_log_dump (FILE * fp, int length, void *data)
   char *ptr;
 
   ptr = or_unpack_string_nocopy ((char *) data, &class_name);
-  ptr = or_unpack_value (ptr, &key);
+  ptr = or_unpack_mem_value (ptr, &key);
   fprintf (fp, "      class_name: %s\n", class_name);
   fprintf (fp, "      pk_value: ");
   db_value_print (&key);
@@ -655,7 +655,7 @@ repl_debug_info ()
 		   repl_rec->inst_oid.volid,
 		   repl_rec->inst_oid.pageid, repl_rec->inst_oid.slotid);
 	  ptr = or_unpack_string_nocopy (repl_rec->repl_data, &class_name);
-	  ptr = or_unpack_value (ptr, &key);
+	  ptr = or_unpack_mem_value (ptr, &key);
 	  fprintf (stdout, "      class_name: %s\n", class_name);
 	  fprintf (stdout, "      LSA: %d | %d\n", repl_rec->lsa.pageid,
 		   repl_rec->lsa.offset);

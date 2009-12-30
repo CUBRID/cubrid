@@ -59,7 +59,7 @@
 extern int css_Master_socket_fd[2];
 extern struct timeval *css_Master_timeout;
 extern time_t css_Start_time;
-extern int css_Total_server_count;
+extern int css_Total_request_count;
 extern SOCKET_QUEUE_ENTRY *css_Master_socket_anchor;
 
 extern void css_process_info_request (CSS_CONN_ENTRY * conn);
@@ -929,7 +929,7 @@ css_process_request_count_info (CSS_CONN_ENTRY * conn,
 {
   int count;
 
-  count = htonl (css_Total_server_count);
+  count = htonl (css_Total_request_count);
   if (css_send_data (conn, request_id,
 		     (char *) &count, sizeof (int)) != NO_ERRORS)
     {

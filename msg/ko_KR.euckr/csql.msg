@@ -165,11 +165,16 @@ $ csql help messages
 
 232 <제약사항> 
 233 Info {schema|trigger|deferred|workspace|lock|stats}\n\
-\tschema [class-name]    - 스키마 정보.\n\
-\ttrigger [trigger-name] - 트리거 정보.\n\
-\tdeferred               - 지연 트리거 정보.\n\
+\tschema [class-name]    - 스키마 정보\n\
+\ttrigger [trigger-name] - 트리거 정보\n\
+\tdeferred               - 지연 트리거 정보\n\
 \tworkspace              - workspace 정보\n\
-\tlock                   - lock 정보. (client-server mode)\n\
-\tstats class-name       - 클래스 통계 정보.\n
+\tlock                   - lock 정보 (client-server mode)\n\
+\tstats class-name       - 클래스 통계 정보\n\
+\ttrantable              - 트랜잭션 정보\n\
+\tlogstat                - 로그 정보\n\
+\tcsstat                 - critical section 정보\n\
+\tplan                   - 플랜 캐시 정보\n\
+\tqcache                 - 쿼리 캐시 정보\n
 235 <분할>
 236 클래스 이름이 필요합니다.

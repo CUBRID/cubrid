@@ -52,7 +52,7 @@ struct val_list_node
 typedef enum
 {
 /* aggregate functions */
-  PT_MIN = 500, PT_MAX, PT_SUM, PT_AVG,
+  PT_MIN = 550, PT_MAX, PT_SUM, PT_AVG,
   PT_STDDEV, PT_VARIANCE,
   PT_COUNT, PT_COUNT_STAR,
   PT_GROUPBY_NUM,
@@ -160,6 +160,9 @@ typedef enum
   T_DIV,
   T_UNPLUS,
   T_UNMINUS,
+  T_PRIOR,
+  T_CONNECT_BY_ROOT,
+  T_QPRIOR,
   T_MOD,
   T_POSITION,
   T_SUBSTRING,
@@ -219,7 +222,8 @@ typedef enum
   T_RANDOM,
   T_DRANDOM,
   T_INCR,
-  T_DECR
+  T_DECR,
+  T_SYS_CONNECT_BY_PATH
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;
@@ -448,6 +452,14 @@ struct filter_info
       (filter_info).vstr_ids = (v_ids); \
     } \
   while (0)
+
+/* pseudocolumns offsets in tuple (from end) */
+#define	PCOL_ISCYCLE_TUPLE_OFFSET	1
+#define	PCOL_ISLEAF_TUPLE_OFFSET	2
+#define	PCOL_LEVEL_TUPLE_OFFSET		3
+#define	PCOL_INDEX_STRING_TUPLE_OFFSET	4
+#define	PCOL_PARENTPOS_TUPLE_OFFSET	5
+#define	PCOL_FIRST_TUPLE_OFFSET		PCOL_PARENTPOS_TUPLE_OFFSET
 
 extern DB_LOGICAL eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr,
 			     VAL_DESCR * vd, OID * obj_oid);

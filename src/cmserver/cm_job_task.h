@@ -373,7 +373,6 @@ int ts_get_autoexecquery_error_log (nvplist * req, nvplist * res,
 				    char *_dbmt_error);
 int tsGetAutoaddvolLog (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_check_file (nvplist * req, nvplist * res, char *_dbmt_error);
-int ts_localdb_operation (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_trigger_operation (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_triggerinfo (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_file (nvplist * req, nvplist * res, char *_dbmt_error);
@@ -410,7 +409,6 @@ int ts_removeactivitylog (nvplist * cli_request, nvplist * cli_response,
 int ts_getactivitylog (nvplist * cli_request, nvplist * cli_response,
 		       char *diag_error);
 #endif
-int ts_get_ldb_class_att (nvplist * req, nvplist * res, char *_dbmt_error);
 int tsDBMTUserLogin (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_change_owner (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts_remove_log (nvplist * in, nvplist * out, char *_dbmt_error);

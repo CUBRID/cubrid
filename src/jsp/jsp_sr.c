@@ -376,6 +376,7 @@ jsp_start_server (const char *db_name, const char *path)
   char classpath[PATH_MAX + 32], logging_prop[PATH_MAX + 32];
   char *loc_p, *locale;
   const char *envroot;
+  char jsp_file_path[PATH_MAX];
   char optionString2[] = "-Xrs";
   CREATE_VM_FUNC create_vm_func = NULL;
 
@@ -398,12 +399,13 @@ jsp_start_server (const char *db_name, const char *path)
     }
 
   snprintf (classpath, sizeof (classpath) - 1,
-	    "-Djava.class.path=%s%cjava%cjspserver.jar",
-	    envroot, PATHSLASH, PATHSLASH);
+	    "-Djava.class.path=%s",
+	    envvar_javadir_file (jsp_file_path, PATH_MAX, "jspserver.jar"));
 
   snprintf (logging_prop, sizeof (logging_prop) - 1,
-	    "-Djava.util.logging.config.file=%s%cjava%clogging.properties",
-	    envroot, PATHSLASH, PATHSLASH);
+	    "-Djava.util.logging.config.file=%s",
+	    envvar_javadir_file (jsp_file_path, PATH_MAX,
+				 "logging.properties"));
 
   options[0].optionString = classpath;
   options[1].optionString = logging_prop;
@@ -507,7 +509,7 @@ jsp_start_server (const char *db_name, const char *path)
       goto error;
     }
 
-  jstr_envroot = JVM_NewStringUTF (env_p, envroot);
+  jstr_envroot = JVM_NewStringUTF (env_p, envvar_root ());
   if (jstr_envroot == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_START_JVM,

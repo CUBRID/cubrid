@@ -351,14 +351,15 @@ extern REPL_LOG_BUFFER *repl_ag_get_page_buffer (PAGEID pageid, int m_idx);
 extern void repl_ag_release_page_buffer (PAGEID pageid, int m_idx);
 extern int repl_ag_retrieve_eot_time (LOG_PAGE * log_pgptr, LOG_LSA * lsa,
 				      int idx, time_t * time);
-extern int repl_ag_add_unlock_commit_log (int tranid, LOG_LSA * lsa, int idx);
+extern int repl_ag_add_commit_log (int tranid, LOG_LSA * lsa, int idx,
+				   int log_type);
 extern int repl_ag_set_commit_log (int tranid, LOG_LSA * lsa, int idx,
 				   time_t master_time);
-extern int
-repl_ag_log_perf_info (char *master_dbname, int tranid,
-		       const time_t * master_time, const time_t * slave_time);
+extern int repl_ag_log_perf_info (char *master_dbname, int tranid,
+				  const time_t * master_time,
+				  const time_t * slave_time);
 extern int repl_ag_apply_commit_list (LOG_LSA * lsa, int idx,
-				      time_t * old_time, bool clear_tran);
+				      time_t * old_time);
 extern void repl_ag_apply_abort (int idx, int tranid, time_t master_time,
 				 time_t * old_time);
 extern int repl_ag_apply_repl_log (int tranid, int m_idx, int *total_rows,
@@ -367,6 +368,7 @@ extern int repl_ag_set_repl_log (LOG_PAGE * log_pgptr, int log_type,
 				 int tranid, LOG_LSA * lsa, int m_idx);
 extern int repl_ag_append_partition_class_to_repl_group (SLAVE_INFO * sinfo,
 							 int m_idx);
+extern MASTER_MAP *repl_ag_get_master_map (int idx);
 extern SLAVE_INFO *repl_ag_get_slave_info (int *s_idx);
 extern int repl_ag_sock_init (int m_idx);
 extern void repl_ag_sock_shutdown (int m_idx);

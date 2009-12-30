@@ -842,7 +842,8 @@ ini_seccmp (const char *key1, const char *key2)
  *       do not free or modify returned pointer
  */
 static const char *
-ini_get_internal (INI_TABLE * ini, const char *key, const char *def, int *lineno)
+ini_get_internal (INI_TABLE * ini, const char *key, const char *def,
+		  int *lineno)
 {
   char *lc_key;
   const char *sval;
@@ -892,7 +893,8 @@ ini_getstr (INI_TABLE * ini, const char *sec, const char *key,
  * Note:
  */
 int
-ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def, int *lineno)
+ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def,
+	    int *lineno)
 {
   const char *str;
 
@@ -916,7 +918,8 @@ ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def, int *lin
  * Note:
  */
 int
-ini_getuint (INI_TABLE * ini, const char *sec, const char *key, int def, int *lineno)
+ini_getuint (INI_TABLE * ini, const char *sec, const char *key, int def,
+	     int *lineno)
 {
   int result;
 
@@ -929,6 +932,7 @@ ini_getuint (INI_TABLE * ini, const char *sec, const char *key, int def, int *li
   return result;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ini_getuint_min() - Get the string associated to a key, convert to
  *                     positive int with minimum limit
@@ -956,6 +960,7 @@ ini_getuint_min (INI_TABLE * ini, const char *sec, const char *key, int def,
 
   return result;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * ini_getuint_max() - Get the string associated to a key, convert to
@@ -997,7 +1002,8 @@ ini_getuint_max (INI_TABLE * ini, const char *sec, const char *key, int def,
  * Note: the conversion may overflow. see strtol().
  */
 int
-ini_gethex (INI_TABLE * ini, const char *sec, const char *key, int def, int *lineno)
+ini_gethex (INI_TABLE * ini, const char *sec, const char *key, int def,
+	    int *lineno)
 {
   const char *str;
 
@@ -1007,4 +1013,29 @@ ini_gethex (INI_TABLE * ini, const char *sec, const char *key, int def, int *lin
       return def;
     }
   return (int) strtol (str, NULL, 16);
+}
+
+/*
+ * ini_getfloat() - Get the string associated to a key, convert to an float
+ *   return: float
+ *   ini(in): INI_TABLE to search
+ *   sec(in): section to look for
+ *   key(in): key to look for
+ *   def(in): default value to return if key not found
+ *   lineno(out): line number
+ *
+ * Note: the conversion may overflow. see strtod().
+ */
+float
+ini_getfloat (INI_TABLE * ini, const char *sec, const char *key, float def,
+	      int *lineno)
+{
+  const char *str;
+
+  str = ini_getstr (ini, sec, key, INI_INVALID_KEY, lineno);
+  if (str == INI_INVALID_KEY)
+    {
+      return def;
+    }
+  return (float) strtod (str, NULL);
 }

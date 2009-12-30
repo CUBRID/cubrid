@@ -626,6 +626,7 @@ or_class_hfid (RECDES * record, HFID * hfid)
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * or_class_statistics () - extracts the OID of the statistics instance for
  *                          this class from the disk representation of a class
@@ -749,6 +750,7 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
 
   return error;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * or_get_hierarchy_helper () -
@@ -2506,6 +2508,7 @@ or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record)
   return rep;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * or_classrep_needs_indexes () -
  *   return:
@@ -2516,6 +2519,7 @@ or_classrep_needs_indexes (OR_CLASSREP * rep)
 {
   return rep->needs_indexes;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * or_free_classrep () - Frees an OR_CLASSREP structure returned by

@@ -1211,6 +1211,7 @@ tran_end_topop_abort (void)
   return error_code;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * tran_end_topop - END A MACRO NESTED TOP OPERATION
  *
@@ -1259,6 +1260,7 @@ tran_end_topop (LOG_RESULT_TOPOP result)
   return error_code;
 
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tran_add_savepoint -
@@ -1364,6 +1366,7 @@ tran_free_list_upto_savepoint (const char *savept_name)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * tran_get_savepoints - Get list of current savepoint names.  The latest
  *                    savepoint is listed first. (Reverse chronological
@@ -1386,6 +1389,7 @@ tran_get_savepoints (DB_NAMELIST ** savepoint_list)
   *savepoint_list = nlist_copy (user_savepoint_list);
   return NO_ERROR;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * tran_savepoint - Declare a user savepoint

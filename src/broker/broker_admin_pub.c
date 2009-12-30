@@ -93,7 +93,9 @@ static const char *get_appl_server_name (int appl_server_type, char **env,
 static int broker_create_dir (const char *new_dir);
 
 #if !defined(WINDOWS)
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int get_cubrid_version (void);
+#endif
 #endif /* !WINDOWS */
 
 #if defined(WINDOWS)
@@ -168,6 +170,7 @@ broker_create_dir (const char *new_dir)
   return -1;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int
 admin_isstarted_cmd (int master_shm_id)
 {
@@ -180,6 +183,7 @@ admin_isstarted_cmd (int master_shm_id)
   uw_shm_detach (shm_br);
   return 1;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 int
 admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
@@ -190,6 +194,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
 #if defined(WINDOWS)
   unsigned char ip_addr[4];
 #endif /* WINDOWS */
+  char path[PATH_MAX];
 
 #if defined(WINDOWS)
   if (admin_get_host_ip (ip_addr) < 0)
@@ -197,15 +202,14 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
 #endif /* WINDOWS */
 
   chdir ("..");
-  broker_create_dir (CUBRID_VAR_DIR);
-  broker_create_dir (CUBRID_TMP_DIR);
-  broker_create_dir (CUBRID_BASE_DIR);
-  broker_create_dir (CUBRID_ASPID_DIR);
-  broker_create_dir (CUBRID_LOG_DIR);
-  broker_create_dir (CUBRID_ERR_DIR);
+  broker_create_dir (get_cubrid_file (FID_VAR_DIR, path));
+  broker_create_dir (get_cubrid_file (FID_CAS_TMP_DIR, path));
+  broker_create_dir (get_cubrid_file (FID_AS_PID_DIR, path));
+  broker_create_dir (get_cubrid_file (FID_SQL_LOG_DIR, path));
+  broker_create_dir (get_cubrid_file (FID_CUBRID_ERR_DIR, path));
 #if !defined(WINDOWS)
-  broker_create_dir (CUBRID_LOG_DIR "/" SQL_LOG2_DIR);
-  broker_create_dir (CUBRID_SOCK_DIR);
+  broker_create_dir (get_cubrid_file (FID_SQL_LOG2_DIR, path));
+  broker_create_dir (get_cubrid_file (FID_SOCK_DIR, path));
 #endif /* !WINDOWS */
 
   if (br_num <= 0)
@@ -220,7 +224,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
       broker_create_dir (br_info[i].log_dir);
       broker_create_dir (br_info[i].err_log_dir);
     }
-  chdir ("bin");
+  chdir (envvar_bindir_file (path, PATH_MAX, ""));
 
   /* create master shared memory */
   shm_size = sizeof (T_SHM_BROKER) + (br_num - 1) * sizeof (T_BROKER_INFO);
@@ -252,7 +256,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
       snprintf (shm_br->br_info[i].access_log_file, CONF_LOG_FILE_LEN - 1,
 		"%s/%s.access", br_info[i].access_log_file, br_info[i].name);
       snprintf (shm_br->br_info[i].error_log_file, CONF_LOG_FILE_LEN - 1,
-		br_info[i].error_log_file, br_info[i].name);
+		"%s/%s.err", br_info[i].error_log_file, br_info[i].name);
       if (shm_br->br_info[i].service_flag == ON)
 	{
 	  res = br_activate (&(shm_br->br_info[i]), master_shm_id, shm_br);
@@ -561,7 +565,9 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
       pid = run_child (appl_name);
 #else /* WINDOWS */
       if (execle (appl_name, argv0, NULL, environ) < 0)
-	perror ("execle");
+	{
+	  perror ("execle");
+	}
       exit (0);
 #endif /* !WINDOWS */
     }
@@ -1221,37 +1227,36 @@ admin_broker_conf_change (int master_shm_id, char *br_name, char *conf_name,
     }
   else if (strcasecmp (conf_name, "LONG_QUERY_TIME") == 0)
     {
-      int long_query_time;
+      float long_query_time;
 
-      long_query_time = atoi (conf_value);
+      long_query_time = (float) strtod (conf_value, NULL);
       if (long_query_time <= 0)
 	{
-	  long_query_time = DEFAULT_LONG_QUERY_TIME;
+	  long_query_time = (float) DEFAULT_LONG_QUERY_TIME;
 	}
-      shm_br->br_info[br_index].long_query_time = long_query_time;
-      shm_appl->long_query_time = long_query_time;
+      shm_br->br_info[br_index].long_query_time =
+	(int) (long_query_time * 1000.0);
+      shm_appl->long_query_time = (int) (long_query_time * 1000.0);
     }
   else if (strcasecmp (conf_name, "LONG_TRANSACTION_TIME") == 0)
     {
-      int long_transaction_time;
+      float long_transaction_time;
 
-      long_transaction_time = atoi (conf_value);
+      long_transaction_time = (float) strtod (conf_value, NULL);
       if (long_transaction_time <= 0)
-        {
-          long_transaction_time = DEFAULT_LONG_TRANSACTION_TIME;
-        }
-      shm_br->br_info[br_index].long_transaction_time = long_transaction_time;
-      shm_appl->long_transaction_time = long_transaction_time;
+	{
+	  long_transaction_time = (float) DEFAULT_LONG_TRANSACTION_TIME;
+	}
+      shm_br->br_info[br_index].long_transaction_time =
+	(int) (long_transaction_time * 1000.0);
+      shm_appl->long_transaction_time =
+	(int) (long_transaction_time * 1000.0);
     }
   else if (strcasecmp (conf_name, "APPL_SERVER_MAX_SIZE") == 0)
     {
       int max_size;
 
       max_size = atoi (conf_value);
-      if (max_size <= 0)
-	{
-	  max_size = DEFAULT_SERVER_MAX_SIZE;
-	}
       max_size *= 1024;
       shm_br->br_info[br_index].appl_server_max_size = max_size;
       shm_appl->appl_server_max_size = max_size;
@@ -1766,10 +1771,17 @@ br_inactivate (T_BROKER_INFO * br_info)
   int i;
   char cmd_buf[BUFSIZ];
 
+#if defined(WINDOWS)
   if (localtime_r (&cur_time, &ct) < 0)
     {
       return -1;
     }
+#else /* WINDOWS */
+  if (localtime_r (&cur_time, &ct) == NULL)
+    {
+      return -1;
+    }
+#endif /* !WINDOWS */
   ct.tm_year += 1900;
 
   if (br_info->pid)
@@ -1920,7 +1932,9 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
       pid = run_child (appl_name);
 #else /* WINDOWS */
       if (execle (appl_name, process_name, NULL, environ) < 0)
-	perror (appl_name);
+	{
+	  perror (appl_name);
+	}
       exit (0);
 #endif /* WINDOWS */
     }
@@ -2021,6 +2035,7 @@ get_appl_server_name (int appl_server_type, char **env, int env_num)
 }
 
 #if !defined(WINDOWS)
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int
 get_cubrid_version ()
 {
@@ -2063,4 +2078,5 @@ get_cubrid_version ()
 
   return version;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* !WINDOWS */

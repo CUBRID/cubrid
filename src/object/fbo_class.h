@@ -27,8 +27,11 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int esm_create (char *pathname);
 extern void esm_destroy (char *pathname);
+#endif
+
 extern INT64 esm_get_size (char *pathname);
 extern int esm_read (char *pathname, const INT64 offset,
 		     const int size, char *buffer);

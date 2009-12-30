@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -157,7 +157,9 @@ extern int repl_svr_tp_destroy (int finish);
 extern bool repl_check_shutdown (void);
 extern int repl_svr_tp_start (void);
 extern bool repl_svr_check_shutdown (void);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void repl_svr_shutdown_immediately (void);
+#endif
 extern char *repl_svr_get_ip (int agent_fd);
 extern int repl_svr_sock_get_request (void);
 extern int repl_svr_sock_send_result (int agent_fd, int result);
