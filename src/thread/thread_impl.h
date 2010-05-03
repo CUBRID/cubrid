@@ -27,9 +27,6 @@
 
 #ident "$Id$"
 
-/* TODO: Explain main concept or logic of your code
- contained in this file if possible */
-
 #if defined(SERVER_MODE)
 #include <sys/types.h>
 #if !defined(WINDOWS)
@@ -50,22 +47,6 @@
 typedef void THREAD_ENTRY;
 #else /* !SERVER_MODE */
 
-#define THREAD_SET_INFO(thrd, clnt_id, r, tran_idx) \
-        do { \
-            (thrd)->client_id = (clnt_id); \
-            (thrd)->rid = (r); \
-            (thrd)->tran_index = (tran_idx); \
-            (thrd)->victim_request_fail = false; \
-            (thrd)->next_wait_thrd = NULL; \
-            (thrd)->lockwait = NULL; \
-            (thrd)->lockwait_state = -1; \
-            (thrd)->query_entry = NULL; \
-            (thrd)->tran_next_wait = NULL; \
-        } while (0)
-
-#define THREAD_SET_TRAN_INDEX(thrd, tran_idx) \
-        (thrd)->tran_index = (tran_idx)
-
 #if defined(HPUX)
 #define thread_set_thread_entry_info(entry)
 #endif /* HPUX */
@@ -75,7 +56,21 @@ typedef struct thread_entry THREAD_ENTRY;
 enum
 { TS_DEAD = 0, TS_FREE, TS_RUN, TS_WAIT, TS_CHECK };
 enum
-{ RESUME_NOT_OK = -1, RESUME_OK = 0 };
+{ THREAD_RESUME_NONE,
+  THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_RESUME_DUE_TO_SHUTDOWN,
+  THREAD_PGBUF_SUSPENDED, THREAD_PGBUF_RESUMED,
+  THREAD_JOB_QUEUE_SUSPENDED, THREAD_JOB_QUEUE_RESUMED,
+  THREAD_CSECT_READER_SUSPENDED, THREAD_CSECT_READER_RESUMED,
+  THREAD_CSECT_WRITER_SUSPENDED, THREAD_CSECT_WRITER_RESUMED,
+  THREAD_CSECT_PROMOTER_SUSPENDED, THREAD_CSECT_PROMOTER_RESUMED,
+  THREAD_CSS_QUEUE_SUSPENDED, THREAD_CSS_QUEUE_RESUMED,
+  THREAD_QMGR_ACTIVE_QRY_SUSPENDED, THREAD_QMGR_ACTIVE_QRY_RESUMED,
+  THREAD_QMGR_MEMBUF_PAGE_SUSPENDED, THREAD_QMGR_MEMBUF_PAGE_RESUMED,
+  THREAD_HEAP_CLSREPR_SUSPENDED, THREAD_HEAP_CLSREPR_RESUMED,
+  THREAD_LOCK_SUSPENDED, THREAD_LOCK_RESUMED,
+  THREAD_HA_ACTIVE_STATE_SUSPENDED, THREAD_HA_ACTIVE_STATE_RESUMED,
+  THREAD_LOGWR_SUSPENDED, THREAD_LOGWR_RESUMED
+};
 enum
 { TT_MASTER, TT_SERVER, TT_WORKER, TT_DAEMON, TT_NONE };
 
@@ -131,6 +126,11 @@ struct thread_entry
   void *query_entry;
   struct thread_entry *tran_next_wait;
   struct thread_entry *worker_thrd_list;	/* worker thrd on jobq list */
+
+  void *log_zip_undo;
+  void *log_zip_redo;
+  char *log_data_ptr;
+  int log_data_length;
 };
 
 typedef struct daemon_thread_monitor DAEMON_THREAD_MONITOR;
@@ -168,15 +168,20 @@ extern int thread_lock_entry (THREAD_ENTRY * entry);
 extern int thread_lock_entry_with_tran_index (int tran_index);
 #endif
 extern int thread_unlock_entry (THREAD_ENTRY * p);
-extern int thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * p);
-extern int
-thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * p, void *t);
+extern int thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * p,
+						   int suspended_reason);
+extern int thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * p,
+							   void *t,
+							   int
+							   suspended_reason);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int thread_suspend_wakeup_and_unlock_entry_with_tran_index (int
-								   tran_index);
+								   tran_index,
+								   int
+								   suspended_reason);
 #endif
-extern int thread_wakeup (THREAD_ENTRY * p);
-extern int thread_wakeup_with_tran_index (int tran_index);
+extern int thread_wakeup (THREAD_ENTRY * p, int resume_reason);
+extern int thread_wakeup_with_tran_index (int tran_index, int resume_reason);
 
 extern ADJ_ARRAY *css_get_cnv_adj_buffer (int idx);
 extern void css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer);
@@ -184,7 +189,9 @@ extern int thread_is_manager_initialized (void);
 
 extern void thread_wait (THREAD_ENTRY * thread_p, CSS_THREAD_FN func,
 			 CSS_THREAD_ARG arg);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void thread_exit (int exit_code);
+#endif
 extern void thread_sleep (int, int);
 extern void thread_get_info_threads (int *num_total_threads,
 				     int *num_worker_threads,
@@ -210,6 +217,7 @@ extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);
 extern void thread_wakeup_page_flush_thread (void);
+extern void thread_wakeup_flush_control_thread (void);
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
 extern THREAD_ENTRY *thread_find_next_lockwait_entry (int *thrd_index);
 extern THREAD_ENTRY *thread_find_entry_by_index (int thrd_index);
@@ -220,14 +228,18 @@ extern void thread_wakeup_oob_handler_thread (void);
 #if defined (WINDOWS)
 extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p,
 					    MUTEX_T * mutexp,
-					    int timeout, int *to);
+					    int timeout, int *to,
+					    int suspended_reason);
 #else /* WINDOWS */
 extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p,
 					    MUTEX_T * mutexp,
-					    int timeout, struct timespec *to);
+					    int timeout, struct timespec *to,
+					    int suspended_reason);
 #endif /* WINDOWS */
+#if defined(CUBRID_DEBUG)
 extern void thread_print_entry_info (THREAD_ENTRY * p);
 extern void thread_dump_threads (void);
+#endif
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
 
 extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p,
@@ -238,6 +250,8 @@ extern HL_HEAPID css_get_private_heap (THREAD_ENTRY * thread_p);
 extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p,
 				       HL_HEAPID heap_id);
 
+extern void thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid,
+			     int tran_index);
 #if defined(WINDOWS)
 extern unsigned __stdcall thread_worker (void *);
 

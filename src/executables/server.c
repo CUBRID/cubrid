@@ -54,6 +54,9 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
+#if !defined(WINDOWS)
+#include "heartbeat.h"
+#endif
 
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException,
@@ -304,6 +307,9 @@ main (int argc, char **argv)
   database_name = argv[1];
 
 #if !defined(WINDOWS)
+  hb_set_exec_path (executable_path);
+  hb_set_argv (argv);
+
   /* create a new session */
   setsid ();
 #endif

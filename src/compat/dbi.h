@@ -76,6 +76,7 @@ extern int db_2pc_prepared_transactions (int gtrids[], int size);
 extern int db_2pc_prepare_to_commit_transaction (int gtrid);
 extern int db_2pc_attach_transaction (int gtrid);
 extern void db_set_interrupt (int set);
+extern void db_checkpoint (void);
 extern int db_freepgs (const char *vlabel);
 extern int db_totalpgs (const char *vlabel);
 extern int db_purpose_totalpgs_freepgs (int volid,
@@ -621,11 +622,11 @@ extern DB_OBJECT *dbt_finish_object (DB_OTMPL * def);
 extern void dbt_abort_object (DB_OTMPL * def);
 
 extern int dbt_put (DB_OTMPL * def, const char *name, DB_VALUE * value);
-extern void dbt_set_label (DB_OTMPL * def, DB_VALUE * label);
+extern int dbt_set_label (DB_OTMPL * def, DB_VALUE * label);
 
 /* Descriptor functions.
  * The descriptor interface offers an alternative to attribute & method
- * names that can be substantially faster for repetative operations.
+ * names that can be substantially faster for repetitive operations.
  */
 extern int db_get_attribute_descriptor (DB_OBJECT * obj,
 					const char *attname,

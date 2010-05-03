@@ -110,8 +110,9 @@ static void logtb_increment_number_of_assigned_tran_indices ();
 static void logtb_decrement_number_of_assigned_tran_indices ();
 static void logtb_set_number_of_total_tran_indices (int num_total_trans);
 static void logtb_set_loose_end_tdes (LOG_TDES * tdes);
-static bool logtb_is_interrupt_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-				     bool clear, bool * continue_checking);
+static bool logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p,
+				       LOG_TDES * tdes, bool clear,
+				       bool * continue_checking);
 static void logtb_dump_tdes_distribute_transaction (FILE * out_fp,
 						    int global_tran_id,
 						    LOG_2PC_COORDINATOR *
@@ -295,12 +296,15 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   /*
    * Notify other modules of new number of transaction indices
    */
+#if defined(ENABLE_UNUSED_FUNCTION)
   error_code = wfg_alloc_nodes (thread_p, total_indices);
   if (error_code != NO_ERROR)
     {
       free_and_init (area);
       goto error;
     }
+#endif
+
   if (qmgr_allocate_tran_entries (thread_p, total_indices) != NO_ERROR)
     {
       free_and_init (area);
@@ -373,7 +377,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p,
 {
   int error_code = NO_ERROR;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   /*
    * for XA support: there is prepared transaction after recovery.
@@ -580,14 +584,15 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 	      if (tdes->topops.max != 0)
 		{
 		  free_and_init (tdes->topops.stack);
-		  tdes->topops.stack = NULL;
 		  tdes->topops.max = 0;
 		  tdes->topops.last = -1;
 		}
 	    }
 	}
 
+#if defined(ENABLE_UNUSED_FUNCTION)
       wfg_free_nodes (thread_p);
+#endif
 
       if (log_Gl.trantable.all_tdes != NULL)
 	{
@@ -1154,7 +1159,6 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
       if (tdes->topops.max != 0)
 	{
 	  free_and_init (tdes->topops.stack);
-	  tdes->topops.stack = NULL;
 	  tdes->topops.max = 0;
 	  tdes->topops.last = -1;
 	}
@@ -2340,9 +2344,11 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
 	  if (set == true)
 	    {
 	      pgbuf_force_to_check_for_interrupts ();
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		      ER_INTERRUPTING, 1, tran_index);
+	      mnt_tran_interrupts (thread_p);
 	    }
 
-	  mnt_tran_interrupts (thread_p);
 	  return true;
 	}
     }
@@ -2351,7 +2357,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
 }
 
 /*
- * logtb_is_interrupt_tdes -
+ * logtb_is_interrupted_tdes -
  *
  * return:
  *
@@ -2362,8 +2368,8 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
  * Note:
  */
 static bool
-logtb_is_interrupt_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
-			 bool * continue_checking)
+logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+			   bool clear, bool * continue_checking)
 {
   int interrupt;
 
@@ -2402,7 +2408,8 @@ logtb_is_interrupt_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 }
 
 /*
- * logtb_is_interrupt - find if execution must be stopped due to an interrupt (^C)
+ * logtb_is_interrupted - find if execution must be stopped due to 
+ *			  an interrupt (^C)
  *
  * return:
  *
@@ -2423,8 +2430,8 @@ logtb_is_interrupt_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
  *              transaction will be partially aborted.
  */
 bool
-logtb_is_interrupt (THREAD_ENTRY * thread_p, bool clear,
-		    bool * continue_checking)
+logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear,
+		      bool * continue_checking)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
@@ -2440,43 +2447,12 @@ logtb_is_interrupt (THREAD_ENTRY * thread_p, bool clear,
       return false;
     }
 
-  return logtb_is_interrupt_tdes (thread_p, tdes, clear, continue_checking);
+  return logtb_is_interrupted_tdes (thread_p, tdes, clear, continue_checking);
 }
 
 /*
- * log_isinterrupt_tdes - find if execution of the transaction associated with
- *                       tdes must be stopped due to an interrupt (^C)
- *
- * return:
- *
- *   tdes(in): Transaction descriptor
- *   clear(in): true if the interrupt should be cleared.
- *
- * Note:Find if the execution of transaction associated with tdes must
- *              be stopped due to an interrupt (^C). If clear is true, the
- *              interruption flag is cleared; This is the expected case, once
- *              someone is notified, we do not have to keep the flag on.
- */
-//bool
-//log_isinterrupt_tdes (LOG_TDES * tdes, bool clear)
-//{
-//  bool interrupt;
-//
-//  interrupt = tdes->interrupt;
-//  if (interrupt == true && clear == true)
-//    {
-//      tdes->interrupt = false;
-//      TR_TABLE_CS_ENTER ();
-//      log_Gl.trantable.num_interrupts--;
-//      TR_TABLE_CS_EXIT ();
-//    }
-//
-//  return interrupt;
-//}
-
-/*
- * logtb_is_interrupt_tran - find if the execution of the given transaction must
- *                       be stopped due to an interrupt (^C)
+ * logtb_is_interrupted_tran - find if the execution of the given transaction 
+ *			       must be stopped due to an interrupt (^C)
  *
  * return:
  *
@@ -2495,8 +2471,8 @@ logtb_is_interrupt (THREAD_ENTRY * thread_p, bool clear,
  *              be interrupted.
  */
 bool
-logtb_is_interrupt_tran (THREAD_ENTRY * thread_p, bool clear,
-			 bool * continue_checking, int tran_index)
+logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear,
+			   bool * continue_checking, int tran_index)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
 
@@ -2506,39 +2482,8 @@ logtb_is_interrupt_tran (THREAD_ENTRY * thread_p, bool clear,
       return false;
     }
 
-  return logtb_is_interrupt_tdes (thread_p, tdes, clear, continue_checking);
+  return logtb_is_interrupted_tdes (thread_p, tdes, clear, continue_checking);
 }
-
-/*
- * logtb_are_any_interrupts - an interrupt for any transaction ?
- *
- * return:
- *
- * Note: Find if an interrupt must be executed on any transaction.
- */
-//bool
-//logtb_are_any_interrupts (void)
-//{
-//  bool r;
-//  if (log_Gl.trantable.area == NULL)
-//    {
-//      return false;
-//    }
-//
-//  TR_TABLE_CS_ENTER_READ_MODE ();
-//  if (log_Gl.trantable.num_interrupts > 0)
-//    {
-//      r = true;
-//    }
-//  else
-//    {
-//      r = false;
-//    }
-//
-//  TR_TABLE_CS_EXIT ();
-//
-//  return r;
-//}
 
 /*
  * logtb_is_active - is transaction active ?
@@ -3012,6 +2957,7 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
   TR_TABLE_CS_EXIT ();
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * logtb_find_largest_lsa - largest lsa address of all active transactions
  *
@@ -3045,6 +2991,7 @@ logtb_find_largest_lsa (THREAD_ENTRY * thread_p)
 
   return max_lsa;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * logtb_find_smallest_and_largest_active_pages - smallest and larger active pages

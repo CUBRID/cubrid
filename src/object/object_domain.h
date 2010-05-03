@@ -311,8 +311,10 @@ TP_DOMAIN *tp_domain_find_object (DB_TYPE type, OID * class_oid,
 TP_DOMAIN *tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain,
 			       bool is_desc);
 TP_DOMAIN *tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf);
+#if defined(ENABLE_UNUSED_FUNCTION)
 TP_DOMAIN *tp_create_domain_resolve_value (DB_VALUE * val,
 					   TP_DOMAIN * domain);
+#endif /* ENABLE_UNUSED_FUNCTION */
 int tp_can_steal_string (const DB_VALUE * val,
 			 const DB_DOMAIN * desired_domain);
 int tp_domain_references_objects (const TP_DOMAIN * dom);
@@ -360,9 +362,11 @@ extern TP_DOMAIN_STATUS tp_check_value_size (TP_DOMAIN * domain,
 					     DB_VALUE * value);
 
 extern int tp_valid_indextype (DB_TYPE type);
+#if defined(CUBRID_DEBUG)
 extern void tp_dump_domain (TP_DOMAIN * domain);
 extern void tp_domain_print (TP_DOMAIN * domain);
 extern void tp_domain_fprint (FILE * fp, TP_DOMAIN * domain);
+#endif
 extern int tp_domain_attach (TP_DOMAIN ** dlist, TP_DOMAIN * domain);
 
 #endif /* _OBJECT_DOMAIN_H_ */

@@ -318,6 +318,7 @@ css_fd_error (SOCKET fd)
   return (count);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_fd_down() - Determine if a socket has been shut down for some reason
  *   return:
@@ -338,6 +339,7 @@ css_fd_down (SOCKET fd)
 
   return 0;
 }
+#endif
 
 /*
  * css_gethostname() - interface for the "gethostname" function
@@ -657,7 +659,7 @@ css_master_accept (SOCKET sockfd)
 
 /*
  * css_open_server_connection_socket() - open the socket used by the server
- *                                       for incomming client connection
+ *                                       for incoming client connection
  *                                       requests
  *   return: port id
  */
@@ -715,7 +717,7 @@ css_open_server_connection_socket (void)
     }
 
   /*
-   * Set it up to listen for incomming connections.  Note that under Winsock
+   * Set it up to listen for incoming connections.  Note that under Winsock
    * (NetManage version at least), the backlog parameter is silently limited
    * to 5, regardless of what is requested.
    */
@@ -737,7 +739,7 @@ error:
 
 /*
  * css_close_server_connection_socket() - Close the socket that was opened by
- *                                        the server for incomming client
+ *                                        the server for incoming client
  *                                        requests
  *   return: void
  */
@@ -752,7 +754,7 @@ css_close_server_connection_socket (void)
 }
 
 /*
- * css_server_accept() - accept an incomming connection on the server's
+ * css_server_accept() - accept an incoming connection on the server's
  *                       connection socket
  *   return: the fd of the new connection
  *   sockfd(in):

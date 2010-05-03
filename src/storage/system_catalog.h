@@ -123,7 +123,8 @@ extern int catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id,
 				   CLS_INFO * Cls_Info);
 extern CLS_INFO *catalog_update_class_info (THREAD_ENTRY * thread_p,
 					    OID * class_id,
-					    CLS_INFO * cls_info);
+					    CLS_INFO * cls_info,
+					    bool skip_logging);
 extern int catalog_drop_old_representations (THREAD_ENTRY * thread_p,
 					     OID * class_id);
 extern DISK_REPR *catalog_get_representation (THREAD_ENTRY * thread_p,

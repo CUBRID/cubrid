@@ -886,7 +886,7 @@ static int serial_check = 1;
 static int pseudocolumn_check = 1;
 static int subquery_check = 1;
 
-/* check Oracle style outer-join operatior: '(+)' */
+/* check Oracle style outer-join operator: '(+)' */
 static bool found_Oracle_outer = false;
 
 /* check sys_date, sys_time, sys_timestamp, local_transaction_id */
@@ -1446,14 +1446,14 @@ qualified_join_table_specification "qualified join table specification"
              PT_JOIN_TYPE join_type = PT_JOIN_INNER;
              bool natural = false;
           >>
-          /*{ NATURAL << natural = true; >> } -- dose not support natural join */
+          /*{ NATURAL << natural = true; >> } -- does not support natural join */
           {
             ( INNER << join_type = PT_JOIN_INNER; >>
             | ( LEFT << join_type = PT_JOIN_LEFT_OUTER; >>
               | RIGHT << join_type = PT_JOIN_RIGHT_OUTER; >>
-            /*| FULL << join_type = PT_JOIN_FULL_OUTER; >> -- dose not support full outer join */
+            /*| FULL << join_type = PT_JOIN_FULL_OUTER; >> -- does not support full outer join */
               ) { OUTER }
-            /*| Union << join_type = PT_JOIN_UNION; >> -- dose not support union join */
+            /*| Union << join_type = PT_JOIN_UNION; >> -- does not support union join */
             )
           }
           JOIN table_specification
@@ -1475,10 +1475,10 @@ join_specification < [PT_NODE *sopt] "join specification"
           << if (sopt)
                 sopt->info.spec.on_cond = pt_pop(this_parser);
           >>
-        /*| named_columns_join -- dose not support named columns join
+        /*| named_columns_join -- does not support named columns join
           << if (sopt)
                 sopt->info.spec_using_cond = pt_pop(this_parser); */
-        /*| constraint_join -- dose not support constraint join */
+        /*| constraint_join -- does not support constraint join */
         )
         ;
 
@@ -7498,7 +7498,7 @@ unsigned_integer > [PT_NODE *val] "numeric literal"
 		     /* this will not fit for numerics > 32 bits worth */
 	             $val->info.value.data_value.i = atol($1.text);
 
-		     /* test against the maximum length of digits guranteed
+		     /* test against the maximum length of digits guaranteed
 		      * to fit in a 32 bit integer */
 		     if ((strlen($val->info.value.text) <= 9) ||
                          (strlen($val->info.value.text) == 10 &&

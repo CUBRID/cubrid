@@ -66,7 +66,7 @@ $set 5 MSGCAT_SET_ERROR
 1 Missing message for error code %1$d.
 2 Internal system failure:  no more specific information is available.
 3 Out of virtual memory:  unable to allocate %1$ld memory bytes.
-4 Interrupt.
+4 Has been interrupted.
 5 Key = "%1$s" was not found in hash table "%2$s".
 6 A NULL memory hash table was supplied to a hash table function.
 7 Trying to format disk volume "%1$s" with an incorrect value %2$d for number of pages.
@@ -883,8 +883,8 @@ $ LOADDB
 817 pthread_setspecific() failed.
 818 pthread_getspecific() failed.
 819 pthread_once() failed.
-820 Cannot initialize mutex for connection.
-821 Cannot destroy mutex for connection.
+820 Cannot initialize a connection.
+821 Shutdown a connection.
 822 Mutex operation failed while getting next client id.
 823 Mutex operation failed while initializing connection list.
 824 Cannot destroy mutex while finalizing connection list.
@@ -1044,8 +1044,20 @@ $ LOADDB
 978 Checkpoint finished (page %d).
 979 CONNECT BY loop in user data.
 980 A thread is waiting in %1$s more than %2$d msec.
+981 Transaction %1$d has reached to the threshold of monitoring statistics %2$s.
+982 Set interrupt to the transaction %1$d.
+983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
+984 Cannot set %3$s to "%6$s" in the "[%5$s]" section when it is set to "%4$s" in the "[%2$s]" section of the configuration file "%1$s".
+985 The hostname on the database connection string should be specified when multihost is set in "databases.txt".
+986 CUBRID heartbeat feature started. 
+987 CUBRID heartbeat feature stopped.
+988 Node event: %1$s.
+989 Process event: %1$s. %2$s
+990 Command execution: %1$s. %2$s
+991 Flush victim candidates of page buffer started.
+992 Flush victim candidates of page buffer finished (count: %d).
 
-981 Last Error
+993 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):
@@ -1106,7 +1118,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 30 invalid create index\n  CREATE {REVERSE} {UNIQUE} INDEX {identifier} ON {only} class_name index_column_name_list
 31 invalid create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 invalid create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
-33 invalid create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE}
+33 invalid create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
 34 invalid create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
 35 invalid create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
 36 invalid groups\n  groups spec : GROUPS identifier {, identifier}*
@@ -1138,7 +1150,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 62 invalid minus value (or minus value in list)
 63 duplicated reference rule
 64 SYS_CONNECT_BY_PATH needs two parameters and the second must be a string literal.
-
+65 Invalid unsigned integer %s.
 
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
@@ -1339,6 +1351,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 195 '%s' can only be used in hierarchical queries. Specify a CONNECT BY clause.
 196 '%s' is not allowed here.
 197 Using CONNECT_BY_ISCYCLE is only allowed if the query has a CONNECT BY NOCYCLE clause.
+198 Duplicate table option '%s'
+199 The class '%s' is marked as REUSE_OID and is non-referable. Non-referable classes can't be the domain of an attribute and their instances' OIDs cannot be returned.
+200 The number to CACHE must be less than one cycle (%s).
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

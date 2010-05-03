@@ -51,7 +51,9 @@ typedef enum
   FILE_TMP,
   FILE_TMP_TMP,
   FILE_EITHER_TMP,
-  FILE_UNKNOWN_TYPE
+  FILE_UNKNOWN_TYPE,
+  FILE_HEAP_REUSE_SLOTS,
+  FILE_LAST = FILE_HEAP_REUSE_SLOTS
 } FILE_TYPE;
 
 /* Set a vfid with values of volid and fileid */
@@ -161,7 +163,7 @@ struct file_header
   VFID vfid;			/* The File identifier itself, this is used for
 				   debugging purposes. */
   INT64 creation;		/* Time of the creation of the file */
-  INT16 type;		        /* Type of the file such as Heap, B+tree,
+  INT16 type;			/* Type of the file such as Heap, B+tree,
 				   Extendible hashing, etc */
   INT16 ismark_as_deleted;	/* Is the file marked as deleted ? */
   int num_table_vpids;		/* Number of total pages for file table. The
@@ -188,6 +190,14 @@ struct file_header
 				   comments */
     char piece[1];		/* Really more than one */
   } des;
+};
+
+/* buffer for saving allocated vpids */
+typedef struct file_alloc_vpids FILE_ALLOC_VPIDS;
+struct file_alloc_vpids
+{
+  VPID *vpids;
+  int index;
 };
 
 extern int file_manager_initialize (THREAD_ENTRY * thread_p);
@@ -225,6 +235,7 @@ extern FILE_TYPE file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_get_descriptor (THREAD_ENTRY * thread_p, const VFID * vfid,
 				void *area_des, int maxsize);
 extern INT32 file_get_numpages (THREAD_ENTRY * thread_p, const VFID * vfid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern INT32 file_get_numpages_overhead (THREAD_ENTRY * thread_p,
 					 const VFID * vfid);
 extern INT32 file_get_numpages_plus_numpages_overhead (THREAD_ENTRY *
@@ -233,6 +244,7 @@ extern INT32 file_get_numpages_plus_numpages_overhead (THREAD_ENTRY *
 						       INT32 * numpages,
 						       INT32 *
 						       overhead_numpages);
+#endif
 extern int file_get_numfiles (THREAD_ENTRY * thread_p);
 extern INT32 file_guess_numpages_overhead (THREAD_ENTRY * thread_p,
 					   const VFID * vfid, INT32 npages);
@@ -245,7 +257,9 @@ extern INT32 file_find_maxpages_allocable (THREAD_ENTRY * thread_p,
 					   const VFID * vfid);
 extern int file_find_nthfile (THREAD_ENTRY * thread_p, VFID * vfid,
 			      int nthfile);
+#if defined(CUBRID_DEBUG)
 extern DISK_ISVALID file_isvalid (THREAD_ENTRY * thread_p, const VFID * vfid);
+#endif
 extern DISK_ISVALID file_isvalid_page_partof (THREAD_ENTRY * thread_p,
 					      const VPID * vpid,
 					      const VFID * vfid);
@@ -257,6 +271,7 @@ extern VPID *file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 			       const VPID * near_vpid,
 			       bool (*fun) (THREAD_ENTRY * thread_p,
 					    const VFID * vfid,
+					    const FILE_TYPE file_type,
 					    const VPID * first_alloc_vpid,
 					    INT32 npages, void *args),
 			       void *args);
@@ -270,19 +285,25 @@ extern VPID *file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p,
 							     thread_p,
 							     const VFID *
 							     vfid,
+							     const FILE_TYPE
+							     file_type,
 							     const VPID *
 							     first_alloc_vpid,
 							     const INT32 *
 							     first_alloc_nthpage,
 							     INT32 npages,
 							     void *args),
-						void *args);
+						void *args,
+						FILE_ALLOC_VPIDS *
+						alloc_vpids);
 extern VPID *file_alloc_pages_at_volid (THREAD_ENTRY * thread_p,
 					const VFID * vfid,
 					VPID * first_alloc_vpid, INT32 npages,
 					const VPID * near_vpid,
 					INT16 desired_volid,
 					bool (*fun) (const VFID * vfid,
+						     const FILE_TYPE
+						     file_type,
 						     const VPID *
 						     first_alloc_vpid,
 						     INT32 npages,
@@ -307,7 +328,6 @@ extern DISK_ISVALID file_tracker_check (THREAD_ENTRY * thread_p);
 extern int file_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
 extern int file_dump_descriptor (THREAD_ENTRY * thread_p, FILE * fp,
 				 const VFID * vfid);
-
 extern int file_rv_undo_create_tmp (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void file_rv_dump_create_tmp (FILE * fp, int length_ignore,
 				     void *data);

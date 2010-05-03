@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -357,9 +357,10 @@ struct qo_planner
   int cleanup_needed;
 };
 
-extern void qo_plans_stats (FILE *);
 extern QO_PLAN *qo_planner_search (QO_ENV *);
 extern void qo_planner_free (QO_PLANNER *);
+#if defined (CUBRID_DEBUG)
+extern void qo_plans_stats (FILE *);
 extern void qo_info_stats (FILE *);
-
+#endif
 #endif /* _QUERY_PLANNER_H_ */

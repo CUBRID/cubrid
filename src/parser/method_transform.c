@@ -1890,7 +1890,7 @@ meth_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 
   /* Can not increment threshold for list portion of walk.
    * Since those queries are not sub-queries of this query.
-   * Consequently, we recurse seperately for the list leading
+   * Consequently, we recurse separately for the list leading
    * from a query.
    */
   if (node->next)

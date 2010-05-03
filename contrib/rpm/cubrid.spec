@@ -1,6 +1,6 @@
 
-%define cubrid_version 8.2.1.0215
-%define build_version  8.2.1
+%define cubrid_version 8.2.2.0261
+%define build_version  8.2.2
 %define cubrid_vendor  Search Solution Corporation
 %define release        el5
 %define cubrid_user    cubrid
@@ -126,7 +126,7 @@ install -c -m 755 %{SOURCE2} %{buildroot}%{_sysconfdir}/profile.d/cubrid.csh
 #install -c -m 755 util/.libs/loadjava %{buildroot}%{_bindir}/loadjava
 #install -c -m 755 util/.libs/repl_agent %{buildroot}%{_bindir}/repl_agent
 #install -c -m 755 util/.libs/repl_server %{buildroot}%{_bindir}/repl_server
-#install -c -m 755 util/.libs/migrate_r20 %{buildroot}%{_bindir}/migrate_r20
+#install -c -m 755 util/.libs/migrate_r22 %{buildroot}%{_bindir}/migrate_r22
 #install -c -m 755 util/repl_make_distdb %{buildroot}%{_bindir}/repl_make_distdb
 #install -c -m 755 util/repl_make_slavedb %{buildroot}%{_bindir}/repl_make_slavedb
 #install -c -m 755 util/repl_make_group %{buildroot}%{_bindir}/repl_make_group
@@ -164,9 +164,6 @@ install -c -m 755 %{SOURCE2} %{buildroot}%{_sysconfdir}/profile.d/cubrid.csh
 #install -c -m 644 cmserver/conf/cm.conf %{buildroot}%{_sysconfdir}/cubrid/cm.conf
 #install -c -m 644 cmserver/conf/cm.pass %{buildroot}%{_sysconfdir}/cubrid/cm.pass
 #install -c -m 644 cmserver/conf/cmdb.pass %{buildroot}%{_sysconfdir}/cubrid/cmdb.pass
-#install -c -m 644 cmserver/conf/emgr.conf %{buildroot}%{_sysconfdir}/cubrid/emgr.conf
-#install -c -m 644 cmserver/conf/emgr.pass %{buildroot}%{_sysconfdir}/cubrid/emgr.pass
-#install -c -m 644 cmserver/conf/emgr_db.pass %{buildroot}%{_sysconfdir}/cubrid/emgr_db.pass
 #install -c -m 644 cmserver/conf/diagactivitytemplate.conf %{buildroot}%{_sysconfdir}/cubrid/diagactivitytemplate.conf
 #install -c -m 644 cmserver/conf/diagstatustemplate.conf %{buildroot}%{_sysconfdir}/cubrid/diagstatustemplate.conf
 #install -c -m 644 cmserver/conf/autoaddvoldb.conf %{buildroot}%{_sysconfdir}/cubrid/autoaddvoldb.conf
@@ -340,9 +337,6 @@ rm -rf %{buildroot}
 %config(noreplace) /opt/cubrid/conf/cubrid.conf
 %config(noreplace) /opt/cubrid/conf/diagactivitytemplate.conf
 %config(noreplace) /opt/cubrid/conf/diagstatustemplate.conf
-%config(noreplace) /opt/cubrid/conf/emgr.conf
-%config(noreplace) /opt/cubrid/conf/emgr_db.pass
-%config(noreplace) /opt/cubrid/conf/emgr.pass
 
 #/opt/cubrid/log
 #/opt/cubrid/var

@@ -941,6 +941,7 @@ basename (const char *path)
 }
 #endif /* !HAVE_BASENAME */
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 int
 utona (unsigned int u, char *s, size_t n)
 {
@@ -975,7 +976,6 @@ utona (unsigned int u, char *s, size_t n)
   return (t - s);
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 int
 itona (int i, char *s, size_t n)
 {
@@ -1237,6 +1237,36 @@ setenv (const char *name, const char *val, int overwrite)
     }
 
   return 0;
+}
+
+int
+cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
+{
+  int len = _vscprintf_p (format, argptr) + 1;
+
+  if (len > count)
+    {
+      char *cp = malloc (len);
+      if (cp == NULL)
+	{
+	  return -1;
+	}
+
+      len = _vsprintf_p (cp, len, format, argptr);
+      if (len < 0)
+	{
+	  free (cp);
+	  return len;
+	}
+
+      memcpy (buffer, cp, count - 1);
+      buffer[count - 1] = 0;
+
+      free (cp);
+      return count;
+    }
+
+  return _vsprintf_p (buffer, count, format, argptr);
 }
 
 #endif /* WINDOWS */

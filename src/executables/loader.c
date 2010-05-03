@@ -774,11 +774,11 @@ select_set_domain (LDR_CONTEXT * context,
 }
 
 /*
- * check_object_domain - checks the type of an incomming value against the
+ * check_object_domain - checks the type of an incoming value against the
  * target domain.
  *    return: NO_ERROR if successful, error code otherwise
  *    context(in): context
- *    class(in): class of incomming object reference
+ *    class(in): class of incoming object reference
  *    actual_class(out): class to expect (if first arg is NULL)
  * Note:
  *    If they don't match LDR_DOMAIN_MISMATCH is returned.
@@ -853,7 +853,7 @@ check_object_domain (LDR_CONTEXT * context,
 }
 
 /*
- * check_class_domain - checks the domain for an incomming reference to an
+ * check_class_domain - checks the domain for an incoming reference to an
  * actual class object (not an instance).
  *    return: NO_ERROR if successful, error code otherwise
  *    context(in): context
@@ -910,7 +910,6 @@ idmap_final (void)
   if (Id_map != NULL)
     {
       free_and_init (Id_map);
-      Id_map = NULL;
       Id_map_size = 0;
     }
 }
@@ -1157,7 +1156,6 @@ ldr_clear_and_free_context (LDR_CONTEXT * context)
 	{
 	  if (context->attrs[i].parser_str)
 	    free_and_init (context->attrs[i].parser_str);
-	  context->attrs[i].parser_str = NULL;
 	  if (context->attrs[i].attdesc)
 	    db_free_attribute_descriptor (context->attrs[i].attdesc);
 	  context->attrs[i].attdesc = NULL;
@@ -1272,10 +1270,10 @@ ldr_invalid_class_error (LDR_CONTEXT * context)
  * parse_error - parse error handler
  *    return: void
  *    context(in): context
- *    token_type(in): incomming token type
+ *    token_type(in): incoming token type
  *    token(in): token string
  * Note:
- *    Called when we have some sort of parsing problem with an incomming
+ *    Called when we have some sort of parsing problem with an incoming
  *    token that made it past parser's initial level of checking.
  *    System errors have not been set.
  *    This is called by serveral of the setters.
@@ -3396,7 +3394,6 @@ ldr_mop_tempoid_maps_final (void)
   if (ldr_Mop_tempoid_maps->mop_tempoid_maps)
     free_and_init (ldr_Mop_tempoid_maps->mop_tempoid_maps);
   free_and_init (ldr_Mop_tempoid_maps);
-  ldr_Mop_tempoid_maps = NULL;
 
   return;
 }
@@ -5967,6 +5964,7 @@ ldr_abort (void)
     longjmp (*ldr_Jmp_buf, 1);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * print_parser_lineno - print parse line number
  *    return: void
@@ -5980,6 +5978,7 @@ print_parser_lineno (FILE * fp)
   else
     printf ("%d\n", loader_yylineno);
 }
+#endif
 
 void
 ldr_act_set_skipCurrentclass (char *classname, size_t size)

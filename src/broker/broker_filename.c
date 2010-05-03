@@ -45,7 +45,7 @@
 
 static char cubrid_Dir[PATH_MAX] = "";
 
-#define NUM_CUBRID_FILE		15
+#define NUM_CUBRID_FILE		17
 static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_CUBRID_BROKER_CONF, ""},
   {FID_UV_ERR_MSG, ""},
@@ -61,7 +61,9 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_ADMIND_LOG, ""},
   {FID_MONITORD_LOG, ""},
   {FID_ER_HTML, ""},
-  {FID_CUBRID_ERR_DIR, ""}
+  {FID_CUBRID_ERR_DIR, ""},
+  {FID_CAS_FOR_ORACLE_DBINFO, ""},
+  {FID_CAS_FOR_MYSQL_DBINFO, ""}
 };
 
 void
@@ -240,6 +242,14 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf)
       break;
     case FID_CUBRID_ERR_DIR:
       envvar_logdir_file (buf, PATH_MAX, "broker/error_log/");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_CAS_FOR_ORACLE_DBINFO:
+      envvar_confdir_file (buf, PATH_MAX, "databases_oracle.txt");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_CAS_FOR_MYSQL_DBINFO:
+      envvar_confdir_file (buf, PATH_MAX, "databases_mysql.txt");
       snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
       break;
     default:

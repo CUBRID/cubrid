@@ -1051,9 +1051,9 @@ pt_free_string_blocks (const PARSER_CONTEXT * parser)
 
 
 /*
- * parser_create_parser () - creates a parser context pointer
- *      The pointer should be passes to top level
- *      parse functions,  and then freed by parser_free_parser.
+ * parser_create_parser () - creates a parser context
+ *      The pointer can be passed to top level
+ *      parse functions and then freed by parser_free_parser.
  *   return:
  */
 PARSER_CONTEXT *
@@ -1089,7 +1089,6 @@ parser_create_parser (void)
   if (pt_register_parser (parser) == ER_FAILED)
     {
       free_and_init (parser);
-      parser = NULL;
     }
 
   return parser;

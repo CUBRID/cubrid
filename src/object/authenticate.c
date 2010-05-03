@@ -1030,9 +1030,9 @@ au_reset_authorization_caches (void)
   for (c = Au_class_caches; c != NULL; c = c->next)
     {
       for (i = 0; i < Au_cache_depth; i++)
-        {
-          c->data[i] = AU_CACHE_INVALID;
-        }
+	{
+	  c->data[i] = AU_CACHE_INVALID;
+	}
     }
 }
 
@@ -1308,14 +1308,16 @@ au_make_user (const char *name)
   int error;
 
   user = NULL;
-  if ((uclass = sm_find_class (AU_USER_CLASS_NAME)) == NULL)
+  uclass = sm_find_class (AU_USER_CLASS_NAME);
+  if (uclass == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_CLASS, 1,
 	      AU_USER_CLASS_NAME);
     }
   else
     {
-      if ((aclass = sm_find_class (AU_AUTH_CLASS_NAME)) == NULL)
+      aclass = sm_find_class (AU_AUTH_CLASS_NAME);
+      if (aclass == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_CLASS, 1,
 		  AU_AUTH_CLASS_NAME);
@@ -1326,7 +1328,6 @@ au_make_user (const char *name)
 	  lname = (char *) malloc (2 * strlen (name) + 1);
 	  if (lname)
 	    {
-
 	      toupper_string (name, lname);
 	      db_make_string (&value, lname);
 	      error = obj_set (user, "name", &value);
@@ -1423,14 +1424,16 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop,
 
   if (au_obj == NULL)
     {
-      if ((au_class = sm_find_class (CT_CLASSAUTH_NAME)) == NULL)
+      au_class = sm_find_class (CT_CLASSAUTH_NAME);
+      if (au_class == NULL)
 	{
 	  error = ER_AU_MISSING_CLASS;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
 		  CT_CLASSAUTH_NAME);
 	  return error;
 	}
-      if ((au_obj = db_create_internal (au_class)) == NULL)
+      au_obj = db_create_internal (au_class);
+      if (au_obj == NULL)
 	{
 	  return er_errid ();
 	}
@@ -1442,20 +1445,28 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop,
   db_make_object (&value, user);
   obj_set (au_obj, "grantee", &value);
 
-  if ((db_class = sm_find_class (CT_CLASS_NAME)) == NULL)
-    return er_errid ();
+  db_class = sm_find_class (CT_CLASS_NAME);
+  if (db_class == NULL)
+    {
+      return er_errid ();
+    }
 
   db_make_string (&class_name_val, sm_class_name (class_mop));
-  if ((db_class_inst =
-       obj_find_unique (db_class, "class_name", &class_name_val,
-			AU_FETCH_READ)) == NULL)
-    return er_errid ();
+  db_class_inst = obj_find_unique (db_class, "class_name", &class_name_val,
+				   AU_FETCH_READ);
+  if (db_class_inst == NULL)
+    {
+      return er_errid ();
+    }
 
   db_make_object (&value, db_class_inst);
   obj_set (au_obj, "class_of", &value);
 
   for (type = DB_AUTH_SELECT, i = 0; type != auth_type;
-       type = (DB_AUTH) (type << 1), i++);
+       type = (DB_AUTH) (type << 1), i++)
+    {
+      ;
+    }
 
   db_make_varchar (&value, 7, (char *) type_set[i], strlen (type_set[i]));
   obj_set (au_obj, "auth_type", &value);
@@ -1568,14 +1579,16 @@ au_insert_new_auth (MOP grantor, MOP user, MOP class_mop,
     {
       if (auth_type & index)
 	{
-	  if ((error =
-	       au_set_new_auth (NULL, grantor, user, class_mop,
-				(DB_AUTH) index,
-				(grant_option & index) ? true : false)) !=
-	      NO_ERROR)
-	    break;
+	  error = au_set_new_auth (NULL, grantor, user, class_mop,
+				   (DB_AUTH) index,
+				   ((grant_option & index) ? true : false));
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
 	}
     }
+
   return error;
 }
 
@@ -1600,21 +1613,29 @@ au_update_new_auth (MOP grantor, MOP user, MOP class_mop,
     {
       if (auth_type & index)
 	{
+	  au_obj = au_get_new_auth (grantor, user, class_mop,
+				    (DB_AUTH) index);
+	  if (au_obj == NULL)
+	    {
+	      return er_errid ();
+	    }
 
-	  if ((au_obj =
-	       au_get_new_auth (grantor, user, class_mop,
-				(DB_AUTH) index)) == NULL)
-	    return er_errid ();
+	  error = obj_lock (au_obj, 1);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
 
-	  if (((error = obj_lock (au_obj, 1)) != NO_ERROR) ||
-	      ((error =
-		au_set_new_auth (au_obj, grantor, user, class_mop,
-				 (DB_AUTH) index,
-				 (grant_option & index) ? true : false)) !=
-	       NO_ERROR))
-	    return error;
+	  error = au_set_new_auth (au_obj, grantor, user, class_mop,
+				   (DB_AUTH) index,
+				   ((grant_option & index) ? true : false));
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
 	}
     }
+
   return error;
 }
 
@@ -1637,20 +1658,27 @@ au_delete_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
     {
       if (auth_type & index)
 	{
-
-	  if ((au_obj = au_get_new_auth (grantor, user, class_mop,
-					 (DB_AUTH) index)) == NULL)
+	  au_obj = au_get_new_auth (grantor, user, class_mop,
+				    (DB_AUTH) index);
+	  if (au_obj == NULL)
 	    {
 	      return er_errid ();
 	    }
 
-	  if (((error = obj_lock (au_obj, 1)) != NO_ERROR)
-	      || ((error = obj_delete (au_obj)) != NO_ERROR))
+	  error = obj_lock (au_obj, 1);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  error = obj_delete (au_obj);
+	  if (error != NO_ERROR)
 	    {
 	      return error;
 	    }
 	}
     }
+
   return error;
 }
 
@@ -1672,31 +1700,36 @@ au_propogate_del_new_auth (AU_GRANT * glist, DB_AUTH mask)
     {
       if (!g->legal)
 	{
-	  if ((error = get_grants (g->auth_object, &grants, 0)) != NO_ERROR)
+	  error = get_grants (g->auth_object, &grants, 0);
+	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
-	  if ((error =
-	       set_get_element (grants, GRANT_ENTRY_CLASS (g->grant_index),
-				&class_)) != NO_ERROR)
+
+	  error = set_get_element (grants, GRANT_ENTRY_CLASS (g->grant_index),
+				   &class_);
+	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
-	  if ((error =
-	       set_get_element (grants, GRANT_ENTRY_CACHE (g->grant_index),
-				&type)) != NO_ERROR)
+
+	  error = set_get_element (grants, GRANT_ENTRY_CACHE (g->grant_index),
+				   &type);
+	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
-	  if ((error = au_delete_new_auth (g->grantor, g->user,
-					   db_get_object (&class_),
-					   (DB_AUTH) (db_get_int (&type) &
-						      ~mask))) != NO_ERROR)
+
+	  error = au_delete_new_auth (g->grantor, g->user,
+				      db_get_object (&class_),
+				      (DB_AUTH) (db_get_int (&type) & ~mask));
+	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
 	}
     }
+
   return error;
 }
 
@@ -1719,13 +1752,15 @@ au_force_write_new_auth (void)
   int error = NO_ERROR;
 
   list = NULL;
+
   AU_DISABLE (save);
+
   au_class = sm_find_class (AU_AUTH_CLASS_NAME);
   if (au_class == NULL)
     {
       error = ER_AU_NO_AUTHORIZATION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto error;
+      goto end;
     }
 
   list = sm_fetch_all_objects (au_class, DB_FETCH_CLREAD_INSTREAD);
@@ -1733,53 +1768,72 @@ au_force_write_new_auth (void)
     {
       error = ER_AU_NO_AUTHORIZATION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      goto error;
+      goto end;
     }
 
   for (mop = list; mop != NULL; mop = mop->next)
     {
       au_obj = mop->op;
 
-      if ((error = obj_get (au_obj, "owner", &grantee_val)) != NO_ERROR)
-	goto error;
+      error = obj_get (au_obj, "owner", &grantee_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
       grantee = db_get_object (&grantee_val);
 
-      if ((error = obj_get (au_obj, "grants", &grants_val)) != NO_ERROR)
-	goto error;
+      error = obj_get (au_obj, "grants", &grants_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
       grants = db_get_set (&grants_val);
 
       gsize = set_size (grants);
       for (gindex = 0; gindex < gsize; gindex += GRANT_ENTRY_LENGTH)
 	{
-
-	  if ((error = set_get_element (grants, GRANT_ENTRY_CLASS (gindex),
-					&class_val)) != NO_ERROR)
-	    goto error;
+	  error = set_get_element (grants, GRANT_ENTRY_CLASS (gindex),
+				   &class_val);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
 	  class_ = db_get_object (&class_val);
 
-	  if ((error = set_get_element (grants, GRANT_ENTRY_SOURCE (gindex),
-					&grantor_val)) != NO_ERROR)
-	    goto error;
+	  error = set_get_element (grants, GRANT_ENTRY_SOURCE (gindex),
+				   &grantor_val);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
 	  grantor = db_get_object (&grantor_val);
 
-	  if ((error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex),
-					&auth_val)) != NO_ERROR)
-	    goto error;
+	  error = set_get_element (grants, GRANT_ENTRY_CACHE (gindex),
+				   &auth_val);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
 	  auth = (DB_AUTH) db_get_int (&auth_val);
 
-	  if ((error = au_insert_new_auth (grantor, grantee, class_,
-					   (DB_AUTH) (auth & AU_TYPE_MASK),
-					   auth & AU_GRANT_MASK)) != NO_ERROR)
-	    goto error;
+	  error = au_insert_new_auth (grantor, grantee, class_,
+				      (DB_AUTH) (auth & AU_TYPE_MASK),
+				      (auth & AU_GRANT_MASK));
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
 	}
     }
 
-error:
+end:
   if (list)
     {
       ml_ext_free (list);
     }
+
   AU_ENABLE (save);
+
   return error;
 }
 
@@ -1788,7 +1842,7 @@ error:
  *   return: error code
  *   name(in): proposed user name
  *
- * Note: This is made void for ansi compatibility. It prevoudly insured
+ * Note: This is made void for ansi compatibility. It previously insured
  *       that identifiers which were accepted could be parsed in the
  *       language interface.
  *
@@ -1817,16 +1871,22 @@ au_is_dba_group_member (MOP user)
   bool is_member = false;
 
   if (!user)
-    return false;		/* avoid gratuitous er_set later */
+    {
+      return false;		/* avoid gratuitous er_set later */
+    }
 
   if (user == Au_dba_user)
-    return true;
+    {
+      return true;
+    }
+
   if (au_get_set (user, "groups", &groups) == NO_ERROR)
     {
       db_make_object (&value, Au_dba_user);
       is_member = set_ismember (groups, &value);
       set_free (groups);
     }
+
   return is_member;
 }
 
@@ -1874,7 +1934,9 @@ au_add_user (const char *name, int *exists)
 	  if (user != NULL)
 	    {
 	      if (exists != NULL)
-		*exists = 1;
+		{
+		  *exists = 1;
+		}
 	    }
 	  else
 	    {
@@ -2040,7 +2102,9 @@ static void
 encrypt_password (const char *pass, int add_prefix, char *dest)
 {
   if (pass == NULL)
-    strcpy (dest, "");
+    {
+      strcpy (dest, "");
+    }
   else
     {
       crypt_seed (PASSWORD_ENCRYPTION_SEED);
@@ -2067,7 +2131,9 @@ static void
 encrypt_password_sha1 (const char *pass, int add_prefix, char *dest)
 {
   if (pass == NULL)
-    strcpy (dest, "");
+    {
+      strcpy (dest, "");
+    }
   else
     {
       if (!add_prefix)
@@ -3958,20 +4024,17 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
        * Note: Revoke from self is an error, because this cannot be done.
        */
     }
-  else
-    if ((error =
-	 au_fetch_class_force (class_mop, &classobj,
-			       AU_FETCH_READ)) == NO_ERROR)
+  else if ((error = au_fetch_class_force (class_mop, &classobj,
+					  AU_FETCH_READ)) == NO_ERROR)
     {
       if (classobj->owner == user)
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
-      else if ((error =
-		check_grant_option (class_mop, classobj, type)) == NO_ERROR)
+      else if ((error = check_grant_option (class_mop, classobj,
+					    type)) == NO_ERROR)
 	{
-
 	  if (au_get_object (user, "authorization", &auth) != NO_ERROR)
 	    {
 	      error = ER_AU_ACCESS_ERROR;
@@ -3987,7 +4050,6 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	    }
 	  else if ((error = get_grants (auth, &grants, 1)) == NO_ERROR)
 	    {
-
 	      gindex = find_grant_entry (grants, class_mop, Au_user);
 	      if (gindex == -1)
 		{
@@ -4868,6 +4930,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval,
 			       DB_VALUE * serial, DB_VALUE * owner)
 {
   MOP user = NULL, serial_object = NULL;
+  MOP serial_class_mop;
   DB_IDENTIFIER serial_obj_id;
   char *serial_name, *owner_name;
   int error = NO_ERROR, found = 0;
@@ -4891,16 +4954,10 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval,
       return;
     }
 
-  error = do_get_serial_obj_id (&serial_obj_id, &found, serial_name);
-  if (error != NO_ERROR || !found)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-	      ER_QPROC_SERIAL_NOT_FOUND, 1, serial_name);
-      db_make_error (returnval, ER_QPROC_SERIAL_NOT_FOUND);
-      return;
-    }
+  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-  serial_object = db_object (&serial_obj_id);
+  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
+					serial_name);
   if (serial_object == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,

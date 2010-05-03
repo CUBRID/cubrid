@@ -336,7 +336,7 @@ admin_stop_cmd (int master_shm_id)
 }
 
 int
-admin_add_cmd (int master_shm_id, char *broker)
+admin_add_cmd (int master_shm_id, const char *broker)
 {
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_appl_server;
@@ -418,7 +418,7 @@ admin_add_cmd (int master_shm_id, char *broker)
 }
 
 int
-admin_restart_cmd (int master_shm_id, char *broker, int as_index)
+admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 {
   T_SHM_BROKER *shm_br = NULL;
   T_SHM_APPL_SERVER *shm_appl = NULL;
@@ -483,7 +483,7 @@ admin_restart_cmd (int master_shm_id, char *broker, int as_index)
       return 0;
     }
 
-  if (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS)
+  if (IS_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
     {
       ut_kill_process (shm_appl->as_info[as_index].pid,
 		       shm_br->br_info[br_index].name, as_index);
@@ -608,7 +608,7 @@ restart_error:
 }
 
 int
-admin_drop_cmd (int master_shm_id, char *broker)
+admin_drop_cmd (int master_shm_id, const char *broker)
 {
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_appl_server;
@@ -685,7 +685,7 @@ finale:
 }
 
 int
-admin_broker_on_cmd (int master_shm_id, char *broker_name)
+admin_broker_on_cmd (int master_shm_id, const char *broker_name)
 {
   int i;
   T_SHM_BROKER *shm_br;
@@ -732,7 +732,7 @@ admin_broker_on_cmd (int master_shm_id, char *broker_name)
 }
 
 int
-admin_broker_off_cmd (int master_shm_id, char *broker_name)
+admin_broker_off_cmd (int master_shm_id, const char *broker_name)
 {
   int i;
   T_SHM_BROKER *shm_br;
@@ -784,7 +784,7 @@ admin_broker_off_cmd (int master_shm_id, char *broker_name)
 }
 
 int
-admin_broker_suspend_cmd (int master_shm_id, char *broker_name)
+admin_broker_suspend_cmd (int master_shm_id, const char *broker_name)
 {
   int i, br_index;
   T_SHM_BROKER *shm_br;
@@ -854,7 +854,7 @@ admin_broker_suspend_cmd (int master_shm_id, char *broker_name)
 }
 
 int
-admin_broker_resume_cmd (int master_shm_id, char *broker_name)
+admin_broker_resume_cmd (int master_shm_id, const char *broker_name)
 {
   int i, br_index;
   T_SHM_BROKER *shm_br;
@@ -916,7 +916,7 @@ admin_broker_resume_cmd (int master_shm_id, char *broker_name)
 }
 
 int
-admin_broker_reset_cmd (int master_shm_id, char *broker_name)
+admin_broker_reset_cmd (int master_shm_id, const char *broker_name)
 {
   int i, br_index;
   T_SHM_BROKER *shm_br;
@@ -1002,7 +1002,7 @@ admin_broker_info_cmd (int master_shm_id)
 }
 
 int
-admin_get_broker_status (int master_shm_id, char *broker_name)
+admin_get_broker_status (int master_shm_id, const char *broker_name)
 {
   int i, br_index;
   T_SHM_BROKER *shm_br;
@@ -1065,7 +1065,8 @@ admin_get_broker_status (int master_shm_id, char *broker_name)
 }
 
 int
-admin_broker_job_first_cmd (int master_shm_id, char *broker_name, int job_id)
+admin_broker_job_first_cmd (int master_shm_id, const char *broker_name,
+			    int job_id)
 {
   int i, br_index;
   int ret_value = 0;
@@ -1153,8 +1154,8 @@ admin_broker_job_first_cmd (int master_shm_id, char *broker_name, int job_id)
 }
 
 int
-admin_broker_conf_change (int master_shm_id, char *br_name, char *conf_name,
-			  char *conf_value)
+admin_broker_conf_change (int master_shm_id, const char *br_name,
+			  const char *conf_name, const char *conf_value)
 {
   T_SHM_BROKER *shm_br = NULL;
   T_SHM_APPL_SERVER *shm_appl = NULL;
@@ -1396,6 +1397,19 @@ admin_broker_conf_change (int master_shm_id, char *br_name, char *conf_name,
       shm_br->br_info[br_index].cci_pconnect = val;
       shm_appl->cci_pconnect = val;
     }
+  else if (strcasecmp (conf_name, "SELECT_AUTO_COMMIT") == 0)
+    {
+      int val;
+
+      val = conf_get_value_table_on_off (conf_value);
+      if (val < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_broker_conf_error;
+	}
+      shm_br->br_info[br_index].select_auto_commit = val;
+      shm_appl->select_auto_commit = val;
+    }
   else
     {
       sprintf (admin_err_msg, "unknown keyword %s", conf_name);
@@ -1416,7 +1430,7 @@ set_broker_conf_error:
 }
 
 int
-admin_del_cas_log (int master_shmid, char *broker, int asid)
+admin_del_cas_log (int master_shmid, const char *broker, int asid)
 {
   T_SHM_BROKER *shm_br = NULL;
   T_SHM_APPL_SERVER *shm_appl = NULL;
@@ -1452,7 +1466,8 @@ admin_del_cas_log (int master_shmid, char *broker, int asid)
   asid--;
 
   if (shm_appl->as_info[asid].service_flag != SERVICE_ON
-      || shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
+      ||
+      (IS_NOT_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server)))
     {
       goto error;
     }
@@ -1626,13 +1641,13 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 	       br_info->appl_server_shm_id);
       putenv (appl_server_shm_key_str);
 
-      if (br_info->appl_server == APPL_SERVER_CAS)
+      if (IS_APPL_SERVER_TYPE_CAS (br_info->appl_server))
 	broker_exe_name = NAME_CAS_BROKER;
       else
 	broker_exe_name = NAME_BROKER;
 
 #if defined(WINDOWS)
-      if (br_info->appl_server == APPL_SERVER_CAS
+      if (IS_APPL_SERVER_TYPE_CAS (br_info->appl_server)
 	  && br_info->appl_server_port < 0)
 	broker_exe_name = NAME_CAS_BROKER2;
 #endif /* WINDOWS */
@@ -1683,6 +1698,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   shm_appl->statement_pooling = br_info->statement_pooling;
   shm_appl->access_mode = br_info->access_mode;
   shm_appl->cci_pconnect = br_info->cci_pconnect;
+  shm_appl->select_auto_commit = br_info->select_auto_commit;
 
   shm_appl->access_log = br_info->access_log;
 
@@ -2031,6 +2047,10 @@ get_appl_server_name (int appl_server_type, char **env, int env_num)
 	    }
 	}
     }
+  if (appl_server_type == APPL_SERVER_CAS_ORACLE)
+    return APPL_SERVER_CAS_ORACLE_NAME;
+  if (appl_server_type == APPL_SERVER_CAS_MYSQL)
+    return APPL_SERVER_CAS_MYSQL_NAME;
   return APPL_SERVER_CAS_NAME;
 }
 

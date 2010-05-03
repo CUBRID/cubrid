@@ -97,9 +97,9 @@ typedef enum
   MSGCAT_UTIL_GENERIC_RESULT = 21,
   MSGCAT_UTIL_GENERIC_MISS_ARGUMENT = 22,
   MSGCAT_UTIL_GENERIC_CUBRID_USAGE = 23,
-  MSGCAT_UTIL_GENERIC_ARGS_OVER = 30,
-  MSGCAT_UTIL_GENERIC_MISS_DBNAME = 31,
-  MSGCAT_UTIL_GENRIC_REPL_NOT_SUPPORTED = 32
+  MSGCAT_UTIL_GENERIC_ARGS_OVER = 31,
+  MSGCAT_UTIL_GENERIC_MISS_DBNAME = 32,
+  MSGCAT_UTIL_GENRIC_REPL_NOT_SUPPORTED = 33
 } MSGCAT_UTIL_GENERIC_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DELETEDB */
@@ -362,7 +362,8 @@ typedef enum
   REPL_AGENT_NEED_MORE_WS = 41,
   REPL_AGENT_CANT_READ_STATUS_LOG = 42,
   REPL_AGENT_RESTART_MESSAGE = 51,
-  REPL_AGENT_RECORD_TYPE_ERROR = 52
+  REPL_AGENT_RECORD_TYPE_ERROR = 52,
+  REPL_AGENT_INFO_MSG = 53
 } MSGCAT_REPL_AGENT_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_COMPACTDB */
@@ -522,12 +523,6 @@ typedef enum
   APPLYLOGDB_MSG_USAGE = 60
 } MSGCAT_APPLYLOGDB_MSG;
 
-/* Message id in the set MSGCAT_UTIL_SET_LOGFILEDUMP */
-typedef enum
-{
-  LOGFILEDUMP_MSG_USAGE = 60
-} MSGCAT_LOGFILEDUMP_MSG;
-
 /* Message id in the set MSGCAT_UTIL_SET_STATMDUMP */
 typedef enum
 {
@@ -645,16 +640,23 @@ typedef struct
 #define PRINT_REPL_NAME         "cubrid replication"
 #define PRINT_REPL_SERVER_NAME  "cubrid replication server"
 #define PRINT_REPL_AGENT_NAME   "cubrid replication agent"
+#define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
 
 #define PRINT_CMD_SERVER        "server"
 #define PRINT_CMD_START         "start"
 #define PRINT_CMD_STOP          "stop"
 #define PRINT_CMD_STATUS        "status"
+#define PRINT_CMD_DEACTIVATE    "deact"
+#define PRINT_CMD_ACTIVATE      "act"
+#define PRINT_CMD_DEREG         "deregister"
+#define PRINT_CMD_LIST          "list"
+#define PRINT_CMD_RELOAD        "reload"
 
 #define PRINT_RESULT_SUCCESS    "success"
 #define PRINT_RESULT_FAIL       "fail"
 
 #define CHECK_SERVER            "Server"
+#define CHECK_HA_SERVER         "HA-Server"
 #define CHECK_REPL_SERVER       "repl_server"
 #define CHECK_REPL_AGENT        "repl_agent"
 
@@ -663,6 +665,12 @@ typedef struct
 #define COMMDB_REPL_STATUS      "-R"
 #define COMMDB_ALL_STATUS       "-O"
 #define COMMDB_ALL_STOP         "-A"
+#define COMMDB_HA_DEREG         "-D"
+#define COMMDB_HA_NODE_LIST     "-N"
+#define COMMDB_HA_PROC_LIST     "-L"
+#define COMMDB_HA_RELOAD        "-F"
+#define COMMDB_HA_DEACTIVATE    "-U"
+#define COMMDB_HA_ACTIVATE      "-T"
 
 #define MASK_ALL                0xFF
 #define MASK_SERVICE            0x01
@@ -671,6 +679,7 @@ typedef struct
 #define MASK_MANAGER            0x08
 #define MASK_REPL               0x10
 #define MASK_ADMIN              0x20
+#define MASK_HEARTBEAT          0x40
 
 /* utility option list */
 #define UTIL_OPTION_CREATEDB                    "createdb"
@@ -731,6 +740,8 @@ typedef struct
 #define CREATE_LOG_PAGE_COUNT_L                 "log-page-count"
 #define CREATE_PAGE_SIZE_S                      's'
 #define CREATE_PAGE_SIZE_L                      "page-size"
+#define CREATE_LOG_PAGE_SIZE_S                  10113
+#define CREATE_LOG_PAGE_SIZE_L                  "log-page-size"
 
 /* renamedb option list */
 #define RENAME_EXTENTED_VOLUME_PATH_S           'E'
@@ -847,6 +858,8 @@ typedef struct
 /* diagdb option list */
 #define DIAG_DUMP_TYPE_S                        'd'
 #define DIAG_DUMP_TYPE_L                        "dump-type"
+#define DIAG_DUMP_RECORDS_S                     11201
+#define DIAG_DUMP_RECORDS_L                     "dump-records"
 
 /* patch option list */
 #define PATCH_RECREATE_LOG_S                    'r'
@@ -1005,7 +1018,21 @@ typedef struct
 #define COMMDB_HOST_S                           'h'
 #define COMMDB_HOST_L                           "host"
 #define COMMDB_SERVER_MODE_S                    'c'
-#define COMMDB_SERVER_MODE_L           		"server-mode"
+#define COMMDB_SERVER_MODE_L                    "server-mode"
+#define COMMDB_HA_NODE_LIST_S                   'N'
+#define COMMDB_HA_NODE_LIST_L                   "node-list"
+#define COMMDB_HA_PROCESS_LIST_S                'L'
+#define COMMDB_HA_PROCESS_LIST_L                "process-list"
+#define COMMDB_DEREG_HA_PROCESS_S               'D'
+#define COMMDB_DEREG_HA_PROCESS_L               "dereg-process"
+#define COMMDB_RECONFIG_HEARTBEAT_S             'F'
+#define COMMDB_RECONFIG_HEARTBEAT_L             "reconfig-node-list"
+#define COMMDB_DEACTIVATE_HEARTBEAT_S           'U'
+#define COMMDB_DEACTIVATE_HEARTBEAT_L           "deactivate-heartbeat"
+#define COMMDB_ACTIVATE_HEARTBEAT_S             'T'
+#define COMMDB_ACTIVATE_HEARTBEAT_L             "activate-heartbeat"
+#define COMMDB_VERBOSE_OUTPUT_S                 'V'
+#define COMMDB_VERBOSE_OUTPUT_L	                "verbose"
 
 /* paramdump option list */
 #define PARAMDUMP_OUTPUT_FILE_S                 'o'
@@ -1018,10 +1045,12 @@ typedef struct
 #define PARAMDUMP_CS_MODE_L                     "CS-mode"
 
 /* statdump option list */
-#define STATDUMP_OUTPUT_FILE_S                 'o'
-#define STATDUMP_OUTPUT_FILE_L                 "output-file"
-#define STATDUMP_INTERVAL_S                    'i'
-#define STATDUMP_INTERVAL_L                    "interval"
+#define STATDUMP_OUTPUT_FILE_S                  'o'
+#define STATDUMP_OUTPUT_FILE_L                  "output-file"
+#define STATDUMP_INTERVAL_S                     'i'
+#define STATDUMP_INTERVAL_L                     "interval"
+#define STATDUMP_CUMULATIVE_S                   'c'
+#define STATDUMP_CUMULATIVE_L                   "cumulative"
 
 /* changemode option list */
 #define CHANGEMODE_MODE_S                       'm'
@@ -1095,6 +1124,7 @@ typedef struct
   UTIL_ARG_MAP *arg_map;
   const char *command_name;
   char *argv0;
+  char **argv;
 } UTIL_FUNCTION_ARG;
 typedef int (*UTILITY_FUNCTION) (UTIL_FUNCTION_ARG *);
 

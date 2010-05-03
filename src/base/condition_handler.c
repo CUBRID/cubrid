@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -106,9 +106,10 @@ static CO_DETAIL co_Current_detail = CO_DETAIL_USER;
 
 
 static int co_signalv (int code, const char *format, va_list args);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static const char *co_print_parameter (int p, CO_FORMAT_TYPE type,
 				       const char *format, int width);
-
+#endif
 static int co_find_conversion (const char *format, int from,
 			       int *start, CO_FORMAT_TYPE * type,
 			       int *position, int *width);
@@ -148,6 +149,7 @@ co_signal (int code, const char *format, ...)
   return error;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * co_code_module() - return module identifier for the given condition code
  *   return:  module identifier
@@ -170,7 +172,6 @@ co_code_id (int code)
   return ((-code) % CO_MAX_CODE) + 1;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * co_report() - print current condition messageto the given file
  *   return: none
@@ -270,11 +271,11 @@ co_report (FILE * file, CO_SEVERITY severity)
 	    {
 	      len = intl_mbs_len(message);
 	    }
-	  else 
+	  else
 	    {
 	      len = cptr - message;
 	    }
-	
+
 	  /* Print next message line. */
 	  strncpy (line, message, len);
 	  line[len] = '\0';
@@ -290,7 +291,6 @@ co_report (FILE * file, CO_SEVERITY severity)
       abort ();
     }
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * co_message() - return a message for the current condition
@@ -374,6 +374,7 @@ co_message (void)
   return (const char *) adj_ar_get_buffer (co_Current_message);
 
 }
+#endif
 
 /*
  * co_code() - return the current condition code
@@ -572,6 +573,7 @@ co_signalv (int code, const char *format, va_list args)
   return error;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * co_print_parameter() - print given parameter using given format
  *   return: formatted parameter string
@@ -687,6 +689,7 @@ co_print_parameter (int index, CO_FORMAT_TYPE type, const char *format,
 
   return (const char *) adj_ar_get_buffer (co_Parameter_string);
 }
+#endif
 
 /*
  * co_find_conversion() - return a description of the next conversion spec in

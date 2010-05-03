@@ -121,7 +121,6 @@ repl_svr_shutdown (bool started)
   if (repl_Log.hdr_page)
     {
       free_and_init (repl_Log.hdr_page);
-      repl_Log.log_hdr = NULL;
     }
   if (repl_Log.log_vdes > 0)
     {
@@ -131,7 +130,6 @@ repl_svr_shutdown (bool started)
   if (repl_Arv.hdr_page)
     {
       free_and_init (repl_Arv.hdr_page);
-      repl_Arv.hdr_page = NULL;
     }
   if (repl_Arv.log_vdes > 0)
     {
@@ -217,6 +215,11 @@ repl_process_request (void *input_orderp)
       break;
     }
 
+  if (error != NO_ERROR)
+    {
+      repl_error_flush (err_Log_fp, true);
+    }
+
   /* send result */
   switch (req_type)
     {
@@ -271,6 +274,11 @@ repl_process_request (void *input_orderp)
       (void) repl_svr_sock_send_result (req->agent_fd, REPL_REQUEST_FAIL);
       break;
     }
+
+  if (error != NO_ERROR)
+    {
+      repl_error_flush (err_Log_fp, true);
+    }
 }
 
 /*
@@ -324,7 +332,7 @@ repl_log_iopagesize (THREAD_ENTRY * thread_p, const char *db_Name,
 
   repl_Log.log_hdr = (struct log_header *) repl_Log.hdr_page->area;
 
-  repl_Log.pgsize = repl_Log.log_hdr->db_iopagesize;
+  repl_Log.pgsize = repl_Log.log_hdr->db_logpagesize;
 
   if (repl_Log.pgsize > REPL_DEF_LOG_PAGE_SIZE)
     {

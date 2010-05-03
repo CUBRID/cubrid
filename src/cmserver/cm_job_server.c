@@ -49,11 +49,11 @@
 #endif
 
 #include "cm_porting.h"
-#include "cm_nameval.h"
+#include "cm_dep.h"
 #include "cm_server_util.h"
 #include "cm_config.h"
 #include "cm_job_task.h"
-#include "dbi.h"
+#include "cm_stat.h"
 #if defined(WINDOWS)
 #include "cm_wsa_init.h"
 #endif
@@ -257,6 +257,10 @@ static const T_CONFLICT_TABLE cft_table[] = {
   {TS_DROPTRIGGER, 1, 1, {TS_DELETEDB, TS_RENAMEDB, TS_STOPDB, -1}},
   {TS_GETTRIGGERINFO, 1, 1, {TS_DELETEDB, TS_RENAMEDB, TS_STOPDB, -1}},
   {TS_GETFILE, 1, 1, {TS_DELETEDB, TS_RENAMEDB, TS_STOPDB, TS_BACKUPDB, -1}},
+  {TS_PARAMDUMP, 1, 1,
+   {TS_DELETEDB, TS_RENAMEDB, TS_STOPDB, -1}},
+  {TS_PLANDUMP, 1, 1, {TS_DELETEDB, TS_RENAMEDB, TS_STOPDB, -1}},
+  {TS_STATDUMP, 1, 1, {TS_DELETEDB, TS_RENAMEDB, TS_STOPDB, -1}},
 #if 0
   {TS_POPSPACEINFO, 1, 1, {TS_DELETEDB, TS_RENAMEDB, TS_STOPDB, -1}},
 #endif

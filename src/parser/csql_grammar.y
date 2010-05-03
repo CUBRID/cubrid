@@ -37,6 +37,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <errno.h>
 
 #include "parser.h"
 #include "parser_message.h"
@@ -439,6 +440,9 @@ void pop_msg(void);
 %type <node> query_list
 %type <node> inherit_resolution_list
 %type <node> inherit_resolution
+%type <node> opt_table_option_list
+%type <node> table_option_list
+%type <node> table_option
 %type <node> opt_subtable_clause
 %type <node> opt_constraint_id
 %type <node> of_unique_foreign_check
@@ -547,6 +551,7 @@ void pop_msg(void);
 %type <node> bit_string_literal
 %type <node> bit_string
 %type <node> unsigned_integer
+%type <node> unsigned_int32
 %type <node> unsigned_real
 %type <node> monetary_literal
 %type <node> date_or_time_literal
@@ -612,6 +617,7 @@ void pop_msg(void);
 %type <c2> trigger_status_or_priority
 %type <c2> serial_min
 %type <c2> serial_max
+%type <c2> opt_of_cached_num
 %type <c2> opt_of_cycle_nocycle
 %type <c2> data_type
 %type <c2> primitive_type
@@ -1009,6 +1015,7 @@ void pop_msg(void);
 %token <cptr> MINVALUE
 %token <cptr> NAME
 %token <cptr> NOCYCLE
+%token <cptr> NOCACHE
 %token <cptr> NOMAXVALUE
 %token <cptr> NOMINVALUE
 %token <cptr> PARTITION
@@ -1023,6 +1030,7 @@ void pop_msg(void);
 %token <cptr> REORGANIZE
 %token <cptr> REPEATABLE
 %token <cptr> RETAIN
+%token <cptr> REUSE_OID
 %token <cptr> REVERSE
 %token <cptr> SERIAL
 %token <cptr> STABILITY
@@ -1513,7 +1521,7 @@ get_stmt
 		{ pop_msg(); }
 		{{
 
-			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_TRIGGER);
+			PT_NODE *node = parser_new_node (this_parser, PT_GET_TRIGGER);
 
 			if (node)
 			  {
@@ -1530,7 +1538,7 @@ get_stmt
 		{ pop_msg(); }
 		{{
 
-			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_TRIGGER);
+			PT_NODE *node = parser_new_node (this_parser, PT_GET_TRIGGER);
 
 			if (node)
 			  {
@@ -1558,10 +1566,11 @@ create_stmt
 	  opt_subtable_clause 				/* 6 */
 	  opt_class_attr_def_list			/* 7 */
 	  opt_class_or_normal_attr_def_list		/* 8 */
-	  opt_method_def_list 				/* 9 */
-	  opt_method_files 				/* 10 */
-	  opt_inherit_resolution_list			/* 11 */
-	  opt_partition_clause 				/* 12 */
+	  opt_table_option_list				/* 9 */
+	  opt_method_def_list 				/* 10 */
+	  opt_method_files 				/* 11 */
+	  opt_inherit_resolution_list			/* 12 */
+	  opt_partition_clause 				/* 13 */
 		{{
 
 			PT_NODE *qc = parser_pop_hint_node ();
@@ -1573,10 +1582,11 @@ create_stmt
 			    qc->info.create_entity.supclass_list = $6;
 			    qc->info.create_entity.class_attr_def_list = $7;
 			    qc->info.create_entity.attr_def_list = $8;
-			    qc->info.create_entity.method_def_list = $9;
-			    qc->info.create_entity.method_file_list = $10;
-			    qc->info.create_entity.resolution_list = $11;
-			    qc->info.create_entity.partition_info = $12;
+			    qc->info.create_entity.table_option_list = $9;
+			    qc->info.create_entity.method_def_list = $10;
+			    qc->info.create_entity.method_file_list = $11;
+			    qc->info.create_entity.resolution_list = $12;
+			    qc->info.create_entity.partition_info = $13;
 
 			    pt_gather_constraints (this_parser, qc);
 			  }
@@ -1713,6 +1723,7 @@ create_stmt
 	  opt_serial_increment				/* 6 */
 	  opt_serial_min_max				/* 7 */
 	  opt_of_cycle_nocycle				/* 8 */
+	  opt_of_cached_num                             /* 9 */
 		{ pop_msg(); }
 		{{
 
@@ -1729,6 +1740,8 @@ create_stmt
 			    node->info.serial.no_min = TO_NUMBER (CONTAINER_AT_3 ($7));
 			    node->info.serial.cyclic = TO_NUMBER (CONTAINER_AT_0 ($8));
 			    node->info.serial.no_cyclic = TO_NUMBER (CONTAINER_AT_1 ($8));
+			    node->info.serial.cached_num_val = CONTAINER_AT_0 ($9);
+			    node->info.serial.no_cache = TO_NUMBER (CONTAINER_AT_1 ($9));
 			  }
 
 			$$ = node;
@@ -1869,13 +1882,14 @@ alter_stmt
 			$$ = node;
 
 		DBG_PRINT}}
-	| ALTER
-	  SERIAL
-	  identifier
-	  opt_serial_start
-	  opt_serial_increment
-	  opt_serial_min_max
-	  opt_of_cycle_nocycle
+	| ALTER                                /* 1 */
+	  SERIAL                               /* 2 */
+	  identifier                           /* 3 */
+	  opt_serial_start                     /* 4 */
+	  opt_serial_increment                 /* 5 */
+	  opt_serial_min_max                   /* 6 */
+	  opt_of_cycle_nocycle                 /* 7 */
+	  opt_of_cached_num                    /* 8 */
 		{{
 
 			PT_NODE *serial_name = $3;
@@ -1887,6 +1901,8 @@ alter_stmt
 			int no_min = TO_NUMBER (CONTAINER_AT_3 ($6));
 			int cyclic = TO_NUMBER (CONTAINER_AT_0 ($7));
 			int no_cyclic = TO_NUMBER (CONTAINER_AT_1 ($7));
+			PT_NODE *cached_num_val = CONTAINER_AT_0 ($8);
+			int no_cache = TO_NUMBER (CONTAINER_AT_1 ($8));
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERIAL);
 			if (node)
@@ -1900,12 +1916,15 @@ alter_stmt
 			    node->info.serial.no_min = no_min;
 			    node->info.serial.cyclic = cyclic;
 			    node->info.serial.no_cyclic = no_cyclic;
+			    node->info.serial.cached_num_val = cached_num_val;
+			    node->info.serial.no_cache = no_cache;
 			  }
 
 			$$ = node;
 
 			if (!start_val && !increment_val && !max_val && !min_val
-			    && cyclic == 0 && no_max == 0 && no_min == 0 && no_cyclic == 0)
+			    && cyclic == 0 && no_max == 0 && no_min == 0 
+			    && no_cyclic == 0)
 			  {
 			    PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					MSGCAT_SEMANTIC_SERIAL_ALTER_NO_OPTION, 0);
@@ -4385,6 +4404,21 @@ opt_inherit_resolution_list
 		DBG_PRINT}}
 	;
 
+opt_table_option_list
+	: /* empty */
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| table_option_list
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
 opt_partition_clause
 	: /* empty */
 		{{
@@ -4551,6 +4585,30 @@ inherit_resolution
 			  }
 
 			$$ = node;
+
+		DBG_PRINT}}
+	;
+
+table_option_list
+	: table_option_list  ',' table_option
+		{{
+
+			$$ = parser_make_link ($1, $3);
+
+		DBG_PRINT}}
+	| table_option
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
+table_option
+	: REUSE_OID
+		{{
+
+			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_REUSE_OID, NULL);
 
 		DBG_PRINT}}
 	;
@@ -6765,6 +6823,32 @@ opt_of_cycle_nocycle
 
 		DBG_PRINT}}
 	;
+	
+opt_of_cached_num
+	: /* empty */
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER (0));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| CACHE unsigned_int32
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $2, FROM_NUMBER (0));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| NOCACHE
+		{{
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER (1));
+			$$ = ctn;
+
+		DBG_PRINT}}
+	;
 
 integer_text
 	: opt_plus UNSIGNED_INTEGER
@@ -6950,7 +7034,7 @@ csql_query
 
 			PT_NODE *node = parser_pop_orderby_node ();
 
-			if (node)
+			if (node && parser_cannot_cache)
 			  {
 			    node->info.query.reexecute = 1;
 			    node->info.query.do_cache = 0;
@@ -11831,6 +11915,15 @@ identifier
 			$$ = p;
 
 		DBG_PRINT}}
+	| NOCACHE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
 	| NOMAXVALUE
 		{{
 
@@ -11949,6 +12042,15 @@ identifier
 
 		DBG_PRINT}}
 	| RETAIN
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| REUSE_OID
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -12276,6 +12378,37 @@ unsigned_integer
 			      }
 			  }
 
+			$$ = val;
+
+		DBG_PRINT}}
+	;
+	
+unsigned_int32
+	: UNSIGNED_INTEGER
+		{{
+
+			PT_NODE *val;
+			long int_val;
+			char *endptr;
+			
+			val = parser_new_node (this_parser, PT_VALUE);			
+			if (val)
+			  {
+			    int_val = strtol($1, &endptr, 10);
+			    
+			    if ((errno == ERANGE 
+			         && (int_val == LONG_MAX 
+			             || int_val == LONG_MIN))
+				|| (errno != 0 && int_val == 0)
+				|| (int_val > INT_MAX)) 
+			      {
+				PT_ERRORmf (this_parser, val, MSGCAT_SET_PARSER_SYNTAX,
+				            MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $1);
+			      }
+
+			    val->info.value.data_value.i = int_val;
+			    val->type_enum = PT_TYPE_INTEGER;
+			  }
 			$$ = val;
 
 		DBG_PRINT}}

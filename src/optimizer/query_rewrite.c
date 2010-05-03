@@ -304,7 +304,7 @@ qo_analyze_path_join_pre (PARSER_CONTEXT * parser, PT_NODE * spec, void *arg,
  *	tags spec as PT_PATH_OUTER
  *
  *	if a null path COULD affect the where clause (appears),
- *	but cannot be guranteed to have no effect,
+ *	but cannot be guaranteed to have no effect,
  *	tags the spec as PT_PATH_OUTER_WEASEL. This means
  *	no merge, since I can't prove that this is equivalent
  *	to PT_PATH_INNER. This is treated the same as
@@ -365,6 +365,7 @@ qo_analyze_path_join (PARSER_CONTEXT * parser, PT_NODE * path_spec, void *arg,
   return path_spec;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * qo_convert_path_to_name () -
  *   return: PT_NODE *
@@ -399,7 +400,6 @@ qo_convert_path_to_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   return node;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * qo_rewrite_as_join () - Given a statement, a path root, a path spec ptr,
  *			rewrite the statement into a join with the path spec
@@ -429,9 +429,7 @@ qo_rewrite_as_join (PARSER_CONTEXT * parser, PT_NODE * root,
 				qo_convert_path_to_name, path_spec, NULL,
 				NULL);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * qo_rewrite_as_derived () - Given a statement, a path root, a path spec ptr,
  *			   rewrite the spec to be a table derived from a join
@@ -1088,7 +1086,7 @@ qo_collect_name_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
       if (node->node_type != PT_NAME)
 	{
-	  break;		/* impossable case, give up */
+	  break;		/* impossible case, give up */
 	}
 
       /* FALL THROUGH */
@@ -1233,7 +1231,7 @@ qo_is_reduceable_const (PT_NODE * expr)
  *   wherep(in):
  *
  *  Obs: modified to support PRIOR operator as follows:
- *    -> PRIOR field = exp1 AND PRIOR field = exp2 => 
+ *    -> PRIOR field = exp1 AND PRIOR field = exp2 =>
  *	 PRIOR field = exp1 AND exp1 = exp2
  *    -> PRIOR ? -> replace with ?
  */
@@ -2189,8 +2187,8 @@ exit_on_error:
  *  	0. connect by 5 = prior a          -->  connect by prior a = 5
  *  	1. connect by -5 = prior (-a)      -->  connect by prior a = 5
  *	...
- *	prior(-attr) between opd1 and opd2 --> 
- *      prior(-attr) >= opd1 AND prior(-attr) <= opd2 --> 
+ *	prior(-attr) between opd1 and opd2 -->
+ *      prior(-attr) >= opd1 AND prior(-attr) <= opd2 -->
  *	prior (attr) <= -opd1 AND prior(attr) >= -opd2 -->
  *	prior (attr) between -opd2 and -opd1
  */
@@ -2396,7 +2394,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		  arg2->info.expr.arg1 = NULL;
 		  parser_free_tree (parser, arg2);
 
-		  /* both minus operators are gone but they were written over 
+		  /* both minus operators are gone but they were written over
 		     the prior operator so we must add them again. */
 		  if (arg1_prior_father)
 		    {
@@ -2482,7 +2480,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	  /* if arg1 or arg2 is PT_PRIOR, go in its argument */
 	  if (pt_is_expr_node (arg1) && arg1->info.expr.op == PT_PRIOR)
 	    {
-	      /* keep its parent so when swapping the two elements, 
+	      /* keep its parent so when swapping the two elements,
 	         swap with its father */
 	      arg1_prior_father = arg1;
 	      arg1 = arg1->info.expr.arg1;
@@ -2552,7 +2550,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		  /* swap */
 		  if (arg1_cnt < arg2_cnt)
 		    {
-		      /* check if arg1 and/or arg2 have PRIOR above them. 
+		      /* check if arg1 and/or arg2 have PRIOR above them.
 		         If so, swap the arg with the prior also */
 		      if (arg1_prior_father)
 			{
@@ -2584,7 +2582,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 
 		  /* swap */
 
-		  /* check if arg1 and/or arg2 have PRIOR above them. 
+		  /* check if arg1 and/or arg2 have PRIOR above them.
 		     If so, swap the arg with the prior also */
 		  if (arg1_prior_father)
 		    {
@@ -2635,7 +2633,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
   bool found;
   PT_NODE *node_prior, *sibling_prior;
 
-  /* traverse CNF list and keep track of the pointer to previsous node */
+  /* traverse CNF list and keep track of the pointer to previous node */
   prev = NULL;
   while ((node = (prev ? prev->next : *wherep)))
     {
@@ -2686,7 +2684,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	      sibling_prior = sibling->info.expr.arg1;
 	    }
 
-	  /* just one node from node and sibling contains the PRIOR -> 
+	  /* just one node from node and sibling contains the PRIOR ->
 	     do nothing, they are not comparable */
 	  if ((PT_IS_PRIOR_NODE (node) && !PT_IS_PRIOR_NODE (sibling))
 	      || (!PT_IS_PRIOR_NODE (node) && PT_IS_PRIOR_NODE (sibling)))
@@ -3463,7 +3461,7 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	      continue;
 	    }
 	}
-      /* if node had prior check that sibling also contains prior and 
+      /* if node had prior check that sibling also contains prior and
          vice-versa */
 
       if (sibling->node_type != PT_EXPR
@@ -4527,7 +4525,7 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
   int location;
   PT_NODE *arg1_prior, *sibling_prior;
 
-  /* traverse CNF list and keep track of the pointer to previsous node */
+  /* traverse CNF list and keep track of the pointer to previous node */
   node_prev = NULL;
   while ((node = (node_prev ? node_prev->next : *wherep)))
     {
@@ -4591,7 +4589,7 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	}
 
       /* search CNF list from the next to the node and keep track of the
-         pointer to previsous node */
+         pointer to previous node */
       sibling_prev = node;
 
       while ((sibling = sibling_prev->next))
@@ -4617,7 +4615,7 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 		  continue;
 		}
 	    }
-	  /* if node had prior check that sibling also contains prior and 
+	  /* if node had prior check that sibling also contains prior and
 	     vice-versa */
 
 	  if (sibling->node_type != PT_EXPR
@@ -5960,7 +5958,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	    }
 	}
 
-      /* convert to CNF and tag tagable terms */
+      /* convert to CNF and tag taggable terms */
       if (*wherep)
 	{
 	  *wherep = pt_cnf (parser, *wherep);
@@ -6020,7 +6018,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 		    }
 		}
 
-	      /* Not found aggregate funciton in cnf node.
+	      /* Not found aggregate function in cnf node.
 	       * So, move it from HAVING clause to WHERE clause.
 	       */
 	      if (!info.agg_found)
@@ -6054,11 +6052,11 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       if (*havingp)
 	qo_reduce_equality_terms (parser, node, havingp);
       /*  we don't reduce equality terms for startwith and connectby. This optimization
-       *  for every A after a statement like A = 5, replaced the column with the 
-       *  scalar 5. If the column is in an ORDER BY clause, the sorting may not 
+       *  for every A after a statement like A = 5, replaced the column with the
+       *  scalar 5. If the column is in an ORDER BY clause, the sorting may not
        *  occur on column A because it's always 5. This behavior is incorrect
        *  when running a hierarchical query because there may be a A = 5 in the
-       *  START WITH part or CONNECT BY part but the ORDER BY on A should sort 
+       *  START WITH part or CONNECT BY part but the ORDER BY on A should sort
        *  all elements from all levels, column A being different.
        */
       if (*aftercbfilterp)
@@ -6088,7 +6086,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  qo_converse_sarg_terms (parser, *aftercbfilterp);
 	}
 
-      /* reduce a pair of comparsion terms into one BETWEEN term */
+      /* reduce a pair of comparison terms into one BETWEEN term */
       if (*wherep)
 	{
 	  qo_reduce_comp_pair_terms (parser, wherep);

@@ -96,8 +96,12 @@ abstract public class UErrorCode
   public static final int CAS_ER_NO_MORE_RESULT_SET = -1022;
   public static final int CAS_ER_INVALID_CALL_STMT = -1023;
   public static final int CAS_ER_STMT_POOLING = -1024;
+  public static final int CAS_ER_GLO_CMD = -1026;
   public static final int CAS_ER_NOT_IMPLEMENTED = -1100;
   public static final int CAS_ER_IS = -1200;
+
+  public final static int CAS_ERROR_INDICATOR = -1;
+  public final static int DBMS_ERROR_INDICATOR = -2;
 
   private static Hashtable messageString, CASMessageString;
 
@@ -162,7 +166,7 @@ abstract public class UErrorCode
 
   private static void setCASMessageHash()
   {
-    CASMessageString = new Hashtable(26);
+    CASMessageString = new Hashtable(27);
 
     CASMessageString.put(new Integer(CAS_ER_DBMS), "Database connection error");
     CASMessageString.put(new Integer(CAS_ER_INTERNAL), "General server error");
@@ -207,5 +211,6 @@ abstract public class UErrorCode
     CASMessageString.put(new Integer(CAS_ER_NOT_IMPLEMENTED),
         "Attempt to use a not supported service");
     CASMessageString.put(new Integer(CAS_ER_IS), "Authentication failure");
+    CASMessageString.put(new Integer(CAS_ER_GLO_CMD), "Cannot process GLO request");
   }
 }

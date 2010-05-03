@@ -29,7 +29,7 @@
 
 #include <time.h>
 
-#include "cm_porting.h"
+#include "cm_dep.h"
 
 #if defined(WINDOWS)
 #define DBMT_EXE_EXT		".exe"
@@ -37,7 +37,7 @@
 #define DBMT_EXE_EXT		""
 #endif
 
-#define cmd_commdb_result_free(RESULT)		cmd_result_free(RESULT)
+#define cmd_servstat_result_free(RESULT)		cmd_result_free(RESULT)
 #define cmd_csql_result_free(RESULT)		cmd_result_free(RESULT)
 
 #define ERR_MSG_SIZE	1024
@@ -92,6 +92,7 @@ typedef struct
 typedef struct
 {
   int page_size;
+  int log_page_size;
   int num_vol;
   T_SPACEDB_INFO *vol_info;
   int num_tmp_vol;
@@ -99,24 +100,8 @@ typedef struct
   char err_msg[ERR_MSG_SIZE];
 } T_SPACEDB_RESULT;
 
-typedef struct
-{
-  char db_name[64];
-} T_COMMDB_INFO;
-
-typedef struct
-{
-  int num_result;
-  void *result;
-  char err_msg[ERR_MSG_SIZE];
-} T_CMD_RESULT;
-
-typedef T_CMD_RESULT T_COMMDB_RESULT;
-typedef T_CMD_RESULT T_START_SERVER_RESULT;
-typedef T_CMD_RESULT T_STOP_SERVER_RESULT;
 typedef T_CMD_RESULT T_CSQL_RESULT;
 
-T_COMMDB_RESULT *cmd_commdb (void);
 T_SPACEDB_RESULT *cmd_spacedb (const char *dbname, T_CUBRID_MODE mode);
 T_CSQL_RESULT *cmd_csql (char *dbname, char *uid, char *passwd,
 			 T_CUBRID_MODE mode, char *infile, char *command);
@@ -125,7 +110,6 @@ int cmd_stop_server (char *dbname, char *err_buf, int err_buf_size);
 void cmd_start_master (void);
 
 char *cubrid_cmd_name (char *buf);
-void cmd_result_free (T_CMD_RESULT * res);
 void cmd_spacedb_result_free (T_SPACEDB_RESULT * res);
 int read_error_file (const char *err_file, char *err_buf, int err_buf_size);
 int read_error_file2 (char *err_file, char *err_buf, int err_buf_size,

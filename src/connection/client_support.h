@@ -34,9 +34,11 @@ extern CSS_MAP_ENTRY *css_Client_anchor;
 
 extern int css_client_init (int sockid, const char *server_name,
 			    const char *host_name);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern unsigned int css_send_request_to_server (char *host, int request,
 						char *arg_buffer,
 						int arg_buffer_size);
+#endif
 extern unsigned int css_send_request_to_server_with_buffer (char *host,
 							    int request,
 							    char *arg_buffer,

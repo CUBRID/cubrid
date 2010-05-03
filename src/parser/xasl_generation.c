@@ -56,6 +56,7 @@
 #include "error_manager.h"
 #include "list_file.h"
 #include "execute_statement.h"
+#include "transform.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -103,6 +104,7 @@ static PRED_EXPR *pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser,
 						  PT_NODE * node, int *argp);
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int hhhhmmss (const DB_TIME * time, char *buf, int buflen);
 static int hhmiss (const DB_TIME * time, char *buf, int buflen);
 static int yyyymmdd (const DB_DATE * date, char *buf, int buflen);
@@ -114,8 +116,7 @@ static int yyyymmddhhmissms (const DB_DATETIME * datetime, char *buf,
 static int mmddyyyyhhmissms (const DB_DATETIME * datetime, char *buf,
 			     int buflen);
 static char *host_var_name (unsigned int custom_print);
-static void pt_flush_object_info (PARSER_CONTEXT * parser,
-				  PT_NODE * node_list);
+#endif
 static PT_NODE *pt_table_compatible_node (PARSER_CONTEXT * parser,
 					  PT_NODE * tree, void *void_info,
 					  int *continue_walk);
@@ -262,10 +263,10 @@ typedef struct corr_info
   UINTPTR id;
 } CORR_INFO;
 
-FILE *query_plan_dump_fp = NULL;
-char *query_plan_dump_filename = NULL;
+FILE *query_Plan_dump_fp = NULL;
+char *query_Plan_dump_filename = NULL;
 
-static XASL_SUPP_INFO xasl_supp_info = { NULL, NULL, NULL, 0, 0 };
+static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, 0, 0 };
 static const int OID_LIST_GROWTH = 10;
 
 
@@ -398,8 +399,6 @@ static REGU_VARIABLE *pt_join_term_to_regu_variable (PARSER_CONTEXT * parser,
 
 static PT_NODE *pt_query_set_reference (PARSER_CONTEXT * parser,
 					PT_NODE * node);
-static PT_NODE *pt_compatible_post (PARSER_CONTEXT * parser, PT_NODE * tree,
-				    void *arg, int *continue_walk);
 
 static REGU_VARIABLE_LIST
 pt_to_position_regu_variable_list (PARSER_CONTEXT * parser,
@@ -453,8 +452,7 @@ static AGGREGATE_TYPE *pt_to_aggregate (PARSER_CONTEXT * parser,
 					VAL_LIST * value_list,
 					REGU_VARIABLE_LIST regu_list,
 					PT_NODE * out_names,
-					DB_VALUE ** grbynum_valp,
-					int flag_agg_optimize);
+					DB_VALUE ** grbynum_valp);
 
 static SYMBOL_INFO *pt_push_symbol_info (PARSER_CONTEXT * parser,
 					 PT_NODE * select_node);
@@ -601,7 +599,7 @@ static PRED_REGU_VARIABLE_P_LIST pt_get_var_regu_variable_p_list (const
  *   parser(in):
  *   select_node(in):
  */
-XASL_NODE *
+static XASL_NODE *
 pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 			 XASL_NODE * select_xasl)
 {
@@ -839,7 +837,7 @@ exit_on_error:
  *  outptr_list(in):
  *  alloc_vals(in):
  */
-int
+static int
 pt_add_pseudocolumns_placeholders (PARSER_CONTEXT * parser,
 				   OUTPTR_LIST * outptr_list, bool alloc_vals)
 {
@@ -1027,7 +1025,7 @@ pt_add_pseudocolumns_placeholders (PARSER_CONTEXT * parser,
  *   bop(in):
  */
 
-PRED_EXPR *
+static PRED_EXPR *
 pt_make_pred_expr_pred (const PRED_EXPR * arg1, const PRED_EXPR * arg2,
 			const BOOL_OP bop)
 {
@@ -1078,7 +1076,7 @@ pt_make_pred_term_not (const PRED_EXPR * arg1)
 
 
 /*
- * pt_make_pred_term_comp () - makes a pred expr term comparrison node
+ * pt_make_pred_term_comp () - makes a pred expr term comparison node
  *   return:
  *   arg1(in):
  *   arg2(in):
@@ -1114,7 +1112,7 @@ pt_make_pred_term_comp (const REGU_VARIABLE * arg1,
 
 /*
  * pt_make_pred_term_some_all () - makes a pred expr term some/all
- * 				   comparrison node
+ * 				   comparison node
  *   return:
  *   arg1(in):
  *   arg2(in):
@@ -1151,7 +1149,7 @@ pt_make_pred_term_some_all (const REGU_VARIABLE * arg1,
 }
 
 /*
- * pt_make_pred_term_like () - makes a pred expr term like comparrison node
+ * pt_make_pred_term_like () - makes a pred expr term like comparison node
  *   return:
  *   arg1(in):
  *   arg2(in):
@@ -1186,7 +1184,7 @@ pt_make_pred_term_like (const REGU_VARIABLE * arg1,
 /*
  * pt_to_pred_expr_local_with_arg () - converts a parse expression tree
  * 				       to pred expressions
- *   return: A NULL return indicates an error occured
+ *   return: A NULL return indicates an error occurred
  *   parser(in):
  *   node(in): should be something that will evaluate into a boolean
  *   argp(out):
@@ -1587,7 +1585,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node,
 						 R_LE, data_type, F_ALL);
 	      break;
 
-	      /* like comparrison */
+	      /* like comparison */
 	    case PT_NOT_LIKE:
 	    case PT_LIKE:
 	      /* set information for inst_num() scan type */
@@ -1704,7 +1702,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node,
  * pt_to_pred_expr_with_arg () - converts a list of expression tree to
  * 	xasl 'pred' expressions, where each item of the list represents
  * 	a conjunctive normal form term
- *   return: A NULL return indicates an error occured
+ *   return: A NULL return indicates an error occurred
  *   parser(in):
  *   node_list(in):
  *   argp(out):
@@ -1815,7 +1813,7 @@ pt_to_pred_expr (PARSER_CONTEXT * parser, PT_NODE * node)
  *   name(in): Attribute name
  *   btid(in): BTID pointer (BTID is returned)
  */
-int
+static int
 look_for_unique_btid (DB_OBJECT * classop, const char *name, BTID * btid)
 {
   SM_CLASS *class_;
@@ -1896,7 +1894,7 @@ pt_xasl_node_to_domain (PARSER_CONTEXT * parser, const PT_NODE * node)
  *   parser(in):
  *   node(in):
  */
-TP_DOMAIN *
+static TP_DOMAIN *
 pt_xasl_data_type_to_domain (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
   TP_DOMAIN *dom;
@@ -1909,7 +1907,7 @@ pt_xasl_data_type_to_domain (PARSER_CONTEXT * parser, const PT_NODE * node)
 
 }				/* pt_xasl_data_type_to_domain */
 
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * hhhhmmss () - print a time value as 'hhhhmmss'
  *   return:
@@ -1950,7 +1948,6 @@ hhmiss (const DB_TIME * time, char *buf, int buflen)
   return db_strftime (buf, buflen, date_fmt, &date, (DB_TIME *) time);
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * hhmissms () - print a time value as 'hh:mi:ss.ms'
  *   return:
@@ -1977,8 +1974,6 @@ hhmissms (const unsigned int mtime, char *buf, int buflen)
 
   return retval;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 
 /*
  * yyyymmdd () - print a date as 'yyyymmdd'
@@ -2105,6 +2100,7 @@ mmddyyyyhhmissms (const DB_DATETIME * datetime, char *buf, int buflen)
 
   return retval;
 }
+#endif
 
 /*
  * pt_print_db_value () -
@@ -2115,11 +2111,10 @@ mmddyyyyhhmissms (const DB_DATETIME * datetime, char *buf, int buflen)
 static PARSER_VARCHAR *
 pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value *val)
 {
-  PARSER_VARCHAR *temp = NULL, *result = NULL, *todate, *elem, *todatetime;
-  int i, size = 0, rc;
+  PARSER_VARCHAR *temp = NULL, *result = NULL, *elem;
+  int i, size = 0;
   DB_VALUE element;
   int error = NO_ERROR;
-  char dt[100], *p, *ptr;
   PT_NODE foo;
   unsigned int save_custom = parser->custom_print;
 
@@ -2214,6 +2209,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value *val)
   return result;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * host_var_name () -  manufacture a host variable name
  *   return:  a host variable name
@@ -2224,7 +2220,7 @@ host_var_name (unsigned int custom_print)
 {
   return (char *) "?";
 }
-
+#endif
 
 /*
  * pt_print_node_value () -
@@ -2240,7 +2236,6 @@ pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
   DB_TYPE db_typ;
   int error = NO_ERROR;
   SETOBJ *setobj;
-  PT_NODE *temp;
 
   if (!(val->node_type == PT_VALUE
 	|| val->node_type == PT_HOST_VAR
@@ -2292,25 +2287,6 @@ pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
 
   return q;
 }
-
-/*
- * pt_flush_object_info () -
- *   return: true if select list has a select statement
- *   parser(in):
- *   node_list(in):
- */
-static void
-pt_flush_object_info (PARSER_CONTEXT * parser, PT_NODE * node_list)
-{
-  while (node_list)
-    {
-      /* and look for sets of objects */
-      pt_flush_object_info (parser, node_list->data_type);
-
-      node_list = node_list->next;
-    }
-}
-
 
 /*
  * pt_table_compatible_node () - Returns compatible if node is non-subquery
@@ -2394,7 +2370,7 @@ pt_table_compatible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
   return info.compatible;
 }
 
-PT_NODE *
+static PT_NODE *
 pt_query_set_reference (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *query, *spec, *temp;
@@ -2436,7 +2412,7 @@ pt_query_set_reference (PARSER_CONTEXT * parser, PT_NODE * node)
  *   if_part(out):
  *   instnum_part(out):
  */
-void
+static void
 pt_split_access_if_instnum (PARSER_CONTEXT * parser, PT_NODE * spec,
 			    PT_NODE * where, PT_NODE ** access_part,
 			    PT_NODE ** if_part, PT_NODE ** instnum_part)
@@ -2479,25 +2455,17 @@ pt_split_access_if_instnum (PARSER_CONTEXT * parser, PT_NODE * spec,
 }
 
 /*
- * pt_split_if_instnum
- *
- * Description:
- *
- *  Make a two lists of predicates, one containing any other constructs
- *  (subqueries, other tables, etc. except for instnum predicates),
- *  one instnum predicates.
- */
-
-/*
  * pt_split_if_instnum () - Make a two lists of predicates, one containing
- *                          any other constructs, one instnum predicates
+ *                          any other constructs (subqueries, other tables, etc.
+ *                          except for instnum predicates),
+ *                          one instnum predicates.
  *   return:
  *   parser(in):
  *   where(in/out):
  *   if_part(out):
  *   instnum_part(out):
  */
-void
+static void
 pt_split_if_instnum (PARSER_CONTEXT * parser, PT_NODE * where,
 		     PT_NODE ** if_part, PT_NODE ** instnum_part)
 {
@@ -2531,15 +2499,6 @@ pt_split_if_instnum (PARSER_CONTEXT * parser, PT_NODE * where,
 }
 
 /*
- * pt_split_having_grbynum
- *
- * Description:
- *
- *      Make a two lists of predicates, one "simply" having predicates,
- *      and one containing groupby_num() function.
- */
-
-/*
  * pt_split_having_grbynum () - Make a two lists of predicates, one "simply"
  *      having predicates, and one containing groupby_num() function
  *   return:
@@ -2548,7 +2507,7 @@ pt_split_if_instnum (PARSER_CONTEXT * parser, PT_NODE * where,
  *   having_part(out):
  *   grbynum_part(out):
  */
-void
+static void
 pt_split_having_grbynum (PARSER_CONTEXT * parser, PT_NODE * having,
 			 PT_NODE ** having_part, PT_NODE ** grbynum_part)
 {
@@ -2589,7 +2548,7 @@ pt_split_having_grbynum (PARSER_CONTEXT * parser, PT_NODE * having,
  *   return:
  *   attr_list(in):
  */
-int *
+static int *
 pt_make_identity_offsets (PT_NODE * attr_list)
 {
   int *offsets;
@@ -2631,7 +2590,7 @@ pt_make_identity_offsets (PT_NODE * attr_list)
  * Those attrs that are found in the pred are put on the pred_attrs list,
  * those attrs not found in the pred are put on the rest_attrs list
  */
-int
+static int
 pt_split_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info,
 		PT_NODE * pred, PT_NODE ** pred_attrs, PT_NODE ** rest_attrs,
 		int **pred_offsets, int **rest_offsets)
@@ -2708,7 +2667,8 @@ pt_split_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info,
   i = 0;
   while (tmp)
     {
-      if ((pointer = pt_point (parser, tmp)) == NULL)
+      pointer = pt_point (parser, tmp);
+      if (pointer == NULL)
 	{
 	  goto exit_on_error;
 	}
@@ -2760,7 +2720,7 @@ exit_on_error:
  *   pred_attrs(out):
  *   pred_offsets(out):
  */
-int
+static int
 pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info,
 		   QO_XASL_INDEX_INFO * index_pred,
 		   PT_NODE * key_filter_pred, PT_NODE ** pred_attrs,
@@ -2923,7 +2883,7 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 	   class_; class_ = class_->next)
 	{
 	  /* if class object is not dirty and doesn't contain any
-	   * dirty instances, do not flush the class and it's instances */
+	   * dirty instances, do not flush the class and its instances */
 	  if (WS_ISDIRTY (class_->info.name.db_object)
 	      || ws_has_dirty_objects (class_->info.name.db_object, &isvirt))
 	    {
@@ -2948,7 +2908,7 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node,
  *   void_arg(in):
  *   continue_walk(in):
  */
-PT_NODE *
+static PT_NODE *
 pt_pruning_and_flush_class_and_null_xasl (PARSER_CONTEXT * parser,
 					  PT_NODE * tree,
 					  void *void_arg, int *continue_walk)
@@ -2992,7 +2952,7 @@ pt_pruning_and_flush_class_and_null_xasl (PARSER_CONTEXT * parser,
  *   return: true if symbols comes from a subquery of a UNION-type thing
  *   node(in):
  */
-int
+static int
 pt_is_subquery (PT_NODE * node)
 {
   PT_MISC_TYPE subquery_type = node->info.query.is_subquery;
@@ -3032,7 +2992,7 @@ pt_table_info_alloc (void)
  *                           from temporary memory
  *   return:
  */
-SYMBOL_INFO *
+static SYMBOL_INFO *
 pt_symbol_info_alloc (void)
 {
   SYMBOL_INFO *symbols;
@@ -3098,7 +3058,7 @@ pt_filter_psuedo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
 	      && temp1->node_type == PT_VALUE
 	      && temp1->type_enum == PT_TYPE_NULL)
 	    {
-	      /* fix ths derived table up to be generatable */
+	      /* fix this derived table so that it is generatable */
 	      temp1->type_enum = PT_TYPE_SET;
 	      temp1->info.value.db_value_is_initialized = 0;
 	      temp1->info.value.data_value.set = NULL;
@@ -3153,7 +3113,7 @@ pt_filter_psuedo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
 /*
  * pt_to_method_arglist () - converts a parse expression tree list of
  *                           method call arguments to method argument array
- *   return: A NULL on error occured
+ *   return: A NULL on error occurred
  *   parser(in):
  *   target(in):
  *   node_list(in): should be parse name nodes
@@ -3206,12 +3166,12 @@ pt_to_method_arglist (PARSER_CONTEXT * parser,
 /*
  * pt_to_method_sig_list () - converts a parse expression tree list of
  *                            method calls to method signature list
- *   return: A NULL return indicates a (memory) error occured
+ *   return: A NULL return indicates a (memory) error occurred
  *   parser(in):
  *   node_list(in): should be parse method nodes
  *   subquery_as_attr_list(in):
  */
-METHOD_SIG_LIST *
+static METHOD_SIG_LIST *
 pt_to_method_sig_list (PARSER_CONTEXT * parser,
 		       PT_NODE * node_list, PT_NODE * subquery_as_attr_list)
 {
@@ -3293,7 +3253,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser,
  *   return:
  *   attribute_list(in):
  */
-VAL_LIST *
+static VAL_LIST *
 pt_make_val_list (PT_NODE * attribute_list)
 {
   VAL_LIST *value_list = NULL;
@@ -3341,7 +3301,7 @@ pt_make_val_list (PT_NODE * attribute_list)
  *   parser(in):
  *   attribute_list(in):
  */
-VAL_LIST *
+static VAL_LIST *
 pt_clone_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
 {
   VAL_LIST *value_list = NULL;
@@ -3389,7 +3349,7 @@ pt_clone_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
  *   spec_id(in):
  *   exposed_list(in):
  */
-TABLE_INFO *
+static TABLE_INFO *
 pt_find_table_info (UINTPTR spec_id, TABLE_INFO * exposed_list)
 {
   TABLE_INFO *table_info;
@@ -3438,7 +3398,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 
       if (code == PT_GROUPBY_NUM)
 	{
-	  if ((aggregate_list = regu_agg_grbynum_alloc ()) == NULL)
+	  aggregate_list = regu_agg_grbynum_alloc ();
+	  if (aggregate_list == NULL)
 	    {
 	      PT_ERROR (parser, tree,
 			msgcat_message (MSGCAT_CATALOG_CUBRID,
@@ -3464,7 +3425,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	}
       else
 	{
-	  if ((aggregate_list = regu_agg_alloc ()) == NULL)
+	  aggregate_list = regu_agg_alloc ();
+	  if (aggregate_list == NULL)
 	    {
 	      PT_ERROR (parser, tree,
 			msgcat_message (MSGCAT_CATALOG_CUBRID,
@@ -3823,7 +3785,7 @@ pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name,
  *   value(in):
  *   index(in):
  */
-DB_VALUE *
+static DB_VALUE *
 pt_index_value (const VAL_LIST * value, int index)
 {
   QPROC_DB_VALUE_LIST dbval_list;
@@ -3857,36 +3819,47 @@ pt_index_value (const VAL_LIST * value, int index)
  *   regu_list(in):
  *   out_names(in):
  *   grbynum_valp(in):
- *   flag_agg_optimize(in):
  */
-AGGREGATE_TYPE *
+static AGGREGATE_TYPE *
 pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node,
 		 OUTPTR_LIST * out_list,
 		 VAL_LIST * value_list,
 		 REGU_VARIABLE_LIST regu_list,
-		 PT_NODE * out_names,
-		 DB_VALUE ** grbynum_valp, int flag_agg_optimize)
+		 PT_NODE * out_names, DB_VALUE ** grbynum_valp)
 {
-  PT_NODE *select_list = select_node->info.query.q.select.list;
-  PT_NODE *having = select_node->info.query.q.select.having;
+  PT_NODE *select_list, *from, *where, *having;
   AGGREGATE_INFO info;
 
+  select_list = select_node->info.query.q.select.list;
+  from = select_node->info.query.q.select.from;
+  where = select_node->info.query.q.select.where;
+  having = select_node->info.query.q.select.having;
+
   info.head_list = NULL;
-  info.value_list = value_list;
   info.out_list = out_list;
+  info.value_list = value_list;
   info.regu_list = regu_list;
   info.out_names = out_names;
   info.grbynum_valp = grbynum_valp;
-  info.flag_agg_optimize = flag_agg_optimize;
 
-  if (flag_agg_optimize)
+  /* init */
+  info.class_name = NULL;
+  info.flag_agg_optimize = false;
+
+  if (pt_is_single_tuple (parser, select_node))
     {
-      if (select_node->info.query.q.select.from->info.spec.entity_name)
-	info.class_name =
-	  select_node->info.query.q.select.from->info.spec.entity_name->info.
-	  name.original;
-      else
-	info.flag_agg_optimize = false;
+      if (where == NULL
+	  && pt_length_of_list (from) == 1
+	  && pt_length_of_list (from->info.spec.flat_entity_list) == 1
+	  && from->info.spec.only_all != PT_ALL)
+	{
+	  if (from->info.spec.entity_name)
+	    {
+	      info.class_name =
+		from->info.spec.entity_name->info.name.original;
+	      info.flag_agg_optimize = true;
+	    }
+	}
     }
 
   select_node->info.query.q.select.list =
@@ -3907,7 +3880,7 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node,
  *   parser(in):
  *   table_spec(in):
  */
-TABLE_INFO *
+static TABLE_INFO *
 pt_make_table_info (PARSER_CONTEXT * parser, PT_NODE * table_spec)
 {
   TABLE_INFO *table_info;
@@ -3996,7 +3969,7 @@ pt_push_fetch_spec_info (PARSER_CONTEXT * parser,
  *   parser(in):
  *   select_node(in):
  */
-SYMBOL_INFO *
+static SYMBOL_INFO *
 pt_push_symbol_info (PARSER_CONTEXT * parser, PT_NODE * select_node)
 {
   PT_NODE *table_spec;
@@ -4016,7 +3989,7 @@ pt_push_symbol_info (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
       if (select_node->node_type == PT_SELECT)
 	{
-	  /* remove psuedo specs */
+	  /* remove pseudo specs */
 	  select_node->info.query.q.select.from = pt_filter_psuedo_specs
 	    (parser, select_node->info.query.q.select.from);
 
@@ -4062,7 +4035,7 @@ pt_push_symbol_info (PARSER_CONTEXT * parser, PT_NODE * select_node)
  *   parser(in):
  *   select_node(in):
  */
-void
+static void
 pt_pop_symbol_info (PARSER_CONTEXT * parser)
 {
   SYMBOL_INFO *symbols = NULL;
@@ -4085,7 +4058,7 @@ pt_pop_symbol_info (PARSER_CONTEXT * parser)
 
 /*
  * pt_make_access_spec () - Create an initialized ACCESS_SPEC_TYPE structure,
- *	                    ready to be specialised for class or list
+ *	                    ready to be specialized for class or list
  *   return:
  *   spec_type(in):
  *   access(in):
@@ -4206,7 +4179,7 @@ pt_fill_in_attrid_array (REGU_VARIABLE_LIST attr_list, ATTR_ID * attr_array,
  *   cache_pred(in):
  *   cache_rest(in):
  */
-ACCESS_SPEC_TYPE *
+static ACCESS_SPEC_TYPE *
 pt_make_class_access_spec (PARSER_CONTEXT * parser,
 			   PT_NODE * flat,
 			   DB_OBJECT * class_,
@@ -4289,7 +4262,7 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser,
  *   attr_list_pred(in):
  *   attr_list_rest(in):
  */
-ACCESS_SPEC_TYPE *
+static ACCESS_SPEC_TYPE *
 pt_make_list_access_spec (XASL_NODE * xasl,
 			  ACCESS_METHOD access,
 			  INDX_INFO * indexptr,
@@ -4328,7 +4301,7 @@ pt_make_list_access_spec (XASL_NODE * xasl,
  *   where_pred(in):
  *   attr_list(in):
  */
-ACCESS_SPEC_TYPE *
+static ACCESS_SPEC_TYPE *
 pt_make_set_access_spec (REGU_VARIABLE * set_expr,
 			 ACCESS_METHOD access,
 			 INDX_INFO * indexptr,
@@ -4364,7 +4337,7 @@ pt_make_set_access_spec (REGU_VARIABLE * set_expr,
  *   where_pred(in):
  *   attr_list(in):
  */
-ACCESS_SPEC_TYPE *
+static ACCESS_SPEC_TYPE *
 pt_make_cselect_access_spec (XASL_NODE * xasl,
 			     METHOD_SIG_LIST *
 			     method_sig_list,
@@ -4640,7 +4613,7 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
  *   iscan_list(in):
  *   root(in):
  */
-SORT_LIST *
+static SORT_LIST *
 pt_to_after_iscan (PARSER_CONTEXT * parser, PT_NODE * iscan_list,
 		   PT_NODE * root)
 {
@@ -4656,7 +4629,7 @@ pt_to_after_iscan (PARSER_CONTEXT * parser, PT_NODE * iscan_list,
  *   order_list(in):
  *   root(in):
  */
-SORT_LIST *
+static SORT_LIST *
 pt_to_orderby (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * root)
 {
   return pt_to_sort_list (parser, order_list, root, SORT_LIST_ORDERBY);
@@ -4671,7 +4644,7 @@ pt_to_orderby (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * root)
  *   group_list(in):
  *   root(in):
  */
-SORT_LIST *
+static SORT_LIST *
 pt_to_groupby (PARSER_CONTEXT * parser, PT_NODE * group_list, PT_NODE * root)
 {
   return pt_to_sort_list (parser, group_list, root, SORT_LIST_GROUPBY);
@@ -4686,7 +4659,7 @@ pt_to_groupby (PARSER_CONTEXT * parser, PT_NODE * group_list, PT_NODE * root)
  *   group_list(in):
  *   root(in):
  */
-SORT_LIST *
+static SORT_LIST *
 pt_to_after_groupby (PARSER_CONTEXT * parser, PT_NODE * group_list,
 		     PT_NODE * root)
 {
@@ -4702,7 +4675,7 @@ pt_to_after_groupby (PARSER_CONTEXT * parser, PT_NODE * group_list,
  *   id(in): spec id to test term for
  *   pred(in):
  */
-void
+static void
 pt_to_pred_terms (PARSER_CONTEXT * parser,
 		  PT_NODE * terms, UINTPTR id, PRED_EXPR ** pred)
 {
@@ -4749,7 +4722,7 @@ pt_to_pred_terms (PARSER_CONTEXT * parser,
  *   return: the original name at the end of a path expression
  *   expr(in):
  */
-char *
+static char *
 pt_get_original_name (const PT_NODE * expr)
 {
   while (expr->node_type == PT_DOT_)
@@ -4807,7 +4780,7 @@ regu_make_constant_vid (DB_VALUE * val, DB_VALUE ** dbvalptr)
   else
     {
       /* make sure its oid is a good one */
-      dbid = db_identifier (cls);
+      dbid = ws_identifier (cls);
       if (!dbid)
 	{
 	  return ER_GENERIC_ERROR;
@@ -5139,7 +5112,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 /*
  * pt_make_regu_constant () - takes a db_value and db_type and makes
  *                            a regu_variable constant
- *   return: A NULL return indicates an error occured
+ *   return: A NULL return indicates an error occurred
  *   parser(in):
  *   db_value(in/out):
  *   db_type(in):
@@ -5263,7 +5236,7 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value,
 /*
  * pt_make_regu_arith () - takes a regu_variable pair,
  *                         and makes an regu arith type
- *   return: A NULL return indicates an error occured
+ *   return: A NULL return indicates an error occurred
  *   arg1(in):
  *   arg2(in):
  *   arg3(in):
@@ -5304,7 +5277,7 @@ pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2,
 /*
  * pt_make_vid () - takes a pt_data_type and a regu variable and makes
  *                  a regu vid function
- *   return: A NULL return indicates an error occured
+ *   return: A NULL return indicates an error occurred
  *   parser(in):
  *   data_type(in):
  *   regu3(in):
@@ -5432,7 +5405,7 @@ pt_make_vid (PARSER_CONTEXT * parser, const PT_NODE * data_type,
 /*
  * pt_make_function () - takes a pt_data_type and a regu variable and makes
  *                       a regu function
- *   return: A NULL return indicates an error occured
+ *   return: A NULL return indicates an error occurred
  *   parser(in):
  *   function_code(in):
  *   arg_list(in):
@@ -5474,7 +5447,7 @@ pt_make_function (PARSER_CONTEXT * parser, int function_code,
 
 /*
  * pt_function_to_regu () - takes a PT_FUNCTION and converts to a regu_variable
- *   return: A NULL return indicates an error occured
+ *   return: A NULL return indicates an error occurred
  *   parser(in):
  *   function(in/out):
  *
@@ -5494,7 +5467,7 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 
   if (is_aggregate)
     {
-      /* This procedure assumes that pt_to_aggregate has already
+      /* This procedure assumes that pt_to_aggregate () has already
        * run, setting up the DB_VALUE for the aggregate value. */
       dbval = (DB_VALUE *) function->etc;
       if (dbval)
@@ -5594,7 +5567,7 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 /*
  * pt_make_regu_subquery () - takes a db_value and db_type and makes
  *                            a regu_variable constant
- *   return: A NULL return indicates an error occured
+ *   return: A NULL return indicates an error occurred
  *   parser(in):
  *   xasl(in/out):
  *   unbox(in):
@@ -6157,6 +6130,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	    case PT_EXPR:
 	      {
 		REGU_VARIABLE *r1 = NULL, *r2 = NULL, *r3 = NULL;
+		PT_NODE *empty_str = NULL;
 
 		if (PT_REQUIRES_HIERARCHICAL_QUERY (node->info.expr.op))
 		  {
@@ -6417,9 +6391,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    break;
 
 		  case PT_CONNECT_BY_ROOT:
-		    regu =
-		      pt_make_regu_arith (r1, r2, r3, T_CONNECT_BY_ROOT,
-					  domain);
+		    regu = pt_make_regu_arith (r1, r2, r3, T_CONNECT_BY_ROOT,
+					       domain);
 		    break;
 
 		  case PT_QPRIOR:
@@ -6432,23 +6405,23 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    break;
 
 		  case PT_RAND:
-		    regu =
-		      pt_make_regu_arith (NULL, NULL, NULL, T_RAND, domain);
+		    regu = pt_make_regu_arith (NULL, NULL, NULL, T_RAND,
+					       domain);
 		    break;
 
 		  case PT_DRAND:
-		    regu =
-		      pt_make_regu_arith (NULL, NULL, NULL, T_DRAND, domain);
+		    regu = pt_make_regu_arith (NULL, NULL, NULL, T_DRAND,
+					       domain);
 		    break;
 
 		  case PT_RANDOM:
-		    regu =
-		      pt_make_regu_arith (r1, r2, NULL, T_RANDOM, domain);
+		    regu = pt_make_regu_arith (r1, r2, NULL, T_RANDOM,
+					       domain);
 		    break;
 
 		  case PT_DRANDOM:
-		    regu =
-		      pt_make_regu_arith (r1, r2, NULL, T_DRANDOM, domain);
+		    regu = pt_make_regu_arith (r1, r2, NULL, T_DRANDOM,
+					       domain);
 		    break;
 
 		  case PT_FLOOR:
@@ -6542,147 +6515,120 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    break;
 
 		  case PT_LTRIM:
-		    {
-		      PT_NODE *empty_str = NULL;
-
-		      if (node->info.expr.arg2 == NULL)
-			{
-			  empty_str = pt_make_empty_string (parser, node);
-			}
-		      r1 = pt_to_regu_variable (parser,
-						node->info.expr.arg1, unbox);
-		      r2 = (node->info.expr.arg2)
-			? pt_to_regu_variable (parser, node->info.expr.arg2,
-					       unbox)
-			: pt_to_regu_variable (parser, empty_str, unbox);
-		      domain = pt_xasl_node_to_domain (parser, node);
-		      if (domain == NULL)
-			{
-			  break;
-			}
-		      regu =
-			pt_make_regu_arith (r1, r2, NULL, T_LTRIM, domain);
-		      if (node->info.expr.arg2 == NULL)
-			{
-			  parser_free_tree (parser, empty_str);
-			}
-		    }
+		    if (node->info.expr.arg2 == NULL)
+		      {
+			empty_str = pt_make_empty_string (parser, node);
+		      }
+		    r1 = pt_to_regu_variable (parser,
+					      node->info.expr.arg1, unbox);
+		    r2 = (node->info.expr.arg2)
+		      ? pt_to_regu_variable (parser, node->info.expr.arg2,
+					     unbox)
+		      : pt_to_regu_variable (parser, empty_str, unbox);
+		    domain = pt_xasl_node_to_domain (parser, node);
+		    if (domain == NULL)
+		      {
+			break;
+		      }
+		    regu = pt_make_regu_arith (r1, r2, NULL, T_LTRIM, domain);
+		    if (node->info.expr.arg2 == NULL)
+		      {
+			parser_free_tree (parser, empty_str);
+		      }
 		    break;
 
 		  case PT_RTRIM:
-		    {
-		      PT_NODE *empty_str = NULL;
+		    if (node->info.expr.arg2 == NULL)
+		      {
+			empty_str = pt_make_empty_string (parser, node);
+		      }
 
-		      if (node->info.expr.arg2 == NULL)
-			{
-			  empty_str = pt_make_empty_string (parser, node);
-			}
-
-		      r1 = pt_to_regu_variable (parser,
-						node->info.expr.arg1, unbox);
-		      r2 = (node->info.expr.arg2)
-			? pt_to_regu_variable (parser, node->info.expr.arg2,
-					       unbox)
-			: pt_to_regu_variable (parser, empty_str, unbox);
-		      domain = pt_xasl_node_to_domain (parser, node);
-		      if (domain == NULL)
-			{
-			  break;
-			}
-		      regu =
-			pt_make_regu_arith (r1, r2, NULL, T_RTRIM, domain);
-		      if (node->info.expr.arg2 == NULL)
-			{
-			  parser_free_tree (parser, empty_str);
-			}
-		    }
+		    r1 = pt_to_regu_variable (parser,
+					      node->info.expr.arg1, unbox);
+		    r2 = (node->info.expr.arg2)
+		      ? pt_to_regu_variable (parser, node->info.expr.arg2,
+					     unbox)
+		      : pt_to_regu_variable (parser, empty_str, unbox);
+		    domain = pt_xasl_node_to_domain (parser, node);
+		    if (domain == NULL)
+		      {
+			break;
+		      }
+		    regu = pt_make_regu_arith (r1, r2, NULL, T_RTRIM, domain);
+		    if (node->info.expr.arg2 == NULL)
+		      {
+			parser_free_tree (parser, empty_str);
+		      }
 		    break;
 
 		  case PT_LPAD:
-		    {
-		      PT_NODE *empty_str = NULL;
+		    if (node->info.expr.arg3 == NULL)
+		      {
+			empty_str = pt_make_empty_string (parser, node);
+		      }
 
-		      if (node->info.expr.arg3 == NULL)
-			{
-			  empty_str = pt_make_empty_string (parser, node);
-			}
-
-		      r3 = (node->info.expr.arg3)
-			? pt_to_regu_variable (parser, node->info.expr.arg3,
-					       unbox)
-			: pt_to_regu_variable (parser, empty_str, unbox);
-		      regu = pt_make_regu_arith (r1, r2, r3, T_LPAD, domain);
-		      if (node->info.expr.arg3 == NULL)
-			{
-			  parser_free_tree (parser, empty_str);
-			}
-		      break;
-		    }
+		    r3 = (node->info.expr.arg3)
+		      ? pt_to_regu_variable (parser, node->info.expr.arg3,
+					     unbox)
+		      : pt_to_regu_variable (parser, empty_str, unbox);
+		    regu = pt_make_regu_arith (r1, r2, r3, T_LPAD, domain);
+		    if (node->info.expr.arg3 == NULL)
+		      {
+			parser_free_tree (parser, empty_str);
+		      }
+		    break;
 
 		  case PT_RPAD:
-		    {
-		      PT_NODE *empty_str = NULL;
+		    if (node->info.expr.arg3 == NULL)
+		      {
+			empty_str = pt_make_empty_string (parser, node);
+		      }
 
-		      if (node->info.expr.arg3 == NULL)
-			{
-			  empty_str = pt_make_empty_string (parser, node);
-			}
-
-		      r3 = (node->info.expr.arg3)
-			? pt_to_regu_variable (parser, node->info.expr.arg3,
-					       unbox)
-			: pt_to_regu_variable (parser, empty_str, unbox);
-		      regu = pt_make_regu_arith (r1, r2, r3, T_RPAD, domain);
-		      if (node->info.expr.arg3 == NULL)
-			{
-			  parser_free_tree (parser, empty_str);
-			}
-		      break;
-		    }
+		    r3 = (node->info.expr.arg3)
+		      ? pt_to_regu_variable (parser, node->info.expr.arg3,
+					     unbox)
+		      : pt_to_regu_variable (parser, empty_str, unbox);
+		    regu = pt_make_regu_arith (r1, r2, r3, T_RPAD, domain);
+		    if (node->info.expr.arg3 == NULL)
+		      {
+			parser_free_tree (parser, empty_str);
+		      }
+		    break;
 
 		  case PT_REPLACE:
-		    {
-		      PT_NODE *empty_str = NULL;
+		    if (node->info.expr.arg3 == NULL)
+		      {
+			empty_str = pt_make_empty_string (parser, node);
+		      }
 
-		      if (node->info.expr.arg3 == NULL)
-			{
-			  empty_str = pt_make_empty_string (parser, node);
-			}
-
-		      r3 = (node->info.expr.arg3)
-			? pt_to_regu_variable (parser, node->info.expr.arg3,
-					       unbox)
-			: pt_to_regu_variable (parser, empty_str, unbox);
-		      regu =
-			pt_make_regu_arith (r1, r2, r3, T_REPLACE, domain);
-		      if (node->info.expr.arg3 == NULL)
-			{
-			  parser_free_tree (parser, empty_str);
-			}
-		      break;
-		    }
+		    r3 = (node->info.expr.arg3)
+		      ? pt_to_regu_variable (parser, node->info.expr.arg3,
+					     unbox)
+		      : pt_to_regu_variable (parser, empty_str, unbox);
+		    regu = pt_make_regu_arith (r1, r2, r3, T_REPLACE, domain);
+		    if (node->info.expr.arg3 == NULL)
+		      {
+			parser_free_tree (parser, empty_str);
+		      }
+		    break;
 
 		  case PT_TRANSLATE:
-		    {
-		      PT_NODE *empty_str = NULL;
+		    if (node->info.expr.arg3 == NULL)
+		      {
+			empty_str = pt_make_empty_string (parser, node);
+		      }
 
-		      if (node->info.expr.arg3 == NULL)
-			{
-			  empty_str = pt_make_empty_string (parser, node);
-			}
-
-		      r3 = (node->info.expr.arg3)
-			? pt_to_regu_variable (parser, node->info.expr.arg3,
-					       unbox)
-			: pt_to_regu_variable (parser, empty_str, unbox);
-		      regu =
-			pt_make_regu_arith (r1, r2, r3, T_TRANSLATE, domain);
-		      if (node->info.expr.arg3 == NULL)
-			{
-			  parser_free_tree (parser, empty_str);
-			}
-		      break;
-		    }
+		    r3 = (node->info.expr.arg3)
+		      ? pt_to_regu_variable (parser, node->info.expr.arg3,
+					     unbox)
+		      : pt_to_regu_variable (parser, empty_str, unbox);
+		    regu = pt_make_regu_arith (r1, r2, r3, T_TRANSLATE,
+					       domain);
+		    if (node->info.expr.arg3 == NULL)
+		      {
+			parser_free_tree (parser, empty_str);
+		      }
+		    break;
 
 		  case PT_ADD_MONTHS:
 		    data_type = pt_make_prim_data_type (parser, PT_TYPE_DATE);
@@ -6697,14 +6643,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    data_type = pt_make_prim_data_type (parser, PT_TYPE_DATE);
 		    domain = pt_xasl_data_type_to_domain (parser, data_type);
 
-		    regu =
-		      pt_make_regu_arith (r1, r2, NULL, T_LAST_DAY, domain);
+		    regu = pt_make_regu_arith (r1, r2, NULL, T_LAST_DAY,
+					       domain);
 		    parser_free_tree (parser, data_type);
 		    break;
 
 		  case PT_MONTHS_BETWEEN:
-		    data_type =
-		      pt_make_prim_data_type (parser, PT_TYPE_DOUBLE);
+		    data_type = pt_make_prim_data_type (parser,
+							PT_TYPE_DOUBLE);
 		    domain = pt_xasl_data_type_to_domain (parser, data_type);
 
 		    regu = pt_make_regu_arith (r1, r2, NULL,
@@ -6805,8 +6751,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      pt_make_prim_data_type (parser, PT_TYPE_DATETIME);
 		    domain = pt_xasl_data_type_to_domain (parser, data_type);
 
-		    regu =
-		      pt_make_regu_arith (r1, r2, r3, T_TO_DATETIME, domain);
+		    regu = pt_make_regu_arith (r1, r2, r3, T_TO_DATETIME,
+					       domain);
 		    parser_free_tree (parser, data_type);
 		    break;
 
@@ -6824,18 +6770,18 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      param_empty->info.value.data_value.i =
 			node->info.expr.arg2 ? 0 : 1;
 
-		      /* If 2nd agrument of to_number() exists, modify domain. */
+		      /* If 2nd argument of to_number() exists, modify domain. */
 		      pt_to_regu_resolve_domain (&precision, &scale,
 						 node->info.expr.arg2);
 		      data_type = pt_make_prim_data_type_fortonum (parser,
 								   precision,
 								   scale);
 
-		      /* create NUMERIC domain with defalut precisin and scale. */
+		      /* create NUMERIC domain with default precision and scale. */
 		      domain =
 			pt_xasl_data_type_to_domain (parser, data_type);
 
-		      /* If 2nd agrument of to_number() exists, modify domain. */
+		      /* If 2nd argument of to_number() exists, modify domain. */
 		      pt_to_regu_resolve_domain (&domain->precision,
 						 &domain->scale,
 						 node->info.expr.arg2);
@@ -6853,11 +6799,13 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		  case PT_CURRENT_VALUE:
 		    {
+		      MOP serial_class_mop, serial_mop;
 		      DB_IDENTIFIER serial_obj_id;
 		      PT_NODE *oid_str_val;
 		      int found = 0, r = 0;
 		      char *serial_name = NULL, *t = NULL;
 		      char oid_str[32];
+		      int cached_num;
 
 		      data_type = pt_make_prim_data_type (parser,
 							  PT_TYPE_NUMERIC);
@@ -6869,15 +6817,24 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			node->info.expr.arg1->info.value.data_value.str->
 			bytes;
 
-		      t = strchr (serial_name, '.');
+		      t = strchr (serial_name, '.');	/* FIXME */
 		      serial_name = (t != NULL) ? t + 1 : serial_name;
 
-		      r = do_get_serial_obj_id (&serial_obj_id,
-						&found, serial_name);
-		      if (r == 0 && found)
+		      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+		      serial_mop = do_get_serial_obj_id (&serial_obj_id,
+							 serial_class_mop,
+							 serial_name);
+		      if (serial_mop != NULL)
 			{
-			  sprintf (oid_str, "%d %d %d", serial_obj_id.pageid,
-				   serial_obj_id.slotid, serial_obj_id.volid);
+			  if (do_get_serial_cached_num (&cached_num,
+							serial_mop) !=
+			      NO_ERROR)
+			    {
+			      cached_num = 0;
+			    }
+			  sprintf (oid_str, "%d %d %d %d",
+				   serial_obj_id.pageid, serial_obj_id.slotid,
+				   serial_obj_id.volid, cached_num);
 			  oid_str_val = parser_new_node (parser, PT_VALUE);
 			  if (oid_str_val == NULL)
 			    {
@@ -6895,9 +6852,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			    bytes;
 
 			  r1 = NULL;
-			  r2 =
-			    pt_to_regu_variable (parser, oid_str_val, unbox);
-
+			  r2 = pt_to_regu_variable (parser, oid_str_val,
+						    unbox);
 			  regu = pt_make_regu_arith (r1, r2, NULL,
 						     T_CURRENT_VALUE, domain);
 			  parser_free_tree (parser, oid_str_val);
@@ -6916,29 +6872,42 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		  case PT_NEXT_VALUE:
 		    {
+		      MOP serial_class_mop, serial_mop;
 		      DB_IDENTIFIER serial_obj_id;
 		      PT_NODE *oid_str_val;
 		      int found = 0, r = 0;
 		      char *serial_name = NULL, *t = NULL;
-		      char oid_str[36];
+		      char oid_str[64];
+		      int cached_num;
 
 		      data_type = pt_make_prim_data_type (parser,
 							  PT_TYPE_NUMERIC);
-		      domain =
-			pt_xasl_data_type_to_domain (parser, data_type);
+		      domain = pt_xasl_data_type_to_domain (parser,
+							    data_type);
 
 		      /* convert node->info.expr.arg1 into serial object's OID */
 		      serial_name =
 			(char *) node->info.expr.arg1->info.value.data_value.
 			str->bytes;
-		      t = strchr (serial_name, '.');
+		      t = strchr (serial_name, '.');	/* FIXME */
 		      serial_name = (t != NULL) ? t + 1 : serial_name;
-		      r = do_get_serial_obj_id (&serial_obj_id,
-						&found, serial_name);
-		      if (r == 0 && found)
+
+		      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+		      serial_mop = do_get_serial_obj_id (&serial_obj_id,
+							 serial_class_mop,
+							 serial_name);
+		      if (serial_mop != NULL)
 			{
-			  sprintf (oid_str, "%d %d %d", serial_obj_id.pageid,
-				   serial_obj_id.slotid, serial_obj_id.volid);
+			  if (do_get_serial_cached_num (&cached_num,
+							serial_mop) !=
+			      NO_ERROR)
+			    {
+			      cached_num = 0;
+			    }
+			  sprintf (oid_str, "%d %d %d %d",
+				   serial_obj_id.pageid, serial_obj_id.slotid,
+				   serial_obj_id.volid, cached_num);
+
 			  oid_str_val = parser_new_node (parser, PT_VALUE);
 			  if (oid_str_val == NULL)
 			    {
@@ -6955,11 +6924,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			    bytes;
 
 			  r1 = NULL;
-			  r2 =
-			    pt_to_regu_variable (parser, oid_str_val, unbox);
-			  regu =
-			    pt_make_regu_arith (r1, r2, NULL, T_NEXT_VALUE,
-						domain);
+			  r2 = pt_to_regu_variable (parser, oid_str_val,
+						    unbox);
+			  regu = pt_make_regu_arith (r1, r2, NULL,
+						     T_NEXT_VALUE, domain);
 			  parser_free_tree (parser, oid_str_val);
 			}
 		      else
@@ -6975,34 +6943,29 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    }
 
 		  case PT_TRIM:
-		    {
-		      PT_NODE *empty_str = NULL;
+		    if (node->info.expr.arg2 == NULL)
+		      {
+			empty_str = pt_make_empty_string (parser, node);
+		      }
 
-		      if (node->info.expr.arg2 == NULL)
-			{
-			  empty_str = pt_make_empty_string (parser, node);
-			}
+		    r1 = pt_to_regu_variable (parser,
+					      node->info.expr.arg1, unbox);
+		    r2 = (node->info.expr.arg2)
+		      ? pt_to_regu_variable (parser, node->info.expr.arg2,
+					     unbox)
+		      : pt_to_regu_variable (parser, empty_str, unbox);
+		    domain = pt_xasl_node_to_domain (parser, node);
+		    if (domain == NULL)
+		      {
+			break;
+		      }
+		    regu = pt_make_regu_arith (r1, r2, NULL, T_TRIM, domain);
 
-		      r1 = pt_to_regu_variable (parser,
-						node->info.expr.arg1, unbox);
-		      r2 = (node->info.expr.arg2)
-			? pt_to_regu_variable (parser, node->info.expr.arg2,
-					       unbox)
-			: pt_to_regu_variable (parser, empty_str, unbox);
-		      domain = pt_xasl_node_to_domain (parser, node);
-		      if (domain == NULL)
-			{
-			  break;
-			}
-		      regu =
-			pt_make_regu_arith (r1, r2, NULL, T_TRIM, domain);
-
-		      pt_to_misc_operand (regu, node->info.expr.qualifier);
-		      if (node->info.expr.arg2 == NULL)
-			{
-			  parser_free_tree (parser, empty_str);
-			}
-		    }
+		    pt_to_misc_operand (regu, node->info.expr.qualifier);
+		    if (node->info.expr.arg2 == NULL)
+		      {
+			parser_free_tree (parser, empty_str);
+		      }
 		    break;
 
 		  case PT_INST_NUM:
@@ -7028,13 +6991,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    break;
 
 		  case PT_GREATEST:
-		    regu =
-		      pt_make_regu_arith (r1, r2, NULL, T_GREATEST, domain);
+		    regu = pt_make_regu_arith (r1, r2, NULL, T_GREATEST,
+					       domain);
 		    break;
 
 		  case PT_CAST:
-		    domain = pt_xasl_data_type_to_domain
-		      (parser, node->info.expr.cast_type);
+		    domain = pt_xasl_data_type_to_domain (parser,
+							  node->info.expr.
+							  cast_type);
 		    regu = pt_make_regu_arith (r1, r2, NULL, T_CAST, domain);
 		    break;
 
@@ -7049,13 +7013,13 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    break;
 
 		  case PT_NULLIF:
-		    regu =
-		      pt_make_regu_arith (r1, r2, NULL, T_NULLIF, domain);
+		    regu = pt_make_regu_arith (r1, r2, NULL, T_NULLIF,
+					       domain);
 		    break;
 
 		  case PT_COALESCE:
-		    regu =
-		      pt_make_regu_arith (r1, r2, NULL, T_COALESCE, domain);
+		    regu = pt_make_regu_arith (r1, r2, NULL, T_COALESCE,
+					       domain);
 		    break;
 
 		  case PT_NVL:
@@ -7067,8 +7031,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    break;
 
 		  case PT_DECODE:
-		    regu =
-		      pt_make_regu_arith (r1, r2, NULL, T_DECODE, domain);
+		    regu = pt_make_regu_arith (r1, r2, NULL, T_DECODE,
+					       domain);
 		    if (regu == NULL)
 		      {
 			break;
@@ -7078,20 +7042,19 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    break;
 
 		  case PT_EXTRACT:
-		    regu =
-		      pt_make_regu_arith (r1, r2, NULL, T_EXTRACT, domain);
+		    regu = pt_make_regu_arith (r1, r2, NULL, T_EXTRACT,
+					       domain);
 		    pt_to_misc_operand (regu, node->info.expr.qualifier);
 		    break;
 
 		  case PT_STRCAT:
-		    regu =
-		      pt_make_regu_arith (r1, r2, NULL, T_STRCAT, domain);
+		    regu = pt_make_regu_arith (r1, r2, NULL, T_STRCAT,
+					       domain);
 		    break;
 
 		  case PT_SYS_CONNECT_BY_PATH:
-		    regu =
-		      pt_make_regu_arith (r1, r2, r3, T_SYS_CONNECT_BY_PATH,
-					  domain);
+		    regu = pt_make_regu_arith (r1, r2, r3,
+					       T_SYS_CONNECT_BY_PATH, domain);
 		    break;
 
 		  default:
@@ -7227,14 +7190,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 /*
  * pt_to_regu_variable_list () - converts a parse expression tree list
  *                               to regu_variable_list
- *   return: A NULL return indicates an error occured
+ *   return: A NULL return indicates an error occurred
  *   parser(in):
  *   node_list(in):
  *   unbox(in):
  *   value_list(in):
  *   attr_offsets(in):
  */
-REGU_VARIABLE_LIST
+static REGU_VARIABLE_LIST
 pt_to_regu_variable_list (PARSER_CONTEXT * parser,
 			  PT_NODE * node_list,
 			  UNBOX unbox,
@@ -7281,7 +7244,7 @@ pt_to_regu_variable_list (PARSER_CONTEXT * parser,
  *   parser(in):
  *   regu(in):
  */
-DB_VALUE *
+static DB_VALUE *
 pt_regu_to_dbvalue (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
 {
   DB_VALUE *val = NULL;
@@ -7372,7 +7335,7 @@ pt_make_pos_regu_var_from_scratch (TP_DOMAIN * dom,
  *   value_list(in):
  *   attr_offsets(in):
  */
-REGU_VARIABLE_LIST
+static REGU_VARIABLE_LIST
 pt_to_position_regu_variable_list (PARSER_CONTEXT * parser,
 				   PT_NODE * node_list, VAL_LIST * value_list,
 				   int *attr_offsets)
@@ -7390,7 +7353,7 @@ pt_to_position_regu_variable_list (PARSER_CONTEXT * parser,
 
       /* it would be better form to call pt_make_position_regu_variable,
        * but this avoids additional allocation do to regu variable
-       * and regu_variable_list bizareness.
+       * and regu_variable_list bizarreness.
        */
       if (*tail)
 	{
@@ -7489,7 +7452,7 @@ pt_to_regu_attr_descr (PARSER_CONTEXT * parser, DB_OBJECT * class_object,
  * table's value_list DB_VALUE, in the position matching where attr is
  * found in attribute_list.
  */
-REGU_VARIABLE *
+static REGU_VARIABLE *
 pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 {
   REGU_VARIABLE *regu = NULL;
@@ -7520,8 +7483,8 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 	  /* We have found the attribute at this scope.
 	   * If we had not, the attribute must have been a correlated
 	   * reference to an attribute at an outer scope. The correlated
-	   * case is handled below in this "if" statements "else" clause.
-	   * determine if this is relative to a particular class
+	   * case is handled below in this "if" statement's "else" clause.
+	   * Determine if this is relative to a particular class
 	   * or if the attribute should be relative to the placeholder.
 	   */
 
@@ -7677,8 +7640,8 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 	      while (symbols->stack && !table_info)
 		{
 		  symbols = symbols->stack;
-		  /* mark succesive enclosing scopes correlated,
-		   * until the attributes "home" is found. */
+		  /* mark successive enclosing scopes correlated,
+		   * until the attribute's "home" is found. */
 		  table_info = pt_find_table_info (attr->info.name.spec_id,
 						   symbols->table_info);
 		}
@@ -7739,7 +7702,7 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
  *   parser(in):
  *   join_term(in):
  */
-REGU_VARIABLE *
+static REGU_VARIABLE *
 pt_join_term_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * join_term)
 {
   REGU_VARIABLE *regu = NULL;
@@ -9190,7 +9153,7 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser,
 				PT_NODE * subquery, PT_NODE * where_part)
 {
   XASL_NODE *subquery_proc;
-  PT_NODE *tmp;
+  PT_NODE *saved_current_class;
   REGU_VARIABLE_LIST regu_attributes_pred, regu_attributes_rest;
   ACCESS_SPEC_TYPE *access;
   PRED_EXPR *where = NULL;
@@ -9240,10 +9203,10 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser,
    * pred should never user the current instance for fetches
    * either, so we turn off the current_class, if there is one.
    */
-  tmp = parser->symbols->current_class;
+  saved_current_class = parser->symbols->current_class;
   parser->symbols->current_class = NULL;
   where = pt_to_pred_expr (parser, where_part);
-  parser->symbols->current_class = tmp;
+  parser->symbols->current_class = saved_current_class;
 
   access = pt_make_list_access_spec (subquery_proc, SEQUENTIAL,
 				     NULL, where,
@@ -9594,7 +9557,7 @@ pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl)
  *   select_node(in):
  *   xasl(in):
  */
-void
+static void
 pt_set_connect_by_xasl (PARSER_CONTEXT * parser, PT_NODE * select_node,
 			XASL_NODE * xasl)
 {
@@ -9686,8 +9649,6 @@ pt_append_scan (const XASL_NODE * to, const XASL_NODE * from)
   return (XASL_NODE *) to;
 }
 
-
-
 /*
  * pt_uncorr_pre () - builds xasl list of locally correlated (level 1) queries
  *   return:
@@ -9711,7 +9672,7 @@ pt_uncorr_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 
   /* Can not increment level for list portion of walk.
    * Since those queries are not sub-queries of this query.
-   * Consequently, we recurse seperately for the list leading
+   * Consequently, we recurse separately for the list leading
    * from a query.  Can't just call pt_to_uncorr_subquery_list()
    * directly since it needs to do a leaf walk and we want to do a full
    * walk on the next list.
@@ -9885,7 +9846,7 @@ pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser,
   HFID *hfid_ptr;
   int is_partition = 0;
 
-  oid_ptr = db_identifier (target_class);
+  oid_ptr = ws_identifier (target_class);
   hfid_ptr = sm_get_heap (target_class);
 
   if (oid_ptr == NULL || hfid_ptr == NULL)
@@ -10197,7 +10158,7 @@ pt_to_fetch_as_scan_proc (PARSER_CONTEXT * parser, PT_NODE * spec,
 			  PT_NODE * join_term, XASL_NODE * xasl_to_scan)
 {
   XASL_NODE *xasl;
-  PT_NODE *tmp;
+  PT_NODE *saved_current_class;
   REGU_VARIABLE *regu;
   REGU_VARIABLE_LIST regu_attributes_pred, regu_attributes_rest;
   ACCESS_SPEC_TYPE *access;
@@ -10259,10 +10220,10 @@ pt_to_fetch_as_scan_proc (PARSER_CONTEXT * parser, PT_NODE * spec,
    * pred should never user the current instance for fetches
    * either, so we turn off the current_class, if there is one.
    */
-  tmp = parser->symbols->current_class;
+  saved_current_class = parser->symbols->current_class;
   parser->symbols->current_class = NULL;
   where = pt_to_pred_expr (parser, join_term);
-  parser->symbols->current_class = tmp;
+  parser->symbols->current_class = saved_current_class;
 
   access = pt_make_list_access_spec (xasl_to_scan, SEQUENTIAL,
 				     NULL, where,
@@ -10586,7 +10547,7 @@ ptqo_to_list_scan_proc (PARSER_CONTEXT * parser,
     {
       PRED_EXPR *pred_expr = NULL;
       REGU_VARIABLE_LIST regu_attributes = NULL;
-      PT_NODE *tmp;
+      PT_NODE *saved_current_class;
       int *attr_offsets;
 
       parser->symbols->listfile_unbox = UNBOX_AS_VALUE;
@@ -10599,10 +10560,10 @@ ptqo_to_list_scan_proc (PARSER_CONTEXT * parser,
        * pred should never user the current instance for fetches
        * either, so we turn off the current_class, if there is one.
        */
-      tmp = parser->symbols->current_class;
+      saved_current_class = parser->symbols->current_class;
       parser->symbols->current_class = NULL;
       pred_expr = pt_to_pred_expr (parser, pred);
-      parser->symbols->current_class = tmp;
+      parser->symbols->current_class = saved_current_class;
 
       /* Need to create a value list using the already allocated
        * DB_VALUE data buckets on some other XASL_PROC's val list.
@@ -10885,7 +10846,7 @@ pt_gen_simple_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 	  pt_to_fetch_proc_list (parser, from->info.spec.path_entities, xasl);
 	}
 
-      /* Find the last scan proc. Some psuedo-fetch procs may be on
+      /* Find the last scan proc. Some pseudo-fetch procs may be on
        * this list */
       lastxasl = xasl;
       while (lastxasl && lastxasl->scan_ptr)
@@ -11083,7 +11044,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 		      QO_PLAN * qo_plan)
 {
   XASL_NODE *xasl;
-  PT_NODE *tmp;
+  PT_NODE *saved_current_class;
   int groupby_ok = 1;
   AGGREGATE_TYPE *aggregate = NULL;
   SYMBOL_INFO *symbols;
@@ -11243,7 +11204,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 				       buildlist->g_val_list,
 				       buildlist->g_regu_list,
 				       group_out_list,
-				       &buildlist->g_grbynum_val, false);
+				       &buildlist->g_grbynum_val);
 
 	  /* set current_listfile only around call to make g_outptr_list
 	   * and havein_pred */
@@ -11265,7 +11226,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
 	  /* pred should never user the current instance for fetches
 	   * either, so we turn off the current_class, if there is one. */
-	  tmp = parser->symbols->current_class;
+	  saved_current_class = parser->symbols->current_class;
 	  parser->symbols->current_class = NULL;
 	  pt_split_having_grbynum (parser,
 				   select_node->info.query.q.select.having,
@@ -11281,7 +11242,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  select_node->info.query.q.select.having =
 	    parser_append_node (having_part, grbynum_part);
 
-	  parser->symbols->current_class = tmp;
+	  parser->symbols->current_class = saved_current_class;
 	  symbols->current_listfile = NULL;
 	  symbols->listfile_value_list = NULL;
 	  if (group_out_list)
@@ -11559,22 +11520,22 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 		       QO_PLAN * qo_plan)
 {
   XASL_NODE *xasl;
+  BUILDVALUE_PROC_NODE *buildvalue;
   AGGREGATE_TYPE *aggregate;
-  PT_NODE *from, *tmp;
-  UNBOX unbox;
-  int flag_agg_optimize = false;
+  PT_NODE *saved_current_class;
 
   xasl = regu_xasl_node_alloc (BUILDVALUE_PROC);
 
   if (!xasl || select_node->node_type != PT_SELECT ||
-      !(from = select_node->info.query.q.select.from))
+      !select_node->info.query.q.select.from)
     {
       xasl = NULL;
     }
   else
     {
-      BUILDVALUE_PROC_NODE *buildvalue = &xasl->proc.buildvalue;
+      XASL_NODE *dptr_head;
 
+      buildvalue = &xasl->proc.buildvalue;
       xasl->next = NULL;
 
       /* assume parse tree correct, and PT_DISTINCT only other possibility */
@@ -11616,29 +11577,18 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 				 select_node->info.query.q.select.list,
 				 &xasl->instnum_val, &xasl->ordbynum_val);
 
-      if (select_node->info.query.q.select.where == NULL
-	  && pt_length_of_list (select_node->info.query.q.select.from) == 1
-	  && pt_length_of_list (from->info.spec.flat_entity_list) == 1
-	  && (select_node->info.query.q.select.from->info.spec.only_all !=
-	      PT_ALL))
-	{
-	  flag_agg_optimize = true;
-	}
-
       aggregate = pt_to_aggregate (parser, select_node, NULL, NULL,
-				   NULL, NULL, &buildvalue->grbynum_val,
-				   flag_agg_optimize);
+				   NULL, NULL, &buildvalue->grbynum_val);
 
       /* the calls pt_to_out_list, pt_to_spec_list, and pt_to_if_pred,
        * record information in the "symbol_info" structure
        * used by subsequent calls, and must be done first, before
        * calculating subquery lists, etc.
        */
-      unbox = UNBOX_AS_VALUE;
       xasl->outptr_list = pt_to_outlist (parser,
 					 select_node->info.query.q.select.
 					 list, &xasl->selected_upd_list,
-					 unbox);
+					 UNBOX_AS_VALUE);
 
       /* check if this select statement has click counter */
       if (xasl->selected_upd_list != NULL)
@@ -11668,6 +11618,9 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
       if (!qo_plan ||
 	  !pt_gen_optimized_plan (parser, xasl, select_node, qo_plan))
 	{
+	  PT_NODE *from;
+
+	  from = select_node->info.query.q.select.from;
 	  while (from)
 	    {
 	      if (from->info.spec.join_type != PT_JOIN_NONE)
@@ -11702,30 +11655,26 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
       /* pred should never user the current instance for fetches
        * either, so we turn off the current_class, if there is one.
        */
-      tmp = parser->symbols->current_class;
+      saved_current_class = parser->symbols->current_class;
       parser->symbols->current_class = NULL;
       buildvalue->having_pred =
 	pt_to_pred_expr (parser, select_node->info.query.q.select.having);
-      parser->symbols->current_class = NULL;
+      parser->symbols->current_class = saved_current_class;
 
-      {
-	XASL_NODE *dptr_head;
-
-	if (xasl->scan_ptr)
-	  {
-	    dptr_head = xasl->scan_ptr;
-	    while (dptr_head->scan_ptr)
-	      {
-		dptr_head = dptr_head->scan_ptr;
-	      }
-	  }
-	else
-	  {
-	    dptr_head = xasl;
-	  }
-	pt_set_dptr (parser, select_node->info.query.q.select.having,
-		     dptr_head, MATCH_ALL);
-      }
+      if (xasl->scan_ptr)
+	{
+	  dptr_head = xasl->scan_ptr;
+	  while (dptr_head->scan_ptr)
+	    {
+	      dptr_head = dptr_head->scan_ptr;
+	    }
+	}
+      else
+	{
+	  dptr_head = xasl;
+	}
+      pt_set_dptr (parser, select_node->info.query.q.select.having,
+		   dptr_head, MATCH_ALL);
 
       /*  union fields from BUILDVALUE_PROC_NODE - BUILDVALUE_PROC */
       buildvalue->agg_list = aggregate;
@@ -11960,33 +11909,33 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && plan)
     {
-      if (query_plan_dump_fp == NULL)
+      if (query_Plan_dump_fp == NULL)
 	{
-	  query_plan_dump_fp = stdout;
+	  query_Plan_dump_fp = stdout;
 	}
-      fputs ("\nQuery plan:\n", query_plan_dump_fp);
-      qo_plan_dump (plan, query_plan_dump_fp);
+      fputs ("\nQuery plan:\n", query_Plan_dump_fp);
+      qo_plan_dump (plan, query_Plan_dump_fp);
     }
 
   if (level & 0x200)
     {
       unsigned int save_custom;
 
-      if (query_plan_dump_fp == NULL)
+      if (query_Plan_dump_fp == NULL)
 	{
-	  query_plan_dump_fp = stdout;
+	  query_Plan_dump_fp = stdout;
 	}
 
       save_custom = parser->custom_print;
       parser->custom_print |= PT_CONVERT_RANGE;
-      fprintf (query_plan_dump_fp, "\nQuery stmt:%s\n\n%s\n\n",
+      fprintf (query_Plan_dump_fp, "\nQuery stmt:%s\n\n%s\n\n",
 	       ((hint_ignored) ? " [Warning: HINT ignored]" : ""),
 	       parser_print_tree (parser, select_node));
       if (select_node->info.query.order_by)
 	{
 	  if (xasl && xasl->orderby_list == NULL)
 	    {
-	      fprintf (query_plan_dump_fp, "/* ---> skip ORDER BY */\n");
+	      fprintf (query_Plan_dump_fp, "/* ---> skip ORDER BY */\n");
 	    }
 	}
       parser->custom_print = save_custom;
@@ -12038,22 +11987,22 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
       switch (node->node_type)
 	{
 	case PT_SELECT:
-	  if (query_plan_dump_filename != NULL)
+	  if (query_Plan_dump_filename != NULL)
 	    {
-	      query_plan_dump_fp = fopen (query_plan_dump_filename, "a");
+	      query_Plan_dump_fp = fopen (query_Plan_dump_filename, "a");
 	    }
-	  if (query_plan_dump_fp == NULL)
+	  if (query_Plan_dump_fp == NULL)
 	    {
-	      query_plan_dump_fp = stdout;
+	      query_Plan_dump_fp = stdout;
 	    }
 
 	  xasl = pt_plan_query (parser, node);
 	  node->info.query.xasl = xasl;
 
-	  if (query_plan_dump_fp != NULL && query_plan_dump_fp != stdout)
+	  if (query_Plan_dump_fp != NULL && query_Plan_dump_fp != stdout)
 	    {
-	      fclose (query_plan_dump_fp);
-	      query_plan_dump_fp = stdout;
+	      fclose (query_Plan_dump_fp);
+	      query_Plan_dump_fp = stdout;
 	    }
 	  break;
 
@@ -12082,7 +12031,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (parser->error_msgs)
     {
-      xasl = NULL;		/* signal error occured */
+      xasl = NULL;		/* signal error occurred */
     }
 
   if (xasl)
@@ -12182,9 +12131,9 @@ pt_spec_to_xasl_class_oid_list (const PT_NODE * spec,
       /* traverse flat entity list which are resolved classes */
       for (flat = spec->info.spec.flat_entity_list; flat; flat = flat->next)
 	{
-	  /* get the OID of the class object which is fetched brefore */
+	  /* get the OID of the class object which is fetched before */
 	  if (flat->info.name.db_object
-	      && (oid = db_identifier (flat->info.name.db_object)) != NULL)
+	      && (oid = ws_identifier (flat->info.name.db_object)) != NULL)
 	    {
 	      prev_t_num = t_num;
 	      (void) lsearch (oid, o_list, &t_num, sizeof (OID), oid_compare);
@@ -12227,13 +12176,11 @@ error:
   if (*oid_listp)
     {
       free_and_init (*oid_listp);
-      *oid_listp = NULL;
     }
 
   if (*rep_listp)
     {
       free_and_init (*rep_listp);
-      *rep_listp = NULL;
     }
 
   *nump = *sizep = 0;
@@ -12434,7 +12381,7 @@ pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl,
       parser_free_tree (parser, pt_pred);
     }
 
-  /* symbols are allocted with pt_alloc_packing_buf,
+  /* symbols are allocated with pt_alloc_packing_buf,
    * and freed at end of xasl generation. */
   parser->symbols = NULL;
 
@@ -12501,9 +12448,21 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   class_obj = statement->info.insert.spec->
     info.spec.flat_entity_list->info.name.db_object;
-  if ((class_ = locator_has_heap (class_obj)) == NULL ||
-      (hfid = sm_heap (class_)) == NULL ||
-      (locator_flush_class (class_obj) != NO_ERROR))
+
+  class_ = locator_create_heap_if_needed (class_obj,
+					  sm_is_reuse_oid_class (class_obj));
+  if (class_ == NULL)
+    {
+      return NULL;
+    }
+
+  hfid = sm_heap (class_);
+  if (hfid == NULL)
+    {
+      return NULL;
+    }
+
+  if (locator_flush_class (class_obj) != NO_ERROR)
     {
       return NULL;
     }
@@ -12528,7 +12487,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (xasl)
     {
       insert->class_hfid = *hfid;
-      class_oid = db_identifier (class_obj);
+      class_oid = ws_identifier (class_obj);
       if (class_oid)
 	{
 	  insert->class_oid = *class_oid;
@@ -12608,7 +12567,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       OID *oid;
 
       /* OID of the user who is creating this XASL */
-      oid = db_identifier (db_get_user ());
+      oid = ws_identifier (db_get_user ());
       if (oid != NULL)
 	{
 	  COPY_OID (&xasl->creator_oid, oid);
@@ -12784,7 +12743,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   ++cl, cl_name_node = cl_name_node->next)
 	{
 	  class_obj = cl_name_node->info.name.db_object;
-	  class_oid = db_identifier (class_obj);
+	  class_oid = ws_identifier (class_obj);
 	  if (class_oid == NULL)
 	    {
 	      error = ER_HEAP_UNKNOWN_OBJECT;
@@ -12843,7 +12802,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       OID *oid;
 
       /* OID of the user who is creating this XASL */
-      if ((oid = db_identifier (db_get_user ())) != NULL)
+      if ((oid = ws_identifier (db_get_user ())) != NULL)
 	{
 	  COPY_OID (&xasl->creator_oid, oid);
 	}
@@ -13015,7 +12974,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	   ++cl, cl_name_node = cl_name_node->next)
 	{
 	  class_obj = cl_name_node->info.name.db_object;
-	  class_oid = db_identifier (class_obj);
+	  class_oid = ws_identifier (class_obj);
 	  if (class_oid == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -13240,7 +13199,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       OID *oid;
 
       /* OID of the user who is creating this XASL */
-      if ((oid = db_identifier (db_get_user ())) != NULL)
+      if ((oid = ws_identifier (db_get_user ())) != NULL)
 	{
 	  COPY_OID (&xasl->creator_oid, oid);
 	}
@@ -13413,9 +13372,9 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 			   pt_pruning_and_flush_class_and_null_xasl, NULL,
 			   NULL, NULL);
 
-  /* during above parser_walk_tree, the request to get a driver may cause
-     deadlock, then we should exit following steps and propages
-     the error messages */
+  /* During the above parser_walk_tree the request to get a driver may cause a
+     deadlock. We give up the following steps and propagate the error
+     messages */
   if (parser->abort || !node)
     {
       return NULL;
@@ -13439,21 +13398,46 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (node)
 	{
+	  /* This function might be called recursively by some queries.
+	   * Therefore, if xasl_Supp_info has the allocated memory blocks,
+	   * we should release them to prevent memory leak.
+	   * The following query is one of them. 
+	   *
+	   * scenario/medium/_02_xtests/xmother.sql
+	   * delete from x 
+	   * where xstr > concat_str('string 4', 'string 40') on
+	   *  (select y from y where yint = add_int(y, 10, 10));
+	   *
+	   * NOTE:
+	   * Defining xasl_Supp_info in local scope is one of the alternative
+	   * methods for preventing memory leak. However, it returns 
+	   * a wrong result of a query.
+	   */
+	  if (xasl_Supp_info.query_list)
+	    {
+	      parser_free_tree (parser, xasl_Supp_info.query_list);
+	    }
 	  /* add dummy node at the head of list */
-	  xasl_supp_info.query_list = parser_new_node (parser, PT_SELECT);
-	  xasl_supp_info.query_list->info.query.xasl = NULL;
+	  xasl_Supp_info.query_list = parser_new_node (parser, PT_SELECT);
+	  xasl_Supp_info.query_list->info.query.xasl = NULL;
 
 	  /* XASL cache related information */
-	  xasl_supp_info.class_oid_list = NULL;
-	  xasl_supp_info.repr_id_list = NULL;
-	  xasl_supp_info.n_oid_list = xasl_supp_info.oid_list_size = 0;
+	  if (xasl_Supp_info.class_oid_list)
+	    {
+	      free_and_init (xasl_Supp_info.class_oid_list);
+	    }
+	  if (xasl_Supp_info.repr_id_list)
+	    {
+	      free_and_init (xasl_Supp_info.repr_id_list);
+	    }
+	  xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
 
 	  node =
 	    parser_walk_tree (parser, node, parser_generate_xasl_pre, NULL,
-			      parser_generate_xasl_post, &xasl_supp_info);
+			      parser_generate_xasl_post, &xasl_Supp_info);
 
-	  parser_free_tree (parser, xasl_supp_info.query_list);
-	  xasl_supp_info.query_list = NULL;
+	  parser_free_tree (parser, xasl_Supp_info.query_list);
+	  xasl_Supp_info.query_list = NULL;
 	}
 
       if (node && !parser->error_msgs)
@@ -13476,7 +13460,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 
       /* OID of the user who is creating this XASL */
       if ((user = db_get_user ()) != NULL
-	  && (oid = db_identifier (user)) != NULL)
+	  && (oid = ws_identifier (user)) != NULL)
 	{
 	  COPY_OID (&xasl->creator_oid, oid);
 	}
@@ -13490,32 +13474,30 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       xasl->class_oid_list = NULL;
       xasl->repr_id_list = NULL;
 
-      if ((n = xasl_supp_info.n_oid_list) > 0
+      if ((n = xasl_Supp_info.n_oid_list) > 0
 	  && (xasl->class_oid_list = regu_oid_array_alloc (n))
 	  && (xasl->repr_id_list = regu_int_array_alloc (n)))
 	{
 	  xasl->n_oid_list = n;
 	  (void) memcpy (xasl->class_oid_list,
-			 xasl_supp_info.class_oid_list, sizeof (OID) * n);
+			 xasl_Supp_info.class_oid_list, sizeof (OID) * n);
 	  (void) memcpy (xasl->repr_id_list,
-			 xasl_supp_info.repr_id_list, sizeof (int) * n);
+			 xasl_Supp_info.repr_id_list, sizeof (int) * n);
 	}
 
       xasl->dbval_cnt = parser->dbval_cnt;
     }
 
   /* free what were allocated in pt_spec_to_xasl_class_oid_list() */
-  if (xasl_supp_info.class_oid_list)
+  if (xasl_Supp_info.class_oid_list)
     {
-      free_and_init (xasl_supp_info.class_oid_list);
+      free_and_init (xasl_Supp_info.class_oid_list);
     }
-  if (xasl_supp_info.repr_id_list)
+  if (xasl_Supp_info.repr_id_list)
     {
-      free_and_init (xasl_supp_info.repr_id_list);
+      free_and_init (xasl_Supp_info.repr_id_list);
     }
-  xasl_supp_info.class_oid_list = NULL;
-  xasl_supp_info.repr_id_list = NULL;
-  xasl_supp_info.n_oid_list = xasl_supp_info.oid_list_size = 0;
+  xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
 
   if (xasl)
     {

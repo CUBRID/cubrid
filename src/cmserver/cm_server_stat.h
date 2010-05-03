@@ -33,7 +33,7 @@
 #undef HOST_MONITOR_IO
 #endif
 
-#include "cm_nameval.h"
+#include "cm_dep.h"
 #include "cm_config.h"
 
 #define CPUSTATES     5

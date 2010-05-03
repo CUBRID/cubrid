@@ -121,7 +121,8 @@ static int pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1,
 				bool has_nested_union_node);
 static PT_NODE *pt_to_compatible_cast (PARSER_CONTEXT * parser,
 				       PT_NODE * node,
-				       SEMAN_COMPATIBLE_INFO * cinfo);
+				       SEMAN_COMPATIBLE_INFO * cinfo,
+				       int num_cinfo);
 static void pt_get_prec_scale (const PT_NODE * att, int *prec, int *scale);
 static PT_NODE *pt_get_common_type_for_union (PARSER_CONTEXT * parser,
 					      PT_NODE * att1, PT_NODE * att2,
@@ -141,7 +142,7 @@ static PT_NODE *pt_append_statements_on_drop_attributes
   (PARSER_CONTEXT * parser, PT_NODE * statement_list,
    const char *class_name_list);
 
-#if 0				/* to disable TEXT */
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 static PT_NODE *pt_make_parameter (PARSER_CONTEXT * parser, const char *name,
 				   int is_out_parameter);
 static PT_NODE *pt_append_statements_on_insert (PARSER_CONTEXT * parser,
@@ -172,13 +173,14 @@ static void pt_resolve_delete_external (PARSER_CONTEXT * parser,
 static PT_NODE *pt_make_default_value (PARSER_CONTEXT * parser,
 				       const char *class_name,
 				       const char *attr_name);
-#endif /* 0 */
+#endif /* ENABLE_UNUSED_FUNCTION */
 static void pt_resolve_default_external (PARSER_CONTEXT * parser,
 					 PT_NODE * alter);
 static void pt_check_attribute_domain (PARSER_CONTEXT * parser,
 				       PT_NODE * attr_defs,
 				       PT_MISC_TYPE class_type,
-				       const char *self, PT_NODE * stmt);
+				       const char *self, const bool reuse_oid,
+				       PT_NODE * stmt);
 static void pt_check_mutable_attributes (PARSER_CONTEXT * parser,
 					 DB_OBJECT * cls,
 					 PT_NODE * attr_defs);
@@ -1518,7 +1520,7 @@ pt_union_compatible (PARSER_CONTEXT * parser,
  */
 static PT_NODE *
 pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
-		       SEMAN_COMPATIBLE_INFO * cinfo)
+		       SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo)
 {
   PT_NODE *attrs, *att;
   PT_NODE *prev_att, *next_att, *new_att = NULL, *new_dt = NULL;
@@ -1538,7 +1540,7 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
 	return NULL;
 
       prev_att = NULL;
-      for (att = attrs, i = 0; att; att = next_att, i++)
+      for (att = attrs, i = 0; i < num_cinfo && att; att = next_att, i++)
 	{
 	  new_cast_added = false;
 
@@ -1640,9 +1642,10 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
   else
     {				/* PT_UNION, PT_DIFFERENCE, PT_INTERSECTION */
       if (!pt_to_compatible_cast (parser,
-				  node->info.query.q.union_.arg1, cinfo)
-	  || !pt_to_compatible_cast (parser,
-				     node->info.query.q.union_.arg2, cinfo))
+				  node->info.query.q.union_.arg1, cinfo,
+				  num_cinfo)
+	  || !pt_to_compatible_cast (parser, node->info.query.q.union_.arg2,
+				     cinfo, num_cinfo))
 	{
 	  return NULL;
 	}
@@ -2012,9 +2015,10 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node,
   if (result && need_cast == true)
     {
       if (!pt_to_compatible_cast (parser,
-				  node->info.query.q.union_.arg1, cinfo)
+				  node->info.query.q.union_.arg1, cinfo, cnt1)
 	  || !pt_to_compatible_cast (parser,
-				     node->info.query.q.union_.arg2, cinfo))
+				     node->info.query.q.union_.arg2, cinfo,
+				     cnt1))
 	{
 	  result = NULL;
 	}
@@ -2348,6 +2352,7 @@ pt_append_statements_on_drop_attributes (PARSER_CONTEXT * parser,
   return statement_list;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 /*
  * pt_append_statements_on_insert () -
  *   return:  return a list of statement string or null on error
@@ -2366,7 +2371,6 @@ pt_append_statements_on_drop_attributes (PARSER_CONTEXT * parser,
  *     => (post) insert into c_text_a_ values (:obj1, v) into :obj2;
  *     => (post) update c set a.object = :obj2 where c = :obj1;
  */
-#if 0				/* to disable TEXT */
 static PT_NODE *
 pt_append_statements_on_insert (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
 				const char *class_name, const char *attr_name,
@@ -2987,7 +2991,7 @@ exit_on_error:
 	     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
   return;
 }
-#endif /* 0 */
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * pt_resolve_default_external () - create internal statements
@@ -3019,6 +3023,7 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
 	   a != NULL && v != NULL; a = a->next, v = v->next)
 	{
 	  attr = db_get_attribute (class_, a->info.name.original);
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 	  if (attr && sm_has_text_domain (attr, 0))
 	    {
 	      stmt_list = pt_append_statements_on_change_default
@@ -3030,6 +3035,7 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
 			     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		}
 	    }
+#endif /* ENABLE_UNUSED_FUNCTION */
 	}
       alter->info.alter.internal_stmts = stmt_list;
     }
@@ -3044,6 +3050,8 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
  *   attr_defs(in): a list of PT_ATTR_DEF nodes
  *   class_type(in): class, vclass, or proxy
  *   self(in): name of new class (for create case) or NULL (for alter case)
+ *   reuse_oid(in): whether the class being created or altered is marked as
+ *                  reusable OID (non-referable)
  *   stmt(in): current statement
  *
  * Note :
@@ -3058,20 +3066,21 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
  *     4. an attribute of a vclass may have a domain of a vclass or class
  *     5. an attribute of a proxy may have a domain of another proxy but not
  *        a class or vclass.
+ *     6. an attribute cannot have a reusable OID class (a non-referable
+ *        class) as a domain, neither directly nor as the domain of a set
  * - 'create class c (a c)' is not an error but a feature.
  */
 
 static void
 pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 			   PT_MISC_TYPE class_type, const char *self,
-			   PT_NODE * stmt)
+			   const bool reuse_oid, PT_NODE * stmt)
 {
   PT_NODE *def, *att, *dtyp, *sdtyp;
   DB_OBJECT *cls;
   const char *att_nam, *typ_nam, *styp_nam;
   PT_NODE *entity_nam;
   const char *cls_nam;
-  int has_vclass_set;
 
   for (def = attr_defs;
        def != NULL && def->node_type == PT_ATTR_DEF; def = def->next)
@@ -3079,7 +3088,7 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
       att = def->info.attr_def.attr_name;
       att_nam = att->info.name.original;
 
-      /* if auto_increment def exist, check colume's domain */
+      /* if it is an auto_increment column, check its domain */
       if (def->info.attr_def.auto_increment != NULL)
 	{
 	  dtyp = def->data_type;
@@ -3104,24 +3113,46 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	    }
 	}
 
-      /* we don't allow sets/multisets/sequences of vclasses */
+      /* we don't allow sets/multisets/sequences of vclasses or reusable OID
+         classes */
       if (pt_is_set_type (def))
 	{
-	  for (dtyp = def->data_type, has_vclass_set = 0;
-	       dtyp && !has_vclass_set; dtyp = dtyp->next)
+	  for (dtyp = def->data_type; dtyp != NULL; dtyp = dtyp->next)
 	    {
-	      has_vclass_set = ((dtyp->type_enum == PT_TYPE_OBJECT)
-				&& (sdtyp = dtyp->info.data_type.entity)
-				&& (sdtyp->node_type == PT_NAME)
-				&& (styp_nam = sdtyp->info.name.original)
-				&& (cls = db_find_class (styp_nam))
-				&& db_is_vclass (cls));
-	    }
-	  if (has_vclass_set)
-	    {
-	      PT_ERRORm (parser, att,
-			 MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_WANT_NO_VOBJ_IN_SETS);
+	      if ((dtyp->type_enum == PT_TYPE_OBJECT)
+		  && (sdtyp = dtyp->info.data_type.entity)
+		  && (sdtyp->node_type == PT_NAME)
+		  && (styp_nam = sdtyp->info.name.original))
+		{
+		  cls = db_find_class (styp_nam);
+		  if (cls != NULL)
+		    {
+		      if (db_is_vclass (cls))
+			{
+			  PT_ERRORm (parser, att, MSGCAT_SET_PARSER_SEMANTIC,
+				     MSGCAT_SEMANTIC_WANT_NO_VOBJ_IN_SETS);
+			  break;
+			}
+		      if (sm_is_reuse_oid_class (cls))
+			{
+			  PT_ERRORmf (parser, att, MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_NON_REFERABLE_VIOLATION,
+				      styp_nam);
+			  break;
+			}
+		    }
+		  else if (self != NULL
+			   && intl_mbs_casecmp (self, styp_nam) == 0)
+		    {
+		      if (reuse_oid)
+			{
+			  PT_ERRORmf (parser, att, MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_NON_REFERABLE_VIOLATION,
+				      styp_nam);
+			  break;
+			}
+		    }
+		}
 	    }
 	}
 
@@ -3136,16 +3167,33 @@ pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs,
 	  cls = db_find_class (typ_nam);
 	  if (!cls)
 	    {
-	      if (!self || intl_mbs_casecmp (self, typ_nam))
-		PT_ERRORmf (parser, att,
-			    MSGCAT_SET_PARSER_SEMANTIC,
-			    MSGCAT_SEMANTIC_IS_NOT_DEFINED, typ_nam);
+	      if (self != NULL && intl_mbs_casecmp (self, typ_nam) == 0)
+		{
+		  if (reuse_oid)
+		    {
+		      PT_ERRORmf (parser, att, MSGCAT_SET_PARSER_SEMANTIC,
+				  MSGCAT_SEMANTIC_NON_REFERABLE_VIOLATION,
+				  typ_nam);
+		    }
+		}
+	      else
+		{
+		  PT_ERRORmf (parser, att,
+			      MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_IS_NOT_DEFINED, typ_nam);
+		}
 	    }
 	  else
 	    {
 	      /* if dtyp is 'user.class' then check that 'user' owns 'class' */
 	      dtyp->info.name.db_object = cls;
 	      pt_check_user_owns_class (parser, dtyp);
+	      if (sm_is_reuse_oid_class (cls))
+		{
+		  PT_ERRORmf (parser, att, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_NON_REFERABLE_VIOLATION,
+			      typ_nam);
+		}
 	      switch (class_type)
 		{
 		case PT_CLASS:
@@ -3278,8 +3326,11 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   int is_meta;
   int is_partitioned = 0, ss_partition, trigger_involved = 0;
   char keyattr[DB_MAX_IDENTIFIER_LENGTH];
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
   DB_OBJECT *dom_cls;
+#endif
   char *drop_name_list = NULL;
+  bool reuse_oid = false;
 
   /* look up the class */
   name = alter->info.alter.entity_name;
@@ -3294,6 +3345,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
       return;
     }
+
+  reuse_oid = sm_is_reuse_oid_class (db);
 
   /* attach object */
   name->info.name.db_object = db;
@@ -3348,7 +3401,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
       pt_check_attribute_domain (parser,
 				 alter->info.alter.alter_clause.attr_mthd.
-				 attr_def_list, type, NULL, alter);
+				 attr_def_list, type, NULL, reuse_oid, alter);
       break;
     case PT_MODIFY_DEFAULT:
       pt_resolve_default_external (parser, alter);
@@ -3356,7 +3409,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_MODIFY_ATTR_MTHD:
       pt_check_attribute_domain (parser,
 				 alter->info.alter.alter_clause.attr_mthd.
-				 attr_def_list, type, NULL, alter);
+				 attr_def_list, type, NULL, reuse_oid, alter);
       pt_check_mutable_attributes (parser, db,
 				   alter->info.alter.alter_clause.attr_mthd.
 				   attr_def_list);
@@ -3405,6 +3458,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 				MSGCAT_SEMANTIC_PARTITION_KEY_COLUMN,
 				att_nam);
 		}
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 	      /* if it is TEXT typed attr, collect name of the domain class */
 	      if (sm_has_text_domain (db_att, 0))
 		{
@@ -3419,6 +3473,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		    pt_append_string (parser, drop_name_list,
 				      db_get_class_name (dom_cls));
 		}
+#endif /* ENABLE_UNUSED_FUNCTION */
 	    }
 	  else
 	    {
@@ -3542,6 +3597,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  super = pt_find_class (parser, sup);
 	  if (code == PT_ADD_SUPCLASS)
 	    {
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 	      if (sm_has_text_domain (db_get_attributes (super), 1))
 		{
 		  /* prevent to define it as a superclass */
@@ -3551,6 +3607,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  PT_ERROR (parser, alter, er_msg ());
 		  break;
 		}
+#endif /* ENABLE_UNUSED_FUNCTION */
 	    }
 	  if (!super
 	      || do_is_partitioned_subclass (&ss_partition, sup_nam, NULL))
@@ -5936,11 +5993,35 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *parent, *qry_specs, *name;
   PT_NODE *all_attrs, *r, *resolv_class, *attr;
+  PT_NODE *tbl_opt = NULL;
   PT_MISC_TYPE entity_type;
   DB_OBJECT *db_obj;
   int found;
+  bool found_reuse_oid = false;
 
   entity_type = node->info.create_entity.entity_type;
+
+  for (tbl_opt = node->info.create_entity.table_option_list;
+       tbl_opt != NULL; tbl_opt = tbl_opt->next)
+    {
+      assert (tbl_opt->node_type == PT_TABLE_OPTION);
+
+      if (tbl_opt->info.table_option.option == PT_TABLE_OPTION_REUSE_OID)
+	{
+	  if (found_reuse_oid)
+	    {
+	      PT_ERRORmf (parser, node,
+			  MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION,
+			  parser_print_tree (parser, tbl_opt));
+	    }
+	  else
+	    {
+	      found_reuse_oid = true;
+	    }
+	}
+    }
+
   switch (entity_type)
     {
     default:
@@ -5968,7 +6049,8 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
       /* enforce composition hierarchy restrictions on attr type defs */
       pt_check_attribute_domain (parser, all_attrs,
-				 entity_type, name->info.name.original, node);
+				 entity_type, name->info.name.original,
+				 found_reuse_oid, node);
 
       /* check that any and all super classes do exist */
       for (parent = node->info.create_entity.supclass_list;
@@ -5978,6 +6060,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      parent->info.name.db_object = db_obj;
 	      pt_check_user_owns_class (parser, parent);
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 	      if (sm_has_text_domain (db_get_attributes (db_obj), 1))
 		{
 		  /* prevent to define it as a superclass */
@@ -5987,6 +6070,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 		  PT_ERROR (parser, node, er_msg ());
 		  break;
 		}
+#endif /* ENABLE_UNUSED_FUNCTION */
 	    }
 	  else
 	    {
@@ -6041,6 +6125,9 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (entity_type == PT_VCLASS)
 	{
+	  /* The grammar restricts table options to CREATE CLASS / TABLE */
+	  assert (node->info.create_entity.table_option_list == NULL);
+
 	  for (attr = all_attrs; attr; attr = attr->next)
 	    {
 	      if (attr->info.attr_def.auto_increment != NULL)
@@ -6139,7 +6226,9 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *chk_parent = NULL;
   DB_OBJECT *db_obj;
   DB_ATTRIBUTE *attributes;
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
   DB_OBJECT *domain_class;
+#endif
   char *drop_name_list = NULL;
 
   /* Replace each Entity Spec with an Equivalent flat list */
@@ -6191,6 +6280,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      if (db_attribute_type (attributes) == DB_TYPE_OBJECT)
 		{
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 		  if (sm_has_text_domain (attributes, 0))
 		    {
 		      domain_class =
@@ -6207,6 +6297,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 							 db_get_class_name
 							 (domain_class));
 		    }
+#endif /* ENABLE_UNUSED_FUNCTION */
 		}
 	      attributes = db_attribute_next (attributes);
 	    }
@@ -6424,7 +6515,7 @@ pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       /* Can not increment level for list portion of walk.
        * Since those queries are not sub-queries of this query.
-       * Consequently, we recurse seperately for the list leading
+       * Consequently, we recurse separately for the list leading
        * from a query.  Can't just call pt_to_uncorr_subquery_list()
        * directly since it needs to do a leaf walk and we want to do a full
        * walk on the next list.
@@ -7009,6 +7100,30 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
       }
       break;
 
+    case PT_NAME:
+      {
+	if (PT_IS_OID_NAME (node) &&
+	    !PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_GENERATED_OID))
+	  {
+	    PT_NODE *data_type = node->data_type;
+
+	    if (data_type != NULL && data_type->type_enum == PT_TYPE_OBJECT)
+	      {
+		const char *name =
+		  data_type->info.data_type.entity->info.name.original;
+		DB_OBJECT *class_obj = db_find_class (name);
+
+		if (class_obj != NULL && sm_is_reuse_oid_class (class_obj))
+		  {
+		    PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+				MSGCAT_SEMANTIC_NON_REFERABLE_VIOLATION,
+				name);
+		  }
+	      }
+	  }
+      }
+      break;
+
     default:			/* other node types */
       break;
     }
@@ -7507,7 +7622,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
   if (!node)
     return NULL;
 
-  /* If it is an internally created statement, set it's host variable
+  /* If it is an internally created statement, set its host variable
    * info again to search host variables at parent parser */
   SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
@@ -7619,7 +7734,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 	      node->cannot_prepare = 1;
 	    }
 
-	  /* because the statemetn has some PT_HOST_VAR whose data type
+	  /* because the statement has some PT_HOST_VAR whose data type
 	     was not bound, we cannot prepare it; see pt_eval_type() */
 
 	  if (!parser->error_msgs)

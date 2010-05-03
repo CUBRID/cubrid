@@ -53,10 +53,12 @@ extern SELUPD_LIST *regu_selupd_list_alloc (void);
 
 /* for regu_machead_db () */
 extern DB_VALUE *regu_dbval_db_alloc (void);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern QFILE_LIST_ID *regu_listid_db_alloc (void);
-extern SM_DOMAIN *regu_domain_db_alloc (void);
 extern METHOD_SIG *regu_method_sig_db_alloc (void);
 extern METHOD_SIG_LIST *regu_method_sig_list_db_alloc (void);
+#endif
+extern SM_DOMAIN *regu_domain_db_alloc (void);
 
 /* for regu_machead_array_ptr () */
 extern DB_VALUE **regu_dbvalptr_array_alloc (int size);

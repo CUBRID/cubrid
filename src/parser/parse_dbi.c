@@ -995,6 +995,7 @@ pt_string_to_db_domain (const char *s, const char *class_name)
   return retval;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pt_string_to_data_type() - adorns a PT_NODE with the type that matches
  * 			      the string
@@ -1035,6 +1036,7 @@ pt_string_to_data_type (PARSER_CONTEXT * parser, const char *s,
       break;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * pt_type_enum_to_db_domain_name() - returns string form of t's datatype
@@ -1751,23 +1753,6 @@ pt_node_to_db_type (PT_NODE * node)
   return db_type;
 }
 
-
-/*
- * pt_get_type_enum() -  return the type_enum of a PT_NODE
- *   return:  node->type_enum or PT_TYPE_NONE
- *   node(in):  a PT_NODE
- */
-PT_TYPE_ENUM
-pt_get_type_enum (PT_NODE * node)
-{
-  if (!node)
-    {
-      return PT_TYPE_NONE;
-    }
-  return node->type_enum;
-}
-
-
 /*
  * pt_sort_in_desc_order() - first builds a linked of integers from the value
  *              	     list. then bubble sorts them in descending order.
@@ -2347,10 +2332,16 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
   else
     {
       /* cast and copy the given values to the place holder */
-      for (val = (DB_VALUE *) values, hv = parser->host_variables, i = 0;
+      for (val = values, hv = parser->host_variables, i = 0;
 	   i < parser->host_var_count; val++, hv++, i++)
 	{
-	  if (DB_VALUE_DOMAIN_TYPE (hv) == DB_TYPE_NULL)
+	  if (pt_is_reference_to_reusable_oid (val))
+	    {
+	      PT_ERRORm (parser, NULL, MSGCAT_SET_ERROR,
+			 -(ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED));
+	      num_errors++;
+	    }
+	  else if (DB_VALUE_DOMAIN_TYPE (hv) == DB_TYPE_NULL)
 	    {
 	      /* hv: value is ? (null or not null) && type is null
 	         host variable place holders are not set before;

@@ -2300,6 +2300,7 @@ dl_resolve_object_symbol (struct nlist *syms)
   return dl_resolve_symbol (dl_Loader, syms);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * dl_load_object_with_estimate() - run dl_load_object_module and accepts extra
  *            information to try to refine size estimates for loading the files
@@ -2352,6 +2353,7 @@ dl_load_object_with_estimate (size_t * actual_size,
 			  actual_size, mode);
 #endif /* HPUX || SOLARIS || LINUX */
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 #elif defined(_AIX)
 /*
  * dl_load_and_resolve() - Validate and load object files
@@ -2386,4 +2388,4 @@ dl_load_and_resolve (const char **obj_files,
 
   return dl_load_and_resolve_objects (dl_Loader, obj_files, libs, syms);
 }
-#endif /* sun || sparc || HPUX || SOLARIS || LINUX */
+#endif

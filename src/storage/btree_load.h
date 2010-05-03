@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -341,8 +341,10 @@ extern void btree_rv_dump_create_index (FILE * fp, int length_ignore,
 extern bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value);
 extern void btree_write_overflow_header (RECDES * Rec,
 					 VPID * next_overflow_page);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void btree_read_overflow_header (RECDES * Rec,
 					VPID * next_overflow_page);
+#endif
 extern void btree_write_node_header (RECDES * Rec,
 				     BTREE_NODE_HEADER * header);
 extern void btree_write_root_header (RECDES * Rec,
@@ -364,7 +366,8 @@ extern void btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			       bool leaf_page, bool * clear_key, int *offset,
 			       int copy);
 extern TP_DOMAIN *btree_generate_prefix_domain (BTID_INT * btid);
-extern int btree_glean_root_header_info (BTREE_ROOT_HEADER * root_header,
+extern int btree_glean_root_header_info (THREAD_ENTRY * thread_p,
+					 BTREE_ROOT_HEADER * root_header,
 					 BTID_INT * btid);
 extern DISK_ISVALID btree_verify_tree (THREAD_ENTRY * thread_p,
 				       const OID * class_oid_p,

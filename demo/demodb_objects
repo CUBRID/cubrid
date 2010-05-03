@@ -8567,40 +8567,22 @@
  'ons and more than 10,500 athletes participating. IOC President Juan An'+
  'tonio Samaranch announced that the Games of the XXII Olympiad were the'+
  ' best Olympics ever held.'
-2004 'Greece' 'Athens' date '08/13/2004' date '08/29/2004' 'Athena  Phevos' 'Welcome Home' 'In 2004 the Olympic Games returned to Greece, 
-
-the home of both the'+
+2004 'Greece' 'Athens' date '08/13/2004' date '08/29/2004' 'Athena  Phevos' 'Welcome Home' 'In 2004 the Olympic Games returned to Greece, the home of both the'+
  ' ancient Olympics and the first modern Olympics. For the first time ev'+
- 'er a record 201 National Olympic 
-
-Committees (NOCs) participated in'+
- ' the Olympic Games. The overall tally for events on the programme was '+
- '301 (one more than in 
-
-Sydney 2000). Popularity in the Games soared'+
+ 'er a record 201 National Olympic Committees (NOCs) participated in'+
+ ' the Olympic Games. The overall tally for events on the programme was '+ 
+ '301 (one more than in Sydney 2000). Popularity in the Games soared'+
  ' to new highs as 3.9 billion people had access to the television cover'+
- 'age compared to 
-
-3.6 billion for Sydney 2000. Women''''s wrestling '+
+ 'age compared to 3.6 billion for Sydney 2000. Women''''s wrestling '+
  'was included in the program for the first time. Swimmer Michael Phelps'+
- ' won 6 
-
-gold medals and set a single-Games record with 8 total meda'+
+ ' won 6 gold medals and set a single-Games record with 8 total meda'+
  'ls. Leontien Ziljaard-van Moorsel became the first female cyclist to '+
- '
-
-earn 4 career gold medals and 6 total medals, while canoeist Birgit'+
- ' Fischer became the first athlete in any sport to win two 
-
-medals i'+
+ ' earn 4 career gold medals and 6 total medals, while canoeist Birgit'+
+ ' Fischer became the first athlete in any sport to win two medals i'+
  'n each of 5 Olympics. Runner Hicham El Guerrouj won both the 1,500m an'+
- 'd the 5,000m, while on the women''''s side Kelly 
-
-Holmes triumphed '+
+ 'd the 5,000m, while on the women''''s side Kelly Holmes triumphed '+
  'in both the 800m and the 1,500m. In team play, Argentina won the men'+
- '''s football tournament without giving up a 
-
-goal, and the U.S. sof'+
+ '''s football tournament without giving up a goal, and the U.S. sof'+
  'tball team won by outscoring their opponents 51-1.'
 %class game (host_year event_code athlete_code stadium_code nation_code medal game_date)
 2004 20116 14666 30121 'ESP' 'S' date '08/20/2004'

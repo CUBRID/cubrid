@@ -79,15 +79,13 @@ extern VOLID boot_add_auto_volume_extension (THREAD_ENTRY * thread_p,
 					     DISK_SETPAGE_TYPE setpage_type);
 extern VOLID boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES npages);
 extern int boot_add_temp_volume_and_file (VFID * vfid, DKNPAGES npages);
-extern int boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid);
-extern int boot_shrink_temp_volume (THREAD_ENTRY * thread_p);
 extern int boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 				const char *db_name, bool from_backup,
 				BO_RESTART_ARG * r_args);
 extern int xboot_restart_from_backup (THREAD_ENTRY * thread_p,
 				      int print_restart, const char *db_name,
 				      BO_RESTART_ARG * r_args);
-extern bool xboot_shutdown_server (THREAD_ENTRY * thread_p, bool iserfinal);
+extern bool xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final);
 extern int xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 		       const char *newdb_name, const char *newdb_path,
 		       const char *newlog_path,
@@ -110,6 +108,6 @@ extern int xboot_delete (THREAD_ENTRY * thread_p, const char *db_name,
 extern int xboot_emergency_patch (THREAD_ENTRY * thread_p,
 				  const char *db_name, bool recreate_log);
 extern void boot_server_all_finalize (THREAD_ENTRY * thread_p,
-				      bool iserfinal);
+				      bool is_er_final);
 
 #endif /* _BOOT_SR_H_ */

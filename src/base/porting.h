@@ -89,9 +89,9 @@
 #define strtoll             _strtoi64
 #define ftime		    _ftime_s
 #define timeb		    _timeb
-#define vsnprintf           _vsprintf_p
 #define fileno		_fileno
 #define localtime_r(time, tm)   localtime_s(tm, time)
+#define vsnprintf	cub_vsnprintf
 
 #if 0
 #define O_RDONLY                _O_RDONLY
@@ -302,8 +302,8 @@ extern char *strsep (char **stringp, const char *delim);
 extern char *getpass (const char *prompt);
 #endif
 
-extern int utona (unsigned int u, char *s, size_t n);
 #if defined(ENABLE_UNUSED_FUNCTION)
+extern int utona (unsigned int u, char *s, size_t n);
 extern int itona (int i, char *s, size_t n);
 #endif
 
@@ -354,6 +354,8 @@ extern void os_send_signal (const int sig_no);
 
 #if defined(WINDOWS)
 int setenv (const char *name, const char *value, int overwrite);
+int cub_vsnprintf (char *buffer, size_t count, const char *format,
+		   va_list argptr);
 #endif
 
 #endif /* _PORTING_H_ */

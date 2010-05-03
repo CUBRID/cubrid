@@ -43,6 +43,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "arithmetic.h"
+#include "serial.h"
 #include "fetch.h"
 #include "list_file.h"
 
@@ -204,7 +205,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_LAST_DAY:
     case T_CURRENT_VALUE:
     case T_NEXT_VALUE:
+#if defined(ENABLE_UNUSED_FUNCTION)
     case T_UNPLUS:
+#endif /* ENABLE_UNUSED_FUNCTION */
     case T_UNMINUS:
     case T_OCTET_LENGTH:
     case T_BIT_LENGTH:
@@ -310,12 +313,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+#if defined(ENABLE_UNUSED_FUNCTION)
     case T_UNPLUS:
       if (!qdata_copy_db_value (arithptr->value, peek_right))
 	{
 	  goto error;
 	}
       break;
+#endif /* ENABLE_UNUSED_FUNCTION */
 
     case T_UNMINUS:
       if (qdata_unary_minus_dbval (arithptr->value, peek_right) != NO_ERROR)
@@ -832,7 +837,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_CURRENT_VALUE:
-      if (xqp_get_serial_current_value (thread_p, peek_right, arithptr->value)
+      if (xserial_get_current_value (thread_p, peek_right, arithptr->value)
 	  != NO_ERROR)
 	{
 	  goto error;
@@ -840,7 +845,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_NEXT_VALUE:
-      if (xqp_get_serial_next_value (thread_p, peek_right, arithptr->value) !=
+      if (xserial_get_next_value (thread_p, peek_right, arithptr->value) !=
 	  NO_ERROR)
 	{
 	  goto error;
@@ -1028,8 +1033,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    goto error;
 	  }
 
-	if (tp_value_coerce (arithptr->value, arithptr->value, regu_var->domain)
-	    != DOMAIN_COMPATIBLE)
+	if (tp_value_coerce
+	    (arithptr->value, arithptr->value,
+	     regu_var->domain) != DOMAIN_COMPATIBLE)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
 		    pr_type_name (PRIM_TYPE (arithptr->value)),
@@ -1276,7 +1282,7 @@ fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl,
       pr_type = pos_descr->dom->type;
       if (pr_type == NULL)
 	{
-	  goto error;
+	  return ER_FAILED;
 	}
 
       OR_BUF_INIT (buf, ptr, length);
@@ -1285,7 +1291,7 @@ fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl,
 				 -1, false /* Don't copy */ ,
 				 NULL, 0) != NO_ERROR)
 	{
-	  goto error;
+	  return ER_FAILED;
 	}
     }
 
@@ -1293,10 +1299,6 @@ fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl,
   *next_tpl = ptr + length;
 
   return NO_ERROR;
-
-error:
-
-  return ER_FAILED;
 }
 
 /*
@@ -1431,9 +1433,8 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list,
 		{
 		  pr_clear_value (regup->value.vfetch_to);
 		}
-	      rc =
-		fetch_peek_dbval (thread_p, &regup->value, vd, class_oid,
-				  obj_oid, tpl, &tmp);
+	      rc = fetch_peek_dbval (thread_p, &regup->value, vd, class_oid,
+				     obj_oid, tpl, &tmp);
 	    }
 
 	  if (rc != NO_ERROR)
@@ -1456,9 +1457,9 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list,
 	    {
 	      pr_clear_value (regup->value.vfetch_to);
 	    }
-	  if (fetch_copy_dbval
-	      (thread_p, &regup->value, vd, class_oid, obj_oid, tpl,
-	       regup->value.vfetch_to) != NO_ERROR)
+	  if (fetch_copy_dbval (thread_p, &regup->value, vd,
+				class_oid, obj_oid, tpl,
+				regup->value.vfetch_to) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }

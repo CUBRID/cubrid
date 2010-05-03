@@ -22,10 +22,12 @@ SRC = $(top_srcdir)/src
 CCI_DIR = $(SRC)/cci
 EXEC_DIR = $(SRC)/executables
 COMPAT_DIR = $(SRC)/compat
+BROKER_DIR = $(SRC)/broker
 
 include_HEADERS = \
 	$(CCI_DIR)/cas_cci.h \
-	$(EXEC_DIR)/cubrid_esql.h
+	$(EXEC_DIR)/cubrid_esql.h \
+	$(BROKER_DIR)/cas_error.h
 
 install-data-hook:
 	test -z "$(DESTDIR)$(includedir)" || mkdir -p "$(DESTDIR)$(includedir)"

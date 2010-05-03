@@ -63,6 +63,7 @@
 		}                                                              \
 	    } while (0)
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 typedef struct generic_function_record
 {
   const char *function_name;
@@ -76,14 +77,9 @@ static GENERIC_FUNCTION_RECORD pt_Generic_functions[] = {
   /* Make sure that this table is in synch with the generic function table.
    * Don't remove the first dummy position.  It's a place holder.
    */
-  {"AAA_DUMMY", "integer", 0},
-  {"GET_CHILDREN", "sequence(rm_doc_node)", 1},
-  {"GET_DESCENDANTS", "sequence(rm_doc_node)", 2},
-  {"GET_PARENT", "sequence(rm_doc_node)", 3},
-  {"GET_ANCESTORS", "sequence(rm_doc_node)", 4},
-  {"GET_SIBLINGS", "sequence(rm_doc_node)", 5}
+  {"AAA_DUMMY", "integer", 0}
 };
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 typedef struct compare_between_operator
 {
@@ -154,14 +150,15 @@ static PT_NODE *pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr,
 static const char *pt_class_name (const PT_NODE * type);
 static int pt_set_default_data_type (PARSER_CONTEXT * parser,
 				     PT_TYPE_ENUM type, PT_NODE ** dtp);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int generic_func_casecmp (const void *a, const void *b);
 static void init_generic_funcs (void);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static PT_NODE *pt_compare_bounds_to_value (PARSER_CONTEXT * parser,
 					    PT_NODE * expr, PT_OP_TYPE op,
 					    PT_TYPE_ENUM lhs_type,
 					    DB_VALUE * rhs_val,
 					    PT_TYPE_ENUM rhs_type);
-
 
 /*
  * pt_is_symmetric_type () -
@@ -609,7 +606,7 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 
 always_false:
 
-  /* If any conjunct is false, the entire WHERE caluse is false. Jack the
+  /* If any conjunct is false, the entire WHERE clause is false. Jack the
      return value to be a single false node (being sure to unlink the node
      from the "next" chain if we reuse the incoming node). */
   parser_free_tree (parser, where);
@@ -2766,7 +2763,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-      /* if we get here, its an ok comparrison */
+      /* if we get here, its an ok comparison */
       node->type_enum = PT_TYPE_LOGICAL;
       break;
 
@@ -7484,17 +7481,17 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   short location;
   const char *alias_print;
 
-  if (!expr)
+  if (expr == NULL)
     {
       return expr;
     }
 
-  location =
-    (expr->node_type ==
-     PT_EXPR) ? expr->info.expr.location : (expr->
-					    node_type ==
-					    PT_VALUE) ?
-    expr->info.value.location : 0;
+  if (expr->node_type != PT_EXPR)
+    {
+      return expr;
+    }
+
+  location = expr->info.expr.location;
   db_make_null (&dbval_res);
 
   line = expr->line_number;
@@ -7505,598 +7502,556 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   result_type = expr->type_enum;
   result = expr;
 
-  if (expr->node_type == PT_EXPR)
+  op = expr->info.expr.op;
+
+  /* special handling for only one range - convert to comp op */
+  if (op == PT_RANGE)
     {
-      op = expr->info.expr.op;
+      PT_NODE *between_and;
+      PT_OP_TYPE between_op;
 
-      /* special handling for only one range - convert to comp op */
-      if (op == PT_RANGE)
-	{
-	  PT_NODE *between_and;
-	  PT_OP_TYPE between_op;
-
-	  between_and = expr->info.expr.arg2;
-	  between_op = between_and->info.expr.op;
-	  if (between_and->or_next == NULL)
-	    {			/* has only one range */
-	      opd1 = expr->info.expr.arg1;
-	      opd2 = between_and->info.expr.arg1;
-	      opd3 = between_and->info.expr.arg2;
-	      if (opd1 && opd1->node_type == PT_VALUE
-		  && opd2 && opd2->node_type == PT_VALUE)
-		{		/* both const */
-		  if (between_op == PT_BETWEEN_EQ_NA
-		      || between_op == PT_BETWEEN_GT_INF
-		      || between_op == PT_BETWEEN_GE_INF
-		      || between_op == PT_BETWEEN_INF_LT
-		      || between_op == PT_BETWEEN_INF_LE)
+      between_and = expr->info.expr.arg2;
+      between_op = between_and->info.expr.op;
+      if (between_and->or_next == NULL)
+	{			/* has only one range */
+	  opd1 = expr->info.expr.arg1;
+	  opd2 = between_and->info.expr.arg1;
+	  opd3 = between_and->info.expr.arg2;
+	  if (opd1 && opd1->node_type == PT_VALUE
+	      && opd2 && opd2->node_type == PT_VALUE)
+	    {			/* both const */
+	      if (between_op == PT_BETWEEN_EQ_NA
+		  || between_op == PT_BETWEEN_GT_INF
+		  || between_op == PT_BETWEEN_GE_INF
+		  || between_op == PT_BETWEEN_INF_LT
+		  || between_op == PT_BETWEEN_INF_LE)
+		{
+		  /* convert to comp op */
+		  between_and->info.expr.arg1 = NULL;
+		  parser_free_tree (parser, between_and);
+		  expr->info.expr.arg2 = opd2;
+		  op = expr->info.expr.op =
+		    (between_op == PT_BETWEEN_EQ_NA) ? PT_EQ :
+		    (between_op == PT_BETWEEN_GT_INF) ? PT_GT :
+		    (between_op == PT_BETWEEN_GE_INF) ? PT_GE :
+		    (between_op == PT_BETWEEN_INF_LT) ? PT_LT : PT_LE;
+		}
+	      else if (between_op == PT_BETWEEN_GE_LE)
+		{
+		  if (opd3 && opd3->node_type == PT_VALUE)
 		    {
-		      /* convert to comp op */
-		      between_and->info.expr.arg1 = NULL;
-		      parser_free_tree (parser, between_and);
-		      expr->info.expr.arg2 = opd2;
-		      op = expr->info.expr.op =
-			(between_op == PT_BETWEEN_EQ_NA) ? PT_EQ :
-			(between_op == PT_BETWEEN_GT_INF) ? PT_GT :
-			(between_op == PT_BETWEEN_GE_INF) ? PT_GE :
-			(between_op == PT_BETWEEN_INF_LT) ? PT_LT : PT_LE;
-		    }
-		  else if (between_op == PT_BETWEEN_GE_LE)
-		    {
-		      if (opd3 && opd3->node_type == PT_VALUE)
-			{
-			  /* convert to between op */
-			  between_and->info.expr.op = PT_BETWEEN_AND;
-			  op = expr->info.expr.op = PT_BETWEEN;
-			}
+		      /* convert to between op */
+		      between_and->info.expr.op = PT_BETWEEN_AND;
+		      op = expr->info.expr.op = PT_BETWEEN;
 		    }
 		}
 	    }
 	}
+    }
 
-      if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE)
+  if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE)
+    {
+      goto end;
+    }
+
+  opd1 = expr->info.expr.arg1;
+
+  if (opd1 && opd1->node_type == PT_VALUE)
+    {
+      arg1 = pt_value_to_db (parser, opd1);
+      type1 = opd1->type_enum;
+    }
+  else
+    {
+      if (op == PT_EQ && expr->info.expr.qualifier == PT_EQ_TORDER)
 	{
-	  goto end;
+	  return result;
 	}
+      db_make_null (&dummy);
+      arg1 = &dummy;
+      type1 = PT_TYPE_NULL;
+    }
 
-      opd1 = expr->info.expr.arg1;
+  /* special handling for PT_BETWEEN and PT_NOT_BETWEEN */
+  opd2 = (op == PT_BETWEEN || op == PT_NOT_BETWEEN)
+    ? expr->info.expr.arg2->info.expr.arg1 : expr->info.expr.arg2;
 
-      if (opd1 && opd1->node_type == PT_VALUE)
+  if (opd2 && opd2->node_type == PT_VALUE)
+    {
+      arg2 = pt_value_to_db (parser, opd2);
+      type2 = opd2->type_enum;
+    }
+  else
+    {
+      switch (op)
 	{
-	  arg1 = pt_value_to_db (parser, opd1);
-	  type1 = opd1->type_enum;
-	}
-      else
-	{
-	  if (op == PT_EQ && expr->info.expr.qualifier == PT_EQ_TORDER)
+	case PT_TRIM:
+	case PT_LTRIM:
+	case PT_RTRIM:
+	  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 	    {
-	      return result;
+	      db_make_varnchar (&dummy, 1, (char *) " ", 1);
+	      type2 = PT_TYPE_VARNCHAR;
 	    }
-	  db_make_null (&dummy);
-	  arg1 = &dummy;
-	  type1 = PT_TYPE_NULL;
-	}
-
-      /* special handling for PT_BETWEEN and PT_NOT_BETWEEN */
-      opd2 = (op == PT_BETWEEN || op == PT_NOT_BETWEEN)
-	? expr->info.expr.arg2->info.expr.arg1 : expr->info.expr.arg2;
-
-      if (opd2 && opd2->node_type == PT_VALUE)
-	{
-	  arg2 = pt_value_to_db (parser, opd2);
-	  type2 = opd2->type_enum;
-	}
-      else
-	{
-	  switch (op)
+	  else
 	    {
-	    case PT_TRIM:
-	    case PT_LTRIM:
-	    case PT_RTRIM:
-	      if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-		{
-		  db_make_varnchar (&dummy, 1, (char *) " ", 1);
-		  type2 = PT_TYPE_VARNCHAR;
-		}
-	      else
-		{
-		  db_make_string (&dummy, " ");
-		  type2 = PT_TYPE_VARCHAR;
-		}
-	      arg2 = &dummy;
-	      break;
+	      db_make_string (&dummy, " ");
+	      type2 = PT_TYPE_VARCHAR;
+	    }
+	  arg2 = &dummy;
+	  break;
 
-	    case PT_TO_NUMBER:
-	      arg2 = NULL;
-	      break;
+	case PT_TO_NUMBER:
+	  arg2 = NULL;
+	  break;
 
-	    case PT_INCR:
-	    case PT_DECR:
+	case PT_INCR:
+	case PT_DECR:
+	  {
+	    PT_NODE *entity = NULL, *top, *spec;
+	    PT_NODE *dtype;
+	    const char *attr_name;
+	    SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
+	    int attrid, shared;
+	    DB_DOMAIN *dom;
+
+	    /* add an argument, oid of instance to do increment */
+	    if (opd1 != NULL && opd1->node_type == PT_NAME)
 	      {
-		PT_NODE *entity = NULL, *top, *spec;
-		const char *attr_name;
-		SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
-
-		/* add an argument, oid of instance to do increment */
-		if (opd1 != NULL && opd1->node_type == PT_NAME)
-		  {
-		    if (!(opd2 = pt_name (parser, "")))
-		      {
-			PT_ERRORc (parser, expr, er_msg ());
-			return expr;
-		      }
-		    else
-		      {
-			PT_NODE *dtype =
-			  parser_new_node (parser, PT_DATA_TYPE);
-
-			if (!dtype)
-			  {
-			    PT_ERRORc (parser, expr, er_msg ());
-			    return expr;
-			  }
-			else
-			  {
-			    if (sc_info && (top = sc_info->top_node)
-				&& (top->node_type == PT_SELECT))
-			      {
-				/* if given top node, find domain class,
-				 * and check if it is a derived class */
-				spec = pt_find_entity
-				  (parser,
-				   top->info.query.q.select.from,
-				   opd1->info.name.spec_id);
-				if (spec)
-				  {
-				    entity = spec->info.spec.entity_name;
-				  }
-			      }
-			    else
-			      {
-				entity = pt_name (parser,
-						  opd1->info.name.resolved);
-				if (!entity)
-				  {
-				    PT_ERRORc (parser, expr, er_msg ());
-				    return expr;
-				  }
-				entity->info.name.db_object =
-				  db_find_class (entity->info.name.original);
-			      }
-
-			    if (!entity || !entity->info.name.db_object)
-			      {
-				PT_ERRORf (parser, expr,
-					   "Attribute of derived class "
-					   "is not permitted in %s()",
-					   (op == PT_INCR ? "INCR" : "DECR"));
-				return expr;
-			      }
-			    dtype->type_enum = PT_TYPE_OBJECT;
-			    dtype->info.data_type.entity = entity;
-			    dtype->info.data_type.virt_type_enum =
-			      PT_TYPE_OBJECT;
-			    opd2->data_type = dtype;
-			  }
-
-			opd2->type_enum = PT_TYPE_OBJECT;
-			opd2->info.name.meta_class = PT_OID_ATTR;
-			opd2->info.name.spec_id = opd1->info.name.spec_id;
-			opd2->info.name.resolved =
-			  pt_append_string (parser, NULL,
-					    opd1->info.name.resolved);
-			if (!opd2->info.name.resolved)
-			  {
-			    PT_ERRORc (parser, expr, er_msg ());
-			    return expr;
-			  }
-		      }
-
-		    attr_name = opd1->info.name.original;
-		    expr->info.expr.arg2 = opd2;
-		  }
-		else if (opd1 != NULL && opd1->node_type == PT_DOT_)
-		  {
-		    PT_NODE *arg2, *arg1 = opd1->info.dot.arg1;
-
-		    if (!(opd2 = parser_copy_tree_list (parser, arg1)))
-		      {
-			PT_ERRORc (parser, expr, er_msg ());
-			return expr;
-		      }
-
-		    if (opd2->node_type == PT_DOT_)
-		      {
-			arg2 = opd2->info.dot.arg2;
-			entity = arg2->data_type->info.data_type.entity;
-		      }
-		    else
-		      {
-			entity = opd2->data_type->info.data_type.entity;
-		      }
-
-		    attr_name = opd1->info.dot.arg2->info.name.original;
-		    expr->info.expr.arg2 = opd2;
-		  }
-		else
-		  {
-		    PT_ERRORf (parser, expr, "Invalid argument in %s()",
-			       (op == PT_INCR ? "INCR" : "DECR"));
-		    return expr;
-		  }
-
-		/* add an argument, id of attribute to do increment */
-		if (!(opd3 = parser_new_node (parser, PT_VALUE)))
+		opd2 = pt_name (parser, "");
+		if (opd2 == NULL)
 		  {
 		    PT_ERRORc (parser, expr, er_msg ());
 		    return expr;
 		  }
+
+		dtype = parser_new_node (parser, PT_DATA_TYPE);
+		if (dtype == NULL)
+		  {
+		    PT_ERRORc (parser, expr, er_msg ());
+		    return expr;
+		  }
+
+		if (sc_info && (top = sc_info->top_node)
+		    && (top->node_type == PT_SELECT))
+		  {
+		    /* if given top node, find domain class,
+		     * and check if it is a derived class */
+		    spec = pt_find_entity (parser,
+					   top->info.query.q.select.from,
+					   opd1->info.name.spec_id);
+		    if (spec)
+		      {
+			entity = spec->info.spec.entity_name;
+		      }
+		  }
 		else
 		  {
-		    int attrid, shared;
-		    DB_DOMAIN *dom;
-
-		    if (sm_att_info (entity->info.name.db_object, attr_name,
-				     &attrid, &dom, &shared, 0) < 0)
+		    entity = pt_name (parser, opd1->info.name.resolved);
+		    if (entity == NULL)
 		      {
 			PT_ERRORc (parser, expr, er_msg ());
 			return expr;
 		      }
-
-		    opd3->type_enum = PT_TYPE_INTEGER;
-		    opd3->info.value.data_value.i = attrid;
-		    expr->info.expr.arg3 = opd3;
+		    entity->info.name.db_object =
+		      db_find_class (entity->info.name.original);
 		  }
+
+		if (entity == NULL || entity->info.name.db_object == NULL)
+		  {
+		    PT_ERRORf (parser, expr,
+			       "Attribute of derived class "
+			       "is not permitted in %s()",
+			       (op == PT_INCR ? "INCR" : "DECR"));
+		    return expr;
+		  }
+		dtype->type_enum = PT_TYPE_OBJECT;
+		dtype->info.data_type.entity = entity;
+		dtype->info.data_type.virt_type_enum = PT_TYPE_OBJECT;
+
+		opd2->data_type = dtype;
+		opd2->type_enum = PT_TYPE_OBJECT;
+		opd2->info.name.meta_class = PT_OID_ATTR;
+		opd2->info.name.spec_id = opd1->info.name.spec_id;
+		opd2->info.name.resolved =
+		  pt_append_string (parser, NULL, opd1->info.name.resolved);
+		if (opd2->info.name.resolved == NULL)
+		  {
+		    PT_ERRORc (parser, expr, er_msg ());
+		    return expr;
+		  }
+
+		attr_name = opd1->info.name.original;
+		expr->info.expr.arg2 = opd2;
+	      }
+	    else if (opd1 != NULL && opd1->node_type == PT_DOT_)
+	      {
+		PT_NODE *arg2, *arg1 = opd1->info.dot.arg1;
+
+		opd2 = parser_copy_tree_list (parser, arg1);
+		if (opd2 == NULL)
+		  {
+		    PT_ERRORc (parser, expr, er_msg ());
+		    return expr;
+		  }
+
+		if (opd2->node_type == PT_DOT_)
+		  {
+		    arg2 = opd2->info.dot.arg2;
+		    entity = arg2->data_type->info.data_type.entity;
+		  }
+		else
+		  {
+		    entity = opd2->data_type->info.data_type.entity;
+		  }
+
+		attr_name = opd1->info.dot.arg2->info.name.original;
+		expr->info.expr.arg2 = opd2;
+	      }
+	    else
+	      {
+		PT_ERRORf (parser, expr, "Invalid argument in %s()",
+			   (op == PT_INCR ? "INCR" : "DECR"));
+		return expr;
 	      }
 
-	      /* fall through */
-	    default:
-	      db_make_null (&dummy);
-	      arg2 = &dummy;
-	      type2 = PT_TYPE_NULL;
-	    }
+	    /* add an argument, id of attribute to do increment */
+	    opd3 = parser_new_node (parser, PT_VALUE);
+	    if (opd3 == NULL)
+	      {
+		PT_ERRORc (parser, expr, er_msg ());
+		return expr;
+	      }
+
+	    if (sm_att_info (entity->info.name.db_object, attr_name,
+			     &attrid, &dom, &shared, 0) < 0)
+	      {
+		PT_ERRORc (parser, expr, er_msg ());
+		return expr;
+	      }
+
+	    opd3->type_enum = PT_TYPE_INTEGER;
+	    opd3->info.value.data_value.i = attrid;
+	    expr->info.expr.arg3 = opd3;
+	  }
+
+	  /* fall through */
+	default:
+	  db_make_null (&dummy);
+	  arg2 = &dummy;
+	  type2 = PT_TYPE_NULL;
 	}
+    }
 
-      if (PRM_ORACLE_STYLE_EMPTY_STRING && (op == PT_STRCAT || op == PT_PLUS))
+  if (PRM_ORACLE_STYLE_EMPTY_STRING && (op == PT_STRCAT || op == PT_PLUS))
+    {
+      TP_DOMAIN *domain;
+
+      /* use the caching variant of this function ! */
+      domain = pt_xasl_node_to_domain (parser, expr);
+
+      if (domain && QSTR_IS_ANY_CHAR_OR_BIT (domain->type->id))
 	{
-	  TP_DOMAIN *domain;
-
-	  /* use the caching variant of this function ! */
-	  domain = pt_xasl_node_to_domain (parser, expr);
-
-	  if (domain && QSTR_IS_ANY_CHAR_OR_BIT (domain->type->id))
+	  if (opd1 && opd1->node_type == PT_VALUE
+	      && type1 == PT_TYPE_NULL && PT_IS_STRING_TYPE (type2))
 	    {
-	      if (opd1 && opd1->node_type == PT_VALUE
-		  && type1 == PT_TYPE_NULL && PT_IS_STRING_TYPE (type2))
-		{
-		  /* fold 'null || char_opnd' expr to 'char_opnd' */
-		  result = parser_copy_tree (parser, opd2);
-		}
-	      else if (opd2 && opd2->node_type == PT_VALUE
-		       && type2 == PT_TYPE_NULL && PT_IS_STRING_TYPE (type1))
-		{
-		  /* fold 'char_opnd || null' expr to 'char_opnd' */
-		  result = parser_copy_tree (parser, opd1);
-		}
-
-	      goto end;		/* finish folding */
+	      /* fold 'null || char_opnd' expr to 'char_opnd' */
+	      result = parser_copy_tree (parser, opd2);
 	    }
-	}
+	  else if (opd2 && opd2->node_type == PT_VALUE
+		   && type2 == PT_TYPE_NULL && PT_IS_STRING_TYPE (type1))
+	    {
+	      /* fold 'char_opnd || null' expr to 'char_opnd' */
+	      result = parser_copy_tree (parser, opd1);
+	    }
 
-      /* special handling for PT_BETWEEN and PT_NOT_BETWEEN */
-      opd3 = ((op == PT_BETWEEN || op == PT_NOT_BETWEEN)
-	      ? expr->info.expr.arg2->info.expr.arg2 : expr->info.expr.arg3);
-      if (opd3 && opd3->node_type == PT_VALUE)
+	  goto end;		/* finish folding */
+	}
+    }
+
+  /* special handling for PT_BETWEEN and PT_NOT_BETWEEN */
+  opd3 = ((op == PT_BETWEEN || op == PT_NOT_BETWEEN)
+	  ? expr->info.expr.arg2->info.expr.arg2 : expr->info.expr.arg3);
+  if (opd3 && opd3->node_type == PT_VALUE)
+    {
+      arg3 = pt_value_to_db (parser, opd3);
+      type3 = opd3->type_enum;
+    }
+  else
+    {
+      switch (op)
 	{
-	  arg3 = pt_value_to_db (parser, opd3);
-	  type3 = opd3->type_enum;
+	case PT_TO_NUMBER:
+	  if (expr->info.expr.arg2 == 0)
+	    {
+	      db_make_int (&dummy, 1);
+	    }
+	  else
+	    {
+	      db_make_int (&dummy, 0);
+	    }
+	  arg3 = &dummy;
+	  type3 = PT_TYPE_INTEGER;
+	  break;
+
+	case PT_REPLACE:
+	case PT_TRANSLATE:
+	  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
+	    {
+	      db_make_varnchar (&dummy, 1, (char *) "", 0);
+	      type3 = PT_TYPE_VARNCHAR;
+	    }
+	  else
+	    {
+	      db_make_string (&dummy, "");
+	      type3 = PT_TYPE_VARCHAR;
+	    }
+	  arg3 = &dummy;
+	  break;
+
+	case PT_LPAD:
+	case PT_RPAD:
+	  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
+	    {
+	      db_make_varnchar (&dummy, 1, (char *) " ", 1);
+	      type3 = PT_TYPE_VARNCHAR;
+	    }
+	  else
+	    {
+	      db_make_string (&dummy, " ");
+	      type3 = PT_TYPE_VARCHAR;
+	    }
+	  arg3 = &dummy;
+	  break;
+
+	default:
+	  db_make_null (&dummy);
+	  arg3 = &dummy;
+	  type3 = PT_TYPE_NULL;
+	}
+    }
+
+  /* If the search condition for the CASE op is already determined,
+   * optimize the tree and screen out the arguments for a possible
+   * call of pt_evaluate_db_val_expr.
+   */
+  if ((op == PT_CASE || op == PT_DECODE) && opd3
+      && opd3->node_type == PT_VALUE)
+    {
+      if (arg3 && DB_GET_INT (arg3))
+	{
+	  opd2 = NULL;
 	}
       else
 	{
-	  switch (op)
-	    {
-	    case PT_TO_NUMBER:
-	      if (expr->info.expr.arg2 == 0)
-		{
-		  db_make_int (&dummy, 1);
-		}
-	      else
-		{
-		  db_make_int (&dummy, 0);
-		}
-	      arg3 = &dummy;
-	      type3 = PT_TYPE_INTEGER;
-	      break;
-
-	    case PT_REPLACE:
-	    case PT_TRANSLATE:
-	      if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-		{
-		  db_make_varnchar (&dummy, 1, (char *) "", 0);
-		  type3 = PT_TYPE_VARNCHAR;
-		}
-	      else
-		{
-		  db_make_string (&dummy, "");
-		  type3 = PT_TYPE_VARCHAR;
-		}
-	      arg3 = &dummy;
-	      break;
-
-	    case PT_LPAD:
-	    case PT_RPAD:
-	      if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-		{
-		  db_make_varnchar (&dummy, 1, (char *) " ", 1);
-		  type3 = PT_TYPE_VARNCHAR;
-		}
-	      else
-		{
-		  db_make_string (&dummy, " ");
-		  type3 = PT_TYPE_VARCHAR;
-		}
-	      arg3 = &dummy;
-	      break;
-
-	    default:
-	      db_make_null (&dummy);
-	      arg3 = &dummy;
-	      type3 = PT_TYPE_NULL;
-	    }
+	  opd1 = opd2;
+	  arg1 = arg2;
+	  opd2 = NULL;
 	}
 
-      /* If the search condition for the CASE op is already determined,
-       * optimize the tree and screen out the arguments for a possible
-       * call of pt_evaluate_db_val_expr.
-       */
-      if ((op == PT_CASE || op == PT_DECODE) && opd3
-	  && opd3->node_type == PT_VALUE)
+      if (opd1 && opd1->node_type != PT_VALUE)
 	{
-	  if (arg3 && DB_GET_INT (arg3))
+	  if (expr->info.expr.arg2 == opd1
+	      && (opd1->info.expr.op == PT_CASE
+		  || opd1->info.expr.op == PT_DECODE))
 	    {
-	      opd2 = NULL;
+	      opd1->info.expr.continued_case = 0;
+	    }
+
+	  if (pt_check_same_datatype (parser, expr, opd1))
+	    {
+	      result = parser_copy_tree_list (parser, opd1);
 	    }
 	  else
 	    {
-	      opd1 = opd2;
-	      arg1 = arg2;
-	      opd2 = NULL;
-	    }
+	      PT_NODE *res;
 
-	  if (opd1 && opd1->node_type != PT_VALUE)
-	    {
-	      if (expr->info.expr.arg2 == opd1
-		  && (opd1->info.expr.op == PT_CASE
-		      || opd1->info.expr.op == PT_DECODE))
+	      res = parser_new_node (parser, PT_EXPR);
+	      if (res == NULL)
 		{
-		  opd1->info.expr.continued_case = 0;
+		  PT_ERRORc (parser, expr, er_msg ());
+		  return expr;
 		}
 
-	      if (pt_check_same_datatype (parser, expr, opd1))
-		{
-		  result = parser_copy_tree_list (parser, opd1);
-		}
-	      else
-		{
-		  PT_NODE *res = parser_new_node (parser, PT_EXPR);
+	      res->line_number = opd1->line_number;
+	      res->column_number = opd1->column_number;
+	      res->info.expr.op = PT_CAST;
+	      res->info.expr.arg1 = parser_copy_tree_list (parser, opd1);
+	      res->type_enum = expr->type_enum;
+	      res->info.expr.location = expr->info.expr.location;
 
-		  if (!res)
+	      if (pt_is_set_type (expr))
+		{
+		  PT_NODE *sdt;
+
+		  sdt = parser_new_node (parser, PT_DATA_TYPE);
+		  if (sdt == NULL)
 		    {
+		      parser_free_tree (parser, res);
 		      PT_ERRORc (parser, expr, er_msg ());
-		      return 0;
+		      return expr;
 		    }
-
-		  res->line_number = opd1->line_number;
-		  res->column_number = opd1->column_number;
-		  res->info.expr.op = PT_CAST;
-		  res->info.expr.arg1 = parser_copy_tree_list (parser, opd1);
-		  res->type_enum = expr->type_enum;
-		  res->info.expr.location = expr->info.expr.location;
-
-		  if (pt_is_set_type (expr))
-		    {
-		      PT_NODE *sdt = parser_new_node (parser, PT_DATA_TYPE);
-
-		      if (sdt)
-			{
-			  res->data_type = parser_copy_tree_list (parser,
-								  expr->
-								  data_type);
-			  sdt->type_enum = expr->type_enum;
-			  sdt->data_type = parser_copy_tree_list (parser,
-								  expr->
-								  data_type);
-			  res->info.expr.cast_type = sdt;
-			}
-		      else
-			{
-			  PT_ERRORc (parser, expr, er_msg ());
-			  return 0;
-			}
-		    }
-		  else if (PT_IS_PARAMETERIZED_TYPE (expr->type_enum))
-		    {
-		      res->data_type = parser_copy_tree_list (parser,
-							      expr->
-							      data_type);
-		      res->info.expr.cast_type =
-			parser_copy_tree_list (parser, expr->data_type);
-		      res->info.expr.cast_type->type_enum = expr->type_enum;
-		    }
-		  else
-		    {
-		      PT_NODE *dt = parser_new_node (parser, PT_DATA_TYPE);
-
-		      if (dt)
-			{
-			  dt->type_enum = expr->type_enum;
-			  res->info.expr.cast_type = dt;
-			}
-		      else
-			{
-			  PT_ERRORc (parser, expr, er_msg ());
-			  return 0;
-			}
-		    }
-
-		  result = res;
+		  res->data_type = parser_copy_tree_list (parser,
+							  expr->data_type);
+		  sdt->type_enum = expr->type_enum;
+		  sdt->data_type = parser_copy_tree_list (parser,
+							  expr->data_type);
+		  res->info.expr.cast_type = sdt;
 		}
-	    }
-
-	  opd3 = NULL;
-	}
-
-      /* If the op is AND or OR and one argument is a true/false/NULL
-         and the other is a logical expression, optimize the tree so
-         that one of the arguments replaces the node.                 */
-      if (opd1 && opd2
-	  && ((opd1->type_enum == PT_TYPE_LOGICAL
-	       || opd1->type_enum == PT_TYPE_NULL
-	       || opd1->type_enum == PT_TYPE_MAYBE)
-	      && (opd2->type_enum == PT_TYPE_LOGICAL
-		  || opd2->type_enum == PT_TYPE_NULL
-		  || opd2->type_enum == PT_TYPE_MAYBE))
-	  && ((opd1->node_type == PT_VALUE
-	       && opd2->node_type != PT_VALUE)
-	      || (opd2->node_type == PT_VALUE
-		  && opd1->node_type != PT_VALUE))
-	  && (op == PT_AND || op == PT_OR))
-	{
-	  PT_NODE *val;
-	  PT_NODE *other;
-	  DB_VALUE *db_value;
-
-	  if (opd1->node_type == PT_VALUE)
-	    {
-	      val = opd1;
-	      other = opd2;
-	    }
-	  else
-	    {
-	      val = opd2;
-	      other = opd1;
-	    }
-
-	  db_value = pt_value_to_db (parser, val);
-	  if (op == PT_AND)
-	    {
-	      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
-		result = val;
-	      else if (db_value && DB_GET_INTEGER (db_value) == 1)
-		result = other;
-	      else
-		result = val;
-	    }
-	  else
-	    {			/* op == PT_OR */
-	      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
-		result = other;
-	      else if (db_value && DB_GET_INTEGER (db_value) == 1)
-		result = val;
-	      else
-		result = other;
-	    }
-
-	  result = parser_copy_tree_list (parser, result);
-	}
-      else if (opd1 && op != PT_RANDOM && op != PT_DRANDOM
-	       && ((opd1->node_type == PT_VALUE && op != PT_CAST
-		    && (!opd2 || opd2->node_type == PT_VALUE)
-		    && (!opd3 || opd3->node_type == PT_VALUE))
-		   || ((opd1->type_enum == PT_TYPE_NA
-			|| opd1->type_enum == PT_TYPE_NULL)
-		       && op != PT_CASE && op != PT_TO_CHAR
-		       && op != PT_TO_NUMBER && op != PT_TO_DATE
-		       && op != PT_TO_TIME && op != PT_TO_TIMESTAMP
-		       && op != PT_TO_DATETIME
-		       && op != PT_NULLIF && op != PT_COALESCE
-		       && op != PT_NVL && op != PT_NVL2 && op != PT_DECODE)
-		   || (opd2 && (opd2->type_enum == PT_TYPE_NA
-				|| opd2->type_enum == PT_TYPE_NULL)
-		       && op != PT_CASE && op != PT_TO_CHAR
-		       && op != PT_TO_NUMBER && op != PT_TO_DATE
-		       && op != PT_TO_TIME && op != PT_TO_TIMESTAMP
-		       && op != PT_TO_DATETIME
-		       && op != PT_TRANSLATE && op != PT_REPLACE
-		       && op != PT_BETWEEN && op != PT_NOT_BETWEEN
-		       && op != PT_SYS_CONNECT_BY_PATH
-		       && op != PT_NULLIF && op != PT_COALESCE
-		       && op != PT_NVL && op != PT_NVL2 && op != PT_DECODE)
-		   || (opd3 && (opd3->type_enum == PT_TYPE_NA
-				|| opd3->type_enum == PT_TYPE_NULL)
-		       && op != PT_TRANSLATE && op != PT_REPLACE
-		       && op != PT_BETWEEN && op != PT_NOT_BETWEEN
-		       && op != PT_NVL2)))
-	{
-	  PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
-	  TP_DOMAIN *domain;
-
-	  if (op == PT_TRIM || op == PT_EXTRACT ||
-	      op == PT_SUBSTRING || op == PT_EQ)
-	    {
-	      qualifier = expr->info.expr.qualifier;
-	    }
-
-	  /* use the caching variant of this function ! */
-	  domain = pt_xasl_node_to_domain (parser, expr);
-
-	  /* check to see if we received an error getting the domain */
-	  if (pt_has_error (parser))
-	    {
-	      result = 0;
-	    }
-	  else if (pt_evaluate_db_value_expr (parser, op, arg1, arg2, arg3,
-					      &dbval_res, domain, opd1,
-					      opd2, opd3, qualifier))
-	    {
-	      result = pt_dbval_to_value (parser, &dbval_res);
-	      if (result && expr->or_next && result != expr)
+	      else if (PT_IS_PARAMETERIZED_TYPE (expr->type_enum))
 		{
-		  PT_NODE *other;
-		  DB_VALUE *db_value;
-
-		  /* i.e., op == PT_OR */
-		  db_value = pt_value_to_db (parser, result);	/* opd1 */
-		  other = expr->or_next;	/* opd2 */
-		  if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
-		    {
-		      result = other;
-		    }
-		  else
-		    if (db_value
-			&& DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER
-			&& DB_GET_INTEGER (db_value) == 1)
-		    {
-		      parser_free_tree (parser, result->or_next);
-		      result->or_next = NULL;
-		    }
-		  else
-		    {
-		      result = other;
-		    }
-
-		  result = parser_copy_tree_list (parser, result);
+		  res->data_type = parser_copy_tree_list (parser,
+							  expr->data_type);
+		  res->info.expr.cast_type =
+		    parser_copy_tree_list (parser, expr->data_type);
+		  res->info.expr.cast_type->type_enum = expr->type_enum;
 		}
+	      else
+		{
+		  PT_NODE *dt;
+
+		  dt = parser_new_node (parser, PT_DATA_TYPE);
+		  if (dt == NULL)
+		    {
+		      parser_free_tree (parser, res);
+		      PT_ERRORc (parser, expr, er_msg ());
+		      return expr;
+		    }
+		  dt->type_enum = expr->type_enum;
+		  res->info.expr.cast_type = dt;
+		}
+
+	      result = res;
 	    }
 	}
-      else if (result_type == PT_TYPE_LOGICAL)
-	{
-	  /* We'll check to see if the expression is always true or false
-	   * due to type boundary overflows */
-	  if (opd1 && opd2 && opd2->node_type == PT_VALUE)
-	    {
-	      result = pt_compare_bounds_to_value (parser, expr, op,
-						   opd1->type_enum,
-						   arg2, type2);
-	    }
-	  else if (opd1 && opd2 && opd1->node_type == PT_VALUE)
-	    {
-	      result = pt_compare_bounds_to_value (parser, expr,
-						   pt_converse_op (op),
-						   opd2->type_enum,
-						   arg1, type1);
-	    }
 
+      opd3 = NULL;
+    }
+
+  /* If the op is AND or OR and one argument is a true/false/NULL
+     and the other is a logical expression, optimize the tree so
+     that one of the arguments replaces the node.                 */
+  if (opd1 && opd2
+      && ((opd1->type_enum == PT_TYPE_LOGICAL
+	   || opd1->type_enum == PT_TYPE_NULL
+	   || opd1->type_enum == PT_TYPE_MAYBE)
+	  && (opd2->type_enum == PT_TYPE_LOGICAL
+	      || opd2->type_enum == PT_TYPE_NULL
+	      || opd2->type_enum == PT_TYPE_MAYBE))
+      && ((opd1->node_type == PT_VALUE
+	   && opd2->node_type != PT_VALUE)
+	  || (opd2->node_type == PT_VALUE
+	      && opd1->node_type != PT_VALUE))
+      && (op == PT_AND || op == PT_OR))
+    {
+      PT_NODE *val;
+      PT_NODE *other;
+      DB_VALUE *db_value;
+
+      if (opd1->node_type == PT_VALUE)
+	{
+	  val = opd1;
+	  other = opd2;
+	}
+      else
+	{
+	  val = opd2;
+	  other = opd1;
+	}
+
+      db_value = pt_value_to_db (parser, val);
+      if (op == PT_AND)
+	{
+	  if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
+	    {
+	      result = val;
+	    }
+	  else if (db_value && DB_GET_INTEGER (db_value) == 1)
+	    {
+	      result = other;
+	    }
+	  else
+	    {
+	      result = val;
+	    }
+	}
+      else
+	{			/* op == PT_OR */
+	  if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
+	    {
+	      result = other;
+	    }
+	  else if (db_value && DB_GET_INTEGER (db_value) == 1)
+	    {
+	      result = val;
+	    }
+	  else
+	    {
+	      result = other;
+	    }
+	}
+
+      result = parser_copy_tree_list (parser, result);
+    }
+  else if (opd1 && op != PT_RANDOM && op != PT_DRANDOM
+	   && ((opd1->node_type == PT_VALUE && op != PT_CAST
+		&& (!opd2 || opd2->node_type == PT_VALUE)
+		&& (!opd3 || opd3->node_type == PT_VALUE))
+	       || ((opd1->type_enum == PT_TYPE_NA
+		    || opd1->type_enum == PT_TYPE_NULL)
+		   && op != PT_CASE && op != PT_TO_CHAR
+		   && op != PT_TO_NUMBER && op != PT_TO_DATE
+		   && op != PT_TO_TIME && op != PT_TO_TIMESTAMP
+		   && op != PT_TO_DATETIME
+		   && op != PT_NULLIF && op != PT_COALESCE
+		   && op != PT_NVL && op != PT_NVL2 && op != PT_DECODE)
+	       || (opd2 && (opd2->type_enum == PT_TYPE_NA
+			    || opd2->type_enum == PT_TYPE_NULL)
+		   && op != PT_CASE && op != PT_TO_CHAR
+		   && op != PT_TO_NUMBER && op != PT_TO_DATE
+		   && op != PT_TO_TIME && op != PT_TO_TIMESTAMP
+		   && op != PT_TO_DATETIME
+		   && op != PT_TRANSLATE && op != PT_REPLACE
+		   && op != PT_BETWEEN && op != PT_NOT_BETWEEN
+		   && op != PT_SYS_CONNECT_BY_PATH
+		   && op != PT_NULLIF && op != PT_COALESCE
+		   && op != PT_NVL && op != PT_NVL2 && op != PT_DECODE)
+	       || (opd3 && (opd3->type_enum == PT_TYPE_NA
+			    || opd3->type_enum == PT_TYPE_NULL)
+		   && op != PT_TRANSLATE && op != PT_REPLACE
+		   && op != PT_BETWEEN && op != PT_NOT_BETWEEN
+		   && op != PT_NVL2)))
+    {
+      PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
+      TP_DOMAIN *domain;
+
+      if (op == PT_TRIM || op == PT_EXTRACT ||
+	  op == PT_SUBSTRING || op == PT_EQ)
+	{
+	  qualifier = expr->info.expr.qualifier;
+	}
+
+      /* use the caching variant of this function ! */
+      domain = pt_xasl_node_to_domain (parser, expr);
+
+      /* check to see if we received an error getting the domain */
+      if (pt_has_error (parser))
+	{
+	  if (result)
+	    {
+	      if (result != expr)
+		{
+		  parser_free_tree (parser, result);
+		}
+	    }
+	  return expr;
+	}
+
+      if (pt_evaluate_db_value_expr (parser, op, arg1, arg2, arg3,
+				     &dbval_res, domain, opd1,
+				     opd2, opd3, qualifier))
+	{
+	  result = pt_dbval_to_value (parser, &dbval_res);
 	  if (result && expr->or_next && result != expr)
 	    {
 	      PT_NODE *other;
@@ -8104,13 +8059,15 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
 	      /* i.e., op == PT_OR */
 	      db_value = pt_value_to_db (parser, result);	/* opd1 */
-	      other = result->or_next;	/* opd2 */
+	      other = expr->or_next;	/* opd2 */
 	      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
 		{
 		  result = other;
 		}
-	      else if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER
-		       && DB_GET_INTEGER (db_value) == 1)
+	      else
+		if (db_value
+		    && DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER
+		    && DB_GET_INTEGER (db_value) == 1)
 		{
 		  parser_free_tree (parser, result->or_next);
 		  result->or_next = NULL;
@@ -8124,14 +8081,66 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    }
 	}
     }
+  else if (result_type == PT_TYPE_LOGICAL)
+    {
+      /* We'll check to see if the expression is always true or false
+       * due to type boundary overflows */
+      if (opd1 && opd2 && opd2->node_type == PT_VALUE)
+	{
+	  result = pt_compare_bounds_to_value (parser, expr, op,
+					       opd1->type_enum, arg2, type2);
+	}
+      else if (opd1 && opd2 && opd1->node_type == PT_VALUE)
+	{
+	  result = pt_compare_bounds_to_value (parser, expr,
+					       pt_converse_op (op),
+					       opd2->type_enum, arg1, type1);
+	}
+
+      if (result && expr->or_next && result != expr)
+	{
+	  PT_NODE *other;
+	  DB_VALUE *db_value;
+
+	  /* i.e., op == PT_OR */
+	  db_value = pt_value_to_db (parser, result);	/* opd1 */
+	  other = result->or_next;	/* opd2 */
+	  if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
+	    {
+	      result = other;
+	    }
+	  else if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER
+		   && DB_GET_INTEGER (db_value) == 1)
+	    {
+	      parser_free_tree (parser, result->or_next);
+	      result->or_next = NULL;
+	    }
+	  else
+	    {
+	      result = other;
+	    }
+
+	  result = parser_copy_tree_list (parser, result);
+	}
+    }
 
 end:
   pr_clear_value (&dbval_res);
 
   if (result)
     {
+      result->line_number = line;
+      result->column_number = column;
+      result->alias_print = alias_print;
+
       if (result != expr)
 	{
+	  if (result->alias_print == NULL)
+	    {
+	      PT_NODE_PRINT_TO_ALIAS (parser, expr, PT_CONVERT_RANGE);
+	      result->alias_print =
+		pt_append_string (parser, NULL, expr->alias_print);
+	    }
 	  parser_free_tree (parser, expr);
 	}
 
@@ -8143,9 +8152,6 @@ end:
 	  result->type_enum = result_type;
 	}
 
-      result->line_number = line;
-      result->column_number = column;
-      result->alias_print = alias_print;
       if (result->node_type == PT_EXPR)
 	{
 	  result->info.expr.location = location;
@@ -8153,12 +8159,16 @@ end:
       else if (result->node_type == PT_VALUE)
 	{
 	  result->info.value.location = location;
+	  if (alias_print == NULL && result->info.value.text == NULL)
+	    {
+	      result->info.value.text =
+		pt_append_string (parser, NULL, result->alias_print);
+	    }
 	}
     }
 
   return result;
 }
-
 
 /*
  * pt_semantic_type () - sets data types for all expressions in a parse tree
@@ -8520,11 +8530,9 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
       break;
 
     default:
-      err =
-	((pt_common_type
-	  ((PT_TYPE_ENUM) desired_type,
-	   src->type_enum) ==
-	  PT_TYPE_NONE) ? ER_IT_INCOMPATIBLE_DATATYPE : NO_ERROR);
+      err = ((pt_common_type ((PT_TYPE_ENUM) desired_type,
+			      src->type_enum) == PT_TYPE_NONE)
+	     ? ER_IT_INCOMPATIBLE_DATATYPE : NO_ERROR);
       break;
     }
 
@@ -8540,15 +8548,15 @@ pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
       PT_ERRORmf2 (parser, src, MSGCAT_SET_PARSER_SEMANTIC,
 		   MSGCAT_SEMANTIC_CANT_COERCE_TO,
 		   pt_short_print (parser, src),
-		   (desired_type ==
-		    PT_TYPE_OBJECT ? pt_class_name (data_type)
+		   (desired_type == PT_TYPE_OBJECT
+		    ? pt_class_name (data_type)
 		    : pt_show_type_enum ((PT_TYPE_ENUM) desired_type)));
     }
 
   return err;
 }
 
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * generic_func_casecmp () -
  *   return:
@@ -8559,11 +8567,9 @@ static int
 generic_func_casecmp (const void *a, const void *b)
 {
   return
-    intl_mbs_casecmp (((const GENERIC_FUNCTION_RECORD *) a)->
-		      function_name,
+    intl_mbs_casecmp (((const GENERIC_FUNCTION_RECORD *) a)->function_name,
 		      ((const GENERIC_FUNCTION_RECORD *) b)->function_name);
 }
-
 
 /*
  * init_generic_funcs () -
@@ -8574,12 +8580,11 @@ static void
 init_generic_funcs (void)
 {
   qsort (pt_Generic_functions,
-	 sizeof (pt_Generic_functions) /
-	 sizeof (GENERIC_FUNCTION_RECORD),
+	 (sizeof (pt_Generic_functions) / sizeof (GENERIC_FUNCTION_RECORD)),
 	 sizeof (GENERIC_FUNCTION_RECORD), &generic_func_casecmp);
   pt_Generic_functions_sorted = 1;
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * pt_type_generic_func () - Searches the generic_funcs table to find
@@ -8592,6 +8597,10 @@ init_generic_funcs (void)
 int
 pt_type_generic_func (PARSER_CONTEXT * parser, PT_NODE * node)
 {
+#if !defined(ENABLE_UNUSED_FUNCTION)
+  /* If you want to use generic function, remove this block. */
+  return 0;
+#else /* !ENABLE_UNUSED_FUNCTION */
   GENERIC_FUNCTION_RECORD *record_p, key;
   PT_NODE *offset;
 
@@ -8609,14 +8618,12 @@ pt_type_generic_func (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* Check first to see if the function exists in our table. */
   key.function_name = node->info.function.generic_name;
-  record_p = (GENERIC_FUNCTION_RECORD *) bsearch (&key, pt_Generic_functions,
-						  (sizeof
-						   (pt_Generic_functions) /
-						   sizeof
-						   (GENERIC_FUNCTION_RECORD)),
-						  sizeof
-						  (GENERIC_FUNCTION_RECORD),
-						  &generic_func_casecmp);
+  record_p =
+    (GENERIC_FUNCTION_RECORD *) bsearch (&key, pt_Generic_functions,
+					 (sizeof (pt_Generic_functions) /
+					  sizeof (GENERIC_FUNCTION_RECORD)),
+					 sizeof (GENERIC_FUNCTION_RECORD),
+					 &generic_func_casecmp);
   if (!record_p)
     {
       return 0;			/* we can't find it */
@@ -8636,6 +8643,7 @@ pt_type_generic_func (PARSER_CONTEXT * parser, PT_NODE * node)
   pt_string_to_data_type (parser, record_p->return_type, node);
 
   return 1;
+#endif /* ENABLE_UNUSED_FUNCTION */
 }
 
 

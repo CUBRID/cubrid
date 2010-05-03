@@ -37,6 +37,10 @@
 
 #ident "$Id$"
 
+#ifdef CAS_FOR_DBMS
+#include "cas_error.h"
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -318,7 +322,9 @@ extern "C"
 
     CCI_ER_SAVEPOINT_CMD = -28,
     CCI_ER_THREAD_RUNNING = -29,
+    CCI_ER_INVALID_URL = -30,
 
+#ifndef CAS_FOR_DBMS
     CAS_ER_DBMS = -1000,
     CAS_ER_INTERNAL = -1001,
     CAS_ER_NO_MORE_MEMORY = -1002,
@@ -348,6 +354,7 @@ extern "C"
     CAS_ER_DBSERVER_DISCONNECTED = -1025,
 
     CAS_ER_IS = -1200,
+#endif
 
     CCI_ER_NOT_IMPLEMENTED = -99
   } T_CCI_ERROR_CODE;
@@ -571,6 +578,7 @@ extern "C"
 					     int port,
 					     char *db_name,
 					     char *db_user, char *dbpasswd);
+  extern int cci_connect_with_url (char *url, char *user, char *password);
   extern int cci_disconnect (int con_handle, T_CCI_ERROR * err_buf);
   extern int cci_end_tran (int con_handle, char type, T_CCI_ERROR * err_buf);
   extern int cci_prepare (int con_handle,

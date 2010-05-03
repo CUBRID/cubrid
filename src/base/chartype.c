@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -76,6 +76,7 @@ char_isdigit (int c)
   return ((c) >= '0' && (c) <= '9');
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * char_isxdigit() - test for a hexa decimal digit character
  *   return: non-zero if c is a hexa decimal digit character,
@@ -88,6 +89,7 @@ char_isxdigit (int c)
   return (char_isdigit ((c)) || ((c) >= 'a' && (c) <= 'f')
 	  || ((c) >= 'A' && (c) <= 'F'));
 }
+#endif
 
 /*
  * char_isalnum() - test for a alphanumeric character
@@ -125,6 +127,7 @@ char_iseol (int c)
   return ((c) == '\r' || (c) == '\n');
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * char_isascii() - test for a US-ASCII character
  *   return: non-zero if c is a US-ASCII character,
@@ -136,6 +139,7 @@ char_isascii (int c)
 {
   return ((c) >= 1 && (c) <= 127);
 }
+#endif
 
 /*
  * char_tolower() - convert uppercase character to lowercase

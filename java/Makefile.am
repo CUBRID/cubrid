@@ -33,6 +33,7 @@ JDBC_VERSION = \
 	-DJDBC_DRIVER_PATCH_VERSION=$(JDBC_DRIVER_PATCH_VERSION) \
 	-DJDBC_DRIVER_SERIAL_NUMBER=$(JDBC_DRIVER_SERIAL_NUMBER) \
 	-DSERVER_SIDE_JDBC
+#PJAVA_CFLAGS = $(JDBC_VERSION) @JDK6_DEFINE@ -DCAS_FOR_DBMS
 PJAVA_CFLAGS = $(JDBC_VERSION) @JDK6_DEFINE@
 
 javadir = @CUBRID_JAVADIR@
@@ -54,6 +55,8 @@ BUILT_SOURCES = \
 	CUBRIDStatement.java \
 	UConnection.java \
 	UJCIManager.java \
+	UInputBuffer.java \
+	UJciException.java \
 	$(DRIVER)
 
 CLEANFILES = \
@@ -71,7 +74,9 @@ CLEANFILES = \
 	CUBRIDResultSetWithoutQuery.java \
 	CUBRIDStatement.java \
 	UConnection.java \
-	UJCIManager.java
+	UJCIManager.java \
+	UInputBuffer.java \
+	UJciException.java 
 
 CUBRIDConnection.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDConnection.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
@@ -116,6 +121,12 @@ UConnection.java: $(JDBC_SRC_DIR)/cubrid/jdbc/jci/UConnection.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
 UJCIManager.java: $(JDBC_SRC_DIR)/cubrid/jdbc/jci/UJCIManager.pjava
+	cpp -C -P $(PJAVA_CFLAGS) $< $@
+
+UInputBuffer.java: $(JDBC_SRC_DIR)/cubrid/jdbc/jci/UInputBuffer.pjava
+	cpp -C -P $(PJAVA_CFLAGS) $< $@
+
+UJciException.java: $(JDBC_SRC_DIR)/cubrid/jdbc/jci/UJciException.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
 ${DRIVER}:

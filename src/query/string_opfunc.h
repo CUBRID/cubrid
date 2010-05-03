@@ -163,8 +163,10 @@ extern int db_bit_string_coerce (const DB_VALUE * src_string,
 extern int db_char_string_coerce (const DB_VALUE * src_string,
 				  DB_VALUE * dest_string,
 				  DB_DATA_STATUS * data_status);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int db_string_convert (const DB_VALUE * src_string,
 			      DB_VALUE * dest_string);
+#endif
 extern int qstr_pad_size (INTL_CODESET codeset);
 extern unsigned char *qstr_pad_string (unsigned char *s, int length,
 				       INTL_CODESET codeset);

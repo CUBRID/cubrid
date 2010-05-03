@@ -48,15 +48,17 @@ class UTimedDataInputStream
   public final static int PING_TIMEOUT = 5000;
   private DataInputStream stream = null;
   private String ip = null;
+  private int port = 0;
 
   UTimedDataInputStream()
   {
   }
 
-  public UTimedDataInputStream (InputStream stream, String ip)
+  public UTimedDataInputStream (InputStream stream, String ip, int port)
   {
     this.stream = new DataInputStream(stream);
     this.ip = ip;
+    this.port = port;
   }
 
   public int readInt() throws IOException
@@ -69,13 +71,18 @@ class UTimedDataInputStream
       }
       catch (SocketTimeoutException e)
       {
-        if (InetAddress.getByName(ip).isReachable(PING_TIMEOUT) == false)
+        try
         {
-          throw new IOException(e.getMessage());
+	  UConnection.ping(ip,port,PING_TIMEOUT);
+        }
+        catch(Exception f)
+	{			  
+          throw new IOException(f.getMessage());
         }
       }
     }
   }
+
   public int readByte(byte[] b) throws IOException
   {
     while (true)
@@ -86,9 +93,13 @@ class UTimedDataInputStream
       }
       catch (SocketTimeoutException e)
       {
-        if (InetAddress.getByName(ip).isReachable(PING_TIMEOUT) == false)
+        try
         {
-          throw new IOException(e.getMessage());
+	  UConnection.ping(ip,port,PING_TIMEOUT);
+        }
+        catch(Exception f)
+	{			  
+          throw new IOException(f.getMessage());
         }
       }
     }

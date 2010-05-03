@@ -62,8 +62,13 @@
 #define net_ntohd(X)		net_htond(X)
 #endif
 
+#ifdef CAS_FOR_DBMS
+#define NET_BUF_ERROR_MSG_SET(NET_BUF, ERR_INDICATOR, ERR_CODE, ERR_MSG)	\
+     net_buf_error_msg_set(NET_BUF, ERR_INDICATOR, ERR_CODE, ERR_MSG, __FILE__, __LINE__)
+#else
 #define NET_BUF_ERROR_MSG_SET(NET_BUF, ERR_CODE, ERR_MSG)	\
      net_buf_error_msg_set(NET_BUF, ERR_CODE, ERR_MSG, __FILE__, __LINE__)
+#endif
 
 #define NET_BUF_CP_OBJECT(BUF, OID_P)			\
 	do {						\
@@ -122,8 +127,14 @@ extern int net_buf_cp_float (T_NET_BUF *, float);
 extern int net_buf_cp_double (T_NET_BUF *, double);
 extern int net_buf_cp_short (T_NET_BUF *, short);
 
+#ifdef CAS_FOR_DBMS
+extern void net_buf_error_msg_set (T_NET_BUF * net_buf, int errindicator,
+				   int errcode, char *errstr,
+				   const char *file, int line);
+#else
 extern void net_buf_error_msg_set (T_NET_BUF * net_buf, int errcode,
 				   char *errstr, const char *file, int line);
+#endif
 
 #ifndef BYTE_ORDER_BIG_ENDIAN
 extern INT64 net_htoni64 (INT64 from);

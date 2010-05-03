@@ -106,6 +106,7 @@ uDecrypt (int len, const char *src, char *trg)
       trg[0] = '\0';
       return;
     }
+  memset (hexacode, 0, sizeof (hexacode));
   strcpy (hexacode, src);
 
   for (i = 0; i < len; ++i)

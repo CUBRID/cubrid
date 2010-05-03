@@ -107,7 +107,7 @@
 
 #define APPL_SERVER_NAME_MAX_SIZE	32
 
-#define		SERVICE_READY_WAIT_COUNT	300
+#define		SERVICE_READY_WAIT_COUNT	3000
 #define		SERVICE_READY_WAIT(SERVICE_READY_FLAG)			\
 		do {							\
 		  int	i;						\
@@ -218,6 +218,7 @@ struct t_shm_appl_server
   char jdbc_cache;
   char jdbc_cache_only_hint;
   char cci_pconnect;
+  char select_auto_commit;
   int jdbc_cache_life_time;
 
 #if defined(WINDOWS)

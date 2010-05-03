@@ -28,8 +28,6 @@
 #ident "$Id$"
 
 #include "cm_config.h"
-#include "perf_monitor.h"
 
-extern int uReadDiagSystemConfig (DIAG_SYS_CONFIG * config, char *err_buf);
 
 #endif /* _CM_DIAG_UTIL_H_ */

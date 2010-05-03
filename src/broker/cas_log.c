@@ -45,13 +45,15 @@
 #include "cas_util.h"
 #include "broker_config.h"
 #include "cas.h"
+#include "cas_execute.h"
 
 #include "broker_env_def.h"
 #include "broker_filename.h"
 #include "broker_util.h"
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "dbi.h"
-
 #include "cas_db_inc.h"
+#endif
 
 
 static char *make_sql_log_filename (char *filename_buf,
@@ -63,12 +65,12 @@ static void cas_log_backup (void);
 static void cas_log_rename (int run_time, time_t cur_time, char *br_name,
 			    int as_index);
 #endif
-static void cas_log_write_internal (unsigned int seq_num, const char *fmt,
-				    va_list ap);
-static void cas_log_write2_internal (const char *fmt, va_list ap);
+static void cas_log_write_internal (unsigned int seq_num, bool do_flush,
+				    const char *fmt, va_list ap);
+static void cas_log_write2_internal (bool do_flush, const char *fmt,
+				     va_list ap);
 
 static FILE *sql_log_open (char *log_file_name);
-static void cas_log_error_handler (unsigned int eid);
 
 #ifdef CAS_ERROR_LOG
 static int error_file_offset;
@@ -80,16 +82,6 @@ static long saved_log_fpos = 0;
 
 static FILE *log_fp_qp, *log_fp_qh;
 static int saved_fd1;
-
-/* log error handler related fields */
-typedef struct cas_error_log_handle_context_s CAS_ERROR_LOG_HANDLE_CONTEXT;
-struct cas_error_log_handle_context_s
-{
-  unsigned int from;
-  unsigned int to;
-};
-
-static CAS_ERROR_LOG_HANDLE_CONTEXT *cas_EHCTX = NULL;
 
 static char *
 make_sql_log_filename (char *filename_buf,
@@ -273,7 +265,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 
       if (abandon)
 	{
-	  cas_log_write_internal (0, "END OF LOG\n\n", "");
+	  cas_log_write_internal (0, false, "END OF LOG\n\n", "");
 	  fseek (log_fp, saved_log_fpos, SEEK_SET);
 	}
       else
@@ -293,8 +285,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	    }
 	  else
 	    {
-	      cas_log_write_internal (0, "END OF LOG\n\n", "");
-	      fflush (log_fp);
+	      cas_log_write_internal (0, true, "END OF LOG\n\n", "");
 	      fseek (log_fp, saved_log_fpos, SEEK_SET);
 	    }
 	}
@@ -303,7 +294,8 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 }
 
 static void
-cas_log_write_internal (unsigned int seq_num, const char *fmt, va_list ap)
+cas_log_write_internal (unsigned int seq_num, bool do_flush, const char *fmt,
+			va_list ap)
 {
   char buf[LINE_MAX], *p;
   int len, n;
@@ -326,6 +318,11 @@ cas_log_write_internal (unsigned int seq_num, const char *fmt, va_list ap)
 	}
     }
   fwrite (buf, (p - buf), 1, log_fp);
+
+  if (do_flush == true)
+    {
+      fflush (log_fp);
+    }
 }
 
 void
@@ -342,7 +339,9 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt,
 	  saved_log_fpos = ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (seq_num, fmt, ap);
+      cas_log_write_internal (seq_num,
+			      (shm_appl->sql_log_mode == SQL_LOG_MODE_ALL),
+			      fmt, ap);
       va_end (ap);
     }
 #endif /* LIBCAS_FOR_JSP */
@@ -361,7 +360,9 @@ cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 	  saved_log_fpos = ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (seq_num, fmt, ap);
+      cas_log_write_internal (seq_num,
+			      (shm_appl->sql_log_mode == SQL_LOG_MODE_ALL),
+			      fmt, ap);
       va_end (ap);
       fputc ('\n', log_fp);
     }
@@ -382,7 +383,9 @@ cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt,
 	  saved_log_fpos = ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (seq_num, fmt, ap);
+      cas_log_write_internal (seq_num,
+			      (shm_appl->sql_log_mode == SQL_LOG_MODE_ALL),
+			      fmt, ap);
       va_end (ap);
       fputc ('\n', log_fp);
       cas_log_end (SQL_LOG_MODE_ALL, -1, -1);
@@ -391,7 +394,7 @@ cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt,
 }
 
 static void
-cas_log_write2_internal (const char *fmt, va_list ap)
+cas_log_write2_internal (bool do_flush, const char *fmt, va_list ap)
 {
   char buf[LINE_MAX], *p;
   int len, n;
@@ -402,6 +405,11 @@ cas_log_write2_internal (const char *fmt, va_list ap)
   len -= n;
   p += n;
   fwrite (buf, (p - buf), 1, log_fp);
+
+  if (do_flush == true)
+    {
+      fflush (log_fp);
+    }
 }
 
 void
@@ -413,7 +421,8 @@ cas_log_write2_nonl (const char *fmt, ...)
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write2_internal (fmt, ap);
+      cas_log_write2_internal ((shm_appl->sql_log_mode == SQL_LOG_MODE_ALL),
+			       fmt, ap);
       va_end (ap);
     }
 #endif /* LIBCAS_FOR_JSP */
@@ -428,7 +437,8 @@ cas_log_write2 (const char *fmt, ...)
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write2_internal (fmt, ap);
+      cas_log_write2_internal ((shm_appl->sql_log_mode == SQL_LOG_MODE_ALL),
+			       fmt, ap);
       va_end (ap);
       fputc ('\n', log_fp);
     }
@@ -774,123 +784,4 @@ sql_log_open (char *log_file_name)
 	}
     }
   return fp;
-}
-
-static void
-cas_log_error_handler (unsigned int eid)
-{
-  if (cas_EHCTX == NULL)
-    {
-      return;
-    }
-
-  if (cas_EHCTX->from == 0)
-    {
-      cas_EHCTX->from = eid;
-    }
-  else
-    {
-      cas_EHCTX->to = eid;
-    }
-}
-
-void
-cas_log_error_handler_begin ()
-{
-  CAS_ERROR_LOG_HANDLE_CONTEXT *ectx;
-
-  ectx = malloc (sizeof (*ectx));
-  if (ectx == NULL)
-    {
-      return;
-    }
-
-  ectx->from = 0;
-  ectx->to = 0;
-
-  if (cas_EHCTX != NULL)
-    {
-      free (cas_EHCTX);
-    }
-
-  cas_EHCTX = ectx;
-  (void) db_register_error_log_handler (cas_log_error_handler);
-}
-
-void
-cas_log_error_handler_end (void)
-{
-  if (cas_EHCTX != NULL)
-    {
-      free (cas_EHCTX);
-      cas_EHCTX = NULL;
-      (void) db_register_error_log_handler (NULL);
-    }
-}
-
-void
-cas_log_error_handler_clear (void)
-{
-  if (cas_EHCTX == NULL)
-    {
-      return;
-    }
-
-  cas_EHCTX->from = 0;
-  cas_EHCTX->to = 0;
-}
-
-
-char *
-cas_log_error_handler_asprint (char *buf, size_t bufsz, bool clear)
-{
-  char *buf_p;
-  unsigned int from, to;
-
-  if (buf == NULL || bufsz <= 0)
-    {
-      return NULL;
-    }
-
-  if (cas_EHCTX == NULL || cas_EHCTX->from == 0)
-    {
-      buf[0] = '\0';
-      return buf;
-    }
-
-  from = cas_EHCTX->from;
-  to = cas_EHCTX->to;
-
-  if (clear)
-    {
-      cas_EHCTX->from = 0;
-      cas_EHCTX->to = 0;
-    }
-
-  /* ", EID = <int> ~ <int>" : 32 bytes suffice */
-  if (bufsz < 32)
-    {
-      buf_p = malloc (32);
-
-      if (buf_p == NULL)
-	{
-	  return NULL;
-	}
-    }
-  else
-    {
-      buf_p = buf;
-    }
-
-  /* actual print */
-  if (to != 0)
-    {
-      snprintf (buf_p, 32, ", EID = %u ~ %u", from, to);
-    }
-  else
-    {
-      snprintf (buf_p, 32, ", EID = %u", from);
-    }
-
-  return buf_p;
 }

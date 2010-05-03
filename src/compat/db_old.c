@@ -158,7 +158,7 @@ db_namelist_copy (DB_NAMELIST * list)
 
 
 /*
- * db_namelist_sort() - This funciton is used to sort a namelist in
+ * db_namelist_sort() - This function is used to sort a namelist in
  *    alphabetical order.  The list is destructively sorted NOT copied
  *    so you should get rid of any pointers to the original list.
  * return : a namelist

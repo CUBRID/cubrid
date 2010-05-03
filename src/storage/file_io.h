@@ -44,6 +44,7 @@
 #include "lzoconf.h"
 #include "lzo1x.h"
 #include "thread_impl.h"
+#include "thread.h"
 
 #define NULL_VOLDES   (-1)	/* Value of a null (invalid) vol descriptor */
 
@@ -361,50 +362,88 @@ struct io_backup_session
   FILE *verbose_fp;		/* Backupdb/Restoredb status msg */
 };
 
+typedef struct token_bucket TOKEN_BUCKET;
+struct token_bucket
+{
+  MUTEX_T token_mutex;
+  int tokens;			/* shared tokens between all lines */
+  int token_consumed;
+
+  COND_T waiter_cond;
+#if defined(WINDOWS)
+  int num_waiter;
+#endif
+};
+
+typedef struct flush_stats FLUSH_STATS;
+struct flush_stats
+{
+  unsigned int num_log_pages;
+  unsigned int num_pages;
+  unsigned int num_tokens;
+};
+
 extern int fileio_open (const char *vlabel, int flags, int mode);
 extern void fileio_close (int vdes);
 extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname,
 			  const char *vlabel, VOLID volid, DKNPAGES npages,
-			  bool sweep_clean, bool dolock, bool dosync);
-extern DKNPAGES fileio_expand (VOLID volid, DKNPAGES npages_toadd);
+			  bool sweep_clean, bool dolock, bool dosync,
+			  size_t page_size);
+extern DKNPAGES fileio_expand (THREAD_ENTRY * threda_p, VOLID volid,
+			       DKNPAGES npages_toadd);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern DKNPAGES fileio_truncate (VOLID volid, DKNPAGES npages_to_resize);
-extern void fileio_unformat (const char *vlabel);
+#endif
+extern void fileio_unformat (THREAD_ENTRY * thread_p, const char *vlabel);
 extern int fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vdes,
 			       DKNPAGES npages, const char *to_vlabel,
 			       VOLID to_volid, bool reset_recvinfo);
-extern int fileio_reset_volume (int vdes, DKNPAGES npages,
+extern int fileio_reset_volume (THREAD_ENTRY * thread_p, int vdes,
+				char *vlabel, DKNPAGES npages,
 				LOG_LSA * reset_lsa);
-extern int fileio_mount (const char *db_fullname, const char *vlabel,
-			 VOLID volid, int lockwait, bool dosync);
-extern void fileio_dismount (int vdes);
-extern void fileio_dismount_all (void);
-extern void *fileio_read (int vdes, void *io_pgptr, PAGEID pageid);
-extern void *fileio_write (int vdes, void *io_pgptr, PAGEID pageid);
-extern void *fileio_read_pages (int vol_fd, char *io_pages_p, PAGEID page_id,
-				int num_pages);
-extern void *fileio_write_pages (int vol_fd, char *io_pages_p, PAGEID page_id,
-				 int num_pages);
-extern void *fileio_writev (int vdes, void **arrayof_io_pgptr,
-			    PAGEID start_pageid, DKNPAGES npages);
-extern int fileio_synchronize (int vdes, bool force_flag);
-extern int fileio_synchronize_all (bool force_flag, bool include_log);
-extern void *fileio_read_user_area (int vdes, PAGEID pageid,
-				    off_t start_offset, size_t nbytes,
-				    void *area);
-extern void *fileio_write_user_area (int vdes, PAGEID pageid,
-				     off_t start_offset, int nbytes,
-				     void *area);
+extern int fileio_mount (THREAD_ENTRY * thread_p, const char *db_fullname,
+			 const char *vlabel, VOLID volid, int lockwait,
+			 bool dosync);
+extern void fileio_dismount (THREAD_ENTRY * thread_p, int vdes);
+extern void fileio_dismount_all (THREAD_ENTRY * thread_p);
+extern void *fileio_read (THREAD_ENTRY * thread_p, int vol_fd,
+			  void *io_page_p, PAGEID page_id, size_t page_size);
+extern void *fileio_write (THREAD_ENTRY * thread_p, int vol_fd,
+			   void *io_page_p, PAGEID page_id, size_t page_size);
+extern void *fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd,
+				char *io_pages_p, PAGEID page_id,
+				int num_pages, size_t page_size);
+extern void *fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd,
+				 char *io_pages_p, PAGEID page_id,
+				 int num_pages, size_t page_size);
+extern void *fileio_writev (THREAD_ENTRY * thread_p, int vdes,
+			    void **arrayof_io_pgptr, PAGEID start_pageid,
+			    DKNPAGES npages, size_t page_size);
+extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes,
+			       char *vlabel);
+extern int fileio_synchronize_all (THREAD_ENTRY * thread_p, bool include_log);
+#if defined (ENABLE_UNUSED_FUNCTION)
+extern void *fileio_read_user_area (THREAD_ENTRY * thread_p, int vdes,
+				    PAGEID pageid, off_t start_offset,
+				    size_t nbytes, void *area);
+extern void *fileio_write_user_area (THREAD_ENTRY * thread_p, int vdes,
+				     PAGEID pageid, off_t start_offset,
+				     int nbytes, void *area);
+#endif
 extern bool fileio_is_volume_exist_and_file (const char *vlabel);
-extern DKNPAGES fileio_get_number_of_volume_pages (int vdes);
+extern DKNPAGES fileio_get_number_of_volume_pages (int vdes,
+						   size_t page_size);
 extern const char *fileio_get_volume_label (VOLID volid);
-extern VOLID fileio_get_volume_id (int vdes);
-extern VOLID fileio_find_volume_id_with_label (const char *vlabel);
+extern const char *fileio_get_volume_label_by_fd (int vol_fd);
+extern VOLID fileio_find_volume_id_with_label (THREAD_ENTRY * thread_p,
+					       const char *vlabel);
 extern int fileio_get_volume_descriptor (VOLID volid);
 extern bool fileio_map_mounted (THREAD_ENTRY * thread_p,
 				bool (*fun) (THREAD_ENTRY * thread_p,
 					     VOLID volid, void *args),
 				void *args);
-extern int fileio_get_number_of_partition_free_pages (const char *path);
+extern int fileio_get_number_of_partition_free_pages (const char *path,
+						      size_t page_size);
 extern const char *fileio_rename (VOLID volid, const char *old_vlabel,
 				  const char *new_vlabel);
 extern bool fileio_is_volume_exist (const char *vlabel);
@@ -447,58 +486,46 @@ extern void fileio_make_backup_name (char *backup_name,
 				     const char *nopath_volname,
 				     const char *backup_path,
 				     FILEIO_BACKUP_LEVEL level, int unit_num);
-extern void fileio_remove_all_backup (int level);
-extern FILEIO_BACKUP_SESSION *fileio_initialize_backup (const char
-							*db_fullname,
-							const char
-							*backup_destination,
-							FILEIO_BACKUP_SESSION
-							* session,
-							FILEIO_BACKUP_LEVEL
-							level,
-							const char
-							*backup_verbose_file,
-							int num_threads);
-extern FILEIO_BACKUP_SESSION *fileio_start_backup (THREAD_ENTRY * thread_p,
-						   const char *db_fullname,
-						   INT64 * db_creation,
-						   FILEIO_BACKUP_LEVEL
-						   backup_level,
-						   LOG_LSA * backup_start_lsa,
-						   LOG_LSA * backup_ckpt_lsa,
-						   FILEIO_BACKUP_RECORD_INFO *
-						   all_levels_info,
-						   FILEIO_BACKUP_SESSION *
-						   session,
-						   FILEIO_ZIP_METHOD
-						   zip_method,
-						   FILEIO_ZIP_LEVEL
-						   zip_level);
+extern void fileio_remove_all_backup (THREAD_ENTRY * thread_p, int level);
+extern FILEIO_BACKUP_SESSION
+  * fileio_initialize_backup (const char *db_fullname,
+			      const char *backup_destination,
+			      FILEIO_BACKUP_SESSION * session,
+			      FILEIO_BACKUP_LEVEL level,
+			      const char *backup_verbose_file,
+			      int num_threads);
+extern FILEIO_BACKUP_SESSION
+  * fileio_start_backup (THREAD_ENTRY * thread_p, const char *db_fullname,
+			 INT64 * db_creation,
+			 FILEIO_BACKUP_LEVEL backup_level,
+			 LOG_LSA * backup_start_lsa,
+			 LOG_LSA * backup_ckpt_lsa,
+			 FILEIO_BACKUP_RECORD_INFO * all_levels_info,
+			 FILEIO_BACKUP_SESSION * session,
+			 FILEIO_ZIP_METHOD zip_method,
+			 FILEIO_ZIP_LEVEL zip_level);
 extern FILEIO_BACKUP_SESSION *fileio_finish_backup (THREAD_ENTRY * thread_p,
 						    FILEIO_BACKUP_SESSION *
 						    session);
-extern void fileio_abort_backup (FILEIO_BACKUP_SESSION * session,
+extern void fileio_abort_backup (THREAD_ENTRY * thread_p,
+				 FILEIO_BACKUP_SESSION * session,
 				 bool does_unformat_bk);
 extern int fileio_backup_volume (THREAD_ENTRY * thread_p,
 				 FILEIO_BACKUP_SESSION * session,
 				 const char *from_vlabel, VOLID from_volid,
 				 PAGEID last_page, bool only_updated_pages);
-extern FILEIO_BACKUP_SESSION *fileio_start_restore (THREAD_ENTRY * thread_p,
-						    const char *db_fullname,
-						    char *backup_source,
-						    INT64 match_dbcreation,
-						    PGLENGTH * db_iopagesize,
-						    float *db_compatibility,
-						    FILEIO_BACKUP_SESSION *
-						    session,
-						    FILEIO_BACKUP_LEVEL level,
-						    bool authenticate,
-						    INT64 match_bkupcreation,
-						    const char
-						    *restore_verbose_file,
-						    bool newvolpath);
-extern int fileio_finish_restore (FILEIO_BACKUP_SESSION * session);
-extern void fileio_abort_restore (FILEIO_BACKUP_SESSION * session);
+extern FILEIO_BACKUP_SESSION
+  * fileio_start_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
+			  char *backup_source, INT64 match_dbcreation,
+			  PGLENGTH * db_iopagesize, float *db_compatibility,
+			  FILEIO_BACKUP_SESSION * session,
+			  FILEIO_BACKUP_LEVEL level,
+			  bool authenticate, INT64 match_bkupcreation,
+			  const char *restore_verbose_file, bool newvolpath);
+extern int fileio_finish_restore (THREAD_ENTRY * thread_p,
+				  FILEIO_BACKUP_SESSION * session);
+extern void fileio_abort_restore (THREAD_ENTRY * thread_p,
+				  FILEIO_BACKUP_SESSION * session);
 extern int fileio_list_restore (THREAD_ENTRY * thread_p,
 				const char *db_fullname, char *backup_source,
 				PGLENGTH * bkdb_iopagesize,
@@ -546,4 +573,12 @@ extern int fileio_symlink (const char *src, const char *dest, int overwrite);
 extern int fileio_set_permission (const char *vlabel);
 #endif /* !WINDOWS */
 
+/* flush control related */
+extern int fileio_flush_control_initialize (void);
+extern void fileio_flush_control_finalize (void);
+
+/* flush token management */
+extern int fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p,
+					    int diff_usec, int *token_gen,
+					    int *token_consumed);
 #endif /* _FILE_IO_H_ */

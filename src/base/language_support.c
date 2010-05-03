@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -108,11 +108,8 @@ lang_init (void)
   s = strchr (lang_Loc_name, '.');
   if (s != NULL)
     {
-      if (strcasecmp (s, LANG_CHARSET_UTF8))
-	{
-	  lang_Loc_charset = INTL_CODESET_ISO88591;
-	}
-      else if (strcasecmp (s, LANG_CHARSET_EUCKR))
+      s++;
+      if (strcasecmp (s, LANG_CHARSET_EUCKR) == 0)
 	{
 	  lang_Loc_charset = INTL_CODESET_KSC5601_EUC;
 	}
@@ -244,6 +241,7 @@ lang_currency_symbol (DB_CURRENCY curr)
   return (symbol);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * lang_char_mem_size - Returns the character memory size for the given
  *                      pointer to a character
@@ -313,6 +311,7 @@ lang_wchar_screen_size (const wchar_t * p)
     }
   return 1;
 }
+#endif
 
 /*
  * lang_check_identifier - Tests an identifier for possibility
@@ -444,8 +443,10 @@ lang_set_national_charset (const char *charset_name)
   INTL_CODESET server_codeset;
   DB_VALUE value;
 
-  if (!charset_name)
-    server_codeset = intl_codeset (LC_CTYPE);
+  if (charset_name == NULL)
+    {
+      server_codeset = intl_codeset (LC_CTYPE);
+    }
   else
     {
       if (lang_charset_name_to_id (charset_name, &server_codeset) != NO_ERROR)
@@ -462,6 +463,7 @@ lang_set_national_charset (const char *charset_name)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * lang_server_db_charset - Initializes if necessary, then return server's
  *                          charset
@@ -476,6 +478,7 @@ lang_server_db_charset (void)
     }
   return lang_Server_charset;
 }
+#endif
 
 /*
  * lang_server_charset_id - Initializes if necessary, then return server's
@@ -492,6 +495,7 @@ lang_server_charset_id (void)
   return lang_Server_charset.charset_id;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * lang_server_space_char - Initializes if necessary, then return server's
  *                          space character
@@ -541,6 +545,7 @@ lang_server_charset_desc (char *desc)
     }
   (void) strcpy (desc, lang_Server_charset.charset_desc);
 }
+#endif
 
 /*
  * lang_charset_name_to_id - Returns the INTL_CODESET of the specified charset

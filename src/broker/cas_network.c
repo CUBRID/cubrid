@@ -34,29 +34,35 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <io.h>
-#else
+#else /* WINDOWS */
 #include <sys/time.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/un.h>
-#endif
+#endif /* WINDOWS */
 
 #include "cas_common.h"
 #include "cas_network.h"
 #include "cas.h"
 #include "broker_env_def.h"
+#if defined(CAS_FOR_DBMS)
+#include "cas_execute.h"
+#endif /* CAS_FOR_DBMS */
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
-#endif
+#endif /* WINDOWS */
 
 #define SELECT_MASK	fd_set
 
 static int write_to_client (SOCKET sock_fd, const char *buf, int size);
 static int read_from_client (SOCKET sock_fd, char *buf, int size);
 
-int net_timeout_flag = 0;
+static void set_net_timeout_flag ();
+static void unset_net_timeout_flag ();
+
+static bool net_timeout_flag = false;
 
 static char net_error_flag;
 static int net_timeout = NET_DEFAULT_TIMEOUT;
@@ -64,9 +70,9 @@ static int net_timeout = NET_DEFAULT_TIMEOUT;
 SOCKET
 #if defined(WINDOWS)
 net_init_env (int *new_port)
-#else
+#else /* WINDOWS */
 net_init_env (void)
-#endif
+#endif				/* WINDOWS */
 {
   int one = 1;
   SOCKET sock_fd;
@@ -74,10 +80,10 @@ net_init_env (void)
 #if defined(WINDOWS)
   struct sockaddr_in sock_addr;
   int n;
-#else
+#else /* WINDOWS */
   struct sockaddr_un sock_addr;
   char *port_name;
-#endif
+#endif /* WINDOWS */
 
 #if defined(WINDOWS)
   /* WSA startup */
@@ -85,14 +91,14 @@ net_init_env (void)
     {
       return INVALID_SOCKET;
     }
-#endif
+#endif /* WINDOWS */
 
   /* get a Unix stream socket */
 #if defined(WINDOWS)
   sock_fd = socket (AF_INET, SOCK_STREAM, 0);
-#else
+#else /* WINDOWS */
   sock_fd = socket (AF_UNIX, SOCK_STREAM, 0);
-#endif
+#endif /* WINDOWS */
   if (IS_INVALID_SOCKET (sock_fd))
     {
       return INVALID_SOCKET;
@@ -111,7 +117,7 @@ net_init_env (void)
   sock_addr_len = sizeof (struct sockaddr_in);
   n = INADDR_ANY;
   memcpy (&sock_addr.sin_addr, &n, sizeof (int));
-#else
+#else /* WINDOWS */
   if ((port_name = getenv (PORT_NAME_ENV_STR)) == NULL)
     {
       CLOSE_SOCKET (sock_fd);
@@ -124,7 +130,7 @@ net_init_env (void)
 	    port_name);
   sock_addr_len =
     strlen (sock_addr.sun_path) + sizeof (sock_addr.sun_family) + 1;
-#endif
+#endif /* WINDOWS */
 
   if (bind (sock_fd, (struct sockaddr *) &sock_addr, sock_addr_len) < 0)
     {
@@ -138,7 +144,7 @@ net_init_env (void)
       return INVALID_SOCKET;
     }
   *new_port = ntohs (sock_addr.sin_port);
-#endif
+#endif /* WINDOWS */
 
   if (listen (sock_fd, 3) < 0)
     {
@@ -155,9 +161,9 @@ net_connect_client (SOCKET srv_sock_fd)
   int clt_sock_addr_len;
 #elif defined(UNIXWARE7)
   size_t clt_sock_addr_len;
-#else
+#else /* UNIXWARE7 */
   socklen_t clt_sock_addr_len;
-#endif
+#endif /* UNIXWARE7 */
   SOCKET clt_sock_fd;
   struct sockaddr_in clt_sock_addr;
 
@@ -205,7 +211,7 @@ net_read_stream (SOCKET sock_fd, char *buf, int size)
       if (read_len <= 0)
 	{
 #ifdef _DEBUG
-	  if (!net_timeout_flag)
+	  if (!is_net_timed_out ())
 	    printf ("read error %d\n", read_len);
 #endif
 	  return -1;
@@ -343,7 +349,7 @@ net_read_to_file (SOCKET sock_fd, int file_size, char *filename)
 #if defined(WINDOWS)
   if (out_fd >= 0)
     setmode (out_fd, O_BINARY);
-#endif
+#endif /* WINDOWS */
 
   while (file_size > 0)
     {
@@ -351,7 +357,11 @@ net_read_to_file (SOCKET sock_fd, int file_size, char *filename)
 				   (int) MIN (SSIZEOF (read_buf), file_size));
       if (read_len <= 0 || read_len > MIN (SSIZEOF (read_buf), file_size))
 	{
+#if defined(CAS_FOR_DBMS)
+	  return ERROR_INFO_SET (CAS_ER_COMMUNICATION, CAS_ERROR_INDICATOR);
+#else /* CAS_FOR_DBMS */
 	  return CAS_ER_COMMUNICATION;
+#endif /* CAS_FOR_DBMS */
 	}
       if (out_fd >= 0)
 	{
@@ -362,7 +372,11 @@ net_read_to_file (SOCKET sock_fd, int file_size, char *filename)
 
   if (out_fd < 0)
     {
+#if defined(CAS_FOR_DBMS)
+      return ERROR_INFO_SET (CAS_ER_OPEN_FILE, CAS_ERROR_INDICATOR);
+#else /* CAS_FOR_DBMS */
       return CAS_ER_OPEN_FILE;
+#endif /* CAS_FOR_DBMS */
     }
 
   close (out_fd);
@@ -384,7 +398,7 @@ net_write_from_file (SOCKET sock_fd, int file_size, char *filename)
 
 #if defined(WINDOWS)
   setmode (in_fd, O_BINARY);
-#endif
+#endif /* WINDOWS */
 
   while (file_size > 0)
     {
@@ -434,7 +448,7 @@ read_from_client (SOCKET sock_fd, char *buf, int size)
       timeout_ptr = &timeout_val;
     }
 
-  net_timeout_flag = 0;
+  unset_net_timeout_flag ();
   if (net_error_flag)
     return -1;
 
@@ -462,21 +476,21 @@ retry_select:
       net_error_flag = 1;
       return -1;
     }
-#endif
+#endif /* ASYNC_MODE */
 
 #ifdef ASYNC_MODE
   if (FD_ISSET (sock_fd, (fd_set *) & read_mask))
     {
-#endif
+#endif /* ASYNC_MODE */
       read_len = READ_FROM_SOCKET (sock_fd, buf, size);
 #ifdef ASYNC_MODE
     }
   else
     {
-      net_timeout_flag = 1;
+      set_net_timeout_flag ();
       return -1;
     }
-#endif
+#endif /* ASYNC_MODE */
 
   if (read_len <= 0)
     net_error_flag = 1;
@@ -530,12 +544,12 @@ retry_select:
       net_error_flag = 1;
       return -1;
     }
-#endif
+#endif /* ASYNC_MODE */
 
 #ifdef ASYNC_MODE
   if (FD_ISSET (sock_fd, (fd_set *) & write_mask))
     {
-#endif
+#endif /* ASYNC_MODE */
       write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
 #ifdef ASYNC_MODE
     }
@@ -544,10 +558,28 @@ retry_select:
       net_error_flag = 1;
       return -1;
     }
-#endif
+#endif /* ASYNC_MODE */
 
   if (write_len <= 0)
     net_error_flag = 1;
 
   return write_len;
+}
+
+bool
+is_net_timed_out ()
+{
+  return net_timeout_flag;
+}
+
+static void
+set_net_timeout_flag ()
+{
+  net_timeout_flag = true;
+}
+
+static void
+unset_net_timeout_flag ()
+{
+  net_timeout_flag = false;
 }

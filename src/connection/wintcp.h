@@ -52,7 +52,9 @@ extern SOCKET css_tcp_client_open (const char *hostname, int port);
 extern SOCKET css_tcp_client_open_with_retry (const char *hostname, int port,
 					      bool willretry);
 extern void css_shutdown_socket (SOCKET fd);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int css_fd_down (SOCKET fd);
+#endif
 extern unsigned int css_gethostid (void);
 extern bool css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd);
 extern bool css_tcp_listen_server_datagram (SOCKET sockfd, SOCKET * newfd);

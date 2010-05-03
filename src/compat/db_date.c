@@ -367,7 +367,7 @@ db_time_decode (DB_TIME * timeval, int *hourp, int *minutep, int *secondp)
  */
 
 /*
- * db_tm_encode() - This funciton is used in conjunction with Unix mktime to
+ * db_tm_encode() - This function is used in conjunction with Unix mktime to
  *    convert julian/time pairs into a universal time constant.
  *    Be careful not to pass pointers to the tm_ structure to the decoding
  *    functions.  When these go through the PC int-to-long filter, they

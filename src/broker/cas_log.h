@@ -37,7 +37,7 @@ extern int cas_access_log (struct timeval *start_time, int as_index,
 			   int client_ip_addr);
 extern void cas_log_end (int mode, int run_time_sec, int run_time_msec);
 extern void cas_log_write_nonl (unsigned int seq_num, bool unit_start,
-			      const char *fmt, ...);
+				const char *fmt, ...);
 extern void cas_log_write (unsigned int seq_num, bool unit_start,
 			   const char *fmt, ...);
 extern void cas_log_write_and_end (unsigned int seq_num, bool unit_start,
@@ -61,9 +61,4 @@ extern int cas_log_query_info_init (int id);
 extern void cas_log_query_info_next (void);
 extern void cas_log_query_info_end (void);
 
-extern void cas_log_error_handler_begin (void);
-extern void cas_log_error_handler_end (void);
-extern void cas_log_error_handler_clear (void);
-extern char *cas_log_error_handler_asprint (char *buf, size_t bufsz,
-					    bool clear);
 #endif /* _CAS_LOG_H_ */

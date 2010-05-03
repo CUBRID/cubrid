@@ -271,7 +271,9 @@ static PT_NODE *mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
 static PT_NODE *mq_translate_local (PARSER_CONTEXT * parser,
 				    PT_NODE * statement, void *void_arg,
 				    int *continue_walk);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *mq_collapse_dot (PARSER_CONTEXT * parser, PT_NODE * tree);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static PT_NODE *mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec,
 			      PT_NODE * attributes, DB_OBJECT * vclass_object,
 			      int cascaded_check);
@@ -451,10 +453,11 @@ static PT_NODE *mq_push_path (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 static PT_NODE *mq_derived_path (PARSER_CONTEXT * parser, PT_NODE * statement,
 				 PT_NODE * path);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int mq_mget_exprs (DB_OBJECT ** objects, int rows,
 			  char **exprs, int cols, int qOnErr,
 			  DB_VALUE * values, int *results, char *emsg);
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 static void mq_insert_symbol (PARSER_CONTEXT * parser, PT_NODE ** listhead,
 			      PT_NODE * attr);
@@ -488,7 +491,7 @@ mq_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 
   /* Can not increment threshold for list portion of walk.
    * Since those queries are not sub-queries of this query.
-   * Consequently, we recurse seperately for the list leading
+   * Consequently, we recurse separately for the list leading
    * from a query.
    */
   if (node->next)
@@ -1019,7 +1022,7 @@ mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_SELECT:
       /* Can not increment level for list portion of walk.
        * Since those queries are not sub-queries of this query.
-       * Consequently, we recurse seperately for the list leading
+       * Consequently, we recurse separately for the list leading
        * from a query.  Can't just call pt_to_uncorr_subquery_list()
        * directly since it needs to do a leaf walk and we want to do a full
        * walk on the next list.
@@ -1141,17 +1144,19 @@ mq_conditionally_add_objects (PARSER_CONTEXT * parser, PT_NODE * flat,
  *   parser(in):
  *   statement(in):
  *   classes(in/out):
- *   i(in/out):
+ *   num_classes(in/out):
  *   max(in/out):
  */
 static bool
 mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
-		    DB_OBJECT *** classes, int *i, int *max)
+		    DB_OBJECT *** classes, int *num_classes, int *max)
 {
   bool updatable = statement != NULL;
 
   if (statement && statement->info.query.all_distinct == PT_DISTINCT)	/* distinct */
-    updatable = false;
+    {
+      updatable = false;
+    }
 
   while (updatable && statement)
     {
@@ -1173,23 +1178,45 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    }
 	  if (updatable)
 	    {
-	      updatable = mq_conditionally_add_objects
-		(parser,
-		 statement->info.query.q.select.from->info.spec.
-		 flat_entity_list, classes, i, max);
+	      PT_NODE *from;
+
+	      from = statement->info.query.q.select.from;
+	      updatable = mq_conditionally_add_objects (parser,
+							from->info.spec.
+							flat_entity_list,
+							classes, num_classes,
+							max);
+	    }
+	  if (updatable)
+	    {
+	      int i = 0;
+
+	      for (i = 0; i < *num_classes; ++i)
+		{
+		  if (sm_is_reuse_oid_class ((*classes)[i]))
+		    {
+		      updatable = false;
+		      break;
+		    }
+		}
 	    }
 	  break;
 
 	case PT_UNION:
 	  if (updatable)
-	    updatable =		/* both args updatable? */
-	      mq_updatable_local (parser, statement->info.query.q.union_.arg1,
-				  classes, i, max);
+	    {
+	      updatable =	/* both args updatable? */
+		mq_updatable_local (parser,
+				    statement->info.query.q.union_.arg1,
+				    classes, num_classes, max);
+	    }
 	  if (updatable)
-	    updatable =
-	      mq_updatable_local (parser, statement->info.query.q.union_.arg2,
-				  classes, i, max);
-
+	    {
+	      updatable =
+		mq_updatable_local (parser,
+				    statement->info.query.q.union_.arg2,
+				    classes, num_classes, max);
+	    }
 	  break;
 
 	default:
@@ -1213,12 +1240,13 @@ bool
 mq_updatable (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   bool updatable;
-  int i = 0;
+  int num_classes = 0;
   int max = MAX_STACK_OBJECTS;
   DB_OBJECT *class_stack_array[MAX_STACK_OBJECTS];
   DB_OBJECT **classes = class_stack_array;
 
-  updatable = mq_updatable_local (parser, statement, &classes, &i, &max);
+  updatable = mq_updatable_local (parser, statement, &classes, &num_classes,
+				  &max);
 
   /* don't keep dangling pointers on stack or in virtual memory */
   memset (classes, 0, max * sizeof (DB_OBJECT *));
@@ -3657,14 +3685,14 @@ mq_push_paths_select (PARSER_CONTEXT * parser, PT_NODE * statement,
  * 	   of subqueries, joins and unions occuring.)
  *
  * 	2) virtual specs of aggregate selects which would translate
- * 	   to a union are rewrittin as derived.
+ * 	   to a union are rewritten as derived.
  */
 static PT_NODE *
 mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 {
   PT_NODE *from;
 
-  /* Convert to cnf and tag tagable terms */
+  /* Convert to cnf and tag taggable terms */
   select_statement->info.query.q.select.where =
     pt_cnf (parser, select_statement->info.query.q.select.where);
   if (select_statement->info.query.q.select.having)
@@ -3974,6 +4002,7 @@ mq_fetch_subqueries (PARSER_CONTEXT * parser, PT_NODE * class_)
   return NULL;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * mq_collapse_dot() -
  *   return: PT_NAME node with the printable form and type of a sub tree
@@ -4015,6 +4044,7 @@ mq_collapse_dot (PARSER_CONTEXT * parser, PT_NODE * tree)
 
   return collapse;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * mq_set_types() - sets the type of each item in the select list to
@@ -5197,7 +5227,7 @@ mq_reset_ids (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec)
 {
   PT_NODE *range;
 
-  /* don't mess with psuedo specs */
+  /* don't mess with pseudo specs */
   if (spec->info.spec.derived_table_type == PT_IS_WHACKED_SPEC)
     {
       return statement;
@@ -5367,7 +5397,7 @@ mq_reset_ids_and_references_helper (PARSER_CONTEXT * parser,
 				    PT_NODE * statement, PT_NODE * spec,
 				    bool get_spec_referenced_attr)
 {
-  /* don't mess with psuedo specs */
+  /* don't mess with pseudo specs */
   if (spec->info.spec.derived_table_type == PT_IS_WHACKED_SPEC)
     {
       return statement;
@@ -5603,7 +5633,7 @@ PT_NODE *
 mq_set_references (PARSER_CONTEXT * parser, PT_NODE * statement,
 		   PT_NODE * spec)
 {
-  /* don't mess with psuedo specs */
+  /* don't mess with pseudo specs */
   if (spec->info.spec.derived_table_type == PT_IS_WHACKED_SPEC)
     {
       return statement;
@@ -8963,6 +8993,7 @@ mq_get_expression (DB_OBJECT * object, const char *expr, DB_VALUE * value)
   return error;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * mq_mget_exprs() - bulk db_get_expression of a list of attribute exprs
  *      for a given set of instances of a class
@@ -8976,7 +9007,7 @@ mq_get_expression (DB_OBJECT * object, const char *expr, DB_VALUE * value)
  *   results(out): array of result codes
  *   emsg(out): a diagnostic message if an error occurred
  */
-int
+static int
 mq_mget_exprs (DB_OBJECT ** objects, int rows, char **exprs,
 	       int cols, int qOnErr, DB_VALUE * values,
 	       int *results, char *emsg)
@@ -9110,6 +9141,7 @@ mq_mget_exprs (DB_OBJECT ** objects, int rows, char **exprs,
 
   return count;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * mq_is_real_class_of_vclass() - determine if s_class is one of the real

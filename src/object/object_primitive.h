@@ -287,16 +287,22 @@ extern int pr_clone_value (DB_VALUE * src, DB_VALUE * dest);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int pr_share_value (DB_VALUE * src, DB_VALUE * dest);
 #endif
-#define PR_SHARE_VALUE(src, dst)                                            \
-    {                                                                       \
-	if (src && dst && src != dst) {					    \
-            *(dst) = *(src);                                                \
-            (dst)->need_clear = false;                                      \
-            if (pr_is_set_type((DB_TYPE) ((src)->domain.general_info.type)) &&          \
-                (src)->domain.general_info.is_null == 0)                    \
-                (src)->data.set->ref_count++;                               \
-        }								    \
-    }
+#define PR_SHARE_VALUE(src, dst) \
+  do \
+    { \
+      if (src && dst && src != dst) \
+	{ \
+	  *(dst) = *(src); \
+	  (dst)->need_clear = false; \
+	  if (pr_is_set_type ((DB_TYPE) ((src)->domain.general_info.type)) \
+	      && (src)->domain.general_info.is_null == 0) \
+	    { \
+	      (src)->data.set->ref_count++; \
+	    } \
+	} \
+    } \
+  while (0)
+
 extern int pr_clone_value_nocopy (DB_VALUE * src, DB_VALUE * dest);
 extern int pr_clear_value (DB_VALUE * var);
 extern int pr_free_value (DB_VALUE * var);
@@ -321,10 +327,12 @@ extern char *pr_valstring (DB_VALUE *);
 
 /* Garbage collection support */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void pr_gc_set (SETOBJ * set, void (*gcmarker) (MOP));
 extern void pr_gc_setref (SETREF * set, void (*gcmarker) (MOP));
 extern void pr_gc_value (DB_VALUE * value, void (*gcmarker) (MOP));
 extern void pr_gc_type (PR_TYPE * type, char *mem, void (*gcmarker) (MOP));
+#endif
 
 /* area init */
 extern void pr_area_init (void);

@@ -32,7 +32,7 @@
 #endif
 
 #include "cm_porting.h"
-#include "cm_nameval.h"
+#include "cm_dep.h"
 #include "cm_command_execute.h"
 #include "cm_job_task.h"
 
@@ -58,55 +58,6 @@
 #define MAX_AUTOQUERY_SCRIPT_SIZE	4095
 #define MAX_JOB_CONFIG_FILE_LINE_LENGTH	(4096 + 256)
 
-/* error codes */
-#define ERR_NO_ERROR		1000
-#define ERR_GENERAL_ERROR	1010
-#define ERR_UNDEFINED_TASK	1020
-#define ERR_DBDIRNAME_NULL	1030
-#define ERR_REQUEST_FORMAT	1040
-#define ERR_DATABASETXT_OPEN	1050
-#define ERR_USER_CAPABILITY	1060
-#define ERR_FILE_INTEGRITY	1070
-#define ERR_FILE_COMPRESS	1075
-#define ERR_SYSTEM_CALL		1080
-#define ERR_PASSWORD_FILE	1090
-#define ERR_PARAM_MISSING	1100
-#define ERR_DIR_CREATE_FAIL	1110
-#define ERR_DIR_REMOVE_FAIL 1115
-#define ERR_GET_FILE 		1117
-#define ERR_FILE_OPEN_FAIL	1120
-#define ERR_FILE_CREATE_FAIL	1125
-#define ERR_SYSTEM_CALL_CON_DUMP 1130
-#define ERR_STAT		1140
-#define ERR_OPENDIR		1150
-#define ERR_UNICASCONF_OPEN	1160
-#define ERR_UNICASCONF_PARAM_MISSING 1170
-#define ERR_STANDALONE_MODE	1180
-#define ERR_DB_ACTIVE		1190
-#define ERR_DB_INACTIVE		1195
-#define ERR_DB_NONEXISTANT	1200
-#define ERR_DBMTUSER_EXIST	1210
-#define ERR_DIROPENFAIL		1220
-#define ERR_PERMISSION		1230
-#define ERR_INVALID_TOKEN	1240
-#define ERR_DBLOGIN_FAIL	1250
-#define ERR_DBRESTART_FAIL	1260
-#define ERR_DBUSER_NOTFOUND	1270
-#define ERR_DBPASSWD_CLEAR	1280
-#define ERR_DBPASSWD_SET	1290
-#define ERR_MEM_ALLOC		1300
-#define ERR_TMPFILE_OPEN_FAIL	1310
-#define ERR_WITH_MSG		1320
-#define ERR_UPA_SYSTEM		1330
-#define ERR_TEMPLATE_ALREADY_EXIST 1340
-
-typedef enum
-{
-  DB_SERVICE_MODE_NONE = 0,
-  DB_SERVICE_MODE_SA = 1,
-  DB_SERVICE_MODE_CS = 2
-} T_DB_SERVICE_MODE;
-
 typedef enum
 {
   TIME_STR_FMT_DATE = NV_ADD_DATE,
@@ -114,6 +65,13 @@ typedef enum
   TIME_STR_FMT_DATE_TIME = NV_ADD_DATE_TIME
 } T_TIME_STR_FMT_TYPE;
 
+int _op_check_is_localhost (char *token, char *tmpdbname);
+void append_host_to_dbname (char *name_buf, const char *dbname, int buf_len);
+void *increase_capacity (void *ptr, int block_size, int old_count,
+			 int new_count);
+char *strcpy_limit (char *dest, const char *src, int buf_len);
+int ut_getdelim (char **lineptr, int *n, int delimiter, FILE * fp);
+int ut_getline (char **lineptr, int *n, FILE * fp);
 int ut_error_log (nvplist * req, const char *errmsg);
 int ut_access_log (nvplist * req, const char *msg);
 void uRemoveCRLF (char *str);
@@ -123,16 +81,12 @@ int ut_gettaskcode (char *task);
 int ut_send_response (SOCKET fd, nvplist * res);
 int ut_receive_request (SOCKET fd, nvplist * req);
 void ut_daemon_start (void);
-int uIsDatabaseActive (char *dbname);
-int uIsDatabaseActive2 (T_COMMDB_RESULT * cmd_res, char *dbn);
 void ut_dump_file_to_string (char *string, char *fname);
 int uRetrieveDBDirectory (const char *dbname, char *target);
-int uRetrieveDBLogDirectory (char *dbname, char *target);
-T_DB_SERVICE_MODE uDatabaseMode (char *dbname);
 int _isRegisteredDB (char *);
 int uReadDBnfo (char *);
 void uWriteDBnfo (void);
-void uWriteDBnfo2 (T_COMMDB_RESULT * cmd_res);
+void uWriteDBnfo2 (T_SERVER_STATUS_RESULT * cmd_res);
 int uCreateLockFile (char *filename);
 void uRemoveLockFile (int fd);
 int uCreateDir (char *path);
@@ -153,15 +107,11 @@ int ut_disk_free_space (char *path);
 char *ip2str (unsigned char *ip, char *ip_str);
 int string_tokenize (char *str, char *tok[], int num_tok);
 int string_tokenize2 (char *str, char *tok[], int num_tok, int c);
-int get_db_server_pid (char *dbname);
 int ut_get_task_info (char *task, char *access_log_flag,
 		      T_TASK_FUNC * task_func);
 char *time_to_str (time_t t, const char *fmt, char *buf, int type);
 int read_from_socket (SOCKET fd, char *buf, int size);
 int write_to_socket (SOCKET fd, const char *buf, int size);
-int run_child (const char *const argv[], int wait_flag,
-	       const char *stdin_file, char *stdout_file, char *stderr_file,
-	       int *exit_status);
 void wait_proc (int pid);
 int is_cmserver_process (int pid, const char *module_name);
 int make_default_env (void);
@@ -174,5 +124,4 @@ int kill (int pid, int signo);
 void unix_style_path (char *path);
 char *nt_style_path (char *path, char *new_path_buf);
 #endif
-
 #endif /* _CM_SERVER_UTIL_H_ */

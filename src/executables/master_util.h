@@ -28,7 +28,22 @@
 
 #ident "$Id$"
 
+#include "thread.h"
 #include "connection_defs.h"
+
+#if defined(WINDOWS)
+#define SLEEP_SEC(X)                    Sleep((X) * 1000)
+#define SLEEP_MILISEC(sec, msec)        Sleep((sec) * 1000 + (msec))
+#else
+#define SLEEP_SEC(X)                    sleep(X)
+#define SLEEP_MILISEC(sec, msec)        \
+	do {            \
+		struct timeval sleep_time_val;                \
+		sleep_time_val.tv_sec = sec;                  \
+		sleep_time_val.tv_usec = (msec) * 1000;       \
+		select(0, 0, 0, 0, &sleep_time_val);          \
+	} while(0)
+#endif
 
 typedef struct socket_queue_entry SOCKET_QUEUE_ENTRY;
 struct socket_queue_entry
@@ -45,10 +60,19 @@ struct socket_queue_entry
   char *env_var;
   CSS_CONN_ENTRY *conn_ptr;
   int port_id;
+  int ha_mode;
   struct socket_queue_entry *next;
 };
 
 extern bool master_util_config_startup (const char *db_name, int *port_id);
 extern void master_util_wait_proc_terminate (int pid);
+
+
+#define IS_MASTER_CONN_NAME_DRIVER(name)        (*((char *)name) == '-')
+#define IS_MASTER_CONN_NAME_REPL_AGENT(name)    (*((char *)name) == '&')
+#define IS_MASTER_CONN_NAME_REPL_SERVER(name)   (*((char *)name) == '+')
+#define IS_MASTER_CONN_NAME_HA_SERVER(name)     (*((char *)name) == '#')
+#define IS_MASTER_CONN_NAME_HA_COPYLOG(name)    (*((char *)name) == '$')
+#define IS_MASTER_CONN_NAME_HA_APPLYLOG(name)   (*((char *)name) == '%')
 
 #endif /* _MASTER_UTIL_H_ */

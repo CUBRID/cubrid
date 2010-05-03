@@ -2025,6 +2025,7 @@ xts_save_string (const char *string)
   return offset;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int
 xts_save_string_with_length (const char *string, int length)
 {
@@ -2071,6 +2072,7 @@ xts_save_input_vals (const char *input_vals_p, int length)
 
   return offset;
 }
+#endif
 
 static int
 xts_save_db_value_array (DB_VALUE ** db_value_array_p, int nelements)
@@ -2103,6 +2105,7 @@ end:
   return offset;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int
 xts_save_domain_array (TP_DOMAIN ** domain_array_p, int nelements)
 {
@@ -2133,6 +2136,7 @@ xts_save_domain_array (TP_DOMAIN ** domain_array_p, int nelements)
 
   return offset;
 }
+#endif
 
 static int
 xts_save_int_array (int *int_array, int nelements)
@@ -2688,77 +2692,41 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     {
     case BUILDLIST_PROC:
       ptr = xts_process_buildlist_proc (ptr, &xasl->proc.buildlist);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case BUILDVALUE_PROC:
       ptr = xts_process_buildvalue_proc (ptr, &xasl->proc.buildvalue);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case MERGELIST_PROC:
       ptr = xts_process_mergelist_proc (ptr, &xasl->proc.mergelist);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case CONNECTBY_PROC:
       ptr = xts_process_connectby_proc (ptr, &xasl->proc.connect_by);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case UPDATE_PROC:
       ptr = xts_process_update_proc (ptr, &xasl->proc.update);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case DELETE_PROC:
       ptr = xts_process_delete_proc (ptr, &xasl->proc.delete_);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case INSERT_PROC:
       ptr = xts_process_insert_proc (ptr, &xasl->proc.insert);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
       ptr = xts_process_union_proc (ptr, &xasl->proc.union_);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case OBJFETCH_PROC:
     case SETFETCH_PROC:
       ptr = xts_process_fetch_proc (ptr, &xasl->proc.fetch);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case SCAN_PROC:
@@ -2766,6 +2734,11 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
+      return NULL;
+    }
+
+  if (ptr == NULL)
+    {
       return NULL;
     }
 
@@ -3327,18 +3300,10 @@ xts_process_pred_expr (char *ptr, const PRED_EXPR * pred_expr)
     {
     case T_PRED:
       ptr = xts_process_pred (ptr, &pred_expr->pe.pred);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case T_EVAL_TERM:
       ptr = xts_process_eval_term (ptr, &pred_expr->pe.eval_term);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case T_NOT_TERM:
@@ -3379,8 +3344,8 @@ xts_process_partition_info (char *ptr,
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset =
-    xts_save_parts_array (partition_info->parts, partition_info->no_parts);
+  offset = xts_save_parts_array (partition_info->parts,
+				 partition_info->no_parts);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3464,26 +3429,14 @@ xts_process_eval_term (char *ptr, const EVAL_TERM * eval_term)
     {
     case T_COMP_EVAL_TERM:
       ptr = xts_process_comp_eval_term (ptr, &eval_term->et.et_comp);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case T_ALSM_EVAL_TERM:
       ptr = xts_process_alsm_eval_term (ptr, &eval_term->et.et_alsm);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case T_LIKE_EVAL_TERM:
       ptr = xts_process_like_eval_term (ptr, &eval_term->et.et_like);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     default:
@@ -3626,44 +3579,33 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
     {
     case TARGET_CLASS:
     case TARGET_CLASS_ATTR:
-      ptr =
-	xts_process_cls_spec_type (ptr, &ACCESS_SPEC_CLS_SPEC (access_spec));
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
+      ptr = xts_process_cls_spec_type (ptr,
+				       &ACCESS_SPEC_CLS_SPEC (access_spec));
       break;
 
     case TARGET_LIST:
       ptr = xts_process_list_spec_type (ptr,
 					&ACCESS_SPEC_LIST_SPEC (access_spec));
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case TARGET_SET:
-      ptr =
-	xts_process_set_spec_type (ptr, &ACCESS_SPEC_SET_SPEC (access_spec));
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
+      ptr = xts_process_set_spec_type (ptr,
+				       &ACCESS_SPEC_SET_SPEC (access_spec));
       break;
 
     case TARGET_METHOD:
       ptr = xts_process_method_spec_type (ptr,
 					  &ACCESS_SPEC_METHOD_SPEC
 					  (access_spec));
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
+      return NULL;
+    }
+
+  if (ptr == NULL)
+    {
       return NULL;
     }
 
@@ -3699,10 +3641,6 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
   ptr = or_pack_int (ptr, indx_info->range_type);
 
   ptr = xts_process_key_info (ptr, &indx_info->key_info);
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
 
   return ptr;
 }
@@ -3789,8 +3727,8 @@ xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spec)
 
   ptr = or_pack_int (ptr, cls_spec->num_attrs_key);
 
-  offset =
-    xts_save_int_array (cls_spec->attrids_key, cls_spec->num_attrs_key);
+  offset = xts_save_int_array (cls_spec->attrids_key,
+			       cls_spec->num_attrs_key);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3806,8 +3744,8 @@ xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spec)
 
   ptr = or_pack_int (ptr, cls_spec->num_attrs_pred);
 
-  offset =
-    xts_save_int_array (cls_spec->attrids_pred, cls_spec->num_attrs_pred);
+  offset = xts_save_int_array (cls_spec->attrids_pred,
+			       cls_spec->num_attrs_pred);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -3823,8 +3761,8 @@ xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spec)
 
   ptr = or_pack_int (ptr, cls_spec->num_attrs_rest);
 
-  offset =
-    xts_save_int_array (cls_spec->attrids_rest, cls_spec->num_attrs_rest);
+  offset = xts_save_int_array (cls_spec->attrids_rest,
+			       cls_spec->num_attrs_rest);
   if (offset == ER_FAILED)
     {
       return NULL;

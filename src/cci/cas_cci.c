@@ -131,6 +131,8 @@ static int cas_connect_with_ret (T_CON_HANDLE * con_handle,
 				 T_CCI_ERROR * err_buf, int *connect);
 static int cas_connect_low (T_CON_HANDLE * con_handle,
 			    T_CCI_ERROR * err_buf, int *connect);
+static void cas_connect_set_info (T_CON_HANDLE * con_handle, SOCKET sock_fd,
+				  int alt_host_id, T_CCI_ERROR * err_buf);
 static int get_query_info (int req_h_id, char log_type, char **out_buf);
 static int next_result_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf);
 
@@ -146,14 +148,14 @@ static int glo_cmd_ex (T_CON_HANDLE * con_handle, T_NET_BUF * net_buf,
 
 #ifdef CCI_DEBUG
 static void print_debug_msg (const char *format, ...);
-static char *dbg_tran_type_str (char type);
-static char *dbg_a_type_str (T_CCI_A_TYPE);
-static char *dbg_u_type_str (T_CCI_U_TYPE);
-static char *dbg_db_param_str (T_CCI_DB_PARAM db_param);
-static char *dbg_cursor_pos_str (T_CCI_CURSOR_POS cursor_pos);
-static char *dbg_sch_type_str (T_CCI_SCH_TYPE sch_type);
-static char *dbg_oid_cmd_str (T_CCI_OID_CMD oid_cmd);
-static char *dbg_isolation_str (T_CCI_TRAN_ISOLATION isol_level);
+static const char *dbg_tran_type_str (char type);
+static const char *dbg_a_type_str (T_CCI_A_TYPE);
+static const char *dbg_u_type_str (T_CCI_U_TYPE);
+static const char *dbg_db_param_str (T_CCI_DB_PARAM db_param);
+static const char *dbg_cursor_pos_str (T_CCI_CURSOR_POS cursor_pos);
+static const char *dbg_sch_type_str (T_CCI_SCH_TYPE sch_type);
+static const char *dbg_oid_cmd_str (T_CCI_OID_CMD oid_cmd);
+static const char *dbg_isolation_str (T_CCI_TRAN_ISOLATION isol_level);
 #endif
 
 static THREAD_FUNC execute_thread (void *arg);
@@ -163,6 +165,11 @@ static int connect_prepare_again (T_CON_HANDLE * con_handle,
 				  T_REQ_HANDLE * req_handle,
 				  T_CCI_ERROR * err_buf);
 static const char *cci_get_err_msg_low (int err_code);
+
+static int cci_parse_url_property (T_CON_HANDLE * con_handle, char *property);
+static int cci_parse_url_alter_host (T_CON_HANDLE * con_handle,
+				     char *alter_host);
+static int cci_parse_url_rctime (T_CON_HANDLE * con_handle, char *rctime);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -178,8 +185,10 @@ static const char *cci_get_err_msg_low (int err_code);
 
 #if defined(WINDOWS)
 static HANDLE con_handle_table_mutex;
+extern HANDLE ha_status_mutex;
 #else
 static T_MUTEX con_handle_table_mutex = PTHREAD_MUTEX_INITIALIZER;
+extern T_MUTEX ha_status_mutex;
 #endif
 
 static char init_flag = 0;
@@ -187,7 +196,6 @@ static char cci_init_flag = 1;
 #if !defined(WINDOWS)
 static int cci_SIGPIPE_ignore = 0;
 #endif
-
 
 /************************************************************************
  * IMPLEMENTATION OF INTERFACE FUNCTIONS 				*
@@ -217,13 +225,15 @@ cci_init ()
       cci_init_flag = 0;
 #if defined(WINDOWS)
       MUTEX_INIT (con_handle_table_mutex);
+      MUTEX_INIT (ha_status_mutex);
 #endif
     }
 }
 
 void
-cci_end ()
+cci_end (void)
 {
+  return;
 }
 
 int
@@ -270,7 +280,7 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
     return CCI_ER_CONNECT;
 #endif
 
-  hm_ip_str_to_addr (ip, ip_addr);
+  (void) hm_ip_str_to_addr (ip, ip_addr);
 
   MUTEX_LOCK (con_handle_table_mutex);
 
@@ -304,6 +314,204 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
 #endif
 
   return con_handle_id;
+}
+
+int
+cci_connect_with_url (char *url, char *user, char *password)
+{
+  char buf[1024];
+  char *conn_string;
+  char *property;
+  char *p, *q, *end;
+  char *host, *dbname;
+  int port;
+  int error;
+  int con_handle_id;
+  T_CON_HANDLE *con_handle = NULL;
+
+  strcpy (buf, url);
+
+  conn_string = strtok_r (buf, "?", &property);
+  if (conn_string == NULL)
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  if (strncasecmp (conn_string, "cci:cubrid:", 11) != 0)
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  p = conn_string + 11;
+  host = strtok_r (p, ":", &q);
+  if (host == NULL)
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  p = strtok_r (NULL, ":", &q);
+  if (p == NULL)
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  end = NULL;
+  port = (int) strtol (p, &end, 10);
+  if (port <= 0 || (end != NULL && end[0] != '\0'))
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  dbname = strtok_r (NULL, ":", &q);
+  if (dbname == NULL)
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  p = strtok_r (NULL, ":", &q);
+  if (p != NULL)
+    {
+      user = p;
+    }
+
+  p = strtok_r (NULL, ":", &q);
+  if (p != NULL)
+    {
+      password = p;
+    }
+
+  con_handle_id = CCI_CONNECT_INTERNAL_FUNC_NAME (host, port, dbname,
+						  user, password);
+  if (con_handle_id >= 0 && property != NULL)
+    {
+      con_handle = hm_find_con_handle (con_handle_id);
+      error = cci_parse_url_property (con_handle, property);
+      if (error < 0)
+	{
+	  hm_con_handle_free (con_handle_id);
+	  return error;
+	}
+
+      if (con_handle->alter_host_count > 0)
+	{
+	  con_handle->alter_host_id = hm_get_ha_connected_host (con_handle);
+	}
+    }
+
+  return con_handle_id;
+}
+
+static int
+cci_parse_url_property (T_CON_HANDLE * con_handle, char *property)
+{
+  char *p, *q;
+
+  p = strtok_r (property, "&", &q);
+
+  while (p != NULL)
+    {
+      if (strncasecmp (p, "althosts", 8) == 0)
+	{
+	  if (cci_parse_url_alter_host (con_handle, p) < 0)
+	    {
+	      return CCI_ER_INVALID_URL;
+	    }
+	}
+      else if (strncasecmp (p, "rctime", 5) == 0)
+	{
+	  if (cci_parse_url_rctime (con_handle, p) < 0)
+	    {
+	      return CCI_ER_INVALID_URL;
+	    }
+	}
+      else
+	{
+	  return CCI_ER_INVALID_URL;
+	}
+
+      p = strtok_r (NULL, "&", &q);
+    }
+
+  return CCI_ER_NO_ERROR;
+}
+
+static int
+cci_parse_url_alter_host (T_CON_HANDLE * con_handle, char *alter_host)
+{
+  char *p, *q, *end;
+  int count = 0;
+  int error;
+  int port;
+
+  p = strtok_r (alter_host, "=", &q);
+  if (p == NULL || q == NULL)
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  do
+    {
+      p = strtok_r (NULL, ":", &q);
+      if (p == NULL)
+	{
+	  return CCI_ER_INVALID_URL;
+	}
+
+      error = hm_ip_str_to_addr (p, con_handle->alter_hosts[count].ip_addr);
+      if (error < 0)
+	{
+	  return error;
+	}
+
+      p = strtok_r (NULL, ",", &q);
+      if (p == NULL)
+	{
+	  return CCI_ER_INVALID_URL;
+	}
+
+      end = NULL;
+      port = (int) strtol (p, &end, 10);
+      if (port <= 0 || (end != NULL && end[0] != '\0'))
+	{
+	  return CCI_ER_INVALID_URL;
+	}
+      con_handle->alter_hosts[count].port = port;
+
+      count++;
+      if (count >= ALTER_HOST_MAX_SIZE)
+	{
+	  return CCI_ER_INVALID_URL;
+	}
+    }
+  while (q != NULL && q[0] != '\0');
+
+  con_handle->alter_host_count = count;
+
+  return CCI_ER_NO_ERROR;
+}
+
+static int
+cci_parse_url_rctime (T_CON_HANDLE * con_handle, char *rctime)
+{
+  char *p, *q, *end;
+  int rc_time;
+
+  p = strtok_r (rctime, "=", &q);
+  if (p == NULL || q == NULL || q[0] == '\0')
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  end = NULL;
+  rc_time = (int) strtol (q, &end, 10);
+  if (rc_time < 0 || (end != NULL && end[0] != '\0'))
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  con_handle->rc_time = rc_time;
+
+  return CCI_ER_NO_ERROR;
 }
 
 int
@@ -3469,6 +3677,9 @@ cci_get_err_msg_low (int err_code)
     case CCI_ER_THREAD_RUNNING:
       return "Thread is running ";
 
+    case CCI_ER_INVALID_URL:
+      return "Invalid url string";
+
     case CAS_ER_INTERNAL:
       return "Not used";
 
@@ -3814,6 +4025,8 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 {
   SOCKET sock_fd;
   int error;
+  int i;
+  int host_id;
 
   *connect = 0;
 
@@ -3831,35 +4044,86 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
       return CCI_ER_NO_ERROR;
     }
 
-
-  error = net_connect_srv (con_handle->ip_addr,
-			   con_handle->port,
-			   con_handle->db_name,
-			   con_handle->db_user,
-			   con_handle->db_passwd,
-			   con_handle->is_first,
-			   err_buf, con_handle->broker_info,
-			   con_handle->cas_info,
-			   &(con_handle->cas_pid), &sock_fd);
-
+  if (con_handle->alter_host_id < 0)
+    {
+      host_id = -1;
+      error = net_connect_srv (con_handle->ip_addr,
+			       con_handle->port,
+			       con_handle->db_name,
+			       con_handle->db_user,
+			       con_handle->db_passwd,
+			       con_handle->is_retry,
+			       err_buf, con_handle->broker_info,
+			       con_handle->cas_info,
+			       &(con_handle->cas_pid), &sock_fd);
+    }
+  else
+    {
+      host_id = con_handle->alter_host_id;
+      error = net_connect_srv (con_handle->alter_hosts[host_id].ip_addr,
+			       con_handle->alter_hosts[host_id].port,
+			       con_handle->db_name,
+			       con_handle->db_user,
+			       con_handle->db_passwd,
+			       con_handle->is_retry,
+			       err_buf, con_handle->broker_info,
+			       con_handle->cas_info,
+			       &(con_handle->cas_pid), &sock_fd);
+    }
 
   if (error == CCI_ER_NO_ERROR && !IS_INVALID_SOCKET (sock_fd))
     {
-      con_handle->is_first = 0;
-      con_handle->sock_fd = sock_fd;
-      con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
+      cas_connect_set_info (con_handle, sock_fd, host_id, err_buf);
+      *connect = 1;
+      return CCI_ER_NO_ERROR;
+    }
 
-      if (con_handle->default_isolation_level > 0)
+  for (i = 0; i < con_handle->alter_host_count; i++)
+    {
+      error = net_connect_srv (con_handle->alter_hosts[i].ip_addr,
+			       con_handle->alter_hosts[i].port,
+			       con_handle->db_name,
+			       con_handle->db_user,
+			       con_handle->db_passwd,
+			       con_handle->is_retry,
+			       err_buf, con_handle->broker_info,
+			       con_handle->cas_info,
+			       &(con_handle->cas_pid), &sock_fd);
+
+      if (error == CCI_ER_NO_ERROR && !IS_INVALID_SOCKET (sock_fd))
 	{
-	  qe_set_db_parameter (con_handle,
-			       CCI_PARAM_ISOLATION_LEVEL,
-			       &(con_handle->default_isolation_level),
-			       err_buf);
+	  cas_connect_set_info (con_handle, sock_fd, i, err_buf);
+	  *connect = 1;
+	  return CCI_ER_NO_ERROR;
 	}
     }
 
-  *connect = 1;
   return error;
+}
+
+static void
+cas_connect_set_info (T_CON_HANDLE * con_handle, SOCKET sock_fd,
+		      int alt_host_id, T_CCI_ERROR * err_buf)
+{
+  con_handle->sock_fd = sock_fd;
+  con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
+  con_handle->alter_host_id = alt_host_id;
+
+  if (con_handle->alter_host_count > 0)
+    {
+      hm_set_ha_status (con_handle, false);
+      con_handle->is_retry = 0;
+    }
+  else
+    {
+      con_handle->is_retry = 1;
+    }
+
+  if (con_handle->default_isolation_level > 0)
+    {
+      qe_set_db_parameter (con_handle, CCI_PARAM_ISOLATION_LEVEL,
+			   &(con_handle->default_isolation_level), err_buf);
+    }
 }
 
 static int
@@ -4013,8 +4277,8 @@ glo_cmd_common (int con_h_id, T_NET_BUF * net_buf, char **result_msg,
 }
 
 static int
-glo_cmd_ex (T_CON_HANDLE * con_handle, T_NET_BUF * net_buf, char **result_msg,
-	    int *result_msg_size, T_CCI_ERROR * err_buf)
+glo_cmd_ex (T_CON_HANDLE * con_handle, T_NET_BUF * net_buf,
+	    char **result_msg, int *result_msg_size, T_CCI_ERROR * err_buf)
 {
   int err_code;
 
@@ -4041,7 +4305,7 @@ print_debug_msg (const char *format, ...)
   va_list args;
   FILE *fp;
   char format_buf[128];
-  static char *debug_file = "cci.log";
+  static const char *debug_file = "cci.log";
 
   sprintf (format_buf, "%s\n", format);
 
@@ -4056,7 +4320,7 @@ print_debug_msg (const char *format, ...)
   va_end (args);
 }
 
-static char *
+static const char *
 dbg_tran_type_str (char type)
 {
   switch (type)
@@ -4070,7 +4334,7 @@ dbg_tran_type_str (char type)
     }
 }
 
-static char *
+static const char *
 dbg_a_type_str (T_CCI_A_TYPE atype)
 {
   switch (atype)
@@ -4096,7 +4360,7 @@ dbg_a_type_str (T_CCI_A_TYPE atype)
     }
 }
 
-static char *
+static const char *
 dbg_u_type_str (T_CCI_U_TYPE utype)
 {
   switch (utype)
@@ -4150,7 +4414,7 @@ dbg_u_type_str (T_CCI_U_TYPE utype)
     }
 }
 
-static char *
+static const char *
 dbg_db_param_str (T_CCI_DB_PARAM db_param)
 {
   switch (db_param)
@@ -4166,7 +4430,7 @@ dbg_db_param_str (T_CCI_DB_PARAM db_param)
     }
 }
 
-static char *
+static const char *
 dbg_cursor_pos_str (T_CCI_CURSOR_POS cursor_pos)
 {
   switch (cursor_pos)
@@ -4182,7 +4446,7 @@ dbg_cursor_pos_str (T_CCI_CURSOR_POS cursor_pos)
     }
 }
 
-static char *
+static const char *
 dbg_sch_type_str (T_CCI_SCH_TYPE sch_type)
 {
   switch (sch_type)
@@ -4220,7 +4484,7 @@ dbg_sch_type_str (T_CCI_SCH_TYPE sch_type)
     }
 }
 
-static char *
+static const char *
 dbg_oid_cmd_str (T_CCI_OID_CMD oid_cmd)
 {
   switch (oid_cmd)
@@ -4240,7 +4504,7 @@ dbg_oid_cmd_str (T_CCI_OID_CMD oid_cmd)
     }
 }
 
-static char *
+static const char *
 dbg_isolation_str (T_CCI_TRAN_ISOLATION isol_level)
 {
   switch (isol_level)

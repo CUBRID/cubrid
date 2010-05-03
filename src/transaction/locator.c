@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -96,28 +96,32 @@ static LOCATOR_GLOBAL locator_Keep;
 
 static LC_COPYAREA packed_req_area_ptrs[LC_NKEEP_LIMIT];
 
-static bool is_init = false;
+static bool locator_Is_initialized = false;
 
 static char *locator_allocate_packed (int packed_size);
 static char *locator_reallocate_packed (char *packed, int packed_size);
 static void locator_free_packed (char *packed_area, int packed_size);
-static void
-locator_dump_string (FILE * out_fp, char *dump_string, int length);
-static void
-locator_dump_copy_area_one_object (FILE * out_fp, LC_COPYAREA_ONEOBJ * obj,
-				   int obj_index,
-				   const LC_COPYAREA * copyarea,
-				   int print_rec);
+#if defined(CUBRID_DEBUG)
+static void locator_dump_string (FILE * out_fp, char *dump_string,
+				 int length);
+static void locator_dump_copy_area_one_object (FILE * out_fp,
+					       LC_COPYAREA_ONEOBJ * obj,
+					       int obj_index,
+					       const LC_COPYAREA * copyarea,
+					       int print_rec);
+#endif
 static int locator_initialize_lockset (LC_LOCKSET * lockset, int length,
 				       int max_reqobjs, LOCK reqobj_inst_lock,
 				       LOCK reqobj_class_lock,
 				       int quit_on_errors);
+#if defined(CUBRID_DEBUG)
 static void locator_dump_lockset_area_info (FILE * out_fp,
 					    LC_LOCKSET * lockset);
 static void locator_dump_lockset_classes (FILE * out_fp,
 					  LC_LOCKSET * lockset);
 static void locator_dump_lockset_objects (FILE * out_fp,
 					  LC_LOCKSET * lockset);
+#endif
 static char *locator_pack_lockset_header (char *packed, LC_LOCKSET * lockset);
 static char *locator_pack_lockset_classes (char *packed,
 					   LC_LOCKSET * lockset);
@@ -129,13 +133,14 @@ static char *locator_unpack_lockset_classes (char *unpacked,
 					     LC_LOCKSET * lockset);
 static char *locator_unpack_lockset_objects (char *unpacked,
 					     LC_LOCKSET * lockset);
-static int
-locator_initialize_lockhint (LC_LOCKHINT * lockhint, int length,
-			     int max_classes, int quit_on_errors);
-static void
-locator_dump_lockhint_info (FILE * out_fp, LC_LOCKHINT * lockhint);
-static void
-locator_dump_lockhint_classes (FILE * out_fp, LC_LOCKHINT * lockhint);
+static int locator_initialize_lockhint (LC_LOCKHINT * lockhint, int length,
+					int max_classes, int quit_on_errors);
+#if defined(CUBRID_DEBUG)
+static void locator_dump_lockhint_info (FILE * out_fp,
+					LC_LOCKHINT * lockhint);
+static void locator_dump_lockhint_classes (FILE * out_fp,
+					   LC_LOCKHINT * lockhint);
+#endif
 static char *locator_pack_lockhint_header (char *packed,
 					   LC_LOCKHINT * lockhint);
 static char *locator_pack_lockhint_classes (char *packed,
@@ -159,9 +164,9 @@ static bool locator_is_hfid_equal (HFID * hfid1_p, HFID * hfid2_p);
 static bool
 locator_is_hfid_equal (HFID * hfid1_p, HFID * hfid2_p)
 {
-  return hfid1_p->vfid.fileid == hfid2_p->vfid.fileid
-    && hfid1_p->vfid.volid == hfid2_p->vfid.volid
-    && hfid1_p->hpgid == hfid2_p->hpgid;
+  return (hfid1_p->vfid.fileid == hfid2_p->vfid.fileid
+	  && hfid1_p->vfid.volid == hfid2_p->vfid.volid
+	  && hfid1_p->hpgid == hfid2_p->hpgid);
 }
 
 /*
@@ -176,7 +181,7 @@ locator_initialize_areas (void)
 {
   int i;
 
-  if (is_init)
+  if (locator_Is_initialized)
     {
       return;
     }
@@ -201,7 +206,7 @@ locator_initialize_areas (void)
       locator_Keep.packed_areas.areas[i] = &packed_req_area_ptrs[i];
     }
 
-  is_init = true;
+  locator_Is_initialized = true;
 }
 
 /*
@@ -216,7 +221,7 @@ locator_free_areas (void)
 {
   int i;
 
-  if (!is_init)
+  if (locator_Is_initialized == false)
     {
       return;
     }
@@ -261,7 +266,7 @@ locator_free_areas (void)
   MUTEX_DESTROY (locator_Keep.packed_areas.lock);
 #endif /* SERVER_MODE */
 
-  is_init = false;
+  locator_Is_initialized = false;
 }
 
 /*
@@ -391,6 +396,7 @@ locator_free_packed (char *packed_area, int packed_size)
   MUTEX_UNLOCK (locator_Keep.packed_areas.lock);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * locator_allocate_copyarea; Allocate a copy area for fetching and flushing
  *
@@ -403,21 +409,25 @@ locator_free_packed (char *packed_area, int packed_size)
 LC_COPYAREA *
 locator_allocate_copyarea (DKNPAGES npages)
 {
-  return locator_allocate_copy_area_by_length (npages * IO_PAGESIZE);
+  return locator_allocate_copy_area_by_length (npages * IO_PAGESIZE,
+					       CLEAR_MEM);
 }
+#endif
 
 /*
- * locator_allocate_copy_area_by_length: Allocate a copy area for fetching and
- *                              flushing purposes.
+ * locator_allocate_copy_area_by_length: Allocate a copy area for 
+ *                              fetching and flushing purposes.
  *
  * return: LC_COPYAREA *
  *
  *   min_length(in):Length of the copy area
+ *   clear_mem(in):true for clear allocated memory
  *
  * NOTE: Allocate a flush/fetch area of the given length.
  */
 LC_COPYAREA *
-locator_allocate_copy_area_by_length (int min_length)
+locator_allocate_copy_area_by_length (int min_length,
+				      CLEAR_MEM_FLAG clear_mem)
 {
   LC_COPYAREA *copyarea = NULL;
   int network_pagesize;
@@ -469,7 +479,10 @@ locator_allocate_copy_area_by_length (int min_length)
 	}
     }
 
-  memset (copyarea, 0, min_length + sizeof (*copyarea));
+  if (clear_mem == CLEAR_MEM)
+    {
+      memset (copyarea, 0, min_length + sizeof (*copyarea));
+    }
   copyarea->mem = (char *) copyarea + sizeof (*copyarea);
   copyarea->length = min_length;
 
@@ -705,7 +718,7 @@ locator_recv_allocate_copyarea (int num_objs,
 
   length = contents_length + desc_length + sizeof (LC_COPYAREA);
 
-  copyarea = locator_allocate_copy_area_by_length (length);
+  copyarea = locator_allocate_copy_area_by_length (length, CLEAR_MEM);
   if (copyarea == NULL)
     {
       *contents_ptr = NULL;
@@ -728,6 +741,7 @@ locator_recv_allocate_copyarea (int num_objs,
   return copyarea;
 }
 
+#if defined(CUBRID_DEBUG)
 /*
  * locator_dump_string:
  *
@@ -879,6 +893,7 @@ locator_dump_copy_area (FILE * out_fp, const LC_COPYAREA * copyarea,
       fprintf (out_fp, "\n\n");
     }
 }
+#endif
 
 /*
  *
@@ -953,9 +968,9 @@ locator_allocate_lockset (int max_reqobjs, LOCK reqobj_inst_lock,
       return NULL;
     }
 
-  if (locator_initialize_lockset
-      (lockset, length, max_reqobjs, reqobj_inst_lock, reqobj_class_lock,
-       quit_on_errors) != NO_ERROR)
+  if (locator_initialize_lockset (lockset, length, max_reqobjs,
+				  reqobj_inst_lock, reqobj_class_lock,
+				  quit_on_errors) != NO_ERROR)
     {
       return NULL;
     }
@@ -1010,6 +1025,7 @@ locator_initialize_lockset (LC_LOCKSET * lockset, int length, int max_reqobjs,
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * locator_allocate_lockset_by_length: allocate a lockset area for requesting objects
  *                             (the area is not initialized)
@@ -1024,8 +1040,8 @@ locator_initialize_lockset (LC_LOCKSET * lockset, int length, int max_reqobjs,
 LC_LOCKSET *
 locator_allocate_lockset_by_length (int length)
 {
-  int max_reqobjs;
   LC_LOCKSET *lockset;
+  int max_reqobjs;
 
   max_reqobjs = ((length - sizeof (*lockset)) /
 		 (sizeof (*(lockset->classes)) +
@@ -1033,6 +1049,7 @@ locator_allocate_lockset_by_length (int length)
 
   return locator_allocate_lockset (max_reqobjs, NULL_LOCK, NULL_LOCK, true);
 }
+#endif
 
 /*
  * locator_reallocate_lockset: reallocate a lockset area for requesting objects
@@ -1047,9 +1064,9 @@ locator_allocate_lockset_by_length (int length)
 LC_LOCKSET *
 locator_reallocate_lockset (LC_LOCKSET * lockset, int max_reqobjs)
 {
+  LC_LOCKSET_REQOBJ *old_reqobjs;
   int oldmax_reqobjs;
   int length;
-  LC_LOCKSET_REQOBJ *old_reqobjs;
 
   length = (sizeof (*lockset) +
 	    (max_reqobjs * (sizeof (*(lockset->classes)) +
@@ -1134,6 +1151,7 @@ locator_free_lockset (LC_LOCKSET * lockset)
   MUTEX_UNLOCK (locator_Keep.lockset_areas.lock);
 }
 
+#if defined(CUBRID_DEBUG)
 /*
  * locator_dump_lockset : Dump objects in lockset area
  *
@@ -1260,6 +1278,7 @@ locator_dump_lockset (FILE * out_fp, LC_LOCKSET * lockset)
   locator_dump_lockset_objects (out_fp, lockset);
 
 }
+#endif
 
 /*
  * locator_allocate_and_unpack_lockset: allocate a lockset area and unpack the given
@@ -1281,16 +1300,16 @@ locator_allocate_and_unpack_lockset (char *unpacked, int unpacked_size,
 				     bool unpack_classes, bool unpack_objects,
 				     bool reg_unpacked)
 {
-  int max_reqobjs;
   char *ptr;
   LC_LOCKSET *lockset;
+  int max_reqobjs;
 
   ptr = unpacked;
   ptr = or_unpack_int (ptr, &max_reqobjs);	/* Really first call */
   ptr = or_unpack_int (ptr, &max_reqobjs);
 
-  lockset =
-    locator_allocate_lockset (max_reqobjs, NULL_LOCK, NULL_LOCK, true);
+  lockset = locator_allocate_lockset (max_reqobjs, NULL_LOCK, NULL_LOCK,
+				      true);
   if (lockset == NULL)
     {
       return NULL;
@@ -1615,8 +1634,8 @@ locator_unpack_lockset (LC_LOCKSET * lockset, bool unpack_classes,
 LC_LOCKHINT *
 locator_allocate_lockhint (int max_classes, int quit_on_errors)
 {
-  int length;
   LC_LOCKHINT *lockhint = NULL;
+  int length;
   int i;
 #if defined (SERVER_MODE)
   int rv;
@@ -1789,6 +1808,7 @@ locator_free_lockhint (LC_LOCKHINT * lockhint)
   MUTEX_UNLOCK (locator_Keep.lockhint_areas.lock);
 }
 
+#if defined(CUBRID_DEBUG)
 /*
  * locator_dump_lockhint_info :
  *
@@ -1856,6 +1876,7 @@ locator_dump_lockhint (FILE * out_fp, LC_LOCKHINT * lockhint)
 
   locator_dump_lockhint_classes (out_fp, lockhint);
 }
+#endif
 
 /*
  * locator_allocate_and_unpack_lockhint : allocate a lockhint area and unpack the given

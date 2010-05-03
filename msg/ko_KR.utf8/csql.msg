@@ -42,7 +42,6 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -r, --read-only              읽기 전용 모드\n\
       --no-auto-commit         자동 커밋 안 함\n\
       --no-pager               페이지 단위로 표시 안 함\n\
-      --sysadm                 시스템 관리자 모드\n\
 \n\
 추가적인 정보는 http://www.cubrid.com 에서 얻을 수 있습니다.\n
 41 %s: 환경 변수 %s_MODE 의 값이 틀림. \n%s 또는 %s 이어야 합니다.\n
@@ -65,8 +64,14 @@ $set 1 MSGCAT_CSQL_SET_CSQL
 58 명령어 버퍼의 내용을 프린터로 출력했습니다.
 59 현재 디렉터리 변경 : 
 61 비밀번호 입력 : 
-63 <%s의 결과, 명령어 라인 %d>
-65 결과 없음.
+62 <%s의 결과, 명령어 라인 %d>
+63 결과 없음.
+64 체크포인트가 실행되었습니다.
+65 데이터베이스가 다시 시작되었습니다.
+66 트랜잭션인덱스  사용자이름     호스트이름     프로세스 ID     프로그램이름\n
+67 %7d(%1c) %14s %14s %15d %17s\n
+68 지정된 트랜잭션이 종료되었습니다.
+69 지정된 트랜잭션 종료가 실패했습니다.
 70 %d 개의 열이 %s.
 $ These 3 should be blank
 75 자동화된 API 시험기
@@ -126,7 +131,7 @@ $ csql help messages
    모든 세션 명령어는 ';'로 시작하며 앞에는 공백/탭 문자 이외에는 올 수 없습니다.\n\
    대문자로 표시된 부분은 해당 명령어를 수행하기 위해 지정되야 할 최소한의 약어입니다.\n\
 \n\
-   ;REad   [<file-name>]       - 명령어 버퍼로 파일 내용을 읽어 들임.\n\
+   ;REAd   [<file-name>]       - 명령어 버퍼로 파일 내용을 읽어 들임.\n\
    ;Write  [<file-name>]       - 명령어 버퍼 내용을 파일에 저장.\n\
    ;APpend [<file-name>]       - 명령어 버퍼 내용을 파일에 덧붙임.\n\
    ;PRINT                      - 명령어 버퍼 내용을 프린트.\n\
@@ -143,11 +148,12 @@ $ csql help messages
    ;COmmit                     - 진행 중인 트랜잭션 커밋.\n\
    ;ROllback                   - 진행 중인 트랜잭션 철회.\n\
    ;AUtocommit [ON|OFF]        - 자동 커밋 모드 설정|해제.\n\
+   ;REStart                    - 데이터베이스 재시작.\n\
 \n\
    ;SHELL_Cmd  [shell-cmd]     - 내정된 쉘을 설정하거나 보여줌.\n\
-   ;EDITOR_Cmd [editor-cmd]   - 내정된 편집기를 설정하거나 보여줌.\n\
-   ;PRINT_Cmd  [print-cmd]      - 내정된 프린트 명령어를 설정하거나 보여줌.\n\
-   ;PAger_cmd  [pager-cmd]    - 내정된 페이지 구분기를 설정하거나 보여줌.\n\
+   ;EDITOR_Cmd [editor-cmd]    - 내정된 편집기를 설정하거나 보여줌.\n\
+   ;PRINT_Cmd  [print-cmd]     - 내정된 프린트 명령어를 설정하거나 보여줌.\n\
+   ;PAger_cmd  [pager-cmd]     - 내정된 페이지 구분기를 설정하거나 보여줌.\n\
 \n\
    ;DATE                       - 지역 날짜, 시간 출력.\n\
    ;DATAbase                   - 접근 중인 데이터베이스 이름 출력.\n\

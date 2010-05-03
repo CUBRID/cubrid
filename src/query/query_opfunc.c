@@ -58,27 +58,6 @@
 
 static int qdata_dummy (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
 			int num_args, DB_VALUE ** args);
-static int qdata_push_oid_stack (OID * oid, OID ** oid_stack, int *top,
-				 int *size);
-static int qdata_is_oid_on_stack (OID * oid, OID * oid_stack, int top);
-static int qdata_get_offspring (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
-				int num_args, DB_VALUE ** args,
-				int do_tran_closure);
-static int qdata_get_children (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
-			       int num_args, DB_VALUE ** args);
-static int qdata_get_descendants (THREAD_ENTRY * thread_p,
-				  DB_VALUE * result_p, int num_args,
-				  DB_VALUE ** args);
-static int qdata_get_ancestors_internal (THREAD_ENTRY * thread_p,
-					 DB_VALUE * result_p, int num_args,
-					 DB_VALUE ** args,
-					 int do_tran_closure);
-static int qdata_get_parent (THREAD_ENTRY * thread_p, DB_VALUE *, int,
-			     DB_VALUE **);
-static int qdata_get_ancestors (THREAD_ENTRY * thread_p, DB_VALUE *, int,
-				DB_VALUE **);
-static int qdata_get_siblings (THREAD_ENTRY * thread_p, DB_VALUE *, int,
-			       DB_VALUE **);
 
 static int qdata_add_short (short s, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_add_int (int i1, int i2, DB_VALUE * result_p);
@@ -360,8 +339,7 @@ static int qdata_convert_table_to_set (THREAD_ENTRY * thread_p,
 static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *,
 				   int, DB_VALUE **) =
 {
-qdata_dummy, qdata_get_children, qdata_get_descendants,
-    qdata_get_parent, qdata_get_ancestors, qdata_get_siblings};
+qdata_dummy};
 
 /*
  * qdata_dummy () -
@@ -377,1236 +355,6 @@ qdata_dummy (THREAD_ENTRY * thread_p, DB_VALUE * result_p, int num_args,
 	     DB_VALUE ** args)
 {
   DB_MAKE_NULL (result_p);
-  return ER_FAILED;
-}
-
-/*
- * qdata_push_oid_stack () -
- *   return: NO_ERROR, or ER_code
- *   oid(in)    :
- *   oid_stack(in)      :
- *   top(in)    :
- *   size(in)   :
- *
- * Note: Helper function which pushes an OID on an OID stack.  It
- * will allocate more stack if necessary.
- */
-static int
-qdata_push_oid_stack (OID * oid_p, OID ** oid_stack_p, int *top_p,
-		      int *size_p)
-{
-  OID *tmp;
-  int top, size;
-
-  if (oid_p == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  top = *top_p;
-  size = *size_p;
-
-  if (top == (size - 1))
-    {
-      size = size * 2;
-      tmp = (OID *) db_private_realloc (NULL, *oid_stack_p,
-					size * sizeof (OID));
-      if (tmp == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      *oid_stack_p = tmp;
-    }
-
-  top++;
-  COPY_OID (&(*oid_stack_p)[top], oid_p);
-
-  *top_p = top;
-  *size_p = size;
-
-  return NO_ERROR;
-}
-
-/*
- * qdata_is_oid_on_stack () -
- *   return: 1 if found, 0 otherwise
- *   oid(in)    :
- *   oid_stack(in)      :
- *   top(in)    :
- *
- * Note: Helper function which checks if an OID is on an OID stack.
- */
-static int
-qdata_is_oid_on_stack (OID * oid_p, OID * oid_stack_p, int top)
-{
-  int j, found;
-
-  for (j = 0, found = 0; j <= top && !found; j++)
-    {
-      if (OID_EQ (&oid_stack_p[j], oid_p))
-	{
-	  found = 1;
-	}
-    }
-
-  return found;
-
-}
-
-/*
- * qdata_get_offspring () -
- *   return:
- *   res(in)    :
- *   num_args(in)       :
- *   args(in)   :
- *   do_tran_closure(in)        :
- *
- */
-static int
-qdata_get_offspring (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
-		     int num_args, DB_VALUE ** args, int do_tran_closure)
-{
-  int child_size, work_size, result_size, work_top, result_top;
-  int i, j, attr_cache_inited = 0, scn_cache_inited = 0;
-  int child_attr_cache_inited = 0, child_scn_cache_inited = 0;
-  int parent_classes_size, result_classes_size, parent_attrid;
-  int child_attr1, child_attr2, child_attr3, valid_result;
-  OID child_cls0, child_cls1, child_cls2, child_cls3;
-  OID *obj, *tmp_class, child_oid, parent_class, child_class;
-  DB_SEQ *res_seq = NULL, *child_seq, *parent_classes, *parent_attrids;
-  DB_SEQ *child_classes, *child_attrids, *result_classes;
-  DB_VALUE *children, dbval_tmp, *child_attr;
-  HEAP_SCANCACHE scn_cache, child_scn_cache;
-  HEAP_CACHE_ATTRINFO attr_cache, child_attr_cache;
-  RECDES recdes_peek, child_recdes_peek;
-  OID *work_stack = NULL, *result_stack = NULL;
-  SCAN_CODE scn;
-
-  DB_MAKE_NULL (result_p);
-
-  if (num_args != 6
-      || (db_value_type (args[0]) != DB_TYPE_OID)
-      || (db_value_type (args[1]) != DB_TYPE_SEQUENCE)
-      || (db_value_type (args[2]) != DB_TYPE_SEQUENCE)
-      || (db_value_type (args[3]) != DB_TYPE_SEQUENCE)
-      || (db_value_type (args[4]) != DB_TYPE_SEQUENCE)
-      || (db_value_type (args[5]) != DB_TYPE_SEQUENCE))
-    {
-      goto error;
-    }
-
-  obj = DB_GET_OID (args[0]);
-  parent_classes = DB_GET_SEQUENCE (args[1]);
-  parent_attrids = DB_GET_SEQUENCE (args[2]);
-  child_classes = DB_GET_SEQUENCE (args[3]);
-  child_attrids = DB_GET_SEQUENCE (args[4]);
-  result_classes = DB_GET_SEQUENCE (args[5]);
-
-  if ((db_seq_size (child_classes) != 4)
-      || (db_seq_size (child_attrids) != 4)
-      || ((parent_classes_size = db_seq_size (parent_classes)) !=
-	  db_seq_size (parent_attrids))
-      || (parent_classes_size == 0)
-      || ((result_classes_size = db_seq_size (result_classes)) == 0))
-    {
-      goto error;
-    }
-
-  /* grab the four child classes and attrids so that we don't have
-   * to be doing db_seq_gets in the loops.
-   */
-  if (db_seq_get (child_classes, 0, &dbval_tmp) != NO_ERROR)
-    {
-      goto error;
-    }
-  COPY_OID (&child_cls0, DB_PULL_OID (&dbval_tmp));
-
-  if (db_seq_get (child_classes, 1, &dbval_tmp) != NO_ERROR)
-    {
-      goto error;
-    }
-  COPY_OID (&child_cls1, DB_PULL_OID (&dbval_tmp));
-
-  if (db_seq_get (child_classes, 2, &dbval_tmp) != NO_ERROR)
-    {
-      goto error;
-    }
-  COPY_OID (&child_cls2, DB_PULL_OID (&dbval_tmp));
-
-  if (db_seq_get (child_classes, 3, &dbval_tmp) != NO_ERROR)
-    {
-      goto error;
-    }
-  COPY_OID (&child_cls3, DB_PULL_OID (&dbval_tmp));
-
-  /* child0's attrid should be NULL and we'll ignore it in any case */
-  if (db_seq_get (child_attrids, 1, &dbval_tmp) != NO_ERROR)
-    {
-      goto error;
-    }
-  child_attr1 = DB_GET_INT (&dbval_tmp);
-
-  if (db_seq_get (child_attrids, 2, &dbval_tmp) != NO_ERROR)
-    {
-      goto error;
-    }
-  child_attr2 = DB_GET_INT (&dbval_tmp);
-
-  if (db_seq_get (child_attrids, 3, &dbval_tmp) != NO_ERROR)
-    {
-      goto error;
-    }
-  child_attr3 = DB_GET_INT (&dbval_tmp);
-
-  /* create the result and work stacks */
-  work_size = INITIAL_OID_STACK_SIZE;
-  result_size = INITIAL_OID_STACK_SIZE;
-  work_stack = (OID *) db_private_alloc (thread_p, work_size * sizeof (OID));
-
-  if (work_stack == NULL)
-    {
-      goto error;
-    }
-
-  result_stack =
-    (OID *) db_private_alloc (thread_p, result_size * sizeof (OID));
-  if (result_stack == NULL)
-    {
-      goto error;
-    }
-
-  work_top = -1;
-  result_top = -1;
-
-  /* push the initial oid on the work stack */
-  if (qdata_push_oid_stack (obj, &work_stack, &work_top, &work_size) !=
-      NO_ERROR)
-    {
-      goto error;
-    }
-
-  /* Start heap file scan operation */
-  if (heap_scancache_start (thread_p, &scn_cache, NULL, NULL, true,
-			    false, LOCKHINT_NONE) != NO_ERROR)
-    {
-      goto error;
-    }
-  scn_cache_inited = 1;
-
-  /* process all the children */
-  while (work_top >= 0)
-    {
-      scn =
-	heap_get_with_class_oid (thread_p, &work_stack[work_top],
-				 &recdes_peek, &scn_cache, &parent_class,
-				 PEEK);
-      if (scn == S_DOESNT_EXIST)
-	{
-	  work_top--;
-	  continue;		/* reference to a deleted child */
-	}
-
-      if (scn != S_SUCCESS)
-	{
-	  goto error;
-	}
-
-      /* check to see if the current oid's class is from one of the
-       * parent classes.  If not, we silently ignore it and go on.
-       */
-      for (i = 0, parent_attrid = -1;
-	   i < parent_classes_size && parent_attrid == -1; i++)
-	{
-	  if (db_seq_get (parent_classes, i, &dbval_tmp) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  tmp_class = DB_GET_OID (&dbval_tmp);
-	  if (tmp_class && OID_EQ (&parent_class, tmp_class))
-	    {
-	      /* grab the parent attrid which is the attribute for
-	       * the children
-	       */
-	      if (db_seq_get (parent_attrids, i, &dbval_tmp) != NO_ERROR)
-		{
-		  goto error;
-		}
-	      parent_attrid = DB_GET_INT (&dbval_tmp);
-	    }
-	}
-
-      if (parent_attrid == -1)
-	{
-	  /* not one of our target classes--pop the stack */
-	  work_top--;
-	  continue;
-	}
-
-      if (heap_attrinfo_start
-	  (thread_p, &parent_class, 1, &parent_attrid,
-	   &attr_cache) != NO_ERROR)
-	{
-	  goto error;
-	}
-      attr_cache_inited = 1;
-
-      if (heap_attrinfo_read_dbvalues
-	  (thread_p, &work_stack[work_top], &recdes_peek,
-	   &attr_cache) != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      children = heap_attrinfo_access (parent_attrid, &attr_cache);
-      if (children == NULL
-	  || (db_value_domain_type (children) != DB_TYPE_SEQUENCE))
-	{
-	  goto error;
-	}
-
-      /* pop the stack */
-      work_top--;
-
-      if (DB_IS_NULL (children))
-	{
-	  if (heap_attrinfo_clear_dbvalues (&attr_cache) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  heap_attrinfo_end (thread_p, &attr_cache);
-	  attr_cache_inited = 0;
-	  continue;
-	}
-
-      /* deal with the children */
-      child_seq = DB_GET_SEQUENCE (children);
-      child_size = db_seq_size (child_seq);
-
-      /* Start heap file scan operation to get the child attribute */
-      if (heap_scancache_start (thread_p, &child_scn_cache, NULL, NULL, true,
-				false, LOCKHINT_NONE) != NO_ERROR)
-	{
-	  goto error;
-	}
-      child_scn_cache_inited = 1;
-
-      for (i = 0; i < child_size; i++)
-	{
-	  if ((db_seq_get (child_seq, i, &dbval_tmp) != NO_ERROR)
-	      || (db_value_domain_type (&dbval_tmp) != DB_TYPE_OID))
-	    {
-	      goto error;
-	    }
-
-	  /* ignore NULL children */
-	  if (DB_IS_NULL (&dbval_tmp))
-	    {
-	      continue;
-	    }
-
-	  COPY_OID (&child_oid, DB_PULL_OID (&dbval_tmp));
-
-	  scn =
-	    heap_get_with_class_oid (thread_p, &child_oid, &child_recdes_peek,
-				     &child_scn_cache, &child_class, PEEK);
-
-	  if (scn == S_DOESNT_EXIST)
-	    {
-	      continue;		/* reference to a deleted child */
-	    }
-
-	  if (scn != S_SUCCESS)
-	    {
-	      goto error;
-	    }
-
-	  /* the child is dealt with differently depending on its class */
-	  if (OID_EQ (&child_cls0, &child_class))
-	    {
-	      /* this case just follows the child */
-	      if (qdata_push_oid_stack (&child_oid, &work_stack, &work_top,
-					&work_size) != NO_ERROR)
-		{
-		  goto error;
-		}
-	    }
-	  else if (OID_EQ (&child_cls1, &child_class))
-	    {
-	      /* this case follows the child attribute, child_attr1 */
-	      if (heap_attrinfo_start
-		  (thread_p, &child_class, 1, &child_attr1,
-		   &child_attr_cache) != NO_ERROR)
-		{
-		  goto error;
-		}
-	      child_attr_cache_inited = 1;
-
-	      if ((heap_attrinfo_read_dbvalues (thread_p, &child_oid,
-						&child_recdes_peek,
-						&child_attr_cache)
-		   != NO_ERROR)
-		  || ((child_attr = heap_attrinfo_access (child_attr1,
-							  &child_attr_cache))
-		      == NULL)
-		  || (db_value_domain_type (child_attr) != DB_TYPE_OID))
-		{
-		  goto error;
-		}
-
-	      /* ignore NULL children */
-	      if (!DB_IS_NULL (child_attr))
-		{
-		  if (qdata_push_oid_stack (DB_PULL_OID (child_attr),
-					    &work_stack, &work_top,
-					    &work_size) != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		}
-
-	      if (heap_attrinfo_clear_dbvalues (&child_attr_cache) !=
-		  NO_ERROR)
-		{
-		  goto error;
-		}
-	      heap_attrinfo_end (thread_p, &child_attr_cache);
-	      child_attr_cache_inited = 0;
-	    }
-	  else if (OID_EQ (&child_cls2, &child_class))
-	    {
-	      /* this case follows the child attribute, child_attr2 */
-	      if (heap_attrinfo_start
-		  (thread_p, &child_class, 1, &child_attr2,
-		   &child_attr_cache) != NO_ERROR)
-		{
-		  goto error;
-		}
-	      child_attr_cache_inited = 1;
-
-	      if ((heap_attrinfo_read_dbvalues (thread_p, &child_oid,
-						&child_recdes_peek,
-						&child_attr_cache)
-		   != NO_ERROR)
-		  || ((child_attr = heap_attrinfo_access (child_attr2,
-							  &child_attr_cache))
-		      == NULL)
-		  || (db_value_domain_type (child_attr) != DB_TYPE_OID))
-		{
-		  goto error;
-		}
-
-	      /* ignore NULL children */
-	      if (!DB_IS_NULL (child_attr))
-		{
-		  if (qdata_push_oid_stack (DB_PULL_OID (child_attr),
-					    &work_stack, &work_top,
-					    &work_size) != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		}
-
-	      if (heap_attrinfo_clear_dbvalues (&child_attr_cache) !=
-		  NO_ERROR)
-		{
-		  goto error;
-		}
-	      heap_attrinfo_end (thread_p, &child_attr_cache);
-	      child_attr_cache_inited = 0;
-	    }
-	  else
-	    {
-	      if (OID_EQ (&child_cls3, &child_class))
-		{
-		  /* this case replaces the child with the
-		   * child attribute, child_attr3
-		   */
-		  if (heap_attrinfo_start
-		      (thread_p, &child_class, 1, &child_attr3,
-		       &child_attr_cache) != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		  child_attr_cache_inited = 1;
-
-		  if ((heap_attrinfo_read_dbvalues (thread_p, &child_oid,
-						    &child_recdes_peek,
-						    &child_attr_cache)
-		       != NO_ERROR)
-		      || ((child_attr = heap_attrinfo_access (child_attr3,
-							      &child_attr_cache))
-			  == NULL)
-		      || (db_value_domain_type (child_attr) != DB_TYPE_OID))
-		    {
-		      goto error;
-		    }
-
-		  if (DB_IS_NULL (child_attr))
-		    {
-		      if (heap_attrinfo_clear_dbvalues (&child_attr_cache) !=
-			  NO_ERROR)
-			{
-			  goto error;
-			}
-		      heap_attrinfo_end (thread_p, &child_attr_cache);
-		      child_attr_cache_inited = 0;
-		      continue;
-		    }
-
-		  /* replace the child with his child */
-		  COPY_OID (&child_oid, DB_PULL_OID (child_attr));
-
-		  if (heap_attrinfo_clear_dbvalues (&child_attr_cache) !=
-		      NO_ERROR)
-		    {
-		      goto error;
-		    }
-		  heap_attrinfo_end (thread_p, &child_attr_cache);
-		  child_attr_cache_inited = 0;
-
-		  scn = heap_get_with_class_oid (thread_p, &child_oid,
-						 &child_recdes_peek,
-						 &child_scn_cache,
-						 &child_class, PEEK);
-
-		  if (scn == S_DOESNT_EXIST)
-		    {
-		      continue;	/* reference to a deleted child */
-		    }
-		  if (scn != S_SUCCESS)
-		    {
-		      goto error;
-		    }
-		}
-
-	      /* if child is one of our result classes, put it on the
-	       * result stack (if its not already on there).  Also we
-	       * only want to put the child on the work stack (in the
-	       * transitive closure case) if the child has not already
-	       * been put on the result stack since this would indicate
-	       * a cycle in the graph.
-	       */
-	      for (j = 0, valid_result = 0;
-		   j < result_classes_size && !valid_result; j++)
-		{
-
-		  if (db_seq_get (result_classes, j, &dbval_tmp) != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		  if (OID_EQ (&child_class, DB_PULL_OID (&dbval_tmp)))
-		    {
-		      valid_result = 1;
-		    }
-		}
-
-	      if (valid_result)
-		{
-		  if (!qdata_is_oid_on_stack (&child_oid, result_stack,
-					      result_top))
-		    {
-		      if (qdata_push_oid_stack (&child_oid, &result_stack,
-						&result_top,
-						&result_size) != NO_ERROR)
-			{
-			  goto error;
-			}
-
-		      /* if we are doing transitive closure, put the child
-		       * on the work stack.
-		       */
-		      if (do_tran_closure)
-			{
-			  if (qdata_push_oid_stack (&child_oid, &work_stack,
-						    &work_top,
-						    &work_size) != NO_ERROR)
-			    {
-			      goto error;
-			    }
-			}
-		    }
-		}
-	      else if (do_tran_closure)
-		{
-		  /* we still need to put the child on the work stack if
-		   * we are doing transitive closure even if the child is
-		   * not a member of the result classes.
-		   */
-		  if (qdata_push_oid_stack (&child_oid, &work_stack,
-					    &work_top,
-					    &work_size) != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		}
-	    }
-	}
-
-      if (heap_scancache_end (thread_p, &child_scn_cache) != NO_ERROR)
-	{
-	  goto error;
-	}
-      child_scn_cache_inited = 0;
-      if (heap_attrinfo_clear_dbvalues (&attr_cache) != NO_ERROR)
-	{
-	  goto error;
-	}
-      heap_attrinfo_end (thread_p, &attr_cache);
-      attr_cache_inited = 0;
-    }
-
-  /* copy the results to the result sequence */
-  res_seq = db_seq_create (NULL, NULL, result_top + 1);
-  for (j = 0; j <= result_top; j++)
-    {
-      DB_MAKE_OID (&dbval_tmp, &result_stack[j]);
-      if (db_seq_put (res_seq, j, &dbval_tmp) != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
-  if (heap_scancache_end (thread_p, &scn_cache) != NO_ERROR)
-    {
-      goto error;
-    }
-
-  scn_cache_inited = 0;
-  db_private_free_and_init (thread_p, result_stack);
-  db_private_free_and_init (thread_p, work_stack);
-  DB_MAKE_SEQUENCE (result_p, res_seq);
-
-  return NO_ERROR;
-
-error:
-  if (res_seq)
-    {
-      db_seq_free (res_seq);
-    }
-
-  if (attr_cache_inited)
-    {
-      (void) heap_attrinfo_clear_dbvalues (&attr_cache);
-      heap_attrinfo_end (thread_p, &attr_cache);
-    }
-
-  if (scn_cache_inited)
-    {
-      (void) heap_scancache_end (thread_p, &scn_cache);
-    }
-
-  if (child_attr_cache_inited)
-    {
-      (void) heap_attrinfo_clear_dbvalues (&child_attr_cache);
-      heap_attrinfo_end (thread_p, &child_attr_cache);
-    }
-
-  if (child_scn_cache_inited)
-    {
-      (void) heap_scancache_end (thread_p, &child_scn_cache);
-    }
-
-  if (result_stack)
-    {
-      db_private_free_and_init (thread_p, result_stack);
-    }
-
-  if (work_stack)
-    {
-      db_private_free_and_init (thread_p, work_stack);
-    }
-
-  return ER_FAILED;
-}
-
-/*
- * qdata_get_children () -
- *   return:
- *   res(in)    :
- *   num_args(in)       :
- *   args(in)   :
- *
- * Note: Get the children of an object.
- * See the comments for get_offspring() which does all the real work.
- */
-static int
-qdata_get_children (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
-		    int num_args, DB_VALUE ** args)
-{
-  return qdata_get_offspring (thread_p, result_p, num_args, args, 0);
-}
-
-/*
- * qdata_get_descendants () -
- *   return:
- *   res(in)    :
- *   num_args(in)       :
- *   args(in)   :
- *
- * Note: Get the descendants of an object.
- * See the comments for get_offspring() which does all the real work.
- */
-static int
-qdata_get_descendants (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
-		       int num_args, DB_VALUE ** args)
-{
-  return qdata_get_offspring (thread_p, result_p, num_args, args, 1);
-}
-
-/*
- * qdata_get_ancestors_internal () -
- *   return:
- *   res(in)    :
- *   num_args(in)       :
- *   args(in)   :
- *   do_tran_closure(in)        :
- *
- * Note: Get the ancestors of an object.
- * Do transitive closure if asked for.  This is the work function
- * for get_parent() and get_ancestors().
- *
- * args is an array of 3 DB_VALUES that have the following semantics:
- *
- * 	The first DB_VALUE is the instance object that the function is
- * 	called on.  This object is the instance whose parent or
- * 	ancestors we want.
- *
- * 	The second DB_VALUES is the class of the instance that the function
- *      will get the parent/ancestors for.
- *
- * 	The third DB_VALUE is the attribute number which corresponds
- *      to the attribute which contains the parent for this instance.
- */
-static int
-qdata_get_ancestors_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
-			      int num_args, DB_VALUE ** args,
-			      int do_tran_closure)
-{
-  int work_size, result_size, work_top, result_top;
-  int i, j, parent_attr0, child_classes_size, result_classes_size;
-  int child_attrid, valid_result;
-  int attr_cache_inited = 0, scn_cache_inited = 0;
-  int child_attr_cache_inited = 0, child_scn_cache_inited = 0;
-  OID *obj, child_class, parent_cls0;
-  OID parent_oid, parent_class;
-  DB_SEQ *res_seq = NULL, *child_classes, *child_attrids;
-  DB_SEQ *parent_classes, *parent_attrids, *result_classes;
-  DB_VALUE *parent, dbval_tmp;
-  HEAP_SCANCACHE scn_cache, child_scn_cache;
-  HEAP_CACHE_ATTRINFO attr_cache, child_attr_cache;
-  RECDES recdes_peek, child_recdes_peek;
-  OID *work_stack = NULL, *result_stack = NULL;
-  SCAN_CODE scn;
-
-  DB_MAKE_NULL (result_p);
-
-  if (num_args != 6
-      || (db_value_type (args[0]) != DB_TYPE_OID)
-      || (db_value_type (args[1]) != DB_TYPE_SEQUENCE)
-      || (db_value_type (args[2]) != DB_TYPE_SEQUENCE)
-      || (db_value_type (args[3]) != DB_TYPE_SEQUENCE)
-      || (db_value_type (args[4]) != DB_TYPE_SEQUENCE)
-      || (db_value_type (args[5]) != DB_TYPE_SEQUENCE))
-    {
-      goto error;
-    }
-
-  obj = DB_GET_OID (args[0]);
-  child_classes = DB_GET_SEQUENCE (args[1]);
-  child_attrids = DB_GET_SEQUENCE (args[2]);
-  parent_classes = DB_GET_SEQUENCE (args[3]);
-  parent_attrids = DB_GET_SEQUENCE (args[4]);
-  result_classes = DB_GET_SEQUENCE (args[5]);
-
-  if ((db_seq_size (parent_classes) != 1)
-      || (db_seq_size (parent_attrids) != 1)
-      || ((child_classes_size = db_seq_size (child_classes)) !=
-	  db_seq_size (child_attrids))
-      || (child_classes_size == 0)
-      || ((result_classes_size = db_seq_size (result_classes)) == 0))
-    {
-      goto error;
-    }
-
-  /* grab the parent object's class and attrid info so that we don't have
-   * to be doing db_seq_gets in the loops.
-   */
-  if (db_seq_get (parent_classes, 0, &dbval_tmp) != NO_ERROR)
-    {
-      goto error;
-    }
-  COPY_OID (&parent_cls0, DB_PULL_OID (&dbval_tmp));
-  if (db_seq_get (parent_attrids, 0, &dbval_tmp) != NO_ERROR)
-    {
-      goto error;
-    }
-  parent_attr0 = DB_GET_INT (&dbval_tmp);
-
-  /* create the result and work stacks */
-  work_size = INITIAL_OID_STACK_SIZE;
-  result_size = INITIAL_OID_STACK_SIZE;
-  work_stack = (OID *) db_private_alloc (thread_p, work_size * sizeof (OID));
-  if (work_stack == NULL)
-    {
-      goto error;
-    }
-  result_stack =
-    (OID *) db_private_alloc (thread_p, result_size * sizeof (OID));
-  if (result_stack == NULL)
-    {
-      goto error;
-    }
-  work_top = -1;
-  result_top = -1;
-
-  /* push the initial oid on the work stack */
-  if (qdata_push_oid_stack (obj, &work_stack, &work_top, &work_size) !=
-      NO_ERROR)
-    {
-      goto error;
-    }
-
-  /* Start heap file scan operation */
-  if (heap_scancache_start (thread_p, &child_scn_cache, NULL, NULL, true,
-			    false, LOCKHINT_NONE) != NO_ERROR)
-    {
-      goto error;
-    }
-  child_scn_cache_inited = 1;
-
-  while (work_top >= 0)
-    {
-      scn = heap_get_with_class_oid (thread_p, &work_stack[work_top],
-				     &child_recdes_peek,
-				     &child_scn_cache, &child_class, PEEK);
-
-      if (scn == S_DOESNT_EXIST)
-	{
-	  work_top--;
-	  continue;		/* reference to a deleted child */
-	}
-
-      if (scn != S_SUCCESS)
-	{
-	  goto error;
-	}
-
-      /* check to see if the current oid's class is from one of the
-       * child classes.  If not, we silently ignore it and go on.
-       */
-      for (i = 0, child_attrid = -1;
-	   i < child_classes_size && child_attrid == -1; i++)
-	{
-	  if (db_seq_get (child_classes, i, &dbval_tmp) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  if (OID_EQ (&child_class, DB_PULL_OID (&dbval_tmp)))
-	    {
-	      /* grab the child attrid which is the attribute for
-	       * the parent
-	       */
-	      if (db_seq_get (child_attrids, i, &dbval_tmp) != NO_ERROR)
-		{
-		  goto error;
-		}
-	      child_attrid = DB_GET_INT (&dbval_tmp);
-	    }
-	}
-
-      if (child_attrid == -1)
-	{
-	  /* not one of our target classes--pop the stack */
-	  work_top--;
-	  continue;
-	}
-
-      if (heap_attrinfo_start (thread_p, &child_class, 1,
-			       &child_attrid, &child_attr_cache) != NO_ERROR)
-	{
-	  goto error;
-	}
-      child_attr_cache_inited = 1;
-
-      if ((heap_attrinfo_read_dbvalues (thread_p, &work_stack[work_top],
-					&child_recdes_peek, &child_attr_cache)
-	   != NO_ERROR)
-	  || ((parent = heap_attrinfo_access (child_attrid,
-					      &child_attr_cache)) == NULL)
-	  || (db_value_domain_type (parent) != DB_TYPE_OID))
-	{
-	  goto error;
-	}
-
-      /* pop the stack */
-      work_top--;
-
-      /* if the parent is null, continue */
-      if (DB_IS_NULL (parent))
-	{
-	  if (heap_attrinfo_clear_dbvalues (&child_attr_cache) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  heap_attrinfo_end (thread_p, &child_attr_cache);
-	  child_attr_cache_inited = 0;
-	  continue;
-	}
-
-      COPY_OID (&parent_oid, DB_PULL_OID (parent));
-
-      /* Does the parent need special processing? */
-      if (heap_scancache_start (thread_p, &scn_cache, NULL, NULL, true,
-				false, LOCKHINT_NONE) != NO_ERROR)
-	{
-	  goto error;
-	}
-      scn_cache_inited = 1;
-
-      scn = heap_get_with_class_oid (thread_p, &parent_oid, &recdes_peek,
-				     &scn_cache, &parent_class, PEEK);
-
-      if (scn == S_DOESNT_EXIST)
-	{
-	  /* reference to a deleted parent */
-	  if (heap_scancache_end (thread_p, &scn_cache) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  scn_cache_inited = 0;
-	  if (heap_attrinfo_clear_dbvalues (&child_attr_cache) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  heap_attrinfo_end (thread_p, &child_attr_cache);
-	  child_attr_cache_inited = 0;
-	  continue;
-	}
-
-      if (scn != S_SUCCESS)
-	{
-	  goto error;
-	}
-
-      /* the parent is dealt with differently depending on its class */
-      if (OID_EQ (&parent_cls0, &parent_class))
-	{
-	  /* this case replaces the parent with the parent attribute,
-	   * parent_attr0
-	   */
-	  if (heap_attrinfo_start (thread_p, &parent_class, 1, &parent_attr0,
-				   &attr_cache) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  attr_cache_inited = 1;
-
-	  if ((heap_attrinfo_read_dbvalues (thread_p, &parent_oid,
-					    &recdes_peek,
-					    &attr_cache) != NO_ERROR)
-	      || ((parent = heap_attrinfo_access (parent_attr0,
-						  &attr_cache)) == NULL)
-	      || (db_value_domain_type (parent) != DB_TYPE_OID))
-	    {
-	      goto error;
-	    }
-
-	  if (DB_IS_NULL (parent))
-	    {
-	      /* reference to a deleted parent */
-	      if (heap_scancache_end (thread_p, &scn_cache) != NO_ERROR)
-		{
-		  goto error;
-		}
-	      scn_cache_inited = 0;
-	      if (heap_attrinfo_clear_dbvalues (&child_attr_cache) !=
-		  NO_ERROR)
-		{
-		  goto error;
-		}
-	      heap_attrinfo_end (thread_p, &child_attr_cache);
-	      child_attr_cache_inited = 0;
-	      continue;
-	    }
-
-	  /* replace the parent with his parent */
-	  COPY_OID (&parent_oid, DB_PULL_OID (parent));
-
-	  if (heap_attrinfo_clear_dbvalues (&attr_cache) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  heap_attrinfo_end (thread_p, &attr_cache);
-	  attr_cache_inited = 0;
-
-	  scn = heap_get_with_class_oid (thread_p, &parent_oid, &recdes_peek,
-					 &scn_cache, &parent_class, PEEK);
-
-	  if (scn == S_DOESNT_EXIST)
-	    {
-	      if (heap_scancache_end (thread_p, &scn_cache) != NO_ERROR)
-		{
-		  goto error;
-		}
-	      scn_cache_inited = 0;
-	      continue;		/* reference to a deleted parent */
-	    }
-	  if (scn != S_SUCCESS)
-	    {
-	      goto error;
-	    }
-	}
-
-      if (heap_scancache_end (thread_p, &scn_cache) != NO_ERROR)
-	{
-	  goto error;
-	}
-      scn_cache_inited = 0;
-
-      /* if parent has the correct class, put it on the
-       * result stack (if its not already on there).  Also we
-       * only want to put the parent on the work stack (in the
-       * transitive closure case) if the parent has not already
-       * been put on the result stack since this would indicate
-       * a cycle in the graph.
-       */
-      for (j = 0, valid_result = 0;
-	   j < result_classes_size && !valid_result; j++)
-	{
-
-	  if (db_seq_get (result_classes, j, &dbval_tmp) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  if (OID_EQ (&parent_class, DB_PULL_OID (&dbval_tmp)))
-	    {
-	      valid_result = 1;
-	    }
-	}
-
-      if (valid_result)
-	{
-	  if (!qdata_is_oid_on_stack (&parent_oid, result_stack, result_top))
-	    {
-	      if (qdata_push_oid_stack (&parent_oid, &result_stack,
-					&result_top,
-					&result_size) != NO_ERROR)
-		{
-		  goto error;
-		}
-
-	      /* if we are doing transitive closure, put the parent
-	       * on the work stack.
-	       */
-	      if (do_tran_closure)
-		{
-		  if (qdata_push_oid_stack (&parent_oid, &work_stack,
-					    &work_top,
-					    &work_size) != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		}
-	    }
-	}
-      else
-	{
-	  /* we still need to put the parent on the work stack in
-	   * the transitive closure case.
-	   */
-	  if (do_tran_closure)
-	    {
-	      if (qdata_push_oid_stack (&parent_oid, &work_stack, &work_top,
-					&work_size) != NO_ERROR)
-		{
-		  goto error;
-		}
-	    }
-	}
-
-      if (heap_attrinfo_clear_dbvalues (&child_attr_cache) != NO_ERROR)
-	{
-	  goto error;
-	}
-      heap_attrinfo_end (thread_p, &child_attr_cache);
-      child_attr_cache_inited = 0;
-    }
-
-  /* copy the results to the result sequence */
-  res_seq = db_seq_create (NULL, NULL, result_top + 1);
-  for (j = 0; j <= result_top; j++)
-    {
-      DB_MAKE_OID (&dbval_tmp, &result_stack[j]);
-      if (db_seq_put (res_seq, j, &dbval_tmp) != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
-  if (heap_scancache_end (thread_p, &child_scn_cache) != NO_ERROR)
-    {
-      goto error;
-    }
-  child_scn_cache_inited = 0;
-  db_private_free_and_init (thread_p, result_stack);
-  db_private_free_and_init (thread_p, work_stack);
-  DB_MAKE_SEQUENCE (result_p, res_seq);
-
-  return NO_ERROR;
-
-error:
-  if (res_seq)
-    {
-      db_seq_free (res_seq);
-    }
-
-  if (child_attr_cache_inited)
-    {
-      (void) heap_attrinfo_clear_dbvalues (&child_attr_cache);
-      heap_attrinfo_end (thread_p, &child_attr_cache);
-    }
-
-  if (child_scn_cache_inited)
-    {
-      (void) heap_scancache_end (thread_p, &child_scn_cache);
-    }
-
-  if (attr_cache_inited)
-    {
-      (void) heap_attrinfo_clear_dbvalues (&attr_cache);
-      heap_attrinfo_end (thread_p, &attr_cache);
-    }
-
-  if (scn_cache_inited)
-    {
-      (void) heap_scancache_end (thread_p, &scn_cache);
-    }
-
-  if (result_stack)
-    {
-      db_private_free_and_init (thread_p, result_stack);
-    }
-
-  if (work_stack)
-    {
-      db_private_free_and_init (thread_p, work_stack);
-    }
-
-  return ER_FAILED;
-}
-
-/*
- * qdata_get_parent () -
- *   return:
- *   res(in)    :
- *   num_args(in)       :
- *   args(in)   :
- *
- * Note: Get the parent of an object.
- * See the comments for get_ancestors_internal() which does all the real work.
- */
-static int
-qdata_get_parent (THREAD_ENTRY * thread_p, DB_VALUE * result_p, int num_args,
-		  DB_VALUE ** args)
-{
-  return qdata_get_ancestors_internal (thread_p, result_p, num_args, args, 0);
-}
-
-/*
- * qdata_get_ancestors () -
- *   return:
- *   res(in)    :
- *   num_args(in)       :
- *   args(in)   :
- *
- * Note: Get the ancestors of an object.
- * See the comments for get_ancestors_internal() which does all the real work.
- */
-static int
-qdata_get_ancestors (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
-		     int num_args, DB_VALUE ** args)
-{
-  return qdata_get_ancestors_internal (thread_p, result_p, num_args, args, 1);
-}
-
-/*
- * qdata_get_ancestors () -
- *   return:
- *   res(in)    :
- *   num_args(in)       :
- *   args(in)   :
- *
- * Note: Get the siblings of an object.
- * This routine uses get_parent() and get_children() to find the siblings
- * for an object.
- */
-static int
-qdata_get_siblings (THREAD_ENTRY * thread_p, DB_VALUE * result_p,
-		    int num_args, DB_VALUE ** args)
-{
-  DB_VALUE *tmp_args[NUM_F_GENERIC_ARGS];
-  DB_VALUE parents, parent;
-  int parents_size;
-  DB_SEQ *parents_seq;
-
-  DB_MAKE_NULL (result_p);
-  DB_MAKE_NULL (&parents);
-
-  if (num_args != 11)
-    {
-      goto error;
-    }
-
-  tmp_args[0] = args[0];
-  tmp_args[1] = args[1];
-  tmp_args[2] = args[2];
-  tmp_args[3] = args[3];
-  tmp_args[4] = args[4];
-  tmp_args[5] = args[5];
-
-  /* get the parents -- should only be one */
-  if (qdata_get_parent (thread_p, &parents, 6, tmp_args) != NO_ERROR)
-    {
-      goto error;
-    }
-
-  parents_seq = DB_GET_SEQUENCE (&parents);
-
-  /* do we have any parents? */
-  parents_size = db_seq_size (parents_seq);
-  if (parents_size == 0)
-    {
-      goto success;
-    }
-
-  if ((db_seq_size (parents_seq) != 1)
-      || (db_seq_get (parents_seq, 0, &parent) != NO_ERROR))
-    {
-      goto error;
-    }
-
-  /* Get the children of the parent. */
-  tmp_args[0] = &parent;
-  tmp_args[1] = args[6];
-  tmp_args[2] = args[7];
-  tmp_args[3] = args[8];
-  tmp_args[4] = args[9];
-  tmp_args[5] = args[10];
-
-  if (qdata_get_children (thread_p, result_p, 6, tmp_args) != NO_ERROR)
-    {
-      goto error;
-    }
-
-success:
-  pr_clear_value (&parents);
-  return NO_ERROR;
-
-error:
-  pr_clear_value (&parents);
   return ER_FAILED;
 }
 
@@ -5876,7 +4624,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
 }
 
 /*
- * Aggregate Eexpression Evaluation Routines
+ * Aggregate Expression Evaluation Routines
  */
 
 static int
@@ -6052,7 +4800,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
       /*
        * handle distincts by inserting each operand into a list file,
        * which will be distinct-ified and counted/summed/averaged
-       * in qdata_finalize_aggregate_list
+       * in qdata_finalize_aggregate_list ()
        */
       if (agg_p->option == Q_DISTINCT)
 	{
@@ -6452,104 +5200,74 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 	}
 
       /* process list file for sum/avg/count distinct */
-      if (agg_p->flag_agg_optimize == false
-	  && agg_p->option == Q_DISTINCT
+      if (agg_p->option == Q_DISTINCT
 	  && agg_p->function != PT_MAX && agg_p->function != PT_MIN)
 	{
-	  agg_p->list_id =
-	    qfile_sort_list (thread_p, agg_p->list_id, NULL, Q_DISTINCT);
-	  list_id_p = agg_p->list_id;
-
-	  if (!list_id_p)
+	  if (agg_p->flag_agg_optimize == false)
 	    {
-	      return ER_FAILED;
-	    }
+	      list_id_p = agg_p->list_id =
+		qfile_sort_list (thread_p, agg_p->list_id, NULL, Q_DISTINCT);
 
-	  if (agg_p->function == PT_COUNT)
-	    {
-	      DB_MAKE_INT (agg_p->value, list_id_p->tuple_cnt);
-	    }
-	  else
-	    {
-	      pr_type_p = list_id_p->type_list.domp[0]->type;
-
-	      /* scan list file, accumulating total for sum/avg */
-	      if (qfile_open_list_scan (list_id_p, &scan_id) != NO_ERROR)
+	      if (!list_id_p)
 		{
-		  qfile_close_list (thread_p, list_id_p);
-		  qfile_destroy_list (thread_p, list_id_p);
 		  return ER_FAILED;
 		}
 
-	      while (true)
+	      if (agg_p->function == PT_COUNT)
 		{
-		  scan_code =
-		    qfile_scan_list_next (thread_p, &scan_id, &tuple_record,
-					  PEEK);
-		  if (scan_code != S_SUCCESS)
-		    {
-		      break;
-		    }
+		  DB_MAKE_INT (agg_p->value, list_id_p->tuple_cnt);
+		}
+	      else
+		{
+		  pr_type_p = list_id_p->type_list.domp[0]->type;
 
-		  tuple_p = ((char *) tuple_record.tpl
-			     + QFILE_TUPLE_LENGTH_SIZE);
-		  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_UNBOUND)
+		  /* scan list file, accumulating total for sum/avg */
+		  if (qfile_open_list_scan (list_id_p, &scan_id) != NO_ERROR)
 		    {
-		      continue;
-		    }
-
-		  or_init (&buf,
-			   (char *) tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE,
-			   QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
-
-		  if ((*(pr_type_p->readval)) (&buf, &dbval,
-					       list_id_p->type_list.domp[0],
-					       -1, true, NULL, 0) != NO_ERROR)
-		    {
-		      qfile_close_scan (thread_p, &scan_id);
 		      qfile_close_list (thread_p, list_id_p);
 		      qfile_destroy_list (thread_p, list_id_p);
 		      return ER_FAILED;
 		    }
 
-		  if (agg_p->domain->type->id == DB_TYPE_NUMERIC
-		      && (agg_p->function == PT_VARIANCE
-			  || agg_p->function == PT_STDDEV))
+		  while (true)
 		    {
-		      if (tp_value_coerce (&dbval, &dbval, tmp_domain_ptr)
-			  != DOMAIN_COMPATIBLE)
+		      scan_code =
+			qfile_scan_list_next (thread_p, &scan_id,
+					      &tuple_record, PEEK);
+		      if (scan_code != S_SUCCESS)
 			{
-			  pr_clear_value (&dbval);
+			  break;
+			}
+
+		      tuple_p = ((char *) tuple_record.tpl
+				 + QFILE_TUPLE_LENGTH_SIZE);
+		      if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_UNBOUND)
+			{
+			  continue;
+			}
+
+		      or_init (&buf,
+			       (char *) tuple_p +
+			       QFILE_TUPLE_VALUE_HEADER_SIZE,
+			       QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
+
+		      if ((*(pr_type_p->readval)) (&buf, &dbval,
+						   list_id_p->type_list.
+						   domp[0], -1, true, NULL,
+						   0) != NO_ERROR)
+			{
 			  qfile_close_scan (thread_p, &scan_id);
 			  qfile_close_list (thread_p, list_id_p);
 			  qfile_destroy_list (thread_p, list_id_p);
 			  return ER_FAILED;
 			}
-		    }
 
-		  if (DB_IS_NULL (agg_p->value))
-		    {
-		      /* first iteration: can't add to a null agg_ptr->value */
-		      PR_TYPE *tmp_pr_type;
-		      DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
-
-		      tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
-		      if (tmp_pr_type == NULL)
+		      if (agg_p->domain->type->id == DB_TYPE_NUMERIC
+			  && (agg_p->function == PT_VARIANCE
+			      || agg_p->function == PT_STDDEV))
 			{
-			  qfile_close_scan (thread_p, &scan_id);
-			  qfile_close_list (thread_p, list_id_p);
-			  qfile_destroy_list (thread_p, list_id_p);
-			  return ER_FAILED;
-			}
-
-		      if (agg_p->function == PT_STDDEV
-			  || agg_p->function == PT_VARIANCE)
-			{
-			  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val,
-						    NOT_NULL_VALUE
-						    (tmp_domain_ptr,
-						     agg_p->domain)) !=
-			      NO_ERROR)
+			  if (tp_value_coerce (&dbval, &dbval, tmp_domain_ptr)
+			      != DOMAIN_COMPATIBLE)
 			    {
 			      pr_clear_value (&dbval);
 			      qfile_close_scan (thread_p, &scan_id);
@@ -6557,63 +5275,97 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 			      qfile_destroy_list (thread_p, list_id_p);
 			      return ER_FAILED;
 			    }
+			}
 
-			  (*(tmp_pr_type->setval)) (agg_p->value2, &sqr_val,
+		      if (DB_IS_NULL (agg_p->value))
+			{
+			  /* first iteration: can't add to a null agg_ptr->value */
+			  PR_TYPE *tmp_pr_type;
+			  DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
+
+			  tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
+			  if (tmp_pr_type == NULL)
+			    {
+			      qfile_close_scan (thread_p, &scan_id);
+			      qfile_close_list (thread_p, list_id_p);
+			      qfile_destroy_list (thread_p, list_id_p);
+			      return ER_FAILED;
+			    }
+
+			  if (agg_p->function == PT_STDDEV
+			      || agg_p->function == PT_VARIANCE)
+			    {
+			      if (qdata_multiply_dbval
+				  (&dbval, &dbval, &sqr_val,
+				   NOT_NULL_VALUE (tmp_domain_ptr,
+						   agg_p->domain)) !=
+				  NO_ERROR)
+				{
+				  pr_clear_value (&dbval);
+				  qfile_close_scan (thread_p, &scan_id);
+				  qfile_close_list (thread_p, list_id_p);
+				  qfile_destroy_list (thread_p, list_id_p);
+				  return ER_FAILED;
+				}
+
+			      (*(tmp_pr_type->setval)) (agg_p->value2,
+							&sqr_val, true);
+			    }
+			  (*(tmp_pr_type->setval)) (agg_p->value, &dbval,
 						    true);
 			}
-		      (*(tmp_pr_type->setval)) (agg_p->value, &dbval, true);
-		    }
-		  else
-		    {
-		      if (agg_p->function == PT_STDDEV
-			  || agg_p->function == PT_VARIANCE)
+		      else
 			{
-			  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val,
-						    NOT_NULL_VALUE
-						    (tmp_domain_ptr,
-						     agg_p->domain)) !=
-			      NO_ERROR)
+			  if (agg_p->function == PT_STDDEV
+			      || agg_p->function == PT_VARIANCE)
 			    {
-			      pr_clear_value (&dbval);
-			      qfile_close_scan (thread_p, &scan_id);
-			      qfile_close_list (thread_p, list_id_p);
-			      qfile_destroy_list (thread_p, list_id_p);
-			      return ER_FAILED;
+			      if (qdata_multiply_dbval
+				  (&dbval, &dbval, &sqr_val,
+				   NOT_NULL_VALUE (tmp_domain_ptr,
+						   agg_p->domain)) !=
+				  NO_ERROR)
+				{
+				  pr_clear_value (&dbval);
+				  qfile_close_scan (thread_p, &scan_id);
+				  qfile_close_list (thread_p, list_id_p);
+				  qfile_destroy_list (thread_p, list_id_p);
+				  return ER_FAILED;
+				}
+
+			      if (qdata_add_dbval (agg_p->value2, &sqr_val,
+						   agg_p->value2,
+						   NOT_NULL_VALUE
+						   (tmp_domain_ptr,
+						    agg_p->domain)) !=
+				  NO_ERROR)
+				{
+				  pr_clear_value (&dbval);
+				  pr_clear_value (&sqr_val);
+				  qfile_close_scan (thread_p, &scan_id);
+				  qfile_close_list (thread_p, list_id_p);
+				  qfile_destroy_list (thread_p, list_id_p);
+				  return ER_FAILED;
+				}
 			    }
 
-			  if (qdata_add_dbval (agg_p->value2, &sqr_val,
-					       agg_p->value2,
+			  if (qdata_add_dbval (agg_p->value, &dbval,
+					       agg_p->value,
 					       NOT_NULL_VALUE (tmp_domain_ptr,
 							       agg_p->
 							       domain)) !=
 			      NO_ERROR)
 			    {
-			      pr_clear_value (&dbval);
-			      pr_clear_value (&sqr_val);
 			      qfile_close_scan (thread_p, &scan_id);
 			      qfile_close_list (thread_p, list_id_p);
 			      qfile_destroy_list (thread_p, list_id_p);
 			      return ER_FAILED;
 			    }
 			}
-
-		      if (qdata_add_dbval (agg_p->value, &dbval,
-					   agg_p->value,
-					   NOT_NULL_VALUE (tmp_domain_ptr,
-							   agg_p->
-							   domain)) !=
-			  NO_ERROR)
-			{
-			  qfile_close_scan (thread_p, &scan_id);
-			  qfile_close_list (thread_p, list_id_p);
-			  qfile_destroy_list (thread_p, list_id_p);
-			  return ER_FAILED;
-			}
 		    }
-		}
 
-	      qfile_close_scan (thread_p, &scan_id);
-	      agg_p->curr_cnt = list_id_p->tuple_cnt;
+		  qfile_close_scan (thread_p, &scan_id);
+		  agg_p->curr_cnt = list_id_p->tuple_cnt;
+		}
 	    }
 
 	  /* close and destroy temporary list files */
@@ -7164,6 +5916,7 @@ qdata_evaluate_generic_function (THREAD_ENTRY * thread_p,
 				 VAL_DESCR * val_desc_p, OID * obj_oid_p,
 				 QFILE_TUPLE tuple)
 {
+#if defined(ENABLE_UNUSED_FUNCTION)
   DB_VALUE *args[NUM_F_GENERIC_ARGS];
   DB_VALUE *result_p = function_p->value;
   DB_VALUE *offset_dbval_p;
@@ -7209,9 +5962,9 @@ qdata_evaluate_generic_function (THREAD_ENTRY * thread_p,
 	  goto error;
 	}
 
-      if (fetch_peek_dbval
-	  (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple,
-	   &args[num_args - 1]) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL,
+			    obj_oid_p, tuple,
+			    &args[num_args - 1]) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -7227,9 +5980,11 @@ qdata_evaluate_generic_function (THREAD_ENTRY * thread_p,
   return NO_ERROR;
 
 error:
+#else /* ENABLE_UNUSED_FUNCTION */
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_GENERIC_FUNCTION_FAILURE,
 	  0);
   return ER_FAILED;
+#endif /* ENABLE_UNUSED_FUNCTION */
 }
 
 /*
@@ -7781,9 +6536,9 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
   char *sep = NULL;
   DB_VALUE *arg_dbval_p;
   DB_VALUE **save_values = NULL;
-  bool use_extended = false; /* flag for using extended form, accepting an
-			      * expression as the first argument of
-			      * SYS_CONNECT_BY_PATH() */
+  bool use_extended = false;	/* flag for using extended form, accepting an
+				 * expression as the first argument of
+				 * SYS_CONNECT_BY_PATH() */
 
   /* sanity checks */
   xasl = (XASL_NODE *) xasl_p;
@@ -7842,8 +6597,8 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
     }
 
   /* character */
-  i = strlen (value_char->data.ch.medium.buf);
-  sep = (char *) db_private_alloc (thread_p, sizeof (char) * (i+1));
+  i = strlen (DB_GET_STRING_SAFE (value_char));
+  sep = (char *) db_private_alloc (thread_p, sizeof (char) * (i + 1));
   if (sep == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -7854,7 +6609,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
   sep[0] = 0;
   if (i > 0)
     {
-      strcpy (sep, value_char->data.ch.medium.buf);
+      strcpy (sep, DB_GET_STRING_SAFE (value_char));
     }
 
   /* walk the parents up to root */
@@ -7888,19 +6643,20 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
       if (xptr->val_list->val_cnt > 0)
 	{
 	  save_values =
-	    (DB_VALUE**) db_private_alloc (thread_p, sizeof (DB_VALUE*) *
-					  xptr->val_list->val_cnt);
+	    (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) *
+					    xptr->val_list->val_cnt);
 	  if (save_values == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      sizeof (DB_VALUE*) * xptr->val_list->val_cnt);
+		      sizeof (DB_VALUE *) * xptr->val_list->val_cnt);
 	      goto error;
 	    }
 
-	  memset (save_values, 0, sizeof (DB_VALUE*) * xptr->val_list->val_cnt);
+	  memset (save_values, 0,
+		  sizeof (DB_VALUE *) * xptr->val_list->val_cnt);
 	  for (i = 0, valp = xptr->val_list->valp;
-	      valp && i < xptr->val_list->val_cnt; i++, valp = valp->next)
+	       valp && i < xptr->val_list->val_cnt; i++, valp = valp->next)
 	    {
 	      save_values[i] = db_value_copy (valp->val);
 	    }
@@ -7937,12 +6693,14 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
 	{
 	  /* fetch value list */
 	  if (fetch_val_list (thread_p, xptr->proc.connect_by.regu_list_pred,
-			      vd, NULL, NULL, tuple_rec.tpl, PEEK) != NO_ERROR)
+			      vd, NULL, NULL, tuple_rec.tpl,
+			      PEEK) != NO_ERROR)
 	    {
 	      goto error;
 	    }
 	  if (fetch_val_list (thread_p, xptr->proc.connect_by.regu_list_rest,
-			      vd, NULL, NULL, tuple_rec.tpl, PEEK) != NO_ERROR)
+			      vd, NULL, NULL, tuple_rec.tpl,
+			      PEEK) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -7955,14 +6713,22 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
 	    }
 	}
 
-      /* cast result to string */
-      if (qdata_cast_to_domain (arg_dbval_p, &cast_value, &tp_String_domain)
-	  != NO_ERROR)
+      if (DB_IS_NULL (arg_dbval_p))
 	{
-	  goto error;
+	  DB_MAKE_NULL (&cast_value);
+	}
+      else
+	{
+	  /* cast result to string; this call also allocates the container */
+	  if (qdata_cast_to_domain (arg_dbval_p, &cast_value,
+				    &tp_String_domain) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
 
-      len = (strlen (sep) + cast_value.data.ch.medium.size
+      len = (strlen (sep) +
+	     (DB_IS_NULL (&cast_value) ? 0 : DB_GET_STRING_SIZE (&cast_value))
 	     + strlen (result_path) + 1);
       if (len > len_tmp)
 	{
@@ -7971,6 +6737,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
 	    (char *) db_private_alloc (thread_p, sizeof (char) * len_tmp);
 	  if (path_tmp == NULL)
 	    {
+	      db_value_clear (&cast_value);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, len_tmp);
 	      goto error;
@@ -7978,16 +6745,23 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
 	}
 
       strcpy (path_tmp, sep);
-      strcat (path_tmp, cast_value.data.ch.medium.buf);
+      strcat (path_tmp, DB_GET_STRING_SAFE (&cast_value));
 
       strcat (path_tmp, result_path);
+
+      /* free the container for cast_value */
+      if (db_value_clear (&cast_value) != NO_ERROR)
+	{
+	  goto error;
+	}
 
       while (strlen (path_tmp) + 1 > len_result_path)
 	{
 	  len_result_path += SYS_CONNECT_BY_PATH_MEM_STEP;
 	  db_private_free_and_init (thread_p, result_path);
 	  result_path =
-	    (char *) db_private_alloc (thread_p, sizeof (char)*len_result_path);
+	    (char *) db_private_alloc (thread_p,
+				       sizeof (char) * len_result_path);
 	  if (result_path == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -8026,7 +6800,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
 	    }
 	}
     }
-  while (bitval);  /* the parent tuple pos is null for the root node */
+  while (bitval);		/* the parent tuple pos is null for the root node */
 
   qfile_close_scan (thread_p, &s_id);
 
@@ -8038,7 +6812,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
       if (xptr->val_list->val_cnt > 0)
 	{
 	  for (i = 0, valp = xptr->val_list->valp;
-	      valp && i < xptr->val_list->val_cnt; i++, valp = valp->next)
+	       valp && i < xptr->val_list->val_cnt; i++, valp = valp->next)
 	    {
 	      if (db_value_clear (valp->val) != NO_ERROR)
 		{

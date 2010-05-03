@@ -422,47 +422,49 @@
      MINVALUE = 639,
      NAME = 640,
      NOCYCLE = 641,
-     NOMAXVALUE = 642,
-     NOMINVALUE = 643,
-     PARTITION = 644,
-     PARTITIONING = 645,
-     PARTITIONS = 646,
-     PASSWORD = 647,
-     PRINT = 648,
-     PRIORITY = 649,
-     RANGE_ = 650,
-     REJECT_ = 651,
-     REMOVE = 652,
-     REORGANIZE = 653,
-     REPEATABLE = 654,
-     RETAIN = 655,
-     REVERSE = 656,
-     SERIAL = 657,
-     STABILITY = 658,
-     START_ = 659,
-     STATEMENT = 660,
-     STATUS = 661,
-     STDDEV = 662,
-     SYSTEM = 663,
-     THAN = 664,
-     TIMEOUT = 665,
-     TRACE = 666,
-     TRIGGERS = 667,
-     UNCOMMITTED = 668,
-     VARIANCE = 669,
-     WORKSPACE = 670,
-     IdName = 671,
-     BracketDelimitedIdName = 672,
-     DelimitedIdName = 673,
-     UNSIGNED_INTEGER = 674,
-     UNSIGNED_REAL = 675,
-     CHAR_STRING = 676,
-     NCHAR_STRING = 677,
-     BIT_STRING = 678,
-     HEX_STRING = 679,
-     CPP_STYLE_HINT = 680,
-     C_STYLE_HINT = 681,
-     SQL_STYLE_HINT = 682
+     NOCACHE = 642,
+     NOMAXVALUE = 643,
+     NOMINVALUE = 644,
+     PARTITION = 645,
+     PARTITIONING = 646,
+     PARTITIONS = 647,
+     PASSWORD = 648,
+     PRINT = 649,
+     PRIORITY = 650,
+     RANGE_ = 651,
+     REJECT_ = 652,
+     REMOVE = 653,
+     REORGANIZE = 654,
+     REPEATABLE = 655,
+     RETAIN = 656,
+     REUSE_OID = 657,
+     REVERSE = 658,
+     SERIAL = 659,
+     STABILITY = 660,
+     START_ = 661,
+     STATEMENT = 662,
+     STATUS = 663,
+     STDDEV = 664,
+     SYSTEM = 665,
+     THAN = 666,
+     TIMEOUT = 667,
+     TRACE = 668,
+     TRIGGERS = 669,
+     UNCOMMITTED = 670,
+     VARIANCE = 671,
+     WORKSPACE = 672,
+     IdName = 673,
+     BracketDelimitedIdName = 674,
+     DelimitedIdName = 675,
+     UNSIGNED_INTEGER = 676,
+     UNSIGNED_REAL = 677,
+     CHAR_STRING = 678,
+     NCHAR_STRING = 679,
+     BIT_STRING = 680,
+     HEX_STRING = 681,
+     CPP_STYLE_HINT = 682,
+     C_STYLE_HINT = 683,
+     SQL_STYLE_HINT = 684
    };
 #endif
 
@@ -481,6 +483,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <errno.h>
 
 #include "parser.h"
 #include "parser_message.h"
@@ -759,7 +762,7 @@ void pop_msg(void);
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 321 "../../src/parser/csql_grammar.y"
+#line 322 "../../src/parser/csql_grammar.y"
 {
 	int number;
 	PT_NODE* node;
@@ -769,7 +772,7 @@ typedef union YYSTYPE
 	container_4 c4;
 }
 /* Line 2616 of glr.c.  */
-#line 773 "../../src/parser/csql_grammar.h"
+#line 776 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

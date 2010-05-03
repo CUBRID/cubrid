@@ -322,10 +322,7 @@ public class UConnection
       client = socket;
       client.setTcpNoDelay(true);
 #if !defined(SERVER_SIDE_JDBC)
-      if (altHosts != null)
-      {
-        client.setSoTimeout(SOCKET_TIMEOUT);
-      }
+      client.setSoTimeout(SOCKET_TIMEOUT);
 #endif
 
       out = client.getOutputStream();
@@ -334,8 +331,8 @@ public class UConnection
       out.flush();
       output.flush();
 
-      in = new UTimedInputStream(client.getInputStream(), CASIp);
-      input = new UTimedDataInputStream(client.getInputStream(), CASIp);
+      in = new UTimedInputStream(client.getInputStream(), CASIp, CASPort);
+      input = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort);
     }
     catch (IOException e)
     {
@@ -1805,7 +1802,14 @@ public class UConnection
       int error = conCancel.input.readInt();
 
       if (error < 0)
+	  {
+#ifdef CAS_FOR_DBMS
+        int err_code = conCancel.input.readInt();
+        throw new UJciException(UErrorCode.ER_DBMS, error, err_code, null);
+#else 
         throw new UJciException(UErrorCode.ER_DBMS, error, null);
+#endif 
+	  }
     }
     finally
     {
@@ -1971,18 +1975,15 @@ public class UConnection
     {
       client = new Socket(InetAddress.getByName(ip), port);
       client.setTcpNoDelay(true);
-      if (altHosts != null)
-      {
-        client.setSoTimeout(SOCKET_TIMEOUT);
-      }
+      client.setSoTimeout(SOCKET_TIMEOUT);
 
       out = client.getOutputStream();
       output = new DataOutputStream(client.getOutputStream());
       out.flush();
       output.flush();
 
-      in = new UTimedInputStream(client.getInputStream(), CASIp);
-      input = new UTimedDataInputStream(client.getInputStream(), CASIp);
+      in = new UTimedInputStream(client.getInputStream(), CASIp, CASPort);
+      input = new UTimedDataInputStream(client.getInputStream(), CASIp, CASPort);
     }
     catch (IOException e)
     {
@@ -2116,7 +2117,12 @@ public class UConnection
     }
     if (newPort < 0)
     {
+#ifdef CAS_FOR_DBMS
+      int err_code = input.readInt();
+      throw new UJciException(UErrorCode.ER_DBMS, newPort, err_code, null);
+#else 
       throw new UJciException(UErrorCode.ER_DBMS, newPort, null);
+#endif 
     }
     else if (newPort == 0)
       return;
@@ -2203,4 +2209,49 @@ public class UConnection
   {
     isAutoCommitBySelf = false;
   }
+
+  static void ping(String ip, int port, int socketTimeout) throws IOException
+  {
+    Socket clientSocket = null;
+    DataOutputStream outputStream = null;
+    DataInputStream  inputStream = null;
+
+    try
+    {
+      String ping_msg = "PING_TEST!";
+
+      clientSocket = new Socket(InetAddress.getByName(ip), port);
+      clientSocket.setTcpNoDelay(true);
+      clientSocket.setSoTimeout(socketTimeout);
+
+      outputStream = new DataOutputStream(clientSocket.getOutputStream());
+
+      outputStream.write(ping_msg.getBytes());
+      outputStream.flush();		      
+
+      inputStream = new DataInputStream(clientSocket.getInputStream());		    		    
+      inputStream.readInt();
+
+    }
+    catch(Exception e)
+    {
+      throw new IOException(e.getMessage());
+    }
+    finally
+    {
+      if (outputStream != null)
+      {
+        outputStream.close();
+      }
+      if (inputStream != null)
+      {
+        inputStream.close();
+      }
+      if (clientSocket != null)
+      {	    	
+        clientSocket.close();
+      }
+    }  
+  }
+
 }

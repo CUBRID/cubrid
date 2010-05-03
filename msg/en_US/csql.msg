@@ -42,7 +42,6 @@ valid options:\n\
   -r, --read-only              read-only mode\n\
       --no-auto-commit         disable auto commit mode execution\n\
       --no-pager               do not use pager\n\
-      --sysadm                 system admin mode\n\
 \n\
 For addtional information, see http://www.cubrid.com\n
 41 %s: the environment value of %s_MODE is incorrect. \nIt should be either %s or %s.\n
@@ -65,8 +64,14 @@ For addtional information, see http://www.cubrid.com\n
 58 Command buffer has been sent to the printer.
 59 Current directory changed to 
 61 Enter Password : 
-63 <Result of %s Command in Line %d>
-65 There are no results.
+62 <Result of %s Command in Line %d>
+63 There are no results.
+64 Checkpoint has been issued.
+65 The database has been restarted.
+66 Tran index      User name      Host name      Process id      Program name\n
+67 %7d(%1c) %14s %14s %15d %17s\n
+68 The specified transaction has been killed.
+69 Killing of the specified transaction has failed.
 70 %d rows %s.
 $ These 3 should be blank
 75 Automated API tester
@@ -127,7 +132,7 @@ $ csql help messages
    can precede the prefix. Capitalized characters represent the minimum\n\
    abbreviation that you need to enter to execute the specified command.\n\
 \n\
-   ;REad   [<file-name>]       - read a file into command buffer.\n\
+   ;REAd   [<file-name>]       - read a file into command buffer.\n\
    ;Write  [<file-name>]       - (over)write command buffer into a file.\n\
    ;APpend [<file-name>]       - append command buffer into a file.\n\
    ;PRINT                      - print command buffer.\n\
@@ -145,6 +150,7 @@ $ csql help messages
    ;COmmit                     - commit the current transaction.\n\
    ;ROllback                   - roll back the current transaction.\n\
    ;AUtocommit [ON|OFF]        - enable/disable auto commit mode.\n\
+   ;REStart                    - restart database.\n\
 \n\
    ;SHELL_Cmd  [shell-cmd]     - set default shell, editor, print and pager\n\
    ;EDITOR_Cmd [editor-cmd]      command to new one, or display the current\n\

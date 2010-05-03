@@ -35,20 +35,21 @@
 #if defined(WINDOWS)
 #include <io.h>
 #include <process.h>
+#include <sys/timeb.h>
 #else
 #include <unistd.h>
+#include <sys/time.h>
 #endif
 
 #include "cm_porting.h"
 #include "cm_server_util.h"
-#include "cm_nameval.h"
-#include "cm_dstring.h"
+#include "cm_stat.h"
+#include "cm_dep.h"
 #include "cm_job_task.h"
 #include "cm_config.h"
 #include "cm_text_encryption.h"
-#include "cm_broker_admin.h"
-#include "cm_version.h"
 #include "assert.h"
+#include "cm_connect_info.h"
 
 #if defined(WINDOWS)
 #include "cm_wsa_init.h"
@@ -63,6 +64,11 @@ static int _ut_get_dbaccess (nvplist * req, char *dbid, char *dbpasswd);
 static void uGenerateStatus (nvplist * req, nvplist * res, int retval,
 			     char *_dbmt_error);
 static int ut_validate_token (nvplist * req);
+static void _ut_timeval_diff (struct timeval *start, struct timeval *end,
+			      int *res_msec);
+#if defined(WINDOWS)
+static int gettimeofday (struct timeval *tp, void *tzp);
+#endif
 
 T_EMGR_VERSION CLIENT_VERSION;
 
@@ -87,9 +93,6 @@ main (int argc, char *argv[])
   sys_config_init ();
   uReadEnvVariables (argv[0], stdout);
   uReadSystemConfig ();
-
-  uca_init (NULL);
-
 
   /* From now on, interpret all the message as 'en_US' type.
    * In other language setting, it may corrupt.
@@ -124,13 +127,18 @@ ut_process_request (nvplist * req, nvplist * res)
   int task_code;
   int retval = ERR_NO_ERROR;
   char *dbname, *task;
-  char dbid[512];
-  char dbpasswd[512];
+  char dbid[32];
+  char dbpasswd[80];
   T_TASK_FUNC task_func;
   char access_log_flag;
   char _dbmt_error[DBMT_ERROR_MSG_SIZE];
   int major_ver, minor_ver;
   char *cli_ver;
+
+  /* variables for caculating the running time of cub_job. */
+  int elapsed_msec = 0;
+  struct timeval task_begin, task_end;
+  char elapsed_time_str[20];
 
   memset (_dbmt_error, 0, sizeof (_dbmt_error));
 
@@ -192,7 +200,21 @@ ut_process_request (nvplist * req, nvplist * res)
 	{
 	  ut_access_log (req, NULL);
 	}
+      /* record the start time of running cub_job */
+      gettimeofday (&task_begin, NULL);
+
       retval = (*task_func) (req, res, _dbmt_error);
+
+      /* record the end time of running cub_job */
+      gettimeofday (&task_end, NULL);
+
+      /* caculate the running time of cub_job. */
+      _ut_timeval_diff (&task_begin, &task_end, &elapsed_msec);
+
+      /* add cub_job running time to response. */
+      snprintf (elapsed_time_str, sizeof (elapsed_time_str),
+		"%d ms", elapsed_msec);
+      nv_add_nvp (res, "__EXEC_TIME", elapsed_time_str);
     }
 
   uGenerateStatus (req, res, retval, _dbmt_error);
@@ -206,55 +228,30 @@ ut_process_request (nvplist * req, nvplist * res)
 static int
 _ut_get_dbaccess (nvplist * req, char *dbid, char *dbpasswd)
 {
-  nvplist *ud = NULL;
-  char strbuf[1024];
-  char *task, *id, *svrtype, *clientip, *dbname, *value;
-  char *tok[3];
+  int retval;
+  char *ip, *port, *dbname;
   char _dbmt_error[1024];
+  T_DBMT_CON_DBINFO con_dbinfo;
 
   dbid[0] = dbpasswd[0] = '\0';
 
-  id = nv_get_val (req, "_ID");
-  svrtype = nv_get_val (req, "_SVRTYPE");
-  clientip = nv_get_val (req, "_CLIENTIP");
-  task = nv_get_val (req, "task");
+  ip = nv_get_val (req, "_IP");
+  port = nv_get_val (req, "_PORT");
   dbname = nv_get_val (req, "dbname");
 
-  if ((ud = nv_create (6, NULL, "\n", ":", "\n")) == NULL)
-    return 0;
-
-  /* read cm.pass */
-  if (_tsReadUserCapability (ud, id, _dbmt_error) != ERR_NO_ERROR)
+  /* read conlist */
+  memset (&con_dbinfo, 0, sizeof (T_DBMT_CON_DBINFO));
+  if ((retval =
+       dbmt_con_read_dbinfo (&con_dbinfo, ip, port, dbname,
+			     _dbmt_error)) <= 0)
     {
-      nv_destroy (ud);
       return 0;
     }
 
-  /* extract user info */
-  if (nv_get_val (ud, dbname) == NULL)
-    {
-      nv_destroy (ud);
-      return 0;
-    }
-  value = nv_get_val (ud, dbname);
-  if (value != NULL)
-    {
-      strcpy (strbuf, value);
+  /* extract db user info */
+  strcpy (dbid, con_dbinfo.uid);
+  uDecrypt (PASSWD_LENGTH, con_dbinfo.passwd, dbpasswd);
 
-      string_tokenize2 (strbuf, tok, 3, ';');
-
-      if (tok[1] == NULL)
-	{
-	  dbid[0] = '\0';
-	}
-      else
-	{
-	  strcpy (dbid, tok[1]);
-	}
-      uDecrypt (PASSWD_LENGTH, tok[2], dbpasswd);
-    }
-
-  nv_destroy (ud);
   return 1;
 }
 
@@ -389,13 +386,17 @@ uGenerateStatus (nvplist * req, nvplist * res, int retval, char *_dbmt_error)
       sprintf (strbuf, "Temporal file open error.");
       break;
     case ERR_WITH_MSG:
-      strcpy (strbuf, _dbmt_error);
+      strcpy_limit (strbuf, _dbmt_error, sizeof (strbuf));
       break;
     case ERR_UPA_SYSTEM:
       sprintf (strbuf, "Authentication System Error.");
       break;
     case ERR_TEMPLATE_ALREADY_EXIST:
       sprintf (strbuf, "Template (%s) already exist.", _dbmt_error);
+      break;
+    case ERR_WARNING:
+      strcpy_limit (strbuf, _dbmt_error, sizeof (strbuf));
+      nv_update_val (res, "status", "warning");
       break;
     default:
       sprintf (strbuf, "error");
@@ -410,11 +411,9 @@ uGenerateStatus (nvplist * req, nvplist * res, int retval, char *_dbmt_error)
 static int
 ut_validate_token (nvplist * req)
 {
-  FILE *infile;
-  int lfd, retval;
+  int retval;
   char *ip, *port, *id, *tok[3];
-  char *token, token_content[TOKEN_LENGTH + 1], strbuf[1024];
-  char ip_t[20], port_t[10];
+  char *token, token_content[TOKEN_LENGTH + 1];
   char cli_ver[15];
 
   if ((token = nv_get_val (req, "token")) == NULL)
@@ -428,32 +427,35 @@ ut_validate_token (nvplist * req)
   ip = tok[0];
   port = tok[1];
   id = tok[2];
+
+  nv_add_nvp (req, "_IP", ip);
+  nv_add_nvp (req, "_PORT", port);
   nv_add_nvp (req, "_ID", id);
 
   /* check if ip is an existing ip */
-  retval = 0;
-  lfd = uCreateLockFile (conf_get_dbmt_file (FID_LOCK_CONN_LIST, strbuf));
-  if (lfd >= 0)
-    {
-      infile = fopen (conf_get_dbmt_file (FID_CONN_LIST, strbuf), "r");
-      if (infile != NULL)
-	{
-	  while (fgets (strbuf, sizeof (strbuf), infile))
-	    {
-	      if (sscanf (strbuf, "%19s %9s", ip_t, port_t) < 2)
-		continue;
-	      if (uStringEqual (ip, ip_t))
-		{
-		  retval = 1;
-		  sscanf (strbuf, "%*s %*s %*s %*s %14s", cli_ver);
-		  nv_add_nvp (req, "_CLIENT_VERSION", cli_ver);
-		  break;
-		}
-	    }
-	  fclose (infile);
-	}
-      uRemoveLockFile (lfd);
-    }
+  retval = dbmt_con_search (ip, port, cli_ver);
 
   return retval;
+}
+
+#if defined (WINDOWS)
+static int
+gettimeofday (struct timeval *tp, void *tzp)
+{
+  struct _timeb tm;
+  _ftime (&tm);
+  tp->tv_sec = tm.time;
+  tp->tv_usec = tm.millitm * 1000;
+  return 0;
+}
+#endif
+
+static void
+_ut_timeval_diff (struct timeval *start, struct timeval *end, int *res_msec)
+{
+  int sec, msec;
+
+  sec = end->tv_sec - start->tv_sec;
+  msec = (end->tv_usec / 1000) - (start->tv_usec / 1000);
+  *res_msec = sec * 1000 + msec;
 }

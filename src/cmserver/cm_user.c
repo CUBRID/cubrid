@@ -38,7 +38,6 @@
 
 #include "cm_porting.h"
 #include "cm_server_util.h"
-#include "cm_config.h"
 #include "cm_user.h"
 
 #define CUBRID_PASS_OPEN_TAG		"<<<:"
@@ -46,15 +45,17 @@
 #define CUBRID_PASS_CLOSE_TAG		">>>:"
 #define CUBRID_PASS_CLOSE_TAG_LEN	strlen(CUBRID_PASS_CLOSE_TAG)
 
-static int get_dbmt_user_dbinfo (char *strbuf, T_DBMT_USER_DBINFO * dbinfo);
-
 int
 dbmt_user_read (T_DBMT_USER * dbmt_user, char *_dbmt_error)
 {
   T_DBMT_USER_INFO *user_info = NULL;
-  T_DBMT_USER_DBINFO *dbinfo = NULL;
+  T_DBMT_USER_DBINFO *user_dbinfo = NULL;
+  T_DBMT_USER_AUTHINFO *user_authinfo = NULL;
   int num_dbmt_user = 0;
   int num_dbinfo = 0;
+  int num_authinfo = 0;
+  char *authinfo[2];
+  char *dbinfo[4];
   FILE *fp = NULL;
   char strbuf[1024];
   char cur_user[DBMT_USER_NAME_LEN];
@@ -87,19 +88,25 @@ dbmt_user_read (T_DBMT_USER * dbmt_user, char *_dbmt_error)
 		    + CUBRID_PASS_OPEN_TAG_LEN);
 	  if (cur_user[0] == '\0')
 	    continue;
-	  num_dbmt_user++;
-	  MALLOC_USER_INFO (user_info, num_dbmt_user);
+
+	  user_info =
+	    (T_DBMT_USER_INFO *) increase_capacity (user_info,
+						    sizeof (T_DBMT_USER_INFO),
+						    num_dbmt_user,
+						    num_dbmt_user + 1);
 	  if (user_info == NULL)
 	    {
 	      retval = ERR_MEM_ALLOC;
 	      goto read_dbmt_user_error;
 	    }
+	  num_dbmt_user++;
 
 	  /* user name set */
-	  strncpy (user_info[num_dbmt_user - 1].user_name, cur_user,
-		   DBMT_USER_NAME_LEN);
-	  dbinfo = NULL;
+	  strcpy_limit (user_info[num_dbmt_user - 1].user_name, cur_user,
+			DBMT_USER_NAME_LEN);
+	  user_dbinfo = NULL;
 	  num_dbinfo = 0;
+	  num_authinfo = 0;
 	  continue;
 	}
 
@@ -120,34 +127,89 @@ dbmt_user_read (T_DBMT_USER * dbmt_user, char *_dbmt_error)
 	    }
 	  if (user_info != NULL)
 	    {
-	      user_info[num_dbmt_user - 1].dbinfo = dbinfo;
-	      dbinfo = NULL;
+	      user_info[num_dbmt_user - 1].dbinfo = user_dbinfo;
+	      user_dbinfo = NULL;
 	      user_info[num_dbmt_user - 1].num_dbinfo = num_dbinfo;
+
+	      user_info[num_dbmt_user - 1].authinfo = user_authinfo;
+	      user_authinfo = NULL;
+	      user_info[num_dbmt_user - 1].num_authinfo = num_authinfo;
 	    }
 	  cur_user[0] = '\0';
 	}
       else
 	{
-	  T_DBMT_USER_DBINFO tmp_dbinfo;
-	  if (get_dbmt_user_dbinfo (strbuf, &tmp_dbinfo) < 0)
-	    continue;
-	  num_dbinfo++;
-	  MALLOC_USER_DBINFO (dbinfo, num_dbinfo);
-	  if (dbinfo == NULL)
+	  /* get authority info and database info */
+	  if (string_tokenize2 (strbuf, authinfo, 2, ':') < 0)
 	    {
-	      retval = ERR_MEM_ALLOC;
-	      goto read_dbmt_user_error;
+	      continue;
 	    }
-	  dbinfo[num_dbinfo - 1] = tmp_dbinfo;
+	  else
+	    {
+	      if ((strcmp (authinfo[0], "unicas") == 0) ||
+		  (strcmp (authinfo[0], "dbcreate") == 0) ||
+		  (strcmp (authinfo[0], "statusmonitorauth") == 0))
+		{
+		  T_DBMT_USER_AUTHINFO tmp_authinfo;
+		  memset (&tmp_authinfo, 0, sizeof (T_DBMT_USER_AUTHINFO));
+
+		  dbmt_user_set_authinfo (&tmp_authinfo, authinfo[0],
+					  authinfo[1]);
+
+		  user_authinfo =
+		    (T_DBMT_USER_AUTHINFO *) increase_capacity (user_authinfo,
+								sizeof
+								(T_DBMT_USER_AUTHINFO),
+								num_authinfo,
+								num_authinfo +
+								1);
+		  if (user_authinfo == NULL)
+		    {
+		      retval = ERR_MEM_ALLOC;
+		      goto read_dbmt_user_error;
+		    }
+		  num_authinfo++;
+		  user_authinfo[num_authinfo - 1] = tmp_authinfo;
+		}
+	      else
+		{
+		  T_DBMT_USER_DBINFO tmp_dbinfo;
+		  memset (&tmp_dbinfo, 0, sizeof (T_DBMT_USER_DBINFO));
+
+		  if (string_tokenize2 (authinfo[1], dbinfo, 4, ';') < 0)
+		    continue;
+		  dbmt_user_set_dbinfo (&tmp_dbinfo, authinfo[0], dbinfo[0],
+					dbinfo[1], dbinfo[2], dbinfo[3]);
+
+		  user_dbinfo =
+		    (T_DBMT_USER_DBINFO *) increase_capacity (user_dbinfo,
+							      sizeof
+							      (T_DBMT_USER_DBINFO),
+							      num_dbinfo,
+							      num_dbinfo + 1);
+		  if (user_dbinfo == NULL)
+		    {
+		      retval = ERR_MEM_ALLOC;
+		      goto read_dbmt_user_error;
+		    }
+		  num_dbinfo++;
+		  user_dbinfo[num_dbinfo - 1] = tmp_dbinfo;
+		}
+	    }
 	}
     }
   fclose (fp);
   fp = NULL;
 
-  if (dbinfo != NULL)
+  if (user_dbinfo != NULL)
     {
-      free (dbinfo);
-      dbinfo = NULL;
+      free (user_dbinfo);
+      user_dbinfo = NULL;
+    }
+  if (user_authinfo != NULL)
+    {
+      free (user_authinfo);
+      user_authinfo = NULL;
     }
 
   if (num_dbmt_user < 1)
@@ -204,6 +266,7 @@ read_dbmt_user_error:
     }
   dbmt_user_free (dbmt_user);
   uRemoveLockFile (lock_fd);
+
   return retval;
 }
 
@@ -218,13 +281,15 @@ dbmt_user_free (T_DBMT_USER * dbmt_user)
 	{
 	  if (dbmt_user->user_info[i].dbinfo)
 	    free (dbmt_user->user_info[i].dbinfo);
+	  if (dbmt_user->user_info[i].authinfo)
+	    free (dbmt_user->user_info[i].authinfo);
 	}
       free (dbmt_user->user_info);
     }
 }
 
 int
-dbmt_user_write_cubrid_pass (T_DBMT_USER * dbmt_user, char *_dbmt_error)
+dbmt_user_write_auth (T_DBMT_USER * dbmt_user, char *_dbmt_error)
 {
   FILE *fp;
   char tmpfile[512];
@@ -247,16 +312,26 @@ dbmt_user_write_cubrid_pass (T_DBMT_USER * dbmt_user, char *_dbmt_error)
     {
       if (dbmt_user->user_info[i].user_name[0] == '\0')
 	continue;
+
       fprintf (fp, "%s%s\n", CUBRID_PASS_OPEN_TAG,
 	       dbmt_user->user_info[i].user_name);
+      for (j = 0; j < dbmt_user->user_info[i].num_authinfo; j++)
+	{
+	  if (dbmt_user->user_info[i].authinfo[j].domain[0] == '\0')
+	    continue;
+	  fprintf (fp, "%s:%s\n", dbmt_user->user_info[i].authinfo[j].domain,
+		   dbmt_user->user_info[i].authinfo[j].auth);
+	}
       for (j = 0; j < dbmt_user->user_info[i].num_dbinfo; j++)
 	{
 	  if (dbmt_user->user_info[i].dbinfo[j].dbname[0] == '\0')
 	    continue;
-	  dbmt_user_db_auth_str (&(dbmt_user->user_info[i].dbinfo[j]),
-				 strbuf);
-	  fprintf (fp, "%s:%s\n", dbmt_user->user_info[i].dbinfo[j].dbname,
-		   strbuf);
+	  fprintf (fp, "%s:%s;%s;%s;%s\n",
+		   dbmt_user->user_info[i].dbinfo[j].dbname,
+		   dbmt_user->user_info[i].dbinfo[j].auth,
+		   dbmt_user->user_info[i].dbinfo[j].uid,
+		   dbmt_user->user_info[i].dbinfo[j].passwd,
+		   dbmt_user->user_info[i].dbinfo[j].broker_address);
 	}
       fprintf (fp, "%s%s\n", CUBRID_PASS_CLOSE_TAG,
 	       dbmt_user->user_info[i].user_name);
@@ -280,47 +355,42 @@ dbmt_user_set_dbinfo (T_DBMT_USER_DBINFO * dbinfo, const char *dbname,
 		      const char *auth, const char *uid, const char *passwd,
 		      const char *broker_address)
 {
-  strncpy (dbinfo->dbname, dbname, sizeof (dbinfo->dbname) - 1);
-  strncpy (dbinfo->auth, auth, sizeof (dbinfo->auth) - 1);
-  strncpy (dbinfo->uid, uid, sizeof (dbinfo->uid) - 1);
-  strncpy (dbinfo->passwd, passwd, sizeof (dbinfo->passwd) - 1);
+  strcpy_limit (dbinfo->dbname, dbname, sizeof (dbinfo->dbname));
+  strcpy_limit (dbinfo->auth, auth, sizeof (dbinfo->auth));
+  strcpy_limit (dbinfo->uid, uid, sizeof (dbinfo->uid));
+  strcpy_limit (dbinfo->passwd, passwd, sizeof (dbinfo->passwd));
   if (broker_address == NULL)
     {
       dbinfo->broker_address[0] = '\0';
     }
   else
     {
-      strncpy (dbinfo->broker_address, broker_address,
-	       sizeof (dbinfo->broker_address) - 1);
+      strcpy_limit (dbinfo->broker_address, broker_address,
+		    sizeof (dbinfo->broker_address));
     }
+}
+
+void
+dbmt_user_set_authinfo (T_DBMT_USER_AUTHINFO * authinfo, const char *domain,
+			const char *auth)
+{
+  strcpy_limit (authinfo->domain, domain, sizeof (authinfo->domain));
+  strcpy_limit (authinfo->auth, auth, sizeof (authinfo->auth));
 }
 
 void
 dbmt_user_set_userinfo (T_DBMT_USER_INFO * usrinfo, char *user_name,
-			char *user_passwd, int num_dbinfo,
+			char *user_passwd, int num_authinfo,
+			T_DBMT_USER_AUTHINFO * authinfo, int num_dbinfo,
 			T_DBMT_USER_DBINFO * dbinfo)
 {
-  strncpy (usrinfo->user_name, user_name, sizeof (usrinfo->user_name) - 1);
-  strncpy (usrinfo->user_passwd, user_passwd,
-	   sizeof (usrinfo->user_passwd) - 1);
+  strcpy_limit (usrinfo->user_name, user_name, sizeof (usrinfo->user_name));
+  strcpy_limit (usrinfo->user_passwd, user_passwd,
+		sizeof (usrinfo->user_passwd));
+  usrinfo->num_authinfo = num_authinfo;
+  usrinfo->authinfo = authinfo;
   usrinfo->num_dbinfo = num_dbinfo;
   usrinfo->dbinfo = dbinfo;
-}
-
-void
-dbmt_user_db_auth_str (T_DBMT_USER_DBINFO * dbinfo, char *buf)
-{
-  if ((strcmp (dbinfo->dbname, "unicas") == 0) ||
-      (strcmp (dbinfo->dbname, "dbcreate") == 0) ||
-      (strcmp (dbinfo->dbname, "statusmonitorauth") == 0))
-    {
-      strcpy (buf, dbinfo->auth);
-    }
-  else
-    {
-      sprintf (buf, "%s;%s;%s;%s", dbinfo->auth, dbinfo->uid, dbinfo->passwd,
-	       dbinfo->broker_address);
-    }
 }
 
 int
@@ -333,6 +403,7 @@ dbmt_user_search (T_DBMT_USER_INFO * user_info, const char *dbname)
       if (strcmp (user_info->dbinfo[i].dbname, dbname) == 0)
 	return i;
     }
+
   return -1;
 }
 
@@ -349,6 +420,7 @@ dbmt_user_write_pass (T_DBMT_USER * dbmt_user, char *_dbmt_error)
 #else
   sprintf (tmpfile, "%s/DBMT_util_pass.%d", CUBRID_TMPDIR, (int) getpid ());
 #endif
+
   fp = fopen (tmpfile, "w");
   if (fp == NULL)
     {
@@ -393,42 +465,19 @@ dbmt_user_db_delete (T_DBMT_USER * dbmt_user, char *dbname)
 int
 dbmt_user_add_dbinfo (T_DBMT_USER_INFO * usrinfo, T_DBMT_USER_DBINFO * dbinfo)
 {
-  int i;
+  int i = usrinfo->num_dbinfo;
 
-  i = usrinfo->num_dbinfo + 1;
-  MALLOC_USER_DBINFO (usrinfo->dbinfo, i);
+  usrinfo->dbinfo =
+    (T_DBMT_USER_DBINFO *) increase_capacity (usrinfo->dbinfo,
+					      sizeof (T_DBMT_USER_DBINFO), i,
+					      i + 1);
   if (usrinfo->dbinfo == NULL)
     return ERR_MEM_ALLOC;
+  i++;
   usrinfo->num_dbinfo = i;
   for (i--; i >= 1; i--)
     usrinfo->dbinfo[i] = usrinfo->dbinfo[i - 1];
   usrinfo->dbinfo[0] = *dbinfo;
+
   return ERR_NO_ERROR;
-}
-
-static int
-get_dbmt_user_dbinfo (char *strbuf, T_DBMT_USER_DBINFO * usr_dbinfo)
-{
-  char *dbinfo[2], *user_info[4];
-
-  memset (usr_dbinfo, 0, sizeof (T_DBMT_USER_DBINFO));
-
-  if (string_tokenize2 (strbuf, dbinfo, 2, ':') < 0)
-    return -1;
-
-  if ((strcmp (dbinfo[0], "unicas") == 0) ||
-      (strcmp (dbinfo[0], "dbcreate") == 0) ||
-      (strcmp (dbinfo[0], "statusmonitorauth") == 0))
-    {
-      user_info[0] = dbinfo[1];
-      user_info[1] = user_info[2] = user_info[3] = (char *) "";
-    }
-  else
-    {
-      if (string_tokenize2 (dbinfo[1], user_info, 4, ';') < 0)
-	return -1;
-    }
-  dbmt_user_set_dbinfo (usr_dbinfo, dbinfo[0], user_info[0], user_info[1],
-			user_info[2], user_info[3]);
-  return 0;
 }

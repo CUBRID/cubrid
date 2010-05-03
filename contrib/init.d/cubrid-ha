@@ -1,0 +1,633 @@
+#!/bin/bash
+# 
+# cubrid ha     This shell script takes care of starting and stopping
+#               the CUBRID HA service
+#
+# chkconfig: 2345 98 05
+# description: cubrid ha start/stop script  
+#
+# ts:4
+
+### BEGIN INIT INFO
+#
+# Short-Description: CUBRID HA
+# Provides: CUBRID      
+# Default-Start: 3 5
+# Default-Stop: 0 6
+### END INIT INFO
+
+
+# Source function library.
+. /etc/init.d/functions
+
+# return code
+HA_SUCCESS=0
+HA_FAILED=1
+
+US=`uname -n`
+WHOAMI=`whoami`
+RETVAL=0
+prog=cubrid-ha
+_old_IFS=" $IFS"
+
+### user specific environment ##################
+CUBRID_USER=cubrid1
+DB_LIST='tdb01'
+
+NODE_LIST=
+
+if [ $WHOAMI = "root" ]; then
+	CUBRID_DATABASES=`su - $CUBRID_USER -c 'printenv CUBRID_DATABASES'`
+	CUBRID_HOME=`su - $CUBRID_USER -c 'printenv CUBRID'`
+else
+	. $HOME/.bash_profile >/dev/null 2>&1
+	CUBRID_USER=$WHOAMI
+    CUBRID_HOME=$CUBRID
+fi
+
+LW_SYNC_MODE="-m 3"
+LA_MAX_MEM_SIZE="--max-mem-size=200" 
+################################################
+
+sudo_cubrid() {
+	[ "$#" -ne 1 ] && return
+
+	if [ $WHOAMI = "root" ]; then
+		su - $CUBRID_USER -c "$1"  
+	else
+		sh -c "$1"
+	fi
+}
+save_IFS() {
+	_old_IFS=" $IFS" # save $IFS
+}
+
+restore_IFS() {
+	if [ -z "$_old_IFS" ] # restore old $IFS
+	then 
+		unset IFS
+	else 
+		IFS="$_old_IFS"
+	fi
+}
+
+need_to_deregister() {
+	deregister_yn=yes
+
+	for db_name in ${DB_LIST}; do
+		for node_name in ${NODE_LIST}; do
+			[ "$node_name" = "$US" ] && continue
+			logpath=$CUBRID_DATABASES/${db_name}_${node_name}
+
+			if [ "$1" = "Copylogdb" ]; then
+				identifier=${db_name}@${node_name}:${logpath}
+				[ "$identifier" = "$2" ] && deregister_yn=no
+			elif [ "$1" = "Applylogdb" ]; then
+				identifier=${db_name}@localhost:${logpath}
+				[ "$identifier" = "$2" ] && deregister_yn=no
+			elif [ "$1" = "Server" ]; then
+				deregister_yn=no
+			fi
+		done
+	done	
+
+	[ "$deregister_yn" = "yes" ] && return $HA_SUCCESS
+	return $HA_FAILED
+}
+
+
+### (re)load ha node list ######################
+load_ha_node_list() {
+	cubrid_conf_file=$CUBRID_HOME/conf/cubrid.conf
+	[ -r $cubrid_conf_file ] || exit
+
+	eval "$(sed $cubrid_conf_file -n -e 's/\(.*\)\b.*=[\ ]*\(.*\)/\1="\2"/p')"
+
+	save_IFS
+    IFS=$' \t@,:'
+    NODE_LIST=`echo $ha_node_list | cut -d ' ' -f 2-`
+	restore_IFS
+}
+
+reload_ha_node_list()
+{
+	unset NODE_LIST
+
+	save_IFS
+	IFS=$'\n'
+
+	node_info=`sudo_cubrid "cub_commdb -N"`
+	for line in $node_info; do
+		IFS=$' (,)'
+		node=`echo $line | cut -d ' ' -f 1`
+		node_name=`echo $line | cut -d ' ' -f 2`
+		[ "$node" = "Node" ] && NODE_LIST="$NODE_LIST $node_name"
+	done
+	restore_IFS
+}
+################################################
+
+
+### check ha process status  ###################
+is_master_up() {
+	master_command="cub_master" 	
+
+	pgrep -u $CUBRID_USER -f "${master_command}" >/dev/null 2>&1
+	RETVAL=$?
+	[ $RETVAL -ne 0 ] && return $HA_FAILED
+
+	sudo_cubrid "cub_commdb -P >/dev/null 2>&1"
+	RETVAL=$?
+	[ $RETVAL -ne 0 ] && return $HA_FAILED
+	return $HA_SUCCESS
+}
+
+is_server_up() {
+	[ $# -eq 1 ] || return $HA_FAILED
+
+	db_name=$1
+	server_command="cub_server $db_name" 	
+
+	pgrep -u $CUBRID_USER -f "${server_command}" >/dev/null 2>&1
+	RETVAL=$?
+	[ $RETVAL -ne 0 ] && return $HA_FAILED
+	return $HA_SUCCESS
+}
+
+is_copylogdb_up() {
+	[ $# -eq 2 ] || return $HA_FAILED
+
+	db_name=$1
+	node_name=$2
+	copylogdb_command="cub_admin copylogdb -L $CUBRID_DATABASES/${db_name}_${node_name} ${LW_SYNC_MODE} ${db_name}@${node_name}"
+
+	pgrep -u $CUBRID_USER -f "${copylogdb_command}" >/dev/null 2>&1
+	RETVAL=$?
+	[ $RETVAL -ne 0 ] && return $HA_FAILED
+	return $HA_SUCCESS
+}
+
+is_applylogdb_up() {
+	[ $# -eq 2 ] || return $HA_FAILED
+
+	db_name=$1
+	node_name=$2
+	applylogdb_command="cub_admin applylogdb -L $CUBRID_DATABASES/${db_name}_${node_name} ${LA_MAX_MEM_SIZE} ${db_name}@localhost"
+
+	pgrep -u $CUBRID_USER -f "${applylogdb_command}" >/dev/null 2>&1
+	RETVAL=$?
+	[ $RETVAL -ne 0 ] && return $HA_FAILED
+	return $HA_SUCCESS
+}
+################################################
+
+### execute ha process  ########################
+exec_master() {
+	master_command="cub_master" 	
+	sudo_cubrid "${master_command} >/dev/null 2>&1 &"
+}
+
+exec_server() {
+	[ $# -eq 1 ] || return $HA_FAILED
+
+	db_name=$1
+	server_command="cub_server ${db_name}" 	
+	sudo_cubrid "${server_command} >/dev/null 2>&1 &"
+}
+
+exec_copylogdb() {
+	[ $# -eq 2 ] || return $HA_FAILED
+
+	db_name=$1
+	node_name=$2
+	copylogdb_command="cub_admin copylogdb -L $CUBRID_DATABASES/${db_name}_${node_name} ${LW_SYNC_MODE} ${db_name}@${node_name}"
+	sudo_cubrid "${copylogdb_command} >/dev/null 2>&1 &"
+}
+
+exec_applylogdb() {
+	[ $# -eq 2 ] || return $HA_FAILED
+
+	db_name=$1
+	node_name=$2
+	applylogdb_command="cub_admin applylogdb -L $CUBRID_DATABASES/${db_name}_${node_name} ${LA_MAX_MEM_SIZE} ${db_name}@localhost"
+	sudo_cubrid "${applylogdb_command} >/dev/null 2>&1 &"
+}
+################################################
+
+### Kill ha process   ##########################
+kill_master()
+{
+	master_command="cub_master" 	
+
+	pkill -KILL -u $CUBRID_USER -f "${master_command}" >/dev/null 2>&1
+}
+
+kill_server()
+{
+	[ $# -eq 1 ] || return $HA_FAILED
+
+	db_name=$1
+	server_command="cub_server ${db_name}" 	
+	pkill -KILL -u $CUBRID_USER -f "${server_command}" >/dev/null 2>&1
+}
+
+kill_copylogdb()
+{
+	[ $# -eq 2 ] || return $HA_FAILED
+
+	db_name=$1
+	node_name=$2
+	copylogdb_command="cub_admin copylogdb -L $CUBRID_DATABASES/${db_name}_${node_name} ${LW_SYNC_MODE} ${db_name}@${node_name}"
+	pkill -KILL -u $CUBRID_USER -f "${copylogdb_command}" >/dev/null 2>&1
+}
+
+kill_applylogdb()
+{
+	[ $# -eq 2 ] || return $HA_FAILED
+
+	db_name=$1
+	node_name=$2
+	applylogdb_command="cub_admin applylogdb -L $CUBRID_DATABASES/${db_name}_${node_name} ${LA_MAX_MEM_SIZE} ${db_name}@localhost"
+	pkill -KILL -u $CUBRID_USER -f "${applylogdb_command}" >/dev/null 2>&1 	
+}
+################################################
+
+# startup master process
+start_master() {
+	exec_master
+	for i in $(seq 1 10); do 
+		sleep 3
+		is_master_up && break
+	done
+
+	if is_master_up; then
+		return $HA_SUCCESS
+	else
+		return $HA_FAILE	
+	fi
+}
+
+start_server() {
+	for db_name in ${DB_LIST}; do
+		if is_server_up $db_name; then
+			continue;
+		fi
+		exec_server $db_name
+	done
+}
+
+start_copylogdb() {
+	for db_name in ${DB_LIST}; do
+		for node_name in ${NODE_LIST}; do
+			[ "$node_name" = "$US" ] && continue
+
+			sudo_cubrid "mkdir -p ${CUBRID_DATABASES}/${db_name}_${node_name} >/dev/null 2>&1"
+
+			if is_copylogdb_up $db_name $node_name; then
+				continue;
+			fi
+			exec_copylogdb $db_name $node_name	
+		done
+	done
+}
+
+start_applylogdb() {
+	for db_name in ${DB_LIST}; do
+		for node_name in ${NODE_LIST}; do
+			[ "$node_name" = "$US" ] && continue
+
+			if is_applylogdb_up $db_name $node_name; then
+				continue;
+			fi
+			exec_applylogdb $db_name $node_name	
+		done
+	done
+}
+
+start_all() {
+	start_server; sleep 1
+	start_copylogdb; sleep 1
+	start_applylogdb; sleep 1
+}
+
+start_success() {
+	if ! is_master_up; then
+		return $HA_FAILED
+	fi
+
+	for db_name in ${DB_LIST}; do
+		if ! is_server_up $db_name; then
+			return $HA_FAILED
+		fi
+
+		for node_name in ${NODE_LIST}; do
+			[ "$node_name" = "$US" ] && continue
+
+			if ! is_copylogdb_up $db_name $node_name; then
+				return $HA_FAILED
+			fi
+
+			if ! is_applylogdb_up $db_name $node_name; then
+				return $HA_FAILED
+			fi
+		done
+	done	
+	return $HA_SUCCESS
+}
+
+stop_master() {
+	kill_master
+}
+
+stop_server() {
+	for db_name in ${DB_LIST}; do
+		kill_server $db_name
+	done
+}
+
+stop_copylogdb() {
+	for db_name in ${DB_LIST}; do
+		for node_name in ${NODE_LIST}; do
+			[ "$node_name" = "$US" ] && continue
+			kill_copylogdb $db_name $node_name	
+		done
+	done
+}
+
+stop_applylogdb() {
+	for db_name in ${DB_LIST}; do
+		for node_name in ${NODE_LIST}; do
+			[ "$node_name" = "$US" ] && continue
+			kill_applylogdb $db_name $node_name	
+		done
+	done
+}
+
+stop_all() {
+	stop_server; sleep 1
+	stop_copylogdb; sleep 1
+	stop_applylogdb; sleep 1
+}
+
+stop_success() {
+	if is_master_up; then
+		return $HA_FAILED
+	fi
+
+	for db_name in ${DB_LIST}; do
+		if is_server_up $db_name; then
+			return $HA_FAILED
+		fi
+
+		for node_name in ${NODE_LIST}; do
+			[ "$node_name" = "$US" ] && continue
+
+			if is_copylogdb_up $db_name $node_name; then
+				return $HA_FAILED
+			fi
+			if is_applylogdb_up $db_name $node_name; then
+				return $HA_FAILED
+			fi
+		done
+	done	
+	return $HA_SUCCESS
+}
+
+deregister_ha_process() {
+	save_IFS
+	IFS=$'\n'
+	proc_info=`sudo_cubrid "cub_commdb -L"`
+	for line in $proc_info; do
+		IFS=$' (,)'
+	    appname=`echo $line | cut -d ' ' -f 1`
+	    identifier=`echo $line | cut -d ' ' -f 2`
+   		pid=`echo $line | cut -d ' ' -f 4`
+
+		if need_to_deregister $appname $identifier; then 
+			sudo_cubrid "cubrid heartbeat deregister $pid >/dev/null 2>&1"
+		fi
+	done
+	restore_IFS
+}
+
+deact_and_stop_master() {
+	master_command="cub_master" 	
+
+	sudo_cubrid "cubrid heartbeat deact >/dev/null 2>&1"
+	sleep 1
+	pkill -TERM -u $CUBRID_USER -f "${master_command}" >/dev/null 2>&1
+}
+
+
+start() {
+	start_master
+
+	if is_master_up; then
+		start_all
+		sleep 2
+
+		if ! start_success; then
+			if is_master_up; then
+				deact_and_stop_master
+			fi
+			sleep 3
+			stop_master
+			stop_all
+			RETVAL=$HA_FAILED
+		else
+			RETVAL=$HA_SUCCESS	
+		fi	
+	else
+		RETVAL=$HA_FAILED
+	fi
+
+	if [ $RETVAL -eq $HA_SUCCESS ]; then
+		echo -n $"Starting $prog: "
+		success
+		echo
+	else
+		echo -n $"Starting $prog: "
+		failure
+		echo
+	fi	
+
+	[ $WHOAMI = "root" ] && touch /var/lock/subsys/$prog
+
+	return $RETVAL
+}
+
+stop() {
+	RETVAL=1
+	if is_master_up; then
+		deact_and_stop_master
+		RETVAL=$?
+	else
+		echo -n $"Stopping $prog: "
+		failure
+		echo
+		return $RETVAL
+	fi	
+
+	for i in $(seq 1 3); do 
+		sleep 1
+		stop_success && break 
+	done
+
+	stop_master
+	stop_all
+
+	echo -n $"Stopping $prog: "
+	success
+	echo
+
+	return $RETVAL
+}
+
+status() {
+	RETVAL=1
+	if is_master_up; then
+		sudo_cubrid "cubrid heartbeat list "
+		RETVAL=$?
+	fi
+
+	if [ $RETVAL -eq 0 ]; then
+		echo -n $"Status $prog: "
+		success
+		echo
+	else
+		echo -n $"Status $prog: "
+		failure
+		echo
+	fi	
+
+	return $RETVAL
+
+}
+
+reload() {
+	RETVAL=1
+	if is_master_up; then
+		sudo_cubrid "cubrid heartbeat reload >/dev/null 2>&1"
+		RETVAL=$?
+	fi
+
+	reload_ha_node_list
+	deregister_ha_process
+
+	start_copylogdb
+	start_applylogdb
+	sleep 2
+
+	if ! start_success; then
+		if is_master_up; then
+			deact_and_stop_master
+		fi
+		sleep 3
+		stop_master
+		stop_all
+		RETVAL=$HA_FAILED
+	else
+		RETVAL=$HA_SUCCESS	
+	fi	
+
+	if [ $RETVAL -eq 0 ]; then
+		echo -n $"Reloading $prog: "
+		success
+		echo
+	else
+		echo -n $"Reloading $prog: "
+		failure
+		echo
+	fi	
+
+	return $RETVAL
+}
+
+deactivate() {
+	RETVAL=1
+	if is_master_up; then
+		sudo_cubrid "cubrid heartbeat deact >/dev/null 2>&1"
+		RETVAL=$?
+	fi
+
+	if [ $RETVAL -eq 0 ]; then
+		echo -n $"deactivate $prog: "
+		success
+		echo
+	else
+		echo -n $"deactivate $prog: "
+		failure
+		echo
+	fi	
+
+	return $RETVAL
+}
+
+activate() {
+	RETVAL=1
+	if is_master_up; then
+		sudo_cubrid "cubrid heartbeat act >/dev/null 2>&1"
+		RETVAL=$?
+	fi
+
+	start_all
+	sleep 2
+
+	if ! start_success; then
+		if is_master_up; then
+			deact_and_stop_master
+		fi
+		sleep 3
+		stop_master
+		stop_all
+		RETVAL=$HA_FAILED
+	else
+		RETVAL=$HA_SUCCESS	
+	fi	
+
+	if [ $RETVAL -eq 0 ]; then
+		echo -n $"activate $prog: "
+		success
+		echo
+	else
+		echo -n $"activate $prog: "
+		failure
+		echo
+	fi	
+
+	return $RETVAL
+}
+
+if [ $CUBRID_DATABASES"x" = "x" ]; then
+	echo -n $"$prog: " 
+	failure
+	exit 0
+fi
+
+load_ha_node_list
+
+case "$1" in 
+  start)
+	start	
+	;;
+  stop)
+	stop
+	;;
+  status)
+	status
+	;;	
+  reload)
+	reload
+	;;
+  deact)
+	deactivate
+	;;
+  act)
+	activate
+	;;
+  *)	
+	echo $"Usage $0 {start|stop|status|reload|deact|act}"
+	exit 1
+esac
+
+exit 0

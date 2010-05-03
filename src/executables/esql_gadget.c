@@ -193,7 +193,6 @@ db_gadget_destroy (DB_GADGET * gadget)
       free_and_init (gadget->attrs);
     }
   free_and_init (gadget);
-  gadget = NULL;
 
   return;
 }

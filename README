@@ -1,0 +1,44 @@
+CUBRID Database Management System
+=====================================
+
+1. Overview
+
+CUBRID is a DBMS being supported by an active community of open source developers 
+and provides better performance and features necessary for Web services. 
+
+For more information, visit the web site: 
+http://dev.naver.com/projects/cubrid/
+
+2. Projects
+
+CUBRID and the related tools are developed with open source projects listed below:
+
+CUBRID(Database engine and APIs): http://dev.naver.com/projects/cubrid/
+CUBRID-Manager(GUI tool): http://dev.naver.com/projects/cubrid-manager/
+NBench(DBMS Benchmarking tool): http://dev.naver.com/projects/cubrid-nbench/
+
+For more information, visit the web site:
+http://dev.naver.com/wiki/cubrid/index.php/projects
+
+3. License
+CUBRID is distributed under two licenses, 
+Database engine is under GPL v2 or later and the APIs are under BSD license.
+
+Copyright and license information can be found in the
+file COPYING.
+
+For more information, visit the web site:
+http://dev.naver.com/wiki/cubrid/index.php/license
+
+4. Build
+
+The latest version of CUBRID can be found at: 
+http://dev.naver.com/projects/cubrid/download
+
+More detailed build manual can be found at: 
+http://dev.naver.com/wiki/cubrid/index.php/download_build
+
+5. Source modules
+
+CUBRID source modules and its structure can be found at: 
+http://dev.naver.com/wiki/cubrid/index.php/src_struct

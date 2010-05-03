@@ -52,13 +52,13 @@ typedef enum
 } CO_DETAIL;
 
 extern int co_signal (int code, const char *format, ...);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int co_code_module (int code);
 extern int co_code_id (int code);
-#if defined(ENABLE_UNUSED_FUNCTION)
 extern void co_report (FILE * file, CO_SEVERITY severity);
 extern int co_put_detail (CO_DETAIL level);
-#endif
 extern const char *co_message (void);
+#endif
 extern int co_code (void);
 extern void co_final (void);
 

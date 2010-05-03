@@ -47,7 +47,7 @@
 
 #define ER_OUT_OF_VIRTUAL_MEMORY                      -2
 #define ER_INVALID_ENV                                -3
-#define ER_INTERRUPT                                  -4
+#define ER_INTERRUPTED                                -4
 
 #define ER_MHT_NOTFOUND                               -5
 #define ER_MHT_NULL_HASHTABLE                         -6
@@ -1221,7 +1221,28 @@
 
 #define ER_QPROC_CYCLE_DETECTED                     -979
 
-#define ER_LAST_ERROR                               -980
+#define ER_MNT_WAITING_THREAD                       -980
+#define ER_MNT_STATS_THRESHOLD                      -981
+
+#define ER_INTERRUPTING                             -982
+
+#define ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED   -983
+
+#define ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS -984
+#define ER_NET_NO_EXPLICIT_SERVER_HOST              -985
+
+#define ER_HB_STARTED                               -986
+#define ER_HB_STOPPED                               -987
+#define ER_HB_NODE_EVENT                            -988
+#define ER_HB_PROCESS_EVENT                         -989
+#define ER_HB_COMMAND_EXECUTION                     -990
+
+#define ER_LOG_FLUSH_VICTIM_STARTED                 -991
+#define ER_LOG_FLUSH_VICTIM_FINISHED                -992
+
+
+#define ER_LAST_ERROR                               -993
+
 
 #define DB_TRUE 1
 #define DB_FALSE 0
@@ -1310,8 +1331,8 @@ typedef enum
   DB_FETCH_WRITE = 1,		/* Update an object (class or instance) */
   DB_FETCH_DIRTY = 2,		/* Does not care about the state
 				 * of the object (class or instance). Get
-				 * it even if it is obsolate or if it
-				 * becomes obsolate.
+				 * it even if it is obsolete or if it
+				 * becomes obsolete.
 				 * INTERNAL USE ONLY
 				 */
   DB_FETCH_CLREAD_INSTREAD = 3,	/* Read the class and read an instance of
@@ -1501,8 +1522,8 @@ typedef struct db_query_error DB_QUERY_ERROR;
 struct db_query_error
 {
 
-  int err_lineno;		/* Line number where error occured */
-  int err_posno;		/* Position number where error occured */
+  int err_lineno;		/* Line number where error occurred */
+  int err_posno;		/* Position number where error occurred */
 };
 
 /* ESQL/CSQL/API INTERFACE */
@@ -3245,11 +3266,11 @@ extern DB_OBJECT *dbt_finish_object (DB_OTMPL * def);
 extern void dbt_abort_object (DB_OTMPL * def);
 
 extern int dbt_put (DB_OTMPL * def, const char *name, DB_VALUE * value);
-extern void dbt_set_label (DB_OTMPL * def, DB_VALUE * label);
+extern int dbt_set_label (DB_OTMPL * def, DB_VALUE * label);
 
 /* Descriptor functions.
  * The descriptor interface offers an alternative to attribute & method
- * names that can be substantially faster for repetative operations.
+ * names that can be substantially faster for repetitive operations.
  */
 extern int db_get_attribute_descriptor (DB_OBJECT * obj,
 					const char *attname,

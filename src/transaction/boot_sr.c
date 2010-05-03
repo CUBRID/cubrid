@@ -83,6 +83,7 @@
 #include "connection_sr.h"
 #include "server_support.h"
 #endif /* SERVER_MODE */
+#include "serial.h"
 #include "server_interface.h"
 #include "jsp_sr.h"
 #include "thread_impl.h"
@@ -169,7 +170,7 @@ static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
 				     const char *ignore_vlabel,
 				     void *ignore_arg);
-static void boot_remove_unknown_temp_volumes (void);
+static void boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p,
 					     const char
 					     *filename_addmore_vols);
@@ -476,7 +477,8 @@ boot_max_pages_new_volume (void)
 {
   int nfree_pages;
 
-  nfree_pages = (fileio_get_number_of_partition_free_pages (boot_Db_full_name)
+  nfree_pages = (fileio_get_number_of_partition_free_pages (boot_Db_full_name,
+							    IO_PAGESIZE)
 		 - BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
   if (nfree_pages < 0)
     {
@@ -511,14 +513,13 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
 		 DISK_VOLPURPOSE vol_mpurpose, bool do_overwrite)
 {
   VOLID volid;
-  bool ignore_old;
+  int vol_fd;
   RECDES recdes;		/* Record descriptor which describe the volume. */
+  bool ignore_old;
+  bool in_system_op = false;
 
   if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
     {
-      /*
-       * Some kind of failure. We must notify the error to the caller.
-       */
       return NULL_VOLID;
     }
 
@@ -561,12 +562,12 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
     {
       goto error;
     }
+  in_system_op = true;
 
   if (do_overwrite == false && fileio_is_volume_exist (vol_fullname))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_VOLUME_EXISTS, 1, vol_fullname);
-      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
       goto error;
     }
 
@@ -576,13 +577,11 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
   if (disk_format (thread_p, boot_Db_full_name, volid, vol_fullname,
 		   vol_comments, npages, vol_mpurpose) == NULL_VOLID)
     {
-      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
       goto error;
     }
 
   if (logpb_add_volume (NULL, volid, vol_fullname, vol_mpurpose) != volid)
     {
-      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
       goto error;
     }
 
@@ -625,7 +624,6 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
 	      boot_Db_parm->temp_last_volid = volid + 1;
 	    }
 	}
-      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
       goto error;
     }
 
@@ -637,9 +635,8 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
    */
 
   heap_flush (thread_p, boot_Db_parm_oid);
-  (void) fileio_synchronize (fileio_get_volume_descriptor
-			     (boot_Db_parm->hfid.vfid.volid),
-			     !PRM_SUPPRESS_FSYNC);
+  vol_fd = fileio_get_volume_descriptor (boot_Db_parm->hfid.vfid.volid);
+  (void) fileio_synchronize (thread_p, vol_fd, vol_fullname);
 
   log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT);
 
@@ -656,9 +653,15 @@ boot_add_volume (THREAD_ENTRY * thread_p, const char *vol_fullname,
 
   return volid;
 
-error:				/* xxxxx */
+error:
+  if (in_system_op)
+    {
+      (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+    }
+
   pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
   csect_exit (CSECT_BOOT_SR_DBPARM);
+
   return NULL_VOLID;
 }
 
@@ -684,14 +687,12 @@ boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
 				 * volume.
 				 */
   const char *vlabel;
+  int vol_fd;
   bool ignore_old;
   int error_code = NO_ERROR;
 
   if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
     {
-      /*
-       * Some kind of failure. We must notify the error to the caller.
-       */
       return ER_FAILED;
     }
 
@@ -714,8 +715,7 @@ boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
 		  ER_FILE_UNKNOWN_VOLID, 1, volid);
 	  error_code = ER_FILE_UNKNOWN_VOLID;
 	}
-      csect_exit (CSECT_BOOT_SR_DBPARM);
-      goto error;
+      goto end;
     }
 
   /*
@@ -733,9 +733,8 @@ boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
 
   if (log_start_system_op (thread_p) == NULL)
     {
-      csect_exit (CSECT_BOOT_SR_DBPARM);
       error_code = ER_FAILED;
-      goto error;
+      goto end;
     }
 
   /*
@@ -768,9 +767,8 @@ boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
 	  boot_Db_parm->temp_last_volid = volid;
 	}
       (void) log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
-      csect_exit (CSECT_BOOT_SR_DBPARM);
       error_code = ER_FAILED;
-      goto error;
+      goto end;
     }
 
   /*
@@ -780,9 +778,8 @@ boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
    */
 
   heap_flush (thread_p, boot_Db_parm_oid);
-  (void) fileio_synchronize (fileio_get_volume_descriptor
-			     (boot_Db_parm->hfid.vfid.volid),
-			     !PRM_SUPPRESS_FSYNC);
+  vol_fd = fileio_get_volume_descriptor (boot_Db_parm->hfid.vfid.volid);
+  (void) fileio_synchronize (thread_p, vol_fd, vlabel);
 
   /*
    * The volume is not know by the system any longer. Remove it from disk
@@ -793,8 +790,7 @@ boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
       error_code = disk_unformat (thread_p, vlabel);
       if (error_code != NO_ERROR)
 	{
-	  csect_exit (CSECT_BOOT_SR_DBPARM);
-	  goto error;
+	  goto end;
 	}
     }
 
@@ -802,9 +798,10 @@ boot_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
 
   pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
   (void) disk_goodvol_refresh (thread_p, boot_Db_parm->nvols);
+
+end:
   csect_exit (CSECT_BOOT_SR_DBPARM);
 
-error:
   return error_code;
 }
 
@@ -998,9 +995,6 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
 
   if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
     {
-      /*
-       * Some kind of failure. We must notify the error to the caller.
-       */
       return NULL_VOLID;
     }
 
@@ -1051,14 +1045,16 @@ boot_xadd_volume_extension (THREAD_ENTRY * thread_p, const char *ext_path,
       strcpy (vol_fullname, link_fullname);
 
       /* we don't know character special files size */
-      part_npages = VOL_MAX_NPAGES;
+      part_npages = VOL_MAX_NPAGES (IO_PAGESIZE);
     }
   else
     {
-      part_npages = fileio_get_number_of_partition_free_pages (vol_fullname);
+      part_npages = fileio_get_number_of_partition_free_pages (vol_fullname,
+							       IO_PAGESIZE);
     }
 #else /* !WINDOWS */
-  part_npages = fileio_get_number_of_partition_free_pages (vol_fullname);
+  part_npages = fileio_get_number_of_partition_free_pages (vol_fullname,
+							   IO_PAGESIZE);
 #endif /* !WINDOWS */
 
   /*
@@ -1121,7 +1117,7 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
       ext_npages = BOOT_VOLUME_MINPAGES;
     }
 
-  ext_npages = MIN (ext_npages, VOL_MAX_NPAGES);
+  ext_npages = MIN (ext_npages, VOL_MAX_NPAGES (IO_PAGESIZE));
 
   volid =
     boot_xadd_volume_extension (thread_p, NULL, NULL,
@@ -1131,8 +1127,8 @@ boot_add_auto_volume_extension (THREAD_ENTRY * thread_p, DKNPAGES min_npages,
   if (volid != NULL_VOLID)
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
-	      ER_BO_NOTIFY_AUTO_VOLEXT, 2, fileio_get_volume_label (volid),
-	      ext_npages);
+	      ER_BO_NOTIFY_AUTO_VOLEXT, 2,
+	      fileio_get_volume_label (volid), ext_npages);
     }
 
   return volid;
@@ -1366,9 +1362,9 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p,
 	  continue;
 	}
 
-      if (xboot_add_volume_extension
-	  (thread_p, ext_path, ext_name, ext_comments, ext_npages,
-	   ext_purpose, false) == NULL_VOLID)
+      if (xboot_add_volume_extension (thread_p, ext_path, ext_name,
+				      ext_comments, ext_npages, ext_purpose,
+				      false) == NULL_VOLID)
 	{
 	  error_code = ER_FAILED;
 	}
@@ -1412,7 +1408,7 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
   if (boot_Temp_volumes_max_pages == -2)
     {
       /*
-       * Get the maximum number of temporary pages that can be allocted for
+       * Get the maximum number of temporary pages that can be allocated for
        * all temporary volumes
        */
       boot_Temp_volumes_max_pages = PRM_BOSR_MAXTMP_PAGES;
@@ -1471,9 +1467,6 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 
   if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
     {
-      /*
-       * Some kind of failure. We must notify the error to the caller.
-       */
       return NULL_VOLID;
     }
 
@@ -1523,7 +1516,8 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 		    (free_pgs - free_temp_pgs)) / (nvols - ntemp_vols);
     }
 
-  part_npages = (fileio_get_number_of_partition_free_pages (temp_vol_fullname)
+  part_npages = (fileio_get_number_of_partition_free_pages (temp_vol_fullname,
+							    IO_PAGESIZE)
 		 - BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
 
   if (ext_npages > part_npages && part_npages >= 0)
@@ -1578,10 +1572,10 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
 	   */
 	  int possible_max_npages;
 
-	  er_clear (); /* clear error that was set by disk_expand_tmp() */
+	  er_clear ();		/* clear error that was set by disk_expand_tmp() */
 
 	  possible_max_npages = MIN (ext_npages + boot_Temp_volumes_sys_pages,
-				     VOL_MAX_NPAGES);
+				     VOL_MAX_NPAGES (IO_PAGESIZE));
 	  temp_volid = boot_add_volume (thread_p, temp_vol_fullname,
 					"Temporary Volume",
 					possible_max_npages,
@@ -1618,7 +1612,7 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p)
    */
   if (!BO_IS_SERVER_RESTARTED ())
     {
-      boot_remove_unknown_temp_volumes ();
+      boot_remove_unknown_temp_volumes (thread_p);
     }
 
   if (boot_Db_parm->temp_nvols == 0)
@@ -1636,9 +1630,8 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p)
       boot_Db_parm->temp_last_volid = NULL_VOLID;
       recdes.area_size = recdes.length = DB_SIZEOF (*boot_Db_parm);
       recdes.data = (char *) boot_Db_parm;
-      if (heap_update
-	  (thread_p, &boot_Db_parm->hfid, boot_Db_parm_oid, &recdes,
-	   &old_object, NULL) != boot_Db_parm_oid
+      if (heap_update (thread_p, &boot_Db_parm->hfid, boot_Db_parm_oid,
+		       &recdes, &old_object, NULL) != boot_Db_parm_oid
 	  || xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
 	{
 	  error_code = ER_FAILED;
@@ -1674,25 +1667,12 @@ boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid,
 }
 
 /*
- * boot_remove_temp_volume () -
- *
- * return : NO_ERROR if all OK, ER_ status otherwise
- *
- *   volid(in): Volume identifier to remove
- */
-int
-boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
-{
-  return boot_remove_volume (thread_p, volid);
-}
-
-/*
- * bo_rem_unknown_tempvols () -
+ * boot_remove_unknown_temp_volumes () -
  *
  * return: none
  */
 static void
-boot_remove_unknown_temp_volumes (void)
+boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
 {
   VOLID temp_volid;
   char temp_vol_fullname[PATH_MAX];
@@ -1733,7 +1713,7 @@ boot_remove_unknown_temp_volumes (void)
 				    temp_volid);
       if (fileio_is_volume_exist (temp_vol_fullname))
 	{
-	  fileio_unformat (temp_vol_fullname);
+	  fileio_unformat (thread_p, temp_vol_fullname);
 	}
     }
 
@@ -1747,85 +1727,13 @@ boot_remove_unknown_temp_volumes (void)
 	}
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_UNKNOWN_VOLUME, 1, temp_volid);
-      fileio_unformat (temp_vol_fullname);
+      fileio_unformat (thread_p, temp_vol_fullname);
     }
 
   if (alloc_tempath)
     {
       free_and_init (alloc_tempath);
     }
-}
-
-/*
- * boot_shrink_temp_volume () - shrink temporarily volumes to the database
- *
- * return : NO_ERROR if all OK, ER_ status otherwise
- *
- * Note:
- *    Remove or truncate volumes if the followings are all true.
- *    - free page ratio is more than 20% of the total pages
- *    - last allocated pageid is deallocated
- */
-int
-boot_shrink_temp_volume (THREAD_ENTRY * thread_p)
-{
-  VOLID volid, nvols;
-  DKNPAGES total_pgs, free_pgs, npages;
-  VPID last_vpid;
-  bool vpid_decreased;
-  bool cont = true;
-  int error_code = NO_ERROR;
-
-  if (disk_get_all_total_free_numpages (thread_p, DISK_TEMPVOL_TEMP_PURPOSE,
-					&nvols, &total_pgs, &free_pgs) < 0)
-    {
-      error_code = ER_FAILED;
-      goto end;
-    }
-
-  if (nvols == 0 || free_pgs < (total_pgs * 0.2))
-    {
-      goto end;
-    }
-
-  error_code = disk_get_temporarytmp_shrink_info (&last_vpid,
-						  &vpid_decreased);
-  if (error_code != NO_ERROR)
-    {
-      goto end;
-    }
-
-  if (!vpid_decreased)
-    {
-      goto end;
-    }
-
-  if (csect_enter (thread_p, CSECT_BOOT_SR_DBPARM, INF_WAIT) != NO_ERROR)
-    {
-      error_code = ER_FAILED;
-      goto end;
-    }
-
-  for (volid = boot_Db_parm->temp_last_volid;
-       cont == true && volid <= LOG_MAX_DBVOLID; volid++)
-    {
-      npages = disk_shrink_tmp (thread_p, volid, &cont);
-      if (npages < NULL_PAGEID)
-	{
-	  csect_exit (CSECT_BOOT_SR_DBPARM);
-	  error_code = ER_FAILED;
-	  goto end;
-	}
-      if (npages > 0)
-	{
-	  boot_Temp_volumes_tpgs -= npages;
-	}
-    }
-
-  csect_exit (CSECT_BOOT_SR_DBPARM);
-
-end:
-  return error_code;
 }
 
 /*
@@ -1867,7 +1775,8 @@ boot_max_pages_for_new_auto_volume_extension (void)
   ext_name = fileio_get_base_file_name (boot_Db_full_name);
   fileio_make_volume_ext_name (vol_fullname, ext_path, ext_name, 1);
 
-  npages = fileio_get_number_of_partition_free_pages (vol_fullname);
+  npages = fileio_get_number_of_partition_free_pages (vol_fullname,
+						      IO_PAGESIZE);
 
   if (alloc_extpath)
     {
@@ -1936,7 +1845,8 @@ boot_max_pages_for_new_temp_volume (void)
   fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name,
 				LOG_MAX_DBVOLID);
 
-  npages = fileio_get_number_of_partition_free_pages (temp_vol_fullname);
+  npages = fileio_get_number_of_partition_free_pages (temp_vol_fullname,
+						      IO_PAGESIZE);
 
   if (boot_Temp_volumes_max_pages >= 0
       && npages > (boot_Temp_volumes_max_pages - boot_Temp_volumes_tpgs))
@@ -2035,9 +1945,9 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath,
   int error_code = NO_ERROR;
 
   if (newvolpath || !use_volinfo
-      || (num_vols =
-	  logpb_scan_volume_info (thread_p, NULL, volid, LOG_DBFIRST_VOLID,
-				  fun, args)) == -1)
+      || (num_vols = logpb_scan_volume_info (thread_p, NULL, volid,
+					     LOG_DBFIRST_VOLID, fun,
+					     args)) == -1)
     {
       /*
        * Don't use volinfo .. or could not find volinfo
@@ -2058,17 +1968,16 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath,
 	  num_vols++;
 	  if (next_volid != volid)
 	    {
-	      error_code =
-		(*fun) (thread_p, next_volid, next_vol_fullname, args);
+	      error_code = (*fun) (thread_p, next_volid, next_vol_fullname,
+				   args);
 	      if (error_code != NO_ERROR)
 		{
-		  goto end;
+		  return error_code;
 		}
 	    }
 	  if (disk_get_link (thread_p, next_volid, next_vol_fullname) == NULL)
 	    {
-	      error_code = ER_FAILED;
-	      goto end;
+	      return ER_FAILED;
 	    }
 	  next_volid++;
 	}
@@ -2096,16 +2005,16 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath,
 
       if (num_vols != boot_Db_parm->nvols)
 	{
-	  error_code =
-	    boot_find_rest_permanent_volumes (thread_p, newvolpath, false,
-					      volid, fun, args);
+	  error_code = boot_find_rest_permanent_volumes (thread_p, newvolpath,
+							 false, volid, fun,
+							 args);
 	  if (error_code != NO_ERROR)
 	    {
 	      /* Still could not mount or find all necessary volumes */
 	      er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_BO_INCONSISTENT_NPERM_VOLUMES, 2, num_vols,
 		      boot_Db_parm->nvols);
-	      goto end;
+	      return error_code;
 	    }
 
 	  (void) logpb_recreate_volume_info (thread_p);
@@ -2115,10 +2024,9 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath,
 
   if (num_vols < boot_Db_parm->nvols)
     {
-      error_code = ER_FAILED;
+      return ER_FAILED;
     }
 
-end:
   return error_code;
 }
 
@@ -2257,7 +2165,6 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
   VOLID next_volid = LOG_DBFIRST_VOLID;	/* Next volume identifier */
   char next_vol_fullname[PATH_MAX];	/* Next volume name       */
   const char *vlabel;
-  int error_code = NO_ERROR;
 
   /*
    * Don't use volinfo .. or could not find volinfo
@@ -2281,8 +2188,7 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
       if (vlabel == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  error_code = ER_GENERIC_ERROR;
-	  goto end;
+	  return ER_GENERIC_ERROR;
 	}
 
       if (util_compare_filepath (next_vol_fullname, vlabel) != 0)
@@ -2298,8 +2204,7 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
 	}
       if (disk_get_link (thread_p, next_volid, next_vol_fullname) == NULL)
 	{
-	  error_code = ER_GENERIC_ERROR;
-	  goto end;
+	  return ER_GENERIC_ERROR;
 	}
       next_volid++;
     }
@@ -2310,12 +2215,10 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
       er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_INCONSISTENT_NPERM_VOLUMES, 2, num_vols,
 	      boot_Db_parm->nvols);
-      error_code = ER_BO_INCONSISTENT_NPERM_VOLUMES;
-      goto end;
+      return ER_BO_INCONSISTENT_NPERM_VOLUMES;
     }
 
-end:
-  return error_code;
+  return NO_ERROR;
 }
 
 /*
@@ -2332,21 +2235,18 @@ boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel,
 	    void *ignore_arg)
 {
   char check_vlabel[PATH_MAX];
-  int error_code = NO_ERROR;
 
-  if (fileio_mount (boot_Db_full_name, vlabel, volid,
+  if (fileio_mount (thread_p, boot_Db_full_name, vlabel, volid,
 		    false, false) == NULL_VOLDES)
     {
-      error_code = ER_FAILED;
-      goto end;
+      return ER_FAILED;
     }
 
   /* Check the label and give a warning if labels are not the same */
   if (xdisk_get_fullname (thread_p, volid, check_vlabel) == NULL)
     {
-      fileio_dismount (volid);
-      error_code = ER_FAILED;
-      goto end;
+      fileio_dismount (thread_p, volid);
+      return ER_FAILED;
     }
 
   if (util_compare_filepath (check_vlabel, vlabel) != 0)
@@ -2361,15 +2261,13 @@ boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel,
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_NOT_A_VOLUME,
 		  1, vlabel);
-	  error_code = ER_BO_NOT_A_VOLUME;
-	  goto end;
+	  return ER_BO_NOT_A_VOLUME;
 	}
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_NOT_A_VOLUME,
 	      1, vlabel);
     }
 
-end:
-  return error_code;
+  return NO_ERROR;
 }
 
 static jmp_buf bo_Init_server_jmpbuf;
@@ -2453,10 +2351,12 @@ int
 xboot_initialize_server (THREAD_ENTRY * thread_p,
 			 const BOOT_CLIENT_CREDENTIAL * client_credential,
 			 BOOT_DB_PATH_INFO * db_path_info,
-			 bool db_overwrite, PGLENGTH db_desired_pagesize,
-			 DKNPAGES db_npages, const char *file_addmore_vols,
-			 DKNPAGES log_npages, OID * rootclass_oid,
-			 HFID * rootclass_hfid, int client_lock_wait,
+			 bool db_overwrite, const char *file_addmore_vols,
+			 DKNPAGES db_npages, PGLENGTH db_desired_pagesize,
+			 DKNPAGES log_npages,
+			 PGLENGTH db_desired_log_page_size,
+			 OID * rootclass_oid, HFID * rootclass_hfid,
+			 int client_lock_wait,
 			 TRAN_ISOLATION client_isolation)
 {
   int tran_index = NULL_TRAN_INDEX;
@@ -2620,7 +2520,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
   if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL
 #if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
 /* Temporary fix for NT file locking problem */
-      || (dbtxt_vdes = fileio_mount (dbtxt_label, dbtxt_label,
+      || (dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label,
 				     LOG_DBTXT_VOLID, 2, true)) == NULL_VOLDES
 #endif /* !WINDOWS || DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
     )
@@ -2674,7 +2574,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      fileio_dismount (dbtxt_vdes);	/* unlock the directory file */
+      fileio_dismount (thread_p, dbtxt_vdes);	/* unlock the directory file */
       dbtxt_vdes = NULL_VOLDES;
       cfg_free_directory (dir);
       dir = NULL;
@@ -2720,14 +2620,11 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
     }
 #endif /* !WINDOWS */
 
-  (void) db_set_page_size (db_desired_pagesize);
+  (void) db_set_page_size (db_desired_pagesize, db_desired_log_page_size);
 
   if ((int) strlen (boot_Db_full_name) > DB_MAX_PATH_LENGTH - 1)
     {
-
-      /*
-       * db_path + db_name is too long
-       */
+      /* db_path + db_name is too long */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 4,
 	      db_path, client_credential->db_name,
@@ -2750,7 +2647,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
       if (tran_index != NULL_TRAN_INDEX)
 	{
 #if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
-	  dbtxt_vdes = fileio_mount (dbtxt_label, dbtxt_label,
+	  dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label,
 				     LOG_DBTXT_VOLID, 2, true);
 	  if (dbtxt_vdes == NULL_VOLDES)
 	    {
@@ -2803,7 +2700,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 	   */
 	  if (dbtxt_vdes != NULL_VOLDES)
 	    {
-	      fileio_dismount (dbtxt_vdes);
+	      fileio_dismount (thread_p, dbtxt_vdes);
 	      dbtxt_vdes = NULL_VOLDES;
 	    }
 #endif /* WINDOWS && !DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
@@ -2821,7 +2718,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 
 	  if (dbtxt_vdes != NULL_VOLDES)
 	    {
-	      fileio_dismount (dbtxt_vdes);
+	      fileio_dismount (thread_p, dbtxt_vdes);
 	      dbtxt_vdes = NULL_VOLDES;
 	    }
 
@@ -2862,7 +2759,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
       (void) boot_remove_all_volumes (thread_p, boot_Db_full_name,
 				      log_path, (const char *) log_prefix,
 				      true, true);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPT, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 
       /*
        * We need to restore the old ctrl-C handler in this if stmt since
@@ -2921,7 +2818,7 @@ exit_on_error:
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      fileio_dismount (dbtxt_vdes);
+      fileio_dismount (thread_p, dbtxt_vdes);
     }
 
   if (tran_index != NULL_TRAN_INDEX)
@@ -2969,6 +2866,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
   RECDES recdes;
+#if defined(SERVER_MODE)
+  int common_ha_mode;
+#endif
   int error_code = NO_ERROR;
 
 #if defined(SERVER_MODE)
@@ -2978,6 +2878,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
     }
 
   sysprm_load_and_init (NULL, NULL);
+  common_ha_mode = PRM_HA_MODE;
+
   mnt_server_init (PRM_CSS_MAX_CLIENTS + 1);
 
   if (msgcat_init () != NO_ERROR)
@@ -3008,8 +2910,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   if (cfg_read_directory (&dir, false) != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_NO_FILE, 1,
-		DATABASES_FILENAME);
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_NO_FILE, 1,
+		  DATABASES_FILENAME);
+	}
       return ER_CFG_NO_FILE;
     }
 
@@ -3028,7 +2932,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       if (cfg_maycreate_get_directory_filename (dbtxt_label) != NULL
 #if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
 /* Temporary fix for NT file locking problem */
-	  && (dbtxt_vdes = fileio_mount (dbtxt_label, dbtxt_label,
+	  && (dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label,
 					 LOG_DBTXT_VOLID, 2,
 					 true)) != NULL_VOLDES
 #endif /* !WINDOWS || !DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
@@ -3049,7 +2953,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 		}
 	    }
 
-	  fileio_dismount (dbtxt_vdes);
+	  fileio_dismount (thread_p, dbtxt_vdes);
 	  dbtxt_vdes = NULL_VOLDES;
 	}
       if (db == NULL)
@@ -3088,10 +2992,20 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 #if defined(SERVER_MODE)
   sysprm_load_and_init (boot_Db_full_name, NULL);
 
+  if (common_ha_mode == HA_MODE_OFF && PRM_HA_MODE != HA_MODE_OFF)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS, 6, "cubrid.conf",
+	      "common", PRM_NAME_HA_MODE, "no", db_name, "yes");
+      return ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS;
+    }
+
   /* reinit msg catalog to reflect PRM_MAX_THREADS */
   msgcat_final ();
   if (msgcat_init () != NO_ERROR)
-    return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+    {
+      return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+    }
 
   error_code = css_init_conn_list ();
   if (error_code != NO_ERROR)
@@ -3196,7 +3110,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) ==
       NULL)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       error_code = ER_FAILED;
       goto error;
     }
@@ -3204,7 +3118,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   error_code = boot_get_db_parm (thread_p, boot_Db_parm, boot_Db_parm_oid);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       goto error;
     }
 
@@ -3214,7 +3128,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 				       LOG_DBFIRST_VOLID, boot_mount, NULL);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       goto error;
     }
 
@@ -3225,7 +3139,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 
   if (locator_initialize (thread_p, &boot_Db_parm->classname_table) == NULL)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       error_code = ER_FAILED;
       goto error;
     }
@@ -3234,7 +3148,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   error_code = file_tracker_cache_vfid (&boot_Db_parm->trk_vfid);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       goto error;
     }
   catalog_initialize (&boot_Db_parm->ctid);
@@ -3243,7 +3157,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   qfile_initialize_list_cache (thread_p);
   if (qmgr_initialize (thread_p) != NO_ERROR)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       error_code = ER_FAILED;
       goto error;
     }
@@ -3258,7 +3172,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   error_code = disk_reinit_all_tmp (thread_p);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       goto error;
     }
 
@@ -3280,7 +3194,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 					TRAN_DEFAULT_ISOLATION);
   if (tran_index == NULL_TRAN_INDEX)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       error_code = ER_FAILED;
       goto error;
     }
@@ -3365,6 +3279,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
       logtb_enable_replication (NULL);
     }
 
+  error_code = serial_initialize_cache_pool (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* server is up! */
   boot_server_status (BOOT_SERVER_UP);
 
@@ -3434,7 +3354,9 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
 
   /* initialize system parameters */
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
-    return NULL_TRAN_INDEX;
+    {
+      return NULL_TRAN_INDEX;
+    }
 
   PRM_DBFILES_PROTECT = false;
 
@@ -3468,14 +3390,14 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart,
  *
  * return : true
  *
- *   iserfinal(in): Terminate the error module..
+ *   is_er_final(in): Terminate the error module..
  *
  * Note: All active transactions of all clients are aborted and the
  *       CUBRID server is terminated. Any database temporarily volume
  *       is destroyed.
  */
 bool
-xboot_shutdown_server (THREAD_ENTRY * thread_p, bool iserfinal)
+xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final)
 {
   if (BO_IS_SERVER_RESTARTED ())
     {
@@ -3483,6 +3405,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool iserfinal)
       boot_check_db_at_num_shutdowns (true);
 #endif /* CUBRID_DEBUG */
 
+      sysprm_set_force (PRM_NAME_SUPPRESS_FSYNC, "0");
       /* Shutdown the system with the system transaction */
       logtb_set_to_system_tran_index (thread_p);
       log_abort_all_active_transaction (thread_p);
@@ -3491,14 +3414,14 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, bool iserfinal)
       (void) boot_remove_all_temp_volumes (thread_p);
       log_final (thread_p);
 
-      if (iserfinal)
+      if (is_er_final)
 	{
-	  boot_server_all_finalize (thread_p, iserfinal);
+	  boot_server_all_finalize (thread_p, is_er_final);
 	}
       else
 	{
 	  er_stack_push ();
-	  boot_server_all_finalize (thread_p, iserfinal);
+	  boot_server_all_finalize (thread_p, is_er_final);
 	  er_stack_pop ();
 	}
     }
@@ -3570,6 +3493,7 @@ xboot_register_client (THREAD_ENTRY * thread_p,
       HFID_COPY (&server_credential->root_class_hfid,
 		 &boot_Db_parm->rootclass_hfid);
       server_credential->page_size = IO_PAGESIZE;
+      server_credential->log_page_size = LOG_PAGESIZE;
       server_credential->disk_compatibility = rel_disk_compatible ();
 #if defined (SERVER_MODE)
       server_credential->ha_server_state = css_ha_server_state ();
@@ -3623,8 +3547,8 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 {
   int save_index;
 #if defined(SERVER_MODE)
-  CSS_CONN_ENTRY *conn;
   int client_id;
+  CSS_CONN_ENTRY *conn;
 #endif /* SERVER_MODE */
 
   if (BO_IS_SERVER_RESTARTED () && tran_index != NULL_TRAN_INDEX)
@@ -3640,7 +3564,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
       client_id = (conn != NULL) ? conn->client_id : -1;
       if (tdes == NULL || tdes->client_id != client_id)
 	{
-	  THREAD_SET_TRAN_INDEX (thread_p, save_index);
+	  thread_p->tran_index = save_index;
 	  return NO_ERROR;
 	}
 
@@ -3708,8 +3632,8 @@ void
 xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 {
   CSS_CONN_ENTRY *conn;
-  int client_id;
   LOG_TDES *tdes;
+  int client_id;
 
   if (thread_p == NULL)
     {
@@ -3957,9 +3881,9 @@ xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag)
 }
 
 /*
- * boot_server_all_finalize () - terminate every single module except the log/recovery
- *                         manager
- *   iserfinal(in): Terminate the error module..
+ * boot_server_all_finalize () - terminate every single module
+ * 				 except the log/recovery manager
+ *   is_er_final(in): Terminate the error module..
  *
  * Note: Every single module except the log/recovery manager are
  *       uninitialized. All data volumes are unmounted.
@@ -3973,11 +3897,13 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, bool is_er_final)
   qmgr_finalize (thread_p);
   (void) heap_manager_finalize ();
   mnt_server_final ();
-  fileio_dismount_all ();
+  fileio_dismount_all (thread_p);
   disk_goodvol_decache (thread_p);
   boot_server_status (BOOT_SERVER_DOWN);
 
   catcls_finalize_class_oid_to_oid_hash_table ();
+
+  serial_finalize_cache_pool ();
 
 #if defined(SERVER_MODE)
 #if defined(DIAG_DEVEL)
@@ -4039,12 +3965,10 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
 {
   int error_code;
 
-  error_code =
-    logpb_backup (thread_p, boot_Db_parm->nvols, backup_path, backup_level,
-		  delete_unneeded_logarchives, backup_verbose_file,
-		  num_threads, zip_method, zip_level, skip_activelog,
-		  safe_pageid);
-
+  error_code = logpb_backup (thread_p, boot_Db_parm->nvols, backup_path,
+			     backup_level, delete_unneeded_logarchives,
+			     backup_verbose_file, num_threads, zip_method,
+			     zip_level, skip_activelog, safe_pageid);
   return error_code;
 }
 
@@ -4093,8 +4017,8 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
   char newlog_pathbuf[PATH_MAX];
   char new_volext_pathbuf[PATH_MAX];
   char newdb_server_host_buf[MAXHOSTNAMELEN + 1];
-  int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
+  int dbtxt_vdes = NULL_VOLDES;
   int error_code = NO_ERROR;
 
   /* If db_path and/or log_path are NULL find the defaults */
@@ -4189,7 +4113,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
   if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL
 #if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
 /* Temporary fix for NT file locking problem */
-      || (dbtxt_vdes = fileio_mount (dbtxt_label, dbtxt_label,
+      || (dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label,
 				     LOG_DBTXT_VOLID, 2, true)) == NULL_VOLDES
 #endif /* !WINDOWS || !DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
     )
@@ -4239,7 +4163,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 
 	  if (dbtxt_vdes != NULL_VOLDES)
 	    {
-	      fileio_dismount (dbtxt_vdes);
+	      fileio_dismount (thread_p, dbtxt_vdes);
 	      dbtxt_vdes = NULL_VOLDES;
 	    }
 	  (void) xboot_shutdown_server (thread_p, false);
@@ -4268,7 +4192,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      fileio_dismount (dbtxt_vdes);	/* unlock the directory file */
+      fileio_dismount (thread_p, dbtxt_vdes);	/* unlock the directory file */
       dbtxt_vdes = NULL_VOLDES;
       cfg_free_directory (dir);
       dir = NULL;
@@ -4304,7 +4228,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 	}
 
 #if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
-      dbtxt_vdes = fileio_mount (dbtxt_label, dbtxt_label,
+      dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label,
 				 LOG_DBTXT_VOLID, 2, true);
       if (dbtxt_vdes == NULL_VOLDES)
 	{
@@ -4356,7 +4280,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
 #if defined(WINDOWS) && !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
       if (dbtxt_vdes != NULL_VOLDES)
 	{
-	  fileio_dismount (dbtxt_vdes);
+	  fileio_dismount (thread_p, dbtxt_vdes);
 	  dbtxt_vdes = NULL_VOLDES;
 	}
 #endif /* WINDOWS && !DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
@@ -4365,7 +4289,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
   cfg_free_directory (dir);
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      fileio_dismount (dbtxt_vdes);
+      fileio_dismount (thread_p, dbtxt_vdes);
     }
 
   (void) xboot_shutdown_server (thread_p, false);
@@ -4379,7 +4303,7 @@ error:
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      fileio_dismount (dbtxt_vdes);
+      fileio_dismount (thread_p, dbtxt_vdes);
     }
 
   (void) xboot_shutdown_server (thread_p, false);
@@ -4454,7 +4378,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
       if (newdb_path == NULL)
 	{
 	  error_code = ER_FAILED;
-	  goto error;
+	  goto end;
 	}
     }
 
@@ -4472,7 +4396,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				   ER_BO_CWD_FAIL, 0);
 	      error_code = ER_BO_CWD_FAIL;
-	      goto error;
+	      goto end;
 	    }
 	  newdb_path = allocdb_path;
 	}
@@ -4492,7 +4416,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				   ER_BO_CWD_FAIL, 0);
 	      error_code = ER_BO_CWD_FAIL;
-	      goto error;
+	      goto end;
 	    }
 	  newlog_path = alloclog_path;
 	}
@@ -4533,7 +4457,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
 	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
-	  goto error;
+	  goto end;
 	}
 #else
       strcpy (newdb_server_host_buf, "localhost");
@@ -4553,7 +4477,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
 	      strlen (newdb_name) + strlen (newdb_path) + 2,
 	      DB_MAX_PATH_LENGTH);
       error_code = ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
-      goto error;
+      goto end;
     }
 
   /* Get the log prefix */
@@ -4565,13 +4489,13 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
   if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL
 #if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
 /* Temporary fix for NT file locking problem */
-      || (dbtxt_vdes = fileio_mount (dbtxt_label, dbtxt_label,
+      || (dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label,
 				     LOG_DBTXT_VOLID, 2, true)) == NULL_VOLDES
 #endif /* !WINDOWS || !DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
     )
     {
       error_code = ER_FAILED;
-      goto error;
+      goto end;
     }
 
   if (dbtxt_vdes != NULL_VOLDES)
@@ -4579,7 +4503,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
       error_code = cfg_read_directory_ex (dbtxt_vdes, &dir, true);
       if (error_code != NO_ERROR)
 	{
-	  goto error;
+	  goto end;
 	}
     }
   else
@@ -4587,7 +4511,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
       error_code = cfg_read_directory (&dir, true);
       if (error_code != NO_ERROR)
 	{
-	  goto error;
+	  goto end;
 	}
     }
 
@@ -4597,7 +4521,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
 	      newdb_name);
       error_code = ER_BO_UNKNOWN_DATABASE;
-      goto error;
+      goto end;
     }
 
   if (dir != NULL && db != NULL && extern_rename == true
@@ -4607,7 +4531,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1,
 	      newdb_name);
       error_code = ER_BO_DATABASE_EXISTS;
-      goto error;
+      goto end;
     }
 
   /*
@@ -4621,12 +4545,11 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
    * Rename the database
    */
 
-  error_code =
-    logpb_rename_all_volumes_files (thread_p, boot_Db_parm->nvols,
-				    newdb_fullname, newlog_path,
-				    newlog_prefix, new_volext_path,
-				    fileof_vols_and_renamepaths,
-				    extern_rename, force_delete);
+  error_code = logpb_rename_all_volumes_files (thread_p, boot_Db_parm->nvols,
+					       newdb_fullname, newlog_path,
+					       newlog_prefix, new_volext_path,
+					       fileof_vols_and_renamepaths,
+					       extern_rename, force_delete);
   if (error_code != NO_ERROR)
     {
       goto end;
@@ -4649,14 +4572,14 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
 	  db->logpath == NULL || db->hosts == NULL)
 	{
 	  error_code = ER_FAILED;
-	  goto error;
+	  goto end;
 	}
     }
 #if defined(WINDOWS) && !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
   /* must unlock this before we can open it again for writing */
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      fileio_dismount (dbtxt_vdes);
+      fileio_dismount (thread_p, dbtxt_vdes);
       dbtxt_vdes = NULL_VOLDES;
     }
 #endif /* WINDOWS && !DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
@@ -4670,16 +4593,6 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *olddb_name,
     }
 
 end:
-  cfg_free_directory (dir);
-  if (dbtxt_vdes != NULL_VOLDES)
-    {
-      fileio_dismount (dbtxt_vdes);
-    }
-
-  return error_code;
-
-error:
-  /* Deallocate any allocated structures */
   if (dir != NULL)
     {
       cfg_free_directory (dir);
@@ -4687,7 +4600,7 @@ error:
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      fileio_dismount (dbtxt_vdes);
+      fileio_dismount (thread_p, dbtxt_vdes);
     }
 
   return error_code;
@@ -4730,7 +4643,6 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
       /*
        * Compose the full name of the database and find location of logs
        */
-
       if (msgcat_init () != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -4761,8 +4673,9 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
 
 #if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
   /* Temporary solution to NT file locking problem */
-  dbtxt_vdes = fileio_mount (dbtxt_label, dbtxt_label, LOG_DBTXT_VOLID,
-			     2, true);
+  dbtxt_vdes =
+    fileio_mount (thread_p, dbtxt_label, dbtxt_label, LOG_DBTXT_VOLID, 2,
+		  true);
   if (dbtxt_vdes == NULL_VOLDES)
     {
       return ER_FAILED;
@@ -4791,7 +4704,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
     {
       if (dbtxt_vdes != NULL_VOLDES)
 	{
-	  fileio_dismount (dbtxt_vdes);
+	  fileio_dismount (thread_p, dbtxt_vdes);
 	}
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
 	      db_name);
@@ -4819,7 +4732,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      fileio_dismount (dbtxt_vdes);
+      fileio_dismount (thread_p, dbtxt_vdes);
       dbtxt_vdes = NULL_VOLDES;
       cfg_free_directory (dir);
       dir = NULL;
@@ -4831,7 +4744,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
   if (error_code == NO_ERROR)
     {
 #if defined(WINDOWS) && !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
-      dbtxt_vdes = fileio_mount (dbtxt_label, dbtxt_label,
+      dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label,
 				 LOG_DBTXT_VOLID, 2, true);
       if (dbtxt_vdes == NULL_VOLDES)
 	{
@@ -4862,7 +4775,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
 	  /* must unlock it before opening it for write again */
 	  if (dbtxt_vdes != NULL_VOLDES)
 	    {
-	      fileio_dismount (dbtxt_vdes);
+	      fileio_dismount (thread_p, dbtxt_vdes);
 	      dbtxt_vdes = NULL_VOLDES;
 	    }
 #endif /* WINDOWS && !DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
@@ -4880,7 +4793,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete)
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      fileio_dismount (dbtxt_vdes);
+      fileio_dismount (thread_p, dbtxt_vdes);
     }
 
   /* Shutdown the server */
@@ -4979,7 +4892,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
 					client_lock_wait, client_isolation);
   if (tran_index == NULL_TRAN_INDEX)
     {
-      error_code = ER_FAILED;
       goto error;
     }
 
@@ -4989,14 +4901,12 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
 			  DISK_PERMVOL_GENERIC_PURPOSE);
   if (db_volid != LOG_DBFIRST_VOLID)
     {
-      error_code = ER_FAILED;
       goto error;
     }
 
   if (logpb_add_volume (NULL, LOG_DBFIRST_VOLID, boot_Db_full_name,
 			DISK_PERMVOL_GENERIC_PURPOSE) != LOG_DBFIRST_VOLID)
     {
-      error_code = ER_FAILED;
       goto error;
     }
 
@@ -5027,12 +4937,12 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
 
   /* Create the needed files */
   if (file_tracker_create (thread_p, &boot_Db_parm->trk_vfid) == NULL
-      || xheap_create (thread_p, &boot_Db_parm->hfid, NULL) < 0
-      || xheap_create (thread_p, &boot_Db_parm->rootclass_hfid, NULL) < 0
+      || xheap_create (thread_p, &boot_Db_parm->hfid, NULL, false) < 0
+      || xheap_create (thread_p, &boot_Db_parm->rootclass_hfid, NULL,
+		       false) < 0
       || heap_assign_address (thread_p, &boot_Db_parm->rootclass_hfid,
 			      &boot_Db_parm->rootclass_oid, 0) != NO_ERROR)
     {
-      error_code = ER_FAILED;
       goto error;
     }
 
@@ -5041,13 +4951,11 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   if (xehash_create (thread_p, &boot_Db_parm->classname_table, DB_TYPE_STRING,
 		     -1, &boot_Db_parm->rootclass_oid, -1) == NULL)
     {
-      error_code = ER_FAILED;
       goto error;
     }
 
   if (catalog_create (thread_p, &boot_Db_parm->ctid, -1, -1) == NULL)
     {
-      error_code = ER_FAILED;
       goto error;
     }
 
@@ -5066,7 +4974,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
   if (heap_insert (thread_p, &boot_Db_parm->hfid, boot_Db_parm_oid, &recdes,
 		   NULL) != boot_Db_parm_oid)
     {
-      error_code = ER_FAILED;
       goto error;
     }
 
@@ -5076,8 +4983,8 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
 
   if (file_addmore_vols != NULL)
     {
-      error_code =
-	boot_parse_add_volume_extensions (thread_p, file_addmore_vols);
+      error_code = boot_parse_add_volume_extensions (thread_p,
+						     file_addmore_vols);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -5086,9 +4993,9 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
 
   if (locator_initialize (thread_p, &boot_Db_parm->classname_table) == NULL)
     {
-      error_code = ER_FAILED;
       goto error;
     }
+
   error_code = pgbuf_flush_all (thread_p, NULL_VOLID);
   if (error_code != NO_ERROR)
     {
@@ -5105,7 +5012,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
 
   if (qmgr_initialize (thread_p) != NO_ERROR)
     {
-      error_code = ER_FAILED;
       goto error;
     }
 
@@ -5120,13 +5026,12 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_BO_UNABLE_TO_RESTART_SERVER, 0);
-      error_code = ER_BO_UNABLE_TO_RESTART_SERVER;
       goto error;
     }
 
   logpb_force (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-  (void) fileio_synchronize_all (!PRM_SUPPRESS_FSYNC, false);
+  (void) fileio_synchronize_all (thread_p, false);
 
   (void) logpb_checkpoint (thread_p);
   pgbuf_refresh_max_permanent_volume_id (boot_Db_parm->last_volid);
@@ -5240,33 +5145,29 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname,
 	   * There is something wrong with this database... We will only remove
 	   * as much as we can
 	   */
-	  error_code = ER_FAILED;
 	  goto error_rem_allvols;
 	}
       if (!fileio_is_volume_exist (db_fullname))
 	{
-	  error_code = ER_FAILED;
 	  goto error_rem_allvols;
 	}
       if (!logpb_exist_log (thread_p, db_fullname, log_path, log_prefix))
 	{
-	  error_code = ER_FAILED;
 	  goto error_rem_allvols;
 	}
-      error_code =
-	boot_mount (thread_p, LOG_DBFIRST_VOLID, db_fullname, NULL);
+      error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, db_fullname,
+			       NULL);
       if (error_code != NO_ERROR)
 	{
 	  goto error_rem_allvols;
 	}
-      if (disk_get_boot_hfid
-	  (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) == NULL)
+      if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID,
+			      &boot_Db_parm->hfid) == NULL)
 	{
-	  error_code = ER_FAILED;
 	  goto error_rem_allvols;
 	}
-      error_code =
-	boot_get_db_parm (thread_p, boot_Db_parm, boot_Db_parm_oid);
+      error_code = boot_get_db_parm (thread_p, boot_Db_parm,
+				     boot_Db_parm_oid);
       if (error_code != NO_ERROR)
 	{
 	  goto error_rem_allvols;
@@ -5282,7 +5183,6 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname,
       if (locator_initialize (thread_p, &boot_Db_parm->classname_table) ==
 	  NULL)
 	{
-	  error_code = ER_FAILED;
 	  goto error_rem_allvols;
 	}
 
@@ -5296,7 +5196,6 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname,
 
       if (qmgr_initialize (thread_p) != NO_ERROR)
 	{
-	  error_code = ER_FAILED;
 	  goto error_rem_allvols;
 	}
 
@@ -5307,9 +5206,8 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname,
     }
 
   /* Now delete the database */
-  error_code =
-    logpb_delete (thread_p, boot_Db_parm->nvols, db_fullname, log_path,
-		  log_prefix, force_delete);
+  error_code = logpb_delete (thread_p, boot_Db_parm->nvols, db_fullname,
+			     log_path, log_prefix, force_delete);
   return error_code;
 
 error_rem_allvols:
@@ -5394,7 +5292,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
       if (cfg_maycreate_get_directory_filename (dbtxt_label) != NULL
 #if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
 	  /* Temporary solution to NT file locking problem. */
-	  && (dbtxt_vdes = fileio_mount (dbtxt_label, dbtxt_label,
+	  && (dbtxt_vdes = fileio_mount (thread_p, dbtxt_label, dbtxt_label,
 					 LOG_DBTXT_VOLID, 2,
 					 true)) != NULL_VOLDES
 #endif /* !WINDOWS || !DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
@@ -5415,7 +5313,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
 		}
 	    }
 
-	  fileio_dismount (dbtxt_vdes);
+	  fileio_dismount (thread_p, dbtxt_vdes);
 	  dbtxt_vdes = NULL_VOLDES;
 	}
       if (db == NULL)
@@ -5459,7 +5357,8 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
 	  /*
 	   * User must indicate the database pagesize through its own environment
 	   */
-	  (void) db_set_page_size (-1);
+	  (void) db_set_page_size (IO_DEFAULT_PAGE_SIZE,
+				   IO_DEFAULT_PAGE_SIZE);
 	}
       else
 	{
@@ -5482,8 +5381,8 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
     }
 
   /* Mount the data volume */
-  error_code =
-    boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
+  error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name,
+			   NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5493,24 +5392,23 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
   if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) ==
       NULL)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       return ER_FAILED;
     }
   error_code = boot_get_db_parm (thread_p, boot_Db_parm, boot_Db_parm_oid);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       return error_code;
     }
 
   /* Find the rest of the volumes and mount them */
 
-  error_code =
-    boot_find_rest_volumes (thread_p, NULL, LOG_DBFIRST_VOLID, boot_mount,
-			    NULL);
+  error_code = boot_find_rest_volumes (thread_p, NULL, LOG_DBFIRST_VOLID,
+				       boot_mount, NULL);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       return error_code;
     }
 
@@ -5521,7 +5419,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
 
   if (locator_initialize (thread_p, &boot_Db_parm->classname_table) == NULL)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       return ER_FAILED;
     }
 
@@ -5529,14 +5427,14 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
   error_code = file_tracker_cache_vfid (&boot_Db_parm->trk_vfid);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       return error_code;
     }
   catalog_initialize (&boot_Db_parm->ctid);
 
   if (qmgr_initialize (thread_p) != NO_ERROR)
     {
-      fileio_dismount_all ();
+      fileio_dismount_all (thread_p);
       return ER_FAILED;
     }
 

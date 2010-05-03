@@ -1013,7 +1013,6 @@ numeric_scale_by_ten (DB_C_NUMERIC arg)
 {
   int i, answer;
   bool negative = false;
-  int ret = NO_ERROR;
 
   answer = 0;
   if (numeric_is_negative (arg))
@@ -1031,8 +1030,7 @@ numeric_scale_by_ten (DB_C_NUMERIC arg)
 
   if ((int) arg[0] > 0x7f)
     {
-      ret = ER_NUM_OVERFLOW;
-      goto exit_on_error;
+      return ER_NUM_OVERFLOW;
     }
 
   if (negative)
@@ -1040,21 +1038,7 @@ numeric_scale_by_ten (DB_C_NUMERIC arg)
       numeric_negate (arg);
     }
 
-end:
-
-  return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return NO_ERROR;
 }
 
 /*
@@ -1082,25 +1066,11 @@ numeric_scale_dec (DB_C_NUMERIC arg, int dscale, DB_C_NUMERIC answer)
 	}
       if (ret != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  return ret;
 	}
     }
-
-end:
 
   return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
 }
 
 /*
@@ -1127,7 +1097,6 @@ numeric_common_prec_scale (DB_VALUE * dbv1,
   int prec1, prec2;
   int cprec;
   int scale_diff;
-  int ret = NO_ERROR;
 
   /* If scales already match, merely copy them and return */
   scale1 = DB_VALUE_SCALE (dbv1);
@@ -1148,9 +1117,8 @@ numeric_common_prec_scale (DB_VALUE * dbv1,
       prec1 = scale_diff + prec1;
       if (prec1 > DB_MAX_NUMERIC_PRECISION)
 	{
-	  ret = ER_NUM_OVERFLOW;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW, 0);
-	  goto exit_on_error;
+	  return ER_NUM_OVERFLOW;
 	}
       numeric_scale_dec (db_locate_numeric (dbv1), scale_diff, temp);
       cprec = MAX (prec1, prec2);
@@ -1163,9 +1131,8 @@ numeric_common_prec_scale (DB_VALUE * dbv1,
       prec2 = scale_diff + prec2;
       if (prec2 > DB_MAX_NUMERIC_PRECISION)
 	{
-	  ret = ER_NUM_OVERFLOW;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW, 0);
-	  goto exit_on_error;
+	  return ER_NUM_OVERFLOW;
 	}
       numeric_scale_dec (db_locate_numeric (dbv2), scale_diff, temp);
       cprec = MAX (prec1, prec2);
@@ -1173,21 +1140,7 @@ numeric_common_prec_scale (DB_VALUE * dbv1,
       DB_MAKE_NUMERIC (dbv1_common, db_locate_numeric (dbv1), cprec, scale1);
     }
 
-end:
-
-  return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return NO_ERROR;
 }
 
 /*
@@ -1208,7 +1161,7 @@ numeric_prec_scale_when_overflow (DB_VALUE * dbv1,
   int prec, scale;
   unsigned char num1[DB_NUMERIC_BUF_SIZE], num2[DB_NUMERIC_BUF_SIZE];
   unsigned char temp[DB_NUMERIC_BUF_SIZE];
-  int ret = NO_ERROR;
+  int ret;
 
   prec1 = DB_VALUE_PRECISION (dbv1);
   prec2 = DB_VALUE_PRECISION (dbv2);
@@ -1224,32 +1177,18 @@ numeric_prec_scale_when_overflow (DB_VALUE * dbv1,
   ret = numeric_coerce_num_to_num (num1, prec1, scale1, prec, scale, temp);
   if (ret != NO_ERROR)
     {
-      goto exit_on_error;
+      return ret;
     }
   DB_MAKE_NUMERIC (dbv1_common, temp, prec, scale);
 
   ret = numeric_coerce_num_to_num (num2, prec2, scale2, prec, scale, temp);
   if (ret != NO_ERROR)
     {
-      goto exit_on_error;
+      return ret;
     }
   DB_MAKE_NUMERIC (dbv2_common, temp, prec, scale);
 
-end:
-
   return ret;
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
 }
 
 /*
@@ -1466,8 +1405,6 @@ numeric_db_value_add (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
     }
   DB_MAKE_NUMERIC (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common));
 
-end:
-
   return ret;
 
 exit_on_error:
@@ -1475,15 +1412,8 @@ exit_on_error:
   db_value_domain_init (answer, DB_TYPE_NUMERIC,
 			DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -1574,8 +1504,6 @@ numeric_db_value_sub (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
     }
   DB_MAKE_NUMERIC (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common));
 
-end:
-
   return ret;
 
 exit_on_error:
@@ -1583,15 +1511,8 @@ exit_on_error:
   db_value_domain_init (answer, DB_TYPE_NUMERIC,
 			DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -1665,8 +1586,6 @@ numeric_db_value_mul (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
     }
   DB_MAKE_NUMERIC (answer, result, prec, scale);
 
-end:
-
   return ret;
 
 exit_on_error:
@@ -1674,15 +1593,8 @@ exit_on_error:
   db_value_domain_init (answer, DB_TYPE_NUMERIC,
 			DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -1816,8 +1728,6 @@ numeric_db_value_div (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
 
   DB_MAKE_NUMERIC (answer, temp_quo, prec, scale);
 
-end:
-
   return ret;
 
 exit_on_error:
@@ -1825,15 +1735,8 @@ exit_on_error:
   db_value_domain_init (answer, DB_TYPE_NUMERIC,
 			DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -1881,6 +1784,28 @@ numeric_db_value_abs (DB_C_NUMERIC src_num, DB_C_NUMERIC dest_num)
     {
       numeric_negate (dest_num);
     }
+}
+
+/*
+ * numeric_db_value_is_positive () -
+ *   return: 1 (>= 0), 0 (< 0), error code (error)
+ *   dbvalue(in): ptr to a DB_VALUE of type DB_TYPE_NUMERIC
+ */
+int
+numeric_db_value_is_positive (const DB_VALUE * dbvalue)
+{
+  int ret;
+
+  /* Check for bad inputs */
+  if (dbvalue == NULL || DB_VALUE_TYPE (dbvalue) != DB_TYPE_NUMERIC
+      || DB_IS_NULL (dbvalue))
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  ret = numeric_is_negative (db_locate_numeric (dbvalue));
+
+  return !ret;
 }
 
 /*
@@ -1941,9 +1866,6 @@ numeric_db_value_compare (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
   DB_MAKE_INTEGER (answer,
 		   numeric_compare (db_locate_numeric (&dbv1_common),
 				    db_locate_numeric (&dbv2_common)));
-
-end:
-
   return ret;
 
 exit_on_error:
@@ -1951,15 +1873,8 @@ exit_on_error:
   db_value_domain_init (answer, DB_TYPE_INTEGER,
 			DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -2602,8 +2517,6 @@ numeric_coerce_string_to_num (const char *astring, DB_VALUE * result)
     }
   DB_MAKE_NUMERIC (result, num, prec, scale);
 
-end:
-
   return ret;
 
 exit_on_error:
@@ -2612,15 +2525,8 @@ exit_on_error:
 			DB_DEFAULT_NUMERIC_PRECISION,
 			DB_DEFAULT_NUMERIC_SCALE);
 
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -2725,21 +2631,12 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num,
       numeric_negate (dest_num);
     }
 
-end:
-
   return ret;
 
 exit_on_error:
 
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -2854,21 +2751,12 @@ numeric_db_value_coerce_to_num (DB_VALUE * src,
       DB_MAKE_NUMERIC (dest, num, desired_precision, desired_scale);
     }
 
-end:
-
   return ret;
 
 exit_on_error:
 
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -3126,21 +3014,12 @@ numeric_db_value_coerce_from_num (DB_VALUE * src,
       break;
     }
 
-end:
-
   return ret;
 
 exit_on_error:
 
-  if (ret == NO_ERROR)
-    {
-      ret = er_errid ();
-      if (ret == NO_ERROR)
-	{
-	  ret = ER_FAILED;
-	}
-    }
-  goto end;
+  return (ret == NO_ERROR
+	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
@@ -3248,4 +3127,27 @@ numeric_db_value_is_zero (const DB_VALUE * arg)
     {
       return (numeric_is_zero ((DB_C_NUMERIC) DB_PULL_NUMERIC (arg)));
     }
+}
+
+/*
+ * numeric_db_value_increase () -
+ *   return: NO_ERROR or Error status
+ *   arg(in)    : DB_VALUE of type DB_NUMERIC
+ *
+ * Note: This routine increments a numeric value.
+ *
+ */
+int
+numeric_db_value_increase (DB_VALUE * arg)
+{
+  /* Check for bad inputs */
+  if (arg == NULL || DB_VALUE_TYPE (arg) != DB_TYPE_NUMERIC
+      || DB_IS_NULL (arg))
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  numeric_increase ((DB_C_NUMERIC) DB_PULL_NUMERIC (arg));
+
+  return NO_ERROR;
 }

@@ -75,6 +75,7 @@ repl_data_insert_log_dump (FILE * fp, int length, void *data)
   fflush (fp);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * repl_data_udpate_log_dump - dump the "DATA UPDATE" replication log
  *
@@ -112,6 +113,7 @@ repl_data_delete_log_dump (FILE * fp, int length, void *data)
    */
   repl_data_insert_log_dump (fp, length, data);
 }
+#endif
 
 /*
  * repl_schema_log_dump -
@@ -585,7 +587,6 @@ repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo)
 	{
 	  /* initialize repl records to be marked as flush */
 	  free_and_init (recsp[i].repl_data);
-	  recsp[i].repl_data = NULL;
 	}
       tdes->cur_repl_record = tdes->fl_mark_repl_recidx;
     }

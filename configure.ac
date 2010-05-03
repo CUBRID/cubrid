@@ -395,6 +395,18 @@ else
 	GC_INC="-I$with_gc/include/gc"
 fi
 
+AC_ARG_WITH([aio],
+	AS_HELP_STRING([--with-aio],
+		[use aio]),
+	[with_aio=$withval],
+	[with_aio=no])
+
+if test "$with_aio" = "yes"
+then
+	SYS_DEFS="$SYS_DEFS -DUSE_AIO"
+	SYS_LIBS="$SYS_LIBS -lrt"
+fi
+
 AC_PREFIX_DEFAULT("$HOME/cubrid")
 
 BUILD_NUMBER=`cat $srcdir/BUILD_NUMBER`
@@ -429,6 +441,9 @@ SA_LIB="\$(top_builddir)/sa/libcubridsa.la"
 CAS_LIB="-L\$(top_builddir)/cas -lcas"
 CCI_LIB="\$(top_builddir)/cas/libcascci.la"
 ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
+CMSTAT_LIB="\$(top_builddir)/cm_common/libcmstat.la"
+CMDEP_LIB="\$(top_builddir)/cm_common/libcmdep.la"
+BROKER_ADMIN_LIB="\$(top_builddir)/broker/libbrokeradmin.la"
 
 EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS"
 EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC"
@@ -622,6 +637,32 @@ AC_ARG_WITH([tmpdir],
 AC_MSG_RESULT($CUBRID_TMPDIR)
 DIR_DEFS="$DIR_DEFS -DCUBRID_TMPDIR=\\\"$CUBRID_TMPDIR\\\""
 
+AC_ARG_WITH([mysql],
+	AS_HELP_STRING([--with-mysql=PATH],
+		[for CAS for MySQL @<:@default=no@:>@]),
+	[with_mysql=$withval],
+	[with_mysql=no])
+
+if test "$with_mysql" != "no"
+then
+	MYSQL_LIB_PATH="-L$with_mysql/lib"
+	MYSQL_INC_PATH="-I$with_mysql/include"
+fi
+AM_CONDITIONAL([BUILD_CAS_FOR_MYSQL], [test "$with_mysql" != "no"])
+
+AC_ARG_WITH([oracle],
+	AS_HELP_STRING([--with-oracle=PATH],
+		[for CAS for Oracle @<:@default=no@:>@]),
+	[with_oracle=$withval],
+	[with_oracle=no])
+
+if test "$with_oracle" != "no"
+then
+	ORACLE_LIB_PATH="-L$with_oracle/lib"
+	ORACLE_INC_PATH="-I$with_oracle/include"
+fi
+AM_CONDITIONAL([BUILD_CAS_FOR_ORACLE], [test "$with_oracle" != "no"])
+
 AC_SUBST([BUILD_NUMBER])
 AC_SUBST([SYS_DEFS])
 AC_SUBST([SYS_LIBS])
@@ -639,6 +680,9 @@ AC_SUBST([SA_LIB])
 AC_SUBST([CAS_LIB])
 AC_SUBST([CCI_LIB])
 AC_SUBST([ESQL_LIB])
+AC_SUBST([CMSTAT_LIB])
+AC_SUBST([CMDEP_LIB])
+AC_SUBST([BROKER_ADMIN_LIB])
 AC_SUBST([BIT_MODEL])
 AC_SUBST([DIR_DEFS])
 AC_SUBST([CUBRID_CONFDIR])
@@ -648,6 +692,10 @@ AC_SUBST([CUBRID_DEMODIR])
 AC_SUBST([CUBRID_LOCALEDIR])
 AC_SUBST([CUBRID_COMPATDIR])
 AC_SUBST([CUBRID_TMPDIR])
+AC_SUBST([MYSQL_LIB_PATH])
+AC_SUBST([MYSQL_INC_PATH])
+AC_SUBST([ORACLE_LIB_PATH])
+AC_SUBST([ORACLE_INC_PATH])
 
 AH_TOP([
 #ifndef _CONFIG_H_
@@ -661,6 +709,7 @@ AH_BOTTOM([
 AC_CONFIG_FILES([Makefile
 	cas/Makefile
 	broker/Makefile
+	cm_common/Makefile
 	cmserver/Makefile
 	cmserver/conf/Makefile
 	include/Makefile
@@ -674,8 +723,10 @@ AC_CONFIG_FILES([Makefile
 	msg/ko_KR.euckr/Makefile
 	msg/ko_KR.utf8/Makefile
 	demo/Makefile
+	contrib/Makefile
 	jdbc/Makefile
 	java/Makefile
+	cas4mysql/Makefile
 	])
 
 AC_OUTPUT

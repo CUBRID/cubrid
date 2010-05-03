@@ -84,7 +84,9 @@ static const char *get_conf_string (int value, T_CONF_TABLE * conf_table);
 
 
 static T_CONF_TABLE tbl_appl_server[] = {
-  {"CAS", APPL_SERVER_CAS},
+  {APPL_SERVER_CAS_TYPE_NAME, APPL_SERVER_CAS},
+  {APPL_SERVER_CAS_ORACLE_TYPE_NAME, APPL_SERVER_CAS_ORACLE},
+  {APPL_SERVER_CAS_MYSQL_TYPE_NAME, APPL_SERVER_CAS_MYSQL},
   {NULL, 0}
 };
 
@@ -560,9 +562,20 @@ broker_config_read_internal (const char *conf_file,
 	ini_getint (ini, sec_name, "JDBC_CACHE_LIFE_TIME",
 		    DEFAULT_JDBC_CACHE_LIFE_TIME, &lineno);
 
-      br_info[num_brs].cci_pconnect = conf_get_value_table_on_off
-	(ini_getstr (ini, sec_name, "CCI_PCONNECT", "OFF", &lineno));
+      br_info[num_brs].cci_pconnect =
+	conf_get_value_table_on_off (ini_getstr (ini, sec_name,
+						 "CCI_PCONNECT", "OFF",
+						 &lineno));
       if (br_info[num_brs].cci_pconnect < 0)
+	{
+	  goto conf_error;
+	}
+
+      br_info[num_brs].select_auto_commit =
+	conf_get_value_table_on_off (ini_getstr (ini, sec_name,
+						 "SELECT_AUTO_COMMIT", "OFF",
+						 &lineno));
+      if (br_info[num_brs].select_auto_commit < 0)
 	{
 	  goto conf_error;
 	}

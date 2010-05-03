@@ -59,7 +59,7 @@ struct table_info
  * to translate a parse tree into XASL. It is only used in the process of
  * translation. A new one is "pushed" on the stack every time a query
  * statement is to be translated, and "popped" when its translation is
- * complete. Nested select statements will then yeild a stack of these
+ * complete. Nested select statements will then yield a stack of these
  * which can be used to resolve attribute names referenced.
  */
 typedef enum
@@ -105,8 +105,8 @@ typedef struct
   COMPATIBLE_LEVEL compatible;	/* how compatible is the sub-tree */
 } COMPATIBLE_INFO;
 
-extern char *query_plan_dump_filename;
-extern FILE *query_plan_dump_fp;
+extern char *query_Plan_dump_filename;
+extern FILE *query_Plan_dump_fp;
 
 extern REGU_VARIABLE *pt_to_regu_variable (PARSER_CONTEXT * p, PT_NODE * node,
 					   UNBOX unbox);

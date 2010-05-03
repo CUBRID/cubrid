@@ -44,7 +44,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables"
+				AdditionalIncludeDirectories="..\..\include;..\..\src\base;..\..\win;..\..\src\cmserver;..\..\src\cm_common"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;DIAG_DEVEL;FSERVER_SLAVE;_USE_32BIT_TIME_T"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -64,8 +64,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalDependencies="ws2_32.lib "
+				AdditionalLibraryDirectories=""
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -118,7 +118,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables"
+				AdditionalIncludeDirectories="..\..\include;..\..\src\base;..\..\win;..\..\src\cmserver;..\..\src\cm_common"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;DIAG_DEVEL;FSERVER_SLAVE"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -138,8 +138,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalDependencies="ws2_32.lib "
+				AdditionalLibraryDirectories=""
 				GenerateDebugInformation="true"
 				TargetMachine="17"
 			/>
@@ -193,7 +193,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables"
+				AdditionalIncludeDirectories="..\..\include;..\..\src\base;..\..\win;..\..\src\cmserver;..\..\src\cm_common"
 				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;DIAG_DEVEL;FSERVER_SLAVE;_USE_32BIT_TIME_T"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -212,8 +212,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalDependencies="ws2_32.lib "
+				AdditionalLibraryDirectories=""
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
@@ -270,7 +270,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\src\broker;..\..\win;..\..\dbmt;..\..\src\cci;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\transaction;..\..\src\thread;..\..\src\executables"
+				AdditionalIncludeDirectories="..\..\include;..\..\src\base;..\..\win;..\..\src\cmserver;..\..\src\cm_common"
 				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;DIAG_DEVEL;FSERVER_SLAVE"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -289,8 +289,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				AdditionalDependencies="ws2_32.lib "
+				AdditionalLibraryDirectories=""
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
@@ -323,78 +323,56 @@
 	</References>
 	<Files>
 		<Filter
-			Name="Source Files"
-			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
-			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
+			Name="cmserver"
 			>
-			<Filter
-				Name="cmserver"
+			<File
+				RelativePath="..\..\src\cmserver\cm_command_execute.c"
 				>
-				<File
-					RelativePath="..\..\src\cmserver\cm_broker_admin.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\cmserver\cm_command_execute.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\cmserver\cm_config.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\cmserver\cm_diag_util.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\cmserver\cm_dstring.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\cmserver\cm_job_slave.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\cmserver\cm_job_task.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\cmserver\cm_nameval.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\cmserver\cm_server_util.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\cmserver\cm_text_encryption.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\cmserver\cm_user.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\cmserver\cm_wsa_init.c"
-					>
-				</File>
-			</Filter>
+			</File>
+			<File
+				RelativePath="..\..\src\cmserver\cm_config.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\cmserver\cm_connect_info.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\cmserver\cm_diag_util.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\cmserver\cm_job_slave.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\cmserver\cm_job_task.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\cmserver\cm_server_util.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\cmserver\cm_text_encryption.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\cmserver\cm_user.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\cmserver\cm_wsa_init.c"
+				>
+			</File>
 		</Filter>
 		<Filter
-			Name="Header Files"
-			Filter="h;hpp;hxx;hm;inl;inc;xsd"
-			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
+			Name="res"
 			>
 			<File
 				RelativePath=".\resource.h"
 				>
 			</File>
-		</Filter>
-		<Filter
-			Name="Resource Files"
-			Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav"
-			UniqueIdentifier="{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}"
-			>
 			<File
 				RelativePath=".\version.rc"
 				>

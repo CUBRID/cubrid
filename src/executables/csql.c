@@ -442,23 +442,22 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 #if !defined(WINDOWS)
   if (csql_Is_interactive)
     {
-      int avail_size;
       init_readline ();
       stifle_history (PRM_CSQL_HISTORY_NUM);
       using_history ();
       csql_Keyword_list = pt_get_keyword_rec (&csql_Keyword_num);
-
-      avail_size = sizeof (csql_Prompt) - strlen (csql_Prompt) - 1;
-      if (avail_size > 0)
-	{
-	  strncat (csql_Prompt, " ", avail_size);
-	}
     }
 #endif /* !WINDOWS */
 #endif /* !GNU_Readline */
 
   for (;;)
     {
+      if (db_Connect_status != DB_CONNECTION_STATUS_CONNECTED)
+	{
+	  csql_Database_connected = false;
+	  fputs ("!", csql_Output_fp);
+	}
+
       if (line_read_alloced)
 	{
 	  free (line_read_alloced);
@@ -520,7 +519,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 #else /* WINDOWS */
       if (csql_Is_interactive)
 	{
-	  fprintf (csql_Output_fp, "%s ", csql_Prompt);	/* display prompt */
+	  fputs (csql_Prompt, csql_Output_fp);	/* display prompt */
 	}
 
       line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
@@ -746,8 +745,66 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 		    && PRM_CSQL_AUTO_COMMIT ? "ON" : "OFF"));
 	  break;
 
-	  /* Environment stuffs */
+	case S_CMD_CHECKPOINT:
+	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+	    {
+	      db_checkpoint ();
+	      if (db_error_code () != NO_ERROR)
+		{
+		  csql_display_csql_err (0, 0);
+		}
+	      else
+		{
+		  csql_display_msg (csql_get_message
+				    (CSQL_STAT_CHECKPOINT_TEXT));
+		}
+	    }
+	  else
+	    {
+	      fprintf (csql_Output_fp, "Checkpointing is only allowed for"
+		       " the csql started with --sysadm\n");
+	    }
+	  break;
 
+	case S_CMD_KILLTRAN:
+	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+	    {
+	      csql_killtran ((argument[0] == '\0') ? NULL : argument);
+	    }
+	  else
+	    {
+	      fprintf (csql_Output_fp, "Killing transaction is only allowed"
+		       " for the csql started with --sysadm\n");
+	    }
+	  break;
+
+	case S_CMD_RESTART:
+	  if (csql_Database_connected)
+	    {
+	      csql_Database_connected = false;
+	      db_shutdown ();
+	    }
+	  er_init ("./csql.err", ER_NEVER_EXIT);
+	  if (db_restart_ex (UTIL_CSQL_NAME, csql_arg->db_name,
+			     csql_arg->user_name, csql_arg->passwd,
+			     db_get_client_type ()) != NO_ERROR)
+	    {
+	      csql_Error_code = CSQL_ERR_SQL_ERROR;
+	      csql_display_csql_err (0, 0);
+	      csql_check_server_down ();
+	    }
+	  else
+	    {
+	      if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
+		{
+		  au_disable ();
+		}
+	      csql_Database_connected = true;
+	      csql_display_msg (csql_get_message (CSQL_STAT_RESTART_TEXT));
+	    }
+	  break;
+
+	  /* Environment stuffs */
 	case S_CMD_SHELL_CMD:
 	case S_CMD_EDIT_CMD:
 	case S_CMD_PRINT_CMD:
@@ -757,8 +814,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      fprintf (csql_Output_fp, "\n\t%s\n\n",
 		       (cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd :
 		       (cmd_no == S_CMD_EDIT_CMD) ? csql_Editor_cmd :
-		       (cmd_no ==
-			S_CMD_PRINT_CMD) ? csql_Print_cmd : csql_Pager_cmd);
+		       (cmd_no == S_CMD_PRINT_CMD) ? csql_Print_cmd :
+		       csql_Pager_cmd);
 	    }
 	  else
 	    {
@@ -2238,6 +2295,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 {
   char *env;
   int client_type;
+  int avail_size;
 
   /* Establish a globaly accessible longjmp environment so we can terminate
    * on severe errors without calling exit(). */
@@ -2267,16 +2325,20 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   /* set up prompt and message fields. */
   if (csql_arg->sysadm)
     {
-      strcpy (csql_Prompt, csql_get_message (CSQL_SYSADM_PROMPT));
+      strncpy (csql_Prompt, csql_get_message (CSQL_SYSADM_PROMPT),
+	       sizeof (csql_Prompt));
     }
   else
     {
-      strcpy (csql_Prompt, csql_get_message (CSQL_PROMPT));
+      strncpy (csql_Prompt, csql_get_message (CSQL_PROMPT),
+	       sizeof (csql_Prompt));
     }
-#if defined(GNU_Readline)
-  strcat (csql_Prompt, " ");
-#endif /* GNU_Readline */
-  strcpy (csql_Name, csql_get_message (CSQL_NAME));
+  avail_size = sizeof (csql_Prompt) - strlen (csql_Prompt) - 1;
+  if (avail_size > 0)
+    {
+      strncat (csql_Prompt, " ", avail_size);
+    }
+  strncpy (csql_Name, csql_get_message (CSQL_NAME), sizeof (csql_Name));
 
   /* as we must use db_open_file_name() to open the input file,
    * it is necessary to be opening csql_Input_fp at this point

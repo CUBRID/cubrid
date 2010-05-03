@@ -52,7 +52,6 @@ extern int vid_flush_all_instances (MOP class_mop, bool decache);
 extern int vid_flush_and_rehash (MOP mop);
 extern DB_VALUE *vid_flush_and_rehash_lbl (DB_VALUE * value);
 extern int vid_allflush (void);
-extern void vid_gc_vmop (MOP mop, void (*gcmarker) (MOP));
 extern MOP vid_add_virtual_instance (MOBJ instance, MOP vclass_mop,
 				     MOP bclass_mop, SM_CLASS * bclass);
 extern MOP vid_build_virtual_mop (MOP bmop, MOP vclass_mop);
@@ -61,10 +60,13 @@ extern bool vid_is_updatable (MOP mop);
 extern bool vid_is_base_instance (MOP mop);
 extern MOP vid_base_instance (MOP mop);
 extern bool vid_att_in_obj_id (SM_ATTRIBUTE * attribute_p);
+#if defined(ENABLE_UNUSED_FUNCTION)
+extern void vid_gc_vmop (MOP mop, void (*gcmarker) (MOP));
 extern int vid_set_att_obj_id (const char *class_name,
 			       SM_ATTRIBUTE * attribute_p, int id_no);
 extern int vid_record_update (MOP mop, SM_CLASS * class_p,
 			      SM_ATTRIBUTE * attribute_p);
+#endif
 extern bool vid_compare_non_updatable_objects (MOP mop1, MOP mop2);
 
 extern void vid_rem_instance (MOP mop);

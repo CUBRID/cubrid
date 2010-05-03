@@ -273,7 +273,7 @@ pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   if (statement->node_type == PT_SELECT)
     {
-      statement->info.query.oids_included = 1;	/* DB_ROW_OIDS */
+      statement->info.query.oids_included = DB_ROW_OIDS;
       from = statement->info.query.q.select.from;
       if (from && from->node_type == PT_SPEC)
 	{
@@ -291,7 +291,7 @@ pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement,
 	   || statement->node_type == PT_DIFFERENCE)
     {
 
-      statement->info.query.oids_included = 1;	/* DB_ROW_OIDS */
+      statement->info.query.oids_included = DB_ROW_OIDS;
       statement->info.query.q.union_.arg1 =
 	pt_add_oid_to_select_list (parser,
 				   statement->info.query.q.union_.arg1, how);

@@ -90,6 +90,7 @@ static bool area_Check_free = false;
 static bool area_Check_pointers = false;
 
 static void area_info (AREA * area, FILE * fp);
+
 #if defined(SERVER_MODE)
 static int area_grow (AREA * area, int thrd_index);
 #else /* SERVER_MODE */
@@ -123,7 +124,6 @@ area_init (bool enable_check)
     }
 }
 
-
 /*
  * area_final - Shut down the area manager
  *   return: none
@@ -140,7 +140,9 @@ area_final (void)
       next = area->next;
       area_flush (area);
       if (area->name != NULL)
-	free_and_init (area->name);
+	{
+	  free_and_init (area->name);
+	}
       free_and_init (area);
     }
   area_List = NULL;
@@ -149,9 +151,10 @@ area_final (void)
 #if defined(WINDOWS) && defined(SERVER_MODE)
   if (area_List_lock)
 #endif
-    MUTEX_DESTROY (area_List_lock);
+    {
+      MUTEX_DESTROY (area_List_lock);
+    }
 }
-
 
 /*
  * area_create - Build a new area and add it to the global list
@@ -174,18 +177,27 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
   int rv;
 #endif /* SERVER_MODE */
 
-  if ((area = (AREA *) malloc (sizeof (AREA))) == NULL)
-    return NULL;
+  area = (AREA *) malloc (sizeof (AREA));
+  if (area == NULL)
+    {
+      return NULL;
+    }
 
   if (name == NULL)
-    area->name = NULL;
+    {
+      area->name = NULL;
+    }
   else
-    area->name = strdup (name);
+    {
+      area->name = strdup (name);
+    }
 
   /* always make sure element size is a double word multiple */
   adjust = element_size % 8;
   if (adjust)
-    element_size += 8 - adjust;
+    {
+      element_size += 8 - adjust;
+    }
 
   area->element_size = element_size;
   area->alloc_count = alloc_count;
@@ -211,28 +223,47 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
   area->f_cnt = NULL;
   area->failure_function = NULL;
 
-  if ((area->blocks =
-       (AREA_BLOCK **) malloc (sizeof (void *) * area->n_threads)) == NULL)
-    goto error;
-  if ((area->free =
-       (AREA_FREE_LIST **) malloc (sizeof (void *) * area->n_threads)) ==
-      NULL)
-    goto error;
-  if ((area->n_allocs =
-       (size_t *) malloc (sizeof (size_t) * area->n_threads)) == NULL)
-    goto error;
-  if ((area->n_frees =
-       (size_t *) malloc (sizeof (size_t) * area->n_threads)) == NULL)
-    goto error;
-  if ((area->b_cnt =
-       (size_t *) malloc (sizeof (size_t) * area->n_threads)) == NULL)
-    goto error;
-  if ((area->a_cnt =
-       (size_t *) malloc (sizeof (size_t) * area->n_threads)) == NULL)
-    goto error;
-  if ((area->f_cnt =
-       (size_t *) malloc (sizeof (size_t) * area->n_threads)) == NULL)
-    goto error;
+  area->blocks = (AREA_BLOCK **) malloc (sizeof (void *) * area->n_threads);
+  if (area->blocks == NULL)
+    {
+      goto error;
+    }
+
+  area->free = (AREA_FREE_LIST **) malloc (sizeof (void *) * area->n_threads);
+  if (area->free == NULL)
+    {
+      goto error;
+    }
+
+  area->n_allocs = (size_t *) malloc (sizeof (size_t) * area->n_threads);
+  if (area->n_allocs == NULL)
+    {
+      goto error;
+    }
+
+  area->n_frees = (size_t *) malloc (sizeof (size_t) * area->n_threads);
+  if (area->n_frees == NULL)
+    {
+      goto error;
+    }
+
+  area->b_cnt = (size_t *) malloc (sizeof (size_t) * area->n_threads);
+  if (area->b_cnt == NULL)
+    {
+      goto error;
+    }
+
+  area->a_cnt = (size_t *) malloc (sizeof (size_t) * area->n_threads);
+  if (area->a_cnt == NULL)
+    {
+      goto error;
+    }
+
+  area->f_cnt = (size_t *) malloc (sizeof (size_t) * area->n_threads);
+  if (area->f_cnt == NULL)
+    {
+      goto error;
+    }
 
   for (i = 0; i < area->n_threads; i++)
     {
@@ -267,26 +298,43 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
 #if defined (SERVER_MODE)
 error:
   if (area->blocks)
-    free_and_init (area->blocks);
+    {
+      free_and_init (area->blocks);
+    }
   if (area->free)
-    free_and_init (area->free);
+    {
+      free_and_init (area->free);
+    }
   if (area->n_allocs)
-    free_and_init (area->n_allocs);
+    {
+      free_and_init (area->n_allocs);
+    }
   if (area->n_frees)
-    free_and_init (area->n_frees);
+    {
+      free_and_init (area->n_frees);
+    }
   if (area->b_cnt)
-    free_and_init (area->b_cnt);
+    {
+      free_and_init (area->b_cnt);
+    }
   if (area->a_cnt)
-    free_and_init (area->a_cnt);
+    {
+      free_and_init (area->a_cnt);
+    }
   if (area->f_cnt)
-    free_and_init (area->f_cnt);
+    {
+      free_and_init (area->f_cnt);
+    }
   if (area->name)
-    free_and_init (area->name);
+    {
+      free_and_init (area->name);
+    }
+
   free_and_init (area);
+
   return NULL;
 #endif /* SERVER_MODE */
 }
-
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -307,24 +355,33 @@ area_destroy (AREA * area)
   MUTEX_LOCK (rv, area_List_lock);
 
   for (prev = NULL, a = area_List; a != NULL && a != area; a = a->next)
-    prev = a;
+    {
+      prev = a;
+    }
 
   if (a != NULL)
     {
       if (prev == NULL)
-	area_List = a->next;
+	{
+	  area_List = a->next;
+	}
       else
-	prev->next = a->next;
+	{
+	  prev->next = a->next;
+	}
     }
+
   MUTEX_UNLOCK (area_List_lock);
 
   area_flush (area);
   if (area->name != NULL)
-    free_and_init (area->name);
+    {
+      free_and_init (area->name);
+    }
+
   free_and_init (area);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
-
 
 /*
  * area_grow - Allocate a new block for an area and add it to the list
@@ -343,7 +400,7 @@ static int
 area_grow (AREA * area)
 #endif				/* SERVER_MODE */
 {
-  AREA_BLOCK *new_;
+  AREA_BLOCK *new_area;
   size_t size, total;
 
   assert (area != NULL);
@@ -359,7 +416,9 @@ area_grow (AREA * area)
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       if (area->failure_function != NULL)
-	(*(area->failure_function)) ();
+	{
+	  (*(area->failure_function)) ();
+	}
 
       return ER_GENERIC_ERROR;	/* formerly called exit */
     }
@@ -367,36 +426,40 @@ area_grow (AREA * area)
   size = area->element_size * area->alloc_count;
 
   if (area_Check_free)
-    size += AREA_PREFIX_SIZE * area->alloc_count;
+    {
+      size += AREA_PREFIX_SIZE * area->alloc_count;
+    }
 
   total = size + sizeof (AREA_BLOCK);
 
-  new_ = (AREA_BLOCK *) malloc (total);
-  if (new_ == NULL)
+  new_area = (AREA_BLOCK *) malloc (total);
+  if (new_area == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      total);
       if (area->failure_function != NULL)
-	(*(area->failure_function)) ();
+	{
+	  (*(area->failure_function)) ();
+	}
+
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  new_->data = (char *) new_ + sizeof (AREA_BLOCK);
-  new_->pointer = new_->data;
-  new_->max = (char *) (new_->data) + size;
+  new_area->data = (char *) new_area + sizeof (AREA_BLOCK);
+  new_area->pointer = new_area->data;
+  new_area->max = (char *) (new_area->data) + size;
 #if defined (SERVER_MODE)
-  new_->next = area->blocks[thrd_index];
-  area->blocks[thrd_index] = new_;
+  new_area->next = area->blocks[thrd_index];
+  area->blocks[thrd_index] = new_area;
   area->b_cnt[thrd_index] += 1;
 #else /* SERVER_MODE */
-  new_->next = area->blocks;
-  area->blocks = new_;
+  new_area->next = area->blocks;
+  area->blocks = new_area;
   area->b_cnt += 1;
 #endif /* SERVER_MODE */
 
   return NO_ERROR;
 }
-
 
 /*
  * area_alloc - Allocate a new element from an area
@@ -412,48 +475,47 @@ area_alloc (AREA * area)
 {
   AREA_FREE_LIST *link = NULL;
 #if defined (SERVER_MODE)
-  THREAD_ENTRY *_thrd = thread_get_thread_entry_info ();
+  THREAD_ENTRY *thrd = thread_get_thread_entry_info ();
 #endif
 
   assert (area != NULL);
 
 #if defined (SERVER_MODE)
-  if (area->free[_thrd->index] != NULL)
+  if (area->free[thrd->index] != NULL)
     {
-      link = area->free[_thrd->index];
-      area->free[_thrd->index] = link->next;
-      area->f_cnt[_thrd->index] -= 1;
+      link = area->free[thrd->index];
+      area->free[thrd->index] = link->next;
+      area->f_cnt[thrd->index] -= 1;
     }
   else
     {
-      if (area->blocks[_thrd->index] == NULL)
+      if (area->blocks[thrd->index] == NULL)
 	{
-	  if (area_grow (area, _thrd->index) != NO_ERROR)
+	  if (area_grow (area, thrd->index) != NO_ERROR)
 	    {
 	      /* out of memory ! */
-	      return (NULL);
+	      return NULL;
 	    }
 	}
 
       if (area_Check_free)
 	{
-	  link = (AREA_FREE_LIST *) (area->blocks[_thrd->index]->pointer
+	  link = (AREA_FREE_LIST *) (area->blocks[thrd->index]->pointer
 				     + AREA_PREFIX_SIZE);
-	  area->blocks[_thrd->index]->pointer += (area->element_size
-						  + AREA_PREFIX_SIZE);
+	  area->blocks[thrd->index]->pointer += (area->element_size
+						 + AREA_PREFIX_SIZE);
 	}
       else
 	{
-	  link = (AREA_FREE_LIST *) area->blocks[_thrd->index]->pointer;
-	  area->blocks[_thrd->index]->pointer += area->element_size;
+	  link = (AREA_FREE_LIST *) area->blocks[thrd->index]->pointer;
+	  area->blocks[thrd->index]->pointer += area->element_size;
 	}
 
-      if (area->blocks[_thrd->index]->pointer >=
-	  area->blocks[_thrd->index]->max)
+      if (area->blocks[thrd->index]->pointer >=
+	  area->blocks[thrd->index]->max)
 	{
-	  area->blocks[_thrd->index]->pointer =
-	    area->blocks[_thrd->index]->max;
-	  (void) area_grow (area, _thrd->index);
+	  area->blocks[thrd->index]->pointer = area->blocks[thrd->index]->max;
+	  (void) area_grow (area, thrd->index);
 	}
     }
 #else /* SERVER_MODE */
@@ -470,14 +532,14 @@ area_alloc (AREA * area)
 	  if (area_grow (area) != NO_ERROR)
 	    {
 	      /* out of memory ! */
-	      return (NULL);
+	      return NULL;
 	    }
 	}
 
       if (area_Check_free)
 	{
-	  link =
-	    (AREA_FREE_LIST *) (area->blocks->pointer + AREA_PREFIX_SIZE);
+	  link = (AREA_FREE_LIST *) (area->blocks->pointer
+				     + AREA_PREFIX_SIZE);
 	  area->blocks->pointer += (area->element_size + AREA_PREFIX_SIZE);
 	}
       else
@@ -502,8 +564,8 @@ area_alloc (AREA * area)
     }
 
 #if defined (SERVER_MODE)
-  area->n_allocs[_thrd->index]++;
-  area->a_cnt[_thrd->index] += 1;
+  area->n_allocs[thrd->index]++;
+  area->a_cnt[thrd->index] += 1;
 #else /* SERVER_MODE */
   area->n_allocs++;
   area->a_cnt += 1;
@@ -511,7 +573,6 @@ area_alloc (AREA * area)
 
   return ((void *) link);
 }
-
 
 /*
  * area_validate - validate that a pointer is within range in an area
@@ -541,7 +602,9 @@ area_validate (AREA * area, int thrd_index, const void *address)
   for (; b != NULL && error != NO_ERROR; b = b->next)
     {
       if ((b->data <= (char *) address) && (b->max > (char *) address))
-	error = NO_ERROR;
+	{
+	  error = NO_ERROR;
+	}
     }
 
   if (error != NO_ERROR)
@@ -552,7 +615,6 @@ area_validate (AREA * area, int thrd_index, const void *address)
 
   return error;
 }
-
 
 /*
  * area_free - Free an element in an area
@@ -568,18 +630,22 @@ area_free (AREA * area, void *ptr)
   AREA_FREE_LIST *link;
   int *prefix;
 #if defined (SERVER_MODE)
-  THREAD_ENTRY *_thrd = thread_get_thread_entry_info ();
+  THREAD_ENTRY *thrd = thread_get_thread_entry_info ();
 #endif
 
   assert (area != NULL);
 
 #if defined (SERVER_MODE)
   if (area_Check_pointers
-      && area_validate (area, _thrd->index, ptr) != NO_ERROR)
-    return;
+      && area_validate (area, thrd->index, ptr) != NO_ERROR)
+    {
+      return;
+    }
 #else
   if (area_Check_pointers && area_validate (area, 0, ptr) != NO_ERROR)
-    return;
+    {
+      return;
+    }
 #endif
 
 #if defined (SERVER_MODE)
@@ -587,33 +653,37 @@ area_free (AREA * area, void *ptr)
     {
       prefix = (int *) (((char *) ptr) - AREA_PREFIX_SIZE);
       if (*prefix)
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QF_FREE_TWICE, 0);
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QF_FREE_TWICE, 0);
+	}
       else
 	{
 	  *prefix = 0x01010101;
 	  link = (AREA_FREE_LIST *) ptr;
-	  link->next = area->free[_thrd->index];
-	  area->free[_thrd->index] = link;
-	  area->n_frees[_thrd->index]++;
-	  area->f_cnt[_thrd->index] += 1;
-	  area->a_cnt[_thrd->index] -= 1;
+	  link->next = area->free[thrd->index];
+	  area->free[thrd->index] = link;
+	  area->n_frees[thrd->index]++;
+	  area->f_cnt[thrd->index] += 1;
+	  area->a_cnt[thrd->index] -= 1;
 	}
     }
   else
     {
       link = (AREA_FREE_LIST *) ptr;
-      link->next = area->free[_thrd->index];
-      area->free[_thrd->index] = link;
-      area->n_frees[_thrd->index]++;
-      area->f_cnt[_thrd->index] += 1;
-      area->a_cnt[_thrd->index] -= 1;
+      link->next = area->free[thrd->index];
+      area->free[thrd->index] = link;
+      area->n_frees[thrd->index]++;
+      area->f_cnt[thrd->index] += 1;
+      area->a_cnt[thrd->index] -= 1;
     }
 #else /* SERVER_MODE */
   if (area_Check_free)
     {
       prefix = (int *) (((char *) ptr) - AREA_PREFIX_SIZE);
       if (*prefix)
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QF_FREE_TWICE, 0);
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QF_FREE_TWICE, 0);
+	}
       else
 	{
 	  *prefix = 0x01010101;
@@ -637,7 +707,6 @@ area_free (AREA * area, void *ptr)
     }
 #endif /* SERVER_MODE */
 }
-
 
 /*
  * area_flush - Free all storage allocated for an area
@@ -666,31 +735,25 @@ area_flush (AREA * area)
 	  free_and_init (block);
 	}
     }
+
   free_and_init (area->blocks);
-  area->blocks = NULL;
   free_and_init (area->free);
-  area->free = NULL;
   free_and_init (area->n_allocs);
-  area->n_allocs = NULL;
   free_and_init (area->n_frees);
-  area->n_frees = NULL;
   free_and_init (area->b_cnt);
-  area->b_cnt = NULL;
   free_and_init (area->a_cnt);
-  area->a_cnt = NULL;
   free_and_init (area->f_cnt);
-  area->f_cnt = NULL;
 #else /* SERVER_MODE */
   for (block = area->blocks, next = NULL; block != NULL; block = next)
     {
       next = block->next;
       free_and_init (block);
     }
+
   area->free = NULL;
   area->blocks = NULL;
 #endif /* SERVER_MODE */
 }
-
 
 /*
  * area_info - Display information about an area
@@ -715,7 +778,9 @@ area_info (AREA * area, FILE * fp)
 
   overhead = 0;
   if (area_Check_free)
-    overhead = AREA_PREFIX_SIZE;
+    {
+      overhead = AREA_PREFIX_SIZE;
+    }
   element_size = area->element_size + overhead;
 
   if (area->blocks != NULL)
@@ -734,8 +799,10 @@ area_info (AREA * area, FILE * fp)
 
 	  elements += (blocks * area->alloc_count);
 
-	  for (free = area->free[i]; free != NULL;
-	       free = free->next, freed++);
+	  for (free = area->free[i]; free != NULL; free = free->next, freed++)
+	    {
+	      ;
+	    }
 
 	  unallocated += (int) ((area->blocks[i]->max -
 				 area->blocks[i]->pointer) / element_size);
@@ -755,7 +822,10 @@ area_info (AREA * area, FILE * fp)
       elements = blocks * area->alloc_count;
 
       for (free = area->free, freed = 0; free != NULL;
-	   free = free->next, freed++);
+	   free = free->next, freed++)
+	{
+	  ;
+	}
 
       unallocated = (int) (area->blocks->max - area->blocks->pointer)
 	/ element_size;
@@ -767,7 +837,9 @@ area_info (AREA * area, FILE * fp)
   fprintf (fp, "Area: %s\n", area->name);
   fprintf (fp, "  %lld bytes/element ", (long long) area->element_size);
   if (area_Check_free)
-    fprintf (fp, "(plus %d bytes overhead) ", (int) AREA_PREFIX_SIZE);
+    {
+      fprintf (fp, "(plus %d bytes overhead) ", (int) AREA_PREFIX_SIZE);
+    }
   fprintf (fp, "%lld elements/block\n", (long long) area->alloc_count);
   fprintf (fp, "  %lld blocks, %lld bytes, %lld elements,"
 	   " %lld unallocated, %lld free, %lld in use\n",
@@ -797,12 +869,16 @@ area_dump (FILE * fp)
 #endif /* SERVER_MODE */
 
   if (fp == NULL)
-    fp = stdout;
+    {
+      fp = stdout;
+    }
 
   MUTEX_LOCK (rv, area_List_lock);
 
   for (area = area_List; area != NULL; area = area->next)
-    area_info (area, fp);
+    {
+      area_info (area, fp);
+    }
 
   MUTEX_UNLOCK (area_List_lock);
 }

@@ -16,6 +16,7 @@
 
 #include "config.h"
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 #ifndef HAVE_STRLCAT
 
 #include <sys/types.h>
@@ -62,6 +63,7 @@ strlcat (char *dst, const char *src, size_t siz)
   return (dlen + (s - src));	/* count does not include NUL */
 }
 #endif /* !HAVE_STRLCAT */
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 #ifndef HAVE_STRLCPY
 

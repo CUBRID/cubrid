@@ -87,7 +87,7 @@ extern LOG_LSA *log_get_append_lsa (void);
 extern bool log_is_logged_since_restart (const LOG_LSA * lsa_ptr);
 extern int
 log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa);
-extern int log_get_num_pages_for_creation (int db_napges);
+extern int log_get_num_pages_for_creation (int db_npages);
 extern int
 log_create (THREAD_ENTRY * thread_p, const char *db_fullname,
 	    const char *logpath, const char *prefix_logname, DKNPAGES npages);
@@ -169,12 +169,10 @@ extern void log_append_undo_recdes2 (THREAD_ENTRY * thread_p,
 				     PAGE_PTR pgptr, PGLENGTH offset,
 				     const RECDES * recdes);
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_append_redo_recdes (THREAD_ENTRY * thread_p,
 				    LOG_RCVINDEX rcvindex,
 				    LOG_DATA_ADDR * addr,
 				    const RECDES * recdes);
-#endif
 extern void log_append_redo_recdes2 (THREAD_ENTRY * thread_p,
 				     LOG_RCVINDEX rcvindex, const VFID * vfid,
 				     PAGE_PTR pgptr, PGLENGTH offset,
@@ -199,6 +197,8 @@ extern void log_append_logical_compensate (THREAD_ENTRY * thread_p,
 extern void log_append_dummy_record (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				     LOG_RECTYPE logrec_type);
 extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
+extern void log_append_empty_record (THREAD_ENTRY * thread_p,
+				     LOG_RECTYPE logrec_type);
 extern void log_skip_tailsa_logging (THREAD_ENTRY * thread_p,
 				     LOG_DATA_ADDR * addr);
 extern void log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);

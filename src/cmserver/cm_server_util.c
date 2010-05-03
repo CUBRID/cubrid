@@ -49,6 +49,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/statvfs.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 #if defined(LINUX)
 #include <sys/wait.h>
 #endif /* LINUX */
@@ -60,11 +62,11 @@
 
 #include "cm_porting.h"
 #include "cm_server_util.h"
-#include "cm_nameval.h"
-#include "cm_dstring.h"
+#include "cm_dep.h"
 #include "cm_config.h"
 #include "cm_job_task.h"
 #include "cm_command_execute.h"
+#include "cm_stat.h"
 #include <assert.h>
 
 #ifdef FSERVER_SLAVE
@@ -73,7 +75,10 @@
 #define DEF_TASK_FUNC(TASK_FUNC_PTR)	NULL
 #endif
 
-static int _uReadDBtxtFile (const char *dn, int idx, char *outbuf);
+/* for ut_getdelim */
+#define MAX_LINE ((int)(10*1024*1024))
+#define MIN_CHUNK 4096
+
 
 static T_FSERVER_TASK_INFO task_info[] = {
   {"startinfo", TS_STARTINFO, 0, DEF_TASK_FUNC (ts_startinfo), FSVR_SA},
@@ -90,72 +95,26 @@ static T_FSERVER_TASK_INFO task_info[] = {
    FSVR_SA_CS},
   {"classinfo", TS_CLASSINFO, 0, DEF_TASK_FUNC (ts_class_info), FSVR_SA_CS},
   {"class", TS_CLASS, 0, DEF_TASK_FUNC (ts_class), FSVR_CS},
-  {"renameclass", TS_RENAMECLASS, 1, DEF_TASK_FUNC (ts_rename_class),
-   FSVR_CS},
-  {"dropclass", TS_DROPCLASS, 1, DEF_TASK_FUNC (ts_drop_class), FSVR_CS},
   {"setsysparam", TS_SETSYSPARAM, 1, DEF_TASK_FUNC (ts_set_sysparam),
    FSVR_NONE},
   {"getallsysparam", TS_GETALLSYSPARAM, 0,
    DEF_TASK_FUNC (ts_get_all_sysparam), FSVR_NONE},
   {"addvoldb", TS_ADDVOLDB, 1, DEF_TASK_FUNC (tsRunAddvoldb), FSVR_SA_CS},
-  {"createclass", TS_CREATECLASS, 1, DEF_TASK_FUNC (ts_create_class),
-   FSVR_CS},
-  {"createvclass", TS_CREATEVCLASS, 1, DEF_TASK_FUNC (ts_create_vclass),
-   FSVR_CS},
   {"getloginfo", TS_GETLOGINFO, 0, DEF_TASK_FUNC (ts_get_log_info),
    FSVR_NONE},
   {"viewlog", TS_VIEWLOG, 0, DEF_TASK_FUNC (ts_view_log), FSVR_NONE},
   {"viewlog2", TS_VIEWLOG, 0, DEF_TASK_FUNC (ts_view_log), FSVR_NONE},
   {"resetlog", TS_RESETLOG, 0, DEF_TASK_FUNC (ts_reset_log), FSVR_NONE},
   {"getenv", TS_GETENV, 0, DEF_TASK_FUNC (tsGetEnvironment), FSVR_SA_UC},
-  {"checkaccessright", TS_GETACCESSRIGHT, 0,
-   DEF_TASK_FUNC (ts_get_access_right), FSVR_CS},
-  {"addattribute", TS_ADDATTRIBUTE, 1, DEF_TASK_FUNC (ts_add_attribute),
-   FSVR_CS},
-  {"dropattribute", TS_DROPATTRIBUTE, 1, DEF_TASK_FUNC (ts_drop_attribute),
-   FSVR_CS},
   {"updateattribute", TS_UPDATEATTRIBUTE, 1,
    DEF_TASK_FUNC (ts_update_attribute), FSVR_CS},
-  {"addconstraint", TS_ADDCONSTRAINT, 1, DEF_TASK_FUNC (ts_add_constraint),
-   FSVR_CS},
-  {"dropconstraint", TS_DROPCONSTRAINT, 1, DEF_TASK_FUNC (ts_drop_constraint),
-   FSVR_CS},
-  {"addsuper", TS_ADDSUPER, 1, DEF_TASK_FUNC (ts_add_super), FSVR_CS},
-  {"dropsuper", TS_DROPSUPER, 1, DEF_TASK_FUNC (ts_drop_super), FSVR_CS},
-  {"getsuperclassesinfo", TS_GETSUPERCLASSESINFO, 0,
-   DEF_TASK_FUNC (ts_get_superclasses_info), FSVR_CS},
-  {"addresolution", TS_ADDRESOLUTION, 1, DEF_TASK_FUNC (ts_add_resolution),
-   FSVR_CS},
-  {"dropresolution", TS_DROPRESOLUTION, 1, DEF_TASK_FUNC (ts_drop_resolution),
-   FSVR_CS},
-  {"addmethod", TS_ADDMETHOD, 1, DEF_TASK_FUNC (ts_add_method), FSVR_CS},
-  {"dropmethod", TS_DROPMETHOD, 1, DEF_TASK_FUNC (ts_drop_method), FSVR_CS},
-  {"updatemethod", TS_UPDATEMETHOD, 1, DEF_TASK_FUNC (ts_update_method),
-   FSVR_CS},
-  {"addmethodfile", TS_ADDMETHODFILE, 1, DEF_TASK_FUNC (ts_add_method_file),
-   FSVR_CS},
-  {"dropmethodfile", TS_DROPMETHODFILE, 1,
-   DEF_TASK_FUNC (ts_drop_method_file), FSVR_CS},
-  {"addqueryspec", TS_ADDQUERYSPEC, 1, DEF_TASK_FUNC (ts_add_query_spec),
-   FSVR_CS},
-  {"dropqueryspec", TS_DROPQUERYSPEC, 1, DEF_TASK_FUNC (ts_drop_query_spec),
-   FSVR_CS},
-  {"changequeryspec", TS_CHANGEQUERYSPEC, 1,
-   DEF_TASK_FUNC (ts_change_query_spec), FSVR_CS},
-  {"validatequeryspec", TS_VALIDATEQUERYSPEC, 0,
-   DEF_TASK_FUNC (ts_validate_query_spec), FSVR_CS},
-  {"validatevclass", TS_VALIDATEVCLASS, 0, DEF_TASK_FUNC (ts_validate_vclass),
-   FSVR_CS},
   {"kill_process", TS_KILL_PROCESS, 1, DEF_TASK_FUNC (ts_kill_process),
-   FSVR_NONE},
-  {"gethistory", TS_GETHISTORY, 0, DEF_TASK_FUNC (tsGetHistory), FSVR_NONE},
-  {"sethistory", TS_SETHISTORY, 1, DEF_TASK_FUNC (tsSetHistory), FSVR_NONE},
-  {"gethistorylist", TS_GETHISTORYFILELIST, 0,
-   DEF_TASK_FUNC (tsGetHistoryFileList), FSVR_NONE},
-  {"viewhistorylog", TS_READHISTORYFILE, 0, DEF_TASK_FUNC (tsReadHistoryFile),
    FSVR_NONE},
   {"copydb", TS_COPYDB, 1, DEF_TASK_FUNC (ts_copydb), FSVR_SA},
   {"optimizedb", TS_OPTIMIZEDB, 1, DEF_TASK_FUNC (ts_optimizedb), FSVR_SA_CS},
+  {"plandump", TS_PLANDUMP, 1, DEF_TASK_FUNC (ts_plandump), FSVR_CS},
+  {"paramdump", TS_PARAMDUMP, 1, DEF_TASK_FUNC (ts_paramdump), FSVR_SA_CS},
+  {"statdump", TS_STATDUMP, 1, DEF_TASK_FUNC (ts_statdump), FSVR_CS},
   {"checkdb", TS_CHECKDB, 0, DEF_TASK_FUNC (ts_checkdb), FSVR_SA_CS},
   {"compactdb", TS_COMPACTDB, 1, DEF_TASK_FUNC (ts_compactdb), FSVR_SA},
   {"backupdbinfo", TS_BACKUPDBINFO, 0, DEF_TASK_FUNC (ts_backupdb_info),
@@ -183,14 +142,10 @@ static T_FSERVER_TASK_INFO task_info[] = {
    DEF_TASK_FUNC (ts_delete_backup_info), FSVR_NONE},
   {"setbackupinfo", TS_SETBACKUPINFO, 0, DEF_TASK_FUNC (ts_set_backup_info),
    FSVR_NONE},
-  {"getdberror", TS_GETDBERROR, 0, DEF_TASK_FUNC (ts_get_db_error),
-   FSVR_NONE},
   {"getautoaddvol", TS_GETAUTOADDVOL, 0, DEF_TASK_FUNC (ts_get_auto_add_vol),
    FSVR_NONE},
   {"setautoaddvol", TS_SETAUTOADDVOL, 1, DEF_TASK_FUNC (ts_set_auto_add_vol),
    FSVR_NONE},
-  {"generaldbinfo", TS_GENERALDBINFO, 0, DEF_TASK_FUNC (ts_general_db_info),
-   FSVR_SA_CS},
   {"loadaccesslog", TS_LOADACCESSLOG, 0, DEF_TASK_FUNC (ts_load_access_log),
    FSVR_NONE},
   {"deleteaccesslog", TS_DELACCESSLOG, 1,
@@ -214,15 +169,12 @@ static T_FSERVER_TASK_INFO task_info[] = {
    FSVR_NONE},
   {"getaddvolstatus", TS_GETADDVOLSTATUS, 0,
    DEF_TASK_FUNC (ts_get_addvol_status), FSVR_NONE},
-  {"checkauthority", TS_CHECKAUTHORITY, 0, DEF_TASK_FUNC (ts_check_authority),
-   FSVR_CS},
   {"getautoaddvollog", TS_GETAUTOADDVOLLOG, 0,
    DEF_TASK_FUNC (tsGetAutoaddvolLog), FSVR_UC},
   {"getinitbrokersinfo", TS2_GETINITUNICASINFO, 0,
    DEF_TASK_FUNC (ts2_get_unicas_info), FSVR_UC},
   {"getbrokersinfo", TS2_GETUNICASINFO, 0,
-   DEF_TASK_FUNC (ts2_get_unicas_info),
-   FSVR_UC},
+   DEF_TASK_FUNC (ts2_get_unicas_info), FSVR_UC},
   {"startbroker", TS2_STARTUNICAS, 0, DEF_TASK_FUNC (ts2_start_unicas),
    FSVR_UC},
   {"stopbroker", TS2_STOPUNICAS, 0, DEF_TASK_FUNC (ts2_stop_unicas), FSVR_UC},
@@ -230,62 +182,21 @@ static T_FSERVER_TASK_INFO task_info[] = {
    DEF_TASK_FUNC (ts2_get_admin_log_info), FSVR_UC},
   {"getlogfileinfo", TS2_GETLOGFILEINFO, 0,
    DEF_TASK_FUNC (ts2_get_logfile_info), FSVR_UC},
-  {"addbroker", TS2_ADDBROKER, 1, DEF_TASK_FUNC (ts2_add_broker), FSVR_UC},
   {"getaddbrokerinfo", TS2_GETADDBROKERINFO, 0,
    DEF_TASK_FUNC (ts2_get_add_broker_info), FSVR_UC},
   {"deletebroker", TS2_DELETEBROKER, 1, DEF_TASK_FUNC (ts2_delete_broker),
    FSVR_UC},
-  {"renamebroker", TS2_RENAMEBROKER, 1, DEF_TASK_FUNC (ts2_rename_broker),
-   FSVR_UC},
   {"getbrokerstatus", TS2_GETBROKERSTATUS, 0,
    DEF_TASK_FUNC (ts2_get_broker_status), FSVR_UC},
-  {"getbrokerinfo", TS2_GETBROKERCONF, 0, DEF_TASK_FUNC (ts2_get_broker_conf),
-   FSVR_UC},
-  {"getbrokeronconf", TS2_GETBROKERONCONF, 0,
-   DEF_TASK_FUNC (ts2_get_broker_on_conf), FSVR_UC},
   {"broker_setparam", TS2_SETBROKERCONF, 1,
    DEF_TASK_FUNC (ts2_set_broker_conf), FSVR_UC},
-  {"setbrokeronconf", TS2_SETBROKERONCONF, 1,
-   DEF_TASK_FUNC (ts2_set_broker_on_conf), FSVR_UC},
   {"broker_start", TS2_STARTBROKER, 0, DEF_TASK_FUNC (ts2_start_broker),
    FSVR_UC},
   {"broker_stop", TS2_STOPBROKER, 0, DEF_TASK_FUNC (ts2_stop_broker),
    FSVR_UC},
-  {"broker_suspend", TS2_SUSPENDBROKER, 0, DEF_TASK_FUNC (ts2_suspend_broker),
-   FSVR_UC},
-  {"broker_resume", TS2_RESUMEBROKER, 0, DEF_TASK_FUNC (ts2_resume_broker),
-   FSVR_UC},
-  {"broker_job_first", TS2_BROKERJOBFIRST, 0,
-   DEF_TASK_FUNC (ts2_broker_job_first), FSVR_UC},
-  {"broker_job_info", TS2_BROKERJOBINFO, 0,
-   DEF_TASK_FUNC (ts2_broker_job_info), FSVR_UC},
-  {"broker_add", TS2_ADDBROKERAS, 1, DEF_TASK_FUNC (ts2_add_broker_as),
-   FSVR_UC},
-  {"broker_drop", TS2_DROPBROKERAS, 1, DEF_TASK_FUNC (ts2_drop_broker_as),
-   FSVR_UC},
   {"broker_restart", TS2_RESTARTBROKERAS, 0,
    DEF_TASK_FUNC (ts2_restart_broker_as), FSVR_UC},
-  {"broker_getstatuslog", TS2_GETBROKERSTATUSLOG, 0,
-   DEF_TASK_FUNC (ts2_get_broker_status_log), FSVR_UC},
-  {"broker_getmonitorconf", TS2_GETBROKERMCONF, 0,
-   DEF_TASK_FUNC (ts2_get_broker_m_conf), FSVR_UC},
-  {"broker_setmonitoconf", TS2_SETBROKERMCONF, 1,
-   DEF_TASK_FUNC (ts2_set_broker_m_conf), FSVR_UC},
-  {"getaslimit", TS2_GETBROKERASLIMIT, 0,
-   DEF_TASK_FUNC (ts2_get_broker_as_limit), FSVR_UC},
-  {"getbrokerenvinfo", TS2_GETBROKERENVINFO, 0,
-   DEF_TASK_FUNC (ts2_get_broker_env_info), FSVR_UC},
-  {"setbrokerenvinfo", TS2_SETBROKERENVINFO, 1,
-   DEF_TASK_FUNC (ts2_set_broker_env_info), FSVR_UC},
-  {"access_list_addip", TS2_ACCESSLISTADDIP, 0,
-   DEF_TASK_FUNC (ts2_access_list_add_ip), FSVR_UC},
-  {"access_list_deleteip", TS2_ACCESSLISTDELETEIP, 0,
-   DEF_TASK_FUNC (ts2_access_list_delete_ip), FSVR_UC},
-  {"access_list_info", TS2_ACCESSLISTINFO, 0,
-   DEF_TASK_FUNC (ts2_access_list_info), FSVR_UC},
   {"checkfile", TS_CHECKFILE, 0, DEF_TASK_FUNC (ts_check_file), FSVR_NONE},
-  {"registerlocaldb", TS_REGISTERLOCALDB, 0, NULL, FSVR_NONE},
-  {"removelocaldb", TS_REMOVELOCALDB, 0, NULL, FSVR_NONE},
   {"addtrigger", TS_ADDNEWTRIGGER, 1, DEF_TASK_FUNC (ts_trigger_operation),
    FSVR_SA_CS},
   {"altertrigger", TS_ALTERTRIGGER, 1, DEF_TASK_FUNC (ts_trigger_operation),
@@ -294,14 +205,14 @@ static T_FSERVER_TASK_INFO task_info[] = {
    FSVR_SA_CS},
   {"gettriggerinfo", TS_GETTRIGGERINFO, 0, DEF_TASK_FUNC (ts_get_triggerinfo),
    FSVR_SA_CS},
-  {"getfile", TS_GETFILE, 0, DEF_TASK_FUNC (ts_get_file), FSVR_SA_CS},
   {"getautoexecquery", TS_GETAUTOEXECQUERY, 0,
    DEF_TASK_FUNC (ts_get_autoexec_query), FSVR_SA_CS},
   {"setautoexecquery", TS_SETAUTOEXECQUERY, 1,
    DEF_TASK_FUNC (ts_set_autoexec_query), FSVR_SA_CS},
-  {"getdiaginfo", TS_GETDIAGINFO, 0, DEF_TASK_FUNC (ts_get_diaginfo),
-   FSVR_NONE},
   {"getdiagdata", TS_GET_DIAGDATA, 0, DEF_TASK_FUNC (ts_get_diagdata),
+   FSVR_NONE},
+  {"getbrokerdiagdata", TS_GET_BROKER_DIAGDATA, 0,
+   DEF_TASK_FUNC (ts_get_broker_diagdata),
    FSVR_NONE},
   {"addstatustemplate", TS_ADDSTATUSTEMPLATE, 0,
    DEF_TASK_FUNC (ts_addstatustemplate), FSVR_NONE},
@@ -311,8 +222,6 @@ static T_FSERVER_TASK_INFO task_info[] = {
    DEF_TASK_FUNC (ts_removestatustemplate), FSVR_NONE},
   {"getstatustemplate", TS_GETSTATUSTEMPLATE, 0,
    DEF_TASK_FUNC (ts_getstatustemplate), FSVR_NONE},
-  {"getcaslogfilelist", TS_GETCASLOGFILELIST, 0,
-   DEF_TASK_FUNC (ts_getcaslogfilelist), FSVR_NONE},
   {"analyzecaslog", TS_ANALYZECASLOG, 0, DEF_TASK_FUNC (ts_analyzecaslog),
    FSVR_NONE},
   {"executecasrunner", TS_EXECUTECASRUNNER, 0,
@@ -321,32 +230,201 @@ static T_FSERVER_TASK_INFO task_info[] = {
    DEF_TASK_FUNC (ts_removecasrunnertmpfile), FSVR_NONE},
   {"getcaslogtopresult", TS_GETCASLOGTOPRESULT, 0,
    DEF_TASK_FUNC (ts_getcaslogtopresult), FSVR_NONE},
-#if 0
-  {"broker_alarmmsg", TS2_BROKERALARMMSG, 0,
-   DEF_TASK_FUNC (ts2_broker_alarm_msg)},
-  {"broker_getparam", TS2_GETBROKERPARAM, 0,
-   DEF_TASK_FUNC (ts2_get_broker_param)},
-  {"getdbdir", TS_GETDBDIR, 0, DEF_TASK_FUNC (tsGetDBDirectory)},
-  {"getsysparam", TS_GETSYSPARAM, 0, DEF_TASK_FUNC (ts_get_sysparam)},
-  {"getunicasdconf", TS2_GETUNICASDCONF, 0,
-   DEF_TASK_FUNC (ts2_get_unicasd_conf)},
-  {"getunicasdinfo", TS2_GETUNICASDINFO, 0,
-   DEF_TASK_FUNC (ts2_get_unicasd_info)},
-  {"getuserinfo", TS_GETUSERINFO, 0, DEF_TASK_FUNC (ts_get_user_info)},
-  {"popupspaceinfo", TS_POPSPACEINFO, 0, DEF_TASK_FUNC (ts_popup_space_info)},
-  {"setsysparam2", TS_SETSYSPARAM2, 1, DEF_TASK_FUNC (ts_set_sysparam2)},
-  {"setunicasdconf", TS2_SETUNICASDCONF, 1,
-   DEF_TASK_FUNC (ts2_set_unicasd_conf)},
-  {"startunicasd", TS2_STARTUNICASD, 0, DEF_TASK_FUNC (ts2_start_unicasd)},
-  {"stopunicasd", TS2_STOPUNICASD, 0, DEF_TASK_FUNC (ts2_stop_unicasd)},
-#endif
   {"dbmtuserlogin", TS_DBMTUSERLOGIN, 0, DEF_TASK_FUNC (tsDBMTUserLogin),
    FSVR_NONE},
-  {"changeowner", TS_CHANGEOWNER, 1, DEF_TASK_FUNC (ts_change_owner),
-   FSVR_CS},
   {"removelog", TS_REMOVE_LOG, 0, DEF_TASK_FUNC (ts_remove_log), FSVR_NONE},
   {NULL, TS_UNDEFINED, 0, NULL, FSVR_NONE}
 };
+
+static int _maybe_ip_addr (char *hostname);
+static int _ip_equal_hostent (struct hostent *hp, char *token);
+
+int
+_op_check_is_localhost (char *token, char *hname)
+{
+  struct hostent *hp;
+
+  if ((hp = gethostbyname (hname)) == NULL)
+    {
+      return -1;
+    }
+
+  /* if token is an ip address. */
+  if (_maybe_ip_addr (token) > 0)
+    {
+      /* if token equal 127.0.0.1 or the ip is in the list of hname. */
+      if ((strcmp (token, "127.0.0.1") == 0)
+	  || _ip_equal_hostent (hp, token) == 0)
+	{
+	  return 0;
+	}
+    }
+  else
+    {
+      /* 
+       * if token is not an ip address, 
+       * then compare it with the hostname ignore case.
+       */
+      if ((strcasecmp (token, hname) == 0)
+	  || (strcasecmp (token, "localhost") == 0))
+	{
+	  return 0;
+	}
+    }
+  return -1;
+}
+
+static int
+_maybe_ip_addr (char *hostname)
+{
+  if (hostname == NULL)
+    {
+      return 0;
+    }
+  return (isdigit (hostname[0]) ? 1 : 0);
+}
+
+static int
+_ip_equal_hostent (struct hostent *hp, char *token)
+{
+  int i;
+  int retval = -1;
+  const char *tmpstr = NULL;
+  struct in_addr inaddr;
+
+  if (hp == NULL)
+    {
+      return retval;
+    }
+
+  for (i = 0; hp->h_addr_list[i] != NULL; i++)
+    {
+      /* change ip address of hname to string. */
+      inaddr.s_addr = *(unsigned long *) hp->h_addr_list[i];
+      tmpstr = inet_ntoa (inaddr);
+
+      /* compare the ip string with token. */
+      if (strcmp (token, tmpstr) == 0)
+	{
+	  retval = 0;
+	  break;
+	}
+    }
+  return retval;
+}
+
+void
+append_host_to_dbname (char *name_buf, const char *dbname, int buf_len)
+{
+  snprintf (name_buf, buf_len, "%s@127.0.0.1", dbname);
+}
+
+void *
+increase_capacity (void *ptr, int block_size, int old_count, int new_count)
+{
+  if (new_count <= old_count || new_count <= 0)
+    return NULL;
+
+  if (ptr == NULL)
+    {
+      if ((ptr = malloc (block_size * new_count)) == NULL)
+	return NULL;
+      memset (ptr, 0, block_size * new_count);
+    }
+  else
+    {
+      if ((ptr = realloc (ptr, block_size * new_count)) == NULL)
+	return NULL;
+      memset ((char *) ptr + old_count * block_size, 0,
+	      block_size * (new_count - old_count));
+    }
+
+  return ptr;
+}
+
+char *
+strcpy_limit (char *dest, const char *src, int buf_len)
+{
+  strncpy (dest, src, buf_len - 1);
+  dest[buf_len - 1] = '\0';
+  return dest;
+}
+
+int
+ut_getdelim (char **lineptr, int *n, int delimiter, FILE * fp)
+{
+  int result;
+  int cur_len = 0;
+  int c;
+
+  if (lineptr == NULL || n == NULL || fp == NULL)
+    {
+      return -1;
+    }
+
+  if (*lineptr == NULL || *n == 0)
+    {
+      char *new_lineptr;
+      *n = MIN_CHUNK;
+      new_lineptr = (char *) realloc (*lineptr, *n);
+
+      if (new_lineptr == NULL)
+	{
+	  return -1;
+	}
+      *lineptr = new_lineptr;
+    }
+
+  for (;;)
+    {
+      c = getc (fp);
+      if (c == EOF)
+	{
+	  result = -1;
+	  break;
+	}
+
+      /* Make enough space for len+1 (for final NUL) bytes. */
+      if (cur_len + 1 >= *n)
+	{
+	  int line_len = 2 * *n + 1;
+	  char *new_lineptr;
+
+	  if (line_len > MAX_LINE)
+	    {
+	      line_len = MAX_LINE;
+	    }
+	  if (cur_len + 1 >= line_len)
+	    {
+	      return -1;
+	    }
+
+	  new_lineptr = (char *) realloc (*lineptr, line_len);
+	  if (new_lineptr == NULL)
+	    {
+	      return -1;
+	    }
+
+	  *lineptr = new_lineptr;
+	  *n = line_len;
+	}
+      (*lineptr)[cur_len] = c;
+      cur_len++;
+
+      if (c == delimiter)
+	break;
+    }
+  (*lineptr)[cur_len] = '\0';
+  result = cur_len ? cur_len : result;
+
+  return result;
+}
+
+int
+ut_getline (char **lineptr, int *n, FILE * fp)
+{
+  return ut_getdelim (lineptr, n, '\n', fp);
+}
 
 void
 uRemoveCRLF (char *str)
@@ -516,7 +594,6 @@ ut_get_task_info (char *task, char *access_log_flag, T_TASK_FUNC * task_func)
   return TS_UNDEFINED;
 }
 
-#ifndef FSERVER_SLAVE
 int
 ut_send_response (SOCKET fd, nvplist * res)
 {
@@ -575,9 +652,9 @@ ut_receive_request (SOCKET fd, nvplist * req)
 		{
 		  *p = '\0';
 		  p++;
+		  nv_add_nvp (req, dst_buffer (linebuf), p);
 		}
 	    }
-	  nv_add_nvp (req, dst_buffer (linebuf), p);
 	  dst_reset (linebuf);
 	}
       else
@@ -856,7 +933,6 @@ send_file_to_client (SOCKET sock_fd, char *file_name, FILE * log_file)
   return total_send;
 }
 
-#endif
 
 void
 ut_daemon_start (void)
@@ -942,7 +1018,7 @@ uRetrieveDBDirectory (const char *dbname, char *target)
   char temp_name[512];
 #endif
 
-  ret_val = _uReadDBtxtFile (dbname, 1, target);
+  ret_val = uReadDBtxtFile (dbname, 1, target);
 #ifdef	WINDOWS
   if (ret_val == ERR_NO_ERROR)
     {
@@ -958,89 +1034,11 @@ uRetrieveDBDirectory (const char *dbname, char *target)
   return ret_val;
 }
 
-int
-uRetrieveDBLogDirectory (char *dbname, char *target)
-{
-  int ret_val;
-#ifdef	WINDOWS
-  char temp_name[512];
-#endif
-
-  ret_val = _uReadDBtxtFile (dbname, 3, target);
-#ifdef	WINDOWS
-  if (ret_val == ERR_NO_ERROR)
-    {
-      strcpy (temp_name, target);
-      memset (target, '\0', strlen (target));
-      if (GetLongPathName (temp_name, target, MAX_PATH) == 0)
-	{
-	  strcpy (target, temp_name);
-	}
-    }
-#endif
-  return ret_val;
-}
-
-int
-uIsDatabaseActive (char *dbn)
-{
-  T_COMMDB_RESULT *cmd_res;
-  int retval = 0;
-
-  if (dbn == NULL)
-    return 0;
-  cmd_res = cmd_commdb ();
-  if (cmd_res != NULL)
-    {
-      retval = uIsDatabaseActive2 (cmd_res, dbn);
-      cmd_commdb_result_free (cmd_res);
-    }
-  return retval;
-}
-
-int
-uIsDatabaseActive2 (T_COMMDB_RESULT * cmd_res, char *dbn)
-{
-  T_COMMDB_INFO *info;
-  int i;
-
-  if (cmd_res == NULL)
-    return 0;
-
-  info = (T_COMMDB_INFO *) cmd_res->result;
-  for (i = 0; i < cmd_res->num_result; i++)
-    {
-      if (strcmp (info[i].db_name, dbn) == 0)
-	{
-	  return 1;
-	}
-    }
-  return 0;
-}
-
-T_DB_SERVICE_MODE
-uDatabaseMode (char *dbname)
-{
-  int pid;
-
-  if (uIsDatabaseActive (dbname))
-    return DB_SERVICE_MODE_CS;
-
-  pid = get_db_server_pid (dbname);
-  if (pid > 0)
-    {
-      if (kill (pid, 0) >= 0)
-	{
-	  return DB_SERVICE_MODE_SA;
-	}
-    }
-  return DB_SERVICE_MODE_NONE;
-}
 
 int
 _isRegisteredDB (char *dn)
 {
-  if (_uReadDBtxtFile (dn, 0, NULL) == ERR_NO_ERROR)
+  if (uReadDBtxtFile (dn, 0, NULL) == ERR_NO_ERROR)
     return 1;
 
   return 0;
@@ -1090,15 +1088,15 @@ uReadDBnfo (char *dblist)
 void
 uWriteDBnfo (void)
 {
-  T_COMMDB_RESULT *cmd_res;
+  T_SERVER_STATUS_RESULT *cmd_res;
 
-  cmd_res = cmd_commdb ();
+  cmd_res = cmd_server_status ();
   uWriteDBnfo2 (cmd_res);
-  cmd_commdb_result_free (cmd_res);
+  cmd_servstat_result_free (cmd_res);
 }
 
 void
-uWriteDBnfo2 (T_COMMDB_RESULT * cmd_res)
+uWriteDBnfo2 (T_SERVER_STATUS_RESULT * cmd_res)
 {
   int i;
   int dbcnt;
@@ -1106,7 +1104,7 @@ uWriteDBnfo2 (T_COMMDB_RESULT * cmd_res)
   int dbvect[MAX_INSTALLED_DB];
   int lock_fd;
   FILE *outfp;
-  T_COMMDB_INFO *info;
+  T_SERVER_STATUS_INFO *info;
 
   lock_fd =
     uCreateLockFile (conf_get_dbmt_file (FID_LOCK_PSVR_DBINFO, strbuf));
@@ -1123,7 +1121,7 @@ uWriteDBnfo2 (T_COMMDB_RESULT * cmd_res)
 	}
       else
 	{
-	  info = (T_COMMDB_INFO *) cmd_res->result;
+	  info = (T_SERVER_STATUS_INFO *) cmd_res->result;
 	  for (i = 0; i < cmd_res->num_result; i++)
 	    {
 	      if (_isRegisteredDB (info[i].db_name))
@@ -1133,7 +1131,7 @@ uWriteDBnfo2 (T_COMMDB_RESULT * cmd_res)
 		}
 	    }
 	  fprintf (outfp, "%d\n", dbcnt);
-	  info = (T_COMMDB_INFO *) cmd_res->result;
+	  info = (T_SERVER_STATUS_INFO *) cmd_res->result;
 	  for (i = 0; i < dbcnt; i++)
 	    fprintf (outfp, "%s\n", info[dbvect[i]].db_name);
 	}
@@ -1318,7 +1316,7 @@ ut_trim (char *str)
   *++p = '\0';
 
   if (s != str)
-    memcpy (str, s, strlen (s) + 1);
+    memmove (str, s, strlen (s) + 1);
 
   return (str);
 }
@@ -1443,71 +1441,7 @@ string_tokenize2 (char *str, char *tok[], int num_tok, int c)
   return 0;
 }
 
-int
-get_db_server_pid (char *dbname)
-{
-  char srv_lock_file[1024];
-  FILE *fp;
-  int pid = -1;
-  size_t file_len;
 
-  if (uRetrieveDBLogDirectory (dbname, srv_lock_file) != ERR_NO_ERROR)
-    {
-      return -1;
-    }
-  file_len = strlen (srv_lock_file);
-  snprintf (srv_lock_file + file_len,
-	    sizeof (srv_lock_file) - file_len - 1, "/%s%s", dbname,
-	    CUBRID_SERVER_LOCK_EXT);
-  if ((fp = fopen (srv_lock_file, "r")) != NULL)
-    {
-      if (fscanf (fp, "%*s %d", &pid) < 1)
-	pid = -1;
-      fclose (fp);
-    }
-  return pid;
-}
-
-static int
-_uReadDBtxtFile (const char *dn, int idx, char *outbuf)
-{
-  char strbuf[1024];
-  FILE *dbf;
-  char *value_p[4];
-  int retval = ERR_DBDIRNAME_NULL;
-
-  if (outbuf)
-    outbuf[0] = '\0';
-
-  sprintf (strbuf, "%s/%s", sco.szCubrid_databases, CUBRID_DATABASE_TXT);
-  dbf = fopen (strbuf, "r");
-  if (dbf == NULL)
-    return ERR_DBDIRNAME_NULL;
-
-  while (fgets (strbuf, sizeof (strbuf), dbf))
-    {
-      ut_trim (strbuf);
-      if (string_tokenize (strbuf, value_p, 4) < 0)
-	continue;
-      if (strcmp (value_p[0], dn) == 0)
-	{
-	  if (outbuf)
-	    {
-	      strcpy (outbuf, value_p[idx]);
-#if defined(WINDOWS)
-	      unix_style_path (outbuf);
-#endif
-	    }
-	  retval = ERR_NO_ERROR;
-	  break;
-	}
-    }
-  fclose (dbf);
-
-  return retval;
-}
-
-#ifndef FSERVER_SLAVE
 int
 read_from_socket (SOCKET sock_fd, char *buf, int size)
 {
@@ -1515,7 +1449,7 @@ read_from_socket (SOCKET sock_fd, char *buf, int size)
   fd_set read_mask;
   int nfound;
   int maxfd;
-  struct timeval timeout_val = { 5, 0 };
+  struct timeval timeout_val;
 
   timeout_val.tv_sec = 5;
   timeout_val.tv_usec = 0;
@@ -1580,7 +1514,6 @@ write_to_socket (SOCKET sock_fd, const char *buf, int size)
 
   return write_len;
 }
-#endif
 
 #if defined(WINDOWS)
 int
@@ -1604,191 +1537,6 @@ kill (int pid, int signo)
 
   CloseHandle (phandle);
   return 0;
-}
-#endif
-
-#if defined(WINDOWS)
-int
-run_child (const char *const argv[], int wait_flag, const char *stdin_file,
-	   char *stdout_file, char *stderr_file, int *exit_status)
-{
-  int new_pid;
-  STARTUPINFO start_info;
-  PROCESS_INFORMATION proc_info;
-  BOOL res;
-  int i, cmd_arg_len;
-  char cmd_arg[1024];
-  BOOL inherit_flag = FALSE;
-  HANDLE hStdIn = INVALID_HANDLE_VALUE;
-  HANDLE hStdOut = INVALID_HANDLE_VALUE;
-  HANDLE hStdErr = INVALID_HANDLE_VALUE;
-
-  if (exit_status != NULL)
-    *exit_status = 0;
-
-  for (i = 0, cmd_arg_len = 0; argv[i]; i++)
-    {
-      cmd_arg_len += sprintf (cmd_arg + cmd_arg_len, "\"%s\" ", argv[i]);
-    }
-
-  GetStartupInfo (&start_info);
-  start_info.wShowWindow = SW_HIDE;
-
-  if (stdin_file)
-    {
-      hStdIn =
-	CreateFile (stdin_file, GENERIC_READ, FILE_SHARE_READ, NULL,
-		    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-      if (hStdIn != INVALID_HANDLE_VALUE)
-	{
-	  SetHandleInformation (hStdIn, HANDLE_FLAG_INHERIT,
-				HANDLE_FLAG_INHERIT);
-	  start_info.dwFlags = STARTF_USESTDHANDLES;
-	  start_info.hStdInput = hStdIn;
-	  inherit_flag = TRUE;
-	}
-    }
-  if (stdout_file)
-    {
-      hStdOut =
-	CreateFile (stdout_file, GENERIC_WRITE, FILE_SHARE_READ, NULL,
-		    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-      if (hStdOut != INVALID_HANDLE_VALUE)
-	{
-	  SetHandleInformation (hStdOut, HANDLE_FLAG_INHERIT,
-				HANDLE_FLAG_INHERIT);
-	  start_info.dwFlags = STARTF_USESTDHANDLES;
-	  start_info.hStdOutput = hStdOut;
-	  inherit_flag = TRUE;
-	}
-    }
-  if (stderr_file)
-    {
-      hStdErr =
-	CreateFile (stderr_file, GENERIC_WRITE,
-		    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-		    NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-      if (hStdErr != INVALID_HANDLE_VALUE)
-	{
-	  SetHandleInformation (hStdErr, HANDLE_FLAG_INHERIT,
-				HANDLE_FLAG_INHERIT);
-	  start_info.dwFlags = STARTF_USESTDHANDLES;
-	  start_info.hStdError = hStdErr;
-	  inherit_flag = TRUE;
-	}
-    }
-
-  res = CreateProcess (argv[0], cmd_arg, NULL, NULL, inherit_flag,
-		       CREATE_NO_WINDOW, NULL, NULL, &start_info, &proc_info);
-
-  if (hStdIn != INVALID_HANDLE_VALUE)
-    {
-      CloseHandle (hStdIn);
-    }
-  if (hStdOut != INVALID_HANDLE_VALUE)
-    {
-      CloseHandle (hStdOut);
-    }
-  if (hStdErr != INVALID_HANDLE_VALUE)
-    {
-      CloseHandle (hStdErr);
-    }
-
-  if (res == FALSE)
-    {
-      return -1;
-    }
-
-  new_pid = proc_info.dwProcessId;
-
-  if (wait_flag)
-    {
-      DWORD status = 0;
-      WaitForSingleObject (proc_info.hProcess, INFINITE);
-      GetExitCodeProcess (proc_info.hProcess, &status);
-      if (exit_status != NULL)
-	*exit_status = status;
-      CloseHandle (proc_info.hProcess);
-      CloseHandle (proc_info.hThread);
-      return 0;
-    }
-  else
-    {
-      CloseHandle (proc_info.hProcess);
-      CloseHandle (proc_info.hThread);
-      return new_pid;
-    }
-}
-#else
-int
-run_child (const char *const argv[], int wait_flag, const char *stdin_file,
-	   char *stdout_file, char *stderr_file, int *exit_status)
-{
-  int pid;
-
-  if (exit_status != NULL)
-    *exit_status = 0;
-
-  if (wait_flag)
-    signal (SIGCHLD, SIG_DFL);
-  else
-    signal (SIGCHLD, SIG_IGN);
-  pid = PROC_FORK ();
-  if (pid == 0)
-    {
-      FILE *fp;
-
-      close_all_fds (3);
-
-      if (stdin_file)
-	{
-	  fp = fopen (stdin_file, "r");
-	  if (fp)
-	    {
-	      dup2 (fileno (fp), 0);
-	      fclose (fp);
-	    }
-	}
-      if (stdout_file)
-	{
-	  unlink (stdout_file);
-	  fp = fopen (stdout_file, "w");
-	  if (fp)
-	    {
-	      dup2 (fileno (fp), 1);
-	      fclose (fp);
-	    }
-	}
-      if (stderr_file)
-	{
-	  unlink (stderr_file);
-	  fp = fopen (stderr_file, "w");
-	  if (fp)
-	    {
-	      dup2 (fileno (fp), 2);
-	      fclose (fp);
-	    }
-	}
-
-      execv (argv[0], argv);
-      exit (0);
-    }
-
-  if (pid < 0)
-    return -1;
-
-  if (wait_flag)
-    {
-      int status = 0;
-      waitpid (pid, &status, 0);
-      if (exit_status != NULL)
-	*exit_status = status;
-      return 0;
-    }
-  else
-    {
-      return pid;
-    }
 }
 #endif
 

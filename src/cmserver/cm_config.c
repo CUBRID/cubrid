@@ -40,7 +40,7 @@
 
 #include "cm_porting.h"
 #include "cm_config.h"
-#include "cm_dstring.h"
+#include "cm_dep.h"
 #include "cm_server_util.h"
 
 #define DEFAULT_MONITOR_INTERVAL 5

@@ -225,7 +225,7 @@ get_domain (TP_DOMAIN ** domain_ptr)
   int error = NO_ERROR;
   TP_DOMAIN *domain = NULL;
 
-  /* Find the domain for the incomming value */
+  /* Find the domain for the incoming value */
 
   if (Loader.set != NULL)
     domain = Loader.set_domain;
@@ -255,7 +255,7 @@ get_domain (TP_DOMAIN ** domain_ptr)
 
 /*
  * domain_error - select an appropriate error message for a mismatch between
- * an incomming data value and the target domain.
+ * an incoming data value and the target domain.
  *    return: error code
  *    domain(in): current target domain
  *    src_type(in): supplied input type
@@ -349,7 +349,7 @@ domain_error (TP_DOMAIN * domain, DB_TYPE src_type, MOP class)
 
 
 /*
- * check_domain - checks the type of an incomming value against the target
+ * check_domain - checks the type of an incoming value against the target
  * domain.
  *    return: NO_ERROR if successful, error code otherwise
  *    src_type(in): token type
@@ -398,10 +398,10 @@ check_domain (DB_TYPE src_type, DB_TYPE * appropriate_type)
 
 
 /*
- * check_object_domain - checks the type of an incomming value against the
+ * check_object_domain - checks the type of an incoming value against the
  * target domain.
  *    return: error code
- *    class(in): class of incomming object reference
+ *    class(in): class of incoming object reference
  *    actual_class(in): class to expect (if first arg is NULL)
  * Note:
  *    If they don't match LDR_DOMAIN_MISMATCH is returned.
@@ -471,7 +471,7 @@ check_object_domain (MOP class, MOP * actual_class)
 
 
 /*
- * check_class_domain - checks the domain for an incomming reference to an
+ * check_class_domain - checks the domain for an incoming reference to an
  * actual class object (not an instance).
  *    return: error code
  * Note:
@@ -1094,7 +1094,6 @@ idmap_final (void)
   if (Id_map != NULL)
     {
       free_and_init (Id_map);
-      Id_map = NULL;
       Id_map_size = 0;
     }
 }
@@ -2308,7 +2307,7 @@ select_set_domain (TP_DOMAIN * domain, TP_DOMAIN ** set_domain_ptr)
 
 
 /*
- * ldr_start_set - Prepares the loader to accept incomming data values as the
+ * ldr_start_set - Prepares the loader to accept incoming data values as the
  * elements of a set.
  *    return: NO_ERROR if successful, error code otherwise
  * Note:
@@ -2385,7 +2384,7 @@ ldr_start_set (void)
  * ldr_end_set - stop the population of a set
  *    return: NO_ERROR if successful, error code otherwise
  * Note:
- *    After calling this function, incomming values will again be treated
+ *    After calling this function, incoming values will again be treated
  *    as attribute values.
  */
 int
@@ -2407,7 +2406,7 @@ ldr_end_set (void)
 
 
 /*
- * ldr_add_value - This is called to prepare storage for an incomming value.
+ * ldr_add_value - This is called to prepare storage for an incoming value.
  *    return: NO_ERROR if successful, error code otherwise
  *    token_type(in): type of proposed value
  *    retval(out): returned value container

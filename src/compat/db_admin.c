@@ -118,8 +118,9 @@ int
 db_init (const char *program, int print_version,
 	 const char *dbname, const char *db_path, const char *vol_path,
 	 const char *log_path, const char *host_name,
-	 const bool overwrite, const char *comments, int npages,
-	 const char *addmore_vols_file, int desired_pagesize, int log_npages)
+	 const bool overwrite, const char *comments,
+	 const char *addmore_vols_file, int npages, int desired_pagesize,
+	 int log_npages, int desired_log_page_size)
 {
   int value;
   const char *env_value;
@@ -190,6 +191,26 @@ db_init (const char *program, int print_version,
 	  desired_pagesize = IO_MAX_PAGE_SIZE;
 	}
     }
+  else
+    {
+      desired_pagesize = IO_DEFAULT_PAGE_SIZE;
+    }
+
+  if (desired_log_page_size > 0)
+    {
+      if (desired_log_page_size < IO_MIN_PAGE_SIZE)
+	{
+	  desired_log_page_size = IO_MIN_PAGE_SIZE;
+	}
+      else if (desired_log_page_size > IO_MAX_PAGE_SIZE)
+	{
+	  desired_log_page_size = IO_MAX_PAGE_SIZE;
+	}
+    }
+  else
+    {
+      desired_log_page_size = desired_pagesize;
+    }
 
   client_credential.client_type = BOOT_CLIENT_ADMIN_UTILITY;
   client_credential.client_info = NULL;
@@ -208,9 +229,9 @@ db_init (const char *program, int print_version,
   db_path_info.db_comments = (char *) comments;
 
   error = boot_initialize_client (&client_credential, &db_path_info,
-				  (bool) overwrite, (DKNPAGES) npages,
-				  addmore_vols_file,
-				  (PGLENGTH) desired_pagesize, log_npages);
+				  (bool) overwrite, addmore_vols_file,
+				  npages, (PGLENGTH) desired_pagesize,
+				  log_npages, (PGLENGTH) desired_log_page_size);
 
   if (more_vol_info_file != NULL)
     {
@@ -710,13 +731,13 @@ db_savepoint_transaction_internal (const char *savepoint_name)
  *       the transaction after the savepoint are "undone", and all
  *       effects of the transaction preceding the savepoint remain. The
  *       transaction can then continue executing other database
- *       statemant. It is permissible to abort to the same savepoint
+ *       statements. It is permissible to abort to the same savepoint
  *       repeatedly within the same transaction.
  *       If the same savepoint name is used in multiple savepoint
  *       declarations within the same transaction, then only the latest
  *       savepoint with that name is available for aborts and the
  *       others are forgotten.
- *       There is no limits on the number of savepoints that a
+ *       There is no limit on the number of savepoints that a
  *       transaction can have.
  */
 int
@@ -752,11 +773,11 @@ db_abort_to_savepoint_internal (const char *savepoint_name)
 }
 
 /*
- * db_abort_to_savepoint() - All the effects done by the current transaction
- *     after the given savepoint are undone, and all effects of the transaction
- *     preceding the given savepoint remain. After the partial abort, the
- *     transaction can continue its normal execution just like if the
- *     statemants that were undone, were never executed.
+ * db_abort_to_savepoint() - All the effects of the current transaction
+ *     after the given savepoint are undone and all effects of the transaction
+ *     preceding the given savepoint remain. After the partial abort the
+ *     transaction can continue its normal execution as if the
+ *     statements that were undone were never executed.
  *
  * return            : error code
  * savepoint_name(in): Name of the savepoint or NULL
@@ -984,6 +1005,19 @@ db_set_interrupt (int set)
 }
 
 /*
+ * db_checkpoint: Set or clear a database interruption flags.
+ * return : void
+ * set(in): Set or clear an interruption
+ *
+ */
+void
+db_checkpoint (void)
+{
+  CHECK_CONNECT_VOID ();
+  log_checkpoint ();
+}
+
+/*
  * db_set_lock_timeout() - This sets a timeout on the amount of time to spend
  *    waiting to aquire a lock on an object.  Normally the system will wait
  *    forever for a lock to be granted.  If you enable lock timeouts, you must
@@ -1064,14 +1098,14 @@ db_get_tran_settings (int *lock_wait, DB_TRAN_ISOLATION * tran_isolation)
 }
 
 /*
- * db_synchronize_cache() - Decache any obsolate objects that were accessed by
+ * db_synchronize_cache() - Decache any obsolete objects that were accessed by
  *         the current transaction. This can happen when the client transaction
- *         is not running with TRAN_REP_CLASS_REP_INSTANCE isolationb level.
+ *         is not running with TRAN_REP_CLASS_REP_INSTANCE isolation level.
  *         That is some of the locks for accessed objects were relesed. CUBRID
  *         tries to synchronize the client cache by decaching accessed objects
  *         that have been updated by other transactions. This is done when
  *         objects are fetched, as part of the fetch notification of
- *         inconsistent objects are collected and brought  to the client cache.
+ *         inconsistent objects are collected and brought to the client cache.
  *
  * return : nothing
  *
@@ -2080,46 +2114,13 @@ db_objlist_free (DB_OBJLIST * list)
 /*
  * db_identifier() - This function returns the permanent object identifier of
  *    the given object.
- * return : Pointer to Object identifier
+ * return : Pointer to object identifier
  * obj(in): Object
  */
 DB_IDENTIFIER *
 db_identifier (DB_OBJECT * obj)
 {
-  DB_IDENTIFIER *oid;
-
-  oid = NULL;
-
-  if (!obj)
-    {
-      goto end;
-    }
-  if (WS_MARKED_DELETED (obj))
-    {
-      goto end;
-    }
-  if (WS_ISVID (obj))
-    {
-      obj = db_real_instance (obj);
-      if (!obj)
-	{
-	  goto end;		/* non-updatable view has no oid */
-	}
-      if (WS_ISVID (obj))
-	{
-	  goto end;		/* a proxy has no oid */
-	}
-    }
-
-  oid = ws_oid (obj);
-  if (OID_ISTEMP (oid))
-    {
-      (void) locator_flush_instance (obj);
-      oid = ws_oid (obj);
-    }
-
-end:
-  return oid;
+  return ws_identifier_with_check (obj, true);
 }
 
 /*
@@ -2315,7 +2316,7 @@ db_disable_first_user (void)
 char *
 db_get_host_connected (void)
 {
-  /*CHECK_CONNECT_NULL ();*/
+  /*CHECK_CONNECT_NULL (); */
 
 #if defined(CS_MODE)
   return boot_get_host_connected ();

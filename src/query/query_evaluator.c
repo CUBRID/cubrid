@@ -312,7 +312,7 @@ eval_some_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
  *                          - set has no value determined to fail to hold the
  *                            rel. and at least one value which can not be
  *                            determined to hold the relationship.
- *              V_ERROR:    - an error occured.
+ *              V_ERROR:    - an error occurred.
  *
  */
 static DB_LOGICAL
@@ -437,7 +437,7 @@ eval_item_card_set (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
  *              V_UNKNOWN:  - list has no value determined to hold the rel.
  *                            and at least one value which can not be
  *                            determined to fail to hold the relationship.
- *              V_ERROR:    - an error occured.
+ *              V_ERROR:    - an error occurred.
  *
  *  Note: The IN relationship can be stated as item has the equality rel. with
  *        one of the list elements.
@@ -541,7 +541,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item,
  *              V_UNKNOWN:  - list has no value determined to fail to hold the
  *                            rel. and at least one value which can not be
  *                            determined to hold the relationship.
- *              V_ERROR:    - an error occured.
+ *              V_ERROR:    - an error occurred.
  *
  */
 static DB_LOGICAL
@@ -1763,15 +1763,15 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		    }
 
 		  srlist_id = et_comp->lhs->value.srlist_id;
-		  result =
-		    (srlist_id->list_id->tuple_cnt > 0) ? V_TRUE : V_FALSE;
+		  result = ((srlist_id->list_id->tuple_cnt > 0)
+			    ? V_TRUE : V_FALSE);
 		}
 	      else
 		{
 		  /* must be a set */
-		  if (fetch_peek_dbval
-		      (thread_p, et_comp->lhs, vd, NULL, obj_oid, NULL,
-		       &peek_val1) != NO_ERROR)
+		  if (fetch_peek_dbval (thread_p, et_comp->lhs, vd, NULL,
+					obj_oid, NULL,
+					&peek_val1) != NO_ERROR)
 		    {
 		      return V_ERROR;
 		    }
@@ -1780,9 +1780,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		      return V_UNKNOWN;
 		    }
 
-		  result =
-		    (db_set_size (DB_GET_SET (peek_val1)) >
-		     0) ? V_TRUE : V_FALSE;
+		  result = ((db_set_size (DB_GET_SET (peek_val1)) > 0)
+			    ? V_TRUE : V_FALSE);
 		}
 	      break;
 	    }
@@ -1809,9 +1808,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 
 	  if (et_comp->rhs->type != TYPE_LIST_ID)
 	    {
-	      if (fetch_peek_dbval
-		  (thread_p, et_comp->rhs, vd, NULL, obj_oid, NULL,
-		   &peek_val2) != NO_ERROR)
+	      if (fetch_peek_dbval (thread_p, et_comp->rhs, vd, NULL, obj_oid,
+				    NULL, &peek_val2) != NO_ERROR)
 		{
 		  return V_ERROR;
 		}
@@ -1827,9 +1825,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	  if (et_comp->lhs->type == TYPE_LIST_ID
 	      || et_comp->rhs->type == TYPE_LIST_ID)
 	    {
-	      result =
-		eval_set_list_cmp (thread_p, et_comp, vd, peek_val1,
-				   peek_val2);
+	      result = eval_set_list_cmp (thread_p, et_comp, vd, peek_val1,
+					  peek_val2);
 	    }
 	  else
 	    {
@@ -1853,9 +1850,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	  if (et_alsm->elemset->type != TYPE_LIST_ID)
 	    {
 	      /* fetch set (group of items) value */
-	      if (fetch_peek_dbval
-		  (thread_p, et_alsm->elemset, vd, NULL, obj_oid, NULL,
-		   &peek_val2) != NO_ERROR)
+	      if (fetch_peek_dbval (thread_p, et_alsm->elemset, vd, NULL,
+				    obj_oid, NULL, &peek_val2) != NO_ERROR)
 		{
 		  return V_ERROR;
 		}
@@ -1891,9 +1887,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	    }
 
 	  /* fetch item value */
-	  if (fetch_peek_dbval
-	      (thread_p, et_alsm->elem, vd, NULL, obj_oid, NULL,
-	       &peek_val1) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, et_alsm->elem, vd, NULL, obj_oid,
+				NULL, &peek_val1) != NO_ERROR)
 	    {
 	      return V_ERROR;
 	    }
@@ -1941,9 +1936,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	  et_like = &pr->pe.eval_term.et.et_like;
 
 	  /* fetch source text expression */
-	  if (fetch_peek_dbval
-	      (thread_p, et_like->src, vd, NULL, obj_oid, NULL,
-	       &peek_val1) != NO_ERROR)
+	  if (fetch_peek_dbval (thread_p, et_like->src, vd, NULL, obj_oid,
+				NULL, &peek_val1) != NO_ERROR)
 	    {
 	      return V_ERROR;
 	    }
@@ -1966,9 +1960,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	  if (et_like->esc_char)
 	    {
 	      /* fetch escape regular expression */
-	      if (fetch_peek_dbval (thread_p,
-				    et_like->esc_char, vd, NULL, obj_oid,
-				    NULL, &peek_val3) != NO_ERROR)
+	      if (fetch_peek_dbval (thread_p, et_like->esc_char, vd, NULL,
+				    obj_oid, NULL, &peek_val3) != NO_ERROR)
 		{
 		  return V_ERROR;
 		}
@@ -2511,8 +2504,8 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp,
   if (scan_attrsp->attr_cache && scan_predp->regu_list)
     {
       /* read the predicate values from the heap into the attribute cache */
-      if (heap_attrinfo_read_dbvalues
-	  (thread_p, oid, recdesp, scan_attrsp->attr_cache) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdesp, 
+				       scan_attrsp->attr_cache) != NO_ERROR)
 	{
 	  return V_ERROR;
 	}
@@ -2525,9 +2518,9 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp,
 	   * know class OID so that TYPE_CLASSOID regu cannot be handled
 	   * correctly.
 	   */
-	  if (fetch_val_list
-	      (thread_p, scan_predp->regu_list, filterp->val_descr,
-	       filterp->class_oid, oid, NULL, PEEK) != NO_ERROR)
+	  if (fetch_val_list (thread_p, scan_predp->regu_list, 
+			      filterp->val_descr, filterp->class_oid, oid, 
+			      NULL, PEEK) != NO_ERROR)
 	    {
 	      return V_ERROR;
 	    }

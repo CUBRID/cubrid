@@ -1612,7 +1612,7 @@ pr_free_ext_value (DB_VALUE * value)
 
   if (value != NULL)
     {
-      /* some redundant checking but I wan't the semantics isolated */
+      /* some redundant checking but I want the semantics isolated */
       error = pr_clear_value (value);
       area_free (Value_area, (void *) value);
     }
@@ -3957,7 +3957,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2,
     }
 
   /*
-   * virtual must be 3, impling both the objects are wither proxies
+   * virtual must be 3, impling both the objects are either proxies
    * or non-updatable objects
    */
 
@@ -7351,6 +7351,7 @@ pr_writeval (OR_BUF * buf, DB_VALUE * value)
   (*(type->writeval)) (buf, value);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * GARBAGE COLLECTION SUPPORT
  */
@@ -7422,7 +7423,7 @@ pr_gc_type (PR_TYPE * type, char *mem, void (*gcmarker) (MOP))
     }
 }
 #endif /* !SERVER_MODE */
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * MISCELLANEOUS TYPE-RELATED HELPER FUNCTIONS

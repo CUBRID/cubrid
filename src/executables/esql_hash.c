@@ -295,7 +295,7 @@ es_ht_print_table (HASH_TAB * table, void (*print) (), void *param, int sort)
        * actual hash table in that every 'outtab' element points to a
        * single BUCKET structure, rather than to a linked list of them.
        *
-       * Go ahead and just use malloc() here; it's not a terrrible
+       * Go ahead and just use malloc() here; it's not a terrible
        * problem if we can't get enough memory.
        */
       outtab = (BUCKET **) pp_malloc (tbl->numsyms * sizeof (BUCKET *));

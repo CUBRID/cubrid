@@ -143,7 +143,8 @@ CONNECTION_SOURCES = \
 	$(CONNECTION_DIR)/connection_list_cl.c \
 	$(CONNECTION_DIR)/tcp.c \
 	$(CONNECTION_DIR)/client_support.c \
-	$(CONNECTION_DIR)/connection_support.c
+	$(CONNECTION_DIR)/connection_support.c \
+	$(CONNECTION_DIR)/heartbeat.c
 COMMUNICATION_SOURCES = \
 	$(COMMUNICATION_DIR)/network_interface_cl.c \
 	$(COMMUNICATION_DIR)/network_cl.c \

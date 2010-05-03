@@ -271,10 +271,10 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      bt_statsp->key_size = 0;
 	      bt_statsp->pkeys = NULL;
 
-              for (k = 0; k < BTREE_STATS_RESERVED_NUM; k++)
-                {
-                  bt_statsp->reserved[k] = 0;
-                }
+	      for (k = 0; k < BTREE_STATS_RESERVED_NUM; k++)
+		{
+		  bt_statsp->reserved[k] = 0;
+		}
 
 	      /* read B+tree Root page header info */
 	      root_vpid.pageid = bt_statsp->btid.root_pageid;
@@ -299,17 +299,18 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
 	      if (spage_get_record (root, HEADER, &rec, PEEK) != S_SUCCESS)
 		{
-		  pgbuf_unfix (thread_p, root);
+		  pgbuf_unfix_and_init (thread_p, root);
 		  continue;
 		}
 
 	      btree_read_root_header (&rec, &root_header);
-	      pgbuf_unfix (thread_p, root);
+	      pgbuf_unfix_and_init (thread_p, root);
 
 	      /* construct BTID_INT structure */
 	      btid_int.sys_btid = &bt_statsp->btid;
-	      if (btree_glean_root_header_info (&root_header, &btid_int) !=
-		  NO_ERROR)
+	      if (btree_glean_root_header_info (thread_p,
+						&root_header,
+						&btid_int) != NO_ERROR)
 		{
 		  continue;
 		}

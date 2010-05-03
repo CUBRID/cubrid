@@ -160,8 +160,9 @@ extern int qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no,
 				   bool release);
 extern int qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p,
 					   FILE * fp);
+#if defined (CUBRID_DEBUG)
 extern int qfile_dump_list_cache (THREAD_ENTRY * thread_p, const char *fname);
-
+#endif
 /* query result(list file) cache entry manipulation functions */
 void qfile_clear_uncommited_list_cache_entry (int tran_index);
 QFILE_LIST_CACHE_ENTRY *qfile_lookup_list_cache_entry (THREAD_ENTRY *
@@ -204,8 +205,10 @@ extern QFILE_LIST_ID *qfile_combine_two_list (THREAD_ENTRY * thread_p,
 					      QFILE_LIST_ID * rhs_file,
 					      int flag);
 extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec, int tpl_size);
+#if defined (CUBRID_DEBUG)
 extern void qfile_print_list (THREAD_ENTRY * thread_p,
 			      QFILE_LIST_ID * list_id);
+#endif
 extern QFILE_LIST_ID *qfile_duplicate_list (THREAD_ENTRY * thread_p,
 					    QFILE_LIST_ID * list_id,
 					    int flag);
@@ -245,4 +248,5 @@ extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value_r (QFILE_TUPLE tpl,
 							  int index,
 							  char **tpl_val,
 							  int *val_size);
+extern bool qfile_has_next_page (PAGE_PTR page_p);
 #endif /* _LIST_FILE_H_ */

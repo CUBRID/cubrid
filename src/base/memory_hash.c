@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -140,12 +140,16 @@ mht_1str_pseudo_key (const void *key, int key_size)
       if (key_size == -1)
 	{
 	  if (!(*byte_p))
-	    break;
+	    {
+	      break;
+	    }
 	}
       else
 	{
 	  if (key_size <= 0)
-	    break;
+	    {
+	      break;
+	    }
 	}
 
       pseudo_key = (pseudo_key << 5) - pseudo_key + *byte_p;
@@ -182,12 +186,16 @@ mht_2str_pseudo_key (const void *key, int key_size)
       if (key_size == -1)
 	{
 	  if (!(*byte_p))
-	    break;
+	    {
+	      break;
+	    }
 	}
       else
 	{
 	  if (key_size <= 0)
-	    break;
+	    {
+	      break;
+	    }
 	}
 
       pseudo_key = (pseudo_key << 4) + *byte_p;
@@ -233,12 +241,16 @@ mht_3str_pseudo_key (const void *key, int key_size,
       if (key_size == -1)
 	{
 	  if (!(*byte_p))
-	    break;
+	    {
+	      break;
+	    }
 	}
       else
 	{
 	  if (key_size <= 0)
-	    break;
+	    {
+	      break;
+	    }
 	}
 
       pseudo_key = (pseudo_key * 32 + *byte_p++) % max_value;
@@ -323,12 +335,16 @@ mht_4str_pseudo_key (const void *key, int key_size)
       if (key_size == -1)
 	{
 	  if (!(*byte_p))
-	    break;
+	    {
+	      break;
+	    }
 	}
       else
 	{
 	  if (key_size <= 0)
-	    break;
+	    {
+	      break;
+	    }
 	}
 
       /*
@@ -1452,7 +1468,6 @@ mht_put2_data (MHT_TABLE * ht, const void *key, void *data)
   assert (ht != NULL && key != NULL);
   return mht_put2_internal (ht, key, data, MHT_OPT_KEEP_KEY);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * mht_put2 - Insert an entry associating key with data;
@@ -1476,6 +1491,7 @@ mht_put2 (MHT_TABLE * ht, const void *key, void *data)
   assert (ht != NULL && key != NULL);
   return mht_put2_internal (ht, key, data, MHT_OPT_DEFAULT);
 }
+#endif
 
 /*
  * mht_rem - remove a hash entry

@@ -204,12 +204,6 @@ do {    MUTEX_INIT(((res_ptr)->res_mutex));                     \
   }                                                             \
   while (0)                                                     \
 
-/* Defines for monitoring lock activities */
-#define LK_MNT_LOCK_ACQUIRED(thread_p, entry)     mnt_lk_acquired_on_objects(thread_p)
-#define LK_MNT_LOCK_CONVERTED(thread_p, entry)    mnt_lk_converted_on_objects(thread_p)
-#define LK_MNT_LOCK_RE_REQUESTED(thread_p, entry) mnt_lk_re_requested_on_objects(thread_p)
-#define LK_MNT_LOCK_WAITED(thread_p, entry)       mnt_lk_waited_on_objects(thread_p)
-
 /* Defines for printing lock activity messages */
 #define LK_MSG_LOCK_HELPER(entry, msgnum)                               \
   fprintf(stdout, \
@@ -722,9 +716,11 @@ static int lock_compare_lock_info (const void *lockinfo1,
 				   const void *lockinfo2);
 static void lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp,
 				LK_RES * res_ptr);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static bool lock_check_consistent_resource (THREAD_ENTRY * thread_p,
 					    LK_RES * res_ptr);
 static bool lock_check_consistent_tran_lock (LK_TRAN_LOCK * tran_lock);
+#endif
 static int lock_find_scanid_bit (unsigned char *scanid_bit);
 static void lock_remove_all_inst_locks_with_scanid (THREAD_ENTRY * thread_p,
 						    int tran_index,
@@ -2680,6 +2676,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
 {
   THREAD_ENTRY *p;
   struct timeval tv;
+  int client_id;
 
   /* The caller is holding the thread entry mutex */
 
@@ -2692,11 +2689,10 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
 
       fflush (stderr);
       fflush (stdout);
-      (void) logtb_find_client_name_host_pid (entry_ptr->tran_index,
-					      &__client_prog_name,
-					      &__client_user_name,
-					      &__client_host_name,
-					      &__client_pid);
+      logtb_find_client_name_host_pid (entry_ptr->tran_index,
+				       &__client_prog_name,
+				       &__client_user_name,
+				       &__client_host_name, &__client_pid);
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				       MSGCAT_SET_LOCK,
 				       MSGCAT_LK_SUSPEND_TRAN),
@@ -2708,7 +2704,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
 
   /* register lock wait info. into the thread entry */
   entry_ptr->thrd_entry->lockwait = (void *) entry_ptr;
-  (void) gettimeofday (&tv, NULL);
+  gettimeofday (&tv, NULL);
   entry_ptr->thrd_entry->lockwait_stime =
     ((double) tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
   entry_ptr->thrd_entry->lockwait_nsecs = waitsecs;
@@ -2718,10 +2714,31 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
     (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000);
 
   /* wakeup the dealock detect thread */
-  (void) thread_wakeup_deadlock_detect_thread ();
+  thread_wakeup_deadlock_detect_thread ();
 
   /* suspend the worker thread (transaction) */
-  (void) thread_suspend_wakeup_and_unlock_entry (entry_ptr->thrd_entry);
+  while (1)
+    {
+      thread_suspend_wakeup_and_unlock_entry (entry_ptr->thrd_entry,
+					      THREAD_LOCK_SUSPENDED);
+      if (entry_ptr->thrd_entry->resume_status ==
+	  THREAD_RESUME_DUE_TO_INTERRUPT
+	  && entry_ptr->thrd_entry->interrupted)
+	{
+	  /* In case the shutdown thread wakes me up,
+	   * I keep being suspended and waiting until the lock holder
+	   * wakes me up, because it is too dangerous to continue
+	   * process with a lock not granted.
+	   */
+	  continue;
+	}
+      else if (entry_ptr->thrd_entry->resume_status != THREAD_LOCK_RESUMED)
+	{
+	  assert (0);
+	}
+
+      break;
+    }
 
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = 0;
 
@@ -2731,7 +2748,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
       p = entry_ptr->thrd_entry->tran_next_wait;
       entry_ptr->thrd_entry->tran_next_wait = p->tran_next_wait;
       p->tran_next_wait = NULL;
-      thread_wakeup (p);
+      thread_wakeup (p, THREAD_LOCK_RESUMED);
     }
   thread_unlock_entry (entry_ptr->thrd_entry);
 
@@ -2752,12 +2769,12 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
 
     case LOCK_RESUMED_ABORTED_FIRST:
       /* The lock entry does exist within the blocked holder list
-       * or blocked waiter list. Therefore, current thread must diconnect
+       * or blocked waiter list. Therefore, current thread must disconnect
        * it from the list.
        */
       if (logtb_is_current_active (thread_p) == true)
 	{
-	  (void) lock_set_error_for_aborted (entry_ptr);	/* set error code */
+	  lock_set_error_for_aborted (entry_ptr);	/* set error code */
 
 	  /* wait until other threads finish their works
 	   * A css_server_thread is always running for this transaction.
@@ -2768,19 +2785,25 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
 	      if (thread_has_threads (entry_ptr->tran_index,
 				      thread_get_client_id (thread_p)) >= 1)
 		{
-		  (void) logtb_set_tran_index_interrupt (thread_p, entry_ptr->
-							 tran_index, true);
+		  logtb_set_tran_index_interrupt (thread_p,
+						  entry_ptr->tran_index,
+						  true);
 		  while (1)
 		    {
-		      (void) thread_sleep (0, 10000);	/* sleep 10 msec */
-		      thread_wakeup_with_tran_index (entry_ptr->tran_index);
-		      if (thread_has_threads
-			  (entry_ptr->tran_index,
-			   thread_get_client_id (thread_p)) == 0)
-			break;
+		      thread_sleep (0, 10000);	/* sleep 10 msec */
+		      thread_wakeup_with_tran_index (entry_ptr->tran_index,
+						     THREAD_RESUME_DUE_TO_INTERRUPT);
+
+		      client_id = thread_get_client_id (thread_p);
+		      if (thread_has_threads (entry_ptr->tran_index,
+					      client_id) == 0)
+			{
+			  break;
+			}
 		    }
-		  (void) logtb_set_tran_index_interrupt (thread_p, entry_ptr->
-							 tran_index, false);
+		  logtb_set_tran_index_interrupt (thread_p,
+						  entry_ptr->tran_index,
+						  false);
 		}
 	    }
 	}
@@ -2888,9 +2911,9 @@ lock_resume (LK_ENTRY * entry_ptr, int state)
   entry_ptr->thrd_entry->lockwait_state = (int) state;
 
   /* wakes up the thread and release the thread entry mutex */
-  (void) COND_SIGNAL (entry_ptr->thrd_entry->wakeup_cond);
-  (void) thread_unlock_entry (entry_ptr->thrd_entry);
-
+  entry_ptr->thrd_entry->resume_status = THREAD_LOCK_RESUMED;
+  COND_SIGNAL (entry_ptr->thrd_entry->wakeup_cond);
+  thread_unlock_entry (entry_ptr->thrd_entry);
 }
 #endif /* SERVER_MODE */
 
@@ -3122,7 +3145,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 				   check->granted_mode);
 
 	  /* Record number of acquired locks */
-	  LK_MNT_LOCK_ACQUIRED (thread_p, entry_ptr);
+	  mnt_lk_acquired_on_objects (thread_p);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -3241,7 +3264,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 				   check->granted_mode);
 
 	  /* Record number of acquired locks */
-	  LK_MNT_LOCK_ACQUIRED (thread_p, entry_ptr);
+	  mnt_lk_acquired_on_objects (thread_p);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -3401,7 +3424,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
 				   check->granted_mode);
 
 	  /* Record number of acquired locks */
-	  LK_MNT_LOCK_ACQUIRED (thread_p, entry_ptr);
+	  mnt_lk_acquired_on_objects (thread_p);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -3910,7 +3933,7 @@ start:
       if (lock_get_object_lock (class_oid, oid_Root_class_oid, tran_index) >=
 	  lock)
 	{
-	  LK_MNT_LOCK_RE_REQUESTED (thread_p, entry_ptr);	/* monitoring */
+	  mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
 	  return LK_GRANTED;
 	}
     }
@@ -4001,7 +4024,7 @@ start:
 	  res_ptr->total_holders_mode = lock;
 
 	  /* Record number of acquired locks */
-	  LK_MNT_LOCK_ACQUIRED (thread_p, entry_ptr);
+	  mnt_lk_acquired_on_objects (thread_p);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -4120,7 +4143,7 @@ start:
 	  lock_update_non2pl_list (res_ptr, tran_index, lock);
 
 	  /* Record number of acquired locks */
-	  LK_MNT_LOCK_ACQUIRED (thread_p, entry_ptr);
+	  mnt_lk_acquired_on_objects (thread_p);
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -4223,7 +4246,32 @@ start:
 
 	  thread_unlock_entry (wait_entry_ptr->thrd_entry);
 	  MUTEX_UNLOCK (res_ptr->res_mutex);
-	  thread_suspend_wakeup_and_unlock_entry (thrd_entry);
+
+	  while (1)
+	    {
+	      thread_suspend_wakeup_and_unlock_entry (thrd_entry,
+						      THREAD_LOCK_SUSPENDED);
+
+	      if (entry_ptr->thrd_entry->resume_status ==
+		  THREAD_RESUME_DUE_TO_INTERRUPT
+		  && entry_ptr->thrd_entry->interrupted)
+		{
+		  /* In case the shutdown thread wakes me up,
+		   * I keep being suspended and waiting until the lock holder
+		   * wakes me up, because it is too dangerous to continue
+		   * process with a lock not granted.
+		   */
+		  continue;
+		}
+	      else if (entry_ptr->thrd_entry->resume_status !=
+		       THREAD_LOCK_RESUMED)
+		{
+		  assert (0);
+		}
+
+	      break;
+	    }
+
 	  goto start;
 	}
 
@@ -4284,7 +4332,7 @@ start:
 	     without acquiring it.
 	   */
 	  MUTEX_UNLOCK (res_ptr->res_mutex);
-	  LK_MNT_LOCK_RE_REQUESTED (thread_p, entry_ptr);	/* monitoring */
+	  mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
 	  *entry_addr_ptr = entry_ptr;
 	  return LK_GRANTED;
 	}
@@ -4343,7 +4391,7 @@ start:
 	}
 
       MUTEX_UNLOCK (res_ptr->res_mutex);
-      LK_MNT_LOCK_RE_REQUESTED (thread_p, entry_ptr);	/* monitoring */
+      mnt_lk_re_requested_on_objects (thread_p);	/* monitoring */
       *entry_addr_ptr = entry_ptr;
       return LK_GRANTED;
     }
@@ -4429,7 +4477,32 @@ start:
       thread_unlock_entry (entry_ptr->thrd_entry);
 
       MUTEX_UNLOCK (res_ptr->res_mutex);
-      thread_suspend_wakeup_and_unlock_entry (thrd_entry);
+
+      while (1)
+	{
+	  thread_suspend_wakeup_and_unlock_entry (thrd_entry,
+						  THREAD_LOCK_SUSPENDED);
+
+	  if (entry_ptr->thrd_entry->resume_status ==
+	      THREAD_RESUME_DUE_TO_INTERRUPT
+	      && entry_ptr->thrd_entry->interrupted)
+	    {
+	      /* In case the shutdown thread wakes me up,
+	       * I keep being suspended and waiting until the lock holder
+	       * wakes me up, because it is too dangerous to continue
+	       * process with a lock not granted.
+	       */
+	      continue;
+	    }
+	  else if (entry_ptr->thrd_entry->resume_status !=
+		   THREAD_LOCK_RESUMED)
+	    {
+	      assert (0);
+	    }
+
+	  break;
+	}
+
       goto start;
     }
 
@@ -4464,7 +4537,7 @@ start:
 blocked:
 
   /* LK_CANWAIT(waitsecs) : waitsecs > 0 */
-  LK_MNT_LOCK_WAITED (thread_p, entry_ptr);
+  mnt_lk_waited_on_objects (thread_p);
 #if defined(LK_TRACE_OBJECT)
   LK_MSG_LOCK_WAITFOR (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -4543,7 +4616,7 @@ lock_conversion_treatement:
 	  break;
 	}
 
-      LK_MNT_LOCK_CONVERTED (thread_p, entry_ptr);
+      mnt_lk_converted_on_objects (thread_p);
 #if defined(LK_TRACE_OBJECT)
       LK_MSG_LOCK_CONVERTED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
@@ -6066,7 +6139,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  /* remove all outgoing edges */
 	  TWFG_node[t].first_edge = -1;
 	  TWFG_node[t].current = -1;
-	  /* remove incomming edge */
+	  /* remove incoming edge */
 	  TWFG_edge[TWFG_node[s].current].to_tran_index = -2;
 	  false_dd_cycle = true;
 	}
@@ -6105,7 +6178,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	      /* remove all outgoing edges */
 	      TWFG_node[v].first_edge = -1;
 	      TWFG_node[v].current = -1;
-	      /* remove incomming edge */
+	      /* remove incoming edge */
 	      TWFG_edge[TWFG_node[u].current].to_tran_index = -2;
 	      false_dd_cycle = true;
 	    }
@@ -6142,7 +6215,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
      Victim Selection Strategy
      1) Must be lock holder.
      2) Must be active transaction.
-     3) Prefer a transaction with a closer tiemout.
+     3) Prefer a transaction with a closer timeout.
      4) Prefer the youngest transaction.
    */
 #if defined(CUBRID_DEBUG)
@@ -6485,7 +6558,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       if (classname == NULL)
 	{
 	  /* We must stop processing if an interrupt occurs */
-	  if (er_errid () == ER_INTERRUPT)
+	  if (er_errid () == ER_INTERRUPTED)
 	    {
 	      return;
 	    }
@@ -6504,7 +6577,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       if (classname == NULL)
 	{
 	  /* We must stop processing if an interrupt occurs */
-	  if (er_errid () == ER_INTERRUPT)
+	  if (er_errid () == ER_INTERRUPTED)
 	    {
 	      return;
 	    }
@@ -6713,6 +6786,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 }
 #endif /* SERVER_MODE */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #if defined(SERVER_MODE)
 /*
  * lock_check_consistent_resource - Check if the lock resource entry is consistent
@@ -6988,6 +7062,7 @@ lock_check_consistent_tran_lock (LK_TRAN_LOCK * tran_lock)
   return true;
 }
 #endif /* SERVER_MODE */
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * lock_initialize - Initialize the lock manager
@@ -7183,7 +7258,6 @@ lock_finalize (void)
 	  MUTEX_DESTROY (hash_anchor->hash_mutex);
 	}
       free_and_init (lk_Gl.obj_hash_table);
-      lk_Gl.obj_hash_table = (LK_HASH *) NULL;
     }
   /* reset max number of object locks */
   lk_Gl.obj_hash_size = 0;
@@ -7278,17 +7352,18 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
+  struct timeval start_time, end_time, elapsed_time;
 
   if (oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lk_object", "NULL OID pointer");
+	      "lock_object", "NULL OID pointer");
       return LK_NOTGRANTED_DUE_ERROR;
     }
   if (class_oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lk_object", "NULL ClassOID pointer");
+	      "lock_object", "NULL ClassOID pointer");
       return LK_NOTGRANTED_DUE_ERROR;
     }
 
@@ -7296,6 +7371,11 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
   if (lock == NULL_LOCK)
     {
       return LK_GRANTED;
+    }
+
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&start_time, NULL);
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -7335,7 +7415,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 					   (OID *) NULL, lock, waitsecs,
 					   &root_class_entry, NULL);
 
-      return granted;
+      goto end;
     }
 
   /* get the intentional lock mode to be acquired on class oid */
@@ -7365,7 +7445,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 					       &root_class_entry, NULL);
 	  if (granted != LK_GRANTED)
 	    {
-	      return granted;
+	      goto end;
 	    }
 	}
       /* case 2 : resource type is LOCK_RESOURCE_CLASS */
@@ -7389,7 +7469,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
 					   (OID *) NULL, lock, waitsecs,
 					   &class_entry, root_class_entry);
-      return granted;
+      goto end;
     }
   else
     {
@@ -7406,7 +7486,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 					       root_class_entry);
 	  if (granted != LK_GRANTED)
 	    {
-	      return granted;
+	      goto end;
 	    }
 	}
 
@@ -7416,7 +7496,8 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 	  /* if incompatible old class lock with requested lock,
 	     remove instant class locks */
 	  lock_stop_instant_lock_mode (thread_p, tran_index, false);
-	  return LK_GRANTED;
+	  granted = LK_GRANTED;
+	  goto end;
 	}
       /* acquire a lock on the given instance oid */
       if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
@@ -7424,7 +7505,8 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 	  /* do not hold shared or update locks */
 	  if (lock <= S_LOCK || lock == U_LOCK)
 	    {
-	      return LK_GRANTED;
+	      granted = LK_GRANTED;
+	      goto end;
 	    }
 	}
       /* NOTE that in case of acquiring a lock on an instance object,
@@ -7435,8 +7517,25 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 					   class_oid, lock, waitsecs,
 					   &inst_entry, class_entry);
 
-      return granted;
+      goto end;
     }
+
+end:
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&end_time, NULL);
+      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+    }
+  if (MONITOR_WAITING_THREAD (elapsed_time))
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_MNT_WAITING_THREAD, 2, "lock object (lock_object)",
+	      PRM_MNT_WAITING_THREAD);
+      er_log_debug (ARG_FILE_LINE, "lock_object: %6d.%06d\n",
+		    elapsed_time.tv_sec, elapsed_time.tv_usec);
+    }
+
+  return granted;
 #endif /* !SERVER_MODE */
 }
 
@@ -7476,17 +7575,18 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
+  struct timeval start_time, end_time, elapsed_time;
 
   if (oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lk_object_on_iscan", "NULL OID pointer");
+	      "lock_object_on_iscan", "NULL OID pointer");
       return LK_NOTGRANTED_DUE_ERROR;
     }
   if (class_oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lk_object_on_iscan", "NULL ClassOID pointer");
+	      "lock_object_on_iscan", "NULL ClassOID pointer");
       return LK_NOTGRANTED_DUE_ERROR;
     }
 
@@ -7494,6 +7594,11 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
   if (lock == NULL_LOCK)
     {
       return LK_GRANTED;
+    }
+
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&start_time, NULL);
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -7532,7 +7637,7 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 	lock_internal_perform_lock_object (thread_p, tran_index, oid,
 					   (OID *) NULL, lock, waitsecs,
 					   &root_class_entry, NULL);
-      return granted;
+      goto end;
     }
 
   /* get the intentional lock mode to be acquired on class oid */
@@ -7562,7 +7667,7 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 					       &root_class_entry, NULL);
 	  if (granted != LK_GRANTED)
 	    {
-	      return granted;
+	      goto end;
 	    }
 	}
       /* case 2 : resource type is LOCK_RESOURCE_CLASS */
@@ -7602,7 +7707,7 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 					       root_class_entry);
 	  if (granted != LK_GRANTED)
 	    {
-	      return granted;
+	      goto end;
 	    }
 	}
 
@@ -7612,7 +7717,8 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 	  /* if incompatible old class lock with requested lock,
 	     remove instant class locks */
 	  lock_stop_instant_lock_mode (thread_p, tran_index, false);
-	  return LK_GRANTED;
+	  granted = LK_GRANTED;
+	  goto end;
 	}
       /* acquire a lock on the given instance oid */
       if (LK_UNCOMMITTED_READ_ISOLATION (isolation))
@@ -7620,7 +7726,8 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 	  /* do not hold shared or update locks */
 	  if (lock <= S_LOCK)
 	    {
-	      return LK_GRANTED;
+	      granted = LK_GRANTED;
+	      goto end;
 	    }
 	}
       /* NOTE that in case of acquiring a lock on an instance object,
@@ -7634,6 +7741,21 @@ lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
 	{
 	  SET_SCANID_BIT (inst_entry->scanid_bitset, scanid_bit);
 	}
+    }
+
+end:
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&end_time, NULL);
+      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+    }
+  if (MONITOR_WAITING_THREAD (elapsed_time))
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_MNT_WAITING_THREAD, 2, "lock object (lock_object_on_iscan)",
+	      PRM_MNT_WAITING_THREAD);
+      er_log_debug (ARG_FILE_LINE, "lock_object_on_iscan: %6d.%06d\n",
+		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
 
   return granted;
@@ -7687,12 +7809,18 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
   LK_ENTRY *class_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
   LOCK intention_mode;
+  struct timeval start_time, end_time, elapsed_time;
 
   if (lockset == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lk_objects_lockset", "NULL lockset pointer");
+	      "lock_objects_lock_set", "NULL lockset pointer");
       return LK_NOTGRANTED_DUE_ERROR;
+    }
+
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&start_time, NULL);
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -7932,6 +8060,20 @@ lock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
       db_private_free_and_init (thread_p, ins_lockinfo);
     }
 
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&end_time, NULL);
+      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+    }
+  if (MONITOR_WAITING_THREAD (elapsed_time))
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_MNT_WAITING_THREAD, 2, "lock object (lock_objects_lock_set)",
+	      PRM_MNT_WAITING_THREAD);
+      er_log_debug (ARG_FILE_LINE, "lock_objects_lock_set: %6d.%06d\n",
+		    elapsed_time.tv_sec, elapsed_time.tv_usec);
+    }
+
   return LK_GRANTED;
 
 error:
@@ -7984,12 +8126,18 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
   int granted;
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL;
+  struct timeval start_time, end_time, elapsed_time;
 
   if (class_oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lk_lock_scan", "NULL ClassOID pointer");
+	      "lock_scan", "NULL ClassOID pointer");
       return LK_NOTGRANTED_DUE_ERROR;
+    }
+
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&start_time, NULL);
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -8055,6 +8203,20 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, bool is_indexscan,
       *current_lock = NULL_LOCK;
     }
 
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&end_time, NULL);
+      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+    }
+  if (MONITOR_WAITING_THREAD (elapsed_time))
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_MNT_WAITING_THREAD, 2, "lock object (lock_scan)",
+	      PRM_MNT_WAITING_THREAD);
+      er_log_debug (ARG_FILE_LINE, "lock_scan: %6d.%06d\n",
+		    elapsed_time.tv_sec, elapsed_time.tv_usec);
+    }
+
   return granted;
 #endif /* !SERVER_MODE */
 }
@@ -8101,11 +8263,12 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
   LOCK intention_mode;
   int cls_count;
   int granted, i;
+  struct timeval start_time, end_time, elapsed_time;
 
   if (lockhint == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2,
-	      "lk_classes_lockhint", "NULL lockhint pointer");
+	      "lock_classes_lock_hint", "NULL lockhint pointer");
       return LK_NOTGRANTED_DUE_ERROR;
     }
 
@@ -8113,6 +8276,11 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
   if (lockhint->num_classes <= 0)
     {
       return LK_GRANTED;
+    }
+
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&start_time, NULL);
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -8286,6 +8454,20 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
   if (cls_lockinfo != &cls_lockinfo_space[0])
     {
       db_private_free_and_init (thread_p, cls_lockinfo);
+    }
+
+  if (0 < PRM_MNT_WAITING_THREAD)
+    {
+      gettimeofday (&end_time, NULL);
+      DIFF_TIMEVAL (start_time, end_time, elapsed_time);
+    }
+  if (MONITOR_WAITING_THREAD (elapsed_time))
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+	      ER_MNT_WAITING_THREAD, 2,
+	      "lock object (lock_classes_lock_hint)", PRM_MNT_WAITING_THREAD);
+      er_log_debug (ARG_FILE_LINE, "lock_classes_lock_hint: %6d.%06d\n",
+		    elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
 
   return LK_GRANTED;
@@ -9088,6 +9270,7 @@ lock_has_xlock (THREAD_ENTRY * thread_p)
 #endif /* !SERVER_MODE */
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * lock_has_lock_transaction - Does transaction have any lock on any resource ?
  *
@@ -9172,6 +9355,7 @@ lock_is_waiting_transaction (int tran_index)
   return false;
 #endif /* !SERVER_MODE */
 }
+#endif
 
 /*
  * lock_get_class_lock - Get a pointer to lock heap entry acquired by
@@ -9318,8 +9502,8 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 	  etime = ((double) tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
 	  if ((LK_CAN_TIMEOUT (thrd->lockwait_nsecs)
 	       && etime - thrd->lockwait_stime > thrd->lockwait_nsecs)
-	      || logtb_is_interrupt_tran (NULL, true, &ignore,
-					  thrd->tran_index))
+	      || logtb_is_interrupted_tran (NULL, true, &ignore,
+					    thrd->tran_index))
 	    {
 	      /* wake up the thread */
 	      lock_resume ((LK_ENTRY *) thrd->lockwait, LOCK_RESUMED_TIMEOUT);
@@ -9362,8 +9546,8 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 	      etime = ((double) tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
 	      if ((LK_CAN_TIMEOUT (thrd->lockwait_nsecs)
 		   && etime - thrd->lockwait_stime > thrd->lockwait_nsecs)
-		  || logtb_is_interrupt_tran (NULL, true, &ignore,
-					      thrd->tran_index))
+		  || logtb_is_interrupted_tran (NULL, true, &ignore,
+						thrd->tran_index))
 		{
 		  /* wake up the thread */
 		  lock_resume ((LK_ENTRY *) thrd->lockwait,
@@ -9886,7 +10070,6 @@ final:
   if (lk_Gl.max_TWFG_edge > LK_MID_TWFG_EDGE_COUNT)
     {
       free_and_init (lk_Gl.TWFG_edge);
-      lk_Gl.TWFG_edge = (LK_WFG_EDGE *) NULL;
     }
 
   if (victim_count == 0)
@@ -10531,6 +10714,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 #endif /* !SERVER_MODE */
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * lock_check_consistency - Check consistency of lock table
  *
@@ -10590,6 +10774,7 @@ lock_check_consistency (THREAD_ENTRY * thread_p)
   return;
 #endif /* !SERVER_MODE */
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * lock_initialize_composite_lock -
@@ -10849,7 +11034,6 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
       db_private_free_and_init (thread_p, lockcomp_class);
     }
   db_private_free_and_init (thread_p, comp_lock->lockcomp);
-  comp_lock->lockcomp = NULL;
 
   return value;
 #endif /* !SERVER_MODE */
@@ -10890,7 +11074,6 @@ lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock)
       db_private_free_and_init (NULL, lockcomp_class);
     }
   db_private_free_and_init (NULL, comp_lock->lockcomp);
-  comp_lock->lockcomp = NULL;
 #endif /* !SERVER_MODE */
 }
 

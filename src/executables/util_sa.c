@@ -282,6 +282,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   const char *user_define_file_name;
   int page_size;
   int log_page_count;
+  int log_page_size;
 
   output_file_name =
     utility_get_option_string_value (arg_map, CREATE_OUTPUT_FILE_S, 0);
@@ -308,6 +309,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   page_size = utility_get_option_int_value (arg_map, CREATE_PAGE_SIZE_S);
   log_page_count =
     utility_get_option_int_value (arg_map, CREATE_LOG_PAGE_COUNT_S);
+  log_page_size = utility_get_option_int_value (arg_map, CREATE_LOG_PAGE_SIZE_S);
 
   if (database_name == 0 || database_name[0] == 0 ||
       utility_get_option_string_table_size (arg_map) != 1)
@@ -383,8 +385,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
   db_login ("dba", NULL);
   status = db_init (program_name, true, database_name, volume_path,
 		    NULL, log_path, host_name, overwrite, comment,
-		    volume_page_count, volume_spec_file_name, page_size,
-		    log_page_count);
+		    volume_spec_file_name, volume_page_count, page_size,
+		    log_page_count, log_page_size);
 
   if (status != NO_ERROR)
     {
@@ -1149,7 +1151,9 @@ typedef enum
   DIAGDUMP_CLASSNAMES,
   DIAGDUMP_DISK_BITMAPS,
   DIAGDUMP_CATALOG,
-  DIAGDUMP_LOG
+  DIAGDUMP_LOG,
+  DIAGDUMP_HEAP,
+  DIAGDUMP_END_OF_OPTION
 } DIAGDUMP_TYPE;
 
 /*
@@ -1198,9 +1202,9 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (diag < DIAGDUMP_ALL || diag > DIAGDUMP_LOG)
+  if (diag < DIAGDUMP_ALL || diag >= DIAGDUMP_END_OF_OPTION)
     {
-      diag = DIAGDUMP_ALL;
+      goto print_diag_usage;
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_FILE_TABLES)
@@ -1302,6 +1306,17 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       xlog_dump (NULL, stdout, isforward, start_logpageid, dump_npages,
 		 desired_tranid);
     }
+
+  if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP)
+    {
+      bool dump_records;
+      /* this dumps the contents of all heaps */
+      dump_records =
+	utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
+      printf ("\n*** DUMP OF ALL HEAPS ***\n");
+      heap_dump_all (NULL, stdout, dump_records);
+    }
+
   db_shutdown ();
 
   return EXIT_SUCCESS;
@@ -1390,7 +1405,7 @@ estimatedb_data (UTIL_FUNCTION_ARG * arg)
     atoi (utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 3));
 
   sysprm_load_and_init (NULL, NULL);
-  db_set_page_size (IO_DEFAULT_PAGE_SIZE);
+  (void) db_set_page_size (IO_DEFAULT_PAGE_SIZE, IO_DEFAULT_PAGE_SIZE);
   npages = heap_estimate_num_pages_needed (NULL, num_instance, avg_inst_size,
 					   num_attr, num_var_attr);
   fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS,
@@ -1444,7 +1459,7 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
     utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 3);
 
   sysprm_load_and_init (NULL, NULL);
-  db_set_page_size (IO_DEFAULT_PAGE_SIZE);
+  (void) db_set_page_size (IO_DEFAULT_PAGE_SIZE, IO_DEFAULT_PAGE_SIZE);
   if (num_instance <= num_diffkeys)
     {
       num_instance = num_diffkeys;
@@ -1641,7 +1656,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
 #if !defined(WINDOWS) || !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
 /* Temporary fix for NT file locking problem */
       || (dbtxt_vdes =
-	  fileio_mount (dbtxt_label, dbtxt_label, LOG_DBTXT_VOLID, 2,
+	  fileio_mount (NULL, dbtxt_label, dbtxt_label, LOG_DBTXT_VOLID, 2,
 			true)) == NULL_VOLDES
 #endif /* !WINDOWS || !DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
     )
@@ -1686,8 +1701,8 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
     }
 
   if ((log_vdes =
-       fileio_mount (BO_DB_FULLNAME, log_Name_active, LOG_DBLOG_ACTIVE_VOLID,
-		     true, false)) == NULL_VOLDES)
+       fileio_mount (NULL, BO_DB_FULLNAME, log_Name_active,
+		     LOG_DBLOG_ACTIVE_VOLID, true, false)) == NULL_VOLDES)
     {
       goto error;
     }
@@ -1699,13 +1714,13 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
   db->hosts = cfg_get_hosts (host_name, &num_hosts, false);
 
   /* Dismount lgat */
-  fileio_dismount (log_vdes);
+  fileio_dismount (NULL, log_vdes);
 
 #if defined(WINDOWS) && !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
   /* must unlock this before we can open it again for writing */
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      fileio_dismount (dbtxt_vdes);
+      fileio_dismount (NULL, dbtxt_vdes);
       dbtxt_vdes = NULL_VOLDES;
     }
 #endif /* WINDOWS && !DONT_USE_MANDATORY_LOCK_IN_WINDOWS */
@@ -1721,7 +1736,7 @@ alterdbhost (UTIL_FUNCTION_ARG * arg)
   cfg_free_directory (dir);
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      fileio_dismount (dbtxt_vdes);
+      fileio_dismount (NULL, dbtxt_vdes);
     }
 
   return EXIT_SUCCESS;
@@ -1737,7 +1752,7 @@ error:
 
   if (dbtxt_vdes != NULL_VOLDES)
     {
-      fileio_dismount (dbtxt_vdes);
+      fileio_dismount (NULL, dbtxt_vdes);
     }
 
   return EXIT_FAILURE;

@@ -23,6 +23,7 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #include "config.h"
 
 #include <stddef.h>
@@ -115,10 +116,11 @@ static int wfg_Total_waiters = 0;	/* # of waiters */
 static WFG_TRAN_GROUP *wfg_Tran_group = NULL;
 static int wfg_Total_tran_groups = 0;
 
-static int wfg_push_stack (WFG_STACK ** top_p, int node);
-static int wfg_pop_stack (WFG_STACK ** top_p, WFG_STACK ** bottom_p);
 static int wfg_initialize_node (WFG_NODE * node_p);
 static int wfg_free_group_list (void);
+
+static int wfg_push_stack (WFG_STACK ** top_p, int node);
+static int wfg_pop_stack (WFG_STACK ** top_p, WFG_STACK ** bottom_p);
 static int
 wfg_internal_detect_cycle (THREAD_ENTRY * thread_p,
 			   WFG_CYCLE_CASE * cycle_case_p,
@@ -147,10 +149,10 @@ static WFG_CYCLE *wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE *
 static int wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p,
 					WFG_CYCLE_CASE * cycle_case_p,
 					WFG_CYCLE ** list_cycles);
+
 static int wfg_dump_given_cycles (FILE * out_fp, WFG_CYCLE * list_cycles_p);
 static void wfg_dump_holder_waiter (FILE * out_fp, int node_index);
-static void
-wfg_dump_holder_waiter_of_tran_group (FILE * out_fp, int group_index);
+static void wfg_dump_holder_waiter_of_tran_group (FILE * out_fp, int group_index);
 
 #if defined(WFG_DEBUG)
 static int
@@ -398,7 +400,6 @@ wfg_free_nodes (THREAD_ENTRY * thread_p)
 	    }
 	}
       free_and_init (wfg_Nodes);
-      wfg_Nodes = NULL;
       wfg_Total_nodes = wfg_Total_edges = wfg_Total_waiters = 0;
     }
 
@@ -452,6 +453,7 @@ end:
   return error_code;
 }
 #endif /* WFG_DEBUG */
+
 /*
  * wfg_insert_out_edges : add edges from the node specified by waiter
  *                        to each node in holders.
@@ -834,7 +836,6 @@ wfg_remove_waiter_list_of_holder_edge (WFG_NODE * node_p,
   return NO_ERROR;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * wfg_remove_out_edges : remove edges from the node waiter_tran_index
  *              to each node in holders.
@@ -941,9 +942,7 @@ end:
   csect_exit (CSECT_WFG);
   return error_code;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * wfg_get_status : get statistic from WFG.
  *
@@ -964,7 +963,6 @@ wfg_get_status (int *num_edges_p, int *num_waiters_p)
 
   return NO_ERROR;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * wfg_detect_cycle : finds all elementary cycles in the WFG and
@@ -1323,7 +1321,6 @@ wfg_dump (THREAD_ENTRY * thread_p)
   return NO_ERROR;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * wfg_alloc_tran_group :
  *
@@ -1740,7 +1737,6 @@ end:
 
   return error_code;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * wfg_detect_ordinary_cycle :finds elementary cycles in the ordinary WFG. I.e.,
@@ -1919,7 +1915,7 @@ wfg_detect_ordinary_cycle (THREAD_ENTRY * thread_p,
 			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			      DB_SIZEOF (WFG_WAITER) * cycle_p->num_trans);
 		      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-                      free_and_init (cycle_p);
+		      free_and_init (cycle_p);
 		      goto error;
 		    }
 
@@ -2258,7 +2254,7 @@ wfg_detect_tran_group_cycle_internal (WFG_CYCLE_CASE * cycle_case_p,
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 	      1, DB_SIZEOF (WFG_WAITER) * cycle_p->num_trans);
-      free_and_init(cycle_p);
+      free_and_init (cycle_p);
       return NULL;
     }
 
@@ -2592,3 +2588,4 @@ wfg_get_tran_entries (THREAD_ENTRY * thread_p, const int tran_index)
 
   return n;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */

@@ -47,9 +47,16 @@
 #include "cas_util.h"
 #include "cas_execute.h"
 
+#if defined(CAS_FOR_MYSQL)
+#include "cas_mysql.h"
+#endif /* CAS_FOR_MYSQL */
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#include "perf_monitor.h"
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
-#include "perf_monitor.h"
 
 typedef struct t_glo_cmd_info T_GLO_CMD_INFO;
 struct t_glo_cmd_info
@@ -67,7 +74,7 @@ static char *get_error_log_eids (int err);
 #ifndef LIBCAS_FOR_JSP
 static void bind_value_log (int start, int argc, void **argv, int, char *,
 			    unsigned int);
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
 static const char *schema_type_str[] = {
@@ -146,18 +153,28 @@ fn_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   struct timeval end_tran_begin, end_tran_end;
 #ifndef LIBCAS_FOR_JSP
   int timeout;
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
   if (CAS_FN_ARG_ARGC < 1)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   NET_ARG_GET_CHAR (tran_type, CAS_FN_ARG_ARGV[0]);
   if (tran_type != CCI_TRAN_COMMIT && tran_type != CCI_TRAN_ROLLBACK)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_TRAN_TYPE, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_TRAN_TYPE, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -178,16 +195,31 @@ fn_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   ut_timeval_diff (&end_tran_begin, &end_tran_end, &elapsed_sec,
 		   &elapsed_msec);
 
+#if defined(CAS_FOR_DBMS)
+  cas_log_write (0, false, "end_tran %s%d time %d.%03d%s",
+		 err_code < 0 ? "error:" : "",
+		 err_info.err_number, elapsed_sec, elapsed_msec,
+		 get_error_log_eids (err_info.err_number));
+#else /* CAS_FOR_DBMS */
   cas_log_write (0, false, "end_tran %s%d time %d.%03d%s",
 		 err_code < 0 ? "error:" : "",
 		 err_code, elapsed_sec, elapsed_msec,
 		 get_error_log_eids (err_code));
+#endif /* CAS_FOR_DBMS */
 
+#if defined(CAS_FOR_DBMS)
+  if (err_code < 0)
+    {
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+      CAS_FN_ARG_REQ_INFO->need_rollback = TRUE;
+    }
+#else /* CAS_FOR_DBMS */
   if (err_code < 0)
     {
       DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, err_code);
       CAS_FN_ARG_REQ_INFO->need_rollback = TRUE;
     }
+#endif /* CAS_FOR_DBMS */
   else
     {
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);
@@ -249,7 +281,7 @@ fn_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	}
       return 0;
     }
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
   return -1;
 }
@@ -270,7 +302,12 @@ fn_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 2)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -300,7 +337,7 @@ fn_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 #ifndef LIBCAS_FOR_JSP
   gettimeofday (&query_start_time, NULL);
   query_timeout = 0;
-#endif /* LIBCAS_FOR_JSP */
+#endif /* !LIBCAS_FOR_JSP */
   cas_log_write_nonl (QUERY_SEQ_NUM_NEXT_VALUE (),
 		      false, "prepare %d ", flag);
   cas_log_write_query_string (sql_stmt, sql_size - 1);
@@ -327,18 +364,34 @@ fn_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	}
       *s = '\0';
     }
-#endif /* LIBCAS_FOR_JSP */
+#endif /* !LIBCAS_FOR_JSP */
+
   srv_h_id = ux_prepare (sql_stmt, flag, auto_commit_mode,
 			 CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO,
 			 QUERY_SEQ_NUM_CURRENT_VALUE ());
+
   srv_handle = hm_find_srv_handle (srv_h_id);
 
+#if defined(CAS_FOR_DBMS)
+  cas_log_write (QUERY_SEQ_NUM_CURRENT_VALUE (), false,
+		 "prepare srv_h_id %s%d%s%s",
+		 (srv_h_id < 0) ? "error:" : "", err_info.err_number,
+		 " (PC)", get_error_log_eids (err_info.err_number));
+#else /* CAS_FOR_DBMS */
   cas_log_write (QUERY_SEQ_NUM_CURRENT_VALUE (), false,
 		 "prepare srv_h_id %s%d%s%s",
 		 (srv_h_id < 0) ? "error:" : "", srv_h_id,
 		 (srv_handle != NULL
 		  && srv_handle->use_plan_cache) ? " (PC)" : "",
 		 get_error_log_eids (srv_h_id));
+#endif /* CAS_FOR_DBMS */
+
+#ifndef LIBCAS_FOR_JSP
+  if (shm_appl->select_auto_commit == ON)
+    {
+      (void) hm_srv_handle_append_active (srv_handle);
+    }
+#endif /* !LIBCAS_FOR_JSP */
 
   return 0;
 }
@@ -374,7 +427,12 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   if ((CAS_FN_ARG_ARGC < bind_value_index)
       || (CAS_FN_ARG_ARGC % 2 != argc_mod_2))
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -400,11 +458,25 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif /* LIBCAS_FOR_JSP */
 
   srv_handle = hm_find_srv_handle (srv_h_id);
-  if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+  if (srv_handle == NULL)
     {
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_SRV_HANDLE, NULL);
+      ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
       return 0;
     }
+#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
+  if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
+    {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
+      net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_SRV_HANDLE, NULL);
+#endif /* CAS_FOR_DBMS */
+      return 0;
+    }
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   srv_handle->auto_commit_mode = auto_commit_mode;
   srv_handle->forward_only_cursor = forward_only_cursor;
 
@@ -412,8 +484,10 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       exec_func_name = "execute_call";
       ux_exec_func = ux_execute_call;
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
       if (param_mode)
 	ux_call_info_cp_param_mode (srv_handle, param_mode, param_mode_size);
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
     }
   else if (flag & CCI_EXEC_QUERY_ALL)
     {
@@ -432,7 +506,7 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       gettimeofday (&query_start_time, NULL);
       query_timeout = 0;
     }
-#endif /* LIBCAS_FOR_JSP */
+#endif /* !LIBCAS_FOR_JSP */
 
   cas_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		      "%s srv_h_id %d ", exec_func_name, srv_h_id);
@@ -446,7 +520,7 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   bind_value_log (bind_value_index, CAS_FN_ARG_ARGC, CAS_FN_ARG_ARGV,
 		  param_mode_size, param_mode,
 		  SRV_HANDLE_QUERY_SEQ_NUM (srv_handle));
-#endif /* LIBCAS_FOR_JSP */
+#endif /* !LIBCAS_FOR_JSP */
 
 #ifndef LIBCAS_FOR_JSP
   /* append query string to as_info->log_msg */
@@ -469,7 +543,12 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	}
       *s = '\0';
     }
-#endif /* LIBCAS_FOR_JSP */
+
+  if (shm_appl->select_auto_commit == ON)
+    {
+      (void) hm_srv_handle_append_active (srv_handle);
+    }
+#endif /* !LIBCAS_FOR_JSP */
 
   gettimeofday (&exec_begin, NULL);
 
@@ -480,6 +559,31 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 			      clt_cache_time_ptr, &client_cache_reusable);
   gettimeofday (&exec_end, NULL);
   ut_timeval_diff (&exec_begin, &exec_end, &elapsed_sec, &elapsed_msec);
+#if defined(CAS_FOR_DBMS)
+#if defined(CAS_FOR_ORACLE)
+#elif defined(CAS_FOR_MYSQL)
+  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+		 "%s %s%d tuple %d time %d.%03d%s%s%s",
+		 exec_func_name, (ret_code < 0) ? "error:" : "",
+		 err_info.err_number,
+		 (srv_handle->
+		  session) ? cas_mysql_stmt_num_fields (srv_handle->
+							session) : 0,
+		 elapsed_sec, elapsed_msec,
+		 (client_cache_reusable == TRUE) ? " (CC)" : "",
+		 (srv_handle->use_query_cache == true) ? " (QC)" : "",
+		 get_error_log_eids (err_info.err_number));
+#else /* CAS_FOR_MYSQL */
+  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+		 "%s %s%d tuple %d time %d.%03d%s%s%s",
+		 exec_func_name, (ret_code < 0) ? "error:" : "",
+		 err_info.err_number, srv_handle->q_result->tuple_count,
+		 elapsed_sec, elapsed_msec,
+		 (client_cache_reusable == TRUE) ? " (CC)" : "",
+		 (srv_handle->use_query_cache == true) ? " (QC)" : "",
+		 get_error_log_eids (err_info.err_number));
+#endif /* CAS_FOR_MYSQL */
+#else /* CAS_FOR_DBMS */
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		 "%s %s%d tuple %d time %d.%03d%s%s%s",
 		 exec_func_name, (ret_code < 0) ? "error:" : "", ret_code,
@@ -488,6 +592,7 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 (client_cache_reusable == TRUE) ? " (CC)" : "",
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "",
 		 get_error_log_eids (ret_code));
+#endif /* CAS_FOR_DBMS */
 
 #ifndef LIBCAS_FOR_JSP
   query_timeout = ut_check_timeout (&query_start_time,
@@ -503,7 +608,7 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       as_info->num_error_queries %= MAX_DIAG_DATA_VALUE;
       as_info->num_error_queries++;
     }
-#endif /* LIBCAS_FOR_JSP */
+#endif /* !LIBCAS_FOR_JSP */
 
   if (fetch_flag && ret_code >= 0 && client_cache_reusable == FALSE)
     {
@@ -517,11 +622,12 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       srv_handle->is_pooled = TRUE;
     }
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
   return 0;
 }
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 int
 fn_get_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		     void **CAS_FN_ARG_ARGV,
@@ -532,7 +638,12 @@ fn_get_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 1)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -562,9 +673,9 @@ fn_get_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     {
 #ifndef LIBCAS_FOR_JSP
       int max_str_len = shm_appl->max_string_length;
-#else
+#else /* !LIBCAS_FOR_JSP */
       int max_str_len = DB_MAX_STRING_LENGTH;
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);
       if (max_str_len <= 0 || max_str_len > DB_MAX_STRING_LENGTH)
@@ -573,7 +684,12 @@ fn_get_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     }
   else
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_PARAM_NAME, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_PARAM_NAME, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -590,7 +706,12 @@ fn_set_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 2)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -639,18 +760,24 @@ fn_set_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	as_info->auto_commit_mode = FALSE;
 
       cas_log_write (0, true, "set_db_parameter auto_commit %d", auto_commit);
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);
     }
   else
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_PARAM_NAME, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_PARAM_NAME, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   return 0;
 }
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 int
 fn_close_req_handle (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
@@ -663,7 +790,12 @@ fn_close_req_handle (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 1)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -675,9 +807,9 @@ fn_close_req_handle (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
-#else
+#else /* !LIBCAS_FOR_JSP */
   srv_handle = NULL;
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		 "close_req_handle srv_h_id %d", srv_h_id);
@@ -689,6 +821,7 @@ fn_close_req_handle (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   return 0;
 }
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 int
 fn_cursor (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
@@ -700,7 +833,12 @@ fn_cursor (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 3)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -712,6 +850,7 @@ fn_cursor (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   return 0;
 }
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 int
 fn_fetch (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
@@ -730,7 +869,12 @@ fn_fetch (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < func_args)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -752,6 +896,7 @@ fn_fetch (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   return 0;
 }
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 int
 fn_schema_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
@@ -765,7 +910,12 @@ fn_schema_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 4)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -802,7 +952,12 @@ fn_oid_get (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 1)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -822,7 +977,12 @@ fn_oid_put (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 {
   if (CAS_FN_ARG_ARGC < 3 || CAS_FN_ARG_ARGC % 3 != 1)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -848,14 +1008,24 @@ fn_glo_new (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 4)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   NET_ARG_GET_STR (class_name, class_name_size, CAS_FN_ARG_ARGV[0]);
   if (class_name_size < 1 || class_name[class_name_size - 1] != '\0')
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -868,7 +1038,12 @@ fn_glo_new (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       NET_ARG_GET_STR (filename, filename_size, CAS_FN_ARG_ARGV[3]);
       if (glo_type != CAS_GLO_NEW_LO && glo_type != CAS_GLO_NEW_FBO)
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
 	  return 0;
 	}
       ux_glo_new2 (class_name, glo_type, filename, CAS_FN_ARG_NET_BUF);
@@ -884,27 +1059,36 @@ fn_glo_new (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     {
       if (file_size < 0)
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
 	  return 0;
 	}
 #ifndef LIBCAS_FOR_JSP
 #if defined(WINDOWS)
       as_info->glo_read_size = file_size;
-#endif
-#endif
+#endif /* WINDOWS */
+#endif /* !LIBCAS_FOR_JSP */
       get_cubrid_file (FID_CAS_TMPGLO_DIR, dirname);
 #ifdef LIBCAS_FOR_JSP
       snprintf (tmp_file, sizeof (tmp_file) - 1, "%s%d.glo", dirname,
 		(int) getpid ());
-#else
+#else /* LIBCAS_FOR_JSP */
       snprintf (tmp_file, sizeof (tmp_file) - 1, "%s%s_%d.glo", dirname,
 		broker_name, shm_as_index + 1);
-#endif
+#endif /* LIBCAS_FOR_JSP */
       filename = tmp_file;
       err_code = net_read_to_file (CAS_FN_ARG_SOCK_FD, file_size, filename);
       if (err_code < 0)
 	{
+#if defined(CAS_FOR_DBMS)
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, err_code, NULL);
+#endif /* CAS_FOR_DBMS */
 	  return err_code;
 	}
     }
@@ -912,7 +1096,12 @@ fn_glo_new (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     {
       if (filename_size < 1 || filename[filename_size - 1] != '\0')
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
 	  return 0;
 	}
     }
@@ -942,7 +1131,12 @@ fn_glo_save (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 4)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -957,27 +1151,36 @@ fn_glo_save (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     {
       if (file_size < 0)
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
 	  return 0;
 	}
 #ifndef LIBCAS_FOR_JSP
 #if defined(WINDOWS)
       as_info->glo_read_size = file_size;
-#endif
-#endif
+#endif /* WINDOWS */
+#endif /* !LIBCAS_FOR_JSP */
       get_cubrid_file (FID_CAS_TMPGLO_DIR, dirname);
 #ifdef LIBCAS_FOR_JSP
       snprintf (tmp_file, sizeof (tmp_file) - 1, "%s%d.glo", dirname,
 		(int) getpid ());
-#else
+#else /* LIBCAS_FOR_JSP */
       snprintf (tmp_file, sizeof (tmp_file) - 1, "%s%s_%d.glo", dirname,
 		broker_name, shm_as_index + 1);
-#endif
+#endif /* LIBCAS_FOR_JSP */
       filename = tmp_file;
       err_code = net_read_to_file (CAS_FN_ARG_SOCK_FD, file_size, filename);
       if (err_code < 0)
 	{
+#if defined(CAS_FOR_DBMS)
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, err_code, NULL);
+#endif /* CAS_FOR_DBMS */
 	  return err_code;
 	}
     }
@@ -985,17 +1188,26 @@ fn_glo_save (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     {
       if (filename_size < 1 || filename[filename_size - 1] != '\0')
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
 	  return 0;
 	}
     }
 
   if ((err_code = ux_check_object (obj, CAS_FN_ARG_NET_BUF)) < 0)
     {
+#if defined(CAS_FOR_DBMS)
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       if (err_code != CAS_ER_DBMS)
 	{
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, err_code, NULL);
 	}
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1021,17 +1233,26 @@ fn_glo_load (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 1)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   NET_ARG_GET_OBJECT (obj, CAS_FN_ARG_ARGV[0]);
   if ((err_code = ux_check_object (obj, CAS_FN_ARG_NET_BUF)) < 0)
     {
+#if defined(CAS_FOR_DBMS)
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       if (err_code != CAS_ER_DBMS)
 	{
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, err_code, NULL);
 	}
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1042,6 +1263,7 @@ fn_glo_load (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   return 0;
 }
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 int
 fn_get_db_version (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
@@ -1053,7 +1275,12 @@ fn_get_db_version (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 1)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1066,11 +1293,12 @@ fn_get_db_version (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
   return 0;
 }
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 int
 fn_get_class_num_objs (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		       void **CAS_FN_ARG_ARGV,
@@ -1083,7 +1311,12 @@ fn_get_class_num_objs (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 2)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1109,8 +1342,13 @@ fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 2)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      goto fn_oid_error;
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
       return 0;
+#endif /* CAS_FOR_DBMS */
     }
 
   NET_ARG_GET_CHAR (cmd, CAS_FN_ARG_ARGV[0]);
@@ -1119,9 +1357,13 @@ fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     {
       if ((err_code = ux_check_object (obj, CAS_FN_ARG_NET_BUF)) < 0)
 	{
+#if defined(CAS_FOR_DBMS)
+	  goto fn_oid_error;
+#else /* CAS_FOR_DBMS */
 	  if (err_code != CAS_ER_DBMS)
 	    net_buf_cp_int (CAS_FN_ARG_NET_BUF, err_code, NULL);
 	  return 0;
+#endif /* CAS_FOR_DBMS */
 	}
     }
 
@@ -1130,8 +1372,13 @@ fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       cas_log_write (0, true, "oid drop");
       if (obj == NULL)
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	  goto fn_oid_error;
+#else /* CAS_FOR_DBMS */
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_OBJECT, NULL);
 	  return 0;
+#endif /* CAS_FOR_DBMS */
 	}
       err_code = db_drop (obj);
     }
@@ -1162,8 +1409,13 @@ fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       cas_log_write (0, true, "oid lock_read");
       if (obj == NULL)
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	  goto fn_oid_error;
+#else /* CAS_FOR_DBMS */
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_OBJECT, NULL);
 	  return 0;
+#endif /* CAS_FOR_DBMS */
 	}
       err_code = db_lock_read (obj);
     }
@@ -1172,8 +1424,13 @@ fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       cas_log_write (0, true, "oid lock_write");
       if (obj == NULL)
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	  goto fn_oid_error;
+#else /* CAS_FOR_DBMS */
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_OBJECT, NULL);
 	  return 0;
+#endif /* CAS_FOR_DBMS */
 	}
       err_code = db_lock_write (obj);
     }
@@ -1182,8 +1439,13 @@ fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       cas_log_write (0, true, "oid get_class_name");
       if (obj == NULL)
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
+	  goto fn_oid_error;
+#else /* CAS_FOR_DBMS */
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_OBJECT, NULL);
 	  return 0;
+#endif /* CAS_FOR_DBMS */
 	}
       res_msg = (char *) db_get_class_name (obj);
       if (res_msg == NULL)
@@ -1213,13 +1475,23 @@ fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     }
   else
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+      goto fn_oid_error;
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_INTERNAL, NULL);
       return 0;
+#endif /* CAS_FOR_DBMS */
     }
 
   if (err_code < 0)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      goto fn_oid_error;
+#else /* CAS_FOR_DBMS */
       DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, err_code);
+#endif /* CAS_FOR_DBMS */
     }
   else
     {
@@ -1231,6 +1503,12 @@ fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     }
 
   return 0;
+
+#if defined(CAS_FOR_DBMS)
+fn_oid_error:
+  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+  return 0;
+#endif /* CAS_FOR_DBMS */
 }
 
 int
@@ -1253,7 +1531,12 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 3)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1262,8 +1545,12 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if ((err_code = ux_check_object (obj, CAS_FN_ARG_NET_BUF)) < 0)
     {
+#if defined(CAS_FOR_DBMS)
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       if (err_code != CAS_ER_DBMS)
 	net_buf_cp_int (CAS_FN_ARG_NET_BUF, err_code, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1280,7 +1567,11 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     case CCI_COL_SET_ADD:
       if (CAS_FN_ARG_ARGC < 5)
 	{
+#if defined(CAS_FOR_DBMS)
+	  err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+#else /* CAS_FOR_DBMS */
 	  err_code = CAS_ER_ARGS;
+#endif /* CAS_FOR_DBMS */
 	}
 
       else
@@ -1292,7 +1583,11 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     case CCI_COL_SEQ_DROP:
       if (CAS_FN_ARG_ARGC < 4)
 	{
+#if defined(CAS_FOR_DBMS)
+	  err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+#else /* CAS_FOR_DBMS */
 	  err_code = CAS_ER_ARGS;
+#endif /* CAS_FOR_DBMS */
 	}
       else
 	{
@@ -1303,7 +1598,13 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     case CCI_COL_SEQ_INSERT:
     case CCI_COL_SEQ_PUT:
       if (CAS_FN_ARG_ARGC < 6)
-	err_code = CAS_ER_ARGS;
+	{
+#if defined(CAS_FOR_DBMS)
+	  err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+#else /* CAS_FOR_DBMS */
+	  err_code = CAS_ER_ARGS;
+#endif /* CAS_FOR_DBMS */
+	}
       else
 	{
 	  NET_ARG_GET_INT (seq_index, CAS_FN_ARG_ARGV[2]);
@@ -1313,25 +1614,41 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       value_index = 4;
       break;
     default:
+#if defined(CAS_FOR_DBMS)
+      err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+#else /* CAS_FOR_DBMS */
       err_code = CAS_ER_INTERNAL;
+#endif /* CAS_FOR_DBMS */
     }
 
   if (err_code < 0)
     {
+#if defined(CAS_FOR_DBMS)
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, err_code, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   if (attr_name_size < 1)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       goto fn_col_finale;
     }
 
   attr = db_get_attribute (obj, attr_name);
   if (attr == NULL)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+#else /* CAS_FOR_DBMS */
       DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, db_error_code ());
+#endif /* CAS_FOR_DBMS */
       goto fn_col_finale;
     }
   domain = db_attribute_domain (attr);
@@ -1339,21 +1656,33 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   if (col_type != CCI_U_TYPE_SET
       && col_type != CCI_U_TYPE_MULTISET && col_type != CCI_U_TYPE_SEQUENCE)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_NOT_COLLECTION, CAS_ERROR_INDICATOR);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_NOT_COLLECTION, NULL);
+#endif /* CAS_FOR_DBMS */
       goto fn_col_finale;
     }
   ele_type = get_set_domain (domain, NULL, NULL, &db_type);
   ele_domain = db_domain_set (domain);
   if (ele_type <= 0)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_COLLECTION_DOMAIN, CAS_ERROR_INDICATOR);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_COLLECTION_DOMAIN, NULL);
+#endif /* CAS_FOR_DBMS */
       goto fn_col_finale;
     }
 
   err_code = db_get (obj, attr_name, &val);
   if (err_code < 0)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+#else /* CAS_FOR_DBMS */
       DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, err_code);
+#endif /* CAS_FOR_DBMS */
       goto fn_col_finale;
     }
   if (db_value_type (&val) == DB_TYPE_NULL)
@@ -1372,9 +1701,11 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 			 CAS_FN_ARG_NET_BUF, db_type);
       if (err_code < 0)
 	{
+#if !defined(CAS_FOR_DBMS)
 	  if (err_code == CAS_ER_DBMS)
 	    goto fn_col_finale;
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, err_code, NULL);
+#endif /* !CAS_FOR_DBMS */
 	  goto fn_col_finale;
 	}
     }
@@ -1434,9 +1765,13 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   db_value_clear (&val);
 
 fn_col_finale:
+#if defined(CAS_FOR_DBMS)
+  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#endif /* CAS_FOR_DBMS */
   return 0;
 }
 
+/* MYSQL : NOT SUPPORT MULTIPLE STATEMENT */
 int
 fn_next_result (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
@@ -1451,7 +1786,12 @@ fn_next_result (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < func_args)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1472,7 +1812,9 @@ fn_next_result (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   return 0;
 }
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 int
 fn_execute_batch (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		  void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
@@ -1512,7 +1854,7 @@ fn_execute_array (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 #ifndef LIBCAS_FOR_JSP
   bind_value_log (2, CAS_FN_ARG_ARGC - 1, CAS_FN_ARG_ARGV, 0, NULL,
 		  SRV_HANDLE_QUERY_SEQ_NUM (srv_handle));
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		 "execute_array : srv_h_id %d %d",
@@ -1535,7 +1877,12 @@ fn_cursor_update (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 2)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1566,7 +1913,12 @@ fn_get_attr_type_str (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 2)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1593,7 +1945,12 @@ fn_get_query_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 2)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1622,20 +1979,35 @@ fn_get_query_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
       if (!(session = db_open_buffer (sql_stmt)))
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, db_error_code ());
+#endif /* CAS_FOR_DBMS */
 	  goto end;
 	}
 
       if ((stmt_id = db_compile_statement (session)) < 0)
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (stmt_id, DBMS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, stmt_id);
+#endif /* CAS_FOR_DBMS */
 	  db_close_session (session);
 	  goto end;
 	}
 
       if (db_execute_statement (session, stmt_id, &result) < 0)
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, db_error_code ());
+#endif /* CAS_FOR_DBMS */
 	  db_close_session (session);
 	  goto end;
 	}
@@ -1647,7 +2019,7 @@ fn_get_query_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       cas_log_query_info_next ();
       histo_print (NULL);
       cas_log_query_info_end ();
-#endif
+#endif /* !WINDOWS */
     }
 
   ux_get_query_info (srv_h_id, info_type, CAS_FN_ARG_NET_BUF);
@@ -1674,7 +2046,12 @@ fn_savepoint (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 2)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1695,13 +2072,23 @@ fn_savepoint (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     }
   else
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_INTERNAL, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   if (err_code < 0)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, err_code);
+#endif /* CAS_FOR_DBMS */
     }
   else
     {
@@ -1720,7 +2107,12 @@ fn_parameter_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 1)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1746,30 +2138,49 @@ fn_glo_cmd (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 2)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   NET_ARG_GET_CHAR (glo_cmd, CAS_FN_ARG_ARGV[0]);
   if (glo_cmd < GLO_CMD_FIRST || glo_cmd > GLO_CMD_LAST)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_GLO_CMD, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_GLO_CMD, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   if (CAS_FN_ARG_ARGC < glo_cmd_info[glo_cmd].num_args)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   NET_ARG_GET_OBJECT (glo_obj, CAS_FN_ARG_ARGV[1]);
   if ((err_code = ux_check_object (glo_obj, CAS_FN_ARG_NET_BUF)) < 0)
     {
+#if defined(CAS_FOR_DBMS)
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       if (err_code != CAS_ER_DBMS)
 	{
 	  net_buf_cp_int (CAS_FN_ARG_NET_BUF, err_code, NULL);
 	}
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -1785,7 +2196,7 @@ fn_glo_cmd (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       cas_log_write2_nonl (" %d", start_pos);
     }
   cas_log_write2 ("");
-#endif
+#endif /* !LIBCAS_FOR_JSP */
 
   db_make_null (&ret_val);
   db_make_null (&arg1);
@@ -1800,7 +2211,12 @@ fn_glo_cmd (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       NET_ARG_GET_INT (start_pos, CAS_FN_ARG_ARGV[start_pos_index]);
       if ((err_code = db_make_int (&arg1, start_pos)) < 0)
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, err_code);
+#endif /* CAS_FOR_DBMS */
 	  goto glo_cmd_end;
 	}
 
@@ -1827,8 +2243,13 @@ fn_glo_cmd (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	      data_buf = (char *) malloc (length);
 	      if (data_buf == NULL)
 		{
+#if defined(CAS_FOR_DBMS)
+		  ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+		  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 		  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_NO_MORE_MEMORY,
 				  NULL);
+#endif /* CAS_FOR_DBMS */
 		  goto glo_cmd_end;
 		}
 	    }
@@ -1843,7 +2264,12 @@ fn_glo_cmd (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       err_code = db_make_int (&arg1, length);
       if (err_code < 0)
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, err_code);
+#endif /* CAS_FOR_DBMS */
 	  goto glo_cmd_end;
 	}
 
@@ -1851,7 +2277,12 @@ fn_glo_cmd (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 				  data_buf, length);
       if (err_code < 0)
 	{
+#if defined(CAS_FOR_DBMS)
+	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	  DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, err_code);
+#endif /* CAS_FOR_DBMS */
 	  goto glo_cmd_end;
 	}
 
@@ -1905,14 +2336,24 @@ fn_glo_cmd (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 				      search_str, length);
 	  if (err_code < 0)
 	    {
+#if defined(CAS_FOR_DBMS)
+	      ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	      DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, err_code);
+#endif /* CAS_FOR_DBMS */
 	      goto glo_cmd_end;
 	    }
 
 	  err_code = db_make_int (&arg2, length);
 	  if (err_code < 0)
 	    {
+#if defined(CAS_FOR_DBMS)
+	      ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	      DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, err_code);
+#endif /* CAS_FOR_DBMS */
 	      goto glo_cmd_end;
 	    }
 	}
@@ -1921,7 +2362,12 @@ fn_glo_cmd (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	  err_code = db_make_string (&arg1, search_str);
 	  if (err_code < 0)
 	    {
+#if defined(CAS_FOR_DBMS)
+	      ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	      DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, err_code);
+#endif /* CAS_FOR_DBMS */
 	      goto glo_cmd_end;
 	    }
 	}
@@ -1959,7 +2405,12 @@ fn_glo_cmd (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	  err_code = db_make_int (&arg1, int_val);
 	  if (err_code < 0)
 	    {
+#if defined(CAS_FOR_DBMS)
+	      ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
 	      DB_ERR_MSG_SET (CAS_FN_ARG_NET_BUF, err_code);
+#endif /* CAS_FOR_DBMS */
 	      goto glo_cmd_end;
 	    }
 	}
@@ -1986,6 +2437,7 @@ glo_cmd_end:
   cas_log_write (0, true, "glo_cmd end");
   return 0;
 }
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 int
 fn_con_close (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
@@ -2018,10 +2470,18 @@ fn_check_cas (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     }
 
   if (retcode)
-    net_buf_cp_int (CAS_FN_ARG_NET_BUF, retcode, NULL);
+    {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (retcode, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
+      net_buf_cp_int (CAS_FN_ARG_NET_BUF, retcode, NULL);
+#endif /* CAS_FOR_DBMS */
+    }
   return retcode;
 }
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 int
 fn_make_out_rs (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
@@ -2031,7 +2491,12 @@ fn_make_out_rs (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 1)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -2052,16 +2517,26 @@ fn_get_generated_keys (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (CAS_FN_ARG_ARGC < 1)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   NET_ARG_GET_INT (srv_h_id, CAS_FN_ARG_ARGV[0]);
   srv_handle = hm_find_srv_handle (srv_h_id);
 
-  if (srv_handle == NULL || srv_handle->cur_result == NULL)
+  if (srv_handle == NULL)
     {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+#else /* CAS_FOR_DBMS */
       net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_SRV_HANDLE, NULL);
+#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -2072,6 +2547,7 @@ fn_get_generated_keys (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   return 0;
 }
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 static const char *
 get_schema_type_str (int schema_type)
@@ -2289,6 +2765,11 @@ get_error_log_eids (int err)
   static char buffer[512];
   char *buf;
 
+#if defined(CAS_FOR_ORACLE)
+  return (char *) "";
+#elif defined(CAS_FOR_MYSQL)
+  return (char *) "";
+#else /* CAS_FOR_MYSQL */
   if (err >= 0)
     {
       return (char *) "";
@@ -2307,4 +2788,18 @@ get_error_log_eids (int err)
     }
 
   return buf;
+#endif /* CAS_FOR_MYSQL */
 }
+
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+int
+fn_not_supported (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+		  void **CAS_FN_ARG_ARGV,
+		  T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		  T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+{
+  ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+  return 0;
+}
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */

@@ -72,6 +72,7 @@ enum
 
 typedef struct css_critical_section
 {
+  int cs_index;
   const char *name;
   MUTEX_T lock;			/* read/write monitor lock */
   int rwlock;			/* >0 = # readers, <0 = writer, 0 = none */
@@ -105,10 +106,9 @@ extern int csect_finalize_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
 extern int csect_enter_critical_section (THREAD_ENTRY * thread_p,
 					 CSS_CRITICAL_SECTION * cs_ptr,
 					 int wait_secs);
-extern int
-csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
-					CSS_CRITICAL_SECTION * cs_ptr,
-					int wait_secs);
+extern int csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
+						   CSS_CRITICAL_SECTION *
+						   cs_ptr, int wait_secs);
 extern int csect_demote_critical_section (THREAD_ENTRY * thread_p,
 					  CSS_CRITICAL_SECTION * cs_ptr,
 					  int wait_secs);
@@ -117,9 +117,9 @@ extern int csect_promote_critical_section (THREAD_ENTRY * thread_p,
 					   int wait_secs);
 extern int csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
 
-extern int csect_check_own (int cs_index);
+extern int csect_check_own (THREAD_ENTRY * thread_p, int cs_index);
 
-extern void csect_dump_statistics (FILE *fp);
+extern void csect_dump_statistics (FILE * fp);
 
 #if !defined(SERVER_MODE)
 #define csect_initialize_critical_section(a)

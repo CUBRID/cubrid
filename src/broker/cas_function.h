@@ -50,26 +50,27 @@ extern int fn_execute (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		       void **CAS_FN_ARG_ARGV,
 		       T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		       T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
-extern int fn_get_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-				void **CAS_FN_ARG_ARGV,
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+extern int fn_get_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD,
+				int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
 				T_NET_BUF * CAS_FN_ARG_NET_BUF,
 				T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
-extern int fn_set_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-				void **CAS_FN_ARG_ARGV,
+extern int fn_set_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD,
+				int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
 				T_NET_BUF * CAS_FN_ARG_NET_BUF,
 				T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
-extern int fn_close_req_handle (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-				void **CAS_FN_ARG_ARGV,
+#endif
+extern int fn_close_req_handle (SOCKET CAS_FN_ARG_SOCK_FD,
+				int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
 				T_NET_BUF * CAS_FN_ARG_NET_BUF,
 				T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
 extern int fn_cursor (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		      void **CAS_FN_ARG_ARGV,
-		      T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		      void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		      T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
 extern int fn_fetch (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		     void **CAS_FN_ARG_ARGV,
-		     T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		     T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int fn_schema_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 			   void **CAS_FN_ARG_ARGV,
 			   T_NET_BUF * CAS_FN_ARG_NET_BUF,
@@ -86,6 +87,7 @@ extern int fn_glo_load (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 			void **CAS_FN_ARG_ARGV,
 			T_NET_BUF * CAS_FN_ARG_NET_BUF,
 			T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
+#endif
 extern int fn_get_db_version (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 			      void **CAS_FN_ARG_ARGV,
 			      T_NET_BUF * CAS_FN_ARG_NET_BUF,
@@ -102,8 +104,8 @@ extern int fn_execute_array (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 			     void **CAS_FN_ARG_ARGV,
 			     T_NET_BUF * CAS_FN_ARG_NET_BUF,
 			     T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
-extern int fn_get_attr_type_str (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-				 void **CAS_FN_ARG_ARGV,
+extern int fn_get_attr_type_str (SOCKET CAS_FN_ARG_SOCK_FD,
+				 int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
 				 T_NET_BUF * CAS_FN_ARG_NET_BUF,
 				 T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
 extern int fn_xa_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
@@ -130,10 +132,11 @@ extern int fn_make_out_rs (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 			   void **CAS_FN_ARG_ARGV,
 			   T_NET_BUF * CAS_FN_ARG_NET_BUF,
 			   T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
-extern int fn_get_generated_keys (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-				  void **CAS_FN_ARG_ARGV,
+extern int fn_get_generated_keys (SOCKET CAS_FN_ARG_SOCK_FD,
+				  int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
 				  T_NET_BUF * CAS_FN_ARG_NET_BUF,
 				  T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int fn_oid_get (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		       void **CAS_FN_ARG_ARGV,
 		       T_NET_BUF * CAS_FN_ARG_NET_BUF,
@@ -142,18 +145,18 @@ extern int fn_oid_put (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		       void **CAS_FN_ARG_ARGV,
 		       T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		       T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
-extern int fn_get_class_num_objs (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-				  void **CAS_FN_ARG_ARGV,
+extern int fn_get_class_num_objs (SOCKET CAS_FN_ARG_SOCK_FD,
+				  int CAS_FN_ARG_ARGC, void **CAS_FN_ARG_ARGV,
 				  T_NET_BUF * CAS_FN_ARG_NET_BUF,
 				  T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
 extern int fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		   void **CAS_FN_ARG_ARGV,
-		   T_NET_BUF * CAS_FN_ARG_NET_BUF,
+		   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		   T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
 extern int fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 			  void **CAS_FN_ARG_ARGV,
 			  T_NET_BUF * CAS_FN_ARG_NET_BUF,
 			  T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
+#endif
 extern int fn_cursor_update (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 			     void **CAS_FN_ARG_ARGV,
 			     T_NET_BUF * CAS_FN_ARG_NET_BUF,
@@ -162,17 +165,27 @@ extern int fn_get_query_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 			      void **CAS_FN_ARG_ARGV,
 			      T_NET_BUF * CAS_FN_ARG_NET_BUF,
 			      T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int fn_savepoint (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 			 void **CAS_FN_ARG_ARGV,
 			 T_NET_BUF * CAS_FN_ARG_NET_BUF,
 			 T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
+#endif
 extern int fn_parameter_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 			      void **CAS_FN_ARG_ARGV,
 			      T_NET_BUF * CAS_FN_ARG_NET_BUF,
 			      T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int fn_glo_cmd (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		       void **CAS_FN_ARG_ARGV,
 		       T_NET_BUF * CAS_FN_ARG_NET_BUF,
 		       T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
+#endif
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+extern int fn_not_supported (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
+			     void **CAS_FN_ARG_ARGV,
+			     T_NET_BUF * CAS_FN_ARG_NET_BUF,
+			     T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
+#endif
 
 #endif /* _CAS_FUNCTION_H_ */

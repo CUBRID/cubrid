@@ -687,7 +687,7 @@ check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_classobj)
 /*
  * def_class_internal() - Begins the definition of a new class.
  *    An empty template is created and returned.  The class name
- *    is not registed with the server at this time, that is defered
+ *    is not registed with the server at this time, that is deferred
  *    until the template is applied with sm_update_class.
  *   return: schema template
  *   name(in): new class name
@@ -770,6 +770,7 @@ smt_edit_class_mop (MOP op)
   return (template_);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * smt_edit_class() - Begins the editing of an existing class.
  *    Behaves like smt_edit_class_mop except that the class is identified
@@ -793,6 +794,7 @@ smt_edit_class (const char *name)
     }
   return (template_);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * smt_quit() - This is called to abort the creation of a schema template.
@@ -1640,6 +1642,7 @@ smt_add_constraint (SM_TEMPLATE * template_, const char **att_names,
 				  class_attribute, &atts[i]);
       if (error == NO_ERROR && SM_IS_ATTFLAG_INDEX_FAMILY (constraint))
 	{
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 	  /* prevent to create index on TEXT attribute */
 	  if (sm_has_text_domain (atts[i], 0))
 	    {
@@ -1649,6 +1652,7 @@ smt_add_constraint (SM_TEMPLATE * template_, const char **att_names,
 			  rel_major_release_string ());
 		}
 	    }
+#endif /* ENABLE_UNUSED_FUNCTION */
 	}
     }
   atts[i] = NULL;
@@ -2150,11 +2154,13 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
 	      comp->name_space == ID_CLASS_ATTRIBUTE)
 	    {
 	      SM_ATTRIBUTE *att;
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 	      if ((error = smt_find_attribute (template_, comp->name,
 					       (comp->name_space ==
 						ID_CLASS_ATTRIBUTE ? 1 : 0),
 					       &att)) == NO_ERROR)
 		{
+
 		  if (sm_has_text_domain (att, 0))
 		    {
 		      /* prevent to rename attribute */
@@ -2162,6 +2168,11 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
 			      rel_major_release_string ());
 		    }
 		}
+#else /* ENABLE_UNUSED_FUNCTION */
+	      error = smt_find_attribute (template_, comp->name,
+					  (comp->name_space ==
+					   ID_CLASS_ATTRIBUTE ? 1 : 0), &att);
+#endif /* ENABLE_UNUSED_FUNCTION */
 	      if (error != NO_ERROR)
 		return (error);
 	    }
@@ -2416,7 +2427,7 @@ smt_class_delete (SM_TEMPLATE * template_, const char *name)
 /* TEMPLATE SUPERCLASS FUNCTIONS */
 /*
  * smt_add_super() - Adds a super class to the class being edited.
- *    The checking for complex hierarchy cycles is not done here but defered
+ *    The checking for complex hierarchy cycles is not done here but deferred
  *    until sm_update_class.  This is because the check may be fairly
  *    complex and require a lot of locks.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -3008,9 +3019,9 @@ smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
     {
       ct = template_->class_type;
       if (ct == SM_VCLASS_CT)
-        {
-          WS_LIST_APPEND (&template_->query_spec, query_spec);
-        }
+	{
+	  WS_LIST_APPEND (&template_->query_spec, query_spec);
+	}
       else
 	{
 	  error = ER_SM_INVALID_CLASS;

@@ -226,8 +226,9 @@ extern void ldr_stats (int *errors, int *objects, int *defaults,
 		       int *lastcommit);
 #endif /* LDR_OLD_LOADDB */
 extern int ldr_update_statistics (void);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void print_parser_lineno (FILE * fp);
-
+#endif
 /* Callback functions  */
 
 extern void ldr_register_post_commit_handler (LDR_POST_COMMIT_HANDLER handler,

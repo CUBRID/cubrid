@@ -67,25 +67,40 @@ int
 ansisql_strcmp (const char *s, const char *t)
 {
   for (; *s == *t; s++, t++)
-    if (*s == '\0')
-      return 0;
+    {
+      if (*s == '\0')
+	{
+	  return 0;
+	}
+    }
 
   if (*s == '\0')
     {
       while (*t != '\0')
-	if (*t++ != ' ')
-	  return -1;
-      return 0;
+	{
+	  if (*t++ != ' ')
+	    {
+	      return -1;
+	    }
+	  return 0;
+	}
     }
   else if (*t == '\0')
     {
       while (*s != '\0')
-	if (*s++ != ' ')
-	  return 1;
-      return 0;
+	{
+	  if (*s++ != ' ')
+	    {
+	      return 1;
+	    }
+	  return 0;
+	}
     }
   else
-    return (*(unsigned const char *) s < *(unsigned const char *) t) ? -1 : 1;
+    {
+      return (*(unsigned const char *) s <
+	      *(unsigned const char *) t) ? -1 : 1;
+    }
 }
 
 /*
@@ -112,14 +127,23 @@ ansisql_strcasecmp (const char *s, const char *t)
 
   s_length = strlen (s);
   t_length = strlen (t);
+
   min_length = s_length < t_length ? s_length : t_length;
+
   cmp_val = intl_mbs_ncasecmp (s, t, min_length);
+
   /* If not equal for shorter length, return */
   if (cmp_val)
-    return cmp_val;
+    {
+      return cmp_val;
+    }
+
   /* If equal and same size, return */
   if (s_length == t_length)
-    return 0;
+    {
+      return 0;
+    }
+
   /* If equal for shorter length and not same size, look for trailing blanks */
   s += min_length;
   t += min_length;
@@ -127,15 +151,23 @@ ansisql_strcasecmp (const char *s, const char *t)
   if (*s == '\0')
     {
       while (*t != '\0')
-	if (*t++ != ' ')
-	  return -1;
+	{
+	  if (*t++ != ' ')
+	    {
+	      return -1;
+	    }
+	}
       return 0;
     }
   else
     {
       while (*s != '\0')
-	if (*s++ != ' ')
-	  return 1;
+	{
+	  if (*s++ != ' ')
+	    {
+	      return 1;
+	    }
+	}
       return 0;
     }
 }
@@ -360,7 +392,9 @@ db_private_alloc (void *thrd, size_t size)
   HL_HEAPID heap_id;
 
   if (size <= 0)
-    return NULL;
+    {
+      return NULL;
+    }
 
   heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id :
 	     css_get_private_heap (NULL));
@@ -442,7 +476,9 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
   HL_HEAPID heap_id;
 
   if (size <= 0)
-    return NULL;
+    {
+      return NULL;
+    }
 
   heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id :
 	     css_get_private_heap (NULL));

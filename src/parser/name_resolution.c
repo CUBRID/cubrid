@@ -262,7 +262,7 @@ pt_eval_value_path (PARSER_CONTEXT * parser, PT_NODE * path)
 }				/* pt_eval_value_path */
 
 /*
- * pt_bind_param_node() -  try to bind parmater for a node
+ * pt_bind_param_node() -  try to bind parameter for a node
  *   return:
  *   parser(in):
  *   node(in):
@@ -1573,7 +1573,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	}
 #endif /* 0 */
 
-      /* convert to CNF and tag tagable terms */
+      /* convert to CNF and tag taggable terms */
       node->info.query.q.select.where =
 	pt_cnf (parser, node->info.query.q.select.where);
 
@@ -3302,7 +3302,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser,
 	    {
 	      /* this sets the persistent entity_spec id.
 	       * the address of the node may be changed through copying,
-	       * but this id wont. The number used is the address, just
+	       * but this id won't. The number used is the address, just
 	       * as an easy way to generate a unique number.
 	       */
 	      node->info.spec.id = (UINTPTR) node;
@@ -3540,7 +3540,7 @@ pt_unwhacked_spec (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * spec)
  *
  * Note:
  * Also check for some semantic errors
- *    - disallow oid's from derived spec
+ *    - disallow OIDs of derived spec
  *    - disallow selectors except inside path expression
  */
 static PT_NODE *
@@ -3603,6 +3603,10 @@ pt_resolve_correlation (PARSER_CONTEXT * parser,
       else
 	{
 	  corr_name->info.name.meta_class = PT_OID_ATTR;
+	  if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_INFO_GENERATED_OID))
+	    {
+	      PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_INFO_GENERATED_OID);
+	    }
 	}
       parser_free_tree (parser, in_node);
 
@@ -4378,9 +4382,13 @@ static PT_NODE *
 pt_expand_external_path (PARSER_CONTEXT * parser,
 			 PT_NODE * in_node, PT_NODE ** p_entity)
 {
-  PT_NODE *attr, *dot, *entity, *domain;
+  PT_NODE *attr, *entity;
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
+  PT_NODE *dot, *domain;
   PT_NODE *unique_entity;
+#endif
   DB_ATTRIBUTE *attr_obj;
+
   /* if in_node is a path expr, get last attr in the in_node */
   attr = ((PT_IS_DOT_NODE (in_node)) ? in_node->info.dot.arg2 : in_node);
   if (!PT_IS_NAME_NODE (attr))
@@ -4398,6 +4406,7 @@ pt_expand_external_path (PARSER_CONTEXT * parser,
 						     db_object,
 						     attr->info.name.
 						     original);
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 	  /* check if the last attr is TEXT type */
 	  if (attr_obj && sm_has_text_domain (attr_obj, 0))
 	    {
@@ -4449,6 +4458,7 @@ pt_expand_external_path (PARSER_CONTEXT * parser,
 		}
 	      return dot;
 	    }
+#endif /* ENABLE_UNUSED_FUNCTION */
 	}
     }
   return in_node;
@@ -5292,6 +5302,7 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 		  att = db_get_attribute (entity_name->info.name.db_object,
 					  attr_name->info.name.original);
 		}
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 	      if (att && sm_has_text_domain (att, 0))
 		{
 		  PT_NODE *prev_entity;
@@ -5324,6 +5335,7 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 		      attr_name->next = save_next;
 		    }
 		}
+#endif /* ENABLE_UNUSED_FUNCTION */
 	    }
 	  attr_name = attr_name->next;
 	}
@@ -5581,7 +5593,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 	    }
 	}
 
-      /* the specified class in "class.index" dose not exist in spec list */
+      /* the specified class in "class.index" does not exist in spec list */
       PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_USING_INDEX_ERR_2,
 		  pt_short_print (parser, index));

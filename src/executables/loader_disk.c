@@ -50,7 +50,7 @@
 
 /*
  * Diskrec
- *    Local disk record used for storage each incomming object.
+ *    Local disk record used for storage each incoming object.
  */
 static RECDES *Diskrec = NULL;
 
@@ -98,7 +98,6 @@ free_recdes (RECDES * rec)
   if (rec != NULL)
     {
       free_and_init (rec);
-      rec = NULL;
     }
 }
 
@@ -214,11 +213,14 @@ get_class_heap (MOP classop, SM_CLASS * class_)
 	}
       else
 	{
+	  const bool reuse_oid =
+	    (class_->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
+
 	  if (OID_ISTEMP (class_oid = ws_oid (classop)))
 	    {			/* not defined function */
 	      class_oid = locator_assign_permanent_oid (classop);
 	    }
-	  if (xheap_create (NULL, hfid, class_oid) != NO_ERROR)
+	  if (xheap_create (NULL, hfid, class_oid, reuse_oid) != NO_ERROR)
 	    {
 	      hfid = NULL;
 	    }
@@ -286,7 +288,7 @@ disk_reserve_instance (MOP classop, OID * oid)
  *    not attempt to store a default instance at that address.
  *    This means that there will never be an existing entry in the btree when
  *    we finally get around to storing the actual object contents.  If this
- *    situation evern changes, then we will need to call btree_update here
+ *    situation ever changes, then we will need to call btree_update here
  *    instead.  This will require the current key value which must be
  *    extracted from the hf record being replaced.
  *    See locator_force to see how this can be done.

@@ -77,8 +77,10 @@ static struct net_request net_Requests[NET_SERVER_REQUEST_END];
 
 static int net_Histo_call_count = 0;
 
+#if defined(CUBRID_DEBUG)
 static void net_server_histo_print (void);
 static void net_server_histo_add_entry (int request, int data_sent);
+#endif /* CUBRID_DEBUG */
 
 static void net_server_init (void);
 static int net_server_request (THREAD_ENTRY * thread_p, unsigned int rid,
@@ -93,7 +95,7 @@ static int net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg);
 static void
 net_server_init (void)
 {
-  int i;
+  unsigned int i;
 
   net_Histo_call_count = 0;
 
@@ -240,7 +242,7 @@ net_server_init (void)
   net_Requests[NET_SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED].
     processing_function = stran_server_is_active_and_has_updated;
   net_Requests[NET_SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED].name =
-    "NET_SERVER_TM_NET_SERVER_ISACTIVE_AND_HAS_UPDATED";
+    "NET_SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED";
 
   net_Requests[NET_SERVER_TM_ISBLOCKED].action_attribute = 0;
   net_Requests[NET_SERVER_TM_ISBLOCKED].processing_function =
@@ -280,14 +282,14 @@ net_server_init (void)
   net_Requests[NET_SERVER_TM_SERVER_2PC_PREPARE].processing_function =
     stran_server_2pc_prepare;
   net_Requests[NET_SERVER_TM_SERVER_2PC_PREPARE].name =
-    "NET_SERVER_TM_NET_SERVER_2PC_PREPARE";
+    "NET_SERVER_TM_SERVER_2PC_PREPARE";
 
   net_Requests[NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED].action_attribute =
     IN_TRANSACTION;
   net_Requests[NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED].
     processing_function = stran_server_2pc_recovery_prepared;
   net_Requests[NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED].name =
-    "NET_SERVER_TM_NET_SERVER_2PC_RECOVERY_PREPARED";
+    "NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED";
 
   net_Requests[NET_SERVER_TM_SERVER_2PC_ATTACH_GT].action_attribute =
     IN_TRANSACTION;
@@ -631,6 +633,11 @@ net_server_init (void)
   net_Requests[NET_SERVER_LOG_DUMP_TRANTB].name =
     "NET_SERVER_LOG_DUMP_TRANTB";
 
+  net_Requests[NET_SERVER_LOG_CHECKPOINT].action_attribute = 0;
+  net_Requests[NET_SERVER_LOG_CHECKPOINT].processing_function =
+    slog_checkpoint;
+  net_Requests[NET_SERVER_LOG_CHECKPOINT].name = "NET_SERVER_LOG_CHECKPOINT";
+
   /*
    * lock
    */
@@ -890,16 +897,21 @@ net_server_init (void)
   net_Requests[NET_SERVER_QPROC_GET_CURRENT_VALUE].action_attribute =
     IN_TRANSACTION;
   net_Requests[NET_SERVER_QPROC_GET_CURRENT_VALUE].processing_function =
-    sqp_get_current_value;
+    sserial_get_current_value;
   net_Requests[NET_SERVER_QPROC_GET_CURRENT_VALUE].name =
     "NET_SERVER_QPROC_GET_CURRENT_VALUE";
 
   net_Requests[NET_SERVER_QPROC_GET_NEXT_VALUE].action_attribute =
     CHECK_DB_MODIFICATION | IN_TRANSACTION;
   net_Requests[NET_SERVER_QPROC_GET_NEXT_VALUE].processing_function =
-    sqp_get_next_value;
+    sserial_get_next_value;
   net_Requests[NET_SERVER_QPROC_GET_NEXT_VALUE].name =
     "NET_SERVER_QPROC_GET_NEXT_VALUE";
+
+  net_Requests[NET_SERVER_SERIAL_DECACHE].action_attribute = IN_TRANSACTION;
+  net_Requests[NET_SERVER_SERIAL_DECACHE].processing_function =
+    sserial_decache;
+  net_Requests[NET_SERVER_SERIAL_DECACHE].name = "NET_SERVER_SERIAL_DECACHE";
 
   net_Requests[NET_SERVER_QPROC_GET_SERVER_INFO].action_attribute =
     IN_TRANSACTION;
@@ -999,6 +1011,7 @@ net_server_init (void)
     "NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS";
 }
 
+#if defined(CUBRID_DEBUG)
 /*
  * net_server_histo_print () -
  *   return:
@@ -1006,7 +1019,7 @@ net_server_init (void)
 static void
 net_server_histo_print (void)
 {
-  int i, found = 0, total_requests = 0, total_size_sent = 0;
+  unsigned int i, found = 0, total_requests = 0, total_size_sent = 0;
   int total_size_received = 0;
   float server_time, total_server_time = 0;
   float avg_response_time, avg_client_time;
@@ -1068,6 +1081,7 @@ net_server_histo_add_entry (int request, int data_sent)
 
   net_Histo_call_count++;
 }
+#endif /* CUBRID_DEBUG */
 
 /*
  * net_server_request () - The main server request dispatch handler
@@ -1086,7 +1100,9 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
   int status = CSS_NO_ERRORS;
   int error_code;
   CSS_CONN_ENTRY *conn;
+#if defined (DIAG_DEVEL)
   struct timeval diag_start_time, diag_end_time, diag_elapsed_time;
+#endif /* DIAG_DEVEL */
 
   if (buffer == NULL && size > 0)
     {
@@ -1166,14 +1182,14 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
 	  goto end;
 	}
     }
+#if defined (DIAG_DEVEL)
   if (net_Requests[request].action_attribute & SET_DIAGNOSTICS_INFO)
     {
-#if defined (DIAG_DEVEL)
       SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CLI_REQUEST, 1,
 		      DIAG_VAL_SETTYPE_INC, NULL);
-#endif /* DIAG_DEVEL */
       gettimeofday (&diag_start_time, NULL);
     }
+#endif /* DIAG_DEVEL */
   if (net_Requests[request].action_attribute & IN_TRANSACTION)
     {
       conn->in_transaction = true;
@@ -1192,11 +1208,11 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
     }
 
   /* check the defined action attribute */
+#if defined (DIAG_DEVEL)
   if (net_Requests[request].action_attribute & SET_DIAGNOSTICS_INFO)
     {
       gettimeofday (&diag_end_time, NULL);
       DIFF_TIMEVAL (diag_start_time, diag_end_time, diag_elapsed_time);
-#if defined (DIAG_DEVEL)
       if (request == NET_SERVER_QM_QUERY_EXECUTE
 	  || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE
 	  || request == NET_SERVER_QM_QUERY_EXECUTE_ASYNC
@@ -1206,8 +1222,8 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
 				     diag_end_time, 1,
 				     DIAG_VAL_SETTYPE_INC, NULL);
 	}
-#endif /* DIAG_DEVEL */
     }
+#endif /* DIAG_DEVEL */
   if (net_Requests[request].action_attribute & OUT_TRANSACTION)
     {
       conn->in_transaction = false;
@@ -1256,7 +1272,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   tran_index = conn_p->transaction_id;
   client_id = conn_p->client_id;
 
-  THREAD_SET_INFO (thread_p, client_id, 0, tran_index);
+  thread_set_info (thread_p, client_id, 0, tran_index);
   MUTEX_UNLOCK (thread_p->tran_index_lock);
 
   css_end_server_request (conn_p);
@@ -1268,11 +1284,12 @@ loop:
   prev_thrd_cnt = thread_has_threads (tran_index, client_id);
   if (prev_thrd_cnt > 0)
     {
-      if (!logtb_is_interrupt_tran
-	  (thread_p, false, &continue_check, tran_index))
+      if (!logtb_is_interrupted_tran (thread_p, false, &continue_check,
+				      tran_index))
 	{
 	  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
-	  thread_wakeup_with_tran_index (tran_index);
+	  thread_wakeup_with_tran_index (tran_index,
+					 THREAD_RESUME_DUE_TO_INTERRUPT);
 	}
     }
 
@@ -1300,7 +1317,7 @@ loop:
     }
   css_free_conn (conn_p);
 
-  THREAD_SET_INFO (thread_p, -1, 0, local_tran_index);
+  thread_set_info (thread_p, -1, 0, local_tran_index);
   thread_p->status = TS_RUN;
 
   return 0;

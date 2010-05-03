@@ -2691,7 +2691,7 @@ classobj_cache_not_null_constraints (const char *class_name,
 	     it into the workspace before calling classobj_make_class_constraint().
 	     After the name is copied into the workspace it can be deallocated
 	     from the heap.  The name will be deallocated from the workspace
-	     when the cosntraint node is destroyed.  */
+	     when the constraint node is destroyed.  */
 	  att_names[0] = att->header.name;
 	  att_names[1] = NULL;
 	  constraint_name = sm_produce_constraint_name (class_name,
@@ -3218,7 +3218,7 @@ classobj_find_class_index2 (SM_CLASS * class_, CLASS_STATS * stats,
  *                                constraint cache.
  *   return: none
  *   constraints(in): Pointer to class constraint list
- *   node(in): Pointer to a node in the cosntraint list
+ *   node(in): Pointer to a node in the constraint list
  */
 
 void
@@ -5803,7 +5803,7 @@ classobj_sort_methlist (SM_METHOD ** source)
  *    NOTE: It is extremely imporant that as fields in the class structure
  *    are being replaced, that the field be set to NULL.
  *    This is particularly important for the attribute lists.
- *    The reason is that garbage collection can happen durint the template
+ *    The reason is that garbage collection can happen during the template
  *    installation and the attribute lists that are freed must not be
  *    scanned by the gc class scanner.
  *    It is critical that errors be handled here without damaging the
@@ -6154,6 +6154,7 @@ classobj_filter_components (SM_COMPONENT ** complist,
   return (filtered);
 }
 
+#if defined (CUBRID_DEBUG)
 /* DEBUGGING */
 /*
  * cl_dump() - This debug function is used for printing out things that aren't
@@ -6256,6 +6257,7 @@ classobj_print (SM_CLASS * class_)
     }
 
 }
+#endif
 
 /* MISC UTILITIES */
 /*
@@ -6626,21 +6628,21 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj,
   if (valid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-          sizeof (SM_VALIDATION));
+	      sizeof (SM_VALIDATION));
       classobj_free_descriptor (desc);
       desc = NULL;
     }
   else
     {
       if (desc == NULL)
-        {
-          free_and_init(valid);
-          return desc;
-        }
+	{
+	  free_and_init (valid);
+	  return desc;
+	}
       else
-        {
-          desc->valid = valid;
-        }
+	{
+	  desc->valid = valid;
+	}
 
       valid->last_class = NULL;
       valid->validated_classes = NULL;

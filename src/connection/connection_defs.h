@@ -95,14 +95,20 @@ enum css_client_request
   CANCEL_SHUTDOWN = 15,
   GET_SHUTDOWN_TIME = 16,
   KILL_SERVER_IMMEDIATE = 17,
-  GET_DRIVER_COUNT = 18,
-  GET_DRIVER_LIST = 19,
   GET_REPL_LIST = 20,		/* REPL: get the info. for a process */
   GET_ALL_LIST = 21,		/* REPL: get the info. for all processes */
   GET_REPL_COUNT = 22,		/* REPL: get the # of repl processes */
   GET_ALL_COUNT = 23,		/* REPL: get the # of all processes */
   KILL_REPL_SERVER = 24,	/* REPL: kill the repl process */
-  GET_SERVER_HA_MODE = 25	/* HA  : get server ha mode */
+  GET_SERVER_HA_MODE = 25,	/* HA: get server ha mode */
+  GET_HA_NODE_LIST = 26,	/* HA: get ha node list */
+  GET_HA_NODE_LIST_VERBOSE = 27,	/* HA: get ha node list verbose */
+  GET_HA_PROCESS_LIST = 28,	/* HA: get ha process list */
+  GET_HA_PROCESS_LIST_VERBOSE = 29,	/* HA: get ha process list verbose */
+  DEREGISTER_HA_PROCESS = 30,	/* HA: deregister ha process */
+  RECONFIG_HEARTBEAT = 31,	/* HA: reconfigure ha node */
+  DEACTIVATE_HEARTBEAT = 32,	/* HA: deactivate */
+  ACTIVATE_HEARTBEAT = 33	/* HA: activate */
 };
 
 /*
@@ -118,7 +124,9 @@ enum css_server_request
   SERVER_START_SHUTDOWN = 6,
   SERVER_STOP_SHUTDOWN = 7,
   SERVER_SHUTDOWN_IMMEDIATE = 8,
-  SERVER_GET_HA_MODE = 9
+  SERVER_GET_HA_MODE = 9,
+  SERVER_REGISTER_HA_PROCESS = 10,
+  SERVER_CHANGE_HA_MODE = 11
 };
 
 /*
@@ -321,6 +329,7 @@ enum ha_log_applier_state
 
 #define CSS_RID_FROM_EID(eid)           ((unsigned short) LOW16BITS(eid))
 #define CSS_ENTRYID_FROM_EID(eid)       ((unsigned short) HIGH16BITS(eid))
+
 
 /*
  * This is the format of the header for each command packet that is sent

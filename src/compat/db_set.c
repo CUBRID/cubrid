@@ -1464,7 +1464,7 @@ db_col_print (DB_COLLECTION * col)
 }
 
 /*
- * db_col_optimize() - This funciton makes the set is in its optimal order
+ * db_col_optimize() - This function makes the set is in its optimal order
  *    for performance(sort overhead) reason.
  * return : error status
  * col(in): collection

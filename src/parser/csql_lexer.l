@@ -346,6 +346,9 @@ extern int yycolumn_end;
 [nN][cC][hH][aA][rR]							{ begin_token(yytext);   return NCHAR; }
 [nN][eE][xX][tT]							{ begin_token(yytext);   return NEXT; }
 [nN][oO]								{ begin_token(yytext);   return NO; }
+[nN][oO][cC][aA][cC][hH][eE]						{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return NOCACHE; }
 [nN][oO][cC][yY][cC][lL][eE]						{ begin_token(yytext);   
 										yylval.cptr = pt_makename(yytext);
 										return NOCYCLE; }
@@ -444,6 +447,9 @@ extern int yycolumn_end;
 										return RETAIN; }
 [rR][eE][tT][uU][rR][nN]						{ begin_token(yytext);   return RETURN; }
 [rR][eE][tT][uU][rR][nN][sS]						{ begin_token(yytext);   return RETURNS; }
+[rR][eE][uU][sS][eE]_[oO][iI][dD]				{ begin_token(yytext);   
+										yylval.cptr = pt_makename(yytext);
+										return REUSE_OID; }
 [rR][eE][vV][eE][rR][sS][eE]						{ begin_token(yytext);   
 										yylval.cptr = pt_makename(yytext);
 										return REVERSE; }
@@ -795,16 +801,57 @@ int yywrap()
 {
   return 1;
 }
-
+ 
 
 static int parser_yyinput_single_line(char* buff, int max_size)
 {
-  int c;
+  int c, end;
   int i=0;
 
   do 
     {
       c = pt_nextchar();
+      if (c == '\'' || c == '\"') /* string start */
+	{
+	  buff[i++] = c;
+	  if (i>=max_size)
+	    {
+	      return i;
+	    }
+	        
+	  end = c;
+	  do {
+	    c = pt_nextchar();
+	    if (c == end) /* string end */
+	      {
+		break;
+	      }
+	      	      
+	    buff[i++] = c;
+	    if (i>=max_size)
+	      {
+		return i;
+	      }
+	      	      
+	    if (c == '\\') /* if escape character */
+	      {
+	        buff[i++] = c;
+	        if (i>=max_size)
+		  {
+		    return i;
+		  }
+	          	          
+		c = pt_nextchar(); /* read one more */
+		buff[i++] = c;
+		if (i>=max_size)
+		  {
+		    return i;
+		  }
+	      }
+	      
+	  } while (c != -1);
+	}
+	
       if (c == ';') 
 	{
       	  buff[i++] = -1;
@@ -815,8 +862,9 @@ static int parser_yyinput_single_line(char* buff, int max_size)
       buff[i++] = c;
       if (i>=max_size) 
 	{
-      	  return i;
+	  return i;
 	}
+    	
     } while (c != -1);
 
   buff[i] = 0;

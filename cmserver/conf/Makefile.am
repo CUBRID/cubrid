@@ -18,5 +18,5 @@
 
 
 confdir = @CUBRID_CONFDIR@
-conf_DATA = autohistory.conf cmdb.pass emgr.pass autoaddvoldb.conf diagactivitytemplate.conf emgr_db.pass autobackupdb.conf cm.conf diagstatustemplate.conf autoexecquery.conf cm.pass emgr.conf
+conf_DATA = autohistory.conf cmdb.pass autoaddvoldb.conf diagactivitytemplate.conf autobackupdb.conf cm.conf diagstatustemplate.conf autoexecquery.conf cm.pass
 

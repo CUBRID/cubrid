@@ -62,7 +62,9 @@ extern unsigned short css_get_request_id (CSS_CONN_ENTRY * conn);
 extern char *css_return_data_buffer (CSS_CONN_ENTRY * conn,
 				     unsigned short request_id,
 				     int *buffer_size);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern char *css_return_oob_buffer (int *buffer_size);
+#endif
 
 extern int css_return_queued_error (CSS_CONN_ENTRY * conn,
 				    unsigned short request_id, char **buffer,

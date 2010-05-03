@@ -63,8 +63,10 @@ extern int ehash_map (THREAD_ENTRY * thread_p, EHID * ehid,
 
 /* For debugging purposes only */
 extern void ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void ehash_print_bucket (THREAD_ENTRY * thread_p, EHID * ehid,
 				int offset);
+#endif
 
 /* Recovery functions */
 int ehash_rv_init_bucket_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv);

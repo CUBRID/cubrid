@@ -91,6 +91,7 @@ typedef enum
   SERIAL_MIN_VAL,
   SERIAL_CYCLIC,
   SERIAL_STARTED,
+  SERIAL_CACHED_NUM,
 
   SERIAL_VALUE_INDEX_MAX
 } SERIAL_VALUE_INDEX;
@@ -423,9 +424,9 @@ emit_cycle_warning (void)
  * the 'order_list'
  *    return: void
  *    class_list(out): remaining unordered classes
- *    order_list(out): ordered class lsit
+ *    order_list(out): ordered class list
  * Note:
- *    This is called when a depencency cycle is detected that wa can't
+ *    This is called when a depencency cycle is detected that we can't
  *    figure out.  So we at least get the full schema dumped to the
  *    output file, pick the top class off the list and hopefully this
  *    will break the cycle.
@@ -584,8 +585,9 @@ export_serial (FILE * outfp)
     "increment_val, "
     "max_val, "
     "min_val, "
-    "cast(cyclic as integer), "
-    "cast(started as integer) "
+    "cyclic, "
+    "started, "
+    "cached_num "
     "from db_serial where class_name is null and att_name is null";
 
   if ((error = db_execute (query, &query_result, &query_error)) < 0)
@@ -648,6 +650,7 @@ export_serial (FILE * outfp)
 
 	    case SERIAL_CYCLIC:
 	    case SERIAL_STARTED:
+	    case SERIAL_CACHED_NUM:
 	      {
 		if (DB_IS_NULL (&values[i])
 		    || DB_VALUE_TYPE (&values[i]) != DB_TYPE_INTEGER)
@@ -729,8 +732,19 @@ export_serial (FILE * outfp)
 	       numeric_db_value_print (&values[SERIAL_MIN_VAL]));
       fprintf (outfp, "\t maxvalue %s\n",
 	       numeric_db_value_print (&values[SERIAL_MAX_VAL]));
-      fprintf (outfp, "\t %scycle;\n",
+      fprintf (outfp, "\t %scycle\n",
 	       (DB_GET_INTEGER (&values[SERIAL_CYCLIC]) == 0 ? "no" : ""));
+      if (DB_GET_INTEGER (&values[SERIAL_CACHED_NUM]) <= 1)
+	{
+	  fprintf (outfp, "\t nocache;\n");
+
+	}
+      else
+	{
+	  fprintf (outfp, "\t cache %d;\n",
+		   DB_GET_INTEGER (&values[SERIAL_CACHED_NUM]));
+
+	}
       fprintf (outfp,
 	       "call change_serial_owner ('%s', '%s') on class db_serial;\n\n",
 	       DB_PULL_STRING (&values[SERIAL_NAME]),
@@ -1028,23 +1042,28 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	{
 	  continue;
 	}
+
+      fprintf (output_file, "CREATE %s %s%s%s",
+	       is_vclass ? "VCLASS" : "CLASS", PRINT_IDENTIFIER (name));
       if (is_vclass)
 	{
-	  fprintf (output_file, "CREATE VCLASS %s%s%s",
-		   PRINT_IDENTIFIER (name));
 	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_WITHCHECKOPTION))
-	    fprintf (output_file, " WITH CHECK OPTION");
+	    {
+	      fprintf (output_file, " WITH CHECK OPTION");
+	    }
 	  else if (sm_get_class_flag (cl->op, SM_CLASSFLAG_LOCALCHECKOPTION))
-	    fprintf (output_file, " WITH LOCAL CHECK OPTION");
-	  fprintf (output_file, ";\n");
+	    {
+	      fprintf (output_file, " WITH LOCAL CHECK OPTION");
+	    }
 	}
       else
 	{
-	  fprintf (output_file, "CREATE CLASS %s%s%s;\n",
-		   PRINT_IDENTIFIER (name));
+	  if (sm_get_class_flag (cl->op, SM_CLASSFLAG_REUSE_OID))
+	    {
+	      fprintf (output_file, " REUSE_OID");
+	    }
 	}
-
-      fprintf (output_file, "\n");
+      fprintf (output_file, ";\n\n");
     }
 
   fprintf (output_file, "\n");
@@ -2181,7 +2200,7 @@ emit_reverse_unique_def (DB_OBJECT * class_)
 /*
  * emit_index_def - emit the index constraint definitions for this class
  *    return: void
- *    class(in): the class to emit the indeses for
+ *    class(in): the class to emit the indexes for
  */
 static void
 emit_index_def (DB_OBJECT * class_)

@@ -200,9 +200,11 @@ struct largeobjmgr_dirstate_pos
 extern void largeobjmgr_reset_last_alloc_page (THREAD_ENTRY * thread_p,
 					       LARGEOBJMGR_DIRSTATE * ds,
 					       VPID * vpid_ptr);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int largeobjmgr_dir_get_vpids (THREAD_ENTRY * thread_p, LOID * loid,
 				      VPID ** dir_vpid_list,
 				      int *dir_vpid_cnt, bool * index_exists);
+#endif
 extern SCAN_CODE largeobjmgr_dir_scan_next (THREAD_ENTRY * thread_p,
 					    LARGEOBJMGR_DIRSTATE * ds);
 extern int largeobjmgr_dir_insert (THREAD_ENTRY * thread_p,
@@ -212,9 +214,11 @@ extern int largeobjmgr_dir_insert (THREAD_ENTRY * thread_p,
 extern int largeobjmgr_dir_update (THREAD_ENTRY * thread_p,
 				   LARGEOBJMGR_DIRSTATE * ds,
 				   LARGEOBJMGR_DIRENTRY * X);
+#if defined (CUBRID_DEBUG)
 extern void largeobjmgr_dir_dump (THREAD_ENTRY * thread_p, FILE * fp,
 				  LOID * loid);
 extern bool largeobjmgr_dir_check (THREAD_ENTRY * thread_p, LOID * loid);
+#endif
 extern SCAN_CODE largeobjmgr_dir_open (THREAD_ENTRY * thread_p, LOID * loid,
 				       INT64 offset, int opr_mode,
 				       LARGEOBJMGR_DIRSTATE * ds);

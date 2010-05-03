@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -90,7 +90,9 @@ extern int cursor_copy_vobj_to_dbvalue (OR_BUF * buf, DB_VALUE * db_value);
 extern int cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id,
 					   VPID * vpid,
 					   int position, int offset);
+#if defined (WINDOWS) || defined (CUBRID_DEBUG)
 extern void cursor_print_list (QUERY_ID query_id, QFILE_LIST_ID * list_id);
+#endif
 extern bool cursor_open (CURSOR_ID * cursor_id, QFILE_LIST_ID * list_id,
 			 bool updatable, bool oid_included);
 extern int cursor_next_tuple (CURSOR_ID * cursor_id);

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -155,8 +155,10 @@ extern void lock_demote_all_update_inst_locks (THREAD_ENTRY * thread_p);
 extern LOCK lock_get_object_lock (const OID * oid, const OID * class_oid,
 				  int tran_index);
 extern bool lock_has_xlock (THREAD_ENTRY * thread_p);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern bool lock_has_lock_transaction (int tran_index);
 extern bool lock_is_waiting_transaction (int tran_index);
+#endif
 extern LK_ENTRY *lock_get_class_lock (const OID * class_oid, int tran_index);
 extern void lock_force_timeout_lock_wait_transactions (void);
 extern bool lock_force_timeout_expired_wait_transactions (void *thrd_entry);
@@ -177,7 +179,9 @@ extern void lock_start_instant_lock_mode (int tran_index);
 extern void lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p,
 					 int tran_index, bool need_unlock);
 extern bool lock_is_instant_lock_mode (int tran_index);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void lock_check_consistency (THREAD_ENTRY * thread_p);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern unsigned int lock_get_number_object_locks (void);
 extern int lock_initialize_composite_lock (THREAD_ENTRY * thread_p,
 					   LK_COMPOSITE_LOCK * comp_lock);

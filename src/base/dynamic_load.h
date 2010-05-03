@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -106,17 +106,21 @@ extern int dl_load_and_resolve (const char **,
 #endif /* _AIX */
 
 #if defined(HPUX) || defined(SOLARIS) || defined(LINUX)
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int dl_load_object_with_estimate (const char **obj_files,
 					 const char **msgp);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern int dl_load_object_module (const char **, const char **);
 #elif (defined(sun) || defined(sparc)) && !defined(SOLARIS)
 extern int dl_load_object_module (const char **, const char **,
 				  const char **);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int dl_load_object_with_estimate (size_t * actual_size,
 					 const char **obj_files,
 					 const char **msgp, const char **libs,
 					 const size_t estimated_size,
 					 enum dl_estimate_mode mode);
+#endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* (defined(sun) || defined(sparc)) && !defined(SOLARIS) */
 
 #endif /* _DYNAMIC_LOAD_H_ */

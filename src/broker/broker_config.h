@@ -28,6 +28,16 @@
 #include "config.h"
 
 #define	APPL_SERVER_CAS		0
+#define	APPL_SERVER_CAS_ORACLE	1
+#define	APPL_SERVER_CAS_MYSQL	2
+
+#define IS_APPL_SERVER_TYPE_CAS(x)	\
+	((x == APPL_SERVER_CAS) || (x == APPL_SERVER_CAS_ORACLE) || (x == APPL_SERVER_CAS_MYSQL))
+#define IS_NOT_APPL_SERVER_TYPE_CAS(x)	!IS_APPL_SERVER_TYPE_CAS(x)
+
+#define APPL_SERVER_CAS_TYPE_NAME			"CAS"
+#define APPL_SERVER_CAS_ORACLE_TYPE_NAME	"CAS_ORACLE"
+#define APPL_SERVER_CAS_MYSQL_TYPE_NAME		"CAS_MYSQL"
 
 #define MAX_BROKER_NUM          100
 
@@ -145,6 +155,7 @@ struct t_broker_info
   char jdbc_cache;
   char jdbc_cache_only_hint;
   char cci_pconnect;
+  char select_auto_commit;
   int jdbc_cache_life_time;
   char ready_to_service;
 };

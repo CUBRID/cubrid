@@ -885,10 +885,12 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att,
 		      pr_free_ext_value (actual);
 		    }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 		  if ((error == NO_ERROR) && (op->is_vid))
 		    {
 		      error = vid_record_update (op, class_, att);
 		    }
+#endif
 		}
 	    }
 

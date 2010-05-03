@@ -599,7 +599,9 @@ enum pt_node_type
   PT_SAVEPOINT = CUBRID_STMT_SAVEPOINT,
   PT_PREPARE_TO_COMMIT = CUBRID_STMT_PREPARE,
   PT_ATTACH = CUBRID_STMT_ATTACH,
+#if defined (ENABLE_UNUSED_FUNCTION)
   PT_USE = CUBRID_STMT_USE,
+#endif
   PT_REMOVE_TRIGGER = CUBRID_STMT_REMOVE_TRIGGER,
   PT_RENAME_TRIGGER = CUBRID_STMT_RENAME_TRIGGER,
 
@@ -644,6 +646,7 @@ enum pt_node_type
   PT_TRIGGER_SPEC_LIST,
   PT_VALUE,
   PT_POINTER,
+  PT_TABLE_OPTION,
   PT_NODE_NUMBER		/* This is the number of node types */
 };
 
@@ -877,7 +880,7 @@ typedef enum
   PT_HINT_QUERY_CACHE = 0x1000,	/* 0001 0000 0000 0000 *//* query_cache */
   PT_HINT_REEXECUTE = 0x2000,	/* 0010 0000 0000 0000 *//* reexecute */
   PT_HINT_JDBC_CACHE = 0x4000,	/* 0100 0000 0000 0000 *//* jdbc_cache */
-  PT_HINT_NO_STATS = 0x8000     /* 1000 0000 0000 0000 *//* no_stats */
+  PT_HINT_NO_STATS = 0x8000	/* 1000 0000 0000 0000 *//* no_stats */
 } PT_HINT_ENUM;
 
 
@@ -966,6 +969,12 @@ typedef enum
 
 typedef enum
 {
+  PT_TABLE_OPTION_REUSE_OID = 9000
+} PT_TABLE_OPTION_TYPE;
+
+
+typedef enum
+{
   PT_AND = 400, PT_OR, PT_NOT,
   PT_BETWEEN, PT_NOT_BETWEEN,
   PT_LIKE, PT_NOT_LIKE,
@@ -979,7 +988,7 @@ typedef enum
   PT_SETEQ, PT_SETNEQ, PT_SUPERSETEQ, PT_SUPERSET, PT_SUBSET, PT_SUBSETEQ,
   PT_PLUS, PT_MINUS,
   PT_TIMES, PT_DIVIDE, PT_UNARY_MINUS, PT_PRIOR, PT_QPRIOR,
-    PT_CONNECT_BY_ROOT,
+  PT_CONNECT_BY_ROOT,
   PT_ASSIGN,			/* as in x=y */
   PT_BETWEEN_AND,
   PT_BETWEEN_GE_LE, PT_BETWEEN_GE_LT, PT_BETWEEN_GT_LE, PT_BETWEEN_GT_LT,
@@ -997,7 +1006,7 @@ typedef enum
   PT_CURRENT_VALUE, PT_NEXT_VALUE,
   PT_INST_NUM, PT_ROWNUM, PT_ORDERBY_NUM,
   PT_CONNECT_BY_ISCYCLE, PT_CONNECT_BY_ISLEAF, PT_LEVEL,
-    PT_SYS_CONNECT_BY_PATH,
+  PT_SYS_CONNECT_BY_PATH,
   PT_EXTRACT,
   PT_LIKE_ESCAPE,
   PT_CAST,
@@ -1124,7 +1133,9 @@ typedef struct pt_trigger_spec_list_info PT_TRIGGER_SPEC_LIST_INFO;
 typedef struct pt_update_info PT_UPDATE_INFO;
 typedef struct pt_update_stats_info PT_UPDATE_STATS_INFO;
 typedef struct pt_get_stats_info PT_GET_STATS_INFO;
+#if defined (ENABLE_UNUSED_FUNCTION)
 typedef struct pt_use_info PT_USE_INFO;
+#endif
 typedef struct pt_monetary_value PT_MONETARY;
 typedef union pt_data_value PT_DATA_VALUE;
 typedef struct pt_value_info PT_VALUE_INFO;
@@ -1135,6 +1146,7 @@ typedef struct pt_pointer_info PT_POINTER_INFO;
 typedef struct pt_stored_proc_info PT_STORED_PROC_INFO;
 typedef struct pt_stored_proc_param_info PT_STORED_PROC_PARAM_INFO;
 typedef union pt_statement_info PT_STATEMENT_INFO;
+typedef struct pt_table_option_info PT_TABLE_OPTION_INFO;
 
 typedef struct pt_agg_info PT_AGG_INFO;
 
@@ -1273,7 +1285,7 @@ struct pt_alter_info
   } alter_clause;
   PT_NODE *constraint_list;	/* constraints from ADD and CHANGE clauses */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
-  PT_HINT_ENUM hint;            /* hint flag */
+  PT_HINT_ENUM hint;		/* hint flag */
 };
 
 /* ALTER USER INFO */
@@ -1330,6 +1342,7 @@ struct pt_create_entity_info
   PT_NODE *supclass_list;	/* PT_NAME (list) */
   PT_NODE *class_attr_def_list;	/* PT_ATTR_DEF (list) */
   PT_NODE *attr_def_list;	/* PT_ATTR_DEF (list) */
+  PT_NODE *table_option_list;	/* PT_TABLE_OPTION (list) */
   PT_NODE *method_def_list;	/* PT_ATTR_DEF (list) */
   PT_NODE *method_file_list;	/* PT_FILE_PATH (list)  */
   PT_NODE *resolution_list;	/* PT_RESOLUTION */
@@ -1339,7 +1352,7 @@ struct pt_create_entity_info
   PT_NODE *constraint_list;	/* PT_CONSTRAINT (list) */
   PT_NODE *partition_info;	/* PT_PARTITION_INFO */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
-  PT_HINT_ENUM hint;            /* hint flag */
+  PT_HINT_ENUM hint;		/* hint flag */
 };
 
 /* CREATE/DROP INDEX INFO */
@@ -1350,7 +1363,7 @@ struct pt_index_info
   PT_NODE *index_name;		/* PT_NAME */
   int reverse;			/* REVERSE */
   char unique;			/* UNIQUE specified? */
-  PT_HINT_ENUM hint;            /* hint flag */
+  PT_HINT_ENUM hint;		/* hint flag */
 };
 
 /* CREATE USER INFO */
@@ -1384,10 +1397,12 @@ struct pt_serial_info
   PT_NODE *increment_val;	/* PT_VALUE */
   PT_NODE *max_val;		/* PT_VALUE */
   PT_NODE *min_val;		/* PT_VALUE */
+  PT_NODE *cached_num_val;	/* PT_VALUE */
   int cyclic;
   int no_max;
   int no_min;
   int no_cyclic;
+  int no_cache;
 };
 
 /* Info for DATA_DEFAULT */
@@ -1510,11 +1525,11 @@ struct pt_spec_info
   PT_MISC_TYPE derived_table_type;	/* PT_IS_SUBQUERY, PT_IS_SET_EXPR, or PT_IS_CSELECT */
   PT_MISC_TYPE flavor;		/* enum 0 or PT_METHOD_ENTITY */
   PT_NODE *on_cond;
-  PT_NODE *using_cond;		/* -- dose not support named columns join */
+  PT_NODE *using_cond;		/* -- does not support named columns join */
   PT_JOIN_TYPE join_type;
   int lock_hint;
   short location;		/* n-th position in FROM (start from 0); init val = -1 */
-  bool natural;			/* -- dose not support natural join */
+  bool natural;			/* -- does not support natural join */
 };
 
 /* Info for an EVALUATE object */
@@ -1738,6 +1753,11 @@ struct pt_name_info
 #define PT_NAME_INFO_CONSTANT  16
 #define PT_NAME_INFO_EXTERNAL  32	/* in case of TEXT type at attr definition or
 					   attr.object at attr description */
+#define PT_NAME_INFO_GENERATED_OID 256	/* set when a PT_NAME node
+					   that maps to an OID is generated
+					   internally for statement processing
+					   and execution */
+
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
 #define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (short) (f)
@@ -1980,7 +2000,7 @@ struct pt_get_stats_info
   PT_NODE *into_var;		/* PT_VALUE */
 };
 
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 struct pt_use_info
 {
   PT_NODE *use_list;
@@ -1989,6 +2009,14 @@ struct pt_use_info
 				 * or PT_DEFAULT = relative to default */
   char as_default;		/* If non zero, change the default, instead
 				 * of the current setting */
+};
+#endif
+
+/* Info for table options */
+struct pt_table_option_info
+{
+  PT_TABLE_OPTION_TYPE option;	/* The table option type */
+  PT_NODE *val;			/* PT_VALUE */
 };
 
 /* Info for VALUE nodes
@@ -2203,12 +2231,15 @@ union pt_statement_info
   PT_STORED_PROC_INFO sp;
   PT_STORED_PROC_PARAM_INFO sp_param;
   PT_SPEC_INFO spec;
+  PT_TABLE_OPTION_INFO table_option;
   PT_TIMEOUT_INFO timeout;
   PT_TRIGGER_ACTION_INFO trigger_action;
   PT_TRIGGER_SPEC_LIST_INFO trigger_spec_list;
   PT_UPDATE_STATS_INFO update_stats;
   PT_UPDATE_INFO update;
+#if defined (ENABLE_UNUSED_FUNCTION)
   PT_USE_INFO use;
+#endif
   PT_VALUE_INFO value;
   PT_POINTER_INFO pointer;
 };
@@ -2246,7 +2277,7 @@ struct parser_node
   PT_NODE *next;		/* forward link for NULL terminated list */
   PT_NODE *or_next;		/* forward link for DNF list */
   void *etc;			/* application specific info hook */
-  UINTPTR spec_ident;		/* entity spec equivilance class */
+  UINTPTR spec_ident;		/* entity spec equivalence class */
   TP_DOMAIN *expected_domain;	/* expected domain for input marker */
   PT_NODE *data_type;		/* for non-primitive types, Sets, objects stec. */
   XASL_ID *xasl_id;		/* XASL_ID for this SQL statement */
@@ -2269,15 +2300,15 @@ struct parser_node
 };
 
 
-/* current max keyword is 16 + nul char + 3 for expansion */
-#define MAX_KEYWORD_SIZE 24
+/* 20 (for the LOCAL_TRANSACTION_ID keyword) + null char + 3 for expansion */
+#define MAX_KEYWORD_SIZE (20 + 1 + 3)
 
 typedef struct keyword_record KEYWORD_RECORD;
 struct keyword_record
 {
   short value;
   char keyword[MAX_KEYWORD_SIZE];
-  short unreserved;		/* keyword can be used as an identifier */
+  short unreserved;		/* keyword can be used as an identifier, 0 means it is reserved and cannot be used as an identifier, nonzero means it can be  */
 };
 
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);

@@ -121,7 +121,7 @@ static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* db_full_name */ NULL, /* host_name */ NULL, /* process_id */ -1,
   /* root_class_oid */ {NULL_PAGEID, NULL_SLOTID, NULL_VOLID},
   /* root_class_hfid */ {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID},
-  /* page_size */ -1, /* disk_compatibility */ 0.0,
+  /* data page_size */ -1, /* log page_size */ -1, /* disk_compatibility */ 0.0,
   /* ha_server_state */ -1
 };
 
@@ -205,6 +205,7 @@ static int
 boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
 {
   tran_cache_tran_settings (tran_index, (float) lock_wait, tran_isolation);
+
   if (boot_Set_client_at_exit)
     {
       return NO_ERROR;
@@ -275,15 +276,15 @@ boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
 int
 boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 			BOOT_DB_PATH_INFO * db_path_info,
-			bool db_overwrite, DKNPAGES npages,
-			const char *file_addmore_vols,
-			PGLENGTH db_desired_pagesize, DKNPAGES log_npages)
+			bool db_overwrite, const char *file_addmore_vols,
+			DKNPAGES npages, PGLENGTH db_desired_pagesize,
+			DKNPAGES log_npages, PGLENGTH db_desired_log_page_size)
 {
-  OID rootclass_oid;		/* Oid of root class              */
-  HFID rootclass_hfid;		/* Heap for classes               */
-  int tran_index;		/* Assigned transaction index     */
+  OID rootclass_oid;		/* Oid of root class */
+  HFID rootclass_hfid;		/* Heap for classes */
+  int tran_index;		/* Assigned transaction index */
   TRAN_ISOLATION tran_isolation;	/* Desired client Isolation level */
-  int tran_lock_waitsecs;	/* Default lock waiting           */
+  int tran_lock_waitsecs;	/* Default lock waiting */
   unsigned int length;
   int error_code = NO_ERROR;
   DB_INFO *db;
@@ -317,6 +318,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
    * if we can't actually print anything
    */
   (void) lang_init ();
+
   /* database name must be specified */
   if (client_credential->db_name == NULL)
     {
@@ -345,7 +347,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   area_init (false);
   locator_initialize_areas ();
 
-  (void) db_set_page_size (db_desired_pagesize);
+  (void) db_set_page_size (db_desired_pagesize, db_desired_log_page_size);
 
   /* If db_path and/or log_path are NULL find the defaults */
 
@@ -485,8 +487,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 
   /* Initialize the disk and the server part */
   tran_index = boot_initialize_server (client_credential, db_path_info,
-				       db_overwrite, db_desired_pagesize,
-				       npages, file_addmore_vols, log_npages,
+				       db_overwrite, file_addmore_vols,
+				       npages, db_desired_pagesize,
+				       log_npages, db_desired_log_page_size,
 				       &rootclass_oid, &rootclass_hfid,
 				       tran_lock_waitsecs, tran_isolation);
   /* free the thing get from au_user_name_dup() */
@@ -670,6 +673,16 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  /* if not found, use secondary host lists */
 	  db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL);
 	}
+
+      if (db->num_hosts > 1
+	  && (BOOT_ADMIN_CLIENT_TYPE (client_credential->client_type)
+	      || BOOT_LOG_REPLICATOR_TYPE (client_credential->client_type)
+	      || BOOT_CSQL_CLIENT_TYPE (client_credential->client_type)))
+	{
+	  error_code = ER_NET_NO_EXPLICIT_SERVER_HOST;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	  goto error;
+	}
 #endif /* CS_MODE */
     }
   else
@@ -679,7 +692,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       size = strlen (client_credential->db_name) + 1;
       hosts[0] = ptr + 1;
       hosts[1] = NULL;
-      *ptr = (char) NULL;	/* screen 'db@host' */
+      *ptr = NULL;	/* screen 'db@host' */
       db = cfg_new_db (client_credential->db_name, NULL, NULL, hosts);
       *ptr = (char) '@';
 #else /* CS_MODE */
@@ -851,12 +864,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 #if defined(CS_MODE)
   /* Reset the pagesize according to server.. */
-  if (db_set_page_size (boot_Server_credential.page_size) !=
-      boot_Server_credential.page_size)
+  if (db_set_page_size (boot_Server_credential.page_size,
+			boot_Server_credential.log_page_size) != NO_ERROR)
     {
       error_code = er_errid ();
       goto error;
     }
+
   /* Reset the disk_level according to server.. */
   if (rel_disk_compatible () != boot_Server_credential.disk_compatibility)
     {
@@ -965,11 +979,9 @@ error:
 
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      er_stack_push ();
       er_log_debug (ARG_FILE_LINE, "boot_shutdown_client: "
 		    "unregister client { tran %d }\n", tm_Tran_index);
       boot_shutdown_client (false);
-      er_stack_pop ();
     }
   else
     {
@@ -2170,6 +2182,10 @@ boot_define_index_key (MOP class_mop)
   const char *index_col_names[2] = { "index_of", NULL };
 
   def = smt_edit_class_mop (class_mop);
+  if (def == NULL)
+    {
+      return er_errid ();
+    }
 
   error_code = smt_add_attribute (def, "index_of", CT_INDEX_NAME, NULL);
   if (error_code != NO_ERROR)
@@ -2405,7 +2421,8 @@ boot_add_data_type (MOP class_mop)
 
       if (names[i] != NULL)
 	{
-	  if ((obj = db_create_internal (class_mop)) == NULL)
+	  obj = db_create_internal (class_mop);
+	  if (obj == NULL)
 	    {
 	      return er_errid ();
 	    }
@@ -2682,8 +2699,8 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code =
-    smt_set_attribute_default (def, "current_val", 0, &default_value);
+  error_code = smt_set_attribute_default (def, "current_val", 0,
+					  &default_value);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -2694,8 +2711,8 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code =
-    smt_set_attribute_default (def, "increment_val", 0, &default_value);
+  error_code = smt_set_attribute_default (def, "increment_val", 0,
+					  &default_value);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -2749,9 +2766,20 @@ boot_define_serial (MOP class_mop)
       return error_code;
     }
 
-  error_code =
-    smt_add_class_method (def, "change_serial_owner",
-			  "au_change_serial_owner_method");
+  error_code = smt_add_class_method (def, "change_serial_owner",
+				     "au_change_serial_owner_method");
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "cached_num", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = smt_set_attribute_default (def, "cached_num", 0,
+					  &default_value);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -2843,8 +2871,8 @@ boot_define_ha_apply_info (MOP class_mop)
       return error_code;
     }
 
-  error_code =
-    smt_add_attribute (def, "copied_log_path", "varchar(4096)", NULL);
+  error_code = smt_add_attribute (def, "copied_log_path", "varchar(4096)",
+				  NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3063,7 +3091,8 @@ boot_define_view_class (void)
     {"owner_name", "varchar(255)"},
     {"class_type", "varchar(6)"},
     {"is_system_class", "varchar(3)"},
-    {"partitioned", "varchar(3)"}
+    {"partitioned", "varchar(3)"},
+    {"is_reuse_oid_class", "varchar(3)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -3094,7 +3123,8 @@ boot_define_view_class (void)
 	   " ELSE 'UNKNOW' END,"
 	   " CASE WHEN MOD(c.is_system_class, 2) = 1 THEN 'YES' ELSE 'NO' END,"
 	   " CASE WHEN c.sub_classes IS NULL THEN 'NO' ELSE NVL((SELECT 'YES'"
-	   " FROM %s p WHERE p.class_of = c and p.pname IS NULL), 'NO') END"
+	   " FROM %s p WHERE p.class_of = c and p.pname IS NULL), 'NO') END,"
+	   " CASE WHEN MOD(c.is_system_class / 8, 2) = 1 THEN 'YES' ELSE 'NO' END"
 	   " FROM %s c"
 	   " WHERE CURRENT_USER = 'DBA' OR"
 	   " {c.owner.name} SUBSETEQ ("
@@ -3766,7 +3796,7 @@ boot_define_view_method_file (void)
     }
 
   sprintf (stmt,
-	   " SELECT f.class_of.class_name, f.path_name, f.from_class_of.class_name"
+	   "SELECT f.class_of.class_name, f.path_name, f.from_class_of.class_name"
 	   " FROM %s f"
 	   " WHERE CURRENT_USER = 'DBA' OR"
 	   " {f.class_of.owner.name} SUBSETEQ ("
@@ -4176,7 +4206,7 @@ boot_define_view_partition (void)
 
   sprintf (stmt,
 	   "SELECT p.class_of.class_name AS class_name, p.pname AS partition_name,"
-	   " p.class_of.class_name || '__p__' || p.pname AS partition_class_name,"
+	   " p.class_of.class_name + '__p__' + p.pname AS partition_class_name,"
 	   " CASE WHEN p.ptype = 0 THEN 'HASH'"
 	   " WHEN p.ptype = 1 THEN 'RANGE' ELSE 'LIST' END AS partition_type,"
 	   " TRIM(SUBSTRING(pi.pexpr FROM 8 FOR (POSITION(' FROM ' IN pi.pexpr)-8)))"
@@ -4424,7 +4454,8 @@ end:
   return error_code;
 }
 
-#if defined(SA_MODE)
+#if defined (SA_MODE)
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * boot_build_catalog_classes :
  *
@@ -4586,7 +4617,6 @@ exit_on_error:
   return error_code;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * boot_rebuild_catalog_classes :
  *

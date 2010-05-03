@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -49,9 +49,9 @@
 #define THREAD_JOIN(id_ptr, ret_val) \
 	ret_val = pthread_join(id_ptr, NULL)
 
-#ifdef LOG_DEBUG
+#if defined(CUBRID_DEBUG)
 #define THREAD_EQUAL(lhs, rhs) pthread_equal(lhs, rhs)
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 
 #define THREAD_ATTR_INIT(attr) pthread_attr_init(&(attr))
 
@@ -167,9 +167,9 @@
 #define THREAD_JOIN(handle, ret_val) \
 	ret_val = WaitForSingleObject(handle, INFINITE)
 
-#ifdef LOG_DEBUG
+#if defined(CUBRID_DEBUG)
 #define THREAD_EQUAL(lhs, rhs) (lhs == rhs ? 1 : 0)
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 
 #define THREAD_ATTR_INIT(dummy1)			0
 #define THREAD_ATTR_SETDETACHSTATE(dummy1, dummy2)	0

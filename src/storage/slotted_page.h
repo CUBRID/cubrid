@@ -35,7 +35,7 @@
 
 #define PEEK          true	/* Peek for a slotted record */
 #define COPY          false	/* Don't peek, but copy a slotted record */
-#define DONT_PEEK     COPY	/* Same than copy */
+#define DONT_PEEK     COPY	/* Same as copy */
 
 #define ANCHORED                  1
 #define ANCHORED_DONT_REUSE_SLOTS 2
@@ -87,6 +87,7 @@ extern int spage_slot_size (void);
 extern int spage_header_size (void);
 extern int spage_get_free_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern PGNSLOTS spage_number_of_records (PAGE_PTR pgptr);
+extern PGNSLOTS spage_number_of_slots (PAGE_PTR pgptr);
 extern void spage_initialize (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 			      INT16 slots_type, unsigned short alignment,
 			      bool safeguard_rvspace);
@@ -146,5 +147,11 @@ extern void spage_collect_statistics (PAGE_PTR pgptr,
 extern int spage_max_record_size (void);
 extern int spage_check_slot_owner (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 				   PGSLOTID slotid);
+extern bool spage_is_valid_anchor_type (const INT16 anchor_type);
+extern const char *spage_anchor_flag_string (const INT16 anchor_type);
+extern const char *spage_alignment_string (unsigned short alignment);
+extern int spage_mark_deleted_slot_as_reusable (THREAD_ENTRY * thread_p,
+						PAGE_PTR page_p,
+						PGSLOTID slot_id);
 
 #endif /* _SLOTTED_PAGE_H_ */

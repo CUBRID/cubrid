@@ -146,16 +146,16 @@ fh_calculate_htsize (int htsize)
  * fh_create - create a new file hash table
  *    return: hash table handle
  *    name(in): Name of hash table
- *    est_size(in): Estimate number of entries
+ *    est_size(in): Estimated number of entries
  *    page_size(in): Number of bytes per cached hash entry page
  *    cached_pages(in): Number of entry pages to cache
  *    hash_filename(in): pathname of the hash file
  *    key_type(in): Type of key
  *    data_size(in): Number of bytes of data per entry
  *    hfun(in): Hash function
- *    cmpfun(): Key comparation function
+ *    cmpfun(): Key comparison function
  * Note:
- *    The estimate number of entries for the hash table is adjusted in order
+ *    The estimated number of entries for the hash table is adjusted in order
  *    to obtain certain favorable circumstances when the table is created.
  *    hfun must return an integer between 0 and table_size - 1. cmpfun must
  *    return true if key1 == key2, otherwise, false.

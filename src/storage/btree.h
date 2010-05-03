@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -67,6 +67,7 @@ typedef enum
 #define BTREE_IS_UNIQUE(btid)  ((btid)->unique & BTREE_CONSTRAINT_UNIQUE)
 #define BTREE_IS_PART_KEY_DESC(btid) ((btid)->part_key_desc == true)
 #define BTREE_IS_LAST_KEY_DESC(btid) ((btid)->last_key_desc == true)
+#define BTREE_IS_NEW_FILE(btid) ((btid)->new_file == true)
 
 /* BTID_INT structure from btree_load.h */
 typedef struct btid_int BTID_INT;
@@ -92,6 +93,7 @@ struct btid_int
   int copy_buf_len;		/* index key copy_buf length info;
 				 * derived from INDX_SCAN_ID.copy_buf_len */
   int rev_level;
+  int new_file;			/* if it is new index */
 };
 
 /* key range structure */
@@ -297,8 +299,11 @@ extern DISK_ISVALID btree_find_key (THREAD_ENTRY * thread_p, BTID * btid,
 				    OID * oid, DB_VALUE * key,
 				    bool * clear_key);
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /* for migration */
 extern TP_DOMAIN *btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid);
+#endif /* ENABLE_UNUSED_FUNCTION */
+
 #if 0				/* TODO: currently not used */
 #if defined(SA_MODE)
 extern int xbtree_get_keytype_revlevel (BTID * btid, DB_TYPE * keytype,
@@ -310,18 +315,21 @@ extern int xbtree_get_keytype_revlevel (BTID * btid, DB_TYPE * keytype,
 extern int btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp,
 				BTID * btid);
 extern int btree_dump_capacity_all (THREAD_ENTRY * thread_p, FILE * fp);
+#if defined (CUBRID_DEBUG)
 extern void btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid,
 			int level);
-
+#endif
 /* Recovery routines */
 extern int btree_rv_util_save_page_records (PAGE_PTR page_ptr,
 					    INT16 first_slotid, int rec_cnt,
 					    INT16 ins_slotid, char *data,
 					    int *length);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void btree_rv_util_dump_leafrec (THREAD_ENTRY * thread_p, FILE * fp,
 					BTID_INT * btid, RECDES * Rec);
 extern void btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp,
 					 BTID_INT * btid, RECDES * Rec);
+#endif
 extern int btree_rv_roothdr_undo_update (THREAD_ENTRY * thread_p,
 					 LOG_RCV * recv);
 extern void btree_rv_roothdr_dump (FILE * fp, int length, void *data);

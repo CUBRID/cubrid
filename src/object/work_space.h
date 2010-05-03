@@ -491,7 +491,9 @@ extern MOP ws_make_temp_mop (void);
 extern void ws_free_temp_mop (MOP op);
 
 /* garbage collection support */
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void ws_gc_mop (MOP mop, void (*gcmarker) (MOP));
+#endif
 extern void ws_gc (void);
 extern void ws_gc_enable (void);
 extern void ws_gc_disable (void);
@@ -533,6 +535,9 @@ extern void ws_reset_classname_cache (void);
 #endif
 
 /* MOP accessor functions */
+extern OID *ws_identifier (MOP mop);
+extern OID *ws_identifier_with_check (MOP mop,
+				      const bool check_non_referable);
 extern OID *ws_oid (MOP mop);
 extern MOP ws_class_mop (MOP mop);
 extern int ws_chn (MOBJ obj);
@@ -553,7 +558,9 @@ extern int ws_class_has_cached_objects (MOP class_mop);
 extern bool ws_has_updated (void);
 
 /* MOP mapping functions */
+#if defined (CUBRID_DEBUG)
 extern int ws_map (MAPFUNC function, void *args);
+#endif
 
 /* Transaction management support */
 extern void ws_reset_authorization_cache (void);
@@ -564,7 +571,10 @@ extern void ws_decache_allxlockmops_but_norealclasses (void);
 
 /* Debugging functions */
 extern void ws_dump (FILE * fpp);
+#if defined (CUBRID_DEBUG)
 extern void ws_dump_mops (void);
+#endif
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern MOP ws_makemop (int volid, int pageid, int slotid);
 extern int ws_count_mops (void);

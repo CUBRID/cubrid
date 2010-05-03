@@ -1639,7 +1639,7 @@ desc_value_fprint (FILE * fp, DB_VALUE * value)
     }
 }
 
-
+#if defined (CUBRID_DEBUG)
 /*
  * desc_value_print - Prints the description of a value to standard output.
  *    return: void
@@ -1650,7 +1650,7 @@ desc_value_print (DB_VALUE * value)
 {
   desc_value_fprint (stdout, value);
 }
-
+#endif
 
 /*
  * lo_migrate_out - This dumps the contents of an internal LO to the specified

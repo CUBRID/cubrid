@@ -35,7 +35,10 @@
 #endif
 
 #include "cas_common.h"
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "dbi.h"
+#endif
+#include "cas_execute.h"
 #include "cas_sql_log2.h"
 #include "broker_filename.h"
 #include "broker_util.h"
@@ -184,22 +187,5 @@ sql_log2_append_file (char *file_name)
     }
   fclose (in_fp);
   fflush (sql_log2_fp);
-#endif
-}
-
-void
-set_optimization_level (int level)
-{
-  DB_QUERY_RESULT *result = NULL;
-  DB_QUERY_ERROR error;
-  char sql_stmt[64];
-
-  sprintf (sql_stmt, "set optimization level = %d", level);
-#ifdef CAS_ORACLE
-#elif defined(CAS_MYSQL)
-#else
-  db_execute (sql_stmt, &result, &error);
-  if (result)
-    db_query_end (result);
 #endif
 }

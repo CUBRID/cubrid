@@ -263,6 +263,13 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
 
   value = proposed_value;
 
+  if (pt_is_reference_to_reusable_oid (value))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
+      return NULL;
+    }
+
   /*
    * Note that we set the "exact" match flag true to disallow "tolerance"
    * matches.  Some types (such as CHAR) may appear to overflow the domain,
@@ -1082,8 +1089,8 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
   int error = NO_ERROR;
   DB_VALUE val;
   DB_DATA_STATUS data_status;
-  int r = 0, found;
   char auto_increment_name[SM_MAX_IDENTIFIER_LENGTH];
+  MOP serial_class_mop = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
   const char *class_name;
 
@@ -1098,17 +1105,23 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 	    {
 	      if (att->auto_increment == NULL)
 		{
+		  if (serial_class_mop == NULL)
+		    {
+		      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+		    }
+
 		  class_name = sm_class_name (att->class_mop);
 
 		  /* get original class's serial object */
 		  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
 						  class_name,
 						  att->header.name);
-		  r = do_get_serial_obj_id (&serial_obj_id,
-					    &found, auto_increment_name);
-		  if (r == 0 && found)
+		  serial_mop = do_get_serial_obj_id (&serial_obj_id,
+						     serial_class_mop,
+						     auto_increment_name);
+		  if (serial_mop != NULL)
 		    {
-		      att->auto_increment = db_object (&serial_obj_id);
+		      att->auto_increment = serial_mop;
 		    }
 		}
 
@@ -1132,14 +1145,14 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 			  goto auto_increment_error;
 			}
 
-		      sprintf (oid_str, "%d %d %d",
+		      sprintf (oid_str, "%d %d %d 0",
 			       att->auto_increment->oid_info.oid.pageid,
 			       att->auto_increment->oid_info.oid.slotid,
 			       att->auto_increment->oid_info.oid.volid);
 		      DB_MAKE_STRING (&oid_str_val, oid_str);
 
 		      DB_MAKE_NULL (&val);
-		      error = qp_get_serial_next_value (&val, &oid_str_val);
+		      error = serial_get_next_value (&val, &oid_str_val);
 		      if (error != NO_ERROR)
 			{
 			  goto auto_increment_error;
@@ -1463,7 +1476,7 @@ obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
       && template_ptr->object != template_ptr->classobj)
     {
       /*
-       * its virtual, we could check for assignment valiidity before calling
+       * it's virtual, we could check for assignment validity before calling
        * the value translator
        */
 
@@ -1641,6 +1654,11 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 	      obt_free_template (value);
 	      ERROR1 (error, ER_OBJ_DOMAIN_CONFLICT, att->header.name);
 	    }
+	  else if (sm_is_reuse_oid_class (value->classobj))
+	    {
+	      obt_free_template (value);
+	      ERROR0 (error, ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED);
+	    }
 	  else
 	    {
 	      assign = obt_make_assignment (template_ptr, att);
@@ -1817,7 +1835,7 @@ create_template_object (OBJ_TEMPLATE * template_ptr)
       obj = obj_alloc (class_, 0);
       if (obj != NULL)
 	{
-          mop = locator_add_instance (obj, template_ptr->classobj);
+	  mop = locator_add_instance (obj, template_ptr->classobj);
 	}
     }
   else

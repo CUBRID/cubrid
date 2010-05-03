@@ -147,7 +147,7 @@ static int process_bind (char *msg, int *num_bind_p, T_BIND_INFO * bind_info);
 static int process_endtran (int con_h, int *req_h);
 static int process_close_req (char *linebuf, int *req_h);
 static void print_result (int cci_res, int req_id, FILE * fp);
-static double diff_time (struct timeval * begin, struct timeval * end);
+static double diff_time (struct timeval *begin, struct timeval *end);
 static void free_node (T_NODE_INFO * node);
 static int make_node_info (T_NODE_INFO * node, char *node_name,
 			   char *info_str);
@@ -1191,7 +1191,7 @@ print_result (int cci_res, int req_id, FILE * fp)
 }
 
 static double
-diff_time (struct timeval * begin, struct timeval * end)
+diff_time (struct timeval *begin, struct timeval *end)
 {
   double sec, usec;
 

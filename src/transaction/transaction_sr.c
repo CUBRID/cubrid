@@ -122,6 +122,7 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
   return state;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * tran_server_unilaterally_abort - Unilaterally abort the current transaction
  *
@@ -164,6 +165,7 @@ tran_server_unilaterally_abort (THREAD_ENTRY * thread_p, int tran_index)
 
   return state;
 }
+#endif
 
 #if defined(SERVER_MODE)
 /*
@@ -187,7 +189,6 @@ tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   state = xtran_server_abort (thread_p);
-
 }
 #endif /* SERVER_MODE */
 
@@ -221,9 +222,9 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
     {
       LSA_COPY (topop_lsa, lsa);
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      error_code =
-	locator_savepoint_transient_class_name_entries (thread_p, tran_index,
-							lsa);
+      error_code = locator_savepoint_transient_class_name_entries (thread_p,
+								   tran_index,
+								   lsa);
       if (error_code != NO_ERROR)
 	{
 	  LSA_SET_NULL (topop_lsa);
@@ -292,20 +293,20 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result,
  *   savept_name(in): Name of the savepoint
  *   savept_lsa(in): Address of save point operation.
  *
- * NOTE: A savepoint is established for the current transaction, so
+ * NOTE: A savepoint is established for the current transaction so
  *              that future transaction actions can be rolled back to this
  *              established savepoint. We call this operation a partial abort
  *              (rollback). That is, all database actions affected by the
  *              transaction after the savepoint are "undone", and all effects
  *              of the transaction preceding the savepoint remain. The
  *              transaction can then continue executing other database
- *              statemant. It is permissible to abort to the same savepoint
+ *              statements. It is permissible to abort to the same savepoint
  *              repeatedly within the same transaction.
  *              If the same savepoint name is used in multiple savepoint
  *              declarations within the same transaction, then only the latest
  *              savepoint with that name is available for aborts and the
  *              others are forgotten.
- *              There is no limits on the number of savepoints that a
+ *              There are no limits on the number of savepoints that a
  *              transaction can have.
  */
 int
@@ -344,7 +345,7 @@ xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name,
 }
 
 /*
- * xtran_server_partial_abort -Abort operations of a transaction upto a savepoint
+ * xtran_server_partial_abort -Abort operations of a transaction up to a savepoint
  *
  * return: state of partial aborted operation (i.e., notify if
  *              there are client actions that need to be undone).
@@ -352,15 +353,15 @@ xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name,
  *   savept_name(in): Name of the savepoint
  *   savept_lsa(in/out): Address of save point operation.
  *
- * Note: All the effects done by the current transaction after the
- *              given savepoint are undone, and all effects of the transaction
- *              preceding the given savepoint remain. After the partial abort,
- *              the transaction can continue its normal execution just like if
- *              the statemants that were undone, were never executed.
+ * Note: All the effects of the current transaction after the
+ *              given savepoint are undone and all the effects of the transaction
+ *              preceding the given savepoint remain. After the partial abort
+ *              the transaction can continue its normal execution as if
+ *              the statements that were undone, were never executed.
  *              The return value may indicate that there are some client
  *              loose_end undo actions to be performed at the client machine.
  *              In this case the transaction manager must obtain and execute
- *              this actions at the client.
+ *              these actions at the client.
  */
 TRAN_STATE
 xtran_server_partial_abort (THREAD_ENTRY * thread_p, const char *savept_name,
@@ -466,11 +467,9 @@ xtran_server_2pc_prepare (THREAD_ENTRY * thread_p)
   /* Make the transient classname entries permanent; If transaction aborted
      after this point, these operations will also be undone, just like
      previous operations of the transaction.  */
-  (void)
-    locator_drop_transient_class_name_entries (thread_p,
-					       LOG_FIND_THREAD_TRAN_INDEX
-					       (thread_p), NULL);
-
+  locator_drop_transient_class_name_entries (thread_p,
+					     LOG_FIND_THREAD_TRAN_INDEX
+					     (thread_p), NULL);
   return log_2pc_prepare (thread_p);
 }
 
@@ -551,12 +550,12 @@ xtran_server_2pc_prepare_global_tran (THREAD_ENTRY * thread_p,
    */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  (void) locator_drop_transient_class_name_entries (thread_p, tran_index,
-						    NULL);
+  locator_drop_transient_class_name_entries (thread_p, tran_index, NULL);
 
   return log_2pc_prepare_global_tran (thread_p, global_tranid);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * xtran_is_blocked - Is transaction suspended ?
  *
@@ -576,6 +575,7 @@ xtran_is_blocked (THREAD_ENTRY * thread_p, int tran_index)
 
   return false;
 }
+#endif
 
 /*
  * xtran_server_has_updated -  Has transaction updated the database ?
@@ -617,7 +617,7 @@ xtran_wait_server_active_trans (THREAD_ENTRY * thread_p)
   p = thread_p->conn_entry;
   if (p == NULL)
     {
-      goto end;
+      return 0;
     }
 
   tran_index = thread_p->tran_index;
@@ -627,8 +627,8 @@ loop:
   prev_thrd_cnt = thread_has_threads (tran_index, client_id);
   if (prev_thrd_cnt > 0)
     {
-      if (!logtb_is_interrupt_tran (thread_p, false, &continue_check,
-				    tran_index))
+      if (!logtb_is_interrupted_tran (thread_p, false, &continue_check,
+				      tran_index))
 	{
 	  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
 	}
@@ -654,15 +654,13 @@ loop:
 
   logtb_set_tran_index_interrupt (thread_p, tran_index, false);
 
-end:
 #endif /* SERVER_MODE */
   return 0;
 }
 
 /*
- * xtran_server_is_active_and_has_updated - Find if transaction is active and has
- *                                     updated the database ?
- *
+ * xtran_server_is_active_and_has_updated - Find if transaction is active and 
+ *					    has updated the database ?
  * return:
  *
  * NOTE: Find if the transaction is active and has dirtied the

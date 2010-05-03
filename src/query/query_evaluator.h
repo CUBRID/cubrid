@@ -366,20 +366,10 @@ typedef DB_LOGICAL (*PR_EVAL_FNC) (THREAD_ENTRY * thread_p, PRED_EXPR *,
 typedef struct scan_pred SCAN_PRED;
 struct scan_pred
 {
-  REGU_VARIABLE_LIST regu_list;	/* regu list for predicates(or filters) */
+  REGU_VARIABLE_LIST regu_list;	/* regu list for predicates (or filters) */
   PRED_EXPR *pred_expr;		/* predicate expressions */
   PR_EVAL_FNC pr_eval_fnc;	/* predicate evaluation function */
 };
-
-/* initialize SCAN_PRED structure */
-#define INIT_SCAN_PRED(scan_pred, l, e, f) \
-  do \
-    { \
-      (scan_pred).regu_list = (l); \
-      (scan_pred).pred_expr = (e); \
-      (scan_pred).pr_eval_fnc = (f); \
-    } \
-  while (0)
 
 /* attributes information of scan */
 typedef struct scan_attrs SCAN_ATTRS;
@@ -390,17 +380,7 @@ struct scan_attrs
   int num_attrs;		/* number of attributes */
 };
 
-/* initialize SCAN_ATTRS structure */
-#define INIT_SCAN_ATTRS(scan_attrs, n, a, c) \
-  do \
-    { \
-      (scan_attrs).num_attrs = (n); \
-      (scan_attrs).attr_ids = (a); \
-      (scan_attrs).attr_cache = (c); \
-    } \
-  while (0)
-
-/* informations that are need for applying filter(predicate) */
+/* informations that are need for applying filter (predicate) */
 typedef struct filter_info FILTER_INFO;
 struct filter_info
 {
@@ -419,39 +399,6 @@ struct filter_info
   ATTR_ID *vstr_ids;		/* attribute id array of variable string */
   int btree_num_attrs;		/* number of attributes of the index key */
 };
-
-/* initialize FILTER_INFO structure as data filter */
-#define INIT_DATA_FILTER_INFO(filter_info, pred, attrs, vl, vd, oid) \
-  do \
-    { \
-      (filter_info).scan_pred = (pred); \
-      (filter_info).scan_attrs = (attrs); \
-      (filter_info).val_list = (vl); \
-      (filter_info).val_descr = (vd); \
-      (filter_info).class_oid = (oid); \
-      (filter_info).btree_num_attrs = 0; \
-      (filter_info).btree_attr_ids = NULL; \
-      (filter_info).num_vstr_ptr = NULL; \
-      (filter_info).vstr_ids = NULL; \
-    } \
-  while (0)
-
-/* initialize FILTER_INFO strucure as key filter */
-#define INIT_KEY_FILTER_INFO(filter_info, pred, attrs, vl, vd, oid, \
-                             num, ids, v_num_ptr, v_ids) \
-  do \
-    { \
-      (filter_info).scan_pred = (pred); \
-      (filter_info).scan_attrs = (attrs); \
-      (filter_info).val_list = (vl); \
-      (filter_info).val_descr = (vd); \
-      (filter_info).class_oid = (oid); \
-      (filter_info).btree_num_attrs = (num); \
-      (filter_info).btree_attr_ids = (ids); \
-      (filter_info).num_vstr_ptr = (v_num_ptr); \
-      (filter_info).vstr_ids = (v_ids); \
-    } \
-  while (0)
 
 /* pseudocolumns offsets in tuple (from end) */
 #define	PCOL_ISCYCLE_TUPLE_OFFSET	1

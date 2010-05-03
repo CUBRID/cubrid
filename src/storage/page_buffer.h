@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -58,6 +58,12 @@
 /* Is vpid NULL ? */
 #define VPID_ISNULL(vpid_ptr) ((vpid_ptr)->pageid == NULL_PAGEID)
 
+#define pgbuf_unfix_and_init(thread_p, pgptr) \
+  do { \
+    pgbuf_unfix ((thread_p), (pgptr)); \
+    (pgptr) = NULL; \
+  } while (0)
+
 /* public page latch mode */
 enum
 {
@@ -76,6 +82,10 @@ typedef enum
   PGBUF_UNCONDITIONAL_LATCH,
   PGBUF_CONDITIONAL_LATCH
 } PGBUF_LATCH_CONDITION;
+
+
+#define PGBUF_VICTIM_FLUSH_MIN_RATIO (0.01f)	/* victimize  1% of page buffer */
+#define PGBUF_VICTIM_FLUSH_MAX_RATIO (0.1f)	/* victimize 10% of page buffer */
 
 extern unsigned int pgbuf_hash_vpid (const void *key_vpid,
 				     unsigned int htsize);
@@ -152,9 +162,10 @@ extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null_debug (THREAD_ENTRY *
 							      int
 							      caller_line);
 
-#define pgbuf_flush_victim_candidate(thread_p) \
-	pgbuf_flush_victim_candidate_debug(thread_p, __FILE__, __LINE__)
+#define pgbuf_flush_victim_candidate(thread_p, flush_ratio) \
+	pgbuf_flush_victim_candidate_debug(thread_p, flush_ratio, __FILE__, __LINE__)
 extern int pgbuf_flush_victim_candidate_debug (THREAD_ENTRY * thread_p,
+					       float flush_ratio,
 					       const char *caller_file,
 					       int caller_line);
 
@@ -172,7 +183,8 @@ extern int pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null (THREAD_ENTRY *
 							thread_p,
 							VOLID volid);
-extern int pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p);
+extern int pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p,
+					 float flush_ratio);
 extern void pgbuf_flush_check_point (THREAD_ENTRY * thread_p,
 				     const LOG_LSA * last_chkpt_lsa,
 				     LOG_LSA * smallest_lsa);
@@ -205,12 +217,8 @@ extern void pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p,
 					PAGE_PTR pgptr);
 extern bool pgbuf_is_lsa_temporary (PAGE_PTR pgptr);
 extern void pgbuf_invalidate_temporary_file (VOLID volid, PAGEID first_pageid,
-					     DKNPAGES npages);
-#if defined(SERVER_MODE)
-extern int pgbuf_lock_save_mutex (PAGE_PTR pgptr);
-extern int pgbuf_unlock_save_mutex (PAGE_PTR pgptr);
-#endif /* SERVER_MODE */
-
+					     DKNPAGES npages,
+					     bool need_invalidate);
 #if defined(CUBRID_DEBUG)
 extern void pgbuf_dump_if_any_fixed (void);
 #endif

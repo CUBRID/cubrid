@@ -53,9 +53,9 @@ extern int numeric_db_value_mul (DB_VALUE * dbv1, DB_VALUE * dbv2,
 extern int numeric_db_value_div (DB_VALUE * dbv1, DB_VALUE * dbv2,
 				 DB_VALUE * answer);
 extern int numeric_db_value_negate (DB_VALUE * answer);
-
 extern void numeric_db_value_abs (DB_C_NUMERIC src_num,
 				  DB_C_NUMERIC dest_num);
+extern int numeric_db_value_increase (DB_VALUE * arg);
 
 /* Comparison routines */
 extern int numeric_db_value_compare (DB_VALUE * dbv1,
@@ -104,4 +104,5 @@ extern char *numeric_db_value_print (DB_VALUE * val);
 /* Testing Routines */
 extern bool numeric_db_value_is_zero (const DB_VALUE * arg);
 
+extern int numeric_db_value_is_positive (const DB_VALUE * arg);
 #endif /* _NUMERIC_OPFUNC_H_ */

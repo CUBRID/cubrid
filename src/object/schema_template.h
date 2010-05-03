@@ -33,7 +33,9 @@
 /* Template creation */
 extern SM_TEMPLATE *smt_def_class (const char *name);
 extern SM_TEMPLATE *smt_edit_class_mop (MOP class_);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern SM_TEMPLATE *smt_edit_class (const char *name);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern int smt_quit (SM_TEMPLATE * template_);
 
 /* Virtual class support */

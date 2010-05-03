@@ -120,6 +120,7 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
     *lineno = *lineno + 1;
   return out_str_len;
 }
+
 #if defined (WINDOWS)
 /*
  * gettimeofday - Windows port of Unix gettimeofday()
@@ -130,7 +131,7 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
 int
 gettimeofday (struct timeval *tp, void *tzp)
 {
-#if 1                           /* _ftime() version */
+#if 1				/* _ftime() version */
   struct _timeb tm;
   _ftime (&tm);
   tp->tv_sec = tm.time;

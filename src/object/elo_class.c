@@ -61,16 +61,18 @@
 static short Elo_volume = 0;
 static int elo_stream_buffer_size = 4096;
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int elo_copy_to_char (char *target, char *source, int c, int length);
 static int elo_read_next_buffer_from_offset (ELO_STREAM * elo_stream,
 					     INT64 offset);
 static int elo_read_next_buffer (ELO_STREAM * elo_stream);
-static void elo_loid_init (LOID * loid);
 static void elo_loid_copy (LOID * dest, LOID * src);
-static char *elo_get_pathname_internal (DB_OBJECT * glo, DB_ELO * elo,
-					char *expanded_pathname, int length);
 static char elo_mode_check (const char *mode);
 static int elo_flush (ELO_STREAM * elo_stream);
+#endif
+static void elo_loid_init (LOID * loid);
+static char *elo_get_pathname_internal (DB_OBJECT * glo, DB_ELO * elo,
+					char *expanded_pathname, int length);
 
 /*
  * LOID FUNCTIONS
@@ -92,6 +94,7 @@ elo_loid_init (LOID * loid)
   loid->vfid.fileid = -1;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * elo_loid_copy() - copy from src LOID to des LOID
  *      return: none
@@ -108,6 +111,7 @@ elo_loid_copy (LOID * dest, LOID * src)
   dest->vfid.volid = src->vfid.volid;
   dest->vfid.fileid = src->vfid.fileid;
 }
+#endif
 
 /*
  * elo_get_pathname_internal() - Returns the current pathname of the FBO from
@@ -650,6 +654,7 @@ elo_new_elo (void)
   return (new_object);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * elo_copy() - Copy an ELO
  *      return: the elo object
@@ -677,6 +682,7 @@ elo_copy (DB_ELO * src)
     }
   return (new_elo);
 }
+#endif
 
 /*
  * elo_create() - Creates a new elo (large object) in the database with an
@@ -881,6 +887,7 @@ elo_set_pathname (DB_ELO * elo, const char *pathname)
   return (elo);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /* ELO STREAMS */
 
 /*
@@ -965,7 +972,6 @@ elo_open (DB_OBJECT * glo, const char *mode)
   return (return_value);
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * elo_close() - closes and deallocates the elo stream
  *      return: Returns the number of bytes written or a negative number
@@ -990,7 +996,6 @@ elo_close (ELO_STREAM * elo_stream)
   db_ws_free ((void *) elo_stream);
   return (return_value);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * elo_flush() -
@@ -1018,7 +1023,6 @@ elo_flush (ELO_STREAM * elo_stream)
   return (bytes_written);
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * elo_seek() - seeks to the requested location in the stream.
  *      return:
@@ -1281,7 +1285,6 @@ elo_setvbuf (ELO_STREAM * elo_stream, char *buf, int buf_size)
 
   return (0);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * elo_copy_to_char() - copies at most length characters from source to target
@@ -1381,3 +1384,4 @@ elo_read_next_buffer (ELO_STREAM * elo_stream)
   return (elo_read_next_buffer_from_offset
 	  (elo_stream, elo_stream->offset + elo_stream->bytes_in_buffer));
 }
+#endif /* ENABLE_UNUSED_FUNCTION */

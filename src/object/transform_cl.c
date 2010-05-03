@@ -834,7 +834,7 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj,
 
       /* if the longjmp status was anything other than ER_TF_BUFFER_OVERFLOW,
          it represents an error condition and er_set will have been called */
-    case (int) ER_TF_BUFFER_OVERFLOW:
+    case ER_TF_BUFFER_OVERFLOW:
       status = TF_OUT_OF_SPACE;
       record->length = 0 - object_size (class_, obj);
       has_index = false;
@@ -2697,7 +2697,7 @@ disk_to_query_spec (OR_BUF * buf)
 }
 
 /*
- * attribute_to_disk - Write the disk representatino of an attribute.
+ * attribute_to_disk - Write the disk representation of an attribute.
  *    return: on overflow, or_overflow will call longjmp and                        jump to the outer caller
  *    buf(in/out): translation buffer
  *    att(in): attribute
@@ -3764,8 +3764,8 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   DB_OBJLIST *triggers;
   DB_VALUE value;
   int rc = NO_ERROR;
-  int r = 0, found;
   char auto_increment_name[SM_MAX_IDENTIFIER_LENGTH];
+  MOP serial_class_mop = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
 
   class_ = NULL;
@@ -3942,8 +3942,8 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	  class_->partition_of = NULL;
 	  if (class_->properties)
 	    {
-	      if (classobj_get_prop
-		  (class_->properties, SM_PROPERTY_PARTITION, &value) > 0)
+	      if (classobj_get_prop (class_->properties,
+				     SM_PROPERTY_PARTITION, &value) > 0)
 		{
 		  class_->partition_of = db_get_object (&value);
 		  classobj_drop_prop (class_->properties,
@@ -3962,14 +3962,20 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 	      att->auto_increment = NULL;
 	      if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
 		{
+		  if (serial_class_mop == NULL)
+		    {
+		      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+		    }
+
 		  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
 						  class_->header.name,
 						  att->header.name);
-		  r = do_get_serial_obj_id (&serial_obj_id, &found,
-					    auto_increment_name);
-		  if (r == 0 && found)
+		  serial_mop = do_get_serial_obj_id (&serial_obj_id,
+						     serial_class_mop,
+						     auto_increment_name);
+		  if (serial_mop != NULL)
 		    {
-		      att->auto_increment = db_object (&serial_obj_id);
+		      att->auto_increment = serial_mop;
 		    }
 		}
 	    }
@@ -4309,7 +4315,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
        * it represents an error condition and er_set will have been called
        */
 
-    case (int) ER_TF_BUFFER_OVERFLOW:
+    case ER_TF_BUFFER_OVERFLOW:
       status = TF_OUT_OF_SPACE;
       if (class_ == (SM_CLASS *) & sm_Root_class)
 	{
@@ -4471,7 +4477,7 @@ tf_pack_set (DB_SET * set, char *buffer, int buffer_size, int *actual_bytes)
        * the desired size as a negative number
        */
 
-    case (int) ER_TF_BUFFER_OVERFLOW:
+    case ER_TF_BUFFER_OVERFLOW:
       error = ER_TF_BUFFER_OVERFLOW;
       if (actual_bytes != NULL)
 	{

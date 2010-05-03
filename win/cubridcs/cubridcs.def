@@ -30,6 +30,7 @@ EXPORTS
     css_windows_startup
     css_get_peer_name
     css_get_sock_name
+    cub_vsnprintf
     db_2pc_attach_transaction
     db_2pc_prepare_transaction
     db_2pc_prepared_transactions

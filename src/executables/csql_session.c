@@ -32,6 +32,7 @@
 #include "csql.h"
 #include "memory_alloc.h"
 #include "util_func.h"
+#include "network_interface_cl.h"
 
 /* for short usage of `csql_append_more_line()' and error check */
 #define	APPEND_MORE_LINE(indent, line)	\
@@ -77,6 +78,9 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"commit", S_CMD_COMMIT},
   {"rollback", S_CMD_ROLLBACK},
   {"autocommit", S_CMD_AUTOCOMMIT},
+  {"checkpoint", S_CMD_CHECKPOINT},
+  {"killtran", S_CMD_KILLTRAN},
+  {"restart", S_CMD_RESTART},
   /* Environment stuffs */
   {"shell_cmd", S_CMD_SHELL_CMD},
   {"editor_cmd", S_CMD_EDIT_CMD},
@@ -819,5 +823,108 @@ error:
   if (dup)
     {
       free (dup);
+    }
+}
+
+/*
+ * csql_killtran() - kill a transaction
+ *   return: none
+ *   argument: tran index or NULL (dump transaction list)
+ */
+void
+csql_killtran (const char *argument)
+{
+  TRANS_INFO *info = NULL;
+  int tran_index = -1, i;
+  FILE *p_stream;		/* pipe stream to pager */
+#if !defined(WINDOWS)
+  void (*csql_pipe_save) (int sig);
+#endif /* ! WINDOWS */
+
+  if (argument)
+    {
+      tran_index = atoi (argument);
+    }
+
+  info = logtb_get_trans_info ();
+  if (info == NULL)
+    {
+      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+      goto error;
+    }
+
+
+  /* dump transaction */
+  if (tran_index <= 0)
+    {
+#if !defined(WINDOWS)
+      csql_pipe_save = signal (SIGPIPE, &csql_pipe_handler);
+#endif /* ! WINDOWS */
+      if (setjmp (csql_Jmp_buf) == 0)
+	{
+	  p_stream = csql_popen (csql_Pager_cmd, csql_Output_fp);
+
+	  fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_TITLE_TEXT));
+	  for (i = 0; i < info->num_trans; i++)
+	    {
+	      fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_FORMAT),
+		       info->tran[i].tran_index,
+		       TRAN_STATE_CHAR (info->tran[i].state),
+		       info->tran[i].db_user, info->tran[i].host_name,
+		       info->tran[i].process_id, info->tran[i].program_name);
+	    }
+
+	  csql_pclose (p_stream, csql_Output_fp);
+	}
+#if !defined(WINDOWS)
+      signal (SIGPIPE, csql_pipe_save);
+#endif /* ! WINDOWS */
+    }
+  /* kill transaction */
+  else
+    {
+      for (i = 0; i < info->num_trans; i++)
+	{
+	  if (info->tran[i].tran_index == tran_index)
+	    {
+	      fprintf (csql_Output_fp,
+		       csql_get_message (CSQL_KILLTRAN_TITLE_TEXT));
+	      fprintf (csql_Output_fp,
+		       csql_get_message (CSQL_KILLTRAN_FORMAT),
+		       info->tran[i].tran_index,
+		       TRAN_STATE_CHAR (info->tran[i].state),
+		       info->tran[i].db_user, info->tran[i].host_name,
+		       info->tran[i].process_id, info->tran[i].program_name);
+
+	      if (thread_kill_tran_index (info->tran[i].tran_index,
+					  info->tran[i].db_user,
+					  info->tran[i].host_name,
+					  info->tran[i].process_id) ==
+		  NO_ERROR)
+		{
+		  csql_display_msg (csql_get_message
+				    (CSQL_STAT_KILLTRAN_TEXT));
+		}
+	      else
+		{
+		  csql_display_msg (csql_get_message
+				    (CSQL_STAT_KILLTRAN_FAIL_TEXT));
+		}
+	      break;
+	    }
+	}
+    }
+
+  if (info)
+    {
+      logtb_free_trans_info (info);
+    }
+  return;
+
+error:
+  nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+  if (info)
+    {
+      logtb_free_trans_info (info);
     }
 }

@@ -282,11 +282,14 @@ static int alter_trigger_hierarchy (DB_OBJECT * classop,
 				    DB_OBJECT * trigger, int drop_it);
 static int find_attribute_op (MOP op, const char *name,
 			      SM_CLASS ** classp, SM_ATTRIBUTE ** attp);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int lock_query_subclasses (DB_OBJLIST ** subclasses, MOP op,
 				  DB_OBJLIST * exceptions, int update);
 static void sm_gc_domain (TP_DOMAIN * domain, void (*gcmarker) (MOP));
 static void sm_gc_attribute (SM_ATTRIBUTE * att, void (*gcmarker) (MOP));
 static void sm_gc_method (SM_METHOD * meth, void (*gcmarker) (MOP));
+#endif
+
 static int fetch_descriptor_class (MOP op, SM_DESCRIPTOR * desc,
 				   int for_update, SM_CLASS ** class_);
 
@@ -488,24 +491,26 @@ static const char *sm_locate_method_file (SM_CLASS * class_,
 
 static void sm_method_final ();
 
-static DB_OBJLIST *sm_get_all_classes (int external_list);
-static DB_OBJLIST *sm_get_base_classes (int external_list);
 static DB_OBJLIST *sm_get_all_objects (DB_OBJECT * op);
 static TP_DOMAIN *sm_get_set_domain (MOP classop, int att_id);
 
-static DB_OBJLIST *sm_query_lock (MOP classop, DB_OBJLIST * exceptions,
-				  int only, int update);
 
 static void sm_reset_descriptors (MOP class_);
+#if defined(CUBRID_DEBUG)
 static void sm_print (MOP classmop);
+#endif
 
 #if defined(ENABLE_UNUSED_FUNCTION)
+static DB_OBJLIST *sm_query_lock (MOP classop, DB_OBJLIST * exceptions,
+				  int only, int update);
+static DB_OBJLIST *sm_get_all_classes (int external_list);
+static DB_OBJLIST *sm_get_base_classes (int external_list);
 static const char *sm_get_class_name_internal (MOP op, bool return_null);
 static const char *sm_get_class_name (MOP op);
 static const char *sm_get_class_name_not_null (MOP op);
 static int sm_update_trigger_cache (DB_OBJECT * class_,
-                                    const char *attribute,
-                                    int class_attribute, void *cache);
+				    const char *attribute,
+				    int class_attribute, void *cache);
 static const char *sc_current_schema_name (void);
 static int sm_object_disk_size (MOP op);
 static int sm_has_constraint (MOBJ classobj, SM_ATTRIBUTE_FLAG constraint);
@@ -2250,7 +2255,7 @@ sm_transaction_boundary (void)
 /* UTILITY FUNCTIONS */
 /*
  * sm_check_name() - This is made void for ansi compatibility.
- *      It prevoudly insured that identifiers which were accepted could be
+ *      It previously insured that identifiers which were accepted could be
  *      parsed in the language interface.
  *
  *  	ANSI allows any character in an identifier. It also allows reserved
@@ -2492,7 +2497,7 @@ memory_error:
   return NULL;
 }
 
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * sm_get_all_classes() -  Builds a list of all classes in the system.
  *    Be careful to filter out the root class since it isn't really a class
@@ -2506,7 +2511,7 @@ memory_error:
  *   external_list(in): non-zero if external list links are to be used
  */
 
-DB_OBJLIST *
+static DB_OBJLIST *
 sm_get_all_classes (int external_list)
 {
   /* Lock all the classes in shared mode */
@@ -2524,7 +2529,7 @@ sm_get_base_classes (int external_list)
   /* Lock all the classes in shared mode */
   return sm_fetch_all_base_classes (external_list, DB_FETCH_QUERY_READ);
 }
-
+#endif
 
 /* OBJECT LOCATION */
 /*
@@ -2611,7 +2616,7 @@ memory_error:
   return NULL;
 }
 
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * sm_get_all_objects() - Returns a list of all the instances that
  *    have been created for a class.
@@ -2629,6 +2634,7 @@ sm_get_all_objects (DB_OBJECT * op)
 {
   return sm_fetch_all_objects (op, DB_FETCH_QUERY_READ);
 }
+#endif
 
 /* MISC SCHEMA OPERATIONS */
 /*
@@ -2654,12 +2660,14 @@ sm_rename_class (MOP op, const char *new_name)
   /* make sure this gets into the server table with no capitalization */
   sm_downcase_name (new_name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
   if (sm_has_text_domain (db_get_attributes (op), 1))
     {
       /* prevent to rename class */
       ERROR1 (error, ER_REGU_NOT_IMPLEMENTED, rel_major_release_string ());
       return error;
     }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
   error = do_is_partitioned_classobj (&is_partition, op, NULL, NULL);
   if (is_partition == 1)
@@ -2815,6 +2823,7 @@ sm_mark_system_class (MOP classop, int on_or_off)
   return (error);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #ifdef SA_MODE
 void
 sm_mark_system_class_for_catalog (void)
@@ -2848,6 +2857,7 @@ sm_mark_system_class_for_catalog (void)
     }
 }
 #endif /* SA_MODE */
+#endif
 
 /*
  * sm_set_class_flag() - This turns on or off the given flag.
@@ -2887,18 +2897,19 @@ sm_set_class_flag (MOP classop, SM_CLASS_FLAG flag, int on_or_off)
 int
 sm_is_system_class (MOP op)
 {
-  SM_CLASS *class_;
-  int is_system = false;
+  return sm_get_class_flag (op, SM_CLASSFLAG_SYSTEM);
+}
 
-  if (op != NULL && locator_is_class (op, DB_FETCH_READ))
-    {
-      if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
-	{
-	  if (class_->flags & SM_CLASSFLAG_SYSTEM)
-	    is_system = true;
-	}
-    }
-  return (is_system);
+/*
+ * sm_is_reuse_oid_class() - Tests the reuse OID class flag of a class object.
+ *   return: non-zero if class is an OID reusable class
+ *   op(in): class object
+ */
+
+bool
+sm_is_reuse_oid_class (MOP op)
+{
+  return sm_get_class_flag (op, SM_CLASSFLAG_REUSE_OID) ? true : false;
 }
 
 /*
@@ -3229,7 +3240,7 @@ sm_check_class_domain (TP_DOMAIN * domain, MOP class_)
   return (ok);
 }
 
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * sm_get_set_domain() - used only by the set support to get the domain list for
  *    the attribute that owns a set.  Need to be careful that the cached
@@ -3271,7 +3282,7 @@ sm_get_set_domain (MOP classop, int att_id)
     }
   return (domain);
 }
-
+#endif
 
 /*
  * annotate_method_files() - This is a kludge to work around the fact that
@@ -4306,6 +4317,7 @@ sm_object_disk_size (MOP op)
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
+#if defined(CUBRID_DEBUG)
 /*
  * sm_dump() - Debug function to dump internal information about class objects.
  *   return: none
@@ -4321,6 +4333,7 @@ sm_print (MOP classmop)
       NO_ERROR)
     classobj_print (class_);
 }
+#endif
 
 /* LOCATOR SUPPORT FUNCTIONS */
 /*
@@ -4363,7 +4376,7 @@ sm_heap (MOBJ clobj)
 
   heap = &header->heap;
 
-  return (heap);
+  return heap;
 }
 
 /*
@@ -4384,9 +4397,12 @@ sm_get_heap (MOP classmop)
     {
       if (au_fetch_class (classmop, &class_, AU_FETCH_READ, AU_SELECT) ==
 	  NO_ERROR)
-	heap = &class_->header.heap;
+	{
+	  heap = &class_->header.heap;
+	}
     }
-  return (heap);
+
+  return heap;
 }
 
 /*
@@ -4402,7 +4418,7 @@ sm_get_heap (MOP classmop)
  *    tf_ interface.
  *    This will return an error code if the class could not be fetched for
  *    some reason.  Authorization is NOT checked here.
- *    All of the cosntraint information is also contained on the class
+ *    All of the constraint information is also contained on the class
  *    property list as well as the class constraint cache.  The class
  *    constraint cache is probably easier and faster to search than
  *    scanning over each attribute.  Something that we might want to change
@@ -4994,6 +5010,7 @@ sm_get_class_repid (MOP classop)
   return (id);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * lock_query_subclasses()
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -5069,7 +5086,7 @@ lock_query_subclasses (DB_OBJLIST ** subclasses, MOP op,
  *   update(in): set if classes are to be locked for update
  */
 
-DB_OBJLIST *
+static DB_OBJLIST *
 sm_query_lock (MOP classop, DB_OBJLIST * exceptions, int only, int update)
 {
   int error;
@@ -5125,6 +5142,7 @@ sm_query_lock (MOP classop, DB_OBJLIST * exceptions, int only, int update)
 
   return (classes);
 }
+#endif
 
 /*
  * sm_flush_objects() - Flush all the instances of a particular class
@@ -5330,6 +5348,7 @@ sm_issystem (SM_CLASS * class_)
   return (class_->flags & SM_CLASSFLAG_SYSTEM);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * sm_gc_domain()
  * sm_gc_attribute()
@@ -5507,6 +5526,7 @@ sm_gc_object (MOP mop, void (*gcmarker) (MOP))
 	}
     }
 }
+#endif
 
 /*
  * sm_schema_version()
@@ -5950,6 +5970,7 @@ sm_get_descriptor_component (MOP op, SM_DESCRIPTOR * desc,
   return error;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 /*
  * sm_has_text_domain() - Check if it is a TEXT typed attribute
  *   return: 1 if it has TEXT or 0
@@ -5959,7 +5980,6 @@ sm_get_descriptor_component (MOP op, SM_DESCRIPTOR * desc,
 int
 sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all)
 {
-#if 0				/* to disable TEXT */
   DB_ATTRIBUTE *attr;
   DB_OBJLIST *supers;
   DB_OBJECT *domain;
@@ -5983,9 +6003,9 @@ sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all)
 	break;
       attr = db_attribute_next (attr);
     }
-#endif /* 0 */
   return false;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 /* NAME SEARCHERS */
@@ -6578,7 +6598,7 @@ make_component_from_candidate (MOP classop, SM_CANDIDATE * cand)
  *    Each candidate is tagged with an order counter so that the definition
  *    order can be preserved in the resulting class.  Although attributes
  *    and methods are included on the same candidates list, they are ordered
- *    seperately.
+ *    separately.
  *   return: candidates list
  *   def(in): original template
  *   flag(in): flattened template (in progress)
@@ -9374,7 +9394,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_,
 					     con->shared_cons_name);
       con->index = shared_con->index;
 
-      if (con->fk_info->cache_attr_id > 0
+      if (con->fk_info->cache_attr_id >= 0
 	  && build_fk_obj_cache (classop, class_, con->attributes,
 				 con->asc_desc,
 				 &(con->fk_info->ref_class_oid),
@@ -9850,7 +9870,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	}
     }
 
-  /* Filter out any constraints that don't have associated attriubtes,
+  /* Filter out any constraints that don't have associated attributes,
    * this is normally only the case for old constraints whose attributes
    * have been deleted.
    */
@@ -10785,7 +10805,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
  *    template, there still may be some outstanding errors detected
  *    during actual flattening that will cause application of the template
  *    to fail.
- *    Locking affected superclasses and subclasses has also been defered
+ *    Locking affected superclasses and subclasses has also been deferred
  *    till now so if locks cannot be obtained, the template cannot be
  *    applied.
  *    If the returned error status is zero, the template application
@@ -10820,8 +10840,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
  */
 
 static int
-update_class (SM_TEMPLATE * template_, MOP * classmop,
-	      int auto_res)
+update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -11358,7 +11377,7 @@ sm_delete_class_mop (MOP op)
 				}
 			      else
 				{
-				  /* an error occured - we need to abort */
+				  /* an error occurred - we need to abort */
 				  error = er_errid ();
 				  if (error !=
 				      ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED
@@ -11558,6 +11577,7 @@ sm_add_index (MOP classop, const char **attnames,
 	      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, attnames[i]);
 	      goto general_error;
 	    }
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 	  if (sm_has_text_domain (attrs[i], 0))
 	    {
 	      if (strstr (constraint_name, TEXT_CONSTRAINT_PREFIX))
@@ -11568,6 +11588,7 @@ sm_add_index (MOP classop, const char **attnames,
 		  goto general_error;
 		}
 	    }
+#endif /* ENABLE_UNUSED_FUNCTION */
 	}
       attrs[n_attrs] = NULL;
 
@@ -11920,7 +11941,7 @@ sm_get_index (MOP classop, const char *attname, BTID * index)
 /*
  * sm_default_constraint_name() - Constructs a constraint name based upon
  *    the class and attribute names and names's asc/desc info.
- *    Returns the constraint name or NULL is an error occured.  The string
+ *    Returns the constraint name or NULL is an error occurred.  The string
  *    should be deallocated with free_and_init() when no longer needed.
  *    The class name is normally obtained from the Class Object.  This is
  *    not always possible, though (for instance at class creation time,

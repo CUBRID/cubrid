@@ -44,11 +44,6 @@
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 
-#if !defined(SERVER_MODE)
-#define pgbuf_lock_save_mutex(a)
-#define pgbuf_unlock_save_mutex(a)
-#endif /* !SERVER_MODE */
-
 #define SPAGE_SEARCH_NEXT       1
 #define SPAGE_SEARCH_PREV       -1
 
@@ -171,8 +166,6 @@ static SCAN_CODE spage_search_record (PAGE_PTR page_p,
 				      int is_peeking, int direction);
 
 static const char *spage_record_type_string (INT16 record_type);
-static const char *spage_anchor_flag_string (INT16 anchor_type);
-static const char *spage_alignment_string (unsigned short alignment);
 
 static void spage_dump_header (FILE * fp, const SPAGE_HEADER * sphdr);
 static void spage_dump_slots (FILE * fp, const SPAGE_SLOT * sptr,
@@ -199,6 +192,21 @@ static int spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 static void spage_add_contiguous_free_space (SPAGE_HEADER * sphdr, int space);
 static void spage_reduce_contiguous_free_space (SPAGE_HEADER * sphdr,
 						int space);
+
+/*
+ * spage_is_valid_anchor_type ()
+ *   return: whether the given number represents a valid anchor type constant
+ *           for a slotted page
+ *   anchor_type(in): the anchor type constant
+ */
+bool
+spage_is_valid_anchor_type (const INT16 anchor_type)
+{
+  return ((anchor_type == ANCHORED) ||
+	  (anchor_type == ANCHORED_DONT_REUSE_SLOTS) ||
+	  (anchor_type == UNANCHORED_ANY_SEQUENCE) ||
+	  (anchor_type == UNANCHORED_KEEP_SEQUENCE));
+}
 
 /*
  * spage_free_saved_spaces () - Release the savings of transaction
@@ -750,9 +758,7 @@ spage_finalize (THREAD_ENTRY * thread_p)
 
   if (csect_enter (thread_p, CSECT_SPAGE_SAVESPACE, INF_WAIT) != NO_ERROR)
     {
-      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_GENERIC_ERROR, 0);
-      /* TODO: missing to return ?? */
+      return;
     }
 
   if (spage_Mht_saving != NULL)
@@ -806,7 +812,21 @@ PGNSLOTS
 spage_number_of_records (PAGE_PTR page_p)
 {
   assert (page_p != NULL);
+
   return ((SPAGE_HEADER *) page_p)->num_records;
+}
+
+/*
+ * spage_number_of_slots () - Return the total number of slots in the slotted page
+ *   return: Number of slots (PGNSLOTS)
+ *   pgptr(in): Pointer to slotted page
+ */
+PGNSLOTS
+spage_number_of_slots (PAGE_PTR page_p)
+{
+  assert (page_p != NULL);
+
+  return ((SPAGE_HEADER *) page_p)->num_slots;
 }
 
 /*
@@ -952,9 +972,7 @@ spage_initialize (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 slot_type,
   SPAGE_HEADER *page_header_p;
 
   assert (page_p != NULL);
-  assert (slot_type == ANCHORED || slot_type == ANCHORED_DONT_REUSE_SLOTS ||
-	  slot_type == UNANCHORED_ANY_SEQUENCE ||
-	  slot_type == UNANCHORED_KEEP_SEQUENCE);
+  assert (spage_is_valid_anchor_type (slot_type));
   assert (alignment == CHAR_ALIGNMENT || alignment == SHORT_ALIGNMENT ||
 	  alignment == INT_ALIGNMENT || alignment == LONG_ALIGNMENT ||
 	  alignment == FLOAT_ALIGNMENT || alignment == DOUBLE_ALIGNMENT);
@@ -982,7 +1000,7 @@ spage_initialize (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 slot_type,
 }
 
 /*
- * sp_offcmp () - Compare the location (offset) of slots
+ * spage_compare_slot_offset () - Compare the location (offset) of slots
  *   return: s1 - s2
  *   s1(in): slot 1
  *   s2(in): slot 2
@@ -1002,7 +1020,7 @@ spage_compare_slot_offset (const void *arg1, const void *arg2)
 }
 
 /*
- * sp_compact () -  Compact an slotted page
+ * spage_compact () -  Compact an slotted page
  *   return:
  *   pgptr(in): Pointer to slotted page
  *
@@ -1116,13 +1134,13 @@ static int
 spage_check_space (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 		   SPAGE_HEADER * page_header_p, int space)
 {
-  if (spage_is_not_enough_total_space
-      (thread_p, page_p, page_header_p, space))
+  if (spage_is_not_enough_total_space (thread_p, page_p, page_header_p,
+				       space) == true)
     {
       return SP_DOESNT_FIT;
     }
-  else
-    if (spage_is_not_enough_contiguous_space (page_p, page_header_p, space))
+  else if (spage_is_not_enough_contiguous_space (page_p, page_header_p,
+						 space) == true)
     {
       return SP_ERROR;
     }
@@ -1181,8 +1199,8 @@ spage_find_empty_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 
   /* Quickly check for available space. We may need to check again if a slot
      is created (instead of reused) */
-  if (spage_is_not_enough_total_space
-      (thread_p, page_p, page_header_p, space))
+  if (spage_is_not_enough_total_space (thread_p, page_p, page_header_p,
+				       space) == true)
     {
       return SP_DOESNT_FIT;
     }
@@ -1211,7 +1229,8 @@ spage_find_empty_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
     {
       /* We already know that there is total space available since the slot is
          reused and the space was checked above */
-      if (spage_is_not_enough_contiguous_space (page_p, page_header_p, space))
+      if (spage_is_not_enough_contiguous_space (page_p, page_header_p,
+						space) == true)
 	{
 	  return SP_ERROR;
 	}
@@ -1805,10 +1824,7 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
 
   page_header_p = (SPAGE_HEADER *) page_p;
 
-  assert (page_header_p->anchor_type == ANCHORED
-	  || page_header_p->anchor_type == ANCHORED_DONT_REUSE_SLOTS
-	  || page_header_p->anchor_type == UNANCHORED_ANY_SEQUENCE
-	  || page_header_p->anchor_type == UNANCHORED_KEEP_SEQUENCE);
+  assert (spage_is_valid_anchor_type (page_header_p->anchor_type));
 
   slot_p = spage_find_slot (page_p, page_header_p, slot_id, true);
   if (slot_p == NULL)
@@ -1989,8 +2005,8 @@ spage_check_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   space = record_descriptor_p->length + new_waste - slot_p->record_length -
     old_waste;
 
-  if (spage_is_not_enough_total_space
-      (thread_p, page_p, page_header_p, space))
+  if (spage_is_not_enough_total_space (thread_p, page_p, page_header_p,
+				       space) == true)
     {
       return SP_DOESNT_FIT;
     }
@@ -2102,8 +2118,8 @@ spage_update_record_after_compact (PAGE_PTR page_p,
   /* Adjust the header */
   page_header_p->total_free -= space;
   page_header_p->cont_free -= (record_descriptor_p->length + new_waste);
-  page_header_p->offset_to_free_area +=
-    (record_descriptor_p->length + new_waste);
+  page_header_p->offset_to_free_area += (record_descriptor_p->length
+					 + new_waste);
 
   return SP_SUCCESS;
 }
@@ -2340,9 +2356,9 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
     }
 
 
-  if (spage_find_empty_slot
-      (thread_p, page_p, 0, slot_p->record_type, &new_slot_p, &new_waste,
-       out_new_slot_id_p) != SP_SUCCESS)
+  if (spage_find_empty_slot (thread_p, page_p, 0, slot_p->record_type,
+			     &new_slot_p, &new_waste,
+			     out_new_slot_id_p) != SP_SUCCESS)
     {
       return SP_ERROR;
     }
@@ -2383,7 +2399,7 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
       space = remain_waste + new_waste - old_waste;
       if (space > 0
 	  && spage_is_not_enough_total_space (thread_p, page_p, page_header_p,
-					      space))
+					      space) == true)
 	{
 	  (void) spage_delete_for_recovery (thread_p, page_p,
 					    *out_new_slot_id_p);
@@ -2681,7 +2697,7 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id,
   space = record_descriptor_p->length + new_waste - old_waste;
   if (space > 0
       && spage_is_not_enough_total_space (thread_p, page_p, page_header_p,
-					  space))
+					  space) == true)
     {
       return SP_DOESNT_FIT;
     }
@@ -3327,6 +3343,84 @@ spage_get_record_type (PAGE_PTR page_p, PGSLOTID slot_id)
 }
 
 /*
+ * spage_mark_deleted_slot_as_reusable () - Marks the slot of a previously
+ *                                          deleted record as reusable
+ *   return: SP_ERROR or SP_SUCCESS
+ *   pgptr(in): Pointer to slotted page
+ *   slotid(in): Slot identifier
+ */
+int
+spage_mark_deleted_slot_as_reusable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
+				     PGSLOTID slot_id)
+{
+  SPAGE_HEADER *page_header_p = NULL;
+  SPAGE_SLOT *slot_p = NULL;
+  SPAGE_SLOT *first_slot_p = NULL;
+  int i;
+
+  assert (page_p != NULL);
+
+  page_header_p = (SPAGE_HEADER *) page_p;
+
+  if (0 > slot_id || slot_id >= page_header_p->num_slots)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_UNKNOWN_SLOTID, 3,
+	      slot_id, pgbuf_get_page_id (page_p),
+	      pgbuf_get_volume_label (page_p));
+      return SP_ERROR;
+    }
+
+  slot_p = spage_find_slot (page_p, page_header_p, slot_id, false);
+
+  if (slot_p == NULL || slot_p->offset_to_record != NULL_OFFSET
+      || (slot_p->record_type != REC_MARKDELETED &&
+	  slot_p->record_type != REC_DELETED_WILL_REUSE))
+    {
+      /*
+       * If the function is called in the scenarios it was designed for, this
+       * should not happen. The slot to be set as reusable should always
+       * exist and should not point to a valid record.
+       */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_BAD_INSERTION_SLOT, 3,
+	      slot_id, pgbuf_get_page_id (page_p),
+	      pgbuf_get_volume_label (page_p));
+      return SP_ERROR;
+    }
+
+  slot_p->record_type = REC_DELETED_WILL_REUSE;
+
+  if (slot_id == page_header_p->num_slots - 1)
+    {
+      /* if this is the last slot, try to compact/reclaim the page */
+      first_slot_p = spage_find_slot (page_p, page_header_p, 0, false);
+
+      /* probe the slots to reverse order to fully exploit the normal behavior 
+       * of delete operation which normally deletes the tuples from the first 
+       * to the last, especially on top of a sequential scan.
+       */
+      for (i = page_header_p->num_slots - 1; i > 0; i--)
+	{
+	  slot_p = first_slot_p - slot_id;
+
+	  if (slot_p->offset_to_record != NULL_OFFSET
+	      || slot_p->record_type != REC_DELETED_WILL_REUSE)
+	    {
+	      break;
+	    }
+	}
+
+      if (i == 0)
+	{
+	  /* It means this page is empty and only has the slot array. */
+	  spage_reclaim (thread_p, page_p);
+	  spage_compact (page_p);
+	}
+    }
+
+  return SP_SUCCESS;
+}
+
+/*
  * spage_is_slot_exist () - Find if there is a valid record in given slot
  *   return: true/false
  *   pgptr(in): Pointer to slotted page
@@ -3368,8 +3462,8 @@ spage_record_type_string (INT16 record_type)
     }
 }
 
-static const char *
-spage_anchor_flag_string (INT16 anchor_type)
+const char *
+spage_anchor_flag_string (const INT16 anchor_type)
 {
   switch (anchor_type)
     {
@@ -3386,7 +3480,7 @@ spage_anchor_flag_string (INT16 anchor_type)
     }
 }
 
-static const char *
+const char *
 spage_alignment_string (unsigned short alignment)
 {
   switch (alignment)
@@ -3575,8 +3669,8 @@ spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 
   page_header_p = (SPAGE_HEADER *) page_p;
   slot_p = spage_find_slot (page_p, page_header_p, 0, false);
-  used_length =
-    (sizeof (SPAGE_HEADER) + sizeof (SPAGE_SLOT) * page_header_p->num_slots);
+  used_length = (sizeof (SPAGE_HEADER)
+		 + sizeof (SPAGE_SLOT) * page_header_p->num_slots);
 
   for (i = 0; i < page_header_p->num_slots; slot_p--, i++)
     {
@@ -3699,6 +3793,11 @@ spage_find_slot (PAGE_PTR page_p, SPAGE_HEADER * page_header_p,
 
   if (is_unknown_slot_check && page_header_p == NULL)
     {
+      /*
+       * TODO Investigate why page_header_p is passed as a parameter. If it is
+       * always a pointer to page_p we can remove it from the parameter list
+       * as it is useless.
+       */
       page_header_p = (SPAGE_HEADER *) page_p;
     }
 

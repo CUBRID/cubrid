@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -35,8 +35,10 @@ extern int do_update_auto_increment_serial_on_rename (MOP serial_obj,
 						      const char *att_name);
 
 
-extern int do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, int *found,
+extern MOP do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
+				 DB_OBJECT * serial_class_mop,
 				 const char *serial_name);
+extern int do_get_serial_cached_num (int *cached_num, MOP serial_obj);
 
 extern int do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement);
 
@@ -108,9 +110,11 @@ extern int do_alter_user (const PARSER_CONTEXT * parser,
 			  const PT_NODE * statement);
 
 extern int do_insert (PARSER_CONTEXT * parser, PT_NODE * statement);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int do_prepare_insert (const PARSER_CONTEXT * parser,
 			      const PT_NODE * statement);
 extern int do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement);
+#endif
 extern int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 			       PT_NODE * statement,
 			       const char **savepoint_name);
@@ -153,14 +157,16 @@ extern int do_check_update_trigger (PARSER_CONTEXT * parser,
 extern int do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_statement (PARSER_CONTEXT * parser, PT_NODE * statement);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int do_statements (PARSER_CONTEXT * parser, PT_NODE * statement_list);
+extern int do_internal_statements (PARSER_CONTEXT * parser,
+				   PT_NODE * internal_stmt_list,
+				   const int phase);
+#endif
 extern int do_prepare_statement (PARSER_CONTEXT * parser,
 				 PT_NODE * statement);
 extern int do_execute_statement (PARSER_CONTEXT * parser,
 				 PT_NODE * statement);
-extern int do_internal_statements (PARSER_CONTEXT * parser,
-				   PT_NODE * internal_stmt_list,
-				   const int phase);
 extern int do_check_internal_statements (PARSER_CONTEXT * parser,
 					 PT_NODE * statement,
 					 /* PT_NODE * internal_stmt_list, */

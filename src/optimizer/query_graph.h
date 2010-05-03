@@ -506,7 +506,7 @@ struct qo_term
    * WARNING!!! WARNING!!! WARNING!!!
    *
    * If you add any more elements to this struct, be sure to update the
-   * body of qo_exchange.  Sadly, it needs to about all of
+   * body of qo_exchange.  Sadly, it needs to know about all of
    * the elements of this struct.
    */
 
@@ -615,7 +615,7 @@ struct qo_term
    * WARNING!!! WARNING!!! WARNING!!!
    *
    * If you add any more elements to this struct, be sure to update the
-   * body of qo_exchange.  Sadly, it needs to about all of
+   * body of qo_exchange.  Sadly, it needs to know about all of
    * the elements of this struct.
    */
 };
@@ -891,7 +891,9 @@ extern void qo_env_free (QO_ENV *);
 extern void qo_seg_fprint (QO_SEGMENT *, FILE *);
 extern void qo_node_fprint (QO_NODE *, FILE *);
 extern void qo_term_fprint (QO_TERM *, FILE *);
+#if defined (CUBRID_DEBUG)
 extern void qo_print_stats (FILE *);
+#endif
 extern void qo_eqclass_fprint_wrt (QO_EQCLASS *, BITSET *, FILE *);
 extern void qo_termset_fprint (QO_ENV *, BITSET *, FILE *);
 extern int qo_seg_width (QO_SEGMENT * seg);

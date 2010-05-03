@@ -112,6 +112,11 @@
       (v)->domain.general_info.type == DB_TYPE_ERROR) ? \
                           NULL : (v)->data.ch.medium.buf)
 
+#define DB_GET_STRING_SAFE(v) \
+    (((v)->domain.general_info.is_null || \
+      (v)->domain.general_info.type == DB_TYPE_ERROR) ? \
+                          "" : (v)->data.ch.medium.buf)
+
 #define DB_PULL_STRING(v) \
     ((v)->data.ch.medium.buf)
 

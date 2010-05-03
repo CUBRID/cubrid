@@ -25,6 +25,7 @@
 #ident "$Id$"
 
 #include <stdlib.h>
+#include <assert.h>
 
 #include "config.h"
 
@@ -36,12 +37,14 @@
 #include "file_io.h"
 #include "db_date.h"
 
+
 /* RESERVED_SIZE_IN_PAGE should be aligned */
 #define RESERVED_SIZE_IN_PAGE   sizeof(FILEIO_PAGE_RESERVED)
 
 #define IS_POWER_OF_2(x)        (((x) & ((x)-1)) == 0)
 
 static PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
+static PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
 static PGLENGTH db_User_page_size =
   IO_DEFAULT_PAGE_SIZE - RESERVED_SIZE_IN_PAGE;
 
@@ -70,32 +73,48 @@ db_io_page_size (void)
 }
 
 /*
+ * db_log_page_size(): returns the log page size
+ *
+ *   returns: log page size
+ */
+PGLENGTH
+db_log_page_size (void)
+{
+  return db_Log_page_size;
+}
+
+/*
  * db_set_page_size(): set the page size of system.
  *
- *   returns: io_page_size
- *   io_page_size(IN): the IO pagesize
+ *   returns: NO_ERROR if page size is set by given size, otherwise ER_FAILED
+ *   io_page_size(IN): the IO page size
+ *   log_page_size(IN): the LOG page size
  *
- * Note: Set the database pagesize to the given size. The given size
+ * Note: Set the database page size to the given size. The given size
  *       must be power of 2, greater than or equal to 1K, and smaller
  *       than or equal to 16K.
  */
-PGLENGTH
-db_set_page_size (PGLENGTH io_page_size)
+int
+db_set_page_size (PGLENGTH io_page_size, PGLENGTH log_page_size)
 {
-  PGLENGTH power2_io_page_size;
+  assert (io_page_size >= IO_MIN_PAGE_SIZE
+	  && log_page_size >= IO_MIN_PAGE_SIZE);
 
-  power2_io_page_size = io_page_size;
-  if (power2_io_page_size == -1)
+  if (io_page_size < IO_MIN_PAGE_SIZE || log_page_size < IO_MIN_PAGE_SIZE)
     {
-      return db_Io_page_size;
+      return ER_FAILED;
     }
 
-  power2_io_page_size = find_valid_page_size (power2_io_page_size);
-
-  db_Io_page_size = power2_io_page_size;
+  db_Io_page_size = find_valid_page_size (io_page_size);
   db_User_page_size = db_Io_page_size - RESERVED_SIZE_IN_PAGE;
+  db_Log_page_size = find_valid_page_size (log_page_size);
 
-  return db_Io_page_size;
+  if (db_Io_page_size != io_page_size || db_Log_page_size != log_page_size)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
 
 /*

@@ -698,6 +698,15 @@ receiver_thr_f (void *arg)
 	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
 	}
+
+      if (strncmp (cas_req_header, "PING", 4) == 0)
+	{
+	  int ret_code = 0;
+	  CAS_SEND_ERROR_CODE (clt_sock_fd, ret_code);
+	  CLOSE_SOCKET (clt_sock_fd);
+	  continue;
+	}
+
       if (strncmp (cas_req_header, "CANCEL", 6) == 0)
 	{
 	  int ret_code = 0;
@@ -1810,7 +1819,7 @@ check_cas_log (char *br_name, int as_index)
 {
   char log_filename[PATH_MAX], dirname[PATH_MAX];
 
-  if (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
+  if (IS_NOT_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
     return;
   if (shm_appl->sql_log_mode == SQL_LOG_MODE_NONE)
     return;
@@ -2144,7 +2153,7 @@ find_drop_as_index (void)
   int i, drop_as_index, exist_idle_cas;
   time_t max_wait_time, wait_time;
 
-  if (shm_br->br_info[br_index].appl_server != APPL_SERVER_CAS)
+  if (IS_NOT_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
     {
       drop_as_index = shm_br->br_info[br_index].appl_server_num - 1;
       wait_time =

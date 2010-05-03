@@ -1068,9 +1068,9 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream,
     {
       if (interrupt_query)
 	{
-	  if (er_errid () != ER_INTERRUPT)
+	  if (er_errid () != ER_INTERRUPTED)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPT, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	    }
 	  error = er_errid ();
 	  db_close_session (session);

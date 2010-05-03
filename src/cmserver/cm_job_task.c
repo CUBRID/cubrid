@@ -19,7 +19,7 @@
 
 
 /*
- * fserver_task.c -
+ * cm_job_task.c -
  */
 
 #ident "$Id$"
@@ -33,7 +33,7 @@
 #include <sys/types.h>		/* umask()         */
 #include <sys/stat.h>		/* umask(), stat() */
 #include <time.h>
-#include <ctype.h>		/* isalpha()       */
+#include <ctype.h>		/* isalpha(), isspace() */
 #include <fcntl.h>
 #include <errno.h>
 
@@ -55,30 +55,19 @@
 #endif
 #endif
 
-#include "dbi.h"
+#include "cm_stat.h"
+
 #include "cm_porting.h"
 #include "cm_server_util.h"
 #include "cm_job_task.h"
-#include "cm_nameval.h"
-#include "cm_dstring.h"
+#include "cm_dep.h"
 #include "cm_config.h"
 #include "cm_command_execute.h"
 #include "cm_user.h"
 #include "cm_text_encryption.h"
-#include "cm_broker_admin.h"
-#include "cm_version.h"
-#include "cm_execute_sa.h"
-#include "utility.h"
-#include "broker_config.h"
-
-#include "perf_monitor.h"
-#include "cm_diag_util.h"
+#include "cm_connect_info.h"
 
 #include<assert.h>
-
-extern int set_size (DB_COLLECTION * set);
-extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
-
 
 #ifdef _DEBUG_
 #include "deb.h"
@@ -87,7 +76,9 @@ extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
 #define MALLOC(p) malloc(p)
 #endif
 
-#define DB_RESTART_SERVER_NAME	"emgr_server"
+#define PATTERN_LOG 1
+#define PATTERN_VOL 2
+
 
 #define DBMT_ERR_MSG_SET(ERR_BUF, MSG)	\
 	strncpy(ERR_BUF, MSG, DBMT_ERROR_MSG_SIZE - 1)
@@ -133,664 +124,325 @@ extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
 
 extern T_EMGR_VERSION CLIENT_VERSION;
 
-static char *_op_get_port_from_config (T_DM_UC_CONF * uc_conf,
+#if defined(WINDOWS)
+static void replace_colon (char *path);
+#endif
+
+static char *to_upper_str (char *str, char *buf);
+static int uca_conf_write (T_CM_BROKER_CONF * uc_conf, char *del_broekr,
+			   char *_dbmt_error);
+static char *get_user_name (int uid, char *name_buf);
+static char *_op_get_port_from_config (T_CM_BROKER_CONF * uc_conf,
 				       char *broker_name);
 
-static int op_db_user_pass_check (char *dbname, char *dbuser, char *dbpass);
-static int _op_db_login (nvplist * out, nvplist * in, char *_dbmt_error);
-static char *_op_get_type_name (DB_DOMAIN * domain);
-static void _op_get_attribute_info (nvplist * out, DB_ATTRIBUTE * attr,
-				    int isclass);
-static char *_op_get_value_string (DB_VALUE * value);
-static void _op_get_method_info (nvplist * out, DB_METHOD * method,
-				 int isclass);
-static void _op_get_method_file_info (nvplist * out, DB_METHFILE * mfile);
-static void _op_get_resolution_info (nvplist * out, DB_RESOLUTION * res,
-				     int isclass);
-static void _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con);
-static void _op_get_query_spec_info (nvplist * out, DB_QUERY_SPEC * spec);
-static void _op_get_class_info (nvplist * out, DB_OBJECT * classobj);
-static int _op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj,
-					char *_dbmt_error);
-static int _op_get_system_classes_info (nvplist * out, char *_dbmt_error);
-static int _op_get_user_classes_info (nvplist * out, char *_dbmt_error);
-static void _op_get_db_user_name (nvplist * res, DB_OBJECT * user);
-static void _op_get_db_user_id (nvplist * res, DB_OBJECT * user);
-static void _op_get_db_user_password (nvplist * res, DB_OBJECT * user);
-static void _op_get_db_user_groups (nvplist * res, DB_OBJECT * user);
-static void _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user);
-static void _op_get_super_info (nvplist * out, DB_OBJECT * classobj);
-static int _op_is_classattribute (DB_ATTRIBUTE * attr, DB_OBJECT * classobj);
-static void _tsAppendDBMTUserList (nvplist * res, T_DBMT_USER * dbmt_user,
-				   char *_dbmt_error);
 static int _tsAppendDBList (nvplist * res, char dbdir_flag);
+
 static int _tsParseSpacedb (nvplist * req, nvplist * res, char *dbname,
 			    char *_dbmt_error, T_SPACEDB_RESULT * cmd_res);
 static void _ts_gen_spaceinfo (nvplist * res, const char *filename,
 			       const char *dbinstalldir, const char *type,
 			       int pagesize);
-static char *_ts_get_error_log_param (char *dbname);
+
+static void _tsAppendDBMTUserList (nvplist * res, T_DBMT_USER * dbmt_user,
+				   char *_dbmt_error);
 static int _ts_lockdb_parse_us (nvplist * res, FILE * infile);
-static int _ts_lockdb_parse_kr (nvplist * res, FILE * infile);
-static char *get_user_name (int uid, char *name_buf);
-static int class_info_sa (const char *dbname, const char *uid,
-			  const char *passwd, nvplist * out,
-			  char *_dbmt_error);
-static int trigger_info_sa (const char *dbname, const char *uid,
-			    const char *password, nvplist * res,
-			    char *_dbmt_error);
-#if defined(WINDOWS)
-static void replace_colon (char *path);
-#endif
-static int revoke_all_from_user (DB_OBJECT * user);
-#if defined(ENABLE_UNUSED_FUNCTION)
-static int op_get_objectid_attlist (DB_NAMELIST ** att_list,
-				    char *att_comma_list);
-#endif
+
+
+static int get_dbitemdir (char *item_dir, size_t item_dir_size, char *dbname,
+			  char *err_buf, int itemtype);
+static int get_dblogdir (char *log_dir, size_t log_dir_size, char *dbname,
+			 char *err_buf);
+static int get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname,
+			 char *err_buf);
+static int getservershmid (char *dir, char *dbname, char *err_buf);
 static int op_make_triggerinput_file_add (nvplist * req,
 					  char *input_filename);
 static int op_make_triggerinput_file_drop (nvplist * req,
 					   char *input_filename);
 static int op_make_triggerinput_file_alter (nvplist * req,
 					    char *input_filename);
-static void op_get_trigger_information (nvplist * res, DB_OBJECT * p_trigger);
-static int op_make_password_check_file (char *input_file);
 static void op_auto_exec_query_get_newplan_id (char *id_buf, char *filename);
-#if defined(ENABLE_UNUSED_FUNCTION)
-static char *op_get_cubrid_ver (char *buffer);
-#endif /* ENABLE_UNUSED_FUNCTION */
 
-static int get_filename_from_path (const char *path, char *filename);
-static int get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname,
-			 char *err_buf);
-static int getservershmid (char *dir, char *dbname, char *err_buf);
-#if defined(WINDOWS)
-#define OP_SERVER_SHM_OPEN(SHM_KEY, HANDLE_PTR)            \
-        op_server_shm_open(SHM_KEY, HANDLE_PTR)
-#define OP_SERVER_SHM_DETACH(PTR, HMAP)		\
-        do {                            \
-          if (HMAP != NULL) {           \
-            UnmapViewOfFile(PTR);       \
-            CloseHandle(HMAP);          \
-          }                             \
-        } while (0)
-static void *op_server_shm_open (int shm_key, HANDLE * hOut);
-static void shm_key_to_name (int shm_key, char *name_str);
-#else /* WINDOWS */
-#define OP_SERVER_SHM_OPEN(SHM_KEY, HANDLE_PTR)            \
-        op_server_shm_open(SHM_KEY)
-#define OP_SERVER_SHM_DETACH(PTR, HMAP)    shmdt((void*)(PTR))
-static void *op_server_shm_open (int shm_key);
-#endif /* !WINDOWS */
-#ifdef _DEBUG_
-void *debug_malloc (size_t size);
-#endif
-static int read_file (char *filename, char **outbuf);
-static int user_login_sa (nvplist * out, char *_dbmt_error, char *dbname,
-			  char *dbuser, char *dbpasswd);
+static int get_broker_info_from_filename (char *path, char *br_name,
+					  int *as_id);
+static char *_ts_get_error_log_param (char *dbname);
 
-int
-_tsReadUserCapability (nvplist * ud, char *id, char *_dbmt_error)
+static char *cm_get_abs_file_path (const char *filename, char *buf);
+static int check_dbpath (char *dir, char *_dbmt_error);
+
+static int file_to_nvpairs (FILE * infile, nvplist * res);
+static int file_to_nvp_by_separator (FILE * fp, nvplist * res,
+				     char separater);
+/* if cubrid.conf's error_log is null, construct it by default value if existing */
+static char *
+_ts_get_error_log_param (char *dbname)
 {
-  T_DBMT_USER dbmt_user;
-  char strbuf[1024];
-  char err_flag = 1;
-  int i, j;
-  int retval;
+  char *tok[2];
+  FILE *infile;
+  char buf[PATH_MAX], dbdir[PATH_MAX];
 
-  if ((retval = dbmt_user_read (&dbmt_user, _dbmt_error)) != ERR_NO_ERROR)
+  if ((uRetrieveDBDirectory (dbname, dbdir)) != ERR_NO_ERROR)
     {
-      return retval;
+      return NULL;
     }
-  for (i = 0; i < dbmt_user.num_dbmt_user; i++)
+  snprintf (buf, sizeof (buf) - 1, "%s/%s", dbdir, CUBRID_CUBRID_CONF);
+  if ((infile = fopen (buf, "r")) == NULL)
     {
-      if (strcmp (id, dbmt_user.user_info[i].user_name) == 0)
+      return NULL;
+    }
+
+  while (fgets (buf, sizeof (buf), infile))
+    {
+      ut_trim (buf);
+      if (isalpha ((int) buf[0]))
 	{
-	  for (j = 0; j < dbmt_user.user_info[i].num_dbinfo; j++)
+	  if (string_tokenize2 (buf, tok, 2, '=') < 0)
 	    {
-	      dbmt_user_db_auth_str (&(dbmt_user.user_info[i].dbinfo[j]),
-				     strbuf);
-	      nv_add_nvp (ud, dbmt_user.user_info[i].dbinfo[j].dbname,
-			  strbuf);
+	      continue;
 	    }
-	  err_flag = 0;
-	  break;
+	  if (uStringEqual (tok[0], "error_log"))
+	    {
+	      fclose (infile);
+	      if (tok[1][0] == '\0')
+		{
+		  return NULL;
+		}
+#if defined(WINDOWS)
+	      unix_style_path (tok[1]);
+#endif
+	      return (strdup (tok[1]));
+	    }
 	}
     }
-  dbmt_user_free (&dbmt_user);
+  return NULL;
+}
 
-  if (err_flag)
+int
+ts_get_broker_diagdata (nvplist * cli_request, nvplist * cli_response,
+			char *_dbmt_error)
+{
+  int i;
+  char *broker_name = NULL;
+  T_CM_BROKER_INFO_ALL uc_info;
+  T_CM_BROKER_INFO *br_info = NULL;
+  int num_busy_count = 0;
+  INT64 num_req, num_query, num_tran, num_long_query, num_long_tran,
+    num_error_query;
+  T_CM_ERROR error;
+
+  num_req = num_query = num_tran = num_long_query = num_long_tran =
+    num_error_query = 0;
+
+  /* get broker info, if broker name is NULL then get all of them, 
+     else get specified broker diagdata. */
+  broker_name = nv_get_val (cli_request, "bname");
+
+  if (cm_get_broker_info (&uc_info, &error) < 0)
     {
-      if (_dbmt_error)
-	{
-	  sprintf (_dbmt_error, "%s", id);
-	}
-      return ERR_USER_CAPABILITY;
+      strcpy (_dbmt_error, error.err_msg);
+      return ERR_NO_ERROR;
     }
+
+  for (i = 0; i < uc_info.num_info; i++)
+    {
+      br_info = uc_info.br_info + i;
+
+      if (strcmp (br_info->status, "OFF") != 0 &&
+	  (broker_name == NULL
+	   || strcasecmp (broker_name, br_info->name) == 0))
+	{
+	  num_req += br_info->num_req;
+	  num_query += br_info->num_query;
+	  num_tran += br_info->num_tran;
+	  num_long_query += br_info->num_long_query;
+	  num_long_tran += br_info->num_long_tran;
+	  num_error_query += br_info->num_error_query;
+	  num_busy_count += br_info->num_busy_count;
+	}
+    }
+
+  if (broker_name != NULL)
+    {
+      nv_add_nvp (cli_response, "bname", broker_name);
+    }
+
+  nv_add_nvp_time (cli_response, "time", time (NULL),
+		   "%04d/%02d/%02d %02d:%02d:%02d", TIME_STR_FMT_DATE_TIME);
+  nv_add_nvp (cli_response, "cas_mon", "start");
+  nv_add_nvp_int (cli_response, "cas_mon_act_session", num_busy_count);
+  nv_add_nvp_int64 (cli_response, "cas_mon_req", num_req);
+  nv_add_nvp_int64 (cli_response, "cas_mon_query", num_query);
+  nv_add_nvp_int64 (cli_response, "cas_mon_tran", num_tran);
+  nv_add_nvp_int64 (cli_response, "cas_mon_long_query", num_long_query);
+  nv_add_nvp_int64 (cli_response, "cas_mon_long_tran", num_long_tran);
+  nv_add_nvp_int64 (cli_response, "cas_mon_error_query", num_error_query);
+  nv_add_nvp (cli_response, "cas_mon", "end");
 
   return ERR_NO_ERROR;
 }
 
-/******************************************************************************
-	FSERVER TASK INTERFACE
-******************************************************************************/
-
-/******************************************************************************
-	TASK CUBRID
-******************************************************************************/
-
 int
-ts_create_class (nvplist * in, nvplist * out, char *_dbmt_error)
+ts_get_diagdata (nvplist * cli_request, nvplist * cli_response,
+		 char *_dbmt_error)
 {
-  char *class_name, *user_name, *db_name;
-  char sql[1024];
-  DB_QUERY_RESULT *result;
-  DB_QUERY_ERROR query_error;
+  int i;
+  void *br_shm = NULL, *as_shm = NULL;
+  /*T_CM_DIAG_MONITOR_DB_VALUE server_result; */
+  char *db_name, *broker_name;
+  char *mon_db, *mon_cas;
+  T_CM_BROKER_INFO_ALL uc_info;
+  T_CM_BROKER_INFO *br_info;
+  int num_busy_count = 0;
+  INT64 num_req, num_query, num_tran, num_long_query, num_long_tran,
+    num_error_query;
+  T_CM_ERROR error;
 
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  class_name = nv_get_val (in, "classname");
-  user_name = nv_get_val (in, "username");
-  db_name = nv_get_val (in, "_DBNAME");
+  db_name = nv_get_val (cli_request, "db_name");
+  mon_db = nv_get_val (cli_request, "mon_db");
+  mon_cas = nv_get_val (cli_request, "mon_cas");
 
-  if (user_name != NULL)
+  /*
+     if (cm_get_diag_data (&server_result, db_name, mon_db) == 0)
+     {
+     nv_add_nvp (cli_response, "db_mon", "start");
+     nv_add_nvp_int64 (cli_response, "mon_cub_query_open_page",
+     server_result.query_open_page);
+     nv_add_nvp_int64 (cli_response, "mon_cub_query_opened_page",
+     server_result.query_opened_page);
+     nv_add_nvp_int64 (cli_response, "mon_cub_query_slow_query",
+     server_result.query_slow_query);
+     nv_add_nvp_int64 (cli_response, "mon_cub_query_full_scan",
+     server_result.query_full_scan);
+     nv_add_nvp_int64 (cli_response, "mon_cub_lock_deadlock",
+     server_result.lock_deadlock);
+     nv_add_nvp_int64 (cli_response, "mon_cub_lock_request",
+     server_result.lock_request);
+     nv_add_nvp_int64 (cli_response, "mon_cub_conn_cli_request",
+     server_result.conn_cli_request);
+     nv_add_nvp_int64 (cli_response, "mon_cub_conn_aborted_clients",
+     server_result.conn_aborted_clients);
+     nv_add_nvp_int64 (cli_response, "mon_cub_conn_conn_req",
+     server_result.conn_conn_req);
+     nv_add_nvp_int64 (cli_response, "mon_cub_conn_conn_reject",
+     server_result.conn_conn_reject);
+     nv_add_nvp_int64 (cli_response, "mon_cub_buffer_page_write",
+     server_result.buffer_page_write);
+     nv_add_nvp_int64 (cli_response, "mon_cub_buffer_page_read",
+     server_result.buffer_page_read);
+     nv_add_nvp (cli_response, "db_mon", "end");
+     }
+   */
+
+  if (mon_cas != NULL && strcmp (mon_cas, "yes") == 0)
     {
-      if (db_login (user_name, NULL) < 0)
+      num_req = num_query = num_tran = num_long_query = num_long_tran =
+	num_error_query = 0;
+
+      broker_name = nv_get_val (cli_request, "broker_name");
+
+      if (cm_get_broker_info (&uc_info, &error) < 0)
 	{
-	  CUBRID_ERR_MSG_SET (_dbmt_error);
-	  return ERR_WITH_MSG;
+	  strcpy (_dbmt_error, error.err_msg);
+	  return ERR_NO_ERROR;
 	}
-    }
 
-  snprintf (sql, sizeof (sql) - 1, "CREATE CLASS \"%s\"", class_name);
-  if (db_execute (sql, &result, &query_error) < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-  db_query_end (result);
-
-  /* re-login original user */
-  if (user_name != NULL)
-    {
-      if (db_login (nv_get_val (in, "_DBID"), nv_get_val (in, "_DBPASSWD")) <
-	  0)
+      for (i = 0; i < uc_info.num_info; i++)
 	{
-	  CUBRID_ERR_MSG_SET (_dbmt_error);
-	  return ERR_WITH_MSG;
+	  br_info = uc_info.br_info + i;
+
+	  if (strcmp (br_info->status, "OFF") != 0 &&
+	      (broker_name == NULL
+	       || strcasecmp (broker_name, br_info->name) == 0))
+	    {
+	      num_req += br_info->num_req;
+	      num_query += br_info->num_query;
+	      num_tran += br_info->num_tran;
+	      num_long_query += br_info->num_long_query;
+	      num_long_tran += br_info->num_long_tran;
+	      num_error_query += br_info->num_error_query;
+	      num_busy_count += br_info->num_busy_count;
+	    }
 	}
+
+      nv_add_nvp (cli_response, "cas_mon", "start");
+      nv_add_nvp_int (cli_response, "cas_mon_act_session", num_busy_count);
+      nv_add_nvp_int64 (cli_response, "cas_mon_req", num_req);
+      nv_add_nvp_int64 (cli_response, "cas_mon_query", num_query);
+      nv_add_nvp_int64 (cli_response, "cas_mon_tran", num_tran);
+      nv_add_nvp_int64 (cli_response, "cas_mon_long_query", num_long_query);
+      nv_add_nvp_int64 (cli_response, "cas_mon_long_tran", num_long_tran);
+      nv_add_nvp_int64 (cli_response, "cas_mon_error_query", num_error_query);
+      nv_add_nvp (cli_response, "cas_mon", "end");
     }
 
-  nv_add_nvp (out, "dbname", nv_get_val (in, "dbname"));
-  nv_add_nvp (out, "classname", class_name);
-
-  if (_op_get_system_classes_info (out, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-  if (_op_get_user_classes_info (out, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
   return ERR_NO_ERROR;
+
 }
 
-int
-ts_create_vclass (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *user_name, *db_name;
-  DB_OBJECT *class_;
 
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  class_name = nv_get_val (in, "classname");
-  user_name = nv_get_val (in, "username");
-  db_name = nv_get_val (in, "_DBNAME");
 
-  if (user_name != NULL)
-    {
-      if (db_login (user_name, NULL) < 0)
-	{
-	  CUBRID_ERR_MSG_SET (_dbmt_error);
-	  return ERR_WITH_MSG;
-	}
-    }
-
-  class_ = db_create_vclass (class_name);
-  if (class_ == NULL)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  /* re-login original user */
-  if (user_name != NULL)
-    {
-      if (db_login (nv_get_val (in, "_DBID"), nv_get_val (in, "_DBPASSWD")) <
-	  0)
-	{
-	  CUBRID_ERR_MSG_SET (_dbmt_error);
-	  return ERR_WITH_MSG;
-	}
-    }
-
-  nv_add_nvp (out, "dbname", nv_get_val (in, "dbname"));
-  nv_add_nvp (out, "classname", class_name);
-
-  if (_op_get_system_classes_info (out, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-  if (_op_get_user_classes_info (out, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
 
 int
-ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
+ts_userinfo (nvplist * req, nvplist * res, char *_dbmt_error)
 {
-  DB_OBJECT *p_class_db_user, *p_user;
-  DB_OBJLIST *user_list, *temp;
-  char *db_name;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  db_name = nv_get_val (in, "dbname");
-  p_class_db_user = db_find_class ("db_user");
-  if (p_class_db_user == NULL)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  nv_add_nvp (out, "dbname", db_name);
-
-  user_list = db_get_all_objects (p_class_db_user);
-  if (user_list == NULL)
-    {
-      if (db_error_code () < 0)
-	{
-	  CUBRID_ERR_MSG_SET (_dbmt_error);
-	  db_shutdown ();
-	  return ERR_WITH_MSG;
-	}
-    }
-  temp = user_list;
-  while (temp != NULL)
-    {
-      p_user = temp->op;
-      nv_add_nvp (out, "open", "user");
-      _op_get_db_user_name (out, p_user);
-      _op_get_db_user_id (out, p_user);
-      _op_get_db_user_password (out, p_user);
-
-      nv_add_nvp (out, "open", "groups");
-      _op_get_db_user_groups (out, p_user);
-      nv_add_nvp (out, "close", "groups");
-
-      nv_add_nvp (out, "open", "authorization");
-      _op_get_db_user_authorization (out, p_user);
-      nv_add_nvp (out, "close", "authorization");
-
-      nv_add_nvp (out, "close", "user");
-      temp = temp->next;
-    }
-  db_objlist_free (user_list);
-  db_commit_transaction ();
-  db_shutdown ();
-
-  return ERR_NO_ERROR;
+  return cm_ts_userinfo (req, res, _dbmt_error);
 }
 
 int
 ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
 {
-  DB_OBJECT *dbuser;
-  DB_OBJECT *obj;
-  int exists, aset;
-
-  const char *new_db_user_name;
-  const char *new_db_user_pass;
-
-  int i, sect, sect_len;
-  char *tval, *sval;
-  int anum;
-
-  if (_op_db_login (res, req, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  new_db_user_name = nv_get_val (req, "username");
-  new_db_user_pass = nv_get_val (req, "userpass");
-
-  dbuser = db_add_user (new_db_user_name, &exists);
-  if ((dbuser == NULL) || exists)
-    {
-      goto create_user_error;
-    }
-
-  if (uStringEqual (new_db_user_pass, "__NULL__"))
-    new_db_user_pass = "";
-  if (db_set_password (dbuser, NULL, new_db_user_pass) < 0)
-    {
-      goto create_user_error;
-    }
-
-  /* make itself a member of other groups */
-  nv_locate (req, "groups", &sect, &sect_len);
-  if (sect >= 0)
-    {
-      for (i = 0; i < sect_len; ++i)
-	{
-	  nv_lookup (req, sect + i, NULL, &tval);
-	  if ((obj = db_find_user (tval)) == NULL)
-	    {
-	      continue;
-	    }
-	  db_add_member (obj, dbuser);
-	}
-    }
-
-  /* add members to this group */
-  nv_locate (req, "addmembers", &sect, &sect_len);
-  if (sect >= 0)
-    {
-      for (i = 0; i < sect_len; ++i)
-	{
-	  nv_lookup (req, sect + i, NULL, &tval);
-	  if ((obj = db_find_user (tval)) == NULL)
-	    {
-	      continue;
-	    }
-	  db_add_member (dbuser, obj);
-	}
-    }
-
-  /* add authorization info */
-  nv_locate (req, "authorization", &sect, &sect_len);
-  if (sect >= 0)
-    {
-      for (i = 0; i < sect_len; ++i)
-	{
-	  nv_lookup (req, sect + i, &sval, &tval);
-	  if ((obj = db_find_class (sval)) == NULL)
-	    {
-	      continue;
-	    }
-	  if (tval == NULL)
-	    {
-	      continue;
-	    }
-
-	  anum = atoi (tval);
-	  if (anum == 0)
-	    {
-	      continue;
-	    }
-
-	  aset = anum & DB_AUTH_ALL;
-	  if (db_grant (dbuser, obj, (DB_AUTH) aset, 0) < 0)
-	    {
-	      continue;
-	    }
-
-	  aset = (anum >> 8) & (DB_AUTH_ALL);
-	  if (db_grant (dbuser, obj, (DB_AUTH) aset, 1) < 0)
-	    {
-	      continue;
-	    }
-	}
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-
-create_user_error:
-  CUBRID_ERR_MSG_SET (_dbmt_error);
-  db_shutdown ();
-  return ERR_WITH_MSG;
+  return cm_ts_create_user (req, res, _dbmt_error);
 }
 
 int
 ts_delete_user (nvplist * req, nvplist * res, char *_dbmt_error)
 {
-  DB_OBJECT *dbuser;
-  char *newdbusername = nv_get_val (req, "username");
-
-  if (_op_db_login (res, req, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  if ((dbuser = db_find_user (newdbusername)) == NULL)
-    {
-      goto delete_user_error;
-    }
-  if (db_drop_user (dbuser) < 0)
-    {
-      goto delete_user_error;
-    }
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-
-delete_user_error:
-  CUBRID_ERR_MSG_SET (_dbmt_error);
-  db_shutdown ();
-  return ERR_WITH_MSG;
+  return cm_ts_delete_user (req, res, _dbmt_error);
 }
 
 int
 ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   T_DBMT_USER dbmt_user;
-  int errcode;
-  DB_OBJECT *dbuser;
-  DB_OBJECT *obj;
-  int aset;
-  DB_COLLECTION *gset;
-  DB_VALUE val;
-
-  const char *db_passwd;
-  const char *db_name;
+  T_DBMT_CON_DBINFO con_dbinfo;
   const char *new_db_user_name;
   const char *new_db_user_pass;
+  char *db_name;
+  char *ip, *port;
+  int i, ret;
 
-  int i, sect, sect_len;
-  char *tval, *sval;
-  int anum;
-
-  db_passwd = nv_get_val (req, "_DBPASSWD");
-  db_name = nv_get_val (req, "_DBNAME");
   new_db_user_name = nv_get_val (req, "username");
   new_db_user_pass = nv_get_val (req, "userpass");
+  db_name = nv_get_val (req, "_DBNAME");
 
-  if (_op_db_login (res, req, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  if ((dbuser = db_find_user (new_db_user_name)) == NULL)
-    {
-      goto update_user_error;
-    }
   if (new_db_user_pass)
-    {				/* if password need to be changed ... */
-      const char *dbmt_db_id;
-      const char *old_db_passwd;
-
-      dbmt_db_id = nv_get_val (req, "_DBID");
-      if (dbmt_db_id == NULL)
-	dbmt_db_id = "";
-
-      if (strcasecmp (new_db_user_name, dbmt_db_id) == 0)
-	{
-	  old_db_passwd = db_passwd;
-	}
-      else
-	{
-	  old_db_passwd = NULL;
-	}
-
-      /* set new password */
+    {
       if (uStringEqual (new_db_user_pass, "__NULL__"))
 	{
 	  new_db_user_pass = "";
 	}
-      errcode = db_set_password (dbuser, old_db_passwd, new_db_user_pass);
-      if (errcode < 0)
-	{
-	  goto update_user_error;
-	}
     }
 
-  /* clear existing group - clear group, direct group */
-  gset = db_col_create (DB_TYPE_SET, 0, NULL);
-  DB_MAKE_SET (&val, gset);
-  if (db_put (dbuser, "groups", &val) < 0)
-    goto update_user_error;
-  if (db_put (dbuser, "direct_groups", &val) < 0)
-    goto update_user_error;
-  db_col_free (gset);
-
-#if 0
-  if (db_add_member (db_find_user ("PUBLIC"), dbuser) < 0)
+  ret = cm_ts_update_user (req, res, _dbmt_error);
+  if (ret != ERR_NO_ERROR)
     {
-      goto update_user_error;
-    }
-#endif
-
-  /* make itself a member of other groups */
-  nv_locate (req, "groups", &sect, &sect_len);
-  if (sect >= 0)
-    {
-      for (i = 0; i < sect_len; ++i)
-	{
-	  nv_lookup (req, sect + i, NULL, &tval);
-	  if ((obj = db_find_user (tval)) == NULL)
-	    {
-	      continue;
-	    }
-	  if (db_add_member (obj, dbuser) < 0)
-	    {
-	      goto update_user_error;
-	    }
-	}
+      return ret;
     }
 
-  /* remove members to this group -- this section is not used. */
-  nv_locate (req, "removemembers", &sect, &sect_len);
-  if (sect >= 0)
-    {
-      for (i = 0; i < sect_len; ++i)
-	{
-	  nv_lookup (req, sect + i, NULL, &tval);
-	  if ((obj = db_find_user (tval)) == NULL)
-	    {
-	      continue;
-	    }
-	  if (db_drop_member (dbuser, obj) < 0)
-	    {
-	      goto update_user_error;
-	    }
-	}
-    }
-  /* add members to this group -- this section is not used. */
-  nv_locate (req, "addmembers", &sect, &sect_len);
-  if (sect >= 0)
-    {
-      for (i = 0; i < sect_len; ++i)
-	{
-	  nv_lookup (req, sect + i, NULL, &tval);
-	  if ((obj = db_find_user (tval)) == NULL)
-	    {
-	      continue;
-	    }
-	  if (db_add_member (dbuser, obj) < 0)
-	    {
-	      goto update_user_error;
-	    }
-	}
-    }
-
-  /* add authorization info */
-  nv_locate (req, "authorization", &sect, &sect_len);
-  if (sect >= 0)
-    {
-      revoke_all_from_user (dbuser);
-
-      for (i = 0; i < sect_len; ++i)
-	{
-	  nv_lookup (req, sect + i, &sval, &tval);
-
-	  if ((obj = db_find_class (sval)) == NULL)
-	    {
-	      continue;
-	    }
-	  if (db_is_system_class (obj))
-	    {
-	      continue;
-	    }
-	  if (tval == NULL)
-	    {
-	      continue;
-	    }
-
-	  anum = atoi (tval);
-	  if (anum == 0)
-	    {
-	      continue;
-	    }
-	  aset = anum & DB_AUTH_ALL;
-	  if (db_grant (dbuser, obj, (DB_AUTH) aset, 0) < 0)
-	    {
-	      continue;
-	    }
-
-	  aset = (anum >> 8) & (DB_AUTH_ALL);
-	  if (db_grant (dbuser, obj, (DB_AUTH) aset, 1) < 0)
-	    {
-	      continue;
-	    }
-	}
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-
-#ifndef	PK_AUTHENTICAITON
+#ifndef PK_AUTHENTICAITON
   if (new_db_user_pass)
     {
+      char hexacoded[PASSWD_ENC_LENGTH];
+      uEncrypt (PASSWD_LENGTH, new_db_user_pass, hexacoded);
+      /* update cmdb.pass dbinfo */
       if (dbmt_user_read (&dbmt_user, _dbmt_error) == ERR_NO_ERROR)
 	{
-	  char hexacoded[PASSWD_ENC_LENGTH];
 	  int src_dbinfo;
 
-	  uEncrypt (PASSWD_LENGTH, new_db_user_pass, hexacoded);
 	  for (i = 0; i < dbmt_user.num_dbmt_user; i++)
 	    {
-	      src_dbinfo = dbmt_user_search (&(dbmt_user.user_info[i]),
-					     db_name);
+	      src_dbinfo =
+		dbmt_user_search (&(dbmt_user.user_info[i]), db_name);
 	      if (src_dbinfo < 0)
 		{
 		  continue;
@@ -804,1527 +456,106 @@ ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
 	      strcpy (dbmt_user.user_info[i].dbinfo[src_dbinfo].passwd,
 		      hexacoded);
 	    }
-	  dbmt_user_write_cubrid_pass (&dbmt_user, _dbmt_error);
+	  dbmt_user_write_auth (&dbmt_user, _dbmt_error);
 	  dbmt_user_free (&dbmt_user);
+	}
+
+      /* update conlist dbinfo */
+      dbmt_con_set_dbinfo (&con_dbinfo, db_name, new_db_user_name, hexacoded);
+      ip = nv_get_val (req, "_IP");
+      port = nv_get_val (req, "_PORT");
+      if (dbmt_con_write_dbinfo
+	  (&con_dbinfo, ip, port, db_name, 1, _dbmt_error) < 0)
+	{
+	  return ERR_WITH_MSG;
 	}
     }
 #endif
-
   return ERR_NO_ERROR;
 
-update_user_error:
-  CUBRID_ERR_MSG_SET (_dbmt_error);
-  db_shutdown ();
-  return ERR_WITH_MSG;
+}
+
+
+int
+ts_class_info (nvplist * req, nvplist * res, char *_dbmt_error)
+{
+  return cm_ts_class_info (req, res, _dbmt_error);
 }
 
 int
-ts_check_authority (nvplist * in, nvplist * out, char *_dbmt_error)
+ts_class (nvplist * req, nvplist * res, char *_dbmt_error)
 {
-  char *id, *pwd, *dbname;
-  int _ret;
-
-  T_DB_SERVICE_MODE db_mode;
-
-  if ((dbname = nv_get_val (in, "_DBNAME")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  id = nv_get_val (in, "_DBID");
-  pwd = nv_get_val (in, "_DBPASSWD");
-
-  if (!_isRegisteredDB (dbname))
-    {
-      return ERR_DB_NONEXISTANT;
-    }
-  db_mode = uDatabaseMode (dbname);
-  if (db_mode == DB_SERVICE_MODE_SA)
-    {
-      sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
-    }
-
-  _ret = op_db_user_pass_check (dbname, id, pwd);
-
-  nv_add_nvp (out, "dbname", dbname);
-
-  if (_ret == 0)
-    {
-      nv_add_nvp (out, "authority", "none");
-    }
-  else if (_ret == 1)
-    {
-      if (uStringEqual (id, "dba"))
-	nv_add_nvp (out, "authority", "dba");
-      else
-	nv_add_nvp (out, "authority", "general");
-    }
-
-  return ERR_NO_ERROR;
+  return cm_ts_class (req, res, _dbmt_error);
 }
+
+#if defined(WINDOWS)
+static void
+replace_colon (char *path)
+{
+  char *p;
+  for (p = path; *p; p++)
+    {
+      if (*p == '|')
+	*p = ':';
+    }
+}
+#endif
 
 int
-ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error)
+ts_update_attribute (nvplist * req, nvplist * res, char *_dbmt_error)
 {
-  char *dbstatus, *dbname;
-  T_DB_SERVICE_MODE db_mode;
-
-  dbstatus = nv_get_val (in, "dbstatus");
-  dbname = nv_get_val (in, "_DBNAME");
-
-  db_mode = uDatabaseMode (dbname);
-  if (db_mode == DB_SERVICE_MODE_SA)
-    {
-      sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
-    }
-
-  if (db_mode == DB_SERVICE_MODE_NONE)
-    {
-      char *uid = nv_get_val (in, "_DBID");
-      char *passwd = nv_get_val (in, "_DBPASSWD");
-      return (class_info_sa (dbname, uid, passwd, out, _dbmt_error));
-    }
-  else
-    {
-      if (_op_db_login (out, in, _dbmt_error))
-	{
-	  return ERR_WITH_MSG;
-	}
-      nv_add_nvp (out, "dbname", dbname);
-      if (_op_get_system_classes_info (out, _dbmt_error) < 0)
-	{
-	  db_shutdown ();
-	  return ERR_WITH_MSG;
-	}
-      if (_op_get_user_classes_info (out, _dbmt_error) < 0)
-	{
-	  db_shutdown ();
-	  return ERR_WITH_MSG;
-	}
-
-      db_commit_transaction ();
-      db_shutdown ();
-    }
-
-  return ERR_NO_ERROR;
+  return cm_ts_update_attribute (req, res, _dbmt_error);
 }
-
-int
-ts_class (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *classname;
-  DB_OBJECT *classobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  classname = nv_get_val (in, "classname");
-  classobj = db_find_class (classname);
-  if (classobj == NULL)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_rename_class (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *old_class_name, *new_class_name;
-  DB_OBJECT *class_;
-  int errcode;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  old_class_name = nv_get_val (in, "oldclassname");
-  new_class_name = nv_get_val (in, "newclassname");
-  class_ = db_find_class (old_class_name);
-  if ((errcode = db_rename_class (class_, new_class_name)) < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  nv_add_nvp (out, "dbname", nv_get_val (in, "dbname"));
-  nv_add_nvp (out, "classname", new_class_name);
-
-  if (_op_get_system_classes_info (out, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-  if (_op_get_user_classes_info (out, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_drop_class (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name;
-  DB_OBJECT *class_;
-  int errcode;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  class_name = nv_get_val (in, "classname");
-  class_ = db_find_class (class_name);
-  if ((errcode = db_drop_class (class_)) < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  nv_add_nvp (out, "dbname", nv_get_val (in, "dbname"));
-  nv_add_nvp (out, "classname", class_name);
-
-  if (_op_get_system_classes_info (out, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-  if (_op_get_user_classes_info (out, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_add_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *attr_name, *type, *category, *defaultv,
-    *unique, *notnull;
-  char buf[1024];
-  DB_OBJECT *classobj;
-  DB_QUERY_RESULT *result;
-  DB_QUERY_ERROR query_error;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  class_name = nv_get_val (in, "classname");
-  attr_name = nv_get_val (in, "attributename");
-  type = nv_get_val (in, "type");
-  category = nv_get_val (in, "category");
-  defaultv = nv_get_val (in, "default");
-  unique = nv_get_val (in, "unique");
-  notnull = nv_get_val (in, "notnull");
-  classobj = db_find_class (class_name);
-
-  snprintf (buf, sizeof (buf) - 1,
-	    "ALTER \"%s\" ADD %s ATTRIBUTE \"%s\" %s %s %s %s %s", class_name,
-	    uStringEqual (category, "class") ? "CLASS" : "", attr_name, type,
-	    uStringEqual (category,
-			  "shared") ? "SHARED" : (defaultv !=
-						  NULL) ? "DEFAULT" : "",
-	    (defaultv != NULL) ? defaultv : "", uStringEqual (unique,
-							      "yes") ?
-	    "UNIQUE" : "", uStringEqual (notnull, "yes") ? "NOT NULL" : "");
-
-  if (db_execute (buf, &result, &query_error) < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-  db_query_end (result);
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_drop_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *attr_name, *category;
-  DB_OBJECT *classobj;
-  int errcode;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  class_name = nv_get_val (in, "classname");
-  attr_name = nv_get_val (in, "attributename");
-  category = nv_get_val (in, "category");
-  classobj = db_find_class (class_name);
-
-  if ((category != NULL) && (strcmp (category, "class") == 0))
-    errcode = db_drop_class_attribute (classobj, attr_name);
-  else
-    errcode = db_drop_attribute (classobj, attr_name);
-  if (errcode < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *attr_name, *category, *index, *not_null, *unique,
-    *defaultv, *old_attr_name;
-  DB_OBJECT *classobj;
-  DB_ATTRIBUTE *attrobj;
-  int errcode, is_class, flag;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  class_name = nv_get_val (in, "classname");
-  attr_name = nv_get_val (in, "newattributename");
-  index = nv_get_val (in, "index");
-  not_null = nv_get_val (in, "notnull");
-  unique = nv_get_val (in, "unique");
-  defaultv = nv_get_val (in, "default");
-  old_attr_name = nv_get_val (in, "oldattributename");
-  category = nv_get_val (in, "category");
-  classobj = db_find_class (class_name);
-
-  if (classobj == NULL)
-    {
-      snprintf (_dbmt_error, DBMT_ERROR_MSG_SIZE, "class [%s] not exists.",
-		class_name);
-      return ERR_WITH_MSG;
-    }
-
-  if ((category != NULL) && (strcmp (category, "instance") == 0))
-    {
-      is_class = 0;
-    }
-  else
-    {
-      is_class = 1;
-    }
-
-  if ((attr_name != NULL) && (old_attr_name != NULL)
-      && (strcmp (attr_name, old_attr_name) != 0))
-    {
-      errcode = db_rename (classobj, old_attr_name, is_class, attr_name);
-      if (errcode < 0)
-	{
-	  goto update_attr_error;
-	}
-    }
-
-  if (is_class)
-    {
-      attrobj = db_get_class_attribute (classobj, attr_name);
-    }
-  else
-    {
-      attrobj = db_get_attribute (classobj, attr_name);
-    }
-
-  flag = db_attribute_is_indexed (attrobj);
-  if (index != NULL)
-    {
-      if (!flag && !strcmp (index, "y"))
-	{
-	  if (db_add_index (classobj, attr_name) < 0)
-	    {
-	      goto update_attr_error;
-	    }
-	}
-      else if (flag && !strcmp (index, "n"))
-	{
-	  if (db_drop_index (classobj, attr_name) < 0)
-	    {
-	      goto update_attr_error;
-	    }
-	}
-    }
-
-  /* memory struct may be changed. should get attrobj again. */
-  if (is_class)
-    {
-      attrobj = db_get_class_attribute (classobj, attr_name);
-    }
-  else
-    {
-      attrobj = db_get_attribute (classobj, attr_name);
-    }
-
-  flag = db_attribute_is_non_null (attrobj);
-  if (not_null != NULL)
-    {
-      if (!flag && !strcmp (not_null, "y"))
-	{
-	  if (db_constrain_non_null (classobj, attr_name, is_class, 1) < 0)
-	    {
-	      goto update_attr_error;
-	    }
-	}
-      else if (flag && !strcmp (not_null, "n"))
-	{
-	  if (db_constrain_non_null (classobj, attr_name, is_class, 0) < 0)
-	    {
-	      goto update_attr_error;
-	    }
-	}
-    }
-
-  /* memory struct may be changed. should get attrobj again. */
-  if (is_class)
-    {
-      attrobj = db_get_class_attribute (classobj, attr_name);
-    }
-  else
-    {
-      attrobj = db_get_attribute (classobj, attr_name);
-    }
-
-  flag = db_attribute_is_unique (attrobj);
-  if (unique != NULL)
-    {
-      if (!flag && !strcmp (unique, "y"))
-	{
-	  int errcode;
-	  errcode = db_constrain_unique (classobj, attr_name, 1);
-	  if (errcode < 0 && errcode != ER_SM_INDEX_EXISTS)
-	    {
-	      goto update_attr_error;
-	    }
-	}
-      else if (flag && !strcmp (unique, "n"))
-	{
-	  if (db_constrain_unique (classobj, attr_name, 0) < 0)
-	    {
-	      goto update_attr_error;
-	    }
-	}
-    }
-
-  /* default value management */
-  if (defaultv != NULL)
-    {
-      char buf[1024];
-      DB_QUERY_ERROR error_stats;
-      DB_QUERY_RESULT *result;
-
-      if (is_class)
-	{
-	  snprintf (buf, sizeof (buf) - 1,
-		    "ALTER \"%s\" CHANGE CLASS \"%s\" DEFAULT %s", class_name,
-		    attr_name, defaultv);
-	}
-      else
-	{
-	  snprintf (buf, sizeof (buf) - 1,
-		    "ALTER \"%s\" CHANGE \"%s\" DEFAULT %s", class_name,
-		    attr_name, defaultv);
-	}
-      if (db_execute (buf, &result, &error_stats) < 0)
-	{
-	  goto update_attr_error;
-	}
-      db_query_end (result);
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-
-update_attr_error:
-  CUBRID_ERR_MSG_SET (_dbmt_error);
-  db_shutdown ();
-  return ERR_WITH_MSG;
-}
-
-int
-ts_add_constraint (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *type, *name, *category, *attr_count_string, **attr_names;
-  char **attr_orders, *reference_class_name, **foreign_key_names;
-  char **reference_key_names;
-  char *n, *v;
-  char query[QUERY_BUFFER_MAX];
-  DB_OBJECT *classobj;
-  DB_QUERY_RESULT *result;
-  DB_QUERY_ERROR query_error;
-  int errcode, attr_count, i, j, k, l, m, is_class;
-
-  errcode = j = k = l = m = 0;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  class_name = nv_get_val (in, "classname");
-  classobj = db_find_class (class_name);
-  name = nv_get_val (in, "name");
-  category = nv_get_val (in, "category");
-  type = nv_get_val (in, "type");
-  if (type == NULL)
-    {
-      strcpy (_dbmt_error, "type");
-      return ERR_PARAM_MISSING;
-    }
-
-  if ((category != NULL) && (strcmp (category, "instance") == 0))
-    {
-      is_class = 0;
-    }
-  else
-    {
-      is_class = 1;
-    }
-
-  reference_class_name = nv_get_val (in, "refclsname");
-  attr_count_string = nv_get_val (in, "attributecount");
-  if (attr_count_string == NULL)
-    {
-      strcpy (_dbmt_error, "attributecount");
-      return ERR_PARAM_MISSING;
-    }
-
-  attr_count = atoi (attr_count_string);
-  if (attr_count <= 0 || attr_count >= INT_MAX)
-    {
-      return ERR_PARAM_MISSING;
-    }
-
-  attr_names = (char **) malloc (sizeof (char *) * (attr_count + 1));
-  attr_orders = (char **) malloc (sizeof (char *) * (attr_count + 1));
-  foreign_key_names = (char **) malloc (sizeof (char *) * (attr_count + 1));
-  reference_key_names = (char **) malloc (sizeof (char *) * (attr_count + 1));
-
-  if ((attr_names == NULL) || (attr_orders == NULL)
-      || (foreign_key_names == NULL) || (reference_key_names == NULL))
-    {
-      FREE_MEM (attr_names);
-      FREE_MEM (attr_orders);
-      FREE_MEM (foreign_key_names);
-      FREE_MEM (reference_key_names);
-      return ERR_MEM_ALLOC;
-    }
-
-  for (i = 0; i < in->nvplist_leng; i++)
-    {
-      nv_lookup (in, i, &n, &v);
-      if (n != NULL)
-	{
-	  if (!strcmp (n, "attribute"))
-	    {
-	      attr_names[j++] = v;
-	    }
-	  if (!strcmp (n, "attribute_order"))
-	    {
-	      attr_orders[k++] = v;
-	    }
-	  if (!strcmp (n, "forikey"))
-	    {
-	      foreign_key_names[l++] = v;
-	    }
-	  if (!strcmp (n, "refkey"))
-	    {
-	      reference_key_names[m++] = v;
-	    }
-	}
-    }
-
-  attr_names[j++] = NULL;
-  attr_orders[k++] = NULL;
-  foreign_key_names[l++] = NULL;
-  reference_key_names[m++] = NULL;
-
-
-  if (!strcmp (type, "UNIQUE") || !strcmp (type, "INDEX"))
-    {
-      if (class_name != NULL)
-	{
-	  size_t avail_size = sizeof (query) - 1;
-	  char *query_p = query;
-
-	  memset (query, 0, sizeof (query));
-	  STRING_APPEND (query_p, avail_size,
-			 "CREATE %s INDEX \"%s\" on \"%s\" ( ",
-			 (!strcmp (type, "UNIQUE") ? type : " "), name,
-			 class_name);
-
-	  for (i = 0; i < attr_count; i++)
-	    {
-	      if (i == (attr_count - 1))
-		{
-		  STRING_APPEND (query_p, avail_size, "\"%s\" %s );",
-				 attr_names[i], attr_orders[i]);
-		}
-	      else
-		{
-		  STRING_APPEND (query_p, avail_size, "\"%s\" %s ,",
-				 attr_names[i], attr_orders[i]);
-		}
-	    }
-
-	  if (db_execute (query, &result, &query_error) < 0)
-	    {
-	      CUBRID_ERR_MSG_SET (_dbmt_error);
-	      db_shutdown ();
-	      errcode = ERR_WITH_MSG;
-	      goto add_con_final;
-	    }
-	  db_query_end (result);
-	}
-    }
-  else if (!strcmp (type, "REVERSE UNIQUE"))
-    {
-      errcode =
-	db_add_constraint (classobj, DB_CONSTRAINT_REVERSE_UNIQUE, name,
-			   (const char **) attr_names, is_class);
-    }
-  else if (!strcmp (type, "REVERSE INDEX"))
-    {
-      errcode =
-	db_add_constraint (classobj, DB_CONSTRAINT_REVERSE_INDEX, name,
-			   (const char **) attr_names, is_class);
-    }
-  else if (!strcmp (type, "PRIMARY KEY"))
-    {
-      errcode =
-	db_add_constraint (classobj, DB_CONSTRAINT_PRIMARY_KEY, name,
-			   (const char **) attr_names, is_class);
-    }
-  else if (!strcmp (type, "FOREIGN KEY"))
-    {
-      if (class_name != NULL)
-	{
-	  size_t avail_size = sizeof (query) - 1;
-	  char *query_p = query;
-
-	  memset (query, 0, sizeof (query));
-	  STRING_APPEND (query_p, avail_size,
-			 "ALTER TABLE \"%s\" ADD CONSTRAINT \"%s\" FOREIGN KEY ( ",
-			 class_name, name);
-	  for (i = 0; i < attr_count; i++)
-	    {
-	      if (i == (attr_count - 1))
-		{
-		  STRING_APPEND (query_p, avail_size,
-				 "\"%s\" ) references \"%s\" ( ",
-				 foreign_key_names[i], reference_class_name);
-		}
-	      else
-		{
-		  STRING_APPEND (query_p, avail_size, "\"%s\" ,",
-				 foreign_key_names[i]);
-		}
-	    }
-
-	  for (i = 0; i < attr_count; i++)
-	    {
-	      if (i == (attr_count - 1))
-		{
-		  STRING_APPEND (query_p, avail_size, "\"%s\" );",
-				 reference_key_names[i]);
-		}
-	      else
-		{
-		  STRING_APPEND (query_p, avail_size, "\"%s\" ,",
-				 reference_key_names[i]);
-		}
-	    }
-
-	  if (db_execute (query, &result, &query_error) < 0)
-	    {
-	      CUBRID_ERR_MSG_SET (_dbmt_error);
-	      db_shutdown ();
-	      errcode = ERR_WITH_MSG;
-	      goto add_con_final;
-	    }
-	  db_query_end (result);
-	}
-    }
-  else
-    {
-      errcode = db_add_constraint (classobj, DB_CONSTRAINT_NOT_NULL, name,
-				   (const char **) attr_names, is_class);
-    }
-
-
-  if (errcode < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      errcode = ERR_WITH_MSG;
-      goto add_con_final;
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      errcode = ERR_WITH_MSG;
-    }
-
-add_con_final:
-  if (attr_names)
-    {
-      free (attr_names);
-    }
-
-  if (attr_orders)
-    {
-      free (attr_orders);
-    }
-
-  if (foreign_key_names)
-    {
-      free (foreign_key_names);
-    }
-
-  if (reference_key_names)
-    {
-      free (reference_key_names);
-    }
-
-  if (errcode == ERR_WITH_MSG)
-    {
-      return errcode;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-
-  return ERR_NO_ERROR;
-}
-
-int
-ts_drop_constraint (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *type, *name, *category, *attr_count_string, **attr_names;
-  char *n, *v;
-  DB_OBJECT *classobj;
-  int errcode, attr_count, i, j, is_class;
-  DB_QUERY_RESULT *result;
-  DB_QUERY_ERROR query_error;
-
-  errcode = j = 0;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  class_name = nv_get_val (in, "classname");
-  classobj = db_find_class (class_name);
-  name = nv_get_val (in, "name");
-  category = nv_get_val (in, "category");
-  type = nv_get_val (in, "type");
-  if (type == NULL)
-    {
-      strcpy (_dbmt_error, "type");
-      return ERR_PARAM_MISSING;
-    }
-
-  if ((category != NULL) && (strcmp (category, "instance") == 0))
-    {
-      is_class = 0;
-    }
-  else
-    {
-      is_class = 1;
-    }
-
-  attr_count_string = nv_get_val (in, "attributecount");
-  if (attr_count_string == NULL)
-    {
-      strcpy (_dbmt_error, "attributecount");
-      return ERR_PARAM_MISSING;
-    }
-
-  attr_count = atoi (attr_count_string);
-  if (attr_count <= 0 || attr_count >= INT_MAX)
-    {
-      return ERR_PARAM_MISSING;
-    }
-
-  attr_names = (char **) malloc (sizeof (char *) * (attr_count + 1));
-  if (attr_names == NULL)
-    {
-      return ERR_MEM_ALLOC;
-    }
-
-  for (i = 0; i < in->nvplist_leng; i++)
-    {
-      nv_lookup (in, i, &n, &v);
-      if ((n != NULL) && !strcmp (n, "attribute"))
-	{
-	  attr_names[j++] = v;
-	}
-    }
-  attr_names[j++] = NULL;
-
-
-  if (!strcmp (type, "UNIQUE"))
-    {
-      errcode = db_drop_constraint (classobj, DB_CONSTRAINT_UNIQUE, name,
-				    (const char **) attr_names, is_class);
-    }
-  else if (!strcmp (type, "INDEX"))
-    {
-      errcode = db_drop_constraint (classobj, DB_CONSTRAINT_INDEX, name,
-				    (const char **) attr_names, is_class);
-    }
-  else if (!strcmp (type, "REVERSE INDEX"))
-    {
-      errcode =
-	db_drop_constraint (classobj, DB_CONSTRAINT_REVERSE_INDEX, name,
-			    (const char **) attr_names, is_class);
-    }
-  else if (!strcmp (type, "REVERSE UNIQUE"))
-    {
-      errcode =
-	db_drop_constraint (classobj, DB_CONSTRAINT_REVERSE_UNIQUE, name,
-			    (const char **) attr_names, is_class);
-    }
-  else if (!strcmp (type, "PRIMARY KEY"))
-    {
-      errcode =
-	db_drop_constraint (classobj, DB_CONSTRAINT_PRIMARY_KEY, name,
-			    (const char **) attr_names, is_class);
-    }
-  else if (!strcmp (type, "FOREIGN KEY"))
-    {
-      if (class_name != NULL)
-	{
-	  char query[QUERY_BUFFER_MAX];
-	  memset (query, 0, sizeof (query));
-	  snprintf (query, sizeof (query) - 1,
-		    "ALTER TABLE \"%s\" DROP CONSTRAINT \"%s\" ", class_name,
-		    name);
-	  if (db_execute (query, &result, &query_error) < 0)
-	    {
-	      CUBRID_ERR_MSG_SET (_dbmt_error);
-	      db_shutdown ();
-	      errcode = ERR_WITH_MSG;
-	      goto drop_con_final;
-	    }
-	  db_query_end (result);
-	}
-    }
-  else
-    {
-      errcode =
-	db_drop_constraint (classobj, DB_CONSTRAINT_NOT_NULL, name,
-			    (const char **) attr_names, is_class);
-    }
-
-
-  if (errcode < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      errcode = ERR_WITH_MSG;
-      goto drop_con_final;
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      errcode = ERR_WITH_MSG;
-    }
-
-drop_con_final:
-  if (attr_names)
-    {
-      free (attr_names);
-    }
-
-  if (errcode == ERR_WITH_MSG)
-    {
-      return errcode;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_add_super (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *super;
-  DB_OBJECT *classobj, *superobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  class_name = nv_get_val (in, "classname");
-  classobj = db_find_class (class_name);
-  super = nv_get_val (in, "super");
-  superobj = db_find_class (super);
-
-  if (db_add_super (classobj, superobj) < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_drop_super (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *super;
-  DB_OBJECT *classobj, *superobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  class_name = nv_get_val (in, "classname");
-  classobj = db_find_class (class_name);
-  super = nv_get_val (in, "super");
-  superobj = db_find_class (super);
-
-  if (db_drop_super (classobj, superobj) < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_get_superclasses_info (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name;
-  DB_OBJECT *classobj, *obj;
-  DB_OBJLIST *objlist, *temp;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  class_name = nv_get_val (in, "classname");
-  classobj = db_find_class (class_name);
-
-  nv_add_nvp (out, "open", "superclassesinfo");
-
-  objlist = db_get_superclasses (classobj);
-  for (temp = objlist; temp != NULL; temp = temp->next)
-    {
-      obj = temp->op;
-      _op_get_super_info (out, obj);
-    }
-  db_objlist_free (objlist);
-
-  nv_add_nvp (out, "close", "superclassesinfo");
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_add_resolution (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *super, *name, *alias, *category;
-  DB_OBJECT *classobj, *superobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  class_name = nv_get_val (in, "classname");
-  classobj = db_find_class (class_name);
-  super = nv_get_val (in, "super");
-  superobj = db_find_class (super);
-  name = nv_get_val (in, "name");
-  alias = nv_get_val (in, "alias");
-  category = nv_get_val (in, "category");
-
-  if ((category != NULL) && (strcmp (category, "instance") == 0))
-    {
-      if (db_add_resolution (classobj, superobj, name, alias) < 0)
-	goto add_resolution_error;
-    }
-  else
-    {
-      if (db_add_class_resolution (classobj, superobj, name, alias) < 0)
-	goto add_resolution_error;
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-
-add_resolution_error:
-  CUBRID_ERR_MSG_SET (_dbmt_error);
-  db_shutdown ();
-  return ERR_WITH_MSG;
-}
-
-int
-ts_drop_resolution (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *super, *name, *category;
-  DB_OBJECT *classobj, *superobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  class_name = nv_get_val (in, "classname");
-  classobj = db_find_class (class_name);
-  super = nv_get_val (in, "super");
-  superobj = db_find_class (super);
-  name = nv_get_val (in, "name");
-  category = nv_get_val (in, "category");
-
-  if ((category != NULL) && (strcmp (category, "instance") == 0))
-    {
-      if (db_drop_resolution (classobj, superobj, name) < 0)
-	goto drop_resolution_error;
-    }
-  else
-    {
-      if (db_drop_class_resolution (classobj, superobj, name) < 0)
-	goto drop_resolution_error;
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-
-drop_resolution_error:
-  CUBRID_ERR_MSG_SET (_dbmt_error);
-  db_shutdown ();
-  return ERR_WITH_MSG;
-}
-
-int
-ts_add_method (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *method_name, *implementation, *category;
-  DB_OBJECT *classobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  class_name = nv_get_val (in, "classname");
-  classobj = db_find_class (class_name);
-  method_name = nv_get_val (in, "methodname");
-  implementation = nv_get_val (in, "implementation");
-  category = nv_get_val (in, "category");
-
-  if ((category != NULL) && (strcmp (category, "instance") == 0))
-    {
-      if (db_add_method (classobj, method_name, implementation) < 0)
-	goto add_method_error;
-    }
-  else
-    {
-      if (db_add_class_method (classobj, method_name, implementation) < 0)
-	goto add_method_error;
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-
-add_method_error:
-  CUBRID_ERR_MSG_SET (_dbmt_error);
-  db_shutdown ();
-  return ERR_WITH_MSG;
-}
-
-int
-ts_drop_method (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *method_name, *category;
-  DB_OBJECT *classobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  class_name = nv_get_val (in, "classname");
-  classobj = db_find_class (class_name);
-  method_name = nv_get_val (in, "methodname");
-  category = nv_get_val (in, "category");
-
-  if ((category != NULL) && (strcmp (category, "instance") == 0))
-    {
-      if (db_drop_method (classobj, method_name) < 0)
-	goto drop_method_error;
-    }
-  else
-    {
-      if (db_drop_class_method (classobj, method_name) < 0)
-	goto drop_method_error;
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-
-drop_method_error:
-  CUBRID_ERR_MSG_SET (_dbmt_error);
-  db_shutdown ();
-  return ERR_WITH_MSG;
-}
-
-int
-ts_update_method (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *method_name, *implementation, *old_method_name,
-    *category;
-  char *n, *v;
-  DB_OBJECT *classobj;
-  DB_METHOD *methodobj;
-  int errcode, is_class, i, j = 0;
-  const char *method_function_name;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  class_name = nv_get_val (in, "classname");
-  classobj = db_find_class (class_name);
-  method_name = nv_get_val (in, "newmethodname");
-  implementation = nv_get_val (in, "implementation");
-  old_method_name = nv_get_val (in, "oldmethodname");
-  category = nv_get_val (in, "category");
-
-  if ((category != NULL) && (strcmp (category, "instance") == 0))
-    is_class = 0;
-  else
-    is_class = 1;
-
-  if ((method_name != NULL) && (old_method_name != NULL)
-      && (strcmp (method_name, old_method_name) != 0))
-    {
-      if (db_rename (classobj, old_method_name, is_class, method_name) < 0)
-	goto update_method_error;
-    }
-
-  for (i = 0; i < in->nvplist_leng; i++)
-    {
-      nv_lookup (in, i, &n, &v);
-      if ((n != NULL) && (strcmp (n, "argument") == 0))
-	{
-	  if (v == NULL)
-	    errcode =
-	      db_add_argument (classobj, method_name, is_class, j++, NULL);
-	  else
-	    errcode =
-	      db_add_argument (classobj, method_name, is_class, j++, v);
-	  if (errcode < 0)
-	    goto update_method_error;
-	}
-    }
-
-  if (is_class)
-    methodobj = db_get_class_method (classobj, method_name);
-  else
-    methodobj = db_get_method (classobj, method_name);
-
-  method_function_name = db_method_function (methodobj);
-  if ((implementation != NULL) && (method_function_name != NULL)
-      && (strcmp (implementation, method_function_name) != 0))
-    {
-      if (db_change_method_implementation
-	  (classobj, method_name, is_class, implementation) < 0)
-	{
-	  goto update_method_error;
-	}
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-
-update_method_error:
-  CUBRID_ERR_MSG_SET (_dbmt_error);
-  db_shutdown ();
-  return ERR_WITH_MSG;
-}
-
-int
-ts_add_method_file (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *method_file;
-  DB_OBJECT *classobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  class_name = nv_get_val (in, "classname");
-  classobj = db_find_class (class_name);
-  method_file = nv_get_val (in, "methodfile");
-
-  if (db_add_method_file (classobj, method_file) < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_drop_method_file (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *method_file;
-  DB_OBJECT *classobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  class_name = nv_get_val (in, "classname");
-  classobj = db_find_class (class_name);
-  method_file = nv_get_val (in, "methodfile");
-
-  if (db_drop_method_file (classobj, method_file) < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_add_query_spec (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *vclass_name, *query_spec;
-  DB_OBJECT *vclassobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  vclass_name = nv_get_val (in, "vclassname");
-  vclassobj = db_find_class (vclass_name);
-  query_spec = nv_get_val (in, "queryspec");
-
-  if (db_add_query_spec (vclassobj, query_spec) < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  if (_op_get_detailed_class_info (out, vclassobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_drop_query_spec (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *vclass_name, *query_number;
-  DB_OBJECT *vclassobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  vclass_name = nv_get_val (in, "vclassname");
-  vclassobj = db_find_class (vclass_name);
-  query_number = nv_get_val (in, "querynumber");
-
-  if ((query_number == NULL)
-      || (db_drop_query_spec (vclassobj, atoi (query_number)) < 0))
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  if (_op_get_detailed_class_info (out, vclassobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_change_query_spec (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *vclass_name, *query_number, *query_spec;
-  DB_OBJECT *vclassobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  vclass_name = nv_get_val (in, "vclassname");
-  vclassobj = db_find_class (vclass_name);
-  query_number = nv_get_val (in, "querynumber");
-  query_spec = nv_get_val (in, "queryspec");
-
-  if ((query_number == NULL)
-      || (db_change_query_spec (vclassobj, query_spec, atoi (query_number)) <
-	  0))
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  if (_op_get_detailed_class_info (out, vclassobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_validate_query_spec (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *vclass_name, *query_spec;
-  DB_OBJECT *vclassobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  vclass_name = nv_get_val (in, "vclassname");
-  vclassobj = db_find_class (vclass_name);
-  query_spec = nv_get_val (in, "queryspec");
-
-  if (db_validate_query_spec (vclassobj, query_spec) < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  if (_op_get_detailed_class_info (out, vclassobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_validate_vclass (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *vclass_name;
-  DB_OBJECT *vclassobj;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  vclass_name = nv_get_val (in, "vclassname");
-  vclassobj = db_find_class (vclass_name);
-
-  if (db_validate (vclassobj) < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  if (_op_get_detailed_class_info (out, vclassobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_commit_transaction ();
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-/******************************************************************************
-	TASK UNICAS
-******************************************************************************/
 
 int
 ts2_get_unicas_info (nvplist * in, nvplist * out, char *_dbmt_error)
 {
-  T_DM_UC_INFO uc_info;
+  T_CM_BROKER_INFO_ALL uc_info;
   int i;
-  T_DM_UC_CONF uc_conf;
+  T_CM_BROKER_CONF uc_conf;
+  T_CM_ERROR error;
+  char *broker_name;
 
-  if (uca_unicas_conf (&uc_conf, NULL, _dbmt_error) < 0)
+  broker_name = nv_get_val (in, "bname");
+
+  if (cm_get_broker_conf (&uc_conf, NULL, &error) < 0)
     {
+      strcpy (_dbmt_error, error.err_msg);
       return ERR_WITH_MSG;
     }
-  if (uca_br_info (&uc_info, _dbmt_error) < 0)
+  if (cm_get_broker_info (&uc_info, &error) < 0)
     {
       char *p;
       int tmp_val;
 
+      strcpy (_dbmt_error, error.err_msg);
       nv_add_nvp (out, "open", "brokersinfo");
       for (i = 0; i < uc_conf.num_broker; i++)
 	{
+	  /*
+	   *add broker info to response according to the requested
+	   * dbname.if dbname is null, then print all the brokers. 
+	   */
+	  if ((broker_name != NULL) &&
+	      (strcmp (uc_info.br_info[i].name, broker_name) != 0))
+	    {
+	      continue;
+	    }
 	  nv_add_nvp (out, "open", "broker");
 	  nv_add_nvp (out, "name",
-		      uca_conf_find (&(uc_conf.br_conf[i]), "%"));
+		      cm_br_conf_get_value (&(uc_conf.br_conf[i]), "%"));
 	  nv_add_nvp (out, "port",
-		      uca_conf_find (&(uc_conf.br_conf[i]), "BROKER_PORT"));
+		      cm_br_conf_get_value (&(uc_conf.br_conf[i]),
+					    "BROKER_PORT"));
 	  nv_add_nvp (out, "appl_server_shm_id",
-		      uca_conf_find (&(uc_conf.br_conf[i]),
-				     "APPL_SERVER_SHM_ID"));
-	  p = uca_conf_find (&(uc_conf.br_conf[i]), "SOURCE_ENV");
+		      cm_br_conf_get_value (&(uc_conf.br_conf[i]),
+					    "APPL_SERVER_SHM_ID"));
+	  p = cm_br_conf_get_value (&(uc_conf.br_conf[i]), "SOURCE_ENV");
 	  tmp_val = 1;
 	  if (p == NULL || *p == '\0')
 	    tmp_val = 0;
 	  nv_add_nvp_int (out, "source_env", tmp_val);
-	  p = uca_conf_find (&(uc_conf.br_conf[i]), "ACCESS_LIST");
+	  p = cm_br_conf_get_value (&(uc_conf.br_conf[i]), "ACCESS_LIST");
 	  tmp_val = 1;
 	  if (p == NULL || *p == '\0')
 	    tmp_val = 0;
@@ -2340,180 +571,91 @@ ts2_get_unicas_info (nvplist * in, nvplist * out, char *_dbmt_error)
       nv_add_nvp (out, "open", "brokersinfo");
       for (i = 0; i < uc_info.num_info; i++)
 	{
-	  nv_add_nvp (out, "open", "broker");
-	  nv_add_nvp (out, "name", uc_info.info.br_info[i].name);
-	  nv_add_nvp (out, "type", uc_info.info.br_info[i].as_type);
-	  if (strcmp (uc_info.info.br_info[i].status, "OFF") != 0)
+	  /* 
+	   *add broker info to response according to the requested
+	   * dbname.if dbname is null, then print all the brokers. 
+	   */
+	  if ((broker_name != NULL) &&
+	      (strcmp (uc_info.br_info[i].name, broker_name) != 0))
 	    {
-	      nv_add_nvp_int (out, "pid", uc_info.info.br_info[i].pid);
-	      nv_add_nvp_int (out, "port", uc_info.info.br_info[i].port);
-	      nv_add_nvp_int (out, "as", uc_info.info.br_info[i].num_as);
-	      nv_add_nvp_int (out, "jq", uc_info.info.br_info[i].num_job_q);
+	      continue;
+	    }
+	  nv_add_nvp (out, "open", "broker");
+	  nv_add_nvp (out, "name", uc_info.br_info[i].name);
+	  nv_add_nvp (out, "type", uc_info.br_info[i].as_type);
+	  if (strcmp (uc_info.br_info[i].status, "OFF") != 0)
+	    {
+	      nv_add_nvp_int (out, "pid", uc_info.br_info[i].pid);
+	      nv_add_nvp_int (out, "port", uc_info.br_info[i].port);
+	      nv_add_nvp_int (out, "as", uc_info.br_info[i].num_as);
+	      nv_add_nvp_int (out, "jq", uc_info.br_info[i].num_job_q);
 #ifdef GET_PSINFO
-	      nv_add_nvp_int (out, "thr", uc_info.info.br_info[i].num_thr);
-	      nv_add_nvp_float (out, "cpu", uc_info.info.br_info[i].pcpu,
-				"%.2f");
-	      nv_add_nvp_int (out, "time", uc_info.info.br_info[i].cpu_time);
+	      nv_add_nvp_int (out, "thr", uc_info.br_info[i].num_thr);
+	      nv_add_nvp_float (out, "cpu", uc_info.br_info[i].pcpu, "%.2f");
+	      nv_add_nvp_int (out, "time", uc_info.br_info[i].cpu_time);
 #endif
-	      nv_add_nvp_int (out, "req", uc_info.info.br_info[i].num_req);
-	      nv_add_nvp_int64 (out, "tran",
-				uc_info.info.br_info[i].num_tran);
-	      nv_add_nvp_int64 (out, "query",
-				uc_info.info.br_info[i].num_query);
+	      nv_add_nvp_int (out, "req", uc_info.br_info[i].num_req);
+	      nv_add_nvp_int64 (out, "tran", uc_info.br_info[i].num_tran);
+	      nv_add_nvp_int64 (out, "query", uc_info.br_info[i].num_query);
 	      nv_add_nvp_int64 (out, "long_tran",
-				uc_info.info.br_info[i].num_long_tran);
+				uc_info.br_info[i].num_long_tran);
 	      nv_add_nvp_int64 (out, "long_query",
-				uc_info.info.br_info[i].num_long_query);
+				uc_info.br_info[i].num_long_query);
 	      nv_add_nvp_int64 (out, "error_query",
-				uc_info.info.br_info[i].num_error_query);
+				uc_info.br_info[i].num_error_query);
 	      nv_add_nvp_float (out, "long_tran_time",
-				(uc_info.info.br_info[i].
-				 long_transaction_time / 1000.0), "%.2f");
+				uc_info.br_info[i].
+				long_transaction_time / 1000.0, "%.2f");
 	      nv_add_nvp_float (out, "long_query_time",
-				(uc_info.info.br_info[i].
-				 long_query_time / 1000.0), "%.2f");
+				uc_info.br_info[i].
+				long_query_time / 1000.0, "%.2f");
 
-	      switch (uc_info.info.br_info[i].keep_connection)
-		{
-		case KEEP_CON_AUTO:
-		  nv_add_nvp (out, "keep_conn", "AUTO");
-		  break;
-		case KEEP_CON_ON:
-		  nv_add_nvp (out, "keep_conn", "ON");
-		  break;
-		case KEEP_CON_OFF:
-		  nv_add_nvp (out, "keep_conn", "OFF");
-		  break;
-		}
+	      nv_add_nvp (out, "keep_conn",
+			  uc_info.br_info[i].keep_connection);
 
-	      nv_add_nvp (out, "auto", uc_info.info.br_info[i].auto_add);
-	      nv_add_nvp (out, "ses",
-			  uc_info.info.br_info[i].session_timeout);
-	      if (uc_info.info.br_info[i].sql_log_mode == SQL_LOG_MODE_NONE)
-		{
-		  nv_add_nvp (out, "sqll", "NONE");
-		}
-	      else if (uc_info.info.br_info[i].sql_log_mode ==
-		       SQL_LOG_MODE_ERROR)
-		{
-		  nv_add_nvp (out, "sqll", "ERROR");
-		}
-	      else if (uc_info.info.br_info[i].sql_log_mode ==
-		       SQL_LOG_MODE_TIMEOUT)
-		{
-		  nv_add_nvp (out, "sqll", "TIMEOUT");
-		}
-	      else if (uc_info.info.br_info[i].sql_log_mode ==
-		       SQL_LOG_MODE_NOTICE)
-		{
-		  nv_add_nvp (out, "sqll", "NOTICE");
-		}
-	      else if (uc_info.info.br_info[i].sql_log_mode ==
-		       SQL_LOG_MODE_ALL)
-		{
-		  nv_add_nvp (out, "sqll", "ALL");
-		}
-	      nv_add_nvp (out, "log", uc_info.info.br_info[i].log_dir);
+	      nv_add_nvp (out, "auto", uc_info.br_info[i].auto_add);
+	      nv_add_nvp (out, "ses", uc_info.br_info[i].session_timeout);
+	      nv_add_nvp (out, "sqll", uc_info.br_info[i].sql_log_mode);
+	      nv_add_nvp (out, "log", uc_info.br_info[i].log_dir);
+	      nv_add_nvp (out, "access_mode", uc_info.br_info[i].access_mode);
 	    }
 	  else
 	    {
 	      nv_add_nvp (out, "port",
 			  _op_get_port_from_config (&uc_conf,
-						    uc_info.info.br_info[i].
-						    name));
+						    uc_info.br_info[i].name));
 	    }
-	  nv_add_nvp (out, "state", uc_info.info.br_info[i].status);
+	  nv_add_nvp (out, "state", uc_info.br_info[i].status);
 	  nv_add_nvp_int (out, "source_env",
-			  uc_info.info.br_info[i].source_env_flag);
+			  uc_info.br_info[i].source_env_flag);
 	  nv_add_nvp_int (out, "access_list",
-			  uc_info.info.br_info[i].access_list_flag);
+			  uc_info.br_info[i].access_list_flag);
 	  shmid =
-	    uca_conf_find (uca_conf_find_broker
-			   (&uc_conf, uc_info.info.br_info[i].name),
-			   "APPL_SERVER_SHM_ID");
+	    cm_br_conf_get_value (cm_conf_find_broker
+				  (&uc_conf, uc_info.br_info[i].name),
+				  "APPL_SERVER_SHM_ID");
 	  nv_add_nvp (out, "appl_server_shm_id", shmid);
 	  nv_add_nvp (out, "close", "broker");
 	}
       nv_add_nvp (out, "close", "brokersinfo");
       nv_add_nvp (out, "brokerstatus", "ON");
-      uca_br_info_free (&uc_info);
+      cm_broker_info_free (&uc_info);
     }
 
-  uca_unicas_conf_free (&uc_conf);
+  cm_broker_conf_free (&uc_conf);
   return ERR_NO_ERROR;
 }
 
-int
-ts2_get_broker_on_conf (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname;
-  int i;
-  T_DM_UC_INFO uc_info;
-  T_DM_UC_BR_INFO *br_info;
-
-  bname = nv_get_val (in, "bname");
-  if (bname == NULL)
-    {
-      sprintf (_dbmt_error, "broker name");
-      return ERR_PARAM_MISSING;
-    }
-  if (uca_br_info (&uc_info, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  br_info = NULL;
-  for (i = 0; i < uc_info.num_info; i++)
-    {
-      if (strcmp (bname, uc_info.info.br_info[i].name) == 0)
-	{
-	  br_info = &(uc_info.info.br_info[i]);
-	  break;
-	}
-    }
-  if (br_info != NULL)
-    {
-      if (br_info->sql_log_mode == SQL_LOG_MODE_NONE)
-	{
-	  nv_add_nvp (out, "sql_log", "NONE");
-	}
-      else if (br_info->sql_log_mode == SQL_LOG_MODE_ERROR)
-	{
-	  nv_add_nvp (out, "sql_log", "ERROR");
-	}
-      else if (br_info->sql_log_mode == SQL_LOG_MODE_TIMEOUT)
-	{
-	  nv_add_nvp (out, "sql_log", "TIMEOUT");
-	}
-      else if (br_info->sql_log_mode == SQL_LOG_MODE_NOTICE)
-	{
-	  nv_add_nvp (out, "sql_log", "NOTICE");
-	}
-      else if (br_info->sql_log_mode == SQL_LOG_MODE_ALL)
-	{
-	  nv_add_nvp (out, "sql_log", "ALL");
-	}
-      nv_add_nvp_int (out, "appl_server_max_size", br_info->as_max_size);
-      if (br_info->log_backup)
-	{
-	  nv_add_nvp (out, "log_backup", "ON");
-	}
-      else
-	{
-	  nv_add_nvp (out, "log_backup", "OFF");
-	}
-      nv_add_nvp_int (out, "time_to_kill", br_info->time_to_kill);
-    }
-  uca_br_info_free (&uc_info);
-
-  return ERR_NO_ERROR;
-}
 
 int
 ts2_start_unicas (nvplist * in, nvplist * out, char *_dbmt_error)
 {
-  if (uca_start (_dbmt_error) < 0)
-    return ERR_WITH_MSG;
+  T_CM_ERROR error;
+  if (cm_broker_env_start (&error) < 0)
+    {
+      strcpy (_dbmt_error, error.err_msg);
+      return ERR_WITH_MSG;
+    }
 
   return ERR_NO_ERROR;
 }
@@ -2521,8 +663,12 @@ ts2_start_unicas (nvplist * in, nvplist * out, char *_dbmt_error)
 int
 ts2_stop_unicas (nvplist * in, nvplist * out, char *_dbmt_error)
 {
-  if (uca_stop (_dbmt_error) < 0)
-    return ERR_WITH_MSG;
+  T_CM_ERROR error;
+  if (cm_broker_env_stop (&error) < 0)
+    {
+      strcpy (_dbmt_error, error.err_msg);
+      return ERR_WITH_MSG;
+    }
 
   return ERR_NO_ERROR;
 }
@@ -2533,7 +679,7 @@ ts2_get_admin_log_info (nvplist * in, nvplist * out, char *_dbmt_error)
   char buf[PATH_MAX];
   struct stat statbuf;
 
-  uca_get_file (UC_FID_ADMIN_LOG, buf);
+  cm_get_broker_file (UC_FID_ADMIN_LOG, buf);
 
   if (stat (buf, &statbuf) != 0)
     {
@@ -2563,11 +709,12 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
   struct dirent *dirp;
 #endif
   struct stat statbuf;
-  T_DM_UC_CONF uc_conf;
+  T_CM_BROKER_CONF uc_conf;
   char logdir[PATH_MAX], err_logdir[PATH_MAX], access_logdir[PATH_MAX];
   const char *v;
   char *bname, *from, buf[1024], scriptdir[PATH_MAX];
   char *cur_file;
+  T_CM_ERROR error;
 
   bname = nv_get_val (in, "broker");
   from = nv_get_val (in, "from");
@@ -2582,27 +729,30 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
       return ERR_NO_ERROR;
     }
 
-  if (uca_unicas_conf (&uc_conf, NULL, _dbmt_error) < 0)
+  if (cm_get_broker_conf (&uc_conf, NULL, &error) < 0)
     {
+      strcpy (_dbmt_error, error.err_msg);
       return ERR_WITH_MSG;
     }
-  v = uca_conf_find (uca_conf_find_broker (&uc_conf, bname), "ERROR_LOG_DIR");
+  v =
+    cm_br_conf_get_value (cm_conf_find_broker (&uc_conf, bname),
+			  "ERROR_LOG_DIR");
   if (v == NULL)
     {
       v = BROKER_LOG_DIR "/error_log";
     }
-  uca_get_conf_path (v, err_logdir);
+  cm_get_abs_file_path (v, err_logdir);
 
-  v = uca_conf_find (uca_conf_find_broker (&uc_conf, bname), "LOG_DIR");
+  v = cm_br_conf_get_value (cm_conf_find_broker (&uc_conf, bname), "LOG_DIR");
   if (v == NULL)
     {
       v = BROKER_LOG_DIR "/sql_log";
     }
-  uca_get_conf_path (v, logdir);
+  cm_get_abs_file_path (v, logdir);
 
-  uca_get_conf_path (BROKER_LOG_DIR, access_logdir);
+  cm_get_abs_file_path (BROKER_LOG_DIR, access_logdir);
 
-  uca_unicas_conf_free (&uc_conf);
+  cm_broker_conf_free (&uc_conf);
 
 
 #if defined(WINDOWS)
@@ -2817,39 +967,6 @@ ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error)
   return ERR_NO_ERROR;
 }
 
-int
-ts2_add_broker (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname;
-  T_DM_UC_CONF uc_conf;
-  int retval;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  if (uca_unicas_conf (&uc_conf, NULL, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  if (uca_conf_find_broker (&uc_conf, bname) != NULL)
-    {
-      strcpy (_dbmt_error, "The Broker name already exists!");
-      uca_unicas_conf_free (&uc_conf);
-      return ERR_WITH_MSG;
-    }
-
-  if (uca_conf_broker_add (&uc_conf, bname, _dbmt_error) < 0)
-    {
-      uca_unicas_conf_free (&uc_conf);
-      return ERR_WITH_MSG;
-    }
-
-  retval = uca_conf_write (&uc_conf, NULL, _dbmt_error);
-
-  uca_unicas_conf_free (&uc_conf);
-  return retval;
-}
 
 int
 ts2_get_add_broker_info (nvplist * in, nvplist * out, char *_dbmt_error)
@@ -2857,7 +974,7 @@ ts2_get_add_broker_info (nvplist * in, nvplist * out, char *_dbmt_error)
   FILE *infile;
   char broker_conf_path[PATH_MAX], strbuf[1024];
 
-  uca_get_file (UC_FID_CUBRID_BROKER_CONF, broker_conf_path);
+  cm_get_broker_file (UC_FID_CUBRID_BROKER_CONF, broker_conf_path);
 
   if (access (broker_conf_path, F_OK) < 0)
     {
@@ -2892,19 +1009,21 @@ ts2_delete_broker (nvplist * in, nvplist * out, char *_dbmt_error)
   char buf[1024], tmpfile[PATH_MAX];
   char fpath[PATH_MAX];
   int retval;
-  T_DM_UC_CONF uc_conf;
+  T_CM_BROKER_CONF uc_conf;
+  T_CM_ERROR error;
 
   if ((bname = nv_get_val (in, "bname")) == NULL)
     {
       return ERR_PARAM_MISSING;
     }
-  if (uca_unicas_conf (&uc_conf, NULL, _dbmt_error) < 0)
+  if (cm_get_broker_conf (&uc_conf, NULL, &error) < 0)
     {
+      strcpy (_dbmt_error, error.err_msg);
       return ERR_WITH_MSG;
     }
 
   retval = uca_conf_write (&uc_conf, bname, _dbmt_error);
-  uca_unicas_conf_free (&uc_conf);
+  cm_broker_conf_free (&uc_conf);
 
   if (retval != ERR_NO_ERROR)
     {
@@ -2946,82 +1065,13 @@ ts2_delete_broker (nvplist * in, nvplist * out, char *_dbmt_error)
   return ERR_NO_ERROR;
 }
 
-int
-ts2_rename_broker (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname, *newbname, buf[1024], ufile[PATH_MAX], tmpfile[PATH_MAX];
-  FILE *infile, *outfile;
-  int retval;
-  T_DM_UC_CONF uc_conf;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  if ((newbname = nv_get_val (in, "newbname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-
-  if (uca_unicas_conf (&uc_conf, NULL, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  uca_change_config (&uc_conf, bname, "%", newbname);
-  retval = uca_conf_write (&uc_conf, NULL, _dbmt_error);
-  uca_unicas_conf_free (&uc_conf);
-  if (retval != ERR_NO_ERROR)
-    {
-      return retval;
-    }
-  /* autounicasm.conf */
-  conf_get_dbmt_file (FID_AUTO_UNICASM_CONF, ufile);
-  snprintf (tmpfile, PATH_MAX - 1, "%s/DBMT_casop_%d.%d", sco.dbmt_tmp_dir,
-	    TS2_RENAMEBROKER, (int) getpid ());
-  infile = fopen (ufile, "r");
-  outfile = fopen (tmpfile, "w");
-  if (infile == NULL || outfile == NULL)
-    {
-      if (infile)
-	{
-	  fclose (infile);
-	}
-      if (outfile)
-	{
-	  fclose (outfile);
-	}
-    }
-  else
-    {
-      char conf_bname[128];
-      while (fgets (buf, sizeof (buf), infile))
-	{
-	  if (sscanf (buf, "%127s", conf_bname) < 1)
-	    {
-	      continue;
-	    }
-	  if (strcmp (conf_bname, bname) == 0)
-	    {
-	      fprintf (outfile, "%s %s", newbname,
-		       buf + strlen (conf_bname) + 1);
-	    }
-	  else
-	    {
-	      fputs (buf, outfile);
-	    }
-	}
-      fclose (infile);
-      fclose (outfile);
-      move_file (tmpfile, ufile);
-    }
-
-  return ERR_NO_ERROR;
-}
 
 int
 ts2_get_broker_status (nvplist * in, nvplist * out, char *_dbmt_error)
 {
-  T_DM_UC_INFO br_info, job_info;
+  T_CM_CAS_INFO_ALL as_info_set;
+  T_CM_JOB_INFO_ALL job_info_set;
+  T_CM_ERROR error;
   char *bname, buf[1024];
   int i;
 
@@ -3030,124 +1080,77 @@ ts2_get_broker_status (nvplist * in, nvplist * out, char *_dbmt_error)
       return ERR_PARAM_MISSING;
     }
   nv_add_nvp (out, "bname", bname);
-
-  if (uca_as_info (bname, &br_info, &job_info, _dbmt_error) < 0)
+  nv_add_nvp_time (out, "time", time (NULL),
+		   "%04d/%02d/%02d %02d:%02d:%02d", TIME_STR_FMT_DATE_TIME);
+  if (cm_get_cas_info (bname, &as_info_set, &job_info_set, &error) < 0)
     {
+      strcpy (_dbmt_error, error.err_msg);
       return ERR_NO_ERROR;
     }
-  for (i = 0; i < br_info.num_info; i++)
+  for (i = 0; i < as_info_set.num_info; i++)
     {
-      if (strcmp (br_info.info.as_info[i].service_flag, "ON") != 0)
+      if (strcmp (as_info_set.as_info[i].service_flag, "ON") != 0)
 	continue;
 
       nv_add_nvp (out, "open", "asinfo");
 
-      nv_add_nvp_int (out, "as_id", br_info.info.as_info[i].id);
-      nv_add_nvp_int (out, "as_pid", br_info.info.as_info[i].pid);
-      nv_add_nvp_int (out, "as_c", br_info.info.as_info[i].num_request);
-      nv_add_nvp_int (out, "as_psize", br_info.info.as_info[i].psize);
-      nv_add_nvp (out, "as_status", br_info.info.as_info[i].status);
-      nv_add_nvp_float (out, "as_cpu", br_info.info.as_info[i].pcpu, "%.2f");
-      uca_cpu_time_str (br_info.info.as_info[i].cpu_time, buf);
+      nv_add_nvp_int (out, "as_id", as_info_set.as_info[i].id);
+      nv_add_nvp_int (out, "as_pid", as_info_set.as_info[i].pid);
+      nv_add_nvp_int (out, "as_c", as_info_set.as_info[i].num_request);
+      /* add "as_port" nvp in windows: 
+         as_port only shows up on windows platform. */
+#if defined(WINDOWS)
+      nv_add_nvp_int (out, "as_port", as_info_set.as_info[i].as_port);
+#endif
+      nv_add_nvp_int (out, "as_psize", as_info_set.as_info[i].psize);
+      nv_add_nvp (out, "as_status", as_info_set.as_info[i].status);
+      nv_add_nvp_float (out, "as_cpu", as_info_set.as_info[i].pcpu, "%.2f");
+      cm_cpu_time_str (as_info_set.as_info[i].cpu_time, buf);
       nv_add_nvp (out, "as_ctime", buf);
       nv_add_nvp_time (out, "as_lat",
-		       br_info.info.as_info[i].last_access_time,
+		       as_info_set.as_info[i].last_access_time,
 		       "%02d/%02d/%02d %02d:%02d:%02d", NV_ADD_DATE_TIME);
-      nv_add_nvp (out, "as_cur", br_info.info.as_info[i].log_msg);
+      nv_add_nvp (out, "as_cur", as_info_set.as_info[i].log_msg);
       nv_add_nvp_int64 (out, "as_num_query",
-			br_info.info.as_info[i].num_queries_processed);
+			as_info_set.as_info[i].num_queries_processed);
       nv_add_nvp_int64 (out, "as_num_tran",
-			br_info.info.as_info[i].num_transactions_processed);
+			as_info_set.as_info[i].num_transactions_processed);
       nv_add_nvp_int64 (out, "as_long_query",
-			br_info.info.as_info[i].num_long_queries);
+			as_info_set.as_info[i].num_long_queries);
       nv_add_nvp_int64 (out, "as_long_tran",
-			br_info.info.as_info[i].num_long_transactions);
+			as_info_set.as_info[i].num_long_transactions);
       nv_add_nvp_int64 (out, "as_error_query",
-			br_info.info.as_info[i].num_error_queries);
-      nv_add_nvp (out, "as_dbname", br_info.info.as_info[i].database_name);
-      nv_add_nvp (out, "as_dbhost", br_info.info.as_info[i].database_host);
+			as_info_set.as_info[i].num_error_queries);
+      nv_add_nvp (out, "as_dbname", as_info_set.as_info[i].database_name);
+      nv_add_nvp (out, "as_dbhost", as_info_set.as_info[i].database_host);
       nv_add_nvp_time (out, "as_lct",
-		       br_info.info.as_info[i].last_connect_time,
+		       as_info_set.as_info[i].last_connect_time,
 		       "%02d/%02d/%02d %02d:%02d:%02d", NV_ADD_DATE_TIME);
-
+      /* add "as_client_ip" nvp. */
+      nv_add_nvp (out, "as_client_ip", as_info_set.as_info[i].clt_ip_addr);
       nv_add_nvp (out, "close", "asinfo");
     }
-  for (i = 0; i < job_info.num_info; i++)
+  for (i = 0; i < job_info_set.num_info; i++)
     {
       nv_add_nvp (out, "open", "jobinfo");
-      nv_add_nvp_int (out, "job_id", job_info.info.job_info[i].id);
-      nv_add_nvp_int (out, "job_priority",
-		      job_info.info.job_info[i].priority);
-      nv_add_nvp (out, "job_ip", ip2str (job_info.info.job_info[i].ip, buf));
-      nv_add_nvp_time (out, "job_time", job_info.info.job_info[i].recv_time,
+      nv_add_nvp_int (out, "job_id", job_info_set.job_info[i].id);
+      nv_add_nvp_int (out, "job_priority", job_info_set.job_info[i].priority);
+      nv_add_nvp (out, "job_ip", job_info_set.job_info[i].ipstr);
+      nv_add_nvp_time (out, "job_time", job_info_set.job_info[i].recv_time,
 		       "%02d:%02d:%02d", NV_ADD_TIME);
       snprintf (buf, sizeof (buf) - 1, "%s:%s",
-		job_info.info.job_info[i].script,
-		job_info.info.job_info[i].prgname);
+		job_info_set.job_info[i].script,
+		job_info_set.job_info[i].prgname);
       nv_add_nvp (out, "job_request", buf);
       nv_add_nvp (out, "close", "jobinfo");
     }
 
-  uca_as_info_free (&br_info, &job_info);
+  cm_cas_info_free (&as_info_set, &job_info_set);
 
   return ERR_NO_ERROR;
 }
 
-int
-ts2_get_broker_conf (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname;
-  int i;
-  T_DM_UC_CONF uc_conf;
-  T_DM_UC_BR_CONF *br_conf;
-  int master_shm_id;
-  char shm_id_str[32];
 
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  if (uca_unicas_conf (&uc_conf, &master_shm_id, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  snprintf (shm_id_str, sizeof (shm_id_str) - 1, "%X", master_shm_id);
-  nv_add_nvp (out, "MASTER_SHM_ID", shm_id_str);
-
-  br_conf = uca_conf_find_broker (&uc_conf, bname);
-  if (br_conf != NULL)
-    {
-      nv_add_nvp (out, "bname", bname);
-      for (i = 0; i < br_conf->num; i++)
-	{
-	  nv_add_nvp (out, br_conf->item[i].name, br_conf->item[i].value);
-	}
-    }
-  uca_unicas_conf_free (&uc_conf);
-
-  return ERR_NO_ERROR;
-}
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-static int
-compare_br_conf (T_DM_UC_BR_CONF * br_conf, char *name, char *value)
-{
-  int i;
-
-  if (br_conf == NULL)
-    {
-      return 0;
-    }
-  for (i = 0; i < br_conf->num; i++)
-    {
-      if (strcasecmp (br_conf->item[i].name, name) == 0)
-	{
-	  return (strcasecmp (br_conf->item[i].value, value));
-	}
-    }
-  return 0;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 int
 ts2_set_broker_conf (nvplist * in, nvplist * out, char *_dbmt_error)
@@ -3157,7 +1160,7 @@ ts2_set_broker_conf (nvplist * in, nvplist * out, char *_dbmt_error)
   char *conf, *confdata;
   int nv_len, i;
 
-  uca_get_file (UC_FID_CUBRID_BROKER_CONF, broker_conf_path);
+  cm_get_broker_file (UC_FID_CUBRID_BROKER_CONF, broker_conf_path);
 
   if ((outfile = fopen (broker_conf_path, "w")) == NULL)
     {
@@ -3186,29 +1189,12 @@ ts2_set_broker_conf (nvplist * in, nvplist * out, char *_dbmt_error)
   return ERR_NO_ERROR;
 }
 
-int
-ts2_set_broker_on_conf (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname, *n, *v;
-
-  bname = nv_get_val (in, "bname");
-  n = nv_get_val (in, "conf_name");
-  v = nv_get_val (in, "conf_value");
-  if (bname == NULL || n == NULL || v == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  if (uca_changer (bname, n, v, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  return ERR_NO_ERROR;
-}
 
 int
 ts2_start_broker (nvplist * in, nvplist * out, char *_dbmt_error)
 {
   char *bname;
+  T_CM_ERROR error;
 
   if ((bname = nv_get_val (in, "bname")) == NULL)
     {
@@ -3216,8 +1202,9 @@ ts2_start_broker (nvplist * in, nvplist * out, char *_dbmt_error)
       return ERR_PARAM_MISSING;
     }
 
-  if (uca_on (bname, _dbmt_error) < 0)
+  if (cm_broker_on (bname, &error) < 0)
     {
+      strcpy (_dbmt_error, error.err_msg);
       return ERR_WITH_MSG;
     }
   return ERR_NO_ERROR;
@@ -3227,6 +1214,7 @@ int
 ts2_stop_broker (nvplist * in, nvplist * out, char *_dbmt_error)
 {
   char *bname;
+  T_CM_ERROR error;
 
   if ((bname = nv_get_val (in, "bname")) == NULL)
     {
@@ -3234,131 +1222,9 @@ ts2_stop_broker (nvplist * in, nvplist * out, char *_dbmt_error)
       return ERR_PARAM_MISSING;
     }
 
-  if (uca_off (bname, _dbmt_error) < 0)
+  if (cm_broker_off (bname, &error) < 0)
     {
-      return ERR_WITH_MSG;
-    }
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_suspend_broker (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      strcpy (_dbmt_error, "broker name");
-      return ERR_PARAM_MISSING;
-    }
-
-  if (uca_suspend (bname, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_resume_broker (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      strcpy (_dbmt_error, "broker name");
-      return ERR_PARAM_MISSING;
-    }
-
-  if (uca_resume (bname, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_broker_job_first (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname, *jobnum;
-
-  bname = nv_get_val (in, "bname");
-  jobnum = nv_get_val (in, "jobnum");
-  if (bname == NULL || jobnum == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-
-  if (uca_job_first (bname, atoi (jobnum), _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_broker_job_info (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  T_DM_UC_INFO br_info, job_info;
-  char *bname, buf[1024];
-  int i;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  if (uca_as_info (bname, &br_info, &job_info, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  nv_add_nvp (out, "bname", bname);
-  for (i = 0; i < job_info.num_info; i++)
-    {
-      nv_add_nvp (out, "open", "jobinfo");
-      nv_add_nvp_int (out, "job_id", job_info.info.job_info[i].id);
-      nv_add_nvp_int (out, "job_priority",
-		      job_info.info.job_info[i].priority);
-      nv_add_nvp (out, "job_ip", ip2str (job_info.info.job_info[i].ip, buf));
-      nv_add_nvp_time (out, "job_time", job_info.info.job_info[i].recv_time,
-		       "%02d:%02d:%02d", NV_ADD_TIME);
-      snprintf (buf, sizeof (buf) - 1, "%s:%s",
-		job_info.info.job_info[i].script,
-		job_info.info.job_info[i].prgname);
-      nv_add_nvp (out, "job_request", buf);
-      nv_add_nvp (out, "close", "jobinfo");
-    }
-  uca_as_info_free (&br_info, &job_info);
-
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_add_broker_as (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  if (uca_add (bname, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_drop_broker_as (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  if (uca_drop (bname, _dbmt_error) < 0)
-    {
+      strcpy (_dbmt_error, error.err_msg);
       return ERR_WITH_MSG;
     }
   return ERR_NO_ERROR;
@@ -3368,6 +1234,7 @@ int
 ts2_restart_broker_as (nvplist * in, nvplist * out, char *_dbmt_error)
 {
   char *bname, *asnum;
+  T_CM_ERROR error;
 
   bname = nv_get_val (in, "bname");
   asnum = nv_get_val (in, "asnum");
@@ -3375,469 +1242,13 @@ ts2_restart_broker_as (nvplist * in, nvplist * out, char *_dbmt_error)
     {
       return ERR_PARAM_MISSING;
     }
-  if (uca_restart (bname, atoi (asnum), _dbmt_error) < 0)
+  if (cm_broker_as_restart (bname, atoi (asnum), &error) < 0)
     {
+      strcpy (_dbmt_error, error.err_msg);
       return ERR_WITH_MSG;
     }
   return ERR_NO_ERROR;
 }
-
-int
-ts2_get_broker_status_log (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname;
-  char buf[1024], log_file[PATH_MAX];
-  FILE *infile;
-  char *val[7];
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  infile =
-    fopen (conf_get_dbmt_file (FID_UC_AUTO_RESTART_LOG, log_file), "rt");
-  if (infile == NULL)
-    {
-      return ERR_NO_ERROR;
-    }
-  nv_add_nvp (out, "bname", bname);
-  while (fgets (buf, sizeof (buf), infile))
-    {
-      ut_trim (buf);
-      if (string_tokenize (buf, val, 7) < 0)
-	{
-	  continue;
-	}
-      if (strcmp (val[0], bname) == 0)
-	{
-	  nv_add_nvp (out, "open", "statuslog");
-	  nv_add_nvp (out, "time", val[1]);
-	  nv_add_nvp (out, "asnum", val[2]);
-	  nv_add_nvp (out, "psize", val[3]);
-	  nv_add_nvp (out, "cpu_usage", val[4]);
-	  nv_add_nvp (out, "busytime", val[5]);
-	  nv_add_nvp (out, "restarted", val[6]);
-	  nv_add_nvp (out, "close", "statuslog");
-	}
-    }
-
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_get_broker_m_conf (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char buf[1024], *bname;
-  char fpath[PATH_MAX];
-  FILE *infile;
-  char *conf_item[AUTOUNICAS_CONF_ENTRY_NUM];
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  conf_get_dbmt_file (FID_AUTO_UNICASM_CONF, fpath);
-  infile = fopen (fpath, "r");
-  if (infile == NULL)
-    {
-      return ERR_NO_ERROR;
-    }
-  while (fgets (buf, sizeof (buf), infile))
-    {
-      ut_trim (buf);
-      if (buf[0] == '#')
-	{
-	  continue;
-	}
-      if (string_tokenize (buf, conf_item, AUTOUNICAS_CONF_ENTRY_NUM) < 0)
-	{
-	  continue;
-	}
-      if (strcmp (conf_item[0], bname) == 0)
-	{
-	  int i;
-	  for (i = 0; i < AUTOUNICAS_CONF_ENTRY_NUM; i++)
-	    {
-	      nv_add_nvp (out, autounicas_conf_entry[i], conf_item[i]);
-	    }
-	}
-    }
-
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_set_broker_m_conf (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  FILE *infile, *outfile;
-  char buf[1024], tmpfile[PATH_MAX];
-  char fpath[PATH_MAX];
-  char *conf_item[AUTOUNICAS_CONF_ENTRY_NUM];
-  int i;
-  char conf_bname[128];
-
-  for (i = 0; i < AUTOUNICAS_CONF_ENTRY_NUM; i++)
-    {
-      conf_item[i] = nv_get_val (in, autounicas_conf_entry[i]);
-      if (conf_item[i] == NULL)
-	{
-	  strcpy (_dbmt_error, autounicas_conf_entry[i]);
-	  return ERR_PARAM_MISSING;
-	}
-    }
-
-  conf_get_dbmt_file (FID_AUTO_UNICASM_CONF, fpath);
-  if (access (fpath, F_OK) < 0)
-    {
-      outfile = fopen (fpath, "w");
-      if (outfile == NULL)
-	{
-	  strcpy (_dbmt_error, fpath);
-	  return ERR_FILE_OPEN_FAIL;
-	}
-      for (i = 0; i < AUTOUNICAS_CONF_ENTRY_NUM; i++)
-	{
-	  fprintf (outfile, "%s ", conf_item[i]);
-	}
-      fprintf (outfile, "\n");
-      fclose (outfile);
-      return ERR_NO_ERROR;
-    }
-
-  if ((infile = fopen (fpath, "r")) == NULL)
-    {
-      strcpy (_dbmt_error, fpath);
-      return ERR_FILE_OPEN_FAIL;
-    }
-  snprintf (tmpfile, PATH_MAX - 1, "%s/DBMT_casop_%d.%d", sco.dbmt_tmp_dir,
-	    TS2_SETBROKERMCONF, (int) getpid ());
-  outfile = fopen (tmpfile, "w");
-  if (outfile == NULL)
-    {
-      fclose (infile);
-      return ERR_TMPFILE_OPEN_FAIL;
-    }
-  while (fgets (buf, sizeof (buf), infile))
-    {
-      if (sscanf (buf, "%127s", conf_bname) < 1)
-	{
-	  continue;
-	}
-      if (strcmp (conf_bname, conf_item[0]) != 0)
-	{
-	  fputs (buf, outfile);
-	}
-    }
-  for (i = 0; i < AUTOUNICAS_CONF_ENTRY_NUM; i++)
-    {
-      fprintf (outfile, "%s ", conf_item[i]);
-    }
-  fprintf (outfile, "\n");
-
-  fclose (infile);
-  fclose (outfile);
-  move_file (tmpfile, fpath);
-
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_get_broker_as_limit (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname;
-  int i;
-  T_DM_UC_INFO uc_info;
-  int num_as, max_as, min_as;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  num_as = min_as = max_as = 0;
-
-  if (uca_br_info (&uc_info, _dbmt_error) >= 0)
-    {
-      for (i = 0; i < uc_info.num_info; i++)
-	{
-	  if (strcasecmp (uc_info.info.br_info[i].name, bname) == 0)
-	    {
-	      min_as = uc_info.info.br_info[i].min_as;
-	      max_as = uc_info.info.br_info[i].max_as;
-	      num_as = uc_info.info.br_info[i].num_as;
-	      break;
-	    }
-	}
-      uca_br_info_free (&uc_info);
-    }
-
-  nv_add_nvp_int (out, "minas", min_as);
-  nv_add_nvp_int (out, "maxas", max_as);
-  nv_add_nvp_int (out, "asnum", num_as);
-
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_get_broker_env_info (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname;
-  char *env_file;
-  T_DM_UC_CONF uc_conf;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-
-  if (uca_unicas_conf (&uc_conf, NULL, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  env_file =
-    uca_conf_find (uca_conf_find_broker (&uc_conf, bname), "SOURCE_ENV");
-  if (env_file != NULL)
-    {
-      char buf[PATH_MAX], n[128], v[128];
-      FILE *infile;
-
-      uca_get_conf_path (env_file, buf);
-      if ((infile = fopen (buf, "rt")) != NULL)
-	{
-	  while (fgets (buf, sizeof (buf), infile))
-	    {
-	      if (sscanf (buf, "%127s %127s", n, v) != 2)
-		{
-		  continue;
-		}
-	      nv_add_nvp (out, n, v);
-	    }
-	  fclose (infile);
-	}
-    }
-  uca_unicas_conf_free (&uc_conf);
-
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_set_broker_env_info (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname;
-  char *env_file;
-  T_DM_UC_CONF uc_conf;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  if (uca_unicas_conf (&uc_conf, NULL, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  env_file =
-    uca_conf_find (uca_conf_find_broker (&uc_conf, bname), "SOURCE_ENV");
-  if (env_file != NULL)
-    {
-      char buf[PATH_MAX];
-      FILE *outfile;
-      int i, flag = 0;
-      char *n, *v;
-
-      uca_get_conf_path (env_file, buf);
-      outfile = fopen (buf, "w");
-      if (outfile == NULL)
-	{
-	  uca_unicas_conf_free (&uc_conf);
-	  strcpy (_dbmt_error, buf);
-	  return ERR_FILE_OPEN_FAIL;
-	}
-      else
-	{
-	  for (i = 0; i < in->nvplist_leng; i++)
-	    {
-	      nv_lookup (in, i, &n, &v);
-	      if (n == NULL || v == NULL)
-		{
-		  continue;
-		}
-
-	      if ((strcmp (n, "open") == 0) && (strcmp (v, "param") == 0))
-		{
-		  flag = 1;
-		}
-	      else if ((strcmp (n, "close") == 0)
-		       && (strcmp (v, "param") == 0))
-		{
-		  flag = 0;
-		}
-	      else if (flag == 1)
-		{
-		  fprintf (outfile, "%s	%s\n", n, v);
-		}
-	    }
-	  fclose (outfile);
-	}
-    }
-  uca_unicas_conf_free (&uc_conf);
-
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_access_list_add_ip (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname, *ip;
-  char *file_name;
-  FILE *outfile;
-  int start, length, i;
-  char fpath[PATH_MAX];
-  T_DM_UC_CONF uc_conf;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  if (uca_unicas_conf (&uc_conf, NULL, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  file_name =
-    uca_conf_find (uca_conf_find_broker (&uc_conf, bname), "ACCESS_LIST");
-  if (file_name == NULL || file_name[0] == '\0')
-    {
-      uca_unicas_conf_free (&uc_conf);
-      return ERR_UNICASCONF_PARAM_MISSING;
-    }
-  uca_get_conf_path (file_name, fpath);
-  uca_unicas_conf_free (&uc_conf);
-
-  outfile = fopen (fpath, "a");
-  if (outfile == NULL)
-    {
-      sprintf (_dbmt_error, "%s", fpath);
-      return ERR_FILE_OPEN_FAIL;
-    }
-  nv_locate (in, "ip", &start, &length);
-  if (start >= 0)
-    {
-      for (i = 0; i < length; i++)
-	{
-	  nv_lookup (in, start + i, NULL, &ip);
-	  fprintf (outfile, "%s\n", ip);
-	}
-    }
-  fclose (outfile);
-
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_access_list_delete_ip (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname, *ip;
-  char buf[1024], tmpfile[PATH_MAX];
-  char *file_name;
-  FILE *infile, *outfile;
-  char fpath[PATH_MAX];
-  T_DM_UC_CONF uc_conf;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  if ((ip = nv_get_val (in, "ip")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  if (uca_unicas_conf (&uc_conf, NULL, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  file_name =
-    uca_conf_find (uca_conf_find_broker (&uc_conf, bname), "ACCESS_LIST");
-  if (file_name == NULL || file_name[0] == '\0')
-    {
-      uca_unicas_conf_free (&uc_conf);
-      return ERR_UNICASCONF_PARAM_MISSING;
-    }
-  uca_get_conf_path (file_name, fpath);
-  uca_unicas_conf_free (&uc_conf);
-
-  snprintf (tmpfile, PATH_MAX - 1, "%s/DBMT_casop_%d.%d", sco.dbmt_tmp_dir,
-	    TS2_ACCESSLISTDELETEIP, (int) getpid ());
-  if ((infile = fopen (fpath, "rt")) == NULL)
-    {
-      strcpy (_dbmt_error, file_name);
-      return ERR_FILE_OPEN_FAIL;
-    }
-  outfile = fopen (tmpfile, "w");
-  if (outfile == NULL)
-    {
-      fclose (infile);
-      return ERR_TMPFILE_OPEN_FAIL;
-    }
-  while (fgets (buf, sizeof (buf), infile))
-    {
-      ut_trim (buf);
-      if (strcmp (buf, ip) != 0)
-	{
-	  fprintf (outfile, "%s\n", buf);
-	}
-    }
-  fclose (infile);
-  fclose (outfile);
-  move_file (tmpfile, fpath);
-  return ERR_NO_ERROR;
-}
-
-int
-ts2_access_list_info (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *bname;
-  char buf[1024];
-  char fpath[PATH_MAX], *file_name;
-  FILE *infile;
-  T_DM_UC_CONF uc_conf;
-
-  if ((bname = nv_get_val (in, "bname")) == NULL)
-    {
-      return ERR_PARAM_MISSING;
-    }
-  if (uca_unicas_conf (&uc_conf, NULL, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  file_name =
-    uca_conf_find (uca_conf_find_broker (&uc_conf, bname), "ACCESS_LIST");
-  if (file_name == NULL || file_name[0] == '\0')
-    {
-      uca_unicas_conf_free (&uc_conf);
-      return ERR_UNICASCONF_PARAM_MISSING;
-    }
-  uca_get_conf_path (file_name, fpath);
-  uca_unicas_conf_free (&uc_conf);
-
-  infile = fopen (fpath, "rt");
-  if (infile == NULL)
-    {
-      return ERR_NO_ERROR;
-    }
-  nv_add_nvp (out, "open", "accesslistinfo");
-  nv_add_nvp (out, "path", fpath);
-  while (fgets (buf, sizeof (buf), infile))
-    {
-      ut_trim (buf);
-      nv_add_nvp (out, "ip", buf);
-    }
-  fclose (infile);
-  nv_add_nvp (out, "close", "accesslistinfo");
-
-  return ERR_NO_ERROR;
-}
-
-/******************************************************************************
-	TASK CUBRID_CONF
-******************************************************************************/
 
 int
 ts_set_sysparam (nvplist * req, nvplist * res, char *_dbmt_error)
@@ -3853,23 +1264,13 @@ ts_set_sysparam (nvplist * req, nvplist * res, char *_dbmt_error)
 
   if (strcmp (conf_name, "cubridconf") == 0)
     {
-#if !defined (DO_NOT_USE_CUBRIDENV)
       snprintf (conf_path, PATH_MAX - 1, "%s/conf/%s", sco.szCubrid,
 		CUBRID_CUBRID_CONF);
-#else
-      snprintf (conf_path, PATH_MAX - 1, "%s/%s", CUBRID_CONFDIR,
-		CUBRID_CUBRID_CONF);
-#endif
     }
   else if (strcmp (conf_name, "cmconf") == 0)
     {
-#if !defined (DO_NOT_USE_CUBRIDENV)
       snprintf (conf_path, PATH_MAX - 1, "%s/conf/%s", sco.szCubrid,
 		CUBRID_DBMT_CONF);
-#else
-      snprintf (conf_path, PATH_MAX - 1, "%s/%s", CUBRID_CONFDIR,
-		CUBRID_DBMT_CONF);
-#endif
     }
   else
     {
@@ -3904,6 +1305,7 @@ ts_set_sysparam (nvplist * req, nvplist * res, char *_dbmt_error)
   return ERR_NO_ERROR;
 }
 
+
 int
 ts_get_all_sysparam (nvplist * req, nvplist * res, char *_dbmt_error)
 {
@@ -3917,23 +1319,13 @@ ts_get_all_sysparam (nvplist * req, nvplist * res, char *_dbmt_error)
 
   if (strcmp (conf_name, "cubridconf") == 0)
     {
-#if !defined (DO_NOT_USE_CUBRIDENV)
       snprintf (conf_path, PATH_MAX - 1, "%s/conf/%s", sco.szCubrid,
 		CUBRID_CUBRID_CONF);
-#else
-      snprintf (conf_path, PATH_MAX - 1, "%s/%s", CUBRID_CONFDIR,
-		CUBRID_CUBRID_CONF);
-#endif
     }
   else if (strcmp (conf_name, "cmconf") == 0)
     {
-#if !defined (DO_NOT_USE_CUBRIDENV)
       snprintf (conf_path, PATH_MAX - 1, "%s/conf/%s", sco.szCubrid,
 		CUBRID_DBMT_CONF);
-#else
-      snprintf (conf_path, PATH_MAX - 1, "%s/%s", CUBRID_CONFDIR,
-		CUBRID_DBMT_CONF);
-#endif
     }
   else
     {
@@ -3966,23 +1358,16 @@ ts_get_all_sysparam (nvplist * req, nvplist * res, char *_dbmt_error)
   return ERR_NO_ERROR;
 }
 
-/******************************************************************************
-	TASK DBMT USER
-******************************************************************************/
-
 int
 tsCreateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
 {
-  int num_dbinfo = 0, num_dbmt_user;
+  int num_authinfo = 0, num_dbmt_user;
   char *dbmt_id, *passwd_p;
   int i, retval;
-  char *z_name, *z_value;
-  char *dbname, *dbid;
-  char *broker_address;
-  char dbpasswd[PASSWD_ENC_LENGTH], dbmt_passwd[PASSWD_ENC_LENGTH];
+  char dbmt_passwd[PASSWD_ENC_LENGTH];
   const char *casauth, *dbcreate, *status_monitor;
   T_DBMT_USER dbmt_user;
-  T_DBMT_USER_DBINFO *dbinfo = NULL;
+  T_DBMT_USER_AUTHINFO *authinfo = NULL;
 
   memset (&dbmt_user, 0, sizeof (T_DBMT_USER));
 
@@ -4013,120 +1398,78 @@ tsCreateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
 	}
     }
 
-  for (i = 0; i < req->nvplist_leng; ++i)
-    {
-      dbname = dbid = passwd_p = broker_address = NULL;
-
-      nv_lookup (req, i, &z_name, &z_value);
-      if (uStringEqual (z_name, "open"))
-	{
-	  nv_lookup (req, ++i, &z_name, &z_value);
-	  while (!uStringEqual (z_name, "close"))
-	    {
-	      if (uStringEqual (z_name, "dbname"))
-		{
-		  dbname = z_value;
-		}
-	      else if (uStringEqual (z_name, "dbid"))
-		{
-		  dbid = z_value;
-		}
-	      else if (uStringEqual (z_name, "dbpassword"))
-		{
-		  passwd_p = z_value;
-		}
-	      else if (uStringEqual (z_name, "dbbrokeraddress"))
-		{
-		  broker_address = z_value;
-		}
-	      else
-		{
-		  dbmt_user_free (&dbmt_user);
-		  if (dbinfo)
-		    {
-		      free (dbinfo);
-		    }
-		  return ERR_REQUEST_FORMAT;
-		}
-	      nv_lookup (req, ++i, &z_name, &z_value);
-	      if (i >= req->nvplist_leng)
-		{
-		  break;
-		}
-	    }
-	}
-      if (dbname == NULL || dbid == NULL)
-	{
-	  continue;
-	}
-      uEncrypt (PASSWD_LENGTH, passwd_p, dbpasswd);
-      num_dbinfo++;
-      MALLOC_USER_DBINFO (dbinfo, num_dbinfo);
-      if (dbinfo == NULL)
-	{
-	  dbmt_user_free (&dbmt_user);
-	  return ERR_MEM_ALLOC;
-	}
-      dbmt_user_set_dbinfo (&(dbinfo[num_dbinfo - 1]), dbname, "admin", dbid,
-			    dbpasswd, broker_address);
-    }
-
+  /* set authority info */
   if ((casauth = nv_get_val (req, "casauth")) == NULL)
     {
       casauth = "";
     }
-  num_dbinfo++;
-  MALLOC_USER_DBINFO (dbinfo, num_dbinfo);
-  if (dbinfo == NULL)
+  authinfo =
+    (T_DBMT_USER_AUTHINFO *) increase_capacity (authinfo,
+						sizeof (T_DBMT_USER_AUTHINFO),
+						num_authinfo,
+						num_authinfo + 1);
+  if (authinfo == NULL)
     {
       dbmt_user_free (&dbmt_user);
       return ERR_MEM_ALLOC;
     }
-  dbmt_user_set_dbinfo (&(dbinfo[num_dbinfo - 1]), "unicas", casauth, "", "",
-			"");
+  num_authinfo++;
+  dbmt_user_set_authinfo (&(authinfo[num_authinfo - 1]), "unicas", casauth);
 
   if ((dbcreate = nv_get_val (req, "dbcreate")) == NULL)
     {
       dbcreate = "";
     }
-  num_dbinfo++;
-  MALLOC_USER_DBINFO (dbinfo, num_dbinfo);
-  if (dbinfo == NULL)
+  authinfo =
+    (T_DBMT_USER_AUTHINFO *) increase_capacity (authinfo,
+						sizeof (T_DBMT_USER_AUTHINFO),
+						num_authinfo,
+						num_authinfo + 1);
+  if (authinfo == NULL)
     {
       dbmt_user_free (&dbmt_user);
       return ERR_MEM_ALLOC;
     }
-  dbmt_user_set_dbinfo (&(dbinfo[num_dbinfo - 1]), "dbcreate", dbcreate, "",
-			"", "");
+  num_authinfo++;
+  dbmt_user_set_authinfo (&(authinfo[num_authinfo - 1]), "dbcreate",
+			  dbcreate);
 
   if ((status_monitor = nv_get_val (req, "statusmonitorauth")) == NULL)
     status_monitor = "";
-  num_dbinfo++;
-  MALLOC_USER_DBINFO (dbinfo, num_dbinfo);
-  if (dbinfo == NULL)
+  authinfo =
+    (T_DBMT_USER_AUTHINFO *) increase_capacity (authinfo,
+						sizeof (T_DBMT_USER_AUTHINFO),
+						num_authinfo,
+						num_authinfo + 1);
+  if (authinfo == NULL)
     {
       dbmt_user_free (&dbmt_user);
       return ERR_MEM_ALLOC;
     }
-  dbmt_user_set_dbinfo (&(dbinfo[num_dbinfo - 1]), "statusmonitorauth",
-			status_monitor, "", "", "");
+  num_authinfo++;
+  dbmt_user_set_authinfo (&(authinfo[num_authinfo - 1]), "statusmonitorauth",
+			  status_monitor);
 
-  num_dbmt_user++;
-  MALLOC_USER_INFO (dbmt_user.user_info, num_dbmt_user);
+  /* set user info */
+  dbmt_user.user_info =
+    (T_DBMT_USER_INFO *) increase_capacity (dbmt_user.user_info,
+					    sizeof (T_DBMT_USER_INFO),
+					    num_dbmt_user, num_dbmt_user + 1);
   if (dbmt_user.user_info == NULL)
     {
       dbmt_user_free (&dbmt_user);
-      if (dbinfo)
+      if (authinfo != NULL)
 	{
-	  free (dbinfo);
+	  free (authinfo);
 	}
       return ERR_MEM_ALLOC;
     }
+  num_dbmt_user++;
   dbmt_user_set_userinfo (&(dbmt_user.user_info[num_dbmt_user - 1]), dbmt_id,
-			  dbmt_passwd, num_dbinfo, dbinfo);
+			  dbmt_passwd, num_authinfo, authinfo, 0, NULL);
   dbmt_user.num_dbmt_user = num_dbmt_user;
 
-  retval = dbmt_user_write_cubrid_pass (&dbmt_user, _dbmt_error);
+  retval = dbmt_user_write_auth (&dbmt_user, _dbmt_error);
   if (retval != ERR_NO_ERROR)
     {
       dbmt_user_free (&dbmt_user);
@@ -4147,6 +1490,7 @@ tsCreateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
 
   return ERR_NO_ERROR;
 }
+
 
 int
 tsDeleteDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
@@ -4182,7 +1526,7 @@ tsDeleteDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_FILE_INTEGRITY;
     }
 
-  retval = dbmt_user_write_cubrid_pass (&dbmt_user, _dbmt_error);
+  retval = dbmt_user_write_auth (&dbmt_user, _dbmt_error);
   if (retval != ERR_NO_ERROR)
     {
       dbmt_user_free (&dbmt_user);
@@ -4212,7 +1556,8 @@ tsUpdateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
   char file[PATH_MAX];
   T_DBMT_USER dbmt_user;
   T_DBMT_USER_DBINFO *usr_dbinfo = NULL;
-  int num_dbinfo = 0;
+  T_DBMT_USER_AUTHINFO *usr_authinfo = NULL;
+  int num_dbinfo = 0, num_authinfo = 0;
   char *z_name, *z_value;
   char *dbname, *dbid, *dbpassword, *casauth, *dbcreate, *status_monitor;
   char *broker_address;
@@ -4271,58 +1616,60 @@ tsUpdateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
 	  continue;
 	}
       uEncrypt (PASSWD_LENGTH, dbpassword, passwd_hexa);
-      num_dbinfo++;
-      MALLOC_USER_DBINFO (usr_dbinfo, num_dbinfo);
+      usr_dbinfo =
+	(T_DBMT_USER_DBINFO *) increase_capacity (usr_dbinfo,
+						  sizeof (T_DBMT_USER_DBINFO),
+						  num_dbinfo, num_dbinfo + 1);
       if (usr_dbinfo == NULL)
 	{
 	  return ERR_MEM_ALLOC;
 	}
+      num_dbinfo++;
       dbmt_user_set_dbinfo (&(usr_dbinfo[num_dbinfo - 1]), dbname, "admin",
 			    dbid, passwd_hexa, broker_address);
     }
 
   if ((casauth = nv_get_val (req, "casauth")) != NULL)
     {
-      cas_idx = num_dbinfo;
-      num_dbinfo++;
+      cas_idx = num_authinfo;
     }
-
   if ((dbcreate = nv_get_val (req, "dbcreate")) != NULL)
     {
-      dbcreate_idx = num_dbinfo;
-      num_dbinfo++;
+      dbcreate_idx = num_authinfo + 1;
     }
-
   if ((status_monitor = nv_get_val (req, "statusmonitorauth")) != NULL)
     {
-      status_monitor_idx = num_dbinfo;
-      num_dbinfo++;
+      status_monitor_idx = num_authinfo + 2;
     }
 
   if ((casauth != NULL) || (dbcreate != NULL))
     {
-      MALLOC_USER_DBINFO (usr_dbinfo, num_dbinfo);
-      if (usr_dbinfo == NULL)
+      usr_authinfo =
+	(T_DBMT_USER_AUTHINFO *) increase_capacity (usr_authinfo,
+						    sizeof
+						    (T_DBMT_USER_AUTHINFO),
+						    num_authinfo,
+						    num_authinfo + 3);
+      if (usr_authinfo == NULL)
 	{
 	  return ERR_MEM_ALLOC;
 	}
+      num_authinfo += 3;
     }
 
   if (casauth != NULL && cas_idx >= 0)
     {
-      dbmt_user_set_dbinfo (&(usr_dbinfo[cas_idx]), "unicas", casauth, "", "",
-			    "");
+      dbmt_user_set_authinfo (&(usr_authinfo[cas_idx]), "unicas", casauth);
     }
   if (dbcreate != NULL && dbcreate_idx >= 0)
     {
-      dbmt_user_set_dbinfo (&(usr_dbinfo[dbcreate_idx]), "dbcreate", dbcreate,
-			    "", "", "");
+      dbmt_user_set_authinfo (&(usr_authinfo[dbcreate_idx]), "dbcreate",
+			      dbcreate);
     }
-
   if (status_monitor != NULL && status_monitor_idx >= 0)
     {
-      dbmt_user_set_dbinfo (&(usr_dbinfo[status_monitor_idx]),
-			    "statusmonitorauth", status_monitor, "", "", "");
+      dbmt_user_set_authinfo (&(usr_authinfo[status_monitor_idx]),
+			      "statusmonitorauth", status_monitor);
     }
 
   if ((retval = dbmt_user_read (&dbmt_user, _dbmt_error)) != ERR_NO_ERROR)
@@ -4330,6 +1677,10 @@ tsUpdateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
       if (usr_dbinfo != NULL)
 	{
 	  free (usr_dbinfo);
+	}
+      if (usr_authinfo != NULL)
+	{
+	  free (usr_authinfo);
 	}
       return retval;
     }
@@ -4351,9 +1702,60 @@ tsUpdateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
 	{
 	  free (usr_dbinfo);
 	}
+      if (usr_authinfo != NULL)
+	{
+	  free (usr_authinfo);
+	}
       return ERR_FILE_INTEGRITY;
     }
 
+  /* auth info */
+  if (dbmt_user.user_info[usr_index].authinfo == NULL)
+    {
+      dbmt_user.user_info[usr_index].num_authinfo = num_authinfo;
+      dbmt_user.user_info[usr_index].authinfo = usr_authinfo;
+      usr_authinfo = NULL;
+    }
+  else if (usr_authinfo != NULL)
+    {
+      T_DBMT_USER_INFO *current_user_info =
+	(T_DBMT_USER_INFO *) & (dbmt_user.user_info[usr_index]);
+
+      for (j = 0; j < num_authinfo; j++)
+	{
+	  int find_idx = -1;
+	  for (i = 0; i < current_user_info->num_authinfo; i++)
+	    {
+	      if (strcmp
+		  (current_user_info->authinfo[i].domain,
+		   usr_authinfo[j].domain) == 0)
+		{
+		  find_idx = i;
+		  break;
+		}
+	    }
+	  if (find_idx == -1)
+	    {
+	      current_user_info->authinfo =
+		(T_DBMT_USER_AUTHINFO *)
+		increase_capacity (current_user_info->authinfo,
+				   sizeof (T_DBMT_USER_AUTHINFO),
+				   current_user_info->num_authinfo,
+				   current_user_info->num_authinfo + 1);
+	      if (current_user_info->authinfo == NULL)
+		{
+		  return ERR_MEM_ALLOC;
+		}
+	      current_user_info->num_authinfo++;
+	      find_idx = current_user_info->num_authinfo - 1;
+	    }
+	  dbmt_user_set_authinfo (&(current_user_info->authinfo[find_idx]),
+				  usr_authinfo[j].domain,
+				  usr_authinfo[j].auth);
+	}
+    }
+
+  /* db info */
   if (dbmt_user.user_info[usr_index].dbinfo == NULL)
     {
       dbmt_user.user_info[usr_index].num_dbinfo = num_dbinfo;
@@ -4379,9 +1781,20 @@ tsUpdateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
 	    }
 	  if (find_idx == -1)
 	    {
+	      current_user_info->dbinfo =
+		(T_DBMT_USER_DBINFO *) increase_capacity (current_user_info->
+							  dbinfo,
+							  sizeof
+							  (T_DBMT_USER_DBINFO),
+							  current_user_info->
+							  num_dbinfo,
+							  current_user_info->
+							  num_dbinfo + 1);
+	      if (current_user_info->dbinfo == NULL)
+		{
+		  return ERR_MEM_ALLOC;
+		}
 	      current_user_info->num_dbinfo++;
-	      MALLOC_USER_DBINFO (current_user_info->dbinfo,
-				  current_user_info->num_dbinfo);
 	      find_idx = current_user_info->num_dbinfo - 1;
 	    }
 	  dbmt_user_set_dbinfo (&(current_user_info->dbinfo[find_idx]),
@@ -4391,13 +1804,17 @@ tsUpdateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
 	}
     }
 
-  retval = dbmt_user_write_cubrid_pass (&dbmt_user, _dbmt_error);
+  retval = dbmt_user_write_auth (&dbmt_user, _dbmt_error);
   if (retval != ERR_NO_ERROR)
     {
       dbmt_user_free (&dbmt_user);
       if (usr_dbinfo)
 	{
 	  free (usr_dbinfo);
+	}
+      if (usr_authinfo)
+	{
+	  free (usr_authinfo);
 	}
       return retval;
     }
@@ -4414,6 +1831,10 @@ tsUpdateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error)
   if (usr_dbinfo)
     {
       free (usr_dbinfo);
+    }
+  if (usr_authinfo)
+    {
+      free (usr_authinfo);
     }
   return ERR_NO_ERROR;
 }
@@ -4488,6 +1909,7 @@ tsChangeDBMTUserPasswd (nvplist * req, nvplist * res, char *_dbmt_error)
   return ERR_NO_ERROR;
 }
 
+
 int
 tsGetDBMTUserInfo (nvplist * req, nvplist * res, char *_dbmt_error)
 {
@@ -4510,10 +1932,6 @@ tsGetDBMTUserInfo (nvplist * req, nvplist * res, char *_dbmt_error)
   return ERR_NO_ERROR;
 }
 
-/******************************************************************************
-	TASK DB UTILS
-******************************************************************************/
-
 int
 tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
 {
@@ -4521,14 +1939,17 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
   char *dbname = NULL;
   char *numpage = NULL;
   char *pagesize = NULL;
+  char *logpagesize = NULL;
   char *genvolpath = NULL;
-  char *logsize = NULL;
+  char *numlogpage = NULL;
   char *logvolpath = NULL, logvolpath_buf[1024];
   char *overwrite_config_file = NULL;
   char targetdir[PATH_MAX];
   char extvolfile[PATH_MAX] = "";
   char *cubrid_err_file;
+  char *ip, *port;
   T_DBMT_USER dbmt_user;
+  T_DBMT_CON_DBINFO con_dbinfo;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   const char *argv[20];
   int argc = 0;
@@ -4545,7 +1966,8 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
 
   numpage = nv_get_val (req, "numpage");
   pagesize = nv_get_val (req, "pagesize");
-  logsize = nv_get_val (req, "logsize");
+  logpagesize = nv_get_val (req, "logpagesize");
+  numlogpage = nv_get_val (req, "logsize");
   genvolpath = nv_get_val (req, "genvolpath");
   logvolpath = nv_get_val (req, "logvolpath");
   overwrite_config_file = nv_get_val (req, "overwrite_config_file");
@@ -4555,10 +1977,21 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
       strcpy (_dbmt_error, "volumn path");
       return ERR_PARAM_MISSING;
     }
+  if ((retval = check_dbpath (genvolpath, _dbmt_error)) != ERR_NO_ERROR)
+    {
+      return retval;
+    }
+
   if (logvolpath != NULL && logvolpath[0] == '\0')
     {
       logvolpath = NULL;
     }
+  if (logvolpath != NULL
+      && (retval = check_dbpath (logvolpath, _dbmt_error)) != ERR_NO_ERROR)
+    {
+      return retval;
+    }
+
   /* create directory */
   strcpy (targetdir, genvolpath);
   if (access (genvolpath, F_OK) < 0)
@@ -4773,10 +2206,15 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
       argv[argc++] = "--" CREATE_PAGE_SIZE_L;
       argv[argc++] = pagesize;
     }
-  if (logsize)
+  if (logpagesize)
+    {
+      argv[argc++] = "--" CREATE_LOG_PAGE_SIZE_L;
+      argv[argc++] = logpagesize;
+    }
+  if (numlogpage)
     {
       argv[argc++] = "--" CREATE_LOG_PAGE_COUNT_L;
-      argv[argc++] = logsize;
+      argv[argc++] = numlogpage;
     }
   if (logvolpath)
     {
@@ -4869,6 +2307,7 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_SYSTEM_CALL;
     }
 
+  /* add dbinfo to cmdb.pass */
   if (dbmt_user_read (&dbmt_user, _dbmt_error) == ERR_NO_ERROR)
     {
       int i;
@@ -4885,13 +2324,20 @@ tsCreateDB (nvplist * req, nvplist * res, char *_dbmt_error)
 	      if (dbmt_user_add_dbinfo
 		  (&(dbmt_user.user_info[i]), &tmp_dbinfo) == ERR_NO_ERROR)
 		{
-		  dbmt_user_write_cubrid_pass (&dbmt_user, _dbmt_error);
+		  dbmt_user_write_auth (&dbmt_user, _dbmt_error);
 		}
 	      break;
 	    }
 	}
       dbmt_user_free (&dbmt_user);
     }
+
+  /* add dbinfo to conlist */
+  memset (&con_dbinfo, 0, sizeof (con_dbinfo));
+  dbmt_con_set_dbinfo (&con_dbinfo, dbname, "dba", "");
+  ip = nv_get_val (req, "_IP");
+  port = nv_get_val (req, "_PORT");
+  dbmt_con_write_dbinfo (&con_dbinfo, ip, port, dbname, 1, _dbmt_error);
 
   /* restore warn out of space value */
   if (0)
@@ -4968,6 +2414,10 @@ tsDeleteDB (nvplist * req, nvplist * res, char *_dbmt_error)
   const char *argv[6];
   int argc = 0;
 
+  /*dbvol path & db log path. */
+  char dbvolpath[PATH_MAX];
+  char dblogpath[PATH_MAX];
+
   if ((dbname = nv_get_val (req, "_DBNAME")) == NULL)
     {
       sprintf (_dbmt_error, "%s", "database name");
@@ -4984,6 +2434,10 @@ tsDeleteDB (nvplist * req, nvplist * res, char *_dbmt_error)
   argv[argc++] = dbname;
   argv[argc++] = NULL;
   INIT_CUBRID_ERROR_FILE (cubrid_err_file);
+
+  /*get dbvolpath and dblogpath. */
+  get_dbvoldir (dbvolpath, sizeof (dbvolpath), dbname, cubrid_err_file);
+  get_dblogdir (dblogpath, sizeof (dblogpath), dbname, cubrid_err_file);
 
   retval = run_child (argv, 1, NULL, NULL, cubrid_err_file, NULL);	/* deletedb */
 
@@ -5005,9 +2459,18 @@ tsDeleteDB (nvplist * req, nvplist * res, char *_dbmt_error)
   if (dbmt_user_read (&dbmt_user, _dbmt_error) == ERR_NO_ERROR)
     {
       dbmt_user_db_delete (&dbmt_user, dbname);
-      dbmt_user_write_cubrid_pass (&dbmt_user, _dbmt_error);
+      dbmt_user_write_auth (&dbmt_user, _dbmt_error);
       dbmt_user_free (&dbmt_user);
     }
+
+  /* The following delete sequence can delete folder hierarchy like : 
+   * <database log folder>/<database vol folder>
+   * and <database vol folder>/<database log folder>.
+   */
+  rmdir (dbvolpath);
+  rmdir (dblogpath);
+  rmdir (dbvolpath);
+
   return ERR_NO_ERROR;
 }
 
@@ -5032,7 +2495,7 @@ tsRenameDB (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_PARAM_MISSING;
     }
 
-  db_mode = uDatabaseMode (dbname);
+  db_mode = uDatabaseMode (dbname, NULL);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -5170,7 +2633,7 @@ tsRenameDB (nvplist * req, nvplist * res, char *_dbmt_error)
 		}
 	    }
 	}
-      dbmt_user_write_cubrid_pass (&dbmt_user, _dbmt_error);
+      dbmt_user_write_auth (&dbmt_user, _dbmt_error);
       dbmt_user_free (&dbmt_user);
     }
 
@@ -5183,6 +2646,7 @@ tsStartDB (nvplist * req, nvplist * res, char *_dbmt_error)
   char *dbname;
   char err_buf[ERR_MSG_SIZE];
   T_DB_SERVICE_MODE db_mode;
+  int retval;
 
   if ((dbname = nv_get_val (req, "_DBNAME")) == NULL)
     {
@@ -5190,7 +2654,7 @@ tsStartDB (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_PARAM_MISSING;
     }
 
-  db_mode = uDatabaseMode (dbname);
+  db_mode = uDatabaseMode (dbname, NULL);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -5201,16 +2665,21 @@ tsStartDB (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_NO_ERROR;
     }
 
-  if (cmd_start_server (dbname, err_buf, sizeof (err_buf)) < 0)
+  retval = cmd_start_server (dbname, err_buf, sizeof (err_buf));
+  if (retval < 0)
     {
       DBMT_ERR_MSG_SET (_dbmt_error, err_buf);
       return ERR_WITH_MSG;
+    }
+  else if (retval == 1)
+    {
+      DBMT_ERR_MSG_SET (_dbmt_error, err_buf);
     }
 
   /* recount active db num and write to file */
   uWriteDBnfo ();
 
-  return ERR_NO_ERROR;
+  return retval == 0 ? ERR_NO_ERROR : ERR_WARNING;
 }
 
 int
@@ -5240,6 +2709,8 @@ tsDbspaceInfo (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *dbname = NULL;
   int retval = ERR_NO_ERROR;
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  int ha_mode = 0;
   T_CUBRID_MODE cubrid_mode;
   T_SPACEDB_RESULT *cmd_res;
   T_DB_SERVICE_MODE db_mode;
@@ -5251,7 +2722,7 @@ tsDbspaceInfo (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_PARAM_MISSING;
     }
 
-  db_mode = uDatabaseMode (dbname);
+  db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -5260,10 +2731,21 @@ tsDbspaceInfo (nvplist * req, nvplist * res, char *_dbmt_error)
 
   nv_add_nvp (res, "dbname", dbname);
   nv_add_nvp (res, "pagesize", "-1");
+  nv_add_nvp (res, "logpagesize", "-1");
 
   cubrid_mode =
     (db_mode == DB_SERVICE_MODE_NONE) ? CUBRID_MODE_SA : CUBRID_MODE_CS;
-  cmd_res = cmd_spacedb (dbname, cubrid_mode);
+
+  if (ha_mode != 0)
+    {
+      append_host_to_dbname (dbname_at_hostname, dbname,
+			     sizeof (dbname_at_hostname));
+      cmd_res = cmd_spacedb (dbname_at_hostname, cubrid_mode);
+    }
+  else
+    {
+      cmd_res = cmd_spacedb (dbname, cubrid_mode);
+    }
 
   if (cmd_res == NULL)
     {
@@ -5288,6 +2770,8 @@ int
 tsRunAddvoldb (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *dbname;
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  int ha_mode = 0;
   char *numpage;
   char *volpu;
   char *volpath;
@@ -5311,7 +2795,7 @@ tsRunAddvoldb (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_PARAM_MISSING;
     }
 
-  db_mode = uDatabaseMode (dbname);
+  db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -5386,7 +2870,18 @@ tsRunAddvoldb (nvplist * req, nvplist * res, char *_dbmt_error)
 
   argv[argc++] = "--" ADDVOL_PURPOSE_L;
   argv[argc++] = volpu;
-  argv[argc++] = dbname;
+
+  if (ha_mode != 0)
+    {
+      append_host_to_dbname (dbname_at_hostname, dbname,
+			     sizeof (dbname_at_hostname));
+      argv[argc++] = dbname_at_hostname;
+    }
+  else
+    {
+      argv[argc++] = dbname;
+    }
+
   argv[argc++] = numpage;
   argv[argc++] = NULL;
 
@@ -5453,7 +2948,7 @@ ts_copydb (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_PARAM_MISSING;
     }
 
-  db_mode = uDatabaseMode (srcdbname);
+  db_mode = uDatabaseMode (srcdbname, NULL);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", srcdbname);
@@ -5641,7 +3136,7 @@ ts_copydb (nvplist * req, nvplist * res, char *_dbmt_error)
     {
       dbmt_user_db_delete (&dbmt_user, srcdbname);
     }
-  dbmt_user_write_cubrid_pass (&dbmt_user, _dbmt_error);
+  dbmt_user_write_auth (&dbmt_user, _dbmt_error);
   dbmt_user_free (&dbmt_user);
 
 copydb_finale:
@@ -5649,85 +3144,232 @@ copydb_finale:
 }
 
 int
-ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
+ts_plandump (nvplist * req, nvplist * res, char *_dbmt_error)
 {
-  char *dbname, *classname;
+  char *dbname = NULL;
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  int ha_mode = 0;
   T_DB_SERVICE_MODE db_mode;
+  char cmd_name[CUBRID_CMD_NAME_LEN];
+  char *plandrop = NULL;
+  const char *argv[10];
+  int argc = 0;
+  char *cubrid_err_file;
+  FILE *infile = NULL;
+  char tmpfilepath[PATH_MAX];
+  int retval = ERR_NO_ERROR;
 
-  if ((dbname = nv_get_val (req, "_DBNAME")) == NULL)
+  if ((dbname = nv_get_val (req, "dbname")) == NULL)
     {
-      sprintf (_dbmt_error, "%s", "database name");
+      strcpy (_dbmt_error, "database name");
       return ERR_PARAM_MISSING;
     }
+  plandrop = nv_get_val (req, "plandrop");
 
-  db_mode = uDatabaseMode (dbname);
+  /*
+   * check the running mode of current database,
+   * return error if it is DB_SERVICE_MODE_SA.
+   */
+  db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
       return ERR_STANDALONE_MODE;
     }
-  classname = nv_get_val (req, "classname");
 
-  if (db_mode == DB_SERVICE_MODE_NONE)
+  cubrid_cmd_name (cmd_name);
+  argv[argc++] = cmd_name;
+  argv[argc++] = UTIL_OPTION_PLANDUMP;
+  if (uStringEqual (plandrop, "y"))
     {
-      char cmd_name[CUBRID_CMD_NAME_LEN];
-      const char *argv[6];
-      int argc = 0;
+      argv[argc++] = "--" PLANDUMP_DROP_L;
+    }
 
-      cubrid_cmd_name (cmd_name);
-      argv[argc++] = cmd_name;
-      argv[argc++] = UTIL_OPTION_OPTIMIZEDB;
-      if (classname != NULL)
-	{
-	  argv[argc++] = "--" OPTIMIZE_CLASS_NAME_L;
-	  argv[argc++] = classname;
-	}
-      argv[argc++] = dbname;
-      argv[argc++] = NULL;
-
-      if (run_child (argv, 1, NULL, NULL, NULL, NULL) < 0)
-	{			/* optimizedb */
-	  strcpy (_dbmt_error, argv[0]);
-	  return ERR_SYSTEM_CALL;
-	}
+  if (ha_mode != 0)
+    {
+      append_host_to_dbname (dbname_at_hostname, dbname,
+			     sizeof (dbname_at_hostname));
+      argv[argc++] = dbname_at_hostname;
     }
   else
     {
-      char sql[QUERY_BUFFER_MAX];
-      DB_QUERY_RESULT *result;
-      DB_QUERY_ERROR query_error;
-
-      if (_op_db_login (res, req, _dbmt_error) < 0)
-	{
-	  return ERR_WITH_MSG;
-	}
-      if (classname == NULL)
-	{
-	  strcpy (sql, "UPDATE STATISTICS ON ALL CLASSES");
-	}
-      else
-	{
-	  snprintf (sql, sizeof (sql) - 1, "UPDATE STATISTICS ON \"%s\"",
-		    classname);
-	}
-      if (db_execute (sql, &result, &query_error) < 0)
-	{
-	  CUBRID_ERR_MSG_SET (_dbmt_error);
-	  db_shutdown ();
-	  return ERR_WITH_MSG;
-	}
-      db_query_end (result);
-
-      db_commit_transaction ();
-      db_shutdown ();
+      argv[argc++] = dbname;
     }
-  return ERR_NO_ERROR;
+
+  argv[argc++] = NULL;
+
+  INIT_CUBRID_ERROR_FILE (cubrid_err_file);
+
+  /*
+   * create a new tmp file to record the content 
+   * that returned by plandump. 
+   */
+  snprintf (tmpfilepath, PATH_MAX - 1, "%s/DBMT_task_%d.%d",
+	    sco.dbmt_tmp_dir, TS_PLANDUMP, (int) getpid ());
+  if ((infile = fopen (tmpfilepath, "w")) == NULL)
+    {
+      return ERR_TMPFILE_OPEN_FAIL;
+    }
+  fclose (infile);
+
+  if (run_child (argv, 1, NULL, tmpfilepath, cubrid_err_file, NULL) < 0)	/* plandump */
+    {
+      strcpy (_dbmt_error, argv[0]);
+      retval = ERR_SYSTEM_CALL;
+      goto rm_tmpfile;
+    }
+
+  if ((infile = fopen (tmpfilepath, "r")) == NULL)
+    {
+      retval = ERR_TMPFILE_OPEN_FAIL;
+      goto rm_tmpfile;
+    }
+
+  /* add file content to response line by line. */
+  file_to_nvpairs (infile, res);
+
+  /* close tmp file. */
+  fclose (infile);
+
+  if (read_error_file (cubrid_err_file, _dbmt_error, DBMT_ERROR_MSG_SIZE))
+    {
+      retval = ERR_WITH_MSG;
+    }
+
+rm_tmpfile:
+  unlink (tmpfilepath);
+  return retval;
+}
+
+int
+ts_paramdump (nvplist * req, nvplist * res, char *_dbmt_error)
+{
+  char *dbname = NULL;
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  int ha_mode = 0;
+  char *bothclientserver = NULL;
+  T_DB_SERVICE_MODE db_mode;
+  char cmd_name[CUBRID_CMD_NAME_LEN];
+  const char *argv[10];
+  int argc = 0;
+  char *cubrid_err_file;
+  FILE *infile = NULL;
+  char tmpfilepath[PATH_MAX];
+  int retval = ERR_NO_ERROR;
+
+  if ((dbname = nv_get_val (req, "dbname")) == NULL)
+    {
+      strcpy (_dbmt_error, "database name");
+      return ERR_PARAM_MISSING;
+    }
+
+  /* add  both & SA & CS mode. */
+  bothclientserver = nv_get_val (req, "both");
+
+  /*
+   * check the running mode of current database,
+   * return error if it is DB_SERVICE_MODE_SA.
+   */
+  db_mode = uDatabaseMode (dbname, &ha_mode);
+  if (db_mode == DB_SERVICE_MODE_SA)
+    {
+      sprintf (_dbmt_error, "%s", dbname);
+      return ERR_STANDALONE_MODE;
+    }
+
+  cubrid_cmd_name (cmd_name);
+  argv[argc++] = cmd_name;
+  argv[argc++] = UTIL_OPTION_PARAMDUMP;
+  if (db_mode == DB_SERVICE_MODE_NONE)
+    {
+      argv[argc++] = "--" PARAMDUMP_SA_MODE_L;
+    }
+  else
+    {
+      argv[argc++] = "--" PARAMDUMP_CS_MODE_L;
+    }
+
+  if (uStringEqual (bothclientserver, "y"))
+    {
+      argv[argc++] = "--" PARAMDUMP_BOTH_L;
+    }
+
+  if (ha_mode != 0)
+    {
+      append_host_to_dbname (dbname_at_hostname, dbname,
+			     sizeof (dbname_at_hostname));
+      argv[argc++] = dbname_at_hostname;
+    }
+  else
+    {
+      argv[argc++] = dbname;
+    }
+
+  argv[argc++] = NULL;
+
+  INIT_CUBRID_ERROR_FILE (cubrid_err_file);
+
+  /*
+   * create a new tmp file to record the content 
+   * that returned by plandump. 
+   */
+  snprintf (tmpfilepath, PATH_MAX - 1, "%s/DBMT_task_%d.%d",
+	    sco.dbmt_tmp_dir, TS_PARAMDUMP, (int) getpid ());
+  if ((infile = fopen (tmpfilepath, "w")) == NULL)
+    {
+      return ERR_TMPFILE_OPEN_FAIL;
+    }
+  fclose (infile);
+
+  if (run_child (argv, 1, NULL, tmpfilepath, cubrid_err_file, NULL) < 0)	/* paramdump */
+    {
+      strcpy (_dbmt_error, argv[0]);
+      retval = ERR_SYSTEM_CALL;
+      goto rm_tmpfile;
+    }
+
+  /* add dbname to response. */
+  nv_add_nvp (res, "dbname", dbname);
+
+  if ((infile = fopen (tmpfilepath, "r")) == NULL)
+    {
+      retval = ERR_TMPFILE_OPEN_FAIL;
+      goto rm_tmpfile;
+    }
+
+  /* add file content to response line by line. */
+  if (file_to_nvp_by_separator (infile, res, '=') < 0)
+    {
+      const char *tmperr = "Can't parse tmpfile of paramdump.";
+      strncpy (_dbmt_error, tmperr, strlen (tmperr));
+      retval = ERR_WITH_MSG;
+      goto rm_tmpfile;
+    }
+  /* close tmp file. */
+  fclose (infile);
+
+  if (read_error_file (cubrid_err_file, _dbmt_error, DBMT_ERROR_MSG_SIZE))
+    {
+      retval = ERR_WITH_MSG;
+    }
+
+rm_tmpfile:
+  unlink (tmpfilepath);
+  return retval;
+}
+
+int
+ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
+{
+  return cm_ts_optimizedb (req, res, _dbmt_error);
 }
 
 int
 ts_checkdb (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *dbname, *repair_db;
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  int ha_mode = 0;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   T_DB_SERVICE_MODE db_mode;
   const char *argv[7];
@@ -5742,7 +3384,7 @@ ts_checkdb (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_PARAM_MISSING;
     }
 
-  db_mode = uDatabaseMode (dbname);
+  db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -5760,7 +3402,17 @@ ts_checkdb (nvplist * req, nvplist * res, char *_dbmt_error)
   if (repair_db != NULL && uStringEqual (repair_db, "y"))
     argv[argc++] = "--" CHECK_REPAIR_L;
 
-  argv[argc++] = dbname;
+  if (ha_mode != 0)
+    {
+      append_host_to_dbname (dbname_at_hostname, dbname,
+			     sizeof (dbname_at_hostname));
+      argv[argc++] = dbname_at_hostname;
+    }
+  else
+    {
+      argv[argc++] = dbname;
+    }
+
   argv[argc++] = NULL;
 
   INIT_CUBRID_ERROR_FILE (cubrid_err_file);
@@ -5778,16 +3430,145 @@ ts_checkdb (nvplist * req, nvplist * res, char *_dbmt_error)
 }
 
 int
+ts_statdump (nvplist * req, nvplist * res, char *_dbmt_error)
+{
+  char *dbname;
+  T_CM_DB_EXEC_STAT exec_stat;
+  T_CM_ERROR err_buf;
+  int retval = -1;
+
+  memset (&exec_stat, 0, sizeof (T_CM_DB_EXEC_STAT));
+  memset (&err_buf, 0, sizeof (T_CM_ERROR));
+
+  /* check the parameters of input. */
+  if ((dbname = nv_get_val (req, "dbname")) == NULL)
+    {
+      strcpy (_dbmt_error, "dbname");
+      retval = ERR_PARAM_MISSING;
+      goto statdump_finale;
+    }
+
+  /* call cm_get_db_exec_stat to get stat infomation. */
+  if (cm_get_db_exec_stat (dbname, &exec_stat, &err_buf) < 0)
+    {
+      /* return error with message if the operation is not success. */
+      strcpy (_dbmt_error, err_buf.err_msg);
+      retval = ERR_WITH_MSG;
+      goto statdump_finale;
+    }
+
+  /* set res with parameter in exec_stat. */
+  nv_add_nvp (res, "dbname", dbname);
+  nv_add_nvp_time (res, "time", time (NULL),
+		   "%04d/%02d/%02d %02d:%02d:%02d", TIME_STR_FMT_DATE_TIME);
+
+  /* Execution statistics for the file io */
+  nv_add_nvp_int (res, "num_file_creates", exec_stat.file_num_creates);
+  nv_add_nvp_int (res, "num_file_removes", exec_stat.file_num_removes);
+  nv_add_nvp_int (res, "num_file_ioreads", exec_stat.file_num_ioreads);
+  nv_add_nvp_int (res, "num_file_iowrites", exec_stat.file_num_iowrites);
+  nv_add_nvp_int (res, "num_file_iosynches", exec_stat.file_num_iosynches);
+
+  /* Execution statistics for the page buffer manager */
+  nv_add_nvp_int (res, "num_data_page_fetches", exec_stat.pb_num_fetches);
+  nv_add_nvp_int (res, "num_data_page_dirties", exec_stat.pb_num_dirties);
+  nv_add_nvp_int (res, "num_data_page_ioreads", exec_stat.pb_num_ioreads);
+  nv_add_nvp_int (res, "num_data_page_iowrites", exec_stat.pb_num_iowrites);
+  nv_add_nvp_int (res, "num_data_page_victims", exec_stat.pb_num_victims);
+  nv_add_nvp_int (res, "num_data_page_iowrites_for_replacement",
+		  exec_stat.pb_num_replacements);
+
+  /* Execution statistics for the log manager */
+  nv_add_nvp_int (res, "num_log_page_ioreads", exec_stat.log_num_ioreads);
+  nv_add_nvp_int (res, "num_log_page_iowrites", exec_stat.log_num_iowrites);
+  nv_add_nvp_int (res, "num_log_append_records",
+		  exec_stat.log_num_appendrecs);
+  nv_add_nvp_int (res, "num_log_archives", exec_stat.log_num_archives);
+  nv_add_nvp_int (res, "num_log_checkpoints", exec_stat.log_num_checkpoints);
+  nv_add_nvp_int (res, "num_log_wals", exec_stat.log_num_wals);
+
+  /* Execution statistics for the lock manager */
+  nv_add_nvp_int (res, "num_page_locks_acquired",
+		  exec_stat.lk_num_acquired_on_pages);
+  nv_add_nvp_int (res, "num_object_locks_acquired",
+		  exec_stat.lk_num_acquired_on_objects);
+  nv_add_nvp_int (res, "num_page_locks_converted",
+		  exec_stat.lk_num_converted_on_pages);
+  nv_add_nvp_int (res, "num_object_locks_converted",
+		  exec_stat.lk_num_converted_on_objects);
+  nv_add_nvp_int (res, "num_page_locks_re_requested",
+		  exec_stat.lk_num_re_requested_on_pages);
+  nv_add_nvp_int (res, "num_object_locks_re_requested",
+		  exec_stat.lk_num_re_requested_on_objects);
+  nv_add_nvp_int (res, "num_page_locks_waits",
+		  exec_stat.lk_num_waited_on_pages);
+  nv_add_nvp_int (res, "num_object_locks_waits",
+		  exec_stat.lk_num_waited_on_objects);
+
+  /* Execution statistics for transactions */
+  nv_add_nvp_int (res, "num_tran_commits", exec_stat.tran_num_commits);
+  nv_add_nvp_int (res, "num_tran_rollbacks", exec_stat.tran_num_rollbacks);
+  nv_add_nvp_int (res, "num_tran_savepoints", exec_stat.tran_num_savepoints);
+  nv_add_nvp_int (res, "num_tran_start_topops",
+		  exec_stat.tran_num_start_topops);
+  nv_add_nvp_int (res, "num_tran_end_topops", exec_stat.tran_num_end_topops);
+  nv_add_nvp_int (res, "num_tran_interrupts", exec_stat.tran_num_interrupts);
+
+  /* Execution statistics for the btree manager */
+  nv_add_nvp_int (res, "num_btree_inserts", exec_stat.bt_num_inserts);
+  nv_add_nvp_int (res, "num_btree_deletes", exec_stat.bt_num_deletes);
+  nv_add_nvp_int (res, "num_btree_updates", exec_stat.bt_num_updates);
+
+  /* Execution statistics for the query manager */
+  nv_add_nvp_int (res, "num_query_selects", exec_stat.qm_num_selects);
+  nv_add_nvp_int (res, "num_query_inserts", exec_stat.qm_num_inserts);
+  nv_add_nvp_int (res, "num_query_deletes", exec_stat.qm_num_deletes);
+  nv_add_nvp_int (res, "num_query_updates", exec_stat.qm_num_updates);
+  nv_add_nvp_int (res, "num_query_sscans", exec_stat.qm_num_sscans);
+  nv_add_nvp_int (res, "num_query_iscans", exec_stat.qm_num_iscans);
+  nv_add_nvp_int (res, "num_query_lscans", exec_stat.qm_num_lscans);
+  nv_add_nvp_int (res, "num_query_setscans", exec_stat.qm_num_setscans);
+  nv_add_nvp_int (res, "num_query_methscans", exec_stat.qm_num_methscans);
+  nv_add_nvp_int (res, "num_query_nljoins", exec_stat.qm_num_nljoins);
+  nv_add_nvp_int (res, "num_query_mjoins", exec_stat.qm_num_mjoins);
+  nv_add_nvp_int (res, "num_query_objfetches", exec_stat.qm_num_objfetches);
+
+  /* Execution statistics for network communication */
+  nv_add_nvp_int (res, "num_network_requests", exec_stat.net_num_requests);
+
+  /* Other statistics */
+  nv_add_nvp_int (res, "data_page_buffer_hit_ratio", exec_stat.pb_hit_ratio);
+
+  /* flush control stat */
+  nv_add_nvp_int (res, "num_adaptive_flush_pages", exec_stat.fc_num_pages);
+  nv_add_nvp_int (res, "num_adaptive_flush_log_pages",
+		  exec_stat.fc_num_log_pages);
+  nv_add_nvp_int (res, "num_adaptive_flush_max_pages", exec_stat.fc_tokens);
+
+  retval = ERR_NO_ERROR;
+
+statdump_finale:
+  return retval;
+}
+
+int
 ts_compactdb (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *dbname;
+  char *verbose;
   char cmd_name[CUBRID_CMD_NAME_LEN];
-  const char *argv[5];
+  const char *argv[6];
+  int argc = 0;
   T_DB_SERVICE_MODE db_mode;
   char *cubrid_err_file;
-
+  char compactfilepath[PATH_MAX];
+  int retval = ERR_NO_ERROR;
+  FILE *infile;
+  int createtmpfile = 0;
   dbname = nv_get_val (req, "dbname");
-  db_mode = uDatabaseMode (dbname);
+  verbose = nv_get_val (req, "verbose");
+
+  db_mode = uDatabaseMode (dbname, NULL);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -5800,29 +3581,73 @@ ts_compactdb (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   cubrid_cmd_name (cmd_name);
-  argv[0] = cmd_name;
-  argv[1] = UTIL_OPTION_COMPACTDB;
-  argv[2] = dbname;
-  argv[3] = NULL;
+  argv[argc++] = cmd_name;
+  argv[argc++] = UTIL_OPTION_COMPACTDB;
+  if (uStringEqual (verbose, "y"))
+    {
+      argv[argc++] = "--" COMPACT_VERBOSE_L;
+      createtmpfile = 1;
+    }
+  argv[argc++] = dbname;
+  argv[argc++] = NULL;
 
   INIT_CUBRID_ERROR_FILE (cubrid_err_file);
 
-  if (run_child (argv, 1, NULL, NULL, cubrid_err_file, NULL) < 0)
-    {				/* compactdb */
-      strcpy (_dbmt_error, argv[0]);
-      return ERR_SYSTEM_CALL;
+  if (createtmpfile != 0)
+    {
+      snprintf (compactfilepath, PATH_MAX - 1, "%s/DBMT_task_%d.%d",
+		sco.dbmt_tmp_dir, TS_COMPACTDB, (int) getpid ());
+      /* Create a tmp file. */
+      infile = fopen (compactfilepath, "w");
+      if (infile == NULL)
+	{
+	  return ERR_TMPFILE_OPEN_FAIL;
+	}
+      fclose (infile);
     }
 
-  if (read_error_file (cubrid_err_file, _dbmt_error, DBMT_ERROR_MSG_SIZE) < 0)
-    return ERR_WITH_MSG;
+  if (run_child
+      (argv, 1, NULL, ((createtmpfile != 0) ? compactfilepath : NULL),
+       cubrid_err_file, NULL) < 0)
+    {				/* compactdb */
+      strcpy (_dbmt_error, argv[0]);
+      retval = ERR_SYSTEM_CALL;
+      goto rm_tmpfile;
+    }
 
-  return ERR_NO_ERROR;
+  if (createtmpfile != 0)
+    {
+      /* open tmp file. */
+      infile = fopen (compactfilepath, "r");
+      if (infile == NULL)
+	{
+	  retval = ERR_TMPFILE_OPEN_FAIL;
+	  goto rm_tmpfile;
+	}
+
+      /* add file content to response line by line. */
+      file_to_nvpairs (infile, res);
+
+      /* close tmp file. */
+      fclose (infile);
+    }
+  if (read_error_file (cubrid_err_file, _dbmt_error, DBMT_ERROR_MSG_SIZE) < 0)
+    {
+      retval = ERR_WITH_MSG;
+      goto rm_tmpfile;
+    }
+
+rm_tmpfile:
+  unlink (compactfilepath);
+  return retval;
 }
 
 int
 ts_backupdb (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *dbname, *level, *removelog, *volname, *backupdir, *check;
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  int ha_mode = 0;
   char *mt, *zip, *safe_replication;
   char backupfilepath[PATH_MAX];
   char inputfilepath[PATH_MAX];
@@ -5840,7 +3665,7 @@ ts_backupdb (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_PARAM_MISSING;
     }
 
-  db_mode = uDatabaseMode (dbname);
+  db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -5905,7 +3730,17 @@ ts_backupdb (nvplist * req, nvplist * res, char *_dbmt_error)
       argv[argc++] = sp_option;
     }
 
-  argv[argc++] = dbname;
+  if (ha_mode != 0)
+    {
+      append_host_to_dbname (dbname_at_hostname, dbname,
+			     sizeof (dbname_at_hostname));
+      argv[argc++] = dbname_at_hostname;
+    }
+  else
+    {
+      argv[argc++] = dbname;
+    }
+
   argv[argc++] = NULL;
 
   snprintf (inputfilepath, PATH_MAX - 1, "%s/DBMT_task_%d.%d",
@@ -5947,6 +3782,9 @@ ts_unloaddb (nvplist * req, nvplist * res, char *_dbmt_error)
     *ref, *classonly, *delimit, *estimate, *prefix, *cach, *lofile,
     buf[PATH_MAX], infofile[PATH_MAX], tmpfile[PATH_MAX], temp[PATH_MAX],
     n[256], v[256], cname[256], p1[64], p2[8], p3[8];
+
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  int ha_mode = 0;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   char *cubrid_err_file;
   FILE *infile, *outfile;
@@ -5981,7 +3819,7 @@ ts_unloaddb (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_PARAM_MISSING;
     }
 
-  db_mode = uDatabaseMode (dbname);
+  db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -6096,7 +3934,18 @@ ts_unloaddb (nvplist * req, nvplist * res, char *_dbmt_error)
       argv[argc++] = "--" UNLOAD_LO_COUNT_L;
       argv[argc++] = lofile;
     }
-  argv[argc++] = dbname;
+
+  if (ha_mode != 0)
+    {
+      append_host_to_dbname (dbname_at_hostname, dbname,
+			     sizeof (dbname_at_hostname));
+      argv[argc++] = dbname_at_hostname;
+    }
+  else
+    {
+      argv[argc++] = dbname;
+    }
+
   argv[argc++] = NULL;
 
   INIT_CUBRID_ERROR_FILE (cubrid_err_file);
@@ -6359,7 +4208,8 @@ ts_loaddb (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *dbname, *checkoption, *period, *user, *schema, *object, *index,
     *error_control_file, *ignore_class_file, *estimated, *oiduse, *nolog,
-    buf[1024], tmpfile[PATH_MAX];
+    *statisticsuse, buf[1024], tmpfile[PATH_MAX];
+
   FILE *infile;
   T_DB_SERVICE_MODE db_mode;
   char *dbuser, *dbpasswd;
@@ -6393,8 +4243,9 @@ ts_loaddb (nvplist * req, nvplist * res, char *_dbmt_error)
   estimated = nv_get_val (req, "estimated");
   oiduse = nv_get_val (req, "oiduse");
   nolog = nv_get_val (req, "nolog");
+  statisticsuse = nv_get_val (req, "statisticsuse");
 
-  db_mode = uDatabaseMode (dbname);
+  db_mode = uDatabaseMode (dbname, NULL);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -6479,6 +4330,9 @@ ts_loaddb (nvplist * req, nvplist * res, char *_dbmt_error)
   if (uStringEqual (oiduse, "no"))
     argv[argc++] = "--" LOAD_NO_OID_L;
 
+  if (uStringEqual (statisticsuse, "no"))
+    argv[argc++] = "--" LOAD_NO_STATISTICS_L;
+
   if (uStringEqual (nolog, "yes"))
     argv[argc++] = "--" LOAD_IGNORE_LOGGING_L;
 
@@ -6542,7 +4396,7 @@ ts_restoredb (nvplist * req, nvplist * res, char *_dbmt_error)
   int status;
 
   dbname = nv_get_val (req, "dbname");
-  db_mode = uDatabaseMode (dbname);
+  db_mode = uDatabaseMode (dbname, NULL);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -6611,6 +4465,8 @@ int
 ts_backup_vol_info (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *dbname, *lv, *pathname, buf[1024], tmpfile[PATH_MAX];
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  int ha_mode = 0;
   int ret;
   FILE *infile;
   char cmd_name[CUBRID_CMD_NAME_LEN];
@@ -6627,7 +4483,7 @@ ts_backup_vol_info (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_DB_ACTIVE;
     }
 
-  if (uDatabaseMode (dbname) == DB_SERVICE_MODE_SA)
+  if (uDatabaseMode (dbname, &ha_mode) == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
       return ERR_STANDALONE_MODE;
@@ -6652,7 +4508,18 @@ ts_backup_vol_info (nvplist * req, nvplist * res, char *_dbmt_error)
       argv[argc++] = "--" RESTORE_BACKUP_FILE_PATH_L;
       argv[argc++] = pathname;
     }
-  argv[argc++] = dbname;
+
+  if (ha_mode != 0)
+    {
+      append_host_to_dbname (dbname_at_hostname, dbname,
+			     sizeof (dbname_at_hostname));
+      argv[argc++] = dbname_at_hostname;
+    }
+  else
+    {
+      argv[argc++] = dbname;
+    }
+
   argv[argc++] = NULL;
 
 #if defined(WINDOWS)
@@ -6688,6 +4555,8 @@ int
 ts_get_dbsize (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *dbname;
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  int ha_mode = 0;
   char strbuf[PATH_MAX], dbdir[PATH_MAX];
   int pagesize, no_tpage = 0, log_size = 0, baselen;
   struct stat statbuf;
@@ -6719,9 +4588,19 @@ ts_get_dbsize (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   cubrid_mode =
-    (uDatabaseMode (dbname) ==
+    (uDatabaseMode (dbname, &ha_mode) ==
      DB_SERVICE_MODE_NONE) ? CUBRID_MODE_SA : CUBRID_MODE_CS;
-  cmd_res = cmd_spacedb (dbname, cubrid_mode);
+
+  if (ha_mode != 0)
+    {
+      append_host_to_dbname (dbname_at_hostname, dbname,
+			     sizeof (dbname_at_hostname));
+      cmd_res = cmd_spacedb (dbname_at_hostname, cubrid_mode);
+    }
+  else
+    {
+      cmd_res = cmd_spacedb (dbname, cubrid_mode);
+    }
 
   if (cmd_res == NULL || cmd_res->err_msg[0])
     {
@@ -6783,328 +4662,10 @@ ts_get_dbsize (nvplist * req, nvplist * res, char *_dbmt_error)
   return ERR_NO_ERROR;
 }
 
-/******************************************************************************
-	TASK MISC
-******************************************************************************/
-int
-ts_get_access_right (nvplist * req, nvplist * res, char *_dbmt_error)
-{
-  char *d_id;
-  nvplist *ud = NULL;
-  int n;
-  int retval;
-  T_COMMDB_RESULT *cmd_res = NULL;
-
-  ud = nv_create (6, NULL, "\n", ":", "\n");
-  if (ud == NULL)
-    {
-      return ERR_MEM_ALLOC;
-    }
-  d_id = nv_get_val (req, "_ID");
-
-  if ((retval =
-       _tsReadUserCapability (ud, d_id, _dbmt_error)) != ERR_NO_ERROR)
-    {
-      nv_destroy (ud);
-      return retval;
-    }
-
-  nv_add_nvp (res, "open", "userauth");
-  nv_add_nvp (res, "id", d_id);
-
-  for (n = 0; n < ud->nvplist_leng; ++n)
-    {
-      char *z_name, *z_value;
-      char buf[1024], *tok[3];
-
-      nv_lookup (ud, n, &z_name, &z_value);
-
-      if (uStringEqual (z_name, "unicas"))
-	continue;
-      if (uStringEqual (z_name, "dbcreate"))
-	continue;
-
-      if (z_value == NULL)
-	continue;
-
-      nv_add_nvp (res, "open", "dbauth");
-      strcpy (buf, z_value);
-      string_tokenize2 (buf, tok, 3, ';');
-      nv_add_nvp (res, "dbname", z_name);
-
-      if (!_isRegisteredDB (z_name))
-	{
-	  nv_add_nvp (res, "authority", "none");
-	}
-      else
-	{
-	  if (cmd_res == NULL)
-	    cmd_res = cmd_commdb ();
-
-	  retval = op_db_user_pass_check (z_name, tok[1], tok[2]);
-	  if (retval)
-	    {
-	      if (retval == 2)
-		{
-		  /* database is running stand alone mode */
-		  nv_add_nvp (res, "authority", "unknown");
-		}
-	      else if (uStringEqual (tok[1], "dba"))
-		nv_add_nvp (res, "authority", "dba");
-	      else
-		nv_add_nvp (res, "authority", "general");
-	    }
-	  else
-	    nv_add_nvp (res, "authority", "none");
-	}
-      nv_add_nvp (res, "close", "dbauth");
-    }
-  cmd_commdb_result_free (cmd_res);
-
-  if (nv_get_val (ud, "unicas"))
-    nv_add_nvp (res, "casauth", nv_get_val (ud, "unicas"));
-  else
-    nv_add_nvp (res, "casauth", "none");
-#if 0
-  if (nv_get_val (ud, "dbcreate"))
-    nv_add_nvp (res, "dbcreate", nv_get_val (ud, "dbcreate"));
-  else
-    nv_add_nvp (res, "dbcreate", "none");
-#endif
-
-  nv_add_nvp (res, "close", "userauth");
-  nv_destroy (ud);
-
-  return ERR_NO_ERROR;
-}
 
 
-int
-tsGetHistory (nvplist * req, nvplist * res, char *_dbmt_error)
-{
-  char strbuf[1024], file[PATH_MAX];
-  FILE *infile;
-  char err_flag = 0;
-  int i;
-  char *conf_item[AUTOHISTORY_CONF_ENTRY_NUM];
 
-  infile = fopen (conf_get_dbmt_file (FID_AUTO_HISTORY_CONF, file), "r");
-  if (infile == NULL)
-    {
-      err_flag = 1;
-    }
-  else
-    {
-      memset (strbuf, 0, sizeof (strbuf));
-      while (fgets (strbuf, sizeof (strbuf), infile))
-	{
-	  ut_trim (strbuf);
-	  if (strbuf[0] == '#' || strbuf[0] == '\0')
-	    {
-	      memset (strbuf, 0, sizeof (strbuf));
-	      continue;
-	    }
-	  break;
-	}
-      if (string_tokenize (strbuf, conf_item, AUTOHISTORY_CONF_ENTRY_NUM) < 0)
-	err_flag = 1;
 
-      if (!err_flag)
-	{
-	  for (i = 0; i < AUTOHISTORY_CONF_ENTRY_NUM; i++)
-	    {
-	      nv_add_nvp (res, autohistory_conf_entry[i], conf_item[i]);
-	    }
-
-	  /* read dblist */
-	  nv_add_nvp (res, "open", "dblist");
-	  while (fgets (strbuf, sizeof (strbuf), infile))
-	    {
-	      ut_trim (strbuf);
-	      if (strbuf[0] == '\0' || strbuf[0] == '#')
-		continue;
-	      nv_add_nvp (res, "dbname", strbuf);
-	    }
-	  nv_add_nvp (res, "close", "dblist");
-	}
-      fclose (infile);
-    }
-
-  if (err_flag)
-    {
-      nv_add_nvp (res, autohistory_conf_entry[0], "OFF");
-      nv_add_nvp (res, autohistory_conf_entry[1], "0");
-      nv_add_nvp (res, autohistory_conf_entry[2], "0");
-      nv_add_nvp (res, autohistory_conf_entry[3], "0");
-      nv_add_nvp (res, autohistory_conf_entry[4], "0");
-      nv_add_nvp (res, autohistory_conf_entry[5], "0");
-      nv_add_nvp (res, autohistory_conf_entry[6], "0");
-      nv_add_nvp (res, autohistory_conf_entry[7], "0");
-      nv_add_nvp (res, autohistory_conf_entry[8], "0");
-      nv_add_nvp (res, autohistory_conf_entry[9], "0");
-      nv_add_nvp (res, autohistory_conf_entry[10], "0");
-      nv_add_nvp (res, autohistory_conf_entry[11], "0");
-      nv_add_nvp (res, autohistory_conf_entry[12], "0");
-      nv_add_nvp (res, autohistory_conf_entry[13], "0");
-      nv_add_nvp (res, autohistory_conf_entry[14], "0");
-      nv_add_nvp (res, "open", "dblist");
-      nv_add_nvp (res, "close", "dblist");
-    }
-  return ERR_NO_ERROR;
-}
-
-int
-tsSetHistory (nvplist * req, nvplist * res, char *_dbmt_error)
-{
-  FILE *outfile;
-  int ptr, ptrlen;
-  char *name, *value;
-  int i;
-  char conf_file[PATH_MAX];
-  char *conf_item[AUTOHISTORY_CONF_ENTRY_NUM];
-
-  for (i = 0; i < AUTOHISTORY_CONF_ENTRY_NUM; i++)
-    {
-      conf_item[i] = nv_get_val (req, autohistory_conf_entry[i]);
-      if (conf_item[i] == NULL)
-	{
-	  strcpy (_dbmt_error, autohistory_conf_entry[i]);
-	  return ERR_PARAM_MISSING;
-	}
-    }
-
-  conf_get_dbmt_file (FID_AUTO_HISTORY_CONF, conf_file);
-  if ((outfile = fopen (conf_file, "w")) == NULL)
-    {
-      sprintf (_dbmt_error, "%s", conf_file);
-      return ERR_FILE_OPEN_FAIL;
-    }
-
-  for (i = 0; i < AUTOHISTORY_CONF_ENTRY_NUM; i++)
-    fprintf (outfile, "%s ", conf_item[i]);
-  fprintf (outfile, "\n");
-
-  nv_locate (req, "dblist", &ptr, &ptrlen);
-  for (i = 0; i < ptrlen; ++i)
-    {
-      nv_lookup (req, i + ptr, &name, &value);
-      fprintf (outfile, "%s\n", value);
-    }
-  fclose (outfile);
-
-  return ERR_NO_ERROR;
-}
-
-int
-tsGetHistoryFileList (nvplist * req, nvplist * res, char *_dbmt_error)
-{
-#if defined(WINDOWS)
-  WIN32_FIND_DATA data;
-  char find_file[PATH_MAX];
-  HANDLE handle;
-  int found;
-#else
-  DIR *dirp;
-  struct dirent *dp;
-#endif
-  struct stat statbuf;
-  char dirbuf[PATH_MAX], fpathbuf[PATH_MAX];
-  char *cur_file;
-
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  snprintf (dirbuf, PATH_MAX - 1, "%s/logs", sco.szCubrid);
-#else
-  snprintf (dirbuf, PATH_MAX - 1, "%s", CUBRID_LOGDIR);
-#endif
-
-#if defined(WINDOWS)
-  snprintf (find_file, PATH_MAX - 1, "%s/*", dirbuf);
-  if ((handle = FindFirstFile (find_file, &data)) == INVALID_HANDLE_VALUE)
-    {
-      return ERR_OPENDIR;
-    }
-#else
-  dirp = opendir (dirbuf);
-  if (dirp == NULL)
-    {
-      return ERR_OPENDIR;
-    }
-#endif
-
-  nv_add_nvp (res, "open", "filelist");
-#if defined(WINDOWS)
-  for (found = 1; found; found = FindNextFile (handle, &data))
-#else
-  while ((dp = readdir (dirp)) != NULL)
-#endif
-    {
-#if defined(WINDOWS)
-      cur_file = data.cFileName;
-#else
-      cur_file = dp->d_name;
-#endif
-      if (!strncmp ("_dbmt_history.", cur_file, strlen ("_dbmt_history.")))
-	{
-	  nv_add_nvp (res, "name", cur_file);
-#if !defined (DO_NOT_USE_CUBRIDENV)
-	  snprintf (fpathbuf, PATH_MAX - 1, "%s/logs/%s", sco.szCubrid,
-		    cur_file);
-#else
-	  snprintf (fpathbuf, PATH_MAX - 1, "%s/%s", CUBRID_LOGDIR, cur_file);
-#endif
-	  stat (fpathbuf, &statbuf);
-	  nv_add_nvp_int (res, "size", statbuf.st_size);
-	  nv_add_nvp_time (res, "update", statbuf.st_mtime,
-			   "%04d/%02d/%02d-%02d:%02d:%02d", NV_ADD_DATE_TIME);
-	  nv_add_nvp (res, "path", dirbuf);
-	}
-    }
-#if defined(WINDOWS)
-  FindClose (handle);
-#else
-  closedir (dirp);
-#endif
-  nv_add_nvp (res, "close", "filelist");
-  return ERR_NO_ERROR;
-}
-
-int
-tsReadHistoryFile (nvplist * req, nvplist * res, char *_dbmt_error)
-{
-  char *fname;
-  char fnamebuf[PATH_MAX], strbuf[1024];
-  FILE *infile;
-
-  if ((fname = nv_get_val (req, "name")) == NULL)
-    {
-      sprintf (_dbmt_error, "%s", "file name");
-      return ERR_PARAM_MISSING;
-    }
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  snprintf (fnamebuf, PATH_MAX - 1, "%s/logs/%s", sco.szCubrid, fname);
-#else
-  snprintf (fnamebuf, PATH_MAX - 1, "%s/%s", CUBRID_LOGDIR, fname);
-#endif
-
-  nv_add_nvp (res, "open", "view");
-  if ((infile = fopen (fnamebuf, "r")) != NULL)
-    {
-      while (fgets (strbuf, sizeof (strbuf), infile))
-	{
-	  uRemoveCRLF (strbuf);
-	  nv_add_nvp (res, "msg", strbuf);
-	}
-      fclose (infile);
-    }
-  else
-    {
-      sprintf (_dbmt_error, "%s", fname);
-      return ERR_FILE_OPEN_FAIL;
-    }
-  nv_add_nvp (res, "close", "view");
-
-  return ERR_NO_ERROR;
-}
 
 int
 tsGetEnvironment (nvplist * req, nvplist * res, char *_dbmt_error)
@@ -7122,13 +4683,8 @@ tsGetEnvironment (nvplist * req, nvplist * res, char *_dbmt_error)
 	    (int) getpid ());
 
   cmd_name[0] = '\0';
-#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s%s", sco.szCubrid,
 	    CUBRID_DIR_BIN, UTIL_CUBRID_REL_NAME);
-#else
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s", CUBRID_BINDIR,
-	    UTIL_CUBRID_REL_NAME);
-#endif
 
   argv[0] = cmd_name;
   argv[1] = NULL;
@@ -7151,13 +4707,8 @@ tsGetEnvironment (nvplist * req, nvplist * res, char *_dbmt_error)
 
   snprintf (tmpfile, PATH_MAX - 1, "%s/DBMT_task_015.%d", sco.dbmt_tmp_dir,
 	    (int) getpid ());
-#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/cubrid_broker%s",
 	    sco.szCubrid, DBMT_EXE_EXT);
-#else
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/cubrid_broker%s",
-	    CUBRID_BINDIR, DBMT_EXE_EXT);
-#endif
 
   argv[0] = cmd_name;
   argv[1] = "--version";
@@ -7206,7 +4757,7 @@ tsGetEnvironment (nvplist * req, nvplist * res, char *_dbmt_error)
 int
 ts_startinfo (nvplist * req, nvplist * res, char *_dbmt_error)
 {
-  T_COMMDB_RESULT *cmd_res;
+  T_SERVER_STATUS_RESULT *cmd_res;
   int retval;
 
   /* add dblist */
@@ -7215,10 +4766,10 @@ ts_startinfo (nvplist * req, nvplist * res, char *_dbmt_error)
     return retval;
 
   nv_add_nvp (res, "open", "activelist");
-  cmd_res = cmd_commdb ();
+  cmd_res = cmd_server_status ();
   if (cmd_res != NULL)
     {
-      T_COMMDB_INFO *info = (T_COMMDB_INFO *) cmd_res->result;
+      T_SERVER_STATUS_INFO *info = (T_SERVER_STATUS_INFO *) cmd_res->result;
       int i;
       for (i = 0; i < cmd_res->num_result; i++)
 	{
@@ -7228,7 +4779,7 @@ ts_startinfo (nvplist * req, nvplist * res, char *_dbmt_error)
   nv_add_nvp (res, "close", "activelist");
 
   uWriteDBnfo2 (cmd_res);
-  cmd_commdb_result_free (cmd_res);
+  cmd_servstat_result_free (cmd_res);
 
   return ERR_NO_ERROR;
 }
@@ -7274,7 +4825,7 @@ ts_backupdb_info (nvplist * req, nvplist * res, char *_dbmt_error)
   if ((dbname = nv_get_val (req, "dbname")) == NULL)
     return ERR_PARAM_MISSING;
 
-  if (uDatabaseMode (dbname) == DB_SERVICE_MODE_SA)
+  if (uDatabaseMode (dbname, NULL) == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
       return ERR_STANDALONE_MODE;
@@ -7662,13 +5213,8 @@ ts_get_log_info (nvplist * req, nvplist * res, char *_dbmt_error)
       nv_add_nvp (res, "close", "log");
     }
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (find_file, PATH_MAX - 1, "%s/%s", sco.szCubrid,
 	    CUBRID_ERROR_LOG_DIR);
-#else
-  snprintf (find_file, PATH_MAX - 1, "%s/%s", CUBRID_LOGDIR,
-	    CUBRID_ERROR_LOG_DIR);
-#endif
 #if defined(WINDOWS)
   snprintf (&find_file[strlen (find_file)], PATH_MAX - strlen (find_file) - 1,
 	    "/*");
@@ -7703,12 +5249,8 @@ ts_get_log_info (nvplist * req, nvplist * res, char *_dbmt_error)
 	{
 	  continue;
 	}
-#if !defined (DO_NOT_USE_CUBRIDENV)
       snprintf (buf, sizeof (buf) - 1, "%s/%s/%s", sco.szCubrid,
 		CUBRID_ERROR_LOG_DIR, fname);
-#else
-      snprintf (buf, sizeof (buf) - 1, "%s/%s", CUBRID_ERROR_LOG_DIR, fname);
-#endif
       if (stat (buf, &statbuf) == 0)
 	{
 	  nv_add_nvp (res, "open", "log");
@@ -7842,205 +5384,7 @@ ts_reset_log (nvplist * req, nvplist * res, char *_dbmt_error)
   return ERR_NO_ERROR;
 }
 
-int
-ts_get_db_error (nvplist * req, nvplist * res, char *_dbmt_error)
-{
-  char dbname[256], logfilepath[PATH_MAX], buf[1024];
-  char wday[16], mon[16], day[16], time[16], tz[16], year[16], error_code[16];
-  char dbfilepath[PATH_MAX];
-  FILE *infile, *logfile;
 
-  snprintf (dbfilepath, PATH_MAX - 1, "%s/%s", sco.szCubrid_databases,
-	    CUBRID_DATABASE_TXT);
-  if ((infile = fopen (dbfilepath, "rt")) == NULL)
-    {
-      strcpy (_dbmt_error, dbfilepath);
-      return ERR_FILE_OPEN_FAIL;
-    }
-
-  while (fgets (buf, sizeof (buf), infile))
-    {
-      sscanf (buf, "%255s", dbname);
-      snprintf (logfilepath, PATH_MAX - 1, "%s/%s.err",
-		sco.szCubrid_databases, dbname);
-      if ((logfile = fopen (logfilepath, "rt")) != NULL)
-	{
-	  /* retrieve proper log file's information */
-	  nv_add_nvp (res, "dbname", dbname);
-	  while (fgets (buf, sizeof (buf), logfile))
-	    {
-	      if (!strncmp (buf, "--->>>", 6))
-		{
-		  sscanf (buf, "%*s %15s %15s %15s %15s %15s %15s", wday, mon,
-			  day, time, tz, year);
-		  snprintf (buf, sizeof (buf) - 1, "%s %s %s %s %s %s", wday,
-			    mon, day, time, tz, year);
-		  nv_add_nvp (res, "time", buf);
-		  fgets (buf, sizeof (buf), logfile);
-		  sscanf (buf, "%*s %*s %*s %*s %*s %*s %15s", error_code);
-		  error_code[strlen (error_code) - 1] = '\0';
-		  nv_add_nvp (res, "error_code", error_code);
-		  fgets (buf, sizeof (buf), logfile);
-		  uRemoveCRLF (buf);
-		  nv_add_nvp (res, "desc", buf);
-		  fgets (buf, sizeof (buf), logfile);
-		}
-	      else if (!strncmp (buf, "Time:", 5))
-		{
-#ifdef	WINDOWS
-		  int imon, iday, iyear;
-		  sscanf (buf,
-			  "%*s %d/%d/%d %15s %*s %*s %*s %*s %*s %*s %15s",
-			  &imon, &iday, &iyear, time, error_code);
-		  switch (imon)
-		    {
-		    case 1:
-		      strcpy (mon, "Jan");
-		      break;
-		    case 2:
-		      strcpy (mon, "Feb");
-		      break;
-		    case 3:
-		      strcpy (mon, "Mar");
-		      break;
-		    case 4:
-		      strcpy (mon, "Apr");
-		      break;
-		    case 5:
-		      strcpy (mon, "May");
-		      break;
-		    case 6:
-		      strcpy (mon, "Jun");
-		      break;
-		    case 7:
-		      strcpy (mon, "Jul");
-		      break;
-		    case 8:
-		      strcpy (mon, "Aug");
-		      break;
-		    case 9:
-		      strcpy (mon, "Sep");
-		      break;
-		    case 10:
-		      strcpy (mon, "Oct");
-		      break;
-		    case 11:
-		      strcpy (mon, "Nov");
-		      break;
-		    case 12:
-		      strcpy (mon, "Dec");
-		      break;
-		    }
-
-		  iyear += 2000;
-		  snprintf (day, sizeof (day) - 1, "%d", iday);
-		  snprintf (year, sizeof (year) - 1, "%d", iyear);
-
-		  if (error_code[strlen (error_code) - 1] == ',')
-		    {
-		      error_code[strlen (error_code) - 1] = '\0';
-		    }
-
-		  snprintf (buf, sizeof (buf) - 1, "%s %s %s %s %s", "---",
-			    mon, day, time, year);
-#else
-		  sscanf (buf,
-			  "%*s %15s %15s %15s %15s %15s %*s %*s %*s %*s %*s %*s %15s",
-			  wday, mon, day, time, year, error_code);
-		  if (error_code[strlen (error_code) - 1] == ',')
-		    {
-		      error_code[strlen (error_code) - 1] = '\0';
-		    }
-
-		  snprintf (buf, sizeof (buf) - 1, "%s %s %s %s %s", wday,
-			    mon, day, time, year);
-#endif
-		  nv_add_nvp (res, "time", buf);
-		  nv_add_nvp (res, "error_code", error_code);
-		  fgets (buf, sizeof (buf), logfile);
-		  uRemoveCRLF (buf);
-		  nv_add_nvp (res, "desc", buf);
-		}
-	    }			/* end of while(fgets( */
-	  fclose (logfile);
-	}			/* end of if (logfile = fopen( */
-    }				/* end of while(fgets( */
-  fclose (infile);
-
-  return ERR_NO_ERROR;
-}
-
-int
-ts_general_db_info (nvplist * req, nvplist * res, char *_dbmt_error)
-{
-  int ipagesize = 0, itotalpage = 0, ifreepage = 0;
-  char *dbname;
-  T_SPACEDB_RESULT *cmd_res;
-  T_SPACEDB_INFO *info;
-  T_CUBRID_MODE cubrid_mode;
-  T_DB_SERVICE_MODE mode;
-  char strbuf[1024];
-  int i;
-
-  if ((dbname = nv_get_val (req, "_DBNAME")) == NULL)
-    {
-      sprintf (_dbmt_error, "%s", "database name");
-      return ERR_PARAM_MISSING;
-    }
-
-  mode = uDatabaseMode (dbname);
-
-  if (mode == DB_SERVICE_MODE_SA)
-    return ERR_STANDALONE_MODE;
-
-  cubrid_mode =
-    (mode == DB_SERVICE_MODE_NONE) ? CUBRID_MODE_SA : CUBRID_MODE_CS;
-  cmd_res = cmd_spacedb (dbname, cubrid_mode);
-
-  if (cmd_res == NULL)
-    {
-      sprintf (_dbmt_error, "spacedb %s", dbname);
-      return ERR_SYSTEM_CALL;
-    }
-  else if (cmd_res->err_msg[0])
-    {
-      strcpy (_dbmt_error, cmd_res->err_msg);
-      cmd_spacedb_result_free (cmd_res);
-      return ERR_WITH_MSG;
-    }
-
-  nv_add_nvp (res, "dbname", dbname);
-
-  ipagesize = cmd_res->page_size;
-  info = cmd_res->vol_info;
-  for (i = 0; i < cmd_res->num_vol; i++)
-    {
-      nv_add_nvp (res, "open", "spaceinfo");
-      snprintf (strbuf, sizeof (strbuf) - 1, "%d", info[i].volid);
-      nv_add_nvp (res, "volid", strbuf);
-      nv_add_nvp (res, "purpose", info[i].purpose);
-      snprintf (strbuf, sizeof (strbuf) - 1, "%d", info[i].total_page);
-      nv_add_nvp (res, "total_pages", strbuf);
-      snprintf (strbuf, sizeof (strbuf) - 1, "%d", info[i].free_page);
-      nv_add_nvp (res, "free_pages", strbuf);
-      snprintf (strbuf, sizeof (strbuf) - 1, "%s/%s", info[i].location,
-		info[i].vol_name);
-      nv_add_nvp (res, "volname", strbuf);
-      nv_add_nvp (res, "close", "spaceinfo");
-      itotalpage += info[i].total_page;
-      ifreepage += info[i].free_page;
-    }
-  cmd_spacedb_result_free (cmd_res);
-
-  snprintf (strbuf, sizeof (strbuf) - 1, "%d", ipagesize);
-  nv_add_nvp (res, "page_size", strbuf);
-  snprintf (strbuf, sizeof (strbuf) - 1, "%d", itotalpage);
-  nv_add_nvp (res, "total_page", strbuf);
-  snprintf (strbuf, sizeof (strbuf) - 1, "%d", ifreepage);
-  nv_add_nvp (res, "free_page", strbuf);
-
-  return ERR_NO_ERROR;
-}
 
 int
 ts_get_auto_add_vol (nvplist * req, nvplist * res, char *_dbmt_error)
@@ -8146,6 +5490,7 @@ ts_set_auto_add_vol (nvplist * req, nvplist * res, char *_dbmt_error)
   while (fgets (line, sizeof (line), infile))
     {
       char conf_dbname[128];
+
       if (sscanf (line, "%127s", conf_dbname) < 1)
 	continue;
 
@@ -8344,7 +5689,6 @@ ts_lockdb (nvplist * req, nvplist * res, char *_dbmt_error)
   char buf[1024], tmpfile[PATH_MAX], tmpfile2[PATH_MAX], s[32];
   char *dbname;
   FILE *infile, *outfile;
-  int kr = 0;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   const char *argv[6];
 
@@ -8388,10 +5732,6 @@ ts_lockdb (nvplist * req, nvplist * res, char *_dbmt_error)
 	{
 	  fputs (buf, outfile);
 	}
-      if (kr == 0 && !strcmp (s, "락"))
-	{
-	  kr = 1;
-	}
     }
   fclose (infile);
   fclose (outfile);
@@ -8401,30 +5741,15 @@ ts_lockdb (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_TMPFILE_OPEN_FAIL;
     }
 
-  /* Make version information */
-  if (kr)
+
+  if (_ts_lockdb_parse_us (res, infile) < 0)
     {
-      if (_ts_lockdb_parse_kr (res, infile) < 0)
-	{
-	  /* parshing error */
-	  strcpy (_dbmt_error,
-		  "Lockdb operation has been failed(Unexpected state).");
-	  fclose (infile);
-	  unlink (tmpfile2);
-	  return ERR_WITH_MSG;
-	}
-    }
-  else
-    {
-      if (_ts_lockdb_parse_us (res, infile) < 0)
-	{
-	  /* parshing error */
-	  strcpy (_dbmt_error,
-		  "Lockdb operation has been failed(Unexpected state).");
-	  fclose (infile);
-	  unlink (tmpfile2);
-	  return ERR_WITH_MSG;
-	}
+      /* parshing error */
+      strcpy (_dbmt_error,
+	      "Lockdb operation has been failed(Unexpected state).");
+      fclose (infile);
+      unlink (tmpfile2);
+      return ERR_WITH_MSG;
     }
 
   fclose (infile);
@@ -8557,6 +5882,7 @@ tsGetAutoaddvolLog (nvplist * req, nvplist * res, char *_dbmt_error)
 	  uRemoveCRLF (strbuf);
 	  sscanf (strbuf, "%511s %511s %511s %511s %511s %511s", dbname,
 		  volname, purpose, page, time, outcome);
+
 	  nv_add_nvp (res, "open", "log");
 	  nv_add_nvp (res, "dbname", dbname);
 	  nv_add_nvp (res, "volname", volname);
@@ -8587,7 +5913,6 @@ ts_check_dir (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *n, *v;
   int i;
-
   for (i = 0; i < req->nvplist_leng; i++)
     {
       nv_lookup (req, i, &n, &v);
@@ -8606,12 +5931,12 @@ ts_check_file (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *n, *v;
   int i;
-
   for (i = 0; i < req->nvplist_leng; i++)
     {
       nv_lookup (req, i, &n, &v);
       if ((n != NULL) && (strcmp (n, "file") == 0))
 	{
+
 	  if ((v != NULL) && (access (v, F_OK) == 0))
 	    nv_add_nvp (res, "existfile", v);
 	}
@@ -8628,13 +5953,8 @@ ts_get_autobackupdb_error_log (nvplist * req, nvplist * res,
     backupid[256];
   FILE *infile;
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (logfile, PATH_MAX - 1, "%s/log/manager/auto_backupdb.log",
 	    sco.szCubrid);
-#else
-  snprintf (logfile, PATH_MAX - 1, "%s/manager/auto_backupdb.log",
-	    CUBRID_LOGDIR);
-#endif
   if ((infile = fopen (logfile, "r")) == NULL)
     {
       return ERR_NO_ERROR;
@@ -8682,13 +6002,8 @@ ts_get_autoexecquery_error_log (nvplist * req, nvplist * res,
     time[512], dbname[256], username[256], query_id[256], error_code[256];
   FILE *infile;
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (logfile, PATH_MAX - 1, "%s/log/manager/auto_execquery.log",
 	    sco.szCubrid);
-#else
-  snprintf (logfile, PATH_MAX - 1, "%s/manager/auto_execquery.log",
-	    CUBRID_LOGDIR);
-#endif
   if ((infile = fopen (logfile, "r")) == NULL)
     return ERR_NO_ERROR;
 
@@ -8732,1427 +6047,12 @@ ts_get_autoexecquery_error_log (nvplist * req, nvplist * res,
   return ERR_NO_ERROR;
 }
 
-/***************************************************************************
-	 FSERVER TASK PRIVATE
-  *************************************************************************/
-static int
-op_db_user_pass_check (char *dbname, char *dbuser, char *dbpass)
-{
-  char decrypted[PASSWD_LENGTH + 1];
-  char cmd_name[CUBRID_CMD_NAME_LEN];
-  const char *argv[11];
-  char input_file[PATH_MAX];
-  char *cubrid_err_file;
-  int retval, argc;
-
-  T_DB_SERVICE_MODE db_mode;
-
-  if (dbuser == NULL)
-    {
-      return 0;
-    }
-
-  snprintf (input_file, PATH_MAX - 1, "%s/DBMT_task_%d_%d", sco.dbmt_tmp_dir,
-	    TS_GETACCESSRIGHT, (int) getpid ());
-
-  cmd_name[0] = '\0';
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s%s", sco.szCubrid,
-	    CUBRID_DIR_BIN, UTIL_CSQL_NAME);
-#else
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s", CUBRID_BINDIR,
-	    UTIL_CSQL_NAME);
-#endif
-  argc = 0;
-  argv[argc++] = cmd_name;
-  argv[argc++] = dbname;
-  argv[argc++] = NULL;		/* for "-cs" or "-sa" argument */
-  argv[argc++] = "--" CSQL_INPUT_FILE_L;
-  argv[argc++] = input_file;
-  argv[argc++] = "--" CSQL_USER_L;
-  argv[argc++] = dbuser;
-
-  uDecrypt (PASSWD_LENGTH, dbpass, decrypted);
-  if (*decrypted != '\0')
-    {
-      argv[argc++] = "--" CSQL_PASSWORD_L;
-      argv[argc++] = decrypted;
-    }
-
-  for (; argc < 11; argc++)
-    {
-      argv[argc] = NULL;
-    }
-
-  db_mode = uDatabaseMode (dbname);
-
-  if (db_mode == DB_SERVICE_MODE_CS)
-    {
-      argv[2] = "--" CSQL_CS_MODE_L;
-    }
-  else if (db_mode == DB_SERVICE_MODE_NONE)
-    {
-      argv[2] = "--" CSQL_SA_MODE_L;
-    }
-  else if (db_mode == DB_SERVICE_MODE_SA)
-    {
-      return 2;
-      /* data base is running in stand alone mode */
-    }
-
-  op_make_password_check_file (input_file);
-
-  INIT_CUBRID_ERROR_FILE (cubrid_err_file);
-  SET_TRANSACTION_NO_WAIT_MODE_ENV ();
-
-  retval = run_child (argv, 1, NULL, NULL, cubrid_err_file, NULL);	/* csql */
-
-  unlink (input_file);
-  if (read_csql_error_file (cubrid_err_file, NULL, DBMT_ERROR_MSG_SIZE) < 0)
-    {
-      return 0;
-    }
-
-  if (retval < 0)
-    {
-      return 0;
-    }
-
-  return 1;
-}
-
-static int
-_op_db_login (nvplist * out, nvplist * in, char *_dbmt_error)
-{
-  int errcode;
-  char *id, *pwd, *db_name;
-
-  id = nv_get_val (in, "_DBID");
-  pwd = nv_get_val (in, "_DBPASSWD");
-  db_name = nv_get_val (in, "_DBNAME");
-
-  db_login (id, pwd);
-  errcode = db_restart (DB_RESTART_SERVER_NAME, 0, db_name);
-  if (errcode < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      return -1;
-    }
-
-  db_set_isolation (TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE);
-  db_set_lock_timeout (1);
-
-  return 0;
-}
-
-/* function that return domain's type name */
-/* it should be free by caller */
-static char *
-_op_get_type_name (DB_DOMAIN * domain)
-{
-  DB_OBJECT *class_;
-  DB_DOMAIN *set_domain;
-  DB_TYPE type_id;
-  int p;
-  char *result, *temp;
-  const size_t result_size = 255;
-
-  result = (char *) malloc (result_size + 1);
-  if (result == NULL)
-    {
-      return NULL;
-    }
-
-  type_id = db_domain_type (domain);
-  if (type_id == 0)
-    {
-      free (result);
-      return NULL;
-    }
-  else if (type_id == DB_TYPE_OBJECT)
-    {
-      class_ = db_domain_class (domain);
-      if (class_ != NULL)
-	{
-	  snprintf (result, result_size, "%s", db_get_class_name (class_));
-	}
-      else
-	{
-	  *result = '\0';
-	}
-    }
-  else if (type_id == DB_TYPE_NUMERIC)
-    {
-      int s;
-      p = db_domain_precision (domain);
-      s = db_domain_scale (domain);
-      snprintf (result, result_size, "%s(%d,%d)", db_get_type_name (type_id),
-		p, s);
-    }
-  else if ((p = db_domain_precision (domain)) != 0)
-    {
-      snprintf (result, result_size, "%s(%d)", db_get_type_name (type_id), p);
-    }
-  else if (type_id == DB_TYPE_SET || type_id == DB_TYPE_MULTISET ||
-	   type_id == DB_TYPE_LIST || type_id == DB_TYPE_SEQUENCE)
-    {
-      size_t avail_size = result_size;
-      char *result_p = result;
-
-      set_domain = db_domain_set (domain);
-
-      STRING_APPEND (result_p, avail_size, "%s", db_get_type_name (type_id));
-
-      if (domain != NULL)
-	{
-	  STRING_APPEND (result_p, avail_size, "_of(");
-
-	  temp = _op_get_type_name (set_domain);
-	  if (temp != NULL)
-	    {
-	      STRING_APPEND (result_p, avail_size, "%s", temp);
-	      free (temp);
-
-	      for (set_domain = db_domain_next (set_domain);
-		   set_domain != NULL;
-		   set_domain = db_domain_next (set_domain))
-		{
-		  temp = _op_get_type_name (set_domain);
-		  if (temp != NULL)
-		    {
-		      STRING_APPEND (result_p, avail_size, ",%s", temp);
-		      free (temp);
-		    }
-		}
-	    }
-	  STRING_APPEND (result_p, avail_size, ")");
-	}
-    }
-  else
-    {
-      snprintf (result, result_size, "%s", db_get_type_name (type_id));
-    }
-
-  return result;
-}
-
-static void
-_op_get_attribute_info (nvplist * out, DB_ATTRIBUTE * attr, int isclass)
-{
-  char *type_name, *v_str;
-  DB_OBJECT *superobj;
-
-  if (isclass)
-    {
-      nv_add_nvp (out, "open", "classattribute");
-    }
-  else
-    {
-      nv_add_nvp (out, "open", "attribute");
-    }
-  nv_add_nvp (out, "name", db_attribute_name (attr));
-  type_name = _op_get_type_name (db_attribute_domain (attr));
-  nv_add_nvp (out, "type", type_name);
-  free (type_name);
-
-  superobj = db_attribute_class (attr);
-  if (superobj != NULL)
-    {
-      nv_add_nvp (out, "inherit", db_get_class_name (superobj));
-    }
-  else
-    {
-      nv_add_nvp (out, "inherit", "");
-    }
-
-  if (db_attribute_is_indexed (attr))
-    {
-      nv_add_nvp (out, "indexed", "y");
-    }
-  else
-    {
-      nv_add_nvp (out, "indexed", "n");
-    }
-
-  if (db_attribute_is_non_null (attr))
-    {
-      nv_add_nvp (out, "notnull", "y");
-    }
-  else
-    {
-      nv_add_nvp (out, "notnull", "n");
-    }
-
-  if (db_attribute_is_shared (attr))
-    {
-      nv_add_nvp (out, "shared", "y");
-    }
-  else
-    {
-      nv_add_nvp (out, "shared", "n");
-    }
-
-  if (db_attribute_is_unique (attr))
-    {
-      nv_add_nvp (out, "unique", "y");
-    }
-  else
-    {
-      nv_add_nvp (out, "unique", "n");
-    }
-
-  v_str = _op_get_value_string (db_attribute_default (attr));
-  nv_add_nvp (out, "default", v_str);
-  free (v_str);
-  if (isclass)
-    {
-      nv_add_nvp (out, "close", "classattribute");
-    }
-  else
-    {
-      nv_add_nvp (out, "close", "attribute");
-    }
-}
-
-static char *
-_op_get_set_value (DB_VALUE * val)
-{
-  char *result, *return_result;
-  DB_TYPE type;
-  int result_size = 255;
-  result = (char *) malloc (result_size + 1);
-  if (result == NULL)
-    {
-      return NULL;
-    }
-  return_result = _op_get_value_string (val);
-  if (return_result == NULL)
-    {
-      free (result);
-      return NULL;
-    }
-  type = db_value_type (val);
-  switch (type)
-    {
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-      snprintf (result, result_size, "%s%s%s", "'", return_result, "'");
-      break;
-
-    case DB_TYPE_DATE:
-      snprintf (result, result_size, "%s%s%s", "date '", return_result, "'");
-      break;
-
-    case DB_TYPE_TIME:
-      snprintf (result, result_size, "%s%s%s", "time '", return_result, "'");
-      break;
-
-    case DB_TYPE_UTIME:
-      snprintf (result, result_size, "%s%s%s", "timestamp '", return_result,
-		"'");
-      break;
-
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      snprintf (result, result_size, "%s%s%s", "N'", return_result, "'");
-      break;
-
-    case DB_TYPE_BIT:
-    case DB_TYPE_VARBIT:
-      snprintf (result, result_size, "%s%s%s", "X'", return_result, "'");
-      break;
-
-    case DB_TYPE_ELO:
-      snprintf (result, result_size, "%s%s%s", "ELO'", return_result, "'");
-      break;
-
-    default:
-      snprintf (result, result_size, "%s", return_result);
-      break;
-
-    }
-  free (return_result);
-  result[result_size] = '\0';
-  return result;
-}
-
-static char *
-_op_get_value_string (DB_VALUE * value)
-{
-  char *result, *return_result, *db_string_p;
-  DB_TYPE type;
-  DB_DATE *date_v;
-  DB_TIME *time_v;
-  DB_TIMESTAMP *timestamp_v;
-  DB_MONETARY *money;
-  DB_SET *set;
-  DB_VALUE val;
-  int size, i, idx, result_size = 255;
-  double dv;
-  float fv;
-  int iv;
-  DB_BIGINT bigint;
-  short sv;
-  extern char *numeric_db_value_print (DB_VALUE *);
-
-  result = (char *) malloc (result_size + 1);
-  if (result == NULL)
-    {
-      return NULL;
-    }
-  memset (result, 0, result_size + 1);
-  type = db_value_type (value);
-
-  switch (type)
-    {
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-      db_string_p = db_get_string (value);
-      if (db_string_p != NULL)
-	{
-	  snprintf (result, result_size, "%s", db_string_p);
-	}
-      break;
-    case DB_TYPE_DOUBLE:
-      dv = db_get_double (value);
-      snprintf (result, result_size, "%f", dv);
-      break;
-    case DB_TYPE_FLOAT:
-      fv = db_get_float (value);
-      snprintf (result, result_size, "%f", fv);
-      break;
-    case DB_TYPE_NUMERIC:
-      snprintf (result, result_size, "%s",
-		numeric_db_value_print ((DB_VALUE *) value));
-      break;
-    case DB_TYPE_SET:
-    case DB_TYPE_MULTISET:
-    case DB_TYPE_SEQUENCE:
-      set = db_get_set (value);
-      if (set != NULL)
-	{
-	  idx = snprintf (result, result_size, "%s", "{");
-	  size = set_size (set);
-	  for (i = 0; i < size && idx < result_size; i++)
-	    {
-	      set_get_element (set, i, &val);
-	      return_result = _op_get_set_value (&val);
-	      if (return_result == NULL)
-		goto exit_on_end;
-	      if (i == 0)
-		idx +=
-		  snprintf (result + idx, result_size - idx, "%s",
-			    return_result);
-	      else
-		idx +=
-		  snprintf (result + idx, result_size - idx, ",%s",
-			    return_result);
-	      free (return_result);
-	      db_value_clear (&val);
-	    }
-	  idx += snprintf (result + idx, result_size - idx, "%s", "}");
-	  if (idx >= result_size)
-	    strncpy (result + result_size - 4, "...}", 4);
-	  result[result_size] = '\0';
-	}
-      break;
-    case DB_TYPE_MONETARY:
-      money = db_get_monetary (value);
-      if (money != NULL)
-	{
-	  snprintf (result, result_size, "%.2f", money->amount);
-	}
-      break;
-    case DB_TYPE_INTEGER:
-      iv = db_get_int (value);
-      snprintf (result, result_size, "%d", iv);
-      break;
-    case DB_TYPE_BIGINT:
-      bigint = db_get_bigint (value);
-      snprintf (result, result_size, "%lld", (long long) bigint);
-      break;
-    case DB_TYPE_SHORT:
-      sv = db_get_short (value);
-      snprintf (result, result_size, "%d", sv);
-      break;
-    case DB_TYPE_DATE:
-      date_v = db_get_date (value);
-      db_date_to_string (result, 256, date_v);
-      break;
-    case DB_TYPE_TIME:
-      time_v = db_get_time (value);
-      db_time_to_string (result, 256, time_v);
-      break;
-    case DB_TYPE_TIMESTAMP:
-      timestamp_v = db_get_timestamp (value);
-      db_timestamp_to_string (result, 256, timestamp_v);
-      break;
-    default:
-      result[0] = '\0';
-    }
-
-exit_on_end:
-
-  return result;
-
-#if 0
-exit_on_error:
-
-  if (result)
-    {
-      free (result);
-      result = NULL;		/* set error */
-    }
-
-  goto exit_on_end;
-#endif
-}
-
-static void
-_op_get_method_info (nvplist * out, DB_METHOD * method, int isclass)
-{
-  int i, cnt;
-  char *type_name;
-  DB_DOMAIN *d;
-  DB_OBJECT *superobj;
-
-  if (isclass)
-    {
-      nv_add_nvp (out, "open", "classmethod");
-    }
-  else
-    {
-      nv_add_nvp (out, "open", "method");
-    }
-  nv_add_nvp (out, "name", db_method_name (method));
-  superobj = db_method_class (method);
-  if (superobj != NULL)
-    {
-      nv_add_nvp (out, "inherit", db_get_class_name (superobj));
-    }
-  else
-    {
-      nv_add_nvp (out, "inherit", "");
-    }
-  cnt = db_method_arg_count (method);
-  for (i = 0; i <= cnt; i++)
-    {
-      d = db_method_arg_domain (method, i);
-      type_name = _op_get_type_name (d);
-      if (type_name != NULL)
-	{
-	  nv_add_nvp (out, "argument", type_name);
-	  free (type_name);
-	}
-      else
-	nv_add_nvp (out, "argument", "void");
-    }
-  nv_add_nvp (out, "function", db_method_function (method));
-  if (isclass)
-    {
-      nv_add_nvp (out, "close", "classmethod");
-    }
-  else
-    {
-      nv_add_nvp (out, "close", "method");
-    }
-}
-
-static void
-_op_get_method_file_info (nvplist * out, DB_METHFILE * mfile)
-{
-  nv_add_nvp (out, "methodfile", db_methfile_name (mfile));
-}
-
-/* resolution information retrieve */
-static void
-_op_get_resolution_info (nvplist * out, DB_RESOLUTION * res, int isclass)
-{
-  if (isclass)
-    {
-      nv_add_nvp (out, "open", "classresolution");
-    }
-  else
-    {
-      nv_add_nvp (out, "open", "resolution");
-    }
-  nv_add_nvp (out, "name", db_resolution_name (res));
-  nv_add_nvp (out, "classname",
-	      db_get_class_name (db_resolution_class (res)));
-  nv_add_nvp (out, "alias", db_resolution_alias (res));
-  if (isclass)
-    {
-      nv_add_nvp (out, "close", "classresolution");
-    }
-  else
-    {
-      nv_add_nvp (out, "close", "resolution");
-    }
-}
-
-/* constraint information retrieve */
-static void
-_op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
-{
-  char *classname;
-  char query[QUERY_BUFFER_MAX], attr_name[128], order[10];
-  int i, end, con_type;
-  DB_ATTRIBUTE **attr;
-  DB_QUERY_RESULT *result;
-  DB_QUERY_ERROR query_error;
-  DB_OBJECT *classobj;
-  DB_VALUE val;
-
-  classname = nv_get_val (out, "classname");
-  classobj = db_find_class (classname);
-  nv_add_nvp (out, "open", "constraint");
-  con_type = db_constraint_type (con);
-  switch (con_type)
-    {
-    case DB_CONSTRAINT_UNIQUE:
-      nv_add_nvp (out, "type", "UNIQUE");
-      break;
-    case DB_CONSTRAINT_NOT_NULL:
-      nv_add_nvp (out, "type", "NOT NULL");
-      break;
-    case DB_CONSTRAINT_INDEX:
-      nv_add_nvp (out, "type", "INDEX");
-      break;
-    case DB_CONSTRAINT_REVERSE_UNIQUE:
-      nv_add_nvp (out, "type", "REVERSE UNIQUE");
-      break;
-    case DB_CONSTRAINT_REVERSE_INDEX:
-      nv_add_nvp (out, "type", "REVERSE INDEX");
-      break;
-    case DB_CONSTRAINT_PRIMARY_KEY:
-      nv_add_nvp (out, "type", "PRIMARY KEY");
-      break;
-    case DB_CONSTRAINT_FOREIGN_KEY:
-      nv_add_nvp (out, "type", "FOREIGN KEY");
-      break;
-    }
-
-  nv_add_nvp (out, "name", db_constraint_name (con));
-  attr = db_constraint_attributes (con);
-  for (i = 0; attr[i] != NULL; i++)
-    {
-      if (_op_is_classattribute (attr[i], classobj))
-	{
-	  nv_add_nvp (out, "classattribute", db_attribute_name (attr[i]));
-	}
-      else
-	{
-	  nv_add_nvp (out, "attribute", db_attribute_name (attr[i]));
-	}
-    }
-
-  if ((con_type == DB_CONSTRAINT_UNIQUE) || (con_type == DB_CONSTRAINT_INDEX))
-    {
-      char buf[256];
-
-      snprintf (query, sizeof (query) - 1,
-		"select key_attr_name, asc_desc from db_index_key where class_name='%s' and index_name='%s' order by key_order asc",
-		classname, db_constraint_name (con));
-
-      db_execute (query, &result, &query_error);
-      end = db_query_first_tuple (result);
-
-      while (end == 0)
-	{
-	  char *db_string_p = NULL;
-
-	  db_query_get_tuple_value (result, 0, &val);
-	  db_string_p = db_get_string (&val);
-	  if (db_string_p != NULL)
-	    {
-	      snprintf (attr_name, sizeof (attr_name) - 1, "%s", db_string_p);
-	    }
-	  db_value_clear (&val);
-
-	  db_query_get_tuple_value (result, 1, &val);
-	  db_string_p = db_get_string (&val);
-	  if (db_string_p != NULL)
-	    {
-	      snprintf (order, sizeof (order) - 1, "%s", db_string_p);
-	    }
-	  db_value_clear (&val);
-
-	  snprintf (buf, sizeof (buf) - 1, "%s %s", attr_name, order);
-	  buf[255] = '\0';
-	  nv_add_nvp (out, "rule", buf);
-	  end = db_query_next_tuple (result);
-	}
-      db_query_end (result);
-    }
-
-  if (con_type == DB_CONSTRAINT_FOREIGN_KEY)
-    {
-      char buf[256];
-      DB_OBJECT *ref_cls;
-      const char *cache_attr;
-
-      ref_cls = db_get_foreign_key_ref_class (con);
-      snprintf (buf, sizeof (buf) - 1, "REFERENCES %s",
-		db_get_class_name (ref_cls));
-      nv_add_nvp (out, "rule", buf);
-
-      snprintf (buf, sizeof (buf) - 1, "ON DELETE %s",
-		db_get_foreign_key_action (con, DB_FK_DELETE));
-      nv_add_nvp (out, "rule", buf);
-
-      snprintf (buf, sizeof (buf) - 1, "ON UPDATE %s",
-		db_get_foreign_key_action (con, DB_FK_UPDATE));
-      nv_add_nvp (out, "rule", buf);
-
-      cache_attr = db_get_foreign_key_cache_object_attr (con);
-
-      if (cache_attr)
-	{
-	  snprintf (buf, sizeof (buf) - 1, "ON CACHE OBJECT %s", cache_attr);
-	  nv_add_nvp (out, "rule", buf);
-	}
-    }
-
-  nv_add_nvp (out, "close", "constraint");
-}
-
-/* vclass's query spec information retrieve */
-static void
-_op_get_query_spec_info (nvplist * out, DB_QUERY_SPEC * spec)
-{
-  nv_add_nvp (out, "queryspec", db_query_spec_string (spec));
-}
-
-/* save to nvplist with some information by class */
-static void
-_op_get_class_info (nvplist * out, DB_OBJECT * classobj)
-{
-  DB_OBJLIST *objlist, *temp;
-  DB_OBJECT *obj;
-  DB_VALUE v;
-
-  nv_add_nvp (out, "open", "class");
-  nv_add_nvp (out, "classname", db_get_class_name (classobj));
-
-  obj = db_get_owner (classobj);
-  if (db_get (obj, "name", &v) < 0)
-    {
-      nv_add_nvp (out, "owner", "");
-    }
-  else
-    {
-      nv_add_nvp (out, "owner", db_get_string (&v));
-      db_value_clear (&v);
-    }
-
-  objlist = db_get_superclasses (classobj);
-  for (temp = objlist; temp != NULL; temp = temp->next)
-    {
-      obj = temp->op;
-      nv_add_nvp (out, "superclass", db_get_class_name (obj));
-    }
-  db_objlist_free (objlist);
-
-  if (db_is_vclass (classobj))
-    {
-      nv_add_nvp (out, "virtual", "view");
-    }
-  else
-    {
-      nv_add_nvp (out, "virtual", "normal");
-    }
-
-  nv_add_nvp (out, "close", "class");
-}
-
-static int
-_op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj,
-			     char *_dbmt_error)
-{
-  DB_OBJLIST *objlist, *temp;
-  DB_OBJECT *obj;
-  DB_ATTRIBUTE *attr;
-  DB_METHOD *method;
-  DB_METHFILE *mfile;
-  DB_RESOLUTION *res;
-  DB_CONSTRAINT *con;
-  DB_QUERY_SPEC *spec;
-  DB_VALUE v;
-  char *class_name;
-
-  nv_add_nvp (out, "open", "classinfo");
-  nv_add_nvp (out, "dbname", db_get_database_name ());
-  class_name = (char *) db_get_class_name (classobj);
-  if (class_name == NULL)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      return -1;
-    }
-  nv_add_nvp (out, "classname", class_name);
-  if (db_is_system_class (classobj))
-    {
-      nv_add_nvp (out, "type", "system");
-    }
-  else
-    {
-      nv_add_nvp (out, "type", "user");
-    }
-  obj = db_get_owner (classobj);
-  if (db_get (obj, "name", &v) < 0)
-    {
-      nv_add_nvp (out, "owner", "");
-    }
-  else
-    {
-      nv_add_nvp (out, "owner", db_get_string (&v));
-      db_value_clear (&v);
-    }
-
-  objlist = db_get_superclasses (classobj);
-  for (temp = objlist; temp != NULL; temp = temp->next)
-    {
-      obj = temp->op;
-      nv_add_nvp (out, "superclass", (char *) db_get_class_name (obj));
-    }
-  db_objlist_free (objlist);
-  objlist = db_get_subclasses (classobj);
-  for (temp = objlist; temp != NULL; temp = temp->next)
-    {
-      obj = temp->op;
-      nv_add_nvp (out, "subclass", (char *) db_get_class_name (obj));
-    }
-  db_objlist_free (objlist);
-
-  if (db_is_vclass (classobj))
-    {
-      nv_add_nvp (out, "virtual", "view");
-    }
-  else
-    {
-      nv_add_nvp (out, "virtual", "normal");
-    }
-
-  /* class_ attributes info */
-  for (attr = db_get_class_attributes (classobj); attr != NULL;
-       attr = db_attribute_next (attr))
-    {
-      _op_get_attribute_info (out, attr, 1);
-    }
-
-  /* attributes info */
-  for (attr = db_get_attributes (classobj); attr != NULL;
-       attr = db_attribute_next (attr))
-    {
-      _op_get_attribute_info (out, attr, 0);
-    }
-
-  /* class_ methods */
-  for (method = db_get_class_methods (classobj); method != NULL;
-       method = db_method_next (method))
-    {
-      _op_get_method_info (out, method, 1);
-    }
-
-  /* methods */
-  for (method = db_get_methods (classobj); method != NULL;
-       method = db_method_next (method))
-    {
-      _op_get_method_info (out, method, 0);
-    }
-
-  /* method files */
-  for (mfile = db_get_method_files (classobj); mfile != NULL;
-       mfile = db_methfile_next (mfile))
-    {
-      _op_get_method_file_info (out, mfile);
-    }
-
-  /* class_ resolutions */
-  for (res = db_get_class_resolutions (classobj); res != NULL;
-       res = db_resolution_next (res))
-    {
-      _op_get_resolution_info (out, res, 1);
-    }
-
-  /* resolutions */
-  for (res = db_get_resolutions (classobj); res != NULL;
-       res = db_resolution_next (res))
-    {
-      _op_get_resolution_info (out, res, 0);
-    }
-
-  /* constraints */
-  for (con = db_get_constraints (classobj); con != NULL;
-       con = db_constraint_next (con))
-    {
-      _op_get_constraint_info (out, con);
-    }
-
-  /* query specs */
-  for (spec = db_get_query_specs (classobj); spec != NULL;
-       spec = db_query_spec_next (spec))
-    {
-      _op_get_query_spec_info (out, spec);
-    }
-
-  nv_add_nvp (out, "close", "classinfo");
-  return 0;
-}
-
-static int
-_op_get_system_classes_info (nvplist * out, char *_dbmt_error)
-{
-  DB_OBJLIST *objlist, *temp;
-  DB_OBJECT *classobj;
-  DB_AUTH auth;
-
-  objlist = db_get_all_classes ();
-  if (objlist == NULL)
-    {
-      if (db_error_code () < 0)
-	{
-	  CUBRID_ERR_MSG_SET (_dbmt_error);
-	  return -1;
-	}
-    }
-  nv_add_nvp (out, "open", "systemclass");
-  for (temp = objlist; temp != NULL; temp = temp->next)
-    {
-      classobj = temp->op;
-      if (db_is_system_class (classobj))
-	{
-	  auth = DB_AUTH_SELECT;
-	  if (db_check_authorization (classobj, auth) == 0)
-	    {
-	      _op_get_class_info (out, classobj);
-	    }
-	}
-    }
-  nv_add_nvp (out, "close", "systemclass");
-  db_objlist_free (objlist);
-  return 0;
-}
-
-static int
-_op_get_user_classes_info (nvplist * out, char *_dbmt_error)
-{
-  DB_OBJLIST *objlist, *temp;
-  DB_OBJECT *classobj;
-  DB_AUTH auth;
-
-  objlist = db_get_all_classes ();
-  if (objlist == NULL)
-    {
-      if (db_error_code () < 0)
-	{
-	  CUBRID_ERR_MSG_SET (_dbmt_error);
-	  return -1;
-	}
-    }
-  nv_add_nvp (out, "open", "userclass");
-  for (temp = objlist; temp != NULL; temp = temp->next)
-    {
-      classobj = temp->op;
-      if (!db_is_system_class (classobj))
-	{
-	  auth = DB_AUTH_SELECT;
-	  if (db_check_authorization (classobj, auth) == 0)
-	    {
-	      _op_get_class_info (out, classobj);
-	    }
-	}
-    }
-  nv_add_nvp (out, "close", "userclass");
-  db_objlist_free (objlist);
-  return 0;
-}
-
-static void
-_op_get_db_user_name (nvplist * res, DB_OBJECT * user)
-{
-  DB_VALUE v;
-
-  db_get (user, "name", &v);
-  nv_add_nvp (res, "name", db_get_string (&v));
-  db_value_clear (&v);
-}
-
-static void
-_op_get_db_user_id (nvplist * res, DB_OBJECT * user)
-{
-  DB_VALUE v;
-  char buf[20];
-
-  db_get (user, "password", &v);
-  snprintf (buf, sizeof (buf) - 1, "%d", db_get_int (&v));
-  nv_add_nvp (res, "id", buf);
-  db_value_clear (&v);
-}
-
-static void
-_op_get_db_user_password (nvplist * res, DB_OBJECT * user)
-{
-  DB_VALUE v;
-  DB_OBJECT *obj;
-
-  db_get (user, "password", &v);
-  if (!db_value_is_null (&v))
-    {
-      obj = db_get_object (&v);
-      db_value_clear (&v);
-      db_get (obj, "password", &v);
-      if (!db_value_is_null (&v))
-	{
-	  nv_add_nvp (res, "password", db_get_string (&v));
-	  db_value_clear (&v);
-	}
-      else
-	{
-	  nv_add_nvp (res, "password", "");
-	}
-    }
-}
-
-static void
-_op_get_db_user_groups (nvplist * res, DB_OBJECT * user)
-{
-  DB_VALUE v;
-  DB_OBJECT *obj;
-  DB_COLLECTION *col;
-  int i;
-
-  db_get (user, "direct_groups", &v);
-  col = db_get_set (&v);
-  for (i = 0; i < db_set_size (col); i++)
-    {
-      db_set_get (col, i, &v);
-      obj = db_get_object (&v);
-      db_get (obj, "name", &v);
-      nv_add_nvp (res, "group", db_get_string (&v));
-    }
-}
-
-static void
-_op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
-{
-  DB_VALUE v;
-  DB_OBJECT *obj;
-  DB_COLLECTION *col;
-  char buf[20];
-  int i;
-
-  db_get (user, "authorization.grants", &v);
-  col = db_get_collection (&v);
-  for (i = 0; i < db_seq_size (col); i += 3)
-    {
-      db_seq_get (col, i, &v);
-      obj = db_get_object (&v);
-      db_seq_get (col, i + 2, &v);
-      snprintf (buf, sizeof (buf) - 1, "%d", db_get_int (&v));
-      nv_add_nvp (res, (char *) db_get_class_name (obj), buf);
-    }
-}
-
-static void
-_op_get_super_info (nvplist * out, DB_OBJECT * classobj)
-{
-  DB_OBJLIST *objlist, *temp;
-  DB_OBJECT *obj;
-  DB_ATTRIBUTE *attr;
-  DB_METHOD *method;
-
-  nv_add_nvp (out, "open", "class");
-  nv_add_nvp (out, "name", (char *) db_get_class_name (classobj));
-  /* class_ attributes info */
-  for (attr = db_get_class_attributes (classobj); attr != NULL;
-       attr = db_attribute_next (attr))
-    {
-      nv_add_nvp (out, "classattribute", db_attribute_name (attr));
-    }
-  /* attributes info */
-  for (attr = db_get_attributes (classobj); attr != NULL;
-       attr = db_attribute_next (attr))
-    {
-      nv_add_nvp (out, "attribute", db_attribute_name (attr));
-    }
-  /* class_ methods */
-  for (method = db_get_class_methods (classobj); method != NULL;
-       method = db_method_next (method))
-    {
-      nv_add_nvp (out, "classmethod", db_method_name (method));
-    }
-  /* methods */
-  for (method = db_get_methods (classobj); method != NULL;
-       method = db_method_next (method))
-    {
-      nv_add_nvp (out, "method", db_method_name (method));
-    }
-  nv_add_nvp (out, "close", "class");
-
-  objlist = db_get_superclasses (classobj);
-  for (temp = objlist; temp != NULL; temp = temp->next)
-    {
-      obj = temp->op;
-      _op_get_super_info (out, obj);
-    }
-  db_objlist_free (objlist);
-}
-
-/* return 1 if argument's attribute is classattribute. or return 0 */
-static int
-_op_is_classattribute (DB_ATTRIBUTE * attr, DB_OBJECT * classobj)
-{
-  DB_ATTRIBUTE *temp;
-  int id = db_attribute_id (attr);
-  for (temp = db_get_class_attributes (classobj); temp != NULL;
-       temp = db_attribute_next (temp))
-    {
-      if (id == db_attribute_id (temp))
-	{
-	  return 1;
-	}
-    }
-  return 0;
-}
-
-/* Read dbmt password file and append user information to nvplist */
-static void
-_tsAppendDBMTUserList (nvplist * res, T_DBMT_USER * dbmt_user,
-		       char *_dbmt_error)
-{
-  char decrypted[PASSWD_LENGTH + 1];
-  const char *unicas_auth, *dbcreate = NULL, *status_monitor = NULL;
-  int i, j;
-
-  nv_add_nvp (res, "open", "userlist");
-  for (i = 0; i < dbmt_user->num_dbmt_user; i++)
-    {
-      if (dbmt_user->user_info[i].user_name[0] == '\0')
-	{
-	  continue;
-	}
-      nv_add_nvp (res, "open", "user");
-      nv_add_nvp (res, "id", dbmt_user->user_info[i].user_name);
-      uDecrypt (PASSWD_LENGTH, dbmt_user->user_info[i].user_passwd,
-		decrypted);
-      nv_add_nvp (res, "passwd", decrypted);
-      nv_add_nvp (res, "open", "dbauth");
-      unicas_auth = NULL;
-      for (j = 0; j < dbmt_user->user_info[i].num_dbinfo; j++)
-	{
-	  if (dbmt_user->user_info[i].dbinfo[j].dbname[0] == '\0')
-	    {
-	      continue;
-	    }
-	  if (strcmp (dbmt_user->user_info[i].dbinfo[j].dbname, "unicas") ==
-	      0)
-	    {
-	      unicas_auth = dbmt_user->user_info[i].dbinfo[j].auth;
-	      continue;
-	    }
-	  else
-	    if (strcmp (dbmt_user->user_info[i].dbinfo[j].dbname, "dbcreate")
-		== 0)
-	    {
-	      dbcreate = dbmt_user->user_info[i].dbinfo[j].auth;
-	      continue;
-	    }
-	  else if (strcmp (dbmt_user->user_info[i].dbinfo[j].dbname,
-			   "statusmonitorauth") == 0)
-	    {
-	      status_monitor = dbmt_user->user_info[i].dbinfo[j].auth;
-	      continue;
-	    }
-	  nv_add_nvp (res, "dbname",
-		      dbmt_user->user_info[i].dbinfo[j].dbname);
-	  nv_add_nvp (res, "dbid", dbmt_user->user_info[i].dbinfo[j].uid);
-#if 0
-	  uDecrypt (PASSWD_LENGTH, dbmt_user->user_info[i].dbinfo[j].passwd,
-		    decrypted);
-	  nv_add_nvp (res, "dbpasswd", decrypted);
-#endif
-	  nv_add_nvp (res, "dbpasswd", "");
-
-	  nv_add_nvp (res, "dbbrokeraddress",
-		      dbmt_user->user_info[i].dbinfo[j].broker_address);
-	}
-      nv_add_nvp (res, "close", "dbauth");
-      if (unicas_auth == NULL)
-	unicas_auth = "none";
-      nv_add_nvp (res, "casauth", unicas_auth);
-      if (CLIENT_VERSION >= EMGR_MAKE_VER (7, 0))
-	{
-	  if (dbcreate == NULL)
-	    dbcreate = "none";
-	  nv_add_nvp (res, "dbcreate", dbcreate);
-	}
-      nv_add_nvp (res, "statusmonitorauth", status_monitor);
-      nv_add_nvp (res, "close", "user");
-    }
-  nv_add_nvp (res, "close", "userlist");
-}
-
-static int
-_tsAppendDBList (nvplist * res, char dbdir_flag)
-{
-  FILE *infile;
-  char *dbinfo[4];
-  char strbuf[1024], file[PATH_MAX];
-  char hname[128];
-  struct hostent *hp;
-  unsigned char ip_addr[4];
-  char *token = NULL;
-
-  snprintf (file, PATH_MAX - 1, "%s/%s", sco.szCubrid_databases,
-	    CUBRID_DATABASE_TXT);
-  if ((infile = fopen (file, "rt")) == NULL)
-    {
-      return ERR_DATABASETXT_OPEN;
-    }
-
-  memset (hname, 0, sizeof (hname));
-  gethostname (hname, sizeof (hname));
-  if ((hp = gethostbyname (hname)) == NULL)
-    {
-      return ERR_NO_ERROR;
-    }
-  memcpy (ip_addr, hp->h_addr_list[0], 4);
-
-  nv_add_nvp (res, "open", "dblist");
-  while (fgets (strbuf, sizeof (strbuf), infile))
-    {
-      if (string_tokenize (strbuf, dbinfo, 4) < 0)
-	{
-	  continue;
-	}
-      for (token = strtok (dbinfo[2], ":"); token != NULL;
-	   token = strtok (NULL, ":"))
-	{
-	  if ((hp = gethostbyname (token)) == NULL)
-	    continue;
-
-	  /*if the ip equals 127.0.0.1 */
-	  if (*(unsigned int *) (hp->h_addr_list[0]) == htonl (0x7f000001) ||
-	      memcmp (ip_addr, hp->h_addr_list[0], 4) == 0)
-	    {
-	      nv_add_nvp (res, "dbname", dbinfo[0]);
-
-	      if (dbdir_flag)
-		{
-		  nv_add_nvp (res, "dbdir", dbinfo[1]);
-		}
-	      break;
-	    }
-	}
-    }
-  nv_add_nvp (res, "close", "dblist");
-  fclose (infile);
-  return ERR_NO_ERROR;
-}
-
-static int
-_tsParseSpacedb (nvplist * req, nvplist * res, char *dbname,
-		 char *_dbmt_error, T_SPACEDB_RESULT * cmd_res)
-{
-  int pagesize, i;
-  T_SPACEDB_INFO *vol_info;
-  char dbdir[PATH_MAX];
-#if defined(WINDOWS)
-  WIN32_FIND_DATA data;
-  char find_file[PATH_MAX];
-  HANDLE handle;
-  int found;
-#else
-  DIR *dirp = NULL;
-  struct dirent *dp = NULL;
-#endif
-
-  pagesize = cmd_res->page_size;
-  nv_update_val_int (res, "pagesize", pagesize);
-
-  vol_info = cmd_res->vol_info;
-  for (i = 0; i < cmd_res->num_vol; i++)
-    {
-      nv_add_nvp (res, "open", "spaceinfo");
-      nv_add_nvp (res, "spacename", vol_info[i].vol_name);
-      nv_add_nvp (res, "type", vol_info[i].purpose);
-      nv_add_nvp (res, "location", vol_info[i].location);
-      nv_add_nvp_int (res, "totalpage", vol_info[i].total_page);
-      nv_add_nvp_int (res, "freepage", vol_info[i].free_page);
-      nv_add_nvp_time (res, "date", vol_info[i].date, "%04d%02d%02d",
-		       NV_ADD_DATE);
-      nv_add_nvp (res, "close", "spaceinfo");
-    }
-
-  vol_info = cmd_res->tmp_vol_info;
-  for (i = 0; i < cmd_res->num_tmp_vol; i++)
-    {
-      nv_add_nvp (res, "open", "spaceinfo");
-      nv_add_nvp (res, "spacename", vol_info[i].vol_name);
-      nv_add_nvp (res, "type", vol_info[i].purpose);
-      nv_add_nvp (res, "location", vol_info[i].location);
-      nv_add_nvp_int (res, "totalpage", vol_info[i].total_page);
-      nv_add_nvp_int (res, "freepage", vol_info[i].free_page);
-      nv_add_nvp_time (res, "date", vol_info[i].date, "%04d%02d%02d",
-		       NV_ADD_DATE);
-      nv_add_nvp (res, "close", "spaceinfo");
-    }
-
-  if (uRetrieveDBLogDirectory (dbname, dbdir) != ERR_NO_ERROR)
-    {
-      strcpy (_dbmt_error, dbname);
-      return ERR_DBDIRNAME_NULL;
-    }
-
-  /* read entries in the directory and generate result */
-#if defined(WINDOWS)
-  snprintf (find_file, PATH_MAX - 1, "%s/*", dbdir);
-  if ((handle = FindFirstFile (find_file, &data)) == INVALID_HANDLE_VALUE)
-#else
-  if ((dirp = opendir (dbdir)) == NULL)
-#endif
-    {
-      sprintf (_dbmt_error, "%s", dbdir);
-      return ERR_DIROPENFAIL;
-    }
-
-#if defined(WINDOWS)
-  for (found = 1; found; found = FindNextFile (handle, &data))
-#else
-  while ((dp = readdir (dirp)) != NULL)
-#endif
-    {
-      int baselen;
-      char *fname;
-
-#if defined(WINDOWS)
-      fname = data.cFileName;
-#else
-      fname = dp->d_name;
-#endif
-      baselen = strlen (dbname);
-
-      if (strncmp (fname, dbname, baselen) == 0)
-	{
-	  if (!strcmp (fname + baselen, CUBRID_ACT_LOG_EXT))
-	    {
-	      _ts_gen_spaceinfo (res, fname, dbdir, "Active_log", pagesize);
-	    }
-	  else if (!strncmp
-		   (fname + baselen, CUBRID_ARC_LOG_EXT,
-		    CUBRID_ARC_LOG_EXT_LEN))
-	    {
-	      _ts_gen_spaceinfo (res, fname, dbdir, "Archive_log", pagesize);
-	    }
-#if 0
-	  else if (strncmp (fname + baselen, "_lginf", 6) == 0)
-	    {
-	      _ts_gen_spaceinfo (res, fname, dbdir, "Generic_log", pagesize);
-	    }
-#endif
-
-	}
-    }
-#if defined(WINDOWS)
-  FindClose (handle);
-#else
-  closedir (dirp);
-#endif
-
-  /* add last line */
-  nv_add_nvp (res, "open", "spaceinfo");
-  nv_add_nvp (res, "spacename", "Total");
-  nv_add_nvp (res, "type", "");
-  nv_add_nvp (res, "location", "");
-  nv_add_nvp (res, "totlapage", "0");
-  nv_add_nvp (res, "freepage", "0");
-  nv_add_nvp (res, "date", "");
-  nv_add_nvp (res, "close", "spaceinfo");
-
-  if (uRetrieveDBDirectory (dbname, dbdir) == ERR_NO_ERROR)
-    {
-      nv_add_nvp_int (res, "freespace", ut_disk_free_space (dbdir));
-    }
-  else
-    {
-      nv_add_nvp_int (res, "freespace", -1);
-    }
-  return ERR_NO_ERROR;
-}
-
-static void
-_ts_gen_spaceinfo (nvplist * res, const char *filename,
-		   const char *dbinstalldir, const char *type, int pagesize)
-{
-  char volfile[PATH_MAX];
-  struct stat statbuf;
-
-  nv_add_nvp (res, "open", "spaceinfo");
-  nv_add_nvp (res, "spacename", filename);
-  nv_add_nvp (res, "type", type);
-  nv_add_nvp (res, "location", dbinstalldir);
-
-  snprintf (volfile, PATH_MAX - 1, "%s/%s", dbinstalldir, filename);
-  stat (volfile, &statbuf);
-
-  nv_add_nvp_int (res, "totalpage", statbuf.st_size / pagesize);
-  nv_add_nvp (res, "freepage", " ");
-
-  nv_add_nvp_time (res, "date", statbuf.st_mtime, "%04d%02d%02d",
-		   NV_ADD_DATE);
-
-  nv_add_nvp (res, "close", "spaceinfo");
-  return;
-}
-
-/* if cubrid.conf's error_log is null, construct it by default value if existing */
-static char *
-_ts_get_error_log_param (char *dbname)
-{
-  char *tok[2];
-  FILE *infile;
-  char buf[PATH_MAX], dbdir[PATH_MAX];
-
-  if ((uRetrieveDBDirectory (dbname, dbdir)) != ERR_NO_ERROR)
-    {
-      return NULL;
-    }
-  snprintf (buf, sizeof (buf) - 1, "%s/%s", dbdir, CUBRID_CUBRID_CONF);
-  if ((infile = fopen (buf, "r")) == NULL)
-    {
-      return NULL;
-    }
-
-  while (fgets (buf, sizeof (buf), infile))
-    {
-      ut_trim (buf);
-      if (isalpha ((int) buf[0]))
-	{
-	  if (string_tokenize2 (buf, tok, 2, '=') < 0)
-	    {
-	      continue;
-	    }
-	  if (uStringEqual (tok[0], "error_log"))
-	    {
-	      fclose (infile);
-	      if (tok[1][0] == '\0')
-		{
-		  return NULL;
-		}
-#if defined(WINDOWS)
-	      unix_style_path (tok[1]);
-#endif
-	      return (strdup (tok[1]));
-	    }
-	}
-    }
-  return NULL;
-}
-
 int
 ts_trigger_operation (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *task, *dbname, *dbuser, *dbpasswd;
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  int ha_mode = 0;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   const char *argv[11];
   char input_file[PATH_MAX];
@@ -10186,16 +6086,23 @@ ts_trigger_operation (nvplist * req, nvplist * res, char *_dbmt_error)
   dbpasswd = nv_get_val (req, "_DBPASSWD");
 
   cmd_name[0] = '\0';
-#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s%s", sco.szCubrid,
 	    CUBRID_DIR_BIN, UTIL_CSQL_NAME);
-#else
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s", CUBRID_BINDIR,
-	    UTIL_CSQL_NAME);
-#endif
   argc = 0;
   argv[argc++] = cmd_name;
-  argv[argc++] = dbname;
+
+  db_mode = uDatabaseMode (dbname, &ha_mode);
+  if (ha_mode != 0)
+    {
+      append_host_to_dbname (dbname_at_hostname, dbname,
+			     sizeof (dbname_at_hostname));
+      argv[argc++] = dbname_at_hostname;
+    }
+  else
+    {
+      argv[argc++] = dbname;
+    }
+
   argv[argc++] = NULL;
   argv[argc++] = "--" CSQL_INPUT_FILE_L;
   argv[argc++] = input_file;
@@ -10221,8 +6128,6 @@ ts_trigger_operation (nvplist * req, nvplist * res, char *_dbmt_error)
     {
       return ERR_DB_NONEXISTANT;
     }
-
-  db_mode = uDatabaseMode (dbname);
 
   if (db_mode == DB_SERVICE_MODE_SA)
     {
@@ -10300,1597 +6205,9 @@ ts_trigger_operation (nvplist * req, nvplist * res, char *_dbmt_error)
 int
 ts_get_triggerinfo (nvplist * req, nvplist * res, char *_dbmt_error)
 {
-  DB_OBJLIST *trigger_list, *temp;
-  DB_OBJECT *p_trigger;
-  int errcode;
-  T_DB_SERVICE_MODE db_mode;
-  char *dbname;
-
-  trigger_list = NULL;
-
-  dbname = nv_get_val (req, "_DBNAME");
-
-  db_mode = uDatabaseMode (dbname);
-  if (db_mode == DB_SERVICE_MODE_SA)
-    {
-      sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
-    }
-
-  if (db_mode == DB_SERVICE_MODE_NONE)
-    {
-      /* use ts_get_triggerinfo_sa funtion */
-      char *uid;
-      char *password;
-      uid = nv_get_val (req, "_DBID");
-      password = nv_get_val (req, "_DBPASSWD");
-      return (trigger_info_sa (dbname, uid, password, res, _dbmt_error));
-    }
-
-  /* cs mode serviece */
-  if (_op_db_login (res, req, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  errcode = db_find_all_triggers (&trigger_list);
-  if (errcode)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  nv_add_nvp (res, "dbname", dbname);
-  nv_add_nvp (res, "open", "triggerlist");
-
-  temp = trigger_list;
-  while (temp)
-    {
-      p_trigger = temp->op;
-      nv_add_nvp (res, "open", "triggerinfo");
-
-      /* set trigger information */
-      op_get_trigger_information (res, p_trigger);
-
-      nv_add_nvp (res, "close", "triggerinfo");
-      temp = temp->next;
-    }
-
-  nv_add_nvp (res, "close", "triggerlist");
-
-  db_objlist_free (trigger_list);
-  db_shutdown ();
-
-  return ERR_NO_ERROR;
+  return cm_ts_get_triggerinfo (req, res, _dbmt_error);
 }
 
-
-static char *
-get_user_name (int uid, char *name_buf)
-{
-#if defined(WINDOWS)
-  strcpy (name_buf, "");
-#else
-  struct passwd *pwd;
-
-  pwd = getpwuid (uid);
-  if (pwd->pw_name)
-    {
-      strcpy (name_buf, pwd->pw_name);
-    }
-  else
-    {
-      name_buf[0] = '\0';
-    }
-#endif
-
-  return name_buf;
-}
-
-static int
-class_info_sa (const char *dbname, const char *uid, const char *passwd,
-	       nvplist * out, char *_dbmt_error)
-{
-  char strbuf[1024];
-  char outfile[PATH_MAX], errfile[PATH_MAX];
-  FILE *fp;
-  int ret_val = ERR_NO_ERROR;
-  char cmd_name[128];
-  const char *argv[10];
-  char cli_ver[10];
-  char opcode[10];
-
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  snprintf (outfile, PATH_MAX - 1, "%s/tmp/DBMT_class_info.%d", sco.szCubrid,
-	    (int) getpid ());
-#else
-  snprintf (outfile, PATH_MAX - 1, "%s/DBMT_class_info.%d", CUBRID_TMPDIR,
-	    (int) getpid ());
-#endif
-  snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
-
-  if (uid == NULL)
-    {
-      uid = "";
-    }
-  if (passwd == NULL)
-    {
-      passwd = "";
-    }
-
-  snprintf (cli_ver, sizeof (cli_ver) - 1, "%d", CLIENT_VERSION);
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/cub_jobsa%s",
-	    sco.szCubrid, DBMT_EXE_EXT);
-#else
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/cub_jobsa%s",
-	    CUBRID_BINDIR, DBMT_EXE_EXT);
-#endif
-  snprintf (opcode, sizeof (opcode) - 1, "%d", EMS_SA_CLASS_INFO);
-  argv[0] = cmd_name;
-  argv[1] = opcode;
-  argv[2] = dbname;
-  argv[3] = uid;
-  argv[4] = passwd;
-  argv[5] = outfile;
-  argv[6] = errfile;
-  argv[7] = cli_ver;
-  argv[8] = NULL;
-
-  if (run_child (argv, 1, NULL, NULL, NULL, NULL) < 0)
-    {				/* cub_jobsa */
-      sprintf (_dbmt_error, argv[0]);
-      return ERR_SYSTEM_CALL;
-    }
-
-  fp = fopen (errfile, "r");
-  if (fp != NULL)
-    {
-      memset (strbuf, '0', sizeof (strbuf));
-      fgets (strbuf, sizeof (strbuf), fp);
-      DBMT_ERR_MSG_SET (_dbmt_error, strbuf);
-      fclose (fp);
-      ret_val = ERR_WITH_MSG;
-      goto class_info_sa_finale;
-    }
-
-  fp = fopen (outfile, "r");
-  if (fp == NULL)
-    {
-      sprintf (_dbmt_error, "class_info");
-      ret_val = ERR_SYSTEM_CALL;
-      goto class_info_sa_finale;
-    }
-
-  nv_add_nvp (out, "dbname", dbname);
-  while (fgets (strbuf, sizeof (strbuf), fp))
-    {
-      char name[32], value[128];
-
-      if (sscanf (strbuf, "%31s %127s", name, value) < 2)
-	{
-	  continue;
-	}
-      nv_add_nvp (out, name, value);
-    }
-  fclose (fp);
-
-class_info_sa_finale:
-  unlink (outfile);
-  unlink (errfile);
-  return ret_val;
-}
-
-#if defined(WINDOWS)
-static void
-replace_colon (char *path)
-{
-  char *p;
-  for (p = path; *p; p++)
-    {
-      if (*p == '|')
-	*p = ':';
-    }
-}
-#endif
-
-static int
-revoke_all_from_user (DB_OBJECT * user)
-{
-  int i;
-  DB_VALUE v;
-  DB_OBJECT *obj, **class_obj = NULL;
-  int num_class = 0;
-  DB_COLLECTION *col;
-
-  db_get (user, "authorization.grants", &v);
-  col = db_get_collection (&v);
-  for (i = 0; i < db_seq_size (col); i += 3)
-    {
-      db_seq_get (col, i, &v);
-      obj = db_get_object (&v);
-      if (db_is_system_class (obj))
-	{
-	  continue;
-	}
-      class_obj =
-	(DB_OBJECT
-	 **) (REALLOC (class_obj, sizeof (DB_OBJECT *) * (num_class + 1)));
-      if (class_obj == NULL)
-	{
-	  return ERR_MEM_ALLOC;
-	}
-      class_obj[num_class] = obj;
-      num_class++;
-    }
-
-  for (i = 0; i < num_class; i++)
-    {
-      db_revoke (user, class_obj[i], DB_AUTH_ALL);
-    }
-  FREE_MEM (class_obj);
-  return ERR_NO_ERROR;
-}
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-static int
-op_get_objectid_attlist (DB_NAMELIST ** att_list, char *att_comma_list)
-{
-  int i, j, string_length;
-  char att_name[100];
-
-  j = 0;
-  string_length = strlen (att_comma_list);
-  memset (att_name, '\0', sizeof (att_name));
-
-  for (i = 0; i < string_length; i++)
-    {
-      if (*(att_comma_list + i) == ',')
-	{
-	  if (j > 0)
-	    {
-	      db_namelist_add (att_list, att_name);
-	      memset (att_name, '\0', sizeof (att_name));
-	      j = 0;
-	    }
-	}
-      else
-	{
-	  att_name[j] = *(att_comma_list + i);
-	  j++;
-	}
-    }
-
-  if (j > 0)
-    {
-      db_namelist_add (att_list, att_name);
-    }
-
-  return 1;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-#ifdef	_DEBUG_
-void *
-debug_malloc (size_t size)
-{
-  assert (size > 0);
-  return malloc (size);
-}
-#endif
-
-static int
-op_make_triggerinput_file_add (nvplist * req, char *input_filename)
-{
-  char *name, *status, *cond_source, *priority;
-  char *event_target, *event_type, *event_time, *actiontime, *action;
-  FILE *input_file;
-
-  if (input_filename == NULL)
-    {
-      return 0;
-    }
-
-  input_file = fopen (input_filename, "w+");
-  if (input_file == NULL)
-    {
-      return 0;
-    }
-
-  name = nv_get_val (req, "triggername");
-  status = nv_get_val (req, "status");
-  event_type = nv_get_val (req, "eventtype");
-  event_target = nv_get_val (req, "eventtarget");
-  event_time = nv_get_val (req, "conditiontime");
-  cond_source = nv_get_val (req, "condition");
-  actiontime = nv_get_val (req, "actiontime");
-  action = nv_get_val (req, "action");
-  priority = nv_get_val (req, "priority");
-/*		  fprintf(input_file, ";autocommit off\n");*/
-  fprintf (input_file, "create trigger\t%s\n", name);
-
-  if (status)
-    {
-      fprintf (input_file, "status\t%s\n", status);
-    }
-  if (priority)
-    {
-      fprintf (input_file, "priority\t%s\n", priority);
-    }
-  fprintf (input_file, "%s\t%s\t", event_time, event_type);
-
-  if (event_target)
-    {
-      fprintf (input_file, "ON\t%s\n", event_target);
-    }
-  if (cond_source)
-    {
-      fprintf (input_file, "if\t%s\n", cond_source);
-    }
-  fprintf (input_file, "execute\t");
-
-  if (actiontime)
-    {
-      fprintf (input_file, "%s\t", actiontime);
-    }
-  fprintf (input_file, "%s\n", action);
-  fprintf (input_file, "\n\ncommit\n\n");
-
-  fclose (input_file);
-
-  return 1;
-}
-
-
-static int
-op_make_triggerinput_file_drop (nvplist * req, char *input_filename)
-{
-  char *trigger_name;
-  FILE *input_file;
-
-  if (input_filename == NULL)
-    {
-      return 0;
-    }
-
-  input_file = fopen (input_filename, "w+");
-  if (input_file == NULL)
-    {
-      return 0;
-    }
-
-  trigger_name = nv_get_val (req, "triggername");
-/*		  fprintf(input_file, ";autocommit off\n");*/
-  fprintf (input_file, "drop trigger\t%s\n", trigger_name);
-  fprintf (input_file, "\n\n\ncommit\n\n");
-
-  fclose (input_file);
-
-  return 1;
-}
-
-static int
-op_make_password_check_file (char *input_filename)
-{
-  FILE *input_file;
-
-  if (input_filename == NULL)
-    {
-      return 0;
-    }
-
-  input_file = fopen (input_filename, "w+");
-  if (input_file == NULL)
-    {
-      return 0;
-    }
-
-  fprintf (input_file, ";commit");
-  fclose (input_file);
-
-  return 1;
-}
-
-static int
-op_make_triggerinput_file_alter (nvplist * req, char *input_filename)
-{
-  char *trigger_name, *status, *priority;
-  FILE *input_file;
-
-  if (input_filename == NULL)
-    {
-      return 0;
-    }
-
-  input_file = fopen (input_filename, "w+");
-  if (input_file == NULL)
-    {
-      return 0;
-    }
-
-  trigger_name = nv_get_val (req, "triggername");
-  status = nv_get_val (req, "status");
-  priority = nv_get_val (req, "priority");
-/*		  fprintf(input_file, ";autocommit off\n");*/
-  if (status)
-    {
-      fprintf (input_file, "alter trigger\t%s\t", trigger_name);
-      fprintf (input_file, "status %s\t", status);
-    }
-
-  if (priority)
-    {
-      fprintf (input_file, "alter trigger\t%s\t", trigger_name);
-      fprintf (input_file, "priority %s\t", priority);
-    }
-
-  fprintf (input_file, "\n\n\ncommit\n\n");
-  fclose (input_file);
-
-  return 1;
-}
-
-static int
-_ts_lockdb_parse_us (nvplist * res, FILE * infile)
-{
-  char buf[1024], s[256], s1[256], s2[256], s3[256], s4[256];
-  char *temp, *temp2;
-  int scan_matched;
-  int flag = 0;
-
-  nv_add_nvp (res, "open", "lockinfo");
-  while (fgets (buf, sizeof (buf), infile))
-    {
-      sscanf (buf, "%255s", s);
-
-      if (flag == 0 && !strcmp (s, "***"))
-	{
-	  fgets (buf, sizeof (buf), infile);
-	  scan_matched =
-	    sscanf (buf, "%*s %*s %*s %*s %255s %*s %*s %*s %*s %255s", s1,
-		    s2);
-
-	  if (scan_matched != 2)
-	    {
-	      return -1;
-	    }
-	  s1[strlen (s1) - 1] = '\0';
-	  nv_add_nvp (res, "esc", s1);
-	  nv_add_nvp (res, "dinterval", s2);
-	  flag = 1;
-	}
-      else if (flag == 1)
-	{
-	  if (strcmp (s, "Transaction") == 0)
-	    {
-	      scan_matched =
-		sscanf (buf, "%*s %*s %255s %255s %255s", s1, s2, s3);
-
-	      if (scan_matched != 3)
-		{
-		  return -1;
-		}
-	      s1[strlen (s1) - 1] = '\0';
-	      s2[strlen (s2) - 1] = '\0';
-	      s3[strlen (s3) - 1] = '\0';
-
-	      nv_add_nvp (res, "open", "transaction");
-	      nv_add_nvp (res, "index", s1);
-	      nv_add_nvp (res, "pname", s2);
-
-	      temp = strchr (s3, '@');
-	      if (temp != NULL)
-		{
-		  strncpy (buf, s3, (int) (temp - s3));
-		  buf[(int) (temp - s3)] = '\0';
-		  nv_add_nvp (res, "uid", buf);
-		}
-
-	      temp2 = strrchr (s3, '|');
-	      if (temp2 != NULL)
-		{
-		  strncpy (buf, temp + 1, (int) (temp2 - temp - 1));
-		  buf[(int) (temp2 - temp) - 1] = '\0';
-		  nv_add_nvp (res, "host", buf);
-		}
-	      nv_add_nvp (res, "pid", temp2 + 1);
-
-	      fgets (buf, sizeof (buf), infile);
-	      buf[strlen (buf) - 1] = '\0';
-	      nv_add_nvp (res, "isolevel", buf + strlen ("Isolation "));
-
-	      fgets (buf, sizeof (buf), infile);
-	      if (strncmp (buf, "State", strlen ("State")) == 0)
-		{
-		  fgets (buf, sizeof (buf), infile);
-		}
-
-	      scan_matched = sscanf (buf, "%*s %255s", s1);
-
-	      if (scan_matched != 1)
-		{
-		  return -1;
-		}
-	      nv_add_nvp (res, "timeout", s1);
-	      nv_add_nvp (res, "close", "transaction");
-	    }
-	  else if (strcmp (s, "Object") == 0)
-	    {
-	      fgets (buf, sizeof (buf), infile);
-	      scan_matched =
-		sscanf (buf, "%*s %*s %*s %*s %*s %*s %*s %*s %255s", s1);
-	      if (scan_matched != 1)
-		{
-		  return -1;
-		}
-	      nv_add_nvp (res, "open", "lot");
-	      nv_add_nvp (res, "numlocked", s1);
-
-	      fgets (buf, sizeof (buf), infile);
-	      scan_matched =
-		sscanf (buf, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %255s", s2);
-	      if (scan_matched != 1)
-		{
-		  return -1;
-		}
-	      nv_add_nvp (res, "maxnumlock", s2);
-	      flag = 2;
-	    }
-	}			/* end of if (flag == 1) */
-      else if (flag == 2)
-	{
-	  char value[1024];
-
-	  while (!strcmp (s, "OID"))
-	    {
-	      int num_holders, num_b_holders, num_waiters, scan_matched;
-
-	      scan_matched =
-		sscanf (buf, "%*s %*s %255s %255s %255s", s1, s2, s3);
-	      if (scan_matched != 3)
-		return -1;
-
-	      snprintf (value, sizeof (value) - 1, "%s%s%s", s1, s2, s3);
-
-	      nv_add_nvp (res, "open", "entry");
-	      nv_add_nvp (res, "oid", value);
-
-	      fgets (buf, sizeof (buf), infile);
-	      sscanf (buf, "%*s %*s %255s", s);
-
-	      s1[0] = s2[0] = s3[0] = '\0';
-	      scan_matched = 0;
-	      if ((strcmp (s, "Class") == 0) || (strcmp (s, "Instance") == 0))
-		{
-		  char *p;
-		  p = strchr (buf, ':');
-		  buf[strlen (buf) - 1] = '\0';
-		  if (buf[strlen (buf) - 1] == '.')
-		    {
-		      buf[strlen (buf) - 1] = '\0';
-		    }
-		  nv_add_nvp (res, "ob_type", p + 2);
-		  fgets (buf, sizeof (buf), infile);
-		}
-	      else if (strcmp (s, "Root") == 0)
-		{
-		  nv_add_nvp (res, "ob_type", "Root class");
-		  fgets (buf, sizeof (buf), infile);
-		}
-	      else
-		{
-		  /* Current test is not 'OID = ...' and if 'Total mode of holders ...' then */
-		  scan_matched =
-		    sscanf (buf, "%*s %*s %255s %*s %*s %255s %*s %*s %255s",
-			    s1, s2, s3);
-		  if ((strncmp (s1, "of", 2) == 0)
-		      && (strncmp (s3, "of", 2) == 0))
-		    {
-		      nv_add_nvp (res, "ob_type", "None");
-		    }
-		  else
-		    {
-		      return -1;
-		    }
-		}
-
-	      /* already get  scan_matched value, don't sscanf */
-	      if (scan_matched == 0)
-		scan_matched =
-		  sscanf (buf, "%*s %*s %255s %*s %*s %255s %*s %*s %255s",
-			  s1, s2, s3);
-
-	      if ((strncmp (s1, "of", 2) == 0)
-		  && (strncmp (s3, "of", 2) == 0))
-		{
-		  /* ignore UnixWare's 'Total mode of ...' text */
-		  fgets (buf, sizeof (buf), infile);
-		  scan_matched =
-		    sscanf (buf, "%*s %*s %255s %*s %*s %255s %*s %*s %255s",
-			    s1, s2, s3);
-		}
-
-	      if (scan_matched != 3)
-		{
-		  return -1;
-		}
-	      s1[strlen (s1) - 1] = '\0';
-	      s2[strlen (s2) - 1] = '\0';
-
-	      num_holders = atoi (s1);
-	      num_b_holders = atoi (s2);
-	      num_waiters = atoi (s3);
-
-	      if (num_waiters < 0 || num_waiters >= INT_MAX)
-		{
-		  return -1;
-		}
-
-	      nv_add_nvp (res, "num_holders", s1);
-	      nv_add_nvp (res, "num_b_holders", s2);
-	      nv_add_nvp (res, "num_waiters", s3);
-
-	      while (fgets (buf, sizeof (buf), infile))
-		{
-		  sscanf (buf, "%255s", s);
-		  if (strcmp (s, "NON_2PL_RELEASED:") == 0)
-		    {
-		      fgets (buf, sizeof (buf), infile);
-		      while (sscanf (buf, "%255s", s))
-			{
-			  if (strcmp (s, "Tran_index") != 0)
-			    {
-			      break;
-			    }
-			  else
-			    {
-			      if (fgets (buf, sizeof (buf), infile) == NULL)
-				{
-				  break;
-				}
-			    }
-			}
-		      break;
-		    }		/* ignore NON_2PL_RELEASED information */
-
-		  sscanf (buf, "%*s %255s", s);
-		  if (strcmp (s, "HOLDERS:") == 0)
-		    {
-		      int index;
-
-		      for (index = 0; index < num_holders; index++)
-			{
-			  /* make lock holders information */
-
-			  fgets (buf, sizeof (buf), infile);
-			  scan_matched =
-			    sscanf (buf,
-				    "%*s %*s %255s %*s %*s %255s %*s %*s %255s %*s %*s %255s",
-				    s1, s2, s3, s4);
-
-			  /* parshing error */
-			  if (scan_matched < 3)
-			    {
-			      return -1;
-			    }
-			  if (scan_matched == 4)
-			    {
-			      /* nsubgranules is existed */
-			      s3[strlen (s3) - 1] = '\0';
-			    }
-
-			  s1[strlen (s1) - 1] = '\0';
-			  s2[strlen (s2) - 1] = '\0';
-
-			  nv_add_nvp (res, "open", "lock_holders");
-			  nv_add_nvp (res, "tran_index", s1);
-			  nv_add_nvp (res, "granted_mode", s2);
-			  nv_add_nvp (res, "count", s3);
-			  if (scan_matched == 4)
-			    {
-			      nv_add_nvp (res, "nsubgranules", s4);
-			    }
-			  nv_add_nvp (res, "close", "lock_holders");
-			}
-
-		      if ((num_b_holders == 0) && (num_waiters == 0))
-			{
-			  break;
-			}
-		    }
-		  else if (strcmp (s, "LOCK") == 0)
-		    {
-		      int index;
-		      char *p;
-
-		      for (index = 0; index < num_b_holders; index++)
-			{
-			  /* make blocked lock holders */
-			  int scan_matched;
-			  fgets (buf, sizeof (buf), infile);
-			  scan_matched =
-			    sscanf (buf,
-				    "%*s %*s %255s %*s %*s %255s %*s %*s %255s %*s %*s %255s",
-				    s1, s2, s3, s4);
-
-			  /* parshing error */
-			  if (scan_matched < 3)
-			    {
-			      return -1;
-			    }
-			  if (scan_matched == 4)
-			    {
-			      /* nsubgranules is existed */
-			      s3[strlen (s3) - 1] = '\0';
-			    }
-
-			  s1[strlen (s1) - 1] = '\0';
-			  s2[strlen (s2) - 1] = '\0';
-
-			  nv_add_nvp (res, "open", "b_holders");
-			  nv_add_nvp (res, "tran_index", s1);
-			  nv_add_nvp (res, "granted_mode", s2);
-			  nv_add_nvp (res, "count", s3);
-
-			  if (scan_matched == 4)
-			    {
-			      nv_add_nvp (res, "nsubgranules", s4);
-			    }
-			  fgets (buf, sizeof (buf), infile);
-			  sscanf (buf, "%*s %*s %255s", s1);
-			  nv_add_nvp (res, "b_mode", s1);
-
-			  fgets (buf, sizeof (buf), infile);
-			  p = strchr (buf, '=');
-			  buf[strlen (buf) - 1] = '\0';
-			  nv_add_nvp (res, "start_at", p + 2);
-
-			  fgets (buf, sizeof (buf), infile);
-			  sscanf (buf, "%*s %*s %255s", s1);
-			  nv_add_nvp (res, "waitfornsec", s1);
-
-			  nv_add_nvp (res, "close", "b_holders");
-			}
-
-		      if (num_waiters == 0)
-			{
-			  break;
-			}
-		    }
-		  else if (strcmp (s, "WAITERS:") == 0)
-		    {
-		      int index;
-
-		      for (index = 0; index < num_waiters; index++)
-			{
-			  /* make lock waiters */
-			  char *p;
-
-			  fgets (buf, sizeof (buf), infile);
-			  sscanf (buf, "%*s %*s %255s %*s %*s %255s", s1, s2);
-			  s1[strlen (s1) - 1] = '\0';
-
-			  nv_add_nvp (res, "open", "waiters");
-			  nv_add_nvp (res, "tran_index", s1);
-			  nv_add_nvp (res, "b_mode", s2);
-
-			  fgets (buf, sizeof (buf), infile);
-			  p = strchr (buf, '=');
-			  buf[strlen (buf) - 1] = '\0';
-			  nv_add_nvp (res, "start_at", p + 2);
-
-			  fgets (buf, sizeof (buf), infile);
-			  sscanf (buf, "%*s %*s %255s", s1);
-			  nv_add_nvp (res, "waitfornsec", s1);
-
-			  nv_add_nvp (res, "close", "waiters");
-			}
-		      break;
-		    }
-		}		/* end of while - for just one object */
-	      nv_add_nvp (res, "close", "entry");
-	    }			/* end of while(OID) */
-	}
-    }
-  nv_add_nvp (res, "close", "lot");
-  nv_add_nvp (res, "close", "lockinfo");
-  return 0;
-}
-
-static int
-_ts_lockdb_parse_kr (nvplist * res, FILE * infile)
-{
-  char buf[1024], s[256], s1[256], s2[256], s3[256], s4[256];
-  char *temp, *temp2;
-  int scan_matched;
-  int flag = 0;
-
-  nv_add_nvp (res, "open", "lockinfo");
-  while (fgets (buf, sizeof (buf), infile))
-    {
-      sscanf (buf, "%255s", s);
-
-      if (flag == 0 && !strcmp (s, "***"))
-	{
-	  fgets (buf, sizeof (buf), infile);
-	  scan_matched =
-	    sscanf (buf, "%*s %*s %*s %255s %*s %*s %*s %*s %255s", s1, s2);
-
-	  if (scan_matched != 2)
-	    {
-	      return -1;
-	    }
-	  s1[strlen (s1) - 1] = '\0';
-	  nv_add_nvp (res, "esc", s1);
-	  nv_add_nvp (res, "dinterval", s2);
-	  flag = 1;
-	}
-      else if (flag == 1)
-	{
-	  if (strcmp (s, "트랜잭션") == 0)
-	    {
-	      scan_matched =
-		sscanf (buf, "%*s %*s %255s %255s %255s", s1, s2, s3);
-
-	      if (scan_matched != 3)
-		{
-		  return -1;
-		}
-	      s1[strlen (s1) - 1] = '\0';
-	      s2[strlen (s2) - 1] = '\0';
-	      s3[strlen (s3) - 1] = '\0';
-
-	      nv_add_nvp (res, "open", "transaction");
-	      nv_add_nvp (res, "index", s1);
-	      nv_add_nvp (res, "pname", s2);
-
-	      temp = strchr (s3, '@');
-	      if (temp != NULL)
-		{
-		  strncpy (buf, s3, (int) (temp - s3));
-		  buf[(int) (temp - s3)] = '\0';
-		  nv_add_nvp (res, "uid", buf);
-		}
-
-	      temp2 = strrchr (s3, '|');
-	      if (temp2 != NULL)
-		{
-		  strncpy (buf, temp + 1, (int) (temp2 - temp - 1));
-		  buf[(int) (temp2 - temp) - 1] = '\0';
-		  nv_add_nvp (res, "host", buf);
-		}
-	      nv_add_nvp (res, "pid", temp2 + 1);
-
-	      fgets (buf, sizeof (buf), infile);
-	      buf[strlen (buf) - 1] = '\0';
-	      nv_add_nvp (res, "isolevel", buf + strlen ("격리도"));
-
-	      fgets (buf, sizeof (buf), infile);
-	      if (strncmp (buf, "수행상태", strlen ("수행상태")) == 0)
-		{
-		  fgets (buf, sizeof (buf), infile);
-		}
-
-	      scan_matched = sscanf (buf, "%*s %*s %255s", s1);
-
-	      if (scan_matched != 1)
-		{
-		  return -1;
-		}
-	      nv_add_nvp (res, "timeout", s1);
-	      nv_add_nvp (res, "close", "transaction");
-	    }
-	  else if (strcmp (s, "Object") == 0)
-	    {
-	      fgets (buf, sizeof (buf), infile);
-	      scan_matched =
-		sscanf (buf, "%*s %*s %*s %*s %*s %*s %*s %*s %255s", s1);
-	      if (scan_matched != 1)
-		{
-		  return -1;
-		}
-	      nv_add_nvp (res, "open", "lot");
-	      nv_add_nvp (res, "numlocked", s1);
-
-	      fgets (buf, sizeof (buf), infile);
-	      scan_matched =
-		sscanf (buf, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %255s", s2);
-	      if (scan_matched != 1)
-		{
-		  return -1;
-		}
-	      nv_add_nvp (res, "maxnumlock", s2);
-	      flag = 2;
-	    }
-	}			/* end of if (flag == 1) */
-      else if (flag == 2)
-	{
-	  char value[1024];
-
-	  while (!strcmp (s, "OID"))
-	    {
-	      int num_holders, num_b_holders, num_waiters;
-
-	      scan_matched =
-		sscanf (buf, "%*s %*s %255s %255s %255s", s1, s2, s3);
-	      if (scan_matched != 3)
-		{
-		  return -1;
-		}
-	      snprintf (value, sizeof (value) - 1, "%s%s%s", s1, s2, s3);
-
-	      nv_add_nvp (res, "open", "entry");
-	      nv_add_nvp (res, "oid", value);
-
-	      fgets (buf, sizeof (buf), infile);
-	      sscanf (buf, "%*s %*s %255s", s);
-
-	      s1[0] = s2[0] = s3[0] = '\0';
-	      scan_matched = 0;
-	      if ((strcmp (s, "Class") == 0) || (strcmp (s, "Instance") == 0))
-		{
-		  char *p;
-		  p = strchr (buf, ':');
-		  buf[strlen (buf) - 1] = '\0';
-		  if (buf[strlen (buf) - 1] == '.')
-		    {
-		      buf[strlen (buf) - 1] = '\0';
-		    }
-		  nv_add_nvp (res, "ob_type", p + 2);
-		  fgets (buf, sizeof (buf), infile);
-		}
-	      else if (strcmp (s, "Root") == 0)
-		{
-		  nv_add_nvp (res, "ob_type", "Root class");
-		  fgets (buf, sizeof (buf), infile);
-		}
-	      else
-		{
-		  /* current text is not 'OID = ...' and if 'Total mode of holders ...' then */
-		  scan_matched =
-		    sscanf (buf, "%*s %*s %255s %*s %*s %255s %*s %*s %255s",
-			    s1, s2, s3);
-		  if ((strncmp (s1, "of", 2) == 0)
-		      && (strncmp (s3, "of", 2) == 0))
-		    {
-		      nv_add_nvp (res, "ob_type", "None");
-		    }
-		  else
-		    {
-		      return -1;
-		    }
-		}
-	      /* Already get scan_matched value, dont't sscanf */
-	      if (scan_matched == 0)
-		scan_matched =
-		  sscanf (buf, "%*s %*s %255s %*s %*s %255s %*s %*s %255s",
-			  s1, s2, s3);
-	      if ((strncmp (s1, "of", 2) == 0)
-		  && (strncmp (s3, "of", 2) == 0))
-		{
-		  /* ignore UnixWare's 'Total mode of ...' text */
-		  fgets (buf, sizeof (buf), infile);
-		  scan_matched =
-		    sscanf (buf, "%*s %*s %255s %*s %*s %255s %*s %*s %255s",
-			    s1, s2, s3);
-		}
-
-	      if (scan_matched != 3)
-		{
-		  return -1;
-		}
-	      s1[strlen (s1) - 1] = '\0';
-	      s2[strlen (s2) - 1] = '\0';
-
-	      num_holders = atoi (s1);
-	      num_b_holders = atoi (s2);
-	      num_waiters = atoi (s3);
-
-	      if (num_waiters < 0 || num_waiters >= INT_MAX)
-		{
-		  return -1;
-		}
-
-	      nv_add_nvp (res, "num_holders", s1);
-	      nv_add_nvp (res, "num_b_holders", s2);
-	      nv_add_nvp (res, "num_waiters", s3);
-
-	      while (fgets (buf, sizeof (buf), infile))
-		{
-		  sscanf (buf, "%255s", s);
-		  if (strcmp (s, "NON_2PL_RELEASED:") == 0)
-		    {
-		      fgets (buf, sizeof (buf), infile);
-		      while (sscanf (buf, "%255s", s))
-			{
-			  if (strcmp (s, "Tran_index") != 0)
-			    {
-			      break;
-			    }
-			  else
-			    {
-			      if (fgets (buf, sizeof (buf), infile) == NULL)
-				{
-				  break;
-				}
-			    }
-			}
-		      break;
-		    }		/* ignore NON_2PL_RELEASED information */
-
-		  sscanf (buf, "%*s %255s", s);
-		  if (strcmp (s, "HOLDERS:") == 0)
-		    {
-		      int index;
-
-		      for (index = 0; index < num_holders; index++)
-			{
-			  /* make lock holders information */
-
-			  fgets (buf, sizeof (buf), infile);
-			  scan_matched =
-			    sscanf (buf,
-				    "%*s %*s %255s %*s %*s %255s %*s %*s %255s %*s %*s %255s",
-				    s1, s2, s3, s4);
-
-			  /* parshing error */
-			  if (scan_matched < 3)
-			    {
-			      return -1;
-			    }
-			  if (scan_matched == 4)
-			    {
-			      /* nsubgranules is existed */
-			      s3[strlen (s3) - 1] = '\0';
-			    }
-
-			  s1[strlen (s1) - 1] = '\0';
-			  s2[strlen (s2) - 1] = '\0';
-
-			  nv_add_nvp (res, "open", "lock_holders");
-			  nv_add_nvp (res, "tran_index", s1);
-			  nv_add_nvp (res, "granted_mode", s2);
-			  nv_add_nvp (res, "count", s3);
-			  if (scan_matched == 4)
-			    nv_add_nvp (res, "nsubgranules", s4);
-			  nv_add_nvp (res, "close", "lock_holders");
-			}
-
-		      if ((num_b_holders == 0) && (num_waiters == 0))
-			{
-			  break;
-			}
-		    }
-		  else if (strcmp (s, "LOCK") == 0)
-		    {
-		      int index;
-		      char *p;
-
-		      for (index = 0; index < num_b_holders; index++)
-			{
-			  /* make blocked lock holders */
-			  int scan_matched;
-			  fgets (buf, sizeof (buf), infile);
-			  scan_matched =
-			    sscanf (buf,
-				    "%*s %*s %255s %*s %*s %255s %*s %*s %255s %*s %*s %255s",
-				    s1, s2, s3, s4);
-
-			  /* parshing error */
-			  if (scan_matched < 3)
-			    {
-			      return -1;
-			    }
-			  if (scan_matched == 4)
-			    {
-			      /* nsubgranules is existed */
-			      s3[strlen (s3) - 1] = '\0';
-			    }
-
-			  s1[strlen (s1) - 1] = '\0';
-			  s2[strlen (s2) - 1] = '\0';
-
-			  nv_add_nvp (res, "open", "b_holders");
-			  nv_add_nvp (res, "tran_index", s1);
-			  nv_add_nvp (res, "granted_mode", s2);
-			  nv_add_nvp (res, "count", s3);
-
-			  if (scan_matched == 4)
-			    {
-			      nv_add_nvp (res, "nsubgranules", s4);
-			    }
-			  fgets (buf, sizeof (buf), infile);
-			  sscanf (buf, "%*s %*s %255s", s1);
-			  nv_add_nvp (res, "b_mode", s1);
-
-			  fgets (buf, sizeof (buf), infile);
-			  p = strchr (buf, '=');
-			  buf[strlen (buf) - 1] = '\0';
-			  nv_add_nvp (res, "start_at", p + 2);
-
-			  fgets (buf, sizeof (buf), infile);
-			  sscanf (buf, "%*s %*s %255s", s1);
-			  nv_add_nvp (res, "waitfornsec", s1);
-
-			  nv_add_nvp (res, "close", "b_holders");
-			}
-
-		      if (num_waiters == 0)
-			{
-			  break;
-			}
-		    }
-		  else if (strcmp (s, "WAITERS:") == 0)
-		    {
-		      int index;
-
-		      for (index = 0; index < num_waiters; index++)
-			{
-			  /* make lock waiters */
-			  char *p;
-
-			  fgets (buf, sizeof (buf), infile);
-			  sscanf (buf, "%*s %*s %255s %*s %*s %255s", s1, s2);
-			  s1[strlen (s1) - 1] = '\0';
-
-			  nv_add_nvp (res, "open", "waiters");
-			  nv_add_nvp (res, "tran_index", s1);
-			  nv_add_nvp (res, "b_mode", s2);
-
-			  fgets (buf, sizeof (buf), infile);
-			  p = strchr (buf, '=');
-			  buf[strlen (buf) - 1] = '\0';
-			  nv_add_nvp (res, "start_at", p + 2);
-
-			  fgets (buf, sizeof (buf), infile);
-			  sscanf (buf, "%*s %*s %255s", s1);
-			  nv_add_nvp (res, "waitfornsec", s1);
-			  nv_add_nvp (res, "close", "waiters");
-			}
-		      break;
-		    }
-		}		/* end of while - for just one object */
-	      nv_add_nvp (res, "close", "entry");
-	    }			/* end of while(OID) */
-	}
-    }
-  nv_add_nvp (res, "close", "lot");
-  nv_add_nvp (res, "close", "lockinfo");
-  return 0;
-}
-
-static void
-op_get_trigger_information (nvplist * res, DB_OBJECT * p_trigger)
-{
-  char *trigger_name, *action, *attr, *condition;
-  DB_OBJECT *target_class;
-  DB_TRIGGER_EVENT event;
-  DB_TRIGGER_TIME eventtime, actiontime;
-  DB_TRIGGER_ACTION action_type;
-  DB_TRIGGER_STATUS status;
-  double priority;
-  char pri_string[16];
-
-  trigger_name = action = NULL;
-
-  /* trigger name */
-  db_trigger_name (p_trigger, &trigger_name);
-  nv_add_nvp (res, "name", trigger_name);
-  if (trigger_name)
-    {
-      db_string_free ((char *) trigger_name);
-    }
-  /* eventtime */
-  db_trigger_condition_time (p_trigger, &eventtime);
-  switch (eventtime)
-    {
-    case TR_TIME_BEFORE:
-      nv_add_nvp (res, "conditiontime", "BEFORE");
-      break;
-    case TR_TIME_AFTER:
-      nv_add_nvp (res, "conditiontime", "AFTER");
-      break;
-    case TR_TIME_DEFERRED:
-      nv_add_nvp (res, "conditiontime", "DEFERRED");
-      break;
-    case TR_TIME_NULL:
-      break;
-    }
-
-  /* eventtype */
-  db_trigger_event (p_trigger, &event);
-  switch (event)
-    {
-    case TR_EVENT_UPDATE:
-      nv_add_nvp (res, "eventtype", "UPDATE");
-      break;
-    case TR_EVENT_STATEMENT_UPDATE:
-      nv_add_nvp (res, "eventtype", "STATEMENT UPDATE");
-      break;
-
-    case TR_EVENT_DELETE:
-      nv_add_nvp (res, "eventtype", "DELETE");
-      break;
-    case TR_EVENT_STATEMENT_DELETE:
-      nv_add_nvp (res, "eventtype", "STATEMENT DELETE");
-      break;
-
-    case TR_EVENT_INSERT:
-      nv_add_nvp (res, "eventtype", "INSERT");
-      break;
-    case TR_EVENT_STATEMENT_INSERT:
-      nv_add_nvp (res, "eventtype", "STATEMENT INSERT");
-      break;
-
-    case TR_EVENT_COMMIT:
-      nv_add_nvp (res, "eventtype", "COMMIT");
-      break;
-    case TR_EVENT_ROLLBACK:
-      nv_add_nvp (res, "eventtype", "ROLLBACK");
-      break;
-    default:
-      break;
-    }
-
-  /* trigger action */
-  db_trigger_action_type (p_trigger, &action_type);
-  switch (action_type)
-    {
-    case TR_ACT_EXPRESSION:	/* act like TR_ACT_PRINT */
-    case TR_ACT_PRINT:
-      db_trigger_action (p_trigger, &action);
-      nv_add_nvp (res, "action", action);
-      if (action)
-	{
-	  db_string_free ((char *) action);
-	}
-      break;
-
-    case TR_ACT_REJECT:
-      nv_add_nvp (res, "action", "REJECT");
-      break;
-    case TR_ACT_INVALIDATE:
-      nv_add_nvp (res, "action", "INVALIDATE TRANSACTION");
-      break;
-    case TR_ACT_NULL:
-      break;
-    }
-
-  /* target class_ & att */
-  db_trigger_class (p_trigger, &target_class);
-  if (target_class)
-    {
-      nv_add_nvp (res, "target_class", db_get_class_name (target_class));
-    }
-
-  db_trigger_attribute (p_trigger, &attr);
-  if (attr)
-    {
-      nv_add_nvp (res, "target_att", attr);
-      db_string_free ((char *) attr);
-    }
-
-  /* condition */
-  db_trigger_condition (p_trigger, &condition);
-  if (condition)
-    {
-      nv_add_nvp (res, "condition", condition);
-      db_string_free ((char *) condition);
-    }
-
-  /* delayedactiontime */
-  db_trigger_action_time (p_trigger, &actiontime);
-  switch (actiontime)
-    {
-    case TR_TIME_BEFORE:
-      nv_add_nvp (res, "actiontime", "BEFORE");
-      break;
-    case TR_TIME_AFTER:
-      nv_add_nvp (res, "actiontime", "AFTER");
-      break;
-    case TR_TIME_DEFERRED:
-      nv_add_nvp (res, "actiontime", "DEFERRED");
-      break;
-    case TR_TIME_NULL:
-      break;
-    }
-
-  /* status */
-  db_trigger_status (p_trigger, &status);
-  switch (status)
-    {
-    case TR_STATUS_ACTIVE:
-      nv_add_nvp (res, "status", "ACTIVE");
-      break;
-    case TR_STATUS_INACTIVE:
-      nv_add_nvp (res, "status", "INACTIVE");
-      break;
-    case TR_STATUS_INVALID:
-      nv_add_nvp (res, "status", "INVALID");
-    }
-
-  /* priority */
-  db_trigger_priority (p_trigger, &priority);
-  snprintf (pri_string, sizeof (pri_string) - 1, "%4.5f", priority);
-  nv_add_nvp (res, "priority", pri_string);
-}
-
-static int
-trigger_info_sa (const char *dbname, const char *uid, const char *passwd,
-		 nvplist * out, char *_dbmt_error)
-{
-  char strbuf[1024];
-  char outfile[PATH_MAX], errfile[PATH_MAX];
-  FILE *fp;
-  int ret_val = ERR_NO_ERROR;
-  char cmd_name[128];
-  const char *argv[10];
-
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  snprintf (outfile, PATH_MAX - 1, "%s/tmp/DBMT_trigger_info.%d",
-	    sco.szCubrid, (int) getpid ());
-#else
-  snprintf (outfile, PATH_MAX - 1, "%s/DBMT_trigger_info.%d",
-	    CUBRID_TMPDIR, (int) getpid ());
-#endif
-  snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
-
-  if (uid == NULL)
-    {
-      uid = "";
-    }
-  if (passwd == NULL)
-    {
-      passwd = "";
-    }
-
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/cub_sainfo%s",
-	    sco.szCubrid, DBMT_EXE_EXT);
-#else
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/cub_sainfo%s",
-	    CUBRID_BINDIR, DBMT_EXE_EXT);
-#endif
-  argv[0] = cmd_name;
-  argv[1] = dbname;
-  argv[2] = uid;
-  argv[3] = passwd;
-  argv[4] = outfile;
-  argv[5] = errfile;
-  argv[6] = NULL;
-
-  if (run_child (argv, 1, NULL, NULL, NULL, NULL) < 0)
-    {				/* cm_sainfo sa mode */
-      sprintf (_dbmt_error, argv[0]);
-      return ERR_SYSTEM_CALL;
-    }
-
-  fp = fopen (errfile, "r");
-  if (fp != NULL)
-    {
-      memset (strbuf, '0', sizeof (strbuf));
-      fgets (strbuf, sizeof (strbuf), fp);
-      DBMT_ERR_MSG_SET (_dbmt_error, strbuf);
-      fclose (fp);
-      ret_val = ERR_WITH_MSG;
-      goto trigger_info_sa_finale;
-    }
-
-  nv_add_nvp (out, "dbname", dbname);
-  ret_val = nv_readfrom (out, outfile);
-  if (ret_val < 0)
-    {
-      goto trigger_info_sa_finale;
-    }
-trigger_info_sa_finale:
-  unlink (outfile);
-  unlink (errfile);
-  return ret_val;
-}
-
-
-int
-ts_get_file (nvplist * req, nvplist * res, char *_dbmt_error)
-{
-  char *filename, *compress, *file_num_str;
-  int b_compress, index, b_compress_failed;
-  const char *argv[7];
-  char cmd_string[4096];
-  char com_filename[PATH_MAX];
-  struct stat statbuf;
-  int status_error;
-  int file_num;
-
-  status_error = 1;
-  memset (com_filename, '\0', sizeof (com_filename));
-  memset (cmd_string, '\0', sizeof (cmd_string));
-  b_compress_failed = 0;
-
-  file_num_str = nv_get_val (req, "file_num");
-#ifdef	_DEBUG_
-  assert (file_num_str);
-#endif
-  if (file_num_str == NULL)
-    {
-      goto exit_on_end;
-    }
-
-  nv_add_nvp (res, "file_num", file_num_str);
-  file_num = atoi (file_num_str);
-  if (file_num <= 0 || file_num >= INT_MAX)
-    {
-      goto exit_on_end;
-    }
-
-  for (index = 4; index < file_num * 2 + 3; index += 2)
-    {
-      char *_filename, *_compress;
-
-      nv_add_nvp (res, "open", "file");
-
-      nv_lookup (req, index, &_filename, &filename);
-      nv_lookup (req, index + 1, &_compress, &compress);
-
-      if (compress && strcasecmp (compress, "y") == 0)
-	{
-	  b_compress = 1;
-	}
-      else
-	{
-	  b_compress = 0;
-	}
-
-      /* check read permission */
-      if (filename)
-	{
-	  if (access (filename, R_OK) != 0)
-	    {
-	      nv_add_nvp (res, "filename", filename);
-	      nv_add_nvp (res, "filestatus",
-			  "File not exist or Read permission error");
-	      nv_add_nvp (res, "filesize", "0");
-	      nv_add_nvp (res, "close", "file");
-	      continue;
-	    }
-	}
-
-      /* make compress file */
-      if (b_compress)
-	{
-	  char file[PATH_MAX];
-	  /* execute gzip */
-	  if (get_filename_from_path (filename, file) > 0)
-	    {
-#if !defined (DO_NOT_USE_CUBRIDENV)
-	      snprintf (com_filename, PATH_MAX - 1, "%s/tmp/%s_%d.gz",
-			sco.szCubrid, file, (int) getpid ());
-#else
-	      snprintf (com_filename, PATH_MAX - 1, "%s/%s_%d.gz",
-			CUBRID_TMPDIR, file, (int) getpid ());
-#endif
-	      argv[0] = "gzip";
-	      argv[1] = "-c";
-	      argv[2] = filename;
-	      argv[3] = ">";
-	      argv[4] = com_filename;
-	      argv[5] = NULL;
-
-	      snprintf (cmd_string, sizeof (cmd_string) - 1, "%s %s %s %s %s",
-			argv[0], argv[1], argv[2], argv[3], argv[4]);
-
-	      if (system (cmd_string) == -1)
-		{
-		  b_compress_failed = 1;
-		}
-	      else
-		{
-		  b_compress_failed = 0;
-		}
-	      /* archive file create check */
-	      if (access (argv[4], R_OK) == 0)
-		{
-		  /* if existed, write archive file */
-		  filename = com_filename;
-		}
-	      else
-		{
-		  b_compress_failed = 1;
-		}
-	    }
-	  else
-	    {
-	      b_compress_failed = 1;
-	    }
-	}
-
-      nv_add_nvp (res, "filename", filename);
-
-      /* file status */
-      if ((b_compress == 1) && (b_compress_failed == 1))
-	{
-	  nv_add_nvp (res, "filestatus", "File compress failed");
-	}
-      else
-	{
-	  nv_add_nvp (res, "filestatus", "none");
-	  status_error = 0;
-	}
-
-      /* file size */
-      if ((filename != NULL) && (stat (filename, &statbuf) == 0))
-	{
-	  nv_add_nvp_int (res, "filesize", statbuf.st_size);
-	}
-      else
-	{
-	  nv_add_nvp (res, "filesize", "0");
-	}
-
-      /* delete flag */
-      if ((b_compress == 1) && (b_compress_failed == 0))
-	{
-	  nv_add_nvp (res, "delflag", "y");
-	}
-      else
-	{
-	  nv_add_nvp (res, "delflag", "n");
-	}
-      nv_add_nvp (res, "close", "file");
-    }
-
-exit_on_end:
-/*
-	if (status_error == 1)
-		return ERR_GET_FILE;
-*/
-  return ERR_NO_ERROR;
-}
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-static char *
-op_get_cubrid_ver (char *buffer)
-{
-  char tmpfile[PATH_MAX];
-  char strbuf[1024];
-  FILE *infile;
-  char cmd_name[CUBRID_CMD_NAME_LEN];
-  const char *argv[5];
-
-  if (buffer == NULL)
-    {
-      return NULL;
-    }
-
-  snprintf (tmpfile, PATH_MAX - 1, "%s/DBMT_temp.%d", sco.dbmt_tmp_dir,
-	    (int) getpid ());
-  cmd_name[0] = '\0';
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s%s", sco.szCubrid,
-	    CUBRID_DIR_BIN, UTIL_CUBRID_REL_NAME);
-#else
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/%s", CUBRID_BINDIR,
-	    UTIL_CUBRID_REL_NAME);
-#endif
-
-  argv[0] = cmd_name;
-  argv[1] = NULL;
-
-  run_child (argv, 1, NULL, tmpfile, NULL, NULL);	/* cubrid_rel */
-
-  if ((infile = fopen (tmpfile, "r")) != NULL)
-    {
-      fgets (strbuf, sizeof (strbuf), infile);
-      fgets (strbuf, sizeof (strbuf), infile);
-
-      sscanf (strbuf, "%*s %*s %*s %s", buffer);
-      fclose (infile);
-      unlink (tmpfile);
-    }
-
-  return buffer;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 int
 ts_set_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error)
@@ -12054,15 +6371,13 @@ ts_set_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error)
 	  while (fgets (line, sizeof (line), conf_file))
 	    {
 	      char query_id[64];
-	      char db_name[64];
-	      if (sscanf (line, "%63s %63s ", db_name, query_id) < 1)
+	      if (sscanf (line, "%*s %63s ", query_id) < 1)
 		{
 		  continue;
 		}
-	      if (strcmp (db_name, conf_item[0]) != 0
-		  || strcmp (query_id, conf_item[1]) != 0)
+	      if (strcmp (query_id, conf_item[1]) != 0)
 		{
-		  /* write temp file if db_name or query_id is different */
+		  /* write temp file if query_id is different */
 		  fputs (line, temp_file);
 		}
 	    }
@@ -12166,212 +6481,6 @@ finalize:
   return ERR_NO_ERROR;
 }
 
-static void
-op_auto_exec_query_get_newplan_id (char *id_buf, char *conf_filename)
-{
-  FILE *conf_file;
-  char buf[MAX_JOB_CONFIG_FILE_LINE_LENGTH], id_num[5];
-  int index;
-
-  for (index = 1; index < 10000; index++)
-    {
-      int used = 0;
-      conf_file = fopen (conf_filename, "r");
-      if (conf_file == NULL)
-	{
-	  strcpy (id_buf, "0001");
-	  return;
-	}
-
-      while (fgets (buf, sizeof (buf), conf_file))
-	{
-	  sscanf (buf, "%*s %4s", id_num);
-	  if (atoi (id_num) == index)
-	    {
-	      used = 1;
-	      break;
-	    }
-	}
-
-      if (used == 0)
-	{
-	  snprintf (id_buf, sizeof (id_buf) - 1, "%04d", index);
-	  fclose (conf_file);
-	  break;
-	}
-      fclose (conf_file);
-    }
-}
-
-
-int
-ts_get_diaginfo (nvplist * req, nvplist * res, char *_dbmt_error)
-{
-  int ret_val;
-
-  ret_val = uReadDiagSystemConfig (&(sco.diag_config), _dbmt_error);
-
-  if (ret_val == -1)
-    {
-      /* error */
-      if (_dbmt_error)
-	{
-	  return ERR_WITH_MSG;
-	}
-      else
-	{
-	  return ERR_GENERAL_ERROR;
-	}
-    }
-
-  nv_add_nvp (res, "executediag",
-	      ((sco.diag_config.Executediag == 1) ? "ON" : "OFF"));
-  return ERR_NO_ERROR;
-}
-
-int
-ts_get_diagdata (nvplist * cli_request, nvplist * cli_response,
-		 char *_dbmt_error)
-{
-  int i;
-  T_SHM_DIAG_INFO_SERVER *server_shm = NULL;
-  void *br_shm = NULL, *as_shm = NULL;
-  T_DIAG_MONITOR_DB_VALUE server_result;
-  char *db_name, *broker_name;
-  char *mon_db, *mon_cas;
-  T_DM_UC_INFO uc_info;
-  T_DM_UC_BR_INFO *br_info;
-  int num_busy_count = 0;
-  INT64 num_req, num_query, num_tran, num_long_query, num_long_tran,
-    num_error_query;
-
-#if defined(WINDOWS)
-  HANDLE shm_handle = NULL;
-#endif
-
-  db_name = nv_get_val (cli_request, "db_name");
-  mon_db = nv_get_val (cli_request, "mon_db");
-  mon_cas = nv_get_val (cli_request, "mon_cas");
-
-  if (db_name != NULL)
-    {
-      int server_shmid;
-      char vol_dir[1024];
-
-      if (get_dbvoldir (vol_dir, sizeof (vol_dir), db_name, _dbmt_error) !=
-	  -1)
-	{
-	  server_shmid = getservershmid (vol_dir, db_name, _dbmt_error);
-	  if (server_shmid > 0)
-	    {
-	      server_shm = (T_SHM_DIAG_INFO_SERVER *)
-		OP_SERVER_SHM_OPEN (server_shmid, &shm_handle);
-	    }
-	}
-    }
-
-  if (server_shm && mon_db != NULL && strcmp (mon_db, "yes") == 0)
-    {
-      int numthread = server_shm->num_thread;
-      memset (&server_result, 0, sizeof (server_result));
-      for (i = 0; i < MAX_SERVER_THREAD_COUNT && i < numthread; i++)
-	{
-	  server_result.query_open_page +=
-	    server_shm->thread[i].query_open_page;
-	  server_result.query_opened_page +=
-	    server_shm->thread[i].query_opened_page;
-	  server_result.query_slow_query +=
-	    server_shm->thread[i].query_slow_query;
-	  server_result.query_full_scan +=
-	    server_shm->thread[i].query_full_scan;
-	  server_result.conn_cli_request +=
-	    server_shm->thread[i].conn_cli_request;
-	  server_result.conn_aborted_clients +=
-	    server_shm->thread[i].conn_aborted_clients;
-	  server_result.conn_conn_req += server_shm->thread[i].conn_conn_req;
-	  server_result.conn_conn_reject +=
-	    server_shm->thread[i].conn_conn_reject;
-	  server_result.buffer_page_write +=
-	    server_shm->thread[i].buffer_page_write;
-	  server_result.buffer_page_read +=
-	    server_shm->thread[i].buffer_page_read;
-	  server_result.lock_deadlock += server_shm->thread[i].lock_deadlock;
-	  server_result.lock_request += server_shm->thread[i].lock_request;
-	}
-
-      OP_SERVER_SHM_DETACH (server_shm, shm_handle);
-
-      nv_add_nvp (cli_response, "db_mon", "start");
-      nv_add_nvp_int64 (cli_response, "mon_cub_query_open_page",
-			server_result.query_open_page);
-      nv_add_nvp_int64 (cli_response, "mon_cub_query_opened_page",
-			server_result.query_opened_page);
-      nv_add_nvp_int64 (cli_response, "mon_cub_query_slow_query",
-			server_result.query_slow_query);
-      nv_add_nvp_int64 (cli_response, "mon_cub_query_full_scan",
-			server_result.query_full_scan);
-      nv_add_nvp_int64 (cli_response, "mon_cub_lock_deadlock",
-			server_result.lock_deadlock);
-      nv_add_nvp_int64 (cli_response, "mon_cub_lock_request",
-			server_result.lock_request);
-      nv_add_nvp_int64 (cli_response, "mon_cub_conn_cli_request",
-			server_result.conn_cli_request);
-      nv_add_nvp_int64 (cli_response, "mon_cub_conn_aborted_clients",
-			server_result.conn_aborted_clients);
-      nv_add_nvp_int64 (cli_response, "mon_cub_conn_conn_req",
-			server_result.conn_conn_req);
-      nv_add_nvp_int64 (cli_response, "mon_cub_conn_conn_reject",
-			server_result.conn_conn_reject);
-      nv_add_nvp_int64 (cli_response, "mon_cub_buffer_page_write",
-			server_result.buffer_page_write);
-      nv_add_nvp_int64 (cli_response, "mon_cub_buffer_page_read",
-			server_result.buffer_page_read);
-      nv_add_nvp (cli_response, "db_mon", "end");
-    }
-
-  if (mon_cas != NULL && strcmp (mon_cas, "yes") == 0)
-    {
-      num_req = num_query = num_tran = num_long_query = num_long_tran =
-	num_error_query = 0;
-
-      broker_name = nv_get_val (cli_request, "broker_name");
-
-      if (uca_br_info (&uc_info, _dbmt_error) < 0)
-	{
-	  return ERR_NO_ERROR;
-	}
-
-      for (i = 0; i < uc_info.num_info; i++)
-	{
-	  br_info = uc_info.info.br_info + i;
-
-	  if (strcmp (br_info->status, "OFF") != 0 &&
-	      (broker_name == NULL
-	       || strcasecmp (broker_name, br_info->name) == 0))
-	    {
-	      num_req += br_info->num_req;
-	      num_query += br_info->num_query;
-	      num_tran += br_info->num_tran;
-	      num_long_query += br_info->num_long_query;
-	      num_long_tran += br_info->num_long_tran;
-	      num_error_query += br_info->num_error_query;
-	      num_busy_count += br_info->num_busy_count;
-	    }
-	}
-
-      nv_add_nvp (cli_response, "cas_mon", "start");
-      nv_add_nvp_int (cli_response, "cas_mon_act_session", num_busy_count);
-      nv_add_nvp_int64 (cli_response, "cas_mon_req", num_req);
-      nv_add_nvp_int64 (cli_response, "cas_mon_query", num_query);
-      nv_add_nvp_int64 (cli_response, "cas_mon_tran", num_tran);
-      nv_add_nvp_int64 (cli_response, "cas_mon_long_query", num_long_query);
-      nv_add_nvp_int64 (cli_response, "cas_mon_long_tran", num_long_tran);
-      nv_add_nvp_int64 (cli_response, "cas_mon_error_query", num_error_query);
-      nv_add_nvp (cli_response, "cas_mon", "end");
-    }
-
-  return ERR_NO_ERROR;
-}
 
 int
 ts_addstatustemplate (nvplist * cli_request, nvplist * cli_response,
@@ -12878,102 +6987,6 @@ ts_getstatustemplate (nvplist * cli_request, nvplist * cli_response,
   return ret_val;
 }
 
-int
-ts_getcaslogfilelist (nvplist * cli_request, nvplist * cli_response,
-		      char *diag_error)
-{
-  int i;
-#if defined(WINDOWS)
-  HANDLE handle;
-  WIN32_FIND_DATA data;
-  char find_file[PATH_MAX];
-  int found;
-#else
-  DIR *dp = NULL;
-  struct dirent *dirp;
-#endif
-  T_DM_UC_CONF uc_conf;
-  char logdir[PATH_MAX], dirname[PATH_MAX];
-  const char *v;
-  char *bname, buf[PATH_MAX];
-  char *cur_file;
-
-  /* get cas info num */
-  if (uca_unicas_conf (&uc_conf, NULL, diag_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-
-  nv_add_nvp (cli_response, "logfilelist", "start");
-  for (i = 0; i < uc_conf.num_broker; i++)
-    {
-      bname = uca_conf_find (&(uc_conf.br_conf[i]), "%");
-      if (!bname)
-	{
-	  continue;
-	}
-      v = uca_conf_find (uca_conf_find_broker (&uc_conf, bname), "LOG_DIR");
-      if (v == NULL)
-	{
-	  v = "log";
-	}
-      uca_get_conf_path (v, dirname);
-
-      nv_add_nvp (cli_response, "brokername", bname);
-#if defined(WINDOWS)
-      snprintf (find_file, PATH_MAX - 1, "%s/%s/%s*.log", bname,
-		UNICAS_SQL_LOG_DIR, dirname);
-      handle = FindFirstFile (find_file, &data);
-      if (handle == INVALID_HANDLE_VALUE)
-	{
-	  continue;
-	}
-      snprintf (logdir, PATH_MAX - 1, "%s", dirname);
-#else
-      snprintf (logdir, PATH_MAX - 1, "%s/%s", dirname, UNICAS_SQL_LOG_DIR);
-      dp = opendir (logdir);
-      if (dp == NULL)
-	{
-	  continue;
-	}
-#endif
-
-#if defined(WINDOWS)
-      for (found = 1; found; found = FindNextFile (handle, &data))
-#else
-      while ((dirp = readdir (dp)) != NULL)
-#endif
-	{
-#if defined(WINDOWS)
-	  cur_file = data.cFileName;
-#else
-	  cur_file = dirp->d_name;
-#endif
-	  if (strstr (cur_file, bname) != NULL)
-	    {
-	      snprintf (buf, sizeof (buf) - 1, "%s/%s", logdir, cur_file);
-	      nv_add_nvp (cli_response, "logfile", buf);
-	    }
-	}
-    }
-  nv_add_nvp (cli_response, "logfilelist", "end");
-  uca_unicas_conf_free (&uc_conf);
-#if defined(WINDOWS)
-  FindClose (handle);
-#else
-  if (dp)
-    {
-      closedir (dp);
-    }
-#endif
-
-#ifdef DIAG_DEBUG
-  nv_writeto (cli_response,
-	      "/home2/lsj1888/CUBRID/CUBRID_MANAGER/bin/res_file/ts_getcaslogfilelist.res");
-#endif
-
-  return ERR_NO_ERROR;
-}
 
 int
 ts_analyzecaslog (nvplist * cli_request, nvplist * cli_response,
@@ -13001,13 +7014,8 @@ ts_analyzecaslog (nvplist * cli_request, nvplist * cli_response,
 
   /* set prarameter with logfile and execute broker_log_top */
   /* execute at current directory and copy result to $CUBRID/tmp directory */
-#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/broker_log_top%s",
 	    sco.szCubrid, DBMT_EXE_EXT);
-#else
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/broker_log_top%s",
-	    CUBRID_BINDIR, DBMT_EXE_EXT);
-#endif
   arg_index = 0;
   argv[arg_index++] = cmd_name;
   if (option_t && !strcmp (option_t, "yes"))
@@ -13236,8 +7244,9 @@ ts_executecasrunner (nvplist * cli_request, nvplist * cli_response,
   char log_converter_res[PATH_MAX];
   char cmd_name[CUBRID_CMD_NAME_LEN];
   const char *argv[25];
-  T_DM_UC_CONF uc_conf;
+  T_CM_BROKER_CONF uc_conf;
   char out_msg_file_env[1024];
+  T_CM_ERROR error;
 #if defined(WINDOWS)
   DWORD th_id;
 #else
@@ -13273,19 +7282,21 @@ ts_executecasrunner (nvplist * cli_request, nvplist * cli_response,
 	    th_id);
 
   /* get right port number with broker name */
-  if (uca_unicas_conf (&uc_conf, NULL, diag_error) < 0)
+  if (cm_get_broker_conf (&uc_conf, NULL, &error) < 0)
     {
+      strcpy (diag_error, error.err_msg);
       return ERR_WITH_MSG;
     }
 
   memset (bport, 0x0, sizeof (bport));
   for (i = 0; i < uc_conf.num_broker; i++)
     {
-      char *confvalue = uca_conf_find (&(uc_conf.br_conf[i]), "%");
+      char *confvalue = cm_br_conf_get_value (&(uc_conf.br_conf[i]), "%");
 
       if ((confvalue != NULL) && (strcmp (brokername, confvalue) == 0))
 	{
-	  confvalue = uca_conf_find (&(uc_conf.br_conf[i]), "BROKER_PORT");
+	  confvalue =
+	    cm_br_conf_get_value (&(uc_conf.br_conf[i]), "BROKER_PORT");
 	  if (confvalue != NULL)
 	    {
 	      snprintf (bport, sizeof (bport) - 1, "%s", confvalue);
@@ -13294,7 +7305,7 @@ ts_executecasrunner (nvplist * cli_request, nvplist * cli_response,
 	}
     }
 
-  uca_unicas_conf_free (&uc_conf);
+  cm_broker_conf_free (&uc_conf);
 
   if ((casrunnerwithFile != NULL) && (strcmp (casrunnerwithFile, "yes") == 0)
       && (logfilename != NULL))
@@ -13330,13 +7341,8 @@ ts_executecasrunner (nvplist * cli_request, nvplist * cli_response,
   /* execute broker_log_converter why logfile is created */
   snprintf (log_converter_res, PATH_MAX - 1, "%s/log_converted_%lu.q_res",
 	    sco.dbmt_tmp_dir, th_id);
-#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/broker_log_converter%s",
 	    sco.szCubrid, DBMT_EXE_EXT);
-#else
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/broker_log_converter%s",
-	    CUBRID_BINDIR, DBMT_EXE_EXT);
-#endif
 
   i = 0;
   argv[i] = cmd_name;
@@ -13351,13 +7357,8 @@ ts_executecasrunner (nvplist * cli_request, nvplist * cli_response,
     }
 
   /* execute broker_log_runner through logfile that converted */
-#if !defined (DO_NOT_USE_CUBRIDENV)
   snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/broker_log_runner%s",
 	    sco.szCubrid, DBMT_EXE_EXT);
-#else
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/broker_log_runner%s",
-	    CUBRID_BINDIR, DBMT_EXE_EXT);
-#endif
   i = 0;
   argv[i] = cmd_name;
   argv[++i] = "-I";
@@ -13532,465 +7533,1018 @@ ts_getcaslogtopresult (nvplist * cli_request, nvplist * cli_response,
   return ERR_NO_ERROR;
 }
 
-static int
-get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname, char *err_buf)
+int
+tsDBMTUserLogin (nvplist * req, nvplist * res, char *_dbmt_error)
 {
-  FILE *databases_txt;
-  char *envpath;
-  char db_txt[1024];
-  char cbuf[2048];
-  char volname[1024];
-  char scan_format[128];
+  char hexacoded[PASSWD_ENC_LENGTH];
+  int ret;
+  T_DBMT_CON_DBINFO con_dbinfo;
+  char *dbname, *dbpasswd, *dbuser;
+  char *ip, *port;
 
-  if (!vol_dir || !dbname)
+  ret = cm_tsDBMTUserLogin (req, res, _dbmt_error);
+  if (ret != ERR_NO_ERROR)
     {
-      return -1;
-    }
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  envpath = getenv ("CUBRID_DATABASES");
-#else
-  envpath = sco.szCubrid_databases;
-  //envpath = CUBRID_VARDIR;
-#endif
-  if (envpath == NULL || strlen (envpath) == 0)
-    {
-      return -1;
+      return ret;
     }
 
-  snprintf (db_txt, sizeof (db_txt) - 1, "%s/%s", envpath,
+  ip = nv_get_val (req, "_IP");
+  port = nv_get_val (req, "_PORT");
+  dbname = nv_get_val (req, "dbname");
+  dbpasswd = nv_get_val (req, "dbpasswd");
+  dbuser = nv_get_val (req, "dbuser");
+
+  /* update dbinfo to conlist */
+  uEncrypt (PASSWD_LENGTH, dbpasswd, hexacoded);
+  memset (&con_dbinfo, 0, sizeof (T_DBMT_CON_DBINFO));
+  dbmt_con_set_dbinfo (&con_dbinfo, dbname, dbuser, hexacoded);
+  if (dbmt_con_write_dbinfo (&con_dbinfo, ip, port, dbname, 1, _dbmt_error) <
+      0)
+    {
+      return ERR_WITH_MSG;
+    }
+
+  return ERR_NO_ERROR;
+}
+
+
+int
+ts_remove_log (nvplist * req, nvplist * res, char *_dbmt_error)
+{
+  char *path;
+  int i;
+  int sect, sect_len;
+  char broker_name[1024];
+  int as_id;
+  T_CM_ERROR error;
+
+  nv_locate (req, "files", &sect, &sect_len);
+  if (sect >= 0)
+    {
+      for (i = 0; i < sect_len; ++i)
+	{
+	  nv_lookup (req, sect + i, NULL, &path);
+	  if ((path != NULL) && (unlink (path) != 0) && (errno != ENOENT))
+	    {
+	      sprintf (_dbmt_error, "Cannot remove file '%s' (%s)", path,
+		       strerror (errno));
+
+	      if (get_broker_info_from_filename (path, broker_name, &as_id) <
+		  0 || cm_del_cas_log (broker_name, as_id, &error) < 0)
+		{
+		  strcpy (_dbmt_error, error.err_msg);
+		  return ERR_WITH_MSG;
+		}
+	      _dbmt_error[0] = '\0';
+	    }
+	}			/* end of for */
+    }
+  return ERR_NO_ERROR;
+}
+
+static int
+_tsAppendDBList (nvplist * res, char dbdir_flag)
+{
+  FILE *infile;
+  char *dbinfo[4];
+  char strbuf[1024], file[PATH_MAX];
+  char hname[128];
+  struct hostent *hp;
+  unsigned char ip_addr[4];
+  char *token = NULL;
+
+  snprintf (file, PATH_MAX - 1, "%s/%s", sco.szCubrid_databases,
 	    CUBRID_DATABASE_TXT);
-  databases_txt = fopen (db_txt, "r");
-  if (databases_txt == NULL)
+  if ((infile = fopen (file, "rt")) == NULL)
     {
-      return -1;
+      return ERR_DATABASETXT_OPEN;
     }
 
-  snprintf (scan_format, sizeof (scan_format) - 1, "%%%lus %%%lus %%*s %%*s",
-	    (unsigned long) sizeof (volname) - 1,
-	    (unsigned long) vol_dir_size - 1);
-
-  while (fgets (cbuf, sizeof (cbuf), databases_txt))
+  memset (hname, 0, sizeof (hname));
+  gethostname (hname, sizeof (hname));
+  if ((hp = gethostbyname (hname)) == NULL)
     {
-      if (sscanf (cbuf, scan_format, volname, vol_dir) < 2)
+      return ERR_NO_ERROR;
+    }
+  memcpy (ip_addr, hp->h_addr_list[0], 4);
+
+  nv_add_nvp (res, "open", "dblist");
+  while (fgets (strbuf, sizeof (strbuf), infile))
+    {
+      if (string_tokenize (strbuf, dbinfo, 4) < 0)
 	{
 	  continue;
 	}
-      if (strcmp (volname, dbname) == 0)
+      for (token = strtok (dbinfo[2], ":"); token != NULL;
+	   token = strtok (NULL, ":"))
 	{
-	  fclose (databases_txt);
-	  return 1;
+	  if ((hp = gethostbyname (token)) == NULL)
+	    continue;
+
+	  if (_op_check_is_localhost (token, hname) >= 0)
+	    {
+	      nv_add_nvp (res, "dbname", dbinfo[0]);
+
+	      if (dbdir_flag)
+		{
+		  nv_add_nvp (res, "dbdir", dbinfo[1]);
+		}
+	      break;
+	    }
+	}
+    }
+  nv_add_nvp (res, "close", "dblist");
+  fclose (infile);
+  return ERR_NO_ERROR;
+}
+
+/**
+ * get port info from brokers config, that located by <broker_name>
+ */
+static char *
+_op_get_port_from_config (T_CM_BROKER_CONF * uc_conf, char *broker_name)
+{
+  int pos;
+  char *name;
+  for (pos = 0; pos < uc_conf->num_broker; pos++)
+    {
+      name = cm_br_conf_get_value (&(uc_conf->br_conf[pos]), "%");
+      if (name != NULL && strcasecmp (broker_name, name) == 0)
+	{
+	  return cm_br_conf_get_value (&(uc_conf->br_conf[pos]),
+				       "BROKER_PORT");
 	}
     }
 
-  fclose (databases_txt);
-  return -1;
+  /* not found. in this case returns zero value, it is means unknown port. */
+  return "0";
 }
 
-static int
-getservershmid (char *dir, char *dbname, char *err_buf)
-{
-  int shm_key;
-  char key_file[PATH_MAX], cbuf[1024];
-  FILE *fdkey_file;
-
-  if (!dir || !dbname)
-    {
-      return -1;
-    }
-
-  snprintf (key_file, PATH_MAX - 1, "%s/%s_shm.key", dir, dbname);
-  fdkey_file = fopen (key_file, "r");
-  if (fdkey_file == NULL)
-    {
-      return -1;
-    }
-  if (fgets (cbuf, sizeof (cbuf), fdkey_file) == NULL)
-    {
-      return -1;
-    }
-
-  shm_key = strtol (cbuf, NULL, 16);
-  fclose (fdkey_file);
-  return shm_key;
-}
-
-
-#if defined(WINDOWS)
+/* Read dbmt password file and append user information to nvplist */
 static void
-shm_key_to_name (int shm_key, char *name_str)
+_tsAppendDBMTUserList (nvplist * res, T_DBMT_USER * dbmt_user,
+		       char *_dbmt_error)
 {
-  sprintf (name_str, "cubrid_shm_%d", shm_key);
-}
-#endif
+  char decrypted[PASSWD_LENGTH + 1];
+  const char *unicas_auth, *dbcreate = NULL, *status_monitor = NULL;
+  int i, j;
 
+  nv_add_nvp (res, "open", "userlist");
+  for (i = 0; i < dbmt_user->num_dbmt_user; i++)
+    {
+      if (dbmt_user->user_info[i].user_name[0] == '\0')
+	{
+	  continue;
+	}
+      nv_add_nvp (res, "open", "user");
+      nv_add_nvp (res, "id", dbmt_user->user_info[i].user_name);
+      uDecrypt (PASSWD_LENGTH, dbmt_user->user_info[i].user_passwd,
+		decrypted);
+      nv_add_nvp (res, "passwd", decrypted);
+      nv_add_nvp (res, "open", "dbauth");
+      unicas_auth = NULL;
+      /* add dbinfo */
+      for (j = 0; j < dbmt_user->user_info[i].num_dbinfo; j++)
+	{
+	  if (dbmt_user->user_info[i].dbinfo[j].dbname[0] == '\0')
+	    {
+	      continue;
+	    }
+	  nv_add_nvp (res, "dbname",
+		      dbmt_user->user_info[i].dbinfo[j].dbname);
+	  nv_add_nvp (res, "dbid", dbmt_user->user_info[i].dbinfo[j].uid);
+#if 0
+	  uDecrypt (PASSWD_LENGTH, dbmt_user->user_info[i].dbinfo[j].passwd,
+		    decrypted);
+	  nv_add_nvp (res, "dbpasswd", decrypted);
+#endif
+	  nv_add_nvp (res, "dbpasswd", "");
+
+	  nv_add_nvp (res, "dbbrokeraddress",
+		      dbmt_user->user_info[i].dbinfo[j].broker_address);
+	}
+      nv_add_nvp (res, "close", "dbauth");
+
+      /* add auth info */
+      for (j = 0; j < dbmt_user->user_info[i].num_authinfo; j++)
+	{
+	  if (dbmt_user->user_info[i].authinfo[j].domain[0] == '\0')
+	    {
+	      continue;
+	    }
+	  if (strcmp (dbmt_user->user_info[i].authinfo[j].domain, "unicas") ==
+	      0)
+	    {
+	      unicas_auth = dbmt_user->user_info[i].authinfo[j].auth;
+	      nv_add_nvp (res, "casauth",
+			  dbmt_user->user_info[i].authinfo[j].auth);
+	      continue;
+	    }
+	  else
+	    if (strcmp
+		(dbmt_user->user_info[i].authinfo[j].domain, "dbcreate") == 0)
+	    {
+	      dbcreate = dbmt_user->user_info[i].authinfo[j].auth;
+	      nv_add_nvp (res, "dbcreate",
+			  dbmt_user->user_info[i].authinfo[j].auth);
+	      continue;
+	    }
+	  else
+	    if (strcmp
+		(dbmt_user->user_info[i].authinfo[j].domain,
+		 "statusmonitorauth") == 0)
+	    {
+	      nv_add_nvp (res, "statusmonitorauth",
+			  dbmt_user->user_info[i].authinfo[j].auth);
+	      continue;
+	    }
+	}
+      if (unicas_auth == NULL)
+	{
+	  nv_add_nvp (res, "casauth", "none");
+	}
+      if (CLIENT_VERSION >= EMGR_MAKE_VER (7, 0))
+	{
+	  if (dbcreate == NULL)
+	    {
+	      nv_add_nvp (res, "dbcreate", "none");
+	    }
+	}
+      nv_add_nvp (res, "close", "user");
+    }
+  nv_add_nvp (res, "close", "userlist");
+}
+
+static char *
+get_user_name (int uid, char *name_buf)
+{
 #if defined(WINDOWS)
-static void *
-op_server_shm_open (int shm_key, HANDLE * hOut)
-{
-  LPVOID lpvMem = NULL;		/* address of shared memory */
-  HANDLE hMapObject = NULL;
-  char shm_name[64];
-
-  *hOut = NULL;
-
-  shm_key_to_name (shm_key, shm_name);
-
-  hMapObject = OpenFileMapping (FILE_MAP_WRITE,	/* read/write access */
-				FALSE,	/* inherit flag */
-				shm_name);	/* name of map object */
-  if (hMapObject == NULL)
-    {
-      return NULL;
-    }
-
-  /* Get a pointer to the file-mapped shared memory. */
-  lpvMem = MapViewOfFile (hMapObject,	/* object to map view of    */
-			  FILE_MAP_WRITE,	/* read/write access        */
-			  0,	/* high offset:   map from  */
-			  0,	/* low offset:    beginning */
-			  0);	/* default: map entire file */
-  if (lpvMem == NULL)
-    {
-      CloseHandle (hMapObject);
-      return NULL;
-    }
-
-  *hOut = hMapObject;
-  return lpvMem;
-}
+  strcpy (name_buf, "");
 #else
-static void *
-op_server_shm_open (int shm_key)
-{
-  int mid;
-  void *p;
+  struct passwd *pwd;
 
-  if (shm_key < 0)
+  pwd = getpwuid (uid);
+  if (pwd->pw_name)
     {
-      return NULL;
+      strcpy (name_buf, pwd->pw_name);
     }
-  mid = shmget (shm_key, 0, SH_MODE);
-
-  if (mid == -1)
+  else
     {
-      return NULL;
+      name_buf[0] = '\0';
     }
-
-  p = shmat (mid, (char *) 0, SHM_RDONLY);
-  if (p == (void *) -1)
-    {
-      return NULL;
-    }
-
-  return p;
-}
 #endif
 
+  return name_buf;
+}
 
 static int
-get_filename_from_path (const char *path, char *filename)
+uca_conf_write (T_CM_BROKER_CONF * uc_conf, char *del_broker,
+		char *_dbmt_error)
 {
-  size_t i, len;
-  const char *p;
+  char buf[512];
+  FILE *fp;
+  int i, j;
+  struct stat statbuf;
 
-  if (!path || !filename)
+  for (i = 0; i < uc_conf->num_header; i++)
+    {
+      if (uc_conf->header_conf[i].name == NULL ||
+	  uc_conf->header_conf[i].value == NULL)
+	{
+	  return ERR_MEM_ALLOC;
+	}
+    }
+  for (i = 0; i < uc_conf->num_broker; i++)
+    {
+      for (j = 0; j < uc_conf->br_conf[i].num; j++)
+	{
+	  if (uc_conf->br_conf[i].item[j].name == NULL ||
+	      uc_conf->br_conf[i].item[j].value == NULL)
+	    {
+	      return ERR_MEM_ALLOC;
+	    }
+	}
+    }
+
+  cm_get_broker_file (UC_FID_CUBRID_BROKER_CONF, buf);
+
+  if (stat (buf, &statbuf) < 0)
+    {
+      cm_get_broker_file (UC_FID_CUBRID_CAS_CONF, buf);
+      if (stat (buf, &statbuf) < 0)
+	{
+	  cm_get_broker_file (UC_FID_UNICAS_CONF, buf);
+	  if (stat (buf, &statbuf) < 0)
+	    {
+	      cm_get_broker_file (UC_FID_CUBRID_BROKER_CONF, buf);
+	    }
+	}
+    }
+
+  if ((fp = fopen (buf, "w")) == NULL)
+    {
+      strcpy (_dbmt_error, buf);
+      return ERR_FILE_OPEN_FAIL;
+    }
+  fprintf (fp, "[broker]\n");
+  for (i = 0; i < uc_conf->num_header; i++)
+    {
+      fprintf (fp, "%-25s =%s\n",
+	       uc_conf->header_conf[i].name, uc_conf->header_conf[i].value);
+    }
+  fprintf (fp, "\n");
+  for (i = 0; i < uc_conf->num_broker; i++)
+    {
+      if ((del_broker != NULL) &&
+	  (strcmp (uc_conf->br_conf[i].item[0].value, del_broker) == 0))
+	{
+	  continue;
+	}
+      fprintf (fp, "[%s%s]\n", uc_conf->br_conf[i].item[0].name,
+	       to_upper_str (uc_conf->br_conf[i].item[0].value, buf));
+      for (j = 1; j < uc_conf->br_conf[i].num; j++)
+	{
+	  if (uc_conf->br_conf[i].item[j].value[0] == '\0')
+	    continue;
+	  fprintf (fp, "%-25s =%s\n", uc_conf->br_conf[i].item[j].name,
+		   uc_conf->br_conf[i].item[j].value);
+	}
+      fprintf (fp, "\n");
+    }
+  fclose (fp);
+  return ERR_NO_ERROR;
+}
+
+static int
+_tsParseSpacedb (nvplist * req, nvplist * res, char *dbname,
+		 char *_dbmt_error, T_SPACEDB_RESULT * cmd_res)
+{
+  int pagesize, logpagesize, i;
+  T_SPACEDB_INFO *vol_info;
+  char dbdir[PATH_MAX];
+#if defined(WINDOWS)
+  WIN32_FIND_DATA data;
+  char find_file[PATH_MAX];
+  HANDLE handle;
+  int found;
+#else
+  DIR *dirp = NULL;
+  struct dirent *dp = NULL;
+#endif
+
+  pagesize = cmd_res->page_size;
+  logpagesize = cmd_res->log_page_size;
+  nv_update_val_int (res, "pagesize", pagesize);
+  nv_update_val_int (res, "logpagesize", logpagesize);
+
+  vol_info = cmd_res->vol_info;
+  for (i = 0; i < cmd_res->num_vol; i++)
+    {
+      nv_add_nvp (res, "open", "spaceinfo");
+      nv_add_nvp (res, "spacename", vol_info[i].vol_name);
+      nv_add_nvp (res, "type", vol_info[i].purpose);
+      nv_add_nvp (res, "location", vol_info[i].location);
+      nv_add_nvp_int (res, "totalpage", vol_info[i].total_page);
+      nv_add_nvp_int (res, "freepage", vol_info[i].free_page);
+      nv_add_nvp_time (res, "date", vol_info[i].date, "%04d%02d%02d",
+		       NV_ADD_DATE);
+      nv_add_nvp (res, "close", "spaceinfo");
+    }
+
+  vol_info = cmd_res->tmp_vol_info;
+  for (i = 0; i < cmd_res->num_tmp_vol; i++)
+    {
+      nv_add_nvp (res, "open", "spaceinfo");
+      nv_add_nvp (res, "spacename", vol_info[i].vol_name);
+      nv_add_nvp (res, "type", vol_info[i].purpose);
+      nv_add_nvp (res, "location", vol_info[i].location);
+      nv_add_nvp_int (res, "totalpage", vol_info[i].total_page);
+      nv_add_nvp_int (res, "freepage", vol_info[i].free_page);
+      nv_add_nvp_time (res, "date", vol_info[i].date, "%04d%02d%02d",
+		       NV_ADD_DATE);
+      nv_add_nvp (res, "close", "spaceinfo");
+    }
+
+  if (uRetrieveDBLogDirectory (dbname, dbdir) != ERR_NO_ERROR)
+    {
+      strcpy (_dbmt_error, dbname);
+      return ERR_DBDIRNAME_NULL;
+    }
+
+  /* read entries in the directory and generate result */
+#if defined(WINDOWS)
+  snprintf (find_file, PATH_MAX - 1, "%s/*", dbdir);
+  if ((handle = FindFirstFile (find_file, &data)) == INVALID_HANDLE_VALUE)
+#else
+  if ((dirp = opendir (dbdir)) == NULL)
+#endif
+    {
+      sprintf (_dbmt_error, "%s", dbdir);
+      return ERR_DIROPENFAIL;
+    }
+
+#if defined(WINDOWS)
+  for (found = 1; found; found = FindNextFile (handle, &data))
+#else
+  while ((dp = readdir (dirp)) != NULL)
+#endif
+    {
+      int baselen;
+      char *fname;
+
+#if defined(WINDOWS)
+      fname = data.cFileName;
+#else
+      fname = dp->d_name;
+#endif
+      baselen = strlen (dbname);
+
+      if (strncmp (fname, dbname, baselen) == 0)
+	{
+	  if (!strcmp (fname + baselen, CUBRID_ACT_LOG_EXT))
+	    {
+	      _ts_gen_spaceinfo (res, fname, dbdir, "Active_log",
+				 logpagesize);
+	    }
+	  else if (!strncmp
+		   (fname + baselen, CUBRID_ARC_LOG_EXT,
+		    CUBRID_ARC_LOG_EXT_LEN))
+	    {
+	      _ts_gen_spaceinfo (res, fname, dbdir, "Archive_log",
+				 logpagesize);
+	    }
+#if 0
+	  else if (strncmp (fname + baselen, "_lginf", 6) == 0)
+	    {
+	      _ts_gen_spaceinfo (res, fname, dbdir, "Generic_log",
+				 logpagesize);
+	    }
+#endif
+
+	}
+    }
+#if defined(WINDOWS)
+  FindClose (handle);
+#else
+  closedir (dirp);
+#endif
+
+  /* add last line */
+  nv_add_nvp (res, "open", "spaceinfo");
+  nv_add_nvp (res, "spacename", "Total");
+  nv_add_nvp (res, "type", "");
+  nv_add_nvp (res, "location", "");
+  nv_add_nvp (res, "totlapage", "0");
+  nv_add_nvp (res, "freepage", "0");
+  nv_add_nvp (res, "date", "");
+  nv_add_nvp (res, "close", "spaceinfo");
+
+  if (uRetrieveDBDirectory (dbname, dbdir) == ERR_NO_ERROR)
+    {
+      nv_add_nvp_int (res, "freespace", ut_disk_free_space (dbdir));
+    }
+  else
+    {
+      nv_add_nvp_int (res, "freespace", -1);
+    }
+  return ERR_NO_ERROR;
+}
+
+static void
+_ts_gen_spaceinfo (nvplist * res, const char *filename,
+		   const char *dbinstalldir, const char *type, int pagesize)
+{
+  char volfile[PATH_MAX];
+  struct stat statbuf;
+
+  nv_add_nvp (res, "open", "spaceinfo");
+  nv_add_nvp (res, "spacename", filename);
+  nv_add_nvp (res, "type", type);
+  nv_add_nvp (res, "location", dbinstalldir);
+
+  snprintf (volfile, PATH_MAX - 1, "%s/%s", dbinstalldir, filename);
+  stat (volfile, &statbuf);
+
+  nv_add_nvp_int (res, "totalpage", statbuf.st_size / pagesize);
+  nv_add_nvp (res, "freepage", " ");
+
+  nv_add_nvp_time (res, "date", statbuf.st_mtime, "%04d%02d%02d",
+		   NV_ADD_DATE);
+
+  nv_add_nvp (res, "close", "spaceinfo");
+  return;
+}
+
+static int
+_ts_lockdb_parse_us (nvplist * res, FILE * infile)
+{
+  char buf[1024], s[256], s1[256], s2[256], s3[256], s4[256];
+  char *temp, *temp2;
+  int scan_matched;
+  int flag = 0;
+
+  nv_add_nvp (res, "open", "lockinfo");
+  while (fgets (buf, sizeof (buf), infile))
+    {
+      sscanf (buf, "%255s", s);
+
+      if (flag == 0 && !strcmp (s, "***"))
+	{
+	  fgets (buf, sizeof (buf), infile);
+	  scan_matched =
+	    sscanf (buf, "%*s %*s %*s %*s %255s %*s %*s %*s %*s %255s", s1,
+		    s2);
+
+	  if (scan_matched != 2)
+	    {
+	      return -1;
+	    }
+	  s1[strlen (s1) - 1] = '\0';
+	  nv_add_nvp (res, "esc", s1);
+	  nv_add_nvp (res, "dinterval", s2);
+	  flag = 1;
+	}
+      else if (flag == 1)
+	{
+	  if (strcmp (s, "Transaction") == 0)
+	    {
+	      scan_matched =
+		sscanf (buf, "%*s %*s %255s %255s %255s", s1, s2, s3);
+
+	      if (scan_matched != 3)
+		{
+		  return -1;
+		}
+	      s1[strlen (s1) - 1] = '\0';
+	      s2[strlen (s2) - 1] = '\0';
+	      s3[strlen (s3) - 1] = '\0';
+
+	      nv_add_nvp (res, "open", "transaction");
+	      nv_add_nvp (res, "index", s1);
+	      nv_add_nvp (res, "pname", s2);
+
+	      temp = strchr (s3, '@');
+	      if (temp != NULL)
+		{
+		  strncpy (buf, s3, (int) (temp - s3));
+		  buf[(int) (temp - s3)] = '\0';
+		  nv_add_nvp (res, "uid", buf);
+		}
+
+	      temp2 = strrchr (s3, '|');
+	      if (temp2 != NULL)
+		{
+		  strncpy (buf, temp + 1, (int) (temp2 - temp - 1));
+		  buf[(int) (temp2 - temp) - 1] = '\0';
+		  nv_add_nvp (res, "host", buf);
+		}
+	      nv_add_nvp (res, "pid", temp2 + 1);
+
+	      fgets (buf, sizeof (buf), infile);
+	      buf[strlen (buf) - 1] = '\0';
+	      nv_add_nvp (res, "isolevel", buf + strlen ("Isolation "));
+
+	      fgets (buf, sizeof (buf), infile);
+	      if (strncmp (buf, "State", strlen ("State")) == 0)
+		{
+		  fgets (buf, sizeof (buf), infile);
+		}
+
+	      scan_matched = sscanf (buf, "%*s %255s", s1);
+
+	      if (scan_matched != 1)
+		{
+		  return -1;
+		}
+	      nv_add_nvp (res, "timeout", s1);
+	      nv_add_nvp (res, "close", "transaction");
+	    }
+	  else if (strcmp (s, "Object") == 0)
+	    {
+	      fgets (buf, sizeof (buf), infile);
+	      scan_matched =
+		sscanf (buf, "%*s %*s %*s %*s %*s %*s %*s %*s %255s", s1);
+	      if (scan_matched != 1)
+		{
+		  return -1;
+		}
+	      nv_add_nvp (res, "open", "lot");
+	      nv_add_nvp (res, "numlocked", s1);
+
+	      fgets (buf, sizeof (buf), infile);
+	      scan_matched =
+		sscanf (buf, "%*s %*s %*s %*s %*s %*s %*s %*s %*s %255s", s2);
+	      if (scan_matched != 1)
+		{
+		  return -1;
+		}
+	      nv_add_nvp (res, "maxnumlock", s2);
+	      flag = 2;
+	    }
+	}			/* end of if (flag == 1) */
+      else if (flag == 2)
+	{
+	  char value[1024];
+
+	  while (!strcmp (s, "OID"))
+	    {
+	      int num_holders, num_b_holders, num_waiters, scan_matched;
+
+	      scan_matched =
+		sscanf (buf, "%*s %*s %255s %255s %255s", s1, s2, s3);
+	      if (scan_matched != 3)
+		return -1;
+
+	      snprintf (value, sizeof (value) - 1, "%s%s%s", s1, s2, s3);
+
+	      nv_add_nvp (res, "open", "entry");
+	      nv_add_nvp (res, "oid", value);
+
+	      fgets (buf, sizeof (buf), infile);
+	      sscanf (buf, "%*s %*s %255s", s);
+
+	      s1[0] = s2[0] = s3[0] = '\0';
+	      scan_matched = 0;
+	      if ((strcmp (s, "Class") == 0) || (strcmp (s, "Instance") == 0))
+		{
+		  char *p;
+		  p = strchr (buf, ':');
+		  buf[strlen (buf) - 1] = '\0';
+		  if (buf[strlen (buf) - 1] == '.')
+		    {
+		      buf[strlen (buf) - 1] = '\0';
+		    }
+		  nv_add_nvp (res, "ob_type", p + 2);
+		  fgets (buf, sizeof (buf), infile);
+		}
+	      else if (strcmp (s, "Root") == 0)
+		{
+		  nv_add_nvp (res, "ob_type", "Root class");
+		  fgets (buf, sizeof (buf), infile);
+		}
+	      else
+		{
+		  /* Current test is not 'OID = ...' and if 'Total mode of holders ...' then */
+		  scan_matched =
+		    sscanf (buf, "%*s %*s %255s %*s %*s %255s %*s %*s %255s",
+			    s1, s2, s3);
+		  if ((strncmp (s1, "of", 2) == 0)
+		      && (strncmp (s3, "of", 2) == 0))
+		    {
+		      nv_add_nvp (res, "ob_type", "None");
+		    }
+		  else
+		    {
+		      return -1;
+		    }
+		}
+
+	      /* already get  scan_matched value, don't sscanf */
+	      if (scan_matched == 0)
+		scan_matched =
+		  sscanf (buf, "%*s %*s %255s %*s %*s %255s %*s %*s %255s",
+			  s1, s2, s3);
+
+	      if ((strncmp (s1, "of", 2) == 0)
+		  && (strncmp (s3, "of", 2) == 0))
+		{
+		  /* ignore UnixWare's 'Total mode of ...' text */
+		  fgets (buf, sizeof (buf), infile);
+		  scan_matched =
+		    sscanf (buf, "%*s %*s %255s %*s %*s %255s %*s %*s %255s",
+			    s1, s2, s3);
+		}
+
+	      if (scan_matched != 3)
+		{
+		  return -1;
+		}
+	      s1[strlen (s1) - 1] = '\0';
+	      s2[strlen (s2) - 1] = '\0';
+
+	      num_holders = atoi (s1);
+	      num_b_holders = atoi (s2);
+	      num_waiters = atoi (s3);
+
+	      if (num_waiters < 0 || num_waiters >= INT_MAX)
+		{
+		  return -1;
+		}
+
+	      nv_add_nvp (res, "num_holders", s1);
+	      nv_add_nvp (res, "num_b_holders", s2);
+	      nv_add_nvp (res, "num_waiters", s3);
+
+	      while (fgets (buf, sizeof (buf), infile))
+		{
+		  sscanf (buf, "%255s", s);
+		  if (strcmp (s, "NON_2PL_RELEASED:") == 0)
+		    {
+		      fgets (buf, sizeof (buf), infile);
+		      while (sscanf (buf, "%255s", s))
+			{
+			  if (strcmp (s, "Tran_index") != 0)
+			    {
+			      break;
+			    }
+			  else
+			    {
+			      if (fgets (buf, sizeof (buf), infile) == NULL)
+				{
+				  break;
+				}
+			    }
+			}
+		      break;
+		    }		/* ignore NON_2PL_RELEASED information */
+
+		  sscanf (buf, "%*s %255s", s);
+		  if (strcmp (s, "HOLDERS:") == 0)
+		    {
+		      int index;
+
+		      for (index = 0; index < num_holders; index++)
+			{
+			  /* make lock holders information */
+
+			  fgets (buf, sizeof (buf), infile);
+			  scan_matched =
+			    sscanf (buf,
+				    "%*s %*s %255s %*s %*s %255s %*s %*s %255s %*s %*s %255s",
+				    s1, s2, s3, s4);
+
+			  /* parshing error */
+			  if (scan_matched < 3)
+			    {
+			      return -1;
+			    }
+			  if (scan_matched == 4)
+			    {
+			      /* nsubgranules is existed */
+			      s3[strlen (s3) - 1] = '\0';
+			    }
+
+			  s1[strlen (s1) - 1] = '\0';
+			  s2[strlen (s2) - 1] = '\0';
+
+			  nv_add_nvp (res, "open", "lock_holders");
+			  nv_add_nvp (res, "tran_index", s1);
+			  nv_add_nvp (res, "granted_mode", s2);
+			  nv_add_nvp (res, "count", s3);
+			  if (scan_matched == 4)
+			    {
+			      nv_add_nvp (res, "nsubgranules", s4);
+			    }
+			  nv_add_nvp (res, "close", "lock_holders");
+			}
+
+		      if ((num_b_holders == 0) && (num_waiters == 0))
+			{
+			  break;
+			}
+		    }
+		  else if (strcmp (s, "LOCK") == 0)
+		    {
+		      int index;
+		      char *p;
+
+		      for (index = 0; index < num_b_holders; index++)
+			{
+			  /* make blocked lock holders */
+			  int scan_matched;
+			  fgets (buf, sizeof (buf), infile);
+			  scan_matched =
+			    sscanf (buf,
+				    "%*s %*s %255s %*s %*s %255s %*s %*s %255s %*s %*s %255s",
+				    s1, s2, s3, s4);
+
+			  /* parshing error */
+			  if (scan_matched < 3)
+			    {
+			      return -1;
+			    }
+			  if (scan_matched == 4)
+			    {
+			      /* nsubgranules is existed */
+			      s3[strlen (s3) - 1] = '\0';
+			    }
+
+			  s1[strlen (s1) - 1] = '\0';
+			  s2[strlen (s2) - 1] = '\0';
+
+			  nv_add_nvp (res, "open", "b_holders");
+			  nv_add_nvp (res, "tran_index", s1);
+			  nv_add_nvp (res, "granted_mode", s2);
+			  nv_add_nvp (res, "count", s3);
+
+			  if (scan_matched == 4)
+			    {
+			      nv_add_nvp (res, "nsubgranules", s4);
+			    }
+			  fgets (buf, sizeof (buf), infile);
+			  sscanf (buf, "%*s %*s %255s", s1);
+			  nv_add_nvp (res, "b_mode", s1);
+
+			  fgets (buf, sizeof (buf), infile);
+			  p = strchr (buf, '=');
+			  buf[strlen (buf) - 1] = '\0';
+			  nv_add_nvp (res, "start_at", p + 2);
+
+			  fgets (buf, sizeof (buf), infile);
+			  sscanf (buf, "%*s %*s %255s", s1);
+			  nv_add_nvp (res, "waitfornsec", s1);
+
+			  nv_add_nvp (res, "close", "b_holders");
+			}
+
+		      if (num_waiters == 0)
+			{
+			  break;
+			}
+		    }
+		  else if (strcmp (s, "WAITERS:") == 0)
+		    {
+		      int index;
+
+		      for (index = 0; index < num_waiters; index++)
+			{
+			  /* make lock waiters */
+			  char *p;
+
+			  fgets (buf, sizeof (buf), infile);
+			  sscanf (buf, "%*s %*s %255s %*s %*s %255s", s1, s2);
+			  s1[strlen (s1) - 1] = '\0';
+
+			  nv_add_nvp (res, "open", "waiters");
+			  nv_add_nvp (res, "tran_index", s1);
+			  nv_add_nvp (res, "b_mode", s2);
+
+			  fgets (buf, sizeof (buf), infile);
+			  p = strchr (buf, '=');
+			  buf[strlen (buf) - 1] = '\0';
+			  nv_add_nvp (res, "start_at", p + 2);
+
+			  fgets (buf, sizeof (buf), infile);
+			  sscanf (buf, "%*s %*s %255s", s1);
+			  nv_add_nvp (res, "waitfornsec", s1);
+
+			  nv_add_nvp (res, "close", "waiters");
+			}
+		      break;
+		    }
+		}		/* end of while - for just one object */
+	      nv_add_nvp (res, "close", "entry");
+	    }			/* end of while(OID) */
+	}
+    }
+  nv_add_nvp (res, "close", "lot");
+  nv_add_nvp (res, "close", "lockinfo");
+  return 0;
+}
+
+
+static char *
+to_upper_str (char *str, char *buf)
+{
+  char *p;
+
+  strcpy (buf, str);
+  for (p = buf; *p; p++)
+    {
+      if (*p >= 'a' && *p <= 'z')
+	{
+	  *p = *p - 'a' + 'A';
+	}
+    }
+  return buf;
+}
+
+static int
+op_make_triggerinput_file_add (nvplist * req, char *input_filename)
+{
+  char *name, *status, *cond_source, *priority;
+  char *event_target, *event_type, *event_time, *actiontime, *action;
+  FILE *input_file;
+
+  if (input_filename == NULL)
     {
       return 0;
     }
 
-  len = strlen (path);
-  p = NULL;
-  for (i = 0; i < len; i++)
+  input_file = fopen (input_filename, "w+");
+  if (input_file == NULL)
     {
-      if (path[i] == '/')
-	{
-	  p = path + i;
-	}
+      return 0;
     }
 
-  if (p == NULL)
+  name = nv_get_val (req, "triggername");
+  status = nv_get_val (req, "status");
+  event_type = nv_get_val (req, "eventtype");
+  event_target = nv_get_val (req, "eventtarget");
+  event_time = nv_get_val (req, "conditiontime");
+  cond_source = nv_get_val (req, "condition");
+  actiontime = nv_get_val (req, "actiontime");
+  action = nv_get_val (req, "action");
+  priority = nv_get_val (req, "priority");
+/*		  fprintf(input_file, ";autocommit off\n");*/
+  fprintf (input_file, "create trigger\t%s\n", name);
+
+  if (status)
     {
-      return -1;
+      fprintf (input_file, "status\t%s\n", status);
     }
-  else if (p == path + len - 1)
+  if (priority)
     {
-      return -1;
+      fprintf (input_file, "priority\t%s\n", priority);
     }
-  else
+  fprintf (input_file, "%s\t%s\t", event_time, event_type);
+
+  if (event_target)
     {
-      strcpy (filename, (p + 1));
+      fprintf (input_file, "ON\t%s\n", event_target);
     }
+  if (cond_source)
+    {
+      fprintf (input_file, "if\t%s\n", cond_source);
+    }
+  fprintf (input_file, "execute\t");
+
+  if (actiontime)
+    {
+      fprintf (input_file, "%s\t", actiontime);
+    }
+  fprintf (input_file, "%s\n", action);
+  fprintf (input_file, "\n\ncommit\n\n");
+
+  fclose (input_file);
 
   return 1;
 }
 
-int
-tsDBMTUserLogin (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  int errcode;
-  char *targetid, *dbname, *dbuser, *dbpasswd;
-  DB_OBJECT *user, *obj;
-  DB_VALUE v;
-  DB_COLLECTION *col;
-  int i;
-  bool isdba = false;
-  T_DB_SERVICE_MODE db_mode;
-
-  targetid = nv_get_val (in, "targetid");
-  dbname = nv_get_val (in, "dbname");
-  dbuser = nv_get_val (in, "dbuser");
-  dbpasswd = nv_get_val (in, "dbpasswd");
-
-  db_mode = uDatabaseMode (dbname);
-  if (db_mode == DB_SERVICE_MODE_SA)
-    {
-      sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
-    }
-
-  nv_add_nvp (out, "targetid", targetid);
-  nv_add_nvp (out, "dbname", dbname);
-
-  if (db_mode == DB_SERVICE_MODE_NONE)
-    {
-      return (user_login_sa (out, _dbmt_error, dbname, dbuser, dbpasswd));
-    }
-
-  db_login (dbuser, dbpasswd);
-  errcode = db_restart (DB_RESTART_SERVER_NAME, 0, dbname);
-  if (errcode < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      return ERR_WITH_MSG;
-    }
-
-  if (uStringEqualIgnoreCase (dbuser, "DBA"))
-    {
-      nv_add_nvp (out, "authority", "isdba");
-      db_shutdown ();
-      return ERR_NO_ERROR;
-    }
-
-  user = db_find_user (dbuser);
-
-  if (user == NULL)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-
-  db_get (user, "groups", &v);
-  col = db_get_set (&v);
-  for (i = 0; i < db_set_size (col); i++)
-    {
-      db_set_get (col, i, &v);
-      obj = db_get_object (&v);
-      db_get (obj, "name", &v);
-      if (uStringEqualIgnoreCase (db_get_string (&v), "DBA"))
-	{
-	  isdba = true;
-	  break;
-	}
-    }
-
-  if (isdba)
-    {
-      nv_add_nvp (out, "authority", "isdba");
-    }
-  else
-    {
-      nv_add_nvp (out, "authority", "isnotdba");
-    }
-
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
-int
-ts_change_owner (nvplist * in, nvplist * out, char *_dbmt_error)
-{
-  char *class_name, *owner_name;
-  char buf[1024];
-  DB_OBJECT *classobj;
-  DB_QUERY_RESULT *result;
-  DB_QUERY_ERROR query_error;
-
-  if (_op_db_login (out, in, _dbmt_error) < 0)
-    {
-      return ERR_WITH_MSG;
-    }
-  class_name = nv_get_val (in, "classname");
-  owner_name = nv_get_val (in, "ownername");
-  classobj = db_find_class (class_name);
-
-  if (class_name != NULL && owner_name != NULL)
-    {
-      snprintf (buf, sizeof (buf) - 1,
-		"CALL change_owner('%s', '%s') ON CLASS db_authorizations",
-		class_name, owner_name);
-    }
-
-  if (db_execute (buf, &result, &query_error) < 0)
-    {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-  db_query_end (result);
-
-  if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
-    {
-      db_shutdown ();
-      return ERR_WITH_MSG;
-    }
-  db_commit_transaction ();
-
-  db_shutdown ();
-  return ERR_NO_ERROR;
-}
-
 static int
-user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser,
-	       char *dbpasswd)
+op_make_triggerinput_file_drop (nvplist * req, char *input_filename)
 {
-  char opcode[10];
-  char outfile[PATH_MAX], errfile[PATH_MAX];
-  const char *argv[10];
-  char cmd_name[512];
-  char *outmsg = NULL, *errmsg = NULL;
+  char *trigger_name;
+  FILE *input_file;
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  snprintf (outfile, PATH_MAX - 1, "%s/tmp/DBMT_ems_sa.%d", sco.szCubrid,
-	    (int) getpid ());
-#else
-  snprintf (outfile, PATH_MAX - 1, "%s/DBMT_ems_sa.%d", CUBRID_TMPDIR,
-	    (int) getpid ());
-#endif
-  snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
-  unlink (outfile);
-  unlink (errfile);
-
-  snprintf (opcode, sizeof (opcode) - 1, "%d", EMS_SA_DBMT_USER_LOGIN);
-
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/bin/cub_jobsa%s",
-	    sco.szCubrid, DBMT_EXE_EXT);
-#else
-  snprintf (cmd_name, sizeof (cmd_name) - 1, "%s/cub_jobsa%s",
-	    CUBRID_BINDIR, DBMT_EXE_EXT);
-#endif
-
-  argv[0] = cmd_name;
-  argv[1] = opcode;
-  argv[2] = outfile;
-  argv[3] = errfile;
-  argv[4] = (dbname ? dbname : "");
-  argv[5] = (dbuser ? dbuser : "");
-  argv[6] = (dbpasswd ? dbpasswd : "");
-  argv[7] = NULL;
-
-  if (run_child (argv, 1, NULL, NULL, NULL, NULL) < 0)
-    {				/* cub_jobsa */
-      strcpy (_dbmt_error, argv[0]);
-      return ERR_SYSTEM_CALL;
-    }
-
-  if (read_file (outfile, &outmsg) < 0)
-    {
-      strcpy (_dbmt_error, "internal error");
-      goto login_err;
-    }
-  if (read_file (errfile, &errmsg) < 0)
-    {
-      strcpy (_dbmt_error, "internal error");
-      goto login_err;
-    }
-
-  ut_trim (errmsg);
-  ut_trim (outmsg);
-
-  if (errmsg != NULL && strlen (errmsg) > 0)
-    {
-      strcpy (_dbmt_error, errmsg);
-      goto login_err;
-    }
-
-
-  if (uStringEqual (outmsg, "isdba"))
-    {
-      nv_add_nvp (out, "authority", "isdba");
-    }
-  else
-    {
-      nv_add_nvp (out, "authority", "isnotdba");
-    }
-
-  unlink (outfile);
-  unlink (errfile);
-  return ERR_NO_ERROR;
-
-login_err:
-  if (errmsg)
-    {
-      free (errmsg);
-    }
-  if (outmsg)
-    {
-      free (outmsg);
-    }
-  unlink (outfile);
-  unlink (errfile);
-  return ERR_WITH_MSG;
-}
-
-static int
-read_file (char *filename, char **outbuf)
-{
-  struct stat statbuf;
-  int size;
-  char *buf;
-  int fd;
-
-  *outbuf = NULL;
-
-  if (stat (filename, &statbuf) != 0)
-    {
-      return -1;
-    }
-  size = statbuf.st_size;
-
-  if (size <= 0)
+  if (input_filename == NULL)
     {
       return 0;
     }
 
-  buf = (char *) malloc (size + 1);
-  if (buf == NULL)
+  input_file = fopen (input_filename, "w+");
+  if (input_file == NULL)
     {
-      return -1;
+      return 0;
     }
-  fd = open (filename, O_RDONLY);
-  if (fd < 0)
-    {
-      free (buf);
-      return -1;
-    }
-#if defined(WINDOWS)
-  if (setmode (fd, O_BINARY) == -1)
-    {
-      close (fd);
-      free (buf);
-      return -1;
-    }
-#endif
 
-  read (fd, buf, size);
-  buf[size] = '\0';
-  close (fd);
+  trigger_name = nv_get_val (req, "triggername");
+/*		  fprintf(input_file, ";autocommit off\n");*/
+  fprintf (input_file, "drop trigger\t%s\n", trigger_name);
+  fprintf (input_file, "\n\n\ncommit\n\n");
 
-  *outbuf = buf;
-  return 0;
+  fclose (input_file);
+
+  return 1;
+}
+
+static int
+op_make_triggerinput_file_alter (nvplist * req, char *input_filename)
+{
+  char *trigger_name, *status, *priority;
+  FILE *input_file;
+
+  if (input_filename == NULL)
+    {
+      return 0;
+    }
+
+  input_file = fopen (input_filename, "w+");
+  if (input_file == NULL)
+    {
+      return 0;
+    }
+
+  trigger_name = nv_get_val (req, "triggername");
+  status = nv_get_val (req, "status");
+  priority = nv_get_val (req, "priority");
+/*		  fprintf(input_file, ";autocommit off\n");*/
+  if (status)
+    {
+      fprintf (input_file, "alter trigger\t%s\t", trigger_name);
+      fprintf (input_file, "status %s\t", status);
+    }
+
+  if (priority)
+    {
+      fprintf (input_file, "alter trigger\t%s\t", trigger_name);
+      fprintf (input_file, "priority %s\t", priority);
+    }
+
+  fprintf (input_file, "\n\n\ncommit\n\n");
+  fclose (input_file);
+
+  return 1;
 }
 
 static int
@@ -14041,55 +8595,257 @@ get_broker_info_from_filename (char *path, char *br_name, int *as_id)
 #endif
 }
 
-int
-ts_remove_log (nvplist * req, nvplist * res, char *_dbmt_error)
+static void
+op_auto_exec_query_get_newplan_id (char *id_buf, char *conf_filename)
 {
-  char *path;
-  int i;
-  int sect, sect_len;
-  char broker_name[1024];
-  int as_id;
+  FILE *conf_file;
+  char buf[MAX_JOB_CONFIG_FILE_LINE_LENGTH], id_num[5];
+  int index;
 
-  nv_locate (req, "files", &sect, &sect_len);
-  if (sect >= 0)
+  for (index = 1; index < 10000; index++)
     {
-      for (i = 0; i < sect_len; ++i)
+      int used = 0;
+      conf_file = fopen (conf_filename, "r");
+      if (conf_file == NULL)
 	{
-	  nv_lookup (req, sect + i, NULL, &path);
-	  if ((path != NULL) && (unlink (path) != 0) && (errno != ENOENT))
-	    {
-	      sprintf (_dbmt_error, "Cannot remove file '%s' (%s)", path,
-		       strerror (errno));
+	  strcpy (id_buf, "0001");
+	  return;
+	}
 
-	      if (get_broker_info_from_filename (path, broker_name, &as_id) <
-		  0 || uca_del_cas_log (broker_name, as_id, _dbmt_error) < 0)
-		{
-		  return ERR_WITH_MSG;
-		}
-	      _dbmt_error[0] = '\0';
+      while (fgets (buf, sizeof (buf), conf_file))
+	{
+	  sscanf (buf, "%*s %4s", id_num);
+	  if (atoi (id_num) == index)
+	    {
+	      used = 1;
+	      break;
 	    }
-	}			/* end of for */
+	}
+
+      if (used == 0)
+	{
+	  snprintf (id_buf, sizeof (id_buf) - 1, "%04d", index);
+	  fclose (conf_file);
+	  break;
+	}
+      fclose (conf_file);
     }
+}
+
+/* 
+ * check if dir path contains white space character,
+ * and if path contains '\', substitute it with '/'
+ */
+static int
+check_dbpath (char *dir, char *_dbmt_error)
+{
+  if (dir == NULL || *dir == '\0')
+    {
+      strcpy (_dbmt_error, "Path is NULL!");
+      return ERR_WITH_MSG;
+    }
+
+  while (*dir != '\0')
+    {
+      if (isspace (*dir))
+	{
+	  strcpy (_dbmt_error, "Path contains white space!");
+	  return ERR_WITH_MSG;
+	}
+      else if (*dir == '\\')
+	{
+	  *dir = '/';
+	}
+      dir++;
+    }
+
   return ERR_NO_ERROR;
 }
 
-/**
- * get port info from brokers config, that located by <broker_name>
- */
-static char *
-_op_get_port_from_config (T_DM_UC_CONF * uc_conf, char *broker_name)
+static int
+get_dbitemdir (char *item_dir, size_t item_dir_size, char *dbname,
+	       char *err_buf, int itemtype)
 {
-  int pos;
-  char *name;
-  for (pos = 0; pos < uc_conf->num_broker; pos++)
+  FILE *databases_txt;
+  char *envpath;
+  char db_txt[PATH_MAX];
+  char cbuf[2048];
+  char itemname[1024];
+  char scan_format[128];
+  char pattern[64];
+  const char *patternVol = "%%%lus %%%lus %%*s %%*s";
+  const char *patternLog = "%%%lus %%*s %%*s %%%lus";
+
+  if (item_dir == NULL || dbname == NULL)
     {
-      name = uca_conf_find (&(uc_conf->br_conf[pos]), "%");
-      if (name != NULL && strcasecmp (broker_name, name) == 0)
+      return -1;
+    }
+#if !defined (DO_NOT_USE_CUBRIDENV)
+  envpath = sco.szCubrid_databases;
+#else
+  envpath = CUBRID_VARDIR;
+#endif
+  if ((envpath == NULL) || (strlen (envpath) == 0))
+    {
+      return -1;
+    }
+  snprintf (db_txt, sizeof (db_txt) - 1, "%s/%s", envpath,
+	    CUBRID_DATABASE_TXT);
+  databases_txt = fopen (db_txt, "r");
+
+  /*set the patten to get dir from databases.txt. */
+  if (databases_txt == NULL)
+    {
+      return -1;
+    }
+
+  if (itemtype == PATTERN_VOL)
+    {
+      strcpy_limit (pattern, patternVol, sizeof (pattern));
+    }
+  else if (itemtype == PATTERN_LOG)
+    {
+      strcpy_limit (pattern, patternLog, sizeof (pattern));
+    }
+  else
+    {
+      return -1;
+    }
+
+  snprintf (scan_format, sizeof (scan_format) - 1, pattern,
+	    (unsigned long) sizeof (itemname) - 1,
+	    (unsigned long) item_dir_size - 1);
+
+  while (fgets (cbuf, sizeof (cbuf), databases_txt) != NULL)
+    {
+      if (sscanf (cbuf, scan_format, itemname, item_dir) < 2)
 	{
-	  return uca_conf_find (&(uc_conf->br_conf[pos]), "BROKER_PORT");
+	  continue;
+	}
+      if (strcmp (itemname, dbname) == 0)
+	{
+	  fclose (databases_txt);
+	  return 1;
 	}
     }
 
-  /* not found. in this case returns zero value, it is means unknown port. */
-  return "0";
+  fclose (databases_txt);
+  return 1;
+}
+
+
+static int
+get_dblogdir (char *log_dir, size_t log_dir_size, char *dbname, char *err_buf)
+{
+  int retVal =
+    get_dbitemdir (log_dir, log_dir_size, dbname, err_buf, PATTERN_LOG);
+  return retVal;
+}
+
+static int
+get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname, char *err_buf)
+{
+  int retVal =
+    get_dbitemdir (vol_dir, vol_dir_size, dbname, err_buf, PATTERN_VOL);
+  return retVal;
+}
+
+static char *
+cm_get_abs_file_path (const char *filename, char *buf)
+{
+  strcpy (buf, filename);
+
+  if (buf[0] == '/')
+    return buf;
+#if defined(WINDOWS)
+  if (buf[2] == '/' || buf[2] == '\\')
+    return buf;
+#endif
+  sprintf (buf, "%s/%s", getenv ("CUBRID"), filename);
+  return buf;
+}
+
+static int
+file_to_nvpairs (FILE * infile, nvplist * res)
+{
+  char buf[1024];
+  int retval = 0;
+
+  /* return error if the input file is NULL. */
+  if (infile == NULL)
+    {
+      retval = -1;
+    }
+
+  /* get all file content into response. */
+  nv_add_nvp (res, "open", "log");
+  while (fgets (buf, sizeof (buf), infile) != NULL)
+    {
+      nv_add_nvp (res, "line", buf);
+    }
+  nv_add_nvp (res, "close", "log");
+
+  return retval;
+}
+
+static int
+file_to_nvp_by_separator (FILE * fp, nvplist * res, char separator)
+{
+  char buf[1024];
+  char *p, *q, *next;
+  int clientexist = 0;
+  const char *comparestr = "System parameters";
+
+  while (fgets (buf, sizeof (buf), fp) != NULL)
+    {
+      if (strncmp (buf, comparestr, strlen (comparestr)) == 0)
+	{
+	  /* check if the sentences contains "client" or "server" or "standalone". */
+	  if (strstr (buf, "client") != NULL)
+	    {
+	      clientexist = 1;
+	      nv_add_nvp (res, "open", "client");
+	    }
+	  else if (strstr (buf, "server") != NULL)
+	    {
+	      /* if it is "server" then check if there is need to close "client". */
+	      if (clientexist != 0)
+		nv_add_nvp (res, "close", "client");
+	      nv_add_nvp (res, "open", "server");
+	    }
+	  else if (strstr (buf, "standalone") != NULL)
+	    {
+	      /* if it is "standalone" then there should return only server paramdump. */
+	      nv_add_nvp (res, "open", "server");
+	    }
+	  else
+	    {
+	      return -1;
+	    }
+	}
+
+      /*
+       * ignore the lines that start with "#", empty lines, 
+       * and lines with out separator. 
+       */
+      if ('#' == buf[0] || '\n' == buf[0] || strchr (buf, separator) == NULL)
+	{
+	  continue;
+	}
+      p = buf;
+      next = strchr (p, '\n');
+      if (next != NULL)
+	{
+	  *next = '\0';
+	}
+      q = strchr (p, '=');
+      if (q != NULL)
+	{
+	  *q = '\0';
+	  q++;
+	}
+      nv_add_nvp (res, p, q);
+    }
+  nv_add_nvp (res, "close", "server");
+  return 0;
 }

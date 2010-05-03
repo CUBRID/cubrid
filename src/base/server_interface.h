@@ -22,7 +22,7 @@
  * server_interface.h - Server interface functions
  *
  * Note: This file defines the interface to the server. The client modules that
- * calls any funciton in the server should include this module instead of the
+ * calls any function in the server should include this module instead of the
  * header file of the desired function.
  */
 

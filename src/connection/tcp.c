@@ -1187,6 +1187,7 @@ again_:
   return count;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_fd_down() -
  *   return:
@@ -1210,6 +1211,7 @@ css_fd_down (SOCKET fd)
 
   return rc;
 }
+#endif
 
 int
 css_get_max_socket_fds (void)

@@ -477,7 +477,7 @@ appl_monitor (char *br_vector)
   struct timeval cur_tv;
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
   T_SHM_APPL_SERVER *shm_appl;
-  int i, j;
+  int i, j, k, appl_server_offset;
   int col_len;
   char line_buf[1024];
   static time_t time_old;
@@ -612,7 +612,7 @@ appl_monitor (char *br_vector)
 	      str_out (", LONG_QUERY_TIME:%.2f",
 		       (shm_appl->long_query_time / 1000.0));
 
-	      if (shm_br->br_info[i].appl_server == APPL_SERVER_CAS)
+	      if (IS_APPL_SERVER_TYPE_CAS (shm_br->br_info[i].appl_server))
 		{
 		  str_out (", SESSION_TIMEOUT:%d",
 			   shm_br->br_info[i].session_timeout);
@@ -655,6 +655,14 @@ appl_monitor (char *br_vector)
 	      gettimeofday (&cur_tv, NULL);
 
 	      current_time = time (NULL);
+
+	      appl_server_offset = 0;
+	      for (k = 0; k < i; k++)
+		{
+		  appl_server_offset +=
+		    shm_br->br_info[k].appl_server_max_num;
+		}
+
 	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
 		{
 		  if (shm_appl->as_info[j].service_flag != SERVICE_ON)
@@ -676,15 +684,13 @@ appl_monitor (char *br_vector)
 		  col_len += sprintf (line_buf + col_len, "%5d ",
 				      shm_appl->as_info[j].pid);
 
-		  p_qps_old = qps_olds
-		    + (i * shm_br->br_info[i].appl_server_max_num) + j;
+		  p_qps_old = qps_olds + appl_server_offset + j;
 		  qps = (shm_appl->as_info[j].num_queries_processed -
 			 *p_qps_old) / difftime (time_cur, time_old);
 		  *p_qps_old = shm_appl->as_info[j].num_queries_processed;
 		  col_len += sprintf (line_buf + col_len, "%5ld ", qps);
 
-		  p_lqs_old = lqs_olds
-		    + (i * shm_br->br_info[i].appl_server_max_num) + j;
+		  p_lqs_old = lqs_olds + appl_server_offset + j;
 		  lqs = (shm_appl->as_info[j].num_long_queries -
 			 *p_lqs_old) / difftime (time_cur, time_old);
 		  *p_lqs_old = shm_appl->as_info[j].num_long_queries;
@@ -708,7 +714,8 @@ appl_monitor (char *br_vector)
 #endif
 		  if (shm_appl->as_info[j].uts_status == UTS_STATUS_BUSY)
 		    {
-		      if (shm_br->br_info[i].appl_server == APPL_SERVER_CAS)
+		      if (IS_APPL_SERVER_TYPE_CAS
+			  (shm_br->br_info[i].appl_server))
 			{
 			  if (shm_appl->as_info[j].con_status ==
 			      CON_STATUS_OUT_TRAN)

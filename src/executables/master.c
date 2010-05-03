@@ -52,6 +52,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <syslog.h>
+#include <pthread.h>
 #endif /* ! WINDOWS */
 
 #include "utility.h"
@@ -65,18 +66,22 @@
 #include "tcp.h"
 #endif /* ! WINDOWS */
 #include "master_util.h"
+#if !defined(WINDOWS)
+#include "master_heartbeat.h"
+#endif
 #include "environment_variable.h"
 #include "message_catalog.h"
 #include "dbi.h"
 
 /* TODO: move to header file */
 extern void css_process_info_request (CSS_CONN_ENTRY * conn);
+extern void css_process_heartbeat_request (CSS_CONN_ENTRY * conn);
 extern void css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p,
 				      SOCKET_QUEUE_ENTRY ** anchor_p);
 
 static void css_master_error (const char *error_string);
 static int css_master_timeout (void);
-static void css_master_cleanup (int sig);
+void css_master_cleanup (int sig);
 static int css_master_init (int cport, SOCKET * clientfd);
 static void css_reject_client_request (CSS_CONN_ENTRY * conn,
 				       unsigned short rid, int reason);
@@ -99,34 +104,45 @@ static bool css_send_new_request_to_server (SOCKET server_fd,
 static void css_send_to_existing_server (CSS_CONN_ENTRY * conn,
 					 unsigned short rid);
 static void css_process_new_connection (SOCKET fd);
+static void css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p,
+				     fd_set * fd_var);
+static void css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p,
+				      fd_set * fd_var);
+static void css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p,
+					  fd_set * fd_var);
+
 static void css_enroll_master_read_sockets (fd_set * fd_var);
 static void css_enroll_master_write_sockets (fd_set * fd_var);
 static void css_enroll_master_exception_sockets (fd_set * fd_var);
+static void css_select_error (SOCKET_QUEUE_ENTRY ** anchor_p);
 static void css_master_select_error (void);
 static void css_check_master_socket_input (int *count, fd_set * fd_var);
 static void css_check_master_socket_output (void);
 static int css_check_master_socket_exception (fd_set * fd_var);
 static void css_master_loop (void);
 static void css_free_entry (SOCKET_QUEUE_ENTRY * entry_p);
-static SOCKET_QUEUE_ENTRY *css_add_request_to_socket_queue (CSS_CONN_ENTRY *
-							    conn_p,
-							    int info_p,
-							    char *name_p,
-							    SOCKET fd,
-							    int fd_type,
-							    int pid,
-							    SOCKET_QUEUE_ENTRY
-							    ** anchor_p);
+SOCKET_QUEUE_ENTRY *css_add_request_to_socket_queue (CSS_CONN_ENTRY *
+						     conn_p,
+						     int info_p,
+						     char *name_p,
+						     SOCKET fd,
+						     int fd_type,
+						     int pid,
+						     SOCKET_QUEUE_ENTRY
+						     ** anchor_p);
 static SOCKET_QUEUE_ENTRY *css_return_entry_of_server (char *name_p,
 						       SOCKET_QUEUE_ENTRY *
 						       anchor_p);
+SOCKET_QUEUE_ENTRY *css_return_entry_by_conn (CSS_CONN_ENTRY * conn_p,
+					      SOCKET_QUEUE_ENTRY ** anchor_p);
+
 #if !defined(WINDOWS)
 static void css_daemon_start (void);
 #endif
 
 struct timeval *css_Master_timeout = NULL;
-static int css_Master_timeout_value_in_seconds = 4;
-static int css_Master_timeout_value_in_microseconds = 500;
+int css_Master_timeout_value_in_seconds = 4;
+int css_Master_timeout_value_in_microseconds = 500;
 #if defined(DEBUG)
 static int css_Active_server_count = 0;
 #endif
@@ -134,11 +150,14 @@ static int css_Active_server_count = 0;
 time_t css_Start_time;
 int css_Total_request_count = 0;
 
-/* socket for incomming client requests */
+/* socket for incoming client requests */
 SOCKET css_Master_socket_fd[2] = { INVALID_SOCKET, INVALID_SOCKET };
 
 /* This is the queue anchor of sockets used by the Master server. */
 SOCKET_QUEUE_ENTRY *css_Master_socket_anchor = NULL;
+#if !defined(WINDOWS)
+MUTEX_T css_Master_socket_anchor_lock;
+#endif
 
 /*
  * css_master_error() - print error message to syslog or console
@@ -174,7 +193,7 @@ static int
 css_master_timeout (void)
 {
 #if !defined(WINDOWS)
-  int pid;
+  int pid, rv;
   SOCKET_QUEUE_ENTRY *temp;
 #endif
   struct timeval timeout;
@@ -192,24 +211,32 @@ css_master_timeout (void)
    * processes, at least initially.  There don't appear to be any
    * similarly named "wait" functions in the MSVC runtime library.
    */
-  while ((pid = waitpid (-1, NULL, WNOHANG)) > 0)
+  MUTEX_LOCK (rv, css_Master_socket_anchor_lock);
+  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      for (temp = css_Master_socket_anchor; temp; temp = temp->next)
+      if (kill (temp->pid, 0) && errno == ESRCH)
 	{
-	  if (temp->pid == pid)
-	    {
 #if defined(DEBUG)
-	      if (css_Active_server_count > 0)
-		{
-		  css_Active_server_count--;
-		}
+	  if (css_Active_server_count > 0)
+	    {
+	      css_Active_server_count--;
+	    }
 #endif
+#if !defined(WINDOWS)
+	  if (temp->ha_mode)
+	    {
+	      hb_cleanup_conn_and_start_process (temp->conn_ptr, temp->fd);
+	    }
+	  else
+#endif
+	    {
 	      css_remove_entry_by_conn (temp->conn_ptr,
 					&css_Master_socket_anchor);
-	      break;
 	    }
+	  break;
 	}
     }
+  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
 #endif
   return (1);
 }
@@ -221,13 +248,18 @@ css_master_timeout (void)
  *
  * Note: It will not be called if we are killed by an outside process
  */
-static void
+void
 css_master_cleanup (int sig)
 {
   css_shutdown_socket (css_Master_socket_fd[0]);
   css_shutdown_socket (css_Master_socket_fd[1]);
 #if !defined(WINDOWS)
   unlink (css_Master_unix_domain_path);
+
+  if (PRM_HA_MODE)
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STOPPED, 0);
+    }
 #endif
   exit (1);
 }
@@ -254,12 +286,18 @@ css_master_init (int cport, SOCKET * clientfd)
   (void) os_set_signal_handler (SIGSTOP, css_master_cleanup);
   if (os_set_signal_handler (SIGTERM, css_master_cleanup) == SIG_ERR ||
       os_set_signal_handler (SIGINT, css_master_cleanup) == SIG_ERR ||
-      os_set_signal_handler (SIGPIPE, SIG_IGN) == SIG_ERR)
+      os_set_signal_handler (SIGPIPE, SIG_IGN) == SIG_ERR ||
+      os_set_signal_handler (SIGCHLD, SIG_IGN) == SIG_ERR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return (0);
     }
 #endif /* ! WINDOWS */
+
+#if !defined(WINDOWS)
+  MUTEX_INIT (css_Master_socket_anchor_lock);
+#endif
+
   return (css_tcp_master_open (cport, clientfd));
 }
 
@@ -774,18 +812,20 @@ css_process_new_connection (SOCKET fd)
 }
 
 /*
- * css_enroll_master_read_sockets() - Sets the fd positions in fd_set for the
+ * css_enroll_read_sockets() - Sets the fd positions in fd_set for the
  *                                    input fds we are interested in reading
  *   return: none
+ *
+ *   anchor_p(in)
  *   fd_var(out)
  */
 static void
-css_enroll_master_read_sockets (fd_set * fd_var)
+css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 {
   SOCKET_QUEUE_ENTRY *temp;
 
   FD_ZERO (fd_var);
-  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
+  for (temp = anchor_p; temp; temp = temp->next)
     {
       if (!IS_INVALID_SOCKET (temp->fd) && temp->fd_type != WRITE_ONLY)
 	{
@@ -795,36 +835,75 @@ css_enroll_master_read_sockets (fd_set * fd_var)
 }
 
 /*
- * css_enroll_master_write_sockets() - Sets the fd positions in fd_set for the
+ * css_enroll_master_read_sockets() - 
+ *   return: none
+ *
+ *   fd_var(out)
+ */
+static void
+css_enroll_master_read_sockets (fd_set * fd_var)
+{
+  css_enroll_read_sockets (css_Master_socket_anchor, fd_var);
+}
+
+/*
+ * css_enroll_write_sockets() - Sets the fd positions in fd_set for the
  *                      input fds we are interested in writing (none presently)
+ *   return: none
+ *
+ *   anchor_p(in)
+ *   fd_var(out)
+ */
+static void
+css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
+{
+  FD_ZERO (fd_var);
+}
+
+/*
+ * css_enroll_master_write_sockets() - 
+ *
  *   return: none
  *   fd_var(out)
  */
 static void
 css_enroll_master_write_sockets (fd_set * fd_var)
 {
-  FD_ZERO (fd_var);
+  css_enroll_write_sockets (css_Master_socket_anchor, fd_var);
 }
 
 /*
- * css_enroll_master_exception_sockets() - Sets the fd positions in fd_set
+ * css_enroll_exception_sockets() - Sets the fd positions in fd_set
  *            for the input fds we are interested in detecting error conditions
  *   return: none
+ *
+ *   anchor_p(int)
  *   fd_var(out)
  */
 static void
-css_enroll_master_exception_sockets (fd_set * fd_var)
+css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 {
   SOCKET_QUEUE_ENTRY *temp;
 
   FD_ZERO (fd_var);
-  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
+  for (temp = anchor_p; temp; temp = temp->next)
     {
       if (!IS_INVALID_SOCKET (temp->fd))
 	{
 	  FD_SET (temp->fd, fd_var);
 	}
     }
+}
+
+/*
+ * css_enroll_master_exception_sockets()
+ *   return: none
+ *   fd_var(out)
+ */
+static void
+css_enroll_master_exception_sockets (fd_set * fd_var)
+{
+  css_enroll_exception_sockets (css_Master_socket_anchor, fd_var);
 }
 
 /*
@@ -836,9 +915,11 @@ static void
 css_master_select_error (void)
 {
 #if !defined(WINDOWS)
+  int rv;
   SOCKET_QUEUE_ENTRY *temp;
 
 again:
+  MUTEX_LOCK (rv, css_Master_socket_anchor_lock);
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
       if (!IS_INVALID_SOCKET (temp->fd) && fcntl (temp->fd, F_GETFL, 0) < 0)
@@ -849,11 +930,22 @@ again:
 	      css_Active_server_count--;
 	    }
 #endif
-	  css_remove_entry_by_conn (temp->conn_ptr,
-				    &css_Master_socket_anchor);
+#if !defined(WINDOWS)
+	  if (temp->ha_mode)
+	    {
+	      hb_cleanup_conn_and_start_process (temp->conn_ptr, temp->fd);
+	    }
+	  else
+#endif
+	    {
+	      css_remove_entry_by_conn (temp->conn_ptr,
+					&css_Master_socket_anchor);
+	    }
+	  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
 	  goto again;
 	}
     }
+  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
 #endif
 }
 
@@ -868,9 +960,15 @@ again:
 static void
 css_check_master_socket_input (int *count, fd_set * fd_var)
 {
+#if !defined(WINDOWS)
+  int rv;
+#endif
   SOCKET_QUEUE_ENTRY *temp, *next;
   SOCKET new_fd;
 
+#if !defined(WINDOWS)
+  MUTEX_LOCK (rv, css_Master_socket_anchor_lock);
+#endif
   for (temp = css_Master_socket_anchor; *count && temp; temp = next)
     {
       next = temp->next;
@@ -895,20 +993,31 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 		}
 	      else
 		{
-#if defined(DEBUG)
-		  if (css_Active_server_count > 0)
+		  if (temp->ha_mode)
 		    {
-		      css_Active_server_count--;
+		      css_process_heartbeat_request (temp->conn_ptr);
 		    }
+		  else
+		    {
+#if defined(DEBUG)
+		      if (css_Active_server_count > 0)
+			{
+			  css_Active_server_count--;
+			}
 #endif
-		  css_remove_entry_by_conn (temp->conn_ptr,
-					    &css_Master_socket_anchor);
+		      css_remove_entry_by_conn (temp->conn_ptr,
+						&css_Master_socket_anchor);
+		    }
 		}
 	      /* stop loop in case an error caused temp to be deleted */
 	      break;
 	    }
 	}
     }
+
+#if !defined(WINDOWS)
+  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+#endif
 }
 
 /*
@@ -931,9 +1040,15 @@ css_check_master_socket_output (void)
 static int
 css_check_master_socket_exception (fd_set * fd_var)
 {
+#if !defined(WINDOWS)
+  int rv;
+#endif
   SOCKET_QUEUE_ENTRY *temp;
 
 again:
+#if !defined(WINDOWS)
+  MUTEX_LOCK (rv, css_Master_socket_anchor_lock);
+#endif
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
       if (!IS_INVALID_SOCKET (temp->fd) && ((FD_ISSET (temp->fd, fd_var) ||
@@ -956,14 +1071,33 @@ again:
 	  if (temp->fd == css_Master_socket_fd[0] ||
 	      temp->fd == css_Master_socket_fd[1])
 	    {
+#if !defined(WINDOWS)
+	      MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+#endif
 	      return (0);
 	    }
 
-	  css_remove_entry_by_conn (temp->conn_ptr,
-				    &css_Master_socket_anchor);
+#if !defined(WINDOWS)
+	  if (temp->ha_mode)
+	    {
+	      hb_cleanup_conn_and_start_process (temp->conn_ptr, temp->fd);
+	    }
+	  else
+#endif
+	    {
+	      css_remove_entry_by_conn (temp->conn_ptr,
+					&css_Master_socket_anchor);
+	    }
+#if !defined(WINDOWS)
+	  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+#endif
 	  goto again;
 	}
     }
+
+#if !defined(WINDOWS)
+  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+#endif
   return (1);
 }
 
@@ -989,10 +1123,10 @@ css_master_loop (void)
       rc = select (FD_SETSIZE, &read_fd, &write_fd, &exception_fd, &timeout);
       switch (rc)
 	{
-	case (0):
+	case 0:
 	  run_code = css_master_timeout ();
 	  break;
-	case (-1):
+	case -1:
 	  /* switch error */
 	  css_master_select_error ();
 	  break;
@@ -1103,6 +1237,17 @@ main (int argc, char **argv)
       (void) os_set_signal_handler (SIGINT, css_master_cleanup);
     }
 
+#if !defined(WINDOWS)
+  if (PRM_HA_MODE)
+    {
+      if (hb_master_init () != NO_ERROR)
+	{
+	  status = EXIT_FAILURE;
+	  goto cleanup;
+	}
+    }
+#endif
+
   conn = css_make_conn (css_Master_socket_fd[0]);
   css_add_request_to_socket_queue (conn, false, NULL,
 				   css_Master_socket_fd[0], READ_WRITE, 0,
@@ -1211,7 +1356,7 @@ css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p,
  *   pid(in):
  *   anchor_p(out):
  */
-static SOCKET_QUEUE_ENTRY *
+SOCKET_QUEUE_ENTRY *
 css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p,
 				 char *name_p, SOCKET fd, int fd_type,
 				 int pid, SOCKET_QUEUE_ENTRY ** anchor_p)
@@ -1226,6 +1371,7 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p,
 
   p->conn_ptr = conn_p;
   p->fd = fd;
+  p->ha_mode = FALSE;
 
   if (name_p)
     {
@@ -1233,6 +1379,14 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p,
       if (p->name)
 	{
 	  strcpy (p->name, name_p);
+#if !defined(WINDOWS)
+	  if (IS_MASTER_CONN_NAME_HA_SERVER (p->name) ||
+	      IS_MASTER_CONN_NAME_HA_COPYLOG (p->name) ||
+	      IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name))
+	    {
+	      p->ha_mode = TRUE;
+	    }
+#endif
 	}
     }
   else
@@ -1277,10 +1431,52 @@ css_return_entry_of_server (char *name_p, SOCKET_QUEUE_ENTRY * anchor_p)
 	{
 	  return p;
 	}
+
+#if !defined(WINDOWS)
+      /* if HA server exist */
+      if (p->name && (IS_MASTER_CONN_NAME_HA_SERVER (p->name)))
+	{
+	  if (strcmp ((char *) (p->name + 1), name_p) == 0)
+	    {
+	      return p;
+	    }
+	}
+#endif
     }
 
   return NULL;
 }
+
+/*
+ * css_return_entry_by_conn() -
+ *   return:
+ *   conn(in):
+ *   anchor_p(in):
+ */
+SOCKET_QUEUE_ENTRY *
+css_return_entry_by_conn (CSS_CONN_ENTRY * conn_p,
+			  SOCKET_QUEUE_ENTRY ** anchor_p)
+{
+  SOCKET_QUEUE_ENTRY *p;
+
+  if (conn_p == NULL)
+    {
+      return NULL;
+    }
+
+  for (p = *anchor_p; p; p = p->next)
+    {
+      if (p->conn_ptr != conn_p)
+	{
+	  continue;
+	}
+
+      return (p);
+    }
+
+  return NULL;
+}
+
 
 #if !defined(WINDOWS)
 /*

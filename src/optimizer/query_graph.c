@@ -644,7 +644,7 @@ qo_optimize_helper (QO_ENV * env)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (PLAN_DUMP_ENABLED (level) && DETAILED_DUMP (level))
     {
-      qo_env_dump (env, query_plan_dump_fp);
+      qo_env_dump (env, query_Plan_dump_fp);
     }
   if (plan == NULL)
     {
@@ -1787,7 +1787,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
       goto wrapup;
     }
 
-  /* only intersting in one predicate term; if 'term' has 'or_next', it was
+  /* only interesting in one predicate term; if 'term' has 'or_next', it was
      derived from OR term */
   if (pt_expr->or_next == NULL)
     {
@@ -1795,7 +1795,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
       switch ((op_type = pt_expr->info.expr.op))
 	{
 
-	  /* operaotrs classified as lhs- and rhs-indexable */
+	  /* operators classified as lhs- and rhs-indexable */
 	case PT_EQ:
 	  QO_TERM_SET_FLAG (term, QO_TERM_EQUAL_OP);
 	case PT_LT:
@@ -1806,7 +1806,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  rhs_indexable = 1;
 	  /* no break; fall through */
 
-	  /* operaotrs classified as rhs-indexable */
+	  /* operators classified as rhs-indexable */
 	case PT_BETWEEN:
 	case PT_RANGE:
 	case PT_IS_IN:
@@ -2168,7 +2168,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	    }
 	  else
 	    {
-	      /* NEED MORE OPTIMIZATION for furture */
+	      /* NEED MORE OPTIMIZATION for future */
 	      for (node_idx += 1; node_idx < env->nnodes; node_idx++)
 		{
 		  if (QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (env, node_idx)) ==
@@ -2378,7 +2378,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	    }
 	  else
 	    {
-	      /* NEED MORE OPTIMIZATION for furture */
+	      /* NEED MORE OPTIMIZATION for future */
 	      node_idx =
 		MIN (QO_NODE_IDX (head_node), QO_NODE_IDX (tail_node));
 	      for (; node_idx < env->nnodes; node_idx++)
@@ -3127,7 +3127,7 @@ is_local_name (QO_ENV * env, PT_NODE * expr)
 
 /*
  * is_pseudo_const () -
- *   return: 1 iff the expression can server as a pseudo-constant
+ *   return: 1 iff the expression can serve as a pseudo-constant
  *	     during predicate evaluation.  Used primarily to help
  *	     determine whether a predicate can be implemented
  *	     with an index scan
@@ -4284,7 +4284,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	     meaningful, keep the min/max existing values */
 	  if (DB_NUMERIC_TYPE (attr_statsp->type))
 	    {
-	      /* compare with previsous values */
+	      /* compare with previous values */
 	      if (qo_data_compare (&attr_statsp->min_value,
 				   &cum_statsp->min_value,
 				   cum_statsp->type) < 0)
@@ -4308,7 +4308,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       if (attr_statsp->n_btstats <= 0 || !attr_statsp->bt_stats)
 	{
-	  /* the attribute dose not have any index */
+	  /* the attribute does not have any index */
 	  cum_statsp->is_indexed = false;
 	  continue;
 	  /* We'll consider the segment to be indexed only if all of the
@@ -4559,7 +4559,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	         meaningful, keep the min/max existing values */
 	      if (DB_NUMERIC_TYPE (attr_statsp->type))
 		{
-		  /* compare with previsous values */
+		  /* compare with previous values */
 		  if (qo_data_compare (&attr_statsp->min_value,
 				       &cum_statsp->min_value,
 				       cum_statsp->type) < 0)
@@ -7256,6 +7256,7 @@ qo_partition_dump (QO_PARTITION * part, FILE * f)
   fputs (")", f);
 }
 
+#if defined (CUBRID_DEBUG)
 /*
  * qo_print_stats () -
  *   return:
@@ -7269,6 +7270,7 @@ qo_print_stats (FILE * f)
   qo_plans_stats (f);
   set_stats (f);
 }
+#endif
 
 /*
  * qo_seg_nodes () - Return a bitset of node ids produced from the heads

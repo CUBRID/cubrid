@@ -114,8 +114,8 @@ typedef enum
   DB_FETCH_WRITE = 1,		/* Update an object (class or instance) */
   DB_FETCH_DIRTY = 2,		/* Does not care about the state
 				 * of the object (class or instance). Get
-				 * it even if it is obsolate or if it
-				 * becomes obsolate.
+				 * it even if it is obsolete or if it
+				 * becomes obsolete.
 				 * INTERNAL USE ONLY
 				 */
   DB_FETCH_CLREAD_INSTREAD = 3,	/* Read the class and read an instance of
@@ -194,8 +194,8 @@ typedef struct db_query_error DB_QUERY_ERROR;
 struct db_query_error
 {
 
-  int err_lineno;		/* Line number where error occured */
-  int err_posno;		/* Position number where error occured */
+  int err_lineno;		/* Line number where error occurred */
+  int err_posno;		/* Position number where error occurred */
 };
 
 /* ESQL/CSQL/API INTERFACE */

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -48,6 +48,7 @@
 #include "parser.h"
 #include "view_transform.h"
 #include "network_interface_cl.h"
+#include "transform.h"
 
 #include "dbval.h"		/* this must be the last header file included!!! */
 
@@ -692,17 +693,25 @@ dbt_put_internal (DB_OTMPL * def, const char *name, DB_VALUE * value)
  *    the variable location as the label of the template, this assignment
  *    will take place automatically as the objects are created.
  */
-void
+int
 dbt_set_label (DB_OTMPL * def, DB_VALUE * label)
 {
-  CHECK_CONNECT_VOID ();
-  CHECK_MODIFICATION_VOID ();
+  CHECK_CONNECT_ERROR ();
+  CHECK_MODIFICATION_ERROR ();
 
   if (def != NULL && label != NULL &&
       (DB_VALUE_DOMAIN_TYPE (label) == DB_TYPE_OBJECT))
     {
+      if (sm_is_reuse_oid_class (def->classobj))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
+	  return ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED;
+	}
       obt_set_label (def, label);
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -1821,10 +1830,11 @@ int
 db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value)
 {
   int result = NO_ERROR;
+  MOP serial_class_mop, serial_mop;
   DB_IDENTIFIER serial_obj_id;
-  int r = 0, found = 0;
   char oid_str[36];
   DB_VALUE oid_str_val;
+  int cached_num;
 
   if (serial_name == NULL || serial_name[0] == 0 || serial_value == NULL)
     {
@@ -1833,14 +1843,20 @@ db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value)
       return ER_QPROC_INVALID_PARAMETER;
     }
 
-  r = do_get_serial_obj_id (&serial_obj_id, &found, serial_name);
-  if (r == 0 && found)
+  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
+				     serial_name);
+  if (serial_mop != NULL)
     {
-      sprintf (oid_str, "%d %d %d", serial_obj_id.pageid,
-	       serial_obj_id.slotid, serial_obj_id.volid);
+      if (do_get_serial_cached_num (&cached_num, serial_mop) != NO_ERROR)
+	{
+	  cached_num = 0;
+	}
+      sprintf (oid_str, "%d %d %d %d", serial_obj_id.pageid,
+	       serial_obj_id.slotid, serial_obj_id.volid, cached_num);
       db_make_string (&oid_str_val, oid_str);
-      if (qp_get_serial_current_value (serial_value, &oid_str_val) !=
-	  NO_ERROR)
+      if (serial_get_current_value (serial_value, &oid_str_val) != NO_ERROR)
 	{
 	  result = er_errid ();
 	}
@@ -1865,10 +1881,11 @@ int
 db_get_serial_next_value (const char *serial_name, DB_VALUE * serial_value)
 {
   int result = NO_ERROR;
+  MOP serial_class_mop, serial_mop;
   DB_IDENTIFIER serial_obj_id;
-  int r = 0, found = 0;
   char oid_str[36];
   DB_VALUE oid_str_val;
+  int cached_num;
 
   if (serial_name == NULL || serial_name[0] == 0 || serial_value == NULL)
     {
@@ -1877,13 +1894,20 @@ db_get_serial_next_value (const char *serial_name, DB_VALUE * serial_value)
       return ER_QPROC_INVALID_PARAMETER;
     }
 
-  r = do_get_serial_obj_id (&serial_obj_id, &found, serial_name);
-  if (r == 0 && found)
+  serial_class_mop = sm_find_class (CT_CLASS_NAME);
+
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop,
+				     serial_name);
+  if (serial_mop != NULL)
     {
-      sprintf (oid_str, "%d %d %d", serial_obj_id.pageid,
-	       serial_obj_id.slotid, serial_obj_id.volid);
+      if (do_get_serial_cached_num (&cached_num, serial_mop) != NO_ERROR)
+	{
+	  cached_num = 0;
+	}
+      sprintf (oid_str, "%d %d %d %d", serial_obj_id.pageid,
+	       serial_obj_id.slotid, serial_obj_id.volid, cached_num);
       db_make_string (&oid_str_val, oid_str);
-      if (qp_get_serial_next_value (serial_value, &oid_str_val) != NO_ERROR)
+      if (serial_get_next_value (serial_value, &oid_str_val) != NO_ERROR)
 	{
 	  result = er_errid ();
 	}

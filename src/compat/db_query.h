@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -146,8 +146,6 @@ extern int db_query_get_tuple_object_by_name (DB_QUERY_RESULT * result,
 					      char *column_name,
 					      DB_OBJECT ** object);
 
-extern int db_query_get_value_length (DB_QUERY_RESULT * result, int index);
-
 extern int db_query_get_value_to_space (DB_QUERY_RESULT * result,
 					int index,
 					unsigned char *ptr,
@@ -160,9 +158,13 @@ db_query_get_value_to_pointer (DB_QUERY_RESULT * result, int index,
 			       unsigned char **ptr, DB_TYPE user_type,
 			       bool * null_flag);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern DB_TYPE db_query_get_value_type (DB_QUERY_RESULT * result, int index);
-
+extern int db_query_get_value_length (DB_QUERY_RESULT * result, int index);
+#endif
+#if defined (CUBRID_DEBUG)
 extern void db_sqlx_debug_print_result (DB_QUERY_RESULT * result);
+#endif
 extern bool db_is_client_cache_reusable (DB_QUERY_RESULT * result);
 
 extern int db_query_get_cache_time (DB_QUERY_RESULT * result,
@@ -175,13 +177,19 @@ extern DB_QUERY_TYPE *db_alloc_query_format (int cnt);
 extern void db_free_query_format (DB_QUERY_TYPE * q);
 extern DB_QUERY_RESULT *db_get_db_value_query_result (DB_VALUE * var);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void db_free_colname_list (char **colname_list, int cnt);
 extern void db_free_domain_list (SM_DOMAIN ** domain_list, int cnt);
+#endif
+
 extern void db_free_query_result (DB_QUERY_RESULT * r);
 extern DB_QUERY_RESULT *db_alloc_query_result (DB_RESULT_TYPE r_type,
 					       int col_cnt);
 extern void db_init_query_result (DB_QUERY_RESULT * r, DB_RESULT_TYPE r_type);
+#if defined (CUBRID_DEBUG)
 extern void db_dump_query_result (DB_QUERY_RESULT * r);
+#endif
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern char **db_cp_colname_list (char **colname_list, int cnt);
 extern SM_DOMAIN **db_cp_domain_list (SM_DOMAIN ** domain_list, int cnt);
 extern DB_QUERY_TYPE *db_get_query_type (DB_TYPE * type_list, int *size_list,
@@ -199,6 +207,7 @@ extern DB_QUERY_RESULT *db_get_objfetch_query_result (DB_VALUE * val_list,
 						      char **colname_list,
 						      char **attrname_list);
 extern int db_query_stmt_id (DB_QUERY_RESULT * result);
+#endif
 
 extern int db_query_end (DB_QUERY_RESULT * result);
 extern int db_query_sync_end (DB_QUERY_RESULT * result);
@@ -206,6 +215,7 @@ extern int db_query_end_internal (DB_QUERY_RESULT * result,
 				  bool notify_server);
 
 extern void db_clear_client_query_result (int notify_server);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void db_final_client_query_result (void);
-
+#endif
 #endif /* _DB_QUERY_H_ */

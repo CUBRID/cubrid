@@ -161,7 +161,9 @@ extern void er_final (bool do_global_final);
 #else /* SERVER_MODE */
 extern void er_final (void);
 #endif /* SERVER_MODE */
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern PTR_FNERLOG er_fnerlog (int severity, PTR_FNERLOG new_fnlog);
+#endif
 extern void er_clear (void);
 extern void er_set (int severity, const char *file_name, const int line_no,
 		    int err_id, int num_args, ...);

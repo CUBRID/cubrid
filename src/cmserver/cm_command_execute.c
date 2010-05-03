@@ -29,6 +29,7 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <config.h>
 
 #if defined(WINDOWS)
 #include <process.h>
@@ -36,37 +37,40 @@
 #include <unistd.h>
 #endif
 
-#include "cm_porting.h"
 #include "cm_command_execute.h"
-#include "cm_config.h"
 #include "cm_server_util.h"
-#include "utility.h"
+#include "cm_stat.h"
+
 #ifdef	_DEBUG_
 #include "deb.h"
 #endif
 
-#define new_commdb_result()		(T_COMMDB_RESULT*) new_cmd_result()
+#define new_servstat_result()		(T_SERVER_STATUS_RESULT*) new_cmd_result()
 #define new_csql_result()		(T_CSQL_RESULT*) new_cmd_result()
+
 
 static T_CMD_RESULT *new_cmd_result (void);
 static T_SPACEDB_RESULT *new_spacedb_result (void);
 static const char *get_cubrid_mode_opt (T_CUBRID_MODE mode);
-static void read_commdb_output (T_COMMDB_RESULT * res, char *out_file);
+static void read_server_status_output (T_SERVER_STATUS_RESULT * res,
+				       char *out_file);
 static void read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file);
 static void set_spacedb_info (T_SPACEDB_INFO * vol_info, int volid,
 			      char *purpose, int total_page, int free_page,
 			      char *vol_name);
 static int parse_volume_line (T_SPACEDB_INFO * vol_info, char *str_buf);
-static int read_cmserver_err_log (char *err_log_file);
+static int read_start_server_output (char *stdout_log_file,
+				     char *stderr_log_file,
+				     char *_dbmt_error);
 
 char *
 cubrid_cmd_name (char *buf)
 {
   buf[0] = '\0';
 #if !defined (DO_NOT_USE_CUBRIDENV)
-  sprintf (buf, "%s/%s%s", sco.szCubrid, CUBRID_DIR_BIN, UTIL_ADMIN_NAME);
+  sprintf (buf, "%s/%s%s", sco.szCubrid, CUBRID_DIR_BIN, UTIL_CUBRID);
 #else
-  sprintf (buf, "%s/%s", CUBRID_BINDIR, UTIL_ADMIN_NAME);
+  sprintf (buf, "%s/%s", CUBRID_BINDIR, UTIL_CUBRID);
 #endif
   return buf;
 }
@@ -152,16 +156,6 @@ cmd_spacedb_result_free (T_SPACEDB_RESULT * res)
     }
 }
 
-void
-cmd_result_free (T_CMD_RESULT * res)
-{
-  if (res)
-    {
-      if (res->result)
-	free (res->result);
-      free (res);
-    }
-}
 
 T_SPACEDB_RESULT *
 cmd_spacedb (const char *dbname, T_CUBRID_MODE mode)
@@ -198,58 +192,27 @@ cmd_spacedb (const char *dbname, T_CUBRID_MODE mode)
   return res;
 }
 
-T_COMMDB_RESULT *
-cmd_commdb (void)
-{
-  T_COMMDB_RESULT *res;
-  char out_file[512];
-  char cmd_name[CUBRID_CMD_NAME_LEN];
-  const char *argv[5];
-
-  res = new_commdb_result ();
-  if (res == NULL)
-    return NULL;
-
-  sprintf (out_file, "%s/DBMT_util_001.%d", sco.dbmt_tmp_dir,
-	   (int) getpid ());
-  cmd_name[0] = '\0';
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  sprintf (cmd_name, "%s/%s%s", sco.szCubrid,
-	   CUBRID_DIR_BIN, UTIL_COMMDB_NAME);
-#else
-  sprintf (cmd_name, "%s/%s", CUBRID_BINDIR, UTIL_COMMDB_NAME);
-#endif
-
-  argv[0] = cmd_name;
-  argv[1] = COMMDB_SERVER_STATUS;
-  argv[2] = NULL;
-
-  run_child (argv, 1, NULL, out_file, NULL, NULL);	/* commdb */
-
-  read_commdb_output (res, out_file);
-
-  unlink (out_file);
-  return res;
-}
 
 int
 cmd_start_server (char *dbname, char *err_buf, int err_buf_size)
 {
-  char err_log_file[512];
+  char stdout_log_file[512];
+  char stderr_log_file[512];
   int pid;
   int ret_val;
   char cmd_name[CUBRID_CMD_NAME_LEN];
   const char *argv[5];
-  int unlink_ret;
-  extern int errno;
 
 #ifdef HPUX
   char jvm_env_string[32];
 #endif
 
   cmd_start_master ();
-  sprintf (err_log_file, "%s/cmserverstart.%d.err", sco.dbmt_tmp_dir,
+  sprintf (stdout_log_file, "%s/cmserverstart.%d.err", sco.dbmt_tmp_dir,
 	   (int) getpid ());
+  sprintf (stderr_log_file, "%s/cmserverstart2.%d.err", sco.dbmt_tmp_dir,
+	   (int) getpid ());
+
 
 /* unset CUBRID_ERROR_LOG environment variable, using default value */
 #if defined(WINDOWS)
@@ -280,7 +243,7 @@ cmd_start_server (char *dbname, char *err_buf, int err_buf_size)
   putenv (jvm_env_string);
 #endif
 
-  pid = run_child (argv, 1, NULL, err_log_file, NULL, NULL);	/* start server */
+  pid = run_child (argv, 1, NULL, stdout_log_file, stderr_log_file, NULL);	/* start server */
 
 #ifdef HPUX
   putenv ("LD_PRELOAD=");
@@ -291,57 +254,22 @@ cmd_start_server (char *dbname, char *err_buf, int err_buf_size)
       if (err_buf)
 	sprintf (err_buf, "system error : %s %s %s %s", cmd_name,
 		 PRINT_CMD_SERVER, PRINT_CMD_START, dbname);
-      unlink (err_log_file);
+      unlink (stdout_log_file);
+      unlink (stderr_log_file);
       return -1;
     }
 
-  ret_val = read_cmserver_err_log (err_log_file);
-  unlink_ret = unlink (err_log_file);
+  ret_val =
+    read_start_server_output (stdout_log_file, stderr_log_file, err_buf);
+  unlink (stdout_log_file);
+  unlink (stderr_log_file);
 
-  if (ret_val == 0)
-    return 0;
-
-  if (err_buf)
-    sprintf (err_buf, "system error : %s %s %s %s", cmd_name,
-	     PRINT_CMD_SERVER, PRINT_CMD_START, dbname);
-
-  return -1;
+  return ret_val;
 }
 
-#if 0
-int
-cmd_start_diag (char *err_buf, int err_buf_size)
-{
-  const char *argv[3];
-  char cmd_name[512];
-  char param[10];
-  int pid;
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  sprintf (cmd_name, "%s/bin/diag%s", sco.szCubrid, DBMT_EXE_EXT);
-#else
-  sprintf (cmd_name, "%s/diag%s", CUBRID_BINDIR, DBMT_EXE_EXT);
-#endif
 
-  sprintf (param, "start");
 
-  argv[0] = cmd_name;
-  argv[1] = param;
-  argv[2] = NULL;
-
-  pid = run_child (argv, 0, NULL, NULL, NULL);	/* diag */
-
-  if (pid < 0)
-    {
-      if (err_buf)
-	sprintf (err_buf, "diag server start error");
-
-      return -1;
-    }
-
-  return 0;
-}
-#endif
 
 int
 cmd_stop_server (char *dbname, char *err_buf, int err_buf_size)
@@ -413,6 +341,7 @@ cmd_start_master (void)
   SLEEP_MILISEC (0, 500);
 }
 
+
 int
 read_csql_error_file (char *err_file, char *err_buf, int err_buf_size)
 {
@@ -438,8 +367,7 @@ read_csql_error_file (char *err_file, char *err_buf, int err_buf_size)
 
       ut_trim (buf);
 
-      if ((strncasecmp (buf, "ERROR", 5) == 0)
-	  || (strncasecmp (buf, "에러", 4) == 0))
+      if ((strncasecmp (buf, "ERROR", 5) == 0))
 	{
 	  if (err_buf != NULL)
 	    {
@@ -474,6 +402,7 @@ read_error_file (const char *err_file, char *err_buf, int err_buf_size)
   char buf[1024];
   int msg_size = 0;
   char rm_prev_flag = 0;
+  char is_debug = 0;
   size_t i;
 
   if (err_buf)
@@ -508,21 +437,40 @@ read_error_file (const char *err_file, char *err_buf, int err_buf_size)
 	  strncmp (buf, "***", 3) == 0 ||
 	  strncmp (buf, "<<<", 3) == 0 || strncmp (buf, "Time:", 5) == 0)
 	{
-	  rm_prev_flag = 1;
+	  if (strstr (buf, "- DEBUG") != NULL)
+	    {
+	      is_debug = 1;
+	    }
+	  else
+	    {
+	      is_debug = 0;
+	      rm_prev_flag = 1;
+	    }
 	  continue;
 	}
-      if (rm_prev_flag)
+      /* ignore all the debug information, until find new line start with "---"|"***"|"<<<"|"Time:". */
+      if (is_debug != 0)
+	{
+	  continue;
+	}
+
+      if (rm_prev_flag != 0)
 	{
 	  msg_size = 0;
 	}
       strcat (buf, "\n");
-      if (err_buf)
+      if ((err_buf_size - msg_size - 1) > 0)
 	{
 	  strncpy (err_buf + msg_size, buf, err_buf_size - msg_size - 1);
+	}
+      else
+	{
+	  break;
 	}
       msg_size += strlen (buf);
       rm_prev_flag = 0;
     }
+  err_buf[err_buf_size - 1] = '\0';
   fclose (fp);
   return (msg_size > 0 ? -1 : 0);
 }
@@ -662,59 +610,6 @@ get_cubrid_mode_opt (T_CUBRID_MODE mode)
   return ("--" CSQL_CS_MODE_L);
 }
 
-static void
-read_commdb_output (T_COMMDB_RESULT * res, char *out_file)
-{
-  T_COMMDB_INFO *info;
-  int num_info, num_alloc;
-  char str_buf[512];
-  char tmp_str[64], db_name[64];
-  FILE *fp;
-
-  fp = fopen (out_file, "r");
-  if (fp == NULL)
-    return;
-
-  num_info = 0;
-  num_alloc = 5;
-  info = (T_COMMDB_INFO *) malloc (sizeof (T_COMMDB_INFO) * num_alloc);
-  if (info == NULL)
-    return;
-
-  while (fgets (str_buf, sizeof (str_buf), fp))
-    {
-      char *tmp_p;
-
-      if (sscanf (str_buf, "%63s %63s", tmp_str, db_name) < 2)
-	continue;
-      if (strcmp (tmp_str, "Server") != 0)
-	continue;
-
-      tmp_p = strchr (db_name, ',');
-      if (tmp_p)
-	*tmp_p = '\0';
-
-      num_info++;
-      if (num_info > num_alloc)
-	{
-	  num_alloc += 5;
-	  info =
-	    (T_COMMDB_INFO *) realloc (info,
-				       sizeof (T_COMMDB_INFO) * num_alloc);
-	  if (info == NULL)
-	    {
-	      fclose (fp);
-	      return;
-	    }
-	}
-      strcpy (info[num_info - 1].db_name, db_name);
-    }
-  fclose (fp);
-
-  res->num_result = num_info;
-  res->result = info;
-}
-
 static int
 parse_volume_line (T_SPACEDB_INFO * vol_info, char *str_buf)
 {
@@ -778,7 +673,7 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
 {
   FILE *fp;
   char str_buf[1024];
-  int page_size = 0;
+  int db_page_size = 0, log_page_size = 0;
   int num_vol = 0, num_tmp_vol = 0;
   T_SPACEDB_INFO *vol_info = NULL, *tmp_vol_info = NULL;
 
@@ -798,31 +693,26 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
       ut_trim (str_buf);
       if (strncmp (str_buf, "Space", 5) == 0)
 	{
-	  tmp_p = strrchr (str_buf, ' ');
+	  tmp_p = strstr (str_buf, "pagesize");
 	  if (tmp_p == NULL)
 	    {
 	      goto spacedb_error;
 	    }
-	  page_size = atoi (tmp_p + 1);
+	  db_page_size = atoi (tmp_p + 9);
+
+	  tmp_p = strstr (str_buf, "log pagesize:");
+	  if (tmp_p != NULL)
+	    {
+	      log_page_size = atoi (tmp_p + 13);
+	    }
+	  else
+	    {
+	      /* log pagesize default value */
+	      log_page_size = 4096;
+	    }
 	}
-      else
-	if ((strncmp
-	     (str_buf, "데이타베이스",
-	      strlen ("데이타베이스")) == 0)
-	    ||
-	    (strncmp (str_buf, "데이터베이스", strlen ("데이터베이스")) == 0))
-	{
-	  tmp_p = strrchr (str_buf, ')');
-	  if (tmp_p == NULL)
-	    goto spacedb_error;
-	  *tmp_p = '\0';
-	  tmp_p = strrchr (str_buf, ' ');
-	  if (tmp_p == NULL)
-	    goto spacedb_error;
-	  page_size = atoi (tmp_p + 1);
-	}
-      else if (strncmp (str_buf, "Volid", 5) == 0 ||
-	       strncmp (str_buf, "번호", strlen ("번호")) == 0)
+
+      else if (strncmp (str_buf, "Volid", 5) == 0)
 	{
 	  break;
 	}
@@ -835,8 +725,7 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
 	{
 	  continue;
 	}
-      if (strncmp (str_buf, "Volid", 5) == 0 ||
-	  strncmp (str_buf, "번호", strlen ("번호")) == 0)
+      if (strncmp (str_buf, "Volid", 5) == 0)
 	{
 	  break;
 	}
@@ -866,8 +755,7 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
 	{
 	  continue;
 	}
-      if (strncmp (str_buf, "Volid", 5) == 0 ||
-	  strncmp (str_buf, "번호", strlen ("번호")) == 0)
+      if (strncmp (str_buf, "Volid", 5) == 0)
 	{
 	  break;
 	}
@@ -888,7 +776,8 @@ read_spacedb_output (T_SPACEDB_RESULT * res, char *out_file)
 
   fclose (fp);
 
-  res->page_size = page_size;
+  res->page_size = db_page_size;
+  res->log_page_size = log_page_size;
   res->num_vol = num_vol;
   res->num_tmp_vol = num_tmp_vol;
   res->vol_info = vol_info;
@@ -941,31 +830,63 @@ set_spacedb_info (T_SPACEDB_INFO * vol_info, int volid, char *purpose,
 }
 
 static int
-read_cmserver_err_log (char *err_file)
+read_start_server_output (char *stdout_file, char *stderr_file,
+			  char *_dbmt_error)
 {
-  FILE *fp;
+  FILE *fp, *fp2;
   char buf[1024];
   char *strp;
+  int retval = 0;
 
-  fp = fopen (err_file, "r");
-  if (fp == NULL)
-    return 0;
-
-  while (1)
+  if (access (stdout_file, F_OK) == 0)
     {
-      memset (buf, 0, sizeof (buf));
-      if (fgets (buf, sizeof (buf), fp) == NULL)
-	break;
-      if (strncmp (buf, "++", 2) == 0)
+      fp = fopen (stdout_file, "r");
+      if (fp != NULL)
 	{
-	  if ((strp = strchr (buf, ':')) && strstr (strp, "fail"))
+	  while (fgets (buf, sizeof (buf), fp) != NULL)
 	    {
-	      fclose (fp);
-	      return -1;
+	      if (strncmp (buf, "++", 2) == 0)
+		{
+		  if ((strp = strchr (buf, ':')) && strstr (strp, "fail"))
+		    {
+		      retval = -1;
+		      break;
+		    }
+		}
 	    }
+	  fclose (fp);
 	}
     }
 
-  fclose (fp);
-  return 0;
+  if (access (stderr_file, F_OK) == 0)
+    {
+      fp2 = fopen (stderr_file, "r");
+      if (fp2 != NULL)
+	{
+	  int len = 0;
+	  while (fgets (buf, sizeof (buf), fp2) != NULL)
+	    {
+	      ut_trim (buf);
+	      len += strlen (buf);
+	      if (len < (DBMT_ERROR_MSG_SIZE - 1))
+		{
+		  strcpy (_dbmt_error, buf);
+		  _dbmt_error += len;
+		}
+	      else
+		{
+		  strcpy_limit (_dbmt_error, buf, DBMT_ERROR_MSG_SIZE);
+		  strcpy_limit (_dbmt_error + DBMT_ERROR_MSG_SIZE - 4, "...",
+				4);
+		  break;
+		}
+	    }
+
+	  if (len != 0 && retval != -1)
+	    retval = 1;
+	  fclose (fp2);
+	}
+    }
+
+  return retval;
 }

@@ -503,7 +503,9 @@ static TP_DOMAIN_STATUS tp_value_cast_internal (const DB_VALUE * src,
 						bool implicit_coercion,
 						bool do_domain_select);
 static int oidcmp (OID * oid1, OID * oid2);
+#if defined(CUBRID_DEBUG)
 static void fprint_domain (FILE * fp, TP_DOMAIN * domain);
+#endif
 
 /*
  * tp_init - Global initialization for this module.
@@ -1236,7 +1238,7 @@ tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
       /*
        * note that we never allow inexact matches here because the
        * mr_setmem_numeric function is not currently able to perform the
-       * defered coercion.
+       * deferred coercion.
        */
       match = ((dom1->precision == dom2->precision)
 	       && (dom1->scale == dom2->scale));
@@ -1734,7 +1736,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact,
 	  /*
 	   * note that we never allow inexact matches here because
 	   * the mr_setmem_numeric function is not currently able
-	   * to perform the defered coercion.
+	   * to perform the deferred coercion.
 	   */
 	  match = ((domain->precision == transient->precision)
 		   && (domain->scale == transient->scale));
@@ -2496,6 +2498,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
   return domain;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tp_create_domain_resolve_value - adjust domain of a DB_VALUE with respect to
  * the primitive value of the value
@@ -2567,6 +2570,7 @@ tp_create_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * domain)
   /* if(domain) return tp_domain_cache(domain); */
   return domain;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 #if !defined (SERVER_MODE)
 
@@ -3206,17 +3210,16 @@ tp_domain_select (const TP_DOMAIN * domain_list,
        * create class bar (b set_of(string, integer, foo));
        * insert into bar (b) values ({insert into foo values (1)});
        */
-      DB_OTMPL *val_tmpl, *otmpl;
+      DB_OTMPL *val_tmpl;
 
       val_tmpl = (DB_OTMPL *) DB_GET_POINTER (value);
       if (val_tmpl)
 	{
-	  otmpl = (DB_OTMPL *) val_tmpl->classobj;
 	  for (d = (TP_DOMAIN *) domain_list; d != NULL && best == NULL;
 	       d = d->next)
 	    {
 	      if (d->type->id == DB_TYPE_OBJECT
-		  && sm_check_class_domain (d, (DB_OBJECT *) otmpl))
+		  && sm_check_class_domain (d, val_tmpl->classobj))
 		{
 		  best = d;
 		}
@@ -5199,7 +5202,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	    if (tp_ltoa (num, new_string, 10))
 	      {
-		if (db_value_precision (target) < (int) strlen (new_string))
+		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		    && db_value_precision (target) <
+		    (int) strlen (new_string))
 		  {
 		    status = DOMAIN_OVERFLOW;
 		    db_private_free_and_init (NULL, new_string);
@@ -5239,7 +5244,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 		sprintf (new_string, "%.*g", 17, DB_GET_DOUBLE (src));
 	      }
 
-	    if (db_value_precision (target) < (int) strlen (new_string))
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
 	      {
 		status = DOMAIN_OVERFLOW;
 		db_private_free_and_init (NULL, new_string);
@@ -5265,7 +5271,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    ptr = numeric_db_value_print ((DB_VALUE *) src);
 	    strcpy (new_string, ptr);
 
-	    if (db_value_precision (target) < (int) strlen (new_string))
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
 	      {
 		status = DOMAIN_OVERFLOW;
 		db_private_free_and_init (NULL, new_string);
@@ -5301,7 +5308,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 	    if (*p == '.')	/* remove point */
 	      *p = '\0';
 
-	    if (db_value_precision (target) < (int) strlen (new_string))
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
 	      {
 		status = DOMAIN_OVERFLOW;
 		db_private_free_and_init (NULL, new_string);
@@ -5351,7 +5359,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 				       (DB_DATETIME *) DB_GET_DATETIME (src));
 	      }
 
-	    if (db_value_precision (target) < (int) strlen (new_string))
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
 	      {
 		status = DOMAIN_OVERFLOW;
 		db_private_free_and_init (NULL, new_string);
@@ -5382,7 +5391,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest,
 
 	    if (convert_error == NO_ERROR)
 	      {
-		if (db_value_precision (target) < (int) strlen (new_string))
+		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		    && db_value_precision (target) <
+		    (int) strlen (new_string))
 		  {
 		    status = DOMAIN_OVERFLOW;
 		    db_private_free_and_init (NULL, new_string);
@@ -5720,13 +5731,13 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2,
   if (value1 == NULL || PRIM_IS_NULL (value1))
     {
       if (value2 == NULL || PRIM_IS_NULL (value2))
-        {
-          status = (total_order ? DB_EQ : DB_UNK);
-        }
+	{
+	  status = (total_order ? DB_EQ : DB_UNK);
+	}
       else
-        {
-          status = (total_order ? DB_LT : DB_UNK);
-        }
+	{
+	  status = (total_order ? DB_LT : DB_UNK);
+	}
     }
   else if (value2 == NULL || PRIM_IS_NULL (value2))
     {
@@ -6118,6 +6129,7 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
   return status;
 }
 
+#if defined(CUBRID_DEBUG)
 /*
  * fprint_domain - print information of a domain
  *    return: void
@@ -6237,6 +6249,7 @@ tp_domain_fprint (FILE * fp, TP_DOMAIN * domain)
 {
   fprint_domain (fp, domain);
 }
+#endif
 
 /*
  * tp_valid_indextype - check for valid index type

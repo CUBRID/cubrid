@@ -135,6 +135,7 @@ enum t_diag_server_type
 };
 typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
 
+
 /*
  * Server execution statistic structure
  */
@@ -142,8 +143,8 @@ typedef struct mnt_server_exec_stats MNT_SERVER_EXEC_STATS;
 struct mnt_server_exec_stats
 {
   /* Execution statistics for the file io */
-  unsigned int file_num_opens;
   unsigned int file_num_creates;
+  unsigned int file_num_removes;
   unsigned int file_num_ioreads;
   unsigned int file_num_iowrites;
   unsigned int file_num_iosynches;
@@ -153,6 +154,8 @@ struct mnt_server_exec_stats
   unsigned int pb_num_dirties;
   unsigned int pb_num_ioreads;
   unsigned int pb_num_iowrites;
+  unsigned int pb_num_victims;
+  unsigned int pb_num_replacements;
 
   /* Execution statistics for the log manager */
   unsigned int log_num_ioreads;
@@ -160,6 +163,7 @@ struct mnt_server_exec_stats
   unsigned int log_num_appendrecs;
   unsigned int log_num_archives;
   unsigned int log_num_checkpoints;
+  unsigned int log_num_wals;
 
   /* Execution statistics for the lock manager */
   unsigned int lk_num_acquired_on_pages;
@@ -184,20 +188,46 @@ struct mnt_server_exec_stats
   unsigned int bt_num_deletes;
   unsigned int bt_num_updates;
 
+  /* Execution statistics for the query manager */
+  unsigned int qm_num_selects;
+  unsigned int qm_num_inserts;
+  unsigned int qm_num_deletes;
+  unsigned int qm_num_updates;
+  unsigned int qm_num_sscans;
+  unsigned int qm_num_iscans;
+  unsigned int qm_num_lscans;
+  unsigned int qm_num_setscans;
+  unsigned int qm_num_methscans;
+  unsigned int qm_num_nljoins;
+  unsigned int qm_num_mjoins;
+  unsigned int qm_num_objfetches;
+
   /* Execution statistics for network communication */
   unsigned int net_num_requests;
+
+  /* flush control stat */
+  unsigned int fc_num_pages;
+  unsigned int fc_num_log_pages;
+  unsigned int fc_tokens;
+
+  /* Other statistics */
+  unsigned int pb_hit_ratio;
+  /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
 
 #if defined (SERVER_MODE)
   MUTEX_T lock;
 #endif				/* SERVER_MODE */
 };
 
+/* number of field of MNT_SEVER_EXEC_STATS structure */
+#define MNT_SIZE_OF_SERVER_EXEC_STATS 51
+
 typedef struct mnt_server_exec_global_stats MNT_SERVER_EXEC_GLOBAL_STATS;
 struct mnt_server_exec_global_stats
 {
   /* Execution statistics for the file io */
-  UINT64 file_num_opens;
   UINT64 file_num_creates;
+  UINT64 file_num_removes;
   UINT64 file_num_ioreads;
   UINT64 file_num_iowrites;
   UINT64 file_num_iosynches;
@@ -207,6 +237,8 @@ struct mnt_server_exec_global_stats
   UINT64 pb_num_dirties;
   UINT64 pb_num_ioreads;
   UINT64 pb_num_iowrites;
+  UINT64 pb_num_victims;
+  UINT64 pb_num_replacements;
 
   /* Execution statistics for the log manager */
   UINT64 log_num_ioreads;
@@ -214,6 +246,7 @@ struct mnt_server_exec_global_stats
   UINT64 log_num_appendrecs;
   UINT64 log_num_archives;
   UINT64 log_num_checkpoints;
+  UINT64 log_num_wals;
 
   /* Execution statistics for the lock manager */
   UINT64 lk_num_acquired_on_pages;
@@ -238,9 +271,34 @@ struct mnt_server_exec_global_stats
   UINT64 bt_num_deletes;
   UINT64 bt_num_updates;
 
+  /* Execution statistics for the query manager */
+  UINT64 qm_num_selects;
+  UINT64 qm_num_inserts;
+  UINT64 qm_num_deletes;
+  UINT64 qm_num_updates;
+  UINT64 qm_num_sscans;
+  UINT64 qm_num_iscans;
+  UINT64 qm_num_lscans;
+  UINT64 qm_num_setscans;
+  UINT64 qm_num_methscans;
+  UINT64 qm_num_nljoins;
+  UINT64 qm_num_mjoins;
+  UINT64 qm_num_objfetches;
+
   /* Execution statistics for network communication */
   UINT64 net_num_requests;
+
+  UINT64 fc_num_pages;
+  UINT64 fc_num_log_pages;
+  UINT64 fc_tokens;
+
+  /* Other statistics */
+  UINT64 pb_hit_ratio;
+  /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
 };
+
+/* number of field of MNT_SERVER_EXEC_GLOBAL_STATS structure */
+#define MNT_SIZE_OF_SERVER_EXEC_GLOBAL_STATS 51
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
 				   FILE * stream);
@@ -273,6 +331,7 @@ extern MNT_EXEC_STATS *mnt_get_stats (void);
 extern MNT_SERVER_EXEC_GLOBAL_STATS *mnt_get_global_stats (void);
 #endif /* CS_MODE || SA_MODE */
 
+#if defined (DIAG_DEVEL)
 #if defined(SERVER_MODE)
 
 typedef enum t_diag_obj_type T_DIAG_OBJ_TYPE;
@@ -375,6 +434,7 @@ extern void close_diag_mgr (void);
 extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value,
 			    T_DIAG_VALUE_SETTYPE settype, char *err_buf);
 #endif /* SERVER_MODE */
+#endif /* DIAG_DEVEL */
 
 #ifndef DIFF_TIMEVAL
 #define DIFF_TIMEVAL(start, end, elapsed) \
@@ -400,10 +460,10 @@ extern int mnt_Num_tran_exec_stats;
 /*
  * Statistics at file io level
  */
-#define mnt_file_opens(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_opens(thread_p)
 #define mnt_file_creates(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_file_creates(thread_p)
+#define mnt_file_removes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_removes(thread_p)
 #define mnt_file_ioreads(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_file_ioreads(thread_p)
 #define mnt_file_iowrites(thread_p) \
@@ -422,6 +482,10 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_ioreads(thread_p)
 #define mnt_pb_iowrites(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_iowrites(thread_p)
+#define mnt_pb_victims(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_victims(thread_p)
+#define mnt_pb_replacements(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_replacements(thread_p)
 
 /*
  * Statistics at log level
@@ -436,6 +500,8 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_archives(thread_p)
 #define mnt_log_checkpoints(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_checkpoints(thread_p)
+#define mnt_log_wals(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_wals(thread_p)
 
 /*
  * Statistics at lock level
@@ -483,6 +549,36 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_bt_updates(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_updates(thread_p)
 
+/* Execution statistics for the query manager */
+#define mnt_qm_selects(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_selects(thread_p)
+#define mnt_qm_inserts(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_inserts(thread_p)
+#define mnt_qm_deletes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_deletes(thread_p)
+#define mnt_qm_updates(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_updates(thread_p)
+#define mnt_qm_sscans(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_sscans(thread_p)
+#define mnt_qm_iscans(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_iscans(thread_p)
+#define mnt_qm_lscans(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_lscans(thread_p)
+#define mnt_qm_setscans(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_setscans(thread_p)
+#define mnt_qm_methscans(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_methscans(thread_p)
+#define mnt_qm_nljoins(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_nljoins(thread_p)
+#define mnt_qm_mjoins(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_mjoins(thread_p)
+#define mnt_qm_objfetches(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_objfetches(thread_p)
+
+/* Statistics at Flush Control */
+#define mnt_fc_stats(thread_p, num_pages, num_overflows, tokens) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_fc_stats(thread_p, num_pages, num_overflows, tokens)
+
 /*
  * Network Communication level
  */
@@ -495,9 +591,11 @@ extern MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY * thread_p);
 
 extern int mnt_server_init (int num_tran_indices);
 extern void mnt_server_final (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern void mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream);
-extern void mnt_x_file_opens (THREAD_ENTRY * thread_p);
+#endif
 extern void mnt_x_file_creates (THREAD_ENTRY * thread_p);
+extern void mnt_x_file_removes (THREAD_ENTRY * thread_p);
 extern void mnt_x_file_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_file_iowrites (THREAD_ENTRY * thread_p);
 extern void mnt_x_file_iosynches (THREAD_ENTRY * thread_p);
@@ -505,11 +603,14 @@ extern void mnt_x_pb_fetches (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_dirties (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_iowrites (THREAD_ENTRY * thread_p);
+extern void mnt_x_pb_victims (THREAD_ENTRY * thread_p);
+extern void mnt_x_pb_replacements (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_iowrites (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_appendrecs (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_archives (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_checkpoints (THREAD_ENTRY * thread_p);
+extern void mnt_x_log_wals (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_acquired_on_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_acquired_on_objects (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_converted_on_pages (THREAD_ENTRY * thread_p);
@@ -524,15 +625,30 @@ extern void mnt_x_tran_savepoints (THREAD_ENTRY * thread_p);
 extern void mnt_x_tran_start_topops (THREAD_ENTRY * thread_p);
 extern void mnt_x_tran_end_topops (THREAD_ENTRY * thread_p);
 extern void mnt_x_tran_interrupts (THREAD_ENTRY * thread_p);
-extern void mnt_x_bt_inserts (THREAD_ENTRY *thread_p);
-extern void mnt_x_bt_deletes (THREAD_ENTRY *thread_p);
-extern void mnt_x_bt_updates (THREAD_ENTRY *thread_p);
+extern void mnt_x_bt_inserts (THREAD_ENTRY * thread_p);
+extern void mnt_x_bt_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_bt_updates (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_selects (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_inserts (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_deletes (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_updates (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_sscans (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_iscans (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_lscans (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_setscans (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_methscans (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_nljoins (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_mjoins (THREAD_ENTRY * thread_p);
+extern void mnt_x_qm_objfetches (THREAD_ENTRY * thread_p);
 extern void mnt_x_net_requests (THREAD_ENTRY * thread_p);
+
+extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
+			    unsigned int num_log_pages, unsigned int tokens);
 
 #else /* SERVER_MODE || SA_MODE */
 
-#define mnt_file_opens(thread_p)
 #define mnt_file_creates(thread_p)
+#define mnt_file_removes(thread_p)
 #define mnt_file_ioreads(thread_p)
 #define mnt_file_iowrites(thread_p)
 #define mnt_file_iosynches(thread_p)
@@ -541,12 +657,15 @@ extern void mnt_x_net_requests (THREAD_ENTRY * thread_p);
 #define mnt_pb_dirties(thread_p)
 #define mnt_pb_ioreads(thread_p)
 #define mnt_pb_iowrites(thread_p)
+#define mnt_pb_victims(thread_p)
+#define mnt_pb_replacements(thread_p)
 
 #define mnt_log_ioreads(thread_p)
 #define mnt_log_iowrites(thread_p)
 #define mnt_log_appendrecs(thread_p)
 #define mnt_log_archives(thread_p)
 #define mnt_log_checkpoints(thread_p)
+#define mnt_log_wals(thread_p)
 
 #define mnt_lk_acquired_on_pages(thread_p)
 #define mnt_lk_acquired_on_objects(thread_p)
@@ -568,7 +687,22 @@ extern void mnt_x_net_requests (THREAD_ENTRY * thread_p);
 #define mnt_bt_deletes(thread_p)
 #define mnt_bt_updates(thread_p)
 
+#define mnt_qm_selects(thread_p)
+#define mnt_qm_inserts(thread_p)
+#define mnt_qm_deletes(thread_p)
+#define mnt_qm_updates(thread_p)
+#define mnt_qm_sscans(thread_p)
+#define mnt_qm_iscans(thread_p)
+#define mnt_qm_lscans(thread_p)
+#define mnt_qm_setscans(thread_p)
+#define mnt_qm_methscans(thread_p)
+#define mnt_qm_nljoins(thread_p)
+#define mnt_qm_mjoins(thread_p)
+#define mnt_qm_objfetches(thread_p)
+
 #define mnt_net_requests(hread_p)
+
+#define mnt_fc_stats (thread_p, num_pages, num_log_pages, num_tokens)
 #endif /* CS_MODE */
 
 #endif /* _PERF_MONITOR_H_ */

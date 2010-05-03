@@ -1,0 +1,13 @@
+- Add code for 'remove' operation on iterators.
+- Add rot_rl() and rot_lr() which perform the same jobs as calling
+  rot_right/left or rot_left/right, but optimize the operation.
+- Maybe change the AVL tree to be configurable in terms of the balance factor
+  k in HB[k], although from my own testing performance _always_ degenerates
+  when relaxing this value.
+- Top-down splay tree?
+- Optimize weight-balanced tree code.
+- Implement skiplist.
+- Write man pages.
+- Write an install-time shell script that compiles all the libdict public
+  header files into one header file so we don't have to have a whole directory
+  in ${PREFIX}/include just for libdict.

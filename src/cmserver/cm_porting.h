@@ -31,11 +31,18 @@
  * IMPORTED SYSTEM HEADER FILES
  */
 
+#include "config.h"
 #include <errno.h>
+
+#if defined(WINDOWS)
+#define EOVERFLOW	75
+#endif
+
 
 #if !defined(WINDOWS)
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/param.h>
 #else
 #include <direct.h>
 #endif
@@ -63,6 +70,8 @@
 
 #if defined(WINDOWS)
 #define	mkdir(dir, mode)	_mkdir(dir)
+#define	access(dir, mode)	_access(dir, mode)
+#define unlink(file) 		_unlink(file)
 #define getpid()		_getpid()
 #define O_RDONLY		_O_RDONLY
 #define strcasecmp(str1, str2)	_stricmp(str1, str2)
@@ -127,7 +136,7 @@
 #define	THREAD_BEGIN(THR_ID, FUNC, ARG)			\
 	do {						\
 	  pthread_create(&(THR_ID), pthread_attr_default, FUNC, ARG);	\
-	  pthread_detach(&(THR_ID));			\
+	  pthread_detach(THR_ID);			\
 	} while (0)
 #elif UNIXWARE7
 #define THREAD_BEGIN(THR_ID, FUNC, ARG)		\
@@ -136,7 +145,10 @@
 	  pthread_attr_init(&thread_attr);	\
 	  pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED); \
 	  pthread_attr_setstacksize(&thread_attr, 100 * 1024);	\
-	  pthread_create(&(THR_ID), &thread_attr, FUNC, ARG);	\
+	  if (pthread_create(&(THR_ID), &thread_attr, FUNC, ARG) < 0){	\
+        free ((void *) ARG); \
+      } \
+      pthread_attr_destroy(&thread_attr);   \
 	} while (0)
 #else
 #define THREAD_BEGIN(THR_ID, FUNC, ARG)		\
@@ -144,7 +156,10 @@
 	  pthread_attr_t	thread_attr;	\
 	  pthread_attr_init(&thread_attr);	\
 	  pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED); \
-	  pthread_create(&(THR_ID), &thread_attr, FUNC, ARG);	\
+	  if (pthread_create(&(THR_ID), &thread_attr, FUNC, ARG) < 0){	\
+        free ((void *) ARG); \
+      } \
+      pthread_attr_destroy(&thread_attr);   \
 	} while (0)
 #endif
 
@@ -191,6 +206,7 @@ typedef int SOCKET;
 #define IS_INVALID_SOCKET(socket) ((socket) < 0)
 #endif
 
+
 /*
  * EXPORTED DEFINITIONS
  */
@@ -217,12 +233,13 @@ typedef int SOCKET;
 #define DEL_DIR_OPT     "-rf"
 #endif
 
-/*
- * EXPORTED FUNCTION PROTOTYPES
- */
+#if !defined(WINDOWS)
+#define TRUE 1
+#define FALSE 0
+#endif
 
-/*
- * EXPORTED VARIABLES
- */
+#if !HAVE_BZERO && HAVE_MEMSET
+# define bzero(buf, bytes)      ((void) memset (buf, 0, bytes))
+#endif
 
 #endif /* _CM_PORTING_H_ */

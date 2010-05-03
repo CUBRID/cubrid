@@ -29,8 +29,7 @@
 
 #include "cm_auto_task.h"
 #include "cm_porting.h"
-#include "cm_dstring.h"
-#include "cm_nameval.h"
+#include "cm_dep.h"
 #include "cm_server_util.h"
 #include "cm_config.h"
 #include "cm_user.h"

@@ -115,7 +115,9 @@ static PT_NODE *pt_is_filtering_skip_and_or (PARSER_CONTEXT * parser,
 					     PT_NODE * node, void *arg,
 					     int *continue_walk);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static void *regu_bytes_alloc (int length);
+#endif
 static void regu_dbvallist_init (QPROC_DB_VALUE_LIST ptr);
 static void regu_var_init (REGU_VARIABLE * ptr);
 static void regu_varlist_init (REGU_VARIABLE_LIST ptr);
@@ -248,6 +250,31 @@ pt_name (PARSER_CONTEXT * parser, const char *name)
     {
       parser_init_node (node);
       node->info.name.original = pt_append_string (parser, NULL, name);
+    }
+
+  return node;
+}
+
+/*
+ * pt_table_option () - Create a PT_TABLE_OPTION node
+ *   return: the new node or NULL on error
+ *   parser(in):
+ *   option(in): the type of the table option
+ *   val(in): a value associated with the table option or NULL
+ */
+PT_NODE *
+pt_table_option (PARSER_CONTEXT * parser, const PT_TABLE_OPTION_TYPE option,
+		 PT_NODE * val)
+{
+  PT_NODE *node;
+
+  node = parser_new_node (parser, PT_TABLE_OPTION);
+
+  if (node)
+    {
+      parser_init_node (node);
+      node->info.table_option.option = option;
+      node->info.table_option.val = val;
     }
 
   return node;
@@ -473,7 +500,7 @@ pt_find_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_SELECT:
       /* Can not increment level for list portion of walk.
        * Since those queries are not sub-queries of this query.
-       * Consequently, we recurse seperately for the list leading
+       * Consequently, we recurse separately for the list leading
        * from a query.  Can't just call pt_to_uncorr_subquery_list()
        * directly since it needs to do a leaf walk and we want to do a full
        * walk on the next list.
@@ -622,7 +649,7 @@ pt_is_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	{
 	  /* Can not increment level for list portion of walk.
 	   * Since those queries are not sub-queries of this query.
-	   * Consequently, we recurse seperately for the list leading
+	   * Consequently, we recurse separately for the list leading
 	   * from a query.  Can't just call pt_to_uncorr_subquery_list()
 	   * directly since it needs to do a leaf walk and we want to do a
 	   * full walk on the next list.
@@ -701,6 +728,7 @@ pt_is_aggregate_node_post (PARSER_CONTEXT * parser, PT_NODE * tree,
   return tree;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_is_ddl_statement () - test PT_NODE statement types,
  * 			    without exposing internals
@@ -742,6 +770,7 @@ pt_is_ddl_statement (const PT_NODE * node)
     }
   return false;
 }
+#endif
 
 /*
  * pt_is_method_call () -
@@ -1155,6 +1184,7 @@ pt_check_orderbynum_post (PARSER_CONTEXT * parser, PT_NODE * node,
   return node;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_arg1_part () - returns arg1 for union, intersection or difference
  *   return:
@@ -1206,6 +1236,7 @@ pt_select_list_part (const PT_NODE * node)
 
   return NULL;
 }
+#endif
 
 /*
  * pt_from_list_part () - returns from list from select statement
@@ -1223,6 +1254,7 @@ pt_from_list_part (const PT_NODE * node)
   return NULL;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_where_part () - returns where part from select statement
  *   return:
@@ -1293,6 +1325,7 @@ pt_having_part (const PT_NODE * node)
 
   return NULL;
 }
+#endif
 
 /*
  * pt_from_entity_part () - Returns first entity name of from list node
@@ -1350,6 +1383,7 @@ pt_right_part (const PT_NODE * node)
   return NULL;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_operator_part () - returns operator for PT_EXPR
  *   return:
@@ -1366,6 +1400,7 @@ pt_operator_part (const PT_NODE * node)
 
   return 0;
 }
+#endif
 
 /*
  * pt_class_part () -
@@ -1393,6 +1428,7 @@ pt_class_part (const PT_NODE * node)
   return NULL;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_class_names_part () -
  *   return:
@@ -1432,6 +1468,7 @@ pt_assignments_part (const PT_NODE * node)
 
   return NULL;
 }
+#endif
 
 /*
  * pt_attrs_part () -
@@ -1483,6 +1520,7 @@ pt_string_part (const PT_NODE * node)
   return NULL;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_qualifier_part () -
  *   return:
@@ -1514,6 +1552,7 @@ pt_object_part (const PT_NODE * node)
 
   return NULL;
 }
+#endif
 
 /*
  * pt_must_be_filtering () - Finds expressions that are incompatible with
@@ -1738,6 +1777,7 @@ pt_node_next (const PT_NODE * node)
   return NULL;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_set_node_etc () - sets the etc void pointer of a node
  *   return:
@@ -1752,6 +1792,7 @@ pt_set_node_etc (PT_NODE * node, const void *etc)
       node->etc = (void *) etc;
     }
 }
+#endif
 
 /*
  * pt_node_etc () - return the etc void pointer from a node
@@ -1839,6 +1880,7 @@ pt_reset_error (PARSER_CONTEXT * parser)
   return;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_column_updatable () - takes a subquery expansion of a class, and tests
  * 	it for column aka object-master updatability
@@ -1901,7 +1943,7 @@ pt_column_updatable (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   return updatable;
 }
-
+#endif
 
 /*
  * pt_has_error () - returns true if there are errors recorder for this parser
@@ -2380,6 +2422,7 @@ pt_get_output_host_vars (const PT_HOST_VARS * hv)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * pt_get_output_host_descr () - return a PT_HOST_VARS' output host_descriptor
  *   return:  hv's output host_descriptor
@@ -2398,6 +2441,7 @@ pt_get_output_host_descr (PT_HOST_VARS * hv)
       return NULL;
     }
 }
+#endif
 
 /*
  * pt_set_update_object () - convert update statement to
@@ -2646,6 +2690,7 @@ pt_sort_spec_cover (PT_NODE * cur_list, PT_NODE * new_list)
  *       		  MEMORY FUNCTIONS FOR STRINGS
  */
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * regu_bytes_alloc () - Memory allocation function for void *.
  *   return: void *
@@ -2666,7 +2711,6 @@ regu_bytes_alloc (int length)
     return ptr;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * regu_string_alloc () - Memory allocation function for CHAR *.
  *   return: char *
@@ -2708,7 +2752,6 @@ regu_string_ws_alloc (int length)
 
   return (ptr = (char *) db_ws_alloc (length));
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * regu_strdup () - Duplication function for string.
@@ -2770,6 +2813,7 @@ regu_strcmp (const char *name1, const char *name2,
   else
     return ((i < 0) ? -1 : 1);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  *       		MEMORY FUNCTIONS FOR DB_VALUE
@@ -3889,6 +3933,7 @@ regu_listid_alloc (void)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * regu_listid_db_alloc () -
  *   return: QFILE_LIST_ID *
@@ -3912,6 +3957,7 @@ regu_listid_db_alloc (void)
       return ptr;
     }
 }
+#endif
 
 /*
  * regu_listid_init () -
@@ -4156,6 +4202,7 @@ regu_int_array_alloc (int size)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * regu_int_array_db_alloc () -
  *   return: int *
@@ -4187,6 +4234,7 @@ regu_int_array_db_alloc (int size)
       return ptr;
     }
 }
+#endif
 
 /*
  * regu_cache_attrinfo_alloc () -
@@ -4359,6 +4407,7 @@ regu_method_sig_alloc (void)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * regu_method_sig_db_alloc () -
  *   return: METHOD_SIG *
@@ -4382,6 +4431,7 @@ regu_method_sig_db_alloc (void)
       return ptr;
     }
 }
+#endif
 
 /*
  * regu_free_method_sig () -
@@ -4441,6 +4491,7 @@ regu_method_sig_list_alloc (void)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * regu_method_sig_list_db_alloc () -
  *   return: METHOD_SIG_LIST *
@@ -4464,7 +4515,7 @@ regu_method_sig_list_db_alloc (void)
       return ptr;
     }
 }
-
+#endif
 
 /*
  * regu_free_method_sig_list () -

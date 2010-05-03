@@ -120,11 +120,9 @@ repl_svr_close_pb (REPL_CONN * conn)
   for (i = 0; i < REPL_LOG_BUFFER_SIZE && pb->log_buffer[i]; i++)
     {
       free_and_init (pb->log_buffer[i]);
-      pb->log_buffer[i] = NULL;
     }
 
   free_and_init (pb->log_buffer);
-  pb->log_buffer = NULL;
 
   PTHREAD_COND_DESTROY (pb->read_cond);
   PTHREAD_COND_DESTROY (pb->write_cond);

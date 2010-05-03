@@ -2500,7 +2500,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 
       /* Find the matching segment in the segment index array to determine
          the array position to store the expression. We're using the
-         'index_seg[]' array of the term to find it's segment index */
+         'index_seg[]' array of the term to find its segment index */
       pos = -1;
       for (i = 0; i < termp->can_use_index && pos == -1; i++)
 	{

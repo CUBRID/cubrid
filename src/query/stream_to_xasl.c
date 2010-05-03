@@ -258,8 +258,10 @@ static char *stx_alloc_struct (THREAD_ENTRY * thread_p, int size);
 static int stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p,
 				      char *xasl_stream,
 				      int xasl_stream_size);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static char *stx_unpack_char (char *tmp, char *ptr);
 static char *stx_unpack_long (char *tmp, long *ptr);
+#endif
 
 /*
  * stx_map_stream_to_xasl () -
@@ -1219,6 +1221,7 @@ stx_restore_db_value_array_extra (THREAD_ENTRY * thread_p, char *ptr,
   return value_array;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 static TP_DOMAIN **
 stx_restore_domain_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
 {
@@ -1240,6 +1243,7 @@ stx_restore_domain_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
 
   return domains;
 }
+#endif
 
 static int *
 stx_restore_int_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
@@ -1302,6 +1306,7 @@ stx_restore_OID_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
   return oid_array;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 static char *
 stx_restore_input_vals (THREAD_ENTRY * thread_p, char *ptr, int nelements)
 {
@@ -1317,6 +1322,7 @@ stx_restore_input_vals (THREAD_ENTRY * thread_p, char *ptr, int nelements)
 
   return input_vals;
 }
+#endif
 
 static XASL_PARTS_INFO **
 stx_restore_parts_array (THREAD_ENTRY * thread_p, char *ptr, int size)
@@ -1535,8 +1541,7 @@ stx_restore_key_range_array (THREAD_ENTRY * thread_p, char *ptr,
     stx_alloc_struct (thread_p, sizeof (KEY_RANGE) * nelements);
   if (key_range_array == NULL)
     {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return NULL;
+      goto error;
     }
 
   ints = stx_restore_int_array (thread_p, ptr, 3 * nelements);
@@ -1557,8 +1562,7 @@ stx_restore_key_range_array (THREAD_ENTRY * thread_p, char *ptr,
 				       packed_xasl[offset]);
 	  if (key_range_array[i].key1 == NULL)
 	    {
-	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	      return NULL;
+	      goto error;
 	    }
 	}
       else
@@ -1574,8 +1578,7 @@ stx_restore_key_range_array (THREAD_ENTRY * thread_p, char *ptr,
 				       packed_xasl[offset]);
 	  if (key_range_array[i].key2 == NULL)
 	    {
-	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	      return NULL;
+	      goto error;
 	    }
 	}
       else
@@ -1585,6 +1588,10 @@ stx_restore_key_range_array (THREAD_ENTRY * thread_p, char *ptr,
     }
 
   return key_range_array;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 /*
@@ -1663,8 +1670,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			     &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->list_id == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1680,8 +1686,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->after_iscan_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1697,8 +1702,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->orderby_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1714,8 +1718,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->ordbynum_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1731,8 +1734,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->ordbynum_val == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1750,8 +1752,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->single_tuple == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1771,8 +1772,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 				 &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->outptr_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1788,8 +1788,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 				 &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->selected_upd_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1814,8 +1813,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->val_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1831,8 +1829,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->merge_val_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1848,8 +1845,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->aptr_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1865,8 +1861,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->bptr_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1882,8 +1877,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->dptr_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1899,8 +1893,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->after_join_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1916,8 +1909,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->if_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1933,8 +1925,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->instnum_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1950,8 +1941,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->instnum_val == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1969,8 +1959,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->fptr_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -1986,8 +1975,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->scan_ptr == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2003,8 +1991,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->connect_by_ptr == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2020,8 +2007,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->level_val == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2037,8 +2023,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 				   &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->level_regu == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2054,8 +2039,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->isleaf_val == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2071,8 +2055,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 				   &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->isleaf_regu == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2088,8 +2071,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->iscycle_val == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2105,8 +2087,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 				   &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->iscycle_regu == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2130,84 +2111,54 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     {
     case CONNECTBY_PROC:
       ptr = stx_build_connectby_proc (thread_p, ptr, &xasl->proc.connect_by);
-      if (ptr == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
       break;
+
     case BUILDLIST_PROC:
       ptr = stx_build_buildlist_proc (thread_p, ptr, &xasl->proc.buildlist);
-      if (ptr == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
       break;
+
     case BUILDVALUE_PROC:
       ptr = stx_build_buildvalue_proc (thread_p, ptr, &xasl->proc.buildvalue);
-      if (ptr == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
       break;
+
     case MERGELIST_PROC:
       ptr = stx_build_mergelist_proc (thread_p, ptr, &xasl->proc.mergelist);
-      if (ptr == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
       break;
+
     case UPDATE_PROC:
       ptr = stx_build_update_proc (thread_p, ptr, &xasl->proc.update);
-      if (ptr == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
       break;
+
     case DELETE_PROC:
       ptr = stx_build_delete_proc (thread_p, ptr, &xasl->proc.delete_);
-      if (ptr == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
       break;
+
     case INSERT_PROC:
       ptr = stx_build_insert_proc (thread_p, ptr, &xasl->proc.insert);
-      if (ptr == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
       break;
+
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
       ptr = stx_build_union_proc (thread_p, ptr, &xasl->proc.union_);
-      if (ptr == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
       break;
+
     case OBJFETCH_PROC:
     case SETFETCH_PROC:
       ptr = stx_build_fetch_proc (thread_p, ptr, &xasl->proc.fetch);
-      if (ptr == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
       break;
+
     case SCAN_PROC:
       break;
+
     default:
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
-      return (NULL);
+      return NULL;
+    }
+
+  if (ptr == NULL)
+    {
+      return NULL;
     }
 
   ptr = or_unpack_int (ptr, (int *) &xasl->projected_size);
@@ -2227,8 +2178,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	stx_restore_string (thread_p, &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->qstmt == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2244,12 +2194,15 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (xasl->next == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -2382,8 +2335,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->eptr_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2399,8 +2351,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->groupby_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2416,8 +2367,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->after_groupby_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2433,8 +2383,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 				 &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->g_outptr_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2450,8 +2399,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
       if (stx_build_list_proc->g_regu_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2467,8 +2415,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->g_val_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2484,8 +2431,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->g_having_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2501,8 +2447,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->g_grbynum_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2518,8 +2463,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->g_grbynum_val == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2537,8 +2481,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 				    &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->g_agg_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2554,12 +2497,15 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
 				&xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->g_outarith_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -2663,8 +2609,7 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (merge_list_info->outer_xasl == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2688,8 +2633,7 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr,
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (merge_list_info->outer_val_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2705,8 +2649,7 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (merge_list_info->inner_xasl == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2725,14 +2668,17 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr,
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (merge_list_info->inner_val_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   ptr = stx_build_ls_merge_info (thread_p, ptr, &merge_list_info->ls_merge);
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -2764,8 +2710,7 @@ stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *ptr,
 			       list_merge_info->ls_column_cnt);
       if (list_merge_info->ls_outer_column == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2782,8 +2727,7 @@ stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *ptr,
 			       list_merge_info->ls_column_cnt);
       if (list_merge_info->ls_outer_unique == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2800,8 +2744,7 @@ stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *ptr,
 			       list_merge_info->ls_column_cnt);
       if (list_merge_info->ls_inner_column == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2817,8 +2760,7 @@ stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *ptr,
 	 list_merge_info->ls_column_cnt);
       if (list_merge_info->ls_inner_unique == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2837,8 +2779,7 @@ stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *ptr,
 			       list_merge_info->ls_pos_cnt);
       if (list_merge_info->ls_pos_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2855,12 +2796,15 @@ stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *ptr,
 			       list_merge_info->ls_pos_cnt);
       if (list_merge_info->ls_outer_inner_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -2887,8 +2831,7 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       update_info->no_classes);
       if (update_info->class_oid == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2905,8 +2848,7 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr,
 				update_info->no_classes);
       if (update_info->class_hfid == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2929,8 +2871,7 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       update_info->no_vals);
       if (update_info->att_id == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2942,8 +2883,7 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr,
 			  sizeof (DB_VALUE *) * update_info->no_vals);
       if (update_info->consts == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
       for (i = 0; i < update_info->no_vals; ++i)
 	{
@@ -2961,8 +2901,7 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr,
 					  update_info->no_vals);
       if (update_info->consts == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -2978,8 +2917,7 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (update_info->cons_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3002,12 +2940,15 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr,
 				     update_info->no_classes);
       if (update_info->partition == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -3091,8 +3032,7 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       insert_info->no_vals);
       if (insert_info->att_id == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3104,8 +3044,7 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
     {
       if (insert_info->vals == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
       for (i = 0; i < insert_info->no_vals; ++i)
 	{
@@ -3125,8 +3064,7 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (insert_info->cons_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3147,12 +3085,15 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
 				    &xasl_unpack_info->packed_xasl[offset]);
       if (insert_info->partition == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -3237,18 +3178,10 @@ stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr,
     {
     case T_PRED:
       ptr = stx_build_pred (thread_p, ptr, &pred_expr->pe.pred);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case T_EVAL_TERM:
       ptr = stx_build_eval_term (thread_p, ptr, &pred_expr->pe.eval_term);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case T_NOT_TERM:
@@ -3382,8 +3315,7 @@ stx_build_pred (THREAD_ENTRY * thread_p, char *ptr, PRED * pred)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (pred->lhs == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3398,8 +3330,7 @@ stx_build_pred (THREAD_ENTRY * thread_p, char *ptr, PRED * pred)
 	(PRED_EXPR *) stx_alloc_struct (thread_p, sizeof (PRED_EXPR));
       if (pred->rhs == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
 
       rhs = pred->rhs;
@@ -3421,8 +3352,7 @@ stx_build_pred (THREAD_ENTRY * thread_p, char *ptr, PRED * pred)
 				   &xasl_unpack_info->packed_xasl[offset]);
 	  if (pred->lhs == NULL)
 	    {
-	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	      return NULL;
+	      goto error;
 	    }
 	}
 
@@ -3444,12 +3374,15 @@ stx_build_pred (THREAD_ENTRY * thread_p, char *ptr, PRED * pred)
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (pred->rhs == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -3462,26 +3395,14 @@ stx_build_eval_term (THREAD_ENTRY * thread_p, char *ptr,
     {
     case T_COMP_EVAL_TERM:
       ptr = stx_build_comp_eval_term (thread_p, ptr, &eval_term->et.et_comp);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case T_ALSM_EVAL_TERM:
       ptr = stx_build_alsm_eval_term (thread_p, ptr, &eval_term->et.et_alsm);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case T_LIKE_EVAL_TERM:
       ptr = stx_build_like_eval_term (thread_p, ptr, &eval_term->et.et_like);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     default:
@@ -3610,8 +3531,7 @@ stx_build_like_eval_term (THREAD_ENTRY * thread_p, char *ptr,
 				   &xasl_unpack_info->packed_xasl[offset]);
       if (like_eval_term->src == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3627,8 +3547,7 @@ stx_build_like_eval_term (THREAD_ENTRY * thread_p, char *ptr,
 				   &xasl_unpack_info->packed_xasl[offset]);
       if (like_eval_term->pattern == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3644,12 +3563,15 @@ stx_build_like_eval_term (THREAD_ENTRY * thread_p, char *ptr,
 				   &xasl_unpack_info->packed_xasl[offset]);
       if (like_eval_term->esc_char == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -3676,8 +3598,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (access_spec->indexptr == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3693,8 +3614,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (access_spec->where_key == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3710,8 +3630,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (access_spec->where_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3721,42 +3640,31 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
     case TARGET_CLASS_ATTR:
       ptr = stx_build_cls_spec_type (thread_p, ptr,
 				     &ACCESS_SPEC_CLS_SPEC (access_spec));
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case TARGET_LIST:
       ptr = stx_build_list_spec_type (thread_p, ptr,
 				      &ACCESS_SPEC_LIST_SPEC (access_spec));
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case TARGET_SET:
       ptr = stx_build_set_spec_type (thread_p, ptr,
 				     &ACCESS_SPEC_SET_SPEC (access_spec));
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case TARGET_METHOD:
       ptr = stx_build_method_spec_type (thread_p, ptr,
 					&ACCESS_SPEC_METHOD_SPEC
 					(access_spec));
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     default:
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+      return NULL;
+    }
+
+  if (ptr == NULL)
+    {
       return NULL;
     }
 
@@ -3781,12 +3689,15 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (access_spec->s_dbval == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -3823,18 +3734,10 @@ stx_build_indx_id (THREAD_ENTRY * thread_p, char *ptr, INDX_ID * indx_id)
     {
     case T_BTID:
       ptr = or_unpack_btid (ptr, &indx_id->i.btid);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case T_EHID:
       ptr = or_unpack_ehid (ptr, &indx_id->i.ehid);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     default:
@@ -3900,8 +3803,7 @@ stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
       if (cls_spec->cls_regu_list_key == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3917,8 +3819,7 @@ stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
       if (cls_spec->cls_regu_list_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3934,8 +3835,7 @@ stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
       if (cls_spec->cls_regu_list_rest == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3953,8 +3853,7 @@ stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 			       cls_spec->num_attrs_key);
       if (cls_spec->attrids_key == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3970,8 +3869,7 @@ stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 				    &xasl_unpack_info->packed_xasl[offset]);
       if (cls_spec->cache_key == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -3989,8 +3887,7 @@ stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 			       cls_spec->num_attrs_pred);
       if (cls_spec->attrids_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4006,8 +3903,7 @@ stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 				    &xasl_unpack_info->packed_xasl[offset]);
       if (cls_spec->cache_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4025,8 +3921,7 @@ stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 			       cls_spec->num_attrs_rest);
       if (cls_spec->attrids_rest == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4042,12 +3937,15 @@ stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 				    &xasl_unpack_info->packed_xasl[offset]);
       if (cls_spec->cache_rest == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -4070,8 +3968,7 @@ stx_build_list_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (list_spec_type->xasl_node == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4087,8 +3984,7 @@ stx_build_list_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
       if (list_spec_type->list_regu_list_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4104,12 +4000,15 @@ stx_build_list_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
       if (list_spec_type->list_regu_list_rest == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -4344,8 +4243,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (regu_var->vfetch_to == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4361,8 +4259,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (regu_var->xasl == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4370,10 +4267,6 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
     {
     case TYPE_DBVAL:
       ptr = stx_build_db_value (thread_p, ptr, &regu_var->value.dbval);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case TYPE_CONSTANT:
@@ -4390,8 +4283,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
 				  &xasl_unpack_info->packed_xasl[offset]);
 	  if (regu_var->value.dbvalptr == NULL)
 	    {
-	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	      return NULL;
+	      goto error;
 	    }
 	}
       break;
@@ -4410,8 +4302,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
 				    &xasl_unpack_info->packed_xasl[offset]);
 	  if (regu_var->value.arithptr == NULL)
 	    {
-	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	      return NULL;
+	      goto error;
 	    }
 	}
       break;
@@ -4429,8 +4320,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
 	  if (regu_var->value.aggptr == NULL)
 	    {
-	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	      return NULL;
+	      goto error;
 	    }
 	}
       break;
@@ -4448,8 +4338,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
 				       packed_xasl[offset]);
 	  if (regu_var->value.funcp == NULL)
 	    {
-	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	      return NULL;
+	      goto error;
 	    }
 	}
       break;
@@ -4458,10 +4347,6 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
     case TYPE_SHARED_ATTR_ID:
     case TYPE_CLASS_ATTR_ID:
       ptr = stx_build_attr_descr (thread_p, ptr, &regu_var->value.attr_descr);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case TYPE_LIST_ID:
@@ -4477,18 +4362,13 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
 				   &xasl_unpack_info->packed_xasl[offset]);
 	  if (regu_var->value.srlist_id == NULL)
 	    {
-	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	      return NULL;
+	      goto error;
 	    }
 	}
       break;
 
     case TYPE_POSITION:
       ptr = stx_build_pos_descr (ptr, &regu_var->value.pos_descr);
-      if (ptr == NULL)
-	{
-	  return NULL;
-	}
       break;
 
     case TYPE_POS_VALUE:
@@ -4505,6 +4385,10 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr,
     }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -4579,8 +4463,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr,
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (arith_type->value == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4598,8 +4481,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr,
 				&xasl_unpack_info->packed_xasl[offset]);
       if (arith_type->next == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4615,8 +4497,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr,
 				   &xasl_unpack_info->packed_xasl[offset]);
       if (arith_type->leftptr == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4632,8 +4513,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr,
 				   &xasl_unpack_info->packed_xasl[offset]);
       if (arith_type->rightptr == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4649,8 +4529,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr,
 				   &xasl_unpack_info->packed_xasl[offset]);
       if (arith_type->thirdptr == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4669,8 +4548,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr,
 				   &xasl_unpack_info->packed_xasl[offset]);
 	  if (arith_type->pred == NULL)
 	    {
-	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	      return NULL;
+	      goto error;
 	    }
 	}
     }
@@ -4680,6 +4558,10 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr,
     }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -4705,8 +4587,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr,
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (aggregate->value == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4722,8 +4603,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr,
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (aggregate->value2 == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4741,8 +4621,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr,
 				    &xasl_unpack_info->packed_xasl[offset]);
       if (aggregate->next == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4769,19 +4648,18 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr,
 			     &xasl_unpack_info->packed_xasl[offset]);
       if (aggregate->list_id == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   ptr = or_unpack_int (ptr, (int *) &aggregate->flag_agg_optimize);
   ptr = or_unpack_btid (ptr, &aggregate->btid);
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 static char *
@@ -4916,8 +4794,7 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (stx_connectby_proc->start_with_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4933,8 +4810,7 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 			       &xasl_unpack_info->packed_xasl[offset]);
       if (stx_connectby_proc->after_connect_by_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4950,8 +4826,7 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 			     &xasl_unpack_info->packed_xasl[offset]);
       if (stx_connectby_proc->input_list_id == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4967,8 +4842,7 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 			     &xasl_unpack_info->packed_xasl[offset]);
       if (stx_connectby_proc->start_with_list_id == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -4985,8 +4859,7 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
       if (stx_connectby_proc->regu_list_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -5003,8 +4876,7 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
       if (stx_connectby_proc->regu_list_rest == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -5020,8 +4892,7 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 			      &xasl_unpack_info->packed_xasl[offset]);
       if (stx_connectby_proc->prior_val_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -5037,8 +4908,7 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 				 &xasl_unpack_info->packed_xasl[offset]);
       if (stx_connectby_proc->prior_outptr_list == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -5055,8 +4925,7 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
       if (stx_connectby_proc->prior_regu_list_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -5073,8 +4942,7 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
       if (stx_connectby_proc->prior_regu_list_rest == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -5091,8 +4959,7 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
       if (stx_connectby_proc->after_cb_regu_list_pred == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
@@ -5109,14 +4976,17 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 					packed_xasl[offset]);
       if (stx_connectby_proc->after_cb_regu_list_rest == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
+	  goto error;
 	}
     }
 
   stx_connectby_proc->curr_tuple = NULL;
 
   return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
 }
 
 /*
@@ -5426,6 +5296,7 @@ stx_set_xasl_errcode (THREAD_ENTRY * thread_p, int errcode)
 #endif /* SERVER_MODE */
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * stx_unpack_char () -
  *   return:
@@ -5459,3 +5330,4 @@ stx_unpack_long (char *tmp, long *ptr)
 
   return tmp;
 }
+#endif

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -100,6 +100,7 @@
 #define MSGCAT_SYNTAX_INVALID_MINUS_VALUE               MSGCAT_SYNTAX_NO(62)
 #define MSGCAT_SYNTAX_DUPLICATED_REF_RULE               MSGCAT_SYNTAX_NO(63)
 #define MSGCAT_SYNTAX_INVALID_SYS_CONNECT_BY_PATH       MSGCAT_SYNTAX_NO(64)
+#define MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32            MSGCAT_SYNTAX_NO(65)
 
 /* Message id in the set MSGCAT_SET_PARSER_SEMANTIC */
 #define MSGCAT_SEMANTIC_NO(n)			n
@@ -300,6 +301,9 @@
 #define MSGCAT_SEMANTIC_NOT_HIERACHICAL_QUERY           MSGCAT_SEMANTIC_NO(195)
 #define MSGCAT_SEMANTIC_NOT_ALLOWED_HERE                MSGCAT_SEMANTIC_NO(196)
 #define MSGCAT_SEMANTIC_ISCYCLE_REQUIRES_NOCYCLE        MSGCAT_SEMANTIC_NO(197)
+#define	MSGCAT_SEMANTIC_DUPLICATE_TABLE_OPTION		MSGCAT_SEMANTIC_NO(198)
+#define	MSGCAT_SEMANTIC_NON_REFERABLE_VIOLATION		MSGCAT_SEMANTIC_NO(199)
+#define MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE MSGCAT_SEMANTIC_NO(200)
 
 /* Message id in the set MSGCAT_SET_PARSER_RUNTIME */
 #define MSGCAT_RUNTIME_NO(n)				n

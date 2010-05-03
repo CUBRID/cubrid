@@ -1282,9 +1282,8 @@ obj_print_help_class (MOP op)
   SM_QUERY_SPEC *p;
   CLASS_HELP *info = NULL;
   DB_OBJLIST *super, *user;
-  DB_NAMELIST *obj_id, *o;
   int count, i, is_cubrid = 0;
-  char **strs, *nam;
+  char **strs;
   const char *kludge;
   PARSER_VARCHAR *buffer;
   int part_count = 0;
@@ -4093,6 +4092,7 @@ help_sprint_value (const DB_VALUE * value, char *buffer, int max_length)
   return (length);
 }
 
+#if defined(CUBRID_DEBUG)
 /*
  * dbg_value() -  This is primarily for debugging
  *   return: a character string representation of the db_value
@@ -4119,3 +4119,4 @@ dbg_value (const DB_VALUE * value)
 
   return ret;
 }
+#endif

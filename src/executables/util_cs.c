@@ -37,6 +37,7 @@
 #include "error_manager.h"
 #include "message_catalog.h"
 #include "system_parameter.h"
+#include "environment_variable.h"
 #include "databases_file.h"
 #include "boot_sr.h"
 #include "db.h"
@@ -49,6 +50,9 @@
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "log_applier.h"
+#if !defined(WINDOWS)
+#include "heartbeat.h"
+#endif
 
 #define PASSBUF_SIZE 12
 
@@ -589,7 +593,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
 				  MSGCAT_UTIL_SET_SPACEDB,
 				  SPACEDB_OUTPUT_SUMMARY), database_name,
-	   IO_PAGESIZE);
+	   IO_PAGESIZE, LOG_PAGESIZE);
 
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
 				  MSGCAT_UTIL_SET_SPACEDB,
@@ -814,124 +818,13 @@ error_exit:
 #endif /* !CS_MODE */
 }
 
-struct one_traninfo
-{
-  int tran_index;
-  int state;
-  int process_id;
-  char *db_user;
-  char *program_name;
-  char *login_name;
-  char *host_name;
-};
-
-typedef struct
-{
-  int num_trans;		/* Number of transactions */
-  struct one_traninfo tran[1];	/* Really num */
-} TRANS_INFO;
-
-/*
- * free_trantb() - Free transaction table information
- *   return: none
- *   info(in/out)
- */
-static void
-free_trantb (TRANS_INFO * info)
-{
-  int i;
-
-  if (info == NULL)
-    return;
-
-  for (i = 0; i < info->num_trans; i++)
-    {
-      if (info->tran[i].db_user != NULL)
-	db_private_free_and_init (NULL, info->tran[i].db_user);
-      if (info->tran[i].program_name != NULL)
-	db_private_free_and_init (NULL, info->tran[i].program_name);
-      if (info->tran[i].login_name != NULL)
-	db_private_free_and_init (NULL, info->tran[i].login_name);
-      if (info->tran[i].host_name != NULL)
-	db_private_free_and_init (NULL, info->tran[i].host_name);
-    }
-  free_and_init (info);
-}
-
-/*
- * get_trantb() - Get transaction table information which identifies
- *                active transactions
- *   return: TRANS_INFO array or NULL
- */
-static TRANS_INFO *
-get_trantb (void)
-{
-  TRANS_INFO *info = NULL;
-  char *buffer, *ptr;
-  int num_trans, bufsize, i;
-  int error;
-
-  error = logtb_get_pack_tran_table (&buffer, &bufsize);
-  if (error != NO_ERROR || buffer == NULL)
-    return NULL;
-
-  ptr = buffer;
-  ptr = or_unpack_int (ptr, &num_trans);
-
-  if (num_trans == 0)
-    {
-      /* can't happen, there must be at least one transaction */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      goto error;
-    }
-
-  i = sizeof (TRANS_INFO) + ((num_trans - 1) * sizeof (struct one_traninfo));
-
-  if ((info = (TRANS_INFO *) malloc (i)) == NULL)
-    goto error;
-
-  info->num_trans = num_trans;
-  for (i = 0; i < num_trans; i++)
-    {
-      if ((ptr = or_unpack_int (ptr, &info->tran[i].tran_index)) == NULL
-	  || (ptr = or_unpack_int (ptr, &info->tran[i].state)) == NULL
-	  || (ptr = or_unpack_int (ptr, &info->tran[i].process_id)) == NULL
-	  || (ptr = or_unpack_string (ptr, &info->tran[i].db_user)) == NULL
-	  || (ptr =
-	      or_unpack_string (ptr, &info->tran[i].program_name)) == NULL
-	  || (ptr = or_unpack_string (ptr, &info->tran[i].login_name)) == NULL
-	  || (ptr = or_unpack_string (ptr, &info->tran[i].host_name)) == NULL)
-	goto error;
-    }
-
-  if (((int) (ptr - buffer)) != bufsize)
-    {
-      /* unpacking didn't match size, garbage */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      goto error;
-    }
-
-  free_and_init (buffer);
-
-  return info;
-
-error:
-  if (buffer != NULL)
-    free_and_init (buffer);
-
-  if (info != NULL)
-    free_trantb (info);
-
-  return NULL;
-}
-
 /*
  * isvalid_transaction() - test if transaction is valid
  *   return: non-zero if valid transaction
  *   tran(in)
  */
 static int
-isvalid_transaction (const struct one_traninfo *tran)
+isvalid_transaction (const ONE_TRAN_INFO * tran)
 {
   int valid;
 
@@ -951,7 +844,7 @@ isvalid_transaction (const struct one_traninfo *tran)
  *   progname(in)
  */
 static int
-doesmatch_transaction (const struct one_traninfo *tran, int tran_index,
+doesmatch_transaction (const ONE_TRAN_INFO * tran, int tran_index,
 		       const char *username, const char *hostname,
 		       const char *progname)
 {
@@ -970,10 +863,6 @@ doesmatch_transaction (const struct one_traninfo *tran, int tran_index,
 
 }
 
-#define TRAN_STATE_CHAR(STATE)					\
-	((STATE == TRAN_ACTIVE) ? '+' 				\
-	: (info->tran[i].state == TRAN_UNACTIVE_ABORTED) ? '-'	\
-	: ('A' + info->tran[i].state))
 /*
  * dump_trantb() - Displays information about all the currently
  *                 active transactions
@@ -1333,7 +1222,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
    * state of the server ()transaction table).
    */
 
-  if ((info = get_trantb ()) == NULL)
+  info = logtb_get_trans_info ();
+  if (info == NULL)
     {
       db_shutdown ();
       goto error_exit;
@@ -1355,7 +1245,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	{
 	  if (info)
 	    {
-	      free_trantb (info);
+	      logtb_free_trans_info (info);
 	    }
 	  db_shutdown ();
 	  goto error_exit;
@@ -1364,7 +1254,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 
   if (info)
     {
-      free_trantb (info);
+      logtb_free_trans_info (info);
     }
 
   (void) db_shutdown ();
@@ -1630,6 +1520,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   const char *output_file = NULL;
   int interval;
+  bool cumulative;
   FILE *outfp = NULL;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
@@ -1651,6 +1542,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
     {
       goto print_statdump_usage;
     }
+  cumulative = utility_get_option_bool_value (arg_map, STATDUMP_CUMULATIVE_S);
 
   if (output_file == NULL)
     {
@@ -1694,7 +1586,10 @@ statdump (UTIL_FUNCTION_ARG * arg)
     {
       print_timestamp (outfp);
       histo_print_global_stats (outfp);
-      histo_clear_global_stats ();
+      if (cumulative == false)
+	{
+	  histo_clear_global_stats ();
+	}
       sleep (interval);
     }
   while (interval > 0);
@@ -1971,6 +1866,10 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   int mode = -1;
   int error = NO_ERROR;
   int retried = 0, sleep_nsecs = 1;
+#if !defined(WINDOWS)
+  char *binary_name;
+  char executable_path[PATH_MAX];
+#endif
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2039,6 +1938,32 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
     }
+#if !defined(WINDOWS)
+  /* save executable path */
+  binary_name = basename (arg->argv0);
+  (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
+
+  hb_set_exec_path (executable_path);
+  hb_set_argv (arg->argv);
+
+  /* initialize system parameters */
+  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto error_exit;
+    }
+
+  if (PRM_HA_MODE)
+    {
+      error = hb_process_init (database_name, log_path, true);
+      if (error != NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"cannot connect to cub_master for heartbeat. \n");
+	  return EXIT_FAILURE;
+	}
+    }
+#endif
 
 retry:
   error = db_restart (arg->command_name, TRUE, database_name);
@@ -2079,6 +2004,13 @@ print_copylog_usage:
   return EXIT_FAILURE;
 
 error_exit:
+#if !defined(WINDOWS)
+  if (hb_Proc_shutdown)
+    {
+      return EXIT_SUCCESS;
+    }
+#endif
+
   if (error == ER_NET_SERVER_CRASHED
       || error == ER_NET_CANT_CONNECT_SERVER
       || error == ER_BO_CONNECT_FAILED
@@ -2131,6 +2063,11 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   int max_mem_size;
   int error = NO_ERROR;
   int retried = 0, sleep_nsecs = 1;
+#if !defined(WINDOWS)
+  char *binary_name;
+  char executable_path[PATH_MAX];
+#endif
+
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2189,6 +2126,34 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+#if !defined(WINDOWS)
+  /* save executable path */
+  binary_name = basename (arg->argv0);
+  (void) envvar_bindir_file (executable_path, PATH_MAX, binary_name);
+
+  hb_set_exec_path (executable_path);
+  hb_set_argv (arg->argv);
+
+  /* initialize system parameters */
+  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto error_exit;
+    }
+
+  if (PRM_HA_MODE)
+    {
+      /* initialize heartbeat */
+      error = hb_process_init (database_name, log_path, false);
+      if (error != NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"Cannot connect to cub_master for heartbeat. \n");
+	  return EXIT_FAILURE;
+	}
+    }
+#endif
+
 retry:
   error = db_restart (arg->command_name, TRUE, database_name);
   if (error != NO_ERROR)
@@ -2226,6 +2191,13 @@ print_applylog_usage:
 	   basename (arg->argv0));
 
 error_exit:
+#if !defined(WINDOWS)
+  if (hb_Proc_shutdown)
+    {
+      return EXIT_SUCCESS;
+    }
+#endif
+
   if (error == ER_NET_SERVER_CRASHED
       || error == ER_NET_CANT_CONNECT_SERVER
       || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER
@@ -2238,6 +2210,7 @@ error_exit:
 	  sleep_nsecs = 1;
 	}
       ++retried;
+      er_init (er_msg_file, ER_NEVER_EXIT);
       goto retry;
     }
 

@@ -190,7 +190,9 @@ static void remove_class_object (MOP class_mop, MOP obj);
 static int mark_instance_deleted (MOP op, void *args);
 static void ws_clear_internal (bool clear_vmop_keys);
 static void ws_print_oid (OID * oid);
+#if defined (CUBRID_DEBUG)
 static int ws_describe_mop (MOP mop, void *args);
+#endif
 static void ws_flush_properties (MOP op);
 static int ws_check_hash_link (int slot);
 static void ws_insert_mop_on_hash_link (MOP mop, int slot);
@@ -1590,6 +1592,7 @@ ws_release_instance (MOP mop)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ws_gc_mop - callback function for the garbage collector that will be
  * called for every MOP in the list of referenced MOPs.
@@ -1651,6 +1654,7 @@ ws_gc_mop (MOP mop, void (*gcmarker) (MOP))
 	}
     }
 }
+#endif
 
 /*
  * DIRTY LIST MAINTENANCE
@@ -2522,7 +2526,6 @@ ws_final (void)
 	}
       ws_free_mop (Null_object);
       free_and_init (ws_Mop_table);
-      ws_Mop_table = NULL;
     }
 
   db_destroy_workspace_heap ();
@@ -2641,7 +2644,7 @@ ws_has_updated (void)
 }
 
 /*
- * MOP CACHEING AND DECACHEING
+ * MOP CACHING AND DECACHING
  */
 
 /*
@@ -2896,6 +2899,75 @@ ws_decache_all_instances (MOP mop)
  */
 
 /*
+ * ws_identifier() - This function returns the permanent object identifier of
+ *                   the given object.
+ * return : Pointer to object identifier
+ * mop(in):
+ * Note: This function should not be used if the object can be a
+ *       non-referable instance as it will return a reference to the object;
+ *       use db_identifier () instead to perform the needed check.
+ */
+OID *
+ws_identifier (MOP mop)
+{
+  return ws_identifier_with_check (mop, false);
+}
+
+/*
+ * ws_identifier_with_check() - This function returns the permanent object
+ *                              identifier of the given object.
+ * return : Pointer to object identifier
+ * mop(in):
+ * check_non_referable(in): whether to check that a reference to the instance
+ *                          can be returned. Instances of reusable OID classes
+ *                          are non-referable.
+ */
+OID *
+ws_identifier_with_check (MOP mop, const bool check_non_referable)
+{
+  OID *oid = NULL;
+
+  if (mop == NULL || WS_MARKED_DELETED (mop))
+    {
+      goto end;
+    }
+
+  if (WS_ISVID (mop))
+    {
+      mop = db_real_instance (mop);
+      if (mop == NULL)
+	{
+	  /* non-updatable view has no oid */
+	  goto end;
+	}
+      if (WS_ISVID (mop))
+	{
+	  /* a proxy has no oid */
+	  goto end;
+	}
+    }
+
+  if (check_non_referable)
+    {
+      if (sm_is_reuse_oid_class (ws_class_mop (mop)))
+	{
+	  /* should not return the oid of a non-referable instance */
+	  goto end;
+	}
+    }
+
+  oid = ws_oid (mop);
+  if (OID_ISTEMP (oid))
+    {
+      (void) locator_flush_instance (mop);
+      oid = ws_oid (mop);
+    }
+
+end:
+  return oid;
+}
+
+/*
  * These provide access shells for the fields in the MOP structure.  These
  * are simple enough that callers should change to use the corresponding
  * macros.
@@ -3061,7 +3133,7 @@ ws_pin_instance_and_class (MOP obj, int *opin, int *cpin)
 }
 
 /*
- * ws_restore_pin - resotre pin flag of a object and it's class object
+ * ws_restore_pin - resotre pin flag of a object and its class object
  *    return: void
  *    obj(in/out): object pointer
  *    opin(in): class pin flag value to set
@@ -3120,7 +3192,7 @@ ws_mark_deleted (MOP mop)
  * ws_find -
  *    return: mop status code (WS_FIND_MOP_DELETED, WS_FIND_MOP_NOTDELETED)
  *    mop(in): object pointer
- *    obj(out): return pointer to memory representatino of object
+ *    obj(out): return pointer to memory representation of object
  *
  * Note:
  *    This is used to access the memory representation of an object.
@@ -3210,6 +3282,7 @@ ws_class_has_cached_objects (MOP class_)
   return (cached);
 }
 
+#if defined (CUBRID_DEBUG)
 /*
  * ws_map - map over all MOPs currently in the workspace.
  *    return: WS_MAP_ status code
@@ -3246,6 +3319,7 @@ ws_map (MAPFUNC function, void *args)
 
   return (status);
 }
+#endif
 
 /*
  * TRANSACTION MANAGEMENT SUPPORT
@@ -3541,6 +3615,7 @@ ws_print_oid (OID * oid)
 	   (int) oid->volid, (int) oid->pageid, (int) oid->slotid);
 }
 
+#if defined (CUBRID_DEBUG)
 /*
  * ws_describe_mop - print MOP information
  *    return: void
@@ -3622,6 +3697,7 @@ ws_dump_mops (void)
   (void) ws_map (ws_describe_mop, NULL);
   fprintf (stdout, "\n");
 }
+#endif
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*

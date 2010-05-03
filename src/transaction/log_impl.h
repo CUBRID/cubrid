@@ -77,17 +77,18 @@
 #define TR_TABLE_CS_EXIT()
 #endif /* SERVER_MODE */
 
-#if defined(LOG_DEBUG) && defined(SERVER_MODE)
-#define LOG_CS_OWN()   (csect_check_own (CSECT_LOG) == true)
-#else /* LOG_DEBUG && SERVER_MODE */
-#define LOG_CS_OWN()   (true)
-#endif /* LOG_DEBUG && SERVER_MODE */
+#if defined(SERVER_MODE)
+#define LOG_CS_OWN(thread_p) (csect_check_own (thread_p, CSECT_LOG) >= 1)
+#else /* SERVER_MODE */
+#define LOG_CS_OWN(thread_p) (true)
+#endif /* !SERVER_MODE */
 
 
 #define LOG_ESTIMATE_NACTIVE_TRANS      100	/* Estimate num of trans */
 #define LOG_ESTIMATE_NOBJ_LOCKS         977	/* Estimate num of locks */
 
-#define LOGAREA_SIZE (IO_PAGESIZE - SSIZEOF(LOG_HDRPAGE))	/* Log data area */
+/* Log data area */
+#define LOGAREA_SIZE (LOG_PAGESIZE - SSIZEOF(LOG_HDRPAGE))
 
 /* check if group commit is active */
 #define LOG_IS_GROUP_COMMIT_ACTIVE() (PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS > 0)
@@ -239,11 +240,7 @@
   ((tdes)->state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS ||         \
    (tdes)->state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
 
-
 #define MAXLOGNAME          (30 - 12)
-
-#define SIZEOF_LOG_PAGE_PAGESIZE IO_PAGESIZE
-
 
 #define LOGPB_HEADER_PAGE_ID             (-9)	/* The first log page in the infinite
 						   log sequence. It is always kept
@@ -300,18 +297,13 @@ extern int db_Disable_modifications;
 #endif /* !SA_MODE */
 #endif /* CHECK_MODIFICATION_NO_RETURN */
 
-/* for debugging */
-#define LOG_DEBUG_MSG    (0x0002)
-#define LOG_DEBUG_STAT   (0x0004)
-#define LOG_DEBUG_MUTEX  (0x0008)
-
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
 #define LOG_MUTEX_LOCK(rv, mutex) log_lock_mutex_debug(ARG_FILE_LINE, #mutex)
 #define LOG_MUTEX_UNLOCK(mutex)   log_unlock_mutex_debug(ARG_FILE_LINE, #mutex)
-#else /* LOG_DEBUG */
+#else /* CUBRID_DEBUG */
 #define LOG_MUTEX_LOCK(rv, mutex) MUTEX_LOCK(rv, mutex)
 #define LOG_MUTEX_UNLOCK(mutex)   MUTEX_UNLOCK(mutex)
-#endif /* LOG_DEBUG */
+#endif /* !CUBRID_DEBUG */
 
 
 /*
@@ -400,7 +392,7 @@ struct log_hdrpage
 
 /* WARNING:
  * Don't use sizeof(LOG_PAGE) or of any structure that contains it
- * Use macro SIZEOF_LOG_PAGE_PAGESIZE instead.
+ * Use macro LOG_PAGESIZE instead.
  * It is also bad idea to allocate a variable for LOG_PAGE on the stack.
  */
 
@@ -412,13 +404,13 @@ struct log_page
 };
 
 
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
 typedef struct log_mutex_info
 {
   int lock_count;
   THREAD_T owner;
 } log_mutex_info;
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 
 typedef enum log_flush_type LOG_FLUSH_TYPE;
 enum log_flush_type
@@ -455,9 +447,9 @@ struct log_flush_info
 #if defined(SERVER_MODE)
   /* for protecting LOG_FLUSH_INFO */
   MUTEX_T flush_mutex;
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
 
-  /* Volatile for debugging in release mode.(-DLOG_DEBUG)
+  /* Volatile for debugging in release mode.(-DCUBRID_DEBUG)
    * It doesn't make an impact on execution in debug mode.
    * log_*_mutex_not_own can't work properly in release mode
    * without volatile because mutex_info can be changed unexpectedly.
@@ -465,7 +457,7 @@ struct log_flush_info
    * (when only log_cs acquired)
    */
   volatile log_mutex_info mutex_info;
-#endif				/* LOG_DEBUG */
+#endif				/* CUBRID_DEBUG */
 #endif				/* SERVER_MODE */
 };
 
@@ -628,7 +620,7 @@ struct log_tdes
 				 */
   TRAN_ISOLATION isolation;	/* Isolation level                       */
   int waitsecs;			/* Wait until this number of miliseconds
-				   for locks
+				   for locks; also see xlogtb_reset_wait_secs
 				 */
   LOG_LSA head_lsa;		/* First log address of transaction      */
   LOG_LSA tail_lsa;		/* Last log record address of
@@ -708,7 +700,7 @@ struct log_tdes
   LOG_LSA repl_update_lsa;	/* update target lsa */
   void *first_save_entry;	/* first save entry for the transaction */
 
-  int num_new_files;	/* # of new files created */
+  int num_new_files;		/* # of new files created */
   int num_new_tmp_files;	/* # of new FILE_TMP files created */
   int num_new_tmp_tmp_files;	/* # of new FILE_TMP_TMP files created */
 };
@@ -791,6 +783,7 @@ struct log_header
 				 * to make sure that the database is always
 				 * run with the same page size
 				 */
+  PGLENGTH db_logpagesize;	/* Size of log pages in the database. */
   int is_shutdown;		/* Was the log shutdown ?                   */
   TRANID next_trid;		/* Next Transaction identifier              */
   int avg_ntrans;		/* Number of average transactions           */
@@ -969,6 +962,7 @@ enum log_rectype
 				 */
   LOG_DIFF_UNDOREDO_DATA,	/* diff undo redo data             */
   LOG_DUMMY_HA_SERVER_STATE,	/* HA server state */
+  LOG_DUMMY_OVF_RECORD,		/* indicator of the first part of an overflow record */
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks       */
 };
 
@@ -1281,9 +1275,6 @@ struct background_archiving_info
   int start_page_id;
   int current_page_id;
   int vdes;
-#if defined (SERVER_MODE)
-  MUTEX_T bg_archiving_mutex;
-#endif				/* SERVER_MODE */
 };
 
 /* Global structure to trantable, log buffer pool, etc */
@@ -1329,90 +1320,90 @@ struct log_global
 typedef struct log_logging_stat
 {
   /* logpb_next_append_page() call count */
-  long total_append_page_count;
+  unsigned long total_append_page_count;
   /* last created page id for logging */
   PAGEID last_append_pageid;
   /* time taken to use a page for logging */
   double use_append_page_sec;
 
   /* total delayed page count */
-  long total_delayed_page_count;
+  unsigned long total_delayed_page_count;
   /* last delayed page id */
   PAGEID last_delayed_pageid;
 
   /* log buffer full count */
-  long log_buffer_full_count;
+  unsigned long log_buffer_full_count;
   /* log buffer expand count */
-  long log_buffer_expand_count;
+  unsigned long log_buffer_expand_count;
   /* log buffer flush count by replacement */
-  long log_buffer_flush_count_by_replacement;
+  unsigned long log_buffer_flush_count_by_replacement;
 
   /* normal flush */
   /* logpb_flush_all_append_pages() call count */
-  long flushall_append_pages_call_count;
+  unsigned long flushall_append_pages_call_count;
   /* pages count to flush in logpb_flush_all_append_pages() */
-  long last_flush_count_by_trans;
+  unsigned long last_flush_count_by_trans;
   /* total pages count to flush in logpb_flush_all_append_pages() */
-  long total_flush_count_by_trans;
+  unsigned long total_flush_count_by_trans;
   /* time taken to flush in logpb_flush_all_append_pages() */
   double last_flush_sec_by_trans;
   /* total time taken to flush in logpb_flush_all_append_pages() */
   double total_flush_sec_by_trans;
   /* LOG_FLUSH_DIRECT count */
-  long direct_flush_count;
+  unsigned long direct_flush_count;
 
   /* background flush */
   /* logpb_flush_pages_background() call count */
-  long flush_pages_call_count;
+  unsigned long flush_pages_call_count;
   /* logpb_flush_pages_background() call count when no page is flushed */
-  long flush_pages_call_miss_count;
+  unsigned long flush_pages_call_miss_count;
   /* pages count to flush in logpb_flush_pages_background() */
-  long last_flush_count_by_LFT;
+  unsigned long last_flush_count_by_LFT;
   /* total pages count to flush in logpb_flush_pages_background() */
-  long total_flush_count_by_LFT;
+  unsigned long total_flush_count_by_LFT;
   /* time taken to flush in logpb_flush_pages_background() */
   double last_flush_sec_by_LFT;
   /* total time taken to flush in logpb_flush_pages_background() */
   double total_flush_sec_by_LFT;
 
   /* logpb_flush_header() call count */
-  long flush_hdr_call_count;
+  unsigned long flush_hdr_call_count;
   /* page count to flush in logpb_flush_header() */
   double last_flush_hdr_sec_by_LFT;
   /* total page count to flush in logpb_flush_header() */
   double total_flush_hdr_sec_by_LFT;
 
   /* total sync count */
-  long total_sync_count;
+  unsigned long total_sync_count;
 
   /* commit count */
-  long commit_count;
+  unsigned long commit_count;
   /* group commit count */
-  long last_group_commit_count;
+  unsigned long last_group_commit_count;
   /* total group commit count */
-  long total_group_commit_count;
+  unsigned long total_group_commit_count;
 
   /* commit count while using a log page */
-  long last_commit_count_while_using_a_page;
+  unsigned long last_commit_count_while_using_a_page;
   /* total commit count while using a log page */
-  long total_commit_count_while_using_a_page;
+  unsigned long total_commit_count_while_using_a_page;
 
   /* commit count included logpb_flush_all_append_pages */
-  long last_commit_count_in_flush_pages;
+  unsigned long last_commit_count_in_flush_pages;
   /* total commit count included logpb_flush_all_append_pages */
-  long total_commit_count_in_flush_pages;
+  unsigned long total_commit_count_in_flush_pages;
 
   /* group commit request count */
-  long gc_commit_request_count;
+  unsigned long gc_commit_request_count;
 
   /* wait time for group commit */
   double gc_total_wait_time;
 
   /* flush count in group commit mode by LFT */
-  long gc_flush_count;
+  unsigned long gc_flush_count;
 
   /* async commit request count */
-  long async_commit_request_count;
+  unsigned long async_commit_request_count;
 } LOG_LOGGING_STAT;
 
 
@@ -1479,7 +1470,8 @@ extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 					      const char *db_fullname,
 					      const char *logpath,
 					      const char *prefix_logname,
-					      PGLENGTH * db_iopagesize,
+					      PGLENGTH * io_page_size,
+					      PGLENGTH * log_page_size,
 					      INT64 * db_creation,
 					      float *db_compatibility);
 extern LOG_PAGE *logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
@@ -1523,14 +1515,15 @@ extern PAGEID logpb_to_physical_pageid (PAGEID logical_pageid);
 extern bool logpb_is_page_in_archive (PAGEID pageid);
 extern bool logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p);
 extern int logpb_get_archive_number (THREAD_ENTRY * thread_p, PAGEID pageid);
-extern void logpb_decache_archive_info (void);
+extern void logpb_decache_archive_info (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_from_archive (THREAD_ENTRY * thread_p,
-                                           PAGEID pageid,
-                                           LOG_PAGE * log_pgptr,
-                                           int *ret_arv_num,
-                                           struct log_arv_header *arv_hdr);
+					   PAGEID pageid,
+					   LOG_PAGE * log_pgptr,
+					   int *ret_arv_num,
+					   struct log_arv_header *arv_hdr);
 extern void logpb_remove_archive_logs (THREAD_ENTRY * thread_p,
 				       const char *info_reason);
+extern void logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p);
 extern void logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area,
 				 int length, LOG_LSA * log_lsa,
 				 LOG_PAGE * log_pgptr);
@@ -1601,6 +1594,7 @@ extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
 				   bool canuse_forwaddr);
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void
 log_2pc_define_funs (int (*get_participants) (int *particp_id_length,
 					      void **block_particps_ids),
@@ -1619,6 +1613,7 @@ log_2pc_define_funs (int (*get_participants) (int *particp_id_length,
 					 int *particp_indices,
 					 void *block_particps_ids,
 					 int collect));
+#endif
 extern char *log_2pc_sprintf_particp (void *particp_id);
 extern void log_2pc_dump_participants (FILE * fp, int block_length,
 				       void *block_particps_ids);
@@ -1633,7 +1628,9 @@ extern bool log_2pc_send_abort_decision (int gtrid,
 					 int *particps_indices,
 					 void *block_particps_ids,
 					 bool collect);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int log_get_global_tran_id (THREAD_ENTRY * thread_p);
+#endif
 extern TRAN_STATE log_2pc_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				  LOG_2PC_EXECUTE execute_2pc_type,
 				  bool * decision);
@@ -1657,20 +1654,24 @@ extern void log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks,
 				  LOG_PAGE * log_pgptr);
 extern void log_2pc_dump_gtrinfo (FILE * fp, int length, void *data);
 extern void log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void log_2pc_dump_acqpage_locks (FILE * fp, int length, void *data);
+#endif
 extern LOG_TDES *log_2pc_alloc_coord_info (LOG_TDES * tdes,
 					   int num_particps,
 					   int particp_id_length,
 					   void *block_particps_ids);
 extern void log_2pc_free_coord_info (LOG_TDES * tdes);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void log_2pc_crash_participant (THREAD_ENTRY * thread_p);
 extern void log_2pc_send_decision_participant (THREAD_ENTRY * thread_p,
 					       void *particp_id);
+extern bool log_is_tran_in_2pc (THREAD_ENTRY * thread_p);
+#endif
 extern void log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p,
 					    LOG_TDES * tdes,
 					    LOG_LSA * upto_chain_lsa);
 extern void log_2pc_recovery (THREAD_ENTRY * thread_p);
-extern bool log_is_tran_in_2pc (THREAD_ENTRY * thread_p);
 extern bool log_is_tran_distributed (LOG_TDES * tdes);
 extern bool log_clear_and_is_tran_distributed (LOG_TDES * tdes);
 
@@ -1739,13 +1740,11 @@ extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
 extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p,
 					    int tran_index, int set);
-extern bool logtb_is_interrupt (THREAD_ENTRY * thread_p, bool clear,
-				bool * continue_checking);
-extern bool log_isinterrupt_tdes (LOG_TDES * tdes, bool clear);
-extern bool logtb_is_interrupt_tran (THREAD_ENTRY * thread_p, bool clear,
-				     bool * continue_checking,
-				     int tran_index);
-extern bool logtb_are_any_interrupts (void);
+extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear,
+				  bool * continue_checking);
+extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear,
+				       bool * continue_checking,
+				       int tran_index);
 extern bool logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid);
 extern bool logtb_is_current_active (THREAD_ENTRY * thread_p);
 extern bool logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid);
@@ -1757,12 +1756,12 @@ extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int logtb_set_current_tran_index (THREAD_ENTRY * thread_p,
 					 int tran_index);
+extern LOG_LSA *logtb_find_largest_lsa (THREAD_ENTRY * thread_p);
 #endif
 extern int logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p);
 extern LOG_LSA *log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY *
 							thread_p);
 extern void logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
-extern LOG_LSA *logtb_find_largest_lsa (THREAD_ENTRY * thread_p);
 extern void
 logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p,
 					      PAGEID * smallest,

@@ -22,7 +22,7 @@
  * xserver_interface.h - Server interface functions
  *
  * Note: This file defines the interface to the server. The client modules that
- * calls any funciton in the server should include this module instead of the
+ * calls any function in the server should include this module instead of the
  * header file of the desired function.
  */
 
@@ -48,11 +48,11 @@ extern int
 xboot_initialize_server (THREAD_ENTRY * thread_p,
 			 const BOOT_CLIENT_CREDENTIAL * client_credential,
 			 BOOT_DB_PATH_INFO * db_path_info,
-			 bool db_overwrite, PGLENGTH db_desired_pagesize,
-			 DKNPAGES db_npages, const char *file_addmore_vols,
-			 DKNPAGES xlog_npages, OID * rootclass_oid,
-			 HFID * rootclass_hfid, int client_lock_wait,
-			 TRAN_ISOLATION client_isolation);
+			 bool db_overwrite, const char *file_addmore_vols,
+			 DKNPAGES db_npages, PGLENGTH db_desired_pagesize,
+			 DKNPAGES xlog_npages, PGLENGTH db_desired_log_page_size,
+			 OID * rootclass_oid, HFID * rootclass_hfid,
+			 int client_lock_wait, TRAN_ISOLATION client_isolation);
 extern int
 xboot_register_client (THREAD_ENTRY * thread_p,
 		       const BOOT_CLIENT_CREDENTIAL * client_credential,
@@ -161,7 +161,7 @@ extern LOG_LSA *xrepl_log_get_append_lsa (void);
 extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 
 extern int xheap_create (THREAD_ENTRY * thread_p, HFID * hfid,
-			 const OID * class_oid);
+			 const OID * class_oid, bool reuse_oid);
 extern int xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid);
 extern int xheap_destroy_newly_created (THREAD_ENTRY * thread_p,
 					const HFID * hfid);
@@ -193,7 +193,9 @@ extern int xtran_server_2pc_attach_global_tran (THREAD_ENTRY * thread_p,
 						int gtrid);
 extern TRAN_STATE xtran_server_2pc_prepare_global_tran (THREAD_ENTRY *
 							thread_p, int gtrid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern bool xtran_is_blocked (THREAD_ENTRY * thread_p, int tran_index);
+#endif
 extern bool xtran_server_has_updated (THREAD_ENTRY * thread_p);
 extern int xtran_server_is_active_and_has_updated (THREAD_ENTRY * thread_p);
 extern int xtran_wait_server_active_trans (THREAD_ENTRY * thrd);

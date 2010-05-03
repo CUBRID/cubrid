@@ -65,7 +65,7 @@ struct heap_bestspace
 typedef struct heap_scancache HEAP_SCANCACHE;
 struct heap_scancache
 {				/* Define a scan over the whole heap file  */
-  int debug_initpatter;		/* A stored patter which indicates that
+  int debug_initpattern;	/* A pattern which indicates that the
 				 * structure has been initialized
 				 */
   HFID hfid;			/* Heap file of scan                   */
@@ -115,6 +115,10 @@ struct heap_scancache
 					 * <btid,num_nulls,num_keys,num_oids>
 					 */
   int scanid_bit;
+  FILE_TYPE file_type;		/* The file type of the heap file being
+				 * scanned. Can be FILE_HEAP or
+				 * FILE_HEAP_REUSE_SLOTS
+				 */
 };
 
 typedef struct heap_scanrange HEAP_SCANRANGE;
@@ -372,11 +376,13 @@ extern int heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p,
 					  OID * class_oid, BTID * btid,
 					  HEAP_CACHE_ATTRINFO * attr_info);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern DB_VALUE *heap_attrvalue_get_index (int value_index,
 					   ATTR_ID * attrid, int *n_btids,
 					   BTID ** btids,
 					   HEAP_CACHE_ATTRINFO *
 					   idx_attrinfo);
+#endif
 extern HEAP_ATTRVALUE *heap_attrvalue_locate (ATTR_ID attrid,
 					      HEAP_CACHE_ATTRINFO *
 					      attr_info);
@@ -429,27 +435,30 @@ extern int heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 					 HEAP_CACHE_ATTRINFO * attr_info,
 					 HEAP_SCANCACHE * scan_cache);
 
-/* For Debugging */
 extern void heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid,
 		       bool rec_p);
+extern void heap_dump_all (THREAD_ENTRY * thread_p, FILE * fp, bool rec_p);
 extern void heap_attrinfo_dump (THREAD_ENTRY * thread_p, FILE * fp,
 				HEAP_CACHE_ATTRINFO * attr_info,
 				bool dump_schema);
-extern void heap_dump_all (THREAD_ENTRY * thread_p, FILE * fp, bool rec_p);
-extern void heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
+#if defined (CUBRID_DEBUG)
 extern void heap_chnguess_dump (FILE * fp);
+#endif /* CUBRID_DEBUG */
+extern void heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
 
 /* partition-support */
 extern REPR_ID heap_get_class_repr_id (THREAD_ENTRY * thread_p,
 				       OID * class_oid);
-extern int heap_attrinfo_set_uninitalized_global (THREAD_ENTRY * thread_p,
-						  OID * inst_oid,
-						  RECDES * recdes,
-						  HEAP_CACHE_ATTRINFO *
-						  attr_info);
+extern int heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p,
+						   OID * inst_oid,
+						   RECDES * recdes,
+						   HEAP_CACHE_ATTRINFO *
+						   attr_info);
 
 /* Recovery functions */
 extern int heap_rv_redo_newpage (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_redo_newpage_reuse_oid (THREAD_ENTRY * thread_p,
+					   LOG_RCV * rcv);
 extern int heap_rv_undoredo_pagehdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void heap_rv_dump_statistics (FILE * fp, int ignore_length,
 				     void *data);
@@ -460,10 +469,15 @@ extern int heap_rv_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_delete_newhome (THREAD_ENTRY * thread_p,
 					LOG_RCV * rcv);
+extern int heap_rv_redo_mark_reusable_slot (THREAD_ENTRY * thread_p,
+					    LOG_RCV * rcv);
 extern int heap_rv_undoredo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_undoredo_update_type (THREAD_ENTRY * thread_p,
 					 LOG_RCV * rcv);
-extern int heap_rv_redo_reuse (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void heap_rv_dump_reuse (FILE * fp, int ignore_length, void *data);
+extern int heap_rv_redo_reuse_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_redo_reuse_page_reuse_oid (THREAD_ENTRY * thread_p,
+					      LOG_RCV * rcv);
+extern void heap_rv_dump_reuse_page (FILE * fp, int ignore_length,
+				     void *data);
 
 #endif /* _HEAP_FILE_H_ */

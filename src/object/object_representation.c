@@ -1745,6 +1745,7 @@ or_put_string (OR_BUF * buf, char *str)
   return rc;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_length_string - returns the number of bytes required to hold the disk
  * representation of a string
@@ -1772,7 +1773,6 @@ or_length_string (char *string)
   return (len);
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_put_binary - Writes a binary array into the translation buffer.
  *    return: NO_ERROR or error code
@@ -2253,7 +2253,6 @@ or_unpack_time (char *ptr, DB_TIME * time)
   OR_GET_TIME (ptr, time);
   return (ptr + OR_TIME_SIZE);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * or_pack_utime - write a DB_UTIME value
@@ -2281,7 +2280,6 @@ or_unpack_utime (char *ptr, DB_UTIME * utime)
   return (ptr + OR_UTIME_SIZE);
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_pack_date - write a DB_DATE value
  *    return: advanced buffer pointer
@@ -2869,6 +2867,7 @@ or_packed_string_length (const char *string)
   return (total);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_align_length - for a given length return aligned length
  *    return: aligned length
@@ -2898,6 +2897,7 @@ or_align_length (int length)
     }
   return (total);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * or_encode - Encodes the source data into the buffer so that only ascii

@@ -131,6 +131,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     manager\n\
     repl_server\n\
     repl_agent\n\
+    heartbeat\n\
 \n\
 가용한 관리자 유틸리티 이름:\n\
     addvoldb\n\
@@ -208,9 +209,18 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     start       <배포 데이터베이스 이름> [DBA 패스워드]\n\
     stop        <배포 데이터베이스 이름>\n\
     status\n
-30 '%s' 인자가 필요 없습니다.\n
-31 데이터베이스 이름이 누락됐습니다.\n
-32 복제가 지원되지 않는 플랫폼입니다.\n
+30 cubrid 유틸리티, 버전 %s\n\
+사용법: %s heartbeat <명령어> [인자]\n\
+\n\
+가용한 명령어:\n\
+    act\n\
+    deact\n\
+    deregister  <프로세스 아이디>\n\
+    list\n\
+    reload\n
+31 '%s' 인자가 필요 없습니다.\n
+32 데이터베이스 이름이 누락됐습니다.\n
+33 복제가 지원되지 않는 플랫폼입니다.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n
@@ -282,7 +292,8 @@ createdb: 데이터베이스 생성.\n\
   -o, --output-file=FILE              출력 메시지 저장 파일.(기본값: 없음)\n\
   -v, --verbose                       많은 상태 메시지 출력.(기본값: 출력하지 않음)\n\
   -l, --log-page-count=NUMBER         로그 archive에 사용될 페이지 수.(기본값: 첫 번 째 일반 볼륨과 동일)\n\
-  -s, --page-size=SIZE                바이트 단위의 데이터베이스 페이지 크기.(기본값: OS의 I/O 단위)\n
+  -s, --page-size=SIZE                바이트 단위의 데이터베이스 페이지 크기.(기본값: 4KB)\n\
+      --log-page-size=SIZE            바이트 단위의 로그 페이지 크기.(기본값: 데이터베이스 페이지 크기)\n
 
 
 $set 6 MSGCAT_UTIL_SET_DELETEDB
@@ -502,7 +513,14 @@ cub_commdb: This utility is deprecated. Use 'cubrid' command instead.\n\
   -k, --shutdown-repl-agent=NAME   해당 복제 agent shutdown\n\
   -A, --shutdown-all               모든 프로세스 shutdown\n\
   -h, --host=HOST                  해당 호스트의 마스트 서버로 접속\n\
-  -c, --server-mode=NAME           해당 데이터베이스 서버의 HA 모드 출력\n
+  -c, --server-mode=NAME           해당 데이터베이스 서버의 HA 모드 출력\n\
+  -N, --node-list                  CUBRID heartbeat에 의해 관리되는 노드 조회\n\
+  -L, --process-list               CUBRID heartbeat에 의해 관리되는 로컬 프로세스 정보 조회\n\
+  -D, --dereg-process              대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
+  -F, --reconfig-node-list         CUBRID heartbeat 노드 설정 정보를 재 적용\n\
+  -U, --deactivate-heartbeat       CUBRID heartbeat 기능을 비활성화하고 노드 그룹에서 탈퇴\n\
+  -T, --activate-heartbeat         CUBRID heartbeat 기능을 활성화\n\
+  -V, --verbose                    많은 상태 메시지 출력.(기본값: 출력하지 않음)\n
 28 알 수 없는 명령입니다: %s\n
 29 호스트 이름을 찾을 수 없습니다-중지\n
 30 인자 파일을 찾을 수 없습니다\n
@@ -557,7 +575,7 @@ checkdb: 데이터베이스 일관성 검사.\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 데이터베이스 '%s'의 (페이지 크기 %d) 볼륨 정의\n\n
+15 데이터베이스 '%s'의 (페이지 크기 %d) 볼륨 정의 (로그 페이지 크기 %d)\n\n
 16 %5d %8s  %s %s  %s\n
 17 출력파일 `%s' 을(를) 열 수 없습니다\n
 18 \n데이터베이스 '%s'의 (페이지크기 %d) 임시 볼륨\n\n
@@ -654,7 +672,8 @@ diagdb: 데이터베이스 정보 덤프\n\
                                 5 클래스 이름 덤프\n\
                                 6 디스크 bitmap 덤프\n\
                                 7 카탈로그 덤프\n\
-                                8 로그 덤프\n
+                                8 로그 덤프\n\
+                                9 힙 덤프\n
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
@@ -790,6 +809,7 @@ $set 36 MSGCAT_UTIL_SET_REPLAGENT
 41 오류(%d): 트랜잭션이 철회되었습니다. 설정 파일의 (cubrid.conf) 의 max_block_size 및 max_block_count를 조정하여 워크스페이스의 용량을 늘려 주십시오.
 51 로그(%d): 복제 에이전트가 재 시작됩니다.
 52 로그(%d): 복제 로그의 타입이 UPDATE에서 INSERT로 변환되었습니다.
+53 로그(%d): %s
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 `%s'을 열 수 없습니다\n
@@ -812,7 +832,7 @@ paramdump: Dump system parameter settings.\n\
 usage: %s paramdump [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
   -b, --both                   dump both client and server parameters\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n
@@ -867,9 +887,10 @@ $set 43 MSGCAT_UTIL_SET_STATDUMP
 11 출력 파일 `%s'을 열 수 없습니다.\n
 59 statdump는 스탠드얼론 모드에서 실행할 수 없습니다.\n
 60 \
-statdump: Dump global statistics.\n\
-usage: %s statdump [OPTION] database-name\n\
+statdump: 전역 통계를 출력.\n\
+usage: %s statdump [옵션] <데이터베이스 이름>\n\
 \n\
 valid options:\n\
-  -o, --output-file=FILE       redirect output message to FILE; default: none\n\
-  -i, --interval=S             print stats every S secs\n
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
+  -c, --cumulative             통계를 지우지 않음\n\
+  -i, --interval=S             매 S 초마다 통계를 출력\n

@@ -32,8 +32,11 @@
 #include "oid.h"
 #include "recovery.h"
 
+#if defined (CUBRID_DEBUG)
 extern void largeobjmgr_dump (THREAD_ENTRY * thread_p, FILE * fp, LOID * loid,
 			      int n);
+#endif
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern bool largeobjmgr_check (THREAD_ENTRY * thread_p, LOID * loid);
 #endif

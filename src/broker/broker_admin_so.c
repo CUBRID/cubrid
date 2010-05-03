@@ -154,7 +154,7 @@ static void change_conf_as_type (T_BR_CONF * br_conf, int old_as_type,
 				 int new_as_type);
 static void reset_conf_value (int num_item, T_UC_CONF_ITEM * item,
 			      const char *name);
-static int get_as_type (char *type_str);
+static int get_as_type (const char *type_str);
 
 #define CHECK_SHARED_MEMORY(p_shm, err_msg)             \
     do {                                                \
@@ -371,7 +371,7 @@ uc_stop (char *err_msg)
 }
 
 DLL_EXPORT int
-uc_add (char *br_name, char *err_msg)
+uc_add (const char *br_name, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -397,7 +397,7 @@ uc_add (char *br_name, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_restart (char *br_name, int as_index, char *err_msg)
+uc_restart (const char *br_name, int as_index, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -423,7 +423,7 @@ uc_restart (char *br_name, int as_index, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_drop (char *br_name, char *err_msg)
+uc_drop (const char *br_name, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -449,7 +449,7 @@ uc_drop (char *br_name, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_on (char *br_name, char *err_msg)
+uc_on (const char *br_name, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -475,7 +475,7 @@ uc_on (char *br_name, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_off (char *br_name, char *err_msg)
+uc_off (const char *br_name, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -501,7 +501,7 @@ uc_off (char *br_name, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_suspend (char *br_name, char *err_msg)
+uc_suspend (const char *br_name, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -527,7 +527,7 @@ uc_suspend (char *br_name, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_resume (char *br_name, char *err_msg)
+uc_resume (const char *br_name, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -553,7 +553,7 @@ uc_resume (char *br_name, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_job_first (char *br_name, int job_id, char *err_msg)
+uc_job_first (const char *br_name, int job_id, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -604,7 +604,7 @@ uc_job_first (char *br_name, int job_id, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_job_queue (char *br_name, char *err_msg)
+uc_job_queue (const char *br_name, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -661,8 +661,8 @@ uc_job_queue (char *br_name, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_as_info (char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_info,
-	    int *num_job, char *err_msg)
+uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
+	    T_JOB_INFO ** job_info, int *num_job, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -754,7 +754,7 @@ uc_as_info (char *br_name, T_AS_INFO ** ret_as_info, T_JOB_INFO ** job_info,
 #endif /* WINDOWS */
       if (shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY)
 	{
-	  if (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS)
+	  if (IS_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
 	    {
 	      if (shm_appl->as_info[i].con_status == CON_STATUS_OUT_TRAN)
 		as_info[i].status = AS_STATUS_CLOSE_WAIT;
@@ -950,6 +950,7 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
 	  br_info[i].auto_add_flag =
 	    SET_FLAG (shm_br->br_info[i].auto_add_appl_server);
 	  br_info[i].sql_log_mode = shm_br->br_info[i].sql_log_mode;
+	  br_info[i].access_mode = shm_br->br_info[i].access_mode;
 	  br_info[i].long_query_time = shm_br->br_info[i].long_query_time;
 	  br_info[i].long_transaction_time =
 	    shm_br->br_info[i].long_transaction_time;
@@ -1037,7 +1038,8 @@ uc_unicas_conf_free (T_UC_CONF * unicas_conf)
 }
 
 DLL_EXPORT int
-uc_conf_broker_add (T_UC_CONF * unicas_conf, char *br_name, char *err_msg)
+uc_conf_broker_add (T_UC_CONF * unicas_conf, const char *br_name,
+		    char *err_msg)
 {
   int num_br, n;
   T_UC_CONF_ITEM *conf_item;
@@ -1106,8 +1108,8 @@ uc_conf_broker_add (T_UC_CONF * unicas_conf, char *br_name, char *err_msg)
 }
 
 DLL_EXPORT void
-uc_change_config (T_UC_CONF * unicas_conf, char *br_name, char *name,
-		  char *value)
+uc_change_config (T_UC_CONF * unicas_conf, const char *br_name,
+		  const char *name, const char *value)
 {
   T_BR_CONF *br_conf = NULL;
   int i;
@@ -1142,7 +1144,8 @@ uc_change_config (T_UC_CONF * unicas_conf, char *br_name, char *name,
 }
 
 DLL_EXPORT int
-uc_changer (char *br_name, char *name, char *value, char *err_msg)
+uc_changer (const char *br_name, const char *name, const char *value,
+	    char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -1163,7 +1166,7 @@ uc_changer (char *br_name, char *name, char *value, char *err_msg)
 }
 
 DLL_EXPORT int
-uc_del_cas_log (char *br_name, int asid, char *err_msg)
+uc_del_cas_log (const char *br_name, int asid, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
@@ -1294,7 +1297,7 @@ conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf,
 			 br_conf[i].session_timeout, FMT_D);
       SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_JOB_QUEUE_SIZE,
 			 br_conf[i].job_queue_size, FMT_D);
-      if (as_type == APPL_SERVER_CAS)
+      if (IS_APPL_SERVER_TYPE_CAS (as_type))
 	{
 	  SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_MAX_STRING_LENGTH,
 			     br_conf[i].max_string_length, FMT_D);
@@ -1412,12 +1415,20 @@ copy_job_info (T_JOB_INFO ** ret_job_info, T_MAX_HEAP_NODE * job_q)
 static const char *
 get_as_type_str (char as_type)
 {
-  return ("CAS");
+  if (as_type == APPL_SERVER_CAS_ORACLE)
+    return APPL_SERVER_CAS_ORACLE_TYPE_NAME;
+  if (as_type == APPL_SERVER_CAS_MYSQL)
+    return APPL_SERVER_CAS_MYSQL_TYPE_NAME;
+  return APPL_SERVER_CAS_TYPE_NAME;
 }
 
 static int
-get_as_type (char *type_str)
+get_as_type (const char *type_str)
 {
+  if (strcasecmp (type_str, APPL_SERVER_CAS_ORACLE_TYPE_NAME) == 0)
+    return APPL_SERVER_CAS_ORACLE;
+  if (strcasecmp (type_str, APPL_SERVER_CAS_MYSQL_TYPE_NAME) == 0)
+    return APPL_SERVER_CAS_MYSQL;
   return APPL_SERVER_CAS;
 }
 
@@ -1432,7 +1443,7 @@ change_conf_as_type (T_BR_CONF * br_conf, int old_as_type, int new_as_type)
 
   num = br_conf->num;
   item = br_conf->item;
-  if (old_as_type == APPL_SERVER_CAS)
+  if (IS_APPL_SERVER_TYPE_CAS (old_as_type))
     {
       reset_conf_value (num, item, UC_CONF_PARAM_MAX_STRING_LENGTH);
       reset_conf_value (num, item, UC_CONF_PARAM_STRIPPED_COLUMN_NAME);

@@ -50,11 +50,13 @@ struct find_id_info
 
 static PT_NODE *pt_and_or_form (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_negate_expr (PARSER_CONTEXT * parser, PT_NODE * node);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_aof_to_cnf (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_distributes_disjunction (PARSER_CONTEXT * parser,
 					    PT_NODE * node_1,
 					    PT_NODE * node_2);
 static PT_NODE *pt_flatten_and_or (PARSER_CONTEXT * parser, PT_NODE * node);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int count_and_or (PARSER_CONTEXT * parser, const PT_NODE * node);
 static PT_NODE *pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 				      void *arg, int *continue_walk);
@@ -207,7 +209,7 @@ pt_negate_expr (PARSER_CONTEXT * parser, PT_NODE * node)
   return node;
 }
 
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pt_aof_to_cnf () - Converts a parse tree of boolean expressions already in
  * 	and-or-form into an equivalent tree which is in conjunctive normal form
@@ -251,7 +253,6 @@ pt_aof_to_cnf (PARSER_CONTEXT * parser, PT_NODE * node)
 
   return result;
 }
-
 
 /*
  * pt_distributes_disjunction () - distributes disjunction such that (P and Q)
@@ -368,7 +369,6 @@ pt_distributes_disjunction (PARSER_CONTEXT * parser, PT_NODE * node_1,
   return new_node;
 }
 
-
 /*
  * pt_flatten_and_or () -
  *   return: a list of conjuncts which are implicitly anded together
@@ -425,6 +425,7 @@ pt_flatten_and_or (PARSER_CONTEXT * parser, PT_NODE * node)
 
   return list;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * count_and_or () -
@@ -818,7 +819,7 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
 		      rhs->next = rhs_next;	/* relink RHS list */
 		    }
 
-		  /* and then link the conjtive to the CNF list */
+		  /* and then link the conjunctive to the CNF list */
 		  if (last)
 		    last->next = conj;
 		  else
@@ -1055,7 +1056,7 @@ pt_tag_terms_with_id (PARSER_CONTEXT * parser, PT_NODE * terms,
 
 /*
  * pt_tag_terms_with_specs () - test each term in the CNF predicate for
- * 	membership of the spec id equivilance class, and tag the term if found
+ * 	membership of the spec id equivalence class, and tag the term if found
  *   return:
  *   parser(in):
  *   terms(in/out): CNF tree
@@ -1068,7 +1069,7 @@ pt_tag_terms_with_id (PARSER_CONTEXT * parser, PT_NODE * terms,
  * 	In thi manner it is guaranteed that a predicate will be tagged
  * 	the same left to right order (subpaths visited after node, and before
  * 	rest of list) that the unoptimised query generation path will use.
- * 	A term tagged with spec A will be guranteed not to depend on
+ * 	A term tagged with spec A will be guaranteed not to depend on
  * 	a later join spec, B, or suppath spec C of A.
  *
  *      WHACKED SPECS (specs representing selector variables) should not

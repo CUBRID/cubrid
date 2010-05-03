@@ -40,13 +40,9 @@
 #include "transaction_cl.h"
 #include "system_parameter.h"
 #include "dbval.h"
-
-
 #if defined(WINDOWS)
 #include "misc_string.h"
 #endif /* WINDOWS */
-
-
 #include "semantic_check.h"
 #include "xasl_generation.h"
 #include "memory_alloc.h"
@@ -57,10 +53,18 @@
 #include "locator_cl.h"
 #include "xasl_support.h"
 
+typedef enum
+{
+  CREATE = 0, DROP
+} DO_INDEX;
+
 #define UNIQUE_SAVEPOINT_ADD_ATTR_MTHD "aDDaTTRmTHD"
 
-
-
+static int drop_class_name (const char *name);
+static int create_or_drop_index_helper (const PARSER_CONTEXT * parser,
+					const PT_NODE * statement,
+					DB_OBJECT * obj,
+					const DO_INDEX do_index);
 
 /*
  * Function Group :
@@ -109,6 +113,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   SM_CLASS *smclass;
   TP_DOMAIN *key_type;
   bool partition_savepoint = false;
+  bool need_partition_post_work = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -161,18 +166,16 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
       else if (vlist->next == NULL)
 	{			/* ie, only one element in list */
-	  error =
-	    dbt_drop_query_spec (ctemplate, vlist->info.value.data_value.i);
-	  break;
+	  error = dbt_drop_query_spec (ctemplate,
+				       vlist->info.value.data_value.i);
 	}
       else
 	{
 	  slist = pt_sort_in_desc_order (vlist);
 	  for (; slist; slist = slist->next)
 	    {
-	      error =
-		dbt_drop_query_spec (ctemplate,
-				     slist->info.value.data_value.i);
+	      error = dbt_drop_query_spec (ctemplate,
+					   slist->info.value.data_value.i);
 	      if (error != NO_ERROR)
 		{
 		  break;
@@ -184,9 +187,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_MODIFY_QUERY:
       if (alter->info.alter.alter_clause.query.query_no_list)
 	{
-	  query_no =
-	    alter->info.alter.alter_clause.query.query_no_list->info.value.
-	    data_value.i;
+	  query_no = alter->info.alter.alter_clause.query.query_no_list->
+	    info.value.data_value.i;
 	}
       else
 	{
@@ -198,8 +200,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       error = dbt_change_query_spec (ctemplate, new_query, query_no);
       break;
 
-
     case PT_ADD_ATTR_MTHD:
+#if 0
       /* we currently core dump when adding a unique
          constraint at the same time as an attribute, whether the unique
          constraint is on the new attribute or another.
@@ -208,7 +210,6 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
          or has had any instances.
          Note that we should be checking for instances in the entire
          subhierarchy, not just the current class. */
-#if 0
       if ((hfid = sm_get_heap (vclass)) && !HFID_IS_NULL (hfid)
 	  && alter->info.alter.alter_clause.attr_mthd.attr_def_list)
 	{
@@ -233,9 +234,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 				     attr_def_list);
 	  if (error != NO_ERROR)
 	    {
-	      (void) dbt_abort_class (ctemplate);
-	      (void)
-		tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      dbt_abort_class (ctemplate);
+	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
@@ -244,9 +244,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 						    constraint_list);
 	  if (error != NO_ERROR)
 	    {
-	      (void) dbt_abort_class (ctemplate);
-	      (void)
-		tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      dbt_abort_class (ctemplate);
+	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
@@ -254,9 +253,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  if (vclass == NULL)
 	    {
 	      error = er_errid ();
-	      (void) dbt_abort_class (ctemplate);
-	      (void)
-		tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      dbt_abort_class (ctemplate);
+	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
@@ -264,8 +262,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  if (ctemplate == NULL)
 	    {
 	      error = er_errid ();
-	      (void)
-		tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
@@ -273,34 +270,35 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 				      alter->info.alter.constraint_list);
 	  if (error != NO_ERROR)
 	    {
-	      (void) dbt_abort_class (ctemplate);
-	      (void)
-		tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      dbt_abort_class (ctemplate);
+	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
 	  if (alter->info.alter.alter_clause.attr_mthd.mthd_def_list != NULL)
-	    error = do_add_methods (parser,
-				    ctemplate,
-				    alter->info.alter.alter_clause.attr_mthd.
-				    mthd_def_list);
+	    {
+	      error = do_add_methods (parser,
+				      ctemplate,
+				      alter->info.alter.alter_clause.
+				      attr_mthd.mthd_def_list);
+	    }
 	  if (error != NO_ERROR)
 	    {
-	      (void) dbt_abort_class (ctemplate);
-	      (void)
-		tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      dbt_abort_class (ctemplate);
+	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 
 	  if (alter->info.alter.alter_clause.attr_mthd.mthd_file_list != NULL)
-	    error = do_add_method_files (parser, ctemplate, alter->info.alter.
-					 alter_clause.attr_mthd.
-					 mthd_file_list);
+	    {
+	      error = do_add_method_files (parser, ctemplate,
+					   alter->info.alter.alter_clause.
+					   attr_mthd.mthd_file_list);
+	    }
 	  if (error != NO_ERROR)
 	    {
-	      (void) dbt_abort_class (ctemplate);
-	      (void)
-		tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	      dbt_abort_class (ctemplate);
+	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	      return error;
 	    }
 	}
@@ -316,16 +314,16 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      found_attr = db_get_class_attribute (vclass, attr_mthd_name);
 	      if (found_attr)
 		{
-		  error =
-		    dbt_drop_class_attribute (ctemplate, attr_mthd_name);
+		  error = dbt_drop_class_attribute (ctemplate,
+						    attr_mthd_name);
 		}
 	      else
 		{
 		  found_mthd = db_get_class_method (vclass, attr_mthd_name);
 		  if (found_mthd)
 		    {
-		      error =
-			dbt_drop_class_method (ctemplate, attr_mthd_name);
+		      error = dbt_drop_class_method (ctemplate,
+						     attr_mthd_name);
 		    }
 		}
 	    }
@@ -348,7 +346,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	  if (error != NO_ERROR)
 	    {
-	      (void) dbt_abort_class (ctemplate);
+	      dbt_abort_class (ctemplate);
 	      return error;
 	    }
 	}
@@ -358,16 +356,16 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	   && p->node_type == PT_FILE_PATH
 	   && (path = p->info.file_path.string) != NULL
 	   && path->node_type == PT_VALUE
-	   && (path->type_enum == PT_TYPE_VARCHAR ||
-	       path->type_enum == PT_TYPE_CHAR ||
-	       path->type_enum == PT_TYPE_NCHAR ||
-	       path->type_enum == PT_TYPE_VARNCHAR); p = p->next)
+	   && (path->type_enum == PT_TYPE_VARCHAR
+	       || path->type_enum == PT_TYPE_CHAR
+	       || path->type_enum == PT_TYPE_NCHAR
+	       || path->type_enum == PT_TYPE_VARNCHAR); p = p->next)
 	{
 	  mthd_file = (char *) path->info.value.data_value.str->bytes;
 	  error = dbt_drop_method_file (ctemplate, mthd_file);
 	  if (error != NO_ERROR)
 	    {
-	      (void) dbt_abort_class (ctemplate);
+	      dbt_abort_class (ctemplate);
 	      return error;
 	    }
 	}
@@ -404,7 +402,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 							domain);
 		  if (error != NO_ERROR)
 		    {
-		      (void) dbt_abort_class (ctemplate);
+		      dbt_abort_class (ctemplate);
 		      return error;
 		    }
 		}
@@ -422,15 +420,14 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      if (pt_has_error (parser))
 		{
 		  pt_report_to_ersys (parser, PT_SEMANTIC);
-		  (void) dbt_abort_class (ctemplate);
+		  dbt_abort_class (ctemplate);
 		  return er_errid ();
 		}
 
 	      if (d != NULL)
 		{
-		  error =
-		    pt_coerce_value (parser, d, d, pt_desired_type,
-				     p->data_type);
+		  error = pt_coerce_value (parser, d, d, pt_desired_type,
+					   p->data_type);
 		  if (error != NO_ERROR)
 		    {
 		      break;
@@ -441,16 +438,15 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      if (pt_has_error (parser))
 		{
 		  pt_report_to_ersys (parser, PT_SEMANTIC);
-		  (void) dbt_abort_class (ctemplate);
+		  dbt_abort_class (ctemplate);
 		  return er_errid ();
 		}
 
-	      error =
-		dbt_change_default (ctemplate, attr_name, class_attr,
-				    &dest_val);
+	      error = dbt_change_default (ctemplate, attr_name, class_attr,
+					  &dest_val);
 	      if (error != NO_ERROR)
 		{
-		  (void) dbt_abort_class (ctemplate);
+		  dbt_abort_class (ctemplate);
 		  return error;
 		}
 	    }
@@ -472,7 +468,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	  if (error != NO_ERROR)
 	    {
-	      (void) dbt_abort_class (ctemplate);
+	      dbt_abort_class (ctemplate);
 	      return error;
 	    }
 	}
@@ -483,7 +479,6 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 			     ctemplate,
 			     alter->info.alter.super.sup_class_list);
       break;
-
 
     case PT_DROP_SUPCLASS:
       for (p = alter->info.alter.super.sup_class_list;
@@ -510,11 +505,10 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       for (p = alter->info.alter.super.resolution_list;
 	   p && p->node_type == PT_RESOLUTION; p = p->next)
 	{
-	  sup_class =
-	    db_find_class (p->info.resolution.of_sup_class_name->info.name.
-			   original);
-	  attr_mthd_name =
-	    p->info.resolution.attr_mthd_name->info.name.original;
+	  sup_class = db_find_class (p->info.resolution.of_sup_class_name->
+				     info.name.original);
+	  attr_mthd_name = p->info.resolution.attr_mthd_name->
+	    info.name.original;
 	  error = dbt_drop_resolution (ctemplate, sup_class, attr_mthd_name);
 	  if (error != NO_ERROR)
 	    {
@@ -530,7 +524,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       for (; n && d; n = n->next, d = d->next)
 	{
 	  /* try to coerce the default value into the attribute's type */
-	  if (!(d = pt_semantic_check (parser, d)))
+	  d = pt_semantic_check (parser, d);
+	  if (d == NULL)
 	    {
 	      if (pt_has_error (parser))
 		{
@@ -585,13 +580,17 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 
 	      if (error == DOMAIN_OVERFLOW)
-		PT_ERRORmf2 (parser, d, MSGCAT_SET_PARSER_SEMANTIC,
-			     MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-			     pt_short_print (parser, d), desired_type);
+		{
+		  PT_ERRORmf2 (parser, d, MSGCAT_SET_PARSER_SEMANTIC,
+			       MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+			       pt_short_print (parser, d), desired_type);
+		}
 	      else
-		PT_ERRORmf2 (parser, d, MSGCAT_SET_PARSER_SEMANTIC,
-			     MSGCAT_SEMANTIC_CANT_COERCE_TO,
-			     pt_short_print (parser, d), desired_type);
+		{
+		  PT_ERRORmf2 (parser, d, MSGCAT_SET_PARSER_SEMANTIC,
+			       MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			       pt_short_print (parser, d), desired_type);
+		}
 	      break;
 	    }
 
@@ -619,12 +618,18 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
     case PT_RENAME_ATTR_MTHD:
       if (alter->info.alter.alter_clause.rename.old_name)
-	old_name =
-	  alter->info.alter.alter_clause.rename.old_name->info.name.original;
+	{
+	  old_name = alter->info.alter.alter_clause.rename.old_name->
+	    info.name.original;
+	}
       else
-	old_name = NULL;
-      new_name =
-	alter->info.alter.alter_clause.rename.new_name->info.name.original;
+	{
+	  old_name = NULL;
+	}
+
+      new_name = alter->info.alter.alter_clause.rename.new_name->
+	info.name.original;
+
       if (alter->info.alter.alter_clause.rename.meta == PT_META_ATTR)
 	{
 	  class_attr = 1;
@@ -633,6 +638,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  class_attr = 0;
 	}
+
       switch (alter->info.alter.alter_clause.rename.element_type)
 	{
 	case PT_ATTRIBUTE:
@@ -641,28 +647,24 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  break;
 
 	case PT_FUNCTION_RENAME:
-	  mthd_name =
-	    alter->info.alter.alter_clause.rename.mthd_name->info.name.
-	    original;
-	  error =
-	    dbt_change_method_implementation (ctemplate, mthd_name,
-					      class_attr, new_name);
+	  mthd_name = alter->info.alter.alter_clause.rename.mthd_name->
+	    info.name.original;
+	  error = dbt_change_method_implementation (ctemplate, mthd_name,
+						    class_attr, new_name);
 	  break;
 
 	  /* the following case is not yet supported,
 	     but hey, when it is, there'll code for it :-) */
 
 	  /* There's code now. this drops the old file name and
-	     puts the new file name in it's place., I took out the
+	     puts the new file name in its place., I took out the
 	     class_attr, since for our purpose we don't need it */
 
 	case PT_FILE_RENAME:
-	  old_name =
-	    (char *) alter->info.alter.alter_clause.rename.old_name->info.
-	    file_path.string->info.value.data_value.str->bytes;
-	  new_name =
-	    (char *) alter->info.alter.alter_clause.rename.new_name->info.
-	    file_path.string->info.value.data_value.str->bytes;
+	  old_name = (char *) alter->info.alter.alter_clause.rename.old_name->
+	    info.file_path.string->info.value.data_value.str->bytes;
+	  new_name = (char *) alter->info.alter.alter_clause.rename.new_name->
+	    info.file_path.string->info.value.data_value.str->bytes;
 	  error = dbt_rename_method_file (ctemplate, old_name, new_name);
 	  break;
 
@@ -674,47 +676,40 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       break;
 
     case PT_DROP_CONSTRAINT:
-      {
-	SM_CLASS_CONSTRAINT *cons;
-
-	cons = classobj_find_class_index (ctemplate->current,
-					  alter->info.alter.constraint_list->
-					  info.name.original);
-	if (cons)
-	  {
-	    if (cons->type == SM_CONSTRAINT_PRIMARY_KEY)
-	      {
-		error = dbt_drop_constraint (ctemplate,
-					     DB_CONSTRAINT_PRIMARY_KEY,
-					     alter->info.alter.
-					     constraint_list->info.name.
-					     original, NULL, 0);
-	      }
-	    else if (cons->type == SM_CONSTRAINT_FOREIGN_KEY)
-	      {
-		error = dbt_drop_constraint (ctemplate,
-					     DB_CONSTRAINT_FOREIGN_KEY,
-					     alter->info.alter.
-					     constraint_list->info.name.
-					     original, NULL, 0);
-	      }
-	    else
-	      {
-		error = dbt_drop_constraint (ctemplate,
-					     DB_CONSTRAINT_UNIQUE,
-					     alter->info.alter.
-					     constraint_list->info.name.
-					     original, NULL, 0);
-	      }
-	  }
-	else
-	  {
-	    er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-		    ER_SM_CONSTRAINT_NOT_FOUND, 1,
-		    alter->info.alter.constraint_list->info.name.original);
-	    error = er_errid ();
-	  }
-      }
+      cons = classobj_find_class_index (ctemplate->current,
+					alter->info.alter.constraint_list->
+					info.name.original);
+      if (cons)
+	{
+	  if (cons->type == SM_CONSTRAINT_PRIMARY_KEY)
+	    {
+	      error = dbt_drop_constraint (ctemplate,
+					   DB_CONSTRAINT_PRIMARY_KEY,
+					   alter->info.alter.constraint_list->
+					   info.name.original, NULL, 0);
+	    }
+	  else if (cons->type == SM_CONSTRAINT_FOREIGN_KEY)
+	    {
+	      error = dbt_drop_constraint (ctemplate,
+					   DB_CONSTRAINT_FOREIGN_KEY,
+					   alter->info.alter.constraint_list->
+					   info.name.original, NULL, 0);
+	    }
+	  else
+	    {
+	      error = dbt_drop_constraint (ctemplate,
+					   DB_CONSTRAINT_UNIQUE,
+					   alter->info.alter.constraint_list->
+					   info.name.original, NULL, 0);
+	    }
+	}
+      else
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		  ER_SM_CONSTRAINT_NOT_FOUND, 1,
+		  alter->info.alter.constraint_list->info.name.original);
+	  error = er_errid ();
+	}
       break;
 
     case PT_APPLY_PARTITION:
@@ -724,20 +719,27 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_COALESCE_PARTITION:
     case PT_REORG_PARTITION:
     case PT_ANALYZE_PARTITION:
+
       error = tran_savepoint (UNIQUE_PARTITION_SAVEPOINT_ALTER, false);
       if (error != NO_ERROR)
 	{
 	  break;
 	}
       partition_savepoint = true;
+
       switch (alter->info.alter.code)
 	{
 	case PT_APPLY_PARTITION:
 	case PT_ADD_PARTITION:
 	case PT_ADD_HASHPARTITION:
+	  need_partition_post_work = true;
+
 	  error = do_create_partition (parser, alter, vclass, ctemplate);
 	  break;
+
 	case PT_REORG_PARTITION:
+	  need_partition_post_work = true;
+
 	  error = do_create_partition (parser, alter, vclass, ctemplate);
 	  if (error == NO_ERROR)
 	    {
@@ -751,47 +753,57 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		    }
 		}
 	      sprintf (partnum_str, "$%d", coalesce_num);
-	      error =
-		do_remove_partition_pre (ctemplate, keycol, partnum_str);
+	      error = do_remove_partition_pre (ctemplate, keycol,
+					       partnum_str);
 	    }
 	  break;
+
 	case PT_REMOVE_PARTITION:
+	  need_partition_post_work = true;
+
 	  error = do_remove_partition_pre (ctemplate, keycol, "*");
 	  break;
+
 	case PT_COALESCE_PARTITION:
+	  need_partition_post_work = true;
+
 	  error = do_get_partition_keycol (keycol, vclass);
 	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
+
 	  error = do_get_partition_size (vclass);
 	  if (error < 0)
 	    {
 	      break;
 	    }
 	  partnum = error;
-	  coalesce_num =
-	    partnum -
-	    alter->info.alter.alter_clause.partition.size->info.value.
-	    data_value.i;
+	  coalesce_num = (partnum
+			  - (alter->info.alter.alter_clause.partition.size->
+			     info.value.data_value.i));
 	  sprintf (partnum_str, "#%d", coalesce_num);
+
 	  error = do_remove_partition_pre (ctemplate, keycol, partnum_str);
 	  break;
+
 	case PT_ANALYZE_PARTITION:
 	  names = alter->info.alter.alter_clause.partition.name_list;
 	  if (names == NULL)
 	    {			/* ALL */
-	      error =
-		au_fetch_class (vclass, &class_, AU_FETCH_READ, AU_SELECT);
+	      error = au_fetch_class (vclass, &class_, AU_FETCH_READ,
+				      AU_SELECT);
 	      if (error != NO_ERROR)
 		{
 		  break;
 		}
+
 	      error = sm_update_statistics (vclass);
 	      if (error != NO_ERROR)
 		{
 		  break;
 		}
+
 	      for (objs = class_->users; objs; objs = objs->next)
 		{
 		  error = au_fetch_class (objs->op, &subcls,
@@ -800,10 +812,12 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		    {
 		      break;
 		    }
+
 		  if (!subcls->partition_of)
 		    {
 		      continue;	/* not partitioned */
 		    }
+
 		  error = sm_update_statistics (objs->op);
 		  if (error != NO_ERROR)
 		    {
@@ -819,6 +833,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		    {
 		      break;
 		    }
+
 		  error = sm_update_statistics (names->info.name.db_object);
 		  if (error != NO_ERROR)
 		    {
@@ -827,34 +842,36 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 	    }
 	  break;
+
 	default:
 	  break;
 	}
       break;
+
     case PT_DROP_PARTITION:	/* post work */
+      need_partition_post_work = true;
       break;
+
     default:
-      (void) dbt_abort_class (ctemplate);
+      dbt_abort_class (ctemplate);
       return error;
     }
 
   /* Process resolution list if appropriate */
   if (error == NO_ERROR)
     {
-      if (alter->info.alter.code != PT_DROP_RESOLUTION)
+      if (alter->info.alter.super.resolution_list != NULL
+	  && alter->info.alter.code != PT_DROP_RESOLUTION)
 	{
-	  if (alter->info.alter.super.resolution_list != NULL)
-	    {
-	      error = do_add_resolutions (parser, ctemplate,
-					  alter->info.alter.super.
-					  resolution_list);
-	    }
+	  error = do_add_resolutions (parser, ctemplate,
+				      alter->info.alter.super.
+				      resolution_list);
 	}
     }
 
   if (error != NO_ERROR)
     {
-      (void) dbt_abort_class (ctemplate);
+      dbt_abort_class (ctemplate);
       if (partition_savepoint)
 	{
 	  goto alter_partition_fail;
@@ -868,57 +885,102 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   if (vclass == NULL)
     {
       error = er_errid ();
-      (void) dbt_abort_class (ctemplate);
+      dbt_abort_class (ctemplate);
       if (partition_savepoint)
 	{
 	  goto alter_partition_fail;
 	}
       return error;
     }
-  else
-    {
-      switch (alter->info.alter.code)
-	{
-	case PT_APPLY_PARTITION:
-	case PT_ADD_HASHPARTITION:
-	case PT_ADD_PARTITION:
-	case PT_REORG_PARTITION:
-	  if (alter->info.alter.code == PT_APPLY_PARTITION)
-	    {
-	      error = do_update_partition_newly (entity_name,
-						 alter->info.alter.
-						 alter_clause.partition.info->
-						 info.partition.keycol->info.
-						 name.original);
-	    }
-	  else if (alter->info.alter.code == PT_ADD_HASHPARTITION
-		   || alter->info.alter.code == PT_REORG_PARTITION)
-	    {
-	      error = do_get_partition_keycol (keycol, vclass);
-	      if (error == NO_ERROR)
-		{
-		  error = do_update_partition_newly (entity_name, keycol);
-		}
-	    }
 
+  if (need_partition_post_work == false)
+    {
+      return NO_ERROR;
+    }
+
+  switch (alter->info.alter.code)
+    {
+    case PT_APPLY_PARTITION:
+    case PT_ADD_HASHPARTITION:
+    case PT_ADD_PARTITION:
+    case PT_REORG_PARTITION:
+      if (alter->info.alter.code == PT_APPLY_PARTITION)
+	{
+	  error = do_update_partition_newly (entity_name,
+					     alter->info.alter.
+					     alter_clause.partition.info->
+					     info.partition.keycol->info.
+					     name.original);
+	}
+      else if (alter->info.alter.code == PT_ADD_HASHPARTITION
+	       || alter->info.alter.code == PT_REORG_PARTITION)
+	{
+	  error = do_get_partition_keycol (keycol, vclass);
 	  if (error == NO_ERROR)
 	    {
-	      /* index propagate */
-	      classop = db_find_class (entity_name);
-	      if (classop == NULL)
+	      error = do_update_partition_newly (entity_name, keycol);
+	    }
+	}
+
+      if (error == NO_ERROR)
+	{
+	  /* index propagate */
+	  classop = db_find_class (entity_name);
+	  if (classop == NULL)
+	    {
+	      error = er_errid ();
+	      goto fail_end;
+	    }
+	  if (au_fetch_class (classop, &class_, AU_FETCH_READ,
+			      AU_SELECT) != NO_ERROR)
+	    {
+	      error = er_errid ();
+	      goto fail_end;
+	    }
+
+	  smclass = sm_get_class_with_statistics (classop);
+	  if (smclass == NULL)
+	    {
+	      if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
 		{
-		  error = er_errid ();
-		  goto fail_end;
+		  error = ER_PARTITION_WORK_FAILED;
 		}
-	      if (au_fetch_class (classop, &class_, AU_FETCH_READ,
-				  AU_SELECT) != NO_ERROR)
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_PARTITION_WORK_FAILED, 0);
+	      goto fail_end;
+	    }
+
+	  if (smclass->stats == NULL)
+	    {
+	      if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
 		{
-		  error = er_errid ();
-		  goto fail_end;
+		  error = ER_PARTITION_WORK_FAILED;
+		}
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_PARTITION_WORK_FAILED, 0);
+	      goto fail_end;
+	    }
+
+	  for (cons = class_->constraints; cons; cons = cons->next)
+	    {
+	      if (cons->type != DB_CONSTRAINT_INDEX
+		  && cons->type != DB_CONSTRAINT_REVERSE_INDEX)
+		{
+		  continue;
 		}
 
-	      smclass = sm_get_class_with_statistics (classop);
-	      if (smclass == NULL)
+	      attp = cons->attributes;
+	      i = 0;
+	      while (*attp)
+		{
+		  attp++;
+		  i++;
+		}
+
+	      if (i <= 0
+		  || ((namep = (char **) malloc (sizeof (char *) * (i + 1)))
+		      == NULL)
+		  || (asc_desc = (int *) malloc (sizeof (int) * (i))) == NULL)
 		{
 		  if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
 		    {
@@ -929,7 +991,14 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  goto fail_end;
 		}
 
-	      if (smclass->stats == NULL)
+	      attp = cons->attributes;
+	      attrnames = namep;
+
+	      /* need to get asc/desc info */
+	      key_type = classobj_find_cons_index2_col_type_list (cons,
+								  smclass->
+								  stats);
+	      if (key_type == NULL)
 		{
 		  if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
 		    {
@@ -940,256 +1009,207 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  goto fail_end;
 		}
 
-	      for (cons = class_->constraints; cons; cons = cons->next)
+	      i = 0;
+	      while (*attp && key_type)
 		{
-		  if (cons->type != DB_CONSTRAINT_INDEX
-		      && cons->type != DB_CONSTRAINT_REVERSE_INDEX)
-		    {
-		      continue;
-		    }
-		  attp = cons->attributes;
-		  i = 0;
-		  while (*attp)
-		    {
-		      attp++;
-		      i++;
-		    }
+		  *attrnames = (char *) (*attp)->header.name;
+		  attrnames++;
 
-		  if (i <= 0
-		      || (namep =
-			  (char **) malloc (sizeof (char *) * (i + 1)))
-		      == NULL
-		      || (asc_desc =
-			  (int *) malloc (sizeof (int) * (i))) == NULL)
+		  asc_desc[i] = 0;	/* guess as Asc */
+		  if (DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (cons->type)
+		      || key_type->is_desc)
 		    {
-		      if (error == NO_ERROR
-			  && (error = er_errid ()) == NO_ERROR)
-			{
-			  error = ER_PARTITION_WORK_FAILED;
-			}
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_PARTITION_WORK_FAILED, 0);
-		      goto fail_end;
+		      asc_desc[i] = 1;	/* Desc */
 		    }
-		  attp = cons->attributes;
-		  attrnames = namep;
+		  i++;
 
-		  /* need to get asc/desc info */
-		  key_type = classobj_find_cons_index2_col_type_list (cons,
-								      smclass->
-								      stats);
-		  if (key_type == NULL)
+		  attp++;
+		  key_type = key_type->next;
+		}
+
+	      if (*attp || key_type)
+		{
+		  if (error == NO_ERROR && (error = er_errid ()) == NO_ERROR)
 		    {
-		      if (error == NO_ERROR
-			  && (error = er_errid ()) == NO_ERROR)
-			{
-			  error = ER_PARTITION_WORK_FAILED;
-			}
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_PARTITION_WORK_FAILED, 0);
+		      error = ER_PARTITION_WORK_FAILED;
+		    }
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_PARTITION_WORK_FAILED, 0);
+		  goto fail_end;
+		}
+
+	      *attrnames = NULL;
+
+	      for (objs = class_->users; objs; objs = objs->next)
+		{
+		  error = au_fetch_class (objs->op, &subcls,
+					  AU_FETCH_READ, AU_SELECT);
+		  if (error != NO_ERROR)
+		    {
+		      error = er_errid ();
 		      goto fail_end;
 		    }
 
-		  i = 0;
-		  while (*attp && key_type)
+		  if (!subcls->partition_of)
 		    {
-		      *attrnames = (char *) (*attp)->header.name;
-		      attrnames++;
-		      asc_desc[i] = 0;	/* guess as Asc */
-		      if (DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (cons->type)
-			  || key_type->is_desc)
-			{
-			  asc_desc[i] = 1;	/* Desc */
-			}
-		      i++;
-
-		      attp++;
-		      key_type = key_type->next;
+		      continue;	/* not partitioned */
 		    }
 
-		  if (*attp || key_type)
+		  if (alter->info.alter.code == PT_ADD_PARTITION
+		      || alter->info.alter.code == PT_REORG_PARTITION
+		      || alter->info.alter.code == PT_ADD_HASHPARTITION)
 		    {
-		      if (error == NO_ERROR
-			  && (error = er_errid ()) == NO_ERROR)
+		      parts = alter->info.alter.alter_clause.partition.parts;
+		      for (; parts; parts = parts->next)
 			{
-			  error = ER_PARTITION_WORK_FAILED;
-			}
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			      ER_PARTITION_WORK_FAILED, 0);
-		      goto fail_end;
-		    }
-
-		  *attrnames = NULL;
-
-		  for (objs = class_->users; objs; objs = objs->next)
-		    {
-		      error = au_fetch_class (objs->op, &subcls,
-					      AU_FETCH_READ, AU_SELECT);
-		      if (error != NO_ERROR)
-			{
-			  error = er_errid ();
-			  goto fail_end;
-			}
-		      if (!subcls->partition_of)
-			{
-			  continue;	/* not partitioned */
-			}
-		      if (alter->info.alter.code == PT_ADD_PARTITION
-			  || alter->info.alter.code == PT_REORG_PARTITION
-			  || alter->info.alter.code == PT_ADD_HASHPARTITION)
-			{
-			  parts =
-			    alter->info.alter.alter_clause.partition.parts;
-			  for (; parts; parts = parts->next)
+			  if (alter->info.alter.code == PT_REORG_PARTITION
+			      && parts->partition_pruned)
 			    {
-			      if (alter->info.alter.code == PT_REORG_PARTITION
-				  && parts->partition_pruned)
-				{
-				  continue;	/* reused partition */
-				}
-			      if (ws_mop_compare (objs->op,
-						  parts->info.parts.name->
-						  info.name.db_object) == 0)
-				{
-				  break;
-				}
+			      continue;	/* reused partition */
 			    }
-			  if (parts == NULL)
+			  if (ws_mop_compare (objs->op,
+					      parts->info.parts.name->
+					      info.name.db_object) == 0)
 			    {
-			      continue;
+			      break;
 			    }
 			}
-		      error =
-			sm_add_index (objs->op, (const char **) namep,
-				      asc_desc, cons->name,
-				      DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY
-				      (cons->type));
-		      if (error != NO_ERROR)
+		      if (parts == NULL)
 			{
-			  break;
+			  continue;
 			}
 		    }
-
-		  free_and_init (namep);
-		  namep = NULL;
-		  free_and_init (asc_desc);
-		  asc_desc = NULL;
+		  error = sm_add_index (objs->op, (const char **) namep,
+					asc_desc, cons->name,
+					DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY
+					(cons->type));
+		  if (error != NO_ERROR)
+		    {
+		      break;
+		    }
 		}
 
-	    fail_end:
-
-	      if (namep != NULL)
-		{
-		  free_and_init (namep);
-		}
-	      if (asc_desc != NULL)
-		{
-		  free_and_init (asc_desc);
-		}
+	      free_and_init (namep);
+	      free_and_init (asc_desc);
 	    }
 
-	  if (error != NO_ERROR)
-	    {
-	      goto alter_partition_fail;
-	    }
+	fail_end:
 
-	  if (alter->info.alter.code == PT_REORG_PARTITION)
+	  if (namep != NULL)
 	    {
-	      delnames = NULL;
-	      names = alter->info.alter.alter_clause.partition.name_list;
-	      for (; names; names = parts)
-		{
-		  parts = names->next;
-		  if (names->partition_pruned)
-		    {		/* for delete partition */
-		      if (delnames != NULL)
-			{
-			  delnames->next = names;
-			}
-		      else
-			{
-			  alter->info.alter.alter_clause.partition.name_list =
-			    names;
-			}
-		      delnames = names;
-		      delnames->next = NULL;
+	      free_and_init (namep);
+	    }
+	  if (asc_desc != NULL)
+	    {
+	      free_and_init (asc_desc);
+	    }
+	}
+
+      if (error != NO_ERROR)
+	{
+	  goto alter_partition_fail;
+	}
+
+      if (alter->info.alter.code == PT_REORG_PARTITION)
+	{
+	  delnames = NULL;
+	  names = alter->info.alter.alter_clause.partition.name_list;
+	  for (; names; names = parts)
+	    {
+	      parts = names->next;
+	      if (names->partition_pruned)
+		{		/* for delete partition */
+		  if (delnames != NULL)
+		    {
+		      delnames->next = names;
 		    }
 		  else
 		    {
-		      names->next = NULL;
-		      parser_free_tree (parser, names);
+		      alter->info.alter.alter_clause.partition.name_list =
+			names;
 		    }
-		}
-	      if (delnames != NULL)
-		{
-		  error = do_drop_partition_list (vclass, alter->
-						  info.alter.alter_clause.
-						  partition.name_list);
-		  if (error != NO_ERROR)
-		    {
-		      goto alter_partition_fail;
-		    }
-		}
-	    }
-	  break;
-
-	case PT_COALESCE_PARTITION:
-	  error = do_update_partition_newly (entity_name, keycol);
-	  if (error != NO_ERROR)
-	    {
-	      goto alter_partition_fail;
-	    }
-	  slist = NULL;
-	  coalesce_list = NULL;
-	  for (; coalesce_num < partnum; coalesce_num++)
-	    {
-	      sprintf (partnum_str, "p%d", coalesce_num);
-	      parts = pt_name (parser, partnum_str);
-	      if (parts == NULL)
-		{
-		  goto alter_partition_fail;
-		}
-	      parts->next = NULL;
-	      if (coalesce_list == NULL)
-		{
-		  coalesce_list = parts;
+		  delnames = names;
+		  delnames->next = NULL;
 		}
 	      else
 		{
-		  slist->next = parts;
+		  names->next = NULL;
+		  parser_free_tree (parser, names);
 		}
-	      slist = parts;
 	    }
-	  error = do_drop_partition_list (vclass, coalesce_list);
-	  if (error != NO_ERROR)
-	    {
-	      parser_free_tree (parser, coalesce_list);
-	      goto alter_partition_fail;
-	    }
-	  parser_free_tree (parser, coalesce_list);
-	  break;
 
-	case PT_REMOVE_PARTITION:
-	  error = do_remove_partition_post (parser, entity_name, keycol);
-	  if (error != NO_ERROR)
+	  if (delnames != NULL)
 	    {
-	      goto alter_partition_fail;
+	      error = do_drop_partition_list (vclass, alter->
+					      info.alter.alter_clause.
+					      partition.name_list);
+	      if (error != NO_ERROR)
+		{
+		  goto alter_partition_fail;
+		}
 	    }
-	  break;
-
-	case PT_DROP_PARTITION:
-	  error = do_drop_partition_list (vclass, alter->
-					  info.alter.alter_clause.partition.
-					  name_list);
-	  if (error != NO_ERROR)
-	    {
-	      goto alter_partition_fail;
-	    }
-	  break;
-
-	default:
-	  break;
 	}
+      break;
+
+    case PT_COALESCE_PARTITION:
+      error = do_update_partition_newly (entity_name, keycol);
+      if (error != NO_ERROR)
+	{
+	  goto alter_partition_fail;
+	}
+
+      slist = NULL;
+      coalesce_list = NULL;
+      for (; coalesce_num < partnum; coalesce_num++)
+	{
+	  sprintf (partnum_str, "p%d", coalesce_num);
+	  parts = pt_name (parser, partnum_str);
+	  if (parts == NULL)
+	    {
+	      goto alter_partition_fail;
+	    }
+	  parts->next = NULL;
+	  if (coalesce_list == NULL)
+	    {
+	      coalesce_list = parts;
+	    }
+	  else
+	    {
+	      slist->next = parts;
+	    }
+	  slist = parts;
+	}
+
+      error = do_drop_partition_list (vclass, coalesce_list);
+      parser_free_tree (parser, coalesce_list);
+
+      if (error != NO_ERROR)
+	{
+	  goto alter_partition_fail;
+	}
+
+      break;
+
+    case PT_REMOVE_PARTITION:
+      error = do_remove_partition_post (parser, entity_name, keycol);
+      if (error != NO_ERROR)
+	{
+	  goto alter_partition_fail;
+	}
+      break;
+
+    case PT_DROP_PARTITION:
+      error = do_drop_partition_list (vclass, alter->
+				      info.alter.alter_clause.partition.
+				      name_list);
+      if (error != NO_ERROR)
+	{
+	  goto alter_partition_fail;
+	}
+      break;
+
+    default:
+      break;
     }
 
   return NO_ERROR;
@@ -1203,15 +1223,11 @@ alter_partition_fail:
   return error;
 }
 
-
-
-
 /*
  * Function Group :
  * DO functions for user management
  *
  */
-
 
 #define IS_NAME(n)      ((n)->node_type == PT_NAME)
 #define IS_STRING(n)    ((n)->node_type == PT_VALUE &&          \
@@ -1233,7 +1249,7 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   int error = NO_ERROR;
   PT_NODE *user, *user_list;
-  DB_OBJECT *user_obj, *class_;
+  DB_OBJECT *user_obj, *class_mop;
   PT_NODE *auth_cmd_list, *auth_list, *auth;
   DB_AUTH db_auth;
   PT_NODE *spec_list, *s_list, *spec;
@@ -1260,13 +1276,14 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       user_obj = db_find_user (user->info.name.original);
       if (user_obj == NULL)
 	{
-	  error = er_errid ();
-	  return (error);
+	  return er_errid ();
 	}
+
       auth_list = auth_cmd_list;
       for (auth = auth_list; auth != NULL; auth = auth->next)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
+
 	  s_list = spec_list;
 	  for (spec = s_list; spec != NULL; spec = spec->next)
 	    {
@@ -1274,15 +1291,18 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      for (entity = entity_list; entity != NULL;
 		   entity = entity->next)
 		{
-		  class_ = db_find_class (entity->info.name.original);
-		  if (class_ == NULL)
+		  class_mop = db_find_class (entity->info.name.original);
+		  if (class_mop == NULL)
 		    {
-		      error = er_errid ();
-		      return (error);
+		      return er_errid ();
 		    }
-		  error = db_grant (user_obj, class_, db_auth, grant_option);
+
+		  error = db_grant (user_obj, class_mop, db_auth,
+				    grant_option);
 		  if (error != NO_ERROR)
-		    return error;
+		    {
+		      return error;
+		    }
 		}
 	    }
 	}
@@ -1303,7 +1323,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   int error = NO_ERROR;
 
   PT_NODE *user, *user_list;
-  DB_OBJECT *user_obj, *class_;
+  DB_OBJECT *user_obj, *class_mop;
   PT_NODE *auth_cmd_list, *auth_list, *auth;
   DB_AUTH db_auth;
   PT_NODE *spec_list, *s_list, *spec;
@@ -1320,13 +1340,14 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       user_obj = db_find_user (user->info.name.original);
       if (user_obj == NULL)
 	{
-	  error = er_errid ();
-	  return (error);
+	  return er_errid ();
 	}
+
       auth_list = auth_cmd_list;
       for (auth = auth_list; auth != NULL; auth = auth->next)
 	{
 	  db_auth = pt_auth_to_db_auth (auth);
+
 	  s_list = spec_list;
 	  for (spec = s_list; spec != NULL; spec = spec->next)
 	    {
@@ -1334,15 +1355,17 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      for (entity = entity_list; entity != NULL;
 		   entity = entity->next)
 		{
-		  class_ = db_find_class (entity->info.name.original);
-		  if (class_ == NULL)
+		  class_mop = db_find_class (entity->info.name.original);
+		  if (class_mop == NULL)
 		    {
-		      error = er_errid ();
-		      return (error);
+		      return er_errid ();
 		    }
-		  error = db_revoke (user_obj, class_, db_auth);
+
+		  error = db_revoke (user_obj, class_mop, db_auth);
 		  if (error != NO_ERROR)
-		    return error;
+		    {
+		      return error;
+		    }
 		}
 	    }
 	}
@@ -1399,7 +1422,6 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   for (node = statement->info.create_user.groups;
        node != NULL; node = node->next)
     {
-
       if (node == NULL || node->node_type != PT_NAME
 	  || node->info.name.original == NULL)
 	{
@@ -1428,8 +1450,8 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  return ER_OBJ_INVALID_ARGUMENTS;
 	}
 
-      if (strcasecmp (user_name, member_name) == 0 ||
-	  strcasecmp (member_name, AU_PUBLIC_USER_NAME) == 0)
+      if (strcasecmp (user_name, member_name) == 0
+	  || strcasecmp (member_name, AU_PUBLIC_USER_NAME) == 0)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 		  ER_AU_MEMBER_CAUSES_CYCLES, 0);
@@ -1477,6 +1499,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   else
     {
       exists = 0;
+
       user = db_add_user (user_name, &exists);
       if (user == NULL)
 	{
@@ -1502,6 +1525,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    do
 	      {
 		group = db_find_user (group_name);
+
 		if (group == NULL)
 		  {
 		    error = er_errid ();
@@ -1510,6 +1534,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  {
 		    error = db_add_member (group, user);
 		  }
+
 		node = node->next;
 		group_name = (node
 			      && IS_NAME (node)) ? GET_NAME (node) : NULL;
@@ -1523,6 +1548,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      do
 		{
 		  member = db_find_user (member_name);
+
 		  if (member == NULL)
 		    {
 		      error = er_errid ();
@@ -1531,6 +1557,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		    {
 		      error = db_add_member (user, member);
 		    }
+
 		  node = node->next;
 		  member_name = (node
 				 && IS_NAME (node)) ? GET_NAME (node) : NULL;
@@ -1549,6 +1576,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	    }
 	}
     }
+
   return error;
 }
 
@@ -1584,6 +1612,7 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   node = statement->info.create_user.user_name;
   user_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+
   if (!parser || !statement || !user_name)
     {
       error = ER_AU_INVALID_USER;
@@ -1592,6 +1621,7 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   else
     {
       user = db_find_user (user_name);
+
       if (user == NULL)
 	{
 	  error = er_errid ();
@@ -1601,6 +1631,7 @@ do_drop_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  error = db_drop_user (user);
 	}
     }
+
   return error;
 }
 
@@ -1636,6 +1667,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   node = statement->info.alter_user.user_name;
   user_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+
   if (!parser || !statement || !user_name)
     {
       error = ER_AU_INVALID_USER;
@@ -1644,6 +1676,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   else
     {
       user = db_find_user (user_name);
+
       if (user == NULL)
 	{
 	  error = er_errid ();
@@ -1652,23 +1685,19 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  node = statement->info.alter_user.password;
 	  password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
+
 	  error = au_set_password (user, password);
 	}
     }
+
   return error;
 }
-
-
-
-
 
 /*
  * Function Group :
  * Code for dropping a Classes by Parse Tree descriptions.
  *
  */
-
-static int drop_class_name (const char *name);
 
 /*
  * drop_class_name() - This static routine drops a class by name.
@@ -1678,13 +1707,13 @@ static int drop_class_name (const char *name);
 static int
 drop_class_name (const char *name)
 {
-  DB_OBJECT *class_;
+  DB_OBJECT *class_mop;
 
-  class_ = db_find_class (name);
+  class_mop = db_find_class (name);
 
-  if (class_)
+  if (class_mop)
     {
-      return db_drop_class (class_);
+      return db_drop_class (class_mop);
     }
   else
     {
@@ -1724,8 +1753,8 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
       entity_list = entity_spec->info.spec.flat_entity_list;
       for (entity = entity_list; entity != NULL; entity = entity->next)
 	{
-	  if (do_is_partitioned_subclass
-	      (NULL, entity->info.name.original, NULL))
+	  if (do_is_partitioned_subclass (NULL, entity->info.name.original,
+					  NULL))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_INVALID_PARTITION_REQUEST, 0);
@@ -1733,6 +1762,7 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
     }
+
   entity_spec_list = statement->info.drop.spec_list;
   for (entity_spec = entity_spec_list; entity_spec != NULL;
        entity_spec = entity_spec->next)
@@ -1742,9 +1772,12 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  error = drop_class_name (entity->info.name.original);
 	  if (error != NO_ERROR)
-	    return error;
+	    {
+	      return error;
+	    }
 	}
     }
+
   return error;
 }
 
@@ -1772,6 +1805,7 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   old_name = statement->info.rename.old_name->info.name.original;
   new_name = statement->info.rename.new_name->info.name.original;
+
   if (do_is_partitioned_subclass (NULL, old_name, NULL))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_PARTITION_REQUEST,
@@ -1785,14 +1819,12 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       return er_errid ();
     }
   else
-    error = db_rename_class (old_class, new_name);
+    {
+      error = db_rename_class (old_class, new_name);
+    }
 
   return error;
 }
-
-
-
-
 
 /*
  * Function Group :
@@ -1800,15 +1832,6 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
  *
  */
 
-typedef enum
-{
-  CREATE = 0, DROP
-} DO_INDEX;
-
-static int create_or_drop_index_helper (const PARSER_CONTEXT * parser,
-					const PT_NODE * statement,
-					DB_OBJECT * obj,
-					const DO_INDEX do_index);
 /*
  * create_or_drop_index_helper()
  *   return: Error code
@@ -1825,7 +1848,6 @@ create_or_drop_index_helper (const PARSER_CONTEXT * parser,
 			     DB_OBJECT * obj, const DO_INDEX do_index)
 {
   int error = NO_ERROR;
-
   int i, nnames;
   DB_CONSTRAINT_TYPE ctype;
   PT_NODE *c, *n;
@@ -1834,6 +1856,7 @@ create_or_drop_index_helper (const PARSER_CONTEXT * parser,
   char *cname;
 
   nnames = pt_length_of_list (statement->info.index.column_names);
+
   attnames = (char **) malloc ((nnames + 1) * sizeof (char *));
   if (attnames == NULL)
     {
@@ -1905,7 +1928,7 @@ create_or_drop_index_helper (const PARSER_CONTEXT * parser,
  * do_create_index() - Creates an index
  *   return: Error code if it fails
  *   parser(in): Parser context
- *   statemnet(in) : Parse tree of a create index statement
+ *   statement(in) : Parse tree of a create index statement
  */
 int
 do_create_index (const PARSER_CONTEXT * parser, const PT_NODE * statement)
@@ -1923,6 +1946,7 @@ do_create_index (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   cls = statement->info.index.indexed_class;
+
   obj = db_find_class (cls->info.name.original);
   if (obj == NULL)
     {
@@ -1930,8 +1954,7 @@ do_create_index (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   return create_or_drop_index_helper (parser, statement, obj, CREATE);
-
-}				/* do_create_index */
+}
 
 /*
  * do_drop_index() - Drops an index on a class.
@@ -1942,8 +1965,9 @@ do_create_index (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 int
 do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
-  PT_NODE *cls;
+  PT_NODE *cls, *c;
   DB_OBJECT *obj;
+  DB_CONSTRAINT_TYPE ctype;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1955,16 +1979,14 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   cls = statement->info.index.indexed_class;
-  if (!cls)
+  if (cls == NULL)
     {
-      PT_NODE *c;
-      DB_CONSTRAINT_TYPE ctype;
-
       c = statement->info.index.index_name;
-      if (!c || !c->info.name.original)
+      if (c == NULL || c->info.name.original == NULL)
 	{
 	  return ER_SM_INVALID_DEF_CONSTRAINT_NAME_PARAMS;
 	}
+
       if (statement->info.index.unique)
 	{
 	  ctype = (statement->info.index.reverse == false) ?
@@ -1975,12 +1997,14 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  ctype = (statement->info.index.reverse == false) ?
 	    DB_CONSTRAINT_INDEX : DB_CONSTRAINT_REVERSE_INDEX;
 	}
+
       cls = pt_find_class_of_index (parser, c, ctype);
-      if (!cls)
+      if (cls == NULL)
 	{
 	  return er_errid ();
 	}
     }
+
   obj = db_find_class (cls->info.name.original);
   if (obj == NULL)
     {
@@ -1991,7 +2015,6 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   pt_check_user_owns_class (parser, cls);
 
   return create_or_drop_index_helper (parser, statement, obj, DROP);
-
 }
 
 /*
@@ -2004,7 +2027,6 @@ int
 do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   int error = NO_ERROR;
-
   DB_OBJECT *obj;
   PT_NODE *cls, *c, *n;
   int i, nnames;
@@ -2032,13 +2054,14 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   attnames_allocated = 0;
 
   cls = statement->info.index.indexed_class;
-  if (!cls)
+  if (cls == NULL)
     {
       c = statement->info.index.index_name;
-      if (!c || !c->info.name.original)
+      if (c == NULL || c->info.name.original == NULL)
 	{
 	  return ER_SM_INVALID_DEF_CONSTRAINT_NAME_PARAMS;
 	}
+
       if (statement->info.index.unique)
 	{
 	  ctype = (statement->info.index.reverse == false) ?
@@ -2049,12 +2072,14 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	  ctype = (statement->info.index.reverse == false) ?
 	    DB_CONSTRAINT_INDEX : DB_CONSTRAINT_REVERSE_INDEX;
 	}
+
       cls = pt_find_class_of_index (parser, c, ctype);
-      if (!cls)
+      if (cls == NULL)
 	{
 	  return er_errid ();
 	}
     }
+
   obj = db_find_class (cls->info.name.original);
   if (obj)
     {
@@ -2072,6 +2097,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
       c = statement->info.index.index_name;
       idx_name = c->info.name.original;
       idx = NULL;
+
       if (au_fetch_class (obj, &smcls, AU_FETCH_READ, AU_SELECT) == NO_ERROR
 	  && (idx = classobj_find_class_index (smcls, idx_name)) != NULL)
 	{
@@ -2082,11 +2108,13 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 		      ER_OBJ_INVALID_ATTRIBUTE, 1, "unknown");
 	      return er_errid ();
 	    }
+
 	  nnames = 0;
 	  while (*attp++)
 	    {
 	      nnames++;
 	    }
+
 	  attnames = (char **) malloc ((nnames + 1) * sizeof (char *));
 	  if (attnames == NULL)
 	    {
@@ -2096,6 +2124,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	  attnames_allocated = 1;
+
 	  for (i = 0, attp = idx->attributes; *attp; i++, attp++)
 	    {
 	      attnames[i] = strdup ((*attp)->header.name);
@@ -2106,6 +2135,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   else
     {
       nnames = pt_length_of_list (statement->info.index.column_names);
+
       attnames = (char **) malloc ((nnames + 1) * sizeof (char *));
       if (attnames == NULL)
 	{
@@ -2188,10 +2218,6 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   return error;
 }
 
-
-
-
-
 /*
  * Function Group :
  * Code for partition
@@ -2266,9 +2292,9 @@ static PT_NODE *find_partition_attr (PARSER_CONTEXT * parser, PT_NODE * node,
 static int check_same_expr (PARSER_CONTEXT * parser, PT_NODE * p,
 			    PT_NODE * q);
 static int evaluate_partition_range (PARSER_CONTEXT * parser, PT_NODE * expr);
-static PT_NODE *conver_expr_to_constant (PARSER_CONTEXT * parser,
-					 PT_NODE * node, void *void_arg,
-					 int *continue_walk);
+static PT_NODE *convert_expr_to_constant (PARSER_CONTEXT * parser,
+					  PT_NODE * node, void *void_arg,
+					  int *continue_walk);
 static PT_NODE *get_pruned_partition_spec (PRUNING_INFO * ppi, MOP subobj);
 static void add_pruned_partition_part (PT_NODE * subspec, PRUNING_INFO * ppi,
 				       MOP subcls, char *cname);
@@ -2322,6 +2348,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
   int size;
   int save;
   SM_CLASS *smclass;
+  bool reuse_oid = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2348,6 +2375,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	{
 	  part_add = PT_PARTITION_HASH;
 	}
+
       intl_mbs_lower ((char *) node->info.alter.entity_name->info.name.
 		      original, class_name);
     }
@@ -2363,7 +2391,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   if (part_add == -1)
-    {				/* create or apply partiiton */
+    {				/* create or apply partition */
       if (!pinfo)
 	{
 	  return NO_ERROR;
@@ -2376,7 +2404,6 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
   parttemp = parser_new_node (parser, PT_CREATE_ENTITY);
   if (parttemp == NULL)
     {
-    fail_return:
       error = er_errid ();
       goto end_create;
     }
@@ -2384,8 +2411,11 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
   error = au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
-      goto fail_return;
+      error = er_errid ();
+      goto end_create;
     }
+
+  reuse_oid = (smclass->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
 
   parttemp->info.create_entity.entity_type = PT_CLASS;
   parttemp->info.create_entity.entity_name =
@@ -2395,7 +2425,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
   if (parttemp->info.create_entity.entity_name == NULL
       || parttemp->info.create_entity.supclass_list == NULL)
     {
-      goto fail_return;
+      error = er_errid ();
+      goto end_create;
     }
   parttemp->info.create_entity.supclass_list->info.name.db_object = class_obj;
 
@@ -2410,12 +2441,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
       hash_parts = parser_new_node (parser, PT_PARTS);
       if (hash_parts == NULL)
 	{
-	  goto fail_return;
+	  error = er_errid ();
+	  goto end_create;
 	}
       hash_parts->info.parts.name = parser_new_node (parser, PT_NAME);
       if (hash_parts->info.parts.name == NULL)
 	{
-	  goto fail_return;
+	  error = er_errid ();
+	  goto end_create;
 	}
 
       hash_parts->info.parts.type = PT_PARTITION_HASH;
@@ -2424,7 +2457,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	  org_hashsize = do_get_partition_size (class_obj);
 	  if (org_hashsize < 0)
 	    {
-	      goto fail_return;
+	      error = er_errid ();
+	      goto end_create;
 	    }
 	  new_hashsize
 	    = node->info.alter.alter_clause.partition.size->info.value.
@@ -2442,7 +2476,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	  newpci = (PART_CLASS_INFO *) malloc (sizeof (PART_CLASS_INFO));
 	  if (newpci == NULL)
 	    {
-	      goto fail_return;
+	      error = er_errid ();
+	      goto end_create;
 	    }
 
 	  memset (newpci, 0x0, sizeof (PART_CLASS_INFO));
@@ -2453,7 +2488,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	  newpci->pname = (char *) malloc (strlen (class_name) + 5 + 13);
 	  if (newpci->pname == NULL)
 	    {
-	      goto fail_return;
+	      error = er_errid ();
+	      goto end_create;
 	    }
 
 	  sprintf (newpci->pname, "%s" PARTITIONED_SUB_CLASS_TAG "p%d",
@@ -2462,12 +2498,13 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	    {
 	      error = ER_INVALID_PARTITION_REQUEST;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      goto fail_return;
+	      goto end_create;
 	    }
 	  newpci->temp = dbt_create_class (newpci->pname);
 	  if (newpci->temp == NULL)
 	    {
-	      goto fail_return;
+	      error = er_errid ();
+	      goto end_create;
 	    }
 
 	  parttemp->info.create_entity.entity_name->info.name.original
@@ -2487,12 +2524,24 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (newpci->obj == NULL)
 	    {
 	      dbt_abort_class (newpci->temp);
-	      goto fail_return;
+	      error = er_errid ();
+	      goto end_create;
 	    }
 
-	  if (locator_has_heap (newpci->obj) == NULL)
+	  if (reuse_oid)
 	    {
-	      goto fail_return;
+	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_REUSE_OID,
+					 1);
+	      if (error != NO_ERROR)
+		{
+		  goto end_create;
+		}
+	    }
+
+	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL)
+	    {
+	      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	      goto end_create;
 	    }
 
 	  hash_parts->info.parts.name->info.name.original
@@ -2537,7 +2586,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	  newpci = (PART_CLASS_INFO *) malloc (sizeof (PART_CLASS_INFO));
 	  if (newpci == NULL)
 	    {
-	      goto fail_return;
+	      error = er_errid ();
+	      goto end_create;
 	    }
 
 	  memset (newpci, 0x0, sizeof (PART_CLASS_INFO));
@@ -2551,7 +2601,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	  newpci->pname = (char *) malloc (size);
 	  if (newpci->pname == NULL)
 	    {
-	      goto fail_return;
+	      error = er_errid ();
+	      goto end_create;
 	    }
 	  sprintf (newpci->pname, "%s" PARTITIONED_SUB_CLASS_TAG "%s",
 		   class_name, part_name);
@@ -2560,7 +2611,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	    {
 	      error = ER_INVALID_PARTITION_REQUEST;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      goto fail_return;
+	      goto end_create;
 	    }
 
 	  if (node->info.alter.code == PT_REORG_PARTITION
@@ -2580,7 +2631,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	  newpci->temp = dbt_create_class (newpci->pname);
 	  if (newpci->temp == NULL)
 	    {
-	      goto fail_return;
+	      error = er_errid ();
+	      goto end_create;
 	    }
 
 	  parttemp->info.create_entity.entity_name->info.name.original
@@ -2600,13 +2652,25 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (newpci->obj == NULL)
 	    {
 	      dbt_abort_class (newpci->temp);
-	      goto fail_return;
+	      error = er_errid ();
+	      goto end_create;
 	    }
 
-	  if (locator_has_heap (newpci->obj) == NULL
+	  if (reuse_oid)
+	    {
+	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_REUSE_OID,
+					 1);
+	      if (error != NO_ERROR)
+		{
+		  error = er_errid ();
+		  goto end_create;
+		}
+	    }
+	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL
 	      || locator_flush_class (newpci->obj) != NO_ERROR)
 	    {
-	      goto fail_return;
+	      error = er_errid ();
+	      goto end_create;
 	    }
 
 	  /* RANGE-MIN VALUE search */
@@ -3911,7 +3975,7 @@ evaluate_partition_range (PARSER_CONTEXT * parser, PT_NODE * expr)
 }
 
 /*
- * conver_expr_to_constant() -
+ * convert_expr_to_constant() -
  *   return: PT_NODE pointer
  *   parser(in): Parser context
  *   node(in):
@@ -3921,8 +3985,8 @@ evaluate_partition_range (PARSER_CONTEXT * parser, PT_NODE * expr)
  * Note:
  */
 static PT_NODE *
-conver_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
-			 void *void_arg, int *continue_walk)
+convert_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
+			  void *void_arg, int *continue_walk)
 {
   DB_VALUE retval, *host_var, *castval;
   PT_NODE *newval;
@@ -5087,7 +5151,7 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
       condeval->info.expr.arg2 = parser_walk_tree (ppi->parser,	/*  SYS_DATE... */
 						   condeval->info.expr.arg2,
 						   NULL, NULL,
-						   conver_expr_to_constant,
+						   convert_expr_to_constant,
 						   &support_op);
       if (support_op == false)
 	{
@@ -5269,8 +5333,8 @@ make_attr_search_value (int and_or, PT_NODE * incond, PRUNING_INFO * ppi)
 	{			/* expression matching */
 	  if (cond->info.expr.arg1->node_type == PT_EXPR)
 	    {
-	      if (check_same_expr
-		  (ppi->parser, ppi->expr, cond->info.expr.arg1))
+	      if (check_same_expr (ppi->parser, ppi->expr,
+				   cond->info.expr.arg1))
 		{
 		  if (select_range_list (ppi, cond))
 		    {
@@ -6037,6 +6101,8 @@ do_build_partition_xasl (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 
   for (pi = 0, objs = smclass->users; objs; objs = objs->next)
     {
+      bool reuse_oid = false;
+
       if (au_fetch_class (objs->op, &subcls, AU_FETCH_READ, AU_SELECT)
 	  != NO_ERROR)
 	{
@@ -6078,15 +6144,15 @@ do_build_partition_xasl (PARSER_CONTEXT * parser, XASL_NODE * xasl,
 	  pr_clear_value (&pval);
 	}
 
-      class_ = locator_has_heap (objs->op);
-      if (class_ == NULL
-	  || (hfid = sm_heap (class_)) == NULL
+      reuse_oid = (subcls->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
+      class_ = locator_create_heap_if_needed (objs->op, reuse_oid);
+      if (class_ == NULL || (hfid = sm_heap (class_)) == NULL
 	  || (locator_flush_class (objs->op) != NO_ERROR))
 	{
 	  goto work_end;
 	}
 
-      class_oid = db_identifier (objs->op);
+      class_oid = ws_identifier (objs->op);
       if (!class_oid)
 	{
 	  goto work_end;
@@ -8781,9 +8847,31 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
     case PT_CLASS:
-      if (locator_has_heap (class_obj) == NULL)
-	error = er_errid ();
-      break;
+      {
+	PT_NODE *tbl_opt = NULL;
+	bool reuse_oid = false;
+
+	for (tbl_opt = node->info.create_entity.table_option_list;
+	     tbl_opt != NULL; tbl_opt = tbl_opt->next)
+	  {
+	    assert (tbl_opt->node_type == PT_TABLE_OPTION);
+	    if (tbl_opt->info.table_option.option
+		== PT_TABLE_OPTION_REUSE_OID)
+	      {
+		reuse_oid = true;
+	      }
+	  }
+	if (locator_create_heap_if_needed (class_obj, reuse_oid) == NULL)
+	  {
+	    error = er_errid ();
+	    break;
+	  }
+	if (reuse_oid)
+	  {
+	    error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REUSE_OID, 1);
+	  }
+	break;
+      }
 
     default:
       break;

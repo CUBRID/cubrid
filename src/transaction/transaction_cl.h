@@ -62,7 +62,7 @@ extern TRAN_STATE tran_abort_client_loose_ends (bool isknown_state);
 extern int tran_commit (bool retain_lock);
 extern int tran_abort (void);
 extern int tran_unilaterally_abort (void);
-extern int tran_abort_only_client (bool isserver_down);
+extern int tran_abort_only_client (bool is_server_down);
 extern bool tran_has_updated (void);
 extern bool tran_is_active_and_has_updated (void);
 extern int tran_set_global_tran_info (int gtrid, void *info, int size);
@@ -72,8 +72,8 @@ extern int tran_2pc_prepare (void);
 extern int tran_2pc_recovery_prepared (int gtrids[], int size);
 extern int tran_2pc_attach_global_tran (int gtrid);
 extern int tran_2pc_prepare_global_tran (int gtrid);
-extern int tran_start_topop (void);
 #if defined(ENABLE_UNUSED_FUNCTION)
+extern int tran_start_topop (void);
 extern int tran_end_topop (LOG_RESULT_TOPOP result);
 extern int tran_get_savepoints (DB_NAMELIST ** savepoint_list);
 #endif

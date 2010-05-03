@@ -31,10 +31,11 @@ int
 main (int argc, char *argv[])
 {
 #if defined (NDEBUG)
-  fprintf (stdout, "\n%s (%s)\n\n", rel_name (), rel_build_number ());
+  fprintf (stdout, "\n%s (%s) (%s %s)\n\n", rel_name (), rel_build_number (),
+	   __DATE__, __TIME__);
 #else /* NDEBUG */
-  fprintf (stdout, "\n%s (%s) (%d debug build) \n\n", rel_name (),
-	   rel_build_number (), rel_bit_platform ());
+  fprintf (stdout, "\n%s (%s) (%d debug build) (%s %s)\n\n", rel_name (),
+	   rel_build_number (), rel_bit_platform (), __DATE__, __TIME__);
 #endif /* !NDEBUG */
   return 0;
 }

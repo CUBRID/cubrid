@@ -41,7 +41,6 @@
 #include "error_code.h"
 #include "system_parameter.h"
 #include "connection_cl.h"
-#include "cm_config.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif
@@ -55,9 +54,10 @@ typedef enum
   MANAGER,
   REPL_SERVER,
   REPL_AGENT,
+  HEARTBEAT,
   UTIL_HELP,
   UTIL_VERSION,
-  ADMIN
+  ADMIN,
 } UTIL_SERVICE_INDEX_E;
 
 typedef enum
@@ -66,6 +66,11 @@ typedef enum
   STOP,
   RESTART,
   STATUS,
+  DEACTIVATE,
+  ACTIVATE,
+  DEREGISTER,
+  LIST,
+  RELOAD,
   ON,
   OFF,
 } UTIL_SERVICE_COMMAND_E;
@@ -79,7 +84,8 @@ typedef enum
   SERVICE_START_REPL_AGENT,
   SERVER_START_LIST,
   REPL_SERVER_START_LIST,
-  REPL_AGENT_START_LIST
+  REPL_AGENT_START_LIST,
+  SERVICE_START_HEARTBEAT
 } UTIL_SERVICE_PROPERTY_E;
 
 typedef struct
@@ -101,6 +107,7 @@ typedef struct
 #define UTIL_TYPE_MANAGER       "manager"
 #define UTIL_TYPE_REPL_SERVER   "repl_server"
 #define UTIL_TYPE_REPL_AGENT    "repl_agent"
+#define UTIL_TYPE_HEARTBEAT     "heartbeat"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {SERVICE, UTIL_TYPE_SERVICE, MASK_SERVICE},
@@ -109,6 +116,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {MANAGER, UTIL_TYPE_MANAGER, MASK_MANAGER},
   {REPL_SERVER, UTIL_TYPE_REPL_SERVER, MASK_REPL},
   {REPL_AGENT, UTIL_TYPE_REPL_AGENT, MASK_REPL},
+  {HEARTBEAT, UTIL_TYPE_HEARTBEAT, MASK_HEARTBEAT},
   {UTIL_HELP, "--help", MASK_ALL},
   {UTIL_VERSION, "--version", MASK_ALL},
   {ADMIN, UTIL_OPTION_CREATEDB, MASK_ADMIN},
@@ -145,6 +153,11 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_STOP       "stop"
 #define COMMAND_TYPE_RESTART    "restart"
 #define COMMAND_TYPE_STATUS     "status"
+#define COMMAND_TYPE_DEACTIVATE "deact"
+#define COMMAND_TYPE_ACTIVATE   "act"
+#define COMMAND_TYPE_DEREG      "deregister"
+#define COMMAND_TYPE_LIST       "list"
+#define COMMAND_TYPE_RELOAD     "reload"
 #define COMMAND_TYPE_ON         "on"
 #define COMMAND_TYPE_OFF        "off"
 
@@ -153,6 +166,11 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {STOP, COMMAND_TYPE_STOP, MASK_ALL},
   {RESTART, COMMAND_TYPE_RESTART, MASK_SERVICE | MASK_SERVER | MASK_BROKER},
   {STATUS, COMMAND_TYPE_STATUS, MASK_ALL},
+  {ACTIVATE, COMMAND_TYPE_ACTIVATE, MASK_HEARTBEAT},
+  {DEACTIVATE, COMMAND_TYPE_DEACTIVATE, MASK_HEARTBEAT},
+  {DEREGISTER, COMMAND_TYPE_DEREG, MASK_HEARTBEAT},
+  {LIST, COMMAND_TYPE_LIST, MASK_HEARTBEAT},
+  {RELOAD, COMMAND_TYPE_RELOAD, MASK_HEARTBEAT},
   {ON, COMMAND_TYPE_ON, MASK_BROKER},
   {OFF, COMMAND_TYPE_OFF, MASK_BROKER},
   {-1, "", MASK_ALL}
@@ -167,6 +185,7 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
   {SERVER_START_LIST, NULL},
   {REPL_SERVER_START_LIST, NULL},
   {REPL_AGENT_START_LIST, NULL},
+  {SERVICE_START_HEARTBEAT, NULL},
   {-1, NULL}
 };
 
@@ -185,6 +204,7 @@ static int process_manager (int command_type);
 static int process_repl_server (int command_type, char *name, char *repl_port,
 				int argc, const char **argv);
 static int process_repl_agent (int command_type, char *name, char *password);
+static int process_heartbeat (int command_type, char *name);
 static int proc_execute (const char *file, const char *args[],
 			 bool wait_child, bool close_output, int *pid);
 static int process_master (int command_type);
@@ -219,13 +239,33 @@ print_result (const char *util_name, int status, int command_type)
       result = PRINT_RESULT_SUCCESS;
     }
 
-  if (command_type == START)
+  switch (command_type)
     {
+    case START:
       command = PRINT_CMD_START;
-    }
-  else
-    {
+      break;
+    case STATUS:
+      command = PRINT_CMD_STATUS;
+      break;
+    case DEACTIVATE:
+      command = PRINT_CMD_DEACTIVATE;
+      break;
+    case ACTIVATE:
+      command = PRINT_CMD_ACTIVATE;
+      break;
+    case DEREGISTER:
+      command = PRINT_CMD_DEREG;
+      break;
+    case LIST:
+      command = PRINT_CMD_LIST;
+      break;
+    case RELOAD:
+      command = PRINT_CMD_RELOAD;
+      break;
+    case STOP:
+    default:
       command = PRINT_CMD_STOP;
+      break;
     }
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_RESULT, util_name, command,
@@ -430,6 +470,14 @@ main (int argc, char *argv[])
 #else /* WINDOWS */
       status = process_repl_agent (command_type, (char *) argv[3],
 				   (char *) argv[4]);
+#endif /* !WINDOWs */
+      break;
+    case HEARTBEAT:
+#if defined(WINDOWS)
+      /* TODO : define message catalog for heartbeat */
+      return EXIT_FAILURE;
+#else
+      status = process_heartbeat (command_type, (argc > 3) ? argv[3] : NULL);
 #endif /* !WINDOWs */
       break;
     default:
@@ -808,9 +856,25 @@ check_server (const char *type, const char *server_name)
   while (fgets (buf, 4096, input) != NULL)
     {
       token = strtok_r (buf, delim, &save_ptr);
-      if (token == NULL || strcmp (token, type) != 0)
+      if (token == NULL)
 	{
 	  continue;
+	}
+
+      if (strcmp (type, CHECK_SERVER) == 0)
+	{
+	  if (strcmp (token, CHECK_SERVER) != 0
+	      && strcmp (token, CHECK_HA_SERVER) != 0)
+	    {
+	      continue;
+	    }
+	}
+      else
+	{
+	  if (strcmp (token, type) != 0)
+	    {
+	      continue;
+	    }
 	}
 
       token = strtok_r (NULL, delim, &save_ptr);
@@ -1450,6 +1514,123 @@ process_repl_agent (int command_type, char *name, char *password)
       return ER_GENERIC_ERROR;
     }
   return status;
+}
+
+/*
+ * process_heartbeat -
+ *
+ * return:
+ *
+ *      command_type(in):
+ *      name(in):
+ *      password(in):
+ *
+ */
+static int
+process_heartbeat (int command_type, char *name)
+{
+  int status = NO_ERROR;
+  int master_port = prm_get_master_port_id ();
+
+  switch (command_type)
+    {
+    case DEACTIVATE:
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		     PRINT_HEARTBEAT_NAME, PRINT_CMD_DEACTIVATE);
+      if (css_does_master_exist (master_port))
+	{
+	  const char *args[] =
+	    { UTIL_COMMDB_NAME, COMMDB_HA_DEACTIVATE, NULL };
+	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	}
+      else
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			 PRINT_MASTER_NAME);
+	}
+      break;
+    case ACTIVATE:
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		     PRINT_HEARTBEAT_NAME, PRINT_CMD_ACTIVATE);
+      if (css_does_master_exist (master_port))
+	{
+	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_HA_ACTIVATE, NULL };
+	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	}
+      else
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			 PRINT_MASTER_NAME);
+	}
+      break;
+    case DEREGISTER:
+      if (name == NULL)
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+	  return ER_GENERIC_ERROR;
+	}
+
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S,
+		     PRINT_HEARTBEAT_NAME, PRINT_CMD_DEREG, name);
+      if (css_does_master_exist (master_port))
+	{
+	  const char *args[] =
+	    { UTIL_COMMDB_NAME, COMMDB_HA_DEREG, name, NULL };
+	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	}
+      else
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			 PRINT_MASTER_NAME);
+	}
+      break;
+    case LIST:
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		     PRINT_HEARTBEAT_NAME, PRINT_CMD_LIST);
+      if (css_does_master_exist (master_port))
+	{
+	  const char *node_list_args[] =
+	    { UTIL_COMMDB_NAME, COMMDB_HA_NODE_LIST, NULL };
+	  const char *proc_list_args[] =
+	    { UTIL_COMMDB_NAME, COMMDB_HA_PROC_LIST, NULL };
+
+	  status =
+	    proc_execute (UTIL_COMMDB_NAME, node_list_args, true, false,
+			  NULL);
+	  if (status != NO_ERROR)
+	    {
+	      return status;
+	    }
+
+	  status =
+	    proc_execute (UTIL_COMMDB_NAME, proc_list_args, true, false,
+			  NULL);
+	}
+      else
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			 PRINT_MASTER_NAME);
+	}
+      break;
+    case RELOAD:
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		     PRINT_HEARTBEAT_NAME, PRINT_CMD_RELOAD);
+      if (css_does_master_exist (master_port))
+	{
+	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_HA_RELOAD, NULL };
+	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	}
+      else
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			 PRINT_MASTER_NAME);
+	}
+      break;
+    default:
+      return ER_GENERIC_ERROR;
+    }
+  return status;
+
 }
 
 /*

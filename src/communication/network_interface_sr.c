@@ -52,6 +52,7 @@
 #include "file_manager.h"
 #include "boot_sr.h"
 #include "arithmetic.h"
+#include "serial.h"
 #include "query_manager.h"
 #include "transaction_sr.h"
 #include "release_string.h"
@@ -1869,6 +1870,28 @@ slog_client_complete_undo (THREAD_ENTRY * thread_p, unsigned int rid,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
+/*
+ * slog_checkpoint -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+slog_checkpoint (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
+		 int reqlen)
+{
+  logpb_do_checkpoint ();
+
+  /*
+   *  No reply expected...
+   */
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * slogtb_has_updated -
@@ -2175,11 +2198,13 @@ shf_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   OID class_oid;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_HFID_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int reuse_oid = 0;
 
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_oid (ptr, &class_oid);
+  ptr = or_unpack_int (ptr, &reuse_oid);
 
-  error = xheap_create (thread_p, &hfid, &class_oid);
+  error = xheap_create (thread_p, &hfid, &class_oid, (bool) reuse_oid);
   if (error != NO_ERROR)
     {
       return_error_to_client (thread_p, rid);
@@ -2980,6 +3005,7 @@ sboot_initialize_server (THREAD_ENTRY * thread_p, unsigned int rid,
   DKNPAGES db_npages;
   int db_desired_pagesize;
   DKNPAGES log_npages;
+  int db_desired_log_page_size;
   OID rootclass_oid;
   HFID rootclass_hfid;
   char *file_addmore_vols;
@@ -3004,6 +3030,7 @@ sboot_initialize_server (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (ptr, &db_overwrite);
   ptr = or_unpack_int (ptr, &db_desired_pagesize);
   ptr = or_unpack_int (ptr, &db_npages);
+  ptr = or_unpack_int (ptr, &db_desired_log_page_size);
   ptr = or_unpack_int (ptr, &log_npages);
   ptr = or_unpack_string_nocopy (ptr, &db_path_info.db_path);
   ptr = or_unpack_string_nocopy (ptr, &db_path_info.vol_path);
@@ -3017,9 +3044,9 @@ sboot_initialize_server (THREAD_ENTRY * thread_p, unsigned int rid,
 
   tran_index = xboot_initialize_server (thread_p, &client_credential,
 					&db_path_info, db_overwrite,
-					db_desired_pagesize,
-					db_npages,
-					file_addmore_vols, log_npages,
+					file_addmore_vols,
+					db_npages, db_desired_pagesize,
+					log_npages, db_desired_log_page_size,
 					&rootclass_oid, &rootclass_hfid,
 					client_lock_wait, client_isolation);
   if (tran_index == NULL_TRAN_INDEX)
@@ -3102,7 +3129,8 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
     + OR_INT_SIZE		/* process_id */
     + OR_OID_SIZE		/* root_class_oid */
     + OR_HFID_SIZE		/* root_class_hfid */
-    + OR_INT_SIZE		/* page_size */
+    + OR_INT_SIZE               /* page_size */
+    + OR_INT_SIZE               /* log_page_size */
     + OR_FLOAT_SIZE		/* disk_compatibility */
     + OR_INT_SIZE;		/* ha_server_state */
 
@@ -3124,6 +3152,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
       ptr = or_pack_oid (ptr, &server_credential.root_class_oid);
       ptr = or_pack_hfid (ptr, &server_credential.root_class_hfid);
       ptr = or_pack_int (ptr, (int) server_credential.page_size);
+      ptr = or_pack_int (ptr, (int) server_credential.log_page_size);
       ptr = or_pack_float (ptr, server_credential.disk_compatibility);
       ptr = or_pack_int (ptr, (int) server_credential.ha_server_state);
     }
@@ -4520,6 +4549,7 @@ void
 sdk_purpose (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	     int reqlen)
 {
+#if defined (ENABLE_UNUSED_FUNCTION)
   DISK_VOLPURPOSE vol_purpose;
   VOLID volid;
   int int_volid;
@@ -4538,6 +4568,7 @@ sdk_purpose (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   (void) or_pack_int (reply, vol_purpose);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
+#endif
 }
 
 /*
@@ -4681,7 +4712,7 @@ sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid,
 				     aligned_page_buf, &page_size);
   if (error != NO_ERROR)
     {
-      if (error == ER_INTERRUPT && query_id != NULL_QUERY_ID
+      if (error == ER_INTERRUPTED && query_id != NULL_QUERY_ID
 	  && qmgr_get_query_error_with_id (thread_p, query_id) == NO_ERROR)
 	{
 	  xqmgr_sync_query (thread_p, query_id, false, NULL, true);
@@ -5076,7 +5107,6 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
        * vars.
        */
       free_and_init (var_data);
-      var_data = NULL;
     }
 
   /*
@@ -5089,7 +5119,6 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p,
   if (xasl_buffer)
     {
       free_and_init (xasl_buffer);	/* allocated at css_receive_data_from_client() */
-      xasl_buffer = NULL;
     }
 
   /*
@@ -5663,7 +5692,7 @@ sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
- * sqp_get_current_value -
+ * sserial_get_current_value -
  *
  * return:
  *
@@ -5674,8 +5703,8 @@ sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-sqp_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
-		       char *request, int reqlen)
+sserial_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
+			   char *request, int reqlen)
 {
   int error_status = NO_ERROR;
   DB_VALUE oid, cur_val;
@@ -5686,7 +5715,7 @@ sqp_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
   char *p;
 
   (void) or_unpack_value (request, &oid);
-  error_status = xqp_get_serial_current_value (thread_p, &oid, &cur_val);
+  error_status = xserial_get_current_value (thread_p, &oid, &cur_val);
   db_value_clear (&oid);
 
   if (error_status != NO_ERROR)
@@ -5732,7 +5761,7 @@ sqp_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
- * sqp_get_next_value -
+ * sserial_get_next_value -
  *
  * return:
  *
@@ -5743,8 +5772,8 @@ sqp_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-sqp_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid,
-		    char *request, int reqlen)
+sserial_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid,
+			char *request, int reqlen)
 {
   DB_VALUE oid, next_val;
   char *buffer;
@@ -5754,7 +5783,7 @@ sqp_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid,
   char *p;
 
   (void) or_unpack_value (request, &oid);
-  errid = xqp_get_serial_next_value (thread_p, &oid, &next_val);
+  errid = xserial_get_next_value (thread_p, &oid, &next_val);
   db_value_clear (&oid);
 
   if (errid != NO_ERROR)
@@ -5795,6 +5824,33 @@ sqp_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid,
       /* since this was copied to the client, we don't need it on the server */
       db_private_free_and_init (thread_p, buffer);
     }
+}
+
+/*
+ * sserial_decache -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sserial_decache (THREAD_ENTRY * thread_p, unsigned int rid,
+		 char *request, int reqlen)
+{
+  OID oid;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_unpack_oid (request, &oid);
+  xserial_decache (&oid);
+
+  (void) or_pack_int (reply, NO_ERROR);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -5925,7 +5981,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid,
 
   /* check to see if the pack/unpack functions match the current
      structure definition */
-  assert ((DB_ALIGN (STAT_SIZE_MEMORY, 8) + sizeof (MUTEX_T))
+  assert ((DB_ALIGN (STAT_SIZE_MEMORY, sizeof (void *)) + sizeof (MUTEX_T))
 	  == sizeof (MNT_SERVER_EXEC_STATS));
 
   xmnt_server_copy_stats (thread_p, &stats);
@@ -6073,9 +6129,9 @@ xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area,
 	      0);
       return ER_FAILED;
     }
-  if (logtb_is_interrupt (thread_p, false, &continue_checking))
+  if (logtb_is_interrupted (thread_p, false, &continue_checking))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPT, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return ER_FAILED;
     }
   return NO_ERROR;
@@ -6099,9 +6155,9 @@ xs_send_action_to_client (THREAD_ENTRY * thread_p,
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  if (logtb_is_interrupt (thread_p, false, &continue_checking))
+  if (logtb_is_interrupted (thread_p, false, &continue_checking))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPT, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return ER_FAILED;
     }
 
@@ -7513,7 +7569,7 @@ slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_int (ptr, &remote_error);
 
   error = xlogwr_get_log_pages (thread_p, first_pageid, mode);
-  if (error == ER_INTERRUPT)
+  if (error == ER_INTERRUPTED)
     {
       return_error_to_client (thread_p, rid);
     }

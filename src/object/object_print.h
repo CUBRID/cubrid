@@ -240,7 +240,8 @@ extern PARSER_VARCHAR *describe_string (const PARSER_CONTEXT * parser,
 extern void help_fprint_value (FILE * fp, const DB_VALUE * value);
 extern int help_sprint_value (const DB_VALUE * value, char *buffer,
 			      int max_length);
+#if defined(CUBRID_DEBUG)
 extern char *dbg_value (const DB_VALUE * value);
-
+#endif
 
 #endif /* _OBJECT_PRINT_H */

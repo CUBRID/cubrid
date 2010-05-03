@@ -355,6 +355,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\broker\cas_error.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\broker\cas_execute.c"
 					>
 				</File>

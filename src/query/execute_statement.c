@@ -83,6 +83,8 @@
 #include "replication.h"
 #include "view_transform.h"
 #include "network_interface_cl.h"
+#include "arithmetic.h"
+#include "serial.h"
 
 /*
  * Function Group:
@@ -102,6 +104,7 @@
 #define SR_ATT_STARTED			"started"
 #define SR_ATT_CLASS_NAME       	"class_name"
 #define SR_ATT_ATT_NAME         	"att_name"
+#define SR_ATT_CACHED_NUM               "cached_num"
 
 #define PT_NODE_SR_NAME(node)			\
 	((node)->info.serial.serial_name->info.name.original)
@@ -121,6 +124,8 @@
 	((node)->info.serial.no_min )
 #define PT_NODE_SR_NO_CYCLIC(node)		\
 	((node)->info.serial.no_cyclic )
+#define PT_NODE_SR_CACHED_NUM_VAL(node)        \
+        ((node)->info.serial.cached_num_val)
 
 /*
  * do_create_serial_internal() -
@@ -146,6 +151,7 @@ do_create_serial_internal (MOP * serial_object,
 			   DB_VALUE * min_val,
 			   DB_VALUE * max_val,
 			   const int cyclic,
+			   const int cached_num,
 			   const int started,
 			   const char *class_name, const char *att_name)
 {
@@ -160,7 +166,7 @@ do_create_serial_internal (MOP * serial_object,
   /* temporarily disable authorization to access db_serial class */
   AU_DISABLE (au_save);
 
-  serial_class = db_find_class (SR_CLASS_NAME);
+  serial_class = sm_find_class (SR_CLASS_NAME);
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
@@ -258,6 +264,19 @@ do_create_serial_internal (MOP * serial_object,
 	  goto end;
 	}
     }
+
+  /* cached num */
+  if (cached_num > 0)
+    {
+      DB_MAKE_INT (&value, cached_num);
+      error = dbt_put_internal (obj_tmpl, SR_ATT_CACHED_NUM, &value);
+      pr_clear_value (&value);
+      if (error < 0)
+	{
+	  goto end;
+	}
+    }
+
   ret_obj = dbt_finish_object (obj_tmpl);
 
   if (ret_obj == NULL)
@@ -369,58 +388,85 @@ update_auto_increment_error:
 
 /*
  * do_get_serial_obj_id() -
- *   return: Error code
+ *   return: serial object
  *   serial_obj_id(out):
- *   found(out):
+ *   serial_class_mop(in):
  *   serial_name(in):
  *
  * Note:
  */
-int
-do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, int *found,
-		      const char *serial_name)
+MOP
+do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
+		      DB_OBJECT * serial_class_mop, const char *serial_name)
 {
-  DB_OBJECT *class_mop, *mop;
+  DB_OBJECT *mop;
   DB_VALUE val;
+  DB_IDENTIFIER *db_id;
   char *p;
 
-  *found = 0;
-
-  er_stack_push ();
-  class_mop = sm_find_class (SR_CLASS_NAME);
-  er_stack_pop ();
-  if (class_mop == NULL)
+  if (serial_class_mop == NULL || serial_name == NULL)
     {
-      return ER_FAILED;
+      return NULL;
     }
 
   p = (char *) malloc (strlen (serial_name) + 1);
   if (p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
-      return ER_FAILED;
+      return NULL;
     }
 
   intl_mbs_lower (serial_name, p);
-
   db_make_string (&val, p);
 
   er_stack_push ();
-  mop = db_find_unique (class_mop, SR_ATT_NAME, &val);
+  mop = db_find_unique (serial_class_mop, SR_ATT_NAME, &val);
   er_stack_pop ();
+
   if (mop)
     {
-      DB_IDENTIFIER *db_id = db_identifier (mop);
+      db_id = ws_identifier (mop);
 
-      *found = 1;
       if (db_id != NULL)
 	{
 	  *serial_obj_id = *db_id;
+	}
+      else
+	{
+	  mop = NULL;
 	}
     }
 
   pr_clear_value (&val);
   free_and_init (p);
+
+  return mop;
+}
+
+/*
+ * do_get_serial_cached_num() -
+ *   return: Error code
+ *   cached_num(out) :
+ *   serial_obj(in)  :
+ *
+ * Note:
+ */
+int
+do_get_serial_cached_num (int *cached_num, MOP serial_obj)
+{
+  DB_VALUE cached_num_val;
+  int error;
+
+  error = db_get (serial_obj, SR_ATT_CACHED_NUM, &cached_num_val);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  assert (DB_VALUE_TYPE (&cached_num_val) == DB_TYPE_INTEGER);
+
+  *cached_num = DB_GET_INT (&cached_num_val);
+
   return NO_ERROR;
 }
 
@@ -436,6 +482,7 @@ int
 do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   DB_OBJECT *serial_class = NULL, *serial_object = NULL;
+  MOP serial_mop;
   DB_IDENTIFIER serial_obj_id;
   DB_VALUE value, *pval = NULL;
 
@@ -444,12 +491,18 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *inc_val_node;
   PT_NODE *max_val_node;
   PT_NODE *min_val_node;
+  PT_NODE *cached_num_node;
 
   DB_VALUE zero, e37, under_e36;
-  DB_VALUE start_val, inc_val, max_val, min_val;
+  DB_VALUE start_val, inc_val, max_val, min_val, cached_num_val;
   DB_VALUE cmp_result, cmp_result2;
+  DB_VALUE result_val;
+  DB_VALUE tmp_val, tmp_val2;
+
+  unsigned char num[DB_NUMERIC_BUF_SIZE];
 
   int inc_val_flag = 0, cyclic;
+  int cached_num;
   DB_DATA_STATUS data_stat;
   int error = NO_ERROR;
   int found = 0, r = 0, save;
@@ -473,10 +526,11 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&inc_val);
   db_make_null (&max_val);
   db_make_null (&min_val);
+
   /*
    * find db_serial_class
    */
-  serial_class = db_find_class (SR_CLASS_NAME);
+  serial_class = sm_find_class (SR_CLASS_NAME);
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
@@ -498,8 +552,8 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   intl_mbs_lower (name, p);
 
-  r = do_get_serial_obj_id (&serial_obj_id, &found, p);
-  if (r == NO_ERROR && found)
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, p);
+  if (serial_mop != NULL)
     {
       error = ER_QPROC_SERIAL_ALREADY_EXIST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
@@ -879,16 +933,79 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  /* cached num */
+  cached_num_node = PT_NODE_SR_CACHED_NUM_VAL (statement);
+  if (cached_num_node != NULL)
+    {
+      assert (cached_num_node->type_enum == PT_TYPE_INTEGER);
+
+      cached_num = cached_num_node->info.value.data_value.i;
+
+      /* result_val = ABS(CEIL((max_val - min_val) / inc_val)) */
+      error = numeric_db_value_sub (&max_val, &min_val, &tmp_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      error = numeric_db_value_div (&tmp_val, &inc_val, &tmp_val2);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      error = db_abs_dbval (&tmp_val, &tmp_val2);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      error = db_ceil_dbval (&result_val, &tmp_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      pr_clear_value (&tmp_val);
+      pr_clear_value (&tmp_val2);
+
+      numeric_coerce_int_to_num (cached_num, num);
+      DB_MAKE_NUMERIC (&cached_num_val, num, DB_MAX_NUMERIC_PRECISION, 0);
+      error = numeric_db_value_compare (&cached_num_val, &result_val,
+					&cmp_result);
+      if (error != NO_ERROR)
+	{
+	  pr_clear_value (&result_val);
+	  goto end;
+	}
+
+      /* cached_num > ABS(CEIL((max_val - min_val) / inc_val)) */
+      if (DB_GET_INT (&cmp_result) > 0)
+	{
+	  char num_string[DB_MAX_NUMERIC_PRECISION * 4];
+
+	  numeric_coerce_num_to_dec_str (DB_PULL_NUMERIC (&result_val),
+					 num_string);
+	  pr_clear_value (&result_val);
+
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE,
+		      num_string);
+	  goto end;
+	}
+
+      pr_clear_value (&result_val);
+    }
+  else
+    {
+      cached_num = 0;
+    }
+
   /* now create serial object which is insert into db_serial */
   AU_DISABLE (save);
   au_disable_flag = true;
 
-  error = do_create_serial_internal (&serial_object,
-				     p,
-				     &start_val,
-				     &inc_val,
-				     &min_val,
-				     &max_val, cyclic, 0, NULL, NULL);
+  error = do_create_serial_internal (&serial_object, p, &start_val, &inc_val,
+				     &min_val, &max_val, cyclic, cached_num,
+				     0, NULL, NULL);
 
   AU_ENABLE (save);
   au_disable_flag = false;
@@ -944,7 +1061,7 @@ int
 do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
 				 const char *class_name, PT_NODE * att)
 {
-  DB_OBJECT *serial_class = NULL;
+  MOP serial_class = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
   DB_DATA_STATUS data_stat;
   int error = NO_ERROR;
@@ -981,7 +1098,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
   /*
    * find db_serial
    */
-  serial_class = db_find_class (SR_CLASS_NAME);
+  serial_class = sm_find_class (SR_CLASS_NAME);
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
@@ -1005,8 +1122,9 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
 
   SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
 
-  r = do_get_serial_obj_id (&serial_obj_id, &found, serial_name);
-  if (r == 0 && found)
+  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class,
+				     serial_name);
+  if (serial_mop != NULL)
     {
       error = ER_AUTO_INCREMENT_SERIAL_ALREADY_EXIST;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -1146,7 +1264,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
 				     &start_val,
 				     &inc_val,
 				     &min_val,
-				     &max_val, 0, 0, class_name, att_name);
+				     &max_val, 0, 0, 0, class_name, att_name);
 
   if (error < 0)
     {
@@ -1203,13 +1321,20 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *inc_val_node;
   PT_NODE *max_val_node;
   PT_NODE *min_val_node;
+  PT_NODE *cached_num_node;
 
   DB_VALUE zero, e37, under_e36;
   DB_DATA_STATUS data_stat;
-  DB_VALUE old_inc_val, old_max_val, old_min_val, current_val, start_val;
+  DB_VALUE old_inc_val, old_max_val, old_min_val, old_cached_num;
+  DB_VALUE current_val, start_val, cached_num_val;
   DB_VALUE new_inc_val, new_max_val, new_min_val;
   DB_VALUE cmp_result, cmp_result2;
+  DB_VALUE result_val;
   DB_VALUE class_name_val;
+  DB_VALUE tmp_val, tmp_val2;
+  int cached_num;
+
+  unsigned char num[DB_NUMERIC_BUF_SIZE];
 
   int new_inc_val_flag = 0, new_cyclic;
   int cur_val_change, inc_val_change, max_val_change, min_val_change,
@@ -1245,7 +1370,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /*
    * find db_serial_class
    */
-  serial_class = db_find_class (SR_CLASS_NAME);
+  serial_class = sm_find_class (SR_CLASS_NAME);
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
@@ -1259,20 +1384,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   name = (char *) PT_NODE_SR_NAME (statement);
 
-  r = do_get_serial_obj_id (&serial_obj_id, &found, name);
-  if (r == NO_ERROR && found)
-    {
-      serial_object = db_object (&serial_obj_id);
-      if (serial_object == NULL)
-	{
-	  error = ER_QPROC_SERIAL_NOT_FOUND;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED, name);
-	  goto end;
-	}
-    }
-  else
+  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class, name);
+  if (serial_object == NULL)
     {
       error = ER_QPROC_SERIAL_NOT_FOUND;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
@@ -1322,6 +1435,16 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (error < 0)
     {
       goto end;
+    }
+
+  error = db_get (serial_object, SR_ATT_CACHED_NUM, &old_cached_num);
+  if (error < 0)
+    {
+      cached_num = 0;
+    }
+  else
+    {
+      cached_num = DB_GET_INT (&old_cached_num);
     }
 
   /* Now, get new values from node */
@@ -1765,6 +1888,66 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  /* cached num */
+  cached_num_node = PT_NODE_SR_CACHED_NUM_VAL (statement);
+  if (cached_num_node != NULL)
+    {
+      assert (cached_num_node->type_enum == PT_TYPE_INTEGER);
+
+      cached_num = cached_num_node->info.value.data_value.i;
+
+      /* result_val = ABS(CEIL((max_val - min_val) / inc_val)) */
+      error = numeric_db_value_sub (&new_max_val, &new_min_val, &tmp_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      error = numeric_db_value_div (&tmp_val, &new_inc_val, &tmp_val2);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      error = db_abs_dbval (&tmp_val, &tmp_val2);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      error = db_ceil_dbval (&result_val, &tmp_val);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      pr_clear_value (&tmp_val);
+      pr_clear_value (&tmp_val2);
+
+      numeric_coerce_int_to_num (cached_num, num);
+      DB_MAKE_NUMERIC (&cached_num_val, num, DB_MAX_NUMERIC_PRECISION, 0);
+      error = numeric_db_value_compare (&cached_num_val, &result_val,
+					&cmp_result);
+      if (error != NO_ERROR)
+	{
+	  pr_clear_value (&result_val);
+	  goto end;
+	}
+
+      /* cached_num > ABS(CEIL((max_val - min_val) / inc_val))  */
+      if (DB_GET_INT (&cmp_result) > 0)
+	{
+	  char num_string[DB_MAX_NUMERIC_PRECISION * 4];
+
+	  numeric_coerce_num_to_dec_str (DB_PULL_NUMERIC (&result_val),
+					 num_string);
+	  pr_clear_value (&result_val);
+
+	  error = ER_INVALID_SERIAL_VALUE;
+	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_SERIAL_CACHED_NUM_INVALID_RANGE,
+		      num_string);
+	  goto end;
+	}
+
+      pr_clear_value (&result_val);
+    }
 
   /* now update serial object in db_serial */
   AU_DISABLE (save);
@@ -1829,6 +2012,15 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       pr_clear_value (&value);
     }
 
+  /* cached num */
+  DB_MAKE_INT (&value, cached_num);
+  error = dbt_put_internal (obj_tmpl, SR_ATT_CACHED_NUM, &value);
+  if (error < 0)
+    {
+      goto end;
+    }
+  pr_clear_value (&value);
+
   serial_object = dbt_finish_object (obj_tmpl);
 
   AU_ENABLE (save);
@@ -1839,6 +2031,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = er_errid ();
       goto end;
     }
+
+  (void) serial_decache ((OID *) (&serial_obj_id));
 
   pr_clear_value (&zero);
   pr_clear_value (&e37);
@@ -1855,6 +2049,8 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   return NO_ERROR;
 
 end:
+  (void) serial_decache ((OID *) (&serial_obj_id));
+
   pr_clear_value (&value);
   pr_clear_value (&zero);
   pr_clear_value (&e37);
@@ -1904,7 +2100,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   db_make_null (&class_name_val);
 
-  serial_class = db_find_class (SR_CLASS_NAME);
+  serial_class = sm_find_class (SR_CLASS_NAME);
   if (serial_class == NULL)
     {
       error = ER_QPROC_DB_SERIAL_NOT_FOUND;
@@ -1914,20 +2110,8 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   name = (char *) PT_NODE_SR_NAME (statement);
 
-  r = do_get_serial_obj_id (&serial_obj_id, &found, name);
-  if (r == NO_ERROR && found)
-    {
-      serial_object = db_object (&serial_obj_id);
-      if (serial_object == NULL)
-	{
-	  error = ER_QPROC_SERIAL_NOT_FOUND;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
-	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
-		      MSGCAT_RUNTIME_RT_SERIAL_NOT_DEFINED, name);
-	  goto end;
-	}
-    }
-  else
+  serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class, name);
+  if (serial_object == NULL)
     {
       error = ER_QPROC_SERIAL_NOT_FOUND;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
@@ -1977,9 +2161,13 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_ENABLE (save);
   au_disable_flag = false;
 
+  (void) serial_decache (&serial_obj_id);
+
   return NO_ERROR;
 
 end:
+  (void) serial_decache (&serial_obj_id);
+
   if (au_disable_flag == true)
     {
       AU_ENABLE (save);
@@ -2016,7 +2204,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool old_disable_update_stats;
 
   /* If it is an internally created statement,
-     set it's host variable info again to search host variables at parent parser */
+     set its host variable info again to search host variables at parent parser */
   SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
   if (statement)
@@ -2332,15 +2520,8 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     }
 
-  if (err == ER_FAILED)
-    {
-      err = er_errid ();
-      if (err == NO_ERROR)
-	{
-	  err = ER_GENERIC_ERROR;
-	}
-    }
-  return err;
+  return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR)
+	  ? ER_GENERIC_ERROR : err);
 }				/* do_prepare_statement() */
 
 /*
@@ -2353,7 +2534,7 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
  * 	The statement should be PREPAREd before to EXECUTE. But, some type of
  * 	statement will be EXECUTEd directly without PREPARE stage because we can
  * 	decide the fact that they should be executed using query plan (XASL)
- * 	at the time of exeuction stage.
+ * 	at the time of execution stage.
  */
 int
 do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -2364,7 +2545,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 
   /* If it is an internally created statement,
-     set it's host variable info again to search host variables at parent parser */
+     set its host variable info again to search host variables at parent parser */
   SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
   /* only SELECT query can be executed in async mode */
@@ -2582,17 +2763,11 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
-  if (err == ER_FAILED)
-    {
-      err = er_errid ();
-      if (err == NO_ERROR)
-	{
-	  err = ER_GENERIC_ERROR;
-	}
-    }
-  return err;
+  return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR)
+	  ? ER_GENERIC_ERROR : err);
 }				/* do_execute_statement() */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * do_statements() - Execute a prepared statement
  *   return: Error code
@@ -2622,6 +2797,7 @@ do_statements (PARSER_CONTEXT * parser, PT_NODE * statement_list)
 
   return error;
 }
+#endif
 
 /*
  * do_check_internal_statements() -
@@ -2685,6 +2861,7 @@ do_check_internal_statements (PARSER_CONTEXT * parser, PT_NODE * statement,
 #endif
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * do_internal_statements() -
  *   return: Error code
@@ -2737,10 +2914,7 @@ do_internal_statements (PARSER_CONTEXT * parser, PT_NODE * internal_stmt_list,
 
   return error;
 }
-
-
-
-
+#endif
 
 /*
  * Function Group:
@@ -3253,15 +3427,14 @@ do_get_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (into && into->node_type == PT_NAME && into->info.name.original)
     {
-      return pt_associate_label_with_value (into->info.name.original,
-					    db_value_copy (ret_val));
+      return pt_associate_label_with_value_check_reference (into->info.name.
+							    original,
+							    db_value_copy
+							    (ret_val));
     }
 
   return NO_ERROR;
 }
-
-
-
 
 
 /*
@@ -3545,7 +3718,8 @@ do_get_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* enter {label, ins_val} pair into the label_table */
-      error = pt_associate_label_with_value (into_label, ins_val);
+      error =
+	pt_associate_label_with_value_check_reference (into_label, ins_val);
     }
 
   return error;
@@ -3685,7 +3859,9 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
       && into_var->node_type == PT_NAME
       && (into_name = into_var->info.name.original) != NULL)
     {
-      error = pt_associate_label_with_value (into_name, db_value_copy (val));
+      error =
+	pt_associate_label_with_value_check_reference (into_name,
+						       db_value_copy (val));
     }
 
   return error;
@@ -4840,6 +5016,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  return er_errid ();
 	}
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
       if (sm_has_text_domain (db_get_attributes (class_), 1))
 	{
 	  /* prevent to create a trigger at the class to contain TEXT */
@@ -4847,6 +5024,7 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  1, rel_major_release_string ());
 	  return er_errid ();
 	}
+#endif /* ENABLE_UNUSED_FUNCTION */
       attr = PT_TR_TARGET_ATTR (target);
       if (attr)
 	{
@@ -5283,7 +5461,8 @@ do_get_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
       ins_val = db_value_copy (ins_val);
 
       /* enter the value into the table */
-      error = pt_associate_label_with_value (into_label, ins_val);
+      error = pt_associate_label_with_value_check_reference (into_label,
+							     ins_val);
     }
 
   return error;
@@ -5453,7 +5632,7 @@ update_object_attribute (PARSER_CONTEXT * parser, DB_OTMPL * otemplate,
     {
       /* this is a shared attribute of a view.
        * this means this cannot be updated in the template for
-       * this real class. Its simply done seperately by a db_put.
+       * this real class. Its simply done separately by a db_put.
        */
       error = obj_set_shared (name->info.name.db_object,
 			      name->info.name.original, value);
@@ -5773,10 +5952,8 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *class_;
   PT_NODE *lhs;
 
-  if (!statement->info.update.spec || !(class_
-					=
-					statement->info.update.spec->info.
-					spec.flat_entity_list)
+  if (!statement->info.update.spec
+      || !(class_ = statement->info.update.spec->info.spec.flat_entity_list)
       || !(class_->info.name.db_object))
     {
       PT_INTERNAL_ERROR (parser, "update");
@@ -5798,6 +5975,7 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       lhs = lhs->info.expr.arg1;
     }
+
   if (lhs->info.name.meta_class == PT_META_ATTR)
     {
       /* we are updating class attributes */
@@ -6524,7 +6702,7 @@ update_class_attributes (PARSER_CONTEXT * parser, DB_OBJECT * class_obj,
  *
  * Note:
  *  The xasl tree has an UPDATE_PROC node as the top node and
- *  a BUILDLIST_PROC as it's aptr.  The BUILDLIST_PROC selects the
+ *  a BUILDLIST_PROC as its aptr.  The BUILDLIST_PROC selects the
  *  instance OID and any update attribute expression values.
  *  The UPDATE_PROC node scans the BUILDLIST_PROC results.
  *  The UPDATE_PROC node contains the attribute ID's and values
@@ -7066,8 +7244,8 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* if error and a savepoint was created, rollback to savepoint.
    * No need to rollback if the TM aborted the transaction.
    */
-  if ((error < NO_ERROR) && rollbacktosp && (error
-					     != ER_LK_UNILATERALLY_ABORTED))
+  if ((error < NO_ERROR) && rollbacktosp
+      && (error != ER_LK_UNILATERALLY_ABORTED))
     {
       do_rollback_savepoints (parser, savepoint_name);
     }
@@ -7254,7 +7432,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else
 	    {
 	      err = qmgr_drop_query_plan (qstr,
-					  db_identifier (db_get_user ()),
+					  ws_identifier (db_get_user ()),
 					  NULL, true);
 	    }
 	  if (!xasl_id && err == NO_ERROR)
@@ -7466,7 +7644,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  continue;		/* continue to next UPDATE statement */
 	}
 
-      /* check if this statement is not necessary to execute,
+      /* check if it is not necessary to execute this statement,
          e.g. false where or not prepared correctly */
       if (!statement->info.update.do_class_attrs && !statement->xasl_id)
 	{
@@ -7638,12 +7816,6 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 
-
-
-
-
-
-
 /*
  * Function Group:
  * DO functions for delete statements
@@ -7659,8 +7831,10 @@ static int select_delete_list (PARSER_CONTEXT * parser,
 			       PT_NODE * class_specs);
 static int delete_object_tuple (const PARSER_CONTEXT * parser,
 				const DB_VALUE * values);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int delete_object_by_oid (const PARSER_CONTEXT * parser,
 				 const PT_NODE * statement);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int delete_list_by_oids (PARSER_CONTEXT * parser,
 				QFILE_LIST_ID * list_id);
 static int build_xasl_for_server_delete (PARSER_CONTEXT * parser,
@@ -7765,6 +7939,7 @@ delete_object_tuple (const PARSER_CONTEXT * parser, const DB_VALUE * values)
   return error;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * delete_object_by_oid() - Deletes db object by oid.
  *   return: Error code if delete fails
@@ -7781,6 +7956,7 @@ delete_object_by_oid (const PARSER_CONTEXT * parser,
 
   return error;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * delete_list_by_oids() - Deletes every oid in a list file
@@ -7897,7 +8073,7 @@ delete_list_by_oids (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id)
  *
  * Note:
  *  The xasl tree has an DELETE_PROC node as the top node and
- *  a BUILDLIST_PROC as it's aptr.  The BUILDLIST_PROC selects the
+ *  a BUILDLIST_PROC as its aptr.  The BUILDLIST_PROC selects the
  *  instance OID.  The DELETE_PROC node scans the BUILDLIST_PROC results.
  *  The server executes the aptr and then for each instance selected,
  *  deletes it.  The result information is sent back to the
@@ -8153,11 +8329,13 @@ do_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  /* nothing to delete, where part is false */
 	}
+#if defined(ENABLE_UNUSED_FUNCTION)
       else if (!spec)
 	{
 	  /* this is an delete object if it has no spec */
 	  error = delete_object_by_oid (parser, statement);
 	}
+#endif /* ENABLE_UNUSED_FUNCTION */
       else
 	{
 	  /* the following is the "normal" sql type execution */
@@ -8298,7 +8476,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else
 	    {
 	      err = qmgr_drop_query_plan (qstr,
-					  db_identifier (db_get_user ()),
+					  ws_identifier (db_get_user ()),
 					  NULL, true);
 	    }
 	  if (!xasl_id && err == NO_ERROR)
@@ -8452,6 +8630,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   for (err = NO_ERROR, result = 0; statement && (err >= NO_ERROR);
        statement = statement->next)
     {
+#if defined(ENABLE_UNUSED_FUNCTION)
       /* Delete object case:
          delete object by OID */
 
@@ -8460,8 +8639,9 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  err = delete_object_by_oid (parser, statement);
 	  continue;		/* continue to next DELETE statement */
 	}
+#endif /* ENABLE_UNUSED_FUNCTION */
 
-      /* check if this statement is not necessary to execute,
+      /* check if it is not necessary to execute this statement,
          e.g. false where or not prepared correctly */
       if (!statement->xasl_id)
 	{
@@ -8589,9 +8769,6 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 
-
-
-
 /*
  * Function Group:
  * Implements the evaluate statement.
@@ -8639,7 +8816,8 @@ do_evaluate (PARSER_CONTEXT * parser, PT_NODE * statement)
       into_val = db_value_copy (&expr_value);
 
       /* enter {label, ins_val} pair into the label_table */
-      error = pt_associate_label_with_value (into_label, into_val);
+      error = pt_associate_label_with_value_check_reference (into_label,
+							     into_val);
     }
 
   pr_clear_value (&expr_value);
@@ -8759,7 +8937,7 @@ insert_object_attr (const PARSER_CONTEXT * parser,
  * Note: Build an xasl tree for a server insert and execute it.
  *
  *  The xasl tree has an INSERT_PROC node as the top node and
- *  a BUILDLIST_PROC as it's aptr.  The BUILDLIST_PROC selects the
+ *  a BUILDLIST_PROC as its aptr.  The BUILDLIST_PROC selects the
  *  insert values.  The INSERT_PROC node scans the BUILDLIST_PROC results.
  *  The server executes the aptr and then for each instance selected,
  *  inserts it.  The result information is sent back to the
@@ -9457,16 +9635,20 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	  if (statement->info.insert.is_value == PT_IS_VALUE
 	      || statement->info.insert.is_value == PT_IS_DEFAULT_VALUE)
 	    {
-
-	      (void) dbt_set_label (*otemplate, ins_val);
+	      error = dbt_set_label (*otemplate, ins_val);
 	    }
 	  else if ((val = (DB_VALUE *) (statement->etc)) != NULL)
 	    {
 	      db_make_object (ins_val, DB_GET_OBJECT (val));
 	    }
 
-	  /* enter {label, ins_val} pair into the label_table */
-	  error = pt_associate_label_with_value (into_label, ins_val);
+	  if (error == NO_ERROR)
+	    {
+	      /* enter {label, ins_val} pair into the label_table */
+	      error =
+		pt_associate_label_with_value_check_reference (into_label,
+							       ins_val);
+	    }
 	}
     }
 
@@ -9755,8 +9937,8 @@ insert_subquery_results (PARSER_CONTEXT * parser,
 		    {
 		      error =
 			mq_evaluate_check_option (parser,
-						  statement->info.insert.where,
-						  obj, class_);
+						  statement->info.insert.
+						  where, obj, class_);
 		    }
 
 		  if (obj == NULL || error < NO_ERROR)
@@ -10225,6 +10407,7 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
   return error;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * do_prepare_insert () - Prepare the INSERT statement
  *   return: Error code
@@ -10252,6 +10435,7 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   err = NO_ERROR;
   return err;
 }				/* do_execute_insert() */
+#endif
 
 /*
  * insert_predefined_values_into_partition () - Execute the prepared INSERT
@@ -10284,8 +10468,9 @@ insert_predefined_values_into_partition (const PARSER_CONTEXT * parser,
   PARTITION_INSERT_CACHE *picwork;
   char oid_str[36];
   DB_VALUE next_val, auto_inc_val, oid_str_val;
-  int r = 0, found;
+  int r = 0;
   char auto_increment_name[SM_MAX_IDENTIFIER_LENGTH];
+  MOP serial_class_mop = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
   DB_DATA_STATUS data_status;
   const char *class_name;
@@ -10309,15 +10494,21 @@ insert_predefined_values_into_partition (const PARSER_CONTEXT * parser,
 	      /* set auto increment value */
 	      if (dbattr->auto_increment == NULL)
 		{
+		  if (serial_class_mop == NULL)
+		    {
+		      serial_class_mop = sm_find_class (SR_CLASS_NAME);
+		    }
+
 		  class_name = sm_class_name (dbattr->class_mop);
 		  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
 						  class_name,
 						  dbattr->header.name);
-		  r = do_get_serial_obj_id (&serial_obj_id, &found,
-					    auto_increment_name);
-		  if (r == NO_ERROR && found)
+		  serial_mop = do_get_serial_obj_id (&serial_obj_id,
+						     serial_class_mop,
+						     auto_increment_name);
+		  if (serial_mop != NULL)
 		    {
-		      dbattr->auto_increment = db_object (&serial_obj_id);
+		      dbattr->auto_increment = serial_mop;
 		    }
 		}
 
@@ -10325,13 +10516,13 @@ insert_predefined_values_into_partition (const PARSER_CONTEXT * parser,
 		{
 		  db_make_null (&next_val);
 
-		  sprintf (oid_str, "%d %d %d",
+		  sprintf (oid_str, "%d %d %d 0",
 			   dbattr->auto_increment->oid_info.oid.pageid,
 			   dbattr->auto_increment->oid_info.oid.slotid,
 			   dbattr->auto_increment->oid_info.oid.volid);
 		  db_make_string (&oid_str_val, oid_str);
 
-		  error = qp_get_serial_next_value (&next_val, &oid_str_val);
+		  error = serial_get_next_value (&next_val, &oid_str_val);
 		  if (error == NO_ERROR)
 		    {
 		      db_value_domain_init (&auto_inc_val, dbattr->type->id,
@@ -10574,7 +10765,9 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      ins_val = db_value_copy (&ret_val);
 
 	      /* enter {label, ins_val} pair into the label_table */
-	      error = pt_associate_label_with_value (into_label, ins_val);
+	      error =
+		pt_associate_label_with_value_check_reference (into_label,
+							       ins_val);
 	    }
 	}
     }
@@ -10814,9 +11007,9 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 			      && (into_label =
 				  into->info.name.original) != NULL)
 			    {
-			      pt_associate_label_with_value (into_label,
-							     db_value_copy
-							     (v));
+			      error =
+				pt_associate_label_with_value_check_reference
+				(into_label, db_value_copy (v));
 			    }
 			  db_value_clear (v);
 			}
@@ -10923,7 +11116,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      err = qmgr_drop_query_plan (qstr, db_identifier (db_get_user ()),
+      err = qmgr_drop_query_plan (qstr, ws_identifier (db_get_user ()),
 				  NULL, true);
     }
   if (!xasl_id && err == NO_ERROR)
@@ -11024,7 +11217,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE *vals, *v;
   CACHE_TIME clt_cache_time;
 
-  /* check if this statement is not necessary to execute,
+  /* check if it is not necessary to execute this statement,
      e.g. false where or not prepared correctly */
   if (!statement->xasl_id)
     {
@@ -11138,8 +11331,12 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      if (into->node_type == PT_NAME
 		  && (into_label = into->info.name.original) != NULL)
-		pt_associate_label_with_value (into_label, db_value_copy (v));
-
+		{
+		  err =
+		    pt_associate_label_with_value_check_reference (into_label,
+								   db_value_copy
+								   (v));
+		}
 	      db_value_clear (v);
 	    }
 	}

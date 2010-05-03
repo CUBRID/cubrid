@@ -66,7 +66,7 @@ $set 5 MSGCAT_SET_ERROR
 1 에러 코드 %1$d에 대한 메시지가 없습니다.
 2 내부시스템 에러: 더 이상 자세한 정보가 없습니다.
 3 가상메모리 할당 에러: %1$d 바이트의 메모리를 할당할 수 없습니다.
-4 인터럽트.
+4 인터럽트 됨.
 5 키 = "%1$s" 은(는) 해쉬 테이블 "%2$s" 내에 존재하지 않습니다.
 6 해쉬 테이블 함수에 NULL 해쉬 테이블이 제공되었습니다. 
 7 잘못된 페이지 수 %2$d로 디스크 볼륨 "%1$s"을(를) 포맷하려고 합니다.
@@ -883,8 +883,8 @@ $ LOADDB
 817 pthread_setspecific() 호출 실패.
 818 pthread_getspecific() 호출 실패.
 819 pthread_once() 호출 실패.
-820 connection에 대한 mutex를 초기화할 수 없습니다.
-821 connection에 대한 mutex를 제거할 수 없습니다.
+820 connection을 초기화할 수 없습니다.
+821 connection을 종료합니다.
 822 클라이언트 id를 얻기 위한 과정에서 mutex operation이 실패하였습니다.
 823 connection 리스트 초기화 과정에서 mutex operation이 실패하였습니다.
 824 connection 리스트 제거 과정에서 mutex를 제거할 수 없습니다.
@@ -1044,8 +1044,20 @@ $ LOADDB
 978 체크포인트가 완료되었습니다. (페이지 %d)
 979 CONNECT BY 질의문 수행 중에 루프가 발견되었습니다.
 980 쓰레드가 %2$d msec 동안 %1$s 대기했습니다.
+981 트랜잭션 %1$d이 모니터링 통계값 %2$s의 임계치를 넘었습니다.
+982 트랜잭션 %1$d에 인터럽트 설정
+983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
+984 설정 파일 "%1$s"의 "[%2$s]" 섹션에서 %3$s가 "%4$s"로 설정되어 있으면 "[%5$s]" 섹션에서 "%6$s"로 설정할 수 없습니다. 
+985 "databases.txt"에 다중 호스트가 설정된 경우에는 데이터베이스 연결 문자열에 호스트 이름이 지정되어야 합니다.
+986 CUBRID heartbeat 기능을 시작합니다.
+987 CUBRID heartbeat 기능을 정지합니다.
+988 노드 이벤트: %1$s.
+989 프로세스 이벤트: %1$s. %2$s
+990 명령어 수행: %1$s. %2$s
+991 페이지 버퍼의 희생자 후보 flush가 시작되었습니다.
+992 페이지 버퍼의 희생자 후보 flush가 완료되었습니다. (count: %d)
 
-981 마지막 에러
+993 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):
@@ -1106,7 +1118,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 30 잘못된 형식의 create index 구문입니다.\n  CREATE {REVERSE} {UNIQUE} INDEX {identifier} ON {only} class_name index_column_name_list
 31 잘못된 형식의 create user 구문입니다.\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 잘못된 형식의 create trigger 구문입니다.\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
-33 잘못된 형식의 create serial 구문입니다.\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE}
+33 잘못된 형식의 create serial 구문입니다.\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
 34 잘못된 형식의 create procedure 구문입니다.\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
 35 잘못된 형식의 create function 구문입니다.\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
 36 잘못된 형식의 groups 구문입니다.\n  groups spec : GROUPS identifier {, identifier}*
@@ -1138,6 +1150,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 62 허용되지 않는 음수값입니다.
 63 reference rule 이 중복되었습니다.
 64 SYS_CONNECT_BY_PATH needs two parameters and the second must be a string literal.
+65 %s는 올바른 unsigned integer가 아닙니다.
 
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
@@ -1338,6 +1351,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 195 '%s' can only be used in hierarchical queries. Specify a CONNECT BY clause.
 196 '%s' is not allowed here.
 197 Using CONNECT_BY_ISCYCLE is only allowed if the query has a CONNECT BY NOCYCLE clause.
+198 Duplicate table option '%s'
+199 The class '%s' is marked as REUSE_OID and is non-referable. Non-referable classes can't be the domain of an attribute and their instances' OIDs cannot be returned.
+200 CACHE에는 한 사이클 값(%s)보다 작은 값을 지정해야 합니다
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.

@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -399,8 +399,17 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
   char *str = NULL;
   char *primary_host = NULL;
   int error_code = ER_FAILED;
+  char *ha_node_list = NULL;
 
   databases = last = NULL;
+
+#if defined(SERVER_MODE)
+  if (PRM_HA_MODE && PRM_HA_NODE_LIST)
+    {
+      str = strchr (PRM_HA_NODE_LIST, '@');
+      ha_node_list = (str) ? str + 1 : NULL;
+    }
+#endif
 
   if (!write_flag || cfg_ensure_directory_write ())
     {
@@ -422,17 +431,25 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
 		      *info_p = NULL;
 		      return ER_OUT_OF_VIRTUAL_MEMORY;
 		    }
-
 		  db->next = NULL;
 		  str = cfg_pop_token (str, &db->name);
 		  str = cfg_pop_token (str, &db->pathname);
 		  str = cfg_pop_token (str, &primary_host);
-		  db->hosts = cfg_get_hosts (primary_host, &db->num_hosts,
-					     false);
+		  if (ha_node_list)
+		    {
+		      db->hosts = cfg_get_hosts (ha_node_list, &db->num_hosts,
+						 false);
+		    }
+		  else
+		    {
+		      db->hosts = cfg_get_hosts (primary_host, &db->num_hosts,
+						 false);
+		    }
 		  if (primary_host != NULL)
 		    {
 		      free_and_init (primary_host);
 		    }
+
 		  str = cfg_pop_token (str, &db->logpath);
 
 		  if (databases == NULL)
@@ -763,6 +780,7 @@ cfg_free_directory (DB_INFO * databases)
     }
 }
 
+#if defined(CUBRID_DEBUG)
 /*
  * cfg_dump_directory() - debug function.
  *    return: none
@@ -801,6 +819,7 @@ cfg_dump_directory (const DB_INFO * databases)
       fprintf (stdout, "\n");
     }
 }
+#endif
 
 /*
  * cfg_update_db() - Updates pathname, logpath, and creates a new host list
@@ -1219,7 +1238,7 @@ cfg_pop_host (const char *host_list, char *buffer, int *length)
       ++host;
     }
 
-  /* Read in next host, and make a note of it's length */
+  /* Read in next host, and make a note of its length */
 
   start = host;
   current_host_length = 0;

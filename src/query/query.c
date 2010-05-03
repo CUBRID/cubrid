@@ -41,7 +41,7 @@
 #include "network_interface_cl.h"
 
 /*
- * query_prepare () - Prepares a query for later (and repeatitive)
+ * query_prepare () - Prepares a query for later (and repetitive)
  *                         execution
  *   return: Error code
  *   qstr(in)   : query string; used for hash key of the XASL cache
@@ -84,7 +84,7 @@ query_prepare (const char *qstr, const char *stream, int size,
     }
 
   /* send XASL stream to the server and get XASL_ID */
-  if (qmgr_prepare_query (qstr, db_identifier (db_get_user ()),
+  if (qmgr_prepare_query (qstr, ws_identifier (db_get_user ()),
 			  stream, size, p) == NULL)
     {
       free_and_init (p);

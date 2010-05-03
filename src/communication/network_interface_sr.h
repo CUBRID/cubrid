@@ -102,6 +102,8 @@ extern void slog_client_complete_postpone (THREAD_ENTRY * thread_p,
 extern void slog_client_complete_undo (THREAD_ENTRY * thread_p,
 				       unsigned int rid, char *request,
 				       int reqlen);
+extern void slog_checkpoint (THREAD_ENTRY * thread_p, unsigned int rid,
+			     char *request, int reqlen);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void slogtb_has_updated (THREAD_ENTRY * thread_p, unsigned int rid,
 				char *request, int reqlen);
@@ -280,10 +282,13 @@ extern void sqmgr_sync_query (THREAD_ENTRY * thread_p, unsigned int rid,
 			      char *request, int reqlen);
 extern void sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid,
 				   char *request, int reqlen);
-extern void sqp_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid,
-				   char *request, int reqlen);
-extern void sqp_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid,
-				char *request, int reqlen);
+extern void sserial_get_current_value (THREAD_ENTRY * thread_p,
+				       unsigned int rid, char *request,
+				       int reqlen);
+extern void sserial_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid,
+				    char *request, int reqlen);
+extern void sserial_decache (THREAD_ENTRY * thread_p, unsigned int rid,
+			     char *request, int reqlen);
 extern void smnt_server_start_stats (THREAD_ENTRY * thread_p,
 				     unsigned int rid, char *request,
 				     int reqlen);
@@ -298,8 +303,8 @@ extern void smnt_server_reset_global_stats (THREAD_ENTRY * thread_p,
 extern void smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid,
 				    char *request, int reqlen);
 extern void smnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
-					   unsigned int rid,
-					   char *request, int reqlen);
+					   unsigned int rid, char *request,
+					   int reqlen);
 extern void sct_can_accept_new_repr (THREAD_ENTRY * thread_p,
 				     unsigned int rid, char *request,
 				     int reqlen);

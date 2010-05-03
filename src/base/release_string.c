@@ -79,10 +79,16 @@ static const char *build_number = makestring (BUILD_NUMBER);
 static const char *package_string = PACKAGE_STRING;
 static int bit_platform = __WORDSIZE;
 
+
+static REL_COMPATIBILITY
+rel_is_compatible_internal (const char *base_rel_str,
+			    const char *apply_rel_str,
+			    COMPATIBILITY_RULE rules[]);
+
 /*
  * Disk (database image) Version Compatibility
  */
-static float disk_compatibility_level = 8.2f;
+static float disk_compatibility_level = 8.3f;
 
 /*
  * rel_name - Name of the product from the message catalog
@@ -198,6 +204,12 @@ rel_bit_platform (void)
  * {base_level (of database), apply_level (of system), compatibility, fix_func}
  */
 static COMPATIBILITY_RULE disk_compatibility_rules[] = {
+  /* 
+   * NOTICE:
+   * 8.2.0 and 8.2.1 database(8.2) should be compatible with 8.2.2 server(8.3).
+   */
+  {8.2, 8.3, REL_BACKWARD_COMPATIBLE, NULL},
+
   /* a zero indicates the end of the table */
   {0.0, 0.0, REL_NOT_COMPATIBLE, NULL}
 };
@@ -350,6 +362,28 @@ rel_compare (const char *rel_a, const char *rel_b)
   return retval;
 }
 
+/*
+ * log compatibility matrix
+ * {base_level (of server), apply_level (of client), compatibility, fix_func}
+ * minor and patch number of the release string is to be the value of level
+ * e.g. release 8.2.0 -> level 2.0
+ * if the major numbers are different, no network compatibility!
+ */
+static COMPATIBILITY_RULE log_compatibility_rules[] = {
+  /* 
+   * NOTICE:
+   * 2.0 and 2.1 servers should NOT be compatible with 2.2 databases.
+   * 2.2 server should be compatible with 2.0 and 2.1 databases.
+   */
+  {2.1, 2.2, REL_BACKWARD_COMPATIBLE, NULL},
+  {2.0, 2.2, REL_BACKWARD_COMPATIBLE, NULL},
+
+  {2.1, 2.0, REL_FORWARD_COMPATIBLE, NULL},
+  {2.0, 2.1, REL_BACKWARD_COMPATIBLE, NULL},
+
+  /* zero indicates the end of the table */
+  {0.0, 0.0, REL_NOT_COMPATIBLE, NULL}
+};
 
 /*
  * rel_is_log_compatible - Test compatiblility of log file format
@@ -360,33 +394,8 @@ rel_compare (const char *rel_a, const char *rel_b)
 bool
 rel_is_log_compatible (const char *writer_rel_str, const char *reader_rel_str)
 {
-  char temp_a[REL_MAX_RELEASE_LENGTH];
-  char temp_b[REL_MAX_RELEASE_LENGTH];
-  int i;
-
-  /* remove not_a_number in release_string */
-  for (i = 0; *writer_rel_str; writer_rel_str++)
-    {
-      if (*writer_rel_str == '.' || char_isdigit (*writer_rel_str))
-	{
-	  temp_a[i++] = *writer_rel_str;
-	}
-    }
-  temp_a[i] = '\0';
-  for (i = 0; *reader_rel_str; reader_rel_str++)
-    {
-      if (*reader_rel_str == '.' || char_isdigit (*reader_rel_str))
-	{
-	  temp_b[i++] = *reader_rel_str;
-	}
-    }
-  temp_b[i] = '\0';
-
-  /* if the same version, OK */
-  if (strcmp (temp_a, temp_b) == 0)
-    return true;
-
-  return false;
+  return rel_is_compatible_internal (writer_rel_str, reader_rel_str,
+				     log_compatibility_rules);
 }
 
 /*
@@ -398,10 +407,12 @@ rel_is_log_compatible (const char *writer_rel_str, const char *reader_rel_str)
  */
 static COMPATIBILITY_RULE net_compatibility_rules[] = {
   /* zero indicates the end of the table */
+  {2.3, 2.2, REL_FORWARD_COMPATIBLE, NULL},
+  {2.2, 2.3, REL_BACKWARD_COMPATIBLE, NULL},
   {2.2, 2.1, REL_FORWARD_COMPATIBLE, NULL},
   {2.1, 2.2, REL_BACKWARD_COMPATIBLE, NULL},
-  /*{2.1, 2.0, REL_FORWARD_COMPATIBLE, NULL},*/
-  /*{2.0, 2.1, REL_BACKWARD_COMPATIBLE, NULL},*/
+  /*{2.1, 2.0, REL_FORWARD_COMPATIBLE, NULL}, */
+  /*{2.0, 2.1, REL_BACKWARD_COMPATIBLE, NULL}, */
   {0.0, 0.0, REL_NOT_COMPATIBLE, NULL}
 };
 
@@ -422,15 +433,31 @@ static COMPATIBILITY_RULE net_compatibility_rules[] = {
  *   server_rel_str(in): server's release string
  */
 REL_COMPATIBILITY
-rel_is_net_compatible (const char *client_rel_str,
-		       const char *server_rel_str)
+rel_is_net_compatible (const char *client_rel_str, const char *server_rel_str)
+{
+  return rel_is_compatible_internal (server_rel_str, client_rel_str,
+				     net_compatibility_rules);
+}
+
+/*
+ * rel_is_compatible_internal - Compare the release to determine compatibility.
+ *   return: REL_COMPATIBILITY
+ *
+ *   base_rel_str(in): base release string (of database)
+ *   apply_rel_str(in): applier's release string (of system)
+ *   rules(in): rules to determine forward/backward compatibility
+ */
+static REL_COMPATIBILITY
+rel_is_compatible_internal (const char *base_rel_str,
+			    const char *apply_rel_str,
+			    COMPATIBILITY_RULE rules[])
 {
   COMPATIBILITY_RULE *rule;
   REL_COMPATIBILITY compat;
-  float client_level, server_level;
+  float apply_level, base_level;
   char *str_a, *str_b;
 
-  if (client_rel_str == NULL || server_rel_str == NULL)
+  if (apply_rel_str == NULL || base_rel_str == NULL)
     {
       return REL_NOT_COMPATIBLE;
     }
@@ -438,10 +465,9 @@ rel_is_net_compatible (const char *client_rel_str,
   /* release string should be in the form of <major>.<minor>[.<patch>] */
 
   /* check major number */
-  client_level = (float) strtol (client_rel_str, &str_a, 10);
-  server_level = (float) strtol (server_rel_str, &str_b, 10);
-  if (client_level == 0.0 || server_level == 0.0
-      || client_level != server_level)
+  apply_level = (float) strtol (apply_rel_str, &str_a, 10);
+  base_level = (float) strtol (base_rel_str, &str_b, 10);
+  if (apply_level == 0.0 || base_level == 0.0 || apply_level != base_level)
     {
       return REL_NOT_COMPATIBLE;
     }
@@ -455,19 +481,18 @@ rel_is_net_compatible (const char *client_rel_str,
       str_b++;
     }
   /* check minor.patch number */
-  client_level = (float) strtod (str_a, NULL);
-  server_level = (float) strtod (str_b, NULL);
-  if (client_level == server_level)
+  apply_level = (float) strtod (str_a, NULL);
+  base_level = (float) strtod (str_b, NULL);
+  if (apply_level == base_level)
     {
       return REL_FULLY_COMPATIBLE;
     }
 
   compat = REL_NOT_COMPATIBLE;
-  for (rule = &net_compatibility_rules[0];
+  for (rule = &rules[0];
        rule->base_level != 0 && compat == REL_NOT_COMPATIBLE; rule++)
     {
-      if (rule->base_level == server_level
-	  && rule->apply_level == client_level)
+      if (rule->base_level == base_level && rule->apply_level == apply_level)
 	{
 	  compat = rule->compatibility;
 	}

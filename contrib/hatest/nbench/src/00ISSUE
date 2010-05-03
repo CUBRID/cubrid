@@ -1,7 +1,0 @@
-- script improvement 
-  1. a.b notation support (tuple.col_val)
-  2. expression support (complete nbench.script package)
-- java program improvement (templatize some helper class)
-  http://www.idevelopment.info/data/Programming/java/PROGRAMMING_Java_Programming.shtml
-- NBench test suite
-  + check all data type support

@@ -198,8 +198,7 @@ tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
       er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_LOG_INVALID_ISOLATION_LEVEL, 2, TRAN_MINVALUE_ISOLATION,
 	      TRAN_MAXVALUE_ISOLATION);
-      error_code = ER_LOG_INVALID_ISOLATION_LEVEL;
-      goto end;
+      return ER_LOG_INVALID_ISOLATION_LEVEL;
     }
 
   if (tm_Tran_isolation != isolation)
@@ -216,7 +215,6 @@ tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
       tm_Tran_async_ws = async_ws;
     }
 
-end:
   return error_code;
 }
 
@@ -369,7 +367,7 @@ tran_commit (bool retain_lock)
   error_code = tr_check_commit_triggers (TR_TIME_BEFORE);
   if (error_code != NO_ERROR)
     {
-      goto end;
+      return error_code;
     }
 
   /* tell the schema manager to flush any transaction caches */
@@ -387,7 +385,7 @@ tran_commit (bool retain_lock)
       error_code = locator_all_flush ();
       if (error_code != NO_ERROR)
 	{
-	  goto end;
+	  return error_code;
 	}
     }
 
@@ -481,9 +479,7 @@ tran_commit (bool retain_lock)
       error_code = tr_check_commit_triggers (TR_TIME_AFTER);
     }
 
-end:
   return error_code;
-
 }
 
 /*
@@ -632,7 +628,7 @@ tran_unilaterally_abort (void)
  *
  * return: NO_ERROR if all OK, ER status otherwise
  *
- *   isserver_down(in):Was the transaction aborted because of the server crash?
+ *   is_server_down(in):Was the transaction aborted because of the server crash?
  *
  * NOTE: The current transaction is aborted only at the client level,
  *              since the transaction has already been aborted at the server.
@@ -643,22 +639,18 @@ tran_unilaterally_abort (void)
  *              unilaterally aborted.
  */
 int
-tran_abort_only_client (bool isserver_down)
+tran_abort_only_client (bool is_server_down)
 {
-  int error_code = NO_ERROR;
-
   if (!BOOT_IS_CLIENT_RESTARTED ())
     {
-      if (isserver_down)
+      if (is_server_down)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED, 0);
-	  error_code = ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED;
-	  goto end;
+	  return ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED;
 	}
 
-      error_code = NO_ERROR;
-      goto end;
+      return NO_ERROR;
     }
 
   /* Remove any dirty objects and close all open query cursors */
@@ -666,23 +658,21 @@ tran_abort_only_client (bool isserver_down)
   ws_filter_dirty ();
   db_clear_client_query_result (false);
 
-  if (isserver_down == false)
+  if (is_server_down == false)
     {
       /* Do we need to execute any loose ends ? */
       (void) tran_abort_client_loose_ends (false);
       tr_check_abort_triggers ();
-      error_code = NO_ERROR;
+      return NO_ERROR;
     }
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED, 0);
-
-      error_code = ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED;
+      return ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED;
     }
 
-end:
-  return error_code;
+  return NO_ERROR;
 }
 
 /*
@@ -699,8 +689,8 @@ tran_has_updated (void)
 }
 
 /*
- * tran_is_active_and_has_updated - Find if transaction is active and has updated
- *                              the database ?
+ * tran_is_active_and_has_updated - Find if transaction is active and 
+ *				    has updated the database ?
  *
  * return:
  *
@@ -947,19 +937,16 @@ int
 tran_2pc_attach_global_tran (int gtrid)
 {
   int new_tran_index;
-  int error_code = NO_ERROR;
 
   new_tran_index = tran_server_2pc_attach_global_tran (gtrid);
   if (new_tran_index == NULL_TRAN_INDEX)
     {
-      error_code = er_errid ();
-      goto end;
+      return er_errid ();
     }
 
   tm_Tran_index = new_tran_index;
 
-end:
-  return error_code;
+  return NO_ERROR;
 }
 
 /*
@@ -972,8 +959,8 @@ end:
  * NOTE: This function prepares the transaction identified by "gtrid"
  *              for commitment. All objects that have been updated by the
  *              transaction and are still dirty in the workspace are flushed
- *              to the page buffer pool (server). Then, prepare statemant is
- *              forwarded to the transaction manager to guarantree the
+ *              to the page buffer pool (server). Then, prepare statement is
+ *              forwarded to the transaction manager to guarantee the
  *              the commitment.
  */
 int
@@ -990,7 +977,7 @@ tran_2pc_prepare_global_tran (int gtrid)
       er_log_debug (ARG_FILE_LINE,
 		    "tm_2pc_prepare: Unable to prepare to commit. \nFlush failed\n");
 #endif /* CUBRID_DEBUG */
-      goto end;
+      return error_code;
     }
 
   /* Forward the prepare to commit to the transaction manager in the server */
@@ -1084,10 +1071,10 @@ tran_2pc_prepare_global_tran (int gtrid)
       er_stack_clearall ();
     }
 
-end:
   return error_code;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * tran_start_topop - Start a macro nested top operation
  *
@@ -1211,7 +1198,6 @@ tran_end_topop_abort (void)
   return error_code;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * tran_end_topop - END A MACRO NESTED TOP OPERATION
  *
@@ -1276,27 +1262,23 @@ static int
 tran_add_savepoint (const char *savept_name)
 {
   DB_NAMELIST *sp;
-  int error_code = NO_ERROR;
 
   sp = (DB_NAMELIST *) db_ws_alloc (sizeof (DB_NAMELIST));
   if (sp == NULL)
     {
-      error_code = er_errid ();
-      goto end;
+      return er_errid ();
     }
 
   sp->name = ws_copy_string (savept_name);
   if (sp->name == NULL)
     {
       db_ws_free (sp);
-      error_code = er_errid ();
-      goto end;
+      return er_errid ();
     }
   sp->next = user_savepoint_list;
   user_savepoint_list = sp;
 
-end:
-  return error_code;
+  return NO_ERROR;
 }
 
 /*
@@ -1406,13 +1388,13 @@ tran_get_savepoints (DB_NAMELIST ** savepoint_list)
  *              transaction after the savepoint are "undone", and all effects
  *              of the transaction preceding the savepoint remain. The
  *              transaction can then continue executing other database
- *              statemant. It is permissible to abort to the same savepoint
+ *              statement. It is permissible to abort to the same savepoint
  *              repeatedly within the same transaction.
  *              If the same savepoint name is used in multiple savepoint
  *              declarations within the same transaction, then only the latest
  *              savepoint with that name is available for aborts and the
  *              others are forgotten.
- *              There is no limits on the number of savepoints that a
+ *              There are no limits on the number of savepoints that a
  *              transaction can have.
  */
 int
@@ -1432,14 +1414,14 @@ tran_savepoint (const char *savept_name, bool user)
 			"tran_savepoint: Unable to start a top operation\n Flush failed.\nerrmsg = %s",
 			er_msg ());
 #endif /* CUBRID_DEBUG */
-	  goto end;
+	  return error_code;
 	}
     }
 
   if (tran_server_savepoint (savept_name, &savept_lsa) != NO_ERROR)
     {
       error_code = er_errid ();
-      goto end;
+      return error_code;
     }
 
   /* add savepoint to local list */
@@ -1448,11 +1430,10 @@ tran_savepoint (const char *savept_name, bool user)
       error_code = tran_add_savepoint (savept_name);
       if (error_code != NO_ERROR)
 	{
-	  goto end;
+	  return error_code;
 	}
     }
 
-end:
   return error_code;
 }
 
@@ -1464,20 +1445,20 @@ end:
  *
  *   savepoint_name(in): Name of the savepoint
  *
- * NOTE: All the effects done by the current transaction after the
+ * NOTE: All the effects of the current transaction after the
  *              given savepoint are undone, and all effects of the transaction
- *              preceding the given savepoint remain. After the partial abort,
- *              the transaction can continue its normal execution just like if
- *              the statemants that were undone, were never executed.
+ *              preceding the given savepoint remain. After the partial abort
+ *              the transaction can continue its normal execution as if
+ *              the statements that were undone were never executed.
  *              All objects updated by the current transaction that are still
- *              dirty are removed from the workspace and then the partiall
+ *              dirty are removed from the workspace and then the partial
  *              abort is forwarded to the transaction manager in the server.
  *              In the server all updates made to the database and the page
- *              buffer pool after the given spacepoint are rolled back. The
+ *              buffer pool after the given savepoint are rolled back. The
  *              server may notify the transaction manager in the client of
  *              any client loose_end undoes that need to be executed at the
  *              client as part of the partial abort.
- *              The locks in the workspace will need to be clear since we do
+ *              The locks in the workspace will need to be cleared since we do
  *              not know in the client what objects were rolled back. This is
  *              needed since the client does not request the objects from the
  *              server if the desired lock has been already acquired (cached
@@ -1492,7 +1473,6 @@ tran_abort_upto_savepoint (const char *savepoint_name)
   tran_free_list_upto_savepoint (savepoint_name);
 
   return tran_internal_abort_upto_savepoint (savepoint_name, false);
-
 }
 
 /*
@@ -1559,5 +1539,4 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name,
     }
 
   return error_code;
-
 }

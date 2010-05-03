@@ -41,6 +41,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <errno.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -76,6 +77,15 @@
 #define READ_FROM_SOCKET(SOCKFD, MSG, SIZE)	\
 	recv(SOCKFD, MSG, SIZE, 0)
 
+#define SOCKET_TIMEOUT 5000	/* msec */
+#if !defined (WINDOWS)
+#define SET_NONBLOCKING(fd) { \
+      int flags = fcntl (fd, F_GETFL); \
+      flags |= O_NONBLOCK; \
+      fcntl (fd, F_SETFL, flags); \
+}
+#endif /* !WINDOWS */
+
 /************************************************************************
  * PRIVATE TYPE DEFINITIONS						*
  ************************************************************************/
@@ -84,7 +94,7 @@
  * PRIVATE FUNCTION PROTOTYPES						*
  ************************************************************************/
 
-static int connect_srv (unsigned char *ip_addr, int port, char is_first,
+static int connect_srv (unsigned char *ip_addr, int port, char is_retry,
 			SOCKET * ret_sock);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int net_send_int (SOCKET sock_fd, int value);
@@ -95,6 +105,10 @@ static int net_send_stream (SOCKET sock_fd, char *buf, int size);
 static void init_msg_header (MSG_HEADER * header);
 static int net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header);
 static int net_recv_msg_header (SOCKET sock_fd, MSG_HEADER * header);
+#if !defined (WINDOWS)
+static bool net_peer_alive (SOCKET sd, int timeout);
+#endif
+
 /************************************************************************
  * INTERFACE VARIABLES							*
  ************************************************************************/
@@ -122,7 +136,7 @@ static char cci_client_type = CAS_CLIENT_CCI;
 
 int
 net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
-		 char *db_user, char *db_passwd, char is_first,
+		 char *db_user, char *db_passwd, char is_retry,
 		 T_CCI_ERROR * err_buf, char *broker_info,
 		 char *cas_info, int *cas_pid, SOCKET * ret_sock)
 {
@@ -131,6 +145,9 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
   char db_info[SRV_CON_DB_INFO_SIZE];
   MSG_HEADER msg_header;
   int err_code;
+#ifdef CAS_FOR_DBMS
+  int err_indicator;
+#endif
   int new_port;
   char *msg_buf;
 
@@ -156,7 +173,7 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
 	    (db_name ? db_name : ""), (db_user ? db_user : ""),
 	    (db_passwd ? db_passwd : ""));
 
-  if (connect_srv (ip_addr, port, is_first, &srv_sock_fd) < 0)
+  if (connect_srv (ip_addr, port, is_retry, &srv_sock_fd) < 0)
     {
       return CCI_ER_CONNECT;
     }
@@ -184,7 +201,7 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
     {
       CLOSE_SOCKET (srv_sock_fd);
 
-      if (connect_srv (ip_addr, new_port, is_first, &srv_sock_fd) < 0)
+      if (connect_srv (ip_addr, new_port, is_retry, &srv_sock_fd) < 0)
 	{
 	  return CCI_ER_CONNECT;
 	}
@@ -210,23 +227,44 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
       err_code = CCI_ER_NO_MORE_MEMORY;
       goto connect_srv_error;
     }
-  if (net_recv_stream (srv_sock_fd, msg_buf, *(msg_header.msg_body_size_ptr))
-      < 0)
+  if (net_recv_stream (srv_sock_fd, msg_buf,
+		       *(msg_header.msg_body_size_ptr)) < 0)
     {
       FREE_MEM (msg_buf);
       err_code = CCI_ER_COMMUNICATION;
       goto connect_srv_error;
     }
+#ifdef CAS_FOR_DBMS
+  memcpy (&err_indicator, msg_buf + CAS_PROTOCOL_ERR_INDICATOR_INDEX,
+	  CAS_PROTOCOL_ERR_INDICATOR_SIZE);
+  err_indicator = ntohl (err_indicator);
+  if (err_indicator < 0)
+#else
   memcpy (&err_code, msg_buf, 4);
   err_code = ntohl (err_code);
   if (err_code < 0)
+#endif
     {
+#ifdef CAS_FOR_DBMS
+      memcpy (&err_code, msg_buf + CAS_PROTOCOL_ERR_CODE_INDEX,
+	      CAS_PROTOCOL_ERR_CODE_SIZE);
+      err_code = ntohl (err_code);
+      if (err_indicator == DBMS_ERROR_INDICATOR)
+#else
       if (err_code > -1000)
+#endif
 	{
 	  if (err_buf)
 	    {
+#ifdef CAS_FOR_DBMS
+	      memcpy (err_buf->err_msg, msg_buf + CAS_PROTOCOL_ERR_MSG_INDEX,
+		      *(msg_header.msg_body_size_ptr) -
+		      (CAS_PROTOCOL_ERR_INDICATOR_SIZE +
+		       CAS_PROTOCOL_ERR_CODE_SIZE));
+#else
 	      memcpy (err_buf->err_msg, &msg_buf[4],
 		      *(msg_header.msg_body_size_ptr) - 4);
+#endif
 	      err_buf->err_code = err_code;
 	    }
 	  err_code = CCI_ER_DBMS;
@@ -236,7 +274,13 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
     }
 
   if (cas_pid)
-    *cas_pid = err_code;
+    {
+#ifdef CAS_FOR_DBMS
+      *cas_pid = err_indicator;
+#else
+      *cas_pid = err_code;
+#endif
+    }
 
   if (*(msg_header.msg_body_size_ptr) >= (4 + BROKER_INFO_SIZE))
     {
@@ -366,6 +410,9 @@ net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
   char *tmp_p = NULL;
   MSG_HEADER recv_msg_header;
   int result_code;
+#ifdef CAS_FOR_DBMS
+  int err_code;
+#endif
 
   init_msg_header (&recv_msg_header);
 
@@ -386,29 +433,59 @@ net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
   if (tmp_p == NULL)
     return CCI_ER_NO_MORE_MEMORY;
 
-  if (net_recv_stream
-      (con_handle->sock_fd, tmp_p, *(recv_msg_header.msg_body_size_ptr)) < 0)
+  if (net_recv_stream (con_handle->sock_fd, tmp_p,
+		       *(recv_msg_header.msg_body_size_ptr)) < 0)
     {
       FREE_MEM (tmp_p);
       return CCI_ER_COMMUNICATION;
     }
 
+#ifdef CAS_FOR_DBMS
+  memcpy ((char *) &result_code, tmp_p + CAS_PROTOCOL_ERR_INDICATOR_INDEX,
+	  CAS_PROTOCOL_ERR_INDICATOR_SIZE);
+#else
   memcpy ((char *) &result_code, tmp_p, 4);
+#endif
   result_code = ntohl (result_code);
   if (result_code < 0)
     {
+#ifdef CAS_FOR_DBMS
+      if (result_code == DBMS_ERROR_INDICATOR)
+#else
       if (result_code > -1000 || result_code <= -10000)
+#endif
 	{
+#ifdef CAS_FOR_DBMS
+	  memcpy ((char *) &err_code, tmp_p + CAS_PROTOCOL_ERR_CODE_INDEX,
+		  CAS_PROTOCOL_ERR_CODE_SIZE);
+	  err_code = ntohl (err_code);
+#endif
 	  if (err_buf)
 	    {
+#ifdef CAS_FOR_DBMS
+	      memcpy (err_buf->err_msg, tmp_p + CAS_PROTOCOL_ERR_MSG_INDEX,
+		      *(recv_msg_header.msg_body_size_ptr) -
+		      (CAS_PROTOCOL_ERR_INDICATOR_SIZE +
+		       CAS_PROTOCOL_ERR_CODE_SIZE));
+	      err_buf->err_code = err_code;
+#else
 	      memcpy (err_buf->err_msg, tmp_p + 4,
 		      *(recv_msg_header.msg_body_size_ptr) - 4);
 	      err_buf->err_code = result_code;
+#endif
 	    }
+#ifdef CAS_FOR_DBMS
+	  err_code = CCI_ER_DBMS;
+#else
 	  result_code = CCI_ER_DBMS;
+#endif
 	}
       FREE_MEM (tmp_p);
+#ifdef CAS_FOR_DBMS
+      return err_code;
+#else
       return result_code;
+#endif
     }
 
   if (msg)
@@ -515,11 +592,35 @@ static int
 net_recv_stream (SOCKET sock_fd, char *buf, int size)
 {
   int read_len, tot_read_len = 0;
+#if !defined (WINDOWS)
+  fd_set rfds;
+  struct timeval tv;
+  int n;
+#endif /* WINDOWS */
 
   while (tot_read_len < size)
     {
-      read_len =
-	READ_FROM_SOCKET (sock_fd, buf + tot_read_len, size - tot_read_len);
+#if !defined (WINDOWS)
+      FD_ZERO (&rfds);
+      FD_SET (sock_fd, &rfds);
+      tv.tv_sec = SOCKET_TIMEOUT / 1000;
+      tv.tv_usec = (SOCKET_TIMEOUT % 1000) * 1000;
+      n = select (FD_SETSIZE, &rfds, NULL, NULL, &tv);
+
+      if (n == 0)
+	{
+	  if (net_peer_alive (sock_fd, SOCKET_TIMEOUT) == true)
+	    {
+	      continue;
+	    }
+	  else
+	    {
+	      return CCI_ER_COMMUNICATION;
+	    }
+	}
+#endif
+      read_len = READ_FROM_SOCKET (sock_fd, buf + tot_read_len,
+				   size - tot_read_len);
       if (read_len <= 0)
 	{
 	  return CCI_ER_COMMUNICATION;
@@ -530,6 +631,107 @@ net_recv_stream (SOCKET sock_fd, char *buf, int size)
 
   return 0;
 }
+
+#if !defined (WINDOWS)
+static bool
+net_peer_alive (SOCKET sd, int timeout)
+{
+  SOCKET nsd;
+  int n;
+  socklen_t size;
+  struct sockaddr_in saddr;
+  socklen_t slen;
+  struct timeval tv;
+  fd_set wfds, efds;
+
+  slen = sizeof (saddr);
+  if (getpeername (sd, (struct sockaddr *) &saddr, &slen) < 0)
+    {
+      return false;
+    }
+
+  /* if Unix domain socket, the peer(=local) is alive always */
+  if (saddr.sin_family != AF_INET)
+    {
+      return true;
+    }
+
+  nsd = socket (AF_INET, SOCK_STREAM, 0);
+  if (IS_INVALID_SOCKET (nsd))
+    {
+      return false;
+    }
+
+  /* make the socket non blocking so we can use select */
+  SET_NONBLOCKING (nsd);
+
+  saddr.sin_port = htons (7);	/* port ECHO */
+  n = connect (nsd, (struct sockaddr *) &saddr, slen);
+
+  /*
+   * Connection will be established or refused immediately.
+   * Either way it means that the peer host is alive.
+   */
+  if (n == 0 || n == ECONNREFUSED)
+    {
+      close (nsd);
+      return true;
+    }
+  else
+    {
+      switch (errno)
+	{
+	case EINPROGRESS:	/* non-blocking, asynchronously */
+	  break;
+	case ENETUNREACH:	/* network unreachable */
+	case EAFNOSUPPORT:	/* address family not supported */
+	case EADDRNOTAVAIL:	/* address is not available on the remote machine */
+	case EINVAL:		/* on some linux, connecting to the loopback */
+	  close (nsd);
+	  return false;
+	default:		/* otherwise, connection failed */
+	  close (nsd);
+	  return false;
+	}
+
+      FD_ZERO (&wfds);
+      FD_SET (nsd, &wfds);
+      FD_ZERO (&efds);
+      FD_SET (nsd, &efds);
+
+      /* wait mili-seconds of the timeout */
+      tv.tv_sec = timeout / 1000;
+      tv.tv_usec = (timeout % 1000) * 1000;
+      n = select (FD_SETSIZE, NULL, &wfds, &efds, &tv);
+
+      if (n < 0 && errno != EINTR)
+	{
+	  close (nsd);
+	  return false;
+	}
+      if (n == 0)
+	{
+	  close (nsd);
+	  return false;
+	}
+
+      /* has connection been established? */
+      size = sizeof (n);
+      if (getsockopt (nsd, SOL_SOCKET, SO_ERROR, (void *) &n, &size) < 0)
+	{
+	  n = errno;
+	}
+      if (n == 0 || n == ECONNREFUSED)
+	{
+	  close (nsd);
+	  return true;
+	}
+
+      close (nsd);
+      return false;
+    }
+}
+#endif /* !WINDOWS */
 
 static int
 net_recv_msg_header (SOCKET sock_fd, MSG_HEADER * header)
@@ -593,7 +795,7 @@ init_msg_header (MSG_HEADER * header)
 }
 
 static int
-connect_srv (unsigned char *ip_addr, int port, char is_first,
+connect_srv (unsigned char *ip_addr, int port, char is_retry,
 	     SOCKET * ret_sock)
 {
   struct sockaddr_in sock_addr;
@@ -603,7 +805,7 @@ connect_srv (unsigned char *ip_addr, int port, char is_first,
   int retry_count = 0;
   int con_retry_count;
 
-  con_retry_count = (is_first) ? 0 : 10;
+  con_retry_count = (is_retry) ? 10 : 0;
 
 connect_retry:
 

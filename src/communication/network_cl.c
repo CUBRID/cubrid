@@ -133,9 +133,10 @@ static int net_client_request_internal (int request,
 					char *replybuf, int replysize,
 					char *databuf, int datasize,
 					char *replydata, int replydatasize);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int net_client_request_buffer (unsigned int rc, char **buf_ptr,
 				      int expected_size);
-
+#endif
 static int set_server_error (int error);
 
 static void net_histo_setup_names (void);
@@ -459,7 +460,7 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_TM_SERVER_HAS_UPDATED].name =
     "NET_SERVER_TM_SERVER_HAS_UPDATED";
   net_Req_buffer[NET_SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED].name =
-    "NET_SERVER_TM_NET_SERVER_ISACTIVE_AND_HAS_UPDATED";
+    "NET_SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED";
   net_Req_buffer[NET_SERVER_TM_ISBLOCKED].name = "NET_SERVER_TM_ISBLOCKED";
   net_Req_buffer[NET_SERVER_TM_WAIT_SERVER_ACTIVE_TRANS].name =
     "NET_SERVER_TM_WAIT_SERVER_ACTIVE_TRANS";
@@ -470,15 +471,17 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_TM_SERVER_2PC_START].name =
     "NET_SERVER_TM_SERVER_2PC_START";
   net_Req_buffer[NET_SERVER_TM_SERVER_2PC_PREPARE].name =
-    "NET_SERVER_TM_NET_SERVER_2PC_PREPARE";
+    "NET_SERVER_TM_SERVER_2PC_PREPARE";
   net_Req_buffer[NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED].name =
-    "NET_SERVER_TM_NET_SERVER_2PC_RECOVERY_PREPARED";
+    "NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED";
   net_Req_buffer[NET_SERVER_TM_SERVER_2PC_ATTACH_GT].name =
     "NET_SERVER_TM_SERVER_2PC_ATTACH_GT";
   net_Req_buffer[NET_SERVER_TM_SERVER_2PC_PREPARE_GT].name =
-    "NET_SERVER_TM_NET_SERVER_2PC_PREPARE_GT";
+    "NET_SERVER_TM_SERVER_2PC_PREPARE_GT";
   net_Req_buffer[NET_SERVER_TM_LOCAL_TRANSACTION_ID].name =
     "NET_SERVER_TM_LOCAL_TRANSACTION_ID";
+  net_Req_buffer[NET_SERVER_LOG_CHECKPOINT].name =
+    "NET_SERVER_LOG_CHECKPOINT";
 
   net_Req_buffer[NET_SERVER_LC_FETCH].name = "NET_SERVER_LC_FETCH";
   net_Req_buffer[NET_SERVER_LC_FETCHALL].name = "NET_SERVER_LC_FETCHALL";
@@ -641,6 +644,8 @@ net_histo_setup_names (void)
 
   net_Req_buffer[NET_SERVER_CSS_KILL_TRANSACTION].name =
     "NET_SERVER_CSS_KILL_TRANSACTION";
+  net_Req_buffer[NET_SERVER_CSS_DUMP_CS_STAT].name =
+    "NET_SERVER_CSS_DUMP_CS_STAT";
 
   net_Req_buffer[NET_SERVER_QPROC_GET_SYS_TIMESTAMP].name =
     "NET_SERVER_QPROC_GET_SYS_TIMESTAMP";
@@ -650,6 +655,8 @@ net_histo_setup_names (void)
     "NET_SERVER_QPROC_GET_NEXT_VALUE";
   net_Req_buffer[NET_SERVER_QPROC_GET_SERVER_INFO].name =
     "NET_SERVER_QPROC_GET_SERVER_INFO";
+  net_Req_buffer[NET_SERVER_SERIAL_DECACHE].name =
+    "NET_SERVER_SERIAL_DECACHE";
 
   net_Req_buffer[NET_SERVER_PRM_SET_PARAMETERS].name =
     "NET_SERVER_PRM_SET_PARAMETERS";
@@ -2513,6 +2520,7 @@ net_client_get_next_log_pages (int rc, char *replybuf, int replysize,
   return error;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * net_client_request_buffer -
  *
@@ -2572,7 +2580,6 @@ net_client_request_buffer (unsigned int rc, char **buf_ptr, int expected_size)
   return (error);
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * net_client_request3 -
  *

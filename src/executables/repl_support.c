@@ -275,6 +275,7 @@ repl_io_truncate (int vdes, int pagesize, PAGEID pageid)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * repl_io_rename() - rename a file
  *   return:
@@ -317,6 +318,7 @@ repl_io_rename (char *active_copy_log, int *active_vol,
 
   return NO_ERROR;
 }
+#endif
 
 /*
  * repl_io_file_size() - returns the file size
@@ -620,20 +622,23 @@ repl_error_flush (FILE * fp, bool serveryn)
   char time_array[256];
 
   PTHREAD_MUTEX_LOCK (error_Mutex);
+  if (err_Head == NULL)
+    {
+      PTHREAD_MUTEX_UNLOCK (error_Mutex);
+      return;
+    }
 
   memset (&final_error, 0, DB_SIZEOF (REPL_ERR));
-  if (err_Head)
+
+  er_time = time (NULL);
+  er_tm_p = localtime (&er_time);
+  if (er_tm_p == NULL)
     {
-      er_time = time (NULL);
-      er_tm_p = localtime (&er_time);
-      if (er_tm_p == NULL)
-	{
-	  memset (&er_tm, 0, sizeof (struct tm));
-	  er_tm_p = &er_tm;
-	}
-      strftime (time_array, sizeof (time_array), "%c", er_tm_p);
-      fprintf (fp, "[%s] :  ", time_array);
+      memset (&er_tm, 0, sizeof (struct tm));
+      er_tm_p = &er_tm;
     }
+  strftime (time_array, sizeof (time_array), "%c", er_tm_p);
+  fprintf (fp, "[%s] :  ", time_array);
 
   while (err_Head)
     {

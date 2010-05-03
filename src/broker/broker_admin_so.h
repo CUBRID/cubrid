@@ -38,6 +38,9 @@
 #define FLAG_ON		1
 #define FLAG_OFF	0
 #define FLAG_SUSPEND	2
+#define FLAG_READ_WRITE  0
+#define FLAG_READ_ONLY 1
+#define FLAG_SLAVE_ONLY 2
 
 typedef enum t_as_status T_AS_STATUS;
 enum t_as_status
@@ -119,6 +122,7 @@ struct t_br_info
   char status;
   char auto_add_flag;
   char sql_log_mode;
+  char access_mode;
   char log_backup_flag;
   char source_env_flag;
   char access_list_flag;
@@ -199,16 +203,16 @@ typedef int (*T_UCA_SHM_DETACH) (void *p);
 DLL_EXPORT const char *uc_version (void);
 DLL_EXPORT int uc_start (char *err_msg);
 DLL_EXPORT int uc_stop (char *err_msg);
-DLL_EXPORT int uc_add (char *br_name, char *err_msg);
-DLL_EXPORT int uc_restart (char *br_name, int as_index, char *err_msg);
-DLL_EXPORT int uc_drop (char *br_name, char *err_msg);
-DLL_EXPORT int uc_on (char *br_name, char *err_msg);
-DLL_EXPORT int uc_off (char *br_name, char *err_msg);
-DLL_EXPORT int uc_suspend (char *br_name, char *err_msg);
-DLL_EXPORT int uc_resume (char *br_name, char *err_msg);
-DLL_EXPORT int uc_job_first (char *br_name, int job_id, char *err_msg);
-DLL_EXPORT int uc_job_queue (char *br_name, char *err_msg);
-DLL_EXPORT int uc_as_info (char *br_name, T_AS_INFO ** ret_as_info,
+DLL_EXPORT int uc_add (const char *br_name, char *err_msg);
+DLL_EXPORT int uc_restart (const char *br_name, int as_index, char *err_msg);
+DLL_EXPORT int uc_drop (const char *br_name, char *err_msg);
+DLL_EXPORT int uc_on (const char *br_name, char *err_msg);
+DLL_EXPORT int uc_off (const char *br_name, char *err_msg);
+DLL_EXPORT int uc_suspend (const char *br_name, char *err_msg);
+DLL_EXPORT int uc_resume (const char *br_name, char *err_msg);
+DLL_EXPORT int uc_job_first (const char *br_name, int job_id, char *err_msg);
+DLL_EXPORT int uc_job_queue (const char *br_name, char *err_msg);
+DLL_EXPORT int uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
 			   T_JOB_INFO ** job_info, int *num_job,
 			   char *err_msg);
 DLL_EXPORT void uc_info_free (void *info);
@@ -216,12 +220,14 @@ DLL_EXPORT int uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg);
 DLL_EXPORT int uc_unicas_conf (T_UC_CONF * unicas_conf, int *ret_mst_shmid,
 			       char *err_msg);
 DLL_EXPORT void uc_unicas_conf_free (T_UC_CONF * unicas_conf);
-DLL_EXPORT int uc_conf_broker_add (T_UC_CONF * unicas_conf, char *br_name,
-				   char *err_msg);
-DLL_EXPORT void uc_change_config (T_UC_CONF * unicas_conf, char *br_name,
-				  char *name, char *value);
-DLL_EXPORT int uc_changer (char *br_name, char *name, char *value, char *);
-DLL_EXPORT int uc_del_cas_log (char *br_name, int asid, char *errmsg);
+DLL_EXPORT int uc_conf_broker_add (T_UC_CONF * unicas_conf,
+				   const char *br_name, char *err_msg);
+DLL_EXPORT void uc_change_config (T_UC_CONF * unicas_conf,
+				  const char *br_name, const char *name,
+				  const char *value);
+DLL_EXPORT int uc_changer (const char *br_name, const char *name,
+			   const char *value, char *);
+DLL_EXPORT int uc_del_cas_log (const char *br_name, int asid, char *errmsg);
 DLL_EXPORT int uc_get_active_session_with_opened_shm (void *, char *);
 DLL_EXPORT void *uc_broker_shm_open (char *err_msg);
 

@@ -1288,6 +1288,7 @@ css_return_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id,
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_return_oob_buffer() - return an allocated buffer for out of band data
  *   return:
@@ -1305,6 +1306,7 @@ css_return_oob_buffer (int *buffer_size)
       return (char *) malloc (*buffer_size);
     }
 }
+#endif
 
 /*
  * css_return_queued_data () - return any data that has been queued

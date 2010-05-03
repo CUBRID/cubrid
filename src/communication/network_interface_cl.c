@@ -46,6 +46,7 @@
 #include "log_comm.h"
 #include "log_writer.h"
 #include "arithmetic.h"
+#include "serial.h"
 #include "query_executor.h"
 #include "transaction_cl.h"
 #include "language_support.h"
@@ -1385,17 +1386,18 @@ locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint,
  *
  *   hfid(in):
  *   class_oid(in):
+ *   reuse_oid(in):
  *
  * NOTE:
  */
 int
-heap_create (HFID * hfid, const OID * class_oid)
+heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
   char *ptr;
-  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_OID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_OID_SIZE + OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_HFID_SIZE) a_reply;
   char *reply;
@@ -1405,6 +1407,7 @@ heap_create (HFID * hfid, const OID * class_oid)
 
   ptr = or_pack_hfid (request, hfid);
   ptr = or_pack_oid (ptr, (OID *) class_oid);
+  ptr = or_pack_int (ptr, (int) reuse_oid);
   req_error = net_client_request (NET_SERVER_HEAP_CREATE,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
 				  reply,
@@ -1422,7 +1425,7 @@ heap_create (HFID * hfid, const OID * class_oid)
 
   ENTER_SERVER ();
 
-  success = xheap_create (NULL, hfid, class_oid);
+  success = xheap_create (NULL, hfid, class_oid, reuse_oid);
 
   EXIT_SERVER ();
 
@@ -1684,6 +1687,7 @@ disk_get_remarks (VOLID volid)
 #endif /* !CS_MODE */
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * disk_get_purpose -
  *
@@ -1734,6 +1738,7 @@ disk_get_purpose (VOLID volid)
   return purpose;
 #endif /* !CS_MODE */
 }
+#endif
 
 /*
  * disk_get_purpose_and_total_free_numpages -
@@ -2409,6 +2414,25 @@ log_set_interrupt (int set)
 }
 
 /*
+ * log_checkpoint -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+void
+log_checkpoint (void)
+{
+#if defined(CS_MODE)
+  (void) net_client_request_no_reply (NET_SERVER_LOG_CHECKPOINT, NULL, 0);
+#else /* CS_MODE */
+  /* Cannot run in standalone mode */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1,
+	  "checkpoint");
+#endif /* !CS_MODE */
+}
+
+/*
  * log_dump_stat -
  *
  * return:
@@ -3070,6 +3094,7 @@ tran_server_2pc_prepare_global_tran (int gtrid)
 #endif /* !CS_MODE */
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * tran_server_start_topop -
  *
@@ -3170,6 +3195,7 @@ tran_server_end_topop (LOG_RESULT_TOPOP result, LOG_LSA * topop_lsa)
   return (tran_state);
 #endif /* !CS_MODE */
 }
+#endif
 
 /*
  * tran_server_savepoint -
@@ -3345,11 +3371,11 @@ lock_dump (FILE * outfp)
 int
 boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
 			BOOT_DB_PATH_INFO * db_path_info,
-			bool db_overwrite, PGLENGTH db_desired_pagesize,
-			DKNPAGES db_npages, const char *file_addmore_vols,
-			DKNPAGES log_npages, OID * rootclass_oid,
-			HFID * rootclass_hfid, int client_lock_wait,
-			TRAN_ISOLATION client_isolation)
+			bool db_overwrite, const char *file_addmore_vols,
+			DKNPAGES db_npages, PGLENGTH db_desired_pagesize,
+			DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,
+			OID * rootclass_oid, HFID * rootclass_hfid,
+			int client_lock_wait, TRAN_ISOLATION client_isolation)
 {
 #if defined(CS_MODE)
   int tran_index = NULL_TRAN_INDEX;
@@ -3373,6 +3399,7 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
     + OR_INT_SIZE		/* db_overwrite */
     + OR_INT_SIZE		/* db_desired_pagesize */
     + OR_INT_SIZE		/* db_npages */
+    + OR_INT_SIZE		/* db_desired_log_page_size */
     + OR_INT_SIZE		/* log_npages */
     + length_const_string (db_path_info->db_path)	/* db_path */
     + length_const_string (db_path_info->vol_path)	/* vol_path */
@@ -3398,6 +3425,7 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
       ptr = or_pack_int (ptr, db_overwrite);
       ptr = or_pack_int (ptr, db_desired_pagesize);
       ptr = or_pack_int (ptr, db_npages);
+      ptr = or_pack_int (ptr, db_desired_log_page_size);
       ptr = or_pack_int (ptr, log_npages);
       ptr = pack_const_string (ptr, db_path_info->db_path);
       ptr = pack_const_string (ptr, db_path_info->vol_path);
@@ -3428,11 +3456,11 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
   ENTER_SERVER ();
 
   tran_index = xboot_initialize_server (NULL, client_credential, db_path_info,
-					db_overwrite, db_desired_pagesize,
-					db_npages, file_addmore_vols,
-					log_npages, rootclass_oid,
-					rootclass_hfid, client_lock_wait,
-					client_isolation);
+					db_overwrite, file_addmore_vols,
+					db_npages, db_desired_pagesize,
+					log_npages, db_desired_log_page_size,
+					rootclass_oid, rootclass_hfid,
+					client_lock_wait, client_isolation);
 
   EXIT_SERVER ();
 
@@ -3510,8 +3538,10 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 	      ptr = or_unpack_hfid (ptr, &server_credential->root_class_hfid);
 	      ptr = or_unpack_int (ptr, &temp_int);
 	      server_credential->page_size = (PGLENGTH) temp_int;
-	      ptr =
-		or_unpack_float (ptr, &server_credential->disk_compatibility);
+	      ptr = or_unpack_int (ptr, &temp_int);
+	      server_credential->log_page_size = (PGLENGTH) temp_int;
+	      ptr = or_unpack_float (ptr,
+				     &server_credential->disk_compatibility);
 	      ptr = or_unpack_int (ptr, &server_credential->ha_server_state);
 	    }
 	  free_and_init (area);
@@ -6207,7 +6237,7 @@ qp_get_sys_timestamp (DB_VALUE * value)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * qp_get_serial_current_value -
+ * serial_get_current_value -
  *
  * return:
  *
@@ -6217,7 +6247,7 @@ qp_get_sys_timestamp (DB_VALUE * value)
  * NOTE:
  */
 int
-qp_get_serial_current_value (DB_VALUE * value, DB_VALUE * oid)
+serial_get_current_value (DB_VALUE * value, DB_VALUE * oid)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -6274,7 +6304,7 @@ qp_get_serial_current_value (DB_VALUE * value, DB_VALUE * oid)
 
   ENTER_SERVER ();
 
-  req_error = xqp_get_serial_current_value (NULL, oid, value);
+  req_error = xserial_get_current_value (NULL, oid, value);
   if (req_error != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_errid (), 0);
@@ -6287,7 +6317,7 @@ qp_get_serial_current_value (DB_VALUE * value, DB_VALUE * oid)
 }
 
 /*
- * qp_get_serial_next_value -
+ * serial_get_next_value -
  *
  * return:
  *
@@ -6297,7 +6327,7 @@ qp_get_serial_current_value (DB_VALUE * value, DB_VALUE * oid)
  * NOTE:
  */
 int
-qp_get_serial_next_value (DB_VALUE * value, DB_VALUE * oid)
+serial_get_next_value (DB_VALUE * value, DB_VALUE * oid)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -6355,7 +6385,7 @@ qp_get_serial_next_value (DB_VALUE * value, DB_VALUE * oid)
 
   ENTER_SERVER ();
 
-  req_error = xqp_get_serial_next_value (NULL, oid, value);
+  req_error = xserial_get_next_value (NULL, oid, value);
   if (req_error != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_errid (), 0);
@@ -6364,6 +6394,52 @@ qp_get_serial_next_value (DB_VALUE * value, DB_VALUE * oid)
   EXIT_SERVER ();
 
   return req_error;
+#endif /* !CS_MODE */
+}
+
+/*
+ * serial_decache -
+ *
+ * return: NO_ERROR or error status
+ *
+ *   oid(in):
+ *
+ * NOTE:
+ */
+int
+serial_decache (OID * oid)
+{
+#if defined(CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_OID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;	/* need dummy reply message */
+  char *request;
+  char *reply;
+  int status;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_oid (request, oid);
+
+  req_error = net_client_request (NET_SERVER_SERIAL_DECACHE,
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				  NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &status);
+    }
+
+  return NO_ERROR;
+#else /* CS_MODE */
+  ENTER_SERVER ();
+
+  xserial_decache (oid);
+
+  EXIT_SERVER ();
+
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 
@@ -6723,11 +6799,11 @@ thread_dump_cs_stat (FILE * outfp)
     }
 
   req_error = net_client_request_recv_stream (NET_SERVER_CSS_DUMP_CS_STAT,
-                                              NULL, 0, NULL, 0,
-                                              NULL, 0, outfp);
+					      NULL, 0, NULL, 0,
+					      NULL, 0, outfp);
 #else /* CS_MODE */
   er_log_debug (ARG_FILE_LINE,
-                "thread_dump_cs_stat: THIS IS ONLY a C/S function");
+		"thread_dump_cs_stat: THIS IS ONLY a C/S function");
   return;
 #endif /* !CS_MODE */
 }
@@ -6782,6 +6858,100 @@ logtb_get_pack_tran_table (char **buffer_p, int *size_p)
 
   return error;
 #endif /* !CS_MODE */
+}
+
+/*
+ * logtb_free_trans_info - Free transaction table information
+ *   return: none
+ *   info(in): TRANS_INFO to be freed
+ */
+void
+logtb_free_trans_info (TRANS_INFO * info)
+{
+  int i;
+
+  if (info == NULL)
+    return;
+
+  for (i = 0; i < info->num_trans; i++)
+    {
+      if (info->tran[i].db_user != NULL)
+	db_private_free_and_init (NULL, info->tran[i].db_user);
+      if (info->tran[i].program_name != NULL)
+	db_private_free_and_init (NULL, info->tran[i].program_name);
+      if (info->tran[i].login_name != NULL)
+	db_private_free_and_init (NULL, info->tran[i].login_name);
+      if (info->tran[i].host_name != NULL)
+	db_private_free_and_init (NULL, info->tran[i].host_name);
+    }
+  free_and_init (info);
+}
+
+/*
+ * logtb_get_trans_info - Get transaction table information which identifies
+ *                        active transactions
+ *   return: TRANS_INFO array or NULL
+ */
+TRANS_INFO *
+logtb_get_trans_info (void)
+{
+  TRANS_INFO *info = NULL;
+  char *buffer, *ptr;
+  int num_trans, bufsize, i;
+  int error;
+
+  error = logtb_get_pack_tran_table (&buffer, &bufsize);
+  if (error != NO_ERROR || buffer == NULL)
+    return NULL;
+
+  ptr = buffer;
+  ptr = or_unpack_int (ptr, &num_trans);
+
+  if (num_trans == 0)
+    {
+      /* can't happen, there must be at least one transaction */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto error;
+    }
+
+  i = sizeof (TRANS_INFO) + ((num_trans - 1) * sizeof (ONE_TRAN_INFO));
+  info = (TRANS_INFO *) malloc (i);
+  if (info == NULL)
+    goto error;
+
+  info->num_trans = num_trans;
+  for (i = 0; i < num_trans; i++)
+    {
+      if ((ptr = or_unpack_int (ptr, &info->tran[i].tran_index)) == NULL
+	  || (ptr = or_unpack_int (ptr, &info->tran[i].state)) == NULL
+	  || (ptr = or_unpack_int (ptr, &info->tran[i].process_id)) == NULL
+	  || (ptr = or_unpack_string (ptr, &info->tran[i].db_user)) == NULL
+	  || (ptr =
+	      or_unpack_string (ptr, &info->tran[i].program_name)) == NULL
+	  || (ptr = or_unpack_string (ptr, &info->tran[i].login_name)) == NULL
+	  || (ptr = or_unpack_string (ptr, &info->tran[i].host_name)) == NULL)
+	goto error;
+    }
+
+  if (((int) (ptr - buffer)) != bufsize)
+    {
+      /* unpacking didn't match size, garbage */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto error;
+    }
+
+  free_and_init (buffer);
+
+  return info;
+
+error:
+  if (buffer != NULL)
+    free_and_init (buffer);
+
+  if (info != NULL)
+    logtb_free_trans_info (info);
+
+  return NULL;
 }
 
 /*

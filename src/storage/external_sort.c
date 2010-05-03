@@ -307,9 +307,7 @@ sort_spage_initialize (PAGE_PTR pgptr, INT16 slots_type, INT16 alignment)
   sphdr->nrecs = 0;
 
 #if defined(CUBRID_DEBUG)
-  if (!(slots_type == ANCHORED || slots_type == ANCHORED_DONT_REUSE_SLOTS ||
-	slots_type == UNANCHORED_ANY_SEQUENCE ||
-	slots_type == UNANCHORED_KEEP_SEQUENCE))
+  if (!spage_is_valid_anchor_type (slots_type))
     {
       (void) fprintf (stderr,
 		      "sp_init: **INTERFACE SYSTEM ERROR BAD value for"
@@ -740,25 +738,12 @@ sort_spage_dump_hdr (SLOTTED_PAGE_HEADER * sphdr)
   (void) fprintf (stdout,
 		  "NUM SLOTS = %d, NUM RECS = %d, TYPE OF SLOTS = %s,\n",
 		  sphdr->nslots, sphdr->nrecs,
-		  ((sphdr->anchor_flag ==
-		    ANCHORED) ? "ANCHORED" : (sphdr->anchor_flag ==
-					      ANCHORED_DONT_REUSE_SLOTS) ?
-		   "ANCHORED_DONT_REUSE_SLOTS" : (sphdr->anchor_flag ==
-						  UNANCHORED_ANY_SEQUENCE) ?
-		   "UNANCHORED_ANY_SEQUENCE" : "UNANCHORED_KEEP_SEQUENCE"));
+		  spage_anchor_flag_string (sphdr->anchor_flag));
 
   (void) fprintf (stdout,
 		  "ALIGNMENT-TO = %s, WASTED AREA FOR ALIGNMENT = %d,\n",
-		  ((sphdr->alignment ==
-		    CHAR_ALIGNMENT) ? "CHAR" : (sphdr->alignment ==
-						SHORT_ALIGNMENT) ? "SHORT"
-		   : (sphdr->alignment ==
-		      INT_ALIGNMENT) ? "INT" : (sphdr->alignment ==
-						LONG_ALIGNMENT) ? "LONG"
-		   : (sphdr->alignment ==
-		      FLOAT_ALIGNMENT) ? "FLOAT" : (sphdr->alignment ==
-						    DOUBLE_ALIGNMENT) ?
-		   "DOUBLE" : "UNKNOWN"), sphdr->waste_align);
+		  spage_alignment_string (sphdr->alignment),
+		  spage_waste_align);
 
   (void) fprintf (stdout, "TOTAL FREE AREA = %d, CONTIGUOUS FREE AREA = %d,"
 		  " FREE SPACE OFFSET = %d,\n",
@@ -3906,7 +3891,6 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   if (sort_param->internal_memory)
     {
       free_and_init (sort_param->internal_memory);
-      sort_param->internal_memory = NULL;
     }
 
   for (k = 0; k < sort_param->tot_tempfiles; k++)
@@ -3967,7 +3951,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est,
    */
   if (file_alloc_pages_as_noncontiguous (thread_p, vfid, &new_vpid,
 					 &new_nthpg, file_pg_cnt_est, NULL,
-					 NULL, NULL) == NULL)
+					 NULL, NULL, NULL) == NULL)
     {
       if (er_errid () != ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME)
 	{
@@ -3982,7 +3966,8 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est,
       if (pg_cnt_est2 < file_pg_cnt_est
 	  && (file_alloc_pages_as_noncontiguous (thread_p, vfid, &new_vpid,
 						 &new_nthpg, pg_cnt_est2,
-						 NULL, NULL, NULL) == NULL)
+						 NULL, NULL, NULL,
+						 NULL) == NULL)
 	  && (er_errid () != ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME))
 	{
 	  return ER_FAILED;
@@ -4035,7 +4020,7 @@ sort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, int first_page,
        */
       if (file_alloc_pages_as_noncontiguous (thread_p, vfid, &vpid,
 					     &new_nthpg, alloc_pgcnt, NULL,
-					     NULL, NULL) == NULL)
+					     NULL, NULL, NULL) == NULL)
 	{
 	  return er_errid ();
 	}
@@ -4239,7 +4224,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p,
 							&sort_param->temp[i],
 							&new_vpid, &nthpg,
 							needed_pages[i], NULL,
-							NULL, NULL);
+							NULL, NULL, NULL);
 	    }
 	  else
 	    {
@@ -4247,7 +4232,7 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p,
 							&sort_param->temp[i],
 							&new_vpid, &nthpg,
 							alloc_pages, NULL,
-							NULL, NULL);
+							NULL, NULL, NULL);
 	    }
 	}
     }

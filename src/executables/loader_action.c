@@ -116,7 +116,7 @@ display_error (int adjust)
 /*
  * parse_error - Called when we have some sort of parsing problem
  *    return: void
- *    token_type(in): incomming token type
+ *    token_type(in): incoming token type
  *    token(in): token string
  */
 static void
@@ -142,10 +142,10 @@ parse_error (DB_TYPE token_type, const char *token)
 
 
 /*
- * domain_error - called when we have trouble converting an incomming
+ * domain_error - called when we have trouble converting an incoming
  * token to a destination value.
  *    return: void
- *    token_type(in): incomming token type
+ *    token_type(in): incoming token type
  * Note:
  *    Usually, this kind of error will be caught by the ldr_ module in the
  *    call to ldr_add_value. If not, we display error messages here.
@@ -568,7 +568,7 @@ act_end_set (void)
  * get_value - Checks to see if the token type is compatible with the next
  * expected attribute or argument
  *    return: destination value container to store the incoming data value
- *    token_type(in): incomming token type
+ *    token_type(in): incoming token type
  */
 static DB_VALUE *
 get_value (DB_TYPE token_type)

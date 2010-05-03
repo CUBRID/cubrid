@@ -125,7 +125,7 @@ csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
   assert (cs_ptr != NULL);
 
   error_code = MUTEXATTR_INIT (mattr);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEXATTR_INIT, 0);
@@ -135,7 +135,7 @@ csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
 
 #ifdef CHECK_MUTEX
   error_code = MUTEXATTR_SETTYPE (mattr, PTHREAD_MUTEX_ERRORCHECK);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEXATTR_SETTYPE, 0);
@@ -149,7 +149,7 @@ csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
 #else /* CHECK_MUTEX && !WINDOWS */
   error_code = MUTEX_INIT (cs_ptr->lock);
 #endif /* CHECK_MUTEX && !WINDOWS */
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_INIT, 0);
@@ -158,7 +158,7 @@ csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
     }
 
   error_code = COND_INIT (cs_ptr->readers_ok);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_INIT, 0);
@@ -183,7 +183,7 @@ csect_initialize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
 
 #if !defined(WINDOWS)
   error_code = MUTEXATTR_DESTROY (mattr);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEXATTR_DESTROY, 0);
@@ -208,6 +208,7 @@ csect_initialize_entry (int cs_index)
   assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
+  cs_ptr->cs_index = cs_index;
   cs_ptr->name = css_Csect_name[cs_index];
   return csect_initialize_critical_section (cs_ptr);
 }
@@ -223,7 +224,7 @@ csect_finalize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
   int error_code = NO_ERROR;
 
   error_code = MUTEX_DESTROY (cs_ptr->lock);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
@@ -232,7 +233,7 @@ csect_finalize_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
     }
 
   error_code = COND_DESTROY (cs_ptr->readers_ok);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_DESTROY, 0);
@@ -271,6 +272,7 @@ csect_finalize_entry (int cs_index)
   assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
+  cs_ptr->cs_index = 0;
   cs_ptr->name = NULL;
   return csect_finalize_critical_section (cs_ptr);
 }
@@ -330,7 +332,7 @@ csect_wait_on_writer_queue (THREAD_ENTRY * thread_p,
 #endif				/* WINDOWS */
 {
   THREAD_ENTRY *prev_thread_p = NULL;
-  int error_code = NO_ERROR;
+  int err = NO_ERROR;
 
   thread_p->next_wait_thrd = NULL;
 
@@ -345,15 +347,64 @@ csect_wait_on_writer_queue (THREAD_ENTRY * thread_p,
       prev_thread_p = cs_ptr->waiting_writers_queue;
       while (prev_thread_p->next_wait_thrd != NULL)
 	{
+	  assert (prev_thread_p != thread_p);
+
 	  prev_thread_p = prev_thread_p->next_wait_thrd;
 	}
+
+      assert (prev_thread_p != thread_p);
       prev_thread_p->next_wait_thrd = thread_p;
     }
 
-  error_code = thread_suspend_with_other_mutex (thread_p, &cs_ptr->lock,
-						timeout, to);
+  while (true)
+    {
+      err = thread_suspend_with_other_mutex (thread_p, &cs_ptr->lock,
+					     timeout, to,
+					     THREAD_CSECT_WRITER_SUSPENDED);
 
-  return error_code;
+      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
+	  && thread_p->interrupted)
+	{
+	  /* check if i'm in the queue */
+	  prev_thread_p = cs_ptr->waiting_writers_queue;
+	  while (prev_thread_p != NULL)
+	    {
+	      if (prev_thread_p == thread_p)
+		{
+		  break;
+		}
+	      prev_thread_p = prev_thread_p->next_wait_thrd;
+	    }
+
+	  if (prev_thread_p != NULL)
+	    {
+	      continue;
+	    }
+
+	  /* In case I wake up by shutdown thread and there's not me
+	   * in the writers Q, I proceed anyway assuming that followings
+	   * occurred in order.
+	   *
+	   * 1. Critical section holder wakes me up after removing me
+	   *    from the writers Q.(mutex lock is not released yet).
+	   * 2. I wake up and then wait for the mutex to be released.
+	   * 3. The shutdown thread wakes me up by a server shutdown command.
+	   *    (resume_status is changed to THREAD_RESUME_DUE_TO_INTERRUPT)
+	   * 4. Critical section holder releases the mutex lock.
+	   * 5. I wake up with holding the mutex. Currently, resume_status of
+	   *    mine is THREAD_RESUME_DUE_TO_INTERRUPT
+	   *    and there's not me in the writers Q.
+	   */
+	}
+      else if (thread_p->resume_status != THREAD_CSECT_WRITER_RESUMED)
+	{
+	  assert (0);
+	}
+
+      break;
+    }
+
+  return err;
 }
 
 #if defined(WINDOWS)
@@ -369,7 +420,7 @@ csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p,
 #endif				/* WINDOWS */
 {
   THREAD_ENTRY *prev_thread_p = NULL;
-  int error_code = NO_ERROR;
+  int err = NO_ERROR;
 
   thread_p->next_wait_thrd = NULL;
 
@@ -384,15 +435,64 @@ csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p,
       prev_thread_p = cs_ptr->waiting_promoters_queue;
       while (prev_thread_p->next_wait_thrd != NULL)
 	{
+	  assert (prev_thread_p != thread_p);
+
 	  prev_thread_p = prev_thread_p->next_wait_thrd;
 	}
+
+      assert (prev_thread_p != thread_p);
       prev_thread_p->next_wait_thrd = thread_p;
     }
 
-  error_code = thread_suspend_with_other_mutex (thread_p, &cs_ptr->lock,
-						timeout, to);
+  while (1)
+    {
+      err = thread_suspend_with_other_mutex (thread_p, &cs_ptr->lock,
+					     timeout, to,
+					     THREAD_CSECT_PROMOTER_SUSPENDED);
 
-  return error_code;
+      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
+	  && thread_p->interrupted)
+	{
+	  /* check if i'm in the queue */
+	  prev_thread_p = cs_ptr->waiting_promoters_queue;
+	  while (prev_thread_p != NULL)
+	    {
+	      if (prev_thread_p == thread_p)
+		{
+		  break;
+		}
+	      prev_thread_p = prev_thread_p->next_wait_thrd;
+	    }
+
+	  if (prev_thread_p != NULL)
+	    {
+	      continue;
+	    }
+
+	  /* In case I wake up by shutdown thread and there's not me
+	   * in the promoters Q, I proceed anyway assuming that followings
+	   * occurred in order.
+	   *
+	   * 1. Critical section holder wakes me up after removing me
+	   *    from the promoters Q.(mutex lock is not released yet).
+	   * 2. I wake up and then wait for the mutex to be released.
+	   * 3. The shutdown thread wakes me up by a server shutdown command.
+	   *    (resume_status is changed to THREAD_RESUME_DUE_TO_INTERRUPT)
+	   * 4. Critical section holder releases the mutex lock.
+	   * 5. I wake up with holding the mutex. Currently, resume_status of
+	   *    mine is THREAD_RESUME_DUE_TO_INTERRUPT
+	   *    and there's not me in the promoters Q.
+	   */
+	}
+      else if (thread_p->resume_status != THREAD_CSECT_PROMOTER_RESUMED)
+	{
+	  assert (0);
+	}
+
+      break;
+    }
+
+  return err;
 }
 
 static int
@@ -408,7 +508,8 @@ csect_wakeup_waiting_writer (CSS_CRITICAL_SECTION * cs_ptr)
       cs_ptr->waiting_writers_queue = waiting_thread_p->next_wait_thrd;
       waiting_thread_p->next_wait_thrd = NULL;
 
-      error_code = thread_wakeup (waiting_thread_p);
+      error_code = thread_wakeup (waiting_thread_p,
+				  THREAD_CSECT_WRITER_RESUMED);
     }
 
   return error_code;
@@ -427,7 +528,8 @@ csect_wakeup_waiting_promoter (CSS_CRITICAL_SECTION * cs_ptr)
       cs_ptr->waiting_promoters_queue = waiting_thread_p->next_wait_thrd;
       waiting_thread_p->next_wait_thrd = NULL;
 
-      error_code = thread_wakeup (waiting_thread_p);
+      error_code = thread_wakeup (waiting_thread_p,
+				  THREAD_CSECT_PROMOTER_RESUMED);
     }
 
   return error_code;
@@ -460,7 +562,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
     }
 
   MUTEX_LOCK (error_code, cs_ptr->lock);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -489,10 +591,10 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 						       INF_WAIT, NULL);
 
 	      cs_ptr->waiting_writers--;
-	      if (error_code != 0)
+	      if (error_code != NO_ERROR)
 		{
 		  r = MUTEX_UNLOCK (cs_ptr->lock);
-		  if (r != 0)
+		  if (r != NO_ERROR)
 		    {
 		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 					   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -513,10 +615,10 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 		   * I have to yield to the waiter
 		   */
 		  error_code = csect_wakeup_waiting_promoter (cs_ptr);
-		  if (error_code != 0)
+		  if (error_code != NO_ERROR)
 		    {
 		      r = MUTEX_UNLOCK (cs_ptr->lock);
-		      if (r != 0)
+		      if (r != NO_ERROR)
 			{
 			  er_set_with_oserror (ER_ERROR_SEVERITY,
 					       ARG_FILE_LINE,
@@ -553,7 +655,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 	      if (error_code != TIMEDWAIT_GET_LK)
 		{
 		  r = MUTEX_UNLOCK (cs_ptr->lock);
-		  if (r != 0)
+		  if (r != NO_ERROR)
 		    {
 		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 					   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -574,7 +676,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 	  else
 	    {
 	      error_code = MUTEX_UNLOCK (cs_ptr->lock);
-	      if (error_code != 0)
+	      if (error_code != NO_ERROR)
 		{
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				       ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -588,6 +690,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 
   /* rwlock will be < 0. It denotes that a writer owns the csect. */
   cs_ptr->rwlock--;
+
   /* record that I am the writer of the csect. */
   cs_ptr->owner = thread_p->tid;
   cs_ptr->tran_index = thread_p->tran_index;
@@ -601,7 +704,8 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
     }
 
   error_code = MUTEX_UNLOCK (cs_ptr->lock);
-  if (error_code != 0)
+
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -611,8 +715,12 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p,
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD,
-	      2, "critical section", PRM_MNT_WAITING_THREAD);
+      if (cs_ptr->cs_index > 0)
+	{
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_MNT_WAITING_THREAD, 2, cs_ptr->name,
+		  PRM_MNT_WAITING_THREAD);
+	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_enter_critical_section_as_reader: %6d.%06d"
 		    " %s total_enter %d total_nwaits %d max_wait %d.%06d"
@@ -675,7 +783,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
     }
 
   MUTEX_LOCK (error_code, cs_ptr->lock);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -700,11 +808,11 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 	  if (wait_secs == INF_WAIT)
 	    {
 	      cs_ptr->total_nwaits++;
-
+	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
 	      error_code = COND_WAIT (cs_ptr->readers_ok, cs_ptr->lock);
 #if defined(WINDOWS)
 	      MUTEX_LOCK (r, cs_ptr->lock);
-	      if (r != 0)
+	      if (r != NO_ERROR)
 		{
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				       ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -712,10 +820,10 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 		  return ER_CSS_PTHREAD_MUTEX_LOCK;
 		}
 #endif /* WINDOWS */
-	      if (error_code != 0)
+	      if (error_code != NO_ERROR)
 		{
 		  r = MUTEX_UNLOCK (cs_ptr->lock);
-		  if (r != 0)
+		  if (r != NO_ERROR)
 		    {
 		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 					   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -726,6 +834,18 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 				       ER_CSS_PTHREAD_COND_WAIT, 0);
 		  assert (0);
 		  return ER_CSS_PTHREAD_COND_WAIT;
+		}
+	      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
+		{
+		  r = MUTEX_UNLOCK (cs_ptr->lock);
+		  if (r != NO_ERROR)
+		    {
+		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+					   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+		      assert (0);
+		      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+		    }
+		  continue;
 		}
 	    }
 	  else if (wait_secs > 0)
@@ -739,11 +859,12 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 	      to.tv_nsec = 0;
 #endif /* WINDOWS */
 
+	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
 	      error_code =
 		COND_TIMEDWAIT (cs_ptr->readers_ok, cs_ptr->lock, to);
 #if defined(WINDOWS)
 	      MUTEX_LOCK (r, cs_ptr->lock);
-	      if (r != 0)
+	      if (r != NO_ERROR)
 		{
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				       ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -754,7 +875,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 	      if (error_code != TIMEDWAIT_GET_LK)
 		{
 		  r = MUTEX_UNLOCK (cs_ptr->lock);
-		  if (r != 0)
+		  if (r != NO_ERROR)
 		    {
 		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 					   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -770,11 +891,23 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 		    }
 		  return error_code;
 		}
+	      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
+		{
+		  r = MUTEX_UNLOCK (cs_ptr->lock);
+		  if (r != NO_ERROR)
+		    {
+		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+					   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+		      assert (0);
+		      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+		    }
+		  continue;
+		}
 	    }
 	  else
 	    {
 	      error_code = MUTEX_UNLOCK (cs_ptr->lock);
-	      if (error_code != 0)
+	      if (error_code != NO_ERROR)
 		{
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				       ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -798,7 +931,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
     }
 
   error_code = MUTEX_UNLOCK (cs_ptr->lock);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -808,8 +941,12 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p,
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD,
-	      2, "critical section", PRM_MNT_WAITING_THREAD);
+      if (cs_ptr->cs_index > 0)
+	{
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_MNT_WAITING_THREAD, 2, cs_ptr->name,
+		  PRM_MNT_WAITING_THREAD);
+	}
       er_log_debug (ARG_FILE_LINE, "csect_enter_critical_section: %6d.%06d"
 		    " %s total_enter %d total_nwaits %d max_wait %d.%06d"
 		    " total_wait %d.06d\n",
@@ -871,7 +1008,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
     }
 
   MUTEX_LOCK (error_code, cs_ptr->lock);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -918,11 +1055,11 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 	  if (wait_secs == INF_WAIT)
 	    {
 	      cs_ptr->total_nwaits++;
-
+	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
 	      error_code = COND_WAIT (cs_ptr->readers_ok, cs_ptr->lock);
 #if defined(WINDOWS)
 	      MUTEX_LOCK (r, cs_ptr->lock);
-	      if (r != 0)
+	      if (r != NO_ERROR)
 		{
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				       ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -930,10 +1067,10 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 		  return ER_CSS_PTHREAD_MUTEX_LOCK;
 		}
 #endif /* WINDOWS */
-	      if (error_code != 0)
+	      if (error_code != NO_ERROR)
 		{
 		  r = MUTEX_UNLOCK (cs_ptr->lock);
-		  if (r != 0)
+		  if (r != NO_ERROR)
 		    {
 		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 					   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -944,6 +1081,18 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 				       ER_CSS_PTHREAD_COND_WAIT, 0);
 		  assert (0);
 		  return ER_CSS_PTHREAD_COND_WAIT;
+		}
+	      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
+		{
+		  r = MUTEX_UNLOCK (cs_ptr->lock);
+		  if (r != NO_ERROR)
+		    {
+		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+					   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+		      assert (0);
+		      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+		    }
+		  continue;
 		}
 	    }
 	  else if (wait_secs > 0)
@@ -956,12 +1105,12 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 	      to.tv_sec = time (NULL) + wait_secs;
 	      to.tv_nsec = 0;
 #endif /* WINDOWS */
-
+	      thread_p->resume_status = THREAD_CSECT_READER_SUSPENDED;
 	      error_code =
 		COND_TIMEDWAIT (cs_ptr->readers_ok, cs_ptr->lock, to);
 #if defined(WINDOWS)
 	      MUTEX_LOCK (r, cs_ptr->lock);
-	      if (r != 0)
+	      if (r != NO_ERROR)
 		{
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				       ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -972,7 +1121,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 	      if (error_code != TIMEDWAIT_GET_LK)
 		{
 		  r = MUTEX_UNLOCK (cs_ptr->lock);
-		  if (r != 0)
+		  if (r != NO_ERROR)
 		    {
 		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 					   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -988,11 +1137,23 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 		    }
 		  return error_code;
 		}
+	      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
+		{
+		  r = MUTEX_UNLOCK (cs_ptr->lock);
+		  if (r != NO_ERROR)
+		    {
+		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+					   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+		      assert (0);
+		      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+		    }
+		  continue;
+		}
 	    }
 	  else
 	    {
 	      error_code = MUTEX_UNLOCK (cs_ptr->lock);
-	      if (error_code != 0)
+	      if (error_code != NO_ERROR)
 		{
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				       ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -1017,10 +1178,10 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 
   /* Someone can wait for being reader. Wakeup all readers. */
   error_code = COND_BROADCAST (cs_ptr->readers_ok);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       r = MUTEX_UNLOCK (cs_ptr->lock);
-      if (r != 0)
+      if (r != NO_ERROR)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -1035,7 +1196,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
     }
 
   error_code = MUTEX_UNLOCK (cs_ptr->lock);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -1045,8 +1206,12 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p,
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD,
-	      2, "critical section", PRM_MNT_WAITING_THREAD);
+      if (cs_ptr->cs_index > 0)
+	{
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_MNT_WAITING_THREAD, 2, cs_ptr->name,
+		  PRM_MNT_WAITING_THREAD);
+	}
       er_log_debug (ARG_FILE_LINE, "csect_demote_critical_section: %6d.%06d"
 		    " %s total_enter %d total_nwaits %d max_wait %d.%06d"
 		    " total_wait %d.06d\n",
@@ -1108,7 +1273,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
     }
 
   MUTEX_LOCK (error_code, cs_ptr->lock);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -1153,10 +1318,10 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 							 INF_WAIT, NULL);
 
 	      cs_ptr->waiting_writers--;
-	      if (error_code != 0)
+	      if (error_code != NO_ERROR)
 		{
 		  r = MUTEX_UNLOCK (cs_ptr->lock);
-		  if (r != 0)
+		  if (r != NO_ERROR)
 		    {
 		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 					   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -1168,7 +1333,6 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 		  assert (0);
 		  return ER_CSS_PTHREAD_COND_WAIT;
 		}
-
 	    }
 	  else if (wait_secs > 0)
 	    {
@@ -1190,7 +1354,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 	      if (error_code != TIMEDWAIT_GET_LK)
 		{
 		  r = MUTEX_UNLOCK (cs_ptr->lock);
-		  if (r != 0)
+		  if (r != NO_ERROR)
 		    {
 		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 					   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -1211,7 +1375,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 	  else
 	    {
 	      error_code = MUTEX_UNLOCK (cs_ptr->lock);
-	      if (error_code != 0)
+	      if (error_code != NO_ERROR)
 		{
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				       ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -1238,7 +1402,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
     }
 
   error_code = MUTEX_UNLOCK (cs_ptr->lock);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -1248,8 +1412,12 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p,
 
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD,
-	      2, "critical section", PRM_MNT_WAITING_THREAD);
+      if (cs_ptr->cs_index > 0)
+	{
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		  ER_MNT_WAITING_THREAD, 2, cs_ptr->name,
+		  PRM_MNT_WAITING_THREAD);
+	}
       er_log_debug (ARG_FILE_LINE, "csect_promote_critical_section: %6d.%06d"
 		    " %s total_enter %d total_nwaits %d max_wait %d.%06d"
 		    " total_wait %d.06d\n",
@@ -1296,7 +1464,7 @@ csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
   assert (cs_ptr != NULL);
 
   MUTEX_LOCK (error_code, cs_ptr->lock);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -1311,7 +1479,7 @@ csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
 	{
 	  /* in the middle of an outer critical section */
 	  error_code = MUTEX_UNLOCK (cs_ptr->lock);
-	  if (error_code != 0)
+	  if (error_code != NO_ERROR)
 	    {
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -1335,7 +1503,7 @@ csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
     {
       /* cs_ptr->rwlock == 0 */
       error_code = MUTEX_UNLOCK (cs_ptr->lock);
-      if (error_code != 0)
+      if (error_code != NO_ERROR)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -1362,7 +1530,7 @@ csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
   if (wp == true)
     {
       error_code = csect_wakeup_waiting_promoter (cs_ptr);
-      if (error_code != 0)
+      if (error_code != NO_ERROR)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_CSS_PTHREAD_COND_SIGNAL, 0);
@@ -1374,7 +1542,7 @@ csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
   else if (ww == true)
     {
       error_code = csect_wakeup_waiting_writer (cs_ptr);
-      if (error_code != 0)
+      if (error_code != NO_ERROR)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_CSS_PTHREAD_COND_SIGNAL, 0);
@@ -1386,7 +1554,7 @@ csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
   else
     {
       error_code = COND_BROADCAST (cs_ptr->readers_ok);
-      if (error_code != 0)
+      if (error_code != NO_ERROR)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_CSS_PTHREAD_COND_BROADCAST, 0);
@@ -1397,7 +1565,7 @@ csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr)
     }
 
   error_code = MUTEX_UNLOCK (cs_ptr->lock);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -1467,22 +1635,22 @@ csect_dump_statistics (FILE * fp)
  *   cs_index(in): css_Csect_array's index
  */
 int
-csect_check_own (int cs_index)
+csect_check_own (THREAD_ENTRY * thread_p, int cs_index)
 {
   CSS_CRITICAL_SECTION *cs_ptr;
-  THREAD_ENTRY *thrd;
-  bool is_owner;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, return_code;
 
   assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
 
   cs_ptr = &css_Csect_array[cs_index];
 
-  thrd = thread_get_thread_entry_info ();
-  assert (thrd != NULL);
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
 
   MUTEX_LOCK (error_code, cs_ptr->lock);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -1490,10 +1658,23 @@ csect_check_own (int cs_index)
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  is_owner = (cs_ptr->rwlock < 0 && cs_ptr->owner == thrd->tid);
+  if (cs_ptr->rwlock < 0 && cs_ptr->owner == thread_p->tid)
+    {
+      /* has the write lock */
+      return_code = 1;
+    }
+  else if (cs_ptr->rwlock > 0)
+    {
+      /* has the read lock */
+      return_code = 2;
+    }
+  else
+    {
+      return_code = 0;
+    }
 
   error_code = MUTEX_UNLOCK (cs_ptr->lock);
-  if (error_code != 0)
+  if (error_code != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -1501,5 +1682,5 @@ csect_check_own (int cs_index)
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  return is_owner;
+  return return_code;
 }

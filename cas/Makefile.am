@@ -40,7 +40,8 @@ QATOOLS_DIR = $(SRC)/qatools
 API_DIR = $(SRC)/api
 
 INCLUDES = @SRC_INC@ @EXT_INC@
-DEFS = @SYS_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
+#DEFS = @SYS_DEFS@ @VERSION_DEFS@ @DIR_DEFS@ -DCCI_DEBUG -DCAS_FOR_DBMS
+DEFS = @SYS_DEFS@ @VERSION_DEFS@ @DIR_DEFS@ -DCCI_DEBUG
 
 lib_LIBRARIES = libcas.a
 libcas_a_SOURCES = \
@@ -60,7 +61,7 @@ libcas_a_SOURCES = \
 	$(BROKER_DIR)/broker_util.c
 libcas_a_CFLAGS = $(AM_CFLAGS) -DLIBCAS_FOR_JSP -fPIC
 
-lib_LTLIBRARIES = libcascci.la libbrokeradmin.la
+lib_LTLIBRARIES = libcascci.la
 libcascci_la_SOURCES = \
 	$(CCI_DIR)/cas_cci.c \
 	$(CCI_DIR)/cci_util.c \
@@ -76,16 +77,3 @@ libcascci_la_SOURCES = \
 	
 libcascci_la_LDFLAGS = -version-number @LT_VERSION@
 
-libbrokeradmin_la_SOURCES = \
-	$(BROKER_DIR)/broker_admin_so.c \
-	$(BROKER_DIR)/broker_admin_pub.c \
-	$(BROKER_DIR)/broker_shm.c \
-	$(BROKER_DIR)/broker_error.c \
-	$(BROKER_DIR)/broker_util.c \
-	$(BROKER_DIR)/broker_config.c \
-	$(BROKER_DIR)/broker_max_heap.c \
-	$(BROKER_DIR)/broker_process_size.c \
-	$(BROKER_DIR)/broker_process_info.c \
-	$(BROKER_DIR)/broker_filename.c
-libbrokeradmin_la_CFLAGS = $(AM_CFLAGS) -D_UC_ADMIN_SO_ -DDIAG_DEVEL
-libbrokeradmin_la_LDFLAGS = -version-number @LT_VERSION@

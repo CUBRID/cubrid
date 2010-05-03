@@ -324,10 +324,10 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<Filter
-				Name="cmserver"
+				Name="cm_common"
 				>
 				<File
-					RelativePath="..\..\src\cmserver\cm_trigger_info_sa.c"
+					RelativePath="..\..\src\cm_common\cm_trigger_info_sa.c"
 					>
 				</File>
 			</Filter>

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -42,7 +42,9 @@
 #ifdef TRACE_LIST
 static int css_check_list (CSS_LIST * ptr);
 #endif /* TRACE_LIST */
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int compare_data (void *data, void *compare);
+#endif
 
 #ifdef TRACE_LIST
 /*
@@ -241,7 +243,6 @@ css_add_list_to_head (CSS_LIST * list, void *item)
 
   return NO_ERROR;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * compare_data() - compare function for list traverse
@@ -255,7 +256,6 @@ compare_data (void *data, void *compare)
   return ((data == compare) ? TRAV_STOP_DELETE : TRAV_CONT);
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_remove_list() - remove the first entry matching the value of item
  *   return: 0 if success, or error code

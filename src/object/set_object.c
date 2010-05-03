@@ -145,8 +145,9 @@ static int col_expand_blocks (COL * col, long blockindex, long blockoffset);
 static long non_null_index (COL * col, long lower, long upper);
 static long col_bsearch (COL * col, long lower, long upper, long *found,
 			 DB_VALUE * val, int do_coerce);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int col_is_all_null (COL * col);
-
+#endif
 static void free_set_reference (DB_COLLECTION * ref);
 
 #if !defined(SERVER_MODE)
@@ -1094,6 +1095,7 @@ col_has_null (COL * col)
   return 0;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * col_is_all_null() -
  *      return:
@@ -1142,6 +1144,7 @@ col_is_all_null (COL * col)
 
   return 1;
 }
+#endif
 
 /*
  * col_find() -
@@ -1216,7 +1219,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	   * Unsorted sets were introduced to deal with temporary/permanent
 	   * oids on the client, but are now also used as an optimization for
 	   * multisets, which are now sorted only on demand. Sorting them
-	   * on demand yeilds logrithmic instead of quadratic behavior.
+	   * on demand yields logarithmic instead of quadratic behavior.
 	   *
 	   */
 
@@ -2446,6 +2449,7 @@ set_change_owner (DB_COLLECTION * ref, MOP owner, int attid,
   return (new_);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #if !defined(SERVER_MODE)
 /* GARBAGE COLLECTION SUPPORT */
 
@@ -2469,7 +2473,8 @@ set_gc (SETREF * ref, void (*gcmarker) (MOP))
        */
     }
 }
-#endif
+#endif /* SERVER_MODE */
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* SET REFERENCE SHELLS */
 /* These are shell functions that resolve a set reference through a
@@ -2927,7 +2932,7 @@ set_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
   total_size =
     set_midxkey_get_vals_size (dbvals_domain_list, dbvals, total_size);
 
-  /* phase 3: initailize new_IDXbuf */
+  /* phase 3: initialize new_IDXbuf */
   new_IDXbuf = db_private_alloc (NULL, total_size);
   if (new_IDXbuf == NULL)
     {
@@ -4947,8 +4952,8 @@ setobj_get_domain (COL * set)
 }
 
 /*
- * swizzle_value() - This converts a value containing an OID into one containing             *
- *                   a DB_OBJECT*
+ * swizzle_value() - This converts a value containing an OID into one
+ *                   containing a DB_OBJECT*
  *      return: none
  *  val(in) : value to convert
  *  input(in) :
@@ -4978,7 +4983,7 @@ swizzle_value (DB_VALUE * val, int input)
     {
       return;
     }
-  /* We always convert incomming "NULL oid" references into a NULL value.
+  /* We always convert incoming "NULL oid" references into a NULL value.
    * This makes set elements consistent with OIDs assigned to attribute
    * values and is very important for proper comparison of VOBJ sets.
    */
@@ -5040,7 +5045,7 @@ assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest,
   TP_DOMAIN *domain;
   DB_VALUE temp;
 
-  /* On the client, always swizzle incomming OID's so we can properly check
+  /* On the client, always swizzle incoming OID's so we can properly check
    * their domains.  On the server, we'll have to trust it until
    * tp_domain_check understands how to do domain verification using
    * just OIDs.
@@ -5050,6 +5055,15 @@ assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest,
    */
   temp = *src;
   swizzle_value (&temp, 1);
+
+#if !defined(SERVER_MODE)
+  if (pt_is_reference_to_reusable_oid (&temp))
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+	      ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
+      return ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED;
+    }
+#endif
 
   domain = setobj_get_domain (set);
 
@@ -6124,8 +6138,8 @@ setobj_add_element (COL * col, DB_VALUE * value)
   PRIM_INIT_NULL (&temp);
   CHECKNULL (col);
   CHECKNULL (value);
-  error = assign_set_value (col, value, &temp, IMPLICIT);
 
+  error = assign_set_value (col, value, &temp, IMPLICIT);
   if (error != NO_ERROR)
     {
       return error;
@@ -6178,7 +6192,6 @@ setobj_put_element (COL * col, int index, DB_VALUE * value)
     }
 
   error = assign_set_value (col, value, &temp, IMPLICIT);
-
   if (error != NO_ERROR)
     {
       return error;
@@ -6226,8 +6239,8 @@ setobj_insert_element (COL * col, int index, DB_VALUE * value)
 	      1, index);
       return error;
     }
-  error = assign_set_value (col, value, &temp, IMPLICIT);
 
+  error = assign_set_value (col, value, &temp, IMPLICIT);
   if (error == NO_ERROR)
     {
       /* assign_set_value has done the necessary cloning */
@@ -6706,6 +6719,7 @@ setobj_assigned (COL * col)
 #endif
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #if !defined(SERVER_MODE)
 /* GARBAGE COLLECTION SUPPORT */
 
@@ -6741,6 +6755,7 @@ setobj_gc (SETOBJ * set, void (*gcmarker) (MOP))
     }
 }
 
+#endif
 #endif
 
 /*

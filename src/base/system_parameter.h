@@ -62,6 +62,9 @@ extern bool PRM_ER_LOG_DEBUG;
 #define PRM_NAME_ER_LOG_LEVEL "error_log_level"
 extern int PRM_ER_LOG_LEVEL;
 
+#define PRM_NAME_ER_LOG_WARNING "error_log_warning"
+extern bool PRM_ER_LOG_WARNING;
+
 #define PRM_NAME_ER_EXIT_ASK "inquire_on_exit"
 extern int PRM_ER_EXIT_ASK;
 
@@ -87,7 +90,7 @@ extern float PRM_HF_UNFILL_FACTOR;
 extern float PRM_BT_UNFILL_FACTOR;
 
 #define PRM_NAME_BT_OID_NBUFFERS "index_scan_oid_buffer_pages"
-extern int PRM_BT_OID_NBUFFERS;
+extern float PRM_BT_OID_NBUFFERS;
 
 #define PRM_NAME_BT_INDEX_SCAN_OID_ORDER "index_scan_in_oid_order"
 extern bool PRM_BT_INDEX_SCAN_OID_ORDER;
@@ -209,11 +212,17 @@ extern int PRM_MUTEX_BUSY_WAITING_CNT;
 #define PRM_NAME_PB_NUM_LRU_CHAINS "num_LRU_chains"
 extern int PRM_PB_NUM_LRU_CHAINS;
 
-#define PRM_NAME_PAGE_FLUSH_THREAD_WAKEUP_INTERVAL "page_flush_thread_wakeup_interval_in_secs"
-extern int PRM_PAGE_FLUSH_THREAD_WAKEUP_INTERVAL;
+#define PRM_NAME_PAGE_BG_FLUSH_INTERVAL_MSECS "page_flush_interval_in_msecs"
+extern int PRM_PAGE_BG_FLUSH_INTERVAL_MSEC;
 
-#define PRM_NAME_NUM_PAGES_PER_BGFLUSH "num_pages_per_bgflush"
-extern int PRM_NUM_PAGES_PER_BGFLUSH;
+#define PRM_NAME_ADAPTIVE_FLUSH_CONTROL "adaptive_flush_control"
+extern bool PRM_ADAPTIVE_FLUSH_CONTROL;
+
+#define PRM_NAME_MAX_FLUSH_PAGES_PER_SECOND "max_flush_pages_per_second"
+extern int PRM_MAX_FLUSH_PAGES_PER_SECOND;
+
+#define PRM_NAME_PB_SYNC_ON_NFLUSH "sync_on_nflush"
+extern int PRM_PB_SYNC_ON_NFLUSH;
 
 #define PRM_NAME_ORACLE_STYLE_OUTERJOIN "oracle_style_outerjoin"
 extern bool PRM_ORACLE_STYLE_OUTERJOIN;
@@ -231,7 +240,7 @@ extern int PRM_MAX_OUTER_CARD_OF_IDXJOIN;
 extern bool PRM_ORACLE_STYLE_EMPTY_STRING;
 
 #define PRM_NAME_SUPPRESS_FSYNC "suppress_fsync"
-extern bool PRM_SUPPRESS_FSYNC;
+extern int PRM_SUPPRESS_FSYNC;
 
 #define PRM_NAME_CALL_STACK_DUMP_ON_ERROR "call_stack_dump_on_error"
 extern bool PRM_CALL_STACK_DUMP_ON_ERROR;
@@ -254,8 +263,10 @@ extern bool PRM_AUTO_RESTART_SERVER;
 #define PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES "max_plan_cache_entries"
 extern int PRM_XASL_MAX_PLAN_CACHE_ENTRIES;
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 #define PRM_NAME_XASL_MAX_PLAN_CACHE_CLONES "max_plan_cache_clones"
 extern int PRM_XASL_MAX_PLAN_CACHE_CLONES;
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 #define PRM_NAME_XASL_PLAN_CACHE_TIMEOUT "plan_cache_timeout"
 extern int PRM_XASL_PLAN_CACHE_TIMEOUT;
@@ -280,6 +291,42 @@ extern int PRM_HA_SERVER_STATE;
 
 #define PRM_NAME_HA_LOG_APPLIER_STATE "ha_log_applier_state"
 extern int PRM_HA_LOG_APPLIER_STATE;
+
+#define PRM_NAME_HA_NODE_LIST "ha_node_list"
+extern const char *PRM_HA_NODE_LIST;
+
+#define PRM_NAME_HA_PORT_ID "ha_port_id"
+extern int PRM_HA_PORT_ID;
+
+#define PRM_NAME_HA_INIT_TIMER_IN_MSECS "ha_init_timer_in_msec"
+extern int PRM_HA_INIT_TIMER_IN_MSECS;
+
+#define PRM_NAME_HA_HEARTBEAT_INTERVAL_IN_MSECS "ha_heartbeat_interval_in_msecs"
+extern int PRM_HA_HEARTBEAT_INTERVAL_IN_MSECS;
+
+#define PRM_NAME_HA_CALC_SCORE_INTERVAL_IN_MSECS "ha_calc_score_interval_in_msecs"
+extern int PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS;
+
+#define PRM_NAME_HA_FAILOVER_WAIT_TIME_IN_MSECS "ha_failover_wait_time_in_msecs"
+extern int PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS;
+
+#define PRM_NAME_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS "ha_process_start_confirm_interval_in_msecs"
+extern int PRM_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS;
+
+#define PRM_NAME_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS "ha_process_dereg_confirm_interval_in_msecs"
+extern int PRM_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS;
+
+#define PRM_NAME_HA_MAX_PROCESS_START_CONFIRM "ha_max_process_start_confirm"
+extern int PRM_HA_MAX_PROCESS_START_CONFIRM;
+
+#define PRM_NAME_HA_MAX_PROCESS_DEREG_CONFIRM "ha_max_process_dereg_confirm"
+extern int PRM_HA_MAX_PROCESS_DEREG_CONFIRM;
+
+#define PRM_NAME_HA_CHANGEMODE_INTERVAL_IN_MSEC "ha_changemode_interval_in_msecs"
+extern int PRM_HA_CHANGEMODE_INTERVAL_IN_MSECS;
+
+#define PRM_NAME_HA_MAX_HEARTBEAT_GAP "ha_max_heartbeat_gap"
+extern int PRM_HA_MAX_HEARTBEAT_GAP;
 
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 extern bool PRM_JAVA_STORED_PROCEDURE;
@@ -386,6 +433,9 @@ extern bool PRM_READ_ONLY_MODE;
 #define PRM_NAME_MNT_WAITING_THREAD "monitor_waiting_thread"
 extern int PRM_MNT_WAITING_THREAD;
 
+#define PRM_NAME_MNT_STATS_THRESHOLD "monitor_stats_threshold"
+extern int *PRM_MNT_STATS_THRESHOLD;
+
 #define PRM_NAME_SERVICE_SERVICE_LIST "service::service"
 extern const char *PRM_SERVICE_SERVICE_LIST;
 
@@ -393,6 +443,8 @@ extern const char *PRM_SERVICE_SERVICE_LIST;
 extern const char *PRM_SERVICE_SERVER_LIST;
 
 extern int sysprm_load_and_init (const char *db_name, const char *conf_file);
+extern int sysprm_reload_and_init (const char *db_name,
+				   const char *conf_file);
 extern void sysprm_final (void);
 extern void sysprm_dump_parameters (FILE * fp);
 extern void sysprm_dump_server_parameters (FILE * fp);

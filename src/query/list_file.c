@@ -197,8 +197,10 @@ static int qfile_compare_tuple_values (QFILE_TUPLE tplp1, QFILE_TUPLE tplp2,
 				       TP_DOMAIN * domain, int *cmp);
 static int qfile_unify_types (QFILE_LIST_ID * list_id1,
 			      QFILE_LIST_ID * list_id2);
+#if defined (CUBRID_DEBUG)
 static void qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 			       QFILE_TUPLE tpl);
+#endif
 static void qfile_initialize_page_header (PAGE_PTR page_p);
 static void qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p,
 						   PAGE_PTR page_p,
@@ -963,6 +965,7 @@ qfile_locate_tuple_value_r (QFILE_TUPLE tuple, int index,
     }
 }
 
+#if defined (CUBRID_DEBUG)
 /*
  * qfile_print_tuple () - Prints the tuple content associated with the type list
  *   return: none
@@ -1025,6 +1028,7 @@ qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p,
 
   fprintf (stdout, " }\n");
 }
+#endif
 
 static void
 qfile_initialize_page_header (PAGE_PTR page_p)
@@ -1097,7 +1101,7 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl_p, int size,
 						     &xasl_id_p->temp_vfid,
 						     vpid_array, &nth_page,
 						     QFILE_PAGE_EXTENDS, NULL,
-						     NULL, NULL) == NULL)
+						     NULL, NULL, NULL) == NULL)
 		{
 		  goto error;
 		}
@@ -1172,7 +1176,7 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl_p, int size,
 error:
   if (prev_page_p)
     {
-      pgbuf_unfix (thread_p, prev_page_p);
+      pgbuf_unfix_and_init (thread_p, prev_page_p);
     }
   file_destroy (thread_p, &xasl_id_p->temp_vfid);
   XASL_ID_SET_NULL (xasl_id_p);
@@ -1207,7 +1211,7 @@ qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
   if (*size_p <= 0
       || (*xasl_p = (char *) db_private_alloc (thread_p, *size_p)) == NULL)
     {
-      pgbuf_unfix (thread_p, cur_page_p);
+      pgbuf_unfix_and_init (thread_p, cur_page_p);
       return 0;
     }
 
@@ -1227,7 +1231,7 @@ qfile_load_xasl (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
       s -= xasl_page_size;
       p += xasl_page_size;
 
-      pgbuf_unfix (thread_p, cur_page_p);
+      pgbuf_unfix_and_init (thread_p, cur_page_p);
       if (!VPID_ISNULL (&next_vpid))
 	{
 	  cur_page_p = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE,
@@ -2189,8 +2193,6 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 	}
     }
 
-
-
 #if defined(SERVER_MODE)
   error = qmgr_get_query_error_with_entry (query_entry_p);
   if (error < 0)
@@ -2326,21 +2328,27 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 #if 0				/* async wakeup */
 		      tfile_vfid_p->wait_page_ptr = page_p;
 #endif /* 0 */
-		      thread_suspend_with_other_mutex
-			(tfile_vfid_p->membuf_thread_p,
-			 &tfile_vfid_p->membuf_mutex, INF_WAIT, NULL);
+		      thread_suspend_with_other_mutex (tfile_vfid_p->
+						       membuf_thread_p,
+						       &tfile_vfid_p->
+						       membuf_mutex,
+						       INF_WAIT, NULL,
+						       THREAD_QMGR_MEMBUF_PAGE_SUSPENDED);
 		    }
 		  MUTEX_UNLOCK (tfile_vfid_p->membuf_mutex);
 
 		  error = er_errid ();
-		  if (error != NO_ERROR)
+		  if (error != NO_ERROR ||
+		      (thread_p->resume_status ==
+		       THREAD_RESUME_DUE_TO_INTERRUPT
+		       && thread_p->interrupted))
 		    {
 		      /*
 		       * async query got an error or interrupted before
 		       * completing this query
 		       */
 		      qmgr_free_old_page (thread_p, page_p, tfile_vfid_p);
-		      return error;
+		      return (error == NO_ERROR) ? ER_INTERRUPTED : error;
 		    }
 
 		  QFILE_GET_NEXT_VPID (&next_vpid, page_p);
@@ -2365,9 +2373,9 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 
 	  /* interrupted? */
 	  error = er_errid ();
-	  if (error == ER_INTERRUPT)
+	  if (error == ER_INTERRUPTED)
 	    {
-	      return ER_INTERRUPT;
+	      return ER_INTERRUPTED;
 	    }
 
 	  error = qmgr_get_query_error_with_id (thread_p, query_id);
@@ -3026,8 +3034,8 @@ qfile_copy_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_ID * to_list_id_p,
 
   while (true)
     {
-      qp_scan =
-	qfile_scan_list_next (thread_p, &scan_id, &tuple_record, PEEK);
+      qp_scan = qfile_scan_list_next (thread_p, &scan_id, &tuple_record,
+				      PEEK);
       if (qp_scan != S_SUCCESS)
 	{
 	  break;
@@ -3085,24 +3093,25 @@ qfile_union_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id1_p,
 
   if (qfile_unify_types (result_list_id_p, list_id2_p) != NO_ERROR)
     {
-      qfile_close_and_free_list_file (thread_p, result_list_id_p);
-      return NULL;
+      goto end;
     }
 
   if (qfile_copy_tuple (thread_p, result_list_id_p, list_id1_p) != NO_ERROR)
     {
-      qfile_close_and_free_list_file (thread_p, result_list_id_p);
-      return NULL;
+      goto end;
     }
 
   if (qfile_copy_tuple (thread_p, result_list_id_p, list_id2_p) != NO_ERROR)
     {
-      qfile_close_and_free_list_file (thread_p, result_list_id_p);
-      return NULL;
+      goto end;
     }
 
   qfile_close_list (thread_p, result_list_id_p);
   return result_list_id_p;
+
+end:
+  qfile_close_and_free_list_file (thread_p, result_list_id_p);
+  return NULL;
 }
 
 /*
@@ -3148,7 +3157,7 @@ qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tuple_record_p, int tuple_size)
   return NO_ERROR;
 }
 
-
+#if defined (CUBRID_DEBUG)
 /*
  * qfile_print_list () - Dump the content of the list file to the standard output
  *   return: none
@@ -3184,7 +3193,7 @@ qfile_print_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
 
   qfile_close_scan (thread_p, &scan_id);
 }
-
+#endif
 
 /*
  * Sorting Related Routines
@@ -4394,9 +4403,8 @@ qfile_get_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p,
 
 	  if (ovfl_vpid.pageid != NULL_PAGEID)
 	    {
-	      page_p =
-		qmgr_get_old_page (thread_p, &ovfl_vpid,
-				   list_id_p->tfile_vfid);
+	      page_p = qmgr_get_old_page (thread_p, &ovfl_vpid,
+					  list_id_p->tfile_vfid);
 	      if (page_p == NULL)
 		{
 		  return ER_FAILED;
@@ -4674,8 +4682,9 @@ qfile_retrieve_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p,
       /* tuple has overflow pages */
       if (peek)
 	{
-	  if (qfile_get_tuple_from_current_list
-	      (thread_p, scan_id_p, &scan_id_p->tplrec) != NO_ERROR)
+	  if (qfile_get_tuple_from_current_list (thread_p, scan_id_p,
+						 &scan_id_p->tplrec)
+	      != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -4683,8 +4692,8 @@ qfile_retrieve_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p,
 	}
       else
 	{
-	  if (qfile_get_tuple_from_current_list
-	      (thread_p, scan_id_p, tuple_record_p) != NO_ERROR)
+	  if (qfile_get_tuple_from_current_list (thread_p, scan_id_p,
+						 tuple_record_p) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -4879,8 +4888,8 @@ qfile_scan_list (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p,
   qp_scan = (*scan_func) (thread_p, scan_id_p);
   if (qp_scan == S_SUCCESS)
     {
-      qp_scan =
-	qfile_retrieve_tuple (thread_p, scan_id_p, tuple_record_p, peek);
+      qp_scan = qfile_retrieve_tuple (thread_p, scan_id_p, tuple_record_p,
+				      peek);
     }
 
   return qp_scan;
@@ -4965,7 +4974,6 @@ qfile_close_scan (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p)
   if (scan_id_p->tplrec.tpl != NULL)
     {
       db_private_free_and_init (thread_p, scan_id_p->tplrec.tpl);
-      scan_id_p->tplrec.tpl = NULL;
       scan_id_p->tplrec.size = 0;
     }
 
@@ -5628,6 +5636,7 @@ qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p, FILE * fp)
   return NO_ERROR;
 }
 
+#if defined (CUBRID_DEBUG)
 /*
  * qfile_dump_list_cache () -
  *   return:
@@ -5664,6 +5673,7 @@ qfile_dump_list_cache (THREAD_ENTRY * thread_p, const char *fname)
 
   return rc;
 }
+#endif
 
 /*
  * qfile_add_uncommitted_list_cache_entry () - Append a list cahe entry to the list
@@ -6619,4 +6629,16 @@ qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p,
 			list_id_p->tfile_vfid);
 
   return NO_ERROR;
+}
+
+/*
+ * qfile_has_next_page() - returns whether the page has the next page or not.
+ *   If false, that means the page is the last page of the list file.
+ *  return: true/false
+ *  page_p(in):
+ */
+bool
+qfile_has_next_page (PAGE_PTR page_p)
+{
+  return (QFILE_GET_NEXT_PAGE_ID (page_p) != NULL_PAGEID);
 }

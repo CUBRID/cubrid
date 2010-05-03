@@ -864,8 +864,8 @@ extern char *or_pack_double (char *ptr, double number);
 extern char *or_pack_time (char *ptr, DB_TIME time);
 extern char *or_pack_date (char *ptr, DB_DATE date);
 extern char *or_pack_monetary (char *ptr, DB_MONETARY * money);
-#endif
 extern char *or_pack_utime (char *ptr, DB_UTIME utime);
+#endif
 extern char *or_pack_short (char *ptr, short number);
 extern char *or_pack_string (char *ptr, const char *string);
 extern char *or_pack_string_with_length (char *ptr, char *string, int length);
@@ -914,8 +914,8 @@ extern char *or_unpack_double (char *ptr, double *number);
 extern char *or_unpack_time (char *ptr, DB_TIME * time);
 extern char *or_unpack_date (char *ptr, DB_DATE * date);
 extern char *or_unpack_monetary (char *ptr, DB_MONETARY * money);
-#endif
 extern char *or_unpack_utime (char *ptr, DB_UTIME * utime);
+#endif
 extern char *or_unpack_string (char *ptr, char **string);
 extern char *or_unpack_string_nocopy (char *ptr, char **string);
 extern char *or_unpack_errcode (char *ptr, int *error);
@@ -949,7 +949,9 @@ extern char *or_unpack_ptr (char *ptr, UINTPTR * ptrval);
 
 /* pack/unpack support functions */
 extern int or_packed_string_length (const char *string);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_align_length (int length);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern int or_packed_varbit_length (int bitlen);
 extern int or_packed_varchar_length (int charlen);
 
@@ -1025,8 +1027,8 @@ extern int or_skip_varbit_remainder (OR_BUF * buf, int bitlen);
 extern int or_advance (OR_BUF * buf, int offset);
 extern int or_seek (OR_BUF * buf, int psn);
 extern int or_pad (OR_BUF * buf, int length);
-extern int or_length_string (char *string);
 #if defined(ENABLE_UNUSED_FUNCTION)
+extern int or_length_string (char *string);
 extern int or_length_binary (DB_BINARY * binary);
 #endif
 

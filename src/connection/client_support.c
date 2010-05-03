@@ -165,6 +165,7 @@ css_client_init (int sockid, const char *server_name, const char *host_name)
   return error;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * css_send_request_to_server() - send a request to a server
  *   return: request id
@@ -201,6 +202,7 @@ css_send_request_to_server (char *host, int request, char *arg_buffer,
 
   return (css_make_eid (entry->id, rid));
 }
+#endif
 
 /*
  * css_send_request_to_server_with_buffer() - send a request to server
@@ -601,11 +603,11 @@ css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
 {
   CSS_MAP_ENTRY *entry;
   int errid;
-  fd_set rfds;
 #if !defined (WINDOWS)
   struct timeval tv;
-#endif /* WINDOWS */
+  fd_set rfds;
   int n;
+#endif /* WINDOWS */
 
   entry = css_return_entry_from_eid (eid, css_Client_anchor);
   if (entry != NULL)

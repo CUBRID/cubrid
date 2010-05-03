@@ -133,7 +133,6 @@ static double log3 (double);
 
 static void qo_init_planvec (QO_PLANVEC *);
 static void qo_uninit_planvec (QO_PLANVEC *);
-static void qo_dump_planvec (QO_PLANVEC *, FILE *, int);
 static QO_PLAN_COMPARE_RESULT qo_check_planvec (QO_PLANVEC *, QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_cmp_planvec (QO_PLANVEC *, QO_PLAN *);
 static QO_PLAN *qo_find_best_plan_on_planvec (QO_PLANVEC *, double);
@@ -142,7 +141,11 @@ static QO_INFO *qo_alloc_info (QO_PLANNER *, BITSET *, BITSET *, BITSET *,
 			       double);
 static void qo_free_info (QO_INFO *);
 static void qo_detach_info (QO_INFO *);
+#if defined (CUBRID_DEBUG)
+static void qo_dump_planvec (QO_PLANVEC *, FILE *, int);
 static void qo_dump_info (QO_INFO *, FILE *);
+static void qo_dump_planner_info (QO_PLANNER *, QO_PARTITION *, FILE *);
+#endif
 static QO_PLAN *qo_find_best_nljoin_inner_plan_on_info (QO_PLAN *, QO_INFO *,
 							JOIN_TYPE);
 static QO_PLAN *qo_find_best_plan_on_info (QO_INFO *, QO_EQCLASS *, double);
@@ -161,7 +164,6 @@ static int qo_compute_projected_size (QO_PLANNER *, BITSET *);
 static QO_PLANNER *qo_alloc_planner (QO_ENV *);
 static void qo_clean_planner (QO_PLANNER *);
 static QO_PLAN *qo_search_planner (QO_PLANNER *);
-static void qo_dump_planner_info (QO_PLANNER *, QO_PARTITION *, FILE *);
 
 static QO_PLAN *qo_search_partition (QO_PLANNER *,
 				     QO_PARTITION *, QO_EQCLASS *, BITSET *);
@@ -1488,9 +1490,35 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* selectivity of the index terms */
   sel = 1.0;
+  n = index_entryp->col_num;
+
+  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (index_entryp->type)
+      && n == index_entryp->nsegs)
+    {
+      assert (n > 0);
+
+      for (i = 0; i < n; i++)
+	{
+	  if (bitset_is_empty (&index_entryp->seg_equal_terms[i]))
+	    {
+	      break;
+	    }
+	}
+
+      if (i == n)
+	{
+	  /* When the index is a unique family and all of index columns
+	   * are specified in the equal conditions,
+	   * the cardinality of the scan will 0 or 1.
+	   * In this case we will make the scan cost to zero,
+	   * thus to force the optimizer to select this scan.
+	   */
+	  qo_zero_cost (planp);
+	  return;
+	}
+    }
 
   i = 0;
-  n = index_entryp->col_num;
 
   pkeys_num = MIN (n, cum_statsp->key_size);
   for (t = bitset_iterate (&(planp->plan_un.scan.terms), &iter);
@@ -3238,8 +3266,10 @@ qo_plan_discard (QO_PLAN * plan)
       qo_plan_del_ref (plan);
       qo_env_free (env);
 
+#if defined (CUBRID_DEBUG)
       if (dump_enable)
 	qo_print_stats (stdout);
+#endif
     }
 }
 
@@ -3371,6 +3401,7 @@ qo_plans_teardown (QO_ENV * env)
   qo_accumulating_plans = false;
 }
 
+#if defined (CUBRID_DEBUG)
 /*
  * qo_plans_stats () -
  *   return:
@@ -3384,6 +3415,7 @@ qo_plans_stats (FILE * f)
   fprintf (f, "%d/%d plans malloced/demalloced\n",
 	   qo_plans_malloced, qo_plans_demalloced);
 }
+#endif
 
 /*
  * qo_plan_dump () - Print a representation of the plan on the indicated
@@ -3610,6 +3642,7 @@ qo_uninit_planvec (QO_PLANVEC * planvec)
   planvec->nplans = 0;
 }
 
+#if defined (CUBRID_DEBUG)
 /*
  * qo_dump_planvec () -
  *   return:
@@ -3633,6 +3666,7 @@ qo_dump_planvec (QO_PLANVEC * planvec, FILE * f, int indent)
       indent = positive_indent;
     }
 }
+#endif
 
 /*
  * qo_check_planvec () -
@@ -4059,7 +4093,6 @@ qo_detach_info (QO_INFO * info)
 	  qo_uninit_planvec (&info->planvec[i]);
 	}
       free_and_init (info->planvec);
-      info->planvec = NULL;
       info->detached = true;
 
       qo_uninit_planvec (&info->best_no_order);
@@ -4891,7 +4924,7 @@ qo_examine_correlated_index (QO_INFO * info,
   node_indexp = QO_NODE_INDEXES (nodep);
   if (!node_indexp)
     {
-      /* inner dose not have any usable index */
+      /* inner does not have any usable index */
       return 0;
     }
 
@@ -5130,6 +5163,7 @@ qo_compute_projected_size (QO_PLANNER * planner, BITSET * segset)
   return size;
 }
 
+#if defined (CUBRID_DEBUG)
 /*
  * qo_dump_info () -
  *   return:
@@ -5186,6 +5220,7 @@ qo_info_stats (FILE * f)
   fprintf (f, "%d/%d info nodes allocated/deallocated\n",
 	   infos_allocated, infos_deallocated);
 }
+#endif
 
 /*
  * qo_alloc_planner () -
@@ -5294,6 +5329,7 @@ qo_planner_free (QO_PLANNER * planner)
   free_and_init (planner);
 }
 
+#if defined (CUBRID_DEBUG)
 /*
  * qo_dump_planner_info () -
  *   return:
@@ -5353,6 +5389,7 @@ qo_dump_planner_info (QO_PLANNER * planner, QO_PARTITION * partition,
 	}			/* for (i = i + 3; i < M; i++) */
     }
 }
+#endif
 
 /*
  * planner_visit_node () -
@@ -7540,10 +7577,12 @@ qo_search_partition (QO_PLANNER * planner,
       planner->best_info = planner->node_info[QO_NODE_IDX (node)];
     }
 
+#if defined (CUBRID_DEBUG)
   if (planner->env->dump_enable)
     {
       qo_dump_planner_info (planner, partition, stdout);
     }
+#endif
 
   QO_PARTITION_PLAN (partition) =
     planner->best_info

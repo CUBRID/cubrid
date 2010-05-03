@@ -39,7 +39,7 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
-/* Macros for defining attriubtes, methods and class methods for mm classes */
+/* Macros for defining attributes, methods and class methods for mm classes */
 #define ADD_ATTRIBUTE(class_obj, att_name, att_type, default_value)          \
   do {                                                                       \
     int x;                                                                   \

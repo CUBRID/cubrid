@@ -6960,7 +6960,7 @@ tr_dump (FILE * fpp)
  *
  * Note:
  *    Currently there is only a single trigger object class.
- *    This should only be called durint createdb.
+ *    This should only be called during createdb.
  */
 static int
 define_trigger_classes (void)

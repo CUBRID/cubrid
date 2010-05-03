@@ -243,8 +243,9 @@ extern int db_init (const char *program, int print_version,
 		    const char *vol_path,
 		    const char *log_path, const char *host_name,
 		    const bool overwrite, const char *comments,
-		    int npages, const char *addmore_vols_file,
-		    int desired_pagesize, int log_npages);
+		    const char *addmore_vols_file,
+		    int npages, int desired_pagesize,
+		    int log_npages, int desired_log_page_size);
 
 extern int db_check_single_query (DB_SESSION * session, int stmt_no);
 extern int db_parse_one_statement (DB_SESSION * session);
@@ -279,8 +280,10 @@ extern int db_value_alter_type (DB_VALUE * value, DB_TYPE type);
 extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time);
 extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date);
 #endif
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void *db_value_eh_key (DB_VALUE * value);
 extern int db_value_put_db_data (DB_VALUE * value, const DB_DATA * data);
+#endif
 extern DB_DATA *db_value_get_db_data (DB_VALUE * value);
 extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset,
 			    const char *str, const int size);

@@ -32,7 +32,7 @@
 #define SQL_LOG2_HISTO		2
 #define SQL_LOG2_MAX		(SQL_LOG2_PLAN | SQL_LOG2_HISTO)
 
-#if defined(WINDOWS)
+#if defined(WINDOWS) || defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define SQL_LOG2_EXEC_BEGIN(SQL_LOG2_VALUE, STMT_ID)
 #define SQL_LOG2_EXEC_END(SQL_LOG2_VALUE, STMT_ID, RES)
 #define SQL_LOG2_COMPILE_BEGIN(SQL_LOG2_VALUE, SQL_STMT)
@@ -96,6 +96,5 @@ extern void sql_log2_end (bool reset_filename_flag);
 extern void sql_log2_flush (void);
 extern void sql_log2_write (const char *fmt, ...);
 extern void sql_log2_append_file (char *file_name);
-extern void set_optimization_level (int level);
 
 #endif /* _CAS_SQL_LOG2_H_ */

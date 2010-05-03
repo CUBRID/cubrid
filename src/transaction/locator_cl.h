@@ -98,9 +98,11 @@ extern MOBJ locator_prepare_rename_class (MOP class_mop,
 					  const char *new_classname);
 extern OID *locator_assign_permanent_oid (MOP mop);
 extern MOP locator_find_class (const char *classname);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern LC_FIND_CLASSNAME locator_find_query_class (const char *classname,
 						   DB_FETCH_MODE purpose,
 						   MOP * class_mop);
+#endif
 extern LC_FIND_CLASSNAME locator_lockhint_classes (int num_classes,
 						   const char
 						   **many_classnames,
@@ -112,11 +114,14 @@ extern LIST_MOPS *locator_get_all_mops (MOP class_mop,
 					DB_FETCH_MODE class_purpose);
 extern LIST_MOPS *locator_get_all_class_mops (DB_FETCH_MODE purpose,
 					      int (*fun) (MOBJ class_obj));
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern LIST_MOPS *locator_get_all_nested_mops (MOP mop, int prune_level,
 					       DB_FETCH_MODE inst_purpose);
+#endif
 extern void locator_free_list_mops (LIST_MOPS * mops);
 extern void locator_synch_isolation_incons (void);
 extern void locator_set_sig_interrupt (int set);
+extern MOBJ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid);
 extern MOBJ locator_has_heap (MOP class_mop);
 
 typedef void (*LC_OIDMAP_CALLBACK) (LC_OIDMAP * map);

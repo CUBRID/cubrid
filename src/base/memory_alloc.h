@@ -51,7 +51,6 @@
 
 /*
  * Macros related to alignments
- * TODO: Check LP64
  */
 #define CHAR_ALIGNMENT          sizeof(char)
 #define SHORT_ALIGNMENT         sizeof(short)

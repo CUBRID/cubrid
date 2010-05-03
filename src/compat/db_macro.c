@@ -781,6 +781,7 @@ db_value_is_null (const DB_VALUE * value)
   return (value->domain.general_info.is_null != 0);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * db_value_eh_key() -
  * return :
@@ -826,6 +827,7 @@ db_value_put_db_data (DB_VALUE * value, const DB_DATA * data)
   value->data = *data;		/* structure copy */
   return NO_ERROR;
 }
+#endif
 
 /*
  * db_value_get_db_data()
@@ -863,7 +865,7 @@ db_value_alter_type (DB_VALUE * value, const DB_TYPE type)
  *          The C type to DB type conversion is not supported.
  *
  *     ER_OBJ_VALUE_CONVERSION_ERROR -
- *         An error occured while performing the requested conversion.
+ *         An error occurred while performing the requested conversion.
  *
  *     ER_OBJ_INVALID_ARGUMENTS - The value pointer is NULL.
  *
@@ -2989,7 +2991,7 @@ transfer_string (char *dst, int *xflen, int *outlen,
  * buf(out)   : pointer to destination buffer area
  * xflen(out) : Number of bits transfered from the src string to the buf.
  * outlen(out): pointer to a int field.  *outlen will equal 0 if no
- *              truncation occured and will equal the size of the destination
+ *              truncation occurred and will equal the size of the destination
  *              buffer in bytes needed to avoid truncation, otherwise.
  * buflen(in) : size of destination buffer area in bytes
  * src(in)    : pointer to source buffer area.
@@ -3058,7 +3060,7 @@ transfer_bit_string (char *buf, int *xflen, int *outlen,
  *               to character strings.  An elemental-unit will be a byte
  *               for all types except bit strings in are represented in bits.
  * outlen(out) : Pointer to a int field that will contain the length
- *               of the source if truncation occured and 0 otherwise.  This
+ *               of the source if truncation occurred and 0 otherwise.  This
  *               value will be in terms of bytes for all types.  <outlen>
  *               can be used to reallocate buffer space if the buffer
  *               was too small to contain the value.
@@ -3986,7 +3988,7 @@ unsupported_conversion:
  * coerce_char_to_dbvalue() - Coerce the C character string into the
  *                       desired type and place in a DB_VALUE container.
  * return :
- *     C_TO_VALUE_NOERROR                - No errors occured
+ *     C_TO_VALUE_NOERROR                - No errors occurred
  *     C_TO_VALUE_UNSUPPORTED_CONVERSION - The conversion to the db_value
  *                                         type is not supported
  * value(in/out): DB_VALUE container for result.  This also contains the DB
@@ -4185,7 +4187,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
  *              into the desired type and place in a DB_VALUE container.
  *
  * return :
- *     C_TO_VALUE_NOERROR                - no errors occured
+ *     C_TO_VALUE_NOERROR                - no errors occurred
  *     C_TO_VALUE_UNSUPPORTED_CONVERSION - The conversion to the db_value
  *                                         type is not supported.
  * value(out) : DB_VALUE container for result.  This also contains the DB
@@ -4466,10 +4468,10 @@ coerce_numeric_to_dbvalue (DB_VALUE * value, char *buf,
  * coerce_binary_to_dbvalue() - Coerce a C bit type into the desired type
  *                                 and place in a DB_VALUE container.
  * return  :
- *     C_TO_VALUE_NOERROR                - No errors occured
+ *     C_TO_VALUE_NOERROR                - No errors occurred
  *     C_TO_VALUE_UNSUPPORTED_CONVERSION - The conversion to the db_value
  *                                         type is not supported
- *     C_TO_VALUE_CONVERSION_ERROR       - An error occured during conversion
+ *     C_TO_VALUE_CONVERSION_ERROR       - An error occurred during conversion
  *     C_TO_VALUE_TRUNCATION_ERROR       - The input data was truncated
  *                                         during coercion
  * value(in/out) : DB_VALUE container for result.  This also contains the DB
@@ -4637,10 +4639,10 @@ coerce_binary_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
  * coerce_date_to_dbvalue() - Coerce a C date type into the desired type
  *                               and place in a DB_VALUE container.
  * return  :
- *     C_TO_VALUE_NOERROR                - No errors occured
+ *     C_TO_VALUE_NOERROR                - No errors occurred
  *     C_TO_VALUE_UNSUPPORTED_CONVERSION - The conversion to the db_value
  *                                         type is not supported
- *     C_TO_VALUE_CONVERSION_ERROR       - An error occured during conversion
+ *     C_TO_VALUE_CONVERSION_ERROR       - An error occurred during conversion
  *
  * value(in/out): DB_VALUE container for result. This also contains the DB
  *                type to convert to.
@@ -4717,10 +4719,10 @@ coerce_date_to_dbvalue (DB_VALUE * value, char *buf)
  * coerce_time_to_dbvalue() - Coerce a C time type into the desired type
  *                               and place in a DB_VALUE container.
  * return :
- *     C_TO_VALUE_NOERROR                - No errors occured.
+ *     C_TO_VALUE_NOERROR                - No errors occurred.
  *     C_TO_VALUE_UNSUPPORTED_CONVERSION - If the conversion to the db_value
  *                                         type is not supported.
- *     C_TO_VALUE_CONVERSION_ERROR       - An error occured during conversion.
+ *     C_TO_VALUE_CONVERSION_ERROR       - An error occurred during conversion.
  * value(in/out) : DB_VALUE container for result.  This also contains the DB
  *                 type to convert to.
  * buf(in)       : Pointer to data buffer.
@@ -4798,10 +4800,10 @@ coerce_time_to_dbvalue (DB_VALUE * value, char *buf)
  * coerce_timestamp_to_dbvalue() - Coerce a C timestamp type into the
  *                        desired type and place in a DB_VALUE container.
  * return :
- *     C_TO_VALUE_NOERROR                - No errors occured.
+ *     C_TO_VALUE_NOERROR                - No errors occurred.
  *     C_TO_VALUE_UNSUPPORTED_CONVERSION - If the conversion to the db_value
  *                                         type is not supported.
- *     C_TO_VALUE_CONVERSION_ERROR       - An error occured during conversion.
+ *     C_TO_VALUE_CONVERSION_ERROR       - An error occurred during conversion.
  *
  * value(in/out) : DB_VALUE container for result.  This also contains the DB
  *                 type to convert to.

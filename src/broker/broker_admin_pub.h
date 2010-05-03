@@ -36,19 +36,19 @@ int admin_isstarted_cmd (int);
 
 int admin_start_cmd (T_BROKER_INFO *, int, int);
 int admin_stop_cmd (int);
-int admin_add_cmd (int, char *);
-int admin_restart_cmd (int, char *, int);
-int admin_drop_cmd (int, char *);
-int admin_broker_on_cmd (int, char *);
-int admin_broker_off_cmd (int, char *);
-int admin_broker_suspend_cmd (int, char *);
-int admin_broker_resume_cmd (int, char *);
-int admin_broker_reset_cmd (int, char *);
+int admin_add_cmd (int, const char *);
+int admin_restart_cmd (int, const char *, int);
+int admin_drop_cmd (int, const char *);
+int admin_broker_on_cmd (int, const char *);
+int admin_broker_off_cmd (int, const char *);
+int admin_broker_suspend_cmd (int, const char *);
+int admin_broker_resume_cmd (int, const char *);
+int admin_broker_reset_cmd (int, const char *);
 int admin_broker_info_cmd (int);
-int admin_get_broker_status (int, char *);
-int admin_broker_job_first_cmd (int, char *, int);
-int admin_broker_conf_change (int, char *, char *, char *);
-int admin_del_cas_log (int master_shmid, char *broker, int asid);
+int admin_get_broker_status (int, const char *);
+int admin_broker_job_first_cmd (int, const char *, int);
+int admin_broker_conf_change (int, const char *, const char *, const char *);
+int admin_del_cas_log (int master_shmid, const char *broker, int asid);
 
 void admin_init_env (void);
 

@@ -282,7 +282,7 @@ static bool er_hasalready_initiated = false;
 static bool er_isa_null_device = false;
 static int er_Exit_ask = ER_EXIT_DEFAULT;
 
-static void er_evnet_sigpipe_handler (int sig);
+static void er_event_sigpipe_handler (int sig);
 static void er_event (void);
 static int er_event_init (void);
 static void er_event_final (void);
@@ -334,7 +334,6 @@ static PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
   er_log			/* ER_NOTIFICATION_SEVERITY */
 };
 
-
 /*
  * er_msglog_file_name - Find the error message log file name
  *   return: log file name
@@ -345,12 +344,11 @@ er_msglog_filename (void)
   return er_Msglog_file_name;
 }
 
-
 /*
  * er_event_sigpipe_handler
  */
 static void
-er_evnet_sigpipe_handler (int sig)
+er_event_sigpipe_handler (int sig)
 {
   _longjmp (er_Event_jmp_buf, 1);
 }
@@ -375,7 +373,7 @@ er_event (void)
 
 #if !defined(WINDOWS)
   saved_sig_handler =
-    os_set_signal_handler (SIGPIPE, er_evnet_sigpipe_handler);
+    os_set_signal_handler (SIGPIPE, er_event_sigpipe_handler);
 #endif /* not WINDOWS */
   if (_setjmp (er_Event_jmp_buf) == 0)
     {
@@ -413,7 +411,7 @@ er_event_init (void)
 
 #if !defined(WINDOWS)
   saved_sig_handler =
-    os_set_signal_handler (SIGPIPE, er_evnet_sigpipe_handler);
+    os_set_signal_handler (SIGPIPE, er_event_sigpipe_handler);
 #endif /* not WINDOWS */
   if (_setjmp (er_Event_jmp_buf) == 0)
     {
@@ -494,7 +492,7 @@ er_event_final (void)
 
 #if !defined(WINDOWS)
   saved_sig_handler =
-    os_set_signal_handler (SIGPIPE, er_evnet_sigpipe_handler);
+    os_set_signal_handler (SIGPIPE, er_event_sigpipe_handler);
 #endif /* not WINDOWS */
   if (_setjmp (er_Event_jmp_buf) == 0)
     {
@@ -565,7 +563,7 @@ er_init (const char *msglog_file_name, int exit_ask)
 #endif
     }
 
-  for (i = 0; i < DIM (er_builtin_msg); i++)
+  for (i = 0; i < (int) DIM (er_builtin_msg); i++)
     {
       if (er_cached_msg[i] && er_cached_msg[i] != er_builtin_msg[i])
 	{
@@ -865,7 +863,7 @@ er_start (THREAD_ENTRY * th_entry)
        * copy the silly message, things are going to be pretty tight
        * anyway, so just use the default version.
        */
-      for (i = 1; i < DIM (er_cached_msg); i++)
+      for (i = 1; i < (int) DIM (er_cached_msg); i++)
 	{
 	  const char *msg;
 	  char *tmp;
@@ -984,7 +982,7 @@ er_start (void)
        * copy the silly message, things are going to be pretty tight
        * anyway, so just use the default version.
        */
-      for (i = 1; i < DIM (er_cached_msg); i++)
+      for (i = 1; i < (int) DIM (er_cached_msg); i++)
 	{
 	  const char *msg;
 	  char *tmp;
@@ -1037,7 +1035,9 @@ er_final (bool do_global_final)
     {
       th_entry = thread_get_thread_entry_info ();
       if (th_entry == NULL)
-	goto exit;
+	{
+	  goto exit;
+	}
 
       if (th_entry->er_Msg != NULL)
 	{
@@ -1071,12 +1071,12 @@ er_final (bool do_global_final)
 	  logfile_opened = false;
 	}
 
-      for (i = 0; i < DIM (er_fmt_list); i++)
+      for (i = 0; i < (int) DIM (er_fmt_list); i++)
 	{
 	  er_clear_fmt (&er_fmt_list[i]);
 	}
 
-      for (i = 0; i < DIM (er_cached_msg); i++)
+      for (i = 0; i < (int) DIM (er_cached_msg); i++)
 	{
 	  if (er_cached_msg[i] != er_builtin_msg[i])
 	    {
@@ -1107,7 +1107,9 @@ er_final (void)
     {
       er_stack_clear ();
       if (er_Msglog != NULL && er_Msglog != stderr)
-	(void) fclose (er_Msglog);
+	{
+	  (void) fclose (er_Msglog);
+	}
       ER_FREE_AREA (er_Msg->msg_area);
       er_Msg->msg_area = er_emergency_buf;
       er_Msg->msg_area_size = sizeof (er_emergency_buf);
@@ -1117,7 +1119,7 @@ er_final (void)
 	}
       er_Msg->nargs = 0;
 
-      for (i = 0; i < DIM (er_fmt_list); i++)
+      for (i = 0; i < (int) DIM (er_fmt_list); i++)
 	{
 	  er_clear_fmt (&er_fmt_list[i]);
 	}
@@ -1125,7 +1127,7 @@ er_final (void)
       er_Msg = NULL;
     }
 
-  for (i = 0; i < DIM (er_cached_msg); i++)
+  for (i = 0; i < (int) DIM (er_cached_msg); i++)
     {
       if (er_cached_msg[i] != er_builtin_msg[i])
 	{
@@ -1183,6 +1185,7 @@ er_clear (void)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * er_fnerlog - Reset log error function
  *   return:
@@ -1207,6 +1210,7 @@ er_fnerlog (int severity, PTR_FNERLOG new_fnlog)
   return old_fnlog;
 
 }
+#endif
 
 /*
  * er_set - Set an error
@@ -1346,12 +1350,19 @@ er_set_internal (int severity, const char *file_name, const int line_no,
   size_t new_size;
   ER_FMT *er_fmt = NULL;
   int r;
+  int ret_val = NO_ERROR;
+  bool need_stack_pop = false;
 #if defined (SERVER_MODE)
   ER_MSG *er_Msg;
   THREAD_ENTRY *th_entry;
   th_entry = thread_get_thread_entry_info ();
   er_Msg = th_entry->er_Msg;
 #endif
+
+  if (er_hasalready_initiated == false)
+    {
+      return ER_FAILED;
+    }
 
   /*
    * Get the UNIX error message if needed. We need to get this as soon
@@ -1372,6 +1383,12 @@ er_set_internal (int severity, const char *file_name, const int line_no,
     (void) er_start ();
 #endif /* SERVER_MODE */
 
+  if ((severity == ER_NOTIFICATION_SEVERITY) && (er_Msg->err_id != NO_ERROR))
+    {
+      er_stack_push ();
+      need_stack_pop = true;
+    }
+
   /* Initialize the area... */
   er_Msg->err_id = err_id;
   er_Msg->severity = severity;
@@ -1388,7 +1405,8 @@ er_set_internal (int severity, const char *file_name, const int line_no,
       /*
        * Assumes that er_find_fmt() has already called er_emergency().
        */
-      return ER_FAILED;
+      ret_val = ER_FAILED;
+      goto end;
     }
 
   if (err_id >= ER_FAILED || err_id <= ER_LAST_ERROR)
@@ -1416,7 +1434,8 @@ er_set_internal (int severity, const char *file_name, const int line_no,
   if (er_make_room (new_size + 1) == ER_FAILED)
 #endif /* SERVER_MODE */
     {
-      return ER_FAILED;
+      ret_val = ER_FAILED;
+      goto end;
     }
 
   /*
@@ -1424,7 +1443,8 @@ er_set_internal (int severity, const char *file_name, const int line_no,
    */
   if (er_vsprintf (er_fmt, ap_ptr) == ER_FAILED)
     {
-      return ER_FAILED;
+      ret_val = ER_FAILED;
+      goto end;
     }
   if (os_error)
     {
@@ -1435,7 +1455,9 @@ er_set_internal (int severity, const char *file_name, const int line_no,
   /*
    * Call the logging function if any
    */
-  if (severity <= PRM_ER_LOG_LEVEL && er_Fnlog[severity] != NULL)
+  if (severity <= PRM_ER_LOG_LEVEL
+      && !(PRM_ER_LOG_WARNING == false && severity == ER_WARNING_SEVERITY)
+      && er_Fnlog[severity] != NULL)
     {
       r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
       if (r == NO_ERROR)
@@ -1473,7 +1495,14 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 	}
     }
 
-  return NO_ERROR;
+end:
+
+  if (need_stack_pop)
+    {
+      er_stack_pop ();
+    }
+
+  return ret_val;
 }
 
 /*
@@ -2205,7 +2234,9 @@ er_set_area_error (void *server_area)
     }
 
   /* Call the logging function if any */
-  if (severity <= PRM_ER_LOG_LEVEL && er_Fnlog[severity] != NULL)
+  if (severity <= PRM_ER_LOG_LEVEL
+      && !(PRM_ER_LOG_WARNING == false && severity == ER_WARNING_SEVERITY)
+      && er_Fnlog[severity] != NULL)
     {
       r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
       if (r == NO_ERROR)
@@ -2755,7 +2786,6 @@ er_find_fmt (int err_id, int num_args)
 {
   const char *msg;
   ER_FMT *fmt;
-  int msg_length;
   int r;
   bool entered_critical_section = false;
 

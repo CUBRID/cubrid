@@ -40,9 +40,13 @@ DBMT_DIR = $(SRC)/dbmt
 QATOOLS_DIR = $(SRC)/qatools
 
 INCLUDES = @SRC_INC@ @EXT_INC@
+#DEFS = @SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
+#	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_DBMS
 DEFS = @SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
 	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@
-BROKER_CAS_LIBS = @CS_LIB@ @CCI_LIB@
+
+BROKER_CAS_LIBS = @CS_LIB@
+LOG_RUNNER_LIBS = @CS_LIB@ @CCI_LIB@
 
 bin_PROGRAMS = cub_broker cubrid_broker cub_cas \
 	broker_monitor broker_changer \
@@ -115,7 +119,8 @@ cub_cas_SOURCES = \
 	$(BROKER_DIR)/broker_process_size.c \
 	$(BROKER_DIR)/cas_sql_log2.c \
 	$(BROKER_DIR)/broker_filename.c \
-	$(BROKER_DIR)/broker_error.c
+	$(BROKER_DIR)/broker_error.c \
+	$(BROKER_DIR)/cas_error.c
 cub_cas_CFLAGS = $(CFLAGS) -DCAS_CUBRID
 cub_cas_LDFLAGS = $(BROKER_CAS_LIBS)
 
@@ -129,7 +134,7 @@ broker_log_runner_SOURCES = \
 	$(BROKER_DIR)/cas_runner.c \
 	$(BROKER_DIR)/broker_log_util.c \
 	$(BROKER_DIR)/log_top_string.c
-broker_log_runner_LDFLAGS = $(BROKER_CAS_LIBS)
+broker_log_runner_LDFLAGS = $(LOG_RUNNER_LIBS)
 
 broker_log_top_SOURCES = \
 	$(BROKER_DIR)/broker_log_top.c \
@@ -140,4 +145,21 @@ broker_log_top_SOURCES = \
 	$(BROKER_DIR)/log_top_string.c \
 	$(BROKER_DIR)/broker_log_top_tran.c
 broker_log_top_LDFLAGS = $(BROKER_CAS_LIBS)
+
+
+lib_LTLIBRARIES = libbrokeradmin.la
+
+libbrokeradmin_la_SOURCES = \
+    $(BROKER_DIR)/broker_admin_so.c \
+    $(BROKER_DIR)/broker_admin_pub.c \
+    $(BROKER_DIR)/broker_shm.c \
+    $(BROKER_DIR)/broker_error.c \
+    $(BROKER_DIR)/broker_util.c \
+    $(BROKER_DIR)/broker_config.c \
+    $(BROKER_DIR)/broker_max_heap.c \
+    $(BROKER_DIR)/broker_process_size.c \
+    $(BROKER_DIR)/broker_process_info.c \
+    $(BROKER_DIR)/broker_filename.c
+libbrokeradmin_la_CFLAGS = $(AM_CFLAGS) -D_UC_ADMIN_SO_ -DDIAG_DEVEL
+libbrokeradmin_la_LDFLAGS = @CS_LIB@ -version-number @LT_VERSION@
 

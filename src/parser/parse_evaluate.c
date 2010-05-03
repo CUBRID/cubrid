@@ -37,14 +37,17 @@
 #include "parser_message.h"
 #include "execute_statement.h"
 #include "object_domain.h"
+#include "object_template.h"
 #include "work_space.h"
 #include "virtual_object.h"
 #include "server_interface.h"
 #include "arithmetic.h"
+#include "serial.h"
 #include "parser_support.h"
 #include "view_transform.h"
 #include "network_interface_cl.h"
 #include "xasl_support.h"
+#include "transform.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -58,8 +61,11 @@ static PT_NODE *pt_query_to_set_table (PARSER_CONTEXT * parser,
 static DB_VALUE *pt_set_table_to_db (PARSER_CONTEXT * parser,
 				     PT_NODE * subquery_in,
 				     DB_VALUE * db_value, int is_seq);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int pt_make_label_list (const void *key, void *data, void *args);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static int pt_free_label (const void *key, void *data, void *args);
+static int pt_associate_label_with_value (const char *label, DB_VALUE * val);
 
 
 /*
@@ -496,7 +502,7 @@ pt_get_one_tuple_from_list_id (PARSER_CONTEXT * parser,
  *   val(in): the DB_VALUE to be associated with label
  */
 
-int
+static int
 pt_associate_label_with_value (const char *label, DB_VALUE * val)
 {
   const char *key;
@@ -555,6 +561,102 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
   return NO_ERROR;
 }
 
+/*
+ * pt_associate_label_with_value_check_reference () - enter a label with
+ *                                     associated value into label_table
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   label(in): a string (aka interpreter variable) to be associated with val
+ *   val(in): the DB_VALUE to be associated with label
+ *
+ * Note:
+ * If it is passed an instance pointer in the val parameter the function also
+ * checks that it does not point to a reusable OID class instance. This is
+ * done in order to prevent accidental modifications on a different instance
+ * if the OID is reused.
+ */
+
+int
+pt_associate_label_with_value_check_reference (const char *label,
+					       DB_VALUE * val)
+{
+  if (pt_is_reference_to_reusable_oid (val))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
+      return ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED;
+    }
+  return pt_associate_label_with_value (label, val);
+}
+
+/*
+ * pt_is_reference_to_reusable_oid () - Returns true if the value passed in
+ *                                      is an instance of a reusable OID class
+ *   return: whether the value is an instance of a reusable OID class
+ *   val(in):
+ * Note:
+ * Instances of reusable OID classes are non-referable. References to such
+ * instances should be only used internally by the server/client process with
+ * great care.
+ */
+bool
+pt_is_reference_to_reusable_oid (DB_VALUE * val)
+{
+  DB_OBJECT *obj_class = NULL;
+  DB_TYPE vtype = DB_TYPE_NULL;
+
+  if (val == NULL)
+    {
+      return false;
+    }
+
+  vtype = DB_VALUE_TYPE (val);
+
+  if (vtype == DB_TYPE_OBJECT)
+    {
+      DB_OBJECT *obj = DB_GET_OBJECT (val);
+
+      if (obj == NULL)
+	{
+	  return false;
+	}
+
+      if (db_is_class (obj))
+	{
+	  return false;
+	}
+
+      obj_class = db_get_class (obj);
+      if (obj_class == NULL)
+	{
+	  return false;
+	}
+    }
+  else if (vtype == DB_TYPE_POINTER)
+    {
+      DB_OTMPL *obj_tmpl = (DB_OTMPL *) DB_GET_POINTER (val);
+
+      if (obj_tmpl == NULL)
+	{
+	  return false;
+	}
+
+      obj_class = obj_tmpl->classobj;
+      if (obj_class == NULL)
+	{
+	  return false;
+	}
+    }
+  else
+    {
+      return false;
+    }
+
+  if (sm_is_reuse_oid_class (obj_class))
+    {
+      return true;
+    }
+  return false;
+}
 
 /*
  * pt_find_value_of_label () - find label in label_table &
@@ -583,6 +685,7 @@ pt_find_value_of_label (const char *label)
     }
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pt_make_label_list () -  adds key value to a list of names
  *   return:  NO_ERROR (keep going) or allocation error
@@ -658,6 +761,7 @@ pt_find_labels (DB_NAMELIST ** list)
 
   return (error);
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * do_drop_variable () - remove interpreter variable(s) from the label table
@@ -951,7 +1055,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      /* cannot directly evaluate tree, since this may modifiy it */
+      /* cannot directly evaluate tree, since this may modify it */
       temp = parser_copy_tree (parser, tree);
 
       temp = mq_translate (parser, temp);
@@ -1206,7 +1310,9 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
   PT_TYPE_ENUM type1, type2, type3;
   TP_DOMAIN *domain;
   PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
+  MOP serial_class_mop, serial_mop;
   DB_IDENTIFIER serial_obj_id;
+  int cached_num;
   DB_VALUE oid_str_val;
   int found = 0, r = 0;
   char *serial_name = 0, *t = 0;
@@ -1298,21 +1404,31 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	      serial_name = (char *) arg1->info.value.data_value.str->bytes;
 	      serial_name = (t = strchr (serial_name, '.'))
 		? t + 1 : serial_name;
-	      r = do_get_serial_obj_id (&serial_obj_id, &found, serial_name);
-	      if (r == 0 && found)
+
+	      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+	      serial_mop = do_get_serial_obj_id (&serial_obj_id,
+						 serial_class_mop,
+						 serial_name);
+	      if (serial_mop != NULL)
 		{
-		  sprintf (oid_str, "%d %d %d", serial_obj_id.pageid,
-			   serial_obj_id.slotid, serial_obj_id.volid);
+		  if (do_get_serial_cached_num (&cached_num,
+						serial_mop) != NO_ERROR)
+		    {
+		      cached_num = 0;
+		    }
+
+		  sprintf (oid_str, "%d %d %d %d", serial_obj_id.pageid,
+			   serial_obj_id.slotid, serial_obj_id.volid,
+			   cached_num);
 		  db_make_string (&oid_str_val, oid_str);
 		  if (op == PT_CURRENT_VALUE)
 		    {
-		      error = qp_get_serial_current_value (db_value,
-							   &oid_str_val);
+		      error = serial_get_current_value (db_value,
+							&oid_str_val);
 		    }
 		  else
 		    {
-		      error = qp_get_serial_next_value (db_value,
-							&oid_str_val);
+		      error = serial_get_next_value (db_value, &oid_str_val);
 		    }
 
 		  if (error != NO_ERROR)
@@ -1503,7 +1619,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      /* cannot directly evaluate tree, since this may modifiy it */
+      /* cannot directly evaluate tree, since this may modify it */
       temp = parser_copy_tree (parser, tree);
 
       temp = mq_translate (parser, temp);

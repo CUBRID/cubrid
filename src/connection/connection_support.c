@@ -167,11 +167,13 @@ static int css_net_send8 (CSS_CONN_ENTRY * conn,
 			  const char *buff6, int len6,
 			  const char *buff7, int len7,
 			  const char *buff8, int len8);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int
 css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn,
 				  const char *header_buffer, int header_len,
 				  NET_HEADER * header_array,
 				  const char **data_array, int num_array);
+#endif
 static void css_set_net_header (NET_HEADER * header_p, int type,
 				short function_code, int request_id,
 				int buffer_size, int transaction_id,
@@ -1315,6 +1317,7 @@ css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * css_net_send_large_data() -
  *   return: enum css_error_code (See connectino_defs.h)
@@ -1431,6 +1434,7 @@ css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn,
 
   return rc;
 }
+#endif
 
 /*
  * css_net_read_header() -
@@ -2004,6 +2008,7 @@ css_send_four_data (CSS_CONN_ENTRY * conn, unsigned short rid,
 			 buffer4, buffer4_size));
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
 * css_send_large_data() - transfer a data packet to the client.
 *   return: enum css_error_code (See connectino_defs.h)
@@ -2050,6 +2055,7 @@ css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid,
 
   return rc;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* SERVER_MODE */
 
 /*

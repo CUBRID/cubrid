@@ -30,6 +30,8 @@
 #include "porting.h"
 
 #define APPL_SERVER_CAS_NAME		"cub_cas"
+#define APPL_SERVER_CAS_ORACLE_NAME		"cub_cas_oracle"
+#define APPL_SERVER_CAS_MYSQL_NAME		"cub_cas_mysql"
 
 #define NAME_BROKER			"Tbroker"
 #define NAME_CAS_BROKER			"cub_broker"
@@ -65,7 +67,9 @@ enum t_cubrid_file_id
   FID_ADMIND_LOG,
   FID_MONITORD_LOG,
   FID_ER_HTML,
-  FID_CUBRID_ERR_DIR
+  FID_CUBRID_ERR_DIR,
+  FID_CAS_FOR_ORACLE_DBINFO,
+  FID_CAS_FOR_MYSQL_DBINFO
 };
 
 typedef struct t_cubrid_file_info T_CUBRID_FILE_INFO;

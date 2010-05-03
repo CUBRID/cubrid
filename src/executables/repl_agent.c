@@ -299,12 +299,13 @@ static int repl_ag_get_parameters_internal (int (*func) (DB_QUERY_RESULT *),
 static int repl_ag_get_parameters ();
 static void usage_cubrid_repl_agent (const char *argv0);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int repl_debug_add_value (struct debug_string **record_data,
 				 DB_VALUE * value);
-static bool repl_debug_check_data (char *str);
 static int
 repl_debug_object2string (DB_OBJECT * class_obj, DB_VALUE * key,
 			  struct debug_string **record_data);
+#endif
 static void repl_restart_agent (char *agent_pathname, bool print_msg);
 
 /*
@@ -468,7 +469,7 @@ repl_ag_get_log_header (int m_idx, bool first)
   PTHREAD_MUTEX_LOCK (pb->mutex);
   memcpy (pb->log_hdr_buffer, minfo->conn.resp_buffer, minfo->io_pagesize);
   pb->log_hdr = (struct log_header *) (pb->log_hdr_buffer->area);
-  minfo->io_pagesize = pb->log_hdr->db_iopagesize;
+  minfo->io_pagesize = pb->log_hdr->db_logpagesize;
 
   /* If this is the first time, set the start point to copy */
   if (first == true)
@@ -740,6 +741,33 @@ repl_ag_get_page_buffer (PAGEID pageid, int m_idx)
       if (cache_buf == NULL
 	  || cache_buf->log_buffer.logpage.hdr.logical_pageid != pageid)
 	{
+	  if (debug_Dump_info & REPL_DEBUG_ERROR_DETAIL)
+	    {
+	      time_t er_time;
+	      struct tm *er_tm_p;
+	      char time_array[64];
+	      char msg[256];
+	      char *tmp;
+
+	      er_time = time (NULL);
+	      er_tm_p = localtime (&er_time);
+	      strftime (time_array, 64, "%c", er_tm_p);
+
+	      snprintf (msg, 256,
+			"[%s] : AGENT REPLACE ERROR : page id(%d), COPY LOG(%d,%d,%d)\n",
+			time_array, pageid,
+			mInfo[0]->copy_log.first_pageid,
+			mInfo[0]->copy_log.start_pageid,
+			mInfo[0]->copy_log.last_pageid);
+	      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AG_TP, REPL_AGENT_INFO_MSG,
+				    msg);
+	      tmp = repl_ag_dump_apply_list (sInfo[0], 0);
+	      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AG_TP, REPL_AGENT_INFO_MSG,
+				    tmp);
+	      free_and_init (tmp);
+	      repl_error_flush (err_Log_fp, false);
+	    }
+
 	  REPL_ERR_LOG (REPL_FILE_AGENT, REPL_AGENT_INTERNAL_ERROR);
 	  PTHREAD_MUTEX_UNLOCK (cache_pb->mutex);
 	  return NULL;
@@ -1477,6 +1505,70 @@ repl_ag_find_apply_list (SLAVE_INFO * sinfo, int tranid, int idx)
   return sinfo->masters[idx].repl_lists[sinfo->masters[idx].cur_repl - 1];
 }
 
+char *
+repl_ag_dump_apply_list (SLAVE_INFO * sinfo, int idx)
+{
+  int i;
+  REPL_APPLY *apply;
+  char buffer[64];
+  char *msg, *tmp;
+  int free_len, total, len;
+
+  msg = (char *) malloc (1024);
+  if (msg == NULL)
+    {
+      return NULL;
+    }
+  total = free_len = 1024;
+  sprintf (msg, "");
+
+  for (i = 0; i < sinfo->masters[idx].cur_repl; i++)
+    {
+      apply = sinfo->masters[idx].repl_lists[i];
+      if (apply->tranid > 0)
+	{
+	  len = snprintf (buffer, 64, "[%d] tran id(%d), start lsa(%d,%d)\n",
+			  index, apply->tranid,
+			  apply->start_lsa.pageid, apply->start_lsa.offset);
+	  if (free_len < len)
+	    {
+	      tmp = (char *) realloc (msg, total + 1024);
+	      if (tmp == NULL)
+		{
+		  free_and_init (msg);
+		  return NULL;
+		}
+	      msg = tmp;
+	      total += 1024;
+	      free_len += 1024;
+	    }
+	  strcat (msg, buffer);
+	  free_len -= len;
+	}
+    }
+
+  return msg;
+}
+
+int
+repl_ag_get_min_pageid_apply_list (SLAVE_INFO * sinfo, int idx)
+{
+  int i;
+  int min_pageid = PAGEID_MAX;
+  REPL_APPLY *apply;
+
+  for (i = 0; i < sinfo->masters[idx].cur_repl; i++)
+    {
+      apply = sinfo->masters[idx].repl_lists[i];
+      if (apply->tranid > 0 && apply->start_lsa.pageid < min_pageid)
+	{
+	  min_pageid = apply->start_lsa.pageid;
+	}
+    }
+
+  return min_pageid;
+}
+
 /*
  * repl_ag_add_repl_item() - add the replication item into the apply list
  *   return: NO_ERROR or REPL_IO_ERROR or REPL_SOCK_ERROR
@@ -1755,8 +1847,6 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
   VPID *temp_vpid;
   VPID prev_vpid;
   bool first = true;
-  bool error_status = true;
-  bool is_end_of_record = false;
   int copyed_len;
   int area_len;
   int area_offset;
@@ -1771,7 +1861,7 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
   prev_vpid.pageid = ((struct log_undoredo *) logs)->data.pageid;
   prev_vpid.volid = ((struct log_undoredo *) logs)->data.volid;
 
-  while (!is_end_of_record && !LSA_ISNULL (&current_lsa))
+  while (!LSA_ISNULL (&current_lsa))
     {
       current_log_page = repl_ag_get_page (current_lsa.pageid, m_idx);
       if (current_log_page == NULL)
@@ -1796,9 +1886,15 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
 	  break;
 	}
 
-      /* process only LOG_REDO_DATA */
-      if (current_log_record->type == LOG_REDO_DATA)
+      if (current_log_record->type == LOG_DUMMY_OVF_RECORD)
 	{
+	  repl_ag_release_page_buffer (current_lsa.pageid, m_idx);
+	  break;
+	}
+      else if (current_log_record->type == LOG_REDO_DATA)
+	{
+	  /* process only LOG_REDO_DATA */
+
 	  ovf_list_data =
 	    (struct ovf_page_list *) malloc (sizeof (struct ovf_page_list));
 	  if (ovf_list_data == NULL)
@@ -1826,43 +1922,18 @@ repl_ag_get_overflow_recdes (struct log_rec *log_record, void *logs,
 
 	  if (error == NO_ERROR && redo_log && ovf_list_data->data)
 	    {
-	      temp_vpid = (VPID *) ovf_list_data->data;
-	      if (error_status == true
-		  || (temp_vpid->pageid == prev_vpid.pageid
-		      && temp_vpid->volid == prev_vpid.volid))
+	      /* add to linked-list */
+	      if (ovf_list_head == NULL)
 		{
-		  /* add to linked-list */
-		  if (ovf_list_head == NULL)
-		    {
-		      ovf_list_head = ovf_list_tail = ovf_list_data;
-		    }
-		  else
-		    {
-		      ovf_list_data->next = ovf_list_head;
-		      ovf_list_head = ovf_list_data;
-		    }
-
-		  /* error check */
-		  if (temp_vpid->pageid == prev_vpid.pageid
-		      && temp_vpid->volid == prev_vpid.volid)
-		    {
-		      error_status = false;
-		    }
-		  prev_vpid.pageid = redo_log->data.pageid;
-		  prev_vpid.volid = redo_log->data.volid;
-		  *length += ovf_list_data->length;
+		  ovf_list_head = ovf_list_tail = ovf_list_data;
 		}
 	      else
 		{
-		  if (error_status == false
-		      && (temp_vpid->pageid != prev_vpid.pageid
-			  || temp_vpid->volid != prev_vpid.volid))
-		    {
-		      is_end_of_record = true;
-		    }
-		  free_and_init (ovf_list_data->data);
-		  free_and_init (ovf_list_data);
+		  ovf_list_data->next = ovf_list_head;
+		  ovf_list_head = ovf_list_data;
 		}
+
+	      *length += ovf_list_data->length;
 	    }
 	  else
 	    {
@@ -2356,24 +2427,7 @@ repl_ag_get_recdes (LOG_LSA * lsa, int m_idx, LOG_PAGE * pgptr,
   return error;
 }
 
-static bool
-repl_debug_check_data (char *str)
-{
-  int length, i;
-
-  length = strlen (str);
-  for (i = 0; i < length; i++)
-    {
-      if (!(('a' <= str[i] && str[i] <= 'z')
-	    || ('A' <= str[i] && str[i] <= 'Z')
-	    || ('0' <= str[i] && str[i] <= '9') || str[i] == ' '))
-	{
-	  return false;
-	}
-    }
-  return true;
-}
-
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int
 repl_debug_add_value (struct debug_string **record_data, DB_VALUE * value)
 {
@@ -2424,6 +2478,7 @@ repl_debug_add_value (struct debug_string **record_data, DB_VALUE * value)
 
   return NO_ERROR;
 }
+#endif
 
 /*
  * repl_get_current()
@@ -2504,10 +2559,6 @@ repl_get_current (OR_BUF * buf, SM_CLASS * sm_class,
 				er_msg ());
 	  return error;
 	}
-      if (debug_Dump_info & REPL_DEBUG_VALUE_CHECK)
-	{
-	  repl_debug_add_value (&debug_record_data, &value);
-	}
     }
 
   /* round up to a to the end of the fixed block */
@@ -2541,10 +2592,6 @@ repl_get_current (OR_BUF * buf, SM_CLASS * sm_class,
 	  REPL_ERR_LOG_ONE_ARG (REPL_FILE_AGENT, REPL_AGENT_QUERY_ERROR,
 				er_msg ());
 	  return error;
-	}
-      if (debug_Dump_info & REPL_DEBUG_VALUE_CHECK)
-	{
-	  repl_debug_add_value (&debug_record_data, &value);
 	}
     }
 
@@ -2613,6 +2660,7 @@ repl_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def,
   return error;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int
 repl_debug_object2string (DB_OBJECT * class_obj, DB_VALUE * key,
 			  struct debug_string **record_data)
@@ -2665,6 +2713,7 @@ repl_debug_object2string (DB_OBJECT * class_obj, DB_VALUE * key,
 
   return NO_ERROR;
 }
+#endif
 
 static int
 repl_ag_apply_get_object (REPL_ITEM * item)
@@ -2804,27 +2853,6 @@ repl_ag_apply_update_log (REPL_ITEM * item, int m_idx)
       goto error_rtn;
     }
   AU_RESTORE (au_save);
-
-  if (debug_Dump_info & REPL_DEBUG_VALUE_CHECK)
-    {
-      repl_debug_object2string (class_obj, &item->key, &debug_workspace_data);
-      if (debug_workspace_data != NULL)
-	{
-	  if (strcmp (debug_record_data->data,
-		      debug_workspace_data->data) != 0)
-	    {
-	      fprintf (debug_Log_fd,
-		       "VALUE ERROR: PUT VALUE(%s)\nWORKSPACE(%s)\n",
-		       debug_record_data->data, debug_workspace_data->data);
-	      fflush (debug_Log_fd);
-	    }
-
-	  debug_record_data->data[0] = '\0';
-	  debug_record_data->length = (size_t) 0;
-	  debug_workspace_data->data[0] = '\0';
-	  debug_workspace_data->length = 0;
-	}
-    }
 
   if (ovfyn)
     {
@@ -3407,8 +3435,8 @@ repl_ag_apply_abort (int idx, int tranid, time_t master_time,
   m_idx = repl_ag_get_master_info_index (sinfo->masters[idx].m_id);
 
   time (&slave_time);
-  if (sinfo->masters[idx].perf_poll_interval <= 0 ||
-      (slave_time - (*old_time)) > sinfo->masters[idx].perf_poll_interval)
+  if (IS_PERF_LOGGING (master_time, slave_time, *old_time,
+		       sinfo->masters[idx].perf_poll_interval))
     {
       repl_ag_log_perf_info (mInfo[m_idx]->conn.dbname,
 			     tranid, &master_time, &slave_time);
@@ -4169,7 +4197,6 @@ repl_ag_clear_master_info_all ()
   if (mInfo)
     {
       free_and_init (mInfo);
-      mInfo = NULL;
     }
 }
 
@@ -4434,7 +4461,6 @@ repl_ag_clear_slave_info_all ()
     }
 
   free_and_init (sInfo);
-  sInfo = NULL;
 }
 
 /*

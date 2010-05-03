@@ -433,9 +433,9 @@ db_is_system_class (MOP op)
   CHECK_CONNECT_ZERO ();
   CHECK_1ARG_ZERO (op);
 
-  retval = ((int) sm_is_system_class (op));
+  retval = sm_is_system_class (op) ? true : false;
 
-  return (retval);
+  return retval;
 }
 
 /*
@@ -800,7 +800,7 @@ db_get_attributes (DB_OBJECT * obj)
 }
 
 /*
- * db_get_class_attributes() - This funciton returns descriptors for all of the
+ * db_get_class_attributes() - This function returns descriptors for all of the
  *    class attribute of a class. The descriptors are maintained on a linked
  *    list so you can iterate through them using the db_attribute_next function
  * return : attribute descriptor list
@@ -1131,7 +1131,7 @@ db_attribute_is_primary_key (DB_ATTRIBUTE * attribute)
 }
 
 /*
- * db_attribute_is_auto_increment() - This funciton tests if attribute is
+ * db_attribute_is_auto_increment() - This function tests if attribute is
  *    defined as auto increment
  * return : non-zero if auto increment is defined.
  * attribute(in): attribute descriptor

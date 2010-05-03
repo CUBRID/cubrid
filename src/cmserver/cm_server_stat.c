@@ -43,7 +43,7 @@
 
 #include "cm_porting.h"
 #include "cm_server_stat.h"
-#include "cm_nameval.h"
+#include "cm_dep.h"
 #include "cm_server_util.h"
 #include "cm_config.h"
 

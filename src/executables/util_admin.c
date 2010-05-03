@@ -51,6 +51,7 @@ static UTIL_ARG_MAP ua_Create_Option_Map[] = {
   {CREATE_VERBOSE_S, {ARG_BOOLEAN}, {0}},
   {CREATE_LOG_PAGE_COUNT_S, {ARG_INTEGER}, {-1}},
   {CREATE_PAGE_SIZE_S, {ARG_INTEGER}, {-1}},
+  {CREATE_LOG_PAGE_SIZE_S, {ARG_INTEGER}, {-1}},
   {0, {0}, {0}}
 };
 
@@ -70,6 +71,7 @@ static GETOPT_LONG ua_Create_Option[] = {
   {CREATE_CHARSET_L, 1, 0, CREATE_CHARSET_S},
   {CREATE_LOG_PAGE_COUNT_L, 1, 0, CREATE_LOG_PAGE_COUNT_S},
   {CREATE_PAGE_SIZE_L, 1, 0, CREATE_PAGE_SIZE_S},
+  {CREATE_LOG_PAGE_SIZE_L, 1, 0, CREATE_LOG_PAGE_SIZE_S},
   {0, 0, 0, 0}
 };
 
@@ -267,11 +269,13 @@ static GETOPT_LONG ua_Install_Option[] = {
 static UTIL_ARG_MAP ua_Diag_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {DIAG_DUMP_TYPE_S, {ARG_INTEGER}, {-1}},
+  {DIAG_DUMP_RECORDS_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Diag_Option[] = {
   {DIAG_DUMP_TYPE_L, 1, 0, DIAG_DUMP_TYPE_S},
+  {DIAG_DUMP_RECORDS_L, 0, 0, DIAG_DUMP_RECORDS_S},
   {0, 0, 0, 0}
 };
 
@@ -473,12 +477,14 @@ static UTIL_ARG_MAP ua_Statdump_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {STATDUMP_OUTPUT_FILE_S, {ARG_STRING}, {0}},
   {STATDUMP_INTERVAL_S, {ARG_INTEGER}, {0}},
+  {STATDUMP_CUMULATIVE_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Statdump_Option[] = {
   {STATDUMP_OUTPUT_FILE_L, 1, 0, STATDUMP_OUTPUT_FILE_S},
   {STATDUMP_INTERVAL_L, 1, 0, STATDUMP_INTERVAL_S},
+  {STATDUMP_CUMULATIVE_L, 0, 0, STATDUMP_CUMULATIVE_S},
   {0, 0, 0, 0}
 };
 
@@ -713,6 +719,7 @@ main (int argc, char *argv[])
 	  util_func_arg.command_name =
 	    ua_Utility_Map[utility_index].utility_name;
 	  util_func_arg.argv0 = argv[0];
+	  util_func_arg.argv = argv;
 	  loaded_function = (UTILITY_FUNCTION) symbol_handle;
 	  status = (*loaded_function) (&util_func_arg);
 	}

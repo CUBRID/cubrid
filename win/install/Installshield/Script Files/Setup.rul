@@ -215,7 +215,7 @@ function OnFirstUIBefore()
 	BOOL jvm_fail;
 	BOOL javaw_fail;
 	STRING ordblist_txt;
-	STRING java_msg, svValue, szKey, regJavaLibTarget, regTemp;
+	STRING java_msg, svValue, szKey, szKey_sp1, regJavaLibTarget, regTemp;
 begin	
     // TO DO: if you want to enable background, window title, and caption bar title
     // SetTitle( @TITLE_MAIN, 24, WHITE );
@@ -416,28 +416,34 @@ Dlg_SdStartCopy:
     if (SYSINFO.bIsWow64) then
       if ( nvCodePage = 949 ) then
 	      szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{484D36AC-327E-390E-85C8-9F2B176BA2B6}";
+	      szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{92B8FD1F-C1AE-3750-8577-631B0AA85DF5}";
       else
 	      szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{350AA351-21FA-3270-8B7A-835434E766AD}";
+	      szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{8220EEFE-38CD-377E-8595-13398D740ACE}";
       endif;
     else
       if ( nvCodePage = 949 ) then
 	      szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{9B775AA1-7B10-379A-9B16-7E373790568C}";
+	      szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{887868A2-D6DE-3255-AA92-AA0B5A59B874}";
       else
 	      szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{FF66E9F6-83E7-3A3E-AF14-8DE9A809A6A4}";
+	      szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{9A25302D-30C0-39D9-BD6F-21E6EC160475}";
       endif;
     endif;
 
     RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
 	nResult = RegDBGetKeyValueEx (szKey, "DisplayVersion", nvType, szValue, nvSize);
 	if (nResult < 0) then
-	//		SprintfBox(WARNING, "", "SendMessageTimeout failed in RefreshEnvironment, Error %d", GetLastError());
-	    
-	    szTitle = @SCRIPT_STR_0034;
-	    szMsg = @SCRIPT_STR_0035;
+       	nResult = RegDBGetKeyValueEx (szKey_sp1, "DisplayVersion", nvType, szValue, nvSize);
+       	
+       	if (nResult < 0) then
+    	    szTitle = @SCRIPT_STR_0034;
+    	    szMsg = @SCRIPT_STR_0035;
 
-		nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
-        if (nResult = IDYES) then
-	        abort;
+    		nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
+            if (nResult = IDYES) then
+	            abort;
+	        endif;
 	    endif;
     endif;
     

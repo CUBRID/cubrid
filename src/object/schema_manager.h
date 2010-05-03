@@ -112,6 +112,7 @@ extern void sm_mark_system_class_for_catalog (void);
 #endif /* SA_MODE */
 extern int sm_mark_system_class (MOP classop, int on_or_off);
 extern int sm_is_system_class (MOP op);
+extern bool sm_is_reuse_oid_class (MOP op);
 extern int sm_set_class_flag (MOP classop, SM_CLASS_FLAG flag, int onoff);
 extern int sm_get_class_flag (MOP op, SM_CLASS_FLAG flag);
 extern int sm_destroy_representations (MOP op);
@@ -208,9 +209,10 @@ extern int sm_flush_for_multi_update (MOP class_mop);
 
 /* Workspace & Garbage collection functions */
 extern int sm_issystem (SM_CLASS * class_);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void sm_gc_class (MOP mop, void (*gcmarker) (MOP));
 extern void sm_gc_object (MOP mop, void (*gcmarker) (MOP));
-
+#endif
 
 /* Internationalization hack for csql */
 extern int sm_set_inhibit_identifier_check (int inhibit);
@@ -261,7 +263,9 @@ extern void sm_transaction_boundary (void);
 
 extern void sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid);
 extern void sm_init (OID * rootclass_oid, HFID * rootclass_hfid);
+#if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 extern int sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern int sm_att_unique_constrained (MOP classop, const char *name);
 extern int sm_is_att_fk_cache (MOP classop, const char *name);
 

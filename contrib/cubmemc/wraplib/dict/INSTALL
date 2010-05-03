@@ -1,0 +1,10 @@
+libdict - INSTALL
+~~~~~~~~~~~~~~~~~
+
+$Id$
+
+There is no configure script. To build, just type 'gmake'. To install, type
+'gmake install'. GNU Make is required. The default directory into which make
+install will put the include files and the static and shared libraries is
+/usr/local. This may be modified by editing Makefile and changing the value of
+the PREFIX variable to the desired location.

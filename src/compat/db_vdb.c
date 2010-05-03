@@ -112,7 +112,7 @@ get_dimension_of (PT_NODE ** array)
 }
 
 /*
- * db_statement_count() - This funciton returns the number of statements
+ * db_statement_count() - This function returns the number of statements
  *    in a session.
  * return : number of statements in the session
  * session(in): compiled session
@@ -527,7 +527,7 @@ db_compile_statement_local (DB_SESSION * session)
 	     with the list file, by for example adding a hidden OID
 	     column, fix the something else.
 	     This needs to give the results as user views the
-	     querie, ie related to the original text. It may guess
+	     query, ie related to the original text. It may guess
 	     wrong about attribute/column updatability.
 	     Thats what they asked for. */
 	  qtype = pt_fillin_type_size (parser, statement, qtype, DB_NO_OIDS);
@@ -1553,7 +1553,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   parser = session->parser;
   statement = session->statements[stmt_ndx];
 
-  /* if the statement was no compiled and prepared, do it */
+  /* if the statement was not compiled and prepared, do it */
   if (session->stage[stmt_ndx] < StatementPreparedStage)
     {
       session->stmt_ndx = stmt_ndx;
@@ -1610,7 +1610,6 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	      (void) qmgr_drop_query_plan (NULL, NULL, statement->xasl_id,
 					   false);
 	      free_and_init (statement->xasl_id);
-	      statement->xasl_id = NULL;
 	    }
 	  /* forget all errors */
 	  er_clear ();
@@ -2050,7 +2049,7 @@ db_close_session (DB_SESSION * session)
 
 
 /*
- * db_get_all_chosen_classes() - This funciton returns list of all classes
+ * db_get_all_chosen_classes() - This function returns list of all classes
  *    that pass a predicate
  * return : list of class objects that pass a given predicate, if all OK,
  *          NULL otherwise.
@@ -2388,7 +2387,7 @@ db_free_query (DB_SESSION * session)
 }
 
 /*
- * db_check_single_query() - This funciton checks to see if there is only
+ * db_check_single_query() - This function checks to see if there is only
  *    one statement given, and that it is a valid query statement.
  * return : error code
  * session(in) : session handle
@@ -2520,11 +2519,7 @@ db_parameter_name (DB_PARAMETER * param)
 int
 db_bind_parameter_name (const char *name, DB_VALUE * value)
 {
-  int result = NO_ERROR;
-
-  pt_associate_label_with_value (name, value);
-
-  return result;
+  return pt_associate_label_with_value_check_reference (name, value);
 }
 
 /*

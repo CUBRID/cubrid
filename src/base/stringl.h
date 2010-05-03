@@ -4,7 +4,9 @@
 #include <stddef.h>
 
 #ifndef HAVE_STRCAT
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern size_t strlcat (char *, const char *, size_t);
+#endif
 #endif
 
 #ifndef HAVE_STRLCPY

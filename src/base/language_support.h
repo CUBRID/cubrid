@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -82,19 +82,23 @@ extern "C"
   extern int lang_loc_bytes_per_char (void);
   extern DB_CURRENCY lang_currency (void);
   extern const char *lang_currency_symbol (DB_CURRENCY curr);
+#if defined(ENABLE_UNUSED_FUNCTION)
   extern int lang_char_mem_size (const char *p);
   extern int lang_char_screen_size (const char *p);
   extern int lang_wchar_mem_size (const wchar_t * p);
   extern int lang_wchar_screen_size (const wchar_t * p);
+#endif
   extern bool lang_check_identifier (const char *name, int length);
 
 #if !defined (SERVER_MODE)
   extern void lang_server_charset_init (void);
-  extern DB_CHARSET lang_server_db_charset (void);
   extern INTL_CODESET lang_server_charset_id (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
+  extern DB_CHARSET lang_server_db_charset (void);
   extern void lang_server_space_char (char *space, int *size);
   extern void lang_server_charset_name (char *name);
   extern void lang_server_charset_desc (char *desc);
+#endif /* ENABLE_UNUSED_FUNCTION */
   extern int lang_charset_name_to_id (const char *name,
 				      INTL_CODESET * codeset);
   extern int lang_set_national_charset (const char *codeset_name);

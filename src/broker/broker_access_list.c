@@ -110,18 +110,18 @@ uw_acl_check (unsigned char *ip_addr)
   for (i = 0; i < v3_acl->num_acl; i++)
     {
       if (v3_acl->acl[i].ip_length > IPV4_LENGTH_MAX)
-        {
-          len = IPV4_LENGTH_MAX;
-        }
+	{
+	  len = IPV4_LENGTH_MAX;
+	}
       else
-        {
-          len = v3_acl->acl[i].ip_length;
-        }
+	{
+	  len = v3_acl->acl[i].ip_length;
+	}
 
       if (memcmp (ip_addr, v3_acl->acl[i].ip, len) == 0)
-        {
-          return 0;
-        }
+	{
+	  return 0;
+	}
     }
 
   return -1;

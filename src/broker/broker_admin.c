@@ -62,8 +62,8 @@ admin_log_write (const char *log_file, const char *msg)
       ts = time (NULL);
       ct = localtime (&ts);
       fprintf (fp, "%d/%02d/%02d %02d:%02d:%02d %s\n",
-               ct->tm_year + 1900, ct->tm_mon + 1, ct->tm_mday,
-               ct->tm_hour, ct->tm_min, ct->tm_sec, msg);
+	       ct->tm_year + 1900, ct->tm_mon + 1, ct->tm_mday,
+	       ct->tm_hour, ct->tm_min, ct->tm_sec, msg);
       fclose (fp);
     }
   else
@@ -345,13 +345,13 @@ main (int argc, char **argv)
   else if (strcasecmp (argv[1], "info") == 0)
     {
       if (admin_broker_info_cmd (master_shm_id) < 0)
-        {
-          printf ("%s\n", admin_err_msg);
-        }
+	{
+	  printf ("%s\n", admin_err_msg);
+	}
       else
-        {
-          admin_log_write (admin_log_file, "info");
-        }
+	{
+	  admin_log_write (admin_log_file, "info");
+	}
     }
   else
     {

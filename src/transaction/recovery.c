@@ -323,9 +323,9 @@ struct rvfun RV_fun[] = {
   {RVHF_REUSE_PAGE,
    "RVHF_REUSE_PAGE",
    NULL,
-   heap_rv_redo_reuse,
+   heap_rv_redo_reuse_page,
    NULL,
-   heap_rv_dump_reuse},
+   heap_rv_dump_reuse_page},
 
   {RVOVF_NEWPAGE_LOGICAL_UNDO,
    "RVOVF_NEWPAGE_LOGICAL_UNDO",
@@ -349,8 +349,8 @@ struct rvfun RV_fun[] = {
    "RVOVF_PAGE_UPDATE",
    log_rv_copy_char,
    log_rv_copy_char,
-   log_rv_dump_char,
-   log_rv_dump_char},
+   overflow_rv_page_dump,
+   overflow_rv_page_dump},
   {RVOVF_CHANGE_LINK,
    "RVOVF_CHANGE_LINK",
    overflow_rv_link,
@@ -467,6 +467,7 @@ struct rvfun RV_fun[] = {
    btree_rv_undoredo_copy_page,
    NULL,
    NULL},
+  /* Never use this recovery index anymore. Only for backward compatibility */
   {RVBT_LFRECORD_DEL,
    "RVBT_LFRECORD_DEL",
    NULL,
@@ -479,6 +480,7 @@ struct rvfun RV_fun[] = {
    btree_rv_leafrec_redo_insert_key,
    NULL,
    NULL},
+  /* Never use this recovery index anymore. Only for backward compatibility */
   {RVBT_LFRECORD_OIDINS,
    "RVBT_LFRECORD_OIDINS",
    NULL,
@@ -509,6 +511,7 @@ struct rvfun RV_fun[] = {
    btree_rv_pagerec_insert,
    NULL,
    NULL},
+  /* Never use this recovery index anymore. Only for backward compatibility */
   {RVBT_OID_TRUNCATE,
    "RVBT_OID_TRUNCATE",
    NULL,
@@ -677,6 +680,69 @@ struct rvfun RV_fun[] = {
    disk_rv_clear_alloctable_vhdr_only,
    disk_rv_dump_alloctable_with_vhdr,
    disk_rv_dump_alloctable_with_vhdr},
+
+  {RVHF_CREATE_REUSE_OID,
+   "RVHF_CREATE_REUSE_OID",
+   NULL,
+   heap_rv_redo_newpage_reuse_oid,
+   NULL,
+   heap_rv_dump_statistics},
+  {RVHF_NEWPAGE_REUSE_OID,
+   "RVHF_NEWPAGE_REUSE_OID",
+   NULL,
+   heap_rv_redo_newpage_reuse_oid,
+   NULL,
+   heap_rv_dump_chain},
+  {RVHF_REUSE_PAGE_REUSE_OID,
+   "RVHF_REUSE_PAGE_REUSE_OID",
+   NULL,
+   heap_rv_redo_reuse_page_reuse_oid,
+   NULL,
+   heap_rv_dump_reuse_page},
+  {RVHF_MARK_REUSABLE_SLOT,
+   "RVHF_MARK_REUSABLE_SLOT",
+   NULL,
+   heap_rv_redo_mark_reusable_slot,
+   NULL,
+   log_rv_dump_char},
+
+  {RVBT_KEYVAL_INS_LFRECORD_KEYINS,
+   "RVBT_KEYVAL_INS_LFRECORD_KEYINS",
+   btree_rv_keyval_undo_insert,
+   btree_rv_leafrec_redo_insert_key,
+   btree_rv_keyval_dump,
+   NULL},
+  {RVBT_KEYVAL_INS_LFRECORD_OIDINS,
+   "RVBT_KEYVAL_INS_LFRECORD_OIDINS",
+   btree_rv_keyval_undo_insert,
+   btree_rv_leafrec_redo_insert_oid,
+   btree_rv_keyval_dump,
+   btree_rv_leafrec_dump_insert_oid},
+  {RVBT_KEYVAL_DEL_LFRECORD_DEL,
+   "RVBT_KEYVAL_DEL_LFRECORD_DEL",
+   btree_rv_keyval_undo_delete,
+   btree_rv_leafrec_redo_delete,
+   btree_rv_keyval_dump,
+   NULL},
+  {RVBT_KEYVAL_DEL_NDRECORD_UPD,
+   "RVBT_KEYVAL_DEL_NDRECORD_UPD",
+   btree_rv_keyval_undo_delete,
+   btree_rv_noderec_undoredo_update,
+   btree_rv_keyval_dump,
+   btree_rv_noderec_dump},
+  {RVBT_KEYVAL_DEL_NDHEADER_UPD,
+   "RVBT_KEYVAL_DEL_NDHEADER_UPD",
+   btree_rv_keyval_undo_delete,
+   btree_rv_nodehdr_undoredo_update,
+   btree_rv_keyval_dump,
+   btree_rv_noderec_dump},
+  {RVBT_KEYVAL_DEL_OID_TRUNCATE,
+   "RVBT_KEYVAL_DEL_OID_TRUNCATE",
+   btree_rv_keyval_undo_delete,
+   btree_rv_redo_truncate_oid,
+   btree_rv_keyval_dump,
+   NULL}
+
 };
 
 /*
@@ -695,6 +761,7 @@ rv_rcvindex_string (LOG_RCVINDEX rcvindex)
   return RV_fun[rcvindex].recv_string;
 }
 
+#if defined(CUBRID_DEBUG)
 /*
  * rv_check_rvfuns - CHECK ORDERING OF RECOVERY FUNCTIONS
  *
@@ -722,3 +789,4 @@ rv_check_rvfuns (void)
       }
 
 }
+#endif /* CUBRID_DEBUG */

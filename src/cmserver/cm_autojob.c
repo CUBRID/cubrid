@@ -47,14 +47,13 @@
 #include "cm_porting.h"
 #include "cm_server_util.h"
 #include "cm_autojob.h"
-#include "cm_dstring.h"
+#include "cm_dep.h"
 #include "cm_server_stat.h"
 #include "cm_config.h"
 #include "cm_command_execute.h"
-#include "cm_broker_admin.h"
 #include "cm_user.h"
 #include "cm_text_encryption.h"
-#include "utility.h"
+#include "cm_stat.h"
 
 #ifdef	_DEBUG_
 #include "deb.h"
@@ -187,7 +186,7 @@ static int aj_restart_broker_as (char *bname, int id);
 static double ajFreeSpace (T_SPACEDB_RESULT * cmd_res, const char *type);
 static void aj_add_volume (const char *dbname, const char *type,
 			   int increase);
-static void auto_unicas_log_write (char *br_name, T_DM_UC_AS_INFO * as_info,
+static void auto_unicas_log_write (char *br_name, T_CM_CAS_INFO * as_info,
 				   int restart_flag, char cpu_flag,
 				   time_t busy_time);
 
@@ -482,11 +481,11 @@ aj_autoaddvoldb_handler (void *hd, time_t prev_check_time, time_t cur_time)
   double frate;
   int page_add;
   T_SPACEDB_RESULT *spacedb_res;
-  T_COMMDB_RESULT *commdb_res;
+  T_SERVER_STATUS_RESULT *server_status_res;
   int max_page;
 
-  commdb_res = cmd_commdb ();
-  if (commdb_res == NULL)
+  server_status_res = cmd_server_status ();
+  if (server_status_res == NULL)
     return;
 
   for (curr = (autoaddvoldb_node *) hd; curr != NULL; curr = curr->next)
@@ -494,7 +493,7 @@ aj_autoaddvoldb_handler (void *hd, time_t prev_check_time, time_t cur_time)
       if (curr->dbname == NULL)
 	continue;
 
-      if (!uIsDatabaseActive2 (commdb_res, curr->dbname))
+      if (!uIsDatabaseActive2 (server_status_res, curr->dbname))
 	{
 	  continue;
 	}
@@ -534,7 +533,7 @@ aj_autoaddvoldb_handler (void *hd, time_t prev_check_time, time_t cur_time)
 
       cmd_spacedb_result_free (spacedb_res);
     }
-  cmd_commdb_result_free (commdb_res);
+  cmd_servstat_result_free (server_status_res);
 }
 
 static void
@@ -1025,6 +1024,8 @@ aj_execquery (autoexecquery_node * c)
   char *cubrid_err_file;
   int retval, argc, i, j, error_code;
   FILE *input_file;
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  int ha_mode;
 
   T_DB_SERVICE_MODE db_mode;
   T_DBMT_USER dbmt_user;
@@ -1091,6 +1092,8 @@ aj_execquery (autoexecquery_node * c)
       return;
     }
 
+  db_mode = uDatabaseMode (c->dbname, &ha_mode);
+
   cmd_name[0] = '\0';
 #if !defined (DO_NOT_USE_CUBRIDENV)
   sprintf (cmd_name, "%s/%s%s", sco.szCubrid, CUBRID_DIR_BIN, UTIL_CSQL_NAME);
@@ -1099,7 +1102,17 @@ aj_execquery (autoexecquery_node * c)
 #endif
   argc = 0;
   argv[argc++] = cmd_name;
-  argv[argc++] = c->dbname;
+
+  if (ha_mode != 0)
+    {
+      append_host_to_dbname (dbname_at_hostname, c->dbname,
+			     sizeof (dbname_at_hostname));
+      argv[argc++] = dbname_at_hostname;
+    }
+  else
+    {
+      argv[argc++] = c->dbname;
+    }
   argv[argc++] = NULL;
   argv[argc++] = "--" CSQL_INPUT_FILE_L;
   argv[argc++] = input_filename;
@@ -1128,7 +1141,6 @@ aj_execquery (autoexecquery_node * c)
        */
     }
 
-  db_mode = uDatabaseMode (c->dbname);
 
   if (db_mode == DB_SERVICE_MODE_SA)
     {
@@ -1304,6 +1316,8 @@ _aj_autobackupdb_error_log (autobackupdb_node * n, char *errmsg)
 static void
 aj_backupdb (autobackupdb_node * n)
 {
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  int ha_mode;
   char filepath[512];
   char inputfilepath[512];
   char buf[2048], dbdir[512];
@@ -1331,7 +1345,7 @@ aj_backupdb (autobackupdb_node * n)
   sprintf (backup_vol_name, "%s_auto_backup_lv%d", n->dbname, n->level);
   sprintf (filepath, "%s/%s", n->path, backup_vol_name);
 
-  db_mode = uDatabaseMode (n->dbname);
+  db_mode = uDatabaseMode (n->dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (buf, "Failed to execute backupdb: %s is in standalone mode",
@@ -1418,7 +1432,16 @@ aj_backupdb (autobackupdb_node * n)
   if (!n->check)
     argv[argc++] = "--" BACKUP_NO_CHECK_L;
 
-  argv[argc++] = n->dbname;
+  if (ha_mode != 0)
+    {
+      append_host_to_dbname (dbname_at_hostname, n->dbname,
+			     sizeof (dbname_at_hostname));
+      argv[argc++] = dbname_at_hostname;
+    }
+  else
+    {
+      argv[argc++] = n->dbname;
+    }
   argv[argc++] = NULL;
 
   INIT_CUBRID_ERROR_FILE (cubrid_err_file);
@@ -1552,45 +1575,45 @@ aj_load_unicasm_conf (ajob * p_aj)
 static void
 aj_unicasm_handler (void *hd, time_t prev_check_time, time_t cur_time)
 {
-  char strbuf[1024];
+  T_CM_ERROR error;
   unicasm_node *c;
   int ret;
   float cpulimit;
-  T_DM_UC_INFO br_info;
+  T_CM_CAS_INFO_ALL br_info;
   int i;
 
   for (c = (unicasm_node *) (hd); c != NULL; c = c->next)
     {
       if (c->bname == NULL)
 	return;
-      if (uca_as_info (c->bname, &br_info, NULL, strbuf) < 0)
+      if (cm_get_cas_info (c->bname, &br_info, NULL, &error) < 0)
 	continue;
 
       cpulimit = c->cpulimit;
       for (i = 0; i < br_info.num_info; i++)
 	{
-	  if (c->cpumonitor == 1 && br_info.info.as_info[i].pcpu >= cpulimit)
+	  if (c->cpumonitor == 1 && br_info.as_info[i].pcpu >= cpulimit)
 	    {
 	      ret = -1;
 	      if (c->cpurestart == 1)
 		{
 		  c->lrt = time (NULL);
 		  ret = aj_restart_broker_as (c->bname,
-					      br_info.info.as_info[i].id);
+					      br_info.as_info[i].id);
 		}
 	      if (c->logcpu == 1)
 		{
-		  auto_unicas_log_write (c->bname, &(br_info.info.as_info[i]),
+		  auto_unicas_log_write (c->bname, &(br_info.as_info[i]),
 					 !ret, 1, 0);
 		}
 	    }
 	  if (c->busymonitor == 1
-	      && strcmp (br_info.info.as_info[i].status, "BUSY") == 0)
+	      && strcmp (br_info.as_info[i].status, "BUSY") == 0)
 	    {
 	      time_t busy_time;
 	      time_t cur_time = time (NULL);
 
-	      busy_time = cur_time - br_info.info.as_info[i].last_access_time;
+	      busy_time = cur_time - br_info.as_info[i].last_access_time;
 	      if ((busy_time >= c->busylimit)
 		  && (cur_time - c->lrt >= c->busylimit))
 		{
@@ -1599,33 +1622,33 @@ aj_unicasm_handler (void *hd, time_t prev_check_time, time_t cur_time)
 		    {
 		      c->lrt = time (NULL);
 		      ret = aj_restart_broker_as (c->bname,
-						  br_info.info.as_info[i].id);
+						  br_info.as_info[i].id);
 		    }
 		  if (c->logcpu == 1)
 		    {
 		      auto_unicas_log_write (c->bname,
-					     &(br_info.info.as_info[i]), !ret,
+					     &(br_info.as_info[i]), !ret,
 					     0, busy_time);
 		    }
 		}
 	    }
 	}
-      uca_as_info_free (&br_info, NULL);
+      cm_cas_info_free (&br_info, NULL);
     }				/* end of for */
 }
 
 static int
 aj_restart_broker_as (char *bname, int id)
 {
-  char err_msg[1024];
+  T_CM_ERROR error;
 
-  if (uca_restart (bname, id, err_msg) < 0)
+  if (cm_broker_as_restart (bname, id, &error) < 0)
     return -1;
   return 0;
 }
 
 static void
-auto_unicas_log_write (char *br_name, T_DM_UC_AS_INFO * as_info,
+auto_unicas_log_write (char *br_name, T_CM_CAS_INFO * as_info,
 		       int restart_flag, char cpu_flag, time_t busy_time)
 {
   char logfile[512];

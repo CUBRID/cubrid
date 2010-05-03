@@ -77,7 +77,9 @@ struct elo_stream
  */
 
 /* Constructors */
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern DB_ELO *elo_copy (DB_ELO * src);
+#endif
 extern DB_ELO *elo_create (const char *pathname);
 extern DB_ELO *elo_destroy (DB_ELO * elo, DB_OBJECT * glo);
 extern DB_ELO *elo_new_elo (void);
@@ -102,8 +104,8 @@ extern int elo_compress (DB_ELO * elo);
 
 /* Stream interface */
 
-extern ELO_STREAM *elo_open (DB_OBJECT * glo, const char *mode);
 #if defined(ENABLE_UNUSED_FUNCTION)
+extern ELO_STREAM *elo_open (DB_OBJECT * glo, const char *mode);
 extern char *elo_gets (char *s, int n, ELO_STREAM * elo_stream);
 extern int elo_close (ELO_STREAM * elo_stream);
 extern int elo_puts (const char *s, ELO_STREAM * elo_stream);

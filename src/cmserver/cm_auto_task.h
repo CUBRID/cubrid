@@ -28,9 +28,7 @@
 #ident "$Id$"
 
 #include "cm_porting.h"
-#include "cm_nameval.h"
-#include "cm_version.h"
-#include "perf_monitor.h"
+#include "cm_dep.h"
 
 typedef struct
 {

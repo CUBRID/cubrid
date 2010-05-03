@@ -110,7 +110,7 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
   int i, j;
 
   cls_info_p = catalog_get_class_info (thread_p, class_id_p);
-  if (!cls_info_p)
+  if (cls_info_p == NULL)
     {
       goto error;
     }
@@ -118,7 +118,7 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
   /* if class information was not obtained */
   if (cls_info_p->hfid.vfid.fileid < 0 || cls_info_p->hfid.vfid.volid < 0)
     {
-      /* The class dose not have a heap file (i.e. it has no instances);
+      /* The class does not have a heap file (i.e. it has no instances);
          so no statistics can be obtained for this class; just set
          'tot_objects' field to 0 and return. */
 
@@ -141,29 +141,29 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
     }
 
   disk_repr_p = catalog_get_representation (thread_p, class_id_p, repr_id);
-  if (!disk_repr_p)
+  if (disk_repr_p == NULL)
     {
       goto error;
     }
 
-  cls_info_p->tot_pages =
-    file_get_numpages (thread_p, &cls_info_p->hfid.vfid);
+  cls_info_p->tot_pages = file_get_numpages (thread_p,
+					     &cls_info_p->hfid.vfid);
   cls_info_p->tot_objects = 0;
   disk_repr_p->num_objects = 0;
 
   /* scan whole object of the class and update the statistics */
 
-  if (heap_scancache_start
-      (thread_p, &hf_scan_cache, &(cls_info_p->hfid), class_id_p, true, false,
-       LOCKHINT_NONE) != NO_ERROR)
+  if (heap_scancache_start (thread_p, &hf_scan_cache, &(cls_info_p->hfid),
+			    class_id_p, true, false,
+			    LOCKHINT_NONE) != NO_ERROR)
     {
       goto error;
     }
 
   hf_scan_cache_p = &hf_scan_cache;
 
-  if (heap_attrinfo_start
-      (thread_p, class_id_p, -1, NULL, &hf_cache_attr_info) != NO_ERROR)
+  if (heap_attrinfo_start (thread_p, class_id_p, -1, NULL,
+			   &hf_cache_attr_info) != NO_ERROR)
     {
       goto error;
     }
@@ -173,14 +173,13 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
      the class and count the number of objects by scanning heap file */
 
   recdes.area_size = -1;
-  scan_rc =
-    heap_first (thread_p, &(cls_info_p->hfid), class_id_p, &oid, &recdes,
-		hf_scan_cache_p, PEEK);
+  scan_rc = heap_first (thread_p, &(cls_info_p->hfid), class_id_p, &oid,
+			&recdes, hf_scan_cache_p, PEEK);
 
   while (scan_rc == S_SUCCESS)
     {
-      if (heap_attrinfo_read_dbvalues
-	  (thread_p, &oid, &recdes, hf_cache_attr_info_p) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &oid, &recdes,
+				       hf_cache_attr_info_p) != NO_ERROR)
 	{
 	  scan_rc = S_ERROR;
 	  break;
@@ -195,8 +194,8 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
 	{
 	  disk_attr_p = &(disk_repr_p->fixed[i]);
 
-	  db_value_p =
-	    heap_attrinfo_access (disk_attr_p->id, hf_cache_attr_info_p);
+	  db_value_p = heap_attrinfo_access (disk_attr_p->id,
+					     hf_cache_attr_info_p);
 	  if (db_value_p != NULL && db_value_is_null (db_value_p) != true)
 	    {
 	      db_data_p = db_value_get_db_data (db_value_p);
@@ -228,9 +227,8 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
       cls_info_p->tot_objects++;
       disk_repr_p->num_objects++;
 
-      scan_rc =
-	heap_next (thread_p, &(cls_info_p->hfid), class_id_p, &oid, &recdes,
-		   hf_scan_cache_p, PEEK);
+      scan_rc = heap_next (thread_p, &(cls_info_p->hfid), class_id_p, &oid,
+			   &recdes, hf_scan_cache_p, PEEK);
     }
 
   if (scan_rc == S_ERROR)
@@ -260,9 +258,8 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
       for (j = 0, btree_stats_p = disk_attr_p->bt_stats;
 	   j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
-	  if (btree_get_stats
-	      (thread_p, &btree_stats_p->btid, btree_stats_p,
-	       true) != NO_ERROR)
+	  if (btree_get_stats (thread_p, &btree_stats_p->btid, btree_stats_p,
+			       true) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -442,32 +439,31 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	}
     }
 
-  size = OR_INT_SIZE		/* time_stamp of CLS_INFO */
-    + OR_INT_SIZE		/* tot_objects of CLS_INFO */
-    + OR_INT_SIZE		/* tot_pages of CLS_INFO */
-    + OR_INT_SIZE		/* n_attrs from DISK_REPR */
-    + (OR_INT_SIZE		/* id of DISK_ATTR */
-       + OR_INT_SIZE		/* type of DISK_ATTR */
-       + STATS_MIN_MAX_SIZE	/* min_value of DISK_ATTR */
-       + STATS_MIN_MAX_SIZE	/* max_value of DISK_ATTR */
-       + OR_INT_SIZE		/* n_btstats of DISK_ATTR */
-    ) * n_attrs;		/* number of attributes */
+  size = (OR_INT_SIZE		/* time_stamp of CLS_INFO */
+	  + OR_INT_SIZE		/* tot_objects of CLS_INFO */
+	  + OR_INT_SIZE		/* tot_pages of CLS_INFO */
+	  + OR_INT_SIZE		/* n_attrs from DISK_REPR */
+	  + (OR_INT_SIZE	/* id of DISK_ATTR */
+	     + OR_INT_SIZE	/* type of DISK_ATTR */
+	     + STATS_MIN_MAX_SIZE	/* min_value of DISK_ATTR */
+	     + STATS_MIN_MAX_SIZE	/* max_value of DISK_ATTR */
+	     + OR_INT_SIZE	/* n_btstats of DISK_ATTR */
+	  ) * n_attrs);		/* number of attributes */
 
-  size += (OR_BTID_ALIGNED_SIZE	/* btid of BTREE_STATS */
-	   + OR_INT_SIZE	/* leafs of BTREE_STATS */
-	   + OR_INT_SIZE	/* pages of BTREE_STATS */
-	   + OR_INT_SIZE	/* height of BTREE_STATS */
-	   + OR_INT_SIZE	/* keys of BTREE_STATS */
-	   + OR_INT_SIZE	/* oids of BTREE_STATS */
-	   + OR_INT_SIZE	/* nulls of BTREE_STATS */
-	   + OR_INT_SIZE	/* ukeys of BTREE_STATS */
-    ) * tot_n_btstats;		/* total number of indexes */
+  size += ((OR_BTID_ALIGNED_SIZE	/* btid of BTREE_STATS */
+	    + OR_INT_SIZE	/* leafs of BTREE_STATS */
+	    + OR_INT_SIZE	/* pages of BTREE_STATS */
+	    + OR_INT_SIZE	/* height of BTREE_STATS */
+	    + OR_INT_SIZE	/* keys of BTREE_STATS */
+	    + OR_INT_SIZE	/* oids of BTREE_STATS */
+	    + OR_INT_SIZE	/* nulls of BTREE_STATS */
+	    + OR_INT_SIZE	/* ukeys of BTREE_STATS */
+	   ) * tot_n_btstats);	/* total number of indexes */
 
   size += tot_key_info_size;	/* key_type, pkeys[] of BTREE_STATS */
 
-  /* TODO: 64bit alignment */
   start_p = buf_p = (char *) malloc (size);
-  if (!buf_p)
+  if (buf_p == NULL)
     {
       catalog_free_representation (disk_repr_p);
       catalog_free_class_info (cls_info_p);
@@ -478,9 +474,9 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   OR_PUT_INT (buf_p, cls_info_p->time_stamp);
   buf_p += OR_INT_SIZE;
 
-  if (!HFID_IS_NULL (&cls_info_p->hfid) &&
-      heap_estimate (thread_p, &cls_info_p->hfid, &estimated_npages,
-		     &estimated_nobjs, &estimated_avglen) > 0)
+  if (!HFID_IS_NULL (&cls_info_p->hfid)
+      && heap_estimate (thread_p, &cls_info_p->hfid, &estimated_npages,
+			&estimated_nobjs, &estimated_avglen) > 0)
     {
       /* use estimates from the heap since it is likely that its estimates
          are more accurate than the ones gathered at update statistics time */
@@ -616,12 +612,12 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	     the btree is smaller, we use the gathered statistics since the
 	     btree may have an external file (unknown at this level) to keep
 	     overflow keys. */
-	  estimated_npages =
-	    file_get_numpages (thread_p, &btree_stats_p->btid.vfid);
+	  estimated_npages = file_get_numpages (thread_p,
+						&btree_stats_p->btid.vfid);
 	  if (estimated_npages > btree_stats_p->pages)
 	    {
-	      OR_PUT_INT (buf_p, btree_stats_p->leafs +
-			  (estimated_npages - btree_stats_p->pages));
+	      OR_PUT_INT (buf_p, (btree_stats_p->leafs +
+				  (estimated_npages - btree_stats_p->pages)));
 	      buf_p += OR_INT_SIZE;
 
 	      OR_PUT_INT (buf_p, estimated_npages);
@@ -644,8 +640,9 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	     difference is in distinct keys. */
 	  if (estimated_nobjs > cls_info_p->tot_objects)
 	    {
-	      OR_PUT_INT (buf_p, btree_stats_p->keys +
-			  (estimated_nobjs - cls_info_p->tot_objects));
+	      OR_PUT_INT (buf_p, (btree_stats_p->keys +
+				  (estimated_nobjs -
+				   cls_info_p->tot_objects)));
 	      buf_p += OR_INT_SIZE;
 	    }
 	  else
@@ -699,8 +696,9 @@ stats_get_class_list (THREAD_ENTRY * thread_p, void *key, void *val,
   CLASS_ID_LIST *class_id_item_p, **p;
 
   p = (CLASS_ID_LIST **) args;
-  class_id_item_p =
-    (CLASS_ID_LIST *) db_private_alloc (thread_p, sizeof (CLASS_ID_LIST));
+  class_id_item_p = (CLASS_ID_LIST *) db_private_alloc (thread_p,
+							sizeof
+							(CLASS_ID_LIST));
   if (class_id_item_p == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -129,7 +129,7 @@ struct qmgr_query_entry
   char *xasl_data;		/* XASL tree memory data area */
   void *xasl_buf_info;		/* XASL tree buffer info */
   int xasl_size;		/* XASL tree memory data area size */
-  int repeat;			/* repetative query ? */
+  int repeat;			/* repetitive query ? */
   QFILE_LIST_ID *list_id;	/* result list file identifier */
   QFILE_LIST_CACHE_ENTRY *list_ent;	/* list cache entry for this query */
   QMGR_QUERY_ENTRY *next;
@@ -162,10 +162,12 @@ extern int qmgr_initialize (THREAD_ENTRY * thread_p);
 extern void qmgr_finalize (THREAD_ENTRY * thread_p);
 extern void qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index,
 				     bool tran_died, bool is_abort);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern QMGR_TRAN_STATUS qmgr_get_tran_status (THREAD_ENTRY * thread_p,
 					      int tran_index);
 extern void qmgr_set_tran_status (THREAD_ENTRY * thread_p, int tran_index,
 				  QMGR_TRAN_STATUS trans_status);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern void qmgr_add_modified_class (THREAD_ENTRY * thread_p,
 				     const OID * class_oid);
 extern PAGE_PTR qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpidp,
@@ -181,8 +183,10 @@ extern QMGR_TEMP_FILE *qmgr_create_new_temp_file (THREAD_ENTRY * thread_p,
 						  QUERY_ID query_id);
 extern QMGR_TEMP_FILE *qmgr_create_result_file (THREAD_ENTRY * thread_p,
 						QUERY_ID query_id);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern int qmgr_free_query_temp_file (THREAD_ENTRY * thread_p,
 				      QUERY_ID query_id);
+#endif
 extern int qmgr_free_list_temp_file (THREAD_ENTRY * thread_p,
 				     QUERY_ID query_id,
 				     QMGR_TEMP_FILE * tfile_vfidp);

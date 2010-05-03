@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -49,13 +49,5 @@ extern int db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1,
 			   DB_VALUE * value2);
 extern int db_random_dbval (DB_VALUE * result);
 extern int db_drandom_dbval (DB_VALUE * result);
-
-/* TODO: M2 - move these to qp_serial.h */
-extern int xqp_get_serial_current_value (THREAD_ENTRY * thread_p,
-					 const DB_VALUE * oid_str_val,
-					 DB_VALUE * result_num);
-extern int xqp_get_serial_next_value (THREAD_ENTRY * thread_p,
-				      const DB_VALUE * oid_str_val,
-				      DB_VALUE * result_num);
 
 #endif /* _ARITHMETIC_H_ */

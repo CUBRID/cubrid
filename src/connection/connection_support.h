@@ -101,13 +101,13 @@ extern int css_send_four_data (CSS_CONN_ENTRY * conn, unsigned short rid,
 			       const char *buffer2, int buffer2_size,
 			       const char *buffer3, int buffer3_size,
 			       const char *buffer4, int buffer4_size);
-extern int css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid,
-				const char **buffers, int *buffers_size,
-				int num_buffers);
 #endif /* SERVER_MODE */
 extern int css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid,
 			   const char *buffer, int buffer_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
+extern int css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid,
+                                const char **buffers, int *buffers_size,
+                                int num_buffers);
 extern int css_local_host_name (CSS_CONN_ENTRY * conn, char *hostname,
 				size_t namelen);
 

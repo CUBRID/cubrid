@@ -61,8 +61,13 @@ enum boot_client_type
 	 || (client_type) == BOOT_CLIENT_ADMIN_CSQL)
 
 #define BOOT_LOG_REPLICATOR_TYPE(client_type) \
-	((client_Type) == BOOT_CLIENT_LOG_COPIER \
+	((client_type) == BOOT_CLIENT_LOG_COPIER \
 	 || (client_type) == BOOT_CLIENT_LOG_APPLIER)
+
+#define BOOT_CSQL_CLIENT_TYPE(client_type) \
+        ((client_type) == BOOT_CLIENT_CSQL \
+	|| (client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
+	|| (client_type) == BOOT_CLIENT_ADMIN_CSQL)
 
 typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
 struct boot_client_credential
@@ -97,6 +102,7 @@ struct boot_server_credential
   OID root_class_oid;
   HFID root_class_hfid;
   PGLENGTH page_size;
+  PGLENGTH log_page_size;
   float disk_compatibility;
   int ha_server_state;		/*  HA_SERVER_STATE */
 };

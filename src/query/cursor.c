@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -1062,6 +1062,7 @@ cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id_p, VPID * vpid_p,
   return NO_ERROR;
 }
 
+#if defined(WINDOWS) || defined (CUBRID_DEBUG)
 /*
  * cursor_print_list () - Dump the content of the list file to the standard output
  *   return:
@@ -1139,6 +1140,7 @@ cleanup:
   free_and_init (value_list_p);
   return;
 }
+#endif
 
 /*
  * Cursor Management routines
@@ -1172,7 +1174,6 @@ cursor_allocate_oid_buffer (CURSOR_ID * cursor_id_p)
     {
       /* Ignore the failure, this is an optimization */
       free_and_init (cursor_id_p->oid_set);
-      cursor_id_p->oid_set = NULL;
       cursor_id_p->oid_ent_count = 0;
     }
 }

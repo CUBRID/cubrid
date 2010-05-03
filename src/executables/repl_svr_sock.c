@@ -532,7 +532,7 @@ repl_svr_select_error (void)
  *   return: error code
  *
  * Note:
- *    Get an incomming request buffer from a client,
+ *    Get an incoming request buffer from a client,
  *    Provide a handle on the connection on which it was received.
  *    The server takes this oportunity to process new connection
  *    requests on the name sockets first. These requests are accept()ed

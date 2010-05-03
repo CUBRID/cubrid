@@ -55,10 +55,12 @@ static int vid_pack_vobj (char *buf, OID * view, OID * proxy,
 
 static int vid_get_class_object (MOP class_p, SM_CLASS ** class_object_p);
 static int vid_is_new_oobj (MOP mop);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static int vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p,
 					  DB_VALUE * source_value,
 					  DB_VALUE * destination_value,
 					  int *has_object);
+#endif
 
 /*
  * vid_get_class_object() - get class object given its class mop
@@ -263,6 +265,7 @@ vid_fetch_instance (MOP mop, DB_FETCH_MODE purpose)
   return inst;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * vid_convert_object_attr_value() - Convert a object attribute value.
  *    return:
@@ -407,6 +410,7 @@ vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p,
     }
   return error;
 }
+#endif
 
 /*
  * vid_upd_instance() - PREPARE A VIRTUAL INSTANCE FOR UPDATE
@@ -598,6 +602,7 @@ vid_allflush (void)
   return return_code;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * vid_gc_vmop() - Do GC on the VID portion of a vmop.
  *    return: none
@@ -626,6 +631,7 @@ vid_gc_vmop (MOP mop, void (*gcmarker) (MOP))
       sm_gc_object (mop, gcmarker);
     }
 }				/* vid_gc_vmop */
+#endif
 
 /*
  * vid_add_virtual_instance() - INSERT A VIRTUAL OBJECT VIRTUAL INSTANCE
@@ -847,6 +853,7 @@ vid_att_in_obj_id (SM_ATTRIBUTE * attribute_p)
     }
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * vid_set_att_obj_id() - Sets the object_id position for the attribute.
  *    return: int
@@ -933,6 +940,7 @@ vid_record_update (MOP mop, SM_CLASS * class_p, SM_ATTRIBUTE * attribute_p)
 
   return NO_ERROR;
 }
+#endif
 
 /*
  * vid_compare_non_updatable_objects() - Compare the values for the two objects

@@ -48,10 +48,30 @@ struct t_col_update_info
   char updatable;
 };
 
+#if defined(CAS_FOR_ORACLE)
+typedef struct t_query_result_column T_QUERY_RESULT_COLUMN;
+struct t_query_result_column
+{
+  void *define;
+  void *data;
+  unsigned int size;
+  unsigned short type;
+  unsigned char null;
+};
+#endif
 
 typedef struct t_query_result T_QUERY_RESULT;
 struct t_query_result
 {
+#if defined(CAS_FOR_ORACLE)
+  int column_count;
+  T_QUERY_RESULT_COLUMN *columns;
+#elif defined(CAS_FOR_MYSQL)
+  void *result;			/* MYSQL_BIND * */
+  int column_count;
+  char *is_null;
+  size_t *length;
+#else				/* CAS_FOR_MYSQL */
   void *result;
   char *null_type_column;
   T_COL_UPDATE_INFO *col_update_info;
@@ -64,6 +84,7 @@ struct t_query_result
   char col_updatable;
   char include_oid;
   char async_flag;
+#endif				/* CAS_FOR_MYSQL */
 };
 
 typedef struct t_srv_handle T_SRV_HANDLE;
@@ -72,16 +93,25 @@ struct t_srv_handle
   int id;
   void *session;		/* query : DB_SESSION*
 				   schema : schema info table pointer */
+  /* CAS4MySQL : MYSQL_STMT* */
   T_PREPARE_CALL_INFO *prepare_call_info;
   T_QUERY_RESULT *q_result;
+#if defined(CAS_FOR_ORACLE)
+  int stmt_type;
+#elif defined(CAS_FOR_MYSQL)
+  int stmt_type;
+#else				/* CAS_FOR_MYSQL */
   void *cur_result;		/* query : &(q_result[cur_result])
 				   schema info : &(session[cursor_pos]) */
+#endif				/* CAS_FOR_MYSQL */
   char *sql_stmt;
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   void **classes;
   int *classes_chn;
   int cur_result_index;
   int num_q_result;
   int num_markers;
+#endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
   int max_col_size;
   int cursor_pos;
   int schema_type;
@@ -99,6 +129,7 @@ struct t_srv_handle
   char forward_only_cursor;
   bool use_plan_cache;
   bool use_query_cache;
+  bool is_fetch_completed;
 };
 
 extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle,
@@ -114,4 +145,8 @@ extern void hm_col_update_info_clear (T_COL_UPDATE_INFO * col_update_info);
 extern void hm_srv_handle_set_pooled (void);
 #endif
 
+extern int hm_srv_handle_append_active (T_SRV_HANDLE * srv_handle);
+extern void hm_srv_handle_set_fetch_completed (T_SRV_HANDLE * srv_handle);
+extern bool hm_srv_handle_is_all_active_fetch_completed (void);
+extern void hm_srv_handle_reset_active (void);
 #endif /* _CAS_HANDLE_H_ */

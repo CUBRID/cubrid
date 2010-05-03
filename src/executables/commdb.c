@@ -62,12 +62,14 @@
 
 #define COMM_CHAR_PRINT_CAPS             'P'
 #define COMM_CHAR_PRINT_LOWER            'p'
-#define COMM_CHAR_PRINT_DRIVER_CAPS      'D'
-#define COMM_CHAR_PRINT_DRIVER_LOWER     'd'
 #define COMM_CHAR_PRINT_REPL_CAPS        'R'
 #define COMM_CHAR_PRINT_REPL_LOWER       'r'
 #define COMM_CHAR_PRINT_ALL_CAPS         'O'
 #define COMM_CHAR_PRINT_ALL_LOWER        'o'
+#define COMM_CHAR_PRINT_HA_NODE_LIST_CAPS       'N'
+#define COMM_CHAR_PRINT_HA_NODE_LIST_LOWER      'n'
+#define COMM_CHAR_PRINT_HA_PROCESS_LIST_CAPS	'L'
+#define COMM_CHAR_PRINT_HA_PROCESS_LIST_LOWER   'l'
 
 #define COMM_CHAR_QUIT_CAPS              'Q'
 #define COMM_CHAR_QUIT_LOWER             'q'
@@ -83,18 +85,24 @@
 #define COMM_CHAR_REPL_AGENT_KILL_LOWER  'k'
 #define COMM_CHAR_SERVER_HA_MODE_CAPS    'C'
 #define COMM_CHAR_SERVER_HA_MODE_LOWER   'c'
+#define COMM_CHAR_DEREG_HA_PROCESS_CAPS    'G'
+#define COMM_CHAR_DEREG_HA_PROCESS_LOWER   'g'
+#define COMM_CHAR_RECONFIG_HEARTBEAT_CAPS  'F'
+#define COMM_CHAR_RECONFIG_HEARTBEAT_LOWER 'f'
+#define COMM_CHAR_DEACTIVATE_HEARTBEAT_CAPS  'U'
+#define COMM_CHAR_DEACTIVATE_HEARTBEAT_LOWER 'u'
+#define COMM_CHAR_ACTIVATE_HEARTBEAT_CAPS    'T'
+#define COMM_CHAR_ACTIVATE_HEARTBEAT_LOWER   't'
 
 typedef enum
 {
   COMM_SERVER,
-  COMM_DRIVER,
   COMM_REPL_SERVER,
   COMM_REPL_AGENT,
   COMM_ALL = 99
 } COMM_SERVER_TYPE;
 
 static int send_for_server_stats (CSS_CONN_ENTRY * conn);
-static int send_for_driver_stats (CSS_CONN_ENTRY * conn);
 static int send_for_repl_stats (CSS_CONN_ENTRY * conn);
 static int send_for_all_stats (CSS_CONN_ENTRY * conn);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -118,23 +126,37 @@ static int process_server_info_pid (CSS_CONN_ENTRY * conn,
 				    const char *hostname, const char *server,
 				    int server_type);
 static void process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name);
+static void process_ha_node_info_query (CSS_CONN_ENTRY * conn,
+					int verbose_yn);
+static void process_ha_process_info_query (CSS_CONN_ENTRY * conn,
+					   int verbose_yn);
+static void process_dereg_ha_process (CSS_CONN_ENTRY * conn,
+				      char *pid_string);
+
 
 static bool start_info (CSS_CONN_ENTRY * conn);
 static void process_batch_command (CSS_CONN_ENTRY * conn);
 
 static char *commdb_Arg_host_name = NULL;
 static char *commdb_Arg_server_name = NULL;
-static int commdb_Arg_halt_shutdown = false;
+static bool commdb_Arg_halt_shutdown = false;
 static int commdb_Arg_shutdown_time = 0;
-static int commdb_Arg_kill_all = false;
-static int commdb_Arg_print_info = false;
-static int commdb_Arg_print_driver_info = false;
-static int commdb_Arg_print_repl_info = false;
-static int commdb_Arg_print_all_info = false;
+static bool commdb_Arg_kill_all = false;
+static bool commdb_Arg_print_info = false;
+static bool commdb_Arg_print_repl_info = false;
+static bool commdb_Arg_print_all_info = false;
 static char *commdb_Arg_repl_server_name = NULL;
 static char *commdb_Arg_repl_agent_name = NULL;
-static int commdb_Arg_ha_mode_server_info = false;
+static bool commdb_Arg_ha_mode_server_info = false;
 static char *commdb_Arg_ha_mode_server_name = NULL;
+static bool commdb_Arg_print_ha_node_info = false;
+static bool commdb_Arg_print_ha_process_info = false;
+static bool commdb_Arg_dereg_ha_process = false;
+static char *commdb_Arg_dereg_ha_process_pid = NULL;
+static bool commdb_Arg_reconfig_heartbeat = false;
+static bool commdb_Arg_deactivate_heartbeat = false;
+static bool commdb_Arg_activate_heartbeat = false;
+static bool commdb_Arg_verbose_output = false;
 
 /*
  * send_request_no_args() - send request without argument
@@ -235,17 +257,6 @@ send_for_server_count (CSS_CONN_ENTRY * conn)
 }
 
 /*
- * send_for_driver_count() - send request for driver count
- *   return: request id
- *   conn(in): connection info
- */
-static int
-send_for_driver_count (CSS_CONN_ENTRY * conn)
-{
-  return (send_request_no_args (conn, GET_DRIVER_COUNT));
-}
-
-/*
  * send_for_repl_count() - send request for replication server and agent count
  *   return: request id
  *   conn(in): connection info
@@ -276,17 +287,6 @@ static int
 send_for_server_stats (CSS_CONN_ENTRY * conn)
 {
   return (send_request_no_args (conn, GET_SERVER_LIST));
-}
-
-/*
- * send_for_driver_stats() - send request for driver processes info
- *   return: request id
- *   conn(in): connection info
- */
-static int
-send_for_driver_stats (CSS_CONN_ENTRY * conn)
-{
-  return (send_request_no_args (conn, GET_DRIVER_LIST));
 }
 
 /*
@@ -394,11 +394,6 @@ process_status_query (const char *host_name,
       rid3 = send_for_server_count (conn);
       rid1 = send_for_start_time (conn);
       rid4 = send_for_server_stats (conn);
-      break;
-    case COMM_DRIVER:
-      rid3 = send_for_driver_count (conn);
-      rid1 = send_for_start_time (conn);
-      rid4 = send_for_driver_stats (conn);
       break;
     case COMM_REPL_SERVER:
     case COMM_REPL_AGENT:
@@ -648,6 +643,200 @@ process_server_info_pid (CSS_CONN_ENTRY * conn,
 }
 
 /*
+ * process_ha_node_info_query() - process heartbeat node list
+ *   return:  none
+ *   conn(in): connection info
+ *   verbose_yn(in): 
+ */
+static void
+process_ha_node_info_query (CSS_CONN_ENTRY * conn, int verbose_yn)
+{
+  char *reply_buffer = NULL;
+  int size = 0;
+#if !defined(WINDOWS)
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  rid = send_request_no_args (conn,
+			      (verbose_yn) ?
+			      GET_HA_NODE_LIST_VERBOSE : GET_HA_NODE_LIST);
+  return_string (conn, rid, &reply_buffer, &size);
+#endif
+
+  if (size)
+    {
+      printf ("\n%s\n", reply_buffer);
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+}
+
+/*
+ process_ha_process_info_query() - process heartbeat process list
+ *   return:  none
+ *   conn(in): connection info
+ *   verbose_yn(in): 
+ */
+static void
+process_ha_process_info_query (CSS_CONN_ENTRY * conn, int verbose_yn)
+{
+  char *reply_buffer = NULL;
+  int size = 0;
+#if !defined(WINDOWS)
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  rid = send_request_no_args (conn,
+			      (verbose_yn) ?
+			      GET_HA_PROCESS_LIST_VERBOSE :
+			      GET_HA_PROCESS_LIST);
+  return_string (conn, rid, &reply_buffer, &size);
+#endif
+
+  if (size)
+    {
+      printf ("\n%s\n", reply_buffer);
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+}
+
+/*
+ * process_dereg_ha_process() - deregister heartbeat process
+ *   return:  none
+ *   conn(in): connection info
+ *   pid_string(in):
+ */
+static void
+process_dereg_ha_process (CSS_CONN_ENTRY * conn, char *pid_string)
+{
+  char *reply_buffer = NULL;
+  int size = 0;
+#if !defined(WINDOWS)
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  pid_t pid;
+
+  pid = htonl (atoi (pid_string));
+
+  rid = send_request_one_arg (conn, DEREGISTER_HA_PROCESS, (char *) &pid,
+			      sizeof (pid));
+  return_string (conn, rid, &reply_buffer, &size);
+#endif
+
+  if (size)
+    {
+      printf ("\n%s\n", reply_buffer);
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+}
+
+/*
+ * process_reconfig_heartbeat() - reconfigure heartbeat node
+ *   return:  none
+ *   conn(in): connection info
+ */
+static void
+process_reconfig_heartbeat (CSS_CONN_ENTRY * conn)
+{
+  char *reply_buffer = NULL;
+  int size = 0;
+#if !defined(WINDOWS)
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  rid = send_request_no_args (conn, RECONFIG_HEARTBEAT);
+  return_string (conn, rid, &reply_buffer, &size);
+#endif
+
+  if (size)
+    {
+      printf ("\n%s\n", reply_buffer);
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+}
+
+/*
+ * process_deactivate_heartbeat() - deactivate heartbeat 
+ *   return:  none
+ *   conn(in): connection info
+ */
+static void
+process_deactivate_heartbeat (CSS_CONN_ENTRY * conn)
+{
+  char *reply_buffer = NULL;
+  int size = 0;
+#if !defined(WINDOWS)
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  rid = send_request_no_args (conn, DEACTIVATE_HEARTBEAT);
+  return_string (conn, rid, &reply_buffer, &size);
+#endif
+
+  if (size)
+    {
+      printf ("\n%s\n", reply_buffer);
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+}
+
+/*
+ * process_activate_heartbeat() - activate heartbeat 
+ *   return:  none
+ *   conn(in): connection info
+ */
+static void
+process_activate_heartbeat (CSS_CONN_ENTRY * conn)
+{
+  char *reply_buffer = NULL;
+  int size = 0;
+#if !defined(WINDOWS)
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  rid = send_request_no_args (conn, ACTIVATE_HEARTBEAT);
+  return_string (conn, rid, &reply_buffer, &size);
+#endif
+
+  if (size)
+    {
+      printf ("\n%s\n", reply_buffer);
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+}
+
+
+/*
  * start_info() - process user command on interactive mode
  *   return: whether or not to continue interactive mode
  *   conn(in): connection info
@@ -679,12 +868,6 @@ start_info (CSS_CONN_ENTRY * conn)
       || (*input_buffer == COMM_CHAR_PRINT_ALL_LOWER))
     {
       process_status_query (host_name, conn, COMM_ALL, NULL);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_PRINT_DRIVER_CAPS)
-      || (*input_buffer == COMM_CHAR_PRINT_DRIVER_LOWER))
-    {
-      process_status_query (host_name, conn, COMM_DRIVER, NULL);
       return true;
     }
   if ((*input_buffer == COMM_CHAR_QUIT_CAPS)
@@ -816,6 +999,54 @@ start_info (CSS_CONN_ENTRY * conn)
       process_ha_server_mode (conn, input_buffer);
       return true;
     }
+  if ((*input_buffer == COMM_CHAR_PRINT_HA_NODE_LIST_CAPS)
+      || (*input_buffer == COMM_CHAR_PRINT_HA_NODE_LIST_LOWER))
+    {
+      process_ha_node_info_query (conn, false);
+      return true;
+    }
+  if ((*input_buffer == COMM_CHAR_PRINT_HA_PROCESS_LIST_CAPS)
+      || (*input_buffer == COMM_CHAR_PRINT_HA_PROCESS_LIST_LOWER))
+    {
+      process_ha_process_info_query (conn, false);
+      return true;
+    }
+  if ((*input_buffer == COMM_CHAR_DEREG_HA_PROCESS_CAPS)
+      || (*input_buffer == COMM_CHAR_DEREG_HA_PROCESS_LOWER))
+    {
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
+			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING4),
+	      "process id to deregister :");
+
+      if (scanf ("%511s", input_buffer) != 1)
+	{
+	  return false;
+	}
+      while ((getchar ()) != '\n');
+
+      process_dereg_ha_process (conn, input_buffer);
+      return true;
+    }
+  if ((*input_buffer == COMM_CHAR_RECONFIG_HEARTBEAT_CAPS)
+      || (*input_buffer == COMM_CHAR_RECONFIG_HEARTBEAT_LOWER))
+    {
+      process_reconfig_heartbeat (conn);
+      return true;
+    }
+  if ((*input_buffer == COMM_CHAR_DEACTIVATE_HEARTBEAT_CAPS)
+      || (*input_buffer == COMM_CHAR_DEACTIVATE_HEARTBEAT_LOWER))
+
+    {
+      process_deactivate_heartbeat (conn);
+      return true;
+    }
+  if ((*input_buffer == COMM_CHAR_ACTIVATE_HEARTBEAT_CAPS)
+      || (*input_buffer == COMM_CHAR_ACTIVATE_HEARTBEAT_LOWER))
+
+    {
+      process_activate_heartbeat (conn);
+      return true;
+    }
 
   printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			  MSGCAT_UTIL_SET_COMMDB,
@@ -872,14 +1103,24 @@ process_batch_command (CSS_CONN_ENTRY * conn)
     process_master_stop_shutdown (conn);
   if (commdb_Arg_print_info)
     process_status_query (hostname, conn, COMM_SERVER, NULL);
-  if (commdb_Arg_print_driver_info)
-    process_status_query (hostname, conn, COMM_DRIVER, NULL);
   if (commdb_Arg_print_repl_info)
     process_status_query (hostname, conn, COMM_REPL_SERVER, NULL);
   if (commdb_Arg_print_all_info)
     process_status_query (hostname, conn, COMM_ALL, NULL);
   if (commdb_Arg_ha_mode_server_info)
     process_ha_server_mode (conn, (char *) commdb_Arg_ha_mode_server_name);
+  if (commdb_Arg_print_ha_node_info)
+    process_ha_node_info_query (conn, commdb_Arg_verbose_output);
+  if (commdb_Arg_print_ha_process_info)
+    process_ha_process_info_query (conn, commdb_Arg_verbose_output);
+  if (commdb_Arg_dereg_ha_process)
+    process_dereg_ha_process (conn, (char *) commdb_Arg_dereg_ha_process_pid);
+  if (commdb_Arg_reconfig_heartbeat)
+    process_reconfig_heartbeat (conn);
+  if (commdb_Arg_deactivate_heartbeat)
+    process_deactivate_heartbeat (conn);
+  if (commdb_Arg_activate_heartbeat)
+    process_activate_heartbeat (conn);
 }
 
 /*
@@ -905,6 +1146,13 @@ main (int argc, char **argv)
     {COMMDB_SHUTDOWN_ALL_L, 0, 0, COMMDB_SHUTDOWN_ALL_S},
     {COMMDB_SERVER_MODE_L, 1, 0, COMMDB_SERVER_MODE_S},
     {COMMDB_HOST_L, 1, 0, COMMDB_HOST_S},
+    {COMMDB_HA_NODE_LIST_L, 0, 0, COMMDB_HA_NODE_LIST_S},
+    {COMMDB_HA_PROCESS_LIST_L, 0, 0, COMMDB_HA_PROCESS_LIST_S},
+    {COMMDB_DEREG_HA_PROCESS_L, 1, 0, COMMDB_DEREG_HA_PROCESS_S},
+    {COMMDB_RECONFIG_HEARTBEAT_L, 0, 0, COMMDB_RECONFIG_HEARTBEAT_S},
+    {COMMDB_DEACTIVATE_HEARTBEAT_L, 0, 0, COMMDB_DEACTIVATE_HEARTBEAT_S},
+    {COMMDB_ACTIVATE_HEARTBEAT_L, 0, 0, COMMDB_ACTIVATE_HEARTBEAT_S},
+    {COMMDB_VERBOSE_OUTPUT_L, 0, 0, COMMDB_VERBOSE_OUTPUT_S},
     {0, 0, 0, 0}
   };
 
@@ -997,6 +1245,32 @@ main (int argc, char **argv)
 	  commdb_Arg_ha_mode_server_name = strdup (optarg);
 	  commdb_Arg_ha_mode_server_info = true;
 	  break;
+	case 'N':
+	  commdb_Arg_print_ha_node_info = true;
+	  break;
+	case 'L':
+	  commdb_Arg_print_ha_process_info = true;
+	  break;
+	case 'D':
+	  if (commdb_Arg_dereg_ha_process_pid != NULL)
+	    {
+	      free (commdb_Arg_dereg_ha_process_pid);
+	    }
+	  commdb_Arg_dereg_ha_process_pid = strdup (optarg);
+	  commdb_Arg_dereg_ha_process = true;
+	  break;
+	case 'F':
+	  commdb_Arg_reconfig_heartbeat = true;
+	  break;
+	case 'U':
+	  commdb_Arg_deactivate_heartbeat = true;
+	  break;
+	case 'T':
+	  commdb_Arg_activate_heartbeat = true;
+	  break;
+	case 'V':
+	  commdb_Arg_verbose_output = true;
+	  break;
 	default:
 	  goto usage;
 	}
@@ -1082,6 +1356,10 @@ end:
   if (commdb_Arg_host_name != NULL)
     {
       free_and_init (commdb_Arg_host_name);
+    }
+  if (commdb_Arg_dereg_ha_process_pid != NULL)
+    {
+      free_and_init (commdb_Arg_dereg_ha_process_pid);
     }
   return status;
 }

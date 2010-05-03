@@ -183,6 +183,7 @@ static int parameter_info_decode (char *buf, int size, int num_param,
 static int decode_fetch_result (T_REQ_HANDLE * req_handle,
 				char *result_msg_org, char *result_msg_start,
 				int result_msg_size);
+static void apply_cas_status (T_CON_HANDLE * con_handle);
 
 #ifdef CCI_XA
 static void add_arg_xid (T_NET_BUF * net_buf, XID * xid);
@@ -258,6 +259,8 @@ qe_end_tran (T_CON_HANDLE * con_handle, char type, T_CCI_ERROR * err_buf)
   T_NET_BUF net_buf;
   char func_code = CAS_FC_END_TRAN;
   int err_code;
+  bool keep_connection;
+  time_t cur_time, last_rc_time;
 #ifdef END_TRAN2
   char type_str[2];
 #endif
@@ -299,8 +302,23 @@ qe_end_tran (T_CON_HANDLE * con_handle, char type, T_CCI_ERROR * err_buf)
       hm_req_handle_free_all (con_handle);
     }
 
-  if (con_handle->broker_info[BROKER_INFO_KEEP_CONNECTION] ==
-      CAS_KEEP_CONNECTION_ON)
+  keep_connection = (con_handle->broker_info[BROKER_INFO_KEEP_CONNECTION]
+		     == CAS_KEEP_CONNECTION_ON);
+
+  if (con_handle->alter_host_id >= 0 && con_handle->rc_time > 0)
+    {
+      cur_time = time (NULL);
+      last_rc_time = hm_get_ha_last_rc_time (con_handle);
+
+      if (last_rc_time > 0 && (cur_time - last_rc_time) > con_handle->rc_time)
+	{
+	  keep_connection = false;
+	  con_handle->alter_host_id = -1;
+	  hm_set_ha_status (con_handle, true);
+	}
+    }
+
+  if (keep_connection)
     {
       con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
     }
@@ -518,7 +536,9 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 
   err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   if (err_code < 0)
-    goto execute_error;
+    {
+      goto execute_error;
+    }
 
   net_buf_clear (&net_buf);
 
@@ -529,6 +549,8 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       err_code = res_count;
       goto execute_error;
     }
+
+  apply_cas_status (con_handle);
 
   err_code = execute_array_info_decode (result_msg + 4, result_msg_size - 4,
 					EXECUTE_EXEC, &qr, &remain_msg_size);
@@ -549,9 +571,13 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       || req_handle->stmt_type == CUBRID_STMT_EVALUATE)
     {
       if (flag & CCI_EXEC_ASYNC)
-	req_handle->num_tuple = -1;
+	{
+	  req_handle->num_tuple = -1;
+	}
       else
-	req_handle->num_tuple = res_count;
+	{
+	  req_handle->num_tuple = res_count;
+	}
     }
   else if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
     {
@@ -955,7 +981,9 @@ qe_fetch (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   int num_tuple;
 
   if (req_handle->cursor_pos <= 0)
-    return CCI_ER_NO_MORE_DATA;
+    {
+      return CCI_ER_NO_MORE_DATA;
+    }
 
   if (req_handle->fetched_tuple_begin > 0 &&
       req_handle->cursor_pos >= req_handle->fetched_tuple_begin &&
@@ -1001,7 +1029,11 @@ qe_fetch (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
 			   err_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
+
+  apply_cas_status (con_handle);
 
   num_tuple = decode_fetch_result (req_handle,
 				   result_msg,
@@ -1130,9 +1162,9 @@ qe_get_cur_oid (T_REQ_HANDLE * req_handle, char *oid_str_buf)
   if (req_handle->prepare_flag & CCI_PREPARE_INCLUDE_OID)
     {
       ut_oid_to_str (&
-		     (req_handle->
-		      tuple_value[req_handle->cur_fetch_tuple_index].
-		      tuple_oid), oid_str_buf);
+		     (req_handle->tuple_value
+		      [req_handle->cur_fetch_tuple_index].tuple_oid),
+		     oid_str_buf);
     }
   else
     strcpy (oid_str_buf, "");
@@ -1407,6 +1439,7 @@ qe_schema_info (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   req_handle->server_handle_id = result_code;
   req_handle->cur_fetch_tuple_index = -1;
   req_handle->cursor_pos = 0;
+  req_handle->valid = 1;
 
   return 0;
 }
@@ -4515,6 +4548,26 @@ decode_fetch_result (T_REQ_HANDLE * req_handle, char *result_msg_org,
     }
 
   return num_tuple;
+}
+
+static void
+apply_cas_status (T_CON_HANDLE * con_handle)
+{
+  if (con_handle->cas_info[CAS_INFO_STATUS] == CAS_INFO_STATUS_INACTIVE)
+    {
+      if (con_handle->broker_info[BROKER_INFO_KEEP_CONNECTION] ==
+	  CAS_KEEP_CONNECTION_ON)
+	{
+	  con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+	}
+      else
+	{
+	  CLOSE_SOCKET (con_handle->sock_fd);
+	  con_handle->sock_fd = INVALID_SOCKET;
+	}
+
+      con_handle->tran_status = CCI_TRAN_STATUS_START;
+    }
 }
 
 #ifdef CCI_XA

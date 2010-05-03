@@ -87,8 +87,14 @@ enum
   CSQL_STAT_EDITOR_PRINTED_TEXT = 58,
   CSQL_STAT_CD_TEXT = 59,
   CSQL_PASSWD_PROMPT_TEXT = 61,
-  CSQL_RESULT_STMT_TITLE_FORMAT = 63,
-  CSQL_STAT_NONSCR_EMPTY_RESULT_TEXT = 65,
+  CSQL_RESULT_STMT_TITLE_FORMAT = 62,
+  CSQL_STAT_NONSCR_EMPTY_RESULT_TEXT = 63,
+  CSQL_STAT_CHECKPOINT_TEXT = 64,
+  CSQL_STAT_RESTART_TEXT = 65,
+  CSQL_KILLTRAN_TITLE_TEXT = 66,
+  CSQL_KILLTRAN_FORMAT = 67,
+  CSQL_STAT_KILLTRAN_TEXT = 68,
+  CSQL_STAT_KILLTRAN_FAIL_TEXT = 69,
   CSQL_ROWS = 70,
   CSQL_ARG_AUTO = 75,
   CSQL_ARG_AUTO_HELP = 76,
@@ -193,6 +199,9 @@ typedef enum
   S_CMD_COMMIT,
   S_CMD_ROLLBACK,
   S_CMD_AUTOCOMMIT,
+  S_CMD_CHECKPOINT,
+  S_CMD_KILLTRAN,
+  S_CMD_RESTART,
 
 /* Environment stuffs */
   S_CMD_SHELL_CMD,
@@ -319,6 +328,7 @@ extern void csql_help_schema (const char *class_name);
 extern void csql_help_trigger (const char *class_name);
 extern void csql_help_syntax (DB_HELP_COMMAND csql_cmd_no);
 extern void csql_help_info (const char *command, int aucommit_flag);
+extern void csql_killtran (const char *argument);
 
 extern char *csql_db_value_as_string (DB_VALUE * value, int *length);
 

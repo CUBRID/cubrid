@@ -82,8 +82,10 @@ struct repl_info_schema
 #if defined(SERVER_MODE) || defined(SA_MODE)
 /* for replication, declare replication log dump function */
 extern void repl_data_insert_log_dump (FILE * fp, int length, void *data);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern void repl_data_udpate_log_dump (FILE * fp, int length, void *data);
 extern void repl_data_delete_log_dump (FILE * fp, int length, void *data);
+#endif
 extern void repl_schema_log_dump (FILE * fp, int length, void *data);
 extern bool repl_class_is_replicated (OID * class_oid);
 extern void repl_log_send (void);

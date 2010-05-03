@@ -213,7 +213,7 @@ static void log_recovery_resetlog (THREAD_ENTRY * thread_p,
  */
 
 /*
- * log_rv_undo_record - XECUTE AN UNDO
+ * log_rv_undo_record - EXECUTE AN UNDO RECORD
  *
  * return: nothing
  *
@@ -261,9 +261,9 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
    * compensating records are logged.
    */
 
-  if (rcv_vpid->volid == NULL_VOLID || rcv_vpid->pageid == NULL_PAGEID
-      || disk_isvalid_page (thread_p, rcv_vpid->volid,
-			    rcv_vpid->pageid) != DISK_VALID)
+  if (RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex)
+      || (disk_isvalid_page (thread_p, rcv_vpid->volid,
+			     rcv_vpid->pageid) != DISK_VALID))
     {
       rcv->pgptr = NULL;
     }
@@ -326,8 +326,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
     }
 
   /* Now call the UNDO recovery function */
-  if (rcv->pgptr != NULL
-      || (rcv_vpid->volid == NULL_VOLID && rcv_vpid->pageid == NULL_PAGEID))
+  if (rcv->pgptr != NULL || RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
     {
 
       /*
@@ -336,7 +335,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
        * redo/CLR log to describe the undo.
        */
 
-      if (rcv_vpid->volid != NULL_VOLID && rcv_vpid->pageid != NULL_PAGEID)
+      if (!RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
 	{
 	  log_append_compensate (thread_p, LOG_COMPENSATE, rcvindex, rcv_vpid,
 				 rcv->offset, rcv->pgptr, rcv->length,
@@ -346,7 +345,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
       else
 	{
 	  /*
-	   * Logical logging. The undo function is responsable for logging the
+	   * Logical logging. The undo function is responsible for logging the
 	   * needed undo and redo records to make the logical undo operation
 	   * atomic.
 	   * The recovery manager sets a dummy compensating record, to fix the
@@ -675,7 +674,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   bool did_incom_recovery;
   int tran_index;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   /* Save the transaction index and find the transaction descriptor */
 
@@ -811,7 +810,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
     }
 
   /* Dismount any archive and checkpoint the database */
-  logpb_decache_archive_info ();
+  logpb_decache_archive_info (thread_p);
 
   LOG_CS_EXIT ();
   (void) logpb_checkpoint (thread_p);
@@ -820,7 +819,8 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   /* Flush all dirty pages */
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-  (void) fileio_synchronize_all (!PRM_SUPPRESS_FSYNC, false);
+  (void) fileio_synchronize_all (thread_p, false);
+
   logpb_flush_header (thread_p);
 }
 
@@ -845,7 +845,7 @@ log_rv_analysis_client_name (THREAD_ENTRY * thread_p, int tran_id,
    * If this is the first time, the transaction is seen. Assign a new
    * index to describe it and assume that the transaction was active
    * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statemant will be find reading the
+   * aborted. The truth of this statement will be find reading the
    * rest of the log
    */
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
@@ -893,7 +893,7 @@ log_rv_analysis_undo_redo (THREAD_ENTRY * thread_p, int tran_id,
    * If this is the first time, the transaction is seen. Assign a new
    * index to describe it and assume that the transaction was active
    * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statemant will be find reading the
+   * aborted. The truth of this statement will be find reading the
    * rest of the log
    */
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
@@ -930,7 +930,7 @@ log_rv_analysis_dummy_head_postpone (THREAD_ENTRY * thread_p, int tran_id,
    * If this is the first time, the transaction is seen. Assign a new
    * index to describe it and assume that the transaction was active
    * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statemant will be find reading the
+   * aborted. The truth of this statement will be find reading the
    * rest of the log
    */
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
@@ -974,7 +974,7 @@ log_rv_analysis_postpone (THREAD_ENTRY * thread_p, int tran_id,
    * If this is the first time, the transaction is seen. Assign a new
    * index to describe it and assume that the transaction was active
    * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statemant will be find reading the
+   * aborted. The truth of this statement will be find reading the
    * rest of the log
    */
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
@@ -1130,7 +1130,7 @@ log_rv_analysis_compensate (THREAD_ENTRY * thread_p, int tran_id,
    * If this is the first time, the transaction is seen. Assign a new
    * index to describe it and assume that the transaction was active
    * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statemant will be find reading the
+   * aborted. The truth of this statement will be find reading the
    * rest of the log
    */
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
@@ -1179,7 +1179,7 @@ log_rv_analysis_lcompensate (THREAD_ENTRY * thread_p, int tran_id,
    * If this is the first time, the transaction is seen. Assign a new
    * index to describe it and assume that the transaction was active
    * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statemant will be find reading the
+   * aborted. The truth of this statement will be find reading the
    * rest of the log
    */
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
@@ -1227,7 +1227,7 @@ log_rv_analysis_client_user_undo_data (THREAD_ENTRY * thread_p, int tran_id,
    * If this is the first time, the transaction is seen. Assign a new
    * index to describe it and assume that the transaction was active
    * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statemant will be find reading the
+   * aborted. The truth of this statement will be find reading the
    * rest of the log
    */
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
@@ -1271,7 +1271,7 @@ log_rv_analysis_client_user_postpone_data (THREAD_ENTRY * thread_p,
    * If this is the first time, the transaction is seen. Assign a new
    * index to describe it and assume that the transaction was active
    * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statemant will be find reading the
+   * aborted. The truth of this statement will be find reading the
    * rest of the log
    */
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
@@ -2210,7 +2210,7 @@ log_rv_analysis_end_check_point (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
        * If this is the first time, the transaction is seen. Assign a
        * new index to describe it and assume that the transaction was
        * active at the time of the crash, and thus it will be
-       * unilateraly aborted. The truth of this statemant will be find
+       * unilateraly aborted. The truth of this statement will be find
        * reading the rest of the log
        */
       tdes =
@@ -2264,7 +2264,6 @@ log_rv_analysis_end_check_point (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
   if (area != NULL)
     {
       free_and_init (area);
-      area = NULL;
     }
 
   /*
@@ -2378,7 +2377,7 @@ log_rv_analysis_save_point (THREAD_ENTRY * thread_p, int tran_id,
    * If this is the first time, the transaction is seen. Assign a new
    * index to describe it and assume that the transaction was active
    * at the time of the crash, and thus it will be unilateraly
-   * aborted. The truth of this statemant will be find reading the
+   * aborted. The truth of this statement will be find reading the
    * rest of the log
    */
   tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
@@ -2863,6 +2862,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type,
     case LOG_UNLOCK_COMMIT:
     case LOG_UNLOCK_ABORT:
     case LOG_DUMMY_HA_SERVER_STATE:
+    case LOG_DUMMY_OVF_RECORD:
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:
@@ -3691,12 +3691,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 #endif /* !NDEBUG */
 
 	      ignore_redofunc = false;
-	      if (rcvindex == RVBT_OID_TRUNCATE)
+	      if (rcvindex == RVBT_OID_TRUNCATE
+		  || rcvindex == RVBT_KEYVAL_DEL_OID_TRUNCATE)
 		{
 		  tdes = LOG_FIND_TDES (logtb_find_tran_index (thread_p,
 							       log_rec->
 							       trid));
-		  /* if RVBT_OID_TRUNCATE redo log is the last log of the tranx,
+		  /* if RVBT_OID_TRUNCATE or RVBT_KEYVAL_DEL_OID_TRUNCATE
+		   * redo log is the last log of the tranx,
 		   * then NEVER redo it.
 		   */
 		  if (tdes != NULL && LSA_EQ (&rcv_lsa, &tdes->tail_lsa))
@@ -4214,6 +4216,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	    case LOG_UNLOCK_COMMIT:
 	    case LOG_UNLOCK_ABORT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
+	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_END_OF_LOG:
 	      break;
 
@@ -4826,6 +4829,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_UNLOCK_COMMIT:
 		case LOG_UNLOCK_ABORT:
 		case LOG_DUMMY_HA_SERVER_STATE:
+		case LOG_DUMMY_OVF_RECORD:
 		case LOG_END_OF_LOG:
 		  /* This looks like a system error in the analysis phase */
 #if defined(CUBRID_DEBUG)
@@ -4923,7 +4927,7 @@ log_recovery_notpartof_archives (THREAD_ENTRY * thread_p, int start_arv_num,
 	{
 	  fileio_make_log_archive_name (logarv_name, log_Archive_path,
 					log_Prefix, i);
-	  fileio_unformat (logarv_name);
+	  fileio_unformat (thread_p, logarv_name);
 	}
     }
   else
@@ -4945,7 +4949,7 @@ log_recovery_notpartof_archives (THREAD_ENTRY * thread_p, int start_arv_num,
 		}
 	      break;
 	    }
-	  fileio_unformat (logarv_name);
+	  fileio_unformat (thread_p, logarv_name);
 	}
     }
 
@@ -5032,7 +5036,7 @@ log_unformat_ahead_volumes (THREAD_ENTRY * thread_p, VOLID volid,
 	}
       else
 	{
-	  fileio_unformat (fileio_get_volume_label (volid));
+	  fileio_unformat (thread_p, fileio_get_volume_label (volid));
 	}
     }
   return result;
@@ -5110,11 +5114,12 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
 	}
 
       vdes =
-	fileio_mount (log_Db_fullname, vol_fullname, volid, false, false);
+	fileio_mount (thread_p, log_Db_fullname, vol_fullname, volid, false,
+		      false);
       if (vdes != NULL_VOLDES)
 	{
 	  ret = disk_get_creation_time (thread_p, volid, &vol_dbcreation);
-	  fileio_dismount (vdes);
+	  fileio_dismount (thread_p, vdes);
 	  if (difftime ((time_t) vol_dbcreation,
 			(time_t) log_Gl.hdr.db_creation) != 0)
 	    {
@@ -5123,7 +5128,7 @@ log_recovery_notpartof_volumes (THREAD_ENTRY * thread_p)
 	    }
 	  else
 	    {
-	      fileio_unformat (vol_fullname);
+	      fileio_unformat (thread_p, vol_fullname);
 	    }
 	}
     }
@@ -5158,7 +5163,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
   char *catmsg_dup;
   int ret = NO_ERROR;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
   assert (last_lsa != NULL);
 
   aligned_newappend_pgbuf = PTR_ALIGN (newappend_pgbuf, MAX_ALIGNMENT);
@@ -5257,7 +5262,8 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
 					      log_Name_active,
 					      LOG_DBLOG_ACTIVE_VOLID,
 					      log_get_num_pages_for_creation
-					      (-1), false, true, false);
+					      (-1), false, true, false,
+					      LOG_PAGESIZE);
 
 	  if (log_Gl.append.vdes != NULL_VOLDES)
 	    {
@@ -5335,7 +5341,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
 	  if (newappend_pgptr != NULL && log_Gl.append.log_pgptr != NULL)
 	    {
 	      memcpy ((char *) log_Gl.append.log_pgptr,
-		      (char *) newappend_pgptr, IO_PAGESIZE);
+		      (char *) newappend_pgptr, LOG_PAGESIZE);
 	      logpb_set_dirty (log_Gl.append.log_pgptr, DONT_FREE);
 	    }
 	  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
@@ -5345,7 +5351,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
   LSA_COPY (&log_Gl.append.prev_lsa, last_lsa);
 
   logpb_flush_header (thread_p);
-  logpb_decache_archive_info ();
+  logpb_decache_archive_info (thread_p);
 
   return;
 }
@@ -5797,6 +5803,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_2PC_ABORT_INFORM_PARTICPS:
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
+    case LOG_DUMMY_OVF_RECORD:
     case LOG_UNLOCK_COMMIT:
     case LOG_UNLOCK_ABORT:
     case LOG_END_OF_LOG:
@@ -5828,7 +5835,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
     case LOG_DUMMY_FILLPAGE_FORARCHIVE:
       {
 	/* Get to start of next page */
-	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, IO_PAGESIZE, &log_lsa,
+	LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, LOG_PAGESIZE, &log_lsa,
 					  log_pgptr);
 	break;
       }

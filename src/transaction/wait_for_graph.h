@@ -28,6 +28,7 @@
 
 #ident "$Id$"
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #include "thread_impl.h"
 
 typedef enum
@@ -63,12 +64,10 @@ extern int wfg_insert_out_edges (THREAD_ENTRY * thread_p,
 				 int (*cycle_resolution_fn) (int tran_index,
 							     void *args),
 				 void *args);
-#if defined(ENABLE_UNUSED_FUNCTION)
 extern int wfg_remove_out_edges (THREAD_ENTRY * thread_p,
 				 const int waiter_tran_index,
 				 const int num_holders,
 				 const int *htran_indices_p);
-#endif
 extern int wfg_get_status (int *num_edges_p, int *num_waiters_p);
 extern int wfg_detect_cycle (THREAD_ENTRY * thread_p,
 			     WFG_CYCLE_CASE * cycle_case,
@@ -80,7 +79,6 @@ extern int wfg_get_tran_entries (THREAD_ENTRY * thread_p,
 
 /* Transaction group interfaces */
 extern int wfg_alloc_tran_group (THREAD_ENTRY * thread_p);
-#if defined(ENABLE_UNUSED_FUNCTION)
 extern int wfg_insert_holder_tran_group (THREAD_ENTRY * thread_p,
 					 const int tran_group_index,
 					 const int holder_tran_index);
@@ -95,7 +93,6 @@ extern int wfg_insert_waiter_tran_group (THREAD_ENTRY * thread_p,
 								     void
 								     *args),
 					 void *args);
-#endif
 extern int wfg_remove_waiter_tran_group (THREAD_ENTRY * thread_p,
 					 const int tran_group_index,
 					 const int waiter_tran_index);
@@ -103,5 +100,5 @@ extern int wfg_is_tran_group_waiting (THREAD_ENTRY * thread_p,
 				      const int tran_index);
 
 extern int wfg_dump (THREAD_ENTRY * thread_p);
-
+#endif
 #endif /* _WAIT_FOR_GRAPH_H_ */

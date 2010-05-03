@@ -832,7 +832,7 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p,
       return error;
     }
 
-  /* jump to the 'attributes' and extract it's id/name.
+  /* jump to the 'attributes' and extract its id/name.
    * there are no indexes for shared or class attributes,
    * so we need only id/name for 'attributes'.
    */
@@ -1455,7 +1455,7 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
       if (DB_IS_NULL (attr_val_p))
 	{
 	  /* if self reference for example, "class x (a x)"
-	     set an invalid data type, and fill it's value later */
+	     set an invalid data type, and fill its value later */
 	  error = db_value_domain_init (attr_val_p, DB_TYPE_VARIABLE,
 					DB_DEFAULT_PRECISION,
 					DB_DEFAULT_SCALE);
@@ -4688,10 +4688,6 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p,
 	    }
 
 	  buffer_p = valcnv_append_string (buffer_p, "'");
-	  if (buffer_p == NULL)
-	    {
-	      return NULL;
-	    }
 	  break;
 
 	case DB_TYPE_DATE:
@@ -4708,10 +4704,6 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p,
 	    }
 
 	  buffer_p = valcnv_append_string (buffer_p, "'");
-	  if (buffer_p == NULL)
-	    {
-	      return NULL;
-	    }
 	  break;
 
 	case DB_TYPE_TIME:
@@ -4728,10 +4720,6 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p,
 	    }
 
 	  buffer_p = valcnv_append_string (buffer_p, "'");
-	  if (buffer_p == NULL)
-	    {
-	      return NULL;
-	    }
 	  break;
 
 	case DB_TYPE_TIMESTAMP:
@@ -4748,10 +4736,6 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p,
 	    }
 
 	  buffer_p = valcnv_append_string (buffer_p, "'");
-	  if (buffer_p == NULL)
-	    {
-	      return NULL;
-	    }
 	  break;
 
 	case DB_TYPE_DATETIME:
@@ -4810,10 +4794,6 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p,
 	    }
 
 	  buffer_p = valcnv_append_string (buffer_p, "'");
-	  if (buffer_p == NULL)
-	    {
-	      return NULL;
-	    }
 	  break;
 
 	case DB_TYPE_ELO:
@@ -4830,18 +4810,10 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p,
 	    }
 
 	  buffer_p = valcnv_append_string (buffer_p, "'");
-	  if (buffer_p == NULL)
-	    {
-	      return NULL;
-	    }
 	  break;
 
 	default:
 	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
-	  if (buffer_p == NULL)
-	    {
-	      return NULL;
-	    }
 	  break;
 	}
     }

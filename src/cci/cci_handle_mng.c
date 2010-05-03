@@ -49,6 +49,7 @@
 #include <windows.h>
 #else
 #include <netdb.h>
+#include <pthread.h>
 #endif
 
 /************************************************************************
@@ -78,6 +79,22 @@
  * PRIVATE TYPE DEFINITIONS						*
  ************************************************************************/
 
+typedef struct
+{
+  T_ALTER_HOST host;		/* host info (ip, port) */
+  int cur_host_id;		/* now connected host id */
+  time_t last_rc_time;		/* last failback try time */
+} T_HA_STATUS;
+
+static T_HA_STATUS ha_status[MAX_CON_HANDLE];
+static int ha_status_count = 0;
+
+#if defined(WINDOWS)
+HANDLE ha_status_mutex;
+#else
+T_MUTEX ha_status_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
 static int conn_pool[CCI_MAX_CONNECTION_POOL];
 static int num_conn_pool = 0;
 
@@ -101,6 +118,8 @@ static void con_handle_content_free (T_CON_HANDLE * con_handle);
 static void ipstr2uchar (char *ip_str, unsigned char *ip_addr);
 static int is_ip_str (char *ip_str);
 static int hostname2uchar (char *hostname, unsigned char *ip_addr);
+
+static int hm_find_ha_status_index (T_CON_HANDLE * con_handle);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -637,6 +656,86 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
     FREE_MEM (req_handle->bind_mode);
 }
 
+static int
+hm_find_ha_status_index (T_CON_HANDLE * con_handle)
+{
+  int i, index = -1;
+
+  for (i = 0; i < ha_status_count; i++)
+    {
+      if (memcmp (ha_status[i].host.ip_addr, con_handle->ip_addr, 4) == 0
+	  && ha_status[i].host.port == con_handle->port)
+	{
+	  index = i;
+	  break;
+	}
+    }
+
+  return index;
+}
+
+int
+hm_get_ha_connected_host (T_CON_HANDLE * con_handle)
+{
+  int i, cur_host_id = -1;
+
+  MUTEX_LOCK (ha_status_mutex);
+  i = hm_find_ha_status_index (con_handle);
+
+  if (i >= 0)
+    {
+      cur_host_id = ha_status[i].cur_host_id;
+    }
+
+  MUTEX_UNLOCK (ha_status_mutex);
+  return cur_host_id;
+}
+
+time_t
+hm_get_ha_last_rc_time (T_CON_HANDLE * con_handle)
+{
+  int i;
+  time_t rc_time = 0;
+
+  MUTEX_LOCK (ha_status_mutex);
+  i = hm_find_ha_status_index (con_handle);
+
+  if (i >= 0)
+    {
+      rc_time = ha_status[i].last_rc_time;
+    }
+
+  MUTEX_UNLOCK (ha_status_mutex);
+  return rc_time;
+}
+
+void
+hm_set_ha_status (T_CON_HANDLE * con_handle, bool reset_rctime)
+{
+  int i;
+
+  MUTEX_LOCK (ha_status_mutex);
+  i = hm_find_ha_status_index (con_handle);
+
+  if (i < 0)
+    {
+      i = ha_status_count;
+      memcpy (ha_status[i].host.ip_addr, con_handle->ip_addr, 4);
+      ha_status[i].host.port = con_handle->port;
+      ha_status_count++;
+    }
+
+  if (reset_rctime == true ||
+      (con_handle->alter_host_id >= 0 && ha_status[i].cur_host_id == -1))
+    {
+      ha_status[i].last_rc_time = time (NULL);
+    }
+
+  ha_status[i].cur_host_id = con_handle->alter_host_id;
+
+  MUTEX_UNLOCK (ha_status_mutex);
+}
+
 /************************************************************************
  * IMPLEMENTATION OF PRIVATE FUNCTIONS	 				*
  ************************************************************************/
@@ -667,7 +766,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->sock_fd = -1;
   con_handle->ref_count = 0;
   con_handle->default_isolation_level = 0;
-  con_handle->is_first = 1;
+  con_handle->is_retry = 0;
   con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
   con_handle->tran_status = CCI_TRAN_STATUS_START;
   con_handle->autocommit_mode = CCI_AUTOCOMMIT_FALSE;
@@ -687,6 +786,12 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->cas_info[CAS_INFO_RESERVED_1] = CAS_INFO_RESERVED_DEFAULT;
   con_handle->cas_info[CAS_INFO_RESERVED_2] = CAS_INFO_RESERVED_DEFAULT;
   con_handle->cas_info[CAS_INFO_RESERVED_3] = CAS_INFO_RESERVED_DEFAULT;
+
+  memset (con_handle->alter_hosts, 0,
+	  sizeof (T_ALTER_HOST) * ALTER_HOST_MAX_SIZE);
+  con_handle->alter_host_count = 0;
+  con_handle->alter_host_id = -1;
+  con_handle->rc_time = 600;
 
   return 0;
 }

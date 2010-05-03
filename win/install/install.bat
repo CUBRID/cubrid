@@ -28,6 +28,8 @@ copy %SRC_DIR%\cubridcs.lib %DEST_DIR%\lib
 copy %SRC_DIR%\cubridsa.lib %DEST_DIR%\lib
 copy %SRC_DIR%\cascci*.lib %DEST_DIR%\lib
 copy %SRC_DIR%\libesql.lib %DEST_DIR%\lib
+copy %SRC_DIR%\cmstat.lib %DEST_DIR%\lib
+copy %SRC_DIR%\cmdep.lib %DEST_DIR%\lib
 
 copy %SRC_DIR%\*.exe %DEST_DIR%\bin
 copy %SRC_DIR%\*.dll %DEST_DIR%\bin
@@ -40,6 +42,8 @@ copy %SRC_DIR%\..\..\..\cmserver\conf\*.pass %DEST_DIR%\conf
 copy %SRC_DIR%\..\..\..\src\cci\cas_cci.h %DEST_DIR%\include
 copy %SRC_DIR%\..\..\..\src\executables\cubrid_esql.h %DEST_DIR%\include\cubrid_esql.h
 copy %SRC_DIR%\..\..\..\src\compat\dbi_compat.h %DEST_DIR%\include\dbi.h
+copy %SRC_DIR%\..\..\..\src\cm_common\cm_stat.h %DEST_DIR%\include\cm_stat.h
+copy %SRC_DIR%\..\..\..\src\cm_common\cm_dep.h %DEST_DIR%\include\cm_dep.h
 
 copy %SRC_DIR%\..\..\..\msg\en_US\*.msg 		%MSG_EN_US_DIR%
 copy %SRC_DIR%\..\..\..\msg\en_US\syntax.txt	%MSG_EN_US_DIR%

@@ -131,6 +131,7 @@ Available service's utilities:\n\
     manager\n\
     repl_server\n\
     repl_agent\n\
+    heartbeat\n\
 \n\
 Available administrator's utilities:\n\
     addvoldb\n\
@@ -208,9 +209,18 @@ Available command:\n\
     start       dist-database-name [dba-password]\n\
     stop        dist-database-name\n\
     status\n
-30 '%s' argument is not needed.\n
-31 A database-name is missing.\n
-32 Replication is not supported in this platform
+30 cubrid utility, version %s\n\
+usage: %s heartbeat <command> [args]\n\
+\n\
+Available command:\n\
+    act\n\
+    deact\n\
+    deregister  process-id\n\
+    list\n\
+    reload\n
+31 '%s' argument is not needed.\n
+32 A database-name is missing.\n
+33 Replication is not supported in this platform
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
@@ -282,7 +292,8 @@ valid options:\n\
   -o, --output-file=FILE              redirect output messages to FILE; default: none\n\
   -v, --verbose                       enable verbose status messages; default: disabled\n\
   -l, --log-page-count=NUMBER         NUMBER of pages for log archives; default: same as a first generic volume\n\
-  -s, --page-size=SIZE                database page SIZE in bytes; default: an unit of I/O in operating system\n
+  -s, --page-size=SIZE                database page SIZE in bytes; default: 4KB\n\
+      --log-page-size=SIZE            log page SIZE in bytes; default: database page size\n
 
 
 $set 6 MSGCAT_UTIL_SET_DELETEDB
@@ -503,7 +514,14 @@ valid options:\n\
   -k, --shutdown-repl-agent=NAME   shutdown NAME replication agent\n\
   -A, --shutdown-all               shutdown all processes\n\
   -h, --host=HOST                  connect to the master server on the given HOST\n\
-  -c, --server-mode=NAME           print NAME database server's HA mode\n
+  -c, --server-mode=NAME           print NAME database server's HA mode\n\
+  -N, --node-list                  list nodes managed by CUBRID heartbeat\n\
+  -L, --process-list               list local process managed by CUBRID heartbeat\n\
+  -D, --dereg-process=PID          exit the target process and remove it from managed process entries\n\
+  -F, --reconfig-node-list         apply CUBRID heartbeat configuration recently changed\n\
+  -U, --deactivate-heartbeat       deactivate CUBRID heartbeat feature and remove the current node from node group\n\
+  -T, --activate-heartbeat         activate CUBRID heartbeat feature and current node becomes a member of node group\n\
+  -V, --verbose                    enable verbose status messages; default: disabled\n
 28 Sorry, unknown command: %s\n
 29 Could not get host name for local host - aborting\n
 30 Could not find parameter file\n
@@ -558,7 +576,7 @@ valid options:\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Space description for database '%s' with pagesize %d.\n\n
+15 Space description for database '%s' with pagesize %d. (log pagesize: %d)\n\n
 16 %5d %8s  %s %s  %s\n
 17 Couldn't open output file `%s'\n
 18 Space description for temporary volumes for database '%s' with pagesize %d.\n\n
@@ -654,7 +672,8 @@ valid options:\n\
                                 5 dump classnames\n\
                                 6 dump disk bitmaps\n\
                                 7 dump catalog\n\
-                                8 dump log\n
+                                8 dump log\n\
+                                9 dump heap\n
 
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
@@ -790,6 +809,7 @@ $set 36 MSGCAT_UTIL_SET_REPLAGENT
 41 ERROR(%d): Unilaterally aborted by the system. Try to increase the value of the max_block_size and max_block_count(cubrid.conf).
 51 LOG(%d): The repl_agent process is restarting.
 52 LOG(%d): An update log record of the replication was converted into insert log.
+53 LOG(%d): %s
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Cannot open output file `%s'\n
@@ -872,4 +892,5 @@ usage: %s statdump [OPTION] database-name\n\
 \n\
 valid options:\n\
   -o, --output-file=FILE       redirect output message to FILE; default: none\n\
+  -c, --cumulative             do not clear stats\n\
   -i, --interval=S             print stats every S secs\n

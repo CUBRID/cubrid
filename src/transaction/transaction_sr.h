@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -33,8 +33,10 @@
 #include "thread_impl.h"
 
 extern void tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern TRAN_STATE tran_server_unilaterally_abort (THREAD_ENTRY * thread_p,
 						  int tran_index);
+#endif
 extern int xtran_get_local_transaction_id (THREAD_ENTRY * thread_p,
 					   DB_VALUE * trid);
 

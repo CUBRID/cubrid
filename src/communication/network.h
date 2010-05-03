@@ -40,10 +40,12 @@
    as returned by sizeof().  Note that MEMORY_STAT_SIZE and PACKED_STAT_SIZE
    are not necesarily the same although they will be in most cases.
 */
-#define STAT_SIZE_PACKED (OR_INT_SIZE * 32)
+#define STAT_SIZE_PACKED \
+        (OR_INT_SIZE * MNT_SIZE_OF_SERVER_EXEC_STATS)
 #define STAT_SIZE_MEMORY STAT_SIZE_PACKED
 
-#define GLOBAL_STAT_SIZE_PACKED (OR_INT64_SIZE * 32)
+#define GLOBAL_STAT_SIZE_PACKED \
+        (OR_INT64_SIZE * MNT_SIZE_OF_SERVER_EXEC_GLOBAL_STATS)
 
 /* These define the requests that the server will respond to */
 enum net_server_request
@@ -204,7 +206,13 @@ enum net_server_request
   NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS,
   NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS,
 
+  /* Followings are not grouped because they are appended after the above.
+     It is necessary to rearrange with changing network compatibility. */
   NET_SERVER_CSS_DUMP_CS_STAT,
+
+  NET_SERVER_LOG_CHECKPOINT,
+
+  NET_SERVER_SERIAL_DECACHE,
 
   /*
    * This is the last entry. It is also used for the end of an

@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -58,8 +58,10 @@ extern int overflow_get_capacity (THREAD_ENTRY * thread_p,
 extern int overflow_estimate_npages_needed (THREAD_ENTRY * thread_p,
 					    int total_novf_sets,
 					    int avg_ovfdata_size);
+#if defined (CUBRID_DEBUG)
 extern int overflow_dump (THREAD_ENTRY * thread_p, FILE * fp,
 			  VPID * ovf_vpid);
+#endif
 extern int overflow_rv_newpage_logical_undo (THREAD_ENTRY * thread_p,
 					     LOG_RCV * rcv);
 extern void overflow_rv_newpage_logical_dump_undo (FILE * fp,
@@ -69,5 +71,6 @@ extern int overflow_rv_newpage_link_undo (THREAD_ENTRY * thread_p,
 					  LOG_RCV * rcv);
 extern int overflow_rv_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void overflow_rv_link_dump (FILE * fp, int length_ignore, void *data);
+extern void overflow_rv_page_dump (FILE * fp, int length, void *data);
 
 #endif /* _OVERFLOW_FILE_H_ */

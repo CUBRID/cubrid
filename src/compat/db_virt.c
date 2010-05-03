@@ -176,7 +176,7 @@ db_create_vclass (const char *name)
 }
 
 /*
- * db_get_vclass_ldb_name() - This funciton returns the name of the ldb used
+ * db_get_vclass_ldb_name() - This function returns the name of the ldb used
  *    with a virtual class. It simply makes a copy of the ldb name.
  * return : ldb name used with virtual class
  * op(in): class pointer

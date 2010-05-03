@@ -308,8 +308,10 @@ extern void repl_error_flush (FILE * fp, bool serveryn);
 extern void repl_error_push (int file_id, int line_num, int code,
 			     const char *arg);
 extern int repl_io_truncate (int vdes, int pagesize, PAGEID pageid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int repl_io_rename (char *active_copy_log, int *active_vol,
 			   char *archive_copy_log, int *archive_vol);
+#endif
 extern off_t repl_io_file_size (int vdes);
 extern int repl_set_socket_tcp_nodelay (int sock_fd);
 

@@ -18,7 +18,7 @@
         </delete>
     </target>
     <target depends="init" name="compile">
-        <javac destdir="${build}" encoding="EUC-KR">
+        <javac destdir="${build}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source">
             <src path="."/>
             <src path="${src}"/>
         </javac>

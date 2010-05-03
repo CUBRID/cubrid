@@ -104,6 +104,7 @@ static bool qdump_print_arith (int type, void *ptr);
 static bool qdump_print_term (PRED_EXPR * pred_ptr);
 static const char *qdump_bool_operator_string (BOOL_OP bool_op);
 static bool qdump_print_lhs_predicate (PRED_EXPR * pred_p);
+#if defined(CUBRID_DEBUG)
 static QDUMP_XASL_CHECK_NODE *qdump_find_check_node_for (XASL_NODE * xasl,
 							 QDUMP_XASL_CHECK_NODE
 							 *
@@ -113,6 +114,7 @@ static void qdump_check_node (XASL_NODE * xasl,
 			      QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER]);
 static int qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE *
 					chk_nodes[HASH_NUMBER]);
+#endif /* CUBRID_DEBUG */
 
 /*
  * qdump_print_xasl_type () -
@@ -1677,17 +1679,23 @@ qdump_print_arith_expression (int type, ARITH_TYPE * arith_p)
   fprintf (foutput, "[%s]",
 	   qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (arith_p->value)));
 
-  if (arith_p->opcode == T_UNMINUS || arith_p->opcode == T_UNPLUS)
+  if (arith_p->opcode == T_UNMINUS
+#if defined(ENABLE_UNUSED_FUNCTION)
+      || arith_p->opcode == T_UNPLUS
+#endif /* ENABLE_UNUSED_FUNCTION */
+    )
     {
       fprintf (foutput, "(");
       if (arith_p->opcode == T_UNMINUS)
 	{
 	  fprintf (foutput, "-");
 	}
+#if defined(ENABLE_UNUSED_FUNCTION)
       else
 	{
 	  fprintf (foutput, "+");
 	}
+#endif /* ENABLE_UNUSED_FUNCTION */
 
       if (!qdump_print_value (arith_p->rightptr))
 	{
@@ -1793,6 +1801,7 @@ qdump_print_arith (int type, void *ptr)
   return true;
 }
 
+#if defined(CUBRID_DEBUG)
 /*
  * qdump_check_xasl_tree () -
  *   return:
@@ -2019,6 +2028,7 @@ qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUMBER])
 
   return !error;
 }
+#endif /* CUBRID_DEBUG */
 
 static bool
 qdump_print_fetch_node (XASL_NODE * xasl_p)

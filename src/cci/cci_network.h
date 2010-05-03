@@ -56,6 +56,16 @@
 #define MIN(X, Y)	((X) < (Y) ? (X) : (Y))
 #endif
 
+#define CAS_ERROR_INDICATOR     -1
+#define DBMS_ERROR_INDICATOR    -2
+
+#define CAS_PROTOCOL_ERR_INDICATOR_SIZE     sizeof(int)
+#define CAS_PROTOCOL_ERR_CODE_SIZE          sizeof(int)
+
+#define CAS_PROTOCOL_ERR_INDICATOR_INDEX    0
+#define CAS_PROTOCOL_ERR_CODE_INDEX         (CAS_PROTOCOL_ERR_INDICATOR_SIZE)
+#define CAS_PROTOCOL_ERR_MSG_INDEX          (CAS_PROTOCOL_ERR_INDICATOR_SIZE + CAS_PROTOCOL_ERR_CODE_SIZE)
+
 /************************************************************************
  * EXPORTED TYPE DEFINITIONS						*
  ************************************************************************/

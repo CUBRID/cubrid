@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -35,7 +35,9 @@
 #include "dbtype.h"
 #include "string_opfunc.h"
 
-/* Do not care alphabetical order of keywords. automatically sorted! */
+/* It is not required for the keywords to be alphabetically sorted, as they
+ * will be sorted when needed. See pt_find_keyword.
+ */
 
 static KEYWORD_RECORD keywords[] = {
   {ABSOLUTE_, "ABSOLUTE", 0},
@@ -253,6 +255,7 @@ static KEYWORD_RECORD keywords[] = {
   {NCHAR, "NCHAR", 0},
   {NEXT, "NEXT", 0},
   {NO, "NO", 0},
+  {NOCACHE, "NOCACHE", 1},
   {NOCYCLE, "NOCYCLE", 1},
   {NOMAXVALUE, "NOMAXVALUE", 1},
   {NOMINVALUE, "NOMINVALUE", 1},
@@ -495,7 +498,7 @@ pt_find_keyword (const char *text)
   return result_key;
 }
 
-
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pt_identifier_or_keyword () -
  *   return: token number of corresponding keyword
@@ -517,7 +520,7 @@ pt_identifier_or_keyword (const char *text)
       return IdName;
     }
 }
-
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * pt_is_reserved_word () -

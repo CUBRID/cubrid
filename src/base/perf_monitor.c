@@ -32,10 +32,10 @@
 #endif /* WINDOWS */
 #include "perf_monitor.h"
 #include "network_interface_cl.h"
+#include "error_manager.h"
 
 #if !defined(SERVER_MODE)
 #include "memory_alloc.h"
-#include "error_manager.h"
 #include "server_interface.h"
 #endif /* !SERVER_MODE */
 
@@ -57,6 +57,7 @@
 #endif /* SERVER_MODE */
 
 #include "thread_impl.h"
+#include "log_impl.h"
 
 #if !defined(CS_MODE)
 #include <string.h>
@@ -83,6 +84,14 @@
 #define MUTEX_UNLOCK(a)
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
+
+static void mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats);
+static void mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats);
+static void mnt_server_calc_global_stats (MNT_SERVER_EXEC_GLOBAL_STATS *
+					  stats);
+static void mnt_server_check_stats_threshold (int tran_index,
+					      MNT_SERVER_EXEC_STATS * stats);
+
 
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistics */
@@ -191,6 +200,7 @@ mnt_get_stats ()
       /* Refresh statistics from server */
 #if defined (SA_MODE)
       mnt_Stats.server_stats = mnt_server_get_stats (NULL);
+      mnt_server_calc_stats (mnt_Stats.server_stats);
 #else /* SA_MODE */
       mnt_server_copy_stats (&mnt_Server_stats);
       mnt_Stats.server_stats = &mnt_Server_stats;
@@ -244,7 +254,7 @@ mnt_print_stats (FILE * stream)
       mnt_get_current_times (&cpu_total_usr_time, &cpu_total_sys_time,
 			     &elapsed_total_time);
 
-      fprintf (stream, "\n*** CLIENT EXECUTION STATISTICS ***\n");
+      fprintf (stream, "\n *** CLIENT EXECUTION STATISTICS ***\n");
 
       fprintf (stream, "System CPU (sec)              = %10d\n",
 	       (int) (cpu_total_sys_time - mnt_Stats.cpu_start_sys_time));
@@ -278,6 +288,7 @@ mnt_print_global_stats (FILE * stream)
 }
 #endif /* CS_MODE || SA_MODE */
 
+#if defined (DIAG_DEVEL)
 #if defined(SERVER_MODE)
 #if defined(WINDOWS)
 #define SERVER_SHM_CREATE(SHM_KEY, SIZE, HANDLE_PTR)    \
@@ -374,12 +385,12 @@ static bool init_diag_sm (const char *server_name, int num_thread,
 			  char *err_buf);
 static bool rm_diag_sm (void);
 
-static char *linetrim (char *str);
+static char *trim_line (char *str);
 static int create_shm_key_file (int port, char *vol_dir,
 				const char *servername);
-static int uReadDiagSystemConfig (DIAG_SYS_CONFIG * config, char *err_buf);
+static int read_diag_system_config (DIAG_SYS_CONFIG * config, char *err_buf);
 static int get_volumedir (char *vol_dir, const char *dbname);
-static int getservershmid (char *dir, const char *dbname);
+static int get_server_shmid (char *dir, const char *dbname);
 
 
 #if defined(WINDOWS)
@@ -415,12 +426,12 @@ T_DIAG_OBJECT_TABLE diag_obj_list[] = {
 
 /* function definition */
 /*
- * linetrim()
+ * trim_line()
  *    return: char *
  *    str(in):
  */
 static char *
-linetrim (char *str)
+trim_line (char *str)
 {
   char *p;
   char *s;
@@ -484,13 +495,13 @@ create_shm_key_file (int port, char *vol_dir, const char *servername)
 }
 
 /*
- * uReadDiagSystemConfig()
+ * read_diag_system_config()
  *    return: int
  *    config(in):
  *    err_buf(in):
  */
 static int
-uReadDiagSystemConfig (DIAG_SYS_CONFIG * config, char *err_buf)
+read_diag_system_config (DIAG_SYS_CONFIG * config, char *err_buf)
 {
   FILE *conf_file;
   char cbuf[1024], file_path[PATH_MAX];
@@ -498,7 +509,9 @@ uReadDiagSystemConfig (DIAG_SYS_CONFIG * config, char *err_buf)
   char ent_name[128], ent_val[128];
 
   if (config == NULL)
-    return -1;
+    {
+      return -1;
+    }
 
   /* Initialize config data */
   config->Executediag = 0;
@@ -532,14 +545,18 @@ uReadDiagSystemConfig (DIAG_SYS_CONFIG * config, char *err_buf)
     {
       char format[1024];
 
-      linetrim (cbuf);
+      trim_line (cbuf);
       if (cbuf[0] == '\0' || cbuf[0] == '#')
-	continue;
+	{
+	  continue;
+	}
 
       snprintf (format, sizeof (format), "%%%ds %%%ds",
 		(int) sizeof (ent_name), (int) sizeof (ent_val));
       if (sscanf (cbuf, format, ent_name, ent_val) < 2)
-	continue;
+	{
+	  continue;
+	}
 
       if (strcasecmp (ent_name, "Execute_diag") == 0)
 	{
@@ -623,13 +640,13 @@ get_volumedir (char *vol_dir, const char *dbname)
 }
 
 /*
- * getservershmid()
+ * get_server_shmid()
  *    return: int
  *    dir(in):
  *    dbname(in):
  */
 static int
-getservershmid (char *dir, const char *dbname)
+get_server_shmid (char *dir, const char *dbname)
 {
   int shm_key = 0;
   char vol_full_path[PATH_MAX];
@@ -891,18 +908,28 @@ init_diag_sm (const char *server_name, int num_thread, char *err_buf)
   int i;
 
   if (server_name == NULL)
-    goto init_error;
-  if (uReadDiagSystemConfig (&config_diag, err_buf) != 1)
-    goto init_error;
+    {
+      goto init_error;
+    }
+  if (read_diag_system_config (&config_diag, err_buf) != 1)
+    {
+      goto init_error;
+    }
   if (!config_diag.Executediag)
-    goto init_error;
+    {
+      goto init_error;
+    }
   if (get_volumedir (vol_dir, server_name) == -1)
-    goto init_error;
+    {
+      goto init_error;
+    }
 
-  ShmPort = getservershmid (vol_dir, server_name);
+  ShmPort = get_server_shmid (vol_dir, server_name);
 
   if (ShmPort == -1)
-    goto init_error;
+    {
+      goto init_error;
+    }
 
   g_ShmServer = (T_SHM_DIAG_INFO_SERVER *)
     SERVER_SHM_CREATE (ShmPort,
@@ -940,7 +967,9 @@ init_diag_sm (const char *server_name, int num_thread, char *err_buf)
 			       &shm_map_object);
 	}
       else
-	break;
+	{
+	  break;
+	}
     }
 
   if (g_ShmServer == NULL)
@@ -1335,6 +1364,61 @@ set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYPE settype,
     }
 }
 #endif /* SERVER_MODE */
+#endif /* DIAG_DEVEL */
+
+static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
+  "Num_file_creates",
+  "Num_file_removes",
+  "Num_file_ioreads",
+  "Num_file_iowrites",
+  "Num_file_iosynches",
+  "Num_data_page_fetches",
+  "Num_data_page_dirties",
+  "Num_data_page_ioreads",
+  "Num_data_page_iowrites",
+  "Num_data_page_victims",
+  "Num_data_page_iowrites_for_replacement",
+  "Num_log_page_ioreads",
+  "Num_log_page_iowrites",
+  "Num_log_append_records",
+  "Num_log_archives",
+  "Num_log_checkpoints",
+  "Num_log_wals",
+  "Num_page_locks_acquired",
+  "Num_object_locks_acquired",
+  "Num_page_locks_converted",
+  "Num_object_locks_converted",
+  "Num_page_locks_re-requested",
+  "Num_object_locks_re-requested",
+  "Num_page_locks_waits",
+  "Num_object_locks_waits",
+  "Num_tran_commits",
+  "Num_tran_rollbacks",
+  "Num_tran_savepoints",
+  "Num_tran_start_topops",
+  "Num_tran_end_topops",
+  "Num_tran_interrupts",
+  "Num_btree_inserts",
+  "Num_btree_deletes",
+  "Num_btree_updates",
+  "Num_query_selects",
+  "Num_query_inserts",
+  "Num_query_deletes",
+  "Num_query_updates",
+  "Num_query_sscans",
+  "Num_query_iscans",
+  "Num_query_lscans",
+  "Num_query_setscans",
+  "Num_query_methscans",
+  "Num_query_nljoins",
+  "Num_query_mjoins",
+  "Num_query_objfetches",
+  "Num_network_requests",
+  "Num_adaptive_flush_pages",
+  "Num_adaptive_flush_log_pages",
+  "Num_adaptive_flush_max_pages",
+  "Data_page_buffer_hit_ratio"
+};
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 int mnt_Num_tran_exec_stats = 0;
@@ -1350,29 +1434,36 @@ struct mnt_server_table
 #endif				/* SERVER_MODE */
 };
 static struct mnt_server_table mnt_Server_table = {
-  0, NULL,
+  /* num_tran_indices */
+  0,
+  /* stats */
+  NULL,
+  /* global_stats */
   {
    /* file io */
    0, 0, 0, 0, 0,
    /* page buffer manager */
-   0, 0, 0, 0,
+   0, 0, 0, 0, 0, 0,
    /* log manager */
-   0, 0, 0, 0, 0,
+   0, 0, 0, 0, 0, 0,
    /* lock manager */
    0, 0, 0, 0, 0, 0, 0, 0,
    /* transactions */
    0, 0, 0, 0, 0, 0,
    /* btree manager */
    0, 0, 0,
+   /* query manager */
+   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
    /* network communication */
+   0,
+   /* flush control statistics */
+   0, 0, 0,
+   /* other statistics */
    0}
 #if defined (SERVER_MODE)
   , MUTEX_INITIALIZER
 #endif /* SERVER_MODE */
 };
-
-
-static void mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats);
 
 
 /*
@@ -1567,6 +1658,7 @@ mnt_server_reflect_local_stats (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
   MNT_SERVER_EXEC_STATS *p = NULL;
+  MNT_SERVER_EXEC_GLOBAL_STATS *global_stats;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0);
@@ -1585,57 +1677,75 @@ mnt_server_reflect_local_stats (THREAD_ENTRY * thread_p)
 
   MUTEX_LOCK (rv, p->lock);
 
-  mnt_Server_table.global_stats.file_num_opens += p->file_num_opens;
-  mnt_Server_table.global_stats.file_num_creates += p->file_num_creates;
-  mnt_Server_table.global_stats.file_num_ioreads += p->file_num_ioreads;
-  mnt_Server_table.global_stats.file_num_iowrites += p->file_num_iowrites;
-  mnt_Server_table.global_stats.file_num_iosynches += p->file_num_iosynches;
+  global_stats = &mnt_Server_table.global_stats;
+  global_stats->file_num_creates += p->file_num_creates;
+  global_stats->file_num_removes += p->file_num_removes;
+  global_stats->file_num_ioreads += p->file_num_ioreads;
+  global_stats->file_num_iowrites += p->file_num_iowrites;
+  global_stats->file_num_iosynches += p->file_num_iosynches;
 
-  mnt_Server_table.global_stats.pb_num_fetches += p->pb_num_fetches;
-  mnt_Server_table.global_stats.pb_num_dirties += p->pb_num_dirties;
-  mnt_Server_table.global_stats.pb_num_ioreads += p->pb_num_ioreads;
-  mnt_Server_table.global_stats.pb_num_iowrites += p->pb_num_iowrites;
+  global_stats->pb_num_fetches += p->pb_num_fetches;
+  global_stats->pb_num_dirties += p->pb_num_dirties;
+  global_stats->pb_num_ioreads += p->pb_num_ioreads;
+  global_stats->pb_num_iowrites += p->pb_num_iowrites;
+  global_stats->pb_num_victims += p->pb_num_victims;
+  global_stats->pb_num_replacements += p->pb_num_replacements;
 
-  mnt_Server_table.global_stats.log_num_ioreads += p->log_num_ioreads;
-  mnt_Server_table.global_stats.log_num_iowrites += p->log_num_iowrites;
-  mnt_Server_table.global_stats.log_num_appendrecs += p->log_num_appendrecs;
-  mnt_Server_table.global_stats.log_num_archives += p->log_num_archives;
-  mnt_Server_table.global_stats.log_num_checkpoints += p->log_num_checkpoints;
+  global_stats->fc_num_pages += p->fc_num_pages;
+  global_stats->fc_num_log_pages += p->fc_num_log_pages;
+  global_stats->fc_tokens += p->fc_tokens;
 
-  mnt_Server_table.global_stats.lk_num_acquired_on_pages +=
-    p->lk_num_acquired_on_pages;
-  mnt_Server_table.global_stats.lk_num_acquired_on_objects +=
-    p->lk_num_acquired_on_objects;
-  mnt_Server_table.global_stats.lk_num_converted_on_pages +=
-    p->lk_num_converted_on_pages;
-  mnt_Server_table.global_stats.lk_num_converted_on_objects +=
-    p->lk_num_converted_on_objects;
-  mnt_Server_table.global_stats.lk_num_re_requested_on_pages +=
+  global_stats->log_num_ioreads += p->log_num_ioreads;
+  global_stats->log_num_iowrites += p->log_num_iowrites;
+  global_stats->log_num_appendrecs += p->log_num_appendrecs;
+  global_stats->log_num_archives += p->log_num_archives;
+  global_stats->log_num_checkpoints += p->log_num_checkpoints;
+  global_stats->log_num_wals += p->log_num_wals;
+
+  global_stats->lk_num_acquired_on_pages += p->lk_num_acquired_on_pages;
+  global_stats->lk_num_acquired_on_objects += p->lk_num_acquired_on_objects;
+  global_stats->lk_num_converted_on_pages += p->lk_num_converted_on_pages;
+  global_stats->lk_num_converted_on_objects += p->lk_num_converted_on_objects;
+  global_stats->lk_num_re_requested_on_pages +=
     p->lk_num_re_requested_on_pages;
-  mnt_Server_table.global_stats.lk_num_re_requested_on_objects +=
+  global_stats->lk_num_re_requested_on_objects +=
     p->lk_num_re_requested_on_objects;
-  mnt_Server_table.global_stats.lk_num_waited_on_pages +=
-    p->lk_num_waited_on_pages;
-  mnt_Server_table.global_stats.lk_num_waited_on_objects +=
-    p->lk_num_waited_on_objects;
+  global_stats->lk_num_waited_on_pages += p->lk_num_waited_on_pages;
+  global_stats->lk_num_waited_on_objects += p->lk_num_waited_on_objects;
 
-  mnt_Server_table.global_stats.tran_num_commits += p->tran_num_commits;
-  mnt_Server_table.global_stats.tran_num_rollbacks += p->tran_num_rollbacks;
-  mnt_Server_table.global_stats.tran_num_savepoints += p->tran_num_savepoints;
-  mnt_Server_table.global_stats.tran_num_start_topops +=
-    p->tran_num_start_topops;
-  mnt_Server_table.global_stats.tran_num_end_topops += p->tran_num_end_topops;
-  mnt_Server_table.global_stats.tran_num_interrupts += p->tran_num_interrupts;
+  global_stats->tran_num_commits += p->tran_num_commits;
+  global_stats->tran_num_rollbacks += p->tran_num_rollbacks;
+  global_stats->tran_num_savepoints += p->tran_num_savepoints;
+  global_stats->tran_num_start_topops += p->tran_num_start_topops;
+  global_stats->tran_num_end_topops += p->tran_num_end_topops;
+  global_stats->tran_num_interrupts += p->tran_num_interrupts;
 
-  mnt_Server_table.global_stats.bt_num_inserts += p->bt_num_inserts;
-  mnt_Server_table.global_stats.bt_num_deletes += p->bt_num_deletes;
-  mnt_Server_table.global_stats.bt_num_updates += p->bt_num_updates;
+  global_stats->bt_num_inserts += p->bt_num_inserts;
+  global_stats->bt_num_deletes += p->bt_num_deletes;
+  global_stats->bt_num_updates += p->bt_num_updates;
 
-  mnt_Server_table.global_stats.net_num_requests += p->net_num_requests;
+  global_stats->qm_num_selects += p->qm_num_selects;
+  global_stats->qm_num_inserts += p->qm_num_inserts;
+  global_stats->qm_num_deletes += p->qm_num_deletes;
+  global_stats->qm_num_updates += p->qm_num_updates;
+  global_stats->qm_num_sscans += p->qm_num_sscans;
+  global_stats->qm_num_iscans += p->qm_num_iscans;
+  global_stats->qm_num_lscans += p->qm_num_lscans;
+  global_stats->qm_num_setscans += p->qm_num_setscans;
+  global_stats->qm_num_methscans += p->qm_num_methscans;
+  global_stats->qm_num_nljoins += p->qm_num_nljoins;
+  global_stats->qm_num_mjoins += p->qm_num_mjoins;
+  global_stats->qm_num_objfetches += p->qm_num_objfetches;
 
+  global_stats->net_num_requests += p->net_num_requests;
+
+  mnt_server_calc_stats (p);
+  mnt_server_check_stats_threshold (LOG_FIND_THREAD_TRAN_INDEX (thread_p), p);
   mnt_server_reset_stats_internal (p);
 
   MUTEX_UNLOCK (p->lock);
+
+  mnt_server_calc_global_stats (global_stats);
 
   MUTEX_UNLOCK (mnt_Server_table.lock);
 }
@@ -1671,6 +1781,37 @@ mnt_server_get_stats (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * mnt_server_check_stats_threshold -
+ */
+static void
+mnt_server_check_stats_threshold (int tran_index,
+				  MNT_SERVER_EXEC_STATS * stats)
+{
+  unsigned int i, size;
+  unsigned int *stats_ptr;
+  int *prm_ptr;
+
+  if (PRM_MNT_STATS_THRESHOLD)
+    {
+      size = (unsigned int) PRM_MNT_STATS_THRESHOLD[0];
+      size = MIN (size, MNT_SIZE_OF_SERVER_EXEC_STATS - 1);
+      stats_ptr = (unsigned int *) stats;
+      prm_ptr = (int *) &PRM_MNT_STATS_THRESHOLD[1];
+
+      for (i = 0; i < size; i++)
+	{
+	  if (*prm_ptr > 0 && (unsigned int) *prm_ptr < *stats_ptr)
+	    {
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE,
+		      ER_MNT_STATS_THRESHOLD, 2, tran_index,
+		      mnt_Stats_name[i]);
+	    }
+	  stats_ptr++, prm_ptr++;
+	}
+    }
+}
+
+/*
  * xmnt_server_copy_stats - Copy recorded server statistics for the current
  *                          transaction index
  *   return: none
@@ -1693,6 +1834,7 @@ xmnt_server_copy_stats (THREAD_ENTRY * thread_p,
   else
     {
       MUTEX_LOCK (rv, from_stats->lock);
+      mnt_server_calc_stats (from_stats);
       *to_stats = *from_stats;	/* Structure copy */
       MUTEX_UNLOCK (from_stats->lock);
     }
@@ -1708,6 +1850,7 @@ xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
 			       MNT_SERVER_EXEC_GLOBAL_STATS * to_stats)
 {
   MNT_SERVER_EXEC_STATS *p;
+  MNT_SERVER_EXEC_GLOBAL_STATS *global_stats;
   int i;
 #if defined (SERVER_MODE)
   int rv;
@@ -1715,6 +1858,7 @@ xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
 
   MUTEX_LOCK (rv, mnt_Server_table.lock);
 
+  global_stats = &mnt_Server_table.global_stats;
   for (i = 0; i < mnt_Server_table.num_tran_indices; i++)
     {
       p = mnt_Server_table.stats[i];
@@ -1725,67 +1869,78 @@ xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
 
       MUTEX_LOCK (rv, p->lock);
 
-      mnt_Server_table.global_stats.file_num_opens += p->file_num_opens;
-      mnt_Server_table.global_stats.file_num_creates += p->file_num_creates;
-      mnt_Server_table.global_stats.file_num_ioreads += p->file_num_ioreads;
-      mnt_Server_table.global_stats.file_num_iowrites += p->file_num_iowrites;
-      mnt_Server_table.global_stats.file_num_iosynches +=
-	p->file_num_iosynches;
+      global_stats->file_num_creates += p->file_num_creates;
+      global_stats->file_num_removes += p->file_num_removes;
+      global_stats->file_num_ioreads += p->file_num_ioreads;
+      global_stats->file_num_iowrites += p->file_num_iowrites;
+      global_stats->file_num_iosynches += p->file_num_iosynches;
 
-      mnt_Server_table.global_stats.pb_num_fetches += p->pb_num_fetches;
-      mnt_Server_table.global_stats.pb_num_dirties += p->pb_num_dirties;
-      mnt_Server_table.global_stats.pb_num_ioreads += p->pb_num_ioreads;
-      mnt_Server_table.global_stats.pb_num_iowrites += p->pb_num_iowrites;
+      global_stats->pb_num_fetches += p->pb_num_fetches;
+      global_stats->pb_num_dirties += p->pb_num_dirties;
+      global_stats->pb_num_ioreads += p->pb_num_ioreads;
+      global_stats->pb_num_iowrites += p->pb_num_iowrites;
+      global_stats->pb_num_victims += p->pb_num_victims;
+      global_stats->pb_num_replacements += p->pb_num_replacements;
 
-      mnt_Server_table.global_stats.log_num_ioreads += p->log_num_ioreads;
-      mnt_Server_table.global_stats.log_num_iowrites += p->log_num_iowrites;
-      mnt_Server_table.global_stats.log_num_appendrecs +=
-	p->log_num_appendrecs;
-      mnt_Server_table.global_stats.log_num_archives += p->log_num_archives;
-      mnt_Server_table.global_stats.log_num_checkpoints +=
-	p->log_num_checkpoints;
+      global_stats->fc_num_pages += p->fc_num_pages;
+      global_stats->fc_num_log_pages += p->fc_num_log_pages;
+      global_stats->fc_tokens += p->fc_tokens;
 
-      mnt_Server_table.global_stats.lk_num_acquired_on_pages +=
-	p->lk_num_acquired_on_pages;
-      mnt_Server_table.global_stats.lk_num_acquired_on_objects +=
+      global_stats->log_num_ioreads += p->log_num_ioreads;
+      global_stats->log_num_iowrites += p->log_num_iowrites;
+      global_stats->log_num_appendrecs += p->log_num_appendrecs;
+      global_stats->log_num_archives += p->log_num_archives;
+      global_stats->log_num_checkpoints += p->log_num_checkpoints;
+      global_stats->log_num_wals += p->log_num_wals;
+
+      global_stats->lk_num_acquired_on_pages += p->lk_num_acquired_on_pages;
+      global_stats->lk_num_acquired_on_objects +=
 	p->lk_num_acquired_on_objects;
-      mnt_Server_table.global_stats.lk_num_converted_on_pages +=
-	p->lk_num_converted_on_pages;
-      mnt_Server_table.global_stats.lk_num_converted_on_objects +=
+      global_stats->lk_num_converted_on_pages += p->lk_num_converted_on_pages;
+      global_stats->lk_num_converted_on_objects +=
 	p->lk_num_converted_on_objects;
-      mnt_Server_table.global_stats.lk_num_re_requested_on_pages +=
+      global_stats->lk_num_re_requested_on_pages +=
 	p->lk_num_re_requested_on_pages;
-      mnt_Server_table.global_stats.lk_num_re_requested_on_objects +=
+      global_stats->lk_num_re_requested_on_objects +=
 	p->lk_num_re_requested_on_objects;
-      mnt_Server_table.global_stats.lk_num_waited_on_pages +=
-	p->lk_num_waited_on_pages;
-      mnt_Server_table.global_stats.lk_num_waited_on_objects +=
-	p->lk_num_waited_on_objects;
+      global_stats->lk_num_waited_on_pages += p->lk_num_waited_on_pages;
+      global_stats->lk_num_waited_on_objects += p->lk_num_waited_on_objects;
 
-      mnt_Server_table.global_stats.tran_num_commits += p->tran_num_commits;
-      mnt_Server_table.global_stats.tran_num_rollbacks +=
-	p->tran_num_rollbacks;
-      mnt_Server_table.global_stats.tran_num_savepoints +=
-	p->tran_num_savepoints;
-      mnt_Server_table.global_stats.tran_num_start_topops +=
-	p->tran_num_start_topops;
-      mnt_Server_table.global_stats.tran_num_end_topops +=
-	p->tran_num_end_topops;
-      mnt_Server_table.global_stats.tran_num_interrupts +=
-	p->tran_num_interrupts;
+      global_stats->tran_num_commits += p->tran_num_commits;
+      global_stats->tran_num_rollbacks += p->tran_num_rollbacks;
+      global_stats->tran_num_savepoints += p->tran_num_savepoints;
+      global_stats->tran_num_start_topops += p->tran_num_start_topops;
+      global_stats->tran_num_end_topops += p->tran_num_end_topops;
+      global_stats->tran_num_interrupts += p->tran_num_interrupts;
 
-      mnt_Server_table.global_stats.bt_num_inserts += p->bt_num_inserts;
-      mnt_Server_table.global_stats.bt_num_deletes += p->bt_num_deletes;
-      mnt_Server_table.global_stats.bt_num_updates += p->bt_num_updates;
+      global_stats->bt_num_inserts += p->bt_num_inserts;
+      global_stats->bt_num_deletes += p->bt_num_deletes;
+      global_stats->bt_num_updates += p->bt_num_updates;
 
-      mnt_Server_table.global_stats.net_num_requests += p->net_num_requests;
+      global_stats->qm_num_selects += p->qm_num_selects;
+      global_stats->qm_num_inserts += p->qm_num_inserts;
+      global_stats->qm_num_deletes += p->qm_num_deletes;
+      global_stats->qm_num_updates += p->qm_num_updates;
+      global_stats->qm_num_sscans += p->qm_num_sscans;
+      global_stats->qm_num_iscans += p->qm_num_iscans;
+      global_stats->qm_num_lscans += p->qm_num_lscans;
+      global_stats->qm_num_setscans += p->qm_num_setscans;
+      global_stats->qm_num_methscans += p->qm_num_methscans;
+      global_stats->qm_num_nljoins += p->qm_num_nljoins;
+      global_stats->qm_num_mjoins += p->qm_num_mjoins;
+      global_stats->qm_num_objfetches += p->qm_num_objfetches;
 
+      global_stats->net_num_requests += p->net_num_requests;
+
+      mnt_server_calc_stats (p);
+      mnt_server_check_stats_threshold (i, p);
       mnt_server_reset_stats_internal (p);
 
       MUTEX_UNLOCK (p->lock);
     }
+  mnt_server_calc_global_stats (global_stats);
 
-  *to_stats = mnt_Server_table.global_stats;	/* Structure copy */
+  *to_stats = *global_stats;	/* Structure copy */
 
   MUTEX_UNLOCK (mnt_Server_table.lock);
 }
@@ -1807,21 +1962,23 @@ xmnt_server_reset_stats (THREAD_ENTRY * thread_p)
   if (stats != NULL)
     {
       MUTEX_LOCK (rv, stats->lock);
+      mnt_server_check_stats_threshold (LOG_FIND_THREAD_TRAN_INDEX (thread_p),
+					stats);
       mnt_server_reset_stats_internal (stats);
       MUTEX_UNLOCK (stats->lock);
     }
 }
 
 /*
- * mnt_server_reset_stats_internal - Reset server stadistics of given block
+ * mnt_server_reset_stats_internal - Reset server statistics of given block
  *   return: none
  *   stats(in/out): server statistics block to reset
  */
 static void
 mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats)
 {
-  stats->file_num_opens = 0;
   stats->file_num_creates = 0;
+  stats->file_num_removes = 0;
   stats->file_num_ioreads = 0;
   stats->file_num_iowrites = 0;
   stats->file_num_iosynches = 0;
@@ -1830,12 +1987,19 @@ mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats)
   stats->pb_num_dirties = 0;
   stats->pb_num_ioreads = 0;
   stats->pb_num_iowrites = 0;
+  stats->pb_num_victims = 0;
+  stats->pb_num_replacements = 0;
+
+  stats->fc_num_pages = 0;
+  stats->fc_num_log_pages = 0;
+  stats->fc_tokens = 0;
 
   stats->log_num_ioreads = 0;
   stats->log_num_iowrites = 0;
   stats->log_num_appendrecs = 0;
   stats->log_num_archives = 0;
   stats->log_num_checkpoints = 0;
+  stats->log_num_wals = 0;
 
   stats->lk_num_acquired_on_pages = 0;
   stats->lk_num_acquired_on_objects = 0;
@@ -1857,7 +2021,50 @@ mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats)
   stats->bt_num_deletes = 0;
   stats->bt_num_updates = 0;
 
+  stats->qm_num_selects = 0;
+  stats->qm_num_inserts = 0;
+  stats->qm_num_deletes = 0;
+  stats->qm_num_updates = 0;
+  stats->qm_num_sscans = 0;
+  stats->qm_num_iscans = 0;
+  stats->qm_num_lscans = 0;
+  stats->qm_num_setscans = 0;
+  stats->qm_num_methscans = 0;
+  stats->qm_num_nljoins = 0;
+  stats->qm_num_mjoins = 0;
+  stats->qm_num_objfetches = 0;
+
   stats->net_num_requests = 0;
+
+  stats->pb_hit_ratio = 0;
+}
+
+/*
+ * mnt_server_calc_stats - Do post processing of server statistics
+ *   return: none
+ *   stats(in/out): server statistics block to be processed
+ */
+static void
+mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
+{
+  stats->pb_hit_ratio =
+    stats->pb_num_fetches == 0 ? 0 :
+    (stats->pb_num_fetches - stats->pb_num_ioreads) * 100 * 100
+    / stats->pb_num_fetches;
+}
+
+/*
+ * mnt_server_calc_global_stats - Do post processing of server statistics
+ *   return: none
+ *   stats(in/out): server statistics block to be processed
+ */
+static void
+mnt_server_calc_global_stats (MNT_SERVER_EXEC_GLOBAL_STATS * stats)
+{
+  stats->pb_hit_ratio =
+    stats->pb_num_fetches == 0 ? 0 :
+    (stats->pb_num_fetches - stats->pb_num_ioreads) * 100 * 100
+    / stats->pb_num_fetches;
 }
 
 /*
@@ -1867,54 +2074,80 @@ mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats)
 void
 xmnt_server_reset_global_stats (void)
 {
+  MNT_SERVER_EXEC_GLOBAL_STATS *global_stats;
 #if defined (SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
 
+  global_stats = &mnt_Server_table.global_stats;
+
   MUTEX_LOCK (rv, mnt_Server_table.lock);
 
-  mnt_Server_table.global_stats.file_num_opens = 0;
-  mnt_Server_table.global_stats.file_num_creates = 0;
-  mnt_Server_table.global_stats.file_num_ioreads = 0;
-  mnt_Server_table.global_stats.file_num_iowrites = 0;
-  mnt_Server_table.global_stats.file_num_iosynches = 0;
+  global_stats->file_num_creates = 0;
+  global_stats->file_num_removes = 0;
+  global_stats->file_num_ioreads = 0;
+  global_stats->file_num_iowrites = 0;
+  global_stats->file_num_iosynches = 0;
 
-  mnt_Server_table.global_stats.pb_num_fetches = 0;
-  mnt_Server_table.global_stats.pb_num_dirties = 0;
-  mnt_Server_table.global_stats.pb_num_ioreads = 0;
-  mnt_Server_table.global_stats.pb_num_iowrites = 0;
+  global_stats->pb_num_fetches = 0;
+  global_stats->pb_num_dirties = 0;
+  global_stats->pb_num_ioreads = 0;
+  global_stats->pb_num_iowrites = 0;
+  global_stats->pb_num_victims = 0;
+  global_stats->pb_num_replacements = 0;
 
-  mnt_Server_table.global_stats.log_num_ioreads = 0;
-  mnt_Server_table.global_stats.log_num_iowrites = 0;
-  mnt_Server_table.global_stats.log_num_appendrecs = 0;
-  mnt_Server_table.global_stats.log_num_archives = 0;
-  mnt_Server_table.global_stats.log_num_checkpoints = 0;
+  global_stats->fc_num_pages = 0;
+  global_stats->fc_num_log_pages = 0;
+  global_stats->fc_tokens = 0;
 
-  mnt_Server_table.global_stats.lk_num_acquired_on_pages = 0;
-  mnt_Server_table.global_stats.lk_num_acquired_on_objects = 0;
-  mnt_Server_table.global_stats.lk_num_converted_on_pages = 0;
-  mnt_Server_table.global_stats.lk_num_converted_on_objects = 0;
-  mnt_Server_table.global_stats.lk_num_re_requested_on_pages = 0;
-  mnt_Server_table.global_stats.lk_num_re_requested_on_objects = 0;
-  mnt_Server_table.global_stats.lk_num_waited_on_pages = 0;
-  mnt_Server_table.global_stats.lk_num_waited_on_objects = 0;
+  global_stats->log_num_ioreads = 0;
+  global_stats->log_num_iowrites = 0;
+  global_stats->log_num_appendrecs = 0;
+  global_stats->log_num_archives = 0;
+  global_stats->log_num_checkpoints = 0;
+  global_stats->log_num_wals = 0;
 
-  mnt_Server_table.global_stats.tran_num_commits = 0;
-  mnt_Server_table.global_stats.tran_num_rollbacks = 0;
-  mnt_Server_table.global_stats.tran_num_savepoints = 0;
-  mnt_Server_table.global_stats.tran_num_start_topops = 0;
-  mnt_Server_table.global_stats.tran_num_end_topops = 0;
-  mnt_Server_table.global_stats.tran_num_interrupts = 0;
+  global_stats->lk_num_acquired_on_pages = 0;
+  global_stats->lk_num_acquired_on_objects = 0;
+  global_stats->lk_num_converted_on_pages = 0;
+  global_stats->lk_num_converted_on_objects = 0;
+  global_stats->lk_num_re_requested_on_pages = 0;
+  global_stats->lk_num_re_requested_on_objects = 0;
+  global_stats->lk_num_waited_on_pages = 0;
+  global_stats->lk_num_waited_on_objects = 0;
 
-  mnt_Server_table.global_stats.bt_num_inserts = 0;
-  mnt_Server_table.global_stats.bt_num_deletes = 0;
-  mnt_Server_table.global_stats.bt_num_updates = 0;
+  global_stats->tran_num_commits = 0;
+  global_stats->tran_num_rollbacks = 0;
+  global_stats->tran_num_savepoints = 0;
+  global_stats->tran_num_start_topops = 0;
+  global_stats->tran_num_end_topops = 0;
+  global_stats->tran_num_interrupts = 0;
 
-  mnt_Server_table.global_stats.net_num_requests = 0;
+  global_stats->bt_num_inserts = 0;
+  global_stats->bt_num_deletes = 0;
+  global_stats->bt_num_updates = 0;
+
+  global_stats->qm_num_selects = 0;
+  global_stats->qm_num_inserts = 0;
+  global_stats->qm_num_deletes = 0;
+  global_stats->qm_num_updates = 0;
+  global_stats->qm_num_sscans = 0;
+  global_stats->qm_num_iscans = 0;
+  global_stats->qm_num_lscans = 0;
+  global_stats->qm_num_setscans = 0;
+  global_stats->qm_num_methscans = 0;
+  global_stats->qm_num_nljoins = 0;
+  global_stats->qm_num_mjoins = 0;
+  global_stats->qm_num_objfetches = 0;
+
+  global_stats->net_num_requests = 0;
+
+  global_stats->pb_hit_ratio = 0;
 
   MUTEX_UNLOCK (mnt_Server_table.lock);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * enclosing_method - Print server statistics for current transaction index
  *   return: none
@@ -1937,48 +2170,47 @@ mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream)
   mnt_server_dump_stats (stats, stream);
   MUTEX_UNLOCK (stats->lock);
 }
-
-/*
- * mnt_x_file_opens - Increase file_num_opens counter of the current
- *                    transaction index
- *   return: none
- */
-void
-mnt_x_file_opens (THREAD_ENTRY * thread_p)
-{
-  MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  stats = mnt_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      MUTEX_LOCK (rv, stats->lock);
-      stats->file_num_opens++;
-      MUTEX_UNLOCK (stats->lock);
-    }
-}
+#endif
 
 /*
  * mnt_x_file_creates - Increase file_num_creates counter of the current
- *                    transaction index
+ *                      transaction index
  *   return: none
  */
 void
 mnt_x_file_creates (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->file_num_creates++;
-      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_file_removes - Increase file_num_remvoes counter of the current
+ *                      transaction index
+ *   return: none
+ */
+void
+mnt_x_file_removes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->file_num_removes++;
     }
 }
 
@@ -1991,16 +2223,15 @@ void
 mnt_x_file_ioreads (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->file_num_ioreads++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2013,16 +2244,15 @@ void
 mnt_x_file_iowrites (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->file_num_iowrites++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2035,16 +2265,15 @@ void
 mnt_x_file_iosynches (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->file_num_iosynches++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2057,16 +2286,15 @@ void
 mnt_x_pb_fetches (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->pb_num_fetches++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2079,16 +2307,15 @@ void
 mnt_x_pb_dirties (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->pb_num_dirties++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2101,16 +2328,15 @@ void
 mnt_x_pb_ioreads (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->pb_num_ioreads++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2123,16 +2349,76 @@ void
 mnt_x_pb_iowrites (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->pb_num_iowrites++;
-      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_pb_victims - Increase pb_num_victims counter of the current
+ *                     transaction index
+ *   return: none
+ */
+void
+mnt_x_pb_victims (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->pb_num_victims++;
+    }
+}
+
+/*
+ * mnt_x_pb_replacements - Increase page replacement counter of the current
+ *                     transaction index
+ *   return: none
+ */
+void
+mnt_x_pb_replacements (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->pb_num_replacements++;
+    }
+}
+
+/*
+ * mnt_x_fc_stats -
+ *   return: none
+ */
+void
+mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
+		unsigned int num_log_pages, unsigned int tokens)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      stats->fc_num_pages += num_pages;
+      stats->fc_num_log_pages += num_log_pages;
+      stats->fc_tokens += tokens;
     }
 }
 
@@ -2145,16 +2431,15 @@ void
 mnt_x_log_ioreads (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->log_num_ioreads++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2167,16 +2452,15 @@ void
 mnt_x_log_iowrites (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->log_num_iowrites++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2189,16 +2473,15 @@ void
 mnt_x_log_appendrecs (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->log_num_appendrecs++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2211,16 +2494,15 @@ void
 mnt_x_log_archives (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->log_num_archives++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2233,16 +2515,36 @@ void
 mnt_x_log_checkpoints (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->log_num_checkpoints++;
-      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_log_wals - Increase log flush for wal counter of the current
+ *                      transaction index
+ *   return: none
+ */
+void
+mnt_x_log_wals (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->log_num_wals++;
     }
 }
 
@@ -2255,16 +2557,15 @@ void
 mnt_x_lk_acquired_on_pages (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->lk_num_acquired_on_pages++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2277,16 +2578,15 @@ void
 mnt_x_lk_acquired_on_objects (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->lk_num_acquired_on_objects++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2299,16 +2599,15 @@ void
 mnt_x_lk_converted_on_pages (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->lk_num_converted_on_pages++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2321,16 +2620,15 @@ void
 mnt_x_lk_converted_on_objects (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->lk_num_converted_on_objects++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2343,16 +2641,15 @@ void
 mnt_x_lk_re_requested_on_pages (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->lk_num_re_requested_on_pages++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2365,16 +2662,15 @@ void
 mnt_x_lk_re_requested_on_objects (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->lk_num_re_requested_on_objects++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2387,16 +2683,15 @@ void
 mnt_x_lk_waited_on_pages (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->lk_num_waited_on_pages++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2409,16 +2704,15 @@ void
 mnt_x_lk_waited_on_objects (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->lk_num_waited_on_objects++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2431,16 +2725,15 @@ void
 mnt_x_tran_commits (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->tran_num_commits++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2453,16 +2746,15 @@ void
 mnt_x_tran_rollbacks (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->tran_num_rollbacks++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2475,16 +2767,15 @@ void
 mnt_x_tran_savepoints (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->tran_num_savepoints++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2497,16 +2788,15 @@ void
 mnt_x_tran_start_topops (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->tran_num_start_topops++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2519,16 +2809,15 @@ void
 mnt_x_tran_end_topops (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->tran_num_end_topops++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2541,16 +2830,15 @@ void
 mnt_x_tran_interrupts (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->tran_num_interrupts++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2563,16 +2851,15 @@ void
 mnt_x_bt_inserts (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->bt_num_inserts++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2585,16 +2872,15 @@ void
 mnt_x_bt_deletes (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->bt_num_deletes++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 
@@ -2607,16 +2893,267 @@ void
 mnt_x_bt_updates (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->bt_num_updates++;
-      MUTEX_UNLOCK (stats->lock);
+    }
+}
+
+/*
+ * mnt_x_qm_selects - Increase qm_num_selects counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_selects (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->qm_num_selects++;
+    }
+}
+
+/*
+ * mnt_x_qm_inserts - Increase qm_num_inserts counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_inserts (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->qm_num_inserts++;
+    }
+}
+
+/*
+ * mnt_x_qm_deletes - Increase qm_num_deletes counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_deletes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->qm_num_deletes++;
+    }
+}
+
+/*
+ * mnt_x_qm_updates - Increase qm_num_updates counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_updates (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->qm_num_updates++;
+    }
+}
+
+/*
+ * mnt_x_qm_sscans - Increase qm_num_sscans counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_sscans (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->qm_num_sscans++;
+    }
+}
+
+/*
+ * mnt_x_qm_iscans - Increase qm_num_iscans counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_iscans (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->qm_num_iscans++;
+    }
+}
+
+/*
+ * mnt_x_qm_lscans - Increase qm_num_lscans counter of the current
+                     transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_lscans (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->qm_num_lscans++;
+    }
+}
+
+/*
+ * mnt_x_qm_setscans - Increase qm_num_setscans counter of the current
+                       transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_setscans (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->qm_num_setscans++;
+    }
+}
+
+/*
+ * mnt_x_qm_methscans - Increase qm_num_methscans counter of the current
+                        transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_methscans (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->qm_num_methscans++;
+    }
+}
+
+/*
+ * mnt_x_qm_nljoins - Increase qm_num_nljoins counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_nljoins (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->qm_num_nljoins++;
+    }
+}
+
+/*
+ * mnt_x_qm_mjoins - Increase qm_num_mjoins counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_mjoins (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->qm_num_mjoins++;
+    }
+}
+
+/*
+ * mnt_x_qm_objfetches - Increase qm_num_objfetches counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_qm_objfetches (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
+      stats->qm_num_objfetches++;
     }
 }
 
@@ -2629,16 +3166,15 @@ void
 mnt_x_net_requests (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      MUTEX_LOCK (rv, stats->lock);
+      /*
+       * We will suffer lost update for these counters.
+       * You may use atomic operation instead.
+       */
       stats->net_num_requests++;
-      MUTEX_UNLOCK (stats->lock);
     }
 }
 #endif /* SERVER_MODE || SA_MODE */
@@ -2652,6 +3188,8 @@ mnt_x_net_requests (THREAD_ENTRY * thread_p)
 void
 mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream)
 {
+  unsigned int i, *stats_ptr;
+
   if (stream == NULL)
     {
       stream = stdout;
@@ -2659,76 +3197,19 @@ mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream)
 
   fprintf (stream, "\n *** SERVER EXECUTION STATISTICS *** \n");
 
-  fprintf (stream, "Num_file_opens                = %10u\n",
-	   stats->file_num_opens);
-  fprintf (stream, "Num_file_creates              = %10u\n",
-	   stats->file_num_creates);
-  fprintf (stream, "Num_file_ioreads              = %10u\n",
-	   stats->file_num_ioreads);
-  fprintf (stream, "Num_file_iowrites             = %10u\n",
-	   stats->file_num_iowrites);
-  fprintf (stream, "Num_file_iosynches            = %10u\n",
-	   stats->file_num_iosynches);
+  stats_ptr = (unsigned int *) stats;
+  for (i = 0; i < MNT_SIZE_OF_SERVER_EXEC_STATS - 1; i++)
+    {
+      if (mnt_Stats_name[i])
+	{
+	  fprintf (stream, "%-29s = %10u\n", mnt_Stats_name[i], *stats_ptr++);
+	}
+    }
 
-  fprintf (stream, "Num_data_page_fetches         = %10u\n",
-	   stats->pb_num_fetches);
-  fprintf (stream, "Num_data_page_dirties         = %10u\n",
-	   stats->pb_num_dirties);
-  fprintf (stream, "Num_data_page_ioreads         = %10u\n",
-	   stats->pb_num_ioreads);
-  fprintf (stream, "Num_data_page_iowrites        = %10u\n",
-	   stats->pb_num_iowrites);
+  fprintf (stream, "\n *** OTHER STATISTICS *** \n");
 
-  fprintf (stream, "Num_log_page_ioreads          = %10u\n",
-	   stats->log_num_ioreads);
-  fprintf (stream, "Num_log_page_iowrites         = %10u\n",
-	   stats->log_num_iowrites);
-  fprintf (stream, "Num_log_append_records        = %10u\n",
-	   stats->log_num_appendrecs);
-  fprintf (stream, "Num_log_archives              = %10u\n",
-	   stats->log_num_archives);
-  fprintf (stream, "Num_log_checkpoints           = %10u\n",
-	   stats->log_num_checkpoints);
-
-  fprintf (stream, "Num_page_locks_acquired       = %10u\n",
-	   stats->lk_num_acquired_on_pages);
-  fprintf (stream, "Num_object_locks_acquired     = %10u\n",
-	   stats->lk_num_acquired_on_objects);
-  fprintf (stream, "Num_page_locks_converted      = %10u\n",
-	   stats->lk_num_converted_on_pages);
-  fprintf (stream, "Num_object_locks_converted    = %10u\n",
-	   stats->lk_num_converted_on_objects);
-  fprintf (stream, "Num_page_locks_re-requested   = %10u\n",
-	   stats->lk_num_re_requested_on_pages);
-  fprintf (stream, "Num_object_locks_re-requested = %10u\n",
-	   stats->lk_num_re_requested_on_objects);
-  fprintf (stream, "Num_page_locks_waits          = %10u\n",
-	   stats->lk_num_waited_on_pages);
-  fprintf (stream, "Num_object_locks_waits        = %10u\n",
-	   stats->lk_num_waited_on_objects);
-
-  fprintf (stream, "Num_tran_commits              = %10u\n",
-	   stats->tran_num_commits);
-  fprintf (stream, "Num_tran_rollbacks            = %10u\n",
-	   stats->tran_num_rollbacks);
-  fprintf (stream, "Num_tran_savepoints           = %10u\n",
-	   stats->tran_num_savepoints);
-  fprintf (stream, "Num_tran_start_topops         = %10u\n",
-	   stats->tran_num_start_topops);
-  fprintf (stream, "Num_tran_end_topops           = %10u\n",
-	   stats->tran_num_end_topops);
-  fprintf (stream, "Num_tran_interrupts           = %10u\n",
-	   stats->tran_num_interrupts);
-
-  fprintf (stream, "Num_btree_inserts             = %10u\n",
-	   stats->bt_num_inserts);
-  fprintf (stream, "Num_btree_deletes             = %10u\n",
-	   stats->bt_num_deletes);
-  fprintf (stream, "Num_btree_updates             = %10u\n",
-	   stats->bt_num_updates);
-
-  fprintf (stream, "Num_network_requests          = %10u\n",
-	   stats->net_num_requests);
+  fprintf (stream, "Data_page_buffer_hit_ratio    = %10.2f\n",
+	   (float) stats->pb_hit_ratio / 100);
 }
 
 /*
@@ -2741,7 +3222,8 @@ void
 mnt_server_dump_global_stats (const MNT_SERVER_EXEC_GLOBAL_STATS * stats,
 			      FILE * stream)
 {
-  float hit_ratio;
+  unsigned int i;
+  UINT64 *stats_ptr;
 
   if (stream == NULL)
     {
@@ -2750,83 +3232,20 @@ mnt_server_dump_global_stats (const MNT_SERVER_EXEC_GLOBAL_STATS * stats,
 
   fprintf (stream, "\n *** SERVER EXECUTION GLOBAL STATISTICS *** \n");
 
-  fprintf (stream, "Num_file_opens                = %llu\n",
-	   (unsigned long long) stats->file_num_opens);
-  fprintf (stream, "Num_file_creates              = %llu\n",
-	   (unsigned long long) stats->file_num_creates);
-  fprintf (stream, "Num_file_ioreads              = %llu\n",
-	   (unsigned long long) stats->file_num_ioreads);
-  fprintf (stream, "Num_file_iowrites             = %llu\n",
-	   (unsigned long long) stats->file_num_iowrites);
-  fprintf (stream, "Num_file_iosynches            = %llu\n",
-	   (unsigned long long) stats->file_num_iosynches);
-
-  fprintf (stream, "Num_data_page_fetches         = %llu\n",
-	   (unsigned long long) stats->pb_num_fetches);
-  fprintf (stream, "Num_data_page_dirties         = %llu\n",
-	   (unsigned long long) stats->pb_num_dirties);
-  fprintf (stream, "Num_data_page_ioreads         = %llu\n",
-	   (unsigned long long) stats->pb_num_ioreads);
-  fprintf (stream, "Num_data_page_iowrites        = %llu\n",
-	   (unsigned long long) stats->pb_num_iowrites);
-
-  fprintf (stream, "Num_log_page_ioreads          = %llu\n",
-	   (unsigned long long) stats->log_num_ioreads);
-  fprintf (stream, "Num_log_page_iowrites         = %llu\n",
-	   (unsigned long long) stats->log_num_iowrites);
-  fprintf (stream, "Num_log_append_records        = %llu\n",
-	   (unsigned long long) stats->log_num_appendrecs);
-  fprintf (stream, "Num_log_archives              = %llu\n",
-	   (unsigned long long) stats->log_num_archives);
-  fprintf (stream, "Num_log_checkpoints           = %llu\n",
-	   (unsigned long long) stats->log_num_checkpoints);
-
-  fprintf (stream, "Num_page_locks_acquired       = %llu\n",
-	   (unsigned long long) stats->lk_num_acquired_on_pages);
-  fprintf (stream, "Num_object_locks_acquired     = %llu\n",
-	   (unsigned long long) stats->lk_num_acquired_on_objects);
-  fprintf (stream, "Num_page_locks_converted      = %llu\n",
-	   (unsigned long long) stats->lk_num_converted_on_pages);
-  fprintf (stream, "Num_object_locks_converted    = %llu\n",
-	   (unsigned long long) stats->lk_num_converted_on_objects);
-  fprintf (stream, "Num_page_locks_re-requested   = %llu\n",
-	   (unsigned long long) stats->lk_num_re_requested_on_pages);
-  fprintf (stream, "Num_object_locks_re-requested = %llu\n",
-	   (unsigned long long) stats->lk_num_re_requested_on_objects);
-  fprintf (stream, "Num_page_locks_waits          = %llu\n",
-	   (unsigned long long) stats->lk_num_waited_on_pages);
-  fprintf (stream, "Num_object_locks_waits        = %llu\n",
-	   (unsigned long long) stats->lk_num_waited_on_objects);
-
-  fprintf (stream, "Num_tran_commits              = %llu\n",
-	   (unsigned long long) stats->tran_num_commits);
-  fprintf (stream, "Num_tran_rollbacks            = %llu\n",
-	   (unsigned long long) stats->tran_num_rollbacks);
-  fprintf (stream, "Num_tran_savepoints           = %llu\n",
-	   (unsigned long long) stats->tran_num_savepoints);
-  fprintf (stream, "Num_tran_start_topops         = %llu\n",
-	   (unsigned long long) stats->tran_num_start_topops);
-  fprintf (stream, "Num_tran_end_topops           = %llu\n",
-	   (unsigned long long) stats->tran_num_end_topops);
-  fprintf (stream, "Num_tran_interrupts           = %llu\n",
-	   (unsigned long long) stats->tran_num_interrupts);
-
-  fprintf (stream, "Num_btree_inserts             = %llu\n",
-	   (unsigned long long) stats->bt_num_inserts);
-  fprintf (stream, "Num_btree_deletes             = %llu\n",
-	   (unsigned long long) stats->bt_num_deletes);
-  fprintf (stream, "Num_btree_updates             = %llu\n",
-	   (unsigned long long) stats->bt_num_updates);
-
-  fprintf (stream, "Num_network_requests          = %llu\n",
-	   (unsigned long long) stats->net_num_requests);
-
-  if (stats->pb_num_fetches > 0)
+  stats_ptr = (UINT64 *) stats;
+  for (i = 0; i < MNT_SIZE_OF_SERVER_EXEC_GLOBAL_STATS - 1; i++)
     {
-      hit_ratio = (((float) (stats->pb_num_fetches - stats->pb_num_ioreads) /
-		    stats->pb_num_fetches) * 100.0);
-      fprintf (stream, "\nHit ratio of Page Buffer = %5.2f%%\n", hit_ratio);
+      if (mnt_Stats_name[i])
+	{
+	  fprintf (stream, "%-29s = %10llu\n", mnt_Stats_name[i],
+		   (unsigned long long) *stats_ptr++);
+	}
     }
+
+  fprintf (stream, "\n *** OTHER STATISTICS *** \n");
+
+  fprintf (stream, "Data_page_buffer_hit_ratio    = %10.2f\n",
+	   (float) stats->pb_hit_ratio / 100);
 }
 
 /*

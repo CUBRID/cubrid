@@ -78,8 +78,10 @@ struct log_2pc_global_data log_2pc_Userfun =
 
 static int log_2pc_get_num_participants (int *partid_len,
 					 void **block_particps_ids);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int log_2pc_lookup_particp (void *look_particp_id, int num_particps,
 				   void *block_particps_ids);
+#endif
 static int log_2pc_make_global_tran_id (TRANID tranid);
 static bool log_2pc_check_duplicate_global_tran_id (int gtrid);
 static int
@@ -95,9 +97,11 @@ static void log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 static LOG_TDES *log_2pc_find_tran_descriptor (int gtrid);
 static int log_2pc_attach_client (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				  LOG_TDES * client_tdes);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int log_2pc_broadcast_decision_participant (THREAD_ENTRY * thread_p,
 						   LOG_TDES * tdes,
 						   int particp_index);
+#endif
 static void log_2pc_recovery_prepare (THREAD_ENTRY * thread_p,
 				      LOG_TDES * tdes, LOG_LSA * log_lsa,
 				      LOG_PAGE * log_page_p);
@@ -139,6 +143,7 @@ static void log_2pc_recovery_aborted_informing_participants (THREAD_ENTRY *
  *      APPLICATION (I.E, BETWEEN COORDINATOR AND PARTICIPANTS OR VICE VERSA)
  */
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_2pc_define_funs - Define the user 2pc functions
  *
@@ -186,6 +191,7 @@ log_2pc_define_funs (int (*get_participants) (int *particp_id_length,
   log_2pc_Userfun.send_commit = send_commit;
   log_2pc_Userfun.send_abort = send_abort;
 }
+#endif
 
 /*
  * log_2pc_find_particps - Find all particpants
@@ -232,6 +238,7 @@ log_2pc_get_num_participants (int *partid_len, void **block_particps_ids)
   return num_particps;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_2pc_lookup_particp - LOOK UP FOR A PARTICIPANT
  *
@@ -257,6 +264,7 @@ log_2pc_lookup_particp (void *look_particp_id, int num_particps,
   return (*log_2pc_Userfun.lookup_participant) (look_particp_id, num_particps,
 						block_particps_ids);
 }
+#endif
 
 /*
  * log_2pc_sprintf_particp - A STRING VERSION OF PARTICIPANT-ID
@@ -429,6 +437,7 @@ log_2pc_send_abort_decision (int gtrid, int num_particps,
  *
  */
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_get_global_tran_id - FIND CURRENT GLOBAL TRANID
  *
@@ -463,6 +472,7 @@ log_get_global_tran_id (THREAD_ENTRY * thread_p)
 
   return gtrid;
 }
+#endif
 
 /*
  * log_2pc_make_global_tran_id - Make a global transaction identifier for
@@ -1420,7 +1430,7 @@ log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index)
    */
   logpb_end_append (thread_p);
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   LOG_CS_EXIT ();
 
@@ -1434,7 +1444,7 @@ log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index)
  * return: TRAN_STATE
  *
  *   gtrid(in): Identifier of the global transaction. The coordinator is
- *             responsable of generating the global transaction identifier.
+ *             responsible for generating the global transaction identifier.
  *
  * NOTE:This function prepares the transaction identified by "gtrid"
  *              for commitment. Any objects and data that the transaction held
@@ -1620,7 +1630,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_2PC_PREPARE;
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   LOG_CS_EXIT ();
 
@@ -1774,6 +1784,7 @@ log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data)
   lock_dump_acquired (fp, &acq_locks);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_2pc_dump_acqpage_locks - DUMP THE ACQUIRED PAGE LOCKS
  *
@@ -1793,6 +1804,7 @@ log_2pc_dump_acqpage_locks (FILE * fp, int length, void *data)
   acq_locks.obj = NULL;
   lock_dump_acquired (fp, &acq_locks);
 }
+#endif
 
 /*
  * log_2pc_append_start - APPEND A VOTING LOG RECORD FOR THE 2PC PROTOCOL
@@ -1845,7 +1857,7 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES;
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   LOG_CS_EXIT ();
 }
@@ -1891,7 +1903,7 @@ log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       logpb_end_append (thread_p);
       tdes->state = TRAN_UNACTIVE_2PC_COMMIT_DECISION;
       logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-      assert (LOG_CS_OWN ());
+      assert (LOG_CS_OWN (thread_p));
     }
   else
     {
@@ -1973,6 +1985,7 @@ log_2pc_free_coord_info (LOG_TDES * tdes)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_2pc_crash_participant - A participant aborted its local part of the global
  *                          transaction, or went down
@@ -2186,6 +2199,7 @@ log_2pc_send_decision_participant (THREAD_ENTRY * thread_p, void *particp_id)
 	}
     }
 }
+#endif
 
 /*
  * log_2pc_recovery_prepare -
@@ -3003,6 +3017,7 @@ log_2pc_recovery (THREAD_ENTRY * thread_p)
     }
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * log_is_tran_in_2pc - IS TRANSACTION IN THE MIDDLE OF 2PC ?
  *
@@ -3029,6 +3044,7 @@ log_is_tran_in_2pc (THREAD_ENTRY * thread_p)
 
   return (LOG_ISTRAN_2PC (tdes));
 }
+#endif
 
 /*
  * log_is_tran_distributed - IS THIS A COORDINATOR OF A DISTRIBUTED TRANSACTION

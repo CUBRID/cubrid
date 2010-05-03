@@ -19,7 +19,10 @@
 
 
 /*
- * Xasl interpreter internal
+ * XASL (eXtented Access Specification Language) interpreter internal
+ * definitions.
+ * For a brief description of ASL principles see "Access Path Selection in a
+ * Relational Database Management System" by P. Griffiths Selinger et al
  */
 
 #ifndef _QUERY_EXECUTOR_H_
@@ -39,7 +42,7 @@
 #define XASL_STREAM_HEADER 8
 
 /*
- * Macros for access specification structure
+ * Macros for easier handling of the ACCESS_SPEC_TYPE members.
  */
 
 #define ACCESS_SPEC_CLS_SPEC(ptr) \
@@ -213,7 +216,7 @@ struct list_spec_node
   REGU_VARIABLE_LIST list_regu_list_pred;	/* regu list for the predicate */
   REGU_VARIABLE_LIST list_regu_list_rest;	/* regu list for rest of attrs */
   XASL_NODE *xasl_node;		/* the XASL node that contains the
-				 * list file idenfifier
+				 * list file identifier
 				 */
 };
 
@@ -348,7 +351,7 @@ struct update_proc_node
   DB_VALUE **consts;		/* constant values (array)              */
   PRED_EXPR *cons_pred;		/* constraint predicate                 */
   int has_uniques;		/* whether there are unique constraints */
-  int waitsecs;			/* lock timeout in miliseconds */
+  int waitsecs;			/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
   struct xasl_partition_info **partition;	/* partition information */
@@ -364,7 +367,7 @@ struct insert_proc_node
   DB_VALUE **vals;		/* values (array)                       */
   PRED_EXPR *cons_pred;		/* constraint predicate                 */
   int has_uniques;		/* whether there are unique constraints */
-  int waitsecs;			/* lock timeout in miliseconds */
+  int waitsecs;			/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
   struct xasl_partition_info *partition;	/* partition information */
@@ -376,7 +379,7 @@ struct delete_proc_node
   OID *class_oid;		/* OID's of the classes                 */
   HFID *class_hfid;		/* Heap file ID's of the classes        */
   int no_classes;		/* total number of classes involved     */
-  int waitsecs;			/* lock timeout in miliseconds */
+  int waitsecs;			/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
 };
@@ -433,7 +436,7 @@ struct selupd_list
   HFID class_hfid;		/* Heap file ID of the class */
   int select_list_size;		/* Size of select_list */
   REGU_VARLIST_LIST select_list;	/* Regu list to be selected */
-  int waitsecs;			/* lock timeout in miliseconds */
+  int waitsecs;			/* lock timeout in milliseconds */
 };
 
 struct xasl_node
@@ -538,6 +541,7 @@ struct xasl_node
 #define XASL_TO_BE_CACHED         16	/* the result will be cached */
 #define	XASL_HAS_NOCYCLE	  32	/* NOCYCLE is specified */
 #define	XASL_HAS_CONNECT_BY	  64	/* has CONNECT BY clause */
+#define XASL_QEXEC_MODE_ASYNC    128	/* query exec mode (async) */
 
 #define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -662,8 +666,10 @@ extern int qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p);
 extern int qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p);
 extern int qexec_dump_xasl_cache_internal (THREAD_ENTRY * thread_p, FILE * fp,
 					   int mask);
+#if defined(CUBRID_DEBUG)
 extern int qexec_dump_xasl_cache (THREAD_ENTRY * thread_p, const char *fname,
 				  int mask);
+#endif
 extern XASL_CACHE_ENTRY *qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p,
 						      const char *qstr,
 						      const OID * user_oid);
@@ -685,7 +691,9 @@ extern XASL_CACHE_ENTRY *qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY *
 							     int dbval_cnt,
 							     XASL_CACHE_CLONE
 							     ** clop);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int qexec_free_xasl_cache_clo (XASL_CACHE_CLONE * clo);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern int xasl_id_hash_cmpeq (const void *key1, const void *key2);
 extern int qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
 						 const OID * class_oid);
@@ -699,8 +707,9 @@ extern int qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p,
 					    const OID * class_oid);
 
 extern bool qdump_print_xasl (XASL_NODE * xasl);
+#if defined(CUBRID_DEBUG)
 extern bool qdump_check_xasl_tree (XASL_NODE * xasl);
-
+#endif /* CUBRID_DEBUG */
 extern int xts_map_xasl_to_stream (const XASL_NODE * xasl,
 				   char **stream, int *size);
 

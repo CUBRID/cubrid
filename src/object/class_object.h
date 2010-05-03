@@ -363,7 +363,7 @@ typedef enum
   ID_CLASS_ATTRIBUTE,
   ID_METHOD,
   ID_CLASS_METHOD,
-  ID_INSTANCE,			/* attriubtes/shared attributes/methods */
+  ID_INSTANCE,			/* attributes/shared attributes/methods */
   ID_CLASS,			/* class methods/class attributes */
   ID_NULL
 } SM_NAME_SPACE;
@@ -419,7 +419,7 @@ typedef enum
 {
   SM_CLASS_CT,			/* default SQL/X class */
   SM_VCLASS_CT,			/* component db virtual class */
-  SM_ADT_CT			/* Abstract data type-psuedo class */
+  SM_ADT_CT			/* Abstract data type-pseudo class */
 } SM_CLASS_TYPE;
 
 /*
@@ -431,6 +431,7 @@ typedef enum
   SM_CLASSFLAG_SYSTEM = 1,	/* a system defined class */
   SM_CLASSFLAG_WITHCHECKOPTION = 2,	/* a view with check option */
   SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
+  SM_CLASSFLAG_REUSE_OID = 8,	/* the class can reuse OIDs */
 } SM_CLASS_FLAG;
 
 /*
@@ -767,7 +768,7 @@ struct sm_class
   unsigned int virtual_cache_schema_id;
 
   unsigned methods_loaded:1;	/* set when dynamic linking was performed */
-  unsigned post_load_cleanup:1;	/* set if post load cleanup has occured */
+  unsigned post_load_cleanup:1;	/* set if post load cleanup has occurred */
 
   unsigned triggers_validated:1;	/* set when trigger cache is validated */
   unsigned has_active_triggers:1;	/* set if trigger processing is required */
@@ -1068,7 +1069,7 @@ extern int classobj_copy_methfiles (SM_METHOD_FILE * files, MOP filter_class,
 				    SM_METHOD_FILE ** copy_ptr);
 extern void classobj_free_method_file (SM_METHOD_FILE * file);
 
-/* Representatino attribute */
+/* Representation attribute */
 extern SM_REPR_ATTRIBUTE *classobj_make_repattribute (int attid,
 						      DB_TYPE typeid_,
 						      TP_DOMAIN * domain);
@@ -1145,8 +1146,9 @@ extern void classobj_free_desclist (SM_DESCRIPTOR_LIST * dl);
 extern void classobj_free_descriptor (SM_DESCRIPTOR * desc);
 
 /* Debug */
+#if defined (CUBRID_DEBUG)
 extern void classobj_print (SM_CLASS * class_);
-
+#endif
 /* primary key */
 extern SM_CLASS_CONSTRAINT *classobj_find_class_primary_key (SM_CLASS *
 							     class_);

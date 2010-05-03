@@ -116,13 +116,16 @@ typedef enum
   RVBT_KEYVAL_INS,
   RVBT_KEYVAL_DEL,
   RVBT_COPYPAGE,
+  /* Never use this recovery index anymore. Only for backward compatibility */
   RVBT_LFRECORD_DEL,
   RVBT_LFRECORD_KEYINS,
+  /* Never use this recovery index anymore. Only for backward compatibility */
   RVBT_LFRECORD_OIDINS,
   RVBT_NOOP,
   RVBT_ROOTHEADER_UPD,
   RVBT_UPDATE_OVFID,
   RVBT_INS_PGRECORDS,
+  /* Never use this recovery index anymore. Only for backward compatibility */
   RVBT_OID_TRUNCATE,
   RVBT_CREATE_INDEX,
 
@@ -156,6 +159,18 @@ typedef enum
 
   RVDK_IDDEALLOC_BITMAP_ONLY,
   RVDK_IDDEALLOC_VHDR_ONLY,
+
+  RVHF_CREATE_REUSE_OID,
+  RVHF_NEWPAGE_REUSE_OID,
+  RVHF_REUSE_PAGE_REUSE_OID,
+  RVHF_MARK_REUSABLE_SLOT,
+
+  RVBT_KEYVAL_INS_LFRECORD_KEYINS,
+  RVBT_KEYVAL_INS_LFRECORD_OIDINS,
+  RVBT_KEYVAL_DEL_LFRECORD_DEL,
+  RVBT_KEYVAL_DEL_NDRECORD_UPD,
+  RVBT_KEYVAL_DEL_NDHEADER_UPD,
+  RVBT_KEYVAL_DEL_OID_TRUNCATE
 } LOG_RCVINDEX;
 
 /*
@@ -168,8 +183,8 @@ struct log_rcv
 				   functions, however it should be set dirty whenever is
 				   needed
 				 */
-  PGLENGTH offset;		/* Offset/slot of data in the above page to recover    */
-  int length;			/* Length of data                                      */
+  PGLENGTH offset;		/* Offset/slot of data in the above page to recover */
+  int length;			/* Length of data */
   const char *data;		/* Replacement data. Pointer becomes invalid once the
 				   recovery of the data is finished
 				 */
@@ -183,15 +198,29 @@ struct rvfun
 {
   LOG_RCVINDEX recv_index;	/* For verification   */
   const char *recv_string;
-  int (*undofun) (THREAD_ENTRY * thread_p, LOG_RCV * logrcv);	/* Undo function      */
-  int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV * logrcv);	/* Redo function      */
-  void (*dump_undofun) (FILE * fp, int length, void *data);	/* Dump undo function */
-  void (*dump_redofun) (FILE * fp, int length, void *data);	/* Dump redo function */
+  int (*undofun) (THREAD_ENTRY * thread_p, LOG_RCV * logrcv);
+  int (*redofun) (THREAD_ENTRY * thread_p, LOG_RCV * logrcv);
+  void (*dump_undofun) (FILE * fp, int length, void *data);
+  void (*dump_redofun) (FILE * fp, int length, void *data);
 };
 
 extern struct rvfun RV_fun[];
 
 extern const char *rv_rcvindex_string (LOG_RCVINDEX rcvindex);
+#if defined(CUBRID_DEBUG)
 extern void rv_check_rvfuns (void);
+#endif /* CUBRID_DEBUG */
+
+#define RCV_IS_LOGICAL_LOG(vpid, idx)                       \
+          ( (((vpid)->volid == NULL_VOLID)                  \
+             || ((vpid)->pageid == NULL_PAGEID)            \
+             || ((idx) == RVBT_KEYVAL_INS_LFRECORD_KEYINS) \
+             || ((idx) == RVBT_KEYVAL_INS_LFRECORD_OIDINS) \
+             || ((idx) == RVBT_KEYVAL_INS)                 \
+             || ((idx) == RVBT_KEYVAL_DEL)                 \
+             || ((idx) == RVBT_KEYVAL_DEL_LFRECORD_DEL)    \
+             || ((idx) == RVBT_KEYVAL_DEL_NDRECORD_UPD)    \
+             || ((idx) == RVBT_KEYVAL_DEL_NDHEADER_UPD)    \
+             || ((idx) == RVBT_KEYVAL_DEL_OID_TRUNCATE) ) ? true : false )
 
 #endif /* _RECOVERY_H_ */

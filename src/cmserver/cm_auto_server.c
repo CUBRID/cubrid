@@ -58,13 +58,14 @@
 #include "cm_porting.h"
 #include "cm_server_stat.h"
 #include "cm_server_util.h"
-#include "cm_nameval.h"
+#include "cm_stat.h"
+#include "cm_dep.h"
 #include "cm_autojob.h"
 #include "cm_auto_task.h"
 #include "cm_config.h"
 #include "cm_command_execute.h"
 #include "cm_text_encryption.h"
-#include "cm_broker_admin.h"
+#include "cm_connect_info.h"
 #if defined(WINDOWS)
 #include "cm_wsa_init.h"
 #endif
@@ -82,16 +83,6 @@ static THREAD_FUNC service_start (void *ud);
 static THREAD_FUNC automation_start (void *ud);
 static void print_usage (char *progname);
 static void start_pserver (void);
-static int uRecordConnection (char *new_ip, char *new_port,
-			      char *client_version);
-static int uRemoveConnection (char *new_ip, char *new_port, char *client_ver);
-#ifdef HOST_MONITOR_PROC
-static THREAD_FUNC collect_start (void *ud);
-static void setup_dbstate (userdata * ud);
-static void setup_casstate (userdata * ud);
-static int _isInDBList (userdata * ud, char *dbname);
-static int _GetFreeIndex (userdata * ud);
-#endif
 static char *ut_token_generate (char *client_ip, char *client_port,
 				char *dbmt_id, int proc_id);
 static int net_init (void);
@@ -142,7 +133,6 @@ main (int argc, char **argv)
   int pidnum;
   char *ars_cmd;
   char pid_file_name[512];
-  char err_msg[1024];
 
 #if defined(WINDOWS)
   FreeConsole ();
@@ -203,18 +193,6 @@ main (int argc, char **argv)
   pid_lock_fd =
     uCreateLockFile (conf_get_dbmt_file
 		     (FID_PSERVER_PID_LOCK, pid_file_name));
-
-#if 0
-  fprintf (start_log_fp, "Checking uc_admin.so ... ");
-#endif
-  if (uca_init (err_msg) < 0)
-    {
-      fprintf (start_log_fp, "Checking uc_admin.so ... Error\n%s\n", err_msg);
-    }
-#if 0
-  else
-    fprintf (start_log_fp, "%s OK\n", uca_version ());
-#endif
 
   conf_get_dbmt_file (FID_PSERVER_PID, pid_file_name);
 
@@ -456,26 +434,26 @@ service_start (void *ud)
 			  else
 			    {	/* accept connection */
 			      /* generate token and record new connection to file */
-			      pstrbuf = ut_token_generate (nv_get_val
-							   (cli_request,
-							    "_CLIENTIP"),
-							   nv_get_val
-							   (cli_request,
-							    "_CLIENTPORT"),
-							   nv_get_val
-							   (cli_request,
-							    "id"), getpid ());
+			      pstrbuf =
+				ut_token_generate (nv_get_val
+						   (cli_request, "_CLIENTIP"),
+						   nv_get_val (cli_request,
+							       "_CLIENTPORT"),
+						   nv_get_val (cli_request,
+							       "id"),
+						   getpid ());
 			      nv_add_nvp (cli_response, "token", pstrbuf);
 			      nv_add_nvp (cli_request, "_ID",
 					  client_info[i].user_id);
 			      free (pstrbuf);
 
-			      uRecordConnection (nv_get_val (cli_request,
-							     "_CLIENTIP"),
-						 nv_get_val (cli_request,
-							     "_CLIENTPORT"),
-						 nv_get_val (cli_request,
-							     "clientver"));
+			      dbmt_con_add (nv_get_val
+					    (cli_request, "_CLIENTIP"),
+					    nv_get_val (cli_request,
+							"_CLIENTPORT"),
+					    nv_get_val (cli_request,
+							"clientver"),
+					    nv_get_val (cli_request, "id"));
 			      ut_send_response (sockfd, cli_response);
 			      client_info[i].state = VALID_USER;
 			      ut_access_log (cli_request, "connected");
@@ -525,12 +503,9 @@ service_start (void *ud)
 		      ut_access_log (cli_request, "disconnected");
 		      FD_CLR (sockfd, &allset);
 		      client_info_reset (&(client_info[i]));
-		      uRemoveConnection (nv_get_val
-					 (cli_request, "_CLIENTIP"),
-					 nv_get_val (cli_request,
-						     "_CLIENTPORT"),
-					 nv_get_val (cli_request,
-						     "clientversion"));
+		      dbmt_con_delete (nv_get_val (cli_request, "_CLIENTIP"),
+				       nv_get_val (cli_request,
+						   "_CLIENTPORT"));
 		    }
 		}
 
@@ -542,6 +517,8 @@ service_start (void *ud)
 	    }
 	}			/* end for */
     }
+
+  free ((void *) ud);
 return_statement:
   nv_destroy (cli_request);
   nv_destroy (cli_response);
@@ -598,6 +575,7 @@ automation_start (void *ud)
       prev_check_time = cur_time;
     }
 
+  free ((void *) ud);
 #if defined(WINDOWS)
   return;
 #else
@@ -622,9 +600,6 @@ start_pserver (void)
   userdata ud;
   char strbuf[1024];
   T_THREAD pid1, pid3;
-#ifdef HOST_MONITOR_PROC
-  T_THREAD pid2;
-#endif
 
   sprintf (cubrid_err_file, "%s/cub_autoclient.err", sco.dbmt_tmp_dir);
   sprintf (cubrid_err_log_env, "CUBRID_ERROR_LOG=%s", cubrid_err_file);
@@ -676,290 +651,16 @@ start_pserver (void)
   server_fd_clear (pserver_sockfd);
 
   THREAD_BEGIN (pid1, service_start, &ud);
-#ifdef HOST_MONITOR_PROC
-  THREAD_BEGIN (pid2, collect_start, &ud);
-#endif
   THREAD_BEGIN (pid3, automation_start, &ud);
 
   while (1)
     SLEEP_MILISEC (1, 0);
 }
 
-/*
- *  connection list format :
- *     ip, port, date, time
- */
-static int
-uRecordConnection (char *new_ip, char *new_port, char *client_version)
-{
-  FILE *outfile;
-  char strbuf[512];
-  int lock_fd, retval;
 
-  lock_fd = uCreateLockFile (conf_get_dbmt_file (FID_LOCK_CONN_LIST, strbuf));
-  if (lock_fd < 0)
-    return -1;
 
-  retval = -1;
-  outfile = fopen (conf_get_dbmt_file (FID_CONN_LIST, strbuf), "a");
-  if (outfile != NULL)
-    {
-      time_to_str (time (NULL), "%04d/%02d/%02d %02d:%02d:%02d", strbuf,
-		   TIME_STR_FMT_DATE_TIME);
-      fprintf (outfile, "%s %s %s %s\n", new_ip, new_port, strbuf,
-	       client_version);
-      fclose (outfile);
-      retval = 0;
-    }
-  uRemoveLockFile (lock_fd);
 
-  return retval;
-}
 
-static int
-uRemoveConnection (char *new_ip, char *new_port, char *client_ver)
-{
-  char ip[20];
-  char port[10];
-  char version[16];
-  char c_date[16];
-  char c_time[16];
-  char sbuf[1024];
-  FILE *infile, *outfile;
-  char tmpfile[512];
-  char conn_list_file[512];
-  int lock_fd, retval;
-
-  lock_fd = uCreateLockFile (conf_get_dbmt_file (FID_LOCK_CONN_LIST, sbuf));
-  if (lock_fd < 0)
-    return -1;
-
-  conf_get_dbmt_file (FID_CONN_LIST, conn_list_file);
-  infile = fopen (conn_list_file, "r");
-  sprintf (tmpfile, "%s/DBMT_util_014.%d", sco.dbmt_tmp_dir, (int) getpid ());
-  outfile = fopen (tmpfile, "w");
-
-  if (infile == NULL || outfile == NULL)
-    {
-      if (infile)
-	fclose (infile);
-      if (outfile)
-	fclose (outfile);
-      retval = -1;
-    }
-  else
-    {
-      while (fgets (sbuf, 1024, infile))
-	{
-	  ut_trim (sbuf);
-	  sscanf (sbuf, "%19s %9s %15s %15s %15s\n", ip, port, c_date, c_time,
-		  version);
-	  if ((uStringEqual (new_ip, ip)) && (uStringEqual (new_port, port)))
-	    continue;
-	  fprintf (outfile, "%s\n", sbuf);
-	}
-      fclose (outfile);
-      fclose (infile);
-
-      move_file (tmpfile, conn_list_file);
-      retval = 0;
-    }
-  uRemoveLockFile (lock_fd);
-
-  return retval;
-}
-
-#ifdef HOST_MONITOR_PROC
-static THREAD_FUNC
-collect_start (void *arg)
-{
-  userdata *ud = (userdata *) arg;
-  char tmpfile[512];
-  struct stat statbuf;
-  time_t moditime = 0;
-
-  /* if db state is changed, update. */
-  record_system_info (&(ud->ssbuf));
-  stat (conf_get_dbmt_file (FID_PSVR_DBINFO_TEMP, tmpfile), &statbuf);
-  moditime = statbuf.st_mtime;
-  ((userdata *) ud)->dbsrv_refresh_flag = 1;
-  setup_dbstate (ud);
-  record_cubrid_proc_info (ud);
-  setup_casstate (ud);
-  record_unicas_proc_info (ud->casvect, ud->casbuf);
-
-  /* start data collecting loop */
-  for (;;)
-    {
-      sleep (sco.iMonitorInterval);
-      if (time (NULL) - ud->last_request_time > 5)
-	continue;
-
-      /* check if db state is changed */
-      stat (conf_get_dbmt_file (FID_PSVR_DBINFO_TEMP, tmpfile), &statbuf);
-      if (moditime != statbuf.st_mtime)
-	{
-	  ud->dbsrv_refresh_flag = 1;
-	  moditime = statbuf.st_mtime;
-	}
-      setup_dbstate (ud);
-      setup_casstate (ud);
-
-      record_system_info (&(ud->ssbuf));
-      record_cubrid_proc_info (ud);
-      record_unicas_proc_info (ud->casvect, ud->casbuf);
-    }
-  return NULL;
-}
-
-/* fill in dbname, pid in db_stat struct */
-static void
-setup_dbstate (userdata * ud)
-{
-  int i, fri, dbcnt;
-  char strbuf[1024];
-  char *dbname;
-  int db_srv_pid;
-
-  if (!(ud->dbsrv_refresh_flag))
-    return;
-
-  for (i = 0; i < MAX_INSTALLED_DB; ++i)
-    {
-      ud->dbvect[i] = 0;
-    }
-
-  /* read active db list */
-  memset (strbuf, 0, sizeof (strbuf));
-  dbcnt = uReadDBnfo (strbuf);
-
-  /* for each active db, make entry for new dbname */
-  dbname = strbuf;
-  for (i = 0; i < dbcnt; ++i)
-    {
-      if (!(_isInDBList (ud, dbname)))
-	{
-	  db_srv_pid = get_db_server_pid (dbname);
-	  if (db_srv_pid > 0)
-	    {
-	      fri = _GetFreeIndex (ud);
-	      if (fri >= 0)
-		{
-		  strcpy (ud->dbbuf[fri].db_name, dbname);
-		  ud->dbbuf[fri].db_pid = db_srv_pid;
-		  ud->dbvect[fri] = 1;
-		}
-	    }
-	}
-      dbname = dbname + strlen (dbname) + 1;
-    }
-  ud->dbsrv_refresh_flag = 0;
-}
-
-/* fill in cas_pid of cas_stat */
-/* cas_pid is directly used to get process info in record_unicas_proc_info() */
-static void
-setup_casstate (userdata * ud)
-{
-  DIR *dp;
-  FILE *infile;
-  struct dirent *dirp;
-  int as_pid, i, idx = 0;
-  char caspiddir[512], filepath[512], strbuf[1024];
-  char *p;
-  T_DM_UC_INFO uc_info;
-
-  for (i = 0; i < MAX_UNICAS_PROC; ++i)
-    ud->casvect[i] = 0;
-
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  sprintf (caspiddir, "%s/var/as_pid", sco.szUnicas_home);
-#else
-  sprintf (caspiddir, "%s/as_pid", CUBRID_VARDIR);
-#endif
-  dp = opendir (caspiddir);
-
-  while ((dirp = readdir (dp)) != NULL)
-    {
-      if (dirp->d_name[0] == '.')
-	continue;
-
-#if !defined (DO_NOT_USE_CUBRIDENV)
-      sprintf (filepath, "%s/var/as_pid/%s", sco.szUnicas_home, dirp->d_name);
-#else
-      sprintf (filepath, "%s/as_pid/%s", CUBRID_VARDIR, dirp->d_name);
-#endif
-      if ((infile = fopen (filepath, "r")) != NULL)
-	{
-	  if (fscanf (infile, "%d", &as_pid) == 1)
-	    {
-	      ud->casvect[idx] = 1;
-	      ud->casbuf[idx].cas_pid = as_pid;
-	      strcpy (ud->casbuf[idx].cas_name, dirp->d_name);
-	      p = strchr (ud->casbuf[idx].cas_name, '.');
-	      if (p)
-		*p = '\0';
-	      idx++;
-	      if (idx >= MAX_UNICAS_PROC)
-		{
-		  fclose (infile);
-		  closedir (dp);
-		  return;
-		}
-	    }
-	  fclose (infile);
-	}
-    }
-  closedir (dp);
-
-  if (uca_br_info (&uc_info, strbuf) < 0)
-    return;
-
-  for (i = 0; i < uc_info.num_info; i++)
-    {
-      if (strcmp (uc_info.info.br_info[i].status, "OFF") == 0)
-	continue;
-      ud->casvect[idx] = 1;
-      ud->casbuf[idx].cas_pid = uc_info.info.br_info[i].pid;
-      if (strcmp (uc_info.info.br_info[i].as_type, "CAS") == 0)
-	strcpy (ud->casbuf[idx].cas_name, "Cbroker");
-      else
-	strcpy (ud->casbuf[idx].cas_name, "Tbroker");
-      idx++;
-      if (idx >= MAX_UNICAS_PROC)
-	{
-	  break;
-	}
-    }
-  uca_br_info_free (&uc_info);
-}
-
-static int
-_isInDBList (userdata * ud, char *dbname)
-{
-  int i;
-
-  for (i = 0; i < MAX_INSTALLED_DB; ++i)
-    {
-      if ((ud->dbvect[i] == 1)
-	  && (uStringEqual (ud->dbbuf[i].db_name, dbname)))
-	return 1;
-    }
-  return 0;
-}
-
-static int
-_GetFreeIndex (userdata * ud)
-{
-  int i;
-  for (i = 0; i < MAX_INSTALLED_DB; ++i)
-    {
-      if (ud->dbvect[i] != 1)
-	return i;
-    }
-  return -1;
-}
-#endif /* HOST_MONITOR_PROC */
 
 /*
  *   client ip : client port : dbmt id : pserver pid
@@ -1042,77 +743,16 @@ net_init (void)
 static void
 prepare_response (userdata * ud, nvplist * res)
 {
-#ifdef HOST_MONITOR_PROC
-  int i;
-
-  nv_add_nvp_int (res, "LOAD_AVG_1M", ud->ssbuf.load_avg[0]);
-  nv_add_nvp_int (res, "LOAD_AVG_5M", ud->ssbuf.load_avg[1]);
-  nv_add_nvp_int (res, "LOAD_AVG_15M", ud->ssbuf.load_avg[2]);
-  nv_add_nvp_int (res, "CPU_TIME_IDLE", ud->ssbuf.cpu_states[0]);
-  nv_add_nvp_int (res, "CPU_TIME_USER", ud->ssbuf.cpu_states[1]);
-  nv_add_nvp_int (res, "CPU_TIME_KERNEL", ud->ssbuf.cpu_states[2]);
-  nv_add_nvp_int (res, "CPU_TIME_IOWAIT", ud->ssbuf.cpu_states[3]);
-  nv_add_nvp_int (res, "CPU_TIME_SWAP", ud->ssbuf.cpu_states[4]);
-  nv_add_nvp_int (res, "MEMORY_REAL", ud->ssbuf.memory_stats[0]);
-  nv_add_nvp_int (res, "MEMORY_ACTIVE", ud->ssbuf.memory_stats[1]);
-  nv_add_nvp_int (res, "MEMORY_FREE", ud->ssbuf.memory_stats[2]);
-  nv_add_nvp_int (res, "SWAP_IN_USE", ud->ssbuf.memory_stats[3]);
-  nv_add_nvp_int (res, "SWAP_FREE", ud->ssbuf.memory_stats[4]);
-
-  nv_add_nvp (res, "start", "dblist");
-  for (i = 0; i < MAX_INSTALLED_DB; ++i)
-    {
-      if (ud->dbvect[i])
-	{
-	  nv_add_nvp (res, "DBNAME", ud->dbbuf[i].db_name);
-	  nv_add_nvp_int (res, "DBPID", ud->dbbuf[i].db_pid);
-	  nv_add_nvp_int (res, "DBSIZE", ud->dbbuf[i].db_size);
-	  nv_add_nvp (res, "DBSTATE", ud->dbbuf[i].proc_stat);
-	  nv_add_nvp_time (res, "DBSTARTTIME", ud->dbbuf[i].db_start_time,
-			   "%04d/%02d/%02d-%02d:%02d:%02d", NV_ADD_DATE_TIME);
-	  nv_add_nvp_float (res, "DBCPUUSAGE", ud->dbbuf[i].db_cpu_usage,
-			    "%f");
-	  nv_add_nvp_float (res, "DBMEMUSAGE", ud->dbbuf[i].db_mem_usage,
-			    "%f");
-	}
-    }
-  nv_add_nvp (res, "end", "dblist");
-  nv_add_nvp (res, "start", "brokerlist");
-  for (i = 0; i < MAX_UNICAS_PROC; ++i)
-    {
-      if (ud->casvect[i])
-	{
-	  nv_add_nvp (res, "UNICAS_NAME", ud->casbuf[i].cas_name);
-	  nv_add_nvp_int (res, "UNICAS_PID", ud->casbuf[i].cas_pid);
-	  nv_add_nvp_int (res, "UNICAS_SIZE", ud->casbuf[i].cas_size);
-	  nv_add_nvp (res, "UNICAS_STATE", ud->casbuf[i].proc_stat);
-	  nv_add_nvp_time (res, "UNICAS_STARTTIME",
-			   ud->casbuf[i].cas_start_time,
-			   "%04d/%02d/%02d-%02d:%02d:%02d", NV_ADD_DATE_TIME);
-	  nv_add_nvp_float (res, "UNICAS_CPUUSAGE",
-			    ud->casbuf[i].cas_cpu_usage, "%f");
-	  nv_add_nvp_float (res, "UNICAS_MEMUSAGE",
-			    ud->casbuf[i].cas_mem_usage, "%f");
-	}
-    }
-  nv_add_nvp (res, "end", "brokerlist");
-
-  nv_add_nvp (res, "start", "iostat");
-#ifdef HOST_MONITOR_IO
-  record_iostat (res);
-#endif
-  nv_add_nvp (res, "end", "iostat");
-#endif
 }
 
 static void
 auto_start_UniCAS (void)
 {
-  char uc_start_error_msg[1024];
+  T_CM_ERROR uc_start_error_msg;
   if (sco.iAutoStart_UniCAS)
     {
       /* start UniCAS */
-      if (uca_start (uc_start_error_msg) < 0)
+      if (cm_broker_env_start (&uc_start_error_msg) < 0)
 	{
 #if 0
 	  fprintf (start_log_fp, "Starting CUBRID CAS - %s\n",

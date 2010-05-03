@@ -47,6 +47,50 @@
 #define SIZE_TIME       6
 #define SIZE_OBJECT     8
 
+#ifdef CAS_FOR_DBMS
+#define NET_WRITE_ERROR_CODE_WITH_MSG(SOCK_FD, clt_version, cas_info, ERROR_INDICATOR, ERROR_CODE, ERROR_MSG) \
+        do {                                                    	\
+			if (clt_version >= CAS_MAKE_VER (8, 2, 2)) \
+			{	\
+				net_write_int (SOCK_FD, SIZE_INT + strlen (ERROR_MSG) + SIZE_INT + 1);      	\
+			} 	\
+			else 	\
+			{	\
+				net_write_int (SOCK_FD, strlen (ERROR_MSG) + SIZE_INT + 1);      	\
+			}	\
+			if (cas_info_size > 0)					\
+			{								\
+				net_write_stream (SOCK_FD, cas_info, cas_info_size); 	\
+			}                                                     	\
+			if (clt_version >= CAS_MAKE_VER (8, 2, 2)) \
+			{	\
+				net_write_int (SOCK_FD, ERROR_INDICATOR);	\
+			} 	\
+			net_write_int (SOCK_FD, ERROR_CODE);                  	\
+			net_write_stream (SOCK_FD, ERROR_MSG, strlen (ERROR_MSG) + 1);\
+        } while (0)
+
+#define NET_WRITE_ERROR_CODE(SOCK_FD, clt_version, cas_info, ERROR_INDICATOR, ERROR_CODE)       	\
+        do {                                            		\
+			if (clt_version >= CAS_MAKE_VER (8, 2, 2)) \
+			{	\
+				net_write_int(SOCK_FD, SIZE_INT + SIZE_INT);	\
+			}	\
+			else 	\
+			{	\
+				net_write_int(SOCK_FD, SIZE_INT);                    		\
+			}	\
+			if (cas_info_size > 0) 					\
+			{								\
+				net_write_stream(SOCK_FD, cas_info, cas_info_size);       	\
+			}								\
+			if (clt_version >= CAS_MAKE_VER (8, 2, 2)) \
+			{	\
+				net_write_int(SOCK_FD, ERROR_INDICATOR);	\
+			}	\
+			net_write_int(SOCK_FD, ERROR_CODE);           		\
+        } while (0)
+#else
 #define NET_WRITE_ERROR_CODE_WITH_MSG(SOCK_FD, cas_info, ERROR_CODE, ERROR_MSG) \
         do {                                                    	\
           net_write_int (SOCK_FD, strlen (ERROR_MSG) + SIZE_INT + 1);      	\
@@ -68,6 +112,8 @@
           net_write_int(SOCK_FD, ERROR_CODE);           		\
         } while (0)
 
+#endif
+
 #define NET_ARG_GET_SIZE(SIZE, ARG)                     \
 	do {                                            \
 	  int	tmp_i;                                  \
@@ -75,12 +121,22 @@
 	  SIZE = ntohl(tmp_i);                          \
 	} while (0)
 
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+#define NET_ARG_GET_BIGINT(VALUE, ARG)                                     \
+        do {                                                               \
+          int64_t   tmp_i;                                               \
+          memcpy(&tmp_i, (char*) (ARG) + SIZE_INT, SIZE_BIGINT);           \
+          VALUE = ntohi64(tmp_i);                                          \
+        } while (0)
+
+#else
 #define NET_ARG_GET_BIGINT(VALUE, ARG)                                     \
         do {                                                               \
           DB_BIGINT   tmp_i;                                               \
           memcpy(&tmp_i, (char*) (ARG) + SIZE_INT, SIZE_BIGINT);           \
           VALUE = ntohi64(tmp_i);                                          \
         } while (0)
+#endif
 
 #define NET_ARG_GET_INT(VALUE, ARG)                                        \
 	do {                                                               \
@@ -297,7 +353,5 @@ extern int net_read_header (SOCKET sock_fd, MSG_HEADER * header);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int net_write_header (SOCKET sock_fd, MSG_HEADER * header);
 #endif
-
-extern int net_timeout_flag;
-
+extern bool is_net_timed_out ();
 #endif /* _CAS_NETWORK_H_ */

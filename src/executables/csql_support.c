@@ -728,7 +728,6 @@ csql_get_tmp_buf (size_t size)
 	  if (bufp)
 	    {
 	      free_and_init (bufp);
-	      bufp = NULL;
 	      bufsize = 0;
 	    }
 	  bufsize = size + 1;

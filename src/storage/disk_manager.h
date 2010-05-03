@@ -108,8 +108,6 @@ struct disk_var_header
 
 };
 
-extern bool distk_Tempvol_shrink_enable;
-
 extern int disk_goodvol_decache (THREAD_ENTRY * thread_p);
 extern bool disk_goodvol_refresh (THREAD_ENTRY * thread_p,
 				  int hint_max_nvols);
@@ -127,8 +125,6 @@ extern INT16 disk_format (THREAD_ENTRY * thread_p, const char *dbname,
 extern int disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname);
 extern INT32 disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid,
 			      INT32 min_pages, INT32 max_pages);
-extern INT32 disk_shrink_tmp (THREAD_ENTRY * thread_p, INT16 volid,
-			      bool * removed);
 extern int disk_reinit_all_tmp (THREAD_ENTRY * thread_p);
 
 extern INT32 disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid,
@@ -182,15 +178,16 @@ extern int disk_get_checkpoint (THREAD_ENTRY * thread_p, INT16 volid,
 extern int disk_get_creation_time (THREAD_ENTRY * thread_p, INT16 volid,
 				   INT64 * db_creation);
 extern INT32 disk_get_total_numsectors (THREAD_ENTRY * thread_p, INT16 volid);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern INT32 disk_get_overhead_numpages (THREAD_ENTRY * thread_p,
 					 INT16 volid);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern INT32 disk_get_maxcontiguous_numpages (THREAD_ENTRY * thread_p,
 					      INT16 volid);
 extern HFID *disk_get_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid,
 				 HFID * hfid);
 extern char *disk_get_link (THREAD_ENTRY * thread_p, INT16 volid,
 			    char *next_volext_fullname);
-extern int disk_get_temporarytmp_shrink_info (VPID * vpid, bool * decreased);
 extern INT32 disk_get_max_numpages (THREAD_ENTRY * thread_p,
 				    DISK_VOLPURPOSE vol_purpose);
 

@@ -31,11 +31,13 @@
 #if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
-#else
+#else /* WINDOWS */
 #include <unistd.h>
-#endif
+#endif /* WINDOWS */
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "cas_db_inc.h"
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #include "cas_execute.h"
 
 #include "cas.h"
@@ -52,6 +54,10 @@ static void srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle);
 static T_SRV_HANDLE **srv_handle_table = NULL;
 static int max_srv_handle = 0;
 static int max_handle_id = 0;
+
+static T_SRV_HANDLE **active_handle_table = NULL;
+static int active_handle_table_size = 0;
+static int active_handle_count = 0;
 
 int
 hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
@@ -79,7 +85,13 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
 	REALLOC (srv_handle_table,
 		 sizeof (T_SRV_HANDLE *) * new_max_srv_handle);
       if (new_srv_handle_table == NULL)
+#if defined(CAS_FOR_DBMS)
+	{
+	  return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+	}
+#else /* CAS_FOR_DBMS */
 	return CAS_ER_NO_MORE_MEMORY;
+#endif /* CAS_FOR_DBMS */
 
       new_handle_id = max_srv_handle + 1;
       memset (new_srv_handle_table + max_srv_handle,
@@ -90,12 +102,19 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
 
   srv_handle = (T_SRV_HANDLE *) MALLOC (sizeof (T_SRV_HANDLE));
   if (srv_handle == NULL)
+#if defined(CAS_FOR_DBMS)
+    {
+      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+    }
+#else /* CAS_FOR_DBMS */
     return CAS_ER_NO_MORE_MEMORY;
+#endif /* CAS_FOR_DBMS */
   memset (srv_handle, 0, sizeof (T_SRV_HANDLE));
   srv_handle->id = new_handle_id;
   srv_handle->query_seq_num = seq_num;
   srv_handle->use_plan_cache = false;
   srv_handle->use_query_cache = false;
+  srv_handle->is_fetch_completed = false;
 
   *new_handle = srv_handle;
   srv_handle_table[new_handle_id - 1] = srv_handle;
@@ -128,8 +147,10 @@ hm_srv_handle_free (int h_id)
   srv_handle_content_free (srv_handle);
   srv_handle_rm_tmp_file (h_id, srv_handle);
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   FREE_MEM (srv_handle->classes);
   FREE_MEM (srv_handle->classes_chn);
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
   FREE_MEM (srv_handle);
   srv_handle_table[h_id - 1] = NULL;
@@ -182,8 +203,15 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 {
   T_QUERY_RESULT *q_result;
   int i;
-
   q_result = srv_handle->q_result;
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+  if (free_flag == TRUE)
+    {
+      ux_free_result (q_result);
+      FREE_MEM (q_result);
+      srv_handle->q_result = NULL;
+    }
+#else /* CAS_FOR_MYSQL */
   if (q_result)
     {
       for (i = 0; i < srv_handle->num_q_result; i++)
@@ -215,6 +243,7 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
     }
   srv_handle->cur_result = NULL;
   srv_handle->cur_result_index = 0;
+#endif /* CAS_FOR_MYSQL */
 }
 
 void
@@ -222,7 +251,13 @@ hm_session_free (T_SRV_HANDLE * srv_handle)
 {
   if (srv_handle->session)
     {
+#if defined(CAS_FOR_ORACLE)
+      cas_oracle_stmt_close (srv_handle->session);
+#elif defined(CAS_FOR_MYSQL)
+      cas_mysql_stmt_close (srv_handle->session);
+#else /* CAS_FOR_MYSQL */
       db_close_session ((DB_SESSION *) (srv_handle->session));
+#endif /* CAS_FOR_MYSQL */
     }
   srv_handle->session = NULL;
 }
@@ -236,6 +271,11 @@ hm_col_update_info_clear (T_COL_UPDATE_INFO * col_update_info)
 static void
 srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 {
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+  FREE_MEM (srv_handle->sql_stmt);
+  hm_qresult_end (srv_handle, TRUE);
+  hm_session_free (srv_handle);
+#else /* CAS_FOR_MYSQL */
   FREE_MEM (srv_handle->sql_stmt);
   ux_prepare_call_info_free (srv_handle->prepare_call_info);
   if (srv_handle->schema_type < 0
@@ -263,6 +303,7 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 	db_objlist_free ((DB_OBJLIST *) (srv_handle->session));
       srv_handle->cur_result = NULL;
     }
+#endif /* CAS_FOR_MYSQL */
 }
 
 static void
@@ -270,6 +311,7 @@ col_update_info_free (T_QUERY_RESULT * q_result)
 {
   int i;
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   if (q_result->col_update_info)
     {
       for (i = 0; i < q_result->num_column; i++)
@@ -281,11 +323,13 @@ col_update_info_free (T_QUERY_RESULT * q_result)
     }
   q_result->col_updatable = FALSE;
   q_result->num_column = 0;
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 }
 
 static void
 srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle)
 {
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   if (srv_handle->query_info_flag == TRUE)
     {
       char *p;
@@ -300,4 +344,87 @@ srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle)
 	  unlink (p);
 	}
     }
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+}
+
+int
+hm_srv_handle_append_active (T_SRV_HANDLE * srv_handle)
+{
+  if (srv_handle == NULL)
+    {
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+      return 0;
+#else
+      return CCI_ER_NO_ERROR;
+#endif
+    }
+
+  if (active_handle_table == NULL
+      || active_handle_count >=
+      (active_handle_table_size / sizeof (T_SRV_HANDLE *)))
+    {
+      if (active_handle_table_size == 0)
+	{
+	  active_handle_table_size =
+	    sizeof (T_SRV_HANDLE *) * SRV_HANDLE_ALLOC_SIZE;
+	}
+      else
+	{
+	  active_handle_table_size *= 2;
+	}
+
+      active_handle_table = (T_SRV_HANDLE **) REALLOC (active_handle_table,
+						       active_handle_table_size);
+
+      if (active_handle_table == NULL)
+	{
+	  active_handle_count = 0;
+	  active_handle_table_size = 0;
+#if defined(CAS_FOR_DBMS)
+	  return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+#else /* CAS_FOR_DBMS */
+	  return CAS_ER_NO_MORE_MEMORY;
+#endif /* CAS_FOR_DBMS */
+	}
+    }
+
+  active_handle_table[active_handle_count] = srv_handle;
+  active_handle_count++;
+  srv_handle->is_fetch_completed = false;
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  return 0;
+#else /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+  return CCI_ER_NO_ERROR;
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+}
+
+void
+hm_srv_handle_set_fetch_completed (T_SRV_HANDLE * srv_handle)
+{
+  srv_handle->is_fetch_completed = true;
+}
+
+bool
+hm_srv_handle_is_all_active_fetch_completed (void)
+{
+  int i;
+  T_SRV_HANDLE *srv_handle;
+
+  for (i = 0; i < active_handle_count; i++)
+    {
+      srv_handle = active_handle_table[i];
+      if (srv_handle->is_fetch_completed != true)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+void
+hm_srv_handle_reset_active (void)
+{
+  active_handle_count = 0;
 }

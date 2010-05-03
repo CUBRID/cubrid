@@ -49,7 +49,8 @@
 #define VOLID_MAX       SHRT_MAX
 #define PAGEID_MAX      INT_MAX
 #define PGLENGTH_MAX    SHRT_MAX
-#define VOL_MAX_NPAGES  ((sizeof(off_t) == 4) ? (INT_MAX / IO_PAGESIZE) : INT_MAX)
+#define VOL_MAX_NPAGES(page_size) \
+  ((sizeof(off_t) == 4) ? (INT_MAX / (page_size)) : INT_MAX)
 
 /* NULL_CHN is a special value for an unspecified cache coherency number.
  * It should only be used in error conditions.  This should never be
@@ -140,11 +141,15 @@ struct log_lsa
 #define IO_MIN_PAGE_SIZE        (1 * ONE_K)
 #define IO_MAX_PAGE_SIZE        (16 * ONE_K)
 
+#define LOG_PAGESIZE            (db_log_page_size())
 #define IO_PAGESIZE             (db_io_page_size())
 #define DB_PAGESIZE             (db_page_size())
 #define DB_MAX_PATH_LENGTH      PATH_MAX
 
 typedef char *PAGE_PTR;		/* Pointer to a page */
+
+#define ISCAN_OID_BUFFER_SIZE \
+  ((((int) (IO_PAGESIZE * PRM_BT_OID_NBUFFERS)) / OR_OID_SIZE) * OR_OID_SIZE)
 
 /* TYPE DEFINITIONS RELATED TO KEY AND VALUES */
 
@@ -347,7 +352,7 @@ typedef struct bo_restart_arg BO_RESTART_ARG;
 struct bo_restart_arg
 {
   bool printtoc;		/* True to show backup's table of contents */
-  time_t stopat;			/* the recovery stop time if restarting from
+  time_t stopat;		/* the recovery stop time if restarting from
 				   backup */
   const char *backuppath;	/* Pathname override for location of backup
 				   volumes */
@@ -417,7 +422,8 @@ typedef enum
 
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);
-extern INT16 db_set_page_size (INT16 iopagesize);
+extern INT16 db_log_page_size (void);
+extern int db_set_page_size (INT16 io_page_size, INT16 log_page_size);
 extern INT16 db_network_page_size (void);
 extern void db_print_data (DB_TYPE type, DB_DATA * data, FILE * fd);
 

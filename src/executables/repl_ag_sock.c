@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -34,6 +34,8 @@
 #include "connection_cl.h"
 
 #define NUM_OF_CONNECTION_TRIES  5
+
+extern int debug_Dump_info;
 
 static int ag_srv_sock;
 static struct sockaddr_in ag_srv_sock_name;
@@ -488,6 +490,13 @@ repl_ag_sock_request_next_log_page (int m_idx, PAGEID pageid, bool from_disk,
   /* receive the result */
   if (repl_ag_sock_get_response (m_idx, result, in_archive) != NO_ERROR)
     {
+      if (debug_Dump_info & REPL_DEBUG_ERROR_DETAIL)
+	{
+	  char msg[32];
+
+	  snprintf (msg, 32, "NO PAGE: %d", pageid);
+	  REPL_ERR_LOG_ONE_ARG (REPL_FILE_AG_SOCK, REPL_AGENT_INFO_MSG, msg);
+	}
       *result = REPL_REQUEST_FAIL;
       return REPL_AGENT_SOCK_ERROR;
     }

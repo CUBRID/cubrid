@@ -440,7 +440,8 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  /* create another DB_VALUE of the new instance for the label_table */
 	  ins_value = db_value_copy (&ret_value);
-	  error = pt_associate_label_with_value (into_label, ins_value);
+	  error = pt_associate_label_with_value_check_reference (into_label,
+								 ins_value);
 	}
     }
 
@@ -471,7 +472,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (PRM_BLOCK_DDL_STATEMENT)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-              0);
+	      0);
       return ER_AU_AUTHORIZATION_FAILURE;
     }
 
@@ -522,7 +523,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (PRM_BLOCK_DDL_STATEMENT)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE,
-              0);
+	      0);
       return ER_AU_AUTHORIZATION_FAILURE;
     }
 
@@ -1708,7 +1709,7 @@ jsp_pack_object_argument (char *buffer, DB_VALUE * value)
     }
   else
     {
-      oid = (OID *) &oid_Null_oid;
+      oid = (OID *) (&oid_Null_oid);
     }
 
   ptr = or_pack_int (ptr, sizeof (int) * 3);
@@ -2766,7 +2767,7 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval,
 
   db_make_null (&method);
   db_make_null (&param);
-  memset(&sp_args, 0, sizeof(SP_ARGS));
+  memset (&sp_args, 0, sizeof (SP_ARGS));
 
   mop_p = jsp_find_stored_procedure (name);
   if (!mop_p)

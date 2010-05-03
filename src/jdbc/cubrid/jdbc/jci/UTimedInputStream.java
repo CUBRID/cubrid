@@ -47,15 +47,17 @@ public class UTimedInputStream
   public final static int PING_TIMEOUT = 5000;
   private InputStream stream = null;
   private String ip = null;
+  private int port = 0;
 
   UTimedInputStream()
   {
   }
 
-  public UTimedInputStream(InputStream stream, String ip)
+  public UTimedInputStream(InputStream stream, String ip, int port)
   {
 	this.stream = stream;
 	this.ip = ip;
+        this.port = port;
   }
 
   public int read() throws IOException
@@ -68,10 +70,14 @@ public class UTimedInputStream
 	  }
 	  catch (SocketTimeoutException e)
 	  {
-		if (InetAddress.getByName(ip).isReachable(PING_TIMEOUT) == false)
-		{
-		  throw new IOException(e.getMessage());
-		}
+            try
+            {
+              UConnection.ping(ip,port,PING_TIMEOUT);
+            }
+            catch(Exception f)
+            {
+              throw new IOException(f.getMessage());
+            }
 	  }
 	}
   }
@@ -86,10 +92,14 @@ public class UTimedInputStream
 	  }
 	  catch (SocketTimeoutException e)
 	  {
-		if (InetAddress.getByName(ip).isReachable(PING_TIMEOUT) == false)
-		{
-		  throw new IOException(e.getMessage());
-		}
+            try
+            {
+              UConnection.ping(ip,port,PING_TIMEOUT);
+            }
+            catch(Exception f)
+            {
+              throw new IOException(f.getMessage());
+            }
 	  }
 	}
   }
@@ -104,10 +114,14 @@ public class UTimedInputStream
 	  }
 	  catch (SocketTimeoutException e)
 	  {
-		if (InetAddress.getByName(ip).isReachable(PING_TIMEOUT) == false)
-		{
-		  throw new IOException(e.getMessage());
-		}
+            try
+            {
+              UConnection.ping(ip,port,PING_TIMEOUT);
+            }
+            catch(Exception f)
+            {
+              throw new IOException(f.getMessage());
+            }
 	  }
 	}
   }

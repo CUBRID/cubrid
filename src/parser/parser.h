@@ -48,8 +48,11 @@ extern "C"
 
   extern PT_NODE **parser_parse_string (PARSER_CONTEXT * parser,
 					const char *buffer);
+#if defined(ENABLE_UNUSED_FUNCTION)
   extern PT_NODE **parser_parse_binary (PARSER_CONTEXT * parser,
 					const char *buffer, size_t size);
+#endif
+
   extern PT_NODE **parser_parse_file (PARSER_CONTEXT * parser, FILE * file);
 
   extern PT_NODE *parser_create_node (const PARSER_CONTEXT * parser);
@@ -124,8 +127,10 @@ extern "C"
 					   const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_bytes_spec_list (PARSER_CONTEXT * parser,
 						   const PT_NODE * node);
+#if defined(ENABLE_UNUSED_FUNCTION)
   extern PARSER_VARCHAR *pt_print_class_name (PARSER_CONTEXT * parser,
 					      PT_NODE * p);
+#endif
   extern PARSER_VARCHAR *pt_print_and_list (PARSER_CONTEXT * parser,
 					    const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_bytes_alias (PARSER_CONTEXT * parser,
@@ -167,10 +172,12 @@ extern "C"
   extern PT_NODE *pt_get_select_list (PARSER_CONTEXT * parser,
 				      PT_NODE * query);
 
-  extern int pt_associate_label_with_value (const char *label,
-					    DB_VALUE * val);
+  extern int pt_associate_label_with_value_check_reference (const char *label,
+							    DB_VALUE * val);
   extern DB_VALUE *pt_find_value_of_label (const char *label);
+#if defined(ENABLE_UNUSED_FUNCTION)
   extern int pt_find_labels (DB_NAMELIST ** list);
+#endif				/* ENABLE_UNUSED_FUNCTION */
   extern void pt_free_label_table (void);
 
   extern bool pt_is_reserved_word (const char *s);
@@ -200,7 +207,6 @@ extern "C"
 
   extern DB_TYPE pt_type_enum_to_db (const PT_TYPE_ENUM dt);
   extern PT_TYPE_ENUM pt_db_to_type_enum (const DB_TYPE t);
-  extern PT_TYPE_ENUM pt_get_type_enum (PT_NODE * node);
   extern const char *pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t);
   extern DB_DOMAIN *pt_type_enum_to_db_domain (const PT_TYPE_ENUM t);
   extern void pt_put_type_enum (PARSER_CONTEXT * parser,
@@ -304,13 +310,17 @@ extern "C"
   extern UINTPTR pt_find_id (PARSER_CONTEXT * parser, PT_NODE * node,
 			     UINTPTR id);
 
+#if defined(ENABLE_UNUSED_FUNCTION)
   extern int pt_identifier_or_keyword (const char *text);
+#endif				/* ENABLE_UNUSED_FUNCTION */
   extern KEYWORD_RECORD *pt_get_keyword_rec (int *rec_count);
   extern int pt_type_generic_func (PARSER_CONTEXT * parser, PT_NODE * node);
+#if defined(ENABLE_UNUSED_FUNCTION)
   extern void pt_string_to_data_type (PARSER_CONTEXT * parser, const char *s,
 				      PT_NODE * node);
-
   extern const char *pt_show_alter (PT_ALTER_CODE c);
+#endif				/* ENABLE_UNUSED_FUNCTION */
+
   extern const char *pt_show_binopcode (PT_OP_TYPE n);	/* printable opcode */
   extern const char *pt_show_type_enum (PT_TYPE_ENUM t);
   extern const char *pt_show_function (FUNC_TYPE c);
@@ -412,10 +422,11 @@ extern "C"
   extern void pt_no_double_updates (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern void *pt_internal_error (PARSER_CONTEXT * parser, const char *file,
 				  int line, const char *what);
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern void pt_void_internal_error (PARSER_CONTEXT * parser,
 				      const char *file, int line,
 				      const char *what);
-
+#endif
   extern DB_OBJECT *pt_check_user_owns_class (PARSER_CONTEXT * parser,
 					      PT_NODE * cls_ref);
   extern PT_NODE *pt_domain_to_data_type (PARSER_CONTEXT * parser,
@@ -474,6 +485,9 @@ extern "C"
   extern PT_NODE *pt_union (PARSER_CONTEXT * parser_ptr,
 			    PT_NODE * expression1, PT_NODE * expression2);
   extern PT_NODE *pt_name (PARSER_CONTEXT * parser_ptr, const char *name);
+  extern PT_NODE *pt_table_option (PARSER_CONTEXT * parser,
+				   const PT_TABLE_OPTION_TYPE option,
+				   PT_NODE * val);
   extern PT_NODE *pt_entity (PARSER_CONTEXT * parser,
 			     const PT_NODE * entity_name,
 			     const PT_NODE * range_var,
@@ -499,7 +513,9 @@ extern "C"
   extern PT_NODE *pt_is_pseudocolumn_node (PARSER_CONTEXT * parser,
 					   PT_NODE * tree, void *arg,
 					   int *continue_walk);
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern int pt_is_ddl_statement (const PT_NODE * node);
+#endif
   extern int pt_is_method_call (PT_NODE * node);
   extern int pt_is_attr (PT_NODE * node);
 
@@ -524,33 +540,40 @@ extern "C"
 					    PT_NODE * node, void *arg,
 					    int *continue_walk);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern PT_NODE *pt_assignments_part (const PT_NODE * update_statement);
-  extern PT_NODE *pt_attrs_part (const PT_NODE * insert_statement);
   extern PT_NODE *pt_class_names_part (const PT_NODE * stmt);
+#endif
+  extern PT_NODE *pt_attrs_part (const PT_NODE * insert_statement);
   extern PT_NODE *pt_left_part (const PT_NODE * expr);
+  extern PT_NODE *pt_from_list_part (const PT_NODE * node);
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern PT_NODE *pt_arg1_part (const PT_NODE * node);
   extern PT_NODE *pt_arg2_part (const PT_NODE * node);
-  extern PT_NODE *pt_from_list_part (const PT_NODE * node);
   extern PT_NODE *pt_order_by_part (const PT_NODE * node);
   extern PT_NODE *pt_group_by_part (const PT_NODE * node);
   extern PT_NODE *pt_having_part (const PT_NODE * node);
+#endif
   extern PT_NODE *pt_from_entity_part (const PT_NODE * node);
   extern PT_NODE *pt_class_part (const PT_NODE * statement);
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern void *pt_object_part (const PT_NODE * name_node);
   extern int pt_operator_part (const PT_NODE * expr);
   extern const char *pt_qualifier_part (const PT_NODE * tbl);
+#endif
   extern PT_NODE *pt_right_part (const PT_NODE * expr);
-  extern PT_NODE *pt_select_list_part (const PT_NODE * stmt);
   extern const char *pt_string_part (const PT_NODE * tbl);
   extern PT_NODE *pt_values_part (const PT_NODE * insert_statement);
+#if defined (ENABLE_UNUSED_FUNCTION)
+  extern PT_NODE *pt_select_list_part (const PT_NODE * stmt);
   extern PT_NODE *pt_where_part (const PT_NODE * stmt);
-
+  extern void pt_set_node_etc (PT_NODE * node, const void *etc);
+#endif
   extern void pt_split_join_preds (PARSER_CONTEXT * parser,
 				   PT_NODE * predicates,
 				   PT_NODE ** join_part,
 				   PT_NODE ** after_cb_filter);
 
-  extern void pt_set_node_etc (PT_NODE * node, const void *etc);
   extern void pt_null_etc (PT_NODE * node);
   extern void *pt_node_etc (const PT_NODE * col);
   extern PT_NODE *pt_node_next (const PT_NODE * node);
@@ -568,8 +591,9 @@ extern "C"
   extern void pt_reset_error (PARSER_CONTEXT * parser);
   extern int pt_has_error (const PARSER_CONTEXT * parser);
 
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern bool pt_column_updatable (PARSER_CONTEXT * parser, PT_NODE * query);
-
+#endif
   extern int pt_statement_line_number (const PT_NODE * stmt);
 
   extern const char *pt_get_select_from_name (PARSER_CONTEXT * parser,
@@ -586,7 +610,9 @@ extern "C"
 
   extern int pt_host_var_index (const PT_NODE * hv);
   extern PT_NODE *pt_get_input_host_vars (const PT_HOST_VARS * hv);
+#if defined (ENABLE_UNUSED_FUNCTION)
   extern PT_NODE *pt_get_output_host_descr (PT_HOST_VARS * hv);
+#endif
   extern PT_NODE *pt_get_output_host_vars (const PT_HOST_VARS * hv);
   extern PT_HOST_VARS *pt_host_info (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern void pt_free_host_info (PT_HOST_VARS * hv);
@@ -608,6 +634,8 @@ extern "C"
   extern void dbcs_start_input (void);
 
   extern void parser_free_lcks_classes (PARSER_CONTEXT * parser);
+
+  extern bool pt_is_reference_to_reusable_oid (DB_VALUE * val);
 
 #ifdef __cplusplus
 }

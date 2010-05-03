@@ -395,6 +395,8 @@ extern void repl_ag_clear_repl_item_by_tranid (SLAVE_INFO * sinfo, int tranid,
 extern bool repl_ag_is_idle (SLAVE_INFO * sinfo, int idx);
 extern REPL_APPLY *repl_ag_find_apply_list (SLAVE_INFO * sinfo,
 					    int tranid, int idx);
+extern char *repl_ag_dump_apply_list (SLAVE_INFO * sinfo, int idx);
+extern int repl_ag_get_min_pageid_apply_list (SLAVE_INFO * sinfo, int idx);
 extern void repl_ag_clear_repl_item (REPL_APPLY * repl_list, bool clear_tran);
 extern void repl_ag_log_dump (int log_fd, int io_pagesize);
 

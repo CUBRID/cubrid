@@ -31,9 +31,10 @@
 #include <io.h>
 #endif
 
-#include "cm_nameval.h"
+#include "cm_dep.h"
+#include "cm_config.h"
 
-#define DBMT_ERROR_MSG_SIZE	(PATH_MAX)
+#define DBMT_ERROR_MSG_SIZE	5000
 
 #define INIT_CUBRID_ERROR_FILE(PTR)		\
 	do {					\
@@ -94,6 +95,7 @@ typedef enum
   TS_VALIDATEVCLASS,
   TS_COPYDB,
   TS_OPTIMIZEDB,
+  TS_STATDUMP,
   TS_CHECKDB,
   TS_COMPACTDB,
   TS_BACKUPDBINFO,
@@ -182,44 +184,43 @@ typedef enum
   TS_SETAUTOEXECQUERY,
   TS_GETDIAGINFO,
   TS_GET_DIAGDATA,
+  TS_GET_BROKER_DIAGDATA,
   TS_ADDSTATUSTEMPLATE,
   TS_REMOVESTATUSTEMPLATE,
   TS_UPDATESTATUSTEMPLATE,
-#if 0				/* ACTIVITY_PROFILE */
-  TS_ADDACTIVITYTEMPLATE,
-  TS_REMOVEACTIVITYTEMPLATE,
-  TS_UPDATEACTIVITYTEMPLATE,
-  TS_GETACTIVITYTEMPLATE,
-#endif
   TS_GETSTATUSTEMPLATE,
   TS_GETCASLOGFILELIST,
   TS_ANALYZECASLOG,
   TS_EXECUTECASRUNNER,
   TS_REMOVECASRUNNERTMPFILE,
   TS_GETCASLOGTOPRESULT,
-#if 0				/* ACTIVITY_PROFILE */
-  TS_ADDACTIVITYLOG,
-  TS_UPDATEACTIVITYLOG,
-  TS_REMOVEACTIVITYLOG,
-  TS_GETACTIVITYLOG,
-#endif
-#if 0
-  TS2_BROKERALARMMSG,
-  TS2_GETBROKERPARAM,
-  TS_GETDBDIR,
-  TS_GETSYSPARAM,
-  TS2_GETUNICASDCONF,
-  TS2_GETUNICASDINFO,
-  TS_GETUSERINFO,
-  TS_POPSPACEINFO,
-  TS_SETSYSPARAM2,
-  TS2_SETUNICASDCONF,
-  TS2_STARTUNICASD,
-  TS2_STOPUNICASD,
-#endif
   TS_DBMTUSERLOGIN,
   TS_CHANGEOWNER,
   TS_REMOVE_LOG,
+  TS_PARAMDUMP,
+  TS_PLANDUMP
+#if SUPPORT_REPL
+    TS_CREATE_FTSERVER,
+  TS_TRANSFER_FILE,
+  TS_TRANSFILE_CANCEL,
+  TS_VIEW_TRANSFER_PROGRESS,
+  TS_REPL_MAKE_DISTDB,
+  TS_REPL_MAKE_SLAVEDB,
+  TS_REPL_SERVER_START,
+  TS_REPL_AGENT_START,
+  TS_REPL_SERVER_STOP,
+  TS_REPL_AGENT_STOP,
+  TS_REPL_SERVER_STATUS,
+  TS_REPL_AGENT_STATUS,
+  TS_GET_REPL_PARAMS,
+  TS_GET_REPL_GROUP_TABLES,
+  TS_GET_REPL_INFO,
+  TS_DETERMINE_DISTDB,
+  TS_REPL_MAKE_GROUP,
+  TS_REPL_MAKE_SNAPSHOT,
+  TS_REPL_CHANGE_PARAM,
+  TS_REPL_CHANG_MASTER,
+#endif				/* SUPPORT_REPL */
 } T_TASK_CODE;
 
 typedef enum
@@ -244,73 +245,25 @@ typedef struct
 } T_FSERVER_TASK_INFO;
 
 
-int _tsReadUserCapability (nvplist * ud, char *id, char *err_msg);
-
-int ts_create_class (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_create_vclass (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_delete_user (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error);
-int ts_check_authority (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts_class (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_rename_class (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_drop_class (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_add_attribute (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_drop_attribute (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_add_constraint (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_drop_constraint (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_add_super (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_drop_super (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_get_superclasses_info (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_add_resolution (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_drop_resolution (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_add_method (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_drop_method (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_update_method (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_add_method_file (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_drop_method_file (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_add_query_spec (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_drop_query_spec (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_change_query_spec (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_validate_query_spec (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts_validate_vclass (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts2_get_unicas_info (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts2_start_unicas (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts2_stop_unicas (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts2_get_admin_log_info (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts2_get_logfile_info (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_add_broker (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts2_get_add_broker_info (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_get_broker_on_conf (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts2_delete_broker (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_rename_broker (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts2_get_broker_status (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_get_broker_conf (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts2_set_broker_conf (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_set_broker_on_conf (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts2_start_broker (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts2_stop_broker (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_suspend_broker (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_resume_broker (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_broker_job_first (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_broker_job_info (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_add_broker_as (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_drop_broker_as (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts2_restart_broker_as (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_get_broker_status_log (nvplist * in, nvplist * out,
-			       char *_dbmt_error);
-int ts2_get_broker_m_conf (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_set_broker_m_conf (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_get_broker_as_limit (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_get_broker_env_info (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_set_broker_env_info (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_access_list_add_ip (nvplist * in, nvplist * out, char *_dbmt_error);
-int ts2_access_list_delete_ip (nvplist * in, nvplist * out,
-			       char *_dbmt_error);
-int ts2_access_list_info (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts_set_sysparam (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_all_sysparam (nvplist * req, nvplist * res, char *_dbmt_error);
 int tsCreateDBMTUser (nvplist * req, nvplist * res, char *_dbmt_error);
@@ -327,6 +280,9 @@ int tsDbspaceInfo (nvplist * req, nvplist * res, char *_dbmt_error);
 int tsRunAddvoldb (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_copydb (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error);
+int ts_plandump (nvplist * req, nvplist * res, char *_dbmt_error);
+int ts_paramdump (nvplist * req, nvplist * res, char *_dbmt_error);
+int ts_statdump (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_checkdb (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_compactdb (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_backupdb (nvplist * req, nvplist * res, char *_dbmt_error);
@@ -335,11 +291,6 @@ int ts_loaddb (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_restoredb (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_backup_vol_info (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_dbsize (nvplist * req, nvplist * res, char *_dbmt_error);
-int ts_get_access_right (nvplist * req, nvplist * res, char *_dbmt_error);
-int tsGetHistory (nvplist * req, nvplist * res, char *_dbmt_error);
-int tsSetHistory (nvplist * req, nvplist * res, char *_dbmt_error);
-int tsGetHistoryFileList (nvplist * req, nvplist * res, char *_dbmt_error);
-int tsReadHistoryFile (nvplist * req, nvplist * res, char *_dbmt_error);
 int tsGetEnvironment (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_startinfo (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_kill_process (nvplist * req, nvplist * res, char *_dbmt_error);
@@ -352,10 +303,8 @@ int ts_delete_backup_info (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_log_info (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_view_log (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_reset_log (nvplist * req, nvplist * res, char *_dbmt_error);
-int ts_get_db_error (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_autostart_db (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_set_autostart_db (nvplist * req, nvplist * res, char *_dbmt_error);
-int ts_general_db_info (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_auto_add_vol (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_set_auto_add_vol (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_addvol_status (nvplist * req, nvplist * res, char *_dbmt_error);
@@ -375,11 +324,10 @@ int tsGetAutoaddvolLog (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_check_file (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_trigger_operation (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_triggerinfo (nvplist * req, nvplist * res, char *_dbmt_error);
-int ts_get_file (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_set_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_autoexec_query (nvplist * req, nvplist * res, char *_dbmt_error);
-int ts_get_diaginfo (nvplist * req, nvplist * res, char *_dbmt_error);
 int ts_get_diagdata (nvplist * req, nvplist * res, char *diag_error);
+int ts_get_broker_diagdata (nvplist * req, nvplist * res, char *diag_error);
 int ts_addstatustemplate (nvplist * req, nvplist * res, char *diag_error);
 int ts_removestatustemplate (nvplist * req, nvplist * res, char *diag_error);
 int ts_updatestatustemplate (nvplist * req, nvplist * res, char *diag_error);
@@ -392,25 +340,14 @@ int ts_updateactivitytemplate (nvplist * req, nvplist * res,
 			       char *diag_error);
 int ts_getactivitytemplate (nvplist * req, nvplist * res, char *diag_error);
 #endif
-int ts_getcaslogfilelist (nvplist * req, nvplist * res, char *diag_error);
 int ts_analyzecaslog (nvplist * req, nvplist * res, char *diag_error);
 int ts_executecasrunner (nvplist * req, nvplist * res, char *diag_error);
 int ts_removecasrunnertmpfile (nvplist * req, nvplist * res,
 			       char *diag_error);
 int ts_getcaslogtopresult (nvplist * cli_request, nvplist * cli_response,
 			   char *diag_error);
-#if 0				/* ACTIVITY_PROFILE */
-int ts_addactivitylog (nvplist * cli_request, nvplist * cli_response,
-		       char *diag_error);
-int ts_updateactivitylog (nvplist * cli_request, nvplist * cli_response,
-			  char *diag_error);
-int ts_removeactivitylog (nvplist * cli_request, nvplist * cli_response,
-			  char *diag_error);
-int ts_getactivitylog (nvplist * cli_request, nvplist * cli_response,
-		       char *diag_error);
-#endif
+int ts_get_ldb_class_att (nvplist * req, nvplist * res, char *_dbmt_error);
 int tsDBMTUserLogin (nvplist * req, nvplist * res, char *_dbmt_error);
-int ts_change_owner (nvplist * in, nvplist * out, char *_dbmt_error);
 int ts_remove_log (nvplist * in, nvplist * out, char *_dbmt_error);
 
 #endif /* _CM_JOB_TASK_H_ */

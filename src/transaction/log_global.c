@@ -47,7 +47,7 @@ LOG_GLOBAL log_Gl = {
   {NULL_VOLDES, {NULL_PAGEID, NULL_OFFSET},
    {NULL_PAGEID, NULL_OFFSET}, NULL, NULL},
   /* hdr */
-  {{'0'}, 0, 0, {'0'}, 0.0, 0, 0, 0, 0, 0, 0, 0,
+  {{'0'}, 0, 0, {'0'}, 0.0, 0, 0, 0, 0, 0, 0, 0, 0,
    {NULL_PAGEID, NULL_OFFSET},
    {NULL_PAGEID, NULL_OFFSET},
    0, 0, 0, 0, 0, false,
@@ -90,10 +90,10 @@ LOG_GLOBAL log_Gl = {
   {0, 0, NULL, LOG_FLUSH_NORMAL
 #if defined(SERVER_MODE)
    , MUTEX_INITIALIZER
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
    /* mutex info */
    , {0, NULL_THREAD_T}
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 #endif /* SERVER_MODE */
    },
 
@@ -107,11 +107,7 @@ LOG_GLOBAL log_Gl = {
    false},
 
   /* background archiving info */
-  {NULL_PAGEID, NULL_PAGEID, NULL_VOLDES
-#if defined(SERVER_MODE)
-   , MUTEX_INITIALIZER
-#endif /* SERVER_MODE */
-   }
+  {NULL_PAGEID, NULL_PAGEID, NULL_VOLDES}
 };
 
 /* Name of the database and logs */

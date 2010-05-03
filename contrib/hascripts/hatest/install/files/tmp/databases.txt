@@ -1,5 +1,0 @@
-#db-name	vol-path		db-host		log-path
-nbd4		/home1/hatest/db/nbd4	d8g674:d8g675	/home1/hatest/db/nbd4
-nbd3		/home1/hatest/db/nbd3	d8g674:d8g675	/home1/hatest/db/nbd3
-nbd2		/home1/hatest/db/nbd2	d8g674:d8g675	/home1/hatest/db/nbd2
-nbd1		/home1/hatest/db/nbd1	d8g674:d8g675	/home1/hatest/db/nbd1

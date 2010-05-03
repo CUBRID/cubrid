@@ -21,8 +21,10 @@
 /*
  * error_code.h - Error codes
  *
- * Note: When an entry is added here, please ensure that the array,
- *       er.msg file should be updated with a matching entry.
+ * When an entry is added here please ensure that the msg/<locale>/cubrid.msg
+ * files are updated with matching error strings. See message_catalog.c for
+ * details.
+ * ER_LAST_ERROR must also be updated.
  */
 
 #ifndef _ERROR_CODE_H_
@@ -38,7 +40,7 @@
 
 #define ER_GENERIC_ERROR                              -2
 #define ER_OUT_OF_VIRTUAL_MEMORY                      -3
-#define ER_INTERRUPT                                  -4
+#define ER_INTERRUPTED                                -4
 
 #define ER_MHT_NOTFOUND                               -5
 #define ER_MHT_NULL_HASHTABLE                         -6
@@ -1160,35 +1162,35 @@
 #define ER_QPROC_FUNCTION_ARG_ERROR                 -935
 #define ER_QPROC_OVERFLOW_EXP                       -936
 
-#define  ER_INTERFACE_DBMS                          -937
-#define  ER_INTERFACE_INVALID_ARGUMENT              -938
-#define  ER_INTERFACE_TOO_MANY_CONNECTION           -939
-#define  ER_INTERFACE_INVALID_HANDLE                -940
-#define  ER_INTERFACE_NOT_SUPPORTED_OPERATION       -941
-#define  ER_INTERFACE_HANDLE_TIMEOUT                -942
-#define  ER_INTERFACE_GENERIC                       -943
-#define  ER_INTERFACE_NOT_PREPARED                  -944
-#define  ER_INTERFACE_HAS_NO_RESULT_SET             -945
-#define  ER_INTERFACE_NOT_EXECUTED                  -946
-#define  ER_INTERFACE_NO_MORE_RESULT                -947
-#define  ER_INTERFACE_NOT_ENOUGH_DATA_SIZE          -948
-#define  ER_INTERFACE_NO_AVAILABLE_INFORMATION      -949
-#define  ER_INTERFACE_INVALID_NAME                  -950
-#define  ER_INTERFACE_RESULTSET_NOT_UPDATABLE       -951
-#define  ER_INTERFACE_ROW_IS_DELETED                -952
-#define  ER_INTERFACE_PARAM_IS_NOT_SET              -953
-#define  ER_INTERFACE_IS_NOT_BATCH_STATEMENT        -954
-#define  ER_INTERFACE_CANNOT_CLEAR_BATCH            -955
-#define  ER_INTERFACE_CANNOT_BATCH_EXECUTE          -956
-#define  ER_INTERFACE_IS_PREPARED_STATEMENT         -957
-#define  ER_INTERFACE_IS_NOT_PREPARED_STATEMENT     -958
-#define  ER_INTERFACE_IS_BATCH_STATEMENT            -959
-#define  ER_INTERFACE_NO_MORE_ERROR                 -960
-#define  ER_INTERFACE_END_OF_CURSOR                 -961
-#define  ER_INTERFACE_NO_MORE_MEMORY                -962
-#define  ER_INTERFACE_BROKER                        -963
-#define  ER_INTERFACE_RESULTSET_CLOSED              -964
-#define  ER_SM_INDEX_ATTR_DUPLICATED                -965
+#define ER_INTERFACE_DBMS                           -937
+#define ER_INTERFACE_INVALID_ARGUMENT               -938
+#define ER_INTERFACE_TOO_MANY_CONNECTION            -939
+#define ER_INTERFACE_INVALID_HANDLE                 -940
+#define ER_INTERFACE_NOT_SUPPORTED_OPERATION        -941
+#define ER_INTERFACE_HANDLE_TIMEOUT                 -942
+#define ER_INTERFACE_GENERIC                        -943
+#define ER_INTERFACE_NOT_PREPARED                   -944
+#define ER_INTERFACE_HAS_NO_RESULT_SET              -945
+#define ER_INTERFACE_NOT_EXECUTED                   -946
+#define ER_INTERFACE_NO_MORE_RESULT                 -947
+#define ER_INTERFACE_NOT_ENOUGH_DATA_SIZE           -948
+#define ER_INTERFACE_NO_AVAILABLE_INFORMATION       -949
+#define ER_INTERFACE_INVALID_NAME                   -950
+#define ER_INTERFACE_RESULTSET_NOT_UPDATABLE        -951
+#define ER_INTERFACE_ROW_IS_DELETED                 -952
+#define ER_INTERFACE_PARAM_IS_NOT_SET               -953
+#define ER_INTERFACE_IS_NOT_BATCH_STATEMENT         -954
+#define ER_INTERFACE_CANNOT_CLEAR_BATCH             -955
+#define ER_INTERFACE_CANNOT_BATCH_EXECUTE           -956
+#define ER_INTERFACE_IS_PREPARED_STATEMENT          -957
+#define ER_INTERFACE_IS_NOT_PREPARED_STATEMENT      -958
+#define ER_INTERFACE_IS_BATCH_STATEMENT             -959
+#define ER_INTERFACE_NO_MORE_ERROR                  -960
+#define ER_INTERFACE_END_OF_CURSOR                  -961
+#define ER_INTERFACE_NO_MORE_MEMORY                 -962
+#define ER_INTERFACE_BROKER                         -963
+#define ER_INTERFACE_RESULTSET_CLOSED               -964
+#define ER_SM_INDEX_ATTR_DUPLICATED                 -965
 
 #define ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG          -966
 #define ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG           -967
@@ -1211,10 +1213,29 @@
 #define ER_LOG_CHECKPOINT_STARTED                   -977
 #define ER_LOG_CHECKPOINT_FINISHED                  -978
 
-#define	ER_QPROC_CYCLE_DETECTED			    -979
-#define ER_MNT_WAITING_THREAD                       -980
+#define	ER_QPROC_CYCLE_DETECTED                     -979
 
-#define ER_LAST_ERROR                               -981
+#define ER_MNT_WAITING_THREAD                       -980
+#define ER_MNT_STATS_THRESHOLD                      -981
+
+#define ER_INTERRUPTING                             -982
+
+#define ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED   -983
+
+#define ER_PRM_CONFLICT_EXISTS_ON_MULTIPLE_SECTIONS -984
+#define ER_NET_NO_EXPLICIT_SERVER_HOST              -985
+
+#define ER_HB_STARTED                               -986
+#define ER_HB_STOPPED                               -987
+#define ER_HB_NODE_EVENT                            -988
+#define ER_HB_PROCESS_EVENT                         -989
+#define ER_HB_COMMAND_EXECUTION                     -990
+
+#define ER_LOG_FLUSH_VICTIM_STARTED                 -991
+#define ER_LOG_FLUSH_VICTIM_FINISHED                -992
+
+
+#define ER_LAST_ERROR                               -993
 
 /* must be appended error code to compat/dbi_compat.h */
 

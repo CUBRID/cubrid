@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -78,6 +78,8 @@
   (OR_INT_SIZE * 4 + \
    LC_LOCKHINT_CLASS_PACKED_SIZE * lockhint->max_classes)
 
+typedef enum
+{ NO_CLEAR_MEM = 0, CLEAR_MEM } CLEAR_MEM_FLAG;
 
 typedef enum
 {
@@ -298,8 +300,13 @@ struct lc_oidset
 };
 
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern LC_COPYAREA *locator_allocate_copyarea (DKNPAGES npages);
-extern LC_COPYAREA *locator_allocate_copy_area_by_length (int length);
+#endif
+extern LC_COPYAREA *locator_allocate_copy_area_by_length (int length,
+							  CLEAR_MEM_FLAG
+							  clear_mem);
+
 extern void locator_free_copy_area (LC_COPYAREA * copyarea);
 extern char *locator_pack_copy_area_descriptor (int num_objs,
 						LC_COPYAREA * copyarea,
@@ -325,7 +332,9 @@ extern LC_LOCKSET *locator_allocate_lockset (int max_reqobjs,
 					     LOCK reqobj_inst_lock,
 					     LOCK reqobj_class_lock,
 					     int quit_on_errors);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern LC_LOCKSET *locator_allocate_lockset_by_length (int length);
+#endif
 extern LC_LOCKSET *locator_reallocate_lockset (LC_LOCKSET * lockset,
 					       int max_reqobjs);
 extern void locator_free_lockset (LC_LOCKSET * lockset);
@@ -367,10 +376,11 @@ extern LC_OIDSET *locator_unpack_oid_set_to_new (THREAD_ENTRY * thread_p,
 extern bool locator_unpack_oid_set_to_exist (char *buffer, LC_OIDSET * use);
 
 /* For Debugging */
+#if defined(CUBRID_DEBUG)
 extern void
 locator_dump_copy_area (FILE * out_fp, const LC_COPYAREA * copyarea,
 			int print_rec);
 extern void locator_dump_lockset (FILE * out_fp, LC_LOCKSET * lockset);
 extern void locator_dump_lockhint (FILE * out_fp, LC_LOCKHINT * lockhint);
-
+#endif
 #endif /* _LOCATOR_H_ */

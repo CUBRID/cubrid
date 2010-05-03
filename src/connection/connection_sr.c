@@ -188,7 +188,9 @@ static void css_queue_error_packet (CSS_CONN_ENTRY * conn,
 static void css_queue_command_packet (CSS_CONN_ENTRY * conn,
 				      unsigned short request_id,
 				      const NET_HEADER * header, int size);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static char *css_return_oob_buffer (int size);
+#endif
 static bool css_is_valid_request_id (CSS_CONN_ENTRY * conn,
 				     unsigned short request_id);
 static void css_remove_unexpected_packets (CSS_CONN_ENTRY * conn,
@@ -399,7 +401,10 @@ css_init_conn_list (void)
       return NO_ERROR;
     }
 
-  /* allocate PRM_CSS_MAX_CLIENTS conn entries + 1(conn with master) */
+  /*
+   * allocate PRM_CSS_MAX_CLIENTS conn entries
+   *         + 1(conn with master)
+   */
   css_Conn_array = (CSS_CONN_ENTRY *)
     malloc (sizeof (CSS_CONN_ENTRY) * (PRM_CSS_MAX_CLIENTS));
   if (css_Conn_array == NULL)
@@ -613,6 +618,7 @@ css_free_conn (CSS_CONN_ENTRY * conn)
   csect_exit_critical_section (&css_Active_conn_csect);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_print_conn_entry_info() - print connection entry information to stderr
  *   return: void
@@ -674,6 +680,7 @@ css_print_free_conn_list (void)
       csect_exit_critical_section (&css_Free_conn_csect);
     }
 }
+#endif
 
 /*
  * css_register_handler_routines() - enroll handler routines
@@ -1441,7 +1448,7 @@ css_make_wait_queue_entry (CSS_CONN_ENTRY * conn, unsigned int key,
  * css_free_wait_queue_entry() - free wait queue entry
  *   return: void
  *   conn(in): connection entry
- *   entry9in): wait queue entry
+ *   entry(in): wait queue entry
  */
 static void
 css_free_wait_queue_entry (CSS_CONN_ENTRY * conn,
@@ -1451,9 +1458,7 @@ css_free_wait_queue_entry (CSS_CONN_ENTRY * conn,
     {
       if (entry->thrd_entry)
 	{
-	  thread_lock_entry (entry->thrd_entry);
-	  COND_SIGNAL (entry->thrd_entry->wakeup_cond);
-	  thread_unlock_entry (entry->thrd_entry);
+	  thread_wakeup (entry->thrd_entry, THREAD_CSS_QUEUE_RESUMED);
 	}
 
       entry->next = conn->free_wait_queue_list;
@@ -1591,6 +1596,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type,
   while (p != NULL)
     {
       next = p->next_wait_thrd;
+      p->resume_status = THREAD_CSS_QUEUE_RESUMED;
       COND_SIGNAL (p->wakeup_cond);
       p->next_wait_thrd = NULL;
       thread_unlock_entry (p);
@@ -2044,22 +2050,38 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 	         'css_server_thread()' receives and enqueues the data */
 	      if (waitsec < 0)
 		{
-		  thread_suspend_wakeup_and_unlock_entry (thrd);
-		  /* what is to be done if fail? */ ;
+		  thread_suspend_wakeup_and_unlock_entry (thrd,
+							  THREAD_CSS_QUEUE_SUSPENDED);
+
+		  if (thrd->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
+		      && thrd->interrupted)
+		    {
+		      *buffer = NULL;
+		      *bufsize = -1;
+		      return NO_DATA_AVAILABLE;
+		    }
 		}
 	      else
 		{
+		  int r;
 #if defined(WINDOWS)
 		  int abstime;
+
 		  abstime = waitsec * 1000;
 #else /* WINDOWS */
 		  struct timespec abstime;
+
 		  abstime.tv_sec = time (NULL) + waitsec;
 		  abstime.tv_nsec = 0;
 #endif /* WINDOWS */
 
-		  if (thread_suspend_timeout_wakeup_and_unlock_entry
-		      (thrd, &abstime) == ETIMEDOUT)
+		  r = thread_suspend_timeout_wakeup_and_unlock_entry (thrd,
+								      &abstime,
+								      THREAD_CSS_QUEUE_SUSPENDED);
+
+		  if (r == ETIMEDOUT ||
+		      (thrd->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
+		       && thrd->interrupted))
 		    {
 		      *buffer = NULL;
 		      *bufsize = -1;
@@ -2161,6 +2183,7 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id,
   return r;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * css_return_oob_buffer() - alloc oob buffer
  *   return: allocated buffer
@@ -2178,6 +2201,7 @@ css_return_oob_buffer (int size)
       return ((char *) malloc (size));
     }
 }
+#endif
 
 /*
  * css_is_valid_request_id() - check request id id valid

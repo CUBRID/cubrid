@@ -194,9 +194,6 @@ static int repl_ag_log_dump_node_insert (REPL_DUMP_NODE ** head,
 static int repl_ag_log_dump_node_delete (REPL_DUMP_NODE ** head,
 					 REPL_DUMP_NODE ** tail,
 					 REPL_DUMP_NODE * dump_node);
-static int repl_ag_log_dump_node_all_free (REPL_DUMP_NODE ** head,
-					   REPL_DUMP_NODE ** tail,
-					   REPL_DUMP_NODE * dump_node);
 
 /*
  * repl_tr_log_apply_fail() - error processing when the apply thread fails
@@ -893,6 +890,9 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
   char archive_path[FILE_PATH_LENGTH];
   REPL_PB *pb = minfo->pb;
   off_t file_size;
+  int current_tran_count = 0;
+  int min_pageid = -1;
+  REPL_APPLY *repl_list = NULL;
 
   /* wait for the APPLY thread to run, not to purge the copy log */
   if (pb->read_pageid == 0)
@@ -927,18 +927,33 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
 		return error;
 	      for (k = 0; k < sInfo[i]->masters[j].cur_repl; k++)
 		{
-		  if (sInfo[i]->masters[j].repl_lists[k]
-		      && sInfo[i]->masters[j].repl_lists[k]->tranid > 0
-		      && !LSA_ISNULL (&sInfo[i]->masters[j].repl_lists[k]->
-				      start_lsa)
-		      && (sInfo[i]->masters[j].repl_lists[k]->start_lsa.
-			  pageid <= last_pageid))
+		  repl_list = sInfo[i]->masters[j].repl_lists[k];
+		  if (repl_list
+		      && repl_list->tranid > 0
+		      && !LSA_ISNULL (&repl_list->start_lsa))
 		    {
-		      return error;
+		      if (debug_Dump_info & REPL_DEBUG_ERROR_DETAIL)
+			{
+			  if (min_pageid == -1
+			      || (min_pageid > repl_list->start_lsa.pageid))
+			    {
+			      min_pageid = repl_list->start_lsa.pageid;
+			    }
+			}
+		      current_tran_count++;
+		      if (repl_list->start_lsa.pageid <= last_pageid)
+			{
+			  return error;
+			}
 		    }
 		}
 	    }
 	}
+    }
+
+  if (current_tran_count == 0)
+    {
+      return error;
     }
 
   /* Now .. start archiving active log */
@@ -960,8 +975,41 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
 	}
       else
 	{
-	  error =
-	    repl_ag_truncate_copy_log (minfo, flushed, buf, last_pageid);
+	  if (debug_Dump_info & REPL_DEBUG_ERROR_DETAIL)
+	    {
+	      time_t er_time;
+	      struct tm *er_tm_p;
+	      char time_array[64];
+	      char msg[256];
+	      char *tmp;
+	      int list_min_pageid;
+
+	      er_time = time (NULL);
+	      er_tm_p = localtime (&er_time);
+	      strftime (time_array, 64, "%c", er_tm_p);
+
+	      snprintf (msg, 256,
+			"[%s] : AGENT TRUNCATE : min page id(%d), last page id(%d), COPY LOG(%d,%d,%d)\n",
+			time_array, min_pageid, last_pageid,
+			mInfo[0]->copy_log.first_pageid,
+			mInfo[0]->copy_log.start_pageid,
+			mInfo[0]->copy_log.last_pageid);
+	      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AG_TP, REPL_AGENT_INFO_MSG,
+				    msg);
+	      tmp = repl_ag_dump_apply_list (sInfo[0], 0);
+	      REPL_ERR_LOG_ONE_ARG (REPL_FILE_AG_TP, REPL_AGENT_INFO_MSG,
+				    tmp);
+	      free_and_init (tmp);
+	      repl_error_flush (err_Log_fp, false);
+
+	      list_min_pageid = repl_ag_get_min_pageid_apply_list (sInfo[0],
+								   0);
+
+	      assert (list_min_pageid >= last_pageid);
+	    }
+
+	  error = repl_ag_truncate_copy_log (minfo, flushed,
+					     buf, last_pageid);
 	}
     }
 
@@ -2298,23 +2346,25 @@ repl_tr_log_recv (void *arg)
   while (true)
     {
 
-      /*PTHREAD_MUTEX_LOCK(pb->mutex); */
       /* check the shutdown flag */
       if (pb->need_shutdown)
 	{
-	  /*PTHREAD_MUTEX_UNLOCK(pb->mutex); */
 	  break;
 	}
-      /*PTHREAD_MUTEX_UNLOCK(pb->mutex); */
 
       if (old_pageid == start_pageid && minfo->is_end_of_record)
 	SLEEP_USEC (0, 100 * 1000);
       /* request the next log page */
-      error =
-	repl_ag_sock_request_next_log_page (*id, start_pageid, on_demand,
-					    &result, &in_archive);
+      error = repl_ag_sock_request_next_log_page (*id, start_pageid,
+						  on_demand, &result,
+						  &in_archive);
       REPL_CHECK_THREAD_ERROR (RECV_THREAD, false,
 			       REPL_AGENT_GET_LOG_PAGE_FAIL, NULL, arg);
+
+      if (pb->need_shutdown)
+	{
+	  break;
+	}
 
       old_pageid = start_pageid;
       if (result == REPL_REQUEST_NOPAGE || result == REPL_REQUEST_FAIL)
@@ -2322,10 +2372,10 @@ repl_tr_log_recv (void *arg)
 	  if (first_time == true && in_archive == true)
 	    {
 	      REPL_ERR_LOG (REPL_FILE_AG_TP, REPL_AGENT_GET_LOG_PAGE_FAIL);
-	      repl_error_flush (err_Log_fp, false);
 	      restart_Agent = true;
 	      pb->need_shutdown = true;
 	    }
+	  repl_error_flush (err_Log_fp, false);
 	  continue;
 	}
       if (((LOG_PAGE *) minfo->conn.resp_buffer)->hdr.logical_pageid !=
@@ -2631,7 +2681,8 @@ repl_ag_thread_end (void)
 }
 
 static int
-repl_ag_log_dump_node_insert (REPL_DUMP_NODE ** head, REPL_DUMP_NODE ** tail,
+repl_ag_log_dump_node_insert (REPL_DUMP_NODE ** head,
+			      REPL_DUMP_NODE ** tail,
 			      REPL_DUMP_NODE * dump_node)
 {
   if (*head == NULL)
@@ -2656,7 +2707,8 @@ repl_ag_log_dump_node_insert (REPL_DUMP_NODE ** head, REPL_DUMP_NODE ** tail,
 }
 
 static int
-repl_ag_log_dump_node_delete (REPL_DUMP_NODE ** head, REPL_DUMP_NODE ** tail,
+repl_ag_log_dump_node_delete (REPL_DUMP_NODE ** head,
+			      REPL_DUMP_NODE ** tail,
 			      REPL_DUMP_NODE * dump_node)
 {
   if (*head == *tail)
@@ -2680,14 +2732,6 @@ repl_ag_log_dump_node_delete (REPL_DUMP_NODE ** head, REPL_DUMP_NODE ** tail,
     }
   free_and_init (dump_node);
 
-  return NO_ERROR;
-}
-
-static int
-repl_ag_log_dump_node_all_free (REPL_DUMP_NODE ** head,
-				REPL_DUMP_NODE ** tail,
-				REPL_DUMP_NODE * dump_node)
-{
   return NO_ERROR;
 }
 

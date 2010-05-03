@@ -40,11 +40,37 @@
 #include "connection_defs.h"
 #include "log_writer.h"
 
-typedef struct server_info
+typedef struct server_info SERVER_INFO;
+struct server_info
 {
   int info_bits;
   DB_VALUE *value[SI_CNT];
-} SERVER_INFO;
+};
+
+/* killtran supporting structures and functions */
+typedef struct one_tran_info ONE_TRAN_INFO;
+struct one_tran_info
+{
+  int tran_index;
+  int state;
+  int process_id;
+  char *db_user;
+  char *program_name;
+  char *login_name;
+  char *host_name;
+};
+
+typedef struct trans_info TRANS_INFO;
+struct trans_info
+{
+  int num_trans;
+  ONE_TRAN_INFO tran[1];	/* really [num_trans] */
+};
+
+#define TRAN_STATE_CHAR(STATE)					\
+	((STATE == TRAN_ACTIVE) ? '+' 				\
+	: (info->tran[i].state == TRAN_UNACTIVE_ABORTED) ? '-'	\
+	: ('A' + info->tran[i].state))
 
 extern int locator_fetch (OID * oidp, int chn, LOCK lock, OID * class_oid,
 			  int class_chn, int prefetch,
@@ -100,7 +126,7 @@ extern int locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid,
 				       int *attr_ids, OID * pk_cls_oid,
 				       BTID * pk_btid, int cache_attr_id,
 				       char *fk_name);
-extern int heap_create (HFID * hfid, const OID * class_oid);
+extern int heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_destroy (const HFID * hfid);
 #endif
@@ -108,7 +134,9 @@ extern int heap_destroy_newly_created (const HFID * hfid);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern DISK_VOLPURPOSE disk_get_purpose (VOLID volid);
+#endif
 extern VOLID
 disk_get_purpose_and_total_free_numpages (VOLID volid,
 					  DISK_VOLPURPOSE * vol_purpose,
@@ -131,6 +159,7 @@ extern int log_reset_waitsecs (int waitsecs);
 extern int log_reset_isolation (TRAN_ISOLATION isolation,
 				bool unlock_by_isolation);
 extern void log_set_interrupt (int set);
+extern void log_checkpoint (void);
 extern void log_dump_stat (FILE * outfp);
 
 extern TRAN_STATE tran_server_commit (bool retain_lock);
@@ -149,9 +178,11 @@ extern TRAN_STATE tran_server_2pc_prepare (void);
 extern int tran_server_2pc_recovery_prepared (int gtrids[], int size);
 extern int tran_server_2pc_attach_global_tran (int gtrid);
 extern TRAN_STATE tran_server_2pc_prepare_global_tran (int gtrid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int tran_server_start_topop (LOG_LSA * topop_lsa);
 extern TRAN_STATE tran_server_end_topop (LOG_RESULT_TOPOP result,
 					 LOG_LSA * topop_lsa);
+#endif
 extern int tran_server_savepoint (const char *savept_name,
 				  LOG_LSA * savept_lsa);
 extern TRAN_STATE tran_server_partial_abort (const char *savept_name,
@@ -160,10 +191,12 @@ extern void lock_dump (FILE * outfp);
 
 int boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
 			    BOOT_DB_PATH_INFO * db_path_info,
-			    bool db_overwrite, PGLENGTH db_desired_pagesize,
-			    DKNPAGES db_npages, const char *file_addmore_vols,
-			    DKNPAGES log_npages, OID * rootclass_oid,
-			    HFID * rootclass_hfid, int client_lock_wait,
+			    bool db_overwrite, const char *file_addmore_vols,
+			    DKNPAGES db_npages, PGLENGTH db_desired_pagesize,
+			    DKNPAGES log_npages,
+			    PGLENGTH db_desired_log_page_size,
+			    OID * rootclass_oid, HFID * rootclass_hfid,
+			    int client_lock_wait,
 			    TRAN_ISOLATION client_isolation);
 int boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 			  int client_lock_wait,
@@ -279,8 +312,9 @@ extern int qmgr_sync_query (DB_QUERY_RESULT * query_result, int wait);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int qp_get_sys_timestamp (DB_VALUE * value);
 #endif
-extern int qp_get_serial_next_value (DB_VALUE * value, DB_VALUE * oid);
-extern int qp_get_serial_current_value (DB_VALUE * value, DB_VALUE * oid);
+extern int serial_get_next_value (DB_VALUE * value, DB_VALUE * oid);
+extern int serial_get_current_value (DB_VALUE * value, DB_VALUE * oid);
+extern int serial_decache (OID * oid);
 
 extern int mnt_server_start_stats (bool for_all_trans);
 extern int mnt_server_stop_stats (void);
@@ -297,6 +331,8 @@ extern int thread_kill_tran_index (int kill_tran_index, char *kill_user,
 extern void thread_dump_cs_stat (FILE * outfp);
 
 extern int logtb_get_pack_tran_table (char **buffer_p, int *size_p);
+extern void logtb_free_trans_info (TRANS_INFO * info);
+extern TRANS_INFO *logtb_get_trans_info (void);
 extern void logtb_dump_trantable (FILE * outfp);
 
 extern int heap_get_class_num_objects_pages (HFID * hfid, int approximation,

@@ -188,14 +188,14 @@ struct log_pb_global_data
   int clock_hand;		/* Clock hand                */
 #if defined(SERVER_MODE)
   MUTEX_T lpb_mutex;
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
   volatile log_mutex_info mutex_info;
-#endif				/* LOG_DEBUG */
+#endif				/* CUBRID_DEBUG */
 #endif				/* SERVER_MODE */
 };
 
 #define SIZEOF_LOG_BUFFER \
-  (offsetof(struct log_buffer, logpage) + SIZEOF_LOG_PAGE_PAGESIZE)
+  (offsetof(struct log_buffer, logpage) + LOG_PAGESIZE)
 
 #define LOG_CAST_LOGPAGEPTR_TO_BFPTR(bufptr, log_pgptr)                       \
   ((bufptr) = ((struct log_buffer *)                                          \
@@ -215,11 +215,11 @@ LOG_PB_GLOBAL_DATA log_Pb = {
   NULL, NULL, NULL, 0, 0
 #if defined(SERVER_MODE)
     , MUTEX_INITIALIZER
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
     ,
   {
    false, NULL_THREAD_T}
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 #endif /* SERVER_MODE */
 };
 
@@ -249,18 +249,22 @@ static LOG_PAGE **logpb_writev_append_pages (THREAD_ENTRY * thread_p,
 					     LOG_PAGE ** to_flush,
 					     DKNPAGES npages);
 static int logpb_get_guess_archive_num (PAGEID pageid);
-static void logpb_set_unavialble_archive (int arv_num);
+static void logpb_set_unavailable_archive (int arv_num);
 static bool logpb_is_archive_available (int arv_num);
 static void logpb_archive_active_log (THREAD_ENTRY * thread_p,
 				      bool force_archive);
 static void logpb_remove_archive_to_page_id (THREAD_ENTRY * thread_p,
 					     const char *info_reason,
 					     PAGEID safe_pageid);
-static int logpb_get_remove_archive_num (PAGEID safe_pageid, int archive_num);
-static void logpb_remove_archive_logs_internal (int first,
-						int last,
-						const char *info_reason,
-						bool check_backup);
+static int logpb_get_remove_archive_num (THREAD_ENTRY * thread_p,
+					 PAGEID safe_pageid, int archive_num);
+static void
+logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p,
+				    int first, int last,
+				    const char *info_reason,
+				    bool check_backup,
+				    int lowest_arv_num_for_backup,
+				    int highest_arv_num_for_backup);
 static void logpb_append_archives_removed_to_log_info (int first, int last,
 						       const char
 						       *info_reason);
@@ -313,6 +317,7 @@ static void logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p);
 
 static int logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session,
 				     time_t stop_at, time_t backup_time);
+static void logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p);
 
 #if 0
 static FILEIO_BACKUP_LEVEL log_find_most_recent_backup_level (void);
@@ -413,7 +418,7 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p)
    * buffers are initialized to zero, instead of scrambled, when
    * not in debugging mode.
    */
-  MEM_REGION_INIT (&log_buffer_p->logpage, IO_PAGESIZE);
+  MEM_REGION_INIT (&log_buffer_p->logpage, LOG_PAGESIZE);
   log_buffer_p->logpage.hdr.logical_pageid = NULL_PAGEID;
   log_buffer_p->logpage.hdr.offset = NULL_OFFSET;
 }
@@ -447,7 +452,7 @@ logpb_expand_pool (int num_new_buffers)
   int error_code = NO_ERROR;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (NULL));
 
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
 
@@ -581,7 +586,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   if (log_Pb.pool != NULL)
     {
@@ -659,7 +664,7 @@ logpb_finalize_pool (void)
   int rv;
 #endif /* SERVER_MODE */
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (NULL));
 
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
   if (log_Pb.pool != NULL)
@@ -692,7 +697,6 @@ logpb_finalize_pool (void)
 	}
 
       free_and_init (log_Pb.pool);
-      log_Pb.pool = NULL;
       log_Pb.num_buffers = 0;
     }
 
@@ -729,7 +733,7 @@ logpb_finalize_pool (void)
 bool
 logpb_is_initialize_pool (void)
 {
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (NULL));
   if (log_Pb.pool != NULL)
     {
       return true;
@@ -757,7 +761,7 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   if (log_Pb.pool == NULL)
     {
@@ -848,7 +852,7 @@ logpb_replace (THREAD_ENTRY * thread_p, bool * retry)
 
 		      LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
 
-		      assert (LOG_CS_OWN ());
+		      assert (LOG_CS_OWN (thread_p));
 		      log_Stat.log_buffer_flush_count_by_replacement++;
 		      logpb_flush_all_append_pages (thread_p,
 						    LOG_FLUSH_DIRECT);
@@ -953,7 +957,7 @@ logpb_fix_page (THREAD_ENTRY * thread_p, PAGEID pageid, int fetch_mode)
 
   assert (pageid != NULL_PAGEID);
   assert ((fetch_mode == NEW_PAGE) || (fetch_mode == OLD_PAGE));
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
 
@@ -1008,8 +1012,8 @@ logpb_fix_page (THREAD_ENTRY * thread_p, PAGEID pageid, int fetch_mode)
 	}
       else
 	{
-	  if (logpb_read_page_from_file
-	      (thread_p, pageid, &log_bufptr->logpage) == NULL)
+	  if (logpb_read_page_from_file (thread_p, pageid,
+					 &log_bufptr->logpage) == NULL)
 	    {
 	      goto error;
 	    }
@@ -1070,7 +1074,6 @@ void
 logpb_set_dirty (LOG_PAGE * log_pgptr, int free_page)
 {
   struct log_buffer *bufptr;	/* Log buffer associated with given page */
-
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
@@ -1087,8 +1090,6 @@ logpb_set_dirty (LOG_PAGE * log_pgptr, int free_page)
 	      1, bufptr->pageid);
     }
 #endif /* CUBRID_DEBUG */
-
-  assert (LOG_CS_OWN ());
 
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
 
@@ -1224,7 +1225,7 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
   /* Get the address of the buffer from the page. */
   LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, log_pgptr);
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
 
@@ -1381,8 +1382,6 @@ logpb_dump (FILE * out_fp)
   int rv;
 #endif /* SERVER_MODE */
 
-  assert (LOG_CS_OWN ());
-
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
 
   if (log_Pb.pool == NULL)
@@ -1466,13 +1465,18 @@ logpb_dump_to_flush_page (FILE * out_fp)
       if (i != 0)
 	{
 	  if ((i % 10) == 0)
-	    (void) fprintf (out_fp, ",\n");
+	    {
+	      fprintf (out_fp, ",\n");
+	    }
 	  else
-	    (void) fprintf (out_fp, ",");
+	    {
+	      fprintf (out_fp, ",");
+	    }
 	}
       fprintf (out_fp, " %4d", log_bufptr->pageid);
     }
-  (void) fprintf (out_fp, "\n");
+
+  fprintf (out_fp, "\n");
 }
 
 /*
@@ -1506,8 +1510,7 @@ logpb_dump_pages (FILE * out_fp)
 		   log_bufptr->dirty, log_bufptr->recently_freed,
 		   log_bufptr->fcnt, (void *) log_bufptr,
 		   (void *) (&log_bufptr->logpage),
-		   (void *) (&log_bufptr->logpage.
-			     area[LOGAREA_SIZE - 1]), "",
+		   (void *) (&log_bufptr->logpage.area[LOGAREA_SIZE - 1]), "",
 		   log_bufptr->logpage.hdr.logical_pageid,
 		   log_bufptr->logpage.hdr.offset);
 	}
@@ -1592,7 +1595,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr,
 			 const char *prefix_logname, DKNPAGES npages,
 			 INT64 * db_creation)
 {
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
   assert (loghdr != NULL);
 
   strncpy (loghdr->magic, CUBRID_MAGIC_LOG_ACTIVE, CUBRID_MAGIC_MAX_LENGTH);
@@ -1618,6 +1621,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr,
   strncpy (loghdr->db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
   loghdr->db_compatibility = rel_disk_compatible ();
   loghdr->db_iopagesize = IO_PAGESIZE;
+  loghdr->db_logpagesize = LOG_PAGESIZE;
   loghdr->is_shutdown = true;
   loghdr->next_trid = LOG_SYSTEM_TRANID + 1;
   loghdr->avg_ntrans = LOG_ESTIMATE_NACTIVE_TRANS;
@@ -1667,7 +1671,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr,
 LOG_PAGE *
 logpb_create_header_page (THREAD_ENTRY * thread_p)
 {
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
   return logpb_create (thread_p, LOGPB_HEADER_PAGE_ID);
 }
 
@@ -1684,7 +1688,7 @@ void
 logpb_fetch_header (THREAD_ENTRY * thread_p, struct log_header *hdr)
 {
   assert (hdr != NULL);
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
   assert (log_Gl.loghdr_pgptr != NULL);
 
   logpb_fetch_header_with_buffer (thread_p, hdr, log_Gl.loghdr_pgptr);
@@ -1707,14 +1711,14 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p,
   struct log_header *log_hdr;	/* The log header  */
 
   assert (hdr != NULL);
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
   assert (log_pgptr != NULL);
 
   if ((logpb_fetch_page (thread_p, LOGPB_HEADER_PAGE_ID, log_pgptr)) == NULL)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			 "log_fetch_hdr_with_buf");
-      /* This statemant should not be reached */
+      /* This statement should not be reached */
       (void) logpb_initialize_header (thread_p, hdr, NULL, 0, NULL);
       return;
     }
@@ -1739,7 +1743,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 {
   struct log_header *log_hdr;
 
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
   struct timeval start_time = {
     0, 0
   };
@@ -1748,9 +1752,9 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
   };
 
   css_gettimeofday (&start_time, NULL);
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
   assert (log_Gl.loghdr_pgptr != NULL);
 
   log_hdr = (struct log_header *) (log_Gl.loghdr_pgptr->area);
@@ -1763,21 +1767,21 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 			    LOGPB_HEADER_PAGE_ID);
 
   log_Stat.flush_hdr_call_count++;
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
   gettimeofday (&end_time, NULL);
   log_Stat.last_flush_hdr_sec_by_LFT = LOG_GET_ELAPSED_TIME (end_time,
 							     start_time);
   log_Stat.total_flush_hdr_sec_by_LFT += log_Stat.last_flush_hdr_sec_by_LFT;
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
+#if defined(CUBRID_DEBUG)
   er_log_debug (ARG_FILE_LINE,
 		"log_flush_hdr: "
 		"call count(%ld) avg flush (%f) \n",
 		log_Stat.flush_hdr_call_count,
 		(double) log_Stat.total_flush_hdr_sec_by_LFT /
 		log_Stat.flush_hdr_call_count);
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
+#endif /* CUBRID_DEBUG */
 }
 
 /*
@@ -1815,7 +1819,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, PAGEID pageid,
   log_bufptr = (struct log_buffer *) mht_get (log_Pb.ht, &pageid);
   if (log_bufptr != NULL)
     {
-      memcpy (log_pgptr, &log_bufptr->logpage, SIZEOF_LOG_PAGE_PAGESIZE);
+      memcpy (log_pgptr, &log_bufptr->logpage, LOG_PAGESIZE);
       ret_pgptr = log_pgptr;
     }
   LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
@@ -1846,18 +1850,16 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, PAGEID pageid,
 {
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
-  assert (LOG_CS_OWN ());
-
+  assert (LOG_CS_OWN (thread_p));
 
   if (logpb_is_page_in_archive (pageid)
       && (LOG_ISRESTARTED () == false
 	  || (pageid + LOGPB_ACTIVE_NPAGES) <= log_Gl.hdr.append_lsa.pageid))
     {
-
       if (logpb_fetch_from_archive (thread_p, pageid, log_pgptr, NULL, NULL)
 	  == NULL)
 	{
-	  goto error;
+	  return NULL;
 	}
     }
   else
@@ -1871,12 +1873,12 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, PAGEID pageid,
 
       mnt_log_ioreads (thread_p);
 
-      if (fileio_read (log_Gl.append.vdes, log_pgptr, phy_pageid) == NULL)
+      if (fileio_read (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid,
+		       LOG_PAGESIZE) == NULL)
 	{
-	  er_set (ER_FATAL_ERROR_SEVERITY,
-		  ARG_FILE_LINE,
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_LOG_READ, 3, pageid, phy_pageid, log_Name_active);
-	  goto error;
+	  return NULL;
 	}
       else
 	{
@@ -1885,16 +1887,13 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, PAGEID pageid,
 	      /* Clean the buffer... since it may be corrupted */
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_LOG_PAGE_CORRUPTED, 1, pageid);
-	      goto error;
+	      return NULL;
 	    }
 	}
     }
 
   /* keep old function's usage */
   return log_pgptr;
-
-error:
-  return NULL;
 }
 
 int
@@ -1915,8 +1914,8 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, PAGEID pageid,
   num_pages = MIN (num_pages, LOGPB_ACTIVE_NPAGES - phy_start_pageid + 1);
 
   mnt_log_ioreads (thread_p);
-  if (fileio_read_pages (log_Gl.append.vdes, (char *) log_pgptr,
-			 phy_start_pageid, num_pages) == NULL)
+  if (fileio_read_pages (thread_p, log_Gl.append.vdes, (char *) log_pgptr,
+			 phy_start_pageid, num_pages, LOG_PAGESIZE) == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, pageid,
 	      phy_start_pageid, log_Name_active);
@@ -1960,26 +1959,28 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
    * while starting or finishing or recovering server.
    * So, log cs is not needed.
    */
-  if (fileio_write (log_Gl.append.vdes, log_pgptr, phy_pageid) == NULL
-      || fileio_synchronize (log_Gl.append.vdes,
-			     !PRM_SUPPRESS_FSYNC) == NULL_VOLDES)
+#if 1				/* yaw */
+  if (fileio_write (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid,
+		    LOG_PAGESIZE) == NULL)
+#else
+  if (fileio_write (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid,
+		    LOG_PAGESIZE) == NULL
+      || fileio_synchronize (thread_p, log_Gl.append.vdes,
+			     log_Name_active) == NULL_VOLDES)
+#endif
     {
-
       if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
 	{
 	  nbytes = ((log_Gl.hdr.npages + 1 - logical_pageid) *
-		    log_Gl.hdr.db_iopagesize);
-	  er_set (ER_FATAL_ERROR_SEVERITY,
-		  ARG_FILE_LINE,
+		    log_Gl.hdr.db_logpagesize);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_LOG_WRITE_OUT_OF_SPACE,
 		  4, logical_pageid, phy_pageid, log_Name_active, nbytes);
 	}
       else
 	{
-	  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY,
-			       ARG_FILE_LINE,
-			       ER_LOG_WRITE,
-			       3,
+	  er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_LOG_WRITE, 3,
 			       logical_pageid, phy_pageid, log_Name_active);
 	}
 
@@ -2021,8 +2022,9 @@ PGLENGTH
 logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 			      const char *db_fullname, const char *logpath,
 			      const char *prefix_logname,
-			      PGLENGTH * db_iopagesize, INT64 * db_creation,
-			      float *db_compatibility)
+			      PGLENGTH * io_page_size,
+			      PGLENGTH * log_page_size,
+			      INT64 * creation_time, float *db_compatibility)
 {
   struct log_header hdr;	/* Log header */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -2031,23 +2033,27 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   /* Is the system restarted ? */
   if (log_Gl.trantable.area != NULL && log_Gl.append.log_pgptr != NULL)
     {
-      *db_iopagesize = log_Gl.hdr.db_iopagesize;
-      *db_creation = log_Gl.hdr.db_creation;
+      *io_page_size = log_Gl.hdr.db_iopagesize;
+      *log_page_size = log_Gl.hdr.db_logpagesize;
+      *creation_time = log_Gl.hdr.db_creation;
       *db_compatibility = log_Gl.hdr.db_compatibility;
-      if (IO_PAGESIZE != *db_iopagesize)
+
+      if (IO_PAGESIZE != *io_page_size || LOG_PAGESIZE != *log_page_size)
 	{
-	  if (db_set_page_size (*db_iopagesize) != *db_iopagesize)
+	  if (db_set_page_size (*io_page_size, *log_page_size) != NO_ERROR)
 	    {
 	      goto error;
 	    }
+
 	  logpb_finalize_pool ();
 	  error_code =
-	    logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.
+	    logtb_define_trantable_log_latch (thread_p,
+					      log_Gl.trantable.
 					      num_total_indices);
 	  if (error_code != NO_ERROR)
 	    {
@@ -2063,14 +2069,13 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 	      goto error;
 	    }
 	}
-      return *db_iopagesize;
+      return *io_page_size;
     }
 
   /* System is not restarted. Read the header from disk */
 
-  error_code =
-    logpb_initialize_log_names (thread_p, db_fullname, logpath,
-				prefix_logname);
+  error_code = logpb_initialize_log_names (thread_p, db_fullname, logpath,
+					   prefix_logname);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -2086,13 +2091,14 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
       goto error;
     }
 
-  log_Gl.append.vdes = fileio_mount (db_fullname, log_Name_active,
+  log_Gl.append.vdes = fileio_mount (thread_p, db_fullname, log_Name_active,
 				     LOG_DBLOG_ACTIVE_VOLID, true, false);
   if (log_Gl.append.vdes == NULL_VOLDES)
     {
       error_code = ER_FAILED;
       goto error;
     }
+
   error_code = logpb_initialize_pool (thread_p);
   if (error_code != NO_ERROR)
     {
@@ -2104,11 +2110,12 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
   logpb_fetch_header_with_buffer (thread_p, &hdr, log_pgptr);
   logpb_finalize_pool ();
 
-  fileio_dismount (log_Gl.append.vdes);
+  fileio_dismount (thread_p, log_Gl.append.vdes);
   log_Gl.append.vdes = NULL_VOLDES;
 
-  *db_iopagesize = hdr.db_iopagesize;
-  *db_creation = hdr.db_creation;
+  *io_page_size = hdr.db_iopagesize;
+  *log_page_size = hdr.db_logpagesize;
+  *creation_time = hdr.db_creation;
   *db_compatibility = hdr.db_compatibility;
 
   /*
@@ -2131,7 +2138,12 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
   /* only check for incompatibility here, this will be done again in
    * log_xinit which will run the compatibility functions if there are any.
    */
-  if (rel_is_disk_compatible (*db_compatibility, NULL) == REL_NOT_COMPATIBLE)
+  /* We added disk compatibility rules to R2.2. Before that release,
+   * rel_is_disk_compatible function returned only REL_FULLY_COMPATIBLE or
+   * REL_NOT_COMPATIBLE. However, it might return REL_BACKWARD_COMPATIBLE now.
+   */
+  if (rel_is_disk_compatible (*db_compatibility, NULL) !=
+      REL_FULLY_COMPATIBLE)
     {
       log_Gl.hdr.db_compatibility = *db_compatibility;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_INCOMPATIBLE_DATABASE,
@@ -2140,9 +2152,9 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
       goto error;
     }
 
-  if (IO_PAGESIZE != *db_iopagesize)
+  if (IO_PAGESIZE != *io_page_size || LOG_PAGESIZE != *log_page_size)
     {
-      if (db_set_page_size (*db_iopagesize) != *db_iopagesize)
+      if (db_set_page_size (*io_page_size, *log_page_size) != NO_ERROR)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -2150,7 +2162,8 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
       else
 	{
 	  error_code =
-	    logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.
+	    logtb_define_trantable_log_latch (thread_p,
+					      log_Gl.trantable.
 					      num_total_indices);
 	  if (error_code != NO_ERROR)
 	    {
@@ -2159,15 +2172,15 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 	}
     }
 
-  return *db_iopagesize;
+  return *io_page_size;
 
 error:
-  /* ****** */
-  *db_iopagesize = -1;
-  *db_creation = 0;
+  *io_page_size = -1;
+  *log_page_size = -1;
+  *creation_time = 0;
   *db_compatibility = -1.0;
 
-  return *db_iopagesize;
+  return *io_page_size;
 }
 
 /*
@@ -2193,7 +2206,7 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   /* detect empty log (page and offset of zero) */
   if ((log_Gl.hdr.append_lsa.pageid == 0)
@@ -2263,7 +2276,7 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 LOG_PAGE *
 logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p)
 {
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   log_Gl.append.delayed_free_log_pgptr = NULL;
   log_Gl.append.log_pgptr = logpb_fix_page (thread_p,
@@ -2313,7 +2326,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
-#if LOG_DEBUG
+#if defined(CUBRID_DEBUG)
   long commit_count = 0;
   static struct timeval start_append_time = {
     0, 0
@@ -2325,10 +2338,10 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
   double elapsed = 0;
 
   gettimeofday (&end_append_time, NULL);
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   if (current_setdirty == LOG_SET_DIRTY)
     {
@@ -2410,11 +2423,11 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			 "log_next_append_page");
-      /* This statemant should not be reached */
+      /* This statement should not be reached */
       return;
     }
 
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
   {
     log_Stat.last_append_pageid = log_Gl.hdr.append_lsa.pageid;
 
@@ -2429,7 +2442,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
 	log_Stat.total_delayed_page_count++;
       }
   }
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 
   /*
    * Save this log append page as an active page to be flushed at a later
@@ -2456,7 +2469,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
       logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
     }
 
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
   if (start_append_time.tv_sec != 0 && start_append_time.tv_usec != 0)
     {
       elapsed = LOG_GET_ELAPSED_TIME (end_append_time, start_append_time);
@@ -2472,11 +2485,11 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
   log_Stat.last_commit_count_while_using_a_page = commit_count;
   log_Stat.total_commit_count_while_using_a_page +=
     log_Stat.last_commit_count_while_using_a_page;
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 
   log_Stat.total_append_page_count++;
 
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
+#if defined(CUBRID_DEBUG)
   er_log_debug (ARG_FILE_LINE,
 		"log_next_append_page: "
 		"new page id(%d) delayed page id(%d) "
@@ -2492,7 +2505,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
 		need_flush,
 		log_Stat.last_commit_count_while_using_a_page,
 		log_Stat.total_commit_count_while_using_a_page);
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
+#endif /* CUBRID_DEBUG */
 }
 
 /*
@@ -2518,15 +2531,14 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush,
 
   if (npages > 0)
     {
-
       /* Record number of writes in statistics */
       mnt_log_iowrites (thread_p);
 
       LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, to_flush[0]);
       phy_pageid = bufptr->phy_pageid;
 
-      if (fileio_writev (log_Gl.append.vdes, (void **) to_flush, phy_pageid,
-			 npages) == NULL)
+      if (fileio_writev (thread_p, log_Gl.append.vdes, (void **) to_flush,
+			 phy_pageid, npages, LOG_PAGESIZE) == NULL)
 	{
 	  if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
 	    {
@@ -2534,7 +2546,7 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush,
 		      ER_LOG_WRITE_OUT_OF_SPACE, 4,
 		      bufptr->pageid, phy_pageid, log_Name_active,
 		      ((log_Gl.hdr.npages + 1 - bufptr->pageid) *
-		       log_Gl.hdr.db_iopagesize));
+		       log_Gl.hdr.db_logpagesize));
 	    }
 	  else
 	    {
@@ -2546,9 +2558,109 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush,
 	  to_flush = NULL;
 	}
     }
+
   return to_flush;
 }
 
+/*
+ * logpb_write_toflush_pages_to_archive - Background archiving
+ *
+ * NOTE : write flushed pages to temporary archiving volume
+ * (which will be renamed to real archiving volume) at this time.
+ * but don't write last page because it will be modified & flushed again.
+ * in error case, dismount temp archiving volume and give up background
+ * archiving.
+ */
+static void
+logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
+{
+  int i, pageid, phy_pageid;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_pgptr = NULL;
+  struct log_buffer *bufptr;
+
+  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
+  BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
+  LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[0]);
+
+  assert (PRM_LOG_BACKGROUND_ARCHIVING);
+  if (log_Gl.bg_archive_info.vdes == NULL_VOLDES
+      || flush_info->num_toflush <= 1)
+    {
+      return;
+    }
+
+
+  assert (bg_arv_info->current_page_id >= bufptr->pageid);
+
+  /*
+   * defense for above unknown assert case
+   * in this case, fetch unwritten log pages and write them to archiving
+   * voume manually
+   */
+  if (bg_arv_info->current_page_id < bufptr->pageid)
+    {
+      log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+      for (pageid = bg_arv_info->current_page_id;
+	   pageid <= bufptr->pageid; pageid++)
+	{
+	  if (logpb_fetch_page (thread_p, pageid, log_pgptr) == NULL)
+	    {
+	      fileio_dismount (thread_p, bg_arv_info->vdes);
+	      bg_arv_info->vdes = NULL_VOLDES;
+	      break;
+	    }
+
+	  /* calculate real physical page index in archiving volume */
+	  phy_pageid = pageid - bg_arv_info->start_page_id + 1;
+
+	  if (fileio_write (thread_p, bg_arv_info->vdes, log_pgptr,
+			    phy_pageid, LOG_PAGESIZE) == NULL)
+	    {
+	      fileio_dismount (thread_p, bg_arv_info->vdes);
+	      bg_arv_info->vdes = NULL_VOLDES;
+	      break;
+	    }
+	}
+
+      bg_arv_info->current_page_id = bufptr->pageid;
+    }
+
+  /*
+   * main dual writing logic
+   * write flushed pages (except last page which will be modified & flushed again)
+   * to temp archiving volume
+   */
+  if (bg_arv_info->vdes != NULL_VOLDES)
+    {
+      for (i = 0; i < flush_info->num_toflush - 1; i++)
+	{
+	  LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[i]);
+
+	  /* calculate real physical page index in archiving volume */
+	  phy_pageid = bufptr->pageid - bg_arv_info->start_page_id + 1;
+
+	  if (fileio_write (thread_p, bg_arv_info->vdes,
+			    flush_info->toflush[i], phy_pageid,
+			    LOG_PAGESIZE) == NULL)
+	    {
+	      fileio_dismount (thread_p, bg_arv_info->vdes);
+	      bg_arv_info->vdes = NULL_VOLDES;
+	      break;
+	    }
+	}
+
+      /*
+       * 0 to i-1 pages of toflush buffer are written at temp
+       * archiving volume.
+       * And now, set current_page_id as position of toflush[i].
+       * (which will be written at next time)
+       */
+      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[i]);
+      bg_arv_info->current_page_id = bufptr->pageid;
+    }
+}
 
 /*
  * logpb_flush_all_append_pages_helper - Flush log append pages
@@ -2583,7 +2695,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   bool need_flush = true;
   int error_code = NO_ERROR;
   int flush_page_count = 0;
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
   struct timeval start_time = {
     0, 0
   };
@@ -2594,7 +2706,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   int curr_flush_count = 0;
   long commit_count = 0;
   static long prev_commit_count_in_flush = 0;
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
   bool hold_flush_mutex = false, hold_lpb_mutex = false;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
@@ -2604,15 +2716,13 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   LOGWR_ENTRY *entry;
 #endif /* SERVER_MODE */
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
+#if defined(CUBRID_DEBUG)
   er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: start\n");
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
 
-#if defined(LOG_DEBUG)
   gettimeofday (&start_time, NULL);
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 
   LOG_MUTEX_LOCK (rv, flush_info->flush_mutex);
   hold_flush_mutex = true;
@@ -2659,9 +2769,13 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 	 * Do we want to dump the buffer pool for future verification
 	 */
 	if ((env_value = envvar_get ("LOG_FLUSH_VERBOSE_DUMP")) != NULL)
-	  verbose_dump = atoi (env_value) != 0 ? 1 : 0;
+	  {
+	    verbose_dump = atoi (env_value) != 0 ? 1 : 0;
+	  }
 	else
-	  verbose_dump = 0;
+	  {
+	    verbose_dump = 0;
+	  }
       }
 
     if (verbose_dump != 0)
@@ -2767,7 +2881,8 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 	  if (entry->status == LOGWR_STATUS_WAIT)
 	    {
 	      entry->status = LOGWR_STATUS_FETCH;
-	      thread_wakeup_with_tran_index (entry->thread_p->tran_index);
+	      thread_wakeup_with_tran_index (entry->thread_p->tran_index,
+					     THREAD_LOGWR_RESUMED);
 	    }
 	  entry = entry->next;
 	}
@@ -2787,10 +2902,10 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   LOG_MUTEX_LOCK (rv, log_Pb.lpb_mutex);
   hold_lpb_mutex = true;
 
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
+#if defined(CUBRID_DEBUG)
   log_scan_flush_info (log_dump_pageid);
   er_log_debug (ARG_FILE_LINE, "\n");
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
+#endif /* CUBRID_DEBUG */
 
   for (i = 0; i < flush_info->num_toflush; i++)
     {
@@ -2841,7 +2956,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 	      else
 		{
 		  need_sync = true;
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
+#if defined(CUBRID_DEBUG)
 		  {
 		    int j;
 
@@ -2854,7 +2969,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 				      hdr.logical_pageid + j);
 		      }
 		  }
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
+#endif /* CUBRID_DEBUG */
 
 		  /*
 		   * Start over the accumulation of pages
@@ -2904,7 +3019,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 	}
       else
 	{
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
+#if defined(CUBRID_DEBUG)
 	  {
 	    int j;
 
@@ -2916,7 +3031,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 			      logical_pageid + j);
 	      }
 	  }
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
+#endif /* CUBRID_DEBUG */
 	  need_sync = true;
 	  flush_page_count += pageToFlush;
 	}
@@ -2927,16 +3042,20 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
    * future log writes. That is, the pages should be stored on physical disk.
    */
 
-  if (need_sync == true
-      && fileio_synchronize (log_Gl.append.vdes,
-			     !PRM_SUPPRESS_FSYNC) == NULL_VOLDES)
-    {
-      error_code = ER_FAILED;
-      goto error;
-    }
-  if (need_sync)
+  if (need_sync == true)
     {
       log_Stat.total_sync_count++;
+      if (PRM_SUPPRESS_FSYNC == 0
+	  || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
+	{
+	  if (fileio_synchronize (thread_p,
+				  log_Gl.append.vdes,
+				  log_Name_active) == NULL_VOLDES)
+	    {
+	      error_code = ER_FAILED;
+	      goto error;
+	    }
+	}
     }
   assert (last_idxflush != -1);
   if (last_idxflush != -1)
@@ -2944,26 +3063,30 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
       /*
        * Now flush and sync the first log append dirty page
        */
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
+#if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
 		    "logpb_flush_all_append_pages: flush3 pageid(%d)\n",
 		    (flush_info->toflush[last_idxflush])->hdr.logical_pageid);
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
+#endif /* CUBRID_DEBUG */
 
       ++flush_page_count;
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
       log_Stat.total_sync_count++;
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 
       if (logpb_writev_append_pages (thread_p,
 				     &(flush_info->toflush[last_idxflush]),
-				     1) == NULL
-	  || fileio_synchronize (log_Gl.append.vdes,
-				 !PRM_SUPPRESS_FSYNC) == NULL_VOLDES)
+				     1) == NULL)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
 	}
+    }
+
+  /* dual writing (Background archiving) */
+  if (PRM_LOG_BACKGROUND_ARCHIVING)
+    {
+      logpb_write_toflush_pages_to_archive (thread_p);
     }
 
   /*
@@ -2977,18 +3100,18 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   for (i = 0; i < flush_info->num_toflush; i++)
     {
       LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[i]);
-#if LOG_DEBUG
+#if defined(CUBRID_DEBUG)
       if (bufptr->dirty)
 	{
 	  ++dirty_page_count;
 	}
       flush_info->toflush[i] = NULL;
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
       bufptr->dirty = false;
     }
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
   assert (flush_page_count == dirty_page_count);
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 
   LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
   hold_lpb_mutex = false;
@@ -3010,9 +3133,9 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
     {
       log_Stat.log_buffer_full_count++;
     }
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
   curr_flush_count = flush_info->num_toflush;
-#endif /* LOG_DEBUG */
+#endif /* CUBRID_DEBUG */
 
 
   /*
@@ -3049,7 +3172,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   log_Stat.last_flush_count_by_trans = flush_page_count;
   log_Stat.total_flush_count_by_trans += flush_page_count;
 
-#if defined(LOG_DEBUG)
+#if defined(CUBRID_DEBUG)
   gettimeofday (&end_time, NULL);
 
   log_Stat.last_flush_sec_by_trans =
@@ -3063,9 +3186,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   log_Stat.last_commit_count_in_flush_pages = commit_count;
   log_Stat.total_commit_count_in_flush_pages +=
     log_Stat.last_commit_count_in_flush_pages;
-#endif /* LOG_DEBUG */
 
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
   er_log_debug (ARG_FILE_LINE,
 		"logpb_flush_all_append_pages_helper: "
 		"flush page(%ld / %d / %ld)"
@@ -3081,7 +3202,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 		commit_count,
 		log_Stat.total_commit_count_in_flush_pages /
 		log_Stat.flushall_append_pages_call_count);
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
+#endif /* CUBRID_DEBUG */
 
   LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
   hold_flush_mutex = false;
@@ -3180,7 +3301,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
 
 direct_flush:
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   /* While archiving,
    * log_Gl.append.log_pgptr == NULL
@@ -3189,16 +3310,25 @@ direct_flush:
   if (flush_info->flush_type == LOG_FLUSH_DIRECT
       || flush_type == LOG_FLUSH_DIRECT || !LOG_ISRESTARTED ())
     {
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
+#if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
 		    "logpb_flush_all_append_pages: "
 		    "[%d]flush direct\n", (int) THREAD_ID ());
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
+#endif /* CUBRID_DEBUG */
       flush_type = flush_info->flush_type;
       flush_info->flush_type = LOG_FLUSH_DIRECT;
       (void) logpb_flush_all_append_pages_helper (thread_p);
       flush_info->flush_type = flush_type;
       log_Stat.direct_flush_count++;
+
+      log_Stat.total_sync_count++;
+      if (PRM_SUPPRESS_FSYNC == 0
+	  || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
+	{
+	  (void) fileio_synchronize (thread_p, log_Gl.append.vdes,
+				     log_Name_active);
+	}
+
       return;
     }
 
@@ -3209,17 +3339,14 @@ direct_flush:
     {
       log_Stat.async_commit_request_count++;
       return;
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
+#if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
 		    "logpb_flush_all_append_pages: "
 		    "[%d]just return\n", (int) THREAD_ID ());
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
+#endif /* CUBRID_DEBUG */
     }
 
   LOG_CS_EXIT ();
-#if defined(LOG_DEBUG)
-  assert (!LOG_CS_OWN ());
-#endif /* LOG_DEBUG */
 
   MUTEX_LOCK (rv, thread_Log_flush_thread.lock);
 
@@ -3236,11 +3363,11 @@ direct_flush:
       thread_Log_flush_thread.is_log_flush_force = true;
       COND_SIGNAL (thread_Log_flush_thread.cond);
 
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
+#if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
 		    "logpb_flush_all_append_pages: "
 		    "[%d]wakeup flush thread\n", (int) THREAD_ID ());
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
+#endif /* CUBRID_DEBUG */
     }
 
   MUTEX_LOCK (rv, group_commit_info->gc_mutex);
@@ -3249,13 +3376,13 @@ direct_flush:
   if (!PRM_LOG_ASYNC_COMMIT || (flush_type == LOG_FLUSH_FORCE))
     {
       ++(group_commit_info->waiters);
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
+#if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
 		    "logpb_flush_all_append_pages: "
 		    "[%d]cond wait, flush_type(%d) waiters(%d)\n",
 		    (int) THREAD_ID (),
 		    flush_type, group_commit_info->waiters);
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
+#endif /* CUBRID_DEBUG */
       if (LOG_IS_GROUP_COMMIT_ACTIVE ())
 	{
 	  gettimeofday (&start_time, NULL);
@@ -3273,7 +3400,7 @@ direct_flush:
 	  log_Stat.gc_commit_request_count++;
 	}
 
-#if (LOG_DEBUG & LOG_DEBUG_MSG)
+#if defined(CUBRID_DEBUG)
       {
 	long temp = 1;
 
@@ -3286,7 +3413,7 @@ direct_flush:
 		      log_Stat.gc_total_wait_time / temp);
       }
 
-#endif /* LOG_DEBUG & LOG_DEBUG_MSG */
+#endif /* CUBRID_DEBUG */
     }
 
   MUTEX_UNLOCK (group_commit_info->gc_mutex);
@@ -3310,7 +3437,7 @@ logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   if (log_Gl.append.log_pgptr != NULL)
     {
@@ -3377,7 +3504,7 @@ void
 logpb_force (THREAD_ENTRY * thread_p)
 {
   /* Need to set a latch since an end of log marker may be appended */
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   if (log_Pb.pool != NULL)
     {
@@ -3407,8 +3534,9 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECTYPE rectype,
 		    LOG_TDES * tdes)
 {
   struct log_rec *log_rec;	/* Log record */
+  PAGEID initial_pageid;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   /* Record number of append log record in statistics */
   mnt_log_appendrecs (thread_p);
@@ -3416,6 +3544,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECTYPE rectype,
   /* Does the new log record fit in this page ? */
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*log_rec));
 
+  initial_pageid = log_Gl.hdr.append_lsa.pageid;
   assert (log_Gl.append.log_pgptr != NULL);
   log_rec = (struct log_rec *) LOG_APPEND_PTR ();
 
@@ -3462,6 +3591,19 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECTYPE rectype,
    * Set the page dirty, increase and align the append offset
    */
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*log_rec));
+
+  log_rec = (struct log_rec *) LOG_PREV_APPEND_PTR ();
+  if (log_rec->type == LOG_DUMMY_FILLPAGE_FORARCHIVE)
+    {
+      /*
+       * Get to start of next page if not already advanced ... Note
+       * this record type is only safe during backups.
+       */
+      if (initial_pageid == log_Gl.hdr.append_lsa.pageid)
+	{
+	  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, LOG_PAGESIZE);
+	}
+    }
 }
 
 /*
@@ -3483,7 +3625,7 @@ logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
 				 * append buffer
 				 */
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   if (length != 0 && data != NULL)
     {
@@ -3563,7 +3705,7 @@ logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
   int length;
   int i;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   if (num_crumbs != 0)
     {
@@ -3646,7 +3788,7 @@ logpb_end_append (THREAD_ENTRY * thread_p)
   struct log_rec *log_rec;	/* The log record */
   PAGEID initial_pageid;	/* remember starting log page */
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   initial_pageid = log_Gl.hdr.append_lsa.pageid;
   LOG_APPEND_ALIGN (thread_p, LOG_DONT_SET_DIRTY);
@@ -3662,22 +3804,7 @@ logpb_end_append (THREAD_ENTRY * thread_p)
    */
 
   log_rec = (struct log_rec *) LOG_PREV_APPEND_PTR ();
-  if (log_rec->type != LOG_DUMMY_FILLPAGE_FORARCHIVE)
-    {
-      LSA_COPY (&log_rec->forw_lsa, &log_Gl.hdr.append_lsa);
-    }
-  else
-    {
-      /*
-       * Get to start of next page if not already advanced ... Note
-       * this record type is only safe during backups.
-       */
-      if (initial_pageid == log_Gl.hdr.append_lsa.pageid)
-	{
-	  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, IO_PAGESIZE);
-	}
-    }
-
+  LSA_COPY (&log_rec->forw_lsa, &log_Gl.hdr.append_lsa);
 
   if (log_Gl.append.delayed_free_log_pgptr != NULL)
     {
@@ -4311,7 +4438,7 @@ logpb_get_archive_number (THREAD_ENTRY * thread_p, PAGEID pageid)
 }
 
 /*
- * logpb_set_unavialble_archive - Cache that given archive is unavailable
+ * logpb_set_unavailable_archive - Cache that given archive is unavailable
  *
  * return: nothing
  *
@@ -4320,12 +4447,12 @@ logpb_get_archive_number (THREAD_ENTRY * thread_p, PAGEID pageid)
  * NOTE: Record that give archive is unavialble.
  */
 static void
-logpb_set_unavialble_archive (int arv_num)
+logpb_set_unavailable_archive (int arv_num)
 {
   int *ptr;
   int size;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (NULL));
 
   if (log_Gl.archive.unav_archives == NULL)
     {
@@ -4366,19 +4493,18 @@ logpb_set_unavialble_archive (int arv_num)
  * NOTE: Decache any archive log memory information.
  */
 void
-logpb_decache_archive_info (void)
+logpb_decache_archive_info (THREAD_ENTRY * thread_p)
 {
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (NULL));
 
   if (log_Gl.archive.vdes != NULL_VOLDES)
     {
-      fileio_dismount (log_Gl.archive.vdes);
+      fileio_dismount (thread_p, log_Gl.archive.vdes);
       log_Gl.archive.vdes = NULL_VOLDES;
     }
   if (log_Gl.archive.unav_archives != NULL)
     {
       free_and_init (log_Gl.archive.unav_archives);
-      log_Gl.archive.unav_archives = NULL;
       log_Gl.archive.max_unav = 0;
       log_Gl.archive.next_unav = 0;
     }
@@ -4400,7 +4526,7 @@ logpb_is_archive_available (int arv_num)
 {
   int i;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (NULL));
 
   if (arv_num >= log_Gl.hdr.nxarv_num || arv_num < 0)
     {
@@ -4454,7 +4580,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
   aligned_hdr_pgbuf = PTR_ALIGN (hdr_pgbuf, MAX_ALIGNMENT);
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
 #if !defined(NDEBUG)
   if (PRM_LOG_TRACE_DEBUG)
@@ -4495,13 +4621,14 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
       if (logpb_is_archive_available (*ret_arv_num) == true
 	  && fileio_is_volume_exist (arv_name) == true)
 	{
-	  vdes = fileio_mount (log_Db_fullname, arv_name,
+	  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name,
 			       LOG_DBLOG_ARCHIVE_VOLID, false, false);
 	  if (vdes != NULL_VOLDES)
 	    {
-	      if (fileio_read (vdes, hdr_pgptr, 0) == NULL)
+	      if (fileio_read (thread_p, vdes, hdr_pgptr, 0, LOG_PAGESIZE)
+		  == NULL)
 		{
-		  fileio_dismount (vdes);
+		  fileio_dismount (thread_p, vdes);
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ,
 			  3, 0, 0, arv_name);
 		  return NULL;
@@ -4557,12 +4684,12 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 	  /* Record number of reads in statistics */
 	  mnt_log_ioreads (thread_p);
 
-	  if (fileio_read (vdes, log_pgptr, phy_pageid) == NULL)
+	  if (fileio_read (thread_p, vdes, log_pgptr, phy_pageid,
+			   LOG_PAGESIZE) == NULL)
 	    {
 	      /* Error reading archive page */
-	      tmp_arv_name =
-		fileio_get_volume_label (fileio_get_volume_id (vdes));
-	      fileio_dismount (vdes);
+	      tmp_arv_name = fileio_get_volume_label_by_fd (vdes);
+	      fileio_dismount (thread_p, vdes);
 	      log_Gl.archive.vdes = NULL_VOLDES;
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3,
 		      pageid, phy_pageid, tmp_arv_name);
@@ -4581,7 +4708,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 	  /* If any archive dismount it */
 	  if (vdes != NULL_VOLDES)
 	    {
-	      fileio_dismount (vdes);
+	      fileio_dismount (thread_p, vdes);
 	      vdes = NULL_VOLDES;
 	    }
 
@@ -4727,7 +4854,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 					log_Prefix, *ret_arv_num);
 	  retry = 3;
 	  while (retry != 0 && retry != 1
-		 && (vdes = fileio_mount (log_Db_fullname, arv_name,
+		 && (vdes = fileio_mount (thread_p, log_Db_fullname, arv_name,
 					  LOG_DBLOG_ARCHIVE_VOLID,
 					  false, false)) == NULL_VOLDES)
 	    {
@@ -4773,7 +4900,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 	      switch (retry)
 		{
 		case 0:	/* quit */
-		  logpb_set_unavialble_archive (*ret_arv_num);
+		  logpb_set_unavailable_archive (*ret_arv_num);
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LOG_NOTIN_ARCHIVE, 1, pageid);
 		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
@@ -4781,7 +4908,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 		  return NULL;
 
 		case 1:	/* Not available */
-		  logpb_set_unavialble_archive (*ret_arv_num);
+		  logpb_set_unavailable_archive (*ret_arv_num);
 		  break;
 
 		case 3:	/* Relocate */
@@ -4816,9 +4943,10 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, PAGEID pageid,
 	      /* Record number of reads in statistics */
 	      mnt_log_ioreads (thread_p);
 
-	      if (fileio_read (vdes, hdr_pgptr, 0) == NULL)
+	      if (fileio_read (thread_p, vdes, hdr_pgptr, 0, LOG_PAGESIZE)
+		  == NULL)
 		{
-		  fileio_dismount (vdes);
+		  fileio_dismount (thread_p, vdes);
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ,
 			  3, 0, 0, arv_name);
 		  return NULL;
@@ -4894,7 +5022,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
   LOG_LSA smallest_lsa, newsmallest_lsa;
   int vdes = NULL_VOLDES;
   const char *catmsg;
-  int first_arv_num_to_delete, last_arv_num_to_delete;
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
@@ -4905,45 +5032,14 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   old_flush_type = flush_info->flush_type;
   flush_info->flush_type = LOG_FLUSH_DIRECT;
 
-  if ((log_Gl.hdr.nxarv_num - (log_Gl.hdr.last_deleted_arv_num + 1))
-      > PRM_LOG_MAX_ARCHIVES)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED, 1, PRM_LOG_MAX_ARCHIVES);
-
-      /* Remove the log archives at this point */
-      first_arv_num_to_delete = log_Gl.hdr.last_deleted_arv_num + 1;
-      last_arv_num_to_delete = log_Gl.hdr.nxarv_num - PRM_LOG_MAX_ARCHIVES;
-      if (log_Gl.hdr.last_arv_num_for_syscrashes != -1)
-	{
-	  last_arv_num_to_delete = MIN (last_arv_num_to_delete,
-					log_Gl.hdr.
-					last_arv_num_for_syscrashes);
-	}
-      last_arv_num_to_delete--;
-      if (last_arv_num_to_delete >= first_arv_num_to_delete)
-	{
-	  catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
-				   MSGCAT_SET_LOG,
-				   MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED);
-	  if (catmsg == NULL)
-	    {
-	      catmsg = "Number of active log archives has been exceeded"
-		" the max desired number.";
-	    }
-	  logpb_remove_archive_logs_internal (first_arv_num_to_delete,
-					      last_arv_num_to_delete, catmsg,
-					      true);
-	  log_Gl.hdr.last_deleted_arv_num = last_arv_num_to_delete;
-	  logpb_flush_header (thread_p);	/* to get rid of archives */
-	}
-      /* It will continue.... */
-    }
+#if !defined(SERVER_MODE)
+  logpb_remove_archive_logs_exceed_limit (thread_p);
+#endif
 
   if (log_Gl.hdr.nxarv_pageid >= log_Gl.hdr.append_lsa.pageid)
     {
@@ -4955,23 +5051,18 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
     }
 
   bg_arv_info = &log_Gl.bg_archive_info;
-  if (PRM_LOG_BACKGROUND_ARCHIVING)
-    {
-      MUTEX_LOCK (rv, bg_arv_info->bg_archiving_mutex);
-    }
-
   if (log_Gl.archive.vdes != NULL_VOLDES)
     {
-      fileio_dismount (log_Gl.archive.vdes);
+      fileio_dismount (thread_p, log_Gl.archive.vdes);
       log_Gl.archive.vdes = NULL_VOLDES;
     }
 
-  malloc_arv_hdr_pgptr = (LOG_PAGE *) malloc (IO_PAGESIZE);
+  malloc_arv_hdr_pgptr = (LOG_PAGE *) malloc (LOG_PAGESIZE);
   if (malloc_arv_hdr_pgptr == NULL)
     {
       goto error;
     }
-  memset (malloc_arv_hdr_pgptr, 0, IO_PAGESIZE);
+  memset (malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE);
 
   /* Must force the log here to avoid nasty side effects */
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
@@ -5057,7 +5148,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 
 #if !defined(SERVER_MODE)
 	  pgbuf_flush_check_point (thread_p, &smallest_lsa, &newsmallest_lsa);
-	  if (fileio_synchronize_all (!PRM_SUPPRESS_FSYNC, false) != NO_ERROR)
+	  if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
 	    {
 	      LSA_SET_NULL (&newsmallest_lsa);
 	    }
@@ -5070,8 +5161,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	    {
 	      pgbuf_flush_check_point (thread_p, &smallest_lsa,
 				       &newsmallest_lsa);
-	      if (fileio_synchronize_all (!PRM_SUPPRESS_FSYNC, false) !=
-		  NO_ERROR)
+	      if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
 		{
 		  LSA_SET_NULL (&newsmallest_lsa);
 		}
@@ -5147,11 +5237,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	      free_and_init (malloc_arv_hdr_pgptr);
 	      flush_info->flush_type = old_flush_type;
 
-	      if (PRM_LOG_BACKGROUND_ARCHIVING)
-		{
-		  MUTEX_UNLOCK (bg_arv_info->bg_archiving_mutex);
-		}
-
 	      return;
 	    }
 	}
@@ -5195,7 +5280,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
     {
       vdes = fileio_format (thread_p, log_Db_fullname, arv_name,
 			    LOG_DBLOG_ARCHIVE_VOLID, arvhdr->npages + 1,
-			    false, false, false);
+			    false, false, false, LOG_PAGESIZE);
       if (vdes == NULL_VOLDES)
 	{
 	  /* Unable to create archive log to archive */
@@ -5225,7 +5310,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 		    "logpb_archive_active_log, arvhdr->fpageid = %d\n",
 		    arvhdr->fpageid);
 
-      if (fileio_write (vdes, malloc_arv_hdr_pgptr, 0) == NULL)
+      if (fileio_write (thread_p, vdes, malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE)
+	  == NULL)
 	{
 	  /* Error archiving header page into archive */
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3,
@@ -5244,7 +5330,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
       else
 	{
 	  assert (!PRM_LOG_BACKGROUND_ARCHIVING
-		  || bg_arv_info->vdes == NULL_VOLDES);
+		  || bg_arv_info->vdes != NULL_VOLDES);
 
 	  pageid = arvhdr->fpageid;
 	  ar_phy_pageid = 1;
@@ -5266,8 +5352,9 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 
 	  /* Record number of writes in statistics */
 	  mnt_log_iowrites (thread_p);
-	  if (fileio_write_pages (vdes, (char *) log_pgptr, ar_phy_pageid,
-				  num_pages) == NULL)
+	  if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr,
+				  ar_phy_pageid, num_pages,
+				  LOG_PAGESIZE) == NULL)
 	    {
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3,
 		      pageid, ar_phy_pageid, arv_name);
@@ -5279,25 +5366,18 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	{
 	  goto error;
 	}
-      if (fileio_write (vdes, (char *) log_pgptr, ar_phy_pageid) == NULL)
+      if (fileio_write (thread_p, vdes, (char *) log_pgptr, ar_phy_pageid,
+			LOG_PAGESIZE) == NULL)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3,
 		  pageid, ar_phy_pageid, arv_name);
 	  goto error;
 	}
 
-      /*
-       * Make sure that the whole log archive is in physical storage at this
-       * moment
-       */
-      if (fileio_synchronize (vdes, !PRM_SUPPRESS_FSYNC) == NULL_VOLDES)
-	{
-	  goto error;
-	}
 
       if (PRM_LOG_BACKGROUND_ARCHIVING && bg_arv_info->vdes != NULL_VOLDES)
 	{
-	  fileio_dismount (vdes);
+	  fileio_dismount (thread_p, vdes);
 	  vdes = NULL_VOLDES;
 	  bg_arv_info->vdes = NULL_VOLDES;
 
@@ -5308,9 +5388,20 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	      goto error;
 	    }
 
-	  vdes = fileio_mount (log_Db_fullname, arv_name,
+	  vdes = fileio_mount (thread_p, log_Db_fullname, arv_name,
 			       LOG_DBLOG_ARCHIVE_VOLID, 0, false);
 	  if (vdes == NULL_VOLDES)
+	    {
+	      goto error;
+	    }
+	}
+      else
+	{
+	  /*
+	   * Make sure that the whole log archive is in physical storage at this
+	   * moment
+	   */
+	  if (fileio_synchronize (thread_p, vdes, arv_name) == NULL_VOLDES)
 	    {
 	      goto error;
 	    }
@@ -5335,9 +5426,9 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
   logpb_flush_header (thread_p);
 
 #if 0
-  if (PRM_SUPPRESS_FSYNC)
+  if (PRM_SUPPRESS_FSYNC != 0)
     {
-      fileio_synchronize (log_Gl.append.vdes, !PRM_SUPPRESS_FSYNC);
+      fileio_synchronize (thread_p, log_Gl.append.vdes);
     }
 #endif
 
@@ -5419,7 +5510,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 					 log_Name_bg_archive,
 					 LOG_DBLOG_BG_ARCHIVE_VOLID,
 					 log_Gl.hdr.npages, false,
-					 false, false);
+					 false, false, LOG_PAGESIZE);
       if (bg_arv_info->vdes != NULL_VOLDES)
 	{
 	  bg_arv_info->start_page_id = log_Gl.hdr.nxarv_pageid;
@@ -5434,8 +5525,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 			"Unable to create temporary archive log %s\n",
 			log_Name_bg_archive);
 	}
-
-      MUTEX_UNLOCK (bg_arv_info->bg_archiving_mutex);
     }
 
   er_log_debug (ARG_FILE_LINE,
@@ -5458,22 +5547,84 @@ error:
 
   if (vdes != NULL_VOLDES)
     {
-      fileio_dismount (vdes);
-      fileio_unformat (arv_name);
+      fileio_dismount (thread_p, vdes);
+      fileio_unformat (thread_p, arv_name);
     }
 
   if (PRM_LOG_BACKGROUND_ARCHIVING)
     {
       if (bg_arv_info->vdes != NULL_VOLDES && bg_arv_info->vdes != vdes)
 	{
-	  fileio_dismount (bg_arv_info->vdes);
+	  fileio_dismount (thread_p, bg_arv_info->vdes);
 	}
-      fileio_unformat (log_Name_bg_archive);
+      fileio_unformat (thread_p, log_Name_bg_archive);
       bg_arv_info->vdes = NULL_VOLDES;
-      MUTEX_UNLOCK (bg_arv_info->bg_archiving_mutex);
     }
 
   logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_archive_active_log");
+}
+
+void
+logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p)
+{
+  int first_arv_num_to_delete = -1;
+  int last_arv_num_to_delete = -1;
+  int lowest_arv_num_for_backup = -1;
+  int highest_arv_num_for_backup = -1;
+  char *catmsg;
+
+  if (PRM_LOG_MAX_ARCHIVES == INT_MAX)
+    {
+      return;
+    }
+
+  LOG_CS_ENTER (thread_p);
+
+  if ((log_Gl.hdr.nxarv_num - (log_Gl.hdr.last_deleted_arv_num + 1))
+      > PRM_LOG_MAX_ARCHIVES)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+	      ER_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED, 1, PRM_LOG_MAX_ARCHIVES);
+
+      /* Remove the log archives at this point */
+      first_arv_num_to_delete = log_Gl.hdr.last_deleted_arv_num + 1;
+      last_arv_num_to_delete = log_Gl.hdr.nxarv_num - PRM_LOG_MAX_ARCHIVES;
+      if (log_Gl.hdr.last_arv_num_for_syscrashes != -1)
+	{
+	  last_arv_num_to_delete = MIN (last_arv_num_to_delete,
+					log_Gl.hdr.
+					last_arv_num_for_syscrashes);
+	}
+      last_arv_num_to_delete--;
+      if (last_arv_num_to_delete >= first_arv_num_to_delete)
+	{
+	  log_Gl.hdr.last_deleted_arv_num = last_arv_num_to_delete;
+	  logpb_flush_header (thread_p);	/* to get rid of archives */
+	}
+      lowest_arv_num_for_backup = log_Gl.hdr.lowest_arv_num_for_backup;
+      highest_arv_num_for_backup = log_Gl.hdr.highest_arv_num_for_backup;
+    }
+
+  LOG_CS_EXIT ();
+
+  if (last_arv_num_to_delete >= 0
+      && last_arv_num_to_delete >= first_arv_num_to_delete)
+    {
+      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
+			       MSGCAT_SET_LOG,
+			       MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED);
+      if (catmsg == NULL)
+	{
+	  catmsg = "Number of active log archives has been exceeded"
+	    " the max desired number.";
+	}
+      logpb_remove_archive_logs_internal (thread_p,
+					  first_arv_num_to_delete,
+					  last_arv_num_to_delete, catmsg,
+					  true, lowest_arv_num_for_backup,
+					  highest_arv_num_for_backup);
+    }
+
 }
 
 /*
@@ -5515,12 +5666,12 @@ logpb_remove_archive_to_page_id (THREAD_ENTRY * thread_p,
   int first_deleted_arv_num;
   int last_deleted_arv_num;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   /* Close any log archives that are opened */
   if (log_Gl.archive.vdes != NULL_VOLDES)
     {
-      fileio_dismount (log_Gl.archive.vdes);
+      fileio_dismount (thread_p, log_Gl.archive.vdes);
       log_Gl.archive.vdes = NULL_VOLDES;
     }
 
@@ -5535,7 +5686,7 @@ logpb_remove_archive_to_page_id (THREAD_ENTRY * thread_p,
 
   if ((!LSA_ISNULL (&newflush_upto_lsa)
        && LSA_LT (&newflush_upto_lsa, &flush_upto_lsa))
-      || fileio_synchronize_all (!PRM_SUPPRESS_FSYNC, false) != NO_ERROR)
+      || fileio_synchronize_all (thread_p, false) != NO_ERROR)
     {
       /* Cannot remove the archives at this moment */
       return;
@@ -5574,15 +5725,20 @@ logpb_remove_archive_to_page_id (THREAD_ENTRY * thread_p,
   if (safe_pageid != NULL_PAGEID)
     {
       last_deleted_arv_num = MIN (last_deleted_arv_num,
-				  logpb_get_remove_archive_num (safe_pageid,
+				  logpb_get_remove_archive_num (thread_p,
+								safe_pageid,
 								last_deleted_arv_num));
     }
 
   if (last_deleted_arv_num >= 0)
     {
-      logpb_remove_archive_logs_internal (first_deleted_arv_num,
+      logpb_remove_archive_logs_internal (thread_p, first_deleted_arv_num,
 					  last_deleted_arv_num, info_reason,
-					  true);
+					  true,
+					  log_Gl.hdr.
+					  lowest_arv_num_for_backup,
+					  log_Gl.hdr.
+					  highest_arv_num_for_backup);
 
       log_Gl.hdr.last_deleted_arv_num = last_deleted_arv_num;
       logpb_flush_header (thread_p);	/* to get rid of archives */
@@ -5600,7 +5756,8 @@ logpb_remove_archive_to_page_id (THREAD_ENTRY * thread_p,
  * NOTE:
  */
 static int
-logpb_get_remove_archive_num (PAGEID safe_pageid, int archive_num)
+logpb_get_remove_archive_num (THREAD_ENTRY * thread_p, PAGEID safe_pageid,
+			      int archive_num)
 {
   struct log_arv_header *arvhdr;
   char arv_name[PATH_MAX];
@@ -5609,7 +5766,7 @@ logpb_get_remove_archive_num (PAGEID safe_pageid, int archive_num)
   LOG_PAGE *arv_hdr_pgptr;
   int vdes;
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (NULL));
 
   aligned_arv_hdr_pgbuf = PTR_ALIGN (arv_hdr_pgbuf, MAX_ALIGNMENT);
   arv_hdr_pgptr = (LOG_PAGE *) aligned_arv_hdr_pgbuf;
@@ -5621,18 +5778,19 @@ logpb_get_remove_archive_num (PAGEID safe_pageid, int archive_num)
       /* open the archive file */
       if (logpb_is_archive_available (archive_num) == true
 	  && fileio_is_volume_exist (arv_name) == true
-	  && ((vdes = fileio_mount (log_Db_fullname, arv_name,
+	  && ((vdes = fileio_mount (thread_p, log_Db_fullname, arv_name,
 				    LOG_DBLOG_ARCHIVE_VOLID, false, false))
 	      != NULL_VOLDES))
 	{
-	  if (fileio_read (vdes, arv_hdr_pgptr, 0) == NULL)
+	  if (fileio_read (thread_p, vdes, arv_hdr_pgptr, 0, LOG_PAGESIZE)
+	      == NULL)
 	    {
-	      fileio_dismount (vdes);
+	      fileio_dismount (thread_p, vdes);
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3,
 		      0, 0, arv_name);
 	      return -1;
 	    }
-	  fileio_dismount (vdes);
+	  fileio_dismount (thread_p, vdes);
 
 	  arvhdr = (struct log_arv_header *) arv_hdr_pgptr->area;
 	  if (safe_pageid > arvhdr->fpageid + arvhdr->npages)
@@ -5667,24 +5825,24 @@ logpb_get_remove_archive_num (PAGEID safe_pageid, int archive_num)
  *   restore from a fuzzy backup.
  */
 static void
-logpb_remove_archive_logs_internal (int first, int last,
-				    const char *info_reason,
-				    bool check_backup)
+logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first,
+				    int last, const char *info_reason,
+				    bool check_backup,
+				    int lowest_arv_num_for_backup,
+				    int highest_arv_num_for_backup)
 {
   char logarv_name[PATH_MAX];
   int i;
   bool deleted_one = false;	/* true if at least one was deleted */
   int last_bkup_arv_inrange;
 
-  assert (LOG_CS_OWN ());
-
-  last_bkup_arv_inrange = MIN (log_Gl.hdr.highest_arv_num_for_backup, last);
+  last_bkup_arv_inrange = MIN (highest_arv_num_for_backup, last);
 
   for (i = first; i <= last; i++)
     {
       if (check_backup
-	  && log_Gl.hdr.lowest_arv_num_for_backup <= i
-	  && i <= log_Gl.hdr.highest_arv_num_for_backup)
+	  && lowest_arv_num_for_backup <= i
+	  && i <= highest_arv_num_for_backup)
 	{
 
 	  /* mark the previous range (if any) deleted */
@@ -5706,7 +5864,7 @@ logpb_remove_archive_logs_internal (int first, int last,
 	}
       fileio_make_log_archive_name (logarv_name, log_Archive_path, log_Prefix,
 				    i);
-      fileio_unformat (logarv_name);
+      fileio_unformat (thread_p, logarv_name);
       deleted_one = true;
     }
 
@@ -5857,7 +6015,7 @@ logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area, int length,
 
   /*
    * If the data is contained in only one buffer, copy the data in one
-   * statemant, otherwise, copy it in parts
+   * statement, otherwise, copy it in parts
    */
 
   if (log_lsa->offset + length < (int) LOGAREA_SIZE)
@@ -6260,11 +6418,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call pbbuf_flush_check_point()\n");
+  pgbuf_flush_victim_candidate (thread_p, PGBUF_VICTIM_FLUSH_MAX_RATIO);
   pgbuf_flush_check_point (thread_p, &flush_upto_lsa, &tmp_chkpt.redo_lsa);
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call fileio_synchronize_all()\n");
-  if (fileio_synchronize_all (!PRM_SUPPRESS_FSYNC, false) != NO_ERROR)
+  if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
     {
       goto error_cannot_chkpt;
     }
@@ -6330,7 +6489,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	      /*
 	       * Transaction is in the middle of an abort, since rollback does
 	       * is not run in a critical section. Set the undo point to be the
-	       * same than its tail. The recovery process will read the last
+	       * same as its tail. The recovery process will read the last
 	       * record which is likely a compensating one, and find where to
 	       * continue a rollback operation.
 	       */
@@ -6475,8 +6634,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   logpb_end_append (thread_p);
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
   er_log_debug (ARG_FILE_LINE,
-		"logpb_checkpoint: call logpb_flush_all_append-pages()\n");
-  assert (LOG_CS_OWN ());
+		"logpb_checkpoint: call logpb_flush_all_append_pages()\n");
+  assert (LOG_CS_OWN (thread_p));
 
   /*
    * Flush the log data header and update all checkpoints in volumes to
@@ -6548,7 +6707,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       /* Close any log archives that are opened */
       if (log_Gl.archive.vdes != NULL_VOLDES)
 	{
-	  fileio_dismount (log_Gl.archive.vdes);
+	  fileio_dismount (thread_p, log_Gl.archive.vdes);
 	  log_Gl.archive.vdes = NULL_VOLDES;
 	}
 
@@ -6631,11 +6790,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_CS_EXIT ();
 
 #if 0
-  if (PRM_SUPPRESS_FSYNC)
-    {
-      /* have to sync log vol, data vol */
-      fileio_synchronize_all (!PRM_SUPPRESS_FSYNC, true /* include_log */ );
-    }
+  /* have to sync log vol, data vol */
+  fileio_synchronize_all (thread_p, true /* include_log */ );
 #endif
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_FINISHED,
@@ -7122,10 +7278,10 @@ loop:
 			       fileio_get_base_file_name (io_bkup_hdr_p->
 							  db_fullname),
 			       ctime (&tmp_time), io_bkup_hdr_p->unit_num);
-		      (void)
-			fileio_request_user_response
-			(thread_p, FILEIO_PROMPT_DISPLAY_ONLY, old_bkpath,
-			 NULL, NULL, -1, -1, NULL, -1);
+		      fileio_request_user_response (thread_p,
+						    FILEIO_PROMPT_DISPLAY_ONLY,
+						    old_bkpath, NULL, NULL,
+						    -1, -1, NULL, -1);
 		      error_code = ER_FAILED;
 		      goto error;
 		    }
@@ -7141,7 +7297,7 @@ loop:
       /* try to delete the superceded backup volumes */
       if (beenwarned)
 	{
-	  fileio_remove_all_backup (backup_level);
+	  fileio_remove_all_backup (thread_p, backup_level);
 	}
     }
 
@@ -7477,9 +7633,13 @@ loop:
 				   MSGCAT_LOG_LOGINFO_PENDING_ARCHIVES_RELEASED);
 	  if (catmsg)
 	    {
-	      logpb_remove_archive_logs_internal (unneeded_arv_low,
+	      logpb_remove_archive_logs_internal (thread_p, unneeded_arv_low,
 						  unneeded_arv_high, catmsg,
-						  false);
+						  false,
+						  log_Gl.hdr.
+						  lowest_arv_num_for_backup,
+						  log_Gl.hdr.
+						  highest_arv_num_for_backup);
 	    }
 	}
       else
@@ -7566,7 +7726,7 @@ loop:
 	       boot_db_name (), str_tmp);
     }
 
-  fileio_abort_backup (&session, false);
+  fileio_abort_backup (thread_p, &session, false);
 
 #if defined(SERVER_MODE)
   LOG_CS_ENTER (thread_p);
@@ -7583,7 +7743,7 @@ error:
   /*
    * Destroy the backup that has been created.
    */
-  fileio_abort_backup (&session, bkup_in_progress);
+  fileio_abort_backup (thread_p, &session, bkup_in_progress);
 
 failure:
   if (session.verbose_fp)
@@ -7732,6 +7892,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   INT64 db_creation;
   INT64 bkup_match_time = 0;
   PGLENGTH db_iopagesize;
+  PGLENGTH log_page_size;
   float db_compatibility;
   PGLENGTH bkdb_iopagesize;
   float bkdb_compatibility;
@@ -7752,6 +7913,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   char format_string[64];
   INT64 backup_time;
+  REL_COMPATIBILITY compat;
 
   try_level = (FILEIO_BACKUP_LEVEL) r_args->level;
   memset (&session_storage, 0, sizeof (FILEIO_BACKUP_SESSION));
@@ -7765,9 +7927,11 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 
   if (logpb_find_header_parameters (thread_p, db_fullname, logpath,
 				    prefix_logname, &db_iopagesize,
-				    &db_creation, &db_compatibility) == -1)
+				    &log_page_size, &db_creation,
+				    &db_compatibility) == -1)
     {
       db_iopagesize = IO_PAGESIZE;
+      log_page_size = LOG_PAGESIZE;
       db_creation = 0;
       db_compatibility = rel_disk_compatible ();
     }
@@ -7778,7 +7942,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
    */
   if (fileio_is_volume_exist (log_Name_active))
     {
-      lgat_vdes = fileio_mount (db_fullname, log_Name_active,
+      lgat_vdes = fileio_mount (thread_p, db_fullname, log_Name_active,
 				LOG_DBLOG_ACTIVE_VOLID, true, false);
       if (lgat_vdes == NULL_VOLDES)
 	{
@@ -7844,7 +8008,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	    session->bkup.bkuphdr->previnfo[try_level].at_time;
 
 	  /* Clean up previous restore of higher level */
-	  if (fileio_finish_restore (session) == NO_ERROR)
+	  if (fileio_finish_restore (thread_p, session) == NO_ERROR)
 	    {
 	      success = NO_ERROR;
 	    }
@@ -7930,8 +8094,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
        */
       if (backup_volinfo_fp != NULL)
 	{
-	  if (fileio_read_backup_info_entries
-	      (backup_volinfo_fp, FILEIO_FIRST_BACKUP_VOL_INFO) == NO_ERROR)
+	  if (fileio_read_backup_info_entries (backup_volinfo_fp,
+					       FILEIO_FIRST_BACKUP_VOL_INFO)
+	      == NO_ERROR)
 	    {
 	      volnameptr =
 		fileio_get_backup_info_volume_name (try_level,
@@ -8028,7 +8193,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	      if (logpb_check_stop_at_time (session, r_args->stopat,
 					    (time_t) backup_time) != NO_ERROR)
 		{
-		  error_code = fileio_finish_restore (session);
+		  error_code = fileio_finish_restore (thread_p, session);
 
 		  flush_info->flush_type = LOG_FLUSH_NORMAL;
 		  mht_destroy (pages_cache.ht);
@@ -8052,7 +8217,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	      /*
 	       * Reset the page size
 	       */
-	      if (db_set_page_size (bkdb_iopagesize) != bkdb_iopagesize)
+	      if (db_set_page_size (bkdb_iopagesize, log_page_size) !=
+		  NO_ERROR)
 		{
 		  error_code = ER_FAILED;
 		  flush_info->flush_type = LOG_FLUSH_NORMAL;
@@ -8071,7 +8237,11 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	}
 
       /* Can this be moved to restore_continue? */
-      if (db_compatibility != bkdb_compatibility)
+      /* Removed strict condition for checking disk compatibility.
+       * Check it according to the predefined rules.
+       */
+      compat = rel_is_disk_compatible (bkdb_compatibility, NULL);
+      if (compat != REL_FULLY_COMPATIBLE && compat != REL_BACKWARD_COMPATIBLE)
 	{
 	  /* Database is incompatible with current release */
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -8283,7 +8453,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		   boot_db_name (), r_args->level);
 	}
 
-      if (fileio_finish_restore (session) == NO_ERROR)
+      if (fileio_finish_restore (thread_p, session) == NO_ERROR)
 	{
 	  error_code = NO_ERROR;
 	}
@@ -8324,9 +8494,10 @@ error:
 			       MSGCAT_SET_LOG,
 			       MSGCAT_LOG_READ_ERROR_DURING_RESTORE),
 	       session->bkup.name,
-	       ((session->bkup.bkuphdr ==
-		 NULL) ? FILEIO_INITIAL_BACKUP_UNITS : session->bkup.bkuphdr->
-		unit_num), to_volname, session->dbfile.volid);
+	       ((session->bkup.bkuphdr == NULL)
+		? FILEIO_INITIAL_BACKUP_UNITS
+		: session->bkup.bkuphdr->unit_num), to_volname,
+	       session->dbfile.volid);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
 	      1, log_Name_bkupinfo);
@@ -8340,7 +8511,7 @@ error:
 
   if (session != NULL)
     {
-      fileio_abort_restore (session);
+      fileio_abort_restore (thread_p, session);
     }
 
   if (pages_cache.ht != NULL)
@@ -8355,7 +8526,7 @@ error:
 
   if (lgat_vdes != NULL_VOLDES)
     {
-      fileio_dismount (lgat_vdes);
+      fileio_dismount (thread_p, lgat_vdes);
     }
 
   if (!error_expected)
@@ -8679,7 +8850,8 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid,
       return error_code;
     }
 
-  if (fileio_synchronize (from_vdes, !PRM_SUPPRESS_FSYNC) != from_vdes)
+  if (fileio_synchronize (thread_p, from_vdes,
+			  fileio_get_volume_label (from_vdes)) != from_vdes)
     {
       return ER_FAILED;
     }
@@ -8707,13 +8879,13 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid,
 						      LOG_DBCOPY_VOLID);
 
   /*
-     // To set the LSA of temp volume to special temp LSA (-2,-2).
-     // Especially, in case of copydb.
+   * To set the LSA of temp volume to special temp LSA (-2,-2).
+   * Especially, in case of copydb.
    */
   (void) logpb_check_and_reset_temp_lsa (thread_p, LOG_DBCOPY_VOLID);
 
   (void) pgbuf_invalidate_all (thread_p, LOG_DBCOPY_VOLID);
-  fileio_dismount (to_vdes);
+  fileio_dismount (thread_p, to_vdes);
 
   return NO_ERROR;
 }
@@ -8859,7 +9031,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
    * Make sure that no body else is using this database
    */
 
-  to_malloc_log_pgptr = (LOG_PAGE *) malloc (IO_PAGESIZE);
+  to_malloc_log_pgptr = (LOG_PAGE *) malloc (LOG_PAGESIZE);
   if (to_malloc_log_pgptr == NULL)
     {
       error_code = ER_FAILED;
@@ -8876,7 +9048,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
     }
   to_vdes =
     fileio_format (thread_p, to_db_fullname, to_volname, LOG_DBCOPY_VOLID,
-		   log_Gl.hdr.npages + 1, false, true, false);
+		   log_Gl.hdr.npages + 1, false, true, false, LOG_PAGESIZE);
   if (to_vdes == NULL_VOLDES)
     {
       error_code = ER_FAILED;
@@ -8905,10 +9077,11 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   /* Record number of writes in statistics */
   mnt_log_iowrites (thread_p);
 
-  if (fileio_write (to_vdes, to_malloc_log_pgptr, phy_pageid) == NULL)
+  if (fileio_write (thread_p, to_vdes, to_malloc_log_pgptr, phy_pageid,
+		    LOG_PAGESIZE) == NULL)
     {
       error_code = ER_FAILED;
-      fileio_dismount (to_vdes);
+      fileio_dismount (thread_p, to_vdes);
       goto error;
     }
 
@@ -8928,7 +9101,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 			     log_Gl.hdr.npages + 1, &db_creation);
   if (error_code != NO_ERROR)
     {
-      fileio_dismount (to_vdes);
+      fileio_dismount (thread_p, to_vdes);
       goto error;
     }
 
@@ -8938,15 +9111,16 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   /* Now write the log header */
   phy_pageid =
     logpb_to_physical_pageid (to_malloc_log_pgptr->hdr.logical_pageid);
-  if (fileio_write (to_vdes, to_malloc_log_pgptr, phy_pageid) == NULL)
+  if (fileio_write (thread_p, to_vdes, to_malloc_log_pgptr, phy_pageid,
+		    LOG_PAGESIZE) == NULL)
     {
       error_code = ER_FAILED;
-      fileio_dismount (to_vdes);
+      fileio_dismount (thread_p, to_vdes);
       goto error;
     }
 
   /* Dismount the copy of the log */
-  fileio_dismount (to_vdes);
+  fileio_dismount (thread_p, to_vdes);
 
   /*
    * Start the COPYING all INFORMATION VOLUMES
@@ -9031,31 +9205,31 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 
 	  if (volid != NULL_VOLID)
 	    {
-	      error_code =
-		disk_set_link (thread_p, LOG_DBCOPY_VOLID, to_volname, false,
-			       DISK_FLUSH);
+	      error_code = disk_set_link (thread_p, LOG_DBCOPY_VOLID,
+					  to_volname, false, DISK_FLUSH);
 	      if (error_code != NO_ERROR)
 		{
-		  fileio_dismount (to_vdes);
+		  fileio_dismount (thread_p, to_vdes);
 		  goto error;
 		}
 	      logpb_force (thread_p);
-	      error_code = pgbuf_flush_all_unfixed_and_set_lsa_as_null
-		(thread_p, LOG_DBCOPY_VOLID);
+	      error_code =
+		pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p,
+							     LOG_DBCOPY_VOLID);
 	      if (error_code != NO_ERROR)
 		{
-		  fileio_dismount (to_vdes);
+		  fileio_dismount (thread_p, to_vdes);
 		  goto error;
 		}
-	      if (fileio_synchronize (to_vdes,
-				      !PRM_SUPPRESS_FSYNC) != to_vdes)
+	      if (fileio_synchronize (thread_p, to_vdes, to_volname) !=
+		  to_vdes)
 		{
-		  fileio_dismount (to_vdes);
+		  fileio_dismount (thread_p, to_vdes);
 		  error_code = ER_FAILED;
 		  goto error;
 		}
 	      (void) pgbuf_invalidate_all (thread_p, LOG_DBCOPY_VOLID);
-	      fileio_dismount (to_vdes);
+	      fileio_dismount (thread_p, to_vdes);
 	    }
 
 	  if (stop_eof == true)
@@ -9069,8 +9243,8 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	  volid = (VOLID) fromfile_volid;
 
 	  to_vdes =
-	    fileio_mount (log_Db_fullname, to_volname, LOG_DBCOPY_VOLID,
-			  false, false);
+	    fileio_mount (thread_p, log_Db_fullname, to_volname,
+			  LOG_DBCOPY_VOLID, false, false);
 	  if (to_vdes == NULL_VOLDES)
 	    {
 	      error_code = ER_FAILED;
@@ -9115,9 +9289,9 @@ error:
   /* Destroy the log */
 
   fileio_make_log_active_name (to_volname, to_logpath, to_prefix_logname);
-  fileio_unformat (to_volname);
+  fileio_unformat (thread_p, to_volname);
   fileio_make_log_info_name (to_volname, to_logpath, to_prefix_logname);
-  fileio_unformat (to_volname);
+  fileio_unformat (thread_p, to_volname);
 
   /*
    * Rewind the volume information to destroy any created volumes if any
@@ -9136,12 +9310,12 @@ error:
 		{
 		  break;
 		}
-	      fileio_unformat (to_volname);
+	      fileio_unformat (thread_p, to_volname);
 	    }
 	  fclose (to_volinfo_fp);
 	  /* Destroy the volinfo file */
 	  fileio_make_volume_info_name (to_volname, to_db_fullname);
-	  fileio_unformat (to_volname);
+	  fileio_unformat (thread_p, to_volname);
 	}
     }
 
@@ -9290,14 +9464,14 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 
   if (log_Gl.archive.vdes != NULL_VOLDES)
     {
-      fileio_dismount (log_Gl.archive.vdes);
+      fileio_dismount (thread_p, log_Gl.archive.vdes);
       log_Gl.archive.vdes = NULL_VOLDES;
     }
 
   if (PRM_LOG_BACKGROUND_ARCHIVING)
     {
       /* Destroy temporary log archive */
-      fileio_unformat (log_Name_bg_archive);
+      fileio_unformat (thread_p, log_Name_bg_archive);
       log_Gl.bg_archive_info.vdes = NULL_VOLDES;
     }
 
@@ -9312,18 +9486,19 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       if (to_volinfo_fp != NULL)
 	{
 
-	  if (fileio_read_backup_info_entries
-	      (to_volinfo_fp, FILEIO_FIRST_BACKUP_VOL_INFO) == NO_ERROR)
+	  if (fileio_read_backup_info_entries (to_volinfo_fp,
+					       FILEIO_FIRST_BACKUP_VOL_INFO)
+	      == NO_ERROR)
 	    {
 	      /* Remove any backups that have been created up to now */
-	      fileio_remove_all_backup (-1);
+	      fileio_remove_all_backup (thread_p, -1);
 	      fileio_finalize_backup_info (FILEIO_FIRST_BACKUP_VOL_INFO);
 	    }
 
 	  fclose (to_volinfo_fp);
 
 	  /* Destroy the backup volume information */
-	  fileio_unformat (log_Name_bkupinfo);
+	  fileio_unformat (thread_p, log_Name_bkupinfo);
 	}
     }
 
@@ -9340,7 +9515,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
        */
       if (fileio_is_volume_exist (from_volname) == true)
 	{
-	  fileio_unformat (from_volname);
+	  fileio_unformat (thread_p, from_volname);
 	}
     }
 
@@ -9366,21 +9541,21 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   if (extern_rename == true)
     {
       logpb_finalize_pool ();
-      fileio_dismount (log_Gl.append.vdes);
+      fileio_dismount (thread_p, log_Gl.append.vdes);
 
       fileio_make_log_active_name (to_volname, to_logpath, to_prefix_logname);
       if (fileio_rename (LOG_DBLOG_ACTIVE_VOLID, log_Name_active, to_volname)
 	  != NULL)
 	{
-	  log_Gl.append.vdes = fileio_mount (to_db_fullname, to_volname,
-					     LOG_DBLOG_ACTIVE_VOLID, true,
-					     false);
+	  log_Gl.append.vdes =
+	    fileio_mount (thread_p, to_db_fullname, to_volname,
+			  LOG_DBLOG_ACTIVE_VOLID, true, false);
 	}
       else
 	{
-	  log_Gl.append.vdes = fileio_mount (log_Db_fullname, log_Name_active,
-					     LOG_DBLOG_ACTIVE_VOLID, true,
-					     false);
+	  log_Gl.append.vdes =
+	    fileio_mount (thread_p, log_Db_fullname, log_Name_active,
+			  LOG_DBLOG_ACTIVE_VOLID, true, false);
 	  error_code = ER_FAILED;
 	  goto error;
 	}
@@ -9406,8 +9581,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
    * Destroy the old VOLUME INFORMATION AND LOG INFORMATION. Then, create
    * them back.
    */
-  fileio_unformat (log_Name_volinfo);
-  fileio_unformat (log_Name_info);
+  fileio_unformat (thread_p, log_Name_volinfo);
+  fileio_unformat (thread_p, log_Name_info);
 
   error_code = logpb_create_volume_info (to_db_fullname);
   if (error_code != NO_ERROR)
@@ -9534,8 +9709,9 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	{
 	  goto error;
 	}
-      if (fileio_synchronize (fileio_get_volume_descriptor (volid),
-			      !PRM_SUPPRESS_FSYNC) == NULL_VOLDES)
+      if (fileio_synchronize (thread_p,
+			      fileio_get_volume_descriptor (volid),
+			      fileio_get_volume_label (volid)) == NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -9545,16 +9721,16 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 
       if (extern_rename == true)
 	{
-	  fileio_dismount (fileio_get_volume_descriptor (volid));
+	  fileio_dismount (thread_p, fileio_get_volume_descriptor (volid));
 	  if (fileio_rename (volid, from_volname, to_volname) != NULL)
 	    {
-	      (void) fileio_mount (to_db_fullname, to_volname, volid, false,
-				   false);
+	      (void) fileio_mount (thread_p, to_db_fullname, to_volname,
+				   volid, false, false);
 	    }
 	  else
 	    {
-	      (void) fileio_mount (log_Db_fullname, from_volname, volid,
-				   false, false);
+	      (void) fileio_mount (thread_p, log_Db_fullname, from_volname,
+				   volid, false, false);
 	      error_code = ER_FAILED;
 	      goto error;
 	    }
@@ -9682,9 +9858,10 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	}
 
       if (fileio_is_volume_exist (log_Name_active) == false
-	  || (log_Gl.append.vdes = fileio_mount (db_fullname, log_Name_active,
-						 LOG_DBLOG_ACTIVE_VOLID, true,
-						 false)) == NULL_VOLDES)
+	  || (log_Gl.append.vdes =
+	      fileio_mount (thread_p, db_fullname, log_Name_active,
+			    LOG_DBLOG_ACTIVE_VOLID, true,
+			    false)) == NULL_VOLDES)
 	{
 	  /* Unable to mount the active log */
 	  if (er_errid () == ER_IO_MOUNT_LOCKED)
@@ -9716,7 +9893,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	    }
 	  logpb_fetch_header_with_buffer (thread_p, &disk_hdr, log_pgptr);
 	  logpb_finalize_pool ();
-	  fileio_dismount (log_Gl.append.vdes);
+	  fileio_dismount (thread_p, log_Gl.append.vdes);
 	  log_Gl.append.vdes = NULL_VOLDES;
 	  loghdr = &disk_hdr;
 	  /*
@@ -9727,11 +9904,12 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	    {
 	      loghdr = NULL;
 	    }
-	  else if (loghdr->db_iopagesize != IO_PAGESIZE)
+	  else if (loghdr->db_iopagesize != IO_PAGESIZE
+		   || loghdr->db_logpagesize != LOG_PAGESIZE)
 	    {
 	      /* Pagesize is incorrect,...reset it and call again... */
-	      if (db_set_page_size (loghdr->db_iopagesize) !=
-		  loghdr->db_iopagesize)
+	      if (db_set_page_size (loghdr->db_iopagesize,
+				    loghdr->db_logpagesize) != NO_ERROR)
 		{
 		  loghdr = NULL;
 		}
@@ -9785,7 +9963,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 		case LOG_DBLOG_ACTIVE_VOLID:
 		  continue;
 		default:
-		  fileio_unformat (vol_fullname);
+		  fileio_unformat (thread_p, vol_fullname);
 		}
 	    }
 
@@ -9794,7 +9972,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       else
 	{
 	  /* Destory at least the database main volume */
-	  fileio_unformat (db_fullname);
+	  fileio_unformat (thread_p, db_fullname);
 	}
     }
   else
@@ -9814,15 +9992,16 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	       * dismounted
 	       */
 	      strcpy (vol_fullname, vlabel);
-	      fileio_dismount (fileio_get_volume_descriptor (volid));
-	      fileio_unformat (vol_fullname);
+	      fileio_dismount (thread_p,
+			       fileio_get_volume_descriptor (volid));
+	      fileio_unformat (thread_p, vol_fullname);
 	    }
 	}
     }
 
   /* Destroy the database volume information */
   fileio_make_volume_info_name (vol_fullname, db_fullname);
-  fileio_unformat (vol_fullname);
+  fileio_unformat (thread_p, vol_fullname);
 
   if (force_delete)
     {
@@ -9835,18 +10014,19 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       if (db_volinfo_fp != NULL)
 	{
 
-	  if (fileio_read_backup_info_entries
-	      (db_volinfo_fp, FILEIO_FIRST_BACKUP_VOL_INFO) == NO_ERROR)
+	  if (fileio_read_backup_info_entries (db_volinfo_fp,
+					       FILEIO_FIRST_BACKUP_VOL_INFO)
+	      == NO_ERROR)
 	    {
 	      /* Remove any backups that have been created up to now */
-	      fileio_remove_all_backup (-1);
+	      fileio_remove_all_backup (thread_p, -1);
 	      fileio_finalize_backup_info (FILEIO_FIRST_BACKUP_VOL_INFO);
 	    }
 
 	  fclose (db_volinfo_fp);
 
 	  /* Now, destroy the backup volume information */
-	  fileio_unformat (log_Name_bkupinfo);
+	  fileio_unformat (thread_p, log_Name_bkupinfo);
 	}
     }
 
@@ -9858,7 +10038,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   if (log_Gl.trantable.area != NULL && log_Gl.append.log_pgptr != NULL
       && log_Gl.archive.vdes != NULL_VOLDES)
     {
-      fileio_dismount (log_Gl.archive.vdes);
+      fileio_dismount (thread_p, log_Gl.archive.vdes);
       log_Gl.archive.vdes = NULL_VOLDES;
     }
 
@@ -9869,14 +10049,14 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	{
 	  fileio_make_log_archive_name (vol_fullname, log_Archive_path,
 					log_Prefix, i);
-	  fileio_unformat (vol_fullname);
+	  fileio_unformat (thread_p, vol_fullname);
 	}
     }
 
   if (PRM_LOG_BACKGROUND_ARCHIVING)
     {
       /* Destroy temporary log archive */
-      fileio_unformat (log_Name_bg_archive);
+      fileio_unformat (thread_p, log_Name_bg_archive);
       log_Gl.bg_archive_info.vdes = NULL_VOLDES;
     }
 
@@ -9888,14 +10068,14 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       logtb_undefine_trantable (thread_p);
       if (log_Gl.append.vdes != NULL_VOLDES)
 	{
-	  fileio_dismount (log_Gl.append.vdes);
+	  fileio_dismount (thread_p, log_Gl.append.vdes);
 	  log_Gl.append.vdes = NULL_VOLDES;
 	}
       log_Gl.archive.vdes = NULL_VOLDES;
     }
 
-  fileio_unformat (log_Name_active);
-  fileio_unformat (log_Name_info);
+  fileio_unformat (thread_p, log_Name_active);
+  fileio_unformat (thread_p, log_Name_info);
 
   return NO_ERROR;
 }
@@ -10050,7 +10230,7 @@ logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit,
 	}
     }
 
-  (void) fileio_synchronize_all (!PRM_SUPPRESS_FSYNC, false);
+  (void) fileio_synchronize_all (thread_p, false);
 
   (void) fflush (stderr);
   (void) fflush (stdout);
@@ -10244,6 +10424,8 @@ logpb_must_archive_last_log_page (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;
   int tran_index;
 
+  assert (LOG_CS_OWN (thread_p));
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
@@ -10253,11 +10435,8 @@ logpb_must_archive_last_log_page (THREAD_ENTRY * thread_p)
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
-  LOG_CS_ENTER (thread_p);
-
   log_append_dummy_record (thread_p, tdes, LOG_DUMMY_FILLPAGE_FORARCHIVE);
-
-  LOG_CS_EXIT ();
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
 
   return NO_ERROR;
 }
@@ -10452,7 +10631,7 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  assert (LOG_CS_OWN ());
+  assert (LOG_CS_OWN (thread_p));
 
   assert (flush_info->toflush != NULL);
 
@@ -10523,14 +10702,11 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
 
       assert (flush_info->toflush[loop] != NULL);
     }
-  if (flush_count > 0)
+
+  /* dual writing (Background archiving) */
+  if (PRM_LOG_BACKGROUND_ARCHIVING)
     {
-      if (fileio_synchronize (log_Gl.append.vdes, !PRM_SUPPRESS_FSYNC) ==
-	  NULL_VOLDES)
-	{
-	  goto error;
-	}
-      log_Stat.total_sync_count++;
+      logpb_write_toflush_pages_to_archive (thread_p);
     }
 
   LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
@@ -10541,9 +10717,21 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
 
   if (flush_count > 0)
     {
+      log_Stat.total_sync_count++;
       log_Stat.flush_pages_call_count++;
       log_Stat.last_flush_count_by_LFT = flush_count;
       log_Stat.total_flush_count_by_LFT += flush_count;
+
+      if (PRM_SUPPRESS_FSYNC == 0
+	  || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
+	{
+	  if (fileio_synchronize (thread_p,
+				  log_Gl.append.vdes,
+				  log_Name_active) == NULL_VOLDES)
+	    {
+	      return;
+	    }
+	}
     }
   else
     {
@@ -10551,14 +10739,6 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
     }
 
   assert (flush_count <= flush_expected);
-
-  return;
-
-error:
-
-  LOG_MUTEX_UNLOCK (log_Pb.lpb_mutex);
-  LOG_MUTEX_UNLOCK (flush_info->flush_mutex);
-
   return;
 }
 
@@ -10567,19 +10747,18 @@ error:
  *
  * return:
  *
- * NOTE:
+ * NOTE: this function is called by log_initialize_internal only
+ *       (in server startup time)
  */
 int
 logpb_background_archiving (THREAD_ENTRY * thread_p)
 {
   char log_pgbuf[IO_MAX_PAGE_SIZE * LOGPB_IO_NPAGES + MAX_ALIGNMENT];
   char *aligned_log_pgbuf;
-  char tmp_arv_name[PATH_MAX];
   LOG_PAGE *log_pgptr;
   int page_id, phy_pageid, last_page_id;
   int num_pages = 0;
   int vdes;
-  int rv;
   int error_code = NO_ERROR;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info;
 
@@ -10594,8 +10773,6 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
     {
       return NO_ERROR;
     }
-
-  MUTEX_LOCK (rv, bg_arv_info->bg_archiving_mutex);
 
   last_page_id = log_Gl.hdr.chkpt_lsa.pageid - 1;
   page_id = bg_arv_info->current_page_id;
@@ -10617,8 +10794,8 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
 
       /* Record number of writes in statistics */
       mnt_log_iowrites (thread_p);
-      if (fileio_write_pages (vdes, (char *) log_pgptr, phy_pageid,
-			      num_pages) == NULL)
+      if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr, phy_pageid,
+			      num_pages, LOG_PAGESIZE) == NULL)
 	{
 	  error_code = ER_LOG_WRITE;
 	  goto error;
@@ -10630,7 +10807,7 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
 error:
   if (error_code == ER_LOG_WRITE || error_code == ER_LOG_READ)
     {
-      fileio_dismount (bg_arv_info->vdes);
+      fileio_dismount (thread_p, bg_arv_info->vdes);
       bg_arv_info->vdes = NULL_VOLDES;
       bg_arv_info->start_page_id = NULL_PAGEID;
       bg_arv_info->current_page_id = NULL_PAGEID;
@@ -10641,8 +10818,6 @@ error:
 		    bg_arv_info->start_page_id,
 		    bg_arv_info->current_page_id, error_code);
     }
-
-  MUTEX_UNLOCK (bg_arv_info->bg_archiving_mutex);
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_background_archiving end, hdr->start_page_id = %d, "
@@ -10727,7 +10902,7 @@ logpb_dump_parameter (FILE * outfp)
 {
   fprintf (outfp, "Log Paramters:\n");
 
-  fprintf (outfp, "\treplcation_meta_flush_interval (sec) : %d\n",
+  fprintf (outfp, "\treplication_meta_flush_interval (sec) : %d\n",
 	   PRM_LOG_HEADER_FLUSH_INTERVAL);
 
   fprintf (outfp, "\tgroup_commit_interval_msec : %d\n",
@@ -10736,7 +10911,7 @@ logpb_dump_parameter (FILE * outfp)
   fprintf (outfp, "\tasync_commit : %s\n",
 	   PRM_LOG_ASYNC_COMMIT ? "on" : "off");
 
-  fprintf (outfp, "\bg_flush_interval_msecs : %d\n",
+  fprintf (outfp, "\tbg_flush_interval_msecs : %d\n",
 	   PRM_LOG_BG_FLUSH_INTERVAL_MSECS);
 
   fprintf (outfp, "\tbg_flush_num_pages : %d\n", PRM_LOG_BG_FLUSH_NUM_PAGES);
@@ -10773,8 +10948,10 @@ logpb_dump_runtime (FILE * outfp)
 	   log_Stat.async_commit_request_count);
 
   if (log_Stat.flushall_append_pages_call_count != 0)
-    temp = log_Stat.flushall_append_pages_call_count -
-      log_Stat.direct_flush_count;
+    {
+      temp = (log_Stat.flushall_append_pages_call_count
+	      - log_Stat.direct_flush_count);
+    }
 
   fprintf (outfp, "\tgroup commit grouping rate = %f\n",
 	   (double) log_Stat.gc_commit_request_count / temp);
@@ -10784,7 +10961,9 @@ logpb_dump_runtime (FILE * outfp)
 
   temp = 1;
   if (log_Stat.gc_commit_request_count != 0)
-    temp = log_Stat.gc_commit_request_count;
+    {
+      temp = log_Stat.gc_commit_request_count;
+    }
 
   fprintf (outfp, "\tavg group commit wait time = %f\n",
 	   log_Stat.gc_total_wait_time / temp);
@@ -10800,7 +10979,9 @@ logpb_dump_runtime (FILE * outfp)
 
   temp = 1;
   if (log_Stat.flush_pages_call_count != 0)
-    temp = log_Stat.flush_pages_call_count;
+    {
+      temp = log_Stat.flush_pages_call_count;
+    }
 
   fprintf (outfp, "\tavg background flush pages count = %f\n",
 	   (double) log_Stat.total_flush_count_by_LFT / temp);
