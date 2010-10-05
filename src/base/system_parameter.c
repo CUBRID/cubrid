@@ -122,6 +122,8 @@ static const char sysprm_conf_file_name[] = "cubrid.conf";
 #define PRM_HIDDEN          0x00010000	/* is hidden */
 #define PRM_RELOADABLE      0x00020000	/* is reloadable */
 #define PRM_INTEGER_LIST    0x00040000	/* is integer list value */
+#define PRM_COMPOUND        0x00080000	/* sets the value of several others */
+#define PRM_TEST_CHANGE     0x00100000	/* can only be changed in the test mode */
 
 /*
  * Macros to access bit fields
@@ -146,6 +148,8 @@ static const char sysprm_conf_file_name[] = "cubrid.conf";
 #define PRM_IS_FOR_SERVER(x)      (x & PRM_FOR_SERVER)
 #define PRM_IS_HIDDEN(x)          (x & PRM_HIDDEN)
 #define PRM_IS_RELOADABLE(x)      (x & PRM_RELOADABLE)
+#define PRM_IS_COMPOUND(x)        (x & PRM_COMPOUND)
+#define PRM_TEST_CHANGE_ONLY(x)   (x & PRM_TEST_CHANGE)
 
 /*
  * Macros to manipulate bit fields
@@ -220,9 +224,9 @@ static float prm_bt_unfill_factor_lower = 0.0f;
 static float prm_bt_unfill_factor_upper = 0.35f;
 
 float PRM_BT_OID_NBUFFERS = FLT_MIN;
-static float prm_bt_oid_nbuffers_default = 4.0;
-static float prm_bt_oid_nbuffers_lower = 0.05;
-static float prm_bt_oid_nbuffers_upper = 16.0;
+static float prm_bt_oid_nbuffers_default = 4.0f;
+static float prm_bt_oid_nbuffers_lower = 0.05f;
+static float prm_bt_oid_nbuffers_upper = 16.0f;
 
 bool PRM_BT_INDEX_SCAN_OID_ORDER = false;
 static bool prm_bt_index_scan_oid_order_default = false;
@@ -349,9 +353,9 @@ bool PRM_QUERY_MODE_SYNC = false;
 static bool prm_query_mode_sync_default = false;
 
 int PRM_INSERT_MODE = INT_MIN;
-static int prm_insert_mode_default = 1;
-static int prm_insert_mode_lower = 1;
-static int prm_insert_mode_upper = 7;
+static int prm_insert_mode_default = 1 + 8 + 16;
+static int prm_insert_mode_lower = 0;
+static int prm_insert_mode_upper = 31;
 
 int PRM_LK_MAX_SCANID_BIT = INT_MIN;
 static int prm_lk_max_scanid_bit_default = 32;
@@ -391,6 +395,26 @@ static int prm_pb_sync_on_nflush_upper = INT_MAX;
 
 bool PRM_ORACLE_STYLE_OUTERJOIN = false;
 static bool prm_oracle_style_outerjoin_default = false;
+
+int PRM_COMPAT_MODE = COMPAT_CUBRID;
+static int prm_compat_mode_default = COMPAT_CUBRID;
+static int prm_compat_mode_lower = COMPAT_CUBRID;
+static int prm_compat_mode_upper = COMPAT_ORACLE;
+
+bool PRM_ANSI_QUOTES = true;
+static bool prm_ansi_quotes_default = true;
+
+bool PRM_TEST_MODE = false;
+static bool prm_test_mode_default = false;
+
+bool PRM_ONLY_FULL_GROUP_BY = false;
+static bool prm_only_full_group_by_default = false;
+
+bool PRM_PIPES_AS_CONCAT = true;
+static bool prm_pipes_as_concat_default = true;
+
+bool PRM_MYSQL_TRIGGER_CORRELATION_NAMES = false;
+static bool prm_mysql_trigger_correlation_names_default = false;
 
 int PRM_COMPACTDB_PAGE_RECLAIM_ONLY = INT_MIN;
 static int prm_compactdb_page_reclaim_only_default = 0;
@@ -1029,6 +1053,41 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_ORACLE_STYLE_OUTERJOIN,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
+  {PRM_NAME_ANSI_QUOTES,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT |
+    PRM_TEST_CHANGE),
+   (void *) &prm_ansi_quotes_default,
+   (void *) &PRM_ANSI_QUOTES,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_TEST_MODE,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_SERVER
+    | PRM_HIDDEN),
+   (void *) &prm_test_mode_default,
+   (void *) &PRM_TEST_MODE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_ONLY_FULL_GROUP_BY,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT |
+    PRM_USER_CHANGE | PRM_TEST_CHANGE),
+   (void *) &prm_only_full_group_by_default,
+   (void *) &PRM_ONLY_FULL_GROUP_BY,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_PIPES_AS_CONCAT,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT |
+    PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (void *) &prm_pipes_as_concat_default,
+   (void *) &PRM_PIPES_AS_CONCAT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_MYSQL_TRIGGER_CORRELATION_NAMES,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT |
+    PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (void *) &prm_mysql_trigger_correlation_names_default,
+   (void *) &PRM_MYSQL_TRIGGER_CORRELATION_NAMES,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
   {PRM_NAME_COMPACTDB_PAGE_RECLAIM_ONLY,
    (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT),
    (void *) &prm_compactdb_page_reclaim_only_default,
@@ -1489,6 +1548,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_service_server_list_default,
    (void *) &PRM_SERVICE_SERVER_LIST,
    (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  /* All the compound parameters *must* be at the end of the array so that the
+     changes they cause are not overridden by other parameters (for example in
+     sysprm_load_and_init the parameters are set to their default in the order
+     they are found in this array). */
+  {PRM_NAME_COMPAT_MODE,
+   (PRM_REQUIRED | PRM_KEYWORD | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_SERVER
+    | PRM_TEST_CHANGE | PRM_COMPOUND),
+   (void *) &prm_compat_mode_default,
+   (void *) &PRM_COMPAT_MODE,
+   (void *) &prm_compat_mode_upper, (void *) &prm_compat_mode_lower,
    (char *) NULL}
 };
 
@@ -1608,6 +1678,63 @@ static KEYVAL ha_log_applier_state_words[] = {
   {HA_LOG_APPLIER_STATE_ERROR_STR, HA_LOG_APPLIER_STATE_ERROR}
 };
 
+
+static KEYVAL compat_words[] = {
+  {"cubrid", COMPAT_CUBRID},
+  {"default", COMPAT_CUBRID},
+  {"mysql", COMPAT_MYSQL},
+  {"oracle", COMPAT_ORACLE}
+};
+
+static const char *compat_mode_values_PRM_ANSI_QUOTES[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID     */
+  "no",				/* COMPAT_MYSQL      */
+  NULL,				/* COMPAT_ORACLE     */
+  PRM_NAME_ANSI_QUOTES
+};
+
+static const char
+  *compat_mode_values_PRM_ORACLE_STYLE_EMPTY_STRING[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID     */
+  NULL,				/* COMPAT_MYSQL      */
+  "yes",			/* COMPAT_ORACLE     */
+  PRM_NAME_ORACLE_STYLE_EMPTY_STRING
+};
+
+static const char
+  *compat_mode_values_PRM_ORACLE_STYLE_OUTERJOIN[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID     */
+  NULL,				/* COMPAT_MYSQL      */
+  "yes",			/* COMPAT_ORACLE     */
+  PRM_NAME_ORACLE_STYLE_OUTERJOIN
+};
+
+static const char *compat_mode_values_PRM_PIPES_AS_CONCAT[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID     */
+  "no",				/* COMPAT_MYSQL      */
+  NULL,				/* COMPAT_ORACLE     */
+  PRM_NAME_PIPES_AS_CONCAT
+};
+
+/* Oracle's trigger correlation names are not yet supported. */
+static const char
+  *compat_mode_values_PRM_MYSQL_TRIGGER_CORRELATION_NAMES[COMPAT_ORACLE + 2] =
+{
+  NULL,				/* COMPAT_CUBRID     */
+  "yes",			/* COMPAT_MYSQL      */
+  NULL,				/* COMPAT_ORACLE     */
+  PRM_NAME_MYSQL_TRIGGER_CORRELATION_NAMES
+};
+
+static const char **compat_mode_values[] = {
+  compat_mode_values_PRM_ANSI_QUOTES,
+  compat_mode_values_PRM_ORACLE_STYLE_EMPTY_STRING,
+  compat_mode_values_PRM_ORACLE_STYLE_OUTERJOIN,
+  compat_mode_values_PRM_PIPES_AS_CONCAT,
+  compat_mode_values_PRM_MYSQL_TRIGGER_CORRELATION_NAMES
+};
+
+
 /*
  * Message id in the set MSGCAT_SET_PARAMETER
  * in the message catalog MSGCAT_CATALOG_CUBRID (file cubrid.msg).
@@ -1653,6 +1780,10 @@ static SYSPRM_PARAM *prm_find (const char *pname, const char *section);
 static const KEYVAL *prm_keyword (int val, const char *name,
 				  const KEYVAL * tbl, int dim);
 static void prm_tune_parameters (void);
+static int prm_compound_has_changed (SYSPRM_PARAM * prm);
+static void prm_set_compound (SYSPRM_PARAM * param,
+			      const char **compound_param_values[],
+			      const int values_count);
 
 /* conf files that have been loaded */
 #define MAX_NUM_OF_PRM_FILES_LOADED	10
@@ -1763,7 +1894,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
     }
   else
     {
-      base_db_name = basename (db_name);
+      base_db_name = basename ((char *) db_name);
     }
 
 #if !defined (CS_MODE)
@@ -1810,7 +1941,8 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
   if (conf_file != NULL)
     {
       /* use user specified config path and file */
-      strcpy (file_being_dealt_with, conf_file);
+      strncpy (file_being_dealt_with, conf_file,
+	       sizeof (file_being_dealt_with) - 1);
     }
   else
     {
@@ -1841,7 +1973,8 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
    */
   if (conf_file == NULL)
     {
-      sprintf (file_being_dealt_with, "%s", sysprm_conf_file_name);
+      snprintf (file_being_dealt_with, sizeof (file_being_dealt_with) - 1,
+		"%s", sysprm_conf_file_name);
       if (stat (file_being_dealt_with, &stat_buf) == 0)
 	{
 #if !defined(CS_MODE)
@@ -2187,7 +2320,14 @@ prm_change (const char *data, bool check)
 	{
 	  return PRM_ERR_UNKNOWN_PARAM;
 	}
-      if (check == true && !PRM_USER_CAN_CHANGE (prm->flag))
+
+      if (!check
+	  || PRM_USER_CAN_CHANGE (prm->flag)
+	  || (PRM_TEST_CHANGE_ONLY (prm->flag) && PRM_TEST_MODE))
+	{
+	  /* We allow changing the parameter value. */
+	}
+      else
 	{
 	  return PRM_ERR_CANNOT_CHANGE;
 	}
@@ -2328,6 +2468,15 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, bool print_name)
 				 NULL, ha_log_applier_state_words,
 				 DIM (ha_log_applier_state_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_COMPAT_MODE) == 0)
+	{
+	  keyvalp = prm_keyword (PRM_GET_INT (prm->value),
+				 NULL, compat_words, DIM (compat_words));
+	}
+      else
+	{
+	  assert (false);
+	}
       if (keyvalp)
 	{
 	  n = snprintf (buf, len, "%s=\"%s\"", prm->name, keyvalp->key);
@@ -2419,7 +2568,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, bool print_name)
 int
 sysprm_obtain_parameters (char *data, int len)
 {
-  char buf[256], *p, *name, *t;
+  char buf[LINE_MAX], *p, *name, *t;
   int n;
   SYSPRM_PARAM *prm;
 
@@ -2428,7 +2577,7 @@ sysprm_obtain_parameters (char *data, int len)
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (intl_mbs_ncpy (buf, data, 255) == NULL)
+  if (intl_mbs_ncpy (buf, data, LINE_MAX - 1) == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
@@ -2719,6 +2868,14 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
 	  keyvalp = prm_keyword (-1, value, ha_log_applier_state_words,
 				 DIM (ha_log_applier_state_words));
 	}
+      else if (intl_mbs_casecmp (prm->name, PRM_NAME_COMPAT_MODE) == 0)
+	{
+	  keyvalp = prm_keyword (-1, value, compat_words, DIM (compat_words));
+	}
+      else
+	{
+	  assert (false);
+	}
       if (keyvalp)
 	{
 	  val = (int) keyvalp->val;
@@ -2853,11 +3010,36 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
 	}
       *valp = val;
     }
+  else
+    {
+      assert (false);
+    }
+
+  if (PRM_IS_COMPOUND (prm->flag))
+    {
+      prm_compound_has_changed (prm);
+    }
 
   PRM_SET_BIT (PRM_SET, prm->flag);
   /* Indicate that the default value was not used */
   PRM_CLEAR_BIT (PRM_DEFAULT_USED, prm->flag);
   return warning_status;
+}
+
+static int
+prm_compound_has_changed (SYSPRM_PARAM * prm)
+{
+  assert (PRM_IS_COMPOUND (prm->flag));
+
+  if (prm == prm_find (PRM_NAME_COMPAT_MODE, NULL))
+    {
+      prm_set_compound (prm, compat_mode_values, DIM (compat_mode_values));
+    }
+  else
+    {
+      assert (false);
+    }
+  return NO_ERROR;
 }
 
 
@@ -2983,7 +3165,7 @@ prm_find (const char *pname, const char *section)
 
   if (section != NULL)
     {
-      sprintf (buf, "%s::%s", section, pname);
+      snprintf (buf, sizeof (buf) - 1, "%s::%s", section, pname);
       key = buf;
     }
   else
@@ -3228,11 +3410,11 @@ sysprm_final (void)
 
 
 /*
- * prm_tune_parameters - Sets the values of various system parameters depending
- *                       on the value of other parameters
+ * prm_tune_parameters - Sets the values of various system parameters
+ *                       depending on the value of other parameters
  *   return: none
  *
- * Note: Used for providing a mechanism for tuning various system parameters.                                                   *
+ * Note: Used for providing a mechanism for tuning various system parameters.
  *       The parameters are only tuned if the user has not set them
  *       explictly, this can be ascertained by checking if the default
  *       value has been used.
@@ -3457,7 +3639,7 @@ prm_tune_parameters (void)
 #endif
 #endif /* SERVER_MODE */
 
-  if (!log_media_failure_support_prm)
+  if (!PRM_GET_BOOL (log_media_failure_support_prm->value))
     {
       prm_set (log_background_archiving_prm, "no");
     }
@@ -3470,7 +3652,7 @@ prm_tune_parameters (void)
 	  strncpy (host_name, "localhost", sizeof (host_name) - 1);
 	}
 
-      sprintf (newval, "%s@%s", host_name, host_name);
+      snprintf (newval, sizeof (newval) - 1, "%s@%s", host_name, host_name);
       prm_set (ha_node_list_prm, newval);
     }
 
@@ -3512,7 +3694,7 @@ prm_tune_parameters (void)
 	  strncpy (host_name, "localhost", sizeof (host_name) - 1);
 	}
 
-      sprintf (newval, "%s@%s", host_name, host_name);
+      snprintf (newval, sizeof (newval) - 1, "%s@%s", host_name, host_name);
       prm_set (ha_node_list_prm, newval);
     }
 }
@@ -3527,46 +3709,24 @@ prm_tune_parameters (void)
 void
 sysprm_tune_client_parameters (void)
 {
-  char newval[LINE_MAX];
+  char data[LINE_MAX], *newval;
 
   /* those parameters should be same to them of server's */
-
-  strcpy (newval, PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES);
-  if (sysprm_obtain_server_parameters (newval, LINE_MAX) == NO_ERROR)
+  snprintf (data, LINE_MAX, "%s;%s;%s;%s;%s;%s;",
+	    PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES,
+	    PRM_NAME_ORACLE_STYLE_EMPTY_STRING,
+	    PRM_NAME_COMPAT_NUMERIC_DIVISION_SCALE,
+	    PRM_NAME_SINGLE_BYTE_COMPARE,
+	    PRM_NAME_HA_MODE, PRM_NAME_REPLICATION_MODE);
+  if (sysprm_obtain_server_parameters (data, LINE_MAX) == NO_ERROR)
     {
-      prm_change (newval, false);
+      newval = strtok (data, ";");
+      while (newval != NULL)
+	{
+	  prm_change (newval, false);
+	  newval = strtok (NULL, ";");
+	}
     }
-
-  strcpy (newval, PRM_NAME_ORACLE_STYLE_EMPTY_STRING);
-  if (sysprm_obtain_server_parameters (newval, LINE_MAX) == NO_ERROR)
-    {
-      prm_change (newval, false);
-    }
-
-  strcpy (newval, PRM_NAME_COMPAT_NUMERIC_DIVISION_SCALE);
-  if (sysprm_obtain_server_parameters (newval, LINE_MAX) == NO_ERROR)
-    {
-      prm_change (newval, false);
-    }
-
-  strcpy (newval, PRM_NAME_SINGLE_BYTE_COMPARE);
-  if (sysprm_obtain_server_parameters (newval, LINE_MAX) == NO_ERROR)
-    {
-      prm_change (newval, false);
-    }
-
-  strcpy (newval, PRM_NAME_HA_MODE);
-  if (sysprm_obtain_server_parameters (newval, LINE_MAX) == NO_ERROR)
-    {
-      prm_change (newval, false);
-    }
-  strcpy (newval, PRM_NAME_REPLICATION_MODE);
-  if (sysprm_obtain_server_parameters (newval, LINE_MAX) == NO_ERROR)
-    {
-      prm_change (newval, false);
-    }
-
-  return;
 }
 #endif /* CS_MODE */
 
@@ -3586,4 +3746,51 @@ bool
 prm_get_query_mode_sync (void)
 {
   return PRM_QUERY_MODE_SYNC;
+}
+
+/*
+ * prm_set_compound - Sets the values of various system parameters based on
+ *                    the value of a "compound" parameter.
+ *   return: none
+ *   param(in): the compound parameter whose value has changed
+ *   compound_param_values(in): an array of arrays that indicate the name of
+ *                              the parameter to change and its new value.
+ *                              NULL indicates resetting the parameter to its
+ *                              default. The name of the parameter is the last
+ *                              element of the array, 1 past the upper limit
+ *                              of the compound parameter.
+ *   values_count(in): the number of elements in the compound_param_values
+ *                     array
+ */
+static void
+prm_set_compound (SYSPRM_PARAM * param, const char **compound_param_values[],
+		  const int values_count)
+{
+  int i = 0;
+  const int param_value = *(int *) param->value;
+  const int param_upper_limit = *(int *) param->upper_limit;
+
+  assert (PRM_IS_INTEGER (param->flag) || PRM_IS_KEYWORD (param->flag));
+  assert (0 == *(int *) param->lower_limit);
+  assert (param_value <= param_upper_limit);
+
+  for (i = 0; i < values_count; ++i)
+    {
+      const char *compound_param_name =
+	compound_param_values[i][param_upper_limit + 1];
+      const char *compound_param_value =
+	compound_param_values[i][param_value];
+
+      assert (compound_param_name != NULL);
+
+      if (compound_param_value == NULL)
+	{
+	  prm_set_default (prm_find (compound_param_name, NULL));
+	}
+      else
+	{
+	  prm_set (prm_find (compound_param_name, NULL),
+		   compound_param_value);
+	}
+    }
 }

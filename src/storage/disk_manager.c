@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
+#include <assert.h>
 
 #include "disk_manager.h"
 #include "memory_alloc.h"
@@ -229,9 +230,14 @@ static bool disk_get_hint_contiguous_free_numpages (THREAD_ENTRY * thread_p,
 						    arecontiguous_npages,
 						    INT32 * num_freepgs);
 
+static bool disk_check_sector_has_npages (THREAD_ENTRY * thread_p,
+					  INT16 volid, INT32 at_pg1,
+					  INT32 low_allid, INT32 high_allid,
+					  int exp_npages);
 static INT32 disk_id_alloc (THREAD_ENTRY * thread_p, INT16 volid,
-			    INT32 at_pg1, INT32 nalloc, INT32 low_allid,
-			    INT32 high_allid);
+			    DISK_VAR_HEADER * vhdr, INT32 nalloc,
+			    INT32 low_allid, INT32 high_allid,
+			    int allid_type, int exp_npages);
 static int disk_id_dealloc (THREAD_ENTRY * thread_p, INT16 volid,
 			    INT32 at_pg1, INT32 deallid, INT32 ndealloc,
 			    int deallid_type);
@@ -3476,6 +3482,7 @@ xdisk_get_remarks (THREAD_ENTRY * thread_p, INT16 volid)
  *   return: sector identifier
  *   volid(in): Permanent volume identifier
  *   nsects(in): Number of contiguous sectors to allocate
+ *   exp_npages(in): Expected pages that sector will have
  *
  * Note: This function allocates a new sector. If the volume has run out of
  *       sectors, the special sector is returned. The special sector has
@@ -3490,7 +3497,8 @@ xdisk_get_remarks (THREAD_ENTRY * thread_p, INT16 volid)
  *       structures.
  */
 INT32
-disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 nsects)
+disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 nsects,
+		   int exp_npages)
 {
   DISK_VAR_HEADER *vhdr;
   INT32 alloc_sect;
@@ -3531,14 +3539,14 @@ disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid, INT32 nsects)
     }
 
   /* Use the hint to start looking for the next sector */
-  alloc_sect =
-    disk_id_alloc (thread_p, volid, vhdr->sect_alloctb_page1, nsects,
-		   vhdr->hint_allocsect, vhdr->total_sects - 1);
+  alloc_sect = disk_id_alloc (thread_p, volid, vhdr, nsects,
+			      vhdr->hint_allocsect, vhdr->total_sects - 1,
+			      DISK_SECTOR, exp_npages);
   if (alloc_sect == NULL_SECTID)
     {
-      alloc_sect =
-	disk_id_alloc (thread_p, volid, vhdr->sect_alloctb_page1, nsects, 1,
-		       vhdr->hint_allocsect - 1);
+      alloc_sect = disk_id_alloc (thread_p, volid, vhdr, nsects,
+				  1, vhdr->hint_allocsect - 1, DISK_SECTOR,
+				  exp_npages);
     }
 
   if (alloc_sect == NULL_SECTID)
@@ -3715,6 +3723,7 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
   if (sectid == DISK_SECTOR_WITH_ALL_PAGES && near_pageid == NULL_PAGEID)
     {
       near_pageid = DISK_HINT_START_SECT * DISK_SECTOR_NPAGES;
+
       /* For not better estimate assume that the allocated pages are in
          the front of the disk. */
       if (near_pageid < (vhdr->total_pages - vhdr->free_pages))
@@ -3732,17 +3741,16 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
     }
 
   /* First look at the pages after near_pageid */
-  new_pageid =
-    disk_id_alloc (thread_p, volid, vhdr->page_alloctb_page1, npages,
-		   near_pageid, lpageid);
+  new_pageid = disk_id_alloc (thread_p, volid, vhdr, npages, near_pageid,
+			      lpageid, DISK_PAGE, -1);
   if (new_pageid == NULL_PAGEID && near_pageid != fpageid)
     {
       /* Try again from the beginning of the sector. Include the near_pageid
          for multiple pages */
+
       lpageid = near_pageid + npages - 2;
-      new_pageid =
-	disk_id_alloc (thread_p, volid, vhdr->page_alloctb_page1, npages,
-		       fpageid, lpageid);
+      new_pageid = disk_id_alloc (thread_p, volid, vhdr, npages, fpageid,
+				  lpageid, DISK_PAGE, -1);
     }
 
   if (new_pageid == NULL_PAGEID)
@@ -3917,22 +3925,26 @@ disk_scramble_newpages (INT16 volid, INT32 first_pageid, INT32 npages,
  * disk_id_alloc () - Allocate N units from the given allocation bitmap table
  *   return: Unit (i.e., Page/sector) identifier
  *   volid(in): Permanent volume identifier
- *   at_pg1(in): First page of PAT/SAT page
+ *   vhdr(in): Volume header
  *   nalloc(in): Number of pages/sectors to allocate
  *   low_allid(in): First possible allocation page/sector
  *   high_allid(in): Last possible allocation page/sector
+ *   allid_type(in): Unit type (SECTOR or PAGE)
+ *   exp_npages(in): Expected pages that sector will have
  *
  * Note: The "nalloc" units should be allocated from "low_allid" to
  *       "high_allid".
  */
 static INT32
-disk_id_alloc (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_pg1,
-	       INT32 nalloc, INT32 low_allid, INT32 high_allid)
+disk_id_alloc (THREAD_ENTRY * thread_p, INT16 volid, DISK_VAR_HEADER * vhdr,
+	       INT32 nalloc, INT32 low_allid, INT32 high_allid,
+	       int allid_type, int exp_npages)
 {
   int i;
   INT32 nfound = 0;		/* Number of contiguous allocation
 				   pages/sectors */
   INT32 allid = NULL_PAGEID;	/* The founded page/sector */
+  INT32 at_pg1;                 /* First page of PAT/SAT page */
   unsigned char *at_chptr;	/* Pointer to character of Sector/page
 				   allocator table */
   unsigned char *out_chptr;	/* Outside of page */
@@ -3941,8 +3953,19 @@ disk_id_alloc (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_pg1,
   LOG_DATA_ADDR addr;
   DISK_RECV_MTAB_BITS recv;
 
+  assert (allid_type == DISK_SECTOR || allid_type == DISK_PAGE);
+
   addr.vfid = NULL;
   vpid.volid = volid;
+
+  if (allid_type == DISK_SECTOR)
+    {
+      at_pg1 = vhdr->sect_alloctb_page1;
+    }
+  else
+    {
+      at_pg1 = vhdr->page_alloctb_page1;
+    }
 
   /* One allocation table page at a time */
   for (vpid.pageid = (low_allid / DISK_PAGE_BIT) + at_pg1;
@@ -3983,8 +4006,35 @@ disk_id_alloc (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_pg1,
 		  nfound = 0;
 		  allid = NULL_PAGEID;
 		}
+
+	      /* Checking that sector has enough pages for following page allocation. */
+	      if (allid_type == DISK_SECTOR && nalloc == 1 && nfound == 1
+		  && exp_npages > 0 && allid > DISK_SECTOR_WITH_ALL_PAGES)
+		{
+		  int fpageid, lpageid;
+
+		  fpageid = allid * vhdr->sect_npgs;
+		  if (allid + 1 == vhdr->total_sects)
+		    {
+		      lpageid = vhdr->total_pages - 1;
+		    }
+		  else
+		    {
+		      lpageid = fpageid + vhdr->sect_npgs - 1;
+		    }
+
+		  if (disk_check_sector_has_npages (thread_p, volid,
+						    vhdr->page_alloctb_page1,
+						    fpageid, lpageid,
+						    exp_npages) == false)
+		    {
+		      nfound = 0;
+		      allid = NULL_PAGEID;
+		    }
+		}
 	    }
 	}
+
       pgbuf_unfix_and_init (thread_p, addr.pgptr);
     }
 
@@ -4046,6 +4096,73 @@ disk_id_alloc (THREAD_ENTRY * thread_p, INT16 volid, INT32 at_pg1,
     }
 
   return allid;
+}
+
+/*
+ * disk_check_sector_has_npages () - Check sector has N pages
+ *   return: TRUE if sector has more than N pages, else FALSE
+ *   volid(in): Permanent volume identifier
+ *   at_pg1(in): First page of PAT/SAT page
+ *   low_allid(in): First possible allocation page/sector
+ *   high_allid(in): Last possible allocation page/sector
+ *   exp_npages(in): expected pages that sector will have
+ */
+static bool
+disk_check_sector_has_npages (THREAD_ENTRY * thread_p, INT16 volid,
+                              INT32 at_pg1, INT32 low_allid, INT32 high_allid,
+                              int exp_npages)
+{
+  int i;
+  int nfound = 0;               /* Number of contiguous allocation pages */
+  unsigned char *at_chptr;      /* Pointer to page allocator table */
+  unsigned char *out_chptr;     /* Outside of page */
+  VPID vpid;
+  LOG_DATA_ADDR addr;
+
+  addr.vfid = NULL;
+  vpid.volid = volid;
+
+  /* One allocation table page at a time */
+  for (vpid.pageid = (low_allid / DISK_PAGE_BIT) + at_pg1;
+       nfound < exp_npages && low_allid <= high_allid; vpid.pageid++)
+    {
+      addr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+                              PGBUF_UNCONDITIONAL_LATCH);
+      if (addr.pgptr == NULL)
+        {
+          break;
+        }
+
+      /* One byte at a time */
+      addr.offset = ((low_allid - (vpid.pageid - at_pg1) * DISK_PAGE_BIT)
+                     / CHAR_BIT);
+      out_chptr = (unsigned char *) addr.pgptr + DB_PAGESIZE;
+
+      for (at_chptr = (unsigned char *) addr.pgptr + addr.offset;
+           nfound < exp_npages && low_allid <= high_allid
+           && at_chptr < out_chptr; at_chptr++)
+        {
+          /* One bit at a time */
+          for (i = low_allid % CHAR_BIT;
+               i < CHAR_BIT && nfound < exp_npages && low_allid <= high_allid;
+               i++, low_allid++)
+            {
+              if (!disk_bit_is_set (at_chptr, i))
+                {
+                  nfound++;
+                }
+              else
+                {
+                  /* There is not contiguous pages */
+                  nfound = 0;
+                }
+            }
+        }
+
+      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+    }
+
+  return nfound >= exp_npages;
 }
 
 /*
@@ -5354,22 +5471,22 @@ int
 disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   DISK_VAR_HEADER *vhdr;
+  char *vol_label;
 
   vhdr = (DISK_VAR_HEADER *) rcv->data;
+  vol_label = disk_vhdr_get_vol_fullname (vhdr);
 
-  if (fileio_is_volume_exist (disk_vhdr_get_vol_fullname (vhdr)) != true)
+  if (fileio_find_volume_descriptor_with_label (vol_label) == NULL_VOLDES)
     {
       if (vhdr->purpose == DISK_TEMPVOL_TEMP_PURPOSE)
 	{
-	  (void) fileio_format (thread_p, NULL,
-				disk_vhdr_get_vol_fullname (vhdr),
+	  (void) fileio_format (thread_p, NULL, vol_label,
 				vhdr->volid, vhdr->total_pages, false, false,
 				false, IO_PAGESIZE);
 	}
       else
 	{
-	  (void) fileio_format (thread_p, NULL,
-				disk_vhdr_get_vol_fullname (vhdr),
+	  (void) fileio_format (thread_p, NULL, vol_label,
 				vhdr->volid, vhdr->total_pages, true, false,
 				false, IO_PAGESIZE);
 	}

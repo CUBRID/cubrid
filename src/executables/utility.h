@@ -380,7 +380,31 @@ typedef enum
   COMPACTDB_MSG_CANT_TRANSFORM = 19,
   COMPACTDB_MSG_NO_HEAP = 20,
   COMPACTDB_MSG_CANT_UPDATE = 21,
-  COMPACTDB_MSG_FAILED = 22
+  COMPACTDB_MSG_FAILED = 22,
+  COMPACTDB_MSG_ALREADY_STARTED = 23,
+  COMPACTDB_MSG_OUT_OF_RANGE_PAGES = 24,
+  COMPACTDB_MSG_OUT_OF_RANGE_INSTANCE_LOCK_TIMEOUT = 25,
+  COMPACTDB_MSG_TOTAL_OBJECTS = 26,
+  COMPACTDB_MSG_FAILED_OBJECTS = 27,
+  COMPACTDB_MSG_MODIFIED_OBJECTS = 28,
+  COMPACTDB_MSG_BIG_OBJECTS = 29,
+  COMPACTDB_MSG_REPR_DELETED = 30,
+  COMPACTDB_MSG_REPR_CANT_DELETE = 31,
+  COMPACTDB_MSG_ISOLATION_LEVEL_FAILURE = 32,
+  COMPACTDB_MSG_FAILURE = 33,
+  COMPACTDB_MSG_OUT_OF_RANGE_CLASS_LOCK_TIMEOUT = 34,
+  COMPACTDB_MSG_LOCKED_CLASS = 35,
+  COMPACTDB_MSG_INVALID_CLASS = 36,
+  COMPACTDB_MSG_PROCESS_CLASS_ERROR = 37,
+  COMPACTDB_MSG_NOTHING_TO_PROCESS = 38,
+  COMPACTDB_MSG_INVALID_PARAMETERS = 39,
+  COMPACTDB_MSG_UNKNOWN_CLASS_NAME = 40,
+  COMPACTDB_MSG_RECLAIMED = 41,
+  COMPACTDB_MSG_RECLAIM_SKIPPED = 42,
+  COMPACTDB_MSG_RECLAIM_ERROR = 43,
+  COMPACTDB_MSG_PASS3 = 44,
+  COMPACTDB_MSG_HEAP_COMPACT_FAILED = 45,
+  COMPACTDB_MSG_HEAP_COMPACT_SUCCEEDED = 46
 } MSGCAT_COMPACTDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_UNLOADDB */
@@ -614,6 +638,11 @@ typedef struct
 #else
 #define UTIL_EXE_EXT            ""
 #endif
+
+#if defined(WINDOWS)
+#define UTIL_WIN_SERVICE_CONTROLLER_NAME	"ctrlService" UTIL_EXE_EXT
+#endif
+
 #define UTIL_MASTER_NAME        "cub_master" UTIL_EXE_EXT
 #define UTIL_COMMDB_NAME        "cub_commdb" UTIL_EXE_EXT
 #define UTIL_CUBRID_NAME        "cub_server" UTIL_EXE_EXT
@@ -632,6 +661,10 @@ typedef struct
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
+
+#if defined(WINDOWS)
+#define PRINT_SERVICE_NAME	"cubrid service"
+#endif
 
 #define PRINT_MASTER_NAME       "cubrid master"
 #define PRINT_SERVER_NAME       "cubrid server"
@@ -970,6 +1003,20 @@ typedef struct
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'
 #define COMPACT_VERBOSE_L                       "verbose"
+#define COMPACT_INPUT_CLASS_FILE_S              'i'
+#define COMPACT_INPUT_CLASS_FILE_L              "input-class-file"
+#define COMPACT_CS_MODE_S			'C'
+#define COMPACT_CS_MODE_L			"CS-mode"
+#define COMPACT_SA_MODE_S			'S'
+#define COMPACT_SA_MODE_L			"SA-mode"
+#define COMPACT_PAGES_COMMITED_ONCE_S		'p'
+#define COMPACT_PAGES_COMMITED_ONCE_L		"pages-commited-once"
+#define COMPACT_DELETE_OLD_REPR_S		'd'
+#define COMPACT_DELETE_OLD_REPR_L		"delete-old-repr"
+#define COMPACT_INSTANCE_LOCK_TIMEOUT_S		'I'
+#define COMPACT_INSTANCE_LOCK_TIMEOUT_L		"Instance-lock-timeout"
+#define COMPACT_CLASS_LOCK_TIMEOUT_S		'c'
+#define COMPACT_CLASS_LOCK_TIMEOUT_L		"class-lock-timeout"
 
 /* sqlx option list */
 #define CSQL_SA_MODE_S                          'S'
@@ -1095,6 +1142,7 @@ typedef int (*UTILITY_INIT_FUNC) (void);
 extern int utility_initialize (void);
 extern const char *utility_get_generic_message (int message_index);
 extern int check_database_name (const char *name);
+extern int check_new_database_name (const char *name);
 extern int check_volume_name (const char *name);
 extern int utility_get_option_int_value (UTIL_ARG_MAP * arg_map, int arg_ch);
 extern bool utility_get_option_bool_value (UTIL_ARG_MAP * arg_map,
@@ -1166,5 +1214,4 @@ extern int applylogdb (UTIL_FUNCTION_ARG * arg_map);
 
 extern void util_admin_usage (const char *argv0);
 extern void util_admin_version (const char *argv0);
-
 #endif /* _UTILITY_H_ */

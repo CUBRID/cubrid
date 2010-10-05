@@ -231,7 +231,8 @@ db_init (const char *program, int print_version,
   error = boot_initialize_client (&client_credential, &db_path_info,
 				  (bool) overwrite, addmore_vols_file,
 				  npages, (PGLENGTH) desired_pagesize,
-				  log_npages, (PGLENGTH) desired_log_page_size);
+				  log_npages,
+				  (PGLENGTH) desired_log_page_size);
 
   if (more_vol_info_file != NULL)
     {
@@ -970,7 +971,7 @@ db_2pc_attach_transaction (int global_transaction_id)
 
 /*
  * db_2pc_prepare_to_commit_transaction() - This function prepares the
- *    transaction identified by "global_transaction_id" for commitment. The system promoises
+ *    transaction identified by "global_transaction_id" for commitment. The system promises
  *    not to unilaterally abort the transaction. After this function call, the
  *    only API functions that should be executed are db_commit_transaction
  *    & db_abort_transaction.
@@ -1002,6 +1003,21 @@ db_set_interrupt (int set)
 {
   CHECK_CONNECT_VOID ();
   locator_set_sig_interrupt (set);
+}
+
+/*
+ * db_set_suppress_repl_on_transaction : Suppress writing replication logs during
+ *                                       setting the flag on the transaction
+ *
+ * return : void
+ * set(in): Set or clear the flag
+ *
+ */
+void
+db_set_suppress_repl_on_transaction (int set)
+{
+  CHECK_CONNECT_VOID ();
+  log_set_suppress_repl_on_transaction (set);
 }
 
 /*
@@ -1621,7 +1637,7 @@ db_error_code_test (void)
  *    error that was detected by the database.  See the description under
  *    db_error_string for more information on how error descriptions are
  *    maintained.  Normally, an application would use db_error_string
- *    to display error messages to the user.  It may be usefull in some
+ *    to display error messages to the user.  It may be useful in some
  *    cases to let an application examine the error code and conditionalize
  *    execution to handle a particular event.  In these cases, this function
  *    can be used to get the error code.

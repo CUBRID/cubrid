@@ -494,8 +494,6 @@ static VOLID fileio_get_volume_id (int vdes);
 static bool fileio_is_volume_label_equal (THREAD_ENTRY * thread_p,
 					  FILEIO_VOLUME_INFO * vol_info_p,
 					  APPLY_ARG arg);
-static int fileio_find_volume_descriptor_with_label (const char *vlabel);
-
 static void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes,
 				      void *io_pgptr, DKNPAGES npages,
 				      size_t page_size);
@@ -2225,7 +2223,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
  *   npages_toadd(in): Number of pages to add
  *
  * Note: The pages are not sweep_clean/initialized since they are part of
- *       temporary volumes.                                         *
+ *       temporary volumes.
  *
  *       NOTE: No checking for temporary volumes is performed by this function.
  */
@@ -5006,7 +5004,8 @@ fileio_get_directory_path (char *path_p, const char *full_name_p)
 
   base_p = fileio_get_base_file_name (full_name_p);
 
-  assert (base_p > full_name_p);
+  assert (base_p >= full_name_p);
+
   if (base_p == full_name_p)
     {
       /* Same pointer, the file does not contain a path/directory portion. Use
@@ -5818,7 +5817,7 @@ fileio_get_volume_descriptor (VOLID vol_id)
  *   return: Volume Name/label
  *   vlabel(in): I/O volume descriptor
  */
-static int
+int
 fileio_find_volume_descriptor_with_label (const char *vol_label_p)
 {
   FILEIO_VOLUME_INFO *vol_info_p;

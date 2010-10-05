@@ -30,6 +30,7 @@ EXPORTS
     css_windows_startup
     css_get_peer_name
     css_get_sock_name
+    css_check_magic
     cub_vsnprintf
     db_2pc_attach_transaction
     db_2pc_prepare_transaction
@@ -55,6 +56,7 @@ EXPORTS
     db_attribute_domain
     db_attribute_id
     db_attribute_is_auto_increment
+    db_attribute_is_foreign_key
     db_attribute_is_indexed
     db_attribute_is_non_null
     db_attribute_is_primary_key
@@ -121,6 +123,7 @@ EXPORTS
     db_get_all_classes
     db_get_all_objects
     db_get_attribute
+    db_get_attribute_by_name
     db_get_attributes
     db_get_bigint
     db_get_bit
@@ -368,6 +371,7 @@ EXPORTS
     killtran
     checkdb
     plandump
+    paramdump
     unloaddb
     csql
     paramdump
@@ -375,6 +379,7 @@ EXPORTS
     copylogdb
     applylogdb
     statdump
+    compactdb
 ;
 ; libesql reference's functions
 ;
@@ -482,6 +487,7 @@ EXPORTS
     db_col_type
     db_commit_is_needed
     db_constraint_asc_desc
+    db_constraint_prefix_length
     db_copy
     db_cp_colname_list
     db_cp_domain_list

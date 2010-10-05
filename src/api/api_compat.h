@@ -38,6 +38,18 @@ struct db_session
   DB_QUERY_TYPE **type_list;	/* for storing "nice" column headings */
   /* type_list[stmt_ndx] is itself an array.  */
   PT_NODE **statements;		/* statements to be processed in this session */
+  DB_PREPARE_INFO prepared_statements;	/* info required to run the prepared
+					   statements in this session; each
+					   statement is associated a sub-session */
+  DB_EXECUTED_STATEMENT_TYPE *executed_statements;	/* Vector of information on executed statements.
+							   If the statement is PT_EXECUTE_PREPARE we record
+							   the type of the actual statement that got executed.
+							   This is required to answer db_get_query_type_list and
+							   db_get_statement_type after the prepared statement
+							   has been deleted. */
+  bool is_subsession_for_prepared;	/* whether this session is created for
+					   running a prepared statement, as a
+					   sub-session of a "true" client session */
 };
 
 #endif /* _API_COMPAT_H_ */

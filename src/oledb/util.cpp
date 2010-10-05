@@ -184,9 +184,9 @@ HRESULT OpenTable(int hConn, const CComBSTR &strTableName, int *phReq, int *pcRe
 		query.Append(strTableName);
 	} else
 	{
-		query.Append("\"");
+		query.Append("[");
 		query.Append(strTableName);
-		query.Append("\"");
+		query.Append("]");
 	}
 	
 	T_CCI_ERROR err_buf;

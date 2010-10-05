@@ -20,7 +20,7 @@
 
 AUTOMAKE_OPTIONS = foreign
 
-SUBDIRS = include cas sa cs cubrid util broker cm_common cmserver conf msg jdbc java demo contrib
+SUBDIRS = include cas sa cs cubrid util broker cm_common conf msg jdbc java demo contrib cas4mysql cas4oracle
 
 EXTRA_DIST = BUILD_NUMBER COPYING CREDITS README
 

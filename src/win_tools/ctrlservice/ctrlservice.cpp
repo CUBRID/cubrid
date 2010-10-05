@@ -44,7 +44,7 @@ void vctrlService(void);
 void vDelService(void);
 void vStartService(void);
 void vStopService(void);
-
+void vPrintServiceStatus(void);
 
 int _tmain(int argc, char* argv[])
 {
@@ -58,6 +58,10 @@ int _tmain(int argc, char* argv[])
 		}
 		else if (_stricmp(argv[1], "-stop") == 0) {
 			vStopService();
+		}
+		else if (_stricmp (argv[1], "-status") == 0)
+		{
+			vPrintServiceStatus ();
 		}
 		else WriteLog(sLogFile, "Invalid Argument.\n");
 	}
@@ -170,8 +174,16 @@ void vStopService(void)
 	ss.dwCheckPoint					= 0;
 	ss.dwWaitHint					= 0;
 
-
 	ControlService(scHandle,SERVICE_CONTROL_STOP,&ss);
+
+	Sleep (2000);
+
+	do
+	{
+		ControlService (scHandle, SERVICE_CONTROL_INTERROGATE, &ss);
+		Sleep (100);
+	} while (ss.dwCurrentState == SERVICE_STOP_PENDING);
+
 	CloseServiceHandle(scHandle);
 
 	return;
@@ -179,6 +191,8 @@ void vStopService(void)
 
 void vStartService(void)
 {
+	SERVICE_STATUS ss;
+
 	SC_HANDLE scmHandle = OpenSCManager (NULL, NULL, SC_MANAGER_ALL_ACCESS);
 
 	if (scmHandle == NULL) // Perform error handling.
@@ -191,16 +205,49 @@ void vStartService(void)
 
 	StartService(scHandle,0,NULL);
 
+	Sleep(2000);
+
+	do
+	{
+		ControlService (scHandle, SERVICE_CONTROL_INTERROGATE, &ss);
+		Sleep (100);
+	} while (ss.dwCurrentState == SERVICE_START_PENDING);
+
 	CloseServiceHandle(scHandle);
 
 	return;
 }
 
+void
+vPrintServiceStatus ()
+{
+	SERVICE_STATUS ss;
+	SC_HANDLE scmHandle, scHandle;
+	
+	scmHandle = OpenSCManager (NULL, NULL, SC_MANAGER_ALL_ACCESS);
 
+	if (scmHandle == NULL)
+	{
+		return;
+	}
 
+	scHandle = OpenServiceA (scmHandle, "CUBRIDService", SERVICE_ALL_ACCESS);
+	
+	ControlService (scHandle, SERVICE_CONTROL_INTERROGATE, &ss);
 
+	if (ss.dwCurrentState == SERVICE_STOPPED)
+	{
+		fprintf (stdout, "SERVICE_STOPPED\n");
+	}
+	else
+	{
+		fprintf (stdout, "SERVICE_RUNNING\n");
+	}
 
+	CloseServiceHandle (scHandle);
 
+	return;
+}
 
 void WriteLog( char* p_logfile, char* p_format, ... ) 
 {
@@ -263,14 +310,14 @@ void WriteLog( char* p_logfile, char* p_format, ... )
 void GetCurDateTime( char* p_buf, char* p_form )
 {
 	time_t c_time;
-	struct tm* l_time = NULL;
+	struct tm l_time = {0};
 
 
 	time( &c_time );
 
-	localtime_s(l_time, &c_time );
+	localtime_s( &l_time, &c_time );
 
-	strftime( p_buf, 24 , p_form, l_time );
+	strftime( p_buf, 24 , p_form, &l_time );
 	
 }
 

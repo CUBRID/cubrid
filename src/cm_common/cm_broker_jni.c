@@ -475,7 +475,7 @@
 	EXCEP_GOTO (env, fail);
       }
 
-    cm_cas_info_free (&cas_info_all, NULL);
+    cm_cas_info_free (&cas_info_all, &dummy);
 
     if (only_active)
       {
@@ -485,7 +485,7 @@
     return res;
 
   fail:
-    cm_cas_info_free (&cas_info_all, NULL);
+    cm_cas_info_free (&cas_info_all, &dummy);
     return NULL;
   }
 
@@ -542,11 +542,11 @@
 	EXCEP_GOTO (env, fail);
       }
 
-    cm_cas_info_free (NULL, &job_info_all);
+    cm_cas_info_free (&dummy, &job_info_all);
     return res;
 
   fail:
-    cm_cas_info_free (NULL, &job_info_all);
+    cm_cas_info_free (&dummy, &job_info_all);
     return NULL;
   }
 

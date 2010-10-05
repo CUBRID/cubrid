@@ -47,19 +47,24 @@
 
 #if defined(sparc)
 #define JVM_LIB_PATH "jre/lib/sparc/client"
-#elif defined(I386) || defined(x86_SOLARIS)
+#elif defined(WINDOWS)
+#if __WORDSIZE == 32
+#define JVM_LIB_PATH_JDK "jre\\bin\\client"
+#define JVM_LIB_PATH_JRE "bin\\client"
+#else
+#define JVM_LIB_PATH_JDK "jre\\bin\\server"
+#define JVM_LIB_PATH_JRE "bin\\server"
+#endif
+#elif defined(HPUX) && defined(IA64)
+#define JVM_LIB_PATH "jre/lib/IA64N/hotspot"
+#elif defined(HPUX) && !defined(IA64)
+#define JVM_LIB_PATH "jre/lib/PA_RISC2.0/hotspot"
+#elif defined(__i386) || defined(__x86_64)
 #if __WORDSIZE == 32
 #define JVM_LIB_PATH "jre/lib/i386/client"
 #else
 #define JVM_LIB_PATH "jre/lib/amd64/server"
 #endif
-#elif defined(WINDOWS)
-#define JVM_LIB_PATH_JDK "jre\\bin\\client"
-#define JVM_LIB_PATH_JRE "bin\\client"
-#elif defined(HPUX) && defined(IA64)
-#define JVM_LIB_PATH "jre/lib/IA64N/hotspot"
-#elif defined(HPUX) && !defined(IA64)
-#define JVM_LIB_PATH "jre/lib/PA_RISC2.0/hotspot"
 #else /* ETC */
 #define JVM_LIB_PATH ""
 #endif /* ETC */

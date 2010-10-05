@@ -27,6 +27,14 @@
 
 #ident "$Id$"
 
+#if defined(CAS_FOR_ORACLE)
+#include "cas_oracle.h"
+#elif defined(CAS_FOR_MYSQL)
+#include "cas_mysql.h"
+#else /* CAS_FOR_MYSQL */
+#include "cas_db_inc.h"
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
 #define SRV_HANDLE_QUERY_SEQ_NUM(SRV_HANDLE)    \
         ((SRV_HANDLE) ? (SRV_HANDLE)->query_seq_num : 0)
 
@@ -35,6 +43,11 @@ struct t_prepare_call_info
 {
   void *dbval_ret;
   void *dbval_args;
+#if defined(CAS_FOR_ORACLE)
+  void **bind;			/* OCIBind ** */
+#elif defined(CAS_FOR_MYSQL)
+  void *bind;			/* MYSQL_BIND * */
+#endif
   char *param_mode;
   int num_args;
   int is_first_out;
@@ -48,29 +61,59 @@ struct t_col_update_info
   char updatable;
 };
 
-#if defined(CAS_FOR_ORACLE)
-typedef struct t_query_result_column T_QUERY_RESULT_COLUMN;
-struct t_query_result_column
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+typedef union db_data DB_DATA;
+union db_data
 {
-  void *define;
-  void *data;
-  unsigned int size;
-  unsigned short type;
-  unsigned char null;
+  int i;
+  short sh;
+  int64_t bi;
+  float f;
+  double d;
+#if defined(CAS_FOR_ORACLE)
+  OCIDate date;
+  OCINumber number;
+#else				/* CAS_FOR_ORACLE */
+  MYSQL_TIME t;
+#endif				/* !CAS_FOR_ORACLE */
+  void *p;
 };
-#endif
+
+typedef struct db_value DB_VALUE;
+#if defined(CAS_FOR_ORACLE)
+struct db_value
+{
+  unsigned short db_type;
+  unsigned char is_null;
+  void *define;
+  void *buf;			/* data pointer */
+  DB_DATA data;
+  unsigned int size;
+  bool need_clear;
+};
+#else
+struct db_value
+{
+  unsigned short db_type;
+  my_bool is_null;
+  void *buf;			/* data pointer */
+  DB_DATA data;
+  unsigned long size;
+  bool need_clear;
+};
+#endif /* CAS_FOR_ORACLE */
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
 typedef struct t_query_result T_QUERY_RESULT;
 struct t_query_result
 {
 #if defined(CAS_FOR_ORACLE)
   int column_count;
-  T_QUERY_RESULT_COLUMN *columns;
+  DB_VALUE *columns;
 #elif defined(CAS_FOR_MYSQL)
-  void *result;			/* MYSQL_BIND * */
   int column_count;
-  char *is_null;
-  size_t *length;
+  DB_VALUE *columns;
+  MYSQL_BIND *defines;
 #else				/* CAS_FOR_MYSQL */
   void *result;
   char *null_type_column;
@@ -84,7 +127,7 @@ struct t_query_result
   char col_updatable;
   char include_oid;
   char async_flag;
-#endif				/* CAS_FOR_MYSQL */
+#endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 };
 
 typedef struct t_srv_handle T_SRV_HANDLE;
@@ -96,14 +139,14 @@ struct t_srv_handle
   /* CAS4MySQL : MYSQL_STMT* */
   T_PREPARE_CALL_INFO *prepare_call_info;
   T_QUERY_RESULT *q_result;
-#if defined(CAS_FOR_ORACLE)
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   int stmt_type;
-#elif defined(CAS_FOR_MYSQL)
-  int stmt_type;
-#else				/* CAS_FOR_MYSQL */
+  int tuple_count;
+  bool is_no_data;
+#else				/* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   void *cur_result;		/* query : &(q_result[cur_result])
 				   schema info : &(session[cursor_pos]) */
-#endif				/* CAS_FOR_MYSQL */
+#endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
   char *sql_stmt;
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   void **classes;

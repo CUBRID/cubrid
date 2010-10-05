@@ -34,7 +34,7 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 #ifdef JDBC_CONSOLE_DEBUG
 import java.sql.Timestamp;
@@ -48,18 +48,18 @@ import java.util.Vector;
 import java.util.ArrayList;
 import java.io.*;
 import javax.transaction.xa.Xid;
-import cubrid.sql.CUBRIDOID;
-import cubrid.jdbc.driver.CUBRIDDriver;
-import cubrid.jdbc.driver.CUBRIDXid;
-import cubrid.jdbc.driver.CUBRIDConnection;
-import cubrid.jdbc.driver.CUBRIDException;
+import @CUBRID_SQL@.CUBRIDOID;
+import @CUBRID_DRIVER@.CUBRIDDriver;
+import @CUBRID_DRIVER@.CUBRIDXid;
+import @CUBRID_DRIVER@.CUBRIDConnection;
+import @CUBRID_DRIVER@.CUBRIDException;
 #ifdef SERVER_SIDE_JDBC
 import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.Server;
 #endif
 
 #ifdef SEND_APP_INFO
-import cubrid.jdbc.driver.CUBRIDJdbcInfoTable;
+import @CUBRID_DRIVER@.CUBRIDJdbcInfoTable;
 #endif
 
 public class UConnection
@@ -1803,12 +1803,8 @@ public class UConnection
 
       if (error < 0)
 	  {
-#ifdef CAS_FOR_DBMS
         int err_code = conCancel.input.readInt();
         throw new UJciException(UErrorCode.ER_DBMS, error, err_code, null);
-#else 
-        throw new UJciException(UErrorCode.ER_DBMS, error, null);
-#endif 
 	  }
     }
     finally
@@ -2117,12 +2113,8 @@ public class UConnection
     }
     if (newPort < 0)
     {
-#ifdef CAS_FOR_DBMS
       int err_code = input.readInt();
       throw new UJciException(UErrorCode.ER_DBMS, newPort, err_code, null);
-#else 
-      throw new UJciException(UErrorCode.ER_DBMS, newPort, null);
-#endif 
     }
     else if (newPort == 0)
       return;

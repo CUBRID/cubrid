@@ -4735,7 +4735,7 @@ setobj_copy (COL * col)
  *      return: error status
  *  col(in) : collection to sort
  *  Note :
- *    Used in the implementation of set_optimize but might be usefull in
+ *    Used in the implementation of set_optimize but might be useful in
  *    other circumstances.
  *
  */
@@ -5268,7 +5268,7 @@ setobj_filter (COL * col, int filter, int *cardptr)
  *      For sequences, this is the length of the used portion of the array.
  *      This should not be used as the iteration count for sets and multi
  *      sets.  This should be used for the iteration counts of sequences since
- *      elements can legally be NULL.                      *
+ *      elements can legally be NULL.
  */
 
 int
@@ -5716,8 +5716,8 @@ setobj_difference (COL * set1, COL * set2, COL * result)
  *  Note :
  *      Work through each set in ascending order. This
  *      allows the result set to be built in ascending order,
- *      without causing any insertsions, which are more expensive
- *      than appending.*
+ *      without causing any insertions, which are more expensive
+ *      than appending.
  */
 
 int

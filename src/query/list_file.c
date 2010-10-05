@@ -1101,7 +1101,8 @@ qfile_store_xasl (THREAD_ENTRY * thread_p, const char *xasl_p, int size,
 						     &xasl_id_p->temp_vfid,
 						     vpid_array, &nth_page,
 						     QFILE_PAGE_EXTENDS, NULL,
-						     NULL, NULL, NULL) == NULL)
+						     NULL, NULL,
+						     NULL) == NULL)
 		{
 		  goto error;
 		}
@@ -1660,8 +1661,8 @@ qfile_add_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
   cur_page_p = list_id_p->last_pgptr;
   tuple_length = QFILE_GET_TUPLE_LENGTH (tuple);
 
-  if (qfile_allocate_new_page_if_need
-      (thread_p, list_id_p, &cur_page_p, tuple_length, false) != NO_ERROR)
+  if (qfile_allocate_new_page_if_need (thread_p, list_id_p, &cur_page_p,
+				       tuple_length, false) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1679,12 +1680,17 @@ qfile_add_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
        offset < tuple_length;
        offset += tuple_page_size, tuple_p += tuple_page_size)
     {
-      new_page_p =
-	qfile_allocate_new_ovf_page (thread_p, list_id_p, cur_page_p,
-				     prev_page_p, tuple_length, offset,
-				     &tuple_page_size);
+      new_page_p = qfile_allocate_new_ovf_page (thread_p, list_id_p,
+						cur_page_p, prev_page_p,
+						tuple_length, offset,
+						&tuple_page_size);
       if (new_page_p == NULL)
 	{
+	  if (prev_page_p != cur_page_p)
+	    {
+	      qfile_set_dirty_page (thread_p, prev_page_p, FREE,
+				    list_id_p->tfile_vfid);
+	    }
 	  return ER_FAILED;
 	}
 
@@ -1917,8 +1923,8 @@ qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p,
   tuple_descr_p = &(list_id_p->tpl_descr);
   tuple_length = tuple_descr_p->tpl_size;
 
-  if (qfile_allocate_new_page_if_need
-      (thread_p, list_id_p, &cur_page_p, tuple_length, false) != NO_ERROR)
+  if (qfile_allocate_new_page_if_need (thread_p, list_id_p, &cur_page_p,
+				       tuple_length, false) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1973,8 +1979,8 @@ qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p,
   cur_page_p = list_id_p->last_pgptr;
   tuple_length = QFILE_GET_TUPLE_LENGTH (tuple);
 
-  if (qfile_allocate_new_page_if_need
-      (thread_p, list_id_p, &cur_page_p, tuple_length, true) != NO_ERROR)
+  if (qfile_allocate_new_page_if_need (thread_p, list_id_p, &cur_page_p,
+				       tuple_length, true) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1991,8 +1997,8 @@ qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p,
   for (offset = tuple_page_size; offset < tuple_length;
        offset += tuple_page_size)
     {
-      ovf_page_p =
-	qmgr_get_old_page (thread_p, &ovf_vpid, input_list_id_p->tfile_vfid);
+      ovf_page_p = qmgr_get_old_page (thread_p, &ovf_vpid,
+				      input_list_id_p->tfile_vfid);
       if (ovf_page_p == NULL)
 	{
 	  return ER_FAILED;
@@ -2000,12 +2006,17 @@ qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p,
 
       QFILE_GET_OVERFLOW_VPID (&ovf_vpid, ovf_page_p);
 
-      new_page_p =
-	qfile_allocate_new_ovf_page (thread_p, list_id_p, cur_page_p,
-				     prev_page_p, tuple_length, offset,
-				     &tuple_page_size);
+      new_page_p = qfile_allocate_new_ovf_page (thread_p, list_id_p,
+						cur_page_p, prev_page_p,
+						tuple_length, offset,
+						&tuple_page_size);
       if (new_page_p == NULL)
 	{
+	  if (prev_page_p != cur_page_p)
+	    {
+	      qfile_set_dirty_page (thread_p, prev_page_p, FREE,
+				    list_id_p->tfile_vfid);
+	    }
 	  return ER_FAILED;
 	}
 
@@ -2300,6 +2311,8 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 	      /* conditional wait version */
 	      do
 		{
+		  bool slept;
+
 		  /*
 		   * save my thread entry into tfile_vfid and conditionally
 		   * wait for qmgr_free_old_page() or qmgr_set_dirty_page() to wake me.
@@ -2322,12 +2335,15 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 		    }
 
 		  QFILE_GET_NEXT_VPID (&next_vpid, page_p);
+		  slept = false;
 		  if (next_vpid.pageid == NULL_PAGEID_ASYNC)
 		    {
 		      tfile_vfid_p->membuf_thread_p = thread_p;
 #if 0				/* async wakeup */
 		      tfile_vfid_p->wait_page_ptr = page_p;
 #endif /* 0 */
+		      slept = true;
+
 		      thread_suspend_with_other_mutex (tfile_vfid_p->
 						       membuf_thread_p,
 						       &tfile_vfid_p->
@@ -2338,10 +2354,10 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 		  MUTEX_UNLOCK (tfile_vfid_p->membuf_mutex);
 
 		  error = er_errid ();
-		  if (error != NO_ERROR ||
-		      (thread_p->resume_status ==
-		       THREAD_RESUME_DUE_TO_INTERRUPT
-		       && thread_p->interrupted))
+		  if (error != NO_ERROR
+		      || (slept == true
+			  && (thread_p->resume_status ==
+			      THREAD_RESUME_DUE_TO_INTERRUPT)))
 		    {
 		      /*
 		       * async query got an error or interrupted before
@@ -2349,6 +2365,23 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 		       */
 		      qmgr_free_old_page (thread_p, page_p, tfile_vfid_p);
 		      return (error == NO_ERROR) ? ER_INTERRUPTED : error;
+		    }
+		  else if (slept == true
+			   && (thread_p->resume_status !=
+			       THREAD_QMGR_MEMBUF_PAGE_RESUMED))
+		    {
+		      /* wake me with other reason */
+		      assert (0);
+
+		      qmgr_free_old_page (thread_p, page_p, tfile_vfid_p);
+		      return ER_FAILED;
+		    }
+		  else
+		    {
+		      assert (slept == false
+			      || (slept == true
+				  && (thread_p->resume_status ==
+				      THREAD_QMGR_MEMBUF_PAGE_RESUMED)));
 		    }
 
 		  QFILE_GET_NEXT_VPID (&next_vpid, page_p);
@@ -6609,6 +6642,11 @@ qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p,
 						&tuple_page_size);
       if (new_page_p == NULL)
 	{
+	  if (prev_page_p != cur_page_p)
+	    {
+	      qfile_set_dirty_page (thread_p, prev_page_p, FREE,
+				    list_id_p->tfile_vfid);
+	    }
 	  return ER_FAILED;
 	}
 

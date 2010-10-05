@@ -31,8 +31,8 @@
 #ifndef _PHP_CUBRID_H
 #define _PHP_CUBRID_H
 
-#include "php.h"
-
+#include <php.h>
+#include <cas_cci.h>
 #include "php_cubrid_version.h"
 
 #ifdef PHP_WIN32
@@ -42,7 +42,7 @@
 #endif /* PHP_WIN32 */
 
 #ifdef __ZTS
-#include "TSRM.h"
+#include <TSRM.h>
 #endif /* __ZTS */
 
 typedef struct
@@ -63,6 +63,7 @@ PHP_MINFO_FUNCTION (cubrid);
 
 PHP_FUNCTION (cubrid_version);
 PHP_FUNCTION (cubrid_connect);
+PHP_FUNCTION (cubrid_connect_with_url);
 PHP_FUNCTION (cubrid_disconnect);
 PHP_FUNCTION (cubrid_prepare);
 PHP_FUNCTION (cubrid_bind);
@@ -100,30 +101,44 @@ PHP_FUNCTION (cubrid_send_glo);
 PHP_FUNCTION (cubrid_error_msg);
 PHP_FUNCTION (cubrid_error_code);
 PHP_FUNCTION (cubrid_error_code_facility);
-
-
+PHP_FUNCTION (cubrid_field_name);
+PHP_FUNCTION (cubrid_field_table);
+PHP_FUNCTION (cubrid_field_type);
+PHP_FUNCTION (cubrid_field_flags);
+PHP_FUNCTION (cubrid_data_seek);
+PHP_FUNCTION (cubrid_fetch_assoc);
+PHP_FUNCTION (cubrid_fetch_row);
+PHP_FUNCTION (cubrid_fetch_field);
+PHP_FUNCTION (cubrid_num_fields);
+PHP_FUNCTION (cubrid_free_result);
+PHP_FUNCTION (cubrid_field_len);
+PHP_FUNCTION (cubrid_fetch_object);
+PHP_FUNCTION (cubrid_fetch_lengths);
+PHP_FUNCTION (cubrid_field_seek);
+PHP_FUNCTION (cubrid_result);
+PHP_FUNCTION (cubrid_get_charset);
+PHP_FUNCTION (cubrid_get_client_info);
+PHP_FUNCTION (cubrid_get_server_info);
+PHP_FUNCTION (cubrid_real_escape_string);
+PHP_FUNCTION (cubrid_unbuffered_query);
+PHP_FUNCTION (cubrid_get_db_parameter);
+PHP_FUNCTION (cubrid_list_dbs);
+PHP_FUNCTION (cubrid_insert_id);
 /* end of API prototype */
 
 ZEND_BEGIN_MODULE_GLOBALS (cubrid)
      T_CUBRID_ERROR recent_error;
-
+     int last_connect_handle;
+     int last_request_handle;
+     T_CCI_CUBRID_STMT last_request_stmt_type;
+     int last_request_affected_rows;
 ZEND_END_MODULE_GLOBALS (cubrid);
 
 #ifdef ZTS
-# define UniSLS_D	zend_cubrid_globals *cubrid_globals
-# define UniSLS_DC	, UniSLS_D
-# define UniSLS_C	cubrid_globals
-# define UniSLS_CC	, MySLS_C
-# define UniSG(v)	(cubrid_globals->v)
-# define UniSLS_FETCH()	zend_cubrid_globals *cubrid_globals = ts_resource(cubrid_globals_id)
-#else /* ZTS */
-# define UniSLS_D
-# define UniSLS_DC
-# define UniSLS_C
-# define UniSLS_CC
-# define UniSG(v)	(cubrid_globals.v)
-# define UniSLS_FETCH()
-#endif /* ZTS */
+#define CUBRID_G(v) TSRMG (cubrid_globals_id, zend_cubrid_globals *, v)
+#else
+#define CUBRID_G(v) (cubrid_globals.v)
+#endif
 
 #define phpext_cubrid_ptr cubrid_module_ptr
 

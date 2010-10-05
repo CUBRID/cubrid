@@ -28,7 +28,7 @@ No error.,
 /* UW_ER_CANT_ACCEPT (8) */
   Cannot accept the client request from the socket.,
 /* UW_ER_NO_MORE_MEMORY (9) */
-  Memory allocation is failed.No more memory is available.,
+  Memory allocation failed.No more memory is available.,
 /* UW_ER_NO_FREE_UTS (10) */
   Cannot process the request.Try again later.,
 /* UW_ER_NO_SESSION_UTS (11) */
@@ -46,7 +46,7 @@ No error.,
 /* UW_ER_DB_NOT_INITIALIZED (17) */
  
   The database has not been initialized.
-  You need to initailize the database by using UW_DATABASE_ENV command.,
+  You need to initialize the database by using UW_DATABASE_ENV command.,
 /* UW_ER_SQL_HANDLE_NOT_FOUND (18) */
   SQL HANDLE is not valid.,
 /* UW_ER_INVALID_OBJECT (19) */

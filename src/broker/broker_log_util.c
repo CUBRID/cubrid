@@ -37,6 +37,9 @@
 
 #include "cas_common.h"
 #include "broker_log_util.h"
+#include "cas_cci.h"
+
+static bool is_bind_with_size (char *buf, int *tot_val_size, int *info_size);
 
 char *
 ut_trim (char *str)
@@ -86,17 +89,166 @@ ut_tolower (char *str)
     }
 }
 
+#if defined(BROKER_LOG_RUNNER)
+static bool
+is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
+{
+  char *p;
+  int type;
+  int size;
+
+  if (tot_val_size)
+    {
+      *tot_val_size = 0;
+    }
+
+  if (strncmp (buf, "B ", 1) != 0)
+    {
+      return false;
+    }
+
+  type = atoi (buf + 2);
+  if ((type != CCI_U_TYPE_CHAR) && (type != CCI_U_TYPE_STRING) &&
+      (type != CCI_U_TYPE_NCHAR) && (type != CCI_U_TYPE_VARNCHAR) &&
+      (type != CCI_U_TYPE_BIT) && (type != CCI_U_TYPE_VARBIT))
+    {
+      return false;
+    }
+
+  p = strchr (buf + 2, ' ');
+  if (p == NULL)
+    {
+      goto error_on_val_size;
+    }
+
+  size = atoi (p);
+  p = strchr (p + 1, ' ');
+  if (p == NULL)
+    {
+      goto error_on_val_size;
+    }
+
+  if (info_size)
+    {
+      *info_size = (char *) (p + 1) - (char *) buf;
+    }
+  if (tot_val_size)
+    {
+      *tot_val_size = size;
+    }
+  return true;
+
+error_on_val_size:
+  if (tot_val_size)
+    {
+      *tot_val_size = -1;
+    }
+  return false;
+}
+#else /* BROKER_LOG_RUNNER */
+static bool
+is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
+{
+  char *msg;
+  char *p, *q;
+  char *end;
+  char size[256];
+  char *value_p;
+  int len;
+
+  if (tot_val_size)
+    {
+      *tot_val_size = 0;
+    }
+
+  GET_MSG_START_PTR (msg, buf);
+  if (strncmp (msg, "bind ", 5) != 0)
+    {
+      return false;
+    }
+
+  p = strchr (msg, ':');
+  if (p == NULL)
+    {
+      return false;
+    }
+  p += 2;
+
+  if ((strncmp (p, "CHAR", 4) != 0) && (strncmp (p, "VARCHAR", 7) != 0) &&
+      (strncmp (p, "NCHAR", 5) != 0) && (strncmp (p, "VARNCHAR", 8) != 0) &&
+      (strncmp (p, "BIT", 3) != 0) && (strncmp (p, "VARBIT", 6) != 0))
+    {
+      return false;
+    }
+
+  q = strchr (p, ' ');
+  if (q == NULL)
+    {
+      /* log error case or NULL bind type */
+      return false;
+    }
+
+  *q = '\0';
+  value_p = q + 1;
+
+  memset (size, 0x00, 256);
+  end = (char *) strtok (value_p, ")");
+  if (end == NULL)
+    {
+      goto error_on_val_size;
+    }
+
+  len = strlen (end);
+  if (len > sizeof (size))
+    {
+      goto error_on_val_size;
+    }
+  if (len > 1)
+    {
+      memcpy (size, end + 1, len - 1);
+    }
+
+  end = (char *) strtok (NULL, ")");
+  if (end == NULL)
+    {
+      goto error_on_val_size;
+    }
+
+  if (info_size)
+    {
+      *info_size = (char *) end - (char *) buf;
+    }
+  if (tot_val_size)
+    {
+      *tot_val_size = atoi (size);
+    }
+  return true;
+
+error_on_val_size:
+  if (tot_val_size)
+    {
+      *tot_val_size = -1;
+    }
+  return false;
+}
+#endif /* BROKER_LOG_RUNNER */
+
 int
 ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
 {
   char buf[1024];
   int out_str_len;
+  bool is_first, bind_with_size;
+  int tot_val_size, info_size;
+  long position;
 
   t_string_clear (t_str);
 
+  is_first = true;
   while (1)
     {
       memset (buf, 0, sizeof (buf));
+      position = ftell (fp);
       if (fgets (buf, sizeof (buf), fp) == NULL)
 	break;
       /* if it is (debug) line, skip it */
@@ -104,13 +256,52 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
 	{
 	  continue;
 	}
-      if (t_string_add (t_str, buf, strlen (buf)) < 0)
+      if (is_first)
 	{
-	  fprintf (stderr, "memory allocation error.\n");
-	  return -1;
+	  bind_with_size = is_bind_with_size (buf, &tot_val_size, &info_size);
+	  if (tot_val_size < 0)
+	    {
+	      fprintf (stderr, "log error\n");
+	      return -1;
+	    }
+	  is_first = false;
 	}
-      if (buf[sizeof (buf) - 2] == '\0' || buf[sizeof (buf) - 2] == '\n')
-	break;
+
+      if (bind_with_size)
+	{
+	  int rlen;
+	  char *value = NULL;
+
+	  value = (char *) MALLOC (info_size + tot_val_size + 1);
+	  if (value == NULL)
+	    {
+	      fprintf (stderr, "memory allocation error.\n");
+	      return -1;
+	    }
+	  fseek (fp, position, SEEK_SET);
+	  rlen =
+	    fread ((void *) value, sizeof (char), info_size + tot_val_size,
+		   fp);
+	  if (t_bind_string_add
+	      (t_str, value, info_size + tot_val_size, tot_val_size) < 0)
+	    {
+	      fprintf (stderr, "memory allocation error.\n");
+	      FREE_MEM (value);
+	      return -1;
+	    }
+	  FREE_MEM (value);
+	  break;
+	}
+      else
+	{
+	  if (t_string_add (t_str, buf, strlen (buf)) < 0)
+	    {
+	      fprintf (stderr, "memory allocation error.\n");
+	      return -1;
+	    }
+	  if (buf[sizeof (buf) - 2] == '\0' || buf[sizeof (buf) - 2] == '\n')
+	    break;
+	}
     }
 
   out_str_len = t_string_len (t_str);

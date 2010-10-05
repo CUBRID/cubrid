@@ -337,7 +337,7 @@ AC_ARG_WITH([libedit],
 
 if test "$with_libedit" = "builtin"
 then
-	AC_CONFIG_SUBDIRS([external/libedit-20070831-2.10])
+	AC_CONFIG_SUBDIRS([external/libedit-20100424-3.0])
 	LIBEDIT_LIBS="\$(top_builddir)/external/lib/libedit.la"
 	LIBEDIT_INC="-I\$(top_builddir)/external/include"
 else
@@ -441,8 +441,6 @@ SA_LIB="\$(top_builddir)/sa/libcubridsa.la"
 CAS_LIB="-L\$(top_builddir)/cas -lcas"
 CCI_LIB="\$(top_builddir)/cas/libcascci.la"
 ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
-CMSTAT_LIB="\$(top_builddir)/cm_common/libcmstat.la"
-CMDEP_LIB="\$(top_builddir)/cm_common/libcmdep.la"
 BROKER_ADMIN_LIB="\$(top_builddir)/broker/libbrokeradmin.la"
 
 EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS"
@@ -680,8 +678,6 @@ AC_SUBST([SA_LIB])
 AC_SUBST([CAS_LIB])
 AC_SUBST([CCI_LIB])
 AC_SUBST([ESQL_LIB])
-AC_SUBST([CMSTAT_LIB])
-AC_SUBST([CMDEP_LIB])
 AC_SUBST([BROKER_ADMIN_LIB])
 AC_SUBST([BIT_MODEL])
 AC_SUBST([DIR_DEFS])
@@ -710,8 +706,6 @@ AC_CONFIG_FILES([Makefile
 	cas/Makefile
 	broker/Makefile
 	cm_common/Makefile
-	cmserver/Makefile
-	cmserver/conf/Makefile
 	include/Makefile
 	sa/Makefile
 	cubrid/Makefile
@@ -727,6 +721,7 @@ AC_CONFIG_FILES([Makefile
 	jdbc/Makefile
 	java/Makefile
 	cas4mysql/Makefile
+	cas4oracle/Makefile
 	])
 
 AC_OUTPUT

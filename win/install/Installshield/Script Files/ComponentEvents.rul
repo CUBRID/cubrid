@@ -22,6 +22,7 @@ begin
     RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
 	RegDBGetKeyValueEx (szKey, "Path" , nvType, svNumValue, nvSize);
 	nResult = RegDBSetKeyValueEx(szKey, "Path", REGDB_STRING_EXPAND, TARGETDIR^"\\bin\\;" + svNumValue  , -1);
+    RefreshEnvironment();
 
 	Enable(LOGGING) ;
 end;

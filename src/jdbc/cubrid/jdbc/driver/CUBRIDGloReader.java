@@ -28,7 +28,7 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.io.*;
 import java.sql.SQLException;

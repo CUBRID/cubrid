@@ -247,7 +247,7 @@ tran_commit_client_loose_ends (void)
       onelog =
 	(struct onelog *) ((char *) log_area->mem + log_area->length -
 			   sizeof (*manylogs));
-      /* Execute all postone/loose_end actions given in the area */
+      /* Execute all postpone/loose_end actions given in the area */
       for (i = 0; i < manylogs->num_logs; i++)
 	{
 	  (void) (*RVCL_fun[onelog->rcvindex].redofun)
@@ -409,7 +409,7 @@ tran_commit (bool retain_lock)
     case TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS:
       /*
        * The recovery manager has declared the transaction as committed but
-       * there are loose postone actions that need to be executed in the client
+       * there are loose postpone actions that need to be executed in the client
        */
       state = tran_commit_client_loose_ends ();
       error_code = NO_ERROR;

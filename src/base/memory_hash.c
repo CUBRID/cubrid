@@ -434,7 +434,7 @@ mht_2strhash (const void *key, const unsigned int ht_size)
  *   key(in): key to hash
  *   ht_size(in): size of hash table
  *
- * Note: Form to hash strings.                                        *
+ * Note: Form to hash strings.
  *       Taken from Sedgewick's Algorithm book
  */
 unsigned int
@@ -1872,6 +1872,12 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	  break;
 
 	default:		/* impossible */
+	  /*
+	   * TODO this is actually possible. See the QA scenario:
+	   * sql/_01_object/_09_partition/_006_prunning/cases/1093.sql
+	   * select * from hash_test where test_int = round(11.57);
+	   * The value has type DB_TYPE_DOUBLE in this case.
+	   */
 	  er_log_debug (ARG_FILE_LINE, "mht_get_hash_number: ERROR type = %d"
 			" is Unsupported partition column type.",
 			db_value_type (val));

@@ -28,15 +28,15 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 import java.util.*;
 import java.io.*;
 
-import cubrid.sql.*;
-import cubrid.jdbc.jci.*;
-import cubrid.jdbc.driver.*;
+import @CUBRID_SQL@.*;
+import @CUBRID_JCI@.*;
+import @CUBRID_DRIVER@.*;
 
 /**
  * Title: CUBRID JDBC Driver Description:

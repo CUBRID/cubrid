@@ -1373,59 +1373,117 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity,
   *curname = NULL;
   *tempname = NULL;
 
-  switch (trigger->event)
+  if (!PRM_MYSQL_TRIGGER_CORRELATION_NAMES)
     {
-
-    case TR_EVENT_INSERT:
-      switch (activity->time)
+      switch (trigger->event)
 	{
-	case TR_TIME_BEFORE:
-	  *tempname = NEW_REFERENCE_NAME;
+	case TR_EVENT_INSERT:
+	  switch (activity->time)
+	    {
+	    case TR_TIME_BEFORE:
+	      *tempname = NEW_REFERENCE_NAME;
+	      break;
+	    case TR_TIME_AFTER:
+	    case TR_TIME_DEFERRED:
+	      *curname = OBJ_REFERENCE_NAME;
+	      break;
+	    default:
+	      break;
+	    }
 	  break;
-	case TR_TIME_AFTER:
-	case TR_TIME_DEFERRED:
-	  *curname = OBJ_REFERENCE_NAME;
+
+	case TR_EVENT_UPDATE:
+	  switch (activity->time)
+	    {
+	    case TR_TIME_BEFORE:
+	      *curname = OBJ_REFERENCE_NAME;
+	      *tempname = NEW_REFERENCE_NAME;
+	      break;
+	    case TR_TIME_AFTER:
+	      *curname = OBJ_REFERENCE_NAME;
+	      *tempname = OLD_REFERENCE_NAME;
+	      break;
+	    case TR_TIME_DEFERRED:
+	      *curname = OBJ_REFERENCE_NAME;
+	      break;
+	    default:
+	      break;
+	    }
 	  break;
+
+	case TR_EVENT_DELETE:
+	  switch (activity->time)
+	    {
+	    case TR_TIME_BEFORE:
+	      *curname = OBJ_REFERENCE_NAME;
+	      break;
+	    case TR_TIME_AFTER:
+	    case TR_TIME_DEFERRED:
+	      break;
+	    default:
+	      break;
+	    }
+	  break;
+
 	default:
 	  break;
 	}
-      break;
-
-    case TR_EVENT_UPDATE:
-      switch (activity->time)
+    }
+  else
+    {
+      switch (trigger->event)
 	{
-	case TR_TIME_BEFORE:
-	  *curname = OBJ_REFERENCE_NAME;
-	  *tempname = NEW_REFERENCE_NAME;
+	case TR_EVENT_INSERT:
+	  switch (activity->time)
+	    {
+	    case TR_TIME_BEFORE:
+	      *tempname = NEW_REFERENCE_NAME;
+	      break;
+	    case TR_TIME_AFTER:
+	    case TR_TIME_DEFERRED:
+	      *curname = NEW_REFERENCE_NAME;
+	      break;
+	    default:
+	      break;
+	    }
 	  break;
-	case TR_TIME_AFTER:
-	  *curname = OBJ_REFERENCE_NAME;
-	  *tempname = OLD_REFERENCE_NAME;
+
+	case TR_EVENT_UPDATE:
+	  switch (activity->time)
+	    {
+	    case TR_TIME_BEFORE:
+	      *curname = OLD_REFERENCE_NAME;
+	      *tempname = NEW_REFERENCE_NAME;
+	      break;
+	    case TR_TIME_AFTER:
+	      *curname = NEW_REFERENCE_NAME;
+	      *tempname = OLD_REFERENCE_NAME;
+	      break;
+	    case TR_TIME_DEFERRED:
+	      *curname = NEW_REFERENCE_NAME;
+	      break;
+	    default:
+	      break;
+	    }
 	  break;
-	case TR_TIME_DEFERRED:
-	  *curname = OBJ_REFERENCE_NAME;
+
+	case TR_EVENT_DELETE:
+	  switch (activity->time)
+	    {
+	    case TR_TIME_BEFORE:
+	      *curname = OLD_REFERENCE_NAME;
+	      break;
+	    case TR_TIME_AFTER:
+	    case TR_TIME_DEFERRED:
+	      break;
+	    default:
+	      break;
+	    }
 	  break;
+
 	default:
 	  break;
 	}
-      break;
-
-    case TR_EVENT_DELETE:
-      switch (activity->time)
-	{
-	case TR_TIME_BEFORE:
-	  *curname = OBJ_REFERENCE_NAME;
-	  break;
-	case TR_TIME_AFTER:
-	case TR_TIME_DEFERRED:
-	  break;
-	default:
-	  break;
-	}
-      break;
-
-    default:
-      break;
     }
 }
 
@@ -1732,7 +1790,7 @@ tr_map_trigger (DB_OBJECT * object, int fetch)
  *    This MUST ONLY be called if the caller knows that there will be no other
  *    references to this trigger structure.
  *    This is the case for most class triggers.
- *    If this cannot be guarenteed, the trigger can simply be left in
+ *    If this cannot be guaranteed, the trigger can simply be left in
  *    the mapping table and it will be freed during shutdown.
  *
  */
@@ -3561,7 +3619,7 @@ check_semantics (TR_TRIGGER * trigger)
 
       /*
        * Formerly tested to allow only CALL statements in the action.
-       * Others might be usefull but "not recommended" since the side effects
+       * Others might be useful but "not recommended" since the side effects
        * of the statement might effect the behavior of the trigger.
        */
     }
@@ -4270,7 +4328,7 @@ signal_evaluation_error (TR_TRIGGER * trigger, int error)
 	}
       else
 	{
-	  strncpy (buffer, msg, MAX_ERROR_STRING);
+	  strncpy (buffer, msg, sizeof (buffer) - 1);
 	  buffer[MAX_ERROR_STRING - 1] = '\0';
 	}
 
@@ -4420,7 +4478,8 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 	case TR_ACT_INVALIDATE:
 	  tr_Invalid_transaction = true;
 	  /* remember the name for the error message */
-	  strcpy (tr_Invalid_transaction_trigger, trigger->name);
+	  strncpy (tr_Invalid_transaction_trigger, trigger->name,
+		   sizeof (tr_Invalid_transaction_trigger) - 1);
 	  break;
 	case TR_ACT_PRINT:
 	  if (trigger->action->source != NULL)
@@ -5008,6 +5067,11 @@ tr_prepare_class (TR_STATE ** state_p, TR_SCHEMA_CACHE * cache,
       *state_p = NULL;
       return NO_ERROR;
     }
+  if (cache == NULL)
+    {
+      return NO_ERROR;
+    }
+
   /*
    * Disable authorization here since trigger scheduling is independent
    * of the current user.  This will only only be necessary if we
@@ -5015,27 +5079,29 @@ tr_prepare_class (TR_STATE ** state_p, TR_SCHEMA_CACHE * cache,
    */
   AU_DISABLE (save);
 
-  if (cache != NULL)
+  if (tr_validate_schema_cache (cache) != NO_ERROR)
     {
-      if (tr_validate_schema_cache (cache))
-	error = er_errid ();
+      error = er_errid ();
+    }
+  else if (event < cache->array_length)
+    {
+      triggers = cache->triggers[event];
 
-      else if (event < cache->array_length)
+      /* pass in name of first trigger for message */
+      name = (triggers != NULL) ? triggers->trigger->name : NULL;
+      state = start_state (state_p, name);
+      if (state == NULL)
 	{
-	  triggers = cache->triggers[event];
-
-	  /* pass in name of first trigger for message */
-	  name = (triggers != NULL) ? triggers->trigger->name : NULL;
-	  state = start_state (state_p, name);
-	  if (state == NULL)
-	    {
-	      error = er_errid ();
-	    }
-	  else
-	    {
-	      merge_trigger_list (&state->triggers, triggers, 0);
-	    }
+	  error = er_errid ();
 	}
+      else
+	{
+	  merge_trigger_list (&state->triggers, triggers, 0);
+	}
+    }
+  else
+    {
+      assert (false);
     }
 
   AU_ENABLE (save);
@@ -5955,7 +6021,8 @@ tr_trigger_action (DB_OBJECT * trigger_object, char **action)
 
 	case TR_ACT_PRINT:
 	  /* sigh, need a nice adjustable string array package */
-	  sprintf (buf, "PRINT '%s'", trigger->action->source);
+	  snprintf (buf, sizeof (buf) - 1, "PRINT '%s'",
+		    trigger->action->source);
 	  *action = ws_copy_string (buf);
 	  break;
 
@@ -6218,7 +6285,7 @@ tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp, bool quoted_id_flag)
 	  pt_is_keyword (trigger->name) ||
 	  !lang_check_identifier (trigger->name, strlen (trigger->name)))
 	{
-	  fprintf (fp, "%s%s%s\n", "\"", trigger->name, "\"");
+	  fprintf (fp, "[%s]\n", trigger->name);
 	}
       else
 	{
@@ -6249,7 +6316,7 @@ tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp, bool quoted_id_flag)
 	      pt_is_keyword (name) ||
 	      !lang_check_identifier (name, strlen (name)))
 	    {
-	      fprintf (fp, "%s%s%s", "\"", name, "\"");
+	      fprintf (fp, "[%s]", name);
 	    }
 	  else
 	    {
@@ -6263,7 +6330,7 @@ tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp, bool quoted_id_flag)
 		  !lang_check_identifier (trigger->attribute,
 					  strlen (trigger->attribute)))
 		{
-		  fprintf (fp, "(%s%s%s)", "\"", trigger->attribute, "\"");
+		  fprintf (fp, "([%s])", trigger->attribute);
 		}
 	      else
 		{
@@ -6340,7 +6407,7 @@ get_user_name (DB_OBJECT * user)
       tmp = DB_GET_STRING (&value);
       if (tmp)
 	{
-	  strncpy (namebuf, tmp, MAX_USER_NAME);
+	  strncpy (namebuf, tmp, sizeof (namebuf) - 1);
 	}
       namebuf[MAX_USER_NAME - 1] = '\0';
     }
@@ -6497,7 +6564,8 @@ tr_dump_selective_triggers (FILE * fp, bool quoted_id_flag,
 	  max = set_size (table);
 	  for (i = 1; i < max && error == NO_ERROR; i += 2)
 	    {
-	      if ((error = set_get_element (table, i, &value)) == NO_ERROR)
+	      error = set_get_element (table, i, &value);
+	      if (error == NO_ERROR)
 		{
 		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT
 		      && !DB_IS_NULL (&value)
@@ -6505,7 +6573,8 @@ tr_dump_selective_triggers (FILE * fp, bool quoted_id_flag,
 		    {
 		      trigger_object = DB_GET_OBJECT (&value);
 		      trigger = tr_map_trigger (trigger_object, 1);
-		      if (!is_required_trigger (trigger, classes))
+		      if (trigger->class_mop != NULL
+			  && !is_required_trigger (trigger, classes))
 			{
 			  continue;
 			}
@@ -6519,7 +6588,6 @@ tr_dump_selective_triggers (FILE * fp, bool quoted_id_flag,
 			  if (trigger->class_mop == NULL
 			      || !sm_is_system_class (trigger->class_mop))
 			    {
-
 			      if (trigger->status != TR_STATUS_INVALID)
 				{
 				  tr_dump_trigger (trigger_object, fp,
@@ -6919,7 +6987,7 @@ tr_final (void)
  * Note:
  *    Mostly this is used to get a list of the currently deferred
  *    activities for debugging purposes.
- *    Since this list is likely to be generally usefull, we should
+ *    Since this list is likely to be generally useful, we should
  *    make this available in the API interface as well.
  *    Possibly a session command too.
  */
@@ -7073,6 +7141,12 @@ tr_set_execution_state (bool new_state)
   return (old_state);
 }
 
+const char *
+tr_get_class_name (void)
+{
+  return TR_CLASS_NAME;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 
 /*
@@ -7118,4 +7192,3 @@ tr_downcase_all_trigger_info (void)
   return ((mop == NULL) ? NO_ERROR : ER_FAILED);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
-

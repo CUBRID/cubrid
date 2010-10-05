@@ -28,7 +28,7 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import javax.transaction.xa.Xid;
 import java.util.*;

@@ -1453,10 +1453,13 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
 
 #ifdef SERVER_MODE
 
+enum
+{ NEED_TO_RETRY = 0, LOCK_ACQUIRED };
+
 /*
  * heap_classrepr_lock_class () - Prevent other threads accessing class_oid
  *                              class representation.
- *   return: NO_ERROR
+ *   return: ER_FAILED, NEED_TO_RETRY or LOCK_ACQUIRED
  *   hash_anchor(in):
  *   class_oid(in):
  */
@@ -1490,7 +1493,17 @@ heap_classrepr_lock_class (THREAD_ENTRY * thread_p,
 	  thread_suspend_wakeup_and_unlock_entry (cur_thrd_entry,
 						  THREAD_HEAP_CLSREPR_SUSPENDED);
 
-	  return ER_FAILED;	/* traverse hash chain again */
+	  if (cur_thrd_entry->resume_status == THREAD_HEAP_CLSREPR_RESUMED)
+	    {
+	      return NEED_TO_RETRY;	/* traverse hash chain again */
+	    }
+	  else
+	    {
+	      /* probably due to an interrupt */
+	      assert ((cur_thrd_entry->resume_status ==
+		       THREAD_RESUME_DUE_TO_INTERRUPT));
+	      return ER_FAILED;
+	    }
 	}
     }
 
@@ -1502,7 +1515,7 @@ heap_classrepr_lock_class (THREAD_ENTRY * thread_p,
 
   MUTEX_UNLOCK (hash_anchor->hash_mutex);
 
-  return NO_ERROR;		/* lock acquired. */
+  return LOCK_ACQUIRED;		/* lock acquired. */
 }
 
 /*
@@ -1819,13 +1832,17 @@ search_begin:
       /* class_oid was not found. Lock class_oid.
        * heap_classrepr_lock_class () release hash_anchor->hash_lock */
       if (heap_classrepr_lock_class (thread_p, hash_anchor, class_oid) !=
-	  NO_ERROR)
+	  LOCK_ACQUIRED)
 	{
-	  if (thread_p->interrupted == true)
+	  if (r == NEED_TO_RETRY)
 	    {
+	      goto search_begin;
+	    }
+	  else
+	    {
+	      assert (r == ER_FAILED);
 	      return NULL;
 	    }
-	  goto search_begin;
 	}
 #endif
 
@@ -2228,7 +2245,8 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp,
 	       attrepr->id, attr_name, pr_type_name (attrepr->type),
 	       attrepr->location, attrepr->position);
 
-      if (!OID_EQ (&attrepr->classoid, class_oid))
+      if (!OID_ISNULL (&attrepr->classoid)
+	  && !OID_EQ (&attrepr->classoid, class_oid))
 	{
 	  classname = heap_get_class_name (thread_p, &attrepr->classoid);
 	  if (classname == NULL)
@@ -2413,16 +2431,17 @@ heap_stats_update (THREAD_ENTRY * thread_p, const HFID * hfid,
   RECDES recdes;		/* Header record descriptor */
   LOG_DATA_ADDR addr;		/* Address of logging data */
   int i, best;
-  DISK_ISVALID new_valid;
+  FILE_IS_NEW_FILE new_valid;
   int ret = NO_ERROR;
 
-  new_valid = file_new_isvalid (thread_p, &(hfid->vfid));
-  if (new_valid == DISK_ERROR)
+  new_valid = file_is_new_file (thread_p, &(hfid->vfid));
+  if (new_valid == FILE_ERROR)
     {
       return ER_FAILED;
     }
 
-  if (new_valid == DISK_VALID && log_is_tran_in_system_op (thread_p) == true)
+  if (new_valid == FILE_NEW_FILE
+      && log_is_tran_in_system_op (thread_p) == true)
     {
       return NO_ERROR;
     }
@@ -2558,16 +2577,17 @@ heap_stats_update_all (THREAD_ENTRY * thread_p, const HFID * hfid,
   LOG_DATA_ADDR addr;		/* Address of logging data     */
   int i, best;
   int min_freespace;
-  DISK_ISVALID new_valid;
+  FILE_IS_NEW_FILE new_valid;
   int ret = NO_ERROR;
 
-  new_valid = file_new_isvalid (thread_p, &(hfid->vfid));
-  if (new_valid == DISK_ERROR)
+  new_valid = file_is_new_file (thread_p, &(hfid->vfid));
+  if (new_valid == FILE_ERROR)
     {
       return ER_FAILED;
     }
 
-  if (new_valid == DISK_VALID && log_is_tran_in_system_op (thread_p) == true)
+  if (new_valid == FILE_NEW_FILE
+      && log_is_tran_in_system_op (thread_p) == true)
     {
       return NO_ERROR;
     }
@@ -2748,11 +2768,11 @@ heap_stats_copy_cache_to_hdr (THREAD_ENTRY * thread_p,
 {
   int i, j, best, ncopies;
   int min_freespace;
-  DISK_ISVALID new_valid;
+  FILE_IS_NEW_FILE new_valid;
   int ret = NO_ERROR;
 
-  new_valid = file_new_isvalid (thread_p, &(scan_cache->hfid.vfid));
-  if (new_valid == DISK_ERROR)
+  new_valid = file_is_new_file (thread_p, &(scan_cache->hfid.vfid));
+  if (new_valid == FILE_ERROR)
     {
       return ER_FAILED;
     }
@@ -2766,7 +2786,7 @@ heap_stats_copy_cache_to_hdr (THREAD_ENTRY * thread_p,
   scan_cache->collect_nrecs = 0;
   scan_cache->collect_recs_sumlen = 0;
 
-  if (new_valid == DISK_INVALID
+  if (new_valid == FILE_OLD_FILE
       || log_is_tran_in_system_op (thread_p) == false)
     {
       best = HEAP_BEST2_START;
@@ -2972,7 +2992,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
    * than new pages. That is, it is likely that the idx_badspace (head)
    * has the smallest available space and the tail the largest available
    * space. Note that we are always checking index zero (last page in heap),
-   * and then we start from the worstentry (head) looking backwards.
+   * and then we start from the worst entry (head) looking backwards.
    */
 
   *idx_found = 0;
@@ -2984,7 +3004,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p,
    * expenses of storage.
    */
 
-  /* LK_FORCE_ZERO_WAIT does'nt set error when deadlock is occurred */
+  /* LK_FORCE_ZERO_WAIT doesn't set error when deadlock occurrs */
   old_waitsecs = xlogtb_reset_wait_secs (thread_p, LK_FORCE_ZERO_WAIT);
 
   /* backup previous error */
@@ -3203,7 +3223,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	  if (pgptr != NULL)
 	    {
 	      /*
-	       * May be we should update the bestspace scan cache at this point.
+	       * Maybe we should update the bestspace scan cache at this point.
 	       */
 	      vpid_pgptr = pgbuf_get_vpid_ptr (pgptr);
 	      for (idxbadspace = 0;
@@ -3365,7 +3385,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
 	    {
 	      VPID *hdr_vpidp;
 
-	      if (file_new_isvalid (thread_p, &(hfid->vfid)) == DISK_VALID
+	      if (file_is_new_file (thread_p, &(hfid->vfid)) == FILE_NEW_FILE
 		  && log_is_tran_in_system_op (thread_p) == true)
 		{
 		  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr,
@@ -3420,7 +3440,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid,
        * be accurate.
        */
 
-      if (file_new_isvalid (thread_p, &(hfid->vfid)) == DISK_VALID
+      if (file_is_new_file (thread_p, &(hfid->vfid)) == FILE_NEW_FILE
 	  && log_is_tran_in_system_op (thread_p) == true)
 	{
 	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr,
@@ -3835,8 +3855,8 @@ heap_link_to_new (THREAD_ENTRY * thread_p, const VFID * vfid,
       if (sp_success != SP_SUCCESS)
 	{
 	  /*
-	   * This look like a system error, size did not change, so why did it
-	   * fail
+	   * This looks like a system error: size did not change, so why did
+	   * it fail?
 	   */
 	  if (sp_success != SP_ERROR)
 	    {
@@ -4241,7 +4261,7 @@ heap_vpid_prealloc_set (THREAD_ENTRY * thread_p, const HFID * hfid,
    * automatically sooner or later
    */
 
-  if (file_new_isvalid (thread_p, &(hfid->vfid)) == DISK_VALID
+  if (file_is_new_file (thread_p, &(hfid->vfid)) == FILE_NEW_FILE
       && log_is_tran_in_system_op (thread_p) == true)
     {
       addr.pgptr = hdr_pgptr;
@@ -4375,7 +4395,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
   /*
    * Fetch the current best1 space page and see if it does not point to
    * another page. If it does, the heap has been recycled due probably
-   * of many pages with a lot of free space (i.e., the heap has became
+   * of many pages with a lot of free space (i.e., the heap has become
    * somewhat empty), the heap has been reassigned from a mark deleted
    * heap, or we have preallocated several pages.
    */
@@ -4413,7 +4433,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
       /*
        * Record the current page as a good page to look for space only if
        * its space is at least min free space to add a new record.
-       * May be what we need here is HEAP_DROP_FREE_SPACE.
+       * Maybe what we need here is HEAP_DROP_FREE_SPACE.
        */
       if (best_pages_hint_p[HEAP_BEST1].freespace > min_freespace
 	  && (best_pages_hint_p[HEAP_BEST1].freespace >
@@ -4574,7 +4594,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid,
  *   hdr_pgptr(in): The heap page header
  *   rm_vpid(in): Page to remove
  *
- * Note: The given page is removed from the heap. The link list of heap
+ * Note: The given page is removed from the heap. The linked list of heap
  * pages is updated to remove this page, and the heap header may
  * be updated if this page was part of the statistics.
  */
@@ -4583,13 +4603,13 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
 		  PAGE_PTR hdr_pgptr, VPID * rm_vpid)
 {
   PAGE_PTR rm_pgptr = NULL;	/* Pointer to page to be removed    */
-  RECDES rm_recdes;		/* Record descriptor which hold the
-				 * chain of page to be removed
+  RECDES rm_recdes;		/* Record descriptor which holds the
+				 * chain of the page to be removed
 				 */
-  HEAP_CHAIN *rm_chain;		/* Chain information of page to be
+  HEAP_CHAIN *rm_chain;		/* Chain information of the page to be
 				 * removed
 				 */
-  VPID vpid;			/* Real identifier of previoud page */
+  VPID vpid;			/* Real identifier of previous page */
   LOG_DATA_ADDR addr;		/* Log address of previous page     */
   LOG_DATA_ADDR hdr_addr;	/* Log address of previous page     */
   RECDES recdes;		/* Record descriptor to page header */
@@ -4733,8 +4753,8 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid,
       if (sp_success != SP_SUCCESS)
 	{
 	  /*
-	   * This look like a system error, size did not change, so why did it
-	   * fail
+	   * This looks like a system error: size did not change so why did it
+	   * fail?
 	   */
 	  if (sp_success != SP_ERROR)
 	    {
@@ -5757,16 +5777,16 @@ int
 xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid)
 {
   VFID vfid;
-  DISK_ISVALID new_valid;
+  FILE_IS_NEW_FILE new_valid;
   int ret;
 
-  new_valid = file_new_isvalid (thread_p, &(hfid->vfid));
-  if (new_valid == DISK_ERROR)
+  new_valid = file_is_new_file (thread_p, &(hfid->vfid));
+  if (new_valid == FILE_ERROR)
     {
       return ER_FAILED;
     }
 
-  if (new_valid == DISK_VALID)
+  if (new_valid == FILE_NEW_FILE)
     {
       return xheap_destroy (thread_p, hfid);
     }
@@ -6171,7 +6191,7 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 				  &tmp_recdes_log);
       pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
 
-      /* sage the page id */
+      /* save the page id */
       pgbuf_get_vpid (addr.pgptr, &vpid);
 
       /* unfix the page */
@@ -6189,7 +6209,7 @@ heap_insert_with_lock_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 	    {
 	      /*
 	       * something went wrong.
-	       * unlock the object because fixing the page is failed
+	       * unlock the object because fixing the page failed
 	       */
 	      lock_unlock_object (thread_p, oid, class_oid, X_LOCK, true);
 	      if (er_errid () == NO_ERROR)
@@ -8030,37 +8050,46 @@ end:
 }
 
 /*
- * heap_reclaim_addresses () - Reclaim addresses/oids
+ * xheap_reclaim_addresses () - Reclaim addresses/OIDs and delete empty pages
  *   return: NO_ERROR
  *   hfid(in): Heap file identifier
  *
- * Note: Reclaim addresses (i.e., OIDs) of deleted objects of the given
- * heap. This function CAN be called when there are not more
- * references to deleted objects of the given heap.
+ * Note: Reclaim the addresses (OIDs) of deleted objects of the given heap and
+ *       delete all the heap pages that are left empty.
  *
- * Note:
- *              a: If references to deleted objects were NUlled by the
- *                 current transaction, some recovery problems may happen
- *                 in the case of a crash since the reclaimin<g of the
- *                 addresses is done without logging (or very little one) and
- *                 thus it cannot be fully undone. Some logging is done to
- *                 make sure that media recovery will not be impacted. This
- *                 was done to avoid a lot of uneeded logging since this
- *                 function was intended to be only called by a CUBRID
- *                 utility to compact/reclaim space. Thus, if the caller was
- *                 setting references to deleted objects to NULL, the caller
- *                 must commit his transaction before this function is
- *                 invoked.
- *              b: This function must be run offline, that is, when the user
- *                 is the only one using the database system.
+ *       This function can be called:
+ *    a: When there are no more references to deleted objects of the given
+ *       heap. This happens during offline compactdb execution after all the
+ *       classes in the schema have been processed by the process_class ()
+ *       function that sets the references to deleted objects to NULL.
+ *    b: When we are sure there can be no references to any object of the
+ *       associated class. This happens during online compactdb execution when
+ *       all the classes in the schema are checked to see if can they point to
+ *       instances of the current class by checking all their atributes'
+ *       domains.
+ *
+ *       If references to deleted objects were nulled by the current
+ *       transaction some recovery problems may happen in the case of a crash
+ *       since the reclaiming of the addresses is done without logging (or
+ *       very little one) and thus it cannot be fully undone. Some logging is
+ *       done to make sure that media recovery will not be impacted. This was
+ *       done to avoid a lot of unneeded logging. Thus, if the caller was
+ *       setting references to deleted objects to NULL, the caller must commit
+ *       his transaction before this function is invoked.
+ *
+ *      This function must be run:
+ *   a: offline, that is, when the user is the only one using the database
+ *      system.
+ *   b: online while holding an exclusive lock on the associated class.
  */
 int
-heap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
+xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 {
   VPID vpid;
   VPID prv_vpid;
   int best;
   PAGE_PTR hdr_pgptr = NULL;
+  HEAP_HDR_STATS initial_heap_hdr;
   HEAP_HDR_STATS heap_hdr;
   RECDES hdr_recdes;
   PAGE_PTR pgptr = NULL;
@@ -8068,6 +8097,23 @@ heap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
   int ret = NO_ERROR;
   int frspace;
   int npages, nrecords, rec_length;
+  FILE_IS_NEW_FILE new_valid;
+
+  new_valid = file_is_new_file (thread_p, &hfid->vfid);
+  if (new_valid == FILE_ERROR)
+    {
+      goto exit_on_error;
+    }
+  if (new_valid == FILE_NEW_FILE)
+    {
+      /*
+       * This function should not be called for new files. It should work for
+       * new files but it was only intended to be used by a compactdb tool
+       * that does not operate on new classes.
+       */
+      assert (false);
+      goto exit_on_error;
+    }
 
   addr.vfid = &hfid->vfid;
   addr.pgptr = NULL;
@@ -8092,6 +8138,9 @@ heap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
     {
       goto exit_on_error;
     }
+
+  /* Copy the header to memory.. so we can log the changes */
+  memcpy (&initial_heap_hdr, hdr_recdes.data, sizeof (initial_heap_hdr));
 
   /*
    * Initialize best estimates
@@ -8137,14 +8186,26 @@ heap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	  if (spage_reclaim (thread_p, pgptr) == true)
 	    {
 	      addr.pgptr = pgptr;
+	      /*
+	       * If this function is called correctly (see the notes in the
+	       * header comment about the preconditions) we can skip the
+	       * logging of spage_reclaim (). Logging for REDO would add many
+	       * log records for any compactdb operation and would only
+	       * benefit the infrequent scenario of compactdb operations that
+	       * crash right at the end. UNDO operations are not absolutely
+	       * required because the deleted OIDs should be unreferenced
+	       * anyway; there should be no harm in reusing them. Basically,
+	       * since the call to spage_reclaim () should leave the database
+	       * logically unmodified, neither REDO nor UNDO are required.
+	       */
 	      log_skip_logging (thread_p, &addr);
 	      pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
 	    }
 	}
 
       /*
-       * Throw away the page if there is not any object. The header of the
-       * heap cannot be thrown
+       * Throw away the page if it doesn't contain any object. The header of
+       * the heap cannot be thrown.
        */
 
       if (!(vpid.pageid == hfid->hpgid && vpid.volid == hfid->vfid.volid)
@@ -8217,6 +8278,17 @@ heap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
       heap_hdr.estimates.best[best].freespace = 0;
     }
 
+  /* Log the desired changes.. and then change the header
+   * We need to log the header changes in order to always benefit from the
+   * updated statistics and in order to avoid referencing deleted pages in the
+   * statistics.
+   */
+  addr.pgptr = hdr_pgptr;
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+  log_append_undoredo_data (thread_p, RVHF_STATS, &addr,
+			    sizeof (HEAP_HDR_STATS), sizeof (HEAP_HDR_STATS),
+			    &initial_heap_hdr, hdr_recdes.data);
+
   /* Now update the statistics */
   if (spage_update (thread_p, hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
 		    &hdr_recdes) != SP_SUCCESS)
@@ -8224,9 +8296,6 @@ heap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
       goto exit_on_error;
     }
 
-  addr.pgptr = hdr_pgptr;
-  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
-  log_skip_logging (thread_p, &addr);
   pgbuf_set_dirty (thread_p, hdr_pgptr, FREE);
   hdr_pgptr = NULL;
 
@@ -8332,7 +8401,7 @@ heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid,
 				    sizeof (*heap_hdr), heap_hdr);
 	      pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
 
-	      if (file_new_isvalid (thread_p, &(hfid->vfid)) == DISK_VALID)
+	      if (file_is_new_file (thread_p, &(hfid->vfid)) == FILE_NEW_FILE)
 		{
 		  log_end_system_op (thread_p,
 				     LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
@@ -8954,7 +9023,8 @@ heap_scancache_force_modify (THREAD_ENTRY * thread_p,
 
   if (scan_cache->collect_nbest > 0
       && scan_cache->collect_recs_sumlen > 0.0
-      && (file_new_isvalid (thread_p, &(scan_cache->hfid.vfid)) != DISK_VALID
+      && (file_is_new_file (thread_p,
+			    &(scan_cache->hfid.vfid)) != FILE_NEW_FILE
 	  || log_is_tran_in_system_op (thread_p) != true))
     {
       /* Retrieve the header of heap */
@@ -9505,7 +9575,7 @@ heap_hint_expected_num_objects (THREAD_ENTRY * thread_p,
   if (npages > 1)
     {
       /*
-       * Growth the collect_best array if needed, but don't let it too large.
+       * Grow the collect_best array if needed, but don't let it be too large.
        */
       if (npages > scan_cache->collect_maxbest
 	  && scan_cache->collect_maxbest < 400)
@@ -12230,6 +12300,12 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
   HEAP_SCANCACHE scan_cache;
   DISK_ISVALID oid_valid;
 
+  if (class_oid == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
+
   heap_scancache_quick_start (&scan_cache);
   if (heap_get (thread_p, oid, &recdes, &scan_cache, PEEK, NULL_CHN) !=
       S_SUCCESS)
@@ -12629,7 +12705,7 @@ exit_on_error:
  * heap_moreattr_attrinfo () - Add another attribute to the attribute information
  *                           cache
  *   return: NO_ERROR
- *   attrid(in): The information of the attibute that will be needed
+ *   attrid(in): The information of the attribute that will be needed
  *   attr_info(in/out): The attribute information structure
  *
  * Note: The given attribute is included as part of the reading or
@@ -13621,6 +13697,30 @@ heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info)
 	   */
 	  return (value->read_attrepr != NULL) ?
 	    value->read_attrepr : value->last_attrepr;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * heap_locate_last_attrepr () -
+ *   return:
+ *   attrid(in):
+ *   attr_info(in):
+ */
+OR_ATTRIBUTE *
+heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
+  int i;
+
+  for (i = 0, value = attr_info->values;
+       i < attr_info->num_values; i++, value++)
+    {
+      if (attrid == value->attrid)
+	{
+	  return value->last_attrepr;
 	}
     }
 
@@ -14907,6 +15007,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes,
  */
 DB_VALUE *
 heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
+			    int *atts_prefix_length,
 			    HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes,
 			    DB_VALUE * db_value, char *buf)
 {
@@ -14956,6 +15057,18 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids,
        *  Return a pointer to the attributes DB_VALUE.
        */
       ret_val = heap_attrinfo_access (att_ids[0], attr_info);
+
+      if (atts_prefix_length && n_atts == 1)
+	{
+
+	  if (*atts_prefix_length != -1 &&
+	      QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (ret_val)))
+	    {
+	      pr_clone_value (ret_val, db_value);
+	      db_string_truncate (db_value, *atts_prefix_length);
+	      ret_val = db_value;
+	    }
+	}
     }
 
   return ret_val;
@@ -15079,6 +15192,17 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index,
 
       /* Find the matching attribute identified by the attribute ID */
       ret_val = heap_attrinfo_access (index->atts[0]->id, idx_attrinfo);
+
+      if (index->attrs_prefix_length != NULL
+	  && index->attrs_prefix_length[0] != -1)
+	{
+	  if (QSTR_IS_ANY_CHAR_OR_BIT (DB_VALUE_DOMAIN_TYPE (ret_val)))
+	    {
+	      pr_clone_value (ret_val, db_value);
+	      db_string_truncate (db_value, index->attrs_prefix_length[0]);
+	      ret_val = db_value;
+	    }
+	}
     }
 
   return ret_val;
@@ -15150,6 +15274,49 @@ heap_indexinfo_get_attrids (int btid_index, HEAP_CACHE_ATTRINFO * attrinfo,
 }
 
 /*
+ * heap_indexinfo_get_attrs_prefix_length () -
+ *   return: NO_ERROR
+ *   btid_index(in):
+ *   attrinfo(in):
+ *   keys_prefix_length(in/out):
+ */
+int
+heap_indexinfo_get_attrs_prefix_length (int btid_index,
+					HEAP_CACHE_ATTRINFO * attrinfo,
+					int *attrs_prefix_length,
+					int len_attrs_prefix_length)
+{
+  int i, length = -1;
+  int ret = NO_ERROR;
+
+  if (attrs_prefix_length && len_attrs_prefix_length > 0)
+    {
+      for (i = 0; i < len_attrs_prefix_length; i++)
+	{
+	  attrs_prefix_length[i] = -1;
+	}
+    }
+
+  if (btid_index != -1 && (btid_index < attrinfo->last_classrepr->n_indexes))
+    {
+      if (attrinfo->last_classrepr->indexes[btid_index].attrs_prefix_length &&
+	  attrs_prefix_length)
+	{
+	  length = MIN (attrinfo->last_classrepr->indexes[btid_index].n_atts,
+			len_attrs_prefix_length);
+	  for (i = 0; i < length; i++)
+	    {
+	      attrs_prefix_length[i] =
+		attrinfo->last_classrepr->indexes[btid_index].
+		attrs_prefix_length[i];
+	    }
+	}
+    }
+
+  return ret;
+}
+
+/*
  * heap_get_indexinfo_of_btid () -
  *   return: NO_ERROR
  *   class_oid(in):
@@ -15162,7 +15329,8 @@ heap_indexinfo_get_attrids (int btid_index, HEAP_CACHE_ATTRINFO * attrinfo,
 int
 heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, OID * class_oid,
 			    BTID * btid, BTREE_TYPE * type, int *num_attrs,
-			    ATTR_ID ** attr_ids, char **btnamepp)
+			    ATTR_ID ** attr_ids,
+			    int **attrs_prefix_length, char **btnamepp)
 {
   OR_CLASSREP *classrepp;
   OR_INDEX *indexp;
@@ -15184,6 +15352,11 @@ heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, OID * class_oid,
   if (btnamepp)
     {
       *btnamepp = NULL;
+    }
+
+  if (attrs_prefix_length)
+    {
+      *attrs_prefix_length = NULL;
     }
 
   /* get the class representation so that we can access the indexes */
@@ -15236,6 +15409,29 @@ heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, OID * class_oid,
       *btnamepp = strdup (indexp->btname);
     }
 
+  if (attrs_prefix_length && indexp->type == BTREE_INDEX)
+    {
+      *attrs_prefix_length =
+	(int *) db_private_alloc (thread_p, n * sizeof (int));
+
+      if (*attrs_prefix_length == NULL)
+	{
+	  goto exit_on_error;
+	}
+
+      for (i = 0; i < n; i++)
+	{
+	  if (indexp->attrs_prefix_length != NULL)
+	    {
+	      (*attrs_prefix_length)[i] = indexp->attrs_prefix_length[i];
+	    }
+	  else
+	    {
+	      (*attrs_prefix_length)[i] = -1;
+	    }
+	}
+    }
+
   /* free the class representation */
   ret = heap_classrepr_free (classrepp, &idx_in_cache);
   if (ret != NO_ERROR)
@@ -15255,6 +15451,15 @@ exit_on_error:
   if (btnamepp && *btnamepp)
     {
       free_and_init (*btnamepp);
+    }
+
+  if (attrs_prefix_length)
+    {
+      if (*attrs_prefix_length)
+	{
+	  db_private_free_and_init (thread_p, *attrs_prefix_length);
+	}
+      *attrs_prefix_length = NULL;
     }
 
   if (classrepp)
@@ -16015,7 +16220,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool rec_p)
 	  /* something went wrong, return */
 	  return;
 	}
-      spage_dump (thread_p, fp, pgptr, 0);
+      spage_dump (thread_p, fp, pgptr, 1);
       (void) heap_vpid_next (hfid, pgptr, &vpid);
       pgbuf_unfix_and_init (thread_p, pgptr);
     }
@@ -17413,7 +17618,7 @@ heap_rv_dump_chain (FILE * fp, int ignore_length, void *data)
  *   return: int
  *   rcv(in): Recovery structure
  *
- * Note: Redo the insertion of an object at an specific location (OID).
+ * Note: Redo the insertion of an object at a specific location (OID).
  */
 int
 heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
@@ -17787,7 +17992,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
   char *classname;
   const char *attr_name;
   RECDES recdes;		/* Used to obtain attribute name */
-  char serial_name[DB_MAX_IDENTIFIER_LENGTH];
+  char serial_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
   HEAP_ATTRVALUE *value;
   DB_VALUE dbvalue_numeric, *dbvalue, oid_str_val, key_val;
   OR_ATTRIBUTE *att;
@@ -17870,8 +18075,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 		  BTREE_SEARCH ret;
 
 		  BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
-		  ret = xbtree_find_unique (thread_p, &serial_btid, &key_val,
-					    &serial_class_oid,
+		  ret = xbtree_find_unique (thread_p, &serial_btid, true,
+					    &key_val, &serial_class_oid,
 					    &(att->serial_obj), false);
 		  if (heap_classrepr_free (classrep, &idx_in_cache) !=
 		      NO_ERROR)
@@ -17954,4 +18159,205 @@ heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p,
 
   return heap_attrinfo_set_uninitialized (thread_p, inst_oid, recdes,
 					  attr_info);
+}
+
+/*
+ * heap_get_hfid_from_class_oid () - get HFID from class oid
+ *   return: error_code
+ *   class_oid(in): class oid
+ *   hfid(out):  the resulting hfid
+ */
+int
+heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p, OID * class_oid,
+			      HFID * hfid)
+{
+  int error_code = NO_ERROR;
+  RECDES recdes;
+  HEAP_SCANCACHE scan_cache;
+
+  if (class_oid == NULL || hfid == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  error_code = heap_scancache_quick_start (&scan_cache);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (heap_get (thread_p, class_oid, &recdes, &scan_cache, PEEK,
+		NULL_CHN) != S_SUCCESS)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+      return ER_FAILED;
+    }
+
+  orc_class_hfid_from_record (&recdes, hfid);
+
+  error_code = heap_scancache_end (thread_p, &scan_cache);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return error_code;
+}
+
+/*
+ * heap_compact_pages () - compact all pages from hfid of specified class OID
+ *   return: error_code
+ *   class_oid(out):  the class oid
+ */
+int
+heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid)
+{
+  int ret = NO_ERROR;
+  VPID vpid;
+  PAGE_PTR hdr_pgptr = NULL;
+  VPID next_vpid;
+  PAGE_PTR pgptr = NULL;
+  LOG_DATA_ADDR addr;
+  int lock_timeout = 2000;
+  HFID hfid;
+
+  if (class_oid == NULL)
+    {
+      return ER_QPROC_INVALID_PARAMETER;
+    }
+
+  if (lock_object (thread_p, class_oid, oid_Root_class_oid, IS_LOCK,
+		   LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      return ER_FAILED;
+    }
+
+  ret = heap_get_hfid_from_class_oid (thread_p, class_oid, &hfid);
+  if (ret != NO_ERROR || HFID_IS_NULL (&hfid))
+    {
+      lock_unlock_object (thread_p, class_oid, oid_Root_class_oid,
+			  IS_LOCK, true);
+      return ret;
+    }
+
+  addr.vfid = &hfid.vfid;
+  addr.pgptr = NULL;
+  addr.offset = 0;
+
+  vpid.volid = hfid.vfid.volid;
+  vpid.pageid = hfid.hpgid;
+
+  hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ,
+			 PGBUF_UNCONDITIONAL_LATCH);
+  if (hdr_pgptr == NULL)
+    {
+      lock_unlock_object (thread_p, class_oid, oid_Root_class_oid,
+			  IS_LOCK, true);
+      ret = ER_FAILED;
+      goto exit_on_error;
+    }
+
+  lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, IS_LOCK, true);
+
+  next_vpid = vpid;
+  while (!VPID_ISNULL (&next_vpid))
+    {
+      vpid = next_vpid;
+      pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK,
+					   NULL);
+      if (pgptr == NULL)
+	{
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+
+      ret = heap_vpid_next (&hfid, pgptr, &next_vpid);
+      if (ret != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  goto exit_on_error;
+	}
+
+      if (spage_compact (pgptr) != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, pgptr);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+
+      addr.pgptr = pgptr;
+      log_skip_logging (thread_p, &addr);
+      pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
+      pgbuf_unfix_and_init (thread_p, pgptr);
+    }
+
+  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+  hdr_pgptr = NULL;
+
+  return ret;
+
+exit_on_error:
+
+  if (hdr_pgptr)
+    {
+      pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+    }
+
+  return ret;
+}
+
+/*
+ * heap_classrepr_dump_all () - dump all representations belongs to a class
+ *   return: none
+ *   fp(in): file pointer to print out
+ *   class_oid(in): class oid to be dumped
+ */
+void
+heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid)
+{
+  RECDES peek_recdes;
+  HEAP_SCANCACHE scan_cache;
+  OR_CLASSREP **rep_all;
+  int count, i;
+  char *classname;
+  bool need_free_classname = false;
+
+  classname = heap_get_class_name (thread_p, class_oid);
+  if (classname == NULL)
+    {
+      classname = (char *) "unknown";
+    }
+  else
+    {
+      need_free_classname = true;
+    }
+
+  heap_scancache_quick_start (&scan_cache);
+
+  if (heap_get (thread_p, class_oid, &peek_recdes, &scan_cache,
+		PEEK, NULL_CHN) == S_SUCCESS)
+    {
+      rep_all = or_get_all_representation (&peek_recdes, true, &count);
+      fprintf (fp, "*** Dumping representations of class %s\n"
+	       "    Classname = %s, Class-OID = %d|%d|%d, #Repr = %d\n\n",
+	       classname, classname, (int) class_oid->volid,
+	       class_oid->pageid, (int) class_oid->slotid, count);
+
+      for (i = 0; i < count; i++)
+	{
+	  assert (rep_all[i] != NULL);
+	  heap_classrepr_dump (thread_p, fp, class_oid, rep_all[i]);
+	  or_free_classrep (rep_all[i]);
+	}
+
+      fprintf (fp, "\n*** End of dump.\n");
+      free_and_init (rep_all);
+    }
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  if (need_free_classname)
+    {
+      free_and_init (classname);
+    }
 }

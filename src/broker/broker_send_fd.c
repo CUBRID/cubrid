@@ -42,8 +42,6 @@
 #define CONTROLLEN (sizeof(struct cmsghdr) + sizeof(int))
 #endif
 
-#define FALSE 0
-#define TRUE 1
 #define SYSV
 
 int
@@ -51,6 +49,7 @@ send_fd (int server_fd, int client_fd, int rid)
 {
   struct iovec iov[1];
   struct msghdr msg;
+  int num_bytes;
 #if defined(LINUX) || defined(ALPHA_LINUX) || defined(UNIXWARE7)
   static struct cmsghdr *cmptr = NULL;
 #endif
@@ -76,9 +75,11 @@ send_fd (int server_fd, int client_fd, int rid)
   *(int *) CMSG_DATA (cmptr) = client_fd;
 #endif
 
-  if (sendmsg (server_fd, &msg, 0) < sizeof (int))
+  num_bytes = sendmsg (server_fd, &msg, 0);
+
+  if (num_bytes < (signed int) sizeof (int))
     {
-      return (FALSE);
+      return (-1);
     }
-  return (TRUE);
+  return (num_bytes);
 }

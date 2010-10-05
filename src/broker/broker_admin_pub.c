@@ -1821,6 +1821,7 @@ br_inactivate (T_BROKER_INFO * br_info)
     {
       as_inactivate (shm_appl->as_info[i].pid, br_info->name, i);
       shm_appl->as_info[i].pid = 0;
+      CON_STATUS_LOCK_DESTROY (&(shm_appl->as_info[i]));
     }
   br_info->appl_server_num = br_info->appl_server_min_num;
 

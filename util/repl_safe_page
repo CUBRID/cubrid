@@ -19,7 +19,7 @@ if [ -z "$CUBRID_DATABASES" ]; then
   printf "0"
   exit 1
 else
-  db_dir=`grep "^$db_name " $CUBRID_DATABASES/databases.txt | awk '{ print $2 }'`
+  db_dir=`grep -w "^$db_name " $CUBRID_DATABASES/databases.txt | awk '{ print $2 }'`
 fi
 debug_msg "DB DIR = $db_dir"
 

@@ -29,12 +29,14 @@
 #include <assert.h>
 #include <errno.h>
 #include <signal.h>
+#include <ctype.h>
 
 #if defined(WINDOWS)
 #include <tchar.h>
 #include <float.h>
 #include <io.h>
 #include <conio.h>
+#include <math.h>
 #else
 #include <curses.h>
 #endif
@@ -1269,4 +1271,9 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
   return _vsprintf_p (buffer, count, format, argptr);
 }
 
+double
+round (double d)
+{
+  return d >= 0 ? floor (d + 0.5) : ceil (d - 0.5);
+}
 #endif /* WINDOWS */

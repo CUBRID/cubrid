@@ -104,7 +104,7 @@
  *    Internal structure used for maintaining lists of strings.
  *    Makes it easier to collect up strings before putting them into a
  *    fixed length array.
- *    Could be generalized into a more globally usefull utility.
+ *    Could be generalized into a more globally useful utility.
  *
  */
 
@@ -371,7 +371,7 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 			   TP_DOMAIN * domain)
 {
   TP_DOMAIN *temp_domain;
-  char temp_buffer[26];
+  char temp_buffer[27];
   char temp_buffer_numeric[50];
   int precision = 0;
 
@@ -749,6 +749,8 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
   PARSER_VARCHAR *buffer;
   SM_ATTRIBUTE **attribute_p;
   const int *asc_desc;
+  const int *prefix_length;
+  char temp[20];
 
   buffer = NULL;
 
@@ -793,6 +795,8 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
       asc_desc = constraint_p->asc_desc;
     }
 
+  prefix_length = constraint_p->attrs_prefix_length;
+
   for (attribute_p = constraint_p->attributes; *attribute_p; attribute_p++)
     {
       if (attribute_p != constraint_p->attributes)
@@ -801,6 +805,18 @@ obj_print_describe_constraint (PARSER_CONTEXT * parser,
 	}
       buffer =
 	pt_append_nulstring (parser, buffer, (*attribute_p)->header.name);
+
+      if (prefix_length)
+	{
+	  if (*prefix_length != -1)
+	    {
+	      sprintf (temp, "(%d)", *prefix_length);
+	      pt_append_nulstring (parser, buffer, temp);
+	    }
+
+	  prefix_length++;
+	}
+
       if (asc_desc)
 	{
 	  if (*asc_desc == 1)
@@ -1156,7 +1172,7 @@ obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
 
   strings = NULL;
 
-  cache = (TR_SCHEMA_CACHE *) class_p->triggers;
+  cache = class_p->triggers;
   if (cache != NULL && !tr_validate_schema_cache (cache))
     {
       for (i = 0; i < cache->array_length; i++)
@@ -1169,7 +1185,7 @@ obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
   for (attribute_p = class_p->ordered_attributes; attribute_p != NULL;
        attribute_p = attribute_p->order_link)
     {
-      cache = (TR_SCHEMA_CACHE *) attribute_p->triggers;
+      cache = attribute_p->triggers;
       if (cache != NULL && !tr_validate_schema_cache (cache))
 	{
 	  for (i = 0; i < cache->array_length; i++)
@@ -1183,7 +1199,7 @@ obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
   for (attribute_p = class_p->class_attributes; attribute_p != NULL;
        attribute_p = (SM_ATTRIBUTE *) attribute_p->header.next)
     {
-      cache = (TR_SCHEMA_CACHE *) attribute_p->triggers;
+      cache = attribute_p->triggers;
       if (cache != NULL && !tr_validate_schema_cache (cache))
 	{
 	  for (i = 0; i < cache->array_length; i++)
@@ -1926,7 +1942,7 @@ help_trigger_names (char ***names_ptr)
 
 /*
  * help_print_trigger () - Debug function, primarily for help_print_info,
- *                         can be usefull in the debugger as well.
+ *                         can be useful in the debugger as well.
  *                         Display the description of a trigger to stdout.
  *   return: none
  *   name(in): trigger name
@@ -3499,27 +3515,12 @@ describe_money (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 
   assert (parser != NULL && value != NULL);
 
-  if (parser->custom_print & PT_SUPPRESS_CURRENCY)
-    {
-      sprintf (cbuf, "%.2f", value->amount);
-    }
-  else
-    {
-      sprintf (cbuf, "%s%.2f", lang_currency_symbol (value->type),
-	       value->amount);
-    }
+  sprintf (cbuf, "%s%.2f", lang_currency_symbol (value->type), value->amount);
 
   if (strstr (cbuf, "Inf"))
     {
-      if (parser->custom_print & PT_SUPPRESS_CURRENCY)
-	{
-	  sprintf (cbuf, "%.2f", (value->amount > 0 ? DBL_MAX : -DBL_MAX));
-	}
-      else
-	{
-	  sprintf (cbuf, "%s%.2f", lang_currency_symbol (value->type),
-		   (value->amount > 0 ? DBL_MAX : -DBL_MAX));
-	}
+      sprintf (cbuf, "%s%.2f", lang_currency_symbol (value->type),
+	       (value->amount > 0 ? DBL_MAX : -DBL_MAX));
     }
 
   buffer = pt_append_nulstring (parser, buffer, cbuf);

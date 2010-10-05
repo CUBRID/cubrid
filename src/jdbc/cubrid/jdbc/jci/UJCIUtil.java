@@ -28,7 +28,7 @@
  *
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 abstract public class UJCIUtil
 {

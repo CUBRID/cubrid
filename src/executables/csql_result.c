@@ -58,6 +58,7 @@ typedef struct
   int num_attrs;
   char **attr_names;
   int *attr_lengths;
+  DB_TYPE *attr_types;
   int max_attr_name_length;
   CUBRID_STMT_TYPE curr_stmt_type;
   int curr_stmt_line_no;
@@ -119,7 +120,9 @@ static CSQL_CMD_STRING_TABLE csql_Cmd_string_table[] = {
   {CUBRID_STMT_CREATE_SERIAL, "CREATE SERIAL"},
   {CUBRID_STMT_DROP_SERIAL, "DROP SERIAL"},
   {CUBRID_STMT_CREATE_STORED_PROCEDURE, "CREATE PROCEDURE"},
-  {CUBRID_STMT_DROP_STORED_PROCEDURE, "DROP PROCEDURE"}
+  {CUBRID_STMT_DROP_STORED_PROCEDURE, "DROP PROCEDURE"},
+  {CUBRID_STMT_TRUNCATE, "TRUNCATE"},
+  {CUBRID_STMT_DO, "DO"}
 };
 
 static const char *csql_Isolation_level_string[] = {
@@ -168,6 +171,7 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
   int num_attrs = 0;
   char **attr_names = NULL;
   int *attr_lengths = NULL;
+  DB_TYPE *attr_types = NULL;
   int max_attr_name_length = 0;
 
   /* trivial case - no results */
@@ -202,7 +206,8 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
     }
   attr_name_lengths = (int *) malloc (sizeof (int) * num_attrs);
   attr_lengths = (int *) malloc (sizeof (int) * num_attrs);
-  if (attr_name_lengths == NULL || attr_lengths == NULL)
+  attr_types = (DB_TYPE *) malloc (sizeof (DB_TYPE) * num_attrs);
+  if (attr_name_lengths == NULL || attr_lengths == NULL || attr_types == NULL)
     {
       csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
       goto error;
@@ -236,8 +241,9 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
 	}
       attr_name_lengths[i] = strlen (attr_names[i]);
       max_attr_name_length = MAX (max_attr_name_length, attr_name_lengths[i]);
+      attr_types[i] = db_query_format_type (t);
 
-      switch (db_query_format_type (t))
+      switch (attr_types[i])
 	{
 	case DB_TYPE_SHORT:
 	  attr_lengths[i] =
@@ -289,6 +295,7 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
   result_info.num_attrs = num_attrs;
   result_info.attr_names = attr_names;
   result_info.attr_lengths = attr_lengths;
+  result_info.attr_types = attr_types;
   result_info.max_attr_name_length = max_attr_name_length;
   result_info.curr_stmt_type = stmt_type;
   result_info.curr_stmt_line_no = line_no;
@@ -320,6 +327,10 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result,
   if (attr_lengths != NULL)
     {
       free_and_init (attr_lengths);
+    }
+  if (attr_types != NULL)
+    {
+      free_and_init (attr_types);
     }
 
   return;
@@ -353,6 +364,10 @@ error:
   if (attr_lengths != NULL)
     {
       free_and_init (attr_lengths);
+    }
+  if (attr_types != NULL)
+    {
+      free_and_init (attr_types);
     }
 }
 
@@ -459,7 +474,26 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info)
 	  goto error;
 	}
 
-      value_type = DB_VALUE_TYPE (&db_value);	/* copy to register to speed up */
+      value_type = DB_VALUE_TYPE (&db_value);
+
+      /*
+       * This assert is intended to validate that the server returned the
+       * expected types for the query results. See the note in
+       * pt_print_value () regarding XASL caching.
+       */
+      /*
+       * TODO fix this assert if it fails in valid cases. Perhaps it should
+       *      allow DB_TYPE_POINTER? What about DB_TYPE_ERROR?
+       */
+      /*
+       * TODO add a similar check to the ux_* and/or cci_* and/or the server
+       *      functions so that the results' types returned through sockets in
+       *      CS_MODE are validated.
+       */
+      assert (value_type == DB_TYPE_NULL
+	      /* UNKNOWN, maybe host variable */
+	      || result_info->attr_types[i] == DB_TYPE_NULL
+	      || value_type == result_info->attr_types[i]);
 
       switch (value_type)
 	{

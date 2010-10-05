@@ -94,7 +94,7 @@ static char *make_shadow_pathname (const DB_OBJECT * holder_p);
  *
  * Note :
  *    Hack to allow environment variables to modify the names of the FBO
- *    files.  This is particularly usefull for the Windows client so we can
+ *    files.  This is particularly useful for the Windows client so we can
  *    add in volume prefixes for NFS mounted directory trees.
  *
  *    Two forms of environment variables are allowed, if CUBRID_FBO_PREFIX
@@ -532,7 +532,7 @@ esm_make_shadow_pathname (const char *pathname)
     }
 
   /* add template and make the temp file name */
-  snprintf(shadow_pathname, PATH_MAX - 1, "%sXXXXXX", temp);
+  snprintf (shadow_pathname, PATH_MAX - 1, "%sXXXXXX", temp);
   mktemp (shadow_pathname);
 
   return (shadow_pathname);

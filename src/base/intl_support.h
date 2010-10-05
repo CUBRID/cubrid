@@ -119,6 +119,10 @@ extern "C"
 				INTL_CODESET src_codeset);
   extern int intl_lower_string (unsigned char *src, int length_in_chars,
 				INTL_CODESET src_codeset);
+  extern int intl_reverse_string (unsigned char *src,
+				  unsigned char *dst,
+				  int length_in_chars,
+				  int size_in_bytes, INTL_CODESET codeset);
 
   extern int intl_mbs_lower (const char *mbs1, char *mbs2);
   extern int intl_mbs_nlower (char *dest, const char *src, const int max_len);
@@ -130,6 +134,7 @@ extern "C"
 
   extern const char *intl_mbs_nth (const char *mbs, size_t n);
   extern char *intl_mbs_ncpy (char *mbs1, const char *mbs2, size_t n);
+  extern int intl_mbs_namecmp (const char *mbs1, const char *mbs2);
   extern int intl_mbs_casecmp (const char *mbs1, const char *mbs2);
   extern int intl_mbs_ncasecmp (const char *mbs1, const char *mbs2, size_t n);
 

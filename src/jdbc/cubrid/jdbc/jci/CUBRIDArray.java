@@ -34,7 +34,7 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 import java.math.BigDecimal;
 import java.sql.Date;
@@ -44,7 +44,7 @@ import java.sql.Array;
 import java.sql.ResultSet;
 import java.util.Map;
 
-import cubrid.sql.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDOID;
 
 /*
  * CUBRID의 Set Type을 Manage하기 위한 class이다. interface java.sql.Array를

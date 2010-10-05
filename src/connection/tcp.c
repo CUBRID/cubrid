@@ -84,7 +84,7 @@
 #define INADDR_NONE 0xffffffff
 #endif /* !INADDR_NONE */
 
-static const int css_Maximum_server_count = 5;
+static const int css_Maximum_server_count = 50;
 
 #ifndef HAVE_GETHOSTBYNAME_R
 static MUTEX_T gethostbyname_lock = MUTEX_INITIALIZER;
@@ -257,7 +257,8 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
     {
       memset ((void *) &unix_saddr, 0, sizeof (unix_saddr));
       unix_saddr.sun_family = AF_UNIX;
-      strcpy (unix_saddr.sun_path, css_Master_unix_domain_path);
+      strncpy (unix_saddr.sun_path, css_Master_unix_domain_path,
+	       sizeof (unix_saddr.sun_path) - 1);
       *slen = sizeof (unix_saddr);
       memcpy ((void *) saddr, (void *) &unix_saddr, *slen);
     }
@@ -555,7 +556,8 @@ css_tcp_master_open (int port, SOCKET * sockfd)
 	   P_tmpdir, envvar_prefix (), port);
 
   unix_srv_addr.sun_family = AF_UNIX;
-  strcpy (unix_srv_addr.sun_path, css_Master_unix_domain_path);
+  strncpy (unix_srv_addr.sun_path, css_Master_unix_domain_path,
+	   sizeof (unix_srv_addr.sun_path) - 1);
 
   /*
    * Create the socket and Bind our local address so that any
@@ -779,7 +781,7 @@ css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd)
 
   memset ((void *) &serv_addr, 0, sizeof (serv_addr));
   serv_addr.sun_family = AF_UNIX;
-  strcpy (serv_addr.sun_path, pathname);
+  strncpy (serv_addr.sun_path, pathname, sizeof (serv_addr.sun_path) - 1);
   servlen = strlen (pathname) + 1 + sizeof (serv_addr.sun_family);
 
   if (bind (*sockfd, (struct sockaddr *) &serv_addr, servlen) < 0)
@@ -864,7 +866,7 @@ css_tcp_master_datagram (char *path_name, SOCKET * sockfd)
 
   memset ((void *) &serv_addr, 0, sizeof (serv_addr));
   serv_addr.sun_family = AF_UNIX;
-  strcpy (serv_addr.sun_path, path_name);
+  strncpy (serv_addr.sun_path, path_name, sizeof (serv_addr.sun_path) - 1);
   servlen = strlen (serv_addr.sun_path) + 1 + sizeof (serv_addr.sun_family);
 
   do
@@ -1423,7 +1425,7 @@ css_peer_alive (SOCKET sd, int timeout)
    * Connection will be established or refused immediately.
    * Either way it means that the peer host is alive.
    */
-  if (n == 0 || n == ECONNREFUSED)
+  if (n == 0 || (n < 0 && errno == ECONNREFUSED))
     {
       close (nsd);
       return true;

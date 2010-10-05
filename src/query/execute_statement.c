@@ -326,7 +326,9 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj,
   att_name = att_downcase_name;
 
   /* serial_name : <class_name>_ai_<att_name> */
-  serial_name = (char *) malloc (strlen (class_name) + strlen (att_name) + 5);
+  serial_name =
+    (char *) malloc (strlen (class_name) + strlen (att_name) +
+		     AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
   if (serial_name == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
@@ -387,6 +389,90 @@ update_auto_increment_error:
 }
 
 /*
+ * do_reset_auto_increment_serial() -
+ *   return: Error code
+ *   serial_obj(in/out):
+ */
+int
+do_reset_auto_increment_serial (MOP serial_obj)
+{
+  int error_code = NO_ERROR;
+  DB_OBJECT *const serial_object = serial_obj;
+  DB_OBJECT *edit_serial_object = NULL;
+  DB_OTMPL *obj_tmpl = NULL;
+  DB_VALUE start_value;
+  DB_VALUE started_flag;
+
+  if (serial_object == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  db_make_null (&start_value);
+  db_make_null (&started_flag);
+
+  error_code = db_get (serial_object, SR_ATT_MIN_VAL, &start_value);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  obj_tmpl = dbt_edit_object (serial_object);
+  if (obj_tmpl == NULL)
+    {
+      error_code = er_errid ();
+      goto error_exit;
+    }
+
+  error_code = dbt_put_internal (obj_tmpl, SR_ATT_CURRENT_VAL, &start_value);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  db_make_int (&started_flag, 0);
+  error_code = dbt_put_internal (obj_tmpl, SR_ATT_STARTED, &started_flag);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  edit_serial_object = dbt_finish_object (obj_tmpl);
+  if (edit_serial_object == NULL)
+    {
+      error_code = er_errid ();
+      goto error_exit;
+    }
+
+  assert (edit_serial_object == serial_object);
+  obj_tmpl = NULL;
+
+  error_code = locator_flush_instance (edit_serial_object);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  db_value_clear (&start_value);
+  db_value_clear (&started_flag);
+
+  return error_code;
+
+error_exit:
+
+  if (obj_tmpl != NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+
+  db_value_clear (&start_value);
+  db_value_clear (&started_flag);
+
+  return error_code;
+}
+
+
+/*
  * do_get_serial_obj_id() -
  *   return: serial object
  *   serial_obj_id(out):
@@ -439,7 +525,6 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
 
   pr_clear_value (&val);
   free_and_init (p);
-
   return mop;
 }
 
@@ -1114,7 +1199,9 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object,
   att_name = att_downcase_name;
 
   /* serial_name : <class_name>_ai_<att_name> */
-  serial_name = (char *) malloc (strlen (class_name) + strlen (att_name) + 5);
+  serial_name =
+    (char *) malloc (strlen (class_name) + strlen (att_name) +
+		     AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
   if (serial_name == NULL)
     {
       goto end;
@@ -2354,6 +2441,14 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = do_select (parser, statement);
 	  break;
 
+	case PT_TRUNCATE:
+	  error = do_truncate (parser, statement);
+	  break;
+
+	case PT_DO:
+	  error = do_execute_do (parser, statement);
+	  break;
+
 	case PT_UPDATE:
 	  error = do_check_update_trigger (parser, statement, do_update);
 	  break;
@@ -2443,7 +2538,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* restore execution flag */
       parser->exec_mode = old_exec_mode;
 
-      if (error == NO_ERROR)
+      /* schema replication of create_select was already done at do_create_entity () */
+      if (error == NO_ERROR &&
+	  (statement->node_type != PT_CREATE_ENTITY
+	   || statement->info.create_entity.create_select == NULL))
 	{
 	  error = do_replicate_schema (parser, statement);
 	}
@@ -2484,7 +2582,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   statement(in): Parse tree of a statement
  *
  * Note:
- * 	PEPARE includes query optimization and plan generation (XASL) for the SQL
+ * 	PREPARE includes query optimization and plan generation (XASL) for the SQL
  * 	statement. EXECUTE means requesting the server to execute the given XASL.
  *
  * 	Some type of statement is not necessary or not able to do PREPARE stage.
@@ -2516,7 +2614,7 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_prepare_select (parser, statement);
       break;
     default:
-      /* there're no actions for other types of statements */
+      /* there are no actions for other types of statements */
       break;
     }
 
@@ -2735,6 +2833,12 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_STORED_PROCEDURE:
       err = jsp_drop_stored_procedure (parser, statement);
       break;
+    case PT_TRUNCATE:
+      err = do_truncate (parser, statement);
+      break;
+    case PT_DO:
+      err = do_execute_do (parser, statement);
+      break;
     default:
       er_set (ER_ERROR_SEVERITY, __FILE__, statement->line_number,
 	      ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
@@ -2744,7 +2848,10 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* restore execution flag */
   parser->exec_mode = old_exec_mode;
 
-  if (err == NO_ERROR)
+  /* schema replication of create_select was already done at do_create_entity () */
+  if (err == NO_ERROR &&
+      (statement->node_type != PT_CREATE_ENTITY
+       || statement->info.create_entity.create_select == NULL))
     {
       err = do_replicate_schema (parser, statement);
     }
@@ -2837,7 +2944,7 @@ do_check_internal_statements (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  /* The main statement cas use out parameters from internal statements,
 	     and the internal statements generate the parameters at execution time.
-	     So, it need to bind the paramters again */
+	     So, it need to bind the parameters again */
 	  (void) parser_walk_tree (parser, statement, pt_bind_param_node,
 				   NULL, NULL, NULL);
 	  num_rows = error = do_func (parser, statement);
@@ -3954,7 +4061,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
- * do_set_sys_params() - Set the system paramters defined in 'cubrid.conf'.
+ * do_set_sys_params() - Set the system parameters defined in 'cubrid.conf'.
  *   return: Error code if it fails
  *   parser(in): Parser context
  *   statement(in): Parse tree of a set transaction statement
@@ -4459,7 +4566,7 @@ convert_misc_to_tr_time (const PT_MISC_TYPE pt_time)
 }
 
 /*
- * convert_misc_to_tr_status() - Converts a PT_MISC_TYPE into the correspondint
+ * convert_misc_to_tr_status() - Converts a PT_MISC_TYPE into the corresponding
  *				 TR_STATUE_TYPE.
  *   return: DB_TRIGGER_STATUS
  *   pt_status(in): One of PT_MISC_TYPE
@@ -4489,7 +4596,7 @@ convert_misc_to_tr_status (const PT_MISC_TYPE pt_status)
 
 /*
  * convert_speclist_to_objlist() - Converts a PT_MISC_TYPE into the
- *				   correspondint TR_STATUE_TYPE.
+ *				   corresponding TR_STATUE_TYPE.
  *   return: Error code
  *   triglist(out): Returned trigger object list
  *   specnode(in): Node with PT_TRIGGER_SPEC_LIST_INFO
@@ -5537,6 +5644,17 @@ static int update_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
 					   DB_OBJECT * class_obj);
 static int update_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
 			      PT_NODE * statement);
+static XASL_NODE *statement_to_update_xasl (PARSER_CONTEXT * parser,
+					    PT_NODE * statement,
+					    PT_NODE ** non_null_attrs,
+					    int has_uniques);
+static int is_server_update_allowed (PARSER_CONTEXT * parser,
+				     PT_NODE ** non_null_attrs,
+				     int *has_uniques,
+				     int *const server_allowed,
+				     const PT_NODE * statement,
+				     const PT_NODE * spec,
+				     DB_OBJECT * class_obj);
 
 /*
  * unlink_list - Unlinks next pointer shortcut of lhs, rhs assignments
@@ -6505,12 +6623,10 @@ get_assignment_lists (PARSER_CONTEXT * parser, PT_NODE ** select_names,
     {
       if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN
 	  || !(lhs = assign->info.expr.arg1)
-	  || !(rhs = assign->info.expr.arg2) || !(lhs->node_type == PT_NAME
-						  ||
-						  PT_IS_N_COLUMN_UPDATE_EXPR
-						  (lhs)) || !select_values
-	  || !select_names || !const_values || !const_names || !no_vals
-	  || !no_consts)
+	  || !(rhs = assign->info.expr.arg2)
+	  || !(lhs->node_type == PT_NAME || PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
+	  || !select_values || !select_names || !const_values || !const_names
+	  || !no_vals || !no_consts)
 	{
 	  /* bullet proofing, should not get here */
 #if defined(CUBRID_DEBUG)
@@ -6691,6 +6807,43 @@ update_class_attributes (PARSER_CONTEXT * parser, DB_OBJECT * class_obj,
     }
 }
 
+static XASL_NODE *
+statement_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
+			  PT_NODE ** non_null_attrs, int has_uniques)
+{
+  XASL_NODE *xasl = NULL;
+  int error = NO_ERROR;
+  PT_NODE *select_names = NULL;
+  PT_NODE *select_values = NULL;
+  PT_NODE *const_names = NULL;
+  PT_NODE *const_values = NULL;
+  int no_vals = 0;
+  int no_consts = 0;
+
+  error = get_assignment_lists (parser, &select_names, &select_values,
+				&const_names, &const_values, &no_vals,
+				&no_consts,
+				statement->info.update.assignment);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  xasl = pt_to_update_xasl (parser, statement, select_names, select_values,
+			    const_names, const_values, no_vals, no_consts,
+			    has_uniques, non_null_attrs);
+
+  unlink_list (const_names);
+  unlink_list (const_values);
+  unlink_list (select_names);
+  unlink_list (select_values);
+
+  return xasl;
+
+error_exit:
+  return NULL;
+}
+
 /*
  * update_at_server - Build an xasl tree for a server update and execute it
  *   return: Tuple count if success, otherwise an error code
@@ -6725,13 +6878,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
 		  int has_uniques)
 {
   int error = NO_ERROR;
-  PT_NODE *select_names;
-  PT_NODE *select_values;
-  PT_NODE *const_names;
-  PT_NODE *const_values;
   int i, j;
-  int no_vals;
-  int no_consts;
   XASL_NODE *xasl = NULL;
   int size, count = 0;
   char *stream = NULL;
@@ -6742,19 +6889,8 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
 
-  error = get_assignment_lists (parser, &select_names, &select_values,
-				&const_names, &const_values, &no_vals,
-				&no_consts,
-				statement->info.update.assignment);
-
-  if (error == NO_ERROR)
-    {
-      xasl =
-	pt_to_update_xasl (parser, statement, select_names, select_values,
-			   const_names, const_values, no_vals, no_consts,
-			   has_uniques, non_null_attrs);
-    }
-
+  xasl = statement_to_update_xasl (parser, statement, non_null_attrs,
+				   has_uniques);
   if (xasl)
     {
       UPDATE_PROC_NODE *update = &xasl->proc.update;
@@ -6825,11 +6961,6 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
     }
   pt_end_query (parser);
 
-  unlink_list (const_names);
-  unlink_list (const_values);
-  unlink_list (select_names);
-  unlink_list (select_values);
-
   /* mark the end of another level of xasl packing */
   pt_exit_packing_buf ();
 
@@ -6845,7 +6976,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from,
 
 /*
  * check_for_constraints - Determine whether attributes of the target class have
- *                         UNIQUE and/or NOT NULL constratins, and return a list
+ *                         UNIQUE and/or NOT NULL constraints, and return a list
  *			   of NOT NULL attributes if exist
  *   return: Error code
  *   parser(in): Parser context
@@ -6996,22 +7127,10 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
 		   PT_NODE * statement)
 {
   int error = NO_ERROR;
-  PT_NODE *select_names;
-  PT_NODE *select_values;
-  PT_NODE *const_names;
-  PT_NODE *const_values;
   PT_NODE *non_null_attrs = NULL;
-  PT_NODE *lhs;
-  DB_OBJECT *class_obj;
-  QFILE_LIST_ID *oid_list = NULL;
-  int trigger_involved;
-  int no_vals;
-  int no_consts;
-  int server_allowed;
-  int has_uniques;
-  int is_partition;
-  float waitsecs = -2, old_waitsecs = -2;
-  PT_NODE *hint_arg;
+  DB_OBJECT *class_obj = NULL;
+  int server_allowed = 0;
+  int has_uniques = 0;
 
   /* update a "real" class in this database */
 
@@ -7025,50 +7144,11 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
       goto exit_on_error;
     }
 
-  error = do_is_partitioned_classobj (&is_partition, class_obj, NULL, NULL);
-  if (error != NO_ERROR)
+  if (is_server_update_allowed (parser, &non_null_attrs, &has_uniques,
+				&server_allowed, statement, spec, class_obj)
+      != NO_ERROR)
     {
       goto exit_on_error;
-    }
-
-  /* if class is partitioned and has any trigger, update must be executed in the client */
-  error = sm_class_has_triggers (class_obj, &trigger_involved,
-				 ((is_partition) ? TR_EVENT_ALL :
-				  TR_EVENT_UPDATE));
-
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-  error = check_for_constraints (parser, &has_uniques, &non_null_attrs,
-				 statement->info.update.assignment,
-				 class_obj);
-  if (error < NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error =
-    update_check_for_fk_cache_attr (parser, statement->info.update.assignment,
-				    class_obj);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  /* Check to see if the update can be done on the server */
-  server_allowed = ((!trigger_involved)
-		    && (spec->info.spec.flat_entity_list->info.name.
-			virt_object == NULL));
-
-  lhs = statement->info.update.assignment->info.expr.arg1;
-  if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
-    {
-      lhs = lhs->info.expr.arg1;
-    }
-  if (lhs->info.name.meta_class != PT_NORMAL)
-    {
-      server_allowed = 0;
     }
 
   if (server_allowed)
@@ -7079,6 +7159,17 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
     }
   else
     {
+      PT_NODE *lhs = NULL;
+      PT_NODE *select_names = NULL;
+      PT_NODE *select_values = NULL;
+      PT_NODE *const_names = NULL;
+      PT_NODE *const_values = NULL;
+      QFILE_LIST_ID *oid_list = NULL;
+      int no_vals = 0;
+      int no_consts = 0;
+      float waitsecs = -2;
+      float old_waitsecs = -2;
+
       /* do update on client */
       error = get_assignment_lists (parser, &select_names, &select_values,
 				    &const_names, &const_values, &no_vals,
@@ -7091,8 +7182,8 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
 	}
       if (lhs->info.name.meta_class != PT_META_ATTR)
 	{
+	  PT_NODE *hint_arg = statement->info.update.waitsecs_hint;
 
-	  hint_arg = statement->info.update.waitsecs_hint;
 	  if (statement->info.update.hint & PT_HINT_LK_TIMEOUT
 	      && PT_IS_HINT_NODE (hint_arg))
 	    {
@@ -7148,14 +7239,12 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
       unlink_list (const_values);
       unlink_list (select_names);
       unlink_list (select_values);
-
     }
 
-wrapup:
-
-  if (non_null_attrs)
+  if (non_null_attrs != NULL)
     {
       parser_free_tree (parser, non_null_attrs);
+      non_null_attrs = NULL;
     }
 
   return error;
@@ -7166,8 +7255,99 @@ exit_on_error:
     {
       error = er_errid ();
     }
+  if (non_null_attrs != NULL)
+    {
+      parser_free_tree (parser, non_null_attrs);
+      non_null_attrs = NULL;
+    }
+  return error;
+}
 
-  goto wrapup;
+/*
+ * is_server_update_allowed() - Checks to see if a server-side update is
+ *                              allowed
+ *   return: NO_ERROR or error code on failure
+ *   parser(in): Parser context
+ *   non_null_attrs(in/out): Parse tree for attributes with the NOT NULL
+ *                           constraint
+ *   has_uniques(in/out): whether unique indexes are affected by the update
+ *   server_allowed(in/out): whether the update can be executed on the server
+ *   statement(in): Parse tree of an update statement
+ *   spec(in): spec for the class to update
+ *   class(in): DB_OBJECT for the class to update
+ */
+static int
+is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs,
+			  int *has_uniques, int *const server_allowed,
+			  const PT_NODE * statement, const PT_NODE * spec,
+			  DB_OBJECT * class_obj)
+{
+  int error = NO_ERROR;
+  int is_partition = 0;
+  int trigger_involved = 0;
+  PT_NODE *lhs = NULL;
+
+  assert (non_null_attrs != NULL && has_uniques != NULL
+	  && server_allowed != NULL);
+  assert (*non_null_attrs == NULL);
+  *has_uniques = 0;
+  *server_allowed = 0;
+
+  error = do_is_partitioned_classobj (&is_partition, class_obj, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* If the class is partitioned and has any type of trigger, the update must
+     be executed on the client. */
+  error = sm_class_has_triggers (class_obj, &trigger_involved,
+				 (is_partition ? TR_EVENT_ALL :
+				  TR_EVENT_UPDATE));
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = check_for_constraints (parser, has_uniques, non_null_attrs,
+				 statement->info.update.assignment,
+				 class_obj);
+  if (error < NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = update_check_for_fk_cache_attr (parser,
+					  statement->info.update.assignment,
+					  class_obj);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* Check to see if the update can be done on the server */
+  *server_allowed = (!trigger_involved &&
+		     (spec->info.spec.flat_entity_list->info.name.virt_object
+		      == NULL));
+
+  lhs = statement->info.update.assignment->info.expr.arg1;
+  if (PT_IS_N_COLUMN_UPDATE_EXPR (lhs))
+    {
+      lhs = lhs->info.expr.arg1;
+    }
+  if (lhs->info.name.meta_class != PT_NORMAL)
+    {
+      *server_allowed = 0;
+    }
+  return error;
+
+error_exit:
+  if (non_null_attrs != NULL && *non_null_attrs != NULL)
+    {
+      parser_free_tree (parser, *non_null_attrs);
+      *non_null_attrs = NULL;
+    }
+  return error;
 }
 
 /*
@@ -7264,7 +7444,7 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
- * do_execute_update() - Prepare the UPDATE statement
+ * do_prepare_update() - Prepare the UPDATE statement
  *   return: Error code
  *   parser(in): Parser context
  *   statement(in/out): Parse tree of a update statement
@@ -7386,10 +7566,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* make query string */
 	  parser->dont_prt_long_string = 1;
 	  parser->long_string_skipped = 0;
+	  parser->print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement, PT_CONVERT_RANGE);
 	  qstr = statement->alias_print;
 	  parser->dont_prt_long_string = 0;
-	  if (parser->long_string_skipped)
+	  if (parser->long_string_skipped || parser->print_type_ambiguity)
 	    {
 	      statement->cannot_prepare = 1;
 	      return NO_ERROR;
@@ -7876,7 +8057,7 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p,
     {
 
       /* If we are updating a proxy, the select is not yet fully translated.
-         if wer are updating anything else, this is a no-op. */
+         if we are updating anything else, this is a no-op. */
       statement = mq_translate (parser, statement);
 
       if (statement)
@@ -8454,10 +8635,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* make query string */
 	  parser->dont_prt_long_string = 1;
 	  parser->long_string_skipped = 0;
+	  parser->print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement, PT_CONVERT_RANGE);
 	  qstr = statement->alias_print;
 	  parser->dont_prt_long_string = 0;
-	  if (parser->long_string_skipped)
+	  if (parser->long_string_skipped || parser->print_type_ambiguity)
 	    {
 	      statement->cannot_prepare = 1;
 	      return NO_ERROR;
@@ -8697,7 +8879,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 			   NULL, NULL);
       AU_RESTORE (au_save);
 
-      /* in the case of OID list deletion, now delete the seleted OIDs */
+      /* in the case of OID list deletion, now delete the selected OIDs */
       if (!statement->info.delete_.server_delete
 	  && (err >= NO_ERROR) && list_id)
 	{
@@ -8838,7 +9020,9 @@ do_evaluate (PARSER_CONTEXT * parser, PT_NODE * statement)
 typedef enum
 { INSERT_SELECT = 1,
   INSERT_VALUES = 2,
-  INSERT_DEFAULT = 4
+  INSERT_DEFAULT = 4,
+  INSERT_REPLACE = 8,
+  INSERT_ON_DUP_KEY_UPDATE = 16
 } SERVER_PREFERENCE;
 
 /* used to generate unique savepoint names */
@@ -8861,15 +9045,24 @@ static int is_server_insert_allowed (PARSER_CONTEXT * parser,
 				     PT_NODE ** non_null_attrs,
 				     int *has_uniques, int *server_allowed,
 				     const PT_NODE * statement,
+				     const PT_NODE * values_list,
 				     const PT_NODE * class_);
+static int do_insert_at_server (PARSER_CONTEXT * parser,
+				PT_NODE * statement, PT_NODE * values_list,
+				PT_NODE * non_null_attrs,
+				PT_NODE ** upd_non_null_attrs,
+				const int has_uniques,
+				const int upd_has_uniques);
 static int insert_subquery_results (PARSER_CONTEXT * parser,
 				    PT_NODE * statement,
+				    PT_NODE * values_list,
 				    PT_NODE * class_,
 				    const char **savepoint_name);
 static int is_attr_not_in_insert_list (const PARSER_CONTEXT * parser,
 				       PT_NODE * name_list, const char *name);
 static int check_missing_non_null_attrs (const PARSER_CONTEXT * parser,
-					 const PT_NODE * statement);
+					 const PT_NODE * statement,
+					 const bool has_default_values_list);
 static PT_NODE *make_vmops (PARSER_CONTEXT * parser, PT_NODE * node,
 			    void *arg, int *continue_walk);
 static PT_NODE *test_check_option (PARSER_CONTEXT * parser, PT_NODE * node,
@@ -8931,6 +9124,7 @@ insert_object_attr (const PARSER_CONTEXT * parser,
  *   return: Error code if insert fails
  *   parser(in/out): Parser context
  *   statement(in): Parse tree of a insert statement.
+ *   values_list(in): The list of values to insert.
  *   non_null_attrs(in):
  *   has_uniques(in):
  *
@@ -8949,8 +9143,9 @@ insert_object_attr (const PARSER_CONTEXT * parser,
  */
 static int
 do_insert_at_server (PARSER_CONTEXT * parser,
-		     PT_NODE * statement,
-		     PT_NODE * non_null_attrs, const int has_uniques)
+		     PT_NODE * statement, PT_NODE * values_list,
+		     PT_NODE * non_null_attrs, PT_NODE ** upd_non_null_attrs,
+		     const int has_uniques, const int upd_has_uniques)
 {
   int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
@@ -8958,27 +9153,67 @@ do_insert_at_server (PARSER_CONTEXT * parser,
   char *stream = NULL;
   QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id = NULL;
-  int i;
+  int i = 0;
+  int j = 0;
+  PT_NODE *const update_statement = statement->info.insert.on_dup_key_update;
 
-  if (!parser || !statement || statement->node_type != PT_INSERT)
+  if (!parser || !statement || !values_list
+      || statement->node_type != PT_INSERT)
     {
       return ER_GENERIC_ERROR;
     }
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
-  xasl = pt_to_insert_xasl (parser, statement, has_uniques, non_null_attrs);
+  xasl = pt_to_insert_xasl (parser, statement, values_list, has_uniques,
+			    non_null_attrs);
 
   if (xasl)
     {
       INSERT_PROC_NODE *insert = &xasl->proc.insert;
 
-      error = xts_map_xasl_to_stream (xasl, &stream, &size);
-      if (error != NO_ERROR)
+      assert (xasl->dptr_list == NULL);
+      if (update_statement != NULL)
 	{
-	  PT_ERRORm (parser, statement,
-		     MSGCAT_SET_PARSER_RUNTIME,
-		     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	  XASL_NODE *update_xasl =
+	    statement_to_update_xasl (parser, update_statement,
+				      upd_non_null_attrs, upd_has_uniques);
+
+	  if (update_xasl != NULL)
+	    {
+	      int dup_key_oid_var_index =
+		pt_get_dup_key_oid_var_index (parser, update_statement);
+
+	      if (dup_key_oid_var_index < 0)
+		{
+		  error = ER_FAILED;
+		  PT_ERRORmf2 (parser, statement, MSGCAT_SET_PARSER_RUNTIME,
+			       MSGCAT_RUNTIME_HOSTVAR_INDEX_ERROR,
+			       dup_key_oid_var_index,
+			       parser->auto_param_count);
+		}
+	      else
+		{
+		  xasl->dptr_list = update_xasl;
+		  insert->dup_key_oid_var_index = dup_key_oid_var_index;
+		}
+	    }
+	  else
+	    {
+	      error = er_errid ();
+	      assert (error != NO_ERROR);
+	    }
+	}
+
+      if (error == NO_ERROR)
+	{
+	  error = xts_map_xasl_to_stream (xasl, &stream, &size);
+	  if (error != NO_ERROR)
+	    {
+	      PT_ERRORm (parser, statement,
+			 MSGCAT_SET_PARSER_RUNTIME,
+			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	    }
 	}
 
       if (insert->partition)
@@ -8988,8 +9223,27 @@ do_insert_at_server (PARSER_CONTEXT * parser,
 	      pr_clear_value (insert->partition->parts[i]->vals);
 	    }
 	}
-    }
 
+      if (xasl->dptr_list != NULL)
+	{
+	  UPDATE_PROC_NODE *update = &xasl->dptr_list->proc.update;
+
+	  for (i = 0; i < update->no_consts; i++)
+	    {
+	      pr_clear_value (update->consts[i]);
+	    }
+	  for (i = 0; i < update->no_classes; i++)
+	    {
+	      if (update->partition[i])
+		{
+		  for (j = 0; j < update->partition[i]->no_parts; j++)
+		    {
+		      pr_clear_value (update->partition[i]->parts[j]->vals);
+		    }
+		}
+	    }
+	}
+    }
   else
     {
       error = er_errid ();
@@ -9022,7 +9276,29 @@ do_insert_at_server (PARSER_CONTEXT * parser,
 
   if (list_id)
     {
+      PT_NODE *cl_name_node = NULL;
+
       count = list_id->tuple_cnt;
+      if (count > 0 && update_statement != NULL)
+	{
+	  for (cl_name_node =
+	       update_statement->info.update.spec->info.spec.flat_entity_list;
+	       cl_name_node != NULL && error == NO_ERROR;
+	       cl_name_node = cl_name_node->next)
+	    {
+	      error = sm_flush_and_decache_objects (cl_name_node->info.name.
+						    db_object, true);
+	    }
+	}
+
+      if (count > 0 && statement->info.insert.do_replace)
+	{
+	  MOP class_obj = statement->info.insert.spec->info.spec.
+	    flat_entity_list->info.name.db_object;
+
+	  error = sm_flush_and_decache_objects (class_obj, true);
+	}
+
       regu_free_listid (list_id);
     }
 
@@ -9046,7 +9322,8 @@ do_insert_at_server (PARSER_CONTEXT * parser,
  *   return: Error code
  *   parser(in): Parser context
  *   has_unique(in/out):
- *   non_null_attrs(in/out):
+ *   non_null_attrs(in/out): all the "NOT NULL" attributes except for the
+ *                           AUTO_INCREMENT ones
  *   attr_list(in): Parse tree of an insert statement attribute list
  *   class_obj(in): Class object
 
@@ -9058,6 +9335,7 @@ check_for_cons (PARSER_CONTEXT * parser, int *has_unique,
 {
   PT_NODE *pointer;
 
+  assert (*non_null_attrs == NULL);
   *has_unique = 0;
 
   while (attr_list)
@@ -9078,22 +9356,29 @@ check_for_cons (PARSER_CONTEXT * parser, int *has_unique,
       if (sm_att_constrained (class_obj, attr_list->info.name.original,
 			      SM_ATTFLAG_NON_NULL))
 	{
-	  pointer = pt_point (parser, attr_list);
-	  if (pointer == NULL)
+	  /* NULL values are allowed for auto_increment columns.
+	   * It means that the next auto_increment value will be inserted.
+	   */
+	  if (sm_att_auto_increment (class_obj,
+				     attr_list->info.name.original) == false)
 	    {
-	      PT_ERRORm (parser, attr_list,
-			 MSGCAT_SET_PARSER_RUNTIME,
-			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
-
-	      if (*non_null_attrs)
+	      pointer = pt_point (parser, attr_list);
+	      if (pointer == NULL)
 		{
-		  parser_free_tree (parser, *non_null_attrs);
-		}
-	      *non_null_attrs = NULL;
+		  PT_ERRORm (parser, attr_list,
+			     MSGCAT_SET_PARSER_RUNTIME,
+			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 
-	      return MSGCAT_RUNTIME_RESOURCES_EXHAUSTED;
+		  if (*non_null_attrs)
+		    {
+		      parser_free_tree (parser, *non_null_attrs);
+		    }
+		  *non_null_attrs = NULL;
+
+		  return MSGCAT_RUNTIME_RESOURCES_EXHAUSTED;
+		}
+	      *non_null_attrs = parser_append_node (pointer, *non_null_attrs);
 	    }
-	  *non_null_attrs = parser_append_node (pointer, *non_null_attrs);
 	}
 
       attr_list = attr_list->next;
@@ -9159,7 +9444,7 @@ insert_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
 
 /*
  * is_server_insert_allowed() - Checks to see if a server-side insert is
- *                                 allowed
+ *                              allowed
  *   return: Returns an error if any input nodes are
  *           misformed.
  *   parser(in): Parser context
@@ -9168,6 +9453,7 @@ insert_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
  *   has_uniques(in/out):
  *   server_allowed(in/out): Boolean flag
  *   statement(in): Parse tree of a insert statement
+ *   values_list(in): The list of values to insert.
  *   class(in): Parse tree of the target class
  *
  *
@@ -9176,7 +9462,8 @@ static int
 is_server_insert_allowed (PARSER_CONTEXT * parser,
 			  PT_NODE ** non_null_attrs,
 			  int *has_uniques, int *server_allowed,
-			  const PT_NODE * statement, const PT_NODE * class_)
+			  const PT_NODE * statement,
+			  const PT_NODE * values_list, const PT_NODE * class_)
 {
   int error = NO_ERROR;
   int trigger_involved;
@@ -9218,7 +9505,7 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
 			  has_uniques, non_null_attrs,
 			  attrs, class_->info.name.db_object);
 
-  if (error < NO_ERROR)
+  if (error != NO_ERROR)
     {
       return error;
     }
@@ -9228,26 +9515,55 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
       server_preference = PRM_INSERT_MODE;
     }
   /* check the insert form against the preference */
-  if (statement->info.insert.is_value == PT_IS_SUBQUERY)
+  if (statement->info.insert.do_replace)
     {
-      if (!(server_preference & INSERT_SELECT))
+      if (!(server_preference & INSERT_REPLACE))
 	{
-	  return 0;
+	  return error;
 	}
     }
-  else if (statement->info.insert.is_value == PT_IS_VALUE)
+  if (statement->info.insert.on_dup_key_update)
     {
-      vals = statement->info.insert.value_clause;
-      if (!(server_preference & INSERT_VALUES))
+      if (!(server_preference & INSERT_ON_DUP_KEY_UPDATE))
 	{
-	  return 0;
+	  return error;
 	}
     }
-  else if (statement->info.insert.is_value == PT_IS_DEFAULT_VALUE)
+  if (statement->info.insert.do_replace ||
+      statement->info.insert.on_dup_key_update)
     {
-      if (!(server_preference & INSERT_DEFAULT))
+      /* We allow server processing for now, at least until the broker-side
+       * execution of these statements is implemented. After it is implemented
+       * this entire if-else should be replaced with its else branch.
+       */
+    }
+  else
+    {
+      if (values_list->info.node_list.list_type == PT_IS_SUBQUERY)
 	{
-	  return 0;
+	  if (!(server_preference & INSERT_SELECT))
+	    {
+	      return error;
+	    }
+	}
+      else if (values_list->info.node_list.list_type == PT_IS_VALUE)
+	{
+	  vals = values_list->info.node_list.list;
+	  if (!(server_preference & INSERT_VALUES))
+	    {
+	      return error;
+	    }
+	}
+      else if (values_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
+	{
+	  if (!(server_preference & INSERT_DEFAULT))
+	    {
+	      return error;
+	    }
+	}
+      else
+	{
+	  assert (false);
 	}
     }
 
@@ -9260,7 +9576,7 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
        */
       if (val->node_type == PT_INSERT)
 	{
-	  return 0;
+	  return error;
 	}
       /* pt_to_regu in parser_generate_xasl can't handle subquery
          because the context isn't set up. Again its feasible
@@ -9268,12 +9584,11 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
        */
       if (PT_IS_QUERY_NODE_TYPE (val->node_type))
 	{
-	  return 0;
+	  return error;
 	}
       val = val->next;
     }
 
-  error = NO_ERROR;
   if (statement->info.insert.into_var != NULL)
     {
       return error;
@@ -9281,7 +9596,7 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
 
   /* check option could be done on the server by adding another predicate
      to the insert_info block. However, one must also take care that
-     subqueries in this predicate have there xasl blocks properly
+     subqueries in this predicate have their xasl blocks properly
      attached to the insert xasl block. Currently, pt_to_pred
      will do that only if being called from parser_generate_xasl.
      This may mean that do_server_insert should call parser_generate_xasl,
@@ -9290,6 +9605,21 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
   if (statement->info.insert.where != NULL)
     {
       return error;
+    }
+
+  if (statement->info.insert.do_replace && *has_uniques)
+    {
+      error = sm_class_has_triggers (class_->info.name.db_object,
+				     &trigger_involved, TR_EVENT_DELETE);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (trigger_involved)
+	{
+	  return error;
+	}
     }
 
   error = sm_class_has_triggers (class_->info.name.db_object,
@@ -9316,11 +9646,13 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
  *   parser(in): Short description of the param1
  *   otemplate(in/out): class template to be inserted
  *   statement(in): Parse tree of an insert statement
+ *   values_list(in): The list of values to insert.
  *   savepoint_name(in):
  */
 int
 do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
-		    PT_NODE * statement, const char **savepoint_name)
+		    PT_NODE * statement, PT_NODE * values_list,
+		    const char **savepoint_name, int *row_count_ptr)
 {
   const char *into_label;
   DB_VALUE *ins_val, *val, db_value, partcol;
@@ -9329,9 +9661,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
   PT_NODE *into;
   PT_NODE *class_;
   PT_NODE *non_null_attrs = NULL;
+  PT_NODE *upd_non_null_attrs = NULL;
   DB_ATTDESC **attr_descs = NULL;
   int i, degree, row_count = 0;
-  int server_allowed, has_uniques;
+  int server_allowed = 0;
+  int has_uniques = 0;
+  int upd_has_uniques = 0;
   PARTITION_SELECT_INFO *psi = NULL;
   PARTITION_INSERT_CACHE *pic = NULL, *picwork;
   MOP retobj;
@@ -9340,6 +9675,11 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 
   db_make_null (&db_value);
   db_make_null (&partcol);
+
+  if (row_count_ptr != NULL)
+    {
+      *row_count_ptr = 0;
+    }
 
   degree = 0;
   class_ = statement->info.insert.spec->info.spec.flat_entity_list;
@@ -9356,27 +9696,67 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 
   error = is_server_insert_allowed (parser, &non_null_attrs,
 				    &has_uniques, &server_allowed,
-				    statement, class_);
+				    statement, values_list, class_);
   if (error != NO_ERROR)
     {
       return error;
     }
 
+  if (statement->info.insert.on_dup_key_update != NULL && server_allowed)
+    {
+      PT_NODE *upd_statement = statement->info.insert.on_dup_key_update;
+
+      server_allowed = 0;
+      error = is_server_update_allowed (parser, &upd_non_null_attrs,
+					&upd_has_uniques, &server_allowed,
+					upd_statement,
+					upd_statement->info.update.spec,
+					class_->info.name.db_object);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (PRM_HOSTVAR_LATE_BINDING &&
+	  ((PRM_XASL_MAX_PLAN_CACHE_ENTRIES <= 0) ||
+	   statement->cannot_prepare))
+	{
+	  server_allowed = 0;
+	}
+    }
+
+  if (!server_allowed && statement->info.insert.do_replace)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPLACE_NOT_YET_ON_BROKER,
+	      0);
+      return er_errid ();
+    }
+  if (!server_allowed && statement->info.insert.on_dup_key_update != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ODKU_NOT_YET_ON_BROKER, 0);
+      return er_errid ();
+    }
+
   if (server_allowed)
     {
-      error = do_insert_at_server (parser, statement,
-				   non_null_attrs, has_uniques);
+      error = do_insert_at_server (parser, statement, values_list,
+				   non_null_attrs, &upd_non_null_attrs,
+				   has_uniques, upd_has_uniques);
+      if (error >= 0)
+	{
+	  row_count = error;
+	}
     }
-  else if (statement->info.insert.is_value == PT_IS_SUBQUERY
-	   && (vc = statement->info.insert.value_clause) != NULL)
+  else if (values_list->info.node_list.list_type == PT_IS_SUBQUERY
+	   && (vc = values_list->info.node_list.list) != NULL)
     {
       /* execute subquery & insert its results into target class */
       row_count =
-	insert_subquery_results (parser, statement, class_, savepoint_name);
+	insert_subquery_results (parser, statement, values_list, class_,
+				 savepoint_name);
       error = (row_count < 0) ? row_count : NO_ERROR;
     }
-  else if (statement->info.insert.is_value == PT_IS_VALUE
-	   || statement->info.insert.is_value == PT_IS_DEFAULT_VALUE)
+  else if (values_list->info.node_list.list_type == PT_IS_VALUE
+	   || values_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
     {
       /* there is one value to insert into target class
          If we are doing PT_IS_DEFAULT_VALUE value_clause
@@ -9418,7 +9798,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	    }
 	}
 
-      vc = statement->info.insert.value_clause;
+      vc = values_list->info.node_list.list;
       attr = statement->info.insert.attr_list;
       degree = pt_length_of_list (attr);
 
@@ -9449,13 +9829,22 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       i = 0;
       while (attr && vc)
 	{
-	  if (vc->node_type == PT_INSERT && !*savepoint_name)
+	  if (vc->node_type == PT_INSERT && *savepoint_name == NULL)
 	    {
 	      /* this is a nested insert.  recurse to create object
 	         template for the nested insert. */
 	      DB_OTMPL *temp = NULL;
 
-	      error = do_insert_template (parser, &temp, vc, savepoint_name);
+	      assert (vc->info.insert.value_clauses != NULL);
+	      if (vc->info.insert.value_clauses->next != NULL)
+		{
+		  error = ER_DO_INSERT_TOO_MANY;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		  break;
+		}
+	      error = do_insert_template (parser, &temp, vc,
+					  vc->info.insert.value_clauses,
+					  savepoint_name, NULL);
 	      if (error >= NO_ERROR)
 		{
 		  if (!vc->info.insert.spec)
@@ -9604,9 +9993,16 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	}
     }
 
-  if (non_null_attrs)
+  if (non_null_attrs != NULL)
     {
       parser_free_tree (parser, non_null_attrs);
+      non_null_attrs = NULL;
+    }
+
+  if (upd_non_null_attrs != NULL)
+    {
+      parser_free_tree (parser, upd_non_null_attrs);
+      upd_non_null_attrs = NULL;
     }
 
   if ((error >= NO_ERROR)
@@ -9632,9 +10028,10 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 	      goto cleanup;
 	    }
 	  db_make_object (ins_val, (DB_OBJECT *) NULL);
-	  if (statement->info.insert.is_value == PT_IS_VALUE
-	      || statement->info.insert.is_value == PT_IS_DEFAULT_VALUE)
+	  if (values_list->info.node_list.list_type == PT_IS_VALUE
+	      || values_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
 	    {
+
 	      error = dbt_set_label (*otemplate, ins_val);
 	    }
 	  else if ((val = (DB_VALUE *) (statement->etc)) != NULL)
@@ -9672,6 +10069,10 @@ cleanup:
       psi = NULL;
     }
 
+  if (row_count_ptr != NULL)
+    {
+      *row_count_ptr = row_count;
+    }
   return error;
 }
 
@@ -9681,6 +10082,7 @@ cleanup:
  *   return: Error code
  *   parser(in): Handle to the parser used to process & derive subquery qry
  *   statemet(in/out):
+ *   values_list(in): The list of values to insert.
  *   class(in):
  *   savepoint_name(in):
  *
@@ -9696,7 +10098,7 @@ cleanup:
  */
 static int
 insert_subquery_results (PARSER_CONTEXT * parser,
-			 PT_NODE * statement,
+			 PT_NODE * statement, PT_NODE * values_list,
 			 PT_NODE * class_, const char **savepoint_name)
 {
   int error = NO_ERROR;
@@ -9714,8 +10116,8 @@ insert_subquery_results (PARSER_CONTEXT * parser,
   if (!parser
       || !statement
       || statement->node_type != PT_INSERT
-      || statement->info.insert.is_value != PT_IS_SUBQUERY
-      || (qry = statement->info.insert.value_clause) == NULL
+      || values_list->info.node_list.list_type != PT_IS_SUBQUERY
+      || (qry = values_list->info.node_list.list) == NULL
       || (attrs = statement->info.insert.attr_list) == NULL)
     {
       return ER_GENERIC_ERROR;
@@ -10069,10 +10471,13 @@ is_attr_not_in_insert_list (const PARSER_CONTEXT * parser,
  *   return: Error code
  *   parser(in): Short description of the param1
  *   statement(in): Short description of the param2
+ *   has_default_values_list(in): whether this statement is used to insert
+ *                                default values
  */
 static int
 check_missing_non_null_attrs (const PARSER_CONTEXT * parser,
-			      const PT_NODE * statement)
+			      const PT_NODE * statement,
+			      const bool has_default_values_list)
 {
   DB_ATTRIBUTE *attr;
   DB_OBJECT *class_;
@@ -10096,7 +10501,7 @@ check_missing_non_null_attrs (const PARSER_CONTEXT * parser,
 	  && (is_attr_not_in_insert_list (parser,
 					  statement->info.insert.attr_list,
 					  db_attribute_name (attr))
-	      || (statement->info.insert.is_value == PT_IS_DEFAULT_VALUE
+	      || (has_default_values_list
 		  && db_value_is_null (db_attribute_default (attr))))
 	  && !(attr->flags & SM_ATTFLAG_AUTO_INCREMENT))
 	{
@@ -10217,13 +10622,16 @@ static int
 insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   DB_OBJECT *obj, *vobj;
-  DB_OTMPL *otemplate = NULL;
   int error = NO_ERROR;
+  int row_count_total = 0;
   PT_NODE *class_, *vc;
   DB_VALUE *ins_val;
   int save;
   int has_check_option = 0;
   const char *savepoint_name = NULL;
+  PT_NODE *crt_list = NULL;
+  bool has_default_values_list = false;
+  bool is_multiple_tuples_insert = false;
 
   if (!statement
       || statement->node_type != PT_INSERT
@@ -10237,10 +10645,34 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   statement->etc = NULL;
 
-  error = check_missing_non_null_attrs (parser, statement);
+  for (crt_list = statement->info.insert.value_clauses,
+       has_default_values_list = false;
+       crt_list != NULL; crt_list = crt_list->next)
+    {
+      if (crt_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
+	{
+	  has_default_values_list = true;
+	  break;
+	}
+    }
+
+  error = check_missing_non_null_attrs (parser, statement,
+					has_default_values_list);
   if (error != NO_ERROR)
     {
       return error;
+    }
+
+  crt_list = statement->info.insert.value_clauses;
+  if (crt_list->next != NULL)
+    {
+      is_multiple_tuples_insert = true;
+    }
+  if (crt_list->info.node_list.list_type == PT_IS_SUBQUERY
+      && (vc = crt_list->info.node_list.list) && pt_false_where (parser, vc))
+    {
+      /* 0 tuples inserted. */
+      return 0;
     }
 
   statement = parser_walk_tree (parser, statement, NULL, NULL,
@@ -10250,27 +10682,32 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
      we savepoint the insert components to try to guarantee insert
      statement atomicity.
    */
-
-  if (!savepoint_name && has_check_option)
+  if (has_check_option || is_multiple_tuples_insert)
     {
       savepoint_name =
 	mq_generate_name (parser, "UisP", &insert_savepoint_number);
+      if (savepoint_name == NULL)
+	{
+	  return ER_GENERIC_ERROR;
+	}
       error = tran_savepoint (savepoint_name, false);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
-  if (statement->info.insert.is_value == PT_IS_SUBQUERY
-      && (vc = statement->info.insert.value_clause)
-      && pt_false_where (parser, vc))
-    {
-    }
-  else
-    {
-      /* DO NOT RETURN UNTIL AFTER AU_ENABLE! */
-      AU_DISABLE (save);
-      parser->au_save = save;
+  /* DO NOT RETURN UNTIL AFTER AU_ENABLE! */
+  AU_DISABLE (save);
+  parser->au_save = save;
 
-      error = do_insert_template (parser, &otemplate, statement,
-				  &savepoint_name);
+  for (row_count_total = 0; crt_list != NULL; crt_list = crt_list->next)
+    {
+      DB_OTMPL *otemplate = NULL;
+      int row_count = 0;
+
+      error = do_insert_template (parser, &otemplate, statement, crt_list,
+				  &savepoint_name, &row_count);
 
       if (error < NO_ERROR)
 	{
@@ -10297,7 +10734,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 						obj, class_);
 	    }
 
-	  if (error >= NO_ERROR)
+	  if (error >= NO_ERROR && !is_multiple_tuples_insert)
 	    {
 	      /* If any of the (nested) inserts were view objects we
 	         need to find them and create VMOPS for them.  Use a
@@ -10330,13 +10767,18 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      AU_ENABLE (save);
-
       if (parser->abort)
 	{
 	  error = er_errid ();
 	}
+      if (error < 0)
+	{
+	  break;
+	}
+      row_count_total += row_count;
     }
+
+  AU_ENABLE (save);
 
   /* if error and a savepoint was created, rollback to savepoint.
      No need to rollback if the TM aborted the transaction.
@@ -10349,12 +10791,12 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* Use a special version of rollback which will not clobber
          cached views. We can do this because we know insert can not
          have created any views.
-         This is in place of the extern function:
+         This is instead of the extern function:
          db_abort_to_savepoint(savepoint_name);
        */
     }
 
-  return error;
+  return error < 0 ? error : row_count_total;
 }
 
 /*
@@ -10446,10 +10888,10 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   classobj(in): Class's db_object
  *   partcol(in): Partition's key column name
  *   psi(in): Partition selection information
- *   pic(in): Partiton insert cache
+ *   pic(in): Partition insert cache
  *
  * Note: attribute's auto increment value or default value
- *       is fetched, partiton selection is performed,
+ *       is fetched, partition selection is performed,
  *       instance created, cached values are inserted.
  *       and auto increment or default value are inserted.
  */
@@ -10469,7 +10911,7 @@ insert_predefined_values_into_partition (const PARSER_CONTEXT * parser,
   char oid_str[36];
   DB_VALUE next_val, auto_inc_val, oid_str_val;
   int r = 0;
-  char auto_increment_name[SM_MAX_IDENTIFIER_LENGTH];
+  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
   MOP serial_class_mop = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
   DB_DATA_STATUS data_status;
@@ -11094,10 +11536,11 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* make query string */
   parser->dont_prt_long_string = 1;
   parser->long_string_skipped = 0;
+  parser->print_type_ambiguity = 0;
   PT_NODE_PRINT_TO_ALIAS (parser, statement, PT_CONVERT_RANGE);
   qstr = statement->alias_print;
   parser->dont_prt_long_string = 0;
-  if (parser->long_string_skipped)
+  if (parser->long_string_skipped || parser->print_type_ambiguity)
     {
       statement->cannot_prepare = 1;
       return NO_ERROR;
@@ -11379,6 +11822,11 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
   REPL_INFO_SCHEMA repl_schema;
   PARSER_VARCHAR *name = NULL;
 
+  if (db_Enable_replications > 0)
+    {
+      return NO_ERROR;
+    }
+
   switch (statement->node_type)
     {
     case PT_CREATE_ENTITY:
@@ -11506,6 +11954,11 @@ do_replicate_schema (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_schema.statement_type = CUBRID_STMT_SET_TRIGGER;
       break;
 
+    case PT_TRUNCATE:
+      name = pt_print_bytes (parser, statement->info.truncate.spec);
+      repl_schema.statement_type = CUBRID_STMT_TRUNCATE;
+      break;
+
     default:
       break;
     }
@@ -11602,4 +12055,109 @@ do_scope (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       return error;
     }
+}
+
+
+
+
+
+/*
+ * Function Group:
+ * Implements the DO statement.
+ *
+ */
+
+/*
+ * do_execute_do() - execute the DO statement
+ *   return: Error code if scope fails
+ *   parser(in/out): Parser context
+ *   statement(in): The parse tree of the DO statement
+ *
+ * Note:
+ */
+int
+do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error;
+  XASL_NODE *xasl = NULL;
+  QFILE_LIST_ID *list_id = NULL;
+  int save;
+  int size;
+  char *stream = NULL;
+  QUERY_ID query_id = NULL_QUERY_ID;
+  QUERY_FLAG query_flag;
+
+  error = NO_ERROR;
+
+  AU_DISABLE (save);
+  parser->au_save = save;
+
+  /* mark the beginning of another level of xasl packing */
+  pt_enter_packing_buf ();
+
+  /* only sync executable becuse we're after the side effects */
+  query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
+  /* don't cache anything */
+  query_flag |= NOT_FROM_RESULT_CACHE;
+  query_flag |= RESULT_CACHE_INHIBITED;
+
+  pt_null_etc (statement);
+
+  xasl = parser_generate_do_stmt_xasl (parser, statement);
+
+  if (xasl && !pt_has_error (parser))
+    {
+      if (error >= NO_ERROR)
+	{
+	  error = xts_map_xasl_to_stream (xasl, &stream, &size);
+	  if (error != NO_ERROR)
+	    {
+	      PT_ERRORm (parser, statement,
+			 MSGCAT_SET_PARSER_RUNTIME,
+			 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	    }
+	}
+
+      if (error >= NO_ERROR)
+	{
+	  error = query_prepare_and_execute (stream,
+					     size,
+					     &query_id,
+					     parser->host_var_count +
+					     parser->auto_param_count,
+					     parser->host_variables,
+					     &list_id, query_flag);
+	}
+      parser->query_id = query_id;
+      statement->etc = list_id;
+
+      /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
+      if (stream)
+	{
+	  free_and_init (stream);
+	}
+
+      if (error < NO_ERROR)
+	{
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_REGU_SYSTEM;
+	    }
+	}
+    }
+  else
+    {
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+    }
+
+  /* mark the end of another level of xasl packing */
+  pt_exit_packing_buf ();
+
+  AU_ENABLE (save);
+  return error;
 }

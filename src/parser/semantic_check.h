@@ -37,8 +37,7 @@ extern PT_NODE *pt_type_cast_vclass_query_spec_column (PARSER_CONTEXT *
 						       PT_NODE * col);
 
 extern PT_NODE *pt_check_union_compatibility (PARSER_CONTEXT * parser,
-					      PT_NODE * node,
-					      PT_NODE * attrds);
+					      PT_NODE * node);
 
 extern PT_NODE *pt_semantic_check (PARSER_CONTEXT * parser,
 				   PT_NODE * statement);
@@ -55,8 +54,8 @@ extern PT_NODE *pt_insert_entity (PARSER_CONTEXT * parser, PT_NODE * node,
 				  PT_NODE * prev_entity,
 				  PT_NODE * correlation_spec);
 extern PT_NODE *pt_find_class_of_index (PARSER_CONTEXT * parser,
-					PT_NODE * index,
-					DB_CONSTRAINT_TYPE type);
+					const char *const index_name,
+					const DB_CONSTRAINT_TYPE index_type);
 extern int pt_has_text_domain (PARSER_CONTEXT * parser,
 			       DB_ATTRIBUTE * attribute);
 extern PT_NODE *pt_find_order_value_in_list (PARSER_CONTEXT * parser,

@@ -30,6 +30,7 @@
 #include <errno.h>
 #include <string.h>
 #include <signal.h>
+#include <ctype.h>
 
 #include <sys/stat.h>
 #if defined(WINDOWS)
@@ -501,8 +502,8 @@ extractobjects (const char *exec_name)
   if (output_filename == NULL)
     return 1;
 
-  sprintf (output_filename, "%s/%s%s", output_dirname, output_prefix,
-	   OBJECT_SUFFIX);
+  snprintf (output_filename, PATH_MAX - 1, "%s/%s%s",
+	    output_dirname, output_prefix, OBJECT_SUFFIX);
   if ((obj_out->fp = fopen_ex (output_filename, "wb")) == NULL)
     {				/* binary */
       fprintf (stderr, "%s: %s.\n\n", exec_name, strerror (errno));
@@ -890,7 +891,8 @@ extractobjects (const char *exec_name)
    * Dump the object definitions
    */
   total_approximate_class_objects = est_objects;
-  sprintf (unloadlog_filename, "%s_unloaddb.log", output_prefix);
+  snprintf (unloadlog_filename, sizeof (unloadlog_filename) - 1,
+	    "%s_unloaddb.log", output_prefix);
   unloadlog_file = fopen (unloadlog_filename, "w+");
   if (unloadlog_file != NULL)
     {
@@ -1176,21 +1178,22 @@ process_class (int cl_no)
     }
 
   v = 0;
-  for (attribute = class_ptr->class_attributes ; attribute != NULL ; attribute = (SM_ATTRIBUTE *)attribute->header.next)
-  {
+  for (attribute = class_ptr->class_attributes; attribute != NULL;
+       attribute = (SM_ATTRIBUTE *) attribute->header.next)
+    {
 
-    if (DB_VALUE_TYPE (&attribute->value) == DB_TYPE_NULL)
-      continue;
-    if (v)
-      CHECK_PRINT_ERROR (text_print (obj_out, " ", 1, NULL));
-    if ((error = process_value (&attribute->value)) != NO_ERROR)
-      {
-	if (!ignore_err_flag)
-	  goto exit_on_error;
-      }
+      if (DB_VALUE_TYPE (&attribute->value) == DB_TYPE_NULL)
+	continue;
+      if (v)
+	CHECK_PRINT_ERROR (text_print (obj_out, " ", 1, NULL));
+      if ((error = process_value (&attribute->value)) != NO_ERROR)
+	{
+	  if (!ignore_err_flag)
+	    goto exit_on_error;
+	}
 
-    ++v;
-  }
+      ++v;
+    }
 
   CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s ("	/* new line */
 				 : "%cclass %s%s%s (",
@@ -1731,16 +1734,17 @@ process_value (DB_VALUE * value)
 		    }
 		  if (lo_count > 0)
 		    {
-		      sprintf (filename, "%s/%s_lo%d/%s_%d.lo",
-			       output_dirname, output_prefix,
-			       output_number / lo_count, output_prefix,
-			       output_number);
+		      snprintf (filename, sizeof (filename) - 1,
+				"%s/%s_lo%d/%s_%d.lo", output_dirname,
+				output_prefix, output_number / lo_count,
+				output_prefix, output_number);
 		      if (!(output_number % lo_count))
 			{
 			  char lo_dirname[DB_MAX_IDENTIFIER_LENGTH];
-			  sprintf (lo_dirname, "%s/%s_lo%d",
-				   output_dirname, output_prefix,
-				   output_number / lo_count);
+			  snprintf (lo_dirname, sizeof (lo_dirname) - 1,
+				    "%s/%s_lo%d",
+				    output_dirname, output_prefix,
+				    output_number / lo_count);
 			  if (mkdir (lo_dirname, S_IRWXU))
 			    {
 			      goto exit_on_error;
@@ -1750,8 +1754,8 @@ process_value (DB_VALUE * value)
 		    }
 		  else
 		    {
-		      sprintf (filename, "%s_%d.lo", output_prefix,
-			       ++output_number);
+		      snprintf (filename, sizeof (filename) - 1, "%s_%d.lo",
+				output_prefix, ++output_number);
 		    }
 		  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, "^I'%s'",
 						 filename));
@@ -1895,6 +1899,33 @@ all_classes_processed (void)
   return 1;
 }
 
+/*
+ * ltrim - trim a given string.
+ *    return: pointer to the trimed string.
+ */
+static char *
+ltrim (char *s)
+{
+  char *begin;
+
+  assert (s != NULL);
+
+  begin = s;
+  while (*begin != '\0')
+    {
+      if (isspace (*begin))
+	{
+	  begin++;
+	}
+      else
+	{
+	  break;
+	}
+    }
+  s = begin;
+
+  return s;
+}
 
 /*
  * get_requested_classes - read the class names from input_filename
@@ -1906,12 +1937,14 @@ int
 get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 {
   int i, j, is_partition = 0, error;
+  int len_clsname = 0;
   FILE *input_file;
   char buffer[DB_MAX_IDENTIFIER_LENGTH];
   char class_name[DB_MAX_IDENTIFIER_LENGTH];
   char downcase_class_name[SM_MAX_IDENTIFIER_LENGTH];
   MOP *sub_partitions = NULL;
   char scan_format[16];
+  char *trimmed_buf;
 
   if (input_filename == NULL)
     {
@@ -1932,7 +1965,18 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
     {
       DB_OBJECT *class_;
 
-      if ((strchr (buffer, '\n') - buffer) >= 1)
+      /* trim left */
+      trimmed_buf = ltrim (buffer);
+      len_clsname = strlen (trimmed_buf);
+
+      /* get rid of \n at end of line */
+      if (len_clsname > 0 && trimmed_buf[len_clsname - 1] == '\n')
+	{
+	  trimmed_buf[len_clsname - 1] = 0;
+	  len_clsname--;
+	}
+
+      if (len_clsname >= 1)
 	{
 	  sscanf ((char *) buffer, scan_format, (char *) class_name);
 

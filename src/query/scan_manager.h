@@ -81,6 +81,7 @@ struct indx_scan_id
   BTREE_TYPE bt_type;		/* index type */
   int bt_num_attrs;		/* num of attributes of the index key */
   ATTR_ID *bt_attr_ids;		/* attr id array of the index key */
+  int *bt_attrs_prefix_length;	/* attr prefix length */
   ATTR_ID *vstr_ids;		/* attr id array of variable string */
   int num_vstr;			/* num of variable string attrs */
   BTREE_SCAN bt_scan;		/* index scan info. structure */

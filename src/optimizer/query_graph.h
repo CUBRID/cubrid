@@ -897,6 +897,7 @@ extern void qo_print_stats (FILE *);
 extern void qo_eqclass_fprint_wrt (QO_EQCLASS *, BITSET *, FILE *);
 extern void qo_termset_fprint (QO_ENV *, BITSET *, FILE *);
 extern int qo_seg_width (QO_SEGMENT * seg);
+extern bool qo_is_prefix_index (QO_INDEX_ENTRY *);
 
 extern double QO_INFINITY;
 

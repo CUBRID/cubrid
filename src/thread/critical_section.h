@@ -67,6 +67,7 @@ enum
   CSECT_SCANID_BITMAP,
   CSECT_LOG_FLUSH,		/* for 2 flushing (by LFT, by normal thread) */
   CSECT_HA_SERVER_STATE,	/* Latch for HA server mode change */
+  CSECT_COMPACTDB_ONE_INSTANCE,	/* Latch for compactdb */
   CSECT_LAST
 };
 

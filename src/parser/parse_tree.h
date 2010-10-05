@@ -205,6 +205,16 @@
 	   ((t) == PT_TYPE_TIMESTAMP)  || \
 	   ((t) == PT_TYPE_DATETIME)) ? true : false )
 
+#define PT_HAS_DATE_PART(t) \
+        ( (((t) == PT_TYPE_DATE)       || \
+	   ((t) == PT_TYPE_TIMESTAMP)  || \
+	   ((t) == PT_TYPE_DATETIME)) ? true : false )
+
+#define PT_HAS_TIME_PART(t) \
+        ( (((t) == PT_TYPE_TIME)       || \
+	   ((t) == PT_TYPE_TIMESTAMP)  || \
+	   ((t) == PT_TYPE_DATETIME)) ? true : false )
+
 #define PT_IS_PRIMITIVE_TYPE(t) \
         ( (((t) == PT_TYPE_OBJECT) || \
 	   ((t) == PT_TYPE_NONE))  ? false : true )
@@ -402,12 +412,9 @@
          (op) == PT_LPAD || (op) == PT_RPAD || (op) == PT_ADD_MONTHS || \
          (op) == PT_TO_CHAR || (op) == PT_TO_NUMBER || \
          (op) == PT_POWER || (op) == PT_ROUND || \
-         (op) == PT_LOG || (op) == PT_EXP || (op) == PT_SQRT || \
          (op) == PT_TRUNC || (op) == PT_INSTR || \
-         (op) == PT_LEAST || (op) == PT_GREATEST)
-
-#define PT_IS_PRIOR_NODE(x) ((x) && (x)->info.expr.arg1 && \
-				(x)->info.expr.arg1->info.expr.op == PT_PRIOR)
+         (op) == PT_LEAST || (op) == PT_GREATEST || \
+	 (op) == PT_FIELD)
 
 #define PT_REQUIRES_HIERARCHICAL_QUERY(op) \
         ( ((op) == PT_LEVEL || \
@@ -430,6 +437,9 @@
 
 #define PT_IS_EXPR_NODE_WITH_OPERATOR(n, op_type) \
         ( (PT_IS_EXPR_NODE (n)) ? ((n)->info.expr.op == (op_type)) : false )
+
+#define PT_IS_PRIOR_NODE(x) ((x) && PT_IS_EXPR_NODE(x) && \
+		PT_IS_EXPR_NODE_WITH_OPERATOR((x)->info.expr.arg1, PT_PRIOR))
 
 
 #if !defined (SERVER_MODE)
@@ -543,16 +553,17 @@ enum
 
 enum pt_custom_print
 {
-  PT_SUPPRESS_CURRENCY = 0x1,
   PT_SUPPRESS_RESOLVED = 0x2,
   PT_SUPPRESS_META_ATTR_CLASS = 0x4,
   PT_SUPPRESS_INTO = 0x8,
   PT_SUPPRESS_SELECTOR = 0x40,
   PT_SUPPRESS_SELECT_LIST = 0x80,
   PT_SUPPRESS_QUOTES = 0x200,
+  PT_PRINT_ALIAS = 0x400,
   PT_PAD_BYTE = 0x8000,
   PT_CONVERT_RANGE = 0x10000,
-  PT_INTERNAL_PRINT = 0x40000
+  PT_INTERNAL_PRINT = 0x40000,
+  PT_SUPPRESS_INDEX = 0x80000
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -588,7 +599,7 @@ enum pt_node_type
   PT_DELETE = CUBRID_STMT_DELETE,
   PT_METHOD_CALL = CUBRID_STMT_CALL,
   PT_GET_XACTION = CUBRID_STMT_GET_ISO_LVL,
-  /* should have seperate pt node type for CUBRID_STMT_GET_TIMEOUT,
+  /* should have separate pt node type for CUBRID_STMT_GET_TIMEOUT,
      It will also be tagged PT_GET_XACTION  */
   PT_GET_OPT_LVL = CUBRID_STMT_GET_OPT_LVL,
   PT_SET_OPT_LVL = CUBRID_STMT_SET_OPT_LVL,
@@ -607,6 +618,11 @@ enum pt_node_type
 
   PT_CREATE_STORED_PROCEDURE = CUBRID_STMT_CREATE_STORED_PROCEDURE,
   PT_DROP_STORED_PROCEDURE = CUBRID_STMT_DROP_STORED_PROCEDURE,
+  PT_PREPARE_STATEMENT = CUBRID_STMT_PREPARE_STATEMENT,
+  PT_EXECUTE_PREPARE = CUBRID_STMT_EXECUTE_PREPARE,
+  PT_DEALLOCATE_PREPARE = CUBRID_STMT_DEALLOCATE_PREPARE,
+  PT_TRUNCATE = CUBRID_STMT_TRUNCATE,
+  PT_DO = CUBRID_STMT_DO,
 
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be
 					   distinct from statements */
@@ -646,7 +662,9 @@ enum pt_node_type
   PT_TRIGGER_SPEC_LIST,
   PT_VALUE,
   PT_POINTER,
+  PT_NODE_LIST,
   PT_TABLE_OPTION,
+  PT_ATTR_ORDERING,
   PT_NODE_NUMBER		/* This is the number of node types */
 };
 
@@ -823,13 +841,27 @@ typedef enum
   PT_OUTPUT,
   PT_INPUTOUTPUT,
 
-  PT_YEAR,			/* datetime components for extract operation */
-  PT_MONTH,
-  PT_DAY,
-  PT_HOUR,
-  PT_MINUTE,
+  PT_MILLISECOND,		/* datetime components for extract operation */
   PT_SECOND,
-  PT_MILLISECOND,
+  PT_MINUTE,
+  PT_HOUR,
+  PT_DAY,
+  PT_WEEK,
+  PT_MONTH,
+  PT_QUARTER,
+  PT_YEAR,
+  /* mysql units types */
+  PT_SECOND_MILLISECOND,
+  PT_MINUTE_MILLISECOND,
+  PT_MINUTE_SECOND,
+  PT_HOUR_MILLISECOND,
+  PT_HOUR_SECOND,
+  PT_HOUR_MINUTE,
+  PT_DAY_MILLISECOND,
+  PT_DAY_SECOND,
+  PT_DAY_MINUTE,
+  PT_DAY_HOUR,
+  PT_YEAR_MONTH,
 
   PT_SIMPLE_CASE,
   PT_SEARCHED_CASE,
@@ -924,7 +956,12 @@ typedef enum
   PT_ADD_HASHPARTITION,
   PT_REORG_PARTITION,
   PT_COALESCE_PARTITION,
-  PT_ANALYZE_PARTITION
+  PT_ANALYZE_PARTITION,
+  PT_RENAME_ENTITY,
+  PT_ALTER_DEFAULT,
+  PT_DROP_INDEX_CLAUSE,
+  PT_DROP_PRIMARY_CLAUSE,
+  PT_DROP_FK_CLAUSE
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -980,15 +1017,19 @@ typedef enum
   PT_LIKE, PT_NOT_LIKE,
   PT_IS_IN, PT_IS_NOT_IN,
   PT_IS_NULL, PT_IS_NOT_NULL,
+  PT_IS, PT_IS_NOT,
   PT_EXISTS,
   PT_EQ_SOME, PT_NE_SOME, PT_GE_SOME, PT_GT_SOME, PT_LT_SOME, PT_LE_SOME,
   PT_EQ_ALL, PT_NE_ALL, PT_GE_ALL, PT_GT_ALL, PT_LT_ALL, PT_LE_ALL,
-  PT_EQ, PT_NE, PT_GE, PT_GT, PT_LT, PT_LE,
+  PT_EQ, PT_NE, PT_GE, PT_GT, PT_LT, PT_LE, PT_NULLSAFE_EQ,
   PT_GT_INF, PT_LT_INF,		/* internal use only */
   PT_SETEQ, PT_SETNEQ, PT_SUPERSETEQ, PT_SUPERSET, PT_SUBSET, PT_SUBSETEQ,
   PT_PLUS, PT_MINUS,
   PT_TIMES, PT_DIVIDE, PT_UNARY_MINUS, PT_PRIOR, PT_QPRIOR,
   PT_CONNECT_BY_ROOT,
+  PT_BIT_NOT, PT_BIT_XOR, PT_BIT_AND, PT_BIT_OR, PT_BIT_COUNT,
+  PT_BITSHIFT_LEFT, PT_BITSHIFT_RIGHT, PT_DIV, PT_MOD,
+  PT_IF, PT_IFNULL, PT_ISNULL, PT_XOR,
   PT_ASSIGN,			/* as in x=y */
   PT_BETWEEN_AND,
   PT_BETWEEN_GE_LE, PT_BETWEEN_GE_LT, PT_BETWEEN_GT_LE, PT_BETWEEN_GT_LT,
@@ -1024,7 +1065,37 @@ typedef enum
   PT_RANDOM, PT_DRANDOM,
 
   PT_INCR, PT_DECR,
-  PT_LOG, PT_EXP, PT_SQRT
+
+  PT_LOG, PT_EXP, PT_SQRT,
+
+  PT_CONCAT, PT_CONCAT_WS, PT_FIELD, PT_LEFT, PT_RIGHT,
+  PT_LOCATE, PT_MID, PT_STRCMP, PT_REVERSE,
+
+  PT_ACOS, PT_ASIN, PT_ATAN, PT_ATAN2,
+  PT_COS, PT_SIN, PT_COT, PT_TAN,
+  PT_DEGREES, PT_RADIANS,
+  PT_PI,
+  PT_FORMAT,
+  PT_LN, PT_LOG2, PT_LOG10,
+  PT_TIME_FORMAT,
+  PT_TIMESTAMP,
+  PT_UNIX_TIMESTAMP,
+  PT_SCHEMA,
+  PT_DATABASE,
+  /* datetime */
+  PT_ADDDATE,			/* 2 fixed parameter */
+  PT_DATE_ADD,			/* INTERVAL variant */
+  PT_SUBDATE,
+  PT_DATE_SUB,
+  PT_DATE_FORMAT,
+  PT_DATEF,
+  PT_USER,
+  PT_ROW_COUNT,
+  PT_DATEDIFF,
+  PT_STR_TO_DATE,
+  PT_DEFAULTF,
+  PT_LIST_DBS,
+  PT_OID_OF_DUPLICATE_KEY
 } PT_OP_TYPE;
 
 
@@ -1074,6 +1145,7 @@ typedef struct pt_alter_trigger_info PT_ALTER_TRIGGER_INFO;
 typedef struct pt_attach_info PT_ATTACH_INFO;
 typedef struct pt_attach_info PT_PREPARE_TO_COMMIT_INFO;
 typedef struct pt_attr_def_info PT_ATTR_DEF_INFO;
+typedef struct pt_attr_ordering_info PT_ATTR_ORDERING_INFO;
 typedef struct pt_auth_cmd_info PT_AUTH_CMD_INFO;
 typedef struct pt_commit_work_info PT_COMMIT_WORK_INFO;
 typedef struct pt_create_entity_info PT_CREATE_ENTITY_INFO;
@@ -1144,8 +1216,12 @@ typedef struct pt_foreign_key_info PT_FOREIGN_KEY_INFO;
 typedef struct pt_constraint_info PT_CONSTRAINT_INFO;
 typedef struct pt_pointer_info PT_POINTER_INFO;
 typedef struct pt_stored_proc_info PT_STORED_PROC_INFO;
+typedef struct pt_prepare_info PT_PREPARE_INFO;
 typedef struct pt_stored_proc_param_info PT_STORED_PROC_PARAM_INFO;
+typedef struct pt_truncate_info PT_TRUNCATE_INFO;
+typedef struct pt_do_info PT_DO_INFO;
 typedef union pt_statement_info PT_STATEMENT_INFO;
+typedef struct pt_node_list_info PT_NODE_LIST_INFO;
 typedef struct pt_table_option_info PT_TABLE_OPTION_INFO;
 
 typedef struct pt_agg_info PT_AGG_INFO;
@@ -1200,7 +1276,6 @@ struct must_be_filtering_info
 struct semantic_chk_info
 {
   PT_NODE *top_node;		/* top_node_arg  */
-  PT_NODE *attrdefs;		/* NULL or a vclass attribute defs list */
   PT_NODE *Oracle_outerjoin_spec;	/* Oracle style outer join check */
   int Oracle_outerjoin_attr_num;	/* Oracle style outer join check */
   int Oracle_outerjoin_subq_num;	/* Oracle style outer join check */
@@ -1282,8 +1357,14 @@ struct pt_alter_info
       PT_NODE *parts;		/* PT_PARTS_INFO(list) */
       PT_NODE *size;		/* PT_VALUE */
     } partition;
+    struct
+    {
+      bool reverse;
+      bool unique;
+    } index;
   } alter_clause;
   PT_NODE *constraint_list;	/* constraints from ADD and CHANGE clauses */
+  PT_NODE *create_index;	/* PT_CREATE_INDEX from ALTER ADD INDEX */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_HINT_ENUM hint;		/* hint flag */
 };
@@ -1315,9 +1396,17 @@ struct pt_attr_def_info
   PT_NODE *attr_name;		/* PT_NAME */
   PT_NODE *data_default;	/* PT_DATA_DEFAULT */
   PT_NODE *auto_increment;	/* PT_AUTO_INCREMENT */
+  PT_NODE *ordering_info;	/* PT_ATTR_ORDERING */
   PT_MISC_TYPE attr_type;	/* PT_NORMAL or PT_META */
   int size_constraint;		/* max length of STRING */
   short constrain_not_null;
+};
+
+/* Info for ALTER TABLE ADD COLUMN [FIRST | AFTER column_name ] */
+struct pt_attr_ordering_info
+{
+  PT_NODE *after;		/* PT_NAME */
+  bool first;
 };
 
 /* Info for AUTH_CMD */
@@ -1332,6 +1421,13 @@ struct pt_commit_work_info
 {
   unsigned retain_lock:1;	/* 0 = false, 1 = true */
 };
+
+typedef enum
+{
+  PT_CREATE_SELECT_NO_ACTION,
+  PT_CREATE_SELECT_REPLACE,
+  PT_CREATE_SELECT_IGNORE
+} PT_CREATE_SELECT_ACTION;
 
 /* Info for a CREATE ENTITY node */
 struct pt_create_entity_info
@@ -1350,8 +1446,15 @@ struct pt_create_entity_info
   PT_NODE *object_id_list;	/* PT_NAME list */
   PT_NODE *update;		/* PT_EXPR (list ) */
   PT_NODE *constraint_list;	/* PT_CONSTRAINT (list) */
+  PT_NODE *create_index;	/* PT_CREATE_INDEX */
   PT_NODE *partition_info;	/* PT_PARTITION_INFO */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
+  PT_NODE *create_like;		/* PT_NAME */
+  PT_NODE *create_select;	/* PT_SELECT or another type of select_expression */
+  PT_CREATE_SELECT_ACTION create_select_action;	/* nothing | REPLACE | IGNORE
+						 * for CREATE SELECT
+						 */
+  unsigned or_replace:1;	/* OR REPLACE clause for create view */
   PT_HINT_ENUM hint;		/* hint flag */
 };
 
@@ -1361,8 +1464,9 @@ struct pt_index_info
   PT_NODE *indexed_class;	/* PT_NAME */
   PT_NODE *column_names;	/* PT_SORT_SPEC (list) */
   PT_NODE *index_name;		/* PT_NAME */
-  int reverse;			/* REVERSE */
-  char unique;			/* UNIQUE specified? */
+  PT_NODE *prefix_length;	/* PT_NAME */
+  bool reverse;			/* REVERSE */
+  bool unique;			/* UNIQUE specified? */
   PT_HINT_ENUM hint;		/* hint flag */
 };
 
@@ -1462,6 +1566,7 @@ struct pt_delete_info
   PT_NODE *cursor_name;		/* PT_NAME */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
+  PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_HINT_ENUM hint;		/* hint flag */
   bool has_trigger;		/* whether it has triggers */
   bool server_delete;		/* whether it can be server-side deletion */
@@ -1604,6 +1709,9 @@ struct pt_expr_info
 					 * of query optimizer */
 #define PT_EXPR_INFO_DEFAULT_SELECTIVITY 1024	/* use default selectivity ? */
 #define PT_EXPR_INFO_FULL_RANGE  2048	/* non-null full RANGE term ? */
+#define	PT_EXPR_INFO_CAST_NOFAIL 4096	/* flag for non failing cast operation;
+					 * at runtime will return null DB_VALUE
+					 * instead of failing */
 
   short flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (short) (f))
@@ -1670,21 +1778,28 @@ struct pt_host_var_info
   int index;			/* for PT_HOST_VAR ordering */
 };
 
-/* Info for Insert */
+/* Info for lists of PT_NODE */
+struct pt_node_list_info
+{
+  PT_MISC_TYPE list_type;	/* e.g. PT_IS_VALUE */
+  PT_NODE *list;		/* the list of nodes */
+};
 
+/* Info for Insert */
 struct pt_insert_info
 {
   PT_NODE *spec;		/* PT_SPEC */
   PT_NODE *class_specs;		/* PT_SPEC list */
   PT_NODE *attr_list;		/* PT_NAME */
-  PT_NODE *value_clause;	/* PT_SELECT,PT_NAME,PT_VALUE(list)...  */
+  PT_NODE *value_clauses;	/* PT_NODE_LIST(list) or PT_NODE_LIST(PT_SELECT) */
   PT_NODE *into_var;		/* PT_VALUE */
   PT_MISC_TYPE is_subinsert;	/* 0 or PT_IS_SUBINSERT(for printing)   */
-  PT_MISC_TYPE is_value;	/* 0 or PT_VALUE : VALUE clause present */
   PT_NODE *where;		/* for view with check option checking */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_HINT_ENUM hint;		/* hint flag */
+  PT_NODE *on_dup_key_update;	/* ON DUPLICATE KEY UPDATE assignments */
+  bool do_replace;		/* REPLACE statement was given */
 };
 
 /* Info for Transaction Isolation Level */
@@ -1743,16 +1858,21 @@ struct pt_name_info
   PT_NODE *path_correlation;	/* as in a.b.c [path_correlation].d.e.f */
   PT_TYPE_ENUM virt_type_enum;	/* type of oid's in ldb for proxies. */
   PT_MISC_TYPE meta_class;	/* 0 or PT_META or PT_PARAMETER */
+  PT_NODE *default_value;	/* PT_VALUE the default value of the attribute */
   unsigned int custom_print;
   unsigned short correlation_level;	/* for correlated attributes */
 
-#define PT_NAME_INFO_DOT_SPEC   1	/* x, y of x.y.z */
-#define PT_NAME_INFO_DOT_NAME   2	/* z of x.y.z */
-#define PT_NAME_INFO_STAR       4	/* * */
-#define PT_NAME_INFO_DOT_STAR   8	/* classname.* */
-#define PT_NAME_INFO_CONSTANT  16
-#define PT_NAME_INFO_EXTERNAL  32	/* in case of TEXT type at attr definition or
-					   attr.object at attr description */
+#define PT_NAME_INFO_DOT_SPEC        1	/* x, y of x.y.z */
+#define PT_NAME_INFO_DOT_NAME        2	/* z of x.y.z */
+#define PT_NAME_INFO_STAR            4	/* * */
+#define PT_NAME_INFO_DOT_STAR        8	/* classname.* */
+#define PT_NAME_INFO_CONSTANT       16
+#define PT_NAME_INFO_EXTERNAL       32	/* in case of TEXT type at attr
+					   definition or attr.object at attr
+					   description */
+#define PT_NAME_INFO_DESC           64	/* DESC on an index column name */
+#define PT_NAME_INFO_FILL_DEFAULT  128	/* whether default_value should be
+					   filled in */
 #define PT_NAME_INFO_GENERATED_OID 256	/* set when a PT_NAME node
 					   that maps to an OID is generated
 					   internally for statement processing
@@ -1857,10 +1977,12 @@ struct pt_select_info
   PT_NODE *jdbc_life_time;	/* jdbc cache life time */
   struct qo_summary *qo_summary;
   PT_NODE *check_where;		/* with check option predicate */
+  PT_NODE *limit;		/* PT_VALUE (list) limit clause parameter(s) */
   PT_HINT_ENUM hint;
   int flavor;
   short flag;			/* flags */
   unsigned has_nocycle:1;	/* CONNECT BY NOCYCLE */
+  unsigned single_table_opt:1;	/* hq optimized for single table */
 };
 
 #define PT_SELECT_INFO_ANSI_JOIN    1	/* has ANSI join? */
@@ -1978,6 +2100,7 @@ struct pt_update_info
   PT_NODE *check_where;		/* with check option predicate */
   PT_NODE *internal_stmts;	/* internally created statements to handle TEXT */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
+  PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_HINT_ENUM hint;		/* hint flag */
   bool has_trigger;		/* whether it has triggers */
   bool has_unique;		/* whether there's unique constraint */
@@ -2039,7 +2162,7 @@ typedef long PT_UTIME;
 typedef long PT_DATE;
 typedef DB_DATETIME PT_DATETIME;
 
-/* enum currencty types */
+/* enum currency types */
 typedef enum pt_currency_types
 {
   PT_CURRENCY_DOLLAR,
@@ -2155,10 +2278,29 @@ struct pt_stored_proc_info
   PT_TYPE_ENUM ret_type;
 };
 
+struct pt_prepare_info
+{
+  PT_NODE *name;		/* the name of the prepared statement */
+  PT_NODE *statement;		/* the string literal that defines the statement */
+  PT_NODE *using_list;		/* the list of values given for statement execution */
+};
+
 struct pt_stored_proc_param_info
 {
   PT_NODE *name;
   PT_MISC_TYPE mode;
+};
+
+/* TRUNCATE ENTITY INFO */
+struct pt_truncate_info
+{
+  PT_NODE *spec;		/* PT_SPEC */
+};
+
+/* DO ENTITY INFO */
+struct pt_do_info
+{
+  PT_NODE *expr;		/* PT_EXPR */
 };
 
 /* Info field of the basic NODE
@@ -2171,10 +2313,11 @@ union pt_statement_info
 {
   PT_ZZ_ERROR_MSG_INFO error_msg;
   PT_ALTER_INFO alter;
-  PT_ALTER_USER_INFO alter_user;
   PT_ALTER_TRIGGER_INFO alter_trigger;
+  PT_ALTER_USER_INFO alter_user;
   PT_ATTACH_INFO attach;
   PT_ATTR_DEF_INFO attr_def;
+  PT_ATTR_ORDERING_INFO attr_ordering;
   PT_AUTH_CMD_INFO auth_cmd;
   PT_AUTO_INCREMENT_INFO auto_increment;
   PT_COMMIT_WORK_INFO commit_work;
@@ -2185,17 +2328,18 @@ union pt_statement_info
   PT_DATA_DEFAULT_INFO data_default;
   PT_DATA_TYPE_INFO data_type;
   PT_DELETE_INFO delete_;
+  PT_DO_INFO do_;
   PT_DOT_INFO dot;
   PT_DROP_INFO drop;
-  PT_DROP_USER_INFO drop_user;
   PT_DROP_TRIGGER_INFO drop_trigger;
+  PT_DROP_USER_INFO drop_user;
   PT_DROP_VARIABLE_INFO drop_variable;
   PT_EVALUATE_INFO evaluate;
   PT_EVENT_OBJECT_INFO event_object;
   PT_EVENT_SPEC_INFO event_spec;
   PT_EVENT_TARGET_INFO event_target;
-  PT_EXPR_INFO expr;
   PT_EXECUTE_TRIGGER_INFO execute_trigger;
+  PT_EXPR_INFO expr;
   PT_FILE_PATH_INFO file_path;
   PT_FUNCTION_INFO function;
   PT_GET_OPT_LVL_INFO get_opt_lvl;
@@ -2210,8 +2354,10 @@ union pt_statement_info
   PT_METHOD_CALL_INFO method_call;
   PT_METHOD_DEF_INFO method_def;
   PT_NAME_INFO name;
+  PT_NODE_LIST_INFO node_list;
   PT_PARTITION_INFO partition;
   PT_PARTS_INFO parts;
+  PT_PREPARE_INFO prepare;
   PT_ATTACH_INFO prepare_to_commit;
   PT_QUERY_INFO query;
   PT_REMOVE_TRIGGER_INFO remove_trigger;
@@ -2221,8 +2367,8 @@ union pt_statement_info
   PT_REVOKE_INFO revoke;
   PT_ROLLBACK_WORK_INFO rollback_work;
   PT_SAVEPOINT_INFO savepoint;
-  PT_SERIAL_INFO serial;
   PT_SCOPE_INFO scope;
+  PT_SERIAL_INFO serial;
   PT_SET_OPT_LVL_INFO set_opt_lvl;
   PT_SET_SYS_PARAMS_INFO set_sys_params;
   PT_SET_TRIGGER_INFO set_trigger;
@@ -2235,8 +2381,9 @@ union pt_statement_info
   PT_TIMEOUT_INFO timeout;
   PT_TRIGGER_ACTION_INFO trigger_action;
   PT_TRIGGER_SPEC_LIST_INFO trigger_spec_list;
-  PT_UPDATE_STATS_INFO update_stats;
+  PT_TRUNCATE_INFO truncate;
   PT_UPDATE_INFO update;
+  PT_UPDATE_STATS_INFO update_stats;
 #if defined (ENABLE_UNUSED_FUNCTION)
   PT_USE_INFO use;
 #endif
@@ -2296,9 +2443,28 @@ struct parser_node
   unsigned use_query_cache:1;
   unsigned is_hidden_column:1;
   unsigned is_paren:1;
+  unsigned with_rollup:1;	/* WITH ROLLUP clause for GROUP BY */
+  unsigned force_auto_parameterize:1;	/* forces a call to
+					   qo_do_auto_parameterize (); this is
+					   a special flag used for processing
+					   ON DUPLICATE KEY UPDATE */
+  unsigned do_not_fold:1;	/* disables constant folding on the node */
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 
+/* Values that describe the state of a client session across statements
+ * execution.
+ */
+typedef struct execution_state_values EXECUTION_STATE_VALUES;
+struct execution_state_values
+{
+  int row_count;		/* The number of rows that were inserted,
+				 * updated or deleted by the previously executed
+				 * statement. It is set to -1 on certain errors
+				 * or if the previous statement did not modify
+				 * any rows.
+				 */
+};
 
 /* 20 (for the LOCAL_TRANSACTION_ID keyword) + null char + 3 for expansion */
 #define MAX_KEYWORD_SIZE (20 + 1 + 3)
@@ -2314,7 +2480,6 @@ struct keyword_record
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
 
-/* typedef struct PARSER_CONTEXT PARSER_CONTEXT in pt_public.h */
 struct parser_context
 {
   PT_INT_FUNCTION next_char;	/* the next character function */
@@ -2347,6 +2512,10 @@ struct parser_context
   QUERY_ID query_id;		/* id assigned to current query */
   DB_VALUE *host_variables;	/* host variables place holder;
 				   DB_VALUE array */
+  EXECUTION_STATE_VALUES execution_values;	/* values kept across the
+						 * execution of statements
+						 * during a client
+						 * session. */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
   int dbval_cnt;		/* to be assigned to XASL */
@@ -2373,14 +2542,21 @@ struct parser_context
   int num_lcks_classes;
   PT_INCLUDE_OID_TYPE oid_included;	/* for update cursors */
 
+  long int lrand;		/* integer random value used by rand() */
+  double drand;			/* floating-point random value used by drand() */
+
   unsigned has_internal_error:1;	/* 0 or 1 */
   unsigned abort:1;		/* this flag is for aborting a transaction */
   /* if deadlock occurs during query execution */
   unsigned set_host_var:1;	/* 1 iff the user has set host variables */
   unsigned dont_prt_long_string:1;	/* make pt_print_value fail
 					   if the string is too long to print */
-  unsigned long_string_skipped:1;	/* pt_print_value set to 1
-					   when it skipped to print long string */
+  unsigned long_string_skipped:1;	/* pt_print_value sets it to 1 when it
+					   skipped printing a long string */
+  unsigned print_type_ambiguity:1;	/* pt_print_value sets it to 1
+					   when it printed a value whose type
+					   cannot be clearly determined from
+					   the string representation */
 };
 
 

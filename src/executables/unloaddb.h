@@ -55,8 +55,8 @@ extern int get_requested_classes (const char *input_filename,
 
 extern int lo_count;
 
-#define LEFT_DEL 	"\""
-#define RIGHT_DEL	"\""
+#define LEFT_DEL 	"["
+#define RIGHT_DEL	"]"
 #define NO_DEL		""
 
 #define PRINT_IDENTIFIER(s) need_quotes((s)) ? LEFT_DEL : NO_DEL, \

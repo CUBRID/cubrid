@@ -115,7 +115,7 @@ cas_log_open (char *br_name, int as_index)
 	  make_sql_log_filename (log_filepath, PATH_MAX, br_name, as_index);
 	}
 
-      /* note: in "a+" mode, output is alwarys appended */
+      /* note: in "a+" mode, output is always appended */
       log_fp = fopen (log_filepath, "r+");
       if (log_fp != NULL)
 	{
@@ -460,7 +460,7 @@ void
 cas_log_write_query_string (char *query, int size)
 {
 #ifndef LIBCAS_FOR_JSP
-  if (log_fp != NULL)
+  if (log_fp != NULL && query != NULL)
     {
       char *s;
 

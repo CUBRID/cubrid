@@ -53,3 +53,7 @@ int css_Server_use_new_connection_protocol = 1;
 #else /* WINDOWS */
 int css_Server_use_new_connection_protocol = 0;
 #endif /* WINDOWS */
+
+/* do not change first 4 bytes of css_Net_magic */
+char css_Net_magic[CSS_NET_MAGIC_SIZE] =
+  { 0x00, 0x00, 0x00, 0x01, 0x20, 0x08, 0x11, 0x22 };

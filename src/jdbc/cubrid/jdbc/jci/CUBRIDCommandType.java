@@ -34,7 +34,7 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 /**
  * CUBRID의 Command Type을 정의하는 class이다.

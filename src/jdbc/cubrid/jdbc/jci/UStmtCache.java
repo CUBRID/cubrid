@@ -28,7 +28,7 @@
  *
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 import java.util.Hashtable;
 import java.util.ArrayList;

@@ -335,7 +335,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 	      hint_p += len;	/* consume token */
 	      /* check token after */
 	      if (IS_WHITE_CHAR (*(hint_p)))
-		{		/* no argements */
+		{		/* no arguments */
 		  /* found specified hint */
 		  hint = hint_table[i].hint;
 		}

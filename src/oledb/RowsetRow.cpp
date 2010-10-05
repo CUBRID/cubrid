@@ -751,13 +751,13 @@ HRESULT CCUBRIDRowsetRow::WriteData(int hConn, int hReq, CComBSTR &strTableName)
 		case DBPENDINGSTATUS_DELETED:
 			// delete from <table> where <table>=?
 			query.Append("delete from ");
-			query.Append("\"");
+			query.Append("[");
 			query.Append(strTableName);
-			query.Append("\"");
+			query.Append("]");
 			query.Append(" where ");
-			query.Append("\"");
+			query.Append("[");
 			query.Append(strTableName);
-			query.Append("\"");
+			query.Append("]");
 			query.Append("=?");
 			break;
 		case DBPENDINGSTATUS_NEW:
@@ -769,17 +769,17 @@ HRESULT CCUBRIDRowsetRow::WriteData(int hConn, int hReq, CComBSTR &strTableName)
 				{
 					ATLCOLUMNINFO *m_pInfoCur = &m_pInfo[i];
 					if(m_pInfoCur->iOrdinal==0) continue; // skip bookmark column
-					column.Append("\"");
+					column.Append("[");
 					column.Append(m_pInfoCur->pwszName);
-					column.Append("\"");
+					column.Append("]");
 					value.Append(BuildColumnValue(m_pInfoCur, m_rgColumns+i));
 					if(i!=m_cColumns-1) { column.Append(","); value.Append(","); }
 				}
 
 				query.Append("insert into ");
-				query.Append("\"");
+				query.Append("[");
 				query.Append(strTableName);
-				query.Append("\"");
+				query.Append("]");
 				query.Append("(");
 				query.Append(column);
 				query.Append(") values(");
@@ -817,15 +817,15 @@ HRESULT CCUBRIDRowsetRow::WriteData(int hConn, int hReq, CComBSTR &strTableName)
 				}
 
 				query.Append("update ");
-				query.Append("\"");
+				query.Append("[");
 				query.Append(strTableName);
-				query.Append("\"");
+				query.Append("]");
 				query.Append(" set ");
 				query.Append(set);
 				query.Append(" where ");
-				query.Append("\"");
+				query.Append("[");
 				query.Append(strTableName);
-				query.Append("\"");
+				query.Append("]");
 				query.Append("=?");
 			}
 			*/

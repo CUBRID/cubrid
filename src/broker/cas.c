@@ -54,8 +54,10 @@
 
 #if defined(CAS_FOR_ORACLE)
 #include "cas_oracle.h"
+#include "cas_error_log.h"
 #elif defined(CAS_FOR_MYSQL)
 #include "cas_mysql.h"
+#include "cas_error_log.h"
 #endif /* CAS_FOR_MYSQL */
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -127,9 +129,7 @@ int cas_send_result_flag = TRUE;
 int cas_info_size = CAS_INFO_SIZE;
 char prev_cas_info[CAS_INFO_SIZE];
 
-#if defined(CAS_FOR_DBMS)
 T_ERROR_INFO err_info;
-#endif /* CAS_FOR_DBMS */
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 static T_SERVER_FUNC server_fn_table[] = { fn_end_tran,
@@ -370,7 +370,11 @@ main (int argc, char *argv[])
 
     for (;;)
       {
+#if !defined(WINDOWS)
+      retry:
+#endif
 	br_sock_fd = net_connect_client (srv_sock_fd);
+
 	if (IS_INVALID_SOCKET (br_sock_fd))
 	  {
 	    goto error1;
@@ -399,6 +403,13 @@ main (int argc, char *argv[])
 	memcpy (&client_ip_addr, as_info->cas_clt_ip, 4);
 #else /* WINDOWS */
 	client_sock_fd = recv_fd (br_sock_fd, &client_ip_addr);
+
+	if (client_sock_fd == -1)
+	  {
+	    CLOSE_SOCKET (br_sock_fd);
+	    goto retry;
+	  }
+
 	net_write_stream (br_sock_fd, "OK", 2);
 	CLOSE_SOCKET (br_sock_fd);
 #endif /* WINDOWS */
@@ -407,6 +418,10 @@ main (int argc, char *argv[])
 	as_info->cur_sql_log2 = shm_appl->sql_log2;
 	sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2,
 		       false);
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+	cas_error_log_open (broker_name, shm_as_index);
+#endif
+
 
 	t = ut_uchar2ipstr ((unsigned char *) (&client_ip_addr));
 	cas_log_write_and_end (0, false, "CLIENT IP %s", t);
@@ -436,14 +451,9 @@ main (int argc, char *argv[])
 	  }
 	if (net_read_stream (client_sock_fd, read_buf, db_info_size) < 0)
 	  {
-#if defined(CAS_FOR_DBMS)
 	    NET_WRITE_ERROR_CODE (client_sock_fd, req_info.client_version,
 				  dummy_info, CAS_ERROR_INDICATOR,
 				  CAS_ER_COMMUNICATION);
-#else /* CAS_FOR_DBMS */
-	    NET_WRITE_ERROR_CODE (client_sock_fd, dummy_info,
-				  CAS_ER_COMMUNICATION);
-#endif /* CAS_FOR_DBMS */
 	  }
 	else
 	  {
@@ -477,31 +487,19 @@ main (int argc, char *argv[])
 	      {
 		if (db_err_msg == NULL)
 		  {
-#if defined(CAS_FOR_DBMS)
 		    NET_WRITE_ERROR_CODE (client_sock_fd,
 					  req_info.client_version, dummy_info,
 					  err_info.err_indicator,
 					  err_info.err_number);
-#else /* CAS_FOR_DBMS */
-		    NET_WRITE_ERROR_CODE (client_sock_fd, dummy_info,
-					  err_code);
-#endif /* CAS_FOR_DBMS */
 		  }
 		else
 		  {
-#if defined(CAS_FOR_DBMS)
 		    NET_WRITE_ERROR_CODE_WITH_MSG (client_sock_fd,
 						   req_info.client_version,
 						   dummy_info,
 						   err_info.err_indicator,
 						   err_info.err_number,
 						   db_err_msg);
-#else /* CAS_FOR_DBMS */
-		    NET_WRITE_ERROR_CODE_WITH_MSG (client_sock_fd,
-						   dummy_info, err_code,
-						   db_err_msg);
-#endif /* CAS_FOR_DBMS */
-
 		  }
 		CLOSE_SOCKET (client_sock_fd);
 		FREE_MEM (db_err_msg);
@@ -652,6 +650,9 @@ main (int argc, char *argv[])
 	cas_log_write_and_end (0, false, "STATE idle");
 	cas_log_close (true);
 	sql_log2_end (true);
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+	cas_error_log_close (true);
+#endif
 
 	if (is_server_aborted ())
 	  {
@@ -749,6 +750,9 @@ cleanup (int signo)
 
   cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
   cas_log_close (true);
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+  cas_error_log_close (true);
+#endif
 
 #ifdef MEM_DEBUG
   fd = open ("mem_debug.log", O_CREAT | O_TRUNC | O_WRONLY, 0666);
@@ -770,17 +774,14 @@ static void
 query_cancel (int signo)
 {
 #if defined(CAS_FOR_ORACLE)
-#elif defined(CAS_FOR_MYSQL)
-#else /* CAS_FOR_MYSQL */
   signal (signo, SIG_IGN);
-#if defined(CAS_FOR_ORACLE)
   cas_oracle_query_cancel ();
 #elif defined(CAS_FOR_MYSQL)
-#else /* CAS_FOR_MYSQL */
+#else /* CAS_FOR_CUBRID */
+  signal (signo, SIG_IGN);
   db_set_interrupt (1);
-#endif /* CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE */
   cas_log_write (0, false, "query_cancel");
-#endif /* CAS_FOR_MYSQL */
 }
 #endif /* !LIBCAS_FOR_JSP */
 
@@ -797,9 +798,7 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
   int err_code;
   T_SERVER_FUNC server_fn;
 
-#if defined(CAS_FOR_DBMS)
   error_info_clear ();
-#endif /* CAS_FOR_DBMS */
   init_msg_header (&client_msg_header);
   init_msg_header (&cas_msg_header);
 
@@ -813,6 +812,13 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
     {
       net_timeout_set (shm_appl->session_timeout);
       err_code = net_read_header (clt_sock_fd, &client_msg_header);
+
+      if ((as_info->cur_keep_con == KEEP_CON_ON)
+	  && (as_info->con_status == CON_STATUS_OUT_TRAN))
+	{
+	  as_info->con_status = CON_STATUS_IN_TRAN;
+	  errors_in_transaction = 0;
+	}
     }
 #else /* !LIBCAS_FOR_JSP */
   net_timeout_set (60);
@@ -822,14 +828,9 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
   if (err_code < 0)
     {
       const char *cas_log_msg = NULL;
-#if defined(CAS_FOR_DBMS)
       NET_WRITE_ERROR_CODE (clt_sock_fd, req_info->client_version,
 			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
 			    CAS_ER_COMMUNICATION);
-#else /* CAS_FOR_DBMS */
-      NET_WRITE_ERROR_CODE (clt_sock_fd, cas_msg_header.info_ptr,
-			    CAS_ER_COMMUNICATION);
-#endif /* CAS_FOR_DBMS */
 #ifndef LIBCAS_FOR_JSP
       if (as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
 	{
@@ -875,28 +876,18 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
 
   if (read_msg == NULL)
     {
-#if defined(CAS_FOR_DBMS)
       NET_WRITE_ERROR_CODE (clt_sock_fd, req_info->client_version,
 			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
 			    CAS_ER_NO_MORE_MEMORY);
-#else /* CAS_FOR_DBMS */
-      NET_WRITE_ERROR_CODE (clt_sock_fd, cas_msg_header.info_ptr,
-			    CAS_ER_NO_MORE_MEMORY);
-#endif /* CAS_FOR_DBMS */
       return -1;
     }
   if (net_read_stream (clt_sock_fd, read_msg,
 		       *(client_msg_header.msg_body_size_ptr)) < 0)
     {
       FREE_MEM (read_msg);
-#if defined(CAS_FOR_DBMS)
       NET_WRITE_ERROR_CODE (clt_sock_fd, req_info->client_version,
 			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
 			    CAS_ER_COMMUNICATION);
-#else /* CAS_FOR_DBMS */
-      NET_WRITE_ERROR_CODE (clt_sock_fd, cas_msg_header.info_ptr,
-			    CAS_ER_COMMUNICATION);
-#endif /* CAS_FOR_DBMS */
       cas_log_write_and_end (0, true,
 			     "COMMUNICATION ERROR net_read_stream()");
       return -1;
@@ -907,14 +898,9 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
   if (argc < 0)
     {
       FREE_MEM (read_msg);
-#if defined(CAS_FOR_DBMS)
       NET_WRITE_ERROR_CODE (clt_sock_fd, req_info->client_version,
 			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
 			    CAS_ER_COMMUNICATION);
-#else /* CAS_FOR_DBMS */
-      NET_WRITE_ERROR_CODE (clt_sock_fd, cas_msg_header.info_ptr,
-			    CAS_ER_COMMUNICATION);
-#endif /* CAS_FOR_DBMS */
       return argc;
     }
 
@@ -922,14 +908,9 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
     {
       FREE_MEM (argv);
       FREE_MEM (read_msg);
-#if defined(CAS_FOR_DBMS)
       NET_WRITE_ERROR_CODE (clt_sock_fd, req_info->client_version,
 			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
 			    CAS_ER_COMMUNICATION);
-#else /* CAS_FOR_DBMS */
-      NET_WRITE_ERROR_CODE (clt_sock_fd, cas_msg_header.info_ptr,
-			    CAS_ER_COMMUNICATION);
-#endif /* CAS_FOR_DBMS */
       return CAS_ER_COMMUNICATION;
     }
 
@@ -977,13 +958,8 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
 
   err_code = (*server_fn) (clt_sock_fd, argc, argv, net_buf, req_info);
 #ifndef LIBCAS_FOR_JSP
-#if defined(CAS_FOR_DBMS)
   cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d",
 		 server_func_name[func_code - 1], err_info.err_number);
-#else /* CAS_FOR_DBMS */
-  cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d",
-		 server_func_name[func_code - 1], err_code);
-#endif /* CAS_FOR_DBMS */
 #endif /* !LIBCAS_FOR_JSP */
 
 #ifndef LIBCAS_FOR_JSP
@@ -1021,17 +997,10 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
 
   if (net_buf->err_code)
     {
-#if defined(CAS_FOR_DBMS)
       NET_WRITE_ERROR_CODE (clt_sock_fd, req_info->client_version,
 			    cas_msg_header.info_ptr, CAS_ERROR_INDICATOR,
 			    net_buf->err_code);
       err_code = CAS_ERROR_INDICATOR;
-#else /* CAS_FOR_DBMS */
-      NET_WRITE_ERROR_CODE (clt_sock_fd, cas_msg_header.info_ptr,
-			    net_buf->err_code);
-      err_code = net_buf->err_code;
-#endif /* CAS_FOR_DBMS */
-
       goto exit_on_end;
     }
 

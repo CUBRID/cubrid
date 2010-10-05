@@ -474,9 +474,9 @@ valid options:\n\
 
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
-11 Pass 1\n\n
+11 \nPass 1\n\n
 12 %d objects processed.\n
-13 Pass 2\n\n
+13 \nPass 2\n\n
 14 Class %s\n
 15 oid:  %d|%d|%d,\n
 16 %d instances.\n
@@ -486,13 +486,49 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 20 Missing class heap file\n
 21 Couldn't update object\n
 22 Only %d out of %d objects processed successfully.\n
+23 COMPACTDB already started.\n
+24 The number of pages must be between %d and %d.\n
+25 The instance lock timeout must be between %d and %d.\n
+26 Total objects: %d\n
+27 Failed objects: %d\n
+28 Modified objects: %d\n
+29 Big objects: %d\n
+30 Old class representations deleted from catalog.\n
+31 Old class representations preserved in catalog.\n
+32 Can't set isolation level.\n
+33 Couldn't compact database.\n
+34 The class lock timeout must be between %d and %d.\n
+35 Locked class... Incomplete processing...\n
+36 Unprocessed class...\n
+37 Process error... Incomplete processing...\n
+38 Nothing to process...\n
+39 Invalid parameters...\n
+40 Unknown class name...\n
+41 The unused class OIDs and pages have been reclaimed.\n
+42 Reclaiming of OIDs and pages skipped.\n
+43 Error while processing class, class skipped.\n
+44 \nPass 3\n\n
+45 Heap compact failed...\n
+46 Heap compact succedeed...\n
 60 \
 compactdb: Free unused space in a database.\n\
-usage: %s compactdb [OPTION] database-name\n\
+usage: %s compactdb [OPTION] database-name [class_name1, class_name2,...]\n\
 \n\
 valid options:\n\
-  -v, --verbose               enable verbose status messages; default: disabled\n\
-
+  -v, --verbose                     enable verbose status messages; default: disabled\n\
+  -i, --input-class-file=FILE       input FILE of table names\n\
+                                    class_name list must be empty\n\
+                                    default: compact all classes\n\
+                                    enabled in CS-mode only\n\
+  -p, --pages-commited-once=NUMBER  maximum number of pages to commit once\n\
+                                    default: 10\n\
+                                    enabled in CS-mode only\n\
+  -S, --SA-mode                     stand-alone mode execution\n\
+  -C, --CS-mode                     client-server mode execution\n\
+  -d, --delete-old-repr             delete old class representations from catalog; default: disabled\n\
+  class_name_list                   enabled in CS-mode only\n\
+  -I, --Instance-lock-timeout       timeout for instance lock\n\
+  -c, --class-lock-timeout          timeout for class lock\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 The CUBRID master running on host %s \nwas started at %s
@@ -513,7 +549,6 @@ valid options:\n\
   -K, --shutdown-repl-server=NAME  shutdown NAME replication server\n\
   -k, --shutdown-repl-agent=NAME   shutdown NAME replication agent\n\
   -A, --shutdown-all               shutdown all processes\n\
-  -h, --host=HOST                  connect to the master server on the given HOST\n\
   -c, --server-mode=NAME           print NAME database server's HA mode\n\
   -N, --node-list                  list nodes managed by CUBRID heartbeat\n\
   -L, --process-list               list local process managed by CUBRID heartbeat\n\

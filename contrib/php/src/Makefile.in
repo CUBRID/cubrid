@@ -1,7 +1,7 @@
 # $Id: Makefile.in,v 2.1 2006/07/03 01:49:43 cgkang Exp $
 
 LTLIBRARY_NAME        = libcubrid.la
-LTLIBRARY_SOURCES     = php_cubrid.c php_cubrid_error.c
+LTLIBRARY_SOURCES     = php_cubrid.c
 LTLIBRARY_SHARED_NAME = cubrid.la
 LTLIBRARY_SHARED_LIBADD      = $(CUBRID_CCI_LIBRARY) $(CUBRID_NSAPI_LIBRARY)
 

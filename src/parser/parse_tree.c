@@ -28,6 +28,10 @@
 #include <stddef.h>
 #include <assert.h>
 #include <setjmp.h>
+#include <time.h>
+#if !defined(WINDOWS)
+#include <sys/time.h>
+#endif
 
 #include "dbi.h"
 #include "parser.h"
@@ -143,6 +147,8 @@ parser_create_node_block (const PARSER_CONTEXT * parser)
 	}
       else
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (PARSER_NODE_BLOCK));
 	  return NULL;
 	}
     }
@@ -302,6 +308,9 @@ parser_create_string_block (const PARSER_CONTEXT * parser, const int length)
 	    }
 	  else
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      sizeof (PARSER_STRING_BLOCK));
 	      return NULL;
 	    }
 	}
@@ -326,6 +335,10 @@ parser_create_string_block (const PARSER_CONTEXT * parser, const int length)
 	    }
 	  else
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (sizeof (PARSER_STRING_BLOCK) +
+		       (length + 1001 - STRINGS_PER_BLOCK)));
 	      return NULL;
 	    }
 	}
@@ -691,6 +704,8 @@ pt_register_parser (const PARSER_CONTEXT * parser)
 #if defined(SERVER_MODE)
 	  MUTEX_UNLOCK (free_lists_lock);
 #endif /* SERVER_MODE */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (PARSER_NODE_FREE_LIST));
 	  return ER_FAILED;
 	}
       free_list->parser_id = parser->id;
@@ -702,6 +717,7 @@ pt_register_parser (const PARSER_CONTEXT * parser)
 #if defined(SERVER_MODE)
       MUTEX_UNLOCK (free_lists_lock);
 #endif /* SERVER_MODE */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
 #if defined(SERVER_MODE)
@@ -1060,6 +1076,7 @@ PARSER_CONTEXT *
 parser_create_parser (void)
 {
   PARSER_CONTEXT *parser;
+  struct timeval t;
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
@@ -1089,7 +1106,16 @@ parser_create_parser (void)
   if (pt_register_parser (parser) == ER_FAILED)
     {
       free_and_init (parser);
+      return NULL;
     }
+
+  parser->execution_values.row_count = -1;
+
+  /* Generate random values for rand() and drand() */
+  gettimeofday (&t, NULL);
+  srand48 (t.tv_usec);
+  parser->lrand = lrand48 ();
+  parser->drand = drand48 ();
 
   return parser;
 }

@@ -62,24 +62,16 @@ fn_xa_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if ((argc < 1) || (net_arg_get_xid (&xid, (char *) argv[0]) < 0))
     {
-#if defined(CAS_FOR_DBMS)
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-#else /* CAS_FOR_DBMS */
-      net_buf_cp_int (net_buf, CAS_ER_ARGS, NULL);
-#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   gtrid = db_2pc_start_transaction ();
   if (gtrid < 0)
     {
-#if defined(CAS_FOR_DBMS)
       ERROR_INFO_SET (gtrid, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-#else /* CAS_FOR_DBMS */
-      DB_ERR_MSG_SET (net_buf, gtrid);
-#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -87,24 +79,16 @@ fn_xa_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     db_set_global_transaction_info (gtrid, (void *) &xid, sizeof (XID));
   if (err_code < 0)
     {
-#if defined(CAS_FOR_DBMS)
       ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-#else /* CAS_FOR_DBMS */
-      DB_ERR_MSG_SET (net_buf, err_code);
-#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   err_code = db_2pc_prepare_transaction ();
   if (err_code < 0)
     {
-#if defined(CAS_FOR_DBMS)
       ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-#else /* CAS_FOR_DBMS */
-      DB_ERR_MSG_SET (net_buf, err_code);
-#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -114,12 +98,8 @@ fn_xa_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   cas_log_write (0, true, "xa_prepare");
 #else /* CAS_SUPPORT_XA */
-#if defined(CAS_FOR_DBMS)
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-#else /* CAS_FOR_DBMS */
-  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_NOT_IMPLEMENTED, NULL);
-#endif /* CAS_FOR_DBMS */
 #endif /* CAS_SUPPORT_XA */
   return 0;
 }
@@ -138,12 +118,8 @@ fn_xa_recover (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   count = db_2pc_prepared_transactions (gtrids, MAX_GTRIDS);
   if (count < 0)
     {
-#if defined(CAS_FOR_DBMS)
       ERROR_INFO_SET (count, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-#else /* CAS_FOR_DBMS */
-      DB_ERR_MSG_SET (net_buf, count);
-#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -156,12 +132,8 @@ fn_xa_recover (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 					sizeof (XID));
       if (err_code < 0)
 	{
-#if defined(CAS_FOR_DBMS)
 	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  NET_BUF_ERR_SET (net_buf);
-#else /* CAS_FOR_DBMS */
-	  DB_ERR_MSG_SET (net_buf, err_code);
-#endif /* CAS_FOR_DBMS */
 	  return 0;
 	}
       net_buf_cp_xid (net_buf, &xid);
@@ -169,12 +141,8 @@ fn_xa_recover (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   cas_log_write (0, true, "xa_recover");
 #else /* CAS_SUPPORT_XA */
-#if defined(CAS_FOR_DBMS)
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-#else /* CAS_FOR_DBMS */
-  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_NOT_IMPLEMENTED, NULL);
-#endif /* CAS_FOR_DBMS */
 #endif /* CAS_SUPPORT_XA */
   return 0;
 }
@@ -192,35 +160,23 @@ fn_xa_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if ((argc < 2) || (net_arg_get_xid (&xid, (char *) argv[0]) < 0))
     {
-#if defined(CAS_FOR_DBMS)
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-#else /* CAS_FOR_DBMS */
-      net_buf_cp_int (net_buf, CAS_ER_ARGS, NULL);
-#endif /* CAS_FOR_DBMS */
       return 0;
     }
   NET_ARG_GET_CHAR (tran_type, argv[1]);
   if (tran_type != CCI_TRAN_COMMIT && tran_type != CCI_TRAN_ROLLBACK)
     {
-#if defined(CAS_FOR_DBMS)
       ERROR_INFO_SET (CAS_ER_TRAN_TYPE, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-#else /* CAS_FOR_DBMS */
-      net_buf_cp_int (net_buf, CAS_ER_TRAN_TYPE, NULL);
-#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
   count = db_2pc_prepared_transactions (gtrids, MAX_GTRIDS);
   if (count < 0)
     {
-#if defined(CAS_FOR_DBMS)
       ERROR_INFO_SET (count, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-#else /* CAS_FOR_DBMS */
-      DB_ERR_MSG_SET (net_buf, count);
-#endif /* CAS_FOR_DBMS */
       return 0;
     }
 
@@ -231,12 +187,8 @@ fn_xa_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 					sizeof (XID));
       if (err_code < 0)
 	{
-#if defined(CAS_FOR_DBMS)
 	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  NET_BUF_ERR_SET (net_buf);
-#else /* CAS_FOR_DBMS */
-	  DB_ERR_MSG_SET (net_buf, err_code);
-#endif /* CAS_FOR_DBMS */
 	  return 0;
 	}
       if (compare_xid (&xid, &tmp_xid) == 0)
@@ -255,12 +207,8 @@ fn_xa_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       err_code = db_2pc_attach_transaction (gtrid);
       if (err_code < 0)
 	{
-#if defined(CAS_FOR_DBMS)
 	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  NET_BUF_ERR_SET (net_buf);
-#else /* CAS_FOR_DBMS */
-	  DB_ERR_MSG_SET (net_buf, err_code);
-#endif /* CAS_FOR_DBMS */
 	  return 0;
 	}
 
@@ -271,12 +219,8 @@ fn_xa_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   net_buf_cp_int (net_buf, 0, NULL);
   cas_log_write (0, true, "xa_end_tran %d", tran_type);
 #else /* CAS_SUPPORT_XA */
-#if defined(CAS_FOR_DBMS)
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-#else /* CAS_FOR_DBMS */
-  net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_NOT_IMPLEMENTED, NULL);
-#endif /* CAS_FOR_DBMS */
 #endif /* CAS_SUPPORT_XA */
   return -1;
 }
@@ -339,19 +283,19 @@ compare_xid (XID * xid1, XID * xid2)
 #endif /* CAS_SUPPORT_XA */
 
 bool
-is_xa_prepared ()
+is_xa_prepared (void)
 {
   return xa_prepare_flag;
 }
 
 void
-set_xa_prepare_flag ()
+set_xa_prepare_flag (void)
 {
   xa_prepare_flag = true;
 }
 
 void
-unset_xa_prepare_flag ()
+unset_xa_prepare_flag (void)
 {
   xa_prepare_flag = false;
 }

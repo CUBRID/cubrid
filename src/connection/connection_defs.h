@@ -394,6 +394,7 @@ struct css_conn_entry
   int idx;			/* connection index */
   CSS_CRITICAL_SECTION csect;
   bool stop_talk;		/* block and stop this connection */
+  unsigned short stop_phase;
 
   char *version_string;		/* client version string */
 

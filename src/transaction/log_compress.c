@@ -85,7 +85,7 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
     {
       log_zip->data_length = zip_len + sizeof (LOG_ZIP_SIZE_T);
       /* if the compressed data length >= orginal length,
-       * then it means that compression is failed */
+       * then it means that compression failed */
       if (log_zip->data_length < length)
 	{
 	  return true;
@@ -152,7 +152,7 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
     {
       log_unzip->data_length = unzip_len;
       /* if the uncompressed data length != original length,
-       * then it means that uncompression is failed */
+       * then it means that uncompression failed */
       if (unzip_len == (lzo_uint) org_len)
 	{
 	  return true;

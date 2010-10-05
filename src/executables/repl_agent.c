@@ -1520,7 +1520,7 @@ repl_ag_dump_apply_list (SLAVE_INFO * sinfo, int idx)
       return NULL;
     }
   total = free_len = 1024;
-  sprintf (msg, "");
+  msg[0] = '\0';
 
   for (i = 0; i < sinfo->masters[idx].cur_repl; i++)
     {
@@ -1715,6 +1715,8 @@ repl_ag_apply_schema_log (REPL_ITEM * item)
     case CUBRID_STMT_CREATE_STORED_PROCEDURE:
     case CUBRID_STMT_DROP_STORED_PROCEDURE:
 
+    case CUBRID_STMT_TRUNCATE:
+
       ddl = db_get_string (&item->key);
       if (repl_ag_update_query_execute (ddl) != NO_ERROR)
 	{
@@ -1783,7 +1785,7 @@ repl_ag_apply_schema_log (REPL_ITEM * item)
  *
  *      vfid = vfid of RVOVF_CHANGE_LINK (2242)
  *      prev record = NULL;
- *      get previous record whithin the same transaction boundary;
+ *      get previous record within the same transaction boundary;
  *      while(record) {
  *         if(record is LOG_REDO_DATA and
  *            rcvindex is RVOVF_PAGE_UPDATE and
@@ -1791,7 +1793,7 @@ repl_ag_apply_schema_log (REPL_ITEM * item)
  *            vfid = current vfid
  *            prev_record = record
  *         }
- *         record = get previous record whithin the same transaction boundary;
+ *         record = get previous record within the same transaction boundary;
  *      }
  *
  *      record = prev_record  -- first page
@@ -2394,10 +2396,23 @@ repl_ag_get_recdes (LOG_LSA * lsa, int m_idx, LOG_PAGE * pgptr,
       if (error == NO_ERROR)
 	{
 	  recdes->type = *(INT16 *) (rec_type);
-	  recdes->data = log_data;
-	  recdes->area_size = recdes->length = length;
+	  if (recdes->type == REC_BIGONE)
+	    {
+	      error =
+		repl_ag_get_overflow_recdes (lrec, logs, &area, &length,
+					     m_idx, RVOVF_NEWPAGE_INSERT);
+	    }
+	  else
+	    {
+	      recdes->data = log_data;
+	      recdes->area_size = recdes->length = length;
+	      return error;
+	    }
 	}
-      return error;
+      else
+	{
+	  return error;
+	}
     }
   else if (*rcvindex == RVHF_UPDATE && recdes->type == REC_RELOCATION)
     {

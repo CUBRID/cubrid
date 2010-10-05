@@ -36,6 +36,11 @@ extern SM_TEMPLATE *smt_edit_class_mop (MOP class_);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern SM_TEMPLATE *smt_edit_class (const char *name);
 #endif /* ENABLE_UNUSED_FUNCTION */
+extern SM_TEMPLATE *smt_copy_class_mop (const char *name, MOP op,
+					SM_CLASS ** class_);
+extern SM_TEMPLATE *smt_copy_class (const char *new_name,
+				    const char *existing_name,
+				    SM_CLASS ** class_);
 extern int smt_quit (SM_TEMPLATE * template_);
 
 /* Virtual class support */
@@ -48,27 +53,28 @@ extern int smt_add_attribute_w_dflt (DB_CTMPL * def,
 				     const char *domain_string,
 				     DB_DOMAIN * domain,
 				     DB_VALUE * default_value,
-				     SM_NAME_SPACE name_space);
+				     const SM_NAME_SPACE name_space);
+
+extern int smt_add_attribute_w_dflt_w_order (DB_CTMPL * def,
+					     const char *name,
+					     const char *domain_string,
+					     DB_DOMAIN * domain,
+					     DB_VALUE * default_value,
+					     const SM_NAME_SPACE name_space,
+					     const bool add_first,
+					     const char *add_after_attribute);
 
 extern int smt_add_attribute_any (SM_TEMPLATE * template_,
 				  const char *name,
 				  const char *domain_string,
 				  DB_DOMAIN * domain,
-				  SM_NAME_SPACE name_space);
+				  const SM_NAME_SPACE name_space,
+				  const bool add_first,
+				  const char *add_after_attribute);
 
 extern int smt_add_attribute (SM_TEMPLATE * template_,
 			      const char *name,
 			      const char *domain_string, DB_DOMAIN * domain);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int smt_add_shared_attribute (SM_TEMPLATE * template_,
-				     const char *name,
-				     const char *domain_string,
-				     DB_DOMAIN * domain);
-extern int smt_add_class_attribute (SM_TEMPLATE * template_,
-				    const char *name,
-				    const char *domain_string,
-				    DB_DOMAIN * domain);
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 extern int smt_add_set_attribute_domain (SM_TEMPLATE * template_,
 					 const char *name,
@@ -90,11 +96,11 @@ extern int smt_set_attribute_default (SM_TEMPLATE * template_,
 				      int class_attribute, DB_VALUE * value);
 
 extern int smt_add_constraint (SM_TEMPLATE * template_,
+			       DB_CONSTRAINT_TYPE constraint_type,
+			       const char *constraint_name,
 			       const char **att_names, const int *asc_desc,
-			       const char *name, int class_attribute,
-			       SM_ATTRIBUTE_FLAG constraint,
-			       SM_FOREIGN_KEY_INFO * fk_info,
-			       char *shared_cons_name);
+			       int class_attribute,
+			       SM_FOREIGN_KEY_INFO * fk_info);
 
 extern int smt_drop_constraint (SM_TEMPLATE * template_,
 				const char **att_names,
@@ -141,7 +147,7 @@ extern int smt_add_set_argument_domain (SM_TEMPLATE * template_,
 
 /* Rename functions */
 extern int smt_rename_any (SM_TEMPLATE * template_, const char *name,
-			   int class_namespace, const char *new_name);
+			   const bool class_namespace, const char *new_name);
 
 /* Deletion functions */
 extern int smt_delete_any (SM_TEMPLATE * template_, const char *name,

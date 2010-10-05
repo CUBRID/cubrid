@@ -266,10 +266,10 @@ co_report (FILE * file, CO_SEVERITY severity)
       if (message != NULL)
 	{
 	  int len;
-	  const char* cptr = intl_mbs_nth(message, line_length);
+	  const char *cptr = intl_mbs_nth (message, line_length);
 	  if (cptr == NULL)
 	    {
-	      len = intl_mbs_len(message);
+	      len = intl_mbs_len (message);
 	    }
 	  else
 	    {

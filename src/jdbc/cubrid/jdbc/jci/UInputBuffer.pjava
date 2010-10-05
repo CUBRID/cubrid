@@ -34,16 +34,18 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
-import cubrid.sql.CUBRIDOID;
-import cubrid.jdbc.driver.CUBRIDXid;
-import cubrid.jdbc.driver.CUBRIDConnection;
+import java.util.Calendar;
+import @CUBRID_SQL@.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDTimestamp;
+import @CUBRID_DRIVER@.CUBRIDXid;
+import @CUBRID_DRIVER@.CUBRIDConnection;
 
 /*
  * Performance와 robustness를 위해 server로부터 받을 message를 한꺼번에 buffer에
@@ -102,15 +104,9 @@ class UInputBuffer
 	
     if (resCode < 0)
     {
-#ifdef CAS_FOR_DBMS
 	  int eCode = readInt();
-#endif 
       String msg = readString(remainedCapacity(), UJCIManager.sysCharsetName);
-#ifdef CAS_FOR_DBMS
       throw new UJciException(UErrorCode.ER_DBMS, resCode, eCode, msg);
-#else 
-      throw new UJciException(UErrorCode.ER_DBMS, resCode, msg);
-#endif 
     }
   }
 
@@ -264,27 +260,10 @@ class UInputBuffer
     month = readShort();
     day = readShort();
 
-    String dateStr = "";
-    if (year < 10)
-      dateStr += "000" + year + "-";
-    else if (year < 100)
-      dateStr += "00" + year + "-";
-    else if (year < 1000)
-      dateStr += "0" + year + "-";
-    else
-      dateStr += year + "-";
-    
-    if (month < 10)
-      dateStr += "0" + month + "-";
-    else
-      dateStr += month + "-";
-    
-    if (day < 10)
-      dateStr += "0" + day;
-    else
-      dateStr += day;
+    Calendar cal = Calendar.getInstance();
+    cal.set(year, month - 1, day, 0, 0, 0);
 
-    return (Date.valueOf(dateStr));
+    return new Date(cal.getTimeInMillis());
   }
 
   Time readTime() throws UJciException
@@ -294,26 +273,13 @@ class UInputBuffer
     minute = readShort();
     second = readShort();
 
-    String timeStr = "";
-    if (hour < 10)
-      timeStr += "0" + hour + ":";
-    else
-      timeStr += hour + ":";
-    
-    if (minute < 10)
-      timeStr += "0" + minute + ":";
-    else
-      timeStr += minute + ":";
-    
-    if (second < 10)
-      timeStr += "0" + second;
-    else
-      timeStr += second;
+    Calendar cal = Calendar.getInstance();
+    cal.set(1970, 0, 1, hour, minute, second);
 
-    return (Time.valueOf(timeStr));
+    return new Time(cal.getTimeInMillis());
   }
 
-  Timestamp readTimestamp() throws UJciException
+  CUBRIDTimestamp readTimestamp() throws UJciException
   {
     int year, month, day, hour, minute, second;
     year = readShort();
@@ -323,45 +289,14 @@ class UInputBuffer
     minute = readShort();
     second = readShort();
 
-    String tsStr = "";
-    if (year < 10)
-      tsStr += "000" + year + "-";
-    else if (year < 100)
-      tsStr += "00" + year + "-";
-    else if (year < 1000)
-      tsStr += "0" + year + "-";
-    else
-      tsStr += year + "-";
-    
-    if (month < 10)
-      tsStr += "0" + month + "-";
-    else
-      tsStr += month + "-";
-    
-    if (day < 10)
-      tsStr += "0" + day + " ";
-    else
-      tsStr += day + " ";
-    
-    if (hour < 10)
-      tsStr += "0" + hour + ":";
-    else
-      tsStr += hour + ":";
-    
-    if (minute < 10)
-      tsStr += "0" + minute + ":";
-    else
-      tsStr += minute + ":";
-    
-    if (second < 10)
-      tsStr += "0" + second;
-    else
-      tsStr += second;
+    Calendar cal = Calendar.getInstance();
+    cal.set(year, month - 1, day, hour, minute, second);
+    cal.set(Calendar.MILLISECOND, 0);
 
-    return (Timestamp.valueOf(tsStr));
+    return new CUBRIDTimestamp(cal.getTimeInMillis(), CUBRIDTimestamp.TIMESTAMP);
   }
 
-  Timestamp readDatetime() throws UJciException
+  CUBRIDTimestamp readDatetime() throws UJciException
   {
     int year, month, day, hour, minute, second, millisecond;
     year = readShort();
@@ -372,49 +307,11 @@ class UInputBuffer
     second = readShort();
     millisecond = readShort();
 
-    String tsStr = "";
-    if (year < 10)
-      tsStr += "000" + year + "-";
-    else if (year < 100)
-      tsStr += "00" + year + "-";
-    else if (year < 1000)
-      tsStr += "0" + year + "-";
-    else
-      tsStr += year + "-";
-    
-    if (month < 10)
-      tsStr += "0" + month + "-";
-    else
-      tsStr += month + "-";
-    
-    if (day < 10)
-      tsStr += "0" + day + " ";
-    else
-      tsStr += day + " ";
-    
-    if (hour < 10)
-      tsStr += "0" + hour + ":";
-    else
-      tsStr += hour + ":";
-    
-    if (minute < 10)
-      tsStr += "0" + minute + ":";
-    else
-      tsStr += minute + ":";
-    
-    if (second < 10)
-      tsStr += "0" + second + ".";
-    else
-      tsStr += second + ".";
-    
-    if (millisecond < 10)
-      tsStr += "00" + millisecond;
-    else if (millisecond < 100)
-        tsStr += "0" + millisecond;
-    else
-        tsStr += millisecond;
+    Calendar cal = Calendar.getInstance();
+    cal.set(year, month - 1, day, hour, minute, second);
+    cal.set(Calendar.MILLISECOND, millisecond);
 
-    return (Timestamp.valueOf(tsStr));
+    return new CUBRIDTimestamp(cal.getTimeInMillis(), CUBRIDTimestamp.DATETIME);
   }
 
   CUBRIDOID readOID(CUBRIDConnection con) throws UJciException

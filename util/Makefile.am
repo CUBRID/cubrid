@@ -62,7 +62,7 @@ $(EXECUTABLE_DIR)/loader_old_lexer.c : $(EXECUTABLE_DIR)/loader_old_lexer.l
 
 bin_PROGRAMS = \
 	csql cub_master cub_server cubrid cub_admin cub_commdb \
-	cubrid_esql cubrid_rel loadjava repl_agent repl_server migrate_r22
+	cubrid_esql cubrid_rel loadjava repl_agent repl_server migrate_r30
 
 compat_PROGRAMS = \
 	addvoldb backupdb checkdb commdb compactdb copydb \
@@ -92,8 +92,8 @@ get_disk_compat_SOURCES = $(EXECUTABLE_DIR)/get_disk_compat.c
 get_disk_compat_LDFLAGS = @SA_LIB@
 convert_password_SOURCES = $(EXECUTABLE_DIR)/convert_password.c
 convert_password_LDFLAGS = @SA_LIB@
-migrate_r22_SOURCES = $(EXECUTABLE_DIR)/migrate.c
-migrate_r22_LDFLAGS = @SA_LIB@
+migrate_r30_SOURCES = $(EXECUTABLE_DIR)/migrate.c
+migrate_r30_LDFLAGS = @SA_LIB@
 
 load_noopt_SOURCES = $(EXECUTABLE_DIR)/loader_old_grammar.c \
 		$(EXECUTABLE_DIR)/loader_old_lexer.c \

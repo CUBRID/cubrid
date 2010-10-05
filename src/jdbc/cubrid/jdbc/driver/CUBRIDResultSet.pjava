@@ -28,7 +28,7 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 import java.math.BigDecimal;
@@ -39,14 +39,14 @@ import java.util.ArrayList;
 import java.util.Iterator;	// 3.0
 import java.net.URL;
 
-import cubrid.jdbc.driver.CUBRIDBlob;
-import cubrid.jdbc.driver.CUBRIDClob;
-import cubrid.jdbc.driver.CUBRIDException;
-import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
-import cubrid.jdbc.driver.CUBRIDResultSetMetaData;
+import @CUBRID_DRIVER@.CUBRIDBlob;
+import @CUBRID_DRIVER@.CUBRIDClob;
+import @CUBRID_DRIVER@.CUBRIDException;
+import @CUBRID_DRIVER@.CUBRIDJDBCErrorCode;
+import @CUBRID_DRIVER@.CUBRIDResultSetMetaData;
 
-import cubrid.jdbc.jci.*;
-import cubrid.sql.*;
+import @CUBRID_JCI@.*;
+import @CUBRID_SQL@.*;
 
 /**
  * Title: CUBRID JDBC Driver Description:
@@ -197,7 +197,7 @@ public class CUBRIDResultSet implements ResultSet
 
 	    move ();
 	    inserting = false;
-	    return true;
+            return AfterNext();
 	  }
 	}
       }
@@ -222,10 +222,27 @@ public class CUBRIDResultSet implements ResultSet
 
 	move ();
 	inserting = false;
-	return true;
+        return AfterNext();
       }
     }
   }
+
+    private boolean AfterNext() throws SQLException {
+        if (u_stmt == null) {
+          return false;
+        }
+
+        synchronized (u_stmt) {
+            u_stmt.fetch();
+            error = u_stmt.getRecentError();
+        }
+        
+        if (error.getJdbcErrorCode() == UErrorCode.CAS_ER_NO_MORE_DATA) {
+            return false;
+        }
+        return true;
+    }
+
 
   public void close () throws SQLException
   {

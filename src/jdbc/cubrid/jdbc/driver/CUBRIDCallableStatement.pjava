@@ -28,7 +28,7 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 import java.io.*;
@@ -37,13 +37,13 @@ import java.util.Map;
 import java.util.Calendar;
 import java.net.URL;
 
-import cubrid.jdbc.driver.CUBRIDBlob;
-import cubrid.jdbc.driver.CUBRIDClob;
-import cubrid.jdbc.driver.CUBRIDException;
-import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
+import @CUBRID_DRIVER@.CUBRIDBlob;
+import @CUBRID_DRIVER@.CUBRIDClob;
+import @CUBRID_DRIVER@.CUBRIDException;
+import @CUBRID_DRIVER@.CUBRIDJDBCErrorCode;
 
-import cubrid.jdbc.jci.*;
-import cubrid.sql.CUBRIDOID;
+import @CUBRID_JCI@.*;
+import @CUBRID_SQL@.CUBRIDOID;
 
 public class CUBRIDCallableStatement extends CUBRIDPreparedStatement
   implements CallableStatement

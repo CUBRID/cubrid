@@ -5330,7 +5330,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
       else
 	{
 	  assert (!PRM_LOG_BACKGROUND_ARCHIVING
-		  || bg_arv_info->vdes != NULL_VOLDES);
+		  || bg_arv_info->vdes == NULL_VOLDES);
 
 	  pageid = arvhdr->fpageid;
 	  ar_phy_pageid = 1;
@@ -6425,6 +6425,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 		"logpb_checkpoint: call fileio_synchronize_all()\n");
   if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
     {
+      LOG_CS_ENTER (thread_p);
       goto error_cannot_chkpt;
     }
 
@@ -6457,7 +6458,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       TR_TABLE_CS_EXIT ();
       flush_info->flush_type = LOG_FLUSH_NORMAL;
-      LOG_CS_EXIT ();
       goto error_cannot_chkpt;
     }
 
@@ -6548,7 +6548,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  free_and_init (chkpt_trans);
 	  TR_TABLE_CS_EXIT ();
 	  flush_info->flush_type = LOG_FLUSH_NORMAL;
-	  LOG_CS_EXIT ();
 	  goto error_cannot_chkpt;
 	}
 
@@ -6801,6 +6800,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   /* ******** */
 error_cannot_chkpt:
+  assert (LOG_CS_OWN (thread_p));
   log_Gl.run_nxchkpt_atpageid = (log_Gl.hdr.append_lsa.pageid +
 				 log_Gl.chkpt_every_npages);
   LOG_CS_EXIT ();
@@ -9028,7 +9028,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
    * FIRST CREATE A NEW LOG FOR THE NEW DATABASE. This log is not a copy of
    * of the old log; it is a newly created one.
    * Compose the LOG name for the ACTIVE portion of the log.
-   * Make sure that no body else is using this database
+   * Make sure that nobody else is using this database
    */
 
   to_malloc_log_pgptr = (LOG_PAGE *) malloc (LOG_PAGESIZE);
@@ -10900,7 +10900,7 @@ logpb_dump_log_header (FILE * outfp)
 static void
 logpb_dump_parameter (FILE * outfp)
 {
-  fprintf (outfp, "Log Paramters:\n");
+  fprintf (outfp, "Log Parameters:\n");
 
   fprintf (outfp, "\treplication_meta_flush_interval (sec) : %d\n",
 	   PRM_LOG_HEADER_FLUSH_INTERVAL);

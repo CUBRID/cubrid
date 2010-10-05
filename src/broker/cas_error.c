@@ -51,16 +51,12 @@
 
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
-#include "cas_execute.h"
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#if defined(CAS_FOR_DBMS)
 #include "glo_class.h"
-#endif /* CAS_FOR_DBMS */
-#endif /* CAS_FOR_ORACLE CAS_FOR_MYSQL */
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 static bool server_aborted = false;
 
-#ifdef CAS_FOR_DBMS
 void
 err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
 {
@@ -92,7 +88,7 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
     {
       set_server_aborted (true);
     }
-#else /* CAS_FOR_ORACLE CAS_FOR_MYSQL */
+#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 #ifndef LIBCAS_FOR_JSP
   if ((net_buf == NULL)
       && (err_info.err_number == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED))
@@ -113,23 +109,32 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
 #endif
       break;
     }
-#endif /* CAS_FOR_ORACLE CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 }
 
 int
 error_info_set (int err_number, int err_indicator, const char *file, int line)
 {
-  return error_info_set_with_msg (err_number, err_indicator, NULL, file,
+  return error_info_set_with_msg (err_number, err_indicator, NULL, false,
+				  file, line);
+}
+
+int
+error_info_set_force (int err_number, int err_indicator, const char *file,
+		      int line)
+{
+  return error_info_set_with_msg (err_number, err_indicator, NULL, true, file,
 				  line);
 }
 
 int
 error_info_set_with_msg (int err_number, int err_indicator,
-			 const char *err_msg, const char *file, int line)
+			 const char *err_msg, bool force, const char *file,
+			 int line)
 {
   char *tmp_err_msg;
 
-  if (err_info.err_indicator != ERROR_INDICATOR_UNSET)
+  if ((!force) && (err_info.err_indicator != ERROR_INDICATOR_UNSET))
     {
       cas_log_debug (ARG_FILE_LINE,
 		     "ERROR_INFO_SET reset error info : err_code %d",
@@ -139,7 +144,7 @@ error_info_set_with_msg (int err_number, int err_indicator,
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   err_info.err_number = err_number;
-#else /* CAS_FOR_ORACLE CAS_FOR_MYSQL */
+#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   if ((err_indicator == DBMS_ERROR_INDICATOR) && (err_number == -1))	/* might be connection error */
     {
       err_info.err_number = er_errid ();
@@ -148,7 +153,7 @@ error_info_set_with_msg (int err_number, int err_indicator,
     {
       err_info.err_number = err_number;
     }
-#endif /* CAS_FOR_ORACLE CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   err_info.err_indicator = err_indicator;
   strncpy (err_info.err_file, file, ERR_FILE_LENGTH - 1);
   err_info.err_string[ERR_FILE_LENGTH - 1] = 0;
@@ -162,7 +167,7 @@ error_info_set_with_msg (int err_number, int err_indicator,
     {
       strncpy (err_info.err_string, err_msg, ERR_MSG_LENGTH - 1);
     }
-#else /* CAS_FOR_ORACLE CAS_FOR_MYSQL */
+#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   if (err_msg)
     {
       strncpy (err_info.err_string, err_msg, ERR_MSG_LENGTH - 1);
@@ -173,13 +178,13 @@ error_info_set_with_msg (int err_number, int err_indicator,
       strncpy (err_info.err_string, tmp_err_msg, ERR_MSG_LENGTH - 1);
     }
   err_info.err_string[ERR_MSG_LENGTH - 1] = 0;
-#endif /* CAS_FOR_ORACLE CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
   return err_indicator;
 }
 
 void
-error_info_clear ()
+error_info_clear (void)
 {
   err_info.err_indicator = ERROR_INDICATOR_UNSET;
   err_info.err_number = CAS_NO_ERROR;
@@ -282,8 +287,7 @@ glo_err_msg_get (int err_code, char *err_msg)
       sprintf (err_msg, "%d", err_code);
     }
 }
-#endif /* CAS_FOR_ORACLE CAS_FOR_MYSQL */
-#endif /* CAS_FOR_DBMS */
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 void
 set_server_aborted (bool is_aborted)
@@ -292,7 +296,7 @@ set_server_aborted (bool is_aborted)
 }
 
 bool
-is_server_aborted ()
+is_server_aborted (void)
 {
   return server_aborted;
 }

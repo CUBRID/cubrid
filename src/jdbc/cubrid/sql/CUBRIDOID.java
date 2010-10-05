@@ -28,7 +28,7 @@
  *
  */
 
-package cubrid.sql;
+package @CUBRID_SQL@;
 
 /**
  * Title:        CUBRID JDBC Driver
@@ -36,17 +36,17 @@ package cubrid.sql;
  * @version 2.0
  */
 
-import cubrid.jdbc.jci.*;
-import cubrid.jdbc.driver.*;
+import @CUBRID_JCI@.*;
+import @CUBRID_DRIVER@.*;
 import java.sql.*;
 import java.io.*;
 import java.util.StringTokenizer;
 import java.util.NoSuchElementException;
 
-import cubrid.jdbc.driver.CUBRIDBlob;
-import cubrid.jdbc.driver.CUBRIDClob;
-import cubrid.jdbc.driver.CUBRIDResultSet;
-import cubrid.sql.CUBRIDOID;
+import @CUBRID_DRIVER@.CUBRIDBlob;
+import @CUBRID_DRIVER@.CUBRIDClob;
+import @CUBRID_DRIVER@.CUBRIDResultSet;
+import @CUBRID_SQL@.CUBRIDOID;
 
 public class CUBRIDOID
 {

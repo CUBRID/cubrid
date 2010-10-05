@@ -43,7 +43,7 @@
 #define DB_CONNECTION_STATUS_CONNECTED          1
 #define DB_CONNECTION_STATUS_RESET              -1
 
-#define MAX_CAS_BLOB_SIZE		16000000;	/* 16 M */
+#define MAX_CAS_BLOB_SIZE		16000000	/* 16 M */
 
 typedef struct mysql_database_info MYSQL_DB_INFO;
 
@@ -58,4 +58,6 @@ struct mysql_database_info
 
 extern int cas_mysql_stmt_num_fields (MYSQL_STMT * stmt);
 extern void cas_mysql_stmt_close (MYSQL_STMT * stmt);
+extern int cas_mysql_stmt_num_rows (MYSQL_STMT * stmt);
+extern int cas_mysql_stmt_affected_rows (MYSQL_STMT * stmt);
 #endif /* _CAS_MYSQL_H_ */

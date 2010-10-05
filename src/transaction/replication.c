@@ -322,6 +322,12 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid, OID * inst_oid,
       return ER_FAILED;
     }
 
+  /* If suppress_replication flag is set, do not write replication log. */
+  if (tdes->suppress_replication != 0)
+    {
+      return NO_ERROR;
+    }
+
   /* check the replication log array status, if we need to alloc? */
   if (REPL_LOG_IS_NOT_EXISTS (tran_index)
       && ((error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE,
@@ -414,14 +420,14 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid, OID * inst_oid,
        * for the update case, this function is called before the heap
        * file update, so we don't need to LSA for update log here.
        */
-      LSA_SET_NULL (&repl_rec->lsa);
+      LSA_COPY (&repl_rec->lsa, &log_Gl.hdr.append_lsa);
       break;
     case RVREPL_DATA_DELETE:
       /*
        * for the delete case, we don't need to find out the target
        * LSA. Delete is operation is possible without "After Image"
        */
-      LSA_SET_NULL (&repl_rec->lsa);
+      LSA_COPY (&repl_rec->lsa, &log_Gl.hdr.append_lsa);
       break;
     default:
       break;
@@ -482,6 +488,12 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
+  /* If suppress_replication flag is set, do not write replication log. */
+  if (tdes->suppress_replication != 0)
+    {
+      return NO_ERROR;
+    }
+
   /* check the replication log array status, if we need to alloc? */
   if (REPL_LOG_IS_NOT_EXISTS (tran_index)
       && ((error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE,
@@ -521,7 +533,7 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
   ptr = or_pack_string (ptr, repl_schema->ddl);
   ptr = or_pack_string (ptr, tdes->client.db_user);
 
-  LSA_SET_NULL (&repl_rec->lsa);
+  LSA_COPY (&repl_rec->lsa, &log_Gl.hdr.append_lsa);
 
   tdes->cur_repl_record++;
 

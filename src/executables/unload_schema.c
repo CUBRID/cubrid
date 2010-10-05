@@ -62,6 +62,28 @@
 #define TRIGGER_SUFFIX "_trigger"
 #define INDEX_SUFFIX "_indexes"
 
+#define EX_ERROR_CHECK(c,d,m)                                 \
+  do {                                                        \
+    if (c) {                                                  \
+      if (db_error_code() != NO_ERROR) {                      \
+        goto error;                                           \
+      }                                                       \
+      else {                                                  \
+        if (!d) {  /* if it is not db error check only, */    \
+          if (m != NULL) {                                    \
+            fprintf(stderr, "%s: %s.\n\n",                    \
+                            exec_name, m);                    \
+          }                                                   \
+          else {                                              \
+            fprintf(stderr, "%s: Unknown database error occurs but may not be database error.\n\n", \
+                            exec_name);                       \
+          }                                                   \
+          goto error;                                         \
+        }                                                     \
+      }                                                       \
+    }                                                         \
+  } while (0)
+
 typedef enum
 {
   INSTANCE_ATTRIBUTE,
@@ -187,13 +209,19 @@ filter_system_classes (DB_OBJLIST ** class_list)
     {
       next = cl->next;
       if (!db_is_system_class (cl->op))
-	prev = cl;
+	{
+	  prev = cl;
+	}
       else
 	{
 	  if (prev == NULL)
-	    *class_list = next;
+	    {
+	      *class_list = next;
+	    }
 	  else
-	    prev->next = next;
+	    {
+	      prev->next = next;
+	    }
 	  /*
 	   * class_list links were allocated via ml_ext_alloc_link, so we must
 	   * free them via ml_ext_free_link.  Otherwise, we can crash.
@@ -217,13 +245,19 @@ filter_unrequired_classes (DB_OBJLIST ** class_list)
     {
       next = cl->next;
       if (is_req_class (cl->op))
-	prev = cl;
+	{
+	  prev = cl;
+	}
       else
 	{
 	  if (prev == NULL)
-	    *class_list = next;
+	    {
+	      *class_list = next;
+	    }
 	  else
-	    prev->next = next;
+	    {
+	      prev->next = next;
+	    }
 	  ml_ext_free_link (cl);
 	}
     }
@@ -277,14 +311,17 @@ check_domain_dependencies (DB_DOMAIN * domain,
     {
       setdomain = db_domain_set (d);
       if (setdomain != NULL)
-	dependencies =
-	  check_domain_dependencies (setdomain, this_class, unordered,
-				     ordered);
+	{
+	  dependencies = check_domain_dependencies (setdomain, this_class,
+						    unordered, ordered);
+	}
       else
 	{
 	  class_ = db_domain_class (d);
 	  if (class_ != NULL && class_ != this_class)
-	    dependencies = is_dependent_class (class_, unordered, ordered);
+	    {
+	      dependencies = is_dependent_class (class_, unordered, ordered);
+	    }
 	}
     }
   return (dependencies);
@@ -313,7 +350,9 @@ has_dependencies (DB_OBJECT * mop,
 
   supers = db_get_superclasses (mop);
   for (su = supers; su != NULL && !dependencies; su = su->next)
-    dependencies = is_dependent_class (su->op, unordered, ordered);
+    {
+      dependencies = is_dependent_class (su->op, unordered, ordered);
+    }
 
   /*
    * if we're doing a conservative dependency check, look at the domains
@@ -325,8 +364,8 @@ has_dependencies (DB_OBJECT * mop,
 	   att = db_attribute_next (att))
 	{
 	  domain = db_attribute_domain (att);
-	  dependencies =
-	    check_domain_dependencies (domain, mop, unordered, ordered);
+	  dependencies = check_domain_dependencies (domain, mop, unordered,
+						    ordered);
 	}
     }
 
@@ -353,7 +392,7 @@ has_dependencies (DB_OBJECT * mop,
  *    hierarcy which isn't allowed.
  *    For proxy classes, it indicates circular references between the
  *    attributes that make up the OBJECT_ID which also isn't allowed.
- *    It can also indicate a bug in the dependency algorighm.
+ *    It can also indicate a bug in the dependency algorithm.
  */
 static int
 order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list,
@@ -369,26 +408,41 @@ order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list,
       next = cl->next;
 
       if (has_dependencies (cl->op, *class_list, *order_list, conservative))
-	prev = cl;
+	{
+	  prev = cl;
+	}
       else
 	{
 	  /* no dependencies, move it to the other list */
 	  if (prev == NULL)
-	    *class_list = next;
+	    {
+	      *class_list = next;
+	    }
 	  else
-	    prev->next = next;
+	    {
+	      prev->next = next;
+	    }
 
 	  /* append it on the order list */
 	  cl->next = NULL;
 	  for (o = *order_list, last = NULL; o != NULL; o = o->next)
-	    last = o;
+	    {
+	      last = o;
+	    }
+
 	  if (last == NULL)
-	    *order_list = cl;
+	    {
+	      *order_list = cl;
+	    }
 	  else
-	    last->next = cl;
+	    {
+	      last->next = cl;
+	    }
+
 	  add_count++;
 	}
     }
+
   return (add_count);
 }
 
@@ -445,11 +499,18 @@ force_one_class (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list)
 
   cl->next = NULL;
   for (o = *order_list, last = NULL; o != NULL; o = o->next)
-    last = o;
+    {
+      last = o;
+    }
+
   if (last == NULL)
-    *order_list = cl;
+    {
+      *order_list = cl;
+    }
   else
-    last->next = cl;
+    {
+      last->next = cl;
+    }
 }
 
 
@@ -590,18 +651,24 @@ export_serial (FILE * outfp)
     "cached_num "
     "from db_serial where class_name is null and att_name is null";
 
-  if ((error = db_execute (query, &query_result, &query_error)) < 0)
-    goto err;
+  error = db_execute (query, &query_result, &query_error);
+  if (error < 0)
+    {
+      goto err;
+    }
 
-  if ((error = db_query_first_tuple (query_result)) != DB_CURSOR_SUCCESS)
-    goto err;
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      goto err;
+    }
 
   do
     {
       for (i = 0; i < SERIAL_VALUE_INDEX_MAX; i++)
 	{
-	  if ((error = db_query_get_tuple_value (query_result,
-						 i, &values[i])) < 0)
+	  error = db_query_get_tuple_value (query_result, i, &values[i]);
+	  if (error != NO_ERROR)
 	    {
 	      goto err;
 	    }
@@ -764,31 +831,6 @@ err:
   return error;
 }
 
-#define EX_ERROR_CHECK(c,d,m)                                          \
-           do {                                                        \
-             if (c) {                                                  \
-               if (db_error_code() != NO_ERROR) {                      \
-                 goto error;                                           \
-               }                                                       \
-               else {                                                  \
-                 if (!d) {  /* if it is not db error check only, */    \
-                   if (m != NULL) {                                    \
-                     fprintf(stderr, "%s: %s.\n\n",                    \
-                                     exec_name, m);                    \
-                   }                                                   \
-                   else {                                              \
-                     fprintf(stderr, "%s: Unknown database error occurs but may not be database error.\n\n",                                           \
-                                     exec_name);                       \
-                   }                                                   \
-                   goto error;                                         \
-                 }                                                     \
-               }                                                       \
-             }                                                         \
-           } while (0)
-
-
-
-
 /*
  * extractschema - exports schema to file
  *    return: 0 if successful, error count otherwise
@@ -807,16 +849,22 @@ extractschema (const char *exec_name, int do_auth)
   int err_count = 0;
 
   if (output_dirname == NULL)
-    output_dirname = ".";
-  total =
-    strlen (output_dirname) + strlen (output_prefix) +
-    strlen (SCHEMA_SUFFIX) + 8;
-  if ((size_t) total > sizeof (output_filename))
-    return 1;
+    {
+      output_dirname = ".";
+    }
 
-  sprintf (output_filename, "%s/%s%s", output_dirname, output_prefix,
-	   SCHEMA_SUFFIX);
-  if ((output_file = fopen_ex (output_filename, "w")) == NULL)
+  total = strlen (output_dirname) + strlen (output_prefix)
+    + strlen (SCHEMA_SUFFIX) + 8;
+
+  if ((size_t) total > sizeof (output_filename))
+    {
+      return 1;
+    }
+
+  snprintf (output_filename, sizeof (output_filename) - 1, "%s/%s%s",
+	    output_dirname, output_prefix, SCHEMA_SUFFIX);
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
     {
       (void) fprintf (stderr, "%s: %s.\n\n", exec_name, strerror (errno));
       return errno;
@@ -846,8 +894,12 @@ extractschema (const char *exec_name, int do_auth)
    * Schema
    */
   if (!required_class_only && do_auth)
-    if (au_export_users (output_file) != NO_ERROR)
-      err_count++;
+    {
+      if (au_export_users (output_file) != NO_ERROR)
+	{
+	  err_count++;
+	}
+    }
 
   if (!required_class_only && export_serial (output_file) < 0)
     {
@@ -860,13 +912,19 @@ extractschema (const char *exec_name, int do_auth)
 
   has_indexes = emit_schema (classes, do_auth, &vclass_list_has_using_index);
   if (er_errid () != NO_ERROR)
-    err_count++;
+    {
+      err_count++;
+    }
 
   if (emit_foreign_key (classes) != NO_ERROR)
-    err_count++;
+    {
+      err_count++;
+    }
 
   if (emit_stored_procedure () != NO_ERROR)
-    err_count++;
+    {
+      err_count++;
+    }
 
   fprintf (output_file, "\n");
   fprintf (output_file, "COMMIT WORK;\n");
@@ -880,21 +938,27 @@ extractschema (const char *exec_name, int do_auth)
    */
   total = strlen (output_dirname) + strlen (output_prefix) +
     strlen (TRIGGER_SUFFIX) + 8;
+
   if ((size_t) total > sizeof (output_filename))
-    return 1;
+    {
+      return 1;
+    }
 
-  sprintf (output_filename, "%s/%s%s",
-	   output_dirname, output_prefix, TRIGGER_SUFFIX);
+  snprintf (output_filename, sizeof (output_filename) - 1, "%s/%s%s",
+	    output_dirname, output_prefix, TRIGGER_SUFFIX);
 
-  if ((output_file = fopen_ex (output_filename, "w")) == NULL)
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
     {
       (void) fprintf (stderr, "%s: %s.\n\n", exec_name, strerror (errno));
       return errno;
     }
 
-  if (tr_dump_selective_triggers (output_file, delimited_id_flag, classes) !=
-      NO_ERROR)
-    err_count++;
+  if (tr_dump_selective_triggers (output_file, delimited_id_flag,
+				  classes) != NO_ERROR)
+    {
+      err_count++;
+    }
 
   fflush (output_file);
 
@@ -916,12 +980,16 @@ extractschema (const char *exec_name, int do_auth)
   /*
    * Index
    */
-  if (emit_indexes (classes, has_indexes, vclass_list_has_using_index) !=
-      NO_ERROR)
-    err_count++;
+  if (emit_indexes (classes, has_indexes,
+		    vclass_list_has_using_index) != NO_ERROR)
+    {
+      err_count++;
+    }
 
   if (vclass_list_has_using_index != NULL)
-    db_objlist_free (vclass_list_has_using_index);
+    {
+      db_objlist_free (vclass_list_has_using_index);
+    }
 
   db_objlist_free (classes);
 
@@ -929,9 +997,15 @@ extractschema (const char *exec_name, int do_auth)
 
 error:
   if (output_file != NULL)
-    fclose (output_file);
+    {
+      fclose (output_file);
+    }
+
   if (vclass_list_has_using_index != NULL)
-    db_objlist_free (vclass_list_has_using_index);
+    {
+      db_objlist_free (vclass_list_has_using_index);
+    }
+
   db_objlist_free (classes);
 
   return 1;
@@ -956,14 +1030,20 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes,
   int total;
 
   if (output_dirname == NULL)
-    output_dirname = ".";
-  total =
-    strlen (output_dirname) + strlen (output_prefix) + strlen (INDEX_SUFFIX) +
-    8;
+    {
+      output_dirname = ".";
+    }
+
+  total = strlen (output_dirname) + strlen (output_prefix)
+    + strlen (INDEX_SUFFIX) + 8;
+
   if ((size_t) total > sizeof (output_filename))
-    return 1;
-  sprintf (output_filename, "%s/%s%s", output_dirname, output_prefix,
-	   INDEX_SUFFIX);
+    {
+      return 1;
+    }
+
+  snprintf (output_filename, sizeof (output_filename) - 1, "%s/%s%s",
+	    output_dirname, output_prefix, INDEX_SUFFIX);
 
   if (!has_indexes)
     {
@@ -972,7 +1052,8 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes,
        * files that might be lying around, make sure that we delete
        * any existing index file
        */
-      if ((fp = fopen_ex (output_filename, "r")) != NULL)
+      fp = fopen_ex (output_filename, "r");
+      if (fp != NULL)
 	{
 	  fclose (fp);
 	  if (unlink (output_filename))
@@ -984,11 +1065,13 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes,
     }
   else
     {
-      if ((fp = fopen_ex (output_filename, "w")) == NULL)
+      fp = fopen_ex (output_filename, "w");
+      if (fp == NULL)
 	{
 	  (void) fprintf (stderr, "%s.\n\n", strerror (errno));
 	  return 1;
 	}
+
       output_file = fp;
       for (cl = classes; cl != NULL; cl = cl->next)
 	{
@@ -1209,75 +1292,75 @@ emit_query_specs (DB_OBJLIST * classes)
    */
   for (cl = classes; cl != NULL; cl = cl->next)
     {
-      if (db_is_vclass (cl->op))
+      if (!db_is_vclass (cl->op))
 	{
-	  name = db_get_class_name (cl->op);
-	  specs = db_get_query_specs (cl->op);
-	  if (specs != NULL)
+	  continue;
+	}
+
+      name = db_get_class_name (cl->op);
+      specs = db_get_query_specs (cl->op);
+      if (specs == NULL)
+	{
+	  continue;
+	}
+
+      if (!has_vclass_domains (cl->op))
+	{
+	  continue;
+	}
+
+      has_using_index = false;
+      for (s = specs; s && has_using_index == false;
+	   s = db_query_spec_next (s))
+	{
+	  /*
+	   * convert the query spec into one containing NULLs for
+	   * each column
+	   */
+	  parser = parser_create_parser ();
+	  if (parser == NULL)
 	    {
-	      if (has_vclass_domains (cl->op))
+	      continue;
+	    }
+
+	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
+	  if (query_ptr != NULL)
+	    {
+	      parser_walk_tree (parser, *query_ptr,
+				pt_has_using_index_clause,
+				&has_using_index, NULL, NULL);
+
+	      if (has_using_index == true)
 		{
-		  has_using_index = false;
-		  for (s = specs;
-		       s && has_using_index == false;
-		       s = db_query_spec_next (s))
-		    {
-		      /*
-		       * convert the query spec into one containing NULLs for
-		       * each column
-		       */
-		      parser = parser_create_parser ();
-		      if (parser == NULL)
-			{
-			  continue;
-			}
-
-		      query_ptr =
-			parser_parse_string (parser,
-					     db_query_spec_string (s));
-		      if (query_ptr != NULL)
-			{
-			  parser_walk_tree (parser, *query_ptr,
-					    pt_has_using_index_clause,
-					    &has_using_index, NULL, NULL);
-
-			  if (has_using_index == true)
-			    {
-			      /* all view specs should be emitted at index file */
-			      ml_append (&vclass_list_has_using_index, cl->op,
-					 NULL);
-			    }
-			}
-		      parser_free_parser (parser);
-		    }
-
-		  if (has_using_index == false)
-		    {
-		      for (s = specs; s; s = db_query_spec_next (s))
-			{
-			  parser = parser_create_parser ();
-			  if (parser == NULL)
-			    {
-			      continue;
-			    }
-
-			  query_ptr =
-			    parser_parse_string (parser,
-						 db_query_spec_string (s));
-			  if (query_ptr != NULL)
-			    {
-			      null_spec =
-				pt_print_query_spec_no_list (parser,
-							     *query_ptr);
-
-			      fprintf (output_file,
-				       "ALTER VCLASS %s%s%s ADD QUERY %s ; \n",
-				       PRINT_IDENTIFIER (name), null_spec);
-			    }
-			  parser_free_parser (parser);
-			}
-		    }
+		  /* all view specs should be emitted at index file */
+		  ml_append (&vclass_list_has_using_index, cl->op, NULL);
 		}
+	    }
+	  parser_free_parser (parser);
+	}
+
+      if (has_using_index == false)
+	{
+	  for (s = specs; s; s = db_query_spec_next (s))
+	    {
+	      parser = parser_create_parser ();
+	      if (parser == NULL)
+		{
+		  continue;
+		}
+
+	      query_ptr = parser_parse_string (parser,
+					       db_query_spec_string (s));
+	      if (query_ptr != NULL)
+		{
+		  null_spec = pt_print_query_spec_no_list (parser,
+							   *query_ptr);
+
+		  fprintf (output_file,
+			   "ALTER VCLASS %s%s%s ADD QUERY %s ; \n",
+			   PRINT_IDENTIFIER (name), null_spec);
+		}
+	      parser_free_parser (parser);
 	    }
 	}
     }
@@ -1287,35 +1370,38 @@ emit_query_specs (DB_OBJLIST * classes)
    */
   for (cl = classes; cl != NULL; cl = cl->next)
     {
-      if (db_is_vclass (cl->op))
+      if (!db_is_vclass (cl->op))
 	{
-	  name = db_get_class_name (cl->op);
-	  specs = db_get_query_specs (cl->op);
-	  if (specs != NULL)
-	    {
-	      if (ml_find (vclass_list_has_using_index, cl->op))
-		continue;
+	  continue;
+	}
 
-	      change_vclass_spec = has_vclass_domains (cl->op);
+      name = db_get_class_name (cl->op);
+      specs = db_get_query_specs (cl->op);
+      if (specs == NULL)
+	{
+	  continue;
+	}
 
-	      for (s = specs, i = 1; s != NULL;
-		   s = db_query_spec_next (s), i++)
-		{
-		  if (change_vclass_spec)
-		    {		/* change the existing spec lists */
-		      fprintf (output_file,
-			       "ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n",
-			       PRINT_IDENTIFIER (name), i,
-			       db_query_spec_string (s));
-		    }
-		  else
-		    {		/* emit the usual statements */
-		      fprintf (output_file,
-			       "ALTER VCLASS %s%s%s ADD QUERY %s ;\n",
-			       PRINT_IDENTIFIER (name),
-			       db_query_spec_string (s));
-		    }
-		}
+      if (ml_find (vclass_list_has_using_index, cl->op))
+	{
+	  continue;
+	}
+
+      change_vclass_spec = has_vclass_domains (cl->op);
+
+      for (s = specs, i = 1; s != NULL; s = db_query_spec_next (s), i++)
+	{
+	  if (change_vclass_spec)
+	    {			/* change the existing spec lists */
+	      fprintf (output_file,
+		       "ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n",
+		       PRINT_IDENTIFIER (name), i, db_query_spec_string (s));
+	    }
+	  else
+	    {			/* emit the usual statements */
+	      fprintf (output_file,
+		       "ALTER VCLASS %s%s%s ADD QUERY %s ;\n",
+		       PRINT_IDENTIFIER (name), db_query_spec_string (s));
 	    }
 	}
     }
@@ -1350,71 +1436,75 @@ emit_query_specs_has_using_index (DB_OBJLIST * vclass_list_has_using_index)
 
   for (cl = vclass_list_has_using_index; cl != NULL; cl = cl->next)
     {
-      if (db_is_vclass (cl->op))
+      if (!db_is_vclass (cl->op))
 	{
-	  name = db_get_class_name (cl->op);
-	  specs = db_get_query_specs (cl->op);
-	  if (specs != NULL)
+	  continue;
+	}
+
+      name = db_get_class_name (cl->op);
+      specs = db_get_query_specs (cl->op);
+      if (specs == NULL)
+	{
+	  continue;
+	}
+
+      if (!has_vclass_domains (cl->op))
+	{
+	  continue;
+	}
+
+      for (s = specs; s != NULL; s = db_query_spec_next (s))
+	{
+	  /*
+	   * convert the query spec into one containing NULLs for
+	   * each column
+	   */
+	  parser = parser_create_parser ();
+	  if (parser == NULL)
 	    {
-	      if (has_vclass_domains (cl->op))
-		{
-		  for (s = specs; s != NULL; s = db_query_spec_next (s))
-		    {
-		      /*
-		       * convert the query spec into one containing NULLs for
-		       * each column
-		       */
-		      parser = parser_create_parser ();
-		      if (parser == NULL)
-			{
-			  continue;
-			}
-		      query_ptr =
-			parser_parse_string (parser,
-					     db_query_spec_string (s));
-		      if (query_ptr != NULL)
-			{
-			  null_spec =
-			    pt_print_query_spec_no_list (parser, *query_ptr);
-			  fprintf (output_file,
-				   "ALTER VCLASS %s%s%s ADD QUERY %s ; \n",
-				   PRINT_IDENTIFIER (name), null_spec);
-			}
-		      parser_free_parser (parser);
-		    }
-		}
+	      continue;
 	    }
+	  query_ptr = parser_parse_string (parser, db_query_spec_string (s));
+	  if (query_ptr != NULL)
+	    {
+	      null_spec = pt_print_query_spec_no_list (parser, *query_ptr);
+	      fprintf (output_file,
+		       "ALTER VCLASS %s%s%s ADD QUERY %s ; \n",
+		       PRINT_IDENTIFIER (name), null_spec);
+	    }
+	  parser_free_parser (parser);
 	}
     }
 
   /* pass 2, emit full spec lists */
   for (cl = vclass_list_has_using_index; cl != NULL; cl = cl->next)
     {
-      if (db_is_vclass (cl->op))
+      if (!db_is_vclass (cl->op))
 	{
-	  name = db_get_class_name (cl->op);
-	  specs = db_get_query_specs (cl->op);
-	  if (specs != NULL)
-	    {
-	      change_vclass_spec = has_vclass_domains (cl->op);
+	  continue;
+	}
+      name = db_get_class_name (cl->op);
+      specs = db_get_query_specs (cl->op);
+      if (specs == NULL)
+	{
+	  continue;
+	}
 
-	      for (s = specs, i = 1; s; s = db_query_spec_next (s), i++)
-		{
-		  if (change_vclass_spec)
-		    {		/* change the existing spec lists */
-		      fprintf (output_file,
-			       "ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n",
-			       PRINT_IDENTIFIER (name), i,
-			       db_query_spec_string (s));
-		    }
-		  else
-		    {		/* emit the usual statements */
-		      fprintf (output_file,
-			       "ALTER VCLASS %s%s%s ADD QUERY %s ;\n",
-			       PRINT_IDENTIFIER (name),
-			       db_query_spec_string (s));
-		    }
-		}
+      change_vclass_spec = has_vclass_domains (cl->op);
+
+      for (s = specs, i = 1; s; s = db_query_spec_next (s), i++)
+	{
+	  if (change_vclass_spec)
+	    {			/* change the existing spec lists */
+	      fprintf (output_file,
+		       "ALTER VCLASS %s%s%s CHANGE QUERY %d %s ;\n",
+		       PRINT_IDENTIFIER (name), i, db_query_spec_string (s));
+	    }
+	  else
+	    {			/* emit the usual statements */
+	      fprintf (output_file,
+		       "ALTER VCLASS %s%s%s ADD QUERY %s ;\n",
+		       PRINT_IDENTIFIER (name), db_query_spec_string (s));
 	    }
 	}
     }
@@ -1441,7 +1531,9 @@ emit_superclasses (DB_OBJECT * class_, const char *class_type)
       /* create class alter string */
       name = db_get_class_name (class_);
       if (do_is_partitioned_subclass (NULL, name, NULL))
-	return (supers != NULL);
+	{
+	  return (supers != NULL);
+	}
 
       fprintf (output_file, "ALTER %s %s%s%s ADD SUPERCLASS ",
 	       class_type, PRINT_IDENTIFIER (name));
@@ -1450,7 +1542,9 @@ emit_superclasses (DB_OBJECT * class_, const char *class_type)
 	{
 	  name = db_get_class_name (s->op);
 	  if (s != supers)
-	    fprintf (output_file, ", ");
+	    {
+	      fprintf (output_file, ", ");
+	    }
 	  fprintf (output_file, "%s%s%s", PRINT_IDENTIFIER (name));
 	}
 
@@ -1480,7 +1574,8 @@ emit_resolutions (DB_OBJECT * class_, const char *class_type)
   bool return_value = false;
   const char *name;
 
-  if ((resolution_list = db_get_resolutions (class_)) != NULL)
+  resolution_list = db_get_resolutions (class_);
+  if (resolution_list != NULL)
     {
       name = db_get_class_name (class_);
       fprintf (output_file, "ALTER %s %s%s%s INHERIT",
@@ -1490,7 +1585,9 @@ emit_resolutions (DB_OBJECT * class_, const char *class_type)
 	   resolution_list = db_resolution_next (resolution_list))
 	{
 	  if (return_value == true)
-	    fprintf (output_file, ",\n");
+	    {
+	      fprintf (output_file, ",\n");
+	    }
 	  else
 	    {
 	      fprintf (output_file, "\n");
@@ -1505,7 +1602,7 @@ emit_resolutions (DB_OBJECT * class_, const char *class_type)
     }				/* if  */
 
   return (return_value);
-}				/* emit_resolutions */
+}
 
 
 /*
@@ -1521,12 +1618,24 @@ emit_resolution_def (DB_RESOLUTION * resolution,
   const char *name, *alias, *class_name;
   DB_OBJECT *class_;
 
-  if ((class_ = db_resolution_class (resolution)) == NULL)
-    return;
-  if ((name = db_resolution_name (resolution)) == NULL)
-    return;
-  if ((class_name = db_get_class_name (class_)) == NULL)
-    return;
+  class_ = db_resolution_class (resolution);
+  if (class_ == NULL)
+    {
+      return;
+    }
+
+  name = db_resolution_name (resolution);
+  if (name == NULL)
+    {
+      return;
+    }
+
+  class_name = db_get_class_name (class_);
+  if (class_name == NULL)
+    {
+      return;
+    }
+
   alias = db_resolution_alias (resolution);
 
   switch (qualifier)
@@ -1544,8 +1653,11 @@ emit_resolution_def (DB_RESOLUTION * resolution,
 	break;
       }
     }
+
   if (alias != NULL)
-    fprintf (output_file, " AS %s%s%s", PRINT_IDENTIFIER (alias));
+    {
+      fprintf (output_file, " AS %s%s%s", PRINT_IDENTIFIER (alias));
+    }
 
   class_ = NULL;
 }
@@ -1587,16 +1699,24 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
       if (db_attribute_class (a) == class_)
 	{
 	  if (db_attribute_is_unique (a))
-	    unique_flag = 1;
+	    {
+	      unique_flag = 1;
+	    }
 	  else if (db_attribute_is_reverse_unique (a))
-	    reverse_unique_flag = 1;
+	    {
+	      reverse_unique_flag = 1;
+	    }
 	}
 
       if (db_attribute_is_indexed (a))
-	index_flag = 1;
+	{
+	  index_flag = 1;
+	}
 
       if ((unique_flag || reverse_unique_flag) && index_flag)
-	break;
+	{
+	  break;
+	}
     }
 
   /*
@@ -1604,7 +1724,9 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
    * (i.e. overwrite) the has_index parameter
    */
   if (has_indexes != NULL)
-    *has_indexes |= index_flag;
+    {
+      *has_indexes |= index_flag;
+    }
 
 
   /* see if we have any locally defined components on either list */
@@ -1613,7 +1735,9 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
        a = db_attribute_next (a))
     {
       if (db_attribute_class (a) == class_)
-	first_attribute = a;
+	{
+	  first_attribute = a;
+	}
     }
 
   if (first_attribute != NULL)
@@ -1626,11 +1750,18 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 	  if (db_attribute_class (a) == class_)
 	    {
 	      if (a != first_attribute)
-		fprintf (output_file, ",\n");
+		{
+		  fprintf (output_file, ",\n");
+		}
+
 	      if (db_attribute_is_shared (a))
-		emit_attribute_def (a, SHARED_ATTRIBUTE);
+		{
+		  emit_attribute_def (a, SHARED_ATTRIBUTE);
+		}
 	      else
-		emit_attribute_def (a, INSTANCE_ATTRIBUTE);
+		{
+		  emit_attribute_def (a, INSTANCE_ATTRIBUTE);
+		}
 	    }
 	}
 
@@ -1653,18 +1784,20 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 
 		  sr_error = db_get (a->auto_increment, "name", &sr_name);
 		  if (sr_error < 0)
-		    continue;
+		    {
+		      continue;
+		    }
 
-		  sr_error =
-		    db_get (a->auto_increment, "current_val", &cur_val);
+		  sr_error = db_get (a->auto_increment, "current_val",
+				     &cur_val);
 		  if (sr_error < 0)
 		    {
 		      pr_clear_value (&sr_name);
 		      continue;
 		    }
 
-		  sr_error =
-		    db_get (a->auto_increment, "increment_val", &inc_val);
+		  sr_error = db_get (a->auto_increment, "increment_val",
+				     &inc_val);
 		  if (sr_error < 0)
 		    {
 		      pr_clear_value (&sr_name);
@@ -1685,8 +1818,8 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 		      continue;
 		    }
 
-		  sr_error =
-		    db_get (a->auto_increment, "started", &started_val);
+		  sr_error = db_get (a->auto_increment, "started",
+				     &started_val);
 		  if (sr_error < 0)
 		    {
 		      pr_clear_value (&sr_name);
@@ -1697,16 +1830,16 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 		    {
 		      DB_VALUE diff_val, answer_val;
 
-		      sr_error =
-			numeric_db_value_sub (&max_val, &cur_val, &diff_val);
+		      sr_error = numeric_db_value_sub (&max_val, &cur_val,
+						       &diff_val);
 		      if (sr_error != NO_ERROR)
 			{
 			  pr_clear_value (&sr_name);
 			  continue;
 			}
-		      sr_error =
-			numeric_db_value_compare (&inc_val, &diff_val,
-						  &answer_val);
+		      sr_error = numeric_db_value_compare (&inc_val,
+							   &diff_val,
+							   &answer_val);
 		      if (sr_error != NO_ERROR)
 			{
 			  pr_clear_value (&sr_name);
@@ -1719,9 +1852,8 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 			  continue;
 			}
 
-		      sr_error =
-			numeric_db_value_add (&cur_val, &inc_val,
-					      &answer_val);
+		      sr_error = numeric_db_value_add (&cur_val, &inc_val,
+						       &answer_val);
 		      if (sr_error != NO_ERROR)
 			{
 			  pr_clear_value (&sr_name);
@@ -1756,6 +1888,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type,
 		   class_type, PRINT_IDENTIFIER (name));
 	  emit_unique_def (class_);
 	}
+
       if (reverse_unique_flag)
 	{
 	  emit_reverse_unique_def (class_);
@@ -1780,11 +1913,14 @@ emit_class_attributes (DB_OBJECT * class_, const char *class_type)
 
   class_attribute_list = db_get_class_attributes (class_);
   first_class_attribute = NULL;
+
   for (a = class_attribute_list; a != NULL && first_class_attribute == NULL;
        a = db_attribute_next (a))
     {
       if (db_attribute_class (a) == class_)
-	first_class_attribute = a;
+	{
+	  first_class_attribute = a;
+	}
     }
 
   if (first_class_attribute != NULL)
@@ -1792,12 +1928,15 @@ emit_class_attributes (DB_OBJECT * class_, const char *class_type)
       name = db_get_class_name (class_);
       fprintf (output_file, "ALTER %s %s%s%s ADD CLASS ATTRIBUTE \n",
 	       class_type, PRINT_IDENTIFIER (name));
+
       for (a = first_class_attribute; a != NULL; a = db_attribute_next (a))
 	{
 	  if (db_attribute_class (a) == class_)
 	    {
 	      if (a != first_class_attribute)
-		fprintf (output_file, ",\n");
+		{
+		  fprintf (output_file, ",\n");
+		}
 	      emit_attribute_def (a, CLASS_ATTRIBUTE);
 	    }
 	}
@@ -1897,13 +2036,18 @@ emit_methods (DB_OBJECT * class_, const char *class_type)
        m = db_method_next (m))
     {
       if (db_method_class (m) == class_)
-	first_method = m;
+	{
+	  first_method = m;
+	}
     }
+
   for (m = class_method_list; m != NULL && first_class_method == NULL;
        m = db_method_next (m))
     {
       if (db_method_class (m) == class_)
-	first_class_method = m;
+	{
+	  first_class_method = m;
+	}
     }
 
   if (first_method != NULL)
@@ -1911,15 +2055,19 @@ emit_methods (DB_OBJECT * class_, const char *class_type)
       name = db_get_class_name (class_);
       fprintf (output_file, "ALTER %s %s%s%s ADD METHOD\n",
 	       class_type, PRINT_IDENTIFIER (name));
+
       for (m = first_method; m != NULL; m = db_method_next (m))
 	{
 	  if (db_method_class (m) == class_)
 	    {
 	      if (m != first_method)
-		fprintf (output_file, ",\n");
+		{
+		  fprintf (output_file, ",\n");
+		}
 	      emit_method_def (m, INSTANCE_METHOD);
 	    }
 	}
+
       fprintf (output_file, "\n");
       emit_method_files (class_);
       fprintf (output_file, ";\n");
@@ -1931,18 +2079,25 @@ emit_methods (DB_OBJECT * class_, const char *class_type)
       name = db_get_class_name (class_);
       fprintf (output_file, "ALTER %s %s%s%s ADD METHOD\n",
 	       class_type, PRINT_IDENTIFIER (name));
+
       for (m = first_class_method; m != NULL; m = db_method_next (m))
 	{
 	  if (db_method_class (m) == class_)
 	    {
 	      if (m != first_class_method)
-		fprintf (output_file, ",\n");
+		{
+		  fprintf (output_file, ",\n");
+		}
 	      emit_method_def (m, CLASS_METHOD);
 	    }
 	}
+
       fprintf (output_file, "\n");
+
       if (first_method == NULL)
-	emit_method_files (class_);
+	{
+	  emit_method_files (class_);
+	}
       fprintf (output_file, ";\n");
     }
 
@@ -1975,28 +2130,39 @@ ex_contains_object_reference (DB_VALUE * value)
   if (value != NULL)
     {
       if (DB_VALUE_TYPE (value) == DB_TYPE_OBJECT)
-	has_object = DB_GET_OBJECT (value) != NULL;
-
+	{
+	  has_object = DB_GET_OBJECT (value) != NULL;
+	}
       else if (TP_IS_SET_TYPE (DB_VALUE_TYPE (value)))
 	{
 	  set = DB_GET_SET (value);
 	  size = db_set_size (set);
 	  type = db_set_type (set);
+
 	  for (i = 0; i < size && !has_object; i++)
 	    {
 	      if (type == DB_TYPE_SEQUENCE)
-		error = db_seq_get (set, i, &setval);
+		{
+		  error = db_seq_get (set, i, &setval);
+		}
 	      else
-		error = db_set_get (set, i, &setval);
+		{
+		  error = db_set_get (set, i, &setval);
+		}
 
 	      if (error)
-		/*
-		 * shouldn't happen, return 1 so we don't try to dump this
-		 * value
-		 */
-		has_object = 1;
+		{
+		  /*
+		   * shouldn't happen, return 1 so we don't try to dump this
+		   * value
+		   */
+		  has_object = 1;
+		}
 	      else
-		has_object = ex_contains_object_reference (&setval);
+		{
+		  has_object = ex_contains_object_reference (&setval);
+		}
+
 	      db_value_clear (&setval);
 	    }
 	}
@@ -2049,27 +2215,35 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
     }
 
   if (qualifier == SHARED_ATTRIBUTE)
-    fprintf (output_file, " SHARED ");
-
-  if (((default_value = db_attribute_default (attribute)) != NULL)
-      && (!DB_IS_NULL (default_value)))
     {
+      fprintf (output_file, " SHARED ");
+    }
 
+  default_value = db_attribute_default (attribute);
+  if (default_value != NULL && !DB_IS_NULL (default_value))
+    {
       if (qualifier != SHARED_ATTRIBUTE)
-	fprintf (output_file, " DEFAULT ");
+	{
+	  fprintf (output_file, " DEFAULT ");
+	}
 
       /* these are set during the object load phase */
       if (ex_contains_object_reference (default_value))
-	fprintf (output_file, "NULL");
+	{
+	  fprintf (output_file, "NULL");
+	}
       else
-	/* use the desc_ printer, need to have this in a better place */
-	desc_value_fprint (output_file, default_value);
+	{
+	  /* use the desc_ printer, need to have this in a better place */
+	  desc_value_fprint (output_file, default_value);
+	}
     }
 
   /* emit constraints */
   if (db_attribute_is_non_null (attribute))
-    fprintf (output_file, " NOT NULL");
-
+    {
+      fprintf (output_file, " NOT NULL");
+    }
 }
 
 
@@ -2089,57 +2263,69 @@ emit_unique_def (DB_OBJECT * class_)
   const char *name;
 
   constraint_list = db_get_constraints (class_);
-  if (constraint_list != NULL)
+  if (constraint_list == NULL)
     {
+      return;
+    }
 
-      for (constraint = constraint_list;
-	   constraint != NULL; constraint = db_constraint_next (constraint))
+  for (constraint = constraint_list;
+       constraint != NULL; constraint = db_constraint_next (constraint))
+    {
+      if (db_constraint_type (constraint) != DB_CONSTRAINT_UNIQUE
+	  && db_constraint_type (constraint) != DB_CONSTRAINT_PRIMARY_KEY)
 	{
-	  if (db_constraint_type (constraint) == DB_CONSTRAINT_UNIQUE
-	      || db_constraint_type (constraint) == DB_CONSTRAINT_PRIMARY_KEY)
+	  continue;
+	}
+
+      atts = db_constraint_attributes (constraint);
+      has_inherited_atts = false;
+
+      for (att = atts; *att != NULL; att++)
+	{
+	  if (db_attribute_class (*att) != class_)
 	    {
-	      atts = db_constraint_attributes (constraint);
-	      has_inherited_atts = false;
-	      for (att = atts; *att != NULL; att++)
-		{
-		  if (db_attribute_class (*att) != class_)
-		    {
-		      has_inherited_atts = true;
-		      break;
-		    }
-		}
-	      if (!has_inherited_atts)
-		{
-		  if (num_printed > 0)
-		    {
-		      (void) fprintf (output_file, ",\n");
-		    }
-
-		  if (constraint->type == SM_CONSTRAINT_PRIMARY_KEY)
-		    (void) fprintf (output_file,
-				    "       CONSTRAINT \"%s\" PRIMARY KEY(",
-				    constraint->name);
-		  else
-		    (void) fprintf (output_file,
-				    "       CONSTRAINT \"%s\" UNIQUE(",
-				    constraint->name);
-
-		  for (att = atts; *att != NULL; att++)
-		    {
-		      name = db_attribute_name (*att);
-		      if (att != atts)
-			fprintf (output_file, ", ");
-		      fprintf (output_file, "%s%s%s",
-			       PRINT_IDENTIFIER (name));
-		    }
-		  (void) fprintf (output_file, ")");
-
-		  ++num_printed;
-		}
+	      has_inherited_atts = true;
+	      break;
 	    }
 	}
-      (void) fprintf (output_file, ";\n");
+
+      if (!has_inherited_atts)
+	{
+	  if (num_printed > 0)
+	    {
+	      (void) fprintf (output_file, ",\n");
+	    }
+
+	  if (constraint->type == SM_CONSTRAINT_PRIMARY_KEY)
+	    {
+	      (void) fprintf (output_file,
+			      "       CONSTRAINT [%s] PRIMARY KEY(",
+			      constraint->name);
+	    }
+	  else
+	    {
+	      (void) fprintf (output_file,
+			      "       CONSTRAINT [%s] UNIQUE(",
+			      constraint->name);
+	    }
+
+	  for (att = atts; *att != NULL; att++)
+	    {
+	      name = db_attribute_name (*att);
+	      if (att != atts)
+		{
+		  fprintf (output_file, ", ");
+		}
+
+	      fprintf (output_file, "%s%s%s", PRINT_IDENTIFIER (name));
+	    }
+	  (void) fprintf (output_file, ")");
+
+	  ++num_printed;
+	}
     }
+
+  (void) fprintf (output_file, ";\n");
 }
 
 /*
@@ -2156,42 +2342,49 @@ emit_reverse_unique_def (DB_OBJECT * class_)
   const char *name;
 
   constraint_list = db_get_constraints (class_);
-  if (constraint_list != NULL)
+  if (constraint_list == NULL)
     {
-      for (constraint = constraint_list;
-	   constraint != NULL; constraint = db_constraint_next (constraint))
-	{
-	  if (db_constraint_type (constraint) == DB_CONSTRAINT_REVERSE_UNIQUE)
-	    {
-	      atts = db_constraint_attributes (constraint);
-	      has_inherited_atts = false;
-	      for (att = atts; *att != NULL; att++)
-		{
-		  if (db_attribute_class (*att) != class_)
-		    {
-		      has_inherited_atts = true;
-		      break;
-		    }
-		}
-	      if (!has_inherited_atts)
-		{
-		  name = db_get_class_name (class_);
-		  fprintf (output_file,
-			   "CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s (",
-			   PRINT_IDENTIFIER (constraint->name),
-			   PRINT_IDENTIFIER (name));
+      return;
+    }
 
-		  for (att = atts; *att != NULL; att++)
-		    {
-		      name = db_attribute_name (*att);
-		      if (att != atts)
-			fprintf (output_file, ", ");
-		      fprintf (output_file, "%s%s%s",
-			       PRINT_IDENTIFIER (name));
-		    }
-		  fprintf (output_file, ");\n");
-		}
+  for (constraint = constraint_list;
+       constraint != NULL; constraint = db_constraint_next (constraint))
+    {
+      if (db_constraint_type (constraint) != DB_CONSTRAINT_REVERSE_UNIQUE)
+	{
+	  continue;
+	}
+
+      atts = db_constraint_attributes (constraint);
+      has_inherited_atts = false;
+
+      for (att = atts; *att != NULL; att++)
+	{
+	  if (db_attribute_class (*att) != class_)
+	    {
+	      has_inherited_atts = true;
+	      break;
 	    }
+	}
+
+      if (!has_inherited_atts)
+	{
+	  name = db_get_class_name (class_);
+	  fprintf (output_file,
+		   "CREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s (",
+		   PRINT_IDENTIFIER (constraint->name),
+		   PRINT_IDENTIFIER (name));
+
+	  for (att = atts; *att != NULL; att++)
+	    {
+	      name = db_attribute_name (*att);
+	      if (att != atts)
+		{
+		  fprintf (output_file, ", ");
+		}
+	      fprintf (output_file, "%s%s%s", PRINT_IDENTIFIER (name));
+	    }
+	  fprintf (output_file, ");\n");
 	}
     }
 }
@@ -2213,90 +2406,111 @@ emit_index_def (DB_OBJECT * class_)
   SM_CLASS *smclass, *supclass = NULL;
   DB_VALUE classobj, pclass;
   const int *asc_desc;
+  const int *prefix_length;
 
   constraint_list = db_get_constraints (class_);
-  if (constraint_list != NULL)
+  if (constraint_list == NULL)
     {
-      cls_name = db_get_class_name (class_);
-      if (cls_name != NULL)
+      return;
+    }
+
+  cls_name = db_get_class_name (class_);
+  if (cls_name != NULL)
+    {
+      partitioned_subclass = do_is_partitioned_subclass (NULL, cls_name,
+							 NULL);
+    }
+  else
+    {
+      cls_name = "";
+    }
+
+  if (partitioned_subclass)
+    {
+      DB_MAKE_NULL (&classobj);
+      DB_MAKE_NULL (&pclass);
+      AU_DISABLE (au_save);
+
+      if (au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT) ==
+	  NO_ERROR && smclass->partition_of
+	  && db_get (smclass->partition_of, PARTITION_ATT_CLASSOF,
+		     &pclass) == NO_ERROR
+	  && DB_VALUE_TYPE (&pclass) == DB_TYPE_OBJECT
+	  && db_get (DB_PULL_OBJECT (&pclass), PARTITION_ATT_CLASSOF,
+		     &classobj) == NO_ERROR)
 	{
-	  partitioned_subclass =
-	    do_is_partitioned_subclass (NULL, cls_name, NULL);
-	}
-      else
-	{
-	  cls_name = "";
-	}
-      if (partitioned_subclass)
-	{
-	  DB_MAKE_NULL (&classobj);
-	  DB_MAKE_NULL (&pclass);
-	  AU_DISABLE (au_save);
-	  if (au_fetch_class (class_, &smclass, AU_FETCH_READ, AU_SELECT) ==
-	      NO_ERROR && smclass->partition_of
-	      && db_get (smclass->partition_of, PARTITION_ATT_CLASSOF,
-			 &pclass) == NO_ERROR
-	      && DB_VALUE_TYPE (&pclass) == DB_TYPE_OBJECT
-	      && db_get (DB_PULL_OBJECT (&pclass), PARTITION_ATT_CLASSOF,
-			 &classobj) == NO_ERROR)
+	  if (DB_VALUE_TYPE (&classobj) == DB_TYPE_OBJECT
+	      && au_fetch_class (DB_PULL_OBJECT (&classobj), &supclass,
+				 AU_FETCH_READ, AU_SELECT) != NO_ERROR)
 	    {
-	      if (DB_VALUE_TYPE (&classobj) == DB_TYPE_OBJECT
-		  && au_fetch_class (DB_PULL_OBJECT (&classobj), &supclass,
-				     AU_FETCH_READ, AU_SELECT) != NO_ERROR)
-		{
-		  supclass = NULL;
-		}
-	      pr_clear_value (&classobj);
+	      supclass = NULL;
 	    }
-	  AU_ENABLE (au_save);
+	  pr_clear_value (&classobj);
 	}
 
-      for (constraint = constraint_list;
-	   constraint != NULL; constraint = db_constraint_next (constraint))
+      AU_ENABLE (au_save);
+    }
+
+  for (constraint = constraint_list;
+       constraint != NULL; constraint = db_constraint_next (constraint))
+    {
+      ctype = db_constraint_type (constraint);
+      if (ctype != DB_CONSTRAINT_INDEX
+	  && ctype != DB_CONSTRAINT_REVERSE_INDEX)
 	{
-	  ctype = db_constraint_type (constraint);
-	  if (ctype == DB_CONSTRAINT_INDEX
-	      || ctype == DB_CONSTRAINT_REVERSE_INDEX)
+	  continue;
+	}
+
+      if (supclass
+	  && classobj_find_class_index (supclass, constraint->name) != NULL)
+	{
+	  continue;		/* same index skip */
+	}
+
+      fprintf (output_file, "CREATE %sINDEX %s%s%s ON %s%s%s (",
+	       (ctype ==
+		DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "",
+	       PRINT_IDENTIFIER (constraint->name),
+	       PRINT_IDENTIFIER (cls_name));
+
+      asc_desc = NULL;		/* init */
+      prefix_length = NULL;
+      if (ctype == DB_CONSTRAINT_INDEX)
+	{			/* is not reverse index */
+	  /* need to get asc/desc info */
+	  asc_desc = db_constraint_asc_desc (constraint);
+	  prefix_length = db_constraint_prefix_length (constraint);
+	}
+
+      atts = db_constraint_attributes (constraint);
+      for (att = atts; *att != NULL; att++)
+	{
+	  att_name = db_attribute_name (*att);
+	  if (att != atts)
 	    {
-	      if (supclass
-		  && classobj_find_class_index (supclass,
-						constraint->name) != NULL)
-		{
-		  continue;	/* same index skip */
-		}
-	      fprintf (output_file, "CREATE %sINDEX %s%s%s ON %s%s%s (",
-		       (ctype ==
-			DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "",
-		       PRINT_IDENTIFIER (constraint->name),
-		       PRINT_IDENTIFIER (cls_name));
+	      fprintf (output_file, ", ");
+	    }
+	  fprintf (output_file, "%s%s%s", PRINT_IDENTIFIER (att_name));
 
-	      asc_desc = NULL;	/* init */
-	      if (ctype == DB_CONSTRAINT_INDEX)
-		{		/* is not reverse index */
-		  /* need to get asc/desc info */
-		  asc_desc = db_constraint_asc_desc (constraint);
-		}
-
-	      atts = db_constraint_attributes (constraint);
-	      for (att = atts; *att != NULL; att++)
+	  if (asc_desc)
+	    {
+	      if (*asc_desc == 1)
 		{
-		  att_name = db_attribute_name (*att);
-		  if (att != atts)
-		    fprintf (output_file, ", ");
-		  fprintf (output_file, "%s%s%s",
-			   PRINT_IDENTIFIER (att_name));
-		  if (asc_desc)
-		    {
-		      if (*asc_desc == 1)
-			{
-			  fprintf (output_file, "%s", " DESC");
-			}
-		      asc_desc++;
-		    }
+		  fprintf (output_file, "%s", " DESC");
 		}
-	      fprintf (output_file, ");\n");
+	      asc_desc++;
+	    }
+
+	  if (prefix_length)
+	    {
+	      if (*prefix_length >= 0)
+		{
+		  fprintf (output_file, " (%d)", *prefix_length);
+		}
+	      prefix_length++;
 	    }
 	}
+      fprintf (output_file, ");\n");
     }
 }
 
@@ -2318,7 +2532,6 @@ emit_domain_def (DB_DOMAIN * domains)
 
   for (domain = domains; domain != NULL; domain = db_domain_next (domain))
     {
-
       type = db_domain_type (domain);
       prtype = PR_TYPE_FROM_ID (type);
       if (prtype == NULL)
@@ -2330,7 +2543,9 @@ emit_domain_def (DB_DOMAIN * domains)
 	{
 	  class_ = db_domain_class (domain);
 	  if (class_ == NULL)
-	    fprintf (output_file, "%s", prtype->name);
+	    {
+	      fprintf (output_file, "%s", prtype->name);
+	    }
 	  else
 	    {
 	      name = db_get_class_name (class_);
@@ -2373,8 +2588,11 @@ emit_domain_def (DB_DOMAIN * domains)
 	      break;
 	    }
 	}
+
       if (db_domain_next (domain) != NULL)
-	fprintf (output_file, ",");
+	{
+	  fprintf (output_file, ",");
+	}
     }
 }
 
@@ -2396,7 +2614,9 @@ emit_autoincrement_def (DB_ATTRIBUTE * attribute)
 
       error = db_get (attribute->auto_increment, "min_val", &min_val);
       if (error < 0)
-	return error;
+	{
+	  return error;
+	}
 
       error = db_get (attribute->auto_increment, "increment_val", &inc_val);
       if (error < 0)
@@ -2456,15 +2676,19 @@ emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier)
       emit_domain_def (db_method_arg_domain (method, i));
       fprintf (output_file, ", ");
     }
+
   if (arg_count)
-    emit_domain_def (db_method_arg_domain (method, i));
+    {
+      emit_domain_def (db_method_arg_domain (method, i));
+    }
 
   fprintf (output_file, ") ");
 
   /*
    * Emit method return domain
    */
-  if ((method_return_domain = db_method_return_domain (method)) != NULL)
+  method_return_domain = db_method_return_domain (method);
+  if (method_return_domain != NULL)
     {
       emit_domain_def (db_method_return_domain (method));
     }
@@ -2472,7 +2696,8 @@ emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier)
   /*
    * Emit method function implementation
    */
-  if ((method_function_name = db_method_function (method)) != NULL)
+  method_function_name = db_method_function (method);
+  if (method_function_name != NULL)
     {
       name = db_method_function (method);
       fprintf (output_file, " FUNCTION %s%s%s", PRINT_IDENTIFIER (name));
@@ -2521,7 +2746,9 @@ emit_partition_parts (MOP parts, int partcnt)
       DB_MAKE_NULL (&pname);
       DB_MAKE_NULL (&pval);
       if (partcnt > 0)
-	fprintf (output_file, ",\n ");
+	{
+	  fprintf (output_file, ",\n ");
+	}
 
       AU_DISABLE (save);
 
@@ -2529,7 +2756,6 @@ emit_partition_parts (MOP parts, int partcnt)
 	  && db_get (parts, PARTITION_ATT_PNAME, &pname) == NO_ERROR
 	  && db_get (parts, PARTITION_ATT_PVALUES, &pval) == NO_ERROR)
 	{
-
 	  fprintf (output_file, "PARTITION %s%s%s ",
 		   PRINT_IDENTIFIER (DB_PULL_STRING (&pname)));
 
@@ -2554,13 +2780,20 @@ emit_partition_parts (MOP parts, int partcnt)
 	    case PT_PARTITION_LIST:
 	      fprintf (output_file, " VALUES IN (");
 	      setsize = set_size (pval.data.set);
+
 	      for (i1 = 0; i1 < setsize; i1++)
 		{
 		  if (i1 > 0)
-		    fprintf (output_file, ", ");
+		    {
+		      fprintf (output_file, ", ");
+		    }
+
 		  if (!set_get_element (pval.data.set, i1, &ele))
-		    desc_value_fprint (output_file, &ele);
+		    {
+		      desc_value_fprint (output_file, &ele);
+		    }
 		}
+
 	      fprintf (output_file, ")");
 	      break;
 	    }
@@ -2602,15 +2835,17 @@ emit_partition_info (MOP clsobj)
       AU_DISABLE (save);
 
       name = db_get_class_name (clsobj);
-      if (au_fetch_class (clsobj, &class_, AU_FETCH_READ, AU_SELECT) !=
-	  NO_ERROR)
-	goto end;
+      if (au_fetch_class (clsobj, &class_, AU_FETCH_READ,
+			  AU_SELECT) != NO_ERROR)
+	{
+	  goto end;
+	}
 
       fprintf (output_file, "\nALTER CLASS %s%s%s ", PRINT_IDENTIFIER (name));
       fprintf (output_file, "\nPARTITION BY ");
 
-      if (db_get (class_->partition_of, PARTITION_ATT_PTYPE, &ptype) ==
-	  NO_ERROR
+      if (db_get (class_->partition_of, PARTITION_ATT_PTYPE,
+		  &ptype) == NO_ERROR
 	  && db_get (class_->partition_of, PARTITION_ATT_PEXPR,
 		     &pexpr) == NO_ERROR && !DB_IS_NULL (&pexpr)
 	  && (pexpr_str = DB_GET_STRING (&pexpr))
@@ -2629,6 +2864,7 @@ emit_partition_info (MOP clsobj)
 	      fprintf (output_file, "LIST ( ");
 	      break;
 	    }
+
 	  ptr = strstr (pexpr_str, "SELECT ");
 	  if (ptr)
 	    {
@@ -2640,6 +2876,7 @@ emit_partition_info (MOP clsobj)
 		  fprintf (output_file, " ) \n ");
 		}
 	    }
+
 	  if (DB_GET_INT (&ptype) == PT_PARTITION_HASH)
 	    {
 	      if (!set_get_element (pattr.data.set, 1, &ele))
@@ -2652,9 +2889,8 @@ emit_partition_info (MOP clsobj)
 	      fprintf (output_file, " ( ");
 	      for (user = class_->users; user != NULL; user = user->next)
 		{
-		  if (au_fetch_class
-		      (user->op, &subclass, AU_FETCH_READ,
-		       AU_SELECT) == NO_ERROR)
+		  if (au_fetch_class (user->op, &subclass, AU_FETCH_READ,
+				      AU_SELECT) == NO_ERROR)
 		    {
 		      if (subclass->partition_of)
 			{
@@ -2701,11 +2937,13 @@ emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set)
 
   for (i = 0; i < arg_cnt; i++)
     {
-      if ((err = set_get_element (arg_set, i, &arg_val)) != NO_ERROR)
+      err = set_get_element (arg_set, i, &arg_val);
+      if (err != NO_ERROR)
 	{
 	  err_count++;
 	  continue;
 	}
+
       arg = DB_GET_OBJECT (&arg_val);
 
       if ((err = db_get (arg, SP_ATTR_ARG_NAME, &arg_name_val)) != NO_ERROR
@@ -2716,6 +2954,7 @@ emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set)
 	  err_count++;
 	  continue;
 	}
+
       fprintf (output_file, "%s%s%s ",
 	       PRINT_IDENTIFIER (DB_PULL_STRING (&arg_name_val)));
 
@@ -2826,7 +3065,8 @@ emit_stored_procedure (void)
 	       DB_GET_STRING (&method_val));
 
       owner = DB_GET_OBJECT (&owner_val);
-      if ((err = db_get (owner, "name", &owner_name_val)) != NO_ERROR)
+      err = db_get (owner, "name", &owner_name_val);
+      if (err != NO_ERROR)
 	{
 	  err_count++;
 	  continue;
@@ -2869,7 +3109,9 @@ emit_foreign_key (DB_OBJLIST * classes)
 	   constraint != NULL; constraint = db_constraint_next (constraint))
 	{
 	  if (db_constraint_type (constraint) != DB_CONSTRAINT_FOREIGN_KEY)
-	    continue;
+	    {
+	      continue;
+	    }
 
 	  atts = db_constraint_attributes (constraint);
 	  has_inherited_atts = false;
@@ -2881,19 +3123,24 @@ emit_foreign_key (DB_OBJLIST * classes)
 		  break;
 		}
 	    }
+
 	  if (has_inherited_atts)
-	    continue;
+	    {
+	      continue;
+	    }
 
-	  (void) fprintf (output_file, "ALTER CLASS \"%s\" ADD", cls_name);
+	  (void) fprintf (output_file, "ALTER CLASS [%s] ADD", cls_name);
 
-	  (void) fprintf (output_file, " CONSTRAINT \"%s\" FOREIGN KEY(",
+	  (void) fprintf (output_file, " CONSTRAINT [%s] FOREIGN KEY(",
 			  constraint->name);
 
 	  for (att = atts; *att != NULL; att++)
 	    {
 	      att_name = db_attribute_name (*att);
 	      if (att != atts)
-		fprintf (output_file, ", ");
+		{
+		  fprintf (output_file, ", ");
+		}
 	      fprintf (output_file, "%s%s%s", PRINT_IDENTIFIER (att_name));
 	    }
 	  (void) fprintf (output_file, ")");

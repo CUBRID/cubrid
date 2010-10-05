@@ -414,4 +414,3 @@ adj_ar_get_nth_buffer (const ADJ_ARRAY * adj_array_p, int n)
   return NULL;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
-

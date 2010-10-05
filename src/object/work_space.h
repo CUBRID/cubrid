@@ -97,7 +97,7 @@ struct db_object
 
   unsigned dirty:1;		/* dirty flag */
   unsigned deleted:1;		/* deleted flag */
-  unsigned no_objects:1;	/* optomization for classes */
+  unsigned no_objects:1;	/* optimization for classes */
   unsigned pinned:1;		/* to prevent swapping */
   unsigned reference:1;		/* set if non-object reference mop */
   unsigned is_vid:1;		/* set if oid is vid */

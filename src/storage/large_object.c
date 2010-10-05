@@ -588,8 +588,8 @@ largeobjmgr_getnewpage (THREAD_ENTRY * thread_p, LOID * loid, VPID * vpid,
 
   /*
    * NOTE: we fetch the page as old since it was initialized during the
-   * allocation by largeobjmgr_initlo_newpage, therfore, we care about the current
-   * content of the page.
+   * allocation by largeobjmgr_initlo_newpage; we want the current
+   * contents of the page.
    */
   page_ptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 			PGBUF_UNCONDITIONAL_LATCH);
@@ -601,7 +601,7 @@ largeobjmgr_getnewpage (THREAD_ENTRY * thread_p, LOID * loid, VPID * vpid,
 
   /* Need undo log, for cases of unexpected rollback, but only
      if the file is not new */
-  if (file_new_isvalid (thread_p, &(loid->vfid)) == DISK_INVALID)
+  if (file_is_new_file (thread_p, &(loid->vfid)) == FILE_OLD_FILE)
     {
       addr.vfid = &loid->vfid;
       addr.pgptr = page_ptr;
@@ -650,7 +650,7 @@ largeobjmgr_allocset_pages (THREAD_ENTRY * thread_p, LOID * loid,
 
   /* Need undo log, for cases of unexpected rollback, but only
      if the file is not new */
-  if (file_new_isvalid (thread_p, &(loid->vfid)) == DISK_INVALID)
+  if (file_is_new_file (thread_p, &(loid->vfid)) == FILE_OLD_FILE)
     {
       /* Need undo records for each page just allocated */
       for (i = alloc_p->nth_first_allocated; num_pages > 0; i++, num_pages--)
@@ -2192,7 +2192,7 @@ largeobjmgr_process (THREAD_ENTRY * thread_p, LOID * loid, int opr_mode,
   if (processed_length < length)
     {
       /* We do not have that much length to process at given offset, unless
-         we are writting/appending. */
+         we are writing/appending. */
       if (opr_mode == LARGEOBJMGR_WRITE_MODE)
 	{
 	  /* append data to the end */

@@ -28,14 +28,14 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 
-import cubrid.jdbc.driver.CUBRIDException;
-import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
+import @CUBRID_DRIVER@.CUBRIDException;
+import @CUBRID_DRIVER@.CUBRIDJDBCErrorCode;
 
-import cubrid.jdbc.jci.*;
+import @CUBRID_JCI@.*;
 
 public class CUBRIDConnectionWrapperXA extends CUBRIDConnection
 {

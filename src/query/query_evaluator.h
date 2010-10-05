@@ -27,6 +27,12 @@
 
 #ident "$Id$"
 
+#if defined(WINDOWS)
+#include "porting.h"
+#else /* ! WINDOWS */
+#include <stdlib.h>
+#endif /* ! WINDOWS */
+
 #include "storage_common.h"
 #include "dbtype.h"
 #include "object_domain.h"
@@ -52,10 +58,11 @@ struct val_list_node
 typedef enum
 {
 /* aggregate functions */
-  PT_MIN = 550, PT_MAX, PT_SUM, PT_AVG,
+  PT_MIN = 900, PT_MAX, PT_SUM, PT_AVG,
   PT_STDDEV, PT_VARIANCE,
   PT_COUNT, PT_COUNT_STAR,
   PT_GROUPBY_NUM,
+  PT_AGG_BIT_AND, PT_AGG_BIT_OR, PT_AGG_BIT_XOR,
   PT_TOP_AGG_FUNC,
 /* only aggregate functions should be below PT_TOP_AGG_FUNC */
 
@@ -163,6 +170,48 @@ typedef enum
   T_PRIOR,
   T_CONNECT_BY_ROOT,
   T_QPRIOR,
+  T_BIT_NOT,
+  T_BIT_AND,
+  T_BIT_OR,
+  T_BIT_XOR,
+  T_BIT_COUNT,
+  T_BITSHIFT_LEFT,
+  T_BITSHIFT_RIGHT,
+  T_INTDIV,
+  T_INTMOD,
+  T_IF,
+  T_IFNULL,
+  T_ISNULL,
+  T_ACOS,
+  T_ASIN,
+  T_ATAN,
+  T_ATAN2,
+  T_COS,
+  T_SIN,
+  T_TAN,
+  T_COT,
+  T_PI,
+  T_DEGREES,
+  T_RADIANS,
+  T_FORMAT,
+  T_CONCAT,
+  T_CONCAT_WS,
+  T_FIELD,
+  T_LEFT,
+  T_RIGHT,
+  T_LOCATE,
+  T_MID,
+  T_STRCMP,
+  T_REVERSE,
+  T_LN,
+  T_LOG2,
+  T_LOG10,
+  T_ADDDATE,
+  T_DATE_ADD,
+  T_SUBDATE,
+  T_DATE_SUB,
+  T_DATE_FORMAT,
+  T_STR_TO_DATE,
   T_MOD,
   T_POSITION,
   T_SUBSTRING,
@@ -184,6 +233,9 @@ typedef enum
   T_SYS_DATE,
   T_SYS_TIME,
   T_SYS_TIMESTAMP,
+  T_TIME_FORMAT,
+  T_TIMESTAMP,
+  T_UNIX_TIMESTAMP,
   T_SYS_DATETIME,
   T_TO_CHAR,
   T_TO_DATE,
@@ -194,6 +246,7 @@ typedef enum
   T_CURRENT_VALUE,
   T_NEXT_VALUE,
   T_CAST,
+  T_CAST_NOFAIL,
   T_CASE,
   T_EXTRACT,
   T_LOCAL_TRANSACTION_ID,
@@ -223,7 +276,12 @@ typedef enum
   T_DRANDOM,
   T_INCR,
   T_DECR,
-  T_SYS_CONNECT_BY_PATH
+  T_SYS_CONNECT_BY_PATH,
+  T_DATE,
+  T_DATEDIFF,
+  T_ROW_COUNT,
+  T_DEFAULT,
+  T_LIST_DBS
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;
@@ -241,6 +299,10 @@ struct arith_list_node
   MISC_OPERAND misc_operand;	/* currently used for trim qualifier
 				 * and datetime extract field specifier */
   PRED_EXPR *pred;		/* predicate expression */
+
+  /* NOTE: The following member is only used on server internally. */
+  struct drand48_data *rand_seed;	/* seed to be used to generate 
+					 * pseudo-random sequence */
 };
 
 typedef struct aggregate_list_node AGGREGATE_TYPE;
@@ -283,13 +345,16 @@ typedef enum
 { V_FALSE = 0, V_TRUE = 1, V_UNKNOWN = 2, V_ERROR = -1 } DB_LOGICAL;
 
 typedef enum
-{ B_AND = 1, B_OR } BOOL_OP;
+{ B_AND = 1, B_OR,
+  B_XOR, B_IS, B_IS_NOT
+} BOOL_OP;
 
 typedef enum
 { R_EQ = 1, R_NE, R_GT, R_GE, R_LT, R_LE, R_NULL, R_EXISTS, R_LIKE,
   R_EQ_SOME, R_NE_SOME, R_GT_SOME, R_GE_SOME, R_LT_SOME,
   R_LE_SOME, R_EQ_ALL, R_NE_ALL, R_GT_ALL, R_GE_ALL, R_LT_ALL,
-  R_LE_ALL, R_SUBSET, R_SUPERSET, R_SUBSETEQ, R_SUPERSETEQ, R_EQ_TORDER
+  R_LE_ALL, R_SUBSET, R_SUPERSET, R_SUBSETEQ, R_SUPERSETEQ, R_EQ_TORDER,
+  R_NULLSAFE_EQ
 } REL_OP;
 
 typedef enum

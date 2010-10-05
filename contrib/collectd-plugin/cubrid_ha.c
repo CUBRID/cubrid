@@ -1,28 +1,39 @@
-/**
- * collectd - cubrid_ha.c
- * Copyright (C) 1999-2008 NHN. 
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation; only version 2 of the License is applicable.
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
- * Authors:
- *   DBMS Development lab.
- **/
+ */
+
+/*
+ * cubrid_ha.c - collectd plugin
+ */
+
+#include "cubrid_config.h"
+
+#if defined (C_API_MODE)
+
+#include "system.h"
+#include "dbi.h"
+#else
+#include "cas_cci.h"
+#endif
 
 #include "collectd.h"
 #include "common.h"
 #include "plugin.h"
-#include "cas_cci.h"
 
 /* cubrid broker include files */
 #include "cubrid_ha.h"
@@ -54,6 +65,11 @@ static char *logpath_1_2 = NULL;
 static char *db_2 = NULL;
 static char *logpath_2_1 = NULL;
 static char *logpath_2_2 = NULL;
+#if defined (C_API_MODE)
+#else
+static int con = 0;
+static int isConnected = 0;
+#endif
 
 static int
 config (const char *key, const char *value)
@@ -129,16 +145,23 @@ cubrid_ha_init (void)
 static int
 ha_read_info (char *dbname, char *logpath, int idx)
 {
-  int con = 0;
+#if defined (C_API_MODE)
+  DB_QUERY_ERROR error_stat;
+  DB_QUERY_RESULT *result;
+  int errcode;
+  DB_VALUE val;
+#else
+  int req;
+  T_CCI_ERROR error;
+#endif
   int ind;
+
   long long value;
   int ivalue;
   int res;
-  int req;
   int query_len;
   char query[512];
   int i;
-  T_CCI_ERROR error;
   char submit_name[256];
   value_t insert_count[1];
   value_t update_count[1];
@@ -149,30 +172,56 @@ ha_read_info (char *dbname, char *logpath, int idx)
   value_t delay_time[1];
 
   sprintf (submit_name, "%s_%s", dbname, logpath);
-  if ((con = cci_connect (host, port, dbname, user, pass)) < 0)
-    {
-      return -1;
-    }
 
+#if defined (C_API_MODE)
+  if (db_login (user, pass) < 0)
+    {
+      goto error;
+    }
+  if (db_restart ("cubrid_ha", 0, dbname) < 0)
+    {
+      goto error;
+    }
+#else
+  if (isConnected == 0)
+    {
+      if ((con = cci_connect (host, port, dbname, user, pass)) < 0)
+	{
+	  return -1;
+	}
+    }
+#endif
   sprintf (query,
 	   "SELECT insert_counter,update_counter,delete_counter,schema_counter,commit_counter,fail_counter,log_record_time,last_access_time,last_access_time - log_record_time,status from db_ha_apply_info where db_name='%s' and copied_log_path='%s'",
 	   dbname, logpath);
   query_len = strlen (query);
 
+#if defined (C_API_MODE)
+  errcode = db_execute (query, &result, &error_stat);
+  if (errcode < 0)
+    {
+      db_shutdown ();
+      goto error;
+    }
+#else
   if ((req = cci_prepare (con, query, 0, &error)) < 0)
     {
-      cci_disconnect (con, &error);
-      return -1;
+      goto error;
     }
-
+  isConnected = 1;
   if ((res = cci_execute (req, 0, 0, &error)) < 0)
     {
-      cci_disconnect (con, &error);
-      return -1;
+      goto error;
     }
+#endif
 
+#if defined (C_API_MODE)
+  res = db_query_tuple_count (result);
+  if (res == 0)
+#else
   res = cci_cursor (req, 1, CCI_CURSOR_FIRST, &error);
   if (res == CCI_ER_NO_MORE_DATA)
+#endif
     {
       // no data
       insert_count[0].counter = 0;
@@ -185,24 +234,30 @@ ha_read_info (char *dbname, char *logpath, int idx)
     }
   else
     {
+#if defined (C_API_MODE)
+      db_query_first_tuple (result);
+#else
       res = cci_fetch (req, &error);
-
       if (res < 0)
 	{
 	  cci_close_req_handle (req);
-	  cci_disconnect (con, &error);
-	  return -1;
+	  goto error;
 	}
-
+#endif
       for (i = 0; i < 6; i++)
 	{
+#if defined (C_API_MODE)
+	  res = db_query_get_tuple_value (result, i, &val);
+	  value = db_get_bigint (&val);
+	  ind = 1;
+#else
 	  res = cci_get_data (req, i + 1, CCI_A_TYPE_BIGINT, &value, &ind);
 	  if (res < 0)
 	    {
 	      cci_close_req_handle (req);
-	      cci_disconnect (con, &error);
-	      return -1;
+	      goto error;
 	    }
+#endif
 	  switch (i)
 	    {
 	    case 0:
@@ -268,21 +323,29 @@ ha_read_info (char *dbname, char *logpath, int idx)
 	    }
 	}
     }
+#if defined (C_API_MODE)
+  res = db_query_get_tuple_value (result, 8, &val);
+  value = db_get_bigint (&val);
+#else
   res = cci_get_data (req, 9, CCI_A_TYPE_BIGINT, &value, &ind);
   if (res < 0)
     {
       cci_close_req_handle (req);
-      cci_disconnect (con, &error);
-      return -1;
+      goto error;
     }
+#endif
 
+#if defined (C_API_MODE)
+  res = db_query_get_tuple_value (result, 9, &val);
+  ivalue = db_get_int (&val);
+#else
   res = cci_get_data (req, 10, CCI_A_TYPE_INT, &ivalue, &ind);
   if (res < 0)
     {
       cci_close_req_handle (req);
-      cci_disconnect (con, &error);
-      return -1;
+      goto error;
     }
+#endif
 
   if (ivalue == 1)
     {
@@ -300,10 +363,22 @@ ha_read_info (char *dbname, char *logpath, int idx)
   submit ("cubrid_ha_schema", submit_name, schema_count, 1);
   submit ("cubrid_ha_commit", submit_name, commit_count, 1);
   submit ("cubrid_ha_fail", submit_name, fail_count, 1);
-  cci_close_req_handle (req);
-  cci_disconnect (con, &error);
 
+#if defined (C_API_MODE)
+  db_shutdown ();
+#else
+  cci_close_req_handle (req);
+#endif
   return 0;
+
+error:
+#if defined (C_API_MODE)
+  return -1;
+#else
+  cci_disconnect (con, &error);
+  isConnected = 0;
+  return -1;
+#endif
 }
 
 static int
@@ -341,7 +416,12 @@ submit (char *type, char *type_instance, value_t * values, int value_cnt)
   strcpy (vl.plugin_instance, "");
   strcpy (vl.type_instance, type_instance);
 
+#if defined (COLLECTD_43)
   plugin_dispatch_values (type, &vl);
+#else
+  strcpy (vl.type, type);
+  plugin_dispatch_values (&vl);
+#endif
 }
 
 void

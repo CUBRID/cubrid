@@ -1361,10 +1361,10 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
   if (pgbuf_Pool.tran_holder_info[tran_index].num_hold_cnt > 0)
     {
       /* For each BCB holder entry of transaction's holder list */
-      while (pgbuf_Pool.tran_holder_info[tran_index].tran_hold_list != NULL)
+      holder = pgbuf_Pool.tran_holder_info[tran_index].tran_hold_list;
+      while (holder != NULL)
 	{
-	  holder = pgbuf_Pool.tran_holder_info[tran_index].tran_hold_list;
-	  CAST_BFPTR_TO_PGPTR (pgptr, (holder->bufptr));
+	  CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
 
 #if defined(NDEBUG)
 	  pgbuf_unfix_and_init (thread_p, pgptr);
@@ -1374,53 +1374,54 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
 	   * transaction, and the BCB holder entry is removed from the holder
 	   * list of the transaction
 	   */
+	  holder = pgbuf_Pool.tran_holder_info[tran_index].tran_hold_list;
 #else /* NDEBUG */
-	  {
-	    CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-	    assert (!VPID_ISNULL (&bufptr->vpid));
+	  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+	  assert (!VPID_ISNULL (&bufptr->vpid));
 
-	    latch_mode_str =
-	      (bufptr->latch_mode == PGBUF_NO_LATCH) ? "No Latch" :
-	      (bufptr->latch_mode == PGBUF_LATCH_READ) ? "Read" :
-	      (bufptr->latch_mode == PGBUF_LATCH_WRITE) ? "Write" :
-	      (bufptr->latch_mode == PGBUF_LATCH_FLUSH) ? "Flush" :
-	      (bufptr->latch_mode == PGBUF_LATCH_VICTIM) ? "Victim" :
-	      (bufptr->latch_mode == PGBUF_LATCH_FLUSH_INVALID) ? "FlushInv" :
-	      (bufptr->latch_mode ==
-	       PGBUF_LATCH_VICTIM_INVALID) ? "VictimInv" : "Fault";
+	  latch_mode_str =
+	    (bufptr->latch_mode == PGBUF_NO_LATCH) ? "No Latch" :
+	    (bufptr->latch_mode == PGBUF_LATCH_READ) ? "Read" :
+	    (bufptr->latch_mode == PGBUF_LATCH_WRITE) ? "Write" :
+	    (bufptr->latch_mode == PGBUF_LATCH_FLUSH) ? "Flush" :
+	    (bufptr->latch_mode == PGBUF_LATCH_VICTIM) ? "Victim" :
+	    (bufptr->latch_mode == PGBUF_LATCH_FLUSH_INVALID) ? "FlushInv" :
+	    (bufptr->latch_mode ==
+	     PGBUF_LATCH_VICTIM_INVALID) ? "VictimInv" : "Fault";
 
-	    zone_str = ((bufptr->zone == PGBUF_LRU_1_ZONE) ? "LRU_1_Zone" :
-			(bufptr->zone == PGBUF_LRU_2_ZONE) ? "LRU_2_Zone" :
-			(bufptr->zone ==
-			 PGBUF_INVALID_ZONE) ? "INVALID_Zone" : "VOID_Zone");
+	  zone_str = ((bufptr->zone == PGBUF_LRU_1_ZONE) ? "LRU_1_Zone" :
+		      (bufptr->zone == PGBUF_LRU_2_ZONE) ? "LRU_2_Zone" :
+		      (bufptr->zone ==
+		       PGBUF_INVALID_ZONE) ? "INVALID_Zone" : "VOID_Zone");
 
-	    /* check if the content of current buffer page is consistent. */
+	  /* check if the content of current buffer page is consistent. */
 #if defined(CUBRID_DEBUG)
-	    consistent = pgbuf_is_consistent (bufptr, 0);
-	    consistent_str = ((consistent == PGBUF_CONTENT_GOOD) ? "GOOD" :
-			      (consistent == PGBUF_CONTENT_BAD) ? "BAD" :
-			      "LIKELY BAD");
+	  consistent = pgbuf_is_consistent (bufptr, 0);
+	  consistent_str = ((consistent == PGBUF_CONTENT_GOOD) ? "GOOD" :
+			    (consistent == PGBUF_CONTENT_BAD) ? "BAD" :
+			    "LIKELY BAD");
 #else /* CUBRID_DEBUG */
-	    consistent_str = "UNKNOWN";
+	  consistent_str = "UNKNOWN";
 #endif /* CUBRID_DEBUG */
-	    er_log_debug (ARG_FILE_LINE, "pgbuf_unfix_all: WARNING"
-			  " %4d %5d %6d %4d %9s %1d %1d %1d %11s"
-			  " %6d|%4d %10s %p %p-%p\n",
-			  bufptr->ipool, bufptr->vpid.volid,
-			  bufptr->vpid.pageid, bufptr->fcnt, latch_mode_str,
-			  bufptr->dirty, bufptr->avoid_victim,
-			  bufptr->async_flush_request, zone_str,
-			  bufptr->iopage_buffer->iopage.prv.lsa.pageid,
-			  bufptr->iopage_buffer->iopage.prv.lsa.offset,
-			  consistent_str, (void *) bufptr,
-			  (void *) (&bufptr->iopage_buffer->iopage.page[0]),
-			  (void *) (&bufptr->iopage_buffer->iopage.
-				    page[DB_PAGESIZE - 1]));
-	  }
-	  /* debugging purpose */
-	  assert (false);
+	  er_log_debug (ARG_FILE_LINE, "pgbuf_unfix_all: WARNING"
+			" %4d %5d %6d %4d %9s %1d %1d %1d %11s"
+			" %6d|%4d %10s %p %p-%p\n",
+			bufptr->ipool, bufptr->vpid.volid,
+			bufptr->vpid.pageid, bufptr->fcnt, latch_mode_str,
+			bufptr->dirty, bufptr->avoid_victim,
+			bufptr->async_flush_request, zone_str,
+			bufptr->iopage_buffer->iopage.prv.lsa.pageid,
+			bufptr->iopage_buffer->iopage.prv.lsa.offset,
+			consistent_str, (void *) bufptr,
+			(void *) (&bufptr->iopage_buffer->iopage.page[0]),
+			(void *) (&bufptr->iopage_buffer->iopage.
+				  page[DB_PAGESIZE - 1]));
+
+	  holder = holder->tran_link;
 #endif /* NDEBUG */
 	}
+
+      assert (false);
     }
 }
 
@@ -1577,6 +1578,10 @@ pgbuf_invalidate_temporary_file (VOLID volid, PAGEID first_pageid,
   VPID vpid;
   int i;
   bool is_last_page = false;
+
+#if 1				/* at here, do not invalidate page buffer - NEED FUTURE WORK */
+  need_invalidate = false;
+#endif
 
   vpid.volid = volid;
   for (i = 0; i < npages; i++)
@@ -1965,8 +1970,8 @@ pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid)
  * Note: Every dirty page of the specified volume which is unfixed is written
  *       out after its lsa is initialized to a null lsa. If volid is equal to
  *       NULL_VOLID, all dirty pages of all volumes that are unfixed are
- *       flushed to disk after its lsa is initialized to null.                                          *
-         Its use is recommended by only the log and recovery manager.
+ *       flushed to disk after its lsa is initialized to null.
+ *       Its use is recommended by only the log and recovery manager.
  */
 #if !defined(NDEBUG)
 int
@@ -4134,6 +4139,7 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p,
 	  thread_lock_entry (curr_thrd_entry);
 	  if (curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
 	    {
+	      assert (curr_thrd_entry->tran_index != NULL_TRAN_INDEX);
 	      holder = pgbuf_allocate_tran_holder_entry (thread_p,
 							 curr_thrd_entry->
 							 tran_index);
@@ -4450,6 +4456,7 @@ pgbuf_wakeup_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
 		  /* allocate a BCB holder entry, connect it into the holder
 		     list, and initialize it. */
+		  assert (thrd_entry->tran_index != NULL_TRAN_INDEX);
 		  holder =
 		    pgbuf_allocate_tran_holder_entry (thread_p,
 						      thrd_entry->tran_index);
@@ -5547,7 +5554,8 @@ pgbuf_get_victim_from_lru_list (const VPID * vpid)
   while ((bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom) != NULL)
     {
       tmp_buf_p = bufptr;
-      check_count = MAX (1, PGBUF_LRU_SIZE * PGBUF_VICTIM_FLUSH_MAX_RATIO);
+      check_count =
+	MAX (1, (int) (PGBUF_LRU_SIZE * PGBUF_VICTIM_FLUSH_MAX_RATIO));
 
       /* search for non dirty PGBUF */
       while (tmp_buf_p != NULL && check_count > 0)
@@ -5596,7 +5604,8 @@ pgbuf_get_victim_from_lru_list (const VPID * vpid)
       bufptr->zone = PGBUF_VOID_ZONE;
 
 #if defined(SERVER_MODE)
-      if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom->dirty == true)
+      if (pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom != NULL
+	  && pgbuf_Pool.buf_LRU_list[lru_idx].LRU_bottom->dirty == true)
 	{
 	  thread_wakeup_page_flush_thread ();
 	}

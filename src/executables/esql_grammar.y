@@ -37,7 +37,7 @@
 #define BUFFER_mode	6
 #define COMMENT_mode	7
 
-//#define PARSER_DEBUG
+/* #define PARSER_DEBUG */
 
 
 #ifdef PARSER_DEBUG
@@ -54,7 +54,7 @@
 #define PARSER_NEW_NODE(a, b) parser_new_node(a, b)
 #define PARSER_FREE_NODE(a, b) parser_free_node(a, b)
 #define PRINT_(a)
-#define PRINT_1(a, b) 
+#define PRINT_1(a, b)
 
 #endif
 
@@ -62,7 +62,7 @@
 #define inline
 #endif
 
-extern char* esql_yytext;
+extern char *esql_yytext;
 extern int esql_yylineno;
 
 #include "config.h"
@@ -105,21 +105,21 @@ extern int esql_yylineno;
 enum
 {
   MSG_DONT_KNOW = 1,
-  MSG_CHECK_CORRECTNESS, 
+  MSG_CHECK_CORRECTNESS,
   MSG_USING_NOT_PERMITTED,
   MSG_CURSOR_UNDEFINED,
   MSG_PTR_TO_DESCR,
   MSG_PTR_TO_DB_OBJECT,
   MSG_CHAR_STRING,
   MSG_INDICATOR_NOT_ALLOWED,
-  MSG_NOT_DECLARED ,
-  MSG_MUST_BE_SHORT ,
-  MSG_INCOMPLETE_DEF ,
-  MSG_NOT_VALID ,
-  MSG_TYPE_NOT_ACCEPTABLE ,
-  MSG_UNKNOWN_HV_TYPE ,
-  MSG_BAD_ADDRESS ,
-  MSG_DEREF_NOT_ALLOWED ,
+  MSG_NOT_DECLARED,
+  MSG_MUST_BE_SHORT,
+  MSG_INCOMPLETE_DEF,
+  MSG_NOT_VALID,
+  MSG_TYPE_NOT_ACCEPTABLE,
+  MSG_UNKNOWN_HV_TYPE,
+  MSG_BAD_ADDRESS,
+  MSG_DEREF_NOT_ALLOWED,
   MSG_NOT_POINTER,
   MSG_NOT_POINTER_TO_STRUCT,
   MSG_NOT_STRUCT,
@@ -132,13 +132,13 @@ enum
 };
 #endif
 
-static SYMBOL* g_identifier_symbol;
-static STRUCTDEF* g_sdef2;
+static SYMBOL *g_identifier_symbol;
+static STRUCTDEF *g_sdef2;
 static int g_su;
-static SYMBOL* g_psym;
-static SYMBOL* g_struct_declaration_sym;
-static SYMBOL* g_last;
-static HOST_VAR* g_href;
+static SYMBOL *g_psym;
+static SYMBOL *g_struct_declaration_sym;
+static SYMBOL *g_last;
+static HOST_VAR *g_href;
 static int g_cursor_type;
 
 static bool repeat_option;
@@ -153,27 +153,27 @@ static int n_refs;
 static void reset_globals (void);
 static void ignore_repeat (void);
 static char *ofile_name (char *fname);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int validate_input_file (void *fname, FILE * outfp);
+#endif
 void pt_print_errors (PARSER_CONTEXT * parser_in);
 enum scanner_mode esql_yy_mode (void);
 
-char* mm_malloc(int size);
-char* mm_strdup(char* str);
-void mm_free(void);
+char *mm_malloc (int size);
+char *mm_strdup (char *str);
+void mm_free (void);
 
-extern PARSER_CONTEXT* parser;
+extern PARSER_CONTEXT *parser;
 
-varstring * esql_yy_get_buf (void);
+varstring *esql_yy_get_buf (void);
 void esql_yy_set_buf (varstring * vstr);
 
 
 extern char g_delay[];
 extern bool g_indicator;
-extern varstring* g_varstring;
-extern varstring* g_subscript;
+extern varstring *g_varstring;
+extern varstring *g_subscript;
 extern bool need_line_directive;
-
-
 
 #endif
 
@@ -183,9 +183,9 @@ extern bool need_line_directive;
 %error_verbose
 
 %union {
-	SYMBOL* p_sym;
-	void* ptr;
-	int number;
+  SYMBOL *p_sym;
+  void *ptr;
+  int number;
 }
 
 %token<ptr> ADD
@@ -3088,9 +3088,9 @@ csql_statement_tail
 			      }
 			    else
 			      {
-				repeat_option =
-				  (pt[0]->node_type == PT_INSERT
-				   && pt[0]->info.insert.is_value != PT_IS_SUBQUERY);
+				repeat_option = (pt[0]->node_type == PT_INSERT && !pt[0]->info.insert.do_replace && pt[0]->info.insert.on_dup_key_update == NULL
+				   && pt[0]->info.insert.value_clauses->info.node_list.list_type != PT_IS_SUBQUERY
+				   && pt[0]->info.insert.value_clauses->info.node_list.list->next == NULL);
 				esql_Translate_table.tr_static (text,
 								length,
 								repeat_option,

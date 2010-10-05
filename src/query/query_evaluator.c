@@ -211,7 +211,7 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator)
       break;
     }
 
-  if (result == DB_UNK)
+  if (result == DB_UNK && rel_operator != R_NULLSAFE_EQ)
     {
       return V_UNKNOWN;
     }
@@ -242,6 +242,24 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator)
     case R_SUPERSETEQ:
       return (((result == DB_SUPERSET)
 	       || (result == DB_EQ)) ? V_TRUE : V_FALSE);
+    case R_NULLSAFE_EQ:
+      if (result == DB_EQ)
+	return V_TRUE;
+      else
+	{
+	  if (dbval1 == NULL || PRIM_IS_NULL (dbval1))
+	    {
+	      if (dbval2 == NULL || PRIM_IS_NULL (dbval2))
+		return V_TRUE;
+	      else
+		return V_FALSE;
+	    }
+	  else
+	    {
+	      return V_FALSE;
+	    }
+	}
+      break;
     default:
       return V_ERROR;
     }
@@ -1704,6 +1722,45 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	    }
 	  break;
 
+	case B_XOR:
+	  {
+	    DB_LOGICAL result_lhs, result_rhs;
+
+	    result_lhs = eval_pred (thread_p, pr->pe.pred.lhs, vd, obj_oid);
+	    result_rhs = eval_pred (thread_p, pr->pe.pred.rhs, vd, obj_oid);
+
+	    if (result_lhs == V_ERROR || result_rhs == V_ERROR)
+	      result = V_ERROR;
+	    else if (result_lhs == V_UNKNOWN || result_rhs == V_UNKNOWN)
+	      result = V_UNKNOWN;
+	    else if (result_lhs == result_rhs)
+	      result = V_FALSE;
+	    else
+	      result = V_TRUE;
+	  }
+	  break;
+
+	case B_IS:
+	case B_IS_NOT:
+	  {
+	    DB_LOGICAL result_lhs, result_rhs;
+	    DB_LOGICAL _v_true, _v_false;
+
+	    _v_true = (pr->pe.pred.bool_op == B_IS) ? V_TRUE : V_FALSE;
+	    _v_false = V_TRUE - _v_true;
+
+	    result_lhs = eval_pred (thread_p, pr->pe.pred.lhs, vd, obj_oid);
+	    result_rhs = eval_pred (thread_p, pr->pe.pred.rhs, vd, obj_oid);
+
+	    if (result_lhs == V_ERROR || result_rhs == V_ERROR)
+	      result = V_ERROR;
+	    else if (result_lhs == result_rhs)
+	      result = _v_true;
+	    else
+	      result = _v_false;
+	  }
+	  break;
+
 	default:
 	  result = V_ERROR;
 	  break;
@@ -1799,7 +1856,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		}
 	      else if (db_value_is_null (peek_val1))
 		{
-		  if (et_comp->rel_op != R_EQ_TORDER)
+		  if (et_comp->rel_op != R_EQ_TORDER
+		      && et_comp->rel_op != R_NULLSAFE_EQ)
 		    {
 		      return V_UNKNOWN;
 		    }
@@ -1815,7 +1873,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		}
 	      else if (db_value_is_null (peek_val2))
 		{
-		  if (et_comp->rel_op != R_EQ_TORDER)
+		  if (et_comp->rel_op != R_EQ_TORDER
+		      && et_comp->rel_op != R_NULLSAFE_EQ)
 		    {
 		      return V_UNKNOWN;
 		    }
@@ -2025,7 +2084,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
     {
       return V_ERROR;
     }
-  else if (db_value_is_null (peek_val1))
+  else if (db_value_is_null (peek_val1) && et_comp->rel_op != R_NULLSAFE_EQ)
     {
       return V_UNKNOWN;
     }
@@ -2035,7 +2094,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
     {
       return V_ERROR;
     }
-  else if (db_value_is_null (peek_val2))
+  else if (db_value_is_null (peek_val2) && et_comp->rel_op != R_NULLSAFE_EQ)
     {
       return V_UNKNOWN;
     }

@@ -28,14 +28,14 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 import java.util.Properties;
 import java.util.ArrayList;
 import java.util.StringTokenizer;
-import cubrid.jdbc.driver.*;
-import cubrid.jdbc.jci.*;
+import @CUBRID_DRIVER@.*;
+import @CUBRID_JCI@.*;
 
 #ifdef SERVER_SIDE_JDBC
  import com.cubrid.jsp.ExecuteThread;
@@ -65,7 +65,7 @@ public class CUBRIDDriver implements Driver
   public static final String default_user = "public";
   public static final String default_password = "";
 
-  private final static String CUBRID_JDBC_URL_HEADER = "jdbc:cubrid:";
+  private final static String CUBRID_JDBC_URL_HEADER = "jdbc:cubrid";
   private final static String JDBC_DEFAULT_CONNECTION = "jdbc:default:connection";
   private final static String CONNECTION_PROPERTY_CHARSET = "charset";
   private final static String CONNECTION_PROPERTY_ALTERNATIVE_HOSTS = "althosts";
@@ -85,161 +85,187 @@ public class CUBRIDDriver implements Driver
     }
   }
 
-  /*
-   * java.sql.Driver interface
-   */
-
-  public Connection connect(String url, Properties info) throws SQLException
-  {
-    String hostname, db_name, user, passwd, dummy;
-    int port;
-    Properties paramInfo;
-    UConnection u_con;
-
-    if (!acceptsURL(url))
-      throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url);
-
-    if (url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION))
-    {
-      return defaultConnection();
-    }
-    else
-    {
-      // parse url
-      try
-      {
-        dummy = url.substring(12);
-        hostname = dummy.substring(0, dummy.indexOf(':'));
-        if (hostname.length() == 0)
-          hostname = default_hostname;
-
-        dummy = dummy.substring(dummy.indexOf(':') + 1);
-        if (dummy.indexOf(':') > 0)
-          port = Integer.valueOf(dummy.substring(0, dummy.indexOf(':')))
-              .intValue();
-        else
-          port = default_port;
-
-        dummy = dummy.substring(dummy.indexOf(':') + 1);
-        db_name = dummy.substring(0, dummy.indexOf(':'));
-        if (db_name.length() == 0)
-          db_name = null;
-
-        dummy = dummy.substring(dummy.indexOf(':') + 1);
-        user = dummy.substring(0, dummy.indexOf(':'));
-        if (user.length() == 0)
-          user = null;
-
-        dummy = dummy.substring(dummy.indexOf(':') + 1);
-        passwd = dummy.substring(0, dummy.indexOf(':'));
-        if (passwd.length() == 0)
-          passwd = null;
-
-        dummy = dummy.substring(dummy.indexOf(':') + 1);
-        paramInfo = make_param_info(dummy);
-      }
-      catch (CUBRIDException e)
-      {
-        throw e;
-      }
-      catch (Exception e)
-      {
-        throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url);
-      }
-
-      // getting informations from the Properties object
-      dummy = info.getProperty("user");
-      if (dummy != null)
-      {
-        user = dummy;
-      }
-      dummy = info.getProperty("password");
-      if (dummy != null)
-      {
-        passwd = dummy;
-      }
-
-      if (db_name == null)
-      {
-        throw new CUBRIDException(CUBRIDJDBCErrorCode.no_dbname);
-      }
-
-      if (user == null)
-      {
-        user = default_user;
-      }
-      if (passwd == null)
-      {
-        passwd = default_password;
-      }
-
-      dummy = info.getProperty(CONNECTION_PROPERTY_ALTERNATIVE_HOSTS);
-      if (dummy == null)
-      {
-        dummy = paramInfo.getProperty(CONNECTION_PROPERTY_ALTERNATIVE_HOSTS);
-      }
-      if (dummy != null)
-      {
-        ArrayList<String> altHostList = new ArrayList<String>();
-
-	altHostList.add(hostname + ":" + port);
-
-      	StringTokenizer st = new StringTokenizer(dummy, ",", false);
-      	while (st.hasMoreTokens())
-      	{
-      	  altHostList.add(st.nextToken());
-      	}
-      	try
-      	{
-	  u_con = UJCIManager.connect(altHostList, db_name, user, passwd, url);
-      	}
-      	catch (CUBRIDException e)
-      	{
-      	  throw e;
-      	}
-      }
-      else
-      {
-	try
-	{
-	  u_con = UJCIManager.connect(hostname, port, db_name, user, passwd, url);
-	}
-	catch (CUBRIDException e)
-	{
-	  throw e;
-	}
-      }
-
-      dummy = info.getProperty(CONNECTION_PROPERTY_RECONNECTION_TIME);
-      if (dummy == null)
-      {
-        dummy = paramInfo.getProperty(CONNECTION_PROPERTY_RECONNECTION_TIME);
-      }
-      if (dummy != null)
-      {
-	u_con.setReconnectionTime(Integer.valueOf(dummy).intValue());
-      }
-
-      dummy = info.getProperty(CONNECTION_PROPERTY_CHARSET);
-      if (dummy == null)
-      {
-        dummy = paramInfo.getProperty(CONNECTION_PROPERTY_CHARSET);
-      }
-      if (dummy != null)
-      {
-        try
-        {
-          u_con.setCharset(dummy);
+    private boolean exValidKey(String key) throws Exception {
+        String className = CUBRIDDriver.class.getName();
+        String classSplit[] = className.split("\\.");
+        String keySplit[] = key.split("\\-");
+        if (!classSplit[0].equals(keySplit[0].toLowerCase())) {
+            throw new Exception("Invalid URL");
         }
-        catch (java.io.UnsupportedEncodingException e)
-        {
-          throw new SQLException("UnsupportedEncodingException : " + dummy);
+
+        if (classSplit[2].equals("oracle") || classSplit[2].equals("mysql")) {
+            if (keySplit[1] != null && !classSplit[2].equals(keySplit[1].toLowerCase())) {
+                throw new Exception("Invalid URL");
+            }
+        } else {
+            if (keySplit.length != 1) {
+                throw new Exception("Invalid URL");
+            }
         }
-      }
+        return true;
     }
 
-    return new CUBRIDConnection(u_con, url, user);
-  }
+    /*
+     * java.sql.Driver interface
+     */
+
+    public Connection connect(String url, Properties info) throws SQLException {
+        String magickey, hostname, db_name, dummy, conn_string, prop_string;
+	String user = null, passwd = null;
+        int prop_pos = 0;
+        int port;
+        Properties paramInfo;
+        UConnection u_con;
+
+        if (!acceptsURL(url))
+            throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url);
+
+        if (url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION)) {
+            return defaultConnection();
+        } else {
+            // parse url
+            try {
+                prop_pos = url.indexOf('?');
+
+                if (prop_pos != -1) {
+                    conn_string = url.substring(0, prop_pos);
+                    prop_string = url.substring(prop_pos, url.length());
+                } else {
+                    conn_string = url;
+                    prop_string = null;
+                }
+
+                StringTokenizer tokenizer = new StringTokenizer(conn_string, ":", true);
+                dummy = tokenizer.nextToken();
+                if (dummy.equals(":")) {
+                    throw new Exception("Invalid URL");
+                } else {
+                    tokenizer.nextToken();
+                }
+
+                magickey = tokenizer.nextToken();
+                if (magickey.equals(":")) {
+                    throw new Exception("Invalid URL");
+                } else {
+                    tokenizer.nextToken();
+                    exValidKey(magickey);
+                }
+
+                hostname = tokenizer.nextToken();
+                if (hostname.equals(":")) {
+                    hostname = default_hostname;
+                } else {
+                    tokenizer.nextToken();
+                }
+
+                dummy = tokenizer.nextToken();
+                if (dummy.equals(":")) {
+                    port = default_port;
+                } else {
+                    port = Integer.parseInt(dummy);
+                    tokenizer.nextToken();
+                }
+
+                db_name = tokenizer.nextToken();
+                if (db_name.equals(":")) {
+                    throw new CUBRIDException(CUBRIDJDBCErrorCode.no_dbname);
+                } 
+		
+	        /* Both user and password are optional.
+		 * Test if there are more tokens available to prevent NoSuchElementException.
+		 */	
+		if (tokenizer.hasMoreTokens()) {
+			/* skip ':' */
+			tokenizer.nextToken();
+			if (tokenizer.hasMoreTokens()) {
+				user = tokenizer.nextToken();
+				if (user.equals(":")) {
+					user = null;
+				}
+			}
+		}
+		if (tokenizer.hasMoreTokens()) {
+			/* skip ':' */
+			tokenizer.nextToken();
+			if (tokenizer.hasMoreTokens()) {
+				passwd = tokenizer.nextToken();
+				if (passwd.equals(":")) {
+					passwd = null;
+				}
+			}
+		}
+
+                paramInfo = make_param_info(prop_string);
+            } catch (CUBRIDException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new CUBRIDException(CUBRIDJDBCErrorCode.invalid_url, url);
+            }
+
+            // getting informations from the Properties object
+            dummy = info.getProperty("user");
+            if (dummy != null) {
+                user = dummy;
+            }
+            dummy = info.getProperty("password");
+            if (dummy != null) {
+                passwd = dummy;
+            }
+
+            if (user == null) {
+                user = default_user;
+            }
+            if (passwd == null) {
+                passwd = default_password;
+            }
+
+            dummy = info.getProperty(CONNECTION_PROPERTY_ALTERNATIVE_HOSTS);
+            if (dummy == null) {
+                dummy = paramInfo.getProperty(CONNECTION_PROPERTY_ALTERNATIVE_HOSTS);
+            }
+            if (dummy != null) {
+                ArrayList<String> altHostList = new ArrayList<String>();
+                altHostList.add(hostname + ":" + port);
+
+                StringTokenizer st = new StringTokenizer(dummy, ",", false);
+                while (st.hasMoreTokens()) {
+                    altHostList.add(st.nextToken());
+                }
+                try {
+                    u_con = UJCIManager.connect(altHostList, db_name, user, passwd, url);
+                } catch (CUBRIDException e) {
+                    throw e;
+                }
+            } else {
+                try {
+                    u_con = UJCIManager.connect(hostname, port, db_name, user, passwd, url);
+                } catch (CUBRIDException e) {
+                    throw e;
+                }
+            }
+
+            dummy = info.getProperty(CONNECTION_PROPERTY_RECONNECTION_TIME);
+            if (dummy == null) {
+                dummy = paramInfo.getProperty(CONNECTION_PROPERTY_RECONNECTION_TIME);
+            }
+            if (dummy != null) {
+                u_con.setReconnectionTime(Integer.valueOf(dummy).intValue());
+            }
+
+            dummy = info.getProperty(CONNECTION_PROPERTY_CHARSET);
+            if (dummy == null) {
+                dummy = paramInfo.getProperty(CONNECTION_PROPERTY_CHARSET);
+            }
+            if (dummy != null) {
+                try {
+                    u_con.setCharset(dummy);
+                } catch (java.io.UnsupportedEncodingException e) {
+                    throw new SQLException("UnsupportedEncodingException : " + dummy);
+                }
+            }
+        }
+        return new CUBRIDConnection(u_con, url, user);
+    }
 
   public Connection defaultConnection() throws SQLException
   {

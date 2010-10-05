@@ -652,26 +652,25 @@ db_get_object_id (MOP vclass)
 int
 db_is_vclass (DB_OBJECT * op)
 {
-  SM_CLASS *class_;
-  SM_CLASS_TYPE ct;
-  int is_virtual_class = 0;
+  SM_CLASS *class_ = NULL;
 
   CHECK_CONNECT_ZERO ();
 
-  if (op != NULL)
+  if (op == NULL)
     {
-      if (locator_is_class (op, DB_FETCH_READ))
-	{
-	  if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
-	    {
-	      ct = sm_get_class_type (class_);
-	      if (ct == SM_VCLASS_CT)
-		{
-		  is_virtual_class = 1;
-		}
-	    }
-	}
+      return 0;
     }
-
-  return (is_virtual_class);
+  if (!locator_is_class (op, DB_FETCH_READ))
+    {
+      return 0;
+    }
+  if (au_fetch_class_force (op, &class_, AU_FETCH_READ) != NO_ERROR)
+    {
+      return 0;
+    }
+  if (sm_get_class_type (class_) != SM_VCLASS_CT)
+    {
+      return 0;
+    }
+  return 1;
 }

@@ -407,46 +407,48 @@ Dlg_SdStartCopy:
   
     ListDestroy(listStartCopy);
 
-    /* check if 2008 redistributable is installed */
-    // 1. check registry key(redistributable)      
-    nvType = REGDB_STRING;
-    szValue = "";
+    REGDB_OPTIONS = REGDB_OPTIONS | REGDB_OPTION_WOW64_64KEY;
 
-    // 2. check System is 64bit OS
-    if (SYSINFO.bIsWow64) then
-      if ( nvCodePage = 949 ) then
-	      szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{484D36AC-327E-390E-85C8-9F2B176BA2B6}";
-	      szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{92B8FD1F-C1AE-3750-8577-631B0AA85DF5}";
-      else
-	      szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{350AA351-21FA-3270-8B7A-835434E766AD}";
-	      szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{8220EEFE-38CD-377E-8595-13398D740ACE}";
-      endif;
-    else
-      if ( nvCodePage = 949 ) then
-	      szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{9B775AA1-7B10-379A-9B16-7E373790568C}";
-	      szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{887868A2-D6DE-3255-AA92-AA0B5A59B874}";
-      else
-	      szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{FF66E9F6-83E7-3A3E-AF14-8DE9A809A6A4}";
-	      szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{9A25302D-30C0-39D9-BD6F-21E6EC160475}";
-      endif;
-    endif;
+	/* check if 2008 redistributable is installed */
+	// 1. check registry key(redistributable)      
+	nvType = REGDB_STRING;
+	szValue = "";
 
-    RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+	// 2. check System is 64bit OS
+	if (SYSINFO.bIsWow64) then
+	  if ( nvCodePage = 949 ) then
+		  szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{484D36AC-327E-390E-85C8-9F2B176BA2B6}";
+		  szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{92B8FD1F-C1AE-3750-8577-631B0AA85DF5}";
+	  else
+		  szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{350AA351-21FA-3270-8B7A-835434E766AD}";
+		  szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{8220EEFE-38CD-377E-8595-13398D740ACE}";
+	  endif;
+	else
+	  if ( nvCodePage = 949 ) then
+		  szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{9B775AA1-7B10-379A-9B16-7E373790568C}";
+		  szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{887868A2-D6DE-3255-AA92-AA0B5A59B874}";
+	  else
+		  szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{FF66E9F6-83E7-3A3E-AF14-8DE9A809A6A4}";
+		  szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{9A25302D-30C0-39D9-BD6F-21E6EC160475}";
+	  endif;
+	endif;
+
+	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
 	nResult = RegDBGetKeyValueEx (szKey, "DisplayVersion", nvType, szValue, nvSize);
 	if (nResult < 0) then
-       	nResult = RegDBGetKeyValueEx (szKey_sp1, "DisplayVersion", nvType, szValue, nvSize);
-       	
-       	if (nResult < 0) then
-    	    szTitle = @SCRIPT_STR_0034;
-    	    szMsg = @SCRIPT_STR_0035;
+		nResult = RegDBGetKeyValueEx (szKey_sp1, "DisplayVersion", nvType, szValue, nvSize);
+		
+		if (nResult < 0) then
+			szTitle = @SCRIPT_STR_0034;
+			szMsg = @SCRIPT_STR_0035;
 
-    		nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
-            if (nResult = IDYES) then
-	            abort;
-	        endif;
-	    endif;
-    endif;
-    
+			nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
+			if (nResult = IDYES) then
+				abort;
+			endif;
+		endif;
+	endif;
+
     /* check if jvm is installed */
     if (RunProgram("javaw.exe", "", WAIT, SW_HIDE, -1, ExitCode) < 0) then
 		szMsg = @SCRIPT_STR_0036;
@@ -478,8 +480,6 @@ Dlg_SdStartCopy:
 	    endif;
 	endif;
 
-    REGDB_OPTIONS = REGDB_OPTIONS | REGDB_OPTION_WOW64_64KEY;                        
-    
     // setup default status
     SetStatusWindow(0, "");
     Enable(STATUSEX);
@@ -574,6 +574,9 @@ function OnFirstUIAfter()
 	STRING  szDocCUBRIDManual;
 	STRING  szDocTempFolder, szServiceTray;
 	STRING  setupfilecopy_program, setupfilecopy_param;
+
+	STRING  szValue;
+	NUMBER  nSize;
 begin
    szTitle = "";
    nOption   = SYS_BOOTMACHINE;
@@ -653,7 +656,16 @@ Dlg_Completed:
 	SdFinish(szTitle, "", "", "", "", bOpt1, bOpt2);
 
 	if ( nvCodePage = 949 ) then
-		RunProgram(PROGRAMFILES^"Internet Explorer\\iexplore.exe","http://www.cubrid.com/developer.cub", NOWAIT, SW_SHOW, -1, ExitCode);
+		nvType = REGDB_STRING;
+		szValue = "";
+		nSize = -1;
+		RegDBSetDefaultRoot(HKEY_CLASSES_ROOT);
+		nResult = RegDBGetKeyValueEx ("http\\shell\\open\\command", "", nvType, szValue, nSize);
+		if ( nResult < 0 ) then
+			RunProgram(PROGRAMFILES^"Internet Explorer\\iexplore.exe","http://www.cubrid.com/developer.cub", NOWAIT, SW_SHOW, -1, ExitCode);
+		else
+			RunProgram(szValue,"http://www.cubrid.com/developer.cub", NOWAIT, SW_SHOW, -1, ExitCode);
+		endif;
 	endif;
 
     if (nSetupType = "ALL") then

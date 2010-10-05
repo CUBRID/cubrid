@@ -59,33 +59,46 @@ enum
   StatementExecutedStage,
 };
 
-#if 0
-struct db_session
-{
-  char *stage;			/* vector of statements' stage */
-  char include_oid;		/* NO_OIDS, ROW_OIDS           */
-  int dimension;		/* Number of statements        */
-  int stmt_ndx;			/* 0 <= stmt_ndx < DIM(statements)     */
-  /* statements[stmt_ndx] will be processed by
-     next call to db_compile_statement.       */
-  int line_offset;		/* amount to add to parsers line number */
-  int column_offset;		/* amount to add to parsers column number   */
-
-  PARSER_CONTEXT *parser;	/* handle to parser context structure */
-  DB_QUERY_TYPE **type_list;	/* for storing "nice" column headings */
-  /* type_list[stmt_ndx] is itself an array.  */
-  PT_NODE **statements;		/* statements to be processed in this session */
-};
-#endif
 
 static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
+static DB_SESSION *initialize_session (DB_SESSION * session);
 static int db_execute_and_keep_statement_local (DB_SESSION * session,
 						int stmt_ndx,
 						DB_QUERY_RESULT ** result);
 static DB_OBJLIST *db_get_all_chosen_classes (int (*p) (MOBJ o));
 static int is_vclass_object (MOBJ class_);
 static char *get_reasonable_predicate (DB_ATTRIBUTE * att);
+static void update_execution_values (PARSER_CONTEXT * parser, int result,
+				     CUBRID_STMT_TYPE statement_type);
+static void copy_execution_values (EXECUTION_STATE_VALUES * source,
+				   EXECUTION_STATE_VALUES * destination);
+static int values_list_to_values_array (DB_SESSION * session,
+					PT_NODE * values_list,
+					DB_VALUE_ARRAY * values_array);
+static int do_process_prepare_statement (DB_SESSION * session,
+					 PT_NODE * statement);
+static int do_process_prepare_statement_internal (DB_SESSION * session,
+						  const char *const name,
+						  const char *const
+						  statement_literal);
+static int do_process_execute_prepare (DB_SESSION * session,
+				       PT_NODE * statement,
+				       DB_EXECUTED_STATEMENT_TYPE *
+				       const statement_type,
+				       DB_QUERY_RESULT ** result,
+				       const bool recompile_before_execution,
+				       const bool fail_on_xasl_error);
+static int do_process_deallocate_prepare (DB_SESSION * session,
+					  PT_NODE * statement);
+static DB_PREPARE_INFO *add_prepared_statement_by_name (DB_SESSION * session,
+							const char *name);
+static DB_PREPARE_INFO *get_prepared_statement_by_name (DB_SESSION * session,
+							const char *name);
+static bool delete_prepared_statement_if_exists (DB_SESSION * session,
+						 const char *name);
+static void delete_all_prepared_statements (DB_SESSION * session);
+static bool is_disallowed_as_prepared_statement (PT_NODE_TYPE node_type);
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -164,11 +177,54 @@ db_open_local (void)
   session->include_oid = DB_NO_OIDS;
   session->statements = NULL;
 
+  session->prepared_statements.name = NULL;
+  session->prepared_statements.prepared_session = NULL;
+  session->prepared_statements.statement = NULL;
+  session->prepared_statements.next = NULL;
+  session->is_subsession_for_prepared = false;
+  session->executed_statements = NULL;
+
   return session;
 }
 
 /*
- * db_open_buffer() - Please refer to the db_open_buffer() function
+ * initialize_session() -
+ * returns  : DB_SESSION *, NULL if fails
+ * session(in/out):
+ */
+static DB_SESSION *
+initialize_session (DB_SESSION * session)
+{
+  int i;
+
+  assert (session != NULL && session->statements != NULL);
+
+  session->dimension = get_dimension_of (session->statements);
+
+  session->executed_statements =
+    malloc (sizeof (*session->executed_statements) * session->dimension);
+  if (session->executed_statements == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (*session->executed_statements) * session->dimension);
+      db_close_session (session);
+      return NULL;
+    }
+  else
+    {
+      for (i = 0; i < session->dimension; ++i)
+	{
+	  session->executed_statements[i].query_type_list = NULL;
+	  session->executed_statements[i].statement_type = -1;
+	}
+    }
+
+  return session;
+}
+
+/*
+ * db_open_buffer_local() - Please refer to the db_open_buffer() function
  * returns  : new DB_SESSION
  * buffer(in): contains query text to be compiled
  */
@@ -186,7 +242,7 @@ db_open_buffer_local (const char *buffer)
       session->statements = parser_parse_string (session->parser, buffer);
       if (session->statements)
 	{
-	  session->dimension = get_dimension_of (session->statements);
+	  return initialize_session (session);
 	}
     }
 
@@ -229,7 +285,7 @@ db_open_file (FILE * file)
       session->statements = parser_parse_file (session->parser, file);
       if (session->statements)
 	{
-	  session->dimension = get_dimension_of (session->statements);
+	  return initialize_session (session);
 	}
     }
 
@@ -360,7 +416,7 @@ db_open_file_name (const char *name)
 	}
       if (session->statements)
 	{
-	  session->dimension = get_dimension_of (session->statements);
+	  return initialize_session (session);
 	}
     }
 
@@ -378,7 +434,8 @@ db_compile_statement_local (DB_SESSION * session)
 {
   PARSER_CONTEXT *parser;
   int stmt_ndx;
-  PT_NODE *statement;
+  PT_NODE *statement = NULL;
+  PT_NODE *statement_result = NULL;
   DB_QUERY_TYPE *qtype;
   int cmd_type;
   int err;
@@ -496,13 +553,14 @@ db_compile_statement_local (DB_SESSION * session)
     }
 
   /* do semantic check for the statement */
-  statement = pt_compile (parser, statement);
+  statement_result = pt_compile (parser, statement);
 
-  if (!statement || pt_has_error (parser))
+  if (!statement_result || pt_has_error (parser))
     {
       pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
       return er_errid ();
     }
+  statement = statement_result;
 
   /* get type list describing the output columns titles of the given query */
   if (cmd_type == CUBRID_STMT_SELECT)
@@ -530,7 +588,8 @@ db_compile_statement_local (DB_SESSION * session)
 	     query, ie related to the original text. It may guess
 	     wrong about attribute/column updatability.
 	     Thats what they asked for. */
-	  qtype = pt_fillin_type_size (parser, statement, qtype, DB_NO_OIDS);
+	  qtype = pt_fillin_type_size (parser, statement, qtype, DB_NO_OIDS,
+				       false);
 	}
     }
 
@@ -540,12 +599,13 @@ db_compile_statement_local (DB_SESSION * session)
     db_value_clear (hv);
   parser->auto_param_count = 0;
   /* translate views or virtual classes into base classes */
-  statement = mq_translate (parser, statement);
-  if (!statement || pt_has_error (parser))
+  statement_result = mq_translate (parser, statement);
+  if (!statement_result || pt_has_error (parser))
     {
       pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
       return er_errid ();
     }
+  statement = statement_result;
 
   /* prefetch and lock translated real classes to avoid deadlock */
   (void) pt_class_pre_fetch (parser, statement);
@@ -1208,6 +1268,66 @@ db_get_query_type_list (DB_SESSION * session, int stmt_ndx)
     }
 
   /* make DB_QUERY_TYPE structure to return */
+
+  if (statement != NULL && statement->node_type == PT_EXECUTE_PREPARE)
+    {
+      /* We lie about the type of an executed prepared statement so that
+       * clients are given the type of the statement that is actually executed.
+       */
+      DB_EXECUTED_STATEMENT_TYPE *statement_type;
+
+      assert (session->executed_statements != NULL);
+
+      statement_type = &session->executed_statements[stmt_ndx];
+      if (statement_type->query_type_list == NULL)
+	{
+	  /* The PT_EXECUTE_PREPARE statement has not yet been executed but we
+	     can find the information we need if the corresponding
+	     PT_PREPARE_STATEMENT was executed. */
+	  DB_PREPARE_INFO *prepare_info;
+	  int err = 0;
+
+	  prepare_info =
+	    get_prepared_statement_by_name (session,
+					    statement->info.prepare.name->
+					    info.name.original);
+	  if (prepare_info == NULL)
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		      ER_IT_INVALID_SESSION, 0);
+	      return NULL;
+	    }
+	  /* This is very unfortunate but we need to recompile the statement
+	   * because the schema might have changed in the meantime.
+	   */
+	  err = do_process_prepare_statement_internal (session,
+						       prepare_info->name,
+						       prepare_info->
+						       statement);
+	  if (err < 0)
+	    {
+	      return NULL;
+	    }
+	  prepare_info = get_prepared_statement_by_name (session,
+							 statement->info.
+							 prepare.name->info.
+							 name.original);
+	  if (prepare_info == NULL)
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		      ER_IT_INVALID_SESSION, 0);
+	      return NULL;
+	    }
+	  return db_get_query_type_list (prepare_info->prepared_session, 1);
+	}
+      else
+	{
+	  /* The PT_EXECUTE_PREPARE statement has already been executed and
+	     the information we need has been saved. */
+	  return db_cp_query_type (statement_type->query_type_list, true);
+	}
+    }
+
   cmd_type = pt_node_to_cmd_type (statement);
   if (cmd_type == CUBRID_STMT_SELECT)
     {
@@ -1321,7 +1441,51 @@ db_get_statement_type (DB_SESSION * session, int stmt)
     }
   else
     {
-      retval = pt_node_to_cmd_type (statement);
+      if (statement != NULL && statement->node_type == PT_EXECUTE_PREPARE)
+	{
+	  /* We lie about the type of an executed prepared statement so that
+	   * clients are given the type of the statement that is actually
+	   * executed
+	   */
+	  DB_EXECUTED_STATEMENT_TYPE *statement_type;
+
+	  assert (session->executed_statements != NULL);
+
+	  statement_type = &session->executed_statements[stmt - 1];
+	  if (statement_type->query_type_list == NULL)
+	    {
+	      /* The PT_EXECUTE_PREPARE statement has not yet been executed but
+	         we can find the information we need if the corresponding
+	         PT_PREPARE_STATEMENT was executed. */
+	      DB_PREPARE_INFO *const prepare_info =
+		get_prepared_statement_by_name (session,
+						statement->info.prepare.name->
+						info.name.original);
+	      if (prepare_info == NULL)
+		{
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+			  ER_IT_INVALID_SESSION, 0);
+		  return er_errid ();
+		}
+	      else
+		{
+		  /* The PT_EXECUTE_PREPARE statement has already been executed
+		     and the information we need has been saved. We do not need
+		     to recompile because schema changes cannot affect the
+		     statement type. */
+		  retval =
+		    db_get_statement_type (prepare_info->prepared_session, 1);
+		}
+	    }
+	  else
+	    {
+	      retval = statement_type->statement_type;
+	    }
+	}
+      else
+	{
+	  retval = pt_node_to_cmd_type (statement);
+	}
     }
 
   return retval;
@@ -1492,6 +1656,12 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   DB_VALUE *val;
   int err = NO_ERROR;
   SERVER_INFO server_info;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+
+  if (result != NULL)
+    {
+      *result = NULL;
+    }
 
   /* obvious error checking - invalid parameter */
   if (!session || !session->parser)
@@ -1586,6 +1756,46 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
       (void) qp_get_server_info (&server_info);
     }
 
+  if (statement->node_type == PT_PREPARE_STATEMENT)
+    {
+      assert (!session->is_subsession_for_prepared);
+
+      err = do_process_prepare_statement (session, statement);
+      update_execution_values (parser, -1, CUBRID_MAX_STMT_TYPE);
+      assert (result == NULL || *result == NULL);
+      return err;
+    }
+  else if (statement->node_type == PT_EXECUTE_PREPARE)
+    {
+      /* If the XASL cache is disabled we have no quick way of knowing that the
+       * compiled statement has become outdated so we need to compile it every
+       * time. If the XASL cache is enabled we recompile the statement each time
+       * its XASL has been invalidated.
+       */
+      bool recompile_before_execution = !(PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0
+					  && statement->cannot_prepare == 0);
+      bool fail_on_xasl_error = recompile_before_execution;
+
+      assert (!session->is_subsession_for_prepared);
+      assert (session->executed_statements != NULL);
+
+      err = do_process_execute_prepare (session, statement,
+					&session->
+					executed_statements[stmt_ndx], result,
+					recompile_before_execution,
+					fail_on_xasl_error);
+      return err;
+    }
+  else if (statement->node_type == PT_DEALLOCATE_PREPARE)
+    {
+      assert (!session->is_subsession_for_prepared);
+
+      err = do_process_deallocate_prepare (session, statement);
+      update_execution_values (parser, -1, CUBRID_MAX_STMT_TYPE);
+      assert (result == NULL || *result == NULL);
+      return err;
+    }
+
   /* New interface of do_prepare_statement()/do_execute_statment() is used
      only when the XASL cache is enabled. If it is disabled, old interface
      of do_statement() will be used instead. do_statement() makes a XASL
@@ -1622,19 +1832,27 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	      err = do_execute_statement (parser, statement);
 	    }
 	}
+      else if (err == ER_QPROC_INVALID_XASLNODE
+	       && session->is_subsession_for_prepared)
+	{
+	  return ER_QPROC_INVALID_XASLNODE;
+	}
     }
   else
     {
-      SEMANTIC_CHK_INFO sc_info;
       /* bind and resolve host variables */
-      if (parser->host_var_count > 0 && parser->set_host_var == 1)
+      assert (parser->host_var_count >= 0 && parser->auto_param_count >= 0);
+      if (parser->host_var_count > 0)
+	{
+	  assert (parser->set_host_var == 1);
+	}
+      if (parser->host_var_count > 0 || parser->auto_param_count > 0)
 	{
 	  /* In this case, pt_bind_values_to_hostvars() will change
 	     PT_HOST_VAR node. Must duplicate the statement and execute with
 	     the new one and free the copied one before returning */
 	  statement = parser_copy_tree_list (parser, statement);
 
-	  sc_info.attrdefs = NULL;
 	  sc_info.top_node = statement;
 	  sc_info.donot_fold = false;
 
@@ -1676,7 +1894,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 	  err = er_errid ();
 	}
       /* free the allocated list_id area before leaving */
-      if (pt_node_to_cmd_type (statement) == CUBRID_STMT_SELECT)
+      if (pt_node_to_cmd_type (statement) == CUBRID_STMT_SELECT ||
+	  pt_node_to_cmd_type (statement) == CUBRID_STMT_DO)
 	{
 	  pt_free_query_etc_area (statement);
 	}
@@ -1719,6 +1938,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 		{
 		  err = er_errid ();
 		}
+	      break;
+
+	    case CUBRID_STMT_DO:
+	      pt_free_query_etc_area (statement);
 	      break;
 
 	    case CUBRID_STMT_GET_ISO_LVL:
@@ -1787,6 +2010,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
       db_make_null (&parser->local_transaction_id);
     }
 
+  update_execution_values (parser, err, pt_node_to_cmd_type (statement));
+
   /* free if the statement was duplicated for host variable binding */
   if (statement != session->statements[stmt_ndx])
     {
@@ -1795,6 +2020,414 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 
   return err;
 }
+
+static void
+update_execution_values (PARSER_CONTEXT * parser, int result,
+			 CUBRID_STMT_TYPE statement_type)
+{
+  if (result < 0)
+    {
+      parser->execution_values.row_count = -1;
+    }
+  else if (statement_type == CUBRID_STMT_UPDATE
+	   || statement_type == CUBRID_STMT_INSERT
+	   || statement_type == CUBRID_STMT_DELETE)
+    {
+      parser->execution_values.row_count = result;
+    }
+  else
+    {
+      parser->execution_values.row_count = -1;
+    }
+}
+
+static void
+copy_execution_values (EXECUTION_STATE_VALUES * source,
+		       EXECUTION_STATE_VALUES * destination)
+{
+  assert (destination != NULL && source != NULL);
+  destination->row_count = source->row_count;
+}
+
+static int
+values_list_to_values_array (DB_SESSION * session, PT_NODE * values_list,
+			     DB_VALUE_ARRAY * values_array)
+{
+  DB_VALUE_ARRAY values;
+  PT_NODE *current_value = values_list;
+  int i = 0;
+  int err = NO_ERROR;
+
+  values.size = 0;
+  values.vals = NULL;
+
+  if (session == NULL || session->parser == NULL || values_list == NULL
+      || values_array == NULL || values_array->size != 0
+      || values_array->vals != NULL)
+    {
+      assert (false);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+	      0);
+      err = er_errid ();
+      goto error_exit;
+    }
+
+  while (current_value != NULL)
+    {
+      values.size++;
+      current_value = current_value->next;
+    }
+
+  values.vals = malloc (values.size * sizeof (DB_VALUE));
+  if (values.vals == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      values.size * sizeof (DB_VALUE));
+      err = er_errid ();
+      goto error_exit;
+    }
+
+  for (i = 0; i < values.size; ++i)
+    {
+      db_make_null (&values.vals[i]);
+    }
+  for (current_value = values_list, i = 0;
+       current_value != NULL; current_value = current_value->next, ++i)
+    {
+      int more_type_info_needed = 0;
+      DB_VALUE *db_val = pt_value_to_db (session->parser, current_value);
+      if (db_val == NULL)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  err = er_errid ();
+	  goto error_exit;
+	}
+      db_value_clone (db_val, &values.vals[i]);
+    }
+
+  values_array->size = values.size;
+  values_array->vals = values.vals;
+  values.size = 0;
+  values.vals = NULL;
+
+  return err;
+
+error_exit:
+
+  if (values.vals != NULL)
+    {
+      db_value_clear_array (&values);
+      free_and_init (values.vals);
+      values.size = 0;
+    }
+  return err;
+}
+
+static int
+do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
+{
+  const char *const name = statement->info.prepare.name->info.name.original;
+  const char *const statement_literal =
+    (char *) statement->info.prepare.statement->info.value.data_value.str->
+    bytes;
+
+  assert (statement->node_type == PT_PREPARE_STATEMENT);
+
+  return do_process_prepare_statement_internal (session, name,
+						statement_literal);
+}
+
+static int
+do_process_prepare_statement_internal (DB_SESSION * session,
+				       const char *const name,
+				       const char *const statement_literal)
+{
+  DB_PREPARE_INFO *prepare_info = NULL;
+  DB_SESSION *prepared_session = NULL;
+  int prepared_statement_ndx = 0;
+
+  /* existing statements with the same name are lost; MySQL does it this way */
+  delete_prepared_statement_if_exists (session, name);
+  assert (get_prepared_statement_by_name (session, name) == NULL);
+
+  prepare_info = add_prepared_statement_by_name (session, name);
+  if (prepare_info == NULL)
+    {
+      return er_errid ();
+    }
+  prepare_info->statement = statement_literal;
+
+  prepared_session = db_open_buffer_local (prepare_info->statement);
+  if (prepared_session == NULL)
+    {
+      delete_prepared_statement_if_exists (session, name);
+      return er_errid ();
+    }
+  prepared_session->is_subsession_for_prepared = true;
+
+  /* we need to copy all the relevant settings */
+  prepared_session->include_oid = session->include_oid;
+
+  prepare_info->prepared_session = prepared_session;
+
+  if ((prepared_statement_ndx =
+       db_compile_statement_local (prepare_info->prepared_session)) < 0)
+    {
+      delete_prepared_statement_if_exists (session, name);
+      return er_errid ();
+    }
+  if (NO_ERROR != db_check_single_query (prepare_info->prepared_session,
+					 prepared_statement_ndx))
+    {
+      delete_prepared_statement_if_exists (session, name);
+      return er_errid ();
+    }
+  assert (prepared_statement_ndx == 1);
+  assert (prepared_session->dimension == 1);
+  assert (prepared_session->statements[0] != NULL);
+  if (is_disallowed_as_prepared_statement
+      (prepared_session->statements[0]->node_type))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_IT_IS_DISALLOWED_AS_PREPARED, 0);
+      delete_prepared_statement_if_exists (session, name);
+      return er_errid ();
+    }
+  return NO_ERROR;
+}
+
+static int
+do_process_execute_prepare (DB_SESSION * session, PT_NODE * statement,
+			    DB_EXECUTED_STATEMENT_TYPE * const statement_type,
+			    DB_QUERY_RESULT ** result,
+			    const bool recompile_before_execution,
+			    const bool fail_on_xasl_error)
+{
+  const char *const name = statement->info.prepare.name->info.name.original;
+  PT_NODE *const using_list = statement->info.prepare.using_list;
+  DB_PREPARE_INFO *const prepare_info =
+    get_prepared_statement_by_name (session, name);
+  int err = 0;
+
+  assert (statement->node_type == PT_EXECUTE_PREPARE);
+
+  if (prepare_info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_PREPARED_NAME_NOT_FOUND,
+	      1, name);
+      return er_errid ();
+    }
+  if (recompile_before_execution)
+    {
+      err =
+	do_process_prepare_statement_internal (session, prepare_info->name,
+					       prepare_info->statement);
+      if (err < 0)
+	{
+	  return err;
+	}
+      return do_process_execute_prepare (session, statement, statement_type,
+					 result, false, fail_on_xasl_error);
+    }
+  if (using_list == NULL
+      && prepare_info->prepared_session->parser->host_var_count != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_INCORRECT_HOSTVAR_COUNT,
+	      2, 0, prepare_info->prepared_session->parser->host_var_count);
+      return er_errid ();
+    }
+  if (using_list != NULL)
+    {
+      DB_VALUE_ARRAY values_array;
+      int i = 0;
+
+      values_array.size = 0;
+      values_array.vals = NULL;
+
+      if (NO_ERROR !=
+	  values_list_to_values_array (prepare_info->prepared_session,
+				       using_list, &values_array))
+	{
+	  return er_errid ();
+	}
+      assert (values_array.size != 0 && values_array.vals != NULL);
+
+      if (prepare_info->prepared_session->parser->host_var_count !=
+	  values_array.size)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_IT_INCORRECT_HOSTVAR_COUNT, 2, values_array.size,
+		  prepare_info->prepared_session->parser->host_var_count);
+	  db_value_clear_array (&values_array);
+	  free_and_init (values_array.vals);
+	  values_array.size = 0;
+	  return er_errid ();
+	}
+
+      db_push_values (prepare_info->prepared_session, values_array.size,
+		      values_array.vals);
+
+      db_value_clear_array (&values_array);
+      free_and_init (values_array.vals);
+      values_array.size = 0;
+    }
+
+  err = db_execute_and_keep_statement_local (prepare_info->prepared_session,
+					     1, result);
+  copy_execution_values (&prepare_info->prepared_session->parser->
+			 execution_values,
+			 &session->parser->execution_values);
+  if (err >= 0)
+    {
+      /* Successful execution; we need to save the query type in order to answer
+       * db_get_query_type_list and db_get_statement_type after the prepared
+       * statement has been deleted */
+      if (statement_type->query_type_list != NULL)
+	{
+	  /* The PT_EXECUTE_PREPARE statement has been executed before (this
+	   * execution scenario is pretty weird and might lead to unexpected
+	   * results). We clear the old type of the query as the new type might
+	   * be different (for example due to schema changes).
+	   */
+	  db_free_query_format (statement_type->query_type_list);
+	  statement_type->query_type_list = NULL;
+	  statement_type->statement_type = -1;
+	}
+      else
+	{
+	  assert (statement_type->statement_type < 0);
+	}
+      statement_type->statement_type =
+	db_get_statement_type (prepare_info->prepared_session, 1);
+      if (statement_type->statement_type < 0)
+	{
+	  return er_errid ();
+	}
+      statement_type->query_type_list =
+	db_get_query_type_list (prepare_info->prepared_session, 1);
+      if (statement_type->query_type_list == NULL)
+	{
+	  return er_errid ();
+	}
+    }
+  if (err == ER_QPROC_INVALID_XASLNODE)
+    {
+      if (fail_on_xasl_error)
+	{
+	  return err;
+	}
+      else
+	{
+	  /* We need to recompile as the missing XASL might indicate a schema
+	     change. */
+	  return do_process_execute_prepare (session, statement,
+					     statement_type, result, true,
+					     true);
+	}
+    }
+  else
+    {
+      return err;
+    }
+}
+
+static int
+do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement)
+{
+  const char *const name = statement->info.prepare.name->info.name.original;
+  const bool was_deleted =
+    delete_prepared_statement_if_exists (session, name);
+
+  assert (statement->node_type == PT_DEALLOCATE_PREPARE);
+  assert (get_prepared_statement_by_name (session, name) == NULL);
+  if (!was_deleted)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_PREPARED_NAME_NOT_FOUND,
+	      1, name);
+      return er_errid ();
+    }
+  return NO_ERROR;
+}
+
+static DB_PREPARE_INFO *
+add_prepared_statement_by_name (DB_SESSION * session, const char *name)
+{
+  DB_PREPARE_INFO *prepare_info = malloc (sizeof (*prepare_info));
+  if (prepare_info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (*prepare_info));
+      return NULL;
+    }
+  prepare_info->next = session->prepared_statements.next;
+  session->prepared_statements.next = prepare_info;
+  prepare_info->name = name;
+  prepare_info->statement = NULL;
+  prepare_info->prepared_session = NULL;
+  return prepare_info;
+}
+
+static DB_PREPARE_INFO *
+get_prepared_statement_by_name (DB_SESSION * session, const char *name)
+{
+  DB_PREPARE_INFO *current = session->prepared_statements.next;
+  while (current != NULL)
+    {
+      if (strcasecmp (current->name, name) == 0)
+	{
+	  return current;
+	}
+      current = current->next;
+    }
+  return NULL;
+}
+
+static bool
+delete_prepared_statement_if_exists (DB_SESSION * session, const char *name)
+{
+  DB_PREPARE_INFO *current = &session->prepared_statements;
+  while (current->next != NULL)
+    {
+      if (strcasecmp (current->next->name, name) == 0)
+	{
+	  DB_PREPARE_INFO *to_delete = current->next;
+	  current->next = current->next->next;
+	  db_close_session_local (to_delete->prepared_session);
+	  free_and_init (to_delete);
+	  return true;
+	}
+      current = current->next;
+    }
+  return false;
+}
+
+static void
+delete_all_prepared_statements (DB_SESSION * session)
+{
+  DB_PREPARE_INFO *current = session->prepared_statements.next;
+  session->prepared_statements.next = NULL;
+  while (current != NULL)
+    {
+      DB_PREPARE_INFO *to_delete = current;
+      current = current->next;
+      db_close_session_local (to_delete->prepared_session);
+      free_and_init (to_delete);
+    }
+}
+
+static bool
+is_disallowed_as_prepared_statement (PT_NODE_TYPE node_type)
+{
+  if (node_type == PT_PREPARE_STATEMENT
+      || node_type == PT_EXECUTE_PREPARE
+      || node_type == PT_DEALLOCATE_PREPARE)
+    {
+      return true;
+    }
+  return false;
+}
+
 
 /*
  * db_execute_and_keep_statement() - Please refer to the
@@ -1966,7 +2599,7 @@ db_drop_all_statements (DB_SESSION * session)
 }
 
 /*
- * db_close_session() - This function frees all resources of this session
+ * db_close_session_local() - This function frees all resources of this session
  *    except query results
  * return : void
  * session(in) : session handle
@@ -1982,10 +2615,13 @@ db_close_session_local (DB_SESSION * session)
       return;
     }
 
+  delete_all_prepared_statements (session);
+
   parser = session->parser;
   for (i = 0; i < session->dimension; i++)
     {
       PT_NODE *statement;
+      DB_EXECUTED_STATEMENT_TYPE *statement_type;
 
       if (session->type_list && session->type_list[i])
 	{
@@ -2011,11 +2647,24 @@ db_close_session_local (DB_SESSION * session)
 	      session->statements[i] = NULL;
 	    }
 	}
+      if (session->executed_statements)
+	{
+	  statement_type = &session->executed_statements[i];
+	  if (statement_type->query_type_list != NULL)
+	    {
+	      db_free_query_format (statement_type->query_type_list);
+	      statement_type->query_type_list = NULL;
+	    }
+	}
     }
   session->dimension = session->stmt_ndx = 0;
   if (session->type_list)
     {
       free_and_init (session->type_list);	/* see db_compile_statement_local() */
+    }
+  if (session->executed_statements)
+    {
+      free_and_init (session->executed_statements);
     }
 
   if (parser->host_variables)
@@ -2168,30 +2817,44 @@ db_get_all_vclasses (void)
 int
 db_validate_query_spec (DB_OBJECT * vclass, const char *query_spec)
 {
-  PARSER_CONTEXT *parser;
-  PT_NODE **spec;
-  int rc;
+  PARSER_CONTEXT *parser = NULL;
+  PT_NODE **spec = NULL;
+  int rc = NO_ERROR;
+  const char *const vclass_name = db_get_class_name (vclass);
+
+  if (vclass_name == NULL)
+    {
+      rc = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, rc, 0);
+      return rc;
+    }
+
+  if (!db_is_vclass (vclass))
+    {
+      rc = ER_SM_NOT_A_VIRTUAL_CLASS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, rc, 1, vclass_name);
+      return rc;
+    }
 
   parser = parser_create_parser ();
   if (parser == NULL)
     {
       rc = ER_GENERIC_ERROR;
+      return rc;
+    }
+
+  spec = parser_parse_string (parser, query_spec);
+  if (spec != NULL && !pt_has_error (parser))
+    {
+      rc = pt_validate_query_spec (parser, *spec, vclass);
     }
   else
     {
-      spec = parser_parse_string (parser, query_spec);
-      if (spec != NULL && !pt_has_error (parser))
-	{
-	  rc = pt_validate_query_spec (parser, *spec, vclass);
-	}
-      else
-	{
-	  pt_report_to_ersys (parser, PT_SYNTAX);
-	  rc = er_errid ();
-	}
-
-      parser_free_parser (parser);
+      pt_report_to_ersys (parser, PT_SYNTAX);
+      rc = er_errid ();
     }
+
+  parser_free_parser (parser);
 
   return rc;
 }

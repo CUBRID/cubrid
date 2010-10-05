@@ -31,6 +31,8 @@
 #if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
+#else
+#include <semaphore.h>
 #endif
 
 #include "porting.h"
@@ -62,6 +64,7 @@
 /* con_status lock/unlock */
 #define		CON_STATUS_LOCK_BROKER		0
 #define		CON_STATUS_LOCK_CAS		1
+#if defined(WINDOWS)
 #define		CON_STATUS_LOCK_INIT(AS_INFO)				\
 		do {							\
 		  (AS_INFO)->con_status_lock[CON_STATUS_LOCK_BROKER] = FALSE;  \
@@ -69,6 +72,8 @@
 		  (AS_INFO)->con_status_lock_turn = CON_STATUS_LOCK_BROKER;  \
                 }							\
 		while (0)
+
+#define		CON_STATUS_LOCK_DESTROY(AS_INFO)
 
 #define		CON_STATUS_LOCK(AS_INFO, LOCK_OWNER)			\
 		do {							\
@@ -84,7 +89,19 @@
 
 #define		CON_STATUS_UNLOCK(AS_INFO, LOCK_OWNER)	\
 		(AS_INFO)->con_status_lock[LOCK_OWNER] = FALSE
+#else /* WINDOWS */
+#define		CON_STATUS_LOCK_INIT(AS_INFO)	\
+		  uw_sem_init (&((AS_INFO)->con_status_sem));
 
+#define		CON_STATUS_LOCK_DESTROY(AS_INFO)	\
+		  uw_sem_destroy (&((AS_INFO)->con_status_sem));
+
+#define		CON_STATUS_LOCK(AS_INFO, LOCK_OWNER)	\
+		  uw_sem_wait (&(AS_INFO)->con_status_sem);
+
+#define		CON_STATUS_UNLOCK(AS_INFO, LOCK_OWNER)	\
+		  uw_sem_post (&(AS_INFO)->con_status_sem);
+#endif /* WINDOWS */
 #define		SHM_LOG_MSG_SIZE	256
 
 #define		APPL_NAME_LENGTH	128
@@ -187,8 +204,12 @@ struct t_appl_server_info
   char clt_ip_addr[20];
   char mutex_flag[2];		/* for mutex */
   char mutex_turn;
+#if defined (WINDOWS)
   char con_status_lock[2];
   char con_status_lock_turn;
+#else
+  sem_t con_status_sem;
+#endif
   char cookie_str[MAX_CRYPT_STR_LENGTH];
   char log_msg[SHM_LOG_MSG_SIZE];
   INT64 num_requests_received;
@@ -278,6 +299,18 @@ int uw_shm_destroy (int shm_key);
 void uw_shm_detach (void *);
 #if defined(WINDOWS)
 int uw_shm_get_magic_number ();
+#endif
+
+#if defined(WINDOWS)
+int uw_sem_init (char **sem_name, char *br_name, int as_index);
+int uw_sem_wait (char **sem_name);
+int uw_sem_post (char **sem_name);
+int uw_sem_destroy (char **sem_name);
+#else
+int uw_sem_init (sem_t * sem_t);
+int uw_sem_wait (sem_t * sem_t);
+int uw_sem_post (sem_t * sem_t);
+int uw_sem_destroy (sem_t * sem_t);
 #endif
 
 #endif /* _BROKER_SHM_H_ */

@@ -69,10 +69,9 @@ extern int sm_delete_class_mop (MOP op);
 extern int sm_delete_class (const char *name);
 #endif
 
-extern int sm_add_index (MOP classop,
-			 const char **attnames,
-			 const int *asc_desc,
-			 const char *constraint_name, int reverse_index);
+extern int sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
+			 const char *constraint_name, const char **attnames,
+			 const int *asc_desc, const int *attrs_prefix_length);
 
 extern int sm_get_index (MOP classop, const char *attname, BTID * index);
 extern char *sm_produce_constraint_name (const char *class_name,
@@ -84,22 +83,27 @@ extern char *sm_produce_constraint_name_mop (MOP classop,
 					     DB_CONSTRAINT_TYPE
 					     constraint_type,
 					     const char **att_names,
+					     const int *asc_desc,
 					     const char *given_name);
 extern char *sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl,
 					      DB_CONSTRAINT_TYPE
 					      constraint_type,
 					      const char **att_names,
+					      const int *asc_desc,
 					      const char *given_name);
 extern void sm_free_constraint_name (char *);
 extern int sm_add_constraint (MOP classop,
 			      DB_CONSTRAINT_TYPE constraint_type,
 			      const char *constraint_name,
 			      const char **att_names,
-			      const int *asc_desc, int class_attributes);
+			      const int *asc_desc,
+			      const int *attrs_prefix_length,
+			      int class_attributes);
 extern int sm_drop_constraint (MOP classop,
 			       DB_CONSTRAINT_TYPE constraint_type,
 			       const char *constraint_name,
-			       const char **att_names, int class_attributes);
+			       const char **att_names, bool class_attributes,
+			       bool mysql_index_name);
 
 /* Misc schema operations */
 extern int sm_rename_class (MOP op, const char *new_name);
@@ -128,6 +132,8 @@ extern int sm_force_method_link (MOP obj);
 
 extern char *sm_get_method_source_file (MOP obj, const char *name);
 
+extern int sm_truncate_class (MOP class_mop);
+
 
 /* Utility functions */
 extern int sm_check_name (const char *name);
@@ -144,7 +150,7 @@ extern DB_OBJLIST *sm_fetch_all_base_classes (int external_list,
 extern DB_OBJLIST *sm_fetch_all_objects (DB_OBJECT * op,
 					 DB_FETCH_MODE purpose);
 
-/* Domain maintanance */
+/* Domain maintenance */
 extern int sm_filter_domain (TP_DOMAIN * domain);
 extern int sm_check_class_domain (TP_DOMAIN * domain, MOP class_);
 extern int sm_check_object_domain (TP_DOMAIN * domain, MOP object);
@@ -176,7 +182,7 @@ extern HFID *sm_heap (MOBJ clobj);
 extern HFID *sm_get_heap (MOP classmop);
 extern bool sm_has_indexes (MOBJ class_);
 
-/* Interpter support functions */
+/* Interpreter support functions */
 extern void sm_downcase_name (const char *name, char *buf, int maxlen);
 extern MOP sm_find_class (const char *name);
 
@@ -189,6 +195,9 @@ extern int sm_att_info (MOP classop, const char *name, int *idp,
 			TP_DOMAIN ** domainp, int *sharedp, int class_attr);
 extern int sm_att_constrained (MOP classop, const char *name,
 			       SM_ATTRIBUTE_FLAG cons);
+extern bool sm_att_auto_increment (MOP classop, const char *name);
+extern int sm_att_default_value (MOP classop, const char *name,
+				 DB_VALUE * value);
 
 extern int sm_class_check_uniques (MOP classop);
 extern BTID *sm_find_index (MOP classop, char **att_names,
@@ -268,6 +277,7 @@ extern int sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all);
 #endif /* ENABLE_UNUSED_FUNCTION */
 extern int sm_att_unique_constrained (MOP classop, const char *name);
 extern int sm_is_att_fk_cache (MOP classop, const char *name);
+extern int sm_att_fk_constrained (MOP classop, const char *name);
 
 extern bool classobj_is_exist_foreign_key_ref (MOP refop,
 					       SM_FOREIGN_KEY_INFO * fk_info);

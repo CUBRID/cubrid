@@ -155,7 +155,7 @@
 		<row><td>DialogId_12033</td><td>ControlId_711</td><td>Text</td><td>369</td><td>88</td><td>125</td><td>127</td><td>131075</td><td/><td/><td>ControlId_50</td><td/><td>131072</td><td>711</td><td/><td/></row>
 		<row><td>DialogId_12033</td><td>ControlId_9</td><td>PushButton</td><td>450</td><td>347</td><td>56</td><td>17</td><td>3</td><td/><td>##IDS__DialogId_12033_ControlId_9##</td><td>ControlId_1200</td><td/><td>0</td><td>9</td><td/><td/></row>
 		<row><td>DialogId_12033</td><td>ControlId_Negative1_1</td><td>GroupBox</td><td>360</td><td>74</td><td>142</td><td>149</td><td>3</td><td/><td>##IDS__DialogId_12033_ControlId_Negative1_1##</td><td/><td/><td>0</td><td>-1</td><td/><td/></row>
-</table>
+	</table>
 
 	<table name="Dialog">
 		<col key="yes" def="s72">Dialog</col>
@@ -174,7 +174,7 @@
 		<col def="I4">ISResourceId</col>
 		<row><td>DialogId_103</td><td>0</td><td>0</td><td>384</td><td>262</td><td>1</td><td>##IDS__DialogId_103##</td><td>ControlId_52</td><td>ControlId_6</td><td>ControlId_2</td><td/><td>MSSansSerif8</td><td>-2134376256</td><td>103</td></row>
 		<row><td>DialogId_12033</td><td>0</td><td>0</td><td>518</td><td>372</td><td>1</td><td>##IDS__DialogId_12033##</td><td>ControlId_1200</td><td>ControlId_1</td><td>ControlId_2</td><td/><td>MSSansSerif8</td><td>-2134376256</td><td>12033</td></row>
-</table>
+	</table>
 
 	<table name="Directory">
 		<col key="yes" def="s72">Directory</col>
@@ -227,7 +227,7 @@
 		<row><td>{803EF3AB-8984-4285-B1D0-ECB98F08F4D1}</td><td/><td>CUBRID ODBC</td><td>CUBRID ODBC Driver Setup...</td><td>10</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>ODBC</td></row>
 		<row><td>{95D570A9-47F8-45FD-8C4C-8820D1499F7B}</td><td/><td>CUBRID OLEDB</td><td>CUBRID OLEDB Driver setup...</td><td>12</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>OLEDB</td></row>
 		<row><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td><td/><td>CCI Library</td><td>CCI Library Setup...</td><td>18</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CCI</td></row>
-		<row><td>{EC8A1CC9-AD2D-4254-9FE0-48B6E70DE126}</td><td/><td>CUBRID Manager Client</td><td>CUBRID Manager Client Setup...</td><td>4</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>cubridmanager</td></row>
+		<row><td>{EC8A1CC9-AD2D-4254-9FE0-48B6E70DE126}</td><td/><td>CUBRID Manager Client</td><td>CUBRID Manager Client Setup...</td><td>20</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>cubridmanager</td></row>
 	</table>
 
 	<table name="FeatureComponents">
@@ -266,12 +266,10 @@
 		<row><td>broker_monitor.exe</td><td>CUBRID</td><td>broker_monitor.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\broker_monitor.exe</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>brokeradmin.dll</td><td>CUBRID</td><td>brokeradmin.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\brokeradmin.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cas_cci.h</td><td>CCI</td><td>cas_cci.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\cas_cci.h</td><td>1</td><td>NewSubFolder15</td></row>
+		<row><td>cas_error.h</td><td>CCI</td><td>cas_error.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\cas_error.h</td><td>1</td><td>NewSubFolder15</td></row>
 		<row><td>cascci.dll1</td><td>CUBRID</td><td>cascci.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cascci.dll</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>cascci.dll2</td><td>CCI</td><td>cascci.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cascci.dll</td><td>1</td><td>NewSubFolder12</td></row>
 		<row><td>cascci.lib</td><td>CCI</td><td>cascci.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_LIB_FILES&gt;\cascci.lib</td><td>1</td><td>NewSubFolder13</td></row>
-		<row><td>cascci_x64.dll</td><td>CUBRID</td><td>cascci_x64.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cascci_x64.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cascci_x64.dll2</td><td>CCI</td><td>cascci_x64.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cascci_x64.dll</td><td>1</td><td>NewSubFolder12</td></row>
-		<row><td>cascci_x64.lib</td><td>CCI</td><td>cascci_x64.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_LIB_FILES&gt;\cascci_x64.lib</td><td>1</td><td>NewSubFolder13</td></row>
 		<row><td>cm.conf-dist</td><td>CUBRID</td><td>cm.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\cm.conf-dist</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cm.pass-dist</td><td>CUBRID</td><td>cm.pass-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\cm.pass-dist</td><td>1</td><td>NewSubFolder5</td></row>
 		<row><td>cm_dep.h</td><td>CUBRID</td><td>cm_dep.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\cm_dep.h</td><td>1</td><td>NewSubFolder15</td></row>
@@ -327,7 +325,7 @@
 		<row><td>loadjava.exe</td><td>CUBRID</td><td>loadjava.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\loadjava.exe</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>logging.properties</td><td>CUBRID</td><td>logging.properties</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_JAVA_FILES&gt;\logging.properties</td><td>1</td><td>NewSubFolder14</td></row>
 		<row><td>makedemo_is.bat</td><td>CUBRID</td><td>makedemo_is.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;ISPROJECTDIR&gt;\makedemo_is.bat</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>migrate_r22.exe</td><td>CUBRID</td><td>migrate_r22.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\migrate_r22.exe</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>migrate_r30.exe</td><td>CUBRID</td><td>migrate_r30.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\migrate_r30.exe</td><td>1</td><td>NewSubFolder4</td></row>
 		<row><td>setupmanage.exe</td><td>CUBRID</td><td>setupmanage.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\setupmanage.exe</td><td>1</td><td>NewSubFolder4</td></row>
 	</table>
 
@@ -1120,23 +1118,24 @@
 		<row><td>IDS__DialogId_12066_ControlId_9</td><td>1033</td><td>Cancel</td><td>0</td><td/><td>-753026321</td></row>
 		<row><td>IDS__DialogId_12066_ControlId_9</td><td>1042</td><td>Z,V,P0``C</td><td>2</td><td/><td>-753026321</td></row>
 		<row><td>ID_STRING1</td><td>1042</td><td>NewFeature1</td><td>0</td><td/><td>480013104</td></row>
+		<row><td>ID_STRING2</td><td>1033</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-191071731</td></row>
 		<row><td>ID_STRING2</td><td>1042</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-191071731</td></row>
 		<row><td>PRODUCT_KEY</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553804241</td></row>
 		<row><td>PRODUCT_KEY</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553804241</td></row>
-		<row><td>PRODUCT_NAME</td><td>1033</td><td>CUBRID 2008 R2.2</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553820625</td></row>
-		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R2.2</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553820625</td></row>
-		<row><td>PRODUCT_VERSION</td><td>1033</td><td>2008 R2.2</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553834961</td></row>
-		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R2.2</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553834961</td></row>
+		<row><td>PRODUCT_NAME</td><td>1033</td><td>CUBRID 2008 R3.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553820625</td></row>
+		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R3.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553820625</td></row>
+		<row><td>PRODUCT_VERSION</td><td>1033</td><td>2008 R3.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553834961</td></row>
+		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R3.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553834961</td></row>
 		<row><td>SCRIPT_STR_0001</td><td>1033</td><td>CUBRID has already been installed in your system. Use Add/Remove Programs in Cotrol Panel to remove the old version of CUBRID and then retry it.</td><td>0</td><td/><td>-862094898</td></row>
 		<row><td>SCRIPT_STR_0001</td><td>1042</td><td>CUBRID가 이미 설치되어 있습니다. 먼저 제어판의 '프로그램 제거'기능을 통해 이전 버전을 제거한 후 다시 시도해주기 바랍니다.</td><td>0</td><td/><td>-2070053393</td></row>
-		<row><td>SCRIPT_STR_0002</td><td>1033</td><td>Make sure that all of databases and configuration files will be completely deleted.\nIf you continue to use the exisiting databases, please select the "No" button. </td><td>0</td><td/><td>1696447149</td></row>
+		<row><td>SCRIPT_STR_0002</td><td>1033</td><td>Make sure that all of databases and configuration files will be completely deleted.\nIf you continue to use the existing databases, please select the "No" button. </td><td>0</td><td/><td>1696447149</td></row>
 		<row><td>SCRIPT_STR_0002</td><td>1042</td><td>데이터베이스와 설정파일을 모두 삭제 하시겠습니까?\n데이터베이스를 다시 사용하려면 '아니오'를 선택하시기 바랍니다.</td><td>0</td><td/><td>1696406189</td></row>
 		<row><td>SCRIPT_STR_0003</td><td>1033</td><td>Comfirm Delete</td><td>0</td><td/><td>-862115346</td></row>
 		<row><td>SCRIPT_STR_0003</td><td>1042</td><td>데이터베이스 삭제 확인</td><td>0</td><td/><td>-2070041105</td></row>
 		<row><td>SCRIPT_STR_0004</td><td>1033</td><td>Completed deleting.</td><td>0</td><td/><td>-862098962</td></row>
 		<row><td>SCRIPT_STR_0004</td><td>1042</td><td>삭제가 완료되었습니다.</td><td>0</td><td/><td>-2070049455</td></row>
-		<row><td>SCRIPT_STR_0005</td><td>1033</td><td>This wizard helps you install CUBRID on your system.\n\n Make sure that database volumes created by earlier versions than CUBRID 2008 R2.2 are incompatible with CUBRID TOKEN.\nData migration is required to access old version data in CUBRID TOKEN.</td><td>0</td><td/><td>1696420269</td></row>
-		<row><td>SCRIPT_STR_0005</td><td>1042</td><td>본 설치 프로그램은 컴퓨터에 CUBRID를 설치할 것입니다.\n\nCUBRID 2008 R2.2 이전 버전에서 생성된 CUBRID 데이터베이스는 \nCUBRID TOKEN 와 호환되지 않습니다. CUBRID TOKEN 에서 사용하려면\n마이그레이션이 필요합니다.</td><td>0</td><td/><td>-2070073231</td></row>
+		<row><td>SCRIPT_STR_0005</td><td>1033</td><td>This wizard helps you install CUBRID on your system.\n\n Make sure that database volumes created by earlier versions than CUBRID 2008 R3.0 are incompatible with CUBRID TOKEN.\nData migration is required to access old version data in CUBRID TOKEN.</td><td>0</td><td/><td>1696420269</td></row>
+		<row><td>SCRIPT_STR_0005</td><td>1042</td><td>본 설치 프로그램은 컴퓨터에 CUBRID를 설치할 것입니다.\n\nCUBRID 2008 R3.0 이전 버전에서 생성된 CUBRID 데이터베이스는 \nCUBRID TOKEN 와 호환되지 않습니다. CUBRID TOKEN 에서 사용하려면\n마이그레이션이 필요합니다.</td><td>0</td><td/><td>-2070073231</td></row>
 		<row><td>SCRIPT_STR_0006</td><td>1033</td><td>Enter a destination directory</td><td>0</td><td/><td>-862123442</td></row>
 		<row><td>SCRIPT_STR_0006</td><td>1042</td><td>설치 디렉토리 입력</td><td>0</td><td/><td>-2070037873</td></row>
 		<row><td>SCRIPT_STR_0007</td><td>1033</td><td>Please enter a destination directory to install CUBRID.</td><td>0</td><td/><td>-862115250</td></row>
@@ -1198,7 +1197,7 @@
 		<row><td>SCRIPT_STR_0035</td><td>1033</td><td>Microsoft Visual C++ 2008 Redistributable Package is not installed in this machine.\nIf you continue installing, one or more components of CUBRID 2008 may no longer work correctly.\n(CUBRID download web page may provide further details.)\nDo you want to quit Setup now? </td><td>0</td><td/><td>-862110834</td></row>
 		<row><td>SCRIPT_STR_0035</td><td>1042</td><td>Microsoft Visual C++ 2008 재배포 패키지가 설치되어 있지 않습니다.\n계속 설치를 진행할 경우 CUBRID 2008의 일부 구성요소가 정상적으로 동작하지 않을 수 있습니다.\n(상세 정보는 CUBRID 다운로드 페이지에서 확인 가능합니다.)\nCUBRID 2008 설치를 중단 하시겠습니까?</td><td>0</td><td/><td>-862092402</td></row>
 		<row><td>SCRIPT_STR_0036</td><td>1033</td><td>CUBRID Manager is available only on JAVA environments. \nJRE or JDK  is  required in this machine to run CUBRID normally after installing CUBRID.</td><td>0</td><td/><td>-862121042</td></row>
-		<row><td>SCRIPT_STR_0036</td><td>1042</td><td>JAVA가 설치되어 있지 않거나 사용할 수 없는 상태이기 때문에 CUBRID 설치 완료 후 CUBRID Manager를 사용할 수 없습니다.\r\nCUBRID Manager를 사용하려면 CUBRID 설치 후 JAVA를 설치하시기 바랍니다.\r\n</td><td>0</td><td/><td>-2070056017</td></row>
+		<row><td>SCRIPT_STR_0036</td><td>1042</td><td>JAVA가 설치되어 있지 않거나 사용할 수 없는 상태이기 때문에 CUBRID 설치 완료 후 CUBRID Manager를 사용할 수 없습니다.\nCUBRID Manager를 사용하려면 CUBRID 설치 후 JAVA를 설치하시기 바랍니다.\n</td><td>0</td><td/><td>-2095127794</td></row>
 		<row><td>SCRIPT_STR_0037</td><td>1033</td><td>Configuration files(.conf or .pass) already exist. \nDo you want to keep the existing files? </td><td>0</td><td/><td>-862106770</td></row>
 		<row><td>SCRIPT_STR_0037</td><td>1042</td><td>설정파일(.conf또는 .pass파일)이 이미 존재합니다.\n기존 파일을 유지하시겠습니까?</td><td>0</td><td/><td>-862123154</td></row>
 		<row><td>SCRIPT_STR_0038</td><td>1033</td><td>Detected files or components(TOKEN) which are locked.\nStop CUBRID services and terminate all client programs and CUBRID Service Tray. Then try again.\nContinue to uninstall?</td><td>0</td><td/><td>-862102578</td></row>

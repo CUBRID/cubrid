@@ -178,6 +178,10 @@ static int mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2,
 			     TP_DOMAIN * domain, int do_reverse,
 			     int do_coercion, int total_order,
 			     int *start_colp);
+static int mr_cmpval_string2 (DB_VALUE * value1, DB_VALUE * value2,
+			      int length, TP_DOMAIN * domain, int do_reverse,
+			      int do_coercion, int total_order,
+			      int *start_colp);
 static void mr_initmem_char (void *memptr);
 static int mr_setmem_char (void *memptr, TP_DOMAIN * domain,
 			   DB_VALUE * value);
@@ -201,6 +205,10 @@ static int mr_cmpdisk_char (void *mem1, void *mem2, TP_DOMAIN * domain,
 static int mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2,
 			   TP_DOMAIN * domain, int do_reverse,
 			   int do_coercion, int total_order, int *start_colp);
+static int mr_cmpval_char2 (DB_VALUE * value1, DB_VALUE * value2, int length,
+			    TP_DOMAIN * domain, int do_reverse,
+			    int do_coercion, int total_order,
+			    int *start_colp);
 static void mr_initmem_nchar (void *memptr);
 static int mr_setmem_nchar (void *memptr, TP_DOMAIN * domain,
 			    DB_VALUE * value);
@@ -225,6 +233,10 @@ static int mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2,
 			    TP_DOMAIN * domain, int do_reverse,
 			    int do_coercion, int total_order,
 			    int *start_colp);
+static int mr_cmpval_nchar2 (DB_VALUE * value1, DB_VALUE * value2, int length,
+			     TP_DOMAIN * domain, int do_reverse,
+			     int do_coercion, int total_order,
+			     int *start_colp);
 static void mr_initmem_varnchar (void *mem);
 static int mr_setmem_varnchar (void *memptr, TP_DOMAIN * domain,
 			       DB_VALUE * value);
@@ -250,6 +262,11 @@ static int mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2,
 			       TP_DOMAIN * domain, int do_reverse,
 			       int do_coercion, int total_order,
 			       int *start_colp);
+static int mr_cmpval_varnchar2 (DB_VALUE * value1, DB_VALUE * value2,
+				int length,
+				TP_DOMAIN * domain, int do_reverse,
+				int do_coercion, int total_order,
+				int *start_colp);
 static void mr_initmem_bit (void *memptr);
 static int mr_setmem_bit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_bit (void *mem, TP_DOMAIN * domain, DB_VALUE * value,
@@ -272,6 +289,9 @@ static int mr_cmpdisk_bit (void *mem1, void *mem2, TP_DOMAIN * domain,
 static int mr_cmpval_bit (DB_VALUE * value1, DB_VALUE * value2,
 			  TP_DOMAIN * domain, int do_reverse, int do_coercion,
 			  int total_order, int *start_colp);
+static int mr_cmpval_bit2 (DB_VALUE * value1, DB_VALUE * value2, int length,
+			   TP_DOMAIN * domain, int do_reverse,
+			   int do_coercion, int total_order, int *start_colp);
 static void mr_initmem_varbit (void *mem);
 static int mr_setmem_varbit (void *memptr, TP_DOMAIN * domain,
 			     DB_VALUE * value);
@@ -297,6 +317,10 @@ static int mr_cmpval_varbit (DB_VALUE * value1, DB_VALUE * value2,
 			     TP_DOMAIN * domain, int do_reverse,
 			     int do_coercion, int total_order,
 			     int *start_colp);
+static int mr_cmpval_varbit2 (DB_VALUE * value1, DB_VALUE * value2,
+			      int length, TP_DOMAIN * domain, int do_reverse,
+			      int do_coercion, int total_order,
+			      int *start_colp);
 
 #if !defined (SERVER_MODE)
 static const char *pr_copy_string (const char *str);
@@ -8235,6 +8259,35 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2,
   return c;
 }
 
+static int
+mr_cmpval_string2 (DB_VALUE * value1, DB_VALUE * value2, int length,
+		   TP_DOMAIN * domain, int do_reverse,
+		   int do_coercion, int total_order, int *start_colp)
+{
+  int c;
+  unsigned char *string1, *string2;
+  int len1, len2, string_size;
+
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  string_size = (int) DB_GET_STRING_SIZE (value1);
+  len1 = MIN (string_size, length);
+  string_size = (int) DB_GET_STRING_SIZE (value2);
+  len2 = MIN (string_size, length);
+
+  c = qstr_compare (string1, len1, string2, len2);
+  c = MR_CMP_RETURN_CODE (c, do_reverse, domain);
+
+  return c;
+}
+
+
 PR_TYPE tp_String = {
   "character varying", DB_TYPE_STRING, 1, sizeof (const char *), 0, 4,
   help_fprint_value,
@@ -8863,6 +8916,35 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2,
 
   return c;
 }
+
+static int
+mr_cmpval_char2 (DB_VALUE * value1, DB_VALUE * value2, int length,
+		 TP_DOMAIN * domain, int do_reverse,
+		 int do_coercion, int total_order, int *start_colp)
+{
+  int c;
+  unsigned char *string1, *string2;
+  int len1, len2, string_size;
+
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  string_size = (int) DB_GET_STRING_SIZE (value1);
+  len1 = MIN (string_size, length);
+  string_size = (int) DB_GET_STRING_SIZE (value2);
+  len2 = MIN (string_size, length);
+
+  c = char_compare (string1, len1, string2, len2);
+  c = MR_CMP_RETURN_CODE (c, do_reverse, domain);
+
+  return c;
+}
+
 
 PR_TYPE tp_Char = {
   "character", DB_TYPE_CHAR, 0, 0, 0, 1,
@@ -9560,6 +9642,36 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2,
   return c;
 }
 
+static int
+mr_cmpval_nchar2 (DB_VALUE * value1, DB_VALUE * value2, int length,
+		  TP_DOMAIN * domain, int do_reverse,
+		  int do_coercion, int total_order, int *start_colp)
+{
+  int c;
+  unsigned char *string1, *string2;
+  int len1, len2, string_size;
+
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  string_size = (int) DB_GET_STRING_SIZE (value1);
+  len1 = MIN (string_size, length);
+  string_size = (int) DB_GET_STRING_SIZE (value2);
+  len2 = MIN (string_size, length);
+
+  c = nchar_compare (string1, len1, string2, len2,
+		     (INTL_CODESET) DB_GET_STRING_CODESET (value2));
+  c = MR_CMP_RETURN_CODE (c, do_reverse, domain);
+
+  return c;
+}
+
+
 PR_TYPE tp_NChar = {
   "national character", DB_TYPE_NCHAR, 0, 0, 0, 1,
   help_fprint_value,
@@ -10256,6 +10368,37 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2,
   return c;
 }
 
+static int
+mr_cmpval_varnchar2 (DB_VALUE * value1, DB_VALUE * value2,
+		     int length,
+		     TP_DOMAIN * domain, int do_reverse,
+		     int do_coercion, int total_order, int *start_colp)
+{
+  int c;
+  unsigned char *string1, *string2;
+  int len1, len2, string_size;
+
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  string_size = (int) DB_GET_STRING_SIZE (value1);
+  len1 = MIN (string_size, length);
+  string_size = (int) DB_GET_STRING_SIZE (value2);
+  len2 = MIN (string_size, length);
+
+  c = varnchar_compare (string1, len1, string2, len2,
+			(INTL_CODESET) DB_GET_STRING_CODESET (value2));
+  c = MR_CMP_RETURN_CODE (c, do_reverse, domain);
+
+  return c;
+}
+
+
 PR_TYPE tp_VarNChar = {
   "national character varying", DB_TYPE_VARNCHAR, 1, sizeof (const char *), 0,
   4,
@@ -10814,6 +10957,35 @@ mr_cmpval_bit (DB_VALUE * value1, DB_VALUE * value2,
 
   return c;
 }
+
+static int
+mr_cmpval_bit2 (DB_VALUE * value1, DB_VALUE * value2, int length,
+		TP_DOMAIN * domain, int do_reverse,
+		int do_coercion, int total_order, int *start_colp)
+{
+  int c;
+  unsigned char *string1, *string2;
+  int len1, len2, string_size;
+
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  string_size = (int) DB_GET_STRING_SIZE (value1);
+  len1 = MIN (string_size, length);
+  string_size = (int) DB_GET_STRING_SIZE (value2);
+  len2 = MIN (string_size, length);
+
+  c = bit_compare (string1, len1, string2, len2);
+  c = MR_CMP_RETURN_CODE (c, do_reverse, domain);
+
+  return c;
+}
+
 
 PR_TYPE tp_Bit = {
   "bit", DB_TYPE_BIT, 0, 0, 0, 1,
@@ -11395,6 +11567,35 @@ mr_cmpval_varbit (DB_VALUE * value1, DB_VALUE * value2,
 
   return c;
 }
+
+static int
+mr_cmpval_varbit2 (DB_VALUE * value1, DB_VALUE * value2, int length,
+		   TP_DOMAIN * domain, int do_reverse,
+		   int do_coercion, int total_order, int *start_colp)
+{
+  int c;
+  unsigned char *string1, *string2;
+  int len1, len2, string_size;
+
+  string1 = (unsigned char *) DB_GET_STRING (value1);
+  string2 = (unsigned char *) DB_GET_STRING (value2);
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  string_size = (int) DB_GET_STRING_SIZE (value1);
+  len1 = MIN (string_size, length);
+  string_size = (int) DB_GET_STRING_SIZE (value2);
+  len2 = MIN (string_size, length);
+
+  c = varbit_compare (string1, len1, string2, len2);
+  c = MR_CMP_RETURN_CODE (c, do_reverse, domain);
+
+  return c;
+}
+
 
 PR_TYPE tp_VarBit = {
   "bit varying", DB_TYPE_VARBIT, 1, sizeof (const char *), 0, 4,

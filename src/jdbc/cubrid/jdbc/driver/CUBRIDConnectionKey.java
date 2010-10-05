@@ -28,9 +28,9 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
-import cubrid.jdbc.jci.UConKey;
+import @CUBRID_JCI@.UConKey;
 
 public class CUBRIDConnectionKey
 {

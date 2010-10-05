@@ -131,8 +131,6 @@ extern void boot_client_all_finalize (bool is_er_final);
 
 BOOT_SERVER_STATUS boot_Server_status = BOOT_SERVER_DOWN;
 
-bool skip_to_check_ct_classes_for_rebuild = false;
-
 #if defined(SERVER_MODE)
 /* boot_cl.c:boot_Host_name[] if CS_MODE and SA_MODE */
 char boot_Host_name[MAXHOSTNAMELEN] = "";
@@ -149,7 +147,7 @@ static OID *boot_Db_parm_oid = &boot_Header_oid;
 static int boot_Temp_volumes_tpgs = 0;
 static int boot_Temp_volumes_max_pages = -2;
 static int boot_Temp_volumes_sys_pages = 0;
-
+static bool skip_to_check_ct_classes_for_rebuild = false;
 
 #if defined(SERVER_MODE)
 static bool boot_Set_server_at_exit = false;
@@ -1726,7 +1724,7 @@ boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
 	  break;
 	}
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-	      ER_BO_UNKNOWN_VOLUME, 1, temp_volid);
+	      ER_BO_UNKNOWN_VOLUME, 1, temp_vol_fullname);
       fileio_unformat (thread_p, temp_vol_fullname);
     }
 
@@ -2721,19 +2719,6 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 	      fileio_dismount (thread_p, dbtxt_vdes);
 	      dbtxt_vdes = NULL_VOLDES;
 	    }
-
-	  /* Commit the initialization part */
-	  if (xtran_server_commit (thread_p, false) !=
-	      TRAN_UNACTIVE_COMMITTED)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_BO_UNABLE_TO_RESTART_SERVER, 0);
-	      (void) boot_remove_all_volumes (thread_p, boot_Db_full_name,
-					      log_path,
-					      (const char *) log_prefix, true,
-					      true);
-	      tran_index = NULL_TRAN_INDEX;
-	    }
 	}
       else
 	{			/* fail - remove all */
@@ -3483,8 +3468,20 @@ xboot_register_client (THREAD_ENTRY * thread_p,
   tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE,
 					client_credential, tran_state,
 					client_lock_wait, client_isolation);
+#if defined (SERVER_MODE)
+  if (thread_p->conn_entry->status != CONN_OPEN)
+    {
+      /* the connection is going down. stop it */
+      logtb_release_tran_index (thread_p, tran_index);
+      tran_index = -1;
+    }
+#endif /* SERVER_MODE */
+
   if (tran_index != NULL_TRAN_INDEX)
     {
+#if defined (SERVER_MODE)
+      thread_p->conn_entry->transaction_id = tran_index;
+#endif /* SERVER_MODE */
       server_credential->db_full_name = boot_Db_full_name;
       server_credential->host_name = boot_Host_name;
       server_credential->process_id = getpid ();
@@ -3500,31 +3497,36 @@ xboot_register_client (THREAD_ENTRY * thread_p,
 #else
       server_credential->ha_server_state = PRM_HA_SERVER_STATE;
 #endif
+
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED,
 	      4, client_credential->program_name,
 	      client_credential->process_id, client_credential->host_name,
 	      tran_index);
-      return tran_index;
-    }
 
 #if defined(SERVER_MODE)
-  /* Check the server's state for HA action for this client */
-  if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
-    {
-      if (css_check_ha_server_state_for_client (thread_p, 1) != NO_ERROR)
+      /* Check the server's state for HA action for this client */
+      if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
 	{
-	  er_log_debug (ARG_FILE_LINE, "xboot_register_client: "
-			"css_check_ha_server_state_for_client() error\n");
-	  *tran_state = TRAN_UNACTIVE_UNKNOWN;
-	  return NULL_TRAN_INDEX;
+	  if (css_check_ha_server_state_for_client (thread_p, 1) != NO_ERROR)
+	    {
+	      er_log_debug (ARG_FILE_LINE, "xboot_register_client: "
+			    "css_check_ha_server_state_for_client() error\n");
+	      *tran_state = TRAN_UNACTIVE_UNKNOWN;
+	      return NULL_TRAN_INDEX;
+	    }
 	}
-    }
-  if (client_credential->client_type == BOOT_CLIENT_LOG_APPLIER)
-    {
-      css_notify_ha_log_applier_state (thread_p,
-				       HA_LOG_APPLIER_STATE_UNREGISTERED);
-    }
+      if (client_credential->client_type == BOOT_CLIENT_LOG_APPLIER)
+	{
+	  css_notify_ha_log_applier_state (thread_p,
+					   HA_LOG_APPLIER_STATE_UNREGISTERED);
+	}
 #endif /* SERVER_MODE */
+
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED,
+	      4, client_credential->program_name,
+	      client_credential->process_id, client_credential->host_name,
+	      tran_index);
+    }
 
   return tran_index;
 }
@@ -5021,14 +5023,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p,
       goto error;
     }
 
-  /* Commit the initialization part */
-  if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_BO_UNABLE_TO_RESTART_SERVER, 0);
-      goto error;
-    }
-
   logpb_force (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
   (void) fileio_synchronize_all (thread_p, false);
@@ -5280,7 +5274,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name,
   if (dir == NULL || ((db = cfg_find_db_list (dir, db_name)) == NULL))
     {
       /*
-       * Make sure that no body was in the process of writting the
+       * Make sure that nobody was in the process of writing the
        * database.txt when we got a snapshot of it.
        */
       if (dir != NULL)
@@ -5640,4 +5634,85 @@ boot_volume_info_log_path (char *log_path)
     }
 
   return NULL;
+}
+
+/*
+ * xboot_compact_db () - compact the database
+ *
+ * return : NO_ERROR if all OK, ER_ status otherwise
+ *	    
+ *   class_oids(in): the class oids list to process
+ *   n_classes(in): the length of class_oids 
+ *   space_to_process(in): the maximum space to process
+ *   instance_lock_timeout(in): the lock timeout for instances
+ *   class_lock_timeout(in): the lock timeout for classes
+ *   delete_old_repr(in): drop old class representations
+ *   last_processed_class_oid(in,out): last processed class oid
+ *   last_processed_oid(in,out): last processed oid
+ *   total_objects(in,out): count processed objects for each class
+ *   failed_objects(in,out): count failed objects for each class
+ *   modified_objects(in,out): count modified objects for each class
+ *   big_objects(in,out): count big objects for each class
+ *   initial_last_repr_id(in,out): the list of last class representation 
+ *
+ * Note: 
+ */
+
+int
+xboot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
+		  int space_to_process,
+		  int instance_lock_timeout,
+		  int class_lock_timeout,
+		  bool delete_old_repr,
+		  OID * last_processed_class_oid,
+		  OID * last_processed_oid,
+		  int *total_objects, int *failed_objects,
+		  int *modified_objects, int *big_objects,
+		  int *initial_last_repr_id)
+{
+  return boot_compact_db (thread_p, class_oids, n_classes,
+			  space_to_process, instance_lock_timeout,
+			  class_lock_timeout, delete_old_repr,
+			  last_processed_class_oid, last_processed_oid,
+			  total_objects, failed_objects, modified_objects,
+			  big_objects, initial_last_repr_id);
+}
+
+/*
+ * xboot_heap_compact () - compact all pages from hfid of specified class OID
+ *   return: error_code 
+ *   class_oid(in):  the class oid
+ */
+int
+xboot_heap_compact (THREAD_ENTRY * thread_p, OID * class_oid)
+{
+  return boot_heap_compact_pages (thread_p, class_oid);
+}
+
+/*
+ * xboot_compact_start () - start database compaction
+ *   return: error_code
+ */
+int
+xboot_compact_start (THREAD_ENTRY * thread_p)
+{
+  return boot_compact_start (thread_p);
+}
+
+/*
+ * xboot_compact_stop () - stop database compaction
+ *   return: error_code
+ */
+int
+xboot_compact_stop (THREAD_ENTRY * thread_p)
+{
+  return boot_compact_stop (thread_p);
+}
+
+bool
+boot_set_skip_check_ct_classes (bool val)
+{
+  bool old_val = skip_to_check_ct_classes_for_rebuild;
+  skip_to_check_ct_classes_for_rebuild = val;
+  return old_val;
 }

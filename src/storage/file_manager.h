@@ -56,6 +56,13 @@ typedef enum
   FILE_LAST = FILE_HEAP_REUSE_SLOTS
 } FILE_TYPE;
 
+typedef enum
+{
+  FILE_OLD_FILE,
+  FILE_NEW_FILE,
+  FILE_ERROR
+} FILE_IS_NEW_FILE;
+
 /* Set a vfid with values of volid and fileid */
 #define VFID_SET(vfid_ptr, volid_value, fileid_value) \
   do {						      \
@@ -203,12 +210,13 @@ struct file_alloc_vpids
 extern int file_manager_initialize (THREAD_ENTRY * thread_p);
 extern int file_manager_finalize (THREAD_ENTRY * thread_p);
 
-extern DISK_ISVALID file_new_isvalid (THREAD_ENTRY * thread_p,
-				      const VFID * vfid);
-extern DISK_ISVALID file_new_isvalid_with_has_undolog (THREAD_ENTRY *
-						       thread_p,
-						       const VFID * vfid,
-						       bool * has_undolog);
+extern FILE_IS_NEW_FILE file_is_new_file (THREAD_ENTRY * thread_p,
+					  const VFID * vfid);
+extern FILE_IS_NEW_FILE file_is_new_file_with_has_undolog (THREAD_ENTRY *
+							   thread_p,
+							   const VFID * vfid,
+							   bool *
+							   has_undolog);
 extern int file_new_declare_as_old (THREAD_ENTRY * thread_p,
 				    const VFID * vfid);
 extern int file_new_set_has_undolog (THREAD_ENTRY * thread_p,

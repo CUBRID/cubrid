@@ -54,6 +54,7 @@
 #include "cas_sql_log2.h"
 
 #include "release_string.h"
+#include "cas_error_log.h"
 
 #if !defined(WINDOWS)
 #define STRING_APPEND(buffer_p, avail_size_holder, ...) \
@@ -117,23 +118,32 @@ struct t_attr_table
 };
 
 static int cubval_to_mysqlval (int cub_type);
-static int netval_to_dbval (void *type, void *value, MYSQL_BIND * db_val,
-			    T_NET_BUF * net_buf, char desired_type);
+static int make_bind_value (int num_bind, int argc, void **argv,
+			    MYSQL_BIND * ret_val, DB_VALUE ** db_vals,
+			    T_NET_BUF * net_buf, int desired_type);
+static int netval_to_dbval (void *type, void *value, MYSQL_BIND * out_val,
+			    DB_VALUE * db_val, T_NET_BUF * net_buf,
+			    int desired_type);
 static int cur_tuple (T_SRV_HANDLE * q_result, int tuple,
 		      T_NET_BUF * net_buf);
-static int dbval_to_net_buf (void *val, int type, char is_null, size_t length,
-			     T_NET_BUF * net_buf);
+static int dbval_to_net_buf (void *val, int type, my_bool is_null,
+			     unsigned long length, T_NET_BUF * net_buf);
 #if 0
 static int get_attr_name_from_argv (int argc, void **argv,
 				    char ***ret_attr_name);
 #endif /* 0 */
-static int prepare_column_list_info_set (int stmt_type, MYSQL_RES * result,
+static int prepare_column_list_info_set (T_SRV_HANDLE * srv_handle,
+					 int stmt_type, MYSQL_RES * result,
 					 T_NET_BUF * net_buf,
 					 T_BROKER_VERSION client_version);
 static void prepare_column_info_set (T_NET_BUF * net_buf, char ut,
 				     short scale, int prec,
 				     const char *col_name,
-				     const char *attr_name,
+				     const char *default_value,
+				     char auto_increment, char unique_key,
+				     char primary_key, char reverse_index,
+				     char reverse_unique, char foreign_key,
+				     char shared, const char *attr_name,
 				     const char *class_name, char nullable,
 				     T_BROKER_VERSION client_version);
 
@@ -164,10 +174,8 @@ static void add_res_data_date (T_NET_BUF * net_buf, short yr, short mon,
 #if 0
 static void add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj,
 				 char type);
-#endif /* 0 */
 static void trigger_event_str (DB_TRIGGER_EVENT trig_event, char *buf);
 static void trigger_status_str (DB_TRIGGER_STATUS trig_status, char *buf);
-#if 0
 static void trigger_time_str (DB_TRIGGER_TIME trig_time, char *buf);
 #endif /* 0 */
 
@@ -175,10 +183,7 @@ static char get_stmt_type (char *stmt);
 static int execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
 			     T_BROKER_VERSION client_version, char exec_flag);
 
-#if 0
-static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args,
-						    int is_first_out);
-#endif /* 0 */
+T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args);
 static bool has_stmt_result_set (int stmt_type);
 static bool check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle);
 
@@ -189,18 +194,18 @@ static int ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag,
 				CACHE_TIME * clt_cache_time,
 				int *clt_cache_reusable, bool is_all);
 
-static int cas_mysql_get_errno ();
+static int cas_mysql_get_errno (void);
 static int cas_mysql_get_stmt_errno (MYSQL_STMT * stmt);
 static void cas_mysql_set_host_connected (const char *dbname,
 					  const char *host, int port);
 static int cas_mysql_stmt_bind_result (MYSQL_STMT * stmt, MYSQL_BIND ** bind);
 static int cas_mysql_stmt_store_result (MYSQL_STMT * stmt);
-static const char *cas_mysql_get_errmsg ();
+static const char *cas_mysql_get_errmsg (void);
 static int cas_mysql_find_db (const char *alias, char *dbname, char *host,
 			      int *port);
-static const char *cas_mysql_get_connected_host_info ();
+static const char *cas_mysql_get_connected_host_info (void);
 static int cas_mysql_connect_db (char *alias, char *user, char *passwd);
-static void cas_mysql_disconnect_db ();
+static void cas_mysql_disconnect_db (void);
 static int cas_mysql_stmt_init (MYSQL_STMT ** stmt);
 static int cas_mysql_prepare (MYSQL_STMT * stmt, char *query, int qsize);
 static int cas_mysql_param_count (MYSQL_STMT * stmt);
@@ -211,14 +216,12 @@ static MYSQL_FIELD *cas_mysql_fetch_field (MYSQL_RES * result);
 static void cas_mysql_free_result (MYSQL_RES * result);
 static int cas_mysql_stmt_bind_param (MYSQL_STMT * stmt, MYSQL_BIND * bindIn);
 static int cas_mysql_stmt_execute (MYSQL_STMT * stmt);
-static int cas_mysql_stmt_num_rows (MYSQL_STMT * stmt);
-static int cas_mysql_stmt_affected_rows (MYSQL_STMT * stmt);
 static int cas_mysql_stmt_fetch (MYSQL_STMT * stmt);
 static int cas_mysql_end_tran (int tran_type);
 static int cas_mysql_num_fields (MYSQL_RES * metaResult);
-static int cas_mysql_set_results_info (T_SRV_HANDLE * srv_handle);
-static int get_db_connect_status ();
+static int get_db_connect_status (void);
 static bool cas_mysql_autocommit (bool autoCommit);
+static int db_value_clear (DB_VALUE * value);
 
 static MYSQL *_db_conn;
 static char mysql_connected_info[DBINFO_MAX_LENGTH] = "";
@@ -318,7 +321,7 @@ ux_is_database_connected (void)
 }
 
 void
-ux_database_shutdown ()
+ux_database_shutdown (void)
 {
   cas_mysql_disconnect_db ();
 
@@ -333,7 +336,7 @@ ux_database_shutdown ()
 }
 
 int
-ux_prepare (char *sql_stmt, int flag, bool auto_commit_mode,
+ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
 	    T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 	    unsigned int query_seq_num)
 {
@@ -350,6 +353,7 @@ ux_prepare (char *sql_stmt, int flag, bool auto_commit_mode,
   int is_first_out = 0;
   char *tmp;
   int result_cache_lifetime;
+  T_PREPARE_CALL_INFO *prepare_call_info;
 
   srv_h_id = hm_new_srv_handle (&srv_handle, query_seq_num);
   if (srv_h_id < 0)
@@ -390,11 +394,17 @@ prepare_result_set:
 
   net_buf_cp_int (net_buf, srv_h_id, NULL);
 
-  result_cache_lifetime = 0;
+  result_cache_lifetime = -1;
   net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 
   net_buf_cp_byte (net_buf, stmt_type);
   net_buf_cp_int (net_buf, num_markers, NULL);
+
+  prepare_call_info = make_prepare_call_info (num_markers);
+  if (prepare_call_info == NULL)
+    {
+      goto prepare_error;
+    }
 
   if (stmt_type == CUBRID_STMT_SELECT)
     {
@@ -405,8 +415,15 @@ prepare_result_set:
 	}
     }
   srv_handle->session = (void *) stmt;
+  srv_handle->prepare_call_info = prepare_call_info;
 
-  prepare_column_list_info_set (stmt_type, result, net_buf, client_version);
+  err_code =
+    prepare_column_list_info_set (srv_handle, stmt_type, result, net_buf,
+				  client_version);
+  if (err_code < 0)
+    {
+      goto prepare_error;
+    }
   cas_mysql_free_result (result);
 
   return srv_h_id;
@@ -500,18 +517,30 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   char is_first_stmt = TRUE;
   MYSQL_STMT *stmt = NULL;
   MYSQL_RES *metaResult;
+  T_PREPARE_CALL_INFO *call_info;
+  DB_VALUE **db_vals = NULL;
   T_BROKER_VERSION client_version = req_info->client_version;
+  MYSQL_BIND *defines;
 
   hm_qresult_end (srv_handle, FALSE);
 
   stmt = (MYSQL_STMT *) srv_handle->session;
   stmt_id = stmt->stmt_id;
+  call_info = srv_handle->prepare_call_info;
 
-  num_bind = cas_mysql_param_count (stmt);
+  num_bind = call_info->num_args;
   if (num_bind > 0)
     {
+      value_list = (MYSQL_BIND *) call_info->bind;
+      db_vals = (DB_VALUE **) call_info->dbval_args;
+      if ((value_list == NULL) || (db_vals == NULL))
+	{
+	  err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+	  goto execute_all_error;
+	}
+
       err_code =
-	make_bind_value (num_bind, argc, argv, &value_list, net_buf,
+	make_bind_value (num_bind, argc, argv, value_list, db_vals, net_buf,
 			 MYSQL_TYPE_NULL);
       if (err_code < 0)
 	{
@@ -549,7 +578,14 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
     {
-      err_code = cas_mysql_set_results_info (srv_handle);
+      defines = srv_handle->q_result->defines;
+      err_code = cas_mysql_stmt_bind_result (stmt, &defines);
+      if (err_code < 0)
+	{
+	  goto execute_all_error;
+	}
+
+      err_code = cas_mysql_stmt_store_result (stmt);
       if (err_code < 0)
 	{
 	  goto execute_all_error;
@@ -559,19 +595,16 @@ ux_execute_internal (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   srv_handle->max_row = max_row;
   srv_handle->max_col_size = max_col_size;
 
-  if (value_list)
+  for (i = 0; i < num_bind; i++)
     {
-      for (i = 0; i < num_bind; i++)
-	{
-	  cas_mysql_bind_param_clear (&(value_list[i]));
-	}
-      FREE_MEM (value_list);
+      db_value_clear (db_vals[i]);
     }
 
   net_buf_cp_byte (net_buf, 0);
 
   num_tuple = execute_info_set (srv_handle, net_buf, client_version, flag);
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
+  srv_handle->tuple_count = num_tuple;
   return num_tuple;
 
 execute_all_error:
@@ -583,13 +616,9 @@ execute_all_error:
     }
   errors_in_transaction++;
 
-  if (value_list)
+  for (i = 0; i < num_bind; i++)
     {
-      for (i = 0; i < num_bind; i++)
-	{
-	  cas_mysql_bind_param_clear (&(value_list[i]));
-	}
-      FREE_MEM (value_list);
+      db_value_clear (db_vals[i]);
     }
   return err_code;
 }
@@ -653,60 +682,42 @@ ux_get_db_version (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   return 0;
 }
 
-int
-make_bind_value (int num_bind, int argc, void **argv, MYSQL_BIND ** ret_val,
-		 T_NET_BUF * net_buf, char desired_type)
+static int
+make_bind_value (int num_bind, int argc, void **argv, MYSQL_BIND * value_list,
+		 DB_VALUE ** db_vals, T_NET_BUF * net_buf, int desired_type)
 {
-  MYSQL_BIND *value_list = NULL;
-  int i, asize, type_idx, val_idx;
+  int i, type_idx, val_idx;
   int err_code;
-
-  *ret_val = NULL;
 
   if (num_bind != (argc / 2))
     {
       return ERROR_INFO_SET (CAS_ER_NUM_BIND, CAS_ERROR_INDICATOR);
     }
 
-  asize = sizeof (MYSQL_BIND) * num_bind;
-  value_list = (MYSQL_BIND *) MALLOC (asize);
-  if (value_list == NULL)
-    {
-      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-    }
-  memset (value_list, 0, asize);
   for (i = 0; i < num_bind; i++)
     {
       type_idx = 2 * i;
       val_idx = 2 * i + 1;
       err_code =
 	netval_to_dbval (argv[type_idx], argv[val_idx], &(value_list[i]),
-			 net_buf, desired_type);
+			 db_vals[i], net_buf, desired_type);
       if (err_code < 0)
 	{
-	  for (i--; i >= 0; i--)
-	    {
-	      cas_mysql_bind_param_clear (&(value_list[i]));
-	    }
-	  FREE_MEM (value_list);
 	  return err_code;
 	}
     }				/* end of for */
-
-  *ret_val = value_list;
 
   return 0;
 }
 
 void
-ux_free_result (T_QUERY_RESULT * result)
+ux_free_result (void *res)
 {
   int i;
   int column_count;
-  MYSQL_BIND *q_result;
-  char *is_null;
-  size_t *length;
+  T_QUERY_RESULT *result;
 
+  result = res;
   if (result == NULL)
     {
       return;
@@ -717,16 +728,12 @@ ux_free_result (T_QUERY_RESULT * result)
     {
       return;
     }
-
-  q_result = (MYSQL_BIND *) result->result;
   for (i = 0; i < column_count; i++)
     {
-      cas_mysql_bind_param_clear (&(q_result[i]));
+      db_value_clear (&(result->columns[i]));
     }
-  FREE_MEM (result->is_null);
-  FREE_MEM (result->length);
-  FREE_MEM (result->result);
-
+  FREE_MEM (result->columns);
+  FREE_MEM (result->defines);
   result->column_count = 0;
 
   return;
@@ -819,12 +826,14 @@ ux_db_type_to_cas_type (int db_type)
     }
   return cas_type;
 }
-
 static void
 prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
-			 const char *col_name, const char *attr_name,
-			 const char *class_name, char is_non_null,
-			 T_BROKER_VERSION client_version)
+			 const char *col_name, const char *default_value,
+			 char auto_increment, char unique_key,
+			 char primary_key, char reverse_index,
+			 char reverse_unique, char foreign_key, char shared,
+			 const char *attr_name, const char *class_name,
+			 char is_non_null, T_BROKER_VERSION client_version)
 {
   const char *attr_name_p, *class_name_p;
   int attr_name_len, class_name_len;
@@ -849,6 +858,39 @@ prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
     is_non_null = 0;
 
   net_buf_cp_byte (net_buf, is_non_null);
+
+  /* 3.0 protocol */
+  if (default_value == NULL)
+    {
+      net_buf_cp_int (net_buf, 1, NULL);
+      net_buf_cp_byte (net_buf, '\0');
+    }
+  else
+    {
+      char *tmp_str;
+
+      ALLOC_COPY (tmp_str, default_value);
+      if (tmp_str == NULL)
+	{
+	  net_buf_cp_int (net_buf, 1, NULL);
+	  net_buf_cp_byte (net_buf, '\0');
+	}
+      else
+	{
+	  ut_trim (tmp_str);
+	  net_buf_cp_int (net_buf, strlen (tmp_str) + 1, NULL);
+	  net_buf_cp_str (net_buf, tmp_str, strlen (tmp_str) + 1);
+	  FREE_MEM (tmp_str);
+	}
+    }
+
+  net_buf_cp_byte (net_buf, auto_increment);
+  net_buf_cp_byte (net_buf, unique_key);
+  net_buf_cp_byte (net_buf, primary_key);
+  net_buf_cp_byte (net_buf, reverse_index);
+  net_buf_cp_byte (net_buf, reverse_unique);
+  net_buf_cp_byte (net_buf, foreign_key);
+  net_buf_cp_byte (net_buf, shared);
 }
 
 static int
@@ -897,18 +939,19 @@ cubval_to_mysqlval (int cub_type)
     case CCI_U_TYPE_RESULTSET:
     case CCI_U_TYPE_SHORT:	/* TODO */
     default:
-      cas_log_write (ARG_FILE_LINE, "type convert fail : [%d]", cub_type);
+      cas_log_write (0, false, "type convert fail : [%d]", cub_type);
       return ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
     }
 }
 
 static int
 netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
-		 T_NET_BUF * net_buf, char desired_type)
+		 DB_VALUE * db_val, T_NET_BUF * net_buf, int desired_type)
 {
   char cub_type;
   int type;
   int err_code = 0;
+  char *data;
   int data_size;
   char coercion_flag = TRUE;
 
@@ -928,10 +971,13 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
 
   out_val->buffer = NULL;
   out_val->buffer_length = 0;
-  out_val->is_null = NULL;
+  out_val->is_null = false;
   out_val->buffer_type = type;
   out_val->is_unsigned = FALSE;
   out_val->length = NULL;	/* for out bind */
+
+  db_val->need_clear = false;
+  db_val->db_type = type;
 
   switch (type)
     {
@@ -940,67 +986,64 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
     case MYSQL_TYPE_BLOB:
       {
 	char *value;
-	int val_size;
-	NET_ARG_GET_STR (value, val_size, net_value);
+	NET_ARG_GET_STR (value, db_val->size, net_value);
 
-	out_val->buffer = (char *) MALLOC (val_size);
-	if (out_val->buffer == NULL)
+	data = (char *) MALLOC (db_val->size);
+	if (data == NULL)
 	  {
 	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
 				   CAS_ERROR_INDICATOR);
 	  }
-	memcpy (out_val->buffer, value, val_size);
-	out_val->buffer_length = val_size;
+	memcpy (data, value, db_val->size);
+
+	db_val->data.p = data;
+	db_val->need_clear = true;
+
+	out_val->buffer = (void *) db_val->data.p;
+	out_val->buffer_length = db_val->size;
       }
       break;
     case MYSQL_TYPE_STRING:
     case MYSQL_TYPE_VARCHAR:
       {
 	char *value;
-	int val_size;
-	NET_ARG_GET_STR (value, val_size, net_value);
+	NET_ARG_GET_STR (value, db_val->size, net_value);
 
-	out_val->buffer = (char *) MALLOC (val_size);
-	if (out_val->buffer == NULL)
+	data = (char *) MALLOC (db_val->size);
+	if (data == NULL)
 	  {
 	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
 				   CAS_ERROR_INDICATOR);
 	  }
-	memcpy (out_val->buffer, value, val_size);
-	/* -1 is \0 */
-	out_val->buffer_length = val_size - 1;
+	memcpy (data, value, db_val->size);
+
+	db_val->data.p = data;
+	db_val->need_clear = true;
+
+	out_val->buffer = (void *) db_val->data.p;
+	out_val->buffer_length = db_val->size - 1;	/* -1 is \0 */
       }
       break;
     case MYSQL_TYPE_LONG:
       {
-	int i_val;
-	int asize = sizeof (int);
+	int *i_val = &(db_val->data.i);
 
-	NET_ARG_GET_INT (i_val, net_value);
-	out_val->buffer = (char *) MALLOC (asize);
-	if (out_val->buffer == NULL)
-	  {
-	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				   CAS_ERROR_INDICATOR);
-	  }
-	memcpy (out_val->buffer, (char *) &i_val, asize);
-	out_val->buffer_length = asize;
+	NET_ARG_GET_INT (*i_val, net_value);
+	db_val->size = sizeof (int);
+
+	out_val->buffer = (void *) &(db_val->data.i);
+	out_val->buffer_length = db_val->size;
       }
       break;
     case MYSQL_TYPE_LONGLONG:
       {
-	int64_t l_val;
-	int asize = sizeof (int64_t);
+	int64_t *l_val = &(db_val->data.bi);
 
-	NET_ARG_GET_BIGINT (l_val, net_value);
-	out_val->buffer = (char *) MALLOC (asize);
-	if (out_val->buffer == NULL)
-	  {
-	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				   CAS_ERROR_INDICATOR);
-	  }
-	memcpy (out_val->buffer, (char *) &l_val, asize);
-	out_val->buffer_length = asize;
+	NET_ARG_GET_BIGINT (*l_val, net_value);
+	db_val->size = sizeof (int64_t);
+
+	out_val->buffer = (void *) &(db_val->data.bi);
+	out_val->buffer_length = db_val->size;
       }
       break;
 #if 0
@@ -1023,86 +1066,58 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
 #endif /* 0 */
     case MYSQL_TYPE_FLOAT:
       {
-	float f_val;
-	int asize = sizeof (float);
+	float *f_val = &(db_val->data.f);
 
-	NET_ARG_GET_FLOAT (f_val, net_value);
-	out_val->buffer = (char *) MALLOC (asize);
-	if (out_val->buffer == NULL)
-	  {
-	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				   CAS_ERROR_INDICATOR);
-	  }
-	memcpy (out_val->buffer, (char *) &f_val, asize);
-	out_val->buffer_length = asize;
+	NET_ARG_GET_FLOAT (*f_val, net_value);
+	db_val->size = sizeof (float);
+
+	out_val->buffer = (void *) &(db_val->data.f);
+	out_val->buffer_length = db_val->size;
       }
       break;
     case MYSQL_TYPE_DOUBLE:
       {
-	double d_val;
-	int asize = sizeof (double);
+	double *d_val = &(db_val->data.d);
 
-	NET_ARG_GET_DOUBLE (d_val, net_value);
-	out_val->buffer = (char *) MALLOC (asize);
-	if (out_val->buffer == NULL)
-	  {
-	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				   CAS_ERROR_INDICATOR);
-	  }
-	memcpy (out_val->buffer, (char *) &d_val, asize);
-	out_val->buffer_length = asize;
+	NET_ARG_GET_DOUBLE (*d_val, net_value);
+	db_val->size = sizeof (double);
+
+	out_val->buffer = (void *) &(db_val->data.d);
+	out_val->buffer_length = db_val->size;
       }
       break;
     case MYSQL_TYPE_DATE:
       {
-	MYSQL_TIME mt;
-	int asize = sizeof (MYSQL_TIME);
+	MYSQL_TIME *mt = &(db_val->data.t);
 
-	memset ((char *) &mt, 0x00, asize);
-	NET_ARG_GET_DATE (mt.year, mt.month, mt.day, net_value);
-	out_val->buffer = (char *) MALLOC (asize);
-	if (out_val->buffer == NULL)
-	  {
-	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				   CAS_ERROR_INDICATOR);
-	  }
-	memcpy (out_val->buffer, (char *) &mt, asize);
-	out_val->buffer_length = asize;
+	NET_ARG_GET_DATE (mt->year, mt->month, mt->day, net_value);
+	db_val->size = sizeof (MYSQL_TIME);
+
+	out_val->buffer = (void *) &(db_val->data.t);
+	out_val->buffer_length = db_val->size;
       }
       break;
     case MYSQL_TYPE_TIME:
       {
-	MYSQL_TIME mt;
-	int asize = sizeof (MYSQL_TIME);
+	MYSQL_TIME *mt = &(db_val->data.t);
 
-	memset ((char *) &mt, 0x00, asize);
-	NET_ARG_GET_TIME (mt.hour, mt.minute, mt.second, net_value);
-	out_val->buffer = (char *) MALLOC (asize);
-	if (out_val->buffer == NULL)
-	  {
-	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				   CAS_ERROR_INDICATOR);
-	  }
-	memcpy (out_val->buffer, (char *) &mt, asize);
-	out_val->buffer_length = asize;
+	NET_ARG_GET_TIME (mt->hour, mt->minute, mt->second, net_value);
+	db_val->size = sizeof (MYSQL_TIME);
+
+	out_val->buffer = (void *) &(db_val->data.t);
+	out_val->buffer_length = db_val->size;
       }
       break;
     case MYSQL_TYPE_TIMESTAMP:
       {
-	MYSQL_TIME mt;
-	int asize = sizeof (MYSQL_TIME);
+	MYSQL_TIME *mt = &(db_val->data.t);
 
-	memset ((char *) &mt, 0x00, asize);
-	NET_ARG_GET_TIMESTAMP (mt.year, mt.month, mt.day, mt.hour, mt.minute,
-			       mt.second, net_value);
-	out_val->buffer = (char *) MALLOC (asize);
-	if (out_val->buffer == NULL)
-	  {
-	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				   CAS_ERROR_INDICATOR);
-	  }
-	memcpy (out_val->buffer, (char *) &mt, asize);
-	out_val->buffer_length = asize;
+	NET_ARG_GET_TIMESTAMP (mt->year, mt->month, mt->day, mt->hour,
+			       mt->minute, mt->second, net_value);
+	db_val->size = sizeof (MYSQL_TIME);
+
+	out_val->buffer = (void *) &(db_val->data.t);
+	out_val->buffer_length = db_val->size;
       }
       break;
     default:
@@ -1123,12 +1138,12 @@ cur_tuple (T_SRV_HANDLE * srv_handle, int tuple, T_NET_BUF * net_buf)
   int data_size = 0;
   MYSQL_STMT *stmt = (MYSQL_STMT *) srv_handle->session;
   T_QUERY_RESULT *q_result = (T_QUERY_RESULT *) srv_handle->q_result;
-  MYSQL_BIND *resultset = (MYSQL_BIND *) q_result->result;
-  char is_null;
-  size_t length;
+  MYSQL_BIND *defines = q_result->defines;
+  my_bool is_null;
+  unsigned long length;
 
 
-  if ((stmt == NULL) || (resultset == NULL))
+  if (stmt == NULL)
     {
       return ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
     }
@@ -1140,10 +1155,10 @@ cur_tuple (T_SRV_HANDLE * srv_handle, int tuple, T_NET_BUF * net_buf)
     }
   for (i = 0; i < ncols; i++)
     {
-      val = resultset[i].buffer;
-      type = resultset[i].buffer_type;
-      is_null = (char) *(resultset[i].is_null);
-      length = (size_t) * (resultset[i].length);
+      val = defines[i].buffer;
+      type = defines[i].buffer_type;
+      is_null = (my_bool) * (defines[i].is_null);
+      length = (unsigned long) *(defines[i].length);
 
       data_size += dbval_to_net_buf (val, type, is_null, length, net_buf);
     }
@@ -1152,7 +1167,7 @@ cur_tuple (T_SRV_HANDLE * srv_handle, int tuple, T_NET_BUF * net_buf)
 }
 
 static int
-dbval_to_net_buf (void *val, int type, char is_null, size_t length,
+dbval_to_net_buf (void *val, int type, my_bool is_null, unsigned long length,
 		  T_NET_BUF * net_buf)
 {
   int data_size;
@@ -1708,13 +1723,22 @@ get_stmt_type (char *stmt)
 }
 
 static int
-prepare_column_list_info_set (int stmt_type, MYSQL_RES * result,
-			      T_NET_BUF * net_buf,
+prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, int stmt_type,
+			      MYSQL_RES * result, T_NET_BUF * net_buf,
 			      T_BROKER_VERSION client_version)
 {
-  int num_cols;
+  int err_code;
+  int asize, size;
+  int type;
+  int num_cols = 0;
   int updatable_flag = 0;
+  int i;
   MYSQL_FIELD *col;
+  DB_VALUE *columns = NULL;
+  T_QUERY_RESULT *q_result = NULL;
+  MYSQL_BIND *defines;
+  MYSQL_STMT *stmt;
+  char *data;
 
   if (stmt_type == CUBRID_STMT_SELECT)
     {
@@ -1722,14 +1746,136 @@ prepare_column_list_info_set (int stmt_type, MYSQL_RES * result,
 
       num_cols = cas_mysql_num_fields (result);
       net_buf_cp_int (net_buf, num_cols, NULL);
-      while ((col = cas_mysql_fetch_field (result)))
+
+      asize = sizeof (T_QUERY_RESULT);
+      q_result = (T_QUERY_RESULT *) MALLOC (asize);
+      if (q_result == NULL)
 	{
-	  char set_type, cas_type;
-	  cas_type = ux_db_type_to_cas_type (col->type);
-	  prepare_column_info_set (net_buf, (char) cas_type, 0, 0, col->name,
-				   col->name, col->org_table, (char) 0,
-				   client_version);
+	  return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
 	}
+      memset ((char *) q_result, 0x00, asize);
+
+      srv_handle->q_result = q_result;
+      srv_handle->q_result->columns = NULL;
+      srv_handle->q_result->column_count = num_cols;
+      if (num_cols > 0)
+	{
+	  asize = sizeof (DB_VALUE) * (num_cols);
+	  columns = (DB_VALUE *) MALLOC (asize);
+	  if (columns == NULL)
+	    {
+	      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
+				     CAS_ERROR_INDICATOR);
+	    }
+	  memset ((char *) columns, 0x00, asize);
+	  srv_handle->q_result->columns = columns;
+
+	  asize = sizeof (MYSQL_BIND) * (num_cols);
+	  defines = (MYSQL_BIND *) MALLOC (asize);
+	  if (defines == NULL)
+	    {
+	      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
+				     CAS_ERROR_INDICATOR);
+	    }
+	  memset ((char *) defines, 0x00, asize);
+	  srv_handle->q_result->defines = defines;
+
+	  for (i = 0; i < num_cols; i++)
+	    {
+	      col = cas_mysql_fetch_field (result);
+	      char set_type, cas_type;
+	      cas_type = ux_db_type_to_cas_type (col->type);
+	      prepare_column_info_set (net_buf, (char) cas_type, 0, 0,
+				       col->name, (const char *) col->def, 0,
+				       0, 0, 0, 0, 0, 0, col->name,
+				       col->org_table, (char) 0,
+				       client_version);
+	      size = col->length;
+	      type = col->type;
+	      columns[i].need_clear = false;
+	      switch (type)
+		{		/* set type specific value */
+		  /*
+		     case MYSQL_TYPE_DATETIME:
+		     case MYSQL_TYPE_TIMESTAMP:
+		     case MYSQL_TYPE_DATE:
+		     case MYSQL_TYPE_TIME:
+		     size += 24;
+		     break;
+		   */
+		case MYSQL_TYPE_STRING:
+		case MYSQL_TYPE_VAR_STRING:
+		  size += 1;
+		  break;
+		case MYSQL_TYPE_BLOB:
+		case MYSQL_TYPE_LONG_BLOB:
+		  if (col->length > MAX_CAS_BLOB_SIZE)	/* length is unsigned long type */
+		    {
+		      size = MAX_CAS_BLOB_SIZE;
+		    }
+		  break;
+		case MYSQL_TYPE_DECIMAL:
+		case MYSQL_TYPE_NEWDECIMAL:
+		  type = MYSQL_TYPE_STRING;
+		  break;
+		}
+
+	      /* set defines value */
+	      defines[i].buffer_type = type;
+	      switch (type)	/* set buffer pointer */
+		{
+		case MYSQL_TYPE_NULL:
+		  break;
+		case MYSQL_TYPE_BLOB:
+		case MYSQL_TYPE_STRING:
+		case MYSQL_TYPE_VARCHAR:
+		case MYSQL_TYPE_VAR_STRING:
+		  data = (char *) MALLOC (size);
+		  if (data == NULL)
+		    {
+		      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
+					     CAS_ERROR_INDICATOR);
+		    }
+		  columns[i].data.p = data;
+		  columns[i].need_clear = true;
+
+		  defines[i].buffer = (void *) columns[i].data.p;
+		  defines[i].buffer_length = size;
+		  break;
+		case MYSQL_TYPE_LONG:
+		  defines[i].buffer = (void *) &(columns[i].data.i);
+		  defines[i].buffer_length = sizeof (int);
+		  break;
+		case MYSQL_TYPE_LONGLONG:
+		  defines[i].buffer = (void *) &(columns[i].data.bi);
+		  defines[i].buffer_length = sizeof (int64_t);
+		  break;
+		case MYSQL_TYPE_FLOAT:
+		  defines[i].buffer = (void *) &(columns[i].data.f);
+		  defines[i].buffer_length = sizeof (float);
+		  break;
+		case MYSQL_TYPE_DOUBLE:
+		  defines[i].buffer = (void *) &(columns[i].data.d);
+		  defines[i].buffer_length = sizeof (double);
+		  break;
+		case MYSQL_TYPE_DATE:
+		case MYSQL_TYPE_TIME:
+		case MYSQL_TYPE_TIMESTAMP:
+		case MYSQL_TYPE_DATETIME:
+		  defines[i].buffer = (void *) &(columns[i].data.t);
+		  defines[i].buffer_length = sizeof (MYSQL_TIME);
+		  break;
+		default:
+		  return ERROR_INFO_SET (CAS_ER_UNKNOWN_U_TYPE,
+					 CAS_ERROR_INDICATOR);
+		}
+	      defines[i].is_null = &(columns[i].is_null);
+	      defines[i].length = &(columns[i].size);
+	      defines[i].is_unsigned = col->flags & UNSIGNED_FLAG;
+	      defines[i].error = NULL;
+	    }
+	}
+
     }
   else
     {
@@ -1775,88 +1921,7 @@ execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
   return tuple_count;
 }
 
-#if 0
-static T_PREPARE_CALL_INFO *
-make_prepare_call_info (int num_args, int is_first_out)
-{
-  T_PREPARE_CALL_INFO *call_info;
-  MYSQL_BIND *ret_val = NULL;
-  MYSQL_BIND **arg_val = NULL;
-  char *param_mode = NULL;
-  int i, err_code;
 
-  call_info = (T_PREPARE_CALL_INFO *) MALLOC (sizeof (T_PREPARE_CALL_INFO));
-  if (call_info == NULL)
-    {
-      ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-      return NULL;
-    }
-
-  memset (call_info, 0, sizeof (T_PREPARE_CALL_INFO));
-
-  ret_val = (MYSQL_BIND *) MALLOC (sizeof (MYSQL_BIND));
-  if (ret_val == NULL)
-    {
-      err_code = CAS_ER_NO_MORE_MEMORY;
-      goto exit_on_error;
-    }
-  memset ((char *) ret_val, 0x00, sizeof (MYSQL_BIND));
-
-  if (num_args > 0)
-    {
-      arg_val =
-	(MYSQL_BIND **) MALLOC (sizeof (MYSQL_BIND *) * (num_args + 1));
-      if (arg_val == NULL)
-	{
-	  err_code = CAS_ER_NO_MORE_MEMORY;
-	  goto exit_on_error;
-	}
-      memset (arg_val, 0, sizeof (MYSQL_BIND *) * (num_args + 1));
-
-      param_mode = (char *) MALLOC (sizeof (char) * num_args);
-      if (param_mode == NULL)
-	{
-	  err_code = CAS_ER_NO_MORE_MEMORY;
-	  goto exit_on_error;
-	}
-
-      for (i = 0; i < num_args; i++)
-	{
-	  arg_val[i] = (MYSQL_BIND *) MALLOC (sizeof (MYSQL_BIND));
-	  if (arg_val[i] == NULL)
-	    {
-	      err_code = CAS_ER_NO_MORE_MEMORY;
-	      goto exit_on_error;
-	    }
-	  memset ((char *) (arg_val[i]), 0x00, sizeof (MYSQL_BIND));
-	  param_mode[i] = CCI_PARAM_MODE_UNKNOWN;
-	}
-    }
-
-  call_info->dbval_ret = ret_val;
-  call_info->dbval_args = arg_val;
-  call_info->num_args = num_args;
-  call_info->param_mode = param_mode;
-  call_info->is_first_out = is_first_out;
-
-  return call_info;
-
-exit_on_error:
-  FREE_MEM (call_info);
-  FREE_MEM (ret_val);
-  FREE_MEM (param_mode);
-  if (arg_val != NULL)
-    {
-      for (i = 0; i < num_args; i++)
-	{
-	  FREE_MEM (arg_val[i]);
-	}
-      FREE_MEM (arg_val);
-    }
-  ERROR_INFO_SET (err_code, CAS_ERROR_INDICATOR);
-  return NULL;
-}
-#endif
 
 extern void *jsp_get_db_result_set (int h_id);
 extern void jsp_srv_handle_free (int h_id);
@@ -1978,25 +2043,27 @@ check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
 #endif /* !LIBCAS_FOR_JSP */
 
 static int
-cas_mysql_get_errno ()
+cas_mysql_get_errno (void)
 {
   int e;
   const char *emsg;
+
   if (_db_conn == NULL)
     return ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
   e = mysql_errno (_db_conn);
   emsg = mysql_error (_db_conn);
-  cas_log_write (0, false,
-		 "DBMS ERROR : BROKER_ERR_CODE [ERR_CODE : %d, ERR_MSG : %s]",
-		 e, (emsg != NULL) ? emsg : "-");
+  cas_error_log_write (e, emsg);
+
   return ERROR_INFO_SET_WITH_MSG (e, DBMS_ERROR_INDICATOR, emsg);
 }
 
-const char *
-cas_mysql_get_errmsg ()
+static const char *
+cas_mysql_get_errmsg (void)
 {
   if (_db_conn == NULL)
     return NULL;
+
   return mysql_error (_db_conn);
 }
 
@@ -2005,13 +2072,14 @@ cas_mysql_get_stmt_errno (MYSQL_STMT * stmt)
 {
   int e;
   const char *emsg;
+
   if (stmt == NULL)
     return ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
   e = mysql_stmt_errno (stmt);
   emsg = mysql_stmt_error (stmt);
-  cas_log_write (0, false,
-		 "DBMS ERROR : BROKER_ERR_CODE [ERR_CODE : %d, ERR_MSG : %s]",
-		 e, (emsg != NULL) ? emsg : "-");
+  cas_error_log_write (e, emsg);
+
   return ERROR_INFO_SET_WITH_MSG (e, DBMS_ERROR_INDICATOR, emsg);
 }
 
@@ -2092,7 +2160,7 @@ cas_mysql_find_db_error:
 }
 
 static const char *
-cas_mysql_get_connected_host_info ()
+cas_mysql_get_connected_host_info (void)
 {
   return mysql_connected_info;
 }
@@ -2140,12 +2208,13 @@ cas_mysql_connect_db (char *alias, char *user, char *passwd)
 }
 
 static void
-cas_mysql_disconnect_db ()
+cas_mysql_disconnect_db (void)
 {
   set_db_connect_status (DB_CONNECTION_STATUS_NOT_CONNECTED);
 
   if (_db_conn == NULL)
     return;
+
   mysql_close (_db_conn);
   _db_conn = NULL;
 }
@@ -2154,6 +2223,7 @@ static int
 cas_mysql_stmt_init (MYSQL_STMT ** stmt)
 {
   MYSQL_STMT *tstmt;
+
   if (_db_conn == NULL)
     {
       *stmt = NULL;
@@ -2177,8 +2247,12 @@ cas_mysql_prepare (MYSQL_STMT * stmt, char *query, int qsize)
     {
       return cas_mysql_get_stmt_errno (stmt);
     }
+
   if (mysql_stmt_prepare (stmt, query, qsize))
-    return cas_mysql_get_stmt_errno (stmt);
+    {
+      return cas_mysql_get_stmt_errno (stmt);
+    }
+
   return 0;
 }
 
@@ -2193,18 +2267,22 @@ static int
 cas_mysql_stmt_result_metadata (MYSQL_STMT * stmt, MYSQL_RES ** result)
 {
   MYSQL_RES *tresult;
+
   if (stmt == NULL)
     {
       *result = NULL;
       return cas_mysql_get_stmt_errno (stmt);
     }
+
   tresult = mysql_stmt_result_metadata (stmt);
   if (tresult == NULL)
     {
       *result = NULL;
       return cas_mysql_get_stmt_errno (stmt);
     }
+
   *result = tresult;
+
   return 0;
 }
 
@@ -2212,11 +2290,13 @@ static int
 cas_mysql_stmt_bind_result (MYSQL_STMT * stmt, MYSQL_BIND ** bind)
 {
   int ret;
+
   ret = mysql_stmt_bind_result (stmt, *bind);
   if (ret != 0)
     {
       return cas_mysql_get_stmt_errno (stmt);
     }
+
   return 0;
 }
 
@@ -2224,11 +2304,13 @@ static int
 cas_mysql_stmt_store_result (MYSQL_STMT * stmt)
 {
   int ret;
+
   ret = mysql_stmt_store_result (stmt);
   if (ret != 0)
     {
       return cas_mysql_get_stmt_errno (stmt);
     }
+
   return 0;
 }
 
@@ -2257,13 +2339,16 @@ static int
 cas_mysql_stmt_bind_param (MYSQL_STMT * stmt, MYSQL_BIND * bindIn)
 {
   int ret;
+
   if (stmt == NULL)
     return ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+
   ret = mysql_stmt_bind_param (stmt, bindIn);
   if (ret != 0)
     {
       return cas_mysql_get_stmt_errno (stmt);
     }
+
   return 0;
 }
 
@@ -2277,23 +2362,25 @@ static int
 cas_mysql_stmt_execute (MYSQL_STMT * stmt)
 {
   int ret;
+
   ret = mysql_stmt_execute (stmt);
   if (ret != 0)
     {
       return cas_mysql_get_stmt_errno (stmt);
     }
+
   return 0;
 }
 
 /* Errors : None */
-static int
+int
 cas_mysql_stmt_num_rows (MYSQL_STMT * stmt)
 {
   return mysql_stmt_num_rows (stmt);
 }
 
 /* Errors : None */
-static int
+int
 cas_mysql_stmt_affected_rows (MYSQL_STMT * stmt)
 {
   return mysql_stmt_affected_rows (stmt);
@@ -2356,170 +2443,7 @@ cas_mysql_num_fields (MYSQL_RES * metaResult)
 }
 
 static int
-cas_mysql_set_results_info (T_SRV_HANDLE * srv_handle)
-{
-  int i;
-  int err_code;
-  int asize;
-  int column_count;
-  int size;
-  MYSQL_STMT *stmt;
-  MYSQL_RES *metaResult = NULL;
-  MYSQL_FIELD *fi;
-  MYSQL_BIND *resultbind;
-  char **results = NULL;
-  my_bool *is_null = NULL;
-  size_t *length = NULL;
-
-  stmt = (MYSQL_STMT *) srv_handle->session;
-  if (stmt == NULL)
-    {
-      return cas_mysql_get_stmt_errno (stmt);
-    }
-
-  err_code = cas_mysql_stmt_result_metadata (stmt, &metaResult);
-  if (err_code < 0)
-    {
-      return err_code;
-    }
-
-  column_count = cas_mysql_num_fields (metaResult);
-  if (column_count <= 0)
-    {
-      return 0;
-    }
-
-  fi = mysql_fetch_fields (metaResult);
-  if (fi == NULL)
-    {
-      return cas_mysql_get_errno ();
-    }
-
-  asize = sizeof (MYSQL_BIND) * (column_count);
-  resultbind = (MYSQL_BIND *) MALLOC (asize);
-  if (resultbind == NULL)
-    {
-      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-      goto cas_mysql_set_results_info_error;
-    }
-  memset ((char *) resultbind, 0x00, asize);
-
-  asize = sizeof (my_bool) * (column_count);
-  is_null = (my_bool *) MALLOC (asize);
-  if (is_null == NULL)
-    {
-      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-      goto cas_mysql_set_results_info_error;
-    }
-  memset ((char *) is_null, 0x00, asize);
-
-  asize = sizeof (size_t) * (column_count);
-  length = (size_t *) MALLOC (asize);
-  if (length == NULL)
-    {
-      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-      goto cas_mysql_set_results_info_error;
-    }
-  memset ((char *) length, 0x00, asize);
-
-  for (i = 0; i < column_count; i++)
-    {
-      size = fi[i].length;
-      if ((fi[i].type == MYSQL_TYPE_DATETIME) ||
-	  (fi[i].type == MYSQL_TYPE_TIMESTAMP) ||
-	  (fi[i].type == MYSQL_TYPE_DATE) || (fi[i].type == MYSQL_TYPE_TIME))
-	{
-	  size += 24;		/* for MYSQL BUG */
-	}
-      else if ((fi[i].type == MYSQL_TYPE_STRING) ||
-	       (fi[i].type == MYSQL_TYPE_VAR_STRING))
-	{
-	  size += 1;		/* \0 padding */
-	}
-      else if ((fi[i].type == MYSQL_TYPE_BLOB) ||
-	       (fi[i].type == MYSQL_TYPE_LONG_BLOB))
-	{
-	  size = MAX_CAS_BLOB_SIZE;
-	}
-      if ((fi[i].type == MYSQL_TYPE_DECIMAL)
-	  || (fi[i].type == MYSQL_TYPE_NEWDECIMAL))
-	{
-	  fi[i].type = MYSQL_TYPE_STRING;
-	}
-
-      resultbind[i].buffer_type = fi[i].type;
-      resultbind[i].buffer = (void *) MALLOC (size);
-      if (resultbind[i].buffer == NULL)
-	{
-	  return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-	}
-      resultbind[i].buffer_length = size;
-      resultbind[i].is_null = (my_bool *) & (is_null[i]);
-      resultbind[i].length = (unsigned long *) &(length[i]);
-      resultbind[i].is_unsigned =
-	(UNSIGNED_FLAG == (fi[i].flags & UNSIGNED_FLAG));
-      resultbind[i].error = NULL;
-    }
-
-  err_code = cas_mysql_stmt_bind_result (stmt, &resultbind);
-  if (err_code < 0)
-    {
-      goto cas_mysql_set_results_info_error;
-    }
-
-  err_code = cas_mysql_stmt_store_result (stmt);
-  if (err_code < 0)
-    {
-      goto cas_mysql_set_results_info_error;
-    }
-
-  asize = sizeof (T_QUERY_RESULT);	/* not support MULTIRESULT */
-  srv_handle->q_result = (T_QUERY_RESULT *) MALLOC (asize);
-  if (srv_handle->q_result == NULL)
-    {
-      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-      goto cas_mysql_set_results_info_error;
-    }
-  memset (srv_handle->q_result, 0x00, asize);
-
-  srv_handle->q_result->result = (MYSQL_BIND *) resultbind;
-  srv_handle->q_result->is_null = (char *) is_null;
-  srv_handle->q_result->length = (size_t *) length;
-  srv_handle->q_result->column_count = column_count;
-
-  cas_mysql_free_result (metaResult);
-  return 0;
-
-cas_mysql_set_results_info_error:
-  if (resultbind != NULL)
-    {
-      for (i = 0; i < column_count; i++)
-	{
-	  if (resultbind[i].buffer != NULL)
-	    {
-	      FREE_MEM (resultbind[i].buffer);
-	    }
-	}
-      FREE_MEM (resultbind);
-    }
-  if (is_null != NULL)
-    {
-      FREE_MEM (is_null);
-    }
-  if (length != NULL)
-    {
-      FREE_MEM (length);
-    }
-
-  if (metaResult)
-    {
-      cas_mysql_free_result (metaResult);
-    }
-  return err_code;
-}
-
-static int
-get_db_connect_status ()
+get_db_connect_status (void)
 {
   return mysql_connect_status;
 }
@@ -2537,7 +2461,7 @@ cas_mysql_autocommit (bool auto_commit_mode)
 }
 
 bool
-is_server_alive ()
+is_server_alive (void)
 {
   int ret;
 
@@ -2546,4 +2470,141 @@ is_server_alive ()
       return false;
     }
   return true;
+}
+
+int
+get_tuple_count (T_SRV_HANDLE * srv_handle)
+{
+  return srv_handle->tuple_count;
+}
+
+static void
+db_make_null (DB_VALUE * value)
+{
+  memset ((char *) value, 0x00, sizeof (DB_VALUE));
+  value->is_null = true;
+}
+
+static int
+db_value_clear (DB_VALUE * value)
+{
+  if (value == NULL)
+    {
+      return ERROR_INFO_SET (CAS_ER_DB_VALUE, CAS_ERROR_INDICATOR);
+    }
+  if (value->need_clear)
+    {
+      FREE_MEM (value->data.p);
+    }
+  memset ((char *) value, 0x00, sizeof (DB_VALUE));
+  return 0;
+}
+
+T_PREPARE_CALL_INFO *
+make_prepare_call_info (int num_args)
+{
+  T_PREPARE_CALL_INFO *call_info;
+  MYSQL_BIND *bind = NULL;
+  DB_VALUE **arg_val = NULL;
+  char *param_mode = NULL;
+  int i, err_code;
+
+  call_info = (T_PREPARE_CALL_INFO *) MALLOC (sizeof (T_PREPARE_CALL_INFO));
+  if (call_info == NULL)
+    {
+      ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      return NULL;
+    }
+  memset (call_info, 0, sizeof (T_PREPARE_CALL_INFO));
+
+  if (num_args > 0)
+    {
+      bind = (MYSQL_BIND *) MALLOC (sizeof (MYSQL_BIND) * (num_args));
+      if (bind == NULL)
+	{
+	  err_code = CAS_ER_NO_MORE_MEMORY;
+	  goto exit_on_error;
+	}
+      memset (bind, 0, sizeof (MYSQL_BIND) * (num_args));
+
+      param_mode = (char *) MALLOC (sizeof (char) * num_args);
+      if (param_mode == NULL)
+	{
+	  err_code = CAS_ER_NO_MORE_MEMORY;
+	  goto exit_on_error;
+	}
+
+      arg_val = (DB_VALUE **) MALLOC (sizeof (DB_VALUE *) * (num_args));
+      if (arg_val == NULL)
+	{
+	  err_code = CAS_ER_NO_MORE_MEMORY;
+	  goto exit_on_error;
+	}
+      memset (arg_val, 0, sizeof (DB_VALUE *) * (num_args));
+
+      for (i = 0; i < num_args; i++)
+	{
+	  arg_val[i] = (DB_VALUE *) MALLOC (sizeof (DB_VALUE));
+	  if (arg_val[i] == NULL)
+	    {
+	      err_code = CAS_ER_NO_MORE_MEMORY;
+	      goto exit_on_error;
+	    }
+	  db_make_null (arg_val[i]);
+
+	  bind[i].buffer = arg_val[i]->buf;
+
+	  param_mode[i] = CCI_PARAM_MODE_UNKNOWN;
+	}
+    }
+
+  call_info->dbval_ret = NULL;
+  call_info->dbval_args = arg_val;
+  call_info->num_args = num_args;
+  call_info->bind = bind;
+  call_info->param_mode = param_mode;
+
+  return call_info;
+
+exit_on_error:
+  FREE_MEM (call_info);
+  FREE_MEM (bind);
+  FREE_MEM (param_mode);
+  if (arg_val != NULL)
+    {
+      for (i = 0; i < num_args; i++)
+	{
+	  FREE_MEM (arg_val[i]);
+	}
+      FREE_MEM (arg_val);
+    }
+  ERROR_INFO_SET (err_code, CAS_ERROR_INDICATOR);
+  return NULL;
+}
+
+void
+ux_prepare_call_info_free (T_PREPARE_CALL_INFO * call_info)
+{
+  DB_VALUE **args;
+  MYSQL_BIND *bind;
+
+  if (call_info)
+    {
+      int i;
+
+      FREE_MEM (call_info->dbval_ret);
+
+      args = (DB_VALUE **) call_info->dbval_args;
+      for (i = 0; i < call_info->num_args; i++)
+	{
+	  db_value_clear (args[i]);
+	  FREE_MEM (args[i]);
+	}
+
+      FREE_MEM (call_info->dbval_args);
+      FREE_MEM (call_info->bind);
+      FREE_MEM (call_info->param_mode);
+
+      FREE_MEM (call_info);
+    }
 }

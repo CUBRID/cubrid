@@ -5,8 +5,10 @@ LIBRARY   cascci
 HEAPSIZE  1024
 EXPORTS
 	cci_init
+	cci_end
 	cci_get_version
 	cci_connect_3_0
+	cci_connect_with_url
 	cci_disconnect
 	cci_end_tran
 	cci_prepare
@@ -29,6 +31,7 @@ EXPORTS
 	cci_glo_new
 	cci_glo_save
 	cci_glo_load
+	cci_glo_load_file_name
 	cci_get_db_version
 	cci_get_class_num_objs
 	cci_oid
@@ -61,6 +64,10 @@ EXPORTS
 	cci_get_query_plan
 	cci_get_query_histogram
 	cci_query_info_free
+	cci_set_max_row
+	cci_savepoint
+	cci_get_param_info
+	cci_param_info_free
 	cci_glo_read_data
 	cci_glo_write_data
 	cci_glo_insert_data
@@ -73,10 +80,12 @@ EXPORTS
 	cci_glo_like_search
 	cci_glo_reg_search
 	cci_glo_binary_search
+	cci_get_dbms_type
+	cci_register_out_param
 	cci_cancel
 	cci_get_thread_result
 	cci_get_error_msg
-	cci_register_out_param
+	cci_get_err_msg
 
 ;          WEP PRIVATE
 ; To implement your own Windows Exit Procedure add the following

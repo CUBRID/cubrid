@@ -713,6 +713,7 @@ extern DB_VALUE *db_value_copy (DB_VALUE * value);
 extern int db_value_clone (DB_VALUE * src, DB_VALUE * dest);
 extern int db_value_clear (DB_VALUE * value);
 extern int db_value_free (DB_VALUE * value);
+extern int db_value_clear_array (DB_VALUE_ARRAY * value_array);
 extern void db_value_print (const DB_VALUE * value);
 extern int db_value_coerce (const DB_VALUE * src,
 			    DB_VALUE * dest,

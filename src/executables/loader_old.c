@@ -1846,7 +1846,7 @@ ldr_update_statistics (void)
  *    classname(in): name of this class
  * Note:
  *    After this function, the loader will expect one or more calls
- *    to ldr_add_attibute.
+ *    to ldr_add_attribute.
  */
 int
 ldr_start_class (MOP class, const char *classname)
@@ -2078,7 +2078,7 @@ ldr_set_constructor (const char *name)
 
 
 /*
- * ldr_add_argument - spefify paramters to an instance constructor method
+ * ldr_add_argument - specify parameters to an instance constructor method
  * previously specified with ldr_set_constructor.
  *    return: NO_ERROR if successful, error code otherwise
  *    name(in): argument name

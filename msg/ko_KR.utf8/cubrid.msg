@@ -27,17 +27,17 @@ $set 1 MSGCAT_SET_GENERAL
 1 \n%s\n\n
 2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 3 저작권 정보\n
-5 `%s'은(는) integer 인자 값이 아닙니다
-6 `%s'은(는) floating 인자 값이 아닙니다
-7 인자 `%s' 이(가) 없습니다
-8 인자 `%s' 이(가) 중복되어 있습니다
-9 인자 `%s' 를(을) 위한 값이 없습니다
-10 `%s' 는(은) 알 수 없는 인수입니다
-11 인자 `%s' 는(은) 잘못 위치되었습니다
-12 인자 정의가 안되어 있습니다
-13 인자 파싱을 위한 메모리를 할당할 수 없습니다
-14 인자의 길이가 최대치를 초과 했습니다: %s
-15 인자 파싱을 위한 목록 안에 메시지 번호 %d 이(가) 잘못 되었습니다
+5 '%s'은(는) integer 인자 값이 아닙니다.
+6 '%s'은(는) floating 인자 값이 아닙니다.
+7 인자 '%s' 이(가) 없습니다.
+8 인자 '%s' 이(가) 중복되어 있습니다.
+9 인자 '%s' 를(을) 위한 값이 없습니다.
+10 '%s' 는(은) 알 수 없는 인자입니다.
+11 인자 '%s' 는(은) 잘못된 위치에 지정되었습니다.
+12 인자가 정의되어 있지 않습니다. 
+13 인자 파싱을 위한 메모리를 할당할 수 없습니다.
+14 인자의 길이가 최대 허용 값 %s을 초과 했습니다.
+15 인자 파싱을 위한 목록 안에 메시지 번호 %d 이(가) 잘못 되었습니다.
 16 [옵션]
 17 옵션:
 
@@ -51,7 +51,7 @@ $set 4 MSGCAT_SET_PARAMETER
 9 설정 파일 "%s" 을(를) 열 수 없습니다: %s
 10 startup 파일 %2$s의 %1$d 라인:
 11 환경 변수 %s:
-12 알 수 없는 키워드.
+12 알 수 없는 키워드입니다.
 13 값의 타입이 인자의 타입과 일치하지 않습니다.
 14 값을 저장하기 위한 메모리를 할당할 수 없습니다.
 15 문자열의 끝을 알 수 없습니다.
@@ -150,7 +150,7 @@ $set 5 MSGCAT_SET_ERROR
 85 prefix "%1$s"이(가) 로그 디스크 상의 "%2$s"와 같지 않습니다. 로그가 데이터베이스 영역 밖에서 재 명명된 것 같습니다.
 86 데이터베이스 "%1$s"은(는) release "%2$s"와 호환되지 않습니다.
 87 복구 작업은 release "%3$s" 대신 "%1$s" release "%2$s"을(를) 사용하여 복구되어야 합니다. 복구 후, 데이터베이스는 릴리즈 "%4$s" 상에서 실행될 수 있습니다.
-88 release 문자열 "%1$s"은(는) %2$d 보다 깁니다. 내부에러 ..  헤더 로그를 바꿔야 합니다.
+88 내부에러: release 문자열 "%1$s"은(는) %2$d 보다 깁니다. 헤더 로그를 바꿔야 합니다.
 89 로그 "%1$s"는 주어진 데이터베이스에 속하지 않습니다.
 90 redo logging은 페이지 수준 logging 오퍼레이션입니다. 데이터 페이지 포인터가 어드레스 일부분으로 주어져야 합니다.
 91 postpone logging은 페이지 수준 logging 오퍼레이션입니다. 데이터 페이지 포인터가 어드레스 일부분으로 주어져야 합니다.
@@ -165,7 +165,7 @@ $set 5 MSGCAT_SET_ERROR
 100 데이터베이스 "%1$s"를 백업할 수 없습니다.
 101 알 수 없는 사용자 파일 "%1$s" 입니다.
 102 파일 "%1$s" 은(는) 충분한 엔트리들을 가지고 있지 않습니다: %2$d 엔트리들이 예상됩니다.
-103 파일 "%1$s" 은(는) 순서 없는 엔트리들을 갖고 있는 것 같습니다. 엔트리 %2$d (값:%3$d  %4$s  %5$s 들을 가진) 이(가) 발견 되었습니다. 값 %6$d %7$s %??? 들을 가진 엔트리가 예상됩니다.
+103 파일 "%1$s" 은(는) 순서 없는 엔트리들을 갖고 있는 것 같습니다. 엔트리 %2$d (값:%3$d  %4$s  %5$s 들을 가진) 이(가) 발견 되었습니다. 값 %6$d %7$s 들을 가진 엔트리가 예상됩니다.
 104 파일 "%1$s" 은(는) 데이터베이스(메인 볼륨)에 부정확한 엔트리를 갖고 있는 것 같습니다. 엔트리 %2$d (값 %3$d %4$s %5$s 들을 가진) 가(이) 발견되었습니다. 값 %6$d %7$s %8$s 들을 가진 엔트리가 예상됩니다.
 105 백업 파일 "%1$s" 을(를) 액세스할 수 없습니다. 복구 또는 백업은 취소되었습니다.
 106 트랜잭션 식별자가 다른 트랜잭션에서 이용되고 있기 때문에, 글로벌 트랜잭션 식별자 %1$d을(를) 가진 현재 트랜잭션을 커밋할 수 없습니다.
@@ -196,7 +196,7 @@ $set 5 MSGCAT_SET_ERROR
 131 데이터베이스 시스템 에러.
 132 현재 버전에서는 구현되어 있지 않습니다: %1$s.
 133 Nested set 상수가 허용되지 않습니다.
-134 하나의 update에서 클래스 애트리뷰트와 비-클래스 애트리뷰트를 혼용할 수 없습니다.
+134 단일 UPDATE문에서 클래스 애트리뷰트와 비 클래스 애트리뷰트를 혼용할 수 없습니다.
 135 OID 컬럼에 대한 부적합한 문장입니다: %1$s.
 136 "%1$s"은(는) 구현되지 않은 기능입니다.
 137 손상된 authorization 오브젝트 입니다.
@@ -257,7 +257,7 @@ $set 5 MSGCAT_SET_ERROR
 192 네트워크 구성 파일을 로드할 수 없습니다. 
 193 서버가 클라이언트로부터 시스템 종료 명령을 받았습니다.
 194 정의되지 않은 서버 요청 id %1$d 
-195 서버 통신 에러 : %1$s.
+195 서버 통신 에러: %1$s.
 196 서버 이름이 정의되지 않았습니다.
 197 마스터 서버와 연결할 수 없습니다.
 198 수신 버퍼가 작아서, 데이터가 단절되었습니다.
@@ -280,10 +280,10 @@ $set 5 MSGCAT_SET_ERROR
 215 id %1$d 을(를) 가진 애트리뷰트가 없습니다.
 216 값에 대해 잘못된 오브젝트 소유권한을 갖는 tag.
 217 오퍼레이션은 오직 클래스 오브젝트에 대해서 수행될 수 있습니다.
-218 db_get path-expression에 유효하지 않은 오브젝트가 존재합니다.
-219 유효하지 않은 db_get path-expression.
-220 db_get path-expression에 유효하지 않은 set이 존재합니다.
-221 db_get path-expression에 유효하지 않은 set 인덱스가 존재합니다.
+218 db_get path expression에 유효하지 않은 오브젝트가 존재합니다.
+219 유효하지 않은 db_get path expression.
+220 db_get path expression에 유효하지 않은 set이 존재합니다.
+221 db_get path expression에 유효하지 않은 set 인덱스가 존재합니다.
 222 %2$d 보다 큰 문자열을 "%1$s" 애트리뷰트에 할당하려고 합니다.
 223 %2$d 값이 smallint 애트리뷰트 "%1$s"에 비해 너무 큽니다.
 224 데이터베이스가 다시 시작되지 않았습니다.
@@ -332,7 +332,7 @@ $set 5 MSGCAT_SET_ERROR
 267 conflicting signature를 가지는 shadowing method "%1$s"입니다.
 268 클래스 "%2$s"와 "%3$s"간에 메소드 이름 "%1$s"이(가) 충돌됩니다.
 269 도메인 "%1$s"에 인덱스를 생성할 수 없습니다.
-270 도메인 "%1$s"에  UNIQUE 제약 조건을 정의할 수 없습니다.
+270 도메인 "%1$s"에 UNIQUE 제약 조건을 정의할 수 없습니다.
 271 클래스 계층의 순환 현상 검출; "%1$s"은(는) "%2$s"의 슈퍼 클래스입니다.
 272 클래스 "%2$s"에 인덱스 "%1$s"가 이미 존재합니다.
 273 인덱스 "%1$s"이 존재하지 않습니다.
@@ -340,7 +340,7 @@ $set 5 MSGCAT_SET_ERROR
 275 애트리뷰트 "%1$s"에 잘못된 오퍼레이션입니다. 클래스 "%2$s"(으)로부터 상속되었습니다.
 276 메소드 "%1$s"에 잘못된 오퍼레이션입니다. 클래스 "%2$s"(으)로부터 상속되었습니다.
 277 "%1$s"에 잘못된 오퍼레이션입니다. 클래스 "%2$s"(으)로부터 상속되었습니다.
-278 클래스 "%4$s"은(는) "%1$s"에  대한 호환되지 않는 도메인을 가집니다. 이들은 클래스 "%2$s"와 "%3$s"(으)로부터 상속되었습니다.
+278 클래스 "%4$s"은(는) "%1$s"에 대한 호환되지 않는 도메인을 가집니다. 이들은 클래스 "%2$s"와 "%3$s"(으)로부터 상속되었습니다.
 279 클래스 "%4$s"에서 클래스 "%2$s"(으)로부터 상속된 "%1$s"은(는) 주어진 데로 처리될 수 없습니다. 클래스 "%3$s"(으)로부터의 정의가 더 상세합니다.
 280 클래스 "%3$s"에 호환성 없는 도메인을 가진 로컬 정의가 존재하기 때문에 "%1$s"은(는) 클래스 "%2$s"(으)로부터 상속될 수 없습니다.
 281 클래스 "%3$s"의 클래스 "%2$s"(으)로부터 상속된 "%1$s"은(는) alias되었지만, 다른 source로부터의 substitute는 존재하지 않습니다.
@@ -513,8 +513,8 @@ $set 5 MSGCAT_SET_ERROR
 448 튜플 크기는 현재 한 페이지보다 작게 제한되어 있습니다.
 449 정의되지 않은 질의 식별자: %1$d.
 450 유효하지 않은 set 연산자: %1$d.
-451 인스턴스가 없는 heap 파일 
-452 유효하지 않은 XASL tree node content.
+451 인스턴스가 없는 heap 파일입니다.
+452 XASL 트리 노드의 컨텐츠가 유효하지 않습니다.
 453 더 이상 액세스할 명세 노드가 없습니다.
 454 잘못된 데이터 타입을 참조하였습니다.
 455 질의 파일 페이지가 더 이상 남아 있지 않습니다.
@@ -536,7 +536,7 @@ $set 5 MSGCAT_SET_ERROR
 471 파일 %2$s의 라인 %1$d에서 메모리를 모두 소모했습니다.
 472 호스트 '%3$s'에서 로컬 데이터베이스 '%2$s'의 %1$s 커넥터가 다운되었습니다.
 473 호스트 '%2$s'의 로컬 데이터베이스 '%1$s'(으)로부터의 보고: %3$s.
-474 %2$s 도중 에러 %1$이(가) 발생하였습니다.
+474 %2$s 도중 에러 %1$s이(가) 발생하였습니다.
 475 인덱스 %1$s을(를) 가진 질의 명세가 없습니다.
 476 LDB %1$s은(는) 이미 존재합니다. 
 477 LDB %1$s를 액세스하기 위해 호스트 %2$s의 master와 접속할 수 없습니다.
@@ -558,7 +558,7 @@ $set 5 MSGCAT_SET_ERROR
 493 문법: %1$s %2$s
 494 시멘틱: %1$s %2$s
 495 실행: %1$s %2$s
-496 정의되지 않은 키가 사용되었습니다 .
+496 정의되지 않은 키가 사용되었습니다.
 497 알 수 없는 값(oid) %1$d|%2$d|%3$d이(가) 참조되었습니다.
 498 중복 값 (oid) %1$d|%2$d|%3$d이(가) 참조되었습니다.
 499 널 키가 참조되었습니다.
@@ -580,7 +580,7 @@ $set 5 MSGCAT_SET_ERROR
 515 트리거 액션 수행 시간 %2$s는 트리거 조건 수행 시간 %1$s보다 빠를 수 없습니다.
 516 트리거 "%2$s"에서 최대 트리거 깊이 %1$d를 초과하였습니다.
 517 트리거 "%1$s"으로 인해 오퍼레이션이 취소되었습니다.
-518 내부 에러 : 트리거 처리 도중 "%1$s".
+518 내부 에러: 트리거 처리 도중 "%1$s".
 519 유효하지 않은 트리거 조건 타입입니다.
 520 REJECT 액션은 AFTER, DEFERRED 액션 시간에는 사용할 수 없습니다.
 521 REJECT 액션은 ABORT, TIMEOUT 이벤트와는 함께 사용할 수 없습니다.
@@ -608,7 +608,7 @@ $set 5 MSGCAT_SET_ERROR
 543 볼륨 "%1$s"에 대한 디스크 헤더가 불완전합니다.
 544 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). B+tree key %6$s entry for object OID: %7$d|%8$d|%9$d was not found on B+tree: %10$d|%11$d|%12$d.
 545 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Key and OID: %6$d|%7$d|%8$d entry on B+tree: %9$d|%10$d|%11$d is incorrect. The object does not exist.
-546 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). expecting %6$d OID entry values, but %7$d were found on B+tree: %8$d|%9$d|%10$d.
+546 내부 에러: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Expecting %6$d OID entry values, but %7$d were found on B+tree: %8$d|%9$d|%10$d.
 547 서버 release %1$s은(는) 클라이언트 release %2$s와(과) 다릅니다.
 548 프락시 클래스 "%1$s"에 object_id가 정의되지 않았습니다.
 549 프락시 인스턴스를 찾을 수 없습니다.
@@ -678,9 +678,9 @@ $ LOADDB
 612 복구해야 할 pending action이 있기 때문에 이 시점에서는 로깅을 disable할 수 없습니다.
 613 도메인이 다르므로 클래스 "%3$s"의 "%1$s"을(를) 클래스 "%2$s"의 alias substitute로 활용할 수 없습니다. 
 614 아카이브 로그의 개수가 허용 최대치 %1$d을(를) 초과했습니다.
-615 윈속으로 연결할 수 없습니다. 윈속 에러 : %1$d.
-616 윈속을 통해 머신 이름을 알 수 없습니다. 윈속 에러 : %1$d.
-617 윈속을 통해 머신 ID를 알 수 없습니다. 호스트 이름 테이블에 이 머신에 대한 엔트리가 있어야 합니다. 윈속 에러 : %1$d.
+615 윈속으로 연결할 수 없습니다. 윈속 에러: %1$d.
+616 윈속을 통해 머신 이름을 알 수 없습니다. 윈속 에러: %1$d.
+617 윈속을 통해 머신 ID를 알 수 없습니다. 호스트 이름 테이블에 이 머신에 대한 엔트리가 있어야 합니다. 윈속 에러: %1$d.
 618 애트리뷰트가 수정될 수 없습니다.
 619 잘못된 코드셋입니다.
 620 변환 대상 코드셋이 잘못되었습니다.
@@ -689,7 +689,7 @@ $ LOADDB
 623 유효하지 않은 escape sequence입니다. 유효하지 않은 escape sequence는 정규식 컴파일러에서 에러를 발생시킵니다.  
 624 유효하지 않은 escape sequence입니다. Escape 문자는 길이가 1 이상인 NULL이 아닌 문자여야 합니다. 
 625 내부 에러: Trying to update the wrong instance object %1$d|%2$d|%3$d attribute information template with instance object %4$d|%5$d|%6$d.
-626 내부 에러: 요청된 %1%d 애트리뷰트를 찾을 수 없습니다.
+626 내부 에러: 요청된 %1$d 애트리뷰트를 찾을 수 없습니다.
 627 trim 피연산자는 길이가 1 이상이어야 합니다. 
 628 잘못된 통화(currency) 타입입니다: %d
 629 페이지 사이즈 %1$d이(가) 2의 제곱이 아니거나 너무 작습니다. 페이지 사이즈 %2$d가(이) 대신 사용되었습니다. 
@@ -719,19 +719,19 @@ $ LOADDB
 653 slot %4$d에 저장된 길이 %3$d의 레코드의 데이터 부분을 제거하기 위해 주어진 오프셋 %1$d나 길이 %2$d가 잘못되었습니다. 
 654 slot %4$d에 저장된 길이 %3$d의 레코드의 데이터 부분을 overwrite하기 위해 주어진 오프셋 %1$d나 길이 %2$d가 잘못되었습니다. 
 655 이벤트 처리 구성 파일 "%1$s"를 열 수 없습니다.
-656 경고 : 이벤트 처리 구성 파일 "%1$s"의 %2$d 라인에 id/name이 빠져있습니다.
-657 경고 : 이벤트 처리 구성 파일 "%1$s"의 %2$d 라인에 잘못된 이벤트 이름이 포함되어 있습니다.
-658 경고 : 파일 "%4$s"의 %5$d 라인의 이벤트 id %1$d, 에러 id가 범위 %2$d <> %3$d를 벗어났습니다.
+656 경고: 이벤트 처리 구성 파일 "%1$s"의 %2$d 라인에 id/name이 빠져있습니다.
+657 경고: 이벤트 처리 구성 파일 "%1$s"의 %2$d 라인에 잘못된 이벤트 이름이 포함되어 있습니다.
+658 경고: 파일 "%4$s"의 %5$d 라인의 이벤트 id %1$d, 에러 id가 범위 %2$d <> %3$d를 벗어났습니다.
 659 이벤트 처리 프로그램 "%1$s"을(를) 액세스할 수 없습니다.
 660 이벤트 처리 프로세스 "%1$s"를 open/connect할 수 없습니다.
 661 이벤트 처리 프로세스 "%1$s"에 write할 수 없습니다.
 662 이벤트 처리 메카니즘을 초기화할 수 없습니다.
-663 경고 :  이벤트 처리 구성 파일 "%1$s"의 %2$d 라인이 너무 길어서 단절되었습니다.
+663 경고:  이벤트 처리 구성 파일 "%1$s"의 %2$d 라인이 너무 길어서 단절되었습니다.
 664 이벤트 처리 메카니즘 시작됨.
 665 이벤트 처리 pipe가 손상되었습니다. "%1$s"
 666 이벤트 처리 메카니즘 중지됨.
 667 클래스 '%1$s'에 상응하는 C++ 클래스를 찾을 수 없습니다.
-668 내부 에러 : Unknown domain type '%1$d'.
+668 내부 에러: Unknown domain type '%1$d'.
 669 최대 클라이언트 수 %1$d이(가) 초과되어 서버가 연결을 거부하였습니다.
 670 오퍼레이션은 하나 또는 그 이상의 UNIQUE 제약 사항을 위반하였습니다.
 671 트랜잭션(index %2$d, %3$s@%4$s|%5$d)에 연관된 socket %1$d에서 네트워크 read/write 에러가 발생하였습니다.
@@ -739,9 +739,9 @@ $ LOADDB
 673 서버가 다운되고 있기 때문에 서버로의 연결은 단절되었습니다.
 674 현재 서버 수행을 지속할 수 있는 활성화된 스레드가 없습니다. 현재 활성화된 스레드의 개수는 %1$d이며, 현재 환경에서 서버 수행을 위해서는 %2$d 개의 스레드가 필요합니다. 트랜잭션 %3$d은 타임아웃되었습니다.
 675 데이터베이스 위치 파일 "%1$s"을(를) 읽을 수 없습니다. 
-676 데이터베이스 위치 파일 "%1$s"에서 데이터베이스 "%1$s"을(를) 찾을 수 없습니다.
+676 데이터베이스 위치 파일 "%2$s"에서 데이터베이스 "%1$s"을(를) 찾을 수 없습니다.
 677 호스트 %2$s에서 "%1$s" 데이터베이스 서버로 연결 설정할 수 없습니다.
-678 내부 에러 : Client restart module received NULL database server name.
+678 내부 에러: Client restart module received NULL database server name.
 679 해당 C++ 트랜잭션은 이미 시작된 상태입니다.
 680 C++ 트랜잭션의 최대 내포 허용 값(%d)를 넘어서려고 하고 있습니다.
 681 시작되지 않은 C++ 트랜잭션에서 %s 트랜잭션을 시도하고 있습니다.
@@ -749,10 +749,10 @@ $ LOADDB
 683 유효하지 않은 길이(%d)의 문자열을 생성하려고 하고 있습니다.
 684 메소드가 사용자 정의 에러 코드 %d를 리턴 했습니다.
 685 클래스 "%1$s"가 유효하지 않습니다.
-686 통보 : 이벤트 핸들러가 재 시작되지 않았습니다.
+686 통보: 이벤트 핸들러가 재 시작되지 않았습니다.
 687 (%s *)로부터 (%s *)으로의 형 변환은 허용되지 않습니다.
 688 첨자가 범위를 벗어났습니다. %ld 번째 엘리먼트를 액세스 하려고 하고 있습니다. collection 크기를 %ld입니다.
-689 내부 에러 : Iterator contains corrupt state.
+689 내부 에러: Iterator contains corrupt state.
 690 초기화되지 않은 odb_Ref<>의 인스턴스를 참조하려고 하고 있습니다.
 691 유효하지 않은 iterator를 사용하려고 하고 있습니다.
 692 연관되지 않은 collection에 iterator를 사용하려고 하고 있습니다.
@@ -771,7 +771,7 @@ $ LOADDB
 705 %2$d 개이어야 하나 %1$d 개의 영구 볼륨이 발견되었습니다.
 706 볼륨 용도 %2$s의 영구 볼륨 "%1$s"을(를) 확장할 수 없습니다. 
 707 %2$d 페이지의 임시 볼륨 "%1$s"을(를) 확장할 수 없습니다.
-708 여유 공간이 부족하여 %2$d 페이지(%3$d K바이트)의 임시 볼륨을 확장할 수 없습니다. 사용 가능한 여유 공간은 %4$d 페이지(%5$d K바이트)입니다.
+708 여유 공간이 부족하여 %2$d 페이지(%3$d K바이트)의 임시 볼륨 "%1$s"을 확장할 수 없습니다. 사용 가능한 여유 공간은 %4$d 페이지(%5$d K바이트)입니다.
 709 "%1$s" 제약 사항이 없습니다.
 710 유효하지 않은 제약 사항입니다.
 711 주어진 애트리뷰트 값을 가지는 오브젝트는 존재하지 않습니다.
@@ -788,7 +788,7 @@ $ LOADDB
 722 NOT NULL 제약 사항에 대해 잘못된 애트리뷰트 개수입니다.
 723 존재하는 애트리뷰트의 도메인을 변경할 수는 없습니다.
 724 디폴트 제약 사항 이름 생성 시에 잘못된 인자가 주어졌습니다.
-725 내부 에러:expected temporary oid and encountered permanent oid.
+725 내부 에러: expected temporary oid and encountered permanent oid.
 726 인스턴스가 이미 생성된 후에는 UNIQUE 제약 사항은 별도의 alter 문장을 통해 추가되어야 합니다. 예를 들어,\n\t alter table1 add attribute a int unique;\n\t 대신 \n\t alter table1 add attribute a int;\n\t alter table1 add unique(a);\n\t 형태를 사용하십시오.  
 727 유효하지 않은 트리거 이벤트 입니다.
 728 트랜잭션 %1$d에 대한 임시 파일의 vfid가 유효하지 않으므로 질의가 실패하였습니다.
@@ -805,7 +805,7 @@ $ LOADDB
 739 주소에 bind할 수 없습니다... 재시도 중. 윈속 에러: %1$d.
 740 주소에 bind할 수 없습니다... 취소 중. 윈속 에러: %1$d.
 741 Accept 실패. 윈속 에러: %1$d.
-742 클라이언트에 broadcast 메시지를 보내고 있습니다. 윈속 에러 : %1$d.
+742 클라이언트에 broadcast 메시지를 보내고 있습니다. 윈속 에러: %1$d.
 743 클라이언트와 서버 사이의 handshake 실패. (peer host %s)
 744 Error in rehashing a proxy/vclass MOP.
 745 Invalid garbage collection phase.
@@ -853,7 +853,7 @@ $ LOADDB
 787 time 포맷 변환 에러.
 788 timestamp 포맷 변환 에러.
 789 숫자가 틀렸습니다. 
-790 질의문 수행이 사용자에 의해 인터럽트 되었습니다.
+790 질의 수행 중 사용자에 의해 인터럽트 되었습니다.
 791 잘못된 Serial 값입니다.
 792 css 모듈에서 메모리를 할당할 수 없습니다.
 793 pthread_attr_init() 호출 실패.
@@ -952,7 +952,7 @@ $ LOADDB
 886 "%1$s" 이(가) UNIQUE 제약 사항을 위반하였습니다.
 887 Stored Procedure '%s' 가 이미 존재합니다.
 888 매개변수 개수가 일치하지 않습니다. 기대: %d, 실제: %d
-889 Stored procedure 실행 오류 : %s 
+889 Stored procedure 실행 오류: %s 
 890 파티션 작업 오류입니다.
 891 해당되는 파티션이 존재하지 않습니다.
 892 클래스 "%1$s"에 primary key "%2$s"가 이미 존재합니다.
@@ -986,7 +986,7 @@ $ LOADDB
 920 외래키 '%s'에 기본키 멤버 '%s'가 포함되어 있지 않습니다.
 921 외래키 멤버 '%s'의 도메인이 기본키 멤버 '%s'의 도메인과 다릅니다.
 922 외래키 '%s' 제약조건에 위배되었습니다.
-923 외래키에 의해 참조되는 기본키는 삭제할 수 없습니다.
+923 외래키 '%2$s'에 참조되는 기본키 '%1$s'는 삭제할 수 없습니다.
 924 수정/삭제 연산이 외래키 '%s'에 의해 제약되었습니다.
 925 외래키 '%s'를 위한 잠금 획득에 실패했습니다.
 926 외래키 '%s'를 가진 인스턴스를 삭제하지 못했습니다.
@@ -1035,18 +1035,18 @@ $ LOADDB
 969 서버 플랫폼(%1$s 비트)은(는) 클라이언트 플랫폼(%2$s 비트)와(과) 다릅니다.
 970 서버의 HA 모드가 '%1$s'에서 '%2$s'로 변경되었습니다.
 971 프로그램 '%1$s' (pid %2$d)가 호스트 '%4$s' (포트 %5$d) 의 데이터베이스 서버 '%3$s'에 접속되었습니다.
-972 프로그램 '%1$s' (pid %2$d)가 호스트 '%3$s'로부터 접속되었습니다. (트랜잭션 인텍스 %4$d)
+972 프로그램 '%1$s' (pid %2$d)가 호스트 '%3$s'로부터 접속되었습니다. (트랜잭션 인덱스 %4$d)
 973 서버 상태 %1$s
 974 %2$d에서 %3$d까지의 페이지들을 archive하기 위한 archive 로그 "%1$s"를 생성했습니다.
 975 현재 버전의 복제는 하나의 UPDATE 질의로 여러 레코드를 변경시키는 것이 UNIQUE 제약을 위반하는 경우 허용되지 않습니다.
-976 내부 에러: 파일 테이블의 사이즈가 초과했습니다. (할당된 사이즈: %1$d, 사용된 사이즈: %2$d) 발생한 테이블 페이지의 위치 %3$d|%4$d (볼륨명 : "%5$s")
+976 내부 에러: 파일 테이블의 사이즈가 초과했습니다. (할당된 사이즈: %1$d, 사용된 사이즈: %2$d) 발생한 테이블 페이지의 위치 %3$d|%4$d (볼륨명: "%5$s")
 977 체크포인트가 시작되었습니다. (페이지 %d)
 978 체크포인트가 완료되었습니다. (페이지 %d)
 979 CONNECT BY 질의문 수행 중에 루프가 발견되었습니다.
 980 쓰레드가 %2$d msec 동안 %1$s 대기했습니다.
 981 트랜잭션 %1$d이 모니터링 통계값 %2$s의 임계치를 넘었습니다.
 982 트랜잭션 %1$d에 인터럽트 설정
-983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
+983 해당 테이블에 대해 허용되지 않는 작업이 시도되었습니다. REUSE_OID 옵션이 정의된 테이블 내 레코드를 참조할 수 없습니다.
 984 설정 파일 "%1$s"의 "[%2$s]" 섹션에서 %3$s가 "%4$s"로 설정되어 있으면 "[%5$s]" 섹션에서 "%6$s"로 설정할 수 없습니다. 
 985 "databases.txt"에 다중 호스트가 설정된 경우에는 데이터베이스 연결 문자열에 호스트 이름이 지정되어야 합니다.
 986 CUBRID heartbeat 기능을 시작합니다.
@@ -1056,8 +1056,28 @@ $ LOADDB
 990 명령어 수행: %1$s. %2$s
 991 페이지 버퍼의 희생자 후보 flush가 시작되었습니다.
 992 페이지 버퍼의 희생자 후보 flush가 완료되었습니다. (count: %d)
+993 비트 연산 수행 중 오버플로우가 발생하였습니다.
+994 prepared statement로 사용될 수 없는 질의문입니다.
+995 %1$s 이름이 지정된 prepared statement가 존재하지 않습니다.
+996 주어진 값의 개수가 정확하지 않습니다. %1$d 개의 값이 아니라, %2$d 개의 값이 지정되어야 합니다.
+997 외래 키 제약 조건 %1$s 를 파티션 테이블 %2$s에 추가할 수 없습니다. 파티션 테이블에서는 업데이트 연산에 대해 참조 동작을 정의할 수 없습니다.
+998 외래 키 제약 조건 %1$s 를 컬럼 %2$s에 추가할 수 없습니다. NOT NULL 제약 조건이 정의된 컬럼에 대해 참조 동작 옵션으로 SET NULL을 정의할 수 없습니다.
+999 원본 테이블'%2$s'에서 테이블 '%1$s'를 생성할 수 없습니다. 원본 테이블에 복제할 수 없는 스키마가 정의되어 있습니다(%3$s).
+1000 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에만 허용되는 작업입니다.
+1001 예상하지 못한 상황이 발생되었습니다. '%1$s'
+1002 현재 트랜잭션이 작업을 계속하는데 필요한 데이터베이스 락을 획득하지 못하였습니다.
+1003 동일한 이름으로 타입이 다른 제약 조건 '%1$s'이 존재합니다.
+1004 Please note that when using ALTER TABLE DROP FOREIGN KEY, MySQL will drop just the FOREIGN KEY constraint and keep its associated index. CUBRID drops both the constraint and its associated index.
+1005 현재 CUBRID 버전의 REPLACE문은 트리거와 같이 클라이언트 측에서 동작하는 기능을 지원하지 않습니다. 서버 측에서 수행하는 경우라면, insert_execution_mode의 설정을 확인하십시오.
+1006 현재 CUBRID 버전의 ON DUPLICATE KEY UPDATE문은 트리거와 같이 클라이언트 측에서 동작하는 기능을 지원하지 않습니다. 서버 측에서 수행하는 경우라면, insert_execution_mode의 설정을 확인하시고 hostvar_late_binding 파라미터 값이 no인지 확인하십시오. 
+1007 UNIQUE, FOREIGN KEY, PRIMARY KEY 생성 시 컬럼에 prefix length를 명시할 수 없습니다.
+1008 파티션 테이블에 대해 인덱스 생성 시 컬럼에 prefix length를 명시할 수 없습니다.
+1009 COMPACTDB 작업이 이미 시작되었습니다. 
+1010 "%1$s" 타입 컬럼에 대해 prefix length를 명시하여 인덱스를 정의할 수 없습니다.
+1011 외래 키 제약 조건 %1$s 를 SHARED 속성 컬럼 %2$s에 추가할 수 없습니다.
+1012 NULL 타입 컬럼이 포함된 테이블은 생성할 수 없습니다.
 
-993 마지막 에러
+1013 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):
@@ -1098,11 +1118,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 10 키워드 '%s'를 잘못 사용하였습니다. %s가(이) 기대됩니다.
 11 토큰 길이가 너무 큽니다.
 12 data type 이 잘못되었습니다.
-13 잘못된 형식의 attach 구문입니다.\n  attach_statement : ATTACH unsigned_integer
-14 잘못된 형식의 prepare 구문입니다.\n  prepare_statement :  PREPARE {to} COMMIT unsigned_integer
-15 잘못된 형식의 execute 구문입니다.\n  execute_statement :  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
-16 잘못된 형식의 scope 구문입니다.\n  scope_statement : SCOPE trigger_action { FROM table_spec_list }
-17 잘못된 형식의 set system parameter 구문입니다.\n  set_system : SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
+13 잘못된 형식의 attach 구문입니다.\n  attach_statement: ATTACH unsigned_integer
+14 잘못된 형식의 prepare 구문입니다.\n  prepare_statement:  PREPARE {to} COMMIT unsigned_integer
+15 잘못된 형식의 execute 구문입니다.\n  execute_statement:  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
+16 잘못된 형식의 scope 구문입니다.\n  scope_statement: SCOPE trigger_action { FROM table_spec_list }
+17 잘못된 형식의 set system parameter 구문입니다.\n  set_system: SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
 18 잘못된 형식의 set transaction 구문입니다.\n  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                 | SET TRANSACTION LOCK TIMEOUT timeout_spec
 19 잘못된 형식의 set trigger trace 구문입니다.\n  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
 20 잘못된 형식의 set trigger depth 구문입니다.\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [INFINITE|unsigned_integer|parameter|host_param]
@@ -1121,9 +1141,9 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 33 잘못된 형식의 create serial 구문입니다.\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
 34 잘못된 형식의 create procedure 구문입니다.\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
 35 잘못된 형식의 create function 구문입니다.\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
-36 잘못된 형식의 groups 구문입니다.\n  groups spec : GROUPS identifier {, identifier}*
-37 잘못된 형식의 members 구문입니다.\n  member spec : MEMBERS identifier {, identifier}*
-38 잘못된 형식의 password 구문입니다.\n  password spec : PASSWORD 'STRING'
+36 잘못된 형식의 groups 구문입니다.\n  groups spec: GROUPS identifier {, identifier}*
+37 잘못된 형식의 members 구문입니다.\n  member spec: MEMBERS identifier {, identifier}*
+38 잘못된 형식의 password 구문입니다.\n  password spec: PASSWORD 'STRING'
 39 authorized command list 가 빠졌습니다.\n  authorized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL 
 40 class spec list 가 빠졌습니다.
 41 identifier list 가 빠졌습니다.
@@ -1138,7 +1158,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 50 lower 함수는 하나의 인수가 필요합니다.
 51 upper 함수는 하나의 인수가 필요합니다.
 52 translate 함수는 세개의 인수가 필요합니다.
-53 replace 함수는 둘이나, 세개의 인수가 필요합니다.
+53 replace 함수는 둘이나, 세 개의 인수가 필요합니다.
 54 to_number 함수의 형식이 잘못되었습니다.\n  TO_NUMBER ( expression , char_string )\n  TO_NUMBER ( expression )
 55 스트링 결합 연산자는 '|' 이 아니라 '||' 입니다.
 56 잘못된 형식의 alter 구문입니다.
@@ -1149,9 +1169,33 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 61 not equal 연산자는 '!=' 이 아니라 '<>' 입니다.
 62 허용되지 않는 음수값입니다.
 63 reference rule 이 중복되었습니다.
-64 SYS_CONNECT_BY_PATH needs two parameters and the second must be a string literal.
+64 SYS_CONNECT_BY_PATH 함수는 두 개의 인수를 필요로 하며 두번째 인수는 문자열이어야 합니다.
 65 %s는 올바른 unsigned integer가 아닙니다.
-
+66 IF 함수는 세 개의 인수가 필요합니다.: 첫번째는 논리 표현식, 두번째와 세번째는 산술 표현식이거나 문자열 표현식이어야 합니다.
+67 IFNULL 함수는 두 개의 인수가 필요하며 숫자 표현식이나 문자열 표현식이어야 합니다.
+68 잘못된 형식의 isnull 함수입니다.\n  ISNULL ( expression )
+69 잘못된 형식의 left 함수입니다.\n  LEFT ( str , len )
+70 잘못된 형식의 right 함수입니다.\n  RIGHT ( str , len )
+71 잘못된 형식의 mod 함수입니다.\n MOD( expression, expression )
+72 잘못된 형식의 adddate 함수입니다.\n ADDDATE( expression, expression )
+73 잘못된 형식의 date_add 함수입니다.\n DATE_ADD( expression, INTERVAL expression unit)
+74 잘못된 형식의 subdate 함수입니다.\n SUBDATE( expression, expression )
+75 잘못된 형식의 date_sub 함수입니다.\n DATE_SUB( expression, INTERVAL expression unit)
+76 잘못된 형식의 user / system_user 함수입니다.\n USER() / SYSTEM_USER()
+77 잘못된 형식의 timestamp 함수입니다.\n TIMESTAMP( expression ), TIMESTAMP( expression, expression )
+78 잘못된 형식의 database 함수입니다.\n DATABASE()
+79 잘못된 형식의 current_time 함수입니다.\n CURRENT_TIME()
+80 잘못된 형식의 current_date 함수입니다.\n CURRENT_DATE()
+81 잘못된 형식의 current_timestamp 함수입니다.\n CURRENT_TIMESTAMP()
+82 잘못된 형식의 now 함수입니다.\n NOW()
+83 잘못된 형식의 default 함수입니다.\n DEFAULT(column_name)
+84 잘못된 형식의 date 함수입니다.\n DATE(expression)
+85 잘못된 형식의 localtime 함수입니다.\n LOCALTIME()
+86 잘못된 형식의 localtimestamp 함수입니다.\n LOCALTIMESTAMP()
+87 잘못된 형식의 schema 함수입니다.\n SCHEMA()
+88 잘못된 형식의 truncate 함수입니다.\n TRUNCATE( expression, expression )
+89 잘못된 형식의 str_to_date 함수입니다.\n STR_TO_DATE( expression, string_literal )
+90 잘못된 형식의 current_datetime 함수입니다.\n CURRENT_DATETIME()
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1193,7 +1237,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 37 %s는 클래스가 아닙니다.
 38 가상클래스에서는 인덱스를 생성할 수 없습니다.
 39 인덱스는 하나의 속성에 대해서 생성할 수 있습니다.
-40 유효하지 않은 형태의 FROM 절 내에서의 다중 클래스 사용입니다.
+40 FROM 절 내 다중 테이블이 유효하지 않은 형태로 사용되었습니다.
 41 시스템 에러 --  %s 에서 resolution 할 수 없습니다. 
 42 derived table을 이용하여 삭제할 수 없습니다. 
 43 사용자 %s 은(는) 데이터베이스에 정의되지 않았습니다.
@@ -1201,11 +1245,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 45 클래스 내에서 속성 이름은 유일해야 합니다. 속성 이름인 '%s' (이)가 클래스 '%s' 에서 두 번 이상 명세 되었습니다.
 46 %s 에 대한 다중 할당이 있습니다.
 47 sort spec에 사용된 숫자가 정수가 아닙니다.
-48 sort spec의 %d 은(는) 범위를 벗어 났습니다. 
+48 sort spec의 %d 은(는) 범위를 벗어났습니다. 
 49 order by item이 정수가 아닙니다.
 50 sort spec %s 이(가) select 컬럼 내에 나타나지 않았습니다.
 51 컬럼 %s에 대해 상반되는 소트 명령이 있습니다.
-52 sort spec내 %s는 숫자, 이름 혹은 path-expression이 아닙니다.
+52 sort spec내 %s는 숫자, 이름 혹은 path expression이 아닙니다.
 53 Insert expression은 오직 insert 문장에서만 사용될 수 있습니다.
 54 속성 개수(%d)와 select 컬럼 개수(%d)가 다릅니다.
 55 속성 개수(%d)와 values 절의 개수(%d)가 다릅니다.
@@ -1213,7 +1257,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 57 속성 %s와 호환되지 않는 데이터 타입입니다.
 58 %s\n 은(는) 단일 클래스에 대한 SELECT가 아닙니다.
 59 `*'은 프락시 가상 클래스 질의 명세에 사용할 수 없습니다.
-60 %s 은(는)  가상 클래스도 프락시 가상 클래스도 아닙니다.
+60 %s 은(는) 가상 클래스도 프락시 가상 클래스도 아닙니다.
 61 하나 이상의 isolation 레벨 절이 있습니다.
 62 하나 이상의 timeout 절이 있습니다.
 63 isolation 레벨을 지정하지 않았습니다.
@@ -1222,10 +1266,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 66 Function은 인자 %s 이(가) 주어져야 합니다.
 67 호환되지 않는 피 연산자 %s(%s).
 68 Aggregate 함수는 반드시 하나의 인자 %s 을(를) 가져야 합니다.
-69 0 으로 나눌 수 없습니다.
-70 타입을 %s 에서 %s 로 변환 시 오버플로우가 발생 합니다.
+69 0으로 나눌 수 없습니다.
+70 타입을 %s 에서 %s 로 변환 시 오버플로우가 발생합니다.
 71 타입 %s 을(를) %s 로 변환할 수 없습니다.
-72 '%s'의 타입은 SET, MULTISET, 또는 SEQUENCE 여야 합니다
+72 '%s'의 타입은 SET, MULTISET, 또는 SEQUENCE 이어야 합니다.
 73 '%s'는 정확하게 하나의 set 원소 타입을 가져야 합니다.
 74 %s 은(는) 하나 이상의 derived column 이름을 가지고 있습니다.
 75 %s 은(는) derived column 이름을 포함하고 있지 않습니다.
@@ -1237,7 +1281,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 81 derived table '%s'은(는) correlation 이름을 가져야 합니다.
 82 클래스 %s에 대한 select 권한이 없습니다. 
 83 class instance %s을(를) derived table 이름으로 참조하는 것은 허용되지 않습니다.
-84 Path correlation (%s)은 내부 path term  외부에 나타나고 있습니다.
+84 Path correlation (%s)은 내부 path term 외부에 나타나고 있습니다.
 85 %s 에 대한 참조가 모호합니다.
 86 %s 의 클래스는 속성 %s를 갖고 있지 않습니다.
 87 클래스들(%s) 모두가 속성 %s를 갖고 있지는 않습니다.
@@ -1245,7 +1289,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 89 %s는 %s 타입으로, 오브젝트 타입이 아닙니다.
 90 Selector {%s} 은(는) 요구된 context (%s) 안에 \n명시된 클래스 명세를 resolve 하지 않습니다.
 91 Selector {%s} 은(는) 클래스가 아닌 명세(%s)를 참조합니다.
-92 Selector {%s} 은(는) 자기 자신을 정의하는 path-expression을 근원으로 삼을 수 없습니다.
+92 Selector {%s} 은(는) 자기 자신을 정의하는 path expression을 근원으로 삼을 수 없습니다.
 93 Selector {%s} 은(는) selector {%s}에 의해 순환 정의됩니다.
 94 Selector {%s} 은(는) %s에서 재정의됩니다.
 95 %s (도메인 오브젝트)는 속성 %s를 갖고 있지 않습니다.
@@ -1257,7 +1301,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 101 %s는 %s의 클래스 메소드나 속성이 아닙니다.
 102 질의 명세는 into-절을 가질 수 없습니다.
 103 프락시 질의 명세에는 aggregate 식, group-by 절, having 절 등을 사용할 수 없습니다.
-104 프락시 질의 명세에는 select 리스트에  DISTINCT나 UNIQUE 키워드를 사용할 수 없습니다. 
+104 프락시 질의 명세에는 select 리스트에 DISTINCT나 UNIQUE 키워드를 사용할 수 없습니다. 
 105 프락시 질의 명세에는 단순 SELECT 문만 사용할 수 있습니다.
 106 프락시 질의 명세는 로컬 데이터베이스의 한 클래스만 참조할 수 있습니다.
 107 사용자 '%s'는 %s의 소유자가 아닙니다.
@@ -1276,18 +1320,18 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 120 클래스 메소드는 인스턴스 오브젝트에 대해 호출할 수 없습니다.
 121 클래스 메소드의 호출 대상은 클래스 오브젝트입니다.
 122 메소드는 호출 대상으로 오브젝트가 필요합니다.
-123 메소드 %s 은(는) 충분히 정의 되어 있지 않습니다. 클래스 스키마의 메소드 정의를 확인 하십시오.
+123 메소드 %s의 타입이 제대로 정의되어 있지 않습니다. 클래스 스키마의 메소드 정의를 확인하십시오.
 124 시간 연산 시 언더플로우 발생.
 125 날짜 연산 시 언더플로우 발생.
 126 Assignment 절의 왼쪽이 잘못되어 있습니다.
 127 set expression이 서브질의 내에 포함되어 있지 않으면 외부와 correlate된 \nset derived table에 대한 메소드를 호출할 수 없습니다.
 128 공유 속성 '%s'에 해당하는 질의 명세 컬럼은 NULL 이나 NA 이어야 합니다.
-129 질의 명세는 select 리스트에 NULL이 아닌 컬럼들을 갖고 있어야 합니다.
+129 뷰 정의시 애트리뷰트가 정의되지 않은 경우에는 질의 명세의 select 리스트에 NULL 컬럼이 포함될 수 없습니다.
 130 set 내에 가상클래스 오브젝트를 사용할 수 없습니다.
 131 문자열이 예상됩니다.
 132 문장 또는 문자열이 예상됩니다.
 133 프락시 object_id 속성 '%s'는 질의 명세의 컬럼으로 대응될 수 없습니다.
-134 %s 제약 조건 무시
+134 %s 제약 조건이 무시되었습니다.
 135 현재 문맥에서는 제약 조건을 선언할 수 없습니다.
 136 %s에서 타입 %s로의 변환은 제공되지 않습니다.
 137 %s 은 유효한 비트 문자열이 아닙니다.
@@ -1327,7 +1371,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 171 잘못된 파티션 정의입니다.
 172 파티션 컬럼이 지정되어야 합니다. 
 173 파티션 컬럼은 1개만 지정할 수 있습니다.
-174 지원되지 않는 파티션 컬럼 타입 입니다.
+174 지원되지 않는 파티션 컬럼 타입입니다.
 175 중복된 파티션 정의 입니다. '%s'
 176 상수의 타입이 일치하지 않습니다. '%s'
 177 파티션의 크기가 잘못 지정되었습니다.
@@ -1350,10 +1394,20 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 194 함수 %s 은(는) 정의되어 있지 않거나, 파라미터 갯수가 틀립니다.
 195 '%s' can only be used in hierarchical queries. Specify a CONNECT BY clause.
 196 '%s' is not allowed here.
-197 Using CONNECT_BY_ISCYCLE is only allowed if the query has a CONNECT BY NOCYCLE clause.
-198 Duplicate table option '%s'
-199 The class '%s' is marked as REUSE_OID and is non-referable. Non-referable classes can't be the domain of an attribute and their instances' OIDs cannot be returned.
-200 CACHE에는 한 사이클 값(%s)보다 작은 값을 지정해야 합니다
+197 CONNECT_BY_ISCYCLE은 CONNECT BY NOCYCLE 절이 명시된 질의문에서만 사용할 수 있습니다.
+198 사용되는 테이블이 없습니다.
+199 ORDER BY NULL은 GROUP BY 절과 함께 사용됩니다.
+200 CACHE에는 한 사이클 값(%s)보다 작은 값을 지정해야 합니다.
+201 '%s'은(는) LIMIT절이 포함된 질의문에서 사용할 수 없습니다.
+202 WITH ROLLUP은 GROUP BY 절과 함께 사용됩니다.
+203 컬럼 이름이 DEFAULT 함수의 인자로 지정되어야 합니다. path expression은 현재 버전에서 지원되지 않습니다.
+204 중복된 테이블 옵션(%s)입니다.
+205 REUSE_OID 옵션이 지정된 클래스 '%s'를 참조할 수 없습니다. 참조 불가능한 클래스는 애트리뷰트의 도메인이 될 수 없으며, 인스턴스의 OID를 조회할 수 없습니다.
+206 'serial %s' 옵션이 중복되었습니다.
+207 ORDER BY 절의 컬럼 '%s' (이)가 모호합니다.
+208 애트리뷰트 '%s'에 대한 DEFAULT 값이 정의되지 않았습니다.
+209 SELECT DISTINCT가 지정된 경우에는 ORDER BY 항목이 SELECT 목록에 나타나야 합니다.
+210 질의 명세의 컬럼 정의에는 호스트 변수를 사용할 수 없습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.
@@ -1369,7 +1423,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 11 트랜잭션이 락 대기 중에 타임아웃되었습니다.
 12 %ld 번째 호스트 변수를 액세스하려고 하지만, 단지 %ld 개의 호스트 변수만이 주어져 있습니다. 
 13 지원되지 않는 변환입니다. 
-14 내부 에러, 정의되지 않은 변환입니다.
+14 내부 에러: 정의되지 않은 변환입니다.
 15 '%s' 은(는) 결과가 없습니다.
 16 '%s' 은(는) 하나 이상의 결과를 가져옵니다.
 17 인터프리터 변수 %s 은(는) 정의되지 않았습니다.
@@ -1388,7 +1442,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 30 현재 버전은 union 질의 명세 없는 가상클래스들에 대한 aggregation을 제한하고 있습니다. 
 31 composition hierarchy 상의 가상 클래스(%s)는 update 가능해야 합니다.\n 실제 클래스 %s에 대해 update할 수 없습니다.
 32 (사용되지 않음)
-33 Path-expression '%s' 이(가) 잘못되어 있습니다.
+33 path expression '%s' 이(가) 잘못되어 있습니다.
 34 path expression '%s' crosses db boundary to %s, with vclass %s.
 35 path expression '%s' crosses db boundary from %s, to class %s.
 36 %s 은(는) %s 에 대해 권한이 없습니다.
@@ -1481,15 +1535,15 @@ $set 13 MSGCAT_SET_TRIGGER
 2 TRACE: 트리거 '%s'의 액션 수행
 
 $set 14 MSGCAT_SET_LOCK
-1  \n
-2  스레드(index %3d) (트랜잭션 (index %3d, %s, %s@%s|%d))가 중단되었습니다.\n
-3  스레드(index %3d) (트랜잭션 (index %3d, %s, %s@%s|%d))이 재개되었습니다.\n
-4  트랜잭션 %3d 이(가) %s 락(오브젝트 %d|%d|%d 에 대해)을 획득\n
-5  트랜잭션 %3d 이(가) %s 락(페이지 %d|%d 에 대해)을 획득.\n
-6  트랜잭션 %3d 이(가) %s 락(오브젝트 %d|%d|%d 에 대한)으로 변환.\n
-7  트랜잭션 %3d 이(가) %s 락(페이지 %d|%d 에 대한)을 변환.\n
-8  트랜잭션 %3d 이(가) %s 락(오브젝트 %d|%d%d 에 대해) 대기.\n
-9  트랜잭션 %3d 이(가) %s 락(페이지 %d|%d 에 대해) 대기.\n
+1 \n
+2 스레드(index %3d) (트랜잭션 (index %3d, %s, %s@%s|%d))가 중단되었습니다.\n
+3 스레드(index %3d) (트랜잭션 (index %3d, %s, %s@%s|%d))이 재개되었습니다.\n
+4 트랜잭션 %3d 이(가) %s 락(오브젝트 %d|%d|%d 에 대해)을 획득\n
+5 트랜잭션 %3d 이(가) %s 락(페이지 %d|%d 에 대해)을 획득.\n
+6 트랜잭션 %3d 이(가) %s 락(오브젝트 %d|%d|%d 에 대한)으로 변환.\n
+7 트랜잭션 %3d 이(가) %s 락(페이지 %d|%d 에 대한)을 변환.\n
+8 트랜잭션 %3d 이(가) %s 락(오브젝트 %d|%d%d 에 대해) 대기.\n
+9 트랜잭션 %3d 이(가) %s 락(페이지 %d|%d 에 대해) 대기.\n
 10 트랜잭션 %3d 이(가) %s 락(오브젝트 %d|%d|%d 에 대한)을 해제.\n
 11 트랜잭션 %3d 이(가) %s 락(페이지 %d|%d 에 대한)을 해제.\n
 12 트랜잭션 %3d 이(가) %s 락(오브젝트 %d|%d|%d 에 대한)으로 하향 변경.\n
@@ -1519,7 +1573,7 @@ $set 14 MSGCAT_SET_LOCK
 36 타임아웃 주기 %d\n
 37 일방적으로 종료된 트랜잭션 인덱스 리스트:\n
 38 %d ,
-39 타임아웃 된 트랜잭션 인덱스 리스트 :\n
+39 타임아웃 된 트랜잭션 인덱스 리스트:\n
 40 %d ,
 41 Solving the deadlock by selecting a transaction and a function \n to break the deadlock: %d %s
 42 , %d %s
@@ -1547,9 +1601,9 @@ $set 15 MSGCAT_SET_IO
     Backup Level: %d (%s)\n\
 다음 옵션 중 하나를 선택하시오:\n
 11 입력\n \
-  -  %d : 종료\n \
-  -  %d : 볼륨 마운트 후 계속 수행\n \
-  -  %d : 볼륨 디렉터리나 디바이스 변경 후 계속 수행\n
+  -  %d: 종료\n \
+  -  %d: 볼륨 마운트 후 계속 수행\n \
+  -  %d: 볼륨 디렉터리나 디바이스 변경 후 계속 수행\n
 12 백업 볼륨을 위한 새로운 디렉터리나 디바이스를 입력하시오\n
 13 입력 에러, %d 와 %d 사이의 값을 선택하시오\n
 14 ** 경고 ** 잘못된 백업 볼륨\n
@@ -1574,15 +1628,15 @@ $set 16 MSGCAT_SET_LOG
 1 \n*************************************************************************\n
 2 정상 진행을 위해 아카이브 로그 %s \n이(가) 필요합니다. \n \
   Type\n \
-  -  0 : 종료\n \
-  -  1 : 아카이브 로그 없이 진행 (Partial recovery)\n \
-  -  2 : 아카이브 로그 마운트/로드 후 진행\n \
-  -  3 : 아카이브 로그 위치/이름 변경 후 진행\n 
+  -  0: 종료\n \
+  -  1: 아카이브 로그 없이 진행 (Partial recovery)\n \
+  -  2: 아카이브 로그 마운트/로드 후 진행\n \
+  -  3: 아카이브 로그 위치/이름 변경 후 진행\n 
 3 데이터베이스 복구 작업을 위해 백업 정보 파일 %s\n이(가) 필요합니다. \n \
   Type\n \
-  -  0 : 종료\n \
-  -  1 : 파일 마운트/로드 후 진행\n \
-  -  2 : 파일 위치/이름 변경 후 진행\n 
+  -  0: 종료\n \
+  -  1: 파일 마운트/로드 후 진행\n \
+  -  2: 파일 위치/이름 변경 후 진행\n 
 4 새로운 위치/이름을 입력하시오.\n
 5 COMMENT: %s for database %s\n
 6 COMMENT: 아카이브 로그 %s는 media crash가 발생하지 않는 한 필요하지 않습니다. \n

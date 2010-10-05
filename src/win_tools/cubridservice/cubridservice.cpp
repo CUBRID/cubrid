@@ -32,6 +32,10 @@
 #include <Tlhelp32.h>
 #include <sys/stat.h>
 
+static int
+proc_execute (const char *file, char *args[], bool wait_child,
+	      bool close_output, int *out_pid);
+
 void WriteLog( char* p_logfile, char* p_format, ... );
 void GetCurDateTime( char* p_buf, char* p_form );
 void SendMessage_Tray(int status);
@@ -130,10 +134,11 @@ int main(int argc, char* argv[])
 	return 1;
 }
 
-
-
 void vKingCHStart(DWORD argc, LPTSTR* argv)
 {
+	char * args[5];
+	char command[100];
+
 	g_hXSS = RegisterServiceCtrlHandlerA("CUBRIDService",
 		(LPHANDLER_FUNCTION)vHandler);
 
@@ -143,24 +148,26 @@ void vKingCHStart(DWORD argc, LPTSTR* argv)
 		return ;
 	}
 
-	//서비스가 시작 중임을 알린다
 	vSetStatus(SERVICE_START_PENDING);
-	g_bPause = FALSE; //서비스가 시작되었으니 FALSE 로 초기화
+	g_bPause = FALSE;
 
-	//이벤트를 만든다
 	g_hExitEvent = CreateEventA(NULL, TRUE, FALSE, "XServiceExitEvent");
 
-	//서비스를 실행하고
+	SendMessage_Tray(SERVICE_STATUS_START);
+
+	sprintf(command,"%s\\bin\\cubrid.exe", getenv("CUBRID"));
+
+	args[0] = command;
+	args[1] = "service";
+	args[2] = "start";
+	args[3] = "--for-windows-service";
+	args[4] = NULL;
+
+	proc_execute (command, args, true, true, NULL);
+
 	vSetStatus(SERVICE_RUNNING);
 
-    g_isRunning = true;
-
-	char command[100];
-
-	sprintf(command,"%s\\bin\\cubrid service start", getenv("CUBRID"));
-	WinExec(command,SW_HIDE);
-
-	SendMessage_Tray(SERVICE_STATUS_START);
+	g_isRunning = true;
 
 	while (1)
     {
@@ -172,11 +179,8 @@ void vKingCHStart(DWORD argc, LPTSTR* argv)
         }
     }
 
-	//서비스를 멈춘다
 	vSetStatus(SERVICE_STOPPED);
 }
-
-
 
 void vSetStatus(DWORD dwState, DWORD dwAccept)
 {
@@ -194,7 +198,6 @@ void vSetStatus(DWORD dwState, DWORD dwAccept)
 	g_XSS = dwState;
 	SetServiceStatus(g_hXSS, &ss);
 }	
-
 
 void vHandler(DWORD opcode)
 {
@@ -216,19 +219,29 @@ void vHandler(DWORD opcode)
 		vSetStatus(SERVICE_RUNNING);
 		break;
 	case SERVICE_CONTROL_STOP:
+		{
+			char * args[5];
+			char command[100];
 
-		char command[100];
+			SendMessage_Tray(SERVICE_STATUS_STOP);
+			vSetStatus(SERVICE_STOP_PENDING, 0);
 
-		sprintf(command,"%s\\bin\\cubrid service stop", getenv("CUBRID"));
-		WinExec(command,SW_HIDE);
+			sprintf(command,"%s\\bin\\cubrid.exe", getenv("CUBRID"));
 
-		g_isRunning = false;
+			args[0] = command;
+			args[1] = "service";
+			args[2] = "stop";
+			args[3] = "--for-windows-service";
+			args[4] = NULL;
 
-		SendMessage_Tray(SERVICE_STATUS_STOP);
-		vSetStatus(SERVICE_STOP_PENDING, 0);
-		//쓰레드를 실행중이면 멈춘다
-		SetEvent(g_hExitEvent);
-		vSetStatus(SERVICE_STOPPED);
+			proc_execute (command, args, true, true, NULL);
+
+			g_isRunning = false;
+			
+			//쓰레드를 실행중이면 멈춘다
+			SetEvent(g_hExitEvent);
+			vSetStatus(SERVICE_STOPPED);
+		}
 		break;
 	case SERVICE_CONTROL_INTERROGATE:
 	default:
@@ -290,9 +303,6 @@ void WriteLog( char* p_logfile, char* p_format, ... )
 	if( p_logfile != NULL )
 		fclose( logfile_fd );
 }
-
-
-
 
 void GetCurDateTime( char* p_buf, char* p_form )
 {
@@ -428,3 +438,59 @@ void SendMessage_Tray(int status)
 	}
 }
 
+static int
+proc_execute (const char *file, char *args[], bool wait_child,
+	      bool close_output, int *out_pid)
+{
+  STARTUPINFO si;
+  PROCESS_INFORMATION pi;
+  int i, cmd_arg_len;
+  char cmd_arg[1024];
+  int ret_code = 0;
+  bool inherited_handle = TRUE;
+
+  if (out_pid)
+    {
+      *out_pid = 0;
+    }
+
+  for (i = 0, cmd_arg_len = 0; args[i]; i++)
+    {
+      cmd_arg_len += sprintf (cmd_arg + cmd_arg_len, "\"%s\" ", args[i]);
+    }
+
+  GetStartupInfo (&si);
+  if (close_output)
+    {
+      si.dwFlags = si.dwFlags | STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+      si.hStdOutput = NULL;
+      si.hStdError = NULL;
+      inherited_handle = FALSE;
+	  si.wShowWindow = SW_HIDE;
+    }
+
+  if (!CreateProcess (file, cmd_arg, NULL, NULL, inherited_handle,
+		      0, NULL, NULL, &si, &pi))
+    {
+      return -1;
+    }
+
+  if (wait_child)
+    {
+      DWORD status = 0;
+      WaitForSingleObject (pi.hProcess, INFINITE);
+      GetExitCodeProcess (pi.hProcess, &status);
+      ret_code = status;
+    }
+  else
+    {
+      if (out_pid)
+	{
+	  *out_pid = pi.dwProcessId;
+	}
+    }
+
+  CloseHandle (pi.hProcess);
+  CloseHandle (pi.hThread);
+  return ret_code;
+}

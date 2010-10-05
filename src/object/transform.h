@@ -155,6 +155,9 @@ typedef struct tf_ct_class
 #define SET_AUTO_INCREMENT_SERIAL_NAME(SR_NAME, CL_NAME, AT_NAME)  \
                          sprintf(SR_NAME, "%s_ai_%s", CL_NAME, AT_NAME)
 
+#define AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH (4)
+#define AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH ((DB_MAX_IDENTIFIER_LENGTH - 1) * 2 + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1)
+
 /*
  * Metaclass definitions
  *    Static definitions of the meta classes.

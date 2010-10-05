@@ -39,6 +39,8 @@ extern void css_read_remaining_bytes (SOCKET fd, int len);
 extern int css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout);
 extern int css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len,
 			 int timeout);
+extern int css_net_send_buffer_only (CSS_CONN_ENTRY * conn,
+				     const char *buff, int len, int timeout);
 
 extern int css_net_read_header (SOCKET fd, char *buffer, int *maxlen);
 
@@ -106,8 +108,8 @@ extern int css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid,
 			   const char *buffer, int buffer_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid,
-                                const char **buffers, int *buffers_size,
-                                int num_buffers);
+				const char **buffers, int *buffers_size,
+				int num_buffers);
 extern int css_local_host_name (CSS_CONN_ENTRY * conn, char *hostname,
 				size_t namelen);
 

@@ -59,7 +59,7 @@
                                     ( (DB_IS_CONSTRAINT_UNIQUE_FAMILY(c)    || \
                                        (c) == DB_CONSTRAINT_INDEX           || \
                                        (c) == DB_CONSTRAINT_REVERSE_INDEX   || \
-                                       (c) == DB_CONSTRAINT_FOREIGN_KEY)       \
+                                       (c) == DB_CONSTRAINT_FOREIGN_KEY)     \
                                       ? true : false )
 
 #define DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) \
@@ -157,6 +157,8 @@ typedef enum
   DB_AUTH_INSERT = 2,
   DB_AUTH_UPDATE = 4,
   DB_AUTH_DELETE = 8,
+  DB_AUTH_REPLACE = DB_AUTH_DELETE | DB_AUTH_INSERT,
+  DB_AUTH_INSERT_UPDATE = DB_AUTH_UPDATE | DB_AUTH_INSERT,
   DB_AUTH_ALTER = 16,
   DB_AUTH_INDEX = 32,
   DB_AUTH_EXECUTE = 64
@@ -279,6 +281,7 @@ typedef enum
   /* common to both class cache & attribute cache */
   TR_EVENT_UPDATE = 0,
   TR_EVENT_STATEMENT_UPDATE = 1,
+  TR_MAX_ATTRIBUTE_TRIGGERS = TR_EVENT_STATEMENT_UPDATE + 1,
 
   /* class cache events */
   TR_EVENT_DELETE = 2,
@@ -287,6 +290,7 @@ typedef enum
   TR_EVENT_STATEMENT_INSERT = 5,
   TR_EVENT_ALTER = 6,		/* currently unsupported */
   TR_EVENT_DROP = 7,		/* currently unsupported */
+  TR_MAX_CLASS_TRIGGERS = TR_EVENT_DROP + 1,
 
   /* user cache events */
   TR_EVENT_COMMIT = 8,

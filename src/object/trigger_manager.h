@@ -59,11 +59,6 @@
 
 
 
-#define TR_MAX_ATTRIBUTE_TRIGGERS (int)TR_EVENT_STATEMENT_UPDATE + 1
-#define TR_MAX_CLASS_TRIGGERS     (int)TR_EVENT_DROP + 1
-
-
-
 typedef struct tr_trigger
 {
   DB_OBJECT *owner;
@@ -390,6 +385,7 @@ extern int tr_dump_selective_triggers (FILE * fp, bool quoted_id_flag,
 				       DB_OBJLIST * classes);
 
 extern void tr_free_trigger_list (TR_TRIGLIST * list);
+extern const char *tr_get_class_name (void);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int tr_reset_schema_cache (TR_SCHEMA_CACHE * cache);

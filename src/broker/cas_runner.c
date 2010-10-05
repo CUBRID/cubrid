@@ -119,6 +119,7 @@ struct t_bind_info
 {
   char *value;
   int type;
+  int len;
 };
 
 typedef struct t_node_info T_NODE_INFO;
@@ -972,6 +973,23 @@ process_bind (char *linebuf, int *num_bind_p, T_BIND_INFO * bind_info)
       fprintf (stderr, "file format error : %s\n", linebuf);
       return -1;
     }
+
+  if ((bind_info[num_bind].type == CCI_U_TYPE_CHAR)
+      || (bind_info[num_bind].type == CCI_U_TYPE_STRING)
+      || (bind_info[num_bind].type == CCI_U_TYPE_NCHAR)
+      || (bind_info[num_bind].type == CCI_U_TYPE_VARNCHAR)
+      || (bind_info[num_bind].type == CCI_U_TYPE_BIT)
+      || (bind_info[num_bind].type == CCI_U_TYPE_VARBIT))
+    {
+      bind_info[num_bind].len = atoi (p + 1);
+      p = strchr (p + 1, ' ');
+      if (p == NULL)
+	{
+	  fprintf (stderr, "file format error : %s\n", linebuf);
+	  return -1;
+	}
+    }
+
   bind_info[num_bind].value = strdup (p + 1);
   if (bind_info[num_bind].value == NULL)
     {
@@ -1019,10 +1037,26 @@ process_execute (char *linebuf, int *req_h, int num_bind,
 	    {
 	      for (i = 0; i < num_bind; i++)
 		{
-		  res =
-		    cci_bind_param (req_h[req_id], (k * num_bind) + i + 1,
-				    CCI_A_TYPE_STR, bind_info[i].value,
-				    (T_CCI_U_TYPE) bind_info[i].type, 0);
+		  if ((bind_info[i].type == CCI_U_TYPE_VARBIT) ||
+		      (bind_info[i].type == CCI_U_TYPE_BIT))
+		    {
+		      T_CCI_BIT vptr;
+		      memset ((char *) &vptr, 0x00, sizeof (T_CCI_BIT));
+		      vptr.size = bind_info[i].len;
+		      vptr.buf = (char *) bind_info[i].value;
+		      res =
+			cci_bind_param (req_h[req_id], (k * num_bind) + i + 1,
+					CCI_A_TYPE_BIT, (void *) &(vptr),
+					(T_CCI_U_TYPE) bind_info[i].type,
+					CCI_BIND_PTR);
+		    }
+		  else
+		    {
+		      res =
+			cci_bind_param (req_h[req_id], (k * num_bind) + i + 1,
+					CCI_A_TYPE_STR, bind_info[i].value,
+					(T_CCI_U_TYPE) bind_info[i].type, 0);
+		    }
 		  if (res < 0)
 		    {
 		      PRINT_CCI_ERROR (res, NULL);

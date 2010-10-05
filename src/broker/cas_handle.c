@@ -85,13 +85,9 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
 	REALLOC (srv_handle_table,
 		 sizeof (T_SRV_HANDLE *) * new_max_srv_handle);
       if (new_srv_handle_table == NULL)
-#if defined(CAS_FOR_DBMS)
 	{
 	  return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
 	}
-#else /* CAS_FOR_DBMS */
-	return CAS_ER_NO_MORE_MEMORY;
-#endif /* CAS_FOR_DBMS */
 
       new_handle_id = max_srv_handle + 1;
       memset (new_srv_handle_table + max_srv_handle,
@@ -102,13 +98,9 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
 
   srv_handle = (T_SRV_HANDLE *) MALLOC (sizeof (T_SRV_HANDLE));
   if (srv_handle == NULL)
-#if defined(CAS_FOR_DBMS)
     {
       return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
     }
-#else /* CAS_FOR_DBMS */
-    return CAS_ER_NO_MORE_MEMORY;
-#endif /* CAS_FOR_DBMS */
   memset (srv_handle, 0, sizeof (T_SRV_HANDLE));
   srv_handle->id = new_handle_id;
   srv_handle->query_seq_num = seq_num;
@@ -211,39 +203,46 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
       FREE_MEM (q_result);
       srv_handle->q_result = NULL;
     }
-#else /* CAS_FOR_MYSQL */
+#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   if (q_result)
     {
       for (i = 0; i < srv_handle->num_q_result; i++)
 	{
 	  if (q_result[i].copied != TRUE && q_result[i].result)
-	    ux_free_result (q_result[i].result);
+	    {
+	      ux_free_result (q_result[i].result);
+	    }
 	  q_result[i].result = NULL;
+
 	  if (q_result[i].column_info)
 	    {
 	      db_query_format_free ((DB_QUERY_TYPE *) q_result[i].
 				    column_info);
 	    }
+
 	  q_result[i].column_info = NULL;
-	  col_update_info_free (&(q_result[i]));
-	  if (free_flag)
+	  if (free_flag == TRUE)
 	    {
+	      col_update_info_free (&(q_result[i]));
 	      FREE_MEM (q_result[i].null_type_column);
 	    }
 	}
+
       if (free_flag == TRUE)
 	{
 	  FREE_MEM (q_result);
 	}
     }
+
   if (free_flag == TRUE)
     {
       srv_handle->q_result = NULL;
       srv_handle->num_q_result = 0;
     }
+
   srv_handle->cur_result = NULL;
   srv_handle->cur_result_index = 0;
-#endif /* CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 }
 
 void
@@ -255,9 +254,9 @@ hm_session_free (T_SRV_HANDLE * srv_handle)
       cas_oracle_stmt_close (srv_handle->session);
 #elif defined(CAS_FOR_MYSQL)
       cas_mysql_stmt_close (srv_handle->session);
-#else /* CAS_FOR_MYSQL */
+#else /* CAS_FOR_ORACLE */
       db_close_session ((DB_SESSION *) (srv_handle->session));
-#endif /* CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE */
     }
   srv_handle->session = NULL;
 }
@@ -273,9 +272,10 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 {
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   FREE_MEM (srv_handle->sql_stmt);
+  ux_prepare_call_info_free (srv_handle->prepare_call_info);
   hm_qresult_end (srv_handle, TRUE);
   hm_session_free (srv_handle);
-#else /* CAS_FOR_MYSQL */
+#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   FREE_MEM (srv_handle->sql_stmt);
   ux_prepare_call_info_free (srv_handle->prepare_call_info);
   if (srv_handle->schema_type < 0
@@ -284,7 +284,8 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
       || srv_handle->schema_type == CCI_SCH_ATTRIBUTE
       || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE
       || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
-      || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS)
+      || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS
+      || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY)
     {
       hm_qresult_end (srv_handle, TRUE);
       hm_session_free (srv_handle);
@@ -303,7 +304,7 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 	db_objlist_free ((DB_OBJLIST *) (srv_handle->session));
       srv_handle->cur_result = NULL;
     }
-#endif /* CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 }
 
 static void
@@ -380,11 +381,7 @@ hm_srv_handle_append_active (T_SRV_HANDLE * srv_handle)
 	{
 	  active_handle_count = 0;
 	  active_handle_table_size = 0;
-#if defined(CAS_FOR_DBMS)
 	  return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-#else /* CAS_FOR_DBMS */
-	  return CAS_ER_NO_MORE_MEMORY;
-#endif /* CAS_FOR_DBMS */
 	}
     }
 

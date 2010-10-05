@@ -34,7 +34,7 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 /**
  * class UStatement method updateRow에서 update할 row의 column parameter들을

@@ -46,9 +46,7 @@
 #include "cas_network.h"
 #include "cas.h"
 #include "broker_env_def.h"
-#if defined(CAS_FOR_DBMS)
 #include "cas_execute.h"
-#endif /* CAS_FOR_DBMS */
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
@@ -59,8 +57,8 @@
 static int write_to_client (SOCKET sock_fd, const char *buf, int size);
 static int read_from_client (SOCKET sock_fd, char *buf, int size);
 
-static void set_net_timeout_flag ();
-static void unset_net_timeout_flag ();
+static void set_net_timeout_flag (void);
+static void unset_net_timeout_flag (void);
 
 static bool net_timeout_flag = false;
 
@@ -357,11 +355,7 @@ net_read_to_file (SOCKET sock_fd, int file_size, char *filename)
 				   (int) MIN (SSIZEOF (read_buf), file_size));
       if (read_len <= 0 || read_len > MIN (SSIZEOF (read_buf), file_size))
 	{
-#if defined(CAS_FOR_DBMS)
 	  return ERROR_INFO_SET (CAS_ER_COMMUNICATION, CAS_ERROR_INDICATOR);
-#else /* CAS_FOR_DBMS */
-	  return CAS_ER_COMMUNICATION;
-#endif /* CAS_FOR_DBMS */
 	}
       if (out_fd >= 0)
 	{
@@ -372,11 +366,7 @@ net_read_to_file (SOCKET sock_fd, int file_size, char *filename)
 
   if (out_fd < 0)
     {
-#if defined(CAS_FOR_DBMS)
       return ERROR_INFO_SET (CAS_ER_OPEN_FILE, CAS_ERROR_INDICATOR);
-#else /* CAS_FOR_DBMS */
-      return CAS_ER_OPEN_FILE;
-#endif /* CAS_FOR_DBMS */
     }
 
   close (out_fd);
@@ -485,6 +475,11 @@ retry_select:
       read_len = READ_FROM_SOCKET (sock_fd, buf, size);
 #ifdef ASYNC_MODE
     }
+  else if (!IS_INVALID_SOCKET (new_req_sock_fd)
+	   && FD_ISSET (new_req_sock_fd, (fd_set *) & read_mask))
+    {
+      return -1;
+    }
   else
     {
       set_net_timeout_flag ();
@@ -567,19 +562,19 @@ retry_select:
 }
 
 bool
-is_net_timed_out ()
+is_net_timed_out (void)
 {
   return net_timeout_flag;
 }
 
 static void
-set_net_timeout_flag ()
+set_net_timeout_flag (void)
 {
   net_timeout_flag = true;
 }
 
 static void
-unset_net_timeout_flag ()
+unset_net_timeout_flag (void)
 {
   net_timeout_flag = false;
 }

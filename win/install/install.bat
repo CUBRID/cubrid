@@ -40,6 +40,7 @@ copy %SRC_DIR%\..\..\..\cmserver\conf\*.conf %DEST_DIR%\conf
 copy %SRC_DIR%\..\..\..\cmserver\conf\*.pass %DEST_DIR%\conf
 
 copy %SRC_DIR%\..\..\..\src\cci\cas_cci.h %DEST_DIR%\include
+copy %SRC_DIR%\..\..\..\src\broker\cas_error.h %DEST_DIR%\include
 copy %SRC_DIR%\..\..\..\src\executables\cubrid_esql.h %DEST_DIR%\include\cubrid_esql.h
 copy %SRC_DIR%\..\..\..\src\compat\dbi_compat.h %DEST_DIR%\include\dbi.h
 copy %SRC_DIR%\..\..\..\src\cm_common\cm_stat.h %DEST_DIR%\include\cm_stat.h

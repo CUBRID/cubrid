@@ -59,9 +59,9 @@ extern void slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p,
 extern void slocator_find_class_oid (THREAD_ENTRY * thread_p,
 				     unsigned int rid, char *request,
 				     int reqlen);
-extern void slocator_reserve_classname (THREAD_ENTRY * thread_p,
-					unsigned int rid, char *request,
-					int reqlen);
+extern void slocator_reserve_classnames (THREAD_ENTRY * thread_p,
+					 unsigned int rid, char *request,
+					 int reqlen);
 extern void slocator_delete_class_name (THREAD_ENTRY * thread_p,
 					unsigned int rid, char *request,
 					int reqlen);
@@ -108,9 +108,12 @@ extern void slog_checkpoint (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void slogtb_has_updated (THREAD_ENTRY * thread_p, unsigned int rid,
 				char *request, int reqlen);
 #endif
-
 extern void slogtb_set_interrupt (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
+extern void slogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
+						     unsigned int rid,
+						     char *request,
+						     int reqlen);
 extern void slogtb_reset_wait_secs (THREAD_ENTRY * thread_p, unsigned int rid,
 				    char *request, int reqlen);
 extern void slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid,
@@ -125,6 +128,9 @@ extern void shf_destroy (THREAD_ENTRY * thread_p, unsigned int rid,
 			 char *request, int reqlen);
 extern void shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
+extern void shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p,
+					unsigned int rid, char *request,
+					int reqlen);
 extern void stran_server_commit (THREAD_ENTRY * thrd, unsigned int rid,
 				 char *request, int reqlen);
 extern void stran_server_abort (THREAD_ENTRY * thrd, unsigned int rid,
@@ -388,5 +394,16 @@ extern void slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
 
 extern void net_cleanup_server_queues (unsigned int rid);
+
+extern void sboot_compact_db (THREAD_ENTRY * thread_p, unsigned int rid,
+			      char *request, int reqlen);
+
+extern void sboot_heap_compact (THREAD_ENTRY * thread_p, unsigned int rid,
+				char *request, int reqlen);
+
+extern void sboot_compact_start (THREAD_ENTRY * thread_p, unsigned int rid,
+				 char *request, int reqlen);
+extern void sboot_compact_stop (THREAD_ENTRY * thread_p, unsigned int rid,
+				char *request, int reqlen);
 
 #endif /* _NETWORK_INTERFACE_SR_H_ */

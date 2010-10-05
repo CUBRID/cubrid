@@ -46,8 +46,6 @@
 #define CONTROLLEN (sizeof(struct cmsghdr) + sizeof(int))
 #endif
 
-#define FALSE 0
-#define TRUE 1
 #define SYSV
 
 int
@@ -77,8 +75,9 @@ recv_fd (int fd, int *rid)
   msg.msg_control = (void *) cmptr;
   msg.msg_controllen = CONTROLLEN;
 #endif
+  rc = recvmsg (fd, &msg, 0);
 
-  if ((rc = recvmsg (fd, &msg, 0)) < sizeof (int))
+  if (rc < (signed int) (sizeof (int)))
     {
 #ifdef _DEBUG
       printf ("recvmsg failed. errno = %d. str=%s\n", errno,

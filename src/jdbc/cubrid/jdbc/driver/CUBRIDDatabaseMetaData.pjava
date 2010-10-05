@@ -28,14 +28,14 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 
-import cubrid.jdbc.driver.CUBRIDException;
-import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
-import cubrid.jdbc.jci.*;
-import cubrid.jdbc.driver.*;
+import @CUBRID_DRIVER@.CUBRIDException;
+import @CUBRID_DRIVER@.CUBRIDJDBCErrorCode;
+import @CUBRID_JCI@.*;
+import @CUBRID_DRIVER@.*;
 
 /**
  * Title: CUBRID JDBC Driver Description:
@@ -953,11 +953,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
     };
     boolean[]nullable =
     {
-    true, true, false, false, false};
-
-    CUBRIDResultSetWithoutQuery rs = new CUBRIDResultSetWithoutQuery (5, type,
-								      names,
-								      nullable);
+    true, true, false, false, false};    
 
     // schema를 가져온다.
     UStatement us = null;
@@ -977,6 +973,18 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
 	  throw new CUBRIDException (error);
 	}
     }
+
+    UColumnInfo[] column_info = us.getColumnInfo ();
+    int[]precision = new int[5];
+    precision[0] = 0;	/* TABLE_CAT */
+    precision[1] = 0;	/* TABLE_SCHEM */
+    precision[2] = column_info[0].getColumnPrecision ();	/* TABLE_NAME */
+    precision[3] = 12;	/* TABLE_TYPE */
+    precision[4] = 0;	/* REMARKS */
+    CUBRIDResultSetWithoutQuery rs = new CUBRIDResultSetWithoutQuery (5, type,
+								      names,
+								      nullable,
+								      precision);    
 
     // tuple을 만들어서 ResultSetWithoutQuery에 추가한다.
     Object[]value = new Object[5];
@@ -1723,23 +1731,69 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData
   {
     checkIsOpen ();
 
-    if (table == null)
+    String[] names =
+    {
+      "TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "COLUMN_NAME", "KEY_SEQ", 
+      "PK_NAME"
+    };
+
+    int[] type = 
+    { 
+      UUType.U_TYPE_VARCHAR, UUType.U_TYPE_VARCHAR,
+      UUType.U_TYPE_VARCHAR, UUType.U_TYPE_VARCHAR, UUType.U_TYPE_SHORT, 
+      UUType.U_TYPE_VARCHAR
+    };
+
+    boolean[] nullable =
+    {
+      true, true, false, false, false, false
+    };
+
+    UStatement us = null;
+    synchronized (u_con)
+    {
+      us = u_con.getSchemaInfo (USchType.SCH_PRIMARY_KEY, table , null, (byte)3);
+      error = u_con.getRecentError ();
+      switch (error.getErrorCode ())
+	{
+	case UErrorCode.ER_NO_ERROR:
+	  break;
+	case UErrorCode.ER_IS_CLOSED:
+	  close ();
+	  throw new CUBRIDException (CUBRIDJDBCErrorCode.dbmetadata_closed);
+	default:
+	  throw new CUBRIDException (error);
+	}
+    }
+
+    CUBRIDResultSetWithoutQuery rs = new CUBRIDResultSetWithoutQuery (6, type,
+								      names,
+								      nullable);
+    Object[] value = new Object[6];
+
+    value[0] = null;
+    value[1] = null;
+
+    int i = 0;
+    while (true)
       {
-        throw new CUBRIDException (CUBRIDJDBCErrorCode.invalid_table_name);
+        us.moveCursor (i++, us.CURSOR_SET);
+        if (us.getRecentError().getErrorCode() != UErrorCode.ER_NO_ERROR)
+            break;
+        us.fetch ();
+
+        value[2] = us.getString(0); 
+        value[3] = us.getString(1);
+        value[4] = us.getInt(2);
+        value[5] = us.getString(3);
+
+        rs.addTuple (value);
       }
 
-    String sql = "SELECT NULL AS TABLE_CAT,";
-    sql += " NULL AS TABLE_SCHEM,";
-    sql += " a.class_name AS TABLE_NAME,";
-    sql += " b.key_attr_name AS COLUMN_NAME,";
-    sql += " b.key_order+1 AS KEY_SEQ,";
-    sql += " a.index_name AS PK_NAME ";
-    sql += " FROM db_index a, db_index_key b ";
-    sql += " WHERE a.index_name = b.index_name  AND a.is_primary_key = 'YES' ";
-    sql += " AND a.class_name = '" + table.toLowerCase() + "' ";
-    sql += " ORDER BY COLUMN_NAME";
+    us.close ();
+    endTransaction ();
 
-    return con.createStatement().executeQuery( sql );
+    return rs;
   }
 
   /*

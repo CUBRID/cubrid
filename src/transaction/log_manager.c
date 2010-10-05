@@ -1647,7 +1647,7 @@ loop:
       if (i != LOG_SYSTEM_TRAN_INDEX && (tdes = LOG_FIND_TDES (i)) != NULL
 	  && tdes->trid != NULL_TRANID)
 	{
-	  if (thread_has_threads (i, tdes->client_id) > 0)
+	  if (thread_has_threads (thread_p, i, tdes->client_id) > 0)
 	    {
 	      repeat_loop = true;
 	    }
@@ -3531,6 +3531,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       if (rcvindex == RVDK_IDDEALLOC_WITH_VOLHEADER)
 	{
 	  (void) disk_rv_alloctable_with_volheader (thread_p, &rcv, NULL);
+	  addr->pgptr = rcv.pgptr;	/* pgptr could be changed by pgbuf_fix_with_retry */
 	}
       else
 	{
@@ -3572,6 +3573,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 	{
 	  assert (skipredo == true);
 	  (void) disk_rv_alloctable_with_volheader (thread_p, &rcv, NULL);
+	  addr->pgptr = rcv.pgptr;	/* pgptr could be changed by pgbuf_fix_with_retry */
 	}
       else
 	{
@@ -4776,7 +4778,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
     {
       /*
        * A top system operation executed something and it is not attached back
-       * to its parent, therfore, the top system operation is either committed
+       * to its parent, therefore, the top system operation is either committed
        * or aborted at this point and will not depend on the outcome of the
        * parent
        */
@@ -4811,39 +4813,43 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	    }
 	  else
 	    {
-	      state =
-		log_complete_system_op (thread_p, tdes, result, save_state);
+	      state = log_complete_system_op (thread_p, tdes, result,
+					      save_state);
 	    }
 	}
       else
 	{
-	  repl_log_abort_after_lsa (tdes,
-				    &(tdes->topops.stack[tdes->topops.last].
-				      lastparent_lsa));
+	  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+	    {
+	      repl_log_abort_after_lsa (tdes,
+					&tdes->topops.stack[tdes->topops.
+							    last].
+					lastparent_lsa);
+	    }
 
 	  /* Abort the top system operation */
 	  tdes->state = TRAN_UNACTIVE_ABORTED;
 	  log_rollback (thread_p, tdes,
 			&tdes->topops.stack[tdes->topops.last].
 			lastparent_lsa);
+
 	  /* Are there any loose ends to be done in the client ? */
 	  if (!LSA_ISNULL
 	      (&tdes->topops.stack[tdes->topops.last].client_undo_lsa))
 	    {
 	      log_append_topope_abort_client_loose_ends (thread_p, tdes);
 	      /*
-	       * Now the client transaction manager should request all client undo
-	       * actions.
+	       * Now the client transaction manager should request 
+	       * all client undo actions.
 	       */
 	      state = tdes->state;
 	    }
 	  else
 	    {
-	      state =
-		log_complete_system_op (thread_p, tdes, result, save_state);
+	      state = log_complete_system_op (thread_p, tdes, result,
+					      save_state);
 	    }
 	}
-
     }
   else
     {
@@ -4863,6 +4869,13 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
       else
 	{
 	  state = TRAN_UNACTIVE_ABORTED;
+	  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
+	    {
+	      repl_log_abort_after_lsa (tdes,
+					&tdes->topops.stack[tdes->topops.
+							    last].
+					lastparent_lsa);
+	    }
 	}
 
       result = LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
@@ -5009,8 +5022,8 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
 
   if (addr->vfid != NULL
-      && file_new_isvalid_with_has_undolog (thread_p, addr->vfid,
-					    &has_undolog) == DISK_VALID
+      && file_is_new_file_with_has_undolog (thread_p, addr->vfid,
+					    &has_undolog) == FILE_NEW_FILE
       && has_undolog == false)
     {
       /*
@@ -5384,7 +5397,15 @@ log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	      /* ADD the data header */
 	      LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*log));
 	      log = (struct log_replication *) LOG_APPEND_PTR ();
-	      LSA_COPY (&log->lsa, &repl_rec->lsa);
+	      if (repl_rec->rcvindex == RVREPL_DATA_DELETE
+		  || repl_rec->rcvindex == RVREPL_SCHEMA)
+		{
+		  LSA_SET_NULL (&log->lsa);
+		}
+	      else
+		{
+		  LSA_COPY (&log->lsa, &repl_rec->lsa);
+		}
 	      log->length = repl_rec->length;
 	      log->rcvindex = repl_rec->rcvindex;
 	      LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*log));
@@ -6735,7 +6756,7 @@ log_complete_topop_attach (LOG_TDES * tdes)
  *   back_to_state(in): The outter sysop (or transaction) returns to this state.
  *
  * Note:Declare the system top operation as completely finished. A top
- *              is finished by logging a top sysytem commit or abort log
+ *              is finished by logging a top system commit or abort log
  *              record (depending upon the result flag).
  */
 static TRAN_STATE
@@ -8885,9 +8906,8 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp,
  * log_dump_page - print the log page
  */
 void
-log_dump_page ()
+log_dump_page (void)
 {
-
 }
 
 /*

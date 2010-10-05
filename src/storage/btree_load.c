@@ -56,6 +56,7 @@ struct sort_args
   int n_attrs;			/* Number of attribute ID's         */
   ATTR_ID *attr_ids;		/* Specification of the attribute(s) to
 				 * sort on */
+  int *attrs_prefix_length;	/* prefix length */
   TP_DOMAIN *key_type;
   HEAP_SCANCACHE hfscan_cache;	/* A heap scan cache                */
   HEAP_CACHE_ATTRINFO attr_info;	/* Attribute information            */
@@ -191,7 +192,8 @@ static void print_list (const BTREE_NODE * this_list);
 BTID *
 xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 		   OID * class_oids, int n_classes, int n_attrs,
-		   int *attr_ids, HFID * hfids, int unique_flag,
+		   int *attr_ids, int *attrs_prefix_length,
+		   HFID * hfids, int unique_flag,
 		   int reverse_flag, int last_key_desc, OID * fk_refcls_oid,
 		   BTID * fk_refcls_pk_btid, int cache_attr_id,
 		   const char *fk_name)
@@ -243,8 +245,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
-  btid_int.new_file = (file_new_isvalid (thread_p, &(btid_int.sys_btid->vfid))
-		       == DISK_VALID) ? 1 : 0;
+  btid_int.new_file = (file_is_new_file (thread_p, &(btid_int.sys_btid->vfid))
+		       == FILE_NEW_FILE) ? 1 : 0;
 
   /*
    * check for the last element domain of partial-key and key is desc;
@@ -272,6 +274,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
   sort_args->class_ids = class_oids;
   sort_args->attr_ids = attr_ids;
   sort_args->n_attrs = n_attrs;
+  sort_args->attrs_prefix_length = attrs_prefix_length;
   sort_args->n_classes = n_classes;
   sort_args->key_type = key_type;
   OID_SET_NULL (&sort_args->cur_oid);
@@ -386,7 +389,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 	  dbvalue_ptr =
 	    heap_attrinfo_generate_key (thread_p, sort_args->n_attrs,
 					&sort_args->attr_ids[attr_offset],
-					&sort_args->attr_info,
+					(sort_args->attrs_prefix_length
+					 ? &sort_args->
+					 attrs_prefix_length[attr_offset] :
+					 NULL), &sort_args->attr_info,
 					&sort_args->in_recdes, &dbvalue,
 					aligned_midxkey_buf);
 	  if (dbvalue_ptr == NULL || db_value_is_null (dbvalue_ptr))
@@ -2246,6 +2252,9 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
   HEAP_SCANCACHE upd_scancache;
   int ret = NO_ERROR;
 
+  DB_MAKE_NULL (&val);
+  OID_SET_NULL (&unique_oid);
+
   if (n_attrs > 1)
     {
       is_null = btree_multicol_key_is_null (keyval);
@@ -2255,7 +2264,7 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
       is_null = DB_IS_NULL (keyval);
     }
 
-  if (!is_null && xbtree_find_unique (thread_p, pk_btid, keyval,
+  if (!is_null && xbtree_find_unique (thread_p, pk_btid, true, keyval,
 				      pk_cls_oid, &unique_oid,
 				      true) != BTREE_KEY_FOUND)
     {
@@ -2264,7 +2273,7 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
       goto exit_on_error;
     }
 
-  if (cache_attr_id > 0)
+  if (cache_attr_id >= 0)
     {
       ret =
 	heap_scancache_start_modify (thread_p, &upd_scancache, hfid, cls_oid,
@@ -2473,14 +2482,15 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 		}
 	    }
 
-	  dbvalue_ptr = heap_attrinfo_generate_key (thread_p,
-						    sort_args->n_attrs,
-						    &sort_args->
-						    attr_ids[attr_offset],
-						    &sort_args->attr_info,
-						    &sort_args->in_recdes,
-						    &dbvalue,
-						    aligned_midxkey_buf);
+	  dbvalue_ptr =
+	    heap_attrinfo_generate_key (thread_p, sort_args->n_attrs,
+					&sort_args->attr_ids[attr_offset],
+					(sort_args->attrs_prefix_length
+					 ? &sort_args->
+					 attrs_prefix_length[attr_offset] :
+					 NULL), &sort_args->attr_info,
+					&sort_args->in_recdes, &dbvalue,
+					aligned_midxkey_buf);
 	  if (dbvalue_ptr == NULL)
 	    {
 	      return (SORT_ERROR_OCCURRED);

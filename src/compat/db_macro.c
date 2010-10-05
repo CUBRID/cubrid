@@ -600,6 +600,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
   int error = NO_ERROR;
   DB_VALUE src_value;
   char *string, *val_str;
+  int length;
 
   switch (DB_VALUE_TYPE (value))
     {
@@ -631,12 +632,156 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	    }
 	}
       break;
+
     case DB_TYPE_CHAR:
+      val_str = DB_GET_CHAR (value, &length);
+      if (length > precision)
+	{
+	  string = (char *) malloc (precision);
+	  if (string == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
+	    }
+	  else
+	    {
+	      if (val_str != NULL)
+		{
+		  strncpy (string, val_str, precision);
+		  db_make_char (&src_value, precision, string, precision);
+
+		  pr_clear_value (value);
+		  (*(tp_Char.setval)) (value, &src_value, true);
+
+		  pr_clear_value (&src_value);
+		}
+
+	      free (string);
+	    }
+	}
       break;
+
     case DB_TYPE_VARNCHAR:
+      val_str = DB_GET_NCHAR (value, &length);
+      if (length > precision)
+	{
+	  string = (char *) malloc (precision);
+	  if (string == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
+	    }
+	  else
+	    {
+	      if (val_str != NULL)
+		{
+		  strncpy (string, val_str, precision);
+		  db_make_varnchar (&src_value, precision, string, precision);
+
+		  pr_clear_value (value);
+		  (*(tp_VarNChar.setval)) (value, &src_value, true);
+
+		  pr_clear_value (&src_value);
+		}
+
+	      free (string);
+	    }
+	}
       break;
+
     case DB_TYPE_NCHAR:
+      val_str = DB_GET_NCHAR (value, &length);
+      if (length > precision)
+	{
+	  string = (char *) malloc (precision);
+	  if (string == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
+	    }
+	  else
+	    {
+	      if (val_str != NULL)
+		{
+		  strncpy (string, val_str, precision);
+		  db_make_nchar (&src_value, precision, string, precision);
+
+		  pr_clear_value (value);
+		  (*(tp_NChar.setval)) (value, &src_value, true);
+
+		  pr_clear_value (&src_value);
+		}
+
+	      free (string);
+	    }
+	}
       break;
+
+    case DB_TYPE_BIT:
+      val_str = DB_GET_BIT (value, &length);
+      length = (length + 7) >> 3;
+      if (length > precision)
+	{
+	  string = (char *) malloc (precision);
+	  if (string == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
+	    }
+	  else
+	    {
+	      if (val_str != NULL)
+		{
+		  memcpy (string, val_str, precision);
+		  db_make_bit (&src_value, precision << 3, string,
+			       precision << 3);
+
+		  pr_clear_value (value);
+		  (*(tp_Bit.setval)) (value, &src_value, true);
+
+		  pr_clear_value (&src_value);
+		}
+
+	      free (string);
+	    }
+	}
+      break;
+
+    case DB_TYPE_VARBIT:
+      val_str = DB_GET_BIT (value, &length);
+      length = (length >> 3) + ((length & 7) ? 1 : 0);
+      if (length > precision)
+	{
+	  string = (char *) malloc (precision);
+	  if (string == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
+	    }
+	  else
+	    {
+	      if (val_str != NULL)
+		{
+		  memcpy (string, val_str, precision);
+		  db_make_varbit (&src_value, precision << 3, string,
+				  precision << 3);
+
+		  pr_clear_value (value);
+		  (*(tp_VarBit.setval)) (value, &src_value, true);
+
+		  pr_clear_value (&src_value);
+		}
+
+	      free (string);
+	    }
+	}
+      break;
+
     case DB_TYPE_NULL:
       break;
     default:
@@ -2617,6 +2762,40 @@ db_value_free (DB_VALUE * value)
 }
 
 /*
+ * db_value_clear_array() - all the value containers in the values array are
+ *        initialized to an empty state; their internal type tag will be set
+ *        to DB_TYPE_NULL. Any external allocations such as strings or sets
+ *        will be freed.
+ *        The array itself is not freed and may be reused.
+ * return: Error indicator
+ * value_array(out) : the value array to clear
+ */
+int
+db_value_clear_array (DB_VALUE_ARRAY * value_array)
+{
+  int error = NO_ERROR;
+  int i = 0;
+
+  assert (value_array != NULL && value_array->size >= 0);
+
+  for (i = 0; i < value_array->size; ++i)
+    {
+      int tmp_error = NO_ERROR;
+
+      assert (value_array->vals != NULL);
+
+      /* don't check connection here, we always allow things to be freed */
+      tmp_error = pr_clear_value (&value_array->vals[i]);
+      if (tmp_error != NO_ERROR && error == NO_ERROR)
+	{
+	  error = tmp_error;
+	}
+    }
+
+  return error;
+}
+
+/*
  * db_value_print() - describe the contents of a value container
  * return   : none
  * value(in): value container to print.
@@ -4129,13 +4308,10 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_DATETIME:
     case DB_TYPE_MONETARY:
-      {
-	const char *ptr = db_string_value (buf, "", value);
-	if (ptr == NULL)
-	  {
-	    status = C_TO_VALUE_CONVERSION_ERROR;
-	  }
-      }
+      if (db_string_value (buf, "", value) == NULL)
+	{
+	  status = C_TO_VALUE_CONVERSION_ERROR;
+	}
       break;
     case DB_TYPE_NUMERIC:
       {

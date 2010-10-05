@@ -46,12 +46,26 @@
 #include "environment_variable.h"
 #include "transaction_cl.h"
 #include "csql_grammar_scan.h"
+#include "system_parameter.h"
 #define JP_MAXNAME 256
 #if defined(WINDOWS)
 #define snprintf _snprintf
 #endif /* WINDOWS */
 #include "memory_alloc.h"
 
+/* Bit mask to be used to check constraints of a column.
+ * COLUMN_CONSTRAINT_SHARED_DEFAULT_AI is special-purpose mask
+ * to identify duplication of SHARED, DEFAULT and AUTO_INCREMENT.
+ */
+#define COLUMN_CONSTRAINT_UNIQUE		(0x01)
+#define COLUMN_CONSTRAINT_PRIMARY_KEY		(0x02)
+#define COLUMN_CONSTRAINT_NULL			(0x04)
+#define COLUMN_CONSTRAINT_OTHERS		(0x08)
+#define COLUMN_CONSTRAINT_SHARED		(0x10)
+#define COLUMN_CONSTRAINT_DEFAULT		(0x20)
+#define COLUMN_CONSTRAINT_AUTO_INCREMENT	(0x40)
+
+#define COLUMN_CONSTRAINT_SHARED_DEFAULT_AI	(0x70)
 
 
 #ifdef PARSER_DEBUG
@@ -78,14 +92,31 @@ struct function_map
 
 static FUNCTION_MAP functions[] = {
   {"abs", PT_ABS},
+  {"acos", PT_ACOS},
+  {"asin", PT_ASIN},
+  {"atan", PT_ATAN},
+  {"atan2", PT_ATAN2},
+  {"bit_count", PT_BIT_COUNT},
   {"ceil", PT_CEIL},
+  {"ceiling", PT_CEIL},
   {"char_length", PT_CHAR_LENGTH},
+  {"character_length", PT_CHAR_LENGTH},
   {"chr", PT_CHR},
+  {"concat", PT_CONCAT},
+  {"concat_ws", PT_CONCAT_WS},
+  {"cos", PT_COS},
+  {"cot", PT_COT},
+  {"curtime", PT_SYS_TIME},
+  {"curdate", PT_SYS_DATE},
+  {"datediff", PT_DATEDIFF},
+  {"date_format", PT_DATE_FORMAT},
   {"decode", PT_DECODE},
   {"decr", PT_DECR},
+  {"degrees", PT_DEGREES},
   {"drand", PT_DRAND},
   {"drandom", PT_DRANDOM},
   {"exp", PT_EXP},
+  {"field", PT_FIELD},
   {"floor", PT_FLOOR},
   {"greatest", PT_GREATEST},
   {"groupby_num", PT_GROUPBY_NUM},
@@ -97,24 +128,40 @@ static FUNCTION_MAP functions[] = {
   {"length", PT_CHAR_LENGTH},
   {"lengthb", PT_CHAR_LENGTH},
   {"least", PT_LEAST},
+  {"list_dbs", PT_LIST_DBS},
+  {"locate", PT_LOCATE},
+  {"ln", PT_LN},
+  {"log2", PT_LOG2},
+  {"log10", PT_LOG10},
   {"log", PT_LOG},
   {"lpad", PT_LPAD},
   {"ltrim", PT_LTRIM},
-  {"mod", PT_MODULUS},
+  {"mid", PT_MID},
   {"months_between", PT_MONTHS_BETWEEN},
+  {"format", PT_FORMAT},
+  {"now", PT_SYS_DATETIME},
   {"nvl", PT_NVL},
   {"nvl2", PT_NVL2},
   {"orderby_num", PT_ORDERBY_NUM},
   {"power", PT_POWER},
+  {"pow", PT_POWER},
+  {"pi", PT_PI},
+  {"radians", PT_RADIANS},
   {"rand", PT_RAND},
   {"random", PT_RANDOM},
+  {"reverse", PT_REVERSE},
   {"round", PT_ROUND},
+  {"row_count", PT_ROW_COUNT},
   {"rpad", PT_RPAD},
   {"rtrim", PT_RTRIM},
   {"sign", PT_SIGN},
+  {"sin", PT_SIN},
   {"sqrt", PT_SQRT},
+  {"strcmp", PT_STRCMP},
   {"substr", PT_SUBSTRING},
   {"substrb", PT_SUBSTRING},
+  {"tan", PT_TAN},
+  {"time_format", PT_TIME_FORMAT},
   {"to_char", PT_TO_CHAR},
   {"to_date", PT_TO_DATE},
   {"to_datetime",PT_TO_DATETIME},
@@ -122,6 +169,7 @@ static FUNCTION_MAP functions[] = {
   {"to_time", PT_TO_TIME},
   {"to_timestamp", PT_TO_TIMESTAMP},
   {"trunc", PT_TRUNC},
+  {"unix_timestamp", PT_UNIX_TIMESTAMP}
 };
 
 
@@ -146,6 +194,7 @@ static int parser_connectbyroot_check = 0;
 static int parser_serial_check = 1;
 static int parser_pseudocolumn_check = 1;
 static int parser_subquery_check = 1;
+static int parser_hostvar_check = 1;
 
 /* check Oracle style outer-join operator: '(+)' */
 static bool parser_found_Oracle_outer = false;
@@ -184,6 +233,19 @@ typedef struct {
 	PT_NODE* c4;
 } container_4;
 
+typedef struct {
+	PT_NODE* c1;
+	PT_NODE* c2;
+	PT_NODE* c3;
+	PT_NODE* c4;
+	PT_NODE* c5;
+	PT_NODE* c6;
+	PT_NODE* c7;
+	PT_NODE* c8;
+	PT_NODE* c9;
+	PT_NODE* c10;
+} container_10;
+
 #define PT_EMPTY INT_MAX
 
 #if defined(WINDOWS)
@@ -198,20 +260,34 @@ typedef struct {
 #define SET_CONTAINER_2(a, i, j)		a.c1 = i, a.c2 = j
 #define SET_CONTAINER_3(a, i, j, k)		a.c1 = i, a.c2 = j, a.c3 = k
 #define SET_CONTAINER_4(a, i, j, k, l)		a.c1 = i, a.c2 = j, a.c3 = k, a.c4 = l
-#define SET_CONTAINER_5(a, i, j, k, l, m)	a.c1 = i, a.c2 = j, a.c3 = k, a.c4 = l, a.c5 = m
-#define SET_CONTAINER_6(a, i, j, k, l, m, n)	a.c1 = i, a.c2 = j, a.c3 = k, a.c4 = l, a.c5 = m, a.c6 = n
 
 #define CONTAINER_AT_0(a)			(a).c1
 #define CONTAINER_AT_1(a)			(a).c2
 #define CONTAINER_AT_2(a)			(a).c3
 #define CONTAINER_AT_3(a)			(a).c4
+#define CONTAINER_AT_4(a)			(a).c5
+#define CONTAINER_AT_5(a)			(a).c6
+#define CONTAINER_AT_6(a)			(a).c7
+#define CONTAINER_AT_7(a)			(a).c8
+#define CONTAINER_AT_8(a)			(a).c9
+#define CONTAINER_AT_9(a)			(a).c10
 
 #define YEN_SIGN_TEXT		"(\0xa1\0xef)"
 #define DOLLAR_SIGN_TEXT	"$"
 #define WON_SIGN_TEXT		"\\"
 
-void yyerror_explicit(int line, int column);
-void yyerror(const char* s);
+typedef enum 
+{
+  SERIAL_START,
+  SERIAL_INC,
+  SERIAL_MAX,
+  SERIAL_MIN,
+  SERIAL_CYCLE,
+  SERIAL_CACHE,
+} SERIAL_DEFINE;
+
+void csql_yyerror_explicit(int line, int column);
+void csql_yyerror(const char* s);
 
 FUNCTION_MAP* keyword_offset(const char* name);
 PT_NODE* keyword_func(const char* name, PT_NODE* args);
@@ -264,6 +340,9 @@ static void parser_restore_pseudoc(void);
 static void parser_save_and_set_sqc(int value);
 static void parser_restore_sqc(void);
 
+static void parser_save_and_set_hvar(int value);
+static void parser_restore_hvar(void);
+
 static void parser_save_found_Oracle_outer(void);
 static void parser_restore_found_Oracle_outer(void);
 
@@ -290,15 +369,20 @@ static void parser_push_join_type(int v);
 static int parser_top_join_type(void);
 static int parser_pop_join_type(void);
 
-static void parser_save_is_reverse(int v);
-static int parser_get_is_reverse(void);
+static void parser_save_is_reverse(bool v);
+static bool parser_get_is_reverse(void);
 
 static void parser_stackpointer_init(void);
 static PT_NODE* parser_make_date_lang(int arg_cnt, PT_NODE* arg3);
 static void parser_remove_dummy_select(PT_NODE** node);
 static int parser_count_list(PT_NODE* list);
 
+static void resolve_alias_in_expr_node(PT_NODE * node, PT_NODE * list);
+static void resolve_alias_in_name_node(PT_NODE ** node, PT_NODE * list);
+
 static PT_MISC_TYPE parser_attr_type;
+
+static bool allow_attribute_ordering;
 
 int parse_one_statement (int state);
 
@@ -321,11 +405,13 @@ void pop_msg(void);
 
 %union {
 	int number;
+	bool boolean;
 	PT_NODE* node;
 	char* cptr;
 	container_2 c2;
 	container_3 c3;
 	container_4 c4;
+	container_10 c10;
 }
 
 
@@ -334,8 +420,9 @@ void pop_msg(void);
 
 /* define rule type (number) */
 /*{{{*/
-%type <number> opt_reverse
-%type <number> opt_unique
+%type <boolean> opt_reverse
+%type <boolean> opt_unique
+%type <number> opt_replace
 %type <number> opt_of_inner_left_right
 %type <number> opt_with_read_uncommitted
 %type <number> opt_class_type
@@ -349,6 +436,7 @@ void pop_msg(void);
 %type <number> event_type
 %type <number> opt_of_data_type_cursor
 %type <number> all_distinct
+%type <number> all_distinct_distinctrow
 %type <number> of_avg_max_etc
 %type <number> of_leading_trailing_both
 %type <number> datetime_field
@@ -368,10 +456,17 @@ void pop_msg(void);
 %type <number> opt_in_out
 %type <number> like_op
 %type <number> null_op
+%type <number> is_op
 %type <number> in_op
 %type <number> between_op
 %type <number> opt_varying
 %type <number> nested_set
+%type <number> opt_asc_or_desc
+%type <number> opt_with_rollup
+%type <number> opt_table_type
+%type <number> opt_or_replace
+%type <number> column_constraint_def
+%type <number> constraint_list
 /*}}}*/
 
 /* define rule type (node) */
@@ -384,7 +479,10 @@ void pop_msg(void);
 %type <node> auth_stmt
 %type <node> transaction_stmt
 %type <node> alter_stmt
+%type <node> alter_clause_list
 %type <node> rename_stmt
+%type <node> rename_class_list
+%type <node> rename_class_pair
 %type <node> drop_stmt
 %type <node> opt_index_column_name_list
 %type <node> index_column_name_list
@@ -405,14 +503,21 @@ void pop_msg(void);
 %type <node> only_all_class_spec
 %type <node> class_name
 %type <node> opt_identifier
-%type <node> normal_or_class_attr_list
+%type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
+%type <node> normal_column_or_class_attribute
 %type <node> query_number_list
-%type <node> insert_stmt
+%type <node> insert_or_replace_stmt
+%type <node> insert_set_stmt
+%type <node> replace_set_stmt
+%type <node> insert_set_stmt_header
 %type <node> insert_expression
 %type <node> opt_attr_list
 %type <node> into_clause_opt
 %type <node> insert_value_clause
+%type <node> insert_value_clause_list
+%type <node> insert_stmt_value_clause
+%type <node> insert_expression_value_clause
 %type <node> insert_value_list
 %type <node> insert_value
 %type <node> update_stmt
@@ -445,6 +550,7 @@ void pop_msg(void);
 %type <node> table_option
 %type <node> opt_subtable_clause
 %type <node> opt_constraint_id
+%type <node> opt_constraint_opt_id
 %type <node> of_unique_foreign_check
 %type <node> unique_constraint
 %type <node> foreign_key_constraint
@@ -460,14 +566,19 @@ void pop_msg(void);
 %type <node> class_or_normal_attr_def_list
 %type <node> view_attr_def_list
 %type <node> attr_def_list
+%type <node> attr_def_list_with_commas
 %type <node> attr_def
+%type <node> attr_constraint_def
+%type <node> attr_index_def
 %type <node> attr_def_one
 %type <node> view_attr_def
-%type <node> shared_or_default_clause
 %type <node> transaction_mode_list
 %type <node> transaction_mode
 %type <node> timeout_spec
 %type <node> evaluate_stmt
+%type <node> prepare_stmt
+%type <node> execute_stmt
+%type <node> opt_using
 %type <node> opt_priority
 %type <node> opt_if_trigger_condition
 %type <node> event_spec
@@ -477,8 +588,8 @@ void pop_msg(void);
 %type <node> trigger_spec_list
 %type <node> trace_spec
 %type <node> depth_spec
-%type <node> opt_serial_start
-%type <node> opt_serial_increment
+%type <node> serial_start
+%type <node> serial_increment
 %type <node> opt_sp_param_list
 %type <node> sp_param_list
 %type <node> sp_param_def
@@ -514,9 +625,15 @@ void pop_msg(void);
 %type <node> opt_orderby_clause
 %type <node> sort_spec_list
 %type <node> expression_
+%type <node> expression_add_sub
+%type <node> expression_bitshift
+%type <node> expression_bitand
+%type <node> expression_bitor
 %type <node> term
 %type <node> factor
+%type <node> factor_
 %type <node> primary
+%type <node> boolean
 %type <node> case_expr
 %type <node> opt_else_expr
 %type <node> simple_when_clause_list
@@ -528,6 +645,8 @@ void pop_msg(void);
 %type <node> table_set_function_call
 %type <node> search_condition
 %type <node> boolean_term
+%type <node> boolean_term_is
+%type <node> boolean_term_xor
 %type <node> boolean_factor
 %type <node> predicate
 %type <node> predicate_expression
@@ -544,7 +663,9 @@ void pop_msg(void);
 %type <node> constant_set
 %type <node> file_path_name
 %type <node> identifier_list
+%type <node> index_column_identifier_list
 %type <node> identifier
+%type <node> index_column_identifier
 %type <node> escape_string_literal
 %type <node> char_string_literal
 %type <node> char_string
@@ -560,10 +681,13 @@ void pop_msg(void);
 %type <node> partition_def
 %type <node> signed_literal_list
 %type <node> insert_name_clause
+%type <node> replace_name_clause
+%type <node> insert_name_clause_header
 %type <node> opt_for_search_condition
 %type <node> path_header
 %type <node> path_id_list
 %type <node> path_id
+%type <node> simple_path_id
 %type <node> generic_function
 %type <node> opt_on_target
 %type <node> generic_function_id
@@ -588,6 +712,12 @@ void pop_msg(void);
 %type <node> incr_arg_name__dec
 %type <node> search_condition_query
 %type <node> search_condition_expression
+%type <node> opt_uint_or_host_input
+%type <node> opt_upd_del_limit_clause
+%type <node> truncate_stmt
+%type <node> do_stmt
+%type <node> on_duplicate_key_update
+%type <node> opt_attr_ordering_info
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -599,31 +729,35 @@ void pop_msg(void);
 
 /* define rule type (container) */
 /*{{{*/
+%type <c10> opt_serial_option_list
+%type <c10> serial_option_list
+
 %type <c4> isolation_level_spec
-%type <c4> opt_serial_min_max
 %type <c4> opt_constraint_attr_list
 %type <c4> constraint_attr_list
 %type <c4> constraint_attr
 
 %type <c3> ref_rule_list
 %type <c3> opt_ref_rule_list
+%type <c3> of_serial_option
 
 %type <c2> extended_table_spec_list
 %type <c2> alter_attr_default_value_list
-%type <c2> insert_stmt_value_clause
-%type <c2> insert_expression_value_clause
 %type <c2> opt_of_where_cursor
 %type <c2> opt_data_type
+%type <c2> opt_create_as_clause
+%type <c2> create_as_clause
 %type <c2> trigger_status_or_priority
 %type <c2> serial_min
 %type <c2> serial_max
-%type <c2> opt_of_cached_num
-%type <c2> opt_of_cycle_nocycle
+%type <c2> of_cached_num
+%type <c2> of_cycle_nocycle
 %type <c2> data_type
 %type <c2> primitive_type
 %type <c2> opt_prec_2
 %type <c2> in_pred_operand
 %type <c2> opt_as_identifier_attr_name
+%type <c2> insert_assignment_list
 /*}}}*/
 
 /* Token define */
@@ -654,6 +788,8 @@ void pop_msg(void);
 %token BIGINT
 %token BIT
 %token BIT_LENGTH
+%token BITSHIFT_LEFT
+%token BITSHIFT_RIGHT
 %token BOOLEAN_
 %token BOTH_
 %token BREADTH
@@ -666,7 +802,6 @@ void pop_msg(void);
 %token CATALOG
 %token CHANGE
 %token CHAR_
-%token CHARACTER_LENGTH
 %token CHECK
 %token CLASS
 %token CLASSES
@@ -677,6 +812,7 @@ void pop_msg(void);
 %token COLLATION
 %token COLUMN
 %token COMMIT
+%token COMP_NULLSAFE_EQ
 %token COMPLETION
 %token CONNECT
 %token CONNECT_BY_ISCYCLE
@@ -700,10 +836,15 @@ void pop_msg(void);
 %token CURSOR
 %token CYCLE
 %token DATA
+%token DATABASE
 %token DATA_TYPE
 %token Date
 %token DATETIME
 %token DAY_
+%token DAY_MILLISECOND
+%token DAY_SECOND
+%token DAY_MINUTE
+%token DAY_HOUR
 %token DEALLOCATE
 %token DECLARE
 %token DEFAULT
@@ -719,9 +860,13 @@ void pop_msg(void);
 %token DIFFERENCE_
 %token DISCONNECT
 %token DISTINCT
+%token DISTINCTROW
+%token DIV
+%token DO
 %token Domain
 %token Double
 %token DROP
+%token DUPLICATE_
 %token EACH
 %token ELSE
 %token ELSEIF
@@ -757,6 +902,9 @@ void pop_msg(void);
 %token GROUP_
 %token HAVING
 %token HOUR_
+%token HOUR_MILLISECOND
+%token HOUR_SECOND
+%token HOUR_MINUTE
 %token IDENTITY
 %token IF
 %token IGNORE_
@@ -792,6 +940,8 @@ void pop_msg(void);
 %token LIST
 %token LOCAL
 %token LOCAL_TRANSACTION_ID
+%token LOCALTIME
+%token LOCALTIMESTAMP
 %token LOOP
 %token LOWER
 %token MATCH
@@ -800,6 +950,9 @@ void pop_msg(void);
 %token MILLISECOND_
 %token Min
 %token MINUTE_
+%token MINUTE_MILLISECOND
+%token MINUTE_SECOND
+%token MOD
 %token MODIFY
 %token MODULE
 %token Monetary
@@ -871,6 +1024,7 @@ void pop_msg(void);
 %token RIGHT
 %token ROLE
 %token ROLLBACK
+%token ROLLUP
 %token ROUTINE
 %token ROW
 %token ROWNUM
@@ -881,6 +1035,7 @@ void pop_msg(void);
 %token SCROLL
 %token SEARCH
 %token SECOND_
+%token SECOND_MILLISECOND
 %token SECTION
 %token SELECT
 %token SENSITIVE
@@ -941,11 +1096,14 @@ void pop_msg(void);
 %token TRIGGER
 %token TRIM
 %token True
+%token TRUNCATE
 %token TYPE
 %token UNDER
 %token Union
 %token UNIQUE
 %token UNKNOWN
+%token UNTERMINATED_STRING
+%token UNTERMINATED_IDENTIFIER
 %token UPDATE
 %token UPPER
 %token USAGE
@@ -971,7 +1129,9 @@ void pop_msg(void);
 %token WITHOUT
 %token WORK
 %token WRITE
+%token XOR
 %token YEAR_
+%token YEAR_MONTH
 %token ZONE
 
 %token YEN_SIGN
@@ -986,11 +1146,17 @@ void pop_msg(void);
 %token PARAM_HEADER
 
 %token <cptr> ACTIVE
+%token <cptr> ADDDATE
 %token <cptr> ANALYZE
 %token <cptr> AUTO_INCREMENT
+%token <cptr> BIT_AND
+%token <cptr> BIT_OR
+%token <cptr> BIT_XOR
 %token <cptr> CACHE
 %token <cptr> COMMITTED
 %token <cptr> COST
+%token <cptr> DATE_ADD
+%token <cptr> DATE_SUB
 %token <cptr> DECREMENT
 %token <cptr> GE_INF_
 %token <cptr> GE_LE_
@@ -1000,6 +1166,7 @@ void pop_msg(void);
 %token <cptr> GT_LE_
 %token <cptr> GT_LT_
 %token <cptr> HASH
+%token <cptr> IFNULL
 %token <cptr> INACTIVE
 %token <cptr> INCREMENT
 %token <cptr> INF_LE_
@@ -1007,7 +1174,9 @@ void pop_msg(void);
 %token <cptr> INFINITE_
 %token <cptr> INSTANCES
 %token <cptr> INVALIDATE
+%token <cptr> ISNULL
 %token <cptr> JAVA
+%token <cptr> LCASE
 %token <cptr> LOCK_
 %token <cptr> MAXIMUM
 %token <cptr> MAXVALUE
@@ -1024,6 +1193,7 @@ void pop_msg(void);
 %token <cptr> PASSWORD
 %token <cptr> PRINT
 %token <cptr> PRIORITY
+%token <cptr> QUARTER
 %token <cptr> RANGE_
 %token <cptr> REJECT_
 %token <cptr> REMOVE
@@ -1038,17 +1208,23 @@ void pop_msg(void);
 %token <cptr> STATEMENT
 %token <cptr> STATUS
 %token <cptr> STDDEV
+%token <cptr> STR_TO_DATE
+%token <cptr> SUBDATE
 %token <cptr> SYSTEM
 %token <cptr> THAN
 %token <cptr> TIMEOUT
 %token <cptr> TRACE
 %token <cptr> TRIGGERS
+%token <cptr> UCASE
 %token <cptr> UNCOMMITTED
 %token <cptr> VARIANCE
+%token <cptr> WEEK
 %token <cptr> WORKSPACE
+
 
 %token <cptr> IdName
 %token <cptr> BracketDelimitedIdName
+%token <cptr> BacktickDelimitedIdName
 %token <cptr> DelimitedIdName
 %token <cptr> UNSIGNED_INTEGER
 %token <cptr> UNSIGNED_REAL
@@ -1134,6 +1310,7 @@ stmt
 			parser_serial_check = 1;
 			parser_subquery_check = 1;
 			parser_pseudocolumn_check = 1;
+			parser_hostvar_check = 1;
 			
 			parser_select_level = -1;
 
@@ -1145,6 +1322,7 @@ stmt
 			parser_save_and_set_cannot_prepare (false);
 
 			parser_attr_type = PT_NORMAL;
+			allow_attribute_ordering = false;
 			parser_hidden_incr_list = NULL;
 
 		DBG_PRINT}}
@@ -1158,7 +1336,7 @@ stmt
 
 			if (msg_ptr > 0)
 			  {
-			    yyerror (NULL);
+			    csql_yyerror (NULL);
 			  }
 
 		DBG_PRINT}}
@@ -1198,11 +1376,17 @@ stmt_
 		{ $$ = $1; }
 	| drop_stmt
 		{ $$ = $1; }
+	| do_stmt
+		{ $$ = $1; }
 	| esql_query_stmt
 		{ $$ = $1; }
 	| evaluate_stmt
 		{ $$ = $1; }
-	| insert_stmt
+	| prepare_stmt
+		{ $$ = $1; }
+	| execute_stmt
+		{ $$ = $1; }
+	| insert_or_replace_stmt
 		{ $$ = $1; }
 	| update_stmt
 		{ $$ = $1; }
@@ -1213,6 +1397,8 @@ stmt_
 	| auth_stmt
 		{ $$ = $1; }
 	| transaction_stmt
+		{ $$ = $1; }
+	| truncate_stmt
 		{ $$ = $1; }
 	| set_stmt
 		{ $$ = $1; }
@@ -1571,9 +1757,20 @@ create_stmt
 	  opt_method_files 				/* 11 */
 	  opt_inherit_resolution_list			/* 12 */
 	  opt_partition_clause 				/* 13 */
+          opt_create_as_clause				/* 14 */
 		{{
 
 			PT_NODE *qc = parser_pop_hint_node ();
+
+			if (CONTAINER_AT_1 ($14) != NULL)
+			  {
+			    if ((PT_MISC_TYPE) $4 == PT_ADT || $6 != NULL || $7 != NULL || $10 != NULL 
+				|| $11 != NULL || $12 != NULL)
+			      {
+				PT_ERRORf (this_parser, qc, "check syntax at %s",
+                                          parser_print_tree (this_parser, qc));
+			      }
+			  }
 
 			if (qc)
 			  {
@@ -1587,6 +1784,11 @@ create_stmt
 			    qc->info.create_entity.method_file_list = $11;
 			    qc->info.create_entity.resolution_list = $12;
 			    qc->info.create_entity.partition_info = $13;
+                            if (CONTAINER_AT_1 ($14) != NULL)
+			      {
+			        qc->info.create_entity.create_select_action = TO_NUMBER(CONTAINER_AT_0 ($14));
+			        qc->info.create_entity.create_select = CONTAINER_AT_1 ($14);
+			      }
 
 			    pt_gather_constraints (this_parser, qc);
 			  }
@@ -1595,34 +1797,37 @@ create_stmt
 
 		DBG_PRINT}}
 	| CREATE 					/* 1 */
-	  of_view_vclass 				/* 2 */
-	  class_name 					/* 3 */
-	  opt_subtable_clause 				/* 4 */
-	  opt_class_attr_def_list 			/* 5 */
-	  opt_paren_view_attr_def_list 			/* 6 */
-	  opt_method_def_list 				/* 7 */
-	  opt_method_files				/* 8 */
-	  opt_inherit_resolution_list			/* 9 */
-	  opt_as_query_list				/* 10 */
-	  opt_with_levels_clause			/* 11 */
+	  opt_or_replace				/* 2 */
+	  of_view_vclass 				/* 3 */
+	  class_name 					/* 4 */
+	  opt_subtable_clause 				/* 5 */
+	  opt_class_attr_def_list 			/* 6 */
+	  opt_paren_view_attr_def_list 			/* 7 */
+	  opt_method_def_list 				/* 8 */
+	  opt_method_files				/* 9 */
+	  opt_inherit_resolution_list			/* 10 */
+	  opt_as_query_list				/* 11 */
+	  opt_with_levels_clause			/* 12 */
 		{{
 
 			PT_NODE *qc = parser_new_node (this_parser, PT_CREATE_ENTITY);
 
 			if (qc)
 			  {
-			    qc->info.create_entity.entity_name = $3;
+			    qc->info.create_entity.or_replace = $2;
+			  
+			    qc->info.create_entity.entity_name = $4;
 			    qc->info.create_entity.entity_type = PT_VCLASS;
 
-			    qc->info.create_entity.supclass_list = $4;
-			    qc->info.create_entity.class_attr_def_list = $5;
-			    qc->info.create_entity.attr_def_list = $6;
-			    qc->info.create_entity.method_def_list = $7;
-			    qc->info.create_entity.method_file_list = $8;
-			    qc->info.create_entity.resolution_list = $9;
-			    qc->info.create_entity.as_query_list = $10;
-			    qc->info.create_entity.with_check_option = $11;
-
+			    qc->info.create_entity.supclass_list = $5;
+			    qc->info.create_entity.class_attr_def_list = $6;
+			    qc->info.create_entity.attr_def_list = $7;
+			    qc->info.create_entity.method_def_list = $8;
+			    qc->info.create_entity.method_file_list = $9;
+			    qc->info.create_entity.resolution_list = $10;
+			    qc->info.create_entity.as_query_list = $11;
+			    qc->info.create_entity.with_check_option = $12;
+			    
 			    pt_gather_constraints (this_parser, qc);
 			  }
 
@@ -1632,9 +1837,9 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE					/* 1 */
 		{					/* 2 */
-			PT_NODE* node = parser_new_node(this_parser, PT_CREATE_INDEX);
-			parser_push_hint_node(node);
-			push_msg(MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_INDEX);
+			parser_push_hint_node (node);
+			push_msg (MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
 		}
 	  opt_hint_list					/* 3 */
 	  opt_reverse					/* 4 */
@@ -1656,6 +1861,38 @@ create_stmt
 			node->info.index.indexed_class = $9;
 			node->info.index.column_names = $10;
 
+			$$ = node;
+
+		DBG_PRINT}}
+	| CREATE					/* 1 */
+		{					/* 2 */
+			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_INDEX);
+			parser_push_hint_node (node);
+			push_msg (MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+		}
+	  opt_hint_list					/* 3 */
+	  INDEX						/* 4 */
+	  opt_identifier				/* 5 */
+	  ON_						/* 6 */
+	  only_class_name				/* 7 */
+	  '(' index_column_name				/* 8, 9 */
+	  '(' opt_uint_or_host_input ')' 		/* 10, 11, 12 */
+	  opt_asc_or_desc ')'				/* 13, 14 */
+		{ pop_msg(); }
+		{{
+
+			PT_NODE *node = parser_pop_hint_node ();
+			
+			node->info.index.index_name = $5;
+			node->info.index.indexed_class = $7;
+			node->info.index.column_names = $9;
+			node->info.index.prefix_length = $11;
+			
+			if ($9 && $13)
+			  {
+			    $9->info.sort_spec.asc_or_desc = $13;
+			  }			
+						
 			$$ = node;
 
 		DBG_PRINT}}
@@ -1719,11 +1956,7 @@ create_stmt
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_SERIAL); }	/* 2 */
 	  SERIAL 					/* 3 */
 	  identifier 					/* 4 */
-	  opt_serial_start				/* 5 */
-	  opt_serial_increment				/* 6 */
-	  opt_serial_min_max				/* 7 */
-	  opt_of_cycle_nocycle				/* 8 */
-	  opt_of_cached_num                             /* 9 */
+	  opt_serial_option_list			/* 5 */
 		{ pop_msg(); }
 		{{
 
@@ -1732,16 +1965,30 @@ create_stmt
 			if (node)
 			  {
 			    node->info.serial.serial_name = $4;
-			    node->info.serial.increment_val = $6;
-			    node->info.serial.start_val = $5;
-			    node->info.serial.max_val = CONTAINER_AT_0 ($7);
-			    node->info.serial.no_max = TO_NUMBER (CONTAINER_AT_1 ($7));
-			    node->info.serial.min_val = CONTAINER_AT_2 ($7);
-			    node->info.serial.no_min = TO_NUMBER (CONTAINER_AT_3 ($7));
-			    node->info.serial.cyclic = TO_NUMBER (CONTAINER_AT_0 ($8));
-			    node->info.serial.no_cyclic = TO_NUMBER (CONTAINER_AT_1 ($8));
-			    node->info.serial.cached_num_val = CONTAINER_AT_0 ($9);
-			    node->info.serial.no_cache = TO_NUMBER (CONTAINER_AT_1 ($9));
+
+			    /* container order 
+			     * 0: start_val
+			     * 1: increment_val, 
+			     * 2: max_val, 
+			     * 3: no_max, 
+			     * 4: min_val, 
+			     * 5: no_min, 
+			     * 6: cyclic, 
+			     * 7: no_cyclic, 
+			     * 8: cached_num_val, 
+			     * 9: no_cache, 
+			     */
+
+			    node->info.serial.start_val = CONTAINER_AT_0($5);
+			    node->info.serial.increment_val = CONTAINER_AT_1($5);
+			    node->info.serial.max_val = CONTAINER_AT_2 ($5);
+			    node->info.serial.no_max = TO_NUMBER (CONTAINER_AT_3 ($5));
+			    node->info.serial.min_val = CONTAINER_AT_4 ($5);
+			    node->info.serial.no_min = TO_NUMBER (CONTAINER_AT_5 ($5));
+			    node->info.serial.cyclic = TO_NUMBER (CONTAINER_AT_6 ($5));
+			    node->info.serial.no_cyclic = TO_NUMBER (CONTAINER_AT_7 ($5));
+			    node->info.serial.cached_num_val = CONTAINER_AT_8 ($5);
+			    node->info.serial.no_cache = TO_NUMBER (CONTAINER_AT_9 ($5));
 			  }
 
 			$$ = node;
@@ -1796,7 +2043,278 @@ create_stmt
 		{{
 
 			push_msg (MSGCAT_SYNTAX_INVALID_CREATE);
-			yyerror_explicit (@2.first_line, @2.first_column);
+			csql_yyerror_explicit (@2.first_line, @2.first_column);
+
+		DBG_PRINT}}
+	| CREATE					/* 1 */
+		{					/* 2 */
+			PT_NODE* qc = parser_new_node(this_parser, PT_CREATE_ENTITY);
+			parser_push_hint_node(qc);
+		}
+	  opt_hint_list					/* 3 */
+	  of_class_table_type				/* 4 */
+	  class_name					/* 5 */
+	  LIKE						/* 6 */
+	  class_name					/* 7 */
+		{{
+
+			PT_NODE *qc = parser_pop_hint_node ();
+
+			if (qc)
+			  {
+			    qc->info.create_entity.entity_name = $5;
+			    qc->info.create_entity.entity_type = PT_CLASS;
+			    qc->info.create_entity.create_like = $7;
+			  }
+
+			$$ = qc;
+
+		DBG_PRINT}}
+	| CREATE					/* 1 */
+		{					/* 2 */
+			PT_NODE* qc = parser_new_node(this_parser, PT_CREATE_ENTITY);
+			parser_push_hint_node(qc);
+		}
+	  opt_hint_list					/* 3 */
+	  of_class_table_type				/* 4 */
+	  class_name					/* 5 */
+	  '('						/* 6 */
+	  LIKE						/* 7 */
+	  class_name					/* 8 */
+	  ')'						/* 9 */
+		{{
+
+			PT_NODE *qc = parser_pop_hint_node ();
+
+			if (qc)
+			  {
+			    qc->info.create_entity.entity_name = $5;
+			    qc->info.create_entity.entity_type = PT_CLASS;
+			    qc->info.create_entity.create_like = $8;
+			  }
+
+			$$ = qc;
+
+		DBG_PRINT}}
+	;
+
+opt_serial_option_list
+	: /* empty */
+		{{
+			container_10 ctn;
+			memset(&ctn, 0x00, sizeof(container_10));
+			$$ = ctn;
+		}}
+	| serial_option_list
+		{{
+			$$ = $1;
+		}}
+	;
+
+serial_option_list
+	: serial_option_list of_serial_option
+		{{
+			/* container order 
+			 * 1: start_val
+			 *
+			 * 2: increment_val, 
+			 * 
+			 * 3: max_val, 
+			 * 4: no_max, 
+			 *
+			 * 5: min_val, 
+			 * 6: no_min, 
+			 *
+			 * 7: cyclic, 
+			 * 8: no_cyclic, 
+			 *
+			 * 9: cached_num_val, 
+			 * 10: no_cache, 
+			 */
+
+			container_10 ctn = $1;
+			
+			PT_NODE* node = pt_top(this_parser);
+			switch(TO_NUMBER (CONTAINER_AT_0($2)))
+			  {
+			  case SERIAL_START:
+				if (ctn.c1 != NULL) 
+				  {
+				    PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+						MSGCAT_SEMANTIC_SERIAL_DUPLICATE_ATTR, "start");
+				  }
+
+				ctn.c1 = CONTAINER_AT_1($2);
+				break;
+
+			  case SERIAL_INC:
+				if (ctn.c2 != NULL) 
+				  {
+				    PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+						MSGCAT_SEMANTIC_SERIAL_DUPLICATE_ATTR, "increment");
+				  }
+
+				ctn.c2 = CONTAINER_AT_1($2);
+				break;
+
+			  case SERIAL_MAX:
+				if (ctn.c3 != NULL || TO_NUMBER(ctn.c4) != 0) 
+				  {
+				    PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+						MSGCAT_SEMANTIC_SERIAL_DUPLICATE_ATTR, "max");
+				  }
+
+				ctn.c3 = CONTAINER_AT_1($2);
+				ctn.c4 = CONTAINER_AT_2($2);
+				break;
+
+			  case SERIAL_MIN:
+				if (ctn.c5 != NULL || TO_NUMBER(ctn.c6) != 0) 
+				  {
+				    PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+						MSGCAT_SEMANTIC_SERIAL_DUPLICATE_ATTR, "min");
+				  }
+
+				ctn.c5 = CONTAINER_AT_1($2);
+				ctn.c6 = CONTAINER_AT_2($2);
+				break;
+
+			  case SERIAL_CYCLE:
+				if (TO_NUMBER(ctn.c7) != 0 || TO_NUMBER(ctn.c8) != 0) 
+				  {
+				    PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+						MSGCAT_SEMANTIC_SERIAL_DUPLICATE_ATTR, "cycle");
+				  }
+
+				ctn.c7 = CONTAINER_AT_1($2);
+				ctn.c8 = CONTAINER_AT_2($2);
+				break;
+
+			  case SERIAL_CACHE:
+				if (TO_NUMBER(ctn.c9) != 0 || TO_NUMBER(ctn.c10) != 0) 
+				  {
+				    PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+						MSGCAT_SEMANTIC_SERIAL_DUPLICATE_ATTR, "cache");
+				  }
+
+				ctn.c9 = CONTAINER_AT_1($2);
+				ctn.c10 = CONTAINER_AT_2($2);
+				break;
+			  }
+			
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| of_serial_option
+		{{
+			/* container order 
+			 * 1: start_val
+			 *
+			 * 2: increment_val, 
+			 * 
+			 * 3: max_val, 
+			 * 4: no_max, 
+			 *
+			 * 5: min_val, 
+			 * 6: no_min, 
+			 *
+			 * 7: cyclic, 
+			 * 8: no_cyclic, 
+			 *
+			 * 9: cached_num_val, 
+			 * 10: no_cache, 
+			 */
+
+			container_10 ctn;
+			memset(&ctn, 0x00, sizeof(container_10));
+
+			switch(TO_NUMBER (CONTAINER_AT_0($1)))
+			  {
+			  case SERIAL_START:
+				ctn.c1 = CONTAINER_AT_1($1);
+				break;
+
+			  case SERIAL_INC:
+				ctn.c2 = CONTAINER_AT_1($1);
+				break;
+
+			  case SERIAL_MAX:
+				ctn.c3 = CONTAINER_AT_1($1);
+				ctn.c4 = CONTAINER_AT_2($1);
+				break;
+
+			  case SERIAL_MIN:
+				ctn.c5 = CONTAINER_AT_1($1);
+				ctn.c6 = CONTAINER_AT_2($1);
+				break;
+
+			  case SERIAL_CYCLE:
+				ctn.c7 = CONTAINER_AT_1($1);
+				ctn.c8 = CONTAINER_AT_2($1);
+				break;
+
+			  case SERIAL_CACHE:
+				ctn.c9 = CONTAINER_AT_1($1);
+				ctn.c10 = CONTAINER_AT_2($1);
+				break;
+			  }
+			
+			$$ = ctn;
+
+		DBG_PRINT}}
+	;
+
+of_serial_option
+	: serial_start
+		{{
+			container_3 ctn;
+			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_START), $1, NULL);
+			$$ = ctn;
+		DBG_PRINT}}
+	| serial_increment			
+		{{
+			container_3 ctn;
+			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_INC), $1, NULL);
+			$$ = ctn;
+		DBG_PRINT}}
+	| serial_min		
+		{{
+			container_3 ctn;
+			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_MIN), CONTAINER_AT_0($1), CONTAINER_AT_1($1));
+			$$ = ctn;
+		DBG_PRINT}}
+	| serial_max		
+		{{
+			container_3 ctn;
+			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_MAX), CONTAINER_AT_0($1), CONTAINER_AT_1($1));
+			$$ = ctn;
+		DBG_PRINT}}
+	| of_cycle_nocycle	
+		{{
+			container_3 ctn;
+			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_CYCLE), CONTAINER_AT_0($1), CONTAINER_AT_1($1));
+			$$ = ctn;
+		DBG_PRINT}}
+	| of_cached_num  
+		{{
+			container_3 ctn;
+			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_CACHE), CONTAINER_AT_0($1), CONTAINER_AT_1($1));
+			$$ = ctn;
+		DBG_PRINT}}
+	;
+	
+
+opt_replace
+	: /* empty */
+		{{
+
+			$$ = PT_CREATE_SELECT_NO_ACTION;
+
+		DBG_PRINT}}
+	| REPLACE
+		{{
+
+			$$ = PT_CREATE_SELECT_REPLACE;
 
 		DBG_PRINT}}
 	;
@@ -1813,22 +2331,18 @@ alter_stmt
 		{{
 
 			PT_NODE *node = parser_pop_hint_node ();
+			int entity_type = ($4 == PT_EMPTY ? PT_MISC_DUMMY : $4);
 
 			if (node)
 			  {
+			    node->info.alter.entity_type = entity_type;
 			    node->info.alter.entity_name = $5;
-
-			    if ($4 == PT_EMPTY)
-			      node->info.alter.entity_type = PT_MISC_DUMMY;
-			    else
-			      node->info.alter.entity_type = $4;
-
 			  }
 
 			parser_save_alter_node (node);
 
 		DBG_PRINT}}
-	  alter_clause
+	  alter_clause_cubrid_specific
 		{{
 
 			PT_NODE *node = parser_get_alter_node ();
@@ -1838,6 +2352,37 @@ alter_stmt
 			    pt_gather_constraints (this_parser, node);
 			  }
 			$$ = node;
+
+		DBG_PRINT}}
+	| ALTER						/* 1 */
+		{					/* 2 */
+			PT_NODE* node = parser_new_node(this_parser, PT_ALTER);
+			parser_push_hint_node(node);
+		}
+	  opt_hint_list					/* 3 */
+	  opt_class_type				/* 4 */
+	  only_class_name				/* 5 */
+	  alter_clause_list				/* 6 */
+		{{
+
+			PT_NODE *node = NULL;
+			int entity_type = ($4 == PT_EMPTY ? PT_MISC_DUMMY : $4);
+
+			for (node = $6; node != NULL; node = node->next)
+			  {
+			    node->info.alter.entity_type = entity_type;
+			    node->info.alter.entity_name = parser_copy_tree (this_parser, $5);
+			    pt_gather_constraints (this_parser, node);
+			    if (node->info.alter.code == PT_RENAME_ENTITY)
+			      {
+					node->info.alter.alter_clause.rename.element_type = entity_type;
+					/* We can get the original name from info.alter.entity_name */
+					node->info.alter.alter_clause.rename.old_name = NULL;
+			      }
+			  }
+			parser_free_tree (this_parser, $5);
+
+			$$ = $6;
 
 		DBG_PRINT}}
 	| ALTER
@@ -1885,24 +2430,32 @@ alter_stmt
 	| ALTER                                /* 1 */
 	  SERIAL                               /* 2 */
 	  identifier                           /* 3 */
-	  opt_serial_start                     /* 4 */
-	  opt_serial_increment                 /* 5 */
-	  opt_serial_min_max                   /* 6 */
-	  opt_of_cycle_nocycle                 /* 7 */
-	  opt_of_cached_num                    /* 8 */
+	  opt_serial_option_list	       /* 4 */
 		{{
+			/* container order 
+			 * 0: start_val
+			 * 1: increment_val, 
+			 * 2: max_val, 
+			 * 3: no_max, 
+			 * 4: min_val, 
+			 * 5: no_min, 
+			 * 6: cyclic, 
+			 * 7: no_cyclic, 
+			 * 8: cached_num_val, 
+			 * 9: no_cache, 
+			 */
 
 			PT_NODE *serial_name = $3;
-			PT_NODE *start_val = $4;
-			PT_NODE *increment_val = $5;
-			PT_NODE *max_val = CONTAINER_AT_0 ($6);
-			int no_max = TO_NUMBER (CONTAINER_AT_1 ($6));
-			PT_NODE *min_val = CONTAINER_AT_2 ($6);
-			int no_min = TO_NUMBER (CONTAINER_AT_3 ($6));
-			int cyclic = TO_NUMBER (CONTAINER_AT_0 ($7));
-			int no_cyclic = TO_NUMBER (CONTAINER_AT_1 ($7));
-			PT_NODE *cached_num_val = CONTAINER_AT_0 ($8);
-			int no_cache = TO_NUMBER (CONTAINER_AT_1 ($8));
+			PT_NODE *start_val = CONTAINER_AT_0 ($4);
+			PT_NODE *increment_val = CONTAINER_AT_1 ($4);
+			PT_NODE *max_val = CONTAINER_AT_2 ($4);
+			int no_max = TO_NUMBER (CONTAINER_AT_3 ($4));
+			PT_NODE *min_val = CONTAINER_AT_4 ($4);
+			int no_min = TO_NUMBER (CONTAINER_AT_5 ($4));
+			int cyclic = TO_NUMBER (CONTAINER_AT_6 ($4));
+			int no_cyclic = TO_NUMBER (CONTAINER_AT_7 ($4));
+			PT_NODE *cached_num_val = CONTAINER_AT_8 ($4);
+			int no_cache = TO_NUMBER (CONTAINER_AT_9 ($4));
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERIAL);
 			if (node)
@@ -2008,6 +2561,57 @@ alter_stmt
 			$$ = node;
 
 		DBG_PRINT}}
+	| ALTER VIEW
+	  class_name
+	  AS
+	  csql_query
+		{{
+		
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER);
+			if (node)
+			  {
+			    node->info.alter.entity_type = PT_VCLASS;
+			    node->info.alter.entity_name = $3;
+			    node->info.alter.code = PT_MODIFY_QUERY;
+			    node->info.alter.alter_clause.query.query = $5;
+			    node->info.alter.alter_clause.query.query_no_list = NULL;
+			    
+			    pt_gather_constraints (this_parser, node);
+			  }
+			$$ = node;
+		
+		DBG_PRINT}}
+	;
+
+alter_clause_list
+	: alter_clause_list ',' prepare_alter_node alter_clause_for_alter_list
+		{{
+
+			$$ = parser_make_link ($1, parser_get_alter_node ());
+
+		DBG_PRINT}}
+	| /* The first node in the list is the one that was pushed for hints. */
+		{
+
+			PT_NODE *node = parser_pop_hint_node ();
+			parser_save_alter_node (node);
+		}
+	 alter_clause_for_alter_list
+		{{
+
+			$$ = parser_get_alter_node ();
+
+		DBG_PRINT}}
+	;
+
+prepare_alter_node
+	: /* empty */
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER);
+			parser_save_alter_node (node);
+
+		DBG_PRINT}}
 	;
 
 only_class_name
@@ -2018,22 +2622,18 @@ only_class_name
 	;
 
 rename_stmt
-	: RENAME opt_class_type only_class_name AS only_class_name
+	: RENAME opt_class_type rename_class_list
 		{{
 
-			PT_NODE *node = parser_new_node (this_parser, PT_RENAME);
-			if (node)
+			PT_NODE *node = NULL;
+			int entity_type = ($2 == PT_EMPTY ? PT_CLASS : $2);
+			
+			for (node = $3; node != NULL; node = node->next)
 			  {
-			    node->info.rename.new_name = $5;
-			    node->info.rename.old_name = $3;
-
-			    if ($2 == PT_EMPTY)
-			      node->info.rename.entity_type = PT_CLASS;
-			    else
-			      node->info.rename.entity_type = $2;
+			    node->info.rename.entity_type = entity_type;
 			  }
 
-			$$ = node;
+			$$ = $3;
 
 		DBG_PRINT}}
 	| RENAME TRIGGER class_name AS class_name
@@ -2049,6 +2649,73 @@ rename_stmt
 
 			$$ = node;
 
+		DBG_PRINT}}
+	;
+
+rename_class_list
+	: rename_class_list ',' rename_class_pair
+		{{
+
+			$$ = parser_make_link ($1, $3);
+
+		DBG_PRINT}}
+	| rename_class_pair
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
+rename_class_pair
+	:  only_class_name as_or_to only_class_name
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_RENAME);
+			if (node)
+			  {
+			    node->info.rename.old_name = $1;
+			    node->info.rename.new_name = $3;
+			    node->info.rename.entity_type = PT_CLASS;
+			  }
+
+			$$ = node;
+
+		DBG_PRINT}}
+	;
+
+as_or_to
+	: AS
+	| TO
+	;
+
+truncate_stmt
+	: TRUNCATE opt_table_type class_spec
+		{{
+		
+			PT_NODE *node = parser_new_node (this_parser, PT_TRUNCATE);
+			if (node)
+			  {
+			    node->info.truncate.spec = $3;
+			  }
+			  
+			$$ = node;
+
+		DBG_PRINT}}
+	;
+	
+do_stmt
+	: DO expression_
+		{{
+		
+			PT_NODE *node = parser_new_node (this_parser, PT_DO);
+			if (node)
+			  {
+			    node->info.do_.expr = $2;
+			  }
+			  
+			$$ = node;
+		
 		DBG_PRINT}}
 	;
 
@@ -2235,21 +2902,40 @@ drop_stmt
 			$$ = node;
 
 		DBG_PRINT}}
+	| deallocate_or_drop PREPARE identifier
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_DEALLOCATE_PREPARE);
+
+			if (node)
+			  {
+			    node->info.prepare.name = $3;
+			  }
+
+
+			$$ = node;
+
+		DBG_PRINT}}
+	;
+
+deallocate_or_drop
+	: DEALLOCATE
+	| DROP
 	;
 
 opt_reverse
 	: /* empty */
 		{{
 
-			parser_save_is_reverse (0);
-			$$ = 0;
+			parser_save_is_reverse (false);
+			$$ = false;
 
 		DBG_PRINT}}
 	| REVERSE
 		{{
 
-			parser_save_is_reverse (1);
-			$$ = 1;
+			parser_save_is_reverse (true);
+			$$ = true;
 
 		DBG_PRINT}}
 	;
@@ -2258,13 +2944,13 @@ opt_unique
 	: /* empty */
 		{{
 
-			$$ = 0;
+			$$ = false;
 
 		DBG_PRINT}}
 	| UNIQUE
 		{{
 
-			$$ = 1;
+			$$ = true;
 
 		DBG_PRINT}}
 	;
@@ -2315,8 +3001,7 @@ index_column_name
 			PT_NODE *node = parser_new_node (this_parser, PT_SORT_SPEC);
 			if (node)
 			  {
-			    int is_reverse = parser_get_is_reverse ();
-			    if (is_reverse)
+			    if (parser_get_is_reverse ())
 			      node->info.sort_spec.asc_or_desc = PT_DESC;
 			    else
 			      node->info.sort_spec.asc_or_desc = PT_ASC;
@@ -2331,8 +3016,7 @@ index_column_name
 			PT_NODE *node = parser_new_node (this_parser, PT_SORT_SPEC);
 			if (node)
 			  {
-			    int is_reverse = parser_get_is_reverse ();
-			    if (is_reverse)
+			    if (parser_get_is_reverse ())
 			      node->info.sort_spec.asc_or_desc = PT_DESC;
 			    else
 			      node->info.sort_spec.asc_or_desc = PT_ASC;
@@ -2828,8 +3512,20 @@ class_name
 	: identifier '.' identifier
 		{{
 
-			$3->info.name.resolved = $1->info.name.original;
-			$$ = $3;
+			PT_NODE *user_node = $1;
+			PT_NODE *name_node = $3;
+
+			if (name_node != NULL && user_node != NULL)
+			  {
+			    name_node->info.name.resolved = pt_append_string (this_parser, NULL,
+			                                                      user_node->info.name.original);
+			  }
+			if (user_node != NULL)
+			  {
+			    parser_free_tree (this_parser, user_node);
+			  }
+
+			$$ = name_node;
 
 		DBG_PRINT}}
 	| identifier
@@ -2878,29 +3574,94 @@ opt_class_type
 
 		DBG_PRINT}}
 	;
+	
+opt_table_type
+	: /* empty */
+		{{
+		
+			$$ = PT_EMPTY;
+			
+		DBG_PRINT}}
+	| CLASS
+		{{
 
-alter_clause
-	: ADD alter_add_clause resolution_list_option
-	| DROP alter_drop_clause resolution_list_option
-	| CHANGE alter_change_clause
-	| RENAME alter_rename_clause resolution_list_option
-	| alter_partition_clause
-	| inherit_resolution_list
+			$$ = PT_CLASS;
+			
+		DBG_PRINT}}
+	| TABLE
+		{{
+		
+			$$ = PT_CLASS;
+			
+		DBG_PRINT}}
 	;
 
-resolution_list_option
-	: /* empty */
+alter_clause_for_alter_list
+	: ADD       alter_add_clause_for_alter_list
+	| DROP     alter_drop_clause_for_alter_list
+	| DROP     alter_drop_clause_mysql_specific
+	| RENAME alter_rename_clause_mysql_specific
+	| RENAME alter_rename_clause_allow_multiple opt_resolution_list_for_alter
+	| ALTER  alter_column_clause_mysql_specific
+	|     alter_partition_clause_for_alter_list
+	;
+
+alter_clause_cubrid_specific
+	: ADD       alter_add_clause_cubrid_specific opt_resolution_list_for_alter
+	| DROP     alter_drop_clause_cubrid_specific opt_resolution_list_for_alter
+	| RENAME alter_rename_clause_cubrid_specific opt_resolution_list_for_alter
+	| CHANGE alter_change_clause_cubrid_specific
+	| ADD       alter_add_clause_for_alter_list      resolution_list_for_alter
+	| DROP     alter_drop_clause_for_alter_list      resolution_list_for_alter
 	| inherit_resolution_list
 		{{
 
 			PT_NODE *alt = parser_get_alter_node ();
+
 			if (alt)
-			  alt->info.alter.super.resolution_list = $1;
+			  {
+			    alt->info.alter.code = PT_RENAME_RESOLUTION;
+			    alt->info.alter.super.resolution_list = $1;
+			  }
 
 		DBG_PRINT}}
 	;
 
-alter_rename_clause
+opt_resolution_list_for_alter
+	: /* [empty] */
+	| resolution_list_for_alter
+	;
+
+resolution_list_for_alter
+	: inherit_resolution_list
+		{{
+
+			PT_NODE *alt = parser_get_alter_node ();
+
+			if (alt)
+			  {
+			    alt->info.alter.super.resolution_list = $1;
+			  }
+
+		DBG_PRINT}}
+	;
+
+alter_rename_clause_mysql_specific
+	: opt_to only_class_name
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+
+			if (node)
+			  {
+			    node->info.alter.code = PT_RENAME_ENTITY;
+			    node->info.alter.alter_clause.rename.new_name = $2;
+			  }
+
+		DBG_PRINT}}
+	;
+
+alter_rename_clause_allow_multiple
 	: opt_of_attr_column_method opt_class identifier AS identifier
 		{{
 
@@ -2925,7 +3686,10 @@ alter_rename_clause
 			  }
 
 		DBG_PRINT}}
-	| FUNCTION opt_identifier OF opt_class identifier AS identifier
+	;
+
+alter_rename_clause_cubrid_specific
+	: FUNCTION opt_identifier OF opt_class identifier AS identifier
 		{{
 
 			PT_NODE *node = parser_get_alter_node ();
@@ -3018,9 +3782,68 @@ opt_identifier
 		DBG_PRINT}}
 	;
 
-alter_add_clause
+alter_add_clause_for_alter_list
 	: PARTITION add_partition_clause
-	| File method_file_list
+	| CLASS ATTRIBUTE
+		{ parser_attr_type = PT_META_ATTR; }
+	  '(' attr_def_list ')'
+		{ parser_attr_type = PT_NORMAL; }
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+			if (node)
+			  {
+			    node->info.alter.code = PT_ADD_ATTR_MTHD;
+			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $5;
+			  }
+
+		DBG_PRINT}}
+	| CLASS ATTRIBUTE
+		{ parser_attr_type = PT_META_ATTR; }
+	  attr_def
+		{ parser_attr_type = PT_NORMAL; }
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+			if (node)
+			  {
+			    node->info.alter.code = PT_ADD_ATTR_MTHD;
+			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $4;
+			  }
+
+		DBG_PRINT}}
+	| opt_of_column_attribute
+	  		{ allow_attribute_ordering = true; }
+	  '(' attr_def_list ')'
+	  		{ allow_attribute_ordering = false; }
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+			if (node)
+			  {
+			    node->info.alter.code = PT_ADD_ATTR_MTHD;
+			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $4;
+			  }
+
+		DBG_PRINT}}
+	| opt_of_column_attribute
+			{ allow_attribute_ordering = true; }
+	  attr_def
+	  		{ allow_attribute_ordering = false; }
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+			if (node)
+			  {
+			    node->info.alter.code = PT_ADD_ATTR_MTHD;
+			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $3;
+			  }
+
+		DBG_PRINT}}
+	;
+
+alter_add_clause_cubrid_specific
+	: File method_file_list
 		{{
 
 			PT_NODE *node = parser_get_alter_node ();
@@ -3056,31 +3879,6 @@ alter_add_clause
 			  }
 
 		DBG_PRINT}}
-	| CLASS ATTRIBUTE
-		{ parser_attr_type = PT_META_ATTR; }
-	  attr_def_list
-		{ parser_attr_type = PT_NORMAL; }
-		{{
-
-			PT_NODE *node = parser_get_alter_node ();
-			if (node)
-			  {
-			    node->info.alter.code = PT_ADD_ATTR_MTHD;
-			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $4;
-			  }
-
-		DBG_PRINT}}
-	| opt_of_column_attribute attr_def_list
-		{{
-
-			PT_NODE *node = parser_get_alter_node ();
-			if (node)
-			  {
-			    node->info.alter.code = PT_ADD_ATTR_MTHD;
-			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $2;
-			  }
-
-		DBG_PRINT}}
 	| SUPERCLASS only_class_name_list
 		{{
 
@@ -3102,6 +3900,31 @@ alter_add_clause
 			  {
 			    node->info.alter.code = PT_ADD_QUERY;
 			    node->info.alter.alter_clause.query.query = $2;
+			  }
+
+		DBG_PRINT}}
+	| CLASS ATTRIBUTE
+		{ parser_attr_type = PT_META_ATTR; }
+	  attr_def_list_with_commas
+		{ parser_attr_type = PT_NORMAL; }
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+			if (node)
+			  {
+			    node->info.alter.code = PT_ADD_ATTR_MTHD;
+			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $4;
+			  }
+
+		DBG_PRINT}}
+	| opt_of_column_attribute attr_def_list_with_commas
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+			if (node)
+			  {
+			    node->info.alter.code = PT_ADD_ATTR_MTHD;
+			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $2;
 			  }
 
 		DBG_PRINT}}
@@ -3132,8 +3955,87 @@ add_partition_clause
 		DBG_PRINT}}
 	;
 
-alter_drop_clause
-	: opt_of_attr_column_method normal_or_class_attr_list
+alter_drop_clause_mysql_specific
+	: opt_reverse opt_unique index_or_key identifier
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+
+			if (node)
+			  {
+			    node->info.alter.code = PT_DROP_INDEX_CLAUSE;
+			    node->info.alter.alter_clause.index.reverse = $1;
+			    node->info.alter.alter_clause.index.unique = $2;
+			    node->info.alter.constraint_list = $4;
+			  }
+
+		DBG_PRINT}}
+	| PRIMARY KEY
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+
+			if (node)
+			  {
+			    node->info.alter.code = PT_DROP_PRIMARY_CLAUSE;
+			  }
+
+		DBG_PRINT}}
+	| FOREIGN KEY identifier
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+
+			if (node)
+			  {
+			    node->info.alter.code = PT_DROP_FK_CLAUSE;
+			    node->info.alter.constraint_list = $3;
+			  }
+
+		DBG_PRINT}}
+	;
+
+alter_drop_clause_for_alter_list
+	: opt_of_attr_column_method normal_or_class_attr
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+
+			if (node)
+			  {
+			    node->info.alter.code = PT_DROP_ATTR_MTHD;
+			    node->info.alter.alter_clause.attr_mthd.attr_mthd_name_list = $2;
+			  }
+
+		DBG_PRINT}}
+	| CONSTRAINT identifier
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+
+			if (node)
+			  {
+			    node->info.alter.code = PT_DROP_CONSTRAINT;
+			    node->info.alter.constraint_list = $2;
+			  }
+
+		DBG_PRINT}}
+	| PARTITION identifier_list
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+
+			if (node)
+			  {
+			    node->info.alter.code = PT_DROP_PARTITION;
+			    node->info.alter.alter_clause.partition.name_list = $2;
+			  }
+
+		DBG_PRINT}}
+	;
+
+alter_drop_clause_cubrid_specific
+	: opt_of_attr_column_method normal_or_class_attr_list_with_commas
 		{{
 
 			PT_NODE *node = parser_get_alter_node ();
@@ -3169,18 +4071,6 @@ alter_drop_clause
 			  }
 
 		DBG_PRINT}}
-	| CONSTRAINT identifier
-		{{
-
-			PT_NODE *node = parser_get_alter_node ();
-
-			if (node)
-			  {
-			    node->info.alter.code = PT_DROP_CONSTRAINT;
-			    node->info.alter.constraint_list = $2;
-			  }
-
-		DBG_PRINT}}
 	| QUERY query_number_list
 		{{
 
@@ -3205,36 +4095,24 @@ alter_drop_clause
 			  }
 
 		DBG_PRINT}}
-	| PARTITION identifier_list
-		{{
-
-			PT_NODE *node = parser_get_alter_node ();
-
-			if (node)
-			  {
-			    node->info.alter.code = PT_DROP_PARTITION;
-			    node->info.alter.alter_clause.partition.name_list = $2;
-			  }
-
-		DBG_PRINT}}
 	;
 
-normal_or_class_attr_list
-	: normal_or_class_attr_list ',' normal_or_class_attr
+normal_or_class_attr_list_with_commas
+	: normal_or_class_attr_list_with_commas ',' normal_or_class_attr
 		{{
 
 			$$ = parser_make_link ($1, $3);
 
 		DBG_PRINT}}
-	| normal_or_class_attr
+	| normal_or_class_attr ',' normal_or_class_attr
 		{{
 
-			$$ = $1;
+			$$ = parser_make_link ($1, $3);
 
 		DBG_PRINT}}
 	;
 
-alter_change_clause
+alter_change_clause_cubrid_specific
 	: METHOD method_def_list
 		{{
 
@@ -3378,21 +4256,271 @@ query_number_list
 		DBG_PRINT}}
 	;
 
-insert_stmt
-	: insert_name_clause insert_stmt_value_clause into_clause_opt
+alter_column_clause_mysql_specific
+	: normal_column_or_class_attribute SET DEFAULT literal_w_o_param
+		{{
+
+			PT_NODE *node = parser_get_alter_node ();
+
+			if (node)
+			  {
+			    node->info.alter.code = PT_ALTER_DEFAULT;
+			    node->info.alter.alter_clause.ch_attr_def.attr_name_list = $1;
+			    node->info.alter.alter_clause.ch_attr_def.data_default_list = $4;
+			  }
+
+		DBG_PRINT}}
+	;
+
+normal_column_or_class_attribute
+	: opt_of_column_attribute identifier
+		{{
+
+			PT_NODE * node = $2;
+			if (node)
+			  {
+			    node->info.name.meta_class = PT_NORMAL;
+			  }
+			$$ = node;
+
+		DBG_PRINT}}
+	| CLASS ATTRIBUTE identifier
+		{{
+
+			PT_NODE * node = $3;
+			if (node)
+			  {
+			    node->info.name.meta_class = PT_META_ATTR;
+			  }
+			$$ = node;
+
+		DBG_PRINT}}
+	;
+
+insert_or_replace_stmt
+	: insert_name_clause insert_stmt_value_clause on_duplicate_key_update
 		{{
 
 			PT_NODE *ins = $1;
 
 			if (ins)
 			  {
-			    ins->info.insert.is_value = TO_NUMBER (CONTAINER_AT_0 ($2));
-			    ins->info.insert.value_clause = CONTAINER_AT_1 ($2);
+			    PT_NODE *assignment = $3;
+			    PT_NODE *spec = ins->info.insert.spec;
 
+			    if (assignment != NULL && spec != NULL)
+			      {
+				ins->info.insert.on_dup_key_update =
+				  pt_dup_key_update_stmt (this_parser, spec, assignment);
+			      }
+
+			    ins->info.insert.value_clauses = $2;
+			  }
+
+			$$ = ins;
+
+		DBG_PRINT}}
+	| insert_name_clause insert_stmt_value_clause into_clause_opt
+		{{
+
+			PT_NODE *ins = $1;
+
+			if (ins)
+			  {
+			    ins->info.insert.value_clauses = $2;
 			    ins->info.insert.into_var = $3;
 			  }
 
 			$$ = ins;
+
+		DBG_PRINT}}
+	| replace_name_clause insert_stmt_value_clause into_clause_opt
+		{{
+
+			PT_NODE *ins = $1;
+
+			if (ins)
+			  {
+			    ins->info.insert.value_clauses = $2;
+			    ins->info.insert.into_var = $3;
+			  }
+
+			$$ = ins;
+
+		DBG_PRINT}}
+	| insert_set_stmt on_duplicate_key_update
+		{{
+
+			PT_NODE *ins = $1;
+
+			if (ins)
+			  {
+			    PT_NODE *assignment = $2;
+			    PT_NODE *spec = ins->info.insert.spec;
+
+			    if (assignment != NULL && spec != NULL)
+			      {
+				ins->info.insert.on_dup_key_update =
+				  pt_dup_key_update_stmt (this_parser, spec, assignment);
+			      }
+			  }
+
+			$$ = ins;
+
+		DBG_PRINT}}
+	| insert_set_stmt into_clause_opt
+		{{
+
+			PT_NODE *ins = $1;
+
+			if (ins)
+			  {
+			    ins->info.insert.into_var = $2;
+			  }
+
+			$$ = ins;
+
+		DBG_PRINT}}
+	| replace_set_stmt into_clause_opt
+		{{
+
+			PT_NODE *ins = $1;
+
+			if (ins)
+			  {
+			    ins->info.insert.into_var = $2;
+			  }
+
+			$$ = ins;
+
+		DBG_PRINT}}
+	;
+
+insert_set_stmt
+	: insert_stmt_keyword
+	  insert_set_stmt_header
+		{{
+			$$ = $2;
+		}}
+	;
+
+replace_set_stmt
+	: replace_stmt_keyword
+	  insert_set_stmt_header
+		{{
+			$$ = $2;
+		}}
+	;
+
+insert_stmt_keyword
+	: INSERT
+		{
+			PT_NODE* ins = parser_new_node (this_parser, PT_INSERT);
+			parser_push_hint_node (ins);
+		}
+	;
+
+replace_stmt_keyword
+	: REPLACE
+		{
+			PT_NODE* ins = parser_new_node (this_parser, PT_INSERT);
+			if (ins)
+			  {
+			    ins->info.insert.do_replace = true;
+			  }
+			parser_push_hint_node (ins);
+		}
+	;
+
+insert_set_stmt_header
+	: opt_hint_list
+	  opt_into
+	  only_class_name
+	  SET
+	  insert_assignment_list
+		{{
+
+			PT_NODE *ins = parser_pop_hint_node ();
+			PT_NODE *ocs = parser_new_node (this_parser, PT_SPEC);
+			PT_NODE *nls = pt_node_list (this_parser, PT_IS_VALUE, CONTAINER_AT_1 ($5));
+
+			if (ocs)
+			  {
+			    ocs->info.spec.entity_name = $3;
+			    ocs->info.spec.only_all = PT_ONLY;
+			    ocs->info.spec.meta_class = PT_CLASS;
+			  }
+
+			if (ins)
+			  {
+			    ins->info.insert.spec = ocs;
+			    ins->info.insert.attr_list = CONTAINER_AT_0 ($5);
+			    ins->info.insert.value_clauses = nls;
+			  }
+
+			$$ = ins;
+
+		DBG_PRINT}}
+	;
+
+insert_assignment_list
+	: insert_assignment_list ',' identifier '=' expression_
+		{{
+
+			parser_make_link (CONTAINER_AT_0 ($1), $3);
+			parser_make_link (CONTAINER_AT_1 ($1), $5);
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	| insert_assignment_list ',' identifier '=' DEFAULT
+		{{
+			PT_NODE *arg = parser_copy_tree (this_parser, $3);
+
+			if (arg)
+			  {
+			    pt_set_fill_default_in_path_expression (arg);
+			  }
+			parser_make_link (CONTAINER_AT_0 ($1), $3);
+			parser_make_link (CONTAINER_AT_1 ($1),
+					  parser_make_expression (PT_DEFAULTF, arg, NULL, NULL));
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	| identifier '=' expression_
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, $1, $3);
+
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| identifier '=' DEFAULT
+		{{
+
+			container_2 ctn;
+			PT_NODE *arg = parser_copy_tree (this_parser, $1);
+
+			if (arg)
+			  {
+			    pt_set_fill_default_in_path_expression (arg);
+			  }
+			SET_CONTAINER_2 (ctn, $1,
+			  parser_make_expression (PT_DEFAULTF, arg, NULL, NULL));
+
+			$$ = ctn;
+
+		DBG_PRINT}}
+	;
+
+on_duplicate_key_update
+	: ON_ DUPLICATE_ KEY UPDATE
+	  update_assignment_list
+		{{
+
+			$$ = $5;
 
 		DBG_PRINT}}
 	;
@@ -3405,8 +4533,7 @@ insert_expression
 
 			if (ins)
 			  {
-			    ins->info.insert.is_value = TO_NUMBER (CONTAINER_AT_0 ($2));
-			    ins->info.insert.value_clause = CONTAINER_AT_1 ($2);
+			    ins->info.insert.value_clauses = $2;
 			  }
 
 			$$ = ins;
@@ -3419,9 +4546,7 @@ insert_expression
 
 			if (ins)
 			  {
-			    ins->info.insert.is_value = TO_NUMBER (CONTAINER_AT_0 ($3));
-			    ins->info.insert.value_clause = CONTAINER_AT_1 ($3);
-
+			    ins->info.insert.value_clauses = $3;
 			    ins->info.insert.into_var = $4;
 			  }
 
@@ -3431,13 +4556,24 @@ insert_expression
 	;
 
 insert_name_clause
-	: INSERT
-		{
-			PT_NODE* ins = parser_new_node(this_parser, PT_INSERT);
-			parser_push_hint_node(ins);
-		}
-	  opt_hint_list
-	  INTO
+	: insert_stmt_keyword
+	  insert_name_clause_header
+		{{
+			$$ = $2;
+		}}
+	;
+
+replace_name_clause
+	: replace_stmt_keyword
+	  insert_name_clause_header
+		{{
+			$$ = $2;
+		}}
+	;
+
+insert_name_clause_header
+	: opt_hint_list
+	  opt_into
 	  only_class_name
 	  opt_attr_list
 		{{
@@ -3447,7 +4583,7 @@ insert_name_clause
 
 			if (ocs)
 			  {
-			    ocs->info.spec.entity_name = $5;
+			    ocs->info.spec.entity_name = $3;
 			    ocs->info.spec.only_all = PT_ONLY;
 			    ocs->info.spec.meta_class = PT_CLASS;
 			  }
@@ -3455,7 +4591,7 @@ insert_name_clause
 			if (ins)
 			  {
 			    ins->info.insert.spec = ocs;
-			    ins->info.insert.attr_list = $6;
+			    ins->info.insert.attr_list = $4;
 			  }
 
 			$$ = ins;
@@ -3496,38 +4632,41 @@ insert_stmt_value_clause
 	| csql_query
 		{{
 
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_IS_SUBQUERY), $1);
-			$$ = ctn;
+			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, $1);
+			$$ = nls;
 
 		DBG_PRINT}}
 	;
 
 insert_expression_value_clause
-	: VALUES insert_value_clause
+	: of_value_values insert_value_clause_list
 		{{
 
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_IS_VALUE), $2);
-			$$ = ctn;
+			$$ = $2;
 
 		DBG_PRINT}}
-	| DEFAULT VALUES
+	| DEFAULT opt_values
 		{{
 
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_IS_DEFAULT_VALUE), NULL);
-			$$ = ctn;
+			PT_NODE *nls = pt_node_list (this_parser, PT_IS_DEFAULT_VALUE, NULL);
+			$$ = nls;
 
 		DBG_PRINT}}
-	| DEFAULT
-		{{
+	;
 
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_IS_DEFAULT_VALUE), NULL);
-			$$ = ctn;
+of_value_values
+	: VALUE
+	| VALUES
+	;
 
-		DBG_PRINT}}
+opt_values
+	: /* [empty] */
+	| VALUES
+	;
+
+opt_into
+	: /* [empty] */
+	| INTO
 	;
 
 into_clause_opt
@@ -3551,17 +4690,51 @@ into_clause_opt
 		DBG_PRINT}}
 	;
 
+insert_value_clause_list
+	: insert_value_clause_list ',' insert_value_clause
+		{{
+
+			$$ = parser_make_link ($1, $3);
+
+		DBG_PRINT}}
+	| insert_value_clause
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
 insert_value_clause
 	: '(' insert_value_list ')'
 		{{
 
-			$$ = $2;
+			PT_NODE *nls = pt_node_list (this_parser, PT_IS_VALUE, $2);
+			$$ = nls;
 
 		DBG_PRINT}}
 	| '('')'
 		{{
 
-			$$ = NULL;
+			PT_NODE *nls = NULL;
+
+			if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+			  {
+			    nls = pt_node_list (this_parser, PT_IS_DEFAULT_VALUE, NULL);
+			  }
+			else
+			  {
+			    nls = pt_node_list (this_parser, PT_IS_VALUE, NULL);
+			  }
+
+			$$ = nls;
+
+		DBG_PRINT}}
+	| DEFAULT opt_values
+		{{
+
+			PT_NODE *nls = pt_node_list (this_parser, PT_IS_DEFAULT_VALUE, NULL);
+			$$ = nls;
 
 		DBG_PRINT}}
 	;
@@ -3594,6 +4767,15 @@ insert_value
 			$$ = $1;
 
 		DBG_PRINT}}
+	| DEFAULT
+		{{
+
+			/* The argument will be filled in later, when the
+			   corresponding column name is known.
+			   See fill_in_insert_default_function_arguments(). */
+			$$ = parser_make_expression (PT_DEFAULTF, NULL, NULL, NULL);
+
+		DBG_PRINT}}
 	;
 
 
@@ -3614,6 +4796,7 @@ update_stmt
 	  update_assignment_list
 	  opt_of_where_cursor
 	  opt_using_index_clause
+	  opt_upd_del_limit_clause
 		{{
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -3628,6 +4811,37 @@ update_stmt
 			  node->info.update.cursor_name = CONTAINER_AT_1 ($6);
 
 			node->info.update.using_index = $7;
+
+			/* set LIMIT node */
+			node->info.update.limit = $8;
+			if (node->info.update.limit 
+			    && node->info.update.search_cond)
+			  {
+			    /* For UPDATE statements that have LIMIT clause don't allow 
+			     * inst_num in search condition
+			     */
+			    bool instnum_flag = false;
+			    (void) parser_walk_tree (this_parser, node->info.update.search_cond,
+						     pt_check_instnum_pre, NULL,
+						     pt_check_instnum_post, &instnum_flag);
+			    if (instnum_flag)
+			      {
+				PT_ERRORmf(this_parser, node->info.update.search_cond,
+					   MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "INST_NUM()/ROWNUM");
+			      }
+			  }
+			else if (node->info.update.limit 
+				 && node->info.update.cursor_name)
+			  {
+			    /* It makes no sense to allow LIMIT for UPDATE statements
+			     * that use cursor
+			     */
+			    PT_ERRORmf(this_parser, node->info.update.search_cond,
+				       MSGCAT_SET_PARSER_SEMANTIC,
+				       MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "LIMIT");
+			  }
+			
 			$$ = node;
 
 		DBG_PRINT}}
@@ -3745,6 +4959,19 @@ update_assignment
 
 			$$ = parser_make_expression (PT_ASSIGN, $1, $3, NULL);
 
+		DBG_PRINT}}
+	| simple_path_id '=' DEFAULT
+		{{
+		
+			PT_NODE *node, *node_df = NULL;
+			node = parser_copy_tree (this_parser, $1);
+			if (node)
+			  {
+			    pt_set_fill_default_in_path_expression (node);
+			    node_df = parser_make_expression (PT_DEFAULTF, node, NULL, NULL);
+			  }
+			$$ = parser_make_expression (PT_ASSIGN, $1, node_df, NULL);
+		
 		DBG_PRINT}}
 	| paren_path_expression_set '=' primary
 		{{
@@ -3898,6 +5125,7 @@ delete_stmt
 	  table_spec_list 			/* $6 */
 	  opt_of_where_cursor 			/* $7 */
 	  opt_using_index_clause 		/* $8 */
+	  opt_upd_del_limit_clause		/* $9 */
 		{{
 
 			PT_NODE *del = parser_pop_hint_node ();
@@ -3912,6 +5140,37 @@ delete_stmt
 			      del->info.delete_.cursor_name = CONTAINER_AT_1 ($7);
 
 			    del->info.delete_.using_index = $8;
+			    
+			    /* set LIMIT node */
+			    del->info.delete_.limit = $9;
+			    if (del->info.delete_.limit 
+				&& del->info.delete_.search_cond)
+			      {
+				/* For DELETE statements that have LIMIT clause don't allow 
+				 * inst_num in search condition
+				 */
+				bool instnum_flag = false;
+				(void) parser_walk_tree (this_parser, del->info.delete_.search_cond,
+							 pt_check_instnum_pre, NULL,
+							 pt_check_instnum_post, &instnum_flag);
+				if (instnum_flag)
+				  {
+				    PT_ERRORmf(this_parser, del->info.delete_.search_cond,
+					       MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "INST_NUM()/ROWNUM");
+				  }
+			      }
+			    else if (del->info.delete_.limit 
+				     && del->info.delete_.cursor_name)
+			      {
+				/* It makes no sense to allow LIMIT for DELETE statements
+				 * that use (Oracle style) cursor
+				 */
+				PT_ERRORmf(this_parser, del->info.delete_.search_cond,
+					   MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "LIMIT");
+			      }
+
 			  }
 			$$ = del;
 
@@ -4434,6 +5693,23 @@ opt_partition_clause
 		DBG_PRINT}}
 	;
 
+opt_create_as_clause
+	: /* empty */
+		{{
+
+			container_2 ctn;
+			SET_CONTAINER_2(ctn, NULL, NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| create_as_clause
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
 of_class_table_type
 	: CLASS
 		{{
@@ -4458,6 +5734,21 @@ of_class_table_type
 of_view_vclass
 	: VIEW
 	| VCLASS
+	;
+	
+opt_or_replace
+	: /*empty*/
+		{{
+		
+			$$ = 0;
+			
+		DBG_PRINT}}
+	| OR REPLACE
+		{{
+		
+			$$ = 1;
+			
+		DBG_PRINT}}
 	;
 
 opt_paren_view_attr_def_list
@@ -4649,6 +5940,21 @@ opt_constraint_id
 		DBG_PRINT}}
 	;
 
+opt_constraint_opt_id
+	: /* empty */
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| CONSTRAINT opt_identifier
+		{{
+
+			$$ = $2;
+
+		DBG_PRINT}}
+	;
+
 of_unique_foreign_check
 	: unique_constraint
 		{{
@@ -4719,7 +6025,7 @@ constraint_attr_list
 	;
 
 unique_constraint
-	: PRIMARY KEY '(' identifier_list ')'
+	: PRIMARY KEY opt_identifier '(' index_column_identifier_list ')'
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_CONSTRAINT);
@@ -4727,13 +6033,14 @@ unique_constraint
 			if (node)
 			  {
 			    node->info.constraint.type = PT_CONSTRAIN_PRIMARY_KEY;
-			    node->info.constraint.un.unique.attrs = $4;
+			    node->info.constraint.name = $3;
+			    node->info.constraint.un.unique.attrs = $5;
 			  }
 
 			$$ = node;
 
 		DBG_PRINT}}
-	| UNIQUE '(' identifier_list ')'
+	| UNIQUE opt_of_index_key opt_identifier '(' index_column_identifier_list ')'
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_CONSTRAINT);
@@ -4741,7 +6048,8 @@ unique_constraint
 			if (node)
 			  {
 			    node->info.constraint.type = PT_CONSTRAIN_UNIQUE;
-			    node->info.constraint.un.unique.attrs = $3;
+			    node->info.constraint.name = $3;
+			    node->info.constraint.un.unique.attrs = $5;
 			  }
 
 			$$ = node;
@@ -4750,12 +6058,12 @@ unique_constraint
 	;
 
 foreign_key_constraint
-	: FOREIGN 				/* 1 */
-	  KEY '(' identifier_list ')' 		/* 2, 3, 4, 5 */
-	  REFERENCES				/* 6 */
-	  class_name				/* 7 */
-	  opt_paren_attr_list			/* 8 */
-	  opt_ref_rule_list			/* 9 */
+	: FOREIGN 					/* 1 */
+	  KEY '(' index_column_identifier_list ')'	/* 2, 3, 4, 5 */
+	  REFERENCES					/* 6 */
+	  class_name					/* 7 */
+	  opt_paren_attr_list				/* 8 */
+	  opt_ref_rule_list				/* 9 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_CONSTRAINT);
@@ -4774,6 +6082,55 @@ foreign_key_constraint
 			  }
 
 			$$ = node;
+
+		DBG_PRINT}}
+	;
+
+index_column_identifier_list
+	: index_column_identifier_list ',' index_column_identifier
+		{{
+
+			$$ = parser_make_link ($1, $3);
+
+		DBG_PRINT}}
+	| index_column_identifier
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
+index_column_identifier
+	: identifier opt_asc_or_desc
+		{{
+
+			if ($2)
+			  {
+			    PT_NAME_INFO_SET_FLAG ($1, PT_NAME_INFO_DESC);
+			  }
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
+opt_asc_or_desc
+	: /* empty */
+		{{
+
+			$$ = 0;
+
+		DBG_PRINT}}
+	| ASC
+		{{
+
+			$$ = 0;
+
+		DBG_PRINT}}
+	| DESC
+		{{
+
+			$$ = 1;
 
 		DBG_PRINT}}
 	;
@@ -4824,7 +6181,7 @@ ref_rule_list
 			if (ctn.c1 != NULL)
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
-			    yyerror_explicit (@2.first_line, @2.first_column);
+			    csql_yyerror_explicit (@2.first_line, @2.first_column);
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_CASCADE);
@@ -4838,7 +6195,7 @@ ref_rule_list
 			if (ctn.c1 != NULL)
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
-			    yyerror_explicit (@2.first_line, @2.first_column);
+			    csql_yyerror_explicit (@2.first_line, @2.first_column);
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_NO_ACTION);
@@ -4852,10 +6209,24 @@ ref_rule_list
 			if (ctn.c1 != NULL)
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
-			    yyerror_explicit (@2.first_line, @2.first_column);
+			    csql_yyerror_explicit (@2.first_line, @2.first_column);
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_RESTRICT);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| ref_rule_list ON_ DELETE_ SET Null
+		{{
+
+			container_3 ctn = $1;
+			if (ctn.c1 != NULL)
+			  {
+			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
+			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+			  }
+
+			ctn.c1 = FROM_NUMBER (PT_RULE_SET_NULL);
 			$$ = ctn;
 
 		DBG_PRINT}}
@@ -4866,7 +6237,7 @@ ref_rule_list
 			if (ctn.c2 != NULL)
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
-			    yyerror_explicit (@2.first_line, @2.first_column);
+			    csql_yyerror_explicit (@2.first_line, @2.first_column);
 			  }
 
 			ctn.c2 = FROM_NUMBER (PT_RULE_NO_ACTION);
@@ -4880,10 +6251,24 @@ ref_rule_list
 			if (ctn.c2 != NULL)
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
-			    yyerror_explicit (@2.first_line, @2.first_column);
+			    csql_yyerror_explicit (@2.first_line, @2.first_column);
 			  }
 
 			ctn.c2 = FROM_NUMBER (PT_RULE_RESTRICT);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| ref_rule_list ON_ UPDATE SET Null
+		{{
+
+			container_3 ctn = $1;
+			if (ctn.c2 != NULL)
+			  {
+			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
+			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+			  }
+
+			ctn.c2 = FROM_NUMBER (PT_RULE_SET_NULL);
 			$$ = ctn;
 
 		DBG_PRINT}}
@@ -4894,7 +6279,7 @@ ref_rule_list
 			if (ctn.c3 != NULL)
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
-			    yyerror_explicit (@2.first_line, @2.first_column);
+			    csql_yyerror_explicit (@2.first_line, @2.first_column);
 			  }
 
 			ctn.c3 = $5;
@@ -4925,6 +6310,14 @@ ref_rule_list
 			$$ = ctn;
 
 		DBG_PRINT}}
+	| ON_ DELETE_ SET Null
+		{{
+
+			container_3 ctn;
+			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_RULE_SET_NULL), NULL, NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
 	| ON_ UPDATE NO ACTION
 		{{
 
@@ -4938,6 +6331,14 @@ ref_rule_list
 
 			container_3 ctn;
 			SET_CONTAINER_3 (ctn, NULL, FROM_NUMBER (PT_RULE_RESTRICT), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| ON_ UPDATE SET Null
+		{{
+
+			container_3 ctn;
+			SET_CONTAINER_3 (ctn, NULL, FROM_NUMBER (PT_RULE_SET_NULL), NULL);
 			$$ = ctn;
 
 		DBG_PRINT}}
@@ -5261,6 +6662,21 @@ view_attr_def
 		DBG_PRINT}}
 	;
 
+attr_def_list_with_commas
+	: attr_def_list_with_commas ','  attr_def
+		{{
+
+			$$ = parser_make_link ($1, $3);
+
+		DBG_PRINT}}
+	| attr_def ','  attr_def
+		{{
+
+			$$ = parser_make_link ($1, $3);
+
+		DBG_PRINT}}
+	;
+
 attr_def_list
 	: attr_def_list ','  attr_def
 		{{
@@ -5277,7 +6693,28 @@ attr_def_list
 	;
 
 attr_def
-	: opt_constraint_id
+	: attr_constraint_def
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	| attr_index_def
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	| attr_def_one
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
+attr_constraint_def
+	: opt_constraint_opt_id
 	  of_unique_foreign_check
 	  opt_constraint_attr_list
 		{{
@@ -5285,7 +6722,13 @@ attr_def
 			PT_NODE *name = $1;
 			PT_NODE *constraint = $2;
 
-			constraint->info.constraint.name = name;
+			/* If both the constraint name and the index name are
+			   given we ignore the constraint name because that is
+			   what MySQL does for UNIQUE constraints. */
+			if (constraint->info.constraint.name == NULL)
+			  {
+			    constraint->info.constraint.name = name;
+			  }
 
 			if (TO_NUMBER (CONTAINER_AT_0 ($3)))
 			  {
@@ -5301,12 +6744,40 @@ attr_def
 			$$ = constraint;
 
 		DBG_PRINT}}
-	| attr_def_one
+
+attr_index_def
+	: index_or_key
+	  opt_identifier
+	  index_column_name_list
+		{{
+			PT_NODE* node = parser_new_node(this_parser, PT_CREATE_INDEX);
+
+			node->info.index.index_name = $2;
+			node->info.index.indexed_class = NULL;
+			node->info.index.column_names = $3;
+
+			$$ = node;
+		DBG_PRINT}}
+	| index_or_key
+	  opt_identifier				/* 2 */
+	  '(' index_column_name				/* 3, 4 */
+	  '(' opt_uint_or_host_input ')' 		/* 5, 6, 7 */
+	  opt_asc_or_desc ')'				/* 8, 9 */
 		{{
 
-			if ($1->info.attr_def.attr_type != PT_SHARED)
-			  $1->info.attr_def.attr_type = parser_attr_type;
-			$$ = $1;
+			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_INDEX);
+			
+			node->info.index.index_name = $2;
+			node->info.index.indexed_class = NULL;
+			node->info.index.column_names = $4;
+			node->info.index.prefix_length = $6;
+			
+			if ($4 && $8)
+			  {
+			    $4->info.sort_spec.asc_or_desc = $8;
+			  }			
+						
+			$$ = node;
 
 		DBG_PRINT}}
 	;
@@ -5338,15 +6809,26 @@ attr_def_one
 			parser_save_attr_def_one (node);
 
 		DBG_PRINT}}
-	  attr_def_one_tail									%dprec 2
+	  constraint_list
+	  opt_attr_ordering_info								%dprec 2
 		{{
 
 			PT_NODE *node = parser_get_attr_def_one ();
+			if (node != NULL && node->info.attr_def.attr_type != PT_SHARED)
+			  {
+			    node->info.attr_def.attr_type = parser_attr_type;
+			  }
+			if (node != NULL)
+			  {
+			    node->info.attr_def.ordering_info = $5;
+			  }
+
 			$$ = node;
 
 		DBG_PRINT}}
 	| identifier
-	  data_type 										%dprec 1
+	  data_type
+	  opt_attr_ordering_info 									%dprec 1
 		{{
 
 			PT_NODE *dt;
@@ -5366,27 +6848,136 @@ attr_def_one
 				PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
 						       PT_NAME_INFO_EXTERNAL);
 			      }
+			    if (node->info.attr_def.attr_type != PT_SHARED)
+			      {
+			        node->info.attr_def.attr_type = parser_attr_type;
+			      }
+			    node->info.attr_def.ordering_info = $3;
 			  }
 
-
 			$$ = node;
+
 		DBG_PRINT}}
 	;
 
-attr_def_one_tail
-	: shared_default_ai constraint_list	%dprec 1
-	| shared_default_ai			%dprec 2
-	| constraint_list			%dprec 1
-	;
+opt_attr_ordering_info
+	: /* empty */
+		{{
 
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| FIRST
+		{{
+
+			PT_NODE *ord = parser_new_node (this_parser, PT_ATTR_ORDERING);
+			if (ord)
+			  {
+			    ord->info.attr_ordering.first = true;
+			    if (!allow_attribute_ordering)
+			      {
+				PT_ERRORmf(this_parser, ord,
+					   MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "FIRST");
+			      }
+			  }
+
+			$$ = ord;
+
+		DBG_PRINT}}
+	| AFTER identifier
+		{{
+
+			PT_NODE *ord = parser_new_node (this_parser, PT_ATTR_ORDERING);
+			if (ord)
+			  {
+			    ord->info.attr_ordering.after = $2;
+			    if (!allow_attribute_ordering)
+			      {
+				PT_ERRORmf(this_parser, ord,
+					   MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "AFTER column");
+			      }
+			  }
+
+			$$ = ord;
+
+		DBG_PRINT}}
+	;
 
 constraint_list
 	: constraint_list column_constraint_def
+		{{
+			unsigned char mask = $1;
+			unsigned char new_bit = $2;
+			unsigned char merged = mask | new_bit;
+			
+			/* Check the constraints according to the following rules:
+			 *   1. A constraint should be specified once.
+			 *   2. Only one of SHARED, DEFAULT or AI can be specified.
+			 *   3. SHARED constraint cannot be defined with UNIQUE or PK constraint.
+			 */
+			if (((mask & new_bit) ^ new_bit) == 0)
+			  {
+			    PT_ERROR (this_parser, pt_top(this_parser), 
+				      "Multiple definitions exist for a constraint");
+			  }
+			else if ((new_bit & COLUMN_CONSTRAINT_SHARED_DEFAULT_AI)
+				  && ((merged & COLUMN_CONSTRAINT_SHARED_DEFAULT_AI) 
+				       ^ (new_bit & COLUMN_CONSTRAINT_SHARED_DEFAULT_AI)) != 0)
+			  {
+			    PT_ERROR (this_parser, pt_top(this_parser), 
+				      "SHARED, DEFAULT and AUTO_INCREMENT cannot be defined with each other");
+			  }
+			else if ((merged & COLUMN_CONSTRAINT_SHARED) 
+			          && ((merged & COLUMN_CONSTRAINT_UNIQUE) 
+				       || (merged & COLUMN_CONSTRAINT_PRIMARY_KEY))) 
+			  {
+			    PT_ERROR (this_parser, pt_top(this_parser), 
+				      "SHARED cannot be defined with PRIMARY KEY or UNIQUE constraint");
+			  }
+
+			$$ = merged;
+		}}
 	| column_constraint_def
+		{{
+			$$ = $1;
+		}}
 	;
 
 column_constraint_def
-	: opt_constraint_id UNIQUE opt_constraint_attr_list
+	: column_unique_constraint_def
+		{{
+			$$ = COLUMN_CONSTRAINT_UNIQUE;
+		}}
+	| column_primary_constraint_def
+		{{
+			$$ = COLUMN_CONSTRAINT_PRIMARY_KEY;
+		}}
+	| column_null_constraint_def
+		{{
+			$$ = COLUMN_CONSTRAINT_NULL;
+		}}
+	| column_other_constraint_def
+		{{
+			$$ = COLUMN_CONSTRAINT_OTHERS;
+		}}
+	| column_shared_constraint_def
+		{{
+			$$ = COLUMN_CONSTRAINT_SHARED;
+		}}
+	| column_default_constraint_def
+		{{
+			$$ = COLUMN_CONSTRAINT_DEFAULT;
+		}}
+	| column_ai_constraint_def
+		{{
+			$$ = COLUMN_CONSTRAINT_AUTO_INCREMENT; 
+		}}
+	;
+
+column_unique_constraint_def
+	: opt_constraint_id UNIQUE opt_key opt_constraint_attr_list
 		{{
 
 			PT_NODE *node = parser_get_attr_def_one ();
@@ -5409,23 +7000,26 @@ column_constraint_def
 
 			    constraint->info.constraint.name = $1;
 
-			    if (TO_NUMBER (CONTAINER_AT_0 ($3)))
+			    if (TO_NUMBER (CONTAINER_AT_0 ($4)))
 			      {
 				constraint->info.constraint.deferrable =
-				  (short)TO_NUMBER (CONTAINER_AT_1 ($3));
+				  (short)TO_NUMBER (CONTAINER_AT_1 ($4));
 			      }
 
-			    if (TO_NUMBER (CONTAINER_AT_2 ($3)))
+			    if (TO_NUMBER (CONTAINER_AT_2 ($4)))
 			      {
 				constraint->info.constraint.initially_deferred =
-				  (short)TO_NUMBER (CONTAINER_AT_3 ($3));
+				  (short)TO_NUMBER (CONTAINER_AT_3 ($4));
 			      }
 			  }
 
 			parser_make_link (node, constraint);
 
 		DBG_PRINT}}
-	| opt_constraint_id PRIMARY KEY opt_constraint_attr_list
+	;
+
+column_primary_constraint_def
+	: opt_constraint_id PRIMARY KEY opt_constraint_attr_list
 		{{
 
 			PT_NODE *node = parser_get_attr_def_one ();
@@ -5456,7 +7050,10 @@ column_constraint_def
 			parser_make_link (node, constraint);
 
 		DBG_PRINT}}
-	| opt_constraint_id Null opt_constraint_attr_list
+	;
+
+column_null_constraint_def
+	: opt_constraint_id Null opt_constraint_attr_list
 		{{
 
 			PT_NODE *node = parser_get_attr_def_one ();
@@ -5522,7 +7119,10 @@ column_constraint_def
 			parser_make_link (node, constraint);
 
 		DBG_PRINT}}
-	| opt_constraint_id CHECK '(' search_condition ')' opt_constraint_attr_list
+	;
+
+column_other_constraint_def
+	: opt_constraint_id CHECK '(' search_condition ')' opt_constraint_attr_list
 		{{
 
 			PT_NODE *node = parser_get_attr_def_one ();
@@ -5602,18 +7202,24 @@ column_constraint_def
 		DBG_PRINT}}
 	;
 
+index_or_key
+	: INDEX
+	| KEY
+	;
 
-shared_default_ai
-	: shared_or_default_clause
-		{{
+opt_of_index_key
+	: /* empty */
+	| INDEX
+	| KEY
+	;
 
-			PT_NODE *node = parser_get_attr_def_one ();
-			node->info.attr_def.data_default = $1;
-			if ($1->info.data_default.shared == PT_SHARED)
-			  node->info.attr_def.attr_type = PT_SHARED;
+opt_key
+	: /* empty */
+	| KEY
+	;
 
-		DBG_PRINT}}
-	| AUTO_INCREMENT '(' integer_text ',' integer_text ')'
+column_ai_constraint_def
+	: AUTO_INCREMENT '(' integer_text ',' integer_text ')'
 		{{
 
 			PT_NODE *node = parser_get_attr_def_one ();
@@ -5664,10 +7270,10 @@ shared_default_ai
 		DBG_PRINT}}
 	;
 
-shared_or_default_clause
+column_shared_constraint_def
 	: SHARED expression_
 		{{
-
+			PT_NODE *attr_node;
 			PT_NODE *node = parser_new_node (this_parser, PT_DATA_DEFAULT);
 
 			if (node)
@@ -5676,27 +7282,17 @@ shared_or_default_clause
 			    node->info.data_default.shared = PT_SHARED;
 			  }
 
-			$$ = node;
+			attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.data_default = node;
+			attr_node->info.attr_def.attr_type = PT_SHARED;
 
 		DBG_PRINT}}
-	| SHARED
+	;
+
+column_default_constraint_def
+	: DEFAULT expression_
 		{{
-
-			PT_NODE *value = parser_new_node (this_parser, PT_VALUE);
-			PT_NODE *node = parser_new_node (this_parser, PT_DATA_DEFAULT);
-
-			if (node)
-			  {
-			    value->type_enum = PT_TYPE_NULL;
-			    node->info.data_default.default_value = value;
-			    node->info.data_default.shared = PT_SHARED;
-			  }
-			$$ = node;
-
-		DBG_PRINT}}
-	| DEFAULT expression_
-		{{
-
+			PT_NODE *attr_node;
 			PT_NODE *node = parser_new_node (this_parser, PT_DATA_DEFAULT);
 
 			if (node)
@@ -5705,22 +7301,8 @@ shared_or_default_clause
 			    node->info.data_default.shared = PT_DEFAULT;
 			  }
 
-			$$ = node;
-
-		DBG_PRINT}}
-	| DEFAULT
-		{{
-
-			PT_NODE *value = parser_new_node (this_parser, PT_VALUE);
-			PT_NODE *node = parser_new_node (this_parser, PT_DATA_DEFAULT);
-
-			if (node)
-			  {
-			    value->type_enum = PT_TYPE_NULL;
-			    node->info.data_default.default_value = value;
-			    node->info.data_default.shared = PT_DEFAULT;
-			  }
-			$$ = node;
+			attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.data_default = node;
 
 		DBG_PRINT}}
 	;
@@ -6166,6 +7748,55 @@ evaluate_stmt
 		DBG_PRINT}}
 	;
 
+prepare_stmt
+	: PREPARE identifier FROM char_string
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_PREPARE_STATEMENT);
+
+			if (node)
+			  {
+			    node->info.prepare.name = $2;
+			    node->info.prepare.statement = $4;
+			  }
+
+			$$ = node;
+
+		DBG_PRINT}}
+	;
+
+execute_stmt
+	: EXECUTE identifier opt_using
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_EXECUTE_PREPARE);
+
+			if (node)
+			  {
+			    node->info.prepare.name = $2;
+			    node->info.prepare.using_list = $3;
+			  }
+
+			$$ = node;
+
+		DBG_PRINT}}
+	;
+
+opt_using
+	: /* empty */
+		{{
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| USING { parser_save_and_set_hvar (0); } signed_literal_list { parser_restore_hvar (); }
+		{{
+
+			$$ = $3;
+
+		DBG_PRINT}}
+	;
+
 opt_status
 	: /* empty */
 		{{
@@ -6458,7 +8089,7 @@ trigger_action
 			$$ = node;
 
 		DBG_PRINT}}
-	| insert_stmt
+	| insert_or_replace_stmt
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_TRIGGER_ACTION);
@@ -6653,14 +8284,8 @@ depth_spec
 		DBG_PRINT}}
 	;
 
-opt_serial_start
-	: /* empty */
-		{{
-
-			$$ = NULL;
-
-		DBG_PRINT}}
-	| START_ WITH integer_text
+serial_start
+	: START_ WITH integer_text
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -6675,14 +8300,8 @@ opt_serial_start
 		DBG_PRINT}}
 	;
 
-opt_serial_increment
-	: /* empty */
-		{{
-
-			$$ = NULL;
-
-		DBG_PRINT}}
-	| INCREMENT BY integer_text
+serial_increment
+	: INCREMENT BY integer_text
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
@@ -6697,53 +8316,6 @@ opt_serial_increment
 		DBG_PRINT}}
 	;
 
-
-opt_serial_min_max
-	: /* empty */
-		{{
-
-			container_4 ctn;
-			SET_CONTAINER_4 (ctn, NULL, FROM_NUMBER (0), NULL, FROM_NUMBER (0));
-			$$ = ctn;
-
-		DBG_PRINT}}
-	| serial_min serial_max
-		{{
-
-			container_4 ctn;
-			SET_CONTAINER_4 (ctn, CONTAINER_AT_0 ($2), CONTAINER_AT_1 ($2),
-					 CONTAINER_AT_0 ($1), CONTAINER_AT_1 ($1));
-			$$ = ctn;
-
-		DBG_PRINT}}
-	| serial_max serial_min
-		{{
-
-			container_4 ctn;
-			SET_CONTAINER_4 (ctn, CONTAINER_AT_0 ($1), CONTAINER_AT_1 ($1),
-					 CONTAINER_AT_0 ($2), CONTAINER_AT_1 ($2));
-			$$ = ctn;
-
-		DBG_PRINT}}
-	| serial_min
-		{{
-
-			container_4 ctn;
-			SET_CONTAINER_4 (ctn, NULL, FROM_NUMBER (0), CONTAINER_AT_0 ($1),
-					 CONTAINER_AT_1 ($1));
-			$$ = ctn;
-
-		DBG_PRINT}}
-	| serial_max
-		{{
-
-			container_4 ctn;
-			SET_CONTAINER_4 (ctn, CONTAINER_AT_0 ($1), CONTAINER_AT_1 ($1), NULL,
-					 FROM_NUMBER (0));
-			$$ = ctn;
-
-		DBG_PRINT}}
-	;
 
 serial_min
 	: MINVALUE integer_text
@@ -6797,16 +8369,8 @@ serial_max
 		DBG_PRINT}}
 	;
 
-opt_of_cycle_nocycle
-	: /* empty */
-		{{
-
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), FROM_NUMBER (0));
-			$$ = ctn;
-
-		DBG_PRINT}}
-	| CYCLE
+of_cycle_nocycle
+	: CYCLE
 		{{
 
 			container_2 ctn;
@@ -6824,16 +8388,8 @@ opt_of_cycle_nocycle
 		DBG_PRINT}}
 	;
 	
-opt_of_cached_num
-	: /* empty */
-		{{
-
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER (0));
-			$$ = ctn;
-
-		DBG_PRINT}}
-	| CACHE unsigned_int32
+of_cached_num
+	: CACHE unsigned_int32
 		{{
 
 			container_2 ctn;
@@ -7041,7 +8597,6 @@ csql_query
 			    node->info.query.do_not_cache = 1;
 			  }
 
-			$$ = node;
 			parser_restore_cannot_cache ();
 			parser_restore_ic ();
 			parser_restore_gc ();
@@ -7059,6 +8614,36 @@ csql_query
 				MSGCAT_SET_PARSER_SEMANTIC,
 				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
 			
+			if (node)
+			  {
+			    /* handle ORDER BY NULL */
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
+			
+			parser_push_orderby_node (node);
+			
+		DBG_PRINT}}
+	opt_select_limit_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+			$$ = node;
+			  
 		DBG_PRINT}}
 	;
 
@@ -7204,7 +8789,7 @@ select_stmt
 
 		DBG_PRINT}}
 	opt_hint_list 		/* $3 */
-	all_distinct 		/* $4 */
+	all_distinct_distinctrow/* $4 */
 	select_list 		/* $5 */
 		{{
 				/* $6 */
@@ -7232,15 +8817,17 @@ select_stmt
 	opt_startwith_clause		/* $12 */
 	opt_connectby_clause		/* $13 */
 	opt_groupby_clause		/* $14 */
-	opt_having_clause 		/* $15 */
-	opt_using_index_clause		/* $16 */
-	opt_with_increment_clause	/* $17 */
+	opt_with_rollup			/* $15 */
+	opt_having_clause 		/* $16 */
+	opt_using_index_clause		/* $17 */
+	opt_with_increment_clause	/* $18 */
 		{{
 
 			PT_NODE *n;
 			bool is_dummy_select;
 			PT_MISC_TYPE isAll = $4;
 			PT_NODE *node = parser_pop_select_stmt_node ();
+			int with_rollup = $15;
 			parser_pop_hint_node ();
 
 			is_dummy_select = false;
@@ -7278,7 +8865,6 @@ select_stmt
 				PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_ANSI_JOIN);
 			      }
 
-
 			    node->info.query.q.select.where = n = $11;
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
@@ -7296,13 +8882,42 @@ select_stmt
 			    node->info.query.q.select.group_by = n = $14;
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
-			
-			    node->info.query.q.select.having = n = $15;
+			      
+			    if (with_rollup)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_WITHROLLUP_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    node->info.query.q.select.group_by->with_rollup = 1;
+				  }
+			      }
+
+			    node->info.query.q.select.having = n = $16;
 			    if (n)
 			      is_dummy_select = false;	/* not dummy */
+			      
+			    /* support for alias in GROUP BY */
+			    n = node->info.query.q.select.group_by;
+			    while (n)
+			      {
+				resolve_alias_in_expr_node (n, node->info.query.q.select.list);
+				n = n->next;
+			      }
+			      
+			    /* support for alias in HAVING */
+			    n = node->info.query.q.select.having;
+			    while (n)
+			      {
+				resolve_alias_in_expr_node (n, node->info.query.q.select.list);
+				n = n->next;
+			      }
 			
-			    node->info.query.q.select.using_index = $16;
-			    node->info.query.q.select.with_increment = $17;
+			    node->info.query.q.select.using_index = $17;
+			    node->info.query.q.select.with_increment = $18;
 			    node->info.query.id = (UINTPTR) node;
 			    if (isAll == PT_EMPTY)
 			      isAll = PT_ALL;
@@ -7331,6 +8946,82 @@ select_stmt
 
 			$$ = node;
 
+		DBG_PRINT}}
+	| SELECT		/* $1 */
+		{{
+				/* $2 */
+			PT_NODE *node;
+			parser_save_found_Oracle_outer ();
+			if (parser_select_level >= 0)
+			  parser_select_level++;
+			parser_hidden_incr_list = NULL;
+
+			node = parser_new_node (this_parser, PT_SELECT);
+
+			if (node)
+			  {
+			    node->info.query.q.select.flavor = PT_USER_SELECT;
+			    node->info.query.q.select.hint = PT_HINT_NONE;
+			  }
+
+			parser_push_select_stmt_node (node);
+			parser_push_hint_node (node);
+
+		DBG_PRINT}}
+	opt_hint_list 		/* $3 */
+	select_list 		/* $4 */
+		{{
+				/* $5 */
+			PT_NODE *node = parser_top_select_stmt_node ();
+			if (node)
+			  {
+			    node->info.query.q.select.list = $4;
+			    if (parser_hidden_incr_list)
+			      {
+				(void) parser_append_node (parser_hidden_incr_list,
+							   node->info.query.q.select.list);
+				parser_hidden_incr_list = NULL;
+			      }
+			  }
+
+		DBG_PRINT}}
+	opt_select_param_list	/* $6 */
+		{{
+
+			PT_NODE *n;
+			PT_NODE *node = parser_pop_select_stmt_node ();
+			parser_found_Oracle_outer = false;
+			parser_pop_hint_node ();
+
+			if (node)
+			  {
+			    n = $4;
+			    if (n && n->type_enum == PT_TYPE_STAR)
+			      {
+				/* "select *" is not valid, raise an error */
+				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_NO_TABLES_USED);
+			      }
+
+			    node->info.query.into_list = $6;	/* param_list */
+			    node->info.query.id = (UINTPTR) node;
+			    node->info.query.all_distinct = PT_ALL;
+			  }
+
+			if (parser_hidden_incr_list)
+			  {
+			    /* if not handle hidden expressions, raise an error */
+			    PT_ERRORf (this_parser, node,
+				       "%s can be used at select or with increment clause only.",
+				       pt_short_print (this_parser, parser_hidden_incr_list));
+			  }
+			  
+			parser_restore_found_Oracle_outer ();	/* restore */
+			if (parser_select_level >= 0)
+			  parser_select_level--;
+
+			$$ = node;
+		
 		DBG_PRINT}}
 	;
 
@@ -7411,6 +9102,21 @@ hint_list
 		DBG_PRINT}}
 	;
 
+all_distinct_distinctrow
+	: all_distinct
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	| DISTINCTROW
+		{{
+
+			$$ = PT_DISTINCT;
+
+		DBG_PRINT}}
+	;
+
 all_distinct
 	: /* empty */
 		{{
@@ -7454,10 +9160,10 @@ select_list
 			parser_save_and_set_ic (2);
 			parser_save_and_set_gc (2);
 			parser_save_and_set_oc (2);
-
 			parser_save_and_set_sysc (1);
 			parser_save_and_set_prc (1);
 			parser_save_and_set_cbrc (1);
+			
 		DBG_PRINT}}
 	  alias_enabled_expression_list
 		{{
@@ -7466,7 +9172,6 @@ select_list
 			parser_restore_ic ();
 			parser_restore_gc ();
 			parser_restore_oc ();
-
 			parser_restore_sysc ();
 			parser_restore_prc ();
 			parser_restore_cbrc ();
@@ -7679,6 +9384,11 @@ host_param_input
 			    node->info.host_var.str = pt_makename ("?");
 			    node->info.host_var.index = parser_input_host_index++;
 			  }
+			if (parser_hostvar_check == 0)
+			  {
+			    PT_ERRORmf(this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+				       MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "host variable");
+			  }
 
 			$$ = node;
 
@@ -7693,6 +9403,15 @@ host_param_input
 			    node->info.host_var.var_type = PT_HOST_IN;
 			    node->info.host_var.str = pt_makename ("?");
 			    node->info.host_var.index = atol ($2);
+			    if (node->info.host_var.index >= parser_input_host_index)
+			      {
+				parser_input_host_index = node->info.host_var.index + 1;
+			      }
+			  }
+			if (parser_hostvar_check == 0)
+			  {
+			    PT_ERRORmf(this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+				       MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "host variable");
 			  }
 
 			$$ = node;
@@ -7732,6 +9451,10 @@ host_param_output
 			    node->info.host_var.var_type = PT_HOST_IN;
 			    node->info.host_var.str = pt_makename ("?");
 			    node->info.host_var.index = atol ($2);
+			    if (node->info.host_var.index >= parser_output_host_index)
+			      {
+				parser_output_host_index = node->info.host_var.index + 1;
+			      }
 			  }
 
 			$$ = node;
@@ -7834,7 +9557,7 @@ opt_nocycle
 		DBG_PRINT}}
 	;
 
-opt_groupby_clause	
+opt_groupby_clause
 	: /* empty */
 		{{
 
@@ -7846,6 +9569,21 @@ opt_groupby_clause
 
 			$$ = $3;
 
+		DBG_PRINT}}
+	;
+
+opt_with_rollup
+	: /*empty*/
+		{{
+		
+			$$ = 0;
+			
+		DBG_PRINT}}
+	| WITH ROLLUP
+		{{
+		
+			$$ = 1;
+			
 		DBG_PRINT}}
 	;
 
@@ -7872,6 +9610,7 @@ group_spec
 			parser_groupby_exception = 0;
 		}
 	  expression_
+	  opt_asc_or_desc 	  /* $3 */
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_SORT_SPEC);
@@ -7907,6 +9646,10 @@ group_spec
 			  {
 			    node->info.sort_spec.asc_or_desc = PT_ASC;
 			    node->info.sort_spec.expr = $2;
+			    if ($3)
+			      {
+				node->info.sort_spec.asc_or_desc = PT_DESC;
+			      }
 			  }
 
 			$$ = node;
@@ -8131,7 +9874,7 @@ opt_orderby_clause
 	: /* empty */
 		{ $$ = NULL; }
 	| ORDER
-	  opt_siblings 
+	  opt_siblings
 	  BY
 		{{
 			
@@ -8151,7 +9894,12 @@ opt_orderby_clause
 				parser_save_and_set_cbrc (0);
 				parser_save_and_set_pseudoc (0);
 			  }
-			
+			  
+			if (stmt && !stmt->info.query.q.select.from)
+			    PT_ERRORmf(this_parser, pt_top(this_parser),
+				MSGCAT_SET_PARSER_SEMANTIC,
+				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "ORDER BY");
+				
 		DBG_PRINT}}
 	  sort_spec_list
 		{{
@@ -8163,7 +9911,7 @@ opt_orderby_clause
 			parser_restore_cbrc ();
 			parser_restore_pseudoc ();
 			parser_save_and_set_oc (1);
-
+			
 		DBG_PRINT}}
 	  opt_for_search_condition
 		{{
@@ -8173,11 +9921,19 @@ opt_orderby_clause
 			bool found_star;
 			int index_of_col;
 			char *n_str, *c_str;
+			bool is_col, is_alias;
 
 			parser_restore_oc ();
 			if (stmt)
 			  {
 			    stmt->info.query.orderby_for = $7;
+			    /* support for alias in FOR */
+			    n = stmt->info.query.orderby_for;
+			    while (n)
+			      {
+				resolve_alias_in_expr_node (n, stmt->info.query.q.select.list);
+				n = n->next;
+			      }
 			  }
 
 			if (stmt)
@@ -8207,9 +9963,12 @@ opt_orderby_clause
 					    break;
 					  }
 				      }
+
 				  start_check:
 				    if (temp)
-				      list = temp->info.query.q.select.list;
+				      {
+				        list = temp->info.query.q.select.list;
+				      }
 				    found_star = false;
 
 				    if (list && list->node_type == PT_VALUE
@@ -8234,26 +9993,40 @@ opt_orderby_clause
 
 				    for (; order; order = order->next)
 				      {
-					if (!(n = order->info.sort_spec.expr))
-					  break;
+					is_alias = false;
+					is_col = false;
+					    
+					n = order->info.sort_spec.expr;
+					if (n == NULL)
+					  {
+					    break;
+					  }
 
 					if (n->node_type == PT_VALUE)
-					  continue;
+					  {
+					    continue;
+					  }
 
 					n_str = parser_print_tree (this_parser, n);
-					if (!n_str)
-					  continue;
+					if (n_str == NULL)
+					  {
+					    continue;
+					  }
 
 					for (col = list, index_of_col = 1; col;
 					     col = col->next, index_of_col++)
 					  {
 					    c_str = parser_print_tree (this_parser, col);
-					    if (!c_str)
-					      continue;
+					    if (c_str == NULL)
+					      {
+					        continue;
+					      }
 
 					    if ((col->alias_print
-						 && intl_mbs_casecmp (n_str, col->alias_print) == 0)
-						|| intl_mbs_casecmp (n_str, c_str) == 0)
+						 && intl_mbs_namecmp (n_str, col->alias_print) == 0
+						 && (is_alias = true))
+						|| (intl_mbs_namecmp (n_str, c_str) == 0
+						    && (is_col = true)))
 					      {
 						if (found_star)
 						  {
@@ -8263,15 +10036,26 @@ opt_orderby_clause
 						else
 						  {
 						    temp = parser_new_node (this_parser, PT_VALUE);
-						    if (!temp)
-						      break;
+						    if (temp == NULL)
+						      {
+						        break;
+						      }
+
 						    temp->type_enum = PT_TYPE_INTEGER;
 						    temp->info.value.data_value.i = index_of_col;
 						  }
-
+						  
 						parser_free_node (this_parser, n);
 						order->info.sort_spec.expr = temp;
-						break;
+
+						if (is_col == true && is_alias == true)
+						  {
+						    /* alias/col name ambiguity, raise error */
+						    PT_ERRORmf (this_parser, order, MSGCAT_SET_PARSER_SEMANTIC,
+								MSGCAT_SEMANTIC_AMBIGUOUS_COLUMN_IN_ORDERING,
+								n_str);
+						    break;
+						  }
 					      }
 					  }
 				      }
@@ -8299,6 +10083,162 @@ opt_siblings
 				    "SIBLINGS");
 			    }
 			
+		DBG_PRINT}}
+	;
+
+opt_uint_or_host_input
+	: unsigned_integer
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	| host_param_input
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
+opt_select_limit_clause
+	: /* empty */
+	| LIMIT opt_uint_or_host_input
+		{{
+		
+			PT_NODE *node = parser_top_orderby_node ();
+			if (node)
+			  {
+			    node->info.query.q.select.limit = $2;
+
+			    if (!node->info.query.q.select.from)
+			      {
+				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_NO_TABLES_USED);
+			      }
+
+			    /* For queries that have LIMIT clause don't allow 
+			     * inst_num, groupby_num, orderby_num in where, having, for
+			     * respectively.
+			     */
+			    if (node->info.query.orderby_for)
+			      {
+				bool ordbynum_flag = false;
+				(void) parser_walk_tree (this_parser, node->info.query.orderby_for,
+							 pt_check_orderbynum_pre, NULL,
+							 pt_check_orderbynum_post, &ordbynum_flag);
+				if (ordbynum_flag)
+				  {
+				    PT_ERRORmf(this_parser, node->info.query.orderby_for,
+					       MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "ORDERBY_NUM()");
+				  }
+			      }
+			    if (node->info.query.q.select.having)
+			      {
+				bool grbynum_flag = false;
+				(void) parser_walk_tree (this_parser, node->info.query.q.select.having,
+							 pt_check_groupbynum_pre, NULL,
+							 pt_check_groupbynum_post, &grbynum_flag);
+				if (grbynum_flag)
+				  {
+				    PT_ERRORmf(this_parser, node->info.query.q.select.having,
+					       MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "GROUPBY_NUM()");				
+				  }
+			      }
+			    if (node->info.query.q.select.where)
+			      {
+				bool instnum_flag = false;
+				(void) parser_walk_tree (this_parser, node->info.query.q.select.where,
+							 pt_check_instnum_pre, NULL,
+							 pt_check_instnum_post, &instnum_flag);
+				if (instnum_flag)
+				  {
+				    PT_ERRORmf(this_parser, node->info.query.q.select.where,
+					       MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "INST_NUM()/ROWNUM");
+				  }
+			      }
+			  }
+
+		DBG_PRINT}}
+	| LIMIT opt_uint_or_host_input ',' opt_uint_or_host_input
+		{{
+
+			PT_NODE *node = parser_top_orderby_node ();
+			if (node)
+			  {
+			    PT_NODE *limit1 = $2;
+			    PT_NODE *limit2 = $4;
+			    if (limit1)
+			      {
+				limit1->next = limit2;
+			      }
+			    node->info.query.q.select.limit = limit1;
+			    
+			    if (!node->info.query.q.select.from)
+			      {
+				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_NO_TABLES_USED);
+			      }
+			  
+			    /* For queries that have LIMIT clause don't allow 
+			     * inst_num, groupby_num, orderby_num in where, having, for
+			     * respectively.
+			     */
+			    if (node->info.query.orderby_for)
+			      {
+				bool ordbynum_flag = false;
+				(void) parser_walk_tree (this_parser, node->info.query.orderby_for,
+							 pt_check_orderbynum_pre, NULL,
+							 pt_check_orderbynum_post, &ordbynum_flag);
+				if (ordbynum_flag)
+				  {
+				    PT_ERRORmf(this_parser, node->info.query.orderby_for,
+					       MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "ORDERBY_NUM()");
+				  }
+			      }
+			    if (node->info.query.q.select.having)
+			      {
+				bool grbynum_flag = false;
+				(void) parser_walk_tree (this_parser, node->info.query.q.select.having,
+							 pt_check_groupbynum_pre, NULL,
+							 pt_check_groupbynum_post, &grbynum_flag);
+				if (grbynum_flag)
+				  {
+				    PT_ERRORmf(this_parser, node->info.query.q.select.having,
+					       MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "GROUPBY_NUM()");				
+				  }
+			      }
+			    if (node->info.query.q.select.where)
+			      {
+				bool instnum_flag = false;
+				(void) parser_walk_tree (this_parser, node->info.query.q.select.where,
+							 pt_check_instnum_pre, NULL,
+							 pt_check_instnum_post, &instnum_flag);
+				if (instnum_flag)
+				  {
+				    PT_ERRORmf(this_parser, node->info.query.q.select.where,
+					       MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "INST_NUM()/ROWNUM");
+				  }
+			      }
+			  }
+
+		DBG_PRINT}}
+	;
+
+opt_upd_del_limit_clause
+	: /* empty */
+		{ $$ = NULL; }
+	| LIMIT opt_uint_or_host_input
+		{{
+		
+			  $$ = $2;
+		
 		DBG_PRINT}}
 	;
 
@@ -8370,36 +10310,89 @@ sort_spec
 
 
 expression_
-	: expression_ '+' term
+	: expression_ STRCAT expression_bitor
 		{{
-
-			$$ = parser_make_expression (PT_PLUS, $1, $3, NULL);
-
-		DBG_PRINT}}
-	| expression_ '-' term
-		{{
-
-			$$ = parser_make_expression (PT_MINUS, $1, $3, NULL);
-
-		DBG_PRINT}}
-	| expression_ STRCAT term
-		{{
-
+		
 			$$ = parser_make_expression (PT_STRCAT, $1, $3, NULL);
-
+		
 		DBG_PRINT}}
-	| expression_ '|' term
+	| expression_bitor
 		{{
+		
+			$$ = $1;
+		
+		DBG_PRINT}}
+	;
+	
+expression_bitor
+	: expression_bitor '|' expression_bitand
+		{{
+		
+			$$ = parser_make_expression (PT_BIT_OR, $1, $3, NULL);
+		
+		DBG_PRINT}}
+	| expression_bitand
+		{{
+		
+			$$ = $1;
+		
+		DBG_PRINT}}
+	;
 
-			push_msg (MSGCAT_SYNTAX_INVALID_STRCAT);
-			yyerror_explicit (@2.first_line, @2.first_column);
+expression_bitand
+	: expression_bitand '&' expression_bitshift
+		{{
+		
+			$$ = parser_make_expression (PT_BIT_AND, $1, $3, NULL);
+			
+		DBG_PRINT}}
+	| expression_bitshift
+		{{
+		
+			$$ = $1;
+		
+		DBG_PRINT}}
+	;
 
+expression_bitshift
+	: expression_bitshift BITSHIFT_LEFT expression_add_sub
+		{{
+		
+			$$ = parser_make_expression (PT_BITSHIFT_LEFT, $1, $3, NULL);
+		
+		DBG_PRINT}}
+	| expression_bitshift BITSHIFT_RIGHT expression_add_sub
+		{{
+		
+			$$ = parser_make_expression (PT_BITSHIFT_RIGHT, $1, $3, NULL);
+		
+		DBG_PRINT}}
+	| expression_add_sub
+		{{
+		
+			$$ = $1;
+		
+		DBG_PRINT}}
+	;
+
+expression_add_sub
+	: expression_add_sub '+' term
+		{{
+		
+			$$ = parser_make_expression (PT_PLUS, $1, $3, NULL);
+		
+		DBG_PRINT}}
+	| expression_add_sub '-' term
+		{{
+		
+			$$ = parser_make_expression (PT_MINUS, $1, $3, NULL);
+		
 		DBG_PRINT}}
 	| term
 		{{
-
+		
 			$$ = $1;
-
+		
 		DBG_PRINT}}
 	;
 
@@ -8416,6 +10409,18 @@ term
 			$$ = parser_make_expression (PT_DIVIDE, $1, $3, NULL);
 
 		DBG_PRINT}}
+	| term DIV factor
+		{{
+
+			$$ = parser_make_expression (PT_DIV, $1, $3, NULL);
+
+		DBG_PRINT}}
+	| term MOD factor
+		{{
+		
+			$$ = parser_make_expression (PT_MOD, $1, $3, NULL);
+		
+		DBG_PRINT}}
 	| factor
 		{{
 
@@ -8425,6 +10430,21 @@ term
 	;
 
 factor
+	: factor '^' factor_
+		{{
+
+			$$ = parser_make_expression (PT_BIT_XOR, $1, $3, NULL);
+
+		DBG_PRINT}}
+	| factor_
+		{{
+		
+			$$ = $1;
+			
+		DBG_PRINT}}
+	;
+
+factor_
 	: opt_plus primary
 		{{
 
@@ -8436,6 +10456,12 @@ factor
 
 			$$ = parser_make_expression (PT_UNARY_MINUS, $2, NULL, NULL);
 
+		DBG_PRINT}}
+	| '~' primary
+		{{
+			
+			$$ = parser_make_expression (PT_BIT_NOT, $2, NULL, NULL);
+			
 		DBG_PRINT}}
 	| PRIOR
 		{{
@@ -8673,6 +10699,7 @@ pseudo_column
 		DBG_PRINT}}
 	;
 
+
 reserved_func
 	: COUNT '(' '*' ')'
 		{{
@@ -8766,6 +10793,7 @@ reserved_func
 	  '(' expression_ FROM expression_ For expression_ ')'
 		{ pop_msg(); }
 		{{
+		
 			PT_NODE *node = parser_make_expression (PT_SUBSTRING, $4, $6, $8);
 			node->info.expr.qualifier = PT_SUBSTR_ORG;
 			PICE (node);
@@ -8777,10 +10805,153 @@ reserved_func
 	  '(' expression_ FROM expression_ ')'
 		{ pop_msg(); }
 		{{
+		
 			PT_NODE *node = parser_make_expression (PT_SUBSTRING, $4, $6, NULL);
 			node->info.expr.qualifier = PT_SUBSTR_ORG;
 			PICE (node);
 			$$ = node;
+			
+		DBG_PRINT}}
+	| SUBSTRING_
+		{ push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); }
+	  '(' expression_ ',' expression_ ',' expression_ ')'
+		{ pop_msg(); }
+		{{
+		
+			PT_NODE *node = parser_make_expression (PT_SUBSTRING, $4, $6, $8);
+			node->info.expr.qualifier = PT_SUBSTR_ORG;
+			PICE (node);
+			$$ = node;
+
+		DBG_PRINT}}
+	| SUBSTRING_
+		{ push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); }
+	  '(' expression_ ',' expression_ ')'
+		{ pop_msg(); }
+		{{
+		
+			PT_NODE *node = parser_make_expression (PT_SUBSTRING, $4, $6, NULL);
+			node->info.expr.qualifier = PT_SUBSTR_ORG;
+			PICE (node);
+			$$ = node;
+			
+		DBG_PRINT}}
+	| Date
+		{ push_msg(MSGCAT_SYNTAX_INVALID_DATE); }
+	  '(' expression_ ')'
+		{ pop_msg(); }
+		{{
+		
+			PT_NODE *node = parser_make_expression (PT_DATEF, $4, NULL, NULL);
+			PICE (node);
+			$$ = node;
+			
+		DBG_PRINT}}
+	| ADDDATE
+		{ push_msg(MSGCAT_SYNTAX_INVALID_ADDDATE); }
+	  '(' expression_ ',' expression_ ')'
+		{ pop_msg(); }
+		{{
+		
+			PT_NODE *node = parser_make_expression (PT_ADDDATE, $4, $6, NULL);
+			PICE (node);
+			$$ = node;
+			
+		DBG_PRINT}}
+	| adddate_name
+		{ push_msg(MSGCAT_SYNTAX_INVALID_DATE_ADD); }
+	  '(' expression_ ',' INTERVAL expression_ datetime_field ')'
+		{ pop_msg(); }
+		{{
+		
+			PT_NODE *node;
+			PT_NODE *node_unit = parser_new_node (this_parser, PT_VALUE);
+
+			if (node_unit)
+			  {
+			    node_unit->info.expr.qualifier = $8;
+			    node_unit->type_enum = PT_TYPE_INTEGER;
+			  }
+
+			node = parser_make_expression (PT_DATE_ADD, $4, $7, node_unit);
+			PICE (node);
+			$$ = node;
+			
+		DBG_PRINT}} 
+	| SUBDATE
+		{ push_msg(MSGCAT_SYNTAX_INVALID_SUBDATE); }
+	  '(' expression_ ',' expression_ ')'
+		{ pop_msg(); }
+		{{
+		
+			PT_NODE *node = parser_make_expression (PT_SUBDATE, $4, $6, NULL);
+			PICE (node);
+			$$ = node;
+			
+		DBG_PRINT}}
+	| subdate_name
+		{ push_msg(MSGCAT_SYNTAX_INVALID_DATE_SUB); }
+	  '(' expression_ ',' INTERVAL expression_ datetime_field ')'
+		{ pop_msg(); }
+		{{
+		
+			PT_NODE *node;
+			PT_NODE *node_unit = parser_new_node (this_parser, PT_VALUE);
+
+			if (node_unit)
+			  {
+			    node_unit->info.expr.qualifier = $8;
+			    node_unit->type_enum = PT_TYPE_INTEGER;
+			  }
+
+			node = parser_make_expression (PT_DATE_SUB, $4, $7, node_unit);
+			PICE (node);
+			$$ = node;
+			
+		DBG_PRINT}} 		
+	| TIMESTAMP
+		{ push_msg(MSGCAT_SYNTAX_INVALID_TIMESTAMP); }
+		'(' expression_ ')'
+		{ pop_msg(); }
+		{{
+
+			PT_NODE *node = parser_make_expression (PT_TIMESTAMP, $4, NULL, NULL); /* 1 parameter */
+			PICE (node);
+			$$ = node;
+
+		DBG_PRINT}}
+	| TIMESTAMP
+		{ push_msg(MSGCAT_SYNTAX_INVALID_TIMESTAMP); }
+		'(' expression_ ',' expression_ ')'
+		{ pop_msg(); }
+		{{
+
+			PT_NODE *node = parser_make_expression (PT_TIMESTAMP, $4, $6, NULL); /* 2 parameters */
+			PICE (node);
+			$$ = node;
+
+		DBG_PRINT}}
+	| DATABASE
+		{ push_msg(MSGCAT_SYNTAX_INVALID_DATABASE); }
+	  '(' ')'
+		{ pop_msg(); }
+		{{
+		
+			PT_NODE *node = parser_make_expression (PT_DATABASE, NULL, NULL, NULL);
+			PICE (node);
+			$$ = node;
+
+		DBG_PRINT}}
+	| SCHEMA
+		{ push_msg(MSGCAT_SYNTAX_INVALID_SCHEMA); }
+	  '(' ')'
+		{ pop_msg(); }
+		{{
+
+			PT_NODE *node = parser_make_expression (PT_SCHEMA, NULL, NULL, NULL);
+			PICE (node);
+			$$ = node;
+
 		DBG_PRINT}}
 	| TRIM
 		{ push_msg(MSGCAT_SYNTAX_INVALID_TRIM); }
@@ -8871,49 +11042,29 @@ reserved_func
 	| of_dates
 		{{
 
-			PT_NODE *node = parser_new_node (this_parser, PT_EXPR);
-			if (node)
-			  node->info.expr.op = PT_SYS_DATE;
-
-			parser_si_datetime = true;
-			parser_cannot_cache = true;
-			$$ = node;
+			PT_NODE *expr = parser_make_expression (PT_SYS_DATE, NULL, NULL, NULL);
+			$$ = expr;
 
 		DBG_PRINT}}
 	| of_times
 		{{
 
-			PT_NODE *node = parser_new_node (this_parser, PT_EXPR);
-			if (node)
-			  node->info.expr.op = PT_SYS_TIME;
-
-			parser_si_datetime = true;
-			parser_cannot_cache = true;
-			$$ = node;
+			PT_NODE *expr = parser_make_expression (PT_SYS_TIME, NULL, NULL, NULL);
+			$$ = expr;
 
 		DBG_PRINT}}
 	| of_timestamps
 		{{
 
-			PT_NODE *node = parser_new_node (this_parser, PT_EXPR);
-			if (node)
-			  node->info.expr.op = PT_SYS_TIMESTAMP;
-
-			parser_si_datetime = true;
-			parser_cannot_cache = true;
-			$$ = node;
+			PT_NODE *expr = parser_make_expression (PT_SYS_TIMESTAMP, NULL, NULL, NULL);
+			$$ = expr;
 
 		DBG_PRINT}}
 	| of_datetimes
 		{{
 
-			PT_NODE *node = parser_new_node (this_parser, PT_EXPR);
-			if (node)
-			  node->info.expr.op = PT_SYS_DATETIME;
-
-			parser_si_datetime = true;
-			parser_cannot_cache = true;
-			$$ = node;
+			PT_NODE *expr = parser_make_expression (PT_SYS_DATETIME, NULL, NULL, NULL);
+			$$ = expr;
 
 		DBG_PRINT}}
 	| of_users
@@ -8924,6 +11075,35 @@ reserved_func
 			  node->info.expr.op = PT_CURRENT_USER;
 
 			parser_cannot_cache = true;
+			$$ = node;
+
+		DBG_PRINT}}
+	| of_users
+		{ push_msg(MSGCAT_SYNTAX_INVALID_SYSTEM_USER); }
+	  '(' ')'
+		{ pop_msg(); }
+		{{
+
+			PT_NODE *node = parser_make_expression (PT_USER, NULL, NULL, NULL);
+			PICE (node);
+			$$ = node;
+
+		DBG_PRINT}}	
+	| DEFAULT '('
+		{ push_msg(MSGCAT_SYNTAX_INVALID_DEFAULT); }
+	  simple_path_id ')'
+		{ pop_msg(); }
+		{{
+		
+			PT_NODE *node = NULL;
+			PT_NODE *path = $4;
+
+			if (path != NULL)
+			  {
+			    pt_set_fill_default_in_path_expression (path);
+			    node = parser_make_expression (PT_DEFAULTF, path, NULL, NULL);
+			    PICE (node);
+			  }
 			$$ = node;
 
 		DBG_PRINT}}
@@ -8995,7 +11175,25 @@ reserved_func
 			$$ = parser_make_expression (PT_LOWER, $4, NULL, NULL);
 
 		DBG_PRINT}}
+	| LCASE
+		{ push_msg(MSGCAT_SYNTAX_INVALID_LOWER); }
+	  '(' expression_ ')'
+		{ pop_msg(); }
+		{{
+
+			$$ = parser_make_expression (PT_LOWER, $4, NULL, NULL);
+
+		DBG_PRINT}}
 	| UPPER
+		{ push_msg(MSGCAT_SYNTAX_INVALID_UPPER); }
+	  '(' expression_ ')'
+		{ pop_msg(); }
+		{{
+
+			$$ = parser_make_expression (PT_UPPER, $4, NULL, NULL);
+
+		DBG_PRINT}}
+	| UCASE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_UPPER); }
 	  '(' expression_ ')'
 		{ pop_msg(); }
@@ -9006,12 +11204,14 @@ reserved_func
 		DBG_PRINT}}
 	| SYS_CONNECT_BY_PATH
 		{{
+
 			push_msg(MSGCAT_SYNTAX_INVALID_SYS_CONNECT_BY_PATH);
 			
 			parser_save_and_set_sysc (0);
 			parser_save_and_set_prc (0);
 			parser_save_and_set_cbrc (0);
 			parser_save_and_set_pseudoc (0);
+
 		}}
 	  '(' expression_ ',' char_string_literal ')'
 		{ pop_msg(); }
@@ -9031,8 +11231,77 @@ reserved_func
 			$$ = node;
 			
 		DBG_PRINT}}
-	| TRANSLATE 
-		{ push_msg(MSGCAT_SYNTAX_INVALID_TRANSLATE); } 
+	| IF
+		{ push_msg (MSGCAT_SYNTAX_INVALID_IF); }
+	  '(' search_condition ',' expression_ ',' expression_ ')'
+		{ pop_msg(); }
+		{{
+		
+			$$ = parser_make_expression (PT_IF, $4, $6, $8);
+			
+		DBG_PRINT}}
+	| IFNULL
+		{ push_msg (MSGCAT_SYNTAX_INVALID_IFNULL); }
+	  '(' expression_ ',' expression_ ')'
+		{ pop_msg(); }
+		{{
+		
+			$$ = parser_make_expression (PT_IFNULL, $4, $6, NULL);
+			
+		DBG_PRINT}} 
+	| ISNULL
+		{ push_msg (MSGCAT_SYNTAX_INVALID_ISNULL); }
+	  '(' expression_ ')'
+		{ pop_msg(); }
+		{{
+		
+			$$ = parser_make_expression (PT_ISNULL, $4, NULL, NULL);
+			
+		DBG_PRINT}} 
+	| LEFT
+		{ push_msg(MSGCAT_SYNTAX_INVALID_LEFT); }
+	  '(' expression_ ',' expression_ ')'
+		{ pop_msg(); }
+		{{
+			PT_NODE *node = 
+			  parser_make_expression (PT_LEFT, $4, $6, NULL);
+			PICE (node);
+			$$ = node;
+
+		DBG_PRINT}}
+	| RIGHT
+		{ push_msg(MSGCAT_SYNTAX_INVALID_RIGHT); }
+	  '(' expression_ ',' expression_ ')'
+		{ pop_msg(); }
+		{{
+			PT_NODE *node = 
+			  parser_make_expression (PT_RIGHT, $4, $6, NULL);
+			PICE (node);
+			$$ = node;
+
+		DBG_PRINT}}
+	| MOD
+		{ push_msg(MSGCAT_SYNTAX_INVALID_MODULUS); }
+	  '(' expression_ ',' expression_ ')'
+		{ pop_msg(); }
+		{{
+			PT_NODE *node = 
+			  parser_make_expression (PT_MODULUS, $4, $6, NULL);
+			PICE (node);
+			$$ = node;
+
+		DBG_PRINT}}
+	| TRUNCATE
+		{ push_msg(MSGCAT_SYNTAX_INVALID_TRUNCATE); }
+	  '(' expression_ ',' expression_ ')'
+		{ pop_msg(); }
+		{{
+		
+			$$ = parser_make_expression (PT_TRUNC, $4, $6, NULL);
+			
+		DBG_PRINT}}
+	| TRANSLATE
+		{ push_msg(MSGCAT_SYNTAX_INVALID_TRANSLATE); }
 	  '(' expression_  ',' expression_ ',' expression_ ')'
 		{ pop_msg(); }
 		{{
@@ -9058,32 +11327,80 @@ reserved_func
 			$$ = parser_make_expression (PT_REPLACE, $4, $6, NULL);
 
 		DBG_PRINT}}
+	| STR_TO_DATE
+		{ push_msg(MSGCAT_SYNTAX_INVALID_STRTODATE); }
+	  '(' expression_  ',' char_string_literal ')'
+		{ pop_msg(); }
+		{{
+
+			$$ = parser_make_expression (PT_STR_TO_DATE, $4, $6, NULL);
+
+		DBG_PRINT}}
+	| STR_TO_DATE
+		{ push_msg(MSGCAT_SYNTAX_INVALID_STRTODATE); }
+	  '(' expression_  ',' Null ')'
+		{ pop_msg(); }
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
+			if (node)
+			  node->type_enum = PT_TYPE_NULL;
+
+			$$ = parser_make_expression (PT_STR_TO_DATE, $4, node, NULL);
+
+		DBG_PRINT}}
 	;
 
 
 of_dates
 	: SYS_DATE
 	| CURRENT_DATE
+	| CURRENT_DATE
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_DATE); }
+	  '(' ')'
+		{ pop_msg(); }
 	;
 
 of_times
 	: SYS_TIME_
 	| CURRENT_TIME
+	| CURRENT_TIME
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIME); }
+	  '(' ')'
+		{ pop_msg(); }
 	;
-
+	
 of_timestamps
 	: SYS_TIMESTAMP
 	| CURRENT_TIMESTAMP
+	| CURRENT_TIMESTAMP
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_TIMESTAMP); }
+	  '(' ')'
+		{ pop_msg(); }
+	| LOCALTIME
+	| LOCALTIME
+		{ push_msg(MSGCAT_SYNTAX_INVALID_LOCALTIME); }
+	  '(' ')'
+		{ pop_msg(); }
+	| LOCALTIMESTAMP 
+	| LOCALTIMESTAMP 
+		{ push_msg(MSGCAT_SYNTAX_INVALID_LOCALTIMESTAMP); }
+	  '(' ')'
+		{ pop_msg(); }
 	;
 
 of_datetimes
 	: SYS_DATETIME
 	| CURRENT_DATETIME
+	| CURRENT_DATETIME
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CURRENT_DATETIME); }
+	  '(' ')'
+		{ pop_msg(); }
 	;
 
 of_users
-	: USER
-	| CURRENT_USER
+	: CURRENT_USER
+	| SYSTEM_USER
+	| USER
 	;
 
 of_avg_max_etc
@@ -9121,6 +11438,24 @@ of_avg_max_etc
 		{{
 
 			$$ = PT_VARIANCE;
+
+		DBG_PRINT}}
+	| BIT_AND
+		{{
+
+			$$ = PT_AGG_BIT_AND;
+
+		DBG_PRINT}}
+	| BIT_OR
+		{{
+
+			$$ = PT_AGG_BIT_OR;
+
+		DBG_PRINT}}
+	| BIT_XOR
+		{{
+
+			$$ = PT_AGG_BIT_XOR;
 
 		DBG_PRINT}}
 	;
@@ -9433,6 +11768,16 @@ extract_expr
 		DBG_PRINT}}
 	;
 
+adddate_name
+	: DATE_ADD
+	| ADDDATE
+	;
+	
+subdate_name
+	: DATE_SUB
+	| SUBDATE
+	;
+
 datetime_field
 	: YEAR_
 		{{
@@ -9476,6 +11821,84 @@ datetime_field
 			$$ = PT_MILLISECOND;
 
 		DBG_PRINT}}
+	| WEEK
+		{{
+
+			$$ = PT_WEEK;
+
+		DBG_PRINT}}
+	| QUARTER
+		{{
+
+			$$ = PT_QUARTER;
+
+    		DBG_PRINT}}
+        | SECOND_MILLISECOND
+		{{
+
+			$$ = PT_SECOND_MILLISECOND;
+
+    		DBG_PRINT}}
+	| MINUTE_MILLISECOND
+		{{
+
+			$$ = PT_MINUTE_MILLISECOND;
+
+    		DBG_PRINT}}	
+	| MINUTE_SECOND
+		{{
+
+			$$ = PT_MINUTE_SECOND;
+
+    		DBG_PRINT}}
+	| HOUR_MILLISECOND
+		{{
+
+			$$ = PT_HOUR_MILLISECOND;
+
+    		DBG_PRINT}}
+	| HOUR_SECOND
+		{{
+
+			$$ = PT_HOUR_SECOND;
+
+    		DBG_PRINT}}	
+	| HOUR_MINUTE
+		{{
+
+			$$ = PT_HOUR_MINUTE;
+
+    		DBG_PRINT}}	
+	| DAY_MILLISECOND
+		{{
+
+			$$ = PT_DAY_MILLISECOND;
+
+    		DBG_PRINT}}	
+	| DAY_SECOND
+		{{
+
+			$$ = PT_DAY_SECOND;
+
+    		DBG_PRINT}}	
+	| DAY_MINUTE
+		{{
+
+			$$ = PT_DAY_MINUTE;
+
+    		DBG_PRINT}}	
+	| DAY_HOUR
+		{{
+
+			$$ = PT_DAY_HOUR;
+
+    		DBG_PRINT}}	
+	| YEAR_MONTH
+		{{
+
+			$$ = PT_YEAR_MONTH;
+
+    		DBG_PRINT}}	
 	;
 
 opt_on_target
@@ -9496,7 +11919,6 @@ opt_on_target
 generic_function
 	: identifier '(' opt_expression_list ')' opt_on_target
 		{{
-
 
 			PT_NODE *node = NULL;
 			if ($5 == NULL)
@@ -9623,16 +12045,60 @@ table_set_function_call
 	;
 
 search_condition
-	: search_condition OR boolean_term
+	: search_condition OR boolean_term_xor
 		{{
 
 			$$ = parser_make_expression (PT_OR, $1, $3, NULL);
 
 		DBG_PRINT}}
-	| boolean_term
+	| boolean_term_xor
 		{{
 
 			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
+boolean_term_xor
+	: boolean_term_xor XOR boolean_term_is
+		{{
+		
+			$$ = parser_make_expression (PT_XOR, $1, $3, NULL);
+			
+		DBG_PRINT}}
+	| boolean_term_is
+		{{
+		
+			$$ = $1;
+		DBG_PRINT}}
+	;
+
+boolean_term_is
+	: boolean_term_is is_op boolean
+		{{
+		
+			$$ = parser_make_expression ($2, $1, $3, NULL);
+			
+		DBG_PRINT}}
+	| boolean_term
+		{{
+		
+			$$ = $1;
+			
+		DBG_PRINT}}
+	;
+	
+is_op
+	: IS NOT
+		{{
+
+			$$ = PT_IS_NOT;
+
+		DBG_PRINT}}
+	| IS
+		{{
+
+			$$ = PT_IS;
 
 		DBG_PRINT}}
 	;
@@ -9659,6 +12125,12 @@ boolean_factor
 			$$ = parser_make_expression (PT_NOT, $2, NULL, NULL);
 
 		DBG_PRINT}}
+	| '!' predicate
+		{{
+
+			$$ = parser_make_expression (PT_NOT, $2, NULL, NULL);
+
+		DBG_PRINT}}
 	| predicate
 		{{
 
@@ -9666,7 +12138,7 @@ boolean_factor
 
 		DBG_PRINT}}
 	;
-
+	
 predicate
 	: EXISTS expression_
 		{{
@@ -10069,7 +12541,7 @@ predicate_expr_sub
 		{{
 
 			push_msg (MSGCAT_SYNTAX_INVALID_RELATIONAL_OP);
-			yyerror_explicit (@2.first_line, @2.first_column);
+			csql_yyerror_explicit (@2.first_line, @2.first_column);
 
 		DBG_PRINT}}
 	;
@@ -10232,15 +12704,21 @@ comp_op
 		{{
 
 			push_msg (MSGCAT_SYNTAX_INVALID_EQUAL_OP);
-			yyerror_explicit (@1.first_line, @1.first_column);
+			csql_yyerror_explicit (@1.first_line, @1.first_column);
 
 		DBG_PRINT}}
 	| '!''=' opt_of_all_some_any
 		{{
 
 			push_msg (MSGCAT_SYNTAX_INVALID_NOT_EQUAL);
-			yyerror_explicit (@1.first_line, @1.first_column);
+			csql_yyerror_explicit (@1.first_line, @1.first_column);
 
+		DBG_PRINT}}
+	| COMP_NULLSAFE_EQ opt_of_all_some_any
+		{{
+		
+			$$ = PT_NULLSAFE_EQ;
+			
 		DBG_PRINT}}
 	;
 
@@ -10719,6 +13197,28 @@ path_id
 		DBG_PRINT}}
 	;
 
+simple_path_id
+	: identifier '.' identifier
+		{{
+
+			PT_NODE *dot = parser_new_node (this_parser, PT_DOT_);
+			if (dot)
+			  {
+			    dot->info.dot.arg1 = $1;
+			    dot->info.dot.arg2 = $3;
+			  }
+
+			$$ = dot;
+
+		DBG_PRINT}}
+	| identifier
+		{{
+
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+	
 opt_in_out
 	: /* empty */
 		{{
@@ -11521,6 +14021,50 @@ literal_w_o_param
 			$$ = $1;
 
 		DBG_PRINT}}
+	| boolean
+		{{
+		
+			$$ = $1;
+			
+		DBG_PRINT}}
+	;
+	
+boolean
+	: True
+		{{
+		
+			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
+			if (node)
+			  {
+			    node->info.value.text = "true";
+			    node->info.value.data_value.i = 1;
+			    node->type_enum = PT_TYPE_LOGICAL;
+			  }
+			$$ = node;
+		
+		DBG_PRINT}}
+	| False
+		{{
+		
+			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
+			if (node)
+			  {
+			    node->info.value.text = "false";
+			    node->info.value.data_value.i = 0;
+			    node->type_enum = PT_TYPE_LOGICAL;
+			  }
+			$$ = node;
+		
+		DBG_PRINT}}
+	| UNKNOWN
+		{{
+		
+			PT_NODE *node = parser_new_node (this_parser, PT_VALUE);
+			if (node)
+			  node->type_enum = PT_TYPE_NULL;
+			$$ = node;
+		
+		DBG_PRINT}}
 	;
 
 constant_set
@@ -11636,6 +14180,15 @@ identifier
 
 		DBG_PRINT}}
 	| BracketDelimitedIdName
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| BacktickDelimitedIdName
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -12194,7 +14747,132 @@ identifier
 			$$ = p;
 
 		DBG_PRINT}}
+	| ADDDATE
+		{{
 
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| BIT_AND
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| BIT_OR
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| BIT_XOR
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| DATE_ADD
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| DATE_SUB
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| IFNULL
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| ISNULL
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| LCASE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| QUARTER
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| STR_TO_DATE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| SUBDATE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| UCASE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
+	| WEEK
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+
+		DBG_PRINT}}
 /*}}}*/
 	;
 
@@ -12571,6 +15249,15 @@ date_or_time_literal
 		DBG_PRINT}}
 	;
 
+create_as_clause
+	: opt_replace AS csql_query
+		{{
+			container_2 ctn;
+			SET_CONTAINER_2(ctn, FROM_NUMBER ($1), $3);
+			$$ = ctn;
+		DBG_PRINT}}
+	;
+
 partition_clause
 	: PARTITION opt_by HASH '(' expression_ ')' PARTITIONS unsigned_integer
 		{{
@@ -12683,7 +15370,7 @@ partition_def
 		DBG_PRINT}}
 	;
 
-alter_partition_clause
+alter_partition_clause_for_alter_list
 	: partition_clause
 		{{
 
@@ -12789,9 +15476,9 @@ bad_tokens_for_error_message_only_dont_mind_this_rule
 	: '@'
 	| ']'
 	| '`'
-	| '^'
+	/*| '^'
 	| '&'
-	| '~'
+	| '~'*/
 	;
 
 
@@ -12852,6 +15539,13 @@ parser_make_expression (PT_OP_TYPE OP, PT_NODE * arg1, PT_NODE * arg2,
 	  PT_ERRORmf2 (this_parser, expr, MSGCAT_SET_PARSER_SEMANTIC,
 		       MSGCAT_SEMANTIC_INSTNUM_COMPATIBILITY_ERR,
 		       "ORDERBY_NUM()", "ORDERBY_NUM()");
+	}
+
+      if (OP == PT_SYS_TIME || OP == PT_SYS_DATE 
+	  || OP == PT_SYS_DATETIME || OP == PT_SYS_TIMESTAMP)
+        {
+          parser_si_datetime = true;
+	  parser_cannot_cache = true;
 	}
     }
 
@@ -13366,6 +16060,46 @@ parser_restore_sqc ()
 
 
 
+static int parser_hvar_stack_default[STACK_SIZE];
+static int *parser_hvar_stack = parser_hvar_stack_default;
+static int parser_hvar_sp = 0;
+static int parser_hvar_limit = STACK_SIZE;
+
+static void
+parser_save_and_set_hvar (int value)
+{
+  if (parser_hvar_sp >= parser_hvar_limit)
+    {
+      int new_size = parser_hvar_limit * 2 * sizeof(int);
+      int *new_p = malloc (new_size);
+      if (new_p == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
+	  return;
+	}
+
+      memcpy (new_p, parser_hvar_stack, parser_hvar_limit);
+      if (parser_hvar_stack != parser_hvar_stack_default)
+	free (parser_hvar_stack);
+
+      parser_hvar_stack = new_p;
+      parser_hvar_limit *= 2;
+    }
+
+  parser_hvar_stack[parser_hvar_sp++] = parser_hostvar_check;
+  parser_hostvar_check = value;
+}
+
+static void
+parser_restore_hvar ()
+{
+  parser_hostvar_check = parser_hvar_stack[--parser_hvar_sp];
+}
+
+
+
+
 static int parser_oracle_stack_default[STACK_SIZE];
 static int *parser_oracle_stack = parser_oracle_stack_default;
 static int parser_oracle_sp = 0;
@@ -13622,16 +16356,16 @@ parser_pop_join_type ()
 
 
 
-static int parser_is_reverse_saved;
+static bool parser_is_reverse_saved;
 
 static void
-parser_save_is_reverse (int v)
+parser_save_is_reverse (bool v)
 {
   parser_is_reverse_saved = v;
 }
 
 
-static int
+static bool
 parser_get_is_reverse ()
 {
   return parser_is_reverse_saved;
@@ -13978,15 +16712,50 @@ keyword_func (const char *name, PT_NODE * args)
   switch (key->op)
     {
       /* arg 0 */
-    case PT_DRAND:
-    case PT_DRANDOM:
-    case PT_RAND:
-    case PT_RANDOM:
+    case PT_PI:
+    case PT_SYS_TIME:
+    case PT_SYS_DATE:
+    case PT_SYS_DATETIME:
+    case PT_SYS_TIMESTAMP:
       if (c != 0)
-	return NULL;
-      parser_cannot_cache = true;
+	{
+	  return NULL;
+	}
       return parser_make_expression (key->op, NULL, NULL, NULL);
       break;
+      
+    case PT_ROW_COUNT:
+      if (c != 0)
+        {
+	  return NULL;
+	}
+      parser_cannot_cache = true;
+      parser_cannot_prepare = true;
+      return parser_make_expression (key->op, NULL, NULL, NULL);
+      break;
+
+      /* arg 0 or 1 */
+    case PT_RAND:
+    case PT_RANDOM:
+    case PT_DRAND:
+    case PT_DRANDOM:
+      {
+	PT_NODE *expr;
+        parser_cannot_cache = true;
+
+	if (c < 0 || c > 1)
+	  {
+	    return NULL;
+	  }
+
+	if (c == 1)
+	  {
+	    a1 = args;
+	  }
+	expr = parser_make_expression (key->op, a1, NULL, NULL);
+	expr->do_not_fold = 1;
+	return expr;
+      }
 
       /* arg 1 */
     case PT_ABS:
@@ -13998,18 +16767,46 @@ keyword_func (const char *name, PT_NODE * args)
     case PT_LAST_DAY:
     case PT_SIGN:
     case PT_SQRT:
+    case PT_ACOS:
+    case PT_ASIN:
+    case PT_COS:
+    case PT_SIN:
+    case PT_TAN:
+    case PT_COT:
+    case PT_DEGREES:
+    case PT_RADIANS:
+    case PT_LN:
+    case PT_LOG2:
+    case PT_LOG10:
       if (c != 1)
-	return NULL;
+		return NULL;
       a1 = args;
       return parser_make_expression (key->op, a1, NULL, NULL);
+      break;
+    case PT_UNIX_TIMESTAMP:
+      if (c > 1)
+		return NULL;
+      if (c == 1)
+		{
+		  a1 = args;
+		  return parser_make_expression (key->op, a1, NULL, NULL);
+		}
+	  else /* no arguments */
+		{
+		  return parser_make_expression (key->op, NULL, NULL, NULL);
+		}
       break;
 
       /* arg 2 */
     case PT_LOG:
-    case PT_MODULUS:
     case PT_MONTHS_BETWEEN:
     case PT_NVL:
     case PT_POWER:
+    case PT_TIME_FORMAT:
+    case PT_FORMAT:
+    case PT_DATE_FORMAT:
+    case PT_ATAN2:  
+    case PT_DATEDIFF:
       if (c != 2)
 	return NULL;
       a1 = args;
@@ -14018,8 +16815,25 @@ keyword_func (const char *name, PT_NODE * args)
       return parser_make_expression (key->op, a1, a2, NULL);
       break;
 
+    case PT_ATAN:
+      if (c == 1)
+	{
+	  a1 = args;
+	  return parser_make_expression (key->op, a1, NULL, NULL);
+	}
+      else 
+      if (c == 2)
+	{
+	  a1 = args;
+	  a2 = a1->next;
+	  a1->next = NULL;
+	  return parser_make_expression (PT_ATAN2, a1, a2, NULL);
+	}
+      else
+	return NULL;
+      break;
 
-      /* arg 3 */
+    /* arg 3 */
     case PT_NVL2:
       if (c != 3)
 	return NULL;
@@ -14029,7 +16843,6 @@ keyword_func (const char *name, PT_NODE * args)
       a1->next = a2->next = NULL;
       return parser_make_expression (key->op, a1, a2, a3);
       break;
-
 
       /* arg 1 + default */
     case PT_ROUND:
@@ -14099,7 +16912,7 @@ keyword_func (const char *name, PT_NODE * args)
       if (c < 1 || c > 2)
 	{
 	  push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
-	  yyerror_explicit(10, 10);
+	  csql_yyerror_explicit(10, 10);
 	  return NULL;
 	}
 
@@ -14111,7 +16924,7 @@ keyword_func (const char *name, PT_NODE * args)
 	        node->type_enum != PT_TYPE_NCHAR) )
 	    {
 	      push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
-	      yyerror_explicit(10, 10);
+	      csql_yyerror_explicit(10, 10);
 	      return NULL;
 	    }
 	}
@@ -14428,6 +17241,178 @@ keyword_func (const char *name, PT_NODE * args)
 	return expr;
       }
       break;
+      
+    case PT_CONCAT:
+    case PT_CONCAT_WS:
+    case PT_FIELD:
+      {
+	PT_NODE *prev, *expr, *arg, *tmp, *sep, *val;
+	int i, ws;
+	arg = args;
+
+	ws = (key->op != PT_CONCAT) ? 1 : 0;
+	if (c < 1 + ws)
+	  return NULL;
+
+	if (key->op != PT_CONCAT)
+	  {
+	    sep = arg;
+	    arg = arg->next;
+	  }
+	else
+	  {
+	    sep = NULL;
+	  }
+
+	expr = parser_new_node (this_parser, PT_EXPR);
+	if (expr)
+	  {
+	    expr->info.expr.op = key->op;
+	    expr->info.expr.arg1 = arg;
+	    expr->info.expr.arg2 = NULL;
+	    if (key->op == PT_FIELD && sep)
+	      {
+		val = parser_new_node (this_parser, PT_VALUE);
+		if (val)
+		  {
+		    val->type_enum = PT_TYPE_INTEGER;
+		    val->info.value.data_value.i = 1;
+		    val->is_hidden_column = 1;
+		  }
+		expr->info.expr.arg3 = parser_copy_tree (this_parser, sep);
+		expr->info.expr.arg3->next = val;
+	      }
+	    else
+	      {
+		expr->info.expr.arg3 = sep;
+	      }
+	    expr->info.expr.continued_case = 1;
+	  }
+
+	PICE (expr);
+	prev = expr;
+
+	if (c > 1 + ws)
+	  {
+	    tmp = arg;
+	    arg = arg->next;
+	    tmp->next = NULL;
+
+	    if (prev)
+	      prev->info.expr.arg2 = arg;
+	    PICE (prev);
+	  }
+	for (i = 3 + ws; i <= c; i ++)
+	  {
+	    tmp = arg;
+	    arg = arg->next;
+	    tmp->next = NULL;
+
+	    expr = parser_new_node (this_parser, PT_EXPR);
+	    if (expr)
+	      {
+		expr->info.expr.op = key->op;
+		expr->info.expr.arg1 = prev;
+		expr->info.expr.arg2 = arg;
+		if (sep)
+		  {
+		    expr->info.expr.arg3 = parser_copy_tree (this_parser, sep);
+		    if (key->op == PT_FIELD)
+		      {
+			val = parser_new_node (this_parser, PT_VALUE);
+			if (val)
+			  {
+			    val->type_enum = PT_TYPE_INTEGER;
+			    val->info.value.data_value.i = i-ws;
+			    val->is_hidden_column = 1;
+			  }
+			expr->info.expr.arg3->next = val;
+		      }
+		  }
+		else
+		  {
+		    expr->info.expr.arg3 = NULL;
+		  }
+		expr->info.expr.continued_case = 1;
+	      }
+
+	    if (prev && prev->info.expr.continued_case >= 1)
+	      prev->info.expr.continued_case++;
+	    PICE (expr);
+	    prev = expr;
+	  }
+  
+	if (key->op == PT_FIELD && expr && expr->info.expr.arg2 == NULL)
+	  {
+	    val = parser_new_node (this_parser, PT_VALUE);
+	    if (val)
+	      {
+		val->type_enum = PT_TYPE_NULL;
+		val->is_hidden_column = 1;
+	      }
+	    expr->info.expr.arg2 = val;
+	  }
+
+	return expr;
+      }
+      break;
+      
+    case PT_LOCATE:
+      if (c < 2 || c > 3)
+	return NULL;
+
+      a1 = args;
+      a2 = a1->next;
+      if (a2)
+	{
+	  a3 = a2->next;
+	  a2->next = NULL;
+	}
+      a1->next = NULL;
+
+      node = parser_make_expression (key->op, a1, a2, a3);
+      return node;
+      
+    case PT_MID:
+      if (c != 3)
+	return NULL;
+
+      a1 = args;
+      a2 = a1->next;
+      a3 = a2->next;
+      a1->next = NULL;
+      a2->next = NULL;
+      a3->next = NULL;
+      
+      node = parser_make_expression (key->op, a1, a2, a3);
+      return node;
+      
+    case PT_STRCMP:
+      if (c != 2)
+	return NULL;
+	
+      a1 = args;
+      a2 = a1->next;
+      a1->next = NULL;
+
+      node = parser_make_expression (key->op, a1, a2, a3);
+      return node;
+
+    case PT_REVERSE:
+      if (c != 1)
+	return NULL;
+	
+      a1 = args;
+      node = parser_make_expression (key->op, a1, NULL, NULL);
+      return node;
+      
+    case PT_BIT_COUNT:
+      if (c != 1)
+	return NULL;
+	
+      a1 = args;
+      node = parser_make_expression (key->op, a1, NULL, NULL);
+      return node;
 
     case PT_GROUPBY_NUM:
       if (c != 0)
@@ -14450,7 +17435,12 @@ keyword_func (const char *name, PT_NODE * args)
       return node;
 
       break;
-
+      
+    case PT_LIST_DBS:
+      if (c != 0)
+	return NULL;
+      node = parser_make_expression (key->op, NULL, NULL, NULL);
+      return node;
 
     default:
       return NULL;
@@ -14460,5 +17450,102 @@ keyword_func (const char *name, PT_NODE * args)
 }
 
 
+static void 
+resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list)
+{
+  if (!node)
+    {
+      return;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SORT_SPEC:
+      if (node->info.sort_spec.expr 
+	  && node->info.sort_spec.expr->node_type == PT_NAME)
+	{
+	  resolve_alias_in_name_node (&node->info.sort_spec.expr, list);
+	}
+      else
+	{
+	  resolve_alias_in_expr_node (node->info.sort_spec.expr, list);
+	}
+      break;
+      
+    case PT_EXPR:
+      if (node->info.expr.arg1
+	  && node->info.expr.arg1->node_type == PT_NAME)
+	{
+	  resolve_alias_in_name_node (&node->info.expr.arg1, list);
+	}
+      else
+	{
+	  resolve_alias_in_expr_node (node->info.expr.arg1, list);
+	}
+      if (node->info.expr.arg2
+	  && node->info.expr.arg2->node_type == PT_NAME)
+	{
+	  resolve_alias_in_name_node (&node->info.expr.arg2, list);
+	}
+      else
+	{
+	  resolve_alias_in_expr_node (node->info.expr.arg2, list);
+	}
+      if (node->info.expr.arg3
+	  && node->info.expr.arg3->node_type == PT_NAME)
+	{
+	  resolve_alias_in_name_node (&node->info.expr.arg3, list);
+	}
+      else
+	{
+	  resolve_alias_in_expr_node (node->info.expr.arg3, list);
+	}
+      break;
+      
+    default:;
+    }
+}
 
 
+static void
+resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list)
+{
+  PT_NODE *col;
+  char *n_str, *c_str;
+  bool resolved = false;
+
+  n_str = parser_print_tree (this_parser, *node);
+
+  for (col = list; col; col = col->next)
+    {
+      if (col->node_type == PT_NAME)
+	{
+	  c_str = parser_print_tree (this_parser, col);
+	  if (c_str == NULL)
+	    {
+	      continue;
+	    }
+
+	  if (intl_mbs_casecmp (n_str, c_str) == 0)
+	    {
+	      resolved = true;
+	      break;
+	    }
+	}
+    }
+
+  if (resolved != true)
+    {
+      for (col = list; col; col = col->next)
+	{
+	  if (col->alias_print
+	      && intl_mbs_casecmp (n_str, col->alias_print) == 0)
+	    {
+	      parser_free_node (this_parser, *node);
+	      *node = parser_copy_tree (this_parser, col);
+	      (*node)->next = NULL;
+	      break;
+	    }
+	}
+    }
+}

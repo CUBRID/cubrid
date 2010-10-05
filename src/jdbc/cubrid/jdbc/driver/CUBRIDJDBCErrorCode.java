@@ -28,7 +28,7 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 /**
  * Title: CUBRID JDBC Driver Description:
@@ -119,7 +119,7 @@ public class CUBRIDJDBCErrorCode
       /**
        * 7 CUBRIDDriver.connect(...)에서 url을 parsing할 수 없을 때 출력된다.
        */
-      "invalid URL",
+      "invalid URL - ",
 
       /**
        * 8 CUBRIDDriver.connect(...)에서 Database name이 주어지지 않았을 때

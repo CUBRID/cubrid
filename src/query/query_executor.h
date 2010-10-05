@@ -309,6 +309,7 @@ struct buildlist_proc_node
   AGGREGATE_TYPE *g_agg_list;	/* aggregate function list */
   ARITH_TYPE *g_outarith_list;	/* outside arithmetic list */
   int g_grbynum_flag;		/* stop or continue grouping? */
+  int g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
 };
 
 
@@ -370,6 +371,10 @@ struct insert_proc_node
   int waitsecs;			/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
+  int do_replace;		/* duplicate tuples should be replaced */
+  int dup_key_oid_var_index;	/* hostvariable index for the OID required by
+				 * ON DUPLICATE KEY UPDATE processing
+				 */
   struct xasl_partition_info *partition;	/* partition information */
 };
 
@@ -399,6 +404,7 @@ struct connectby_proc_node
   REGU_VARIABLE_LIST prior_regu_list_rest;	/* rest of regu vars */
   REGU_VARIABLE_LIST after_cb_regu_list_pred;	/* regu list for after_cb pred */
   REGU_VARIABLE_LIST after_cb_regu_list_rest;	/* rest of regu vars */
+  bool single_table_opt;	/* single table optimizations */
   QFILE_TUPLE curr_tuple;	/* needed for operators and functions */
 };
 
@@ -416,7 +422,8 @@ typedef enum
   UPDATE_PROC,
   DELETE_PROC,
   INSERT_PROC,
-  CONNECTBY_PROC
+  CONNECTBY_PROC,
+  DO_PROC
 } PROC_TYPE;
 
 typedef enum

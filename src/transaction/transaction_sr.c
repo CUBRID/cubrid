@@ -624,7 +624,7 @@ xtran_wait_server_active_trans (THREAD_ENTRY * thread_p)
   client_id = p->client_id;
 
 loop:
-  prev_thrd_cnt = thread_has_threads (tran_index, client_id);
+  prev_thrd_cnt = thread_has_threads (thread_p, tran_index, client_id);
   if (prev_thrd_cnt > 0)
     {
       if (!logtb_is_interrupted_tran (thread_p, false, &continue_check,
@@ -634,7 +634,7 @@ loop:
 	}
     }
 
-  while ((thrd_cnt = thread_has_threads (tran_index, client_id))
+  while ((thrd_cnt = thread_has_threads (thread_p, tran_index, client_id))
 	 >= prev_thrd_cnt && thrd_cnt > 0)
     {
       /* Some threads may wait for data from the m-driver.

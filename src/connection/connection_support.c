@@ -1437,6 +1437,28 @@ css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn,
 #endif
 
 /*
+ * css_net_send_buffer_only() - send a buffer only to the other end.
+ *   return: enum css_error_code (See connectino_defs.h)
+ *   fd(in): socket descripter
+ *   buff(in): buffer for data will be sent
+ *   len(in): length for data will be sent
+ *   timeout(in): timeout value in mili-seconds
+ *
+ * Note: Used by client and server.
+ */
+int
+css_net_send_buffer_only (CSS_CONN_ENTRY * conn, const char *buff, int len,
+			  int timeout)
+{
+  struct iovec iov[1];
+
+  iov[0].iov_base = (caddr_t) buff;
+  iov[0].iov_len = len;
+
+  return css_send_io_vector (conn, iov, len, 1, timeout);
+}
+
+/*
  * css_net_read_header() -
  *   return: enum css_error_code (See connectino_defs.h)
  *   fd(in): socket descripter

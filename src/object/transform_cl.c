@@ -682,7 +682,7 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
   int pad;
 
   /*
-   * write fixed attribute values, if unbound, leave zero or garabge
+   * write fixed attribute values, if unbound, leave zero or garbage
    * it doesn't really matter.
    */
   start = buf->ptr;
@@ -1182,7 +1182,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr,
 	   * sigh, we now have to process the bound bits in much the same way
 	   * as the attributes above, it would be nice if these could be done
 	   * in parallel but we don't have the fixed size of the old
-	   * representation so we can't easilly sneak the buffer pointer
+	   * representation so we can't easily sneak the buffer pointer
 	   * forward, work on this someday
 	   */
 
@@ -1778,7 +1778,7 @@ get_substructure_set (OR_BUF * buf, LREADER reader, int expected)
       obj = (*reader) (buf);
       if (obj != NULL)
 	{
-	  ws_list_append (&list, obj);
+	  WS_LIST_APPEND (&list, obj);
 	}
       else
 	{
@@ -2597,7 +2597,7 @@ disk_to_methfile (OR_BUF * buf)
 
 	  /* properties */
 	  props = get_property_list (buf, vars[1].length);
-	  /* shoudn't have any of these yet */
+	  /* shouldn't have any of these yet */
 	  if (props != NULL)
 	    {
 	      set_free (props);
@@ -2737,7 +2737,7 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
 
   /* trigger list */
   or_put_int (buf, offset);
-  (void) tr_get_cache_objects ((TR_SCHEMA_CACHE *) att->triggers, &triggers);
+  (void) tr_get_cache_objects (att->triggers, &triggers);
   offset += object_set_size (triggers);
 
   /* property list */
@@ -2817,7 +2817,7 @@ attribute_size (SM_ATTRIBUTE * att)
   size +=
     substructure_set_size ((DB_LIST *) att->domain, (LSIZER) domain_size);
 
-  (void) tr_get_cache_objects ((TR_SCHEMA_CACHE *) att->triggers, &triggers);
+  (void) tr_get_cache_objects (att->triggers, &triggers);
   size += object_set_size (triggers);
 
   /* size += att_extension_size(att); */
@@ -3388,8 +3388,7 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
 			   (LSIZER) query_spec_size);
 
   or_put_int (buf, offset);
-  (void) tr_get_cache_objects ((TR_SCHEMA_CACHE *) class_->triggers,
-			       &triggers);
+  (void) tr_get_cache_objects (class_->triggers, &triggers);
   offset += object_set_size (triggers);
 
   /* property list */
@@ -3500,8 +3499,7 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
    * triggers - for simplicity, convert the cache into a flattened
    * list of object id's
    */
-  (void) tr_get_cache_objects ((TR_SCHEMA_CACHE *) class_->triggers,
-			       &triggers);
+  (void) tr_get_cache_objects (class_->triggers, &triggers);
   put_object_set (buf, triggers);
 
   put_property_list (buf, class_->properties);
@@ -3608,8 +3606,7 @@ tf_class_size (MOBJ classobj)
     substructure_set_size ((DB_LIST *) class_->query_spec,
 			   (LSIZER) query_spec_size);
 
-  (void) tr_get_cache_objects ((TR_SCHEMA_CACHE *) class_->triggers,
-			       &triggers);
+  (void) tr_get_cache_objects (class_->triggers, &triggers);
   size += object_set_size (triggers);
 
   size += property_list_size (class_->properties);
@@ -3708,8 +3705,7 @@ tf_dump_class_size (MOBJ classobj)
   fprintf (stdout, "Query_Spec statements %d\n", s);
   size += s;
 
-  (void) tr_get_cache_objects ((TR_SCHEMA_CACHE *) class_->triggers,
-			       &triggers);
+  (void) tr_get_cache_objects (class_->triggers, &triggers);
   s = object_set_size (triggers);
   fprintf (stdout, "Triggers %d\n", s);
   size += s;
@@ -3731,7 +3727,7 @@ tf_dump_class_size (MOBJ classobj)
  * Note:
  *    Since the component tag is not stored with the attributes & methods
  *    it must be restored after they have been read.  We know the name_space
- *    because they have been seperated into different lists in the
+ *    because they have been separated into different lists in the
  *    class structure.
  */
 static void
@@ -3764,7 +3760,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   DB_OBJLIST *triggers;
   DB_VALUE value;
   int rc = NO_ERROR;
-  char auto_increment_name[SM_MAX_IDENTIFIER_LENGTH];
+  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
   MOP serial_class_mop = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
 

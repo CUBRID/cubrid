@@ -629,6 +629,7 @@ req_handle_col_info_free (T_REQ_HANDLE * req_handle)
 	  FREE_MEM (req_handle->col_info[i].col_name);
 	  FREE_MEM (req_handle->col_info[i].real_attr);
 	  FREE_MEM (req_handle->col_info[i].class_name);
+	  FREE_MEM (req_handle->col_info[i].default_value);
 	}
       FREE_MEM (req_handle->col_info);
     }

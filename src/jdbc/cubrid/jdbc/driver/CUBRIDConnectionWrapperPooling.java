@@ -28,11 +28,11 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 
-import cubrid.jdbc.jci.*;
+import @CUBRID_JCI@.*;
 
 public class CUBRIDConnectionWrapperPooling extends CUBRIDConnection
 {

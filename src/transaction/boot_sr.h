@@ -54,8 +54,6 @@ extern BOOT_SERVER_STATUS boot_Server_status;
 
 extern void boot_server_status (BOOT_SERVER_STATUS status);
 
-extern bool skip_to_check_ct_classes_for_rebuild;
-
 #if defined(SERVER_MODE)
 /* in xserver_interface.h */
 extern void boot_donot_shutdown_server_at_exit (void);
@@ -109,5 +107,20 @@ extern int xboot_emergency_patch (THREAD_ENTRY * thread_p,
 				  const char *db_name, bool recreate_log);
 extern void boot_server_all_finalize (THREAD_ENTRY * thread_p,
 				      bool is_er_final);
+extern int boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids,
+			    int n_classes, int space_to_process,
+			    int instance_lock_timeout,
+			    int class_lock_timeout,
+			    bool delete_old_repr,
+			    OID * last_processed_class_oid,
+			    OID * last_processed_oid,
+			    int *total_objects, int *failed_objects,
+			    int *modified_objects, int *big_objects,
+			    int *initial_last_repr_id);
+extern int boot_heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid);
+extern int boot_compact_start (THREAD_ENTRY * thread_p);
+extern int boot_compact_stop (THREAD_ENTRY * thread_p);
+extern bool boot_can_compact (THREAD_ENTRY * thread_p);
+extern bool boot_set_skip_check_ct_classes (bool val);
 
 #endif /* _BOOT_SR_H_ */

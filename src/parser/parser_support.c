@@ -146,9 +146,44 @@ static void regu_cache_attrinfo_init (HEAP_CACHE_ATTRINFO * ptr);
 static void regu_partition_info_init (XASL_PARTITION_INFO * ptr);
 static void regu_parts_info_init (XASL_PARTS_INFO * ptr);
 static void regu_selupd_list_init (SELUPD_LIST * ptr);
+static PT_NODE *pt_create_param_for_value (PARSER_CONTEXT * parser,
+					   PT_NODE * value,
+					   int host_var_index);
 
 
 #define NULL_ATTRID -1
+
+/*
+ * pt_make_string_value () -
+ *   return:  return a PT_NODE for the string value
+ *   parser(in): parser context
+ *   value_string(in): string value to make up a PT_NODE
+ */
+
+PT_NODE *
+pt_make_string_value (PARSER_CONTEXT * parser, const char *value_string)
+{
+  PT_NODE *node;
+
+  node = parser_new_node (parser, PT_VALUE);
+  if (node)
+    {
+      if (value_string == NULL)
+	{
+	  node->type_enum = PT_TYPE_NULL;
+	}
+      else
+	{
+	  node->info.value.data_value.str = pt_append_bytes
+	    (parser, NULL, value_string, strlen (value_string));
+	  node->info.value.text =
+	    (char *) node->info.value.data_value.str->bytes;
+	  node->type_enum = PT_TYPE_CHAR;
+	  node->info.value.string_type = ' ';
+	}
+    }
+  return node;
+}
 
 /*
  * pt_and () - Create a PT_AND node with arguments of the nodes passed in
@@ -275,6 +310,84 @@ pt_table_option (PARSER_CONTEXT * parser, const PT_TABLE_OPTION_TYPE option,
       parser_init_node (node);
       node->info.table_option.option = option;
       node->info.table_option.val = val;
+    }
+
+  return node;
+}
+
+/*
+ * pt_expression () - Create a PT_EXPR node using the arguments passed in
+ *   return:
+ *   parser(in):
+ *   op(in): the expression operation type
+ *   arg1(in):
+ *   arg2(in):
+ *   arg3(in):
+ */
+PT_NODE *
+pt_expression (PARSER_CONTEXT * parser, PT_OP_TYPE op, PT_NODE * arg1,
+	       PT_NODE * arg2, PT_NODE * arg3)
+{
+  PT_NODE *node;
+
+  node = parser_new_node (parser, PT_EXPR);
+
+  if (node)
+    {
+      parser_init_node (node);
+      node->info.expr.op = op;
+      node->info.expr.arg1 = arg1;
+      node->info.expr.arg2 = arg2;
+      node->info.expr.arg3 = arg3;
+    }
+
+  return node;
+}
+
+PT_NODE *
+pt_expression_0 (PARSER_CONTEXT * parser, PT_OP_TYPE op)
+{
+  return pt_expression (parser, op, NULL, NULL, NULL);
+}
+
+PT_NODE *
+pt_expression_1 (PARSER_CONTEXT * parser, PT_OP_TYPE op, PT_NODE * arg1)
+{
+  return pt_expression (parser, op, arg1, NULL, NULL);
+}
+
+PT_NODE *
+pt_expression_2 (PARSER_CONTEXT * parser, PT_OP_TYPE op, PT_NODE * arg1,
+		 PT_NODE * arg2)
+{
+  return pt_expression (parser, op, arg1, arg2, NULL);
+}
+
+PT_NODE *
+pt_expression_3 (PARSER_CONTEXT * parser, PT_OP_TYPE op, PT_NODE * arg1,
+		 PT_NODE * arg2, PT_NODE * arg3)
+{
+  return pt_expression (parser, op, arg1, arg2, arg3);
+}
+
+/*
+ * pt_node_list () - Create a PT_NODE_LIST node using the arguments passed in
+ *   return:
+ *   parser(in):
+ *   list_type(in):
+ *   list(in):
+ */
+PT_NODE *
+pt_node_list (PARSER_CONTEXT * parser, PT_MISC_TYPE list_type, PT_NODE * list)
+{
+  PT_NODE *node;
+
+  node = parser_new_node (parser, PT_NODE_LIST);
+
+  if (node)
+    {
+      node->info.node_list.list_type = list_type;
+      node->info.node_list.list = list;
     }
 
   return node;
@@ -446,7 +559,11 @@ pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  || function_type == PT_STDDEV
 	  || function_type == PT_VARIANCE
 	  || function_type == PT_GROUPBY_NUM
-	  || function_type == PT_COUNT || function_type == PT_COUNT_STAR)
+	  || function_type == PT_COUNT
+	  || function_type == PT_COUNT_STAR
+	  || function_type == PT_AGG_BIT_AND
+	  || function_type == PT_AGG_BIT_OR
+	  || function_type == PT_AGG_BIT_XOR)
 	{
 	  return true;
 	}
@@ -780,16 +897,12 @@ pt_is_ddl_statement (const PT_NODE * node)
 int
 pt_is_method_call (PT_NODE * node)
 {
-  if (!node)
+  if (node == NULL)
     {
       return false;
     }
 
-  while (node->node_type == PT_DOT_)
-    {
-      node = node->info.dot.arg2;
-    }
-
+  node = pt_get_end_path_node (node);
   return (node->node_type == PT_METHOD_CALL);
 }
 
@@ -801,15 +914,12 @@ pt_is_method_call (PT_NODE * node)
 int
 pt_is_attr (PT_NODE * node)
 {
-  if (!node)
+  if (node == NULL)
     {
       return false;
     }
 
-  while (node->node_type == PT_DOT_)
-    {
-      node = node->info.dot.arg2;
-    }
+  node = pt_get_end_path_node (node);
 
   if (node->node_type == PT_NAME)
     {
@@ -859,7 +969,7 @@ pt_is_pseudocolumn_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 int
 pt_instnum_compatibility (PT_NODE * expr)
 {
-  PT_NODE *arg1, *arg2, *arg3 = NULL;
+  PT_NODE *arg1 = NULL, *arg2 = NULL, *arg3 = NULL;
 
   if (expr->node_type != PT_EXPR)
     {
@@ -867,16 +977,20 @@ pt_instnum_compatibility (PT_NODE * expr)
     }
 
   /* attr and subquery is not compatible with inst_num() */
-  arg1 = expr->info.expr.arg1;
-  if (arg1)
+
+  if (expr->info.expr.op != PT_IF)
     {
-      if (COMPATIBLE_WITH_INSTNUM (arg1))
+      arg1 = expr->info.expr.arg1;
+      if (arg1)
 	{
-	  PT_EXPR_INFO_SET_FLAG (expr, PT_EXPR_INFO_INSTNUM_C);
-	}
-      if (NOT_COMPATIBLE_WITH_INSTNUM (arg1))
-	{
-	  PT_EXPR_INFO_SET_FLAG (expr, PT_EXPR_INFO_INSTNUM_NC);
+	  if (COMPATIBLE_WITH_INSTNUM (arg1))
+	    {
+	      PT_EXPR_INFO_SET_FLAG (expr, PT_EXPR_INFO_INSTNUM_C);
+	    }
+	  if (NOT_COMPATIBLE_WITH_INSTNUM (arg1))
+	    {
+	      PT_EXPR_INFO_SET_FLAG (expr, PT_EXPR_INFO_INSTNUM_NC);
+	    }
 	}
     }
 
@@ -918,6 +1032,7 @@ pt_instnum_compatibility (PT_NODE * expr)
     case PT_IS_NOT_NULL:
     case PT_EXISTS:
     case PT_ASSIGN:
+    case PT_IFNULL:
       /* those operator cannot have inst_num() */
       PT_EXPR_INFO_SET_FLAG (expr, PT_EXPR_INFO_INSTNUM_NC);
       break;
@@ -928,9 +1043,12 @@ pt_instnum_compatibility (PT_NODE * expr)
   /* detect semantic error in pt_semantic_check_local */
   if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_INSTNUM_NC))
     {
-      if (arg1 && pt_is_instnum (arg1))
+      if (expr->info.expr.op != PT_IF)
 	{
-	  PT_EXPR_INFO_SET_FLAG (arg1, PT_EXPR_INFO_INSTNUM_NC);
+	  if (arg1 && pt_is_instnum (arg1))
+	    {
+	      PT_EXPR_INFO_SET_FLAG (arg1, PT_EXPR_INFO_INSTNUM_NC);
+	    }
 	}
       if (arg2 && pt_is_instnum (arg2))
 	{
@@ -1351,15 +1469,18 @@ pt_from_entity_part (const PT_NODE * node)
 PT_NODE *
 pt_left_part (const PT_NODE * node)
 {
-  if (node)
+  if (node == NULL)
     {
-      if (node->node_type == PT_EXPR)
-	return node->info.expr.arg1;
-
-      if (node->node_type == PT_DOT_)
-	return node->info.dot.arg1;
+      return NULL;
     }
-
+  if (node->node_type == PT_EXPR)
+    {
+      return node->info.expr.arg1;
+    }
+  if (node->node_type == PT_DOT_)
+    {
+      return node->info.dot.arg1;
+    }
   return NULL;
 }
 
@@ -1371,17 +1492,36 @@ pt_left_part (const PT_NODE * node)
 PT_NODE *
 pt_right_part (const PT_NODE * node)
 {
-  if (node)
+  if (node == NULL)
     {
-      if (node->node_type == PT_EXPR)
-	return node->info.expr.arg2;
-
-      if (node->node_type == PT_DOT_)
-	return node->info.dot.arg2;
+      return NULL;
     }
-
+  if (node->node_type == PT_EXPR)
+    {
+      return node->info.expr.arg2;
+    }
+  if (node->node_type == PT_DOT_)
+    {
+      return node->info.dot.arg2;
+    }
   return NULL;
 }
+
+/*
+ * pt_get_end_path_node () -
+ *   return: the original name node at the end of a path expression
+ *   expr(in):
+ */
+PT_NODE *
+pt_get_end_path_node (PT_NODE * node)
+{
+  while (node != NULL && node->node_type == PT_DOT_)
+    {
+      node = node->info.dot.arg2;
+    }
+  return node;
+}
+
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -1496,12 +1636,46 @@ pt_values_part (const PT_NODE * node)
 {
   if (node
       && node->node_type == PT_INSERT
-      && node->info.insert.is_value != PT_IS_SUBQUERY)
+      && node->info.insert.value_clauses->info.node_list.list_type
+      != PT_IS_SUBQUERY)
     {
-      return node->info.insert.value_clause;
+      return node->info.insert.value_clauses;
     }
 
   return NULL;
+}
+
+/*
+ * pt_get_subquery_of_insert_select () -
+ *   return:
+ *   node(in):
+ */
+PT_NODE *
+pt_get_subquery_of_insert_select (const PT_NODE * node)
+{
+  PT_NODE *ptr_values = NULL;
+  PT_NODE *ptr_subquery = NULL;
+
+  if (node == NULL || node->node_type != PT_INSERT)
+    {
+      return NULL;
+    }
+
+  ptr_values = node->info.insert.value_clauses;
+  assert (ptr_values != NULL);
+  assert (ptr_values->node_type == PT_NODE_LIST);
+
+  if (ptr_values->info.node_list.list_type != PT_IS_SUBQUERY)
+    {
+      return NULL;
+    }
+
+  assert (ptr_values->next == NULL);
+  ptr_subquery = ptr_values->info.node_list.list;
+  assert (PT_IS_QUERY (ptr_subquery));
+  assert (ptr_subquery->next == NULL);
+
+  return ptr_subquery;
 }
 
 /*
@@ -1609,6 +1783,7 @@ pt_must_be_filtering (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       *continue_walk = PT_STOP_WALK;
       return node;
     }
+
   *continue_walk = PT_CONTINUE_WALK;
 
   return node;
@@ -1694,7 +1869,6 @@ pt_is_filtering_expression (PARSER_CONTEXT * parser, PT_NODE * expression)
   bool result = false;
 
   assert (expression->next == NULL);
-
   or_next_save = expression->or_next;
   expression->or_next = NULL;
 
@@ -1729,7 +1903,6 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates,
       assert (!(current_conj->next != NULL
 		&& (PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_AND)
 		    || PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_OR))));
-
       next_conj = current_conj->next;
       current_conj->next = NULL;
 
@@ -1742,7 +1915,6 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates,
 		    && (PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred, PT_AND)
 			|| PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred,
 							  PT_OR))));
-
 	  if (pt_is_filtering_expression (parser, current_pred))
 	    {
 	      has_filter_pred = true;
@@ -3352,6 +3524,7 @@ regu_arith_init (ARITH_TYPE * ptr)
   ptr->rightptr = NULL;
   ptr->thirdptr = NULL;
   ptr->misc_operand = LEADING;
+  ptr->rand_seed = NULL;
 }
 
 /*
@@ -3637,6 +3810,9 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
       /* allocate CONNECT BY internal list files */
       ptr->proc.connect_by.input_list_id = regu_listid_alloc ();
       ptr->proc.connect_by.start_with_list_id = regu_listid_alloc ();
+      break;
+
+    case DO_PROC:
       break;
     }
 }
@@ -4884,3 +5060,634 @@ regu_set_global_error (void)
   qp_Packing_er_code = ER_REGU_SYSTEM;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+/*
+ * pt_limit_to_numbering_expr () -
+ *   return: expr node with numbering
+ *   limit(in): limit node
+ */
+PT_NODE *
+pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit,
+			    PT_OP_TYPE num_op, bool is_gby_num)
+{
+  PT_NODE *node = NULL;
+
+  if (!limit)
+    {
+      return NULL;
+    }
+
+  if (!limit->next)
+    {
+      PT_NODE *num;
+      if (!is_gby_num)
+	{
+	  num = parser_new_node (parser, PT_EXPR);
+	}
+      else
+	{
+	  num = parser_new_node (parser, PT_FUNCTION);
+	}
+      node = parser_new_node (parser, PT_EXPR);
+      if (!num || !node)
+	{
+	  if (num)
+	    {
+	      parser_free_tree (parser, num);
+	    }
+	  if (node)
+	    {
+	      parser_free_tree (parser, node);
+	      node = NULL;
+	    }
+	}
+      else
+	{
+	  if (!is_gby_num)
+	    {
+	      num->info.expr.op = num_op;
+	    }
+	  else
+	    {
+	      num->type_enum = PT_TYPE_INTEGER;
+	      num->info.function.function_type = PT_GROUPBY_NUM;
+	      num->info.function.arg_list = NULL;
+	      num->info.function.all_or_distinct = PT_ALL;
+	    }
+	  node->info.expr.op = PT_LE;
+	  node->info.expr.arg1 = num;
+	  node->info.expr.arg2 = parser_copy_tree (parser, limit);
+	}
+    }
+  else
+    {
+      PT_NODE *num_l, *num_u, *sum, *part1, *part2;
+      if (!is_gby_num)
+	{
+	  num_l = parser_new_node (parser, PT_EXPR);
+	  num_u = parser_new_node (parser, PT_EXPR);
+	}
+      else
+	{
+	  num_l = parser_new_node (parser, PT_FUNCTION);
+	  num_u = parser_new_node (parser, PT_FUNCTION);
+	}
+      sum = parser_new_node (parser, PT_EXPR);
+      part1 = parser_new_node (parser, PT_EXPR);
+      part2 = parser_new_node (parser, PT_EXPR);
+      node = parser_new_node (parser, PT_EXPR);
+
+      if (!num_l || !num_u || !sum || !part1 || !part2 || !node)
+	{
+	  if (num_l)
+	    {
+	      parser_free_tree (parser, num_l);
+	    }
+	  if (num_u)
+	    {
+	      parser_free_tree (parser, num_u);
+	    }
+	  if (sum)
+	    {
+	      parser_free_tree (parser, sum);
+	    }
+	  if (part1)
+	    {
+	      parser_free_tree (parser, part1);
+	    }
+	  if (part2)
+	    {
+	      parser_free_tree (parser, part2);
+	    }
+	  if (node)
+	    {
+	      parser_free_tree (parser, node);
+	      node = NULL;
+	    }
+	}
+      else
+	{
+	  if (!is_gby_num)
+	    {
+	      num_l->info.expr.op = num_op;
+	      num_u->info.expr.op = num_op;
+	    }
+	  else
+	    {
+	      num_l->type_enum = PT_TYPE_INTEGER;
+	      num_l->info.function.function_type = PT_GROUPBY_NUM;
+	      num_l->info.function.arg_list = NULL;
+	      num_l->info.function.all_or_distinct = PT_ALL;
+
+	      num_u->type_enum = PT_TYPE_INTEGER;
+	      num_u->info.function.function_type = PT_GROUPBY_NUM;
+	      num_u->info.function.arg_list = NULL;
+	      num_u->info.function.all_or_distinct = PT_ALL;
+	    }
+
+	  sum->info.expr.op = PT_PLUS;
+	  sum->info.expr.arg1 = parser_copy_tree (parser, limit);
+	  sum->info.expr.arg2 = parser_copy_tree (parser, limit->next);
+
+	  part1->info.expr.op = PT_GT;
+	  part1->info.expr.arg1 = num_l;
+	  part1->info.expr.arg2 = parser_copy_tree (parser, limit);
+
+	  part2->info.expr.op = PT_LE;
+	  part2->info.expr.arg1 = num_u;
+	  part2->info.expr.arg2 = sum;
+
+	  node->info.expr.op = PT_AND;
+	  node->info.expr.arg1 = part1;
+	  node->info.expr.arg2 = part2;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_create_param_for_value () - Creates a PT_NODE to be used as a host
+ *                                variable that replaces an existing value
+ *   return: the node or NULL on error
+ *   parser(in):
+ *   value(in): the value to be replaced
+ *   host_var_index(in): the index of the host variable that replaces the value
+ */
+static PT_NODE *
+pt_create_param_for_value (PARSER_CONTEXT * parser, PT_NODE * value,
+			   int host_var_index)
+{
+  PT_NODE *host_var = parser_new_node (parser, PT_HOST_VAR);
+  if (host_var == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
+  host_var->type_enum = value->type_enum;
+  host_var->expected_domain = value->expected_domain;
+  host_var->data_type = parser_copy_tree (parser, value->data_type);
+  host_var->info.host_var.var_type = PT_HOST_IN;
+  host_var->info.host_var.str = pt_append_string (parser, NULL, "?");
+  host_var->info.host_var.index = host_var_index;
+
+  return host_var;
+}
+
+/*
+ * pt_rewrite_to_auto_param () - Rewrites a value to a host variable and fills
+ *                               in the value of the new host variable in the
+ *                               auto parameters values array
+ *   return: the new node or NULL on error
+ *   parser(in):
+ *   value(in): the value to be replaced by a host variable parameter
+ */
+PT_NODE *
+pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value)
+{
+  PT_NODE *host_var = NULL;
+  DB_VALUE *host_var_val = NULL;
+  DB_VALUE *val = NULL;
+  int count_to_realloc = 0;
+  DB_VALUE *larger_host_variables = NULL;
+
+  assert (pt_is_const_not_hostvar (value) && !PT_IS_NULL_NODE (value));
+
+  /* The index number of auto-parameterized host variables starts after the last
+     one of the user-specified host variables. */
+  host_var = pt_create_param_for_value (parser, value,
+					parser->host_var_count +
+					parser->auto_param_count);
+  if (host_var == NULL)
+    {
+      goto error_exit;
+    }
+
+  PT_NODE_MOVE_NUMBER_OUTERLINK (host_var, value);
+
+  /* Expand parser->host_variables by realloc */
+  count_to_realloc = parser->host_var_count + parser->auto_param_count + 1;
+  /* We actually allocate around twice more than needed so that we don't do
+     useless copies too often. */
+  count_to_realloc = (count_to_realloc / 2) * 4;
+  if (count_to_realloc == 0)
+    {
+      count_to_realloc = 1;
+    }
+  larger_host_variables = (DB_VALUE *)
+    realloc (parser->host_variables, count_to_realloc * sizeof (DB_VALUE));
+  if (larger_host_variables == NULL)
+    {
+      PT_ERRORm (parser, value, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      goto error_exit;
+    }
+  parser->host_variables = larger_host_variables;
+  ++parser->auto_param_count;
+  larger_host_variables = NULL;
+
+  /* Copy the DB_VALUE to parser->host_variables */
+  host_var_val = parser->host_variables + host_var->info.host_var.index;
+  val = pt_value_to_db (parser, value);
+  /* TODO Is it ok to ignore errors here? */
+  if (val != NULL)
+    {
+      (void) pr_clone_value (val, host_var_val);
+    }
+  else
+    {
+      DB_MAKE_NULL (host_var_val);
+    }
+  parser_free_tree (parser, value);
+
+  return host_var;
+
+error_exit:
+  if (host_var != NULL)
+    {
+      parser_free_tree (parser, host_var);
+      host_var = NULL;
+    }
+  return NULL;
+}
+
+/*
+ * pt_copy_statement_flags () - Copies the special flags relevant for statement
+ *                              execution from one node to another. This is
+ *                              useful for executing statements that are
+ *                              generated by rewriting existing statements
+ *                              (see CREATE ... AS SELECT for an example).
+ *   source(in): the statement to copy the flags from
+ *   destination(in/out): the statement to copy the flags to
+ *
+ * Note: Not all the PT_NODE flags are copied, only the ones needed for correct
+ *       execution of a statement are copied.
+ */
+void
+pt_copy_statement_flags (PT_NODE * source, PT_NODE * destination)
+{
+  destination->recompile = source->recompile;
+  destination->cannot_prepare = source->cannot_prepare;
+  destination->do_not_keep = source->do_not_keep;
+  destination->si_datetime = source->si_datetime;
+  destination->si_tran_id = source->si_tran_id;
+}
+
+/*
+ * pt_get_dup_key_oid_var_index () - Gets the index of the auto-parameterized
+ *                                   host variable in the INSERT ON DUPLICATE
+ *                                   KEY UPDATE statement
+ *   return: the index or -1 on error
+ *   parser(in):
+ *   update_statement(in):
+ *
+ * Note: The host variable will be replaced at runtime with the value of the
+ *       OID of an existing duplicate key that will be updated. See
+ *       pt_dup_key_update_stmt () to have a better understanding of what will
+ *       be executed.
+ */
+int
+pt_get_dup_key_oid_var_index (PARSER_CONTEXT * parser,
+			      PT_NODE * update_statement)
+{
+  PT_NODE *search_cond = NULL;
+  PT_NODE *oid_node = NULL;
+  int index = -1;
+
+  if (update_statement == NULL || update_statement->node_type != PT_UPDATE)
+    {
+      return -1;
+    }
+  search_cond = update_statement->info.update.search_cond;
+  if (search_cond == NULL || search_cond->node_type != PT_EXPR)
+    {
+      return -1;
+    }
+  oid_node = search_cond->info.expr.arg2;
+  if (oid_node == NULL || oid_node->node_type != PT_HOST_VAR)
+    {
+      return -1;
+    }
+  index = oid_node->info.host_var.index;
+  if (oid_node->info.host_var.var_type != PT_HOST_IN)
+    {
+      return -1;
+    }
+  if (index < 0 ||
+      index >= (parser->host_var_count + parser->auto_param_count))
+    {
+      return -1;
+    }
+  return index;
+}
+
+/*
+ * pt_dup_key_update_stmt () - Builds a special UPDATE statement to be used
+ *                             for INSERT ON DUPLICATE KEY UPDATE statement
+ *                             processing
+ *   return: the UPDATE statement or NULL on error
+ *   parser(in):
+ *   spec(in):
+ *   assignment(in):
+ *
+ * Note: For the following INSERT statement:
+ *         INSERT INTO tbl VALUES (1) ON DUPLICATE KEY UPDATE id = 4
+ *       the following UPDATE statement will be generated:
+ *         UPDATE tbl SET id = 4 WHERE tbl = OID_OF_DUPLICATE_KEY (tbl)
+ *       After type checking, constant folding and auto-parameterization, the
+ *       OID_OF_DUPLICATE_KEY (tbl) node will be replaced by a host variable.
+ *       At runtime, the variable will be assigned the OID of a duplicate key
+ *       and the UPDATE XASL will be executed.
+ */
+PT_NODE *
+pt_dup_key_update_stmt (PARSER_CONTEXT * parser, PT_NODE * spec,
+			PT_NODE * assignment)
+{
+  PT_NODE *node = parser_new_node (parser, PT_UPDATE);
+  PT_NODE *name_node = NULL;
+  PT_NODE *name_arg_node = NULL;
+  PT_NODE *func_node = NULL;
+
+  if (node == NULL)
+    {
+      goto error_exit;
+    }
+
+  if (spec->node_type != PT_SPEC || spec->info.spec.entity_name == NULL)
+    {
+      goto error_exit;
+    }
+  name_node = parser_copy_tree (parser, spec->info.spec.entity_name);
+  if (name_node == NULL || name_node->node_type != PT_NAME)
+    {
+      goto error_exit;
+    }
+  PT_NAME_INFO_SET_FLAG (name_node, PT_NAME_INFO_GENERATED_OID);
+
+  name_arg_node = parser_copy_tree (parser, name_node);
+  if (name_arg_node == NULL)
+    {
+      goto error_exit;
+    }
+
+  node->info.update.spec = parser_copy_tree (parser, spec);
+  if (node->info.update.spec == NULL)
+    {
+      goto error_exit;
+    }
+
+  /* This will be replaced by a OID PT_VALUE node in constant folding,
+     see pt_fold_const_expr () */
+  func_node = pt_expression_1 (parser, PT_OID_OF_DUPLICATE_KEY,
+			       name_arg_node);
+  if (func_node == NULL)
+    {
+      goto error_exit;
+    }
+  name_arg_node = NULL;
+
+  node->info.update.search_cond = pt_expression_2 (parser, PT_EQ, name_node,
+						   func_node);
+  if (node->info.update.search_cond == NULL)
+    {
+      goto error_exit;
+    }
+
+  /* We need the OID PT_VALUE to become a host variable, see
+     qo_optimize_queries () */
+  node->info.update.search_cond->force_auto_parameterize = 1;
+
+  /* We don't want constant folding on the WHERE clause because it might
+     result in the host variable being removed from the tree. */
+  node->info.update.search_cond->do_not_fold = 1;
+
+  func_node = NULL;
+  name_node = NULL;
+
+  node->info.update.assignment = assignment;
+
+  return node;
+
+error_exit:
+
+  if (func_node != NULL)
+    {
+      parser_free_tree (parser, func_node);
+      func_node = NULL;
+    }
+  if (name_arg_node != NULL)
+    {
+      parser_free_tree (parser, name_arg_node);
+      name_arg_node = NULL;
+    }
+  if (name_node != NULL)
+    {
+      parser_free_tree (parser, name_node);
+      name_node = NULL;
+    }
+  if (node != NULL)
+    {
+      parser_free_tree (parser, node);
+      node = NULL;
+    }
+  return NULL;
+}
+
+/*
+ * pt_fixup_column_type() - Fixes the type of a SELECT column so that it can
+ *                          be used for view creation and for CREATE AS SELECT
+ *                          statements
+ *   col(in/out): the SELECT statement column
+ *
+ * Note: modifies TP_FLOATING_PRECISION_VALUE precision for char/bit constants
+ *       This code is mostly a hack needed because string literals do not have
+ *       the proper precision set. A better fix is to modify
+ *       pt_db_value_initialize () so that the precision information is set.
+ */
+void
+pt_fixup_column_type (PT_NODE * col)
+{
+  int fixed_precision = 0;
+
+  if (col->node_type == PT_VALUE)
+    {
+      switch (col->type_enum)
+	{
+	  /* for NCHAR(3) type column, we reserve only 3bytes.
+	   * precision and length for NCHAR(n) type is n
+	   */
+	case PT_TYPE_NCHAR:
+	case PT_TYPE_VARNCHAR:
+	case PT_TYPE_CHAR:
+	case PT_TYPE_VARCHAR:
+	  fixed_precision = col->info.value.data_value.str->length;
+	  if (fixed_precision == 0)
+	    {
+	      fixed_precision = 1;
+	    }
+	  break;
+
+	case PT_TYPE_BIT:
+	case PT_TYPE_VARBIT:
+	  switch (col->info.value.string_type)
+	    {
+	    case 'B':
+	      fixed_precision = strlen (col->info.value.text);
+	      if (fixed_precision == 0)
+		{
+		  fixed_precision = 1;
+		}
+	      break;
+
+	    case 'X':
+	      fixed_precision = strlen (col->info.value.text);
+	      if (fixed_precision == 0)
+		{
+		  fixed_precision = 1;
+		}
+	      break;
+
+	    default:
+	      break;
+	    }
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+  /* Convert
+     char(max)  to varchar(max),
+     nchar(max) to varnchar(max),
+     bit(max)   to varbit(max)
+   */
+  if ((col->type_enum == PT_TYPE_CHAR || col->type_enum == PT_TYPE_NCHAR
+       || col->type_enum == PT_TYPE_BIT) && col->data_type != NULL
+      && (col->data_type->info.data_type.precision ==
+	  TP_FLOATING_PRECISION_VALUE))
+    {
+      if (col->type_enum == PT_TYPE_CHAR)
+	{
+	  col->type_enum = PT_TYPE_VARCHAR;
+	  col->data_type->type_enum = PT_TYPE_VARCHAR;
+	}
+      else if (col->type_enum == PT_TYPE_NCHAR)
+	{
+	  col->type_enum = PT_TYPE_VARNCHAR;
+	  col->data_type->type_enum = PT_TYPE_VARNCHAR;
+	}
+      else
+	{
+	  col->type_enum = PT_TYPE_VARBIT;
+	  col->data_type->type_enum = PT_TYPE_VARBIT;
+	}
+
+      if (fixed_precision != 0)
+	{
+	  col->data_type->info.data_type.precision = fixed_precision;
+	}
+    }
+}
+
+static void
+pt_fixup_select_columns_type (PT_NODE * columns)
+{
+  PT_NODE *col = NULL;
+  for (col = columns; col != NULL; col = col->next)
+    {
+      pt_fixup_column_type (col);
+    }
+}
+
+/*
+ * pt_get_select_query_columns() - Retrieves the columns of a SELECT query
+ *				   result
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   parser(in): Parser context
+ *   create_select(in): the select statement parse tree
+ *   query_columns(out): the columns of the select statement
+ *
+ * Note: The code is very similar to the one in db_compile_statement_local ()
+ */
+int
+pt_get_select_query_columns (PARSER_CONTEXT * parser, PT_NODE * create_select,
+			     DB_QUERY_TYPE ** query_columns)
+{
+  PT_NODE *temp_copy = NULL;
+  DB_QUERY_TYPE *temp_qtype = NULL;
+  DB_QUERY_TYPE *qtype = NULL;
+  int error = NO_ERROR;
+
+  assert (query_columns != NULL);
+
+  if (pt_node_to_cmd_type (create_select) != CUBRID_STMT_SELECT)
+    {
+      ERROR1 (error, ER_UNEXPECTED, "Expecting a select statement.");
+      goto error_exit;
+    }
+
+  temp_copy = parser_copy_tree (parser, create_select);
+  if (temp_copy == NULL)
+    {
+      error = ER_FAILED;
+      goto error_exit;
+    }
+
+  qtype = pt_get_titles (parser, create_select);
+  if (qtype == NULL)
+    {
+      /* We ignore this for now and we try again later. */
+    }
+
+  /* Semantic check for the statement */
+  temp_copy = pt_compile (parser, temp_copy);
+  if (temp_copy == NULL || pt_has_error (parser))
+    {
+      error = er_errid ();
+      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, temp_copy);
+      goto error_exit;
+    }
+
+  pt_fixup_select_columns_type (pt_get_select_list (parser, temp_copy));
+
+  if (qtype == NULL)
+    {
+      qtype = pt_get_titles (parser, temp_copy);
+    }
+
+  if (qtype == NULL)
+    {
+      error = er_errid ();
+      goto error_exit;
+    }
+
+  qtype = pt_fillin_type_size (parser, temp_copy, qtype, DB_NO_OIDS, true);
+  if (qtype == NULL)
+    {
+      error = er_errid ();
+      goto error_exit;
+    }
+
+  /* qtype will be freed later */
+  *query_columns = qtype;
+
+  parser_free_tree (parser, temp_copy);
+  temp_copy = NULL;
+
+  return error;
+
+error_exit:
+  if (qtype != NULL)
+    {
+      db_free_query_format (qtype);
+      qtype = NULL;
+    }
+  if (temp_copy != NULL)
+    {
+      parser_free_tree (parser, temp_copy);
+      temp_copy = NULL;
+    }
+  return error;
+}

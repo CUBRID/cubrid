@@ -226,7 +226,7 @@ static PGLENGTH catalog_Max_record_size;	/* Maximum Record Size */
 
 /*
  * Note: Catalog memory hash table operations are NOT done in CRITICAL
- * SECTIONS, because there can not be simultanoues updaters and readers
+ * SECTIONS, because there can not be simultaneous updaters and readers
  * for the same class representation information.
  */
 static MHT_TABLE *catalog_Hash_table = NULL;	/* Catalog memory hash table */
@@ -691,16 +691,6 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p,
 		      VPID * near_page_p, bool is_overflow_page)
 {
   PAGE_PTR page_p;
-  char data[CATALOG_PAGE_HEADER_SIZE + MAX_ALIGNMENT], *aligned_data;
-  RECDES record = {
-    CATALOG_PAGE_HEADER_SIZE, CATALOG_PAGE_HEADER_SIZE, REC_HOME, NULL
-  };
-  CATALOG_PAGE_HEADER page_header = { {NULL_PAGEID, NULL_VOLID}, 0, 0 };
-
-  aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
-
-  page_header.is_overflow_page = is_overflow_page;
-  recdes_set_data_area (&record, aligned_data, CATALOG_PAGE_HEADER_SIZE);
 
   if (file_alloc_pages (thread_p, &catalog_Id.vfid, page_id_p, 1, near_page_p,
 			catalog_initialize_new_page,
@@ -711,8 +701,8 @@ catalog_get_new_page (THREAD_ENTRY * thread_p, VPID * page_id_p,
 
   /*
    * Note: we fetch the page as old since it was initialized during the
-   * allocation by ct_init_newpage, therfore, we care about the current
-   * content of the page.
+   * allocation by catalog_initialize_new_page, we want the current
+   * contents of the page.
    */
 
   page_p = pgbuf_fix (thread_p, page_id_p, OLD_PAGE, PGBUF_LATCH_WRITE,
@@ -2554,8 +2544,8 @@ catalog_create (THREAD_ENTRY * thread_p, CTID * catalog_id_p,
 
   /*
    * Note: we fetch the page as old since it was initialized during the
-   * allocation by ct_init_newpage, therfore, we care about the current
-   * content of the page.
+   * allocation by catalog_initialize_new_page, we want the current
+   * contents of the page.
    */
 
   page_p = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
@@ -4140,10 +4130,10 @@ catalog_get_last_representation_id (THREAD_ENTRY * thread_p,
  *   record(in): Record descriptor containing class disk representation info.
  *   classoid(in): Class object identifier
  *
- * Note: The disk represntation information for the initial
+ * Note: The disk representation information for the initial
  * representation of the class and the class specific information
  * is extracted from the record descriptor and stored in the
- * catalog. This routine must be the first routine called fro the
+ * catalog. This routine must be the first routine called for the
  * storage of class representation informations in the catalog.
  */
 int
@@ -4197,7 +4187,7 @@ catalog_insert (THREAD_ENTRY * thread_p, RECDES * record_p, OID * class_oid_p)
  *   record(in): Record descriptor containing class disk representation info.
  *   classoid(in): Class object identifier
  *
- * Note: The disk represntation information for the specified class and
+ * Note: The disk representation information for the specified class and
  * also possibly the class specific information is updated, if
  * the record descriptor contains a new disk representation, ie.
  * has a new representation identifier different from the most
@@ -4567,7 +4557,7 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
 
       for (k = 0; k < attr_p->val_length; k++, value_p++)
 	{
-	  fprintf (stdout, "%c", *value_p);
+	  fprintf (stdout, "%02X ", (unsigned char) (*value_p));
 	}
       fprintf (stdout, " \n");
     }
@@ -4752,6 +4742,8 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 	{
 	  free_and_init (repr_id_set);
 	}
+
+      heap_classrepr_dump_all (thread_p, fp, &class_id);
     }
 
   catalog_free_key_list (class_id_list);

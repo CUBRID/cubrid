@@ -40,8 +40,6 @@ DBMT_DIR = $(SRC)/dbmt
 QATOOLS_DIR = $(SRC)/qatools
 
 INCLUDES = @SRC_INC@ @EXT_INC@
-#DEFS = @SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
-#	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_DBMS
 DEFS = @SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
 	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@
 
@@ -128,12 +126,14 @@ broker_log_converter_SOURCES = \
 	$(BROKER_DIR)/broker_log_converter.c \
 	$(BROKER_DIR)/broker_log_util.c \
 	$(BROKER_DIR)/log_top_string.c 
+broker_log_converter_CFLAGS = $(CFLAGS) -DBROKER_LOG_CONVERTER
 broker_log_converter_LDFLAGS = $(BROKER_CAS_LIBS)
 
 broker_log_runner_SOURCES = \
 	$(BROKER_DIR)/cas_runner.c \
 	$(BROKER_DIR)/broker_log_util.c \
 	$(BROKER_DIR)/log_top_string.c
+broker_log_runner_CFLAGS = $(CFLAGS) -DBROKER_LOG_RUNNER
 broker_log_runner_LDFLAGS = $(LOG_RUNNER_LIBS)
 
 broker_log_top_SOURCES = \
@@ -144,6 +144,7 @@ broker_log_top_SOURCES = \
 	$(BROKER_DIR)/broker_log_util.c \
 	$(BROKER_DIR)/log_top_string.c \
 	$(BROKER_DIR)/broker_log_top_tran.c
+broker_log_top_CFLAGS = $(CFLAGS) -DBROKER_LOG_TOP
 broker_log_top_LDFLAGS = $(BROKER_CAS_LIBS)
 
 

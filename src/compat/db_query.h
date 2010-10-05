@@ -122,6 +122,24 @@ struct db_query_result
   struct db_query_result *next;	/* next str. ptr, used internally */
 };
 
+typedef struct db_executed_statement_type DB_EXECUTED_STATEMENT_TYPE;
+
+struct db_executed_statement_type
+{
+  DB_QUERY_TYPE *query_type_list;
+  int statement_type;
+};
+
+typedef struct db_prepare_info DB_PREPARE_INFO;
+
+struct db_prepare_info
+{
+  const char *name;		/* the name of the prepared statement */
+  const char *statement;	/* the string literal that defines the statement */
+  DB_SESSION *prepared_session;	/* a sub-session used to compile and run the statement */
+  DB_PREPARE_INFO *next;	/* linked list */
+};
+
 extern SM_DOMAIN *db_query_format_src_domain (DB_QUERY_TYPE * query_type);
 
 extern int db_execute_with_values (const char *CSQL_query,

@@ -2053,142 +2053,152 @@ obj_free_memory (SM_CLASS * class_, MOBJ obj)
  *    op(in): instance pointer
  *
  * Note:
- *    You cannot deleted classes with this function, only instances.  This
- *    will decache the instance and mark the MOP as deleted but will not
- *    free the MOP since there may be references to it in the application.
- *    The mop will be garbage collected later.
+ *    You cannot delete classes with this function, only instances. This will
+ *    decache the instance and mark the MOP as deleted but will not free the
+ *    MOP since there may be references to it in the application. The mop will
+ *    be garbage collected later.
  */
 int
 obj_delete (MOP op)
 {
   int error = NO_ERROR;
-  SM_CLASS *class_;
+  SM_CLASS *class_ = NULL;
   SM_CLASS *base_class = NULL;
-  DB_OBJECT *base_op;
-  char *obj;
-  int pin, pin2 = 0;
-  TR_STATE *trstate;
-  TR_SCHEMA_CACHE *triggers;
+  DB_OBJECT *base_op = NULL;
+  char *obj = NULL;
+  int pin = 0;
+  int pin2 = 0;
+  bool unpin_on_error = false;
+  TR_STATE *trstate = NULL;
 
   /* op must be an object */
   if (op == NULL || locator_is_class (op, DB_FETCH_WRITE))
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
+      goto error_exit;
+    }
+
+  error = au_fetch_class (op, &class_, AU_FETCH_READ, AU_DELETE);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE, AU_DELETE);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /*
+   * Note that if "op" is a VMOP, au_fetch_instance () will have returned
+   * "obj" as a pointer to the BASE INSTANCE memory which is not the instance
+   * associated with "op".  When this happens we need to get the base MOP so
+   * that it can be passed down to other functions that need to look at the
+   * "obj" instance memory block.
+   */
+  base_op = op;
+  if (op->is_vid && class_->class_type == SM_VCLASS_CT)
+    {
+      /*
+       * This is a view, get the base MOP.
+       * What happens here if this is a non-updatable view?
+       */
+      base_op = vid_get_referenced_mop (op);
+      if (base_op == NULL)
+	{
+	  ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
+	  goto error_exit;
+	}
+      au_fetch_class (base_op, &base_class, AU_FETCH_READ, AU_DELETE);
+    }
+
+  /* We need to keep it pinned for the duration of trigger processing. */
+  pin = ws_pin (op, 1);
+  if (base_op != NULL && base_op != op)
+    {
+      pin2 = ws_pin (base_op, 1);
+    }
+  unpin_on_error = true;
+
+  /* Run BEFORE triggers */
+  if (base_class != NULL)
+    {
+      error =
+	tr_prepare_class (&trstate, base_class->triggers, TR_EVENT_DELETE);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      error = tr_before_object (trstate, base_op, NULL);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
     }
   else
     {
-      if (((error = au_fetch_class (op, &class_, AU_FETCH_READ,
-				    AU_DELETE)) == NO_ERROR)
-	  && ((error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE,
-					  AU_DELETE)) == NO_ERROR))
+      error = tr_prepare_class (&trstate, class_->triggers, TR_EVENT_DELETE);
+      if (error != NO_ERROR)
 	{
-	  /* Note that if "op" is a VMOP, au_fetch_instance will have returned
-	   * "obj" as a pointer to the BASE INSTANCE memory which is not the
-	   * instance associated with "op".  When this happens, we need to get
-	   * the base MOP so that it can be passed down to other functions that
-	   * need to look at the "obj" instance memory block.  This is somewhat
-	   * unpleasant, need to carefully examine callers of au_fetch_instance
-	   * and make sure they know that the object returned is not necessarily
-	   * the contents of the supplied MOP.
-	   */
-	  base_op = op;
-	  if (op->is_vid && class_->class_type == SM_VCLASS_CT)
-	    {
-	      /* This is a view, get the base MOP.
-	       * What happens here if this is a non-updatable view ?
-	       */
-	      base_op = vid_get_referenced_mop (op);
-	      if (base_op == NULL)
-		{
-		  ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
-		  return error;
-		}
-	      au_fetch_class (base_op, &base_class, AU_FETCH_READ, AU_DELETE);
-	    }
-
-	  /* pin while we're hacking on the unique constraint,
-	   * now that we have trigger processing, we better keep it pinned for
-	   * the duration.
-	   */
-	  pin = ws_pin (op, 1);
-	  if (base_op != NULL && base_op != op)
-	    pin2 = ws_pin (base_op, 1);
-
-	  /* check before triggers */
-	  trstate = NULL;
-	  if (base_class)
-	    {
-	      triggers = (TR_SCHEMA_CACHE *) base_class->triggers;
-	      error = tr_prepare_class (&trstate, triggers, TR_EVENT_DELETE);
-	      if (error == NO_ERROR)
-		{
-		  error = tr_before_object (trstate, base_op, NULL);
-		  if (error != NO_ERROR)
-		    {
-		      trstate = NULL;
-		    }
-		}
-	    }
-	  else
-	    {
-	      triggers = (TR_SCHEMA_CACHE *) class_->triggers;
-	      error = tr_prepare_class (&trstate, triggers, TR_EVENT_DELETE);
-	      if (error == NO_ERROR)
-		{
-		  error = tr_before_object (trstate, op, NULL);
-		  if (error != NO_ERROR)
-		    {
-		      trstate = NULL;
-		    }
-		}
-	    }
-
-	  if (error == NO_ERROR)
-	    {
-	      /*
-	       * shouldn't need to do this, it will be decached when the mop
-	       * is gc'd in the usual way
-	       */
-	      /* ws_decache(op); */
-
-	      /*
-	       * unpin this now since the remaining operations will mark
-	       * the instance as deleted and it doesn't make much sense
-	       * to have pinned & deleted objects.
-	       */
-	      (void) ws_pin (op, pin);
-	      if (base_op != NULL && base_op != op)
-		{
-		  (void) ws_pin (base_op, pin2);
-		}
-	      if (op->is_vid)
-		{
-		  vid_rem_instance (op);
-		}
-	      else
-		{
-		  locator_remove_instance (op);
-		}
-
-	      /* run after triggers */
-	      if (trstate != NULL)
-		{
-		  error = tr_after_object (trstate, NULL, NULL);
-		}
-	    }
-	  else
-	    {
-	      /* trigger failure, remember to unpin */
-	      (void) ws_pin (op, pin);
-	      if (base_op != NULL && base_op != op)
-		{
-		  (void) ws_pin (base_op, pin2);
-		}
-	    }
+	  goto error_exit;
+	}
+      error = tr_before_object (trstate, op, NULL);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
 	}
     }
 
-  return (error);
+  /*
+   * Unpin this now since the remaining operations will mark the instance as
+   * deleted and it doesn't make much sense to have pinned & deleted objects.
+   */
+  (void) ws_pin (op, pin);
+  if (base_op != NULL && base_op != op)
+    {
+      (void) ws_pin (base_op, pin2);
+    }
+  unpin_on_error = false;
+
+  /*
+   * We don't need to decache the object as it will be decached when the mop
+   * is GC'd in the usual way.
+   */
+
+  if (op->is_vid)
+    {
+      vid_rem_instance (op);
+    }
+  else
+    {
+      locator_remove_instance (op);
+    }
+
+  /* Run AFTER triggers */
+  if (trstate != NULL)
+    {
+      error = tr_after_object (trstate, NULL, NULL);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
+  return error;
+
+error_exit:
+  if (unpin_on_error)
+    {
+      /* trigger failure, remember to unpin */
+      (void) ws_pin (op, pin);
+      if (base_op != NULL && base_op != op)
+	{
+	  (void) ws_pin (base_op, pin2);
+	}
+      unpin_on_error = false;
+    }
+  return error;
 }
 
 /*

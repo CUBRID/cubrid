@@ -402,20 +402,30 @@ xserial_get_next_value (THREAD_ENTRY * thread_p,
 	}
       else
 	{
-	  granted = lock_object (thread_p, &serial_oid,
-				 &serial_Cache_pool.db_serial_class_oid,
-				 X_LOCK, LK_UNCOND_LOCK);
-	  if (granted != LK_GRANTED)
+	  if (OID_ISNULL (&serial_Cache_pool.db_serial_class_oid))
 	    {
-	      ret = er_errid ();
+	      ret = serial_load_attribute_info_of_db_serial (thread_p);
 	    }
-	  else
+
+	  if (ret == NO_ERROR)
 	    {
-	      ret = xserial_get_next_value_internal (thread_p, &serial_oid,
+	      granted = lock_object (thread_p, &serial_oid,
+				     &serial_Cache_pool.db_serial_class_oid,
+				     X_LOCK, LK_UNCOND_LOCK);
+	      if (granted != LK_GRANTED)
+		{
+		  ret = er_errid ();
+		}
+	      else
+		{
+		  ret =
+		    xserial_get_next_value_internal (thread_p, &serial_oid,
 						     result_num);
-	      (void) lock_unlock_object (thread_p, &serial_oid,
-					 &serial_Cache_pool.
-					 db_serial_class_oid, X_LOCK, true);
+		  (void) lock_unlock_object (thread_p, &serial_oid,
+					     &serial_Cache_pool.
+					     db_serial_class_oid, X_LOCK,
+					     true);
+		}
 	    }
 	}
       MUTEX_UNLOCK (serial_Cache_pool.cache_pool_mutex);

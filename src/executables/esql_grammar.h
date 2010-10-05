@@ -248,7 +248,7 @@ enum yytokentype
 #define BUFFER_mode	6
 #define COMMENT_mode	7
 
-//#define PARSER_DEBUG
+/* #define PARSER_DEBUG */
 
 
 #ifdef PARSER_DEBUG
@@ -386,8 +386,6 @@ extern varstring *g_varstring;
 extern varstring *g_subscript;
 extern bool need_line_directive;
 
-
-
 #endif
 
 
@@ -400,7 +398,7 @@ typedef union YYSTYPE
   void *ptr;
   int number;
 }
-/* Line 2616 of glr.c.  */
+/* Line 2604 of glr.c.  */
 #line 402 "../../src/executables/esql_grammar.h"
 YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1

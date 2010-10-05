@@ -33,7 +33,7 @@ extern void esm_expand_pathname (const char *source, char *destination,
 				 int max_length);
 extern int esm_redo (const int buffer_size, char *buffer);
 extern int esm_undo (const int buffer_size, char *buffer);
-extern void esm_dump (FILE *fp, const int buffer_size, void *data);
+extern void esm_dump (FILE * fp, const int buffer_size, void *data);
 extern int esm_shadow_file_exists (const DB_OBJECT * holder_p);
 extern void esm_delete_shadow_entry (const DB_OBJECT * holder_p);
 extern char *esm_make_shadow_file (DB_OBJECT * holder_p);

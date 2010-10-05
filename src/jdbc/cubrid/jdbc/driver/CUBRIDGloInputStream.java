@@ -28,11 +28,11 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.io.*;
 import java.sql.SQLException;
-import cubrid.sql.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDOID;
 
 class CUBRIDGloInputStream extends InputStream
 {

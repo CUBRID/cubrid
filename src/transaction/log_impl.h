@@ -703,6 +703,7 @@ struct log_tdes
   int num_new_files;		/* # of new files created */
   int num_new_tmp_files;	/* # of new FILE_TMP files created */
   int num_new_tmp_tmp_files;	/* # of new FILE_TMP_TMP files created */
+  int suppress_replication;	/* suppress replication when flag is set */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -890,7 +891,7 @@ enum log_rectype
 				   execute
 				 */
   LOG_WILL_COMMIT,		/* Transaction will be committed */
-  LOG_COMMIT_WITH_POSTPONE,	/* Committing server postpon
+  LOG_COMMIT_WITH_POSTPONE,	/* Committing server postpone
 				   operations
 				 */
   LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS,	/* Committing client postpone
@@ -1740,6 +1741,8 @@ extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
 extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p,
 					    int tran_index, int set);
+extern bool logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
+						    int tran_index, int set);
 extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear,
 				  bool * continue_checking);
 extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear,

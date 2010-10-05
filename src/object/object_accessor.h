@@ -168,9 +168,9 @@ extern int obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc,
 				      DB_VALUE ** argarray);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int obj_send_stack (MOP obj, const char *name,
-                           DB_VALUE * returnval, ...);
+			   DB_VALUE * returnval, ...);
 extern int obj_desc_send_stack (MOP obj, SM_DESCRIPTOR * desc,
-                                DB_VALUE * returnval, ...);
+				DB_VALUE * returnval, ...);
 /* backward compatibility, should use obj_send_list() */
 extern int obj_send (MOP obj, const char *name, DB_VALUE * returnval,
 		     DB_VALUE_LIST * arglist);

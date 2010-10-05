@@ -44,6 +44,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Calendar;
+import java.text.*;
 
 import cubrid.jdbc.driver.CUBRIDConnection;
 import cubrid.jdbc.jci.UConnection;
@@ -691,7 +692,16 @@ public class ExecuteThread extends Thread
     else if (result instanceof java.sql.Timestamp)
     {
       dos.writeInt(ret_type);
-      packAndSendString(result.toString(), dos);
+
+      if (ret_type == DB_DATETIME)
+	{
+	  packAndSendString(result.toString(), dos);
+	}
+      else
+	{
+	  SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+	  packAndSendString(formatter.format(result), dos);
+	}
     }
     else if (result instanceof CUBRIDOID)
     {

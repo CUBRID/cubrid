@@ -34,9 +34,9 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
-import cubrid.sql.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDOID;
 
 /*
  * resultset을 갖는 statement(execute(SQL query), getSchemaInfo, getByOid를 통해
@@ -63,6 +63,15 @@ public class UColumnInfo
   // private String FQDN;
   private boolean isNullable;
   private byte glo_instance_flag;
+  
+  private String defaultValue;
+  private byte is_auto_increment;
+  private byte is_unique_key;
+  private byte is_primary_key;
+  private byte is_foreign_key;
+  private byte is_reverse_index;
+  private byte is_reverse_unique;
+  private byte is_shared;
 
   UColumnInfo(byte cType, short cScale, int cPrecision, String cName)
   {
@@ -79,6 +88,49 @@ public class UColumnInfo
     isNullable = false;
     // FQDN = UColumnInfo.findFQDN(type, precision, collectionBaseType);
     glo_instance_flag = GLO_INSTANCE_UNKNOWN;
+
+    defaultValue = null;
+    is_auto_increment = 0;
+    is_unique_key = 0;
+    is_primary_key = 0;
+    is_foreign_key = 0;
+    is_reverse_index = 0;
+    is_reverse_unique = 0;
+    is_shared = 0;
+  }
+  
+  /* get functions */
+  public String getDefaultValue()
+  {
+    return defaultValue;
+  }
+  public byte getIsAutoIncrement()
+  {
+    return is_auto_increment;
+  }
+  public byte getIsUniqueKey()
+  {
+    return is_unique_key;
+  }
+  public byte getIsPrimaryKey()
+  {
+    return is_primary_key;
+  }
+  public byte getIsForeignKey()
+  {
+    return is_foreign_key;
+  }
+  public byte getIsReverseIndex()
+  {
+    return is_reverse_index;
+  }
+  public byte getIsReverseUnique()
+  {
+    return is_reverse_unique;
+  }
+  public byte getIsShared()
+  {
+    return is_shared;
   }
 
   /*
@@ -213,6 +265,19 @@ public class UColumnInfo
     className = cName;
     isNullable = hNull;
   }
+  
+  /* set the extra fields */
+  synchronized void setExtraData(String defValue, byte bAI, byte bUK, byte bPK, byte bFK, byte bRI, byte bRU, byte sh)
+  {
+    defaultValue = defValue;
+    is_auto_increment = bAI;
+    is_unique_key = bUK;
+    is_primary_key = bPK;
+    is_foreign_key = bFK;
+    is_reverse_index = bRI;
+    is_reverse_unique = bRU;
+    is_shared = sh;
+  }
 
   boolean isGloInstance(UConnection u_con, CUBRIDOID oid)
   {
@@ -280,7 +345,7 @@ public class UColumnInfo
     case UUType.U_TYPE_MULTISET:
       break;
     case UUType.U_TYPE_OBJECT:
-      return "cubrid.sql.CUBRIDOID";
+      return "@CUBRID_SQL@.CUBRIDOID";
     default:
       return "";
     }
@@ -322,7 +387,7 @@ public class UColumnInfo
     case UUType.U_TYPE_MULTISET:
       break;
     case UUType.U_TYPE_OBJECT:
-      return "cubrid.sql.CUBRIDOID[]";
+      return "@CUBRID_SQL@.CUBRIDOID[]";
     default:
       break;
     }

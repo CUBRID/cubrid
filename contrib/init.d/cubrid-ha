@@ -40,9 +40,9 @@ if [ $WHOAMI = "root" ]; then
 	CUBRID_DATABASES=`su - $CUBRID_USER -c 'printenv CUBRID_DATABASES'`
 	CUBRID_HOME=`su - $CUBRID_USER -c 'printenv CUBRID'`
 else
-	. $HOME/.bash_profile >/dev/null 2>&1
 	CUBRID_USER=$WHOAMI
-    CUBRID_HOME=$CUBRID
+	CUBRID_HOME=$CUBRID
+	export PATH=$PATH:$CUBRID_HOME/bin
 fi
 
 LW_SYNC_MODE="-m 3"
@@ -104,8 +104,8 @@ load_ha_node_list() {
 	eval "$(sed $cubrid_conf_file -n -e 's/\(.*\)\b.*=[\ ]*\(.*\)/\1="\2"/p')"
 
 	save_IFS
-    IFS=$' \t@,:'
-    NODE_LIST=`echo $ha_node_list | cut -d ' ' -f 2-`
+	IFS=$' \t@,:'
+	NODE_LIST=`echo $ha_node_list | cut -d ' ' -f 2-`
 	restore_IFS
 }
 

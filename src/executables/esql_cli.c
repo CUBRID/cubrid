@@ -712,9 +712,10 @@ uci_rollback (void)
  *    stmt_no when the preprocessor has determined that the statement is an
  *    INSERT statement which is a candidate for execution through the
  *    db_gadget interface (i.e. it is not a nested insert and does not have a
- *    subquery).  Other usages of repetitive statements will not be successful,
- *    and repetitive statements which can't be translated into valid gadgets
- *    will be run as ad hoc statements.
+ *    subquery and does not insert multiple tuples).  Other usages of
+ *    repetitive statements will not be successful, and repetitive statements
+ *    which can't be translated into valid gadgets will be run as ad hoc
+ *    statements.
  */
 void
 uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
@@ -770,7 +771,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
       /* create gadget if possible */
       if (stmt_no >= 0 && statement->node_type == PT_INSERT)
 	{
-	  DB_NODE *att, *val;
+	  DB_NODE *att = NULL, *val = NULL, *val_list = NULL;
 	  int attrlist_len = pt_length_of_list (pt_attrs_part (statement)), i;
 	  const char *cname =
 	    pt_get_name (pt_from_entity_part (pt_class_part (statement)));
@@ -792,9 +793,25 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 	    }
 	  attrs[i] = NULL;
 
-	  /* If gadget cannot be created, attempt to handle it as a regular
-	     insert statement. */
-	  gadget = db_gadget_create (cname, (const char **) attrs);
+	  val_list = pt_values_part (statement);
+	  assert (val_list != NULL);
+	  if (val_list != NULL)
+	    {
+	      val = val_list->info.node_list.list;
+	    }
+	  if (val_list == NULL || val_list->next == NULL)
+	    {
+	      /* This is a single tuple insert. */
+	      /* If gadget cannot be created, attempt to handle it as a
+	         regular insert statement. */
+	      gadget = db_gadget_create (cname, (const char **) attrs);
+	    }
+	  else
+	    {
+	      /* If the this is a multiple tuples insert handle it as a
+	         regular insert statement. */
+	      assert (gadget == NULL);
+	    }
 
 	  if (gadget)
 	    {
@@ -802,8 +819,8 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 	      DB_VALUE tmp_val, *insert_value = NULL;
 
 	      /* bind literal values */
-	      for (i = 0, val = pt_values_part (statement);
-		   val; i++, val = val->next, insert_value = NULL)
+	      for (i = 0; val != NULL;
+		   i++, val = val->next, insert_value = NULL)
 		{
 		  if (val->node_type == PT_HOST_VAR)
 		    {

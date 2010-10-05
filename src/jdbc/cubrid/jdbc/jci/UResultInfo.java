@@ -34,9 +34,9 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
-import cubrid.sql.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDOID;
 
 /**
  * Statement를 execute후 얻어지는 Result들에 관련된 정보를 관리하는 class이다.

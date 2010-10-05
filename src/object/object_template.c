@@ -361,7 +361,17 @@ check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value)
     {
       if (att->flags & SM_ATTFLAG_NON_NULL)
 	{
-	  ERROR1 (error, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, att->header.name);
+	  if ((att->flags & SM_ATTFLAG_AUTO_INCREMENT))
+	    {
+	      assert (DB_IS_NULL (value));
+	      assert (att->domain->type != tp_Type_object);
+	      /* This is allowed to happen as it means the auto_increment
+	         value should be inserted. */
+	    }
+	  else
+	    {
+	      ERROR1 (error, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, att->header.name);
+	    }
 	}
     }
   else
@@ -682,7 +692,7 @@ obt_check_assignment (SM_ATTRIBUTE * att,
  *    obj_Template_traversal is set to this value so it can
  *    be tested during traversal.
  *    This is in a function just so that the rules for skipping a traversal
- *    value of zero can be encapculated.
+ *    value of zero can be encapsulated.
  *
  */
 
@@ -1089,7 +1099,7 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
   int error = NO_ERROR;
   DB_VALUE val;
   DB_DATA_STATUS data_status;
-  char auto_increment_name[SM_MAX_IDENTIFIER_LENGTH];
+  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
   MOP serial_class_mop = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
   const char *class_name;
@@ -1129,7 +1139,9 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 		{
 		  exists = template_ptr->assignments[att->order];
 
-		  if (exists == NULL)
+		  if (exists == NULL
+		      || (exists->variable != NULL
+			  && DB_IS_NULL (exists->variable)))
 		    {
 		      a = obt_make_assignment (template_ptr, att);
 		      if (a == NULL)
@@ -2381,8 +2393,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
   temp = NULL;
   if (event != TR_EVENT_NULL)
     {
-      if (tr_prepare_class
-	  (&trstate, (TR_SCHEMA_CACHE *) class_->triggers, event))
+      if (tr_prepare_class (&trstate, class_->triggers, event))
 	{
 	  return er_errid ();
 	}
@@ -2393,8 +2404,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	      a = template_ptr->assignments[i];
 	      if (a == NULL)
 		continue;
-	      if (tr_prepare_class
-		  (&trstate, (TR_SCHEMA_CACHE *) a->att->triggers, event))
+	      if (tr_prepare_class (&trstate, a->att->triggers, event))
 		{
 		  tr_abort (trstate);
 		  return er_errid ();

@@ -27,10 +27,16 @@
 
 #ident "$Id$"
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "dbtype.h"
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #include "cas_net_buf.h"
 
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+#define SCH_STR_LEN	255
+#else
 #define SCH_STR_LEN	DB_MAX_IDENTIFIER_LENGTH
+#endif
 
 typedef void (*T_SCHEMA_META_F) (T_NET_BUF *);
 

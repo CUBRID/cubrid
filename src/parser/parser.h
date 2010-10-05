@@ -166,7 +166,12 @@ extern "C"
   extern PT_NODE *pt_bind_values_to_hostvars (PARSER_CONTEXT * parser,
 					      PT_NODE * node);
 
-  extern int pt_length_of_list (PT_NODE * list);
+  extern DB_VALUE *pt_db_value_initialize (PARSER_CONTEXT * parser,
+					   PT_NODE * value,
+					   DB_VALUE * db_value,
+					   int *more_type_info_needed);
+
+  extern int pt_length_of_list (const PT_NODE * list);
   extern int pt_length_of_select_list (PT_NODE * list, int hidden_col);
 
   extern PT_NODE *pt_get_select_list (PARSER_CONTEXT * parser,
@@ -449,7 +454,8 @@ extern "C"
   extern DB_QUERY_TYPE *pt_fillin_type_size (PARSER_CONTEXT * parser,
 					     PT_NODE * query,
 					     DB_QUERY_TYPE * list,
-					     const int include_oid);
+					     const int include_oid,
+					     bool want_spec_entity_name);
   extern void pt_free_query_etc_area (PT_NODE * query);
   DB_OBJECT *pt_find_users_class (PARSER_CONTEXT * parser, PT_NODE * name);
   DB_ATTRIBUTE *db_get_attribute_force (DB_OBJECT * obj, const char *name);
@@ -479,6 +485,9 @@ extern "C"
 				const PT_NODE * name,
 				const PT_NODE * attributes);
 
+  extern PT_NODE *pt_make_string_value (PARSER_CONTEXT * parser,
+					const char *value_string);
+
   extern PT_NODE *pt_and (PARSER_CONTEXT * parser_ptr,
 			  const PT_NODE * expression1,
 			  const PT_NODE * expression2);
@@ -488,6 +497,20 @@ extern "C"
   extern PT_NODE *pt_table_option (PARSER_CONTEXT * parser,
 				   const PT_TABLE_OPTION_TYPE option,
 				   PT_NODE * val);
+  extern PT_NODE *pt_expression (PARSER_CONTEXT * parser_ptr, PT_OP_TYPE op,
+				 PT_NODE * arg1, PT_NODE * arg2,
+				 PT_NODE * arg3);
+  extern PT_NODE *pt_expression_0 (PARSER_CONTEXT * parser_ptr,
+				   PT_OP_TYPE op);
+  extern PT_NODE *pt_expression_1 (PARSER_CONTEXT * parser_ptr, PT_OP_TYPE op,
+				   PT_NODE * arg1);
+  extern PT_NODE *pt_expression_2 (PARSER_CONTEXT * parser_ptr, PT_OP_TYPE op,
+				   PT_NODE * arg1, PT_NODE * arg2);
+  extern PT_NODE *pt_expression_3 (PARSER_CONTEXT * parser_ptr, PT_OP_TYPE op,
+				   PT_NODE * arg1, PT_NODE * arg2,
+				   PT_NODE * arg3);
+  extern PT_NODE *pt_node_list (PARSER_CONTEXT * parser_ptr,
+				PT_MISC_TYPE list_type, PT_NODE * list);
   extern PT_NODE *pt_entity (PARSER_CONTEXT * parser,
 			     const PT_NODE * entity_name,
 			     const PT_NODE * range_var,
@@ -562,8 +585,11 @@ extern "C"
   extern const char *pt_qualifier_part (const PT_NODE * tbl);
 #endif
   extern PT_NODE *pt_right_part (const PT_NODE * expr);
+  extern PT_NODE *pt_get_end_path_node (PT_NODE * node);
   extern const char *pt_string_part (const PT_NODE * tbl);
   extern PT_NODE *pt_values_part (const PT_NODE * insert_statement);
+  extern PT_NODE *pt_get_subquery_of_insert_select (const PT_NODE *
+						    insert_statement);
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern PT_NODE *pt_select_list_part (const PT_NODE * stmt);
   extern PT_NODE *pt_where_part (const PT_NODE * stmt);
@@ -635,7 +661,25 @@ extern "C"
 
   extern void parser_free_lcks_classes (PARSER_CONTEXT * parser);
 
+  extern PT_NODE *pt_limit_to_numbering_expr (PARSER_CONTEXT * parser,
+					      PT_NODE * limit,
+					      PT_OP_TYPE num_op,
+					      bool is_gby_num);
+  extern PT_NODE *pt_rewrite_to_auto_param (PARSER_CONTEXT * parser,
+					    PT_NODE * value);
+  extern void pt_copy_statement_flags (PT_NODE * source,
+				       PT_NODE * destination);
+  extern void pt_set_fill_default_in_path_expression (PT_NODE * node);
+  extern PT_NODE *pt_dup_key_update_stmt (PARSER_CONTEXT * parser,
+					  PT_NODE * spec,
+					  PT_NODE * assignment);
+  extern int pt_get_dup_key_oid_var_index (PARSER_CONTEXT * parser,
+					   PT_NODE * update_statement);
   extern bool pt_is_reference_to_reusable_oid (DB_VALUE * val);
+  extern int pt_get_select_query_columns (PARSER_CONTEXT * parser,
+					  PT_NODE * create_select,
+					  DB_QUERY_TYPE ** query_columns);
+  void pt_fixup_column_type (PT_NODE * col);
 
 #ifdef __cplusplus
 }

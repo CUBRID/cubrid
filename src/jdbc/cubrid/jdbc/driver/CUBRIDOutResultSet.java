@@ -28,12 +28,12 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.SQLException;
 
-import cubrid.jdbc.jci.UConnection;
-import cubrid.jdbc.jci.UStatement;
+import @CUBRID_JCI@.UConnection;
+import @CUBRID_JCI@.UStatement;
 
 public class CUBRIDOutResultSet extends CUBRIDResultSet
 {

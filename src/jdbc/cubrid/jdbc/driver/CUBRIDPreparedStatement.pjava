@@ -28,21 +28,21 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 
-import cubrid.jdbc.jci.*;
-import cubrid.sql.*;
+import @CUBRID_JCI@.*;
+import @CUBRID_SQL@.*;
 import java.math.BigDecimal;
 import java.io.*;
 import java.util.Calendar;	// 3.0
 import java.net.URL;
 
-import cubrid.jdbc.driver.CUBRIDException;
-import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
-import cubrid.jdbc.driver.CUBRIDResultSetMetaData;
-import cubrid.sql.CUBRIDOID;
+import @CUBRID_DRIVER@.CUBRIDException;
+import @CUBRID_DRIVER@.CUBRIDJDBCErrorCode;
+import @CUBRID_DRIVER@.CUBRIDResultSetMetaData;
+import @CUBRID_SQL@.CUBRIDOID;
 
 /**
  * Title: CUBRID JDBC Driver Description:

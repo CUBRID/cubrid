@@ -28,12 +28,12 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 import java.io.*;
 
-import cubrid.sql.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDOID;
 
 public class CUBRIDBlob extends CUBRIDOID implements Blob
 {

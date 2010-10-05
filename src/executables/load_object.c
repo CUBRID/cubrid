@@ -334,7 +334,7 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
     }
 
   /*
-   * Write fixed attribute values, if unbound, leave zero or garabge
+   * Write fixed attribute values, if unbound, leave zero or garbage
    * it doesn't matter, if the attribute is bound, set the appropriate
    * bit in the bound bit array
    */
@@ -1493,8 +1493,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	}
 
       CHECK_PRINT_ERROR (print_quoted_str (tout,
-                                             ptr, len,
-                                             MAX_DISPLAY_COLUMN));
+					   ptr, len, MAX_DISPLAY_COLUMN));
       break;
 
     case DB_TYPE_NUMERIC:
@@ -1526,10 +1525,10 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	if (bfmt_print (1 /* BIT_STRING_HEX */ , value, ptr, max_size) ==
 	    NO_ERROR)
 	  {
-            CHECK_PRINT_ERROR (text_print (tout, "X", 1, NULL));
-            CHECK_PRINT_ERROR (print_quoted_str (tout,
-                                                   ptr, max_size - 1,
-                                                   MAX_DISPLAY_COLUMN));
+	    CHECK_PRINT_ERROR (text_print (tout, "X", 1, NULL));
+	    CHECK_PRINT_ERROR (print_quoted_str (tout,
+						 ptr, max_size - 1,
+						 MAX_DISPLAY_COLUMN));
 	  }
 
 	if (ptr != buf)

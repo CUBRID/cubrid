@@ -925,7 +925,7 @@ stx_restore_cache_attrinfo (THREAD_ENTRY * thread_p, char *ptr)
 
 #if 0
 /* there are currently no pointers to these type of structures in xasl
- * so there is no need to have a seperate restore function.
+ * so there is no need to have a separate restore function.
  */
 
 static MERGELIST_PROC_NODE *
@@ -2151,6 +2151,9 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     case SCAN_PROC:
       break;
 
+    case DO_PROC:
+      break;
+
     default:
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
       return NULL;
@@ -2468,6 +2471,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr,
     }
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_grbynum_flag);
+  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_with_rollup);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -3072,6 +3076,8 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &insert_info->waitsecs);
   ptr = or_unpack_int (ptr, &insert_info->no_logging);
   ptr = or_unpack_int (ptr, &insert_info->release_lock);
+  ptr = or_unpack_int (ptr, &insert_info->do_replace);
+  ptr = or_unpack_int (ptr, &insert_info->dup_key_oid_var_index);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4534,7 +4540,8 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr,
     }
 
   ptr = or_unpack_int (ptr, (int *) &arith_type->misc_operand);
-  if (arith_type->opcode == T_CASE || arith_type->opcode == T_DECODE)
+  if (arith_type->opcode == T_CASE || arith_type->opcode == T_DECODE
+      || arith_type->opcode == T_IF)
     {
       ptr = or_unpack_int (ptr, &offset);
       if (offset == 0)
@@ -4556,6 +4563,9 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr,
     {
       arith_type->pred = NULL;
     }
+
+  /* This member is only used on server internally. */
+  arith_type->rand_seed = NULL;
 
   return ptr;
 
@@ -4779,6 +4789,8 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 			  CONNECTBY_PROC_NODE * stx_connectby_proc)
 {
   int offset;
+  int tmp;
+
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
 
@@ -4979,6 +4991,9 @@ stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *ptr,
 	  goto error;
 	}
     }
+
+  ptr = or_unpack_int (ptr, &tmp);
+  stx_connectby_proc->single_table_opt = (bool) tmp;
 
   stx_connectby_proc->curr_tuple = NULL;
 

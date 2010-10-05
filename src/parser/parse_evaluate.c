@@ -885,7 +885,6 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
   PT_OP_TYPE op;
   TP_DOMAIN *domain;
   PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
-  static long seedval = 0;
 
   assert (parser != NULL);
 
@@ -959,32 +958,6 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
 	    {
 	      tree->info.expr.arg1 =
 		pt_query_to_set_table (parser, tree->info.expr.arg1);
-	    }
-	  else if (op == PT_RANDOM)
-	    {
-	      if (seedval == 0)
-		{
-		  struct timeval t;
-
-		  gettimeofday (&t, NULL);
-		  srand48 ((seedval = t.tv_usec));
-		}
-
-	      db_random_dbval (db_value);
-	      return;
-	    }
-	  else if (op == PT_DRANDOM)
-	    {
-	      if (seedval == 0)
-		{
-		  struct timeval t;
-
-		  gettimeofday (&t, NULL);
-		  srand48 ((seedval = t.tv_usec));
-		}
-
-	      db_drandom_dbval (db_value);
-	      return;
 	    }
 
 	  arg1 = tree->info.expr.arg1;
@@ -1090,6 +1063,17 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
       break;
 
     case PT_INSERT:
+      assert (tree->info.insert.value_clauses != NULL);
+      if (tree->info.insert.value_clauses->next != NULL)
+	{
+	  error = ER_DO_INSERT_TOO_MANY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  if (!parser->error_msgs)
+	    {
+	      PT_ERRORc (parser, tree, db_error_string (3));
+	    }
+	  break;
+	}
       /* Handle nested inserts within a set the same way we handle
          standard nested inserts in do_insert_template() */
       if (set_insert)
@@ -1099,7 +1083,9 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
 
 	  /* Don't have to have a real savepoint here because we don't
 	     allow vclass objects in sets. */
-	  error = do_insert_template (parser, &temp, tree, &savepoint_name);
+	  error = do_insert_template (parser, &temp, tree,
+				      tree->info.insert.value_clauses,
+				      &savepoint_name, NULL);
 	  if (error >= 0)
 	    {
 	      db_make_pointer (db_value, temp);
@@ -1319,7 +1305,6 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
   char oid_str[36];
   int error_code;
   bool opd2_set_null = false;
-  static long seedval = 0;
 
   assert (parser != NULL);
 
@@ -1460,32 +1445,6 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 			      MSGCAT_SEMANTIC_SERIAL_NOT_DEFINED,
 			      serial_name);
 		}
-	      return;
-	    }
-	  else if (op == PT_RANDOM)
-	    {
-	      if (seedval == 0)
-		{
-		  struct timeval t;
-
-		  gettimeofday (&t, NULL);
-		  srand48 ((seedval = t.tv_usec));
-		}
-
-	      db_random_dbval (db_value);
-	      return;
-	    }
-	  else if (op == PT_DRANDOM)
-	    {
-	      if (seedval == 0)
-		{
-		  struct timeval t;
-
-		  gettimeofday (&t, NULL);
-		  srand48 ((seedval = t.tv_usec));
-		}
-
-	      db_drandom_dbval (db_value);
 	      return;
 	    }
 
@@ -1658,6 +1617,17 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
     case PT_INSERT:
       /* Handle nested inserts within a set the same way we handle
          standard nested inserts in do_insert_template() */
+      assert (tree->info.insert.value_clauses != NULL);
+      if (tree->info.insert.value_clauses->next != NULL)
+	{
+	  error = ER_DO_INSERT_TOO_MANY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  if (!parser->error_msgs)
+	    {
+	      PT_ERRORc (parser, tree, db_error_string (3));
+	    }
+	  break;
+	}
       if (set_insert)
 	{
 	  DB_OTMPL *temp = NULL;
@@ -1665,7 +1635,9 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 
 	  /* Don't have to have a real savepoint here because we don't
 	     allow vclass objects in sets. */
-	  error = do_insert_template (parser, &temp, tree, &savepoint_name);
+	  error = do_insert_template (parser, &temp, tree,
+				      tree->info.insert.value_clauses,
+				      &savepoint_name, NULL);
 	  if (error >= 0)
 	    {
 	      db_make_pointer (db_value, temp);

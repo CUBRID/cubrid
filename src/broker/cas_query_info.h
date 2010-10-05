@@ -34,6 +34,7 @@ struct t_query_info
 {
   char *sql;
   char *cas_log;
+  int cas_log_len;
   int min;
   int max;
   int sum;

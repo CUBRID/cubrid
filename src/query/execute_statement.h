@@ -33,6 +33,7 @@
 extern int do_update_auto_increment_serial_on_rename (MOP serial_obj,
 						      const char *class_name,
 						      const char *att_name);
+extern int do_reset_auto_increment_serial (MOP serial_obj);
 
 
 extern MOP do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
@@ -116,8 +117,9 @@ extern int do_prepare_insert (const PARSER_CONTEXT * parser,
 extern int do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement);
 #endif
 extern int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
-			       PT_NODE * statement,
-			       const char **savepoint_name);
+			       PT_NODE * statement, PT_NODE * values_list,
+			       const char **savepoint_name,
+			       int *row_count_ptr);
 
 extern int do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern void do_print_classname_on_method (DB_OBJECT * self,
@@ -171,4 +173,7 @@ extern int do_check_internal_statements (PARSER_CONTEXT * parser,
 					 PT_NODE * statement,
 					 /* PT_NODE * internal_stmt_list, */
 					 PT_DO_FUNC do_func);
+extern int do_truncate (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement);
+
 #endif /* _EXECUTE_STATEMENT_H_ */

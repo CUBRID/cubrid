@@ -98,7 +98,7 @@ extern "C"
   extern void lang_server_space_char (char *space, int *size);
   extern void lang_server_charset_name (char *name);
   extern void lang_server_charset_desc (char *desc);
-#endif /* ENABLE_UNUSED_FUNCTION */
+#endif				/* ENABLE_UNUSED_FUNCTION */
   extern int lang_charset_name_to_id (const char *name,
 				      INTL_CODESET * codeset);
   extern int lang_set_national_charset (const char *codeset_name);

@@ -19,9 +19,12 @@
 
 
 initdir = ${datadir}/init.d
-init_SCRIPTS = init.d/cubrid-ha
+init_SCRIPTS = init.d/cubrid-ha init.d/cubrid
 
 rpmdir = ${datadir}/rpm
 rpm_SCRIPTS = rpm/cubrid.csh rpm/cubrid.sh
 rpm_DATA = rpm/cubrid.spec
+
+scriptsdir = ${datadir}/scripts
+scripts_SCRIPTS = scripts/check_reserved.sql
 

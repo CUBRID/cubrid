@@ -408,7 +408,8 @@ typedef enum
 {
   SM_FOREIGN_KEY_CASCADE,
   SM_FOREIGN_KEY_RESTRICT,
-  SM_FOREIGN_KEY_NO_ACTION
+  SM_FOREIGN_KEY_NO_ACTION,
+  SM_FOREIGN_KEY_SET_NULL
 } SM_FOREIGN_KEY_ACTION;
 
 /*
@@ -443,6 +444,7 @@ typedef enum
   Meta_root,			/* the object is the root class */
   Meta_class			/* the object is a normal class */
 } SM_METATYPE;
+
 
 /*
  *    This is used at the top of all "meta" objects that are represented
@@ -523,7 +525,7 @@ struct sm_attribute
   int order;			/* definition order number */
   struct sm_attribute *order_link;	/* list in definition order */
 
-  void *triggers;		/* trigger cache */
+  struct tr_schema_cache *triggers;	/* trigger cache */
 
   MOP auto_increment;		/* instance of db_serial */
   int storage_order;		/* storage order number */
@@ -558,6 +560,7 @@ struct sm_class_constraint
   const char *name;
   SM_ATTRIBUTE **attributes;
   int *asc_desc;		/* asc/desc info list */
+  int *attrs_prefix_length;
   SM_FOREIGN_KEY_INFO *fk_info;
   char *shared_cons_name;
   BTID index;
@@ -725,7 +728,7 @@ struct sm_class
   DB_OBJLIST *inheritance;	/* immediate super classes */
   int object_size;		/* memory size in bytes */
   int att_count;		/* number of instance attributes */
-  SM_ATTRIBUTE *attributes;	/* list of attribute definitions */
+  SM_ATTRIBUTE *attributes;	/* list of instance attribute definitions */
   SM_ATTRIBUTE *shared;		/* list of shared attribute definitions */
   int shared_count;		/* number of shared attributes */
   int class_attribute_count;	/* number of class attributes */
@@ -756,10 +759,10 @@ struct sm_class
   MOP owner;			/* authorization object */
   void *auth_cache;		/* compiled cache */
 
-  SM_ATTRIBUTE *ordered_attributes;
+  SM_ATTRIBUTE *ordered_attributes;	/* see classobj_fixup_loaded_class () */
   DB_SEQ *properties;		/* property list */
   struct parser_context *virtual_query_cache;
-  void *triggers;		/* Trigger cache */
+  struct tr_schema_cache *triggers;	/* Trigger cache */
   SM_CLASS_CONSTRAINT *constraints;	/* Constraint cache */
   MOP partition_of;		/* Partition information */
   SM_CLASS_CONSTRAINT *fk_ref;	/* fk ref cache */
@@ -958,6 +961,7 @@ extern int classobj_put_index_id (DB_SEQ ** properties,
 				  const char *constraint_name,
 				  SM_ATTRIBUTE ** atts,
 				  const int *asc_desc,
+				  const int *attrs_prefix_length,
 				  const BTID * id,
 				  SM_FOREIGN_KEY_INFO * fk_info,
 				  char *shared_cons_name);
@@ -993,23 +997,14 @@ extern SM_CLASS_CONSTRAINT
 				    const char *name);
 extern SM_CLASS_CONSTRAINT *classobj_find_class_index (SM_CLASS * class_,
 						       const char *name);
-extern SM_CLASS_CONSTRAINT *classobj_find_cons_index (SM_CLASS_CONSTRAINT *
-						      cons_list,
-						      const char *name);
-extern SM_CLASS_CONSTRAINT *classobj_find_class_index2 (SM_CLASS * class_,
-							CLASS_STATS * stats,
-							DB_CONSTRAINT_TYPE
-							new_cons,
-							const char
-							**att_names,
-							const int *asc_desc);
-extern SM_CLASS_CONSTRAINT *classobj_find_cons_index2 (SM_CLASS_CONSTRAINT *
-						       cons_list,
-						       CLASS_STATS * stats,
-						       DB_CONSTRAINT_TYPE
-						       new_cons,
-						       const char **att_names,
-						       const int *asc_desc);
+extern SM_CLASS_CONSTRAINT
+  * classobj_find_constraint_by_name (SM_CLASS_CONSTRAINT * cons_list,
+				      const char *name);
+extern SM_CLASS_CONSTRAINT
+  * classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
+				       DB_CONSTRAINT_TYPE new_cons,
+				       const char **att_names,
+				       const int *asc_desc);
 extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT
 							   * cons,
 							   CLASS_STATS *
@@ -1086,6 +1081,8 @@ extern void classobj_free_query_spec (SM_QUERY_SPEC *);
 /* Editing template */
 extern SM_TEMPLATE *classobj_make_template (const char *name, MOP op,
 					    SM_CLASS * class_);
+extern SM_TEMPLATE *classobj_make_template_like (const char *name,
+						 SM_CLASS * class_);
 extern void classobj_free_template (SM_TEMPLATE * template_ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int classobj_add_template_reference (SM_TEMPLATE * template_ptr,
@@ -1132,6 +1129,8 @@ extern SM_COMPONENT *classobj_find_component (SM_CLASS * class_,
 extern SM_COMPONENT *classobj_complist_search (SM_COMPONENT * list,
 					       const char *name);
 
+extern const char **classobj_point_at_att_names (SM_CLASS_CONSTRAINT *
+						 constraint, int *count_ref);
 /* Descriptors */
 extern SM_DESCRIPTOR *classobj_make_descriptor (MOP class_mop,
 						SM_CLASS * classobj,
@@ -1164,9 +1163,14 @@ extern const char *classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE
 							constraint);
 extern char *classobj_describe_foreign_key_action (SM_FOREIGN_KEY_ACTION
 						   action);
-
 extern bool classobj_is_pk_referred (MOP clsop,
 				     SM_FOREIGN_KEY_INFO * fk_info,
-				     bool include_self_ref);
-
+				     bool include_self_ref, char **fk_name);
+extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
+				       char **out_shared_cons_name,
+				       const char *class_name,
+				       DB_CONSTRAINT_TYPE constraint_type,
+				       const char *constraint_name,
+				       const char **att_names,
+				       const int *asc_desc);
 #endif /* _CLASS_OBJECT_H_ */

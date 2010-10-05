@@ -48,10 +48,10 @@ LIBS += @CAS_LIB@ @EXT_LIBS@ @SYS_LIBS@
 #CLEANFILES = cnvlex.c
 
 $(PARSER_DIR)/csql_grammar.c $(PARSER_DIR)/csql_grammar.h : $(PARSER_DIR)/csql_grammar.y
-	$(BISON) -d -r all -o $@ $<
+	$(BISON) --name-prefix=csql_yy -d -r all -o $@ $<
 
 $(PARSER_DIR)/csql_lexer.c : $(PARSER_DIR)/csql_lexer.l
-	$(FLEX) -o $@ $<
+	$(FLEX) --prefix=csql_yy -o $@ $<
 
 $(EXECUTABLE_DIR)/loader_grammar.c : $(EXECUTABLE_DIR)/loader_grammar.y
 	$(BISON) --name-prefix=loader_yy -d -r all -o $@ $<
@@ -80,6 +80,7 @@ EXECUTABLE_SOURCES = \
 	$(EXECUTABLE_DIR)/csql_result_format.c \
 	$(EXECUTABLE_DIR)/util_cs.c \
 	$(EXECUTABLE_DIR)/util_common.c \
+	$(EXECUTABLE_DIR)/compactdb_cl.c \
 	$(EXECUTABLE_DIR)/loaddb.c \
 	$(EXECUTABLE_DIR)/unloaddb.c \
 	$(EXECUTABLE_DIR)/load_object.c \

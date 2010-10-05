@@ -38,5 +38,7 @@ extern MSG_CAT Msg_catalog;
 
 extern void css_process_info_request (CSS_CONN * conn);
 extern void css_process_stop_shutdown (void);
+extern void css_process_start_shutdown (SOCKET_QUEUE_ENTRY * sock_entq,
+					int timeout, char *buffer);
 
 #endif /* _MASTER_REQUEST_H_ */

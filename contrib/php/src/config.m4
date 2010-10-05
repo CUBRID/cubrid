@@ -33,6 +33,8 @@ if test "$PHP_CUBRID" != "no"; then
     CUBRID_LIBDIR="$PHP_CUBRID_LIBDIR"
   fi
 
+  CFLAGS="$CFLAGS -Wall -Wextra -Wno-unused"
+
   if test "$PHP_64BIT" != "no"; then
 	CFLAGS="$CFLAGS -m64"
   else

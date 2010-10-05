@@ -160,7 +160,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
@@ -356,7 +357,8 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	   "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
@@ -433,7 +435,8 @@ checkdb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	   "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
@@ -571,7 +574,8 @@ spacedb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	   "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
@@ -774,7 +778,8 @@ lockdb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	   "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
@@ -879,7 +884,7 @@ dump_trantb (const TRANS_INFO * info)
     {
       /*
        * remember that we have to print the messages one at a time, mts_
-       * resuses the message buffer on each call.
+       * reuses the message buffer on each call.
        */
       for (i = 0; i < info->num_trans; i++)
 	{
@@ -934,7 +939,7 @@ dump_trantb (const TRANS_INFO * info)
  * Note: Kill one or several transactions identified only one of the
  *       above parameters. If the verification flag is set, the user is
  *       prompted for verification wheheter or not to kill the
- *       transaction(s).                                               *
+ *       transaction(s).
  *
  *       if tran_index != -1
  *         kill only the transaction associated with tran index.
@@ -1170,7 +1175,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	   "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1328,7 +1334,8 @@ plandump (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
@@ -1432,7 +1439,8 @@ paramdump (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	   "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
@@ -1567,7 +1575,8 @@ statdump (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	   "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
@@ -1744,7 +1753,8 @@ changemode (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	   "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   AU_DISABLE_PASSWORDS ();
@@ -1927,7 +1937,8 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	   "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   db_Enable_replications++;
@@ -2106,8 +2117,8 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   log_path_base = strdup (log_path);
-  sprintf (er_msg_file, "%s_%s_%s.err", database_name, arg->command_name,
-	   basename (log_path_base));
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s_%s.err",
+	    database_name, arg->command_name, basename (log_path_base));
   free (log_path_base);
   er_init (er_msg_file, ER_NEVER_EXIT);
 

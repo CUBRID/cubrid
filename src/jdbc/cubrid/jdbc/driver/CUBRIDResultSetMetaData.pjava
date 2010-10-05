@@ -28,13 +28,13 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 
-import cubrid.jdbc.driver.CUBRIDException;
-import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
-import cubrid.jdbc.jci.*;
+import @CUBRID_DRIVER@.CUBRIDException;
+import @CUBRID_DRIVER@.CUBRIDJDBCErrorCode;
+import @CUBRID_JCI@.*;
 
 /**
  * Title: CUBRID JDBC Driver Description:
@@ -50,6 +50,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
   private String[] col_type_name;
   private String[] ele_type_name;
   private int[] col_prec;
+  private int[] col_disp_size; 
   private int[] col_scale;
   private String[] col_table;
   private int[] col_null;
@@ -63,13 +64,16 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
       col_type_name = new String[col_info.length];
       ele_type_name = new String[col_info.length];
       col_prec = new int[col_info.length];
+      col_disp_size = new int [col_info.length];
       col_scale = new int[col_info.length];
       col_table = new String[col_info.length];
       col_null = new int[col_info.length];
       col_class_name = new String[col_info.length];
 
+
     for (int i = 0; i < col_info.length; i++)
       {
+        col_disp_size[i] = getDefaultColumnDisplaySize(col_info[i].getColumnType());
 	col_name[i] = col_info[i].getColumnName ();
 	col_prec[i] = col_info[i].getColumnPrecision ();
 	col_scale[i] = col_info[i].getColumnScale ();
@@ -87,14 +91,24 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
 	    col_type_name[i] = "CHAR";
 	    col_type[i] = java.sql.Types.CHAR;
 	    ele_type[i] = -1;
+            if (col_prec[i] > col_disp_size[i])
+              {
+                col_disp_size[i] = col_prec[i];
+              }
 	    break;
 
-	    case UUType.U_TYPE_VARCHAR:col_type_name[i] = "VARCHAR";
+	  case UUType.U_TYPE_VARCHAR:
+            col_type_name[i] = "VARCHAR";
 	    col_type[i] = java.sql.Types.VARCHAR;
 	    ele_type[i] = -1;
+            if (col_prec[i] > col_disp_size[i])
+              {
+                col_disp_size[i] = col_prec[i];
+              }
 	    break;
 
-	    case UUType.U_TYPE_BIT:if (col_prec[i] == 8)
+	  case UUType.U_TYPE_BIT:
+            if (col_prec[i] == 8)
 	      {
 		col_type_name[i] = "BIT";
 		col_type[i] = java.sql.Types.BIT;
@@ -106,12 +120,20 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
 		col_type[i] = java.sql.Types.BINARY;
 		ele_type[i] = -1;
 	      }
+            if (col_prec[i] > col_disp_size[i])
+              {
+                col_disp_size[i] = col_prec[i];
+              }
 	    break;
 
 	  case UUType.U_TYPE_VARBIT:
 	    col_type_name[i] = "BIT VARYING";
 	    col_type[i] = java.sql.Types.VARBINARY;
 	    ele_type[i] = -1;
+            if (col_prec[i] > col_disp_size[i])
+              {
+                col_disp_size[i] = col_prec[i];
+              }
 	    break;
 
 	  case UUType.U_TYPE_SHORT:
@@ -317,12 +339,20 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
 	    col_type_name[i] = "NCHAR";
 	    col_type[i] = java.sql.Types.CHAR;
 	    ele_type[i] = -1;
+            if (col_prec[i] > col_disp_size[i])
+              {
+                col_disp_size[i] = col_prec[i];
+              }
 	    break;
 
 	  case UUType.U_TYPE_VARNCHAR:
 	    col_type_name[i] = "NCHAR VARYING";
 	    col_type[i] = java.sql.Types.VARCHAR;
 	    ele_type[i] = -1;
+            if (col_prec[i] > col_disp_size[i])
+              {
+                col_disp_size[i] = col_prec[i];
+              }
 	    break;
 
 	  default:
@@ -338,6 +368,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
     ele_type = new int[col_name.length];
     col_type_name = new String[col_name.length];
     col_prec = new int[col_name.length];
+    col_disp_size = new int[col_name.length];
     col_scale = new int[col_name.length];
     col_table = new String[col_name.length];
     col_null = new int[col_name.length];
@@ -345,6 +376,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
 
     for (int i = 0; i < col_name.length; i++)
       {
+        col_disp_size[i] = getDefaultColumnDisplaySize ((byte) r.type[i]);
 	if (r.type[i] == UUType.U_TYPE_BIT)
 	  {
 	    col_type[i] = java.sql.Types.BIT;
@@ -370,7 +402,11 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
 	  {
 	    col_type[i] = java.sql.Types.VARCHAR;
 	    col_type_name[i] = "VARCHAR";
-	    col_prec[i] = 0;
+	    col_prec[i] = r.precision[i];
+            if (col_prec[i] > col_disp_size[i])
+              {
+                col_disp_size[i] = col_prec[i];
+              }
 	    col_class_name[i] = "java.lang.String";
 	  }
 	if (r.type[i] == UUType.U_TYPE_NULL)
@@ -392,6 +428,82 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
 	    col_null[i] = columnNoNulls;
 	  }
       }
+  }
+
+  private int getDefaultColumnDisplaySize (byte type)
+  {
+     /* return default column display size based on column type */
+     int ret_size = -1;
+
+     switch (type)
+      {
+        case UUType.U_TYPE_CHAR:
+          ret_size = 1;
+          break;
+	case UUType.U_TYPE_VARCHAR:
+          ret_size = 1;
+	  break;
+	case UUType.U_TYPE_BIT:
+          ret_size = 1;
+	  break;
+	case UUType.U_TYPE_VARBIT:
+          ret_size = 1;
+          break;
+	case UUType.U_TYPE_SHORT:
+          ret_size = 6;
+	  break;
+	case UUType.U_TYPE_INT:
+          ret_size = 11;
+	  break;
+	case UUType.U_TYPE_BIGINT:
+          ret_size = 20;
+	  break;
+	case UUType.U_TYPE_FLOAT:
+          ret_size = 13;
+	  break;
+	case UUType.U_TYPE_DOUBLE:
+          ret_size = 23;
+	  break;
+	case UUType.U_TYPE_NUMERIC:
+          ret_size = 40;
+	  break;
+	case UUType.U_TYPE_MONETARY:
+          ret_size = 23;
+	  break;
+	case UUType.U_TYPE_DATE:
+	  ret_size = 10;
+	  break;
+	case UUType.U_TYPE_TIME:
+	  ret_size = 8;
+	  break;
+	case UUType.U_TYPE_TIMESTAMP:
+          ret_size = 19;
+	  break;
+	case UUType.U_TYPE_DATETIME:
+          /* FIXME: as is 2010-11-11 20:10:10,to be 2010-11-11 20:20:20.123 */
+          ret_size = 19;
+	  break;
+	case UUType.U_TYPE_NULL:
+          ret_size = 4;
+	  break;
+	case UUType.U_TYPE_OBJECT:
+          ret_size = 256;
+	  break;
+	case UUType.U_TYPE_SET:
+	case UUType.U_TYPE_MULTISET:
+  	case UUType.U_TYPE_SEQUENCE:
+          ret_size = -1;
+	  break;
+	case UUType.U_TYPE_NCHAR:
+          ret_size = 1;
+	  break;
+	case UUType.U_TYPE_VARNCHAR:
+          ret_size = 1;
+	  break;
+	default:
+	  break;
+      }
+    return ret_size;
   }
 
   /*
@@ -468,7 +580,7 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData
   public int getColumnDisplaySize (int column) throws SQLException
   {
     checkColumnIndex (column);
-    return getPrecision (column);
+    return col_disp_size[column - 1];
   }
 
   public String getColumnLabel (int column) throws SQLException

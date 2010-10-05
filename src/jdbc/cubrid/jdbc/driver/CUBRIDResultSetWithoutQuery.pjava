@@ -28,7 +28,7 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 import java.math.BigDecimal;
@@ -41,11 +41,11 @@ import java.util.Arrays;
 import java.util.Iterator;	// 3.0
 import java.net.URL;
 
-import cubrid.jdbc.driver.CUBRIDException;
-import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
-import cubrid.jdbc.driver.CUBRIDResultSetMetaData;
+import @CUBRID_DRIVER@.CUBRIDException;
+import @CUBRID_DRIVER@.CUBRIDJDBCErrorCode;
+import @CUBRID_DRIVER@.CUBRIDResultSetMetaData;
 
-import cubrid.jdbc.jci.*;
+import @CUBRID_JCI@.*;
 
 /**
  * Title: CUBRID JDBC Driver Description:
@@ -56,8 +56,9 @@ import cubrid.jdbc.jci.*;
 class CUBRIDResultSetWithoutQuery implements ResultSet
 {
   int[] type;
-    boolean[] nullable;
-    String[] column_name;
+  int[] precision;
+  boolean[] nullable;
+  String[] column_name;
 
   private int num_of_columns;
   private int num_of_rows;
@@ -72,18 +73,33 @@ class CUBRIDResultSetWithoutQuery implements ResultSet
     CUBRIDResultSetWithoutQuery (int columns, int[]types, String[]colnames,
 				 boolean[]isnull)
   {
-    num_of_columns = columns;
-    type = types;
-    nullable = isnull;
-    column_name = colnames;
-    current_row = -1;
-    num_of_rows = 0;
-    was_null = false;
-    is_closed = false;
-    rows = new ArrayList (10);
-    meta_data = null;
-    streams = new ArrayList ();
-    fetch_size = 0;
+    int[] precision = {0, 0, 0, 0, 0};
+    
+    initialize (columns, types, colnames, isnull, precision);
+  }
+  
+  CUBRIDResultSetWithoutQuery (int columns, int[] types, String[] colnames,
+				 boolean[] isnull, int[] precision)
+  {
+    initialize(columns, types, colnames, isnull, precision);
+  }
+  
+  private void initialize (int columns, int[] types, String[] colnames,
+				 boolean[] isnull, int[] precision)
+  {
+    this.num_of_columns = columns;
+    this.type = types;
+    this.precision = precision;
+    this.nullable = isnull;
+    this.column_name = colnames;
+    this.current_row = -1;
+    this.num_of_rows = 0;
+    this.was_null = false;
+    this.is_closed = false;
+    this.rows = new ArrayList (10);
+    this.meta_data = null;
+    this.streams = new ArrayList ();
+    this.fetch_size = 0;
   }
 
   /*
@@ -112,6 +128,7 @@ class CUBRIDResultSetWithoutQuery implements ResultSet
     is_closed = true;
     clearAllStreams ();
     type = null;
+    precision = null;
     column_name = null;
     rows.clear ();
     rows = null;

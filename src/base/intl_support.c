@@ -231,6 +231,51 @@ intl_mbs_spn (const char *mbs, const wchar_t * chars)
 }
 
 /*
+ * intl_mbs_namecmp() - compares successive multi-byte character
+ *                 from two multi-byte identifier string
+ *   return: 0 if all the multi-byte character identifier are the "same",
+ *           positive number if mbs1 is greater than mbs2,
+ *           negative number otherwise.
+ *   mbs1(in)
+ *   mbs2(in)
+ *
+ * Note: "same" means that this function ignores bracket '[', ']'
+ *       so mbs1 = "[value]" and mbs2 = "value" returns 0
+ */
+int
+intl_mbs_namecmp (const char *mbs1, const char *mbs2)
+{
+  const char *cp1 = mbs1;
+  const char *cp2 = mbs2;
+  int cp1_len, cp2_len;
+
+  assert (mbs1 != NULL && mbs2 != NULL);
+
+  cp1_len = strlen (cp1);
+  cp2_len = strlen (cp2);
+
+  if (cp1[0] == '[')
+    {
+      cp1++;
+      cp1_len -= 2;
+    }
+
+  if (cp2[0] == '[')
+    {
+      cp2++;
+      cp2_len -= 2;
+    }
+
+  if (cp1_len != cp2_len)
+    {
+      /* fail return */
+      return intl_mbs_casecmp (cp1, cp2);
+    }
+
+  return intl_mbs_ncasecmp (cp1, cp2, cp1_len);
+}
+
+/*
  * intl_mbs_casecmp() - compares successive multi-byte character elements
  *                 from two multi-byte strings
  *   return: 0 if all the multi-byte character elements are the same,
@@ -448,43 +493,45 @@ intl_mbs_lower (const char *mbs1, char *mbs2)
 int
 intl_mbs_nlower (char *dest, const char *src, const int max_len)
 {
-  int char_count;
+  int char_count = 0;
   int length_in_bytes = 0;
 
-  if (!intl_Mbs_support)
+  if (src == NULL)
     {
-      char *s;
-      s = strcpy (dest, src);
-      while (*s)
-	{
-	  *s = char_tolower (*s);
-	  s++;
-	}
+      dest[0] = '\0';
       return 0;
     }
 
-
-  dest[0] = '\0';
-
-  if (src)
+  if (!intl_Mbs_support)
     {
-      length_in_bytes = strlen (src);
-
-      if (length_in_bytes >= max_len)
+      int i = 0;
+      for (i = 0; (src[i] != '\0') && (i < max_len - 1); ++i)
 	{
-	  length_in_bytes = max_len - 1;	/* include null */
+	  dest[i] = char_tolower (src[i]);
 	}
+      dest[i] = '\0';
+      return 0;
+    }
 
-      if (length_in_bytes > 0)
-	{
-	  memcpy (dest, src, length_in_bytes);
-	  intl_char_count ((unsigned char *) dest, length_in_bytes,
-			   lang_charset (), &char_count);
-	  intl_lower_string ((unsigned char *) dest, char_count,
-			     lang_charset ());
-	  dest[length_in_bytes] = '\0';
-	}
+  length_in_bytes = strlen (src);
 
+  if (length_in_bytes >= max_len)
+    {
+      /* include null */
+      length_in_bytes = max_len - 1;
+    }
+
+  if (length_in_bytes > 0)
+    {
+      memcpy (dest, src, length_in_bytes);
+      intl_char_count ((unsigned char *) dest, length_in_bytes,
+		       lang_charset (), &char_count);
+      intl_lower_string ((unsigned char *) dest, char_count, lang_charset ());
+      dest[length_in_bytes] = '\0';
+    }
+  else
+    {
+      dest[0] = '\0';
     }
 
   return 0;
@@ -1063,4 +1110,88 @@ intl_codeset (int category)
       return INTL_CODESET_ISO88591;
     }
 #endif
+}
+
+/*
+ * intl_reverse_string() - reverse characters of source string,
+ *			   into destination string
+ *   return: character counts
+ *   src(in): source string
+ *   dst(out): destination string
+ *   length_in_chars(in): length of the string measured in characters
+ *   size_in_bytes(in): size of the string in bytes
+ *   codeset(in): enumeration of source string
+ */
+int
+intl_reverse_string (unsigned char *src, unsigned char *dst,
+		     int length_in_chars, int size_in_bytes,
+		     INTL_CODESET codeset)
+{
+  unsigned char *end, *s, *d;
+  int char_count = 0;
+
+  assert (src != NULL);
+  assert (dst != NULL);
+
+  s = src;
+
+  switch (codeset)
+    {
+    case INTL_CODESET_ISO88591:
+      {
+	d = dst + length_in_chars - 1;
+	end = src + length_in_chars;
+	for (; s < end; s++, d--, char_count++)
+	  {
+	    if (intl_is_korean (*s))
+	      {
+		*(d - 2) = *s;
+		*(d - 1) = *(s + 1);
+		*d = *(s + 2);
+		s += 2;
+		d -= 2;
+		continue;
+	      }
+	    else
+	      {
+		*d = *s;
+	      }
+	  }
+      }
+      break;
+
+    case INTL_CODESET_KSC5601_EUC:
+      {
+	d = dst + size_in_bytes - 1;
+	end = src + size_in_bytes;
+	for (; s < end && char_count < length_in_chars; char_count++)
+	  {
+	    if (!IS_8BIT (*s))	/* ASCII character */
+	      {
+		*d-- = *s++;
+	      }
+	    else if (*s == SS3)	/* Code Set 3 character */
+	      {
+		*(d - 2) = *s;
+		*(d - 1) = *(s + 1);
+		*d = *(s + 2);
+		s += 3;
+		d -= 3;
+	      }
+	    else		/* 2 byte character (CS1 or CS2) */
+	      {
+		*(d - 1) = *s;
+		*d = *(s + 1);
+		s += 2;
+		d -= 2;
+	      }
+	  }
+      }
+      break;
+
+    default:
+      break;
+    }
+
+  return char_count;
 }

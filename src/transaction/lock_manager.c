@@ -311,7 +311,8 @@ typedef enum
   LOCK_RESUMED_ABORTED,		/* Thread has been resumed, however
 				   it must be aborted because of a deadlock */
   LOCK_RESUMED_ABORTED_FIRST,	/* in case of the first aborted thread */
-  LOCK_RESUMED_ABORTED_OTHER	/* in case of other aborted threads */
+  LOCK_RESUMED_ABORTED_OTHER,	/* in case of other aborted threads */
+  LOCK_RESUMED_INTERRUPT
 } LOCK_WAIT_STATE;
 
 /*
@@ -2717,27 +2718,23 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
   thread_wakeup_deadlock_detect_thread ();
 
   /* suspend the worker thread (transaction) */
-  while (1)
+  thread_suspend_wakeup_and_unlock_entry (entry_ptr->thrd_entry,
+					  THREAD_LOCK_SUSPENDED);
+  if (entry_ptr->thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
     {
-      thread_suspend_wakeup_and_unlock_entry (entry_ptr->thrd_entry,
-					      THREAD_LOCK_SUSPENDED);
-      if (entry_ptr->thrd_entry->resume_status ==
-	  THREAD_RESUME_DUE_TO_INTERRUPT
-	  && entry_ptr->thrd_entry->interrupted)
-	{
-	  /* In case the shutdown thread wakes me up,
-	   * I keep being suspended and waiting until the lock holder
-	   * wakes me up, because it is too dangerous to continue
-	   * process with a lock not granted.
-	   */
-	  continue;
-	}
-      else if (entry_ptr->thrd_entry->resume_status != THREAD_LOCK_RESUMED)
-	{
-	  assert (0);
-	}
+      /* a shutdown thread wakes me up */
+      return LOCK_RESUMED_INTERRUPT;
+    }
+  else if (entry_ptr->thrd_entry->resume_status != THREAD_LOCK_RESUMED)
+    {
+      /* wake up with other reason */
+      assert (0);
 
-      break;
+      return LOCK_RESUMED_INTERRUPT;
+    }
+  else
+    {
+      assert (entry_ptr->thrd_entry->resume_status == THREAD_LOCK_RESUMED);
     }
 
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = 0;
@@ -2782,7 +2779,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
 	   */
 	  if (!qmgr_is_thread_executing_async_query (entry_ptr->thrd_entry))
 	    {
-	      if (thread_has_threads (entry_ptr->tran_index,
+	      if (thread_has_threads (thread_p, entry_ptr->tran_index,
 				      thread_get_client_id (thread_p)) >= 1)
 		{
 		  logtb_set_tran_index_interrupt (thread_p,
@@ -2795,7 +2792,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int waitsecs)
 						     THREAD_RESUME_DUE_TO_INTERRUPT);
 
 		      client_id = thread_get_client_id (thread_p);
-		      if (thread_has_threads (entry_ptr->tran_index,
+		      if (thread_has_threads (thread_p, entry_ptr->tran_index,
 					      client_id) == 0)
 			{
 			  break;
@@ -4478,29 +4475,23 @@ start:
 
       MUTEX_UNLOCK (res_ptr->res_mutex);
 
-      while (1)
+      thread_suspend_wakeup_and_unlock_entry (thrd_entry,
+					      THREAD_LOCK_SUSPENDED);
+      if (thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
 	{
-	  thread_suspend_wakeup_and_unlock_entry (thrd_entry,
-						  THREAD_LOCK_SUSPENDED);
+	  /* a shutdown thread wakes me up */
+	  return LK_NOTGRANTED_DUE_ERROR;
+	}
+      else if (thrd_entry->resume_status != THREAD_LOCK_RESUMED)
+	{
+	  /* wake up with other reason */
+	  assert (0);
 
-	  if (entry_ptr->thrd_entry->resume_status ==
-	      THREAD_RESUME_DUE_TO_INTERRUPT
-	      && entry_ptr->thrd_entry->interrupted)
-	    {
-	      /* In case the shutdown thread wakes me up,
-	       * I keep being suspended and waiting until the lock holder
-	       * wakes me up, because it is too dangerous to continue
-	       * process with a lock not granted.
-	       */
-	      continue;
-	    }
-	  else if (entry_ptr->thrd_entry->resume_status !=
-		   THREAD_LOCK_RESUMED)
-	    {
-	      assert (0);
-	    }
-
-	  break;
+	  return LK_NOTGRANTED_DUE_ERROR;
+	}
+      else
+	{
+	  assert (thrd_entry->resume_status == THREAD_LOCK_RESUMED);
 	}
 
       goto start;
@@ -4556,6 +4547,10 @@ blocked:
       if (ret_val == LOCK_RESUMED_ABORTED)
 	{
 	  return LK_NOTGRANTED_DUE_ABORTED;
+	}
+      else if (ret_val == LOCK_RESUMED_INTERRUPT)
+	{
+	  return LK_NOTGRANTED_DUE_ERROR;
 	}
       else			/* LOCK_RESUMED_TIMEOUT || LOCK_SUSPENDED */
 	{
@@ -7540,6 +7535,44 @@ end:
 }
 
 /*
+ * lock_object_waitsecs - Lock an object
+ *
+ * return: one of following values)
+ *     LK_GRANTED
+ *     LK_NOTGRANTED_DUE_ABORTED
+ *     LK_NOTGRANTED_DUE_TIMEOUT
+ *     LK_NOTGRANTED_DUE_ERROR
+ *
+ *   oid(in): Identifier of object(instance, class, root class) to lock
+ *   class_oid(in): Identifier of the class instance of the given object
+ *   lock(in): Requested lock mode
+ *   cond_flag(in):
+ *   waitsecs(in):
+ *
+ */
+int
+lock_object_waitsecs (THREAD_ENTRY * thread_p, const OID * oid,
+		      const OID * class_oid, LOCK lock, int cond_flag,
+		      int waitsecs)
+{
+#if !defined (SERVER_MODE)
+  if (lock == X_LOCK || lock == IX_LOCK || lock == SIX_LOCK)
+    {
+      lk_Standalone_has_xlock = true;
+    }
+  return LK_GRANTED;
+
+#else /* !SERVER_MODE */
+  int old_waitsecs = xlogtb_reset_wait_secs (thread_p, waitsecs);
+  int lock_result = lock_object (thread_p, oid, class_oid, lock, cond_flag);
+
+  xlogtb_reset_wait_secs (thread_p, old_waitsecs);
+
+  return lock_result;
+#endif
+}
+
+/*
  * lock_object_on_iscan -
  *
  * return:
@@ -9430,17 +9463,26 @@ lock_get_class_lock (const OID * class_oid, int tran_index)
  *     then the threads are forced to timeout.
  */
 void
-lock_force_timeout_lock_wait_transactions (void)
+lock_force_timeout_lock_wait_transactions (unsigned short stop_phase)
 {
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
   int i;
   THREAD_ENTRY *thrd;
+  CSS_CONN_ENTRY *conn_p;
 
   for (i = 1; i < thread_num_total_threads (); i++)
     {
       thrd = thread_find_entry_by_index (i);
+
+      conn_p = thrd->conn_entry;
+      if ((stop_phase > THREAD_WORKER_STOP_PHASE_0 && conn_p == NULL) ||
+	  (conn_p && conn_p->stop_phase != stop_phase))
+	{
+	  continue;
+	}
+
       (void) thread_lock_entry (thrd);
       if (LK_IS_LOCKWAIT_THREAD (thrd))
 	{

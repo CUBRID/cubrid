@@ -1715,7 +1715,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 	     If not, take special action for this record. */
 	  if (temp_recdes.length > SORT_MAXREC_LENGTH)
 	    {
-	      /* TAKE CARE OF LONG RECORD as a seperate RUN */
+	      /* TAKE CARE OF LONG RECORD as a separate RUN */
 
 	      if (long_recdes.area_size < temp_recdes.length)
 		{

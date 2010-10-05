@@ -83,6 +83,6 @@ extern void set_cubrid_home (void);
 extern void set_cubrid_file (T_CUBRID_FILE_ID fid, char *value);
 extern char *get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf);
 extern char *get_cubrid_home (void);
-extern char *getenv_cubrid_broker (void);
+extern const char *getenv_cubrid_broker (void);
 
 #endif /* _BROKER_FILENAME_H_ */

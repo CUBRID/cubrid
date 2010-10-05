@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -44,7 +44,7 @@
 
 static int pt_find_size_from_dbtype (const DB_TYPE T_type);
 static int pt_arity_of_query_type (const DB_QUERY_TYPE * qt);
-static char *pt_get_attr_name (PARSER_CONTEXT * parser, const PT_NODE * node);
+static char *pt_get_attr_name (PARSER_CONTEXT * parser, PT_NODE * node);
 static DB_COL_TYPE pt_get_col_type (const PARSER_CONTEXT * parser,
 				    const PT_NODE * node);
 static void pt_set_domain_class (SM_DOMAIN * dom, const PT_NODE * nam,
@@ -113,18 +113,14 @@ pt_arity_of_query_type (const DB_QUERY_TYPE * qt)
  *   node(in): an expression representing a select_list item
  */
 static char *
-pt_get_attr_name (PARSER_CONTEXT * parser, const PT_NODE * node)
+pt_get_attr_name (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   const char *name;
   char *res = NULL;
   unsigned int save_custom = parser->custom_print;
 
-  while (node && node->node_type == PT_DOT_)
-    {
-      node = node->info.dot.arg2;
-    }
-
-  if (!node)
+  node = pt_get_end_path_node (node);
+  if (node == NULL)
     {
       return NULL;
     }
@@ -639,7 +635,7 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col,
   char *original_name;
 
   save_custom = parser->custom_print;
-  parser->custom_print = parser->custom_print | PT_SUPPRESS_QUOTES;
+  parser->custom_print |= PT_SUPPRESS_QUOTES;
 
   if ((q = (DB_QUERY_TYPE *) malloc (DB_SIZEOF (DB_QUERY_TYPE))) == NULL)
     {
@@ -650,14 +646,9 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col,
   q->db_type = DB_TYPE_NULL;
   q->size = 0;
 
-  if (!pt_resolved (col))
+  if (pt_resolved (col))
     {
-      parser->custom_print = parser->custom_print | PT_SUPPRESS_QUOTES;
-    }
-  else
-    {
-      parser->custom_print = parser->custom_print |
-	PT_SUPPRESS_RESOLVED | PT_SUPPRESS_QUOTES;
+      parser->custom_print |= PT_SUPPRESS_RESOLVED;
     }
 
   original_name = name = pt_print_alias (parser, col);
@@ -817,7 +808,7 @@ pt_get_node_title (PARSER_CONTEXT * parser, const PT_NODE * col,
       q->original_name = NULL;
     }
 
-  q->attr_name = pt_get_attr_name (parser, col);
+  q->attr_name = pt_get_attr_name (parser, (PT_NODE *) col);
   q->spec_name = NULL;		/* fill it at pt_fillin_type_size() */
 
   /* At this time before query compilation, we cannot differentiate qualified
@@ -848,7 +839,8 @@ error:
 
 DB_QUERY_TYPE *
 pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query,
-		     DB_QUERY_TYPE * list, const int oids_included)
+		     DB_QUERY_TYPE * list, const int oids_included,
+		     bool want_spec_entity_name)
 {
   DB_QUERY_TYPE *q, *t;
   PT_NODE *s, *from_list;
@@ -859,7 +851,9 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query,
 
   s = pt_get_select_list (parser, query);
   from_list = pt_get_from_list (parser, query);
-  if (!s || !list || !from_list)
+  /* from_list is allowed to be NULL for supporting SELECT without references
+     to tables */
+  if (!s || !list)
     return list;
 
   if (oids_included == 1)
@@ -906,10 +900,18 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query,
 	    }
 	  if (node->node_type == PT_NAME
 	      && (spec_id = node->info.name.spec_id)
-	      && (spec = pt_find_entity (parser, from_list, spec_id))
-	      && spec->info.spec.range_var)
+	      && (spec = pt_find_entity (parser, from_list, spec_id)))
 	    {
-	      spec_name = spec->info.spec.range_var->info.name.original;
+	      if (want_spec_entity_name == true
+		  && spec->info.spec.entity_name)
+		{
+		  spec_name = spec->info.spec.entity_name->info.name.original;
+		}
+	      else if (want_spec_entity_name == false
+		       && spec->info.spec.range_var)
+		{
+		  spec_name = spec->info.spec.range_var->info.name.original;
+		}
 	    }
 	}
       /* if it is method, find spec name */
@@ -923,12 +925,21 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query,
 	  node = node->info.method_call.method_name;
 	  if (node->node_type == PT_NAME
 	      && (spec_id = node->info.name.spec_id)
-	      && (spec = pt_find_entity (parser, from_list, spec_id))
-	      && spec->info.spec.range_var)
+	      && (spec = pt_find_entity (parser, from_list, spec_id)))
 	    {
-	      spec_name = spec->info.spec.range_var->info.name.original;
+	      if (want_spec_entity_name == true
+		  && spec->info.spec.entity_name)
+		{
+		  spec_name = spec->info.spec.entity_name->info.name.original;
+		}
+	      else if (want_spec_entity_name == false
+		       && spec->info.spec.range_var)
+		{
+		  spec_name = spec->info.spec.range_var->info.name.original;
+		}
 	    }
 	}
+
       t->spec_name = (spec_name) ? strdup (spec_name) : NULL;
 
       if (!t->original_name)
@@ -1081,7 +1092,7 @@ pt_free_query_etc_area (PT_NODE * query)
       && (query->node_type == PT_SELECT
 	  || query->node_type == PT_DIFFERENCE
 	  || query->node_type == PT_INTERSECTION
-	  || query->node_type == PT_UNION))
+	  || query->node_type == PT_UNION || query->node_type == PT_DO))
     {
       regu_free_listid ((QFILE_LIST_ID *) query->etc);
     }

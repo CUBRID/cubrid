@@ -234,8 +234,8 @@ extern const OID *heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
 extern const OID *heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid,
 			       const OID * oid, HEAP_SCANCACHE * scan_cache);
 extern void heap_flush (THREAD_ENTRY * thread_p, const OID * oid);
-extern int heap_reclaim_addresses (THREAD_ENTRY * thread_p,
-				   const HFID * hfid);
+extern int xheap_reclaim_addresses (THREAD_ENTRY * thread_p,
+				    const HFID * hfid);
 extern int heap_scancache_start (THREAD_ENTRY * thread_p,
 				 HEAP_SCANCACHE * scan_cache,
 				 const HFID * hfid, const OID * class_oid,
@@ -364,6 +364,7 @@ extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p,
 						  RECDES * new_recdes);
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p,
 					     int n_atts, int *att_ids,
+					     int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info,
 					     RECDES * recdes,
 					     DB_VALUE * dbvalue, char *buf);
@@ -386,6 +387,9 @@ extern DB_VALUE *heap_attrvalue_get_index (int value_index,
 extern HEAP_ATTRVALUE *heap_attrvalue_locate (ATTR_ID attrid,
 					      HEAP_CACHE_ATTRINFO *
 					      attr_info);
+extern OR_ATTRIBUTE *heap_locate_last_attrepr (ATTR_ID attrid,
+					       HEAP_CACHE_ATTRINFO *
+					       attr_info);
 extern DB_VALUE *heap_attrvalue_get_key (THREAD_ENTRY * thread_p,
 					 int btid_index,
 					 HEAP_CACHE_ATTRINFO * idx_attrinfo,
@@ -399,11 +403,18 @@ extern int heap_indexinfo_get_num_attrs (int btid_index,
 extern int heap_indexinfo_get_attrids (int btid_index,
 				       HEAP_CACHE_ATTRINFO * attrinfo,
 				       ATTR_ID * attrids);
-
+extern int heap_indexinfo_get_attrs_prefix_length (int btid_index,
+						   HEAP_CACHE_ATTRINFO *
+						   attrinfo,
+						   int *attrs_prefix_length,
+						   int
+						   len_attrs_prefix_length);
 extern int heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p,
 				       OID * class_oid, BTID * btid,
 				       BTREE_TYPE * type, int *num_attrs,
-				       ATTR_ID ** attr_ids, char **btnamepp);
+				       ATTR_ID ** attr_ids,
+				       int **attrs_prefix_length,
+				       char **btnamepp);
 extern int heap_get_referenced_by (THREAD_ENTRY * thread_p,
 				   const OID * obj_oid, RECDES * obj,
 				   int *max_oid_cnt, OID ** oid_list);
@@ -479,5 +490,12 @@ extern int heap_rv_redo_reuse_page_reuse_oid (THREAD_ENTRY * thread_p,
 					      LOG_RCV * rcv);
 extern void heap_rv_dump_reuse_page (FILE * fp, int ignore_length,
 				     void *data);
+
+extern int heap_get_hfid_from_class_oid (THREAD_ENTRY * thread_p,
+					 OID * class_oid, HFID * hfid);
+extern int heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid);
+
+extern void heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp,
+				     OID * class_oid);
 
 #endif /* _HEAP_FILE_H_ */

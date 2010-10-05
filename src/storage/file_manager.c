@@ -315,9 +315,9 @@ static INT16 file_find_goodvol (THREAD_ENTRY * thread_p, INT16 hint_volid,
 static int file_new_declare_as_old_internal (THREAD_ENTRY * thread_p,
 					     const VFID * vfid, int tran_id,
 					     bool hold_csect);
-static DISK_ISVALID file_isnew_with_type (THREAD_ENTRY * thread_p,
-					  const VFID * vfid,
-					  FILE_TYPE * file_type);
+static FILE_IS_NEW_FILE file_isnew_with_type (THREAD_ENTRY * thread_p,
+					      const VFID * vfid,
+					      FILE_TYPE * file_type);
 static INT32 file_find_good_maxpages (THREAD_ENTRY * thread_p,
 				      FILE_TYPE file_type);
 static int file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
@@ -371,7 +371,7 @@ static INT32 file_allocset_alloc_sector (THREAD_ENTRY * thread_p,
 					 PAGE_PTR fhdr_pgptr,
 					 PAGE_PTR allocset_pgptr,
 					 INT16 allocset_offset,
-					 bool special_p);
+					 int exp_npages);
 static PAGE_PTR file_allocset_expand_sector (THREAD_ENTRY * thread_p,
 					     PAGE_PTR fhdr_pgptr,
 					     PAGE_PTR allocset_pgptr,
@@ -965,8 +965,9 @@ file_new_declare_as_old (THREAD_ENTRY * thread_p, const VFID * vfid)
 }
 
 /*
- * file_new_isvalid () - Find out if the file is a newly created file
- *   return: DISK_VALID if new file, DISK_INVALID if not a new file, or DISK_ERROR
+ * file_is_new_file () - Find out if the file is a newly created file
+ *   return: FILE_NEW_FILE if new file, FILE_OLD_FILE if not a new file,
+ *           or FILE_ERROR
  *   vfid(in): Complete file identifier (i.e., Volume_id + file_id)
  *
  * Note: A newly created file is one that has been created by an active
@@ -976,12 +977,12 @@ file_new_declare_as_old (THREAD_ENTRY * thread_p, const VFID * vfid)
  *       assumption is not correct, it is better to define a hash table to
  *       find out whether or not a file is a new one.
  */
-DISK_ISVALID
-file_new_isvalid (THREAD_ENTRY * thread_p, const VFID * vfid)
+FILE_IS_NEW_FILE
+file_is_new_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   bool ignore;
 
-  return file_new_isvalid_with_has_undolog (thread_p, vfid, &ignore);
+  return file_is_new_file_with_has_undolog (thread_p, vfid, &ignore);
 }
 
 /*
@@ -993,13 +994,13 @@ file_new_isvalid (THREAD_ENTRY * thread_p, const VFID * vfid)
  * Note: A newly created file is one that has been created by an active
  *       transaction. As a side-effect, also return an existing file's type.
  */
-static DISK_ISVALID
+static FILE_IS_NEW_FILE
 file_isnew_with_type (THREAD_ENTRY * thread_p, const VFID * vfid,
 		      FILE_TYPE * file_type)
 {
   FILE_NEWFILE *entry;
   FILE_NEW_FILES_HASH_KEY key;
-  DISK_ISVALID newfile = DISK_INVALID;
+  FILE_IS_NEW_FILE newfile = FILE_OLD_FILE;
 
   *file_type = FILE_UNKNOWN_TYPE;
 
@@ -1008,13 +1009,13 @@ file_isnew_with_type (THREAD_ENTRY * thread_p, const VFID * vfid,
   if (csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) !=
       NO_ERROR)
     {
-      return DISK_ERROR;
+      return FILE_ERROR;
     }
 
   entry = (FILE_NEWFILE *) mht_get (file_Tracker->newfiles.mht, &key);
   if (entry != NULL)
     {
-      newfile = DISK_VALID;
+      newfile = FILE_NEW_FILE;
       *file_type = entry->file_type;
     }
 
@@ -1024,8 +1025,9 @@ file_isnew_with_type (THREAD_ENTRY * thread_p, const VFID * vfid,
 }
 
 /*
- * file_new_isvalid_with_has_undolog () - Find out if the file is a newly created file
- *   return: DISK_VALID if new file, DISK_INVALID if not a new file, or DISK_ERROR
+ * file_is_new_file_with_has_undolog () - Find out if the file is a newly created file
+ *   return: FILE_NEW_FILE if new file, FILE_OLD_FILE if not a new file,
+ *           or FILE_ERROR
  *   vfid(in): Complete file identifier (i.e., Volume_id + file_id)
  *   has_undolog(in):
  *
@@ -1036,13 +1038,13 @@ file_isnew_with_type (THREAD_ENTRY * thread_p, const VFID * vfid,
  *       assumption is not correct, it is better to define a hash table to
  *       find out whether or not a file is a new one.
  */
-DISK_ISVALID
-file_new_isvalid_with_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid,
+FILE_IS_NEW_FILE
+file_is_new_file_with_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid,
 				   bool * has_undolog)
 {
   FILE_NEWFILE *entry;
   FILE_NEW_FILES_HASH_KEY key;
-  DISK_ISVALID newfile = DISK_INVALID;
+  FILE_IS_NEW_FILE newfile = FILE_OLD_FILE;
 
   *has_undolog = false;
 
@@ -1052,13 +1054,13 @@ file_new_isvalid_with_has_undolog (THREAD_ENTRY * thread_p, const VFID * vfid,
   if (csect_enter_as_reader (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) !=
       NO_ERROR)
     {
-      return DISK_ERROR;
+      return FILE_ERROR;
     }
 
   entry = (FILE_NEWFILE *) mht_get (file_Tracker->newfiles.mht, &key);
   if (entry != NULL)
     {
-      newfile = DISK_VALID;
+      newfile = FILE_NEW_FILE;
       *has_undolog = entry->has_undolog;
     }
 
@@ -2868,7 +2870,7 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 	}
       else
 	{
-	  sectid = disk_alloc_sector (thread_p, vfid->volid, nsects);
+	  sectid = disk_alloc_sector (thread_p, vfid->volid, nsects, -1);
 	  if (sectid == DISK_SECTOR_WITH_ALL_PAGES)
 	    {
 	      nsects = 1;
@@ -5067,7 +5069,7 @@ file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid,
  *   allocset_pgptr(out): Pointer to a page where allocation set is located
  *   allocset_offset(in): Location in allocset_pgptr where allocatio set is
  *                        located
- *   special_p(in): True when special sector is desired
+ *   exp_npages(in): Expected pages that sector will have
  *
  * Note: The sector identifier is stored onto the sector table of the given
  *       allocation set.
@@ -5078,7 +5080,7 @@ file_isvalid_page_partof (THREAD_ENTRY * thread_p, const VPID * vpid,
 static INT32
 file_allocset_alloc_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 			    PAGE_PTR allocset_pgptr, INT16 allocset_offset,
-			    bool special_p)
+			    int exp_npages)
 {
   FILE_HEADER *fhdr;
   FILE_ALLOCSET *allocset;
@@ -5088,6 +5090,7 @@ file_allocset_alloc_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   VPID vpid;
   LOG_DATA_ADDR addr;
   FILE_RECV_ALLOCSET_SECTOR recv_undo, recv_redo;	/* Recovery stuff */
+  bool special = false;
 
   /* Allocation of pages and sectors is done only from the last allocation set.
      This is done since the VPID must be stored in the order of allocation. */
@@ -5099,13 +5102,13 @@ file_allocset_alloc_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   addr.pgptr = NULL;
   addr.offset = -1;
 
-
   if (fhdr->type == FILE_TMP || fhdr->type == FILE_TMP_TMP)
     {
-      special_p = true;
+      special = true;
     }
 
   allocset = (FILE_ALLOCSET *) ((char *) allocset_pgptr + allocset_offset);
+
   /* If there is not space to store a new sector identifier at the end of the
      sector table, the sector table for this allocation set is expanded */
 
@@ -5178,9 +5181,9 @@ file_allocset_alloc_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   /* Allocate the sector and store its identifier onto the table of allocated
      sectors ids for the current allocation set. */
 
-  sectid = ((special_p == true)
+  sectid = ((special == true)
 	    ? disk_alloc_special_sector ()
-	    : disk_alloc_sector (thread_p, allocset->volid, 1));
+	    : disk_alloc_sector (thread_p, allocset->volid, 1, exp_npages));
 
   CAST_TO_SECTARRAY (aid_ptr, addr.pgptr, allocset->end_sects_offset);
 
@@ -6337,6 +6340,9 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   VPID vpid;
   INT32 alloc_pageid;		/* Identifier of allocated page */
   int answer = FILE_ALLOCSET_ALLOC_ZERO;
+#if !defined (NDEBUG)
+  int retry = 0;
+#endif
 
   /*
    * Allocation of pages and sectors is done only from the last allocation set.
@@ -6359,24 +6365,15 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   near_pageid = ((near_vpid != NULL && allocset->volid == near_vpid->volid)
 		 ? near_vpid->pageid : NULL_PAGEID);
 
-  /* Try to allocate the pages from the last used sector identifier.. */
-  if (npages > DISK_SECTOR_NPAGES
-      && allocset->curr_sectid != DISK_SECTOR_WITH_ALL_PAGES)
+  /* Try to allocate the pages from the last used sector identifier. */
+  sectid = allocset->curr_sectid;
+  if (sectid == NULL_SECTID)
     {
       sectid = file_allocset_alloc_sector (thread_p, fhdr_pgptr,
 					   allocset_pgptr, allocset_offset,
-					   true);
+					   npages);
     }
-  else
-    {
-      sectid = allocset->curr_sectid;
-      if (sectid == NULL_SECTID)
-	{
-	  sectid = file_allocset_alloc_sector (thread_p, fhdr_pgptr,
-					       allocset_pgptr,
-					       allocset_offset, false);
-	}
-    }
+
   /*
    * If we cannot allocate the pages within this sector, we must check all
    * the previous allocated sectors. However, we do this only when we think
@@ -6422,9 +6419,8 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	       && aid_ptr < outptr; aid_ptr++)
 	    {
 	      sectid = *aid_ptr;
-	      alloc_pageid =
-		disk_alloc_page (thread_p, allocset->volid, sectid, npages,
-				 near_pageid);
+	      alloc_pageid = disk_alloc_page (thread_p, allocset->volid,
+					      sectid, npages, near_pageid);
 	    }
 
 	  /* Was page found ? */
@@ -6459,14 +6455,13 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
   /* If we were unable to allocate the pages, and there is not any
      unexpected error, allocate a new sector */
-
   while (alloc_pageid == DISK_NULL_PAGEID_WITH_ENOUGH_DISK_PAGES
 	 && sectid != DISK_SECTOR_WITH_ALL_PAGES)
     {
       /* Allocate a new sector for the file */
       sectid = file_allocset_alloc_sector (thread_p, fhdr_pgptr,
 					   allocset_pgptr, allocset_offset,
-					   false);
+					   npages);
       if (sectid == NULL_SECTID)
 	{
 	  /* Unable to allocate a new sector for file */
@@ -6477,6 +6472,16 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
       alloc_pageid = disk_alloc_page (thread_p, allocset->volid, sectid,
 				      npages, near_pageid);
+#if !defined (NDEBUG)
+      if (++retry > 1)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"file_allocset_alloc_pages: retry = %d, filetype= %s, "
+			"volid = %d, secid = %d, pageid = %d, npages = %d\n",
+			retry, file_type_to_string (fhdr->type),
+			allocset->volid, sectid, alloc_pageid, npages);
+	}
+#endif
     }
 
   /* Store the page identifiers into the array of pageids */
@@ -6576,7 +6581,7 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
   VPID vpid;
   int allocstate;
   FILE_TYPE file_type;
-  DISK_ISVALID isfile_new;
+  FILE_IS_NEW_FILE isfile_new;
 #if defined(SERVER_MODE)
   bool old_val = false;
   bool restore_check_interrupt = false;
@@ -6699,13 +6704,13 @@ file_alloc_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
    * committed until the transaction commits
    */
 
-  isfile_new = file_new_isvalid (thread_p, vfid);
-  if (isfile_new == DISK_ERROR)
+  isfile_new = file_is_new_file (thread_p, vfid);
+  if (isfile_new == FILE_ERROR)
     {
       goto exit_on_error;
     }
 
-  if (isfile_new == DISK_VALID
+  if (isfile_new == FILE_NEW_FILE
       && file_type != FILE_TMP && file_type != FILE_TMP_TMP
       && logtb_is_current_active (thread_p) == true)
     {
@@ -6803,11 +6808,12 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
   INT32 max_npages;
   INT32 ftb_npages = 1;
   FILE_TYPE file_type;
-  DISK_ISVALID isfile_new;
+  FILE_IS_NEW_FILE isfile_new;
 #if defined(SERVER_MODE)
   bool old_val = false;
   bool restore_check_interrupt = false;
 #endif /* SERVER_MODE */
+  bool is_tmp_file;
 
   /*
    * Start a TOP SYSTEM OPERATION.
@@ -6864,8 +6870,19 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
   *first_alloc_nthpage = fhdr->num_user_pages;
   allocate_npages = npages;
 
+  is_tmp_file = ((file_type == FILE_TMP || file_type == FILE_TMP_TMP
+		  || file_type == FILE_EITHER_TMP
+		  || file_type == FILE_QUERY_AREA) ? true : false);
+
   while (npages > 0)
     {
+      /*
+       * The non temporary files has more than DISK_SECTOR_NPAGES are allocated
+       * among sectors.
+       * We don't use DISK_SECTOR_WITH_ALL_PAGES way for these files any more.
+       */
+      allocate_npages = (is_tmp_file ? allocate_npages
+			 : MIN (allocate_npages, DISK_SECTOR_NPAGES));
 
 #ifdef FILE_DEBUG
       /* FOR EASY DEBUGGING OF MULTI VOLUME IN DEBUGGING MODE
@@ -6873,17 +6890,14 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
       file_debug_maybe_newset (fhdr_pgptr, fhdr, npages);
 #endif /* FILE_DEBUG */
 
-      while (((allocstate = file_allocset_alloc_pages (thread_p, fhdr_pgptr,
-						       &fhdr->
-						       last_allocset_vpid,
-						       fhdr->
-						       last_allocset_offset,
-						       &vpid, allocate_npages,
-						       near_vpid,
-						       alloc_vpids)) ==
+      while (((allocstate =
+	       file_allocset_alloc_pages (thread_p, fhdr_pgptr,
+					  &fhdr->last_allocset_vpid,
+					  fhdr->last_allocset_offset, &vpid,
+					  allocate_npages, near_vpid,
+					  alloc_vpids)) ==
 	      FILE_ALLOCSET_ALLOC_ZERO) && vpid.volid != NULL_VOLID)
 	{
-
 	  /* guess a simple overhead for storing page identifiers. This may not
 	     be very accurate, however, it is OK for more practical purposes */
 
@@ -6895,8 +6909,8 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
 	   * before we continue.
 	   */
 
-	  max_npages =
-	    file_find_good_maxpages (thread_p, file_type) - ftb_npages;
+	  max_npages = (file_find_good_maxpages (thread_p, file_type)
+			- ftb_npages);
 
 	  /* Do we have enough pages */
 	  if (max_npages < npages)
@@ -6920,9 +6934,10 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
 	       * Create a new allocation set and try to allocate the pages from
 	       * there. If vpid->volid == NULL_VOLID, there was an error...
 	       */
-	      if (file_allocset_new_set
-		  (thread_p, vpid.volid, fhdr_pgptr, npages,
-		   DISK_NONCONTIGUOUS_SPANVOLS_PAGES) != NO_ERROR)
+	      if (file_allocset_new_set (thread_p, vpid.volid, fhdr_pgptr,
+					 npages,
+					 DISK_NONCONTIGUOUS_SPANVOLS_PAGES)
+		  != NO_ERROR)
 		{
 		  break;
 		}
@@ -7004,13 +7019,13 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
 
-  isfile_new = file_new_isvalid (thread_p, vfid);
-  if (isfile_new == DISK_ERROR)
+  isfile_new = file_is_new_file (thread_p, vfid);
+  if (isfile_new == FILE_ERROR)
     {
       goto exit_on_error;
     }
 
-  if (isfile_new == DISK_VALID
+  if (isfile_new == FILE_NEW_FILE
       && file_type != FILE_TMP && file_type != FILE_TMP_TMP
       && logtb_is_current_active (thread_p) == true)
     {
@@ -7101,7 +7116,7 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
   PAGE_PTR allocset_pgptr = NULL;
   VPID vpid;
   FILE_TYPE file_type;
-  DISK_ISVALID isfile_new;
+  FILE_IS_NEW_FILE isfile_new;
   int allocstate;
 #if defined(SERVER_MODE)
   bool old_val = false;
@@ -7221,13 +7236,13 @@ file_alloc_pages_at_volid (THREAD_ENTRY * thread_p, const VFID * vfid,
    * committed until the transaction commits
    */
 
-  isfile_new = file_new_isvalid (thread_p, vfid);
-  if (isfile_new == DISK_ERROR)
+  isfile_new = file_is_new_file (thread_p, vfid);
+  if (isfile_new == FILE_ERROR)
     {
       goto exit_on_error;
     }
 
-  if (isfile_new == DISK_VALID
+  if (isfile_new == FILE_NEW_FILE
       && file_type != FILE_TMP && file_type != FILE_TMP_TMP
       && logtb_is_current_active (thread_p) == true)
     {
@@ -7810,7 +7825,7 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
   INT16 allocset_offset;
   PAGE_PTR allocset_pgptr = NULL;
   PAGE_PTR fhdr_pgptr = NULL;
-  DISK_ISVALID isfile_new;
+  FILE_IS_NEW_FILE isfile_new;
   DISK_ISVALID isfound = DISK_INVALID;
   int ret;
   FILE_TYPE file_type;
@@ -7820,13 +7835,13 @@ file_dealloc_page (THREAD_ENTRY * thread_p, const VFID * vfid,
 #endif /* SERVER_MODE */
 
   isfile_new = file_isnew_with_type (thread_p, vfid, &file_type);
-  if (isfile_new == DISK_ERROR)
+  if (isfile_new == FILE_ERROR)
     {
       return ER_FAILED;
     }
 
-  if (logtb_is_current_active (thread_p) == false && isfile_new == DISK_VALID
-      && file_type != FILE_TMP_TMP)
+  if (logtb_is_current_active (thread_p) == false
+      && isfile_new == FILE_NEW_FILE && file_type != FILE_TMP_TMP)
     {
       /*
        * Pages of new files are removed by disk manager during the rollback

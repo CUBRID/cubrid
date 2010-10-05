@@ -66,7 +66,7 @@ typedef struct text_output
 {
   /* pointer to the buffer */
   char *buffer;
-  /* pointer to the next byte to buffer when writting */
+  /* pointer to the next byte to buffer when writing */
   char *ptr;
   /* optimal I/O pagesize for device */
   int iosize;

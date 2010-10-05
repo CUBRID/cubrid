@@ -210,27 +210,18 @@ net_buf_cp_short (T_NET_BUF * net_buf, short value)
   return 0;
 }
 
-#if defined(CAS_FOR_DBMS)
 void
 net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code,
 		       char *err_str, const char *file, int line)
-#else /* CAS_FOR_DBMS */
-void
-net_buf_error_msg_set (T_NET_BUF * net_buf, int err_code,
-		       char *err_str, const char *file, int line)
-#endif				/* CAS_FOR_DBMS */
 {
 #ifdef CAS_DEBUG
   char msg_buf[1024];
 #endif
-#if defined(CAS_FOR_DBMS)
 #ifndef LIBCAS_FOR_JSP
   T_BROKER_VERSION ver;
 #endif /* !LIBCAS_FOR_JSP */
-#endif /* CAS_FOR_DBMS */
 
   net_buf_clear (net_buf);
-#if defined(CAS_FOR_DBMS)
 #ifndef LIBCAS_FOR_JSP
   ver = CAS_MAKE_VER (as_info->clt_major_version,
 		      as_info->clt_minor_version, as_info->clt_patch_version);
@@ -241,7 +232,6 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_code,
 #else /* !LIBCAS_FOR_JSP */
   net_buf_cp_int (net_buf, err_indicator, NULL);
 #endif /* !LIBCAS_FOR_JSP */
-#endif /* CAS_FOR_DBMS */
   net_buf_cp_int (net_buf, err_code, NULL);
 
 #ifdef CAS_DEBUG
@@ -249,11 +239,7 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_code,
   net_buf_cp_str (net_buf, msg_buf, strlen (msg_buf));
 #endif
 
-#if defined(CAS_FOR_DBMS)
   if ((err_str == NULL) || (err_str == ""))
-#else /* CAS_FOR_DBMS */
-  if (err_str == NULL)
-#endif /* CAS_FOR_DBMS */
     {
       net_buf_cp_byte (net_buf, '\0');
     }

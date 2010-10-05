@@ -17,15 +17,14 @@ CStdioFile	file;
 CString	tmpStr, tmpMsg;
 int		ptr, count;
 
-	if (!_strnicmp(lang, "ko_KR", 4)) {
+	if (!_strnicmp(lang, "ko_KR.euckr", 11) ||
+		!_strnicmp(lang, "ko_KR.utf8", 10)) {
 		m_menu = IDR_POPUP_KOREAN;
-	} else if (!_strnicmp(lang, "en_US", 4)) {
-		m_menu = IDR_POPUP_ENGLISH;
+		filename.Format("%s\\msg\\%s\\cubridtray.msg", cubrid, lang);
 	} else {
 		m_menu = IDR_POPUP_ENGLISH;
+		filename.Format("%s\\msg\\en_US\\cubridtray.msg", cubrid);
 	}
-
-	filename.Format("%s\\msg\\%s\\cubridtray.msg", cubrid, lang);
 	
 	if (file.Open(filename, CStdioFile::modeRead)) {
 		while (file.ReadString(tmpStr)) {

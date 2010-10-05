@@ -473,9 +473,9 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
 
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
-11 패스 1\n\n
+11 \n패스 1\n\n
 12 %d 오브젝트가 처리되었습니다.\n
-13 패스 2\n\n
+13 \n패스 2\n\n
 14 클래스 %s\n
 15 oid:  %d|%d|%d,\n
 16 %d 인스턴스.\n
@@ -485,13 +485,49 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 20 클래스의 힙 파일이 없습니다\n
 21 객체를 갱신하지 못했습니다\n
 22 %d 개의 객체 (전체 %d 객체)이 성공적으로  처리되었습니다.\n
+23 COMPACTDB already started.\n
+24 The number of pages must be between %d and %d.\n
+25 The instance lock timeout must be between %d and %d.\n
+26 Total objects: %d\n
+27 Failed objects: %d\n
+28 Modified objects: %d\n
+29 Big objects: %d\n
+30 Old class representations deleted from catalog.\n
+31 Old class representations preserved in catalog.\n
+32 Can't set isolation level.\n
+33 Couldn't compact database.\n
+34 The class lock timeout must be between %d and %d.\n
+35 Locked class... Incomplete processing...\n
+36 Unprocessed class...\n
+37 Process error... Incomplete processing...\n
+38 Nothing to process...\n
+39 Invalid parameters...\n
+40 Unknown class name...\n
+41 The unused class OIDs and pages have been reclaimed.\n
+42 Reclaiming of OIDs and pages skipped.\n
+43 Error while processing class, class skipped.\n
+44 Pass 3\n\n
+45 Heap compact failed...\n
+46 Heap compact succedeed...\n
 60 \
 compactdb: 데이터베이스에서 사용되지 않는 영역을 해제.\n\
 사용법: %s compactdb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -v, --verbose               많은 상태 정보 출력; 기본값: 출력 안 함\n\
-
+  -v, --verbose                     많은 상태 정보 출력; 기본값: 출력 안 함\n\
+  -i, --input-class-file=FILE       input FILE of table names\n\
+                                    class_name list must be empty\n\
+                                    default: compact all classes\n\
+                                    enabled in CS-mode only\n\
+  -p, --pages-commited-once=NUMBER  maximum number of pages to commit once\n\
+                                    default: 10\n\
+                                    enabled in CS-mode only\n\
+  -S, --SA-mode                     stand-alone mode execution\n\
+  -C, --CS-mode                     client-server mode execution\n\
+  -d, --delete-old-repr             delete old class representations from catalog; default: disabled\n\
+  class_name_list                   enabled in CS-mode only\n\
+  -I, --Instance-lock-timeout       timeout for instance lock\n\
+  -c, --class-lock-timeout          timeout for class lock\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 CUBRID master가 호스트 %s 에서 수행 중입니다. %s 에 시작되어  
@@ -512,7 +548,6 @@ cub_commdb: This utility is deprecated. Use 'cubrid' command instead.\n\
   -K, --shutdown-repl-server=NAME  해당 복제 서버 shutdown\n\
   -k, --shutdown-repl-agent=NAME   해당 복제 agent shutdown\n\
   -A, --shutdown-all               모든 프로세스 shutdown\n\
-  -h, --host=HOST                  해당 호스트의 마스트 서버로 접속\n\
   -c, --server-mode=NAME           해당 데이터베이스 서버의 HA 모드 출력\n\
   -N, --node-list                  CUBRID heartbeat에 의해 관리되는 노드 조회\n\
   -L, --process-list               CUBRID heartbeat에 의해 관리되는 로컬 프로세스 정보 조회\n\

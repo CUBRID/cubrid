@@ -617,7 +617,7 @@ ini_parser_load (const char *ininame)
       lineno++;
       len = (int) strlen (line) - 1;
       /* Safety check against buffer overflows */
-      if (line[len] != '\n')
+      if (line[len] != '\n' && len >= INI_BUFSIZ - 2)
 	{
 	  fprintf (stderr,
 		   "ini_parser: input line too long in %s (%d)\n",

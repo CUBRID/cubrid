@@ -358,7 +358,7 @@ memory_error:
 
 /*
  * db_get_ordered_attribute_names() - This is used to get a list of the
- *    instance and shared attributes in definition order.  This is usefull
+ *    instance and shared attributes in definition order.  This is useful
  *    for displaying attributes because the order makes more sense to the
  *    user than the internal storage order.
  * return : a namelist containing attribute names
@@ -733,7 +733,7 @@ db_print_mop (DB_OBJECT * obj, char *buffer, int maxlen)
 
 /*
  * db_get_method_source_file() - This is an experimental function for the
- *    initial browser. It isn't guarenteed to work in all cases. It will
+ *    initial browser. It isn't guaranteed to work in all cases. It will
  *    attempt to locate the .c file that contains the source for a method
  *    implementation.
  * return : C string
@@ -742,7 +742,7 @@ db_print_mop (DB_OBJECT * obj, char *buffer, int maxlen)
  *
  * note : There isn't any way that this can be determined for certain, what it
  *    does now is find the .o file that contains the implementation function
- *    and assume that a .c file exists in the same directoty that contains
+ *    and assume that a .c file exists in the same directory that contains
  *    the source.
  */
 char *

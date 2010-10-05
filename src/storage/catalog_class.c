@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #include "storage_common.h"
 #include "error_manager.h"
@@ -156,14 +157,12 @@ static int catcls_get_or_value_from_query_spec (THREAD_ENTRY * thread_p,
 						OR_BUF * buf_p,
 						OR_VALUE * value_p);
 
-static int catcls_get_or_value_from_indexes (DB_SEQ * seq, OR_VALUE * subset,
+static int catcls_get_or_value_from_indexes (DB_SEQ * seq,
+					     OR_VALUE * subset,
 					     int is_unique,
 					     int is_reverse,
 					     int is_primary_key,
 					     int is_foreign_key);
-static int catcls_get_or_value_from_index_keys (DB_SEQ * seq,
-						OR_VALUE * subset);
-
 static int catcls_get_subset (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 			      int expected_size, OR_VALUE * value_p,
 			      CREADER reader);
@@ -709,8 +708,8 @@ catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p,
     }
 
   error =
-    xbtree_find_unique (thread_p, &catcls_Btid, &key_val, &ct_Class.classoid,
-			oid_p, false);
+    xbtree_find_unique (thread_p, &catcls_Btid, true, &key_val,
+			&ct_Class.classoid, oid_p, false);
   if (error == BTREE_ERROR_OCCURRED)
     {
       pr_clear_value (&key_val);
@@ -1943,16 +1942,17 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 				  int is_primary_key, int is_foreign_key)
 {
   int seq_size;
-  DB_VALUE keys, fk_val;
-  DB_SEQ *key_seq_p = NULL;
+  DB_VALUE keys, prefix_val;
+  DB_SEQ *key_seq_p = NULL, *prefix_seq;
   int key_size, att_cnt;
-  OR_VALUE *attrs;
+  OR_VALUE *attrs, *key_attrs;
   DB_VALUE *attr_val_p;
   OR_VALUE *subset_p;
-  int i, j;
+  int e, i, j, k;
   int error = NO_ERROR;
 
   db_value_put_null (&keys);
+  db_value_put_null (&prefix_val);
 
   seq_size = set_size (seq_p);
   for (i = 0, j = 0; i < seq_size; i += 2, j++)
@@ -1995,44 +1995,11 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
 	  goto error;
 	}
 
-      /* drop btid from {btid, [key_attr, asc_desc]+, {fk_info}} */
-      error = set_drop_seq_element (key_seq_p, 0);
-      if (error != NO_ERROR)
-	{
-	  goto error;
-	}
-
       key_size = set_size (key_seq_p);
-      att_cnt = key_size / 2;
+      att_cnt = (key_size - 1) / 2;
 
-      if (is_foreign_key)
-	{
-	  error = set_drop_seq_element (key_seq_p, key_size - 1);
-	  if (error != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
-      else if (is_primary_key)
-	{
-	  error = set_get_element (key_seq_p, key_size - 1, &fk_val);
-	  if (error != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  if (DB_VALUE_TYPE (&fk_val) == DB_TYPE_SEQUENCE)	/* ref exists */
-	    {
-	      error = set_drop_seq_element (key_seq_p, key_size - 1);
-	      if (error != NO_ERROR)
-		{
-		  pr_clear_value (&fk_val);
-		  goto error;
-		}
-	    }
-
-	  pr_clear_value (&fk_val);
-	}
+      /* key_count */
+      db_make_int (&attrs[3].value, att_cnt);
 
       subset_p = catcls_allocate_or_value (att_cnt);
       if (subset_p == NULL)
@@ -2045,14 +2012,75 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values,
       attrs[4].sub.count = att_cnt;
 
       /* key_attrs */
-      error = catcls_get_or_value_from_index_keys (key_seq_p, subset_p);
-      if (error != NO_ERROR)
+      e = 1;
+      for (k = 0; k < att_cnt; k++)	/* for each [attrID, asc_desc]+ */
 	{
-	  goto error;
+	  error = catcls_expand_or_value_by_def (&subset_p[k], &ct_Indexkey);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  key_attrs = subset_p[k].sub.value;
+
+	  /* key_attr_id */
+	  attr_val_p = &key_attrs[1].value;
+	  error = set_get_element (key_seq_p, e++, attr_val_p);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  /* key_order */
+	  db_make_int (&key_attrs[2].value, k);
+
+	  /* asc_desc */
+	  attr_val_p = &key_attrs[3].value;
+	  error = set_get_element (key_seq_p, e++, attr_val_p);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  /* prefix_length */
+	  db_make_int (&key_attrs[4].value, -1);
 	}
 
-      /* key_count */
-      db_make_int (&attrs[3].value, att_cnt);
+      if (!is_primary_key && !is_foreign_key)
+	{
+	  /* prefix_length */
+	  error = set_get_element (key_seq_p, key_size - 1, &prefix_val);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  if (DB_VALUE_TYPE (&prefix_val) == DB_TYPE_SEQUENCE)
+	    {
+	      prefix_seq = DB_GET_SEQUENCE (&prefix_val);
+	      assert (set_size (prefix_seq) == att_cnt);
+
+	      for (k = 0; k < att_cnt; k++)
+		{
+		  key_attrs = subset_p[k].sub.value;
+		  attr_val_p = &key_attrs[4].value;
+
+		  error = set_get_element (prefix_seq, k, attr_val_p);
+		  if (error != NO_ERROR)
+		    {
+		      pr_clear_value (&prefix_val);
+		      goto error;
+		    }
+		}
+
+	      pr_clear_value (&prefix_val);
+	    }
+	  else
+	    {
+	      assert (DB_VALUE_TYPE (&prefix_val) == DB_TYPE_INTEGER);
+	    }
+	}
+
       pr_clear_value (&keys);
 
       /* is_reverse */
@@ -2071,56 +2099,6 @@ error:
 
   pr_clear_value (&keys);
   return error;
-}
-
-/*
- * ct_get_or_value_from_indexkeys () -
- *   return:
- *   seq(in):
- *   values(in):
- */
-static int
-catcls_get_or_value_from_index_keys (DB_SEQ * seq_p, OR_VALUE * values)
-{
-  OR_VALUE *attrs;
-  DB_VALUE *attr_val_p;
-  int key_cnt, i, e;
-  int error = NO_ERROR;
-
-  key_cnt = set_size (seq_p) / 2;	/* [attrID, asc_desc]+ */
-
-  e = 0;			/* init */
-  for (i = 0; i < key_cnt; i++)	/* for each [attrID, asc_desc]+ */
-    {
-      error = catcls_expand_or_value_by_def (&values[i], &ct_Indexkey);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      attrs = values[i].sub.value;
-
-      /* key_attr_id */
-      attr_val_p = &attrs[1].value;
-      error = set_get_element (seq_p, e++, attr_val_p);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      /* key_order */
-      db_make_int (&attrs[2].value, i);
-
-      /* asc_desc */
-      attr_val_p = &attrs[3].value;
-      error = set_get_element (seq_p, e++, attr_val_p);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  return NO_ERROR;
 }
 
 /*
@@ -2246,7 +2224,7 @@ catcls_get_property_set (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
     {SM_PROPERTY_REVERSE_INDEX, NULL, 0, false, true, false, false},
     {SM_PROPERTY_REVERSE_UNIQUE, NULL, 0, true, true, false, false},
     {SM_PROPERTY_PRIMARY_KEY, NULL, 0, true, false, true, false},
-    {SM_PROPERTY_FOREIGN_KEY, NULL, 0, false, false, false, true}
+    {SM_PROPERTY_FOREIGN_KEY, NULL, 0, false, false, false, true},
   };
 
   DB_VALUE vals[SM_PROPERTY_NUM_INDEX_FAMILY];

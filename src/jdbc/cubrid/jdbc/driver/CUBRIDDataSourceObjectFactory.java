@@ -28,17 +28,18 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
-import cubrid.jdbc.*;
+import @CUBRID_DRIVER@.*;
+import @CUBRID_JCI@.*;
 import java.util.*;
 import javax.naming.*;
 import javax.naming.spi.*;
 import javax.sql.*;
 
-import cubrid.jdbc.driver.CUBRIDConnectionPoolDataSource;
-import cubrid.jdbc.driver.CUBRIDDataSource;
-import cubrid.jdbc.driver.CUBRIDXADataSource;
+import @CUBRID_DRIVER@.CUBRIDConnectionPoolDataSource;
+import @CUBRID_DRIVER@.CUBRIDDataSource;
+import @CUBRID_DRIVER@.CUBRIDXADataSource;
 
 /**
  * Title: CUBRID JDBC Driver Description:
@@ -53,20 +54,20 @@ public class CUBRIDDataSourceObjectFactory implements ObjectFactory
   {
     Reference ref = (Reference) refObj;
 
-    if (ref.getClassName().equals("cubrid.jdbc.driver.CUBRIDDataSource")
-        || ref.getClassName().equals("cubrid.jdbc.driver.CUBRIDDataSource"))
+    if (ref.getClassName().equals("@CUBRID_DRIVER@.CUBRIDDataSource")
+        || ref.getClassName().equals("@CUBRID_DRIVER@.CUBRIDDataSource"))
     {
       return (new CUBRIDDataSource(ref));
     }
     if (ref.getClassName().equals(
-        "cubrid.jdbc.driver.CUBRIDConnectionPoolDataSource")
+        "@CUBRID_DRIVER@.CUBRIDConnectionPoolDataSource")
         || ref.getClassName().equals(
-            "cubrid.jdbc.driver.CUBRIDConnectionPoolDataSource"))
+            "@CUBRID_DRIVER@.CUBRIDConnectionPoolDataSource"))
     {
       return (new CUBRIDConnectionPoolDataSource(ref));
     }
-    if (ref.getClassName().equals("cubrid.jdbc.driver.CUBRIDXADataSource")
-        || ref.getClassName().equals("cubrid.jdbc.driver.CUBRIDXADataSource"))
+    if (ref.getClassName().equals("@CUBRID_DRIVER@.CUBRIDXADataSource")
+        || ref.getClassName().equals("@CUBRID_DRIVER@.CUBRIDXADataSource"))
     {
       return (new CUBRIDXADataSource(ref));
     }

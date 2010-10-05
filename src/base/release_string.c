@@ -88,7 +88,7 @@ rel_is_compatible_internal (const char *base_rel_str,
 /*
  * Disk (database image) Version Compatibility
  */
-static float disk_compatibility_level = 8.3f;
+static float disk_compatibility_level = 8.301f;
 
 /*
  * rel_name - Name of the product from the message catalog
@@ -196,7 +196,7 @@ rel_bit_platform (void)
 }
 
 /*
- * compatibility_rules - Static table of compatibility rules.                                    *
+ * compatibility_rules - Static table of compatibility rules.
  *         Each time a change is made to the disk_compatibility_level
  *         a rule needs to be added to this table.
  *         If pair of numbers is absent from this table, the two are considered
@@ -204,14 +204,14 @@ rel_bit_platform (void)
  * {base_level (of database), apply_level (of system), compatibility, fix_func}
  */
 static COMPATIBILITY_RULE disk_compatibility_rules[] = {
-  /* 
+  /*
    * NOTICE:
    * 8.2.0 and 8.2.1 database(8.2) should be compatible with 8.2.2 server(8.3).
    */
-  {8.2, 8.3, REL_BACKWARD_COMPATIBLE, NULL},
+  {8.2f, 8.3f, REL_BACKWARD_COMPATIBLE, NULL},
 
   /* a zero indicates the end of the table */
-  {0.0, 0.0, REL_NOT_COMPATIBLE, NULL}
+  {0.0f, 0.0f, REL_NOT_COMPATIBLE, NULL}
 };
 
 /*
@@ -370,19 +370,19 @@ rel_compare (const char *rel_a, const char *rel_b)
  * if the major numbers are different, no network compatibility!
  */
 static COMPATIBILITY_RULE log_compatibility_rules[] = {
-  /* 
+  /*
    * NOTICE:
    * 2.0 and 2.1 servers should NOT be compatible with 2.2 databases.
    * 2.2 server should be compatible with 2.0 and 2.1 databases.
    */
-  {2.1, 2.2, REL_BACKWARD_COMPATIBLE, NULL},
-  {2.0, 2.2, REL_BACKWARD_COMPATIBLE, NULL},
+  {2.1f, 2.2f, REL_BACKWARD_COMPATIBLE, NULL},
+  {2.0f, 2.2f, REL_BACKWARD_COMPATIBLE, NULL},
 
-  {2.1, 2.0, REL_FORWARD_COMPATIBLE, NULL},
-  {2.0, 2.1, REL_BACKWARD_COMPATIBLE, NULL},
+  {2.1f, 2.0f, REL_FORWARD_COMPATIBLE, NULL},
+  {2.0f, 2.1f, REL_BACKWARD_COMPATIBLE, NULL},
 
   /* zero indicates the end of the table */
-  {0.0, 0.0, REL_NOT_COMPATIBLE, NULL}
+  {0.0f, 0.0f, REL_NOT_COMPATIBLE, NULL}
 };
 
 /*
@@ -407,13 +407,13 @@ rel_is_log_compatible (const char *writer_rel_str, const char *reader_rel_str)
  */
 static COMPATIBILITY_RULE net_compatibility_rules[] = {
   /* zero indicates the end of the table */
-  {2.3, 2.2, REL_FORWARD_COMPATIBLE, NULL},
-  {2.2, 2.3, REL_BACKWARD_COMPATIBLE, NULL},
-  {2.2, 2.1, REL_FORWARD_COMPATIBLE, NULL},
-  {2.1, 2.2, REL_BACKWARD_COMPATIBLE, NULL},
-  /*{2.1, 2.0, REL_FORWARD_COMPATIBLE, NULL}, */
-  /*{2.0, 2.1, REL_BACKWARD_COMPATIBLE, NULL}, */
-  {0.0, 0.0, REL_NOT_COMPATIBLE, NULL}
+  {2.3f, 2.2f, REL_FORWARD_COMPATIBLE, NULL},
+  {2.2f, 2.3f, REL_BACKWARD_COMPATIBLE, NULL},
+  {2.2f, 2.1f, REL_FORWARD_COMPATIBLE, NULL},
+  {2.1f, 2.2f, REL_BACKWARD_COMPATIBLE, NULL},
+  /*{2.1f, 2.0f, REL_FORWARD_COMPATIBLE, NULL}, */
+  /*{2.0f, 2.1f, REL_BACKWARD_COMPATIBLE, NULL}, */
+  {0.0f, 0.0f, REL_NOT_COMPATIBLE, NULL}
 };
 
 /*

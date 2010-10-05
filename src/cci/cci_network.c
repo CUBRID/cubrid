@@ -145,9 +145,7 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
   char db_info[SRV_CON_DB_INFO_SIZE];
   MSG_HEADER msg_header;
   int err_code;
-#ifdef CAS_FOR_DBMS
   int err_indicator;
-#endif
   int new_port;
   char *msg_buf;
 
@@ -234,37 +232,22 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
       err_code = CCI_ER_COMMUNICATION;
       goto connect_srv_error;
     }
-#ifdef CAS_FOR_DBMS
   memcpy (&err_indicator, msg_buf + CAS_PROTOCOL_ERR_INDICATOR_INDEX,
 	  CAS_PROTOCOL_ERR_INDICATOR_SIZE);
   err_indicator = ntohl (err_indicator);
   if (err_indicator < 0)
-#else
-  memcpy (&err_code, msg_buf, 4);
-  err_code = ntohl (err_code);
-  if (err_code < 0)
-#endif
     {
-#ifdef CAS_FOR_DBMS
       memcpy (&err_code, msg_buf + CAS_PROTOCOL_ERR_CODE_INDEX,
 	      CAS_PROTOCOL_ERR_CODE_SIZE);
       err_code = ntohl (err_code);
       if (err_indicator == DBMS_ERROR_INDICATOR)
-#else
-      if (err_code > -1000)
-#endif
 	{
 	  if (err_buf)
 	    {
-#ifdef CAS_FOR_DBMS
 	      memcpy (err_buf->err_msg, msg_buf + CAS_PROTOCOL_ERR_MSG_INDEX,
 		      *(msg_header.msg_body_size_ptr) -
 		      (CAS_PROTOCOL_ERR_INDICATOR_SIZE +
 		       CAS_PROTOCOL_ERR_CODE_SIZE));
-#else
-	      memcpy (err_buf->err_msg, &msg_buf[4],
-		      *(msg_header.msg_body_size_ptr) - 4);
-#endif
 	      err_buf->err_code = err_code;
 	    }
 	  err_code = CCI_ER_DBMS;
@@ -275,11 +258,7 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
 
   if (cas_pid)
     {
-#ifdef CAS_FOR_DBMS
       *cas_pid = err_indicator;
-#else
-      *cas_pid = err_code;
-#endif
     }
 
   if (*(msg_header.msg_body_size_ptr) >= (4 + BROKER_INFO_SIZE))
@@ -410,9 +389,6 @@ net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
   char *tmp_p = NULL;
   MSG_HEADER recv_msg_header;
   int result_code;
-#ifdef CAS_FOR_DBMS
-  int err_code;
-#endif
 
   init_msg_header (&recv_msg_header);
 
@@ -440,52 +416,29 @@ net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
       return CCI_ER_COMMUNICATION;
     }
 
-#ifdef CAS_FOR_DBMS
   memcpy ((char *) &result_code, tmp_p + CAS_PROTOCOL_ERR_INDICATOR_INDEX,
 	  CAS_PROTOCOL_ERR_INDICATOR_SIZE);
-#else
-  memcpy ((char *) &result_code, tmp_p, 4);
-#endif
   result_code = ntohl (result_code);
   if (result_code < 0)
     {
-#ifdef CAS_FOR_DBMS
+      int err_code = 0;
+      memcpy ((char *) &err_code, tmp_p + CAS_PROTOCOL_ERR_CODE_INDEX,
+	      CAS_PROTOCOL_ERR_CODE_SIZE);
+      err_code = ntohl (err_code);
       if (result_code == DBMS_ERROR_INDICATOR)
-#else
-      if (result_code > -1000 || result_code <= -10000)
-#endif
 	{
-#ifdef CAS_FOR_DBMS
-	  memcpy ((char *) &err_code, tmp_p + CAS_PROTOCOL_ERR_CODE_INDEX,
-		  CAS_PROTOCOL_ERR_CODE_SIZE);
-	  err_code = ntohl (err_code);
-#endif
 	  if (err_buf)
 	    {
-#ifdef CAS_FOR_DBMS
 	      memcpy (err_buf->err_msg, tmp_p + CAS_PROTOCOL_ERR_MSG_INDEX,
 		      *(recv_msg_header.msg_body_size_ptr) -
 		      (CAS_PROTOCOL_ERR_INDICATOR_SIZE +
 		       CAS_PROTOCOL_ERR_CODE_SIZE));
 	      err_buf->err_code = err_code;
-#else
-	      memcpy (err_buf->err_msg, tmp_p + 4,
-		      *(recv_msg_header.msg_body_size_ptr) - 4);
-	      err_buf->err_code = result_code;
-#endif
 	    }
-#ifdef CAS_FOR_DBMS
 	  err_code = CCI_ER_DBMS;
-#else
-	  result_code = CCI_ER_DBMS;
-#endif
 	}
       FREE_MEM (tmp_p);
-#ifdef CAS_FOR_DBMS
       return err_code;
-#else
-      return result_code;
-#endif
     }
 
   if (msg)
@@ -637,12 +590,10 @@ static bool
 net_peer_alive (SOCKET sd, int timeout)
 {
   SOCKET nsd;
-  int n;
-  socklen_t size;
+  int n, dummy;
   struct sockaddr_in saddr;
   socklen_t slen;
-  struct timeval tv;
-  fd_set wfds, efds;
+  char *ping_msg = "PING_TEST!";
 
   slen = sizeof (saddr);
   if (getpeername (sd, (struct sockaddr *) &saddr, &slen) < 0)
@@ -662,74 +613,30 @@ net_peer_alive (SOCKET sd, int timeout)
       return false;
     }
 
-  /* make the socket non blocking so we can use select */
-  SET_NONBLOCKING (nsd);
-
-  saddr.sin_port = htons (7);	/* port ECHO */
   n = connect (nsd, (struct sockaddr *) &saddr, slen);
 
-  /*
-   * Connection will be established or refused immediately.
-   * Either way it means that the peer host is alive.
-   */
-  if (n == 0 || n == ECONNREFUSED)
+  if (n < 0)
     {
-      close (nsd);
-      return true;
-    }
-  else
-    {
-      switch (errno)
-	{
-	case EINPROGRESS:	/* non-blocking, asynchronously */
-	  break;
-	case ENETUNREACH:	/* network unreachable */
-	case EAFNOSUPPORT:	/* address family not supported */
-	case EADDRNOTAVAIL:	/* address is not available on the remote machine */
-	case EINVAL:		/* on some linux, connecting to the loopback */
-	  close (nsd);
-	  return false;
-	default:		/* otherwise, connection failed */
-	  close (nsd);
-	  return false;
-	}
-
-      FD_ZERO (&wfds);
-      FD_SET (nsd, &wfds);
-      FD_ZERO (&efds);
-      FD_SET (nsd, &efds);
-
-      /* wait mili-seconds of the timeout */
-      tv.tv_sec = timeout / 1000;
-      tv.tv_usec = (timeout % 1000) * 1000;
-      n = select (FD_SETSIZE, NULL, &wfds, &efds, &tv);
-
-      if (n < 0 && errno != EINTR)
-	{
-	  close (nsd);
-	  return false;
-	}
-      if (n == 0)
-	{
-	  close (nsd);
-	  return false;
-	}
-
-      /* has connection been established? */
-      size = sizeof (n);
-      if (getsockopt (nsd, SOL_SOCKET, SO_ERROR, (void *) &n, &size) < 0)
-	{
-	  n = errno;
-	}
-      if (n == 0 || n == ECONNREFUSED)
-	{
-	  close (nsd);
-	  return true;
-	}
-
       close (nsd);
       return false;
     }
+
+  /* make the socket non blocking */
+  SET_NONBLOCKING (nsd);
+
+  n = WRITE_TO_SOCKET (nsd, ping_msg, strlen (ping_msg));
+
+  if (n < 0)
+    {
+      close (nsd);
+      return false;
+    }
+
+  READ_FROM_SOCKET (nsd, (char *) &dummy, sizeof (int));
+
+  CLOSE_SOCKET (nsd);
+
+  return true;
 }
 #endif /* !WINDOWS */
 

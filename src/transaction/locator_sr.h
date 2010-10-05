@@ -78,6 +78,16 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p, HFID * hfid,
 					 HEAP_SCANCACHE * scan_cache,
 					 int *force_count, bool not_check_fk,
 					 REPL_INFO_TYPE repl_info);
+extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY *
+							     thread_p,
+							     HEAP_CACHE_ATTRINFO
+							     * attr_info,
+							     RECDES *
+							     old_recdes,
+							     RECDES *
+							     new_recdes,
+							     const int
+							     copyarea_length_hint);
 extern int locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid,
 					OID * oid, HFID * newhfid,
 					OID * newoid,
@@ -93,6 +103,7 @@ extern DISK_ISVALID locator_check_btree_entries (THREAD_ENTRY * thread_p,
 						 OID * class_oid,
 						 int n_attr_ids,
 						 ATTR_ID * attr_ids,
+						 int *atts_prefix_length,
 						 const char *btname,
 						 bool repair);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p,

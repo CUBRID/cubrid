@@ -1528,7 +1528,7 @@ ehash_create_overflow_file (THREAD_ENTRY * thread_p, EHID * ehid_p,
 			 dir_root_page_p, offset, sizeof (VFID),
 			 &dir_header_p->overflow_file);
 
-  if (file_new_isvalid (thread_p, &(ehid_p->vfid)) == DISK_VALID)
+  if (file_is_new_file (thread_p, &(ehid_p->vfid)) == FILE_NEW_FILE)
     {
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
     }
@@ -5067,7 +5067,7 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
   PAGE_PTR dir_page_p, bucket_page_p = NULL;
   char *bucket_record_p;
   RECDES recdes;
-  PGSLOTID slot_id, first_slot_id = -1;
+  PGSLOTID slot_id, first_slot_id = NULL_SLOTID;
   OID assoc_value;
   int apply_error_code = NO_ERROR;
 
@@ -5090,6 +5090,7 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
        apply_error_code == NO_ERROR && bucket_page_no < num_pages;
        bucket_page_no++)
     {
+      first_slot_id = NULL_SLOTID;
       bucket_page_p = ehash_fix_nth_page (thread_p,
 					  &dir_header_p->bucket_file,
 					  bucket_page_no, PGBUF_LATCH_READ);
@@ -5101,9 +5102,9 @@ ehash_map (THREAD_ENTRY * thread_p, EHID * ehid_p,
 
       num_records = spage_number_of_records (bucket_page_p);
 
-      /* Skip the first slot since it contains the bucket header */
       (void) spage_next_record (bucket_page_p, &first_slot_id, &recdes, PEEK);
 
+      /* Skip the first slot since it contains the bucket header */
       for (slot_id = first_slot_id + 1;
 	   apply_error_code == NO_ERROR && slot_id < num_records; slot_id++)
 	{

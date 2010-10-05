@@ -44,6 +44,8 @@
 #include "set_object.h"
 #include "intl_support.h"
 #include "virtual_object.h"
+#include "object_template.h"
+
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
@@ -61,10 +63,6 @@ static PT_NODE *pt_bind_set_type (PARSER_CONTEXT * parser,
 				  DB_VALUE * val, int *data_type_added);
 static PT_NODE *pt_set_elements_to_value (PARSER_CONTEXT * parser,
 					  const DB_VALUE * val);
-
-static DB_VALUE *pt_db_value_initialize (PARSER_CONTEXT * parser,
-					 PT_NODE * value, DB_VALUE * db_value,
-					 int *more_type_info_needed);
 
 /*
  * pt_misc_to_qp_misc_operand() - convert a PT_MISC_TYPE trim qualifier or
@@ -707,6 +705,11 @@ pt_set_value_to_db (PARSER_CONTEXT * parser, PT_NODE ** values,
 	  if (db_set_add (db_get_set (db_value), &e_val) != NO_ERROR)
 	    {
 	      PT_ERRORc (parser, element, db_error_string (3));
+
+	      if (DB_VALUE_TYPE (&e_val) == DB_TYPE_POINTER)
+		{
+		  obt_quit (DB_GET_POINTER (&e_val));
+		}
 	      return NULL;
 	    }
 	}
@@ -1059,6 +1062,7 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
       name = "none";
       break;
 
+    case PT_TYPE_LOGICAL:
     case PT_TYPE_INTEGER:
       name = "integer";
       break;
@@ -1098,10 +1102,6 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
       break;
     case PT_TYPE_CHAR:
       name = "char";
-      break;
-
-    case PT_TYPE_LOGICAL:
-      name = "short";
       break;
 
     case PT_TYPE_OBJECT:
@@ -1635,6 +1635,7 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
       db_type = DB_TYPE_NULL;
       break;
 
+    case PT_TYPE_LOGICAL:
     case PT_TYPE_INTEGER:
       db_type = DB_TYPE_INTEGER;
       break;
@@ -1643,7 +1644,6 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
       db_type = DB_TYPE_BIGINT;
       break;
 
-    case PT_TYPE_LOGICAL:
     case PT_TYPE_SMALLINT:
       db_type = DB_TYPE_SHORT;
       break;
@@ -2461,7 +2461,10 @@ pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv)
  *   db_value(in): the DB_VALUE
  *   more_type_info_needed(in): flag for need more info
  */
-static DB_VALUE *
+/* TODO fix precision of char and bit constants and then remove the
+ *      pt_fixup_column_type function.
+ */
+DB_VALUE *
 pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 			DB_VALUE * db_value, int *more_type_info_needed)
 {

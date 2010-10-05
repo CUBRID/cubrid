@@ -28,16 +28,16 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 import java.util.*;
 
-import cubrid.jdbc.driver.CUBRIDException;
-import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
-import cubrid.jdbc.driver.CUBRIDResultSet;	//import cubrid.sql.CUBRIDOID;
-import cubrid.jdbc.jci.*;
-import cubrid.sql.*;
+import @CUBRID_DRIVER@.CUBRIDException;
+import @CUBRID_DRIVER@.CUBRIDJDBCErrorCode;
+import @CUBRID_DRIVER@.CUBRIDResultSet;	//import @CUBRID_SQL@.CUBRIDOID;
+import @CUBRID_JCI@.*;
+import @CUBRID_SQL@.*;
 
 /**
  * Title: CUBRID JDBC Driver Description:

@@ -53,59 +53,70 @@
  */
 
 /*
- * db_find_class_of_index() - This functon search for a class in the database
- *  with a given index name and type.
- * return : class object
- * name(in): index name
- * type(in): index type(DB_CONSTRAINT_UNIQUE or DB_CONSTRAINT_INDEX)
+ * db_find_class_of_index() - Find the name of the class that has a given
+ *    index (specified by its name and type)
+ * return: class object or NULL on error
+ * index_name(in):
+ * index_type(in):
+ *
+ * note:
+ *    Only constraint types that satisfy the DB_IS_CONSTRAINT_INDEX_FAMILY
+ *    condition will be searched for.
+ *    If several indexes with the same name and type are found, NULL is
+ *    returned.
  */
 DB_OBJECT *
-db_find_class_of_index (const char *index, DB_CONSTRAINT_TYPE type)
+db_find_class_of_index (const char *const index_name,
+			const DB_CONSTRAINT_TYPE index_type)
 {
-  DB_OBJLIST *clslist;
-  SM_CLASS *smcls;
-  SM_CONSTRAINT_TYPE smtype;
+  DB_OBJLIST *clslist = NULL;
+  SM_CLASS *smcls = NULL;
   DB_OBJECT *retval = NULL;
   int found = 0;
+  const SM_CONSTRAINT_TYPE smtype =
+    SM_MAP_DB_INDEX_CONSTRAINT_TO_SM_CONSTRAINT (index_type);
 
   CHECK_CONNECT_NULL ();
-  CHECK_1ARG_NULL (index);
+  CHECK_1ARG_NULL (index_name);
 
-  if (!DB_IS_CONSTRAINT_INDEX_FAMILY (type))
+  if (!DB_IS_CONSTRAINT_INDEX_FAMILY (index_type))
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
 	      0);
-      retval = NULL;
       goto end;
     }
 
-  smtype = SM_MAP_DB_INDEX_CONSTRAINT_TO_SM_CONSTRAINT (type);
-
-  clslist = db_fetch_all_classes (DB_FETCH_CLREAD_INSTREAD);
-  for (; clslist; clslist = clslist->next)
+  for (found = 0, clslist = db_fetch_all_classes (DB_FETCH_CLREAD_INSTREAD);
+       clslist != NULL; clslist = clslist->next)
     {
       if (au_fetch_class (clslist->op, &smcls, AU_FETCH_READ, AU_SELECT)
-	  == NO_ERROR &&
-	  classobj_find_class_constraint (smcls->constraints, smtype, index))
+	  == NO_ERROR && classobj_find_class_constraint (smcls->constraints,
+							 smtype, index_name))
 	{
 	  retval = clslist->op;
 	  found++;
 	}
+      if (found > 1)
+	{
+	  break;
+	}
     }
   if (found == 0)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_NO_INDEX, 1, index);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_NO_INDEX, 1,
+	      index_name);
       retval = NULL;
     }
   else if (found > 1)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_INDEX_AMBIGUOUS, 1,
-	      index);
+	      index_name);
       retval = NULL;
     }
 
+  /* TODO should the list returned by db_fetch_all_classes be freed? */
 end:
-  return (retval);
+  return retval;
 }
 
 /*
@@ -278,25 +289,29 @@ db_get_base_classes (void)
 int
 db_is_class (MOP obj)
 {
-  SM_CLASS *class_;
-  SM_CLASS_TYPE ct;
-  int is_class = 0;
+  SM_CLASS *class_ = NULL;
 
   CHECK_CONNECT_ZERO ();
 
-  if (obj != NULL)
+  if (obj == NULL)
     {
-      if (locator_is_class (obj, DB_FETCH_READ))
-	{
-	  if (au_fetch_class_force (obj, &class_, AU_FETCH_READ) == NO_ERROR)
-	    {
-	      ct = sm_get_class_type (class_);
-	      if (ct == SM_CLASS_CT)
-		is_class = true;
-	    }
-	}
+      return 0;
     }
-  return (is_class);
+  if (!locator_is_class (obj, DB_FETCH_READ))
+    {
+      return 0;
+    }
+  if (au_fetch_class_force (obj, &class_, AU_FETCH_READ) != NO_ERROR)
+    {
+      return 0;
+    }
+  assert (class_ != NULL);
+  if (sm_get_class_type (class_) != SM_CLASS_CT)
+    {
+      return 0;
+    }
+
+  return 1;
 }
 
 /*
@@ -312,25 +327,24 @@ db_is_class (MOP obj)
 int
 db_is_any_class (MOP obj)
 {
-  SM_CLASS *class_;
-  SM_CLASS_TYPE ct;
-  int is_any_class = 0;
+  SM_CLASS *class_ = NULL;
 
   CHECK_CONNECT_ZERO ();
 
-  if (obj != NULL)
+  if (obj == NULL)
     {
-      if (locator_is_class (obj, DB_FETCH_READ))
-	{
-	  if (au_fetch_class_force (obj, &class_, AU_FETCH_READ) == NO_ERROR)
-	    {
-	      ct = sm_get_class_type (class_);
-	      is_any_class = true;
-	    }
-	}
+      return 0;
     }
-
-  return (is_any_class);
+  if (!locator_is_class (obj, DB_FETCH_READ))
+    {
+      return 0;
+    }
+  if (au_fetch_class_force (obj, &class_, AU_FETCH_READ) != NO_ERROR)
+    {
+      return 0;
+    }
+  assert (class_ != NULL);
+  return 1;
 }
 
 /*
@@ -475,7 +489,7 @@ db_is_deleted (DB_OBJECT * obj)
     }
 
   /* couldn't figure it out from the MOP hints, we'll have to try fetching it,
-   * note that we're aquiring a read lock here, this may be bad if
+   * note that we're acquiring a read lock here, this may be bad if
    * we really intend to update the object.
    */
   error = obj_lock (obj, 0);
@@ -705,6 +719,35 @@ db_get_attribute (DB_OBJECT * obj, const char *name)
 
   return ((DB_ATTRIBUTE *) att);
 }
+
+/*
+ * db_get_attribute_by_name() - This function returns a structure that 
+ *    describes the definition of an attribute.
+ * return : an attribute descriptor
+ * class_name(in): class name
+ * name(in): attribute name
+ *
+ * note : returned structure can be examined by using the db_attribute_
+ *        functions.
+ */
+DB_ATTRIBUTE *
+db_get_attribute_by_name (const char *class_name, const char *atrribute_name)
+{
+  DB_OBJECT *db_obj = NULL;
+  if (class_name == NULL || atrribute_name == NULL)
+    {
+      return NULL;
+    }
+
+  db_obj = db_find_class (class_name);
+  if (db_obj == NULL)
+    {
+      return NULL;
+    }
+
+  return db_get_attribute (db_obj, atrribute_name);
+}
+
 
 /*
  * db_get_shared_attribute() - This function returns a structure that describes
@@ -971,9 +1014,9 @@ db_attribute_length (DB_ATTRIBUTE * attribute)
  * return : internal attribute identifier
  * attribute(in): attribute descriptor
  *
- * note : The internal attribute identifier is guarenteed to be unique
+ * note : The internal attribute identifier is guaranteed to be unique
  *    for all of the attributes of this class, it has little utility to
- *    an application program but might be usefull for fast searching etc.
+ *    an application program but might be useful for fast searching etc.
  */
 int
 db_attribute_id (DB_ATTRIBUTE * attribute)
@@ -1131,7 +1174,35 @@ db_attribute_is_primary_key (DB_ATTRIBUTE * attribute)
 }
 
 /*
- * db_attribute_is_auto_increment() - This function tests if attribute is
+ * db_attribute_is_foreign_key() - This function tests the status of the
+ *    FOREIGN KEY integrity constraint for an attribute.
+ * return : non-zero if foreign key is defined
+ * attribute(in): attribute descriptor
+ */
+int
+db_attribute_is_foreign_key (DB_ATTRIBUTE * attribute)
+{
+  int status = 0;
+
+  if (attribute != NULL)
+    {
+      SM_CONSTRAINT *con;
+
+      for (con = attribute->constraints;
+	   con != NULL && !status; con = con->next)
+	{
+	  if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
+	    {
+	      status = 1;
+	    }
+	}
+    }
+
+  return (status);
+}
+
+/*
+ * db_attribute_is_auto_increment() - This funciton tests if attribute is
  *    defined as auto increment
  * return : non-zero if auto increment is defined.
  * attribute(in): attribute descriptor
@@ -1773,7 +1844,7 @@ db_constraint_next (DB_CONSTRAINT * constraint)
  * constraint(in): constraint descriptor
  */
 DB_CONSTRAINT_TYPE
-db_constraint_type (DB_CONSTRAINT * constraint)
+db_constraint_type (const DB_CONSTRAINT * constraint)
 {
   DB_CONSTRAINT_TYPE type = DB_CONSTRAINT_INDEX;
 
@@ -1875,6 +1946,25 @@ db_constraint_asc_desc (DB_CONSTRAINT * constraint)
     }
 
   return asc_desc;
+}
+
+/*
+ * db_constraint_prefix_length() - This function returns an array of 
+ *				  prefix length info
+ * return non-NULL terminated integer array
+ * constraint: constraint descriptor
+*/
+const int *
+db_constraint_prefix_length (DB_CONSTRAINT * constraint)
+{
+  const int *attrs_prefix_length = NULL;
+
+  if (constraint != NULL)
+    {
+      attrs_prefix_length = constraint->attrs_prefix_length;
+    }
+
+  return attrs_prefix_length;
 }
 
 /*

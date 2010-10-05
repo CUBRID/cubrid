@@ -64,7 +64,6 @@ struct table_info
  */
 typedef enum
 { UNBOX_AS_VALUE, UNBOX_AS_TABLE } UNBOX;
-
 typedef struct symbol_info SYMBOL_INFO;
 struct symbol_info
 {
@@ -79,6 +78,8 @@ struct symbol_info
   int listfile_attr_offset;
   PT_NODE *query_node;		/* the query node that is being translated */
 };
+
+
 
 typedef struct aggregate_info AGGREGATE_INFO;
 struct aggregate_info
@@ -124,7 +125,7 @@ extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser,
 				     PT_NODE * class_specs, PT_NODE * where,
 				     PT_NODE * using_index, int server_op);
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node,
-				     int has_uniques,
+				     PT_NODE * values_list, int has_uniques,
 				     PT_NODE * non_null_attrs);
 extern XASL_NODE *pt_to_update_xasl (PARSER_CONTEXT * parser,
 				     PT_NODE * statement,
@@ -195,4 +196,7 @@ extern void pt_set_qprior_node_etc (PARSER_CONTEXT * parser,
 extern XASL_NODE *pt_gen_simple_merge_plan (PARSER_CONTEXT * parser,
 					    XASL_NODE * xasl,
 					    PT_NODE * select_node);
+extern XASL_NODE *parser_generate_do_stmt_xasl (PARSER_CONTEXT * p,
+						PT_NODE * node);
+
 #endif /* _XASL_GENERATION_H_ */

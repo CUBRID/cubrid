@@ -46,9 +46,7 @@
 #include "thread_impl.h"
 #endif
 
-#if defined (WINDOWS)
 #include "misc_string.h"
-#endif /* WINDOWS */
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -70,6 +68,10 @@
 #define ABS(i) ((i) >= 0 ? (i) : -(i))
 
 #define STACK_SIZE        100
+
+#define LEAP(y)	  (((y) % 400 == 0) || ((y) % 100 != 0 && (y) % 4 == 0))
+
+#define DBL_MAX_DIGITS    ((int)ceil(DBL_MAX_EXP * log10((double) FLT_RADIX)))
 
 /*
  *  This enumeration type is used to categorize the different
@@ -330,6 +332,75 @@ static int qstr_length (unsigned char *sp);
 static int get_cur_year (void);
 static int get_cur_month (void);
 static int is_valid_date (int month, int day, int year, int day_of_the_week);
+/* utility functions */
+static int add_and_normalize_date_time (int *years,
+					int *months,
+					int *days,
+					int *hours,
+					int *minutes,
+					int *seconds,
+					int *milliseconds,
+					DB_BIGINT y,
+					DB_BIGINT m,
+					DB_BIGINT d,
+					DB_BIGINT h,
+					DB_BIGINT mi,
+					DB_BIGINT s, DB_BIGINT ms);
+static int sub_and_normalize_date_time (int *years,
+					int *months,
+					int *days,
+					int *hours,
+					int *minutes,
+					int *seconds,
+					int *milliseconds,
+					DB_BIGINT y,
+					DB_BIGINT m,
+					DB_BIGINT d,
+					DB_BIGINT h,
+					DB_BIGINT mi,
+					DB_BIGINT s, DB_BIGINT ms);
+static void set_time_argument (struct tm *dest, int year, int month, int day,
+			       int hour, int min, int sec);
+static long calc_unix_timestamp (struct tm *time_argument);
+static int parse_for_next_int (char **ch, char *output);
+static int db_str_to_millisec (const char *str);
+static void copy_and_shift_values (int shift, int n, DB_BIGINT * first, ...);
+static DB_BIGINT get_single_unit_value (char *expr, DB_BIGINT int_val);
+static int db_date_add_sub_interval_expr (DB_VALUE * result,
+					  const DB_VALUE * date,
+					  const DB_VALUE * expr,
+					  const int unit, bool is_add);
+static int db_date_add_sub_interval_days (DB_VALUE * result,
+					  const DB_VALUE * date,
+					  const DB_VALUE * db_days,
+					  bool is_add);
+
+/* reads cnt alphabetic characters until a non-alpha char reached,
+ * returns nr of characters traversed
+ */
+static int parse_characters (char *s, char *res, int cnt, int res_size);
+/* reads cnt digits until non-digit char reached,
+ * returns nr of characters traversed
+ */
+static int parse_digits (char *s, int *nr, int cnt);
+static int parse_time_string (const char *timestr, int *sign, int *h,
+			      int *m, int *s, int *ms);
+#define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
+#define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
+#define ALPHABETICAL(c) (((c) >= 'A' && (c) <= 'Z') || \
+			 ((c) >= 'a' && (c) <= 'z'))
+#define DIGIT(c) ((c) >= '0' && (c) <= '9')
+/* concatenate a char to s */
+#define STRCHCAT(s, c) \
+  {\
+    char __cch__[2];\
+    __cch__[0] = c;__cch__[1] = 0; strcat(s, __cch__);\
+  }
+
+#define SKIP_SPACES(ch) 	do {\
+	while (char_isspace(*(ch))) (ch)++; \
+}while(0)
+
 
 /*
  * qstr_next_char () -
@@ -1826,6 +1897,7 @@ db_string_byte_length (const DB_VALUE * string, DB_VALUE * byte_count)
 
   return error_status;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * db_string_bit_length () -
@@ -1960,9 +2032,6 @@ db_string_char_length (const DB_VALUE * string, DB_VALUE * char_count)
 
   return error_status;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-
 
 /*
  * db_string_lower () -
@@ -2935,7 +3004,7 @@ db_string_like (const DB_VALUE * src_string,
 	{
 	  *result = V_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  0);
+		  1, src_len + 1);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -2961,7 +3030,7 @@ db_string_like (const DB_VALUE * src_string,
 	{
 	  *result = V_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  0);
+		  1, pattern_len + 1);
 	  if (src_char_buffer)
 	    free_and_init (src_char_buffer);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -4795,7 +4864,7 @@ db_get_string_length (const DB_VALUE * value)
   int length = 0;
 
 #if 0
-  //Currently, only the medium model is used
+  /* Currently, only the medium model is used */
 
   switch (value->data.ch.info.style)
     {
@@ -7095,6 +7164,976 @@ hextoi (char hex_char)
 }
 
 /*
+ * set_time_argument() - construct struct tm
+ *   return:
+ *   dest(out):
+ *   year(in):
+ *   month(in):
+ *   day(in):
+ *   hour(in):
+ *   min(in):
+ *   sec(in):
+ */
+static void
+set_time_argument (struct tm *dest, int year, int month, int day,
+		   int hour, int min, int sec)
+{
+  if (year >= 1900)
+    {
+      dest->tm_year = year - 1900;
+    }
+  else
+    {
+      dest->tm_year = -1;
+    }
+  dest->tm_mon = month - 1;
+  dest->tm_mday = day;
+  dest->tm_hour = hour;
+  dest->tm_min = min;
+  dest->tm_sec = sec;
+  dest->tm_isdst = -1;
+}
+
+/*
+ * calc_unix_timestamp() - calculates UNIX timestamp
+ *   return:
+ *   time_argument(in):
+ */
+static long
+calc_unix_timestamp (struct tm *time_argument)
+{
+  time_t result;
+
+  if (time_argument != NULL)
+    {
+      /* validation for tm fields in order to cover for mktime conversion's
+         like 40th of Sept equals 10th of Oct */
+      if (time_argument->tm_year < 0 || time_argument->tm_year > 9999
+	  || time_argument->tm_mon < 0 || time_argument->tm_mon > 11
+	  || time_argument->tm_mday < 1 || time_argument->tm_mday > 31
+	  || time_argument->tm_hour < 0 || time_argument->tm_hour > 23
+	  || time_argument->tm_min < 0 || time_argument->tm_min > 59
+	  || time_argument->tm_sec < 0 || time_argument->tm_sec > 59)
+	{
+	  return -1L;
+	}
+      result = mktime (time_argument);
+    }
+  else
+    {
+      result = time (NULL);
+    }
+
+  if (result < (time_t) 0)
+    {
+      return -1L;
+    }
+  return (long) result;
+}
+
+/*
+ * parse_for_next_int () -
+ *
+ * Arguments:
+ *         ch: char position from which we start parsing
+ *	   output: integer read
+ *
+ * Returns: -1 if error, 0 if success
+ *
+ * Note:
+ *  parses a string for integers while skipping non-alpha delimitators
+ */
+static int
+parse_for_next_int (char **ch, char *output)
+{
+  int i;
+  /* we need in fact only 6 (upper bound for the integers we want) */
+  char buf[16];
+
+  i = 0;
+  memset (buf, 0, sizeof (buf));
+
+  /* trailing zeroes - accept only 2 (for year 00 which is short for 2000) */
+  while (**ch == '0')
+    {
+      if (i < 2)
+	{
+	  buf[i++] = **ch;
+	}
+      (*ch)++;
+    }
+
+  while (i < 6 && char_isdigit (**ch) && **ch != 0)
+    {
+      buf[i++] = **ch;
+      (*ch)++;
+    }
+  if (i > 6)
+    {
+      return -1;
+    }
+  strcpy (output, buf);
+
+  /* skip all delimitators */
+  while (**ch != 0 && !char_isalpha (**ch) && !char_isdigit (**ch))
+    {
+      (*ch)++;
+    }
+  return 0;
+}
+
+/*
+ * db_unix_timestamp () -
+ *
+ * Arguments:
+ *         src_date: datetime from which we calculate timestamp
+ *
+ * Returns: int
+ *
+ * Errors:
+ *
+ * Note:
+ * Returns a Unix timestamp (seconds since '1970-01-01 00:00:00' UTC)
+ */
+int
+db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
+{
+  DB_TYPE type;
+  int error_status = NO_ERROR;
+  int val;
+  char *str_input = NULL;
+  double d_time;
+  char str_time[32];
+  char str_year[32], str_month[32], str_day[32];
+  char str_hour[32], str_min[32], str_sec[32];
+  struct tm time_argument;
+  char *cp = NULL;
+  int nb_arg = 0;
+  char *ch;
+  int i, n, only_digits = 1;
+  /* long_year 1 -> year on 4 chars, long_year 0 -> year on 2 chars */
+  int long_year = 0;
+  int y, m, d;
+  int days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  time_t ts;
+  int month = 0, day = 0, year = 0;
+  int second = 0, minute = 0, hour = 0, ms = 0;
+
+  memset (str_year, '\0', sizeof (str_year));
+  memset (str_month, '\0', sizeof (str_month));
+  memset (str_day, '\0', sizeof (str_day));
+  memset (str_hour, '\0', sizeof (str_hour));
+  memset (str_min, '\0', sizeof (str_min));
+  memset (str_sec, '\0', sizeof (str_sec));
+
+  if (DB_IS_NULL (src_date))
+    {
+      DB_MAKE_NULL (result_timestamp);
+      return error_status;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (src_date);
+  switch (type)
+    {
+      /* a number in the format YYMMDD or YYYYMMDD */
+    case DB_TYPE_BIGINT:
+      d_time = (double) DB_GET_BIGINT (src_date);
+      sprintf (str_time, "%.0f", d_time);
+      cp = str_time;
+      break;
+
+    case DB_TYPE_INTEGER:
+      d_time = (double) DB_GET_INT (src_date);
+      sprintf (str_time, "%.0f", d_time);
+      cp = str_time;
+      break;
+
+      /* a DATE or DATETIME string */
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      cp = DB_GET_STRING (src_date);
+      if (cp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  return ER_FAILED;
+	}
+      break;
+
+      /* a TIMESTAMP format */
+    case DB_TYPE_TIMESTAMP:
+      /* The supported timestamp range is '1970-01-01 00:00:01'
+       * UTC to '2038-01-19 03:14:07' UTC */
+      ts = *DB_GET_TIMESTAMP (src_date);
+      /* supplementary conversion from long to int will be needed on
+       * 64 bit platforms.  */
+      val = (int) ts;
+      DB_MAKE_INT (result_timestamp, val);
+      return NO_ERROR;
+
+      /* a DATETIME format */
+    case DB_TYPE_DATETIME:
+      /* The supported datetime range is '1970-01-01 00:00:01'
+       * UTC to '2038-01-19 03:14:07' UTC */
+
+      error_status = db_datetime_decode (DB_GET_DATETIME (src_date),
+					 &month, &day, &year, &hour,
+					 &minute, &second, &ms);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
+      set_time_argument (&time_argument, year, month, day, hour,
+			 minute, second);
+      val = (int) calc_unix_timestamp (&time_argument);
+      if (val < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  return ER_FAILED;
+	}
+      DB_MAKE_INT (result_timestamp, val);
+      return NO_ERROR;
+
+      /* a DATE format */
+    case DB_TYPE_DATE:
+      /* The supported datetime range is '1970-01-01 00:00:01'
+       * UTC to '2038-01-19 03:14:07' UTC */
+
+      db_date_decode (DB_GET_DATE (src_date), &month, &day, &year);
+
+      set_time_argument (&time_argument, year, month, day, hour,
+			 minute, second);
+      val = (int) calc_unix_timestamp (&time_argument);
+      if (val < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OBJ_INVALID_ARGUMENTS, 0);
+	  return ER_FAILED;
+	}
+      DB_MAKE_INT (result_timestamp, val);
+      return NO_ERROR;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_FAILED;
+    }
+
+  assert (cp != NULL);
+
+  /* allocate at least 32 bytes because we will fill with some zeroes */
+  str_input = (char *) db_private_alloc (NULL, MAX (strlen (cp) + 1, 32));
+  if (str_input == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* analyze the string */
+  /* trim for beginning spaces only (like mysql) */
+  ch = cp;
+  while (*ch != 0 && *ch == ' ')
+    {
+      ch++;
+    }
+  strcpy (str_input, ch);
+
+  /* mysql yields error if non-digit is the first character, after trim */
+  if (!char_isdigit (str_input[0]))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      goto final;
+    }
+
+  /*
+   * now test if we have only digits, if so we are in case 1 with inputs
+   * like YYMMDD, etc (which does not have delimitators)
+   */
+  n = strlen (str_input);
+  for (i = 0; i < n; i++)
+    {
+      if (!char_isdigit (str_input[i]))
+	{
+	  only_digits = 0;
+	  break;
+	}
+    }
+  if (only_digits == 1)
+    {
+      /*
+       * if we have only digits we identified the following formats
+       *  based on many mysql tests:
+       *    len <  5 -> 0
+       *    len =  5 -> YYMMD
+       *    len =  6 -> YYMMDD
+       *    len =  7 -> YYMMDDH
+       *    len =  8 -> YYYYMMDD
+       *    len =  9 -> YYMMDDHHM
+       *    len = 10 -> YYMMDDHHMM
+       *    len = 11 -> YYMMDDHHMMS
+       *    len = 12 -> YYMMDDHHMMSS
+       *    len = 13 -> YYMMDDHHMMSSX -> X is not used
+       *    len = 14 -> YYYYMMDDHHMMSS
+       *    len > 14 -> same as len = 14, all after the 14th is skipped
+       */
+      if (n < 5)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+		  0);
+	  goto final;
+	}
+      if (n == 8 || n >= 14)
+	{
+	  long_year = 1;
+	}
+      if (n == 13)
+	{
+	  /* cut last X, it's useless */
+	  str_input[n - 1] = 0;
+	  n--;
+	}
+
+      /* when odd, the last unit ('X') is incomplete (has just one digit)
+       * so we replace it with '0X' so that further we can add zeroes.
+       * (ex: YYMMD->YYMM0D, YYMMDDHHMMS->YYMMDDHHMM0S)
+       */
+      if (n & 1)
+	{
+	  str_input[n] = str_input[n - 1];
+	  str_input[n - 1] = '0';
+	  str_input[n + 1] = 0;
+	  n++;
+	}
+      /*
+       * fill with zeroes:
+       *  when YYYY we fill until we are in the YYYYMMDDHHMMSS format
+       *  when YY we fill until we are in the YYMMDDHHMMSS format
+       */
+      for (; n < (long_year ? 14 : 12); n++)
+	{
+	  str_input[n] = '0';
+	}
+      str_input[n] = 0;
+      n = strlen (str_input);
+      ch = str_input;
+
+      /* years */
+      strncpy (str_year, ch, long_year ? 4 : 2);
+      ch += (long_year ? 4 : 2);
+
+      /* months */
+      strncpy (str_month, ch, 2);
+      ch += 2;
+
+      /* days */
+      strncpy (str_day, ch, 2);
+      ch += 2;
+
+      /* hours */
+      strncpy (str_hour, ch, 2);
+      ch += 2;
+
+      /* minutes */
+      strncpy (str_min, ch, 2);
+      ch += 2;
+
+      /* seconds */
+      strncpy (str_sec, ch, 2);
+      ch += 2;
+    }
+  else if (only_digits == 0)
+    {
+      /* the case where the input can contain some delimitators
+       * on mysql all non-alphabetic characters are permitted
+       * the big picture of this case is the following:
+       *  - [digits][non-digits and non-letters] x6
+       *  - if the digits are more than 2 (4 for year), we return 0
+       *  - after filling all 6 fields, we ignore the rest (which may
+       *      contain 'a'..'z'!)
+       *
+       */
+      ch = str_input;
+
+      /* years */
+      if (parse_for_next_int (&ch, str_year) < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+		  0);
+	  goto final;
+	}
+
+      /* months */
+      if (parse_for_next_int (&ch, str_month) < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+		  0);
+	  goto final;
+	}
+
+      /* days */
+      if (parse_for_next_int (&ch, str_day) < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+		  0);
+	  goto final;
+	}
+
+      /* hours */
+      if (parse_for_next_int (&ch, str_hour) < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+		  0);
+	  goto final;
+	}
+
+      /* minutes */
+      if (parse_for_next_int (&ch, str_min) < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+		  0);
+	  goto final;
+	}
+
+      /* seconds */
+      if (parse_for_next_int (&ch, str_sec) < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
+		  0);
+	  goto final;
+	}
+    }
+
+  /* validations */
+  /* year */
+  y = atoi (str_year);
+  if (strlen (str_year) == 2)
+    {
+      if (y >= 70)
+	{
+	  y += 1900;
+	}
+      else
+	{
+	  y += 2000;
+	}
+    }
+  if (y < 1970 || y > 2038)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      goto final;
+    }
+
+  /* month */
+  m = atoi (str_month);
+  if (m <= 0 || m > 12)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      goto final;
+    }
+
+  /* day */
+  d = atoi (str_day);
+  days[2] = LEAP (y) ? 29 : 28;
+  if (d <= 0 || d > days[m])
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      goto final;
+    }
+
+  /* the rest of validations are made in calc_unix_timestamp */
+
+  /* now we have all needed data, compute final answer */
+  set_time_argument (&time_argument, y, m, d,
+		     (str_hour ? atoi (str_hour) : 0),
+		     (str_min ? atoi (str_min) : 0),
+		     (str_sec ? atoi (str_sec) : 0));
+  val = (int) calc_unix_timestamp (&time_argument);
+  if (val < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+    }
+  DB_MAKE_INT (result_timestamp, val);
+
+final:
+  if (str_input)
+    {
+      db_private_free (NULL, str_input);
+    }
+  return er_errid ();
+}
+
+/*
+ * db_time_format ()
+ *
+ * Arguments:
+ *         time_value: time from which we get the informations
+ *         format: format specifiers string
+ *
+ * Returns: int
+ *
+ * Errors:
+ *
+ * Note:
+ *     This is used like the DATE_FORMAT() function, but the format
+ *  string may contain format specifiers only for hours, minutes, seconds, and
+ *  milliseconds. Other specifiers produce a NULL value or 0.
+ */
+int
+db_time_format (const DB_VALUE * time_value, const DB_VALUE * format,
+		DB_VALUE * result)
+{
+  DB_TIME db_time, *t_p;
+  DB_TIMESTAMP db_timestamp, *ts_p;
+  DB_DATETIME db_datetime, *dt_p;
+  DB_DATE db_date;
+  DB_TYPE res_type;
+  char *date_s = NULL, *res, *res2, *format_s;
+  int error_status = NO_ERROR, len;
+  int h, mi, s, ms, year, month, day;
+  char format_specifiers[256][64];
+  int is_date, is_datetime, is_timestamp, is_time;
+  char och = -1, ch;
+
+  is_date = is_datetime = is_timestamp = is_time = 0;
+  h = mi = s = ms = 0;
+  memset (format_specifiers, 0, sizeof (format_specifiers));
+
+  if (time_value == NULL || format == NULL
+      || DB_IS_NULL (time_value) || DB_IS_NULL (format))
+    {
+      DB_MAKE_NULL (result);
+      goto error;
+    }
+
+  res_type = DB_VALUE_DOMAIN_TYPE (time_value);
+
+  /* 1. Get date values */
+  switch (res_type)
+    {
+    case DB_TYPE_TIMESTAMP:
+      ts_p = DB_GET_TIMESTAMP (time_value);
+      db_timestamp_decode (ts_p, &db_date, &db_time);
+      db_time_decode (&db_time, &h, &mi, &s);
+      break;
+
+    case DB_TYPE_DATETIME:
+      dt_p = DB_GET_DATETIME (time_value);
+      db_datetime_decode (dt_p, &month, &day, &year, &h, &mi, &s, &ms);
+      break;
+
+    case DB_TYPE_TIME:
+      t_p = DB_GET_TIME (time_value);
+      db_time_decode (t_p, &h, &mi, &s);
+      break;
+
+    case DB_TYPE_STRING:
+    case DB_TYPE_CHAR:
+      date_s = DB_GET_STRING (time_value);
+
+      is_date = db_string_to_date (date_s, &db_date);
+      is_datetime = db_string_to_datetime (date_s, &db_datetime);
+      is_timestamp = db_string_to_timestamp (date_s, &db_timestamp);
+      is_time = db_string_to_time (date_s, &db_time);
+
+      /* if we have a date return error */
+      if (is_date != ER_DATE_CONVERSION)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto error;
+	}
+      /* we have a datetime? */
+      else if (is_datetime != ER_DATE_CONVERSION)
+	{
+	  db_datetime_decode (&db_datetime, &month, &day, &year,
+			      &h, &mi, &s, &ms);
+	}
+      /* ... or maybe we have a timestamp? */
+      else if (is_timestamp != ER_DATE_CONVERSION)
+	{
+	  db_timestamp_decode (&db_timestamp, &db_date, &db_time);
+
+	  db_time_decode (&db_time, &h, &mi, &s);
+	}
+      /* ... a time? */
+      /* if it's a time we do not need to decode */
+      else
+	{
+	  sscanf (date_s, "%d:%d:%d.%d", &h, &mi, &s, &ms);
+	}
+
+      break;
+
+    default:
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto error;
+    }
+
+  /* 2. Compute the value for each format specifier */
+  if (mi < 0)
+    {
+      mi = -mi;
+    }
+  if (s < 0)
+    {
+      s = -s;
+    }
+  if (ms < 0)
+    {
+      ms = -ms;
+    }
+
+  /* %f       Milliseconds (000..999) */
+  sprintf (format_specifiers['f'], "%03d", ms);
+
+  /* %H       Hour (00..23) */
+  if (h < 0)
+    {
+      sprintf (format_specifiers['H'], "-%02d", -h);
+    }
+  else
+    {
+      sprintf (format_specifiers['H'], "%02d", h);
+    }
+  if (h < 0)
+    {
+      h = -h;
+    }
+
+  /* %h       Hour (01..12) */
+  sprintf (format_specifiers['h'], "%02d", (h % 12 == 0) ? 12 : (h % 12));
+
+  /* %I       Hour (01..12) */
+  sprintf (format_specifiers['I'], "%02d", (h % 12 == 0) ? 12 : (h % 12));
+
+  /* %i       Minutes, numeric (00..59) */
+  sprintf (format_specifiers['i'], "%02d", mi);
+
+  /* %k       Hour (0..23) */
+  sprintf (format_specifiers['k'], "%d", h);
+
+  /* %l       Hour (1..12) */
+  sprintf (format_specifiers['l'], "%d", (h % 12 == 0) ? 12 : (h % 12));
+
+  /* %p       AM or PM */
+  strcpy (format_specifiers['p'], (h > 11) ? "PM" : "AM");
+
+  /* %r       Time, 12-hour (hh:mm:ss followed by AM or PM) */
+  sprintf (format_specifiers['r'], "%02d:%02d:%02d %s",
+	   (h % 12 == 0) ? 12 : (h % 12), mi, s, (h > 11) ? "PM" : "AM");
+
+  /* %S       Seconds (00..59) */
+  sprintf (format_specifiers['S'], "%02d", s);
+
+  /* %s       Seconds (00..59) */
+  sprintf (format_specifiers['s'], "%02d", s);
+
+  /* %T       Time, 24-hour (hh:mm:ss) */
+  sprintf (format_specifiers['T'], "%02d:%02d:%02d", h, mi, s);
+
+  /* 3. Generate the output according to the format and the values */
+  format_s = DB_PULL_STRING (format);
+  len = 1024;
+
+  res = (char *) db_private_alloc (NULL, len);
+  if (!res)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+  memset (res, 0, len);
+
+  ch = *format_s;
+  while (ch != 0)
+    {
+      format_s++;
+      och = ch;
+      ch = *format_s;
+
+      if (och == '%' /* && (res[strlen(res) - 1] != '%') */ )
+	{
+	  if (ch == '%')
+	    {
+	      STRCHCAT (res, '%');
+
+	      /* jump a character */
+	      format_s++;
+	      och = ch;
+	      ch = *format_s;
+
+	      continue;
+	    }
+	  /* parse the character */
+	  if (strlen (format_specifiers[(unsigned char) ch]) == 0)
+	    {
+	      /* append the character itself */
+	      STRCHCAT (res, ch);
+	    }
+	  else
+	    {
+	      strcat (res, format_specifiers[(unsigned char) ch]);
+	    }
+
+	  /* jump a character */
+	  format_s++;
+	  och = ch;
+	  ch = *format_s;
+	}
+      else
+	{
+	  STRCHCAT (res, och);
+	}
+
+      /* chance of overflow ? */
+      /* assume we can't add at a time mode than 16 chars */
+      if (strlen (res) + 16 > len)
+	{
+	  /* realloc - copy temporary in res2 */
+	  res2 = (char *) db_private_alloc (NULL, len);
+	  if (!res2)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	  memset (res2, 0, len);
+	  strcpy (res2, res);
+	  db_private_free (NULL, res);
+
+	  len += 1024;
+	  res = (char *) db_private_alloc (NULL, len);
+	  if (!res)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	  memset (res, 0, len);
+	  strcpy (res, res2);
+	  db_private_free (NULL, res2);
+	}
+    }
+  /* finished string */
+
+  /* 4. */
+  DB_MAKE_STRING (result, res);
+
+error:
+  /* do not free res as it was moved to result and will be freed later */
+  return error_status;
+}
+
+/*
+ * db_timestamp() -
+ *
+ * Arguments:
+ *         src_datetime1: date or datetime expression
+ *         src_time2: time expression
+ *
+ * Returns: int
+ *
+ * Errors:
+ *
+ * Note:
+ * This function is used in the function TIMESTAMP().
+ * It returns the date or datetime expression expr as a datetime value.
+ * With both arguments, it adds the time expression src_time2 to the date or
+ * datetime expression src_datetime1 and returns the result as a datetime value.
+ */
+int
+db_timestamp (const DB_VALUE * src_datetime1, const DB_VALUE * src_time2,
+	      DB_VALUE * result_datetime)
+{
+  int error_status = NO_ERROR;
+  int year, month, day, hour, minute, second, millisecond;
+  int y = 0, m = 0, d = 0, h = 0, mi = 0, s = 0, ms = 0;
+  DB_BIGINT amount = 0;
+  double amount_d = 0;
+  DB_TYPE type;
+  DB_DATE db_date;
+  DB_TIME db_time;
+  DB_DATETIME datetime, db_datetime, calculated_datetime;
+  /* if sign is 1 then we perform a subtraction */
+  int sign = 0;
+
+  if (result_datetime == (DB_VALUE *) NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER,
+	      0);
+      return ER_QPROC_INVALID_PARAMETER;
+    }
+
+  db_value_domain_init (result_datetime, DB_TYPE_DATETIME, 0, 0);
+
+  /* Return NULL if NULL is explicitly given as the second argument.
+   * If no second argument is given, we consider it as 0.
+   */
+  if (DB_IS_NULL (src_datetime1) || (src_time2 && DB_IS_NULL (src_time2)))
+    {
+      DB_MAKE_NULL (result_datetime);
+      return NO_ERROR;
+    }
+
+  year = month = day = hour = minute = second = millisecond = 0;
+
+  type = DB_VALUE_DOMAIN_TYPE (src_datetime1);
+  switch (type)
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      error_status =
+	db_string_to_datetime (DB_GET_STRING (src_datetime1), &db_datetime);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
+      db_datetime_decode (&db_datetime, &month, &day, &year, &hour,
+			  &minute, &second, &millisecond);
+      break;
+
+    case DB_TYPE_DATETIME:
+      db_datetime_decode (DB_GET_DATETIME (src_datetime1),
+			  &month, &day, &year, &hour,
+			  &minute, &second, &millisecond);
+      break;
+
+    case DB_TYPE_DATE:
+      db_date_decode (DB_GET_DATE (src_datetime1), &month, &day, &year);
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      db_timestamp_decode (DB_GET_TIMESTAMP (src_datetime1), &db_date,
+			   &db_time);
+      db_date_decode (&db_date, &month, &day, &year);
+      db_time_decode (&db_time, &hour, &minute, &second);
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+
+  /* If no second argument is given, just encode the first argument. */
+  if (src_time2 == NULL)
+    {
+      goto encode_result;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (src_time2);
+  switch (type)
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      parse_time_string ((const char *) DB_GET_STRING (src_time2), &sign,
+			 &h, &mi, &s, &ms);
+      break;
+
+    case DB_TYPE_TIME:
+      db_time_decode (DB_GET_TIME (src_time2), &h, &mi, &s);
+      break;
+
+    case DB_TYPE_SMALLINT:
+      amount = (DB_BIGINT) DB_GET_SMALLINT (src_time2);
+      break;
+
+    case DB_TYPE_INTEGER:
+      amount = (DB_BIGINT) DB_GET_INTEGER (src_time2);
+      break;
+
+    case DB_TYPE_BIGINT:
+      amount = DB_GET_BIGINT (src_time2);
+      break;
+
+    case DB_TYPE_FLOAT:
+      amount_d = DB_GET_FLOAT (src_time2);
+      break;
+
+    case DB_TYPE_DOUBLE:
+      amount_d = DB_GET_DOUBLE (src_time2);
+      break;
+
+    case DB_TYPE_MONETARY:
+      amount_d = db_value_get_monetary_amount_as_double (src_time2);
+      break;
+
+    case DB_TYPE_NUMERIC:
+      numeric_coerce_num_to_double ((DB_C_NUMERIC)
+				    db_locate_numeric (src_time2),
+				    DB_VALUE_SCALE (src_time2), &amount_d);
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+
+  if (type == DB_TYPE_DOUBLE || type == DB_TYPE_FLOAT ||
+      type == DB_TYPE_MONETARY || type == DB_TYPE_NUMERIC)
+    {
+      amount = (DB_BIGINT) amount_d;
+      ms = ((long) (amount_d * 1000.0)) % 1000;
+    }
+
+  if (type != DB_TYPE_VARCHAR && type != DB_TYPE_CHAR && type != DB_TYPE_TIME)
+    {
+      if (amount < 0)
+	{
+	  amount = -amount;
+	  ms = -ms;
+	  sign = 1;
+	}
+      s = (int) ((DB_BIGINT) amount % 100);
+      amount /= 100;
+      mi = (int) ((DB_BIGINT) amount % 100);
+      amount /= 100;
+      h = (int) amount;
+    }
+
+  /* validation of minute and second */
+  if ((mi < 0 || mi > 59) || (s < 0 || s > 59))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_QPROC_INVALID_PARAMETER, 0);
+      return ER_QPROC_INVALID_PARAMETER;
+    }
+
+  /* Convert time to milliseconds. */
+  amount =
+    ((DB_BIGINT) h * 60 * 60 * 1000) + ((DB_BIGINT) mi * 60 * 1000) +
+    ((DB_BIGINT) s * 1000) + (DB_BIGINT) ms;
+
+encode_result:
+
+  db_datetime_encode (&datetime,
+		      month, day, year, hour, minute, second, millisecond);
+  if (amount > 0)
+    {
+      if (sign == 0)
+	{
+	  error_status =
+	    db_add_int_to_datetime (&datetime, amount, &calculated_datetime);
+	}
+      else
+	{
+	  error_status =
+	    db_subtract_int_from_datetime (&datetime, amount,
+					   &calculated_datetime);
+	}
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
+
+      db_make_datetime (result_datetime, &calculated_datetime);
+    }
+  else
+    {
+      db_make_datetime (result_datetime, &datetime);
+    }
+
+  return error_status;
+}
+
+/*
  * db_add_months () -
  */
 int
@@ -7278,7 +8317,6 @@ db_sys_date (DB_VALUE * result_date)
   DB_MAKE_DATE (result_date, c_time_struct->tm_mon + 1,
 		c_time_struct->tm_mday, c_time_struct->tm_year + 1900);
 
-
   return error_status;
 }
 
@@ -7317,7 +8355,6 @@ db_sys_time (DB_VALUE * result_time)
   DB_MAKE_TIME (result_time, c_time_struct->tm_hour, c_time_struct->tm_min,
 		c_time_struct->tm_sec);
 
-
   return error_status;
 }
 
@@ -7343,7 +8380,6 @@ db_sys_timestamp (DB_VALUE * result_timestamp)
       return error_status;
     }
   DB_MAKE_TIMESTAMP (result_timestamp, (DB_TIMESTAMP) tloc);
-
 
   return error_status;
 }
@@ -7541,6 +8577,35 @@ const char *Day_name[][7] = {
    "\xc5\xe4\xbf\xe4\xc0\xcf" /* ����� */ }	/* KR */
 };
 
+/* TODO: koreean short names */
+const char *Short_Month_name[][12] = {
+  {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"},	/* US */
+  {"1\xbf\xf9",			/* 1�� */
+   "2\xbf\xf9",			/* 2�� */
+   "3\xbf\xf9",			/* 3�� */
+   "4\xbf\xf9",			/* 4�� */
+   "5\xbf\xf9",			/* 5�� */
+   "6\xbf\xf9",			/* 6�� */
+   "7\xbf\xf9",			/* 7�� */
+   "8\xbf\xf9",			/* 8�� */
+   "9\xbf\xf9",			/* 9�� */
+   "10\xbf\xf9",		/* 10�� */
+   "11\xbf\xf9",		/* 11�� */
+   "12\xbf\xf9" /* 12�� */ }	/* KR */
+};
+
+const char *Short_Day_name[][7] = {
+  {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},	/* US */
+  {"\xc0\xcf",			/* �Ͽ��� */
+   "\xbf\xf9",			/* ����� */
+   "\xc8\xad",			/* ȭ���� */
+   "\xbc\xf6",			/* ����� */
+   "\xb8\xf1",			/* ����� */
+   "\xb1\xdd",			/* �ݿ��� */
+   "\xc5\xe4" /* ����� */ }	/* KR */
+};
+
 #define AM_NAME_KR "\xbf\xc0\xc0\xfc"	/* ���� */
 #define PM_NAME_KR "\xbf\xc0\xc8\xc4"	/* ���� */
 
@@ -7548,7 +8613,8 @@ const char *Am_Pm_name[][12] = {
   {"am", "pm", "Am", "Pm", "AM", "PM",
    "a.m.", "p.m.", "A.m.", "P.m.", "A.M.", "P.M."},	/* US */
   {AM_NAME_KR, PM_NAME_KR, AM_NAME_KR, PM_NAME_KR, AM_NAME_KR, PM_NAME_KR,
-   AM_NAME_KR, PM_NAME_KR, AM_NAME_KR, PM_NAME_KR, AM_NAME_KR, PM_NAME_KR}	/* KR */
+   AM_NAME_KR, PM_NAME_KR, AM_NAME_KR, PM_NAME_KR, AM_NAME_KR, PM_NAME_KR}
+  /* KR */
 };
 
 enum
@@ -7933,7 +8999,8 @@ db_to_date (const DB_VALUE * src_str,
 
 	    case DT_CC:
 	    case DT_Q:
-	      error_status = ER_QSTR_INVALID_FORMAT;	/* Does it need error message? */
+	      error_status = ER_QSTR_INVALID_FORMAT;
+	      /* Does it need error message? */
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      return error_status;
 
@@ -10122,7 +11189,8 @@ db_to_datetime (const DB_VALUE * src_str, const DB_VALUE * format_str,
 
 
 /*
- * adjust_precision () - Change representation of 'data' as of 'precision' and 'scale'.
+ * adjust_precision () - Change representation of 'data' as of
+ *    'precision' and 'scale'.
  *                       When data has invalid format, just return
  * return : DOMAIN_INCOMPATIBLE, DOMAIN_OVERFLOW, NO_ERROR
  */
@@ -10268,7 +11336,8 @@ db_to_number (const DB_VALUE * src_str,
 	      const DB_VALUE * format_str, DB_VALUE * result_num)
 {
   /* default precision and scale is (38, 0) */
-  /* it is more profitable that the definition of this value is located in some header file */
+  /* it is more profitable that the definition of this value is located in
+     some header file */
   const char *dflt_format_str = "99999999999999999999999999999999999999";
 
   int error_status = NO_ERROR;
@@ -10623,7 +11692,6 @@ date_to_char (const DB_VALUE * src_value,
 	  if (result_buf == NULL)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      return error_status;
 	    }
 	  result_len = QSTR_DATE_LENGTH;
@@ -10637,7 +11705,6 @@ date_to_char (const DB_VALUE * src_value,
 	  if (result_buf == NULL)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      return error_status;
 	    }
 	  result_len = QSTR_TIME_LENGTH;
@@ -10652,7 +11719,6 @@ date_to_char (const DB_VALUE * src_value,
 	  if (result_buf == NULL)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      return error_status;
 	    }
 	  result_len = QSTR_TIME_STAMPLENGTH;
@@ -10667,7 +11733,6 @@ date_to_char (const DB_VALUE * src_value,
 	  if (result_buf == NULL)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	      return error_status;
 	    }
 	  result_len = QSTR_DATETIME_LENGTH;
@@ -10746,7 +11811,6 @@ date_to_char (const DB_VALUE * src_value,
       if (result_buf == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  return error_status;
 	}
 
@@ -11044,7 +12108,12 @@ date_to_char (const DB_VALUE * src_value,
 
 	    case DT_HH:
 	    case DT_HH12:
-	      sprintf (&result_buf[i], "%02d\n", hour % 12);
+	      tmp_int = hour % 12;
+	      if (tmp_int == 0)
+		{
+		  tmp_int = 12;
+		}
+	      sprintf (&result_buf[i], "%02d\n", tmp_int);
 	      i += 2;
 	      break;
 
@@ -11116,13 +12185,8 @@ number_to_char (const DB_VALUE * src_value,
 		const DB_VALUE * format_str,
 		const DB_VALUE * date_lang, DB_VALUE * result_str)
 {
-#define INTEGER_MAX_PRECISION 10
-#define SMALLINT_MAX_PRECISION 5
-#define DOUBLE_MAX_SCALE 15
-#define FLOAT_MAX_SCALE 6
-
   int error_status = NO_ERROR;
-  char tmp_str[DOUBLE_MAX_SCALE + 9];
+  char tmp_str[64];
   char *tmp_buf;
 
   char *cs;			/* current source string pointer     */
@@ -11160,7 +12224,6 @@ number_to_char (const DB_VALUE * src_value,
       if (cs == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  return error_status;
 	}
       strcpy (cs, tmp_buf);
@@ -11172,7 +12235,6 @@ number_to_char (const DB_VALUE * src_value,
       if (cs == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  return error_status;
 	}
       strcpy (cs, tmp_str);
@@ -11184,7 +12246,6 @@ number_to_char (const DB_VALUE * src_value,
       if (cs == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  return error_status;
 	}
       strcpy (cs, tmp_str);
@@ -11196,7 +12257,6 @@ number_to_char (const DB_VALUE * src_value,
       if (cs == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  return error_status;
 	}
       strcpy (cs, tmp_str);
@@ -11219,8 +12279,8 @@ number_to_char (const DB_VALUE * src_value,
       break;
 
     default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
       error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
       return error_status;
     }
 
@@ -12031,7 +13091,7 @@ make_number_to_char (char *num_string,
 	  /* rounding     */
 	  if (*num - '0' > 4)
 	    {
-	      if (roundoff (*result_str, 0, (int *) NULL, format_str) 
+	      if (roundoff (*result_str, 0, (int *) NULL, format_str)
 		  != NO_ERROR)
 		{
 		  return ER_FAILED;
@@ -12684,7 +13744,7 @@ make_number (char *src, char *last_src, char *token, int
        * modify result_str to contain correct string value with respect to
        * the given precision and scale.
        */
-      strncpy (result_str, res_ptr, sizeof (result_str));
+      strncpy (result_str, res_ptr, sizeof (result_str) - 1);
       db_private_free_and_init (NULL, res_ptr);
 
       error_status = adjust_precision (result_str, precision, scale);
@@ -13198,4 +14258,3436 @@ is_valid_date (int month, int day, int year, int day_of_the_week)
     {
       return false;
     }
+}
+
+/*
+ * db_format () -
+ */
+int
+db_format (const DB_VALUE * value, const DB_VALUE * decimals,
+	   DB_VALUE * result)
+{
+  DB_TYPE arg1_type, arg2_type;
+  int error = NO_ERROR;
+  int ndec = 0, i, j;
+  const char *integer_format_max =
+    "99,999,999,999,999,999,999,999,999,999,999,999,999";
+  char format[128];
+  DB_VALUE format_val, date_lang_val, trim_charset, formatted_val,
+    numeric_val, trimmed_val;
+  const DB_VALUE *num_dbval_p = NULL;
+
+  arg1_type = DB_VALUE_DOMAIN_TYPE (value);
+  arg2_type = DB_VALUE_DOMAIN_TYPE (decimals);
+
+  if (arg1_type == DB_TYPE_NULL || DB_IS_NULL (value)
+      || arg2_type == DB_TYPE_NULL || DB_IS_NULL (decimals))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  DB_MAKE_NULL (&formatted_val);
+  DB_MAKE_NULL (&trimmed_val);
+
+  if (arg2_type == DB_TYPE_INTEGER)
+    {
+      ndec = DB_GET_INT (decimals);
+    }
+  else if (arg2_type == DB_TYPE_SHORT)
+    {
+      ndec = DB_GET_SHORT (decimals);
+    }
+  else if (arg2_type == DB_TYPE_BIGINT)
+    {
+      DB_BIGINT bi = DB_GET_BIGINT (decimals);
+      if (bi > INT_MAX || bi < 0)
+	{
+	  goto invalid_argument_error;
+	}
+      ndec = (int) bi;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_FAILED;
+    }
+
+  if (ndec < 0)
+    {
+      goto invalid_argument_error;
+    }
+  /* 30 is the decimal limit for formating floating points with this function,
+     in mysql */
+  if (ndec > 30)
+    {
+      ndec = 30;
+    }
+
+  switch (arg1_type)
+    {
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_NCHAR:
+      {
+	char *c;
+	int len, dot = 0;
+	/* Trim first because the input string can be given like below:
+	 *  - ' 1.1 ', '1.1 ', ' 1.1'
+	 */
+	db_make_null (&trim_charset);
+	error = db_string_trim (BOTH, &trim_charset, value, &trimmed_val);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+
+	c = DB_GET_CHAR (&trimmed_val, &len);
+	if (c == NULL)
+	  {
+	    goto invalid_argument_error;
+	  }
+
+	for (i = 0; i < len; i++)
+	  {
+	    if (c[i] == '.')
+	      {
+		dot++;
+		continue;
+	      }
+	    if (!char_isdigit (c[i]))
+	      {
+		goto invalid_argument_error;
+	      }
+	  }
+	if (dot > 1)
+	  {
+	    goto invalid_argument_error;
+	  }
+
+	error = numeric_coerce_string_to_num (c, &numeric_val);
+	if (error != NO_ERROR)
+	  {
+	    pr_clear_value (&trimmed_val);
+	    return error;
+	  }
+
+	num_dbval_p = &numeric_val;
+	pr_clear_value (&trimmed_val);
+      }
+      break;
+
+    case DB_TYPE_MONETARY:
+      {
+	double d = db_value_get_monetary_amount_as_double (value);
+	db_make_double (&numeric_val, d);
+	num_dbval_p = &numeric_val;
+      }
+      break;
+
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_NUMERIC:
+      num_dbval_p = value;
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_FAILED;
+    }
+
+  /* Make format string. */
+  i = snprintf (format, sizeof (format) - 1, "%s", integer_format_max);
+  if (ndec > 0)
+    {
+      format[i++] = '.';
+      for (j = 0; j < ndec; j++)
+	{
+	  format[i++] = '9';
+	}
+      format[i] = '\0';
+    }
+
+  db_make_string (&format_val, format);
+
+  /* Make a dummy DATE_LANG value. We only accept English. */
+  db_make_int (&date_lang_val, 2);
+
+  error = number_to_char (num_dbval_p, &format_val, &date_lang_val,
+			  &formatted_val);
+  if (error == NO_ERROR)
+    {
+      /* number_to_char function returns a string with leading empty characters.
+       * So, we need to remove them.
+       */
+      db_make_null (&trim_charset);
+      error = db_string_trim (LEADING, &trim_charset, &formatted_val, result);
+
+      pr_clear_value (&formatted_val);
+    }
+
+  return error;
+
+invalid_argument_error:
+  if (!DB_IS_NULL (&trimmed_val))
+    {
+      pr_clear_value (&trimmed_val);
+    }
+  if (!DB_IS_NULL (&formatted_val))
+    {
+      pr_clear_value (&formatted_val);
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+  return ER_FAILED;
+}
+
+/*
+ * db_string_reverse () - reverse the source DB_VALUE string
+ *
+ *   return:
+ *   src_str(in): source DB_VALUE string
+ *   result_str(in/out): result DB_VALUE string
+ */
+int
+db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
+{
+  int error_status = NO_ERROR;
+  DB_TYPE str_type;
+
+  /*
+   *  Assert that DB_VALUE structures have been allocated.
+   */
+  assert (src_str != (DB_VALUE *) NULL);
+  assert (result_str != (DB_VALUE *) NULL);
+
+  /*
+   *  Categorize the two input parameters and check for errors.
+   *    Verify that the parameters are both character strings.
+   */
+
+  str_type = DB_VALUE_DOMAIN_TYPE (src_str);
+  if (DB_IS_NULL (src_str))
+    {
+      DB_MAKE_NULL (result_str);
+    }
+  else if (!QSTR_IS_ANY_CHAR (str_type))
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+    }
+  /*
+   *  If the input parameters have been properly validated, then
+   *  we are ready to operate.
+   */
+  else
+    {
+      error_status = db_value_clone ((DB_VALUE *) src_str, result_str);
+      if (error_status == NO_ERROR)
+	{
+	  intl_reverse_string ((unsigned char *) DB_PULL_STRING (src_str),
+			       (unsigned char *) DB_PULL_STRING (result_str),
+			       DB_GET_STRING_LENGTH (src_str),
+			       DB_GET_STRING_SIZE (src_str),
+			       (INTL_CODESET)
+			       DB_GET_STRING_CODESET (src_str));
+	}
+    }
+
+  return error_status;
+}
+
+/*
+ * add_and_normalize_date_time ()
+ *
+ * Arguments: date & time values to modify,
+ *	      date & time amounts to add
+ *
+ * Returns: NO_ERROR/ER_FAILED
+ *
+ * Errors:
+ *
+ * Note:
+ *    transforms all values in a correct interval (h: 0..23, m: 0..59, etc)
+ */
+int
+add_and_normalize_date_time (int *year, int *month,
+			     int *day, int *hour,
+			     int *minute, int *second,
+			     int *millisecond, DB_BIGINT y, DB_BIGINT m,
+			     DB_BIGINT d, DB_BIGINT h, DB_BIGINT mi,
+			     DB_BIGINT s, DB_BIGINT ms)
+{
+  DB_BIGINT days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  DB_BIGINT i;
+  DB_BIGINT _y, _m, _d, _h, _mi, _s, _ms;
+  DB_BIGINT old_day = *day;
+
+  _y = *year;
+  _m = *month;
+  _d = *day;
+  _h = *hour;
+  _mi = *minute;
+  _s = *second;
+  _ms = *millisecond;
+
+  _y += y;
+  _m += m;
+  _d += d;
+  _h += h;
+  _mi += mi;
+  _s += s;
+  _ms += ms;
+
+  /* just years and/or months case */
+  if (d == 0 && h == 0 && mi == 0 && s == 0 && ms == 0 && (m > 0 || y > 0))
+    {
+      if (_m % 12 == 0)
+	{
+	  _y += (_m - 12) / 12;
+	  _m = 12;
+	}
+      else
+	{
+	  _y += _m / 12;
+	  _m %= 12;
+	}
+
+      days[2] = LEAP (_y) ? 29 : 28;
+
+      if (old_day > days[_m])
+	{
+	  _d = days[_m];
+	}
+
+      goto set_and_return;
+    }
+
+  /* time */
+  _s += _ms / 1000;
+  _ms %= 1000;
+
+  _mi += _s / 60;
+  _s %= 60;
+
+  _h += _mi / 60;
+  _mi %= 60;
+
+  _d += _h / 24;
+  _h %= 24;
+
+  /* date */
+  if (_m > 12)
+    {
+      _y += _m / 12;
+      _m %= 12;
+
+      if (_m == 0)
+	{
+	  _m = 1;
+	}
+    }
+
+  days[2] = LEAP (_y) ? 29 : 28;
+
+  if (_d > days[_m])
+    {
+      /* rewind to 1st january */
+      for (i = 1; i < _m; i++)
+	{
+	  _d += days[i];
+	}
+      _m = 1;
+
+      /* days for years */
+      while (_d >= 366)
+	{
+	  days[2] = LEAP (_y) ? 29 : 28;
+	  _d -= (days[2] == 29) ? 366 : 365;
+	  _y++;
+	  if (_y > 9999)
+	    {
+	      goto set_and_return;
+	    }
+	}
+
+      /* days within a year */
+      days[2] = LEAP (_y) ? 29 : 28;
+      for (_m = 1;; _m++)
+	{
+	  if (_d <= days[_m])
+	    {
+	      break;
+	    }
+	  _d -= days[_m];
+	}
+    }
+
+  if (_m == 0)
+    {
+      _m = 1;
+    }
+  if (_d == 0)
+    {
+      _d = 1;
+    }
+
+set_and_return:
+
+  if (_y >= 10000 || _y <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  *year = (int) _y;
+  *month = (int) _m;
+  *day = (int) _d;
+  *hour = (int) _h;
+  *minute = (int) _mi;
+  *second = (int) _s;
+  *millisecond = (int) _ms;
+
+  return NO_ERROR;
+}
+
+/*
+ * sub_and_normalize_date_time ()
+ *
+ * Arguments: date & time values to modify,
+ *	      date & time amounts to subtract
+ *
+ * Returns: NO_ERROR/ER_FAILED
+ *
+ * Errors:
+ *
+ * Note:
+ *    transforms all values in a correct interval (h: 0..23, m: 0..59, etc)
+ */
+int
+sub_and_normalize_date_time (int *year, int *month,
+			     int *day, int *hour,
+			     int *minute, int *second,
+			     int *millisecond, DB_BIGINT y, DB_BIGINT m,
+			     DB_BIGINT d, DB_BIGINT h, DB_BIGINT mi,
+			     DB_BIGINT s, DB_BIGINT ms)
+{
+  DB_BIGINT days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  DB_BIGINT i;
+  DB_BIGINT old_day = *day;
+  DB_BIGINT _y, _m, _d, _h, _mi, _s, _ms;
+
+  _y = *year;
+  _m = *month;
+  _d = *day;
+  _h = *hour;
+  _mi = *minute;
+  _s = *second;
+  _ms = *millisecond;
+
+  _y -= y;
+  _m -= m;
+  _d -= d;
+  _h -= h;
+  _mi -= mi;
+  _s -= s;
+  _ms -= ms;
+
+  /* time */
+  _s += _ms / 1000;
+  _ms %= 1000;
+  if (_ms < 0)
+    {
+      _ms += 1000;
+      _s--;
+    }
+
+  _mi += _s / 60;
+  _s %= 60;
+  if (_s < 0)
+    {
+      _s += 60;
+      _mi--;
+    }
+
+  _h += _mi / 60;
+  _mi %= 60;
+  if (_mi < 0)
+    {
+      _mi += 60;
+      _h--;
+    }
+
+  _d += _h / 24;
+  _h %= 24;
+  if (_h < 0)
+    {
+      _h += 24;
+      _d--;
+    }
+
+  if (_d == 0)
+    {
+      _m--;
+
+      if (_m == 0)
+	{
+	  _y--;
+	  days[2] = LEAP (_y) ? 29 : 28;
+	  _m = 12;
+	}
+      _d = days[_m];
+    }
+
+  if (_m == 0)
+    {
+      _y--;
+      days[2] = LEAP (_y) ? 29 : 28;
+      _m = 12;
+    }
+
+  /* date */
+  if (_m < 0)
+    {
+      _y += (_m / 12);
+      if (_m % 12 == 0)
+	{
+	  _m = 1;
+	}
+      else
+	{
+	  _m %= 12;
+	  if (_m < 0)
+	    {
+	      _m += 12;
+	      _y--;
+	    }
+	}
+    }
+
+  /* just years and/or months case */
+  if (d == 0 && h == 0 && mi == 0 && s == 0 && ms == 0 && (m > 0 || y > 0))
+    {
+      if (_m <= 0)
+	{
+	  _y += (_m / 12);
+	  if (_m % 12 == 0)
+	    {
+	      _m = 1;
+	    }
+	  else
+	    {
+	      _m %= 12;
+	      if (_m <= 0)
+		{
+		  _m += 12;
+		  _y--;
+		}
+	    }
+	}
+
+      days[2] = LEAP (_y) ? 29 : 28;
+
+      if (old_day > days[_m])
+	{
+	  _d = days[_m];
+	}
+
+      goto set_and_return;
+    }
+
+  days[2] = LEAP (_y) ? 29 : 28;
+
+  if (_d > days[_m] || _d < 0)
+    {
+      /* rewind to 1st january */
+      for (i = 1; i < _m; i++)
+	{
+	  _d += days[i];
+	}
+      _m = 1;
+
+      /* days for years */
+      while (_d < 0)
+	{
+	  _y--;
+	  if (_y < 0)
+	    {
+	      goto set_and_return;
+	    }
+	  days[2] = LEAP (_y) ? 29 : 28;
+	  _d += (days[2] == 29) ? 366 : 365;
+	}
+
+      /* days within a year */
+      days[2] = LEAP (_y) ? 29 : 28;
+      for (_m = 1;; _m++)
+	{
+	  if (_d <= days[_m])
+	    {
+	      break;
+	    }
+	  _d -= days[_m];
+	}
+    }
+
+  if (_m == 0)
+    {
+      _m = 1;
+    }
+  if (_d == 0)
+    {
+      _d = 1;
+    }
+
+set_and_return:
+
+  if (_y >= 10000 || _y <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  *year = (int) _y;
+  *month = (int) _m;
+  *day = (int) _d;
+  *hour = (int) _h;
+  *minute = (int) _mi;
+  *second = (int) _s;
+  *millisecond = (int) _ms;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_date_add_sub_interval_days ()
+ *
+ * Arguments:
+ *         date: starting date
+ *         db_days: number of days to add
+ *
+ * Returns: int
+ *
+ * Errors:
+ *
+ * Note:
+ *    Returns date + an interval of db_days days.
+ */
+static int
+db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
+			       const DB_VALUE * db_days, bool is_add)
+{
+  int error_status = NO_ERROR;
+  int days;
+  DB_DATETIME db_datetime, *dt_p;
+  DB_TIME db_time;
+  DB_DATE db_date, *d_p;
+  DB_TIMESTAMP db_timestamp, *ts_p;
+  int is_dt = -1, is_d = -1, is_t = -1, is_timest = -1;
+  DB_TYPE res_type;
+  char *date_s = NULL, res_s[64];
+  int y, m, d, h, mi, s, ms;
+  int ret;
+  char *res_final;
+
+  res_type = DB_VALUE_DOMAIN_TYPE (date);
+  if (res_type == DB_TYPE_NULL || DB_IS_NULL (date))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  if (DB_VALUE_DOMAIN_TYPE (db_days) == DB_TYPE_NULL || DB_IS_NULL (db_days))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  /* simple case, where just a number of days is added to date */
+
+  days = DB_GET_INT (db_days);
+
+  switch (res_type)
+    {
+    case DB_TYPE_STRING:
+    case DB_TYPE_CHAR:
+      date_s = DB_GET_STRING (date);
+
+      /* try to figure out which format has the string */
+      is_dt = db_string_to_datetime (date_s, &db_datetime);
+      is_d = db_string_to_date (date_s, &db_date);
+      is_t = db_string_to_time (date_s, &db_time);
+      is_timest = db_string_to_timestamp (date_s, &db_timestamp);
+
+      if (is_dt == ER_DATE_CONVERSION && is_d == ER_DATE_CONVERSION
+	  && is_t == ER_DATE_CONVERSION && is_timest == ER_DATE_CONVERSION)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  goto error;
+	}
+
+      /* add date stuff to a time -> error */
+      /* in fact, disable time operations, not available on mysql */
+      if (is_t == 0)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  goto error;
+	}
+
+      dt_p = &db_datetime;
+      d_p = &db_date;
+      ts_p = &db_timestamp;
+
+      /* except just TIME business, convert all to DATETIME */
+      break;
+
+    case DB_TYPE_DATE:
+      is_d = 1;
+      d_p = DB_GET_DATE (date);
+      break;
+
+    case DB_TYPE_DATETIME:
+      is_dt = 1;
+      dt_p = DB_GET_DATETIME (date);
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      is_timest = 1;
+      ts_p = DB_GET_TIMESTAMP (date);
+      break;
+
+    case DB_TYPE_TIME:
+      /* should not reach here */
+      assert (0);
+      break;
+
+    default:
+      error_status = ER_OBJ_INVALID_ARGUMENTS;
+      goto error;
+    }
+
+  if (is_d >= 0)
+    {
+      y = m = d = h = mi = s = ms = 0;
+      db_date_decode (d_p, &m, &d, &y);
+
+      if (is_add)
+	{
+	  if (days > 0)
+	    {
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+						 0, 0, days, 0, 0, 0, 0);
+	    }
+	  else
+	    {
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+						 0, 0, -days, 0, 0, 0, 0);
+	    }
+	}
+      else
+	{
+	  if (days > 0)
+	    {
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+						 0, 0, days, 0, 0, 0, 0);
+	    }
+	  else
+	    {
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+						 0, 0, -days, 0, 0, 0, 0);
+	    }
+	}
+
+      /* year should always be greater than 1 and less than 9999(for mysql) */
+      if (ret != NO_ERROR)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  goto error;
+	}
+
+      db_date_encode (&db_date, m, d, y);
+
+      if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
+	{
+	  db_date_to_string (res_s, 64, &db_date);
+
+	  res_final = db_private_alloc (NULL, strlen (res_s) + 1);
+	  if (!res_final)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	  strcpy (res_final, res_s);
+	  DB_MAKE_STRING (result, res_final);
+	}
+      else
+	{
+	  DB_MAKE_DATE (result, m, d, y);
+	}
+    }
+  else if (is_dt >= 0)
+    {
+      y = m = d = h = mi = s = ms = 0;
+      db_datetime_decode (dt_p, &m, &d, &y, &h, &mi, &s, &ms);
+
+      if (is_add)
+	{
+	  if (days > 0)
+	    {
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+						 0, 0, days, 0, 0, 0, 0);
+	    }
+	  else
+	    {
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+						 0, 0, -days, 0, 0, 0, 0);
+	    }
+	}
+      else
+	{
+	  if (days > 0)
+	    {
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+						 0, 0, days, 0, 0, 0, 0);
+	    }
+	  else
+	    {
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+						 0, 0, -days, 0, 0, 0, 0);
+	    }
+	}
+      /* year should always be greater than 1 and less than 9999(for mysql) */
+      if (ret != NO_ERROR)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  goto error;
+	}
+
+      db_datetime.date = db_datetime.time = 0;
+      db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
+
+      if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
+	{
+	  db_datetime_to_string (res_s, 64, &db_datetime);
+
+	  res_final = db_private_alloc (NULL, strlen (res_s) + 1);
+	  if (!res_final)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	  strcpy (res_final, res_s);
+	  DB_MAKE_STRING (result, res_final);
+	}
+      else
+	{
+	  /* datetime, date + time units, timestamp => return datetime */
+	  DB_MAKE_DATETIME (result, &db_datetime);
+	}
+    }
+  else if (is_timest >= 0)
+    {
+      y = m = d = h = mi = s = ms = 0;
+      db_timestamp_decode (ts_p, &db_date, &db_time);
+      db_date_decode (&db_date, &m, &d, &y);
+      db_time_decode (&db_time, &h, &mi, &s);
+
+      if (is_add)
+	{
+	  if (days > 0)
+	    {
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+						 0, 0, days, 0, 0, 0, 0);
+	    }
+	  else
+	    {
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+						 0, 0, -days, 0, 0, 0, 0);
+	    }
+	}
+      else
+	{
+	  if (days > 0)
+	    {
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+						 0, 0, days, 0, 0, 0, 0);
+	    }
+	  else
+	    {
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+						 0, 0, -days, 0, 0, 0, 0);
+	    }
+	}
+
+      /* year should always be greater than 1 and less than 9999(for mysql) */
+      if (ret != NO_ERROR)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  goto error;
+	}
+
+      db_datetime.date = db_datetime.time = 0;
+      db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
+
+      if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
+	{
+	  db_datetime_to_string (res_s, 64, &db_datetime);
+
+	  res_final = db_private_alloc (NULL, strlen (res_s) + 1);
+	  if (!res_final)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	  strcpy (res_final, res_s);
+	  DB_MAKE_STRING (result, res_final);
+	}
+      else
+	{
+	  /* datetime, date + time units, timestamp => return datetime */
+	  DB_MAKE_DATETIME (result, &db_datetime);
+	}
+    }
+
+error:
+  return error_status;
+}
+
+int
+db_date_add_interval_days (DB_VALUE * result, const DB_VALUE * date,
+			   const DB_VALUE * db_days)
+{
+  return db_date_add_sub_interval_days (result, date, db_days, true);
+}
+
+int
+db_date_sub_interval_days (DB_VALUE * result, const DB_VALUE * date,
+			   const DB_VALUE * db_days)
+{
+  return db_date_add_sub_interval_days (result, date, db_days, false);
+}
+
+/*
+ * db_str_to_millisec () -
+ *
+ * Arguments:
+ *         str: millisecond format
+ *
+ * Returns: int
+ *
+ * Errors:
+ */
+static int
+db_str_to_millisec (const char *str)
+{
+  int digit_num, value, ret;
+
+  if (str == NULL || str[0] == '\0')
+    {
+      return 0;
+    }
+
+  digit_num = strlen (str);
+  if (digit_num >= 1 && str[0] == '-')
+    {
+      digit_num--;
+      ret = sscanf (str, "%4d", &value);
+    }
+  else
+    {
+      ret = sscanf (str, "%3d", &value);
+    }
+
+  if (ret != 1)
+    {
+      return 0;
+    }
+
+  switch (digit_num)
+    {
+    case 1:
+      value *= 100;
+      break;
+
+    case 2:
+      value *= 10;
+      break;
+
+    default:
+      break;
+    }
+
+  return value;
+}
+
+/*
+ * copy_and_shift_values () -
+ *
+ * Arguments:
+ *         shift: the offset the values are shifted
+ *         n: normal number of arguments
+ *	   first...: arguments
+ *
+ * Returns: int
+ *
+ * Errors:
+ *
+ * Note:
+ *    shifts all arguments by the given value
+ */
+static void
+copy_and_shift_values (int shift, int n, DB_BIGINT * first, ...)
+{
+  va_list marker;
+  DB_BIGINT *curr = first;
+  DB_BIGINT *v[16];		/* will contain max 5 elements */
+  int i, count = 0, cnt_src = 0;
+
+  /*
+   * numeric arguments from interval expression have a delimiter read also
+   * as argument so out of N arguments there are actually (N + 1)/2 numeric
+   * values (ex: 1:2:3:4 or 1:2 or 1:2:3)
+   */
+  shift = (shift + 1) / 2;
+
+  if (shift == n)
+    {
+      return;
+    }
+
+  va_start (marker, first);	/* init variable arguments */
+  while (cnt_src < n)
+    {
+      cnt_src++;
+      v[count++] = curr;
+      curr = va_arg (marker, DB_BIGINT *);
+    }
+  va_end (marker);
+
+  cnt_src = shift - 1;
+  /* move backwards to not overwrite values */
+  for (i = count - 1; i >= 0; i--)
+    {
+      if (cnt_src >= 0)
+	{
+	  /* replace */
+	  *v[i] = *v[cnt_src--];
+	}
+      else
+	{
+	  /* reset */
+	  *v[i] = 0;
+	}
+    }
+}
+
+/*
+ * get_single_unit_value () -
+ *   return:
+ *   expr (in): input as string
+ *   int_val (in) : input as integer
+ */
+static DB_BIGINT
+get_single_unit_value (char *expr, DB_BIGINT int_val)
+{
+  DB_BIGINT v;
+
+  if (expr == NULL)
+    {
+      v = int_val;
+    }
+  else
+    {
+      sscanf (expr, "%lld", (long long *) &v);
+    }
+
+  return v;
+}
+
+/*
+ * db_date_add_sub_interval_expr () -
+ *
+ * Arguments:
+ *         date: starting date
+ *         expr: string with the amounts to add
+ *	   unit: unit(s) of the amounts
+ *
+ * Returns: int
+ *
+ * Errors:
+ *
+ * Note:
+ *    Returns date + the amounts from expr
+ */
+static int
+db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
+			       const DB_VALUE * expr, const int unit,
+			       bool is_add)
+{
+  int sign = 0;
+  int type = 0;			/* 1 -> time, 2 -> date, 3 -> both */
+  DB_TYPE res_type, expr_type;
+  char *date_s = NULL, *expr_s, res_s[64], millisec_s[64];
+  int error_status = NO_ERROR;
+  DB_BIGINT millisec, seconds, minutes, hours;
+  DB_BIGINT days, weeks, months, quarters, years;
+  DB_DATETIME db_datetime, *dt_p;
+  DB_TIME db_time;
+  DB_DATE db_date, *d_p;
+  DB_TIMESTAMP db_timestamp, *ts_p;
+  int narg, is_dt = -1, is_d = -1, is_t = -1, is_timest = -1;
+  char delim;
+  DB_VALUE trimed_expr, charset;
+  DB_BIGINT unit_int_val;
+  double dbl;
+  int y, m, d, h, mi, s, ms;
+  int ret;
+  char *res_final;
+
+  res_type = DB_VALUE_DOMAIN_TYPE (date);
+  if (res_type == DB_TYPE_NULL || DB_IS_NULL (date))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  expr_type = DB_VALUE_DOMAIN_TYPE (expr);
+  if (expr_type == DB_TYPE_NULL || DB_IS_NULL (expr))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  DB_MAKE_NULL (&trimed_expr);
+  unit_int_val = 0;
+  expr_s = NULL;
+
+  /* 1. Prepare the input: convert expr to char */
+
+  /*
+   * expr is converted to char because it may contain a more complicated form
+   * for the multiple unit formats, for example:
+   * 'DAYS HOURS:MINUTES:SECONDS.MILLISECONDS'
+   * For the simple unit tags, expr is integer
+   */
+
+  expr_type = DB_VALUE_DOMAIN_TYPE (expr);
+  switch (expr_type)
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      DB_MAKE_NULL (&charset);
+      error_status = db_string_trim (BOTH, &charset, expr, &trimed_expr);
+      if (error_status != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      expr_s = DB_GET_STRING (&trimed_expr);
+      if (expr_s == NULL)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto error;
+	}
+      break;
+
+    case DB_TYPE_SHORT:
+      unit_int_val = DB_GET_SHORT (expr);
+      break;
+
+    case DB_TYPE_INTEGER:
+      unit_int_val = DB_GET_INTEGER (expr);
+      break;
+
+    case DB_TYPE_BIGINT:
+      unit_int_val = DB_GET_BIGINT (expr);
+      break;
+
+    case DB_TYPE_FLOAT:
+      unit_int_val = (DB_BIGINT) round (DB_GET_FLOAT (expr));
+      break;
+
+    case DB_TYPE_DOUBLE:
+      unit_int_val = (DB_BIGINT) round (DB_GET_DOUBLE (expr));
+      break;
+
+    case DB_TYPE_NUMERIC:
+      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (expr),
+				    DB_VALUE_SCALE (expr), &dbl);
+      unit_int_val = (DB_BIGINT) round (dbl);
+      break;
+
+    default:
+      error_status = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto error;
+    }
+
+  /* 2. the big switch: according to unit, we parse expr and get amounts of
+     ms/s/m/h/d/m/y/w/q to add or subtract */
+
+  millisec_s[0] = '\0';
+  millisec = seconds = minutes = hours = 0;
+  days = weeks = months = quarters = years = 0;
+
+  switch (unit)
+    {
+    case PT_MILLISECOND:
+      millisec = get_single_unit_value (expr_s, unit_int_val);
+      sign = (millisec >= 0);
+      type |= 1;
+      break;
+
+    case PT_SECOND:
+      seconds = get_single_unit_value (expr_s, unit_int_val);
+      sign = (seconds >= 0);
+      type |= 1;
+      break;
+
+    case PT_MINUTE:
+      minutes = get_single_unit_value (expr_s, unit_int_val);
+      sign = (minutes >= 0);
+      type |= 1;
+      break;
+
+    case PT_HOUR:
+      hours = get_single_unit_value (expr_s, unit_int_val);
+      sign = (hours >= 0);
+      type |= 1;
+      break;
+
+    case PT_DAY:
+      days = get_single_unit_value (expr_s, unit_int_val);
+      sign = (days >= 0);
+      type |= 2;
+      break;
+
+    case PT_WEEK:
+      weeks = get_single_unit_value (expr_s, unit_int_val);
+      sign = (weeks >= 0);
+      type |= 2;
+      break;
+
+    case PT_MONTH:
+      months = get_single_unit_value (expr_s, unit_int_val);
+      sign = (months >= 0);
+      type |= 2;
+      break;
+
+    case PT_QUARTER:
+      quarters = get_single_unit_value (expr_s, unit_int_val);
+      sign = (quarters >= 0);
+      type |= 2;
+      break;
+
+    case PT_YEAR:
+      years = get_single_unit_value (expr_s, unit_int_val);
+      sign = (years >= 0);
+      type |= 2;
+      break;
+
+    case PT_SECOND_MILLISECOND:
+      narg = sscanf (expr_s, "%lld%c%s", (long long *) &seconds, &delim,
+		     millisec_s);
+      millisec = db_str_to_millisec (millisec_s);
+      copy_and_shift_values (narg, 2, &seconds, &millisec);
+      sign = (seconds >= 0);
+      type |= 1;
+      break;
+
+    case PT_MINUTE_MILLISECOND:
+      narg = sscanf (expr_s, "%lld%c%lld%c%s", (long long *) &minutes, &delim,
+		     (long long *) &seconds, &delim, millisec_s);
+      millisec = db_str_to_millisec (millisec_s);
+      copy_and_shift_values (narg, 3, &minutes, &seconds, &millisec);
+      sign = (minutes >= 0);
+      type |= 1;
+      break;
+
+    case PT_MINUTE_SECOND:
+      narg = sscanf (expr_s, "%lld%c%lld", (long long *) &minutes, &delim,
+		     (long long *) &seconds);
+      copy_and_shift_values (narg, 2, &minutes, &seconds);
+      sign = (minutes >= 0);
+      type |= 1;
+      break;
+
+    case PT_HOUR_MILLISECOND:
+      narg = sscanf (expr_s, "%lld%c%lld%c%lld%c%s", (long long *) &hours,
+		     &delim, (long long *) &minutes, &delim,
+		     (long long *) &seconds, &delim, millisec_s);
+      millisec = db_str_to_millisec (millisec_s);
+      copy_and_shift_values (narg, 4, &hours, &minutes, &seconds, &millisec);
+      sign = (hours >= 0);
+      type |= 1;
+      break;
+
+    case PT_HOUR_SECOND:
+      narg = sscanf (expr_s, "%lld%c%lld%c%lld", (long long *) &hours, &delim,
+		     (long long *) &minutes, &delim, (long long *) &seconds);
+      copy_and_shift_values (narg, 3, &hours, &minutes, &seconds);
+      sign = (hours >= 0);
+      type |= 1;
+      break;
+
+    case PT_HOUR_MINUTE:
+      narg = sscanf (expr_s, "%lld%c%lld", (long long *) &hours, &delim,
+		     (long long *) &minutes);
+      copy_and_shift_values (narg, 2, &hours, &minutes);
+      sign = (hours >= 0);
+      type |= 1;
+      break;
+
+    case PT_DAY_MILLISECOND:
+      narg = sscanf (expr_s, "%lld%c%lld%c%lld%c%lld%c%s",
+		     (long long *) &days, &delim, (long long *) &hours,
+		     &delim, (long long *) &minutes, &delim,
+		     (long long *) &seconds, &delim, millisec_s);
+      millisec = db_str_to_millisec (millisec_s);
+      copy_and_shift_values (narg, 5, &days, &hours, &minutes, &seconds,
+			     &millisec);
+      sign = (days >= 0);
+      type |= 1;
+      type |= 2;
+      break;
+
+    case PT_DAY_SECOND:
+      narg = sscanf (expr_s, "%lld%c%lld%c%lld%c%lld", (long long *) &days,
+		     &delim, (long long *) &hours, &delim,
+		     (long long *) &minutes, &delim, (long long *) &seconds);
+      copy_and_shift_values (narg, 4, &days, &hours, &minutes, &seconds);
+      sign = (days >= 0);
+      type |= 1;
+      type |= 2;
+      break;
+
+    case PT_DAY_MINUTE:
+      narg = sscanf (expr_s, "%lld%c%lld%c%lld", (long long *) &days, &delim,
+		     (long long *) &hours, &delim, (long long *) &minutes);
+      copy_and_shift_values (narg, 3, &days, &hours, &minutes);
+      sign = (days >= 0);
+      type |= 1;
+      type |= 2;
+      break;
+
+    case PT_DAY_HOUR:
+      narg = sscanf (expr_s, "%lld%c%lld", (long long *) &days, &delim,
+		     (long long *) &hours);
+      copy_and_shift_values (narg, 2, &days, &hours);
+      sign = (days >= 0);
+      type |= 1;
+      type |= 2;
+      break;
+
+    case PT_YEAR_MONTH:
+      narg = sscanf (expr_s, "%lld%c%lld", (long long *) &years, &delim,
+		     (long long *) &months);
+      copy_and_shift_values (narg, 2, &years, &months);
+      sign = (years >= 0);
+      type |= 2;
+      break;
+
+    default:
+      error_status = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto error;
+    }
+
+  /* we have the sign of the amounts, turn them in absolute value */
+  years = ABS (years);
+  months = ABS (months);
+  days = ABS (days);
+  weeks = ABS (weeks);
+  quarters = ABS (quarters);
+  hours = ABS (hours);
+  minutes = ABS (minutes);
+  seconds = ABS (seconds);
+  millisec = ABS (millisec);
+
+  /* convert weeks and quarters to our units */
+  if (weeks != 0)
+    {
+      days += weeks * 7;
+      weeks = 0;
+    }
+
+  if (quarters != 0)
+    {
+      months += 3 * quarters;
+      quarters = 0;
+    }
+
+  /* 3. Convert string with date to DateTime or Time */
+
+  switch (res_type)
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      date_s = DB_GET_STRING (date);
+
+      /* try to figure out which format has the string */
+      is_dt = db_string_to_datetime (date_s, &db_datetime);
+      is_d = db_string_to_date (date_s, &db_date);
+      is_t = db_string_to_time (date_s, &db_time);
+      is_timest = db_string_to_timestamp (date_s, &db_timestamp);
+
+      if (is_dt == ER_DATE_CONVERSION && is_d == ER_DATE_CONVERSION
+	  && is_t == ER_DATE_CONVERSION && is_timest == ER_DATE_CONVERSION)
+	{
+	  error_status = ER_DATE_CONVERSION;
+	  goto error;
+	}
+
+      /* add date stuff to a time -> error */
+      /* in fact, disable time operations, not available on mysql */
+      if (is_t == 0)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto error;
+	}
+
+      dt_p = &db_datetime;
+      d_p = &db_date;
+      ts_p = &db_timestamp;
+
+      /* except just TIME business, convert all to DATETIME */
+      break;
+
+    case DB_TYPE_DATE:
+      is_d = 1;
+      d_p = DB_GET_DATE (date);
+      break;
+
+    case DB_TYPE_DATETIME:
+      is_dt = 1;
+      dt_p = DB_GET_DATETIME (date);
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      is_timest = 1;
+      ts_p = DB_GET_TIMESTAMP (date);
+      break;
+
+    case DB_TYPE_TIME:
+      /* should not reach here */
+      assert (0);
+      break;
+
+    default:
+      error_status = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto error;
+    }
+
+  /* treat as date only if adding date units, else treat as datetime */
+  if (is_d >= 0)
+    {
+      y = m = d = h = mi = s = ms = 0;
+      db_date_decode (d_p, &m, &d, &y);
+
+      if (sign ^ is_add)
+	{
+	  ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+					     years, months, days, hours,
+					     minutes, seconds, millisec);
+	}
+      else
+	{
+	  ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+					     years, months, days, hours,
+					     minutes, seconds, millisec);
+	}
+
+      /* year should always be greater than 1 and less than 9999(for mysql) */
+      if (ret != NO_ERROR)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto error;
+	}
+
+      if (type == 2)
+	{
+	  db_date_encode (&db_date, m, d, y);
+
+	  if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
+	    {
+	      db_date_to_string (res_s, 64, &db_date);
+
+	      res_final = db_private_alloc (NULL, strlen (res_s) + 1);
+	      if (res_final == NULL)
+		{
+		  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto error;
+		}
+	      strcpy (res_final, res_s);
+	      DB_MAKE_STRING (result, res_final);
+	    }
+	  else
+	    {
+	      DB_MAKE_DATE (result, m, d, y);
+	    }
+	}
+      else if (type & 1)
+	{
+	  db_datetime.date = db_datetime.time = 0;
+	  db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
+
+	  if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
+	    {
+	      db_datetime_to_string (res_s, 64, &db_datetime);
+
+	      res_final = db_private_alloc (NULL, strlen (res_s) + 1);
+	      if (res_final == NULL)
+		{
+		  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto error;
+		}
+	      strcpy (res_final, res_s);
+	      DB_MAKE_STRING (result, res_final);
+	    }
+	  else
+	    {
+	      DB_MAKE_DATETIME (result, &db_datetime);
+	    }
+	}
+    }
+  else if (is_dt >= 0)
+    {
+      y = m = d = h = mi = s = ms = 0;
+      db_datetime_decode (dt_p, &m, &d, &y, &h, &mi, &s, &ms);
+
+      if (sign ^ is_add)
+	{
+	  ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+					     years, months, days, hours,
+					     minutes, seconds, millisec);
+	}
+      else
+	{
+	  ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+					     years, months, days, hours,
+					     minutes, seconds, millisec);
+	}
+
+      /* year should always be greater than 1 and less than 9999(for mysql) */
+      if (ret != NO_ERROR)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto error;
+	}
+
+      db_datetime.date = db_datetime.time = 0;
+      db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
+
+      if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
+	{
+	  db_datetime_to_string (res_s, 64, &db_datetime);
+
+	  res_final = db_private_alloc (NULL, strlen (res_s) + 1);
+	  if (res_final == NULL)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	  strcpy (res_final, res_s);
+	  DB_MAKE_STRING (result, res_final);
+	}
+      else
+	{
+	  /* datetime, date + time units, timestamp => return datetime */
+	  DB_MAKE_DATETIME (result, &db_datetime);
+	}
+    }
+  else if (is_timest >= 0)
+    {
+      y = m = d = h = mi = s = ms = 0;
+      db_timestamp_decode (ts_p, &db_date, &db_time);
+      db_date_decode (&db_date, &m, &d, &y);
+      db_time_decode (&db_time, &h, &mi, &s);
+
+      if (sign ^ is_add)
+	{
+	  ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+					     years, months, days, hours,
+					     minutes, seconds, millisec);
+	}
+      else
+	{
+	  ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms,
+					     years, months, days, hours,
+					     minutes, seconds, millisec);
+	}
+
+      /* year should always be greater than 1 and less than 9999(for mysql) */
+      if (ret != NO_ERROR)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto error;
+	}
+
+      db_datetime.date = db_datetime.time = 0;
+      db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
+
+      if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
+	{
+	  db_datetime_to_string (res_s, 64, &db_datetime);
+
+	  res_final = db_private_alloc (NULL, strlen (res_s) + 1);
+	  if (res_final == NULL)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	  strcpy (res_final, res_s);
+	  DB_MAKE_STRING (result, res_final);
+	}
+      else
+	{
+	  /* datetime, date + time units, timestamp => return datetime */
+	  DB_MAKE_DATETIME (result, &db_datetime);
+	}
+    }
+
+error:
+  db_value_clear (&trimed_expr);
+  return error_status;
+}
+
+/*
+ * db_date_add_interval_expr ()
+ *
+ * Arguments:
+ *         result(out):
+ *         date(in): source date
+ *         expr(in): to be added interval
+ *         unit(in): unit of interval expr
+ *
+ * Returns: int
+ *
+ * Note:
+ */
+int
+db_date_add_interval_expr (DB_VALUE * result, const DB_VALUE * date,
+			   const DB_VALUE * expr, const int unit)
+{
+  return db_date_add_sub_interval_expr (result, date, expr, unit, true);
+}
+
+/*
+ * db_date_sub_interval_expr ()
+ *
+ * Arguments:
+ *         result(out):
+ *         date(in): source date
+ *         expr(in): to be substracted interval
+ *         unit(in): unit of interval expr
+ *
+ * Returns: int
+ *
+ * Note:
+ */
+int
+db_date_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date,
+			   const DB_VALUE * expr, const int unit)
+{
+  return db_date_add_sub_interval_expr (result, date, expr, unit, false);
+}
+
+/*
+ * db_date_format ()
+ *
+ * Arguments:
+ *         date_value: source date
+ *         expr: string with format specifiers
+ *
+ * Returns: int
+ *
+ * Errors:
+ *
+ * Note:
+ *    formats the date according to a specified format
+ */
+int
+db_date_format (const DB_VALUE * date_value, const DB_VALUE * format,
+		DB_VALUE * result)
+{
+  DB_DATETIME db_datetime, *dt_p;
+  DB_DATE db_date, *d_p;
+  DB_TIME db_time;
+  DB_TIMESTAMP *ts_p;
+  DB_TYPE res_type;
+  char *date_s = NULL, *res, *res2, *format_s;
+  int error_status = NO_ERROR, len;
+  int y, m, d, h, mi, s, ms;
+  int days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  char format_specifiers[256][64];
+  int i, j;
+  int dow, dow2;
+  int lang_Loc_id = lang_id ();
+  int tu, tv, tx, weeks, ld_fw, days_counter;
+  char och = -1, ch;
+
+  y = m = d = h = mi = s = ms = 0;
+  memset (format_specifiers, 0, sizeof (format_specifiers));
+
+  if (date_value == NULL || format == NULL
+      || DB_IS_NULL (date_value) || DB_IS_NULL (format))
+    {
+      DB_MAKE_NULL (result);
+      goto error;
+    }
+
+  if (!is_char_string (format))
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      return error_status;
+    }
+
+  res_type = DB_VALUE_DOMAIN_TYPE (date_value);
+
+  /* 1. Get date values */
+  switch (res_type)
+    {
+    case DB_TYPE_DATETIME:
+      dt_p = DB_GET_DATETIME (date_value);
+      db_datetime_decode (dt_p, &m, &d, &y, &h, &mi, &s, &ms);
+      break;
+
+    case DB_TYPE_DATE:
+      d_p = DB_GET_DATE (date_value);
+      db_date_decode (d_p, &m, &d, &y);
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      ts_p = DB_GET_TIMESTAMP (date_value);
+      db_timestamp_decode (ts_p, &db_date, &db_time);
+      db_time_decode (&db_time, &h, &mi, &s);
+      db_date_decode (&db_date, &m, &d, &y);
+      break;
+
+    case DB_TYPE_STRING:
+    case DB_TYPE_CHAR:
+      date_s = DB_GET_STRING (date_value);
+
+      if (db_string_to_datetime (date_s, &db_datetime) == ER_DATE_CONVERSION)
+	{
+	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto error;
+	}
+
+      db_datetime_decode (&db_datetime, &m, &d, &y, &h, &mi, &s, &ms);
+      break;
+
+    default:
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto error;
+    }
+
+  /* 2. Compute the value for each format specifier */
+  days[2] += LEAP (y);
+  dow = db_get_day_of_week (y, m, d);
+
+  /* %a       Abbreviated weekday name (Sun..Sat) */
+  strcpy (format_specifiers['a'], Short_Day_name[lang_Loc_id][dow]);
+
+  /* %b       Abbreviated m name (Jan..Dec) */
+  strcpy (format_specifiers['b'], Short_Month_name[lang_Loc_id][m - 1]);
+
+  /* %c       Month, numeric (0..12) - actually (1..12) */
+  sprintf (format_specifiers['c'], "%d", m);
+
+  /* %D       Day of the m with English suffix (0th, 1st, 2nd, 3rd,...) */
+  sprintf (format_specifiers['D'], "%d", d);
+  /* 11-19 are special */
+  if (d % 10 == 1 && d / 10 != 1)
+    {
+      strcat (format_specifiers['D'], "st");
+    }
+  else if (d % 10 == 2 && d / 10 != 1)
+    {
+      strcat (format_specifiers['D'], "nd");
+    }
+  else if (d % 10 == 3 && d / 10 != 1)
+    {
+      strcat (format_specifiers['D'], "rd");
+    }
+  else
+    {
+      strcat (format_specifiers['D'], "th");
+    }
+
+  /* %d       Day of the m, numeric (00..31) */
+  sprintf (format_specifiers['d'], "%02d", d);
+
+  /* %e       Day of the m, numeric (0..31) - actually (1..31) */
+  sprintf (format_specifiers['e'], "%d", d);
+
+  /* %f       Milliseconds (000..999) */
+  sprintf (format_specifiers['f'], "%03d", ms);
+
+  /* %H       Hour (00..23) */
+  sprintf (format_specifiers['H'], "%02d", h);
+
+  /* %h       Hour (01..12) */
+  sprintf (format_specifiers['h'], "%02d", (h % 12 == 0) ? 12 : (h % 12));
+
+  /* %I       Hour (01..12) */
+  sprintf (format_specifiers['I'], "%02d", (h % 12 == 0) ? 12 : (h % 12));
+
+  /* %i       Minutes, numeric (00..59) */
+  sprintf (format_specifiers['i'], "%02d", mi);
+
+  /* %j       Day of y (001..366) */
+  for (j = d, i = 1; i < m; i++)
+    {
+      j += days[i];
+    }
+  sprintf (format_specifiers['j'], "%03d", j);
+
+  /* %k       Hour (0..23) */
+  sprintf (format_specifiers['k'], "%d", h);
+
+  /* %l       Hour (1..12) */
+  sprintf (format_specifiers['l'], "%d", (h % 12 == 0) ? 12 : (h % 12));
+
+  /* %M       Month name (January..December) */
+  strcpy (format_specifiers['M'], Month_name[lang_Loc_id][m - 1]);
+
+  /* %m       Month, numeric (00..12) */
+  sprintf (format_specifiers['m'], "%02d", m);
+
+  /* %p       AM or PM */
+  strcpy (format_specifiers['p'], (h > 11) ? "PM" : "AM");
+
+  /* %r       Time, 12-hour (hh:mm:ss followed by AM or PM) */
+  sprintf (format_specifiers['r'], "%02d:%02d:%02d %s",
+	   (h % 12 == 0) ? 12 : (h % 12), mi, s, (h > 11) ? "PM" : "AM");
+
+  /* %S       Seconds (00..59) */
+  sprintf (format_specifiers['S'], "%02d", s);
+
+  /* %s       Seconds (00..59) */
+  sprintf (format_specifiers['s'], "%02d", s);
+
+  /* %T       Time, 24-hour (hh:mm:ss) */
+  sprintf (format_specifiers['T'], "%02d:%02d:%02d", h, mi, s);
+
+  /* %U       Week (00..53), where Sunday is the first d of the week */
+  /* %V       Week (01..53), where Sunday is the first d of the week;
+     used with %X  */
+  /* %X       Year for the week where Sunday is the first day of the week,
+     numeric, four digits; used with %V */
+
+  dow2 = db_get_day_of_week (y, 1, 1);
+
+  ld_fw = 7 - dow2;
+
+  for (days_counter = d, i = 1; i < m; i++)
+    {
+      days_counter += days[i];
+    }
+
+  if (days_counter <= ld_fw)
+    {
+      weeks = dow2 == 0 ? 1 : 0;
+    }
+  else
+    {
+      days_counter -= (dow2 == 0) ? 0 : ld_fw;
+      weeks = days_counter / 7 + (days_counter % 7 ? 1 : 0);
+    }
+
+  tu = tv = weeks;
+  tx = y;
+  if (tv == 0)
+    {
+      dow2 = db_get_day_of_week (y - 1, 1, 1);
+      days_counter = 365 + LEAP (y - 1) - (dow2 == 0 ? 0 : 7 - dow2);
+      tv = days_counter / 7 + (days_counter % 7 ? 1 : 0);
+      tx = y - 1;
+    }
+
+  sprintf (format_specifiers['U'], "%02d", tu);
+  sprintf (format_specifiers['V'], "%02d", tv);
+  sprintf (format_specifiers['X'], "%04d", tx);
+
+  /* %u       Week (00..53), where Monday is the first d of the week */
+  /* %v       Week (01..53), where Monday is the first d of the week;
+     used with %x  */
+  /* %x       Year for the week, where Monday is the first day of the week,
+     numeric, four digits; used with %v */
+
+  dow2 = db_get_day_of_week (y, 1, 1);
+  weeks = dow2 >= 1 && dow2 <= 4 ? 1 : 0;
+
+  ld_fw = dow2 == 0 ? 1 : 7 - dow2 + 1;
+
+  for (days_counter = d, i = 1; i < m; i++)
+    {
+      days_counter += days[i];
+    }
+
+  if (days_counter > ld_fw)
+    {
+      days_counter -= ld_fw;
+      weeks += days_counter / 7 + (days_counter % 7 ? 1 : 0);
+    }
+
+  tu = weeks;
+  tv = weeks;
+  tx = y;
+  if (tv == 0)
+    {
+      dow2 = db_get_day_of_week (y - 1, 1, 1);
+      weeks = dow2 >= 1 && dow2 <= 4 ? 1 : 0;
+      ld_fw = dow2 == 0 ? 1 : 7 - dow2 + 1;
+      days_counter = 365 + LEAP (y - 1) - ld_fw;
+      tv = weeks + days_counter / 7 + (days_counter % 7 ? 1 : 0);
+      tx = y - 1;
+    }
+  else if (tv == 53)
+    {
+      dow2 = db_get_day_of_week (y + 1, 1, 1);
+      if (dow2 >= 1 && dow2 <= 4)
+	{
+	  tv = 1;
+	  tx = y + 1;
+	}
+    }
+
+  sprintf (format_specifiers['u'], "%02d", tu);
+  sprintf (format_specifiers['v'], "%02d", tv);
+  sprintf (format_specifiers['x'], "%04d", tx);
+
+  /* %W       Weekday name (Sunday..Saturday) */
+  strcpy (format_specifiers['W'], Day_name[lang_Loc_id][dow]);
+
+  /* %w       Day of the week (0=Sunday..6=Saturday) */
+  sprintf (format_specifiers['w'], "%d", dow);
+
+  /* %Y       Year, numeric, four digits */
+  sprintf (format_specifiers['Y'], "%04d", y);
+
+  /* %y       Year, numeric (two digits) */
+  sprintf (format_specifiers['y'], "%02d", y % 100);
+
+  /* 3. Generate the output according to the format and the values */
+  format_s = DB_PULL_STRING (format);
+  len = 1024;
+
+  res = (char *) db_private_alloc (NULL, len);
+  if (res == NULL)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+  memset (res, 0, len);
+
+  ch = *format_s;
+  while (ch != 0)
+    {
+      format_s++;
+      och = ch;
+      ch = *format_s;
+
+      if (och == '%' /* && (res[strlen(res) - 1] != '%') */ )
+	{
+	  if (ch == '%')
+	    {
+	      STRCHCAT (res, '%');
+
+	      /* jump a character */
+	      format_s++;
+	      och = ch;
+	      ch = *format_s;
+
+	      continue;
+	    }
+	  /* parse the character */
+	  if (strlen (format_specifiers[(unsigned char) ch]) == 0)
+	    {
+	      /* append the character itself */
+	      STRCHCAT (res, ch);
+	    }
+	  else
+	    {
+	      strcat (res, format_specifiers[(unsigned char) ch]);
+	    }
+
+	  /* jump a character */
+	  format_s++;
+	  och = ch;
+	  ch = *format_s;
+	}
+      else
+	{
+	  STRCHCAT (res, och);
+	}
+
+      /* chance of overflow ? */
+      /* assume we can't add at a time mode than 16 chars */
+      if (strlen (res) + 16 > len)
+	{
+	  /* realloc - copy temporary in res2 */
+	  res2 = (char *) db_private_alloc (NULL, len);
+	  if (res2 == NULL)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	  memset (res2, 0, len);
+	  strcpy (res2, res);
+	  db_private_free (NULL, res);
+
+	  len += 1024;
+	  res = (char *) db_private_alloc (NULL, len);
+	  if (res == NULL)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	  memset (res, 0, len);
+	  strcpy (res, res2);
+	  db_private_free (NULL, res2);
+	}
+    }
+  /* finished string */
+
+  /* 4. */
+  DB_MAKE_STRING (result, res);
+
+error:
+  /* do not free res as it was moved to result and will be freed later */
+
+  return error_status;
+}
+
+/*
+ * parse_characters ()
+ *
+ * Arguments:
+ *         s: source string to parse
+ *         res: output string with the parsed word
+ *	   cnt: length at which we trim the string (-1 if none)
+ *
+ * Returns: int - actual number of characters read
+ *
+ * Errors:
+ *
+ * Note:
+ *    reads cnt alphabetic characters until a non-alpha char reached
+ */
+int
+parse_characters (char *s, char *res, int cnt, int res_size)
+{
+  int count = 0;
+  char *ch;
+  int len;
+  int lang_Loc_id = lang_id ();
+
+  ch = s;
+
+  while (WHITESPACE (*ch))
+    ch++, count++;
+
+  memset (res, 0, sizeof (char) * res_size);
+  /* in Korean accept any character */
+  while (*ch != 0
+	 && ((*ch >= 'A' && *ch <= 'Z') || (*ch >= 'a' && *ch <= 'z')
+	     || lang_Loc_id == INTL_LANG_KOREAN))
+    {
+      if (WHITESPACE (*ch))
+	{
+	  break;
+	}
+      STRCHCAT (res, *ch);
+      ch++;
+      count++;
+
+      /* trim at cnt characters */
+      len = strlen (res);
+      if (len == cnt || len == res_size - 1)
+	{
+	  break;
+	}
+    }
+
+  return count;
+}
+
+/*
+ * parse_digits ()
+ *
+ * Arguments:
+ *         s: source string to parse
+ *         nr: output number
+ *	   cnt: length at which we trim the number (-1 if none)
+ *
+ * Returns: int - actual number of characters read
+ *
+ * Errors:
+ *
+ * Note:
+ *    reads cnt digits until non-digit char reached
+ */
+int
+parse_digits (char *s, int *nr, int cnt)
+{
+  int count = 0, len;
+  char *ch;
+  /* res[64] is safe because res has a max length of cnt, which is max 4 */
+  char res[64];
+  const int res_count = sizeof (res) / sizeof (char);
+
+  ch = s;
+  *nr = 0;
+
+  memset (res, 0, sizeof (res));
+
+  while (WHITESPACE (*ch))
+    {
+      ch++;
+      count++;
+    }
+
+  /* do not support negative numbers because... they are not supported :) */
+  while (*ch != 0 && (*ch >= '0' && *ch <= '9'))
+    {
+      STRCHCAT (res, *ch);
+
+      ch++;
+      count++;
+
+      /* trim at cnt characters */
+      len = strlen (res);
+      if (len == cnt || len == res_count - 1)
+	{
+	  break;
+	}
+    }
+
+  *nr = atol (res);
+
+  return count;
+}
+
+/*
+ * db_str_to_date ()
+ *
+ * Arguments:
+ *         str: string from which we get the data
+ *         format: format specifiers to match the str
+ *
+ * Returns: int
+ *
+ * Errors:
+ *
+ * Note:
+ *    inverse function for date_format - compose a date/time from some format
+ *    specifiers and some informations.
+ */
+int
+db_str_to_date (const DB_VALUE * str, const DB_VALUE * format,
+		DB_VALUE * result)
+{
+  char *sstr = NULL, *format_s = NULL, *format2_s = NULL;
+  int i, j, k, error_status = NO_ERROR;
+  int type, len1, len2, h24 = 0, _v, _x;
+  DB_TYPE res_type;
+  int days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  int y, m, d, h, mi, s, ms, am /* 0 = AM, 1 = PM */ ;
+  int u, U, v, V, dow, doy, w;
+
+  if (str == (DB_VALUE *) NULL || format == (DB_VALUE *) NULL)
+    {
+      error_status = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto error;
+    }
+
+  if (DB_IS_NULL (str) || DB_IS_NULL (format))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  y = m = d = V = v = U = u = -1;
+  h = mi = s = ms = 0;
+  dow = doy = am = -1;
+  _v = _x = 0;
+  sstr = DB_PULL_STRING (str);
+  format2_s = DB_PULL_STRING (format);
+
+  format_s = (char *) db_private_alloc (NULL, strlen (format2_s) + 1);
+  if (!format_s)
+    {
+      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto error;
+    }
+  memset (format_s, 0, sizeof (char) * (strlen (format2_s) + 1));
+
+  len2 = strlen (format2_s);
+
+  /* delete all whitespace from format */
+  for (i = 0; i < len2; i++)
+    {
+      if (!WHITESPACE (format2_s[i]))
+	{
+	  STRCHCAT (format_s, format2_s[i]);
+	}
+      /* '%' without format specifier */
+      else if (WHITESPACE (format2_s[i]) && i > 0 && format2_s[i - 1] == '%')
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto error;
+	}
+    }
+
+  type = db_check_time_date_format (format_s);
+  if (type == 1)
+    {
+      res_type = DB_TYPE_TIME;
+    }
+  else if (type == 2)
+    {
+      res_type = DB_TYPE_DATE;
+    }
+  else if (type == 3)
+    {
+      res_type = DB_TYPE_DATETIME;
+    }
+  else
+    {
+      error_status = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto error;
+    }
+
+  /*
+   * 1. Get information according to format specifiers
+   *    iterate simultaneously through each string and sscanf when
+   *    it is a format specifier.
+   *    If a format specifier has more than one occurence, get the last value.
+   */
+  do
+    {
+      int lang_Loc_id = lang_id ();
+      char sz[64];
+      const int sz_count = sizeof (sz) / sizeof (char);
+
+      len1 = strlen (sstr);
+      len2 = strlen (format_s);
+
+      i = j = k = 0;
+
+      while (i < len1 && j < len2)
+	{
+	  while (WHITESPACE (sstr[i]))
+	    {
+	      i++;
+	    }
+
+	  while (WHITESPACE (format_s[j]))
+	    {
+	      j++;
+	    }
+
+	  if (j > 0 && format_s[j - 1] == '%')
+	    {
+	      /* do not accept a double % */
+	      if (j > 1 && format_s[j - 2] == '%')
+		{
+		  error_status = ER_OBJ_INVALID_ARGUMENTS;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+		  goto error;
+		}
+
+	      /* we have a format specifier */
+	      switch (format_s[j])
+		{
+		case 'a':
+		  /* %a Abbreviated weekday name (Sun..Sat) */
+		  i += parse_characters (sstr + i, sz, -1, sz_count);
+		  ustr_lower (sz);
+
+		  /* capitalize first letter for matching to Short_Day_name */
+		  if (lang_Loc_id == INTL_LANG_ENGLISH)
+		    {
+		      sz[0] -= 32;
+		    }
+
+		  for (dow = 0; dow < 7; dow++)
+		    {
+		      if (!strcmp (sz, Short_Day_name[lang_Loc_id][dow]))
+			{
+			  break;
+			}
+		    }
+
+		  if (dow == 7)	/* not found - error */
+		    {
+		      goto conversion_error;
+		    }
+
+		  break;
+
+		case 'b':
+		  /* %b Abbreviated month name (Jan..Dec) */
+		  i += parse_characters (sstr + i, sz, -1, sz_count);
+		  ustr_lower (sz);
+		  /* capitalize first letter for matching to Short_Month_name */
+		  if (lang_Loc_id == INTL_LANG_ENGLISH)
+		    {
+		      sz[0] -= 32;
+		    }
+
+		  for (m = 0; m < 12; m++)
+		    {
+		      if (!strcmp (sz, Short_Month_name[lang_Loc_id][m]))
+			{
+			  break;
+			}
+		    }
+
+		  if (m == 12)	/* not found - error */
+		    {
+		      goto conversion_error;
+		    }
+		  m++;
+		  break;
+
+		case 'c':
+		  /* %c Month, numeric (0..12) */
+		  k = parse_digits (sstr + i, &m, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'D':
+		  /* %D Day of the month with English suffix (0th, 1st, 2nd,
+		     3rd, ...) */
+		  k = parse_digits (sstr + i, &d, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  /* need 2 necessary characters or whitespace (!) after */
+		  i += 2;
+		  break;
+
+		case 'd':
+		  /* %d Day of the month, numeric (00..31) */
+		  k = parse_digits (sstr + i, &d, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'e':
+		  /* %e Day of the month, numeric (0..31) */
+		  k = parse_digits (sstr + i, &d, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'f':
+		  /* %f Milliseconds (000..999) */
+		  k = parse_digits (sstr + i, &ms, 3);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'H':
+		  /* %H Hour (00..23) */
+		  k = parse_digits (sstr + i, &h, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  h24 = 1;
+		  break;
+
+		case 'h':
+		  /* %h Hour (01..12) */
+		  k = parse_digits (sstr + i, &h, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'I':
+		  /* %I Hour (01..12) */
+		  k = parse_digits (sstr + i, &h, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'i':
+		  /* %i Minutes, numeric (00..59) */
+		  k = parse_digits (sstr + i, &mi, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'j':
+		  /* %j Day of year (001..366) */
+		  k = parse_digits (sstr + i, &doy, 3);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'k':
+		  /* %k Hour (0..23) */
+		  k = parse_digits (sstr + i, &h, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  h24 = 1;
+		  break;
+
+		case 'l':
+		  /* %l Hour (1..12) */
+		  k = parse_digits (sstr + i, &h, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'M':
+		  /* %M Month name (January..December) */
+		  i += parse_characters (sstr + i, sz, -1, sz_count);
+		  ustr_lower (sz);
+		  /* capitalize first letter for matching to Month_name */
+		  if (lang_Loc_id == INTL_LANG_ENGLISH)
+		    {
+		      sz[0] -= 32;
+		    }
+
+		  for (m = 0; m < 12; m++)
+		    {
+		      if (!strcmp (sz, Month_name[lang_Loc_id][m]))
+			{
+			  break;
+			}
+		    }
+
+		  if (m == 12)	/* not found - error */
+		    {
+		      goto conversion_error;
+		    }
+		  m++;
+		  break;
+
+		case 'm':
+		  /* %m Month, numeric (00..12) */
+		  k = parse_digits (sstr + i, &m, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'p':
+		  /* %p AM or PM */
+		  i += parse_characters (sstr + i, sz, 2, sz_count);
+		  ustr_lower (sz);
+		  if (!strcmp (sz, "am"))
+		    {
+		      am = 0;
+		    }
+		  else if (!strcmp (sz, "pm"))
+		    {
+		      am = 1;
+		    }
+		  else
+		    {
+		      goto conversion_error;
+		    }
+
+		  break;
+
+		case 'r':
+		  /* %r Time, 12-hour (hh:mm:ss followed by AM or PM) */
+
+		  k = parse_digits (sstr + i, &h, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+
+		  while (WHITESPACE (sstr[i]))
+		    {
+		      i++;
+		    }
+
+		  if (sstr[i] != ':')
+		    {
+		      goto conversion_error;
+		    }
+		  i++;
+
+		  k = parse_digits (sstr + i, &mi, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+
+		  while (WHITESPACE (sstr[i]))
+		    {
+		      i++;
+		    }
+
+		  if (sstr[i] != ':')
+		    {
+		      goto conversion_error;
+		    }
+		  i++;
+
+		  k = parse_digits (sstr + i, &s, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+
+		  i += parse_characters (sstr + i, sz, 2, sz_count);
+		  ustr_lower (sz);
+		  if (!strcmp (sz, "am"))
+		    {
+		      am = 0;
+		    }
+		  else if (!strcmp (sz, "pm"))
+		    {
+		      am = 1;
+		    }
+		  else
+		    {
+		      goto conversion_error;
+		    }
+
+		  break;
+
+		case 'S':
+		  /* %S Seconds (00..59) */
+		  k = parse_digits (sstr + i, &s, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 's':
+		  /* %s Seconds (00..59) */
+		  k = parse_digits (sstr + i, &s, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'T':
+		  /* %T Time, 24-hour (hh:mm:ss) */
+
+		  k = parse_digits (sstr + i, &h, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+
+		  while (WHITESPACE (sstr[i]))
+		    {
+		      i++;
+		    }
+
+		  if (sstr[i] != ':')
+		    {
+		      goto conversion_error;
+		    }
+		  i++;
+
+		  k = parse_digits (sstr + i, &mi, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+
+		  i += k;
+		  while (WHITESPACE (sstr[i]))
+		    {
+		      i++;
+		    }
+
+		  if (sstr[i] != ':')
+		    {
+		      goto conversion_error;
+		    }
+		  i++;
+
+		  k = parse_digits (sstr + i, &s, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  h24 = 1;
+
+		  break;
+
+		case 'U':
+		  /* %U Week (00..53), where Sunday is the first day
+		     of the week */
+		  k = parse_digits (sstr + i, &U, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'u':
+		  /* %u Week (00..53), where Monday is the first day
+		     of the week */
+		  k = parse_digits (sstr + i, &u, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'V':
+		  /* %V Week (01..53), where Sunday is the first day
+		     of the week; used with %X  */
+		  k = parse_digits (sstr + i, &V, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  _v = 1;
+		  break;
+
+		case 'v':
+		  /* %v Week (01..53), where Monday is the first day
+		     of the week; used with %x  */
+		  k = parse_digits (sstr + i, &v, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  _v = 2;
+		  break;
+
+		case 'W':
+		  /* %W Weekday name (Sunday..Saturday) */
+		  i += parse_characters (sstr + i, sz, -1, sz_count);
+		  ustr_lower (sz);
+		  /* capitalize first letter for matching to Day_name */
+		  if (lang_Loc_id == INTL_LANG_ENGLISH)
+		    {
+		      sz[0] -= 32;
+		    }
+
+		  for (dow = 0; dow < 7; dow++)
+		    {
+		      if (!strcmp (sz, Day_name[lang_Loc_id][dow]))
+			{
+			  break;
+			}
+		    }
+
+		  if (dow == 7)	/* not found - error */
+		    {
+		      goto conversion_error;
+		    }
+		  break;
+
+		case 'w':
+		  /* %w Day of the week (0=Sunday..6=Saturday) */
+		  k = parse_digits (sstr + i, &dow, 1);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'X':
+		  /* %X Year for the week where Sunday is the first day
+		     of the week, numeric, four digits; used with %V  */
+		  k = parse_digits (sstr + i, &y, 4);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  _x = 1;
+		  break;
+
+		case 'x':
+		  /* %x Year for the week, where Monday is the first day
+		     of the week, numeric, four digits; used with %v  */
+		  k = parse_digits (sstr + i, &y, 4);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  _x = 2;
+		  break;
+
+		case 'Y':
+		  /* %Y Year, numeric, four digits */
+		  k = parse_digits (sstr + i, &y, 4);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+		  break;
+
+		case 'y':
+		  /* %y Year, numeric (two digits) */
+		  k = parse_digits (sstr + i, &y, 2);
+		  if (k <= 0)
+		    {
+		      goto conversion_error;
+		    }
+		  i += k;
+
+		  /* TODO: 70 convention always available? */
+		  if (y < 70)
+		    {
+		      y = 2000 + y;
+		    }
+		  else
+		    {
+		      y = 1900 + y;
+		    }
+
+		  break;
+
+		default:
+		  goto conversion_error;
+		  break;
+		}
+	    }
+	  else if (sstr[i] != format_s[j] && format_s[j] != '%')
+	    {
+	      error_status = ER_OBJ_INVALID_ARGUMENTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      goto error;
+	    }
+	  else if (format_s[j] != '%')
+	    {
+	      i++;
+	    }
+
+	  /* when is a format specifier do not advance in sstr
+	     because we need the entire value */
+	  j++;
+	}
+    }
+  while (0);
+
+  /* 2. Validations */
+  if (am != -1 && h24 == 1)	/* 24h time format and am/pm */
+    {
+      goto conversion_error;
+    }
+
+  if (_x != _v && _x != -1)	/* accept %v only if %x and %V only if %X */
+    {
+      goto conversion_error;
+    }
+
+  if (am == 1 && h != -1)
+    {
+      h += 12;
+    }
+
+  days[2] += LEAP (y);
+
+  /*
+   * validations are done here because they are done just on the last memorized
+   * values (ie: if you supply a month 99 then a month 12 the 99 isn't validated
+   * because it's overwritten by 12 which is correct).
+   */
+
+  /*
+   * check only upper bounds, lower bounds will be checked later and
+   * will return error
+   */
+  if (res_type == DB_TYPE_DATE || res_type == DB_TYPE_DATETIME)
+    {
+      /* year is validated becuase it's vital for m & d */
+      if (y <= 0 || y > 9999)
+	{
+	  goto conversion_error;
+	}
+
+      if (m > 12)
+	{
+	  goto conversion_error;
+	}
+
+      /* because we do not support invalid dates ... */
+      if (m != -1 && d > days[m])
+	{
+	  goto conversion_error;
+	}
+
+      if (u > 53)
+	{
+	  goto conversion_error;
+	}
+
+      if (v > 53)
+	{
+	  goto conversion_error;
+	}
+
+      if (v == 0 || u > 53)
+	{
+	  goto conversion_error;
+	}
+
+      if (V == 0 || u > 53)
+	{
+	  goto conversion_error;
+	}
+
+      if (doy == 0 || doy > 365 + LEAP (y))
+	{
+	  goto conversion_error;
+	}
+
+      if (dow > 6)
+	{
+	  goto conversion_error;
+	}
+    }
+
+  if (res_type == DB_TYPE_TIME || res_type == DB_TYPE_DATETIME)
+    {
+      if ((am != -1 && h > 12) || (am == -1 && h > 23))
+	{
+	  goto conversion_error;
+	}
+
+      if (mi > 59)
+	{
+	  goto conversion_error;
+	}
+
+      if (s > 59)
+	{
+	  goto conversion_error;
+	}
+      /* milli does not need checking, it has all values from 0 to 999 */
+    }
+
+
+  /* 3. Try to compute a date according to the information from the format
+     specifiers */
+
+  if (res_type == DB_TYPE_TIME)
+    {
+      /* --- no job to do --- */
+      goto write_results;
+    }
+
+  /* the year is fixed, compute the day and month from dow, doy, etc */
+  /*
+   * the day and month can be supplied specifically which suppres all other
+   * informations or can be computed from dow and week or from doy
+   */
+
+  /* 3.1 - we have a valid day and month */
+  if (m >= 1 && m <= 12 && d >= 1 && d <= days[m])
+    {
+      /* --- no job to do --- */
+      goto write_results;
+    }
+
+  w = MAX (v, MAX (V, MAX (u, U)));
+  /* 3.2 - we have the day of week and a week */
+  if (dow != -1 && w != -1)
+    {
+      int dow2 = db_get_day_of_week (y, 1, 1);
+      int ld_fw, save_dow, dowdiff;
+
+      if (U == w || V == w)
+	{
+	  ld_fw = 7 - dow2;
+
+	  if (w == 0)
+	    {
+	      dowdiff = dow - dow2;
+	      d = dow2 == 0 ? 32 - (7 - dow) : dowdiff < 0 ?
+		32 + dowdiff : 1 + dowdiff;
+	      m = dow2 == 0 || dowdiff < 0 ? 12 : 1;
+	      y = dow2 == 0 || dowdiff < 0 ? y - 1 : y;
+	    }
+	  else
+	    {
+	      d = dow2 == 0 ? 1 : ld_fw + 1;
+	      m = 1;
+	      if (db_add_weeks_and_days_to_date (&d, &m, &y, w - 1, dow) ==
+		  ER_FAILED)
+		{
+		  goto error;
+		}
+	    }
+	}
+      else if (u == w || v == w)
+	{
+	  ld_fw = dow2 == 0 ? 1 : 7 - dow2 + 1;
+	  if (w == 0 || w == 1)
+	    {
+	      save_dow = dow;
+	      dow = dow == 0 ? 7 : dow;
+	      dow2 = dow2 == 0 ? 7 : dow2;
+	      dowdiff = dow - dow2;
+
+	      if (dow2 >= 1 && dow2 <= 4)	/* start with week 1 */
+		{
+		  d = w == 0 ? 32 + dowdiff - 7 :
+		    dowdiff < 0 ? 32 + dowdiff : 1 + dowdiff;
+		  m = w == 0 || dowdiff < 0 ? 12 : 1;
+		  y = w == 0 || dowdiff < 0 ? y - 1 : y;
+		}
+	      else
+		{
+		  d = dowdiff < 0 ? (w == 0 ? 32 + dowdiff : ld_fw + dow) :
+		    (w == 0 ? 1 + dowdiff : 1 + dowdiff + 7);
+		  m = dowdiff < 0 && w == 0 ? 12 : 1;
+		  y = dowdiff < 0 && w == 0 ? y - 1 : y;
+		}
+	      dow = save_dow;
+	    }
+	  else
+	    {
+	      d = ld_fw + 1;
+	      m = 1;
+
+	      if (db_add_weeks_and_days_to_date (&d, &m, &y,
+						 dow2 >= 1
+						 && dow2 <= 4 ? w - 2 : w - 1,
+						 dow == 0 ? 6 : dow - 1) ==
+		  ER_FAILED)
+		{
+		  goto error;
+		}
+	    }
+	}
+      else
+	{
+	  goto conversion_error;	/* should not happen */
+	}
+    }
+  /* 3.3 - we have the day of year */
+  else if (doy != -1)
+    {
+      for (m = 1; doy > days[m] && m <= 12; m++)
+	{
+	  doy -= days[m];
+	}
+
+      d = doy;
+    }
+
+write_results:
+  /* last validations before writing results - we need only complete data info */
+
+  if (res_type == DB_TYPE_DATE || res_type == DB_TYPE_DATETIME)
+    {
+      if (y <= 0 || m <= 0 || d <= 0)
+	{
+	  goto conversion_error;
+	}
+    }
+
+  if (res_type == DB_TYPE_TIME || res_type == DB_TYPE_DATETIME)
+    {
+      if (h < 0 || mi < 0 || s < 0)
+	{
+	  goto conversion_error;
+	}
+    }
+
+  if (res_type == DB_TYPE_DATE)
+    {
+      DB_MAKE_DATE (result, m, d, y);
+    }
+  else if (res_type == DB_TYPE_TIME)
+    {
+      DB_MAKE_TIME (result, h, mi, s);
+    }
+  else if (res_type == DB_TYPE_DATETIME)
+    {
+      DB_DATETIME db_datetime;
+
+      db_datetime_encode (&db_datetime, m, d, y, h, mi, s, 0);
+
+      DB_MAKE_DATETIME (result, &db_datetime);
+    }
+
+error:
+  if (format_s)
+    {
+      db_private_free (NULL, format_s);
+    }
+
+  return error_status;
+
+conversion_error:
+  if (format_s)
+    {
+      db_private_free (NULL, format_s);
+    }
+
+  error_status = ER_DATE_CONVERSION;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+  DB_MAKE_NULL (result);
+
+  return error_status;
+}
+
+/*
+ * db_date_dbval () - extract the date from input parameter.
+ *   return: NO_ERROR, or ER_code
+ *   result(out) : resultant db_value
+ *   date_value(in) : date or datetime expression
+ */
+int
+db_date_dbval (const DB_VALUE * date_value, DB_VALUE * result)
+{
+  DB_TYPE type;
+  DB_DATETIME db_datetime, *dt_p;
+  DB_TIMESTAMP *ts_p;
+  DB_DATE db_date, *d_p;
+  char *date_s = NULL, temp[64], *res_s;
+  int y, m, d;
+  int error_status = NO_ERROR;
+
+  if (date_value == NULL || result == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  y = m = d = 0;
+
+  type = DB_VALUE_DOMAIN_TYPE (date_value);
+  if (type == DB_TYPE_NULL || DB_IS_NULL (date_value))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  switch (type)
+    {
+    case DB_TYPE_DATETIME:
+      dt_p = DB_GET_DATETIME (date_value);
+      db_datetime_decode (dt_p, &m, &d, &y, NULL, NULL, NULL, NULL);
+      break;
+
+    case DB_TYPE_DATE:
+      d_p = DB_GET_DATE (date_value);
+      db_date_decode (d_p, &m, &d, &y);
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      ts_p = DB_GET_TIMESTAMP (date_value);
+      db_timestamp_decode (ts_p, &db_date, NULL);
+      db_date_decode (&db_date, &m, &d, &y);
+      break;
+
+    case DB_TYPE_STRING:
+    case DB_TYPE_CHAR:
+      date_s = DB_GET_STRING (date_value);
+      if (date_s == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      if (db_string_to_datetime (date_s, &db_datetime) != NO_ERROR)
+	{
+	  return ER_DATE_CONVERSION;
+	}
+
+      db_datetime_decode (&db_datetime, &m, &d, &y, NULL, NULL, NULL, NULL);
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER,
+	      0);
+      return ER_QPROC_INVALID_PARAMETER;
+    }
+
+  sprintf (temp, "%02d/%02d/%04d", m, d, y);
+
+  res_s = db_private_alloc (NULL, strlen (temp) + 1);
+  if (res_s == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  strcpy (res_s, temp);
+  DB_MAKE_STRING (result, res_s);
+
+  return error_status;
+}
+
+/*
+ *  count_leap_years_up_to - count the leap years up to year
+ *  return: the counted value
+ *  year(in) : the last year to evaluate
+ */
+int
+count_leap_years_up_to (int year)
+{
+  return year / 4 - year / 100 + year / 400;
+}
+
+/*
+ *  count_nonleap_years_up_to - count the non leap years up to year
+ *  return: the counted value
+ *  year(in) : the last year to evaluate
+ */
+int
+count_nonleap_years_up_to (int year)
+{
+  return year - count_leap_years_up_to (year);
+}
+
+/*
+ * db_date_diff () - expr1 – expr2 expressed as a value in days from
+ *		     one date to the other.
+ *   return: int
+ *   result(out) : resultant db_value
+ *   date_value1(in)   : first date
+ *   date_value2(in)   : second date
+ */
+int
+db_date_diff (const DB_VALUE * date_value1, const DB_VALUE * date_value2,
+	      DB_VALUE * result)
+{
+  DB_TYPE type1, type2;
+  DB_DATETIME db_datetime1, db_datetime2, *dt1_p, *dt2_p;
+  DB_TIMESTAMP *ts1_p, *ts2_p;
+  DB_DATE db_date1, db_date2, *d1_p, *d2_p;
+  int y1 = 0, m1 = 0, d1 = 0;
+  int y2 = 0, m2 = 0, d2 = 0;
+  int cly1, cly2, cnly1, cnly2, cdpm1, cdpm2, cdpy1, cdpy2, diff, i, cd1, cd2;
+  int m_days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  char *date_s1 = NULL, *date_s2 = NULL;
+  int error_status = NO_ERROR;
+
+  if (date_value1 == NULL || date_value2 == NULL || result == NULL)
+    {
+      error_status = ER_FAILED;
+      goto error;
+    }
+
+  type1 = DB_VALUE_DOMAIN_TYPE (date_value1);
+  if (type1 == DB_TYPE_NULL || DB_IS_NULL (date_value1))
+    {
+      DB_MAKE_NULL (result);
+      goto error;
+    }
+
+  type2 = DB_VALUE_DOMAIN_TYPE (date_value2);
+  if (type2 == DB_TYPE_NULL || DB_IS_NULL (date_value2))
+    {
+      DB_MAKE_NULL (result);
+      goto error;
+    }
+
+  switch (type1)
+    {
+    case DB_TYPE_STRING:
+    case DB_TYPE_CHAR:
+      date_s1 = DB_GET_STRING (date_value1);
+      if (date_s1 == NULL)
+	{
+	  error_status = ER_FAILED;
+	  goto error;
+	}
+
+      if (db_string_to_datetime (date_s1, &db_datetime1) != NO_ERROR)
+	{
+	  error_status = ER_DATE_CONVERSION;
+	  DB_MAKE_NULL (result);
+	  goto error;
+	}
+
+      db_datetime_decode (&db_datetime1, &m1, &d1, &y1, NULL, NULL, NULL,
+			  NULL);
+      break;
+
+    case DB_TYPE_DATETIME:
+      dt1_p = DB_GET_DATETIME (date_value1);
+      db_datetime_decode (dt1_p, &m1, &d1, &y1, NULL, NULL, NULL, NULL);
+      break;
+
+    case DB_TYPE_DATE:
+      d1_p = DB_GET_DATE (date_value1);
+      db_date_decode (d1_p, &m1, &d1, &y1);
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      ts1_p = DB_GET_TIMESTAMP (date_value1);
+      db_timestamp_decode (ts1_p, &db_date1, NULL);
+      db_date_decode (&db_date1, &m1, &d1, &y1);
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_QPROC_INVALID_PARAMETER, 0);
+      error_status = ER_FAILED;
+      goto error;
+    }
+
+  switch (type2)
+    {
+    case DB_TYPE_STRING:
+    case DB_TYPE_CHAR:
+      date_s2 = DB_GET_STRING (date_value2);
+      if (date_s2 == NULL)
+	{
+	  error_status = ER_FAILED;
+	  goto error;
+	}
+
+      if (db_string_to_datetime (date_s2, &db_datetime2) != NO_ERROR)
+	{
+	  error_status = ER_DATE_CONVERSION;
+	  DB_MAKE_NULL (result);
+	  goto error;
+	}
+
+      db_datetime_decode (&db_datetime2, &m2, &d2, &y2, NULL, NULL, NULL,
+			  NULL);
+      break;
+
+    case DB_TYPE_DATETIME:
+      dt2_p = DB_GET_DATETIME (date_value2);
+      db_datetime_decode (dt2_p, &m2, &d2, &y2, NULL, NULL, NULL, NULL);
+      break;
+
+    case DB_TYPE_DATE:
+      d2_p = DB_GET_DATE (date_value2);
+      db_date_decode (d2_p, &m2, &d2, &y2);
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      ts2_p = DB_GET_TIMESTAMP (date_value2);
+      db_timestamp_decode (ts2_p, &db_date2, NULL);
+      db_date_decode (&db_date2, &m2, &d2, &y2);
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_QPROC_INVALID_PARAMETER, 0);
+      error_status = ER_FAILED;
+      goto error;
+    }
+
+  cly1 = count_leap_years_up_to (y1 - 1);
+  cnly1 = count_nonleap_years_up_to (y1 - 1);
+  cdpy1 = cly1 * 366 + cnly1 * 365;
+  m_days[2] = LEAP (y1) ? 29 : 28;
+  cdpm1 = 0;
+  for (i = 1; i < m1; i++)
+    {
+      cdpm1 += m_days[i];
+    }
+
+  cly2 = count_leap_years_up_to (y2 - 1);
+  cnly2 = count_nonleap_years_up_to (y2 - 1);
+  cdpy2 = cly2 * 366 + cnly2 * 365;
+  m_days[2] = LEAP (y2) ? 29 : 28;
+  cdpm2 = 0;
+  for (i = 1; i < m2; i++)
+    {
+      cdpm2 += m_days[i];
+    }
+
+  cd1 = cdpy1 + cdpm1 + d1;
+  cd2 = cdpy2 + cdpm2 + d2;
+  diff = cd1 - cd2;
+
+  DB_MAKE_INTEGER (result, diff);
+
+error:
+  return error_status;
+}
+
+/*
+ *  parse_time_string - parse a string given by the second argument of
+ *                      timestamp function
+ *  return: NO_ERROR
+ *
+ *  timestr(in) : input string
+ *  sign(out)   : 0 if positive, -1 if negative
+ *  h(out)      : hours
+ *  m(out)      : minutes
+ *  s(out)      : seconds
+ *  ms(out)     : milliseconds
+ */
+static int
+parse_time_string (const char *timestr, int *sign, int *h,
+		   int *m, int *s, int *ms)
+{
+  int args[4], num_args = 0;
+  const char *ch;
+  char *dot = NULL;
+
+  assert (sign != NULL && h != NULL && m != NULL && s != NULL && ms != NULL);
+  *sign = *h = *m = *s = *ms = 0;
+
+  if (timestr == NULL || strlen (timestr) == 0)
+    {
+      return NO_ERROR;
+    }
+
+  ch = timestr;
+  SKIP_SPACES (ch);
+
+  if (*ch == '-')
+    {
+      *sign = 1;
+      ch++;
+    }
+
+  /* Find dot('.') to separate milli-seconds part from whole string. */
+  dot = strchr (ch, '.');
+  if (dot)
+    {
+      char ms_string[4];
+      strncpy (ms_string, dot + 1, 3);
+      ms_string[3] = '\0';
+
+      switch (strlen (ms_string))
+	{
+	case 0:
+	  *ms = 0;
+	  break;
+
+	case 1:
+	  ms_string[1] = '0';
+	case 2:
+	  ms_string[2] = '0';
+	default:
+	  *ms = atoi (ms_string);
+	}
+    }
+
+  /* First ':' character means '0:'. */
+  SKIP_SPACES (ch);
+  if (*ch == ':')
+    {
+      args[num_args++] = 0;
+      ch++;
+    }
+
+  while (char_isdigit (*ch))
+    {
+      const char *start = ch;
+      do
+	{
+	  ch++;
+	}
+      while (char_isdigit (*ch));
+
+      args[num_args++] = atoi (start);
+
+      /* Digits should be separated by ':' character.
+       * If we meet other characters, stop parsing.
+       */
+      if (*ch != ':')
+	{
+	  break;
+	}
+      ch++;
+    }
+
+  switch (num_args)
+    {
+    case 1:
+      /* Consider single value as H...HMMSS. */
+      *s = args[0] % 100;
+      args[0] /= 100;
+      *m = args[0] % 100;
+      *h = args[0] / 100;
+      break;
+
+    case 2:
+      *h = args[0];
+      *m = args[1];
+      break;
+
+    case 3:
+      *h = args[0];
+      *m = args[1];
+      *s = args[2];
+      break;
+
+    case 0:
+    default:
+      /* do nothing */
+      ;
+    }
+  return NO_ERROR;
 }

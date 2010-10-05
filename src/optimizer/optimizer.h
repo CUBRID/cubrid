@@ -189,4 +189,7 @@ extern unsigned char qo_type_qualifiers[];
 
 extern double qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
+extern XASL_NODE *qo_add_hq_iterations_access_spec (QO_PLAN * plan,
+						    XASL_NODE * xasl);
+
 #endif /* _OPTIMIZER_H_ */

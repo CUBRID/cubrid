@@ -28,17 +28,17 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 import javax.sql.*;
 import java.io.*;
 import javax.naming.*;
 
-import cubrid.jdbc.driver.CUBRIDPooledConnection;
+import @CUBRID_DRIVER@.CUBRIDPooledConnection;
 
-import cubrid.sql.*;
-import cubrid.jdbc.jci.*;
+import @CUBRID_SQL@.*;
+import @CUBRID_JCI@.*;
 
 public class CUBRIDConnectionPoolDataSource extends CUBRIDPoolDataSourceBase
     implements ConnectionPoolDataSource, Referenceable, Serializable
@@ -80,7 +80,7 @@ public class CUBRIDConnectionPoolDataSource extends CUBRIDPoolDataSourceBase
   public synchronized Reference getReference() throws NamingException
   {
     Reference ref = new Reference(this.getClass().getName(),
-        "cubrid.jdbc.driver.CUBRIDDataSourceObjectFactory", null);
+        "@CUBRID_DRIVER@.CUBRIDDataSourceObjectFactory", null);
 
     ref = getProperties(ref);
     return ref;

@@ -34,13 +34,14 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
-import cubrid.sql.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDTimestamp;
 
 /**
  * class Object의 instance를 parameter로 받아 jdbc에서 getXXX method를 통해 type
@@ -345,7 +346,17 @@ abstract public class UGetTypeConvertedValue
     }
     else if (data instanceof Timestamp)
     {
-      String form = "yyyy-MM-dd HH:mm:ss";
+      String form;
+
+      if (CUBRIDTimestamp.isTimestampType((Timestamp)data))
+      {
+        form = "yyyy-MM-dd HH:mm:ss";
+      }
+      else
+      {
+        form = "yyyy-MM-dd HH:mm:ss.SSS";
+      }
+
       java.text.SimpleDateFormat f = new java.text.SimpleDateFormat(form);
 
       return f.format(data);

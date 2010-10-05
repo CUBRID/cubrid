@@ -82,7 +82,7 @@
 #include "cci_util.h"
 
 #if defined(WINDOWS)
-#include "cm_wsa_init.h"
+int wsa_initialize ();
 #endif
 
 #ifdef CCI_XA
@@ -170,6 +170,8 @@ static int cci_parse_url_property (T_CON_HANDLE * con_handle, char *property);
 static int cci_parse_url_alter_host (T_CON_HANDLE * con_handle,
 				     char *alter_host);
 static int cci_parse_url_rctime (T_CON_HANDLE * con_handle, char *rctime);
+static int cci_get_new_handle_id (char *ip, int port, char *db_name,
+				  char *db_user, char *dbpasswd);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -264,50 +266,43 @@ int
 CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
 				char *db_user, char *dbpasswd)
 {
-  int con_handle_id;
-  unsigned char ip_addr[4];
+  int con_handle_id, error;
+  T_CON_HANDLE *con_handle;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
 		   ("cci_connect %s %d %s %s %s", ip, port,
-		    DEBUG_STR (db_name), DEBUG_STR (db_name),
+		    DEBUG_STR (db_name), DEBUG_STR (db_user),
 		    DEBUG_STR (dbpasswd)));
 #endif
 
-
 #if defined(WINDOWS)
   if (wsa_initialize () < 0)
-    return CCI_ER_CONNECT;
-#endif
-
-  (void) hm_ip_str_to_addr (ip, ip_addr);
-
-  MUTEX_LOCK (con_handle_table_mutex);
-
-  if (init_flag == 0)
     {
-      hm_con_handle_table_init ();
-      init_flag = 1;
-    }
-
-  con_handle_id = hm_get_con_from_pool (ip_addr, port, db_name, db_user,
-					dbpasswd);
-  if (con_handle_id < 0)
-    {
-      con_handle_id = hm_con_handle_alloc (ip, port, db_name, db_user,
-					   dbpasswd);
-    }
-
-  MUTEX_UNLOCK (con_handle_table_mutex);
-
-
-#if !defined(WINDOWS)
-  if (!cci_SIGPIPE_ignore)
-    {
-      signal (SIGPIPE, SIG_IGN);
-      cci_SIGPIPE_ignore = 1;
+      return CCI_ER_CONNECT;
     }
 #endif
+
+  con_handle_id =
+    cci_get_new_handle_id (ip, port, db_name, db_user, dbpasswd);
+
+  if (con_handle_id >= 0)
+    {
+      char autocommit_mode;
+
+      con_handle = hm_find_con_handle (con_handle_id);
+
+      autocommit_mode = con_handle->autocommit_mode;
+      con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
+      error = cci_get_db_version (con_handle_id, NULL, 0);
+      con_handle->autocommit_mode = autocommit_mode;
+
+      if (error < 0)
+	{
+	  hm_con_handle_free (con_handle_id);
+	  con_handle_id = error;
+	}
+    }
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_connect return %d", con_handle_id));
@@ -328,6 +323,19 @@ cci_connect_with_url (char *url, char *user, char *password)
   int error;
   int con_handle_id;
   T_CON_HANDLE *con_handle = NULL;
+
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg
+		   ("cci_connect_with_url %s %s %s",
+		    DEBUG_STR (url), DEBUG_STR (user), DEBUG_STR (password)));
+#endif
+
+#if defined(WINDOWS)
+  if (wsa_initialize () < 0)
+    {
+      return CCI_ER_CONNECT;
+    }
+#endif
 
   strcpy (buf, url);
 
@@ -380,23 +388,48 @@ cci_connect_with_url (char *url, char *user, char *password)
       password = p;
     }
 
-  con_handle_id = CCI_CONNECT_INTERNAL_FUNC_NAME (host, port, dbname,
-						  user, password);
-  if (con_handle_id >= 0 && property != NULL)
+  con_handle_id = cci_get_new_handle_id (host, port, dbname, user, password);
+  if (con_handle_id >= 0)
     {
+      char autocommit_mode;
+
       con_handle = hm_find_con_handle (con_handle_id);
-      error = cci_parse_url_property (con_handle, property);
+
+      if (property != NULL)
+	{
+	  error = cci_parse_url_property (con_handle, property);
+	  if (error < 0)
+	    {
+	      hm_con_handle_free (con_handle_id);
+	      con_handle_id = error;
+	      goto ret;
+	    }
+
+	  if (con_handle->alter_host_count > 0)
+	    {
+	      con_handle->alter_host_id =
+		hm_get_ha_connected_host (con_handle);
+	    }
+	}
+
+      autocommit_mode = con_handle->autocommit_mode;
+      con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
+      error = cci_get_db_version (con_handle_id, NULL, 0);
+      con_handle->autocommit_mode = autocommit_mode;
+
       if (error < 0)
 	{
 	  hm_con_handle_free (con_handle_id);
-	  return error;
-	}
-
-      if (con_handle->alter_host_count > 0)
-	{
-	  con_handle->alter_host_id = hm_get_ha_connected_host (con_handle);
+	  con_handle_id = error;
 	}
     }
+
+ret:
+
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg
+		   ("cci_connect_with_url return %d", con_handle_id));
+#endif
 
   return con_handle_id;
 }
@@ -648,7 +681,7 @@ cci_end_tran (int con_h_id, char type, T_CCI_ERROR * err_buf)
 	}
     }
 
-  if (con_handle->tran_status != CCI_TRAN_STATUS_START)
+  if (con_handle->con_status != CCI_CON_STATUS_OUT_TRAN)
     {
       err_code = qe_end_tran (con_handle, type, err_buf);
       con_handle->tran_status = CCI_TRAN_STATUS_START;
@@ -1349,7 +1382,9 @@ cci_get_db_parameter (int con_h_id, T_CCI_DB_PARAM param_name, void *value,
   err_buf_reset (err_buf);
 
   if (param_name < CCI_PARAM_FIRST || param_name > CCI_PARAM_LAST)
-    return CCI_ER_PARAM_NAME;
+    {
+      return CCI_ER_PARAM_NAME;
+    }
 
   while (1)
     {
@@ -1381,7 +1416,9 @@ cci_get_db_parameter (int con_h_id, T_CCI_DB_PARAM param_name, void *value,
     }
 
   if (err_code >= 0)
-    err_code = qe_get_db_parameter (con_handle, param_name, value, err_buf);
+    {
+      err_code = qe_get_db_parameter (con_handle, param_name, value, err_buf);
+    }
 
   con_handle->ref_count = 0;
   con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
@@ -2086,6 +2123,71 @@ cci_glo_load (int con_h_id, char *oid_str, int out_fd, T_CCI_ERROR * err_buf)
   con_handle->ref_count = 0;
   con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
 
+  return err_code;
+}
+
+int
+cci_glo_load_file_name (int con_h_id, char *oid_str, char *out_filename,
+			T_CCI_ERROR * err_buf)
+{
+  T_CON_HANDLE *con_handle;
+  int err_code = 0;
+  FILE *fp = NULL;
+
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg ("cci_glo_load_file_name %d", con_h_id));
+#endif
+
+  err_buf_reset (err_buf);
+
+  while (1)
+    {
+      MUTEX_LOCK (con_handle_table_mutex);
+
+      con_handle = hm_find_con_handle (con_h_id);
+      if (con_handle == NULL)
+	{
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  return CCI_ER_CON_HANDLE;
+	}
+
+      if (con_handle->ref_count > 0)
+	{
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  SLEEP_MILISEC (0, 100);
+	}
+      else
+	{
+	  con_handle->ref_count = 1;
+	  MUTEX_UNLOCK (con_handle_table_mutex);
+	  break;
+	}
+    }
+
+  if (IS_OUT_TRAN_STATUS (con_handle))
+    {
+      err_code = cas_connect (con_handle, err_buf);
+    }
+
+  fp = fopen (out_filename, "wb");
+  if (fp == NULL)
+    {
+      err_code = CCI_ER_FILE;
+    }
+
+  if (err_code >= 0)
+    {
+      err_code = qe_glo_load (con_handle, oid_str, fileno (fp), err_buf);
+    }
+
+  con_handle->ref_count = 0;
+  con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
+
+  if (fp != NULL)
+    {
+      fclose (fp);
+      fp = NULL;
+    }
   return err_code;
 }
 
@@ -4662,4 +4764,42 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
 	}
     }
   return err_code;
+}
+
+static int
+cci_get_new_handle_id (char *ip, int port, char *db_name,
+		       char *db_user, char *dbpasswd)
+{
+  int con_handle_id;
+  unsigned char ip_addr[4];
+
+  (void) hm_ip_str_to_addr (ip, ip_addr);
+
+  MUTEX_LOCK (con_handle_table_mutex);
+
+  if (init_flag == 0)
+    {
+      hm_con_handle_table_init ();
+      init_flag = 1;
+    }
+
+  con_handle_id = hm_get_con_from_pool (ip_addr, port, db_name, db_user,
+					dbpasswd);
+  if (con_handle_id < 0)
+    {
+      con_handle_id = hm_con_handle_alloc (ip, port, db_name, db_user,
+					   dbpasswd);
+    }
+
+  MUTEX_UNLOCK (con_handle_table_mutex);
+
+#if !defined(WINDOWS)
+  if (!cci_SIGPIPE_ignore)
+    {
+      signal (SIGPIPE, SIG_IGN);
+      cci_SIGPIPE_ignore = 1;
+    }
+#endif
+
+  return con_handle_id;
 }

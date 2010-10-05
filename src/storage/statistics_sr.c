@@ -41,7 +41,7 @@
 #include "db.h"
 
 /* Used by the "stats_update_statistics" routine to create the list of all
-   clases from the extendible hashing directory used by the catalog manager. */
+   classes from the extendible hashing directory used by the catalog manager. */
 typedef struct class_id_list CLASS_ID_LIST;
 struct class_id_list
 {
@@ -76,12 +76,12 @@ static void stats_print_min_max (ATTR_STATS * attr_stats, FILE * fpp);
  *       objects. Then, it performs a complete pass on the heap file of the
  *       class, reading in all of the instance objects one by one and
  *       calculating the ranges of numeric attribute values (ie. min. & max.
- *       values for each numeric attribute).                                           *
+ *       values for each numeric attribute).
  *
  *       During this pass on the heap file, these values are maintained
  *       separately for objects with the same representation. Each minimum and
- *       maximum value is initilized when the first instance of the class with
- *       the corresponding representation is encountered. These values are
+ *       maximum value is initialized when the first instance of the class
+ *       with the corresponding representation is encountered. These values are
  *       continually updated as attribute values exceeding the known range are
  *       encountered. At the end of this pass, these individual ranges for
  *       each representation are uniformed in the last (the current)
@@ -267,7 +267,7 @@ xstats_update_class_statistics (THREAD_ENTRY * thread_p, OID * class_id_p)
     }
 
   /* replace the current disk representation structure/information in the
-     catalog with the newly get statistics */
+     catalog with the newly computed statistics */
 
   if (catalog_add_representation (thread_p, class_id_p, repr_id, disk_repr_p)
       != NO_ERROR)

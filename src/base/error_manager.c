@@ -965,7 +965,7 @@ er_start (void)
 
   /*
    * Message catalog may be initialized by msgcat_init() during bootstrap.
-   * But, try once more to call msgcat_init() becuase there could be
+   * But, try once more to call msgcat_init() because there could be
    * an exception case that get here before bootstrap.
    */
   if (msgcat_init () != NO_ERROR)
@@ -1067,6 +1067,7 @@ er_final (bool do_global_final)
 	  if (er_Msglog != NULL && er_Msglog != stderr)
 	    {
 	      (void) fclose (er_Msglog);
+	      er_Msglog = NULL;
 	    }
 	  logfile_opened = false;
 	}
@@ -1109,6 +1110,7 @@ er_final (void)
       if (er_Msglog != NULL && er_Msglog != stderr)
 	{
 	  (void) fclose (er_Msglog);
+	  er_Msglog = NULL;
 	}
       ER_FREE_AREA (er_Msg->msg_area);
       er_Msg->msg_area = er_emergency_buf;
@@ -2176,7 +2178,7 @@ er_get_area_error (void *buffer, int *length)
  *   server_area(in): the flatten area with error information
  *
  * Note: Error information is reset with the one provided by the packed area,
- *       which is the last error found in the server. 						      *
+ *       which is the last error found in the server.
  */
 int
 er_set_area_error (void *server_area)
@@ -2686,8 +2688,8 @@ er_study_fmt (ER_FMT * fmt)
 /*
  * er_estimate_size -
  *   return: a byte count
- *   fmt(in/out): a pointer to an already-studied ER_FMT structure           *
- *   ap(in): a va_list of arguments                                     *
+ *   fmt(in/out): a pointer to an already-studied ER_FMT structure
+ *   ap(in): a va_list of arguments
  *
  * Note:
  * Uses the arg_spec[] info in *fmt, along with the actual args

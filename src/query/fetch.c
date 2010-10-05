@@ -94,6 +94,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_TO_DATETIME:
     case T_TO_NUMBER:
     case T_INSTR:
+    case T_MID:
+    case T_DATE_ADD:
+    case T_DATE_SUB:
+
       /* fetch lhs, rhs, and third value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
 			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -107,6 +111,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 				&peek_right) != NO_ERROR)
 	    {
 	      goto error;
+	    }
+	  if ((PRM_COMPAT_MODE == COMPAT_MYSQL
+	       || arithptr->opcode == T_SUBSTRING) && !arithptr->thirdptr)
+	    {
+	      break;
 	    }
 	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr,
 				vd, NULL, obj_oid, tpl,
@@ -136,6 +145,22 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_NULLIF:
     case T_INCR:
     case T_DECR:
+    case T_TIME_FORMAT:
+    case T_BIT_AND:
+    case T_BIT_OR:
+    case T_BIT_XOR:
+    case T_BITSHIFT_LEFT:
+    case T_BITSHIFT_RIGHT:
+    case T_INTDIV:
+    case T_INTMOD:
+    case T_FORMAT:
+    case T_STRCMP:
+    case T_ATAN2:
+    case T_ADDDATE:
+    case T_SUBDATE:
+    case T_DATEDIFF:
+    case T_DATE_FORMAT:
+    case T_STR_TO_DATE:
       /* fetch lhs and rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
 			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -170,6 +195,86 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_CONCAT_WS:
+    case T_FIELD:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (arithptr->rightptr != NULL)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+				vd, NULL, obj_oid, tpl,
+				&peek_right) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      if (fetch_peek_dbval (thread_p, arithptr->thirdptr,
+			    vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_LOCATE:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (arithptr->thirdptr != NULL)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr,
+				vd, NULL, obj_oid, tpl,
+				&peek_third) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_CONCAT:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (PRIM_IS_NULL (peek_left))
+	{
+	  if (PRM_ORACLE_STYLE_EMPTY_STRING)
+	    {
+	      if (arithptr->rightptr != NULL)
+		{
+		  if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+					vd, NULL, obj_oid, tpl,
+					&peek_right) != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+	    }
+	}
+      else
+	{
+	  if (arithptr->rightptr != NULL)
+	    {
+	      if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+				    vd, NULL, obj_oid, tpl,
+				    &peek_right) != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+	}
+      break;
+
     case T_COALESCE:
     case T_NVL:
     case T_NVL2:
@@ -184,6 +289,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_LEAST:
     case T_GREATEST:
     case T_SYS_CONNECT_BY_PATH:
+    case T_LEFT:
+    case T_RIGHT:
       /* fetch both lhs and rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
 			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -199,6 +306,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_CASE:
     case T_DECODE:
+    case T_IF:
+    case T_IFNULL:
       /* defer fetch values */
       break;
 
@@ -215,17 +324,38 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_LOWER:
     case T_UPPER:
     case T_CAST:
+    case T_CAST_NOFAIL:
     case T_EXTRACT:
     case T_FLOOR:
     case T_CEIL:
     case T_SIGN:
     case T_ABS:
     case T_CHR:
-    case T_RANDOM:
-    case T_DRANDOM:
     case T_EXP:
     case T_SQRT:
     case T_PRIOR:
+    case T_BIT_NOT:
+    case T_REVERSE:
+    case T_BIT_COUNT:
+    case T_ACOS:
+    case T_ASIN:
+    case T_SIN:
+    case T_COS:
+    case T_TAN:
+    case T_COT:
+    case T_DEGREES:
+    case T_RADIANS:
+    case T_LN:
+    case T_LOG2:
+    case T_LOG10:
+    case T_ATAN:
+    case T_DATE:
+    case T_ROW_COUNT:
+    case T_ISNULL:
+    case T_RAND:
+    case T_DRAND:
+    case T_RANDOM:
+    case T_DRANDOM:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr,
 			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
@@ -234,15 +364,45 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_UNIX_TIMESTAMP:
+    case T_DEFAULT:
+      if (arithptr->rightptr)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+				vd, NULL, obj_oid, tpl,
+				&peek_right) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_TIMESTAMP:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (arithptr->rightptr)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+				vd, NULL, obj_oid, tpl,
+				&peek_right) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
     case T_CONNECT_BY_ROOT:
     case T_QPRIOR:
-    case T_RAND:
-    case T_DRAND:
     case T_SYS_DATE:
     case T_SYS_TIME:
     case T_SYS_TIMESTAMP:
     case T_SYS_DATETIME:
     case T_LOCAL_TRANSACTION_ID:
+    case T_PI:
+    case T_LIST_DBS:
       /* nothing to fetch */
       break;
 
@@ -285,6 +445,64 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      }
 	  }
       }
+      break;
+
+    case T_BIT_NOT:
+      if (qdata_bit_not_dbval (peek_right, arithptr->value,
+			       regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_BIT_AND:
+      if (qdata_bit_and_dbval (peek_left, peek_right, arithptr->value,
+			       regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_BIT_OR:
+      if (qdata_bit_or_dbval (peek_left, peek_right, arithptr->value,
+			      regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_BIT_XOR:
+      if (qdata_bit_xor_dbval (peek_left, peek_right, arithptr->value,
+			       regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_BITSHIFT_LEFT:
+    case T_BITSHIFT_RIGHT:
+      if (qdata_bit_shift_dbval (peek_left, peek_right, arithptr->opcode,
+				 arithptr->value,
+				 regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_INTDIV:
+    case T_INTMOD:
+      if (qdata_divmod_dbval (peek_left, peek_right, arithptr->opcode,
+			      arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_BIT_COUNT:
+      if (db_bit_count_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
       break;
 
     case T_SUB:
@@ -428,10 +646,148 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_SIN:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_sin_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_COS:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_cos_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_TAN:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_tan_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_COT:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_cot_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_LN:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_log_generic_dbval (arithptr->value, peek_right,
+				     -1 /* convention for e base */ ) !=
+	       NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_LOG2:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_log_generic_dbval (arithptr->value, peek_right, 2) !=
+	       NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_LOG10:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_log_generic_dbval (arithptr->value, peek_right, 10) !=
+	       NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_ACOS:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_acos_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_ASIN:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_asin_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_DEGREES:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_degrees_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_DATE:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_date_dbval (peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_DEFAULT:
+      qdata_copy_db_value (arithptr->value, peek_right);
+      break;
+
+    case T_RADIANS:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_radians_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     case T_POWER:
-      if (db_power_dbval (arithptr->value,
-			  regu_var->domain,
-			  peek_left, peek_right) != NO_ERROR)
+      if (db_power_dbval (arithptr->value, peek_left, peek_right) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -513,15 +869,81 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_SUBSTRING:
-      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right)
+	  || (arithptr->thirdptr && PRIM_IS_NULL (peek_third)))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_string_substring (arithptr->misc_operand,
-				    peek_left, peek_right, peek_third,
-				    arithptr->value) != NO_ERROR)
+      else if (PRM_COMPAT_MODE == COMPAT_MYSQL)
 	{
-	  goto error;
+	  DB_VALUE tmp_len, tmp_arg2, tmp_arg3;
+	  int pos, len;
+
+	  pos = db_get_int (peek_right);
+	  if (pos < 0)
+	    {
+	      if (QSTR_IS_BIT (arithptr->leftptr->domain->type->id))
+		{
+		  if (db_string_bit_length (peek_left, &tmp_len) != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+	      else
+		{
+		  if (db_string_char_length (peek_left, &tmp_len) != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+	      if (DB_IS_NULL (&tmp_len))
+		{
+		  goto error;
+		}
+	      pos = pos + db_get_int (&tmp_len) + 1;
+	    }
+
+	  if (pos < 1)
+	    {
+	      db_make_int (&tmp_arg2, 1);
+	    }
+	  else
+	    {
+	      db_make_int (&tmp_arg2, pos);
+	    }
+
+	  if (arithptr->thirdptr)
+	    {
+	      len = db_get_int (peek_third);
+	      if (len < 1)
+		{
+		  db_make_int (&tmp_arg3, 0);
+		}
+	      else
+		{
+		  db_make_int (&tmp_arg3, len);
+		}
+	    }
+	  else
+	    {
+	      db_make_null (&tmp_arg3);
+	    }
+
+	  if (db_string_substring (arithptr->misc_operand, peek_left,
+				   &tmp_arg2, &tmp_arg3,
+				   arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      else
+	{
+	  if (db_string_substring (arithptr->misc_operand,
+				   peek_left, peek_right, peek_third,
+				   arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       break;
 
@@ -700,6 +1122,61 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_TIME_FORMAT:
+      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_time_format (peek_left, peek_right, arithptr->value) !=
+	       NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_TIMESTAMP:
+      if (PRIM_IS_NULL (peek_left)
+	  || (peek_right != NULL && PRIM_IS_NULL (peek_right)))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_timestamp (peek_left, peek_right, arithptr->value) !=
+	      NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_UNIX_TIMESTAMP:
+      if (arithptr->rightptr)
+	{
+	  if (PRIM_IS_NULL (peek_right))
+	    {
+	      PRIM_SET_NULL (arithptr->value);
+	    }
+	  else if (db_unix_timestamp (peek_right, arithptr->value) !=
+		   NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      else
+	{
+	  time_t now;
+
+	  now = time (NULL);
+	  if (now < (time_t) 0)
+	    {
+	      goto error;
+	    }
+
+	  db_make_int (arithptr->value, now);
+	}
+      break;
+
     case T_MONTHS_BETWEEN:
       if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
@@ -712,6 +1189,136 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_ATAN2:
+      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_atan2_dbval (arithptr->value, peek_left, peek_right) !=
+	       NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_ATAN:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_atan_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_FORMAT:
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_format (peek_left, peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_DATE_FORMAT:
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_date_format (peek_left, peek_right,
+			       arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_STR_TO_DATE:
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_str_to_date (peek_left, peek_right,
+			       arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_ADDDATE:
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	if (db_date_add_interval_days (arithptr->value, peek_left, peek_right)
+	    != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_DATE_ADD:
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  int unit = db_get_int (peek_third);
+	  if (db_date_add_interval_expr (arithptr->value, peek_left,
+					 peek_right, unit) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_SUBDATE:
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	if (db_date_sub_interval_days (arithptr->value, peek_left, peek_right)
+	    != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_DATEDIFF:
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_date_diff (peek_left, peek_right,
+			     arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_DATE_SUB:
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right)
+	  || PRIM_IS_NULL (peek_third))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  int unit = db_get_int (peek_third);
+
+	  if (db_date_sub_interval_expr (arithptr->value, peek_left,
+					 peek_right, unit) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
     case T_SYS_DATE:
       DB_MAKE_ENCODED_DATE (arithptr->value, &vd->sys_datetime.date);
       break;
@@ -719,6 +1326,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_SYS_TIME:
       {
 	DB_TIME db_time;
+
 	db_time = vd->sys_datetime.time / 1000;
 	DB_MAKE_ENCODED_TIME (arithptr->value, &db_time);
 	break;
@@ -863,8 +1471,22 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_CAST_NOFAIL:
+      {
+	TP_DOMAIN_STATUS status;
+
+	status = tp_value_cast (peek_right, arithptr->value, arithptr->domain,
+				false);
+	if (status != NO_ERROR)
+	  {
+	    PRIM_SET_NULL (arithptr->value);
+	  }
+      }
+      break;
+
     case T_CASE:
     case T_DECODE:
+    case T_IF:
       /* fetch values */
       switch (eval_pred (thread_p, arithptr->pred, vd, obj_oid))
 	{
@@ -877,6 +1499,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      goto error;
 	    }
 	  break;
+
 	case V_TRUE:
 	  if (fetch_peek_dbval (thread_p, arithptr->leftptr,
 				vd, NULL, obj_oid, tpl,
@@ -885,6 +1508,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      goto error;
 	    }
 	  break;
+
 	default:
 	  goto error;
 	}
@@ -897,6 +1521,441 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 		  pr_type_name (PRIM_TYPE (peek_left)),
 		  pr_type_name (arithptr->domain->type->id));
 	  goto error;
+	}
+      break;
+
+    case T_IFNULL:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (DB_IS_NULL (peek_left))
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+				vd, NULL, obj_oid, tpl,
+				&peek_left) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+
+      if (tp_value_coerce (peek_left,
+			   arithptr->value,
+			   regu_var->domain) != DOMAIN_COMPATIBLE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		  pr_type_name (PRIM_TYPE (peek_left)),
+		  pr_type_name (arithptr->domain->type->id));
+	  goto error;
+	}
+      break;
+
+    case T_ISNULL:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  DB_MAKE_INTEGER (arithptr->value, 1);
+	}
+      else
+	{
+	  DB_MAKE_INTEGER (arithptr->value, 0);
+	}
+      break;
+
+    case T_CONCAT:
+      if (arithptr->rightptr != NULL)
+	{
+	  if (qdata_strcat_dbval (peek_left, peek_right,
+				  arithptr->value,
+				  regu_var->domain) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      else
+	{
+	  if (!qdata_copy_db_value (arithptr->value, peek_left))
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_CONCAT_WS:
+      if (PRIM_IS_NULL (peek_third))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	  break;
+	}
+      if (arithptr->rightptr != NULL)
+	{
+	  if (PRIM_IS_NULL (peek_left) && PRIM_IS_NULL (peek_right))
+	    {
+	      PRIM_SET_NULL (arithptr->value);
+	    }
+	  else if (PRIM_IS_NULL (peek_left))
+	    {
+	      if (!qdata_copy_db_value (arithptr->value, peek_right))
+		{
+		  goto error;
+		}
+	    }
+	  else if (PRIM_IS_NULL (peek_right))
+	    {
+	      if (!qdata_copy_db_value (arithptr->value, peek_left))
+		{
+		  goto error;
+		}
+	    }
+	  else
+	    {
+	      DB_VALUE tmp_val;
+	      if (qdata_strcat_dbval (peek_left, peek_third,
+				      &tmp_val, regu_var->domain) != NO_ERROR)
+		{
+		  goto error;
+		}
+	      if (qdata_strcat_dbval (&tmp_val, peek_right,
+				      arithptr->value,
+				      regu_var->domain) != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+	}
+      else
+	{
+	  if (PRIM_IS_NULL (peek_left))
+	    {
+	      PRIM_SET_NULL (arithptr->value);
+	    }
+	  else
+	    {
+	      if (!qdata_copy_db_value (arithptr->value, peek_left))
+		{
+		  goto error;
+		}
+	    }
+	}
+      break;
+
+    case T_FIELD:
+      if (PRIM_IS_NULL (peek_third))
+	{
+	  db_make_int (arithptr->value, 0);
+	  break;
+	}
+      if (arithptr->thirdptr->hidden_column == 1)
+	{
+	  if (tp_value_compare (peek_third, peek_left, 1, 0) == DB_EQ)
+	    {
+	      db_make_int (arithptr->value, 1);
+	    }
+	  else if (tp_value_compare (peek_third, peek_right, 1, 0) == DB_EQ)
+	    {
+	      db_make_int (arithptr->value, 2);
+	    }
+	  else
+	    {
+	      db_make_int (arithptr->value, 0);
+	    }
+	}
+      else
+	{
+	  int i = db_get_int (peek_left);
+	  if (i > 0)
+	    {
+	      db_make_int (arithptr->value, i);
+	    }
+	  else
+	    {
+	      if (tp_value_compare (peek_third, peek_right, 1, 0) == DB_EQ)
+		{
+		  db_make_int (arithptr->value,
+			       arithptr->thirdptr->hidden_column);
+		}
+	      else
+		{
+		  db_make_int (arithptr->value, 0);
+		}
+	    }
+	}
+      break;
+
+    case T_LEFT:
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  DB_VALUE tmp_val, tmp_val2;
+
+	  if (tp_value_coerce (peek_right, &tmp_val2, &tp_Integer_domain) !=
+	      DOMAIN_COMPATIBLE)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		      pr_type_name (PRIM_TYPE (peek_right)),
+		      pr_type_name (DB_TYPE_INTEGER));
+	      goto error;
+	    }
+
+	  db_make_int (&tmp_val, 0);
+	  if (db_string_substring (SUBSTRING,
+				   peek_left, &tmp_val, &tmp_val2,
+				   arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_RIGHT:
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  DB_VALUE tmp_val, tmp_val2;
+
+	  if (QSTR_IS_BIT (arithptr->leftptr->domain->type->id))
+	    {
+	      if (db_string_bit_length (peek_left, &tmp_val) != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+	  else
+	    {
+	      if (db_string_char_length (peek_left, &tmp_val) != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+	  if (DB_IS_NULL (&tmp_val))
+	    {
+	      PRIM_SET_NULL (arithptr->value);
+	      break;
+	    }
+
+	  if (tp_value_coerce (peek_right, &tmp_val2, &tp_Integer_domain) !=
+	      DOMAIN_COMPATIBLE)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		      pr_type_name (PRIM_TYPE (peek_right)),
+		      pr_type_name (DB_TYPE_INTEGER));
+	      goto error;
+	    }
+	  /* If len, defined as second argument, is negative value,        
+	   * RIGHT function returns the entire string.             
+	   * It's same behavior with LEFT and SUBSTRING.           
+	   */
+	  if (db_get_int (&tmp_val2) < 0)
+	    {
+	      db_make_int (&tmp_val, 0);
+	    }
+	  else
+	    {
+	      db_make_int (&tmp_val,
+			   db_get_int (&tmp_val) - db_get_int (&tmp_val2) +
+			   1);
+	    }
+	  if (db_string_substring (SUBSTRING,
+				   peek_left, &tmp_val, &tmp_val2,
+				   arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_LOCATE:
+      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right)
+	  || (arithptr->thirdptr && PRIM_IS_NULL (peek_third)))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (!arithptr->thirdptr)
+	    {
+	      if (db_string_position (peek_left, peek_right,
+				      arithptr->value) != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+	  else
+	    {
+	      DB_VALUE tmp_len, tmp_val, tmp_arg3;
+	      int tmp = db_get_int (peek_third);
+	      if (tmp < 1)
+		{
+		  db_make_int (&tmp_arg3, 1);
+		}
+	      else
+		{
+		  db_make_int (&tmp_arg3, tmp);
+		}
+
+	      if (db_string_char_length (peek_right, &tmp_len) != NO_ERROR)
+		{
+		  goto error;
+		}
+	      if (PRIM_IS_NULL (&tmp_len))
+		{
+		  goto error;
+		}
+
+	      db_make_int (&tmp_len,
+			   db_get_int (&tmp_len) -
+			   db_get_int (&tmp_arg3) + 1);
+
+	      if (db_string_substring (SUBSTRING, peek_right, &tmp_arg3,
+				       &tmp_len, &tmp_val) != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      if (db_string_position (peek_left, &tmp_val,
+				      arithptr->value) != NO_ERROR)
+		{
+		  goto error;
+		}
+	      if (db_get_int (arithptr->value) > 0)
+		{
+		  db_make_int (arithptr->value,
+			       db_get_int (arithptr->value) +
+			       db_get_int (&tmp_arg3) - 1);
+		}
+	    }
+	}
+      break;
+
+    case T_MID:
+      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right)
+	  || PRIM_IS_NULL (peek_third))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  DB_VALUE tmp_len, tmp_arg2, tmp_arg3;
+	  int pos, len;
+
+	  pos = db_get_int (peek_right);
+	  len = db_get_int (peek_third);
+
+	  if (pos < 0)
+	    {
+	      if (QSTR_IS_BIT (arithptr->leftptr->domain->type->id))
+		{
+		  if (db_string_bit_length (peek_left, &tmp_len) != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+	      else
+		{
+		  if (db_string_char_length (peek_left, &tmp_len) != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+	      if (DB_IS_NULL (&tmp_len))
+		{
+		  goto error;
+		}
+	      pos = pos + db_get_int (&tmp_len) + 1;
+	    }
+
+	  if (pos < 1)
+	    {
+	      db_make_int (&tmp_arg2, 1);
+	    }
+	  else
+	    {
+	      db_make_int (&tmp_arg2, pos);
+	    }
+
+	  if (len < 1)
+	    {
+	      db_make_int (&tmp_arg3, 0);
+	    }
+	  else
+	    {
+	      db_make_int (&tmp_arg3, len);
+	    }
+
+	  if (db_string_substring (SUBSTRING, peek_left, &tmp_arg2,
+				   &tmp_arg3, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_STRCMP:
+      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  int cmp;
+	  if (QSTR_IS_BIT (arithptr->leftptr->domain->type->id)
+	      || QSTR_IS_BIT (arithptr->rightptr->domain->type->id))
+	    {
+	      if (db_string_compare (peek_left, peek_right,
+				     arithptr->value) != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+	  else
+	    {
+	      DB_VALUE tmp_val, tmp_val2;
+
+	      if (db_string_lower (peek_left, &tmp_val) != NO_ERROR)
+		{
+		  goto error;
+		}
+	      if (db_string_lower (peek_right, &tmp_val2) != NO_ERROR)
+		{
+		  goto error;
+		}
+	      if (db_string_compare (&tmp_val, &tmp_val2,
+				     arithptr->value) != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+	  cmp = db_get_int (arithptr->value);
+	  if (cmp < 0)
+	    {
+	      cmp = -1;
+	    }
+	  else if (cmp > 0)
+	    {
+	      cmp = 1;
+	    }
+	  db_make_int (arithptr->value, cmp);
+	}
+      break;
+
+    case T_REVERSE:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_string_reverse (peek_right, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       break;
 
@@ -1053,41 +2112,150 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_PI:
+      db_make_double (arithptr->value, PI);
+      break;
+
+    case T_ROW_COUNT:
+      pr_clone_value (peek_right, arithptr->value);
+      break;
+
     case T_RAND:
-      db_make_int (arithptr->value, (int) vd->lrand);
-      break;
-
-    case T_DRAND:
-      db_make_double (arithptr->value, (double) vd->drand);
-      break;
-
     case T_RANDOM:
       if (PRIM_IS_NULL (peek_right))
 	{
-	  struct timeval t;
+	  /* When random functions are called without a seed, peek_right is null.
+	   * In this case, rand() or drand() uses a random value stored on value descriptor
+	   * to generate the same number during executing one SELECT statement.
+	   * But, each random() or drandom() picks up a seed value to generate different
+	   * numbers at every call.
+	   */
+	  if (arithptr->opcode == T_RAND)
+	    {
+	      db_make_int (arithptr->value, (int) vd->lrand);
+	    }
+	  else
+	    {
+	      struct timeval t;
 
-	  gettimeofday (&t, NULL);
-	  srand48 (t.tv_usec);
-	  db_make_int (peek_right, t.tv_usec);
+	      /* This routine can be called several times within 1 us by the following query.
+	       *   e.g, select random(), random(), random()
+	       * So, we make a seed by adding time and random number.
+	       */
+	      gettimeofday (&t, NULL);
+	      srand48 ((long) (t.tv_usec + lrand48 ()));
+	      db_make_int (arithptr->value, lrand48 ());
+	    }
 	}
-
-      if (db_random_dbval (arithptr->value) != NO_ERROR)
+      else
 	{
-	  goto error;
+	  /* There are two types of seed:
+	   *  1) given by user (rightptr's type is TYPE_DBVAL)
+	   *   e.g, select rand(1) from table;
+	   *  2) fetched from tuple (rightptr's type is TYPE_CONSTANT)
+	   *   e.g, select rand(i) from table;
+	   *
+	   * Regarding the former case, rand(1) will generate a sequence of pseudo-random 
+	   * values up to the number of rows. However, on the latter case, rand(i) generates 
+	   * values depending on the column i's value. If, for example, there are three 
+	   * tuples which include column i of 1 in a table, results of the above statements 
+	   * are as follows.
+	   *
+	   *       rand(1)             rand(i)
+	   * =============       =============
+	   *      89400484            89400484
+	   *     976015093            89400484
+	   *    1792756325            89400484
+	   */
+	  if (arithptr->rightptr->type == TYPE_CONSTANT)
+	    {
+	      struct drand48_data buf;
+	      long int r;
+
+	      srand48_r ((long) db_get_int (peek_right), &buf);
+	      lrand48_r (&buf, &r);
+	      db_make_int (arithptr->value, r);
+	    }
+	  else
+	    {
+	      long int r;
+
+	      if (arithptr->rand_seed == NULL)
+		{
+		  arithptr->rand_seed =
+		    (struct drand48_data *)
+		    malloc (sizeof (struct drand48_data));
+
+		  if (arithptr->rand_seed == NULL)
+		    {
+		      goto error;
+		    }
+
+		  srand48_r ((long) db_get_int (peek_right),
+			     arithptr->rand_seed);
+		}
+
+	      lrand48_r (arithptr->rand_seed, &r);
+	      db_make_int (arithptr->value, r);
+	    }
 	}
       break;
 
+    case T_DRAND:
     case T_DRANDOM:
       if (PRIM_IS_NULL (peek_right))
 	{
-	  struct timeval t;
+	  if (arithptr->opcode == T_DRAND)
+	    {
+	      db_make_double (arithptr->value, (double) vd->drand);
+	    }
+	  else
+	    {
+	      struct timeval t;
 
-	  gettimeofday (&t, NULL);
-	  srand48 (t.tv_usec);
-	  db_make_int (peek_right, t.tv_usec);
+	      gettimeofday (&t, NULL);
+	      srand48 ((long) (t.tv_usec + lrand48 ()));
+	      db_make_double (arithptr->value, drand48 ());
+	    }
 	}
+      else
+	{
+	  if (arithptr->rightptr->type == TYPE_CONSTANT)
+	    {
+	      struct drand48_data buf;
+	      double r;
 
-      if (db_drandom_dbval (arithptr->value) != NO_ERROR)
+	      srand48_r ((long) db_get_int (peek_right), &buf);
+	      drand48_r (&buf, &r);
+	      db_make_double (arithptr->value, r);
+	    }
+	  else
+	    {
+	      double r;
+
+	      if (arithptr->rand_seed == NULL)
+		{
+		  arithptr->rand_seed =
+		    (struct drand48_data *)
+		    malloc (sizeof (struct drand48_data));
+
+		  if (arithptr->rand_seed == NULL)
+		    {
+		      goto error;
+		    }
+
+		  srand48_r ((long) db_get_int (peek_right),
+			     arithptr->rand_seed);
+		}
+
+	      drand48_r (arithptr->rand_seed, &r);
+	      db_make_double (arithptr->value, r);
+	    }
+	}
+      break;
+
+    case T_LIST_DBS:
+      if (qdata_list_dbs (thread_p, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}

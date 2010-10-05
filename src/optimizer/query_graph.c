@@ -67,11 +67,6 @@
 /* any number that won't overlap PT_MISC_TYPE */
 #define PREDICATE_TERM  -2
 
-/* used by build_graph_for_entity() */
-#define IS_OID(name_spec) \
-    (((name_spec)->node_type == PT_NAME) \
-     && PT_IS_OID_NAME(name_spec))
-
 #define RANK_DEFAULT       0	/* default              */
 #define RANK_NAME          RANK_DEFAULT	/* name  -- use default */
 #define RANK_VALUE         RANK_DEFAULT	/* value -- use default */
@@ -613,6 +608,24 @@ qo_optimize_helper (QO_ENV * env)
 			   qo_add_final_segment, &local_env, pt_continue_walk,
 			   NULL);
 
+  /* it's necessary to find segments for nodes in predicates that are evaluated
+   * after joins, in order to be available in intermediary output lists
+   */
+  if (tree->info.query.q.select.connect_by
+      && !tree->info.query.q.select.single_table_opt)
+    {
+      (void) parser_walk_tree (parser, tree->info.query.q.select.start_with,
+			       qo_add_final_segment, &local_env,
+			       pt_continue_walk, NULL);
+      (void) parser_walk_tree (parser, tree->info.query.q.select.connect_by,
+			       qo_add_final_segment, &local_env,
+			       pt_continue_walk, NULL);
+      (void) parser_walk_tree (parser,
+			       tree->info.query.q.select.after_cb_filter,
+			       qo_add_final_segment, &local_env,
+			       pt_continue_walk, NULL);
+    }
+
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
 
@@ -1073,7 +1086,7 @@ build_graph_for_entity (QO_ENV * env, PT_NODE * entity,
    * create), if such exists.
    */
 
-  for (attr = attr_list; attr && !IS_OID (attr); attr = attr->next)
+  for (attr = attr_list; attr && !PT_IS_OID_NAME (attr); attr = attr->next)
     {
       ;
     }
@@ -1390,7 +1403,7 @@ qo_insert_segment (QO_NODE * head, QO_NODE * tail, PT_NODE * node,
     node->info.name.original :
     pt_append_string (QO_ENV_PARSER (env), NULL, "");
 
-  if (IS_OID (node))
+  if (PT_IS_OID_NAME (node))
     {
       /* this is an oid segment */
       QO_NODE_OID_SEG (head) = seg;
@@ -1838,6 +1851,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	case PT_NE_ALL:
 	case PT_LIKE:
 	case PT_NOT_LIKE:
+	case PT_NULLSAFE_EQ:
 	  /* RHS of the expression */
 	  rhs_expr = pt_expr->info.expr.arg2;
 	  /* get segments from RHS of the expression */
@@ -1847,6 +1861,8 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	case PT_IS_NULL:
 	case PT_IS_NOT_NULL:
 	case PT_EXISTS:
+	case PT_IS:
+	case PT_IS_NOT:
 	  /* LHS of the expression */
 	  lhs_expr = pt_expr->info.expr.arg1;
 	  /* get segments from LHS of the expression */
@@ -1856,6 +1872,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
 	case PT_OR:
 	case PT_NOT:
+	case PT_XOR:
 	  /* get segments from the expression itself */
 	  qo_expr_segs (env, pt_expr, &lhs_segs);
 	  break;
@@ -2577,7 +2594,8 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 
     case PT_EXPR:
       if (tree->info.expr.op == PT_SYS_CONNECT_BY_PATH
-	  || tree->info.expr.op == PT_CONNECT_BY_ROOT)
+	  || tree->info.expr.op == PT_CONNECT_BY_ROOT
+	  || tree->info.expr.op == PT_PRIOR)
 	{
 	  *continue_walk = PT_STOP_WALK;
 	}
@@ -2787,6 +2805,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
       /* Group 1 -- light */
     case PT_AND:
     case PT_OR:
+    case PT_XOR:
     case PT_NOT:
     case PT_ASSIGN:
 
@@ -2817,6 +2836,17 @@ get_opcode_rank (PT_OP_TYPE opcode)
 
     case PT_GT_INF:
     case PT_LT_INF:
+
+    case PT_BIT_NOT:
+    case PT_BIT_AND:
+    case PT_BIT_OR:
+    case PT_BIT_XOR:
+    case PT_BITSHIFT_LEFT:
+    case PT_BITSHIFT_RIGHT:
+    case PT_DIV:
+    case PT_MOD:
+
+    case PT_NULLSAFE_EQ:
 
     case PT_PLUS:
     case PT_MINUS:
@@ -2877,6 +2907,36 @@ get_opcode_rank (PT_OP_TYPE opcode)
 
     case PT_IS_NULL:
     case PT_IS_NOT_NULL:
+    case PT_IS:
+    case PT_IS_NOT:
+
+    case PT_ACOS:
+    case PT_ASIN:
+    case PT_ATAN:
+    case PT_ATAN2:
+    case PT_SIN:
+    case PT_COS:
+    case PT_TAN:
+    case PT_COT:
+    case PT_DEGREES:
+    case PT_RADIANS:
+    case PT_PI:
+    case PT_LN:
+    case PT_LOG2:
+    case PT_LOG10:
+
+    case PT_DATEF:
+    case PT_TIME_FORMAT:
+    case PT_TIMESTAMP:
+    case PT_UNIX_TIMESTAMP:
+
+    case PT_SCHEMA:
+    case PT_DATABASE:
+    case PT_USER:
+    case PT_ROW_COUNT:
+    case PT_DEFAULTF:
+    case PT_LIST_DBS:
+    case PT_OID_OF_DUPLICATE_KEY:
       return RANK_EXPR_LIGHT;
 
       /* Group 2 -- medium */
@@ -2932,6 +2992,30 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_CAST:
 
     case PT_PATH_EXPR_SET:
+
+    case PT_IF:
+    case PT_IFNULL:
+    case PT_ISNULL:
+
+    case PT_CONCAT:
+    case PT_CONCAT_WS:
+    case PT_FIELD:
+    case PT_LEFT:
+    case PT_RIGHT:
+    case PT_LOCATE:
+    case PT_MID:
+    case PT_STRCMP:
+    case PT_REVERSE:
+
+    case PT_BIT_COUNT:
+    case PT_ADDDATE:
+    case PT_DATE_ADD:
+    case PT_SUBDATE:
+    case PT_DATE_SUB:
+    case PT_FORMAT:
+    case PT_DATE_FORMAT:
+    case PT_STR_TO_DATE:
+    case PT_DATEDIFF:
       return RANK_EXPR_MEDIUM;
 
       /* Group 3 -- heavy */
@@ -3115,6 +3199,10 @@ is_local_name (QO_ENV * env, PT_NODE * expr)
     {
       spec = expr->info.dot.arg2->info.name.spec_id;
     }
+  else if (expr->node_type == PT_EXPR && expr->info.expr.op == PT_PRIOR)
+    {
+      return is_local_name (env, expr->info.expr.arg1);
+    }
   else
     {
       return false;
@@ -3181,11 +3269,24 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_MINUS:
 	case PT_TIMES:
 	case PT_DIVIDE:
+	case PT_BIT_AND:
+	case PT_BIT_OR:
+	case PT_BIT_XOR:
+	case PT_BITSHIFT_LEFT:
+	case PT_BITSHIFT_RIGHT:
+	case PT_DIV:
+	case PT_MOD:
+	case PT_LEFT:
+	case PT_RIGHT:
+	case PT_STRCMP:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && is_pseudo_const (env,
 				      expr->info.expr.arg2)) ? true : false;
 	case PT_UNARY_MINUS:
+	case PT_BIT_NOT:
+	case PT_BIT_COUNT:
 	case PT_QPRIOR:
+	case PT_PRIOR:
 	  return is_pseudo_const (env, expr->info.expr.arg1);
 	case PT_BETWEEN_AND:
 	case PT_BETWEEN_GE_LE:
@@ -3205,8 +3306,14 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && is_pseudo_const (env,
 				      expr->info.expr.arg2)) ? true : false;
-	case PT_RAND:
-	case PT_DRAND:
+	case PT_SCHEMA:
+	case PT_DATABASE:
+	case PT_PI:
+	case PT_USER:
+	case PT_ROW_COUNT:
+	case PT_DEFAULTF:
+	case PT_LIST_DBS:
+	case PT_OID_OF_DUPLICATE_KEY:
 	  return true;
 	case PT_FLOOR:
 	case PT_CEIL:
@@ -3215,6 +3322,19 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_CHR:
 	case PT_EXP:
 	case PT_SQRT:
+	case PT_ACOS:
+	case PT_ASIN:
+	case PT_ATAN:
+	case PT_SIN:
+	case PT_COS:
+	case PT_TAN:
+	case PT_COT:
+	case PT_DEGREES:
+	case PT_RADIANS:
+	case PT_LN:
+	case PT_LOG2:
+	case PT_LOG10:
+	case PT_DATEF:
 	  return is_pseudo_const (env, expr->info.expr.arg1);
 	case PT_POWER:
 	case PT_ROUND:
@@ -3233,6 +3353,7 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 		  && is_pseudo_const (env,
 				      expr->info.expr.arg2)) ? true : false;
 	case PT_SUBSTRING:
+	case PT_LOCATE:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && is_pseudo_const (env, expr->info.expr.arg2)
 		  && (expr->info.expr.arg3 ?
@@ -3244,6 +3365,7 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_BIT_LENGTH:
 	case PT_LOWER:
 	case PT_UPPER:
+	case PT_REVERSE:
 	  return is_pseudo_const (env, expr->info.expr.arg1);
 	case PT_TRIM:
 	case PT_LTRIM:
@@ -3269,8 +3391,30 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 		  && is_pseudo_const (env,
 				      expr->info.expr.arg2)) ? true : false;
 	case PT_LAST_DAY:
-	  return is_pseudo_const (env, expr->info.expr.arg1);
+	case PT_UNIX_TIMESTAMP:
+	  if (expr->info.expr.arg1)
+	    {
+	      return is_pseudo_const (env, expr->info.expr.arg1);
+	    }
+	  else
+	    {
+	      return true;
+	    }
+	case PT_TIMESTAMP:
+	  return (is_pseudo_const (env, expr->info.expr.arg1)
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg2)) ? true : false;
 	case PT_MONTHS_BETWEEN:
+	case PT_TIME_FORMAT:
+	case PT_FORMAT:
+	case PT_ATAN2:
+	case PT_ADDDATE:
+	case PT_DATE_ADD:	/* 2 args because the 3rd is constant (unit) */
+	case PT_SUBDATE:
+	case PT_DATE_SUB:
+	case PT_DATE_FORMAT:
+	case PT_STR_TO_DATE:
+	case PT_DATEDIFF:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && is_pseudo_const (env,
 				      expr->info.expr.arg2)) ? true : false;
@@ -3308,6 +3452,31 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && is_pseudo_const (env,
 				      expr->info.expr.arg2)) ? true : false;
+	case PT_IF:
+	  return (is_pseudo_const (env, expr->info.expr.arg2)
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg3)) ? true : false;
+	case PT_IFNULL:
+	  return (is_pseudo_const (env, expr->info.expr.arg1)
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg2)) ? true : false;
+
+	case PT_ISNULL:
+	  return is_pseudo_const (env, expr->info.expr.arg1);
+	case PT_CONCAT:
+	  return (is_pseudo_const (env, expr->info.expr.arg1)
+		  && (expr->info.expr.arg2 ?
+		      is_pseudo_const (env,
+				       expr->info.expr.
+				       arg2) : true)) ? true : false;
+	case PT_CONCAT_WS:
+	case PT_FIELD:
+	  return (is_pseudo_const (env, expr->info.expr.arg1)
+		  && (expr->info.expr.arg2 ?
+		      is_pseudo_const (env, expr->info.expr.arg2) : true)
+		  && is_pseudo_const (env,
+				      expr->info.expr.arg3)) ? true : false;
+	case PT_MID:
 	case PT_NVL2:
 	  return (is_pseudo_const (env, expr->info.expr.arg1)
 		  && is_pseudo_const (env, expr->info.expr.arg2)
@@ -7292,4 +7461,30 @@ qo_seg_nodes (QO_ENV * env, BITSET * segset, BITSET * result)
     {
       bitset_add (result, QO_NODE_IDX (QO_SEG_HEAD (QO_ENV_SEG (env, i))));
     }
+}
+
+/*
+ * qo_is_prefix_index () - Find out if this is a prefix index
+ *   return:
+ *   ent(in): index entry
+ */
+bool
+qo_is_prefix_index (QO_INDEX_ENTRY * ent)
+{
+  bool is_prefix_index = false;
+
+  if (ent && ent->class_ && ent->class_->smclass)
+    {
+      SM_CLASS_CONSTRAINT *cons;
+      cons = classobj_find_class_index (ent->class_->smclass, ent->name);
+      if (cons)
+	{
+	  if (cons->attrs_prefix_length && cons->attrs_prefix_length[0] != -1)
+	    {
+	      is_prefix_index = true;
+	    }
+	}
+    }
+
+  return is_prefix_index;
 }

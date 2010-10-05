@@ -1,31 +1,59 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE project>
 
-<project default="dist" name="cubridmanager">
+<project default="dist" name="Java Stored Procedure">
     <property name="basedir" value=""/>
     <property name="src" value="src/jdbc"/>
-    <property name="build" value="class"/>
+    <property name="build" value="bin"/>
     <property name="version" value=""/>
     <property name="jar.file" value="jspserver.jar"/>
 
     <target name="init">
         <mkdir dir="${build}"/>
+        <mkdir dir="src-jsp"/>
     </target>
+
     <target name="clean">
         <delete failonerror="false" includeEmptyDirs="true">
+            <fileset dir="src"/>
+            <fileset dir="src-jsp"/>
             <fileset dir="${build}"/>
             <fileset file="*.jar"/>
         </delete>
     </target>
-    <target depends="init" name="compile">
+
+    <target name="src-copy" depends="init">
+        <copy todir="src/cubrid">
+            <fileset dir="${src}/cubrid" excludes="**/.svn">
+                <patternset id="pjava">
+                    <exclude name="**/*.pjava"/>
+                </patternset>
+            </fileset>
+        </copy>
+        <copy todir="src/com">
+            <fileset dir="${src}/com" excludes="**/.svn"/>
+        </copy>
+        <copy todir="src-jsp" filtering="true">
+            <fileset dir="src"/>
+            <filterset>
+                <filter token="CUBRID_DRIVER" value="cubrid.jdbc.driver"/>
+                <filter token="CUBRID_JCI" value="cubrid.jdbc.jci"/>
+                <filter token="CUBRID_SQL" value="cubrid.sql"/>
+            </filterset>
+        </copy>
+    </target>
+
+    <target name="compile" depends="src-copy">
         <javac destdir="${build}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source">
-            <src path="."/>
-            <src path="${src}"/>
+            <src path="src-jsp"/>
         </javac>
     </target>
-    <target depends="compile" name="build">
+
+    <target name="build" depends="compile">
     </target>
-    <target depends="build" name="dist">
+
+    <target name="dist" depends="build">
         <jar jarfile="${jar.file}" basedir="${build}"/>
     </target>
 </project>
+

@@ -52,7 +52,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="4"
-				AdditionalIncludeDirectories="..\..\src\cci"
+				AdditionalIncludeDirectories="..\..\src\cci;..\..\src\broker"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;_USE_32BIT_TIME_T"
 				RuntimeLibrary="2"
 				UsePrecompiledHeader="0"
@@ -147,7 +147,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="4"
-				AdditionalIncludeDirectories="..\..\src\cci"
+				AdditionalIncludeDirectories="..\..\src\cci;..\..\src\broker"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS"
 				RuntimeLibrary="2"
 				UsePrecompiledHeader="0"
@@ -242,7 +242,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\src\cci"
+				AdditionalIncludeDirectories="..\..\src\cci;..\..\src\broker"
 				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;__DEBUG_LOG;_CRT_SECURE_NO_WARNINGS.;_USE_32BIT_TIME_T"
 				BasicRuntimeChecks="0"
 				RuntimeLibrary="3"
@@ -340,7 +340,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\src\cci"
+				AdditionalIncludeDirectories="..\..\src\cci;..\..\src\broker"
 				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;__DEBUG_LOG;_CRT_SECURE_NO_WARNINGS."
 				BasicRuntimeChecks="0"
 				RuntimeLibrary="3"

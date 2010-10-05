@@ -5736,12 +5736,15 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 		}
 	      else
 		{
-		  repeat_option =
-		    (pt[0]->node_type == PT_INSERT
-		     && pt[0]->info.insert.is_value != PT_IS_SUBQUERY);
-		  esql_Translate_table.tr_static (text,
-						  length,
-						  repeat_option,
+		  repeat_option = (pt[0]->node_type == PT_INSERT
+				   && !pt[0]->info.insert.do_replace
+				   && pt[0]->info.insert.on_dup_key_update ==
+				   NULL
+				   && pt[0]->info.insert.value_clauses->info.
+				   node_list.list_type != PT_IS_SUBQUERY
+				   && pt[0]->info.insert.value_clauses->info.
+				   node_list.list->next == NULL);
+		  esql_Translate_table.tr_static (text, length, repeat_option,
 						  HOST_N_REFS (inputs),
 						  HOST_REFS (inputs),
 						  (const char *)
@@ -7806,13 +7809,13 @@ ignore_repeat (void)
 }
 
 
-#if 0
+#if defined (ENABLE_UNUSED_FUNCTION)
 static int
 validate_input_file (void *fname, FILE * outfp)
 {
   return (fname == NULL) && isatty (fileno (stdin));
 }
-#endif
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 
 static char *
@@ -8218,7 +8221,7 @@ echo_vstr (const char *str, int length)
     }
 }
 
-#if 0
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * echo_devnull() -
  * return : void
@@ -8230,7 +8233,7 @@ echo_devnull (const char *str, int length)
 {
   /* Do nothing */
 }
-#endif
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * pp_set_echo() -
@@ -8602,7 +8605,7 @@ emit_line_directive (void)
   need_line_directive = false;
 }
 
-#if 0
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ignore_token() -
  * return : void
@@ -8705,7 +8708,7 @@ echo_string_constant (const char *str, int length)
   ECHO_STR (result, length);
   free_and_init (result);
 }
-#endif
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * esql_yy_sync_lineno() -

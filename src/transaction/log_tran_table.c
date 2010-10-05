@@ -1607,6 +1607,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->num_new_files = 0;
   tdes->num_new_tmp_files = 0;
   tdes->num_new_tmp_tmp_files = 0;
+  tdes->suppress_replication = 0;
 }
 
 /*
@@ -2484,6 +2485,58 @@ logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear,
 
   return logtb_is_interrupted_tdes (thread_p, tdes, clear, continue_checking);
 }
+
+/*
+ * xlogtb_set_suppress_repl_on_transaction - set or unset suppress_replication flag
+ *                                           on transaction descriptor
+ *
+ * return: nothing
+ *
+ *   set(in): non-zero to set, zero to unset
+ */
+void
+xlogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int set)
+{
+  logtb_set_suppress_repl_on_transaction (thread_p,
+					  LOG_FIND_THREAD_TRAN_INDEX
+					  (thread_p), set);
+}
+
+/*
+ * logtb_set_suppress_repl_on_transaction - set or unset suppress_replication flag
+ *                                          on transaction descriptor 
+ *
+ * return: false is returned when the tran_index is not associated
+ *              with a transaction
+ *
+ *   tran_index(in): Transaction index
+ *   set(in): non-zero to set, zero to unset
+ */
+bool
+logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
+					int tran_index, int set)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+
+  if (log_Gl.trantable.area != NULL)
+    {
+      tdes = LOG_FIND_TDES (tran_index);
+      if (tdes != NULL && tdes->trid != NULL_TRANID)
+	{
+	  if (tdes->suppress_replication != set)
+	    {
+	      TR_TABLE_CS_ENTER (thread_p);
+
+	      tdes->suppress_replication = set;
+
+	      TR_TABLE_CS_EXIT ();
+	    }
+	  return true;
+	}
+    }
+  return false;
+}
+
 
 /*
  * logtb_is_active - is transaction active ?

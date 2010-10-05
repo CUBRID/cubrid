@@ -31,14 +31,16 @@
 #include "object_domain.h"
 #include "thread_impl.h"
 
+#define PI ((double) (3.14159265358979323846264338))
+
 extern int db_floor_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_ceil_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_sign_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_abs_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_exp_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value);
-extern int db_power_dbval (DB_VALUE * result, TP_DOMAIN * domain,
-			   DB_VALUE * value1, DB_VALUE * value2);
+extern int db_power_dbval (DB_VALUE * result, DB_VALUE * value1,
+			   DB_VALUE * value2);
 extern int db_mod_dbval (DB_VALUE * result, DB_VALUE * value1,
 			 DB_VALUE * value2);
 extern int db_round_dbval (DB_VALUE * result, DB_VALUE * value1,
@@ -49,5 +51,18 @@ extern int db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1,
 			   DB_VALUE * value2);
 extern int db_random_dbval (DB_VALUE * result);
 extern int db_drandom_dbval (DB_VALUE * result);
+extern int db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value);
+extern int db_cos_dbval (DB_VALUE * result, DB_VALUE * value);
+extern int db_sin_dbval (DB_VALUE * result, DB_VALUE * value);
+extern int db_tan_dbval (DB_VALUE * result, DB_VALUE * value);
+extern int db_cot_dbval (DB_VALUE * result, DB_VALUE * value);
+extern int db_acos_dbval (DB_VALUE * result, DB_VALUE * value);
+extern int db_asin_dbval (DB_VALUE * result, DB_VALUE * value);
+extern int db_atan_dbval (DB_VALUE * result, DB_VALUE * value1);
+extern int db_atan2_dbval (DB_VALUE * result, DB_VALUE * value,
+			   DB_VALUE * value2);
+extern int db_degrees_dbval (DB_VALUE * result, DB_VALUE * value);
+extern int db_radians_dbval (DB_VALUE * result, DB_VALUE * value);
+extern int db_log_generic_dbval (DB_VALUE * result, DB_VALUE * value, long b);
 
 #endif /* _ARITHMETIC_H_ */

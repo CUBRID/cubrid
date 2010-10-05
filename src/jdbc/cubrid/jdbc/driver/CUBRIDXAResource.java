@@ -28,10 +28,10 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import javax.transaction.xa.*;
-import cubrid.jdbc.jci.*;
+import @CUBRID_JCI@.*;
 import java.io.PrintStream;
 
 /**

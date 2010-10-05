@@ -99,8 +99,10 @@ extern int locator_fetch_all_reference_lockset (OID * oid, int chn,
 						fetch_copyarea);
 extern LC_FIND_CLASSNAME locator_find_class_oid (const char *class_name,
 						 OID * class_oid, LOCK lock);
-extern LC_FIND_CLASSNAME locator_reserve_class_name (const char *class_name,
-						     OID * class_oid);
+extern LC_FIND_CLASSNAME locator_reserve_class_names (const int num_classes,
+						      const char
+						      **class_names,
+						      OID * class_oids);
 extern LC_FIND_CLASSNAME locator_delete_class_name (const char *class_name);
 extern LC_FIND_CLASSNAME locator_rename_class_name (const char *old_name,
 						    const char *new_name,
@@ -131,6 +133,7 @@ extern int heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid);
 extern int heap_destroy (const HFID * hfid);
 #endif
 extern int heap_destroy_newly_created (const HFID * hfid);
+extern int heap_reclaim_addresses (const HFID * hfid);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);
@@ -161,6 +164,7 @@ extern int log_reset_isolation (TRAN_ISOLATION isolation,
 extern void log_set_interrupt (int set);
 extern void log_checkpoint (void);
 extern void log_dump_stat (FILE * outfp);
+extern void log_set_suppress_repl_on_transaction (int set);
 
 extern TRAN_STATE tran_server_commit (bool retain_lock);
 extern TRAN_STATE tran_server_abort (void);
@@ -268,7 +272,8 @@ extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type,
 			    int reverse_btree);
 extern int btree_load_index (BTID * btid, TP_DOMAIN * key_type,
 			     OID * class_oids, int n_classes, int n_attrs,
-			     int *attr_ids, HFID * hfids, int unique_flag,
+			     int *attr_ids, int *attrs_prefix_length,
+			     HFID * hfids, int unique_flag,
 			     int reverse_flag, int last_key_desc,
 			     OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 			     int cache_attr_id, const char *fk_name);
@@ -480,5 +485,21 @@ extern int net_client_send_data (char *host, unsigned int rc, char *databuf,
 extern int net_client_receive_action (int rc, int *action);
 
 extern char *net_client_get_server_host (void);
+
+extern int boot_compact_classes (OID ** class_oids,
+				 int num_classes, int space_to_process,
+				 int instance_lock_timeout,
+				 int class_lock_timeout,
+				 bool delete_old_repr,
+				 OID * last_processed_class_oid,
+				 OID * last_processed_oid,
+				 int *total_objects, int *failed_objects,
+				 int *modified_objects, int *big_objects,
+				 int *ids_repr);
+
+extern int boot_heap_compact (OID * class_oid);
+
+extern int compact_db_start (void);
+extern int compact_db_stop (void);
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */

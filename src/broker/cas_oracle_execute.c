@@ -50,6 +50,7 @@
 #include "cas_str_like.h"
 #include "cas_oracle.h"
 #include "cas_sql_log2.h"
+#include "cas_error_log.h"
 #include "broker_filename.h"
 #include "release_string.h"
 
@@ -78,7 +79,13 @@
 #define ORA_CURR_POS(stmt, pos) \
   OCIAttrGet (stmt, OCI_HTYPE_STMT, &pos, 0, OCI_ATTR_CURRENT_POSITION, ORA_ERR)
 
+static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args);
+static void prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO * call_info);
+static int db_value_clear (DB_VALUE * value);
+static void db_make_null (DB_VALUE * value);
+
 static ORACLE_INFO _db_info;
+static int _offset_row_count;
 
 int
 cas_oracle_query_cancel (void)
@@ -111,12 +118,10 @@ ux_is_database_connected (void)
 }
 
 static const char *
-cas_oracle_get_errmsg ()
+cas_oracle_get_errmsg (void)
 {
   static text buf[ORA_BUFSIZ];
   int ret, code;
-  const char *fmt =
-    "DBMS ERROR : BROKER_ERR_CODE [ERR_CODE : %d, ERR_MSG : %s]";
 
   ret = OCIErrorGet (ORA_ERR, 1, NULL, &code, buf, ORA_BUFSIZ,
 		     OCI_HTYPE_ERROR);
@@ -127,7 +132,7 @@ cas_oracle_get_errmsg ()
 	{
 	  buf[size - 1] = 0;
 	}
-      cas_log_write (0, false, fmt, code, buf);
+      cas_error_log_write (code, (const char *) buf);
       ERROR_INFO_SET_WITH_MSG (code, DBMS_ERROR_INDICATOR, (char *) buf);
       return (const char *) buf;
     }
@@ -135,12 +140,10 @@ cas_oracle_get_errmsg ()
 }
 
 static int
-cas_oracle_get_errno ()
+cas_oracle_get_errno (void)
 {
   text buf[ORA_BUFSIZ];
   int code, size;
-  const char *fmt =
-    "DBMS ERROR : BROKER_ERR_CODE [ERR_CODE : %d, ERR_MSG : %s]";
 
   OCIErrorGet (ORA_ERR, 1, NULL, &code, buf, ORA_BUFSIZ, OCI_HTYPE_ERROR);
   size = strlen ((char *) buf);
@@ -148,7 +151,7 @@ cas_oracle_get_errno ()
     {
       buf[size - 1] = 0;
     }
-  cas_log_write (0, false, fmt, code, buf);
+  cas_error_log_write (code, (const char *) buf);
   return ERROR_INFO_SET_WITH_MSG (code, DBMS_ERROR_INDICATOR, (char *) buf);
 }
 
@@ -159,7 +162,7 @@ cas_oracle_connect_db (char *tns, char *db_user, char *db_pass,
   int ret;
   const char *err_msg;
 
-  ret = OCIInitialize (OCI_DEFAULT, 0, 0, 0, 0);
+  ret = OCIInitialize (OCI_OBJECT, 0, 0, 0, 0);
   GOTO_ORA_ERROR (ret, oracle_connect_error);
   ret = OCIEnvInit (&ORA_ENV, OCI_DEFAULT, 0, 0);
   GOTO_ORA_ERROR (ret, oracle_connect_error);
@@ -210,6 +213,34 @@ oracle_connect_error:
   return ret;
 }
 
+static void
+c4o_copy_host_to_as_info (char *tns)
+{
+  const char *delim;
+  char *token, *save;
+  int host_len;
+
+  delim = "(=) ";
+  token = strtok_r (tns, delim, &save);
+  while (token != NULL)
+    {
+      if (strcasecmp (token, "HOST") == 0)
+	{
+	  token = strtok_r (NULL, delim, &save);
+	  if (token == NULL)
+	    {
+	      return;
+	    }
+	  else
+	    {
+	      strncpy (as_info->database_host, token, MAXHOSTNAMELEN);
+	      return;
+	    }
+	}
+      token = strtok_r (NULL, delim, &save);
+    }
+}
+
 int
 ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
 		     char **db_err_msg)
@@ -242,13 +273,16 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
       strcpy (ORA_NAME, db_alias);
       strcpy (ORA_USER, db_user);
       strcpy (ORA_PASS, db_passwd);
+      strncpy (as_info->database_name, db_alias, SRV_CON_DBNAME_SIZE - 1);
+      c4o_copy_host_to_as_info (tns);
+      as_info->last_connect_time = time (NULL);
     }
 
   return err_code;
 }
 
 void
-ux_database_shutdown ()
+ux_database_shutdown (void)
 {
   if (!ux_is_database_connected ())
     {
@@ -345,91 +379,250 @@ convert_data_type_oracle_to_cas (OCIParam * col)
 
   switch (type)
     {
-    case OCI_TYPECODE_NUMBER:
+    case SQLT_NUM:
+    case SQLT_VNU:
       return CCI_U_TYPE_NUMERIC;
-    case OCI_TYPECODE_INTEGER:
+    case SQLT_INT:
       return CCI_U_TYPE_INT;
-    case OCI_TYPECODE_SMALLINT:
-      return CCI_U_TYPE_SHORT;
-    case OCI_TYPECODE_REAL:
-    case OCI_TYPECODE_BFLOAT:
-      return CCI_U_TYPE_FLOAT;
-    case OCI_TYPECODE_FLOAT:
-    case OCI_TYPECODE_DOUBLE:
-    case OCI_TYPECODE_BDOUBLE:
+    case SQLT_FLT:
       return CCI_U_TYPE_DOUBLE;
-    case OCI_TYPECODE_TIMESTAMP:
-    case OCI_TYPECODE_TIMESTAMP_TZ:
-    case OCI_TYPECODE_TIMESTAMP_LTZ:
+    case SQLT_TIMESTAMP:
+    case SQLT_TIMESTAMP_TZ:
+    case SQLT_TIMESTAMP_LTZ:
       return CCI_U_TYPE_TIMESTAMP;
-    case OCI_TYPECODE_DATE:
+    case SQLT_DAT:
       return CCI_U_TYPE_DATE;
-    case OCI_TYPECODE_CHAR:
+    case SQLT_AFC:
+    case SQLT_STR:
       return CCI_U_TYPE_CHAR;
-    case OCI_TYPECODE_VARCHAR:
-    case OCI_TYPECODE_VARCHAR2:
+    case SQLT_LNG:
+    case SQLT_CHR:
+    case SQLT_VST:
       return CCI_U_TYPE_STRING;
-    case OCI_TYPECODE_CLOB:
-    case OCI_TYPECODE_BLOB:
+    case SQLT_CLOB:
+    case SQLT_BLOB:
       return CCI_U_TYPE_VARBIT;
-    case OCI_TYPECODE_REF:
-    case OCI_TYPECODE_INTERVAL_YM:
-    case OCI_TYPECODE_INTERVAL_DS:
-    case OCI_TYPECODE_OCTET:
-    case OCI_TYPECODE_DECIMAL:
-    case OCI_TYPECODE_RAW:
-    case OCI_TYPECODE_VARRAY:
-    case OCI_TYPECODE_TABLE:
-    case OCI_TYPECODE_BFILE:
-    case OCI_TYPECODE_OBJECT:
-    case OCI_TYPECODE_NAMEDCOLLECTION:
     default:
       return CCI_U_TYPE_UNKNOWN;
     }
 }
 
-static void
+static int
 set_metadata_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 {
   int count, i, ret;
   char type;
   sb1 scale, ptype, null;
   sb2 prec;
-  ub4 size;
-  text *name;
+  ub4 attr_size, attr_schm_size;
+  ub4 char_semantics;
+  text *attr_name, *attr_schm_name, tmp[ORA_BUFSIZ];
   OCIParam *col;
+  void **data;
+  DB_VALUE *columns;
 
   ORA_PARAM_COUNT (srv_handle->session, count);
   net_buf_cp_byte (net_buf, 0);	/* updatable_flag */
   net_buf_cp_int (net_buf, count, NULL);
 
+  columns = (DB_VALUE *) calloc (count, sizeof (DB_VALUE));
+  if (columns == NULL)
+    {
+      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+    }
+  memset ((void *) columns, 0, count * sizeof (DB_VALUE));
+
+  srv_handle->q_result = MALLOC (sizeof (T_QUERY_RESULT));
+  if (srv_handle->q_result == NULL)
+    {
+      FREE_MEM (columns);
+      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+    }
+  memset ((void *) srv_handle->q_result, 0, sizeof (T_QUERY_RESULT));
+  srv_handle->q_result->column_count = count;
+  srv_handle->q_result->columns = columns;
+
   /* TODO: error check all OCI call */
-  for (i = 1; i <= count; i++)
+  for (i = 0; i < count; i++)
     {
       ret = OCIParamGet (srv_handle->session, OCI_HTYPE_STMT, ORA_ERR,
-			 (void **) &col, i);
-      type = convert_data_type_oracle_to_cas (col);
+			 (void **) &col, i + 1);
+      GOTO_ORA_ERROR (ret, oracle_error);
       ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &scale, 0, OCI_ATTR_SCALE,
 			ORA_ERR);
+      GOTO_ORA_ERROR (ret, oracle_error);
       ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &prec, 0, OCI_ATTR_PRECISION,
 			ORA_ERR);
-      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &name, &size, OCI_ATTR_NAME,
-			ORA_ERR);
-      net_buf_column_info_set (net_buf, type, scale, prec, (char *) name);
-      net_buf_cp_int (net_buf, 1, NULL);
-      net_buf_cp_str (net_buf, "", 1);	/* attr_name */
-      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &name, &size,
-			OCI_ATTR_SCHEMA_NAME, ORA_ERR);
-      net_buf_cp_int (net_buf, size + 1, NULL);
-      net_buf_cp_str (net_buf, size == 0 ? "" : (char *) name, size + 1);	/* table_name */
+      GOTO_ORA_ERROR (ret, oracle_error);
+      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &attr_name, &attr_size,
+			OCI_ATTR_NAME, ORA_ERR);
+      GOTO_ORA_ERROR (ret, oracle_error);
+      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &columns[i].db_type, 0,
+			OCI_ATTR_DATA_TYPE, ORA_ERR);
+      GOTO_ORA_ERROR (ret, oracle_error);
+      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &char_semantics, 0,
+			OCI_ATTR_CHAR_USED, ORA_ERR);
+      GOTO_ORA_ERROR (ret, oracle_error);
+      if (char_semantics == 1)
+	{
+	  ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &columns[i].size, 0,
+			    OCI_ATTR_CHAR_SIZE, ORA_ERR);
+	  GOTO_ORA_ERROR (ret, oracle_error);
+	}
+      else
+	{
+	  ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &columns[i].size, 0,
+			    OCI_ATTR_DATA_SIZE, ORA_ERR);
+	  GOTO_ORA_ERROR (ret, oracle_error);
+	}
+      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &attr_schm_name,
+			&attr_schm_size, OCI_ATTR_SCHEMA_NAME, ORA_ERR);
+      GOTO_ORA_ERROR (ret, oracle_error);
       ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &null, 0, OCI_ATTR_IS_NULL,
 			ORA_ERR);
-      net_buf_cp_byte (net_buf, null);	/* is_non_null */
+      GOTO_ORA_ERROR (ret, oracle_error);
+
+      type = convert_data_type_oracle_to_cas (col);
+      strncpy ((char *) tmp, (char *) attr_name, attr_size);
+      tmp[attr_size] = 0;
+
+      net_buf_column_info_set (net_buf, type, scale, prec, (char *) tmp);
+      /* fprintf (stdout, "SN: %d, %s\n", size, tmp); */
+
+      net_buf_cp_int (net_buf, 0, NULL);
+      net_buf_cp_str (net_buf, "", 0);	/* attr_name */
+      net_buf_cp_int (net_buf, attr_schm_size, NULL);
+      net_buf_cp_str (net_buf, attr_schm_size == 0 ?	/* table name */
+		      "" : (char *) attr_schm_name, attr_schm_size);
+      net_buf_cp_byte (net_buf, null == 0);	/* is_non_null */
+      /* 3.0 protocol */
+      /* default value */
+      net_buf_cp_int (net_buf, 1, NULL);
+      net_buf_cp_byte (net_buf, '\0');
+      net_buf_cp_byte (net_buf, '\0');	/* auto increment */
+      net_buf_cp_byte (net_buf, '\0');	/* unique_key */
+      net_buf_cp_byte (net_buf, '\0');	/* primary_key */
+      net_buf_cp_byte (net_buf, '\0');	/* reverse_index */
+      net_buf_cp_byte (net_buf, '\0');	/* reverse_unique */
+      net_buf_cp_byte (net_buf, '\0');	/* foreign_key */
+      net_buf_cp_byte (net_buf, '\0');	/* shared */
+
+      /* make column data */
+      switch (columns[i].db_type)
+	{
+	case SQLT_NUM:
+	  columns[i].db_type = SQLT_VNU;
+	  columns[i].size = sizeof (OCINumber);
+	  data = (void **) &columns[i].data.number;
+	  break;
+	case SQLT_DAT:
+	  columns[i].size = sizeof (OCIDate);
+	  data = (void **) &columns[i].data.date;
+	  break;
+	case SQLT_TIMESTAMP:
+	case SQLT_TIMESTAMP_TZ:
+	case SQLT_TIMESTAMP_LTZ:
+	  columns[i].data.p = NULL;
+	  ret = OCIDescriptorAlloc (ORA_ENV, &columns[i].data.p,
+				    OCI_DTYPE_TIMESTAMP, 0, 0);
+	  GOTO_ORA_ERROR (ret, oracle_error);
+	  columns[i].size = sizeof (OCIDateTime *);
+	  columns[i].db_type = SQLT_TIMESTAMP;
+	  data = &columns[i].data.p;
+	  break;
+	case SQLT_CLOB:
+	case SQLT_BLOB:
+	  ret = OCIDescriptorAlloc (ORA_ENV, &columns[i].data.p,
+				    OCI_DTYPE_LOB, 0, 0);
+	  GOTO_ORA_ERROR (ret, oracle_error);
+	  data = &columns[i].data.p;
+	  columns[i].size = -1;
+	  break;
+	case SQLT_CHR:
+	case SQLT_VST:
+	  columns[i].data.p = NULL;
+	  ret = OCIStringResize (ORA_ENV, ORA_ERR, columns[i].size + 1,
+				 (OCIString **) & columns[i].data.p);
+	  GOTO_ORA_ERROR (ret, oracle_error);
+	  columns[i].db_type = SQLT_VST;
+	  columns[i].size = sizeof (OCIString *);
+	  data = &columns[i].data.p;
+	  break;
+	case SQLT_LNG:
+	  columns[i].size = MAX_CAS_BLOB_SIZE;
+	  columns[i].data.p = MALLOC (columns[i].size);
+	  data = columns[i].data.p;
+	  break;
+	case SQLT_AFC:
+	case SQLT_STR:
+	  columns[i].size = columns[i].size + 1;
+	  columns[i].db_type = SQLT_STR;
+	  columns[i].data.p = MALLOC (columns[i].size);
+	  data = columns[i].data.p;
+	  break;
+	default:
+	  return ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+	}
+
+      ret = OCIDefineByPos (srv_handle->session,
+			    (OCIDefine **) & columns[i].define, ORA_ERR,
+			    i + 1, data, columns[i].size, columns[i].db_type,
+			    &columns[i].is_null, 0, 0, OCI_DEFAULT);
+      GOTO_ORA_ERROR (ret, oracle_error);
     }
+
+  return CAS_NO_ERROR;
+
+oracle_error:
+  cas_oracle_get_errno ();
+  return ret;
+}
+
+static char *
+change_placeholder (char *sql_stmt)
+{
+  static char *buffer = 0;
+  static int count = 0;
+  char *p = sql_stmt;
+  char *t;
+  bool in_quato = false;
+  int bind_count = 1;
+  int len;
+
+  len = strlen (sql_stmt);
+  if ((count * ORA_BUFSIZ) < (len * 7))
+    {
+      count = ((len * 8) / ORA_BUFSIZ) + 1;
+      buffer = (char *) realloc (buffer, ORA_BUFSIZ * count);
+    }
+  t = buffer;
+
+  while (*p != 0)
+    {
+      if (*p == 0x22 || *p == 0x27)	/* " and ' */
+	{
+	  in_quato = !in_quato;
+	}
+
+      if (*p == 0x3F && !in_quato)	/* ? */
+	{
+	  sprintf (t, ":C4O%03d", bind_count++);
+	  t += 7;
+	  p++;
+	  continue;
+	}
+
+      *t = *p;
+      t++;
+      p++;
+    }
+  *t = 0;
+
+  return buffer;
 }
 
 int
-ux_prepare (char *sql_stmt, int flag, bool auto_commit_mode,
+ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
 	    T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 	    unsigned int query_seq_num)
 {
@@ -438,6 +631,7 @@ ux_prepare (char *sql_stmt, int flag, bool auto_commit_mode,
   int srv_h_id;
   int err_code;
   int num_markers = 0;
+  T_PREPARE_CALL_INFO *prepare_call_info;
   ub4 size;
 
   srv_h_id = hm_new_srv_handle (&srv_handle, query_seq_num);
@@ -449,6 +643,7 @@ ux_prepare (char *sql_stmt, int flag, bool auto_commit_mode,
   srv_handle->schema_type = -1;
   srv_handle->auto_commit_mode = auto_commit_mode;
 
+  sql_stmt = change_placeholder (sql_stmt);
   ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
   if (srv_handle->sql_stmt == NULL)
     {
@@ -488,25 +683,37 @@ ux_prepare (char *sql_stmt, int flag, bool auto_commit_mode,
   srv_handle->prepare_flag = flag;
 
   net_buf_cp_int (net_buf, srv_h_id, NULL);
-  net_buf_cp_int (net_buf, 0, NULL);	/* result_cache_lifetime */
+  net_buf_cp_int (net_buf, -1, NULL);	/* result_cache_lifetime */
   convert_stmt_type_oracle_to_cubrid (srv_handle);
   net_buf_cp_byte (net_buf, srv_handle->stmt_type);
   net_buf_cp_int (net_buf, num_markers, NULL);
+  prepare_call_info = make_prepare_call_info (num_markers);
+  if (prepare_call_info == NULL)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      goto prepare_error_internal;
+    }
 
   srv_handle->session = (void *) stmt;
   if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
     {
-      set_metadata_info (srv_handle, net_buf);
+      err_code = set_metadata_info (srv_handle, net_buf);
+      if (err_code != CAS_NO_ERROR)
+	{
+	  goto prepare_error_internal;
+	}
     }
   else
     {
       net_buf_cp_byte (net_buf, 1);	/* updatable flag */
       net_buf_cp_int (net_buf, 0, NULL);
     }
+  srv_handle->prepare_call_info = prepare_call_info;
   return srv_h_id;
 
 prepare_error:
   cas_oracle_get_errno ();
+prepare_error_internal:
   NET_BUF_ERR_SET (net_buf);
   if (auto_commit_mode == true)
     {
@@ -559,115 +766,118 @@ set_time_to_ora_date (char *ora_date, ub1 hour, ub1 min, ub1 sec)
 }
 
 static int
-netval_to_oraval (void *net_type, void *net_value, ub2 * type, size_t * size,
-		  void **data)
+netval_to_oraval (void *net_type, void *net_value, DB_VALUE * out_val)
 {
   char cas_type;
   int data_size;
+  char *data = NULL;
 
-  *data = 0;
   NET_ARG_GET_CHAR (cas_type, net_type);
   NET_ARG_GET_SIZE (data_size, net_value);
 
+  out_val->need_clear = false;
   switch (cas_type)
     {
     case CCI_U_TYPE_NULL:
-      *type = 0;
-      *size = 0;
-      *data = 0;
+      db_make_null (out_val);
       break;
     case CCI_U_TYPE_CHAR:
     case CCI_U_TYPE_STRING:
       {
 	char *val;
-	*type = SQLT_STR;
-	NET_ARG_GET_STR (val, *size, net_value);
-	*data = malloc (*size);
-	strncpy (*data, val, *size);
+	NET_ARG_GET_STR (val, out_val->size, net_value);
+	data = MALLOC (out_val->size);
+	strncpy (data, val, out_val->size);
+
+	out_val->db_type = SQLT_STR;
+	out_val->data.p = data;
+	out_val->buf = (void *) out_val->data.p;
+	out_val->need_clear = true;
 	break;
       }
     case CCI_U_TYPE_INT:
       {
-	int *val = (int *) malloc (sizeof (int));
+	int *val = &(out_val->data.i);
 	NET_ARG_GET_INT (*val, net_value);
-	*size = sizeof (int);
-	*type = SQLT_INT;
-	*data = val;
+
+	out_val->size = sizeof (int);
+	out_val->db_type = SQLT_INT;
+	out_val->buf = (void *) &(out_val->data.i);
 	break;
       }
     case CCI_U_TYPE_SHORT:
       {
-	short *val = (short *) malloc (sizeof (short));
+	short *val = &(out_val->data.sh);
 	NET_ARG_GET_SHORT (*val, net_value);
-	*size = sizeof (short);
-	*type = SQLT_INT;
-	*data = val;
+	out_val->size = sizeof (short);
+	out_val->db_type = SQLT_INT;
+	out_val->buf = (void *) &(out_val->data.sh);
 	break;
       }
     case CCI_U_TYPE_FLOAT:
       {
-	float *val = (float *) malloc (sizeof (float));
+	float *val = &(out_val->data.f);
 	NET_ARG_GET_FLOAT (*val, net_value);
-	*size = sizeof (float);
-	*type = SQLT_IBFLOAT;
-	*data = val;
+	out_val->size = sizeof (float);
+	out_val->db_type = SQLT_BFLOAT;
+	out_val->buf = (void *) &(out_val->data.f);
 	break;
       }
     case CCI_U_TYPE_DOUBLE:
       {
-	double *val = (double *) malloc (sizeof (double));
+	double *val = &(out_val->data.d);
 	NET_ARG_GET_DOUBLE (*val, net_value);
-	*size = sizeof (double);
-	*type = SQLT_IBDOUBLE;
-	*data = val;
+	out_val->size = sizeof (double);
+	out_val->db_type = SQLT_BDOUBLE;
+	out_val->buf = (void *) &(out_val->data.d);
 	break;
       }
     case CCI_U_TYPE_DATE:
       {
-	OCIDate *val = (OCIDate *) malloc (sizeof (OCIDate));
+	OCIDate *val = &(out_val->data.date);
 	int year, month, day;
 	NET_ARG_GET_DATE (year, month, day, net_value);
-	*size = 7;
-	*type = SQLT_DAT;
+	out_val->size = 7;
+	out_val->db_type = SQLT_DAT;
 	set_date_to_ora_date ((char *) val, year, month, day);
 	set_time_to_ora_date ((char *) val, 0, 0, 0);
-	*data = val;
+	out_val->buf = (void *) &(out_val->data.date);
 	break;
       }
     case CCI_U_TYPE_TIME:
       {
-	OCIDate *val = (OCIDate *) malloc (sizeof (OCIDate));
+	OCIDate *val = &(out_val->data.date);
 	int hh, mm, ss;
 	NET_ARG_GET_TIME (hh, mm, ss, net_value);
-	*size = 7;
-	*type = SQLT_DAT;
+	out_val->size = 7;
+	out_val->db_type = SQLT_DAT;
 	set_date_to_ora_date ((char *) val, 0, 0, 0);
 	set_time_to_ora_date ((char *) val, hh, mm, ss);
-	*data = val;
+	out_val->buf = (void *) &(out_val->data.date);
 	break;
       }
     case CCI_U_TYPE_TIMESTAMP:
       {
-	OCIDate *val = (OCIDate *) malloc (sizeof (OCIDate));
+	OCIDate *val = &(out_val->data.date);
 	int year, month, day, hh, mm, ss;
 	NET_ARG_GET_TIMESTAMP (year, month, day, hh, mm, ss, net_value);
-	*size = 7;
-	*type = SQLT_DAT;
+	out_val->size = 7;
+	out_val->db_type = SQLT_DAT;
 	OCIDateSetDate (val, year, month, day);
 	OCIDateSetTime (val, hh, mm, ss);
-	*data = val;
+	out_val->buf = (void *) &(out_val->data.date);
 	break;
       }
     case CCI_U_TYPE_DATETIME:
       {
-	OCIDate *val = (OCIDate *) malloc (sizeof (OCIDate));
+	OCIDate *val = &(out_val->data.date);
 	int year, month, day, hh, mm, ss, ms;
 	NET_ARG_GET_DATETIME (year, month, day, hh, mm, ss, ms, net_value);
-	*size = 7;
-	*type = SQLT_DAT;
+	out_val->size = 7;
+	out_val->db_type = SQLT_DAT;
 	OCIDateSetDate (val, year, month, day);
 	OCIDateSetTime (val, hh, mm, ss);
-	*data = val;
+	out_val->buf = (void *) &(out_val->data.date);
 	break;
       }
       break;
@@ -675,20 +885,23 @@ netval_to_oraval (void *net_type, void *net_value, ub2 * type, size_t * size,
     case CCI_U_TYPE_VARBIT:
       {
 	char *value;
-	NET_ARG_GET_STR (value, *size, net_value);
-	*type = SQLT_LNG;
-	*data = (char *) malloc (*size);
-	if (*data == NULL)
+	NET_ARG_GET_STR (value, out_val->size, net_value);
+	out_val->db_type = SQLT_BIN;
+	data = (char *) MALLOC (out_val->size);
+	if (data == NULL)
 	  {
 	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
 				   CAS_ERROR_INDICATOR);
 	  }
-	memcpy (*data, value, *size);
+	memcpy (data, value, out_val->size);
+	out_val->data.p = data;
+	out_val->buf = (void *) out_val->data.p;
+	out_val->need_clear = true;
 	break;
       }
     case CCI_U_TYPE_NUMERIC:
       {
-	OCINumber *val = (OCINumber *) malloc (sizeof (OCINumber));
+	OCINumber *val = &(out_val->data.number);
 	char *value;
 	int length, i;
 	char fmt[BUFSIZ];
@@ -701,21 +914,23 @@ netval_to_oraval (void *net_type, void *net_value, ub2 * type, size_t * size,
 	  }
 	OCINumberFromText (ORA_ERR, (text *) value, length, (text *) fmt,
 			   length, NULL, 0, val);
-	*type = SQLT_NUM;
-	*size = sizeof (OCINumber);
-	*data = val;
+	out_val->db_type = SQLT_NUM;
+	out_val->size = sizeof (OCINumber);
+	out_val->buf = (void *) &(out_val->data.number);
 	break;
       }
     case CCI_U_TYPE_BIGINT:
       {
-	char *buf = (char *) malloc (OCI_NUMBER_SIZE);
+	data = (char *) MALLOC (OCI_NUMBER_SIZE);
 	int ret;
 	sb8 bi_val;
 	NET_ARG_GET_BIGINT (bi_val, net_value);
-	*type = SQLT_STR;
-	*size = sizeof (bi_val);
-	snprintf (buf, OCI_NUMBER_SIZE, "%ld", bi_val);
-	*data = buf;
+	out_val->db_type = SQLT_STR;
+	snprintf (data, OCI_NUMBER_SIZE, "%ld", bi_val);
+	out_val->size = strlen (data) + 1;
+	out_val->data.p = data;
+	out_val->buf = (void *) out_val->data.p;
+	out_val->need_clear = true;
 	break;
       }
     case CCI_U_TYPE_MONETARY:
@@ -729,103 +944,6 @@ netval_to_oraval (void *net_type, void *net_value, ub2 * type, size_t * size,
       return OCI_ERROR;
     }
   return OCI_SUCCESS;
-}
-
-static int
-set_result_info (T_SRV_HANDLE * srv_handle)
-{
-  OCIStmt *stmt;
-  OCIParam *col;
-  int ret, count, i;
-  ub4 char_semantics;
-  T_QUERY_RESULT_COLUMN *columns;
-  void **data;
-
-  stmt = srv_handle->session;
-  ret = ORA_PARAM_COUNT (stmt, count);
-  columns = (T_QUERY_RESULT_COLUMN *) calloc (count,
-					      sizeof (T_QUERY_RESULT_COLUMN));
-  if (columns == NULL)
-    {
-      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-    }
-
-  /* TODO: error check all OCI call */
-  for (i = 0; i < count; i++)
-    {
-      ret = OCIParamGet (stmt, OCI_HTYPE_STMT, ORA_ERR, (void **) &col,
-			 i + 1);
-      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &columns[i].type, 0,
-			OCI_ATTR_DATA_TYPE, ORA_ERR);
-      ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &char_semantics, 0,
-			OCI_ATTR_CHAR_USED, ORA_ERR);
-      if (char_semantics == 1)
-	{
-	  ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &columns[i].size, 0,
-			    OCI_ATTR_CHAR_SIZE, ORA_ERR);
-	}
-      else
-	{
-	  ret = OCIAttrGet (col, OCI_DTYPE_PARAM, &columns[i].size, 0,
-			    OCI_ATTR_DATA_SIZE, ORA_ERR);
-	}
-
-      switch (columns[i].type)
-	{
-	case SQLT_NUM:
-	  {
-	    columns[i].type = SQLT_VNU;
-	    columns[i].size = sizeof (OCINumber);
-	    columns[i].data = malloc (sizeof (OCINumber));
-	    data = columns[i].data;
-	    break;
-	  }
-	case SQLT_TIMESTAMP:
-	  {
-	    ret = OCIDescriptorAlloc (ORA_ENV, &columns[i].data,
-				      OCI_DTYPE_TIMESTAMP, 0, 0);
-	    data = &columns[i].data;
-	    break;
-	  }
-	case SQLT_TIMESTAMP_TZ:
-	  {
-	    ret = OCIDescriptorAlloc (ORA_ENV, &columns[i].data,
-				      OCI_DTYPE_TIMESTAMP_TZ, 0, 0);
-	    data = &columns[i].data;
-	    break;
-	  }
-	case SQLT_TIMESTAMP_LTZ:
-	  {
-	    ret = OCIDescriptorAlloc (ORA_ENV, &columns[i].data,
-				      OCI_DTYPE_TIMESTAMP_LTZ, 0, 0);
-	    data = &columns[i].data;
-	    break;
-	  }
-	case OCI_TYPECODE_CLOB:
-	case OCI_TYPECODE_BLOB:
-	  {
-	    ret = OCIDescriptorAlloc (ORA_ENV, &columns[i].data,
-				      OCI_DTYPE_LOB, 0, 0);
-	    data = &columns[i].data;
-	    columns[i].size = -1;
-	    break;
-	  }
-	default:
-	  {
-	    columns[i].data = malloc (columns[i].size);
-	    data = columns[i].data;
-	    break;
-	  }
-	}
-      ret = OCIDefineByPos (stmt, (OCIDefine **) & columns[i].define,
-			    ORA_ERR, i + 1, data, columns[i].size,
-			    columns[i].type, &columns[i].null, 0, 0,
-			    OCI_DEFAULT);
-    }
-  srv_handle->q_result = malloc (sizeof (T_QUERY_RESULT));
-  srv_handle->q_result->column_count = count;
-  srv_handle->q_result->columns = columns;
-  return ret;
 }
 
 int
@@ -850,30 +968,33 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   int ret;
   ub2 type;
   size_t size;
-  void **data;
+  DB_VALUE **out_vals;
   T_OBJECT ins_oid;
+  T_PREPARE_CALL_INFO *call_info;
 
   hm_qresult_end (srv_handle, FALSE);
   stmt = (OCIStmt *) srv_handle->session;
-  ret = ORA_BIND_COUNT (stmt, bind_count);
-  bind = (OCIBind **) malloc (sizeof (OCIBind *) * bind_count);
-  if (bind == NULL)
+  call_info = srv_handle->prepare_call_info;
+
+  bind_count = call_info->num_args;
+  if (bind_count > 0)
     {
-      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-    }
-  data = (void **) malloc (sizeof (void *) * bind_count);
-  if (data == NULL)
-    {
-      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      bind = (OCIBind **) call_info->bind;
+      out_vals = (DB_VALUE **) call_info->dbval_args;
+      if ((bind == NULL) || (out_vals == NULL))
+	{
+	  ret = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+	  goto execute_error_internal;
+	}
     }
 
   for (i = 0; i < bind_count; i++)
     {
-      ret = netval_to_oraval (argv[2 * i], argv[2 * i + 1], &type, &size,
-			      &data[i]);
+      ret = netval_to_oraval (argv[2 * i], argv[2 * i + 1], out_vals[i]);
       GOTO_ORA_ERROR (ret, execute_error);
-      ret = OCIBindByPos (stmt, &bind[i], ORA_ERR, i + 1, data[i], size, type,
-			  0, 0, 0, 0, 0, OCI_DEFAULT);
+      ret = OCIBindByPos (stmt, &bind[i], ORA_ERR, i + 1,
+			  (void *) out_vals[i]->buf, out_vals[i]->size,
+			  out_vals[i]->db_type, 0, 0, 0, 0, 0, OCI_DEFAULT);
       GOTO_ORA_ERROR (ret, execute_error);
     }
 
@@ -881,7 +1002,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
     {
       iters = 0;
-      mode = OCI_STMT_SCROLLABLE_READONLY;
+      mode = OCI_DEFAULT;
     }
   else
     {
@@ -896,18 +1017,8 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
     {
-      set_result_info (srv_handle);
-      ret = OCIStmtFetch2 (stmt, ORA_ERR, 1, OCI_FETCH_LAST, 0, OCI_DEFAULT);
-      if (ORA_SUCCESS (ret))
-	{
-	  ret = ORA_CURR_POS (stmt, row_count);
-	  ret = OCIStmtFetch2 (stmt, ORA_ERR, 1, OCI_FETCH_FIRST, 0,
-			       OCI_DEFAULT);
-	}
-      else
-	{
-	  row_count = 0;
-	}
+      srv_handle->is_no_data = false;
+      row_count = INT_MAX;
     }
   else
     {
@@ -918,7 +1029,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
   net_buf_cp_byte (net_buf, 0);
   net_buf_cp_int (net_buf, 1, NULL);	/* num_q_result */
   net_buf_cp_byte (net_buf, srv_handle->stmt_type);
-  net_buf_cp_int (net_buf, row_count, NULL);
+  net_buf_cp_int (net_buf, row_count, &_offset_row_count);
   memset (&ins_oid, 0, sizeof (T_OBJECT));
   NET_BUF_CP_OBJECT (net_buf, &ins_oid);
   net_buf_cp_int (net_buf, 0, NULL);	/* cache time sec */
@@ -926,28 +1037,26 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 
   srv_handle->max_row = max_row;
   srv_handle->max_col_size = max_col_size;
-  FREE_MEM (bind);
+  srv_handle->tuple_count = row_count;
   for (i = 0; i < bind_count; i++)
     {
-      FREE_MEM (data[i]);
+      db_value_clear (out_vals[i]);
     }
-  FREE_MEM (data);
   return ret;
 
 execute_error:
   cas_oracle_get_errno ();
+execute_error_internal:
   NET_BUF_ERR_SET (net_buf);
   if (srv_handle->auto_commit_mode)
     {
       req_info->need_auto_commit = TRAN_AUTOROLLBACK;
     }
   errors_in_transaction++;
-  FREE_MEM (bind);
   for (i = 0; i < bind_count; i++)
     {
-      FREE_MEM (data[i]);
+      db_value_clear (out_vals[i]);
     }
-  FREE_MEM (data);
   return ret;
 }
 
@@ -957,7 +1066,8 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
 		 T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time,
 		 int *clt_cache_reusable)
 {
-  return ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+  return ux_execute (srv_handle, flag, max_col_size, max_row, argc, argv,
+		     net_buf, req_info, clt_cache_time, clt_cache_reusable);
 }
 
 #ifndef LIBCAS_FOR_JSP
@@ -1188,9 +1298,10 @@ add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj, char type)
 }
 
 static int
-ora_value_to_net_buf (void *value, int type, int null, int size,
+ora_value_to_net_buf (void *value, int type, bool null, int size,
 		      T_NET_BUF * net_buf)
 {
+  DB_DATA *v = (DB_DATA *) value;
   if (null == true)
     {
       net_buf_cp_int (net_buf, -1, NULL);
@@ -1199,74 +1310,45 @@ ora_value_to_net_buf (void *value, int type, int null, int size,
 
   switch (type)
     {
-    case OCI_TYPECODE_CHAR:
-    case OCI_TYPECODE_VARCHAR:
-    case OCI_TYPECODE_VARCHAR2:
+    case SQLT_LNG:
+      size = strlen (v->p);
+    case SQLT_AFC:
+    case SQLT_STR:
+      add_res_data_bytes (net_buf, v->p, size, 0);
+      memset (v->p, 0, size);
+      return 4 + size + 1;
+    case SQLT_CHR:
+    case SQLT_VST:
       {
-	add_res_data_string (net_buf, value, size, 0);
+	OCIString *ocistr = (OCIString *) v->p;
+	size = OCIStringSize (ORA_ENV, ocistr);
+	add_res_data_string (net_buf, (char *) OCIStringPtr (ORA_ENV, ocistr),
+			     size, 0);
 	return 4 + size + 1;
       }
-    case OCI_TYPECODE_SMALLINT:
+    case SQLT_TIMESTAMP:
+    case SQLT_TIMESTAMP_TZ:
+    case SQLT_TIMESTAMP_LTZ:
       {
-	short val;
-	memcpy (&val, value, size);
-	add_res_data_short (net_buf, val, 0);
-	return 4 + 2;
-      }
-    case OCI_TYPECODE_INTEGER:
-      {
-	int val;
-	memcpy (&val, value, size);
-	add_res_data_int (net_buf, val, 0);
-	return 4 + 4;
-      }
-    case OCI_TYPECODE_FLOAT:
-    case OCI_TYPECODE_REAL:
-    case OCI_TYPECODE_BFLOAT:
-      {
-	float val;
-	memcpy (&val, value, size);
-	add_res_data_float (net_buf, val, 0);
-	return 4 + 4;
-      }
-    case OCI_TYPECODE_DOUBLE:
-    case OCI_TYPECODE_BDOUBLE:
-      {
-	double val;
-	memcpy (&val, value, size);
-	add_res_data_double (net_buf, val, 0);
-	return 4 + 8;
-      }
-    case OCI_TYPECODE_TIMESTAMP:
-    case OCI_TYPECODE_TIMESTAMP_TZ:
-    case OCI_TYPECODE_TIMESTAMP_LTZ:
-      {
-	sb2 year;
-	ub1 month, day, hour, min, sec;
-	ub4 fsec;
+	sb2 yy;
+	ub1 mm, dd, hh, mi, ss;
+	ub4 fs;
 	int ret;
-	OCIDateTime *datetime = (OCIDateTime *) value;
-	ret = OCIDateTimeGetDate (ORA_SVC, ORA_ERR, (OCIDateTime *) value,
-				  &year, &month, &day);
-	ret = OCIDateTimeGetTime (ORA_SVC, ORA_ERR, (OCIDateTime *) value,
-				  &hour, &min, &sec, &fsec);
-	add_res_data_timestamp (net_buf, year, month, day, hour, min, sec, 0);
+	OCIDateTime *dt = (OCIDateTime *) v->p;
+	ret = OCIDateTimeGetDate (ORA_ENV, ORA_ERR, dt, &yy, &mm, &dd);
+	ret = OCIDateTimeGetTime (ORA_ENV, ORA_ERR, dt, &hh, &mi, &ss, &fs);
+	add_res_data_timestamp (net_buf, yy, mm, dd, hh, mi, ss, 0);
 	return 4 + CAS_TIMESTAMP_SIZE;
       }
-    case OCI_TYPECODE_DATE:
+    case SQLT_DAT:
       {
-	sb2 year;
-	ub1 month, day;
-	get_date_from_ora_date (value, &year, &month, &day);
-	add_res_data_date (net_buf, year, month, day, 0);
+	sb2 yy;
+	ub1 mm, dd;
+	get_date_from_ora_date (value, &yy, &mm, &dd);
+	add_res_data_date (net_buf, yy, mm, dd, 0);
 	return 4 + SIZE_DATE;
       }
-    case SQLT_LNG:
-      {
-	add_res_data_bytes (net_buf, value, size, 0);
-	return 4 + size;
-      }
-    case OCI_TYPECODE_NUMBER:
+    case SQLT_NUM:
     case SQLT_VNU:
       {
 	/* TODO: don't work */
@@ -1296,10 +1378,10 @@ ora_value_to_net_buf (void *value, int type, int null, int size,
 	    return 4 + buf_size + 1;
 	  }
       }
-    case OCI_TYPECODE_CLOB:
-    case OCI_TYPECODE_BLOB:
+    case SQLT_CLOB:
+    case SQLT_BLOB:
       {
-	OCILobLocator *lob = (OCILobLocator *) value;
+	OCILobLocator *lob = (OCILobLocator *) v->p;
 	ub4 len, amtp;
 	ub1 *buf;
 
@@ -1312,7 +1394,7 @@ ora_value_to_net_buf (void *value, int type, int null, int size,
 	  }
 
 	amtp = len;
-	buf = (ub1 *) malloc (len);
+	buf = (ub1 *) MALLOC (len);
 	if (buf == NULL)
 	  {
 	    ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -1324,17 +1406,6 @@ ora_value_to_net_buf (void *value, int type, int null, int size,
 	add_res_data_string (net_buf, (char *) buf, len, 0);
 	return 4 + len + 1;
       }
-    case OCI_TYPECODE_REF:
-    case OCI_TYPECODE_INTERVAL_YM:
-    case OCI_TYPECODE_INTERVAL_DS:
-    case OCI_TYPECODE_OCTET:
-    case OCI_TYPECODE_DECIMAL:
-    case OCI_TYPECODE_RAW:
-    case OCI_TYPECODE_VARRAY:
-    case OCI_TYPECODE_TABLE:
-    case OCI_TYPECODE_BFILE:
-    case OCI_TYPECODE_OBJECT:
-    case OCI_TYPECODE_NAMEDCOLLECTION:
     default:
       net_buf_cp_int (net_buf, -1, NULL);
       return 4;
@@ -1346,18 +1417,20 @@ net_buf_cp_oracle_row (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
 		       OCIStmt * stmt)
 {
   T_QUERY_RESULT *q_result = (T_QUERY_RESULT *) srv_handle->q_result;
-  T_QUERY_RESULT_COLUMN *columns = q_result->columns;
+  DB_VALUE *columns = q_result->columns;
   void *value;
-  int i, type, null, size;
+  int i, type, size;
+  signed short null;
   int data_size = 0;
 
   for (i = 0; i < q_result->column_count; i++)
     {
-      value = columns[i].data;
-      type = columns[i].type;
-      null = columns[i].null;
+      type = columns[i].db_type;
+      null = columns[i].is_null;
       size = columns[i].size;
-      data_size += ora_value_to_net_buf (value, type, null, size, net_buf);
+      value = &columns[i].data;
+      data_size +=
+	ora_value_to_net_buf (value, type, (null != 0), size, net_buf);
     }
   return data_size;
 }
@@ -1368,8 +1441,9 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 	  T_REQ_INFO * req_info)
 {
   OCIStmt *stmt;
-  int count, ret, tuple, num_tuple_msg_offset;
+  int ret, tuple, num_tuple_msg_offset;
   T_OBJECT tuple_obj;
+  bool first_flag;
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   if (fetch_count <= 0)
@@ -1378,44 +1452,58 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
     }
 
   if (srv_handle->q_result == NULL
-      || srv_handle->stmt_type != CUBRID_STMT_SELECT)
+      || srv_handle->stmt_type != CUBRID_STMT_SELECT
+      || srv_handle->is_no_data)
     {
-      return ERROR_INFO_SET (CAS_ER_NO_MORE_DATA, CAS_ERROR_INDICATOR);
+      ERROR_INFO_SET (CAS_ER_NO_MORE_DATA, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return ret;
     }
 
   stmt = srv_handle->session;
-  ret = ORA_ROW_COUNT (stmt, count);
-  net_buf_cp_int (net_buf, count, &num_tuple_msg_offset);
-  memset (&tuple_obj, 0, sizeof (T_OBJECT));
   tuple = 0;
+  net_buf_cp_int (net_buf, tuple, &num_tuple_msg_offset);
+  memset (&tuple_obj, 0, sizeof (T_OBJECT));
+  first_flag = (cursor_pos == 1);
 
-  while (count > 0 && CHECK_NET_BUF_SIZE (net_buf))
+  while (tuple < fetch_count && CHECK_NET_BUF_SIZE (net_buf))
     {
-      if (srv_handle->cursor_pos > 0)
+      ret = OCIStmtFetch2 (stmt, ORA_ERR, 1, OCI_DEFAULT, 0, OCI_DEFAULT);
+      if (ret == OCI_NO_DATA)
 	{
-	  ret = OCIStmtFetch (stmt, ORA_ERR, 1, OCI_FETCH_NEXT, OCI_DEFAULT);
-	  if (ret == OCI_NO_DATA)
+	  if (shm_appl->select_auto_commit == ON)
 	    {
-	      if (shm_appl->select_auto_commit == ON)
-		{
-		  hm_srv_handle_set_fetch_completed (srv_handle);
-		}
-	      if (check_auto_commit_after_fetch_done (srv_handle) == true)
-		{
-		  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
-		}
-	      break;
+	      hm_srv_handle_set_fetch_completed (srv_handle);
 	    }
-	  else if (!ORA_SUCCESS (ret))
+	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
 	    {
-	      /* TODO: error */
-	      break;
+	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
 	    }
+	  srv_handle->is_no_data = true;
+	  if (first_flag)
+	    {
+	      net_buf_overwrite_int (net_buf, 0, tuple);
+	      net_buf_overwrite_int (net_buf, _offset_row_count, tuple);
+	      srv_handle->tuple_count = tuple;
+	    }
+	  else if (tuple == 0)
+	    {
+	      ERROR_INFO_SET (CAS_ER_NO_MORE_DATA, CAS_ERROR_INDICATOR);
+	      NET_BUF_ERR_SET (net_buf);
+	      return ret;
+	    }
+	  break;
+	}
+      else if (!ORA_SUCCESS (ret))
+	{
+	  cas_oracle_get_errno ();
+	  NET_BUF_ERR_SET (net_buf);
+	  return ret;
 	}
       net_buf_cp_int (net_buf, cursor_pos, NULL);
       NET_BUF_CP_OBJECT (net_buf, &tuple_obj);
       net_buf_cp_oracle_row (srv_handle, net_buf, stmt);
-      srv_handle->cursor_pos++;
+      cursor_pos++;
       tuple++;
     }
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, tuple);
@@ -1447,38 +1535,40 @@ ux_free_result (void *result)
 
   for (i = 0; i < r->column_count; i++)
     {
-      if (r->columns[i].data)
+      if (r->columns[i].data.p)
 	{
-	  switch (r->columns[i].type)
+	  switch (r->columns[i].db_type)
 	    {
 	    case SQLT_TIMESTAMP:
-	      {
-		OCIDescriptorFree (r->columns[i].data, OCI_DTYPE_TIMESTAMP);
-		break;
-	      }
 	    case SQLT_TIMESTAMP_TZ:
-	      {
-		OCIDescriptorFree (r->columns[i].data,
-				   OCI_DTYPE_TIMESTAMP_TZ);
-		break;
-	      }
 	    case SQLT_TIMESTAMP_LTZ:
 	      {
-		OCIDescriptorFree (r->columns[i].data,
-				   OCI_DTYPE_TIMESTAMP_LTZ);
+		OCIDescriptorFree (r->columns[i].data.p, OCI_DTYPE_TIMESTAMP);
 		break;
 	      }
-	    case OCI_TYPECODE_CLOB:
-	    case OCI_TYPECODE_BLOB:
+	    case SQLT_CLOB:
+	    case SQLT_BLOB:
 	      {
-		OCIDescriptorFree (r->columns[i].data, OCI_DTYPE_LOB);
+		OCIDescriptorFree (r->columns[i].data.p, OCI_DTYPE_LOB);
 		break;
 	      }
+	    case SQLT_CHR:
+	    case SQLT_VST:
+	      OCIStringResize (ORA_ENV, ORA_ERR, 0,
+			       (OCIString **) & r->columns[i].data.p);
+	      break;
+	    case SQLT_LNG:
+	    case SQLT_AFC:
+	    case SQLT_STR:
+	      {
+		FREE_MEM (r->columns[i].data.p);
+		break;
+	      }
+	    case SQLT_NUM:
+	    case SQLT_VNU:
+	    case SQLT_DAT:
 	    default:
-	      {
-		FREE_MEM (r->columns[i].data);
-		break;
-	      }
+	      break;
 	    }
 	}
     }
@@ -1591,8 +1681,133 @@ set_db_connect_status (int status)
 }
 
 bool
-is_server_alive ()
+is_server_alive (void)
 {
   /* TODO */
   return true;
+}
+
+int
+get_tuple_count (T_SRV_HANDLE * srv_handle)
+{
+  return srv_handle->tuple_count;
+}
+
+static void
+db_make_null (DB_VALUE * value)
+{
+  memset ((char *) value, 0x00, sizeof (DB_VALUE));
+  value->is_null = true;
+}
+
+static int
+db_value_clear (DB_VALUE * value)
+{
+  if (value == NULL)
+    {
+      return ERROR_INFO_SET (CAS_ER_DB_VALUE, CAS_ERROR_INDICATOR);
+    }
+  if (value->need_clear)
+    {
+      FREE_MEM (value->data.p);
+    }
+  memset ((char *) value, 0x00, sizeof (DB_VALUE));
+  return 0;
+}
+
+static T_PREPARE_CALL_INFO *
+make_prepare_call_info (int num_args)
+{
+  T_PREPARE_CALL_INFO *call_info;
+  OCIBind **bind = NULL;
+  DB_VALUE **arg_val = NULL;
+  char *param_mode = NULL;
+  int i;
+
+  call_info = (T_PREPARE_CALL_INFO *) MALLOC (sizeof (T_PREPARE_CALL_INFO));
+  if (call_info == NULL)
+    {
+      return NULL;
+    }
+
+  memset (call_info, 0, sizeof (T_PREPARE_CALL_INFO));
+
+  if (num_args > 0)
+    {
+      bind = (OCIBind **) MALLOC (sizeof (OCIBind *) * num_args);
+      if (bind == NULL)
+	{
+	  goto make_prpare_call_info;
+	}
+
+      arg_val = (DB_VALUE **) MALLOC (sizeof (DB_VALUE *) * (num_args + 1));
+      if (arg_val == NULL)
+	{
+	  goto make_prpare_call_info;
+	}
+      memset (arg_val, 0, sizeof (DB_VALUE *) * (num_args + 1));
+
+      param_mode = (char *) MALLOC (sizeof (char) * num_args);
+      if (param_mode == NULL)
+	{
+	  goto make_prpare_call_info;
+	}
+
+      for (i = 0; i < num_args; i++)
+	{
+	  arg_val[i] = (DB_VALUE *) MALLOC (sizeof (DB_VALUE));
+	  if (arg_val[i] == NULL)
+	    {
+	      goto make_prpare_call_info;
+	    }
+	  db_make_null (arg_val[i]);
+	  param_mode[i] = CCI_PARAM_MODE_UNKNOWN;
+	}
+    }
+
+  call_info->dbval_ret = NULL;
+  call_info->dbval_args = arg_val;
+  call_info->num_args = num_args;
+  call_info->bind = (void *) bind;
+  call_info->param_mode = param_mode;
+
+  return call_info;
+make_prpare_call_info:
+  FREE_MEM (call_info);
+  FREE_MEM (bind);
+  FREE_MEM (param_mode);
+  if (arg_val != NULL)
+    {
+      for (i = 0; i < num_args; i++)
+	{
+	  FREE_MEM (arg_val[i]);
+	}
+      FREE_MEM (arg_val);
+    }
+  return NULL;
+}
+
+void
+ux_prepare_call_info_free (T_PREPARE_CALL_INFO * call_info)
+{
+  DB_VALUE **args;
+
+  if (call_info)
+    {
+      int i;
+
+      FREE_MEM (call_info->dbval_ret);
+
+      args = (DB_VALUE **) call_info->dbval_args;
+      for (i = 0; i < call_info->num_args; i++)
+	{
+	  db_value_clear (args[i]);
+	  FREE_MEM (((DB_VALUE **) args)[i]);
+	}
+
+      FREE_MEM (call_info->dbval_args);
+      FREE_MEM (call_info->bind);
+      FREE_MEM (call_info->param_mode);
+      FREE_MEM (call_info);
+    }
 }

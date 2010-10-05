@@ -1512,6 +1512,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
   DB_SESSION *session = NULL;	/* query compilation session id */
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
+  bool do_abort_transaction = false;	/* flag for transaction abort */
 #if defined(CS_MODE)
   bool prm_query_mode_sync = prm_get_query_mode_sync ();
 #endif
@@ -1614,7 +1615,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	   */
 	  if (csql_arg->auto_commit && PRM_CSQL_AUTO_COMMIT)
 	    {
-	      db_abort_transaction ();
+	      do_abort_transaction = true;
 	    }
 
 	  /* compilation error */
@@ -1624,6 +1625,15 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	      && (db_error_code () != ER_IT_EMPTY_STATEMENT))
 	    {
 	      display_error (session, 0);
+	      /* do_abort_transaction() should be called after display_error()
+	       * because in some cases it deallocates the parser containing
+	       * the error message
+	       */
+	      if (do_abort_transaction)
+		{
+		  db_abort_transaction ();
+		  do_abort_transaction = false;
+		}
 	      csql_Num_failures += 1;
 	      continue;
 	    }
@@ -1664,11 +1674,16 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	  if (csql_arg->auto_commit && PRM_CSQL_AUTO_COMMIT
 	      && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	    {
-	      db_abort_transaction ();
+	      do_abort_transaction = true;
 	    }
 	  if (csql_arg->continue_on_error)
 	    {
 	      display_error (session, stmt_start_line_no);
+	      if (do_abort_transaction)
+		{
+		  db_abort_transaction ();
+		  do_abort_transaction = false;
+		}
 	      csql_Num_failures += 1;
 
 	      free_attr_spec (&attr_spec);
@@ -1721,22 +1736,18 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	  break;
 
 	case CUBRID_STMT_UPDATE:
-	  sprintf (csql_Scratch_text, csql_get_message (CSQL_ROWS), db_error,
-		   "updated");
-	  csql_display_msg (csql_Scratch_text);
-	  break;
-
 	case CUBRID_STMT_DELETE:
-	  sprintf (csql_Scratch_text, csql_get_message (CSQL_ROWS), db_error,
-		   "deleted");
-	  csql_display_msg (csql_Scratch_text);
-	  break;
-
 	case CUBRID_STMT_INSERT:
-	  sprintf (csql_Scratch_text, csql_get_message (CSQL_ROWS), db_error,
-		   "inserted");
-	  csql_display_msg (csql_Scratch_text);
-	  break;
+	  {
+	    const char *msg_p;
+
+	    msg_p = ((db_error > 1)
+		     ? csql_get_message (CSQL_ROWS)
+		     : csql_get_message (CSQL_ROW));
+	    sprintf (csql_Scratch_text, msg_p, db_error, "affected");
+	    csql_display_msg (csql_Scratch_text);
+	    break;
+	  }
 
 	default:
 	  break;
@@ -1783,11 +1794,16 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 	  if (db_error < 0)
 	    {
 	      csql_Error_code = CSQL_ERR_SQL_ERROR;
-	      db_abort_transaction ();
+	      do_abort_transaction = true;
 
 	      if (csql_arg->continue_on_error)
 		{
 		  display_error (session, stmt_start_line_no);
+		  if (do_abort_transaction)
+		    {
+		      db_abort_transaction ();
+		      do_abort_transaction = false;
+		    }
 		  csql_Num_failures += 1;
 		  continue;
 		}
@@ -1810,6 +1826,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type,
 error:
 
   display_error (session, stmt_start_line_no);
+  if (do_abort_transaction)
+    {
+      db_abort_transaction ();
+      do_abort_transaction = false;
+    }
 
   /* Finish... */
   sprintf (csql_Scratch_text, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),

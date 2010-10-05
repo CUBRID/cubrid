@@ -31,7 +31,7 @@
 #include "connection_sr.h"
 #include "thread_impl.h"
 
-extern void css_block_all_active_conn (void);
+extern void css_block_all_active_conn (unsigned short stop_phase);
 extern void css_broadcast_shutdown_thread (void);
 
 #if defined(WINDOWS)

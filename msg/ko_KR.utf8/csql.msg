@@ -73,6 +73,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
 68 지정된 트랜잭션이 종료되었습니다.
 69 지정된 트랜잭션 종료가 실패했습니다.
 70 %d 개의 열이 %s.
+71 %d 개의 열이 %s.
 $ These 3 should be blank
 75 자동화된 API 시험기
 76 적합하지 않은 자동화 API 시험기

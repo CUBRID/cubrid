@@ -70,4 +70,5 @@ extern int css_return_queued_error (CSS_CONN_ENTRY * conn,
 				    unsigned short request_id, char **buffer,
 				    int *buffer_size, int *rc);
 extern void css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn);
+extern int css_check_magic (CSS_CONN_ENTRY * conn);
 #endif /* _CONNECTION_CL_H_ */

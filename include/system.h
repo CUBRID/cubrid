@@ -24,6 +24,8 @@
 #endif
 
 #if defined(WINDOWS)
+#define _CRT_RAND_S
+
 #include <winsock2.h>
 #include <windows.h>
 #endif

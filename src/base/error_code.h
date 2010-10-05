@@ -21,9 +21,12 @@
 /*
  * error_code.h - Error codes
  *
+ * CAUTION!
+ *
  * When an entry is added here please ensure that the msg/<locale>/cubrid.msg
  * files are updated with matching error strings. See message_catalog.c for
  * details.
+ * The error codes must also be added to compat/dbi_compat.h
  * ER_LAST_ERROR must also be updated.
  */
 
@@ -1234,9 +1237,44 @@
 #define ER_LOG_FLUSH_VICTIM_STARTED                 -991
 #define ER_LOG_FLUSH_VICTIM_FINISHED                -992
 
+#define	ER_QPROC_OVERFLOW_BITOP			    -993
 
-#define ER_LAST_ERROR                               -993
+#define ER_IT_IS_DISALLOWED_AS_PREPARED             -994
+#define ER_IT_PREPARED_NAME_NOT_FOUND               -995
+#define ER_IT_INCORRECT_HOSTVAR_COUNT               -996
 
-/* must be appended error code to compat/dbi_compat.h */
+#define ER_FK_CANT_ON_PARTITION                     -997
+#define ER_FK_MUST_NOT_BE_NOT_NULL                  -998
+
+#define ER_SM_CANT_COPY_WITH_FEATURE                -999
+#define ER_SM_ONLY_NORMAL_ATTRIBUTES                -1000
+
+#define ER_UNEXPECTED                               -1001
+#define ER_CANNOT_GET_LOCK                          -1002
+#define ER_SM_CONSTRAINT_HAS_DIFFERENT_TYPE         -1003
+#define ER_SM_FK_MYSQL_DIFFERENT                    -1004
+#define ER_REPLACE_NOT_YET_ON_BROKER                -1005
+#define ER_ODKU_NOT_YET_ON_BROKER                   -1006
+#define ER_SM_INDEX_PREFIX_LENGTH_ON_UNIQUE_FOREIGN -1007
+#define ER_SM_INDEX_PREFIX_LENGTH_ON_PARTITIONED_CLASS -1008
+
+#define ER_COMPACTDB_ALREADY_STARTED		    -1009
+#define ER_SM_INVALID_INDEX_WITH_PREFIX_TYPE        -1010
+
+#define ER_FK_CANT_ON_SHARED_ATTRIBUTE		    -1011
+
+#define ER_CREATE_AS_SELECT_NULL_TYPE		    -1012
+
+#define ER_LAST_ERROR                               -1013
+
+/*
+ * CAUTION!
+ *
+ * When an entry is added here please ensure that the msg/<locale>/cubrid.msg
+ * files are updated with matching error strings. See message_catalog.c for
+ * details.
+ * The error codes must also be added to compat/dbi_compat.h
+ * ER_LAST_ERROR must also be updated.
+ */
 
 #endif /* _ERROR_CODE_H_ */

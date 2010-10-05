@@ -5450,7 +5450,7 @@ add_argument (LDR_CONTEXT * context)
 }
 
 /*
- * ldr_act_add_argument - spefify paramters to an instance constructor method
+ * ldr_act_add_argument - specify parameters to an instance constructor method
  * previously specified with ldr_act_set_constructor.
  *    return: NO_ERROR if successful, error code otherwise
  *    context(in/out): context

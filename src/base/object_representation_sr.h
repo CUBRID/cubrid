@@ -99,6 +99,7 @@ struct or_index
 {
   OR_INDEX *next;
   OR_ATTRIBUTE **atts;		/* Array of associated attributes */
+  int *attrs_prefix_length;	/* prefix length */
   char *btname;			/* index( or constraint) name */
   OR_FOREIGN_KEY *fk;
   BTREE_TYPE type;		/* btree type */
@@ -172,5 +173,6 @@ extern CLS_INFO *orc_class_info_from_record (RECDES * record);
 extern void orc_free_class_info (CLS_INFO * info);
 extern int orc_subclasses_from_record (RECDES * record,
 				       int *array_size, OID ** array_ptr);
-
+extern OR_CLASSREP **or_get_all_representation (RECDES * record,
+						bool do_indexes, int *count);
 #endif /* _OBJECT_REPRESENTATION_SR_H_ */

@@ -1,31 +1,148 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE project>
 
-<project default="dist" name="cubridmanager">
-    <property name="basedir" value=""/>
-    <property name="src" value="src/jdbc"/>
-    <property name="build" value="class"/>
-    <property name="version" value=""/>
-    <property name="jar.file" value="JDBC-${version}.jar"/>
+<project default="dist-cubrid" name="cubridmanager">
+    <property name="cubrid-jar-file" value="JDBC-${version}-cubrid.jar"/>
+    <property name="mysql-jar-file" value="JDBC-${version}-cubrid-mysql.jar"/>
+    <property name="oracle-jar-file" value="JDBC-${version}-cubrid-oracle.jar"/>
+    <property name="bin-cubrid" value="bin-cubrid"/>
+    <property name="bin-mysql" value="bin-mysql"/>
+    <property name="bin-oracle" value="bin-oracle"/>
+    <property name="src-cubrid" value="src-cubrid"/>
+    <property name="src-mysql" value="src-mysql"/>
+    <property name="src-oracle" value="src-oracle"/>
+    <property name="src" value="."/>
 
     <target name="init">
-        <mkdir dir="${build}"/>
+        <mkdir dir="src/cubrid"/>
+        <copy todir="src/cubrid">
+            <fileset dir="${src}" excludes="**/.svn">
+                <patternset id="pjava">
+                    <exclude name="**/*.pjava"/>
+                </patternset>
+            </fileset>
+        </copy>
     </target>
+
     <target name="clean">
         <delete failonerror="false" includeEmptyDirs="true">
-            <fileset dir="${build}"/>
+            <fileset dir="${bin-cubrid}"/>
+            <fileset dir="${bin-mysql}"/>
+            <fileset dir="${bin-oracle}"/>
+            <fileset dir="src"/>
+            <fileset dir="${src-cubrid}"/>
+            <fileset dir="${src-mysql}"/>
+            <fileset dir="${src-oracle}"/>
             <fileset file="*.jar"/>
         </delete>
     </target>
-    <target depends="init" name="compile">
-        <javac destdir="${build}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source">
-            <src path="."/>
-            <src path="${src}"/>
+
+    <target name="dist-cubrid" depends="build-cubrid">
+        <jar jarfile="${cubrid-jar-file}">
+        <fileset dir="${bin-cubrid}"/>
+        <fileset file="${src}/../sql-error-codes.xml"/>
+        <fileset file="src/CUBRID-JDBC-*"/>
+    </jar>
+    </target>
+
+    <target name="dist-mysql" depends="build-mysql">
+        <jar jarfile="${mysql-jar-file}">
+        <fileset dir="${bin-mysql}"/>
+        <fileset file="${src}/../sql-error-codes.xml"/>
+        <fileset file="src/CUBRID-JDBC-*"/>
+    </jar>
+    </target>
+
+    <target name="dist-oracle" depends="build-oracle">
+        <jar jarfile="${oracle-jar-file}">
+        <fileset dir="${bin-oracle}"/>
+        <fileset file="${src}/../sql-error-codes.xml"/>
+        <fileset file="src/CUBRID-JDBC-*"/>
+    </jar>
+    </target>
+
+    <target name="build-cubrid" depends="compile-cubrid">
+    </target>
+    <target name="build-mysql" depends="compile-mysql">
+    </target>
+    <target name="build-oracle" depends="compile-oracle">
+    </target>
+
+    <target name="compile-cubrid" depends="src-cubrid">
+        <javac destdir="${bin-cubrid}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source">
+            <src path="${src-cubrid}"/>
         </javac>
     </target>
-    <target depends="compile" name="build">
+
+    <target name="compile-mysql" depends="src-mysql">
+        <javac destdir="${bin-mysql}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source">
+            <src path="${src-mysql}"/>
+        </javac>
     </target>
-    <target depends="build" name="dist">
-        <jar jarfile="${jar.file}" basedir="${build}"/>
+
+    <target name="compile-oracle" depends="src-oracle">
+        <javac destdir="${bin-oracle}" target="1.5" encoding="EUC-KR" debug="true" debuglevel="lines,source">
+            <src path="${src-oracle}"/>
+        </javac>
+    </target>
+
+    <target name="src-cubrid" depends="init">
+        <mkdir dir="${bin-cubrid}"/>
+        <copy todir="${src-cubrid}/cubrid" filtering="true">
+            <fileset dir="src/cubrid"/>
+            <filterset>
+                <filter token="CUBRID_DRIVER" value="cubrid.jdbc.driver"/>
+                <filter token="CUBRID_JCI" value="cubrid.jdbc.jci"/>
+                <filter token="CUBRID_SQL" value="cubrid.sql"/>
+            </filterset>
+        </copy>
+        <jar jarfile="JDBC-${version}-cubrid-src.jar">
+        <fileset dir="${src-cubrid}"/>
+        <fileset file="${src}/../sql-error-codes.xml"/>
+        <fileset file="src/CUBRID-JDBC-*"/>
+    </jar>
+    </target>
+
+    <target name="src-mysql" depends="init">
+        <mkdir dir="${bin-mysql}"/>
+        <mkdir dir="${src-mysql}/cubrid/jdbc/mysql"/>
+        <copy todir="${src-mysql}/cubrid/jdbc/mysql" filtering="true">
+            <fileset dir="src/cubrid/jdbc"/>
+            <fileset dir="src/cubrid">
+                <include name="sql/*"/>
+            </fileset>
+            <filterset>
+                <filter token="CUBRID_DRIVER" value="cubrid.jdbc.mysql.driver"/>
+                <filter token="CUBRID_JCI" value="cubrid.jdbc.mysql.jci"/>
+                <filter token="CUBRID_SQL" value="cubrid.jdbc.mysql.sql"/>
+            </filterset>
+        </copy>
+        <jar jarfile="JDBC-${version}-cubrid-mysql-src.jar">
+        <fileset dir="${src-mysql}"/>
+        <fileset file="${src}/../sql-error-codes.xml"/>
+        <fileset file="src/CUBRID-JDBC-*"/>
+    </jar>
+    </target>
+
+    <target name="src-oracle" depends="init">
+        <mkdir dir="${bin-oracle}"/>
+        <mkdir dir="${src-oracle}/cubrid/jdbc/oracle"/>
+        <copy todir="${src-oracle}/cubrid/jdbc/oracle" filtering="true">
+            <fileset dir="src/cubrid/jdbc"/>
+            <fileset dir="src/cubrid">
+                <include name="sql/*"/>
+            </fileset>
+            <filterset>
+                <filter token="CUBRID_DRIVER" value="cubrid.jdbc.oracle.driver"/>
+                <filter token="CUBRID_JCI" value="cubrid.jdbc.oracle.jci"/>
+                <filter token="CUBRID_SQL" value="cubrid.jdbc.oracle.sql"/>
+            </filterset>
+        </copy>
+        <jar jarfile="JDBC-${version}-cubrid-oracle-src.jar">
+        <fileset dir="${src-oracle}"/>
+        <fileset file="${src}/../sql-error-codes.xml"/>
+        <fileset file="src/CUBRID-JDBC-*"/>
+    </jar>
     </target>
 </project>
+

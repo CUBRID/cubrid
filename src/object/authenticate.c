@@ -376,7 +376,7 @@ static AU_USER_CACHE *Au_user_cache = NULL;
  * Au_class_caches
  *
  * A list of all allocated class caches.  These are maintained on a list
- * so that we can get to all of them easilly when they need to be
+ * so that we can get to all of them easily when they need to be
  * altered.
  */
 static AU_CLASS_CACHE *Au_class_caches = NULL;
@@ -507,7 +507,7 @@ static int au_update_new_auth (MOP grantor, MOP user, MOP class_mop,
 			       DB_AUTH auth_type, int grant_option);
 static int au_delete_new_auth (MOP grantor, MOP user, MOP class_mop,
 			       DB_AUTH auth_type);
-static int au_propogate_del_new_auth (AU_GRANT * glist, DB_AUTH mask);
+static int au_propagate_del_new_auth (AU_GRANT * glist, DB_AUTH mask);
 
 static int check_user_name (const char *name);
 static void encrypt_password (const char *pass, int add_prefix, char *dest);
@@ -538,7 +538,7 @@ static int collect_class_grants (MOP class_mop, DB_AUTH type,
 				 MOP revoked_auth, int revoked_grant_index,
 				 AU_GRANT ** return_grants);
 static void map_grant_list (AU_GRANT * grants, MOP grantor);
-static int propogate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask);
+static int propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask);
 
 static int is_protected_class (MOP classmop, SM_CLASS * sm_class,
 			       DB_AUTH auth);
@@ -1683,13 +1683,13 @@ au_delete_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
 }
 
 /*
- * au_propogate_del_new_auth -
+ * au_propagate_del_new_auth -
  *   return: error code
  *   glist(in):
  *   mask(in):
  */
 static int
-au_propogate_del_new_auth (AU_GRANT * glist, DB_AUTH mask)
+au_propagate_del_new_auth (AU_GRANT * glist, DB_AUTH mask)
 {
   AU_GRANT *g;
   DB_SET *grants;
@@ -2713,7 +2713,7 @@ ret:
 }
 
 /*
- * au_add_member_internal - Add a member to a group and propogate the member
+ * au_add_member_internal - Add a member to a group and propagate the member
  *                          to all affected	sub-groups.  If the call is
  *                          for a new user, then no other user can be part of
  *                          this user(group)
@@ -2731,7 +2731,7 @@ ret:
  *    groups the user/group is a member of (immediate or otherwise).  the
  *    group attribute is a flattened set.  when a user/group is added to a
  *    new group, the new group is added to both the direct_groups and groups
- *    attributes for the user/group.  then that change is propogated to other
+ *    attributes for the user/group.  then that change is propagated to other
  *    users/groups.
  *    for example,  if u1 is in g1 and g1 is added to g2, g2 is added to g1's
  *    direct_groups and groups attributes and g2 is also added to u1's groups
@@ -2836,7 +2836,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 }
 
 /*
- * au_add_member - Add a member to a group and propogate the member to
+ * au_add_member - Add a member to a group and propagate the member to
  *                 all affected sub-groups.
  *   return: error status
  *   group(in):  group to get new member
@@ -2925,7 +2925,7 @@ au_add_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval)
  *    groups the user/group is a member of (immediate or otherwise).  The
  *    groups attribute is a flattened set.  When a user/group is dropped from
  *    a group, the group is removed from both the direct_groups and groups
- *    attributes for the user/group.  Then that change is propogated to other
+ *    attributes for the user/group.  Then that change is propagated to other
  *    users/groups.
  *    For example,  if U1 is directly in G1 and G1 is directly in G2 and G1
  *    is dropped from G2, G2 is removed from G1's direct_groups and groups
@@ -3177,7 +3177,7 @@ au_drop_user (MOP user)
     }
 
 
-  /* propogate user deletion to groups */
+  /* propagate user deletion to groups */
   db_make_object (&val[1], user);
 
   session = db_open_buffer ("update db_user d set "
@@ -4341,7 +4341,7 @@ collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth,
 }
 
 /*
- * map_grant_list - Work function for propogate_revoke.
+ * map_grant_list - Work function for propagate_revoke.
  *   return: none
  *   grants(in): grant list
  *   grantor(in): owner object
@@ -4373,14 +4373,14 @@ map_grant_list (AU_GRANT * grants, MOP grantor)
 }
 
 /*
- * propogate_revoke - Propogates a revoke operation to all affected users.
+ * propagate_revoke - Propagates a revoke operation to all affected users.
  *   return: error code
  *   grant_list(in):  list of grant nodes
  *   owner(in): owner of the class
  *   mask(in): authorization type mask
  */
 static int
-propogate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
+propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
 {
   int error = NO_ERROR;
   DB_VALUE element;
@@ -4395,7 +4395,7 @@ propogate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
   if (catcls_Enable == true)
 #endif /* SA_MODE */
     {
-      error = au_propogate_del_new_auth (grant_list, mask);
+      error = au_propagate_del_new_auth (grant_list, mask);
       if (error != NO_ERROR)
 	return error;
     }
@@ -4642,9 +4642,9 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 		  /* calculate the mask to turn off the grant */
 		  mask = (int) ~(type | (type << AU_GRANT_SHIFT));
 
-		  /* propogate the revoke to the affected classes */
+		  /* propagate the revoke to the affected classes */
 		  if ((error =
-		       propogate_revoke (grant_list, classobj->owner,
+		       propagate_revoke (grant_list, classobj->owner,
 					 (DB_AUTH) mask)) == NO_ERROR)
 		    {
 
@@ -5637,7 +5637,7 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class,
 	    /*
 	     * all this appreciably does is set the dirty flag in the MOP
 	     * should have the "dirty after getting write lock" operation
-	     * seperated
+	     * separated
 	     */
 	    class_ = (SM_CLASS *) locator_update_class (classmop);
 	  break;
@@ -5900,9 +5900,19 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode)
  *   mode(in): access type
  *   type(in): authorization type
  *
- * Note: It will call fetch the object from the database if necessary,
- *       update the class' authorization cache if necessary and check
- *       authorization for the desired operation.
+ * Note: Fetch the object from the database if necessary, update the class
+ *       authorization cache if necessary and check authorization for the
+ *       desired operation.
+ *
+ * Note: If op is a VMOP au_fetch_instance will return set obj_ptr as a
+ *       pointer to the BASE INSTANCE memory which is not the instance
+ *       associated with op. Therefore, the object returned is not necessarily
+ *       the contents of the supplied MOP.
+ */
+/*
+ * TODO We need to carefully examine all callers of au_fetch_instance and make
+ *      sure they know that the object returned is not necessarily the
+ *      contents of the supplied MOP.
  */
 int
 au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, DB_AUTH type)
@@ -7000,7 +7010,7 @@ issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant,
       pt_is_keyword (classname) ||
       lang_check_identifier (classname, strlen (classname)) != true)
     {
-      fprintf (fp, "%s%s%s", "\"", classname, "\"");
+      fprintf (fp, "[%s]", classname);
     }
   else
     {
@@ -7013,7 +7023,7 @@ issue_grant_statement (FILE * fp, CLASS_AUTH * auth, CLASS_GRANT * grant,
 	  pt_is_keyword (username) ||
 	  lang_check_identifier (username, strlen (username)) != true)
 	{
-	  fprintf (fp, " TO %s%s%s", "\"", username, "\"");
+	  fprintf (fp, " TO [%s]", username);
 	}
       else
 	{
@@ -7849,7 +7859,7 @@ au_install (void)
 
   /*
    * Authorization object, the grant set could go directly in the user object
-   * but it might be better to keep it seperate in order to use the special
+   * but it might be better to keep it separate in order to use the special
    * read-once lock for the authorization object only.
    */
 

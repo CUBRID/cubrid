@@ -197,7 +197,7 @@ static int load_properties (void);
 static void finalize_properties (void);
 static const char *get_property (int property_type);
 static int parse_arg (UTIL_SERVICE_OPTION_MAP_T * option, const char *arg);
-static int process_service (int command_type);
+static int process_service (int command_type, bool process_window_service);
 static int process_server (int command_type, char *name, bool show_usage);
 static int process_broker (int command_type, int argc, const char **argv);
 static int process_manager (int command_type);
@@ -213,6 +213,7 @@ static void print_result (const char *util_name, int status,
 			  int command_type);
 static bool is_terminated_process (const int pid);
 static char *make_exec_abspath (char *buf, int buf_len, char *cmd);
+static const char *command_string (int command_type);
 
 static char *
 make_exec_abspath (char *buf, int buf_len, char *cmd)
@@ -224,20 +225,10 @@ make_exec_abspath (char *buf, int buf_len, char *cmd)
   return buf;
 }
 
-static void
-print_result (const char *util_name, int status, int command_type)
+static const char *
+command_string (int command_type)
 {
-  const char *result;
   const char *command;
-
-  if (status != NO_ERROR)
-    {
-      result = PRINT_RESULT_FAIL;
-    }
-  else
-    {
-      result = PRINT_RESULT_SUCCESS;
-    }
 
   switch (command_type)
     {
@@ -268,8 +259,25 @@ print_result (const char *util_name, int status, int command_type)
       break;
     }
 
-  print_message (stdout, MSGCAT_UTIL_GENERIC_RESULT, util_name, command,
-		 result);
+  return command;
+}
+
+static void
+print_result (const char *util_name, int status, int command_type)
+{
+  const char *result;
+
+  if (status != NO_ERROR)
+    {
+      result = PRINT_RESULT_FAIL;
+    }
+  else
+    {
+      result = PRINT_RESULT_SUCCESS;
+    }
+
+  print_message (stdout, MSGCAT_UTIL_GENERIC_RESULT, util_name,
+		 command_string (command_type), result);
 }
 
 /*
@@ -439,7 +447,20 @@ main (int argc, char *argv[])
   switch (util_type)
     {
     case SERVICE:
-      status = process_service (command_type);
+      {
+	bool process_window_service = false;
+
+#if defined(WINDOWS)
+	process_window_service = true;
+
+	if (argc > 3
+	    && strcmp ((char *) argv[3], "--for-windows-service") == 0)
+	  {
+	    process_window_service = false;
+	  }
+#endif
+	status = process_service (command_type, process_window_service);
+      }
       break;
     case SERVER:
       status =
@@ -659,7 +680,7 @@ proc_execute (const char *file, const char *args[], bool wait_child,
 	}
       else
 	{
-	  //sleep (3);
+	  /*sleep (3); */
 	  if (out_pid)
 	    {
 	      *out_pid = pid;
@@ -732,75 +753,168 @@ process_master (int command_type)
   return status;
 }
 
+#if defined(WINDOWS)
+/*
+ * is_windwos_service_running -
+ *
+ * return:
+ *
+ *      sleep_time(in):
+ *
+ * NOTE:
+ */
+static bool
+is_windows_service_running (unsigned int sleep_time)
+{
+  FILE *input;
+  char buf[32], cmd[PATH_MAX];
+
+  sleep (sleep_time);
+
+  make_exec_abspath (cmd, PATH_MAX,
+		     (char *) UTIL_WIN_SERVICE_CONTROLLER_NAME " " "-status");
+
+  input = popen (cmd, "r");
+  if (input == NULL)
+    {
+      return false;
+    }
+
+  memset (buf, '\0', sizeof (buf));
+
+  if ((fgets (buf, 32, input) == NULL)
+      || strncmp (buf, "SERVICE_RUNNING", 15) != 0)
+    {
+      pclose (input);
+      return false;
+    }
+
+  pclose (input);
+
+  return true;
+}
+#endif
+
 /*
  * process_service -
  *
  * return:
  *
  *      command_type(in):
+ *      process_window_service(in):
  *
  * NOTE:
  */
 static int
-process_service (int command_type)
+process_service (int command_type, bool process_window_service)
 {
   int status;
 
   switch (command_type)
     {
     case START:
-      status = process_master (command_type);
-      if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
+      if (process_window_service)
 	{
-	  status = process_server (command_type, NULL, false);
+#if defined(WINDOWS)
+	  if (!is_windows_service_running (0))
+	    {
+	      const char *args[] =
+		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, "-start", NULL };
+
+	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			    false, NULL);
+	      status =
+		is_windows_service_running (0) ? NO_ERROR : ER_GENERIC_ERROR;
+	      print_result (PRINT_SERVICE_NAME, status, command_type);
+	    }
+	  else
+	    {
+	      print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
+			     PRINT_SERVICE_NAME);
+	      return NO_ERROR;
+	    }
+#endif
 	}
-      if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
+      else
 	{
-	  status = process_broker (command_type, 0, NULL);
-	}
-      if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
-	{
-	  status = process_manager (command_type);
-	}
-      if (strcmp (get_property (SERVICE_START_REPL_SERVER), PROPERTY_ON) == 0)
-	{
-	  status = process_repl_server (command_type, NULL, 0, 0, 0);
-	}
-      if (strcmp (get_property (SERVICE_START_REPL_AGENT), PROPERTY_ON) == 0)
-	{
-	  status = process_repl_agent (command_type, NULL, NULL);
+	  status = process_master (command_type);
+	  if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
+	    {
+	      status = process_server (command_type, NULL, false);
+	    }
+	  if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
+	    {
+	      status = process_broker (command_type, 0, NULL);
+	    }
+	  if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
+	    {
+	      status = process_manager (command_type);
+	    }
+	  if (strcmp (get_property (SERVICE_START_REPL_SERVER), PROPERTY_ON)
+	      == 0)
+	    {
+	      status = process_repl_server (command_type, NULL, 0, 0, 0);
+	    }
+	  if (strcmp (get_property (SERVICE_START_REPL_AGENT), PROPERTY_ON) ==
+	      0)
+	    {
+	      status = process_repl_agent (command_type, NULL, NULL);
+	    }
 	}
       break;
     case STOP:
-      {
-	if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
-	  {
-	    status = process_server (command_type, NULL, false);
-	  }
-	if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
-	  {
-	    status = process_broker (command_type, 0, NULL);
-	  }
-	if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
-	  {
-	    status = process_manager (command_type);
-	  }
-	if (strcmp (get_property (SERVICE_START_REPL_SERVER), PROPERTY_ON) ==
-	    0)
-	  {
-	    status = process_repl_server (command_type, NULL, 0, 0, 0);
-	  }
-	if (strcmp (get_property (SERVICE_START_REPL_AGENT), PROPERTY_ON) ==
-	    0)
-	  {
-	    status = process_repl_agent (command_type, NULL, NULL);
-	  }
-	status = process_master (command_type);
-      }
+      if (process_window_service)
+	{
+#if defined(WINDOWS)
+	  if (is_windows_service_running (0))
+	    {
+	      const char *args[] =
+		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, "-stop", NULL };
+
+	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			    false, NULL);
+	      status =
+		is_windows_service_running (0) ? ER_GENERIC_ERROR : NO_ERROR;
+	      print_result (PRINT_SERVICE_NAME, status, command_type);
+	    }
+	  else
+	    {
+	      print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			     PRINT_SERVICE_NAME);
+	      return NO_ERROR;
+	    }
+#endif
+	}
+      else
+	{
+	  if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
+	    {
+	      status = process_server (command_type, NULL, false);
+	    }
+	  if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
+	    {
+	      status = process_broker (command_type, 0, NULL);
+	    }
+	  if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
+	    {
+	      status = process_manager (command_type);
+	    }
+	  if (strcmp (get_property (SERVICE_START_REPL_SERVER), PROPERTY_ON)
+	      == 0)
+	    {
+	      status = process_repl_server (command_type, NULL, 0, 0, 0);
+	    }
+	  if (strcmp (get_property (SERVICE_START_REPL_AGENT), PROPERTY_ON) ==
+	      0)
+	    {
+	      status = process_repl_agent (command_type, NULL, NULL);
+	    }
+	  status = process_master (command_type);
+	}
       break;
     case RESTART:
-      status = process_service (STOP);
-      status = process_service (START);
+      status = process_service (STOP, process_window_service);
+      status = process_service (START, process_window_service);
       break;
     case STATUS:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
@@ -958,11 +1072,12 @@ process_server (int command_type, char *name, bool show_usage)
   /* A string is copyed because strtok_r() modify an original string. */
   if (name == NULL)
     {
-      strcpy (buf, us_Property_map[SERVER_START_LIST].property_value);
+      strncpy (buf, us_Property_map[SERVER_START_LIST].property_value,
+	       sizeof (buf) - 1);
     }
   else
     {
-      strcpy (buf, name);
+      strncpy (buf, name, sizeof (buf) - 1);
     }
 
   if (command_type != STATUS && strlen (buf) == 0)
@@ -1251,13 +1366,25 @@ static int
 process_manager (int command_type)
 {
   int cub_auto, cub_js, status;
+  char cub_auto_path[PATH_MAX];
+  char cub_js_path[PATH_MAX];
+  struct stat stbuf;
+
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		 PRINT_MANAGER_NAME, command_string (command_type));
+
+  (void) envvar_bindir_file (cub_auto_path, PATH_MAX, UTIL_CUB_AUTO_NAME);
+  (void) envvar_bindir_file (cub_js_path, PATH_MAX, UTIL_CUB_JS_NAME);
+  if (stat (cub_auto_path, &stbuf) == -1 || stat (cub_js_path, &stbuf) == -1)
+    {
+      printf ("cubrid manager server is not installed.\n");
+      return NO_ERROR;
+    }
 
   status = NO_ERROR;
   switch (command_type)
     {
     case START:
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		     PRINT_MANAGER_NAME, PRINT_CMD_START);
       if (!is_manager_running (0))
 	{
 	  {
@@ -1283,8 +1410,6 @@ process_manager (int command_type)
 	}
       break;
     case STOP:
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		     PRINT_MANAGER_NAME, PRINT_CMD_STOP);
       if (is_manager_running (0))
 	{
 	  {
@@ -1310,8 +1435,6 @@ process_manager (int command_type)
       break;
     case STATUS:
       {
-	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		       PRINT_MANAGER_NAME, PRINT_CMD_STATUS);
 	if (is_manager_running (0))
 	  {
 	    print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,

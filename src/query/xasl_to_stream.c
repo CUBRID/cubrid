@@ -111,7 +111,7 @@ static int xts_save_xasl_node (const XASL_NODE * ptr);
 static int xts_save_cache_attrinfo (const HEAP_CACHE_ATTRINFO * ptr);
 #if 0
 /* there are currently no pointers to these type of structures in xasl
- * so there is no need to have a seperate restore function.
+ * so there is no need to have a separate restore function.
  */
 static int xts_save_merge_list_info (const MERGELIST_PROC_NODE * ptr);
 static int xts_save_ls_merge_info (const QFILE_LIST_MERGE_INFO * ptr);
@@ -1593,7 +1593,7 @@ end:
 #if 0
 /*
  * there are currently no pointers to these type of structures in xasl
- * so there is no need to have a seperate restore function.
+ * so there is no need to have a separate restore function.
  */
 
 static int
@@ -2732,6 +2732,9 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     case SCAN_PROC:
       break;
 
+    case DO_PROC:
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return NULL;
@@ -2906,6 +2909,7 @@ xts_process_buildlist_proc (char *ptr,
   ptr = or_pack_int (ptr, offset);
 
   ptr = or_pack_int (ptr, build_list_proc->g_grbynum_flag);
+  ptr = or_pack_int (ptr, build_list_proc->g_with_rollup);
 
   offset = xts_save_aggregate_type (build_list_proc->g_agg_list);
   if (offset == ER_FAILED)
@@ -3231,6 +3235,10 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
   ptr = or_pack_int (ptr, insert_info->no_logging);
 
   ptr = or_pack_int (ptr, insert_info->release_lock);
+
+  ptr = or_pack_int (ptr, insert_info->do_replace);
+
+  ptr = or_pack_int (ptr, insert_info->dup_key_oid_var_index);
 
   offset = xts_save_partition_info (insert_info->partition);
   if (offset == ER_FAILED)
@@ -4088,7 +4096,8 @@ xts_process_arith_type (char *ptr, const ARITH_TYPE * arith)
 
   ptr = or_pack_int (ptr, arith->misc_operand);
 
-  if (arith->opcode == T_CASE || arith->opcode == T_DECODE)
+  if (arith->opcode == T_CASE || arith->opcode == T_DECODE
+      || arith->opcode == T_IF)
     {
       offset = xts_save_pred_expr (arith->pred);
       if (offset == ER_FAILED)
@@ -4333,6 +4342,8 @@ xts_process_connectby_proc (char *ptr,
     }
   ptr = or_pack_int (ptr, offset);
 
+  ptr = or_pack_int (ptr, (int) connectby_proc->single_table_opt);
+
   return ptr;
 }
 
@@ -4495,6 +4506,9 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     case SCAN_PROC:
       break;
 
+    case DO_PROC:
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return ER_FAILED;
@@ -4579,6 +4593,7 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
     PTR_SIZE +			/* g_grbynum_pred */
     PTR_SIZE +			/* g_grbynum_val */
     OR_INT_SIZE +		/* g_grbynum_flag */
+    OR_INT_SIZE +		/* g_with_rollup */
     PTR_SIZE +			/* g_agg_list */
     PTR_SIZE;			/* g_outarith_list */
 
@@ -4727,6 +4742,8 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
     OR_INT_SIZE +		/* waitsecs */
     OR_INT_SIZE +		/* no_logging */
     OR_INT_SIZE +		/* release_lock */
+    OR_INT_SIZE +		/* do_replace */
+    OR_INT_SIZE +		/* dup_key_oid_var_index */
     PTR_SIZE;			/* partition_info */
 
   return size;
@@ -5420,7 +5437,8 @@ xts_sizeof_arith_type (const ARITH_TYPE * arith)
     PTR_SIZE +			/* rightptr */
     PTR_SIZE +			/* thirdptr */
     OR_INT_SIZE +		/* misc_operand */
-    ((arith->opcode == T_CASE || arith->opcode == T_DECODE) ? PTR_SIZE : 0) +	/* case pred */
+    ((arith->opcode == T_CASE || arith->opcode == T_DECODE
+      || arith->opcode == T_IF) ? PTR_SIZE : 0 /* case pred */ ) +
     or_packed_domain_size (arith->domain, 0);
 
   return size;
@@ -5550,7 +5568,8 @@ xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * connectby)
     PTR_SIZE +			/* prior_regu_list_pred */
     PTR_SIZE +			/* prior_regu_list_rest */
     PTR_SIZE +			/* after_cb_regu_list_pred */
-    PTR_SIZE;			/* after_cb_regu_list_rest */
+    PTR_SIZE +			/* after_cb_regu_list_rest */
+    OR_INT_SIZE;		/* single_table_opt */
 
   return size;
 }

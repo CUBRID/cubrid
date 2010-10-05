@@ -280,8 +280,8 @@ static ADJ_ARRAY *cnv_get_string_buffer (int nchars);
 static const char *cnv_currency_symbol (DB_CURRENCY currency);
 static bool cnv_valid_timestamp (DB_DATE * the_date, DB_TIME * the_time);
 static int fmt_validate (const char *format,
-                         FMT_LEX_MODE mode, FMT_TOKEN_TYPE token_type,
-                         DB_TYPE data_type);
+			 FMT_LEX_MODE mode, FMT_TOKEN_TYPE token_type,
+			 DB_TYPE data_type);
 #endif /* ENABLE_UNUSED_FUNCTION */
 static bool cnv_valid_currency (DB_CURRENCY currency);
 
@@ -355,7 +355,7 @@ static const char *ffmt_value (FLOAT_FORMAT * ffmt, const char *string,
 static int ffmt_print (FLOAT_FORMAT * ffmt, double the_double, char *string,
 		       int max_size);
 static int mfmt_print (MONETARY_FORMAT * mfmt, double the_double,
-                       char *string, int max_size);
+		       char *string, int max_size);
 #endif
 static bool mfmt_valid_char (FMT_TOKEN * token);
 static void mfmt_new (MONETARY_FORMAT * mfmt, const char *format,
@@ -377,10 +377,10 @@ static const char *bifmt_numeric_value (INTEGER_FORMAT * ifmt,
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int ifmt_text_numeric (INTEGER_FORMAT * ifmt, ADJ_ARRAY * string);
 static const char *ifmt_text_value (INTEGER_FORMAT * ifmt, const char *string,
-                                    int *the_integer);
+				    int *the_integer);
 static const char *bifmt_text_value (INTEGER_FORMAT * ifmt,
-                                     const char *string,
-                                     DB_BIGINT * the_bigint);
+				     const char *string,
+				     DB_BIGINT * the_bigint);
 static int ifmt_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint,
 		       char *string, int max_size);
 static int ifmt_text_print (INTEGER_FORMAT * ifmt, DB_BIGINT the_bigint,
@@ -402,7 +402,7 @@ static int num_fmt_print (FLOAT_FORMAT * ffmt, const DB_VALUE * the_numeric,
 			  char *string, int max_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static const char *num_fmt_value (FLOAT_FORMAT * ffmt, const char *string,
-                                  DB_VALUE * the_numeric);
+				  DB_VALUE * the_numeric);
 static int nfmt_integral_value (FORMAT_DIGIT digit_type, int ndigits,
 				bool sign_required, bool thousands,
 				char *the_value);
@@ -4033,7 +4033,7 @@ fmt_time_string (const DB_TIME * the_time, const char *descriptor)
 #endif
   if (mbs_eql (descriptor, "X"))
     {
-     string = local_time_string (the_time);
+      string = local_time_string (the_time);
     }
 #if defined (ENABLE_UNUSED_FUNCTION)
   else if (mbs_eql (descriptor, "r"))
@@ -5581,8 +5581,7 @@ ifmt_value (INTEGER_FORMAT * ifmt, const char *string, int *the_integer)
 {
   return
 #if defined (ENABLE_UNUSED_FUNCTION)
-    ifmt->pattern ?
-    ifmt_text_value (ifmt, string, the_integer) :
+    ifmt->pattern ? ifmt_text_value (ifmt, string, the_integer) :
 #endif
     ifmt_numeric_value (ifmt, string, the_integer);
 }
@@ -5603,8 +5602,7 @@ bifmt_value (INTEGER_FORMAT * ifmt, const char *string,
 {
   return
 #if defined (ENABLE_UNUSED_FUNCTION)
-    ifmt->pattern ?
-    bifmt_text_value (ifmt, string, the_bigint) :
+    ifmt->pattern ? bifmt_text_value (ifmt, string, the_bigint) :
 #endif
     bifmt_numeric_value (ifmt, string, the_bigint);
 }
@@ -6874,8 +6872,13 @@ db_string_value (const char *string, const char *format, DB_VALUE * value)
 	      {
 		return NULL;
 	      }
-	    next = db_string_date (string, format, &date);
-	    db_value_put_encoded_date (value, &date);
+
+	    if (db_string_to_date (string, &date) == NO_ERROR)
+	      {
+		db_value_put_encoded_date (value, &date);
+		next = string;
+	      }
+
 	    csect_exit (CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
@@ -6887,8 +6890,12 @@ db_string_value (const char *string, const char *format, DB_VALUE * value)
 	      {
 		return NULL;
 	      }
+
 	    if ((next = db_string_double (string, format, &num)))
-	      db_make_double (value, num);
+	      {
+		db_make_double (value, num);
+	      }
+
 	    csect_exit (CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
@@ -6900,8 +6907,12 @@ db_string_value (const char *string, const char *format, DB_VALUE * value)
 	      {
 		return NULL;
 	      }
+
 	    if ((next = db_string_float (string, format, &num)))
-	      db_make_float (value, num);
+	      {
+		db_make_float (value, num);
+	      }
+
 	    csect_exit (CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
@@ -6913,8 +6924,12 @@ db_string_value (const char *string, const char *format, DB_VALUE * value)
 	      {
 		return NULL;
 	      }
+
 	    if ((next = db_string_integer (string, format, &num)))
-	      db_make_int (value, num);
+	      {
+		db_make_int (value, num);
+	      }
+
 	    csect_exit (CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
@@ -6926,8 +6941,12 @@ db_string_value (const char *string, const char *format, DB_VALUE * value)
 	      {
 		return NULL;
 	      }
+
 	    if ((next = db_string_bigint (string, format, &num)))
-	      db_make_bigint (value, num);
+	      {
+		db_make_bigint (value, num);
+	      }
+
 	    csect_exit (CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
@@ -6965,10 +6984,12 @@ db_string_value (const char *string, const char *format, DB_VALUE * value)
 	      {
 		return NULL;
 	      }
+
 	    if ((next = db_string_short (string, format, &the_short)))
 	      {
 		db_make_short (value, the_short);
 	      }
+
 	    csect_exit (CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
@@ -7016,10 +7037,13 @@ db_string_value (const char *string, const char *format, DB_VALUE * value)
 	      {
 		return NULL;
 	      }
-	    if ((next = db_string_time (string, format, &time)))
+
+	    if (db_string_to_time (string, &time) == NO_ERROR)
 	      {
 		db_value_put_encoded_time (value, &time);
+		next = string;
 	      }
+
 	    csect_exit (CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
@@ -7031,10 +7055,13 @@ db_string_value (const char *string, const char *format, DB_VALUE * value)
 	      {
 		return NULL;
 	      }
-	    if ((next = db_string_timestamp (string, format, &timestamp)))
+
+	    if (db_string_to_timestamp (string, &timestamp) == NO_ERROR)
 	      {
 		db_make_timestamp (value, timestamp);
+		next = string;
 	      }
+
 	    csect_exit (CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
@@ -7046,10 +7073,13 @@ db_string_value (const char *string, const char *format, DB_VALUE * value)
 	      {
 		return NULL;
 	      }
-	    if ((next = db_string_datetime (string, format, &datetime)))
+
+	    if (db_string_to_datetime (string, &datetime) == NO_ERROR)
 	      {
 		db_make_datetime (value, &datetime);
+		next = string;
 	      }
+
 	    csect_exit (CSECT_CNV_FMT_LEXER);
 	    break;
 	  }
@@ -7378,26 +7408,26 @@ db_string_date (const char *date_string,
 	  break;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-        case FT_PATTERN:
-          /* Pattern string found in value string? */
-          value_string = cnv_fmt_next_token ();
-          if (!strncmp (fmt_token->text, value_string, fmt_token->length))
-            {
+	case FT_PATTERN:
+	  /* Pattern string found in value string? */
+	  value_string = cnv_fmt_next_token ();
+	  if (!strncmp (fmt_token->text, value_string, fmt_token->length))
+	    {
 
-              /* Yes, restart scan after pattern. */
-              cnv_fmt_analyze (value_string + fmt_token->length,
-                               FL_LOCAL_TIME);
-            }
-          else
-            {
-              /* No, signal error showing where mismatch occurs. */
-              for (i = fmt_token->length - 1;
-                   i > 0 && strncmp (fmt_token->text, value_string, i); i--);
-              error = CNV_ERR_BAD_PATTERN;
-              co_signal (error, CNV_ER_FMT_BAD_PATTERN,
-                         fmt_token->text + i, value_string - date_string + i);
-            }
-          break;
+	      /* Yes, restart scan after pattern. */
+	      cnv_fmt_analyze (value_string + fmt_token->length,
+			       FL_LOCAL_TIME);
+	    }
+	  else
+	    {
+	      /* No, signal error showing where mismatch occurs. */
+	      for (i = fmt_token->length - 1;
+		   i > 0 && strncmp (fmt_token->text, value_string, i); i--);
+	      error = CNV_ERR_BAD_PATTERN;
+	      co_signal (error, CNV_ER_FMT_BAD_PATTERN,
+			 fmt_token->text + i, value_string - date_string + i);
+	    }
+	  break;
 
 	case FT_YEAR:
 	  error = fmt_year_value (fmt_token->text, &year);
@@ -7495,9 +7525,9 @@ db_date_string (const DB_DATE * the_date,
 	  break;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-        case FT_PATTERN:
-          value_string = token.text;
-          break;
+	case FT_PATTERN:
+	  value_string = token.text;
+	  break;
 
 	case FT_YEAR:
 	  value_string = fmt_year_string (year, token.text);
@@ -8114,25 +8144,25 @@ db_string_time (const char *time_string,
 	  break;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-        case FT_PATTERN:
-          /* Pattern string found in value string? */
-          value_string = cnv_fmt_next_token ();
-          if (!strncmp (fmt_token->text, value_string, fmt_token->length))
-            {
-              /* Yes, restart scan after pattern. */
-              cnv_fmt_analyze (value_string + fmt_token->length,
-                               FL_LOCAL_TIME);
-            }
-          else
-            {
-              /* No, signal error showing where mismatch occurs. */
-              for (i = fmt_token->length - 1;
-                   i > 0 && strncmp (fmt_token->text, value_string, i); i--);
-              error = CNV_ERR_BAD_PATTERN;
-              co_signal (error, CNV_ER_FMT_BAD_PATTERN,
-                         fmt_token->text + i, value_string - time_string + i);
-            }
-          break;
+	case FT_PATTERN:
+	  /* Pattern string found in value string? */
+	  value_string = cnv_fmt_next_token ();
+	  if (!strncmp (fmt_token->text, value_string, fmt_token->length))
+	    {
+	      /* Yes, restart scan after pattern. */
+	      cnv_fmt_analyze (value_string + fmt_token->length,
+			       FL_LOCAL_TIME);
+	    }
+	  else
+	    {
+	      /* No, signal error showing where mismatch occurs. */
+	      for (i = fmt_token->length - 1;
+		   i > 0 && strncmp (fmt_token->text, value_string, i); i--);
+	      error = CNV_ERR_BAD_PATTERN;
+	      co_signal (error, CNV_ER_FMT_BAD_PATTERN,
+			 fmt_token->text + i, value_string - time_string + i);
+	    }
+	  break;
 
 	case FT_SECOND:
 	  error = fmt_second_value (fmt_token->text, &sec);
@@ -8232,9 +8262,9 @@ db_time_string (const DB_TIME * the_time,
 	  break;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-        case FT_PATTERN:
-          value_string = token.text;
-          break;
+	case FT_PATTERN:
+	  value_string = token.text;
+	  break;
 
 	case FT_SECOND:
 	  value_string = fmt_second_string (the_time, token.text);
@@ -8355,28 +8385,28 @@ db_string_timestamp (const char *timestamp_string,
 	  break;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-        case FT_PATTERN:
-          /* Pattern string found in value string? */
-          value_string = cnv_fmt_next_token ();
-          if (!strncmp (fmt_token->text, value_string, fmt_token->length))
-            {
+	case FT_PATTERN:
+	  /* Pattern string found in value string? */
+	  value_string = cnv_fmt_next_token ();
+	  if (!strncmp (fmt_token->text, value_string, fmt_token->length))
+	    {
 
-              /* Yes, restart scan after pattern. */
-              cnv_fmt_analyze (value_string + fmt_token->length,
-                               FL_LOCAL_TIME);
-            }
-          else
-            {
-              /* No, signal error showing where mismatch occurs. */
-              for (i = fmt_token->length - 1;
-                   i > 0 && strncmp (fmt_token->text, value_string, i); i--)
-                ;
-              error = CNV_ERR_BAD_PATTERN;
-              co_signal (error, CNV_ER_FMT_BAD_PATTERN,
-                         fmt_token->text + i,
-                         value_string - timestamp_string + i);
-            }
-          break;
+	      /* Yes, restart scan after pattern. */
+	      cnv_fmt_analyze (value_string + fmt_token->length,
+			       FL_LOCAL_TIME);
+	    }
+	  else
+	    {
+	      /* No, signal error showing where mismatch occurs. */
+	      for (i = fmt_token->length - 1;
+		   i > 0 && strncmp (fmt_token->text, value_string, i); i--)
+		;
+	      error = CNV_ERR_BAD_PATTERN;
+	      co_signal (error, CNV_ER_FMT_BAD_PATTERN,
+			 fmt_token->text + i,
+			 value_string - timestamp_string + i);
+	    }
+	  break;
 
 	case FT_DATE:
 	  error = fmt_date_value (fmt_token->text, &month, &day, &year);
@@ -8534,9 +8564,9 @@ db_timestamp_string (const DB_TIMESTAMP * the_timestamp,
 	  break;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-        case FT_PATTERN:
-          value_string = token.text;
-          break;
+	case FT_PATTERN:
+	  value_string = token.text;
+	  break;
 
 	case FT_DATE:
 	  value_string = fmt_date_string (&the_date, token.text);
@@ -8675,27 +8705,27 @@ db_string_datetime (const char *datetime_string,
 	  break;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-        case FT_PATTERN:
-          /* Pattern string found in value string? */
-          value_string = cnv_fmt_next_token ();
-          if (!strncmp (fmt_token->text, value_string, fmt_token->length))
-            {
+	case FT_PATTERN:
+	  /* Pattern string found in value string? */
+	  value_string = cnv_fmt_next_token ();
+	  if (!strncmp (fmt_token->text, value_string, fmt_token->length))
+	    {
 
-              /* Yes, restart scan after pattern. */
-              cnv_fmt_analyze (value_string + fmt_token->length,
-                               FL_LOCAL_TIME);
-            }
-          else
-            {
-              /* No, signal error showing where mismatch occurs. */
-              for (i = fmt_token->length - 1;
-                   i > 0 && strncmp (fmt_token->text, value_string, i); i--);
-              error = CNV_ERR_BAD_PATTERN;
-              co_signal (error, CNV_ER_FMT_BAD_PATTERN,
-                         fmt_token->text + i,
-                         value_string - datetime_string + i);
-            }
-          break;
+	      /* Yes, restart scan after pattern. */
+	      cnv_fmt_analyze (value_string + fmt_token->length,
+			       FL_LOCAL_TIME);
+	    }
+	  else
+	    {
+	      /* No, signal error showing where mismatch occurs. */
+	      for (i = fmt_token->length - 1;
+		   i > 0 && strncmp (fmt_token->text, value_string, i); i--);
+	      error = CNV_ERR_BAD_PATTERN;
+	      co_signal (error, CNV_ER_FMT_BAD_PATTERN,
+			 fmt_token->text + i,
+			 value_string - datetime_string + i);
+	    }
+	  break;
 	case FT_DATE:
 	  error = fmt_date_value (fmt_token->text, &month, &day, &year);
 	  break;
@@ -8838,9 +8868,9 @@ db_datetime_string (const DB_DATETIME * the_datetime,
 	  value_string = fmt_timestamp_string (&the_timestamp, token.text);
 	  break;
 #if defined (ENABLE_UNUSED_FUNCTION)
-        case FT_PATTERN:
-          value_string = token.text;
-          break;
+	case FT_PATTERN:
+	  value_string = token.text;
+	  break;
 	case FT_DATE:
 	  db_date_encode (&the_date, month, day, year);
 	  value_string = fmt_date_string (&the_date, token.text);

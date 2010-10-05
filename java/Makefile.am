@@ -33,100 +33,103 @@ JDBC_VERSION = \
 	-DJDBC_DRIVER_PATCH_VERSION=$(JDBC_DRIVER_PATCH_VERSION) \
 	-DJDBC_DRIVER_SERIAL_NUMBER=$(JDBC_DRIVER_SERIAL_NUMBER) \
 	-DSERVER_SIDE_JDBC
-#PJAVA_CFLAGS = $(JDBC_VERSION) @JDK6_DEFINE@ -DCAS_FOR_DBMS
 PJAVA_CFLAGS = $(JDBC_VERSION) @JDK6_DEFINE@
 
 javadir = @CUBRID_JAVADIR@
 java_DATA = $(DRIVER) ${JDBC_SRC_DIR}/logging.properties
 
 BUILT_SOURCES = \
-	CUBRIDConnection.java \
-	CUBRIDDriver.java \
-	CUBRIDBlob.java \
-	CUBRIDCallableStatement.java \
-	CUBRIDClob.java \
-	CUBRIDDatabaseMetaData.java \
-	CUBRIDDataSource.java \
-	CUBRIDPooledConnection.java \
-	CUBRIDPreparedStatement.java \
-	CUBRIDResultSet.java \
-	CUBRIDResultSetMetaData.java \
-	CUBRIDResultSetWithoutQuery.java \
-	CUBRIDStatement.java \
-	UConnection.java \
-	UJCIManager.java \
-	UInputBuffer.java \
-	UJciException.java \
+	src \
+	src/CUBRIDConnection.java \
+	src/CUBRIDDriver.java \
+	src/CUBRIDBlob.java \
+	src/CUBRIDCallableStatement.java \
+	src/CUBRIDClob.java \
+	src/CUBRIDDatabaseMetaData.java \
+	src/CUBRIDDataSource.java \
+	src/CUBRIDPooledConnection.java \
+	src/CUBRIDPreparedStatement.java \
+	src/CUBRIDResultSet.java \
+	src/CUBRIDResultSetMetaData.java \
+	src/CUBRIDResultSetWithoutQuery.java \
+	src/CUBRIDStatement.java \
+	src/UConnection.java \
+	src/UJCIManager.java \
+	src/UInputBuffer.java \
+	src/UJciException.java \
 	$(DRIVER)
 
 CLEANFILES = \
-	CUBRIDConnection.java \
-	CUBRIDDriver.java \
-	CUBRIDBlob.java \
-	CUBRIDCallableStatement.java \
-	CUBRIDClob.java \
-	CUBRIDDatabaseMetaData.java \
-	CUBRIDDataSource.java \
-	CUBRIDPooledConnection.java \
-	CUBRIDPreparedStatement.java \
-	CUBRIDResultSet.java \
-	CUBRIDResultSetMetaData.java \
-	CUBRIDResultSetWithoutQuery.java \
-	CUBRIDStatement.java \
-	UConnection.java \
-	UJCIManager.java \
-	UInputBuffer.java \
-	UJciException.java 
+	src/CUBRIDConnection.java \
+	src/CUBRIDDriver.java \
+	src/CUBRIDBlob.java \
+	src/CUBRIDCallableStatement.java \
+	src/CUBRIDClob.java \
+	src/CUBRIDDatabaseMetaData.java \
+	src/CUBRIDDataSource.java \
+	src/CUBRIDPooledConnection.java \
+	src/CUBRIDPreparedStatement.java \
+	src/CUBRIDResultSet.java \
+	src/CUBRIDResultSetMetaData.java \
+	src/CUBRIDResultSetWithoutQuery.java \
+	src/CUBRIDStatement.java \
+	src/UConnection.java \
+	src/UJCIManager.java \
+	src/UInputBuffer.java \
+	src/UJciException.java 
 
-CUBRIDConnection.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDConnection.pjava
+src:
+	mkdir -p $@
+
+src/CUBRIDConnection.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDConnection.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-CUBRIDDriver.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDDriver.pjava
+src/CUBRIDDriver.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDDriver.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-CUBRIDBlob.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDBlob.pjava
+src/CUBRIDBlob.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDBlob.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-CUBRIDCallableStatement.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDCallableStatement.pjava
+src/CUBRIDCallableStatement.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDCallableStatement.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-CUBRIDClob.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDClob.pjava
+src/CUBRIDClob.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDClob.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-CUBRIDDatabaseMetaData.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDDatabaseMetaData.pjava
+src/CUBRIDDatabaseMetaData.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDDatabaseMetaData.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-CUBRIDDataSource.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDDataSource.pjava
+src/CUBRIDDataSource.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDDataSource.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-CUBRIDPooledConnection.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDPooledConnection.pjava
+src/CUBRIDPooledConnection.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDPooledConnection.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-CUBRIDPreparedStatement.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDPreparedStatement.pjava
+src/CUBRIDPreparedStatement.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDPreparedStatement.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-CUBRIDResultSet.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDResultSet.pjava
+src/CUBRIDResultSet.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDResultSet.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-CUBRIDResultSetMetaData.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDResultSetMetaData.pjava
+src/CUBRIDResultSetMetaData.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDResultSetMetaData.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-CUBRIDResultSetWithoutQuery.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDResultSetWithoutQuery.pjava
+src/CUBRIDResultSetWithoutQuery.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDResultSetWithoutQuery.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-CUBRIDStatement.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDStatement.pjava
+src/CUBRIDStatement.java: $(JDBC_SRC_DIR)/cubrid/jdbc/driver/CUBRIDStatement.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-UConnection.java: $(JDBC_SRC_DIR)/cubrid/jdbc/jci/UConnection.pjava
+src/UConnection.java: $(JDBC_SRC_DIR)/cubrid/jdbc/jci/UConnection.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-UJCIManager.java: $(JDBC_SRC_DIR)/cubrid/jdbc/jci/UJCIManager.pjava
+src/UJCIManager.java: $(JDBC_SRC_DIR)/cubrid/jdbc/jci/UJCIManager.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-UInputBuffer.java: $(JDBC_SRC_DIR)/cubrid/jdbc/jci/UInputBuffer.pjava
+src/UInputBuffer.java: $(JDBC_SRC_DIR)/cubrid/jdbc/jci/UInputBuffer.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
-UJciException.java: $(JDBC_SRC_DIR)/cubrid/jdbc/jci/UJciException.pjava
+src/UJciException.java: $(JDBC_SRC_DIR)/cubrid/jdbc/jci/UJciException.pjava
 	cpp -C -P $(PJAVA_CFLAGS) $< $@
 
 ${DRIVER}:
@@ -134,3 +137,4 @@ ${DRIVER}:
 
 clean-am: clean-generic clean-libtool mostlyclean-am
 	JAVA_HOME=@JAVA_HOME@ @ANT@ clean -buildfile ${top_srcdir}/java/build.xml -Dbasedir=.  
+

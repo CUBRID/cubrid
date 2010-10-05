@@ -309,7 +309,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
   page_size = utility_get_option_int_value (arg_map, CREATE_PAGE_SIZE_S);
   log_page_count =
     utility_get_option_int_value (arg_map, CREATE_LOG_PAGE_COUNT_S);
-  log_page_size = utility_get_option_int_value (arg_map, CREATE_LOG_PAGE_SIZE_S);
+  log_page_size =
+    utility_get_option_int_value (arg_map, CREATE_LOG_PAGE_SIZE_S);
 
   if (database_name == 0 || database_name[0] == 0 ||
       utility_get_option_string_table_size (arg_map) != 1)
@@ -317,7 +318,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto print_create_usage;
     }
 
-  if (check_database_name (database_name))
+  if (check_new_database_name (database_name))
     {
       goto error_exit;
     }
@@ -371,7 +372,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	   volume_page_count);
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
@@ -537,7 +539,8 @@ deletedb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	   "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
@@ -587,42 +590,42 @@ parse_up_to_date (char *date_string, struct tm *time_data)
     {
       switch (date_index)
 	{
-	case 0:		// month-day
+	case 0:		/* month-day */
 	  time_data->tm_mday = atoi (token);
 	  if (time_data->tm_mday < 1 || time_data->tm_mday > 31)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
 	  break;
-	case 1:		// month
+	case 1:		/* month */
 	  time_data->tm_mon = atoi (token) - 1;
 	  if (time_data->tm_mon < 0 || time_data->tm_mon > 11)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
 	  break;
-	case 2:		// year
+	case 2:		/* year */
 	  time_data->tm_year = atoi (token) - 1900;
 	  if (time_data->tm_year < 0)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
 	  break;
-	case 3:		// hour
+	case 3:		/* hour */
 	  time_data->tm_hour = atoi (token);
 	  if (time_data->tm_hour < 0 || time_data->tm_hour > 23)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
 	  break;
-	case 4:		// minute
+	case 4:		/* minute */
 	  time_data->tm_min = atoi (token);
 	  if (time_data->tm_min < 0 || time_data->tm_min > 59)
 	    {
 	      status = ER_GENERIC_ERROR;
 	    }
 	  break;
-	case 5:		// second
+	case 5:		/* second */
 	  time_data->tm_sec = atoi (token);
 	  if (time_data->tm_sec < 0 || time_data->tm_sec > 59)
 	    {
@@ -708,7 +711,8 @@ restoredb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
@@ -789,7 +793,8 @@ renamedb (UTIL_FUNCTION_ARG * arg)
       goto print_rename_usage;
     }
 
-  if (check_database_name (src_db_name) || check_database_name (dest_db_name))
+  if (check_database_name (src_db_name)
+      || check_new_database_name (dest_db_name))
     {
       goto error_exit;
     }
@@ -809,7 +814,8 @@ renamedb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", src_db_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", src_db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
@@ -917,7 +923,8 @@ installdb (UTIL_FUNCTION_ARG * arg)
   cfg_added = true;
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", db_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
@@ -1007,7 +1014,8 @@ copydb (UTIL_FUNCTION_ARG * arg)
       goto print_copy_usage;
     }
 
-  if (check_database_name (src_db_name) || check_database_name (dest_db_name))
+  if (check_database_name (src_db_name)
+      || check_new_database_name (dest_db_name))
     {
       goto error_exit;
     }
@@ -1021,7 +1029,8 @@ copydb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", src_db_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", src_db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
@@ -1094,7 +1103,8 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", db_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
@@ -1188,7 +1198,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", db_name, arg->command_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");

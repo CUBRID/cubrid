@@ -53,19 +53,6 @@
 #define CLIENT_MSG_BUF_SIZE	1024
 #define CONNECT_MSG_BUF_SIZE	1024
 
-#define CAS_LOG_MSG_INDEX	19
-
-#define GET_MSG_START_PTR(MSG_P, LINEBUF)               \
-        do {                                            \
-          char *tmp_ptr;                                \
-          tmp_ptr = LINEBUF + CAS_LOG_MSG_INDEX;        \
-          tmp_ptr = strchr(tmp_ptr, ' ');               \
-          if (tmp_ptr == NULL)                          \
-            MSG_P = (char *) "";                        \
-          else                                          \
-            MSG_P = tmp_ptr + 1;                        \
-        } while (0)
-
 #ifdef MT_MODE
 typedef struct t_work_msg T_WORK_MSG;
 struct t_work_msg
@@ -424,9 +411,9 @@ log_top (FILE * fp, char *filename)
 	      query_info_buf[qi_idx].cas_log =
 		(char *) REALLOC (query_info_buf[qi_idx].cas_log,
 				  t_string_len (cas_log_buf) + 1);
-	      strcpy (query_info_buf[qi_idx].cas_log,
-		      t_string_str (cas_log_buf));
-
+	      memcpy (query_info_buf[qi_idx].cas_log,
+		      t_string_str (cas_log_buf), t_string_len (cas_log_buf));
+	      query_info_buf[qi_idx].cas_log_len = t_string_len (cas_log_buf);
 	      if (query_info_add
 		  (&query_info_buf[qi_idx], runtime, execute_res, filename,
 		   lineno, cur_date) < 0)
@@ -598,6 +585,7 @@ read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno,
 {
   char *msg_p;
   char is_bind_value;
+  int linebuf_len;
 
   do
     {
@@ -615,7 +603,8 @@ read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno,
 	}
       if (is_bind_value)
 	{
-	  if (t_string_add (cas_log_buf, *linebuf, strlen (*linebuf)) < 0)
+	  linebuf_len = t_string_len (t_str);
+	  if (t_string_add (cas_log_buf, *linebuf, linebuf_len) < 0)
 	    return -1;
 	}
       else

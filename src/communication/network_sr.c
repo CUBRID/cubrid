@@ -186,6 +186,33 @@ net_server_init (void)
   net_Requests[NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE].name =
     "NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE";
 
+  net_Requests[NET_SERVER_BO_COMPACT_DB].action_attribute =
+    CHECK_DB_MODIFICATION | CHECK_AUTHORIZATION | IN_TRANSACTION;
+  net_Requests[NET_SERVER_BO_COMPACT_DB].
+    processing_function = sboot_compact_db;
+  net_Requests[NET_SERVER_BO_COMPACT_DB].name = "NET_SERVER_BO_COMPACT_DB";
+
+  net_Requests[NET_SERVER_BO_HEAP_COMPACT].action_attribute =
+    CHECK_DB_MODIFICATION | CHECK_AUTHORIZATION | IN_TRANSACTION;
+  net_Requests[NET_SERVER_BO_HEAP_COMPACT].
+    processing_function = sboot_heap_compact;
+  net_Requests[NET_SERVER_BO_HEAP_COMPACT].name =
+    "NET_SERVER_BO_HEAP_COMPACT";
+
+  net_Requests[NET_SERVER_BO_COMPACT_DB_START].action_attribute =
+    IN_TRANSACTION;
+  net_Requests[NET_SERVER_BO_COMPACT_DB_START].
+    processing_function = sboot_compact_start;
+  net_Requests[NET_SERVER_BO_COMPACT_DB_START].name =
+    "NET_SERVER_BO_COMPACT_DB_START";
+
+  net_Requests[NET_SERVER_BO_COMPACT_DB_STOP].action_attribute =
+    IN_TRANSACTION;
+  net_Requests[NET_SERVER_BO_COMPACT_DB_STOP].
+    processing_function = sboot_compact_stop;
+  net_Requests[NET_SERVER_BO_COMPACT_DB_STOP].name =
+    "NET_SERVER_BO_COMPACT_DB_STOP";
+
   /*
    * transaction
    */
@@ -303,7 +330,7 @@ net_server_init (void)
   net_Requests[NET_SERVER_TM_SERVER_2PC_PREPARE_GT].processing_function =
     stran_server_2pc_prepare_global_tran;
   net_Requests[NET_SERVER_TM_SERVER_2PC_PREPARE_GT].name =
-    "NET_SERVER_TM_NET_SERVER_2PC_PREPARE_GT";
+    "NET_SERVER_TM_SERVER_2PC_PREPARE_GT";
 
   net_Requests[NET_SERVER_TM_LOCAL_TRANSACTION_ID].action_attribute = 0;
   net_Requests[NET_SERVER_TM_LOCAL_TRANSACTION_ID].processing_function =
@@ -360,7 +387,7 @@ net_server_init (void)
   net_Requests[NET_SERVER_LC_RESERVE_CLASSNAME].action_attribute =
     CHECK_DB_MODIFICATION | IN_TRANSACTION;
   net_Requests[NET_SERVER_LC_RESERVE_CLASSNAME].processing_function =
-    slocator_reserve_classname;
+    slocator_reserve_classnames;
   net_Requests[NET_SERVER_LC_RESERVE_CLASSNAME].name =
     "NET_SERVER_LC_RESERVE_CLASSNAME";
 
@@ -453,12 +480,19 @@ net_server_init (void)
   net_Requests[NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES].name =
     "NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES";
 
-  net_Requests[NET_SERVER_TM_LOCAL_TRANSACTION_ID].action_attribute =
+  net_Requests[NET_SERVER_HEAP_HAS_INSTANCE].action_attribute =
     IN_TRANSACTION;
   net_Requests[NET_SERVER_HEAP_HAS_INSTANCE].processing_function =
     shf_has_instance;
   net_Requests[NET_SERVER_HEAP_HAS_INSTANCE].name =
     "NET_SERVER_HEAP_HAS_INSTANCE";
+
+  net_Requests[NET_SERVER_HEAP_RECLAIM_ADDRESSES].action_attribute =
+    CHECK_AUTHORIZATION | CHECK_DB_MODIFICATION | IN_TRANSACTION;
+  net_Requests[NET_SERVER_HEAP_RECLAIM_ADDRESSES].processing_function =
+    shf_heap_reclaim_addresses;
+  net_Requests[NET_SERVER_HEAP_RECLAIM_ADDRESSES].name =
+    "NET_SERVER_HEAP_RECLAIM_ADDRESSES";
 
   /*
    * large object manager
@@ -637,6 +671,13 @@ net_server_init (void)
   net_Requests[NET_SERVER_LOG_CHECKPOINT].processing_function =
     slog_checkpoint;
   net_Requests[NET_SERVER_LOG_CHECKPOINT].name = "NET_SERVER_LOG_CHECKPOINT";
+
+  net_Requests[NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION].
+    action_attribute = IN_TRANSACTION;
+  net_Requests[NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION].
+    processing_function = slogtb_set_suppress_repl_on_transaction;
+  net_Requests[NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION].name =
+    "NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION";
 
   /*
    * lock
@@ -1139,6 +1180,12 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request,
 #endif /* CUBRID_DEBUG */
   conn = thread_p->conn_entry;
   assert (conn != NULL);
+  /* check if the conn is valid */
+  if (IS_INVALID_SOCKET (conn->fd) || conn->status != CONN_OPEN)
+    {
+      /* have nothing to do because the client has gone */
+      goto end;
+    }
 
   /* check the defined action attribute */
   if (net_Requests[request].action_attribute & CHECK_DB_MODIFICATION)
@@ -1256,6 +1303,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   bool continue_check;
   int client_id;
   int local_tran_index;
+  THREAD_ENTRY *suspended_p;
 
   if (thread_p == NULL)
     {
@@ -1281,19 +1329,88 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   thread_p->status = TS_CHECK;
 
 loop:
-  prev_thrd_cnt = thread_has_threads (tran_index, client_id);
+  prev_thrd_cnt = thread_has_threads (thread_p, tran_index, client_id);
   if (prev_thrd_cnt > 0)
     {
+      if (tran_index == NULL_TRAN_INDEX)
+	{
+	  /* the connected client does not yet finished boot_client_register */
+	  thread_sleep (0, 50000);	/* 50 msec */
+	  tran_index = conn_p->transaction_id;
+	}
       if (!logtb_is_interrupted_tran (thread_p, false, &continue_check,
 				      tran_index))
 	{
 	  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
-	  thread_wakeup_with_tran_index (tran_index,
-					 THREAD_RESUME_DUE_TO_INTERRUPT);
+	}
+
+      /* never try to wake non TRAN_ACTIVE state trans.
+       * note that non-TRAN_ACTIVE trans will not be interrupted.
+       */
+      if (logtb_is_interrupted_tran (thread_p, false, &continue_check,
+				     tran_index))
+	{
+	  suspended_p =
+	    thread_find_entry_by_tran_index_except_me (tran_index);
+	  if (suspended_p != NULL)
+	    {
+	      int r;
+	      bool wakeup_now;
+
+	      r = thread_lock_entry (suspended_p);
+	      if (r != NO_ERROR)
+		{
+		  return r;
+		}
+
+	      switch (suspended_p->resume_status)
+		{
+		case THREAD_CSECT_READER_SUSPENDED:
+		case THREAD_CSECT_WRITER_SUSPENDED:
+		case THREAD_CSECT_PROMOTER_SUSPENDED:
+		case THREAD_LOCK_SUSPENDED:
+		case THREAD_PGBUF_SUSPENDED:
+		  /* never try to wake thread up while the thread is waiting
+		   * for a critical section or a lock.
+		   */
+		  wakeup_now = false;
+		  break;
+
+		case THREAD_JOB_QUEUE_SUSPENDED:
+		case THREAD_CSS_QUEUE_SUSPENDED:
+		case THREAD_QMGR_ACTIVE_QRY_SUSPENDED:
+		case THREAD_QMGR_MEMBUF_PAGE_SUSPENDED:
+		case THREAD_HEAP_CLSREPR_SUSPENDED:
+		case THREAD_HA_ACTIVE_STATE_SUSPENDED:
+		case THREAD_LOGWR_SUSPENDED:
+		  wakeup_now = true;
+		  break;
+
+		default:
+		  wakeup_now = false;
+		  break;
+		}
+
+	      if (wakeup_now == true)
+		{
+		  r =
+		    thread_wakeup_already_had_mutex (suspended_p,
+						     THREAD_RESUME_DUE_TO_INTERRUPT);
+		}
+	      else
+		{
+		  r = thread_unlock_entry (suspended_p);
+		}
+
+	      if (r != NO_ERROR)
+		{
+		  return r;
+		}
+	    }
 	}
     }
 
-  while ((thrd_cnt = thread_has_threads (tran_index, client_id))
+  while ((thrd_cnt = thread_has_threads (thread_p, tran_index, client_id))
 	 >= prev_thrd_cnt && thrd_cnt > 0)
     {
       /* Some threads may wait for data from the m-driver.
@@ -1320,7 +1437,7 @@ loop:
   thread_set_info (thread_p, -1, 0, local_tran_index);
   thread_p->status = TS_RUN;
 
-  return 0;
+  return NO_ERROR;
 }
 
 /*

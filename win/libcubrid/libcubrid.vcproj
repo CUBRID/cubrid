@@ -423,6 +423,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\rand.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\release_string.c"
 					>
 				</File>
@@ -652,6 +656,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\storage\catalog_class.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\storage\compactdb_sr.c"
 					>
 				</File>
 				<File

@@ -68,6 +68,32 @@
 #define		DEFAULT_CHECK_PERIOD		300	/* seconds */
 #define		MAX_APPL_NUM		100
 
+/* structure for appl monitoring */
+typedef struct appl_monitoring_item APPL_MONITORING_ITEM;
+struct appl_monitoring_item
+{
+  INT64 num_query_processed;
+  INT64 num_long_query;
+  INT64 qps;
+  INT64 lqs;
+};
+
+/* structure for broker monitoring */
+typedef struct br_monitoring_item BR_MONITORING_ITEM;
+struct br_monitoring_item
+{
+  INT64 num_tx;
+  INT64 num_qx;
+  INT64 num_lt;
+  INT64 num_lq;
+  INT64 num_eq;
+  INT64 tps;
+  INT64 qps;
+  INT64 lts;
+  INT64 lqs;
+  INT64 eqs;
+};
+
 static void str_to_screen (const char *msg);
 static void print_newline ();
 static int get_char (void);
@@ -166,6 +192,7 @@ get_char (void)
 	  SLEEP_MILISEC (0, 100);
 	}
     }
+  return 0;
 #else
   return getch ();
 #endif
@@ -474,56 +501,43 @@ appl_monitor (char *br_vector)
 {
   struct tm cur_tm;
   time_t last_access_time, last_connect_time;
-  struct timeval cur_tv;
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
   T_SHM_APPL_SERVER *shm_appl;
-  int i, j, k, appl_server_offset;
+  int i, j, k, appl_offset;
   int col_len;
   char line_buf[1024];
   static time_t time_old;
-  static INT64 *qps_olds = NULL, *lqs_olds = NULL;
-  INT64 *p_qps_old, *p_lqs_old;
+
+  static APPL_MONITORING_ITEM *appl_mnt_olds;
+
   time_t current_time, time_cur;
   INT64 qps, lqs;
+  double elapsed_time = 0;
 #ifdef GET_PSINFO
   T_PSINFO proc_info;
   char time_str[32];
 #endif
 
-  if (qps_olds == NULL)
+  if (appl_mnt_olds == NULL)
     {
       int n = 0;
       for (i = 0; i < shm_br->num_broker; i++)
 	{
 	  n += shm_br->br_info[i].appl_server_max_num;
 	}
-      qps_olds = (INT64 *) calloc (sizeof (INT64), n);
-      if (qps_olds == NULL)
+      appl_mnt_olds =
+	(APPL_MONITORING_ITEM *) calloc (sizeof (APPL_MONITORING_ITEM), n);
+      if (appl_mnt_olds == NULL)
 	{
 	  return -1;
 	}
-
-      (void) time (&time_old);
-      time_old--;
-    }
-  if (lqs_olds == NULL)
-    {
-      int n = 0;
-      for (i = 0; i < shm_br->num_broker; i++)
-	{
-	  n += shm_br->br_info[i].appl_server_max_num;
-	}
-      lqs_olds = (INT64 *) calloc (sizeof (INT64), n);
-      if (lqs_olds == NULL)
-	{
-	  return -1;
-	}
-
       (void) time (&time_old);
       time_old--;
     }
 
   (void) time (&time_cur);
+
+  elapsed_time = difftime (time_cur, time_old);
 
   for (i = 0; i < shm_br->num_broker; i++)
     {
@@ -651,16 +665,12 @@ appl_monitor (char *br_vector)
 #else
 	      print_header (false);
 #endif
-
-	      gettimeofday (&cur_tv, NULL);
-
 	      current_time = time (NULL);
 
-	      appl_server_offset = 0;
+	      appl_offset = 0;
 	      for (k = 0; k < i; k++)
 		{
-		  appl_server_offset +=
-		    shm_br->br_info[k].appl_server_max_num;
+		  appl_offset += shm_br->br_info[k].appl_server_max_num;
 		}
 
 	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
@@ -684,16 +694,32 @@ appl_monitor (char *br_vector)
 		  col_len += sprintf (line_buf + col_len, "%5d ",
 				      shm_appl->as_info[j].pid);
 
-		  p_qps_old = qps_olds + appl_server_offset + j;
-		  qps = (shm_appl->as_info[j].num_queries_processed -
-			 *p_qps_old) / difftime (time_cur, time_old);
-		  *p_qps_old = shm_appl->as_info[j].num_queries_processed;
-		  col_len += sprintf (line_buf + col_len, "%5ld ", qps);
+		  if (elapsed_time > 0)
+		    {
+		      qps = (shm_appl->as_info[j].num_queries_processed -
+			     appl_mnt_olds[appl_offset + j].
+			     num_query_processed) / elapsed_time;
 
-		  p_lqs_old = lqs_olds + appl_server_offset + j;
-		  lqs = (shm_appl->as_info[j].num_long_queries -
-			 *p_lqs_old) / difftime (time_cur, time_old);
-		  *p_lqs_old = shm_appl->as_info[j].num_long_queries;
+		      lqs = (shm_appl->as_info[j].num_long_queries -
+			     appl_mnt_olds[appl_offset + j].
+			     num_long_query) / elapsed_time;
+
+		      appl_mnt_olds[appl_offset + j].num_query_processed =
+			shm_appl->as_info[j].num_queries_processed;
+
+		      appl_mnt_olds[appl_offset + j].num_long_query =
+			shm_appl->as_info[j].num_long_queries;
+
+		      appl_mnt_olds[appl_offset + j].qps = qps;
+		      appl_mnt_olds[appl_offset + j].lqs = lqs;
+		    }
+		  else
+		    {
+		      qps = appl_mnt_olds[appl_offset + j].qps;
+		      lqs = appl_mnt_olds[appl_offset + j].lqs;
+		    }
+
+		  col_len += sprintf (line_buf + col_len, "%5ld ", qps);
 		  col_len += sprintf (line_buf + col_len, "%5ld ", lqs);
 
 #if defined(WINDOWS)
@@ -866,7 +892,10 @@ appl_monitor (char *br_vector)
 	  print_newline ();
 	}
     }
-  time_old = time_cur;
+  if (elapsed_time > 0)
+    {
+      time_old = time_cur;
+    }
 
   return 0;
 }
@@ -882,14 +911,14 @@ br_monitor (char *br_vector)
   T_PSINFO proc_info;
   char time_str[32];
 #endif
-  static INT64 *num_tx_olds = NULL, *num_qx_olds = NULL;
-  static INT64 *num_lt_olds = NULL, *num_lq_olds = NULL, *num_eq_olds = NULL;
+  static BR_MONITORING_ITEM *br_mnt_olds = NULL;
   static time_t time_old;
   time_t time_cur;
   INT64 num_tx_cur = 0, num_qx_cur = 0;
   INT64 num_lt_cur = 0, num_lq_cur = 0, num_eq_cur = 0;
   INT64 tps = 0, qps = 0, lts = 0, lqs = 0, eqs = 0;
   static unsigned int tty_print_header = 0;
+  double elapsed_time;
 
   buf_len = 0;
   buf_len += sprintf (buf + buf_len, "  %-12s", "NAME");
@@ -918,48 +947,12 @@ br_monitor (char *br_vector)
       print_newline ();
     }
 
-  if (num_tx_olds == NULL)
+  if (br_mnt_olds == NULL)
     {
-      num_tx_olds = (INT64 *) calloc (sizeof (INT64), shm_br->num_broker);
-      if (num_tx_olds == NULL)
-	{
-	  return -1;
-	}
-      (void) time (&time_old);
-    }
-  if (num_qx_olds == NULL)
-    {
-      num_qx_olds = (INT64 *) calloc (sizeof (INT64), shm_br->num_broker);
-      if (num_qx_olds == NULL)
-	{
-	  return -1;
-	}
-      (void) time (&time_old);
-    }
-  if (num_lt_olds == NULL)
-    {
-      num_lt_olds = (INT64 *) calloc (sizeof (INT64), shm_br->num_broker);
-      if (num_lt_olds == NULL)
-	{
-	  return -1;
-	}
-      (void) time (&time_old);
-      time_old--;
-    }
-  if (num_lq_olds == NULL)
-    {
-      num_lq_olds = (INT64 *) calloc (sizeof (INT64), shm_br->num_broker);
-      if (num_lq_olds == NULL)
-	{
-	  return -1;
-	}
-      (void) time (&time_old);
-      time_old--;
-    }
-  if (num_eq_olds == NULL)
-    {
-      num_eq_olds = (INT64 *) calloc (sizeof (INT64), shm_br->num_broker);
-      if (num_eq_olds == NULL)
+      br_mnt_olds =
+	(BR_MONITORING_ITEM *) calloc (sizeof (BR_MONITORING_ITEM),
+				       shm_br->num_broker);
+      if (br_mnt_olds == NULL)
 	{
 	  return -1;
 	}
@@ -968,6 +961,8 @@ br_monitor (char *br_vector)
     }
 
   (void) time (&time_cur);
+
+  elapsed_time = difftime (time_cur, time_old);
 
   for (i = 0; i < shm_br->num_broker; i++)
     {
@@ -1024,21 +1019,34 @@ br_monitor (char *br_vector)
 		  num_lq_cur += shm_appl->as_info[j].num_long_queries;
 		  num_eq_cur += shm_appl->as_info[j].num_error_queries;
 		}
-	      tps = ((num_tx_cur - num_tx_olds[i]) / difftime (time_cur,
-							       time_old));
-	      qps = ((num_qx_cur - num_qx_olds[i]) / difftime (time_cur,
-							       time_old));
-	      lts = ((num_lt_cur - num_lt_olds[i]) / difftime (time_cur,
-							       time_old));
-	      lqs = ((num_lq_cur - num_lq_olds[i]) / difftime (time_cur,
-							       time_old));
-	      eqs = ((num_eq_cur - num_eq_olds[i]) / difftime (time_cur,
-							       time_old));
-	      num_tx_olds[i] = num_tx_cur;
-	      num_qx_olds[i] = num_qx_cur;
-	      num_lt_olds[i] = num_lt_cur;
-	      num_lq_olds[i] = num_lq_cur;
-	      num_eq_olds[i] = num_eq_cur;
+	      if (elapsed_time > 0)
+		{
+		  tps = ((num_tx_cur - br_mnt_olds[i].num_tx) / elapsed_time);
+		  qps = ((num_qx_cur - br_mnt_olds[i].num_qx) / elapsed_time);
+		  lts = ((num_lt_cur - br_mnt_olds[i].num_lt) / elapsed_time);
+		  lqs = ((num_lq_cur - br_mnt_olds[i].num_lq) / elapsed_time);
+		  eqs = ((num_eq_cur - br_mnt_olds[i].num_eq) / elapsed_time);
+
+		  br_mnt_olds[i].num_tx = num_tx_cur;
+		  br_mnt_olds[i].num_qx = num_qx_cur;
+		  br_mnt_olds[i].num_lt = num_lt_cur;
+		  br_mnt_olds[i].num_lq = num_lq_cur;
+		  br_mnt_olds[i].num_eq = num_eq_cur;
+
+		  br_mnt_olds[i].tps = tps;
+		  br_mnt_olds[i].qps = qps;
+		  br_mnt_olds[i].lts = lts;
+		  br_mnt_olds[i].lqs = lqs;
+		  br_mnt_olds[i].eqs = eqs;
+		}
+	      else
+		{
+		  tps = br_mnt_olds[i].tps;
+		  qps = br_mnt_olds[i].qps;
+		  lts = br_mnt_olds[i].lts;
+		  lqs = br_mnt_olds[i].lqs;
+		  eqs = br_mnt_olds[i].eqs;
+		}
 	      str_out (" %4ld", tps);
 	      str_out (" %4ld", qps);
 	      str_out (" %4ld/%-.1f", lts,
@@ -1063,7 +1071,11 @@ br_monitor (char *br_vector)
 	  print_newline ();
 	}
     }
-  time_old = time_cur;
+
+  if (elapsed_time > 0)
+    {
+      time_old = time_cur;
+    }
 
   return 0;
 }

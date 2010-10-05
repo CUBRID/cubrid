@@ -82,6 +82,7 @@
 
 #if defined(CS_MODE)
 #include "network.h"
+#include "connection_cl.h"
 #endif /* CS_MODE */
 #include "network_interface_cl.h"
 
@@ -278,7 +279,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 			BOOT_DB_PATH_INFO * db_path_info,
 			bool db_overwrite, const char *file_addmore_vols,
 			DKNPAGES npages, PGLENGTH db_desired_pagesize,
-			DKNPAGES log_npages, PGLENGTH db_desired_log_page_size)
+			DKNPAGES log_npages,
+			PGLENGTH db_desired_log_page_size)
 {
   OID rootclass_oid;		/* Oid of root class */
   HFID rootclass_hfid;		/* Heap for classes */
@@ -692,7 +694,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       size = strlen (client_credential->db_name) + 1;
       hosts[0] = ptr + 1;
       hosts[1] = NULL;
-      *ptr = NULL;	/* screen 'db@host' */
+      *ptr = '\0';	/* screen 'db@host' */
       db = cfg_new_db (client_credential->db_name, NULL, NULL, hosts);
       *ptr = (char) '@';
 #else /* CS_MODE */
@@ -779,10 +781,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
     {
       error_code = boot_client_initialize_css (db, true, false);
+
       if (error_code == ER_NET_SERVER_HAND_SHAKE)
 	{
 	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
 			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
+	  css_send_close_request (css_Client_anchor->conn);
+
 	  error_code = boot_client_initialize_css (db, false, false);
 	}
     }
@@ -2178,6 +2183,7 @@ static int
 boot_define_index_key (MOP class_mop)
 {
   SM_TEMPLATE *def;
+  DB_VALUE prefix_default;
   int error_code = NO_ERROR;
   const char *index_col_names[2] = { "index_of", NULL };
 
@@ -2206,6 +2212,21 @@ boot_define_index_key (MOP class_mop)
     }
 
   error_code = smt_add_attribute (def, "asc_desc", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "key_prefix_length", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  DB_MAKE_INTEGER (&prefix_default, -1);
+
+  error_code = smt_set_attribute_default (def, "key_prefix_length", 0,
+                                          &prefix_default);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -2404,7 +2425,10 @@ boot_add_data_type (MOP class_mop)
   DB_VALUE val;
   int i;
 
-  const char *names[DB_TYPE_LAST] = {
+  /* BLOB and CLOB are added in advance to avoid migration R3.0 to R3.1.
+     This fix should be removed at R3.1. */
+
+  const char *names[DB_TYPE_LAST + 2] = {
     "INTEGER", "FLOAT", "DOUBLE", "STRING", "OBJECT",
     "SET", "MULTISET", "SEQUENCE", "ELO", "TIME",
     "TIMESTAMP", "DATE", "MONETARY", NULL /* VARIABLE */ , NULL /* SUB */ ,
@@ -2413,10 +2437,11 @@ boot_add_data_type (MOP class_mop)
     NULL /* VALUE */ , "NUMERIC", "BIT", "VARBIT", "CHAR",
     "NCHAR", "VARNCHAR", NULL /* RESULTSET */ , NULL /* MIDXKEY */ ,
     NULL /* TABLE */ ,
-    "BIGINT", "DATETIME"
+    "BIGINT", "DATETIME",
+    "BLOB", "CLOB"
   };
 
-  for (i = 0; i < DB_TYPE_LAST; i++)
+  for (i = 0; i < DB_TYPE_LAST + 2; i++)
     {
 
       if (names[i] != NULL)
@@ -3933,7 +3958,8 @@ boot_define_view_index_key (void)
     {"class_name", "varchar(255)"},
     {"key_attr_name", "varchar(255)"},
     {"key_order", "integer"},
-    {"asc_desc", "varchar(4)"}
+    {"asc_desc", "varchar(4)"},
+    {"key_prefix_length", "integer"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -3963,6 +3989,7 @@ boot_define_view_index_key (void)
 	   " CASE k.asc_desc WHEN 0 THEN 'ASC'"
 	   " WHEN 1 THEN 'DESC'"
 	   " ELSE 'UNKN' END"
+	   ", k.key_prefix_length"
 	   " FROM %s k"
 	   " WHERE CURRENT_USER = 'DBA' OR"
 	   " {k.index_of.class_of.owner.name} SUBSETEQ ("
@@ -4125,10 +4152,9 @@ boot_define_view_trigger (void)
 	   " CAST(t.target_attribute AS VARCHAR(255)),"
 	   " CASE t.target_class_attribute WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
 	   " t.action_type, t.action_time"
-	   " FROM %s c, %s t"
-	   " WHERE t.target_class = c.class_of AND"
-	   " (CURRENT_USER = 'DBA' OR"
-	   " {c.owner.name} SUBSETEQ (SELECT SET{CURRENT_USER} +"
+	   " FROM %s t LEFT OUTER JOIN %s c ON t.target_class = c.class_of"
+	   " WHERE CURRENT_USER = 'DBA' OR"
+	   " {t.owner.name} SUBSETEQ (SELECT SET{CURRENT_USER} +"
 	   " COALESCE(SUM(SET{t.g.name}), SET{})"
 	   " FROM %s u, TABLE(groups) AS t(g)"
 	   " WHERE u.name = CURRENT_USER ) OR"
@@ -4139,9 +4165,9 @@ boot_define_view_trigger (void)
 	   " COALESCE(SUM(SET{t.g.name}), SET{})"
 	   " FROM %s u, TABLE(groups) AS t(g)"
 	   " WHERE u.name = CURRENT_USER) AND"
-	   " au.auth_type = 'SELECT'))",
-	   CT_CLASS_NAME,
+	   " au.auth_type = 'SELECT')",
 	   TR_CLASS_NAME,
+           CT_CLASS_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
@@ -4545,6 +4571,7 @@ boot_destroy_catalog_classes (void)
     CT_METHOD_NAME, CT_METHSIG_NAME, CT_METHARG_NAME,
     CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
     CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
+    CT_PARTITION_NAME, CT_STORED_PROC_NAME, CT_STORED_PROC_ARGS_NAME,
     CTV_CLASS_NAME, CTV_SUPER_CLASS_NAME, CTV_VCLASS_NAME,
     CTV_ATTRIBUTE_NAME, CTV_ATTR_SD_NAME, CTV_METHOD_NAME,
     CTV_METHARG_NAME, CTV_METHARG_SD_NAME, CTV_METHFILE_NAME,

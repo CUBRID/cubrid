@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9.00"
-	Name="migrate_r22"
+	Name="migrate_r30"
 	ProjectGUID="{A5F2A05C-6739-4AC0-85B3-4124B3B83F7A}"
-	RootNamespace="migrate_r22"
+	RootNamespace="migrate_r30"
 	TargetFrameworkVersion="196613"
 	>
 	<Platforms>
@@ -197,7 +197,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies=" dbghelp.lib"
+				AdditionalDependencies="dbghelp.lib"
 				LinkIncremental="1"
 				GenerateDebugInformation="true"
 				SubSystem="1"
@@ -292,7 +292,7 @@
 	</References>
 	<Files>
 		<Filter
-			Name="소스 파일"
+			Name="Source Files"
 			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
@@ -306,13 +306,13 @@
 			</Filter>
 		</Filter>
 		<Filter
-			Name="헤더 파일"
+			Name="Header Files"
 			Filter="h;hpp;hxx;hm;inl;inc;xsd"
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
 		</Filter>
 		<Filter
-			Name="리소스 파일"
+			Name="Resource Files"
 			Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav"
 			UniqueIdentifier="{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}"
 			>

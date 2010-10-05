@@ -34,9 +34,9 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
-import cubrid.sql.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDOID;
 
 /**
  * query statement, getSchemaInfo, getByOid를 수행한 뒤 얻어지는 Result Set을

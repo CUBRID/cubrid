@@ -578,7 +578,7 @@ lang_charset_name_to_id (const char *name, INTL_CODESET * codeset)
  *   return: NO_ERROR or error code
  *   codeset(in): INTL_CODESET of the desired charset
  *   space_char(out): character string holding the space character
- *   space_size(out): the number of bytes in the space character                                       *
+ *   space_size(out): the number of bytes in the space character
  *
  * Note: This routine assumes that the calling routine has allocated
  *       enough space for space_char, which will use 3 bytes at a maximum.

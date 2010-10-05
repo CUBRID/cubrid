@@ -28,10 +28,10 @@
  *
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 import java.util.Hashtable;
-import cubrid.jdbc.driver.*;
+import @CUBRID_DRIVER@.*;
 import java.sql.*;
 
 public class UResCache

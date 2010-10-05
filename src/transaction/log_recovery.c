@@ -4648,6 +4648,12 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_CLIENT_USER_UNDO_DATA:
 		case LOG_CLIENT_USER_POSTPONE_DATA:
 		case LOG_SAVEPOINT:
+		case LOG_REPLICATION_DATA:
+		case LOG_REPLICATION_SCHEMA:
+		case LOG_UNLOCK_COMMIT:
+		case LOG_UNLOCK_ABORT:
+		case LOG_DUMMY_HA_SERVER_STATE:
+		case LOG_DUMMY_OVF_RECORD:
 		  /* Not for UNDO .. Go to previous record */
 
 		  /* Is this the end of the transaction ? */
@@ -4824,12 +4830,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_2PC_RECV_ACK:
 		case LOG_DUMMY_CRASH_RECOVERY:
 		case LOG_DUMMY_FILLPAGE_FORARCHIVE:
-		case LOG_REPLICATION_DATA:
-		case LOG_REPLICATION_SCHEMA:
-		case LOG_UNLOCK_COMMIT:
-		case LOG_UNLOCK_ABORT:
-		case LOG_DUMMY_HA_SERVER_STATE:
-		case LOG_DUMMY_OVF_RECORD:
 		case LOG_END_OF_LOG:
 		  /* This looks like a system error in the analysis phase */
 #if defined(CUBRID_DEBUG)

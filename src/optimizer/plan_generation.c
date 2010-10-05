@@ -693,7 +693,7 @@ init_list_scan_proc (QO_ENV * env,
 				     listfile,
 				     namelist, access_pred, poslist);
 
-      if (env->pt_tree->node_type == PT_SELECT 
+      if (env->pt_tree->node_type == PT_SELECT
 	  && env->pt_tree->info.query.q.select.connect_by)
 	{
 	  pt_set_level_node_etc (QO_ENV_PARSER (env),
@@ -704,8 +704,7 @@ init_list_scan_proc (QO_ENV * env,
 				   if_pred, &xasl->iscycle_val);
 	  pt_set_connect_by_operator_node_etc (QO_ENV_PARSER (env),
 					       if_pred, xasl);
-	  pt_set_qprior_node_etc (QO_ENV_PARSER (env),
-				  if_pred, xasl);
+	  pt_set_qprior_node_etc (QO_ENV_PARSER (env), if_pred, xasl);
 	}
 
       xasl = add_if_predicate (env, xasl, if_pred);
@@ -770,7 +769,7 @@ add_access_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan)
   if_pred = make_if_pred_from_plan (env, plan);
   instnum_pred = make_instnum_pred_from_plan (env, plan);
 
-  if (env->pt_tree->node_type == PT_SELECT 
+  if (env->pt_tree->node_type == PT_SELECT
       && env->pt_tree->info.query.q.select.connect_by)
     {
       pt_set_level_node_etc (parser, if_pred, &xasl->level_val);
@@ -803,7 +802,7 @@ exit_on_error:
 
 /*
  * add_scan_proc () - Add the scan proc to the end of xasl's scan_ptr list
- *   return: ASL_NODE *
+ *   return: XASL_NODE *
  *   env(in): The optimizer environment
  *   xasl(in): The XASL block to receive the scan block
  *   scan(in): The scanproc to be added
@@ -2636,4 +2635,81 @@ qo_xasl_get_multi_col (MOP class_mop, QO_XASL_INDEX_INFO * infop)
 
   /* cannot find the index entry with class MOP, is it possible? */
   return false;
+}
+
+/*
+ * qo_add_hq_iterations_access_spec () - adds hierarchical query iterations
+ *	access spec on single table
+ *   return:
+ *   plan(in):
+ *   xasl(in):
+ */
+XASL_NODE *
+qo_add_hq_iterations_access_spec (QO_PLAN * plan, XASL_NODE * xasl)
+{
+  PARSER_CONTEXT *parser;
+  QO_ENV *env;
+  PT_NODE *class_spec;
+  PT_NODE *key_pred = NULL;
+  PT_NODE *access_pred = NULL;
+  PT_NODE *if_pred = NULL;
+  QO_XASL_INDEX_INFO *index_info;
+
+  if (!plan)
+    {
+      return NULL;
+    }
+
+  if (plan->plan_type == QO_PLANTYPE_SORT)
+    {
+      QO_PLAN *subplan = plan->plan_un.sort.subplan;
+      while (subplan && subplan->plan_type == QO_PLANTYPE_SORT)
+	{
+	  subplan = subplan->plan_un.sort.subplan;
+	}
+      if (subplan && subplan->plan_type == QO_PLANTYPE_SCAN)
+	{
+	  plan = subplan;
+	}
+      else
+	{
+	  return NULL;
+	}
+    }
+  else if (plan->plan_type != QO_PLANTYPE_SCAN)
+    {
+      return NULL;
+    }
+
+  class_spec = plan->plan_un.scan.node->entity_spec;
+  env = plan->info->env;
+
+  parser = QO_ENV_PARSER (env);
+
+  index_info = qo_get_xasl_index_info (env, plan);
+  make_pred_from_plan (env, plan, &key_pred, &access_pred, index_info);
+
+  xasl->spec_list =
+    pt_to_spec_list (parser, class_spec, key_pred, access_pred, index_info,
+		     NULL);
+
+  if_pred = make_if_pred_from_plan (env, plan);
+  if (if_pred)
+    {
+      xasl->if_pred = pt_to_pred_expr (parser, if_pred);
+    }
+
+  /* free pointer node list */
+  parser_free_tree (parser, key_pred);
+  parser_free_tree (parser, access_pred);
+  parser_free_tree (parser, if_pred);
+
+  qo_free_xasl_index_info (env, index_info);
+
+  if (xasl->spec_list == NULL)
+    {
+      return NULL;
+    }
+
+  return xasl;
 }

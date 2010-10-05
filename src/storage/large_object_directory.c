@@ -351,8 +351,8 @@ largeobjmgr_dir_allocpage (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 
   /*
    * NOTE: we fetch the page as old since it was initialized during the
-   * allocation by largeobjmgr_initdir_newpage, therfore, we care about the current
-   * content of the page.
+   * allocation by largeobjmgr_initdir_newpage, we want the current
+   * contents of the page.
    */
   page_ptr = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
 			PGBUF_UNCONDITIONAL_LATCH);
@@ -364,8 +364,8 @@ largeobjmgr_dir_allocpage (THREAD_ENTRY * thread_p, LARGEOBJMGR_DIRSTATE * ds,
 
   /* Need undo log, for cases of unexpected rollback, but only
      if the file is not new */
-  if (file_new_isvalid (thread_p,
-			&(ds->curdir.hdr->loid.vfid)) == DISK_INVALID)
+  if (file_is_new_file (thread_p,
+			&(ds->curdir.hdr->loid.vfid)) == FILE_OLD_FILE)
     {
       addr.vfid = &ds->curdir.hdr->loid.vfid;
       addr.pgptr = page_ptr;

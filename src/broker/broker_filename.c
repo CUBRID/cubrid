@@ -69,7 +69,8 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
 void
 set_cubrid_home ()
 {
-  char *p, dirname[PATH_MAX];
+  char dirname[PATH_MAX];
+  const char *p;
 
   p = getenv_cubrid_broker ();
   if (p)
@@ -259,7 +260,7 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf)
   return buf;
 }
 
-char *
+const char *
 getenv_cubrid_broker ()
 {
   char *p;

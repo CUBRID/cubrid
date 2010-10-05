@@ -129,6 +129,9 @@ extern int lock_initialize (void);
 extern void lock_finalize (void);
 extern int lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid,
 				     const OID * class_oid, LOCK lock);
+extern int lock_object_waitsecs (THREAD_ENTRY * thread_p, const OID * oid,
+				 const OID * class_oid, LOCK lock,
+				 int cond_flag, int waitsecs);
 extern int lock_object (THREAD_ENTRY * thread_p, const OID * oid,
 			const OID * class_oid, LOCK lock, int cond_flag);
 extern int lock_object_on_iscan (THREAD_ENTRY * thread_p, const OID * oid,
@@ -160,7 +163,8 @@ extern bool lock_has_lock_transaction (int tran_index);
 extern bool lock_is_waiting_transaction (int tran_index);
 #endif
 extern LK_ENTRY *lock_get_class_lock (const OID * class_oid, int tran_index);
-extern void lock_force_timeout_lock_wait_transactions (void);
+extern void lock_force_timeout_lock_wait_transactions (unsigned short
+						       stop_phase);
 extern bool lock_force_timeout_expired_wait_transactions (void *thrd_entry);
 extern void
 lock_notify_isolation_incons (THREAD_ENTRY * thread_p,

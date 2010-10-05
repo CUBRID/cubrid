@@ -22,7 +22,7 @@
  *
  * Note:
  * Allocation areas provide a way to block allocate structures and maintain
- * a free list.  Usefull for small structures that are used frequently.
+ * a free list.  Useful for small structures that are used frequently.
  * Used for allocation and freeing of many small objects of the same size.
  *
  * These areas are NOT allocated within the "workspace" memory so that
@@ -84,7 +84,7 @@ MUTEX_T area_List_lock = MUTEX_INITIALIZER;
  * Area_check_free -
  * Area_check_pointers -
  *    Flags to enable checking for elements that have been freed twice and
- *    to check freed pointers to make sure they are actually within the area.    *
+ *    to check freed pointers to make sure they are actually within the area.
  */
 static bool area_Check_free = false;
 static bool area_Check_pointers = false;

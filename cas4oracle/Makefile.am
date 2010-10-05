@@ -41,11 +41,17 @@ QATOOLS_DIR = $(SRC)/qatools
 
 INCLUDES = @SRC_INC@ @EXT_INC@
 DEFS = @SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
-	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_ORACLE -DCAS_FOR_DBMS
+	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_ORACLE
 
 ORACLE_LIBS = -lclntsh -lnnz11
 
-bin_PROGRAMS = cub_cas_oracle
+if BUILD_CAS_FOR_ORACLE
+  CAS4O = cub_cas_oracle
+else
+  CAS4O =
+endif
+
+bin_PROGRAMS = $(CAS4O)
 
 cub_cas_oracle_SOURCES = \
 	$(BROKER_DIR)/cas.c \
@@ -67,7 +73,8 @@ cub_cas_oracle_SOURCES = \
 	$(BROKER_DIR)/broker_error.c \
 	$(BROKER_DIR)/cas_util.c \
 	$(BROKER_DIR)/cas_dbms_util.c \
-	$(BROKER_DIR)/cas_error.c
+	$(BROKER_DIR)/cas_error.c \
+	$(BROKER_DIR)/cas_error_log.c 
 cub_cas_oracle_CFLAGS = $(CFLAGS) @ORACLE_INC_PATH@
 cub_cas_oracle_LDFLAGS = @ORACLE_LIB_PATH@ $(ORACLE_LIBS)
 

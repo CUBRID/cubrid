@@ -159,8 +159,8 @@ static bool btree_initialize_new_page (THREAD_ENTRY * thread_p,
 				       void *args);
 static int btree_search_nonleaf_page (THREAD_ENTRY * thread_p,
 				      BTID_INT * btid, PAGE_PTR page_ptr,
-				      DB_VALUE * key, INT16 * slot_id,
-				      VPID * child_vpid);
+				      DB_VALUE * key,
+				      INT16 * slot_id, VPID * child_vpid);
 static int btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 				   PAGE_PTR page_ptr, DB_VALUE * key,
 				   INT16 * slot_id);
@@ -187,14 +187,15 @@ static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p,
 				       BTID_INT * btid, PAGE_PTR pg_ptr,
 				       BTREE_CAPACITY * cpc);
 static void btree_print_space (FILE * fp, int n);
-static int btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
-				   VPID * leaf_vpid, DB_VALUE * key,
-				   OID * class_oid, OID * oid);
-static int btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
-				   PAGE_PTR page_ptr, DB_VALUE * key,
-				   OID * cls_oid, OID * oid,
-				   VPID * nearp_vpid,
-				   int do_unique_check, int op_type);
+static int btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
+				   BTID_INT * btid, VPID * leaf_vpid,
+				   DB_VALUE * key, OID * class_oid,
+				   OID * oid);
+static int btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
+				   BTID_INT * btid, PAGE_PTR page_ptr,
+				   DB_VALUE * key, OID * cls_oid, OID * oid,
+				   VPID * nearp_vpid, int do_unique_check,
+				   int op_type);
 static int btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			     PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R,
 			     VPID * P_vpid, VPID * Q_vpid, VPID * R_vpid,
@@ -233,7 +234,8 @@ static int btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 				 BTID * btid, int readonly_purpose,
 				 int lock_hint, OID * class_oid,
 				 DB_VALUE * key1, DB_VALUE * key2,
-				 RANGE range, FILTER_INFO * filter,
+				 RANGE range,
+				 FILTER_INFO * filter,
 				 bool need_construct_btid_int, char *copy_buf,
 				 int copy_buf_len);
 static int btree_find_next_index_record (THREAD_ENTRY * thread_p,
@@ -424,8 +426,8 @@ btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   if (BTREE_IS_NEW_FILE (btid))
     {
-      assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-	      == DISK_VALID);
+      assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+	      == FILE_NEW_FILE);
 
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
     }
@@ -1837,8 +1839,8 @@ btree_initialize_new_page (THREAD_ENTRY * thread_p, const VFID * vfid,
  */
 static int
 btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			   PAGE_PTR page_ptr, DB_VALUE * key, INT16 * slot_id,
-			   VPID * child_vpid)
+			   PAGE_PTR page_ptr, DB_VALUE * key,
+			   INT16 * slot_id, VPID * child_vpid)
 {
   int key_cnt, offset;
   int c;
@@ -2052,8 +2054,9 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  start_col = MIN (left_start_col, right_start_col);
 	}
 
-      c = (*(btid->key_type->type->cmpval)) (key, &temp_key, btid->key_type,
-					     btid->reverse, 0, 1, &start_col);
+      c =
+	(*(btid->key_type->type->cmpval)) (key, &temp_key, btid->key_type,
+					   btid->reverse, 0, 1, &start_col);
 
       btree_clear_key_value (&clear_key, &temp_key);
 
@@ -2172,7 +2175,7 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 
   /*
    * Note: we fetch the page as old since it was initialized by
-   * btree_initialize_new_page, therfore, we care about the current content of
+   * btree_initialize_new_page; we want the current contents of
    * the page.
    */
   page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
@@ -2415,9 +2418,9 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p,
 
   btid->rev_level = root_header->rev_level;
 
-  btid->new_file =
-    (file_new_isvalid (thread_p, &(btid->sys_btid->vfid)) ==
-     DISK_VALID) ? 1 : 0;
+  btid->new_file = (file_is_new_file (thread_p,
+				      &(btid->sys_btid->vfid))
+		    == FILE_NEW_FILE) ? 1 : 0;
 
   return rc;
 }
@@ -2566,6 +2569,7 @@ error:
  * xbtree_find_unique () -
  *   return:
  *   btid(in):
+ *   readonly_purpose(in):
  *   key(in):
  *   class_oid(in):
  *   oid(in):
@@ -2575,8 +2579,9 @@ error:
  * btree is unique.
  */
 BTREE_SEARCH
-xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
-		    OID * class_oid, OID * oid, bool is_all_class_srch)
+xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
+		    int readonly_purpose, DB_VALUE * key, OID * class_oid,
+		    OID * oid, bool is_all_class_srch)
 {
   BTREE_SCAN btree_scan;
   int oid_cnt;
@@ -2600,10 +2605,12 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
     }
   else
     {
-      oid_cnt = btree_keyval_search (thread_p, btid, true, &btree_scan, key,
-				     class_oid, index_scan_id.oid_list.oidp,
-				     2 * sizeof (OID), NULL, &index_scan_id,
-				     is_all_class_srch);
+      /* TODO: unique with prefix length */
+      oid_cnt =
+	btree_keyval_search (thread_p, btid, readonly_purpose, &btree_scan,
+			     key, class_oid, index_scan_id.oid_list.oidp,
+			     2 * sizeof (OID), NULL, &index_scan_id,
+			     is_all_class_srch);
       if (oid_cnt == -1 || (oid_cnt > 1))
 	{
 	  if (oid_cnt > 1)
@@ -2662,7 +2669,8 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
     }
 
   oid_cnt =
-    btree_keyval_search (thread_p, btid, true, &btree_scan, key, class_oid,
+    btree_keyval_search (thread_p, btid, true, &btree_scan, key,
+			 class_oid,
 			 index_scan_id.oid_list.oidp, 2 * sizeof (OID), NULL,
 			 &index_scan_id, false);
 
@@ -2684,6 +2692,22 @@ btree_scan_clear_key (BTREE_SCAN * btree_scan)
 			 btree_scan->key_range.lower_key);
   btree_clear_key_value (&btree_scan->key_range.clear_upper,
 			 btree_scan->key_range.upper_key);
+}
+
+/*
+ * btree_is_unique_type () -
+ *   return: Whether the given BTREE_TYPE corresponds to a unique index B+tree
+ *   type(in):
+ */
+bool
+btree_is_unique_type (BTREE_TYPE type)
+{
+  if (type == BTREE_UNIQUE || type == BTREE_REVERSE_UNIQUE ||
+      type == BTREE_PRIMARY_KEY)
+    {
+      return true;
+    }
+  return false;
 }
 
 /*
@@ -3802,7 +3826,7 @@ btree_check_all (THREAD_ENTRY * thread_p)
       /* get the index name of the index key */
       if (heap_get_indexinfo_of_btid (thread_p, &(btree_des->class_oid),
 				      &btid, NULL, NULL, NULL,
-				      &btname) != NO_ERROR)
+				      NULL, &btname) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -3909,7 +3933,8 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p,
       /* search index */
       btscan->oid_cnt = btree_keyval_search (thread_p, &btscan->btid, true,
 					     &btscan->btree_scan,
-					     key, cls_oid, btscan->oid_ptr,
+					     key,
+					     cls_oid, btscan->oid_ptr,
 					     btscan->oid_area_size, NULL,
 					     &isid, false);
       if (btscan->oid_cnt == -1)
@@ -4639,7 +4664,7 @@ btree_dump_page (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid_p,
 	  /* print the last record of a non leaf page, it has no key */
 	  (void) spage_get_record (page_ptr, key_cnt + 1, &rec, PEEK);
 	  btree_dump_non_leaf_record (thread_p, fp, btid, &rec, n, 0);
-	  fprintf (fp, "Last rec, Key ignored.\n\n");
+	  fprintf (fp, "Last Rec, Key ignored.\n\n");
 	}
     }
 
@@ -4812,6 +4837,7 @@ btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid)
 /*
  * btree_delete_from_leaf () -
  *   return: NO_ERROR
+ *   key_deleted(out):
  *   btid(in):
  *   leaf_vpid(in):
  *   key(in):
@@ -4859,9 +4885,9 @@ btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid)
  *     }
  */
 static int
-btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			VPID * leaf_vpid, DB_VALUE * key, OID * class_oid,
-			OID * oid)
+btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
+			BTID_INT * btid, VPID * leaf_vpid, DB_VALUE * key,
+			OID * class_oid, OID * oid)
 {
   char *oid_list_start, *keyvalp, *oid_list;
   OID last_class_oid;
@@ -5059,13 +5085,14 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	       */
 	      if (BTREE_IS_NEW_FILE (btid) != true)
 		{
-		  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-			  == DISK_INVALID);
+		  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+			  == FILE_OLD_FILE);
 
 		  /* "logical" undo logging needed (see comment
 		   * in function header).
 		   */
-		  ret = btree_rv_save_keyval (btid, key, class_oid, oid,
+		  ret = btree_rv_save_keyval (btid, key,
+					      class_oid, oid,
 					      &keyvalp, &keyval_len);
 		  if (ret != NO_ERROR)
 		    {
@@ -5085,6 +5112,8 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 		   */
 		  if (VPID_EQ (&last_vpid, leaf_vpid))
 		    {
+		      *key_deleted = 1;
+
 		      /* last OID deleted, delete the key and slot too */
 		      if (leafrec_pnt.key_len < 0
 			  && (logtb_is_current_active (thread_p) == true
@@ -5102,9 +5131,9 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 		      if (BTREE_IS_NEW_FILE (btid))
 			{
-			  assert (file_new_isvalid (thread_p,
+			  assert (file_is_new_file (thread_p,
 						    &(btid->sys_btid->vfid))
-				  == DISK_VALID);
+				  == FILE_NEW_FILE);
 
 			  /* page level undo logging needed (see comment
 			   * in function header).
@@ -5151,9 +5180,9 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 		      if (BTREE_IS_NEW_FILE (btid))
 			{
-			  assert (file_new_isvalid (thread_p,
+			  assert (file_is_new_file (thread_p,
 						    &(btid->sys_btid->vfid))
-				  == DISK_VALID);
+				  == FILE_NEW_FILE);
 
 			  /* page level undo logging needed (see comment
 			   * in function header).
@@ -5180,9 +5209,9 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 		      if (BTREE_IS_NEW_FILE (btid))
 			{
-			  assert (file_new_isvalid (thread_p,
+			  assert (file_is_new_file (thread_p,
 						    &(btid->sys_btid->vfid))
-				  == DISK_VALID);
+				  == FILE_NEW_FILE);
 
 			  /* log the record deletion and the header update redo.
 			   */
@@ -5239,9 +5268,9 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 			  if (BTREE_IS_NEW_FILE (btid))
 			    {
-			      assert (file_new_isvalid (thread_p,
+			      assert (file_is_new_file (thread_p,
 							&btid->sys_btid->vfid)
-				      == DISK_VALID);
+				      == FILE_NEW_FILE);
 
 			      /* page level undo logging needed (see comment
 			       * in function header).
@@ -5290,9 +5319,9 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 			  if (BTREE_IS_NEW_FILE (btid))
 			    {
-			      assert (file_new_isvalid (thread_p,
+			      assert (file_is_new_file (thread_p,
 							&btid->sys_btid->vfid)
-				      == DISK_VALID);
+				      == FILE_NEW_FILE);
 
 			      log_append_redo_data2 (thread_p,
 						     RVBT_KEYVAL_DEL_NDRECORD_UPD,
@@ -5315,9 +5344,9 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 			  if (BTREE_IS_NEW_FILE (btid))
 			    {
-			      assert (file_new_isvalid (thread_p,
+			      assert (file_is_new_file (thread_p,
 							&btid->sys_btid->vfid)
-				      == DISK_VALID);
+				      == FILE_NEW_FILE);
 
 			      /* page level undo logging needed (see comment
 			       * in function header).
@@ -5344,9 +5373,9 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			       *                         PHYSICAL redo> log
 			       * (see comment Note2 in function header).
 			       */
-			      assert (file_new_isvalid (thread_p,
+			      assert (file_is_new_file (thread_p,
 							&btid->sys_btid->vfid)
-				      == DISK_INVALID);
+				      == FILE_OLD_FILE);
 			      assert (keyvalp != NULL);
 
 			      log_append_undoredo_data2 (thread_p,
@@ -5367,9 +5396,9 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 			  if (BTREE_IS_NEW_FILE (btid))
 			    {
-			      assert (file_new_isvalid (thread_p,
+			      assert (file_is_new_file (thread_p,
 							&btid->sys_btid->vfid)
-				      == DISK_VALID);
+				      == FILE_NEW_FILE);
 
 			      /* log the new header record for redo purposes */
 			      log_append_redo_data2 (thread_p,
@@ -5388,9 +5417,9 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 		{
 		  if (BTREE_IS_NEW_FILE (btid))
 		    {
-		      assert (file_new_isvalid (thread_p,
+		      assert (file_is_new_file (thread_p,
 						&(btid->sys_btid->vfid))
-			      == DISK_VALID);
+			      == FILE_NEW_FILE);
 
 		      /* page level undo logging needed (see comment
 		       * in function header).
@@ -5432,9 +5461,9 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 		  if (BTREE_IS_NEW_FILE (btid))
 		    {
-		      assert (file_new_isvalid (thread_p,
+		      assert (file_is_new_file (thread_p,
 						&(btid->sys_btid->vfid))
-			      == DISK_VALID);
+			      == FILE_NEW_FILE);
 
 		      log_append_redo_data2 (thread_p,
 					     RVBT_KEYVAL_DEL_OID_TRUNCATE,
@@ -5499,8 +5528,8 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
       if (BTREE_IS_NEW_FILE (btid))
 	{
-	  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-		  == DISK_VALID);
+	  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+		  == FILE_NEW_FILE);
 
 	  /* page level undo logging needed (see comment
 	   * in function header).
@@ -5636,6 +5665,12 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   /* for recovery purposes */
   recset_data = PTR_ALIGN (recset_data_buf, MAX_ALIGNMENT);
+  if (recset_data == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, DB_PAGESIZE);
+      goto exit_on_error;
+    }
 
   left_cnt = spage_number_of_records (Q) - 1;
   right_cnt = spage_number_of_records (R) - 1;
@@ -5763,6 +5798,7 @@ btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
 
   if (!leaf_page)
     {				/* form the middle record in the root */
+
       copy_rec.area_size = DB_PAGESIZE;
       copy_rec.data = PTR_ALIGN (copy_rec_buf, MAX_ALIGNMENT);
 
@@ -5939,10 +5975,11 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   char recset_data_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   /* initializations */
+  recset_data = NULL;
+  copy_rec.data = NULL;
   db_make_null (&left_key);
   db_make_null (&right_key);
   VPID_SET_NULL (child_vpid);
-
   copy_rec.area_size = DB_PAGESIZE;
   copy_rec.data = PTR_ALIGN (copy_rec_buf, MAX_ALIGNMENT);
   recset_data = PTR_ALIGN (recset_data_buf, MAX_ALIGNMENT);
@@ -6049,8 +6086,9 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
       /* Log the right page records for undo purposes on the left page. */
       recset_header.rec_cnt = right_cnt;
       recset_header.first_slotid = left_cnt + 1;
-      ret = btree_rv_util_save_page_records
-	(right_pg, 1, right_cnt, left_cnt + 1, recset_data, &recset_length);
+      ret = btree_rv_util_save_page_records (right_pg, 1, right_cnt,
+					     left_cnt + 1, recset_data,
+					     &recset_length);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -6427,8 +6465,8 @@ exit_on_error:
  */
 DB_VALUE *
 btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
-	      OID * cls_oid, OID * oid, int *unique, int op_type,
-	      BTREE_UNIQUE_STATS * unique_stat_info)
+	      OID * cls_oid, OID * oid, int *unique,
+	      int op_type, BTREE_UNIQUE_STATS * unique_stat_info)
 {
   char *header_ptr;
   INT16 key_cnt;
@@ -6444,11 +6482,11 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   int top_op_active = 0;
   bool clear_key;
   bool leaf_page;
-  int merged, is_q_empty, is_r_empty, is_l_empty;
+  int merged, is_q_empty, is_r_empty, is_l_empty, key_deleted;
   DB_VALUE mid_key;
   BTID_INT btid_int;
-  bool next_page_flag = false;
-  bool next_lock_flag = false;
+  int next_page_flag = false;
+  int next_lock_flag = false;
   OID class_oid;
   LOCK class_lock = NULL_LOCK;
   int tran_index;
@@ -6553,8 +6591,6 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 		}
 
 	      pgbuf_set_dirty (thread_p, P, DONT_FREE);
-	      copy_rec.data = NULL;
-	      copy_rec1.data = NULL;
 	    }
 	  else
 	    {
@@ -6602,7 +6638,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
 	  /* update the root header */
 	  root_header.num_oids--;
-	  root_header.num_keys--;
+	  root_header.num_keys--;	/* guess existing key delete */
 	  btree_write_root_header (&copy_rec, &root_header);
 
 	  log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,
@@ -6629,7 +6665,7 @@ btree_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	      goto error;
 	    }
 	  unique_stat_info->num_oids--;
-	  unique_stat_info->num_keys--;
+	  unique_stat_info->num_keys--;	/* guess existing key delete */
 	}
     }
 
@@ -6811,8 +6847,8 @@ start_point:
 
 	  if (BTREE_IS_NEW_FILE (&btid_int))
 	    {			/* New B+tree ? */
-	      assert (file_new_isvalid (thread_p, &(btid->vfid))
-		      == DISK_VALID);
+	      assert (file_is_new_file (thread_p, &(btid->vfid))
+		      == FILE_NEW_FILE);
 
 	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
 	    }
@@ -6829,9 +6865,8 @@ start_point:
 
 	  c = (*(btid_int.key_type->type->cmpval)) (key, &mid_key,
 						    btid_int.key_type,
-						    btid_int.reverse, 0, 1,
-						    NULL);
-
+						    btid_int.reverse, 0,
+						    1, NULL);
 	  if (c <= 0)
 	    {
 	      /* choose left child */
@@ -6857,8 +6892,8 @@ start_point:
   while (!leaf_page)		/* non-leaf */
     {
       /* find and get the child page to be followed */
-      if (btree_search_nonleaf_page (thread_p, &btid_int, P, key, &p_slot_id,
-				     &Q_vpid) != NO_ERROR)
+      if (btree_search_nonleaf_page (thread_p, &btid_int, P, key,
+				     &p_slot_id, &Q_vpid) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -6930,8 +6965,8 @@ start_point:
 
 		  if (BTREE_IS_NEW_FILE (&btid_int))
 		    {		/* New B+tree ? */
-		      assert (file_new_isvalid (thread_p, &(btid->vfid))
-			      == DISK_VALID);
+		      assert (file_is_new_file (thread_p, &(btid->vfid))
+			      == FILE_NEW_FILE);
 
 		      log_end_system_op (thread_p,
 					 LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
@@ -6956,8 +6991,8 @@ start_point:
 
 		  if (BTREE_IS_NEW_FILE (&btid_int))
 		    {		/* New B+tree ? */
-		      assert (file_new_isvalid (thread_p, &(btid->vfid))
-			      == DISK_VALID);
+		      assert (file_is_new_file (thread_p, &(btid->vfid))
+			      == FILE_NEW_FILE);
 
 		      log_end_system_op (thread_p,
 					 LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
@@ -7061,8 +7096,8 @@ start_point:
 
 		  if (BTREE_IS_NEW_FILE (&btid_int))
 		    {		/* New B+tree ? */
-		      assert (file_new_isvalid (thread_p, &(btid->vfid))
-			      == DISK_VALID);
+		      assert (file_is_new_file (thread_p, &(btid->vfid))
+			      == FILE_NEW_FILE);
 
 		      log_end_system_op (thread_p,
 					 LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
@@ -7087,8 +7122,8 @@ start_point:
 
 		  if (BTREE_IS_NEW_FILE (&btid_int))
 		    {		/* New B+tree ? */
-		      assert (file_new_isvalid (thread_p, &(btid->vfid))
-			      == DISK_VALID);
+		      assert (file_is_new_file (thread_p, &(btid->vfid))
+			      == FILE_NEW_FILE);
 
 		      log_end_system_op (thread_p,
 					 LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
@@ -7397,14 +7432,37 @@ start_point:
 key_deletion:
 
   /* a leaf page is reached, perform the deletion */
-
-  if (btree_delete_from_leaf (thread_p, &btid_int, &P_vpid, key, &class_oid,
-			      oid) != NO_ERROR)
+  key_deleted = 0;
+  if (btree_delete_from_leaf (thread_p, &key_deleted, &btid_int,
+			      &P_vpid, key, &class_oid, oid) != NO_ERROR)
     {
       goto error;
     }
 
   pgbuf_unfix_and_init (thread_p, P);
+
+  if (is_active && BTREE_IS_UNIQUE (&btid_int))
+    {
+      if (op_type == SINGLE_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
+	  || op_type == SINGLE_ROW_MODIFY)
+	{
+	  /* at here, do nothing.
+	   * later, undo root header statistics
+	   */
+	}
+      else
+	{
+	  if (unique_stat_info == NULL)
+	    {
+	      goto error;
+	    }
+	  /* revert local statistical information */
+	  if (key_deleted == 0)
+	    {
+	      unique_stat_info->num_keys++;
+	    }
+	}
+    }
 
   mnt_bt_deletes (thread_p);
   return key;
@@ -7455,6 +7513,7 @@ error:
 /*
  * btree_insert_into_leaf () -
  *   return: NO_ERROR
+ *   key_added(out):
  *   btid(in): B+tree index identifier
  *   page_ptr(in): Leaf page pointer to which the key is to be inserted
  *   key(in): Key to be inserted
@@ -7518,9 +7577,9 @@ error:
  *    }
  */
 static int
-btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
-			PAGE_PTR page_ptr, DB_VALUE * key, OID * cls_oid,
-			OID * oid, VPID * nearp_vpid,
+btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
+			BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
+			OID * cls_oid, OID * oid, VPID * nearp_vpid,
 			int do_unique_check, int op_type)
 {
   PAGE_PTR ovfp = NULL, newp = NULL;
@@ -7593,8 +7652,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   if (BTREE_IS_NEW_FILE (btid))
     {
-      assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-	      == DISK_VALID);
+      assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+	      == FILE_NEW_FILE);
 
       /* We only need this area if we are doing page level logging
        * (see comment in the header).
@@ -7629,6 +7688,7 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
   if (!btree_search_leaf_page (thread_p, btid, page_ptr, key, &slot_id))
     {
       /* key does not exist */
+      *key_added = 1;
 
       if (slot_id == NULL_SLOTID)
 	{
@@ -7654,12 +7714,12 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
        */
       if (BTREE_IS_NEW_FILE (btid) != true)
 	{
-	  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-		  == DISK_INVALID);
+	  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+		  == FILE_OLD_FILE);
 
 	  /* "logical" undo logging needed (see comment in function header). */
-	  ret = btree_rv_save_keyval (btid, key, cls_oid, oid, &keyvalp,
-				      &keyval_len);
+	  ret = btree_rv_save_keyval (btid, key,
+				      cls_oid, oid, &keyvalp, &keyval_len);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -7711,8 +7771,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	  /* CASE-A: put combined <LOGICAL undo, PHYSICAL redo> log
 	   * (see comment Note2 in function header).
 	   */
-	  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-		  == DISK_INVALID);
+	  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+		  == FILE_OLD_FILE);
 	  assert (keyvalp != NULL);
 
 	  log_append_undoredo_data2 (thread_p,
@@ -7749,8 +7809,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
        */
       if (BTREE_IS_NEW_FILE (btid))
 	{
-	  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-		  == DISK_VALID);
+	  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+		  == FILE_NEW_FILE);
 
 	  /* page level undo logging needed (see comment in function header). */
 	  log_append_undoredo_data2 (thread_p, RVBT_LFRECORD_KEYINS,
@@ -7855,14 +7915,15 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	   */
 	  if (BTREE_IS_NEW_FILE (btid) != true)
 	    {
-	      assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-		      == DISK_INVALID);
+	      assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+		      == FILE_OLD_FILE);
 
 	      /* At here, only generate and not put "logical" undo log
 	       * (see comment Note2 in function header).
 	       */
-	      ret = btree_rv_save_keyval (btid, key, cls_oid, oid,
-					  &keyvalp, &keyval_len);
+	      ret = btree_rv_save_keyval (btid, key,
+					  cls_oid, oid, &keyvalp,
+					  &keyval_len);
 	      if (ret != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -7873,8 +7934,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	    {			/* enough space in page */
 	      if (BTREE_IS_NEW_FILE (btid))
 		{
-		  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-			  == DISK_VALID);
+		  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+			  == FILE_NEW_FILE);
 
 		  /* page level undo logging needed (see comment in
 		   * function header).
@@ -7918,8 +7979,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 	      if (BTREE_IS_NEW_FILE (btid))
 		{
-		  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-			  == DISK_VALID);
+		  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+			  == FILE_NEW_FILE);
 
 		  /* log the new node record for redo purposes */
 		  log_append_redo_data2 (thread_p,
@@ -7953,8 +8014,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 	      if (BTREE_IS_NEW_FILE (btid))
 		{
-		  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-			  == DISK_VALID);
+		  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+			  == FILE_NEW_FILE);
 
 		  /* page level undo logging needed (see comment in
 		   * function header).
@@ -7993,8 +8054,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 	      if (BTREE_IS_NEW_FILE (btid))
 		{
-		  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-			  == DISK_VALID);
+		  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+			  == FILE_NEW_FILE);
 
 		  log_append_redo_data2 (thread_p,
 					 RVBT_KEYVAL_INS_LFRECORD_OIDINS,
@@ -8080,14 +8141,15 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 	   */
 	  if (BTREE_IS_NEW_FILE (btid) != true)
 	    {
-	      assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-		      == DISK_INVALID);
+	      assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+		      == FILE_OLD_FILE);
 
 	      /* At here, only generate and not put "logical" undo log
 	       * (see comment Note2 in function header).
 	       */
-	      ret = btree_rv_save_keyval (btid, key, cls_oid, oid,
-					  &keyvalp, &keyval_len);
+	      ret = btree_rv_save_keyval (btid, key,
+					  cls_oid, oid, &keyvalp,
+					  &keyval_len);
 	      if (ret != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -8110,8 +8172,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 	      if (BTREE_IS_NEW_FILE (btid))
 		{
-		  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-			  == DISK_VALID);
+		  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+			  == FILE_NEW_FILE);
 
 		  /* page level undo logging needed (see comment in
 		   * function header).
@@ -8152,8 +8214,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 	      if (BTREE_IS_NEW_FILE (btid))
 		{
-		  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-			  == DISK_VALID);
+		  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+			  == FILE_NEW_FILE);
 
 		  log_append_redo_data2 (thread_p,
 					 RVBT_KEYVAL_INS_LFRECORD_OIDINS,
@@ -8192,8 +8254,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 	      if (BTREE_IS_NEW_FILE (btid))
 		{
-		  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-			  == DISK_VALID);
+		  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+			  == FILE_NEW_FILE);
 
 		  /* page level undo logging needed (see comment in
 		   * function header).
@@ -8227,8 +8289,8 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
 	      if (BTREE_IS_NEW_FILE (btid))
 		{
-		  assert (file_new_isvalid (thread_p, &(btid->sys_btid->vfid))
-			  == DISK_VALID);
+		  assert (file_is_new_file (thread_p, &(btid->sys_btid->vfid))
+			  == FILE_NEW_FILE);
 
 		  log_append_redo_data2 (thread_p,
 					 RVBT_KEYVAL_INS_LFRECORD_OIDINS,
@@ -8270,6 +8332,7 @@ exit_on_error:
     {
       pgbuf_unfix_and_init (thread_p, newp);
     }
+
   ret = (ret == NO_ERROR
 	 && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
   goto end;
@@ -8332,10 +8395,11 @@ btree_get_prefix (const DB_VALUE * key1, const DB_VALUE * key2,
  * Note: the returned db_value should be cleared and FREED by the caller.
  */
 static DB_VALUE *
-btree_find_split_point (THREAD_ENTRY * thread_p,
-			BTID_INT * btid, PAGE_PTR page_ptr,
-			INT16 * mid_slot, DB_VALUE * key, bool * clear_midkey)
+btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid,
+			PAGE_PTR page_ptr, INT16 * mid_slot, DB_VALUE * key,
+			bool * clear_midkey)
 {
+
   RECDES rec;
   bool leaf_page;
   INT16 slot_id;
@@ -8676,9 +8740,8 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   /* find the middle record of the page Q  and find the number of
    * keys after split in pages Q and R, respectively
    */
-  mid_key =
-    btree_find_split_point (thread_p, btid, Q, &mid_slot_id, key,
-			    &clear_midkey);
+  mid_key = btree_find_split_point (thread_p, btid, Q, &mid_slot_id, key,
+				    &clear_midkey);
 
   if (mid_key == NULL)
     {
@@ -9031,6 +9094,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
    */
   mid_key = btree_find_split_point (thread_p, btid, P, &mid_slot_id, key,
 				    &clear_midkey);
+
   if (!mid_key)
     {
       er_log_debug (ARG_FILE_LINE,
@@ -9238,7 +9302,6 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P,
   c = (*(btid->nonleaf_key_type->type->cmpval)) (key, mid_key,
 						 btid->key_type,
 						 btid->reverse, 0, 1, NULL);
-
   if (c <= 0)
     {
       page_vpid = *Q_page_vpid;
@@ -9311,9 +9374,10 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   bool leaf_page;
   int max_free, keys;
   PAGEID_STRUCT pageid_struct;	/* for recovery purposes */
+  int key_added;
   BTID_INT btid_int;
-  bool next_page_flag = false;
-  bool next_lock_flag = false;
+  int next_page_flag = false;
+  int next_lock_flag = false;
   OID class_oid;
   LOCK class_lock = NULL_LOCK;
   int tran_index;
@@ -9535,7 +9599,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
 	  /* update the root header */
 	  root_header.num_oids++;
-	  root_header.num_keys++;
+	  root_header.num_keys++;	/* guess new key insert */
 	  btree_write_root_header (&copy_rec, &root_header);
 
 	  log_append_undoredo_data2 (thread_p, RVBT_ROOTHEADER_UPD,
@@ -9559,7 +9623,7 @@ btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	      goto error;
 	    }
 	  unique_stat_info->num_oids++;
-	  unique_stat_info->num_keys++;
+	  unique_stat_info->num_keys++;	/* guess new key insert */
 	}
     }
 
@@ -9707,7 +9771,8 @@ start_point:
       /* log the newly allocated pageid for deallocation for undo purposes */
       if (BTREE_IS_NEW_FILE (&btid_int) != true)
 	{
-	  assert (file_new_isvalid (thread_p, &(btid->vfid)) == DISK_INVALID);
+	  assert (file_is_new_file (thread_p, &(btid->vfid)) ==
+		  FILE_OLD_FILE);
 
 	  /* we don't do undo logging for new files */
 	  pageid_struct.vpid = Q_vpid;
@@ -9727,7 +9792,8 @@ start_point:
       /* log the newly allocated pageid for deallocation for undo purposes */
       if (BTREE_IS_NEW_FILE (&btid_int) != true)
 	{
-	  assert (file_new_isvalid (thread_p, &(btid->vfid)) == DISK_INVALID);
+	  assert (file_is_new_file (thread_p, &(btid->vfid)) ==
+		  FILE_OLD_FILE);
 
 	  /* we don't do undo logging for new files */
 	  pageid_struct.vpid = R_vpid;
@@ -9752,8 +9818,8 @@ start_point:
 
 	  if (BTREE_IS_NEW_FILE (&btid_int))
 	    {			/* New B+tree ? */
-	      assert (file_new_isvalid (thread_p, &(btid->vfid))
-		      == DISK_VALID);
+	      assert (file_is_new_file (thread_p, &(btid->vfid))
+		      == FILE_NEW_FILE);
 
 	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
 	    }
@@ -9775,8 +9841,8 @@ start_point:
 
 	  if (BTREE_IS_NEW_FILE (&btid_int))
 	    {			/* New B+tree ? */
-	      assert (file_new_isvalid (thread_p, &(btid->vfid))
-		      == DISK_VALID);
+	      assert (file_is_new_file (thread_p, &(btid->vfid))
+		      == FILE_NEW_FILE);
 
 	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
 	    }
@@ -9798,8 +9864,8 @@ start_point:
 
 	  if (BTREE_IS_NEW_FILE (&btid_int))
 	    {			/* New B+tree ? */
-	      assert (file_new_isvalid (thread_p, &(btid->vfid))
-		      == DISK_VALID);
+	      assert (file_is_new_file (thread_p, &(btid->vfid))
+		      == FILE_NEW_FILE);
 
 	      log_end_system_op (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
 	    }
@@ -9910,8 +9976,8 @@ start_point:
 	  /* Log the newly allocated pageid for deallocation for undo purposes */
 	  if (BTREE_IS_NEW_FILE (&btid_int) != true)
 	    {
-	      assert (file_new_isvalid (thread_p, &(btid->vfid))
-		      == DISK_INVALID);
+	      assert (file_is_new_file (thread_p, &(btid->vfid))
+		      == FILE_OLD_FILE);
 
 	      /* we don't do undo logging for new files */
 	      pageid_struct.vpid = R_vpid;
@@ -9936,8 +10002,8 @@ start_point:
 
 	      if (BTREE_IS_NEW_FILE (&btid_int))
 		{		/* New B+tree ? */
-		  assert (file_new_isvalid (thread_p, &(btid->vfid))
-			  == DISK_VALID);
+		  assert (file_is_new_file (thread_p, &(btid->vfid))
+			  == FILE_NEW_FILE);
 
 		  log_end_system_op (thread_p,
 				     LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
@@ -9957,8 +10023,8 @@ start_point:
 
 	      if (BTREE_IS_NEW_FILE (&btid_int))
 		{		/* New B+tree ? */
-		  assert (file_new_isvalid (thread_p, &(btid->vfid))
-			  == DISK_VALID);
+		  assert (file_is_new_file (thread_p, &(btid->vfid))
+			  == FILE_NEW_FILE);
 
 		  log_end_system_op (thread_p,
 				     LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
@@ -9981,8 +10047,8 @@ start_point:
 
 	      if (BTREE_IS_NEW_FILE (&btid_int))
 		{		/* New B+tree ? */
-		  assert (file_new_isvalid (thread_p, &(btid->vfid))
-			  == DISK_VALID);
+		  assert (file_is_new_file (thread_p, &(btid->vfid))
+			  == FILE_NEW_FILE);
 
 		  log_end_system_op (thread_p,
 				     LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
@@ -10189,9 +10255,8 @@ start_point:
     }
 
   /* CONDITIONAL lock request */
-  ret_val =
-    lock_hold_object_instant (thread_p, &N_oid, &N_class_oid, NX_LOCK);
-
+  ret_val = lock_hold_object_instant (thread_p, &N_oid, &N_class_oid,
+				      NX_LOCK);
   if (ret_val == LK_GRANTED)
     {
       if (next_page_flag == true)
@@ -10217,8 +10282,8 @@ start_point:
       COPY_OID (&saved_N_class_oid, &N_class_oid);
 
       /* UNCONDITIONAL lock request */
-      ret_val =
-	lock_object (thread_p, &N_oid, &N_class_oid, NX_LOCK, LK_UNCOND_LOCK);
+      ret_val = lock_object (thread_p, &N_oid, &N_class_oid, NX_LOCK,
+			     LK_UNCOND_LOCK);
       if (ret_val != LK_GRANTED)
 	{
 	  goto error;
@@ -10291,6 +10356,7 @@ key_insertion:
    * no need to go up to parent pages, and it will always be possible to
    * make the insertion in this leaf page.
    */
+  key_added = 0;
 
 #if 0
   if (LOG_CHECK_LOG_APPLIER (thread_p))
@@ -10320,13 +10386,37 @@ key_insertion:
       do_unique_check = false;
     }
 
-  if (btree_insert_into_leaf (thread_p, &btid_int, P, key, &class_oid, oid,
-			      &P_vpid, do_unique_check, op_type) != NO_ERROR)
+  if (btree_insert_into_leaf (thread_p, &key_added, &btid_int,
+			      P, key, &class_oid, oid, &P_vpid,
+			      do_unique_check, op_type) != NO_ERROR)
     {
       goto error;
     }
 
   pgbuf_unfix_and_init (thread_p, P);
+
+  if (is_active && BTREE_IS_UNIQUE (&btid_int))
+    {
+      if (op_type == SINGLE_ROW_INSERT || op_type == SINGLE_ROW_UPDATE
+	  || op_type == SINGLE_ROW_MODIFY)
+	{
+	  /* at here, do nothing.
+	   * later, undo root header statistics
+	   */
+	}
+      else
+	{
+	  if (unique_stat_info == NULL)
+	    {
+	      goto error;
+	    }
+	  /* revert local statistical information */
+	  if (key_added == 0)
+	    {
+	      unique_stat_info->num_keys--;
+	    }
+	}
+    }
 
   if (next_lock_flag == true)
     {
@@ -10360,7 +10450,6 @@ error:
     {
       lock_unlock_object (thread_p, &N_oid, &N_class_oid, X_LOCK, true);
     }
-
   if (top_op_active)
     {
       log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
@@ -10388,13 +10477,14 @@ error:
  */
 int
 btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key,
-	      DB_VALUE * new_key, OID * cls_oid, OID * oid, int op_type,
+	      DB_VALUE * new_key,
+	      OID * cls_oid, OID * oid, int op_type,
 	      BTREE_UNIQUE_STATS * unique_stat_info, int *unique)
 {
   int ret = NO_ERROR;
 
-  if (btree_delete (thread_p, btid, old_key, cls_oid, oid, unique,
-		    op_type, unique_stat_info) == NULL)
+  if (btree_delete (thread_p, btid, old_key,
+		    cls_oid, oid, unique, op_type, unique_stat_info) == NULL)
     {
       /* if the btree we are updating is a btree for unique attributes
        * it is possible that the btree update has already been performed
@@ -10409,8 +10499,8 @@ btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_key,
       goto exit_on_error;
     }
 
-  if (btree_insert (thread_p, btid, new_key, cls_oid, oid,
-		    op_type, unique_stat_info, unique) == NULL)
+  if (btree_insert (thread_p, btid, new_key,
+		    cls_oid, oid, op_type, unique_stat_info, unique) == NULL)
     {
       goto exit_on_error;
     }
@@ -10448,6 +10538,7 @@ btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
   RECDES redo_rec;
   char undo_data[ROOT_HEADER_FIXED_SIZE];
   char redo_data_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *redo_data = NULL;
   int ret = NO_ERROR;
 
   /* check if unique_stat_info is NULL */
@@ -10587,8 +10678,8 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   while (node_type == NON_LEAF_NODE)
     {
       /* get the child page to follow */
-      if (btree_search_nonleaf_page (thread_p, btid_int, P, key, &p_slot_id,
-				     &Q_vpid) != NO_ERROR)
+      if (btree_search_nonleaf_page (thread_p, btid_int, P, key,
+				     &p_slot_id, &Q_vpid) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -10917,8 +11008,8 @@ error:
 int
 btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid,
 		     int readonly_purpose, BTREE_SCAN * btree_scan,
-		     DB_VALUE * key, OID * class_oid, OID * oids_ptr,
-		     int oids_size, FILTER_INFO * filter,
+		     DB_VALUE * key, OID * class_oid,
+		     OID * oids_ptr, int oids_size, FILTER_INFO * filter,
 		     INDX_SCAN_ID * isidp, bool is_all_class_srch)
 {
   /* this is just a GE_LE range search with the same key */
@@ -11246,7 +11337,8 @@ static int
 btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 		      BTID * btid, int readonly_purpose, int lock_hint,
 		      OID * class_oid, DB_VALUE * key1, DB_VALUE * key2,
-		      RANGE range, FILTER_INFO * filter,
+		      RANGE range,
+		      FILTER_INFO * filter,
 		      bool need_construct_btid_int, char *copy_buf,
 		      int copy_buf_len)
 {
@@ -11818,9 +11910,9 @@ btree_prepare_first_search (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
    * Find out and fix the first leaf page
    * that contains the given lower bound key value.
    */
-  bts->C_page =
-    btree_locate_key (thread_p, &bts->btid_int, bts->key_range.lower_key,
-		      &bts->C_vpid, &bts->slot_id, &found);
+  bts->C_page = btree_locate_key (thread_p, &bts->btid_int,
+				  bts->key_range.lower_key,
+				  &bts->C_vpid, &bts->slot_id, &found);
 
   if (!found)
     {
@@ -12097,11 +12189,13 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
     }
   else
     {
-      c = (*(bts->btid_int.key_type->type->cmpval)) (bts->key_range.upper_key,
-						     &bts->cur_key,
-						     bts->btid_int.key_type,
-						     bts->btid_int.reverse, 0,
-						     1, NULL);
+      c =
+	(*(bts->btid_int.key_type->type->cmpval)) (bts->key_range.
+						   upper_key,
+						   &bts->cur_key,
+						   bts->btid_int.key_type,
+						   bts->btid_int.reverse,
+						   0, 1, NULL);
     }
 
   if (c < 0)
@@ -12913,8 +13007,8 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
       /* initialize the bts */
       if (btree_initialize_bts
 	  (thread_p, bts, btid, readonly_purpose, lock_hint, class_oids_ptr,
-	   key1, key2, range, filter, need_construct_btid_int,
-	   index_scan_id_p->copy_buf,
+	   key1, key2, range, filter,
+	   need_construct_btid_int, index_scan_id_p->copy_buf,
 	   index_scan_id_p->copy_buf_len) != NO_ERROR)
 	{
 	  goto error;
@@ -13550,7 +13644,7 @@ start_locking:
 		  /*
 		   * Note the implementation of lock_unlock_object().
 		   * Even though certain class lock has been escalated,
-		   * the request for releaing instance lock of the class
+		   * the request for releasing instance lock of the class
 		   * must be processed correctly.
 		   */
 		}
@@ -14507,8 +14601,8 @@ btree_rv_util_save_page_records (PAGE_PTR page_ptr, INT16 first_slotid,
  * pages.  Be careful if you add a call to this routine.
  */
 static int
-btree_rv_save_keyval (BTID_INT * btid, DB_VALUE * key, OID * cls_oid,
-		      OID * oid, char **data, int *length)
+btree_rv_save_keyval (BTID_INT * btid, DB_VALUE * key,
+		      OID * cls_oid, OID * oid, char **data, int *length)
 {
   char *datap;
   int key_len;
@@ -15354,8 +15448,10 @@ btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   btree_rv_read_keyval_info_nocopy (thread_p, datap, datasize, &btid,
 				    &cls_oid, &oid, &key);
 
-  if (btree_delete (thread_p, btid.sys_btid, &key, &cls_oid, &oid, &dummy,
-		    SINGLE_ROW_MODIFY, (BTREE_UNIQUE_STATS *) NULL) == NULL)
+  if (btree_delete (thread_p, btid.sys_btid,
+		    &key,
+		    &cls_oid, &oid, &dummy, SINGLE_ROW_MODIFY,
+		    (BTREE_UNIQUE_STATS *) NULL) == NULL)
     {
       int err;
 
@@ -15395,7 +15491,8 @@ btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   btree_rv_read_keyval_info_nocopy (thread_p, datap, datasize, &btid,
 				    &cls_oid, &oid, &key);
 
-  if (btree_insert (thread_p, btid.sys_btid, &key, &cls_oid, &oid,
+  if (btree_insert (thread_p, btid.sys_btid, &key,
+		    &cls_oid, &oid,
 		    SINGLE_ROW_MODIFY, (BTREE_UNIQUE_STATS *) NULL,
 		    NULL) == NULL)
     {

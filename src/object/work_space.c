@@ -1130,7 +1130,7 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * ws_new_mop - optimized version of ws_mop when OID being entered into the
- * workspace is guarenteed to be unique.
+ * workspace is guaranteed to be unique.
  *    return: new MOP
  *    oid(in): object OID
  *    class_mop(in): class mop of object
@@ -1193,7 +1193,7 @@ ws_new_mop (OID * oid, MOP class_mop)
  *    flushed and must be converted to permanent OIDs before they are given
  *    to the server.
  *
- *    This assumes that the new permanent OID is guarenteed to be
+ *    This assumes that the new permanent OID is guaranteed to be
  *    unique and we can avoid searching the hash table collision list
  *    for existing MOPs with this OID.  This makes the conversion faster.
  */
@@ -3333,7 +3333,7 @@ ws_map (MAPFUNC function, void *args)
  *
  * Note:
  *    This is called by the transaction manager to clear all of the hint
- *    bits in the MOP.  This is guarenteed to be called at the end of a
+ *    bits in the MOP.  This is guaranteed to be called at the end of a
  *    transaction commit.  Note that we always clear the no_objects field
  *    for classes because once they are commited to a database, we must
  *    assume that other users have access to the current representation and

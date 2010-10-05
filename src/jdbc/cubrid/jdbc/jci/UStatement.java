@@ -34,16 +34,17 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 import java.sql.*;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 
-import cubrid.sql.CUBRIDOID;
-import cubrid.jdbc.driver.CUBRIDOutResultSet;
-import cubrid.jdbc.driver.CUBRIDResultSet;
+import @CUBRID_SQL@.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDTimestamp;
+import @CUBRID_DRIVER@.CUBRIDOutResultSet;
+import @CUBRID_DRIVER@.CUBRIDResultSet;
 
 /**
  * Performance 향상을 위한 precompile된 SQL statement를 표현하고 그 ResultSet을
@@ -489,7 +490,9 @@ public class UStatement
 
   public void bind(int index, Timestamp value)
   {
-    bindValue(index, UUType.U_TYPE_DATETIME, value);
+    byte type = UUType.getObjectDBtype(value);
+
+    bindValue(index, type, value);
   }
 
   public void bind(int index, Object value)
@@ -2665,6 +2668,9 @@ public class UStatement
       localColumnInfo[i] = new UColumnInfo(type, scale, precision, name);
       if (statementType == NORMAL)
       {
+       	/* read extra data here (according to broker
+	 * cas_execute prepare_column_info_set order) */
+    
         String attributeName = inBuffer.readString(inBuffer.readInt(),
             relatedConnection.conCharsetName);
         String className = inBuffer.readString(inBuffer.readInt(),
@@ -2672,6 +2678,18 @@ public class UStatement
         byte byteData = inBuffer.readByte();
         localColumnInfo[i].setRemainedData(attributeName, className,
             ((byteData == (byte) 0) ? true : false));
+		
+        String defValue = inBuffer.readString(inBuffer.readInt(),
+            relatedConnection.conCharsetName);
+        byte bAI = inBuffer.readByte();
+        byte bUK = inBuffer.readByte();
+        byte bPK = inBuffer.readByte();
+        byte bRI = inBuffer.readByte();
+        byte bRU = inBuffer.readByte();
+        byte bFK = inBuffer.readByte();
+        byte bSh = inBuffer.readByte();
+        
+        localColumnInfo[i].setExtraData(defValue, bAI, bUK, bPK, bFK, bRI, bRU, bSh);
       }
       /*
        * if ((commandTypeIs==CUBRIDCommandType.CUBRID_STMT_EVALUATE) ||

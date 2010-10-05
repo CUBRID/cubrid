@@ -1476,8 +1476,12 @@ qmgr_check_active_query_and_wait (THREAD_ENTRY * thread_p,
 					      THREAD_QMGR_ACTIVE_QRY_SUSPENDED);
 
       if (current_thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
-	  && current_thread_p->interrupted)
+	  || (current_thread_p->resume_status !=
+	      THREAD_QMGR_ACTIVE_QRY_RESUMED))
 	{
+	  assert (current_thread_p->resume_status ==
+		  THREAD_RESUME_DUE_TO_INTERRUPT);
+
 	  ((QMGR_QUERY_ENTRY *) current_thread_p->query_entry)->interrupt =
 	    true;
 	  ((QMGR_QUERY_ENTRY *) current_thread_p->query_entry)->
@@ -1510,6 +1514,13 @@ qmgr_check_active_query_and_wait (THREAD_ENTRY * thread_p,
 	  qmgr_unlock_mutex (&tran_entry_p->lock);
 
 	  return;
+	}
+      else
+	{
+	  assert (current_thread_p->resume_status ==
+		  THREAD_QMGR_ACTIVE_QRY_RESUMED);
+
+	  /* wake up properly */
 	}
 
       qmgr_lock_mutex (thread_p, &tran_entry_p->lock);

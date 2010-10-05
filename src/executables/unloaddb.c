@@ -131,10 +131,13 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     }
 
   if (!output_prefix)
-    output_prefix = database_name;
+    {
+      output_prefix = database_name;
+    }
 
   /* error message log file */
-  sprintf (er_msg_file, "%s_%s.err", database_name, exec_name);
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1,
+	    "%s_%s.err", database_name, exec_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
@@ -155,14 +158,19 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       ignore_err_flag = PRM_UNLOADDB_IGNORE_ERROR;
 
       if (db_set_isolation (TRAN_REP_CLASS_REP_INSTANCE) != NO_ERROR)
-	status = 1;
+	{
+	  status = 1;
+	}
 
       if (!status)
 	{
 	  db_set_lock_timeout (PRM_UNLOADDB_LOCK_TIMEOUT);
 	}
+
       if (!input_filename)
-	required_class_only = false;
+	{
+	  required_class_only = false;
+	}
       if (required_class_only && include_references)
 	{
 	  include_references = false;
@@ -172,8 +180,8 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
       if (input_filename)
 	{
-	  class_table =
-	    locator_get_all_mops (sm_Root_class_mop, DB_FETCH_READ);
+	  class_table = locator_get_all_mops (sm_Root_class_mop,
+					      DB_FETCH_READ);
 
 	  /* It may not be needed */
 	  if (locator_decache_all_lock_instances (sm_Root_class_mop) !=
@@ -184,8 +192,11 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	    }
 	}
       else
-	/* lock Root class with IS_LOCK instead of S_LOCK */
-	class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_READ);
+	{
+	  /* lock Root class with IS_LOCK instead of S_LOCK */
+	  class_table = locator_get_all_mops (sm_Root_class_mop,
+					      DB_FETCH_READ);
+	}
 
       if (class_table == NULL)
 	{
@@ -193,34 +204,41 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	  goto end;
 	}
 
-      if ((req_class_table =
-	   (DB_OBJECT **) malloc (DB_SIZEOF (void *) *
-				  class_table->num)) == NULL)
+      req_class_table = (DB_OBJECT **) malloc (DB_SIZEOF (void *) *
+					       class_table->num);
+      if (req_class_table == NULL)
 	{
 	  status = 1;
 	  goto end;
 	}
+
       for (i = 0; i < class_table->num; ++i)
 	{
 	  req_class_table[i] = NULL;
 	}
+
       if (get_requested_classes (input_filename, req_class_table) != 0)
 	{
 	  status = 1;
 	  goto end;
 	}
+
       if (!status && (do_schema || !do_objects))
-	/* do authorization as well in extractschema() */
-	if (extractschema (exec_name, 1))
-	  {
-	    status = 1;
-	  }
+	{
+	  /* do authorization as well in extractschema() */
+	  if (extractschema (exec_name, 1))
+	    {
+	      status = 1;
+	    }
+	}
 
       if (!status && (do_objects || !do_schema))
-	if (extractobjects (exec_name))
-	  {
-	    status = 1;
-	  }
+	{
+	  if (extractobjects (exec_name))
+	    {
+	      status = 1;
+	    }
+	}
 
       /* if an error occur, print error message */
       if (status)
@@ -230,10 +248,12 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	      fprintf (stderr, "%s: %s\n\n", exec_name, db_error_string (3));
 	    }
 	}
+
       /*
        * Shutdown db
        */
-      if ((error = db_shutdown ()))
+      error = db_shutdown ();
+      if (error != NO_ERROR)
 	{
 	  (void) fprintf (stderr, "%s: %s\n\n",
 			  exec_name, db_error_string (3));
@@ -243,8 +263,13 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
 end:
   if (class_table)
-    locator_free_list_mops (class_table);
+    {
+      locator_free_list_mops (class_table);
+    }
   if (req_class_table)
-    free_and_init (req_class_table);
+    {
+      free_and_init (req_class_table);
+    }
+
   return status;
 }

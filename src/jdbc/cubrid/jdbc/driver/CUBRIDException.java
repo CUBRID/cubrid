@@ -28,12 +28,12 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.SQLException;
 
-import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
-import cubrid.jdbc.jci.UError;
+import @CUBRID_DRIVER@.CUBRIDJDBCErrorCode;
+import @CUBRID_JCI@.UError;
 
 public class CUBRIDException extends SQLException
 {

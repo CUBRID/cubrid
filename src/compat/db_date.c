@@ -69,13 +69,14 @@ static int init_tm (struct tm *);
 static int get_current_year (void);
 static const char *parse_date (const char *buf, DB_DATE * date);
 static const char *parse_time (const char *buf, DB_TIME * mtime);
-static const char *parse_mtime (const char *buf, unsigned int *mtime);
+static const char *parse_mtime (const char *buf, unsigned int *mtime,
+				bool * is_msec, bool * is_explicit);
 static const char *parse_timestamp (const char *buf, DB_TIMESTAMP * utime);
 static const char *parse_datetime (const char *buf, DB_DATETIME * datetime);
 
 /*
  * julian_encode() - Generic routine for calculating a julian date given
- *    seperate month/day/year values.
+ *    separate month/day/year values.
  * return : encoded julian date
  * m(in): month (1 - 12)
  * d(in): day(1 - 31)
@@ -706,33 +707,56 @@ static const char *
 parse_date (const char *buf, DB_DATE * date)
 {
   int part[3] = { 0, 0, 0 };
+  int part_char_len[3] = { 0, 0, 0 };
   int month, day, year;
-  int us_style = 1;
   int julian_date;
   unsigned int i;
   int c;
   const char *p;
   int date_style = -1;
   int year_part, month_part, day_part;
+  int seperator = '\0';
+
+  if (buf == NULL)
+    {
+      return NULL;
+    }
 
   for (i = 0, p = buf; i < DIM (part); i++)
     {
       for (c = *p; char_isspace (c); c = *++p)
-	;
+	{
+	  ;
+	}
+
       for (c = *p; char_isdigit (c); c = *++p)
-	part[i] = part[i] * 10 + (c - '0');
+	{
+	  part[i] = part[i] * 10 + (c - '0');
+	  part_char_len[i]++;
+	}
+
       if (i < DIM (part) - 1)
 	{
 	  for (c = *p; char_isspace (c); c = *++p)
-	    ;
+	    {
+	      ;
+	    }
+
+	  if (seperator != '\0' && c != '\0' && c != seperator)
+	    {
+	      return NULL;
+	    }
+
 	  if (c == '/')
 	    {
 	      ++p;
+	      seperator = c;
 	      date_style = MMDDYYYY;
 	    }
 	  else if (c == '-')
 	    {
 	      ++p;
+	      seperator = c;
 	      date_style = YYYYMMDD;
 	    }
 	  else
@@ -740,6 +764,11 @@ parse_date (const char *buf, DB_DATE * date)
 	      break;
 	    }
 	}
+    }
+
+  for (c = *p; char_isspace (c); c = *++p)
+    {
+      ;
     }
 
   if (date_style == MMDDYYYY)
@@ -752,8 +781,8 @@ parse_date (const char *buf, DB_DATE * date)
 	{
 	  year_part = 2;
 	}
-      month_part = us_style ? 0 : 1;
-      day_part = us_style ? 1 : 0;
+      month_part = 0;
+      day_part = 1;
     }
   else if (date_style == YYYYMMDD)
     {
@@ -780,7 +809,26 @@ parse_date (const char *buf, DB_DATE * date)
       return NULL;
     }
 
-  year = (year_part == -1) ? get_current_year () : part[year_part];
+  if (year_part == -1)
+    {
+      year = get_current_year ();
+    }
+  else
+    {
+      year = part[year_part];
+      if (part_char_len[year_part] == 2)
+	{
+	  if (year < 70)
+	    {
+	      year += 2000;
+	    }
+	  else
+	    {
+	      year += 1900;
+	    }
+	}
+    }
+
   month = part[month_part];
   day = part[day_part];
 
@@ -820,15 +868,37 @@ parse_time (const char *buf, DB_TIME * time)
 {
   unsigned int mtime;
   const char *p;
+  bool is_msec;
 
-  p = parse_mtime (buf, &mtime);
+  p = parse_mtime (buf, &mtime, &is_msec, NULL);
 
   if (p != NULL)
     {
+      if (is_msec == true)
+	{
+	  return NULL;
+	}
+
       *time = mtime / 1000;
     }
 
   return p;
+}
+
+/*
+ * db_string_check_explicit_time() -
+ * return : true if explicit time expression 
+ * str(in): pointer to time expression
+ */
+bool
+db_string_check_explicit_time (const char *str)
+{
+  unsigned int mtime;
+  bool is_explicit;
+
+  parse_mtime (str, &mtime, NULL, &is_explicit);
+
+  return is_explicit;
 }
 
 /*
@@ -838,7 +908,8 @@ parse_time (const char *buf, DB_TIME * time)
  * mtime(out): pointer to unsigned int to be updated with the parsed time
  */
 static const char *
-parse_mtime (const char *buf, unsigned int *mtime)
+parse_mtime (const char *buf, unsigned int *mtime, bool * is_msec,
+	     bool * is_explicit)
 {
   static AMPM_BUF ampm[2];
   static int initialized = 0;
@@ -848,6 +919,21 @@ parse_mtime (const char *buf, unsigned int *mtime)
   int c;
   const char *p;
   double fraction = 100;
+
+  if (buf == NULL)
+    {
+      return NULL;
+    }
+
+  if (is_msec != NULL)
+    {
+      *is_msec = false;
+    }
+
+  if (is_explicit != NULL)
+    {
+      *is_explicit = true;
+    }
 
   if (!initialized)
     {
@@ -900,9 +986,24 @@ parse_mtime (const char *buf, unsigned int *mtime)
 	  else if (c == '.' && i == 2)
 	    {
 	      ++p;
+	      if (is_msec != NULL)
+		{
+		  *is_msec = true;
+		}
 	    }
 	  else
 	    {
+	      /* This allows time' ' to be interpreted as 0 which means 12:00:00 AM. */
+	      ++i;
+
+	      /* This means time string format is not completed (like 0, 01:00) *
+	       * This flag will be used by operate like [select 1 + '1'] which 
+	       * should not be converted to time */
+	      if (is_explicit != NULL && i < 3)
+		{
+		  *is_explicit = false;
+		}
+
 	      break;
 	    }
 	}
@@ -1038,14 +1139,14 @@ parse_datetime (const char *buf, DB_DATETIME * datetime)
   p = parse_date (buf, &date);
   if (p)
     {
-      p = parse_mtime (p, &mtime);
+      p = parse_mtime (p, &mtime, NULL, NULL);
       if (p)
 	{
 	  goto finalcheck;
 	}
     }
 
-  p = parse_mtime (buf, &mtime);
+  p = parse_mtime (buf, &mtime, NULL, NULL);
   if (p)
     {
       p = parse_date (p, &date);
@@ -1400,9 +1501,52 @@ db_datetime_to_string (char *buf, int bufsize, DB_DATETIME * datetime)
     {
       hour -= 12;
     }
-  retval = snprintf (buf, bufsize, "%02d:%02d:%02d.%03d %s %02d/%02d/%04d ",
+  retval = snprintf (buf, bufsize, "%02d:%02d:%02d.%03d %s %02d/%02d/%04d",
 		     hour, minute, second, millisecond, pm ? "PM" : "AM",
 		     mon, day, year);
+  if (bufsize < retval)
+    {
+      retval = 0;
+    }
+
+  return retval;
+}
+
+/*
+ * db_datetime_to_string2() - Print a DB_DATETIME into a char buffer using
+ *    strftime().
+ * return : the number of characters actually printed.
+ * buf(out): a buffer to receive the printed representation
+ * bufsize(in): the size of that buffer
+ * datetime(in): a pointer to a DB_DATETIME to be printed
+ *
+ * Note: version without PM and AM and formatted YYYY-MM-DD HH:MM:SS.MMM
+ */
+int
+db_datetime_to_string2 (char *buf, int bufsize, DB_DATETIME * datetime)
+{
+  int mon, day, year;
+  int hour, minute, second, millisecond;
+  int retval;
+
+  if (buf == NULL || bufsize == 0)
+    {
+      return 0;
+    }
+
+  db_datetime_decode (datetime, &mon, &day, &year,
+		      &hour, &minute, &second, &millisecond);
+
+  if (millisecond > 0)
+    {
+      retval = snprintf (buf, bufsize, "%04d-%02d-%02d %02d:%02d:%02d.%03d",
+			 year, mon, day, hour, minute, second, millisecond);
+    }
+  else
+    {
+      retval = snprintf (buf, bufsize, "%04d-%02d-%02d %02d:%02d:%02d",
+			 year, mon, day, hour, minute, second);
+    }
   if (bufsize < retval)
     {
       retval = 0;
@@ -1576,6 +1720,198 @@ db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT bi2,
 
   result_datetime->date = (int) tmp_bi;
   result_datetime->time = (int) (result_bi % MILLISECONDS_OF_ONE_DAY);
+
+  return NO_ERROR;
+}
+
+/*
+ *  db_get_day_of_week() - returns the day of week (0 = Sunday, 6 = Saturday)
+ */
+int
+db_get_day_of_week (int year, int month, int day)
+{
+  if (month < 3)
+    {
+      month = month + 12;
+      year = year - 1;
+    }
+
+  return (day
+	  + (2 * month)
+	  + (int) (6 * (month + 1) / 10)
+	  + year
+	  + (int) (year / 4)
+	  - (int) (year / 100) + (int) (year / 400) + 1) % 7;
+}
+
+/* db_check_time_date_format()
+  returns:
+    1 if it has only time specifiers,
+    2 if it has only date specifiers,
+    3 if it has them both
+  */
+int
+db_check_time_date_format (const char *format_s)
+{
+  int i, res = 0, len;
+  int format_type[256];
+
+
+  len = strlen (format_s);
+  memset (format_type, 0, sizeof (format_type));
+
+  /* time */
+  format_type['f'] = 1;
+  format_type['H'] = 1;
+  format_type['h'] = 1;
+  format_type['I'] = 1;
+  format_type['i'] = 1;
+  format_type['k'] = 1;
+  format_type['l'] = 1;
+  format_type['p'] = 1;
+  format_type['r'] = 1;
+  format_type['S'] = 1;
+  format_type['s'] = 1;
+  format_type['T'] = 1;
+
+  /* date */
+  format_type['a'] = 2;
+  format_type['b'] = 2;
+  format_type['c'] = 2;
+  format_type['D'] = 2;
+  format_type['d'] = 2;
+  format_type['e'] = 2;
+  format_type['j'] = 2;
+  format_type['M'] = 2;
+  format_type['m'] = 2;
+  format_type['U'] = 2;
+  format_type['u'] = 2;
+  format_type['V'] = 2;
+  format_type['v'] = 2;
+  format_type['W'] = 2;
+  format_type['w'] = 2;
+  format_type['X'] = 2;
+  format_type['x'] = 2;
+  format_type['Y'] = 2;
+  format_type['y'] = 2;
+
+  for (i = 1; i < len; i++)
+    {
+      if (format_s[i - 1] != '%')	/* %x */
+	continue;
+      if (i > 1 && format_s[i - 2] == '%')	/* but not %%x */
+	continue;
+
+      if (format_type[(unsigned char) format_s[i]] != 0)
+	{
+	  res |= format_type[(unsigned char) format_s[i]];
+	}
+    }
+
+  return res;
+}
+
+
+/*
+ * db_add_weeks_and_days_to_date () - add weeks and days to a gived date
+ *   return: ER_FAILED error, NO_ERROR ok
+ *   day(in,out) : day of date
+ *   month(in,out) : month of date
+ *   year(in,out) : year of date
+ *   weeks(in) : how many weeks will be added to date
+ *   day_weeks : how many days will be added to date
+ * Note :
+ *   day, month and year will be updated just in case of no error
+ */
+int
+db_add_weeks_and_days_to_date (int *day, int *month, int *year,
+			       int weeks, int day_week)
+{
+  int days_months[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  int d, m, y, i;
+
+  if (day == NULL || month == NULL || year == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (*year < 0 || *year > 9999)
+    {
+      return ER_FAILED;
+    }
+
+  if (*month < 1 || *month > 12)
+    {
+      return ER_FAILED;
+    }
+
+  if ((*year % 400 == 0) || (*year % 100 != 0 && *year % 4 == 0))
+    {
+      days_months[2] += 1;
+    }
+
+  if (*day < 0 || *day > days_months[*month])
+    {
+      return ER_FAILED;
+    }
+
+  if (weeks < 0)
+    {
+      return ER_FAILED;
+    }
+
+  if (day_week < 0 || day_week > 6)
+    {
+      return ER_FAILED;
+    }
+
+  d = *day;
+  m = *month;
+  y = *year;
+  for (i = 1; i <= weeks; i++)
+    {
+      d = d + 7;
+      if (d > days_months[m])
+	{
+	  d = d - days_months[m];
+	  m = m + 1;
+
+	  if (m > 12)
+	    {
+	      m = 1;
+	      y = y + 1;
+	      if ((y % 400 == 0) || (y % 100 != 0 && y % 4 == 0))
+		{
+		  days_months[2] = 29;
+		}
+	      else
+		{
+		  days_months[2] = 28;
+		}
+	    }
+	}
+    }
+
+  d = d + day_week;
+  if (d > days_months[m])
+    {
+      d = d - days_months[m];
+      m = m + 1;
+      if (m > 12)
+	{
+	  m = 1;
+	  y = y + 1;
+	}
+    }
+
+  if (y < 0 || y > 9999)
+    {
+      return ER_FAILED;
+    }
+
+  *day = d;
+  *month = m;
+  *year = y;
 
   return NO_ERROR;
 }

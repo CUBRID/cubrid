@@ -2248,7 +2248,7 @@ meth_push_conjuncts (PARSER_CONTEXT * parser, UINTPTR spec_id,
   METH_INFO5 info5;
   METH_INFO1 info1;
   int outside_refs, nested_meths;
-  SEMANTIC_CHK_INFO sc_info;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
 
   info5.new_where = NULL;
   info5.spec_id = spec_id;
@@ -2258,7 +2258,6 @@ meth_push_conjuncts (PARSER_CONTEXT * parser, UINTPTR spec_id,
       return NULL;		/* there are no conjuncts to push */
     }
 
-  sc_info.attrdefs = NULL;
   sc_info.top_node = *where;
   sc_info.donot_fold = false;
 

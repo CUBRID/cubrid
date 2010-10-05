@@ -240,6 +240,7 @@ extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
 
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 
+extern bool btree_is_unique_type (BTREE_TYPE type);
 extern int xbtree_test_unique (THREAD_ENTRY * thread_p, BTID * btid);
 extern int xbtree_get_unique (THREAD_ENTRY * thread_p, BTID * btid);
 extern int btree_is_unique (THREAD_ENTRY * thread_p, BTID * btid);
@@ -268,11 +269,13 @@ extern int btree_estimate_total_numpages (THREAD_ENTRY * thread_p,
 extern int btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid,
 				 BTREE_CAPACITY * cpc);
 extern DB_VALUE *btree_delete (THREAD_ENTRY * thread_p, BTID * btid,
-			       DB_VALUE * key, OID * cls_oid, OID * oid,
+			       DB_VALUE * key,
+			       OID * cls_oid, OID * oid,
 			       int *unique, int op_type,
 			       BTREE_UNIQUE_STATS * unique_stat_info);
 extern DB_VALUE *btree_insert (THREAD_ENTRY * thread_p, BTID * btid,
-			       DB_VALUE * key, OID * cls_oid, OID * oid,
+			       DB_VALUE * key,
+			       OID * cls_oid, OID * oid,
 			       int op_type,
 			       BTREE_UNIQUE_STATS * unique_stat_info,
 			       int *pkyn);
@@ -286,8 +289,9 @@ extern DB_VALUE *btree_insert (THREAD_ENTRY * thread_p, BTID * btid,
 			       */
 extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid,
 			 DB_VALUE * old_key, DB_VALUE * new_key,
-			 OID * cls_oid, OID * oid, int op_type,
-			 BTREE_UNIQUE_STATS * unique_stat_info, int *unique);
+			 OID * cls_oid, OID * oid,
+			 int op_type, BTREE_UNIQUE_STATS * unique_stat_info,
+			 int *unique);
 extern int btree_reflect_unique_statistics (THREAD_ENTRY * thread_p,
 					    BTREE_UNIQUE_STATS *
 					    unique_stat_info);
@@ -384,14 +388,16 @@ extern int btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid,
 				int readonly_purpose, BTREE_SCAN * btree_scan,
-				DB_VALUE * key, OID * class_oid,
+				DB_VALUE * key,
+				OID * class_oid,
 				OID * oids_ptr, int oids_size,
 				FILTER_INFO * filter, INDX_SCAN_ID * isidp,
 				bool is_all_class_srch);
 extern int btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
 			       int readonly_purpose, int lock_hint,
 			       BTREE_SCAN * BTS, DB_VALUE * key1,
-			       DB_VALUE * key2, RANGE range, int num_classes,
+			       DB_VALUE * key2, RANGE range,
+			       int num_classes,
 			       OID * class_oids_ptr, OID * oids_ptr,
 			       int oids_size, FILTER_INFO * filter,
 			       INDX_SCAN_ID * isidp, bool construct_BTID_INT,

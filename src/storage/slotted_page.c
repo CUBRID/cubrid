@@ -108,7 +108,6 @@ static int spage_free_saved_spaces_helper (const void *vpid_key, void *ent,
 static void spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p,
 						    FILE * fp, VPID * vpid);
 static int spage_compare_slot_offset (const void *arg1, const void *arg2);
-static int spage_compact (PAGE_PTR pgptr);
 
 static PGSLOTID spage_find_free_slot (PAGE_PTR page_p,
 				      SPAGE_HEADER * page_header_p,
@@ -1026,7 +1025,7 @@ spage_compare_slot_offset (const void *arg1, const void *arg2)
  *
  * Note: Only the records are compacted, the slots are not compacted.
  */
-static int
+int
 spage_compact (PAGE_PTR page_p)
 {
   SPAGE_HEADER *page_header_p;
@@ -1915,7 +1914,7 @@ spage_delete (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id)
  *   pgptr(in): Pointer to slotted page
  *   slotid(in): Slot identifier of record to delete
  *
- * Note: The slot is always reused even in anchored_dont_reuse_slots pages
+ * Note: The slot is always reused even in ANCHORED_DONT_REUSE_SLOTS pages
  *       since the record was never made permanent.
  */
 PGSLOTID
@@ -2247,7 +2246,7 @@ spage_update_record_type (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 
 /*
  * spage_reclaim () - Reclaim all slots of marked deleted slots of anchored with
- *                 don't resuse slots pages
+ *                 don't reuse slots pages
  *   return: true if anything was reclaimed and false if nothing was reclaimed
  *   pgptr(in): Pointer to slotted page
  *
@@ -3400,7 +3399,7 @@ spage_mark_deleted_slot_as_reusable (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
        */
       for (i = page_header_p->num_slots - 1; i > 0; i--)
 	{
-	  slot_p = first_slot_p - slot_id;
+	  slot_p = first_slot_p - i;
 
 	  if (slot_p->offset_to_record != NULL_OFFSET
 	      || slot_p->record_type != REC_DELETED_WILL_REUSE)
@@ -3593,7 +3592,15 @@ spage_dump_record (FILE * fp, PAGE_PTR page_p, PGSLOTID slot_id,
 	  record_p = (char *) page_p + slot_p->offset_to_record;
 	  for (i = 0; i < slot_p->record_length; i++)
 	    {
-	      (void) fputc (*record_p++, fp);
+	      (void) fprintf (fp, "%02X ", (unsigned char) (*record_p++));
+	      if (i % 20 == 19)
+		{
+		  fputc ('\n', fp);
+		}
+	      else if (i % 10 == 9)
+		{
+		  fputc (' ', fp);
+		}
 	    }
 	  (void) fprintf (fp, "\n");
 	}

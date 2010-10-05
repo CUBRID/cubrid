@@ -848,17 +848,19 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock)
 }
 
 /*
- * locator_reserve_class_name -
+ * locator_reserve_class_names -
  *
  * return:
  *
- *   class_name(in):
- *   class_oid(in):
+ *   num_classes(in)
+ *   class_names(in):
+ *   class_oids(in):
  *
  * NOTE:
  */
 LC_FIND_CLASSNAME
-locator_reserve_class_name (const char *class_name, OID * class_oid)
+locator_reserve_class_names (const int num_classes, const char **class_names,
+			     OID * class_oids)
 {
 #if defined(CS_MODE)
   LC_FIND_CLASSNAME reserved = LC_CLASSNAME_ERROR;
@@ -868,15 +870,24 @@ locator_reserve_class_name (const char *class_name, OID * class_oid)
   char *request, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
+  int i;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (class_name) + OR_OID_SIZE;
+  request_size = OR_INT_SIZE;
+  for (i = 0; i < num_classes; ++i)
+    {
+      request_size += length_const_string (class_names[i]) + OR_OID_SIZE;
+    }
   request = (char *) malloc (request_size);
   if (request)
     {
-      ptr = pack_const_string (request, class_name);
-      ptr = or_pack_oid (ptr, class_oid);
+      ptr = or_pack_int (request, num_classes);
+      for (i = 0; i < num_classes; ++i)
+	{
+	  ptr = pack_const_string (ptr, class_names[i]);
+	  ptr = or_pack_oid (ptr, &class_oids[i]);
+	}
 
       req_error = net_client_request (NET_SERVER_LC_RESERVE_CLASSNAME,
 				      request, request_size, reply,
@@ -898,7 +909,8 @@ locator_reserve_class_name (const char *class_name, OID * class_oid)
 
   ENTER_SERVER ();
 
-  reserved = xlocator_reserve_class_name (NULL, class_name, class_oid);
+  reserved = xlocator_reserve_class_names (NULL, num_classes, class_names,
+					   class_oids);
 
   EXIT_SERVER ();
 
@@ -1528,6 +1540,56 @@ heap_destroy_newly_created (const HFID * hfid)
   ENTER_SERVER ();
 
   success = xheap_destroy_newly_created (NULL, hfid);
+
+  EXIT_SERVER ();
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * heap_reclaim_addresses -
+ *
+ * return:
+ *
+ *   hfid(in):
+ *
+ * NOTE:
+ */
+int
+heap_reclaim_addresses (const HFID * hfid)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_HFID_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_pack_hfid (request, hfid);
+
+  req_error = net_client_request (NET_SERVER_HEAP_RECLAIM_ADDRESSES,
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				  NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success = ER_FAILED;
+
+  ENTER_SERVER ();
+
+  success = xheap_reclaim_addresses (NULL, hfid);
 
   EXIT_SERVER ();
 
@@ -2465,6 +2527,38 @@ log_dump_stat (FILE * outfp)
 #endif /* !CS_MODE */
 }
 
+/*
+ * log_set_suppress_repl_on_transaction -
+ *
+ * return:
+ *
+ *   set(in):
+ *
+ * NOTE:
+ */
+void
+log_set_suppress_repl_on_transaction (int set)
+{
+#if defined(CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  or_pack_int (request, set);
+
+  (void)
+    net_client_request_no_reply
+    (NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION, request,
+     OR_ALIGNED_BUF_SIZE (a_request));
+#else /* CS_MODE */
+
+  ENTER_SERVER ();
+
+  xlogtb_set_suppress_repl_on_transaction (NULL, set);
+
+  EXIT_SERVER ();
+#endif /* !CS_MODE */
+}
 
 /*
  * tran_server_commit -
@@ -3373,7 +3467,8 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
 			BOOT_DB_PATH_INFO * db_path_info,
 			bool db_overwrite, const char *file_addmore_vols,
 			DKNPAGES db_npages, PGLENGTH db_desired_pagesize,
-			DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,
+			DKNPAGES log_npages,
+			PGLENGTH db_desired_log_page_size,
 			OID * rootclass_oid, HFID * rootclass_hfid,
 			int client_lock_wait, TRAN_ISOLATION client_isolation)
 {
@@ -4981,7 +5076,9 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid,
 int
 btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
 		  int n_classes, int n_attrs,
-		  int *attr_ids, HFID * hfids,
+		  int *attr_ids,
+		  int *attrs_prefix_length,
+		  HFID * hfids,
 		  int unique_flag, int reverse_flag, int last_key_desc,
 		  OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 		  int cache_attr_id, const char *fk_name)
@@ -4999,7 +5096,9 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
   domain_size = or_packed_domain_size (key_type, 0);
   request_size = OR_BTID_ALIGNED_SIZE
     + domain_size + (n_classes * OR_OID_SIZE) + OR_INT_SIZE + OR_INT_SIZE
-    + (n_classes * n_attrs * OR_INT_SIZE) + (n_classes * OR_HFID_SIZE)
+    + (n_classes * n_attrs * OR_INT_SIZE)
+    + ((n_classes == 1) ? (n_attrs * OR_INT_SIZE) : 0)
+    + (n_classes * OR_HFID_SIZE)
     + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE
     + OR_BTID_ALIGNED_SIZE + OR_INT_SIZE + or_packed_string_length (fk_name);
 
@@ -5024,6 +5123,21 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
   for (i = 0; i < total_attrs; i++)
     {
       ptr = or_pack_int (ptr, attr_ids[i]);
+    }
+
+  if (n_classes == 1)
+    {
+      for (i = 0; i < n_attrs; i++)
+	{
+	  if (attrs_prefix_length)
+	    {
+	      ptr = or_pack_int (ptr, attrs_prefix_length[i]);
+	    }
+	  else
+	    {
+	      ptr = or_pack_int (ptr, -1);
+	    }
+	}
     }
 
   for (i = 0; i < n_classes; i++)
@@ -5067,7 +5181,8 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
 
   btid =
     xbtree_load_index (NULL, btid, key_type, class_oids, n_classes, n_attrs,
-		       attr_ids, hfids, unique_flag, reverse_flag,
+		       attr_ids, attrs_prefix_length,
+		       hfids, unique_flag, reverse_flag,
 		       last_key_desc, fk_refcls_oid, fk_refcls_pk_btid,
 		       cache_attr_id, fk_name);
   if (btid == NULL)
@@ -5177,20 +5292,18 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
 #if defined(CS_MODE)
   char *request, *reply, *ptr;
   int req_error, status = NO_ERROR, request_size;
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_BTID_ALIGNED_SIZE +
+		  OR_HFID_SIZE) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
-  reply = OR_ALIGNED_BUF_START (a_reply);
   request_size = OR_OID_SIZE + OR_BTID_ALIGNED_SIZE + OR_HFID_SIZE;
-
-  request = (char *) malloc (request_size);
-  if (request == NULL)
-    {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+  request = OR_ALIGNED_BUF_START (a_request);
 
   ptr = or_pack_oid (request, oid);
   ptr = or_pack_btid (ptr, btid);
   ptr = or_pack_hfid (ptr, hfid);
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error = net_client_request (NET_SERVER_LC_REM_CLASS_FROM_INDEX,
 				  request, request_size, reply,
@@ -5201,7 +5314,6 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
       or_unpack_int (reply, &status);
     }
 
-  free_and_init (request);
   return status;
 
 #else /* CS_MODE */
@@ -5306,7 +5418,8 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
 #else /* CS_MODE */
 
       ENTER_SERVER ();
-      status = xbtree_find_unique (NULL, btid, key, class_oid, oid, false);
+      status = xbtree_find_unique (NULL, btid, true, key, class_oid, oid,
+				   false);
       EXIT_SERVER ();
 
 #endif /* !CS_MODE */
@@ -7699,18 +7812,8 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   if (logwr_Gl.last_recv_pageid == logwr_Gl.hdr.eof_lsa.pageid)
     {
       /* In case of synchronous request */
-      if (logwr_Gl.last_recv_pageid != NULL_PAGEID
-	  && LOGWR_AT_SERVER_ARCHIVING ())
-	{
-	  /* If the server is in previous step to do archiving and
-	     the last page in active log is completed, get the next page of it */
-	  first_pageid_torecv = logwr_Gl.last_recv_pageid + 1;
-	  logwr_Gl.force_flush = true;
-	}
-      else
-	{
-	  first_pageid_torecv = logwr_Gl.last_recv_pageid;
-	}
+      first_pageid_torecv = logwr_Gl.last_recv_pageid;
+
       mode = (logwr_Gl.last_recv_pageid == NULL_PAGEID) ?
 	LOGWR_MODE_ASYNC : logwr_Gl.mode;
     }
@@ -7853,5 +7956,258 @@ histo_clear_global_stats (void)
   net_histo_clear_global_stats ();
 #else /* CS_MODE */
   mnt_reset_global_stats ();
+#endif /* !CS_MODE */
+}
+
+/*
+ * boot_compact_classes () - compact specified classes
+ *
+ * return : NO_ERROR if all OK, ER_ status otherwise
+ *	    
+ *   class_oids(in): the class oids list to process
+ *   n_classes(in): the length of class_oids
+ *   space_to_process(in): the maximum space to process
+ *   instance_lock_timeout(in): the lock timeout for instances
+ *   class_lock_timeout(in): the lock timeout for classes
+ *   delete_old_repr(in): true if old class representations must be deleted
+ *   last_processed_class_oid(in,out): last processed class oid
+ *   last_processed_oid(in,out): last processed oid
+ *   total_objects(in,out): count processed objects for each class
+ *   failed_objects(in,out): count failed objects for each class
+ *   modified_objects(in,out): count modified objects for each class
+ *   big_objects(in,out): count big objects for each class
+ *   initial_last_repr_id(in,out): the list of last class representation 
+ *
+ * Note: 
+ */
+int
+boot_compact_classes (OID ** class_oids, int num_classes,
+		      int space_to_process, int instance_lock_timeout,
+		      int class_lock_timeout,
+		      bool delete_old_repr,
+		      OID * last_processed_class_oid,
+		      OID * last_processed_oid,
+		      int *total_objects, int *failed_objects,
+		      int *modified_objects, int *big_objects, int *ids_repr)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED, request_size, req_error, i, reply_size;
+  char *reply = NULL, *request = NULL, *ptr = NULL;
+
+  if (class_oids == NULL || num_classes < 0 ||
+      space_to_process < 0 || last_processed_class_oid == NULL ||
+      last_processed_oid == NULL || total_objects == NULL ||
+      failed_objects == NULL || modified_objects == NULL ||
+      big_objects == NULL || ids_repr == NULL)
+    {
+      return ER_QPROC_INVALID_PARAMETER;
+    }
+
+  request_size = OR_OID_SIZE * (num_classes + 2) +
+    OR_INT_SIZE * (5 * num_classes + 5);
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  reply_size = OR_OID_SIZE * 2 + OR_INT_SIZE * (5 * num_classes + 1);
+  reply = (char *) malloc (reply_size);
+  if (reply == NULL)
+    {
+      free_and_init (request);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_int (request, num_classes);
+  for (i = 0; i < num_classes; i++)
+    {
+      ptr = or_pack_oid (ptr, class_oids[i]);
+    }
+
+  ptr = or_pack_int (ptr, space_to_process);
+  ptr = or_pack_int (ptr, instance_lock_timeout);
+  ptr = or_pack_int (ptr, class_lock_timeout);
+  ptr = or_pack_int (ptr, (int) delete_old_repr);
+  ptr = or_pack_oid (ptr, last_processed_class_oid);
+  ptr = or_pack_oid (ptr, last_processed_oid);
+
+  for (i = 0; i < num_classes; i++)
+    {
+      ptr = or_pack_int (ptr, total_objects[i]);
+    }
+
+  for (i = 0; i < num_classes; i++)
+    {
+      ptr = or_pack_int (ptr, failed_objects[i]);
+    }
+
+  for (i = 0; i < num_classes; i++)
+    {
+      ptr = or_pack_int (ptr, modified_objects[i]);
+    }
+
+  for (i = 0; i < num_classes; i++)
+    {
+      ptr = or_pack_int (ptr, big_objects[i]);
+    }
+
+  for (i = 0; i < num_classes; i++)
+    {
+      ptr = or_pack_int (ptr, ids_repr[i]);
+    }
+
+  req_error = net_client_request (NET_SERVER_BO_COMPACT_DB,
+				  request, request_size, reply,
+				  reply_size, NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &success);
+      ptr = or_unpack_oid (ptr, last_processed_class_oid);
+      ptr = or_unpack_oid (ptr, last_processed_oid);
+
+      for (i = 0; i < num_classes; i++)
+	{
+	  ptr = or_unpack_int (ptr, total_objects + i);
+	}
+
+
+      for (i = 0; i < num_classes; i++)
+	{
+	  ptr = or_unpack_int (ptr, failed_objects + i);
+	}
+
+      for (i = 0; i < num_classes; i++)
+	{
+	  ptr = or_unpack_int (ptr, modified_objects + i);
+	}
+
+      for (i = 0; i < num_classes; i++)
+	{
+	  ptr = or_unpack_int (ptr, big_objects + i);
+	}
+
+      for (i = 0; i < num_classes; i++)
+	{
+	  ptr = or_unpack_int (ptr, ids_repr + i);
+	}
+    }
+
+  free_and_init (request);
+  free_and_init (reply);
+
+  return success;
+#else /*CS_MODE */
+  return ER_FAILED;
+#endif /* !CS_MODE */
+}
+
+/*
+ * boot_heap_compact () - compact heap file of gived class
+ *
+ * return : NO_ERROR if all OK, ER_ status otherwise
+ *	    
+ *   class_oid(in): the class oid of heap to compact
+ *
+ * Note: 
+ */
+int
+boot_heap_compact (OID * class_oid)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED, request_size, req_error, reply_size;
+
+  OR_ALIGNED_BUF (OR_OID_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  if (class_oid == NULL)
+    {
+      return ER_QPROC_INVALID_PARAMETER;
+    }
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = OR_OID_SIZE;
+  reply_size = OR_INT_SIZE;
+
+  or_pack_oid (request, class_oid);
+
+  req_error = net_client_request (NET_SERVER_BO_HEAP_COMPACT,
+				  request, request_size, reply, reply_size,
+				  NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      (void) or_unpack_int (reply, &success);
+    }
+
+  return success;
+#else /* CS_MODE */
+  return ER_FAILED;
+#endif /* !CS_MODE */
+}
+
+/*
+ * compact_db_start () -  start database compaction
+ *
+ * return : error code
+ *
+ */
+int
+compact_db_start (void)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED, req_error, reply_size;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply_size = OR_INT_SIZE;
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error = net_client_request (NET_SERVER_BO_COMPACT_DB_START,
+				  NULL, 0, reply, reply_size,
+				  NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      (void) or_unpack_int (reply, &success);
+    }
+
+  return success;
+#else /* CS_MODE */
+  return ER_FAILED;
+#endif /* !CS_MODE */
+}
+
+/*
+ * compact_db_stop () - stop database compaction
+ *
+ * return :error code
+ *
+ */
+int
+compact_db_stop (void)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED, req_error, reply_size;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply_size = OR_INT_SIZE;
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error = net_client_request (NET_SERVER_BO_COMPACT_DB_STOP,
+				  NULL, 0, reply, reply_size,
+				  NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      (void) or_unpack_int (reply, &success);
+    }
+
+  return success;
+#else /* CS_MODE */
+  return ER_FAILED;
 #endif /* !CS_MODE */
 }

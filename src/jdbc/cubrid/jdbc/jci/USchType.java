@@ -34,7 +34,7 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 /**
  * CUBRID의 Schema type을 정의하는 class이다.
@@ -45,7 +45,7 @@ package cubrid.jdbc.jci;
 abstract public class USchType
 {
   public static final int SCH_MIN = 1;
-  public static final int SCH_MAX = 15;
+  public static final int SCH_MAX = 16;
 
   public static final int SCH_CLASS = 1;
   public static final int SCH_VCLASS = 2;
@@ -62,4 +62,5 @@ abstract public class USchType
   public static final int SCH_CLASS_PRIVILEGE = 13;
   public static final int SCH_ATTR_PRIVILEGE = 14;
   public static final int SCH_DIRECT_SUPER_CLASS = 15;
+  public static final int SCH_PRIMARY_KEY = 16;
 }

@@ -299,6 +299,8 @@ static int la_log_io_read_with_max_retries (char *vname, int vdes,
 					    void *io_pgptr, PAGEID pageid,
 					    int pagesize, int retries);
 static int la_find_archive_num (int *arv_log_num, PAGEID pageid);
+static int la_get_range_of_archive (int arv_log_num, PAGEID * fpageid,
+				    DKNPAGES * npages);
 static int la_log_fetch_from_archive (PAGEID pageid, char *data);
 static int la_log_fetch (PAGEID pageid, LA_CACHE_BUFFER * cache_buffer);
 static int la_expand_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt,
@@ -605,6 +607,76 @@ la_log_io_read_with_max_retries (char *vname, int vdes,
 }
 
 /*
+ * la_get_range_of_archive() -
+ *   return: NO_ERROR or error code
+ *   arv_log_num(in): archive log number
+ *   fpageid(out): logical pageid at physical location 1 in archive log
+ *   npages(out): number of pages in the archive log
+ */
+static int
+la_get_range_of_archive (int arv_log_num, PAGEID * fpageid, DKNPAGES * npages)
+{
+  int error = NO_ERROR;
+  struct log_arv_header *log_hdr = NULL;
+  int arv_log_vdes = NULL_VOLDES;
+  char arv_log_path[PATH_MAX];
+
+  LOG_PAGE *hdr_page;
+
+  /* make archive_name */
+  fileio_make_log_archive_name (arv_log_path,
+				la_Info.log_path,
+				la_Info.act_log.log_hdr->prefix_name,
+				arv_log_num);
+
+log_reopen:
+  /* open the archive file */
+  arv_log_vdes = fileio_open (arv_log_path, O_RDONLY, 0);
+  if (arv_log_vdes == NULL_VOLDES)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1,
+	      arv_log_path);
+      return ER_LOG_MOUNT_FAIL;
+    }
+
+  hdr_page = (LOG_PAGE *) malloc (la_Info.act_log.pgsize);
+  if (hdr_page == NULL)
+    {
+      fileio_close (arv_log_vdes);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  error = la_log_io_read_with_max_retries (arv_log_path, arv_log_vdes,
+					   hdr_page, 0,
+					   la_Info.act_log.pgsize, 10);
+  if (error != NO_ERROR)
+    {
+      free_and_init (hdr_page);
+      fileio_close (arv_log_vdes);
+
+      if (error == ER_PB_BAD_PAGEID)
+	{
+	  goto log_reopen;
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"cannot get header from archive %s.", arv_log_path);
+	  return ER_LOG_READ;
+	}
+    }
+
+  log_hdr = (struct log_arv_header *) hdr_page->area;
+  *fpageid = log_hdr->fpageid;
+  *npages = log_hdr->npages;
+
+  free_and_init (hdr_page);
+  fileio_close (arv_log_vdes);
+
+  return NO_ERROR;
+}
+
+/*
  * la_find_archive_num() - get archive number with page ID
  *   return: error code
  *   arv_log_num(in/out): archive log number
@@ -642,87 +714,40 @@ la_find_archive_num (int *arv_log_num, PAGEID pageid)
       guess_num = *arv_log_num;
     }
 
-  if (la_Info.arv_log.log_vdes != NULL_VOLDES
-      && la_Info.arv_log.log_hdr != NULL
-      && guess_num == la_Info.arv_log.log_hdr->arv_num)
+  do
     {
-      log_hdr = la_Info.arv_log.log_hdr;
-      fpageid = log_hdr->fpageid;
-      npages = log_hdr->npages;
-    }
-  else
-    {
-      LOG_PAGE *hdr_page;
-
-      /* make archive_name */
-      fileio_make_log_archive_name (arv_log_path,
-				    la_Info.log_path,
-				    la_Info.act_log.log_hdr->prefix_name,
-				    guess_num);
-
-    log_reopen:
-      /* open the archive file */
-      arv_log_vdes = fileio_open (arv_log_path, O_RDONLY, 0);
-      if (arv_log_vdes == NULL_VOLDES)
+      if (la_Info.arv_log.log_vdes != NULL_VOLDES
+	  && la_Info.arv_log.log_hdr != NULL
+	  && guess_num == la_Info.arv_log.log_hdr->arv_num)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1,
-		  arv_log_path);
-	  er_log_debug (ARG_FILE_LINE, "cannot open %s archive for %d page.",
-			arv_log_path, pageid);
-	  return ER_LOG_MOUNT_FAIL;
+	  log_hdr = la_Info.arv_log.log_hdr;
+	  fpageid = log_hdr->fpageid;
+	  npages = log_hdr->npages;
 	}
-
-      hdr_page = (LOG_PAGE *) malloc (la_Info.act_log.pgsize);
-      if (hdr_page == NULL)
+      else
 	{
-	  close (arv_log_vdes);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      error = la_log_io_read_with_max_retries (arv_log_path, arv_log_vdes,
-					       hdr_page, 0,
-					       la_Info.act_log.pgsize, 10);
-      if (error != NO_ERROR)
-	{
-	  free_and_init (hdr_page);
-	  close (arv_log_vdes);
-
-	  if (error == ER_PB_BAD_PAGEID)
+	  error = la_get_range_of_archive (guess_num, &fpageid, &npages);
+	  if (error != NO_ERROR)
 	    {
-	      goto log_reopen;
-	    }
-	  else
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "cannot get header from archive %s.",
-			    arv_log_path);
-	      return ER_LOG_READ;
+	      return error;
 	    }
 	}
 
-      log_hdr = (struct log_arv_header *) hdr_page->area;
-      fpageid = log_hdr->fpageid;
-      npages = log_hdr->npages;
-
-      free_and_init (hdr_page);
-      close (arv_log_vdes);
+      if (pageid >= fpageid && pageid < fpageid + npages)
+	{
+	  *arv_log_num = guess_num;
+	  return NO_ERROR;
+	}
+      else if (pageid < fpageid)
+	{
+	  guess_num--;
+	}
+      else if (pageid >= fpageid + npages)
+	{
+	  guess_num++;
+	}
     }
-
-  if (pageid >= fpageid && pageid < fpageid + npages)
-    {
-      *arv_log_num = guess_num;
-      return NO_ERROR;
-    }
-  else if (pageid < fpageid)
-    {
-      *arv_log_num = guess_num - 1;
-      return la_find_archive_num (arv_log_num, pageid);
-    }
-  else if (pageid >= fpageid + npages)
-    {
-      *arv_log_num = guess_num + 1;
-      return la_find_archive_num (arv_log_num, pageid);
-    }
+  while (guess_num >= 0 && guess_num < la_Info.act_log.log_hdr->nxarv_num);
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_NOTIN_ARCHIVE, 1, pageid);
   return ER_LOG_NOTIN_ARCHIVE;
@@ -740,20 +765,25 @@ la_log_fetch_from_archive (PAGEID pageid, char *data)
   int error = NO_ERROR;
   int arv_log_num;
 
-  arv_log_num = la_Info.act_log.log_hdr->nxarv_num - 1;
+  arv_log_num = -1;
   error = la_find_archive_num (&arv_log_num, pageid);
   if (error < 0)
     {
-      er_log_debug (ARG_FILE_LINE, "cannot find archive log for %d page.",
-		    pageid);
-      return error;
+      arv_log_num = la_Info.act_log.log_hdr->nxarv_num - 1;
+      error = la_find_archive_num (&arv_log_num, pageid);
+      if (error < 0)
+	{
+	  er_log_debug (ARG_FILE_LINE, "cannot find archive log for %d page.",
+			pageid);
+	  return error;
+	}
     }
 
   if (la_Info.arv_log.arv_num != arv_log_num)
     {
       if (la_Info.arv_log.log_vdes > 0)
 	{
-	  close (la_Info.arv_log.log_vdes);
+	  fileio_close (la_Info.arv_log.log_vdes);
 	  la_Info.arv_log.log_vdes = NULL_VOLDES;
 	}
       la_Info.arv_log.arv_num = arv_log_num;
@@ -816,7 +846,7 @@ log_reopen:
 	{
 	  if (error == ER_PB_BAD_PAGEID)
 	    {
-	      close (la_Info.arv_log.log_vdes);
+	      fileio_close (la_Info.arv_log.log_vdes);
 	      la_Info.arv_log.log_vdes = NULL_VOLDES;
 	      goto log_reopen;
 	    }
@@ -844,7 +874,7 @@ log_reopen:
     {
       if (error == ER_PB_BAD_PAGEID)
 	{
-	  close (la_Info.arv_log.log_vdes);
+	  fileio_close (la_Info.arv_log.log_vdes);
 	  la_Info.arv_log.log_vdes = NULL_VOLDES;
 	  goto log_reopen;
 	}
@@ -1190,6 +1220,12 @@ la_get_page (PAGEID pageid)
 {
   LA_CACHE_BUFFER *buf = NULL;
 
+  assert (pageid != NULL_PAGEID);
+  if (pageid == NULL_PAGEID)
+    {
+      return NULL;
+    }
+
   do
     {
       buf = la_get_page_buffer (pageid);
@@ -1432,6 +1468,7 @@ la_find_last_applied_lsa (LOG_LSA * lsa, LOG_LSA * required_lsa,
   db_make_varchar (&in_value[in_value_idx++], 255,
 		   act_log->log_hdr->prefix_name,
 		   strlen (act_log->log_hdr->prefix_name));
+  assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
   error =
     db_execute_with_values (query_buf, &result, &query_error, in_value_idx,
@@ -1529,6 +1566,7 @@ la_find_last_applied_lsa (LOG_LSA * lsa, LOG_LSA * required_lsa,
       db_make_varchar (&in_value[in_value_idx++], 255,
 		       act_log->log_hdr->prefix_name,
 		       strlen (act_log->log_hdr->prefix_name));
+      assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
       error =
 	la_update_query_execute_with_values (query_buf, in_value_idx,
@@ -1563,6 +1601,7 @@ la_find_last_applied_lsa (LOG_LSA * lsa, LOG_LSA * required_lsa,
 		       strlen (la_Info.log_path));
       db_make_int (&in_value[in_value_idx++], lsa->pageid);
       db_make_int (&in_value[in_value_idx++], lsa->offset);
+      assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
       error =
 	la_update_query_execute_with_values (query_buf, in_value_idx,
@@ -1606,6 +1645,7 @@ la_find_last_applied_lsa (LOG_LSA * lsa, LOG_LSA * required_lsa,
       db_make_varchar (&in_value[in_value_idx++], 255,
 		       act_log->log_hdr->prefix_name,
 		       strlen (act_log->log_hdr->prefix_name));
+      assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
       error =
 	la_update_query_execute_with_values (query_buf, in_value_idx,
@@ -1672,6 +1712,7 @@ la_update_last_applied_lsa (LOG_LSA * lsa)
       db_make_varchar (&in_value[in_value_idx++], 255,
 		       la_Info.act_log.log_hdr->prefix_name,
 		       strlen (la_Info.act_log.log_hdr->prefix_name));
+      assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
       error =
 	la_update_query_execute_with_values (query_buf, in_value_idx,
@@ -1702,6 +1743,7 @@ la_update_last_applied_lsa (LOG_LSA * lsa)
       db_make_varchar (&in_value[in_value_idx++], 255,
 		       la_Info.act_log.log_hdr->prefix_name,
 		       strlen (la_Info.act_log.log_hdr->prefix_name));
+      assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
       error =
 	la_update_query_execute_with_values (query_buf, in_value_idx,
@@ -1729,7 +1771,7 @@ la_update_last_applied_lsa (LOG_LSA * lsa)
 static int
 la_update_applier_status (void)
 {
-#define LA_IN_VALUE_COUNT       2
+#define LA_IN_VALUE_COUNT       3
   int error = NO_ERROR;
   char *sql = NULL;
   char query_buf[LA_QUERY_BUF_SIZE];
@@ -1750,6 +1792,7 @@ la_update_applier_status (void)
   db_make_varchar (&in_value[in_value_idx++], 255,
 		   la_Info.act_log.log_hdr->prefix_name,
 		   strlen (la_Info.act_log.log_hdr->prefix_name));
+  assert (in_value_idx <= LA_IN_VALUE_COUNT);
 
   error =
     la_update_query_execute_with_values (query_buf, in_value_idx,
@@ -1962,6 +2005,7 @@ la_find_log_pagesize (LA_ACT_LOG * act_log,
     {
       act_log->hdr_page = (LOG_PAGE *) realloc (act_log->hdr_page,
 						act_log->pgsize);
+      act_log->log_hdr = (struct log_header *) act_log->hdr_page->area;
     }
 
   return error;
@@ -3685,10 +3729,22 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr,
       if (error == NO_ERROR)
 	{
 	  recdes->type = *(INT16 *) (rec_type);
-	  recdes->data = log_data;
-	  recdes->area_size = recdes->length = length;
+	  if (recdes->type == REC_BIGONE)
+	    {
+	      error = la_get_overflow_recdes (lrec, logs, &area, &length,
+					      RVOVF_NEWPAGE_INSERT);
+	    }
+	  else
+	    {
+	      recdes->data = log_data;
+	      recdes->area_size = recdes->length = length;
+	      return error;
+	    }
 	}
-      return error;
+      else
+	{
+	  return error;
+	}
     }
   else if (*rcvindex == RVHF_UPDATE && recdes->type == REC_RELOCATION)
     {
@@ -4261,6 +4317,7 @@ la_apply_schema_log (LA_ITEM * item)
     case CUBRID_STMT_CREATE_STORED_PROCEDURE:
     case CUBRID_STMT_DROP_STORED_PROCEDURE:
 
+    case CUBRID_STMT_TRUNCATE:
 
       /* TODO: check it */
     case CUBRID_STMT_CREATE_USER:
@@ -4378,6 +4435,7 @@ la_apply_repl_log (int tranid, int *total_rows)
 
   if (apply->head == NULL)
     {
+      la_clear_repl_item (apply);
       return NO_ERROR;
     }
 
@@ -4765,7 +4823,7 @@ la_log_record_process (struct log_rec *lrec,
       if (error < 0)
 	{
 	  er_log_debug (ARG_FILE_LINE, "we cannot get required page id from "
-			"LSA (%d|%d)");
+			"LSA (%d|%d)", final->pageid, final->offset);
 	  if (error == ER_OUT_OF_VIRTUAL_MEMORY)
 	    {
 	      /* need to shutdown */
@@ -4980,16 +5038,21 @@ la_archive_info (PAGEID safe_pageid)
   char time_array[256];
 
 
-  required_arv_log_num = la_Info.act_log.log_hdr->nxarv_num - 1;
+  required_arv_log_num = -1;
   error = la_find_archive_num (&required_arv_log_num, safe_pageid);
   if (error != NO_ERROR)
     {
-      /* ignore error from la_find_archive_num */
-      er_log_debug (ARG_FILE_LINE,
-		    "cannot find archive log for %d page. "
-		    "log info file (%s) will not be updated\n",
-		    safe_pageid, la_Info.loginf_path);
-      return NO_ERROR;
+      required_arv_log_num = la_Info.act_log.log_hdr->nxarv_num - 1;
+      error = la_find_archive_num (&required_arv_log_num, safe_pageid);
+      if (error != NO_ERROR)
+	{
+	  /* ignore error from la_find_archive_num */
+	  er_log_debug (ARG_FILE_LINE,
+			"cannot find archive log for %d page. "
+			"log info file (%s) will not be updated\n",
+			safe_pageid, la_Info.loginf_path);
+	  return NO_ERROR;
+	}
     }
 
   if (required_arv_log_num > 1)
@@ -5249,12 +5312,12 @@ la_shutdown (void)
   /* clean up */
   if (la_Info.arv_log.log_vdes != NULL_VOLDES)
     {
-      close (la_Info.arv_log.log_vdes);
+      fileio_close (la_Info.arv_log.log_vdes);
       la_Info.arv_log.log_vdes = NULL_VOLDES;
     }
   if (la_Info.act_log.log_vdes != NULL_VOLDES)
     {
-      close (la_Info.act_log.log_vdes);
+      fileio_close (la_Info.act_log.log_vdes);
       la_Info.act_log.log_vdes = NULL_VOLDES;
     }
 
@@ -5467,6 +5530,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
   LOG_LSA old_lsa = {
     -1, -1
   };
+  LOG_LSA prev_final;
   struct timeval time_commit, time_now;
   la_applier_need_shutdown = false;
   char *s;
@@ -5773,6 +5837,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	    }
 
 	  /* apply it */
+	  LSA_SET_NULL (&prev_final);
 	  pg_ptr = &(log_buf->logpage);
 	  while (final.pageid == log_buf->pageid && !la_applier_need_shutdown)
 	    {
@@ -5810,6 +5875,16 @@ la_apply_log_file (const char *database_name, const char *log_path,
 	      lrec =
 		(struct log_rec *) ((char *) pg_ptr->area + final.offset);
 
+	      if (!LSA_ISNULL (&prev_final)
+		  && !LSA_EQ (&prev_final, &lrec->back_lsa))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_LOG_PAGE_CORRUPTED, 1, final.pageid);
+		  /* it should be refetched and release later */
+		  la_invalidate_page_buffer (log_buf, false);
+		  break;
+		}
+
 	      /* process the log record */
 	      error = la_log_record_process (lrec, &final, pg_ptr);
 	      if (error != NO_ERROR)
@@ -5831,7 +5906,19 @@ la_apply_log_file (const char *database_name, const char *log_path,
 
 		  break;
 		}
-	      /* set the next record */
+
+	      if (!LSA_ISNULL (&lrec->forw_lsa)
+		  && LSA_GT (&final, &lrec->forw_lsa))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_LOG_PAGE_CORRUPTED, 1, final.pageid);
+		  /* it should be refetched and release later */
+		  la_invalidate_page_buffer (log_buf, false);
+		  break;
+		}
+
+	      /* set the prev/next record */
+	      LSA_COPY (&prev_final, &final);
 	      LSA_COPY (&final, &lrec->forw_lsa);
 	    }
 

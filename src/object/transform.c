@@ -378,7 +378,8 @@ static CT_ATTR ct_indexkey_atts[] = {
   {"index_of", NULL_ATTRID, DB_TYPE_OBJECT},
   {"key_attr_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"key_order", NULL_ATTRID, DB_TYPE_INTEGER},
-  {"asc_desc", NULL_ATTRID, DB_TYPE_INTEGER}
+  {"asc_desc", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"key_prefix_length", NULL_ATTRID, DB_TYPE_INTEGER}
 };
 
 #define SET_CT_CLS(name, n_atts, atts) \
@@ -434,7 +435,7 @@ CT_CLASS ct_Index =
   { CT_INDEX_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 8, ct_index_atts };
 
 CT_CLASS ct_Indexkey =
-  { CT_INDEXKEY_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 4,
+  { CT_INDEXKEY_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 5,
 ct_indexkey_atts
 };
 

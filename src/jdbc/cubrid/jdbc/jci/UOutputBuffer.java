@@ -34,7 +34,7 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 import java.io.OutputStream;
 import java.io.IOException;
@@ -45,7 +45,7 @@ import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import javax.transaction.xa.Xid;
 
-import cubrid.sql.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDOID;
 
 /*
  * Performance와 Robustness를 위해 CAS에 넘길 data를 buffer에서 보관하여

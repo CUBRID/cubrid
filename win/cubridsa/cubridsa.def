@@ -83,7 +83,7 @@ EXPORTS
     smt_def_class
     smt_edit_class_mop
     smt_quit
-	smt_set_attribute_default
+    smt_set_attribute_default
     sysprm_load_and_init
     sysprm_set_to_default
     sysprm_set_force
@@ -91,6 +91,8 @@ EXPORTS
     utility_get_generic_message
     utility_initialize
     au_get_user_class_name
+    tr_get_class_name
+    boot_set_skip_check_ct_classes
 ; utility functions
 	createdb
 	renamedb
@@ -168,6 +170,7 @@ EXPORTS
     db_attribute_domain
     db_attribute_id
     db_attribute_is_auto_increment
+    db_attribute_is_foreign_key
     db_attribute_is_indexed
     db_attribute_is_non_null
     db_attribute_is_primary_key
@@ -214,6 +217,7 @@ EXPORTS
     db_constrain_non_null
     db_constrain_unique
     db_constraint_asc_desc
+    db_constraint_prefix_length
     db_constraint_attributes
     db_constraint_name
     db_constraint_next
@@ -315,6 +319,7 @@ EXPORTS
     db_get_all_vclasses
     db_get_all_vclasses_on_ldb
     db_get_attribute
+    db_get_attribute_by_name
     db_get_attribute_class
     db_get_attribute_descriptor
     db_get_attribute_domain

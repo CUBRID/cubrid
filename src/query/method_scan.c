@@ -521,12 +521,12 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 		   */
 		  turn_on_auth = 0;
 		  AU_ENABLE (turn_on_auth);
-                  db_disable_modification ();
+		  db_disable_modification ();
 		  error =
 		    obj_send_array (DB_GET_OBJECT (scan_buffer_p->valptrs[0]),
 				    meth_sig->method_name, &val,
 				    &scan_buffer_p->valptrs[1]);
-                  db_enable_modification ();
+		  db_enable_modification ();
 		  AU_DISABLE (turn_on_auth);
 		}
 	    }
@@ -535,11 +535,11 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	      /* java stored procedure call */
 	      turn_on_auth = 0;
 	      AU_ENABLE (turn_on_auth);
-              db_disable_modification ();
+	      db_disable_modification ();
 	      error = jsp_call_from_server (&val, scan_buffer_p->valptrs,
 					    meth_sig->method_name,
 					    meth_sig->no_method_args);
-              db_enable_modification ();
+	      db_enable_modification ();
 	      AU_DISABLE (turn_on_auth);
 	    }
 

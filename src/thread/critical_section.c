@@ -87,7 +87,8 @@ static const char *css_Csect_name[CRITICAL_SECTION_COUNT] = {
   "CT_OID_TABLE",
   "SCANID_BITMAP",
   "LOG_FLUSH",
-  "HA_SERVER_STATE"
+  "HA_SERVER_STATE",
+  "COMPACTDB_ONE_INSTANCE"
 };
 
 static int csect_initialize_entry (int cs_index);
@@ -362,8 +363,7 @@ csect_wait_on_writer_queue (THREAD_ENTRY * thread_p,
 					     timeout, to,
 					     THREAD_CSECT_WRITER_SUSPENDED);
 
-      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
-	  && thread_p->interrupted)
+      if (DOES_THREAD_RESUME_DUE_TO_SHUTDOWN (thread_p))
 	{
 	  /* check if i'm in the queue */
 	  prev_thread_p = cs_ptr->waiting_writers_queue;
@@ -450,8 +450,7 @@ csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p,
 					     timeout, to,
 					     THREAD_CSECT_PROMOTER_SUSPENDED);
 
-      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
-	  && thread_p->interrupted)
+      if (DOES_THREAD_RESUME_DUE_TO_SHUTDOWN (thread_p))
 	{
 	  /* check if i'm in the queue */
 	  prev_thread_p = cs_ptr->waiting_promoters_queue;

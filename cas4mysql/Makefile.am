@@ -41,11 +41,17 @@ QATOOLS_DIR = $(SRC)/qatools
 
 INCLUDES = @SRC_INC@ @EXT_INC@
 DEFS = @SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
-	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_MYSQL -DCAS_FOR_DBMS
+	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_MYSQL
 
 MYSQL_LIBS = -lmysqlclient
 
-bin_PROGRAMS = cub_cas_mysql
+if BUILD_CAS_FOR_MYSQL
+  CAS4M = cub_cas_mysql
+else
+  CAS4M =
+endif
+
+bin_PROGRAMS = $(CAS4M)
 
 cub_cas_mysql_SOURCES = \
 	$(BROKER_DIR)/cas.c \
@@ -67,6 +73,7 @@ cub_cas_mysql_SOURCES = \
 	$(BROKER_DIR)/broker_error.c \
 	$(BROKER_DIR)/cas_util.c \
 	$(BROKER_DIR)/cas_dbms_util.c \
-	$(BROKER_DIR)/cas_error.c
+	$(BROKER_DIR)/cas_error.c \
+	$(BROKER_DIR)/cas_error_log.c 
 cub_cas_mysql_CFLAGS = $(CFLAGS) @MYSQL_INC_PATH@
 cub_cas_mysql_LDFLAGS = @MYSQL_LIB_PATH@ $(MYSQL_LIBS)

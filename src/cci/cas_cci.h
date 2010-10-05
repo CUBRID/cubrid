@@ -37,9 +37,7 @@
 
 #ident "$Id$"
 
-#ifdef CAS_FOR_DBMS
 #include "cas_error.h"
-#endif
 
 #ifdef __cplusplus
 extern "C"
@@ -78,6 +76,30 @@ extern "C"
 
 #define CCI_GET_RESULT_INFO_IS_NON_NULL(RES_INFO, INDEX)	\
 		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].is_non_null)
+
+#define CCI_GET_RESULT_INFO_DEFAULT_VALUE(RES_INFO, INDEX)	\
+		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].default_value)
+
+#define CCI_GET_RESULT_INFO_IS_AUTO_INCREMENT(RES_INFO, INDEX)	\
+		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].is_auto_increment)
+
+#define CCI_GET_RESULT_INFO_IS_UNIQUE_KEY(RES_INFO, INDEX)	\
+		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].is_unique_key)
+
+#define CCI_GET_RESULT_INFO_IS_PRIMARY_KEY(RES_INFO, INDEX)	\
+		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].is_primary_key)
+
+#define CCI_GET_RESULT_INFO_IS_FOREIGN_KEY(RES_INFO, INDEX)	\
+		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].is_foreign_key)
+
+#define CCI_GET_RESULT_INFO_IS_REVERSE_INDEX(RES_INFO, INDEX)	\
+		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].is_reverse_index)
+
+#define CCI_GET_RESULT_INFO_IS_REVERSE_UNIQUE(RES_INFO, INDEX)	\
+		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].is_reverse_unique)
+
+#define CCI_GET_RESULT_INFO_IS_SHARED(RES_INFO, INDEX)	\
+		(((T_CCI_COL_INFO*) (RES_INFO))[(INDEX) - 1].is_shared)
 
 #define CCI_IS_SET_TYPE(TYPE)	\
 	(((((TYPE) & CCI_CODE_COLLECTION) == CCI_CODE_SET) || ((TYPE) == CCI_U_TYPE_SET)) ? 1 : 0)
@@ -324,38 +346,6 @@ extern "C"
     CCI_ER_THREAD_RUNNING = -29,
     CCI_ER_INVALID_URL = -30,
 
-#ifndef CAS_FOR_DBMS
-    CAS_ER_DBMS = -1000,
-    CAS_ER_INTERNAL = -1001,
-    CAS_ER_NO_MORE_MEMORY = -1002,
-    CAS_ER_COMMUNICATION = -1003,
-    CAS_ER_ARGS = -1004,
-    CAS_ER_TRAN_TYPE = -1005,
-    CAS_ER_SRV_HANDLE = -1006,
-    CAS_ER_NUM_BIND = -1007,
-    CAS_ER_UNKNOWN_U_TYPE = -1008,
-    CAS_ER_DB_VALUE = -1009,
-    CAS_ER_TYPE_CONVERSION = -1010,
-    CAS_ER_PARAM_NAME = -1011,
-    CAS_ER_NO_MORE_DATA = -1012,
-    CAS_ER_OBJECT = -1013,
-    CAS_ER_OPEN_FILE = -1014,
-    CAS_ER_SCHEMA_TYPE = -1015,
-    CAS_ER_VERSION = -1016,
-    CAS_ER_FREE_SERVER = -1017,
-    CAS_ER_NOT_AUTHORIZED_CLIENT = -1018,
-    CAS_ER_QUERY_CANCEL = -1019,
-    CAS_ER_NOT_COLLECTION = -1020,
-    CAS_ER_COLLECTION_DOMAIN = -1021,
-
-    CAS_ER_NO_MORE_RESULT_SET = -1022,
-    CAS_ER_INVALID_CALL_STMT = -1023,
-    CAS_ER_STMT_POOLING = -1024,
-    CAS_ER_DBSERVER_DISCONNECTED = -1025,
-
-    CAS_ER_IS = -1200,
-#endif
-
     CCI_ER_NOT_IMPLEMENTED = -99
   } T_CCI_ERROR_CODE;
 
@@ -491,6 +481,14 @@ extern "C"
     char *col_name;
     char *real_attr;
     char *class_name;
+    char *default_value;
+    char is_auto_increment;
+    char is_unique_key;
+    char is_primary_key;
+    char is_foreign_key;
+    char is_reverse_index;
+    char is_reverse_unique;
+    char is_shared;
   } T_CCI_COL_INFO;
 
   typedef enum
@@ -593,11 +591,9 @@ extern "C"
 			     void *value, T_CCI_U_TYPE u_type, char flag);
   extern int cci_execute (int req_handle,
 			  char flag, int max_col_size, T_CCI_ERROR * err_buf);
-  extern int cci_get_db_parameter (int con_handle,
-				   T_CCI_DB_PARAM param_name,
+  extern int cci_get_db_parameter (int con_handle, T_CCI_DB_PARAM param_name,
 				   void *value, T_CCI_ERROR * err_buf);
-  extern int cci_set_db_parameter (int con_handle,
-				   T_CCI_DB_PARAM param_name,
+  extern int cci_set_db_parameter (int con_handle, T_CCI_DB_PARAM param_name,
 				   void *value, T_CCI_ERROR * err_buf);
   extern int cci_close_req_handle (int req_handle);
   extern int cci_cursor (int req_handle,
@@ -634,6 +630,9 @@ extern "C"
 			   char *filename, T_CCI_ERROR * err_buf);
   extern int cci_glo_load (int con_handle,
 			   char *oid_str, int out_fd, T_CCI_ERROR * err_buf);
+  extern int cci_glo_load_file_name (int con_handle, char *oid_str,
+				     char *out_filename,
+				     T_CCI_ERROR * err_buf);
   extern int cci_get_db_version (int con_handle, char *out_buf, int buf_size);
   extern int cci_get_class_num_objs (int conn_handle,
 				     char *class_name,

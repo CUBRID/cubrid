@@ -34,7 +34,7 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 #ifdef SERVER_SIDE_JDBC
 import com.cubrid.jsp.ExecuteThread;

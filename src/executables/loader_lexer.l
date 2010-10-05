@@ -73,7 +73,7 @@ static LDR_STRING *loader_make_string_by_yytext (void);
 static LDR_STRING *loader_make_string_by_buffer (void);
 %}
 
-%x DELIMITED_ID DQS SQS COMMENT
+%x BRACKET_ID DELIMITED_ID DQS SQS COMMENT
 
 %%
 [ \t]+	;
@@ -322,6 +322,11 @@ static LDR_STRING *loader_make_string_by_buffer (void);
       }
 }
 
+"[" {
+    loader_set_quoted_string_buffer ();
+    BEGIN BRACKET_ID;
+}
+
 \\\n {
     yylineno++;
     /* continue line */ ; 
@@ -364,6 +369,19 @@ static LDR_STRING *loader_make_string_by_buffer (void);
 }
 
 <DELIMITED_ID>\" {
+    loader_append_string ('\0');
+    PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
+    loader_yylval.string = loader_make_string_by_buffer ();
+    BEGIN INITIAL;
+    return IDENTIFIER;
+}
+
+
+<BRACKET_ID>[^\]] {
+    loader_append_string (yytext[0]);
+}
+
+<BRACKET_ID>"]" {
     loader_append_string ('\0');
     PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
     loader_yylval.string = loader_make_string_by_buffer ();

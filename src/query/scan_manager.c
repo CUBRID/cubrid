@@ -972,6 +972,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
   DB_VALUE *key_val1p, *key_val2p;
   int ret = NO_ERROR;
   int n;
+  int curr_key_prefix_length = -1;
 
   /* pointer to INDX_SCAN_ID structure */
   iscan_id = &s_id->s.isid;
@@ -1004,6 +1005,11 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       return ER_FAILED;
     }
 
+  if (iscan_id->bt_attrs_prefix_length && iscan_id->bt_num_attrs == 1)
+    {
+      curr_key_prefix_length = iscan_id->bt_attrs_prefix_length[0];
+    }
+
   /* if it is the first time of this scan */
   if (iscan_id->curr_keyno == -1 && indx_infop->key_info.key_cnt == key_cnt)
     {
@@ -1031,9 +1037,22 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 		}
 	      else
 		{
+		  DB_TYPE db_type;
+
 		  ret = fetch_copy_dbval (thread_p, key_ranges[i].key1,
 					  s_id->vd, NULL, NULL, NULL,
 					  &key_vals[i].key1);
+		  db_type = DB_VALUE_DOMAIN_TYPE (&key_vals[i].key1);
+
+		  if (ret == NO_ERROR && curr_key_prefix_length != -1)
+		    {
+		      if (TP_IS_CHAR_TYPE (db_type)
+			  || TP_IS_BIT_TYPE (db_type))
+			{
+			  ret = db_string_truncate (&key_vals[i].key1,
+						    curr_key_prefix_length);
+			}
+		    }
 		}
 
 	      if (ret != NO_ERROR)
@@ -1053,9 +1072,23 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 		}
 	      else
 		{
+		  DB_TYPE db_type;
+
 		  ret = fetch_copy_dbval (thread_p, key_ranges[i].key2,
 					  s_id->vd, NULL, NULL, NULL,
 					  &key_vals[i].key2);
+
+		  db_type = DB_VALUE_DOMAIN_TYPE (&key_vals[i].key2);
+
+		  if (ret == NO_ERROR && curr_key_prefix_length != -1)
+		    {
+		      if (TP_IS_CHAR_TYPE (db_type)
+			  || TP_IS_BIT_TYPE (db_type))
+			{
+			  ret = db_string_truncate (&key_vals[i].key2,
+						    curr_key_prefix_length);
+			}
+		    }
 		}
 
 	      if (ret != NO_ERROR)
@@ -1072,34 +1105,6 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 		  NO_ERROR)
 		{
 		  goto exit_on_error;
-		}
-	    }
-
-	  /* check for key range is valid; do partial-key cmp */
-	  if (key_ranges[i].key1 && key_ranges[i].key2)
-	    {
-	      key_val1p = &key_vals[i].key1;
-	      key_val2p = &key_vals[i].key2;
-
-	      if (PRIM_IS_NULL (key_val1p)
-		  || btree_multicol_key_has_null (key_val1p)
-		  || PRIM_IS_NULL (key_val2p)
-		  || btree_multicol_key_has_null (key_val2p))
-		{
-		  key_vals[i].range = NA_NA;	/* mark as empty range */
-		}
-	      else if (key_vals[i].range != EQ_NA)
-		{
-		  int cmp;
-
-		  cmp = (*(BTS->btid_int.key_type->type->cmpval)) (key_val1p,
-								   key_val2p,
-								   NULL, 0, 0,
-								   1, NULL);
-		  if (cmp == DB_GT)
-		    {
-		      key_vals[i].range = NA_NA;	/* mark as empty range */
-		    }
 		}
 	    }
 	}
@@ -1143,16 +1148,6 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 			 iscan_id->vstr_ids);
   iscan_id->oid_list.oid_cnt = 0;
 
-  if (iscan_id->curr_keyno < key_cnt)
-    {
-      /* check for empty range */
-      if (key_vals[iscan_id->curr_keyno].range == NA_NA)
-	{
-	  iscan_id->curr_keyno++;
-	  goto end;		/* noting to do */
-	}
-    }
-
   /* call 'btree_keyval_search()' or 'btree_range_search()' according to the range type */
   switch (indx_infop->range_type)
     {
@@ -1176,12 +1171,14 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
          "is NULL" context. */
 
       /* to fix multi-column index NULL problem */
-      if (BTREE_START_OF_SCAN (BTS)
-	  && (PRIM_IS_NULL (key_val1p)
-	      || btree_multicol_key_has_null (key_val1p)))
+      if (BTREE_START_OF_SCAN (BTS))
 	{
-	  iscan_id->curr_keyno++;
-	  break;
+	  if (PRIM_IS_NULL (key_val1p)
+	      || btree_multicol_key_has_null (key_val1p))
+	    {
+	      iscan_id->curr_keyno++;
+	      break;
+	    }
 	}
 
       /* calling 'btree_range_search()' */
@@ -1191,7 +1188,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 			      iscan_id->lock_hint,
 			      BTS,
 			      key_val1p, key_val2p,
-			      GE_LE, 1,
+			      GE_LE,
+			      1,
 			      &iscan_id->cls_oid,
 			      iscan_id->oid_list.oidp,
 			      ISCAN_OID_BUFFER_SIZE,
@@ -1238,13 +1236,21 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       if (range >= GE_LE && range <= GT_LT)
 	{
 	  /* to fix multi-column index NULL problem */
-	  if (BTREE_START_OF_SCAN (BTS)
-	      && (PRIM_IS_NULL (key_val1p) || PRIM_IS_NULL (key_val2p)
-		  || btree_multicol_key_has_null (key_val1p)
-		  || btree_multicol_key_has_null (key_val2p)))
+	  if (BTREE_START_OF_SCAN (BTS))
 	    {
-	      iscan_id->curr_keyno++;
-	      break;
+	      if (PRIM_IS_NULL (key_val1p) || PRIM_IS_NULL (key_val2p)
+		  || btree_multicol_key_has_null (key_val1p)
+		  || btree_multicol_key_has_null (key_val2p)
+		  || (*(BTS->btid_int.key_type->type->cmpval)) (key_val1p,
+								key_val2p,
+								NULL, 0, 0,
+								1,
+								NULL) ==
+		  DB_GT)
+		{
+		  iscan_id->curr_keyno++;
+		  break;
+		}
 	    }
 	}
 
@@ -1281,7 +1287,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 			      iscan_id->lock_hint,
 			      BTS,
 			      key_val1p, key_val2p,
-			      range, 1,
+			      range,
+			      1,
 			      &iscan_id->cls_oid,
 			      iscan_id->oid_list.oidp,
 			      ISCAN_OID_BUFFER_SIZE,
@@ -1325,14 +1332,17 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	     the index scan context. They can be equal to NULL only in the
 	     "is NULL" context. */
 	  /* to fix multi-column index NULL problem */
-	  if (BTREE_START_OF_SCAN (BTS)
-	      && (PRIM_IS_NULL (key_val1p)
-		  || btree_multicol_key_has_null (key_val1p)))
+	  if (BTREE_START_OF_SCAN (BTS))
 	    {
-	      /* skip this key value and continue to the next */
-	      iscan_id->curr_keyno++;
-	      continue;
+	      if (PRIM_IS_NULL (key_val1p)
+		  || btree_multicol_key_has_null (key_val1p))
+		{
+		  /* skip this key value and continue to the next */
+		  iscan_id->curr_keyno++;
+		  continue;
+		}
 	    }
+
 
 	  /* calling 'btree_range_search()' */
 	  n = btree_range_search (thread_p,
@@ -1341,7 +1351,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 				  iscan_id->lock_hint,
 				  BTS,
 				  key_val1p, key_val2p,
-				  GE_LE, 1,
+				  GE_LE,
+				  1,
 				  &iscan_id->cls_oid,
 				  iscan_id->oid_list.oidp,
 				  ISCAN_OID_BUFFER_SIZE,
@@ -1398,14 +1409,22 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  if (range >= GE_LE && range <= GT_LT)
 	    {
 	      /* to fix multi-column index NULL problem */
-	      if (BTREE_START_OF_SCAN (BTS)
-		  && (PRIM_IS_NULL (key_val1p) || PRIM_IS_NULL (key_val2p)
-		      || btree_multicol_key_has_null (key_val1p)
-		      || btree_multicol_key_has_null (key_val2p)))
+	      if (BTREE_START_OF_SCAN (BTS))
 		{
-		  /* skip this range and continue to the next */
-		  iscan_id->curr_keyno++;
-		  continue;
+		  if (PRIM_IS_NULL (key_val1p) || PRIM_IS_NULL (key_val2p)
+		      || btree_multicol_key_has_null (key_val1p)
+		      || btree_multicol_key_has_null (key_val2p)
+		      || (*(BTS->btid_int.key_type->type->cmpval)) (key_val1p,
+								    key_val2p,
+								    NULL, 0,
+								    0, 1,
+								    NULL) ==
+		      DB_GT)
+		    {
+		      /* skip this range and continue to the next */
+		      iscan_id->curr_keyno++;
+		      continue;
+		    }
 		}
 	    }
 
@@ -1444,7 +1463,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 				  iscan_id->lock_hint,
 				  BTS,
 				  key_val1p, key_val2p,
-				  range, 1,
+				  range,
+				  1,
 				  &iscan_id->cls_oid,
 				  iscan_id->oid_list.oidp,
 				  ISCAN_OID_BUFFER_SIZE,
@@ -1868,6 +1888,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   if (heap_get_indexinfo_of_btid (thread_p, cls_oid,
 				  &indx_info->indx_id.i.btid, &isidp->bt_type,
 				  &isidp->bt_num_attrs, &isidp->bt_attr_ids,
+				  &isidp->bt_attrs_prefix_length,
 				  NULL) != NO_ERROR)
     {
       goto exit_on_error;

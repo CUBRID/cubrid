@@ -48,10 +48,10 @@ LIBS += @CAS_LIB@ @EXT_LIBS@ @SYS_LIBS@
 #CLEANFILES = cnvlex.c
 
 $(PARSER_DIR)/csql_grammar.c $(PARSER_DIR)/csql_grammar.h : $(PARSER_DIR)/csql_grammar.y
-	$(BISON) -d -r all -o $@ $<
+	$(BISON) --name-prefix=csql_yy -d -r all -o $@ $<
 
 $(PARSER_DIR)/csql_lexer.c : $(PARSER_DIR)/csql_lexer.l
-	$(FLEX) -o $@ $<
+	$(FLEX) --prefix=csql_yy -o $@ $<
 
 $(EXECUTABLE_DIR)/loader_grammar.c : $(EXECUTABLE_DIR)/loader_grammar.y
 	$(BISON) --name-prefix=loader_yy -d -r all -o $@ $<
@@ -251,6 +251,7 @@ STORAGE_SOURCES = \
 	$(STORAGE_DIR)/btree_load.c \
 	$(STORAGE_DIR)/system_catalog.c \
 	$(STORAGE_DIR)/catalog_class.c \
+	$(STORAGE_DIR)/compactdb_sr.c \
 	$(STORAGE_DIR)/disk_manager.c \
 	$(STORAGE_DIR)/storage_common.c \
 	$(STORAGE_DIR)/extendible_hash.c \

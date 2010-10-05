@@ -598,6 +598,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
 }
 
+
 /*
  * slocator_does_exist -
  *
@@ -1201,7 +1202,7 @@ slocator_find_class_oid (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
- * slocator_reserve_classname -
+ * slocator_reserve_classnames -
  *
  * return:
  *
@@ -1212,28 +1213,53 @@ slocator_find_class_oid (THREAD_ENTRY * thread_p, unsigned int rid,
  * NOTE:
  */
 void
-slocator_reserve_classname (THREAD_ENTRY * thread_p, unsigned int rid,
-			    char *request, int reqlen)
+slocator_reserve_classnames (THREAD_ENTRY * thread_p, unsigned int rid,
+			     char *request, int reqlen)
 {
-  LC_FIND_CLASSNAME reserved;
-  char *classname;
-  OID class_oid;
+  LC_FIND_CLASSNAME reserved = LC_CLASSNAME_ERROR;
+  int num_classes;
+  char **classnames;
+  OID *class_oids;
   char *ptr;
+  int i;
+  int malloc_size;
+  char *malloc_area;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_string_nocopy (request, &classname);
-  ptr = or_unpack_oid (ptr, &class_oid);
+  ptr = or_unpack_int (request, &num_classes);
 
-  reserved = xlocator_reserve_class_name (thread_p, classname, &class_oid);
+  malloc_size = ((sizeof (char *) + sizeof (OID)) * num_classes);
+  malloc_area = (char *) db_private_alloc (thread_p, malloc_size);
+  if (malloc_area != NULL)
+    {
+      classnames = (char **) malloc_area;
+      class_oids = (OID *) ((char *) malloc_area +
+			    (sizeof (char *) * num_classes));
+      for (i = 0; i < num_classes; i++)
+	{
+	  ptr = or_unpack_string_nocopy (ptr, &classnames[i]);
+	  ptr = or_unpack_oid (ptr, &class_oids[i]);
+	}
+      reserved = xlocator_reserve_class_names (thread_p, num_classes,
+					       (const char **) classnames,
+					       class_oids);
+    }
+
   if (reserved == LC_CLASSNAME_ERROR)
     {
       return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, reserved);
+
   css_send_data_to_client (thread_p->conn_entry, rid, reply,
 			   OR_ALIGNED_BUF_SIZE (a_reply));
+
+  if (malloc_area)
+    {
+      db_private_free_and_init (thread_p, malloc_area);
+    }
 }
 
 /*
@@ -1945,6 +1971,34 @@ slogtb_set_interrupt (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
+ * slogtb_set_suppress_repl_on_transaction -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+slogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
+					 unsigned int rid, char *request,
+					 int reqlen)
+{
+  int set;
+
+  (void) or_unpack_int (request, &set);
+  xlogtb_set_suppress_repl_on_transaction (thread_p, set);
+
+  /*
+   *  No reply expected...
+   */
+}
+
+
+
+/*
  * slogtb_reset_wait_secs -
  *
  * return:
@@ -2285,6 +2339,53 @@ shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid,
 }
 
 /*
+ * shf_heap_reclaim_addresses -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid,
+			    char *request, int reqlen)
+{
+  int error;
+  HFID hfid;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (boot_can_compact (thread_p) == false)
+    {
+      (void) or_pack_errcode (reply, ER_COMPACTDB_ALREADY_STARTED);
+
+      css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply));
+
+      return;
+    }
+
+  (void) or_unpack_hfid (request, &hfid);
+
+  error = xheap_reclaim_addresses (thread_p, &hfid);
+  if (error != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  (void) or_pack_errcode (reply, error);
+  if (css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply)) != NO_ERROR)
+    {
+      boot_compact_stop (thread_p);
+    }
+
+}
+
+/*
  * stran_server_commit -
  *
  * return:
@@ -2355,6 +2456,14 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid,
       reset_on_commit = true;
       er_log_debug (ARG_FILE_LINE, "stran_server_commit(): "
 		    "(active && slave only broker) "
+		    "DB_CONNECTION_STATUS_RESET\n");
+    }
+  else if (ha_state == HA_SERVER_STATE_STANDBY
+	   && client_type == BOOT_CLIENT_BROKER)
+    {
+      reset_on_commit = true;
+      er_log_debug (ARG_FILE_LINE, "stran_server_commit(): "
+		    "(standby && read-write broker) "
 		    "DB_CONNECTION_STATUS_RESET\n");
     }
   else
@@ -2433,6 +2542,14 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid,
       reset_on_commit = true;
       er_log_debug (ARG_FILE_LINE, "stran_server_abort(): "
 		    "(active && slave only broker) "
+		    "DB_CONNECTION_STATUS_RESET\n");
+    }
+  else if (ha_state == HA_SERVER_STATE_STANDBY
+	   && client_type == BOOT_CLIENT_BROKER)
+    {
+      reset_on_commit = true;
+      er_log_debug (ARG_FILE_LINE, "stran_server_abort(): "
+		    "(standby && read-write broker) "
 		    "DB_CONNECTION_STATUS_RESET\n");
     }
   else
@@ -3129,8 +3246,8 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid,
     + OR_INT_SIZE		/* process_id */
     + OR_OID_SIZE		/* root_class_oid */
     + OR_HFID_SIZE		/* root_class_hfid */
-    + OR_INT_SIZE               /* page_size */
-    + OR_INT_SIZE               /* log_page_size */
+    + OR_INT_SIZE		/* page_size */
+    + OR_INT_SIZE		/* log_page_size */
     + OR_FLOAT_SIZE		/* disk_compatibility */
     + OR_INT_SIZE;		/* ha_server_state */
 
@@ -4144,6 +4261,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
   int cache_attr_id;
   char *fk_name;
   int n_classes, n_attrs, *attr_ids = NULL;
+  int *attr_prefix_lengths = NULL;
   TP_DOMAIN *key_type;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
@@ -4168,6 +4286,17 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
       return_error_to_client (thread_p, rid);
       goto end;
     }
+
+  if (n_classes == 1)
+    {
+      ptr = or_unpack_int_array (ptr, n_attrs, &attr_prefix_lengths);
+      if (ptr == NULL)
+	{
+	  return_error_to_client (thread_p, rid);
+	  goto end;
+	}
+    }
+
   ptr = or_unpack_hfid_array (ptr, n_classes, &hfids);
   if (ptr == NULL)
     {
@@ -4185,8 +4314,9 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_string_nocopy (ptr, &fk_name);
 
   return_btid = xbtree_load_index (thread_p, &btid, key_type, class_oids,
-				   n_classes, n_attrs,
-				   attr_ids, hfids, unique_flag, reverse_flag,
+				   n_classes, n_attrs, attr_ids,
+				   attr_prefix_lengths,
+				   hfids, unique_flag, reverse_flag,
 				   last_key_desc, &fk_refcls_oid,
 				   &fk_refcls_pk_btid, cache_attr_id,
 				   fk_name);
@@ -4210,6 +4340,11 @@ end:
   if (attr_ids != NULL)
     {
       db_private_free_and_init (thread_p, attr_ids);
+    }
+
+  if (attr_prefix_lengths != NULL)
+    {
+      db_private_free_and_init (thread_p, attr_prefix_lengths);
     }
 
   if (hfids != NULL)
@@ -4353,7 +4488,7 @@ sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid,
   ptr = or_unpack_oid (ptr, &class_oid);
 
   OID_SET_NULL (&oid);
-  success = xbtree_find_unique (thread_p, &btid, &key, &class_oid, &oid,
+  success = xbtree_find_unique (thread_p, &btid, true, &key, &class_oid, &oid,
 				false);
   if (success == BTREE_ERROR_OCCURRED)
     {
@@ -7580,3 +7715,299 @@ slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid,
 
   return;
 }
+
+/*
+ * sboot_compact_db -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sboot_compact_db (THREAD_ENTRY * thread_p, unsigned int rid,
+		  char *request, int reqlen)
+{
+  int success, n_classes, reply_size, i;
+  char *reply = NULL;
+  OID *class_oids = NULL;
+  int *ids_repr = NULL;
+  char *ptr = NULL;
+  int space_to_process = 0, instance_lock_timeout = 0, delete_old_repr = 0;
+  int class_lock_timeout = 0;
+  OID last_processed_class_oid, last_processed_oid;
+  int *total_objects = NULL, *failed_objects = NULL;
+  int *modified_objects = NULL, *big_objects = NULL;
+
+  ptr = or_unpack_int (request, &n_classes);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  ptr = or_unpack_oid_array (ptr, n_classes, &class_oids);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  ptr = or_unpack_int (ptr, &space_to_process);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  ptr = or_unpack_int (ptr, &instance_lock_timeout);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  ptr = or_unpack_int (ptr, &class_lock_timeout);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  ptr = or_unpack_int (ptr, &delete_old_repr);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  ptr = or_unpack_oid (ptr, &last_processed_class_oid);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  ptr = or_unpack_oid (ptr, &last_processed_oid);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  ptr = or_unpack_int_array (ptr, n_classes, &total_objects);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  ptr = or_unpack_int_array (ptr, n_classes, &failed_objects);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  ptr = or_unpack_int_array (ptr, n_classes, &modified_objects);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  ptr = or_unpack_int_array (ptr, n_classes, &big_objects);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  ptr = or_unpack_int_array (ptr, n_classes, &ids_repr);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  success = xboot_compact_db (thread_p, class_oids, n_classes,
+			      space_to_process, instance_lock_timeout,
+			      class_lock_timeout,
+			      (bool) delete_old_repr,
+			      &last_processed_class_oid,
+			      &last_processed_oid, total_objects,
+			      failed_objects, modified_objects, big_objects,
+			      ids_repr);
+
+  if (success != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  reply_size = OR_OID_SIZE * 2 + OR_INT_SIZE * (5 * n_classes + 1);
+  reply = (char *) db_private_alloc (thread_p, reply_size);
+  if (reply == NULL)
+    {
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      db_private_free_and_init (thread_p, class_oids);
+      db_private_free_and_init (thread_p, ids_repr);
+      db_private_free_and_init (thread_p, failed_objects);
+      db_private_free_and_init (thread_p, modified_objects);
+      db_private_free_and_init (thread_p, big_objects);
+      db_private_free_and_init (thread_p, total_objects);
+      return;
+    }
+
+  ptr = or_pack_int (reply, success);
+  ptr = or_pack_oid (ptr, &last_processed_class_oid);
+  ptr = or_pack_oid (ptr, &last_processed_oid);
+
+  for (i = 0; i < n_classes; i++)
+    {
+      ptr = or_pack_int (ptr, total_objects[i]);
+    }
+
+  for (i = 0; i < n_classes; i++)
+    {
+      ptr = or_pack_int (ptr, failed_objects[i]);
+    }
+
+  for (i = 0; i < n_classes; i++)
+    {
+      ptr = or_pack_int (ptr, modified_objects[i]);
+    }
+
+  for (i = 0; i < n_classes; i++)
+    {
+      ptr = or_pack_int (ptr, big_objects[i]);
+    }
+
+  for (i = 0; i < n_classes; i++)
+    {
+      ptr = or_pack_int (ptr, ids_repr[i]);
+    }
+
+  if (css_send_data_to_client (thread_p->conn_entry, rid, reply, reply_size)
+      != NO_ERROR)
+    {
+      boot_compact_stop (thread_p);
+    }
+
+  db_private_free_and_init (thread_p, class_oids);
+  db_private_free_and_init (thread_p, ids_repr);
+  db_private_free_and_init (thread_p, failed_objects);
+  db_private_free_and_init (thread_p, modified_objects);
+  db_private_free_and_init (thread_p, big_objects);
+  db_private_free_and_init (thread_p, total_objects);
+
+  db_private_free_and_init (thread_p, reply);
+}
+
+/*
+ * sboot_heap_compact -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sboot_heap_compact (THREAD_ENTRY * thread_p, unsigned int rid,
+		    char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int success;
+  OID class_oid;
+
+  ptr = or_unpack_oid (request, &class_oid);
+  if (ptr == NULL)
+    {
+      return_error_to_client (thread_p, rid);
+      return;
+    }
+
+  success = xboot_heap_compact (thread_p, &class_oid);
+  if (success != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  or_pack_int (reply, success);
+
+  if (css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			       OR_ALIGNED_BUF_SIZE (a_reply)) != NO_ERROR)
+    {
+      boot_compact_stop (thread_p);
+    }
+}
+
+/*
+ * sboot_compact_start -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sboot_compact_start (THREAD_ENTRY * thread_p, unsigned int rid,
+		     char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int success;
+
+  success = xboot_compact_start (thread_p);
+  if (success != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  or_pack_int (reply, success);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sboot_compact_stop -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sboot_compact_stop (THREAD_ENTRY * thread_p, unsigned int rid,
+		    char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int success;
+
+  success = xboot_compact_stop (thread_p);
+  if (success != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  or_pack_int (reply, success);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply,
+			   OR_ALIGNED_BUF_SIZE (a_reply));
+}
+

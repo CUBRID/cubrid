@@ -47,6 +47,7 @@
 #include "page_buffer.h"
 
 #include "query_executor.h"
+#include "databases_file.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -881,6 +882,48 @@ qdata_add_monetary (double d1, double d2, DB_CURRENCY type,
 }
 
 static int
+qdata_add_int_to_time (DB_VALUE * time_val_p, unsigned int add_time,
+		       DB_VALUE * result_p)
+{
+  unsigned int result, utime;
+  DB_TIME *time;
+  int hour, minute, second;
+
+  time = DB_GET_TIME (time_val_p);
+  utime = (unsigned int) *time % SECONDS_OF_ONE_DAY;
+
+  result = (utime + add_time) % SECONDS_OF_ONE_DAY;
+
+  db_time_decode (&result, &hour, &minute, &second);
+
+  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+    {
+      DB_MAKE_TIME (result_p, hour, minute, second);
+    }
+  else
+    {
+      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (result_p);
+
+      switch (type)
+	{
+	case DB_TYPE_INTEGER:
+	  DB_MAKE_INT (result_p, (hour * 100 + minute) * 100 + second);
+	  break;
+
+	case DB_TYPE_SHORT:
+	  DB_MAKE_SHORT (result_p, (hour * 100 + minute) * 100 + second);
+	  break;
+
+	default:
+	  DB_MAKE_TIME (result_p, hour, minute, second);
+	  break;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+static int
 qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time,
 			  DB_VALUE * result_p)
 {
@@ -897,7 +940,30 @@ qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time,
 
   result = (utime + add_time) % SECONDS_OF_ONE_DAY;
   db_time_decode (&result, &hour, &minute, &second);
-  DB_MAKE_TIME (result_p, hour, minute, second);
+
+  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+    {
+      DB_MAKE_TIME (result_p, hour, minute, second);
+    }
+  else
+    {
+      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (result_p);
+
+      switch (type)
+	{
+	case DB_TYPE_BIGINT:
+	  DB_MAKE_BIGINT (result_p, (hour * 100 + minute) * 100 + second);
+	  break;
+
+	case DB_TYPE_INTEGER:
+	  DB_MAKE_INTEGER (result_p, (hour * 100 + minute) * 100 + second);
+	  break;
+
+	default:
+	  DB_MAKE_TIME (result_p, hour, minute, second);
+	  break;
+	}
+    }
 
   return NO_ERROR;
 }
@@ -980,6 +1046,11 @@ qdata_add_short_to_utime (DB_VALUE * utime_val_p, short s,
 {
   DB_UTIME *utime;
   int utmp, u1, u2;
+  DB_DATE date;
+  DB_TIME time;
+  DB_TYPE type;
+  DB_BIGINT bigint = 0;
+  int d, m, y, h, mi, sec;
 
   utime = DB_GET_UTIME (utime_val_p);
 
@@ -1000,7 +1071,31 @@ qdata_add_short_to_utime (DB_VALUE * utime_val_p, short s,
       return ER_QPROC_OVERFLOW_HAPPENED;
     }
 
-  DB_MAKE_UTIME (result_p, utmp);
+  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+    {
+      DB_MAKE_UTIME (result_p, utmp);
+    }
+  else
+    {
+      type = DB_VALUE_DOMAIN_TYPE (result_p);
+
+      switch (type)
+	{
+	case DB_TYPE_BIGINT:
+	  db_timestamp_decode (&utmp, &date, &time);
+	  db_date_decode (&date, &m, &d, &y);
+	  db_time_decode (&time, &h, &mi, &sec);
+	  bigint = (y * 100 + m) * 100 + d;
+	  bigint = ((bigint * 100 + h) * 100 + mi) * 100 + sec;
+	  DB_MAKE_BIGINT (result_p, bigint);
+	  break;
+
+	default:
+	  DB_MAKE_UTIME (result_p, utmp);
+	  break;
+	}
+    }
+
   return NO_ERROR;
 }
 
@@ -1010,6 +1105,11 @@ qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i, DB_VALUE * result_p,
 {
   DB_UTIME *utime;
   int utmp, u1, u2;
+  DB_DATE date;
+  DB_TIME time;
+  DB_TYPE type;
+  DB_BIGINT bigint;
+  int d, m, y, h, mi, s;
 
   utime = DB_GET_UTIME (utime_val_p);
 
@@ -1030,7 +1130,31 @@ qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i, DB_VALUE * result_p,
       return ER_QPROC_OVERFLOW_HAPPENED;
     }
 
-  DB_MAKE_UTIME (result_p, utmp);
+  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+    {
+      DB_MAKE_UTIME (result_p, utmp);
+    }
+  else
+    {
+      type = DB_VALUE_DOMAIN_TYPE (result_p);
+
+      switch (type)
+	{
+	case DB_TYPE_BIGINT:
+	  db_timestamp_decode (&utmp, &date, &time);
+	  db_date_decode (&date, &m, &d, &y);
+	  db_time_decode (&time, &h, &mi, &s);
+	  bigint = (y * 100 + m) * 100 + d;
+	  bigint = ((bigint * 100 + h) * 100 + mi) * 100 + s;
+	  DB_MAKE_BIGINT (result_p, bigint);
+	  break;
+
+	default:
+	  DB_MAKE_UTIME (result_p, utmp);
+	  break;
+	}
+    }
+
   return NO_ERROR;
 }
 
@@ -1040,6 +1164,11 @@ qdata_add_bigint_to_utime (DB_VALUE * utime_val_p, DB_BIGINT bi,
 {
   DB_UTIME *utime;
   DB_BIGINT utmp, u1, u2;
+  DB_DATE date;
+  DB_TIME time;
+  DB_TYPE type;
+  DB_BIGINT bigint;
+  int d, m, y, h, mi, s;
 
   utime = DB_GET_UTIME (utime_val_p);
 
@@ -1059,8 +1188,33 @@ qdata_add_bigint_to_utime (DB_VALUE * utime_val_p, DB_BIGINT bi,
 	      0);
       return ER_QPROC_OVERFLOW_HAPPENED;
     }
+  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+    {
+      DB_MAKE_UTIME (result_p, (unsigned int) utmp);	/* truncate to 4bytes time_t */
+    }
+  else
+    {
+      type = DB_VALUE_DOMAIN_TYPE (result_p);
 
-  DB_MAKE_UTIME (result_p, (unsigned int) utmp);	/* truncate to 4bytes time_t */
+      switch (type)
+	{
+	case DB_TYPE_BIGINT:
+	  {
+	    DB_TIMESTAMP timestamp = (DB_TIMESTAMP) utmp;
+	    db_timestamp_decode (&timestamp, &date, &time);
+	    db_date_decode (&date, &m, &d, &y);
+	    db_time_decode (&time, &h, &mi, &s);
+	    bigint = (y * 100 + m) * 100 + d;
+	    bigint = ((bigint * 100 + h) * 100 + mi) * 100 + s;
+	    DB_MAKE_BIGINT (result_p, bigint);
+	  }
+	  break;
+
+	default:
+	  DB_MAKE_UTIME (result_p, (unsigned int) utmp);
+	  break;
+	}
+    }
 
   return NO_ERROR;
 }
@@ -1146,7 +1300,26 @@ qdata_add_short_to_date (DB_VALUE * date_val_p, short s, DB_VALUE * result_p,
     }
 
   db_date_decode (&utmp, &month, &day, &year);
-  DB_MAKE_DATE (result_p, month, day, year);
+
+  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+    {
+      DB_MAKE_DATE (result_p, month, day, year);
+    }
+  else
+    {
+      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (result_p);
+
+      switch (type)
+	{
+	case DB_TYPE_SHORT:
+	  DB_MAKE_SHORT (result_p, (year * 100 + month) * 100 + day);
+	  break;
+
+	default:
+	  DB_MAKE_DATE (result_p, month, day, year);
+	  break;
+	}
+    }
 
   return NO_ERROR;
 }
@@ -1179,7 +1352,25 @@ qdata_add_int_to_date (DB_VALUE * date_val_p, int i, DB_VALUE * result_p,
     }
 
   db_date_decode (&utmp, &month, &day, &year);
-  DB_MAKE_DATE (result_p, month, day, year);
+  if (PRM_COMPAT_MODE != COMPAT_MYSQL)
+    {
+      DB_MAKE_DATE (result_p, month, day, year);
+    }
+  else
+    {
+      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (result_p);
+
+      switch (type)
+	{
+	case DB_TYPE_INTEGER:
+	  DB_MAKE_INT (result_p, (year * 100 + month) * 100 + day);
+	  break;
+
+	default:
+	  DB_MAKE_DATE (result_p, month, day, year);
+	  break;
+	}
+    }
 
   return NO_ERROR;
 }
@@ -1214,7 +1405,25 @@ qdata_add_bigint_to_date (DB_VALUE * date_val_p, DB_BIGINT bi,
 
   tmp_date = (DB_DATE) utmp;
   db_date_decode (&tmp_date, &month, &day, &year);
-  DB_MAKE_DATE (result_p, month, day, year);
+  if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+    {
+      DB_MAKE_DATE (result_p, month, day, year);
+    }
+  else
+    {
+      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (result_p);
+
+      switch (type)
+	{
+	case DB_TYPE_BIGINT:
+	  DB_MAKE_BIGINT (result_p, (year * 100 + month) * 100 + day);
+	  break;
+
+	default:
+	  DB_MAKE_DATE (result_p, month, day, year);
+	  break;
+	}
+    }
 
   return NO_ERROR;
 }
@@ -2992,6 +3201,17 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p,
 	  + datetime1_p->time;
 	u2 = ((DB_BIGINT) datetime2_p->date) * MILLISECONDS_OF_ONE_DAY
 	  + datetime2_p->time;
+
+	return db_make_bigint (result_p, u1 - u2);
+      }
+
+    case DB_TYPE_DATE:
+      {
+	DB_BIGINT u1, u2;
+
+	u1 = ((DB_BIGINT) datetime1_p->date) * MILLISECONDS_OF_ONE_DAY
+	  + datetime1_p->time;
+	u2 = ((DB_BIGINT) * DB_GET_DATE (dbval_p)) * MILLISECONDS_OF_ONE_DAY;
 
 	return db_make_bigint (result_p, u1 - u2);
       }
@@ -4868,6 +5088,76 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p,
 	    }
 	  break;
 
+	case PT_AGG_BIT_AND:
+	case PT_AGG_BIT_OR:
+	case PT_AGG_BIT_XOR:
+	  {
+	    int error;
+	    DB_VALUE tmp_val;
+	    DB_MAKE_BIGINT (&tmp_val, (DB_BIGINT) 0);
+	    copy_opr = false;
+
+	    if (agg_p->curr_cnt < 1)
+	      {
+		/* init result value */
+		DB_MAKE_NULL (agg_p->value);
+
+		if (!DB_IS_NULL (&dbval))
+		  {
+		    if (qdata_bit_or_dbval (&tmp_val, &dbval, agg_p->value,
+					    agg_p->domain) != NO_ERROR)
+		      {
+			return ER_FAILED;
+		      }
+		  }
+	      }
+	    else
+	      {
+		/* update result value */
+		if (!DB_IS_NULL (&dbval))
+		  {
+		    if (DB_IS_NULL (agg_p->value))
+		      {
+			if (qdata_bit_or_dbval
+			    (&tmp_val, &dbval, agg_p->value,
+			     agg_p->domain) != NO_ERROR)
+			  {
+			    return ER_FAILED;
+			  }
+		      }
+		    else
+		      {
+			if (agg_p->function == PT_AGG_BIT_AND)
+			  {
+			    error =
+			      qdata_bit_and_dbval (agg_p->value, &dbval,
+						   agg_p->value,
+						   agg_p->domain);
+			  }
+			else if (agg_p->function == PT_AGG_BIT_OR)
+			  {
+			    error =
+			      qdata_bit_or_dbval (agg_p->value, &dbval,
+						  agg_p->value,
+						  agg_p->domain);
+			  }
+			else
+			  {
+			    error =
+			      qdata_bit_xor_dbval (agg_p->value, &dbval,
+						   agg_p->value,
+						   agg_p->domain);
+			  }
+			if (error != NO_ERROR)
+			  {
+			    return ER_FAILED;
+			  }
+		      }
+		  }
+	      }
+	  }
+	  break;
+
 	case PT_AVG:
 	case PT_SUM:
 	  if (agg_p->curr_cnt < 1)
@@ -5538,7 +5828,8 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
  */
 
 /*
- * qdata_get_tuple_value_size_from_dbval () - Return the tuple value size for the db_value
+ * qdata_get_tuple_value_size_from_dbval () - Return the tuple value size
+ *	for the db_value
  *   return:
  *   dbval(in)  : db_value node
  */
@@ -6439,8 +6730,8 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p,
   /* get the parent node */
   if (qexec_get_tuple_column_value (tuple_rec.tpl,
 				    xptr->outptr_list->valptr_cnt -
-				    PCOL_PARENTPOS_TUPLE_OFFSET, &p_pos_dbval,
-				    &tp_Bit_domain) != NO_ERROR)
+				    PCOL_PARENTPOS_TUPLE_OFFSET,
+				    &p_pos_dbval, &tp_Bit_domain) != NO_ERROR)
     {
       qfile_close_scan (thread_p, &s_id);
       return false;
@@ -6605,7 +6896,6 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
 	      1, i + 1);
       goto error;
     }
-
   sep[0] = 0;
   if (i > 0)
     {
@@ -6883,4 +7173,660 @@ error2:
     }
 
   return false;
+}
+
+/*
+ * qdata_bit_not_dbval () - bitwise not
+ *   return: NO_ERROR, or ER_code
+ *   dbval_p(in) : db_value node
+ *   result_p(out) : resultant db_value node
+ *   domain_p(in) :
+ *
+ */
+int
+qdata_bit_not_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p,
+		     TP_DOMAIN * domain_p)
+{
+  DB_TYPE type;
+
+  if ((domain_p != NULL && domain_p->type->id == DB_TYPE_NULL)
+      || DB_IS_NULL (dbval_p))
+    {
+      return NO_ERROR;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (dbval_p);
+
+  switch (type)
+    {
+    case DB_TYPE_NULL:
+      db_make_null (result_p);
+      break;
+
+    case DB_TYPE_INTEGER:
+      if (DB_GET_INTEGER (dbval_p) == DB_INT32_MIN)
+	{
+	  goto overflow;
+	}
+      else
+	{
+	  db_make_bigint (result_p, ~((INT64) DB_GET_INTEGER (dbval_p)));
+	}
+      break;
+
+    case DB_TYPE_BIGINT:
+      if (DB_GET_BIGINT (dbval_p) == DB_BIGINT_MIN)
+	{
+	  goto overflow;
+	}
+      else
+	{
+	  db_make_bigint (result_p, ~DB_GET_BIGINT (dbval_p));
+	}
+      break;
+
+    case DB_TYPE_SHORT:
+      if (DB_GET_SHORT (dbval_p) == DB_INT16_MIN)
+	{
+	  goto overflow;
+	}
+      else
+	{
+	  db_make_bigint (result_p, ~((INT64) DB_GET_SHORT (dbval_p)));
+	}
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+
+  return NO_ERROR;
+
+overflow:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_BITOP, 0);
+  return ER_QPROC_OVERFLOW_BITOP;
+}
+
+/*
+ * qdata_bit_and_dbval () - bitwise and
+ *   return: NO_ERROR, or ER_code
+ *   dbval1_p(in) : first db_value node
+ *   dbval2_p(in) : second db_value node
+ *   result_p(out) : resultant db_value node
+ *   domain_p(in) :
+ *
+ */
+int
+qdata_bit_and_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
+		     DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  DB_TYPE type[2];
+  DB_BIGINT bi[2];
+  DB_VALUE *dbval[2];
+  int i;
+
+  if ((domain_p != NULL && domain_p->type->id == DB_TYPE_NULL)
+      || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
+    {
+      return NO_ERROR;
+    }
+
+  type[0] = DB_VALUE_DOMAIN_TYPE (dbval1_p);
+  type[1] = DB_VALUE_DOMAIN_TYPE (dbval2_p);
+
+  dbval[0] = dbval1_p;
+  dbval[1] = dbval2_p;
+
+  for (i = 0; i < 2; i++)
+    {
+      switch (type[i])
+	{
+	case DB_TYPE_NULL:
+	  db_make_null (result_p);
+	  break;
+
+	case DB_TYPE_INTEGER:
+	  if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+	    }
+	  break;
+
+	case DB_TYPE_BIGINT:
+	  if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = DB_GET_BIGINT (dbval[i]);
+	    }
+	  break;
+
+	case DB_TYPE_SHORT:
+	  if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+	    }
+	  break;
+
+	default:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+		  0);
+	  return ER_QPROC_INVALID_DATATYPE;
+	}
+    }
+
+  if (type[0] != DB_TYPE_NULL && type[1] != DB_TYPE_NULL)
+    db_make_bigint (result_p, bi[0] & bi[1]);
+
+  return NO_ERROR;
+
+overflow:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_BITOP, 0);
+  return ER_QPROC_OVERFLOW_BITOP;
+}
+
+/*
+ * qdata_bit_or_dbval () - bitwise or
+ *   return: NO_ERROR, or ER_code
+ *   dbval1_p(in) : first db_value node
+ *   dbval2_p(in) : second db_value node
+ *   result_p(out) : resultant db_value node
+ *   domain_p(in) :
+ *
+ */
+int
+qdata_bit_or_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
+		    DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  DB_TYPE type[2];
+  DB_BIGINT bi[2];
+  DB_VALUE *dbval[2];
+  int i;
+
+  if ((domain_p != NULL && domain_p->type->id == DB_TYPE_NULL)
+      || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
+    {
+      return NO_ERROR;
+    }
+
+  type[0] = DB_VALUE_DOMAIN_TYPE (dbval1_p);
+  type[1] = DB_VALUE_DOMAIN_TYPE (dbval2_p);
+
+  dbval[0] = dbval1_p;
+  dbval[1] = dbval2_p;
+
+  for (i = 0; i < 2; i++)
+    {
+      switch (type[i])
+	{
+	case DB_TYPE_NULL:
+	  db_make_null (result_p);
+	  break;
+
+	case DB_TYPE_INTEGER:
+	  if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+	    }
+	  break;
+
+	case DB_TYPE_BIGINT:
+	  if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = DB_GET_BIGINT (dbval[i]);
+	    }
+	  break;
+
+	case DB_TYPE_SHORT:
+	  if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+	    }
+	  break;
+
+	default:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+		  0);
+	  return ER_QPROC_INVALID_DATATYPE;
+	}
+    }
+
+  if (type[0] != DB_TYPE_NULL && type[1] != DB_TYPE_NULL)
+    db_make_bigint (result_p, bi[0] | bi[1]);
+
+  return NO_ERROR;
+
+overflow:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_BITOP, 0);
+  return ER_QPROC_OVERFLOW_BITOP;
+}
+
+/*
+ * qdata_bit_xor_dbval () - bitwise xor
+ *   return: NO_ERROR, or ER_code
+ *   dbval1_p(in) : first db_value node
+ *   dbval2_p(in) : second db_value node
+ *   result_p(out) : resultant db_value node
+ *   domain_p(in) :
+ *
+ */
+int
+qdata_bit_xor_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
+		     DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  DB_TYPE type[2];
+  DB_BIGINT bi[2];
+  DB_VALUE *dbval[2];
+  int i;
+
+  if ((domain_p != NULL && domain_p->type->id == DB_TYPE_NULL)
+      || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
+    {
+      return NO_ERROR;
+    }
+
+  type[0] = DB_VALUE_DOMAIN_TYPE (dbval1_p);
+  type[1] = DB_VALUE_DOMAIN_TYPE (dbval2_p);
+
+  dbval[0] = dbval1_p;
+  dbval[1] = dbval2_p;
+
+  for (i = 0; i < 2; i++)
+    {
+      switch (type[i])
+	{
+	case DB_TYPE_NULL:
+	  db_make_null (result_p);
+	  break;
+
+	case DB_TYPE_INTEGER:
+	  if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+	    }
+	  break;
+
+	case DB_TYPE_BIGINT:
+	  if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = DB_GET_BIGINT (dbval[i]);
+	    }
+	  break;
+
+	case DB_TYPE_SHORT:
+	  if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+	    }
+	  break;
+
+	default:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+		  0);
+	  return ER_QPROC_INVALID_DATATYPE;
+	}
+    }
+
+  if (type[0] != DB_TYPE_NULL && type[1] != DB_TYPE_NULL)
+    db_make_bigint (result_p, bi[0] ^ bi[1]);
+
+  return NO_ERROR;
+
+overflow:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_BITOP, 0);
+  return ER_QPROC_OVERFLOW_BITOP;
+}
+
+/*
+ * qdata_bit_shift_dbval () - bitshift
+ *   return: NO_ERROR, or ER_code
+ *   dbval1_p(in) : first db_value node
+ *   dbval2_p(in) : second db_value node
+ *   result_p(out) : resultant db_value node
+ *   domain_p(in) :
+ *
+ */
+int
+qdata_bit_shift_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
+		       OPERATOR_TYPE op, DB_VALUE * result_p,
+		       TP_DOMAIN * domain_p)
+{
+  DB_TYPE type[2];
+  DB_BIGINT bi[2];
+  DB_VALUE *dbval[2];
+  int i;
+
+  if ((domain_p != NULL && domain_p->type->id == DB_TYPE_NULL)
+      || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
+    {
+      return NO_ERROR;
+    }
+
+  type[0] = DB_VALUE_DOMAIN_TYPE (dbval1_p);
+  type[1] = DB_VALUE_DOMAIN_TYPE (dbval2_p);
+
+  dbval[0] = dbval1_p;
+  dbval[1] = dbval2_p;
+
+  for (i = 0; i < 2; i++)
+    {
+      switch (type[i])
+	{
+	case DB_TYPE_NULL:
+	  db_make_null (result_p);
+	  break;
+
+	case DB_TYPE_INTEGER:
+	  if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+	    }
+	  break;
+
+	case DB_TYPE_BIGINT:
+	  if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = DB_GET_BIGINT (dbval[i]);
+	    }
+	  break;
+
+	case DB_TYPE_SHORT:
+	  if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+	    }
+	  break;
+
+	default:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+		  0);
+	  return ER_QPROC_INVALID_DATATYPE;
+	}
+    }
+
+  if (type[0] != DB_TYPE_NULL && type[1] != DB_TYPE_NULL)
+    {
+      if (bi[1] < (sizeof (DB_BIGINT) * 8) && bi[1] >= 0)
+	{
+	  if (op == T_BITSHIFT_LEFT)
+	    {
+	      db_make_bigint (result_p, ((UINT64) bi[0]) << ((UINT64) bi[1]));
+	    }
+	  else
+	    {
+	      db_make_bigint (result_p, ((UINT64) bi[0]) >> ((UINT64) bi[1]));
+	    }
+	}
+      else
+	{
+	  db_make_bigint (result_p, 0);
+	}
+    }
+
+  return NO_ERROR;
+
+overflow:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+  return ER_QPROC_OVERFLOW_DIVISION;
+}
+
+/*
+ * qdata_divmod_dbval () - DIV/MOD operator
+ *   return: NO_ERROR, or ER_code
+ *   dbval1_p(in) : first db_value node
+ *   dbval2_p(in) : second db_value node
+ *   result_p(out) : resultant db_value node
+ *   domain_p(in) :
+ *
+ */
+int
+qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
+		    OPERATOR_TYPE op, DB_VALUE * result_p,
+		    TP_DOMAIN * domain_p)
+{
+  DB_TYPE type[2];
+  DB_BIGINT bi[2];
+  DB_VALUE *dbval[2];
+  int i;
+
+  if ((domain_p != NULL && domain_p->type->id == DB_TYPE_NULL)
+      || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
+    {
+      return NO_ERROR;
+    }
+
+  type[0] = DB_VALUE_DOMAIN_TYPE (dbval1_p);
+  type[1] = DB_VALUE_DOMAIN_TYPE (dbval2_p);
+
+  dbval[0] = dbval1_p;
+  dbval[1] = dbval2_p;
+
+  for (i = 0; i < 2; i++)
+    {
+      switch (type[i])
+	{
+	case DB_TYPE_NULL:
+	  db_make_null (result_p);
+	  break;
+
+	case DB_TYPE_INTEGER:
+	  if (DB_GET_INTEGER (dbval[i]) == DB_INT32_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+	    }
+	  break;
+
+	case DB_TYPE_BIGINT:
+	  if (DB_GET_BIGINT (dbval[i]) == DB_BIGINT_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = DB_GET_BIGINT (dbval[i]);
+	    }
+	  break;
+
+	case DB_TYPE_SHORT:
+	  if (DB_GET_SHORT (dbval[i]) == DB_INT16_MIN)
+	    {
+	      goto overflow;
+	    }
+	  else
+	    {
+	      bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+	    }
+	  break;
+
+	default:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+		  0);
+	  return ER_QPROC_INVALID_DATATYPE;
+	}
+    }
+
+  if (type[0] != DB_TYPE_NULL && type[1] != DB_TYPE_NULL)
+    {
+      if (bi[1] != 0)
+	{
+	  if (op == T_INTDIV)
+	    {
+	      if (type[0] == DB_TYPE_INTEGER)
+		{
+		  db_make_int (result_p, (INT32) (bi[0] / bi[1]));
+		}
+	      else if (type[0] == DB_TYPE_BIGINT)
+		{
+		  db_make_bigint (result_p, bi[0] / bi[1]);
+		}
+	      else
+		{
+		  db_make_short (result_p, (INT16) (bi[0] / bi[1]));
+		}
+	    }
+	  else
+	    {
+	      if (type[0] == DB_TYPE_INTEGER)
+		{
+		  db_make_int (result_p, (INT32) (bi[0] % bi[1]));
+		}
+	      else if (type[0] == DB_TYPE_BIGINT)
+		{
+		  db_make_bigint (result_p, bi[0] % bi[1]);
+		}
+	      else
+		{
+		  db_make_short (result_p, (INT16) (bi[0] % bi[1]));
+		}
+	    }
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_ZERO_DIVIDE, 0);
+	  return ER_QPROC_ZERO_DIVIDE;
+	}
+    }
+
+  return NO_ERROR;
+
+overflow:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
+  return ER_QPROC_OVERFLOW_DIVISION;
+}
+
+/*
+ * qdata_list_dbs () - lists all databases names
+ *   return: NO_ERROR, or ER_code
+ *   result_p(out) : resultant db_value node
+ */
+int
+qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p)
+{
+  DB_INFO *db_info_p;
+
+  if (cfg_read_directory (&db_info_p, false) != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CFG_NO_FILE, 1,
+		  DATABASES_FILENAME);
+	}
+      goto error;
+    }
+
+  if (db_info_p)
+    {
+      DB_INFO *list_p;
+      char *name_list;
+      size_t name_list_size = 0;
+      bool is_first;
+
+      for (list_p = db_info_p; list_p != NULL; list_p = list_p->next)
+	{
+	  if (list_p->name)
+	    {
+	      name_list_size += strlen (list_p->name) + 1;
+	    }
+	}
+
+      if (name_list_size != 0)
+	{
+	  name_list = (char *) db_private_alloc (thread_p, name_list_size);
+	  if (name_list == NULL)
+	    {
+	      cfg_free_directory (db_info_p);
+	      goto error;
+	    }
+	  strcpy (name_list, "");
+
+	  for (list_p = db_info_p, is_first = true; list_p != NULL;
+	       list_p = list_p->next)
+	    {
+	      if (list_p->name)
+		{
+		  if (!is_first)
+		    {
+		      strcat (name_list, " ");
+		    }
+		  else
+		    {
+		      is_first = false;
+		    }
+		  strcat (name_list, list_p->name);
+		}
+	    }
+
+	  cfg_free_directory (db_info_p);
+
+	  if (db_make_string (result_p, name_list) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      else
+	{
+	  cfg_free_directory (db_info_p);
+	  db_make_null (result_p);
+	}
+    }
+  else
+    {
+      db_make_null (result_p);
+    }
+
+  return NO_ERROR;
+
+error:
+  return er_errid ();
 }

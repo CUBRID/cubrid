@@ -34,13 +34,14 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
-import cubrid.sql.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDOID;
+import @CUBRID_SQL@.CUBRIDTimestamp;
 
 /**
  * CUBRID Data Type을 정의해 놓은 class이다.
@@ -116,7 +117,16 @@ abstract public class UUType
     else if (values instanceof Time[])
       return UUType.U_TYPE_TIME;
     else if (values instanceof Timestamp[])
-      return UUType.U_TYPE_DATETIME;
+    {
+      for (int i = 0; i < ((Object[])values).length ; i++)
+      {
+        if (!CUBRIDTimestamp.isTimestampType((Timestamp)(((Object[])values)[i])))
+        {
+          return UUType.U_TYPE_DATETIME;
+        }
+      }
+      return UUType.U_TYPE_TIMESTAMP;
+    }
     else if (values instanceof CUBRIDOID[])
       return UUType.U_TYPE_OBJECT;
     else
@@ -152,7 +162,13 @@ abstract public class UUType
     else if (value instanceof Time)
       return UUType.U_TYPE_TIME;
     else if (value instanceof Timestamp)
+    {
+      if (CUBRIDTimestamp.isTimestampType((Timestamp)value))
+      {
+        return UUType.U_TYPE_TIMESTAMP;
+      }
       return UUType.U_TYPE_DATETIME;
+    }
     else if (value instanceof CUBRIDOID)
       return UUType.U_TYPE_OBJECT;
     else if (value instanceof Object[])

@@ -72,7 +72,6 @@ extern int boot_build_catalog_classes (const char *dbname);
 extern int boot_destroy_catalog_classes (void);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int boot_rebuild_catalog_classes (const char *dbname);
-#endif
+#endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* SA_MODE */
-
 #endif /* _BOOT_CL_H_ */

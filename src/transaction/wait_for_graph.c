@@ -152,7 +152,8 @@ static int wfg_detect_tran_group_cycle (THREAD_ENTRY * thread_p,
 
 static int wfg_dump_given_cycles (FILE * out_fp, WFG_CYCLE * list_cycles_p);
 static void wfg_dump_holder_waiter (FILE * out_fp, int node_index);
-static void wfg_dump_holder_waiter_of_tran_group (FILE * out_fp, int group_index);
+static void wfg_dump_holder_waiter_of_tran_group (FILE * out_fp,
+						  int group_index);
 
 #if defined(WFG_DEBUG)
 static int

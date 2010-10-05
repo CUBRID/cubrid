@@ -73,6 +73,7 @@ For addtional information, see http://www.cubrid.com\n
 68 The specified transaction has been killed.
 69 Killing of the specified transaction has failed.
 70 %d rows %s.
+71 %d row %s.
 $ These 3 should be blank
 75 Automated API tester
 76 Invalid Automated API tester

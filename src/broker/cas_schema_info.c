@@ -181,7 +181,7 @@ schema_primarykey_meta (T_NET_BUF * net_buf)
 			   "CLASS_NAME");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
 			   "ATTR_NAME");
-  net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, "KEY_SEQ");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_INT, 0, 0, "KEY_SEQ");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
 			   "KEY_NAME");
 }

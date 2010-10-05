@@ -664,7 +664,7 @@ qo_plan_compute_subquery_cost (PT_NODE * subquery,
  *   root(in):
  */
 static void
-qo_plan_compute_iscan_sort_list (QO_PLAN * root)
+qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 {
   QO_PLAN *plan;
   QO_ENV *env;
@@ -677,6 +677,8 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root)
   PT_MISC_TYPE asc_or_desc;
   QFILE_TUPLE_VALUE_POSITION pos_descr;
   TP_DOMAIN *key_type;
+
+  *is_index_w_prefix = false;
 
   /* find sortable plan */
   plan = root;
@@ -725,6 +727,9 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root)
   /* pointer to linked list of index node, 'head' field(QO_INDEX_ENTRY
      strucutre) of QO_NODE_INDEX_ENTRY */
   index_entryp = (ni_entryp)->head;
+
+  /* check if this is an index with prefix */
+  *is_index_w_prefix = qo_is_prefix_index (index_entryp);
 
   asc_or_desc = (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->type)
 		 ? PT_DESC : PT_ASC);
@@ -803,10 +808,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root)
 	  break;		/* give up */
 	}
 
-      while (col->node_type == PT_DOT_)
-	{
-	  col = col->info.dot.arg2;
-	}
+      col = pt_get_end_path_node (col);
 
       if (col->node_type == PT_NAME
 	  && PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_CONSTANT))
@@ -877,7 +879,7 @@ qo_top_plan_new (QO_PLAN * plan)
   if (group_by || (all_distinct == PT_DISTINCT || order_by))
     {
 
-      bool groupby_skip, orderby_skip;
+      bool groupby_skip, orderby_skip, is_index_w_prefix;
       bool found_instnum;
       int t;
       BITSET_ITERATOR iter;
@@ -896,7 +898,7 @@ qo_top_plan_new (QO_PLAN * plan)
 	}			/* for (t = ...) */
       found_instnum = (t == -1) ? false : true;
 
-      (void) qo_plan_compute_iscan_sort_list (plan);
+      (void) qo_plan_compute_iscan_sort_list (plan, &is_index_w_prefix);
 
       /* GROUP BY */
       if (group_by)
@@ -953,7 +955,7 @@ qo_top_plan_new (QO_PLAN * plan)
 			   */
 			  ;	/* give up; DO NOT DELETE ME - need future work */
 			}
-		      else
+		      else if (!is_index_w_prefix)
 			{
 			  orderby_skip =
 			    pt_sort_spec_cover (plan->iscan_sort_list,
@@ -3687,6 +3689,7 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
   int already_retained;
   QO_PLAN_COMPARE_RESULT cmp;
   int num_eq;
+  bool is_prefix_length_constraint;
 
   /* init */
   already_retained = 0;
@@ -3694,7 +3697,27 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 
   for (i = 0; i < planvec->nplans; i++)
     {
-      cmp = qo_plan_cmp (planvec->plan[i], plan);
+      is_prefix_length_constraint = false;
+      if (plan && plan->plan_type == QO_PLANTYPE_SCAN)
+	{
+	  QO_NODE_INDEX_ENTRY *ni = NULL;
+	  QO_INDEX_ENTRY *ni_ent = NULL;
+
+	  ni = plan->plan_un.scan.index;
+	  if (ni)
+	    {
+	      ni_ent = ni->head;
+	      is_prefix_length_constraint = qo_is_prefix_index (ni_ent);
+	    }
+	}
+      if (is_prefix_length_constraint)
+	{
+	  cmp = PLAN_COMP_GT;
+	}
+      else
+	{
+	  cmp = qo_plan_cmp (planvec->plan[i], plan);
+	}
 
       /* cmp : PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT */
       if (cmp == PLAN_COMP_GT)
@@ -5652,7 +5675,6 @@ planner_visit_node (QO_PLANNER * planner,
   {
     int retry_cnt, edge_cnt, path_cnt;
     bool found_edge;
-    PT_NODE *pt_expr;
 
     retry_cnt = 0;		/* init */
 
@@ -5736,11 +5758,8 @@ planner_visit_node (QO_PLANNER * planner,
 		  }
 	      }
 
-	    pt_expr = QO_TERM_PT_EXPR (term);
-
-	    /* check for always true transitive join term */
-	    if (pt_expr
-		&& PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE))
+	    /* check for always true dummy join term */
+	    if (QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
 	      {
 		/* check for idx-join */
 		if (QO_TERM_CAN_USE_INDEX (term))
@@ -5811,20 +5830,10 @@ planner_visit_node (QO_PLANNER * planner,
 		bitset_add (&nl_join_terms, i);
 		break;
 
-	      case QO_TC_DUMMY_JOIN:
-		/* check for idx-join */
-		if (QO_TERM_CAN_USE_INDEX (term))
-		  {
-		    idx_join_cnt++;
-		  }
-		/* exclude from nl_join_terms, sm_join_terms
-		 */
-		break;
-
 	      default:
 		QO_ASSERT (planner->env, UNEXPECTED_CASE);
 		break;
-	      }			/* switch (QO_TERM_CLASS(term)) */
+	      }
 	  }
 	else
 	  {
@@ -6572,7 +6581,6 @@ qo_generate_join_index_scan (QO_INFO * infop,
   QO_INDEX_ENTRY *index_entryp;
   BITSET_ITERATOR iter;
   QO_TERM *termp;
-  PT_NODE *pt_expr;
   QO_PLAN *inner_plan;
   int i, t, last_t, j, n, seg;
   BITSET range_terms;
@@ -6595,8 +6603,11 @@ qo_generate_join_index_scan (QO_INFO * infop,
 
   for (i = 0; i < index_entryp->nsegs; i++)
     {
-      if ((seg = (index_entryp->seg_idxs[i])) == -1)
-	break;
+      seg = index_entryp->seg_idxs[i];
+      if (seg == -1)
+	{
+	  break;
+	}
       n = 0;
       last_t = -1;
       for (t = bitset_iterate (indexable_terms, &iter); t != -1;
@@ -6604,17 +6615,16 @@ qo_generate_join_index_scan (QO_INFO * infop,
 	{
 
 	  termp = QO_ENV_TERM (env, t);
-	  pt_expr = QO_TERM_PT_EXPR (termp);
 
-	  /* check for always true transitive join term */
-	  if (pt_expr
-	      && PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_TRANSITIVE))
+	  /* check for always true dummy join term */
+	  if (QO_TERM_CLASS (termp) == QO_TC_DUMMY_JOIN)
 	    {
 	      /* skip out from all terms */
 	      bitset_remove (&kf_terms, t);
 	      bitset_remove (&remaining_terms, t);
 	      continue;		/* do not add to range_terms */
 	    }
+
 	  for (j = 0; j < termp->can_use_index; j++)
 	    {
 	      /* found term */
@@ -7843,6 +7853,10 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  selectivity = qo_not_selectivity (env, lhs_selectivity);
 	  break;
 
+	case PT_NULLSAFE_EQ:
+	  selectivity = qo_equal_selectivity (env, node);
+	  break;
+
 	case PT_GE:
 	case PT_GT:
 	case PT_LT:
@@ -7873,10 +7887,13 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PT_SUPERSET:
 	case PT_SUBSET:
 	case PT_SUBSETEQ:
+	case PT_IS:
+	case PT_XOR:
 	  selectivity = DEFAULT_SELECTIVITY;
 	  break;
 
 	case PT_NOT_LIKE:
+	case PT_IS_NOT:
 	  selectivity = qo_not_selectivity (env, DEFAULT_SELECTIVITY);
 	  break;
 

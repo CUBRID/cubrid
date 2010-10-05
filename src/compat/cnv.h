@@ -42,20 +42,20 @@ extern int db_value_string (const DB_VALUE * value, const char *format,
 extern const char *db_value_to_string (const DB_VALUE * value,
 				       const char *format);
 extern int db_date_string (const DB_DATE * the_date, const char *date_format,
-                           char *string, int max_size);
+			   char *string, int max_size);
 extern int db_double_string (double the_double, const char *double_format,
-                             char *string, int max_size);
+			     char *string, int max_size);
 extern int db_float_string (float the_float, const char *float_format,
-                            char *string, int max_size);
+			    char *string, int max_size);
 extern int db_integer_string (int the_integer, const char *integer_format,
-                              char *string, int max_size);
+			      char *string, int max_size);
 extern int db_bigint_string (DB_BIGINT the_bigint, const char *bigint_format,
-                             char *string, int max_size);
+			     char *string, int max_size);
 extern int db_monetary_string (const DB_MONETARY * the_monetary,
-                               const char *monetary_format, char *string,
-                               int max_size);
+			       const char *monetary_format, char *string,
+			       int max_size);
 extern int db_short_string (short the_short, const char *short_format,
-                            char *string, int max_size);
+			    char *string, int max_size);
 extern int db_validate_format (const char *format, DB_TYPE type);
 #endif
 
@@ -84,19 +84,19 @@ extern const char *db_string_time (const char *time_string,
 				   const char *time_format,
 				   DB_TIME * the_time);
 extern int db_time_string (const DB_TIME * the_time, const char *time_format,
-                           char *string, int max_size);
+			   char *string, int max_size);
 extern const char *db_string_timestamp (const char *timestamp_string,
 					const char *timestamp_format,
 					DB_TIMESTAMP * the_time);
 extern int db_timestamp_string (const DB_TIMESTAMP * the_timestamp,
-                                const char *timestamp_format, char *string,
-                                int max_size);
+				const char *timestamp_format, char *string,
+				int max_size);
 extern const char *db_string_datetime (const char *datetime_string,
 				       const char *datetime_format,
 				       DB_DATETIME * the_datetime);
 extern int db_datetime_string (const DB_DATETIME * the_datetime,
-                               const char *datetime_format, char *string,
-                               int max_size);
+			       const char *datetime_format, char *string,
+			       int max_size);
 extern const char *db_string_bit (const char *string, const char *bit_format,
 				  DB_VALUE * the_db_bit);
 extern int db_bit_string (const DB_VALUE * the_db_bit,

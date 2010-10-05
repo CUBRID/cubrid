@@ -159,7 +159,7 @@ static int get_data_set (T_CCI_U_TYPE u_type, char *col_value_p,
 static int get_file_size (char *filename);
 static int get_column_info (char *buf_p, int remain_size,
 			    T_CCI_COL_INFO ** ret_col_info,
-			    char **next_buf_p, char prepare_flag);
+			    char **next_buf_p, bool is_prepare);
 static int oid_get_info_decode (char *buf_p, int remain_size,
 				T_REQ_HANDLE * req_handle);
 static int schema_info_decode (char *buf_p, int size,
@@ -213,14 +213,6 @@ static unsigned char myip[4] = { 0, 0, 0, 0 };
 /************************************************************************
  * IMPLEMENTATION OF PUBLIC FUNCTIONS	 				*
  ************************************************************************/
-
-#if 0
-int
-test_func ()
-{
-  return 0;
-}
-#endif
 
 int
 qe_con_close (T_CON_HANDLE * con_handle)
@@ -652,58 +644,60 @@ qe_get_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
   char func_code = CAS_FC_GET_DB_PARAMETER;
   char *result_msg = NULL;
   int result_msg_size;
-  int err_code;
+  int err_code = CCI_ER_NO_ERROR;
+  int val;
 
-  net_buf_init (&net_buf);
-
-  net_buf_cp_str (&net_buf, &func_code, 1);
-
-  ADD_ARG_INT (&net_buf, param_name);
-
-  if (net_buf.err_code < 0)
+  if (ret_val == NULL)
     {
-      err_code = net_buf.err_code;
-      net_buf_clear (&net_buf);
-      return err_code;
+      return CCI_ER_NO_ERROR;
     }
 
-  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
-  net_buf_clear (&net_buf);
-  if (err_code < 0)
-    return err_code;
-
-  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
-			   err_buf);
-
-  result_msg_size -= 4;
-
-  if (err_code >= 0)
+  if (param_name == CCI_PARAM_AUTO_COMMIT)
     {
-      switch (param_name)
+      val = con_handle->autocommit_mode;
+      memcpy (ret_val, (char *) &val, 4);
+    }
+  else
+    {
+      net_buf_init (&net_buf);
+
+      net_buf_cp_str (&net_buf, &func_code, 1);
+
+      ADD_ARG_INT (&net_buf, param_name);
+
+      if (net_buf.err_code < 0)
 	{
-	case CCI_PARAM_ISOLATION_LEVEL:
-	case CCI_PARAM_LOCK_TIMEOUT:
-	case CCI_PARAM_MAX_STRING_LENGTH:
-	  {
-	    int val;
-	    if (result_msg_size < 4)
-	      {
-		err_code = CCI_ER_COMMUNICATION;
-	      }
-	    else
-	      {
-		NET_STR_TO_INT (val, result_msg + 4);
-		if (ret_val)
-		  memcpy (ret_val, (char *) &val, 4);
-	      }
-	  }
-	  break;
-	default:
-	  break;
+	  err_code = net_buf.err_code;
+	  net_buf_clear (&net_buf);
+	  return err_code;
 	}
-    }
 
-  FREE_MEM (result_msg);
+      err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
+      net_buf_clear (&net_buf);
+      if (err_code < 0)
+	{
+	  return err_code;
+	}
+
+      err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
+			       err_buf);
+      result_msg_size -= 4;
+
+      if (err_code >= 0)
+	{
+	  if (result_msg_size < 4)
+	    {
+	      err_code = CCI_ER_COMMUNICATION;
+	    }
+	  else
+	    {
+	      NET_STR_TO_INT (val, result_msg + 4);
+	      memcpy (ret_val, (char *) &val, 4);
+	    }
+	}
+
+      FREE_MEM (result_msg);
+    }
 
   return err_code;
 }
@@ -3213,7 +3207,7 @@ prepare_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
   remain_size -= 1;
   cur_p += 1;
 
-  num_col_info = get_column_info (cur_p, remain_size, &col_info, NULL, 1);
+  num_col_info = get_column_info (cur_p, remain_size, &col_info, NULL, true);
   if (num_col_info < 0)
     {
       if (col_info != NULL)
@@ -3430,7 +3424,7 @@ get_file_size (char *filename)
 
 static int
 get_column_info (char *buf_p, int remain_size, T_CCI_COL_INFO ** ret_col_info,
-		 char **next_buf_p, char prepare_flag)
+		 char **next_buf_p, bool is_prepare)
 {
   char *cur_p = buf_p;
   int num_col_info = 0;
@@ -3475,69 +3469,169 @@ get_column_info (char *buf_p, int remain_size, T_CCI_COL_INFO ** ret_col_info,
       int name_size;
 
       if (remain_size < 1)
-	goto get_column_info_error;
+	{
+	  goto get_column_info_error;
+	}
       col_info[i].type = (T_CCI_U_TYPE) * cur_p;
       remain_size -= 1;
       cur_p += 1;
 
       if (remain_size < 2)
-	goto get_column_info_error;
+	{
+	  goto get_column_info_error;
+	}
       NET_STR_TO_SHORT (col_info[i].scale, cur_p);
       remain_size -= 2;
       cur_p += 2;
 
       if (remain_size < 4)
-	goto get_column_info_error;
+        {
+          goto get_column_info_error;
+        }
       NET_STR_TO_INT (col_info[i].precision, cur_p);
       remain_size -= 4;
       cur_p += 4;
 
       if (remain_size < 4)
-	goto get_column_info_error;
+	{
+	  goto get_column_info_error;
+	}
       NET_STR_TO_INT (name_size, cur_p);
       remain_size -= 4;
       cur_p += 4;
 
       if (remain_size < name_size)
-	goto get_column_info_error;
+	{
+	  goto get_column_info_error;
+	}
       ALLOC_N_COPY (col_info[i].col_name, cur_p, name_size, char *);
       if (col_info[i].col_name == NULL)
-	goto get_column_info_error;
+	{
+	  goto get_column_info_error;
+	}
       remain_size -= name_size;
       cur_p += name_size;
 
-      if (prepare_flag)
+      if (is_prepare == false)
 	{
-	  if (remain_size < 4)
-	    goto get_column_info_error;
-	  NET_STR_TO_INT (name_size, cur_p);
-	  remain_size -= 4;
-	  cur_p += 4;
-
-	  if (remain_size < name_size)
-	    goto get_column_info_error;
-	  ALLOC_N_COPY (col_info[i].real_attr, cur_p, name_size, char *);
-	  remain_size -= name_size;
-	  cur_p += name_size;
-
-	  if (remain_size < 4)
-	    goto get_column_info_error;
-	  NET_STR_TO_INT (name_size, cur_p);
-	  remain_size -= 4;
-	  cur_p += 4;
-
-	  if (remain_size < name_size)
-	    goto get_column_info_error;
-	  ALLOC_N_COPY (col_info[i].class_name, cur_p, name_size, char *);
-	  remain_size -= name_size;
-	  cur_p += name_size;
-
-	  if (remain_size < 1)
-	    goto get_column_info_error;
-	  col_info[i].is_non_null = *cur_p;
-	  remain_size -= 1;
-	  cur_p += 1;
+	  continue;
 	}
+
+      if (remain_size < 4)
+	{
+	  goto get_column_info_error;
+	}
+      NET_STR_TO_INT (name_size, cur_p);
+      remain_size -= 4;
+      cur_p += 4;
+
+      if (remain_size < name_size)
+        {
+          goto get_column_info_error;
+        }
+      ALLOC_N_COPY (col_info[i].real_attr, cur_p, name_size, char *);
+      remain_size -= name_size;
+      cur_p += name_size;
+
+      if (remain_size < 4)
+        {
+          goto get_column_info_error;
+        }
+      NET_STR_TO_INT (name_size, cur_p);
+      remain_size -= 4;
+      cur_p += 4;
+
+      if (remain_size < name_size)
+        {
+          goto get_column_info_error;
+        }
+      ALLOC_N_COPY (col_info[i].class_name, cur_p, name_size, char *);
+      remain_size -= name_size;
+      cur_p += name_size;
+
+      if (remain_size < 1)
+        {
+          goto get_column_info_error;
+        }
+      col_info[i].is_non_null = *cur_p;
+      remain_size -= 1;
+      cur_p += 1;
+
+      if (remain_size < 4)
+        {
+          goto get_column_info_error;
+        }
+      NET_STR_TO_INT (name_size, cur_p);
+      remain_size -= 4;
+      cur_p += 4;
+
+      if (remain_size < name_size)
+        {
+          goto get_column_info_error;
+        }
+      ALLOC_N_COPY (col_info[i].default_value, cur_p, name_size, char *);
+      if (col_info[i].default_value == NULL)
+        {
+          goto get_column_info_error;
+        }
+      remain_size -= name_size;
+      cur_p += name_size;
+
+      if (remain_size < 1)
+        {
+          goto get_column_info_error;
+        }
+      col_info[i].is_auto_increment = *cur_p;
+      remain_size -= 1;
+      cur_p += 1;
+
+      if (remain_size < 1)
+        {
+          goto get_column_info_error;
+        }
+      col_info[i].is_unique_key = *cur_p;
+      remain_size -= 1;
+      cur_p += 1;
+
+      if (remain_size < 1)
+        {
+          goto get_column_info_error;
+        }
+      col_info[i].is_primary_key = *cur_p;
+      remain_size -= 1;
+      cur_p += 1;
+
+      if (remain_size < 1)
+        {
+          goto get_column_info_error;
+        }
+      col_info[i].is_reverse_index = *cur_p;
+      remain_size -= 1;
+      cur_p += 1;
+
+      if (remain_size < 1)
+        {
+          goto get_column_info_error;
+        }
+      col_info[i].is_reverse_unique = *cur_p;
+      remain_size -= 1;
+      cur_p += 1;
+
+      if (remain_size < 1)
+        {
+          goto get_column_info_error;
+        }
+      col_info[i].is_foreign_key = *cur_p;
+      remain_size -= 1;
+      cur_p += 1;
+
+      if (remain_size < 1)
+        {
+          goto get_column_info_error;
+        }
+      col_info[i].is_shared = *cur_p;
+      remain_size -= 1;
+      cur_p += 1;
     }
 
   if (ret_col_info)
@@ -3559,6 +3653,7 @@ get_column_info_error:
 	{
 	  FREE_MEM (col_info[i].col_name);
 	  FREE_MEM (col_info[i].class_name);
+	  FREE_MEM (col_info[i].default_value);
 	}
       FREE_MEM (col_info);
     }
@@ -3593,7 +3688,7 @@ oid_get_info_decode (char *buf_p, int remain_size, T_REQ_HANDLE * req_handle)
   cur_p += class_name_size;
 
   num_col_info =
-    get_column_info (cur_p, remain_size, &col_info, &next_buf_p, 0);
+    get_column_info (cur_p, remain_size, &col_info, &next_buf_p, false);
   if (num_col_info < 0)
     {
       if (col_info != NULL)
@@ -3639,7 +3734,7 @@ schema_info_decode (char *buf_p, int size, T_REQ_HANDLE * req_handle)
   remain_size -= 4;
   cur_p += 4;
 
-  num_col_info = get_column_info (cur_p, remain_size, &col_info, NULL, 0);
+  num_col_info = get_column_info (cur_p, remain_size, &col_info, NULL, false);
   if (num_col_info < 0)
     {
       if (col_info != NULL)
@@ -3674,7 +3769,7 @@ col_get_info_decode (char *buf_p, int remain_size, int *col_size,
   cur_p += 1;
 
   num_col_info =
-    get_column_info (cur_p, remain_size, &col_info, &next_buf_p, 0);
+    get_column_info (cur_p, remain_size, &col_info, &next_buf_p, false);
   if (num_col_info < 0)
     return num_col_info;
 
@@ -3745,7 +3840,7 @@ next_result_info_decode (char *buf, int size, T_REQ_HANDLE * req_handle)
   remain_size -= 1;
   cur_p += 1;
 
-  num_col_info = get_column_info (cur_p, remain_size, &col_info, NULL, 1);
+  num_col_info = get_column_info (cur_p, remain_size, &col_info, NULL, true);
   if (num_col_info < 0)
     {
       if (col_info != NULL)

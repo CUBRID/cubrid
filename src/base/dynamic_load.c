@@ -1541,12 +1541,10 @@ dl_set_new_image_file (DYNAMIC_LOADER * this_, const char *new_image)
 }
 
 /*
- * dl_set_new_load_points() - Add new lod point
+ * dl_set_new_load_points() - Add new load point
  *   return: Zero on success, non-zero on failure
  *   this_(in): DYNAMIC_LOADER structure pointer
  *   load_point(in): load point to be added
- *
- * Note: If MALLOC is failed, it is ignored
  */
 static int
 dl_set_new_load_points (DYNAMIC_LOADER * this_, const caddr_t load_point)

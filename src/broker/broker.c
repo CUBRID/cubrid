@@ -31,14 +31,7 @@
 #include <errno.h>
 #include <fcntl.h>
 
-#if defined(WINDOWS)
-#include <winsock2.h>
-#include <windows.h>
-#include <process.h>
-#include <pdh.h>
-#include <pdhmsg.h>
-#include <io.h>
-#else
+#if !defined(WINDOWS)
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/file.h>
@@ -180,24 +173,10 @@
 #define JOB_COUNT_MAX		1000000
 
 #if defined(WINDOWS)
-#define ALLOC_COUNTER_VALUE()						\
-  	do {								\
-	    int _mem_size = sizeof(PDH_FMT_COUNTERVALUE_ITEM) *		\
-	      			   num_counter_value;			\
-	    cntvalue_pid = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_pid, _mem_size);		\
-	    cntvalue_workset = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_workset, _mem_size);	\
-	    cntvalue_pct_cpu = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_pct_cpu, _mem_size);	\
-	    cntvalue_num_thr = (PDH_FMT_COUNTERVALUE_ITEM*) realloc(cntvalue_num_thr, _mem_size);	\
-	} while (0)
-
-#define IS_COUNTER_VALUE_PTR_NULL()					\
-  	(cntvalue_pid == NULL || cntvalue_workset == NULL ||		\
-	 cntvalue_pct_cpu == NULL || cntvalue_num_thr == NULL)
-
-#endif
-
-#if defined(WINDOWS)
 #define F_OK	0
+#else
+#define FD_SEND_RETRY_COUNT	5
+#define SOCKET_TIMEOUT_SEC	2
 #endif
 
 typedef struct t_clt_table T_CLT_TABLE;
@@ -236,13 +215,6 @@ static int find_idle_cas (void);
 static int find_drop_as_index (void);
 static int find_add_as_index (void);
 static void check_cas_log (char *br_name, int as_index);
-
-#if defined(WINDOWS)
-static int pdh_init ();
-static int pdh_collect ();
-static int pdh_get_value (int pid, int *workset, float *pct_cpu,
-			  int *br_num_thr);
-#endif
 
 static SOCKET sock_fd;
 static struct sockaddr_in sock_addr;
@@ -287,37 +259,6 @@ static T_MAX_HEAP_NODE *session_request_q;
 #endif
 
 static int hold_job = 0;
-
-#if defined(WINDOWS)
-typedef PDH_STATUS (__stdcall * PDHOpenQuery) (LPCSTR, DWORD_PTR,
-					       PDH_HQUERY *);
-typedef PDH_STATUS (__stdcall * PDHCloseQuery) (PDH_HQUERY);
-typedef PDH_STATUS (__stdcall * PDHAddCounter) (PDH_HQUERY, LPCSTR, DWORD_PTR,
-						PDH_HCOUNTER *);
-typedef PDH_STATUS (__stdcall * PDHCollectQueryData) (PDH_HQUERY);
-typedef PDH_STATUS (__stdcall * PDHGetFormattedCounterArray) (PDH_HCOUNTER,
-							      DWORD, LPDWORD,
-							      LPDWORD,
-							      PPDH_FMT_COUNTERVALUE_ITEM_A);
-PDHOpenQuery fp_PdhOpenQuery;
-PDHCloseQuery fp_PdhCloseQuery;
-PDHAddCounter fp_PdhAddCounter;
-PDHCollectQueryData fp_PdhCollectQueryData;
-PDHGetFormattedCounterArray fp_PdhGetFormattedCounterArray;
-
-HCOUNTER counter_pid;
-HCOUNTER counter_pct_cpu;
-HCOUNTER counter_workset;
-HCOUNTER counter_num_thr;
-PDH_FMT_COUNTERVALUE_ITEM *cntvalue_pid = NULL;
-PDH_FMT_COUNTERVALUE_ITEM *cntvalue_pct_cpu = NULL;
-PDH_FMT_COUNTERVALUE_ITEM *cntvalue_workset = NULL;
-PDH_FMT_COUNTERVALUE_ITEM *cntvalue_num_thr = NULL;
-HQUERY pdh_h_query;
-int num_counter_value;
-unsigned long pdh_num_proc;
-#endif
-
 
 #if defined(WINDOWS)
 int WINAPI
@@ -595,6 +536,8 @@ main (int argc, char *argv[])
 	      else
 		{
 		  shm_appl->as_info[drop_as_index].service_flag = SERVICE_ON;
+		  CON_STATUS_UNLOCK (&(shm_appl->as_info[drop_as_index]),
+				     CON_STATUS_LOCK_BROKER);
 		  drop_as_index = -1;
 		}
 
@@ -826,6 +769,7 @@ dispatch_thr_f (void *arg)
   int as_index, i;
 #if !defined(WINDOWS)
   SOCKET srv_sock_fd;
+  int retry_count;
 #endif
 
   job_queue = shm_appl->job_queue;
@@ -898,25 +842,47 @@ dispatch_thr_f (void *arg)
       shm_appl->as_info[as_index].num_request++;
       shm_appl->as_info[as_index].last_access_time = time (NULL);
 #else
+
+      retry_count = 0;
+
+    retry:
       srv_sock_fd = connect_srv (shm_br->br_info[br_index].name, as_index);
+
       if (!IS_INVALID_SOCKET (srv_sock_fd))
 	{
 	  int ip_addr;
+	  int ret_val;
 
-	  CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, 0);
 	  memcpy (&ip_addr, cur_job.ip_addr, 4);
-	  if (send_fd (srv_sock_fd, cur_job.clt_sock_fd, ip_addr) == FALSE)
-	    {			/* fail */
-	      CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER);
+	  ret_val = send_fd (srv_sock_fd, cur_job.clt_sock_fd, ip_addr);
+	  if (ret_val > 0)
+	    {
+	      char read_buf[64];
+	      ret_val = read (srv_sock_fd, read_buf, sizeof (read_buf));
+	    }
+
+	  CLOSE_SOCKET (srv_sock_fd);
+
+	  if (ret_val < 0)
+	    {
 	      shm_appl->as_info[as_index].uts_status = UTS_STATUS_IDLE;
+
+	      if (retry_count < FD_SEND_RETRY_COUNT)
+		{
+		  retry_count++;
+		  goto retry;
+		}
+	      else
+		{
+		  CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd,
+				       CAS_ER_FREE_SERVER);
+		}
 	    }
 	  else
 	    {
-	      char read_buf[64];
+	      CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, 0);
 	      shm_appl->as_info[as_index].num_request++;
-	      read (srv_sock_fd, read_buf, sizeof (read_buf));
 	    }
-	  CLOSE_SOCKET (srv_sock_fd);
 	}
       else
 	{
@@ -1250,6 +1216,7 @@ restart_appl_server (int as_index)
   new_pid = run_appl_server (as_index);
   shm_appl->as_info[as_index].pid = new_pid;
 #else
+
   shm_appl->as_info[as_index].psize =
     getsize (shm_appl->as_info[as_index].pid);
   if (shm_appl->as_info[as_index].psize > 1)
@@ -1326,6 +1293,7 @@ connect_srv (char *br_name, int as_index)
   struct sockaddr_in sock_addr;
 #else
   struct sockaddr_un sock_addr;
+  struct timeval tv;
 #endif
   SOCKET srv_sock_fd;
   int one = 1;
@@ -1381,6 +1349,12 @@ retry:
 
   setsockopt (srv_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
 	      sizeof (one));
+
+#if !defined(WINDOWS)
+  tv.tv_sec = SOCKET_TIMEOUT_SEC;
+  tv.tv_usec = 0;
+  setsockopt (srv_sock_fd, SOL_SOCKET, SO_RCVTIMEO, (char *) &tv, sizeof tv);
+#endif
 
   return srv_sock_fd;
 }
@@ -1568,221 +1542,6 @@ psize_check_thr_f (void *ar)
     }
 }
 
-static int
-pdh_init ()
-{
-  HMODULE h_module;
-  PDH_STATUS pdh_status;
-  CHAR path_buffer[128];
-
-  h_module = LoadLibrary ("pdh.dll");
-  if (h_module == NULL)
-    {
-      return -1;
-    }
-
-  fp_PdhOpenQuery = (PDHOpenQuery) GetProcAddress (h_module, "PdhOpenQueryA");
-  if (fp_PdhOpenQuery == NULL)
-    {
-      return -1;
-    }
-
-  fp_PdhAddCounter =
-    (PDHAddCounter) GetProcAddress (h_module, "PdhAddCounterA");
-  if (fp_PdhAddCounter == NULL)
-    {
-      return -1;
-    }
-
-  fp_PdhCollectQueryData =
-    (PDHCollectQueryData) GetProcAddress (h_module, "PdhCollectQueryData");
-  if (fp_PdhCollectQueryData == NULL)
-    {
-      return -1;
-    }
-
-  fp_PdhGetFormattedCounterArray =
-    (PDHGetFormattedCounterArray) GetProcAddress (h_module,
-						  "PdhGetFormattedCounterArrayA");
-  if (fp_PdhGetFormattedCounterArray == NULL)
-    {
-      return -1;
-    }
-
-  fp_PdhCloseQuery =
-    (PDHCloseQuery) GetProcAddress (h_module, "PdhCloseQuery");
-  if (fp_PdhCloseQuery == NULL)
-    {
-      return -1;
-    }
-
-  pdh_status = (*fp_PdhOpenQuery) (0, 0, &pdh_h_query);
-  if (pdh_status != ERROR_SUCCESS)
-    {
-      return -1;
-    }
-
-  strcpy (path_buffer, "\\Process(*)\\ID Process");
-  pdh_status =
-    (*fp_PdhAddCounter) (pdh_h_query, path_buffer, 0, &counter_pid);
-  if (pdh_status != ERROR_SUCCESS)
-    {
-      return -1;
-    }
-
-  strcpy (path_buffer, "\\Process(*)\\Working Set");
-  pdh_status =
-    (*fp_PdhAddCounter) (pdh_h_query, path_buffer, 0, &counter_workset);
-  if (pdh_status != ERROR_SUCCESS)
-    {
-      return -1;
-    }
-
-  strcpy (path_buffer, "\\Process(*)\\% Processor Time");
-  pdh_status =
-    (*fp_PdhAddCounter) (pdh_h_query, path_buffer, 0, &counter_pct_cpu);
-  if (pdh_status != ERROR_SUCCESS)
-    {
-      return -1;
-    }
-
-  strcpy (path_buffer, "\\Process(*)\\Thread Count");
-  pdh_status =
-    (*fp_PdhAddCounter) (pdh_h_query, path_buffer, 0, &counter_num_thr);
-  if (pdh_status != ERROR_SUCCESS)
-    {
-      return -1;
-    }
-
-  num_counter_value = 128;
-
-  ALLOC_COUNTER_VALUE ();
-  if (IS_COUNTER_VALUE_PTR_NULL ())
-    {
-      return -1;
-    }
-  memset (cntvalue_pid, 0,
-	  sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value);
-  memset (cntvalue_workset, 0,
-	  sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value);
-  memset (cntvalue_pct_cpu, 0,
-	  sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value);
-  memset (cntvalue_num_thr, 0,
-	  sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value);
-
-  return 0;
-}
-
-static int
-pdh_collect ()
-{
-  unsigned long in_size;
-  PDH_STATUS pdh_status;
-  int i, retry_count = 10;
-  char success_flag = FALSE;
-
-  if (IS_COUNTER_VALUE_PTR_NULL ())
-    {
-      ALLOC_COUNTER_VALUE ();
-      if (IS_COUNTER_VALUE_PTR_NULL ())
-	goto collect_error;
-    }
-
-  for (i = 0; i < retry_count; i++)
-    {
-      pdh_status = (*fp_PdhCollectQueryData) (pdh_h_query);
-      if (pdh_status != ERROR_SUCCESS)
-	{
-	  continue;
-	}
-      in_size = sizeof (PDH_FMT_COUNTERVALUE_ITEM) * num_counter_value;
-
-      pdh_status =
-	(*fp_PdhGetFormattedCounterArray) (counter_pid, PDH_FMT_LONG,
-					   &in_size, &pdh_num_proc,
-					   cntvalue_pid);
-      if (pdh_status != ERROR_SUCCESS)
-	{
-	  if (pdh_status == PDH_MORE_DATA)
-	    {
-	      num_counter_value *= 2;
-	      ALLOC_COUNTER_VALUE ();
-	      if (IS_COUNTER_VALUE_PTR_NULL ())
-		{
-		  goto collect_error;
-		}
-	    }
-	  continue;
-	}
-      pdh_status =
-	(*fp_PdhGetFormattedCounterArray) (counter_workset, PDH_FMT_LONG,
-					   &in_size, &pdh_num_proc,
-					   cntvalue_workset);
-      if (pdh_status != ERROR_SUCCESS)
-	{
-	  continue;
-	}
-      pdh_status =
-	(*fp_PdhGetFormattedCounterArray) (counter_pct_cpu, PDH_FMT_DOUBLE,
-					   &in_size, &pdh_num_proc,
-					   cntvalue_pct_cpu);
-      if (pdh_status != ERROR_SUCCESS)
-	{
-	  continue;
-	}
-      pdh_status =
-	(*fp_PdhGetFormattedCounterArray) (counter_num_thr, PDH_FMT_LONG,
-					   &in_size, &pdh_num_proc,
-					   cntvalue_num_thr);
-      if (pdh_status != ERROR_SUCCESS)
-	{
-	  continue;
-	}
-
-      success_flag = TRUE;
-      break;
-    }
-
-  if (success_flag == TRUE)
-    {
-      return 0;
-    }
-
-collect_error:
-  pdh_num_proc = 0;
-  return -1;
-}
-
-static int
-pdh_get_value (int pid, int *workset, float *pct_cpu, int *br_num_thr)
-{
-  unsigned long i;
-
-  if (pid <= 0)
-    {
-      *workset = 0;
-      *pct_cpu = 0;
-      if (br_num_thr)
-	*br_num_thr = 0;
-      return 0;
-    }
-
-  for (i = 0; i < pdh_num_proc; i++)
-    {
-      if (cntvalue_pid[i].FmtValue.longValue == pid)
-	{
-	  *workset = (int) (cntvalue_workset[i].FmtValue.longValue / 1024);
-	  *pct_cpu = (float) (cntvalue_pct_cpu[i].FmtValue.doubleValue);
-	  if (br_num_thr)
-	    {
-	      *br_num_thr = (int) (cntvalue_num_thr[i].FmtValue.longValue);
-	    }
-	  return 0;
-	}
-    }
-
-  return -1;
-}
 #else /* ifndef WINDOWS */
 static THREAD_FUNC
 psize_check_thr_f (void *ar)

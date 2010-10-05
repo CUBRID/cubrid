@@ -82,8 +82,8 @@ ansisql_strcmp (const char *s, const char *t)
 	    {
 	      return -1;
 	    }
-	  return 0;
 	}
+      return 0;
     }
   else if (*t == '\0')
     {
@@ -93,8 +93,8 @@ ansisql_strcmp (const char *s, const char *t)
 	    {
 	      return 1;
 	    }
-	  return 0;
 	}
+      return 0;
     }
   else
     {

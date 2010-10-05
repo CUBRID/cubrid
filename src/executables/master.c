@@ -780,6 +780,12 @@ css_process_new_connection (SOCKET fd)
       return;
     }
 
+  if (css_check_magic (conn) != NO_ERRORS)
+    {
+      css_free_conn (conn);
+      return;
+    }
+
   if (css_receive_request (conn, &rid, &function_code,
 			   &buffer_size) == NO_ERRORS)
     {
@@ -1593,7 +1599,7 @@ out:
 
   /*
    * The file mode creation mask that is inherited could be set to deny
-   * certain permissions. Therfore, clear the file mode creation mask.
+   * certain permissions. Therefore, clear the file mode creation mask.
    */
 
   umask (0);

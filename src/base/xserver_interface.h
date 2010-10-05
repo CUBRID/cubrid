@@ -50,15 +50,17 @@ xboot_initialize_server (THREAD_ENTRY * thread_p,
 			 BOOT_DB_PATH_INFO * db_path_info,
 			 bool db_overwrite, const char *file_addmore_vols,
 			 DKNPAGES db_npages, PGLENGTH db_desired_pagesize,
-			 DKNPAGES xlog_npages, PGLENGTH db_desired_log_page_size,
+			 DKNPAGES xlog_npages,
+			 PGLENGTH db_desired_log_page_size,
 			 OID * rootclass_oid, HFID * rootclass_hfid,
-			 int client_lock_wait, TRAN_ISOLATION client_isolation);
-extern int
-xboot_register_client (THREAD_ENTRY * thread_p,
-		       const BOOT_CLIENT_CREDENTIAL * client_credential,
-		       int client_lock_wait, TRAN_ISOLATION client_isolation,
-		       TRAN_STATE * tran_state,
-		       BOOT_SERVER_CREDENTIAL * server_credential);
+			 int client_lock_wait,
+			 TRAN_ISOLATION client_isolation);
+extern int xboot_register_client (THREAD_ENTRY * thread_p,
+				  const BOOT_CLIENT_CREDENTIAL *
+				  client_credential, int client_lock_wait,
+				  TRAN_ISOLATION client_isolation,
+				  TRAN_STATE * tran_state,
+				  BOOT_SERVER_CREDENTIAL * server_credential);
 extern int xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index);
 extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
 			 FILEIO_BACKUP_LEVEL backup_level,
@@ -80,9 +82,11 @@ extern int xboot_find_number_permanent_volumes (THREAD_ENTRY * thread_p);
 extern int xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p);
 extern VOLID xboot_find_last_temp (THREAD_ENTRY * thread_p);
 
-extern LC_FIND_CLASSNAME xlocator_reserve_class_name (THREAD_ENTRY * thread_p,
-						      const char *classname,
-						      const OID * class_oid);
+extern LC_FIND_CLASSNAME xlocator_reserve_class_names (THREAD_ENTRY *
+						       thread_p,
+						       const int num_classes,
+						       const char **classname,
+						       const OID * class_oid);
 extern LC_FIND_CLASSNAME xlocator_delete_class_name (THREAD_ENTRY * thread_p,
 						     const char *classname);
 extern LC_FIND_CLASSNAME xlocator_rename_class_name (THREAD_ENTRY * thread_p,
@@ -105,6 +109,15 @@ extern int xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid,
 			       LOCK * lock, OID * class_oid, int *nobjects,
 			       int *nfetched, OID * last_oid,
 			       LC_COPYAREA ** fetch_area);
+extern int xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p,
+					const HFID * hfid,
+					LOCK * instance_lock,
+					int *instance_lock_timeout,
+					OID * class_oid, LOCK * class_lock,
+					int *nobjects, int *nfetched,
+					int *nfailed_instance_locks,
+					OID * last_oid,
+					LC_COPYAREA ** fetch_area);
 extern int xlocator_fetch_lockset (THREAD_ENTRY * thread_p,
 				   LC_LOCKSET * lockset,
 				   LC_COPYAREA ** fetch_area);
@@ -221,6 +234,8 @@ extern int xlargeobjmgr_compress (THREAD_ENTRY * thread_p, LOID * loid);
 extern INT64 xlargeobjmgr_length (THREAD_ENTRY * thread_p, LOID * loid);
 
 extern void xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set);
+extern void xlogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
+						     int set);
 extern void xlog_append_client_undo (THREAD_ENTRY * thread_p,
 				     LOG_RCVCLIENT_INDEX rcvindex, int length,
 				     void *data);
@@ -261,14 +276,16 @@ extern BTID *xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid,
 extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
 				TP_DOMAIN * key_type, OID * class_oids,
 				int n_classes, int n_attrs, int *attr_ids,
+				int *attrs_prefix_length,
 				HFID * hfids, int unique_flag,
 				int reverse_flag, int last_key_desc,
 				OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 				int cache_attr_id, const char *fk_name);
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
-					DB_VALUE * key, OID * class_oid,
-					OID * oid, bool is_all_class_srch);
+					int readonly_purpose, DB_VALUE * key,
+					OID * class_oid, OID * oid,
+					bool is_all_class_srch);
 extern int xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf,
 				     int buf_size);
 
@@ -367,5 +384,21 @@ extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp);
 
 extern int xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p,
 				       char **buffer_p, int *size_p);
+extern int
+xboot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
+		  int space_to_process,
+		  int instance_lock_timeout,
+		  int class_lock_timeout,
+		  bool delete_old_repr,
+		  OID * last_processed_class_oid,
+		  OID * last_processed_oid,
+		  int *total_objects, int *failed_objects,
+		  int *modified_objects, int *big_objects,
+		  int *initial_last_repr_id);
+
+extern int xboot_heap_compact (THREAD_ENTRY * thread_p, OID * class_oid);
+
+extern int xboot_compact_start (THREAD_ENTRY * thread_p);
+extern int xboot_compact_stop (THREAD_ENTRY * thread_p);
 
 #endif /* _XSERVER_INTERFACE_H_ */

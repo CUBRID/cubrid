@@ -640,9 +640,12 @@ mq_compute_query_authorization (PT_NODE * statement)
     {
     case PT_SELECT:
       spec = statement->info.query.q.select.from;
-      auth = DB_AUTH_SELECT;
 
-      if (!spec->next)
+      if (spec == NULL || spec->next != NULL)
+	{
+	  auth = DB_AUTH_SELECT;
+	}
+      else
 	{
 	  auth = DB_AUTH_ALL;
 	  /* select authorization is computed at semantic check */
@@ -758,7 +761,7 @@ mq_flatten_union (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (rhs->node_type == PT_UNION)
 	rhs = mq_flatten_union (parser, rhs);
 
-      /* propogate error detected in recursion, if any */
+      /* propagate error detected in recursion, if any */
       if (!lhs || !rhs)
 	return NULL;
 
@@ -1165,6 +1168,7 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement,
 	case PT_SELECT:
 	  if (statement->info.query.q.select.group_by	/* aggregate */
 	      || statement->info.query.q.select.having	/* aggregate */
+	      || statement->info.query.q.select.from == NULL	/* no spec */
 	      || statement->info.query.q.select.from->next	/* join */
 	      || statement->info.query.q.select.from->info.spec.derived_table	/* derived */
 	    )
@@ -1575,6 +1579,15 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 				 query_spec->info.query.q.select.use_merge),
 				derived_table->info.query.q.select.use_merge);
 
+	  if (!order_by && query_spec->info.query.order_by)
+	    {
+	      derived_table->info.query.order_by =
+		parser_append_node (parser_copy_tree_list
+				    (parser,
+				     query_spec->info.query.order_by),
+				    derived_table->info.query.order_by);
+	    }
+
 	  /* merge USING INDEX clause of vclass spec */
 	  if (query_spec->info.query.q.select.using_index)
 	    {
@@ -1655,6 +1668,15 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 				     use_merge),
 				    tmp_result->info.query.q.select.
 				    use_merge);
+
+	      if (!order_by && query_spec->info.query.order_by)
+		{
+		  tmp_result->info.query.order_by =
+		    parser_append_node (parser_copy_tree_list
+					(parser,
+					 query_spec->info.query.order_by),
+					tmp_result->info.query.order_by);
+		}
 	    }
 
 	  /* merge USING INDEX clause of vclass spec */
@@ -1867,7 +1889,11 @@ mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec)
   int had_some_real_classes = 0;
   int had_some_virtual_classes = 0;
 
-  if (spec->info.spec.derived_table)
+  if (!spec)
+    {
+      return false;
+    }
+  else if (spec->info.spec.derived_table)
     {
       return false;
     }
@@ -3389,14 +3415,24 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   PT_NODE *flat, *temp, **last;
   PT_NODE save = *insert_statement;
   int viable;
-  SEMANTIC_CHK_INFO sc_info;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  int what_for = DB_AUTH_INSERT;
 
 
   insert_statement->next = NULL;
   from = insert_statement->info.insert.spec;
 
+  if (insert_statement->info.insert.on_dup_key_update != NULL)
+    {
+      what_for = DB_AUTH_INSERT_UPDATE;
+    }
+  if (insert_statement->info.insert.do_replace)
+    {
+      assert (insert_statement->info.insert.on_dup_key_update == NULL);
+      what_for = DB_AUTH_REPLACE;
+    }
   insert_statement = mq_translate_tree
-    (parser, insert_statement, from, NULL, DB_AUTH_INSERT);
+    (parser, insert_statement, from, NULL, what_for);
 
   if (insert_statement)
     {
@@ -3406,11 +3442,14 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 
       while (insert_statement)
 	{
-	  if (insert_statement->info.insert.is_value == PT_IS_VALUE)
+	  PT_NODE *crt_list = insert_statement->info.insert.value_clauses;
+	  bool multiple_tuples_insert = crt_list->next != NULL;
+
+	  if (crt_list->info.node_list.list_type == PT_IS_VALUE)
 	    {
 	      /* deal with case 3 */
 	      attr = insert_statement->info.insert.attr_list;
-	      val_hook = &insert_statement->info.insert.value_clause;
+	      val_hook = &crt_list->info.node_list.list;
 	      val = *val_hook;
 	      while (attr && val)
 		{
@@ -3420,6 +3459,12 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 		      PT_NODE *flat;
 		      DB_OBJECT *real_class = NULL;
 
+		      /* TODO what about multiple tuples insert? What should
+		         this code do? We give up processing for now. */
+		      if (multiple_tuples_insert)
+			{
+			  return NULL;
+			}
 		      /* this is case 3 above. Need to choose the appropriate
 		       * nested insert statement. */
 		      /* do you solve your problem? */
@@ -3485,17 +3530,6 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 		  val = *val_hook;
 		}
 	    }
-	  else if (insert_statement->info.insert.is_value ==
-		   PT_IS_DEFAULT_VALUE)
-	    {
-	      /* remove unnecessary attr_list */
-	      if (insert_statement->info.insert.attr_list)
-		{
-		  parser_free_tree (parser,
-				    insert_statement->info.insert.attr_list);
-		  insert_statement->info.insert.attr_list = NULL;
-		}
-	    }
 
 	  insert_statement = insert_statement->next;
 	}			/* while */
@@ -3523,7 +3557,6 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	       * which expects accurate type information. If we don't,
 	       * we can get a failure like the one described in PR6762.
 	       */
-	      sc_info.attrdefs = NULL;
 	      sc_info.top_node = temp;
 	      sc_info.donot_fold = false;
 	      pt_semantic_type (parser, temp, &sc_info);
@@ -3702,7 +3735,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
     }
 
   from = select_statement->info.query.q.select.from;
-  if (from->next || pt_has_aggregate (parser, select_statement))
+  if (from && (from->next || pt_has_aggregate (parser, select_statement)))
     {
       /* when translating joins, its important to maintain linearity
        * of the translation. The cross-product of unions is exponential.
@@ -3753,7 +3786,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	    mq_rewrite_vclass_spec_as_derived (parser, select_statement, from,
 					       NULL);
 	}
-      else if (from->info.spec.derived_table_type == PT_IS_SUBQUERY)
+      else if (from && from->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	{
 	  (void) mq_copypush_sargable_terms (parser, select_statement, from);
 	}
@@ -4066,17 +4099,24 @@ mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec,
   PT_NODE *col_type;
   PT_NODE *attr_type;
   PT_NODE *attr_class;
-  PT_NODE *flat;
+  PT_NODE *flat = NULL;
 
   if (query_spec)
     switch (query_spec->node_type)
       {
       case PT_SELECT:
-	flat =
-	  query_spec->info.query.q.select.from->info.spec.flat_entity_list;
+	if (query_spec->info.query.q.select.from != NULL)
+	  {
+	    flat = query_spec->info.query.q.select.from->info.spec.
+	      flat_entity_list;
+	  }
+	else
+	  {
+	    flat = NULL;
+	  }
 	if (cascaded_check)
 	  {
-	    /* the peicemeal local check option list we have accumulated is
+	    /* the piecemeal local check option list we have accumulated is
 	     * now pointless. The user requested an honest to god
 	     * useful check option, instead.
 	     */
@@ -4285,6 +4325,7 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
   PT_NODE *query_spec;
   PT_NODE *statements;
   PT_NODE *local_query;
+  PT_NODE *order_by = NULL;
   const char *query_spec_string;
   int cascaded_check;
   int local_check;
@@ -4311,7 +4352,7 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
       result = parser_parse_string (parser, query_spec_string);
 
       /* a system error, that allowed a syntax error to be in
-       * a query spec string. May want to augment thw error messages
+       * a query spec string. May want to augment the error messages
        * provided by parser_parse_string.
        */
       if (!result)
@@ -4325,7 +4366,7 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
       query_spec = pt_compile (parser, query_spec);
 
       /* a system error, that allowed a semantic error to be in
-       * a query spec string. May want to augment thw error messages
+       * a query spec string. May want to augment the error messages
        * provided by parser_parse_string.
        */
       if (!query_spec)
@@ -4356,14 +4397,25 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
 				      (query_spec));
 	}
 
-      /* this will recursivly expand the query spec into
+      /* this will recursively expand the query spec into
        * local queries
        */
       local_query = parser_walk_tree (parser, query_spec,
 				      mq_push_paths, NULL, mq_translate_local,
 				      NULL);
 
+      if (local_query != NULL && local_query->node_type == PT_SELECT)
+	{
+	  order_by = local_query->info.query.order_by;
+	  local_query->info.query.order_by = NULL;
+	}
+
       local_query = pt_add_row_oid_name (parser, local_query);
+
+      if (local_query != NULL && local_query->node_type == PT_SELECT)
+	{
+	  local_query->info.query.order_by = order_by;
+	}
 
       mq_set_types (parser, local_query, attributes,
 		    class_object, cascaded_check);
@@ -4598,7 +4650,7 @@ mq_virtual_queries (DB_OBJECT * class_object)
       return NULL;
     }
 
-  sprintf (buf, "select * from %s; ", cname);
+  snprintf (buf, sizeof (buf), "select * from %s; ", cname);
   statements = parser_parse_string (parser, buf);
   parser->view_cache = (VIEW_CACHE_INFO *)
     parser_alloc (parser, sizeof (VIEW_CACHE_INFO));
@@ -4862,12 +4914,13 @@ static PT_NODE *
 mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *next;
-  SEMANTIC_CHK_INFO sc_info;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
 
   if (!node)
-    return NULL;
+    {
+      return NULL;
+    }
 
-  sc_info.attrdefs = NULL;
   sc_info.top_node = node;
   sc_info.donot_fold = false;
 
@@ -5634,7 +5687,7 @@ mq_set_references (PARSER_CONTEXT * parser, PT_NODE * statement,
 		   PT_NODE * spec)
 {
   /* don't mess with pseudo specs */
-  if (spec->info.spec.derived_table_type == PT_IS_WHACKED_SPEC)
+  if (!spec || spec->info.spec.derived_table_type == PT_IS_WHACKED_SPEC)
     {
       return statement;
     }
@@ -6780,8 +6833,10 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
   PT_NODE *newspec = NULL;
   PT_NODE *oldnext = NULL;
   PT_NODE *assign, *result;
-  PT_NODE **attr, *attr_next;
+  PT_NODE *attr = NULL, *attr_next = NULL;
   PT_NODE **value, *value_next;
+  PT_NODE *crt_list = NULL, *attr_names = NULL, *attr_names_crt = NULL;
+  bool build_att_names_list = false;
   PT_NODE **lhs, **rhs, *lhs_next, *rhs_next;
   const char *newresolved = class_->info.name.resolved;
 
@@ -6810,7 +6865,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  if (statement->info.query.q.select.group_by)
 		    {
 		      /* this is impossible case. give up */
-		      return NULL;
+		      goto exit_on_error;
 		    }
 		  else
 		    {
@@ -6834,9 +6889,11 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    }
 	  else
 	    {
-	      statement = NULL;	/* system error */
+	      /* system error */
+	      goto exit_on_error;
 	    }
 	}
+
       break;
 
 
@@ -6877,7 +6934,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  PT_ERRORmf (parser, assign, MSGCAT_SET_PARSER_RUNTIME,
 			      MSGCAT_RUNTIME_VASG_TGT_UNINVERTBL,
 			      pt_short_print (parser, *lhs));
-		  return NULL;
+		  goto exit_on_error;
 		}
 
 	      if (*lhs)
@@ -6903,59 +6960,111 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
       specptr = &statement->info.insert.spec;
       check_where_part = &statement->info.insert.where;
 
-      /* need to invert expressions now */
-      attr = &statement->info.insert.attr_list;
-      value = &statement->info.insert.value_clause;
-
-      if (statement->info.insert.is_value == PT_IS_VALUE)
+      crt_list = statement->info.insert.value_clauses;
+      if (crt_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE
+	  || crt_list->info.node_list.list_type == PT_IS_VALUE)
 	{
-	  while (*value)
+	  for (; crt_list != NULL; crt_list = crt_list->next)
 	    {
-	      if (!*attr)
+	      /* Inserting the default values in the original class will
+	         "insert" the default view values in the view. We don't need
+	         to do anything. */
+	      if (crt_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
 		{
-		  /* system error, should be caught in semantic pass */
-		  PT_ERRORm (parser, (*value), MSGCAT_SET_PARSER_RUNTIME,
-			     MSGCAT_RUNTIME_ATTRS_GT_QSPEC_COLS);
-		  statement = NULL;
-		  break;
+		  continue;
 		}
-	      attr_next = (*attr)->next;
-	      value_next = (*value)->next;
-	      (*attr)->next = NULL;
-	      (*value)->next = NULL;
+	      assert (crt_list->info.node_list.list_type == PT_IS_VALUE);
 
-	      (*value) = mq_translate_value (parser, *value);
-	      result = pt_invert (parser, *attr, *value);
-
-	      if (!result)
+	      /* We need to invert expressions now. */
+	      if (attr_names == NULL)
 		{
-		  /* error not invertable/updatable */
-		  PT_ERRORmf (parser, (*attr), MSGCAT_SET_PARSER_RUNTIME,
-			      MSGCAT_RUNTIME_VASG_TGT_UNINVERTBL,
-			      pt_short_print (parser, (*attr)));
-		  statement = NULL;
-		  break;
+		  /* We'll also build a list of attribute names. */
+		  build_att_names_list = true;
+		}
+	      else
+		{
+		  /* The list of attribute names has already been built. */
+		  build_att_names_list = false;
 		}
 
-	      if (*attr)
+	      attr = statement->info.insert.attr_list;
+	      value = &crt_list->info.node_list.list;
+	      while (*value)
 		{
-		  parser_free_tree (parser, *attr);
+		  if (attr == NULL)
+		    {
+		      /* System error, should have been caught in the semantic
+		         pass */
+		      PT_ERRORm (parser, (*value), MSGCAT_SET_PARSER_RUNTIME,
+				 MSGCAT_RUNTIME_ATTRS_GT_QSPEC_COLS);
+		      goto exit_on_error;
+		    }
+
+		  attr_next = attr->next;
+		  attr->next = NULL;
+		  value_next = (*value)->next;
+		  (*value)->next = NULL;
+
+		  (*value) = mq_translate_value (parser, *value);
+		  result = pt_invert (parser, attr, *value);
+
+		  if (result == NULL)
+		    {
+		      /* error not invertable/updatable */
+		      PT_ERRORmf (parser, attr, MSGCAT_SET_PARSER_RUNTIME,
+				  MSGCAT_RUNTIME_VASG_TGT_UNINVERTBL,
+				  pt_short_print (parser, attr));
+		      goto exit_on_error;
+		    }
+
+		  if (build_att_names_list)
+		    {
+		      if (attr_names_crt == NULL)
+			{
+			  /* This is the first attribute in the name list. */
+			  attr_names_crt = attr_names = result->next;
+			}
+		      else
+			{
+			  attr_names_crt->next = result->next;
+			  attr_names_crt = attr_names_crt->next;
+			}
+		      result->next = NULL;
+		    }
+		  else
+		    {
+		      parser_free_tree (parser, result->next);
+		      result->next = NULL;
+		    }
+
+		  attr->next = attr_next;
+		  attr = attr->next;
+
+		  (*value) = result;	/* the right hand side */
+		  (*value)->next = value_next;
+		  value = &(*value)->next;
 		}
+	    }
 
-	      (*attr) = result->next;	/* the name */
-	      result->next = NULL;
-	      (*value) = result;	/* the right hand side */
-
-	      (*attr)->next = attr_next;
-	      (*value)->next = value_next;
-
-	      attr = &(*attr)->next;
-	      value = &(*value)->next;
+	  if (attr_names != NULL)
+	    {
+	      parser_free_tree (parser, statement->info.insert.attr_list);
+	      statement->info.insert.attr_list = attr_names;
+	      attr_names = NULL;
 	    }
 	}
-      else if (statement->info.insert.is_value == PT_IS_SUBQUERY)
+      else if (crt_list->info.node_list.list_type == PT_IS_SUBQUERY)
 	{
-	  mq_invert_insert_subquery (parser, attr, *value);
+	  assert (crt_list->next == NULL);
+	  assert (crt_list->info.node_list.list->next == NULL);
+
+	  mq_invert_insert_subquery (parser,
+				     &statement->info.insert.attr_list,
+				     crt_list->info.node_list.list);
+	}
+      else
+	{
+	  assert (false);
 	}
       break;
 
@@ -6978,13 +7087,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 
     default:
       /* system error */
-      statement = NULL;
-      break;
-    }
-
-  if (!statement)
-    {
-      return NULL;
+      goto exit_on_error;
     }
 
   /* handle is a where parts of view sub-querys */
@@ -7079,14 +7182,14 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  else
 	    {
 	      PT_INTERNAL_ERROR (parser, "translate");
-	      statement = NULL;
+	      goto exit_on_error;
 	    }
 	}
       else
 	{
-	  /* we are doing a null substitution. ie the classes dont match
+	  /* we are doing a null substitution. ie the classes don't match
 	     the spec. The "correct translation" is NULL.  */
-	  statement = NULL;
+	  goto exit_on_error;
 	}
     }
 
@@ -7154,6 +7257,13 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
 
   return statement;
+
+exit_on_error:
+  if (attr_names != NULL)
+    {
+      parser_free_tree (parser, attr_names);
+    }
+  return NULL;
 }
 
 
@@ -8415,7 +8525,7 @@ mq_set_names_dbobject (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       node->info.name.db_object = info->object;
 
-      /* dont walk entity_name_list/flat_entity_spec
+      /* don't walk entity_name_list/flat_entity_spec
        * do walk list especially for method args list
        * for example: set a = func(x, y, z) <-- walk into y, z
        */
@@ -9254,6 +9364,12 @@ get_authorization_name (DB_AUTH auth)
 
     case DB_AUTH_EXECUTE:
       return "Execute";
+
+    case DB_AUTH_REPLACE:
+      return "Replace";
+
+    case DB_AUTH_INSERT_UPDATE:
+      return "Insert on duplicate key update";
 
     default:
       return "";

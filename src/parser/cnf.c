@@ -597,8 +597,8 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
 	  lhs_next = lhs->next;
 
 	  num_markers = 0;
-	  (void) parser_walk_leaves (parser, lhs, pt_count_input_markers,
-				     &num_markers, NULL, NULL);
+	  (void) parser_walk_tree (parser, lhs, pt_count_input_markers,
+				   &num_markers, NULL, NULL);
 	  if (num_markers > 0)
 	    {			/* found input marker, give up */
 	      lhs_prev = lhs;

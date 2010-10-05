@@ -103,7 +103,8 @@ static CSS_CONN_ENTRY *css_common_connect (const char *host_name,
 					   const char *server_name,
 					   int server_name_length,
 					   int port, int timeout,
-					   unsigned short *rid);
+					   unsigned short *rid,
+					   bool send_magic);
 static CSS_CONN_ENTRY *css_server_connect (char *host_name,
 					   CSS_CONN_ENTRY * conn,
 					   char *server_name,
@@ -120,6 +121,8 @@ static int css_return_queued_data (CSS_CONN_ENTRY * conn,
 static int css_return_queued_request (CSS_CONN_ENTRY * conn,
 				      unsigned short *rid, int *request,
 				      int *buffer_size);
+
+static int css_send_magic (CSS_CONN_ENTRY * conn);
 
 /*
  * css_shutdown_conn () -
@@ -774,7 +777,7 @@ static CSS_CONN_ENTRY *
 css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn,
 		    int connect_type, const char *server_name,
 		    int server_name_length, int port, int timeout,
-		    unsigned short *rid)
+		    unsigned short *rid, bool send_magic)
 {
   SOCKET fd;
 
@@ -790,6 +793,12 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn,
   if (!IS_INVALID_SOCKET (fd))
     {
       conn->fd = fd;
+
+      if (send_magic == true && css_send_magic (conn) != NO_ERRORS)
+	{
+	  return NULL;
+	}
+
       if (css_send_request (conn, connect_type, rid, server_name,
 			    server_name_length) == NO_ERRORS)
 	{
@@ -831,7 +840,7 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name,
   /* timeout in second in css_common_connect() */
   return (css_common_connect (host_name, conn, DATA_REQUEST, server_name,
 			      length, css_Service_id,
-			      PRM_TCP_CONNECTION_TIMEOUT, rid));
+			      PRM_TCP_CONNECTION_TIMEOUT, rid, true));
 }
 
 /* New style server connection function that uses an explicit port id */
@@ -861,7 +870,8 @@ css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn,
    */
   /* timeout in second in css_common_connect() */
   if (css_common_connect (host_name, conn, DATA_REQUEST, NULL, 0,
-			  port_id, PRM_TCP_CONNECTION_TIMEOUT, rid) != NULL)
+			  port_id, PRM_TCP_CONNECTION_TIMEOUT, rid,
+			  false) != NULL)
     {
       /* now ask for a reply from the server */
       css_queue_user_data_buffer (conn, *rid, sizeof (int), (char *) &reason);
@@ -930,7 +940,8 @@ css_connect_to_master_server (int master_port_id,
 			     ? SERVER_REQUEST_NEW : SERVER_REQUEST);
 
       if (css_common_connect (hname, conn, connection_protocol, server_name,
-			      name_length, master_port_id, 0, &rid) == NULL)
+			      name_length, master_port_id, 0, &rid,
+			      true) == NULL)
 	{
 	  css_free_conn (conn);
 	  return NULL;
@@ -1172,7 +1183,7 @@ css_connect_to_master_for_info (const char *host_name, int port_id,
     }
 
   return (css_common_connect (host_name, conn, INFO_REQUEST, NULL, 0,
-			      port_id, 0, rid));
+			      port_id, 0, rid, true));
 }
 
 /*
@@ -1395,7 +1406,7 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id,
       css_queue_remove_header_entry_ptr (&conn->error_queue, error_q_entry_p);
 
       /*
-       * Propogate ER_LK_UNILATERALLY_ABORTED error
+       * Propagate ER_LK_UNILATERALLY_ABORTED error
        * when it is set during method call.
        */
       if (*rc == ER_LK_UNILATERALLY_ABORTED)
@@ -1486,4 +1497,77 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
   css_queue_remove_header (&conn->data_queue);
   css_queue_remove_header (&conn->abort_queue);
   css_queue_remove_header (&conn->error_queue);
+}
+
+/*
+ * css_send_magic () - send magic 
+ *                    
+ *   return: void
+ *   conn(in/out):
+ */
+int
+css_send_magic (CSS_CONN_ENTRY * conn)
+{
+  NET_HEADER header;
+
+  memset ((char *) &header, 0, sizeof (NET_HEADER));
+  memcpy ((char *) &header, css_Net_magic, sizeof (css_Net_magic));
+
+  return (css_net_send
+	  (conn, (const char *) &header,
+	   sizeof (NET_HEADER), PRM_TCP_CONNECTION_TIMEOUT * 1000));
+}
+
+/*
+ * css_check_magic () - check magic
+ *                    
+ *   return: void
+ *   conn(in/out):
+ */
+int
+css_check_magic (CSS_CONN_ENTRY * conn)
+{
+  unsigned int i;
+  int nbytes, templen, left;
+  NET_HEADER header;
+  char *p;
+
+  p = (char *) &header;
+
+  if (css_readn
+      (conn->fd, (char *) &templen, sizeof (int),
+       PRM_TCP_CONNECTION_TIMEOUT * 1000) != sizeof (int))
+    {
+      return ERROR_WHEN_READING_SIZE;
+    }
+
+  templen = htonl (templen);
+  if (templen != sizeof (NET_HEADER))
+    {
+      return WRONG_PACKET_TYPE;
+    }
+
+  for (i = 0; i < sizeof (css_Net_magic); i++)
+    {
+      if (css_readn (conn->fd, (char *) p,
+		     sizeof (char),
+		     PRM_TCP_CONNECTION_TIMEOUT * 1000) != sizeof (char))
+	{
+	  return ERROR_ON_READ;
+	}
+
+      if (*(p++) != css_Net_magic[i])
+	{
+	  return WRONG_PACKET_TYPE;
+	}
+    }
+
+  left = sizeof (NET_HEADER) - sizeof (css_Net_magic);
+  if (css_readn (conn->fd, (char *) p,
+		 left, PRM_TCP_CONNECTION_TIMEOUT * 1000) != left)
+    {
+      return ERROR_ON_READ;
+    }
+
+  return NO_ERRORS;
 }

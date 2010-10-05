@@ -17,9 +17,9 @@
 	</ToolFiles>
 	<Configurations>
 		<Configuration
-			Name="Debug|Win32"
-			OutputDirectory="Debug"
-			IntermediateDirectory="Debug"
+			Name="Debug_5.2|Win32"
+			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
+			IntermediateDirectory="$(ConfigurationName)"
 			ConfigurationType="2"
 			CharacterSet="2"
 			>
@@ -41,19 +41,13 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="C:\source\php-5.2.6.tar\php-5.2.6\main;C:\source\php-5.2.6.tar\php-5.2.6\Zend;C:\source\php-5.2.6.tar\php-5.2.6;C:\source\php-5.2.6.tar\php-5.2.6\TSRM;$(CUBRID)\include"
-				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;_DEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;ZTS;COMPILE_DL_CUBRID=1;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
-				MinimalRebuild="true"
+				AdditionalIncludeDirectories="&quot;c:\source\php-5.2.9&quot;;&quot;c:\source\php-5.2.9\main&quot;;&quot;c:\source\php-5.2.9\TSRM&quot;;&quot;c:\source\php-5.2.9\Zend&quot;;&quot;$(CUBRID)\include&quot;"
+				PreprocessorDefinitions="_DEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;ZTS;COMPILE_DL_CUBRID=1;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
-				UsePrecompiledHeader="0"
-				AssemblerListingLocation=".\Debug/"
-				ObjectFile=".\Debug/"
-				ProgramDataBaseFileName=".\Debug/"
 				WarningLevel="3"
-				Detect64BitPortabilityProblems="false"
 				DebugInformationFormat="4"
-				CompileAs="1"
+				DisableSpecificWarnings="4100;"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -66,13 +60,9 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5ts.lib wsock32.lib"
-				LinkIncremental="2"
-				AdditionalLibraryDirectories="&quot;C:\WebService\php-5.2.6-Win32\dev&quot;;&quot;$(CUBRID)\lib&quot;"
+				AdditionalDependencies="cascci.lib php5ts.lib"
+				AdditionalLibraryDirectories="c:\xampp\php\dev;&quot;$(CUBRID)\lib&quot;"
 				GenerateDebugInformation="true"
-				SubSystem="0"
-				RandomizedBaseAddress="1"
-				DataExecutionPrevention="0"
 				TargetMachine="1"
 			/>
 			<Tool
@@ -98,9 +88,9 @@
 			/>
 		</Configuration>
 		<Configuration
-			Name="Release|Win32"
-			OutputDirectory="Release"
-			IntermediateDirectory="Release"
+			Name="Debug_5.3|Win32"
+			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
+			IntermediateDirectory="$(ConfigurationName)"
 			ConfigurationType="2"
 			CharacterSet="2"
 			>
@@ -121,18 +111,14 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				InlineFunctionExpansion="1"
-				AdditionalIncludeDirectories="C:\source\php-5.2.6.tar\php-5.2.6\main;C:\source\php-5.2.6.tar\php-5.2.6\Zend;C:\source\php-5.2.6.tar\php-5.2.6;C:\source\php-5.2.6.tar\php-5.2.6\TSRM;$(CUBRID)\include"
-				PreprocessorDefinitions="NDEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;ZTS;COMPILE_DL_CUBRID=1;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
-				StringPooling="true"
-				RuntimeLibrary="0"
-				EnableFunctionLevelLinking="true"
-				UsePrecompiledHeader="0"
-				PrecompiledHeaderFile="Release\php_cubrid.pch"
-				AssemblerListingLocation="$(IntDir)\"
+				Optimization="0"
+				AdditionalIncludeDirectories="&quot;c:\source\php-5.3.1&quot;;&quot;c:\source\php-5.3.1\main&quot;;&quot;c:\source\php-5.3.1\TSRM&quot;;&quot;c:\source\php-5.3.1\Zend&quot;;&quot;$(CUBRID)\include&quot;"
+				PreprocessorDefinitions="_DEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;ZTS;COMPILE_DL_CUBRID=1;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
+				BasicRuntimeChecks="3"
+				RuntimeLibrary="1"
 				WarningLevel="3"
-				Detect64BitPortabilityProblems="false"
-				DebugInformationFormat="0"
+				DebugInformationFormat="4"
+				DisableSpecificWarnings="4100;"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -145,16 +131,153 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="odbc32.lib odbccp32.lib cascci.lib php5ts.lib wsock32.lib"
+				AdditionalDependencies="cascci.lib php5ts.lib"
+				AdditionalLibraryDirectories="c:\xampp\php\dev\lib;&quot;$(CUBRID)\lib&quot;"
+				GenerateDebugInformation="true"
+				TargetMachine="1"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Release_5.2|Win32"
+			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
+			IntermediateDirectory="$(ConfigurationName)"
+			ConfigurationType="2"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				AdditionalIncludeDirectories="&quot;c:\source\php-5.2.9&quot;;&quot;c:\source\php-5.2.9\main&quot;;&quot;c:\source\php-5.2.9\TSRM&quot;;&quot;c:\source\php-5.2.9\Zend&quot;;&quot;$(CUBRID)\include&quot;"
+				PreprocessorDefinitions="NDEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;ZTS;COMPILE_DL_CUBRID=1;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
+				StringPooling="true"
+				RuntimeLibrary="0"
+				EnableFunctionLevelLinking="true"
+				WarningLevel="4"
+				DebugInformationFormat="3"
+				DisableSpecificWarnings="4100;"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalDependencies="cascci.lib php5ts.lib"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="&quot;C:\WebService\php-5.2.6-Win32\dev&quot;;&quot;$(CUBRID)\lib&quot;"
-				GenerateDebugInformation="false"
-				ProgramDatabaseFile="Release/php_cubrid.pdb"
-				SubSystem="2"
-				OptimizeReferences="0"
-				EnableCOMDATFolding="0"
-				RandomizedBaseAddress="1"
-				DataExecutionPrevention="0"
+				AdditionalLibraryDirectories="c:\xampp\php\dev;&quot;$(CUBRID)\lib&quot;"
+				GenerateDebugInformation="true"
+				TargetMachine="1"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Release_5.3|Win32"
+			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
+			IntermediateDirectory="$(ConfigurationName)"
+			ConfigurationType="2"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				AdditionalIncludeDirectories="&quot;c:\source\php-5.3.1&quot;;&quot;c:\source\php-5.3.1\main&quot;;&quot;c:\source\php-5.3.1\TSRM&quot;;&quot;c:\source\php-5.3.1\Zend&quot;;&quot;$(CUBRID)\include&quot;"
+				PreprocessorDefinitions="NDEBUG;WIN32;_WINDOWS;_USRDLL;PHP_CUBRID_EXPORTS;PHP_WIN32;ZEND_WIN32;ZTS;COMPILE_DL_CUBRID=1;ZEND_DEBUG=0;_USE_32BIT_TIME_T"
+				StringPooling="true"
+				RuntimeLibrary="0"
+				EnableFunctionLevelLinking="true"
+				WarningLevel="4"
+				DebugInformationFormat="3"
+				DisableSpecificWarnings="4100;"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalDependencies="cascci.lib php5ts.lib"
+				LinkIncremental="1"
+				AdditionalLibraryDirectories="c:\xampp\php\dev\lib;&quot;$(CUBRID)\lib&quot;"
+				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
 			<Tool
@@ -197,10 +320,6 @@
 				>
 			</File>
 			<File
-				RelativePath="..\src\php_cubrid_error.h"
-				>
-			</File>
-			<File
 				RelativePath="..\src\php_cubrid_version.h"
 				>
 			</File>
@@ -218,10 +337,6 @@
 			>
 			<File
 				RelativePath="..\src\php_cubrid.c"
-				>
-			</File>
-			<File
-				RelativePath="..\src\php_cubrid_error.c"
 				>
 			</File>
 		</Filter>

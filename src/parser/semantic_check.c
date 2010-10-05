@@ -51,7 +51,7 @@ typedef enum
 typedef enum
 { PT_UNION_COMP = 1, PT_UNION_INCOMP = 0,
   PT_UNION_INCOMP_CANNOT_FIX = -1, PT_UNION_ERROR = -2
-} PT_UNION_COMPATABLE;
+} PT_UNION_COMPATIBLE;
 
 typedef struct seman_compatible_info
 {
@@ -106,8 +106,8 @@ static int pt_class_compatible (PARSER_CONTEXT * parser,
 				const PT_NODE * class1,
 				const PT_NODE * class2,
 				bool view_definition_context);
-static int pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att,
-				 const PT_NODE * qcol);
+static bool pt_vclass_compatible (PARSER_CONTEXT * parser,
+				  const PT_NODE * att, const PT_NODE * qcol);
 static int pt_type_assignable (PARSER_CONTEXT * parser,
 			       const PT_NODE * d_type,
 			       const PT_NODE * s_type);
@@ -115,10 +115,12 @@ static int pt_collection_compatible (PARSER_CONTEXT * parser,
 				     const PT_NODE * col1,
 				     const PT_NODE * col2,
 				     bool view_definition_context);
-static int pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1,
-				PT_NODE * item2, bool view_definition_context,
-				bool * is_object_type,
-				bool has_nested_union_node);
+static PT_UNION_COMPATIBLE pt_union_compatible (PARSER_CONTEXT * parser,
+						PT_NODE * item1,
+						PT_NODE * item2,
+						bool view_definition_context,
+						bool * is_object_type,
+						bool has_nested_union_node);
 static PT_NODE *pt_to_compatible_cast (PARSER_CONTEXT * parser,
 				       PT_NODE * node,
 				       SEMAN_COMPATIBLE_INFO * cinfo,
@@ -128,8 +130,6 @@ static PT_NODE *pt_get_common_type_for_union (PARSER_CONTEXT * parser,
 					      PT_NODE * att1, PT_NODE * att2,
 					      SEMAN_COMPATIBLE_INFO * cinfo,
 					      int idx, bool * need_cast);
-static PT_NODE *pt_make_string_value (PARSER_CONTEXT * parser,
-				      const char *value_string);
 static PT_NODE *pt_append_statements_on_add_attribute
   (PARSER_CONTEXT * parser, PT_NODE * statement_list,
    PT_NODE * stmt_node, const char *class_name, const char *attr_name,
@@ -211,12 +211,13 @@ static bool pt_attr_refers_to_self (PARSER_CONTEXT * parser, PT_NODE * attr,
 				    const char *self);
 static bool pt_is_compatible_type (const PT_TYPE_ENUM arg1_type,
 				   const PT_TYPE_ENUM arg2_type);
-static int pt_check_vclass_attr_qspec_compatible (PARSER_CONTEXT * parser,
-						  PT_NODE * attr,
-						  PT_NODE * col);
+static PT_UNION_COMPATIBLE
+pt_check_vclass_attr_qspec_compatible (PARSER_CONTEXT * parser,
+				       PT_NODE * attr, PT_NODE * col);
 static PT_NODE *pt_check_vclass_query_spec (PARSER_CONTEXT * parser,
 					    PT_NODE * qry, PT_NODE * attrs,
-					    const char *self);
+					    const char *self,
+					    const bool do_semantic_check);
 static PT_NODE *pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser,
 						PT_NODE * qry,
 						PT_NODE * attrs);
@@ -226,6 +227,7 @@ static void pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser,
 					     PT_NODE * node, void *arg,
 					     int *continue_walk);
@@ -279,7 +281,9 @@ static int pt_collection_assignable (PARSER_CONTEXT * parser,
 				     const PT_NODE * s_col);
 static int pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 				     PT_NODE * rhs);
-
+static int pt_check_defaultf (PARSER_CONTEXT * parser, const PT_NODE * node);
+static PT_NODE *pt_check_vclass_union_spec (PARSER_CONTEXT * parser,
+					    PT_NODE * qry, PT_NODE * attrds);
 
 /*
  * pt_check_cast_op () - Checks to see if the cast operator is well-formed
@@ -537,7 +541,9 @@ pt_check_user_exists (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
   if (!cls_ref
       || cls_ref->node_type != PT_NAME
       || (usr = cls_ref->info.name.resolved) == NULL || usr[0] == '\0')
-    return NULL;
+    {
+      return NULL;
+    }
 
   result = db_find_user (usr);
   if (!result)
@@ -563,7 +569,9 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
 
   if ((result = pt_check_user_exists (parser, cls_ref)) == NULL
       || (cls = cls_ref->info.name.db_object) == NULL)
-    return NULL;
+    {
+      return NULL;
+    }
 
   owner = db_get_owner (cls);
   result = (owner == result ? result : NULL);
@@ -573,11 +581,13 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
 		   MSGCAT_SEMANTIC_USER_DOESNT_OWN_CLS,
 		   cls_ref->info.name.resolved, cls_ref->info.name.original);
     }
+
   return result;
 }
 
 /*
- * pt_derive_attribute () - derive a new ATTR_DEF node from a query_spec column
+ * pt_derive_attribute () - derive a new ATTR_DEF node from a query_spec
+ *                          column
  *   return:  a new ATTR_DEF node derived from c if all OK, NULL otherwise.
  *   parser(in): the parser context to use for creating the ATTR_DEF node
  *   c(in): a query_spec column
@@ -585,40 +595,43 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
 static PT_NODE *
 pt_derive_attribute (PARSER_CONTEXT * parser, PT_NODE * c)
 {
-  PT_NODE *attr, *cname;
+  PT_NODE *attr = NULL;
+  PT_NODE *cname = NULL;
 
   assert (parser != NULL);
 
-  if (!c || !(attr = parser_new_node (parser, PT_ATTR_DEF)))
+  if (c == NULL)
     {
       return NULL;
     }
 
-  if (c->alias_print)
+  if (c->alias_print != NULL)
     {
       cname = pt_name (parser, c->alias_print);
     }
-  else
+  else if (c->node_type == PT_NAME)
     {
-      if (c->node_type != PT_NAME)
-	{
-	  return NULL;
-	}
-      cname = parser_copy_tree (parser, c);
+      cname = pt_name (parser, c->info.name.original);
     }
-
-  if (!cname)
+  else
     {
       return NULL;
     }
 
-  attr->info.attr_def.attr_type = PT_NORMAL;
-  attr->info.attr_def.attr_name = cname;
-  attr->type_enum = c->type_enum;
-  if (c->data_type)
+  if (cname == NULL)
     {
-      attr->data_type = parser_copy_tree_list (parser, c->data_type);
+      return NULL;
     }
+
+  attr = parser_new_node (parser, PT_ATTR_DEF);
+  if (attr == NULL)
+    {
+      return NULL;
+    }
+
+  attr->data_type = NULL;
+  attr->info.attr_def.attr_name = cname;
+  attr->info.attr_def.attr_type = PT_NORMAL;
 
   return attr;
 }
@@ -629,6 +642,9 @@ pt_derive_attribute (PARSER_CONTEXT * parser, PT_NODE * c)
  *   return:  c's attribute list if successful, NULL otherwise.
  *   parser(in): the parser context to use for creating the list
  *   c(in): a {class|vclass|view} object
+ */
+/* TODO modify the function so that we can distinguish between a class having
+ *      no attributes and an execution error.
  */
 static PT_NODE *
 pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
@@ -642,7 +658,9 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
   assert (parser != NULL);
 
   if (!c || !(class_name = db_get_class_name ((DB_OBJECT *) c)))
-    return list;
+    {
+      return list;
+    }
 
   attributes = db_get_attributes ((DB_OBJECT *) c);
   while (attributes)
@@ -683,6 +701,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
 		}
 	    }
 	  break;
+
 	case PT_TYPE_SET:
 	case PT_TYPE_SEQUENCE:
 	case PT_TYPE_MULTISET:
@@ -700,6 +719,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
 	    }
 	  i_attr->data_type = types;
 	  break;
+
 	default:
 	  dom = attributes->domain;
 	  typ = pt_domain_to_data_type (parser, dom);
@@ -707,11 +727,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
 	  break;
 	}
 
-      /* append it to the list of attributes */
-      if (list)
-	parser_append_node (i_attr, list);
-      else
-	list = i_attr;
+      list = parser_append_node (i_attr, list);
 
       /* advance to next attribute */
       attributes = db_attribute_next (attributes);
@@ -728,13 +744,19 @@ static PT_MISC_TYPE
 pt_get_class_type (PARSER_CONTEXT * parser, const DB_OBJECT * cls)
 {
   if (!cls)
-    return PT_MISC_DUMMY;
+    {
+      return PT_MISC_DUMMY;
+    }
 
   if (db_is_vclass ((DB_OBJECT *) cls))
-    return PT_VCLASS;
+    {
+      return PT_VCLASS;
+    }
 
   if (db_is_class ((DB_OBJECT *) cls))
-    return PT_CLASS;
+    {
+      return PT_CLASS;
+    }
 
   return PT_MISC_DUMMY;
 }
@@ -755,197 +777,216 @@ pt_number_of_attributes (PARSER_CONTEXT * parser, PT_NODE * stmt,
 			 PT_NODE ** attrs)
 {
   int count = 0;
-  PT_NODE *parent, *parent_attrs, *inherited_attrs, *attr, *t_attr = NULL,
-    *new_name, *resolv_class, *resolv_attr, *r, *i_attr, *name, *next_node;
+  PT_NODE *crt_attr = NULL;
+  PT_NODE *crt_parent = NULL;
+  PT_NODE *t_attr = NULL;
+  PT_NODE *inherited_attrs = NULL;
+  PT_NODE *r = NULL;
+  PT_NODE *i_attr = NULL;
+  PT_NODE *next_node = NULL;
 
-  if (!stmt)
-    return count;
-
-  switch (stmt->node_type)
+  if (stmt == NULL || attrs == NULL)
     {
-    default:
-      break;
-
-    case PT_CREATE_ENTITY:
-      count = pt_length_of_list
-	((*attrs = stmt->info.create_entity.attr_def_list));
-
-      /* exclude class_attributes from count and from the attrs list */
-      for (attr = *attrs; attr; attr = attr->next)
-	{
-	  if (attr->info.attr_def.attr_type == PT_META_ATTR)
-	    count--;
-	}
-
-      /* collect into one list all inherited attributes from all parents */
-      inherited_attrs = NULL;
-      for (parent = stmt->info.create_entity.supclass_list;
-	   parent != NULL; parent = parent->next)
-	{
-	  /* get this parent's attributes & append them to the list */
-	  parent_attrs = pt_get_attributes (parser,
-					    parent->info.name.db_object);
-	  if (inherited_attrs)
-	    parser_append_node (parent_attrs, inherited_attrs);
-	  else
-	    inherited_attrs = parent_attrs;
-	}
-
-      /*Rule 2:  If two or more superclasses have attributes with the same
-         name and domain but different origins, the class may inherit one or
-         more of the attributes, but the user needs to specify inheritance.
-         Implementation:  scan through the inheritance list and do any
-         attribute renaming specified by the user.
-       */
-      for (r = stmt->info.create_entity.resolution_list; r; r = r->next)
-	{
-	  if (!(new_name = r->info.resolution.as_attr_mthd_name))
-	    continue;
-
-	  resolv_class = r->info.resolution.of_sup_class_name;
-	  resolv_attr = r->info.resolution.attr_mthd_name;
-
-	  for (i_attr = inherited_attrs;
-	       i_attr; t_attr = i_attr, i_attr = i_attr->next)
-	    {
-	      name = i_attr->info.attr_def.attr_name;
-	      if (!pt_streq (resolv_attr->info.name.original,
-			     name->info.name.original)
-		  && !pt_streq (resolv_class->info.name.original,
-				name->info.name.resolved))
-		{
-		  name->info.name.original = new_name->info.name.original;
-		}
-	    }
-	}
-
-      /* Rule 2 implementation continued:
-         remove from inherited_attrs all inherited attributes
-         that conflict with any user-specified inheritance.
-       */
-      for (r = stmt->info.create_entity.resolution_list; r; r = r->next)
-	{
-	  if (r->info.resolution.as_attr_mthd_name == NULL)
-	    {
-	      /* user wants class to inherit this attribute without renaming */
-	      resolv_class = r->info.resolution.of_sup_class_name;
-	      resolv_attr = r->info.resolution.attr_mthd_name;
-
-	      for (i_attr = inherited_attrs; i_attr; i_attr = i_attr->next)
-		{
-		  name = i_attr->info.attr_def.attr_name;
-		  if (pt_streq (resolv_attr->info.name.original,
-				name->info.name.original))
-		    {
-		      t_attr = i_attr;	/* i_attr is a keeper.
-					   so, advance t_attr. */
-		    }
-		  else
-		    {
-		      if (!pt_streq (resolv_class->info.name.original,
-				     name->info.name.resolved))
-			{
-			  t_attr = i_attr;	/* i_attr is a keeper.
-						   keep the user-specified
-						   inherited attribute */
-			  continue;
-			}
-
-		      /* delete inherited attribute that
-		         conflicts with resolv_attr */
-		      if (i_attr == inherited_attrs)
-			inherited_attrs = i_attr->next;
-		      else
-			t_attr->next = i_attr->next;
-
-		      /* i_attr is a goner. do NOT advance t_attr! */
-		    }
-		}
-	    }
-	}
-
-      /*
-         At this point, the conflicting attributes that the user wants us
-         to keep have been safely preserved and renamed in inherited_attrs.
-         It is now safe to start weeding out remaining attribute conflicts.
-       */
-
-      /*
-         Rule 1:  If the name of an attribute in a class C conflicts (i.e.,
-         is the same as) with that of an attribute in a superclass S, the
-         name in class C is used; that is, the attribute is not inherited.
-         Implementation:  remove from inherited_attrs each attribute whose
-         name matches some non-inherited attribute name.
-       */
-      for (attr = stmt->info.create_entity.attr_def_list;
-	   attr; attr = attr->next)
-	{
-	  for (i_attr = inherited_attrs; i_attr; i_attr = i_attr->next)
-	    {
-	      if (pt_streq
-		  (attr->info.attr_def.attr_name->info.name.original,
-		   i_attr->info.attr_def.attr_name->info.name.original))
-		{
-		  t_attr = i_attr;	/* i_attr is a keeper. */
-		}
-	      else
-		{
-		  /* delete it from inherited_attrs */
-		  if (i_attr == inherited_attrs)
-		    inherited_attrs = i_attr->next;
-		  else
-		    t_attr->next = i_attr->next;
-
-		  /* i_attr is a goner. do NOT advance t_attr! */
-		}
-	    }
-	}
-
-      /*
-         Rule 2 continued:  If the user does not specify the attributes (to be
-         inherited), the system will pick one arbitrarily, and notify the user.
-         Jeff probably knows how to 'pick one arbitrarily', but until we learn
-         how, the following will do for TPR.  We lump together Rules 2 & 3 and
-         implement them as:  given a group of attributes with the same name,
-         keep the first and toss the rest.
-       */
-      for (i_attr = inherited_attrs, next_node =
-	   i_attr ? i_attr->next : NULL; i_attr != NULL;
-	   i_attr = next_node, next_node = i_attr ? i_attr->next : NULL)
-	{
-	  for (r = i_attr->next; r != NULL; r = r->next)
-	    {
-	      if (pt_streq
-		  (i_attr->info.attr_def.attr_name->info.name.original,
-		   r->info.attr_def.attr_name->info.name.original))
-		{
-		  t_attr = r;	/* r is a keeper. so, advance t_attr. */
-		}
-	      else
-		{
-		  if (r == i_attr->next)
-		    i_attr->next = r->next;
-		  else
-		    t_attr->next = r->next;
-		  /* r is a goner. do NOT advance t_attr! */
-		}
-	    }
-	}
-
-      /* append non-inherited attributes to the inherited attributes */
-      if (inherited_attrs)
-	{
-	  count += pt_length_of_list (inherited_attrs);	/* update attr count */
-	  for (i_attr = inherited_attrs;
-	       i_attr; t_attr = i_attr, i_attr = i_attr->next)
-	    {
-	      ;
-	    }
-	  t_attr->next = *attrs;
-	  *attrs = inherited_attrs;
-	}
-      break;
+      return count;
     }
+
+  if (stmt->node_type != PT_CREATE_ENTITY)
+    {
+      assert (false);
+      return count;
+    }
+
+  *attrs = stmt->info.create_entity.attr_def_list;
+  count = pt_length_of_list (*attrs);
+
+  /* Exclude class_attributes from count but keep them in the attrs list. */
+  for (crt_attr = *attrs; crt_attr != NULL; crt_attr = crt_attr->next)
+    {
+      if (crt_attr->info.attr_def.attr_type == PT_META_ATTR)
+	{
+	  count--;
+	}
+    }
+
+  /* collect into one list all inherited attributes from all parents */
+  inherited_attrs = NULL;
+  for (crt_parent = stmt->info.create_entity.supclass_list;
+       crt_parent != NULL; crt_parent = crt_parent->next)
+    {
+      /* get this parent's attributes & append them to the list */
+      PT_NODE *const parent_attrs =
+	pt_get_attributes (parser, crt_parent->info.name.db_object);
+
+      inherited_attrs = parser_append_node (parent_attrs, inherited_attrs);
+    }
+
+  /*Rule 2:  If two or more superclasses have attributes with the same
+     name and domain but different origins, the class may inherit one or
+     more of the attributes, but the user needs to specify inheritance.
+     Implementation:  scan through the inheritance list and do any
+     attribute renaming specified by the user.
+   */
+  for (r = stmt->info.create_entity.resolution_list; r != NULL; r = r->next)
+    {
+      PT_NODE *const new_name = r->info.resolution.as_attr_mthd_name;
+      PT_NODE *const resolv_class = r->info.resolution.of_sup_class_name;
+      PT_NODE *const resolv_attr = r->info.resolution.attr_mthd_name;
+
+      if (new_name == NULL)
+	{
+	  continue;
+	}
+
+      for (i_attr = inherited_attrs; i_attr != NULL;
+	   t_attr = i_attr, i_attr = i_attr->next)
+	{
+	  PT_NODE *const name = i_attr->info.attr_def.attr_name;
+
+	  if (pt_streq
+	      (resolv_attr->info.name.original, name->info.name.original) == 0
+	      && pt_streq (resolv_class->info.name.original,
+			   name->info.name.resolved) == 0)
+	    {
+	      name->info.name.original = new_name->info.name.original;
+	    }
+	}
+    }
+
+  /* Rule 2 implementation continued:
+     remove from inherited_attrs all inherited attributes
+     that conflict with any user-specified inheritance.
+   */
+  for (r = stmt->info.create_entity.resolution_list; r != NULL; r = r->next)
+    {
+      PT_NODE *const resolv_class = r->info.resolution.of_sup_class_name;
+      PT_NODE *const resolv_attr = r->info.resolution.attr_mthd_name;
+
+      if (r->info.resolution.as_attr_mthd_name != NULL)
+	{
+	  continue;
+	}
+
+      /* user wants class to inherit this attribute without renaming */
+      for (i_attr = inherited_attrs; i_attr != NULL; i_attr = i_attr->next)
+	{
+	  PT_NODE *const name = i_attr->info.attr_def.attr_name;
+
+	  if (pt_streq
+	      (resolv_attr->info.name.original,
+	       name->info.name.original) != 0)
+	    {
+	      /* i_attr is a keeper so advance t_attr. */
+	      t_attr = i_attr;
+	    }
+	  else
+	    {
+	      if (pt_streq (resolv_class->info.name.original,
+			    name->info.name.resolved) == 0)
+		{
+		  /* i_attr is a keeper. keep the user-specified inherited
+		     attribute
+		   */
+		  t_attr = i_attr;
+		  continue;
+		}
+	      /* delete inherited attribute that conflicts with resolv_attr */
+	      if (i_attr == inherited_attrs)
+		{
+		  inherited_attrs = i_attr->next;
+		}
+	      else
+		{
+		  t_attr->next = i_attr->next;
+		}
+	      /* i_attr is a goner. do NOT advance t_attr! */
+	    }
+	}
+    }
+
+  /*
+     At this point, the conflicting attributes that the user wants us
+     to keep have been safely preserved and renamed in inherited_attrs.
+     It is now safe to start weeding out remaining attribute conflicts.
+   */
+
+  /*
+     Rule 1:  If the name of an attribute in a class C conflicts (i.e.,
+     is the same as) with that of an attribute in a superclass S, the
+     name in class C is used; that is, the attribute is not inherited.
+     Implementation:  remove from inherited_attrs each attribute whose
+     name matches some non-inherited attribute name.
+   */
+  for (crt_attr = stmt->info.create_entity.attr_def_list; crt_attr != NULL;
+       crt_attr = crt_attr->next)
+    {
+      for (i_attr = inherited_attrs; i_attr; i_attr = i_attr->next)
+	{
+	  if (pt_streq
+	      (crt_attr->info.attr_def.attr_name->info.name.original,
+	       i_attr->info.attr_def.attr_name->info.name.original) != 0)
+	    {
+	      /* i_attr is a keeper. */
+	      t_attr = i_attr;
+	    }
+	  else
+	    {
+	      /* delete it from inherited_attrs */
+	      if (i_attr == inherited_attrs)
+		{
+		  inherited_attrs = i_attr->next;
+		}
+	      else
+		{
+		  t_attr->next = i_attr->next;
+		}
+	      /* i_attr is a goner. do NOT advance t_attr! */
+	    }
+	}
+    }
+
+  /*
+     Rule 2 continued:  If the user does not specify the attributes (to be
+     inherited), the system will pick one arbitrarily, and notify the user.
+     Jeff probably knows how to 'pick one arbitrarily', but until we learn
+     how, the following will do for TPR.  We lump together Rules 2 & 3 and
+     implement them as:  given a group of attributes with the same name,
+     keep the first and toss the rest.
+   */
+  for (i_attr = inherited_attrs, next_node = i_attr ? i_attr->next : NULL;
+       i_attr != NULL;
+       i_attr = next_node, next_node = i_attr ? i_attr->next : NULL)
+    {
+      for (r = i_attr->next; r != NULL; r = r->next)
+	{
+	  if (pt_streq
+	      (i_attr->info.attr_def.attr_name->info.name.original,
+	       r->info.attr_def.attr_name->info.name.original) != 0)
+	    {
+	      /* r is a keeper so advance t_attr. */
+	      t_attr = r;
+	    }
+	  else
+	    {
+	      if (r == i_attr->next)
+		{
+		  i_attr->next = r->next;
+		}
+	      else
+		{
+		  t_attr->next = r->next;
+		}
+	      /* r is a goner. do NOT advance t_attr! */
+	    }
+	}
+    }
+
+  /* Append the non-inherited attributes to the inherited attributes. */
+  if (inherited_attrs != NULL)
+    {
+      count += pt_length_of_list (inherited_attrs);
+      *attrs = parser_append_node (*attrs, inherited_attrs);
+    }
+
   return count;
 }
 
@@ -964,7 +1005,9 @@ pt_is_real_class_of_vclass (PARSER_CONTEXT * parser,
   if (!d_class
       || d_class->node_type != PT_DATA_TYPE
       || !s_class || s_class->node_type != PT_DATA_TYPE)
-    return 0;
+    {
+      return 0;
+    }
 
   return mq_is_real_class_of_vclass (parser,
 				     s_class->info.data_type.entity,
@@ -985,7 +1028,9 @@ pt_objects_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_class_dt,
   PT_NODE *s_class_type, *d_class_dt_type = NULL;
 
   if (!s_class || s_class->type_enum != PT_TYPE_OBJECT)
-    return 0;
+    {
+      return 0;
+    }
 
   if (!d_class_dt
       || (d_class_dt->node_type == PT_DATA_TYPE
@@ -1049,15 +1094,21 @@ pt_class_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_class_dt,
 
   /* weed out structural errors as failures */
   if (!s_class || (d_class_dt && d_class_dt->node_type != PT_DATA_TYPE))
-    return 0;
+    {
+      return 0;
+    }
 
   /* NULL is assignable to any class type */
   if (s_class->type_enum == PT_TYPE_NA || s_class->type_enum == PT_TYPE_NULL)
-    return 1;
+    {
+      return 1;
+    }
 
   /* make sure we are dealing only with object types */
   if (s_class->type_enum != PT_TYPE_OBJECT)
-    return 0;
+    {
+      return 0;
+    }
 
   return pt_objects_assignable (parser, d_class_dt, s_class) ||
     pt_is_real_class_of_vclass (parser, s_class->data_type, d_class_dt) ||
@@ -1078,7 +1129,9 @@ pt_class_compatible (PARSER_CONTEXT * parser, const PT_NODE * class1,
 {
   if (!class1 || class1->type_enum != PT_TYPE_OBJECT ||
       !class2 || class2->type_enum != PT_TYPE_OBJECT)
-    return 0;
+    {
+      return 0;
+    }
 
   if (view_definition_context)
     {
@@ -1093,12 +1146,12 @@ pt_class_compatible (PARSER_CONTEXT * parser, const PT_NODE * class1,
 
 /*
  * pt_vclass_compatible () - determine if att is vclass compatible with qcol
- *   return:  1 if att is vclass compatible with qcol
+ *   return:  true if att is vclass compatible with qcol
  *   parser(in): the parser context
  *   att(in): PT_DATA_TYPE node of a vclass attribute def
  *   qcol(in): a query spec column
  */
-static int
+static bool
 pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att,
 		      const PT_NODE * qcol)
 {
@@ -1111,7 +1164,7 @@ pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att,
    * but is not vclass_compatible with any other object */
   if (!att || (att->node_type == PT_DATA_TYPE && !att->info.data_type.entity))
     {
-      return 0;
+      return false;
     }
 
   /* weed out structural errors as failures */
@@ -1122,7 +1175,7 @@ pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att,
       || ((vcls = entity->info.name.db_object) == NULL
 	  && (clsnam = entity->info.name.original) == NULL))
     {
-      return 0;
+      return false;
     }
 
   /* make sure we are dealing only with object types
@@ -1133,7 +1186,9 @@ pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att,
       || (qcol_entity = qcol_typ->info.data_type.entity) == NULL
       || qcol_entity->node_type != PT_NAME
       || (qcol_typnam = qcol_entity->info.name.original) == NULL)
-    return 0;
+    {
+      return false;
+    }
 
   /* make sure we have the vclass */
   if (!vcls)
@@ -1142,7 +1197,7 @@ pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att,
     }
   if (!vcls)
     {
-      return 0;
+      return false;
     }
 
   /* return true iff att is a vclass & qcol is in att's query_spec list */
@@ -1153,11 +1208,11 @@ pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att,
       qs_clsnam = pt_get_proxy_spec_name (spec);
       if (qs_clsnam && intl_mbs_casecmp (qs_clsnam, qcol_typnam) == 0)
 	{
-	  return 1;		/* att is vclass_compatible with qcol */
+	  return true;		/* att is vclass_compatible with qcol */
 	}
     }
 
-  return 0;			/* att is not vclass_compatible with qcol */
+  return false;			/* att is not vclass_compatible with qcol */
 }
 
 /*
@@ -1177,20 +1232,28 @@ pt_type_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_type,
   if (!d_type
       || (d_type->node_type == PT_DATA_TYPE
 	  && !d_type->info.data_type.entity))
-    return 1;
+    {
+      return 1;
+    }
 
   /* weed out structural errors as failures */
   if (!s_type || (d_type && d_type->node_type != PT_DATA_TYPE))
-    return 0;
+    {
+      return 0;
+    }
 
   /* make sure we are dealing only with object types */
   if (s_type->type_enum != PT_TYPE_OBJECT)
-    return 0;
+    {
+      return 0;
+    }
 
   dest_type = d_type->info.data_type.entity;
   src_type = s_type->info.data_type.entity;
   if (!dest_type || !src_type)
-    return 0;
+    {
+      return 0;
+    }
 
   /* If the destination isn't resolved, resolve it. */
   if (!dest_type->info.name.db_object)
@@ -1199,6 +1262,7 @@ pt_type_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_type,
 	db_find_class (dest_type->info.name.original);
       dest_type->info.name.meta_class = PT_CLASS;
     }
+
   return (src_type->info.name.db_object == dest_type->info.name.db_object ||
 	  db_is_subclass (src_type->info.name.db_object,
 			  dest_type->info.name.db_object) ||
@@ -1219,15 +1283,21 @@ pt_collection_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_col,
   int assignable = 1;		/* innocent until proven guilty */
 
   if (!d_col || !s_col || !PT_IS_COLLECTION_TYPE (d_col->type_enum))
-    return 0;
+    {
+      return 0;
+    }
 
   /* NULL is assignable to any class type */
   if (s_col->type_enum == PT_TYPE_NA || s_col->type_enum == PT_TYPE_NULL)
-    return 1;
+    {
+      return 1;
+    }
 
   /* make sure we are dealing only with collection types */
   if (!PT_IS_COLLECTION_TYPE (s_col->type_enum))
-    return 0;
+    {
+      return 0;
+    }
 
   /* can't assign a multiset or a sequence to a set, or a multiset to
    * a sequence */
@@ -1302,7 +1372,9 @@ pt_collection_compatible (PARSER_CONTEXT * parser, const PT_NODE * col1,
 {
   if (!col1 || !PT_IS_COLLECTION_TYPE (col1->type_enum) ||
       !col2 || !PT_IS_COLLECTION_TYPE (col2->type_enum))
-    return 0;
+    {
+      return 0;
+    }
 
   if (view_definition_context)
     {
@@ -1335,7 +1407,7 @@ pt_collection_compatible (PARSER_CONTEXT * parser, const PT_NODE * col1,
  *   - item2 is a literal that can be coerced to item1's type.
  */
 
-static int
+static PT_UNION_COMPATIBLE
 pt_union_compatible (PARSER_CONTEXT * parser,
 		     PT_NODE * item1, PT_NODE * item2,
 		     bool view_definition_context,
@@ -1353,9 +1425,14 @@ pt_union_compatible (PARSER_CONTEXT * parser,
   if (typ1 == typ2 && typ1 != PT_TYPE_OBJECT && !PT_IS_COLLECTION_TYPE (typ1))
     {
       if (typ1 == PT_TYPE_NONE)	/* is not compatible with anything */
-	return PT_UNION_INCOMP_CANNOT_FIX;
+	{
+	  return PT_UNION_INCOMP_CANNOT_FIX;
+	}
+
       if (typ1 == PT_TYPE_MAYBE)
-	return PT_UNION_COMP;
+	{
+	  return PT_UNION_COMP;
+	}
 
       if (!view_definition_context)
 	{
@@ -1536,8 +1613,11 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (pt_is_select (node))
     {
-      if (!(attrs = pt_get_select_list (parser, node)))
-	return NULL;
+      attrs = pt_get_select_list (parser, node);
+      if (attrs == NULL)
+	{
+	  return NULL;
+	}
 
       prev_att = NULL;
       for (att = attrs, i = 0; i < num_cinfo && att; att = next_att, i++)
@@ -1617,7 +1697,9 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 
 	      if (new_cast_added)
-		att = new_att;
+		{
+		  att = new_att;
+		}
 
 	      if (prev_att == NULL)
 		{
@@ -1627,8 +1709,8 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
 		    {
 		      parser_free_tree (parser, node->data_type);
 		    }
-		  node->data_type =
-		    parser_copy_tree_list (parser, att->data_type);
+		  node->data_type = parser_copy_tree_list (parser,
+							   att->data_type);
 		}
 	      else
 		{
@@ -1655,9 +1737,15 @@ pt_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node,
 
 out_of_mem:
   if (new_att)
-    parser_free_tree (parser, new_att);
+    {
+      parser_free_tree (parser, new_att);
+    }
+
   if (new_dt)
-    parser_free_tree (parser, new_dt);
+    {
+      parser_free_tree (parser, new_dt);
+    }
+
   PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 	     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
   return NULL;
@@ -1825,7 +1913,6 @@ end:
  *   return:  node on success, NULL otherwise.
  *   parser(in): the parser context used to derive qry1 and qry2
  *   node(in): a query node
- *   attrds(in): an attribute definition list or NULL
  *
  * Note :
  *   the definition of union compatible is: same number of pairwise
@@ -1834,11 +1921,11 @@ end:
  */
 
 PT_NODE *
-pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node,
-			      PT_NODE * attrds)
+pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *attrs1, *attrs2, *att1, *att2, *result = node, *attrd;
-  int cnt1, cnt2, i, c;
+  PT_NODE *attrs1, *attrs2, *att1, *att2, *result = node;
+  int cnt1, cnt2, i;
+  PT_UNION_COMPATIBLE c;
   SEMAN_COMPATIBLE_INFO *cinfo = NULL;
   bool need_cast;
   bool is_object_type;
@@ -1854,7 +1941,9 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node,
 	   pt_get_select_list (parser, node->info.query.q.union_.arg1))
       || !(attrs2 =
 	   pt_get_select_list (parser, node->info.query.q.union_.arg2)))
-    return NULL;
+    {
+      return NULL;
+    }
 
   cnt1 = pt_length_of_select_list (attrs1, EXCLUDE_HIDDEN_COLUMNS);
   cnt2 = pt_length_of_select_list (attrs2, EXCLUDE_HIDDEN_COLUMNS);
@@ -1872,143 +1961,58 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node,
     ((node->info.query.q.union_.arg1)->node_type != PT_SELECT ||
      (node->info.query.q.union_.arg2)->node_type != PT_SELECT);
 
-  for (i = 0, att1 = attrs1, att2 = attrs2, attrd = attrds;
+  for (i = 0, att1 = attrs1, att2 = attrs2;
        i < cnt1; i++, att1 = att1->next, att2 = att2->next)
     {
-      if (attrd == NULL)
-	{
-	  /* there's no vclass attribute defs context,
-	   * so do strict union compatibility checks. */
+      /* there's no vclass attribute defs context,
+       * so do strict union compatibility checks. */
 
-	  c = pt_union_compatible (parser, att1, att2, false,
-				   &is_object_type, has_nested_union_node);
-	  if (c == PT_UNION_INCOMP)
+      c = pt_union_compatible (parser, att1, att2, false,
+			       &is_object_type, has_nested_union_node);
+      if (c == PT_UNION_INCOMP)
+	{
+	  /* though we guess union is not compatible,
+	   * in some cases, we can cast the type to compatible one.
+	   */
+	  if (cinfo == NULL)
 	    {
-	      /* though we guess union is not compatible,
-	       * in some cases, we can cast the type to compatible one.
-	       */
+	      int k;
+
+	      /* allocate compatible type info list */
+	      cinfo = (SEMAN_COMPATIBLE_INFO *)
+		malloc (cnt1 * sizeof (SEMAN_COMPATIBLE_INFO));
 	      if (cinfo == NULL)
 		{
-		  int k;
-
-		  /* allocate compatible type info list */
-		  if (!(cinfo = (SEMAN_COMPATIBLE_INFO *)
-			malloc (cnt1 * sizeof (SEMAN_COMPATIBLE_INFO))))
-		    goto out_of_mem;
-
-		  for (k = 0; k < cnt1; k++)
-		    {
-		      cinfo[k].idx = -1;
-		      cinfo[k].type_enum = PT_TYPE_NONE;
-		      cinfo[k].prec = DB_DEFAULT_PRECISION;
-		      cinfo[k].scale = DB_DEFAULT_SCALE;
-		    }
+		  goto out_of_mem;
 		}
 
-	      if (pt_get_common_type_for_union
-		  (parser, att1, att2, &cinfo[i], i, &need_cast) == NULL)
+	      for (k = 0; k < cnt1; k++)
 		{
-		  result = NULL;
+		  cinfo[k].idx = -1;
+		  cinfo[k].type_enum = PT_TYPE_NONE;
+		  cinfo[k].prec = DB_DEFAULT_PRECISION;
+		  cinfo[k].scale = DB_DEFAULT_SCALE;
 		}
 	    }
-	  else if (c == PT_UNION_INCOMP_CANNOT_FIX || c == PT_UNION_ERROR)
+
+	  if (pt_get_common_type_for_union (parser, att1, att2, &cinfo[i],
+					    i, &need_cast) == NULL)
 	    {
 	      result = NULL;
-	      /* skip set error when object type */
-	      if (is_object_type != true)
-		{
-		  PT_ERRORmf2 (parser, att1, MSGCAT_SET_PARSER_SEMANTIC,
-			       MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
-			       pt_short_print (parser, att1),
-			       pt_short_print (parser, att2));
-		}
 	    }
 	}
-      else
+      else if (c == PT_UNION_INCOMP_CANNOT_FIX || c == PT_UNION_ERROR)
 	{
-	  /* bypass any class_attribute in the vclass attribute defs */
-	  if (attrd->info.attr_def.attr_type == PT_META_ATTR)
+	  result = NULL;
+	  /* skip set error when object type */
+	  if (is_object_type != true)
 	    {
-	      attrd = attrd->next;
-	      continue;
+	      PT_ERRORmf2 (parser, att1, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+			   pt_short_print (parser, att1),
+			   pt_short_print (parser, att2));
 	    }
-
-	  /* we have a vclass attribute def context,
-	   * so do union vclass compatibility checks where applicable
-	   *    do strict union compatibility checks in all other cases.
-	   */
-	  if (attrd->type_enum == PT_TYPE_OBJECT)
-	    {
-	      if (!pt_vclass_compatible (parser, attrd->data_type, att1) ||
-		  !pt_vclass_compatible (parser, attrd->data_type, att2))
-		{
-		  if (!pt_class_assignable (parser, attrd->data_type, att1))
-		    {
-		      PT_ERRORmf2 (parser, att1, MSGCAT_SET_PARSER_SEMANTIC,
-				   MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
-				   attribute_name (parser, attrd),
-				   pt_short_print (parser, att1));
-		      result = NULL;
-		    }
-		  else
-		    if (!pt_class_assignable (parser, attrd->data_type, att2))
-		    {
-		      PT_ERRORmf2 (parser, att2, MSGCAT_SET_PARSER_SEMANTIC,
-				   MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
-				   attribute_name (parser, attrd),
-				   pt_short_print (parser, att2));
-		      result = NULL;
-		    }
-		}
-	    }
-	  else if ((c = pt_union_compatible (parser, att1, att2, false,
-					     &is_object_type,
-					     has_nested_union_node)) ==
-		   PT_UNION_INCOMP)
-	    {
-	      /* though we guess union is not compatible,
-	       * in some cases, we can cast the type to compatible one.
-	       */
-	      if (cinfo == NULL)
-		{
-		  int k;
-
-		  /* allocate compatible type info list */
-		  if (!(cinfo = (SEMAN_COMPATIBLE_INFO *)
-			malloc (cnt1 * sizeof (SEMAN_COMPATIBLE_INFO))))
-		    goto out_of_mem;
-
-		  for (k = 0; k < cnt1; k++)
-		    {
-		      cinfo[k].idx = -1;
-		      cinfo[k].type_enum = PT_TYPE_NONE;
-		      cinfo[k].prec = DB_DEFAULT_PRECISION;
-		      cinfo[k].scale = DB_DEFAULT_SCALE;
-		    }
-		}
-
-	      if (pt_get_common_type_for_union
-		  (parser, att1, att2, &cinfo[i], i, &need_cast) == NULL)
-		{
-		  result = NULL;
-		}
-	    }
-	  else if (c == PT_UNION_INCOMP_CANNOT_FIX || c == PT_UNION_ERROR)
-	    {
-	      result = NULL;
-	      /* skip set error when object type */
-	      if (is_object_type != true)
-		{
-		  PT_ERRORmf2 (parser, att1, MSGCAT_SET_PARSER_SEMANTIC,
-			       MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
-			       pt_short_print (parser, att1),
-			       pt_short_print (parser, att2));
-		}
-	    }
-
-	  /* advance to next attribute def */
-	  attrd = attrd->next;
-	}			/* else */
+	}
     }				/* for */
 
   /* convert attrs type to compatible type */
@@ -2025,7 +2029,9 @@ pt_check_union_compatibility (PARSER_CONTEXT * parser, PT_NODE * node,
     }
 
   if (cinfo)
-    free_and_init (cinfo);
+    {
+      free_and_init (cinfo);
+    }
 
   return result;
 
@@ -2033,38 +2039,6 @@ out_of_mem:
   PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 	     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
   return NULL;
-}
-
-/*
- * pt_make_string_value () -
- *   return:  return a PT_NODE for the string value
- *   parser(in): parser context
- *   value_string(in): string value to make up a PT_NODE
- */
-
-static PT_NODE *
-pt_make_string_value (PARSER_CONTEXT * parser, const char *value_string)
-{
-  PT_NODE *node;
-
-  node = parser_new_node (parser, PT_VALUE);
-  if (node)
-    {
-      if (value_string == NULL)
-	{
-	  node->type_enum = PT_TYPE_NULL;
-	}
-      else
-	{
-	  node->info.value.data_value.str = pt_append_bytes
-	    (parser, NULL, value_string, strlen (value_string));
-	  node->info.value.text =
-	    (char *) node->info.value.data_value.str->bytes;
-	  node->type_enum = PT_TYPE_CHAR;
-	  node->info.value.string_type = ' ';
-	}
-    }
-  return node;
 }
 
 /*
@@ -2208,9 +2182,9 @@ pt_append_statements_on_add_attribute (PARSER_CONTEXT * parser,
   stmt = pt_append_string (parser, stmt, constraint_name);
   stmt = pt_append_string (parser, stmt, " ON ");
   stmt = pt_append_string (parser, stmt, class_name);
-  stmt = pt_append_string (parser, stmt, "(\"");
+  stmt = pt_append_string (parser, stmt, "([");
   stmt = pt_append_string (parser, stmt, attr_name);
-  stmt = pt_append_string (parser, stmt, "\");");
+  stmt = pt_append_string (parser, stmt, "]);");
   s3 = pt_make_string_value (parser, stmt);
 
   stmt = pt_append_string (parser, NULL, "GRANT SELECT ON ");
@@ -2248,7 +2222,9 @@ pt_append_statements_on_add_attribute (PARSER_CONTEXT * parser,
   s3->next = s4;
 
   if (statement_list)
-    s4->next = statement_list;
+    {
+      s4->next = statement_list;
+    }
   statement_list = s1;
 
   return statement_list;
@@ -2308,7 +2284,9 @@ pt_append_statements_on_change_default (PARSER_CONTEXT * parser,
   s1->etc = NULL;
 
   if (statement_list)
-    s1->next = statement_list;
+    {
+      s1->next = statement_list;
+    }
   statement_list = s1;
 
   return statement_list;
@@ -2346,7 +2324,9 @@ pt_append_statements_on_drop_attributes (PARSER_CONTEXT * parser,
   s1->etc = NULL;
 
   if (statement_list)
-    s1->next = statement_list;
+    {
+      s1->next = statement_list;
+    }
   statement_list = s1;
 
   return statement_list;
@@ -2421,9 +2401,9 @@ pt_append_statements_on_insert (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
   stmt = pt_append_string (parser, stmt, class_name);
   stmt = pt_append_string (parser, stmt, " ");
   stmt = pt_append_string (parser, stmt, alias1_name);
-  stmt = pt_append_string (parser, stmt, " SET \"");
+  stmt = pt_append_string (parser, stmt, " SET [");
   stmt = pt_append_string (parser, stmt, attr_name);
-  stmt = pt_append_string (parser, stmt, "\".OBJECT = :");
+  stmt = pt_append_string (parser, stmt, "].OBJECT = :");
   stmt = pt_append_string (parser, stmt, param2_name);
   stmt = pt_append_string (parser, stmt, " WHERE ");
   stmt = pt_append_string (parser, stmt, alias1_name);
@@ -2513,9 +2493,9 @@ pt_append_statements_on_update (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
   save_custom = parser->custom_print;
   parser->custom_print = parser->custom_print | PT_INTERNAL_PRINT;
 
-  stmt = pt_append_string (parser, NULL, "SELECT {null}+(SELECT SUM(SET{\"");
+  stmt = pt_append_string (parser, NULL, "SELECT {null}+(SELECT SUM(SET{[");
   stmt = pt_append_string (parser, stmt, attr_name);
-  stmt = pt_append_string (parser, stmt, "\".OBJECT}) FROM ");
+  stmt = pt_append_string (parser, stmt, "].OBJECT}) FROM ");
   stmt = pt_append_string (parser, stmt, class_name);
   stmt = pt_append_string (parser, stmt, " ");
   stmt = pt_append_string (parser, stmt, alias_name);
@@ -2563,9 +2543,9 @@ pt_append_statements_on_update (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
   stmt = pt_append_string (parser, stmt, class_name);
   stmt = pt_append_string (parser, stmt, " ");
   stmt = pt_append_string (parser, stmt, alias1_name);
-  stmt = pt_append_string (parser, stmt, " WHERE \"");
+  stmt = pt_append_string (parser, stmt, " WHERE [");
   stmt = pt_append_string (parser, stmt, attr_name);
-  stmt = pt_append_string (parser, stmt, "\".OBJECT IN :");
+  stmt = pt_append_string (parser, stmt, "].OBJECT IN :");
   stmt = pt_append_string (parser, stmt, param1_name);
   stmt = pt_append_string (parser, stmt, ")");
   s2 = pt_make_string_value (parser, stmt);
@@ -2673,9 +2653,9 @@ pt_append_statements_on_delete (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
   save_custom = parser->custom_print;
   parser->custom_print = parser->custom_print | PT_INTERNAL_PRINT;
 
-  stmt = pt_append_string (parser, NULL, "SELECT {null}+(SELECT SUM(SET{\"");
+  stmt = pt_append_string (parser, NULL, "SELECT {null}+(SELECT SUM(SET{[");
   stmt = pt_append_string (parser, stmt, attr_name);
-  stmt = pt_append_string (parser, stmt, "\".OBJECT}) FROM ");
+  stmt = pt_append_string (parser, stmt, "].OBJECT}) FROM ");
   stmt = pt_append_string (parser, stmt, class_name);
   stmt = pt_append_string (parser, stmt, " ");
   stmt = pt_append_string (parser, stmt, alias_name);
@@ -2714,9 +2694,9 @@ pt_append_statements_on_delete (PARSER_CONTEXT * parser, PT_NODE * stmt_node,
   stmt = pt_append_string (parser, stmt, class_name);
   stmt = pt_append_string (parser, stmt, " ");
   stmt = pt_append_string (parser, stmt, alias1_name);
-  stmt = pt_append_string (parser, stmt, " WHERE \"");
+  stmt = pt_append_string (parser, stmt, " WHERE [");
   stmt = pt_append_string (parser, stmt, attr_name);
-  stmt = pt_append_string (parser, stmt, "\".OBJECT IN :");
+  stmt = pt_append_string (parser, stmt, "].OBJECT IN :");
   stmt = pt_append_string (parser, stmt, param1_name);
   stmt = pt_append_string (parser, stmt, ")");
   s2 = pt_make_string_value (parser, stmt);
@@ -3328,7 +3308,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   char keyattr[DB_MAX_IDENTIFIER_LENGTH];
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
   DB_OBJECT *dom_cls;
-#endif
+#endif /* ENABLE_UNUSED_FUNCTION */
   char *drop_name_list = NULL;
   bool reuse_oid = false;
 
@@ -3404,6 +3384,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 				 attr_def_list, type, NULL, reuse_oid, alter);
       break;
     case PT_MODIFY_DEFAULT:
+    case PT_ALTER_DEFAULT:
       pt_resolve_default_external (parser, alter);
       break;
     case PT_MODIFY_ATTR_MTHD:
@@ -3682,13 +3663,19 @@ static const char *
 attribute_name (PARSER_CONTEXT * parser, PT_NODE * att)
 {
   if (!att)
-    return NULL;
+    {
+      return NULL;
+    }
 
   if (att->node_type == PT_ATTR_DEF)
-    att = att->info.attr_def.attr_name;
+    {
+      att = att->info.attr_def.attr_name;
+    }
 
   if (att->node_type != PT_NAME)
-    return NULL;
+    {
+      return NULL;
+    }
 
   return att->info.name.original;
 }
@@ -3703,18 +3690,27 @@ static int
 is_shared_attribute (PARSER_CONTEXT * parser, PT_NODE * att)
 {
   if (!att)
-    return 0;
+    {
+      return 0;
+    }
 
   if (att->node_type == PT_ATTR_DEF)
     {
       if (att->info.attr_def.attr_type == PT_SHARED)
-	return 1;
+	{
+	  return 1;
+	}
+
       if (!(att = att->info.attr_def.attr_name))
-	return 0;
+	{
+	  return 0;
+	}
     }
 
   if (att->node_type != PT_NAME)
-    return 0;
+    {
+      return 0;
+    }
 
   return (att->info.name.meta_class == PT_SHARED);
 }
@@ -3732,10 +3728,14 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
   int cnt = 0, ret;
 
   if (expr == NULL)
-    return 0;
+    {
+      return 0;
+    }
 
   if (expr->node_type != PT_EXPR)
-    return 0;
+    {
+      return 0;
+    }
 
   switch (expr->info.expr.op)
     {
@@ -3744,6 +3744,47 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_TIMES:
     case PT_DIVIDE:
     case PT_UNARY_MINUS:
+    case PT_BIT_NOT:
+    case PT_BIT_AND:
+    case PT_BIT_OR:
+    case PT_BIT_XOR:
+    case PT_BITSHIFT_LEFT:
+    case PT_BITSHIFT_RIGHT:
+    case PT_DIV:
+    case PT_MOD:
+    case PT_ACOS:
+    case PT_ASIN:
+    case PT_ATAN:
+    case PT_ATAN2:
+    case PT_COS:
+    case PT_SIN:
+    case PT_TAN:
+    case PT_COT:
+    case PT_DEGREES:
+    case PT_RADIANS:
+    case PT_PI:
+    case PT_LN:
+    case PT_LOG2:
+    case PT_LOG10:
+    case PT_FORMAT:
+    case PT_DATE_FORMAT:
+    case PT_STR_TO_DATE:
+    case PT_CONCAT:
+    case PT_CONCAT_WS:
+    case PT_FIELD:
+    case PT_LEFT:
+    case PT_RIGHT:
+    case PT_LOCATE:
+    case PT_MID:
+    case PT_STRCMP:
+    case PT_REVERSE:
+    case PT_BIT_COUNT:
+    case PT_ADDDATE:
+    case PT_DATE_ADD:
+    case PT_SUBDATE:
+    case PT_DATE_SUB:
+    case PT_DATEF:
+    case PT_DATEDIFF:
     case PT_MODULUS:
     case PT_POSITION:
     case PT_SUBSTRING:
@@ -3771,6 +3812,11 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_TO_TIME:
     case PT_TO_TIMESTAMP:
     case PT_TO_DATETIME:
+    case PT_SCHEMA:
+    case PT_DATABASE:
+    case PT_TIME_FORMAT:
+    case PT_TIMESTAMP:
+    case PT_UNIX_TIMESTAMP:
     case PT_EXTRACT:
     case PT_TO_CHAR:
     case PT_CAST:
@@ -3784,6 +3830,18 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_EXP:
     case PT_SQRT:
     case PT_TRUNC:
+      break;
+
+      /* PT_DRAND and PT_DRANDOM are not supported regardless of whether a seed is given or not.
+       * because they produce random numbers of DOUBLE type.
+       * DOUBLE type is not allowed on partition expression.
+       */
+    case PT_RAND:
+    case PT_RANDOM:
+      if (expr->info.expr.arg1 == NULL)
+	{
+	  return -1;
+	}
       break;
     default:
       return -1;		/* unsupported expression */
@@ -3803,10 +3861,12 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
 	}
       else if (expr->info.expr.arg1->node_type == PT_EXPR)
 	{
-	  ret =
-	    pt_find_partition_column_count (expr->info.expr.arg1, name_node);
+	  ret = pt_find_partition_column_count (expr->info.expr.arg1,
+						name_node);
 	  if (ret < 0)
-	    return -1;
+	    {
+	      return -1;
+	    }
 	  cnt += ret;
 	}
     }
@@ -3834,7 +3894,9 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
 	  ret = pt_find_partition_column_count (expr->info.expr.arg2,
 						name_node);
 	  if (ret < 0)
-	    return -1;
+	    {
+	      return -1;
+	    }
 	  cnt += ret;
 	}
     }
@@ -3849,14 +3911,18 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
       else if (expr->info.expr.arg3->node_type == PT_VALUE)
 	{
 	  if (expr->info.expr.arg3->type_enum == PT_TYPE_NULL)
-	    return -1;
+	    {
+	      return -1;
+	    }
 	}
       else if (expr->info.expr.arg3->node_type == PT_EXPR)
 	{
-	  ret =
-	    pt_find_partition_column_count (expr->info.expr.arg3, name_node);
+	  ret = pt_find_partition_column_count (expr->info.expr.arg3,
+						name_node);
 	  if (ret < 0)
-	    return -1;
+	    {
+	      return -1;
+	    }
 	  cnt += ret;
 	}
     }
@@ -3878,7 +3944,9 @@ pt_value_links_add (PARSER_CONTEXT * parser,
 
   vblk = (PT_VALUE_LINKS *) malloc (sizeof (PT_VALUE_LINKS));
   if (vblk == NULL)
-    goto out_of_mem;
+    {
+      goto out_of_mem;
+    }
 
   vblk->vallink = val;
   vblk->next = ptl->next;
@@ -3975,7 +4043,9 @@ pt_check_partition_values (PARSER_CONTEXT *
 				       ((val->type_enum ==
 					 PT_TYPE_NULL) ? NULL : val), ptl);
 	  if (addret)
-	    return addret;
+	    {
+	      return addret;
+	    }
 
 	  if (*chktype == PT_TYPE_NONE && val->type_enum != PT_TYPE_NULL)
 	    {
@@ -4024,11 +4094,12 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   PT_TYPE_ENUM contype = PT_TYPE_NONE;
   PT_VALUE_LINKS vlinks = { NULL, NULL };
   PT_VALUE_LINKS *pvl, *delpvl;
-  SEMANTIC_CHK_INFO sc_info;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   PT_NODE *expr_type;
   SM_CLASS *smclass;
   SM_ATTRIBUTE *smatt;
   bool chkflag = false;
+  DB_QUERY_TYPE *query_columns = NULL, *column = NULL;
 
   assert (parser != NULL);
 
@@ -4118,6 +4189,48 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	      break;
 	    }
 	}
+      /* check if partitioning is requested by a column in SELECT query */
+      if (!chkflag && stmt->info.create_entity.create_select != NULL)
+	{
+	  int error = NO_ERROR;
+	  PT_NODE *qry_select = stmt->info.create_entity.create_select;
+	  /* get columns from SELECT result */
+
+	  error = pt_get_select_query_columns (parser, qry_select,
+					       &query_columns);
+
+	  if (error != NO_ERROR)
+	    {
+	      /* error message already set at the above compilation step */
+	      return;
+	    }
+
+	  for (column = query_columns;
+	       column != NULL; column = db_query_format_next (column))
+	    {
+	      if (!intl_mbs_casecmp (column->original_name,
+				     pcol->info.name.original))
+		{
+		  pcol->type_enum =
+		    (PT_TYPE_ENUM) pt_db_to_type_enum (column->db_type);
+		  pcol->data_type =
+		    pt_domain_to_data_type (parser,
+					    pt_type_enum_to_db_domain
+					    (pcol->type_enum));
+		  pinfo->info.partition.keycol = parser_copy_tree (parser,
+								   pcol);
+		  chkflag = true;
+		  break;
+		}
+	    }
+	  if (query_columns != NULL)
+	    {
+	      db_free_query_format (query_columns);
+	      query_columns = NULL;
+	    }
+	  assert (NULL == query_columns);
+	}
+
     }
   else
     {
@@ -4176,7 +4289,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
     }
 
   pcol = pinfo->info.partition.expr;
-  sc_info.attrdefs = NULL;
   sc_info.top_node = pcol;
   sc_info.donot_fold = false;
   expr_type = pt_semantic_type (parser, pcol, &sc_info);
@@ -4410,7 +4522,9 @@ partition_range_min_max (DB_VALUE ** dest, DB_VALUE * inval, int min_max)
   DB_VALUE nullval;
 
   if (dest == NULL)
-    return 0;
+    {
+      return 0;
+    }
 
   if (inval == NULL)
     {
@@ -4423,7 +4537,9 @@ partition_range_min_max (DB_VALUE ** dest, DB_VALUE * inval, int min_max)
       if (*dest != NULL)
 	{
 	  if (DB_IS_NULL (*dest))
-	    return 1;
+	    {
+	      return 1;
+	    }
 	  pr_clear_value (*dest);
 	}
       *dest = db_value_copy (inval);
@@ -4439,9 +4555,13 @@ partition_range_min_max (DB_VALUE ** dest, DB_VALUE * inval, int min_max)
       if (DB_IS_NULL (*dest))
 	{			/* low or high infinite */
 	  if (DB_IS_NULL (inval))
-	    return 1;
+	    {
+	      return 1;
+	    }
 	  else
-	    return 0;
+	    {
+	      return 0;
+	    }
 	}
       op = (min_max == RANGE_MIN) ? DB_GT : DB_LT;
       if ((rst = db_value_compare (*dest, inval)) == op)
@@ -4472,7 +4592,9 @@ db_value_list_add (DB_VALUE_PLIST ** ptail, DB_VALUE * val)
   DB_VALUE nullval, *chkval;
 
   if (ptail == NULL)
-    return -1;
+    {
+      return -1;
+    }
 
   if (val == NULL)
     {
@@ -4486,7 +4608,9 @@ db_value_list_add (DB_VALUE_PLIST ** ptail, DB_VALUE * val)
 
   tmp_vallist = (DB_VALUE_PLIST *) malloc (sizeof (DB_VALUE_PLIST));
   if (tmp_vallist == NULL)
-    return -1;
+    {
+      return -1;
+    }
 
   if (*ptail == NULL)
     {
@@ -4517,7 +4641,9 @@ db_value_list_find (const DB_VALUE_PLIST * phead, const DB_VALUE * val)
   DB_VALUE nullval, *chkval;
 
   if (phead == NULL)
-    return 0;
+    {
+      return 0;
+    }
 
   if (val == NULL)
     {
@@ -4554,7 +4680,9 @@ db_value_list_finddel (DB_VALUE_PLIST ** phead, DB_VALUE * val)
   DB_VALUE nullval, *chkval;
 
   if (phead == NULL)
-    return 0;
+    {
+      return 0;
+    }
 
   if (val == NULL)
     {
@@ -4629,7 +4757,9 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
   assert (parser != NULL);
 
   if (!stmt)
-    return;
+    {
+      return;
+    }
 
   class_name = (char *) stmt->info.alter.entity_name->info.name.original;
   cmd = stmt->info.alter.code;
@@ -4654,29 +4784,42 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
     }
 
   if (cmd == PT_ADD_PARTITION || cmd == PT_REORG_PARTITION)
-    part_list = stmt->info.alter.alter_clause.partition.parts;
+    {
+      part_list = stmt->info.alter.alter_clause.partition.parts;
+    }
   else
-    part_list = NULL;
+    {
+      part_list = NULL;
+    }
+
   switch (cmd)
     {				/* parameter check */
     case PT_DROP_PARTITION:	/* name_list */
       if (name_list == NULL)
-	chkflag = 1;
+	{
+	  chkflag = 1;
+	}
       break;
     case PT_ANALYZE_PARTITION:	/* NULL = ALL */
       break;
     case PT_ADD_PARTITION:	/* parts */
       if (part_list == NULL)
-	chkflag = 1;
+	{
+	  chkflag = 1;
+	}
       break;
     case PT_ADD_HASHPARTITION:	/* psize */
     case PT_COALESCE_PARTITION:	/* psize */
       if (psize == NULL)
-	chkflag = 1;
+	{
+	  chkflag = 1;
+	}
       break;
     case PT_REORG_PARTITION:	/* name_list, parts */
       if (name_list == NULL || part_list == NULL)
-	chkflag = 1;
+	{
+	  chkflag = 1;
+	}
       break;
     default:
       chkflag = 1;
@@ -4721,18 +4864,23 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
     case PT_ADD_PARTITION:
     case PT_REORG_PARTITION:
       if (ptype.data.i == PT_PARTITION_HASH)
-	chkflag = 1;
+	{
+	  chkflag = 1;
+	}
       break;
     case PT_ANALYZE_PARTITION:	/* ALL */
       break;
     case PT_ADD_HASHPARTITION:	/* HASH */
     case PT_COALESCE_PARTITION:
       if (ptype.data.i != PT_PARTITION_HASH)
-	chkflag = 1;
+	{
+	  chkflag = 1;
+	}
       break;
     default:
       break;
     }
+
   if (chkflag)
     {
       PT_ERRORmf (parser,
@@ -4911,13 +5059,19 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 		{
 		  /* for non-continuous or overlap ranges check */
 		  if (db_value_list_add (&minmax_tail, &minele))
-		    goto out_of_mem_fail;
+		    {
+		      goto out_of_mem_fail;
+		    }
 
 		  if (minmax_head == NULL)
-		    minmax_head = minmax_tail;
+		    {
+		      minmax_head = minmax_tail;
+		    }
 
 		  if (db_value_list_add (&minmax_tail, &maxele))
-		    goto out_of_mem_fail;
+		    {
+		      goto out_of_mem_fail;
+		    }
 		}
 	    }
 
@@ -5258,13 +5412,21 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 check_end:
   pr_clear_value (&ptype);
   if (maxval)
-    pr_clear_value (maxval);
+    {
+      pr_clear_value (maxval);
+    }
   if (minval)
-    pr_clear_value (minval);
+    {
+      pr_clear_value (minval);
+    }
   if (partmax)
-    pr_clear_value (partmax);
+    {
+      pr_clear_value (partmax);
+    }
   if (partmin)
-    pr_clear_value (partmin);
+    {
+      pr_clear_value (partmin);
+    }
   for (min_list = minmax_head; min_list; min_list = max_list)
     {
       max_list = min_list->next;
@@ -5318,7 +5480,9 @@ pt_attr_refers_to_self (PARSER_CONTEXT *
       /* self is a string because in the create case,
        * self does not exist yet */
       if (!intl_mbs_casecmp (self, type->info.name.original))
-	return true;
+	{
+	  return true;
+	}
 
       /* an attribute whose type is a subclass of self
        * is also considered a self-referencing attribute */
@@ -5423,14 +5587,14 @@ pt_is_compatible_type (const PT_TYPE_ENUM
  *   attr(in):
  *   col(in):
  */
-static int
+static PT_UNION_COMPATIBLE
 pt_check_vclass_attr_qspec_compatible (PARSER_CONTEXT * parser,
 				       PT_NODE * attr, PT_NODE * col)
 {
   bool is_object_type;
-  int c;
+  PT_UNION_COMPATIBLE c =
+    pt_union_compatible (parser, attr, col, true, &is_object_type, false);
 
-  c = pt_union_compatible (parser, attr, col, true, &is_object_type, false);
   if (c == PT_UNION_INCOMP
       && pt_is_compatible_type (attr->type_enum, col->type_enum))
     {
@@ -5441,8 +5605,115 @@ pt_check_vclass_attr_qspec_compatible (PARSER_CONTEXT * parser,
 }
 
 /*
+ * pt_check_vclass_union_spec () -
+ *   return:
+ *   parser(in):
+ *   qry(in):
+ *   attrs(in):
+ */
+static PT_NODE *
+pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
+			    PT_NODE * attrds)
+{
+  PT_NODE *attrd = NULL;
+  PT_NODE *attrs1 = NULL;
+  PT_NODE *attrs2 = NULL;
+  PT_NODE *att1 = NULL;
+  PT_NODE *att2 = NULL;
+  PT_NODE *result_stmt = NULL;
+
+  /* parser assures us that it's a query but better make sure */
+  if (!pt_is_query (qry))
+    {
+      return NULL;
+    }
+
+  if (!(qry->node_type == PT_UNION || qry->node_type == PT_DIFFERENCE ||
+	qry->node_type == PT_INTERSECTION))
+    {
+      assert (qry->node_type == PT_SELECT);
+      return qry;
+    }
+
+  result_stmt = pt_check_vclass_union_spec (parser,
+					    qry->info.query.q.union_.arg1,
+					    attrds);
+  if (pt_has_error (parser) || result_stmt == NULL)
+    {
+      return NULL;
+    }
+  result_stmt = pt_check_vclass_union_spec (parser,
+					    qry->info.query.q.union_.arg2,
+					    attrds);
+  if (pt_has_error (parser) || result_stmt == NULL)
+    {
+      return NULL;
+    }
+
+  attrs1 = pt_get_select_list (parser, qry->info.query.q.union_.arg1);
+  if (attrs1 == NULL)
+    {
+      return NULL;
+    }
+  attrs2 = pt_get_select_list (parser, qry->info.query.q.union_.arg2);
+  if (attrs2 == NULL)
+    {
+      return NULL;
+    }
+
+  for (attrd = attrds, att1 = attrs1, att2 = attrs2; attrd != NULL;
+       attrd = attrd->next, att1 = att1->next, att2 = att2->next)
+    {
+      /* bypass any class_attribute in the vclass attribute defs */
+      if (attrd->info.attr_def.attr_type == PT_META_ATTR)
+	{
+	  continue;
+	}
+
+      assert (att1 != NULL);
+      assert (att2 != NULL);
+
+      /* we have a vclass attribute def context,
+       * so do union vclass compatibility checks where applicable
+       */
+      if (attrd->type_enum != PT_TYPE_OBJECT)
+	{
+	  continue;
+	}
+
+      if (pt_vclass_compatible (parser, attrd->data_type, att1) &&
+	  pt_vclass_compatible (parser, attrd->data_type, att2))
+	{
+	  continue;
+	}
+
+      if (!pt_class_assignable (parser, attrd->data_type, att1))
+	{
+	  PT_ERRORmf2 (parser, att1, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
+		       attribute_name (parser, attrd),
+		       pt_short_print (parser, att1));
+	  return NULL;
+	}
+      if (!pt_class_assignable (parser, attrd->data_type, att2))
+	{
+	  PT_ERRORmf2 (parser, att2, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
+		       attribute_name (parser, attrd),
+		       pt_short_print (parser, att2));
+	  return NULL;
+	}
+    }
+
+  assert (att1 == NULL);
+  assert (att2 == NULL);
+
+  return qry;
+}
+
+/*
  * pt_check_vclass_query_spec () -  do semantic checks on a vclass query spec
- *   return:  none
+ *   return:
  *   parser(in): the parser context used to derive the qry
  *   qry(in): a vclass query specification
  *   attrs(in): the attributes of the vclass
@@ -5457,22 +5728,38 @@ pt_check_vclass_attr_qspec_compatible (PARSER_CONTEXT * parser,
 
 static PT_NODE *
 pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
-			    PT_NODE * attrs, const char *self)
+			    PT_NODE * attrs, const char *self,
+			    const bool do_semantic_check)
 {
   PT_NODE *columns, *col, *attr;
   int col_count, attr_count;
-  SEMANTIC_CHK_INFO info;
-  int fixed_precision;
-  PT_NODE *prev_col;
 
-  /* apply semantic checks to query_spec */
-  info.attrdefs = attrs;
-  info.donot_fold = false;
-
-  qry = pt_check_with_info (parser, qry, &info);
-  /* parser assures us that it's a query but better make sure */
   if (!pt_is_query (qry))
-    return NULL;
+    {
+      return NULL;
+    }
+
+  if (qry->info.query.into_list != NULL)
+    {
+      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_WANT_NO_INTO_CLAUSE);
+      return NULL;
+    }
+
+  if (do_semantic_check)
+    {
+      qry = pt_semantic_check (parser, qry);
+      if (pt_has_error (parser) || qry == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  qry = pt_check_vclass_union_spec (parser, qry, attrs);
+  if (pt_has_error (parser) || qry == NULL)
+    {
+      return NULL;
+    }
 
   /* count(attrs) == count(query spec columns) */
   columns = pt_get_select_list (parser, qry);
@@ -5480,16 +5767,14 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
   attr_count = pt_length_of_list (attrs);
   if (attr_count != col_count)
     {
-      PT_ERRORmf2 (parser, qry,
-		   MSGCAT_SET_PARSER_SEMANTIC,
+      PT_ERRORmf2 (parser, qry, MSGCAT_SET_PARSER_SEMANTIC,
 		   MSGCAT_SEMANTIC_ATT_CNT_NE_COL_CNT, attr_count, col_count);
+      return NULL;
     }
 
   /* foreach normal/shared attribute and query_spec column do */
-  attr = attrs;
-  col = columns;
-  prev_col = NULL;
-  while (attr && col)
+  for (attr = attrs, col = columns; attr != NULL && col != NULL;
+       attr = attr->next, col = col->next)
     {
       /* bypass any class_attribute */
       if (attr->info.attr_def.attr_type == PT_META_ATTR)
@@ -5498,92 +5783,32 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
 	  continue;
 	}
 
-      /* if attribute has no data type then derive its
-       * data type from its matching query_spec column. */
-      if (attr->type_enum == PT_TYPE_NONE)
+      if (col->node_type == PT_HOST_VAR)
 	{
-	  /* check minus precision(i.e., TP_FLOATING_PRECISION_VALUE)
-	   * for char/bit constants */
-	  fixed_precision = 0;
-	  if (col->node_type == PT_VALUE)
+	  PT_ERRORm (parser, col,
+		     MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_HOSTVAR_NOT_ALLOWED_ON_QUERY_SPEC);
+	}
+      else if (attr->type_enum == PT_TYPE_NONE)
+	{
+	  if (col->node_type == PT_VALUE && col->type_enum == PT_TYPE_NULL)
 	    {
-	      switch (col->type_enum)
-		{
-		  /* for NCHAR(3) type column, we reserve only 3bytes.
-		   * precision and length for NCHAR(n) type is n */
-		case PT_TYPE_NCHAR:
-		case PT_TYPE_VARNCHAR:
-		case PT_TYPE_CHAR:
-		case PT_TYPE_VARCHAR:
-		  fixed_precision = col->info.value.data_value.str->length;
-		  if (fixed_precision == 0)
-		    fixed_precision = 1;
-		  break;
-
-		case PT_TYPE_BIT:
-		case PT_TYPE_VARBIT:
-		  switch (col->info.value.string_type)
-		    {
-		    case 'B':
-		      fixed_precision = strlen (col->info.value.text);
-		      if (fixed_precision == 0)
-			fixed_precision = 1;
-		      break;
-
-		    case 'X':
-		      fixed_precision = strlen (col->info.value.text);
-		      if (fixed_precision == 0)
-			fixed_precision = 1;
-		      break;
-
-		    default:
-		      break;
-		    }
-		  break;
-
-		default:
-		  break;
-		}
+	      PT_ERRORmf2 (parser, col,
+			   MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_ATT_INCOMPATIBLE_COL,
+			   attribute_name (parser, attr),
+			   pt_short_print (parser, col));
 	    }
-
-	  /* convert char(max)  to varchar(max),
-	     nchar(max) to varnchar(max),
-	     bit(max)   to varbit(max) */
-	  if ((col->type_enum == PT_TYPE_CHAR
-	       || col->type_enum == PT_TYPE_NCHAR
-	       || col->type_enum == PT_TYPE_BIT)
-	      && col->data_type
-	      && (col->data_type->info.data_type.precision ==
-		  TP_FLOATING_PRECISION_VALUE))
+	  else
 	    {
-	      /* change type_enum of col */
-	      if (col->type_enum == PT_TYPE_CHAR)
-		{
-		  col->type_enum = PT_TYPE_VARCHAR;
-		  col->data_type->type_enum = PT_TYPE_VARCHAR;
-		}
-	      else if (col->type_enum == PT_TYPE_NCHAR)
-		{
-		  col->type_enum = PT_TYPE_VARNCHAR;
-		  col->data_type->type_enum = PT_TYPE_VARNCHAR;
-		}
-	      else
-		{
-		  col->type_enum = PT_TYPE_VARBIT;
-		  col->data_type->type_enum = PT_TYPE_VARBIT;
-		}
+	      pt_fixup_column_type (col);
 
-	      if (fixed_precision != 0)
+	      attr->type_enum = col->type_enum;
+	      if (col->data_type)
 		{
-		  col->data_type->info.data_type.precision = fixed_precision;
+		  attr->data_type = parser_copy_tree_list (parser,
+							   col->data_type);
 		}
-	    }
-
-	  attr->type_enum = col->type_enum;
-	  if (col->data_type)
-	    {
-	      attr->data_type = parser_copy_tree_list (parser,
-						       col->data_type);
 	    }
 	}
       /* attribute and query_spec column must match type-wise */
@@ -5631,19 +5856,13 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
 		      MSGCAT_SEMANTIC_QSPEC_COL_NOT_NA,
 		      attribute_name (parser, attr));
 	}
-
-      prev_col = col;
-      /* advance to next attribute and column */
-      attr = attr->next;
-      col = col->next;
     }
 
   return qry;
 }
 
 /*
- * pt_type_cast_vclass_query_spec_column () - do semantic checks on a vclass
- *                                            query spec
+ * pt_type_cast_vclass_query_spec_column () -
  *   return:  current or new column
  *   parser(in): the parser context used to derive the qry
  *   attr(in): the attributes of the vclass
@@ -5655,7 +5874,7 @@ pt_type_cast_vclass_query_spec_column (PARSER_CONTEXT * parser,
 				       PT_NODE * attr, PT_NODE * col)
 {
   bool is_object_type;
-  int c;
+  PT_UNION_COMPATIBLE c;
   PT_NODE *new_col, *new_dt, *next_col;
 
   /* guarantees PT_TYPE_OBJECT and SET types are fully compatible. */
@@ -5742,7 +5961,9 @@ pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
 
   /* parser assures us that it's a query but better make sure */
   if (!pt_is_query (qry))
-    return NULL;
+    {
+      return NULL;
+    }
 
   if (qry->node_type != PT_SELECT)
     {
@@ -5760,7 +5981,9 @@ pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
     }
 
   if (qry->node_type != PT_SELECT)
-    return qry;			/* already done */
+    {
+      return qry;		/* already done */
+    }
 
   columns = pt_get_select_list (parser, qry);
 
@@ -5820,164 +6043,193 @@ pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry,
  * check that
  * - stmt's query_specs are union compatible with each other
  * - if no attributes are given, derive them from the query_spec columns
- * - else if an attribute has no data type then derive it from its
+ * - if an attribute has no data type then derive it from its
  *   matching query_spec column
- * - else corresponding attribute and query_spec column must match type-wise
+ * - corresponding attribute and query_spec column must match type-wise
  * - count(attributes) == count(query_spec columns)
  * - query_spec column that corresponds to a shared attribute must be NA
+ * - we allow order by clauses in the queries
  */
 
 static void
 pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  PT_NODE *name, *qry_specs, *qry1, *all_attrs = NULL, *qspec_attr, *r;
-  PT_NODE **qry_ptr;
-  PT_NODE *s_attr, *derived_attr;
-  int attr_count, col_count;
-  SEMANTIC_CHK_INFO sc_info;
+  PT_NODE *all_attrs = NULL;
+  PT_NODE *derived_attr = NULL;
+  PT_NODE *result_stmt = NULL;
+  PT_NODE **qry_specs_ptr = NULL;
+  PT_NODE *crt_qry = NULL;
+  PT_NODE **prev_qry_link_ptr = NULL;
+  const char *name = NULL;
+  int attr_count = 0;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
 
   assert (parser != NULL);
 
-  if (!stmt
+  if (stmt == NULL
       || stmt->node_type != PT_CREATE_ENTITY
       || stmt->info.create_entity.entity_type != PT_VCLASS
-      || (name = stmt->info.create_entity.entity_name) == NULL)
+      || stmt->info.create_entity.entity_name == NULL)
     {
       return;
     }
 
-  qry_specs = stmt->info.create_entity.as_query_list;
-  qry_ptr = &stmt->info.create_entity.as_query_list;
-  if (!qry_specs || parser->error_msgs)
+  name = stmt->info.create_entity.entity_name->info.name.original;
+
+  qry_specs_ptr = &stmt->info.create_entity.as_query_list;
+  if (*qry_specs_ptr == NULL || parser->error_msgs != NULL)
     {
       return;
     }
 
-  /* We need to check that no query has an into list or order by
-   * clause.  This was being done in pt_check_vclass_query_spec, but
-   * we need to check it whether we have an attr list or not.
-   * If this is an error, there is no need to go on. */
-  for (qry1 = qry_specs; qry1 != NULL; qry1 = qry1->next)
+  for (crt_qry = *qry_specs_ptr, prev_qry_link_ptr = qry_specs_ptr;
+       crt_qry != NULL;
+       prev_qry_link_ptr = &crt_qry->next, crt_qry = crt_qry->next)
     {
-      /* qry must have no into clause or order by clause */
-      if (qry1->info.query.into_list)
-	{
-	  PT_ERRORm (parser, qry1,
-		     MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_WANT_NO_INTO_CLAUSE);
-	  return;
-	}
+      PT_NODE *const save_next = crt_qry->next;
 
-      if (qry1->info.query.order_by)
-	{
-	  PT_ERRORm (parser, qry1,
-		     MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_WANT_NO_ORDERBY_CLAUSE);
-	  return;
-	}
+      crt_qry->next = NULL;
 
-      /* we cannot call pt_semantic_check here because pt_semantic_check needs
-       * the view's attr defs which may not yet exist at this point.  we cannot
-       * defer calling pt_resolve_names because the immediately following code
-       * to derive the view's attr defs from the query_specs assumes any
-       * 'SELECT *' in the query_specs have been resolved.
+      /* TODO This seems to flag too many queries as view specs because
+       * it also traverses the tree to subqueries. It might need a
+       * pre_function that returns PT_STOP_WALK for subqueries.
        */
-      sc_info.attrdefs = NULL;
-      sc_info.top_node = qry1;
-      sc_info.donot_fold = false;
-      pt_resolve_names (parser, qry1, &sc_info);
-      if (parser->error_msgs)
+      result_stmt = parser_walk_tree (parser, crt_qry, pt_set_is_view_spec,
+				      NULL, NULL, NULL);
+      if (result_stmt == NULL)
 	{
-	  if (qry1->node_type >= PT_NODE_NUMBER)
-	    {
-	      stmt->info.create_entity.as_query_list = NULL;
-	    }
+	  assert (false);
+	  PT_ERRORm (parser, stmt, MSGCAT_SET_ERROR, -(ER_GENERIC_ERROR));
 	  return;
 	}
+      crt_qry = result_stmt;
+
+      result_stmt = pt_semantic_check (parser, crt_qry);
+      if (pt_has_error (parser))
+	{
+	  return;
+	}
+      if (result_stmt == NULL)
+	{
+	  assert (false);
+	  PT_ERRORm (parser, stmt, MSGCAT_SET_ERROR, -(ER_GENERIC_ERROR));
+	  return;
+	}
+      crt_qry = result_stmt;
+
+      crt_qry->next = save_next;
+      (*prev_qry_link_ptr) = crt_qry;
     }
+
+  attr_count = pt_number_of_attributes (parser, stmt, &all_attrs);
 
   /* if no attributes are given, try to
      derive them from the query_spec columns. */
-  attr_count = pt_number_of_attributes (parser, stmt, &all_attrs);
-  qspec_attr = pt_get_select_list (parser, qry_specs);
-  col_count = pt_length_of_select_list (qspec_attr, EXCLUDE_HIDDEN_COLUMNS);
-
   if (attr_count <= 0)
     {
-      /* semantic check any query specs */
-      for (qry1 = qry_specs; qry1 != NULL; qry1 = qry1->next)
-	{
-	  parser_walk_tree (parser, qry1,
-			    pt_set_is_view_spec, NULL, NULL, NULL);
-	  pt_check_with_info (parser, qry1, NULL);
-	}
+      PT_NODE *crt_attr = NULL;
+      PT_NODE *const qspec_attr = pt_get_select_list (parser, *qry_specs_ptr);
 
-      for (r = qspec_attr; r; r = r->next)
+      assert (attr_count == 0);
+      assert (stmt->info.create_entity.attr_def_list == NULL);
+
+      for (crt_attr = qspec_attr; crt_attr != NULL; crt_attr = crt_attr->next)
 	{
-	  if (r->alias_print)
+	  PT_NODE *s_attr = NULL;
+
+	  if (crt_attr->alias_print)
 	    {
-	      s_attr = r;
+	      s_attr = crt_attr;
 	    }
 	  else
 	    {
-	      /* allow attributes to be derived
-	         only from path expressions. */
-	      if (r->node_type == PT_NAME)
-		{
-		  s_attr = r;
-		}
-	      else if (r->node_type == PT_DOT_
-		       && r->info.dot.arg2
-		       && r->info.dot.arg2->node_type == PT_NAME)
-		{
-		  s_attr = r->info.dot.arg2;
-		}
-	      else
+	      /* allow attributes to be derived only from path expressions. */
+	      s_attr = pt_get_end_path_node (crt_attr);
+	      if (s_attr->node_type != PT_NAME)
 		{
 		  s_attr = NULL;
 		}
 	    }
 
-	  if (!s_attr)
+	  if (s_attr == NULL)
 	    {
 	      PT_ERRORmf (parser, stmt,
 			  MSGCAT_SET_PARSER_SEMANTIC,
 			  MSGCAT_SEMANTIC_MISSING_ATTR_NAME,
-			  pt_short_print (parser, r));
+			  pt_short_print (parser, crt_attr));
+	      return;
 	    }
-	  else
+	  else if (s_attr->node_type == PT_HOST_VAR)
 	    {
-	      derived_attr = pt_derive_attribute (parser, s_attr);
-	      if (stmt->info.create_entity.attr_def_list)
-		{
-		  parser_append_node (derived_attr,
-				      stmt->info.create_entity.attr_def_list);
-		}
-	      else
-		{
-		  stmt->info.create_entity.attr_def_list = derived_attr;
-		}
+	      PT_ERRORm (parser, s_attr,
+			 MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_HOSTVAR_NOT_ALLOWED_ON_QUERY_SPEC);
+	      return;
 	    }
+	  else if (s_attr->node_type == PT_VALUE
+		   && s_attr->type_enum == PT_TYPE_NULL)
+	    {
+	      PT_ERRORm (parser, s_attr,
+			 MSGCAT_SET_PARSER_SEMANTIC,
+			 MSGCAT_SEMANTIC_NULL_NOT_ALLOWED_ON_QUERY_SPEC);
+	      return;
+	    }
+
+	  derived_attr = pt_derive_attribute (parser, s_attr);
+	  if (derived_attr == NULL)
+	    {
+	      PT_ERRORm (parser, stmt, MSGCAT_SET_ERROR, -(ER_GENERIC_ERROR));
+	      return;
+	    }
+
+	  stmt->info.create_entity.attr_def_list =
+	    parser_append_node (derived_attr,
+				stmt->info.create_entity.attr_def_list);
 	}
+
+      attr_count = pt_number_of_attributes (parser, stmt, &all_attrs);
     }
-  else
+
+  assert (attr_count >= 0);
+
+  /* do other checks on query specs */
+  for (crt_qry = *qry_specs_ptr, prev_qry_link_ptr = qry_specs_ptr;
+       crt_qry != NULL;
+       prev_qry_link_ptr = &crt_qry->next, crt_qry = crt_qry->next)
     {
-      /* do other checks on query specs
-         qry_ptr points to the next qry_spec address,
-         when qry1 points to next */
-      for (qry1 = qry_specs; qry1 != NULL;
-	   qry_ptr = &qry1->next, qry1 = qry1->next)
+      PT_NODE *const save_next = crt_qry->next;
+
+      crt_qry->next = NULL;
+
+      result_stmt = pt_check_vclass_query_spec (parser, crt_qry, all_attrs,
+						name, false);
+      if (pt_has_error (parser))
 	{
-	  parser_walk_tree (parser, qry1,
-			    pt_set_is_view_spec, NULL, NULL, NULL);
-	  *qry_ptr = pt_check_vclass_query_spec (parser, qry1,
-						 all_attrs,
-						 name->info.name.original);
-	  if (*qry_ptr && !pt_has_error (parser))
-	    {
-	      pt_type_cast_vclass_query_spec (parser, qry1, all_attrs);
-	    }
+	  return;
 	}
+      if (result_stmt == NULL)
+	{
+	  PT_ERRORm (parser, stmt, MSGCAT_SET_ERROR, -(ER_GENERIC_ERROR));
+	  return;
+	}
+      crt_qry = result_stmt;
+
+      result_stmt = pt_type_cast_vclass_query_spec (parser, crt_qry,
+						    all_attrs);
+      if (pt_has_error (parser))
+	{
+	  return;
+	}
+      if (result_stmt == NULL)
+	{
+	  assert (false);
+	  PT_ERRORm (parser, stmt, MSGCAT_SET_ERROR, -(ER_GENERIC_ERROR));
+	  return;
+	}
+      crt_qry = result_stmt;
+
+      crt_qry->next = save_next;
+      (*prev_qry_link_ptr) = crt_qry;
     }
 }
 
@@ -5991,7 +6243,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 static void
 pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *parent, *qry_specs, *name;
+  PT_NODE *parent, *qry_specs, *name, *create_like;
   PT_NODE *all_attrs, *r, *resolv_class, *attr;
   PT_NODE *tbl_opt = NULL;
   PT_MISC_TYPE entity_type;
@@ -6000,6 +6252,13 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   bool found_reuse_oid = false;
 
   entity_type = node->info.create_entity.entity_type;
+
+  if (entity_type != PT_CLASS && entity_type != PT_VCLASS)
+    {
+      /* control should never reach here if tree is well-formed */
+      assert (false);
+      return;
+    }
 
   for (tbl_opt = node->info.create_entity.table_option_list;
        tbl_opt != NULL; tbl_opt = tbl_opt->next)
@@ -6022,151 +6281,171 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  switch (entity_type)
+  /* check name doesn't already exist as a class */
+  name = node->info.create_entity.entity_name;
+  if (pt_find_class (parser, name))
     {
-    default:
-      /* control should never reach here if tree is well-formed */
-      assert (false);
-      break;
-
-    case PT_CLASS:
-    case PT_VCLASS:
-      /* check name doesn't already exist as a class */
-      name = node->info.create_entity.entity_name;
-      if (pt_find_class (parser, name))
+      if (entity_type == PT_CLASS
+	  || (entity_type == PT_VCLASS
+	      && node->info.create_entity.or_replace == 0))
 	{
 	  PT_ERRORmf (parser, name,
 		      MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_CLASS_EXISTS, name->info.name.original);
 	}
+    }
 
-      pt_check_user_exists (parser, name);
+  pt_check_user_exists (parser, name);
 
-      /* check uniqueness of non-inherited attribute names */
-      all_attrs = node->info.create_entity.attr_def_list;
-      pt_check_unique_attr (parser, name->info.name.original, all_attrs,
-			    PT_ATTR_DEF);
+  /* check uniqueness of non-inherited attribute names */
+  all_attrs = node->info.create_entity.attr_def_list;
+  pt_check_unique_attr (parser, name->info.name.original, all_attrs,
+			PT_ATTR_DEF);
 
-      /* enforce composition hierarchy restrictions on attr type defs */
-      pt_check_attribute_domain (parser, all_attrs,
-				 entity_type, name->info.name.original,
-				 found_reuse_oid, node);
+  /* enforce composition hierarchy restrictions on attr type defs */
+  pt_check_attribute_domain (parser, all_attrs,
+			     entity_type, name->info.name.original,
+			     found_reuse_oid, node);
 
-      /* check that any and all super classes do exist */
-      for (parent = node->info.create_entity.supclass_list;
-	   parent != NULL; parent = parent->next)
+  /* check that any and all super classes do exist */
+  for (parent = node->info.create_entity.supclass_list;
+       parent != NULL; parent = parent->next)
+    {
+      if ((db_obj = pt_find_class (parser, parent)) != NULL)
 	{
-	  if ((db_obj = pt_find_class (parser, parent)) != NULL)
-	    {
-	      parent->info.name.db_object = db_obj;
-	      pt_check_user_owns_class (parser, parent);
+	  parent->info.name.db_object = db_obj;
+	  pt_check_user_owns_class (parser, parent);
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
-	      if (sm_has_text_domain (db_get_attributes (db_obj), 1))
-		{
-		  /* prevent to define it as a superclass */
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
-			  ER_REGU_NOT_IMPLEMENTED, 1,
-			  rel_major_release_string ());
-		  PT_ERROR (parser, node, er_msg ());
-		  break;
-		}
-#endif /* ENABLE_UNUSED_FUNCTION */
-	    }
-	  else
+	  if (sm_has_text_domain (db_get_attributes (db_obj), 1))
 	    {
-	      PT_ERRORmf2 (parser, parent,
-			   MSGCAT_SET_PARSER_SEMANTIC,
-			   MSGCAT_SEMANTIC_NONEXISTENT_SUPCLASS,
-			   parent->info.name.original,
-			   pt_short_print (parser, node));
+	      /* prevent to define it as a superclass */
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		      ER_REGU_NOT_IMPLEMENTED, 1,
+		      rel_major_release_string ());
+	      PT_ERROR (parser, node, er_msg ());
+	      break;
 	    }
-	}
-
-      /* an INHERIT_clause in a create_vclass_stmt
-         without a SUBCLASS_clause is not meaningful. */
-      if (node->info.create_entity.resolution_list
-	  && !node->info.create_entity.supclass_list)
-	{
-	  PT_ERRORmf (parser, node,
-		      MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_WANT_SUBCLASS_CLAUSE,
-		      pt_short_print_l (parser,
-					node->info.
-					create_entity.resolution_list));
+#endif /* ENABLE_UNUSED_FUNCTION */
 	}
       else
 	{
-	  /* the INHERIT_clause can only reference classes
-	     that are in the SUBCLASS_clause. */
-	  for (r = node->info.create_entity.resolution_list; r; r = r->next)
+	  PT_ERRORmf2 (parser, parent,
+		       MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_NONEXISTENT_SUPCLASS,
+		       parent->info.name.original,
+		       pt_short_print (parser, node));
+	}
+    }
+
+  /* an INHERIT_clause in a create_vclass_stmt
+     without a SUBCLASS_clause is not meaningful. */
+  if (node->info.create_entity.resolution_list
+      && !node->info.create_entity.supclass_list)
+    {
+      PT_ERRORmf (parser, node,
+		  MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_WANT_SUBCLASS_CLAUSE,
+		  pt_short_print_l (parser,
+				    node->info.
+				    create_entity.resolution_list));
+    }
+  else
+    {
+      /* the INHERIT_clause can only reference classes
+         that are in the SUBCLASS_clause. */
+      for (r = node->info.create_entity.resolution_list; r; r = r->next)
+	{
+	  resolv_class = r->info.resolution.of_sup_class_name;
+	  found = 0;
+
+	  for (parent = node->info.create_entity.supclass_list;
+	       parent && !found; parent = parent->next)
 	    {
-	      resolv_class = r->info.resolution.of_sup_class_name;
-	      found = 0;
+	      found = !pt_streq (resolv_class->info.name.original,
+				 parent->info.name.original);
+	    }
 
-	      for (parent = node->info.create_entity.supclass_list;
-		   parent && !found; parent = parent->next)
-		{
-		  found = !pt_streq (resolv_class->info.name.original,
-				     parent->info.name.original);
-		}
-
-	      if (!found)
-		{
-		  PT_ERRORmf2 (parser, resolv_class,
-			       MSGCAT_SET_PARSER_SEMANTIC,
-			       MSGCAT_SEMANTIC_NOT_IN_SUBCLASS_LIST,
-			       parser_print_tree (parser, r),
-			       pt_short_print_l (parser,
-						 node->info.create_entity.
-						 supclass_list));
-		}
+	  if (!found)
+	    {
+	      PT_ERRORmf2 (parser, resolv_class,
+			   MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_NOT_IN_SUBCLASS_LIST,
+			   parser_print_tree (parser, r),
+			   pt_short_print_l (parser,
+					     node->info.create_entity.
+					     supclass_list));
 	    }
 	}
+    }
 
-      if (entity_type == PT_VCLASS)
+  if (entity_type == PT_VCLASS)
+    {
+      /* The grammar restricts table options to CREATE CLASS / TABLE */
+      assert (node->info.create_entity.table_option_list == NULL);
+
+      for (attr = all_attrs; attr; attr = attr->next)
 	{
-	  /* The grammar restricts table options to CREATE CLASS / TABLE */
-	  assert (node->info.create_entity.table_option_list == NULL);
-
-	  for (attr = all_attrs; attr; attr = attr->next)
+	  if (attr->info.attr_def.auto_increment != NULL)
 	    {
-	      if (attr->info.attr_def.auto_increment != NULL)
-		{
-		  PT_ERRORm (parser, node,
-			     MSGCAT_SET_PARSER_SEMANTIC,
-			     MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_AUTOINC);
-		}
-	    }
-	}
-
-      qry_specs = node->info.create_entity.as_query_list;
-      if (node->info.create_entity.entity_type == PT_CLASS)
-	{
-	  /* simple CLASSes must not have any query specs */
-	  if (qry_specs)
-	    {
-	      PT_ERRORm (parser, qry_specs,
+	      PT_ERRORm (parser, node,
 			 MSGCAT_SET_PARSER_SEMANTIC,
-			 MSGCAT_SEMANTIC_CLASS_NO_QUERY_SPEC);
-	      break;
+			 MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_AUTOINC);
 	    }
+	}
+    }
 
-	  if (node->info.create_entity.partition_info)
+  qry_specs = node->info.create_entity.as_query_list;
+  if (node->info.create_entity.entity_type == PT_CLASS)
+    {
+      /* simple CLASSes must not have any query specs */
+      if (qry_specs)
+	{
+	  PT_ERRORm (parser, qry_specs,
+		     MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_CLASS_NO_QUERY_SPEC);
+	  return;
+	}
+
+      if (node->info.create_entity.partition_info)
+	{
+	  pt_check_partitions (parser, node, NULL);
+	}
+    }
+  else				/* must be a CREATE VCLASS statement */
+    {
+      pt_check_create_view (parser, node);
+    }
+
+  /* check that all constraints look valid */
+  if (!parser->error_msgs)
+    {
+      (void) pt_check_constraints (parser, node);
+    }
+
+  create_like = node->info.create_entity.create_like;
+  if (create_like != NULL)
+    {
+      assert (entity_type == PT_CLASS);
+
+      db_obj = pt_find_class (parser, create_like);
+      if (db_obj == NULL)
+	{
+	  PT_ERRORmf (parser, create_like, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
+		      create_like->info.name.original);
+	}
+      else
+	{
+	  create_like->info.name.db_object = db_obj;
+	  pt_check_user_owns_class (parser, create_like);
+	  if (!db_is_class (db_obj))
 	    {
-	      pt_check_partitions (parser, node, NULL);
+	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_IS_NOT_A,
+			   create_like->info.name.original,
+			   pt_show_misc_type (PT_CLASS));
 	    }
 	}
-      else			/* must be a CREATE VCLASS statement */
-	{
-	  pt_check_create_view (parser, node);
-	}
-
-      /* check that all constraints look valid */
-      if (!parser->error_msgs)
-	{
-	  (void) pt_check_constraints (parser, node);
-	}
-      break;
     }
 }
 
@@ -6228,7 +6507,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
   DB_ATTRIBUTE *attributes;
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
   DB_OBJECT *domain_class;
-#endif
+#endif /* ENABLE_UNUSED_FUNCTION */
   char *drop_name_list = NULL;
 
   /* Replace each Entity Spec with an Equivalent flat list */
@@ -6393,7 +6672,9 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
   /* if we have a null target, constant folding has determined we have
    * no target, there is nothing to check. */
   if ((target->node_type == PT_VALUE) && (target->type_enum == PT_TYPE_NULL))
-    return;
+    {
+      return;
+    }
 
   if ((!target->data_type) || (!target->data_type->info.data_type.entity))
     {
@@ -6487,6 +6768,48 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
 }
+
+/*
+ * pt_check_truncate () - do semantic checks on the truncate statement
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static void
+pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *temp;
+  PT_NODE *name;
+  PT_NODE *chk_parent = NULL;
+  DB_OBJECT *db_obj;
+
+  /* replace entity spec with an equivalent flat list */
+  parser_walk_tree (parser, node,
+		    pt_flat_spec_pre, &chk_parent, pt_continue_walk, NULL);
+
+  temp = node->info.truncate.spec;
+  if (temp && temp->node_type == PT_SPEC)
+    {
+      const char *cls_nam;
+
+      if ((name = temp->info.spec.entity_name) != NULL
+	  && name->node_type == PT_NAME
+	  && (cls_nam = name->info.name.original) != NULL
+	  && (db_obj = db_find_class (cls_nam)) != NULL)
+	{
+	  name->info.name.db_object = db_obj;
+	  pt_check_user_owns_class (parser, name);
+	  if (!db_is_class (db_obj))
+	    {
+	      PT_ERRORmf2 (parser, node,
+			   MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_IS_NOT_A,
+			   cls_nam, pt_show_misc_type (PT_CLASS));
+	    }
+	}
+    }
+}
+
 
 /*
  * pt_check_single_valued_node () - looks for names outside an aggregate
@@ -6816,6 +7139,17 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	  node->cannot_prepare = 1;
 	}
 
+      if (node->info.insert.into_var != NULL &&
+	  node->info.insert.value_clauses->next != NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DO_INSERT_TOO_MANY, 0);
+	  if (!parser->error_msgs)
+	    {
+	      PT_ERRORc (parser, node, db_error_string (3));
+	    }
+	  break;
+	}
+
       /* semantic check value clause for SELECT and INSERT subclauses */
       if (node)
 	{
@@ -6987,18 +7321,26 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 
 	  /* STEP 2: check that grouped things are single valued */
-	  (void) parser_walk_tree (parser,
-				   node->info.query.q.select.list,
-				   pt_check_single_valued_node,
-				   &info,
-				   pt_check_single_valued_node_post, &info);
-	  (void) parser_walk_tree (parser,
-				   node->info.query.q.select.having,
-				   pt_check_single_valued_node,
-				   &info,
-				   pt_check_single_valued_node_post, &info);
+	  if (PRM_ONLY_FULL_GROUP_BY || !info.group_by)
+	    {
+	      (void) parser_walk_tree (parser,
+				       node->info.query.q.select.list,
+				       pt_check_single_valued_node,
+				       &info,
+				       pt_check_single_valued_node_post,
+				       &info);
+	      (void) parser_walk_tree (parser,
+				       node->info.query.q.select.having,
+				       pt_check_single_valued_node, &info,
+				       pt_check_single_valued_node_post,
+				       &info);
+	    }
 	}
 
+      node = pt_semantic_type (parser, node, info);
+      break;
+
+    case PT_DO:
       node = pt_semantic_type (parser, node, info);
       break;
 
@@ -7034,7 +7376,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 
     case PT_EXPR:
       if (node->info.expr.op == PT_CAST)
-	pt_check_cast_op (parser, node);
+	{
+	  pt_check_cast_op (parser, node);
+	}
 
       /* check instnum compatibility */
       if (pt_is_instnum (node)
@@ -7043,6 +7387,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		       MSGCAT_SEMANTIC_INSTNUM_COMPATIBILITY_ERR,
 		       "INST_NUM() or ROWNUM", "INST_NUM() or ROWNUM");
+	}
+
+      /* check default function */
+      if (node->info.expr.op == PT_DEFAULTF)
+	{
+	  pt_check_defaultf (parser, node);
 	}
 
       break;
@@ -7313,8 +7663,11 @@ pt_gen_isnull_preds (PARSER_CONTEXT * parser,
 	}
     }
 
-  if ((new_expr = parser_new_node (parser, PT_EXPR)) == NULL)
-    goto out_of_mem;
+  new_expr = parser_new_node (parser, PT_EXPR);
+  if (new_expr == NULL)
+    {
+      goto out_of_mem;
+    }
 
   new_expr->line_number = pred->line_number;
   new_expr->column_number = pred->column_number;
@@ -7614,13 +7967,16 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 		    PT_NODE * node, SEMANTIC_CHK_INFO * info)
 {
   PT_NODE *next;
-  SEMANTIC_CHK_INFO sc_info, *sc_info_ptr = info;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  SEMANTIC_CHK_INFO *sc_info_ptr = info;
   bool save_donot_fold = false;
 
   assert (parser != NULL);
 
   if (!node)
-    return NULL;
+    {
+      return NULL;
+    }
 
   /* If it is an internally created statement, set its host variable
    * info again to search host variables at parent parser */
@@ -7629,7 +7985,6 @@ pt_check_with_info (PARSER_CONTEXT * parser,
   if (sc_info_ptr == NULL)
     {
       sc_info_ptr = &sc_info;
-      sc_info.attrdefs = NULL;
     }
   if (info)
     {
@@ -7670,6 +8025,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
     case PT_EVALUATE:
     case PT_SET_XACTION:
     case PT_SCOPE:
+    case PT_DO:
 #if 0				/* to disable TEXT */
       /* we postpone TEXT resolution of a insert statement at '*' resolution
          if (node->node_type == PT_INSERT) {
@@ -7696,7 +8052,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 	  node->info.query.do_not_cache = 1;
 	}
 
-      if (!parser->error_msgs)
+      if (!pt_has_error (parser))
 	{
 	  if (node->node_type == PT_UPDATE
 	      || node->node_type == PT_DELETE
@@ -7704,7 +8060,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 	      || node->node_type == PT_UNION
 	      || node->node_type == PT_INTERSECTION
 	      || node->node_type == PT_DIFFERENCE
-	      || node->node_type == PT_SELECT)
+	      || node->node_type == PT_SELECT || node->node_type == PT_DO)
 	    {
 	      /* may have WHERE clause */
 	      int check = 0;
@@ -7725,25 +8081,28 @@ pt_check_with_info (PARSER_CONTEXT * parser,
 		}
 	    }
 
-	  /* remove unnecessary variable */
-	  sc_info_ptr->unbound_hostvar = false;
-	  node = parser_walk_tree (parser, node, NULL, NULL,
-				   pt_semantic_check_local, sc_info_ptr);
-	  if (node && sc_info_ptr->unbound_hostvar)
+	  if (!pt_has_error (parser))
 	    {
-	      node->cannot_prepare = 1;
-	    }
+	      /* remove unnecessary variable */
+	      sc_info_ptr->unbound_hostvar = false;
+	      node = parser_walk_tree (parser, node, NULL, NULL,
+				       pt_semantic_check_local, sc_info_ptr);
+	      if (node && sc_info_ptr->unbound_hostvar)
+		{
+		  node->cannot_prepare = 1;
+		}
 
-	  /* because the statement has some PT_HOST_VAR whose data type
-	     was not bound, we cannot prepare it; see pt_eval_type() */
+	      /* because the statement has some PT_HOST_VAR whose data type
+	         was not bound, we cannot prepare it; see pt_eval_type() */
 
-	  if (!parser->error_msgs)
-	    {
-	      /* This must be done before CNF since we are adding disjuncts
-	       * to the "IS NULL" expression. */
-	      node = parser_walk_tree (parser, node,
-				       pt_expand_isnull_preds,
-				       node, NULL, NULL);
+	      if (!pt_has_error (parser))
+		{
+		  /* This must be done before CNF since we are adding disjuncts
+		   * to the "IS NULL" expression. */
+		  node = parser_walk_tree (parser, node,
+					   pt_expand_isnull_preds,
+					   node, NULL, NULL);
+		}
 	    }
 	}
       break;
@@ -7776,6 +8135,10 @@ pt_check_with_info (PARSER_CONTEXT * parser,
     case PT_GRANT:
     case PT_REVOKE:
       pt_check_grant_revoke (parser, node);
+      break;
+
+    case PT_TRUNCATE:
+      pt_check_truncate (parser, node);
       break;
 
     case PT_ALTER:
@@ -8337,7 +8700,7 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
   int result_isnull = 0;
   PT_NODE *tmp;
   PT_NODE *msgs;
-  SEMANTIC_CHK_INFO sc_info;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
 
   assert (parser != NULL);
   msgs = parser->error_msgs;
@@ -8754,7 +9117,6 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
   /* set type of expression */
   if (!result_isnull)
     {
-      sc_info.attrdefs = NULL;
       sc_info.top_node = name_expr;
       sc_info.donot_fold = false;
       result = pt_semantic_type (parser, result, &sc_info);
@@ -8967,13 +9329,14 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
     }
 
   /* not query statement or error occurs */
-  if (!select_list)
+  if (select_list == NULL)
     {
       return error;
     }
 
   /* get ORDER BY clause */
-  if (!(order_by = query->info.query.order_by))
+  order_by = query->info.query.order_by;
+  if (order_by == NULL)
     {
       if (query->node_type == PT_SELECT)
 	{
@@ -9042,11 +9405,6 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	{
 	  /* not an integer value.
 	     Try to match with something in the select list. */
-	  if (!pt_is_query (query))
-	    {
-	      error = MSGCAT_SEMANTIC_ORDERBY_IS_NOT_INT;
-	      PT_ERRORm (parser, order, MSGCAT_SET_PARSER_SEMANTIC, error);
-	    }
 
 	  n = 1;		/* a counter for position in select_list */
 	  if (r->node_type != PT_NAME && r->node_type != PT_DOT_)
@@ -9076,25 +9434,40 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 
 	  /* if end of list, no match create a hidden column node
 	     and append to select_list */
-	  if (!col)
+	  if (col == NULL)
 	    {
-	      col = parser_copy_tree (parser, r);
-	      if (!col)
+	      if (query->node_type != PT_SELECT)
 		{
-		  error = MSGCAT_SEMANTIC_OUT_OF_MEMORY;
+		  error = MSGCAT_SEMANTIC_ORDERBY_IS_NOT_INT;
+		  PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC, error);
+		}
+	      else if (query->info.query.all_distinct == PT_DISTINCT)
+		{
+		  error = MSGCAT_SEMANTIC_INVALID_ORDERBY_WITH_DISTINCT;
 		  PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC, error);
 		}
 	      else
 		{
-		  /* mark as a hidden column */
-		  col->is_hidden_column = 1;
-		  parser_append_node (col, select_list);
+		  col = parser_copy_tree (parser, r);
+		  if (col == NULL)
+		    {
+		      error = MSGCAT_SEMANTIC_OUT_OF_MEMORY;
+		      PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC,
+				 error);
+		      return error;	/* give up */
+		    }
+		  else
+		    {
+		      /* mark as a hidden column */
+		      col->is_hidden_column = 1;
+		      parser_append_node (col, select_list);
+		    }
 		}
 	    }
 
 	  /* we got a match=n, Create a value node and replace expr with it */
 	  temp = parser_new_node (parser, PT_VALUE);
-	  if (!temp)
+	  if (temp == NULL)
 	    {
 	      error = MSGCAT_SEMANTIC_OUT_OF_MEMORY;
 	      PT_ERRORm (parser, r, MSGCAT_SET_PARSER_SEMANTIC, error);
@@ -9130,10 +9503,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
 
       /* check for adding col's indexable(i.e., non-null full RANGE) term */
-      while (col->node_type == PT_DOT_)
-	{
-	  col = col->info.dot.arg2;
-	}
+      col = pt_get_end_path_node (col);
 
       if (col->node_type == PT_NAME
 	  && col->info.name.original
@@ -9143,7 +9513,8 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	  && (cls_name = entity_name->info.name.original))
 	{
 	  /* get class mop */
-	  if ((cls_obj = entity_name->info.name.db_object) == NULL)
+	  cls_obj = entity_name->info.name.db_object;
+	  if (cls_obj == NULL)
 	    {
 	      cls_obj = entity_name->info.name.db_object =
 		db_find_class (cls_name);
@@ -9286,14 +9657,20 @@ pt_check_path_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
   PT_NODE_TYPE n;
 
   if (!p && !q)
-    return 0;
+    {
+      return 0;
+    }
 
   if (!p || !q)
-    return 1;
+    {
+      return 1;
+    }
 
   /* check node types are same */
   if (p->node_type != q->node_type)
-    return 1;
+    {
+      return 1;
+    }
 
   n = p->node_type;
   switch (n)
@@ -9368,10 +9745,14 @@ pt_check_class_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
   PT_NODE_TYPE n;
 
   if (!p && !q)
-    return 0;
+    {
+      return 0;
+    }
 
   if (!p || !q)
-    return 1;
+    {
+      return 1;
+    }
 
   /* check if node types are same */
   if (p->node_type != q->node_type)
@@ -9406,58 +9787,60 @@ pt_check_class_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
 }
 
 /*
- * pt_coerce_insert_values () - try to coerce insert_values to types
- *  	                        indicated by insert_attributes
+ * pt_coerce_insert_values () - try to coerce the insert values to the types
+ *  	                        indicated by the insert attributes
  *   return:
  *   parser(in): handle to context used to parse the insert statement
  *   ins(in): the AST form of an insert statement
  */
-
 static PT_NODE *
 pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * ins)
 {
-  PT_NODE *v, *a;
-  int a_cnt, v_cnt;
+  PT_NODE *v = NULL, *a = NULL, *crt_list = NULL;
+  int a_cnt = 0, v_cnt = 0;
 
   if (ins->node_type != PT_INSERT)	/* preconditions are not met */
-    return NULL;
+    {
+      return NULL;
+    }
+
 #if 0				/* to disable TEXT */
   pt_resolve_insert_external (parser, ins);
 #endif /* 0                              */
 
-  a = ins->info.insert.attr_list;
-  a_cnt = pt_length_of_list (a);
-  if (ins->info.insert.is_value == PT_IS_DEFAULT_VALUE)
-    {
-      v = NULL;			/* PT_IS_DEFAULT_VALUE */
-    }
-  else if (ins->info.insert.is_value == PT_IS_SUBQUERY)
-    {
-      /* this sort of nods at union queries */
-      v = pt_get_select_list (parser, ins->info.insert.value_clause);
-      v_cnt = pt_length_of_select_list (v, EXCLUDE_HIDDEN_COLUMNS);
-      if (a_cnt != v_cnt)
-	{
-	  PT_ERRORmf2 (parser, ins, MSGCAT_SET_PARSER_SEMANTIC,
-		       MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE, a_cnt, v_cnt);
-	}
-    }
-  else
-    {
-      v = ins->info.insert.value_clause;
-      v_cnt = pt_length_of_list (v);
-      if (a_cnt != v_cnt)
-	{
-	  PT_ERRORmf2 (parser, ins, MSGCAT_SET_PARSER_SEMANTIC,
-		       MSGCAT_SEMANTIC_ATT_CNT_VAL_CNT_NE, a_cnt, v_cnt);
-	}
-    }
+  a_cnt = pt_length_of_list (ins->info.insert.attr_list);
 
-  /* for each value node v in ins' value_clause and for each attrivute
-   * a in ins' attribute_list do */
-  if (v)
+  for (crt_list = ins->info.insert.value_clauses; crt_list != NULL;
+       crt_list = crt_list->next)
     {
-      for (; v != NULL && a != NULL; v = v->next, a = a->next)
+      if (crt_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
+	{
+	  v = NULL;
+	}
+      else if (crt_list->info.node_list.list_type == PT_IS_SUBQUERY)
+	{
+	  /* this sort of nods at union queries */
+	  v = pt_get_select_list (parser, crt_list->info.node_list.list);
+	  v_cnt = pt_length_of_select_list (v, EXCLUDE_HIDDEN_COLUMNS);
+	  if (a_cnt != v_cnt)
+	    {
+	      PT_ERRORmf2 (parser, ins, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE, a_cnt, v_cnt);
+	    }
+	}
+      else
+	{
+	  v = crt_list->info.node_list.list;
+	  v_cnt = pt_length_of_list (v);
+	  if (a_cnt != v_cnt)
+	    {
+	      PT_ERRORmf2 (parser, ins, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_ATT_CNT_VAL_CNT_NE, a_cnt, v_cnt);
+	    }
+	}
+
+      for (a = ins->info.insert.attr_list; v != NULL && a != NULL;
+	   v = v->next, a = a->next)
 	{
 	  /* test assignment compatibility. This sets parser->error_msgs */
 	  (void) pt_assignment_compatible (parser, a, v);
@@ -9475,7 +9858,6 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * ins)
 	    }
 	}
     }
-
   return ins;
 }
 
@@ -9582,57 +9964,76 @@ pt_has_using_index_clause (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
- * pt_validate_query_spec () - check if a query_spec is compatible with a given
- * 			       {vclass} object
+ * pt_validate_query_spec () - check if a query_spec is compatible with a
+ * 			       given {vclass} object
  *   return: an error code if checking found an error, NO_ERROR otherwise
  *   parser(in): handle to context used to parse the query_specs
  *   s(in): a query_spec in parse_tree form
- *   c(in): an vclass object
+ *   c(in): a vclass object
  */
 
 int
 pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
 {
-  PT_NODE *attrs;
-  int attr_count;
+  PT_NODE *attrs = NULL;
+  int error_code = NO_ERROR;
 
   assert (parser != NULL && s != NULL && c != NULL);
 
-  if (pt_has_error (parser))	/* a syntax error for query_spec */
+  /* a syntax error for query_spec */
+  if (pt_has_error (parser))
     {
-      pt_report_to_ersys (parser, PT_SYNTAX);	/* report it */
-      return er_errid ();
+      pt_report_to_ersys (parser, PT_SYNTAX);
+      error_code = er_errid ();
+      goto error_exit;
     }
+
+  if (!db_is_vclass (c))
+    {
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      goto error_exit;
+    }
+
+  s = parser_walk_tree (parser, s, pt_set_is_view_spec, NULL, NULL, NULL);
+  assert (s != NULL);
 
   attrs = pt_get_attributes (parser, c);
-  attr_count = pt_length_of_list (attrs);
-  if (db_is_vclass (c))
-    {
-      /* apply semantic checks to query_spec */
-      parser_walk_tree (parser, s, pt_set_is_view_spec, NULL, NULL, NULL);
-      pt_check_vclass_query_spec (parser, s, attrs, db_get_class_name (c));
 
-      if (!pt_has_error (parser))
-	{
-	  pt_type_cast_vclass_query_spec (parser, s, attrs);
-	}
-
-      if (parser->error_msgs)	/* query_spec s fails semantic checks  */
-	{
-	  pt_report_to_ersys (parser, PT_SEMANTIC);
-	  return er_errid ();
-	}
-    }
-
-  if (!parser->error_msgs)
-    {
-      return NO_ERROR;
-    }
-  else
+  /* apply semantic checks to query_spec */
+  s = pt_check_vclass_query_spec (parser, s, attrs,
+				  db_get_class_name (c), true);
+  if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
-      return er_errid ();
+      error_code = er_errid ();
+      goto error_exit;
     }
+  if (s == NULL)
+    {
+      error_code = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      goto error_exit;
+    }
+
+  s = pt_type_cast_vclass_query_spec (parser, s, attrs);
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error_code = er_errid ();
+      goto error_exit;
+    }
+  if (s == NULL)
+    {
+      error_code = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      goto error_exit;
+    }
+
+  return error_code;
+
+error_exit:
+  return error_code;
 }
 
 
@@ -9959,35 +10360,104 @@ pt_check_constraints (PARSER_CONTEXT * parser, const PT_NODE * create)
 }
 
 /*
- * pt_find_class_of_index () - ind class name of the given index
- *   return:  the PT_NAME node
- *   parser(in): the current parser context
- *   index(in): a PT_NAME node
- *   type(in): constraint type (DB_CONSTRAINT_UNIQUE or DB_CONSTRAINT_INDEX)
+ * pt_find_class_of_index () - Find the name of the class that has a given
+ *                             index (specified by its name and type)
+ *   return: a PT_NAME node with the class name or NULL on error
+ *   parser(in):
+ *   index_name(in):
+ *   index_type(in):
+ *
+ * Note:
+ *   Only constraint types that satisfy the DB_IS_CONSTRAINT_INDEX_FAMILY
+ *   condition will be searched for.
  */
-
 PT_NODE *
-pt_find_class_of_index (PARSER_CONTEXT * parser, PT_NODE * index,
-			DB_CONSTRAINT_TYPE type)
+pt_find_class_of_index (PARSER_CONTEXT * parser, const char *const index_name,
+			const DB_CONSTRAINT_TYPE index_type)
 {
-  DB_OBJECT *class_;
   PT_NODE *node = NULL;
+  DB_OBJECT *const class_ = db_find_class_of_index (index_name, index_type);
 
-  class_ = (DB_OBJECT *) db_find_class_of_index (index->info.name.original,
-						 type);
-  if (class_)
+  if (class_ == NULL)
     {
-      node = parser_new_node (parser, PT_NAME);
-      if (node == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  return NULL;
-	}
+      return NULL;
+    }
+  node = pt_name (parser, db_get_class_name (class_));
+  if (node == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+  return node;
+}
 
-      node->info.name.original = pt_append_string (parser, NULL,
-						   db_get_class_name
-						   (class_));
+/*
+ * pt_check_defaultf () - Checks to see if default function is well-formed
+ *   return: none
+ *   parser(in):
+ *   node(in): the node to check
+ */
+static int
+pt_check_defaultf (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  PT_NODE *arg;
+
+  assert (node != NULL && node->node_type == PT_EXPR
+	  && node->info.expr.op == PT_DEFAULTF);
+  if (node == NULL || node->node_type != PT_EXPR
+      || node->info.expr.op != PT_DEFAULTF)
+    {
+      PT_INTERNAL_ERROR (parser, "bad node type");
+      return ER_FAILED;
     }
 
-  return node;
+  arg = node->info.expr.arg1;
+
+  assert (arg != NULL);
+  if (arg == NULL || arg->node_type != PT_NAME)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		 MSGCAT_SEMANTIC_DEFAULT_JUST_COLUMN_NAME);
+      return ER_FAILED;
+    }
+
+  /* Argument of DEFAULT function should be given. So, PT_NAME_INFO_FILL_DEFAULT
+   * bit might be always set when expression node was created. The following
+   * assertion and defensive code will be used to handle unexpected situation.
+   */
+  assert (PT_NAME_INFO_IS_FLAGED (arg, PT_NAME_INFO_FILL_DEFAULT) &&
+	  arg->info.name.default_value != NULL);
+  if (!PT_NAME_INFO_IS_FLAGED (arg, PT_NAME_INFO_FILL_DEFAULT) ||
+      arg->info.name.default_value == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "bad DEFAULTF node");
+      return ER_FAILED;
+    }
+
+  /* In case of no default value defined on an attribute:
+   * DEFAULT function returns NULL when the attribute given as argument
+   * has UNIQUE or no constraint, but it returns a semantic error for
+   * PRIMARY KEY or NOT NULL constraint.
+   */
+  if (arg->info.name.resolved && arg->info.name.original)
+    {
+      DB_ATTRIBUTE *db_att = NULL;
+      db_att = db_get_attribute_by_name (arg->info.name.resolved,
+					 arg->info.name.original);
+
+      if (db_att)
+	{
+	  if ((db_attribute_is_primary_key (db_att) ||
+	       db_attribute_is_non_null (db_att)) &&
+	      DB_IS_NULL (&(arg->info.name.default_value->info.
+			    value.db_value)))
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_INVALID_FIELD_DEFAULT_VALUE,
+			  arg->info.name.original);
+	      return ER_FAILED;
+	    }
+	}
+    }
+  return NO_ERROR;
 }

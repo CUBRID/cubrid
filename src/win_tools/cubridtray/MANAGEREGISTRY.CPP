@@ -156,11 +156,7 @@ bool CManageRegistry::GetJavaRootPath(char *path)
 
 	if (!path) return false;
 
-#if defined (_WIN64)
-	reg_mask = KEY_QUERY_VALUE | KEY_WOW64_32KEY;
-#else
 	reg_mask = KEY_QUERY_VALUE;
-#endif
 
 	rc = RegOpenKeyEx(  HKEY_LOCAL_MACHINE,
 						REGKEY_JAVA,

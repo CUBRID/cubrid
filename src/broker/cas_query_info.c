@@ -149,7 +149,9 @@ query_info_print (void)
 
       fprintf (fp_res, "\n");
 
-      fprintf (fp_q, "%s\n", query_info_arr[i].cas_log);
+      fwrite (query_info_arr[i].cas_log, query_info_arr[i].cas_log_len, 1,
+	      fp_q);
+      fprintf (fp_q, "\n");
 
 #ifdef TEST
       fprintf (fp_tag, "Q%d	%s	/^%s\n", i + 1, LOG_TOP_Q_FILE, buf);
@@ -246,15 +248,20 @@ query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res,
       query_info_arr[qi_idx].max = exec_time;
       FREE_MEM (query_info_arr[qi_idx].cas_log);
       query_info_arr[qi_idx].cas_log =
-	(char *) MALLOC (strlen (filename) + strlen (qi->cas_log) + 20);
+	(char *) MALLOC (strlen (filename) + qi->cas_log_len + 20);
       if (query_info_arr[qi_idx].cas_log == NULL)
 	{
 	  fprintf (stderr, "%s\n", strerror (errno));
 	  retval = -1;
 	  goto query_info_add_end;
 	}
-      sprintf (query_info_arr[qi_idx].cas_log, "%s:%d\n%s", filename, lineno,
-	       qi->cas_log);
+      sprintf (query_info_arr[qi_idx].cas_log, "%s:%d\n", filename, lineno);
+      query_info_arr[qi_idx].cas_log_len =
+	strlen (query_info_arr[qi_idx].cas_log);
+      memcpy (query_info_arr[qi_idx].cas_log +
+	      query_info_arr[qi_idx].cas_log_len, qi->cas_log,
+	      qi->cas_log_len);
+      query_info_arr[qi_idx].cas_log_len += qi->cas_log_len;
     }
   query_info_arr[qi_idx].count++;
   query_info_arr[qi_idx].sum += exec_time;

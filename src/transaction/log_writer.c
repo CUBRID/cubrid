@@ -47,6 +47,7 @@
 #if defined(SERVER_MODE)
 #include "memory_alloc.h"
 #include "server_support.h"
+#include "thread_impl.h"
 #endif
 #include "dbi.h"
 #if !defined(WINDOWS)
@@ -559,8 +560,18 @@ logwr_set_hdr_and_flush_info (void)
 		  logwr_Gl.active_name);
 	  return ER_LOG_DOESNT_CORRESPOND_TO_DATABASE;
 	}
-      /* To get the last page again, decrease last pageid */
-      logwr_Gl.last_recv_pageid = logwr_Gl.hdr.eof_lsa.pageid - 1;
+
+      if (logwr_Gl.hdr.ha_file_status != LOG_HA_FILESTAT_SYNCHRONIZED)
+	{
+	  /* In case of delayed write,
+	     get last_recv_pageid from the append lsa of the local log header */
+	  logwr_Gl.last_recv_pageid = logwr_Gl.hdr.append_lsa.pageid - 1;
+	}
+      else
+	{
+	  /* To get the last page again, decrease last pageid */
+	  logwr_Gl.last_recv_pageid = logwr_Gl.hdr.eof_lsa.pageid - 1;
+	}
     }
   if (logwr_Gl.hdr.ha_file_status != LOG_HA_FILESTAT_SYNCHRONIZED)
     {
@@ -1685,6 +1696,11 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, PAGEID first_pageid, int mode)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
+  if (thread_p->conn_entry)
+    {
+      thread_p->conn_entry->stop_phase = THREAD_WORKER_STOP_PHASE_1;
+    }
+
   while (true)
     {
       er_log_debug (ARG_FILE_LINE,
@@ -1709,18 +1725,24 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, PAGEID first_pageid, int mode)
 	  bool continue_checking = true;
 
 	  thread_suspend_with_other_mutex (thread_p,
-					   &writer_info->
-					   flush_start_mutex, INF_WAIT,
-					   NULL, THREAD_LOGWR_SUSPENDED);
+					   &writer_info->flush_start_mutex,
+					   INF_WAIT, NULL,
+					   THREAD_LOGWR_SUSPENDED);
 
 	  LOG_MUTEX_UNLOCK (writer_info->flush_start_mutex);
 
 	  if (logtb_is_interrupted (thread_p, false, &continue_checking)
-	      || (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
-		  && thread_p->interrupted))
+	      || thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      /* interrupted, shutdown or connection has gone. */
 	      error_code = ER_INTERRUPTED;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	      status = LOGWR_STATUS_ERROR;
+	      goto error;
+	    }
+	  else if (thread_p->resume_status != THREAD_LOGWR_RESUMED)
+	    {
+	      error_code = ER_FAILED;
 	      status = LOGWR_STATUS_ERROR;
 	      goto error;
 	    }

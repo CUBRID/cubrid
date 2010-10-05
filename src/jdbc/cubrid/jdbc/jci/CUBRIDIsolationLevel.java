@@ -34,7 +34,7 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 /**
  * CUBRID의 Isolation level을 정의한 class이다.

@@ -74,6 +74,9 @@ enum
 enum
 { TT_MASTER, TT_SERVER, TT_WORKER, TT_DAEMON, TT_NONE };
 
+enum
+{ THREAD_WORKER_STOP_PHASE_0, THREAD_WORKER_STOP_PHASE_1 };
+
 struct thread_entry
 {
 #if defined(WINDOWS)
@@ -133,6 +136,10 @@ struct thread_entry
   int log_data_length;
 };
 
+#define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
+  ((thread_p)->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT && \
+   (thread_p)->interrupted == true)
+
 typedef struct daemon_thread_monitor DAEMON_THREAD_MONITOR;
 struct daemon_thread_monitor
 {
@@ -158,7 +165,7 @@ extern THREAD_ENTRY *thread_get_thread_entry_info (void);
 
 extern int thread_initialize_manager (void);
 extern int thread_start_workers (void);
-extern int thread_stop_active_workers (void);
+extern int thread_stop_active_workers (unsigned short stop_phase);
 extern int thread_stop_active_daemons (void);
 extern int thread_kill_all_workers (void);
 extern void thread_final_manager (void);
@@ -181,6 +188,8 @@ extern int thread_suspend_wakeup_and_unlock_entry_with_tran_index (int
 								   suspended_reason);
 #endif
 extern int thread_wakeup (THREAD_ENTRY * p, int resume_reason);
+extern int thread_wakeup_already_had_mutex (THREAD_ENTRY * p,
+					    int resume_reason);
 extern int thread_wakeup_with_tran_index (int tran_index, int resume_reason);
 
 extern ADJ_ARRAY *css_get_cnv_adj_buffer (int idx);
@@ -204,6 +213,8 @@ extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void thread_set_comm_request_id (unsigned int rid);
 #endif
+extern THREAD_ENTRY *thread_find_entry_by_tran_index_except_me (int
+								tran_index);
 extern int thread_get_current_entry_index (void);
 extern int thread_get_current_tran_index (void);
 extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p,
@@ -212,7 +223,7 @@ extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p,
 extern void thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 #endif
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
-extern int thread_has_threads (int tran_index, int client_id);
+extern int thread_has_threads (THREAD_ENTRY *caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);

@@ -202,5 +202,21 @@ extern bool qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p,
 						DB_VALUE * value_char,
 						DB_VALUE * result_p,
 						VAL_DESCR * vd);
+extern int qdata_bit_not_dbval (DB_VALUE * dbval, DB_VALUE * res,
+				TP_DOMAIN * domain);
+extern int qdata_bit_and_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
+				DB_VALUE * res, TP_DOMAIN * domain);
+extern int qdata_bit_or_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
+			       DB_VALUE * res, TP_DOMAIN * domain);
+extern int qdata_bit_xor_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
+				DB_VALUE * res, TP_DOMAIN * domain);
+extern int qdata_bit_shift_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
+				  OPERATOR_TYPE op, DB_VALUE * res,
+				  TP_DOMAIN * domain);
+extern int qdata_divmod_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
+			       OPERATOR_TYPE op, DB_VALUE * res,
+			       TP_DOMAIN * domain);
+
+extern int qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p);
 
 #endif /* _QUERY_OPFUNC_H_ */

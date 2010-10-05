@@ -31,7 +31,15 @@
 #include "message_catalog.h"
 #include "error_code.h"
 
+typedef enum
+{
+  EXISTING_DATABASE,
+  NEW_DATABASE
+} DATABASE_NAME;
+
 static int utility_get_option_index (UTIL_ARG_MAP * arg_map, int arg_ch);
+static int check_database_name_local (const char *name,
+				      int existing_or_new_db);
 
 /*
  * utility_initialize() - initialize cubrid library
@@ -62,12 +70,35 @@ utility_get_generic_message (int message_index)
 }
 
 /*
- * check_database_name() - check validation of the name of a database
+ * check_database_name() - check validation of the name of a database for existing db
  *   return: error code
  *   name(in): the name of a database
  */
 int
 check_database_name (const char *name)
+{
+  return check_database_name_local (name, EXISTING_DATABASE);
+}
+
+/*
+ * check_database_name() - check validation of the name of a database for new db
+ *   return: error code
+ *   name(in): the name of a database
+ */
+int
+check_new_database_name (const char *name)
+{
+  return check_database_name_local (name, NEW_DATABASE);
+}
+
+/*
+ * check_database_name_local() - check validation of the name of a database
+ *   return: error code
+ *   name(in): the name of a database
+ *   existing_or_new_db(in): whether db is existing or new one 
+ */
+static int
+check_database_name_local (const char *name, int existing_or_new_db)
 {
   int status = NO_ERROR;
   int i = 0;
@@ -81,7 +112,8 @@ check_database_name (const char *name)
       for (i = 0; name[i] != 0; i++)
 	{
 	  if (isspace (name[i]) || name[i] == '/' || name[i] == '\\'
-	      || !isprint (name[i]))
+	      || !isprint (name[i])
+	      || (existing_or_new_db == NEW_DATABASE && name[i] == '@'))
 	    {
 	      status = ER_GENERIC_ERROR;
 	      break;

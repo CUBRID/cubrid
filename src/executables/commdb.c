@@ -60,40 +60,6 @@
 #include "util_support.h"
 #include "porting.h"
 
-#define COMM_CHAR_PRINT_CAPS             'P'
-#define COMM_CHAR_PRINT_LOWER            'p'
-#define COMM_CHAR_PRINT_REPL_CAPS        'R'
-#define COMM_CHAR_PRINT_REPL_LOWER       'r'
-#define COMM_CHAR_PRINT_ALL_CAPS         'O'
-#define COMM_CHAR_PRINT_ALL_LOWER        'o'
-#define COMM_CHAR_PRINT_HA_NODE_LIST_CAPS       'N'
-#define COMM_CHAR_PRINT_HA_NODE_LIST_LOWER      'n'
-#define COMM_CHAR_PRINT_HA_PROCESS_LIST_CAPS	'L'
-#define COMM_CHAR_PRINT_HA_PROCESS_LIST_LOWER   'l'
-
-#define COMM_CHAR_QUIT_CAPS              'Q'
-#define COMM_CHAR_QUIT_LOWER             'q'
-#define COMM_CHAR_MASTER_KILL_CAPS       'M'
-#define COMM_CHAR_MASTER_KILL_LOWER      'm'
-#define COMM_CHAR_KILL_ALL_CAPS          'A'
-#define COMM_CHAR_KILL_ALL_LOWER         'a'
-#define COMM_CHAR_HALT_CAPS              'H'
-#define COMM_CHAR_HALT_LOWER             'h'
-#define COMM_CHAR_SERVER_KILL_CAPS       'S'
-#define COMM_CHAR_SERVER_KILL_LOWER      's'
-#define COMM_CHAR_REPL_SERVER_KILL_CAPS  'K'
-#define COMM_CHAR_REPL_AGENT_KILL_LOWER  'k'
-#define COMM_CHAR_SERVER_HA_MODE_CAPS    'C'
-#define COMM_CHAR_SERVER_HA_MODE_LOWER   'c'
-#define COMM_CHAR_DEREG_HA_PROCESS_CAPS    'G'
-#define COMM_CHAR_DEREG_HA_PROCESS_LOWER   'g'
-#define COMM_CHAR_RECONFIG_HEARTBEAT_CAPS  'F'
-#define COMM_CHAR_RECONFIG_HEARTBEAT_LOWER 'f'
-#define COMM_CHAR_DEACTIVATE_HEARTBEAT_CAPS  'U'
-#define COMM_CHAR_DEACTIVATE_HEARTBEAT_LOWER 'u'
-#define COMM_CHAR_ACTIVATE_HEARTBEAT_CAPS    'T'
-#define COMM_CHAR_ACTIVATE_HEARTBEAT_LOWER   't'
-
 typedef enum
 {
   COMM_SERVER,
@@ -111,8 +77,7 @@ static int send_for_server_downtime (CSS_CONN_ENTRY * conn);
 static int return_integer_data (CSS_CONN_ENTRY * conn,
 				unsigned short request_id);
 static int send_for_request_count (CSS_CONN_ENTRY * conn);
-static void process_status_query (const char *host_name,
-				  CSS_CONN_ENTRY * conn, int server_type,
+static void process_status_query (CSS_CONN_ENTRY * conn, int server_type,
 				  char **server_info);
 static void process_master_kill (CSS_CONN_ENTRY * conn);
 static void process_master_stop_shutdown (CSS_CONN_ENTRY * conn);
@@ -122,8 +87,7 @@ static void process_repl_kill (CSS_CONN_ENTRY * conn, char *slave_name,
 static void process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name,
 				int minutes, int pid);
 static void process_immediate_kill (CSS_CONN_ENTRY * conn, char *slave_name);
-static int process_server_info_pid (CSS_CONN_ENTRY * conn,
-				    const char *hostname, const char *server,
+static int process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server,
 				    int server_type);
 static void process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name);
 static void process_ha_node_info_query (CSS_CONN_ENTRY * conn,
@@ -134,10 +98,8 @@ static void process_dereg_ha_process (CSS_CONN_ENTRY * conn,
 				      char *pid_string);
 
 
-static bool start_info (CSS_CONN_ENTRY * conn);
 static void process_batch_command (CSS_CONN_ENTRY * conn);
 
-static char *commdb_Arg_host_name = NULL;
 static char *commdb_Arg_server_name = NULL;
 static bool commdb_Arg_halt_shutdown = false;
 static int commdb_Arg_shutdown_time = 0;
@@ -368,15 +330,13 @@ send_for_request_count (CSS_CONN_ENTRY * conn)
 /*
  * process_status_query() - print or get process status
  *   return: none
- *   host_name(in): host name currently connecting
  *   conn(in): connection info
  *   server_type(in): COMM_SERVER_TYPE
  *   server_info(out): process info output pointer. If server_info is NULL,
  *                     process status is displayed to stdout
  */
 static void
-process_status_query (const char *host_name,
-		      CSS_CONN_ENTRY * conn, int server_type,
+process_status_query (CSS_CONN_ENTRY * conn, int server_type,
 		      char **server_info)
 {
   int buffer_size;
@@ -591,13 +551,11 @@ process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name)
  * process_server_info_pid() - find process id from server status
  *   return: process id. 0 if server not found.
  *   conn(in): connection info
- *   hostname(in): host name currently connecting
  *   server(in): database name
  *   server_type(in): COMM_SERVER_TYPE
  */
 static int
 process_server_info_pid (CSS_CONN_ENTRY * conn,
-			 const char *hostname,
 			 const char *server, int server_type)
 {
   char search_pattern[256];
@@ -608,7 +566,7 @@ process_server_info_pid (CSS_CONN_ENTRY * conn,
   if (server == NULL)
     return 0;
 
-  process_status_query (hostname, conn, server_type, &server_info);
+  process_status_query (conn, server_type, &server_info);
 
   if (server_info)
     {
@@ -837,224 +795,6 @@ process_activate_heartbeat (CSS_CONN_ENTRY * conn)
 
 
 /*
- * start_info() - process user command on interactive mode
- *   return: whether or not to continue interactive mode
- *   conn(in): connection info
- */
-static bool
-start_info (CSS_CONN_ENTRY * conn)
-{
-  char input_buffer[512];
-  int minutes;
-  const char *host_name = commdb_Arg_host_name;
-
-  printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			  MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING7));
-  if (fgets (input_buffer, sizeof (input_buffer), stdin) == NULL)
-    return false;
-  if ((*input_buffer == COMM_CHAR_PRINT_CAPS)
-      || (*input_buffer == COMM_CHAR_PRINT_LOWER))
-    {
-      process_status_query (host_name, conn, COMM_SERVER, NULL);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_PRINT_REPL_CAPS)
-      || (*input_buffer == COMM_CHAR_PRINT_REPL_LOWER))
-    {
-      process_status_query (host_name, conn, COMM_REPL_SERVER, NULL);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_PRINT_ALL_CAPS)
-      || (*input_buffer == COMM_CHAR_PRINT_ALL_LOWER))
-    {
-      process_status_query (host_name, conn, COMM_ALL, NULL);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_QUIT_CAPS)
-      || (*input_buffer == COMM_CHAR_QUIT_LOWER))
-    {
-      css_send_close_request (conn);
-      return false;
-    }
-  if ((*input_buffer == COMM_CHAR_MASTER_KILL_CAPS)
-      || (*input_buffer == COMM_CHAR_MASTER_KILL_LOWER))
-    {
-      process_master_kill (conn);
-      css_send_close_request (conn);
-      return false;
-    }
-  if ((*input_buffer == COMM_CHAR_KILL_ALL_CAPS)
-      || (*input_buffer == COMM_CHAR_KILL_ALL_LOWER))
-    {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING12));
-      if (scanf ("%d", &minutes) != 1)
-	{
-	  return false;
-	}
-      while ((getchar ()) != '\n');
-
-      process_master_shutdown (conn, minutes);
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING13),
-	      minutes);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_HALT_CAPS)
-      || (*input_buffer == COMM_CHAR_HALT_LOWER))
-    {
-      process_master_stop_shutdown (conn);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_SERVER_KILL_CAPS)
-      || (*input_buffer == COMM_CHAR_SERVER_KILL_LOWER))
-    {
-      int pid;
-
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING5));
-      if (scanf ("%511s", input_buffer) != 1)
-	{
-	  return false;
-	}
-      while ((getchar ()) != '\n');
-
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING6));
-      if (scanf ("%d", &minutes) != 1)
-	{
-	  return false;
-	}
-      while ((getchar ()) != '\n');
-
-      pid = process_server_info_pid (conn, host_name, input_buffer,
-				     COMM_SERVER);
-      process_slave_kill (conn, input_buffer, minutes, pid);
-      return true;
-    }
-  if (*input_buffer == COMM_CHAR_REPL_SERVER_KILL_CAPS)
-    {
-      int pid;
-
-      input_buffer[0] = '+';
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING5));
-      if (scanf ("%511s", input_buffer + 1) != 1)
-	{
-	  return false;
-	}
-      while ((getchar ()) != '\n');
-
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING6));
-      if (scanf ("%d", &minutes) != 1)
-	{
-	  return false;
-	}
-      while ((getchar ()) != '\n');
-
-      pid = process_server_info_pid (conn, host_name, input_buffer,
-				     COMM_REPL_SERVER);
-      process_repl_kill (conn, input_buffer, pid);
-      return true;
-    }
-  if (*input_buffer == COMM_CHAR_REPL_AGENT_KILL_LOWER)
-    {
-      int pid;
-
-      input_buffer[0] = '&';
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING5));
-      if (scanf ("%511s", input_buffer + 1) != 1)
-	{
-	  return false;
-	}
-      while ((getchar ()) != '\n');
-
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING6));
-      if (scanf ("%d", &minutes) != 1)
-	{
-	  return false;
-	}
-      while ((getchar ()) != '\n');
-
-      pid = process_server_info_pid (conn, host_name, input_buffer,
-				     COMM_REPL_AGENT);
-      process_repl_kill (conn, input_buffer, pid);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_SERVER_HA_MODE_CAPS)
-      || (*input_buffer == COMM_CHAR_SERVER_HA_MODE_LOWER))
-    {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING4),
-	      "Name of server to check HA mode :");
-      if (scanf ("%511s", input_buffer) != 1)
-	{
-	  return false;
-	}
-      while ((getchar ()) != '\n');
-
-      process_ha_server_mode (conn, input_buffer);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_PRINT_HA_NODE_LIST_CAPS)
-      || (*input_buffer == COMM_CHAR_PRINT_HA_NODE_LIST_LOWER))
-    {
-      process_ha_node_info_query (conn, false);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_PRINT_HA_PROCESS_LIST_CAPS)
-      || (*input_buffer == COMM_CHAR_PRINT_HA_PROCESS_LIST_LOWER))
-    {
-      process_ha_process_info_query (conn, false);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_DEREG_HA_PROCESS_CAPS)
-      || (*input_buffer == COMM_CHAR_DEREG_HA_PROCESS_LOWER))
-    {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			      MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING4),
-	      "process id to deregister :");
-
-      if (scanf ("%511s", input_buffer) != 1)
-	{
-	  return false;
-	}
-      while ((getchar ()) != '\n');
-
-      process_dereg_ha_process (conn, input_buffer);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_RECONFIG_HEARTBEAT_CAPS)
-      || (*input_buffer == COMM_CHAR_RECONFIG_HEARTBEAT_LOWER))
-    {
-      process_reconfig_heartbeat (conn);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_DEACTIVATE_HEARTBEAT_CAPS)
-      || (*input_buffer == COMM_CHAR_DEACTIVATE_HEARTBEAT_LOWER))
-
-    {
-      process_deactivate_heartbeat (conn);
-      return true;
-    }
-  if ((*input_buffer == COMM_CHAR_ACTIVATE_HEARTBEAT_CAPS)
-      || (*input_buffer == COMM_CHAR_ACTIVATE_HEARTBEAT_LOWER))
-
-    {
-      process_activate_heartbeat (conn);
-      return true;
-    }
-
-  printf (msgcat_message (MSGCAT_CATALOG_UTILS,
-			  MSGCAT_UTIL_SET_COMMDB,
-			  COMMDB_STRING8), input_buffer);
-  return true;
-}
-
-/*
  * process_batch_command() - process user command in batch mode
  *   return: none
  *   conn(in): connection info
@@ -1063,12 +803,10 @@ static void
 process_batch_command (CSS_CONN_ENTRY * conn)
 {
   int pid;
-  const char *hostname = commdb_Arg_host_name;
 
   if ((commdb_Arg_server_name) && (!commdb_Arg_halt_shutdown))
     {
-      pid = process_server_info_pid (conn, hostname,
-				     (char *) commdb_Arg_server_name,
+      pid = process_server_info_pid (conn, (char *) commdb_Arg_server_name,
 				     COMM_SERVER);
       process_slave_kill (conn, (char *) commdb_Arg_server_name,
 			  commdb_Arg_shutdown_time, pid);
@@ -1080,7 +818,7 @@ process_batch_command (CSS_CONN_ENTRY * conn)
       snprintf (repl_name, DB_MAX_IDENTIFIER_LENGTH - 1, "+%s",
 		commdb_Arg_repl_server_name);
 
-      pid = process_server_info_pid (conn, hostname,
+      pid = process_server_info_pid (conn,
 				     (char *) commdb_Arg_repl_server_name,
 				     COMM_REPL_SERVER);
       process_repl_kill (conn, repl_name, pid);
@@ -1091,10 +829,9 @@ process_batch_command (CSS_CONN_ENTRY * conn)
 
       snprintf (repl_name, sizeof (repl_name), "&%s",
 		commdb_Arg_repl_agent_name);
-      pid =
-	process_server_info_pid (conn, hostname,
-				 (char *) commdb_Arg_repl_agent_name,
-				 COMM_REPL_AGENT);
+      pid = process_server_info_pid (conn,
+				     (char *) commdb_Arg_repl_agent_name,
+				     COMM_REPL_AGENT);
       process_repl_kill (conn, repl_name, pid);
     }
   if (commdb_Arg_kill_all)
@@ -1102,11 +839,11 @@ process_batch_command (CSS_CONN_ENTRY * conn)
   if (commdb_Arg_halt_shutdown)
     process_master_stop_shutdown (conn);
   if (commdb_Arg_print_info)
-    process_status_query (hostname, conn, COMM_SERVER, NULL);
+    process_status_query (conn, COMM_SERVER, NULL);
   if (commdb_Arg_print_repl_info)
-    process_status_query (hostname, conn, COMM_REPL_SERVER, NULL);
+    process_status_query (conn, COMM_REPL_SERVER, NULL);
   if (commdb_Arg_print_all_info)
-    process_status_query (hostname, conn, COMM_ALL, NULL);
+    process_status_query (conn, COMM_ALL, NULL);
   if (commdb_Arg_ha_mode_server_info)
     process_ha_server_mode (conn, (char *) commdb_Arg_ha_mode_server_name);
   if (commdb_Arg_print_ha_node_info)
@@ -1145,7 +882,6 @@ main (int argc, char **argv)
     {COMMDB_SHUTDOWN_REPL_AGENT_L, 1, 0, COMMDB_SHUTDOWN_REPL_AGENT_S},
     {COMMDB_SHUTDOWN_ALL_L, 0, 0, COMMDB_SHUTDOWN_ALL_S},
     {COMMDB_SERVER_MODE_L, 1, 0, COMMDB_SERVER_MODE_S},
-    {COMMDB_HOST_L, 1, 0, COMMDB_HOST_S},
     {COMMDB_HA_NODE_LIST_L, 0, 0, COMMDB_HA_NODE_LIST_S},
     {COMMDB_HA_PROCESS_LIST_L, 0, 0, COMMDB_HA_PROCESS_LIST_S},
     {COMMDB_DEREG_HA_PROCESS_L, 1, 0, COMMDB_DEREG_HA_PROCESS_S},
@@ -1230,13 +966,6 @@ main (int argc, char **argv)
 	    }
 	  commdb_Arg_repl_agent_name = strdup (optarg);
 	  break;
-	case 'h':
-	  if (commdb_Arg_host_name != NULL)
-	    {
-	      free (commdb_Arg_host_name);
-	    }
-	  commdb_Arg_host_name = strdup (optarg);
-	  break;
 	case 'c':
 	  if (commdb_Arg_ha_mode_server_name != NULL)
 	    {
@@ -1278,11 +1007,7 @@ main (int argc, char **argv)
 
   er_init (NULL, ER_NEVER_EXIT);
 
-  if (commdb_Arg_host_name != NULL)
-    {
-      strcpy (hostname, commdb_Arg_host_name);
-    }
-  else if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) != 0)
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_COMMDB,
@@ -1311,21 +1036,8 @@ main (int argc, char **argv)
       goto error;
     }
 
-  if ((argc == 1) || (commdb_Arg_host_name && (argc == 3)))
-    {
-      /* interpretive mode */
-      while (start_info (conn));
-    }
-  else
-    {
-      if (commdb_Arg_host_name != NULL)
-	{
-	  free (commdb_Arg_host_name);
-	}
-      commdb_Arg_host_name = strdup (hostname);
-      /* command mode */
-      process_batch_command (conn);
-    }
+  /* command mode */
+  process_batch_command (conn);
 
 error:
 #if defined(WINDOWS)
@@ -1352,10 +1064,6 @@ end:
   if (commdb_Arg_repl_agent_name != NULL)
     {
       free_and_init (commdb_Arg_repl_agent_name);
-    }
-  if (commdb_Arg_host_name != NULL)
-    {
-      free_and_init (commdb_Arg_host_name);
     }
   if (commdb_Arg_dereg_ha_process_pid != NULL)
     {

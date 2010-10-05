@@ -31,6 +31,7 @@
 #include "dbi.h"
 #include "utility.h"
 #include "environment_variable.h"
+#include "cm_stat.h"
 
 #if defined(WINDOWS)
 #include <process.h>
@@ -118,7 +119,8 @@ static int user_login_sa (nvplist * out, char *_dbmt_error, char *dbname,
 			  char *dbuser, char *dbpasswd);
 static int uStringEqualIgnoreCase (const char *str1, const char *str2);
 static int read_file (char *filename, char **outbuf);
-static int _op_db_login (nvplist * out, nvplist * in, char *_dbmt_error);
+static int _op_db_login (nvplist * out, nvplist * in, int ha_mode,
+			 char *_dbmt_error);
 static int _op_get_system_classes_info (nvplist * out, char *_dbmt_error);
 static int _op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj,
 					char *_dbmt_error);
@@ -228,17 +230,29 @@ op_server_shm_open (int shm_key)
 
 
 static int
-_op_db_login (nvplist * out, nvplist * in, char *_dbmt_error)
+_op_db_login (nvplist * out, nvplist * in, int ha_mode, char *_dbmt_error)
 {
   int errcode;
   char *id, *pwd, *db_name;
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
 
   id = nv_get_val (in, "_DBID");
   pwd = nv_get_val (in, "_DBPASSWD");
   db_name = nv_get_val (in, "_DBNAME");
 
   db_login (id, pwd);
-  errcode = db_restart (DB_RESTART_SERVER_NAME, 0, db_name);
+
+  if (ha_mode != 0)
+    {
+      snprintf (dbname_at_hostname, sizeof (dbname_at_hostname),
+		"%s@127.0.0.1", db_name);
+      errcode = db_restart (DB_RESTART_SERVER_NAME, 0, dbname_at_hostname);
+    }
+  else
+    {
+      errcode = db_restart (DB_RESTART_SERVER_NAME, 0, db_name);
+    }
+
   if (errcode < 0)
     {
       CUBRID_ERR_MSG_SET (_dbmt_error);
@@ -335,24 +349,39 @@ cm_ts_delete_user (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   DB_OBJECT *dbuser;
   char *newdbusername = nv_get_val (req, "username");
+  int ha_mode = 0;
+  char *dbname;
+  T_DB_SERVICE_MODE db_mode;
 
-  if (_op_db_login (res, req, _dbmt_error) < 0)
+  dbname = nv_get_val (req, "_DBNAME");
+
+  db_mode = uDatabaseMode (dbname, &ha_mode);
+  if (db_mode == DB_SERVICE_MODE_SA)
+    {
+      sprintf (_dbmt_error, "%s", dbname);
+      return ERR_STANDALONE_MODE;
+    }
+
+  if (_op_db_login (res, req, ha_mode, _dbmt_error) < 0)
     {
       return ERR_WITH_MSG;
     }
   if ((dbuser = db_find_user (newdbusername)) == NULL)
     {
-      goto delete_user_error;
+      goto error_return;
     }
   if (db_drop_user (dbuser) < 0)
     {
-      goto delete_user_error;
+      goto error_return;
     }
-  db_commit_transaction ();
+  if (db_commit_transaction () < 0)
+    {
+      goto error_return;
+    }
   db_shutdown ();
   return ERR_NO_ERROR;
 
-delete_user_error:
+error_return:
   CUBRID_ERR_MSG_SET (_dbmt_error);
   db_shutdown ();
   return ERR_WITH_MSG;
@@ -363,6 +392,7 @@ int
 cm_tsDBMTUserLogin (nvplist * in, nvplist * out, char *_dbmt_error)
 {
   int errcode;
+  int ha_mode = 0;
   char *targetid, *dbname, *dbuser, *dbpasswd;
   DB_OBJECT *user, *obj;
   DB_VALUE v;
@@ -370,13 +400,14 @@ cm_tsDBMTUserLogin (nvplist * in, nvplist * out, char *_dbmt_error)
   int i;
   bool isdba = false;
   T_DB_SERVICE_MODE db_mode;
+  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
 
   targetid = nv_get_val (in, "targetid");
   dbname = nv_get_val (in, "dbname");
   dbuser = nv_get_val (in, "dbuser");
   dbpasswd = nv_get_val (in, "dbpasswd");
 
-  db_mode = uDatabaseMode (dbname, NULL);
+  db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -392,7 +423,18 @@ cm_tsDBMTUserLogin (nvplist * in, nvplist * out, char *_dbmt_error)
     }
 
   db_login (dbuser, dbpasswd);
-  errcode = db_restart (DB_RESTART_SERVER_NAME, 0, dbname);
+
+  if (ha_mode != 0)
+    {
+      snprintf (dbname_at_hostname, sizeof (dbname_at_hostname),
+		"%s@127.0.0.1", dbname);
+      errcode = db_restart (DB_RESTART_SERVER_NAME, 0, dbname_at_hostname);
+    }
+  else
+    {
+      errcode = db_restart (DB_RESTART_SERVER_NAME, 0, dbname);
+    }
+
   if (errcode < 0)
     {
       CUBRID_ERR_MSG_SET (_dbmt_error);
@@ -447,6 +489,7 @@ cm_ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *dbname, *classname;
   T_DB_SERVICE_MODE db_mode;
+  int ha_mode = 0;
 
   if ((dbname = nv_get_val (req, "_DBNAME")) == NULL)
     {
@@ -454,7 +497,7 @@ cm_ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
       return ERR_PARAM_MISSING;
     }
 
-  db_mode = uDatabaseMode (dbname, NULL);
+  db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -491,7 +534,7 @@ cm_ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
       DB_QUERY_RESULT *result;
       DB_QUERY_ERROR query_error;
 
-      if (_op_db_login (res, req, _dbmt_error) < 0)
+      if (_op_db_login (res, req, ha_mode, _dbmt_error) < 0)
 	{
 	  return ERR_WITH_MSG;
 	}
@@ -506,16 +549,22 @@ cm_ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
 	}
       if (db_execute (sql, &result, &query_error) < 0)
 	{
-	  CUBRID_ERR_MSG_SET (_dbmt_error);
-	  db_shutdown ();
-	  return ERR_WITH_MSG;
+	  goto error_return;
 	}
       db_query_end (result);
 
-      db_commit_transaction ();
+      if (db_commit_transaction () < 0)
+	{
+	  goto error_return;
+	}
       db_shutdown ();
     }
   return ERR_NO_ERROR;
+
+error_return:
+  CUBRID_ERR_MSG_SET (_dbmt_error);
+  db_shutdown ();
+  return ERR_WITH_MSG;
 }
 
 int
@@ -523,11 +572,12 @@ cm_ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error)
 {
   char *dbstatus, *dbname;
   T_DB_SERVICE_MODE db_mode;
+  int ha_mode = 0;
 
   dbstatus = nv_get_val (in, "dbstatus");
   dbname = nv_get_val (in, "_DBNAME");
 
-  db_mode = uDatabaseMode (dbname, NULL);
+  db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -544,7 +594,7 @@ cm_ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error)
     }
   else
     {
-      if (_op_db_login (out, in, _dbmt_error))
+      if (_op_db_login (out, in, ha_mode, _dbmt_error))
 	{
 	  return ERR_WITH_MSG;
 	}
@@ -560,7 +610,12 @@ cm_ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error)
 	  return ERR_WITH_MSG;
 	}
 
-      db_commit_transaction ();
+      if (db_commit_transaction () < 0)
+	{
+	  CUBRID_ERR_MSG_SET (_dbmt_error);
+	  db_shutdown ();
+	  return ERR_WITH_MSG;
+	}
       db_shutdown ();
     }
 
@@ -570,10 +625,20 @@ cm_ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error)
 int
 cm_ts_class (nvplist * in, nvplist * out, char *_dbmt_error)
 {
-  char *classname;
+  char *classname, *dbname;
   DB_OBJECT *classobj;
+  int ha_mode = 0;
+  T_DB_SERVICE_MODE db_mode;
 
-  if (_op_db_login (out, in, _dbmt_error) < 0)
+  dbname = nv_get_val (in, "_DBNAME");
+  db_mode = uDatabaseMode (dbname, &ha_mode);
+  if (db_mode == DB_SERVICE_MODE_SA)
+    {
+      sprintf (_dbmt_error, "%s", dbname);
+      return ERR_STANDALONE_MODE;
+    }
+
+  if (_op_db_login (out, in, ha_mode, _dbmt_error) < 0)
     {
       return ERR_WITH_MSG;
     }
@@ -582,9 +647,7 @@ cm_ts_class (nvplist * in, nvplist * out, char *_dbmt_error)
 
   if (classobj == NULL)
     {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
+      goto error_return;
     }
 
   if (_op_get_detailed_class_info (out, classobj, _dbmt_error) < 0)
@@ -593,9 +656,17 @@ cm_ts_class (nvplist * in, nvplist * out, char *_dbmt_error)
       return ERR_WITH_MSG;
     }
 
-  db_commit_transaction ();
+  if (db_commit_transaction () < 0)
+    {
+      goto error_return;
+    }
   db_shutdown ();
   return ERR_NO_ERROR;
+
+error_return:
+  CUBRID_ERR_MSG_SET (_dbmt_error);
+  db_shutdown ();
+  return ERR_WITH_MSG;
 }
 
 int
@@ -606,12 +677,12 @@ cm_ts_get_triggerinfo (nvplist * req, nvplist * res, char *_dbmt_error)
   int errcode;
   T_DB_SERVICE_MODE db_mode;
   char *dbname;
-
+  int ha_mode = 0;
   trigger_list = NULL;
 
   dbname = nv_get_val (req, "_DBNAME");
 
-  db_mode = uDatabaseMode (dbname, NULL);
+  db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
       sprintf (_dbmt_error, "%s", dbname);
@@ -629,7 +700,7 @@ cm_ts_get_triggerinfo (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   /* cs mode serviece */
-  if (_op_db_login (res, req, _dbmt_error) < 0)
+  if (_op_db_login (res, req, ha_mode, _dbmt_error) < 0)
     {
       return ERR_WITH_MSG;
     }
@@ -670,15 +741,26 @@ int
 cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
 {
   char *class_name, *attr_name, *category, *index, *not_null, *unique,
-    *defaultv, *old_attr_name;
+    *defaultv, *old_attr_name, *dbname;
   DB_OBJECT *classobj;
   DB_ATTRIBUTE *attrobj;
   int errcode, is_class, flag;
+  int ha_mode = 0;
+  T_DB_SERVICE_MODE db_mode;
 
-  if (_op_db_login (out, in, _dbmt_error) < 0)
+  dbname = nv_get_val (in, "_DBNAME");
+  db_mode = uDatabaseMode (dbname, &ha_mode);
+  if (db_mode == DB_SERVICE_MODE_SA)
+    {
+      sprintf (_dbmt_error, "%s", dbname);
+      return ERR_STANDALONE_MODE;
+    }
+
+  if (_op_db_login (out, in, ha_mode, _dbmt_error) < 0)
     {
       return ERR_WITH_MSG;
     }
+
   class_name = nv_get_val (in, "classname");
   attr_name = nv_get_val (in, "newattributename");
   index = nv_get_val (in, "index");
@@ -711,7 +793,7 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
       errcode = db_rename (classobj, old_attr_name, is_class, attr_name);
       if (errcode < 0)
 	{
-	  goto update_attr_error;
+	  goto error_return;
 	}
     }
 
@@ -731,14 +813,14 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
 	{
 	  if (db_add_index (classobj, attr_name) < 0)
 	    {
-	      goto update_attr_error;
+	      goto error_return;
 	    }
 	}
       else if (flag && !strcmp (index, "n"))
 	{
 	  if (db_drop_index (classobj, attr_name) < 0)
 	    {
-	      goto update_attr_error;
+	      goto error_return;
 	    }
 	}
     }
@@ -760,14 +842,14 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
 	{
 	  if (db_constrain_non_null (classobj, attr_name, is_class, 1) < 0)
 	    {
-	      goto update_attr_error;
+	      goto error_return;
 	    }
 	}
       else if (flag && !strcmp (not_null, "n"))
 	{
 	  if (db_constrain_non_null (classobj, attr_name, is_class, 0) < 0)
 	    {
-	      goto update_attr_error;
+	      goto error_return;
 	    }
 	}
     }
@@ -791,14 +873,14 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
 	  errcode = db_constrain_unique (classobj, attr_name, 1);
 	  if (errcode < 0 && errcode != ER_SM_INDEX_EXISTS)
 	    {
-	      goto update_attr_error;
+	      goto error_return;
 	    }
 	}
       else if (flag && !strcmp (unique, "n"))
 	{
 	  if (db_constrain_unique (classobj, attr_name, 0) < 0)
 	    {
-	      goto update_attr_error;
+	      goto error_return;
 	    }
 	}
     }
@@ -824,7 +906,7 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
 	}
       if (db_execute (buf, &result, &error_stats) < 0)
 	{
-	  goto update_attr_error;
+	  goto error_return;
 	}
       db_query_end (result);
     }
@@ -835,11 +917,14 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
       return ERR_WITH_MSG;
     }
 
-  db_commit_transaction ();
+  if (db_commit_transaction () < 0)
+    {
+      goto error_return;
+    }
   db_shutdown ();
   return ERR_NO_ERROR;
 
-update_attr_error:
+error_return:
   CUBRID_ERR_MSG_SET (_dbmt_error);
   db_shutdown ();
   return ERR_WITH_MSG;
@@ -854,6 +939,8 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
   int aset;
   DB_COLLECTION *gset;
   DB_VALUE val;
+  int ha_mode = 0;
+  T_DB_SERVICE_MODE db_mode;
 
   const char *db_passwd;
   const char *db_name;
@@ -869,13 +956,20 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
   new_db_user_name = nv_get_val (req, "username");
   new_db_user_pass = nv_get_val (req, "userpass");
 
-  if (_op_db_login (res, req, _dbmt_error) < 0)
+  db_mode = uDatabaseMode (db_name, &ha_mode);
+  if (db_mode == DB_SERVICE_MODE_SA)
+    {
+      sprintf (_dbmt_error, "%s", db_name);
+      return ERR_STANDALONE_MODE;
+    }
+
+  if (_op_db_login (res, req, ha_mode, _dbmt_error) < 0)
     {
       return ERR_WITH_MSG;
     }
   if ((dbuser = db_find_user (new_db_user_name)) == NULL)
     {
-      goto update_user_error;
+      goto error_return;
     }
   if (new_db_user_pass != NULL)
     {				/* if password need to be changed ... */
@@ -903,7 +997,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
       errcode = db_set_password (dbuser, old_db_passwd, new_db_user_pass);
       if (errcode < 0)
 	{
-	  goto update_user_error;
+	  goto error_return;
 	}
     }
 
@@ -911,15 +1005,15 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
   gset = db_col_create (DB_TYPE_SET, 0, NULL);
   DB_MAKE_SET (&val, gset);
   if (db_put (dbuser, "groups", &val) < 0)
-    goto update_user_error;
+    goto error_return;
   if (db_put (dbuser, "direct_groups", &val) < 0)
-    goto update_user_error;
+    goto error_return;
   db_col_free (gset);
 
 #if 0
   if (db_add_member (db_find_user ("PUBLIC"), dbuser) < 0)
     {
-      goto update_user_error;
+      goto error_return;
     }
 #endif
 
@@ -936,7 +1030,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
 	    }
 	  if (db_add_member (obj, dbuser) < 0)
 	    {
-	      goto update_user_error;
+	      goto error_return;
 	    }
 	}
     }
@@ -954,7 +1048,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
 	    }
 	  if (db_drop_member (dbuser, obj) < 0)
 	    {
-	      goto update_user_error;
+	      goto error_return;
 	    }
 	}
     }
@@ -971,7 +1065,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
 	    }
 	  if (db_add_member (dbuser, obj) < 0)
 	    {
-	      goto update_user_error;
+	      goto error_return;
 	    }
 	}
     }
@@ -1018,12 +1112,15 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
 	}
     }
 
-  db_commit_transaction ();
+  if (db_commit_transaction () < 0)
+    {
+      goto error_return;
+    }
   db_shutdown ();
 
   return ERR_NO_ERROR;
 
-update_user_error:
+error_return:
   CUBRID_ERR_MSG_SET (_dbmt_error);
   db_shutdown ();
   return ERR_WITH_MSG;
@@ -1035,6 +1132,9 @@ cm_ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
   DB_OBJECT *dbuser;
   DB_OBJECT *obj;
   int exists, aset;
+  char *dbname;
+  int ha_mode = 0;
+  T_DB_SERVICE_MODE db_mode;
 
   const char *new_db_user_name;
   const char *new_db_user_pass;
@@ -1043,7 +1143,15 @@ cm_ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
   char *tval, *sval;
   int anum;
 
-  if (_op_db_login (res, req, _dbmt_error) < 0)
+  dbname = nv_get_val (req, "_DBNAME");
+  db_mode = uDatabaseMode (dbname, &ha_mode);
+  if (db_mode == DB_SERVICE_MODE_SA)
+    {
+      sprintf (_dbmt_error, "%s", dbname);
+      return ERR_STANDALONE_MODE;
+    }
+
+  if (_op_db_login (res, req, ha_mode, _dbmt_error) < 0)
     {
       return ERR_WITH_MSG;
     }
@@ -1053,14 +1161,14 @@ cm_ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
   dbuser = db_add_user (new_db_user_name, &exists);
   if ((dbuser == NULL) || exists)
     {
-      goto create_user_error;
+      goto error_return;
     }
 
   if (uStringEqual (new_db_user_pass, "__NULL__"))
     new_db_user_pass = "";
   if (db_set_password (dbuser, NULL, new_db_user_pass) < 0)
     {
-      goto create_user_error;
+      goto error_return;
     }
 
   /* make itself a member of other groups */
@@ -1129,11 +1237,14 @@ cm_ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
 	}
     }
 
-  db_commit_transaction ();
+  if (db_commit_transaction () < 0)
+    {
+      goto error_return;
+    }
   db_shutdown ();
   return ERR_NO_ERROR;
 
-create_user_error:
+error_return:
   CUBRID_ERR_MSG_SET (_dbmt_error);
   db_shutdown ();
   return ERR_WITH_MSG;
@@ -1145,18 +1256,25 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
   DB_OBJECT *p_class_db_user, *p_user;
   DB_OBJLIST *user_list, *temp;
   char *db_name;
+  int ha_mode = 0;
+  T_DB_SERVICE_MODE db_mode;
 
-  if (_op_db_login (out, in, _dbmt_error) < 0)
+  db_name = nv_get_val (in, "dbname");
+  db_mode = uDatabaseMode (db_name, &ha_mode);
+  if (db_mode == DB_SERVICE_MODE_SA)
+    {
+      sprintf (_dbmt_error, "%s", db_name);
+      return ERR_STANDALONE_MODE;
+    }
+
+  if (_op_db_login (out, in, ha_mode, _dbmt_error) < 0)
     {
       return ERR_WITH_MSG;
     }
-  db_name = nv_get_val (in, "dbname");
   p_class_db_user = db_find_class ("db_user");
   if (p_class_db_user == NULL)
     {
-      CUBRID_ERR_MSG_SET (_dbmt_error);
-      db_shutdown ();
-      return ERR_WITH_MSG;
+      goto error_return;
     }
 
   nv_add_nvp (out, "dbname", db_name);
@@ -1166,9 +1284,7 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
     {
       if (db_error_code () < 0)
 	{
-	  CUBRID_ERR_MSG_SET (_dbmt_error);
-	  db_shutdown ();
-	  return ERR_WITH_MSG;
+	  goto error_return;
 	}
     }
   temp = user_list;
@@ -1192,10 +1308,17 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
       temp = temp->next;
     }
   db_objlist_free (user_list);
-  db_commit_transaction ();
+  if (db_commit_transaction () < 0)
+    {
+      goto error_return;
+    }
   db_shutdown ();
-
   return ERR_NO_ERROR;
+
+error_return:
+  CUBRID_ERR_MSG_SET (_dbmt_error);
+  db_shutdown ();
+  return ERR_WITH_MSG;
 }
 
 static int

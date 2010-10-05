@@ -1803,7 +1803,7 @@ numeric_db_value_is_positive (const DB_VALUE * dbvalue)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  ret = numeric_is_negative (db_locate_numeric (dbvalue));
+  ret = numeric_is_negative ((DB_C_NUMERIC) db_locate_numeric (dbvalue));
 
   return !ret;
 }
@@ -2019,7 +2019,7 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
       numeric_add (numeric_get_pow_of_10 (scale), rem, tmp,
 		   DB_NUMERIC_BUF_SIZE);
       numeric_add (tmp, rem, tmp, DB_NUMERIC_BUF_SIZE);
-      if (numeric_is_negative (tmp))
+      if (numeric_is_negative (tmp) || numeric_is_zero (tmp))
 	{
 	  if (numeric_is_negative (zero_scale_arg))
 	    {
@@ -2183,10 +2183,20 @@ void
 numeric_coerce_num_to_double (DB_C_NUMERIC num, int scale, double *adouble)
 {
   char num_string[TWICE_NUM_MAX_PREC + 2];
+
   /* Convert the numeric to a decimal string */
   numeric_coerce_num_to_dec_str (num, num_string);
+
   /* Convert the decimal string into a double */
+  /* Problem at precision with line below */
+  /* 123.445 was converted to 123.444999999999999999 */
   *adouble = atof (num_string) / pow (10.0, scale);
+
+  /* TODO: [CUBRIDSUS-2637] revert to early code for now.  
+   *adouble = atof (num_string);
+   for (i = 0; i < scale; i++)
+   *adouble /= 10;
+   */
 }
 
 /*
@@ -2410,6 +2420,8 @@ numeric_coerce_string_to_num (const char *astring, DB_VALUE * result)
   bool sign_found = false;
   bool negate_value = false;
   bool pad_character_zero = false;
+  bool trailing_spaces = false;
+  bool decimal_part = false;
   int ret = NO_ERROR;
 
   /* Remove the decimal point, track the prec & scale */
@@ -2420,6 +2432,7 @@ numeric_coerce_string_to_num (const char *astring, DB_VALUE * result)
       if (astring[i] == '.')
 	{
 	  leading_zeroes = false;
+	  decimal_part = true;
 	  scale = astring_length - (i + 1);
 	}
       else if (leading_zeroes)
@@ -2466,7 +2479,35 @@ numeric_coerce_string_to_num (const char *astring, DB_VALUE * result)
 	}
       else
 	{
-	  if (astring[i] >= '0' && astring[i] <= '9')
+	  /* Only space character should be allowed on trailer. 
+	   * If the first space character is shown after digits, 
+	   * we consider it as the beginning of trailer.
+	   */
+	  if (trailing_spaces && astring[i] != ' ')
+	    {
+	      ret = DOMAIN_INCOMPATIBLE;
+	    }
+	  else if (astring[i] == ' ')
+	    {
+	      if (!trailing_spaces)
+		{
+		  trailing_spaces = true;
+		}
+	      /* Decrease scale if decimal part exists. */
+	      if (scale > 0)
+		{
+		  scale--;
+		}
+	    }
+	  else if (astring[i] == ',')
+	    {
+	      /* Accept ',' character on integer part. */
+	      if (decimal_part)
+		{
+		  ret = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  else if (astring[i] >= '0' && astring[i] <= '9')
 	    {
 	      num_string[prec] = astring[i];
 	      if (++prec > DB_MAX_NUMERIC_PRECISION)
@@ -2474,40 +2515,38 @@ numeric_coerce_string_to_num (const char *astring, DB_VALUE * result)
 		  break;
 		}
 	    }
-	  else if (astring[i] != ' ' && astring[i] != ',')
+	  else
 	    {
-	      /* Illegal digit */
-	      if (scale > 0)
-		{
-		  scale--;
-		}
+	      /* Characters excluding digit, space and comma are not acceptable. */
 	      ret = DOMAIN_INCOMPATIBLE;
 	    }
 	}
     }
 
-  /* If there is no for overflow, try to parse the decimal string */
-  if (ret == NO_ERROR)
+  if (ret != NO_ERROR)
     {
-      if (prec > DB_MAX_NUMERIC_PRECISION)
-	{
-	  ret = ER_NUM_OVERFLOW;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW, 0);
-	  goto exit_on_error;
-	}
+      goto exit_on_error;
+    }
 
-      if (prec == 0 && pad_character_zero)
-	{
-	  prec = 1;
-	  num_string[0] = '0';
-	  num_string[prec] = '\0';
-	  numeric_coerce_dec_str_to_num (num_string, num);
-	}
-      else
-	{
-	  num_string[prec] = '\0';
-	  numeric_coerce_dec_str_to_num (num_string, num);
-	}
+  /* If there is no overflow, try to parse the decimal string */
+  if (prec > DB_MAX_NUMERIC_PRECISION)
+    {
+      ret = ER_NUM_OVERFLOW;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NUM_OVERFLOW, 0);
+      goto exit_on_error;
+    }
+
+  if (prec == 0 && pad_character_zero)
+    {
+      prec = 1;
+      num_string[0] = '0';
+      num_string[prec] = '\0';
+      numeric_coerce_dec_str_to_num (num_string, num);
+    }
+  else
+    {
+      num_string[prec] = '\0';
+      numeric_coerce_dec_str_to_num (num_string, num);
     }
 
   /* Make the return value */

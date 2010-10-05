@@ -193,6 +193,20 @@ static LIST_MOPS *locator_fun_get_all_mops (MOP class_mop,
 static int locator_internal_flush_instance (MOP inst_mop, bool decache);
 
 static int locator_add_to_oidset_when_temp_oid (MOP mop, void *data);
+static LC_FIND_CLASSNAME locator_reserve_class_name (const char *class_name,
+						     OID * class_oid);
+
+/*
+ * locator_reserve_class_name () -
+ *    return:
+ *  class_name(in):
+ *  class_oid(in):
+ */
+LC_FIND_CLASSNAME
+locator_reserve_class_name (const char *class_name, OID * class_oid)
+{
+  return locator_reserve_class_names (1, &class_name, class_oid);
+}
 
 /*
  * locator_set_sig_interrupt () -
@@ -272,7 +286,7 @@ locator_is_class (MOP mop, DB_FETCH_MODE hint_purpose)
       /*
        * If I don't have any clue that this is a class, force an intention
        * shared lock instead of a shared lock. If the object happen to be an
-       * insatnce, the lower levels will convert the lock to shared lock.
+       * instance, the lower levels will convert the lock to shared lock.
        */
       if (hint_purpose == DB_FETCH_READ)
 	{
@@ -596,7 +610,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
  *
  * Note: The object associated with the given MOP is locked with the
  *              desired lock. The object locator on the server is not invoked
- *              if the object is actually cached with the desired lock o with
+ *              if the object is actually cached with the desired lock or with
  *              a more powerful lock. In any other case, the object locator in
  *              the server is invoked to acquire the desired lock and possibly
  *              to bring the desired object along with some other objects that
@@ -4904,6 +4918,7 @@ locator_flush_all_instances (MOP class_mop, bool decache)
   /*
    * Flush all intances of the class
    */
+  /* TODO this code should flush all the partitions of a partitioned class. */
   error_code = locator_mflush_initialize (&mflush, class_mop, class_obj,
 					  hfid, decache, MANY_MFLUSHES);
   if (error_code == NO_ERROR)
@@ -6400,7 +6415,7 @@ locator_add_to_oidset_when_temp_oid (MOP mop, void *data)
  *    the number of server calls we have to make while the objects
  *    are being flushed.
  *
- *    Note: It is not GUARENTEED that all temporary OIDs will have been
+ *    Note: It is not GUARANTEED that all temporary OIDs will have been
  *    promoted after this function is complete.  We will try to promote
  *    all of them, and in practice, that will be the usual case.  The caller
  *    should not however rely on this behavior and later processing must

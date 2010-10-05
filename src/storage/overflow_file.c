@@ -277,7 +277,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
       length -= copy_length;
 
       pgbuf_get_vpid (addr.pgptr, &undo_recv.new_vpid);
-      if (file_new_isvalid (thread_p, ovf_vfid) == DISK_INVALID)
+      if (file_is_new_file (thread_p, ovf_vfid) == FILE_OLD_FILE)
 	{
 	  /* we don't do undo logging for new files */
 	  log_append_undo_data (thread_p, RVOVF_NEWPAGE_LOGICAL_UNDO,
@@ -294,7 +294,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
       addr.pgptr = NULL;
     }
 
-  assert(length == 0);
+  assert (length == 0);
 #if defined (CUBRID_DEBUG)
   if (length > 0)
     {
@@ -602,7 +602,7 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid,
 	      isnewpage = true;	/* So that its link can be set to NULL */
 
 	      /* This logical undo is to remove the page in case of rollback */
-	      if (file_new_isvalid (thread_p, ovf_vfid) == DISK_INVALID)
+	      if (file_is_new_file (thread_p, ovf_vfid) == FILE_OLD_FILE)
 		{
 		  /* we don't do undo logging for new files */
 		  log_append_undo_data (thread_p, RVOVF_NEWPAGE_LOGICAL_UNDO,
@@ -884,6 +884,13 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid,
          negative value */
       recdes->length = -max_nbytes;
       return S_DOESNT_FIT;
+    }
+  else if (max_nbytes == 0)
+    {
+      pgbuf_unfix_and_init (thread_p, pgptr);
+
+      recdes->length = 0;
+      return S_SUCCESS;
     }
 
   recdes->length = max_nbytes;

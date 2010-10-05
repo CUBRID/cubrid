@@ -176,6 +176,10 @@ static PT_NODE *pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser,
 						   PT_NODE * entity);
 static PT_NODE *pt_undef_names (PARSER_CONTEXT * parser, PT_NODE * node,
 				void *arg, int *continue_walk);
+static void fill_in_insert_default_function_arguments (PARSER_CONTEXT *
+						       parser,
+						       PT_NODE * const node);
+
 /*
  * pt_undef_names () - Set error if name matching spec is found.
  * 	Used in insert to make sure no "correlated" names are used
@@ -194,7 +198,10 @@ pt_undef_names (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (node->node_type == PT_NAME)
     {
-      if (node->info.name.spec_id == spec->info.spec.id)
+      /* Using "correlated" names in INSERT statements is incorrect except
+         when they are arguments of the DEFAULT() function. */
+      if (node->info.name.spec_id == spec->info.spec.id &&
+	  !PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_FILL_DEFAULT))
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_IS_NOT_DEFINED, pt_short_print (parser,
@@ -345,7 +352,7 @@ pt_bind_parameter (PARSER_CONTEXT * parser, PT_NODE * parameter)
  *      parameter reference or a path expression anchored by a path expression.
  *   return:  path's value (evaluated) if successful, NULL otherwise
  *   parser(in): the parser context
- *   path(in/out): a PT_NAME or PT_DOT node
+ *   path(in/out): a PT_NAME or PT_DOT_ node
  */
 static PT_NODE *
 pt_bind_parameter_path (PARSER_CONTEXT * parser, PT_NODE * path)
@@ -637,7 +644,9 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
       /* if derived from a set expression, it better have a set type */
       if (spec->info.spec.derived_table_type == PT_IS_SET_EXPR)
 	{
-	  if (derived_table->node_type == PT_NAME)
+	  if (derived_table->node_type == PT_NAME
+	      && derived_table->info.name.original != NULL
+	      && derived_table->info.name.original[0] != '\0')
 	    {
 	      spec->info.spec.as_attr_list =
 		pt_name (parser, derived_table->info.name.original);
@@ -675,7 +684,9 @@ pt_bind_types (PARSER_CONTEXT * parser, PT_NODE * spec)
 		}
 	      else
 		{
-		  if (att->node_type == PT_NAME)
+		  if (att->node_type == PT_NAME
+		      && att->info.name.original != NULL
+		      && att->info.name.original[0] != '\0')
 		    {
 		      col = pt_name (parser, att->info.name.original);
 		    }
@@ -1244,6 +1255,91 @@ pt_clear_Oracle_outerjoin_spec_id (PARSER_CONTEXT * parser,
     }
 
   return node;
+}
+
+void
+pt_set_fill_default_in_path_expression (PT_NODE * node)
+{
+  if (node == NULL)
+    {
+      return;
+    }
+  if (node->node_type == PT_DOT_)
+    {
+      pt_set_fill_default_in_path_expression (node->info.dot.arg1);
+      pt_set_fill_default_in_path_expression (node->info.dot.arg2);
+    }
+  else if (node->node_type == PT_NAME)
+    {
+      PT_NAME_INFO_SET_FLAG (node, PT_NAME_INFO_FILL_DEFAULT);
+
+      /* We also need to clear the spec id because this PT_NAME node might be
+         a copy of a node that has been resolved without filling in the
+         default value. The parser_copy_tree() call in
+         fill_in_insert_default_function_arguments() is an example.
+         We mark the current node as not resolved so that it is resolved
+         again, this time filling in the default value. */
+      node->info.name.spec_id = 0;
+    }
+  else
+    {
+      assert (false);
+    }
+}
+
+/*
+ * fill_in_insert_default_function_arguments () - Fills in the argument of the
+ *                                                DEFAULT function when used
+ *                                                for INSERT execution
+ *   parser(in):
+ *   node(in):
+ * Note: When parsing statements such as "INSERT INTO tbl VALUES (1, DEFAULT)"
+ *       the column names corresponding to DEFAULT values are not yet known.
+ *       When performing name resolution the names and default values can be
+ *       filled in.
+ */
+static void
+fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser,
+					   PT_NODE * const node)
+{
+  const PT_NODE *crt_attr = NULL;
+  PT_NODE *crt_value = NULL;
+  PT_NODE *crt_list = NULL;
+
+  assert (node->node_type == PT_INSERT);
+
+  for (crt_list = node->info.insert.value_clauses;
+       crt_list != NULL; crt_list = crt_list->next)
+    {
+      for (crt_attr = node->info.insert.attr_list,
+	   crt_value = crt_list->info.node_list.list;
+	   crt_attr != NULL && crt_value != NULL;
+	   crt_attr = crt_attr->next, crt_value = crt_value->next)
+	{
+	  PT_NODE *crt_arg = NULL;
+
+	  if (crt_value->node_type != PT_EXPR)
+	    {
+	      continue;
+	    }
+	  if (crt_value->info.expr.op != PT_DEFAULTF)
+	    {
+	      continue;
+	    }
+	  if (crt_value->info.expr.arg1 != NULL)
+	    {
+	      continue;
+	    }
+	  crt_arg = parser_copy_tree (parser, crt_attr);
+	  if (crt_arg == NULL)
+	    {
+	      PT_ERROR (parser, node, "allocation error");
+	      return;
+	    }
+	  crt_value->info.expr.arg1 = crt_arg;
+	  pt_set_fill_default_in_path_expression (crt_arg);
+	}
+    }
 }
 
 /*
@@ -2294,12 +2390,14 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	    pt_resolve_star (parser, node->info.insert.spec, NULL);
 	}
 
+      fill_in_insert_default_function_arguments (parser, node);
+
       parser_walk_leaves (parser, node, pt_bind_names, bind_arg,
 			  pt_bind_names_post, bind_arg);
 
       /* flag any "correlated" names as undefined. */
-      parser_walk_leaves (parser, node->info.insert.value_clause,
-			  pt_undef_names, node->info.insert.spec, NULL, NULL);
+      parser_walk_tree (parser, node->info.insert.value_clauses,
+			pt_undef_names, node->info.insert.spec, NULL, NULL);
 
       /* pop the extra spec frame and add any extra specs
        * to the from list
@@ -2747,6 +2845,22 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat,
 
       /* set its type */
       pt_get_attr_data_type (parser, att, attr);
+
+      if (PT_NAME_INFO_IS_FLAGED (attr, PT_NAME_INFO_FILL_DEFAULT))
+	{
+	  if (attr->info.name.default_value != NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "resolution");
+	      return 0;
+	    }
+	  attr->info.name.default_value =
+	    pt_dbval_to_value (parser, &att->value);
+	  if (attr->info.name.default_value == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "resolution");
+	      return 0;
+	    }
+	}
 
       cname = cname->next;
     }
@@ -3592,10 +3706,9 @@ pt_resolve_correlation (PARSER_CONTEXT * parser,
 	}
 
       corr_name = pt_name (parser, "");
-      corr_name->next = in_node->next;
-      corr_name->line_number = in_node->line_number;
-      corr_name->column_number = in_node->column_number;
+      PT_NODE_COPY_NUMBER_OUTERLINK (corr_name, in_node);
       in_node->next = NULL;
+      in_node->or_next = NULL;
       if (in_node->info.name.meta_class == PT_META_CLASS)
 	{
 	  corr_name->info.name.meta_class = PT_META_CLASS;
@@ -4382,11 +4495,10 @@ static PT_NODE *
 pt_expand_external_path (PARSER_CONTEXT * parser,
 			 PT_NODE * in_node, PT_NODE ** p_entity)
 {
-  PT_NODE *attr, *entity;
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
-  PT_NODE *dot, *domain;
-  PT_NODE *unique_entity;
-#endif
+  PT_NODE *dot, *domain, *unique_entity;
+#endif /* ENABLE_UNUSED_FUNCTION */
+  PT_NODE *attr, *entity;
   DB_ATTRIBUTE *attr_obj;
 
   /* if in_node is a path expr, get last attr in the in_node */

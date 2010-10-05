@@ -129,11 +129,11 @@ extern int db_string_substring (const MISC_OPERAND substr_operand,
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int db_string_byte_length (const DB_VALUE * string,
 				  DB_VALUE * byte_count);
+#endif
 extern int db_string_bit_length (const DB_VALUE * string,
 				 DB_VALUE * bit_count);
 extern int db_string_char_length (const DB_VALUE * string,
 				  DB_VALUE * char_count);
-#endif
 
 extern int db_string_lower (const DB_VALUE * string, DB_VALUE * lower_string);
 extern int db_string_upper (const DB_VALUE * string, DB_VALUE * upper_string);
@@ -187,6 +187,17 @@ extern void qstr_make_typed_string (DB_TYPE domain, DB_VALUE * value,
 extern int db_add_months (const DB_VALUE * src_date,
 			  const DB_VALUE * nmonth, DB_VALUE * result_date);
 extern int db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day);
+extern int db_str_to_date (const DB_VALUE * src_date,
+			   const DB_VALUE * src_format,
+			   DB_VALUE * result_date);
+extern int db_time_format (const DB_VALUE * src_time,
+			   const DB_VALUE * src_format,
+			   DB_VALUE * result_time);
+extern int db_timestamp (const DB_VALUE * src_datetime1,
+			 const DB_VALUE * src_time2,
+			 DB_VALUE * result_datetime);
+extern int db_unix_timestamp (const DB_VALUE * src_date,
+			      DB_VALUE * result_timestamp);
 extern int db_months_between (const DB_VALUE * start_mon,
 			      const DB_VALUE * end_mon,
 			      DB_VALUE * result_mon);
@@ -213,5 +224,29 @@ extern int db_to_datetime (const DB_VALUE * src_str,
 			   DB_VALUE * result_datetime);
 extern int db_to_number (const DB_VALUE * src_str,
 			 const DB_VALUE * format_str, DB_VALUE * result_num);
+extern int db_string_reverse (const DB_VALUE * src_str,
+			      DB_VALUE * result_str);
+extern int db_format (const DB_VALUE * number_text, const DB_VALUE * decimals,
+		      DB_VALUE * result);
+/* datetime functions */
+extern int db_date_add_interval_days (DB_VALUE * result,
+				      const DB_VALUE * date,
+				      const DB_VALUE * days);
+extern int db_date_add_interval_expr (DB_VALUE * result,
+				      const DB_VALUE * date,
+				      const DB_VALUE * expr, const int unit);
+extern int db_date_sub_interval_days (DB_VALUE * result,
+				      const DB_VALUE * date,
+				      const DB_VALUE * days);
+extern int db_date_sub_interval_expr (DB_VALUE * result,
+				      const DB_VALUE * date,
+				      const DB_VALUE * expr, const int unit);
+extern int db_date_format (const DB_VALUE * date_value,
+			   const DB_VALUE * format, DB_VALUE * result);
+extern int db_date_dbval (const DB_VALUE * date_value, DB_VALUE * result);
+extern int count_leap_years_up_to (int year);
+extern int count_nonleap_years_up_to (int year);
+extern int db_date_diff (const DB_VALUE * date_value1,
+			 const DB_VALUE * date_value2, DB_VALUE * result);
 
 #endif /* _STRING_OPFUNC_H_ */

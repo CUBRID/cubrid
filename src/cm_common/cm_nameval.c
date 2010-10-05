@@ -323,7 +323,7 @@ nv_writeto (nvplist * ref, char *filename)
 	continue;
 
       fprintf (nvfile, "%s", dst_buffer (ref->nvpairs[i]->name));
-      fprintf (nvfile, ref->delimiter->dbuf);
+      fprintf (nvfile, "%s", ref->delimiter->dbuf);
       if (dst_buffer (ref->nvpairs[i]->value) != NULL)
 	{
 	  fprintf (nvfile, "%s", dst_buffer (ref->nvpairs[i]->value));

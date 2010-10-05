@@ -104,4 +104,4 @@ extern int msgcat_close (MSG_CATD);
 /* a utility function */
 extern FILE *msgcat_open_file (const char *name);
 
-#endif /* _MESAGE_CATALOG_H_ */
+#endif /* _MESSAGE_CATALOG_H_ */

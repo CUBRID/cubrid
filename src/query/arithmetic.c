@@ -48,6 +48,7 @@
 static double round_double (double num, double integer);
 static double truncate_double (double num, double integer);
 static DB_BIGINT truncate_bigint (DB_BIGINT num, DB_BIGINT integer);
+static int get_number_dbval_as_double (double *d, const DB_VALUE * value);
 
 /*
  * db_floor_dbval () - take floor of db_value
@@ -554,8 +555,16 @@ db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value)
   return NO_ERROR;
 
 sqrt_error:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR, 1,
-	  "sqrt()");
+  if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR,
+	      1, "sqrt()");
+    }
   return ER_FAILED;
 }
 
@@ -563,764 +572,71 @@ sqrt_error:
  * db_power_dbval () - take power value of db_value
  *   return: NO_ERROR, ER_FAILED
  *   result(out) : resultant db_value
- *   domain(in) : resultant db_value domain
  *   value1(in)  : first db_value
  *   value2(in)  : second db_value
  */
 int
-db_power_dbval (DB_VALUE * result, TP_DOMAIN * domain,
-		DB_VALUE * value1, DB_VALUE * value2)
+db_power_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
-  DB_TYPE type1, type2, res_type;
-  short s1, s2;
-  int i1, i2;
-  float f1, f2;
   double d1, d2;
   double dtmp;
-  DB_BIGINT bi1, bi2;
-  unsigned char num[DB_NUMERIC_BUF_SIZE];
-  int p, s;
-  int er_status;
+  int error = NO_ERROR;
 
-  if (domain->type->id == DB_TYPE_NULL
-      || DB_IS_NULL (value1) || DB_IS_NULL (value2))
+  if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
     {
+      DB_MAKE_NULL (result);
       return NO_ERROR;
     }
 
-  type1 = DB_VALUE_DOMAIN_TYPE (value1);
-  type2 = DB_VALUE_DOMAIN_TYPE (value2);
-
-  switch (type1)
+  error = get_number_dbval_as_double (&d1, value1);
+  if (error != NO_ERROR)
     {
-    case DB_TYPE_SHORT:
-      s1 = DB_GET_SHORT (value1);
-
-      switch (type2)
-	{
-	case DB_TYPE_SHORT:
-	  s2 = DB_GET_SHORT (value2);
-	  dtmp = pow ((double) s1, s2);
-	  if (OR_CHECK_SHORT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_SHORT (result, (short) dtmp);
-	  break;
-	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
-	  dtmp = pow ((double) s1, i2);
-	  if (OR_CHECK_INT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_INT (result, (int) dtmp);
-	  break;
-	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
-	  dtmp = pow ((double) s1, (double) bi2);
-	  if (OR_CHECK_BIGINT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_BIGINT (result, (DB_BIGINT) dtmp);
-	  break;
-	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
-	  if (s1 < 0 && f2 != ceil (f2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (s1, f2);
-	  if (OR_CHECK_FLOAT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_FLOAT (result, (float) dtmp);
-	  break;
-	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
-	  if (s1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (s1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
-	  if (s1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (s1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  er_status =
-	    numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2),
-					    num, &p, &s);
-	  if (er_status != NO_ERROR)
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_NUMERIC (result, num, p, s);
-	  break;
-	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
-	  if (s1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (s1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					dtmp);
-	  break;
-	default:
-	  break;
-	}
-      break;
-
-    case DB_TYPE_INTEGER:
-      i1 = DB_GET_INT (value1);
-
-      switch (type2)
-	{
-	case DB_TYPE_SHORT:
-	  i2 = (int) DB_GET_SHORT (value2);
-	  dtmp = pow ((double) i1, i2);
-	  if (OR_CHECK_INT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_INT (result, (int) dtmp);
-	  break;
-	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
-	  dtmp = pow ((double) i1, i2);
-	  if (OR_CHECK_INT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_INT (result, (int) dtmp);
-	  break;
-	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
-	  dtmp = pow ((double) i1, (double) bi2);
-	  if (OR_CHECK_BIGINT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_BIGINT (result, (DB_BIGINT) dtmp);
-	  break;
-	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
-	  if (i1 < 0 && f2 != ceil (f2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (i1, f2);
-	  if (OR_CHECK_FLOAT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_FLOAT (result, (float) dtmp);
-	  break;
-	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
-	  if (i1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (i1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
-	  if (i1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (i1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  er_status =
-	    numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2),
-					    num, &p, &s);
-	  if (er_status != NO_ERROR)
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_NUMERIC (result, num, p, s);
-	  break;
-	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
-	  if (i1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (i1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					dtmp);
-	  break;
-	default:
-	  break;
-	}
-      break;
-
-    case DB_TYPE_BIGINT:
-      bi1 = DB_GET_BIGINT (value1);
-
-      switch (type2)
-	{
-	case DB_TYPE_SHORT:
-	  i2 = (int) DB_GET_SHORT (value2);
-	  dtmp = pow ((double) bi1, i2);
-	  if (OR_CHECK_BIGINT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_BIGINT (result, (DB_BIGINT) dtmp);
-	  break;
-	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
-	  dtmp = pow ((double) bi1, i2);
-	  if (OR_CHECK_BIGINT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_BIGINT (result, (DB_BIGINT) dtmp);
-	  break;
-	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
-	  dtmp = pow ((double) bi1, (double) bi2);
-	  if (OR_CHECK_BIGINT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_BIGINT (result, (DB_BIGINT) dtmp);
-	  break;
-	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
-	  if (bi1 < 0 && f2 != ceil (f2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow ((double) bi1, f2);
-	  if (OR_CHECK_FLOAT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_FLOAT (result, (float) dtmp);
-	  break;
-	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
-	  if (bi1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow ((double) bi1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
-	  if (bi1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow ((double) bi1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  er_status =
-	    numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2),
-					    num, &p, &s);
-	  if (er_status != NO_ERROR)
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_NUMERIC (result, num, p, s);
-	  break;
-	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
-	  if (bi1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow ((double) bi1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					dtmp);
-	  break;
-	default:
-	  break;
-	}
-      break;
-
-    case DB_TYPE_FLOAT:
-      f1 = DB_GET_FLOAT (value1);
-
-      switch (type2)
-	{
-	case DB_TYPE_SHORT:
-	  s2 = DB_GET_SHORT (value2);
-	  dtmp = pow (f1, s2);
-	  if (OR_CHECK_FLOAT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_FLOAT (result, (float) dtmp);
-	  break;
-	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
-	  dtmp = pow (f1, i2);
-	  if (OR_CHECK_FLOAT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_FLOAT (result, (float) dtmp);
-	  break;
-	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
-	  dtmp = pow (f1, (double) bi2);
-	  if (OR_CHECK_FLOAT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_FLOAT (result, (float) dtmp);
-	  break;
-	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
-	  if (f1 < 0 && f2 != ceil (f2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (f1, f2);
-	  if (OR_CHECK_FLOAT_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_FLOAT (result, (float) dtmp);
-	  break;
-	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
-	  if (f1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow ((double) f1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
-	  if (f1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow ((double) f1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
-	  if (f1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow ((double) f1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					dtmp);
-	  break;
-	default:
-	  break;
-	}
-      break;
-
-    case DB_TYPE_DOUBLE:
-      d1 = DB_GET_DOUBLE (value1);
-
-      switch (type2)
-	{
-	case DB_TYPE_SHORT:
-	  s2 = DB_GET_SHORT (value2);
-	  dtmp = pow (d1, s2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
-	  dtmp = pow (d1, i2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
-	  dtmp = pow (d1, (double) bi2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
-	  if (d1 < 0 && f2 != ceil (f2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow ((double) d1, (double) f2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
-	  if (d1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (d1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
-	  if (d1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (d1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
-	  if (d1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (d1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					dtmp);
-	  break;
-	default:
-	  break;
-	}
-      break;
-
-    case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (value1),
-				    DB_VALUE_SCALE (value1), &d1);
-
-      switch (type2)
-	{
-	case DB_TYPE_SHORT:
-	  s2 = DB_GET_SHORT (value2);
-	  dtmp = pow (d1, s2);
-	  er_status =
-	    numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1),
-					    num, &p, &s);
-	  if (er_status != NO_ERROR)
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_NUMERIC (result, num, p, s);
-	  break;
-	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
-	  dtmp = pow (d1, i2);
-	  er_status =
-	    numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1),
-					    num, &p, &s);
-	  if (er_status != NO_ERROR)
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_NUMERIC (result, num, p, s);
-	  break;
-	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
-	  dtmp = pow (d1, (double) bi2);
-	  er_status = numeric_internal_double_to_num (dtmp,
-						      DB_VALUE_SCALE (value1),
-						      num, &p, &s);
-	  if (er_status != NO_ERROR)
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_NUMERIC (result, num, p, s);
-	  break;
-	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
-	  if (d1 < 0 && f2 != ceil (f2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow ((double) d1, (double) f2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
-	  if (d1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (d1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_DOUBLE (result, dtmp);
-	  break;
-	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
-	  if (d1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (d1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  er_status = numeric_internal_double_to_num (dtmp,
-						      DB_VALUE_SCALE (value1)
-						      +
-						      DB_VALUE_SCALE (value2),
-						      num, &p, &s);
-	  if (er_status != NO_ERROR)
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_NUMERIC (result, num, p, s);
-	  break;
-	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
-	  if (d1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (d1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value2))->type,
-					dtmp);
-	  break;
-	default:
-	  break;
-	}
-      break;
-
-    case DB_TYPE_MONETARY:
-      d1 = (DB_GET_MONETARY (value1))->amount;
-
-      switch (type2)
-	{
-	case DB_TYPE_SHORT:
-	  s2 = DB_GET_SHORT (value2);
-	  dtmp = pow (d1, s2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value1))->type,
-					dtmp);
-	  break;
-	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
-	  dtmp = pow (d1, i2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value1))->type,
-					dtmp);
-	  break;
-	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
-	  dtmp = pow (d1, (double) bi2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value1))->type,
-					dtmp);
-	  break;
-	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
-	  if (d1 < 0 && f2 != ceil (f2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (d1, (double) f2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value1))->type,
-					dtmp);
-	  break;
-	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
-	  if (d1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (d1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value1))->type,
-					dtmp);
-	  break;
-	case DB_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (value2),
-					DB_VALUE_SCALE (value2), &d2);
-	  if (d1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (d1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value1))->type,
-					dtmp);
-	  break;
-	case DB_TYPE_MONETARY:
-	  /*
-	   * NOTE: we probably should return an error if the two monetaries
-	   * have different montetary types.
-	   */
-	  d2 = (DB_GET_MONETARY (value2))->amount;
-	  if (d1 < 0 && d2 != ceil (d2))
-	    {
-	      goto pow_error;
-	    }
-	  dtmp = pow (d1, d2);
-	  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-	    {
-	      goto pow_overflow;
-	    }
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result,
-					(DB_GET_MONETARY (value1))->type,
-					dtmp);
-	  break;
-	default:
-	  break;
-	}
-      break;
-
-    default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-      return ER_FAILED;
+      goto pow_error;
+    }
+  error = get_number_dbval_as_double (&d2, value2);
+  if (error != NO_ERROR)
+    {
+      goto pow_error;
     }
 
-  /*
-   * if control reaches here, 'result' has the result of 'dbval1 op dbval2'.
-   * if 'result' is not in the given domain, coerce 'result' into domain.
-   */
-
-  /* save result's type as tp_value_coerce loses it if the coercion fails */
-  res_type = PRIM_TYPE (result);
-  if (tp_value_coerce (result, result, domain) != DOMAIN_COMPATIBLE)
+  if (d1 < 0 && d2 != ceil (d2))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-	      pr_type_name (res_type), pr_type_name (domain->type->id));
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_POWER_ERROR, 0);
+      goto pow_error;
     }
+
+  dtmp = pow (d1, d2);
+  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
+    {
+      goto pow_overflow;
+    }
+
+  DB_MAKE_DOUBLE (result, dtmp);
+
   return NO_ERROR;
 
 pow_overflow:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_POWER, 0);
-  return ER_FAILED;
+  if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_POWER, 0);
+      return ER_FAILED;
+    }
 
 pow_error:
-  /* need new error code */
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_POWER_ERROR, 0);
-  return ER_FAILED;
+  if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
 }
 
 /*
@@ -1382,7 +698,7 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	    }
 	  break;
 	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_INT (value2);
+	  bi2 = DB_GET_BIGINT (value2);
 	  if (bi2 == 0)
 	    {
 	      DB_MAKE_BIGINT (result, s1);
@@ -1447,9 +763,9 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	    }
 	  break;
 	default:
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-                  0);
-          return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+		  0);
+	  return ER_FAILED;
 	}
       break;
 
@@ -1546,9 +862,9 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	    }
 	  break;
 	default:
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-                  0);
-          return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+		  0);
+	  return ER_FAILED;
 	}
       break;
 
@@ -1645,9 +961,9 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	    }
 	  break;
 	default:
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-                  0);
-          return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+		  0);
+	  return ER_FAILED;
 	}
       break;
 
@@ -1740,9 +1056,9 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	    }
 	  break;
 	default:
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-                  0);
-          return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+		  0);
+	  return ER_FAILED;
 	}
       break;
 
@@ -1834,9 +1150,9 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	    }
 	  break;
 	default:
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-                  0);
-          return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+		  0);
+	  return ER_FAILED;
 	}
       break;
 
@@ -1953,9 +1269,9 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	    }
 	  break;
 	default:
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
-                  0);
-          return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE,
+		  0);
+	  return ER_FAILED;
 	}
       break;
 
@@ -2138,8 +1454,20 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       p = DB_VALUE_PRECISION (value1);
       s = DB_VALUE_SCALE (value1);
       end = num_string + strlen (num_string);
-      bi2 = (type2 == DB_TYPE_BIGINT) ?
-	DB_GET_BIGINT (value2) : DB_GET_INT (value2);
+
+      if (type2 == DB_TYPE_BIGINT)
+	{
+	  bi2 = DB_GET_BIGINT (value2);
+	}
+      else if (type2 == DB_TYPE_INTEGER)
+	{
+	  bi2 = DB_GET_INT (value2);
+	}
+      else
+	{
+	  bi2 = DB_GET_SHORT (value2);
+	}
+
       ptr = end - s + bi2;
 
       if (end < ptr)
@@ -2995,6 +2323,629 @@ int
 db_drandom_dbval (DB_VALUE * result)
 {
   DB_MAKE_DOUBLE (result, drand48 ());
+
+  return NO_ERROR;
+}
+
+/*
+ * get_number_dbval_as_double () - 
+ *   return: NO_ERROR/error code
+ *   d(out) : double
+ *   value(in) : input db_value
+ */
+static int
+get_number_dbval_as_double (double *d, const DB_VALUE * value)
+{
+  short s;
+  int i;
+  float f;
+  double dtmp;
+  DB_BIGINT bi;
+
+  switch (DB_VALUE_DOMAIN_TYPE (value))
+    {
+    case DB_TYPE_SHORT:
+      s = DB_GET_SHORT (value);
+      dtmp = (double) s;
+      break;
+    case DB_TYPE_INTEGER:
+      i = DB_GET_INT (value);
+      dtmp = (double) i;
+      break;
+    case DB_TYPE_BIGINT:
+      bi = DB_GET_BIGINT (value);
+      dtmp = (double) bi;
+      break;
+    case DB_TYPE_FLOAT:
+      f = DB_GET_FLOAT (value);
+      dtmp = (double) f;
+      break;
+    case DB_TYPE_DOUBLE:
+      dtmp = DB_GET_DOUBLE (value);
+      break;
+    case DB_TYPE_NUMERIC:
+      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (value),
+				    DB_VALUE_SCALE (value), &dtmp);
+      break;
+    case DB_TYPE_MONETARY:
+      dtmp = (DB_GET_MONETARY (value))->amount;
+      break;
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+
+  *d = dtmp;
+  return NO_ERROR;
+}
+
+/*
+ * db_cos_dbval () - computes cosine value of db_value
+ *   return: NO_ERROR
+ *   result(out): resultant db_value
+ *   value(in) : input db_value
+ */
+int
+db_cos_dbval (DB_VALUE * result, DB_VALUE * value)
+{
+  DB_TYPE type;
+  int err;
+  double dtmp;
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+  if (type == DB_TYPE_NULL || DB_IS_NULL (value))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  err = get_number_dbval_as_double (&dtmp, value);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  dtmp = cos (dtmp);
+
+  DB_MAKE_DOUBLE (result, dtmp);
+  return NO_ERROR;
+}
+
+/*
+ * db_sin_dbval () - computes sine value of db_value
+ *   return: NO_ERROR
+ *   result(out): resultant db_value
+ *   value(in) : input db_value
+ */
+int
+db_sin_dbval (DB_VALUE * result, DB_VALUE * value)
+{
+  DB_TYPE type;
+  int err;
+  double dtmp;
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+  if (type == DB_TYPE_NULL || DB_IS_NULL (value))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  err = get_number_dbval_as_double (&dtmp, value);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  dtmp = sin (dtmp);
+
+  DB_MAKE_DOUBLE (result, dtmp);
+  return NO_ERROR;
+}
+
+/*
+ * db_tan_dbval () - computes tangent value of db_value
+ *   return: NO_ERROR
+ *   result(out): resultant db_value
+ *   value(in) : input db_value
+ */
+int
+db_tan_dbval (DB_VALUE * result, DB_VALUE * value)
+{
+  DB_TYPE type;
+  int err;
+  double dtmp;
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+  if (type == DB_TYPE_NULL || DB_IS_NULL (value))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  err = get_number_dbval_as_double (&dtmp, value);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  dtmp = tan (dtmp);
+
+  DB_MAKE_DOUBLE (result, dtmp);
+  return NO_ERROR;
+}
+
+/*
+ * db_cot_dbval () - computes cotangent value of db_value
+ *   return: NO_ERROR
+ *   result(out): resultant db_value
+ *   value(in) : input db_value
+ */
+int
+db_cot_dbval (DB_VALUE * result, DB_VALUE * value)
+{
+  DB_TYPE type;
+  int err;
+  double dtmp;
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+  if (type == DB_TYPE_NULL || DB_IS_NULL (value))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  err = get_number_dbval_as_double (&dtmp, value);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (dtmp == 0)
+    {
+      DB_MAKE_NULL (result);
+    }
+  else
+    {
+      dtmp = 1 / tan (dtmp);
+      DB_MAKE_DOUBLE (result, dtmp);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_acos_dbval () - computes arc cosine value of db_value
+ *   return: NO_ERROR
+ *   result(out): resultant db_value
+ *   value(in) : input db_value
+ */
+int
+db_acos_dbval (DB_VALUE * result, DB_VALUE * value)
+{
+  DB_TYPE type;
+  int err;
+  double dtmp;
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+  if (type == DB_TYPE_NULL || DB_IS_NULL (value))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  err = get_number_dbval_as_double (&dtmp, value);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (dtmp < -1 || dtmp > 1)
+    {
+      goto error;
+    }
+
+  dtmp = acos (dtmp);
+
+  DB_MAKE_DOUBLE (result, dtmp);
+  return NO_ERROR;
+
+error:
+  if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR,
+	      1, "acos()");
+      return ER_QPROC_FUNCTION_ARG_ERROR;
+    }
+}
+
+/*
+ * db_asin_dbval () - computes arc sine value of db_value
+ *   return: NO_ERROR
+ *   result(out): resultant db_value
+ *   value(in) : input db_value
+ */
+int
+db_asin_dbval (DB_VALUE * result, DB_VALUE * value)
+{
+  DB_TYPE type;
+  int err;
+  double dtmp;
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+  if (type == DB_TYPE_NULL || DB_IS_NULL (value))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  err = get_number_dbval_as_double (&dtmp, value);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (dtmp < -1 || dtmp > 1)
+    {
+      goto error;
+    }
+
+  dtmp = asin (dtmp);
+
+  DB_MAKE_DOUBLE (result, dtmp);
+  return NO_ERROR;
+
+error:
+  if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR,
+	      1, "asin()");
+      return ER_QPROC_FUNCTION_ARG_ERROR;
+    }
+}
+
+/*
+ * db_atan_dbval () - computes arc tangent value of value2 / value
+ *   return: NO_ERROR
+ *   result(out): resultant db_value
+ *   value(in) : input db_value
+ */
+int
+db_atan_dbval (DB_VALUE * result, DB_VALUE * value)
+{
+  DB_TYPE type;
+  int err;
+  double dtmp;
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+  if (type == DB_TYPE_NULL || DB_IS_NULL (value))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  err = get_number_dbval_as_double (&dtmp, value);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  dtmp = atan (dtmp);
+
+  DB_MAKE_DOUBLE (result, dtmp);
+  return NO_ERROR;
+}
+
+/*
+ * db_atan2_dbval () - computes arc tangent value of value2 / value
+ *   return: NO_ERROR
+ *   result(out): resultant db_value
+ *   value(in) : input db_value
+ *   value2(in) : second input db_value
+ *  OBS: this should have been done like db_power_dbval, i.e. switch in switch
+ *	  but this yields in very much code so we prefered to get all values 
+ *	  separated and then convert all to double. Then just one call of atan2.
+ */
+int
+db_atan2_dbval (DB_VALUE * result, DB_VALUE * value, DB_VALUE * value2)
+{
+  DB_TYPE type, type2;
+  int err;
+  double d, d2, dtmp;
+
+  /* arg1 */
+  type = DB_VALUE_DOMAIN_TYPE (value);
+  if (type == DB_TYPE_NULL || DB_IS_NULL (value))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  err = get_number_dbval_as_double (&d, value);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  /* arg2 */
+  type2 = DB_VALUE_DOMAIN_TYPE (value2);
+  if (type2 == DB_TYPE_NULL || DB_IS_NULL (value2))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  err = get_number_dbval_as_double (&d2, value2);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  /* function call, all is double type */
+  dtmp = atan2 (d, d2);
+
+  DB_MAKE_DOUBLE (result, dtmp);
+  return NO_ERROR;
+}
+
+/*
+ * db_degrees_dbval () - computes radians from value in degrees
+ *   return: NO_ERROR
+ *   result(out): resultant db_value
+ *   value(in) : input db_value
+ */
+int
+db_degrees_dbval (DB_VALUE * result, DB_VALUE * value)
+{
+  DB_TYPE type;
+  int err;
+  double dtmp;
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+  if (type == DB_TYPE_NULL || DB_IS_NULL (value))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  err = get_number_dbval_as_double (&dtmp, value);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  dtmp = dtmp * (double) 57.295779513082320876798154814105;	/* 180 / PI */
+  DB_MAKE_DOUBLE (result, dtmp);
+
+  return NO_ERROR;
+}
+
+/*
+ * db_radians_dbval () - converts degrees in value to radians
+ *   return: NO_ERROR
+ *   result(out): resultant db_value
+ *   value(in) : input db_value
+ */
+int
+db_radians_dbval (DB_VALUE * result, DB_VALUE * value)
+{
+  DB_TYPE type;
+  int err;
+  double dtmp;
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+  if (type == DB_TYPE_NULL || DB_IS_NULL (value))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  err = get_number_dbval_as_double (&dtmp, value);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  dtmp = dtmp * (double) 0.017453292519943295769236907684886;	/* PI / 180 */
+  DB_MAKE_DOUBLE (result, dtmp);
+
+  return NO_ERROR;
+}
+
+/*
+ * db_log_generic_dbval () - computes log of db_value in base
+ *   return: NO_ERROR
+ *   result(out): resultant db_value
+ *   value(in) : input db_value
+ */
+int
+db_log_generic_dbval (DB_VALUE * result, DB_VALUE * value, long b)
+{
+  DB_TYPE type;
+  int err;
+  double dtmp;
+  double base = ((b == -1) ? (2.7182818284590452353) : (double) b);
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+  if (type == DB_TYPE_NULL || DB_IS_NULL (value))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  err = get_number_dbval_as_double (&dtmp, value);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (dtmp > 0)
+    {
+      dtmp = log10 (dtmp) / log10 (base);
+      DB_MAKE_DOUBLE (result, dtmp);
+    }
+  else
+    {
+      const char *log_func;
+
+      switch (b)
+	{
+	case -1:
+	  log_func = "ln()";
+	  break;
+	case 2:
+	  log_func = "log2()";
+	  break;
+	case 10:
+	  log_func = "log10()";
+	  break;
+	default:
+	  assert (0);
+	  log_func = "unknown";
+	  break;
+	}
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_FUNCTION_ARG_ERROR,
+	      1, log_func);
+      return ER_QPROC_FUNCTION_ARG_ERROR;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_bit_count_dbval () - bit count of db_value
+ *   return:
+ *   result(out): resultant db_value
+ *   value(in) : input db_value
+ */
+int
+db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
+{
+  DB_TYPE type;
+  short s;
+  int i, c = 0;
+  float f;
+  double d;
+  DB_BIGINT bi;
+  DB_VALUE tmpval, *tmpval_p;
+
+  tmpval_p = value;
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  if (!value)
+    {
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (value))
+    {
+      DB_MAKE_NULL (result);
+    }
+  else
+    {
+      switch (type)
+	{
+	case DB_TYPE_SHORT:
+	  s = DB_GET_SHORT (value);
+	  for (c = 0; s; c++)
+	    {
+	      s &= s - 1;
+	    }
+	  break;
+
+	case DB_TYPE_INTEGER:
+	  i = DB_GET_INTEGER (value);
+	  for (c = 0; i; c++)
+	    {
+	      i &= i - 1;
+	    }
+	  break;
+
+	case DB_TYPE_BIGINT:
+	  bi = DB_GET_BIGINT (value);
+	  for (c = 0; bi; c++)
+	    {
+	      bi &= bi - 1;
+	    }
+	  break;
+
+	case DB_TYPE_FLOAT:
+	  f = DB_GET_FLOAT (value);
+	  if (f < 0)
+	    {
+	      i = (int) (f - 0.5f);
+	    }
+	  else
+	    {
+	      i = (int) (f + 0.5f);
+	    }
+	  for (c = 0; i; c++)
+	    {
+	      i &= i - 1;
+	    }
+	  break;
+
+	case DB_TYPE_MONETARY:
+	  d = (DB_GET_MONETARY (value))->amount;
+	  if (d < 0)
+	    {
+	      bi = (DB_BIGINT) (d - 0.5f);
+	    }
+	  else
+	    {
+	      bi = (DB_BIGINT) (d + 0.5f);
+	    }
+	  for (c = 0; bi; c++)
+	    {
+	      bi &= bi - 1;
+	    }
+	  break;
+
+	case DB_TYPE_NUMERIC:
+	  if (tp_value_cast (value, &tmpval,
+			     &tp_Double_domain, false) != DOMAIN_COMPATIBLE)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_QPROC_INVALID_DATATYPE, 0);
+	      return ER_FAILED;
+	    }
+	  tmpval_p = &tmpval;
+	  /* no break here */
+	case DB_TYPE_DOUBLE:
+	  d = DB_GET_DOUBLE (tmpval_p);
+	  if (d < 0)
+	    {
+	      bi = (DB_BIGINT) (d - 0.5f);
+	    }
+	  else
+	    {
+	      bi = (DB_BIGINT) (d + 0.5f);
+	    }
+	  for (c = 0; bi; c++)
+	    {
+	      bi &= bi - 1;
+	    }
+	  break;
+
+	default:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_QPROC_INVALID_DATATYPE, 0);
+	  return ER_QPROC_INVALID_DATATYPE;
+	}
+
+      DB_MAKE_INT (result, c);
+    }
 
   return NO_ERROR;
 }

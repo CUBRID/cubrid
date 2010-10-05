@@ -76,6 +76,7 @@ extern int db_2pc_prepared_transactions (int gtrids[], int size);
 extern int db_2pc_prepare_to_commit_transaction (int gtrid);
 extern int db_2pc_attach_transaction (int gtrid);
 extern void db_set_interrupt (int set);
+extern void db_set_suppress_repl_on_transaction (int set);
 extern void db_checkpoint (void);
 extern int db_freepgs (const char *vlabel);
 extern int db_totalpgs (const char *vlabel);
@@ -271,6 +272,7 @@ extern DB_OBJECT *db_create_class (const char *name);
 extern DB_OBJECT *db_create_vclass (const char *name);
 extern int db_drop_class (DB_OBJECT * classobj);
 extern int db_rename_class (DB_OBJECT * classobj, const char *new_name);
+extern int db_truncate_class (DB_OBJECT * classobj);
 
 extern int db_add_index (DB_OBJECT * classobj, const char *attname);
 extern int db_drop_index (DB_OBJECT * classobj, const char *attname);
@@ -361,8 +363,8 @@ extern int db_get_client_type (void);
 extern const char *db_get_type_name (DB_TYPE type_id);
 extern DB_TYPE db_type_from_string (const char *name);
 
-extern DB_OBJECT *db_find_class_of_index (const char *index,
-					  DB_CONSTRAINT_TYPE type);
+extern DB_OBJECT *db_find_class_of_index (const char *const index,
+					  const DB_CONSTRAINT_TYPE type);
 extern DB_OBJECT *db_find_class (const char *name);
 extern DB_OBJECT *db_get_class (DB_OBJECT * obj);
 extern DB_OBJLIST *db_get_all_objects (DB_OBJECT * classobj);
@@ -385,6 +387,8 @@ extern const char *db_get_class_name (DB_OBJECT * classobj);
 extern DB_OBJLIST *db_get_superclasses (DB_OBJECT * obj);
 extern DB_OBJLIST *db_get_subclasses (DB_OBJECT * obj);
 extern DB_ATTRIBUTE *db_get_attribute (DB_OBJECT * obj, const char *name);
+extern DB_ATTRIBUTE *db_get_attribute_by_name (const char *class_name,
+					       const char *atrribute_name);
 extern DB_ATTRIBUTE *db_get_attributes (DB_OBJECT * obj);
 extern DB_ATTRIBUTE *db_get_class_attribute (DB_OBJECT * obj,
 					     const char *name);
@@ -408,6 +412,7 @@ extern DB_OBJECT *db_attribute_class (DB_ATTRIBUTE * attribute);
 extern DB_VALUE *db_attribute_default (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_unique (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_primary_key (DB_ATTRIBUTE * attribute);
+extern int db_attribute_is_foreign_key (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_auto_increment (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_reverse_unique (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_non_null (DB_ATTRIBUTE * attribute);
@@ -457,10 +462,12 @@ extern int db_get_btree_statistics (DB_CONSTRAINT * cons,
 /* Constraint Functions */
 extern DB_CONSTRAINT *db_get_constraints (DB_OBJECT * obj);
 extern DB_CONSTRAINT *db_constraint_next (DB_CONSTRAINT * constraint);
-extern DB_CONSTRAINT_TYPE db_constraint_type (DB_CONSTRAINT * constraint);
+extern DB_CONSTRAINT_TYPE db_constraint_type (const DB_CONSTRAINT *
+					      constraint);
 extern const char *db_constraint_name (DB_CONSTRAINT * constraint);
 extern DB_ATTRIBUTE **db_constraint_attributes (DB_CONSTRAINT * constraint);
 extern const int *db_constraint_asc_desc (DB_CONSTRAINT * constraint);
+extern const int *db_constraint_prefix_length (DB_CONSTRAINT * constraint);
 
 extern const char *db_get_foreign_key_cache_object_attr (DB_CONSTRAINT *
 							 constraint);
@@ -517,6 +524,9 @@ extern int db_trigger_action (DB_OBJECT * trobj, char **action);
 extern DB_CTMPL *dbt_create_class (const char *name);
 extern DB_CTMPL *dbt_create_vclass (const char *name);
 extern DB_CTMPL *dbt_edit_class (DB_OBJECT * classobj);
+extern DB_CTMPL *dbt_copy_class (const char *new_name,
+				 const char *existing_name,
+				 SM_CLASS ** class_);
 extern DB_OBJECT *dbt_finish_class (DB_CTMPL * def);
 extern void dbt_abort_class (DB_CTMPL * def);
 

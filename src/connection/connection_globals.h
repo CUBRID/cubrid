@@ -41,4 +41,7 @@ extern char css_Master_unix_domain_path[];
 #endif
 extern SOCKET css_Pipe_to_master;
 
+#define CSS_NET_MAGIC_SIZE		8
+extern char css_Net_magic[CSS_NET_MAGIC_SIZE];
+
 #endif /* _CONNECTION_GLOBALS_H_ */

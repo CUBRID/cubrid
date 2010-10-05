@@ -42,6 +42,7 @@
 #include "parser.h"
 #include "trigger_manager.h"
 #include "schema_manager.h"
+#include "dbi.h"
 #if defined(WINDOWS)
 #include "misc_string.h"
 #endif
@@ -62,6 +63,10 @@ static DB_SEQ *classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO *
 						   fk_info);
 static DB_SEQ *classobj_make_foreign_key_ref_seq (SM_FOREIGN_KEY_INFO *
 						  fk_info);
+static DB_SEQ *classobj_make_index_attr_prefix_seq (int num_attrs,
+						    const int
+						    *attrs_prefix_length);
+
 static SM_CONSTRAINT *classobj_make_constraint (const char *name,
 						SM_CONSTRAINT_TYPE type,
 						BTID * id);
@@ -86,6 +91,9 @@ static SM_FOREIGN_KEY_INFO *classobj_make_foreign_key_info (DB_SEQ * fk_seq,
 static SM_FOREIGN_KEY_INFO *classobj_make_foreign_key_ref (DB_SEQ * fk_seq);
 static SM_FOREIGN_KEY_INFO *classobj_make_foreign_key_ref_list (DB_SEQ *
 								fk_container);
+static int *classobj_make_index_prefix_info (DB_SEQ * prefix_seq,
+					     int num_attrs);
+
 static int classobj_cache_not_null_constraints (const char *class_name,
 						SM_ATTRIBUTE * attributes,
 						SM_CLASS_CONSTRAINT **
@@ -125,6 +133,12 @@ static void classobj_insert_ordered_attribute (SM_ATTRIBUTE ** attlist,
 static SM_REPRESENTATION *classobj_capture_representation (SM_CLASS * class_);
 static void classobj_sort_attlist (SM_ATTRIBUTE ** source);
 static void classobj_sort_methlist (SM_METHOD ** source);
+static int classobj_copy_attribute_like (DB_CTMPL * ctemplate,
+					 SM_ATTRIBUTE * attribute,
+					 const char *const like_class_name);
+static int classobj_copy_constraint_like (DB_CTMPL * ctemplate,
+					  SM_CLASS_CONSTRAINT * constraint,
+					  const char *const like_class_name);
 
 
 void
@@ -547,12 +561,13 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class,
 
       for (c = constraints; c != NULL; c = c->next)
 	{
-	  if ((c->type == SM_CONSTRAINT_INDEX)
-	      || (c->type == SM_CONSTRAINT_REVERSE_INDEX)
+	  if ((c->type == SM_CONSTRAINT_INDEX) ||
+	      (c->type == SM_CONSTRAINT_REVERSE_INDEX)
 	      || (c->attributes[0]->class_mop == filter_class))
 	    {
 	      if (classobj_put_index_id (new_properties, c->type, c->name,
 					 c->attributes, c->asc_desc,
+					 c->attrs_prefix_length,
 					 &(c->index),
 					 c->fk_info, c->shared_cons_name)
 		  == ER_FAILED)
@@ -710,9 +725,51 @@ classobj_describe_foreign_key_action (SM_FOREIGN_KEY_ACTION action)
       return (char *) "RESTRICT";
     case SM_FOREIGN_KEY_NO_ACTION:
       return (char *) "NO ACTION";
+    case SM_FOREIGN_KEY_SET_NULL:
+      return (char *) "SET NULL";
     }
 
   return (char *) "";
+}
+
+/*
+ * classobj_make_index_attr_prefix_seq() - Make sequence which contains
+ *                                         prefix length
+ *   return: sequence
+ *   num_attrs(in): key attribute count
+ *   attrs_prefix_length(in): array which contains prefix length
+ */
+static DB_SEQ *
+classobj_make_index_attr_prefix_seq (int num_attrs,
+				     const int *attrs_prefix_length)
+{
+  DB_SEQ *prefix_seq;
+  DB_VALUE v;
+  int i;
+
+  prefix_seq = set_create_sequence (num_attrs);
+
+  if (prefix_seq == NULL)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < num_attrs; i++)
+    {
+      if (attrs_prefix_length != NULL)
+	{
+	  db_make_int (&v, attrs_prefix_length[i]);
+	}
+      else
+	{
+	  db_make_int (&v, -1);
+	}
+
+      set_put_element (prefix_seq, i, &v);
+    }
+
+  return prefix_seq;
+
 }
 
 /*
@@ -738,12 +795,9 @@ classobj_describe_foreign_key_action (SM_FOREIGN_KEY_ACTION action)
  */
 
 int
-classobj_put_index (DB_SEQ ** properties,
-		    SM_CONSTRAINT_TYPE type,
-		    const char *constraint_name,
-		    SM_ATTRIBUTE ** atts,
-		    const int *asc_desc,
-		    const BTID * id,
+classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type,
+		    const char *constraint_name, SM_ATTRIBUTE ** atts,
+		    const int *asc_desc, const BTID * id,
 		    SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name)
 {
   int i;
@@ -800,7 +854,8 @@ classobj_put_index (DB_SEQ ** properties,
       char buf[128], *pbuf;
       DB_VALUE value;
       int e;
-      DB_SEQ *fk_seq;
+      DB_SEQ *fk_seq, *prefix_seq;
+      int num_attrs = 0;
 
       e = 0;			/* init */
 
@@ -846,6 +901,7 @@ classobj_put_index (DB_SEQ ** properties,
 	  /* asc_desc */
 	  db_make_int (&value, asc_desc ? asc_desc[i] : 0);
 	  set_put_element (constraint, e++, &value);
+	  num_attrs++;
 	}
 
       if (type == SM_CONSTRAINT_FOREIGN_KEY)
@@ -883,6 +939,20 @@ classobj_put_index (DB_SEQ ** properties,
 	      db_make_sequence (&value, fk_container);
 	      set_put_element (constraint, e++, &value);
 	      pr_clear_value (&value);
+	    }
+	}
+      else
+	{
+	  prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs, NULL);
+	  if (prefix_seq != NULL)
+	    {
+	      db_make_sequence (&value, prefix_seq);
+	      set_put_element (constraint, e++, &value);
+	      pr_clear_value (&value);
+	    }
+	  else
+	    {
+	      ok = ER_FAILED;
 	    }
 	}
 
@@ -933,6 +1003,7 @@ classobj_put_index_id (DB_SEQ ** properties,
 		       const char *constraint_name,
 		       SM_ATTRIBUTE ** atts,
 		       const int *asc_desc,
+		       const int *attrs_prefix_length,
 		       const BTID * id, SM_FOREIGN_KEY_INFO * fk_info,
 		       char *shared_cons_name)
 {
@@ -990,7 +1061,8 @@ classobj_put_index_id (DB_SEQ ** properties,
       char buf[128], *pbuf;
       DB_VALUE value;
       int e;
-      DB_SEQ *fk_seq;
+      DB_SEQ *fk_seq, *prefix_seq;
+      int num_attrs = 0;
 
       e = 0;			/* init */
 
@@ -1037,6 +1109,7 @@ classobj_put_index_id (DB_SEQ ** properties,
 	  /* asc_desc */
 	  db_make_int (&value, asc_desc ? asc_desc[i] : 0);
 	  set_put_element (constraint, e++, &value);
+	  num_attrs++;
 	}
 
       if (type == SM_CONSTRAINT_FOREIGN_KEY)
@@ -1087,6 +1160,21 @@ classobj_put_index_id (DB_SEQ ** properties,
 		  set_put_element (constraint, e++, &value);
 		  pr_clear_value (&value);
 		}
+	    }
+	}
+      else
+	{
+	  prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs,
+							    attrs_prefix_length);
+	  if (prefix_seq != NULL)
+	    {
+	      db_make_sequence (&value, prefix_seq);
+	      set_put_element (constraint, e++, &value);
+	      pr_clear_value (&value);
+	    }
+	  else
+	    {
+	      ok = ER_FAILED;
 	    }
 	}
 
@@ -1165,12 +1253,22 @@ classobj_is_exist_foreign_key_ref (MOP refop, SM_FOREIGN_KEY_INFO * fk_info)
 
 bool
 classobj_is_pk_referred (MOP clsop, SM_FOREIGN_KEY_INFO * fk_info,
-			 bool include_self_ref)
+			 bool include_self_ref, char **fk_name)
 {
+  if (fk_name != NULL)
+    {
+      *fk_name = NULL;
+    }
+
   if (include_self_ref)
     {
       if (fk_info != NULL)
 	{
+	  if (fk_name != NULL)
+	    {
+	      *fk_name = fk_info->name;
+	    }
+
 	  return true;
 	}
       else
@@ -1189,6 +1287,11 @@ classobj_is_pk_referred (MOP clsop, SM_FOREIGN_KEY_INFO * fk_info,
 	{
 	  if (!OID_EQ (&fk_ref->self_oid, cls_oid))
 	    {
+	      if (fk_name != NULL)
+		{
+		  *fk_name = fk_ref->name;
+		}
+
 	      return true;
 	    }
 	}
@@ -1730,15 +1833,13 @@ classobj_cache_constraint_entry (const char *name,
   SM_CONSTRAINT *ptr;
   bool ok = true;
 
-
   /*
    *  Extract the first element of the sequence which is the
    *  encoded B-tree ID
    */
   info_len = set_size (constraint_seq);
   att_cnt = (info_len - 1) / 2;
-
-  e = 0;			/* init */
+  e = 0;
 
   /* get the btid */
   error = set_get_element (constraint_seq, e++, &id_val);
@@ -1899,7 +2000,7 @@ classobj_cache_constraints (SM_CLASS * class_)
     SM_CONSTRAINT_REVERSE_UNIQUE,
     SM_CONSTRAINT_REVERSE_INDEX,
     SM_CONSTRAINT_PRIMARY_KEY,
-    SM_CONSTRAINT_FOREIGN_KEY
+    SM_CONSTRAINT_FOREIGN_KEY,
   };
   const char *property_name[] = {
     SM_PROPERTY_UNIQUE,
@@ -1907,12 +2008,13 @@ classobj_cache_constraints (SM_CLASS * class_)
     SM_PROPERTY_REVERSE_UNIQUE,
     SM_PROPERTY_REVERSE_INDEX,
     SM_PROPERTY_PRIMARY_KEY,
-    SM_PROPERTY_FOREIGN_KEY
+    SM_PROPERTY_FOREIGN_KEY,
   };
   int i;
 
   bool ok = true;
-  int num_constraint_types = 6;
+  int num_constraint_types =
+    sizeof (constraint_types) / sizeof (constraint_types[0]);
 
   /*
    *  Clear the attribute caches
@@ -2000,7 +2102,7 @@ classobj_make_class_constraint (const char *name, SM_CONSTRAINT_TYPE type)
 {
   SM_CLASS_CONSTRAINT *new_;
 
-  /* make a new conataint list entry */
+  /* make a new constraint list entry */
   new_ = (SM_CLASS_CONSTRAINT *) db_ws_alloc (sizeof (SM_CLASS_CONSTRAINT));
   if (new_ == NULL)
     {
@@ -2012,6 +2114,7 @@ classobj_make_class_constraint (const char *name, SM_CONSTRAINT_TYPE type)
   new_->type = type;
   new_->attributes = NULL;
   new_->asc_desc = NULL;
+  new_->attrs_prefix_length = NULL;
   BTID_SET_NULL (&new_->index);
   new_->fk_info = NULL;
   new_->shared_cons_name = NULL;
@@ -2059,6 +2162,11 @@ classobj_free_class_constraints (SM_CLASS_CONSTRAINT * constraints)
       ws_free_string (c->name);
       db_ws_free (c->attributes);
       db_ws_free (c->asc_desc);
+      if (c->attrs_prefix_length)
+	{
+	  db_ws_free (c->attrs_prefix_length);
+	}
+
       free_and_init (c->shared_cons_name);
 
       if (c->fk_info)
@@ -2318,6 +2426,42 @@ error:
 }
 
 /*
+ * classobj_make_index_prefix_info() - Make array which contains
+ *                                     prefix length
+ *   return: array
+ *   prefix_seq(in): sequence which contains prefix length
+ *   num_attrs(in): key attribute count
+ */
+static int *
+classobj_make_index_prefix_info (DB_SEQ * prefix_seq, int num_attrs)
+{
+  DB_VALUE v;
+  int *prefix_length;
+  int i;
+
+  assert (prefix_seq != NULL && set_size (prefix_seq) == num_attrs);
+
+  prefix_length = (int *) db_ws_alloc (sizeof (int) * num_attrs);
+  if (prefix_length == NULL)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < num_attrs; i++)
+    {
+      if (set_get_element_nocopy (prefix_seq, i, &v) != NO_ERROR)
+	{
+	  db_ws_free (prefix_length);
+	  return NULL;
+	}
+
+      prefix_length[i] = DB_GET_INT (&v);
+    }
+
+  return prefix_length;
+}
+
+/*
  * classobj_make_class_constraints() - Walk over a class property list extracting
  *    constraint information. Build up a list of SM_CLASS_CONSTRAINT structures
  *    and return it.
@@ -2336,7 +2480,7 @@ classobj_make_class_constraints (DB_SET * class_props,
   SM_ATTRIBUTE *att;
   SM_CLASS_CONSTRAINT *constraints, *last, *new_;
   DB_SET *props, *info, *fk;
-  DB_VALUE pvalue, uvalue, bvalue, avalue, fvalue;
+  DB_VALUE pvalue, uvalue, bvalue, avalue;
   int i, j, k, e, len, info_len, att_cnt;
   int *asc_desc;
   const char *property_name[] = {
@@ -2345,7 +2489,7 @@ classobj_make_class_constraints (DB_SET * class_props,
     SM_PROPERTY_REVERSE_UNIQUE,
     SM_PROPERTY_REVERSE_INDEX,
     SM_PROPERTY_PRIMARY_KEY,
-    SM_PROPERTY_FOREIGN_KEY
+    SM_PROPERTY_FOREIGN_KEY,
   };
   SM_CONSTRAINT_TYPE constraint_types[] = {
     SM_CONSTRAINT_UNIQUE,
@@ -2353,9 +2497,10 @@ classobj_make_class_constraints (DB_SET * class_props,
     SM_CONSTRAINT_REVERSE_UNIQUE,
     SM_CONSTRAINT_REVERSE_INDEX,
     SM_CONSTRAINT_PRIMARY_KEY,
-    SM_CONSTRAINT_FOREIGN_KEY
+    SM_CONSTRAINT_FOREIGN_KEY,
   };
-  int num_constraint_types = 6;
+  int num_constraint_types =
+    sizeof (constraint_types) / sizeof (constraint_types[0]);
 
   /* make sure these are initialized for the error cleanup code */
   db_make_null (&pvalue);
@@ -2377,7 +2522,6 @@ classobj_make_class_constraints (DB_SET * class_props,
     {
       if (classobj_get_prop (class_props, property_name[k], &pvalue) > 0)
 	{
-
 	  /* get the sequence & its size */
 	  if (DB_VALUE_TYPE (&pvalue) != DB_TYPE_SEQUENCE)
 	    {
@@ -2431,11 +2575,14 @@ classobj_make_class_constraints (DB_SET * class_props,
 		{
 		  goto structure_error;
 		}
+
 	      info = DB_GET_SEQUENCE (&uvalue);
 	      info_len = set_size (info);
-	      att_cnt = (info_len - 1) / 2;
 
-	      e = 0;		/* init */
+	      att_cnt = (info_len - 1) / 2;
+	      assert (att_cnt > 0);
+
+	      e = 0;
 
 	      /* get the btid */
 	      if (set_get_element (info, e++, &bvalue))
@@ -2521,6 +2668,12 @@ classobj_make_class_constraints (DB_SET * class_props,
 		  if (DB_VALUE_TYPE (&avalue) == DB_TYPE_INTEGER)
 		    {
 		      asc_desc[j] = DB_GET_INTEGER (&avalue);
+		      if (constraint_types[k] == SM_CONSTRAINT_REVERSE_UNIQUE
+			  || constraint_types[k] ==
+			  SM_CONSTRAINT_REVERSE_INDEX)
+			{
+			  asc_desc[j] = 1;	/* Desc */
+			}
 		    }
 		  else
 		    {
@@ -2582,6 +2735,30 @@ classobj_make_class_constraints (DB_SET * class_props,
 		      pr_clear_value (&bvalue);
 		    }
 		}
+	      else
+		{
+		  if (set_get_element (info, info_len - 1, &bvalue))
+		    {
+		      goto structure_error;
+		    }
+
+		  if (DB_VALUE_TYPE (&bvalue) == DB_TYPE_SEQUENCE)
+		    {
+		      new_->attrs_prefix_length =
+			classobj_make_index_prefix_info (DB_GET_SEQUENCE
+							 (&bvalue), att_cnt);
+		      if (new_->attrs_prefix_length == NULL)
+			{
+			  goto structure_error;
+			}
+
+		      pr_clear_value (&bvalue);
+		    }
+		  else
+		    {
+		      assert (DB_VALUE_TYPE (&bvalue) == DB_TYPE_INTEGER);
+		    }
+		}
 
 	      /* clear each unique info sequence value */
 	      pr_clear_value (&uvalue);
@@ -2617,7 +2794,6 @@ other_error:
   pr_clear_value (&bvalue);
   pr_clear_value (&uvalue);
   pr_clear_value (&pvalue);
-  pr_clear_value (&fvalue);
 
   classobj_free_class_constraints (constraints);
 
@@ -2687,7 +2863,7 @@ classobj_cache_not_null_constraints (const char *class_name,
 
 	  /* Construct a default name for the constraint node.  The constraint
 	     name is normally allocated from the heap but we want it stored
-	     in the workspace so we'll construct it as ussual and then copy
+	     in the workspace so we'll construct it as usual and then copy
 	     it into the workspace before calling classobj_make_class_constraint().
 	     After the name is copied into the workspace it can be deallocated
 	     from the heap.  The name will be deallocated from the workspace
@@ -2857,7 +3033,8 @@ classobj_find_class_constraint (SM_CLASS_CONSTRAINT * constraints,
  */
 
 SM_CLASS_CONSTRAINT *
-classobj_find_cons_index (SM_CLASS_CONSTRAINT * cons_list, const char *name)
+classobj_find_constraint_by_name (SM_CLASS_CONSTRAINT * cons_list,
+				  const char *name)
 {
   SM_CLASS_CONSTRAINT *cons;
 
@@ -2883,7 +3060,7 @@ classobj_find_cons_index (SM_CLASS_CONSTRAINT * cons_list, const char *name)
 SM_CLASS_CONSTRAINT *
 classobj_find_class_index (SM_CLASS * class_, const char *name)
 {
-  return classobj_find_cons_index (class_->constraints, name);
+  return classobj_find_constraint_by_name (class_->constraints, name);
 }
 
 /*
@@ -3120,15 +3297,14 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons,
  */
 
 SM_CLASS_CONSTRAINT *
-classobj_find_cons_index2 (SM_CLASS_CONSTRAINT * cons_list,
-			   CLASS_STATS * stats, DB_CONSTRAINT_TYPE new_cons,
-			   const char **att_names, const int *asc_desc)
+classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
+				   DB_CONSTRAINT_TYPE new_cons,
+				   const char **att_names,
+				   const int *asc_desc)
 {
   SM_CLASS_CONSTRAINT *cons;
   SM_ATTRIBUTE **attp;
   const char **namep;
-  TP_DOMAIN *key_type;
-  int key_asc_desc;
   int i, len;
 
   for (cons = cons_list; cons; cons = cons->next)
@@ -3154,63 +3330,30 @@ classobj_find_cons_index2 (SM_CLASS_CONSTRAINT * cons_list,
 	  if (!*attp && !*namep
 	      && !classobj_is_possible_constraint (cons->type, new_cons))
 	    {
-	      key_type = NULL;	/* init */
-	      if (asc_desc && stats)
-		{		/* need to check asc/desc info */
-		  key_type =
-		    classobj_find_cons_index2_col_type_list (cons, stats);
-
-		  if (tp_domain_size (key_type) != len)
-		    {		/* impossible case */
-		      continue;	/* not match */
-		    }
-
-		  /* check for asc/desc info */
-		  for (i = 0; key_type != NULL && i < len;
-		       i++, key_type = key_type->next)
+	      if (asc_desc)
+		{
+		  for (i = 0; i < len; i++)
 		    {
-		      key_asc_desc = 0;	/* guess as Asc */
-		      if (DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (cons->type)
-			  || key_type->is_desc)
-			{
-			  key_asc_desc = 1;	/* Desc */
-			}
-		      if (asc_desc[i] != key_asc_desc)
+		      if (asc_desc[i] != cons->asc_desc[i])
 			{
 			  break;	/* not match */
 			}
 		    }
-		}
 
-	      if (key_type == NULL)
+		  if (i == len)
+		    {
+		      break;	/* match */
+		    }
+		}
+	      else
 		{
-		  break;	/* found match */
+		  break;	/* match */
 		}
 	    }
 	}
-    }				/* for (cons = ...) */
+    }
 
   return cons;
-}				/* classobj_find_cons_index2() */
-
-
-/*
- * classobj_find_class_index2()
- *   return:
- *   class(in):
- *   stats(in):
- *   new_cons(in):
- *   att_names(in):
- *   asc_desc(in):
- */
-
-SM_CLASS_CONSTRAINT *
-classobj_find_class_index2 (SM_CLASS * class_, CLASS_STATS * stats,
-			    DB_CONSTRAINT_TYPE new_cons,
-			    const char **att_names, const int *asc_desc)
-{
-  return classobj_find_cons_index2 (class_->constraints, stats, new_cons,
-				    att_names, asc_desc);
 }
 
 /*
@@ -3293,6 +3436,7 @@ classobj_populate_class_properties (DB_SET ** properties,
       if (classobj_put_index_id (properties, type,
 				 con->name, con->attributes,
 				 con->asc_desc,
+				 con->attrs_prefix_length,
 				 &(con->index), con->fk_info,
 				 con->shared_cons_name) == ER_FAILED)
 	{
@@ -3357,7 +3501,7 @@ classobj_domain_size (TP_DOMAIN * domain)
 
 /* SM_ATTRIBUTE */
 /*
- * classobj_make_attribute() - Construct a new attribute strucutre.
+ * classobj_make_attribute() - Construct a new attribute structure.
  *   return: attribute structure
  *   name(in): attribute name
  *   type(in): primitive type
@@ -3499,8 +3643,7 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
 	}
       if (src->triggers != NULL)
 	{
-	  dest->triggers =
-	    tr_copy_schema_cache ((TR_SCHEMA_CACHE *) src->triggers, NULL);
+	  dest->triggers = tr_copy_schema_cache (src->triggers, NULL);
 	  if (dest->triggers == NULL)
 	    {
 	      goto memory_error;
@@ -3663,7 +3806,7 @@ classobj_copy_attlist (SM_ATTRIBUTE * attlist,
 
 memory_error:
   /* Could try to free the previously copied attribute list. We're
-     out of virtual memory at this point.  A few leaks isn't going
+     out of virtual memory at this point.  A few leaks aren't going
      to matter. */
   return er_errid ();
 }
@@ -3750,7 +3893,7 @@ classobj_clear_attribute (SM_ATTRIBUTE * att)
     }
   if (att->triggers != NULL)
     {
-      tr_free_schema_cache ((TR_SCHEMA_CACHE *) att->triggers);
+      tr_free_schema_cache (att->triggers);
       att->triggers = NULL;
     }
   classobj_clear_attribute_value (&att->value);
@@ -3826,7 +3969,7 @@ classobj_attribute_size (SM_ATTRIBUTE * att)
  * because its easier to maintain and we won't be doing method overloading
  * for awhile (possibly never).
  *
- * When we start doing performance optomization for method dispatching, the
+ * When we start doing performance optimization for method dispatching, the
  * arglist should be compiled into an arrays.
 */
 
@@ -5051,7 +5194,7 @@ classobj_free_template (SM_TEMPLATE * template_ptr)
 
   if (template_ptr->triggers != NULL)
     {
-      tr_free_schema_cache ((TR_SCHEMA_CACHE *) template_ptr->triggers);
+      tr_free_schema_cache (template_ptr->triggers);
     }
 
   area_free (Template_area, template_ptr);
@@ -5061,7 +5204,7 @@ classobj_free_template (SM_TEMPLATE * template_ptr)
 /*
  * classobj_make_template() - Allocates and initializes a class editing template.
  *    The class MOP and structure are optional, it supplied the template
- *    will be initizlies with the contents of the class.  If not supplied
+ *    will be initialized with the contents of the class.  If not supplied
  *    the template will be empty.
  *   return: new template
  *   name(in): class name
@@ -5199,7 +5342,7 @@ classobj_make_template (const char *name, MOP op, SM_CLASS * class_)
       if (class_->triggers != NULL)
 	{
 	  template_ptr->triggers =
-	    tr_copy_schema_cache ((TR_SCHEMA_CACHE *) class_->triggers, op);
+	    tr_copy_schema_cache (class_->triggers, op);
 	  if (template_ptr->triggers == NULL)
 	    {
 	      goto memory_error;
@@ -5221,6 +5364,386 @@ memory_error:
 
   return NULL;
 }
+
+/*
+ * classobj_make_template_like() - Allocates and initializes a class template
+ *                                 based on an existing class.
+ *    The existing class attributes and constraints are duplicated so that the
+ *    new template can be used for the "CREATE LIKE" statement.
+ *    Triggers are not duplicated (this is the same as MySQL does).
+ *    Indexes cannot be duplicated by this function because class templates
+ *    don't allow index creation. The indexes will be duplicated after the class
+ *    is created.
+ *    Partitions are not yet duplicated by this function.
+ *   return: the new template
+ *   name(in): the name of the new class
+ *   class(in): class structure to duplicate
+ */
+
+SM_TEMPLATE *
+classobj_make_template_like (const char *name, SM_CLASS * class_)
+{
+  SM_TEMPLATE *template_ptr;
+  const char *existing_name = NULL;
+  SM_ATTRIBUTE *a;
+  SM_CLASS_CONSTRAINT *c;
+
+  assert (name != NULL);
+  assert (class_ != NULL);
+  assert (class_->class_type == SM_CLASS_CT && class_->query_spec == NULL);
+
+  existing_name = class_->header.name;
+
+  if (class_->partition_of != NULL)
+    {
+      /* It is possible to support this but the code has not been written yet.
+       */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CANT_COPY_WITH_FEATURE,
+	      3, name, existing_name, "CREATE TABLE ... PARTITION BY");
+      return NULL;
+    }
+
+  if (class_->inheritance != NULL || class_->users != NULL ||
+      class_->resolutions != NULL)
+    {
+      /* Copying a class that is part of an inheritance chain would result in
+         weird situations; we disallow this. MySQL's CREATE LIKE did not need
+         to interact with OO features anyway. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CANT_COPY_WITH_FEATURE,
+	      3, name, existing_name, "CREATE CLASS ... UNDER");
+      return NULL;
+    }
+
+  if (class_->methods != NULL || class_->class_methods != NULL ||
+      class_->method_files != NULL || class_->loader_commands != NULL)
+    {
+      /* It does not make sense to copy the methods that were designed for
+         another class. We could silently ignore the methods but we prefer to
+         flag an error because CREATE LIKE will be used for MySQL type
+         applications mostly and will not interact with CUBRID features too
+         often. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CANT_COPY_WITH_FEATURE,
+	      3, name, existing_name, "CREATE CLASS ... METHOD");
+      return NULL;
+    }
+
+  template_ptr = smt_def_class (name);
+  if (template_ptr == NULL)
+    {
+      return NULL;
+    }
+
+  if (class_->attributes != NULL || class_->shared != NULL)
+    {
+      for (a = class_->ordered_attributes; a != NULL; a = a->order_link)
+	{
+	  if (classobj_copy_attribute_like (template_ptr, a,
+					    existing_name) != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+    }
+
+  if (class_->class_attributes != NULL)
+    {
+      for (a = class_->class_attributes;
+	   a != NULL; a = (SM_ATTRIBUTE *) a->header.next)
+	{
+	  if (classobj_copy_attribute_like (template_ptr, a,
+					    existing_name) != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+    }
+
+  if (class_->constraints != NULL)
+    {
+      for (c = class_->constraints; c; c = c->next)
+	{
+	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type)
+	      || c->type == SM_CONSTRAINT_FOREIGN_KEY)
+	    {
+	      if (classobj_copy_constraint_like (template_ptr, c,
+						 existing_name) != NO_ERROR)
+		{
+		  goto error_exit;
+		}
+	    }
+	  else
+	    {
+	      /* NOT NULL have already been copied by classobj_copy_attribute_like.
+	         INDEX will be duplicated after the class is created. */
+	      assert (c->type == SM_CONSTRAINT_INDEX
+		      || c->type == SM_CONSTRAINT_REVERSE_INDEX
+		      || c->type == SM_CONSTRAINT_NOT_NULL);
+	    }
+	}
+    }
+
+  return template_ptr;
+
+error_exit:
+  if (template_ptr != NULL)
+    {
+      classobj_free_template (template_ptr);
+    }
+
+  return NULL;
+}
+
+/*
+ * classobj_copy_attribute_like() - Copies an attribute from an existing class
+ *                                  to a new class template.
+ *    Potential NOT NULL constraints on the attribute are copied also.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   ctemplate(in): the template to copy to
+ *   attribute(in): the attribute to be duplicated
+ *   like_class_name(in): the name of the class that is duplicated
+ */
+
+static int
+classobj_copy_attribute_like (DB_CTMPL * ctemplate, SM_ATTRIBUTE * attribute,
+			      const char *const like_class_name)
+{
+  int error = NO_ERROR;
+  const char *names[2];
+
+  assert (like_class_name != NULL);
+
+  if (attribute->flags & SM_ATTFLAG_AUTO_INCREMENT)
+    {
+      /* It is possible to support this but the code has not been written yet.
+         The fact that CUBRID supports the "AUTO_INCREMENT(start_at, increment)"
+         syntax complicates the duplication of the attribute. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CANT_COPY_WITH_FEATURE,
+	      3, ctemplate->name, like_class_name, "AUTO_INCREMENT");
+      return er_errid ();
+    }
+
+  error = smt_add_attribute_w_dflt (ctemplate, attribute->header.name, NULL,
+				    attribute->domain, &attribute->value,
+				    attribute->header.name_space);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (attribute->flags & SM_ATTFLAG_NON_NULL)
+    {
+      names[0] = attribute->header.name;
+      names[1] = NULL;
+      error = dbt_add_constraint (ctemplate, DB_CONSTRAINT_NOT_NULL, NULL,
+				  names,
+				  attribute->header.name_space ==
+				  ID_CLASS_ATTRIBUTE ? 1 : 0);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return error;
+}
+
+/*
+ * classobj_point_at_att_names() - Allocates a NULL-terminated array of pointers
+ *                                 to the names of the attributes referenced in
+ *                                 a constraint.
+ *   return: the array on success, NULL on error
+ *   constraint(in): the constraint
+ *   count_ref(out): if supplied, the referenced integer will be modified to
+ *                   contain the number of attributes
+ */
+
+const char **
+classobj_point_at_att_names (SM_CLASS_CONSTRAINT * constraint, int *count_ref)
+{
+  const char **att_names = NULL;
+  SM_ATTRIBUTE **attribute_p = NULL;
+  int count;
+  int i;
+
+  for (attribute_p = constraint->attributes, count = 0;
+       *attribute_p; ++attribute_p)
+    {
+      ++count;
+    }
+  att_names = (const char **) malloc ((count + 1) * sizeof (const char *));
+  if (att_names == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (count + 1) * sizeof (const char *));
+      return NULL;
+    }
+  for (attribute_p = constraint->attributes, i = 0;
+       *attribute_p != NULL; ++attribute_p, ++i)
+    {
+      att_names[i] = (*attribute_p)->header.name;
+    }
+  att_names[i] = NULL;
+
+  if (count_ref != NULL)
+    {
+      *count_ref = count;
+    }
+  return att_names;
+}
+
+/*
+ * classobj_copy_constraint_like() - Copies a constraint from an existing
+ *                                   class to a new class template.
+ *    Constraint names are copied as they are, even if they are the defaults
+ *    given to unnamed constraints. The default names will be a bit misleading
+ *    since they will have the duplicated class name in their contents. MySQL
+ *    also copies the default name for indexes.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   ctemplate(in): the template to copy to
+ *   constraint(in): the constraint to be duplicated
+ *   like_class_name(in): the name of the class that is duplicated
+ */
+
+static int
+classobj_copy_constraint_like (DB_CTMPL * ctemplate,
+			       SM_CLASS_CONSTRAINT * constraint,
+			       const char *const like_class_name)
+{
+  int error = NO_ERROR;
+  DB_CONSTRAINT_TYPE constraint_type = db_constraint_type (constraint);
+  const char **att_names = NULL;
+  const char **ref_attrs = NULL;
+  int count = 0;
+  int count_ref = 0;
+  char *auto_cons_name = NULL;
+  char *new_cons_name = NULL;
+
+  assert (like_class_name != NULL);
+
+  /* We are sure this will not be a class constraint (the only possible class
+     constraints are NOT NULL constraints). */
+  assert (constraint_type != DB_CONSTRAINT_NOT_NULL);
+
+  /* We are sure this constraint can be processed by dbt_add_constraint
+     (indexes cannot be added to templates). */
+  assert (constraint_type != DB_CONSTRAINT_INDEX &&
+	  constraint_type != DB_CONSTRAINT_REVERSE_INDEX);
+
+  att_names = classobj_point_at_att_names (constraint, &count);
+  if (att_names == NULL)
+    {
+      return er_errid ();
+    }
+
+  auto_cons_name = sm_produce_constraint_name (like_class_name,
+					       constraint_type, att_names,
+					       constraint->asc_desc, NULL);
+  /* check if constraint's name was generated automatically */
+  if (auto_cons_name != NULL
+      && strcmp (auto_cons_name, constraint->name) == 0)
+    {
+      /* regenerate name automatically for new class */
+      new_cons_name = sm_produce_constraint_name_tmpl (ctemplate,
+						       constraint_type,
+						       att_names,
+						       constraint->asc_desc,
+						       NULL);
+    }
+  else
+    {
+      /* use name given by user */
+      new_cons_name = (char *) constraint->name;
+    }
+
+  if (auto_cons_name != NULL)
+    {
+      sm_free_constraint_name (auto_cons_name);
+    }
+
+  if (constraint_type != DB_CONSTRAINT_FOREIGN_KEY)
+    {
+      error = smt_add_constraint (ctemplate, constraint_type,
+				  new_cons_name, att_names,
+				  (constraint_type ==
+				   DB_CONSTRAINT_UNIQUE) ? constraint->
+				  asc_desc : NULL, 0, NULL);
+    }
+  else
+    {
+      MOP ref_clsop;
+      SM_CLASS *ref_cls;
+      SM_CLASS_CONSTRAINT *c;
+
+      assert (constraint->fk_info != NULL);
+      ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
+      if (ref_clsop == NULL)
+	{
+	  error = er_errid ();
+	  goto error_exit;
+	}
+      error = au_fetch_class_force (ref_clsop, &ref_cls, AU_FETCH_READ);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      assert (ref_cls->constraints != NULL);
+
+      c = classobj_find_cons_primary_key (ref_cls->constraints);
+      if (c != NULL)
+	{
+	  ref_attrs = classobj_point_at_att_names (c, &count_ref);
+	  if (ref_attrs == NULL)
+	    {
+	      goto error_exit;
+	    }
+	  assert (count == count_ref);
+	}
+      else
+	{
+	  assert (false);
+	  error = ER_FK_REF_CLASS_HAS_NOT_PK;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error,
+		  1, ref_cls->header.name);
+	  goto error_exit;
+	}
+
+      error = dbt_add_foreign_key (ctemplate, new_cons_name, att_names,
+				   ref_cls->header.name, ref_attrs,
+				   constraint->fk_info->delete_action,
+				   constraint->fk_info->update_action,
+				   constraint->fk_info->cache_attr);
+      free_and_init (ref_attrs);
+    }
+
+  free_and_init (att_names);
+
+  if (new_cons_name != NULL && new_cons_name != constraint->name)
+    {
+      sm_free_constraint_name (new_cons_name);
+    }
+
+  return error;
+
+error_exit:
+
+  if (att_names != NULL)
+    {
+      free_and_init (att_names);
+    }
+
+  if (ref_attrs != NULL)
+    {
+      free_and_init (ref_attrs);
+    }
+
+  if (new_cons_name != NULL && new_cons_name != constraint->name)
+    {
+      sm_free_constraint_name (new_cons_name);
+    }
+
+  return error;
+}
+
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
@@ -5521,7 +6044,7 @@ classobj_insert_ordered_attribute (SM_ATTRIBUTE ** attlist,
  *    a class in a single list according to the order in which the attributes
  *    were defined. This list is not stored with the disk representation of
  *    a class, it is created in memory when the class is loaded.
- *    The actual attribute lists are kept seperate in storage order.
+ *    The actual attribute lists are kept separate in storage order.
  *    The transformer can call this for a newly loaded class or the
  *    schema manager can call this after a class has been edited to
  *    create the ordered list prior to returning control to the user.
@@ -5617,7 +6140,9 @@ classobj_fixup_loaded_class (SM_CLASS * class_)
 
   for (meth = class_->methods, i = 0; meth != NULL;
        meth = (SM_METHOD *) meth->header.next, i++)
-    meth->order = i;
+    {
+      meth->order = i;
+    }
 
   for (meth = class_->class_methods, i = 0; meth != NULL;
        meth = (SM_METHOD *) meth->header.next, i++)
@@ -5800,7 +6325,7 @@ classobj_sort_methlist (SM_METHOD ** source)
  *    and validated to install the new definitions in the class.  If the newrep
  *    argument is non zero, a representation will be saved from the current
  *    class contents before installing the template.
- *    NOTE: It is extremely imporant that as fields in the class structure
+ *    NOTE: It is extremely important that as fields in the class structure
  *    are being replaced, that the field be set to NULL.
  *    This is particularly important for the attribute lists.
  *    The reason is that garbage collection can happen during the template
@@ -6049,15 +6574,15 @@ classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat, int saverep)
   ws_list_free ((DB_LIST *) class_->resolutions,
 		(LFREEER) classobj_free_resolution);
   class_->resolutions =
-    (SM_RESOLUTION *) ws_list_nconc ((DB_LIST *) flat->resolutions,
-				     (DB_LIST *) flat->class_resolutions);
+    (SM_RESOLUTION *) WS_LIST_NCONC (flat->resolutions,
+				     flat->class_resolutions);
   flat->resolutions = NULL;
   flat->class_resolutions = NULL;
 
   /* install trigger cache */
   if (class_->triggers != NULL)
     {
-      tr_free_schema_cache ((TR_SCHEMA_CACHE *) class_->triggers);
+      tr_free_schema_cache (class_->triggers);
     }
   class_->triggers = flat->triggers;
   flat->triggers = NULL;
@@ -6113,8 +6638,8 @@ classobj_find_representation (SM_CLASS * class_, int id)
 }
 
 /*
- * classobj_filter_components() - Extracts components from a list with a certain
- *    name_space and returns a list of the extracted components.
+ * classobj_filter_components() - Extracts components from a list with a
+ *    certain name_space and returns a list of the extracted components.
  *    The source list is destructively modified.
  *   return: extracted components
  *   complist(in/out): component list to filter
@@ -6568,7 +7093,7 @@ classobj_free_descriptor (SM_DESCRIPTOR * desc)
 /*
  * classobj_make_descriptor() - Builds a descriptor structure including an initial
  *    class map entry and initializes it with the supplied information.
- *   return: descriptor strucure
+ *   return: descriptor structure
  *   class_mop(in): class MOP
  *   classobj(in): class structure
  *   comp(in): component (attribute or method)
@@ -6659,4 +7184,78 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj,
     }
 
   return desc;
+}
+
+/*
+ * classobj_check_index_exist() - Check index is duplicated.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   constraint(in): the constraints list
+ *   out_shared_cons_name(out):
+ *   constraint_type: constraint type
+ *   constraint_name(in): Constraint name.
+ *   att_names(in): array of attribute names
+ *   asc_desc(in): asc/desc info list
+ */
+int
+classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints,
+			    char **out_shared_cons_name,
+			    const char *class_name,
+			    DB_CONSTRAINT_TYPE constraint_type,
+			    const char *constraint_name,
+			    const char **att_names, const int *asc_desc)
+{
+  int error = NO_ERROR;
+  SM_CLASS_CONSTRAINT *cons;
+
+  if (constraints == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  /* check index name uniqueness */
+  cons = classobj_find_constraint_by_name (constraints, constraint_name);
+  if (cons)
+    {
+      ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, cons->name);
+      return error;
+    }
+
+  cons = classobj_find_constraint_by_attrs (constraints, constraint_type,
+					    att_names, asc_desc);
+  if (cons != NULL)
+    {
+      if (cons->name && strstr (cons->name, TEXT_CONSTRAINT_PREFIX))
+	{
+	  ERROR1 (error, ER_REGU_NOT_IMPLEMENTED,
+		  rel_major_release_string ());
+	  return error;
+	}
+
+      if ((DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type)
+	   && SM_IS_CONSTRAINT_UNIQUE_FAMILY (cons->type))
+	  || constraint_type == DB_CONSTRAINT_FOREIGN_KEY)
+	{
+	  if (out_shared_cons_name != NULL)
+	    {
+	      *out_shared_cons_name = (char *) cons->name;
+	    }
+	}
+      else
+	{
+	  ERROR2 (error, ER_SM_INDEX_EXISTS, class_name, cons->name);
+	  return error;
+	}
+    }
+
+  if (constraint_type == DB_CONSTRAINT_PRIMARY_KEY)
+    {
+      cons = classobj_find_cons_primary_key (constraints);
+      if (cons != NULL)
+	{
+	  ERROR2 (error, ER_SM_PRIMARY_KEY_EXISTS, class_name, cons->name);
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
 }

@@ -346,3 +346,138 @@ shm_id_to_name (int shm_key)
   return shm_name;
 }
 #endif
+
+#if 0
+static void
+bs_log_msg (LPTSTR lpszMsg)
+{
+  char lpDisplayBuf[4096];
+  sprintf (lpDisplayBuf, "%s", lpszMsg);
+  MessageBox (NULL, (LPCTSTR) lpDisplayBuf, TEXT ("Error"), MB_OK);
+}
+
+static void
+bs_last_error_msg (LPTSTR lpszFunction)
+{
+  LPVOID lpDisplayBuf;
+  LPVOID lpMsgBuf;
+  DWORD dw;
+
+  dw = GetLastError ();
+  FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
+		 FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dw,
+		 MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT),
+		 (LPTSTR) & lpMsgBuf, 0, NULL);
+  lpDisplayBuf =
+    (LPVOID) LocalAlloc (LMEM_ZEROINIT,
+			 (lstrlen ((LPCTSTR) lpMsgBuf) +
+			  lstrlen ((LPCTSTR) lpszFunction) +
+			  40) * sizeof (TCHAR));
+  sprintf ((LPTSTR) lpDisplayBuf, "%s failed with error %d: %s", lpszFunction,
+	   dw, lpMsgBuf);
+  MessageBox (NULL, (LPCTSTR) lpDisplayBuf, TEXT ("Error"), MB_OK);
+  LocalFree (lpMsgBuf);
+  LocalFree (lpDisplayBuf);
+}
+#endif
+
+#if defined (WINDOWS)
+static HANDLE con_status_sem;
+
+static int
+uw_sem_open (char **sem_name)
+{
+  con_status_sem = OpenMutex (SYNCHRONIZE, FALSE, sem_name);
+  if (con_status_sem == NULL)
+    {
+      return -1;
+    }
+  return 0;
+}
+
+int
+uw_sem_init (char **sem_name, char *br_name, int as_index)
+{
+  snprintf (sem_name, BROKER_NAME_LEN, "%s_%d", br_name, as_index);
+  con_status_sem = CreateMutex (NULL, FALSE, *sem_name);
+  if (con_status_sem == NULL && GetLastError () == ERROR_ALREADY_EXISTS)
+    {
+      con_status_sem = OpenMutex (SYNCHRONIZE, FALSE, sem_name);
+    }
+
+  if (con_status_sem == NULL)
+    {
+      return -1;
+    }
+  else
+    {
+      return 0;
+    }
+}
+
+int
+uw_sem_wait (char **sem_name)
+{
+  DWORD dwWaitResult;
+
+  if (con_status_sem == NULL)
+    {
+      if (uw_sem_open (sem_name) != 0)
+	{
+	  return -1;
+	}
+    }
+
+  dwWaitResult = WaitForSingleObject (con_status_sem, INFINITE);
+  switch (dwWaitResult)
+    {
+    case WAIT_OBJECT_0:
+      return 0;
+    case WAIT_TIMEOUT:
+    case WAIT_FAILED:
+    case WAIT_ABANDONED:
+      return -1;
+    }
+}
+
+int
+uw_sem_post (char **sem_name)
+{
+  /* if (con_status_sem == NULL) exit (-100); */
+  if (ReleaseMutex (con_status_sem) != 0)
+    return 0;
+  return -1;
+}
+
+int
+uw_sem_destroy (char **sem_name)
+{
+  if (con_status_sem != NULL && CloseHandle (con_status_sem) != 0)
+    return 0;
+  return -1;
+}
+#else
+int
+uw_sem_init (sem_t * sem)
+{
+  return sem_init (sem, 1, 1);
+}
+
+int
+uw_sem_wait (sem_t * sem)
+{
+  return sem_wait (sem);
+}
+
+int
+uw_sem_post (sem_t * sem)
+{
+  return sem_post (sem);
+}
+
+int
+uw_sem_destroy (sem_t * sem)
+{
+  return sem_destroy (sem);
+}
+#endif

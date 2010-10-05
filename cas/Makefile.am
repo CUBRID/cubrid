@@ -40,8 +40,7 @@ QATOOLS_DIR = $(SRC)/qatools
 API_DIR = $(SRC)/api
 
 INCLUDES = @SRC_INC@ @EXT_INC@
-#DEFS = @SYS_DEFS@ @VERSION_DEFS@ @DIR_DEFS@ -DCCI_DEBUG -DCAS_FOR_DBMS
-DEFS = @SYS_DEFS@ @VERSION_DEFS@ @DIR_DEFS@ -DCCI_DEBUG
+DEFS = @SYS_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
 
 lib_LIBRARIES = libcas.a
 libcas_a_SOURCES = \
@@ -58,7 +57,8 @@ libcas_a_SOURCES = \
 	$(BROKER_DIR)/cas_log.c \
 	$(BROKER_DIR)/cas_sql_log2.c \
 	$(BROKER_DIR)/broker_filename.c \
-	$(BROKER_DIR)/broker_util.c
+	$(BROKER_DIR)/broker_util.c \
+	$(BROKER_DIR)/cas_error.c
 libcas_a_CFLAGS = $(AM_CFLAGS) -DLIBCAS_FOR_JSP -fPIC
 
 lib_LTLIBRARIES = libcascci.la

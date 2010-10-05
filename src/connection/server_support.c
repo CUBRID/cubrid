@@ -187,7 +187,7 @@ static BOOL WINAPI ctrl_sig_handler (DWORD ctrl_event);
 #endif /* WINDOWS */
 
 static void css_wakeup_ha_active_state (THREAD_ENTRY * thread_p);
-static void css_wait_ha_active_state (THREAD_ENTRY * thread_p);
+static bool css_wait_ha_active_state (THREAD_ENTRY * thread_p);
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 
@@ -552,7 +552,8 @@ css_setup_server_loop (void)
       css_master_thread ();
 
       /* stop threads */
-      thread_stop_active_workers ();
+      thread_stop_active_workers (THREAD_WORKER_STOP_PHASE_0);
+      thread_stop_active_workers (THREAD_WORKER_STOP_PHASE_1);
       thread_stop_active_daemons ();
 
       css_close_server_connection_socket ();
@@ -883,6 +884,8 @@ css_process_new_client (SOCKET master_fd, fd_set * read_fd_var,
   if (conn == NULL)
     {
       css_initialize_conn (&temp_conn, new_fd);
+      csect_initialize_critical_section (&temp_conn.csect);
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_CSS_CLIENTS_EXCEEDED, 1, PRM_CSS_MAX_CLIENTS);
       reason = htonl (SERVER_CLIENTS_EXCEEDED);
@@ -1057,6 +1060,7 @@ css_process_new_connection_request (void)
 	  void *error_string;
 
 	  css_initialize_conn (&new_conn, new_fd);
+	  csect_initialize_critical_section (&new_conn.csect);
 
 	  rc = css_read_header (&new_conn, &header);
 	  buffer_size = rid = 0;
@@ -1261,7 +1265,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	  /* check server's HA state */
 	  if (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY
 	      && conn->in_transaction == false
-	      && thread_has_threads (conn->transaction_id,
+	      && thread_has_threads (thread_p, conn->transaction_id,
 				     conn->client_id) == 0)
 	    {
 	      status = REQUEST_REFUSED;
@@ -1320,21 +1324,26 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 		}
 	    }
 	}
-    }				/* while */
+    }
 
   /* check the connection and call connection error handler */
   if (status != NO_ERRORS || css_check_conn (conn) != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: "
 		    "status %d conn { status %d transaction_id %d "
-		    "db_error %d stop_talk %d }\n",
+		    "db_error %d stop_talk %d stop_phase %d }\n",
 		    status, conn->status, conn->transaction_id,
-		    conn->db_error, conn->stop_talk);
+		    conn->db_error, conn->stop_talk, conn->stop_phase);
       MUTEX_LOCK (rv, thread_p->tran_index_lock);
       (*css_Connection_error_handler) (thread_p, conn);
     }
+  else
+    {
+      assert (thread_p->shutdown == true || conn->stop_talk == true);
+    }
 
   thread_p->type = TT_WORKER;
+
   return 0;
 }
 
@@ -1427,7 +1436,7 @@ css_oob_handler_thread (void *arg)
  * Note:  All communication will be stopped
  */
 void
-css_block_all_active_conn (void)
+css_block_all_active_conn (unsigned short stop_phase)
 {
   CSS_CONN_ENTRY *conn;
 
@@ -1436,7 +1445,11 @@ css_block_all_active_conn (void)
   for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
     {
       csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
-
+      if (conn->stop_phase != stop_phase)
+	{
+	  csect_exit_critical_section (&conn->csect);
+	  continue;
+	}
       css_end_server_request (conn);
       if (!IS_INVALID_SOCKET (conn->fd) && conn->fd != css_Pipe_to_master)
 	{
@@ -1466,15 +1479,18 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
 
   css_insert_into_active_conn_list (conn);
 
-  job =
-    css_make_job_entry (conn, (CSS_THREAD_FN) css_connection_handler_thread,
-			(CSS_THREAD_ARG) conn, -1 /* implicit: DEFAULT */ );
+  job = css_make_job_entry (conn, 
+			    (CSS_THREAD_FN) css_connection_handler_thread, 
+			    (CSS_THREAD_ARG) conn, 
+			    -1 /* implicit: DEFAULT */ );
+  assert (job != NULL);
+
   if (job != NULL)
     {
       css_add_to_job_queue (job);
     }
 
-  return (1);
+  return 1;
 }
 
 /*
@@ -2232,6 +2248,8 @@ css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index)
       return ER_FAILED;
     }
 
+  assert (thrd->resume_status == THREAD_JOB_QUEUE_RESUMED);
+
   return NO_ERROR;
 }
 
@@ -2414,9 +2432,9 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p,
 /*
  * css_wait_ha_active_state - wait for the server state to be active
  *                            from to-be-active
- *   return: none
+ *   return: true if ha_Server_state == HA_SERVER_STATE_ACTIVE, otherwise false
  */
-static void
+static bool
 css_wait_ha_active_state (THREAD_ENTRY * thread_p)
 {
   int r;
@@ -2436,6 +2454,8 @@ css_wait_ha_active_state (THREAD_ENTRY * thread_p)
 				       THREAD_HA_ACTIVE_STATE_SUSPENDED);
     }
   MUTEX_UNLOCK (ha_Server_state_waiting_mutex);
+
+  return (ha_Server_state == HA_SERVER_STATE_ACTIVE);
 }
 
 /*
@@ -2491,13 +2511,18 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
       if (whence == FROM_REGISTER_CLIENT)
 	{
 	  bool continue_checking = true;
+	  bool r;
 
-	  css_wait_ha_active_state (thread_p);
-
+	  r = css_wait_ha_active_state (thread_p);
 	  if (logtb_is_interrupted (thread_p, false, &continue_checking))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	      err = ER_INTERRUPTED;
+	    }
+	  else if (r == false)
+	    {
+	      /* Interrupt flag might be unset before I see. */
+	      err = ER_FAILED;
 	    }
 	}
       break;

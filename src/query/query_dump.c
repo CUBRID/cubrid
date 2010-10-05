@@ -1256,6 +1256,12 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "COUNT_STAR";
     case PT_GROUPBY_NUM:
       return "GROUPBY_NUM";
+    case PT_AGG_BIT_AND:
+      return "BIT_AND";
+    case PT_AGG_BIT_OR:
+      return "BIT_OR";
+    case PT_AGG_BIT_XOR:
+      return "BIT_XOR";
     case PT_TOP_AGG_FUNC:
       return "TOP_AGG_FUNC";
     case PT_GENERIC:
@@ -1532,6 +1538,18 @@ qdump_bool_operator_string (BOOL_OP bool_op)
     {
       return "OR";
     }
+  else if (bool_op == B_XOR)
+    {
+      return "XOR";
+    }
+  else if (bool_op == B_IS)
+    {
+      return "IS";
+    }
+  else if (bool_op == B_IS_NOT)
+    {
+      return "IS NOT";
+    }
   else
     {
       return "undefined";
@@ -1648,6 +1666,8 @@ qdump_relation_operator_string (int op)
       return "IS NULL";
     case R_EXISTS:
       return "EXISTS";
+    case R_NULLSAFE_EQ:
+      return "<=>";
     default:
       return "undefined";
     }
@@ -1668,6 +1688,22 @@ qdump_arith_operator_string (OPERATOR_TYPE opcode)
       return "/";
     case T_STRCAT:
       return "||";
+    case T_BIT_NOT:
+      return "~";
+    case T_BIT_AND:
+      return "&";
+    case T_BIT_OR:
+      return "|";
+    case T_BIT_XOR:
+      return "^";
+    case T_BITSHIFT_LEFT:
+      return "<<";
+    case T_BITSHIFT_RIGHT:
+      return ">>";
+    case T_INTDIV:
+      return "div";
+    case T_INTMOD:
+      return "mod";
     default:
       return "undefined";
     }
@@ -2143,6 +2179,11 @@ qdump_print_build_list_node (XASL_NODE * xasl_p)
   if (node_p->eptr_list)
     {
       fprintf (foutput, "-->EPTR LIST:%p\n", node_p->eptr_list);
+    }
+
+  if (node_p->g_with_rollup)
+    {
+      fprintf (foutput, "-->WITH ROLLUP\n");
     }
 
   return true;

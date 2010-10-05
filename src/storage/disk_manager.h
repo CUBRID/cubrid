@@ -128,7 +128,7 @@ extern INT32 disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid,
 extern int disk_reinit_all_tmp (THREAD_ENTRY * thread_p);
 
 extern INT32 disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid,
-				INT32 nsects);
+				INT32 nsects, int exp_npages);
 extern INT32 disk_alloc_special_sector (void);
 extern INT32 disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid,
 			      INT32 sectid, INT32 npages, INT32 near_pageid);

@@ -894,12 +894,6 @@ repl_ag_archive_copy_log (MASTER_INFO * minfo, PAGEID flushed)
   int min_pageid = -1;
   REPL_APPLY *repl_list = NULL;
 
-  /* wait for the APPLY thread to run, not to purge the copy log */
-  if (pb->read_pageid == 0)
-    {
-      return error;
-    }
-
   if (debug_Dump_info & REPL_DEBUG_AGENT_STATUS)
     {
       fprintf (debug_Log_fd,

@@ -34,7 +34,7 @@
  * @version 2.0
  */
 
-package cubrid.jdbc.jci;
+package @CUBRID_JCI@;
 
 /**
  * CAS와의 Protocol에서 사용되는 Function code를 define해놓은 class이다.

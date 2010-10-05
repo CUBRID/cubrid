@@ -226,6 +226,8 @@ vs_new (varstring * vstr)
 		  1, sizeof (varstring));
 	  return NULL;
 	}
+
+      vstr->heap_allocated = 1;
     }
   else
     {

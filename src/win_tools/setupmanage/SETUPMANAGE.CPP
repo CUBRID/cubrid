@@ -183,14 +183,14 @@ void WriteLog( char* p_logpath, char* p_logfile, char* p_format, ... )
 void GetCurDateTime( char* p_buf, char* p_form )
 {
 	time_t c_time;
-	struct tm* l_time = NULL;
+	struct tm l_time = {0};
 
 
 	time( &c_time );
 
-	localtime_s(l_time, &c_time );
+	localtime_s(&l_time, &c_time );
 
-	strftime( p_buf, 24 , p_form, l_time );
+	strftime( p_buf, 24 , p_form, &l_time );
 	
 }
 

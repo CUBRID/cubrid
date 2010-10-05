@@ -36,7 +36,6 @@
 #define UNIQUE_PARTITION_SAVEPOINT_DROP "pARTITIONdROP"
 #define UNIQUE_PARTITION_SAVEPOINT_OWNER "pARTITIONoWNER"
 #define UNIQUE_PARTITION_SAVEPOINT_INDEX "pARTITIONiNDEX"
-#define UNIQUE_PARTITION_SAVEPOINT_CREATE "pARTITIONcREATE"
 #define UNIQUE_PARTITION_SAVEPOINT_ALTER "pARTITIONaLTER"
 #define PARTITION_CATALOG_CLASS "_db_partition"
 #define PARTITION_ATT_CLASSOF "class_of"
@@ -100,6 +99,8 @@ extern MOP do_is_partition_changed (PARSER_CONTEXT * parser,
 				    DB_VALUE * const_values);
 extern int do_is_partitioned_subclass (int *is_partitioned,
 				       const char *classname, char *keyattr);
+extern int do_get_partition_parent (DB_OBJECT * const classop,
+				    MOP * const parentop);
 extern int do_is_partitioned_classobj (int *is_partition, DB_OBJECT * classop,
 				       char *keyattr, MOP ** sub_partitions);
 extern int do_rename_partition (MOP old_class, const char *newname);
@@ -118,34 +119,28 @@ extern int do_drop_partition_list (MOP class_, PT_NODE * name_list);
 
 extern int do_add_queries (PARSER_CONTEXT * parser,
 			   DB_CTMPL * ctemplate, const PT_NODE * queries);
-
 extern int do_add_attributes (PARSER_CONTEXT * parser,
-			      DB_CTMPL * ctemplate, PT_NODE * atts);
-
+			      DB_CTMPL * ctemplate, PT_NODE * atts,
+			      DB_QUERY_TYPE * create_select_columns);
 extern int do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints);
-
+extern int do_check_fk_constraints (DB_CTMPL * ctemplate,
+				    PT_NODE * constraints);
 extern int do_add_methods (PARSER_CONTEXT * parser,
 			   DB_CTMPL * ctemplate, PT_NODE * methods);
-
 extern int do_add_method_files (const PARSER_CONTEXT * parser,
 				DB_CTMPL * ctemplate, PT_NODE * method_files);
-
 extern int do_add_resolutions (const PARSER_CONTEXT * parser,
 			       DB_CTMPL * ctemplate,
 			       const PT_NODE * resolution);
-
 extern int do_add_supers (const PARSER_CONTEXT * parser,
 			  DB_CTMPL * ctemplate, const PT_NODE * supers);
-
 extern int do_add_foreign_key_objcache_attr (DB_CTMPL * ctemplate,
 					     PT_NODE * constraints);
-
 extern int do_set_object_id (const PARSER_CONTEXT * parser,
 			     DB_CTMPL * ctemplate, PT_NODE * object_id_list);
-
 extern int do_create_local (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
-			    PT_NODE * pt_node);
-
+			    PT_NODE * pt_node,
+			    DB_QUERY_TYPE * create_select_columns);
 extern int do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node);
 
 

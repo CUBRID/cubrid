@@ -53,7 +53,11 @@
 #include "locator_cl.h"
 #include "schema_manager.h"
 #include "log_manager.h"
+#include "boot_sr.h"
 
+#define R20_LEVEL (8.2f)
+#define R22_LEVEL (8.3f)
+#define R30_LEVEL (rel_disk_compatible ())
 
 #define UNDO_LIST_SIZE (1024)
 
@@ -388,9 +392,13 @@ static FILE_UNDO_INFO *file_undo_info;
 static GLO_UNDO_LIST *glo_undo_info;
 static int glo_undo_info_count;
 
-/*
- * function prototypes for migrating from R2.0/2.1
- */
+/* function prototypes for migrating from R2.2 */
+static int fix_active_log_header_from_r22 (const char *log_path);
+static int add_index_key_prefix_length (void);
+static int change_trigger_view_query_spec (void);
+static int add_blog_clob_type (void);
+
+/* function prototypes for migrating from R2.0/2.1 */
 static int fix_active_log_header_from_r20 (const char *log_path);
 static int fix_db_serial (void);
 static int fix_db_class (void);
@@ -421,7 +429,8 @@ static int get_disk_compatibility_level (const char *db_path,
 					 char *release_string);
 
 /* add bigint, datetime info */
-static int add_new_data_type (void);
+static int add_new_data_type (DB_TYPE type, const char *name);
+static int add_bigint_datetime_type (void);
 
 /* add db_ha_info class */
 static int add_new_classes (float compat_level);
@@ -476,7 +485,6 @@ static int glo_append_dir_entry (int index, LARGEOBJMGR_DIRSTATE * ds,
 				 LARGEOBJMGR_DIRENTRY * entry);
 static int glo_all_pages_set_dirty (void);
 
-
 /*
  * FUNCTIONS FOR MIGRATING FROM R2.0 AND R2.1
  */
@@ -505,6 +513,44 @@ fix_active_log_header_from_r20 (const char *log_path)
 
   /* update log page size and disk compatibility */
   new->db_logpagesize = new->db_iopagesize;
+  new->db_compatibility = rel_disk_compatible ();
+  strncpy (new->db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
+
+  FSEEK_AND_CHECK (fp, sizeof (FILEIO_PAGE_RESERVED), SEEK_SET, log_path);
+  FWRITE_AND_CHECK (new, sizeof (struct log_header), 1, fp, log_path);
+  FFLUSH_AND_CHECK (fp, log_path);
+  FCLOSE_AND_CHECK (fp, log_path);
+
+  return NO_ERROR;
+}
+
+/*
+ * FUNCTIONS FOR MIGRATING FROM R2.2
+ */
+static int
+fix_active_log_header_from_r22 (const char *log_path)
+{
+  FILE *fp = NULL;
+  struct log_header *new;
+  FILEIO_PAGE *iopage;
+  char page[IO_MAX_PAGE_SIZE];
+  char *undo_page;
+
+  undo_page = make_volume_header_undo_page (log_path);
+  if (undo_page == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  FOPEN_AND_CHECK (fp, log_path, "r+");
+  FREAD_AND_CHECK (page, sizeof (char), IO_PAGESIZE, fp, log_path);
+
+  memcpy (undo_page, page, IO_PAGESIZE);
+
+  iopage = (FILEIO_PAGE *) page;
+  new = (struct log_header *) iopage->page;
+
+  /* update log page size and disk compatibility */
   new->db_compatibility = rel_disk_compatible ();
   strncpy (new->db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
 
@@ -1837,7 +1883,8 @@ fix_volume_and_log_header (const char *db_path, float db_compat)
 
       if (volid == LOG_DBLOG_ACTIVE_VOLID)
 	{
-	  if (db_compat < 8.2f)
+	  /* from R1.x */
+	  if (db_compat < R20_LEVEL)
 	    {
 	      if (fix_active_log_header (vol_path) != NO_ERROR)
 		{
@@ -1845,9 +1892,19 @@ fix_volume_and_log_header (const char *db_path, float db_compat)
 		  return ER_FAILED;
 		}
 	    }
-	  else if (db_compat < rel_disk_compatible ())
+	  /* from R2.0, R2.1 */
+	  else if (db_compat < R22_LEVEL)
 	    {
 	      if (fix_active_log_header_from_r20 (vol_path) != NO_ERROR)
+		{
+		  fclose (vol_info_fp);
+		  return ER_FAILED;
+		}
+	    }
+	  /* from R2.2 */
+	  else if (db_compat < R30_LEVEL)
+	    {
+	      if (fix_active_log_header_from_r22 (vol_path) != NO_ERROR)
 		{
 		  fclose (vol_info_fp);
 		  return ER_FAILED;
@@ -1856,7 +1913,8 @@ fix_volume_and_log_header (const char *db_path, float db_compat)
 	}
       else
 	{
-	  if (db_compat < 8.2f)
+	  /* from R1.x */
+	  if (db_compat < R20_LEVEL)
 	    {
 	      if (fix_volume_header (vol_path) != NO_ERROR)
 		{
@@ -2172,16 +2230,12 @@ undo_fix_all_file_header (void)
 }
 
 static int
-add_new_data_type (void)
+add_new_data_type (DB_TYPE type, const char *name)
 {
   MOP class_mop;
   DB_OBJECT *obj;
-  DB_VALUE val;
-  int error_code = NO_ERROR;
-  DB_TYPE new_types[] = { DB_TYPE_BIGINT, DB_TYPE_DATETIME };
-  const char *type_names[] = { "BIGINT", "DATETIME" };
-  int au_save;
-  unsigned int i;
+  DB_VALUE v;
+  int error = NO_ERROR;
 
   class_mop = db_find_class (CT_DATATYPE_NAME);
   if (class_mop == NULL)
@@ -2189,41 +2243,50 @@ add_new_data_type (void)
       return ER_FAILED;
     }
 
+  obj = db_create_internal (class_mop);
+  if (obj == NULL)
+    {
+      return er_errid ();
+    }
+
+  DB_MAKE_INTEGER (&v, type);
+  error = db_put_internal (obj, "type_id", &v);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  DB_MAKE_VARCHAR (&v, 9, (char *) name, strlen (name));
+  error = db_put_internal (obj, "type_name", &v);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+add_bigint_datetime_type (void)
+{
+  int error, au_save;
+
   au_save = au_disable ();
 
-  for (i = 0; i < sizeof (new_types) / sizeof (DB_TYPE); i++)
+  error = add_new_data_type (DB_TYPE_BIGINT, "BIGINT");
+  if (error == NO_ERROR)
     {
-      obj = db_create_internal (class_mop);
-      if (obj == NULL)
-	{
-	  error_code = er_errid ();
-	  goto error;
-	}
-
-      DB_MAKE_INTEGER (&val, new_types[i]);
-      error_code = db_put_internal (obj, "type_id", &val);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      DB_MAKE_VARCHAR (&val, 9, (char *) type_names[i],
-		       strlen (type_names[i]));
-      error_code = db_put_internal (obj, "type_name", &val);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
+      error = add_new_data_type (DB_TYPE_DATETIME, "DATETIME");
     }
 
-error:
   au_enable (au_save);
 
-  if (error_code == NO_ERROR)
+  if (error == NO_ERROR)
     {
-      error_code = db_commit_transaction ();
+      error = db_commit_transaction ();
     }
-  return error_code;
+
+  return error;
 }
 
 static int
@@ -2601,6 +2664,120 @@ new_db_ha_apply_info (void)
 }
 
 static int
+add_index_key_prefix_length (void)
+{
+  DB_OBJECT *mop;
+  DB_VALUE default_value;
+  char stmt[2048];
+  int err;
+
+  mop = db_find_class (CT_INDEXKEY_NAME);
+  if (mop == NULL)
+    {
+      return er_errid ();
+    }
+
+  DB_MAKE_INTEGER (&default_value, -1);
+
+  err = db_add_attribute (mop, "key_prefix_length", "integer",
+			  &default_value);
+  if (err != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+  mop = db_find_class (CTV_INDEXKEY_NAME);
+  if (mop == NULL)
+    {
+      return er_errid ();
+    }
+
+  err = db_add_attribute (mop, "key_prefix_length", "integer", NULL);
+  if (err != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+  sprintf (stmt,
+	   "SELECT k.index_of.index_name, k.index_of.class_of.class_name,"
+	   " k.key_attr_name, k.key_order,"
+	   " CASE k.asc_desc WHEN 0 THEN 'ASC'"
+	   " WHEN 1 THEN 'DESC'"
+	   " ELSE 'UNKN' END"
+	   ", k.key_prefix_length"
+	   " FROM %s k"
+	   " WHERE CURRENT_USER = 'DBA' OR"
+	   " {k.index_of.class_of.owner.name} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
+	   "  FROM %s u, TABLE(groups) AS t(g)"
+	   "  WHERE u.name = CURRENT_USER) OR"
+	   " {k.index_of.class_of} SUBSETEQ ("
+	   "  SELECT SUM(SET{au.class_of})"
+	   "  FROM %s au"
+	   "  WHERE {au.grantee.name} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
+	   "  FROM %s u, TABLE(groups) AS t(g)"
+	   "  WHERE u.name = CURRENT_USER) AND"
+	   "  au.auth_type = 'SELECT')",
+	   CT_INDEXKEY_NAME, au_get_user_class_name (),
+	   CT_CLASSAUTH_NAME, au_get_user_class_name ());
+
+  return db_change_query_spec (mop, stmt, 1);
+}
+
+static int
+change_trigger_view_query_spec (void)
+{
+  DB_OBJECT *mop;
+  char stmt[2048];
+
+  mop = db_find_class (CTV_TRIGGER_NAME);
+  if (mop == NULL)
+    {
+      return er_errid ();
+    }
+
+  sprintf (stmt,
+	   "SELECT CAST(t.name AS VARCHAR(255)), c.class_name,"
+	   " CAST(t.target_attribute AS VARCHAR(255)),"
+	   " CASE t.target_class_attribute WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
+	   " t.action_type, t.action_time"
+	   " FROM %s t LEFT OUTER JOIN %s c ON t.target_class = c.class_of"
+	   " WHERE CURRENT_USER = 'DBA' OR"
+	   " {t.owner.name} SUBSETEQ (SELECT SET{CURRENT_USER} +"
+	   " COALESCE(SUM(SET{t.g.name}), SET{})"
+	   " FROM %s u, TABLE(groups) AS t(g)"
+	   " WHERE u.name = CURRENT_USER ) OR"
+	   " {c} SUBSETEQ (SELECT SUM(SET{au.class_of})"
+	   " FROM %s au"
+	   " WHERE {au.grantee.name} SUBSETEQ"
+	   " (SELECT SET{CURRENT_USER} +"
+	   " COALESCE(SUM(SET{t.g.name}), SET{})"
+	   " FROM %s u, TABLE(groups) AS t(g)"
+	   " WHERE u.name = CURRENT_USER) AND"
+	   " au.auth_type = 'SELECT')",
+	   tr_get_class_name (), CT_CLASS_NAME,
+	   au_get_user_class_name (), CT_CLASSAUTH_NAME,
+	   au_get_user_class_name ());
+
+  return db_change_query_spec (mop, stmt, 1);
+}
+
+static int
+add_blog_clob_type (void)
+{
+  int error;
+
+  error = add_new_data_type (33, "BLOB");
+  if (error == NO_ERROR)
+    {
+      error = add_new_data_type (34, "CLOB");
+    }
+
+  return error;
+}
+
+static int
 fix_system_class (float compat_level)
 {
   int au_save;
@@ -2610,7 +2787,8 @@ fix_system_class (float compat_level)
 
   printf ("start to fix system classes\n");
 
-  if (compat_level < 8.2f)
+  /* from R1.x */
+  if (compat_level < R20_LEVEL)
     {
       /*
        * add db_ha_info class
@@ -2623,26 +2801,52 @@ fix_system_class (float compat_level)
       printf ("db_ha_apply_info class was added.\n");
     }
 
-  error_code = fix_db_serial ();
-  if (error_code != NO_ERROR)
+  /* from R2.0, R2.1 */
+  if (compat_level < R22_LEVEL)
     {
-      goto error;
-    }
-  printf ("db_serial class was fixed.\n");
+      error_code = fix_db_serial ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      printf ("db_serial class was fixed.\n");
 
-  error_code = fix_db_class ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  printf ("db_class class was fixed.\n");
+      error_code = fix_db_class ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      printf ("db_class class was fixed.\n");
 
-  error_code = fix_db_partition ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
+      error_code = fix_db_partition ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      printf ("db_partition class was fixed.\n");
     }
-  printf ("db_partition class was fixed.\n");
+
+  /* from R2.2 */
+  if (compat_level < R30_LEVEL)
+    {
+      if (add_index_key_prefix_length () != NO_ERROR)
+	{
+	  goto error;
+	}
+      printf ("db_index_key class was fixed.\n");
+
+      if (change_trigger_view_query_spec () != NO_ERROR)
+	{
+	  goto error;
+	}
+      printf ("db_trig's query spec was changed.\n");
+
+      if (add_blog_clob_type () != NO_ERROR)
+	{
+	  goto error;
+	}
+      printf ("BLOB, CLOB type was added.\n");
+    }
 
 error:
   au_enable (au_save);
@@ -3018,7 +3222,7 @@ main (int argc, char *argv[])
   printf ("CUBRID Migration: %s to %s\n", release_string,
 	  rel_release_string ());
 
-  is_already_fixed = (compat_level == rel_disk_compatible ());
+  is_already_fixed = (compat_level == R30_LEVEL);
 
   if (!is_already_fixed)
     {
@@ -3039,6 +3243,7 @@ main (int argc, char *argv[])
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
+  (void) boot_set_skip_check_ct_classes (true);
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("dba", NULL);
 
@@ -3054,13 +3259,14 @@ main (int argc, char *argv[])
       return EXIT_FAILURE;
     }
 
-  if (compat_level < 8.2f)
+  /* from R1.x */
+  if (compat_level < R20_LEVEL)
     {
       if (!is_already_fixed)
 	{
 	  printf ("start to fix file header\n");
 	  if (fix_all_file_header () != NO_ERROR
-	      || add_new_data_type () != NO_ERROR
+	      || add_bigint_datetime_type () != NO_ERROR
 	      || fix_all_glo_data () != NO_ERROR)
 	    {
 	      goto rollback;
@@ -3080,8 +3286,8 @@ main (int argc, char *argv[])
       goto rollback;
     }
 
-  /* rebuild index for 1.x databases */
-  if (compat_level < 8.2f)
+  /* rebuild index for R1.x databases */
+  if (compat_level < R20_LEVEL)
     {
       sprintf (log_file, "%s_%s.log", argv[0], db_name);
       is_log_file_exist = (stat (log_file, &stat_buf) == 0);

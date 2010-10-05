@@ -45,6 +45,7 @@
 #include "virtual_object.h"
 #include "parser.h"
 #include "execute_statement.h"
+#include "execute_schema.h"
 
 #define ERROR_SET(error, code) \
   do {                     \
@@ -127,6 +128,35 @@ dbt_edit_class (MOP classobj)
 
   return (def);
 }
+
+/*
+ * dbt_copy_class() - This function creates a class template based on an
+ *                    existing class.
+ * return : class template
+ * new_name(in): name of the class to be created
+ * existing_name(in): name of the class to be duplicated
+ * class_(out): the current definition of the duplicated class is returned
+ *              in order to be used for subsequent operations (such as
+ *              duplicating indexes).
+ *
+ * Note : When finished, the class template can be applied with
+ *        dbt_finish_class() or destroyed with dbt_abort_class().
+ */
+DB_CTMPL *
+dbt_copy_class (const char *new_name, const char *existing_name,
+		SM_CLASS ** class_)
+{
+  DB_CTMPL *def = NULL;
+
+  CHECK_CONNECT_NULL ();
+  CHECK_2ARGS_NULL (new_name, existing_name);
+  CHECK_MODIFICATION_NULL ();
+
+  def = smt_copy_class (new_name, existing_name, class_);
+
+  return (def);
+}
+
 
 /*
  * dbt_finish_class() - This function applies a class template. If the template
@@ -284,6 +314,10 @@ dbt_constrain_non_null (DB_CTMPL * def,
     {
       error = dbt_add_constraint (def, DB_CONSTRAINT_NOT_NULL, NULL,
 				  names, class_attribute);
+      if (error == NO_ERROR)
+	{
+	  error = do_check_fk_constraints (def, NULL);
+	}
     }
   else
     {
@@ -354,8 +388,7 @@ dbt_add_constraint (DB_CTMPL * def,
 {
   int error = NO_ERROR;
   char *name = NULL;
-  SM_CLASS *class_;
-  SM_CLASS_CONSTRAINT *cons, *temp_cons = NULL;
+  SM_CLASS_CONSTRAINT *temp_cons = NULL;
   SM_ATTRIBUTE_FLAG attflag = SM_ATTFLAG_UNIQUE;
   char *shared_cons_name = NULL;
 
@@ -374,61 +407,7 @@ dbt_add_constraint (DB_CTMPL * def,
   if (error == NO_ERROR)
     {
       name = sm_produce_constraint_name_tmpl (def, constraint_type,
-					      attnames, constraint_name);
-      if (DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type))
-	{
-	  if (def->op != NULL)
-	    {
-	      error = au_fetch_class (def->op, &class_, AU_FETCH_READ,
-				      AU_INDEX);
-	      if (error != NO_ERROR)
-		{
-		  goto end;
-		}
-	      temp_cons = class_->constraints;
-	    }
-	  else
-	    {
-	      error = classobj_make_class_constraints (def->properties,
-						       def->attributes,
-						       &temp_cons);
-	      if (error != NO_ERROR)
-		{
-		  goto end;
-		}
-	    }
-
-	  if (temp_cons != NULL)
-	    {
-	      /* check index name uniqueness */
-	      cons = classobj_find_cons_index (temp_cons, name);
-	      if (cons)
-		{
-		  ERROR2 (error, ER_SM_INDEX_EXISTS, def->name, cons->name);
-		  goto end;
-		}
-	      cons =
-		classobj_find_cons_index2 (temp_cons, NULL, constraint_type,
-					   attnames, NULL);
-	      if (cons)
-		{
-		  if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (cons->type))
-		    {
-		      ERROR2 (error, ER_SM_INDEX_EXISTS, def->name,
-			      cons->name);
-		      goto end;
-		    }
-		  shared_cons_name = (char *) cons->name;
-		}
-	      if ((constraint_type == DB_CONSTRAINT_PRIMARY_KEY) &&
-		  (cons = classobj_find_cons_primary_key (temp_cons)))
-		{
-		  ERROR2 (error, ER_SM_PRIMARY_KEY_EXISTS, def->name,
-			  cons->name);
-		  goto end;
-		}
-	    }
-	}
+					      attnames, NULL, constraint_name);
 
       if (name == NULL)
 	{
@@ -436,13 +415,11 @@ dbt_add_constraint (DB_CTMPL * def,
 	}
       else
 	{
-	  error = smt_add_constraint (def, attnames, NULL, name,
-				      class_attributes, attflag, NULL,
-				      shared_cons_name);
+	  error = smt_add_constraint (def, constraint_type, name,
+				      attnames, NULL, class_attributes, NULL);
 	}
     }
 
-end:
   if (name)
     {
       sm_free_constraint_name (name);
@@ -498,7 +475,7 @@ dbt_drop_constraint (DB_CTMPL * def,
   if (error == NO_ERROR)
     {
       name = sm_produce_constraint_name_tmpl (def, constraint_type,
-					      attnames, constraint_name);
+					      attnames, NULL, constraint_name);
 
       if (name == NULL)
 	{
@@ -506,6 +483,8 @@ dbt_drop_constraint (DB_CTMPL * def,
 	}
       else
 	{
+	  /* TODO We might want to check that the dropped constraint really had
+	     the type indicated by the constraint_type parameter. */
 	  error = smt_drop_constraint (def, attnames, name, class_attributes,
 				       attflag);
 	}
@@ -539,52 +518,12 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
 {
   int error = NO_ERROR;
   char *name;
-  SM_CLASS *class_;
-  SM_CLASS_CONSTRAINT *cons, *temp_cons = NULL;
+  SM_CLASS_CONSTRAINT *temp_cons = NULL;
   SM_FOREIGN_KEY_INFO fk_info;
   char *shared_cons_name = NULL;
 
   name = sm_produce_constraint_name_tmpl (def, DB_CONSTRAINT_FOREIGN_KEY,
-					  attnames, constraint_name);
-  if (def->op != NULL)
-    {
-      /* class already exist */
-      error = au_fetch_class (def->op, &class_, AU_FETCH_READ, AU_INDEX);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      temp_cons = class_->constraints;
-    }
-  else
-    {
-      /* now class being created */
-      error =
-	classobj_make_class_constraints (def->properties, def->attributes,
-					 &temp_cons);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
-
-  if (temp_cons != NULL)
-    {
-      /* check index name uniqueness */
-      cons = classobj_find_cons_index (temp_cons, name);
-      if (cons)
-	{
-	  ERROR2 (error, ER_SM_INDEX_EXISTS, def->name, cons->name);
-	  goto end;
-	}
-      cons = classobj_find_cons_index2 (temp_cons, NULL,
-					DB_CONSTRAINT_FOREIGN_KEY, attnames,
-					NULL);
-      if (cons)
-	{
-	  shared_cons_name = (char *) cons->name;
-	}
-    }
+					  attnames, NULL, constraint_name);
 
   fk_info.ref_class = ref_class;
   fk_info.ref_attrs = ref_attrs;
@@ -600,12 +539,10 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name,
     }
   else
     {
-      error = smt_add_constraint (def, attnames, NULL, name, 0,
-				  SM_ATTFLAG_FOREIGN_KEY, &fk_info,
-				  shared_cons_name);
+      error = smt_add_constraint (def, DB_CONSTRAINT_FOREIGN_KEY, name,
+				  attnames, NULL, 0, &fk_info);
     }
 
-end:
   if (name)
     {
       sm_free_constraint_name (name);

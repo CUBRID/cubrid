@@ -50,6 +50,7 @@
 #endif /* WINDOWS */
 
 #if defined(WINDOWS)
+#include <fcntl.h>
 #include <direct.h>
 #include <process.h>
 #include <sys/timeb.h>
@@ -91,6 +92,7 @@
 #define timeb		    _timeb
 #define fileno		_fileno
 #define localtime_r(time, tm)   localtime_s(tm, time)
+#define gmtime_r(time, tm)	((void)(tm), gmtime(time))
 #define vsnprintf	cub_vsnprintf
 
 #if 0
@@ -230,12 +232,6 @@ extern int free_space (const char *);
 #endif
 
 #if defined(WINDOWS)
-#define srand48(seed)    srand(seed)
-#define lrand48()        rand()
-#define drand48()        ( (double) rand() / (double) RAND_MAX )
-#endif /* WINDOWS */
-
-#if defined(WINDOWS)
 #define GETHOSTNAME(p, l) css_gethostname(p, l)
 #else /* ! WINDOWS */
 #define GETHOSTNAME(p, l) gethostname(p, l)
@@ -356,6 +352,28 @@ extern void os_send_signal (const int sig_no);
 int setenv (const char *name, const char *value, int overwrite);
 int cub_vsnprintf (char *buffer, size_t count, const char *format,
 		   va_list argptr);
+#endif
+
+#if defined(WINDOWS)
+/* The following structure is used to generate uniformly distributed
+ * pseudo-random numbers reentrantly.
+ */
+struct drand48_data
+{
+  unsigned short _rand48_seed[3];
+};
+
+/* These functions are implemented in rand.c. And rand.c will be included
+ * on Windows build.
+ */
+extern long lrand48 (void);
+extern void srand48 (long seed);
+extern double drand48 (void);
+extern int srand48_r (long int seedval, struct drand48_data *buffer);
+extern int lrand48_r (struct drand48_data *buffer, long int *result);
+extern int drand48_r (struct drand48_data *buffer, double *result);
+
+extern double round (double d);
 #endif
 
 #endif /* _PORTING_H_ */

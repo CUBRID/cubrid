@@ -62,10 +62,17 @@ t_string_clear (T_STRING * t_str)
 {
   t_str->data[0] = '\0';
   t_str->data_len = 0;
+  t_str->bind_len = 0;
 }
 
 int
 t_string_add (T_STRING * t_str, char *str, int str_len)
+{
+  return t_bind_string_add (t_str, str, str_len, 0);
+}
+
+int
+t_bind_string_add (T_STRING * t_str, char *str, int str_len, int bind_len)
 {
   if (t_str->alloc_size < t_str->data_len + str_len + 1)
     {
@@ -78,6 +85,7 @@ t_string_add (T_STRING * t_str, char *str, int str_len)
   memcpy (t_str->data + t_str->data_len, str, str_len);
   t_str->data_len += str_len;
   t_str->data[t_str->data_len] = '\0';
+  t_str->bind_len = bind_len;
   return 0;
 }
 
@@ -101,4 +109,10 @@ int
 t_string_len (T_STRING * t_str)
 {
   return t_str->data_len;
+}
+
+int
+t_string_bind_len (T_STRING * t_str)
+{
+  return t_str->bind_len;
 }

@@ -54,7 +54,7 @@ static int class_objects = 0;
 static int total_objects = 0;
 static int failed_objects = 0;
 static RECDES *Diskrec = NULL;
-static struct list_mops *class_table;
+static LIST_MOPS *class_table;
 
 static int compactdb_start (bool verbose_flag);
 static void process_class (DB_OBJECT * class_, bool verbose_flag);
@@ -196,6 +196,12 @@ compactdb_start (bool verbose_flag)
 			      COMPACTDB_MSG_FAILED),
 	      total_objects - failed_objects, total_objects);
       status = 1;
+      /*
+       * TODO Processing should not continue in this case as we cannot be sure
+       * that all references to deleted objects have been set to NULL. Most of
+       * the code in the offline compactdb should be modified to check for
+       * error conditions.
+       */
     }
   else if (verbose_flag)
     {
@@ -233,7 +239,7 @@ phase2:
 	{
 	  continue;
 	}
-      (void) heap_reclaim_addresses (NULL, hfid);
+      (void) heap_reclaim_addresses (hfid);
 
     }
 
@@ -273,8 +279,8 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
   OID last_oid;
   LOCK lock = S_LOCK;		/* Lock to acquire for the above purpose */
   int nobjects, nfetched;
-  struct lc_copyarea_manyobjs *mobjs;	/* Describe multiple objects in area */
-  struct lc_copyarea_oneobj *obj;	/* Describe on object in area        */
+  LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
+  LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area        */
   RECDES recdes;		/* Record descriptor */
   DESC_OBJ *desc_obj;		/* The object described by obj       */
 
@@ -373,8 +379,8 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
   /*
    * Now that the class has been processed, we can reclaim space in the catalog
    * and the schema.
-   * Might be able to ignore failed objects here if we're sure that's indicitave
-   * of a corrupted object.
+   * Might be able to ignore failed objects here if we're sure that's
+   * indicative of a corrupted object.
    */
   if (failed_objects == 0)
     {

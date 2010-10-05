@@ -40,27 +40,13 @@
 #include "cas_cci.h"
 #include "broker_log_util.h"
 
-#define CAS_LOG_MSG_INDEX 19
-#define CAS_RUN_NEW_LINE_CHAR	1
-
-#define GET_MSG_START_PTR(MSG_P, LINEBUF)               \
-        do {                                            \
-          char *tmp_ptr;                                \
-          tmp_ptr = LINEBUF + CAS_LOG_MSG_INDEX;        \
-          tmp_ptr = strchr(tmp_ptr, ' ');               \
-          if (tmp_ptr == NULL)                          \
-            MSG_P = (char *) "";                        \
-          else                                          \
-            MSG_P = tmp_ptr + 1;                        \
-        } while (0)
-
 static int get_args (int argc, char *argv[]);
 static int open_file (char *infilename, char *outfilename, FILE ** infp,
 		      FILE ** outfp);
 static int log_converter (FILE * infp, FILE * outfp);
 static void close_file (FILE * infp, FILE * outfp);
 static int is_cas_log_cmd (char *str);
-static int log_bind_value (char *str, int lineno, FILE * outfp);
+static int log_bind_value (char *str, int bind_len, int lineno, FILE * outfp);
 static char *get_execute_type (char *msg_p, int *prepare_flag,
 			       int *execute_flag);
 
@@ -103,6 +89,7 @@ log_converter (FILE * infp, FILE * outfp)
   int prepare_flag = 0;
   char in_execute = 0;
   int exec_h_id = 0;
+  int bind_len = 0;
 
   linebuf_tstr = t_string_make (1000);
   if (linebuf_tstr == NULL)
@@ -177,7 +164,8 @@ log_converter (FILE * infp, FILE * outfp)
 	    }
 	  else if (strncmp (msg_p, "bind ", 5) == 0)
 	    {
-	      if (log_bind_value (msg_p, lineno, outfp) < 0)
+	      bind_len = t_string_bind_len (linebuf_tstr);
+	      if (log_bind_value (msg_p, bind_len, lineno, outfp) < 0)
 		goto error;
 	    }
 	}
@@ -280,9 +268,9 @@ get_execute_type (char *msg_p, int *prepare_flag, int *execute_flag)
 }
 
 static int
-log_bind_value (char *str, int lineno, FILE * outfp)
+log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 {
-  char *p, *q;
+  char *p, *q, *r;
   char *value_p;
   int type;
 
@@ -308,8 +296,23 @@ log_bind_value (char *str, int lineno, FILE * outfp)
     }
   else
     {
-      *q = '\0';
-      value_p = q + 1;
+      if (bind_len > 0)
+	{
+	  r = strchr (q, ')');
+	  if (r == NULL)
+	    {
+	      fprintf (stderr, "log error [line:%d]\n", lineno);
+	      return -1;
+	    }
+	  *q = '\0';
+	  *r = '\0';
+	  value_p = r + 1;
+	}
+      else
+	{
+	  *q = '\0';
+	  value_p = q + 1;
+	}
     }
 
   if (strcmp (p, "NULL") == 0)
@@ -356,7 +359,15 @@ log_bind_value (char *str, int lineno, FILE * outfp)
       return -1;
     }
 
-  fprintf (outfp, "B %d %s\n", type, value_p);
+  if (bind_len > 0)
+    {
+      fprintf (outfp, "B %d %d ", type, bind_len);
+      fwrite (value_p, bind_len, 1, outfp);
+    }
+  else
+    {
+      fprintf (outfp, "B %d %s\n", type, value_p);
+    }
   return 0;
 }
 

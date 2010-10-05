@@ -51,6 +51,21 @@ typedef enum
   PRM_ERR_FILE_ERR
 } SYSPRM_ERR;
 
+typedef enum compat_mode COMPAT_MODE;
+
+enum compat_mode
+{
+  COMPAT_CUBRID,
+  COMPAT_MYSQL,
+  COMPAT_ORACLE
+    /*
+       COMPAT_ANSI,
+       COMPAT_DB2,
+       COMPAT_MAXDB,
+       COMPAT_MSSQL,
+       COMPAT_POSTGRESQL
+     */
+};
 
 /*
  * Global variables of parameters' value
@@ -226,6 +241,24 @@ extern int PRM_PB_SYNC_ON_NFLUSH;
 
 #define PRM_NAME_ORACLE_STYLE_OUTERJOIN "oracle_style_outerjoin"
 extern bool PRM_ORACLE_STYLE_OUTERJOIN;
+
+#define PRM_NAME_COMPAT_MODE "compat_mode"
+extern int PRM_COMPAT_MODE;
+
+#define PRM_NAME_ANSI_QUOTES "ansi_quotes"
+extern bool PRM_ANSI_QUOTES;
+
+#define PRM_NAME_TEST_MODE "test_mode"
+extern bool PRM_TEST_MODE;
+
+#define PRM_NAME_ONLY_FULL_GROUP_BY "only_full_group_by"
+extern bool PRM_ONLY_FULL_GROUP_BY;
+
+#define PRM_NAME_PIPES_AS_CONCAT "pipes_as_concat"
+extern bool PRM_PIPES_AS_CONCAT;
+
+#define PRM_NAME_MYSQL_TRIGGER_CORRELATION_NAMES "mysql_trigger_correlation_names"
+extern bool PRM_MYSQL_TRIGGER_CORRELATION_NAMES;
 
 #define PRM_NAME_COMPACTDB_PAGE_RECLAIM_ONLY "compactdb_page_reclaim_only"
 extern int PRM_COMPACTDB_PAGE_RECLAIM_ONLY;

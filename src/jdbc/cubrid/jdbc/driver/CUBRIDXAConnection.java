@@ -28,19 +28,19 @@
  *
  */
 
-package cubrid.jdbc.driver;
+package @CUBRID_DRIVER@;
 
 import java.sql.*;
 import javax.sql.*;
 import java.util.*;
 import javax.transaction.xa.XAResource;
 
-import cubrid.jdbc.driver.CUBRIDConnectionWrapperXA;
-import cubrid.jdbc.driver.CUBRIDException;
-import cubrid.jdbc.driver.CUBRIDJDBCErrorCode;
-import cubrid.jdbc.driver.CUBRIDXAResource;
+import @CUBRID_DRIVER@.CUBRIDConnectionWrapperXA;
+import @CUBRID_DRIVER@.CUBRIDException;
+import @CUBRID_DRIVER@.CUBRIDJDBCErrorCode;
+import @CUBRID_DRIVER@.CUBRIDXAResource;
 
-import cubrid.jdbc.jci.*;
+import @CUBRID_JCI@.*;
 
 /**
  * Title: CUBRID JDBC Driver Description:

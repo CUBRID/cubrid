@@ -52,8 +52,8 @@
 
 #define HOST_ID_ARRAY_SIZE 8
 
-static const int CSS_TCP_MAX_CONNECT_TRIES = 3;
-static const int CSS_MAXIMUM_SERVER_COUNT = 5;
+static const int css_Tcp_max_connect_tries = 3;
+static const int css_Maximum_server_count = 50;
 
 /* containing the last WSA error */
 static int css_Wsa_error = CSS_ER_WINSOCK_NOERROR;
@@ -213,10 +213,10 @@ css_tcp_client_open_with_retry (const char *host_name, int port,
     }
   else
     {
-      numtries = CSS_TCP_MAX_CONNECT_TRIES - 1;
+      numtries = css_Tcp_max_connect_tries - 1;
     }
 
-  while (!success && numtries < CSS_TCP_MAX_CONNECT_TRIES)
+  while (!success && numtries < css_Tcp_max_connect_tries)
     {
       s = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
       if (IS_INVALID_SOCKET (s))
@@ -234,7 +234,7 @@ css_tcp_client_open_with_retry (const char *host_name, int port,
        * The master deliberately tries to connect to itself once to
        * prevent multiple masters from running.  In the "good" case,
        * the connect will fail.  Printing the message when that happens
-       * makes starting the master on NT disturbing becuase the users sees
+       * makes starting the master on NT disturbing because the users sees
        * what they think is a bad message so don't print anything here.
        */
       if (connect (s, (struct sockaddr *) &addr, sizeof (addr)) !=
@@ -603,7 +603,7 @@ retry:
    * And set the listen parameter, telling the system that we're
    * ready to accept incoming connection requests.
    */
-  listen (sock, CSS_MAXIMUM_SERVER_COUNT);
+  listen (sock, css_Maximum_server_count);
 
   *sockfd = sock;
   return NO_ERROR;
@@ -721,7 +721,7 @@ css_open_server_connection_socket (void)
    * (NetManage version at least), the backlog parameter is silently limited
    * to 5, regardless of what is requested.
    */
-  if (listen (fd, CSS_MAXIMUM_SERVER_COUNT) == SOCKET_ERROR)
+  if (listen (fd, css_Maximum_server_count) == SOCKET_ERROR)
     {
       goto error;
     }

@@ -46,7 +46,7 @@ $set 4 MSGCAT_SET_PARAMETER
 3 Cannot open %s.  configuration file not created.
 4 Unable to write line %d to configuraiton file %s.
 6 Can't access system configuration file "%s": %s
-7 HOME not set???
+7 HOME not set
 8 Required parameter "%s" has no value.
 9 Cannot open configuration file "%s": %s
 10 Line %d in startup file %s:
@@ -64,8 +64,8 @@ $set 4 MSGCAT_SET_PARAMETER
 
 $set 5 MSGCAT_SET_ERROR
 1 Missing message for error code %1$d.
-2 Internal system failure:  no more specific information is available.
-3 Out of virtual memory:  unable to allocate %1$ld memory bytes.
+2 Internal system failure: no more specific information is available.
+3 Out of virtual memory: unable to allocate %1$ld memory bytes.
 4 Has been interrupted.
 5 Key = "%1$s" was not found in hash table "%2$s".
 6 A NULL memory hash table was supplied to a hash table function.
@@ -86,7 +86,7 @@ $set 5 MSGCAT_SET_ERROR
 21 Internal error: unknown sector %1$d of volume "%2$s".
 22 Internal error: unknown page %1$d of volume "%2$s".
 23 Internal error: trying to deallocate disk system page %1$d of volume "%2$s".
-24 Almost out of space in volume "%1$s".  Total number of pages = %2$d, total number of free pages = %3$d.
+24 Almost out of space in volume "%1$s". Total number of pages = %2$d, total number of free pages = %3$d.
 25 Almost out of space in volumes with data as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
 26 Almost out of space in volumes with index as the main storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
 27 Almost out of space in volumes with generic storage purpose. Total number of pages = %1$d, total number of free pages = %2$d.
@@ -105,9 +105,9 @@ $set 5 MSGCAT_SET_ERROR
 40 Internal error: %1$d expected pages, %2$d found pages for file VFID %3$d|%4$d(volume "%5$s").
 41 Internal error: Page %1$d|%2$d(volume "%3$s") is not part of file VFID %4$d|%5$d(volume "%6$s").
 42 Cannot reorder anchored records on page %1$d of volume "%2$s".
-43 Internal error: incorrect number (%1$d) of slots passed for reordering records on page %2$d of volume "%3$s".  There are actually %4$d slots.
+43 Internal error: incorrect number (%1$d) of slots passed for reordering records on page %2$d of volume "%3$s". There are actually %4$d slots.
 44 No space available in slotted page %1$d of volume "%2$s".
-45 Slot %1$d on page %2$d of volume "%3$s" is allocated to an anchored record.  A new record cannot be inserted here.
+45 Slot %1$d on page %2$d of volume "%3$s" is allocated to an anchored record. A new record cannot be inserted here.
 46 Internal error: slot %1$d on page %2$d of volume "%3$s" is not allocated.
 47 Unable to create a heap file in volume "%1$s".
 48 Accessing deleted object %1$d|%2$d|%3$d.
@@ -116,7 +116,7 @@ $set 5 MSGCAT_SET_ERROR
 51 Internal error: object %1$d|%2$d|%3$d may be corrupted.
 52 Internal error: object overflow address %1$d|%2$d|%3$d may be corrupted.
 53 Fetching object %1$d|%2$d|%3$d when only its OID has been assigned.
-54 Internal error: trying to manipulate an object of %1$d pages long.  The maximum size allowed for an object is %2$d pages.
+54 Internal error: trying to manipulate an object of %1$d pages long. The maximum size allowed for an object is %2$d pages.
 55 Internal error: A page cycle reference was detected on page %1$d|%2$d of heap file %3$d|%4$d|%5$d.
 56 Internal error: unknown extendible hashing file (Volid: %1$d Fileid: %2$d) page (Volid: %3$d Pageid: %4$d) was specified.
 57 Key does not exist in the extendible hashing structure.
@@ -147,14 +147,14 @@ $set 5 MSGCAT_SET_ERROR
 82 Unable to mount log disk volume/file "%1$s".
 83 Length of path "%1$s" plus length of prefix logname "%2$s" is too long; the combined length must be less than %3$d.
 84 Length of prefix logname "%1$s" is too long; the length must be less than %2$d.
-85 The prefix name "%1$s" is not the same as "%2$s" on the log disk.  The log may have been renamed outside the database domain.
+85 The prefix name "%1$s" is not the same as "%2$s" on the log disk. The log may have been renamed outside the database domain.
 86 Database is incompatible with current "%1$s" release "%2$s".
 87 There are recovery actions that must recovered using "%1$s" release "%2$s" instead of release "%3$s". After the recovery, the database can be run on release "%4$s".
-88 Release string "%1$s" is larger than %2$d. Internal error .. must change header log.
+88 Internal error: Release string "%1$s" cannot exceed %2$d. Must change header log.
 89 Log "%1$s" does not belong to the given database.
-90 Redo logging is always a page level logging operation.  A data page pointer must be given as part of the address.
-91 Postpone logging is always a page level logging operation.  A data page pointer must be given as part of the address.
-92 Compensate logging is always a page level logging operation.  A data page pointer must be given as part of the address.
+90 Redo logging is always a page level logging operation. A data page pointer must be given as part of the address.
+91 Postpone logging is always a page level logging operation. A data page pointer must be given as part of the address.
+92 Compensate logging is always a page level logging operation. A data page pointer must be given as part of the address.
 93 Warning: redo logging is ignored during redo recovery and normal rollbacks.
 94 Warning: postpone logging is ignored during redo recovery and normal rollbacks.
 95 Warning: undo logging is ignored during recovery and normal rollback.
@@ -164,8 +164,8 @@ $set 5 MSGCAT_SET_ERROR
 99 Unable to create backup directory information file "%1$s".
 100 Unable to backup database "%1$s".
 101 Unknown user file "%1$s".
-102 File "%1$s" does not have enough entries:  %2$d entries expected.
-103 File "%1$s" seems to have unordered entries. Entry %2$d with values: %3$d %4$s %5$s, was found when entry with values %6$d %7$s ??? was expected.
+102 File "%1$s" does not have enough entries: %2$d entries expected.
+103 File "%1$s" seems to have unordered entries. Entry %2$d with values: %3$d %4$s %5$s, was found when entry with values %6$d %7$s was expected.
 104 File "%1$s" seems to have an incorrect entry for database name (main volume). Entry %2$d with values: %3$d %4$s %5$s, was found when entry with values %6$d %7$s %8$s was expected.
 105 Cannot access backup file "%1$s". Restore or Backup is cancelled.
 106 Cannot prepare to commit the current transaction with global transaction identifier %1$d because that transaction identifier is in use by another transaction.
@@ -176,10 +176,10 @@ $set 5 MSGCAT_SET_ERROR
 111 Your transaction has been aborted by the system due to server failure or mode change.
 112 Host "%1$s" is not authorized to run database.
 113 Unable to restart/initialize the database server.
-114 Unable to interpret "%1$s" as a database.  The database volumes/files may have been renamed/copied outside the database domain.
+114 Unable to interpret "%1$s" as a database. The database volumes/files may have been renamed/copied outside the database domain.
 115 Database "%1$s" already exists.
 116 Database "%1$s" is unknown, or the file "databases.txt" cannot be accessed.
-117 Absolute pathname for the database is too long.  The combined length of the path "%1$s" plus the name "%2$s" is %3$d; the combined length must be less than %4$d.
+117 Absolute pathname for the database is too long. The combined length of the path "%1$s" plus the name "%2$s" is %3$d; the combined length must be less than %4$d.
 118 Failed to locate current working directory.
 119 Unable to find local hostname.
 120 The maximum number of volumes (%1$d) has been exceeded.
@@ -257,7 +257,7 @@ $set 5 MSGCAT_SET_ERROR
 192 Could not load network configuration file.
 193 Server received shutdown command from client.
 194 Unknown server request id %1$d.
-195 Server communications error : %1$s.
+195 Server communications error: %1$s.
 196 Server name not identified.
 197 Could not make contact with master server.
 198 Receive buffer too small, data truncated.
@@ -290,9 +290,9 @@ $set 5 MSGCAT_SET_ERROR
 225 Missing value for attribute "%1$s" with the NOT NULL constraint.
 226 Empty component list in class.
 227 Attempt to assign value to attribute "%1$s" more than once.
-228 Method "%1$s" called with %2$d arguments.  The system allows a maximum of %3$d arguments.
-229 Method "%1$s" requires argument %2$d to be within the domain "%3$s".  An invalid value of domain "%4$s" was given.
-230 Attribute "%1$s" cannot be assigned a string of length %2$d.  The maximum allowable string length is %3$d.
+228 Method "%1$s" called with %2$d arguments. The system allows a maximum of %3$d arguments.
+229 Method "%1$s" requires argument %2$d to be within the domain "%3$s". An invalid value of domain "%4$s" was given.
+230 Attribute "%1$s" cannot be assigned a string of length %2$d. The maximum allowable string length is %3$d.
 231 Invalid API operation attempted on a temporary object.
 232 Not allowed to use object templates over multiple transactions.
 233 Cannot create class with basic type name "%1$s".
@@ -341,14 +341,14 @@ $set 5 MSGCAT_SET_ERROR
 276 Illegal operation on method "%1$s", inherited from class "%2$s".
 277 Illegal operation on "%1$s", inherited from class "%2$s".
 278 Class "%4$s" has incompatible domains for "%1$s", inherited from classes "%2$s" and "%3$s".
-279 In class "%4$s", "%1$s" inherited from class "%2$s" cannot be used as requested.  The definition from class "%3$s" has a more specific domain.
+279 In class "%4$s", "%1$s" inherited from class "%2$s" cannot be used as requested. The definition from class "%3$s" has a more specific domain.
 280 In class "%3$s", "%1$s" cannot be inherited from class "%2$s" because there is a local definition with an incompatible domain.
 281 In class "%3$s", "%1$s" inherited from class "%2$s" is aliased but no substitute from another source was found.
 282 In class "%4$s", "%1$s" inherited from class "%3$s" cannot serve as an alias substitute for class "%2$s". The domains are incompatible.
 283 In class "%4$s", "%1$s" inherited from class "%3$s" cannot serve as an alias substitute for class "%2$s". It has a less specific domain.
 284 Cannot request inheritance of "%1$s" because it is defined locally in the class.
 285 Cannot use "%1$s" as an alias for inherited component "%2$s" because there is already a locally defined component with that name.
-286 Cannot use "%1$s" as an alias for "%2$s" of "%3$s".  A component with that name is already inherited from "%4$s".
+286 Cannot use "%1$s" as an alias for "%2$s" of "%3$s". A component with that name is already inherited from "%4$s".
 287 In class "%1$s", cannot define attribute "%2$s" because it would shadow a method inherited from "%3$s".
 288 In class "%1$s", cannot define method "%2$s" because it would shadow an attribute inherited from "%3$s".
 289 Subclass "%1$s" cannot inherit method "%2$s" from class "%3$s" because there is already an attribute with that name.
@@ -357,13 +357,13 @@ $set 5 MSGCAT_SET_ERROR
 292 No populate specification with index "%1$s".
 293 Operation not allowed for this class type.
 294 Undefined environment variable "%1$s" referenced in method file.
-295 Unable to alter class "%1$s".  The system catalog is out of space.  To reclaim space, compact the database with the compactdb utility.
+295 Unable to alter class "%1$s". The system catalog is out of space. To reclaim space, compact the database with the compactdb utility.
 296 Invalid property list encountered.
 297 Alias name "%1$s" is used more than once.
-298 In class "%1$s", a resolution for "%2$s" of "%3$s"' is not allowed.  That class is not a super class.
+298 In class "%1$s", a resolution for "%2$s" of "%3$s"' is not allowed. That class is not a super class.
 299 "%1$s" is a reserved word and cannot be used as an attribute, method, or class name.
 300 Attribute "%1$s" cannot be defined with DEFAULT and UNIQUE constraints together.
-301 Attribute "%1$s" cannot be defined with a length constraint of %2$d.  The maximum length constraint is %3$d.
+301 Attribute "%1$s" cannot be defined with a length constraint of %2$d. The maximum length constraint is %3$d.
 302 Cannot add element to a set.
 303 Value already exists in set.
 304 Set index %1$d is out of bounds.
@@ -393,10 +393,10 @@ $set 5 MSGCAT_SET_ERROR
 328 Instance encountered in workspace without class.
 329 Object list link not allocated in workspace.
 330 Workspace pin violation.
-331 Could not allocate workspace block from OS, out of virtual memory.  Aborting transaction.
-332 Original workspace size estimate exceeded.  An automatic extension has been made.
-333 Out of memory during workspace storage allocation.  Aborting transaction.
-334 Attempted allocation of %1$d bytes is larger than maximum workspace block size.  Try adjusting max_block_size parameter.  Transaction aborted.
+331 Could not allocate workspace block from OS, out of virtual memory. Aborting transaction.
+332 Original workspace size estimate exceeded. An automatic extension has been made.
+333 Out of memory during workspace storage allocation. Aborting transaction.
+334 Attempted allocation of %1$d bytes is larger than maximum workspace block size. Try adjusting max_block_size parameter. Transaction aborted.
 335 Ignoring attempt to free object not allocated within the workspace.
 336 Ignoring attempt to free an object more than once.
 337 Ignoring attempt to allocate object with negative size.
@@ -587,9 +587,9 @@ $set 5 MSGCAT_SET_ERROR
 522 Trigger condition expression was not given.
 523 Trigger action expression was not given.
 524 The specified activity cannot be removed because it is owned by another user.
-525 Error compiling condition for "%1$s" : %2$s
+525 Error compiling condition for "%1$s": %2$s
 526 Error compiling action for "%1$s", %2$s
-527 Error evaluating condition for "%1$s" : %2$s
+527 Error evaluating condition for "%1$s": %2$s
 528 Error evaluating action for "%1$s", %2$s
 529 Transaction cannot be committed, it was invalidated by trigger "%1$s".
 530 Missing regular expression.
@@ -608,7 +608,7 @@ $set 5 MSGCAT_SET_ERROR
 543 Disk header for volume "%1$s" is inconsistent.
 544 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). B+tree key %6$s entry for object OID: %7$d|%8$d|%9$d was not found on B+tree: %10$d|%11$d|%12$d.
 545 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Key and OID: %6$d|%7$d|%8$d entry on B+tree: %9$d|%10$d|%11$d is incorrect. The object does not exist.
-546 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). expecting %6$d OID entry values, but %7$d were found on B+tree: %8$d|%9$d|%10$d.
+546 Internal error: INDEX %1$s ON CLASS %2$s (CLASS_OID: %3$d|%4$d|%5$d). Expecting %6$d OID entry values, but %7$d were found on B+tree: %8$d|%9$d|%10$d.
 547 Server release %1$s is different from client release %2$s.
 548 There is no object_id defined for proxy class "%1$s".
 549 The proxy instance was not found.
@@ -617,9 +617,9 @@ $set 5 MSGCAT_SET_ERROR
 552 Date arithmetic underflow.
 553 Time arithmetic underflow.
 $ LOADDB
-554 The loader has entered an invalid state.  No further operations are possible.
+554 The loader has entered an invalid state. No further operations are possible.
 555 Memory allocation error during database loading.
-556 Too many values supplied.  Expecting %d.
+556 Too many values supplied. Expecting %d.
 557 For attribute %1$s of %2$s, type %3$s is not allowed in the domain of the set.
 558 For attribute %1$s of %2$s, expected type %3$s, got a set constant.
 559 For attribute %1$s of %2$s, expected type %3$s, got %4$s.
@@ -630,8 +630,8 @@ $ LOADDB
 564 Violated the UNIQUE constraint for attribute %1$s of %2$s.
 565 Constructor method %1$s is not defined on class %2$s.
 566 Unused error code.
-567 Too many constructor method arguments supplied.  Expected %1$d.
-568 Missing constructor method parameters.  Expected %1$d, found %2$d.
+567 Too many constructor method arguments supplied. Expected %1$d.
+568 Missing constructor method parameters. Expected %1$d, found %2$d.
 569 Missing attribute values.  Expected %1$d, found %2$d.
 570 Could not access Glo data file "%1$s".
 571 Instance was previously created through a forward reference.\nThis is not allowed for instances created using constructor methods.
@@ -680,14 +680,14 @@ $ LOADDB
 614 Number of active log archives has been exceeded the max desired number of %1$d.
 615 Cannot establish contact with the Winsock interface. Winsock error: %1$d.
 616 Cannot determine machine name using Winsock interface. Winsock error: %1$d.
-617 Cannot determine machine id using Winsock interface.  There must be an entry in the host name table for this machine.  Winsock error: %1$d.
+617 Cannot determine machine id using Winsock interface. There must be an entry in the host name table for this machine. Winsock error: %1$d.
 618 Attribute is not updatable.
 619 Bad source codeset.
 620 Bad destination codeset.
 621 Invalid data type. The arguments contain an invalid data type.
 622 Incompatible code sets. The code sets of the arguments are incompatible.
 623 Invalid escape sequence. An invalid escape sequence has caused an error in the regular expression compiler.
-624 Invalid escape character.  The escape character is non-NULL with a length greater than 1.
+624 Invalid escape character. The escape character is non-NULL with a length greater than 1.
 625 Internal Error. Trying to update the wrong instance object %1$d|%2$d|%3$d attribute information template with instance object %4$d|%5$d|%6$d.
 626 Internal Error. %1$d requested attributes were not found.
 627 Invalid trim operand.  The trim operand has a length greater than 1.
@@ -719,20 +719,20 @@ $ LOADDB
 653 Wrong offset %1$d or length %2$d was given to remove a portion of the data of the record of length %3$d stored on slot %4$d
 654 Wrong offset %1$d or length %2$d was given to overwrite a portion of the data of the record of length %3$d stored on slot %4$d
 655 Cannot open the event handler configuration file, "%1$s".
-656 Warning : Null id/name in event handler configuration file, "%1$s", line %2$d
-657 Warning : Illegal event name, "%1$s",  in event handler configuration file, "%2$s", line %3$d
-658 Warning : event id %1$d, not in error id range %2$d <> %3$d, file "%4$s", line %5$d
+656 Warning: Null id/name in event handler configuration file, "%1$s", line %2$d
+657 Warning: Illegal event name, "%1$s", in event handler configuration file, "%2$s", line %3$d
+658 Warning: event id %1$d, not in error id range %2$d <> %3$d, file "%4$s", line %5$d
 659 Cannot access the event handler program, "%1$s".
 660 Cannot open/connect the event handler process, "%1$s".
 661 Failed to write to the event handler process, "%1$s".
 662 Failed to initialize event handling mechanism.
-663 Warning : Line too long in event handler configuration file, "%1$s", line %2$d, truncating
+663 Warning: Line too long in event handler configuration file, "%1$s", line %2$d, truncating
 664 Event handling mechanism started.
 665 Event handler pipe broken, "%1$s"
 666 Event handling mechanism stopped.
 667 Cannot match class '%1$s' with corresponding C++ class.
 668 Internal error: Unknown domain type '%1$d'.
-669 Server refused client connection : max clients, (%1$d), exceeded.
+669 Server refused client connection: max clients, (%1$d), exceeded.
 670 Operation would have caused one or more unique constraint violations.
 671 A network read/write error occurred for socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d)
 672 Socket %1$d associated with your transaction (index %2$d, %3$s@%4$s|%5$d) is closed.
@@ -749,9 +749,9 @@ $ LOADDB
 683 Attempted to create string with illegal length - %d
 684 Method returned user-defined error code %d.
 685 Class "%1$s" is invalid.
-686 Notification : the event handler has been restarted.
+686 Notification: the event handler has been restarted.
 687 Not allows to cast (%s *) to (%s *).
-688 Subscript out of range.  Attempt to access element %ld. Collection size = %ld.
+688 Subscript out of range. Attempt to access element %ld. Collection size = %ld.
 689 Internal error. Iterator contains corrupt state.
 690 Attempt to dereference an uninitialized instance of odb_Ref<>.
 691 Attempt to use an invalid iterator.
@@ -789,7 +789,7 @@ $ LOADDB
 723 Cannot modify the domain of an existing attribute.
 724 Invalid parameter(s) for default constraint name generation.
 725 Internal error: expected temporary oid and encountered permanent oid.
-726 UNIQUE constraint must be added using a separate alter statement\nonce instances have been created.  For example, instead of:\n\talter table1 add attribute a int unique;\nuse:\n\talter table1 add attribute a int;\n\talter table1 add unique(a);
+726 UNIQUE constraint must be added using a separate alter statement\nonce instances have been created. For example, instead of:\n\talter table1 add attribute a int unique;\nuse:\n\talter table1 add attribute a int;\n\talter table1 add unique(a);
 727 Invalid trigger event.
 728 Query failed because temporary file vfid is invalid for transaction %1$d.
 729 Overflow occurred in subtraction context.
@@ -948,7 +948,7 @@ $ LOADDB
 882 Cannot release lock file 'FILE ID:%d'.
 883 Failed to get '%s' file status.
 884 Volext-pathname '%s' is not permitted to write.
-885 Failure to move from '%s' to '%s'.  Use the same device(disk).
+885 Failure to move from '%s' to '%s'. Use the same device(disk).
 886 "%1$s" caused unique constraint violation.
 887 Stored procedure '%s' is already exist.
 888 Parameter count is invalid. expected: %d, actual: %d
@@ -963,7 +963,7 @@ $ LOADDB
 897 Decompression failed.
 898 Replication error: "%1$s"
 899 Invalid partition requests.
-900 Java VM library is not found : %s. \nConsequently, calling java stored procedure is not allowed.
+900 Java VM library is not found: %s. \nConsequently, calling java stored procedure is not allowed.
 901 Java VM can not be started: %s. \nConsequently, calling java stored procedure is not allowed.
 902 Java VM is not running.
 903 Can't connect Java VM: %s
@@ -986,7 +986,7 @@ $ LOADDB
 920 The foreign key '%s' does not include the primary key member '%s'.
 921 The domain of the foreign key member '%s' is different from that of the primary key member '%s'.
 922 The constraint of the foreign key '%s' is invalid.
-923 The primary key referred by a foreign key is not supposed to be dropped.
+923 The primary key '%s' referred by a foreign key '%s' is not supposed to be dropped.
 924 Update/Delete operations are restricted by the foreign key '%s'.
 925 Acquiring lock for the foreign key '%s' has failed.
 926 The instance having the foreign key '%s' cannot be dropped.
@@ -995,8 +995,8 @@ $ LOADDB
 929 A foreign key cannot be defined in virtual class.
 930 It is able to drop the attribute '%s' created by 'ON CACHE OBJECT' of foreign key only after removing the constraint of the foreign key.
 931 Start value of an auto increment constraint should be less then max value.
-932 It is not able to repair an inconsistency of the number of free pages for the volume "%1$s".  Because %2$d pages obtained from the volume header is inconsistent with %3$d pages from the bitmap.
-933 It is not able to repair an inconsistency of the number of free sectors for the volume "%1$s".  Because %2$d sectors obtained from the volume header is inconsistent with %3$d sectors from the bitmap.
+932 It is not able to repair an inconsistency of the number of free pages for the volume "%1$s". Because %2$d pages obtained from the volume header is inconsistent with %3$d pages from the bitmap.
+933 It is not able to repair an inconsistency of the number of free sectors for the volume "%1$s". Because %2$d sectors obtained from the volume header is inconsistent with %3$d sectors from the bitmap.
 934 Null domain referenced.
 935 Argument of %s function is out of range.
 936 Overflow occurred in exp context.
@@ -1056,8 +1056,28 @@ $ LOADDB
 990 Command execution: %1$s. %2$s
 991 Flush victim candidates of page buffer started.
 992 Flush victim candidates of page buffer finished (count: %d).
+993 Overflow happened in bit operation context.
+994 This statement cannot be a prepared statement.
+995 A prepared statement with the name %1$s does not exist.
+996 Incorrect number of values given. %1$d values were given but %2$d values are required.
+997 Cannot add the foreign key constraint %1$s to the partitioned %2$s. Referential actions that update attributes are not yet supported on partitioned classes.
+998 Cannot add the foreign key constraint %1$s on the attribute %2$s. The attribute cannot have a NOT NULL constraint because it has to match the SET NULL referential action.
+999 Cannot create table '%1$s' like table '%2$s' because the existing table has features that will not be duplicated (%3$s).
+1000 '%1$s' is a CLASS or SHARED attribute but only normal attributes are allowed in this context.
+1001 An unexpected condition or state has been reached. '%1$s'
+1002 The current transaction could not aquire a database lock it requires to continue processing.
+1003 The constraint '%1$s' exists but has a different type.
+1004 Please note that when using ALTER TABLE DROP FOREIGN KEY, MySQL will drop just the FOREIGN KEY constraint and keep its associated index. CUBRID drops both the constraint and its associated index.
+1005 The current version of CUBRID can only process basic REPLACE statements. Features such as triggers are not yet supported. Also check that the "insert_execution_mode" setting includes server-side REPLACE processing.
+1006 The current version of CUBRID can only process basic ON DUPLICATE KEY UPDATE statements. Features such as triggers are not yet supported. Also check that the "insert_execution_mode" setting includes server-side ON DUPLICATE KEY UPDATE processing and that "hostvar_late_binding" is not enabled.
+1007 Cannot create index with prefix length on unique, foreign key or primary key constraints.
+1008 Cannot create index with prefix length on partitioned class.
+1009 COMPACTDB already started.
+1010 Cannot define index with prefix length on domain "%1$s".
+1011 Cannot add the foreign key constraint %1$s on the shared attribute %2$s.
+1012 Cannot create table with NULL column type.
 
-993 Last Error
+1013 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):
@@ -1098,11 +1118,11 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 10 invalid use of keyword '%s', expecting %s.
 11 Token length is too long.
 12 invalid data type
-13 invalid attach statement\n  attach_statement : ATTACH unsigned_integer
-14 invalid prepare statement\n  prepare_statement :  PREPARE {to} COMMIT unsigned_integer
-15 invalid execute statement\n  execute_statement :  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
-16 invalid scope statement\n  scope_statement : SCOPE trigger_action { FROM table_spec_list }
-17 invalid set system parameter\n  set_system : SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
+13 invalid attach statement\n  attach_statement: ATTACH unsigned_integer
+14 invalid prepare statement\n  prepare_statement:  PREPARE {to} COMMIT unsigned_integer
+15 invalid execute statement\n  execute_statement:  EXECUTE DEFERRED TRIGGER [identifier {, identifier}* | ALL TRIGGERS]
+16 invalid scope statement\n  scope_statement: SCOPE trigger_action { FROM table_spec_list }
+17 invalid set system parameter\n  set_system: SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
 18 invalid set transaction\n  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                 | SET TRANSACTION LOCK TIMEOUT timeout_spec
 19 invalid set trigger trace\n  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
 20 invalid set trigger depth\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [INFINITE|unsigned_integer|parameter|host_param]
@@ -1121,9 +1141,9 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 33 invalid create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
 34 invalid create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
 35 invalid create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
-36 invalid groups\n  groups spec : GROUPS identifier {, identifier}*
-37 invalid members\n  member spec : MEMBERS identifier {, identifier}*
-38 invalid password\n  password spec : PASSWORD 'STRING'
+36 invalid groups\n  groups spec: GROUPS identifier {, identifier}*
+37 invalid members\n  member spec: MEMBERS identifier {, identifier}*
+38 invalid password\n  password spec: PASSWORD 'STRING'
 39 missing authorized command list\n  authorized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL 
 40 missing class spec list
 41 missing identifier list
@@ -1151,7 +1171,31 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 63 duplicated reference rule
 64 SYS_CONNECT_BY_PATH needs two parameters and the second must be a string literal.
 65 Invalid unsigned integer %s.
-
+66 IF needs three parameters: the first must be a logical expression, the second and third must be expressions evaluating to either a numeric or a string type.
+67 IFNULL needs two parameters which must be expressions evaluating to either a numeric or a string type.
+68 invalid use of isnull\n  ISNULL ( expression )
+69 invalid use of left\n  LEFT ( str , len )
+70 invalid use of right\n  RIGHT ( str , len )
+71 invalid use of mod\n MOD( expression, expression )
+72 invalid use of adddate\n ADDDATE( expression, expression )
+73 invalid use of date_add\n DATE_ADD( expression, INTERVAL expression unit)
+74 invalid use of subdate\n SUBDATE( expression, expression )
+75 invalid use of date_sub\n DATE_SUB( expression, INTERVAL expression unit)
+76 invalid use of user / system_user\n USER() / SYSTEM_USER()
+77 invalid use of timestamp\n TIMESTAMP( expression ), TIMESTAMP( expression, expression )
+78 invalid use of database\n DATABASE()
+79 invalid use of current_time\n CURRENT_TIME()
+80 invalid use of current_date\n CURRENT_DATE()
+81 invalid use of current_timestamp\n CURRENT_TIMESTAMP()
+82 invalid use of now\n NOW()
+83 invalid use of default\n DEFAULT(column_name)
+84 invalid use of date\n DATE(expression)
+85 invalid use of localtime\n LOCALTIME()
+86 invalid use of localtimestamp\n LOCALTIMESTAMP()
+87 invalid use of schema\n SCHEMA()
+88 invalid use of truncate\n TRUNCATE( expression, expression )
+89 invalid use of str_to_date\n STR_TO_DATE( expression, string_literal )
+90 invalid use of current_datetime\n CURRENT_DATETIME()
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1282,7 +1326,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 126 Illegal left hand side of an assignment clause.
 127 Method calls on set derived tables correlated to an outer scope are \nnot supported unless the set expression is wrapped in a subquery.
 128 The query specification column that corresponds to the \nshared attribute '%s' must be NULL or NA.
-129 The query specification must have some non-NULL columns in the select list.
+129 A NULL column is not allowed on the select list of the view query specification if the attribute definition is omitted.
 130 Vclass objects in sets are not supported.
 131 Expecting a string value.
 132 Expecting a statement or a string value.
@@ -1351,9 +1395,19 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 195 '%s' can only be used in hierarchical queries. Specify a CONNECT BY clause.
 196 '%s' is not allowed here.
 197 Using CONNECT_BY_ISCYCLE is only allowed if the query has a CONNECT BY NOCYCLE clause.
-198 Duplicate table option '%s'
-199 The class '%s' is marked as REUSE_OID and is non-referable. Non-referable classes can't be the domain of an attribute and their instances' OIDs cannot be returned.
+198 No tables used.
+199 ORDER BY NULL requires GROUP BY.
 200 The number to CACHE must be less than one cycle (%s).
+201 '%s' is not allowed in a query with LIMIT clause.
+202 WITH ROLLUP requires GROUP BY.
+203 A column name parameter should be passed to the DEFAULT function. Path expressions are not yet supported.
+204 Duplicate table option '%s'
+205 The class '%s' is marked as REUSE_OID and is non-referable. Non-referable classes can't be the domain of an attribute and their instances' OIDs cannot be returned.
+206 Duplicate 'serial %s' option.
+207 The column '%s' in ordering clause is ambiguous.
+208 Attribute '%s' doesn't have a default value.
+209 ORDER BY items must appear in the select list if SELECT DISTINCT is specified.
+210 Host variable is not allowed on columns in the query specification.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.
@@ -1481,15 +1535,15 @@ $set 13 MSGCAT_SET_TRIGGER
 2 TRACE: Executing action for trigger '%s'.
 
 $set 14 MSGCAT_SET_LOCK
-1  \n
-2  Thread (index %3d) of transaction (index %3d, %s, %s@%s|%d) has been suspended.\n
-3  Thread (index %3d) of transaction (index %3d, %s, %s@%s|%d) has been resumed.\n
-4  Transaction index %3d ACQUIRED %s lock on object %d|%d|%d.\n
-5  Transaction index %3d ACQUIRED %s lock on page %d|%d.\n
-6  Transaction index %3d CONVERTED its lock to %s lock on object %d|%d|%d.\n
-7  Transaction index %3d CONVERTED its lock to %s lock on page %d|%d.\n
-8  Transaction index %3d WAIT FOR %s lock on object %d|%d|%d.\n
-9  Transaction index %3d WAIT FOR %s lock on page %d|%d.\n
+1 \n
+2 Thread (index %3d) of transaction (index %3d, %s, %s@%s|%d) has been suspended.\n
+3 Thread (index %3d) of transaction (index %3d, %s, %s@%s|%d) has been resumed.\n
+4 Transaction index %3d ACQUIRED %s lock on object %d|%d|%d.\n
+5 Transaction index %3d ACQUIRED %s lock on page %d|%d.\n
+6 Transaction index %3d CONVERTED its lock to %s lock on object %d|%d|%d.\n
+7 Transaction index %3d CONVERTED its lock to %s lock on page %d|%d.\n
+8 Transaction index %3d WAIT FOR %s lock on object %d|%d|%d.\n
+9 Transaction index %3d WAIT FOR %s lock on page %d|%d.\n
 10 Transaction index %3d RELEASE %s lock on object %d|%d|%d.\n
 11 Transaction index %3d RELEASE %s lock on page %d|%d.\n
 12 Transaction index %3d DEMOTE lock to %s on object %d|%d|%d.\n

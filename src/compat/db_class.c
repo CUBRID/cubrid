@@ -133,7 +133,6 @@ int
 db_rename_class (MOP classop, const char *new_name)
 {
   int retval;
-  char *old_name = NULL;
 
   CHECK_CONNECT_ERROR ();
   CHECK_2ARGS_ERROR (classop, new_name);
@@ -143,11 +142,6 @@ db_rename_class (MOP classop, const char *new_name)
   if (!retval)
     {
       retval = sm_rename_class (classop, new_name);
-    }
-
-  if (old_name)
-    {
-      free_and_init (old_name);
     }
 
   return (retval);
@@ -188,7 +182,7 @@ db_add_attribute_internal (MOP class_, const char *name, const char *domain,
   else
     {
       error = smt_add_attribute_any (def, name, domain, (DB_DOMAIN *) 0,
-				     name_space);
+				     name_space, false, NULL);
       if (error)
 	{
 	  smt_quit (def);
@@ -695,7 +689,7 @@ db_rename_internal (MOP class_, const char *name,
 }
 
 /*
- * db_rename_attribute() - This function renames an attribute and propogates
+ * db_rename_attribute() - This function renames an attribute and propagates
  *    the changes to the affected sub classes.
  * return: error code
  * class(in)   : class or instance
@@ -722,7 +716,7 @@ db_rename_attribute (MOP class_, const char *name,
 }
 
 /*
- * db_rename_method() - This function renames an method and propogates the
+ * db_rename_method() - This function renames an method and propagates the
  *    changes to the affected sub classes.
  * return: error code
  * class(in)   : class or instance
@@ -1794,7 +1788,7 @@ db_add_constraint (MOP classmop,
   CHECK_MODIFICATION_ERROR ();
 
   name = sm_produce_constraint_name_mop (classmop, constraint_type,
-					 att_names, constraint_name);
+					 att_names, NULL, constraint_name);
   if (name == NULL)
     {
       retval = er_errid ();
@@ -1802,7 +1796,7 @@ db_add_constraint (MOP classmop,
   else
     {
       retval = sm_add_constraint (classmop, constraint_type, name,
-				  att_names, NULL, class_attributes);
+				  att_names, NULL, NULL, class_attributes);
     }
 
   sm_free_constraint_name (name);
@@ -1845,7 +1839,7 @@ db_drop_constraint (MOP classmop,
   CHECK_MODIFICATION_ERROR ();
 
   name = sm_produce_constraint_name_mop (classmop, constraint_type,
-					 att_names, constraint_name);
+					 att_names, NULL, constraint_name);
 
   if (name == NULL)
     {
@@ -1854,10 +1848,36 @@ db_drop_constraint (MOP classmop,
   else
     {
       retval = sm_drop_constraint (classmop, constraint_type, name,
-				   att_names, class_attributes);
+				   att_names, class_attributes ? true : false,
+				   false);
     }
 
   sm_free_constraint_name (name);
 
   return (retval);
+}
+
+/*
+ * db_truncate_class() - This function is used to truncate a class.
+ *    Returns non-zero error status if the operation could not be performed.
+ * return   : error code
+ * class(in): class object
+ */
+int
+db_truncate_class (DB_OBJECT * class_)
+{
+  int error_code = NO_ERROR;
+
+  CHECK_CONNECT_ERROR ();
+  CHECK_1ARG_ERROR (class_);
+  CHECK_MODIFICATION_ERROR ();
+
+  error_code = do_check_partitioned_class (class_, CHECK_PARTITION_SUBS
+					   | CHECK_PARTITION_PARENT, NULL);
+  if (error_code == NO_ERROR)
+    {
+      error_code = sm_truncate_class (class_);
+    }
+
+  return error_code;
 }
