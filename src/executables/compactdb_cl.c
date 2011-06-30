@@ -1201,6 +1201,14 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   if (table_size > 1)
     {
       tables = (char **) malloc (sizeof (char *) * table_size - 1);
+      if (tables == NULL)
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_COMPACTDB,
+					   COMPACTDB_MSG_FAILURE));
+	  return ER_GENERIC_ERROR;
+	}
+
       for (i = 1; i < table_size; i++)
 	{
 	  tables[i - 1] = utility_get_option_string_value

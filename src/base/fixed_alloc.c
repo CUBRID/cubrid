@@ -33,7 +33,7 @@
 #include "customheaps.h"
 #if defined (SERVER_MODE)
 #include "connection_defs.h"
-#include "thread_impl.h"
+#include "thread.h"
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 

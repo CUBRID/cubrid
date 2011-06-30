@@ -268,17 +268,31 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, OID * inst_oid)
       return ER_FAILED;
     }
 
+  /* If suppress_replication flag is set, do not write replication log. */
+  if (tdes->suppress_replication != 0)
+    {
+      return NO_ERROR;
+    }
+
   for (i = tdes->cur_repl_record - 1; i >= 0; i--)
     {
       repl_rec = (LOG_REPL_RECORD *) & tdes->repl_records[i];
       if (OID_EQ (&repl_rec->inst_oid, inst_oid)
 	  && !LSA_ISNULL (&tdes->repl_update_lsa))
 	{
-	  LSA_COPY (&repl_rec->lsa, &tdes->repl_update_lsa);
-	  LSA_SET_NULL (&tdes->repl_update_lsa);
-	  LSA_SET_NULL (&tdes->repl_insert_lsa);
-	  find = true;
-	  break;
+	  assert (repl_rec->rcvindex == RVREPL_DATA_UPDATE
+		  || repl_rec->rcvindex == RVREPL_DATA_UPDATE_START
+		  || repl_rec->rcvindex == RVREPL_DATA_UPDATE_END);
+	  if (repl_rec->rcvindex == RVREPL_DATA_UPDATE
+	      || repl_rec->rcvindex == RVREPL_DATA_UPDATE_START
+	      || repl_rec->rcvindex == RVREPL_DATA_UPDATE_END)
+	    {
+	      LSA_COPY (&repl_rec->lsa, &tdes->repl_update_lsa);
+	      LSA_SET_NULL (&tdes->repl_update_lsa);
+	      LSA_SET_NULL (&tdes->repl_insert_lsa);
+	      find = true;
+	      break;
+	    }
 	}
     }
 
@@ -313,7 +327,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid, OID * inst_oid,
   LOG_REPL_RECORD *repl_rec;
   char *class_name;
   char *ptr;
-  int error = NO_ERROR;
+  int error = NO_ERROR, strlen;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -380,7 +394,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid, OID * inst_oid,
 	    }
 	  return error;
 	}
-      repl_rec->length = or_packed_string_length (class_name);
+      repl_rec->length = or_packed_string_length (class_name, &strlen);
       repl_rec->length += OR_VALUE_ALIGNED_SIZE (key_dbvalue);
 
       ptr = (char *) malloc (repl_rec->length);
@@ -393,7 +407,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid, OID * inst_oid,
 	}
       repl_rec->repl_data = ptr;
 
-      ptr = or_pack_string (ptr, class_name);
+      ptr = or_pack_string_with_length (ptr, class_name, strlen);
       ptr = or_pack_mem_value (ptr, key_dbvalue);
       db_value_clear (key_dbvalue);
       free_and_init (class_name);
@@ -479,7 +493,7 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
   LOG_TDES *tdes;
   LOG_REPL_RECORD *repl_rec;
   char *ptr;
-  int error = NO_ERROR;
+  int error = NO_ERROR, strlen1, strlen2, strlen3;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -516,10 +530,10 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
   OID_SET_NULL (&repl_rec->inst_oid);
 
   /* make the common info for the schema replication */
-  repl_rec->length = OR_INT_SIZE;	/* REPL_INFO_SCHEMA.statement_type */
-  repl_rec->length += or_packed_string_length (repl_schema->name);
-  repl_rec->length += or_packed_string_length (repl_schema->ddl);
-  repl_rec->length += or_packed_string_length (tdes->client.db_user);
+  repl_rec->length = OR_INT_SIZE	/* REPL_INFO_SCHEMA.statement_type */
+    + or_packed_string_length (repl_schema->name, &strlen1)
+    + or_packed_string_length (repl_schema->ddl, &strlen2)
+    + or_packed_string_length (tdes->client.db_user, &strlen3);
   if ((repl_rec->repl_data = (char *) malloc (repl_rec->length)) == NULL)
     {
       error = ER_REPL_ERROR;
@@ -529,10 +543,14 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
     }
   ptr = repl_rec->repl_data;
   ptr = or_pack_int (ptr, repl_schema->statement_type);
-  ptr = or_pack_string (ptr, repl_schema->name);
-  ptr = or_pack_string (ptr, repl_schema->ddl);
-  ptr = or_pack_string (ptr, tdes->client.db_user);
+  ptr = or_pack_string_with_length (ptr, repl_schema->name, strlen1);
+  ptr = or_pack_string_with_length (ptr, repl_schema->ddl, strlen2);
+  ptr = or_pack_string_with_length (ptr, tdes->client.db_user, strlen3);
 
+  er_log_debug (ARG_FILE_LINE, "repl_log_insert_schema:"
+		" repl_schema { type %d, name %s, ddl %s, user %s }\n",
+		repl_schema->statement_type, repl_schema->name,
+		repl_schema->ddl, tdes->client.db_user);
   LSA_COPY (&repl_rec->lsa, &log_Gl.hdr.append_lsa);
 
   tdes->cur_repl_record++;
@@ -670,7 +688,7 @@ repl_debug_info ()
 	  ptr = or_unpack_string_nocopy (repl_rec->repl_data, &class_name);
 	  ptr = or_unpack_mem_value (ptr, &key);
 	  fprintf (stdout, "      class_name: %s\n", class_name);
-	  fprintf (stdout, "      LSA: %d | %d\n", repl_rec->lsa.pageid,
+	  fprintf (stdout, "      LSA: %lld | %d\n", repl_rec->lsa.pageid,
 		   repl_rec->lsa.offset);
 	  db_value_print (&key);
 	  fprintf (stdout,

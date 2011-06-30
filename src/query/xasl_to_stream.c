@@ -2003,7 +2003,7 @@ static int
 xts_save_string (const char *string)
 {
   int offset;
-  int string_length;
+  int string_length, strlen;
 
   offset = xts_get_offset_visited_ptr (string);
   if (offset != ER_FAILED)
@@ -2011,7 +2011,7 @@ xts_save_string (const char *string)
       return offset;
     }
 
-  string_length = or_packed_string_length (string);
+  string_length = or_packed_string_length (string, &strlen);
 
   offset = xts_reserve_location_in_stream (string_length);
   if (offset == ER_FAILED
@@ -2020,7 +2020,7 @@ xts_save_string (const char *string)
       return ER_FAILED;
     }
 
-  or_pack_string (&xts_Stream_buffer[offset], string);
+  or_pack_string_with_length (&xts_Stream_buffer[offset], string, strlen);
 
   return offset;
 }
@@ -2487,6 +2487,13 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_regu_variable (xasl->orderby_limit);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   ptr = or_pack_int (ptr, xasl->ordbynum_flag);
 
   offset = xts_save_val_list (xasl->single_tuple);
@@ -2593,6 +2600,13 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_db_value (xasl->instnum_val);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_db_value (xasl->save_instnum_val);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -2725,7 +2739,6 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       break;
 
     case OBJFETCH_PROC:
-    case SETFETCH_PROC:
       ptr = xts_process_fetch_proc (ptr, &xasl->proc.fetch);
       break;
 
@@ -3159,6 +3172,8 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
   ptr = or_pack_int (ptr, update_info->no_logging);
 
   ptr = or_pack_int (ptr, update_info->release_lock);
+
+  ptr = or_pack_int (ptr, update_info->no_orderby_keys);
 
   offset = xts_save_partition_array (update_info->partition,
 				     update_info->no_classes);
@@ -3646,9 +3661,21 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
       return NULL;
     }
 
+  ptr = or_pack_int (ptr, indx_info->coverage);
+
   ptr = or_pack_int (ptr, indx_info->range_type);
 
   ptr = xts_process_key_info (ptr, &indx_info->key_info);
+
+  ptr = or_pack_int (ptr, indx_info->orderby_desc);
+
+  ptr = or_pack_int (ptr, indx_info->groupby_desc);
+
+  ptr = or_pack_int (ptr, indx_info->use_desc_index);
+
+  ptr = or_pack_int (ptr, indx_info->orderby_skip);
+
+  ptr = or_pack_int (ptr, indx_info->groupby_skip);
 
   return ptr;
 }
@@ -3700,6 +3727,22 @@ xts_process_key_info (char *ptr, const KEY_INFO * key_info)
 
   ptr = or_pack_int (ptr, key_info->is_constant);
 
+  offset = xts_save_regu_variable (key_info->key_limit_l);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable (key_info->key_limit_u);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, key_info->key_limit_reset);
+
   return ptr;
 }
 
@@ -3727,6 +3770,20 @@ xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spec)
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_regu_variable_list (cls_spec->cls_regu_list_rest);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_outptr_list (cls_spec->cls_output_val_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (cls_spec->cls_regu_val_list);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -4097,7 +4154,7 @@ xts_process_arith_type (char *ptr, const ARITH_TYPE * arith)
   ptr = or_pack_int (ptr, arith->misc_operand);
 
   if (arith->opcode == T_CASE || arith->opcode == T_DECODE
-      || arith->opcode == T_IF)
+      || arith->opcode == T_PREDICATE || arith->opcode == T_IF)
     {
       offset = xts_save_pred_expr (arith->pred);
       if (offset == ER_FAILED)
@@ -4173,6 +4230,13 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
     {
       return NULL;
     }
+
+  offset = xts_save_sort_list (aggregate->sort_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }
@@ -4366,6 +4430,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     PTR_SIZE +			/* orderby_list */
     PTR_SIZE +			/* ordbynum_pred */
     PTR_SIZE +			/* ordbynum_val */
+    PTR_SIZE +			/* orderby_limit */
     OR_INT_SIZE +		/* ordbynum_flag */
     PTR_SIZE +			/* single_tuple */
     OR_INT_SIZE +		/* is_single_tuple */
@@ -4381,6 +4446,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     PTR_SIZE +			/* if_pred */
     PTR_SIZE +			/* instnum_pred */
     PTR_SIZE +			/* instnum_val */
+    PTR_SIZE +			/* save_instnum_val */
     OR_INT_SIZE +		/* instnum_flag */
     PTR_SIZE +			/* fptr_list */
     PTR_SIZE +			/* scan_ptr */
@@ -4494,7 +4560,6 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
       break;
 
     case OBJFETCH_PROC:
-    case SETFETCH_PROC:
       tmp_size = xts_sizeof_fetch_proc (&xasl->proc.fetch);
       if (tmp_size == ER_FAILED)
 	{
@@ -4698,6 +4763,7 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
     OR_INT_SIZE +		/* waitsecs */
     OR_INT_SIZE +		/* no_logging */
     OR_INT_SIZE +		/* release_lock */
+    OR_INT_SIZE +		/* no_orderby_keys */
     PTR_SIZE;			/* PARTITION INFO array */
 
   return size;
@@ -5116,6 +5182,8 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
     }
   size += tmp_size;
 
+  size += OR_INT_SIZE;		/* coverage */
+
   size += OR_INT_SIZE;		/* range_type */
 
   tmp_size = xts_sizeof_key_info (&indx_info->key_info);
@@ -5124,6 +5192,16 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
       return ER_FAILED;
     }
   size += tmp_size;
+
+  size += OR_INT_SIZE;		/* orderby_desc */
+
+  size += OR_INT_SIZE;		/* groupby_desc */
+
+  size += OR_INT_SIZE;		/* use_desc_index */
+
+  size += OR_INT_SIZE;		/* orderby_skip */
+
+  size += OR_INT_SIZE;		/* groupby_skip */
 
   return size;
 }
@@ -5169,7 +5247,10 @@ xts_sizeof_key_info (const KEY_INFO * key_info)
 
   size += OR_INT_SIZE +		/* key_cnt */
     PTR_SIZE +			/* key_ranges */
-    OR_INT_SIZE;		/* is_constant */
+    OR_INT_SIZE +		/* is_constant */
+    PTR_SIZE +			/* key_limit_l */
+    PTR_SIZE +			/* key_limit_u */
+    OR_INT_SIZE;		/* key_limit_reset */
 
   return size;
 }
@@ -5187,6 +5268,8 @@ xts_sizeof_cls_spec_type (const CLS_SPEC_TYPE * cls_spec)
   size += PTR_SIZE +		/* cls_regu_list_key */
     PTR_SIZE +			/* cls_regu_list_pred */
     PTR_SIZE +			/* cls_regu_list_rest */
+    PTR_SIZE +			/* cls_output_val_list  */
+    PTR_SIZE +			/* regu_val_list     */
     OR_HFID_SIZE +		/* hfid */
     OR_OID_SIZE +		/* cls_oid */
     OR_INT_SIZE +		/* num_attrs_key */
@@ -5438,6 +5521,7 @@ xts_sizeof_arith_type (const ARITH_TYPE * arith)
     PTR_SIZE +			/* thirdptr */
     OR_INT_SIZE +		/* misc_operand */
     ((arith->opcode == T_CASE || arith->opcode == T_DECODE
+      || arith->opcode == T_PREDICATE
       || arith->opcode == T_IF) ? PTR_SIZE : 0 /* case pred */ ) +
     or_packed_domain_size (arith->domain, 0);
 
@@ -5472,6 +5556,8 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
 
   size += PTR_SIZE		/* list_id */
     + OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
+
+  size += PTR_SIZE;		/* sort_info */
 
   return size;
 }

@@ -316,43 +316,101 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
     }
 
   if (strcmp (p, "NULL") == 0)
-    type = CCI_U_TYPE_NULL;
+    {
+      type = CCI_U_TYPE_NULL;
+    }
   else if (strcmp (p, "CHAR") == 0)
-    type = CCI_U_TYPE_CHAR;
+    {
+      type = CCI_U_TYPE_CHAR;
+    }
   else if (strcmp (p, "VARCHAR") == 0)
-    type = CCI_U_TYPE_STRING;
+    {
+      type = CCI_U_TYPE_STRING;
+    }
   else if (strcmp (p, "NCHAR") == 0)
-    type = CCI_U_TYPE_NCHAR;
+    {
+      type = CCI_U_TYPE_NCHAR;
+    }
   else if (strcmp (p, "VARNCHAR") == 0)
-    type = CCI_U_TYPE_VARNCHAR;
+    {
+      type = CCI_U_TYPE_VARNCHAR;
+    }
   else if (strcmp (p, "BIT") == 0)
-    type = CCI_U_TYPE_BIT;
+    {
+      type = CCI_U_TYPE_BIT;
+    }
   else if (strcmp (p, "VARBIT") == 0)
-    type = CCI_U_TYPE_VARBIT;
+    {
+      type = CCI_U_TYPE_VARBIT;
+    }
   else if (strcmp (p, "NUMERIC") == 0)
-    type = CCI_U_TYPE_NUMERIC;
+    {
+      type = CCI_U_TYPE_NUMERIC;
+    }
   else if (strcmp (p, "BIGINT") == 0)
-    type = CCI_U_TYPE_BIGINT;
+    {
+      type = CCI_U_TYPE_BIGINT;
+    }
   else if (strcmp (p, "INT") == 0)
-    type = CCI_U_TYPE_INT;
+    {
+      type = CCI_U_TYPE_INT;
+    }
   else if (strcmp (p, "SHORT") == 0)
-    type = CCI_U_TYPE_SHORT;
+    {
+      type = CCI_U_TYPE_SHORT;
+    }
   else if (strcmp (p, "MONETARY") == 0)
-    type = CCI_U_TYPE_MONETARY;
+    {
+      type = CCI_U_TYPE_MONETARY;
+    }
   else if (strcmp (p, "FLOAT") == 0)
-    type = CCI_U_TYPE_FLOAT;
+    {
+      type = CCI_U_TYPE_FLOAT;
+    }
   else if (strcmp (p, "DOUBLE") == 0)
-    type = CCI_U_TYPE_DOUBLE;
+    {
+      type = CCI_U_TYPE_DOUBLE;
+    }
   else if (strcmp (p, "DATE") == 0)
-    type = CCI_U_TYPE_DATE;
+    {
+      type = CCI_U_TYPE_DATE;
+    }
   else if (strcmp (p, "TIME") == 0)
-    type = CCI_U_TYPE_TIME;
+    {
+      type = CCI_U_TYPE_TIME;
+    }
   else if (strcmp (p, "TIMESTAMP") == 0)
-    type = CCI_U_TYPE_TIMESTAMP;
+    {
+      type = CCI_U_TYPE_TIMESTAMP;
+    }
   else if (strcmp (p, "DATETIME") == 0)
-    type = CCI_U_TYPE_DATETIME;
+    {
+      type = CCI_U_TYPE_DATETIME;
+    }
   else if (strcmp (p, "OBJECT") == 0)
-    type = CCI_U_TYPE_OBJECT;
+    {
+      type = CCI_U_TYPE_OBJECT;
+    }
+  else if (strcmp (p, "BLOB") == 0)
+    {
+      type = CCI_U_TYPE_NULL;
+      fprintf (stderr,
+	       "%s\nBLOB type is not implemented. Replaced with NULL\n",
+	       value_p);
+      value_p = (char *) "";
+      bind_len = 0;
+      /*type = CCI_U_TYPE_BLOB; */
+    }
+  else if (strcmp (p, "CLOB") == 0)
+    {
+      type = CCI_U_TYPE_NULL;
+      fprintf (stderr,
+	       "%s\nCLOB type is not implemented. Replaced with NULL\n",
+	       value_p);
+      value_p = (char *) "";
+      bind_len = 0;
+      /*type = CCI_U_TYPE_CLOB; */
+    }
   else
     {
       fprintf (stderr, "log error [line:%d]\n", lineno);

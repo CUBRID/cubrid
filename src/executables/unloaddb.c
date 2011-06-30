@@ -52,6 +52,7 @@ bool verbose_flag = false;
 bool include_references = false;
 
 bool required_class_only = false;
+bool datafile_per_class = false;
 LIST_MOPS *class_table = NULL;
 DB_OBJECT **req_class_table = NULL;
 
@@ -60,7 +61,6 @@ int lo_count = 0;
 char *output_prefix = NULL;
 bool do_schema = false;
 bool do_objects = false;
-bool delimited_id_flag = false;
 bool ignore_err_flag = false;
 
 /*
@@ -105,6 +105,8 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     utility_get_option_bool_value (arg_map, UNLOAD_INCLUDE_REFERENCE_S);
   required_class_only =
     utility_get_option_bool_value (arg_map, UNLOAD_INPUT_CLASS_ONLY_S);
+  datafile_per_class =
+    utility_get_option_bool_value (arg_map, UNLOAD_DATAFILE_PER_CLASS_S);
   lo_count = utility_get_option_int_value (arg_map, UNLOAD_LO_COUNT_S);
   est_size = utility_get_option_int_value (arg_map, UNLOAD_ESTIMATED_SIZE_S);
   cached_pages =
@@ -118,10 +120,12 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   hash_filename =
     utility_get_option_string_value (arg_map, UNLOAD_HASH_FILE_S, 0);
   verbose_flag = utility_get_option_bool_value (arg_map, UNLOAD_VERBOSE_S);
-  delimited_id_flag =
-    utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);
   database_name =
     utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+
+  /* depreciated */
+  utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);
+
 
   if (database_name == NULL)
     {

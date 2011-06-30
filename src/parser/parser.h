@@ -37,6 +37,8 @@
 extern "C"
 {
 #endif
+  typedef enum
+  { CASE_INSENSITIVE, CASE_SENSITIVE } CASE_SENSITIVENESS;
 
   extern PT_NODE **parser_main (PARSER_CONTEXT * p);
   extern void parser_final (void);
@@ -48,6 +50,10 @@ extern "C"
 
   extern PT_NODE **parser_parse_string (PARSER_CONTEXT * parser,
 					const char *buffer);
+  extern PT_NODE **parser_parse_string_with_escapes (PARSER_CONTEXT * parser,
+						     const char *buffer,
+						     const bool
+						     no_escapes_strings);
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern PT_NODE **parser_parse_binary (PARSER_CONTEXT * parser,
 					const char *buffer, size_t size);
@@ -72,6 +78,8 @@ extern "C"
 				    const PT_NODE * tree);
   extern PT_NODE *parser_copy_tree_list (PARSER_CONTEXT * parser,
 					 PT_NODE * tree);
+  extern PT_NODE *parser_copy_tree_diff (PARSER_CONTEXT * parser,
+					 PT_NODE * tree1, PT_NODE * tree2);
   extern PT_NODE *parser_append_node (PT_NODE * node, PT_NODE * list);
   extern PT_NODE *parser_append_node_or (PT_NODE * node, PT_NODE * list);
   extern PT_NODE *pt_point (PARSER_CONTEXT * parser, const PT_NODE * tree);
@@ -94,6 +102,8 @@ extern "C"
 
   extern char *parser_print_tree (PARSER_CONTEXT * parser,
 				  const PT_NODE * node);
+  extern char *parser_print_tree_with_quotes (PARSER_CONTEXT * parser,
+					      const PT_NODE * node);
   extern char *parser_print_tree_list (PARSER_CONTEXT * parser,
 				       const PT_NODE * p);
   extern char *pt_print_alias (PARSER_CONTEXT * parser, const PT_NODE * node);
@@ -251,6 +261,13 @@ extern "C"
   extern PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser,
 					PT_NODE * arg, PT_TYPE_ENUM new_type,
 					int p, int s);
+  extern PT_NODE *pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser,
+						   PT_NODE * arg,
+						   PT_TYPE_ENUM set_type,
+						   PT_NODE * set_data);
+  extern int pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser,
+					       PT_NODE * query,
+					       PT_TYPE_ENUM new_type);
 
   extern PT_NODE *pt_bind_type_from_dbval (PARSER_CONTEXT *, PT_NODE *,
 					   DB_VALUE *);
@@ -282,11 +299,20 @@ extern "C"
 					      PT_NODE * tree,
 					      DB_VALUE * db_value);
   extern int pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
+					PT_NODE * expr,
 					PT_OP_TYPE op, DB_VALUE * arg1,
 					DB_VALUE * arg2, DB_VALUE * arg3,
 					DB_VALUE * result, TP_DOMAIN * domain,
 					PT_NODE * o1, PT_NODE * o2,
 					PT_NODE * o3, PT_MISC_TYPE qualifier);
+  extern int pt_evaluate_function_w_args (PARSER_CONTEXT * parser,
+					  FUNC_TYPE fcode,
+					  DB_VALUE * args[],
+					  const int num_args,
+					  DB_VALUE * result);
+
+  extern int pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func,
+				   DB_VALUE * dbval_res);
 
   extern bool pt_is_symmetric_op (PT_OP_TYPE op);
 
@@ -472,7 +498,8 @@ extern "C"
 				      void *arg, int *continue_walk);
   extern int pt_statement_have_methods (PARSER_CONTEXT * parser,
 					PT_NODE * statement);
-  extern int pt_streq (const char *p, const char *q);
+  extern int pt_str_compare (const char *p, const char *q,
+			     CASE_SENSITIVENESS case_flag);
 
   extern void pt_to_regu_resolve_domain (int *p_precision, int *p_scale,
 					 const PT_NODE * node);
@@ -487,6 +514,9 @@ extern "C"
 
   extern PT_NODE *pt_make_string_value (PARSER_CONTEXT * parser,
 					const char *value_string);
+
+  extern PT_NODE *pt_make_integer_value (PARSER_CONTEXT * parser,
+					 const int value_int);
 
   extern PT_NODE *pt_and (PARSER_CONTEXT * parser_ptr,
 			  const PT_NODE * expression1,
@@ -521,6 +551,8 @@ extern "C"
 				const PT_NODE * list);
   extern bool pt_is_aggregate_function (PARSER_CONTEXT * parser,
 					const PT_NODE * node);
+  extern bool pt_is_expr_wrapped_function (PARSER_CONTEXT * parser,
+					   const PT_NODE * node);
   extern PT_NODE *pt_find_spec (PARSER_CONTEXT * parser, const PT_NODE * from,
 				const PT_NODE * name);
   extern PT_NODE *pt_find_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node,
@@ -536,6 +568,12 @@ extern "C"
   extern PT_NODE *pt_is_pseudocolumn_node (PARSER_CONTEXT * parser,
 					   PT_NODE * tree, void *arg,
 					   int *continue_walk);
+  extern PT_NODE *pt_add_table_name_to_from_list (PARSER_CONTEXT * parser,
+						  PT_NODE * select,
+						  const char *table_name,
+						  const char *table_alias,
+						  const DB_AUTH auth_bypass);
+
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern int pt_is_ddl_statement (const PT_NODE * node);
 #endif
@@ -586,6 +624,7 @@ extern "C"
 #endif
   extern PT_NODE *pt_right_part (const PT_NODE * expr);
   extern PT_NODE *pt_get_end_path_node (PT_NODE * node);
+  extern PT_NODE *pt_get_first_arg_ignore_prior (PT_NODE * node);
   extern const char *pt_string_part (const PT_NODE * tbl);
   extern PT_NODE *pt_values_part (const PT_NODE * insert_statement);
   extern PT_NODE *pt_get_subquery_of_insert_select (const PT_NODE *
@@ -634,6 +673,8 @@ extern "C"
 
   extern bool pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node);
 
+  extern void pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node);
+  extern void pt_set_expected_domain (PT_NODE * node, TP_DOMAIN * domain);
   extern int pt_host_var_index (const PT_NODE * hv);
   extern PT_NODE *pt_get_input_host_vars (const PT_HOST_VARS * hv);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -655,6 +696,10 @@ extern "C"
   extern void pt_free_orphans (PARSER_CONTEXT * parser);
 
   extern bool pt_sort_spec_cover (PT_NODE * cur_list, PT_NODE * new_list);
+  extern bool pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser,
+					  PT_NODE * sort_list,
+					  PT_NODE * group_list,
+					  PT_NODE * tree);
 
   extern int dbcs_get_next (PARSER_CONTEXT * parser);
   extern void dbcs_start_input (void);
@@ -680,6 +725,48 @@ extern "C"
 					  PT_NODE * create_select,
 					  DB_QUERY_TYPE ** query_columns);
   void pt_fixup_column_type (PT_NODE * col);
+  extern int pt_node_list_to_array (PARSER_CONTEXT * parser,
+				    PT_NODE * arg_list,
+				    PT_NODE * arg_array[],
+				    const int array_size, int *num_args);
+  extern int pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query);
+  extern void qo_do_auto_parameterize (PARSER_CONTEXT * parser,
+				       PT_NODE * where);
+
+  extern PT_NODE *pt_make_query_show_table (PARSER_CONTEXT * parser,
+					    bool is_full_syntax,
+					    int like_where_syntax,
+					    PT_NODE * like_or_where_expr);
+  extern PT_NODE *pt_make_query_show_columns (PARSER_CONTEXT * parser,
+					      PT_NODE * original_cls_id,
+					      int like_where_syntax,
+					      PT_NODE * like_or_where_expr);
+  extern PT_NODE *pt_make_query_show_create_view (PARSER_CONTEXT * parser,
+						  PT_NODE * view_identifier);
+  extern PT_NODE *pt_make_query_show_grants_curr_usr (PARSER_CONTEXT *
+						      parser);
+  extern PT_NODE *pt_make_query_show_grants (PARSER_CONTEXT * parser,
+					     const char *original_user_name);
+  extern PT_NODE *pt_make_query_describe_w_identifier (PARSER_CONTEXT *
+						       parser,
+						       PT_NODE *
+						       original_cls_id,
+						       PT_NODE * att_id);
+  extern PT_NODE *pt_make_query_show_index (PARSER_CONTEXT * parser,
+					    PT_NODE * original_cls_id);
+
+  extern PT_NODE *parser_make_expression (PT_OP_TYPE OP, PT_NODE * arg1,
+					  PT_NODE * arg2, PT_NODE * arg3);
+  extern PT_NODE *parser_keyword_func (const char *name, PT_NODE * args);
+
+  extern PT_NODE *pt_convert_to_logical_expr (PARSER_CONTEXT * parser,
+					      PT_NODE * node,
+					      bool use_parens_inside,
+					      bool use_parens_outside);
+  extern bool pt_is_operator_logical (PT_OP_TYPE op);
+  extern bool pt_list_has_logical_nodes (PT_NODE * list);
+  extern bool pt_is_pseudo_const (PT_NODE * expr);
+  extern bool pt_is_op_hv_late_bind (PT_OP_TYPE op);
 
 #ifdef __cplusplus
 }

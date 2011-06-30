@@ -1,0 +1,92 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"> 
+<html> 
+  <head> 
+    <style type="text/css">
+      .s1 {font-family: arial, verdana, sans-serif;}
+      .s2 {font-family: "Times New Roman", serif;}
+      .s3 {font-family: Consolas, "Courire New";}
+    </style>
+    <meta http-equiv="Content-Type" content="text/html; charset=US-ASCII"> 
+    <title>CUBRID PHP Library release notes</title> 
+  </head> 
+
+<body bgcolor="#ffffff" text="#000000" link="#ff0000" vlink="#a00000" alink="#0000ff"> 
+  
+<h1>CUBRID PHP Library release notes</h1> 
+<hr> 
+<h2>2008 R3.1 Release </h2> 
+
+<pre class = "s1">
+This release is a major release. CUBRID 3.1 Stable has been released. Several new features have been added to this version
+including new BLOB and CLOB data types and new APIs in JDBC/CCI which can get foreign key information. Accordingly new 
+functions and features are added in this CUBRID PHP version, and some bugs have been fixed.
+</pre>
+
+<h4>Functionality added:</h4>
+
+<pre class = "s1">
+The following functions have been added, and documents of all functions have been updated.
+</pre>
+
+<table border="1" cellpadding="5">
+<tr>
+  <th width="300" align="left">CUBRID-MySQL Compatibility functions</th>
+  <th width="300" align="left">Lob related functions</th>
+</tr>
+<tr>
+  <td width="300" align="left" valign="top">cubrid_query<br>cubrid_close<br>cubrid_error<br>cubrid_errno<br>cubrid_client_encoding<br>cubrid_fetch_array<br>cubrid_db_name<br>cubrid_ping</td>
+  <td width="300" align="left" valign="top">cubrid_lob_get<br>cubrid_lob_close<br>cubrid_lob_size<br>cubrid_lob_export<br>cubrid_lob_send</td>
+</tr>
+</table>
+
+<h4>Functionality removed:</h4>
+
+<pre class = "s1">
+Glo data type has been removed from CUBRID 3.1, BLOB/CLOB can be used to replace it.
+</pre>
+
+<table border="1" cellpadding="5">
+<tr>
+  <th width="200" align="left">Glo related functions</th>
+</tr>
+<tr>
+  <td width="200" align="left" valign="top">cubrid_new_glo<br>cubrid_save_to_glo<br>cubrid_load_from_glo<br>cubrid_send_glo</td>
+</tr>
+</table>
+
+<h4>Changed and Enhanced Features:</h4>
+
+<pre class = "s1">
+1.) Add three new schema type integer constants for cubrid_schema(): 
+
+    CUBRID_SCH_IMPORTED_KEYS
+    CUBRID_SCH_EXPORTED_KEYS
+    CUBRID_SCH_CROSS_REFERENCE
+
+    They can be used to get foreign key information. 
+
+2.) cubrid_bind support BLOB and CLOB data types.
+
+3.) cubrid_unbuffered_query now is worthy of its name. It won't need to wait for that all query results have been complete. It will return 
+    when the results are being generated, so you can't use cubrid_num_rows() and cubrid_data_seek() on a result set returned from 
+    cubrid_unbuffered_query().
+
+4.) cubrid_fetch_object: Add new parameters class_name and params, which can pass the name of class to instantiate and the constructor 
+    for class_name objects.
+
+5.) When cubrid_schema() fails, return false instead of -1.
+6.) When cubrid_col_size() fails, return false instead of -1.
+</pre>
+
+<h4>Fixed bugs:</h4> 
+
+<pre class = "s1">
+1.) last db connetion/request resource management: If there is no variable to refer these resources, they will be removed by garbage collector.
+2.) cubrid_execute: If cubrid fails to get result info after executing sql statement, there may be memory leak.
+3.) cubrid_disconnect: When disconnecting any db connection, it will always reset the last request and connection info.
+4.) cubrid_unbuffered_query: When query execution fails, it don't free the allocated request resource.
+
+</pre>
+
+</body>
+</html>

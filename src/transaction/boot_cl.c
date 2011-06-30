@@ -42,6 +42,7 @@
 
 #include <assert.h>
 
+#include "porting.h"
 #if !defined(HPUX)
 #include "util_func.h"
 #endif /* !HPUX */
@@ -79,6 +80,7 @@
 #include "trigger_manager.h"
 #include "jsp_cl.h"
 #include "client_support.h"
+#include "es.h"
 
 #if defined(CS_MODE)
 #include "network.h"
@@ -89,8 +91,6 @@
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
-
-#include "porting.h"
 
 /* TODO : Move .h */
 #if defined(SA_MODE)
@@ -119,10 +119,12 @@ struct column
 
 
 static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
-  /* db_full_name */ NULL, /* host_name */ NULL, /* process_id */ -1,
+  /* db_full_name */ NULL, /* host_name */ NULL, /* lob_path */ NULL,
+  /* process_id */ -1,
   /* root_class_oid */ {NULL_PAGEID, NULL_SLOTID, NULL_VOLID},
   /* root_class_hfid */ {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID},
-  /* data page_size */ -1, /* log page_size */ -1, /* disk_compatibility */ 0.0,
+  /* data page_size */ -1, /* log page_size */ -1,
+  /* disk_compatibility */ 0.0,
   /* ha_server_state */ -1
 };
 
@@ -132,6 +134,7 @@ static const char *boot_Client_id_unknown_string = "(unknown)";
 static char boot_Client_id_buffer[L_cuserid + 1];
 static char boot_Db_path_buf[PATH_MAX];
 static char boot_Log_path_buf[PATH_MAX];
+static char boot_Lob_path_buf[PATH_MAX];
 static char boot_Db_host_buf[MAXHOSTNAMELEN + 1];
 
 /* Volume assigned for new files/objects (e.g., heap files) */
@@ -340,9 +343,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   /* initialize system parameters */
   if (sysprm_load_and_init (client_credential->db_name, NULL) != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG, 0);
-      return ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
+      return ER_BO_CANT_LOAD_SYSPRM;
     }
 
   /* initialize the "areas" memory manager */
@@ -365,12 +367,48 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
     }
   if (db_path_info->log_path == NULL)
     {
-      /* Assign the data volume directory */
+      /* assign the data volume directory */
       strcpy (boot_Log_path_buf, db_path_info->db_path);
       db_path_info->log_path = boot_Log_path_buf;
     }
+  if (db_path_info->lob_path == NULL)
+    {
+      /* assign the data volume directory */
+      snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s/lob",
+		LOB_PATH_DEFAULT_PREFIX, db_path_info->db_path);
+      db_path_info->lob_path = boot_Lob_path_buf;
+    }
+  else
+    {
+      ES_TYPE es_type = es_get_type (db_path_info->lob_path);
+      char *delim;
 
-  /* Make sure that the full path for the database is not too long */
+      delim = strchr (db_path_info->lob_path, ':');
+      if (delim == NULL)
+	{
+	  /* prepend default prefix */
+	  snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s",
+		    LOB_PATH_DEFAULT_PREFIX, db_path_info->lob_path);
+	  db_path_info->lob_path = boot_Lob_path_buf;
+	}
+      else
+	{
+	  switch (es_type)
+	    {
+	    case ES_NONE:
+#if !defined (CUBRID_OWFS)
+	    case ES_OWFS:
+#endif /* !CUBRID_OWFS */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_ES_INVALID_PATH, 1, db_path_info->lob_path);
+	      return ER_ES_INVALID_PATH;
+	    default:
+	      break;
+	    }
+	}
+    }
+
+  /* make sure that the full path for the database is not too long */
   length = strlen (client_credential->db_name)
     + strlen (db_path_info->db_path) + 2;
   if (length > (unsigned) PATH_MAX)
@@ -404,7 +442,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
   hosts[0] = db_path_info->db_host;
   hosts[1] = NULL;
   db = cfg_new_db (client_credential->db_name, db_path_info->db_path,
-		   db_path_info->log_path, hosts);
+		   db_path_info->log_path, db_path_info->lob_path, hosts);
   if (db == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1,
@@ -655,7 +693,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* initialize system parameters */
   if (sysprm_load_and_init (client_credential->db_name, NULL) != NO_ERROR)
     {
-      error_code = ER_BO_CANNOT_ACCESS_MESSAGE_CATALOG;
+      error_code = ER_BO_CANT_LOAD_SYSPRM;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
       goto error;
     }
@@ -673,13 +711,15 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       if (db == NULL)
 	{
 	  /* if not found, use secondary host lists */
-	  db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL);
+	  db =
+	    cfg_new_db (client_credential->db_name, NULL, NULL, NULL, NULL);
 	}
 
-      if (db->num_hosts > 1
-	  && (BOOT_ADMIN_CLIENT_TYPE (client_credential->client_type)
-	      || BOOT_LOG_REPLICATOR_TYPE (client_credential->client_type)
-	      || BOOT_CSQL_CLIENT_TYPE (client_credential->client_type)))
+      if (db == NULL
+	  || (db->num_hosts > 1
+	      && (BOOT_ADMIN_CLIENT_TYPE (client_credential->client_type)
+		  || BOOT_LOG_REPLICATOR_TYPE (client_credential->client_type)
+		  || BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))))
 	{
 	  error_code = ER_NET_NO_EXPLICIT_SERVER_HOST;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
@@ -694,8 +734,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       size = strlen (client_credential->db_name) + 1;
       hosts[0] = ptr + 1;
       hosts[1] = NULL;
-      *ptr = '\0';	/* screen 'db@host' */
-      db = cfg_new_db (client_credential->db_name, NULL, NULL, hosts);
+      *ptr = '\0';		/* screen 'db@host' */
+      db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL, hosts);
       *ptr = (char) '@';
 #else /* CS_MODE */
       error_code = ER_NOT_IN_STANDALONE;
@@ -778,7 +818,40 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 #if defined(CS_MODE)
   /* Initialize the communication subsystem */
-  if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
+  if (client_credential->client_type == BOOT_CLIENT_PH_READ_ONLY_BROKER)
+    {
+      char **hosts;
+      DB_INFO *tmp_db;
+
+      hosts = util_split_string (client_credential->preferred_hosts, ":");
+      if (hosts == NULL)
+	{
+	  goto error;
+	}
+
+      tmp_db = cfg_new_db (db->name, NULL, NULL, NULL, hosts);
+      if (tmp_db == NULL)
+	{
+	  util_free_string_array (hosts);
+	  goto error;
+	}
+
+      boot_Host_connected[0] = '\0';
+      error_code = boot_client_initialize_css (tmp_db, false, false);
+      util_free_string_array (hosts);
+      cfg_free_directory (tmp_db);
+    }
+
+  if (client_credential->client_type == BOOT_CLIENT_PH_READ_ONLY_BROKER
+      && error_code == NO_ERROR)
+    {
+      /* connected to any preferred hosts successfully */
+    }
+  else if (BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))
+    {
+      error_code = boot_client_initialize_css (db, false, false);
+    }
+  else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
     {
       error_code = boot_client_initialize_css (db, true, false);
 
@@ -786,8 +859,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	{
 	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
 			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
-	  css_send_close_request (css_Client_anchor->conn);
-
 	  error_code = boot_client_initialize_css (db, false, false);
 	}
     }
@@ -799,6 +870,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       error_code = boot_client_initialize_css (db, false, false);
     }
+
   if (error_code != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
@@ -851,6 +923,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 		client_credential->program_name,
 		client_credential->login_name,
 		client_credential->host_name, client_credential->process_id);
+
   tran_index = boot_register_client (client_credential,
 				     tran_lock_waitsecs, tran_isolation,
 				     &transtate, &boot_Server_credential);
@@ -905,6 +978,20 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   tr_init ();			/* initialize trigger manager */
 
   jsp_init ();
+
+  /* TODO: how about to call es_init() only for normal client? */
+  if (boot_Server_credential.lob_path[0] != '\0')
+    {
+      error_code = es_init (boot_Server_credential.lob_path);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+  else
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
+    }
 
   /* If the client has any loose ends from the recovery manager, do them */
 
@@ -1180,6 +1267,7 @@ boot_client_all_finalize (bool is_er_final)
       au_final ();
       sm_final ();
       ws_final ();
+      es_final ();
       tp_final ();
 
 #if !defined(WINDOWS)
@@ -1251,6 +1339,7 @@ boot_client_initialize_css (DB_INFO * db, bool check_capabilities,
 	}
     }
 
+  memset (hostlist, 0, sizeof (hostlist));
   hn = 0;
   /* try the connected host first */
   if (boot_Host_connected[0] != '\0')
@@ -1279,7 +1368,10 @@ boot_client_initialize_css (DB_INFO * db, bool check_capabilities,
 	  if (error == NO_ERROR)
 	    {
 	      /* save the hostname for the use of calling functions */
-	      strncpy (boot_Host_connected, hostlist[n], MAXHOSTNAMELEN);
+	      if (boot_Host_connected != hostlist[n])
+		{
+		  strncpy (boot_Host_connected, hostlist[n], MAXHOSTNAMELEN);
+		}
 	      er_log_debug (ARG_FILE_LINE, "ping server with handshake\n");
 	      /* ping to validate availability and to check compatibility */
 	      er_clear ();
@@ -1293,35 +1385,27 @@ boot_client_initialize_css (DB_INFO * db, bool check_capabilities,
 	    case NO_ERROR:
 	      return NO_ERROR;
 
+	    case ER_NET_SERVER_HAND_SHAKE:
+	      cap_error = true;
 	    case ER_NET_DIFFERENT_RELEASE:
 	    case ER_NET_NO_SERVER_HOST:
 	    case ER_NET_CANT_CONNECT_SERVER:
 	    case ER_NET_NO_MASTER:
 	    case ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER:
 	    case ERR_CSS_ERROR_FROM_SERVER:
+	    case ER_CSS_CLIENTS_EXCEEDED:
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
 		      ER_BO_CONNECT_FAILED, 2, db->name, hostlist[n]);
 	      /* try to connect to next host */
 	      er_log_debug (ARG_FILE_LINE,
 			    "error %d. try to connect to next host\n", error);
-	      continue;
-
-	    case ER_NET_SERVER_HAND_SHAKE:
-	      cap_error = true;
+	      css_terminate (false);
 	      break;
-
-	    case ER_CSS_CLIENTS_EXCEEDED:
-	      /* return error */
-	      er_log_debug (ARG_FILE_LINE, "error %d. exceeded max clients\n",
-			    error);
-	      return error;
-
 	    default:
 	      /* ?? */
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CONNECT_FAILED,
 		      2, db->name, hostlist[n]);
 	    }
-
 	}			/* for (cn) */
     }				/* for (tn) */
 
@@ -2226,7 +2310,7 @@ boot_define_index_key (MOP class_mop)
   DB_MAKE_INTEGER (&prefix_default, -1);
 
   error_code = smt_set_attribute_default (def, "key_prefix_length", 0,
-                                          &prefix_default);
+					  &prefix_default);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -2425,10 +2509,7 @@ boot_add_data_type (MOP class_mop)
   DB_VALUE val;
   int i;
 
-  /* BLOB and CLOB are added in advance to avoid migration R3.0 to R3.1.
-     This fix should be removed at R3.1. */
-
-  const char *names[DB_TYPE_LAST + 2] = {
+  const char *names[DB_TYPE_LAST] = {
     "INTEGER", "FLOAT", "DOUBLE", "STRING", "OBJECT",
     "SET", "MULTISET", "SEQUENCE", "ELO", "TIME",
     "TIMESTAMP", "DATE", "MONETARY", NULL /* VARIABLE */ , NULL /* SUB */ ,
@@ -2441,7 +2522,7 @@ boot_add_data_type (MOP class_mop)
     "BLOB", "CLOB"
   };
 
-  for (i = 0; i < DB_TYPE_LAST + 2; i++)
+  for (i = 0; i < DB_TYPE_LAST; i++)
     {
 
       if (names[i] != NULL)
@@ -2903,7 +2984,7 @@ boot_define_ha_apply_info (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "page_id", "integer", NULL);
+  error_code = smt_add_attribute (def, "page_id", "bigint", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -2969,7 +3050,7 @@ boot_define_ha_apply_info (MOP class_mop)
       return error_code;
     }
 
-  error_code = smt_add_attribute (def, "required_page_id", "integer", NULL);
+  error_code = smt_add_attribute (def, "required_page_id", "bigint", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3142,28 +3223,28 @@ boot_define_view_class (void)
     }
 
   sprintf (stmt,
-	   "SELECT c.class_name, CAST(c.owner.name AS VARCHAR(255)),"
-	   " CASE c.class_type WHEN 0 THEN 'CLASS'"
+	   "SELECT [c].[class_name], CAST([c].[owner].[name] AS VARCHAR(255)),"
+	   " CASE [c].[class_type] WHEN 0 THEN 'CLASS'"
 	   " WHEN 1 THEN 'VCLASS'"
 	   " ELSE 'UNKNOW' END,"
-	   " CASE WHEN MOD(c.is_system_class, 2) = 1 THEN 'YES' ELSE 'NO' END,"
-	   " CASE WHEN c.sub_classes IS NULL THEN 'NO' ELSE NVL((SELECT 'YES'"
-	   " FROM %s p WHERE p.class_of = c and p.pname IS NULL), 'NO') END,"
-	   " CASE WHEN MOD(c.is_system_class / 8, 2) = 1 THEN 'YES' ELSE 'NO' END"
-	   " FROM %s c"
+	   " CASE WHEN MOD([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END,"
+	   " CASE WHEN [c].[sub_classes] IS NULL THEN 'NO' ELSE NVL((SELECT 'YES'"
+	   " FROM [%s] [p] WHERE [p].[class_of] = [c] and [p].[pname] IS NULL), 'NO') END,"
+	   " CASE WHEN MOD([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END"
+	   " FROM [%s] [c]"
 	   " WHERE CURRENT_USER = 'DBA' OR"
-	   " {c.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {c} SUBSETEQ ("
-	   "  SELECT SUM(SET{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) AND"
-	   "  au.auth_type = 'SELECT')",
+	   " {[c].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[c]} SUBSETEQ ("
+	   "  SELECT SUM(SET{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) AND"
+	   "  [au].[auth_type] = 'SELECT')",
 	   CT_PARTITION_NAME,
 	   CT_CLASS_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
@@ -3225,21 +3306,21 @@ boot_define_view_super_class (void)
     }
 
   sprintf (stmt,
-	   "SELECT c.class_name, s.class_name"
-	   " FROM %s c, TABLE(c.super_classes) AS t(s)"
+	   "SELECT [c].[class_name], [s].[class_name]"
+	   " FROM [%s] [c], TABLE([c].[super_classes]) AS [t]([s])"
 	   " WHERE CURRENT_USER = 'DBA' OR"
-	   " {c.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {c} SUBSETEQ ("
-	   "  SELECT SUM(SET{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) AND"
-	   "  au.auth_type = 'SELECT')",
+	   " {[c].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS t([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[c]} SUBSETEQ ("
+	   "  SELECT SUM(SET{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) AND"
+	   "  [au].[auth_type] = 'SELECT')",
 	   CT_CLASS_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
 
@@ -3300,20 +3381,20 @@ boot_define_view_vclass (void)
     }
 
   sprintf (stmt,
-	   "SELECT q.class_of.class_name, q.spec"
-	   " FROM %s q"
+	   "SELECT [q].[class_of].[class_name], [q].[spec]"
+	   " FROM [%s] [q]"
 	   " WHERE CURRENT_USER = 'DBA' OR"
-	   " {q.class_of.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {q.class_of} SUBSETEQ (SELECT SUM(SET{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER ) AND"
-	   "  au.auth_type = 'SELECT')",
+	   " {[q].[class_of].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[q].[class_of]} SUBSETEQ (SELECT SUM(SET{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER ) AND"
+	   "  [au].[auth_type] = 'SELECT')",
 	   CT_QUERYSPEC_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
 
@@ -3385,27 +3466,27 @@ boot_define_view_attribute (void)
     }
 
   sprintf (stmt,
-	   "SELECT a.attr_name, c.class_name,"
-	   " CASE WHEN a.attr_type = 0 THEN 'INSTANCE'"
-	   " WHEN a.attr_type = 1 THEN 'CLASS' ELSE 'SHARED' END,"
-	   " a.def_order, a.from_class_of.class_name,"
-	   " a.from_attr_name, t.type_name, d.prec, d.scale,"
-	   " d.code_set, d.class_of.class_name, a.default_value,"
-	   " CASE WHEN a.is_nullable = 1 THEN 'YES' ELSE 'NO' END"
-	   " FROM %s c, %s a, %s d, %s t"
-	   " WHERE a.class_of = c AND d.object_of = a AND d.data_type = t.type_id AND"
+	   "SELECT [a].[attr_name], [c].[class_name],"
+	   " CASE WHEN [a].[attr_type] = 0 THEN 'INSTANCE'"
+	   " WHEN [a].[attr_type] = 1 THEN 'CLASS' ELSE 'SHARED' END,"
+	   " [a].[def_order], [a].[from_class_of].[class_name],"
+	   " [a].[from_attr_name], [t].[type_name], [d].[prec], [d].[scale],"
+	   " [d].[code_set], [d].[class_of].[class_name], [a].[default_value],"
+	   " CASE WHEN [a].[is_nullable] = 1 THEN 'YES' ELSE 'NO' END"
+	   " FROM [%s] [c], [%s] [a], [%s] [d], [%s] [t]"
+	   " WHERE [a].[class_of] = [c] AND [d].[object_of] = [a] AND [d].[data_type] = [t].[type_id] AND"
 	   " (CURRENT_USER = 'DBA' OR"
-	   " {c.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {c} SUBSETEQ (SELECT SUM(SET{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) AND"
-	   "  au.auth_type = 'SELECT'))",
+	   " {[c].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[c]} SUBSETEQ (SELECT SUM(SET{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) AND"
+	   "  [au].[auth_type] = 'SELECT'))",
 	   CT_CLASS_NAME,
 	   CT_ATTRIBUTE_NAME,
 	   CT_DOMAIN_NAME,
@@ -3475,24 +3556,24 @@ boot_define_view_attribute_set_domain (void)
     }
 
   sprintf (stmt,
-	   "SELECT a.attr_name, c.class_name,"
-	   " CASE WHEN a.attr_type = 0 THEN 'INSTANCE'"
-	   " WHEN a.attr_type = 1 THEN 'CLASS' ELSE 'SHARED' END,"
-	   " et.type_name, e.prec, e.scale, e.code_set, e.class_of.class_name"
-	   " FROM %s c, %s a, %s d, TABLE(d.set_domains) AS t(e), %s et"
-	   " WHERE a.class_of = c AND d.object_of = a AND e.data_type = et.type_id AND"
+	   "SELECT [a].[attr_name], [c].[class_name],"
+	   " CASE WHEN [a].[attr_type] = 0 THEN 'INSTANCE'"
+	   " WHEN [a].[attr_type] = 1 THEN 'CLASS' ELSE 'SHARED' END,"
+	   " [et].[type_name], [e].[prec], [e].[scale], [e].[code_set], [e].[class_of].[class_name]"
+	   " FROM [%s] [c], [%s] [a], [%s] [d], TABLE([d].[set_domains]) AS [t]([e]), [%s] [et]"
+	   " WHERE [a].[class_of] = [c] AND [d].[object_of] = [a] AND [e].[data_type] = [et].[type_id] AND"
 	   " (CURRENT_USER = 'DBA' OR"
-	   " {c.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {c} SUBSETEQ (SELECT SUM(SET{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER)  AND"
-	   "  au.auth_type = 'SELECT'))",
+	   " {[c].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[c]} SUBSETEQ (SELECT SUM(SET{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER)  AND"
+	   "  [au].[auth_type] = 'SELECT'))",
 	   CT_CLASS_NAME,
 	   CT_ATTRIBUTE_NAME,
 	   CT_DOMAIN_NAME,
@@ -3560,24 +3641,24 @@ boot_define_view_method (void)
     }
 
   sprintf (stmt,
-	   "SELECT m.meth_name, m.class_of.class_name,"
-	   " CASE WHEN m.meth_type = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
-	   " m.from_class_of.class_name, m.from_meth_name, s.func_name"
-	   " FROM %s m, %s s"
-	   " WHERE s.meth_of = m AND"
+	   "SELECT [m].[meth_name], [m].[class_of].[class_name],"
+	   " CASE WHEN [m].[meth_type] = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
+	   " [m].[from_class_of].[class_name], [m].[from_meth_name], [s].[func_name]"
+	   " FROM [%s] [m], [%s] [s]"
+	   " WHERE [s].[meth_of] = [m] AND"
 	   " (CURRENT_USER = 'DBA' OR"
-	   " {m.class_of.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {m.class_of} SUBSETEQ ("
-	   "  SELECT SUM(set{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) AND"
-	   "  au.auth_type = 'SELECT'))",
+	   " {[m].[class_of].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[m].[class_of]} SUBSETEQ ("
+	   "  SELECT SUM(set{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) AND"
+	   "  [au].[auth_type] = 'SELECT'))",
 	   CT_METHOD_NAME,
 	   CT_METHSIG_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
@@ -3646,25 +3727,25 @@ boot_define_view_method_argument (void)
     }
 
   sprintf (stmt,
-	   "SELECT s.meth_of.meth_name, s.meth_of.class_of.class_name,"
-	   " CASE WHEN s.meth_of.meth_type = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
-	   " a.index_of, t.type_name, d.prec, d.scale, d.code_set,"
-	   " d.class_of.class_name"
-	   " FROM %s s, %s a, %s d, %s t"
-	   " WHERE a.meth_sig_of = s AND d.object_of = a AND d.data_type = t.type_id AND"
+	   "SELECT [s].[meth_of].[meth_name], [s].[meth_of].[class_of].[class_name],"
+	   " CASE WHEN [s].[meth_of].[meth_type] = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
+	   " [a].[index_of], [t].[type_name], [d].[prec], [d].[scale], [d].[code_set],"
+	   " [d].[class_of].[class_name]"
+	   " FROM [%s] [s], [%s] [a], [%s] [d], [%s] [t]"
+	   " WHERE [a].[meth_sig_of] = [s] AND [d].[object_of] = [a] AND [d].[data_type] = [t].[type_id] AND"
 	   " (CURRENT_USER = 'DBA' OR"
-	   " {s.meth_of.class_of.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {s.meth_of.class_of} SUBSETEQ ("
-	   "  SELECT sum(set{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) AND"
-	   "  au.auth_type = 'SELECT'))",
+	   " {[s].[meth_of].[class_of].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[s].[meth_of].[class_of]} SUBSETEQ ("
+	   "  SELECT sum(set{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) AND"
+	   "  [au].[auth_type] = 'SELECT'))",
 	   CT_METHSIG_NAME,
 	   CT_METHARG_NAME,
 	   CT_DOMAIN_NAME,
@@ -3738,25 +3819,25 @@ boot_define_view_method_argument_set_domain (void)
     }
 
   sprintf (stmt,
-	   "SELECT s.meth_of.meth_name, s.meth_of.class_of.class_name,"
-	   " CASE WHEN s.meth_of.meth_type = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
-	   " a.index_of, et.type_name, e.prec, e.scale, e.code_set,"
-	   " e.class_of.class_name"
-	   " FROM %s s, %s a, %s d, TABLE(d.set_domains) AS t(e), %s et"
-	   " WHERE a.meth_sig_of = s AND d.object_of = a AND e.data_type = et.type_id AND"
+	   "SELECT [s].[meth_of].[meth_name], [s].[meth_of].[class_of].[class_name],"
+	   " CASE WHEN [s].[meth_of].[meth_type] = 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
+	   " [a].[index_of], [et].[type_name], [e].[prec], [e].[scale], [e].[code_set],"
+	   " [e].[class_of].[class_name]"
+	   " FROM [%s] [s], [%s] [a], [%s] [d], TABLE([d].[set_domains]) AS [t]([e]), [%s] [et]"
+	   " WHERE [a].[meth_sig_of] = [s] AND [d].[object_of] = [a] AND [e].[data_type] = [et].[type_id] AND"
 	   " (CURRENT_USER = 'DBA' OR"
-	   " {s.meth_of.class_of.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {s.meth_of.class_of} SUBSETEQ ("
-	   "  SELECT sum(set{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) AND"
-	   "  au.auth_type = 'SELECT'))",
+	   " {[s].[meth_of].[class_of].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[s].[meth_of].[class_of]} SUBSETEQ ("
+	   "  SELECT sum(set{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) AND"
+	   "  [au].[auth_type] = 'SELECT'))",
 	   CT_METHSIG_NAME,
 	   CT_METHARG_NAME,
 	   CT_DOMAIN_NAME,
@@ -3821,21 +3902,21 @@ boot_define_view_method_file (void)
     }
 
   sprintf (stmt,
-	   "SELECT f.class_of.class_name, f.path_name, f.from_class_of.class_name"
-	   " FROM %s f"
+	   "SELECT [f].[class_of].[class_name], [f].[path_name], [f].[from_class_of].[class_name]"
+	   " FROM [%s] [f]"
 	   " WHERE CURRENT_USER = 'DBA' OR"
-	   " {f.class_of.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {f.class_of} SUBSETEQ ("
-	   "  SELECT SUM(SET{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) AND"
-	   "  au.auth_type = 'SELECT')",
+	   " {[f].[class_of].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[f].[class_of]} SUBSETEQ ("
+	   "  SELECT SUM(SET{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) AND"
+	   "  [au].[auth_type] = 'SELECT')",
 	   CT_METHFILE_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
 
@@ -3901,25 +3982,25 @@ boot_define_view_index (void)
     }
 
   sprintf (stmt,
-	   "SELECT i.index_name, CASE WHEN i.is_unique = 0 THEN 'NO' ELSE 'YES' END,"
-	   " CASE WHEN i.is_reverse = 0 THEN 'NO' ELSE 'YES' END,"
-	   " i.class_of.class_name, i.key_count,"
-	   " CASE WHEN i.is_primary_key = 0 THEN 'NO' ELSE 'YES' END,"
-	   " CASE WHEN i.is_foreign_key = 0 THEN 'NO' ELSE 'YES' END"
-	   " FROM %s i"
+	   "SELECT [i].[index_name], CASE WHEN [i].[is_unique] = 0 THEN 'NO' ELSE 'YES' END,"
+	   " CASE WHEN [i].[is_reverse] = 0 THEN 'NO' ELSE 'YES' END,"
+	   " [i].[class_of].[class_name], [i].[key_count],"
+	   " CASE WHEN [i].[is_primary_key] = 0 THEN 'NO' ELSE 'YES' END,"
+	   " CASE WHEN [i].[is_foreign_key] = 0 THEN 'NO' ELSE 'YES' END"
+	   " FROM [%s] [i]"
 	   " WHERE CURRENT_USER = 'DBA' OR"
-	   " {i.class_of.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {i.class_of} SUBSETEQ ("
-	   "  SELECT SUM(SET{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) AND"
-	   "  au.auth_type = 'SELECT')",
+	   " {[i].[class_of].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[i].[class_of]} SUBSETEQ ("
+	   "  SELECT SUM(SET{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) AND"
+	   "  [au].[auth_type] = 'SELECT')",
 	   CT_INDEX_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
 
@@ -3984,26 +4065,26 @@ boot_define_view_index_key (void)
     }
 
   sprintf (stmt,
-	   "SELECT k.index_of.index_name, k.index_of.class_of.class_name,"
-	   " k.key_attr_name, k.key_order,"
-	   " CASE k.asc_desc WHEN 0 THEN 'ASC'"
+	   "SELECT [k].[index_of].[index_name], [k].[index_of].[class_of].[class_name],"
+	   " [k].[key_attr_name], [k].[key_order],"
+	   " CASE [k].[asc_desc] WHEN 0 THEN 'ASC'"
 	   " WHEN 1 THEN 'DESC'"
 	   " ELSE 'UNKN' END"
-	   ", k.key_prefix_length"
-	   " FROM %s k"
+	   ", [k].[key_prefix_length]"
+	   " FROM [%s] [k]"
 	   " WHERE CURRENT_USER = 'DBA' OR"
-	   " {k.index_of.class_of.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {k.index_of.class_of} SUBSETEQ ("
-	   "  SELECT SUM(SET{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) AND"
-	   "  au.auth_type = 'SELECT')",
+	   " {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[k].[index_of].[class_of]} SUBSETEQ ("
+	   "  SELECT SUM(SET{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) AND"
+	   "  [au].[auth_type] = 'SELECT')",
 	   CT_INDEXKEY_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
 
@@ -4067,23 +4148,23 @@ boot_define_view_authorization (void)
     }
 
   sprintf (stmt,
-	   "SELECT CAST(a.grantor.name AS VARCHAR(255)),"
-	   " CAST(a.grantee.name AS VARCHAR(255)), a.class_of.class_name, a.auth_type,"
-	   " CASE WHEN a.is_grantable = 0 THEN 'NO' ELSE 'YES' END"
-	   " FROM %s a"
+	   "SELECT CAST([a].[grantor].[name] AS VARCHAR(255)),"
+	   " CAST([a].[grantee].[name] AS VARCHAR(255)), [a].[class_of].[class_name], [a].[auth_type],"
+	   " CASE WHEN [a].[is_grantable] = 0 THEN 'NO' ELSE 'YES' END"
+	   " FROM [%s] [a]"
 	   " WHERE CURRENT_USER = 'DBA' OR"
-	   " {a.class_of.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {a.class_of} SUBSETEQ ("
-	   "  SELECT SUM(SET{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) AND"
-	   "  au.auth_type = 'SELECT')",
+	   " {[a].[class_of].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[a].[class_of]} SUBSETEQ ("
+	   "  SELECT SUM(SET{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) AND"
+	   "  [au].[auth_type] = 'SELECT')",
 	   CT_CLASSAUTH_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
 
@@ -4148,26 +4229,26 @@ boot_define_view_trigger (void)
     }
 
   sprintf (stmt,
-	   "SELECT CAST(t.name AS VARCHAR(255)), c.class_name,"
-	   " CAST(t.target_attribute AS VARCHAR(255)),"
-	   " CASE t.target_class_attribute WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
-	   " t.action_type, t.action_time"
-	   " FROM %s t LEFT OUTER JOIN %s c ON t.target_class = c.class_of"
+	   "SELECT CAST([t].[name] AS VARCHAR(255)), [c].[class_name],"
+	   " CAST([t].[target_attribute] AS VARCHAR(255)),"
+	   " CASE [t].[target_class_attribute] WHEN 0 THEN 'INSTANCE' ELSE 'CLASS' END,"
+	   " [t].[action_type], [t].[action_time]"
+	   " FROM [%s] [t] LEFT OUTER JOIN [%s] [c] ON [t].[target_class] = [c].[class_of]"
 	   " WHERE CURRENT_USER = 'DBA' OR"
-	   " {t.owner.name} SUBSETEQ (SELECT SET{CURRENT_USER} +"
-	   " COALESCE(SUM(SET{t.g.name}), SET{})"
-	   " FROM %s u, TABLE(groups) AS t(g)"
-	   " WHERE u.name = CURRENT_USER ) OR"
-	   " {c} SUBSETEQ (SELECT SUM(SET{au.class_of})"
-	   " FROM %s au"
-	   " WHERE {au.grantee.name} SUBSETEQ"
+	   " {[t].[owner].[name]} SUBSETEQ (SELECT SET{CURRENT_USER} +"
+	   " COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   " FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   " WHERE [u].[name] = CURRENT_USER ) OR"
+	   " {[c]} SUBSETEQ (SELECT SUM(SET{[au].[class_of]})"
+	   " FROM [%s] [au]"
+	   " WHERE {[au].[grantee].[name]} SUBSETEQ"
 	   " (SELECT SET{CURRENT_USER} +"
-	   " COALESCE(SUM(SET{t.g.name}), SET{})"
-	   " FROM %s u, TABLE(groups) AS t(g)"
-	   " WHERE u.name = CURRENT_USER) AND"
-	   " au.auth_type = 'SELECT')",
+	   " COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   " FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   " WHERE [u].[name] = CURRENT_USER) AND"
+	   " [au].[auth_type] = 'SELECT')",
 	   TR_CLASS_NAME,
-           CT_CLASS_NAME,
+	   CT_CLASS_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
@@ -4231,27 +4312,27 @@ boot_define_view_partition (void)
     }
 
   sprintf (stmt,
-	   "SELECT p.class_of.class_name AS class_name, p.pname AS partition_name,"
-	   " p.class_of.class_name + '__p__' + p.pname AS partition_class_name,"
-	   " CASE WHEN p.ptype = 0 THEN 'HASH'"
-	   " WHEN p.ptype = 1 THEN 'RANGE' ELSE 'LIST' END AS partition_type,"
-	   " TRIM(SUBSTRING(pi.pexpr FROM 8 FOR (POSITION(' FROM ' IN pi.pexpr)-8)))"
-	   " AS partition_expression, p.pvalues AS partition_values"
-	   " FROM %s p, (select * from %s sp where sp.class_of = "
-	   " p.class_of AND sp.pname is null) pi"
-	   " WHERE p.pname is not null AND"
+	   "SELECT [p].[class_of].[class_name] AS [class_name], [p].[pname] AS [partition_name],"
+	   " [p].[class_of].[class_name] + '__p__' + [p].[pname] AS [partition_class_name],"
+	   " CASE WHEN [p].[ptype] = 0 THEN 'HASH'"
+	   " WHEN [p].[ptype] = 1 THEN 'RANGE' ELSE 'LIST' END AS [partition_type],"
+	   " TRIM(SUBSTRING([pi].[pexpr] FROM 8 FOR (POSITION(' FROM ' IN [pi].[pexpr])-8)))"
+	   " AS [partition_expression], [p].[pvalues] AS [partition_values]"
+	   " FROM [%s] [p], (select * from [%s] [sp] where [sp].[class_of] = "
+	   " [p].[class_of] AND [sp].[pname] is null) [pi]"
+	   " WHERE [p].[pname] is not null AND"
 	   " (CURRENT_USER = 'DBA' OR"
-	   " {p.class_of.owner.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) OR"
-	   " {p.class_of} SUBSETEQ (SELECT SUM(SET{au.class_of})"
-	   "  FROM %s au"
-	   "  WHERE {au.grantee.name} SUBSETEQ ("
-	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{t.g.name}), SET{})"
-	   "  FROM %s u, TABLE(groups) AS t(g)"
-	   "  WHERE u.name = CURRENT_USER) AND"
-	   "  au.auth_type = 'SELECT'))",
+	   " {[p].[class_of].[owner].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) OR"
+	   " {[p].[class_of]} SUBSETEQ (SELECT SUM(SET{[au].[class_of]})"
+	   "  FROM [%s] [au]"
+	   "  WHERE {[au].[grantee].[name]} SUBSETEQ ("
+	   "  SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
+	   "  FROM [%s] [u], TABLE([groups]) AS [t]([g])"
+	   "  WHERE [u].[name] = CURRENT_USER) AND"
+	   "  [au].[auth_type] = 'SELECT'))",
 	   CT_PARTITION_NAME,
 	   CT_PARTITION_NAME,
 	   AU_USER_CLASS_NAME, CT_CLASSAUTH_NAME, AU_USER_CLASS_NAME);
@@ -4318,22 +4399,22 @@ boot_define_view_stored_procedure (void)
     }
 
   sprintf (stmt,
-	   "SELECT sp.sp_name,"
-	   " CASE sp.sp_type"
+	   "SELECT [sp].[sp_name],"
+	   " CASE [sp].[sp_type]"
 	   "   WHEN 1 THEN 'PROCEDURE'"
 	   "   ELSE 'FUNCTION'"
 	   " END,"
 	   " CASE"
-	   "   WHEN sp.return_type = 0 THEN 'void'"
-	   "   WHEN sp.return_type = 28 THEN 'CURSOR'"
-	   "   ELSE (SELECT dt.type_name FROM %s dt WHERE sp.return_type = dt.type_id)"
+	   "   WHEN [sp].[return_type] = 0 THEN 'void'"
+	   "   WHEN [sp].[return_type] = 28 THEN 'CURSOR'"
+	   "   ELSE (SELECT [dt].[type_name] FROM [%s] [dt] WHERE [sp].[return_type] = [dt].[type_id])"
 	   " END,"
-	   " sp.arg_count,"
-	   " CASE sp.lang"
+	   " [sp].[arg_count],"
+	   " CASE [sp].[lang]"
 	   "   WHEN 1 THEN 'JAVA'"
 	   "   ELSE '' END,"
-	   " sp.target, sp.owner.name"
-	   " FROM %s sp", CT_DATATYPE_NAME, CT_STORED_PROC_NAME);
+	   " [sp].[target], [sp].[owner].[name]"
+	   " FROM [%s] [sp]", CT_DATATYPE_NAME, CT_STORED_PROC_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
   if (error_code != NO_ERROR)
@@ -4395,18 +4476,18 @@ boot_define_view_stored_procedure_arguments (void)
     }
 
   sprintf (stmt,
-	   "SELECT sp.sp_name, sp.index_of, sp.arg_name,"
-	   " CASE sp.data_type"
+	   "SELECT [sp].[sp_name], [sp].[index_of], [sp].[arg_name],"
+	   " CASE [sp].[data_type]"
 	   "   WHEN 28 THEN 'CURSOR'"
-	   "   ELSE (SELECT dt.type_name FROM %s dt WHERE sp.data_type = dt.type_id)"
+	   "   ELSE (SELECT [dt].[type_name] FROM [%s] [dt] WHERE [sp].[data_type] = [dt].[type_id])"
 	   " END,"
 	   " CASE"
-	   "   WHEN sp.mode = 1 THEN 'IN'"
-	   "   WHEN sp.mode = 2 THEN 'OUT'"
+	   "   WHEN [sp].[mode] = 1 THEN 'IN'"
+	   "   WHEN [sp].[mode] = 2 THEN 'OUT'"
 	   "   ELSE 'INOUT'"
 	   " END"
-	   " FROM %s sp"
-	   " ORDER BY sp.sp_name, sp.index_of",
+	   " FROM [%s] [sp]"
+	   " ORDER BY [sp].[sp_name], [sp].[index_of]",
 	   CT_DATATYPE_NAME, CT_STORED_PROC_ARGS_NAME);
 
   error_code = db_add_query_spec (class_mop, stmt);
@@ -4680,4 +4761,24 @@ boot_get_ha_server_state (void)
 {
   return boot_Server_credential.ha_server_state;
 }
+
+/*
+ * boot_get_lob_path - return the lob path which is recevied from the server
+ */
+const char *
+boot_get_lob_path (void)
+{
+  return boot_Server_credential.lob_path;
+}
 #endif /* CS_MODE */
+
+/*
+ * boot_clear_host_connected () -
+ */
+void
+boot_clear_host_connected ()
+{
+#if defined(CS_MODE)
+  boot_Host_connected[0] = '\0';
+#endif
+}

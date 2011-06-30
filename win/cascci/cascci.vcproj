@@ -351,6 +351,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\cci\cci_t_lob.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\cci\cci_t_set.c"
 					>
 				</File>

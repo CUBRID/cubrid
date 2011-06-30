@@ -95,6 +95,9 @@ extern int smt_set_attribute_default (SM_TEMPLATE * template_,
 				      const char *name,
 				      int class_attribute, DB_VALUE * value);
 
+static void smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att,
+						  DB_VALUE * new_orig_value);
+
 extern int smt_add_constraint (SM_TEMPLATE * template_,
 			       DB_CONSTRAINT_TYPE constraint_type,
 			       const char *constraint_name,
@@ -194,11 +197,21 @@ extern int smt_delete_class_resolution (SM_TEMPLATE * template_,
 extern int smt_add_query_spec (SM_TEMPLATE * template_,
 			       const char *specification);
 extern int smt_drop_query_spec (SM_TEMPLATE * template_, const int index);
-#if defined(ENABLE_UNUSED_FUNCTION)
 extern int smt_reset_query_spec (SM_TEMPLATE * template_);
-#endif
 extern int smt_change_query_spec (SM_TEMPLATE * def, const char *query,
 				  const int index);
+extern int smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
+						const char *name,
+						const char *new_name,
+						const char *new_domain_string,
+						DB_DOMAIN * new_domain,
+						const SM_NAME_SPACE
+						name_space,
+						DB_VALUE * new_default_value,
+						const bool change_first,
+						const char
+						*change_after_attribute,
+						SM_ATTRIBUTE ** found_att);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void smt_downcase_all_class_info (void);

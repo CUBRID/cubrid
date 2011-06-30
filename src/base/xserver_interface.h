@@ -41,7 +41,7 @@
 #include "perf_monitor.h"
 #include "query_list.h"
 #include "file_io.h"
-#include "thread_impl.h"
+#include "thread.h"
 #include "replication.h"
 
 extern int
@@ -67,10 +67,12 @@ extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path,
 			 bool delete_unneeded_logarchives,
 			 const char *backup_verbose_file, int num_threads,
 			 FILEIO_ZIP_METHOD zip_method,
-			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
-			 PAGEID safe_pageid);
+			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog);
+extern int xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag,
+				OID * oid);
 extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p,
-				       int check_flag);
+				       int check_flag, OID * oids,
+				       int num_oids);
 extern VOLID xboot_add_volume_extension (THREAD_ENTRY * thread_p,
 					 const char *ext_path,
 					 const char *ext_name,
@@ -283,7 +285,9 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid,
 				int cache_attr_id, const char *fk_name);
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
-					int readonly_purpose, DB_VALUE * key,
+					int readonly_purpose,
+					SCAN_OPERATION_TYPE scan_op_type,
+					DB_VALUE * key,
 					OID * class_oid, OID * oid,
 					bool is_all_class_srch);
 extern int xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf,
@@ -368,11 +372,7 @@ extern void xmnt_server_stop_stats (THREAD_ENTRY * thread_p);
 extern void xmnt_server_copy_stats (THREAD_ENTRY * thread_p,
 				    MNT_SERVER_EXEC_STATS * to_stats);
 extern void xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
-					   MNT_SERVER_EXEC_GLOBAL_STATS *
-					   to_stats);
-extern void xmnt_server_reset_stats (THREAD_ENTRY * thread_p);
-extern void xmnt_server_reset_global_stats (void);
-
+					   MNT_SERVER_EXEC_STATS * to_stats);
 /* catalog manager interface */
 
 extern int xcatalog_is_acceptable_new_representation (THREAD_ENTRY * thread_p,
@@ -380,10 +380,28 @@ extern int xcatalog_is_acceptable_new_representation (THREAD_ENTRY * thread_p,
 						      HFID * hfid,
 						      int *can_accept);
 
+extern int xacl_reload (THREAD_ENTRY * thread_p);
+extern void xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp);
 
 extern int xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p,
 				       char **buffer_p, int *size_p);
+
+extern LOB_LOCATOR_STATE xlog_find_lob_locator (THREAD_ENTRY * thread_p,
+						const char *locator,
+						char *real_locator);
+extern int xlog_add_lob_locator (THREAD_ENTRY * thread_p,
+				 const char *locator,
+				 LOB_LOCATOR_STATE state);
+extern int xlog_change_state_of_locator (THREAD_ENTRY * thread_p,
+					 const char *locator,
+					 const char *new_locator,
+					 LOB_LOCATOR_STATE state);
+extern int xlog_drop_lob_locator (THREAD_ENTRY * thread_p,
+				  const char *locator);
+extern void log_clear_lob_locator_list (THREAD_ENTRY * thread_p,
+					LOG_TDES * tdes,
+					bool at_commit, LOG_LSA * savept_lsa);
 extern int
 xboot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes,
 		  int space_to_process,
@@ -401,4 +419,41 @@ extern int xboot_heap_compact (THREAD_ENTRY * thread_p, OID * class_oid);
 extern int xboot_compact_start (THREAD_ENTRY * thread_p);
 extern int xboot_compact_stop (THREAD_ENTRY * thread_p);
 
+extern int xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p,
+					      OID * class_oid, int att_id);
+
+extern int xsession_create_new (THREAD_ENTRY * thread_p,
+				SESSION_ID * session_id);
+extern int xsession_check_session (THREAD_ENTRY * thread_p,
+				   const SESSION_ID session_id);
+
+extern int xsession_end_session (THREAD_ENTRY * thread,
+				 const SESSION_ID session_id);
+
+extern int xsession_set_row_count (THREAD_ENTRY * thread_p, int row_count);
+extern int xsession_get_row_count (THREAD_ENTRY * thread_p, int *row_count);
+extern int xsession_set_last_insert_id (THREAD_ENTRY * thread_p,
+					const DB_VALUE * value);
+extern int xsession_get_last_insert_id (THREAD_ENTRY * thread_p,
+					DB_VALUE * value);
+
+extern int xsession_create_prepared_statement (THREAD_ENTRY * thread_p,
+					       OID user, char *name,
+					       char *alias_print, char *info,
+					       int info_len);
+extern int xsession_get_prepared_statement (THREAD_ENTRY * thread_p,
+					    const char *name, char **info,
+					    int *info_len, XASL_ID * xasl_id);
+extern int xsession_delete_prepared_statement (THREAD_ENTRY * thread_p,
+					       const char *name);
+
+extern int xsession_set_session_variables (THREAD_ENTRY * thread_p,
+					   DB_VALUE * values,
+					   const int count);
+extern int xsession_get_session_variable (THREAD_ENTRY * thread_p,
+					  const DB_VALUE * name,
+					  DB_VALUE * value);
+extern int xsession_drop_session_variables (THREAD_ENTRY * thread_p,
+					    DB_VALUE * values,
+					    const int count);
 #endif /* _XSERVER_INTERFACE_H_ */

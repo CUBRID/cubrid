@@ -141,6 +141,17 @@
 #define CAS_LOG_RESET_REOPEN          0x01
 #define CAS_LOG_RESET_REMOVE            0x02
 
+#define IP_BYTE_COUNT           5
+#define ACL_MAX_ITEM_COUNT      50
+#define ACL_MAX_IP_COUNT        100
+#define ACL_MAX_DBNAME_LENGTH	32
+#define ACL_MAX_DBUSER_LENGTH	32
+
+#if defined (WINDOWS)
+#define MAKE_ACL_SEM_NAME(BUF, BROKER_NAME)  \
+  snprintf(BUF, BROKER_NAME_LEN, "%s_acl_sem", BROKER_NAME)
+#endif
+
 typedef enum t_con_status T_CON_STATUS;
 enum t_con_status
 {
@@ -153,6 +164,22 @@ enum t_con_status
 #if defined(WINDOWS)
 typedef INT64 int64_t;
 #endif
+
+typedef struct ip_info IP_INFO;
+struct ip_info
+{
+  unsigned char address_list[ACL_MAX_IP_COUNT * IP_BYTE_COUNT];
+  int num_list;
+};
+
+typedef struct access_list ACCESS_INFO;
+struct access_list
+{
+  char dbname[ACL_MAX_DBNAME_LENGTH];
+  char dbuser[ACL_MAX_DBUSER_LENGTH];
+  char ip_filename[256];
+  IP_INFO ip_info;
+};
 
 /* NOTE: Be sure not to include any pointer type in shared memory segment
  * since the processes will not care where the shared memory segment is
@@ -179,6 +206,7 @@ struct t_appl_server_info
   char service_ready_flag;
   char con_status;
   char cur_keep_con;
+  char cur_sql_log_mode;
   char cur_sql_log2;
   char cur_statement_pooling;
 #if defined(WINDOWS)
@@ -195,9 +223,6 @@ struct t_appl_server_info
   int pdh_workset;
   float pdh_pct_cpu;
   int cpu_time;
-  int glo_read_size;
-  int glo_write_size;
-  int glo_flag;
 #endif
   char clt_appl_name[APPL_NAME_LENGTH];
   char clt_req_path_info[APPL_NAME_LENGTH];
@@ -218,9 +243,11 @@ struct t_appl_server_info
   INT64 num_long_queries;
   INT64 num_long_transactions;
   INT64 num_error_queries;
+  INT64 num_interrupts;
   char auto_commit_mode;
   char database_name[32];
   char database_host[MAXHOSTNAMELEN + 1];
+  char cci_default_autocommit;
   time_t last_connect_time;
 };
 
@@ -240,6 +267,8 @@ struct t_shm_appl_server
   char jdbc_cache_only_hint;
   char cci_pconnect;
   char select_auto_commit;
+  char cci_default_autocommit;
+  bool access_control;
   int jdbc_cache_life_time;
 
 #if defined(WINDOWS)
@@ -250,6 +279,7 @@ struct t_shm_appl_server
   char err_log_dir[PATH_MAX];
   char broker_name[BROKER_NAME_LEN];
   char appl_server_name[APPL_SERVER_NAME_MAX_SIZE];
+  char preferred_hosts[LINE_MAX];
 #ifdef USE_MUTEX
   int lock;
 #endif				/* USE_MUTEX */
@@ -263,6 +293,15 @@ struct t_shm_appl_server
   int sql_log_max_size;
   int long_query_time;		/* msec */
   int long_transaction_time;	/* msec */
+  int max_prepared_stmt_count;
+  int num_access_info;
+  int acl_chn;
+#if !defined(WINDOWS)
+  sem_t acl_sem;
+#endif
+
+  ACCESS_INFO access_info[ACL_MAX_ITEM_COUNT];
+
   INT64 dummy1;
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
   INT64 dummy2;
@@ -283,6 +322,8 @@ struct t_shm_broker
   uid_t owner_uid;
 #endif
   int num_broker;		/* number of broker */
+  char access_control_file[PATH_MAX];
+  bool access_control;
   T_BROKER_INFO br_info[1];
 };
 
@@ -302,10 +343,10 @@ int uw_shm_get_magic_number ();
 #endif
 
 #if defined(WINDOWS)
-int uw_sem_init (char **sem_name, char *br_name, int as_index);
-int uw_sem_wait (char **sem_name);
-int uw_sem_post (char **sem_name);
-int uw_sem_destroy (char **sem_name);
+int uw_sem_init (char *sem_name);
+int uw_sem_wait (char *sem_name);
+int uw_sem_post (char *sem_name);
+int uw_sem_destroy (char *sem_name);
 #else
 int uw_sem_init (sem_t * sem_t);
 int uw_sem_wait (sem_t * sem_t);

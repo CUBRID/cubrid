@@ -45,21 +45,17 @@
 #include "object_domain.h"
 #include "set_object.h"
 #if defined (SERVER_MODE)
-#include "thread_impl.h"
+#include "thread.h"
 #include "connection_error.h"
 #endif
 
 
 #if !defined (SERVER_MODE)
-#undef MUTEX_INIT
-#undef MUTEX_DESTROY
-#undef MUTEX_LOCK
-#undef MUTEX_UNLOCK
-
-#define MUTEX_INIT(a)
-#define MUTEX_DESTROY(a)
-#define MUTEX_LOCK(a, b)
-#define MUTEX_UNLOCK(a)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)	0
+#define pthread_mutex_unlock(a)
+static int rv;
 #endif
 
 
@@ -77,7 +73,7 @@
  */
 static AREA *area_List = NULL;
 #if defined (SERVER_MODE)
-MUTEX_T area_List_lock = MUTEX_INITIALIZER;
+pthread_mutex_t area_List_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 /*
@@ -148,12 +144,7 @@ area_final (void)
   area_List = NULL;
 
   tp_Domain_area = Set_Ref_Area = Set_Obj_Area = NULL;
-#if defined(WINDOWS) && defined(SERVER_MODE)
-  if (area_List_lock)
-#endif
-    {
-      MUTEX_DESTROY (area_List_lock);
-    }
+  pthread_mutex_destroy (&area_List_lock);
 }
 
 /*
@@ -288,10 +279,10 @@ area_create (const char *name, size_t element_size, size_t alloc_count,
   area->failure_function = ws_abort_transaction;
 #endif
 
-  MUTEX_LOCK (rv, area_List_lock);
+  rv = pthread_mutex_lock (&area_List_lock);
   area->next = area_List;
   area_List = area;
-  MUTEX_UNLOCK (area_List_lock);
+  pthread_mutex_unlock (&area_List_lock);
 
   return (area);
 
@@ -352,7 +343,7 @@ area_destroy (AREA * area)
 
   assert (area != NULL);
 
-  MUTEX_LOCK (rv, area_List_lock);
+  rv = pthread_mutex_lock (&area_List_lock);
 
   for (prev = NULL, a = area_List; a != NULL && a != area; a = a->next)
     {
@@ -371,7 +362,7 @@ area_destroy (AREA * area)
 	}
     }
 
-  MUTEX_UNLOCK (area_List_lock);
+  pthread_mutex_unlock (&area_List_lock);
 
   area_flush (area);
   if (area->name != NULL)
@@ -873,12 +864,12 @@ area_dump (FILE * fp)
       fp = stdout;
     }
 
-  MUTEX_LOCK (rv, area_List_lock);
+  rv = pthread_mutex_lock (&area_List_lock);
 
   for (area = area_List; area != NULL; area = area->next)
     {
       area_info (area, fp);
     }
 
-  MUTEX_UNLOCK (area_List_lock);
+  pthread_mutex_unlock (&area_List_lock);
 }

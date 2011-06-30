@@ -281,6 +281,8 @@ obj_print_convert_strlist (STRLIST * str_list)
   const char **array;
   int count, i;
 
+  assert (str_list != NULL);
+
   array = NULL;
   count = ws_list_length ((DB_LIST *) str_list);
 
@@ -393,6 +395,8 @@ obj_print_describe_domain (PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_DOUBLE:
 	case DB_TYPE_ELO:
+	case DB_TYPE_BLOB:
+	case DB_TYPE_CLOB:
 	case DB_TYPE_TIME:
 	case DB_TYPE_UTIME:
 	case DB_TYPE_DATETIME:
@@ -1166,7 +1170,7 @@ obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
 {
   SM_ATTRIBUTE *attribute_p;
   STRLIST *strings;
-  const char **array;
+  const char **array = NULL;
   TR_SCHEMA_CACHE *cache;
   int i;
 
@@ -1210,7 +1214,10 @@ obj_print_describe_class_triggers (PARSER_CONTEXT * parser,
 	}
     }
 
-  array = obj_print_convert_strlist (strings);
+  if (strings != NULL)
+    {
+      array = obj_print_convert_strlist (strings);
+    }
   return (array);
 }
 
@@ -1768,7 +1775,7 @@ TRIGGER_HELP *
 help_trigger (DB_OBJECT * trobj)
 {
   TRIGGER_HELP *help;
-  char *condition, *action, *classname;
+  char *condition = NULL, *action = NULL, *classname;
   TR_TRIGGER *trigger;
   char buffer[(SM_MAX_IDENTIFIER_LENGTH * 2) + 32];
   char temp_buffer[64];
@@ -1783,78 +1790,89 @@ help_trigger (DB_OBJECT * trobj)
      expressions translated into a simple string */
   if (db_trigger_condition (trobj, &condition) != NO_ERROR)
     {
-      return NULL;
+      goto exit_on_error;
     }
   if (db_trigger_action (trobj, &action) != NO_ERROR)
     {
-      return NULL;
+      goto exit_on_error;
     }
 
   help = obj_print_make_trigger_help ();
-  if (help != NULL)
+  if (help == NULL)
     {
+      goto exit_on_error;
+    }
 
-      /* copy these */
-      help->name = obj_print_copy_string (trigger->name);
-      help->attribute = obj_print_copy_string (trigger->attribute);
+  /* copy these */
+  help->name = obj_print_copy_string (trigger->name);
+  help->attribute = obj_print_copy_string (trigger->attribute);
 
-      /* these are already copies */
-      help->condition = condition;
-      help->action = action;
+  /* these are already copies */
+  help->condition = condition;
+  help->action = action;
 
-      /* these are constant strings that don't need to ever change */
-      help->event = tr_event_as_string (trigger->event);
-      help->condition_time = obj_print_trigger_condition_time (trigger);
-      help->action_time = obj_print_trigger_action_time (trigger);
+  /* these are constant strings that don't need to ever change */
+  help->event = tr_event_as_string (trigger->event);
+  help->condition_time = obj_print_trigger_condition_time (trigger);
+  help->action_time = obj_print_trigger_action_time (trigger);
 
-      /* only show status if its inactive */
-      if (trigger->status != TR_STATUS_ACTIVE)
+  /* only show status if its inactive */
+  if (trigger->status != TR_STATUS_ACTIVE)
+    {
+      help->status = tr_status_as_string (trigger->status);
+    }
+
+  /* if its 0, leave it out */
+  if (trigger->priority != 0.0)
+    {
+      sprintf (temp_buffer, "%f", trigger->priority);
+      help->priority = obj_print_copy_string (temp_buffer);
+    }
+
+  if (trigger->class_mop != NULL)
+    {
+      classname = (char *) sm_class_name (trigger->class_mop);
+      if (classname != NULL)
 	{
-	  help->status = tr_status_as_string (trigger->status);
-	}
-
-      /* if its 0, leave it out */
-      if (trigger->priority != 0.0)
-	{
-	  sprintf (temp_buffer, "%f", trigger->priority);
-	  help->priority = obj_print_copy_string (temp_buffer);
-	}
-
-      if (trigger->class_mop != NULL)
-	{
-	  classname = (char *) sm_class_name (trigger->class_mop);
-	  if (classname != NULL)
-	    {
-	      help->class_name = obj_print_copy_string ((char *) classname);
-	    }
-	  else
-	    {
-	      help->class_name =
-		obj_print_copy_string ("*** deleted class ***");
-	    }
-
-	  /* format the full event specification so csql can display it
-	     without being dependent on syntax */
-	  if (help->attribute != NULL)
-	    {
-	      sprintf (buffer, "%s ON %s(%s)", help->event, help->class_name,
-		       help->attribute);
-	    }
-	  else
-	    {
-	      sprintf (buffer, "%s ON %s", help->event, help->class_name);
-	    }
-	  help->full_event = obj_print_copy_string (buffer);
+	  help->class_name = obj_print_copy_string ((char *) classname);
 	}
       else
 	{
-	  /* just make a copy of this so csql can simply use it without
-	     thinking */
-	  help->full_event = obj_print_copy_string ((char *) help->event);
+	  help->class_name = obj_print_copy_string ("*** deleted class ***");
 	}
+
+      /* format the full event specification so csql can display it
+         without being dependent on syntax */
+      if (help->attribute != NULL)
+	{
+	  sprintf (buffer, "%s ON %s(%s)", help->event, help->class_name,
+		   help->attribute);
+	}
+      else
+	{
+	  sprintf (buffer, "%s ON %s", help->event, help->class_name);
+	}
+      help->full_event = obj_print_copy_string (buffer);
+    }
+  else
+    {
+      /* just make a copy of this so csql can simply use it without
+         thinking */
+      help->full_event = obj_print_copy_string ((char *) help->event);
     }
 
   return (help);
+
+exit_on_error:
+  if (condition != NULL)
+    {
+      ws_free_string (condition);
+    }
+  if (action != NULL)
+    {
+      ws_free_string (action);
+    }
+  return NULL;
 }
 
 /*
@@ -1926,6 +1944,8 @@ help_trigger_names (char ***names_ptr)
 		    {
 		      names[i] = obj_print_copy_string ((char *) name);
 		      i++;
+
+		      ws_free_string (name);
 		    }
 		}
 	      names[i] = NULL;
@@ -3424,8 +3444,8 @@ describe_midxkey (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
   prev_i_ptr = NULL;
   for (i = 0; i < end; i++)
     {
-      set_midxkey_get_element_nocopy (midxkey, i, &value, &prev_i_index,
-				      &prev_i_ptr);
+      pr_midxkey_get_element_nocopy (midxkey, i, &value, &prev_i_index,
+				     &prev_i_ptr);
 
       buffer = describe_value (parser, buffer, &value);
 
@@ -3779,35 +3799,21 @@ describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 	  break;
 
 	case DB_TYPE_ELO:
+	case DB_TYPE_BLOB:
+	case DB_TYPE_CLOB:
 	  elo = db_get_elo (value);
 	  if (elo != NULL)
 	    {
-	      if (elo->pathname != NULL)
+	      if (elo->type == ELO_FBO)
 		{
-		  buffer =
-		    pt_append_nulstring (parser, buffer, elo->pathname);
+		  assert (elo->locator != NULL);
+		  buffer = pt_append_nulstring (parser, buffer, elo->locator);
 		}
-	      else if (elo->type == ELO_LO)
+	      else		/* ELO_LO */
 		{
-		  sprintf (line, "%d", (int) elo->loid.vfid.volid);
-		  buffer = pt_append_nulstring (parser, buffer, line);
-		  buffer = pt_append_nulstring (parser, buffer, "|");
-		  sprintf (line, "%d", (int) elo->loid.vfid.fileid);
-		  buffer = pt_append_nulstring (parser, buffer, line);
-		  buffer = pt_append_nulstring (parser, buffer, "|");
-
-		  sprintf (line, "%d", (int) elo->loid.vpid.volid);
-		  buffer = pt_append_nulstring (parser, buffer, line);
-		  buffer = pt_append_nulstring (parser, buffer, "|");
-		  sprintf (line, "%d", (int) elo->loid.vpid.pageid);
-		  buffer = pt_append_nulstring (parser, buffer, line);
-
+		  /* should not happen for now */
+		  assert (0);
 		}
-	      else
-		{
-		  sprintf (line, "%p", elo);
-		}
-	      buffer = pt_append_nulstring (parser, buffer, line);
 	    }
 	  else
 	    {
@@ -3948,6 +3954,18 @@ describe_value (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
 
 	case DB_TYPE_ELO:
 	  buffer = pt_append_nulstring (parser, buffer, "ELO'");
+	  buffer = describe_data (parser, buffer, value);
+	  buffer = pt_append_nulstring (parser, buffer, "'");
+	  break;
+
+	case DB_TYPE_BLOB:
+	  buffer = pt_append_nulstring (parser, buffer, "BLOB'");
+	  buffer = describe_data (parser, buffer, value);
+	  buffer = pt_append_nulstring (parser, buffer, "'");
+	  break;
+
+	case DB_TYPE_CLOB:
+	  buffer = pt_append_nulstring (parser, buffer, "CLOB'");
 	  buffer = describe_data (parser, buffer, value);
 	  buffer = pt_append_nulstring (parser, buffer, "'");
 	  break;

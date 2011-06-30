@@ -28,3 +28,9 @@ rpm_DATA = rpm/cubrid.spec
 scriptsdir = ${datadir}/scripts
 scripts_SCRIPTS = scripts/check_reserved.sql
 
+hascriptsdir = ${datadir}/scripts/ha
+hascripts_SCRIPTS = scripts/ha/ha_make_slavedb.sh
+hascripts_DATA = scripts/ha/README
+
+hafuncdir = ${hascriptsdir}/functions
+hafunc_SCRIPTS = scripts/ha/functions/ha_repl_copylog.sh scripts/ha/functions/ha_repl_reset.sh scripts/ha/functions/ha_repl_resume.sh scripts/ha/functions/ha_repl_suspend.sh scripts/ha/functions/ha_set_apply_info.sh

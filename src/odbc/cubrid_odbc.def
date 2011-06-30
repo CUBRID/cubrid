@@ -1,7 +1,6 @@
-LIBRARY 	CUBRID_ODBC
+LIBRARY CUBRID_ODBC
 HEAPSIZE 10240,4096
 EXPORTS
-
 
 SQLBindCol @1
 SQLCancel @2
@@ -50,25 +49,22 @@ SQLSetDescField @44
 SQLSetDescRec @45
 SQLSetEnvAttr @46
 SQLSetStmtAttr @47
-ConfigDSN		@48
-ConfigDriver	@49
+ConfigDSN @48
+ConfigDriver @49
 SQLBindParameter @50
 SQLMoreResults @51
 SQLBulkOperations @52
 SQLSetPos @53
 
 ; Level 1,2
-; SQLBrowseConnect @50
-; SQLColumnPrivileges @51
-; SQLDescribeParam @52
-; SQLForeignKeys @53
-
-; SQLPrimaryKeys @55
-; SQLProcedureColumns @56
-; SQLProcedures @57
-
-; SQLTablePrivileges @59
- 
+; SQLBrowseConnect @54
+; SQLColumnPrivileges @55
+; SQLDescribeParam @56
+SQLForeignKeys @57
+SQLPrimaryKeys @58
+SQLProcedureColumns @59
+SQLProcedures @60
+SQLTablePrivileges @61
 
 
 ; Deprecated API

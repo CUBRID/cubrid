@@ -36,7 +36,7 @@
 #define SQL_LOG2_EXEC_BEGIN(SQL_LOG2_VALUE, STMT_ID)
 #define SQL_LOG2_EXEC_END(SQL_LOG2_VALUE, STMT_ID, RES)
 #define SQL_LOG2_COMPILE_BEGIN(SQL_LOG2_VALUE, SQL_STMT)
-#define SQL_LOG2_EXEC_APPEND(SQL_LOG2_VALUE, STMT_ID, RES, PLAN_FILE, HISTO_FILE)
+#define SQL_LOG2_EXEC_APPEND(SQL_LOG2_VALUE, STMT_ID, RES, PLAN_FILE)
 #else /* WINDOWS */
 #define SQL_LOG2_EXEC_BEGIN(SQL_LOG2_VALUE, STMT_ID)		\
 	do {							\
@@ -73,15 +73,11 @@
 	  }							\
 	} while (0)
 
-#define SQL_LOG2_EXEC_APPEND(SQL_LOG2_VALUE, STMT_ID, RES, PLAN_FILE, HISTO_FILE) \
+#define SQL_LOG2_EXEC_APPEND(SQL_LOG2_VALUE, STMT_ID, RES, PLAN_FILE) \
 	do {							\
 	  if (SQL_LOG2_VALUE) {					\
 	    sql_log2_write("execute %d", STMT_ID);		\
 	    sql_log2_append_file(PLAN_FILE);			\
-	    if ((SQL_LOG2_VALUE) & SQL_LOG2_HISTO) {		\
-	      sql_log2_append_file(HISTO_FILE);			\
-	      sql_log2_write("\n");				\
-	    }							\
 	    sql_log2_write("execute %d : %d", STMT_ID, RES);	\
 	  }							\
 	} while (0)

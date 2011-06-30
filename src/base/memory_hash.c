@@ -97,6 +97,7 @@ static unsigned int mht_2str_pseudo_key (const void *key, int key_size);
 static unsigned int mht_3str_pseudo_key (const void *key, int key_size,
 					 const unsigned int max_value);
 static unsigned int mht_4str_pseudo_key (const void *key, int key_size);
+static unsigned int mht_5str_pseudo_key (const void *key, int key_size);
 
 static unsigned int mht_calculate_htsize (unsigned int ht_size);
 static int mht_rehash (MHT_TABLE * ht);
@@ -367,6 +368,48 @@ mht_4str_pseudo_key (const void *key, int key_size)
 }
 
 /*
+ * mht_5str_pseudo_key() - hash string key into pseudo integer key
+ * return: pseudo integer key
+ * key(in): string key to hash
+ * key_size(in): size of key or -1 when unknown
+ *
+ * Note: Based on hash method reported by Diniel J. Bernstein.
+ */
+static unsigned int
+mht_5str_pseudo_key (const void *key, int key_size)
+{
+  unsigned int hash = 5381;
+  int i = 0;
+  char *k;
+
+  assert (key != NULL);
+  k = (char *) key;
+
+  if (key_size == -1)
+    {
+      int c;
+      while ((c = *(k + i++)) != 0)
+	{
+	  hash = ((hash << 5) + hash) + c;	/* hash * 33 + c */
+	}
+    }
+  else
+    {
+      for (; i < key_size; i++)
+	{
+	  hash = ((hash << 5) + hash) + *(k + i);
+	}
+    }
+
+  hash += ~(hash << 9);
+  hash ^= ((hash >> 14) | (i << 18));	/* >>> */
+  hash += (hash << 4);
+  hash ^= ((hash >> 10) | (i << 22));	/* >>> */
+
+  return hash;
+}
+
+/*
  * mht_1strlowerhash - hash a string key (in lowercase)
  *   return: hash value
  *   key(in): key to hash
@@ -468,6 +511,20 @@ mht_4strhash (const void *key, const unsigned int ht_size)
 }
 
 /*
+ * mht_5strhash - hash a string key
+ *   return: hash value
+ *   key(in): key to hash
+ *   ht_size(in): size of hash table
+ *
+ * Note: Based on hash method reported by Diniel J. Bernstein.
+ */
+unsigned int
+mht_5strhash (const void *key, const unsigned int ht_size)
+{
+  return mht_5str_pseudo_key (key, -1) % ht_size;
+}
+
+/*
  * mht_numash - hash an integer key
  *   return: hash value
  *   key(in): void pointer to integer key to hash
@@ -546,7 +603,8 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
-	  hash = mht_1str_pseudo_key (db_pull_string (val), -1);
+	  hash = mht_1str_pseudo_key (db_pull_string (val),
+				      DB_GET_STRING_SIZE (val));
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
@@ -603,15 +661,15 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  {
 	    DB_MIDXKEY *midxkey;
 	    midxkey = db_pull_midxkey (val);
-	    if (set_midxkey_get_element_nocopy (midxkey, 0, &t_val,
-						NULL, NULL) == NO_ERROR)
+	    if (pr_midxkey_get_element_nocopy (midxkey, 0, &t_val,
+					       NULL, NULL) == NO_ERROR)
 	      {
 		hash = mht_valhash (&t_val, ht_size);
 		t_n = midxkey->size;
 		if (t_n > 0
-		    && set_midxkey_get_element_nocopy (midxkey, t_n - 1,
-						       &t_val, NULL,
-						       NULL) == NO_ERROR)
+		    && pr_midxkey_get_element_nocopy (midxkey, t_n - 1,
+						      &t_val, NULL,
+						      NULL) == NO_ERROR)
 		  {
 		    hash += mht_valhash (&t_val, ht_size);
 		  }
@@ -622,6 +680,8 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = GET_PTR_FOR_HASH (db_get_pointer (val));
 	  break;
 	case DB_TYPE_ELO:
+	case DB_TYPE_BLOB:
+	case DB_TYPE_CLOB:
 	case DB_TYPE_SUB:
 	case DB_TYPE_ERROR:
 	case DB_TYPE_VOBJ:

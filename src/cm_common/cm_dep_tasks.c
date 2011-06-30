@@ -18,20 +18,8 @@
  */
 
 /*
- * cm_dep_tasks.c - 
+ * cm_dep_tasks.c -
  */
-
-#include "cm_dep.h"
-#include "cm_utils.h"
-#include "cm_defines.h"
-#include "cm_portable.h"
-#include "cm_execute_sa.h"
-#include "cm_defines.h"
-#include "perf_monitor.h"
-#include "dbi.h"
-#include "utility.h"
-#include "environment_variable.h"
-#include "cm_stat.h"
 
 #if defined(WINDOWS)
 #include <process.h>
@@ -44,6 +32,18 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <signal.h>
+
+#include "cm_dep.h"
+#include "cm_utils.h"
+#include "cm_defines.h"
+#include "cm_portable.h"
+#include "cm_execute_sa.h"
+#include "cm_defines.h"
+#include "perf_monitor.h"
+#include "dbi.h"
+#include "utility.h"
+#include "environment_variable.h"
+#include "cm_stat.h"
 
 extern int set_size (DB_COLLECTION * set);
 extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
@@ -149,7 +149,6 @@ static void op_get_trigger_information (nvplist * res, DB_OBJECT * p_trigger);
 static int revoke_all_from_user (DB_OBJECT * user);
 static void _op_get_db_user_name (nvplist * res, DB_OBJECT * user);
 static void _op_get_db_user_id (nvplist * res, DB_OBJECT * user);
-static void _op_get_db_user_password (nvplist * res, DB_OBJECT * user);
 static void _op_get_db_user_groups (nvplist * res, DB_OBJECT * user);
 static void _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user);
 
@@ -354,6 +353,10 @@ cm_ts_delete_user (nvplist * req, nvplist * res, char *_dbmt_error)
   T_DB_SERVICE_MODE db_mode;
 
   dbname = nv_get_val (req, "_DBNAME");
+  if (dbname == NULL)
+    {
+      return ERR_PARAM_MISSING;
+    }
 
   db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
@@ -399,13 +402,18 @@ cm_tsDBMTUserLogin (nvplist * in, nvplist * out, char *_dbmt_error)
   DB_COLLECTION *col;
   int i;
   bool isdba = false;
-  T_DB_SERVICE_MODE db_mode;
+  T_DB_SERVICE_MODE db_mode = DB_SERVICE_MODE_NONE;
   char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
 
   targetid = nv_get_val (in, "targetid");
   dbname = nv_get_val (in, "dbname");
   dbuser = nv_get_val (in, "dbuser");
   dbpasswd = nv_get_val (in, "dbpasswd");
+
+  if (dbname == NULL)
+    {
+      return ERR_PARAM_MISSING;
+    }
 
   db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
@@ -576,6 +584,10 @@ cm_ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error)
 
   dbstatus = nv_get_val (in, "dbstatus");
   dbname = nv_get_val (in, "_DBNAME");
+  if (dbname == NULL)
+    {
+      return ERR_PARAM_MISSING;
+    }
 
   db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
@@ -631,6 +643,11 @@ cm_ts_class (nvplist * in, nvplist * out, char *_dbmt_error)
   T_DB_SERVICE_MODE db_mode;
 
   dbname = nv_get_val (in, "_DBNAME");
+  if (dbname == NULL)
+    {
+      return ERR_PARAM_MISSING;
+    }
+
   db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
@@ -681,6 +698,10 @@ cm_ts_get_triggerinfo (nvplist * req, nvplist * res, char *_dbmt_error)
   trigger_list = NULL;
 
   dbname = nv_get_val (req, "_DBNAME");
+  if (dbname == NULL)
+    {
+      return ERR_PARAM_MISSING;
+    }
 
   db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
@@ -749,6 +770,11 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
   T_DB_SERVICE_MODE db_mode;
 
   dbname = nv_get_val (in, "_DBNAME");
+  if (dbname == NULL)
+    {
+      return ERR_PARAM_MISSING;
+    }
+
   db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
@@ -956,6 +982,11 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
   new_db_user_name = nv_get_val (req, "username");
   new_db_user_pass = nv_get_val (req, "userpass");
 
+  if (db_name == NULL)
+    {
+      return ERR_WITH_MSG;
+    }
+
   db_mode = uDatabaseMode (db_name, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
@@ -1144,6 +1175,11 @@ cm_ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
   int anum;
 
   dbname = nv_get_val (req, "_DBNAME");
+  if (dbname == NULL)
+    {
+      return ERR_PARAM_MISSING;
+    }
+
   db_mode = uDatabaseMode (dbname, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
@@ -1260,6 +1296,10 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
   T_DB_SERVICE_MODE db_mode;
 
   db_name = nv_get_val (in, "dbname");
+  if (db_name == NULL)
+    {
+      return ERR_WITH_MSG;
+    }
   db_mode = uDatabaseMode (db_name, &ha_mode);
   if (db_mode == DB_SERVICE_MODE_SA)
     {
@@ -1294,7 +1334,6 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
       nv_add_nvp (out, "open", "user");
       _op_get_db_user_name (out, p_user);
       _op_get_db_user_id (out, p_user);
-      _op_get_db_user_password (out, p_user);
 
       nv_add_nvp (out, "open", "groups");
       _op_get_db_user_groups (out, p_user);
@@ -1696,13 +1735,16 @@ _op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj,
   DB_QUERY_SPEC *spec;
   DB_VALUE v;
   char *class_name;
+  char *dbname = NULL;
 
+  dbname = db_get_database_name ();
   nv_add_nvp (out, "open", "classinfo");
-  nv_add_nvp (out, "dbname", db_get_database_name ());
+  nv_add_nvp (out, "dbname", dbname);
   class_name = (char *) db_get_class_name (classobj);
   if (class_name == NULL)
     {
       CUBRID_ERR_MSG_SET (_dbmt_error);
+      db_string_free (dbname);
       return -1;
     }
   nv_add_nvp (out, "classname", class_name);
@@ -1813,6 +1855,11 @@ _op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj,
     }
 
   nv_add_nvp (out, "close", "classinfo");
+
+  if (dbname)
+    {
+      db_string_free (dbname);
+    }
   return 0;
 }
 
@@ -1877,7 +1924,7 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
       char buf[256];
 
       snprintf (query, sizeof (query) - 1,
-		"select key_attr_name, asc_desc from db_index_key where class_name='%s' and index_name='%s' order by key_order asc",
+		"select [key_attr_name], [asc_desc] from [db_index_key] where [class_name]='%s' and [index_name]='%s' order by [key_order] asc",
 		classname, db_constraint_name (con));
 
       db_execute (query, &result, &query_error);
@@ -2401,6 +2448,14 @@ _op_get_set_value (DB_VALUE * val)
       snprintf (result, result_size, "%s%s%s", "ELO'", return_result, "'");
       break;
 
+    case DB_TYPE_BLOB:
+      snprintf (result, result_size, "%s%s%s", "BLOB'", return_result, "'");
+      break;
+
+    case DB_TYPE_CLOB:
+      snprintf (result, result_size, "%s%s%s", "CLOB'", return_result, "'");
+      break;
+
     default:
       snprintf (result, result_size, "%s", return_result);
       break;
@@ -2714,30 +2769,6 @@ _op_get_db_user_id (nvplist * res, DB_OBJECT * user)
   snprintf (buf, sizeof (buf) - 1, "%d", db_get_int (&v));
   nv_add_nvp (res, "id", buf);
   db_value_clear (&v);
-}
-
-static void
-_op_get_db_user_password (nvplist * res, DB_OBJECT * user)
-{
-  DB_VALUE v;
-  DB_OBJECT *obj;
-
-  db_get (user, "password", &v);
-  if (!db_value_is_null (&v))
-    {
-      obj = db_get_object (&v);
-      db_value_clear (&v);
-      db_get (obj, "password", &v);
-      if (!db_value_is_null (&v))
-	{
-	  nv_add_nvp (res, "password", db_get_string (&v));
-	  db_value_clear (&v);
-	}
-      else
-	{
-	  nv_add_nvp (res, "password", "");
-	}
-    }
 }
 
 static void

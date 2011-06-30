@@ -55,9 +55,11 @@
 #endif /* SA_MODE */
 #include "jsp_cl.h"
 #include "execute_statement.h"
-#include "glo_class.h"
 #include "network_interface_cl.h"
 #include "connection_support.h"
+#if !defined(CS_MODE)
+#include "session.h"
+#endif
 
 #include "dbval.h"		/* this must be the last header file included!!! */
 
@@ -94,7 +96,6 @@ static void
 install_static_methods (void)
 {
   au_link_static_methods ();	/* Authorization classes */
-  esm_load_esm_classes ();	/* Multimedia classes */
 }
 
 /*
@@ -117,14 +118,16 @@ install_static_methods (void)
 int
 db_init (const char *program, int print_version,
 	 const char *dbname, const char *db_path, const char *vol_path,
-	 const char *log_path, const char *host_name,
+	 const char *log_path, const char *lob_path, const char *host_name,
 	 const bool overwrite, const char *comments,
 	 const char *addmore_vols_file, int npages, int desired_pagesize,
 	 int log_npages, int desired_log_page_size)
 {
+#if defined (CUBRID_DEBUG)
   int value;
   const char *env_value;
   char more_vol_info_temp_file[L_tmpnam];
+#endif
   const char *more_vol_info_file = NULL;
   int error = NO_ERROR;
   BOOT_CLIENT_CREDENTIAL client_credential;
@@ -132,6 +135,7 @@ db_init (const char *program, int print_version,
 
   db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
+#if defined (CUBRID_DEBUG)
   if (addmore_vols_file == NULL)
     {
       /* Added for debugging of multivols using old test programs/scripts
@@ -179,6 +183,7 @@ db_init (const char *program, int print_version,
 	    }
 	}
     }
+#endif /* CUBRID_DEBUG */
 
   if (desired_pagesize > 0)
     {
@@ -225,6 +230,7 @@ db_init (const char *program, int print_version,
   db_path_info.db_path = (char *) db_path;
   db_path_info.vol_path = (char *) vol_path;
   db_path_info.log_path = (char *) log_path;
+  db_path_info.lob_path = (char *) lob_path;
   db_path_info.db_host = (char *) host_name;
   db_path_info.db_comments = (char *) comments;
 
@@ -367,6 +373,22 @@ db_get_database_name (void)
 }
 
 /*
+ * db_get_database_version() - Returns a C string containing the version of
+ *    the active database server.
+ * return : release version of the currently active server.
+ *
+ * note : The string is allocated and must be freed with the db_string_free()
+ *        function when it is no longer required.
+ */
+char *
+db_get_database_version (void)
+{
+  char *name = NULL;
+  name = ws_copy_string (rel_build_number ());
+  return name;
+}
+
+/*
  * db_get_database_comments() - returns a C string containing the comments
  *       field of the database.
  * return : comment string for currently active database.
@@ -412,7 +434,19 @@ db_set_client_type (int client_type)
     }
 }
 
+void
+db_set_preferred_hosts (const char *hosts)
+{
+  if (db_Preferred_hosts)
+    {
+      free_and_init (db_Preferred_hosts);
+    }
 
+  if (hosts)
+    {
+      db_Preferred_hosts = strdup (hosts);
+    }
+}
 
 /*
  * DATABASE ACCESS
@@ -472,6 +506,15 @@ sigfpe_handler (int sig)
 #endif /* !WINDOWS */
 
 /*
+ * db_clear_host_connected() -
+ */
+void
+db_clear_host_connected ()
+{
+  boot_clear_host_connected ();
+}
+
+/*
  * db_restart() - This is the primary interface function for opening a
  *    database. The database must have already been created using the
  *    system defined generator tool.
@@ -513,6 +556,7 @@ db_restart (const char *program, int print_version, const char *volume)
       client_credential.login_name = NULL;
       client_credential.host_name = NULL;
       client_credential.process_id = -1;
+      client_credential.preferred_hosts = db_Preferred_hosts;
 
       error = boot_restart_client (&client_credential);
       if (error != NO_ERROR)
@@ -554,8 +598,8 @@ db_restart (const char *program, int print_version, const char *volume)
  *   client_type(in) : DB_CLIENT_TYPE_XXX in db.h
  */
 int
-db_restart_ex (const char *program, const char *db_name,
-	       const char *db_user, const char *db_password, int client_type)
+db_restart_ex (const char *program, const char *db_name, const char *db_user,
+	       const char *db_password, const char *hosts, int client_type)
 {
   int retval;
 
@@ -566,6 +610,20 @@ db_restart_ex (const char *program, const char *db_name,
     }
 
   db_set_client_type (client_type);
+#if !defined(CS_MODE)
+  /* if we're in SERVER_MODE, this is the only place where we can initialize
+     the sessions state module */
+  switch (client_type)
+    {
+    case DB_CLIENT_TYPE_ADMIN_CSQL:
+    case DB_CLIENT_TYPE_READ_ONLY_CSQL:
+    case DB_CLIENT_TYPE_CSQL:
+      session_states_init (NULL);
+    default:
+      break;
+    }
+#endif
+  db_set_preferred_hosts (hosts);
 
   return db_restart (program, false, db_name);
 }
@@ -631,6 +689,62 @@ db_enable_modification (void)
   /*CHECK_CONNECT_ERROR (); */
   db_Disable_modifications--;
   return NO_ERROR;
+}
+
+/*
+ * db_end_session - end current session
+ *   return: error code
+ *
+ * NOTE: This function ends the session identified by 'db_Session_id'
+ */
+int
+db_end_session (void)
+{
+  int retval;
+
+  CHECK_CONNECT_ERROR ();
+
+  retval = csession_end_session (db_get_session_id ());
+
+  return (retval);
+}
+
+/*
+ * db_get_row_count - get affected row count
+ *  return: error code
+ *  row_count (out) : row count
+ */
+int
+db_get_row_count (int *row_count)
+{
+  CHECK_CONNECT_ERROR ();
+  return csession_get_row_count (row_count);
+}
+
+/*
+ * db_get_last_insert_id - get the value of the last updated serial
+ *  return: error code
+ *  value (out) : the value of the last updated serial
+ */
+int
+db_get_last_insert_id (DB_VALUE * value)
+{
+  CHECK_CONNECT_ERROR ();
+  return csession_get_last_insert_id (value);
+}
+
+
+/*
+ * db_get_variable () - get the value of a session variable
+ * return : error code or NO_ERROR
+ * name (in)  : name of the variable
+ * value (out): value of the variable
+ */
+int
+db_get_variable (DB_VALUE * name, DB_VALUE * value)
+{
+  CHECK_CONNECT_ERROR ();
+  return csession_get_variable (name, value);
 }
 
 /*
@@ -1086,7 +1200,6 @@ db_set_isolation (DB_TRAN_ISOLATION isolation)
   int retval;
 
   CHECK_CONNECT_MINUSONE ();
-  CHECK_MODIFICATION_MINUSONE ();
 
   retval = tran_reset_isolation (isolation, TM_TRAN_ASYNC_WS ());
   return (retval);
@@ -2204,6 +2317,13 @@ db_set_system_parameters (const char *data)
 	  rc = sysprm_change_server_parameters (data);
 	}
     }
+
+  if (rc == NO_ERROR && sysprm_prm_change_should_clear_cache (data))
+    {
+      /* we should invalidate xasl_cache. */
+      error = qmgr_drop_all_query_plans ();
+    }
+
   if (rc != NO_ERROR)
     {
       switch (rc)
@@ -2213,24 +2333,22 @@ db_set_system_parameters (const char *data)
 	case PRM_ERR_BAD_STRING:
 	case PRM_ERR_BAD_RANGE:
 	  error = ER_PRM_BAD_VALUE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
-		  data);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, data);
 	  break;
 	case PRM_ERR_CANNOT_CHANGE:
 	case PRM_ERR_NOT_FOR_CLIENT:
 	case PRM_ERR_NOT_FOR_SERVER:
 	  error = ER_PRM_CANNOT_CHANGE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_CANNOT_CHANGE, 1,
-		  data);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, data);
 	  break;
 	case PRM_ERR_NOT_SOLE_TRAN:
 	  error = ER_NOT_SOLE_TRAN;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_SOLE_TRAN, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	  break;
 	case PRM_ERR_COMM_ERR:
 	  error = ER_NET_SERVER_COMM_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
-		  1, "db_set_system_parameters");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  "db_set_system_parameters");
 	  break;
 	case PRM_ERR_NO_MEM_FOR_PRM:
 	default:
@@ -2267,6 +2385,9 @@ db_get_system_parameters (char *data, int len)
   rc = sysprm_obtain_parameters (buffer, len);
   if (rc == PRM_ERR_NOT_FOR_CLIENT)
     {
+#if !defined(NDEBUG)
+      memset (buffer, 0, len);
+#endif
       strncpy (buffer, data, len);
       rc = sysprm_obtain_server_parameters (buffer, len);
     }
@@ -2279,24 +2400,22 @@ db_get_system_parameters (char *data, int len)
 	case PRM_ERR_BAD_STRING:
 	case PRM_ERR_BAD_RANGE:
 	  error = ER_PRM_BAD_VALUE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
-		  data);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, data);
 	  break;
 	case PRM_ERR_CANNOT_CHANGE:
 	case PRM_ERR_NOT_FOR_CLIENT:
 	case PRM_ERR_NOT_FOR_SERVER:
 	  error = ER_PRM_CANNOT_CHANGE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_PRM_CANNOT_CHANGE, 1, data);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, data);
 	  break;
 	case PRM_ERR_NOT_SOLE_TRAN:
 	  error = ER_NOT_SOLE_TRAN;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_SOLE_TRAN, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	  break;
 	case PRM_ERR_COMM_ERR:
 	  error = ER_NET_SERVER_COMM_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
-		  1, "db_get_system_parameters");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  "db_get_system_parameters");
 	  break;
 	case PRM_ERR_NO_MEM_FOR_PRM:
 	default:
@@ -2364,4 +2483,70 @@ db_get_ha_server_state (char *buffer, int maxlen)
       strncpy (buffer, css_ha_server_state_string (ha_state), maxlen);
     }
   return ha_state;
+}
+
+/*
+ * db_get_session_id () - get current session id
+ * return : session id
+ */
+SESSION_ID
+db_get_session_id ()
+{
+  return db_Session_id;
+}
+
+/*
+ * db_set_session_id () - set current session id
+ * return : void
+ * session_id (in): session id
+ */
+void
+db_set_session_id (const SESSION_ID session_id)
+{
+  db_Session_id = session_id;
+}
+
+/*
+ * db_check_session - check if current session is still active
+ * return error code or NO_ERROR
+ *
+ * Note: This function will check if the current session is active and will
+ *	 create a new one if needed
+ */
+int
+db_check_session ()
+{
+  int err = NO_ERROR;
+  SESSION_ID sess_id = db_get_session_id ();
+  int row_count = DB_ROW_COUNT_NOT_SET;
+  err = csession_check_session (&sess_id, &row_count);
+  if (err != NO_ERROR)
+    {
+      db_set_session_id (DB_EMPTY_SESSION);
+      db_update_row_count_cache (DB_ROW_COUNT_NOT_SET);
+      return err;
+    }
+  db_set_session_id (sess_id);
+  db_update_row_count_cache (row_count);
+  return NO_ERROR;
+}
+
+/*
+ * db_get_row_count_cache () - get the cached value for row count
+ * return : row count
+ */
+int
+db_get_row_count_cache ()
+{
+  return db_Row_count;
+}
+
+/*
+* db_update_row_count_cache () - update the cached value of row count
+* return : void
+*/
+void
+db_update_row_count_cache (const int row_count)
+{
+  db_Row_count = row_count;
 }

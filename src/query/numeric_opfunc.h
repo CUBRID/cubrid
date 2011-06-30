@@ -36,7 +36,8 @@
 typedef enum
 {
   DATA_STATUS_OK = 0,		/* Operation proceeded without error */
-  DATA_STATUS_TRUNCATED = 1004	/* Operation caused truncation */
+  DATA_STATUS_TRUNCATED = 1004,	/* Operation caused truncation */
+  DATA_STATUS_NOT_CONSUMED = 1005	/* Operation not consumed all input */
 } DB_DATA_STATUS;
 
 #if defined(SERVER_MODE)
@@ -78,6 +79,10 @@ extern int numeric_internal_double_to_num (double adouble,
 					   int dst_scale,
 					   DB_C_NUMERIC num,
 					   int *prec, int *scale);
+extern int numeric_internal_float_to_num (float afloat,
+					  int dst_scale,
+					  DB_C_NUMERIC num,
+					  int *prec, int *scale);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int numeric_coerce_double_to_num (double adouble,
@@ -85,7 +90,8 @@ extern int numeric_coerce_double_to_num (double adouble,
 					 int *scale);
 #endif
 
-extern int numeric_coerce_string_to_num (const char *astring, DB_VALUE * num);
+extern int numeric_coerce_string_to_num (const char *astring, int astring_len,
+					 DB_VALUE * num);
 
 extern int numeric_coerce_num_to_num (DB_C_NUMERIC src_num,
 				      int src_prec,
@@ -99,6 +105,8 @@ extern int numeric_db_value_coerce_to_num (DB_VALUE * src,
 extern int numeric_db_value_coerce_from_num (DB_VALUE * src,
 					     DB_VALUE * dest,
 					     DB_DATA_STATUS * data_stat);
+extern int numeric_db_value_coerce_from_num_strict (DB_VALUE * src,
+						    DB_VALUE * dest);
 extern char *numeric_db_value_print (DB_VALUE * val);
 
 /* Testing Routines */

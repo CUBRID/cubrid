@@ -38,18 +38,15 @@
 #include <conio.h>
 #include <math.h>
 #else
+#include <unistd.h>
 #include <curses.h>
 #endif
 
 #include "porting.h"
-#include "storage_common.h"
 
-#if defined (WINDOWS)
-#define PATH_SEPARATOR  '\\'
-#else
-#define PATH_SEPARATOR  '/'
+#if !defined(CAS_BROKER) && !defined(CAS_CCI_DL)
+#include "storage_common.h"
 #endif
-#define PATH_CURRENT    '.'
 
 #if defined (WINDOWS)
 /*
@@ -64,8 +61,8 @@ gettimeofday (struct timeval *tp, void *tzp)
 #if 1				/* _ftime() version */
   struct _timeb tm;
   _ftime (&tm);
-  tp->tv_sec = tm.time;
-  tp->tv_usec = tm.millitm * 1000;
+  tp->tv_sec = (long) tm.time;
+  tp->tv_usec = (long) tm.millitm * 1000;
   return 0;
 #else /* GetSystemTimeAsFileTime version */
   FILETIME ft;
@@ -121,6 +118,7 @@ lockf (int fd, int cmd, long size)
     }
 }
 
+#if !defined(CAS_BROKER) && !defined(CAS_CCI_DL)
 #include "environment_variable.h"
 /*
  * cuserid - returns a pointer to a string containing a user name
@@ -154,6 +152,13 @@ cuserid (char *string)
     }
 
   return string;
+}
+#endif
+
+int
+getlogin_r (char *buf, size_t bufsize)
+{
+  return GetUserName (buf, &bufsize);
 }
 
 #if 0
@@ -697,6 +702,7 @@ lock_region (int fd, int cmd, long offset, long size)
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
+#if !defined(CAS_BROKER) && !defined(CAS_CCI_DL)
 /* free_space -
  *   return:
  *   path(in):
@@ -740,6 +746,7 @@ free_space (const char *path)
       return ((int) (freebytes_user.QuadPart / IO_PAGESIZE));
     }
 }
+#endif
 
 #endif /* WINDOWS */
 
@@ -851,13 +858,13 @@ dirname_r (const char *path, char *pathbuf, size_t buflen)
     {
       return (errno = ENAMETOOLONG);
     }
-  if (len + 1 > buflen)
+  if (len + 1 > (int) buflen)
     {
       return (errno = ERANGE);
     }
   (void) strncpy (pathbuf, path, len);
   pathbuf[len] = '\0';
-  return len;
+  return (int) len;
 }
 
 #if !defined(HAVE_DIRNAME)
@@ -917,13 +924,13 @@ basename_r (const char *path, char *pathbuf, size_t buflen)
     {
       return (errno = ENAMETOOLONG);
     }
-  if (len + 1 > buflen)
+  if (len + 1 > (int) buflen)
     {
       return (errno = ERANGE);
     }
   (void) strncpy (pathbuf, startp, len);
   pathbuf[len] = '\0';
-  return len;
+  return (int) len;
 }
 
 #if !defined(HAVE_BASENAME)
@@ -1030,6 +1037,7 @@ stristr (const char *s, const char *find)
   return (char *) s;
 }
 
+#if !defined(CAS_BROKER) && !defined(CAS_CCI_DL)
 /*
  * wrapper for cuserid() function
  */
@@ -1046,6 +1054,7 @@ getuserid (char *string, int size)
       return string;
     }
 }
+#endif
 
 /*
  * wrapper for OS dependent operations
@@ -1246,7 +1255,7 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
 {
   int len = _vscprintf_p (format, argptr) + 1;
 
-  if (len > count)
+  if (len > (int) count)
     {
       char *cp = malloc (len);
       if (cp == NULL)
@@ -1265,7 +1274,7 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
       buffer[count - 1] = 0;
 
       free (cp);
-      return count;
+      return (int) count;
     }
 
   return _vsprintf_p (buffer, count, format, argptr);
@@ -1276,4 +1285,466 @@ round (double d)
 {
   return d >= 0 ? floor (d + 0.5) : ceil (d - 0.5);
 }
+
+int
+pthread_mutex_init (pthread_mutex_t * mutex, pthread_mutexattr_t * attr)
+{
+  if (mutex->csp == &mutex->cs)
+    {
+      /* already inited */
+      assert (0);
+      return 0;
+    }
+
+  mutex->csp = &mutex->cs;
+  InitializeCriticalSection (mutex->csp);
+
+  return 0;
+}
+
+int
+pthread_mutex_destroy (pthread_mutex_t * mutex)
+{
+  if (mutex->csp != &mutex->cs)
+    {
+      if (mutex->csp == NULL)	/* inited by PTHREAD_MUTEX_INITIALIZER */
+	{
+	  return 0;
+	}
+
+      /* invalid destroy */
+      assert (0);
+      mutex->csp = NULL;
+      return 0;
+    }
+
+  DeleteCriticalSection (mutex->csp);
+  mutex->csp = NULL;
+  return 0;
+}
+
+int
+pthread_mutexattr_init (pthread_mutexattr_t * attr)
+{
+  return 0;
+}
+
+int
+pthread_mutexattr_settype (pthread_mutexattr_t * attr, int type)
+{
+  return 0;
+}
+
+int
+pthread_mutexattr_destroy (pthread_mutexattr_t * attr)
+{
+  return 0;
+}
+
+
+pthread_mutex_t css_Internal_mutex_for_mutex_initialize =
+  PTHREAD_MUTEX_INITIALIZER;
+
+void
+port_win_mutex_init_and_lock (pthread_mutex_t * mutex)
+{
+  if (css_Internal_mutex_for_mutex_initialize.csp !=
+      &css_Internal_mutex_for_mutex_initialize.cs)
+    {
+      pthread_mutex_init (&css_Internal_mutex_for_mutex_initialize, NULL);
+    }
+
+  EnterCriticalSection (css_Internal_mutex_for_mutex_initialize.csp);
+  if (mutex->csp != &mutex->cs)
+    {
+      /* 
+       * below assert means that lock without pthread_mutex_init 
+       * or PTHREAD_MUTEX_INITIALIZER
+       */
+      assert (mutex->csp == NULL);
+      pthread_mutex_init (mutex, NULL);
+    }
+  LeaveCriticalSection (css_Internal_mutex_for_mutex_initialize.csp);
+
+  EnterCriticalSection (mutex->csp);
+}
+
+int
+port_win_mutex_init_and_trylock (pthread_mutex_t * mutex)
+{
+  bool r;
+
+  if (css_Internal_mutex_for_mutex_initialize.csp !=
+      &css_Internal_mutex_for_mutex_initialize.cs)
+    {
+      pthread_mutex_init (&css_Internal_mutex_for_mutex_initialize, NULL);
+    }
+
+  EnterCriticalSection (css_Internal_mutex_for_mutex_initialize.csp);
+  if (mutex->csp != &mutex->cs)
+    {
+      /* 
+       * below assert means that trylock without pthread_mutex_init 
+       * or PTHREAD_MUTEX_INITIALIZER
+       */
+      assert (mutex->csp == NULL);
+      pthread_mutex_init (mutex, NULL);
+    }
+  LeaveCriticalSection (css_Internal_mutex_for_mutex_initialize.csp);
+
+  r = TryEnterCriticalSection (mutex->csp);
+  if (mutex->csp->RecursionCount > 1)
+    {
+      LeaveCriticalSection (mutex->csp);
+      return EBUSY;
+    }
+
+  return r ? 0 : EBUSY;
+}
+
+
+typedef void (WINAPI * InitializeConditionVariable_t) (CONDITION_VARIABLE *);
+typedef bool (WINAPI * SleepConditionVariableCS_t) (CONDITION_VARIABLE *,
+						    CRITICAL_SECTION *,
+						    DWORD dwMilliseconds);
+
+typedef void (WINAPI * WakeAllConditionVariable_t) (CONDITION_VARIABLE *);
+typedef void (WINAPI * WakeConditionVariable_t) (CONDITION_VARIABLE *);
+
+InitializeConditionVariable_t fp_InitializeConditionVariable;
+SleepConditionVariableCS_t fp_SleepConditionVariableCS;
+WakeAllConditionVariable_t fp_WakeAllConditionVariable;
+WakeConditionVariable_t fp_WakeConditionVariable;
+
+static bool have_CONDITION_VARIABLE = false;
+
+
+static void
+check_CONDITION_VARIABLE (void)
+{
+  HMODULE kernel32 = GetModuleHandle ("kernel32");
+
+  have_CONDITION_VARIABLE = true;
+  fp_InitializeConditionVariable = (InitializeConditionVariable_t)
+    GetProcAddress (kernel32, "InitializeConditionVariable");
+  if (fp_InitializeConditionVariable == NULL)
+    {
+      have_CONDITION_VARIABLE = false;
+      return;
+    }
+
+  fp_SleepConditionVariableCS = (SleepConditionVariableCS_t)
+    GetProcAddress (kernel32, "SleepConditionVariableCS");
+  fp_WakeAllConditionVariable = (WakeAllConditionVariable_t)
+    GetProcAddress (kernel32, "WakeAllConditionVariable");
+  fp_WakeConditionVariable = (WakeConditionVariable_t)
+    GetProcAddress (kernel32, "WakeConditionVariable");
+}
+
+static int
+timespec_to_msec (const struct timespec *abstime)
+{
+  int msec = 0;
+  struct timeval tv;
+
+  if (abstime == NULL)
+    {
+      return INFINITE;
+    }
+
+  gettimeofday (&tv, NULL);
+  msec = (abstime->tv_sec - tv.tv_sec) * 1000;
+  msec += (abstime->tv_nsec / 1000 - tv.tv_usec) / 1000;
+
+  if (msec < 0)
+    {
+      msec = 0;
+    }
+
+  return msec;
+}
+
+
+/*
+ * old (pre-vista) windows does not support CONDITION_VARIABLES
+ * so, we need below custom pthread_cond modules for them
+ */
+static int
+win_custom_cond_init (pthread_cond_t * cond, const pthread_condattr_t * attr)
+{
+  cond->waiting = 0;
+  InitializeCriticalSection (&cond->lock_waiting);
+
+  cond->events[COND_SIGNAL] = CreateEvent (NULL, FALSE, FALSE, NULL);
+  cond->events[COND_BROADCAST] = CreateEvent (NULL, TRUE, FALSE, NULL);
+  cond->broadcast_block_event = CreateEvent (NULL, TRUE, TRUE, NULL);
+
+  if (cond->events[COND_SIGNAL] == NULL ||
+      cond->events[COND_BROADCAST] == NULL ||
+      cond->broadcast_block_event == NULL)
+    {
+      return ENOMEM;
+    }
+
+  return 0;
+}
+
+static int
+win_custom_cond_destroy (pthread_cond_t * cond)
+{
+  DeleteCriticalSection (&cond->lock_waiting);
+
+  if (CloseHandle (cond->events[COND_SIGNAL]) == 0 ||
+      CloseHandle (cond->events[COND_BROADCAST]) == 0 ||
+      CloseHandle (cond->broadcast_block_event) == 0)
+    {
+      return EINVAL;
+    }
+
+  return 0;
+}
+
+static int
+win_custom_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
+			   struct timespec *abstime)
+{
+  int result;
+  int msec;
+
+  msec = timespec_to_msec (abstime);
+  WaitForSingleObject (cond->broadcast_block_event, INFINITE);
+
+  EnterCriticalSection (&cond->lock_waiting);
+  cond->waiting++;
+  LeaveCriticalSection (&cond->lock_waiting);
+
+  LeaveCriticalSection (mutex->csp);
+  result = WaitForMultipleObjects (2, cond->events, FALSE, msec);
+  assert (result == WAIT_TIMEOUT || result <= 2);
+
+  EnterCriticalSection (&cond->lock_waiting);
+  cond->waiting--;
+
+  if (cond->waiting == 0)
+    {
+      ResetEvent (cond->events[COND_BROADCAST]);
+      SetEvent (cond->broadcast_block_event);
+    }
+
+  LeaveCriticalSection (&cond->lock_waiting);
+  EnterCriticalSection (mutex->csp);
+
+  return result == WAIT_TIMEOUT ? ETIMEDOUT : 0;
+}
+
+static int
+win_custom_cond_signal (pthread_cond_t * cond)
+{
+  EnterCriticalSection (&cond->lock_waiting);
+
+  if (cond->waiting > 0)
+    {
+      SetEvent (cond->events[COND_SIGNAL]);
+    }
+
+  LeaveCriticalSection (&cond->lock_waiting);
+
+  return 0;
+}
+
+static int
+win_custom_cond_broadcast (pthread_cond_t * cond)
+{
+  EnterCriticalSection (&cond->lock_waiting);
+
+  if (cond->waiting > 0)
+    {
+      ResetEvent (cond->broadcast_block_event);
+      SetEvent (cond->events[COND_BROADCAST]);
+    }
+
+  LeaveCriticalSection (&cond->lock_waiting);
+
+  return 0;
+}
+
+int
+pthread_cond_init (pthread_cond_t * cond, const pthread_condattr_t * attr)
+{
+  static bool checked = false;
+  if (checked == false)
+    {
+      check_CONDITION_VARIABLE ();
+      checked = true;
+    }
+
+  if (have_CONDITION_VARIABLE)
+    {
+      fp_InitializeConditionVariable (&cond->native_cond);
+      return 0;
+    }
+
+  return win_custom_cond_init (cond, attr);
+}
+
+int
+pthread_cond_destroy (pthread_cond_t * cond)
+{
+  if (have_CONDITION_VARIABLE)
+    {
+      return 0;
+    }
+
+  return win_custom_cond_destroy (cond);
+}
+
+int
+pthread_cond_broadcast (pthread_cond_t * cond)
+{
+  if (have_CONDITION_VARIABLE)
+    {
+      fp_WakeAllConditionVariable (&cond->native_cond);
+      return 0;
+    }
+
+  return win_custom_cond_broadcast (cond);
+}
+
+int
+pthread_cond_signal (pthread_cond_t * cond)
+{
+  if (have_CONDITION_VARIABLE)
+    {
+      fp_WakeConditionVariable (&cond->native_cond);
+      return 0;
+    }
+
+  return win_custom_cond_signal (cond);
+}
+
+int
+pthread_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
+			struct timespec *abstime)
+{
+  if (have_CONDITION_VARIABLE)
+    {
+      int msec = timespec_to_msec (abstime);
+      if (fp_SleepConditionVariableCS (&cond->native_cond, mutex->csp, msec)
+	  == false)
+	{
+	  return ETIMEDOUT;
+	}
+
+      return 0;
+    }
+
+  return win_custom_cond_timedwait (cond, mutex, abstime);
+}
+
+int
+pthread_cond_wait (pthread_cond_t * cond, pthread_mutex_t * mutex)
+{
+  return pthread_cond_timedwait (cond, mutex, NULL);
+}
+
+
+int
+pthread_create (pthread_t * thread, const pthread_attr_t * attr,
+		THREAD_RET_T (THREAD_CALLING_CONVENTION *
+			      start_routine) (void *), void *arg)
+{
+  unsigned int tid;
+  *thread = (pthread_t) _beginthreadex (NULL, 0, start_routine, arg, 0, &tid);
+  return (*thread <= 0) ? -1 : 0;
+}
+
+void
+pthread_exit (void *ptr)
+{
+  _endthreadex ((unsigned int) ptr);
+}
+
+pthread_t
+pthread_self ()
+{
+  return GetCurrentThread ();
+}
+
+int
+pthread_join (pthread_t thread, void **value_ptr)
+{
+  return WaitForSingleObject (thread, INFINITE);
+}
+
+int
+pthread_key_create (pthread_key_t * key, void (*destructor) (void *))
+{
+  return (*key = TlsAlloc ()) != 0xFFFFFFFF ? 0 : -1;
+}
+
+int
+pthread_key_delete (pthread_key_t key)
+{
+  return TlsFree (key) != 0 ? 0 : -1;
+}
+
+int
+pthread_setspecific (pthread_key_t key, const void *value)
+{
+  return TlsSetValue (key, (LPVOID) value) != 0 ? 0 : -1;
+}
+
+void *
+pthread_getspecific (pthread_key_t key)
+{
+  return TlsGetValue (key);
+}
+
+#if !defined(_WIN64)
+/* 
+ * The following functions are used to provide atomic operations on 
+ * Windows 32bit OS. See the comment in porting.h for more information.
+ */
+UINT64
+win32_compare_exchange64 (UINT64 volatile *val_ptr,
+			  UINT64 swap_val, UINT64 cmp_val)
+{
+  /* *INDENT-OFF* */
+  __asm
+  {
+      mov esi,[val_ptr]
+      mov ebx, dword ptr[swap_val]
+      mov ecx, dword ptr[swap_val + 4]
+      mov eax, dword ptr[cmp_val]
+      mov edx, dword ptr[cmp_val + 4] 
+      lock cmpxchg8b[esi]
+  }
+  /* *INDENT-ON* */
+}
+
+UINT64
+win32_exchange_add64 (UINT64 volatile *ptr, UINT64 amount)
+{
+  UINT64 old;
+  do
+    {
+      old = *ptr;
+    }
+  while (win32_compare_exchange64 (ptr, old + amount, old) != old);
+  return old;
+}
+
+UINT64
+win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val)
+{
+  UINT64 old;
+  do
+    {
+      old = *ptr;
+    }
+  while (win32_compare_exchange64 (ptr, new_val, old) != old);
+  return old;
+}
+#endif /* _WIN64 */
+
 #endif /* WINDOWS */

@@ -101,9 +101,10 @@
 #define OR_EHID_FILEID          4
 #define OR_EHID_PAGEID          8
 
-#define OR_LOG_LSA_SIZE         8
+#define OR_LOG_LSA_SIZE         10
+#define OR_LOG_LSA_ALIGNED_SIZE (OR_LOG_LSA_SIZE + OR_SHORT_SIZE)
 #define OR_LOG_LSA_PAGEID       0
-#define OR_LOG_LSA_OFFSET       4
+#define OR_LOG_LSA_OFFSET       8
 
 /*
  * EXTENDED TYPE SIZES
@@ -122,9 +123,13 @@
 #define OR_MONETARY_SIZE        12
 #define OR_MONETARY_TYPE        0
 #define OR_MONETARY_AMOUNT      4
-#define OR_ELO_HEADER_SIZE	OR_LOID_SIZE
+#define OR_ELO_LENGTH_SIZE	4
+#define OR_ELO_HEADER_SIZE	(OR_LOID_SIZE + OR_ELO_LENGTH_SIZE)
 
 /* NUMERIC RANGES */
+#define OR_MAX_BYTE 127
+#define OR_MIN_BYTE -128
+
 #define OR_MAX_SHORT_UNSIGNED 65535	/* 0xFFFF */
 #define OR_MAX_SHORT 32767	/* 0x7FFF */
 #define OR_MIN_SHORT -32768	/* 0x8000 */
@@ -160,14 +165,59 @@
 #define OR_GET_SHORT(ptr)       ((short)ntohs(*(short *)((char *)(ptr))))
 #define OR_GET_INT(ptr) 	((int)ntohl(*(int *)((char *)(ptr))))
 #define OR_GET_FLOAT(ptr, value) ntohf((float *)((char *)(ptr)),(float *)value)
-#define OR_GET_DOUBLE(ptr,value) ntohd((double *)((char *)(ptr)),(double *)value)
+#define OR_GET_DOUBLE(ptr, value) \
+   do { \
+     double packed_value; \
+     memcpy(&packed_value, ptr, OR_DOUBLE_SIZE); \
+     ntohd(&packed_value, (double*) value); \
+   } while (0)
 #define OR_GET_STRING(ptr)	((char *)((char *)(ptr)))
 
 #define OR_PUT_BYTE(ptr, val)	(*((unsigned char *)(ptr))=(unsigned char)(val))
 #define OR_PUT_SHORT(ptr, val)	(*(short *)((char *)(ptr)) = htons((short)(val)))
 #define OR_PUT_INT(ptr, val) 	(*(int *)((char *)(ptr)) = htonl((int)(val)))
 #define OR_PUT_FLOAT(ptr, value) htonf((float *)((char *)(ptr)),(float *)(value))
-#define OR_PUT_DOUBLE(ptr, value) htond((double *)((char *)(ptr)),(double *)(value))
+#define OR_PUT_DOUBLE(ptr, value) \
+   do { \
+     double packed_value; \
+     htond(&packed_value, (double *)(value)); \
+     memcpy(ptr, &packed_value, OR_DOUBLE_SIZE); \
+   } while (0)
+
+#define OR_GET_BIG_VAR_OFFSET(ptr) 	OR_GET_INT(ptr)	/* 4byte */
+#define OR_PUT_BIG_VAR_OFFSET(ptr, val)	OR_PUT_INT(ptr, val);	/* 4byte */
+
+#define OR_PUT_OFFSET(ptr, val) \
+  OR_PUT_OFFSET_INTERNAL(ptr, val, BIG_VAR_OFFSET_SIZE)
+
+#define OR_PUT_OFFSET_INTERNAL(ptr, val, offset_size) \
+  do { \
+    if (offset_size == OR_BYTE_SIZE) \
+      { \
+        OR_PUT_BYTE(ptr, val); \
+      } \
+    else if (offset_size == OR_SHORT_SIZE) \
+      {                               \
+        OR_PUT_SHORT(ptr, val); \
+      } \
+    else if (offset_size == OR_INT_SIZE) \
+      { \
+        OR_PUT_INT(ptr, val); \
+      } \
+  } while (0)
+
+#define OR_GET_OFFSET(ptr) \
+  OR_GET_OFFSET_INTERNAL(ptr, BIG_VAR_OFFSET_SIZE)
+
+#define OR_GET_OFFSET_INTERNAL(ptr, offset_size) \
+  (offset_size == OR_BYTE_SIZE) ? \
+  OR_GET_BYTE(ptr) \
+  : \
+  ((offset_size == OR_SHORT_SIZE) ? \
+  OR_GET_SHORT(ptr) \
+  : \
+  OR_GET_INT(ptr))
+
 
 #define OR_MOVE_MONETARY(src, dst) \
   do { \
@@ -201,13 +251,25 @@
 #endif /* __WORDSIZE == 32 */
 
 #define OR_INT64_SIZE           8
-#define OR_PUT_INT64(ptr, val)  (*(INT64 *)((char *)(ptr)) = swap64((INT64)val))
-#define OR_GET_INT64(ptr)       ((INT64)swap64(*(INT64 *)((char *)(ptr))))
 
 /* EXTENDED TYPES */
 
-#define OR_GET_BIGINT(ptr)      OR_GET_INT64(ptr)
-#define OR_PUT_BIGINT(ptr, val) OR_PUT_INT64(ptr, val)
+#define OR_PUT_BIGINT(ptr, val)  OR_PUT_INT64(ptr, val)
+#define OR_GET_BIGINT(ptr, val)  OR_GET_INT64(ptr, val)
+
+#define OR_GET_INT64(ptr, val) \
+   do { \
+     INT64 packed_value; \
+     memcpy(&packed_value, ptr, OR_INT64_SIZE); \
+     *((INT64*)(val)) = ((INT64)swap64(packed_value)); \
+   } while (0)
+
+#define OR_PUT_INT64(ptr, val) \
+   do { \
+     INT64 packed_value; \
+     packed_value = ((INT64)swap64(*(INT64*)val)); \
+     memcpy(ptr, &packed_value, OR_INT64_SIZE);\
+   } while (0)
 
 #define OR_GET_TIME(ptr, value) \
   *((DB_TIME *)(value)) = OR_GET_INT(ptr)
@@ -363,20 +425,24 @@
 
 #define OR_GET_LOG_LSA(ptr, lsa) \
    do { \
-     (lsa)->pageid  = OR_GET_INT(((char *)(ptr)) + OR_LOG_LSA_PAGEID); \
-     (lsa)->offset  = OR_GET_INT(((char *)(ptr)) + OR_LOG_LSA_OFFSET); \
+     INT64 value;\
+     OR_GET_INT64(((char *)(ptr)) + OR_LOG_LSA_PAGEID, &value); \
+     (lsa)->pageid  = value; \
+     (lsa)->offset  = OR_GET_SHORT(((char *)(ptr)) + OR_LOG_LSA_OFFSET); \
    } while (0)
 
 #define OR_PUT_LOG_LSA(ptr, lsa) \
    do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_LOG_LSA_PAGEID, (lsa)->pageid); \
-     OR_PUT_INT(((char *)(ptr)) + OR_LOG_LSA_OFFSET, (lsa)->offset); \
+     INT64 pageid = (lsa)->pageid;\
+     OR_PUT_INT64(((char *)(ptr)) + OR_LOG_LSA_PAGEID, &pageid); \
+     OR_PUT_SHORT(((char *)(ptr)) + OR_LOG_LSA_OFFSET, (lsa)->offset); \
    } while (0)
 
 #define OR_PUT_NULL_LOG_LSA(ptr) \
    do { \
-     OR_PUT_INT(((char *)(ptr)) + OR_LOG_LSA_PAGEID, -1); \
-     OR_PUT_INT(((char *)(ptr)) + OR_LOG_LSA_OFFSET, -1); \
+     INT64 pageid = -1;\
+     OR_PUT_INT64(((char *)(ptr)) + OR_LOG_LSA_PAGEID, &pageid); \
+     OR_PUT_SHORT(((char *)(ptr)) + OR_LOG_LSA_OFFSET, -1); \
    } while (0)
 
 /*
@@ -385,37 +451,57 @@
  */
 
 #define OR_VAR_TABLE_SIZE(vars) \
-  (((vars) == 0) ? 0 : (OR_INT_SIZE * ((vars) + 1)))
+  (OR_VAR_TABLE_SIZE_INTERNAL(vars, BIG_VAR_OFFSET_SIZE))
 
-#define OR_VAR_TABLE_ELEMENT(table, index) \
-  (&((int *)(table))[(index)])
+#define OR_VAR_TABLE_SIZE_INTERNAL(vars, offset_size) \
+  (((vars) == 0) ? 0 : DB_ALIGN((offset_size * ((vars) + 1)),INT_ALIGNMENT))
 
-#define OR_VAR_TABLE_ELEMENT_OFFSET(table, index) \
-  (OR_GET_INT(OR_VAR_TABLE_ELEMENT(table, index)))
+#define OR_VAR_TABLE_ELEMENT_PTR(table, index, offset_size) \
+  ((offset_size == OR_BYTE_SIZE) ? \
+  (&((char*)(table))[(index)]) \
+  : \
+  ((offset_size == OR_SHORT_SIZE) ? \
+  ((char*)(&((short *)(table))[(index)]))\
+  : \
+  ((char*)(&((int *)(table))[(index)]))\
+  ) \
+  )
 
-#define OR_VAR_TABLE_ELEMENT_LENGTH(table, index) \
-  ((OR_GET_INT(OR_VAR_TABLE_ELEMENT((table), (index) + 1))) - \
-   (OR_GET_INT(OR_VAR_TABLE_ELEMENT((table), (index)))))
+#define OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, index, offset_size) \
+  ((offset_size == OR_BYTE_SIZE) ? \
+  (OR_GET_BYTE(OR_VAR_TABLE_ELEMENT_PTR(table, index, offset_size))) \
+  : \
+  ((offset_size == OR_SHORT_SIZE) ? \
+  (OR_GET_SHORT(OR_VAR_TABLE_ELEMENT_PTR(table, index, offset_size))) \
+  : \
+  (OR_GET_INT(OR_VAR_TABLE_ELEMENT_PTR(table, index, offset_size))) \
+  ))
 
-
+#define OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL(table, index, offset_size) \
+  (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, (index) + 1, offset_size) - \
+   OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, (index), offset_size))
 
 /* OBJECT HEADER LAYOUT */
-#define OR_HEADER_SIZE  20	/* oid & two integers & flag word */
-#define OR_CLASS_OFFSET 0
-#define OR_REP_OFFSET   8
-#define OR_CHN_OFFSET   12
-#define OR_FLAG_OFFSET  16
+#define OR_HEADER_SIZE  8	/* two integers */
+#define OR_REP_OFFSET   0
+#define OR_CHN_OFFSET   4
 
 /* high bit of the repid word is reserved for the bound bit flag,
    need to keep representations from going negative ! */
-#define OR_BOUND_BIT_FLAG 0x80000000
+#define OR_BOUND_BIT_FLAG   0x80000000
+
+#define BIG_VAR_OFFSET_SIZE OR_INT_SIZE	/* 4byte */
+
+/* 01 stand for 1byte, 10-> 2byte, 11-> 4byte  */
+#define OR_OFFSET_SIZE_FLAG 0x60000000
+#define OR_OFFSET_SIZE_1BYTE 0x20000000
+#define OR_OFFSET_SIZE_2BYTE 0x40000000
+#define OR_OFFSET_SIZE_4BYTE 0x60000000
 
 /* OBJECT HEADER ACCESS MACROS */
 
-#define OR_GET_CLASS_OID(ptr) ptr
-
-#define OR_GET_REPRID(ptr) \
-  ((OR_GET_INT((ptr) + OR_REP_OFFSET)) & ~OR_BOUND_BIT_FLAG)
+#define OR_GET_REPID(ptr) \
+  ((OR_GET_INT((ptr) + OR_REP_OFFSET)) & ~OR_BOUND_BIT_FLAG & ~OR_OFFSET_SIZE_FLAG)
 
 #define OR_GET_BOUND_BIT_FLAG(ptr) \
   ((OR_GET_INT((ptr) + OR_REP_OFFSET)) & OR_BOUND_BIT_FLAG)
@@ -423,19 +509,38 @@
 #define OR_GET_CHN(ptr) \
   (OR_GET_INT((ptr) + OR_CHN_OFFSET))
 
+#define OR_GET_OFFSET_SIZE(ptr) \
+  ((((OR_GET_INT(((char*)ptr) + OR_REP_OFFSET)) & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_1BYTE) ? \
+     OR_BYTE_SIZE \
+     : \
+     ((((OR_GET_INT(((char*)ptr) + OR_REP_OFFSET)) & OR_OFFSET_SIZE_FLAG) == OR_OFFSET_SIZE_2BYTE) ? \
+     OR_SHORT_SIZE \
+     : \
+     OR_INT_SIZE))
+
+#define OR_SET_VAR_OFFSET_SIZE(val, offset_size) \
+  ((offset_size == OR_BYTE_SIZE) ? \
+  (val |= OR_OFFSET_SIZE_1BYTE) \
+  : \
+  ((offset_size == OR_SHORT_SIZE) ? \
+  (val |= OR_OFFSET_SIZE_2BYTE) \
+  : \
+  (val |= OR_OFFSET_SIZE_4BYTE) \
+  ))
+
 /* VARIABLE OFFSET TABLE ACCESSORS */
 
 #define OR_GET_OBJECT_VAR_TABLE(obj) \
-  (int *)(((char *)(obj)) + OR_HEADER_SIZE)
+  ((short *)(((char *)(obj)) + OR_HEADER_SIZE))
 
-#define OR_VAR_ELEMENT(obj, index) \
-  (OR_VAR_TABLE_ELEMENT(OR_GET_OBJECT_VAR_TABLE(obj), index))
+#define OR_VAR_ELEMENT_PTR(obj, index) \
+  (OR_VAR_TABLE_ELEMENT_PTR(OR_GET_OBJECT_VAR_TABLE(obj), index, OR_GET_OFFSET_SIZE(obj)))
 
 #define OR_VAR_OFFSET(obj, index) \
-  OR_VAR_TABLE_ELEMENT_OFFSET(OR_GET_OBJECT_VAR_TABLE(obj), index)
+  (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(OR_GET_OBJECT_VAR_TABLE(obj), index, OR_GET_OFFSET_SIZE(obj)))
 
 #define OR_VAR_IS_NULL(obj, index) \
-  (OR_VAR_TABLE_ELEMENT_LENGTH(OR_GET_OBJECT_VAR_TABLE(obj), index)? 0: 1)
+  ((OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL(OR_GET_OBJECT_VAR_TABLE(obj), index, OR_GET_OFFSET_SIZE(obj))) ? 0 : 1)
 
 #define OR_VAR_LENGTH(length, obj, index, n_variables)            \
   do {                                                            \
@@ -474,7 +579,7 @@
   ((*OR_GET_BOUND_BIT_BYTE(bitptr, element)) & OR_BOUND_BIT_MASK(element))
 
 #define OR_GET_BOUND_BITS(obj, nvars, fsize) \
-  (char *)(((char *)(obj)) + OR_HEADER_SIZE + OR_VAR_TABLE_SIZE(nvars) + fsize)
+  (char *)(((char *)(obj)) + OR_HEADER_SIZE + OR_VAR_TABLE_SIZE_INTERNAL(nvars, OR_GET_OFFSET_SIZE(obj)) + fsize)
 
 /* These are the most useful ones if we're only testing a single attribute */
 
@@ -493,10 +598,6 @@
 #define OR_CLEAR_BOUND_BIT(bitptr, element) \
   *OR_GET_BOUND_BIT_BYTE(bitptr, element) = \
     *OR_GET_BOUND_BIT_BYTE(bitptr, element) & ~OR_BOUND_BIT_MASK(element)
-
-/* ATTRIBUTE LOCATION */
-#define OR_FIXED_ATTRIBUTES_OFFSET(nvars) \
-  (OR_HEADER_SIZE + OR_VAR_TABLE_SIZE(nvars))
 
 /* SET HEADER */
 
@@ -546,10 +647,10 @@
  * Should make sure that the set actually has one before using.
  */
 #define OR_GET_SET_VAR_TABLE(setptr) \
-  (int *)((char *)(setptr) + OR_SET_HEADER_SIZE)
+  ((int *)((char *)(setptr) + OR_SET_HEADER_SIZE))
 
 #define OR_SET_ELEMENT_OFFSET(setptr, element) \
-  OR_VAR_TABLE_ELEMENT_OFFSET(OR_GET_SET_VAR_TABLE(setptr), element)
+  (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(OR_GET_SET_VAR_TABLE(setptr), element, BIG_VAR_OFFSET_SIZE))
 
 /*
  * SET BOUND BIT ACCESSORS
@@ -564,8 +665,7 @@
 
 /* MIDXKEY HEADER */
 
-#define OR_MULTI_BOUND_BIT_WORDS(count)  (((count) + 31) >> 5)
-#define OR_MULTI_BOUND_BIT_BYTES(count)  ((((count) + 31) >> 5) * 4)
+#define OR_MULTI_BOUND_BIT_BYTES(count)  (((count) + 7) >> 3)
 
 #define OR_MULTI_BOUND_BIT_MASK(element) (1 << ((int)(element) & 7))
 
@@ -621,7 +721,6 @@
 
 
 /* class */
-#define ORC_CLASS_VAR_ATT_COUNT		15
 #define ORC_HFID_FILEID_OFFSET		12
 #define ORC_HFID_VOLID_OFFSET		16
 #define ORC_HFID_PAGEID_OFFSET		20
@@ -633,48 +732,95 @@
 #define ORC_SHARED_COUNT_OFFSET		48
 #define ORC_CLASS_ATTR_COUNT_OFFSET	60
 
+#define ORC_CLASS_VAR_ATT_COUNT         15
 #define ORC_NAME_INDEX 			0
+#define ORC_LOADER_COMMANDS_INDEX       1
 #define ORC_REPRESENTATIONS_INDEX	2
 #define ORC_SUBCLASSES_INDEX		3
 #define ORC_SUPERCLASSES_INDEX		4
 #define ORC_ATTRIBUTES_INDEX		5
 #define ORC_SHARED_ATTRS_INDEX		6
 #define ORC_CLASS_ATTRS_INDEX		7
+#define ORC_METHODS_INDEX               8
+#define ORC_CLASS_METHODS_INDEX         9
+#define ORC_METHOD_FILES_INDEX          10
+#define ORC_RESOLUTIONS_INDEX           11
+#define ORC_QUERY_SPEC_INDEX            12
+#define ORC_TRIGGERS_INDEX              13
 #define ORC_PROPERTIES_INDEX		14
 
-/* attribute*/
-#define ORC_ATT_VAR_ATT_COUNT           6
+/* attribute */
 #define ORC_ATT_ID_OFFSET		0
 #define ORC_ATT_TYPE_OFFSET		4
 #define ORC_ATT_CLASS_OFFSET		16
 #define ORC_ATT_FLAG_OFFSET             24
 #define ORC_ATT_INDEX_OFFSET		28
-#define ORC_ATT_NAME_INDEX		0
-#define ORC_ATT_CURRENT_VALUE_INDEX	1
-#define ORC_ATT_ORIGINAL_VALUE_INDEX	2
+
+#define ORC_ATT_VAR_ATT_COUNT           6
+#define ORC_ATT_NAME_INDEX              0
+#define ORC_ATT_CURRENT_VALUE_INDEX    	1
+#define ORC_ATT_ORIGINAL_VALUE_INDEX    2
 #define ORC_ATT_DOMAIN_INDEX		3
+#define ORC_ATT_TRIGGER_INDEX           4
+#define ORC_ATT_PROPERTIES_INDEX        5
 
 /* representation */
-#define ORC_REP_VAR_ATT_COUNT		2
 #define ORC_REP_ID_OFFSET		0
 #define ORC_REP_FIXED_COUNT_OFFSET	4
 #define ORC_REP_VARIABLE_COUNT_OFFSET	8
+
+#define ORC_REP_VAR_ATT_COUNT           2
 #define ORC_REP_ATTRIBUTES_INDEX	0
+#define ORC_REP_PROPERTIES_INDEX        1
 
 /* rep_attribute */
-#define ORC_REPATT_VAR_ATT_COUNT 	1
 #define ORC_REPATT_ID_OFFSET		0
 #define ORC_REPATT_TYPE_OFFSET		4
+
+#define ORC_REPATT_VAR_ATT_COUNT        1
 #define ORC_REPATT_DOMAIN_INDEX		0
 
 /* domain */
-#define ORC_DOMAIN_VAR_ATT_COUNT 	1
 #define ORC_DOMAIN_TYPE_OFFSET 		0
 #define ORC_DOMAIN_PRECISION_OFFSET 	4
 #define ORC_DOMAIN_SCALE_OFFSET 	8
 #define ORC_DOMAIN_CODESET_OFFSET 	12
 #define ORC_DOMAIN_CLASS_OFFSET 	16
+
+#define ORC_DOMAIN_VAR_ATT_COUNT        1
 #define ORC_DOMAIN_SETDOMAIN_INDEX	0
+
+/* method */
+#define ORC_METHOD_VAR_ATT_COUNT        3
+#define ORC_METHOD_NAME_INDEX           0
+#define ORC_METHOD_SIGNATURE_INDEX      1
+#define ORC_METHOD_PROPERTIES_INDEX     2
+
+/* method argument */
+#define ORC_METHARG_VAR_ATT_COUNT       1
+#define ORC_METHARG_DOMAIN_INDEX        0
+
+/* method signature */
+#define ORC_METHSIG_VAR_ATT_COUNT       4
+#define ORC_METHSIG_FUNCTION_NAME_INDEX 0
+#define ORC_METHSIG_SQL_DEF_INDEX       1
+#define ORC_METHSIG_RETURN_VALUE_INDEX  2
+#define ORC_METHSIG_ARGUMENTS_INDEX     3
+
+/* method file */
+#define ORC_METHFILE_VAR_ATT_COUNT      2
+#define ORC_METHFILE_NAME_INDEX         0
+#define ORC_METHFILE_PROPERTIES_INDEX   1
+
+/* query spec */
+#define ORC_QUERY_SPEC_VAR_ATT_COUNT    1
+#define ORC_QUERY_SPEC_SPEC_INDEX       0
+
+/* resolution */
+#define ORC_RES_VAR_ATT_COUNT           2
+#define ORC_RES_NAME_INDEX              0
+#define ORC_RES_ALIAS_INDEX             1
+
 
 /* MEMORY REPRESENTATION STRUCTURES */
 
@@ -703,33 +849,6 @@ struct db_reference
   struct db_object *handle;
   struct db_object *owner;
   int attribute;
-};
-
-/*
- * DB_ELO
- *    This is the run-time state structure for an ELO.
- *    The ELO is part of the implementation of the GLO and is not
- *    used directly by the API.
- *
- */
-typedef enum db_elo_type DB_ELO_TYPE;
-enum db_elo_type
-{
-  ELO_NULL,
-  ELO_LO,
-  ELO_FBO
-};
-
-/* Typedef DB_ELO is defined in dbtype.h */
-struct db_elo
-{
-  /* these two fields are kept in the disk representation */
-  LOID loid;			/* loid for large object */
-  const char *pathname;		/* pathname of file based object (may be shadow) */
-  const char *original_pathname;	/* the real file for file based objects */
-
-  /* misc run time information */
-  DB_ELO_TYPE type;
 };
 
 typedef struct db_set SETREF;
@@ -838,8 +957,9 @@ struct or_buf
                    (d)->type->id == DB_TYPE_OBJECT ? &tp_Oid_domain : (d), \
                    (o), (n))
 
-extern bool or_isinstance (RECDES * record, OID * class_oid);
-extern void or_class_oid (RECDES * record, OID * oid);
+
+#define ASSERT_ALIGN(ptr, alignment) (assert (PTR_ALIGN(ptr, alignment) == ptr))
+
 extern int or_rep_id (RECDES * record);
 extern int or_chn (RECDES * record);
 extern char *or_class_name (RECDES * record);
@@ -868,7 +988,8 @@ extern char *or_pack_utime (char *ptr, DB_UTIME utime);
 #endif
 extern char *or_pack_short (char *ptr, short number);
 extern char *or_pack_string (char *ptr, const char *string);
-extern char *or_pack_string_with_length (char *ptr, char *string, int length);
+extern char *or_pack_string_with_length (char *ptr, const char *string,
+					 int length);
 extern char *or_pack_errcode (char *ptr, int error);
 extern char *or_pack_oid (char *ptr, OID * oid);
 extern char *or_pack_loid (char *ptr, LOID * loid);
@@ -917,6 +1038,7 @@ extern char *or_unpack_monetary (char *ptr, DB_MONETARY * money);
 extern char *or_unpack_utime (char *ptr, DB_UTIME * utime);
 #endif
 extern char *or_unpack_string (char *ptr, char **string);
+extern char *or_unpack_string_alloc (char *ptr, char **string);
 extern char *or_unpack_string_nocopy (char *ptr, char **string);
 extern char *or_unpack_errcode (char *ptr, int *error);
 extern char *or_unpack_oid (char *ptr, OID * oid);
@@ -932,8 +1054,6 @@ extern char *or_unpack_lock (char *ptr, LOCK * lock);
 extern char *or_unpack_set_header (char *buf, DB_TYPE * stype,
 				   DB_TYPE * etype, int *bound_bits,
 				   int *size);
-
-extern char *or_unpack_var_table (char *ptr, int nvars, OR_VARINFO * vars);
 extern char *or_unpack_method_sig_list (char *ptr,
 					void **method_sig_list_ptr);
 extern char *or_unpack_set_node (char *ptr, void *set_node_ptr);
@@ -948,12 +1068,14 @@ extern char *or_pack_ptr (char *ptr, UINTPTR ptrval);
 extern char *or_unpack_ptr (char *ptr, UINTPTR * ptrval);
 
 /* pack/unpack support functions */
-extern int or_packed_string_length (const char *string);
+extern int or_packed_string_length (const char *string, int *strlen);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_align_length (int length);
 #endif /* ENABLE_UNUSED_FUNCTION */
 extern int or_packed_varbit_length (int bitlen);
+extern int or_varbit_length (int bitlen);
 extern int or_packed_varchar_length (int charlen);
+extern int or_varchar_length (int charlen);
 
 /*
  * to avoid circular dependencies, don't require the definition of QFILE_LIST_ID in
@@ -998,8 +1120,12 @@ extern int or_put_data (OR_BUF * buf, char *data, int length);
 extern int or_put_oid (OR_BUF * buf, OID * oid);
 extern int or_put_loid (OR_BUF * buf, LOID * loid);
 extern int or_put_varbit (OR_BUF * buf, char *string, int bitlen);
+extern int or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen);
 extern int or_put_varchar (OR_BUF * buf, char *string, int charlen);
+extern int or_packed_put_varchar (OR_BUF * buf, char *string, int charlen);
 extern int or_put_align32 (OR_BUF * buf);
+extern int or_put_offset (OR_BUF * buf, int num);
+extern int or_put_offset_internal (OR_BUF * buf, int num, int offset_size);
 
 /* Data unpacking functions */
 extern int or_get_byte (OR_BUF * buf, int *error);
@@ -1017,11 +1143,13 @@ extern int or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary);
 extern int or_get_data (OR_BUF * buf, char *data, int length);
 extern int or_get_oid (OR_BUF * buf, OID * oid);
 extern int or_get_loid (OR_BUF * buf, LOID * loid);
+extern int or_get_offset (OR_BUF * buf, int *error);
+extern int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size);
 
-extern int or_skip_varchar_remainder (OR_BUF * buf, int charlen);
-extern int or_skip_varchar (OR_BUF * buf);
-extern int or_skip_varbit (OR_BUF * buf);
-extern int or_skip_varbit_remainder (OR_BUF * buf, int bitlen);
+extern int or_skip_varchar_remainder (OR_BUF * buf, int charlen, int align);
+extern int or_skip_varchar (OR_BUF * buf, int align);
+extern int or_skip_varbit (OR_BUF * buf, int align);
+extern int or_skip_varbit_remainder (OR_BUF * buf, int bitlen, int align);
 
 /* Pack/unpack support functions */
 extern int or_advance (OR_BUF * buf, int offset);
@@ -1033,6 +1161,7 @@ extern int or_length_binary (DB_BINARY * binary);
 #endif
 
 extern int or_get_varchar_length (OR_BUF * buf, int *intval);
+extern int or_get_align (OR_BUF * buf, int align);
 extern int or_get_align32 (OR_BUF * buf);
 extern int or_get_align64 (OR_BUF * buf);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -1043,6 +1172,10 @@ extern int or_get_varbit_length (OR_BUF * buf, int *intval);
 
 extern OR_VARINFO *or_get_var_table (OR_BUF * buf, int nvars,
 				     char *(*allocator) (int));
+
+extern OR_VARINFO *or_get_var_table_internal (OR_BUF * buf, int nvars,
+					      char *(*allocator) (int),
+					      int offset_size);
 
 /* DOMAIN functions */
 extern int or_packed_domain_size (struct tp_domain *domain,

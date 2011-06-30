@@ -28,39 +28,34 @@
  *
  */
 
-package @CUBRID_SQL@;
+package cubrid.sql;
 
 import java.sql.Timestamp;
 
-public class CUBRIDTimestamp extends Timestamp
-{
-  public static final boolean TIMESTAMP = false;
-  public static final boolean DATETIME = true;
+public class CUBRIDTimestamp extends Timestamp {
+	public static final boolean TIMESTAMP = false;
+	public static final boolean DATETIME = true;
 
-  boolean isDatetime = true;
+	boolean isDatetime = true;
 
-  public CUBRIDTimestamp (long time, boolean isDatetime)
-    {
-      super(time);
-      this.isDatetime = isDatetime;
-    }
-  
-  public static CUBRIDTimestamp valueOf (String s, boolean isdt)
-    {
-      Timestamp tmptime = Timestamp.valueOf (s);
-      CUBRIDTimestamp cub_tmptime = new CUBRIDTimestamp(tmptime.getTime (), isdt);
-      return cub_tmptime;
-    }
+	public CUBRIDTimestamp(long time, boolean isDatetime) {
+		super(time);
+		this.isDatetime = isDatetime;
+	}
 
-  public static boolean isTimestampType (Timestamp o)
-    {
-      if (o instanceof CUBRIDTimestamp) 
-        {
-          if (!((CUBRIDTimestamp) o).isDatetime)
-            {
-              return true;
-            }
-        }
-      return false;
-    }
+	public static CUBRIDTimestamp valueOf(String s, boolean isdt) {
+		Timestamp tmptime = Timestamp.valueOf(s);
+		CUBRIDTimestamp cub_tmptime = new CUBRIDTimestamp(tmptime.getTime(),
+				isdt);
+		return cub_tmptime;
+	}
+
+	public static boolean isTimestampType(Timestamp o) {
+		if (o instanceof CUBRIDTimestamp) {
+			if (!((CUBRIDTimestamp) o).isDatetime) {
+				return true;
+			}
+		}
+		return false;
+	}
 }

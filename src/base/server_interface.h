@@ -58,4 +58,7 @@ enum
 
 #define COMPACTDB_REPR_DELETED -2
 
+enum
+{ GENERATE_SERIAL = 0, GENERATE_AUTO_INCREMENT = 1 };
+
 #endif /* _SERVER_INTERFACE_H_ */

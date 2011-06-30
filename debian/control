@@ -1,0 +1,14 @@
+Source: cubrid
+Section: database
+Priority: optional
+Maintainer: CUBRID Developers <cubrid@nhn.com>
+Build-Depends: debhelper (>= 7.0.50), build-essential, openjdk-6-jdk, ant, libncurses5-dev, libelf-dev, libtool, automake, autoconf, flex (>= 2.5.35)
+Standards-Version: 3.8.3
+Homepage: http://www.cubrid.org/
+
+Package: cubrid
+Architecture: i386 amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, ${java:Depends}
+Description: Easy and Powerful Database Management System 
+ CUBRID is an open-source, object-relational database management system (DBMS) optimized for Web services. 
+ CUBRID assures high performance, stability, scalability, and high availability which are required for mission-critical Internet applications.

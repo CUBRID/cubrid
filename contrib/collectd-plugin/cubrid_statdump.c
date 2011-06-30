@@ -34,8 +34,8 @@ static const char *config_keys[] = {
 
 static int config_keys_num = 1;
 
-static char *db;
-
+static char *db = NULL;
+static int is_restarted = false;
 static int
 config (const char *key, const char *value)
 {
@@ -61,6 +61,12 @@ cubrid_statdump_init (void)
 static int
 cubrid_statdump_shutdown (void)
 {
+  if (is_restarted == true)
+    {
+      histo_stop ();
+      db_shutdown ();
+    }
+
   return 0;
 }
 
@@ -114,6 +120,9 @@ cubrid_statdump_read ()
   value_t bt_num_inserts[1];
   value_t bt_num_deletes[1];
   value_t bt_num_updates[1];
+  value_t bt_num_covered[1];
+  value_t bt_num_noncovered[1];
+  value_t bt_num_resumes[1];
 
   /* Execution statistics for the query manger */
   value_t qm_num_selects[1];
@@ -137,80 +146,98 @@ cubrid_statdump_read ()
   /* Execution statistics for network communication */
   value_t net_num_requests[1];
 
-  MNT_SERVER_EXEC_GLOBAL_STATS *mystat;
-  mystat = malloc (sizeof (MNT_SERVER_EXEC_GLOBAL_STATS));
+  value_t pb_hit_ratio[1];
+
+  MNT_SERVER_EXEC_STATS mystat;
+
+  if (is_restarted == false)
+    {
+      /* restart needed */
+      AU_DISABLE_PASSWORDS ();
+
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+      db_login ("dba", NULL);
+      if (db != NULL && (db_restart (db, TRUE, db) == NO_ERROR))
+	{
+	  histo_start (true);
+	  is_restarted = true;
+	}
+      else
+	{
+	  return 0;
+	}
+    }
+
+  memset (&mystat, '\0', sizeof (MNT_SERVER_EXEC_STATS));
 
   sprintf (submit_name, "statdump_%s", db);
 
-  AU_DISABLE_PASSWORDS ();
+  mnt_get_global_diff_stats (&mystat);
 
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("dba", NULL);
-  db_restart (db, TRUE, db);
-  histo_start (true);
+  file_num_creates[0].gauge = mystat.file_num_creates;
+  file_num_removes[0].gauge = mystat.file_num_removes;
+  file_num_ioreads[0].gauge = mystat.file_num_ioreads;
+  file_num_iowrites[0].gauge = mystat.file_num_iowrites;
+  file_num_iosynches[0].gauge = mystat.file_num_iosynches;
 
-  mnt_server_copy_global_stats (mystat);
+  pb_num_fetches[0].gauge = mystat.pb_num_fetches;
+  pb_num_dirties[0].gauge = mystat.pb_num_dirties;
+  pb_num_ioreads[0].gauge = mystat.pb_num_ioreads;
+  pb_num_iowrites[0].gauge = mystat.pb_num_iowrites;
+  pb_num_victims[0].gauge = mystat.pb_num_victims;
+  pb_num_replacements[0].gauge = mystat.pb_num_replacements;
 
-  file_num_creates[0].gauge = mystat->file_num_creates;
-  file_num_removes[0].gauge = mystat->file_num_removes;
-  file_num_ioreads[0].gauge = mystat->file_num_ioreads;
-  file_num_iowrites[0].gauge = mystat->file_num_iowrites;
-  file_num_iosynches[0].gauge = mystat->file_num_iosynches;
+  log_num_ioreads[0].gauge = mystat.log_num_ioreads;
+  log_num_iowrites[0].gauge = mystat.log_num_iowrites;
+  log_num_appendrecs[0].gauge = mystat.log_num_appendrecs;
+  log_num_archives[0].gauge = mystat.log_num_archives;
+  log_num_checkpoints[0].gauge = mystat.log_num_checkpoints;
+  log_num_wals[0].gauge = mystat.log_num_wals;
 
-  pb_num_fetches[0].gauge = mystat->pb_num_fetches;
-  pb_num_dirties[0].gauge = mystat->pb_num_dirties;
-  pb_num_ioreads[0].gauge = mystat->pb_num_ioreads;
-  pb_num_iowrites[0].gauge = mystat->pb_num_iowrites;
-  pb_num_victims[0].gauge = mystat->pb_num_victims;
-  pb_num_replacements[0].gauge = mystat->pb_num_replacements;
-
-  log_num_ioreads[0].gauge = mystat->log_num_ioreads;
-  log_num_iowrites[0].gauge = mystat->log_num_iowrites;
-  log_num_appendrecs[0].gauge = mystat->log_num_appendrecs;
-  log_num_archives[0].gauge = mystat->log_num_archives;
-  log_num_checkpoints[0].gauge = mystat->log_num_checkpoints;
-  log_num_wals[0].gauge = mystat->log_num_wals;
-
-  lk_num_acquired_on_pages[0].gauge = mystat->lk_num_acquired_on_pages;
-  lk_num_acquired_on_objects[0].gauge = mystat->lk_num_acquired_on_objects;
-  lk_num_converted_on_pages[0].gauge = mystat->lk_num_converted_on_pages;
-  lk_num_converted_on_objects[0].gauge = mystat->lk_num_converted_on_objects;
-  lk_num_re_requested_on_pages[0].gauge =
-    mystat->lk_num_re_requested_on_pages;
+  lk_num_acquired_on_pages[0].gauge = mystat.lk_num_acquired_on_pages;
+  lk_num_acquired_on_objects[0].gauge = mystat.lk_num_acquired_on_objects;
+  lk_num_converted_on_pages[0].gauge = mystat.lk_num_converted_on_pages;
+  lk_num_converted_on_objects[0].gauge = mystat.lk_num_converted_on_objects;
+  lk_num_re_requested_on_pages[0].gauge = mystat.lk_num_re_requested_on_pages;
   lk_num_re_requested_on_objects[0].gauge =
-    mystat->lk_num_re_requested_on_objects;
-  lk_num_waited_on_pages[0].gauge = mystat->lk_num_waited_on_pages;
-  lk_num_waited_on_objects[0].gauge = mystat->lk_num_waited_on_objects;
+    mystat.lk_num_re_requested_on_objects;
+  lk_num_waited_on_pages[0].gauge = mystat.lk_num_waited_on_pages;
+  lk_num_waited_on_objects[0].gauge = mystat.lk_num_waited_on_objects;
 
-  tran_num_commits[0].gauge = mystat->tran_num_commits;
-  tran_num_rollbacks[0].gauge = mystat->tran_num_rollbacks;
-  tran_num_savepoints[0].gauge = mystat->tran_num_savepoints;
-  tran_num_start_topops[0].gauge = mystat->tran_num_start_topops;
-  tran_num_end_topops[0].gauge = mystat->tran_num_end_topops;
-  tran_num_interrupts[0].gauge = mystat->tran_num_interrupts;
+  tran_num_commits[0].gauge = mystat.tran_num_commits;
+  tran_num_rollbacks[0].gauge = mystat.tran_num_rollbacks;
+  tran_num_savepoints[0].gauge = mystat.tran_num_savepoints;
+  tran_num_start_topops[0].gauge = mystat.tran_num_start_topops;
+  tran_num_end_topops[0].gauge = mystat.tran_num_end_topops;
+  tran_num_interrupts[0].gauge = mystat.tran_num_interrupts;
 
-  bt_num_inserts[0].gauge = mystat->bt_num_inserts;
-  bt_num_deletes[0].gauge = mystat->bt_num_deletes;
-  bt_num_updates[0].gauge = mystat->bt_num_updates;
+  bt_num_inserts[0].gauge = mystat.bt_num_inserts;
+  bt_num_deletes[0].gauge = mystat.bt_num_deletes;
+  bt_num_updates[0].gauge = mystat.bt_num_updates;
+  bt_num_covered[0].gauge = mystat.bt_num_covered;
+  bt_num_noncovered[0].gauge = mystat.bt_num_noncovered;
+  bt_num_resumes[0].gauge = mystat.bt_num_resumes;
 
-  qm_num_selects[0].gauge = mystat->qm_num_selects;
-  qm_num_inserts[0].gauge = mystat->qm_num_inserts;
-  qm_num_deletes[0].gauge = mystat->qm_num_deletes;
-  qm_num_updates[0].gauge = mystat->qm_num_updates;
-  qm_num_sscans[0].gauge = mystat->qm_num_sscans;
-  qm_num_iscans[0].gauge = mystat->qm_num_iscans;
-  qm_num_lscans[0].gauge = mystat->qm_num_lscans;
-  qm_num_setscans[0].gauge = mystat->qm_num_setscans;
-  qm_num_methscans[0].gauge = mystat->qm_num_methscans;
-  qm_num_nljoins[0].gauge = mystat->qm_num_nljoins;
-  qm_num_mjoins[0].gauge = mystat->qm_num_mjoins;
-  qm_num_objfetches[0].gauge = mystat->qm_num_objfetches;
+  qm_num_selects[0].gauge = mystat.qm_num_selects;
+  qm_num_inserts[0].gauge = mystat.qm_num_inserts;
+  qm_num_deletes[0].gauge = mystat.qm_num_deletes;
+  qm_num_updates[0].gauge = mystat.qm_num_updates;
+  qm_num_sscans[0].gauge = mystat.qm_num_sscans;
+  qm_num_iscans[0].gauge = mystat.qm_num_iscans;
+  qm_num_lscans[0].gauge = mystat.qm_num_lscans;
+  qm_num_setscans[0].gauge = mystat.qm_num_setscans;
+  qm_num_methscans[0].gauge = mystat.qm_num_methscans;
+  qm_num_nljoins[0].gauge = mystat.qm_num_nljoins;
+  qm_num_mjoins[0].gauge = mystat.qm_num_mjoins;
+  qm_num_objfetches[0].gauge = mystat.qm_num_objfetches;
 
-  fc_num_pages[0].gauge = mystat->fc_num_pages;
-  fc_num_log_pages[0].gauge = mystat->fc_num_log_pages;
-  fc_tokens[0].gauge = mystat->fc_tokens;
+  fc_num_pages[0].gauge = mystat.fc_num_pages;
+  fc_num_log_pages[0].gauge = mystat.fc_num_log_pages;
+  fc_tokens[0].gauge = mystat.fc_tokens;
 
-  net_num_requests[0].gauge = mystat->net_num_requests;
+  net_num_requests[0].gauge = mystat.net_num_requests;
+
+  pb_hit_ratio[0].gauge = mystat.pb_hit_ratio;
 
   submit ("file_num_creates", submit_name, file_num_creates, 1);
   submit ("file_num_removes", submit_name, file_num_removes, 1);
@@ -258,6 +285,9 @@ cubrid_statdump_read ()
   submit ("bt_num_inserts", submit_name, bt_num_inserts, 1);
   submit ("bt_num_deletes", submit_name, bt_num_deletes, 1);
   submit ("bt_num_updates", submit_name, bt_num_updates, 1);
+  submit ("bt_num_covered", submit_name, bt_num_covered, 1);
+  submit ("bt_num_noncovered", submit_name, bt_num_noncovered, 1);
+  submit ("bt_num_resumes", submit_name, bt_num_resumes, 1);
 
   submit ("qm_num_selects", submit_name, qm_num_selects, 1);
   submit ("qm_num_inserts", submit_name, qm_num_inserts, 1);
@@ -277,10 +307,8 @@ cubrid_statdump_read ()
 
   submit ("net_num_requests", submit_name, net_num_requests, 1);
 
-  histo_clear_global_stats ();
-  histo_stop ();
-  free (mystat);
-  db_shutdown ();
+  submit ("pb_hit_ratio", submit_name, pb_hit_ratio, 1);
+
   return 0;
 }
 

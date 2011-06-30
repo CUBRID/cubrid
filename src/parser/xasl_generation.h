@@ -117,13 +117,21 @@ extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * p,
 extern XASL_NODE *parser_generate_xasl (PARSER_CONTEXT * p, PT_NODE * node);
 extern PARSER_VARCHAR *pt_print_node_value (PARSER_CONTEXT * parser,
 					    const PT_NODE * val);
+extern REGU_VARIABLE *pt_make_regu_arith (const REGU_VARIABLE * arg1,
+					  const REGU_VARIABLE * arg2,
+					  const REGU_VARIABLE * arg3,
+					  const OPERATOR_TYPE op,
+					  const TP_DOMAIN * domain);
 extern TP_DOMAIN *pt_xasl_type_enum_to_domain (const PT_TYPE_ENUM type);
 extern TP_DOMAIN *pt_xasl_node_to_domain (PARSER_CONTEXT * parser,
 					  const PT_NODE * node);
 extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser,
 				     PT_NODE * select_list, PT_NODE * from,
 				     PT_NODE * class_specs, PT_NODE * where,
-				     PT_NODE * using_index, int server_op);
+				     PT_NODE * using_index,
+				     PT_NODE * order_by,
+				     PT_NODE * orderby_for, int server_op,
+				     bool used_to_update);
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node,
 				     PT_NODE * values_list, int has_uniques,
 				     PT_NODE * non_null_attrs);
@@ -172,9 +180,13 @@ extern PT_NODE *pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * tree,
 				  void *arg, int *continue_walk);
 extern int pt_is_single_tuple (PARSER_CONTEXT * parser,
 			       PT_NODE * select_node);
-extern QFILE_TUPLE_VALUE_POSITION pt_to_pos_descr (PARSER_CONTEXT * parser,
-						   PT_NODE * node,
-						   PT_NODE * root);
+extern void pt_to_pos_descr (PARSER_CONTEXT * parser,
+			     QFILE_TUPLE_VALUE_POSITION * pos_p,
+			     PT_NODE * node, PT_NODE * root,
+			     PT_NODE ** referred_node);
+extern void pt_to_pos_descr_groupby (PARSER_CONTEXT * parser,
+				     QFILE_TUPLE_VALUE_POSITION * pos_p,
+				     PT_NODE * node, PT_NODE * root);
 extern void pt_set_numbering_node_etc (PARSER_CONTEXT * parser,
 				       PT_NODE * node_list,
 				       DB_VALUE ** instnum_valp,

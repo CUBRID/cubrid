@@ -265,6 +265,7 @@ pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement,
       while (p)
 	{
 	  ord = p->info.sort_spec.expr;
+	  assert (ord->node_type == PT_VALUE);
 	  ord->info.value.data_value.i += 1;
 	  p->info.sort_spec.pos_descr.pos_no += 1;
 	  p = p->next;

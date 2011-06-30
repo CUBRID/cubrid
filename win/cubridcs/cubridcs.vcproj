@@ -365,6 +365,14 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\dtoa.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\base\dynamic_array.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\encryption.c"
 					>
 				</File>
@@ -397,6 +405,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\md5.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\memory_alloc.c"
 					>
 				</File>
@@ -410,6 +422,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\base\misc_string.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\base\mprec.c"
 					>
 				</File>
 				<File
@@ -474,6 +490,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\compat\db_date.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\compat\db_elo.c"
 					>
 				</File>
 				<File
@@ -581,27 +601,7 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\object\elo_class.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\elo_holder.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\elo_recovery.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\esm_class.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\fbo_class.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\glo_class.c"
+					RelativePath="..\..\src\object\elo.c"
 					>
 				</File>
 				<File
@@ -800,6 +800,27 @@
 					RelativePath="..\..\src\parser\xasl_generation.c"
 					>
 				</File>
+				<Filter
+					Name="heaplayers"
+					>
+					<File
+						RelativePath="..\..\src\heaplayers\customheaps.cpp"
+						>
+						<FileConfiguration
+							Name="Release|x64"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								Optimization="0"
+								EnableIntrinsicFunctions="false"
+							/>
+						</FileConfiguration>
+					</File>
+					<File
+						RelativePath="..\..\src\heaplayers\lea_heap.c"
+						>
+					</File>
+				</Filter>
 			</Filter>
 			<Filter
 				Name="query"
@@ -848,6 +869,18 @@
 			<Filter
 				Name="storage"
 				>
+				<File
+					RelativePath="..\..\src\storage\es.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\storage\es_common.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\storage\es_posix.c"
+					>
+				</File>
 				<File
 					RelativePath="..\..\src\storage\file_io.c"
 					>
@@ -1010,27 +1043,6 @@
 				</File>
 				<File
 					RelativePath="..\..\src\executables\util_cs.c"
-					>
-				</File>
-			</Filter>
-			<Filter
-				Name="heaplayers"
-				>
-				<File
-					RelativePath="..\..\src\heaplayers\customheaps.cpp"
-					>
-					<FileConfiguration
-						Name="Release|x64"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							Optimization="0"
-							EnableIntrinsicFunctions="false"
-						/>
-					</FileConfiguration>
-				</File>
-				<File
-					RelativePath="..\..\src\heaplayers\lea_heap.c"
 					>
 				</File>
 			</Filter>

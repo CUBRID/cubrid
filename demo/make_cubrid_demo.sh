@@ -4,5 +4,5 @@ if [ -z "$CUBRID" ]; then
 	exit 1
 fi
 
-cubrid createdb demodb &> /dev/null
-cubrid loaddb -u dba -s $CUBRID/demo/demodb_schema -d $CUBRID/demo/demodb_objects demodb &> /dev/null
+cubrid createdb --db-volume-size=100M --log-volume-size=100M demodb > /dev/null 2>&1
+cubrid loaddb -u dba -s $CUBRID/demo/demodb_schema -d $CUBRID/demo/demodb_objects demodb > /dev/null 2>&1

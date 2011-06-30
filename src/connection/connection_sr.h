@@ -37,8 +37,16 @@
 #include "connection_support.h"
 #include "error_manager.h"
 #include "critical_section.h"
-#include "thread_impl.h"
+#include "thread.h"
 
+#define IP_BYTE_COUNT 5
+
+typedef struct ip_info IP_INFO;
+struct ip_info
+{
+  unsigned char *address_list;
+  int num_list;
+};
 
 extern CSS_CONN_ENTRY *css_Conn_array;
 extern CSS_CONN_ENTRY *css_Active_conn_anchor;
@@ -102,5 +110,10 @@ extern int css_queue_user_data_buffer (CSS_CONN_ENTRY * conn,
 				       unsigned short request_id,
 				       int size, char *buffer);
 extern unsigned short css_get_request_id (CSS_CONN_ENTRY * conn);
+extern int css_set_accessible_ip_info (void);
+extern int css_free_accessible_ip_info (void);
+extern int css_free_ip_info (IP_INFO * ip_info);
+extern int css_read_ip_info (IP_INFO ** out_ip_info, char *filename);
+extern int css_check_ip (IP_INFO * ip_info, unsigned char *address);
 
 #endif /* _CONNECTION_SR_H_ */

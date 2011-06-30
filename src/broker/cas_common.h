@@ -51,27 +51,6 @@
 
 #define INT_STR_LEN     16
 
-#if defined(WINDOWS)
-#define MUTEX_INIT(MUTEX)				\
-	do {						\
-	  MUTEX = CreateMutex(NULL, FALSE, NULL);	\
-	} while (0)
-#define MUTEX_LOCK(MUTEX)		WaitForSingleObject(MUTEX, INFINITE)
-#define MUTEX_UNLOCK(MUTEX)		ReleaseMutex(MUTEX)
-#else
-#define MUTEX_INIT(MUTEX)		pthread_mutex_init(&(MUTEX), NULL)
-#define MUTEX_LOCK(MUTEX)		pthread_mutex_lock(&(MUTEX))
-#define MUTEX_UNLOCK(MUTEX)		pthread_mutex_unlock(&(MUTEX))
-#endif
-
-#if defined(WINDOWS)
-#define         T_THREAD        uintptr_t
-#define         T_MUTEX         HANDLE
-#else
-#define         T_THREAD        pthread_t
-#define         T_MUTEX         pthread_mutex_t
-#endif
-
 #define MALLOC(SIZE)            malloc(SIZE)
 #define REALLOC(PTR, SIZE)      \
         ((PTR == NULL) ? malloc(SIZE) : realloc(PTR, SIZE))

@@ -44,7 +44,6 @@
 #include "load_object.h"
 #include "file_hash.h"
 #include "db.h"
-#include "glo_class.h"
 #include "memory_hash.h"
 #include "memory_alloc.h"
 #include "locator_cl.h"
@@ -498,17 +497,24 @@ extractobjects (const char *exec_name)
       return 1;
     }
 
-  output_filename = (char *) malloc (PATH_MAX);
-  if (output_filename == NULL)
-    return 1;
+  if (!datafile_per_class)
+    {
+      output_filename = (char *) malloc (PATH_MAX);
 
-  snprintf (output_filename, PATH_MAX - 1, "%s/%s%s",
-	    output_dirname, output_prefix, OBJECT_SUFFIX);
-  if ((obj_out->fp = fopen_ex (output_filename, "wb")) == NULL)
-    {				/* binary */
-      fprintf (stderr, "%s: %s.\n\n", exec_name, strerror (errno));
-      free_and_init (output_filename);
-      return errno;
+      if (output_filename == NULL)
+	{
+	  return 1;
+	}
+      snprintf (output_filename, PATH_MAX - 1, "%s/%s%s",
+		output_dirname, output_prefix, OBJECT_SUFFIX);
+
+      obj_out->fp = fopen_ex (output_filename, "wb");
+      if (obj_out->fp == NULL)
+	{
+	  fprintf (stderr, "%s: %s.\n\n", exec_name, strerror (errno));
+	  free_and_init (output_filename);
+	  return errno;
+	}
     }
 
   {
@@ -643,7 +649,8 @@ extractobjects (const char *exec_name)
 	      else
 		MARK_CLASS_REQUESTED (i);
 
-	      if (!required_class_only || IS_CLASS_REQUESTED (i))
+	      if (!datafile_per_class &&
+		  (!required_class_only || IS_CLASS_REQUESTED (i)))
 		{
 		  if (text_print (obj_out, NULL, 0, "%cid %s%s%s %d\n", '%',
 				  PRINT_IDENTIFIER (class_ptr->header.name),
@@ -653,82 +660,89 @@ extractobjects (const char *exec_name)
 		      goto end;
 		    }
 		}
+
 	      if (IS_CLASS_REQUESTED (i))
 		{
-		  if (!has_obj_ref)
-		    {		/* not found object domain */
-		      for (attribute = class_ptr->shared; attribute != NULL;
-			   attribute =
-			   (SM_ATTRIBUTE *) attribute->header.next)
-			{
-			  /* false -> don't set */
-			  if ((has_obj_ref =
-			       check_referenced_domain (attribute->domain,
-							false,
-							&num_cls_ref)) ==
-			      true)
+		  if (!datafile_per_class)
+		    {
+		      if (!has_obj_ref)
+			{	/* not found object domain */
+			  for (attribute = class_ptr->shared;
+			       attribute != NULL;
+			       attribute =
+			       (SM_ATTRIBUTE *) attribute->header.next)
 			    {
+			      /* false -> don't set */
+			      if ((has_obj_ref =
+				   check_referenced_domain (attribute->domain,
+							    false,
+							    &num_cls_ref)) ==
+				  true)
+				{
 #if defined(CUBRID_DEBUG)
-			      fprintf (stdout,
-				       "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (class_ptr->header.
-							 name),
-				       db_attribute_name (attribute));
+				  fprintf (stdout,
+					   "found OBJECT domain: %s%s%s->%s\n",
+					   PRINT_IDENTIFIER (class_ptr->
+							     header.name),
+					   db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
-			      break;
+				  break;
+				}
 			    }
 			}
-		    }
 
-		  if (!has_obj_ref)
-		    {		/* not found object domain */
-		      for (attribute = class_ptr->class_attributes;
-			   attribute != NULL;
-			   attribute =
-			   (SM_ATTRIBUTE *) attribute->header.next)
-			{
-			  /* false -> don't set */
-			  if ((has_obj_ref =
-			       check_referenced_domain (attribute->domain,
-							false,
-							&num_cls_ref)) ==
-			      true)
+		      if (!has_obj_ref)
+			{	/* not found object domain */
+			  for (attribute = class_ptr->class_attributes;
+			       attribute != NULL;
+			       attribute =
+			       (SM_ATTRIBUTE *) attribute->header.next)
 			    {
+			      /* false -> don't set */
+			      if ((has_obj_ref =
+				   check_referenced_domain (attribute->domain,
+							    false,
+							    &num_cls_ref)) ==
+				  true)
+				{
 #if defined(CUBRID_DEBUG)
-			      fprintf (stdout,
-				       "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (class_ptr->header.
-							 name),
-				       db_attribute_name (attribute));
+				  fprintf (stdout,
+					   "found OBJECT domain: %s%s%s->%s\n",
+					   PRINT_IDENTIFIER (class_ptr->
+							     header.name),
+					   db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
-			      break;
+				  break;
+				}
 			    }
 			}
-		    }
 
-		  if (!has_obj_ref)
-		    {		/* not found object domain */
-		      for (attribute = class_ptr->ordered_attributes;
-			   attribute; attribute = attribute->order_link)
-			{
-			  if (attribute->header.name_space != ID_ATTRIBUTE)
+		      if (!has_obj_ref)
+			{	/* not found object domain */
+			  for (attribute = class_ptr->ordered_attributes;
+			       attribute; attribute = attribute->order_link)
 			    {
-			      continue;
-			    }
-			  has_obj_ref =
-			    check_referenced_domain (attribute->domain, false
-						     /* don't set */ ,
-						     &num_cls_ref);
-			  if (has_obj_ref == true)
-			    {
+			      if (attribute->header.name_space !=
+				  ID_ATTRIBUTE)
+				{
+				  continue;
+				}
+			      has_obj_ref =
+				check_referenced_domain (attribute->domain,
+							 false
+							 /* don't set */ ,
+							 &num_cls_ref);
+			      if (has_obj_ref == true)
+				{
 #if defined(CUBRID_DEBUG)
-			      fprintf (stdout,
-				       "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (class_ptr->header.
-							 name),
-				       db_attribute_name (attribute));
+				  fprintf (stdout,
+					   "found OBJECT domain: %s%s%s->%s\n",
+					   PRINT_IDENTIFIER (class_ptr->
+							     header.name),
+					   db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
-			      break;
+				  break;
+				}
 			    }
 			}
 		    }
@@ -910,14 +924,55 @@ extractobjects (const char *exec_name)
 	{
 	  if (!WS_MARKED_DELETED (class_table->mops[i]) &&
 	      class_table->mops[i] != sm_Root_class_mop)
-	    if (process_class (i) != NO_ERROR)
-	      {
-		if (!ignore_err_flag)
-		  {
-		    status = 1;
-		    goto end;
-		  }
-	      }
+	    {
+	      int ret_val;
+
+	      if (datafile_per_class && IS_CLASS_REQUESTED (i))
+		{
+		  char outfile[PATH_MAX];
+
+		  ws_find (class_table->mops[i], (MOBJ *) & class_ptr);
+		  if (class_ptr == NULL)
+		    {
+		      status = 1;
+		      goto end;
+		    }
+
+		  snprintf (outfile, PATH_MAX - 1, "%s/%s_%s%s",
+			    output_dirname, output_prefix,
+			    class_ptr->header.name, OBJECT_SUFFIX);
+
+		  obj_out->fp = fopen_ex (outfile, "wb");
+		  if (obj_out->fp == NULL)
+		    {
+		      status = 1;
+		      goto end;
+		    }
+		}
+
+	      ret_val = process_class (i);
+
+	      if (datafile_per_class && IS_CLASS_REQUESTED (i))
+		{
+		  if (text_print_flush (obj_out) != NO_ERROR)
+		    {
+		      status = 1;
+		      goto end;
+		    }
+
+		  fclose (obj_out->fp);
+		  obj_out->fp = NULL;
+		}
+
+	      if (ret_val != NO_ERROR)
+		{
+		  if (!ignore_err_flag)
+		    {
+		      status = 1;
+		      goto end;
+		    }
+		}
+	    }
 	}
     }
   while (!all_classes_processed ());
@@ -959,8 +1014,9 @@ extractobjects (const char *exec_name)
 					       UNLOADDB_MSG_LOG_LSA),
 	       lsa.pageid, lsa.offset);
     }
+
   /* flush remaining buffer */
-  if (text_print_flush (obj_out) != NO_ERROR)
+  if (!datafile_per_class && text_print_flush (obj_out) != NO_ERROR)
     {
       status = 1;
     }
@@ -1093,7 +1149,9 @@ process_class (int cl_no)
     {
 
       if (DB_VALUE_TYPE (&attribute->value) == DB_TYPE_NULL)
-	continue;
+	{
+	  continue;
+	}
       if (v == 0)
 	{
 	  CHECK_PRINT_ERROR (text_print (obj_out,
@@ -1183,13 +1241,19 @@ process_class (int cl_no)
     {
 
       if (DB_VALUE_TYPE (&attribute->value) == DB_TYPE_NULL)
-	continue;
+	{
+	  continue;
+	}
       if (v)
-	CHECK_PRINT_ERROR (text_print (obj_out, " ", 1, NULL));
+	{
+	  CHECK_PRINT_ERROR (text_print (obj_out, " ", 1, NULL));
+	}
       if ((error = process_value (&attribute->value)) != NO_ERROR)
 	{
 	  if (!ignore_err_flag)
-	    goto exit_on_error;
+	    {
+	      goto exit_on_error;
+	    }
 	}
 
       ++v;
@@ -1434,7 +1498,7 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class)
 
   class_ptr = desc_obj->class_;
   class_oid = ws_oid (desc_obj->classop);
-  if (referenced_class)
+  if (!datafile_per_class && referenced_class)
     {				/* need to hash OID */
       update_hash (obj_oid, class_oid, &data);
       if (debug_flag)
@@ -1572,7 +1636,7 @@ process_value (DB_VALUE * value)
 	  }
 
 	if (required_class_only || (ref_oid == (OID *) 0)
-	    || (OID_EQ (ref_oid, &null_oid)))
+	    || (OID_EQ (ref_oid, &null_oid)) || datafile_per_class)
 	  {
 	    CHECK_PRINT_ERROR (text_print (obj_out, "NULL", 4, NULL));
 	    break;
@@ -1715,66 +1779,52 @@ process_value (DB_VALUE * value)
       break;
 
     case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
       {
 	DB_ELO *elo;
+	DB_TYPE dt = db_value_type (value);
+	char dts;
 
-	elo = DB_GET_ELO (value);
-	if (elo)
+	assert (dt != DB_TYPE_ELO);
+	if (dt == DB_TYPE_BLOB)
 	  {
-	    switch (elo->type)
+	    dts = 'B';
+	  }
+	else
+	  {
+	    dts = 'C';
+	  }
+
+	elo = db_get_elo (value);
+
+	if (elo != NULL)
+	  {
+	    assert (elo->type == ELO_FBO || elo->type == ELO_LO);
+
+	    if (elo->type == ELO_FBO)
 	      {
-	      case ELO_LO:
-		{
-		  char filename[DB_MAX_IDENTIFIER_LENGTH];
-		  if (LOID_IS_NULL (&elo->loid))
-		    {
-		      CHECK_PRINT_ERROR (text_print
-					 (obj_out, "NULL", 4, NULL));
-		      break;
-		    }
-		  if (lo_count > 0)
-		    {
-		      snprintf (filename, sizeof (filename) - 1,
-				"%s/%s_lo%d/%s_%d.lo", output_dirname,
-				output_prefix, output_number / lo_count,
-				output_prefix, output_number);
-		      if (!(output_number % lo_count))
-			{
-			  char lo_dirname[DB_MAX_IDENTIFIER_LENGTH];
-			  snprintf (lo_dirname, sizeof (lo_dirname) - 1,
-				    "%s/%s_lo%d",
-				    output_dirname, output_prefix,
-				    output_number / lo_count);
-			  if (mkdir (lo_dirname, S_IRWXU))
-			    {
-			      goto exit_on_error;
-			    }
-			}
-		      output_number++;
-		    }
-		  else
-		    {
-		      snprintf (filename, sizeof (filename) - 1, "%s_%d.lo",
-				output_prefix, ++output_number);
-		    }
-		  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, "^I'%s'",
-						 filename));
-		  if (lo_migrate_out (&elo->loid, filename) != 0)
-		    goto exit_on_error;
-		  break;
-		}
-	      case ELO_FBO:
-		CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, "^E'%s'",
-					       elo->original_pathname));
-		break;
-	      default:
 		CHECK_PRINT_ERROR (text_print
-				   (obj_out, "<ELO NULL>", 10, NULL));
-		break;
+				   (obj_out, NULL, 0, "^E'%c%lld|%s|%s'",
+				    dts, elo->size, elo->locator,
+				    elo->meta_data !=
+				    NULL ? elo->meta_data : ""));
+	      }
+	    else if (elo->type == ELO_LO)
+	      {
+		/* not implemented */
+		assert (0);
+	      }
+	    else
+	      {
+		/* should not happen */
+		assert (0);
 	      }
 	  }
 	else
-	  CHECK_PRINT_ERROR (desc_value_special_fprint (obj_out, value));
+	  {
+	    CHECK_PRINT_ERROR (text_print (obj_out, "NULL", 4, NULL));
+	  }
 	break;
       }
 

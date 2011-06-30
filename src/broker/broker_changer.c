@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #if defined(WINDOWS)
 #include <process.h>
@@ -46,6 +47,7 @@ main (int argc, char *argv[])
   char *br_name;
   char *conf_name;
   char *conf_value;
+  int as_number = -1;
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
 
@@ -61,12 +63,13 @@ main (int argc, char *argv[])
 
   if (argc < 4)
     {
-      printf ("%s <br-name> <conf-name> <conf-value>\n", argv[0]);
+      printf ("%s <br-name> [<cas-number>] <conf-name> <conf-value>\n",
+	      argv[0]);
       exit (0);
     }
 
   if (broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL,
-			  0, NULL) < 0)
+			  0, NULL, NULL, NULL) < 0)
     {
       printf ("config file error\n");
       exit (0);
@@ -75,12 +78,33 @@ main (int argc, char *argv[])
   ut_cd_work_dir ();
 
   br_name = argv[1];
-  conf_name = argv[2];
-  conf_value = argv[3];
+
+  if (argc == 5)
+    {
+      char *p = NULL;
+
+      as_number = (int) strtol (argv[2], &p, 10);
+      if ((errno == ERANGE) ||
+	  (errno != 0 && as_number == 0) ||
+	  (p && *p != '\0') || (as_number < 0))
+	{
+	  printf ("Invalid cas number\n");
+	  exit (0);
+	}
+
+      conf_name = argv[3];
+      conf_value = argv[4];
+    }
+  else
+    {
+      conf_name = argv[2];
+      conf_value = argv[3];
+    }
 
   admin_err_msg[0] = '\0';
-  if (admin_broker_conf_change (master_shm_id, br_name, conf_name, conf_value)
-      < 0)
+  if (admin_broker_conf_change (master_shm_id,
+				br_name, conf_name, conf_value,
+				as_number) < 0)
     {
       printf ("%s\n", admin_err_msg);
       exit (0);

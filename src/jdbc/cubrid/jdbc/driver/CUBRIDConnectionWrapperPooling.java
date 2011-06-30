@@ -28,33 +28,30 @@
  *
  */
 
-package @CUBRID_DRIVER@;
+package cubrid.jdbc.driver;
 
-import java.sql.*;
+import java.sql.SQLException;
 
-import @CUBRID_JCI@.*;
+import cubrid.jdbc.jci.UConnection;
 
-public class CUBRIDConnectionWrapperPooling extends CUBRIDConnection
-{
-  private CUBRIDPooledConnection pcon;
+public class CUBRIDConnectionWrapperPooling extends CUBRIDConnection {
+	private CUBRIDPooledConnection pcon;
 
-  protected CUBRIDConnectionWrapperPooling(UConnection u, String r, String s,
-      CUBRIDPooledConnection p)
-  {
-    super(u, r, s);
-    pcon = p;
-  }
+	protected CUBRIDConnectionWrapperPooling(UConnection u, String r, String s,
+			CUBRIDPooledConnection p) {
+		super(u, r, s);
+		pcon = p;
+	}
 
-  /*
-   * java.sql.Connection interface
-   */
+	/*
+	 * java.sql.Connection interface
+	 */
 
-  public synchronized void close() throws SQLException
-  {
-    if (is_closed)
-      return;
+	public synchronized void close() throws SQLException {
+		if (is_closed)
+			return;
 
-    closeConnection();
-    pcon.notifyConnectionClosed();
-  }
+		closeConnection();
+		pcon.notifyConnectionClosed();
+	}
 }

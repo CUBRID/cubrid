@@ -44,9 +44,9 @@ extern bool include_references;
 extern char *output_prefix;
 extern bool do_schema;
 extern bool do_objects;
-extern bool delimited_id_flag;
 extern bool ignore_err_flag;
 extern bool required_class_only;
+extern bool datafile_per_class;
 extern LIST_MOPS *class_table;
 extern DB_OBJECT **req_class_table;
 extern int is_req_class (DB_OBJECT * class_);
@@ -55,16 +55,9 @@ extern int get_requested_classes (const char *input_filename,
 
 extern int lo_count;
 
-#define LEFT_DEL 	"["
-#define RIGHT_DEL	"]"
-#define NO_DEL		""
-
-#define PRINT_IDENTIFIER(s) need_quotes((s)) ? LEFT_DEL : NO_DEL, \
-                            (s),                                  \
-			    need_quotes((s)) ? RIGHT_DEL : NO_DEL
+#define PRINT_IDENTIFIER(s) "[", (s), "]"
 
 extern int extractschema (const char *exec_name, int do_auth);
 extern int extractobjects (const char *exec_name);
-extern bool need_quotes (const char *identifier);
 
 #endif /* _UNLOADDB_H_ */

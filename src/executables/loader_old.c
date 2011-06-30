@@ -37,7 +37,7 @@
 #include "schema_manager.h"
 #include "object_accessor.h"
 #include "authenticate.h"
-#include "elo_class.h"
+#include "elo.h"
 #include "set_object.h"
 #include "db.h"
 #include "loader_object_table.h"
@@ -937,8 +937,8 @@ insert_instance ()
 
 
 /*
- * find_instance - his locates an instance OID given the class and an instance
- * id.
+ * find_instance - This locates an instance OID given the class and an instance
+ *                 id.
  *    return: error code
  *    class(in): class object
  *    oid(in): instance OID (returned)
@@ -965,7 +965,9 @@ find_instance (MOP class, OID * oid, int id)
     {
       inst = otable_find (table, id);
       if (inst != NULL)
-	*oid = inst->oid;
+	{
+	  *oid = inst->oid;
+	}
       else
 	{
 	  OID_SET_NULL (oid);
@@ -985,10 +987,15 @@ find_instance (MOP class, OID * oid, int id)
 		}
 	      else
 		{
-		  if (!(error = disk_reserve_instance (class, oid)))
-		    error = otable_reserve (table, oid, id);
+		  error = disk_reserve_instance (class, oid);
+		  if (error == NO_ERROR)
+		    {
+		      error = otable_reserve (table, oid, id);
+		    }
 		  else
-		    ldr_internal_error ();
+		    {
+		      ldr_internal_error ();
+		    }
 		}
 	    }
 	}
@@ -1191,32 +1198,7 @@ ldr_get_class_from_id (int id)
 static int
 validate_elos (void)
 {
-  int error = NO_ERROR;
-  DB_ELO *elo;
-  int i, fd;
-
-  for (i = 0; i < Loader.att_count && !error; i++)
-    {
-      if (DB_VALUE_TYPE (&Loader.values[i]) == DB_TYPE_ELO)
-	{
-	  elo = DB_GET_ELO (&Loader.values[i]);
-	  if (elo != NULL && elo->type == ELO_LO && elo->pathname != NULL)
-	    {
-
-	      fd = open (elo->pathname, O_RDONLY, 0);
-	      if (fd > 0)
-		close (fd);
-	      else
-		{
-		  error = ER_LDR_ELO_INPUT_FILE;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-			  elo->pathname);
-		  Loader.errors++;
-		}
-	    }
-	}
-    }
-  return (error);
+  return NO_ERROR;
 }
 
 
@@ -1231,34 +1213,7 @@ validate_elos (void)
 static int
 import_elos (void)
 {
-  int error = NO_ERROR;
-  DB_ELO *elo;
-  int i;
-  const char *filename;
-
-  for (i = 0; i < Loader.att_count && !error; i++)
-    {
-      if (DB_VALUE_TYPE (&Loader.values[i]) == DB_TYPE_ELO)
-	{
-	  elo = DB_GET_ELO (&Loader.values[i]);
-	  if (elo != NULL && elo->type == ELO_LO && elo->pathname != NULL)
-	    {
-	      /* fixup the elo */
-	      filename = elo->pathname;
-	      ws_free_string ((char *) elo->original_pathname);
-	      elo->pathname = NULL;
-	      elo->original_pathname = NULL;
-
-	      error = lo_migrate_in (&elo->loid, filename);
-	      ws_free_string ((char *) filename);
-	    }
-	}
-    }
-
-  if (error)
-    ldr_internal_error ();
-
-  return error;
+  return NO_ERROR;
 }
 
 
@@ -1832,7 +1787,7 @@ ldr_update_statistics (void)
 		       sm_class_name (table->class_));
 	      fflush (stdout);
 	    }
-	  error = sm_update_statistics (table->class_);
+	  error = sm_update_statistics (table->class_, true);
 	}
     }
   return error;
@@ -2281,6 +2236,11 @@ select_set_domain (TP_DOMAIN * domain, TP_DOMAIN ** set_domain_ptr)
   int error = NO_ERROR;
   TP_DOMAIN *best, *d;
 
+  if (domain == NULL)
+    {
+      return ER_FAILED;
+    }
+
   /*
    * Must pick an appropriate set domain, probably we should pick
    * the most general if there are more than one possibilities.
@@ -2631,49 +2591,6 @@ ldr_add_reference_to_class (MOP class)
 	    }
 
 	  DB_MAKE_OBJECT (value, class);
-	}
-    }
-  return (error);
-}
-
-
-/*
- * ldr_add_elo - add a reference to an ELO.
- *    return: NO_ERROR if successful, error code otherwise
- *    filename(in): input file
- *    external(in): non-zero if this is an external "fbo"
- * Note:
- *    This can be used only for the system Glo instances.  Normal "users"
- *    of the loader are not allowed to manipulate elo attribute values
- *    directly.
- */
-int
-ldr_add_elo (const char *filename, int external)
-{
-  int error = NO_ERROR;
-  DB_VALUE *value;
-  DB_ELO *elo;
-
-  if (!Loader.valid)
-    {
-      error = ER_LDR_INVALID_STATE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-    }
-  else
-    {
-      error = ldr_add_value (DB_TYPE_ELO, &value);
-      if (!error)
-	{
-	  elo = elo_create (filename);
-	  if (elo == NULL)
-	    error = er_errid ();
-	  else
-	    {
-	      if (!external)
-		/* change the type to LO even though we have a pathname */
-		elo->type = ELO_LO;
-	      db_make_elo (value, elo);
-	    }
 	}
     }
   return (error);

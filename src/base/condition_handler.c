@@ -720,6 +720,10 @@ co_find_conversion (const char *format, int from, int *end,
 
   /* Parse next conversion spec. */
   p = intl_mbs_nth (start, 1);
+  if (!p)
+    {
+      return ADJ_AR_EOA;
+    }
   *position = 0;
 
   /* Handle %% spec */

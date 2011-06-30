@@ -78,13 +78,6 @@
 	recv(SOCKFD, MSG, SIZE, 0)
 
 #define SOCKET_TIMEOUT 5000	/* msec */
-#if !defined (WINDOWS)
-#define SET_NONBLOCKING(fd) { \
-      int flags = fcntl (fd, F_GETFL); \
-      flags |= O_NONBLOCK; \
-      fcntl (fd, F_SETFL, flags); \
-}
-#endif /* !WINDOWS */
 
 /************************************************************************
  * PRIVATE TYPE DEFINITIONS						*
@@ -105,9 +98,7 @@ static int net_send_stream (SOCKET sock_fd, char *buf, int size);
 static void init_msg_header (MSG_HEADER * header);
 static int net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header);
 static int net_recv_msg_header (SOCKET sock_fd, MSG_HEADER * header);
-#if !defined (WINDOWS)
 static bool net_peer_alive (SOCKET sd, int timeout);
-#endif
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -121,6 +112,7 @@ static char cci_client_type = CAS_CLIENT_ODBC;
 static char cci_client_type = CAS_CLIENT_CCI;
 #endif
 
+static short cci_broker_port = 0;
 
 /************************************************************************
  * PRIVATE VARIABLES							*
@@ -138,7 +130,8 @@ int
 net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
 		 char *db_user, char *db_passwd, char is_retry,
 		 T_CCI_ERROR * err_buf, char *broker_info,
-		 char *cas_info, int *cas_pid, SOCKET * ret_sock)
+		 char *cas_info, int *cas_pid, SOCKET * ret_sock,
+		 T_CCI_SESSION_ID * session_id)
 {
   SOCKET srv_sock_fd;
   char client_info[SRV_CON_CLIENT_INFO_SIZE];
@@ -150,6 +143,7 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
   char *msg_buf;
 
   init_msg_header (&msg_header);
+  cci_broker_port = port;
 
   memset (client_info, 0, sizeof (client_info));
   memset (db_info, 0, sizeof (db_info));
@@ -159,17 +153,33 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
   client_info[SRV_CON_MSG_IDX_MAJOR_VER] = MAJOR_VERSION;
   client_info[SRV_CON_MSG_IDX_MINOR_VER] = MINOR_VERSION;
   client_info[SRV_CON_MSG_IDX_PATCH_VER] = PATCH_VERSION;
+
   if (db_name)
-    strncpy (db_info, db_name, SRV_CON_DBNAME_SIZE - 1);
+    {
+      strncpy (db_info, db_name, SRV_CON_DBNAME_SIZE - 1);
+    }
+
   if (db_user)
-    strncpy (db_info + SRV_CON_DBNAME_SIZE, db_user, SRV_CON_DBUSER_SIZE - 1);
+    {
+      strncpy (db_info + SRV_CON_DBNAME_SIZE, db_user,
+	       SRV_CON_DBUSER_SIZE - 1);
+    }
+
   if (db_passwd)
-    strncpy (db_info + SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE, db_passwd,
-	     SRV_CON_DBPASSWD_SIZE - 1);
-  snprintf (db_info + SRV_CON_URL_SIZE, SRV_CON_URL_SIZE,
-	    "cci:cubrid:%s:%d:%s:%s:%s:", ip_addr, port,
-	    (db_name ? db_name : ""), (db_user ? db_user : ""),
-	    (db_passwd ? db_passwd : ""));
+    {
+      strncpy (db_info + SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE, db_passwd,
+	       SRV_CON_DBPASSWD_SIZE - 1);
+    }
+
+  snprintf (db_info + SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE +
+	    SRV_CON_DBPASSWD_SIZE, SRV_CON_URL_SIZE - 1,
+	    "cci:cubrid:%d.%d.%d.%d:%d:%s:%s::", ip_addr[0], ip_addr[1],
+	    ip_addr[2], ip_addr[3], port, (db_name ? db_name : ""),
+	    (db_user ? db_user : ""));
+
+  snprintf (db_info + SRV_CON_DBNAME_SIZE + SRV_CON_DBUSER_SIZE +
+	    SRV_CON_DBPASSWD_SIZE + SRV_CON_URL_SIZE,
+	    SRV_CON_DBSESS_ID_SIZE - 1, "%u", *session_id);
 
   if (connect_srv (ip_addr, port, is_retry, &srv_sock_fd) < 0)
     {
@@ -256,15 +266,20 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
       goto connect_srv_error;
     }
 
-  if (cas_pid)
+  /* connection success */
+
+  if (*(msg_header.msg_body_size_ptr) != CAS_CONNECTION_REPLY_SIZE)
     {
-      *cas_pid = err_indicator;
+      err_code = CCI_ER_COMMUNICATION;
+      goto connect_srv_error;
     }
 
-  if (*(msg_header.msg_body_size_ptr) >= (4 + BROKER_INFO_SIZE))
-    {
-      memcpy (broker_info, &msg_buf[4], BROKER_INFO_SIZE);
-    }
+  *cas_pid = err_indicator;
+  memcpy (broker_info, &msg_buf[CAS_PID_SIZE], BROKER_INFO_SIZE);
+  memcpy (session_id, &msg_buf[CAS_PID_SIZE + BROKER_INFO_SIZE],
+	  SESSION_ID_SIZE);
+  *session_id = ntohl (*session_id);
+
   FREE_MEM (msg_buf);
 
   *ret_sock = srv_sock_fd;
@@ -323,6 +338,7 @@ net_check_cas_request (T_CON_HANDLE * con_handle)
   MSG_HEADER msg_header;
   int data_size;
   int ret_value = -1;
+  char status[4];
 
   if (IS_INVALID_SOCKET (con_handle->sock_fd))
     return 0;
@@ -337,27 +353,29 @@ net_check_cas_request (T_CON_HANDLE * con_handle)
   msg[4] = con_handle->cas_info[CAS_INFO_STATUS];
   msg[5] = con_handle->cas_info[CAS_INFO_RESERVED_1];
   msg[6] = con_handle->cas_info[CAS_INFO_RESERVED_2];
-  msg[7] = con_handle->cas_info[CAS_INFO_RESERVED_3];
+  msg[7] = con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG];
   msg[8] = CAS_FC_CHECK_CAS;
 
   if (net_send_stream (con_handle->sock_fd, msg, sizeof (msg)) < 0)
-    return -1;
-
-  if (net_recv_msg_header (con_handle->sock_fd, &msg_header) < 0)
     {
       return -1;
     }
-  if (*(msg_header.msg_body_size_ptr) == 0)
+
+  if (net_recv_int (con_handle->sock_fd, &ret_value) < 0)
     {
-      return 0;
+      return -1;
     }
-  else
+
+  if (net_recv_stream (con_handle->sock_fd, status, 4) < 0)
     {
-      if (net_recv_int (con_handle->sock_fd, &ret_value) < 0)
-	{
-	  return -1;
-	}
+      return -1;
     }
+
+  con_handle->cas_info[CAS_INFO_STATUS] = status[0];
+  con_handle->cas_info[CAS_INFO_RESERVED_1] = status[1];
+  con_handle->cas_info[CAS_INFO_RESERVED_2] = status[2];
+  con_handle->cas_info[CAS_INFO_ADDITIONAL_FLAG] = status[3];
+
   return ret_value;
 }
 
@@ -388,7 +406,7 @@ net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 {
   char *tmp_p = NULL;
   MSG_HEADER recv_msg_header;
-  int result_code;
+  int result_code = 0;
 
   init_msg_header (&recv_msg_header);
 
@@ -448,6 +466,22 @@ net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
 
   if (msg_size)
     *msg_size = *(recv_msg_header.msg_body_size_ptr);
+
+  if (con_handle->cas_info[CAS_INFO_STATUS] == CAS_INFO_STATUS_INACTIVE)
+    {
+      con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+
+      if (con_handle->broker_info[BROKER_INFO_KEEP_CONNECTION] ==
+	  CAS_KEEP_CONNECTION_OFF)
+	{
+	  CLOSE_SOCKET (con_handle->sock_fd);
+	  con_handle->sock_fd = INVALID_SOCKET;
+	}
+    }
+  else
+    {
+      con_handle->con_status = CCI_CON_STATUS_IN_TRAN;
+    }
 
   return result_code;
 }
@@ -545,20 +579,17 @@ static int
 net_recv_stream (SOCKET sock_fd, char *buf, int size)
 {
   int read_len, tot_read_len = 0;
-#if !defined (WINDOWS)
   fd_set rfds;
   struct timeval tv;
   int n;
-#endif /* WINDOWS */
 
   while (tot_read_len < size)
     {
-#if !defined (WINDOWS)
       FD_ZERO (&rfds);
       FD_SET (sock_fd, &rfds);
       tv.tv_sec = SOCKET_TIMEOUT / 1000;
       tv.tv_usec = (SOCKET_TIMEOUT % 1000) * 1000;
-      n = select (FD_SETSIZE, &rfds, NULL, NULL, &tv);
+      n = select (sock_fd + 1, &rfds, NULL, NULL, &tv);
 
       if (n == 0)
 	{
@@ -571,7 +602,7 @@ net_recv_stream (SOCKET sock_fd, char *buf, int size)
 	      return CCI_ER_COMMUNICATION;
 	    }
 	}
-#endif
+
       read_len = READ_FROM_SOCKET (sock_fd, buf + tot_read_len,
 				   size - tot_read_len);
       if (read_len <= 0)
@@ -585,7 +616,6 @@ net_recv_stream (SOCKET sock_fd, char *buf, int size)
   return 0;
 }
 
-#if !defined (WINDOWS)
 static bool
 net_peer_alive (SOCKET sd, int timeout)
 {
@@ -593,7 +623,7 @@ net_peer_alive (SOCKET sd, int timeout)
   int n, dummy;
   struct sockaddr_in saddr;
   socklen_t slen;
-  char *ping_msg = "PING_TEST!";
+  const char *ping_msg = "PING_TEST!";
 
   slen = sizeof (saddr);
   if (getpeername (sd, (struct sockaddr *) &saddr, &slen) < 0)
@@ -613,6 +643,7 @@ net_peer_alive (SOCKET sd, int timeout)
       return false;
     }
 
+  saddr.sin_port = htons (cci_broker_port);
   n = connect (nsd, (struct sockaddr *) &saddr, slen);
 
   if (n < 0)
@@ -621,8 +652,9 @@ net_peer_alive (SOCKET sd, int timeout)
       return false;
     }
 
-  /* make the socket non blocking */
-  SET_NONBLOCKING (nsd);
+  /* turn off negal algorithm for fast response */
+  dummy = 1;
+  setsockopt (nsd, IPPROTO_TCP, TCP_NODELAY, &dummy, sizeof (dummy));
 
   n = WRITE_TO_SOCKET (nsd, ping_msg, strlen (ping_msg));
 
@@ -638,7 +670,6 @@ net_peer_alive (SOCKET sd, int timeout)
 
   return true;
 }
-#endif /* !WINDOWS */
 
 static int
 net_recv_msg_header (SOCKET sock_fd, MSG_HEADER * header)
@@ -695,7 +726,7 @@ init_msg_header (MSG_HEADER * header)
   header->info_ptr = (char *) (header->buf + MSG_HEADER_MSG_SIZE);
 
   *(header->msg_body_size_ptr) = 0;
-  header->info_ptr[0] = CAS_INFO_RESERVED_DEFAULT;
+  header->info_ptr[0] = CAS_INFO_STATUS_ACTIVE;
   header->info_ptr[1] = CAS_INFO_RESERVED_DEFAULT;
   header->info_ptr[2] = CAS_INFO_RESERVED_DEFAULT;
   header->info_ptr[3] = CAS_INFO_RESERVED_DEFAULT;

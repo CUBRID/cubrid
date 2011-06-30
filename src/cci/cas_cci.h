@@ -143,6 +143,7 @@ extern "C"
 
 #define CCI_PREPARE_INCLUDE_OID		0x01
 #define CCI_PREPARE_UPDATABLE		0x02
+#define CCI_PREPARE_QUERY_INFO          0x04
 #define CCI_PREPARE_CALL		0x40
 
 #define CCI_EXEC_ASYNC			0x01
@@ -185,11 +186,11 @@ extern "C"
 #endif
 
 /* for cci auto_comit mode support */
-  enum
+  typedef enum
   {
     CCI_AUTOCOMMIT_FALSE = 0,
     CCI_AUTOCOMMIT_TRUE
-  };
+  } CCI_AUTOCOMMIT_MODE;
 
 /************************************************************************
  * EXPORTED TYPE DEFINITIONS						*
@@ -254,8 +255,10 @@ extern "C"
     CCI_U_TYPE_RESULTSET = 20,
     CCI_U_TYPE_BIGINT = 21,
     CCI_U_TYPE_DATETIME = 22,
+    CCI_U_TYPE_BLOB = 23,
+    CCI_U_TYPE_CLOB = 24,
 
-    CCI_U_TYPE_LAST = CCI_U_TYPE_DATETIME
+    CCI_U_TYPE_LAST = CCI_U_TYPE_CLOB
   } T_CCI_U_TYPE;
 
   typedef void *T_CCI_SET;
@@ -271,7 +274,9 @@ extern "C"
     CCI_A_TYPE_DATE,
     CCI_A_TYPE_SET,
     CCI_A_TYPE_BIGINT,
-    CCI_A_TYPE_LAST = CCI_A_TYPE_BIGINT,
+    CCI_A_TYPE_BLOB,
+    CCI_A_TYPE_CLOB,
+    CCI_A_TYPE_LAST = CCI_A_TYPE_CLOB,
 
     CCI_A_TYTP_LAST = CCI_A_TYPE_LAST	/* typo but backward compatibility */
   } T_CCI_A_TYPE;
@@ -305,7 +310,10 @@ extern "C"
     CCI_SCH_ATTR_PRIVILEGE,
     CCI_SCH_DIRECT_SUPER_CLASS,
     CCI_SCH_PRIMARY_KEY,
-    CCI_SCH_LAST = CCI_SCH_PRIMARY_KEY
+    CCI_SCH_IMPORTED_KEYS,
+    CCI_SCH_EXPORTED_KEYS,
+    CCI_SCH_CROSS_REFERENCE,
+    CCI_SCH_LAST = CCI_SCH_CROSS_REFERENCE
   } T_CCI_SCH_TYPE;
 
   typedef enum
@@ -345,6 +353,8 @@ extern "C"
     CCI_ER_SAVEPOINT_CMD = -28,
     CCI_ER_THREAD_RUNNING = -29,
     CCI_ER_INVALID_URL = -30,
+    CCI_ER_INVALID_LOB_READ_POS = -31,
+    CCI_ER_INVALID_LOB_HANDLE = -32,
 
     CCI_ER_NOT_IMPLEMENTED = -99
   } T_CCI_ERROR_CODE;
@@ -500,9 +510,8 @@ extern "C"
     CCI_OID_LOCK_READ = 3,
     CCI_OID_LOCK_WRITE = 4,
     CCI_OID_CLASS_NAME = 5,
-    CCI_OID_IS_GLO_INSTANCE = 6,
 
-    CCI_OID_CMD_LAST = CCI_OID_IS_GLO_INSTANCE
+    CCI_OID_CMD_LAST = CCI_OID_CLASS_NAME
   } T_CCI_OID_CMD;
 
   typedef enum
@@ -554,6 +563,15 @@ extern "C"
     CCI_PARAM_MODE_INOUT = 3
   } T_CCI_PARAM_MODE;
 
+  /* delete or update action type for foreign key */
+  typedef enum
+  {
+    CCI_FOREIGN_KEY_CASCADE = 0,
+    CCI_FOREIGN_KEY_RESTRICT = 1,
+    CCI_FOREIGN_KEY_NO_ACTION = 2,
+    CCI_FOREIGN_KEY_SET_NULL = 3
+  } T_CCI_FOREIGN_KEY_ACTION;
+
   typedef struct
   {
     T_CCI_PARAM_MODE mode;
@@ -561,6 +579,10 @@ extern "C"
     short scale;
     int precision;
   } T_CCI_PARAM_INFO;
+
+  typedef void *T_CCI_BLOB;
+
+  typedef void *T_CCI_CLOB;
 
 /************************************************************************
  * EXPORTED FUNCTION PROTOTYPES						*
@@ -605,8 +627,7 @@ extern "C"
 			   int col_no, int type, void *value, int *indicator);
   extern int cci_schema_info (int con_handle,
 			      T_CCI_SCH_TYPE type,
-			      char *class_name,
-			      char *attr_name,
+			      char *arg1, char *arg2,
 			      char flag, T_CCI_ERROR * err_buf);
   extern int cci_get_cur_oid (int req_handle, char *oid_str_buf);
   extern int cci_oid_get (int con_handle,
@@ -621,60 +642,33 @@ extern "C"
 			   char **attr_name,
 			   void **new_val,
 			   int *a_type, T_CCI_ERROR * err_buf);
-  extern int cci_glo_new (int con_handle,
-			  char *class_name,
-			  char *filename,
-			  char *oid_str, T_CCI_ERROR * err_buf);
-  extern int cci_glo_save (int con_handle,
-			   char *oid_str,
-			   char *filename, T_CCI_ERROR * err_buf);
-  extern int cci_glo_load (int con_handle,
-			   char *oid_str, int out_fd, T_CCI_ERROR * err_buf);
-  extern int cci_glo_load_file_name (int con_handle, char *oid_str,
-				     char *out_filename,
-				     T_CCI_ERROR * err_buf);
   extern int cci_get_db_version (int con_handle, char *out_buf, int buf_size);
-  extern int cci_get_class_num_objs (int conn_handle,
-				     char *class_name,
-				     int flag,
-				     int *num_objs,
-				     int *num_pages, T_CCI_ERROR * err_buf);
-  extern int cci_oid (int con_h_id,
-		      T_CCI_OID_CMD cmd,
-		      char *oid_str, T_CCI_ERROR * err_buf);
-  extern int cci_oid_get_class_name (int con_h_id,
-				     char *oid_str,
-				     char *out_buf,
-				     int out_buf_len, T_CCI_ERROR * err_buf);
-  extern int cci_col_get (int con_h_id,
-			  char *oid_str,
-			  char *col_attr,
-			  int *col_size,
-			  int *col_type, T_CCI_ERROR * err_buf);
-  extern int cci_col_size (int con_h_id,
-			   char *oid_str,
-			   char *col_attr,
+  extern CCI_AUTOCOMMIT_MODE cci_get_autocommit (int con_handle);
+  extern int cci_set_autocommit (int con_handle,
+				 CCI_AUTOCOMMIT_MODE autocommit_mode);
+  extern int cci_get_class_num_objs (int conn_handle, char *class_name,
+				     int flag, int *num_objs, int *num_pages,
+				     T_CCI_ERROR * err_buf);
+  extern int cci_oid (int con_h_id, T_CCI_OID_CMD cmd, char *oid_str,
+		      T_CCI_ERROR * err_buf);
+  extern int cci_oid_get_class_name (int con_h_id, char *oid_str,
+				     char *out_buf, int out_buf_len,
+				     T_CCI_ERROR * err_buf);
+  extern int cci_col_get (int con_h_id, char *oid_str, char *col_attr,
+			  int *col_size, int *col_type,
+			  T_CCI_ERROR * err_buf);
+  extern int cci_col_size (int con_h_id, char *oid_str, char *col_attr,
 			   int *col_size, T_CCI_ERROR * err_buf);
-  extern int cci_col_set_drop (int con_h_id,
-			       char *oid_str,
-			       char *col_attr,
+  extern int cci_col_set_drop (int con_h_id, char *oid_str, char *col_attr,
 			       char *value, T_CCI_ERROR * err_buf);
-  extern int cci_col_set_add (int con_h_id,
-			      char *oid_str,
-			      char *col_attr,
+  extern int cci_col_set_add (int con_h_id, char *oid_str, char *col_attr,
 			      char *value, T_CCI_ERROR * err_buf);
-  extern int cci_col_seq_drop (int con_h_id,
-			       char *oid_str,
-			       char *col_attr,
+  extern int cci_col_seq_drop (int con_h_id, char *oid_str, char *col_attr,
 			       int index, T_CCI_ERROR * err_buf);
-  extern int cci_col_seq_insert (int con_h_id,
-				 char *oid_str,
-				 char *col_attr,
-				 int index,
-				 char *value, T_CCI_ERROR * err_buf);
-  extern int cci_col_seq_put (int con_h_id,
-			      char *oid_str,
-			      char *col_attr,
+  extern int cci_col_seq_insert (int con_h_id, char *oid_str, char *col_attr,
+				 int index, char *value,
+				 T_CCI_ERROR * err_buf);
+  extern int cci_col_seq_put (int con_h_id, char *oid_str, char *col_attr,
 			      int index, char *value, T_CCI_ERROR * err_buf);
 
   extern int cci_is_updatable (int req_h_id);
@@ -723,7 +717,6 @@ extern "C"
 				    char *buf,
 				    int buf_size, T_CCI_ERROR * err_buf);
   extern int cci_get_query_plan (int req_h_id, char **out_buf);
-  extern int cci_get_query_histogram (int req_h_id, char **out_buf);
   extern int cci_query_info_free (char *out_buf);
   extern int cci_set_max_row (int req_h_id, int max_row);
   extern int cci_savepoint (int con_h_id,
@@ -734,42 +727,26 @@ extern "C"
 				 T_CCI_ERROR * err_buf);
   extern int cci_param_info_free (T_CCI_PARAM_INFO * param);
 
-  extern int cci_glo_read_data (int con_h_id, char *oid_str,
-				int start_pos, int length, char *buf,
-				T_CCI_ERROR * err_buf);
-  extern int cci_glo_write_data (int con_h_id, char *oid_str,
-				 int start_pos, int length, char *buf,
-				 T_CCI_ERROR * err_buf);
-  extern int cci_glo_insert_data (int con_h_id, char *oid_str,
-				  int start_pos, int length, char *buf,
-				  T_CCI_ERROR * err_buf);
-  extern int cci_glo_delete_data (int con_h_id, char *oid_str,
-				  int start_pos, int length,
-				  T_CCI_ERROR * err_buf);
-  extern int cci_glo_truncate_data (int con_h_id, char *oid_str,
-				    int start_pos, T_CCI_ERROR * err_buf);
-  extern int cci_glo_append_data (int con_h_id, char *oid_str,
-				  int length, char *buf,
-				  T_CCI_ERROR * err_buf);
-  extern int cci_glo_data_size (int con_h_id, char *oid_str,
-				T_CCI_ERROR * err_buf);
-  extern int cci_glo_compress_data (int con_h_id, char *oid_str,
-				    T_CCI_ERROR * err_buf);
-  extern int cci_glo_destroy_data (int con_h_id, char *oid_str,
-				   T_CCI_ERROR * err_buf);
-  extern int cci_glo_like_search (int con_h_id, char *oid_str,
-				  int start_pos, char *search_str,
-				  int *offset, int *cur_pos,
-				  T_CCI_ERROR * err_buf);
-  extern int cci_glo_reg_search (int con_h_id, char *oid_str,
-				 int start_pos, char *search_str,
-				 int *offset, int *cur_pos,
-				 T_CCI_ERROR * err_buf);
-  extern int cci_glo_binary_search (int con_h_id, char *oid_str,
-				    int start_pos,
-				    int length, char *search_array,
-				    int *offset, int *cur_pos,
-				    T_CCI_ERROR * err_buf);
+  extern int cci_blob_new (int con_h_id, T_CCI_BLOB * blob,
+			   T_CCI_ERROR * err_buf);
+  extern long long cci_blob_size (T_CCI_BLOB blob);
+  extern int cci_blob_write (int con_h_id, T_CCI_BLOB blob,
+			     long long start_pos, int length,
+			     const char *buf, T_CCI_ERROR * err_buf);
+  extern int cci_blob_read (int con_h_id, T_CCI_BLOB blob,
+			    long long start_pos, int length, char *buf,
+			    T_CCI_ERROR * err_buf);
+  extern int cci_blob_free (T_CCI_BLOB blob);
+  extern int cci_clob_new (int con_h_id, T_CCI_CLOB * clob,
+			   T_CCI_ERROR * err_buf);
+  extern long long cci_clob_size (T_CCI_CLOB clob);
+  extern int cci_clob_write (int con_h_id, T_CCI_CLOB clob,
+			     long long start_pos, int length,
+			     const char *buf, T_CCI_ERROR * err_buf);
+  extern int cci_clob_read (int con_h_id, T_CCI_CLOB clob,
+			    long long start_pos, int length, char *buf,
+			    T_CCI_ERROR * err_buf);
+  extern int cci_clob_free (T_CCI_CLOB clob);
   extern int cci_get_dbms_type (int con_h_id);
   extern int cci_register_out_param (int req_h_id, int index);
   extern int cci_cancel (int con_h_id);
@@ -777,6 +754,11 @@ extern "C"
   extern int cci_get_error_msg (int err_code, T_CCI_ERROR * err_buf,
 				char *out_buf, int out_buf_size);
   extern int cci_get_err_msg (int err_code, char *buf, int bufsize);
+  extern int cci_set_charset (int con_h_id, char *charset);
+  extern int cci_row_count (int con_h_id, int *row_count,
+			    T_CCI_ERROR * err_buf);
+  extern int cci_last_insert_id (int con_h_id, void *value,
+				 T_CCI_ERROR * err_buf);
 #endif
 
 /************************************************************************

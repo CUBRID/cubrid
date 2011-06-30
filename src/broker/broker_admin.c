@@ -53,17 +53,18 @@ static void
 admin_log_write (const char *log_file, const char *msg)
 {
   FILE *fp;
-  struct tm *ct;
+  struct tm ct;
   time_t ts;
 
   fp = fopen (log_file, "a");
   if (fp != NULL)
     {
       ts = time (NULL);
-      ct = localtime (&ts);
+      memset (&ct, 0x0, sizeof (struct tm));
+      localtime_r (&ts, &ct);
       fprintf (fp, "%d/%02d/%02d %02d:%02d:%02d %s\n",
-	       ct->tm_year + 1900, ct->tm_mon + 1, ct->tm_mday,
-	       ct->tm_hour, ct->tm_min, ct->tm_sec, msg);
+	       ct.tm_year + 1900, ct.tm_mon + 1, ct.tm_mday,
+	       ct.tm_hour, ct.tm_min, ct.tm_sec, msg);
       fclose (fp);
     }
   else
@@ -76,7 +77,9 @@ int
 main (int argc, char **argv)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
-  char admin_log_file[256];
+  char admin_log_file[PATH_MAX];
+  char acl_file[PATH_MAX];
+  bool acl_flag;
   int num_broker, master_shm_id;
   int err;
   char msg_buf[256];
@@ -88,7 +91,7 @@ main (int argc, char **argv)
     }
 
   err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id,
-			    admin_log_file, 0, NULL);
+			    admin_log_file, 0, &acl_flag, acl_file, NULL);
   if (err < 0)
     return -1;
 
@@ -134,7 +137,8 @@ main (int argc, char **argv)
 
       if (shm_br == NULL && uw_get_error_code () != UW_ER_SHM_OPEN_MAGIC)
 	{
-	  if (admin_start_cmd (br_info, num_broker, master_shm_id) < 0)
+	  if (admin_start_cmd (br_info, num_broker, master_shm_id,
+			       acl_flag, acl_file) < 0)
 	    {
 	      printf ("%s\n", admin_err_msg);
 	      return -1;
@@ -353,6 +357,41 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, "info");
 	}
     }
+  else if (strcasecmp (argv[1], "acl") == 0)
+    {
+      char *br_name = NULL;
+      int err_code;
+
+      if (argc < 3)
+	{
+	  printf ("%s acl <reload|status> <broker-name>\n", argv[0]);
+	  return -1;
+	}
+
+      if (argc > 3)
+	{
+	  br_name = argv[3];
+	}
+
+      if (strcasecmp (argv[2], "reload") == 0)
+	{
+	  err_code = admin_broker_acl_reload_cmd (master_shm_id, br_name);
+	}
+      else if (strcasecmp (argv[2], "status") == 0)
+	{
+	  err_code = admin_broker_acl_status_cmd (master_shm_id, br_name);
+	}
+      else
+	{
+	  printf ("%s acl <reload|status> <broker-name>\n", argv[0]);
+	  return -1;
+	}
+      if (err_code < 0)
+	{
+	  printf ("%s\n", admin_err_msg);
+	  return -1;
+	}
+    }
   else
     {
       goto usage;
@@ -362,7 +401,7 @@ main (int argc, char **argv)
 
 usage:
   printf ("%s (start | stop | add | drop | restart"
-	  " | on | off | suspend | resume | reset | job_first | info)\n",
+	  " | on | off | suspend | resume | reset | job_first | info | acl)\n",
 	  argv[0]);
   return -1;
 }

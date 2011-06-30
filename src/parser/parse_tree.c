@@ -38,7 +38,7 @@
 #include "memory_alloc.h"
 
 #if defined(SERVER_MODE)
-#include "thread_impl.h"
+#include "thread.h"
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 
@@ -86,10 +86,10 @@ struct parser_string_block
 /* this is a kludge because many platforms do not handle extern
  * linking per ANSI. This should be deleted when nodes get used in server.
  */
-static MUTEX_T blocks_lock = MUTEX_INITIALIZER;
-static MUTEX_T free_lists_lock = MUTEX_INITIALIZER;
-static MUTEX_T parser_memory_lock = MUTEX_INITIALIZER;
-static MUTEX_T parser_id_lock = MUTEX_INITIALIZER;
+static pthread_mutex_t blocks_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t free_lists_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t parser_memory_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t parser_id_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* SERVER_MODE */
 
 static PARSER_NODE_BLOCK *parser_Node_blocks[HASH_NUMBER];
@@ -159,7 +159,7 @@ parser_create_node_block (const PARSER_CONTEXT * parser)
   /* link blocks on the hash list for this id */
   idhash = parser->id % HASH_NUMBER;
 #if defined(SERVER_MODE)
-  MUTEX_LOCK (rv, blocks_lock);
+  rv = pthread_mutex_lock (&blocks_lock);
 #endif /* SERVER_MODE */
   block->next = parser_Node_blocks[idhash];
   parser_Node_blocks[idhash] = block;
@@ -172,7 +172,7 @@ parser_create_node_block (const PARSER_CONTEXT * parser)
   block->nodes[NODES_PER_BLOCK - 1].next = NULL;
 
 #if defined(SERVER_MODE)
-  MUTEX_UNLOCK (blocks_lock);
+  pthread_mutex_unlock (&blocks_lock);
 #endif /* SERVER_MODE */
   /* return head of free list */
   return &block->nodes[0];
@@ -199,7 +199,7 @@ parser_create_node (const PARSER_CONTEXT * parser)
   idhash = parser->id % HASH_NUMBER;
 
 #if defined(SERVER_MODE)
-  MUTEX_LOCK (rv, free_lists_lock);
+  rv = pthread_mutex_lock (&free_lists_lock);
 #endif /* SERVER_MODE */
 
   free_list = parser_Node_free_lists[idhash];
@@ -209,7 +209,7 @@ parser_create_node (const PARSER_CONTEXT * parser)
     }
 
 #if defined(SERVER_MODE)
-  MUTEX_UNLOCK (free_lists_lock);
+  pthread_mutex_unlock (&free_lists_lock);
 #endif /* SERVER_MODE */
 
   if (free_list == NULL)
@@ -252,7 +252,7 @@ pt_free_node_blocks (const PARSER_CONTEXT * parser)
   /* unlink blocks on the hash list for this id */
   idhash = parser->id % HASH_NUMBER;
 #if defined(SERVER_MODE)
-  MUTEX_LOCK (rv, blocks_lock);
+  rv = pthread_mutex_lock (&blocks_lock);
 #endif /* SERVER_MODE */
   previous_block = &parser_Node_blocks[idhash];
   block = *previous_block;
@@ -274,7 +274,7 @@ pt_free_node_blocks (const PARSER_CONTEXT * parser)
       block = *previous_block;
     }
 #if defined(SERVER_MODE)
-  MUTEX_UNLOCK (blocks_lock);
+  pthread_mutex_unlock (&blocks_lock);
 #endif /* SERVER_MODE */
 }
 
@@ -354,12 +354,12 @@ parser_create_string_block (const PARSER_CONTEXT * parser, const int length)
   /* link blocks on the hash list for this id */
   idhash = parser->id % HASH_NUMBER;
 #if defined(SERVER_MODE)
-  MUTEX_LOCK (rv, parser_memory_lock);
+  rv = pthread_mutex_lock (&parser_memory_lock);
 #endif /* SERVER_MODE */
   block->next = parser_String_blocks[idhash];
   parser_String_blocks[idhash] = block;
 #if defined(SERVER_MODE)
-  MUTEX_UNLOCK (parser_memory_lock);
+  pthread_mutex_unlock (&parser_memory_lock);
 #endif /* SERVER_MODE */
 
   return block;
@@ -394,7 +394,7 @@ parser_allocate_string_buffer (const PARSER_CONTEXT * parser,
   /* find free string list for for this id */
   idhash = parser->id % HASH_NUMBER;
 #if defined(SERVER_MODE)
-  MUTEX_LOCK (rv, parser_memory_lock);
+  rv = pthread_mutex_lock (&parser_memory_lock);
 #endif /* SERVER_MODE */
   block = parser_String_blocks[idhash];
   while (block != NULL
@@ -405,7 +405,7 @@ parser_allocate_string_buffer (const PARSER_CONTEXT * parser,
       block = block->next;
     }
 #if defined(SERVER_MODE)
-  MUTEX_UNLOCK (parser_memory_lock);
+  pthread_mutex_unlock (&parser_memory_lock);
 #endif /* SERVER_MODE */
 
   if (block == NULL)
@@ -446,7 +446,7 @@ pt_free_a_string_block (const PARSER_CONTEXT * parser,
   /* find string holding old_string for for this parse_id */
   idhash = parser->id % HASH_NUMBER;
 #if defined(SERVER_MODE)
-  MUTEX_LOCK (rv, parser_memory_lock);
+  rv = pthread_mutex_lock (&parser_memory_lock);
 #endif /* SERVER_MODE */
   previous_string = &parser_String_blocks[idhash];
   string = *previous_string;
@@ -462,7 +462,7 @@ pt_free_a_string_block (const PARSER_CONTEXT * parser,
       free_and_init (string);
     }
 #if defined(SERVER_MODE)
-  MUTEX_UNLOCK (parser_memory_lock);
+  pthread_mutex_unlock (&parser_memory_lock);
 #endif /* SERVER_MODE */
 }
 
@@ -485,7 +485,7 @@ pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string)
   /* find string holding old_string for for this parse_id */
   idhash = parser->id % HASH_NUMBER;
 #if defined(SERVER_MODE)
-  MUTEX_LOCK (rv, parser_memory_lock);
+  rv = pthread_mutex_lock (&parser_memory_lock);
 #endif /* SERVER_MODE */
   string = parser_String_blocks[idhash];
   while (string != NULL
@@ -495,7 +495,7 @@ pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string)
       string = string->next;
     }
 #if defined(SERVER_MODE)
-  MUTEX_UNLOCK (parser_memory_lock);
+  pthread_mutex_unlock (&parser_memory_lock);
 #endif /* SERVER_MODE */
 
   return string;
@@ -684,7 +684,7 @@ pt_register_parser (const PARSER_CONTEXT * parser)
   /* find free list for for this id */
   idhash = parser->id % HASH_NUMBER;
 #if defined(SERVER_MODE)
-  MUTEX_LOCK (rv, free_lists_lock);
+  rv = pthread_mutex_lock (&free_lists_lock);
 #endif /* SERVER_MODE */
   free_list = parser_Node_free_lists[idhash];
   while (free_list != NULL && free_list->parser_id != parser->id)
@@ -702,7 +702,7 @@ pt_register_parser (const PARSER_CONTEXT * parser)
       if (free_list == NULL)
 	{
 #if defined(SERVER_MODE)
-	  MUTEX_UNLOCK (free_lists_lock);
+	  pthread_mutex_unlock (&free_lists_lock);
 #endif /* SERVER_MODE */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 		  1, sizeof (PARSER_NODE_FREE_LIST));
@@ -715,13 +715,13 @@ pt_register_parser (const PARSER_CONTEXT * parser)
   else
     {
 #if defined(SERVER_MODE)
-      MUTEX_UNLOCK (free_lists_lock);
+      pthread_mutex_unlock (&free_lists_lock);
 #endif /* SERVER_MODE */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
 #if defined(SERVER_MODE)
-  MUTEX_UNLOCK (free_lists_lock);
+  pthread_mutex_unlock (&free_lists_lock);
 #endif /* SERVER_MODE */
   return NO_ERROR;
 }
@@ -745,7 +745,7 @@ pt_unregister_parser (const PARSER_CONTEXT * parser)
   /* find free list for for this id */
   idhash = parser->id % HASH_NUMBER;
 #if defined(SERVER_MODE)
-  MUTEX_LOCK (rv, free_lists_lock);
+  rv = pthread_mutex_lock (&free_lists_lock);
 #endif /* SERVER_MODE */
   previous_free_list = &parser_Node_free_lists[idhash];
   free_list = *previous_free_list;
@@ -762,7 +762,7 @@ pt_unregister_parser (const PARSER_CONTEXT * parser)
       free_and_init (free_list);
     }
 #if defined(SERVER_MODE)
-  MUTEX_UNLOCK (free_lists_lock);
+  pthread_mutex_unlock (&free_lists_lock);
 #endif /* SERVER_MODE */
 }
 
@@ -791,7 +791,7 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
   /* find free list for for this id */
   idhash = parser->id % HASH_NUMBER;
 #if defined(SERVER_MODE)
-  MUTEX_LOCK (rv, free_lists_lock);
+  rv = pthread_mutex_lock (&free_lists_lock);
 #endif /* SERVER_MODE */
   free_list = parser_Node_free_lists[idhash];
   while (free_list != NULL && free_list->parser_id != parser->id)
@@ -801,7 +801,7 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
 
 #if defined(SERVER_MODE)
   /* we can unlock mutex, since this free_list is only used by one parser */
-  MUTEX_UNLOCK (free_lists_lock);
+  pthread_mutex_unlock (&free_lists_lock);
 #endif /* SERVER_MODE */
 
   if (free_list == NULL)
@@ -1039,7 +1039,7 @@ pt_free_string_blocks (const PARSER_CONTEXT * parser)
   /* unlink blocks on the hash list for this id */
   idhash = parser->id % HASH_NUMBER;
 #if defined(SERVER_MODE)
-  MUTEX_LOCK (rv, parser_memory_lock);
+  rv = pthread_mutex_lock (&parser_memory_lock);
 #endif /* SERVER_MODE */
   previous_block = &parser_String_blocks[idhash];
   block = *previous_block;
@@ -1061,7 +1061,7 @@ pt_free_string_blocks (const PARSER_CONTEXT * parser)
       block = *previous_block;
     }
 #if defined(SERVER_MODE)
-  MUTEX_UNLOCK (parser_memory_lock);
+  pthread_mutex_unlock (&parser_memory_lock);
 #endif /* SERVER_MODE */
 }
 
@@ -1094,13 +1094,13 @@ parser_create_parser (void)
 #endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
-  MUTEX_LOCK (rv, parser_id_lock);
+  rv = pthread_mutex_lock (&parser_id_lock);
 #endif /* SERVER_MODE */
 
   parser->id = parser_id++;
 
 #if defined(SERVER_MODE)
-  MUTEX_UNLOCK (parser_id_lock);
+  pthread_mutex_unlock (&parser_id_lock);
 #endif /* SERVER_MODE */
 
   if (pt_register_parser (parser) == ER_FAILED)
@@ -1116,6 +1116,9 @@ parser_create_parser (void)
   srand48 (t.tv_usec);
   parser->lrand = lrand48 ();
   parser->drand = drand48 ();
+
+  /* initialization */
+  parser->is_in_and_list = false;
 
   return parser;
 }
@@ -1150,6 +1153,11 @@ parser_free_parser (PARSER_CONTEXT * parser)
 	   i < parser->host_var_count + parser->auto_param_count; i++, hv++)
 	db_value_clear (hv);
       free_and_init (parser->host_variables);
+    }
+
+  if (parser->host_variables_reset_flag)
+    {
+      free_and_init (parser->host_variables_reset_flag);
     }
 
   parser_free_lcks_classes (parser);

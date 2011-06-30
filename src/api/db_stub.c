@@ -36,7 +36,6 @@
 #include "boot_cl.h"
 #include "system_parameter.h"
 #include "authenticate.h"
-#include "glo_class.h"
 #include "object_accessor.h"
 #include "jsp_sr.h"
 

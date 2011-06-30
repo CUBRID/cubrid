@@ -28,44 +28,141 @@
  *
  */
 
-package @CUBRID_JCI@;
+package cubrid.jdbc.jci;
 
-abstract public class UJCIUtil
-{
-  static public int bytes2int(byte[] b, int startIndex)
-  {
-    int data = 0;
-    int endIndex = startIndex + 4;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 
-    for (int i = startIndex; i < endIndex; i++)
-    {
-      data <<= 8;
-      data |= (b[i] & 0xff);
-    }
+abstract public class UJCIUtil {
 
-    return data;
-  }
+	private static boolean bServerSide;
+	private static boolean bConsoleDebug;
+	private static boolean bMMDB;
+	private static boolean bSendAppInfo;
+	private static boolean bJDBC4;
 
-  static public short bytes2short(byte[] b, int startIndex)
-  {
-    short data = 0;
-    int endIndex = startIndex + 2;
+	static {
+		String value = System.getProperty("ConsoleDebug");
+		if (value != null && value.equals("true")) {
+			bConsoleDebug = true;
+		} else {
+			bConsoleDebug = false;
+		}
 
-    for (int i = startIndex; i < endIndex; i++)
-    {
-      data <<= 8;
-      data |= (b[i] & 0xff);
-    }
-    return data;
-  }
+		value = System.getProperty("MMDB");
+		if (value != null && value.equals("true")) {
+			bMMDB = true;
+		} else {
+			bMMDB = false;
+		}
 
-  static public void copy_byte(byte[] dest, int dIndex, int cpSize, String src)
-  {
-    if (src == null)
-      return;
+		value = System.getProperty("SendAppInfo");
+		if (value != null && value.equals("true")) {
+			bSendAppInfo = true;
+		} else {
+			bSendAppInfo = false;
+		}
 
-    byte[] b = src.getBytes();
-    cpSize = (cpSize > b.length) ? b.length : cpSize;
-    System.arraycopy(b, 0, dest, dIndex, cpSize);
-  }
+		try {
+			Class.forName("com.cubrid.jsp.Server");
+			bServerSide = true;
+		} catch (Throwable t) {
+			bServerSide = false;
+		}
+
+		try {
+			Class.forName("java.sql.NClob");
+			bJDBC4 = true;
+		} catch (Throwable t) {
+			bJDBC4 = false;
+		}
+	}
+
+	static public int bytes2int(byte[] b, int startIndex) {
+		int data = 0;
+		int endIndex = startIndex + 4;
+
+		for (int i = startIndex; i < endIndex; i++) {
+			data <<= 8;
+			data |= (b[i] & 0xff);
+		}
+
+		return data;
+	}
+
+	static public short bytes2short(byte[] b, int startIndex) {
+		short data = 0;
+		int endIndex = startIndex + 2;
+
+		for (int i = startIndex; i < endIndex; i++) {
+			data <<= 8;
+			data |= (b[i] & 0xff);
+		}
+		return data;
+	}
+
+	static public void copy_byte(byte[] dest, int dIndex, int cpSize, String src) {
+		if (src == null)
+			return;
+
+		byte[] b = src.getBytes();
+		cpSize = (cpSize > b.length) ? b.length : cpSize;
+		System.arraycopy(b, 0, dest, dIndex, cpSize);
+	}
+
+	public static boolean isMysqlMode(Class c) {
+		String split[] = c.getName().split("\\.");
+		if (split.length > 2 && split[2].equals("mysql")) {
+			return true;
+		}
+		return false;
+	}
+
+	public static boolean isOracleMode(Class c) {
+		String split[] = c.getName().split("\\.");
+		if (split.length > 2 && split[2].equals("oracle")) {
+			return true;
+		}
+		return false;
+	}
+
+	public static boolean isServerSide() {
+		return bServerSide;
+	}
+
+	public static boolean isConsoleDebug() {
+		return bConsoleDebug;
+	}
+
+	public static boolean isMMDB() {
+		return bMMDB;
+	}
+
+	public static boolean isSendAppInfo() {
+		return bSendAppInfo;
+	}
+
+	public static boolean isJDBC4() {
+		return bJDBC4;
+	}
+
+	public static Object invoke(String cls_name, String method,
+			Class[] param_cls, Object cls, Object[] params) {
+		try {
+			Class c = Class.forName(cls_name);
+			Method m = c.getMethod(method, param_cls);
+			return m.invoke(cls, params);
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	public static Constructor getConstructor(String cls_name, Class[] param_cls) {
+		try {
+			Class c = Class.forName(cls_name);
+			return c.getConstructor(param_cls);
+		} catch (Exception e) {
+			return null;
+		}
+	}
 }

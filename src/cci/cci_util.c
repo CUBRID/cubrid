@@ -57,6 +57,7 @@
 #include "cas_cci.h"
 #include "cci_util.h"
 #include "cci_handle_mng.h"
+#include "cci_t_lob.h"
 
 /************************************************************************
  * PRIVATE DEFINITIONS							*
@@ -388,21 +389,21 @@ ut_date_to_str (T_CCI_DATE * value, T_CCI_U_TYPE u_type, char *str)
 {
   if (u_type == CCI_U_TYPE_DATE)
     {
-      sprintf (str, "%d-%d-%d", value->yr, value->mon, value->day);
+      sprintf (str, "%04d-%02d-%02d", value->yr, value->mon, value->day);
     }
   else if (u_type == CCI_U_TYPE_TIME)
     {
-      sprintf (str, "%d:%d:%d", value->hh, value->mm, value->ss);
+      sprintf (str, "%02d:%02d:%02d", value->hh, value->mm, value->ss);
     }
   else if (u_type == CCI_U_TYPE_TIMESTAMP)
     {
-      sprintf (str, "%d-%d-%d %d:%d:%d",
+      sprintf (str, "%04d-%02d-%02d %02d:%02d:%02d",
 	       value->yr, value->mon, value->day,
 	       value->hh, value->mm, value->ss);
     }
   else
     {				/* u_type == CCI_U_TYPE_DATETIME */
-      sprintf (str, "%d-%d-%d %d:%d:%d.%03d",
+      sprintf (str, "%04d-%02d-%02d %02d:%02d:%02d.%03d",
 	       value->yr, value->mon, value->day,
 	       value->hh, value->mm, value->ss, value->ms);
     }
@@ -412,6 +413,19 @@ void
 ut_oid_to_str (T_OBJECT * oid, char *str)
 {
   sprintf (str, "@%d|%d|%d", oid->pageid, oid->slotid, oid->volid);
+}
+
+void
+ut_lob_to_str (T_LOB * lob, char *str)
+{
+#if 0
+  sprintf (str, "%s:%s",
+	   (lob->type == CCI_U_TYPE_BLOB
+	    ? "BLOB" : (lob->type == CCI_U_TYPE_CLOB
+			? "CLOB" : "????")), lob->handle + 16);
+#else
+  strcpy (str, lob->handle + 16);
+#endif
 }
 
 void

@@ -65,6 +65,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				UACExecutionLevel="2"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -138,6 +139,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				UACExecutionLevel="2"
 				GenerateDebugInformation="true"
 				TargetMachine="17"
 			/>
@@ -211,6 +213,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				UACExecutionLevel="2"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
@@ -287,6 +290,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalLibraryDirectories="&quot;$(SolutionDir)$(ConfigurationName)&quot;"
+				UACExecutionLevel="2"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"

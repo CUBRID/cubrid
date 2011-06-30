@@ -127,6 +127,15 @@
  */
 #define SM_MAX_IDENTIFIER_LENGTH 255
 
+/* 
+ *  c : constraint_type 
+ */
+#define SM_GET_CONSTRAINT_STRING(c) \
+	((c) == DB_CONSTRAINT_UNIQUE         ? "UNIQUE": \
+	 (c) == DB_CONSTRAINT_PRIMARY_KEY    ? "PRIMARY KEY": \
+	 (c) == DB_CONSTRAINT_FOREIGN_KEY    ? "FOREIGN KEY": \
+	 (c) == DB_CONSTRAINT_REVERSE_UNIQUE ? "REVERSE_UNIQUE": \
+	 					"REVERSE_INDEX")
 
 typedef void (*METHOD_FUNCTION) ();
 typedef void (*METHOD_FUNC_ARG4) (DB_OBJECT *, DB_VALUE *,
@@ -501,6 +510,45 @@ struct sm_component
 
 typedef struct sm_attribute SM_ATTRIBUTE;
 
+/*
+ *      NOTE:
+ *      Regarding "original_value" and "value".
+ *      "value" keeps the current value of default/shared/class value,
+ *      and "original_value" is used for default value only and keeps
+ *      the first value given as the default value. "first" means that
+ *      "adding new attribute with default value" or "setting a default
+ *      value to an existing attribute which does not have it".
+ *      "original_value" will be used to fetch records which do not have
+ *      the attribute, in other words, their representations are different
+ *      with the last representation. It will replace unbound value
+ *      of the attribute. Therefore it should be always propagated to the
+ *      last representation. See the following example.
+ *
+ *      create table x (i int);
+ *      -- Insert a record with the first repr.
+ *      insert into x values (1);
+ *      
+ *      alter table x add attribute s varchar(32) default 'def1';
+ *      -- The second repr has column "s" with default value 'def1'.
+ *      -- 'def1' was copied to "original_value" and "value" of column "s".
+ *
+ *      select * from x;
+ *         i  s
+ *      ===================================
+ *         1  'def1' <- This is from "original_value" of the last(=2nd) repr.
+ *
+ *      alter table x change column s default 'def2';
+ *      -- At this point, the third repr also has a copy of "original_value"
+ *      -- of the second repr.
+ *
+ *      insert into x values (2, default);
+ *      select * from x;
+ *         i  s
+ *      ===================================
+ *         1  'def1' <- This is from "original_value" of the last(=3rd) repr.
+ *         2  'def2'
+ *
+ */
 struct sm_attribute
 {
   SM_COMPONENT header;		/* next, name, header */
@@ -513,8 +561,8 @@ struct sm_attribute
   int id;			/* unique id number */
   int offset;			/* memory offset */
 
-  DB_VALUE original_value;	/* initial or shared */
-  DB_VALUE value;		/* current initial or shared */
+  DB_VALUE original_value;	/* initial default value; see the above */
+  DB_VALUE value;		/* current default/shared/class value */
 
   SM_CONSTRAINT *constraints;	/* cached constraint list */
 

@@ -42,6 +42,7 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -r, --read-only              읽기 전용 모드\n\
       --no-auto-commit         자동 커밋 안 함\n\
       --no-pager               페이지 단위로 표시 안 함\n\
+      --no-single-line         단일 라인 실행 안 함\n\
 \n\
 추가적인 정보는 http://www.cubrid.com 에서 얻을 수 있습니다.\n
 41 %s: 환경 변수 %s_MODE 의 값이 틀림. \n%s 또는 %s 이어야 합니다.\n

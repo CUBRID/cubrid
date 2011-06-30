@@ -28,42 +28,41 @@
  *
  */
 
-package @CUBRID_DRIVER@;
+package cubrid.jdbc.driver;
 
-import javax.transaction.xa.*;
-import java.util.*;
-import @CUBRID_JCI@.*;
+import java.util.Arrays;
 
-class CUBRIDXidInfo
-{
-  static final int STATUS_NOFLAG = 0, STATUS_STARTED = 1, STATUS_SUSPENDED = 2,
-      STATUS_PREPARED = 3, STATUS_RECOVERED = 4, STATUS_COMPLETED = 5;
+import javax.transaction.xa.Xid;
 
-  Xid xid;
-  UConnection ucon;
-  int status;
+import cubrid.jdbc.jci.UConnection;
 
-  CUBRIDXidInfo(Xid xid, UConnection ucon, int status)
-  {
-    this.xid = xid;
-    this.ucon = ucon;
-    this.status = status;
-  }
+class CUBRIDXidInfo {
+	static final int STATUS_NOFLAG = 0, STATUS_STARTED = 1,
+			STATUS_SUSPENDED = 2, STATUS_PREPARED = 3, STATUS_RECOVERED = 4,
+			STATUS_COMPLETED = 5;
 
-  boolean compare(CUBRIDXidInfo x)
-  {
-    return (compare(x.xid));
-  }
+	Xid xid;
+	UConnection ucon;
+	int status;
 
-  boolean compare(Xid x)
-  {
-    if ((xid.getFormatId() == x.getFormatId())
-        && Arrays.equals(xid.getBranchQualifier(), x.getBranchQualifier())
-        && Arrays.equals(xid.getGlobalTransactionId(), x
-            .getGlobalTransactionId()))
-    {
-      return true;
-    }
-    return false;
-  }
+	CUBRIDXidInfo(Xid xid, UConnection ucon, int status) {
+		this.xid = xid;
+		this.ucon = ucon;
+		this.status = status;
+	}
+
+	boolean compare(CUBRIDXidInfo x) {
+		return (compare(x.xid));
+	}
+
+	boolean compare(Xid x) {
+		if ((xid.getFormatId() == x.getFormatId())
+				&& Arrays.equals(xid.getBranchQualifier(), x
+						.getBranchQualifier())
+				&& Arrays.equals(xid.getGlobalTransactionId(), x
+						.getGlobalTransactionId())) {
+			return true;
+		}
+		return false;
+	}
 }

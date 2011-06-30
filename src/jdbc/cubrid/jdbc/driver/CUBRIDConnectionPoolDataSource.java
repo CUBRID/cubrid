@@ -28,62 +28,59 @@
  *
  */
 
-package @CUBRID_DRIVER@;
+package cubrid.jdbc.driver;
 
-import java.sql.*;
-import javax.sql.*;
-import java.io.*;
-import javax.naming.*;
+import java.io.Serializable;
+import java.sql.SQLException;
 
-import @CUBRID_DRIVER@.CUBRIDPooledConnection;
+import javax.naming.NamingException;
+import javax.naming.Reference;
+import javax.naming.Referenceable;
+import javax.sql.ConnectionPoolDataSource;
+import javax.sql.PooledConnection;
 
-import @CUBRID_SQL@.*;
-import @CUBRID_JCI@.*;
+import cubrid.jdbc.jci.UConnection;
+import cubrid.jdbc.jci.UJCIManager;
 
 public class CUBRIDConnectionPoolDataSource extends CUBRIDPoolDataSourceBase
-    implements ConnectionPoolDataSource, Referenceable, Serializable
-{
-  public CUBRIDConnectionPoolDataSource()
-  {
-    super();
-  }
+		implements ConnectionPoolDataSource, Referenceable, Serializable {
+	public CUBRIDConnectionPoolDataSource() {
+		super();
+	}
 
-  protected CUBRIDConnectionPoolDataSource(Reference ref)
-  {
-    super();
-    setProperties(ref);
-  }
+	protected CUBRIDConnectionPoolDataSource(Reference ref) {
+		super();
+		setProperties(ref);
+	}
 
-  /*
-   * javax.sql.ConnectionPoolDataSource interface
-   */
+	/*
+	 * javax.sql.ConnectionPoolDataSource interface
+	 */
 
-  public synchronized PooledConnection getPooledConnection()
-      throws SQLException
-  {
-    return getPooledConnection(getUser(), getPassword());
-  }
+	public synchronized PooledConnection getPooledConnection()
+			throws SQLException {
+		return getPooledConnection(getUser(), getPassword());
+	}
 
-  public synchronized PooledConnection getPooledConnection(String username,
-      String passwd) throws SQLException
-  {
-    UConnection u_con = UJCIManager.connect(getServerName(), getPortNumber(),
-        getDatabaseName(), username, passwd, getDataSourceID(username));
+	public synchronized PooledConnection getPooledConnection(String username,
+			String passwd) throws SQLException {
+		UConnection u_con = UJCIManager.connect(getServerName(),
+				getPortNumber(), getDatabaseName(), username, passwd,
+				getDataSourceID(username));
 
-    return (new CUBRIDPooledConnection(u_con));
-  }
+		return (new CUBRIDPooledConnection(u_con));
+	}
 
-  /*
-   * javax.naming.Referenceable interface
-   */
+	/*
+	 * javax.naming.Referenceable interface
+	 */
 
-  public synchronized Reference getReference() throws NamingException
-  {
-    Reference ref = new Reference(this.getClass().getName(),
-        "@CUBRID_DRIVER@.CUBRIDDataSourceObjectFactory", null);
+	public synchronized Reference getReference() throws NamingException {
+		Reference ref = new Reference(this.getClass().getName(),
+				"cubrid.jdbc.driver.CUBRIDDataSourceObjectFactory", null);
 
-    ref = getProperties(ref);
-    return ref;
-  }
+		ref = getProperties(ref);
+		return ref;
+	}
 
 }

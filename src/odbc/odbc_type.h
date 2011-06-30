@@ -88,27 +88,33 @@ typedef struct tagVALUE_CONTAINER
   short type;
 } VALUE_CONTAINER;
 
+typedef struct tagODBC_DATA_TYPE_INFO
+{
+  int concise_sql_type;
+  int concise_c_type;
+
+  int decimal_digits;
+  int column_size;
+  int octet_length;
+  int display_size;
+} ODBC_DATA_TYPE_INFO;
+
 PUBLIC int odbc_is_valid_type (short odbc_type);
 PUBLIC int odbc_is_valid_code (short code);
 PUBLIC int odbc_is_valid_date_verbose_type (short odbc_type);
 PUBLIC int odbc_is_valid_interval_verbose_type (short odbc_type);
 PUBLIC int odbc_is_valid_c_type (short odbc_type);
 PUBLIC int odbc_is_valid_sql_type (short odbc_type);
-PUBLIC int odbc_is_valid_concise_type (short odbc_type);
-PUBLIC int odbc_is_valid_c_concise_type (short odbc_type);
-PUBLIC int odbc_is_valid_sql_concise_type (short odbc_type);
-PUBLIC int odbc_is_valid_verbose_type (short odbc_type);
-PUBLIC int odbc_is_valid_c_verbose_type (short odbc_type);
-PUBLIC int odbc_is_valid_sql_verbose_type (short odbc_type);
-PUBLIC int odbc_is_valid_c_common_type (short c_type);
+
 PUBLIC int odbc_is_valid_c_date_type (SQLSMALLINT c_type);
 PUBLIC int odbc_is_valid_c_interval_type (short c_type);
-PUBLIC int odbc_is_valid_sql_common_type (short sql_type);
 PUBLIC int odbc_is_valid_sql_date_type (short sql_type);
 PUBLIC int odbc_is_valid_sql_interval_type (short sql_type);
 PUBLIC short odbc_concise_to_verbose_type (short type);
 PUBLIC short odbc_verbose_to_concise_type (short type, short code);
 PUBLIC short odbc_subcode_type (short type);
+PUBLIC int odbc_type_default_info_by_name (char *type_name,
+					   ODBC_DATA_TYPE_INFO * type_info);
 PUBLIC short odbc_default_c_type (short odbc_type);
 
 PUBLIC int odbc_buffer_length (short odbc_type, int precision);
@@ -130,9 +136,10 @@ PUBLIC void odbc_value_to_cci2 (void *sql_value_root, int index,
 				void *c_value, short c_type, long c_length,
 				short c_precision, short c_scale);
 PUBLIC SQLLEN cci_value_to_odbc (void *c_value, short concise_type,
-			       short precision, short scale,
-			       SQLLEN buffer_length, UNI_CCI_A_TYPE * cci_value,
-			       T_CCI_A_TYPE a_type);
+				 short precision, short scale,
+				 SQLLEN buffer_length,
+				 UNI_CCI_A_TYPE * cci_value,
+				 T_CCI_A_TYPE a_type);
 PUBLIC VALUE_CONTAINER *create_value_container ();
 PUBLIC void clear_value_container (VALUE_CONTAINER * value);
 PUBLIC void free_value_container (VALUE_CONTAINER * value);

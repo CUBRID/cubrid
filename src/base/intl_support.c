@@ -326,6 +326,38 @@ intl_mbs_casecmp (const char *mbs1, const char *mbs2)
   return (int) (towlower (wc1) - towlower (wc2));
 }
 
+int
+intl_mbs_cmp (const char *mbs1, const char *mbs2)
+{
+  wchar_t wc1, wc2;
+  int mb1_len, mb2_len;
+
+  assert (mbs1 != NULL && mbs2 != NULL);
+
+  if (!intl_Mbs_support)
+    {
+      return strcmp (mbs1, mbs2);
+    }
+
+  for (mb1_len = mbtowc (&wc1, mbs1, MB_LEN_MAX),
+       mb2_len = mbtowc (&wc2, mbs2, MB_LEN_MAX);
+       mb1_len > 0 && mb2_len > 0 && wc1 && wc2 && !(wc1 - wc2);)
+    {
+      mbs1 += mb1_len;
+      mbs2 += mb2_len;
+
+      mb1_len = mbtowc (&wc1, mbs1, MB_LEN_MAX);
+      mb2_len = mbtowc (&wc2, mbs2, MB_LEN_MAX);
+    }
+
+  if (mb1_len < 0 || mb2_len < 0)
+    {
+      errno = EINVAL;
+    }
+
+  return (int) (wc1 - wc2);
+}
+
 /*
  * intl_mbs_ncasecmp() - compares the first n successive multi-byte character elements
  *                  from two multi-byte strings
@@ -381,11 +413,11 @@ intl_mbs_ncasecmp (const char *mbs1, const char *mbs2, size_t n)
 }
 
 /*
- * intl_mbs_ncpy() - Copy characters from mbs2 to mbs1 at most n bytes
+ * intl_mbs_ncpy() - Copy characters from mbs2 to mbs1 at most (n-1) bytes
  *   return: mbs1, null-terminated string.
  *   mbs1(out)
  *   mbs2(in)
- *   n(in)
+ *   n(in): size of destination buffer, including null-terminator
  *
  * Note: If mbs2 contains an invalid multi-byte character, errno is set and the
  *   function returns NULL.  In this case, the contents of mbs1 are undefined.
@@ -402,16 +434,23 @@ intl_mbs_ncpy (char *mbs1, const char *mbs2, size_t n)
 
   if (!intl_Mbs_support)
     {
-      if (strlen (mbs2) >= n)
+      size_t src_len = strlen (mbs2);
+
+      strncpy (mbs1, mbs2, n - 1);
+      if (src_len < n)
 	{
-	  errno = EINVAL;
-	  return NULL;
+	  mbs1[src_len] = '\0';
 	}
-      return strncpy (mbs1, mbs2, n);
+      else
+	{
+	  mbs1[n - 1] = '\0';
+	}
+
+      return mbs1;
     }
 
   for (num_of_bytes = 0, clen = mblen (mbs2, MB_LEN_MAX), dest = mbs1;
-       clen > 0 && (num_of_bytes + clen) <= n;
+       clen > 0 && (num_of_bytes + clen) <= n - 1;
        clen = mblen (mbs2, MB_LEN_MAX))
     {
       /* copy the next multi-byte char */
@@ -429,7 +468,7 @@ intl_mbs_ncpy (char *mbs1, const char *mbs2, size_t n)
       errno = EINVAL;
       mbs1 = NULL;
     }
-  else if (num_of_bytes < n)
+  else
     {
       *dest = '\0';
     }

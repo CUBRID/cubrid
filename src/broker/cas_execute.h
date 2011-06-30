@@ -35,7 +35,7 @@
 #include "cas_mysql.h"
 #else /* CAS_FOR_MYSQL */
 #include "cas_db_inc.h"
-#endif /* CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE */
 
 #define CAS_TYPE_SET(TYPE)		((TYPE) | CCI_CODE_SET)
 #define CAS_TYPE_MULTISET(TYPE)		((TYPE) | CCI_CODE_MULTISET)
@@ -58,6 +58,25 @@
 #define NET_BUF_ERR_SET(NET_BUF)	\
 	err_msg_set(NET_BUF, __FILE__, __LINE__)
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+typedef struct t_fk_info_result T_FK_INFO_RESULT;
+struct t_fk_info_result
+{
+  struct t_fk_info_result *prev;
+  struct t_fk_info_result *next;
+
+  char *pktable_name;
+  char *pkcolumn_name;
+  char *fktable_name;
+  char *fkcolumn_name;
+  short key_seq;
+  SM_FOREIGN_KEY_ACTION update_action;
+  SM_FOREIGN_KEY_ACTION delete_action;
+  char *fk_name;
+  char *pk_name;
+};
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
 extern int ux_check_connection (void);
 #ifndef LIBCAS_FOR_JSP
 extern int ux_database_connect (char *db_name, char *db_user, char *db_passwd,
@@ -71,6 +90,9 @@ extern int ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
 		       T_NET_BUF * ne_buf, T_REQ_INFO * req_info,
 		       unsigned int query_seq_num);
 extern int ux_end_tran (int tran_type, bool reset_con_status);
+extern int ux_end_session (void);
+extern int ux_get_row_count (T_NET_BUF * net_buf);
+extern int ux_get_last_insert_id (T_NET_BUF * net_buf);
 extern int ux_auto_commit (T_NET_BUF * CAS_FN_ARG_NET_BUF,
 			   T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
 extern int ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
@@ -87,9 +109,6 @@ extern int ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos,
 		     T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int ux_oid_get (int argc, void **argv, T_NET_BUF * net_buf);
-extern int ux_glo_new (char *class_name, char *filename, T_NET_BUF * net_buf);
-extern int ux_glo_save (DB_OBJECT * obj, char *filename, T_NET_BUF * net_buf);
-extern int ux_glo_load (SOCKET sock_fd, DB_OBJECT * obj, T_NET_BUF * net_buf);
 extern int ux_cursor (int srv_h_id, int offset, int origin,
 		      T_NET_BUF * net_buf);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
@@ -123,9 +142,9 @@ extern int ux_execute_all (T_SRV_HANDLE * srv_handle, char flag,
 			   void **argv, T_NET_BUF * net_buf,
 			   T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time,
 			   int *clt_cache_reusable);
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int ux_execute_array (T_SRV_HANDLE * srv_h_id, int argc, void **argv,
 			     T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf,
 			     T_REQ_INFO * req_info);
 extern int ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos,
@@ -145,16 +164,13 @@ extern int ux_get_query_info (int srv_h_id, char info_type,
 extern int ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf);
 extern void ux_get_default_setting (void);
 extern void ux_set_default_setting (void);
-extern int ux_glo_method_call (T_NET_BUF * net_buf, char check_ret,
-			       DB_OBJECT * glo_obj, const char *method_name,
-			       DB_VALUE * ret_val, DB_VALUE ** args);
 extern int ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 extern void ux_free_result (void *res);
 extern char ux_db_type_to_cas_type (int db_type);
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-extern int ux_schema_info (int schema_type, char *class_name, char *attr_name,
+extern int ux_schema_info (int schema_type, char *arg1, char *arg2,
 			   char flag, T_NET_BUF * net_buf,
 			   T_REQ_INFO * req_info, unsigned int query_seq_num);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
@@ -168,18 +184,24 @@ extern int ux_execute_call (T_SRV_HANDLE * srv_handle, char flag,
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern void ux_call_info_cp_param_mode (T_SRV_HANDLE * srv_handle,
 					char *param_mode, int num_param);
-extern int ux_glo_new2 (char *class_name, char glo_type, char *filename,
-			T_NET_BUF * net_buf);
 
 extern int ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf,
 			   T_REQ_INFO * req_info);
 extern int ux_get_generated_keys (T_SRV_HANDLE * srv_handle,
 				  T_NET_BUF * net_buf);
+
+extern SESSION_ID ux_get_session_id (void);
+extern void ux_set_session_id (const SESSION_ID session_id);
+
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 extern void set_db_connect_status (int status);
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 extern bool is_server_alive (void);
+#endif
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+extern void release_all_fk_info_results (T_FK_INFO_RESULT * fk_res);
 #endif
 
 /*****************************
@@ -194,9 +216,6 @@ extern int error_info_set_with_msg (int err_number, int err_indicator,
 				    const char *err_msg, bool force,
 				    const char *file, int line);
 extern void error_info_clear (void);
-extern void glo_err_msg_set (T_NET_BUF * net_buf, int err_code,
-			     const char *method_nm);
-extern void glo_err_msg_get (int err_code, char *err_msg);
 extern void set_server_aborted (bool is_aborted);
 extern bool is_server_aborted (void);
 
@@ -215,6 +234,14 @@ extern char *cas_log_error_handler_asprint (char *buf, size_t bufsz,
   move from cas_sql_log2.c
  *****************************/
 extern void set_optimization_level (int level);
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+extern int ux_lob_new (int lob_type, T_NET_BUF * net_buf);
+extern int ux_lob_write (DB_VALUE * lob_dbval, int64_t offset, int size,
+			 char *data, T_NET_BUF * net_buf);
+extern int ux_lob_read (DB_VALUE * lob_dbval, int64_t offset, int size,
+			T_NET_BUF * net_buf);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);

@@ -30,11 +30,20 @@
 #include "storage_common.h"
 #include "list_file.h"
 #include "dbtype.h"
-#include "thread_impl.h"
+#include "thread.h"
 
 #define NULL_PAGEID_ASYNC -2
 #define QMGR_VPID_ARRAY_SIZE    20
 #define QMGR_QUERY_ENTRY_ARRAY_SIZE     100
+
+typedef enum
+{
+  TEMP_FILE_MEMBUF_NONE = -1,
+  TEMP_FILE_MEMBUF_NORMAL,
+  TEMP_FILE_MEMBUF_KEY_BUFFER,
+
+  TEMP_FILE_MEMBUF_NUM_TYPES
+} QMGR_TEMP_FILE_MEMBUF_TYPE;
 
 typedef enum
 {
@@ -75,8 +84,10 @@ struct qmgr_temp_file
   int total_count;		/* total number of file pages alloc'd */
   int membuf_last;
   PAGE_PTR *membuf;
+  int membuf_npages;
+  QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type;
 #ifdef SERVER_MODE
-  MUTEX_T membuf_mutex;
+  pthread_mutex_t membuf_mutex;
   THREAD_ENTRY *membuf_thread_p;
 #if 0				/* async wakeup */
   PAGE_PTR wait_page_ptr;
@@ -118,8 +129,8 @@ typedef struct qmgr_query_entry QMGR_QUERY_ENTRY;
 struct qmgr_query_entry
 {
 #ifdef SERVER_MODE
-  MUTEX_T lock;			/* mutex for error message */
-  COND_T cond;
+  pthread_mutex_t lock;		/* mutex for error message */
+  pthread_cond_t cond;
   unsigned int nwaits;		/* the number of waiters who wait for cond */
 #endif
   QUERY_ID query_id;		/* unique query identifier */
@@ -147,7 +158,7 @@ struct qmgr_query_entry
 				 * must be stopped. */
   volatile int propagate_interrupt;
 #ifdef SERVER_MODE
-  THREAD_T tid;			/* used in qm_clear_tans_wakeup() */
+  pthread_t tid;		/* used in qm_clear_tans_wakeup() */
 #endif
   VPID save_vpid;		/* Save VPID for certain async queries */
 };
@@ -180,7 +191,9 @@ extern void qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr,
 extern PAGE_PTR qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpidp,
 				   QMGR_TEMP_FILE * tfile_vfidp);
 extern QMGR_TEMP_FILE *qmgr_create_new_temp_file (THREAD_ENTRY * thread_p,
-						  QUERY_ID query_id);
+						  QUERY_ID query_id,
+						  QMGR_TEMP_FILE_MEMBUF_TYPE
+						  membuf_type);
 extern QMGR_TEMP_FILE *qmgr_create_result_file (THREAD_ENTRY * thread_p,
 						QUERY_ID query_id);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -203,5 +216,5 @@ extern int qmgr_get_query_error_with_id (THREAD_ENTRY * thread_p,
 extern int qmgr_get_query_error_with_entry (QMGR_QUERY_ENTRY * query_entryp);
 extern void qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id);
 extern void qmgr_setup_empty_list_file (char *page_buf);
-
+extern int qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p);
 #endif /* _QUERY_MANAGER_H_ */

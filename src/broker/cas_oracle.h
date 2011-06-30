@@ -26,9 +26,12 @@
 #include "cas_dbms_util.h"
 
 #define DBMS_ORACLE       CCI_DBMS_CUBRID
-#define ORA_SUCCESS(code) (code) == OCI_SUCCESS || (code) == OCI_SUCCESS_WITH_INFO
+#define ORA_SUCCESS(code) ((code) == OCI_SUCCESS || (code) == OCI_SUCCESS_WITH_INFO)
 
 #define MAX_CAS_BLOB_SIZE               16777216	/* 16 * 1024 * 1024 */
+
+#define ORACLE_NULL     -1
+#define ORACLE_NOT_NULL 0
 
 typedef struct oracle_info ORACLE_INFO;
 struct oracle_info

@@ -56,15 +56,6 @@
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
 
-typedef struct t_glo_cmd_info T_GLO_CMD_INFO;
-struct t_glo_cmd_info
-{
-  char num_args;
-  char start_pos_index;
-  char data_index;
-  const char *method_name;
-};
-
 static const char *get_schema_type_str (int schema_type);
 static const char *get_tran_type_str (int tran_type);
 static void bind_value_print (char type, void *net_value);
@@ -75,6 +66,7 @@ static void bind_value_log (int start, int argc, void **argv, int, char *,
 #endif /* !LIBCAS_FOR_JSP */
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
+
 static const char *schema_type_str[] = {
   "CLASS",
   "VCLASS",
@@ -91,23 +83,10 @@ static const char *schema_type_str[] = {
   "CLASS_PRIVILEGE",
   "ATTR_PRIVILEGE",
   "DIRECT_SUPER_CLASS",
-  "PRIMARY_KEY"
-};
-
-static T_GLO_CMD_INFO glo_cmd_info[13] = {
-  {0, -1, -1, NULL},		/* dummy info */
-  {4, 2, -1, "read_data"},	/* GLO_CMD_READ_DATA */
-  {4, 2, 3, "write_data"},	/* GLO_CMD_WRITE_DATA */
-  {4, 2, 3, "insert_data"},	/* GLO_CMD_INSERT_DATA */
-  {4, 2, -1, "delete_data"},	/* GLO_CMD_DELETE_DATA */
-  {3, 2, -1, "truncate_data"},	/* GLO_CMD_TRUNCATE_DATA */
-  {3, -1, 2, "append_data"},	/* GLO_CMD_APPEND_DATA */
-  {2, -1, -1, "data_size"},	/* GLO_CMD_DATA_SIZE */
-  {2, -1, -1, "compress_data"},	/* GLO_CMD_COMPRESS_DATA */
-  {2, -1, -1, "destroy_data"},	/* GLO_CMD_DESTROY_DATA */
-  {4, 2, -1, "like_search"},	/* GLO_CMD_LIKE_SEARCH */
-  {4, 2, -1, "reg_search"},	/* GLO_CMD_REG_SEARCH */
-  {4, 2, -1, "binary_search"}	/* GLO_CMD_BINARY_SEARCH */
+  "PRIMARY_KEY",
+  "IMPORTED_KEYS",
+  "EXPORTED_KEYS",
+  "CROSS_REFERENCE"
 };
 
 static const char *type_str_tbl[] = {
@@ -133,17 +112,18 @@ static const char *type_str_tbl[] = {
   "OBJECT",			/* CCI_U_TYPE_OBJECT */
   "RESULTSET",			/* CCI_U_TYPE_RESULTSET */
   "BIGINT",			/* CCI_U_TYPE_BIGINT */
-  "DATETIME"			/* CCI_U_TYPE_DATETIME */
+  "DATETIME",			/* CCI_U_TYPE_DATETIME */
+  "BLOB",			/* CCI_U_TYPE_BLOB */
+  "CLOB"			/* CCI_U_TYPE_CLOB */
 };
 
 static int query_sequence_num = 0;
 #define QUERY_SEQ_NUM_NEXT_VALUE()      ++query_sequence_num
 #define QUERY_SEQ_NUM_CURRENT_VALUE()   query_sequence_num
 
-int
-fn_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	     T_REQ_INFO * req_info)
 {
   int tran_type;
   int err_code;
@@ -153,19 +133,19 @@ fn_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   int timeout;
 #endif /* !LIBCAS_FOR_JSP */
 
-  if (CAS_FN_ARG_ARGC < 1)
+  if (argc < 1)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_CHAR (tran_type, CAS_FN_ARG_ARGV[0]);
+  net_arg_get_char (tran_type, argv[0]);
   if (tran_type != CCI_TRAN_COMMIT && tran_type != CCI_TRAN_ROLLBACK)
     {
       ERROR_INFO_SET (CAS_ER_TRAN_TYPE, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
   cas_log_write (0, false, "end_tran %s", get_tran_type_str (tran_type));
@@ -175,7 +155,7 @@ fn_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   err_code = ux_end_tran ((char) tran_type, false);
 
   if ((tran_type == CCI_TRAN_ROLLBACK) &&
-      (CAS_FN_ARG_REQ_INFO->client_version < CAS_MAKE_VER (8, 2, 0)))
+      (req_info->client_version < CAS_MAKE_VER (8, 2, 0)))
     {
       /* For backward compatibility */
       cas_send_result_flag = FALSE;
@@ -192,13 +172,13 @@ fn_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (err_code < 0)
     {
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      CAS_FN_ARG_REQ_INFO->need_rollback = TRUE;
+      NET_BUF_ERR_SET (net_buf);
+      req_info->need_rollback = TRUE;
     }
   else
     {
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);
-      CAS_FN_ARG_REQ_INFO->need_rollback = FALSE;
+      net_buf_cp_int (net_buf, 0, NULL);
+      req_info->need_rollback = FALSE;
     }
 
 #ifndef LIBCAS_FOR_JSP
@@ -246,25 +226,67 @@ fn_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 			 true);
 	}
 
-      if (!ux_is_database_connected () || restart_is_needed ()
-	  || as_info->reset_flag == TRUE)
+      if (!ux_is_database_connected () || as_info->reset_flag == TRUE)
 	{
 	  cas_log_debug (ARG_FILE_LINE,
-			 "fn_end_tran: !ux_is_database_connected()"
-			 " || restart_is_needed() || reset_flag");
-	  return -1;
+			 "fn_end_tran: !ux_is_database_connected() || reset_flag");
+	  return FN_CLOSE_CONN;
 	}
-      return 0;
+      else if (restart_is_needed ())
+	{
+	  cas_log_debug (ARG_FILE_LINE, "fn_end_tran: restart_is_needed()");
+	  return FN_KEEP_SESS;
+	}
+      return FN_KEEP_CONN;
     }
 #endif /* !LIBCAS_FOR_JSP */
 
-  return -1;
+  return FN_CLOSE_CONN;
 }
 
-int
-fn_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	    void **CAS_FN_ARG_ARGV,
-	    T_NET_BUF * CAS_FN_ARG_NET_BUF, T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+FN_RETURN
+fn_end_session (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		T_REQ_INFO * req_info)
+{
+  int err_code = 0;
+  cas_log_write (0, false, "end_session %u", db_get_session_id ());
+
+  err_code = ux_end_session ();
+  if (err_code != 0)
+    {
+      cas_log_write (0, false, "failed to end session %u",
+		     db_get_session_id ());
+    }
+  else
+    {
+      cas_log_write (0, false, "ended session %u", db_get_session_id ());
+      db_set_session_id (0);
+    }
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_get_row_count (SOCKET sock_fd, int argc, void **argv,
+		  T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  ux_get_row_count (net_buf);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_get_last_insert_id (SOCKET sock_fd, int argc, void **argv,
+		       T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  ux_get_last_insert_id (net_buf);
+  return FN_KEEP_CONN;
+}
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+FN_RETURN
+fn_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	    T_REQ_INFO * req_info)
 {
   char *sql_stmt;
   char flag;
@@ -274,23 +296,23 @@ fn_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   T_SRV_HANDLE *srv_handle;
   int i;
 
-  if (CAS_FN_ARG_ARGC < 2)
+  if (argc < 2)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_STR (sql_stmt, sql_size, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_CHAR (flag, CAS_FN_ARG_ARGV[1]);
-  if (CAS_FN_ARG_ARGC > 2)
+  net_arg_get_str (&sql_stmt, &sql_size, argv[0]);
+  net_arg_get_char (flag, argv[1]);
+  if (argc > 2)
     {
-      NET_ARG_GET_CHAR (auto_commit_mode, CAS_FN_ARG_ARGV[2]);
+      net_arg_get_char (auto_commit_mode, argv[2]);
 
-      for (i = 3; i < CAS_FN_ARG_ARGC; i++)
+      for (i = 3; i < argc; i++)
 	{
 	  int deferred_close_handle;
-	  NET_ARG_GET_INT (deferred_close_handle, CAS_FN_ARG_ARGV[i]);
+	  net_arg_get_int (&deferred_close_handle, argv[i]);
 	  cas_log_write (0, true, "close_req_handle srv_h_id %d",
 			 deferred_close_handle);
 	  hm_srv_handle_free (deferred_close_handle);
@@ -304,6 +326,11 @@ fn_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 #if 0
   ut_trim (sql_stmt);
 #endif
+
+#ifndef LIBCAS_FOR_JSP
+  gettimeofday (&query_start_time, NULL);
+  query_timeout = 0;
+#endif /* !LIBCAS_FOR_JSP */
 
   cas_log_write (QUERY_SEQ_NUM_NEXT_VALUE (), false, "prepare %d ", flag);
   cas_log_write_query_string (sql_stmt, sql_size - 1);
@@ -333,8 +360,7 @@ fn_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 #endif
 
   srv_h_id = ux_prepare (sql_stmt, flag, auto_commit_mode,
-			 CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO,
-			 QUERY_SEQ_NUM_CURRENT_VALUE ());
+			 net_buf, req_info, QUERY_SEQ_NUM_CURRENT_VALUE ());
 
   srv_handle = hm_find_srv_handle (srv_h_id);
 
@@ -353,10 +379,10 @@ fn_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     }
 #endif /* !LIBCAS_FOR_JSP */
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
+FN_RETURN
 fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	    T_REQ_INFO * req_info)
 {
@@ -384,26 +410,25 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   bind_value_index = 9;
   argc_mod_2 = 1;
 
-  if ((CAS_FN_ARG_ARGC < bind_value_index)
-      || (CAS_FN_ARG_ARGC % 2 != argc_mod_2))
+  if ((argc < bind_value_index) || (argc % 2 != argc_mod_2))
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (srv_h_id, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_CHAR (flag, CAS_FN_ARG_ARGV[1]);
-  NET_ARG_GET_INT (max_col_size, CAS_FN_ARG_ARGV[2]);
-  NET_ARG_GET_INT (max_row, CAS_FN_ARG_ARGV[3]);
-  NET_ARG_GET_STR (param_mode, param_mode_size, CAS_FN_ARG_ARGV[4]);
-  NET_ARG_GET_CHAR (fetch_flag, CAS_FN_ARG_ARGV[5]);
+  net_arg_get_int (&srv_h_id, argv[0]);
+  net_arg_get_char (flag, argv[1]);
+  net_arg_get_int (&max_col_size, argv[2]);
+  net_arg_get_int (&max_row, argv[3]);
+  net_arg_get_str (&param_mode, &param_mode_size, argv[4]);
+  net_arg_get_char (fetch_flag, argv[5]);
 
-  NET_ARG_GET_CHAR (auto_commit_mode, CAS_FN_ARG_ARGV[6]);
-  NET_ARG_GET_CHAR (forward_only_cursor, CAS_FN_ARG_ARGV[7]);
+  net_arg_get_char (auto_commit_mode, argv[6]);
+  net_arg_get_char (forward_only_cursor, argv[7]);
 
   clt_cache_time_ptr = &clt_cache_time;
-  NET_ARG_GET_CACHE_TIME (clt_cache_time_ptr, CAS_FN_ARG_ARGV[8]);
+  net_arg_get_cache_time (clt_cache_time_ptr, argv[8]);
 
 #ifndef LIBCAS_FOR_JSP
   if (shm_appl->max_string_length >= 0)
@@ -421,8 +446,8 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
     {
       ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
   srv_handle->auto_commit_mode = auto_commit_mode;
   srv_handle->forward_only_cursor = forward_only_cursor;
@@ -431,10 +456,13 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       exec_func_name = "execute_call";
       ux_exec_func = ux_execute_call;
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#if !defined(CAS_FOR_MYSQL)
       if (param_mode)
-	ux_call_info_cp_param_mode (srv_handle, param_mode, param_mode_size);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+	{
+	  ux_call_info_cp_param_mode (srv_handle, param_mode,
+				      param_mode_size);
+	}
+#endif /* !CAS_FOR_MYSQL */
     }
   else if (flag & CCI_EXEC_QUERY_ALL)
     {
@@ -457,14 +485,17 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   cas_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		      "%s srv_h_id %d ", exec_func_name, srv_h_id);
-  cas_log_write_query_string (srv_handle->sql_stmt,
-			      strlen (srv_handle->sql_stmt));
+  if (srv_handle->sql_stmt != NULL)
+    {
+      cas_log_write_query_string (srv_handle->sql_stmt,
+				  strlen (srv_handle->sql_stmt));
+    }
   cas_log_debug (ARG_FILE_LINE, "%s%s",
 		 auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
 
 #ifndef LIBCAS_FOR_JSP
-  bind_value_log (bind_value_index, CAS_FN_ARG_ARGC, CAS_FN_ARG_ARGV,
+  bind_value_log (bind_value_index, argc, argv,
 		  param_mode_size, param_mode,
 		  SRV_HANDLE_QUERY_SEQ_NUM (srv_handle));
 #endif /* !LIBCAS_FOR_JSP */
@@ -500,17 +531,28 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   gettimeofday (&exec_begin, NULL);
 
   ret_code = (*ux_exec_func) (srv_handle, flag, max_col_size, max_row,
-			      CAS_FN_ARG_ARGC - bind_value_index,
-			      CAS_FN_ARG_ARGV + bind_value_index,
-			      CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO,
+			      argc - bind_value_index,
+			      argv + bind_value_index,
+			      net_buf, req_info,
 			      clt_cache_time_ptr, &client_cache_reusable);
   gettimeofday (&exec_end, NULL);
   ut_timeval_diff (&exec_begin, &exec_end, &elapsed_sec, &elapsed_msec);
+
+  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+		 "%s %s%d tuple %d time %d.%03d%s%s%s",
+		 exec_func_name, (ret_code < 0) ? "error:" : "",
+		 err_info.err_number,
+		 get_tuple_count (srv_handle),
+		 elapsed_sec, elapsed_msec,
+		 (client_cache_reusable == TRUE) ? " (CC)" : "",
+		 (srv_handle->use_query_cache == true) ? " (QC)" : "",
+		 get_error_log_eids (err_info.err_number));
 
 #ifndef LIBCAS_FOR_JSP
   query_timeout = ut_check_timeout (&query_start_time,
 				    shm_appl->long_query_time,
 				    &elapsed_sec, &elapsed_msec);
+
   if (query_timeout >= 0)
     {
       as_info->num_long_queries %= MAX_DIAG_DATA_VALUE;
@@ -525,18 +567,8 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   if (fetch_flag && ret_code >= 0 && client_cache_reusable == FALSE)
     {
-      ux_fetch (srv_handle, 1, 50, 0, 0, CAS_FN_ARG_NET_BUF,
-		CAS_FN_ARG_REQ_INFO);
+      ux_fetch (srv_handle, 1, 50, 0, 0, net_buf, req_info);
     }
-  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-		 "%s %s%d tuple %d time %d.%03d%s%s%s",
-		 exec_func_name, (ret_code < 0) ? "error:" : "",
-		 err_info.err_number,
-		 get_tuple_count (srv_handle),
-		 elapsed_sec, elapsed_msec,
-		 (client_cache_reusable == TRUE) ? " (CC)" : "",
-		 (srv_handle->use_query_cache == true) ? " (QC)" : "",
-		 get_error_log_eids (err_info.err_number));
 
 #ifndef LIBCAS_FOR_JSP
   /* set is_pooled */
@@ -546,26 +578,24 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 #endif /* !LIBCAS_FOR_JSP */
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-int
-fn_get_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		     void **CAS_FN_ARG_ARGV,
-		     T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv,
+		     T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int param_name;
 
-  if (CAS_FN_ARG_ARGC < 1)
+  if (argc < 1)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (param_name, CAS_FN_ARG_ARGV[0]);
+  net_arg_get_int (&param_name, argv[0]);
 
   if (param_name == CCI_PARAM_ISOLATION_LEVEL)
     {
@@ -574,8 +604,8 @@ fn_get_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       cas_log_write (0, true, "get_db_parameter isolation_level");
 
       ux_get_tran_setting (NULL, &isol_level);
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);	/* res code */
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, isol_level, NULL);	/* res msg */
+      net_buf_cp_int (net_buf, 0, NULL);	/* res code */
+      net_buf_cp_int (net_buf, isol_level, NULL);	/* res msg */
     }
   else if (param_name == CCI_PARAM_LOCK_TIMEOUT)
     {
@@ -584,8 +614,8 @@ fn_get_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       cas_log_write (0, true, "get_db_parameter lock_timeout");
 
       ux_get_tran_setting (&lock_timeout, NULL);
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, lock_timeout, NULL);
+      net_buf_cp_int (net_buf, 0, NULL);
+      net_buf_cp_int (net_buf, lock_timeout, NULL);
     }
   else if (param_name == CCI_PARAM_MAX_STRING_LENGTH)
     {
@@ -595,57 +625,55 @@ fn_get_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       int max_str_len = DB_MAX_STRING_LENGTH;
 #endif /* !LIBCAS_FOR_JSP */
 
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);
+      net_buf_cp_int (net_buf, 0, NULL);
       if (max_str_len <= 0 || max_str_len > DB_MAX_STRING_LENGTH)
 	max_str_len = DB_MAX_STRING_LENGTH;
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, max_str_len, NULL);
+      net_buf_cp_int (net_buf, max_str_len, NULL);
     }
   else
     {
       ERROR_INFO_SET (CAS_ER_PARAM_NAME, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
-fn_set_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		     void **CAS_FN_ARG_ARGV,
-		     T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv,
+		     T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int param_name;
 
-  if (CAS_FN_ARG_ARGC < 2)
+  if (argc < 2)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (param_name, CAS_FN_ARG_ARGV[0]);
+  net_arg_get_int (&param_name, argv[0]);
 
   if (param_name == CCI_PARAM_ISOLATION_LEVEL)
     {
       int isol_level;
 
-      NET_ARG_GET_INT (isol_level, CAS_FN_ARG_ARGV[1]);
+      net_arg_get_int (&isol_level, argv[1]);
 
       cas_log_write (0, true, "set_db_parameter isolation_level %d",
 		     isol_level);
 
-      if (ux_set_isolation_level (isol_level, CAS_FN_ARG_NET_BUF) < 0)
-	return 0;
+      if (ux_set_isolation_level (isol_level, net_buf) < 0)
+	return FN_KEEP_CONN;
 
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);	/* res code */
+      net_buf_cp_int (net_buf, 0, NULL);	/* res code */
     }
   else if (param_name == CCI_PARAM_LOCK_TIMEOUT)
     {
       int lock_timeout;
 
-      NET_ARG_GET_INT (lock_timeout, CAS_FN_ARG_ARGV[1]);
+      net_arg_get_int (&lock_timeout, argv[1]);
 
       if (lock_timeout == -2)
 	lock_timeout = cas_default_lock_timeout;
@@ -655,13 +683,13 @@ fn_set_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       cas_log_write (0, true, "set_db_parameter lock_timeout %d",
 		     lock_timeout);
 
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);
+      net_buf_cp_int (net_buf, 0, NULL);
     }
   else if (param_name == CCI_PARAM_AUTO_COMMIT)
     {
       int auto_commit;
 
-      NET_ARG_GET_INT (auto_commit, CAS_FN_ARG_ARGV[1]);
+      net_arg_get_int (&auto_commit, argv[1]);
 
 #ifndef LIBCAS_FOR_JSP
       if (auto_commit)
@@ -672,36 +700,34 @@ fn_set_db_parameter (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       cas_log_write (0, true, "set_db_parameter auto_commit %d", auto_commit);
 #endif /* !LIBCAS_FOR_JSP */
 
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);
+      net_buf_cp_int (net_buf, 0, NULL);
     }
   else
     {
       ERROR_INFO_SET (CAS_ER_PARAM_NAME, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-int
-fn_close_req_handle (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		     void **CAS_FN_ARG_ARGV,
-		     T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_close_req_handle (SOCKET sock_fd, int argc, void **argv,
+		     T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
 
-  if (CAS_FN_ARG_ARGC < 1)
+  if (argc < 1)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (srv_h_id, CAS_FN_ARG_ARGV[0]);
+  net_arg_get_int (&srv_h_id, argv[0]);
 
 #ifndef LIBCAS_FOR_JSP
   srv_handle = hm_find_srv_handle (srv_h_id);
@@ -718,42 +744,40 @@ fn_close_req_handle (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   hm_srv_handle_free (srv_h_id);
 
-  net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);	/* res code */
+  net_buf_cp_int (net_buf, 0, NULL);	/* res code */
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-int
-fn_cursor (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	   T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	   T_REQ_INFO * req_info)
 {
   int srv_h_id;
   int offset;
   char origin;
 
-  if (CAS_FN_ARG_ARGC < 3)
+  if (argc < 3)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (srv_h_id, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_INT (offset, CAS_FN_ARG_ARGV[1]);
-  NET_ARG_GET_CHAR (origin, CAS_FN_ARG_ARGV[2]);
+  net_arg_get_int (&srv_h_id, argv[0]);
+  net_arg_get_int (&offset, argv[1]);
+  net_arg_get_char (origin, argv[2]);
 
-  ux_cursor (srv_h_id, offset, origin, CAS_FN_ARG_NET_BUF);
+  ux_cursor (srv_h_id, offset, origin, net_buf);
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-int
-fn_fetch (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	  void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	  T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	  T_REQ_INFO * req_info)
 {
   int srv_h_id;
   int cursor_pos;
@@ -765,348 +789,137 @@ fn_fetch (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   func_args = 5;
 
-  if (CAS_FN_ARG_ARGC < func_args)
+  if (argc < func_args)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (srv_h_id, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_INT (cursor_pos, CAS_FN_ARG_ARGV[1]);
-  NET_ARG_GET_INT (fetch_count, CAS_FN_ARG_ARGV[2]);
-  NET_ARG_GET_CHAR (fetch_flag, CAS_FN_ARG_ARGV[3]);
-  NET_ARG_GET_INT (result_set_index, CAS_FN_ARG_ARGV[4]);
+  net_arg_get_int (&srv_h_id, argv[0]);
+  net_arg_get_int (&cursor_pos, argv[1]);
+  net_arg_get_int (&fetch_count, argv[2]);
+  net_arg_get_char (fetch_flag, argv[3]);
+  net_arg_get_int (&result_set_index, argv[4]);
 
   srv_handle = hm_find_srv_handle (srv_h_id);
+
+  if (srv_handle == NULL)
+    {
+      ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		 "fetch srv_h_id %d cursor_pos %d fetch_count %d",
 		 srv_h_id, cursor_pos, fetch_count);
 
   ux_fetch (srv_handle, cursor_pos, fetch_count, fetch_flag,
-	    result_set_index, CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO);
+	    result_set_index, net_buf, req_info);
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-int
-fn_schema_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		T_REQ_INFO * req_info)
 {
   int schema_type;
-  char *class_name, *attr_name;
+  char *arg1, *arg2;
   char flag;
-  int class_name_size, attr_name_size;
+  int arg1_size, arg2_size;
   int srv_h_id;
 
-  if (CAS_FN_ARG_ARGC < 4)
+  if (argc < 4)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (schema_type, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_STR (class_name, class_name_size, CAS_FN_ARG_ARGV[1]);
-  NET_ARG_GET_STR (attr_name, attr_name_size, CAS_FN_ARG_ARGV[2]);
-  NET_ARG_GET_CHAR (flag, CAS_FN_ARG_ARGV[3]);
+  net_arg_get_int (&schema_type, argv[0]);
+  net_arg_get_str (&arg1, &arg1_size, argv[1]);
+  net_arg_get_str (&arg2, &arg2_size, argv[2]);
+  net_arg_get_char (flag, argv[3]);
 
   cas_log_write (QUERY_SEQ_NUM_NEXT_VALUE (), true,
 		 "schema_info %s %s %s %d",
 		 get_schema_type_str (schema_type),
-		 (class_name ? class_name : "NULL"),
-		 (attr_name ? attr_name : "NULL"), flag);
+		 (arg1 ? arg1 : "NULL"), (arg2 ? arg2 : "NULL"), flag);
 
   srv_h_id =
-    ux_schema_info (schema_type, class_name, attr_name, flag,
-		    CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO,
-		    QUERY_SEQ_NUM_CURRENT_VALUE ());
+    ux_schema_info (schema_type, arg1, arg2, flag,
+		    net_buf, req_info, QUERY_SEQ_NUM_CURRENT_VALUE ());
 
   cas_log_write (QUERY_SEQ_NUM_CURRENT_VALUE (), false,
 		 "schema_info srv_h_id %d", srv_h_id);
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
-fn_oid_get (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_oid_get (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	    T_REQ_INFO * req_info)
 {
   int pageid;
   short slotid, volid;
   int ret;
 
-  if (CAS_FN_ARG_ARGC < 1)
+  if (argc < 1)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_CCI_OBJECT (pageid, slotid, volid, CAS_FN_ARG_ARGV[0]);
+  net_arg_get_cci_object (&pageid, &slotid, &volid, argv[0]);
 
-  ret = ux_oid_get (CAS_FN_ARG_ARGC, CAS_FN_ARG_ARGV, CAS_FN_ARG_NET_BUF);
+  ret = ux_oid_get (argc, argv, net_buf);
 
   cas_log_write (0, true, "oid_get @%d|%d|%d %s", pageid, slotid, volid,
 		 (ret < 0 ? "ERR" : ""));
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
-fn_oid_put (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_oid_put (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	    T_REQ_INFO * req_info)
 {
-  if (CAS_FN_ARG_ARGC < 3 || CAS_FN_ARG_ARGC % 3 != 1)
+  if (argc < 3 || argc % 3 != 1)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
   cas_log_write (0, true, "oid_put");
 
-  ux_oid_put (CAS_FN_ARG_ARGC, CAS_FN_ARG_ARGV, CAS_FN_ARG_NET_BUF);
+  ux_oid_put (argc, argv, net_buf);
 
-  return 0;
-}
-
-int
-fn_glo_new (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
-{
-  char *class_name;
-  int file_size;
-  char *filename;
-  char flag;
-  int err_code;
-  char tmp_file[PATH_MAX], dirname[PATH_MAX];
-  int filename_size, class_name_size;
-
-  if (CAS_FN_ARG_ARGC < 4)
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
-    }
-
-  NET_ARG_GET_STR (class_name, class_name_size, CAS_FN_ARG_ARGV[0]);
-  if (class_name_size < 1 || class_name[class_name_size - 1] != '\0')
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
-    }
-
-  NET_ARG_GET_CHAR (flag, CAS_FN_ARG_ARGV[1]);
-
-  if (flag == 2)
-    {
-      char glo_type;
-      NET_ARG_GET_CHAR (glo_type, CAS_FN_ARG_ARGV[2]);
-      NET_ARG_GET_STR (filename, filename_size, CAS_FN_ARG_ARGV[3]);
-      if (glo_type != CAS_GLO_NEW_LO && glo_type != CAS_GLO_NEW_FBO)
-	{
-	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	  return 0;
-	}
-      ux_glo_new2 (class_name, glo_type, filename, CAS_FN_ARG_NET_BUF);
-      return 0;
-    }
-
-  NET_ARG_GET_STR (filename, filename_size, CAS_FN_ARG_ARGV[2]);
-  NET_ARG_GET_INT (file_size, CAS_FN_ARG_ARGV[3]);
-
-  cas_log_write (0, true, "glo_new");
-
-  if (flag == 1)
-    {
-      if (file_size < 0)
-	{
-	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	  return 0;
-	}
-#ifndef LIBCAS_FOR_JSP
-#if defined(WINDOWS)
-      as_info->glo_read_size = file_size;
-#endif /* WINDOWS */
-#endif /* !LIBCAS_FOR_JSP */
-      get_cubrid_file (FID_CAS_TMPGLO_DIR, dirname);
-#ifdef LIBCAS_FOR_JSP
-      snprintf (tmp_file, sizeof (tmp_file) - 1, "%s%d.glo", dirname,
-		(int) getpid ());
-#else /* LIBCAS_FOR_JSP */
-      snprintf (tmp_file, sizeof (tmp_file) - 1, "%s%s_%d.glo", dirname,
-		broker_name, shm_as_index + 1);
-#endif /* LIBCAS_FOR_JSP */
-      filename = tmp_file;
-      err_code = net_read_to_file (CAS_FN_ARG_SOCK_FD, file_size, filename);
-      if (err_code < 0)
-	{
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	  return err_code;
-	}
-    }
-  else if (filename != NULL)
-    {
-      if (filename_size < 1 || filename[filename_size - 1] != '\0')
-	{
-	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	  return 0;
-	}
-    }
-
-  ux_glo_new (class_name, filename, CAS_FN_ARG_NET_BUF);
-
-  if (flag == 1)
-    {
-      unlink (filename);
-    }
-
-  return 0;
-}
-
-int
-fn_glo_save (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
-{
-  DB_OBJECT *obj;
-  char flag;
-  char *filename;
-  int file_size;
-  int err_code;
-  char tmp_file[PATH_MAX], dirname[PATH_MAX];
-  int filename_size;
-
-  if (CAS_FN_ARG_ARGC < 4)
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
-    }
-
-  NET_ARG_GET_OBJECT (obj, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_CHAR (flag, CAS_FN_ARG_ARGV[1]);
-  NET_ARG_GET_STR (filename, filename_size, CAS_FN_ARG_ARGV[2]);
-  NET_ARG_GET_INT (file_size, CAS_FN_ARG_ARGV[3]);
-
-  cas_log_write (0, true, "glo_save");
-
-  if (flag == 1)
-    {
-      if (file_size < 0)
-	{
-	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	  return 0;
-	}
-#ifndef LIBCAS_FOR_JSP
-#if defined(WINDOWS)
-      as_info->glo_read_size = file_size;
-#endif /* WINDOWS */
-#endif /* !LIBCAS_FOR_JSP */
-      get_cubrid_file (FID_CAS_TMPGLO_DIR, dirname);
-#ifdef LIBCAS_FOR_JSP
-      snprintf (tmp_file, sizeof (tmp_file) - 1, "%s%d.glo", dirname,
-		(int) getpid ());
-#else /* LIBCAS_FOR_JSP */
-      snprintf (tmp_file, sizeof (tmp_file) - 1, "%s%s_%d.glo", dirname,
-		broker_name, shm_as_index + 1);
-#endif /* LIBCAS_FOR_JSP */
-      filename = tmp_file;
-      err_code = net_read_to_file (CAS_FN_ARG_SOCK_FD, file_size, filename);
-      if (err_code < 0)
-	{
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	  return err_code;
-	}
-    }
-  else
-    {
-      if (filename_size < 1 || filename[filename_size - 1] != '\0')
-	{
-	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	  return 0;
-	}
-    }
-
-  if ((err_code = ux_check_object (obj, CAS_FN_ARG_NET_BUF)) < 0)
-    {
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
-    }
-
-  ux_glo_save (obj, filename, CAS_FN_ARG_NET_BUF);
-
-  if (flag == 1)
-    {
-      unlink (filename);
-    }
-
-  obj = NULL;
-
-  return 0;
-}
-
-int
-fn_glo_load (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	     void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	     T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
-{
-  DB_OBJECT *obj;
-  int err_code;
-
-  if (CAS_FN_ARG_ARGC < 1)
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
-    }
-
-  NET_ARG_GET_OBJECT (obj, CAS_FN_ARG_ARGV[0]);
-  if ((err_code = ux_check_object (obj, CAS_FN_ARG_NET_BUF)) < 0)
-    {
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
-    }
-
-  cas_log_write (0, true, "glo_load");
-
-  ux_glo_load (CAS_FN_ARG_SOCK_FD, obj, CAS_FN_ARG_NET_BUF);
-  obj = NULL;
-
-  return 0;
+  return FN_KEEP_CONN;
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-int
-fn_get_db_version (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		   T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+
+FN_RETURN
+fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		   T_REQ_INFO * req_info)
 {
   char auto_commit_mode;
   cas_log_write (0, true, "get_version");
 
-  if (CAS_FN_ARG_ARGC < 1)
+  if (argc < 1)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_CHAR (auto_commit_mode, CAS_FN_ARG_ARGV[0]);
+  net_arg_get_char (auto_commit_mode, argv[0]);
 
-  ux_get_db_version (CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO);
+  ux_get_db_version (net_buf, req_info);
 
 #ifndef LIBCAS_FOR_JSP
   if (auto_commit_mode == TRUE)
@@ -1115,58 +928,55 @@ fn_get_db_version (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     }
 #endif /* !LIBCAS_FOR_JSP */
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-int
-fn_get_class_num_objs (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		       void **CAS_FN_ARG_ARGV,
-		       T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_get_class_num_objs (SOCKET sock_fd, int argc, void **argv,
+		       T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   char *class_name;
   char flag;
   int class_name_size;
 
-  if (CAS_FN_ARG_ARGC < 2)
+  if (argc < 2)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
   cas_log_write (0, true, "get_class_num_objs");
 
-  NET_ARG_GET_STR (class_name, class_name_size, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_CHAR (flag, CAS_FN_ARG_ARGV[1]);
+  net_arg_get_str (&class_name, &class_name_size, argv[0]);
+  net_arg_get_char (flag, argv[1]);
 
-  ux_get_class_num_objs (class_name, flag, CAS_FN_ARG_NET_BUF);
+  ux_get_class_num_objs (class_name, flag, net_buf);
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
-fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	T_REQ_INFO * req_info)
 {
   DB_OBJECT *obj;
   char cmd;
   int err_code;
   char *res_msg = NULL;
 
-  if (CAS_FN_ARG_ARGC < 2)
+  if (argc < 2)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       goto fn_oid_error;
     }
 
-  NET_ARG_GET_CHAR (cmd, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_OBJECT (obj, CAS_FN_ARG_ARGV[1]);
+  net_arg_get_char (cmd, argv[0]);
+  net_arg_get_dbobject (&obj, argv[1]);
   if (cmd != CCI_OID_IS_INSTANCE)
     {
-      if ((err_code = ux_check_object (obj, CAS_FN_ARG_NET_BUF)) < 0)
+      if ((err_code = ux_check_object (obj, net_buf)) < 0)
 	{
 	  goto fn_oid_error;
 	}
@@ -1243,21 +1053,6 @@ fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 	  err_code = 0;
 	}
     }
-  else if (cmd == CCI_OID_IS_GLO_INSTANCE)
-    {
-      DB_OBJECT *class_obj, *glo_class_obj;
-
-      cas_log_write (0, true, "oid is_glo_instance");
-
-      class_obj = db_get_class (obj);
-      glo_class_obj = db_find_class ("glo");
-      err_code = 0;
-      if ((class_obj != NULL) && (glo_class_obj != NULL)
-	  && (db_is_subclass (class_obj, glo_class_obj)))
-	{
-	  err_code = 1;
-	}
-    }
   else
     {
       ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
@@ -1271,24 +1066,23 @@ fn_oid (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     }
   else
     {
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, err_code, NULL);
+      net_buf_cp_int (net_buf, err_code, NULL);
       if (cmd == CCI_OID_CLASS_NAME)
 	{
-	  net_buf_cp_str (CAS_FN_ARG_NET_BUF, res_msg, strlen (res_msg) + 1);
+	  net_buf_cp_str (net_buf, res_msg, strlen (res_msg) + 1);
 	}
     }
 
-  return 0;
+  return FN_KEEP_CONN;
 
 fn_oid_error:
-  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-  return 0;
+  NET_BUF_ERR_SET (net_buf);
+  return FN_KEEP_CONN;
 }
 
-int
-fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	       T_REQ_INFO * req_info)
 {
   char cmd;
   DB_OBJECT *obj;
@@ -1303,20 +1097,20 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   int value_index;
   DB_VALUE *ele_val = NULL;
 
-  if (CAS_FN_ARG_ARGC < 3)
+  if (argc < 3)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_CHAR (cmd, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_OBJECT (obj, CAS_FN_ARG_ARGV[1]);
+  net_arg_get_char (cmd, argv[0]);
+  net_arg_get_dbobject (&obj, argv[1]);
 
-  if ((err_code = ux_check_object (obj, CAS_FN_ARG_NET_BUF)) < 0)
+  if ((err_code = ux_check_object (obj, net_buf)) < 0)
     {
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
   err_code = 0;
@@ -1326,42 +1120,42 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
     {
     case CCI_COL_GET:
     case CCI_COL_SIZE:
-      NET_ARG_GET_STR (attr_name, attr_name_size, CAS_FN_ARG_ARGV[2]);
+      net_arg_get_str (&attr_name, &attr_name_size, argv[2]);
       break;
     case CCI_COL_SET_DROP:
     case CCI_COL_SET_ADD:
-      if (CAS_FN_ARG_ARGC < 5)
+      if (argc < 5)
 	{
 	  err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
 	}
 
       else
 	{
-	  NET_ARG_GET_STR (attr_name, attr_name_size, CAS_FN_ARG_ARGV[2]);
+	  net_arg_get_str (&attr_name, &attr_name_size, argv[2]);
 	}
       value_index = 3;
       break;
     case CCI_COL_SEQ_DROP:
-      if (CAS_FN_ARG_ARGC < 4)
+      if (argc < 4)
 	{
 	  err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
 	}
       else
 	{
-	  NET_ARG_GET_INT (seq_index, CAS_FN_ARG_ARGV[2]);
-	  NET_ARG_GET_STR (attr_name, attr_name_size, CAS_FN_ARG_ARGV[3]);
+	  net_arg_get_int (&seq_index, argv[2]);
+	  net_arg_get_str (&attr_name, &attr_name_size, argv[3]);
 	}
       break;
     case CCI_COL_SEQ_INSERT:
     case CCI_COL_SEQ_PUT:
-      if (CAS_FN_ARG_ARGC < 6)
+      if (argc < 6)
 	{
 	  err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
 	}
       else
 	{
-	  NET_ARG_GET_INT (seq_index, CAS_FN_ARG_ARGV[2]);
-	  NET_ARG_GET_STR (attr_name, attr_name_size, CAS_FN_ARG_ARGV[3]);
+	  net_arg_get_int (&seq_index, argv[2]);
+	  net_arg_get_str (&attr_name, &attr_name_size, argv[3]);
 	}
 
       value_index = 4;
@@ -1372,7 +1166,7 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   if (err_code < 0)
     {
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+      NET_BUF_ERR_SET (net_buf);
       return 0;
     }
 
@@ -1422,8 +1216,8 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   if (value_index > 0)
     {
       err_code =
-	make_bind_value (1, 2, CAS_FN_ARG_ARGV + value_index, &ele_val,
-			 CAS_FN_ARG_NET_BUF, db_type);
+	make_bind_value (1, 2, argv + value_index, &ele_val,
+			 net_buf, db_type);
       if (err_code < 0)
 	{
 	  goto fn_col_finale;
@@ -1434,29 +1228,25 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   switch (cmd)
     {
     case CCI_COL_GET:
-      ux_col_get (collection, col_type, ele_type, ele_domain,
-		  CAS_FN_ARG_NET_BUF);
+      ux_col_get (collection, col_type, ele_type, ele_domain, net_buf);
       break;
     case CCI_COL_SIZE:
-      ux_col_size (collection, CAS_FN_ARG_NET_BUF);
+      ux_col_size (collection, net_buf);
       break;
     case CCI_COL_SET_DROP:
-      err_code = ux_col_set_drop (collection, ele_val, CAS_FN_ARG_NET_BUF);
+      err_code = ux_col_set_drop (collection, ele_val, net_buf);
       break;
     case CCI_COL_SET_ADD:
-      err_code = ux_col_set_add (collection, ele_val, CAS_FN_ARG_NET_BUF);
+      err_code = ux_col_set_add (collection, ele_val, net_buf);
       break;
     case CCI_COL_SEQ_DROP:
-      err_code = ux_col_seq_drop (collection, seq_index, CAS_FN_ARG_NET_BUF);
+      err_code = ux_col_seq_drop (collection, seq_index, net_buf);
       break;
     case CCI_COL_SEQ_INSERT:
-      err_code =
-	ux_col_seq_insert (collection, seq_index, ele_val,
-			   CAS_FN_ARG_NET_BUF);
+      err_code = ux_col_seq_insert (collection, seq_index, ele_val, net_buf);
       break;
     case CCI_COL_SEQ_PUT:
-      err_code =
-	ux_col_seq_put (collection, seq_index, ele_val, CAS_FN_ARG_NET_BUF);
+      err_code = ux_col_seq_put (collection, seq_index, ele_val, net_buf);
       break;
     default:
       break;
@@ -1484,16 +1274,17 @@ fn_collection (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   db_col_free (collection);
   db_value_clear (&val);
 
+  return FN_KEEP_CONN;
+
 fn_col_finale:
-  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-  return 0;
+  NET_BUF_ERR_SET (net_buf);
+  return FN_KEEP_CONN;
 }
 
 /* MYSQL : NOT SUPPORT MULTIPLE STATEMENT */
-int
-fn_next_result (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		T_REQ_INFO * req_info)
 {
   int srv_h_id;
   char flag;
@@ -1502,100 +1293,98 @@ fn_next_result (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 
   func_args = 2;
 
-  if (CAS_FN_ARG_ARGC < func_args)
+  if (argc < func_args)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (srv_h_id, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_CHAR (flag, CAS_FN_ARG_ARGV[1]);
+  net_arg_get_int (&srv_h_id, argv[0]);
+  net_arg_get_char (flag, argv[1]);
 
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (srv_handle == NULL)
     {
-      return -1;
+      ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		 "next_result %d %s", srv_h_id,
 		 (srv_handle->use_query_cache == true) ? "(QC)" : "");
 
-  ux_next_result (srv_handle, flag, CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO);
+  ux_next_result (srv_handle, flag, net_buf, req_info);
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
-fn_execute_batch (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		  void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		  T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		  T_REQ_INFO * req_info)
 {
   /* argv[0] : auto commit flag */
-  cas_log_write (0, true, "execute_batch %d", CAS_FN_ARG_ARGC - 1);
+  cas_log_write (0, true, "execute_batch %d", argc - 1);
 
-  ux_execute_batch (CAS_FN_ARG_ARGC, CAS_FN_ARG_ARGV, CAS_FN_ARG_NET_BUF,
-		    CAS_FN_ARG_REQ_INFO);
+  ux_execute_batch (argc, argv, net_buf, req_info);
 
   cas_log_write (0, true, "execute_batch end");
 
-  return 0;
+  return FN_KEEP_CONN;
 }
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-int
-fn_execute_array (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		  void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		  T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		  T_REQ_INFO * req_info)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
 
   /* argv[0] : service handle
      argv[1] : auto commit flag */
-  if (CAS_FN_ARG_ARGC < 2)
+  if (argc < 2)
     {
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, CAS_ER_ARGS, NULL);
-      return 0;
+      net_buf_cp_int (net_buf, CAS_ER_ARGS, NULL);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (srv_h_id, CAS_FN_ARG_ARGV[0]);
+  net_arg_get_int (&srv_h_id, argv[0]);
 
   srv_handle = hm_find_srv_handle (srv_h_id);
 
 #ifndef LIBCAS_FOR_JSP
-  bind_value_log (2, CAS_FN_ARG_ARGC - 1, CAS_FN_ARG_ARGV, 0, NULL,
+  bind_value_log (2, argc - 1, argv, 0, NULL,
 		  SRV_HANDLE_QUERY_SEQ_NUM (srv_handle));
 #endif /* !LIBCAS_FOR_JSP */
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-		 "execute_array : srv_h_id %d %d",
-		 srv_h_id, (CAS_FN_ARG_ARGC - 2) / 2);
+		 "execute_array : srv_h_id %d %d", srv_h_id, (argc - 2) / 2);
 
-  ux_execute_array (srv_handle, CAS_FN_ARG_ARGC, CAS_FN_ARG_ARGV,
-		    CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO);
+  ux_execute_array (srv_handle, argc, argv, net_buf, req_info);
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
-fn_cursor_update (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		  void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		  T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+FN_RETURN
+fn_cursor_update (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		  T_REQ_INFO * req_info)
 {
   int srv_h_id;
   int cursor_pos;
   T_SRV_HANDLE *srv_handle;
 
-  if (CAS_FN_ARG_ARGC < 2)
+  if (argc < 2)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (srv_h_id, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_INT (cursor_pos, CAS_FN_ARG_ARGV[1]);
+  net_arg_get_int (&srv_h_id, argv[0]);
+  net_arg_get_int (&cursor_pos, argv[1]);
 
   srv_handle = hm_find_srv_handle (srv_h_id);
 
@@ -1603,114 +1392,113 @@ fn_cursor_update (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
 		 "cursor_update srv_h_id %d, cursor %d",
 		 srv_h_id, cursor_pos);
 
-  ux_cursor_update (srv_handle, cursor_pos, CAS_FN_ARG_ARGC,
-		    CAS_FN_ARG_ARGV, CAS_FN_ARG_NET_BUF);
+  ux_cursor_update (srv_handle, cursor_pos, argc, argv, net_buf);
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
-fn_get_attr_type_str (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		      void **CAS_FN_ARG_ARGV,
-		      T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		      T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_get_attr_type_str (SOCKET sock_fd, int argc, void **argv,
+		      T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int size;
   char *class_name;
   char *attr_name;
 
-  if (CAS_FN_ARG_ARGC < 2)
+  if (argc < 2)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_STR (class_name, size, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_STR (attr_name, size, CAS_FN_ARG_ARGV[1]);
+  net_arg_get_str (&class_name, &size, argv[0]);
+  net_arg_get_str (&attr_name, &size, argv[1]);
 
-  ux_get_attr_type_str (class_name, attr_name, CAS_FN_ARG_NET_BUF,
-			CAS_FN_ARG_REQ_INFO);
+  ux_get_attr_type_str (class_name, attr_name, net_buf, req_info);
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
-fn_get_query_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		   T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		   T_REQ_INFO * req_info)
 {
   char info_type;
   T_SRV_HANDLE *srv_handle = NULL;
-  int srv_h_id, size, stmt_id;
+  int srv_h_id, size, stmt_id, err;
   char *sql_stmt = NULL;
   DB_SESSION *session;
-  DB_QUERY_RESULT *result;
+  DB_QUERY_RESULT *result = NULL;
 
-  if (CAS_FN_ARG_ARGC < 2)
+  if (argc < 2)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (srv_h_id, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_CHAR (info_type, CAS_FN_ARG_ARGV[1]);
-  if (CAS_FN_ARG_ARGC >= 3)
-    NET_ARG_GET_STR (sql_stmt, size, CAS_FN_ARG_ARGV[2]);
+  net_arg_get_int (&srv_h_id, argv[0]);
+  net_arg_get_char (info_type, argv[1]);
+  if (argc >= 3)
+    {
+      net_arg_get_str (&sql_stmt, &size, argv[2]);
+    }
 
   if (sql_stmt != NULL)
     {
       srv_h_id = hm_new_srv_handle (&srv_handle, QUERY_SEQ_NUM_NEXT_VALUE ());
       if (srv_h_id < 0)
 	{
-	  net_buf_cp_byte (CAS_FN_ARG_NET_BUF, '\0');
+	  net_buf_cp_byte (net_buf, '\0');
 	  goto end;
 	}
+
+      cas_log_query_info_init (srv_h_id, TRUE);
       srv_handle->query_info_flag = TRUE;
-
-      if (cas_log_query_info_init (srv_h_id) < 0)
-	{
-	  net_buf_cp_byte (CAS_FN_ARG_NET_BUF, '\0');
-	  goto end;
-	}
-
-      set_optimization_level (514);
 
       if (!(session = db_open_buffer (sql_stmt)))
 	{
 	  ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+	  NET_BUF_ERR_SET (net_buf);
 	  goto end;
 	}
 
       if ((stmt_id = db_compile_statement (session)) < 0)
 	{
 	  ERROR_INFO_SET (stmt_id, DBMS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+	  NET_BUF_ERR_SET (net_buf);
 	  db_close_session (session);
 	  goto end;
 	}
 
-      if (db_execute_statement (session, stmt_id, &result) < 0)
+      /* Generally, it is not necessary to execute a statement in order to
+       * get a plan. But, if a statement has a term, which cannot be prepared,
+       * such as serial, we should execute it to get its plan.
+       * And, currently, we cannot see a plan for a statement which includes
+       * both "cannot be prepared" term and host variable. This limitation
+       * also exists in csql.
+       */
+      err = db_execute_statement (session, stmt_id, &result);
+      if (err < 0 && err != ER_UCI_TOO_FEW_HOST_VARS)
 	{
+	  /* We will ignore an error "too few host variables are given"
+	   * to return a plan for a statement including host variables.
+	   */
 	  ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+	  NET_BUF_ERR_SET (net_buf);
 	  db_close_session (session);
 	  goto end;
 	}
+      if (result != NULL)
+	{
+	  db_query_end (result);
+	}
 
-      db_query_end (result);
       db_close_session (session);
-
-#if !defined(WINDOWS)
-      cas_log_query_info_next ();
-      histo_print (NULL);
-      cas_log_query_info_end ();
-#endif /* !WINDOWS */
     }
 
-  ux_get_query_info (srv_h_id, info_type, CAS_FN_ARG_NET_BUF);
+  ux_get_query_info (srv_h_id, info_type, net_buf);
 
 end:
   if (sql_stmt != NULL)
@@ -1719,28 +1507,27 @@ end:
       hm_srv_handle_free (srv_h_id);
     }
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
-fn_savepoint (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	      void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	      T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	      T_REQ_INFO * req_info)
 {
   int err_code;
   char cmd;
   char *savepoint_name;
   int savepoint_name_size;
 
-  if (CAS_FN_ARG_ARGC < 2)
+  if (argc < 2)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_CHAR (cmd, CAS_FN_ARG_ARGV[0]);
-  NET_ARG_GET_STR (savepoint_name, savepoint_name_size, CAS_FN_ARG_ARGV[1]);
+  net_arg_get_char (cmd, argv[0]);
+  net_arg_get_str (&savepoint_name, &savepoint_name_size, argv[1]);
   if (savepoint_name == NULL)
     savepoint_name = (char *) "";
 
@@ -1757,330 +1544,65 @@ fn_savepoint (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   else
     {
       ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+      NET_BUF_ERR_SET (net_buf);
       return 0;
     }
 
   if (err_code < 0)
     {
       ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+      NET_BUF_ERR_SET (net_buf);
     }
   else
     {
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);
+      net_buf_cp_int (net_buf, 0, NULL);
     }
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
-fn_parameter_info (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		   void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		   T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_parameter_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		   T_REQ_INFO * req_info)
 {
   int srv_h_id;
 
-  if (CAS_FN_ARG_ARGC < 1)
+  if (argc < 1)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (srv_h_id, CAS_FN_ARG_ARGV[0]);
+  net_arg_get_int (&srv_h_id, argv[0]);
 
-  ux_get_parameter_info (srv_h_id, CAS_FN_ARG_NET_BUF);
+  ux_get_parameter_info (srv_h_id, net_buf);
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
-fn_glo_cmd (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	    void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	    T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
-{
-  int glo_cmd;
-  DB_OBJECT *glo_obj;
-  int start_pos_index;
-  DB_VALUE ret_val, arg1, arg2;
-  int err_code;
-  char *data_buf = NULL;
-  DB_VALUE *args[2];
-
-  if (CAS_FN_ARG_ARGC < 2)
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
-    }
-
-  NET_ARG_GET_CHAR (glo_cmd, CAS_FN_ARG_ARGV[0]);
-  if (glo_cmd < GLO_CMD_FIRST || glo_cmd > GLO_CMD_LAST)
-    {
-      ERROR_INFO_SET (CAS_ER_GLO_CMD, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
-    }
-
-  if (CAS_FN_ARG_ARGC < glo_cmd_info[glo_cmd].num_args)
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
-    }
-
-  NET_ARG_GET_OBJECT (glo_obj, CAS_FN_ARG_ARGV[1]);
-  if ((err_code = ux_check_object (glo_obj, CAS_FN_ARG_NET_BUF)) < 0)
-    {
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
-    }
-
-  cas_log_write (0, false, "glo_cmd");
-#ifndef LIBCAS_FOR_JSP
-  cas_log_write2_nonl ("%18s", glo_cmd_info[glo_cmd].method_name);
-  if (glo_cmd_info[glo_cmd].start_pos_index >= 0)
-    {
-      int start_pos;
-      NET_ARG_GET_INT (start_pos,
-		       CAS_FN_ARG_ARGV[(int) glo_cmd_info[glo_cmd].
-				       start_pos_index]);
-      cas_log_write2_nonl (" %d", start_pos);
-    }
-  cas_log_write2 ("");
-#endif /* !LIBCAS_FOR_JSP */
-
-  db_make_null (&ret_val);
-  db_make_null (&arg1);
-  db_make_null (&arg2);
-  args[0] = &arg1;
-  args[1] = &arg2;
-
-  start_pos_index = glo_cmd_info[glo_cmd].start_pos_index;
-  if (start_pos_index >= 0)
-    {
-      int start_pos;
-      NET_ARG_GET_INT (start_pos, CAS_FN_ARG_ARGV[start_pos_index]);
-      if ((err_code = db_make_int (&arg1, start_pos)) < 0)
-	{
-	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	  goto glo_cmd_end;
-	}
-
-      err_code = ux_glo_method_call (CAS_FN_ARG_NET_BUF, 1, glo_obj,
-				     "data_seek", &ret_val, args);
-      if (err_code < 0)
-	{
-	  goto glo_cmd_end;
-	}
-      db_value_clear (&ret_val);
-      db_value_clear (&arg1);
-    }
-
-  if (glo_cmd == GLO_CMD_READ_DATA || glo_cmd == GLO_CMD_WRITE_DATA
-      || glo_cmd == GLO_CMD_INSERT_DATA || glo_cmd == GLO_CMD_APPEND_DATA)
-    {
-      int length = 0;
-
-      if (glo_cmd == GLO_CMD_READ_DATA)
-	{
-	  NET_ARG_GET_INT (length, CAS_FN_ARG_ARGV[3]);
-	  if (length > 0)
-	    {
-	      data_buf = (char *) malloc (length);
-	      if (data_buf == NULL)
-		{
-		  ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-		  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-		  goto glo_cmd_end;
-		}
-	    }
-	}
-      else
-	{
-	  int data_index;
-	  data_index = glo_cmd_info[glo_cmd].data_index;
-	  NET_ARG_GET_STR (data_buf, length, CAS_FN_ARG_ARGV[data_index]);
-	}
-
-      err_code = db_make_int (&arg1, length);
-      if (err_code < 0)
-	{
-	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	  goto glo_cmd_end;
-	}
-
-      err_code = db_make_varchar (&arg2, DB_MAX_VARCHAR_PRECISION,
-				  data_buf, length);
-      if (err_code < 0)
-	{
-	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	  goto glo_cmd_end;
-	}
-
-      err_code = ux_glo_method_call (CAS_FN_ARG_NET_BUF, 1, glo_obj,
-				     glo_cmd_info[glo_cmd].method_name,
-				     &ret_val, args);
-
-      if (err_code < 0 && glo_cmd == GLO_CMD_READ_DATA)
-	{
-	  db_value_clear (&ret_val);
-	  db_make_int (&ret_val, -1);
-	  if (ux_glo_method_call (NULL, 0, glo_obj, "data_size",
-				  &ret_val, args) < 0)
-	    {
-	      goto glo_cmd_end;
-	    }
-	  if (db_get_int (&ret_val) == 0)
-	    {
-	      net_buf_clear (CAS_FN_ARG_NET_BUF);
-	      length = 0;
-	      err_code = 0;
-	    }
-	}
-
-      if (err_code < 0)
-	{
-	  goto glo_cmd_end;
-	}
-
-      length = db_get_int (&ret_val);
-
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, length, NULL);
-      if (glo_cmd == GLO_CMD_READ_DATA && data_buf != NULL)
-	{
-	  net_buf_cp_str (CAS_FN_ARG_NET_BUF, data_buf, length);
-	}
-    }
-  else if (glo_cmd == GLO_CMD_LIKE_SEARCH
-	   || glo_cmd == GLO_CMD_REG_SEARCH
-	   || glo_cmd == GLO_CMD_BINARY_SEARCH)
-    {
-      char *search_str;
-      int length;
-      int offset, cur_pos;
-
-      NET_ARG_GET_STR (search_str, length, CAS_FN_ARG_ARGV[3]);
-
-      if (glo_cmd == GLO_CMD_BINARY_SEARCH)
-	{
-	  err_code = db_make_varchar (&arg1, DB_MAX_VARCHAR_PRECISION,
-				      search_str, length);
-	  if (err_code < 0)
-	    {
-	      ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	      goto glo_cmd_end;
-	    }
-
-	  err_code = db_make_int (&arg2, length);
-	  if (err_code < 0)
-	    {
-	      ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	      goto glo_cmd_end;
-	    }
-	}
-      else
-	{
-	  err_code = db_make_string (&arg1, search_str);
-	  if (err_code < 0)
-	    {
-	      ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	      goto glo_cmd_end;
-	    }
-	}
-
-      err_code = ux_glo_method_call (CAS_FN_ARG_NET_BUF, 0, glo_obj,
-				     glo_cmd_info[glo_cmd].method_name,
-				     &ret_val, args);
-      if (err_code < 0)
-	{
-	  goto glo_cmd_end;
-	}
-      offset = db_get_int (&ret_val);
-
-      db_value_clear (&ret_val);
-      err_code = ux_glo_method_call (CAS_FN_ARG_NET_BUF, 1, glo_obj,
-				     "data_pos", &ret_val, args);
-      if (err_code < 0)
-	{
-	  goto glo_cmd_end;
-	}
-      cur_pos = db_get_int (&ret_val);
-
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);	/* result code */
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, offset, NULL);
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, cur_pos, NULL);
-    }
-  else
-    {
-      /* LO_CMD_DATA_SIZE, GLO_CMD_DELETE_DATA, GLO_CMD_TRUNCATE_DATA,
-         GLO_CMD_COMPRESS_DATA, GLO_CMD_DESTROY_DATA */
-      int int_val;
-      if (glo_cmd == GLO_CMD_DELETE_DATA)
-	{
-	  NET_ARG_GET_INT (int_val, CAS_FN_ARG_ARGV[3]);	/* length */
-	  err_code = db_make_int (&arg1, int_val);
-	  if (err_code < 0)
-	    {
-	      ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-	      goto glo_cmd_end;
-	    }
-	}
-      err_code = ux_glo_method_call (CAS_FN_ARG_NET_BUF, 1, glo_obj,
-				     glo_cmd_info[glo_cmd].method_name,
-				     &ret_val, args);
-      if (err_code < 0)
-	{
-	  goto glo_cmd_end;
-	}
-
-      int_val = db_get_int (&ret_val);
-      net_buf_cp_int (CAS_FN_ARG_NET_BUF, int_val, NULL);
-    }
-
-glo_cmd_end:
-  db_value_clear (&ret_val);
-  db_value_clear (&arg1);
-  db_value_clear (&arg2);
-  if (glo_cmd == GLO_CMD_READ_DATA)
-    {
-      FREE_MEM (data_buf);
-    }
-  cas_log_write (0, true, "glo_cmd end");
-  return 0;
-}
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-int
-fn_con_close (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	      void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	      T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	      T_REQ_INFO * req_info)
 {
   cas_log_write (0, true, "con_close");
-  net_buf_cp_int (CAS_FN_ARG_NET_BUF, 0, NULL);
-  return -1;
+  net_buf_cp_int (net_buf, 0, NULL);
+  return FN_CLOSE_CONN;
 }
 
-int
-fn_check_cas (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	      void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	      T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	      T_REQ_INFO * req_info)
 {
   int retcode = 0;
 
-  if (CAS_FN_ARG_ARGC == 1)
+  if (argc == 1)
     {
       char *msg;
       int msg_size;
-      NET_ARG_GET_STR (msg, msg_size, CAS_FN_ARG_ARGV[0]);
+      net_arg_get_str (&msg, &msg_size, argv[0]);
       cas_log_write (0, true, "client_msg:%s", msg);
     }
   else
@@ -2089,67 +1611,68 @@ fn_check_cas (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       cas_log_write (0, true, "check_cas %d", retcode);
     }
 
-  if (retcode)
+  if (retcode < 0)
     {
       ERROR_INFO_SET (retcode, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_CLOSE_CONN;
     }
-  return retcode;
+  else
+    {
+      return FN_KEEP_CONN;
+    }
 }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-int
-fn_make_out_rs (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		T_REQ_INFO * req_info)
 {
   int srv_h_id;
 
-  if (CAS_FN_ARG_ARGC < 1)
+  if (argc < 1)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (srv_h_id, CAS_FN_ARG_ARGV[0]);
-  ux_make_out_rs (srv_h_id, CAS_FN_ARG_NET_BUF, CAS_FN_ARG_REQ_INFO);
+  net_arg_get_int (&srv_h_id, argv[0]);
+  ux_make_out_rs (srv_h_id, net_buf, req_info);
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
-fn_get_generated_keys (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		       void **CAS_FN_ARG_ARGV,
-		       T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv,
+		       T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
 
-  if (CAS_FN_ARG_ARGC < 1)
+  if (argc < 1)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
-  NET_ARG_GET_INT (srv_h_id, CAS_FN_ARG_ARGV[0]);
+  net_arg_get_int (&srv_h_id, argv[0]);
   srv_handle = hm_find_srv_handle (srv_h_id);
 
   if (srv_handle == NULL)
     {
       ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-      return 0;
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
     }
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		 "get_generated_keys %d", srv_h_id);
 
-  ux_get_generated_keys (srv_handle, CAS_FN_ARG_NET_BUF);
+  ux_get_generated_keys (srv_handle, net_buf);
 
-  return 0;
+  return FN_KEEP_CONN;
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
@@ -2157,7 +1680,9 @@ static const char *
 get_schema_type_str (int schema_type)
 {
   if (schema_type < 1 || schema_type > CCI_SCH_LAST)
-    return "";
+    {
+      return "";
+    }
 
   return (schema_type_str[schema_type - 1]);
 }
@@ -2166,7 +1691,9 @@ static const char *
 get_tran_type_str (int tran_type)
 {
   if (tran_type < 1 || tran_type > 2)
-    return "";
+    {
+      return "";
+    }
 
   return (tran_type_str[tran_type - 1]);
 }
@@ -2182,13 +1709,13 @@ bind_value_log (int start, int argc, void **argv, int param_size,
   void *net_value;
   const char *param_mode_str;
 
-  if (shm_appl->sql_log_mode != SQL_LOG_MODE_NONE)
+  if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
       num_bind = 1;
       idx = start;
       while (idx < argc)
 	{
-	  NET_ARG_GET_CHAR (type, argv[idx++]);
+	  net_arg_get_char (type, argv[idx++]);
 	  net_value = argv[idx++];
 
 	  param_mode_str = "";
@@ -2224,7 +1751,7 @@ bind_value_print (char type, void *net_value)
 {
   int data_size;
 
-  NET_ARG_GET_SIZE (data_size, net_value);
+  net_arg_get_size (&data_size, net_value);
   if (data_size <= 0)
     {
       type = CCI_U_TYPE_NULL;
@@ -2243,7 +1770,7 @@ bind_value_print (char type, void *net_value)
       {
 	char *str_val;
 	int val_size;
-	NET_ARG_GET_STR (str_val, val_size, net_value);
+	net_arg_get_str (&str_val, &val_size, net_value);
 	if (type != CCI_U_TYPE_NUMERIC)
 	  {
 	    cas_log_write2_nonl ("(%d)", val_size);
@@ -2254,21 +1781,21 @@ bind_value_print (char type, void *net_value)
     case CCI_U_TYPE_BIGINT:
       {
 	DB_BIGINT bi_val;
-	NET_ARG_GET_BIGINT (bi_val, net_value);
+	net_arg_get_bigint (&bi_val, net_value);
 	cas_log_write2_nonl ("%lld", (long long) bi_val);
       }
       break;
     case CCI_U_TYPE_INT:
       {
 	int i_val;
-	NET_ARG_GET_INT (i_val, net_value);
+	net_arg_get_int (&i_val, net_value);
 	cas_log_write2_nonl ("%d", i_val);
       }
       break;
     case CCI_U_TYPE_SHORT:
       {
 	short s_val;
-	NET_ARG_GET_SHORT (s_val, net_value);
+	net_arg_get_short (&s_val, net_value);
 	cas_log_write2_nonl ("%d", s_val);
       }
       break;
@@ -2276,14 +1803,14 @@ bind_value_print (char type, void *net_value)
     case CCI_U_TYPE_DOUBLE:
       {
 	double d_val;
-	NET_ARG_GET_DOUBLE (d_val, net_value);
+	net_arg_get_double (&d_val, net_value);
 	cas_log_write2_nonl ("%.15e", d_val);
       }
       break;
     case CCI_U_TYPE_FLOAT:
       {
 	float f_val;
-	NET_ARG_GET_FLOAT (f_val, net_value);
+	net_arg_get_float (&f_val, net_value);
 	cas_log_write2_nonl ("%.6e", f_val);
       }
       break;
@@ -2292,8 +1819,8 @@ bind_value_print (char type, void *net_value)
     case CCI_U_TYPE_TIMESTAMP:
     case CCI_U_TYPE_DATETIME:
       {
-	int yr, mon, day, hh, mm, ss, ms;
-	NET_ARG_GET_DATETIME (yr, mon, day, hh, mm, ss, ms, net_value);
+	short yr, mon, day, hh, mm, ss, ms;
+	net_arg_get_datetime (&yr, &mon, &day, &hh, &mm, &ss, &ms, net_value);
 	if (type == CCI_U_TYPE_DATE)
 	  cas_log_write2_nonl ("%d/%d/%d", yr, mon, day);
 	else if (type == CCI_U_TYPE_TIME)
@@ -2327,7 +1854,7 @@ bind_value_print (char type, void *net_value)
 
 	while (remain_size > 0)
 	  {
-	    NET_ARG_GET_SIZE (ele_size, cur_p);
+	    net_arg_get_size (&ele_size, cur_p);
 	    if (ele_size + 4 > remain_size)
 	      break;
 	    if (print_comma)
@@ -2343,15 +1870,39 @@ bind_value_print (char type, void *net_value)
 	cas_log_write2_nonl ("}");
       }
       break;
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
     case CCI_U_TYPE_OBJECT:
       {
 	int pageid;
 	short slotid, volid;
 
-	NET_ARG_GET_CCI_OBJECT (pageid, slotid, volid, net_value);
+	net_arg_get_cci_object (&pageid, &slotid, &volid, net_value);
 	cas_log_write2_nonl ("%d|%d|%d", pageid, slotid, volid);
       }
       break;
+    case CCI_U_TYPE_BLOB:
+    case CCI_U_TYPE_CLOB:
+      {
+	DB_VALUE db_val;
+	DB_ELO *db_elo;
+	net_arg_get_lob_value (&db_val, net_value);
+	db_elo = db_get_elo (&db_val);
+	if (db_elo)
+	  {
+	    cas_log_write2_nonl ("%s|%lld|%s|%s|%d",
+				 (type == CCI_U_TYPE_BLOB) ? "BLOB" : "CLOB",
+				 db_elo->size, db_elo->locator,
+				 db_elo->meta_data, db_elo->type);
+	  }
+	else
+	  {
+	    cas_log_write2_nonl ("invalid LOB");
+	  }
+
+	db_value_clear (&db_val);
+      }
+      break;
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
     default:
       cas_log_write2_nonl ("NULL");
       break;
@@ -2404,15 +1955,163 @@ get_error_log_eids (int err)
   return buf;
 }
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+FN_RETURN
+fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	    T_REQ_INFO * req_info)
+{
+  int lob_type, err_code;
+  int elapsed_sec = 0, elapsed_msec = 0;
+  struct timeval lob_new_begin, lob_new_end;
+
+  if (argc != 1)
+    {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+#else /* CAS_FOR_DBMS */
+      net_buf_cp_int (net_buf, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_int (&lob_type, argv[0]);
+  if (lob_type != CCI_U_TYPE_BLOB && lob_type != CCI_U_TYPE_CLOB)
+    {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+#else /* CAS_FOR_DBMS */
+      net_buf_cp_int (net_buf, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
+      return FN_KEEP_CONN;
+    }
+
+  cas_log_write (0, false, "lob_new lob_type=%d", lob_type);
+  gettimeofday (&lob_new_begin, NULL);
+
+  err_code = ux_lob_new (lob_type, net_buf);
+
+  gettimeofday (&lob_new_end, NULL);
+  ut_timeval_diff (&lob_new_begin, &lob_new_end, &elapsed_sec, &elapsed_msec);
+
+  cas_log_write (0, false, "lob_new %s%d time %d.%03d%s",
+		 err_code < 0 ? "error:" : "",
+		 err_info.err_number, elapsed_sec, elapsed_msec,
+		 get_error_log_eids (err_info.err_number));
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	      T_REQ_INFO * req_info)
+{
+  DB_VALUE lob_dbval;
+  INT64 offset;
+  char *data_buf = NULL;
+  int err_code, data_length = 0;
+  int elapsed_sec = 0, elapsed_msec = 0;
+  struct timeval lob_new_begin, lob_new_end;
+
+  if (argc != 3)
+    {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+#else /* CAS_FOR_DBMS */
+      net_buf_cp_int (net_buf, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_lob_value (&lob_dbval, argv[0]);
+  net_arg_get_bigint (&offset, argv[1]);
+  net_arg_get_str (&data_buf, &data_length, argv[2]);
+
+  cas_log_write (0, false, "lob_write lob_type=%d offset=%lld, length=%d",
+		 db_get_elo (&lob_dbval)->type, offset, data_length);
+  gettimeofday (&lob_new_begin, NULL);
+
+  err_code = ux_lob_write (&lob_dbval, offset, data_length, data_buf,
+			   net_buf);
+
+  gettimeofday (&lob_new_end, NULL);
+  ut_timeval_diff (&lob_new_begin, &lob_new_end, &elapsed_sec, &elapsed_msec);
+
+  cas_log_write (0, false, "lob_write %s%d time %d.%03d%s",
+		 err_code < 0 ? "error:" : "",
+		 err_info.err_number, elapsed_sec, elapsed_msec,
+		 get_error_log_eids (err_info.err_number));
+
+  db_value_clear (&lob_dbval);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	     T_REQ_INFO * req_info)
+{
+  DB_VALUE lob_dbval;
+  INT64 offset;
+  int err_code, data_length = 0;
+  int elapsed_sec = 0, elapsed_msec = 0;
+  struct timeval lob_new_begin, lob_new_end;
+
+  if (argc != 3)
+    {
+#if defined(CAS_FOR_DBMS)
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+#else /* CAS_FOR_DBMS */
+      net_buf_cp_int (net_buf, CAS_ER_ARGS, NULL);
+#endif /* CAS_FOR_DBMS */
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_lob_value (&lob_dbval, argv[0]);
+  net_arg_get_bigint (&offset, argv[1]);
+  net_arg_get_int (&data_length, argv[2]);
+
+  cas_log_write (0, false, "lob_read lob_type=%d offset=%lld, length=%d",
+		 db_get_elo (&lob_dbval)->type, offset, data_length);
+  gettimeofday (&lob_new_begin, NULL);
+
+  err_code = ux_lob_read (&lob_dbval, offset, data_length, net_buf);
+
+  gettimeofday (&lob_new_end, NULL);
+  ut_timeval_diff (&lob_new_begin, &lob_new_end, &elapsed_sec, &elapsed_msec);
+
+  cas_log_write (0, false, "lob_read %s%d time %d.%03d%s",
+		 err_code < 0 ? "error:" : "",
+		 err_info.err_number, elapsed_sec, elapsed_msec,
+		 get_error_log_eids (err_info.err_number));
+
+  db_value_clear (&lob_dbval);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_deprecated (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	       T_REQ_INFO * req_info)
+{
+#if defined(CAS_FOR_DBMS)
+  ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (net_buf);
+#else /* CAS_FOR_DBMS */
+  net_buf_cp_int (net_buf, CAS_ER_NOT_IMPLEMENTED, NULL);
+#endif /* CAS_FOR_DBMS */
+  return FN_KEEP_CONN;
+}
+#endif
+
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-int
-fn_not_supported (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		  void **CAS_FN_ARG_ARGV,
-		  T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		  T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+FN_RETURN
+fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		  T_REQ_INFO * req_info)
 {
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
-  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
-  return 0;
+  NET_BUF_ERR_SET (net_buf);
+  return FN_KEEP_CONN;
 }
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */

@@ -30,6 +30,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -58,6 +59,7 @@
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
+#include "boot_sr.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -75,9 +77,14 @@
 #endif
 
 #if !defined (SERVER_MODE)
-#define MUTEX_LOCK(a, b)
-#define MUTEX_UNLOCK(a)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(b) 0
+#define pthread_mutex_unlock(a)
+static int rv;
 #endif /* !SERVER_MODE */
+
+#define INITIAL_IP_NUM 16
 
 #if defined(WINDOWS)
 typedef char *caddr_t;
@@ -103,8 +110,8 @@ static char *css_Vector_buffer = NULL;
 static char *css_Vector_buffer_piece[CSS_NUM_INTERNAL_VECTOR_BUF] = { 0 };
 static int css_Vector_buffer_occupied_flag[CSS_NUM_INTERNAL_VECTOR_BUF] =
   { 0 };
-static MUTEX_T css_Vector_buffer_mutex = NULL;
-static COND_T css_Vector_buffer_cond = NULL;
+static pthread_mutex_t css_Vector_buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t css_Vector_buffer_cond = PTHREAD_COND_INITIALIZER;
 #else /* SERVER_MODE */
 static char css_Vector_buffer[CSS_VECTOR_SIZE];
 #endif /* SERVER_MODE */
@@ -178,6 +185,9 @@ static void css_set_net_header (NET_HEADER * header_p, int type,
 				short function_code, int request_id,
 				int buffer_size, int transaction_id,
 				int db_error);
+#if defined(SERVER_MODE)
+static char *css_trim_str (char *str);
+#endif
 
 #if !defined(SERVER_MODE)
 static int
@@ -373,7 +383,7 @@ css_net_send_no_block (SOCKET fd, const char *buffer, int size)
  *   fd(in): sockert descripter
  *   ptr(out): buffer
  *   nbytes(in): count of bytes will be read
- *   timeout(in): timeout in mili-second
+ *   timeout(in): timeout in milli-second
  */
 int
 css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
@@ -409,7 +419,7 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	  tv.tv_sec = timeout / 1000;
 	  tv.tv_usec = (timeout % 1000) * 1000;
 	select_again:
-	  n = select (FD_SETSIZE, &rfds, NULL, &efds, &tv);
+	  n = select (fd + 1, &rfds, NULL, &efds, &tv);
 	  if (n == 0)
 	    {
 	      /*
@@ -534,7 +544,7 @@ css_read_remaining_bytes (SOCKET fd, int len)
  *   fd(in): socket descripter
  *   buffer(out): buffer for date be read
  *   maxlen(out): count of bytes was read
- *   timeout(in): timeout value in mili-second
+ *   timeout(in): timeout value in milli-second
  */
 int
 css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
@@ -679,17 +689,17 @@ alloc_vector_buffer (void)
   int wait_count = 0;
 #endif /* VECTOR_IO_TUNE */
 
-  MUTEX_LOCK (r, css_Vector_buffer_mutex);
+  r = pthread_mutex_lock (&css_Vector_buffer_mutex);
 
-  if (css_Vector_buffer_cond == NULL)
+  if (css_Vector_buffer == NULL)
     {
-      r = COND_INIT (css_Vector_buffer_cond);
+      r = pthread_cond_init (&css_Vector_buffer_cond, NULL);
       css_Vector_buffer =
 	(char *) malloc (CSS_NUM_INTERNAL_VECTOR_BUF * CSS_VECTOR_SIZE);
 
       if (css_Vector_buffer == NULL)
 	{
-	  r = MUTEX_UNLOCK (css_Vector_buffer_mutex);
+	  r = pthread_mutex_unlock (&css_Vector_buffer_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 		  1, CSS_NUM_INTERNAL_VECTOR_BUF * CSS_VECTOR_SIZE);
 	  return -1;
@@ -709,7 +719,7 @@ alloc_vector_buffer (void)
 	  if (css_Vector_buffer_occupied_flag[i] == 0)
 	    {
 	      css_Vector_buffer_occupied_flag[i] = 1;
-	      r = MUTEX_UNLOCK (css_Vector_buffer_mutex);
+	      r = pthread_mutex_unlock (&css_Vector_buffer_mutex);
 #ifdef VECTOR_IO_TUNE
 	      if (wait_count > 0)
 		{
@@ -727,8 +737,8 @@ alloc_vector_buffer (void)
       wait_count++;
 #endif /* VECTOR_IO_TUNE */
 
-      r = COND_WAIT (css_Vector_buffer_cond, css_Vector_buffer_mutex);
-      MUTEX_LOCK (r, css_Vector_buffer_mutex);
+      r =
+	pthread_cond_wait (&css_Vector_buffer_cond, &css_Vector_buffer_mutex);
     }
 }
 #endif
@@ -744,12 +754,12 @@ free_vector_buffer (int index)
 {
   int r;
 
-  MUTEX_LOCK (r, css_Vector_buffer_mutex);
+  r = pthread_mutex_lock (&css_Vector_buffer_mutex);
 
   css_Vector_buffer_occupied_flag[index] = 0;
-  r = COND_SIGNAL (css_Vector_buffer_cond);
+  r = pthread_cond_signal (&css_Vector_buffer_cond);
 
-  r = MUTEX_UNLOCK (css_Vector_buffer_mutex);
+  r = pthread_mutex_unlock (&css_Vector_buffer_mutex);
 }
 #endif /* SERVER_MODE */
 
@@ -880,7 +890,7 @@ error:
  *   vec(in): vector buffer
  *   len(in): vector length
  *   bytes_written(in):
- *   timeout(in): timeout value in mili-seconds
+ *   timeout(in): timeout value in milli-seconds
  */
 static int
 css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
@@ -931,7 +941,7 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written,
 	  FD_SET (fd, &efds);
 	  tv.tv_sec = timeout / 1000;
 	  tv.tv_usec = (timeout % 1000) * 1000;
-	  n = select (FD_SETSIZE, NULL, &wfds, &efds, &tv);
+	  n = select (fd + 1, NULL, &wfds, &efds, &tv);
 	  if (n == 0)
 	    {
 	      /*
@@ -1008,7 +1018,7 @@ css_set_io_vector (struct iovec *vec1_p, struct iovec *vec2_p,
  *   vec_p(in):
  *   total_len(in):
  *   vector_length(in):
- *   timeout(in): timeout value in mili-seconds
+ *   timeout(in): timeout value in milli-seconds
  */
 static int
 css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p,
@@ -1037,7 +1047,7 @@ css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p,
  *   fd(in): socket descripter
  *   buff(in): buffer for data will be sent
  *   len(in): length for data will be sent
- *   timeout(in): timeout value in mili-seconds
+ *   timeout(in): timeout value in milli-seconds
  *
  * Note: Used by client and server.
  */
@@ -1079,7 +1089,7 @@ css_net_send2 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   total_len = len1 + len2 + sizeof (int) * 2;
 
-  /* timeout in mili-second in css_send_io_vector() */
+  /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 4,
 			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
@@ -1112,7 +1122,7 @@ css_net_send3 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   total_len = len1 + len2 + len3 + sizeof (int) * 3;
 
-  /* timeout in mili-second in css_send_io_vector() */
+  /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 6,
 			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
@@ -1149,7 +1159,7 @@ css_net_send4 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   total_len = len1 + len2 + len3 + len4 + sizeof (int) * 4;
 
-  /* timeout in mili-second in css_send_io_vector() */
+  /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 8,
 			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
@@ -1179,7 +1189,7 @@ css_net_send5 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   total_len = len1 + len2 + len3 + len4 + len5 + sizeof (int) * 5;
 
-  /* timeout in mili-second in css_send_io_vector() */
+  /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 10,
 			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
@@ -1224,7 +1234,7 @@ css_net_send6 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
 
   total_len = len1 + len2 + len3 + len4 + len5 + len6 + sizeof (int) * 6;
 
-  /* timeout in mili-second in css_send_io_vector() */
+  /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 12,
 			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
@@ -1258,7 +1268,7 @@ css_net_send7 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
   total_len =
     len1 + len2 + len3 + len4 + len5 + len6 + len7 + sizeof (int) * 7;
 
-  /* timeout in mili-second in css_send_io_vector() */
+  /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 14,
 			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
@@ -1312,7 +1322,7 @@ css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1,
   total_len = len1 + len2 + len3 + len4 + len5 + len6 + len7 + len8
     + sizeof (int) * 8;
 
-  /* timeout in mili-second in css_send_io_vector() */
+  /* timeout in milli-second in css_send_io_vector() */
   return css_send_io_vector (conn, iov, total_len, 16,
 			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
@@ -1442,7 +1452,7 @@ css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn,
  *   fd(in): socket descripter
  *   buff(in): buffer for data will be sent
  *   len(in): length for data will be sent
- *   timeout(in): timeout value in mili-seconds
+ *   timeout(in): timeout value in milli-seconds
  *
  * Note: Used by client and server.
  */
@@ -1468,7 +1478,7 @@ css_net_send_buffer_only (CSS_CONN_ENTRY * conn, const char *buff, int len,
 int
 css_net_read_header (SOCKET fd, char *buffer, int *maxlen)
 {
-  /* timeout in mili-seconds in css_net_recv() */
+  /* timeout in milli-seconds in css_net_recv() */
   return css_net_recv (fd, buffer, maxlen, PRM_TCP_CONNECTION_TIMEOUT * 1000);
 }
 
@@ -1507,14 +1517,6 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request,
   NET_HEADER local_header = DEFAULT_HEADER_DATA;
   NET_HEADER data_header = DEFAULT_HEADER_DATA;
 
-#if defined(SERVER_MODE)
-  if (conn != NULL && conn->status == CONN_CLOSING)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
-	      1, "connection status: CONN_CLOSING");
-    }
-#endif
-
   if (!conn || conn->status != CONN_OPEN)
     {
       return CONNECTION_CLOSED;
@@ -1542,7 +1544,7 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request,
     }
   else
     {
-      /* timeout in mili-second in css_net_send() */
+      /* timeout in milli-second in css_net_send() */
       if (css_net_send (conn, (char *) &local_header, sizeof (NET_HEADER),
 			PRM_TCP_CONNECTION_TIMEOUT * 1000) == NO_ERRORS)
 	{
@@ -1894,12 +1896,6 @@ css_send_two_data (CSS_CONN_ENTRY * conn, unsigned short rid,
   NET_HEADER header1 = DEFAULT_HEADER_DATA;
   NET_HEADER header2 = DEFAULT_HEADER_DATA;
 
-  if (conn != NULL && conn->status == CONN_CLOSING)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
-	      1, "connection status: CONN_CLOSING");
-    }
-
   if (!conn || conn->status != CONN_OPEN)
     {
       return (CONNECTION_CLOSED);
@@ -1939,12 +1935,6 @@ css_send_three_data (CSS_CONN_ENTRY * conn, unsigned short rid,
   NET_HEADER header1 = DEFAULT_HEADER_DATA;
   NET_HEADER header2 = DEFAULT_HEADER_DATA;
   NET_HEADER header3 = DEFAULT_HEADER_DATA;
-
-  if (conn != NULL && conn->status == CONN_CLOSING)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
-	      1, "connection status: CONN_CLOSING");
-    }
 
   if (!conn || conn->status != CONN_OPEN)
     {
@@ -1996,12 +1986,6 @@ css_send_four_data (CSS_CONN_ENTRY * conn, unsigned short rid,
   NET_HEADER header3 = DEFAULT_HEADER_DATA;
   NET_HEADER header4 = DEFAULT_HEADER_DATA;
 
-  if (conn != NULL && conn->status == CONN_CLOSING)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
-	      1, "connection status: CONN_CLOSING");
-    }
-
   if (!conn || conn->status != CONN_OPEN)
     {
       return (CONNECTION_CLOSED);
@@ -2048,12 +2032,6 @@ css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid,
   NET_HEADER *headers;
   int i, rc;
 
-  if (conn != NULL && conn->status == CONN_CLOSING)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
-	      1, "connection status: CONN_CLOSING");
-    }
-
   if (!conn || conn->status != CONN_OPEN)
     {
       return (CONNECTION_CLOSED);
@@ -2095,14 +2073,6 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer,
   NET_HEADER header = DEFAULT_HEADER_DATA;
   int rc;
 
-#if defined(SERVER_MODE)
-  if (conn != NULL && conn->status == CONN_CLOSING)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR,
-	      1, "connection status: CONN_CLOSING");
-    }
-#endif
-
   if (!conn || conn->status != CONN_OPEN)
     {
       return (CONNECTION_CLOSED);
@@ -2111,12 +2081,12 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer,
   css_set_net_header (&header, ERROR_TYPE, 0, rid,
 		      buffer_size, conn->transaction_id, conn->db_error);
 
-  /* timeout in mili-seconds in css_net_send() */
+  /* timeout in milli-seconds in css_net_send() */
   rc = css_net_send (conn, (char *) &header, sizeof (NET_HEADER),
 		     PRM_TCP_CONNECTION_TIMEOUT * 1000);
   if (rc == NO_ERRORS)
     {
-      /* timeout in mili-seconds in css_net_send() */
+      /* timeout in milli-seconds in css_net_send() */
       return (css_net_send (conn, buffer, buffer_size,
 			    PRM_TCP_CONNECTION_TIMEOUT * 1000));
     }
@@ -2203,3 +2173,298 @@ css_ha_server_state_string (HA_SERVER_STATE state)
     }
   return "invalid";
 }
+
+/*
+ * css_ha_applier_state_string
+ */
+const char *
+css_ha_applier_state_string (HA_LOG_APPLIER_STATE state)
+{
+  switch (state)
+    {
+    case HA_LOG_APPLIER_STATE_NA:
+      return "na";
+    case HA_LOG_APPLIER_STATE_UNREGISTERED:
+      return HA_LOG_APPLIER_STATE_UNREGISTERED_STR;
+    case HA_LOG_APPLIER_STATE_RECOVERING:
+      return HA_LOG_APPLIER_STATE_RECOVERING_STR;
+    case HA_LOG_APPLIER_STATE_WORKING:
+      return HA_LOG_APPLIER_STATE_WORKING_STR;
+    case HA_LOG_APPLIER_STATE_DONE:
+      return HA_LOG_APPLIER_STATE_DONE_STR;
+    case HA_LOG_APPLIER_STATE_ERROR:
+      return HA_LOG_APPLIER_STATE_ERROR_STR;
+    }
+  return "invalid";
+}
+
+/*
+ * css_ha_mode_string
+ */
+const char *
+css_ha_mode_string (HA_MODE mode)
+{
+  switch (mode)
+    {
+    case HA_MODE_OFF:
+      return HA_MODE_OFF_STR;
+    case HA_MODE_FAIL_OVER:
+    case HA_MODE_FAIL_BACK:
+    case HA_MODE_LAZY_BACK:
+    case HA_MODE_ROLE_CHANGE:
+      return HA_MODE_ON_STR;
+    case HA_MODE_REPLICA:
+      return HA_MODE_REPLICA_STR;
+    }
+  return "invalid";
+}
+
+#if defined(SERVER_MODE)
+int
+css_check_ip (IP_INFO * ip_info, unsigned char *address)
+{
+  int i;
+
+  assert (ip_info && address);
+
+  for (i = 0; i < ip_info->num_list; i++)
+    {
+      int address_index = i * IP_BYTE_COUNT;
+
+      if (ip_info->address_list[address_index] == 0)
+	{
+	  return NO_ERROR;
+	}
+      else if (memcmp ((void *) &ip_info->address_list[address_index + 1],
+		       (void *) address,
+		       ip_info->address_list[address_index]) == 0)
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  return ER_INACCESSIBLE_IP;
+}
+
+int
+css_free_ip_info (IP_INFO * ip_info)
+{
+  if (ip_info)
+    {
+      free_and_init (ip_info->address_list);
+      free (ip_info);
+    }
+
+  return NO_ERROR;
+}
+
+int
+css_read_ip_info (IP_INFO ** out_ip_info, char *filename)
+{
+  char buf[32];
+  FILE *fd_ip_list;
+  IP_INFO *ip_info;
+  const char *dbname;
+  int ip_address_list_buffer_size;
+  unsigned char i;
+  bool is_current_db_section;
+
+  if (out_ip_info == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  fd_ip_list = fopen (filename, "r");
+
+  if (fd_ip_list == NULL)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_OPEN_ACCESS_LIST_FILE, 1, filename);
+      return ER_OPEN_ACCESS_LIST_FILE;
+    }
+
+  is_current_db_section = false;
+
+  ip_info = (IP_INFO *) malloc (sizeof (IP_INFO));
+  if (ip_info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (IP_INFO));
+      fclose (fd_ip_list);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ip_info->num_list = 0;
+  ip_address_list_buffer_size = INITIAL_IP_NUM * IP_BYTE_COUNT;
+  ip_info->address_list =
+    (unsigned char *) malloc (ip_address_list_buffer_size);
+
+  if (ip_info->address_list == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, ip_address_list_buffer_size);
+      goto error;
+    }
+
+  dbname = boot_db_name ();
+
+  while (fgets (buf, 32, fd_ip_list))
+    {
+      char *token, *p;
+      int address_index;
+
+      p = strchr (buf, '#');
+      if (p != NULL)
+	{
+	  *p = '\0';
+	}
+
+      css_trim_str (buf);
+      if (buf[0] == '\0')
+	{
+	  continue;
+	}
+
+      if (is_current_db_section == false &&
+	  strncmp (buf, "[@", 2) == 0 && buf[strlen (buf) - 1] == ']')
+	{
+	  buf[strlen (buf) - 1] = '\0';
+	  if (strcasecmp (dbname, buf + 2) == 0)
+	    {
+	      is_current_db_section = true;
+	      continue;
+	    }
+	}
+
+      if (is_current_db_section == false)
+	{
+	  continue;
+	}
+
+      if (strncmp (buf, "[@", 2) == 0 && buf[strlen (buf) - 1] == ']')
+	{
+	  buf[strlen (buf) - 1] = '\0';
+	  if (strcasecmp (dbname, buf + 2) != 0)
+	    {
+	      break;
+	    }
+	}
+
+      token = strtok (buf, ".");
+
+      address_index = ip_info->num_list * IP_BYTE_COUNT;
+
+      if (address_index >= ip_address_list_buffer_size)
+	{
+	  ip_address_list_buffer_size *= 2;
+	  ip_info->address_list =
+	    (unsigned char *) realloc (ip_info->address_list,
+				       ip_address_list_buffer_size);
+	  if (ip_info->address_list == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      ip_address_list_buffer_size);
+	      goto error;
+	    }
+	}
+
+      for (i = 0; i < 4; i++)
+	{
+	  if (token == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_INVALID_ACCESS_IP_CONTROL_FILE_FORMAT, 1, filename);
+	      goto error;
+	    }
+
+	  if (strcmp (token, "*") == 0)
+	    {
+	      break;
+	    }
+	  else
+	    {
+	      long adr;
+	      char *p = NULL;
+
+	      adr = strtol (token, &p, 10);
+	      if ((errno == ERANGE) ||
+		  (errno != 0 && adr == 0) ||
+		  (p && *p != '\0') || (adr > 255 || adr < 0))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_INVALID_ACCESS_IP_CONTROL_FILE_FORMAT, 1,
+			  filename);
+		  goto error;
+		}
+
+	      ip_info->address_list[address_index + 1 + i] =
+		(unsigned char) adr;
+	    }
+
+	  token = strtok (NULL, ".");
+
+	  if (i == 3 && token != NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_INVALID_ACCESS_IP_CONTROL_FILE_FORMAT, 1, filename);
+	      goto error;
+	    }
+	}
+      ip_info->address_list[address_index] = i;
+      ip_info->num_list++;
+    }
+
+  fclose (fd_ip_list);
+
+  *out_ip_info = ip_info;
+
+  return 0;
+
+error:
+  fclose (fd_ip_list);
+  css_free_ip_info (ip_info);
+  return er_errid ();
+}
+
+static char *
+css_trim_str (char *str)
+{
+  char *p, *s;
+
+  if (str == NULL)
+    {
+      return (str);
+    }
+
+  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s
+			       == '\r'); s++)
+    {
+      ;
+    }
+
+  if (*s == '\0')
+    {
+      *str = '\0';
+      return (str);
+    }
+
+  /* *s must be a non-white char */
+  for (p = s; *p != '\0'; p++)
+    {
+      ;
+    }
+  for (p--; *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'; p--)
+    {
+      ;
+    }
+  *++p = '\0';
+
+  if (s != str)
+    {
+      memmove (str, s, strlen (s) + 1);
+    }
+
+  return (str);
+}
+#endif

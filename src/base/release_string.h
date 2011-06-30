@@ -30,6 +30,7 @@
 #include "config.h"
 
 #define REL_MAX_RELEASE_LENGTH 15
+#define REL_MAX_VERSION_LENGTH 256
 
 /*
  * REL_FIXUP_FUNCTION - Signature for a function that can part of
@@ -55,6 +56,7 @@ extern const char *rel_name (void);
 extern const char *rel_release_string (void);
 extern const char *rel_major_release_string (void);
 extern const char *rel_build_number (void);
+extern const char *rel_build_os (void);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern const char *rel_copyright_header (void);
 extern const char *rel_copyright_body (void);
@@ -71,5 +73,5 @@ extern bool rel_is_log_compatible (const char *writer_rel_str,
 extern REL_COMPATIBILITY
 rel_is_net_compatible (const char *client_rel_str,
 		       const char *server_rel_str);
-
+extern void rel_copy_version_string (char *buf, size_t len);
 #endif /* _RELEASE_STRING_H_ */

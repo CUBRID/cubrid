@@ -42,7 +42,6 @@
 #include "virtual_object.h"
 #include "server_interface.h"
 #include "arithmetic.h"
-#include "serial.h"
 #include "parser_support.h"
 #include "view_transform.h"
 #include "network_interface_cl.h"
@@ -915,6 +914,17 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
       break;
 
     case PT_EXPR:
+      if (tree->info.expr.op == PT_FUNCTION_HOLDER)
+	{
+	  if (pt_evaluate_function (parser, tree->info.expr.arg1, db_value) !=
+	      NO_ERROR)
+	    {
+	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
+			  MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+			  pt_short_print (parser, tree));
+	    }
+	  break;
+	}
       if (tree->or_next)
 	{
 	  /* The expression tree has 'or_next' filed. Evaluate it after
@@ -1008,8 +1018,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
 	      && op != PT_ASSIGN && op != PT_LIKE_ESCAPE
 	      && op != PT_CURRENT_VALUE)
 	    {
-	      if (!pt_evaluate_db_value_expr (parser, op, &opd1, &opd2, &opd3,
-					      db_value, domain,
+	      if (!pt_evaluate_db_value_expr (parser, tree, op, &opd1, &opd2,
+					      &opd3, db_value, domain,
 					      arg1, arg2, arg3, qualifier))
 		{
 		  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME,
@@ -1092,6 +1102,10 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
 	    }
 	  else if (!parser->error_msgs)
 	    {
+	      if (temp != NULL)
+		{
+		  dbt_abort_object (temp);
+		}
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
 	  break;
@@ -1413,7 +1427,8 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 		    }
 		  else
 		    {
-		      error = serial_get_next_value (db_value, &oid_str_val);
+		      error = serial_get_next_value (db_value, &oid_str_val,
+						     GENERATE_SERIAL);
 		    }
 
 		  if (error != NO_ERROR)
@@ -1539,6 +1554,9 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	    }
 	  if (parser->error_msgs)
 	    {
+	      pr_clear_value (&opd1);
+	      pr_clear_value (&opd2);
+	      pr_clear_value (&opd3);
 	      break;
 	    }
 
@@ -1557,7 +1575,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	      && op != PT_ASSIGN && op != PT_LIKE_ESCAPE
 	      && op != PT_CURRENT_VALUE)
 	    {
-	      if (!pt_evaluate_db_value_expr (parser, op, &opd1,
+	      if (!pt_evaluate_db_value_expr (parser, tree, op, &opd1,
 					      opd2_set_null ? NULL : &opd2,
 					      &opd3, db_value, domain,
 					      arg1, arg2, arg3, qualifier))
@@ -1568,9 +1586,9 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 		}
 	    }
 
-	  db_value_clear (&opd1);
-	  db_value_clear (&opd2);
-	  db_value_clear (&opd3);
+	  pr_clear_value (&opd1);
+	  pr_clear_value (&opd2);
+	  pr_clear_value (&opd3);
 	}			/* if (tree->or_next) */
       break;
 
@@ -1644,6 +1662,10 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	    }
 	  else if (!parser->error_msgs)
 	    {
+	      if (temp != NULL)
+		{
+		  dbt_abort_object (temp);
+		}
 	      PT_ERRORc (parser, tree, db_error_string (3));
 	    }
 	  break;

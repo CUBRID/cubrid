@@ -262,7 +262,7 @@ init_msg_header (MSG_HEADER * header)
   header->info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
   header->info_ptr[CAS_INFO_RESERVED_1] = CAS_INFO_RESERVED_DEFAULT;
   header->info_ptr[CAS_INFO_RESERVED_2] = CAS_INFO_RESERVED_DEFAULT;
-  header->info_ptr[CAS_INFO_RESERVED_3] = CAS_INFO_RESERVED_DEFAULT;
+  header->info_ptr[CAS_INFO_ADDITIONAL_FLAG] = CAS_INFO_RESERVED_DEFAULT;
 }
 
 
@@ -469,16 +469,16 @@ retry_select:
 #endif /* ASYNC_MODE */
 
 #ifdef ASYNC_MODE
-  if (FD_ISSET (sock_fd, (fd_set *) & read_mask))
+  if (!IS_INVALID_SOCKET (new_req_sock_fd)
+      && FD_ISSET (new_req_sock_fd, (fd_set *) & read_mask))
+    {
+      return -1;
+    }
+  else if (FD_ISSET (sock_fd, (fd_set *) & read_mask))
     {
 #endif /* ASYNC_MODE */
       read_len = READ_FROM_SOCKET (sock_fd, buf, size);
 #ifdef ASYNC_MODE
-    }
-  else if (!IS_INVALID_SOCKET (new_req_sock_fd)
-	   && FD_ISSET (new_req_sock_fd, (fd_set *) & read_mask))
-    {
-      return -1;
     }
   else
     {

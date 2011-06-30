@@ -27,10 +27,18 @@
 #ident "$Id$"
 
 #if defined (CS_MODE)
-void la_test_log_page (const char *database_name, const char *log_path,
-		       int page_num);
+int
+la_log_page_check (const char *database_name, const char *log_path,
+		   int page_num, bool check_applied_info,
+		   bool check_copied_info, bool verbose);
 int la_apply_log_file (const char *database_name, const char *log_path,
 		       const int max_mem_size);
+void la_print_log_header (const char *database_name, struct log_header *hdr,
+			  bool verbose);
+void
+la_print_log_arv_header (const char *database_name,
+			 struct log_arv_header *hdr, bool verbose);
+
 #endif /* CS_MODE */
 
 #endif /* _LOG_APPLIER_HEADER_ */

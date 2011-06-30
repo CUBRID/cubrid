@@ -175,7 +175,6 @@
 #if defined(WINDOWS)
 #define F_OK	0
 #else
-#define FD_SEND_RETRY_COUNT	5
 #define SOCKET_TIMEOUT_SEC	2
 #endif
 
@@ -206,7 +205,11 @@ static int read_from_cas_client (SOCKET sock_fd, char *buf, int size,
 #endif
 
 static int write_to_client (SOCKET sock_fd, char *buf, int size);
+static int write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size,
+					 int timeout_sec);
 static int read_from_client (SOCKET sock_fd, char *buf, int size);
+static int read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size,
+					  int timeout_sec);
 static int run_appl_server (int as_index);
 static int stop_appl_server (int as_index);
 static void restart_appl_server (int as_index);
@@ -229,21 +232,12 @@ static int br_index = -1;
 static int num_thr;
 #endif
 
-#if defined(WINDOWS)
-static HANDLE clt_table_mutex = NULL;
-static HANDLE num_busy_uts_mutex = NULL;
-static HANDLE session_mutex = NULL;
-static HANDLE suspend_mutex = NULL;
-static HANDLE run_appl_mutex = NULL;
-static HANDLE con_status_mutex = NULL;
-static HANDLE service_flag_mutex = NULL;
-#else
 static pthread_mutex_t clt_table_mutex;
 static pthread_mutex_t suspend_mutex;
 static pthread_mutex_t run_appl_mutex;
 static pthread_mutex_t con_status_mutex;
 static pthread_mutex_t service_flag_mutex;
-#endif
+
 
 
 static char run_appl_server_flag = 0;
@@ -251,6 +245,8 @@ static char run_appl_server_flag = 0;
 static int process_flag = 1;
 
 static int num_busy_uts = 0;
+
+static int max_open_fd = 128;
 
 #if defined(WIN_FW)
 static int last_job_fetch_time;
@@ -274,16 +270,16 @@ main (int argc, char *argv[])
 {
   char *p;
   int i;
-  T_THREAD receiver_thread;
-  T_THREAD dispatch_thread;
-  T_THREAD psize_check_thread;
+  pthread_t receiver_thread;
+  pthread_t dispatch_thread;
+  pthread_t psize_check_thread;
 #if defined(WIN_FW)
-  T_THREAD service_thread;
+  pthread_t service_thread;
   int *thr_index;
 #endif
   int wait_job_cnt;
   int cur_appl_server_num;
-  T_THREAD cas_monitor_thread;
+  pthread_t cas_monitor_thread;
 
   signal (SIGTERM, cleanup);
   signal (SIGINT, cleanup);
@@ -292,11 +288,11 @@ main (int argc, char *argv[])
   signal (SIGPIPE, SIG_IGN);
 #endif
 
-  MUTEX_INIT (clt_table_mutex);
-  MUTEX_INIT (suspend_mutex);
-  MUTEX_INIT (run_appl_mutex);
-  MUTEX_INIT (con_status_mutex);
-  MUTEX_INIT (service_flag_mutex);
+  pthread_mutex_init (&clt_table_mutex, NULL);
+  pthread_mutex_init (&suspend_mutex, NULL);
+  pthread_mutex_init (&run_appl_mutex, NULL);
+  pthread_mutex_init (&con_status_mutex, NULL);
+  pthread_mutex_init (&service_flag_mutex, NULL);
 
   p = getenv (MASTER_SHM_KEY_ENV_STR);
   if (p == NULL)
@@ -341,11 +337,6 @@ main (int argc, char *argv[])
     }
 #endif
 
-  if (init_env () == -1)
-    {
-      goto error1;
-    }
-
   if (uw_acl_make (shm_br->br_info[br_index].acl_file) < 0)
     {
       goto error1;
@@ -362,6 +353,11 @@ main (int argc, char *argv[])
   if (shm_appl == NULL)
     {
       UW_SET_ERROR_CODE (UW_ER_SHM_OPEN, 0);
+      goto error1;
+    }
+
+  if (init_env () == -1)
+    {
       goto error1;
     }
 
@@ -427,19 +423,19 @@ main (int argc, char *argv[])
 	{
 	  if (shm_appl->suspend_mode == SUSPEND_REQ)
 	    {
-	      MUTEX_LOCK (suspend_mutex);
+	      pthread_mutex_lock (&suspend_mutex);
 	      shm_appl->suspend_mode = SUSPEND;
-	      MUTEX_UNLOCK (suspend_mutex);
+	      pthread_mutex_unlock (&suspend_mutex);
 	    }
 	  else if (shm_appl->suspend_mode == SUSPEND_CHANGE_PRIORITY_REQ)
 	    {
-	      MUTEX_LOCK (clt_table_mutex);
+	      pthread_mutex_lock (&clt_table_mutex);
 	      shm_appl->suspend_mode = SUSPEND_CHANGE_PRIORITY;
 	    }
 	  else if (shm_appl->suspend_mode == SUSPEND_END_CHANGE_PRIORITY)
 	    {
 	      shm_appl->suspend_mode = SUSPEND;
-	      MUTEX_UNLOCK (clt_table_mutex);
+	      pthread_mutex_unlock (&clt_table_mutex);
 	    }
 	  SLEEP_MILISEC (1, 0);
 	  continue;
@@ -504,15 +500,15 @@ main (int argc, char *argv[])
 	  && wait_job_cnt <= 0)
 	{
 	  int drop_as_index = -1;
-	  MUTEX_LOCK (service_flag_mutex);
+	  pthread_mutex_lock (&service_flag_mutex);
 	  drop_as_index = find_drop_as_index ();
 	  if (drop_as_index >= 0)
 	    shm_appl->as_info[drop_as_index].service_flag = SERVICE_OFF_ACK;
-	  MUTEX_UNLOCK (service_flag_mutex);
+	  pthread_mutex_unlock (&service_flag_mutex);
 
 	  if (drop_as_index >= 0)
 	    {
-	      MUTEX_LOCK (con_status_mutex);
+	      pthread_mutex_lock (&con_status_mutex);
 	      CON_STATUS_LOCK (&(shm_appl->as_info[drop_as_index]),
 			       CON_STATUS_LOCK_BROKER);
 	      if (shm_appl->as_info[drop_as_index].uts_status ==
@@ -546,7 +542,7 @@ main (int argc, char *argv[])
 		  CON_STATUS_UNLOCK (&(shm_appl->as_info[drop_as_index]),
 				     CON_STATUS_LOCK_BROKER);
 		}
-	      MUTEX_UNLOCK (con_status_mutex);
+	      pthread_mutex_unlock (&con_status_mutex);
 	    }
 
 	  if (drop_as_index >= 0)
@@ -599,7 +595,6 @@ receiver_thr_f (void *arg)
   int read_len;
   int one = 1;
   char cas_req_header[SRV_CON_CLIENT_INFO_SIZE];
-  T_BROKER_VERSION clt_ver;
   char cas_client_type;
   job_queue_size = shm_appl->job_queue_size;
   job_queue = shm_appl->job_queue;
@@ -689,16 +684,6 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 
-      clt_ver = CAS_MAKE_VER (cas_req_header[SRV_CON_MSG_IDX_MAJOR_VER],
-			      cas_req_header[SRV_CON_MSG_IDX_MINOR_VER],
-			      cas_req_header[SRV_CON_MSG_IDX_PATCH_VER]);
-      if (clt_ver > CAS_CUR_VERSION)
-	{
-	  CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_VERSION);
-	  CLOSE_SOCKET (clt_sock_fd);
-	  continue;
-	}
-
       if (v3_acl != NULL)
 	{
 	  unsigned char ip_addr[4];
@@ -715,13 +700,14 @@ receiver_thr_f (void *arg)
 
       if (job_queue[0].id == job_queue_size)
 	{
-	  SLEEP_SEC (1);
-	  if (job_queue[0].id == job_queue_size)
-	    {
-	      CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_FREE_SERVER);
-	      CLOSE_SOCKET (clt_sock_fd);
-	      continue;
-	    }
+	  CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_FREE_SERVER);
+	  CLOSE_SOCKET (clt_sock_fd);
+	  continue;
+	}
+
+      if (max_open_fd < clt_sock_fd)
+	{
+	  max_open_fd = clt_sock_fd;
 	}
 
       job_count = (job_count >= JOB_COUNT_MAX) ? 1 : job_count + 1;
@@ -739,15 +725,15 @@ receiver_thr_f (void *arg)
 
       while (1)
 	{
-	  MUTEX_LOCK (clt_table_mutex);
+	  pthread_mutex_lock (&clt_table_mutex);
 	  if (max_heap_insert (job_queue, job_queue_size, &new_job) < 0)
 	    {
-	      MUTEX_UNLOCK (clt_table_mutex);
+	      pthread_mutex_unlock (&clt_table_mutex);
 	      SLEEP_MILISEC (0, 100);
 	    }
 	  else
 	    {
-	      MUTEX_UNLOCK (clt_table_mutex);
+	      pthread_mutex_unlock (&clt_table_mutex);
 	      break;
 	    }
 	}
@@ -769,7 +755,6 @@ dispatch_thr_f (void *arg)
   int as_index, i;
 #if !defined(WINDOWS)
   SOCKET srv_sock_fd;
-  int retry_count;
 #endif
 
   job_queue = shm_appl->job_queue;
@@ -791,31 +776,32 @@ dispatch_thr_f (void *arg)
 	  continue;
 	}
 
-      MUTEX_LOCK (suspend_mutex);
+      pthread_mutex_lock (&suspend_mutex);
       if (shm_appl->suspend_mode != SUSPEND_NONE)
 	{
-	  MUTEX_UNLOCK (suspend_mutex);
+	  pthread_mutex_unlock (&suspend_mutex);
 	  continue;
 	}
 
-      MUTEX_LOCK (clt_table_mutex);
+      pthread_mutex_lock (&clt_table_mutex);
       if (max_heap_delete (job_queue, &cur_job) < 0)
 	{
-	  MUTEX_UNLOCK (clt_table_mutex);
-	  MUTEX_UNLOCK (suspend_mutex);
+	  pthread_mutex_unlock (&clt_table_mutex);
+	  pthread_mutex_unlock (&suspend_mutex);
 	  SLEEP_MILISEC (0, 30);
 	  continue;
 	}
-      MUTEX_UNLOCK (clt_table_mutex);
+      pthread_mutex_unlock (&clt_table_mutex);
 
       hold_job = 1;
       max_heap_incr_priority (job_queue);
 
+    retry:
       while (1)
 	{
-	  MUTEX_LOCK (service_flag_mutex);
+	  pthread_mutex_lock (&service_flag_mutex);
 	  as_index = find_idle_cas ();
-	  MUTEX_UNLOCK (service_flag_mutex);
+	  pthread_mutex_unlock (&service_flag_mutex);
 
 	  if (as_index < 0)
 	    SLEEP_MILISEC (0, 30);
@@ -843,59 +829,70 @@ dispatch_thr_f (void *arg)
       shm_appl->as_info[as_index].last_access_time = time (NULL);
 #else
 
-      retry_count = 0;
-
-    retry:
       srv_sock_fd = connect_srv (shm_br->br_info[br_index].name, as_index);
 
       if (!IS_INVALID_SOCKET (srv_sock_fd))
 	{
 	  int ip_addr;
 	  int ret_val;
+	  int con_status, uts_status;
+
+	  con_status = htonl (shm_appl->as_info[as_index].con_status);
+
+	  ret_val =
+	    write_to_client_with_timeout (srv_sock_fd,
+					  (char *) &con_status,
+					  sizeof (int), SOCKET_TIMEOUT_SEC);
+	  if (ret_val != sizeof (int))
+	    {
+	      CLOSE_SOCKET (srv_sock_fd);
+	      goto retry;
+	    }
+
+	  ret_val =
+	    read_from_client_with_timeout (srv_sock_fd,
+					   (char *) &con_status,
+					   sizeof (int), SOCKET_TIMEOUT_SEC);
+	  if (ret_val != sizeof (int)
+	      || ntohl (con_status) != CON_STATUS_IN_TRAN)
+	    {
+	      CLOSE_SOCKET (srv_sock_fd);
+	      goto retry;
+	    }
 
 	  memcpy (&ip_addr, cur_job.ip_addr, 4);
 	  ret_val = send_fd (srv_sock_fd, cur_job.clt_sock_fd, ip_addr);
 	  if (ret_val > 0)
 	    {
-	      char read_buf[64];
-	      ret_val = read (srv_sock_fd, read_buf, sizeof (read_buf));
+	      ret_val =
+		read_from_client_with_timeout (srv_sock_fd,
+					       (char *) &uts_status,
+					       sizeof (int),
+					       SOCKET_TIMEOUT_SEC);
 	    }
-
 	  CLOSE_SOCKET (srv_sock_fd);
 
 	  if (ret_val < 0)
 	    {
-	      shm_appl->as_info[as_index].uts_status = UTS_STATUS_IDLE;
-
-	      if (retry_count < FD_SEND_RETRY_COUNT)
-		{
-		  retry_count++;
-		  goto retry;
-		}
-	      else
-		{
-		  CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd,
-				       CAS_ER_FREE_SERVER);
-		}
+	      CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER);
 	    }
 	  else
 	    {
-	      CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, 0);
 	      shm_appl->as_info[as_index].num_request++;
 	    }
 	}
       else
 	{
-	  CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd, CAS_ER_FREE_SERVER);
-	  shm_appl->as_info[as_index].uts_status = UTS_STATUS_IDLE;
+	  goto retry;
 	}
+
       CLOSE_SOCKET (cur_job.clt_sock_fd);
 #endif /* ifdef !WINDOWS */
 #else
       session_request_q[as_index] = cur_job;
 #endif
 
-      MUTEX_UNLOCK (suspend_mutex);
+      pthread_mutex_unlock (&suspend_mutex);
     }
 
 #if defined(WINDOWS)
@@ -1006,7 +1003,7 @@ init_env (void)
       return (-1);
     }
 
-  if (listen (sock_fd, 100) < 0)
+  if (listen (sock_fd, shm_appl->job_queue_size) < 0)
     {
       UW_SET_ERROR_CODE (UW_ER_CANT_BIND, 0);
       return (-1);
@@ -1018,12 +1015,30 @@ init_env (void)
 static int
 read_from_client (SOCKET sock_fd, char *buf, int size)
 {
+  return read_from_client_with_timeout (sock_fd, buf, size, 60);
+}
+
+static int
+read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size,
+			       int timeout_sec)
+{
   int read_len;
 #ifdef ASYNC_MODE
   SELECT_MASK read_mask;
   int nfound;
   int maxfd;
-  struct timeval timeout = { 60, 0 };
+  struct timeval timeout_val, *timeout_ptr;
+
+  if (timeout_sec < 0)
+    {
+      timeout_ptr = NULL;
+    }
+  else
+    {
+      timeout_val.tv_sec = timeout_sec;
+      timeout_val.tv_usec = 0;
+      timeout_ptr = &timeout_val;
+    }
 #endif
 
 #ifdef ASYNC_MODE
@@ -1032,7 +1047,7 @@ read_from_client (SOCKET sock_fd, char *buf, int size)
   maxfd = (int) sock_fd + 1;
   nfound =
     select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0,
-	    &timeout);
+	    timeout_ptr);
   if (nfound < 0)
     {
       return -1;
@@ -1058,12 +1073,30 @@ read_from_client (SOCKET sock_fd, char *buf, int size)
 static int
 write_to_client (SOCKET sock_fd, char *buf, int size)
 {
+  return write_to_client_with_timeout (sock_fd, buf, size, 60);
+}
+
+static int
+write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size,
+			      int timeout_sec)
+{
   int write_len;
 #ifdef ASYNC_MODE
   SELECT_MASK write_mask;
   int nfound;
   int maxfd;
-  struct timeval timeout = { 60, 0 };
+  struct timeval timeout_val, *timeout_ptr;
+
+  if (timeout_sec < 0)
+    {
+      timeout_ptr = NULL;
+    }
+  else
+    {
+      timeout_val.tv_sec = timeout_sec;
+      timeout_val.tv_usec = 0;
+      timeout_ptr = &timeout_val;
+    }
 #endif
 
   if (IS_INVALID_SOCKET (sock_fd))
@@ -1075,7 +1108,7 @@ write_to_client (SOCKET sock_fd, char *buf, int size)
   maxfd = (int) sock_fd + 1;
   nfound =
     select (maxfd, (SELECT_MASK *) 0, &write_mask, (SELECT_MASK *) 0,
-	    &timeout);
+	    timeout_ptr);
   if (nfound < 0)
     {
       return -1;
@@ -1098,6 +1131,7 @@ write_to_client (SOCKET sock_fd, char *buf, int size)
   return write_len;
 }
 
+
 static int
 run_appl_server (int as_index)
 {
@@ -1113,17 +1147,17 @@ run_appl_server (int as_index)
 
   while (1)
     {
-      MUTEX_LOCK (run_appl_mutex);
+      pthread_mutex_lock (&run_appl_mutex);
       if (run_appl_server_flag)
 	{
-	  MUTEX_UNLOCK (run_appl_mutex);
+	  pthread_mutex_unlock (&run_appl_mutex);
 	  SLEEP_MILISEC (0, 100);
 	  continue;
 	}
       else
 	{
 	  run_appl_server_flag = 1;
-	  MUTEX_UNLOCK (run_appl_mutex);
+	  pthread_mutex_unlock (&run_appl_mutex);
 	  break;
 	}
     }
@@ -1140,8 +1174,10 @@ run_appl_server (int as_index)
     {
       signal (SIGCHLD, SIG_DFL);
 
-      for (i = 3; i < 128; i++)
-	close (i);
+      for (i = 3; i <= max_open_fd; i++)
+	{
+	  close (i);
+	}
 #endif
 
       sprintf (port_str, "%s=%s%s.%d", PORT_NAME_ENV_STR,
@@ -1349,12 +1385,6 @@ retry:
 
   setsockopt (srv_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
 	      sizeof (one));
-
-#if !defined(WINDOWS)
-  tv.tv_sec = SOCKET_TIMEOUT_SEC;
-  tv.tv_usec = 0;
-  setsockopt (srv_sock_fd, SOL_SOCKET, SO_RCVTIMEO, (char *) &tv, sizeof tv);
-#endif
 
   return srv_sock_fd;
 }
@@ -1580,7 +1610,7 @@ check_cas_log (char *br_name, int as_index)
 
   if (IS_NOT_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
     return;
-  if (shm_appl->sql_log_mode == SQL_LOG_MODE_NONE)
+  if (shm_appl->as_info[as_index].cur_sql_log_mode == SQL_LOG_MODE_NONE)
     return;
 
   get_cubrid_file (FID_SQL_LOG_DIR, dirname);
@@ -1607,13 +1637,6 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
   int read_len;
   int tmp_int;
   char *tmp_p;
-#if defined(WINDOWS)
-  int glo_size;
-#endif
-
-#if defined(WINDOWS)
-  shm_appl->as_info[as_index].glo_flag = 0;
-#endif
 
   msg_size = SRV_CON_DB_INFO_SIZE;
   while (msg_size > 0)
@@ -1652,15 +1675,6 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
 
   while (1)
     {
-#if defined(WINDOWS)
-      while (shm_appl->as_info[as_index].glo_flag)
-	{
-	  SLEEP_MILISEC (0, 10);
-	}
-      shm_appl->as_info[as_index].glo_flag = 1;
-      shm_appl->as_info[as_index].glo_read_size = -1;
-      shm_appl->as_info[as_index].glo_write_size = -1;
-#endif
       tmp_int = 4;
       tmp_p = (char *) &msg_size;
       while (tmp_int > 0)
@@ -1693,27 +1707,6 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
 	  msg_size -= read_len;
 	}
 
-#if defined(WINDOWS)
-      while (shm_appl->as_info[as_index].glo_read_size < 0)
-	{
-	  SLEEP_MILISEC (0, 10);
-	}
-      glo_size = shm_appl->as_info[as_index].glo_read_size;
-      while (glo_size > 0)
-	{
-	  read_len =
-	    read_from_cas_client (clt_sock_fd, read_buf,
-				  (glo_size >
-				   sizeof (read_buf) ? sizeof (read_buf) :
-				   glo_size), as_index, cas_pid);
-	  if (read_len <= 0)
-	    return -1;
-	  if (send (srv_sock_fd, read_buf, read_len, 0) < read_len)
-	    return -1;
-	  glo_size -= read_len;
-	}
-#endif
-
       if (recv (srv_sock_fd, (char *) &msg_size, 4, 0) < 4)
 	{
 	  return -1;
@@ -1736,28 +1729,6 @@ process_cas_request (int cas_pid, int as_index, SOCKET clt_sock_fd,
 	    return -1;
 	  msg_size -= read_len;
 	}
-
-#if defined(WINDOWS)
-      while (shm_appl->as_info[as_index].glo_write_size < 0)
-	{
-	  SLEEP_MILISEC (0, 10);
-	}
-      glo_size = shm_appl->as_info[as_index].glo_write_size;
-      while (glo_size > 0)
-	{
-	  read_len =
-	    recv (srv_sock_fd, read_buf,
-		  (glo_size >
-		   sizeof (read_buf) ? sizeof (read_buf) : glo_size), 0);
-	  if (read_len <= 0)
-	    {
-	      return -1;
-	    }
-	  if (write_to_client (clt_sock_fd, read_buf, read_len) < 0)
-	    return -1;
-	  glo_size -= read_len;
-	}
-#endif
 
       if (shm_appl->as_info[as_index].close_flag
 	  || shm_appl->as_info[as_index].pid != cas_pid)
@@ -1837,12 +1808,11 @@ find_idle_cas (void)
 	{
 	  continue;
 	}
-#if !defined (WINDOWS)
       if (shm_appl->as_info[i].uts_status == UTS_STATUS_IDLE
-	  && kill (shm_appl->as_info[i].pid, 0) == 0)
-#else
-      if (shm_appl->as_info[i].uts_status == UTS_STATUS_IDLE)
+#if !defined (WINDOWS)
+	  && kill (shm_appl->as_info[i].pid, 0) == 0
 #endif
+	)
 	{
 	  idle_cas_id = i;
 	  wait_cas_id = -1;
@@ -1865,7 +1835,7 @@ find_idle_cas (void)
 
   if (wait_cas_id >= 0)
     {
-      MUTEX_LOCK (con_status_mutex);
+      pthread_mutex_lock (&con_status_mutex);
       CON_STATUS_LOCK (&(shm_appl->as_info[wait_cas_id]),
 		       CON_STATUS_LOCK_BROKER);
       if (shm_appl->as_info[wait_cas_id].con_status == CON_STATUS_OUT_TRAN)
@@ -1876,7 +1846,7 @@ find_idle_cas (void)
 	}
       CON_STATUS_UNLOCK (&(shm_appl->as_info[wait_cas_id]),
 			 CON_STATUS_LOCK_BROKER);
-      MUTEX_UNLOCK (con_status_mutex);
+      pthread_mutex_unlock (&con_status_mutex);
     }
 
 #if defined(WINDOWS)

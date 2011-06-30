@@ -39,7 +39,6 @@
 #include "schema_manager.h"
 #include "transaction_cl.h"
 #include "system_parameter.h"
-#include "dbval.h"
 #if defined(WINDOWS)
 #include "misc_string.h"
 #endif /* WINDOWS */
@@ -55,16 +54,121 @@
 #include "network_interface_cl.h"
 #include "view_transform.h"
 
+/* this must be the last header file included!!! */
+#include "dbval.h"
+
 #define UNIQUE_SAVEPOINT_ADD_ATTR_MTHD "aDDaTTRmTHD"
 #define UNIQUE_SAVEPOINT_CREATE_ENTITY "cREATEeNTITY"
 #define UNIQUE_SAVEPOINT_MULTIPLE_RENAME "mULTIPLErENAME"
 #define UNIQUE_SAVEPOINT_MULTIPLE_ALTER "mULTIPLEaLTER"
 #define UNIQUE_SAVEPOINT_TRUNCATE "tRUnCATE"
+#define UNIQUE_SAVEPOINT_CHANGE_ATTR "cHANGEaTTR"
+
+#define QUERY_MAX_SIZE	1024 * 1024
 
 typedef enum
 {
   DO_INDEX_CREATE, DO_INDEX_DROP
 } DO_INDEX;
+
+typedef enum
+{
+  SM_ATTR_CHG_NOT_NEEDED = 0,
+  SM_ATTR_CHG_ONLY_SCHEMA = 1,
+  SM_ATTR_CHG_WITH_ROW_UPDATE = 2,
+  SM_ATTR_CHG_BEST_EFFORT = 3	/* same as SM_ATTR_CHG_WITH_ROW_UPDATE,
+				 * but there is a significant chance that
+				 * the operation will fail */
+} SM_ATTR_CHG_SOL;
+
+/* The ATT_CHG_XXX enum bit flags describe the status of an attribute specific
+ * property (sm_attr_properties_chg). Each property is initialized with
+ * 'ATT_CHG_PROPERTY_NOT_CHECKED' value, and keeps it until is marked as
+ * checked (by setting to zero) and then set corresponding bits.
+ * '_OLD' and '_NEW' flags track simple presence of property in the attribute
+ * existing schema and new definition, while the upper values flags are set
+ * upon more cross-checkings. Some flags applies only to certain properties
+ * (like '.._TYPE_..' for domain of attribute)
+ * !! Values in enum should be kept in this order as some internal checks
+ * rely on the order !!*/
+enum
+{
+  /* property present in existing schema */
+  ATT_CHG_PROPERTY_PRESENT_OLD = 0x1,
+  /* property present in new attribute definition */
+  ATT_CHG_PROPERTY_PRESENT_NEW = 0x2,
+  /* present in OLD , lost in NEW */
+  ATT_CHG_PROPERTY_LOST = 0x4,
+  /* not present in OLD , gained in NEW */
+  ATT_CHG_PROPERTY_GAINED = 0x8,
+  /* property is not changed (not present in both current schema or
+   * new defition or present in both but not affected in any way) */
+  ATT_CHG_PROPERTY_UNCHANGED = 0x10,
+  /* property is changed (i.e.: both present in old an new , but different) */
+  ATT_CHG_PROPERTY_DIFF = 0x20,
+  /* type : precision increase : varchar(2) -> varchar (10) */
+  ATT_CHG_TYPE_PREC_INCR = 0x100,
+  /* type : for COLLECTION or OBJECT (Class) type : the new SET is more
+   * general (the new OBJECT is a super-class) */
+  ATT_CHG_TYPE_SET_CLS_COMPAT = 0x200,
+  /* type : upgrade : int -> bigint */
+  ATT_CHG_TYPE_UPGRADE = 0x400,
+  /* type : changed, but needs checking if new domain supports all existing
+   * values , i.e : int -> char(3) */
+  ATT_CHG_TYPE_NEED_ROW_CHECK = 0x800,
+  /* type : pseudo-upgrade : datetime -> time: this is succesful as a cast,
+   * but may fail due to unique constraint*/
+  ATT_CHG_TYPE_PSEUDO_UPGRADE = 0x1000,
+  /* type : not supported with existing configuration */
+  ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG = 0x2000,
+  /* type : upgrade : not supported */
+  ATT_CHG_TYPE_NOT_SUPPORTED = 0x4000,
+  /* property was not checked
+   * needs to be the highest value in enum */
+  ATT_CHG_PROPERTY_NOT_CHECKED = 0x10000
+};
+
+/* Enum to access array from 'sm_attr_properties_chg' struct
+ */
+enum
+{
+  P_NAME = 0,			/* name of attribute */
+  P_NOT_NULL,			/* constraint NOT NULL */
+  P_DEFAULT_VALUE,		/* DEFAULT VALUE of attribute */
+  P_CONSTR_CHECK,		/* constraint CHECK */
+  P_DEFFERABLE,			/* DEFFERABLE */
+  P_ORDER,			/* ORDERING definition */
+  P_AUTO_INCR,			/* has AUTO INCREMENT */
+  P_CONSTR_FK,			/* constraint FOREIGN KEY */
+  P_S_CONSTR_PK,		/* constraint PRIMARY KEY only on one single column : the checked attribute */
+  P_M_CONSTR_PK,		/* constraint PRIMARY KEY on more columns, including checked attribute */
+  P_S_CONSTR_UNI,		/* constraint UNIQUE only on one single column : the checked attribute */
+  P_M_CONSTR_UNI,		/* constraint UNIQUE on more columns, including checked attribute */
+  P_CONSTR_NON_UNI,		/* has an non-unique index defined on it, should apply only
+				 * for existing schema (as you cannot add a non-index with
+				 * ALTER CHANGE)*/
+  P_TYPE,			/* type (domain) change */
+  P_IS_PARTITION_COL,		/* class has partitions */
+  NUM_ATT_CHG_PROP
+};
+
+/* sm_attr_properties_chg :
+ * structure used for checking existing attribute definition (from schema)
+ * and new attribute definition
+ * Array is accessed using enum values define above.
+ */
+typedef struct sm_attr_properties_chg SM_ATTR_PROP_CHG;
+struct sm_attr_properties_chg
+{
+  int p[NUM_ATT_CHG_PROP];	/* 'change' property */
+  SM_CONSTRAINT_INFO *constr_info;
+  SM_CONSTRAINT_INFO *new_constr_info;
+  int att_id;
+  SM_NAME_SPACE name_space;	/* class, shared or normal attribute */
+  bool class_has_subclass;	/* if class is part of a hierarchy and if
+				 * it has subclasses*/
+};
+
 
 static int drop_class_name (const char *name);
 
@@ -74,6 +178,9 @@ static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser,
 					  PT_NODE * const alter);
 static int do_alter_clause_drop_index (PARSER_CONTEXT * const parser,
 				       PT_NODE * const alter);
+static int do_alter_change_auto_increment (PARSER_CONTEXT * const parser,
+					   PT_NODE * const alter);
+
 static int do_rename_internal (const char *const old_name,
 			       const char *const new_name);
 static DB_CONSTRAINT_TYPE get_reverse_unique_index_type (const bool
@@ -109,6 +216,94 @@ static int add_query_to_virtual_class (PARSER_CONTEXT * parser,
 				       DB_CTMPL * ctemplate,
 				       const PT_NODE * queries);
 static int do_copy_indexes (MOP classmop, SM_CLASS * src_class);
+
+static int do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
+					     PT_NODE * const alter);
+
+static int do_change_att_schema_only (PARSER_CONTEXT * parser,
+				      DB_CTMPL * ctemplate,
+				      PT_NODE * attribute,
+				      PT_NODE * old_name_node,
+				      PT_NODE * constraints,
+				      SM_ATTR_PROP_CHG * attr_chg_prop,
+				      SM_ATTR_CHG_SOL * change_mode);
+
+static int build_attr_change_map (PARSER_CONTEXT * parser,
+				  DB_CTMPL * ctemplate,
+				  PT_NODE * attr_def,
+				  PT_NODE * attr_old_name,
+				  PT_NODE * constraints,
+				  SM_ATTR_PROP_CHG * attr_chg_properties);
+
+static int build_att_type_change_map (TP_DOMAIN * curr_domain,
+				      DB_DOMAIN * req_domain,
+				      SM_ATTR_PROP_CHG * attr_chg_properties);
+
+static int check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t,
+				  const SM_ATTR_PROP_CHG * attr_chg_prop,
+				  SM_ATTR_CHG_SOL chg_how,
+				  bool log_error_allowed, bool * new_attempt);
+
+static bool is_att_property_structure_checked (const SM_ATTR_PROP_CHG *
+					       attr_chg_properties);
+
+static bool is_att_change_needed (const SM_ATTR_PROP_CHG *
+				  attr_chg_properties);
+
+static void reset_att_property_structure (SM_ATTR_PROP_CHG *
+					  attr_chg_properties);
+
+static bool is_att_prop_set (const int prop, const int value);
+
+static int get_att_order_from_def (PT_NODE * attribute, bool * ord_first,
+				   const char **ord_after_name);
+
+static int get_att_default_from_def (PARSER_CONTEXT * parser,
+				     PT_NODE * attribute,
+				     DB_VALUE ** default_value);
+
+static int do_update_new_notnull_cols_without_default (PARSER_CONTEXT *
+						       parser,
+						       PT_NODE * alter,
+						       MOP class_mop);
+
+static int do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT *
+						       parser,
+						       PT_NODE * alter,
+						       PT_NODE * attr_list,
+						       int attr_count,
+						       MOP class_mop);
+
+static bool is_attribute_primary_key (const char *class_name,
+				      const char *attr_name);
+
+static const char *get_hard_default_for_type (PT_TYPE_ENUM type);
+
+static int do_run_upgrade_instances_domain (PARSER_CONTEXT * parser,
+					    OID * p_class_oid, int att_id);
+
+static int do_drop_att_constraints (MOP class_mop,
+				    SM_CONSTRAINT_INFO * constr_info_list);
+
+static int do_recreate_att_constraints (MOP class_mop,
+					SM_CONSTRAINT_INFO *
+					constr_info_list);
+
+static int check_change_attribute (PARSER_CONTEXT * parser,
+				   DB_CTMPL * ctemplate, PT_NODE * attribute,
+				   PT_NODE * old_name_node,
+				   PT_NODE * constraints,
+				   SM_ATTR_PROP_CHG * attr_chg_prop,
+				   SM_ATTR_CHG_SOL * change_mode);
+
+static int sort_constr_info_list (SM_CONSTRAINT_INFO ** source);
+static int save_constraint_info_from_pt_node (SM_CONSTRAINT_INFO ** save_info,
+					      const PT_NODE *
+					      const pt_constr);
+
+static int do_run_update_query_for_class (char *query, MOP class_mop,
+					  bool suppress_replication,
+					  int *row_count);
 
 /*
  * Function Group :
@@ -171,7 +366,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   entity_name = alter->info.alter.entity_name->info.name.original;
   if (entity_name == NULL)
     {
-      return er_errid ();
+      ERROR1 (error, ER_UNEXPECTED,
+	      "Expecting a class or virtual class name.");
+      return error;
     }
 
   vclass = db_find_class (entity_name);
@@ -231,16 +428,17 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_MODIFY_QUERY:
       if (alter->info.alter.alter_clause.query.query_no_list)
 	{
-	  query_no = alter->info.alter.alter_clause.query.query_no_list->
-	    info.value.data_value.i;
+	  query_no =
+	    alter->info.alter.alter_clause.query.query_no_list->info.value.
+	    data_value.i;
 	}
       else
 	{
 	  query_no = 1;
 	}
-      new_query = parser_print_tree (parser,
-				     alter->info.alter.alter_clause.query.
-				     query);
+      new_query = parser_print_tree_with_quotes (parser,
+						 alter->info.alter.
+						 alter_clause.query.query);
       error = dbt_change_query_spec (ctemplate, new_query, query_no);
       break;
 
@@ -274,8 +472,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       if (error == NO_ERROR)
 	{
 	  error = do_add_attributes (parser, ctemplate,
-				     alter->info.alter.alter_clause.attr_mthd.
-				     attr_def_list, NULL);
+				     alter->info.alter.alter_clause.
+				     attr_mthd.attr_def_list, NULL);
 	  if (error != NO_ERROR)
 	    {
 	      dbt_abort_class (ctemplate);
@@ -284,8 +482,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 
 	  error = do_add_foreign_key_objcache_attr (ctemplate,
-						    alter->info.alter.
-						    constraint_list);
+						    alter->info.
+						    alter.constraint_list);
 	  if (error != NO_ERROR)
 	    {
 	      dbt_abort_class (ctemplate);
@@ -333,8 +531,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    {
 	      error = do_add_methods (parser,
 				      ctemplate,
-				      alter->info.alter.alter_clause.
-				      attr_mthd.mthd_def_list);
+				      alter->info.alter.
+				      alter_clause.attr_mthd.mthd_def_list);
 	    }
 	  if (error != NO_ERROR)
 	    {
@@ -346,8 +544,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  if (alter->info.alter.alter_clause.attr_mthd.mthd_file_list != NULL)
 	    {
 	      error = do_add_method_files (parser, ctemplate,
-					   alter->info.alter.alter_clause.
-					   attr_mthd.mthd_file_list);
+					   alter->info.alter.
+					   alter_clause.attr_mthd.
+					   mthd_file_list);
 	    }
 	  if (error != NO_ERROR)
 	    {
@@ -358,6 +557,57 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	  create_index = alter->info.alter.create_index;
 	}
+      break;
+
+    case PT_RESET_QUERY:
+      {
+	DB_ATTRIBUTE *cur_attr = db_get_attributes (vclass);
+
+	assert (db_get_subclasses (vclass) == NULL);
+	assert (db_get_superclasses (vclass) == NULL);
+
+	/* drop all attributes */
+	while (cur_attr)
+	  {
+	    assert (cur_attr->header.name != NULL);
+	    error = dbt_drop_attribute (ctemplate, cur_attr->header.name);
+	    if (error != NO_ERROR)
+	      {
+		goto reset_query_error;
+	      }
+	    cur_attr = db_attribute_next (cur_attr);
+	  }
+
+	/* also drop any query specs there may have been */
+	error = dbt_reset_query_spec (ctemplate);
+	if (error != NO_ERROR)
+	  {
+	    goto reset_query_error;
+	  }
+
+	/* add the new attributes */
+	error = do_add_attributes (parser, ctemplate,
+				   alter->info.alter.alter_clause.query.
+				   attr_def_list, NULL);
+	if (error != NO_ERROR)
+	  {
+	    goto reset_query_error;
+	  }
+
+	/* and add the single query spec we allow */
+	error = do_add_queries (parser, ctemplate,
+				alter->info.alter.alter_clause.query.query);
+	if (error != NO_ERROR)
+	  {
+	    goto reset_query_error;
+	  }
+
+	break;
+
+      reset_query_error:
+	dbt_abort_class (ctemplate);
+	return error;
+      }
       break;
 
     case PT_DROP_ATTR_MTHD:
@@ -470,6 +720,14 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    {
 	      pt_desired_type = p->type_enum;
 
+	      if (pt_desired_type == DB_TYPE_BLOB
+		  || pt_desired_type == DB_TYPE_CLOB)
+		{
+		  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+		  break;
+		}
+
 	      /* try to coerce the default value into the attribute's type */
 	      d = data_default->info.data_default.default_value;
 	      d = pt_semantic_check (parser, d);
@@ -519,8 +777,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    {
 	      error = do_add_methods (parser,
 				      ctemplate,
-				      alter->info.alter.alter_clause.
-				      attr_mthd.mthd_def_list);
+				      alter->info.alter.
+				      alter_clause.attr_mthd.mthd_def_list);
 	    }
 	  if (error != NO_ERROR)
 	    {
@@ -561,10 +819,11 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       for (p = alter->info.alter.super.resolution_list;
 	   p && p->node_type == PT_RESOLUTION; p = p->next)
 	{
-	  sup_class = db_find_class (p->info.resolution.of_sup_class_name->
-				     info.name.original);
-	  attr_mthd_name = p->info.resolution.attr_mthd_name->
-	    info.name.original;
+	  sup_class =
+	    db_find_class (p->info.resolution.of_sup_class_name->info.name.
+			   original);
+	  attr_mthd_name =
+	    p->info.resolution.attr_mthd_name->info.name.original;
 	  error = dbt_drop_resolution (ctemplate, sup_class, attr_mthd_name);
 	  if (error != NO_ERROR)
 	    {
@@ -676,16 +935,17 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_RENAME_ATTR_MTHD:
       if (alter->info.alter.alter_clause.rename.old_name)
 	{
-	  old_name = alter->info.alter.alter_clause.rename.old_name->
-	    info.name.original;
+	  old_name =
+	    alter->info.alter.alter_clause.rename.old_name->info.name.
+	    original;
 	}
       else
 	{
 	  old_name = NULL;
 	}
 
-      new_name = alter->info.alter.alter_clause.rename.new_name->
-	info.name.original;
+      new_name =
+	alter->info.alter.alter_clause.rename.new_name->info.name.original;
 
       if (alter->info.alter.alter_clause.rename.meta == PT_META_ATTR)
 	{
@@ -704,10 +964,12 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  break;
 
 	case PT_FUNCTION_RENAME:
-	  mthd_name = alter->info.alter.alter_clause.rename.mthd_name->
-	    info.name.original;
-	  error = dbt_change_method_implementation (ctemplate, mthd_name,
-						    class_attr, new_name);
+	  mthd_name =
+	    alter->info.alter.alter_clause.rename.mthd_name->info.name.
+	    original;
+	  error =
+	    dbt_change_method_implementation (ctemplate, mthd_name,
+					      class_attr, new_name);
 	  break;
 
 	  /* the following case is not yet supported,
@@ -718,10 +980,12 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	     class_attr, since for our purpose we don't need it */
 
 	case PT_FILE_RENAME:
-	  old_name = (char *) alter->info.alter.alter_clause.rename.old_name->
-	    info.file_path.string->info.value.data_value.str->bytes;
-	  new_name = (char *) alter->info.alter.alter_clause.rename.new_name->
-	    info.file_path.string->info.value.data_value.str->bytes;
+	  old_name =
+	    (char *) alter->info.alter.alter_clause.rename.old_name->info.
+	    file_path.string->info.value.data_value.str->bytes;
+	  new_name =
+	    (char *) alter->info.alter.alter_clause.rename.new_name->info.
+	    file_path.string->info.value.data_value.str->bytes;
 	  error = dbt_rename_method_file (ctemplate, old_name, new_name);
 	  break;
 
@@ -759,8 +1023,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  {
 	    assert (alter->info.alter.constraint_list->next == NULL);
 	    assert (alter->info.alter.constraint_list->node_type == PT_NAME);
-	    constraint_name = alter->info.alter.constraint_list->info.name.
-	      original;
+	    constraint_name =
+	      alter->info.alter.constraint_list->info.name.original;
 	    assert (constraint_name != NULL);
 	    cons = classobj_find_class_index (ctemplate->current,
 					      constraint_name);
@@ -831,8 +1095,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  error = do_create_partition (parser, alter, vclass, ctemplate);
 	  if (error == NO_ERROR)
 	    {
-	      error = do_check_fk_constraints (ctemplate, alter->info.alter.
-					       constraint_list);
+	      error =
+		do_check_fk_constraints (ctemplate,
+					 alter->info.alter.constraint_list);
 	    }
 	  break;
 
@@ -879,8 +1144,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	  partnum = error;
 	  coalesce_num = (partnum
-			  - (alter->info.alter.alter_clause.partition.size->
-			     info.value.data_value.i));
+			  -
+			  (alter->info.alter.alter_clause.partition.
+			   size->info.value.data_value.i));
 	  sprintf (partnum_str, "#%d", coalesce_num);
 
 	  error = do_remove_partition_pre (ctemplate, keycol, partnum_str);
@@ -897,7 +1163,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		  break;
 		}
 
-	      error = sm_update_statistics (vclass);
+	      error = sm_update_statistics (vclass, false);
 	      if (error != NO_ERROR)
 		{
 		  break;
@@ -917,7 +1183,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		      continue;	/* not partitioned */
 		    }
 
-		  error = sm_update_statistics (objs->op);
+		  error = sm_update_statistics (objs->op, false);
 		  if (error != NO_ERROR)
 		    {
 		      break;
@@ -933,7 +1199,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		      break;
 		    }
 
-		  error = sm_update_statistics (names->info.name.db_object);
+		  error =
+		    sm_update_statistics (names->info.name.db_object, false);
 		  if (error != NO_ERROR)
 		    {
 		      break;
@@ -964,8 +1231,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  && alter->info.alter.code != PT_DROP_RESOLUTION)
 	{
 	  error = do_add_resolutions (parser, ctemplate,
-				      alter->info.alter.super.
-				      resolution_list);
+				      alter->info.alter.
+				      super.resolution_list);
 	}
     }
 
@@ -1008,6 +1275,31 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
     }
 
+  /* If we have an ADD COLUMN x NOT NULL without a default value, the existing
+   * rows will be filled with NULL for the new column by default.
+   * For compatibility with MySQL, we can auto-fill some column types with
+   * "hard defaults", like 0 for integer types.
+   *
+   * THIS CAN TAKE A LONG TIME (it runs an UPDATE), and can be turned off by setting
+   * "add_col_not_null_no_default_behavior" to "cubrid".
+   * The parameter is true by default.
+   */
+  if (alter_code == PT_ADD_ATTR_MTHD &&
+      PRM_ADD_COLUMN_UPDATE_HARD_DEFAULT == true)
+    {
+      error =
+	do_update_new_notnull_cols_without_default (parser, alter, vclass);
+      if (error != NO_ERROR)
+	{
+	  if (error != ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	    }
+	  return error;
+	}
+    }
+
+
   if (need_partition_post_work == false)
     {
       return NO_ERROR;
@@ -1022,10 +1314,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       if (alter_code == PT_APPLY_PARTITION)
 	{
 	  error = do_update_partition_newly (entity_name,
-					     alter->info.alter.
-					     alter_clause.partition.info->
-					     info.partition.keycol->info.
-					     name.original);
+					     alter->info.alter.alter_clause.
+					     partition.info->info.partition.
+					     keycol->info.name.original);
 	}
       else if (alter_code == PT_ADD_HASHPARTITION
 	       || alter_code == PT_REORG_PARTITION)
@@ -1183,8 +1474,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 			      continue;	/* reused partition */
 			    }
 			  if (ws_mop_compare (objs->op,
-					      parts->info.parts.name->
-					      info.name.db_object) == 0)
+					      parts->info.parts.name->info.
+					      name.db_object) == 0)
 			    {
 			      break;
 			    }
@@ -1255,9 +1546,10 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	  if (delnames != NULL)
 	    {
-	      error = do_drop_partition_list (vclass, alter->
-					      info.alter.alter_clause.
-					      partition.name_list);
+	      error =
+		do_drop_partition_list (vclass,
+					alter->info.alter.
+					alter_clause.partition.name_list);
 	      if (error != NO_ERROR)
 		{
 		  goto alter_partition_fail;
@@ -1314,9 +1606,10 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       break;
 
     case PT_DROP_PARTITION:
-      error = do_drop_partition_list (vclass, alter->
-				      info.alter.alter_clause.partition.
-				      name_list);
+      error =
+	do_drop_partition_list (vclass,
+				alter->info.alter.alter_clause.
+				partition.name_list);
       if (error != NO_ERROR)
 	{
 	  goto alter_partition_fail;
@@ -1421,8 +1714,8 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser,
     }
   error_code =
     create_or_drop_index_helper (parser,
-				 alter->info.alter.constraint_list->info.name.
-				 original,
+				 alter->info.alter.constraint_list->info.
+				 name.original,
 				 alter->info.alter.alter_clause.index.reverse,
 				 alter->info.alter.alter_clause.index.unique,
 				 NULL, NULL, obj, DO_INDEX_DROP);
@@ -1436,6 +1729,84 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser,
 error_exit:
   return error_code;
 }
+
+
+/*
+ * do_alter_change_auto_increment() - Executes an
+ *               ALTER TABLE ... AUTO_INCREMENT = x statement.
+ *   return: Error code
+ *   parser(in): Parser context
+ *   alter(in/out): Parse tree of a PT_CHANGE_AUTO_INCREMENT clause.
+ */
+
+static int
+do_alter_change_auto_increment (PARSER_CONTEXT * const parser,
+				PT_NODE * const alter)
+{
+  const char *entity_name = NULL;
+  DB_OBJECT *class_obj = NULL;
+  DB_ATTRIBUTE *cur_attr = NULL;
+  MOP ai_serial = NULL;
+  unsigned int curval = 0, newval = 0;
+  int error = NO_ERROR;
+  int au_save = 0;
+
+  entity_name = alter->info.alter.entity_name->info.name.original;
+  if (entity_name == NULL)
+    {
+      ERROR1 (error, ER_UNEXPECTED, "Expecting a class name.");
+      goto change_ai_error;
+    }
+
+  class_obj = db_find_class (entity_name);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      goto change_ai_error;
+    }
+
+  cur_attr = db_get_attributes (class_obj);
+
+  /* find the attribute that has auto_increment */
+  for (cur_attr = db_get_attributes (class_obj); cur_attr != NULL;
+       cur_attr = db_attribute_next (cur_attr))
+    {
+      if (cur_attr->auto_increment == NULL)
+	{
+	  continue;
+	}
+      if (ai_serial != NULL)
+	{
+	  /* we already found a serial. AMBIGUITY! */
+	  ERROR0 (error, ER_AUTO_INCREMENT_SINGLE_COL_AMBIGUITY);
+	  goto change_ai_error;
+	}
+      else
+	{
+	  ai_serial = cur_attr->auto_increment;
+	}
+    }
+
+  if (ai_serial == NULL)
+    {
+      /* we ought to have exactly ONE proper attribute with auto increment */
+      ERROR0 (error, ER_AUTO_INCREMENT_SINGLE_COL_AMBIGUITY);
+      goto change_ai_error;
+    }
+
+  AU_DISABLE (au_save);
+  error = do_change_auto_increment_serial (parser, ai_serial,
+					   alter->info.alter.alter_clause.
+					   auto_increment.start_value);
+  AU_ENABLE (au_save);
+
+
+  return error;
+
+change_ai_error:
+  return error;
+}
+
 
 /*
  * do_alter() -
@@ -1501,6 +1872,12 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	case PT_DROP_INDEX_CLAUSE:
 	  error_code = do_alter_clause_drop_index (parser, crt_clause);
 	  break;
+	case PT_CHANGE_AUTO_INCREMENT:
+	  error_code = do_alter_change_auto_increment (parser, crt_clause);
+	  break;
+	case PT_CHANGE_ATTR:
+	  error_code = do_alter_clause_change_attribute (parser, crt_clause);
+	  break;
 	default:
 	  /* This code might not correctly handle a list of ALTER clauses so
 	     we keep crt_clause->next to NULL during its execution just to be
@@ -1520,10 +1897,11 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   return error_code;
 
 error_exit:
-  if (do_rollback)
+  if (do_rollback && error_code != ER_LK_UNILATERALLY_ABORTED)
     {
       tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_ALTER);
     }
+
   return error_code;
 }
 
@@ -2376,10 +2754,11 @@ do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   return error;
 
 error_exit:
-  if (do_rollback)
+  if (do_rollback && error != ER_LK_UNILATERALLY_ABORTED)
     {
       tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_MULTIPLE_RENAME);
     }
+
   return error;
 }
 
@@ -3114,7 +3493,8 @@ static int adjust_partition_size (MOP class_);
 static const char *get_attr_name (PT_NODE * attribute);
 static int do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 			     PT_NODE * atts, bool error_on_not_normal);
-static int do_add_attribute_from_select_column (DB_CTMPL * ctemplate,
+static int do_add_attribute_from_select_column (PARSER_CONTEXT * parser,
+						DB_CTMPL * ctemplate,
 						DB_QUERY_TYPE * column);
 static DB_QUERY_TYPE *query_get_column_with_name (DB_QUERY_TYPE *
 						  query_columns,
@@ -3188,14 +3568,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	  part_add = PT_PARTITION_HASH;
 	}
 
-      intl_mbs_lower ((char *) node->info.alter.entity_name->info.name.
-		      original, class_name);
+      intl_mbs_lower ((char *) node->info.alter.entity_name->info.
+		      name.original, class_name);
     }
   else if (node->node_type == PT_CREATE_ENTITY)
     {
       pinfo = node->info.create_entity.partition_info;
-      intl_mbs_lower ((char *) node->info.create_entity.entity_name->info.
-		      name.original, class_name);
+      intl_mbs_lower ((char *) node->info.create_entity.entity_name->
+		      info.name.original, class_name);
     }
   else
     {
@@ -3273,8 +3653,9 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * node,
 	      goto end_create;
 	    }
 	  new_hashsize
-	    = node->info.alter.alter_clause.partition.size->info.value.
-	    data_value.i;
+	    =
+	    node->info.alter.alter_clause.partition.size->info.
+	    value.data_value.i;
 	}
       else
 	{
@@ -3704,7 +4085,8 @@ insert_partition_catalog (PARSER_CONTEXT * parser, DB_CTMPL * clstmpl,
 
   if (node->node_type == PT_PARTITION)
     {
-      query = parser_print_tree (parser, node->info.partition.expr);
+      query = parser_print_tree_with_quotes (parser,
+					     node->info.partition.expr);
       if (query == NULL)
 	{
 	  goto fail_return;
@@ -3923,7 +4305,9 @@ evaluate_partition_expr (DB_VALUE * expr, DB_VALUE * ival)
   PARSER_CONTEXT *expr_parser = NULL;
 
   if (expr == NULL || ival == NULL)
-    return NULL;
+    {
+      return NULL;
+    }
 
   expr_parser = parser_create_parser ();
   if (expr_parser == NULL)
@@ -3941,13 +4325,12 @@ evaluate_partition_expr (DB_VALUE * expr, DB_VALUE * ival)
 	  return ival;
 	}
 
-      rstnode =
-	parser_walk_tree (expr_parser, pcol, replace_name_with_value, ival,
-			  NULL, NULL);
+      rstnode = parser_walk_tree (expr_parser, pcol,
+				  replace_name_with_value, ival, NULL, NULL);
 
       /* expression type check and constant evaluation */
       expr_type = pt_semantic_type (expr_parser, pcol, NULL);
-      if (!expr_type)
+      if (expr_type == NULL)
 	{
 	  parser_free_parser (expr_parser);
 	  return NULL;
@@ -3963,6 +4346,7 @@ evaluate_partition_expr (DB_VALUE * expr, DB_VALUE * ival)
 	  db_value_clone (pt_value_to_db (expr_parser, expr_type), ival);
 	}
 
+      parser_free_tree (expr_parser, expr_type);
       parser_free_parser (expr_parser);
       return ival;
     }
@@ -4039,7 +4423,11 @@ apply_partition_list_search (SM_CLASS * smclass, DB_VALUE * sval,
 	  if ((DB_IS_NULL (sval) && DB_IS_NULL (&element))
 	      || db_value_compare (sval, &element) == DB_EQ)
 	    {
-	      strcpy (retbuf, pname_str);
+	      strncpy (retbuf, pname_str,
+		       MIN (PARTITION_VARCHAR_LEN,
+			    DB_GET_STRING_SIZE (&pname)));
+	      retbuf[MIN (PARTITION_VARCHAR_LEN,
+			  DB_GET_STRING_SIZE (&pname))] = '\0';
 	      error = NO_ERROR;
 	      goto end_return;
 	    }
@@ -4158,7 +4546,9 @@ apply_partition_range_search (SM_CLASS * smclass, DB_VALUE * sval,
     {
       goto clear_end;
     }
-  strcpy (retbuf, p);
+  strncpy (retbuf, p,
+	   MIN (PARTITION_VARCHAR_LEN, DB_GET_STRING_SIZE (&pname)));
+  retbuf[MIN (PARTITION_VARCHAR_LEN, DB_GET_STRING_SIZE (&pname))] = '\0';
 
   error = NO_ERROR;
 
@@ -4533,7 +4923,8 @@ find_partition_attr (PARSER_CONTEXT * parser, PT_NODE * node,
 	      return NULL;
 	    }
 
-	  if (intl_mbs_casecmp (node->info.name.original, mbs2) == 0)
+	  if (intl_mbs_ncasecmp (node->info.name.original, mbs2,
+				 DB_GET_STRING_SIZE (ppi->attr)) == 0)
 	    {
 	      ppi->wrkmap |= PATTR_KEY;
 	    }
@@ -4829,11 +5220,13 @@ convert_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_UNARY_MINUS:
 	case PT_POSITION:
 	case PT_SUBSTRING:
+	case PT_SUBSTRING_INDEX:
 	case PT_OCTET_LENGTH:
 	case PT_BIT_LENGTH:
 	case PT_CHAR_LENGTH:
 	case PT_LOWER:
 	case PT_UPPER:
+	case PT_MD5:
 	case PT_TRIM:
 	case PT_LTRIM:
 	case PT_RTRIM:
@@ -4906,29 +5299,35 @@ convert_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_FIELD:
 	case PT_LEFT:
 	case PT_RIGHT:
+	case PT_REPEAT:
+	case PT_SPACE:
 	case PT_LOCATE:
 	case PT_MID:
 	case PT_STRCMP:
 	case PT_REVERSE:
 	case PT_BIT_COUNT:
 	case PT_DATEF:
+	case PT_TIMEF:
 	case PT_DATEDIFF:
+	case PT_TIMEDIFF:
 	case PT_SCHEMA:
 	case PT_DATABASE:
+	case PT_VERSION:
 	case PT_TIME_FORMAT:
 	case PT_TIMESTAMP:
 	case PT_UNIX_TIMESTAMP:
+	case PT_LIKE_LOWER_BOUND:
+	case PT_LIKE_UPPER_BOUND:
+	case PT_FROM_UNIXTIME:
+	case PT_FUNCTION_HOLDER:
 	  return node;
 
 	case PT_CAST:
 	  castval = pt_value_to_db (parser, node->info.expr.arg1);
 	  if (castval != NULL)
 	    {
-	      if (tp_value_cast (castval, &retval,
-				 pt_type_enum_to_db_domain (node->info.expr.
-							    cast_type->
-							    type_enum),
-				 false) == NO_ERROR)
+	      DB_DOMAIN *dom = pt_data_type_to_db_domain (parser, node, NULL);
+	      if (tp_value_strict_cast (castval, &retval, dom) == NO_ERROR)
 		{
 		  break;
 		}
@@ -5989,6 +6388,7 @@ static bool
 select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
 {
   PT_NODE *condeval = NULL;
+  PT_NODE *tmp_node_p;
   bool support_op = true;
   int num_markers;
   bool unbound_hostvar = false;
@@ -5999,39 +6399,54 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
       return false;
     }
 
-  if (condeval->info.expr.arg2
-      && condeval->info.expr.arg2->node_type != PT_VALUE)
+  if (condeval->info.expr.arg2)
     {
-      condeval->info.expr.arg2 = parser_walk_tree (ppi->parser,	/*  SYS_DATE... */
-						   condeval->info.expr.arg2,
-						   NULL, NULL,
-						   convert_expr_to_constant,
-						   &support_op);
-      if (support_op == false)
-	{
-	  goto exit_on_end;
-	}
       if (condeval->info.expr.arg2->node_type != PT_VALUE)
 	{
-	  PT_NODE *node;
-	  node = pt_semantic_type (ppi->parser,
-				   condeval->info.expr.arg2, NULL);
-	  if (node == NULL)
+	  /* SYS_DATE and etc are folded as a const value */
+	  condeval->info.expr.arg2 =
+	    parser_walk_tree (ppi->parser,
+			      condeval->info.expr.arg2, NULL, NULL,
+			      convert_expr_to_constant, &support_op);
+
+	  if (support_op == false)
 	    {
 	      goto exit_on_end;
 	    }
 
-	  condeval->info.expr.arg2 = node;
-	}
+	  if (condeval->info.expr.arg2->node_type != PT_VALUE)
+	    {
+	      /* not folded as a const value yet */
+	      tmp_node_p = pt_semantic_type (ppi->parser,
+					     condeval->info.expr.arg2, NULL);
+	      if (tmp_node_p == NULL)
+		{
+		  goto exit_on_end;
+		}
 
-      num_markers = 0;
-      (void) parser_walk_leaves (ppi->parser, condeval->info.expr.arg2,
-				 pt_count_input_markers,
-				 &num_markers, NULL, NULL);
-      if (num_markers > 0)
-	{			/* found input marker, give up */
-	  unbound_hostvar = true;
-	  goto exit_on_end;
+	      condeval->info.expr.arg2 = tmp_node_p;
+	    }
+
+	  /* check if there exists a host variable which was not bound yet. */
+	  /* First, check if the node itself is a host variable node */
+	  if (pt_is_input_hostvar (condeval->info.expr.arg2))
+	    {
+	      /* found an input marker, give up */
+	      unbound_hostvar = true;
+	      goto exit_on_end;
+	    }
+
+	  /* Second, check if the node includes a host variable node inside */
+	  num_markers = 0;
+	  (void) parser_walk_leaves (ppi->parser, condeval->info.expr.arg2,
+				     pt_count_input_markers,
+				     &num_markers, NULL, NULL);
+	  if (num_markers > 0)
+	    {
+	      /* found an input marker, give up */
+	      unbound_hostvar = true;
+	      goto exit_on_end;
+	    }
 	}
     }
 
@@ -6047,7 +6462,7 @@ select_range_list (PRUNING_INFO * ppi, PT_NODE * cond)
   if (condeval->info.expr.arg2
       && (condeval->info.expr.arg1->type_enum
 	  != condeval->info.expr.arg2->type_enum)
-      && condeval->info.expr.arg2->type_enum != PT_TYPE_SET
+      && !PT_IS_COLLECTION_TYPE (condeval->info.expr.arg2->type_enum)
       && (!TP_IS_CHAR_TYPE (condeval->info.expr.arg1->type_enum)
 	  || !TP_IS_CHAR_TYPE (condeval->info.expr.arg2->type_enum)))
     {
@@ -7102,6 +7517,14 @@ do_check_partitioned_class (DB_OBJECT * classop, int check_map, char *keyattr)
   int error = NO_ERROR;
   int is_partition = 0;
   char attr_name[DB_MAX_IDENTIFIER_LENGTH];
+
+  if (classop == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_NOT_ALLOWED_ACCESS_TO_PARTITION, 0);
+
+      return ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
+    }
 
   error = do_is_partitioned_classobj (&is_partition, classop,
 				      (keyattr) ? attr_name : NULL, NULL);
@@ -8545,6 +8968,27 @@ validate_attribute_domain (PARSER_CONTEXT * parser,
 		    }
 		  break;
 
+		case PT_TYPE_SET:
+		case PT_TYPE_MULTISET:
+		case PT_TYPE_SEQUENCE:
+		  {
+		    PT_NODE *elem;
+		    for (elem = dtyp; elem != NULL; elem = elem->next)
+		      {
+			if (PT_IS_LOB_TYPE (elem->type_enum))
+			  {
+			    PT_ERRORmf2 (parser, attribute,
+					 MSGCAT_SET_PARSER_SEMANTIC,
+					 MSGCAT_SEMANTIC_INVALID_SET_ELEMENT,
+					 pt_show_type_enum
+					 (attribute->type_enum),
+					 pt_show_type_enum (elem->type_enum));
+			    break;
+			  }
+		      }
+		  }
+		  break;
+
 		default:
 		  break;
 		}
@@ -8592,19 +9036,17 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 {
   const char *attr_name;
   int meta, shared;
-  DB_VALUE *default_value = NULL;
   DB_VALUE stack_value;
+  DB_VALUE *default_value = &stack_value;
   int error = NO_ERROR;
-  PT_TYPE_ENUM desired_type;
-  PT_NODE *def_val;
   DB_DOMAIN *attr_db_domain;
   MOP auto_increment_obj = NULL;
   SM_ATTRIBUTE *att;
   SM_NAME_SPACE name_space = ID_NULL;
   bool add_first = false;
   const char *add_after_attr = NULL;
-  PT_NODE *const ordering_info = attribute->info.attr_def.ordering_info;
 
+  DB_MAKE_NULL (&stack_value);
   attr_name = get_attr_name (attribute);
 
   meta = (attribute->info.attr_def.attr_type == PT_META_ATTR);
@@ -8613,7 +9055,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   if (error_on_not_normal && attribute->info.attr_def.attr_type != PT_NORMAL)
     {
       ERROR1 (error, ER_SM_ONLY_NORMAL_ATTRIBUTES, attr_name);
-      return error;
+      goto error_exit;
     }
 
   if (validate_attribute_domain (parser, attribute,
@@ -8622,78 +9064,38 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
     {
       /* validate_attribute_domain() is assumed to issue whatever
          messages are pertinent. */
-      return ER_GENERIC_ERROR;
+      error = ER_GENERIC_ERROR;
+      goto error_exit;
     }
 
-  if (attribute->info.attr_def.data_default == NULL)
+  assert (default_value == &stack_value);
+  error = get_att_default_from_def (parser, attribute, &default_value);
+  if (error != NO_ERROR)
     {
-      default_value = NULL;
+      goto error_exit;
     }
-  else
+
+  /* don't allow a default value of NULL for NOT NULL constrained columns */
+  if (default_value && DB_IS_NULL (default_value) &&
+      attribute->info.attr_def.constrain_not_null)
     {
-      desired_type = attribute->type_enum;
-
-      /* try to coerce the default value into the attribute's type */
-      def_val =
-	attribute->info.attr_def.data_default->info.data_default.
-	default_value;
-      def_val = pt_semantic_check (parser, def_val);
-      if (pt_has_error (parser) || def_val == NULL)
-	{
-	  pt_report_to_ersys (parser, PT_SEMANTIC);
-	  return er_errid ();
-	}
-
-      error = pt_coerce_value (parser, def_val, def_val, desired_type,
-			       attribute->data_type);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      default_value = &stack_value;
-      pt_evaluate_tree (parser, def_val, default_value);
-      if (pt_has_error (parser))
-	{
-	  pt_report_to_ersys (parser, PT_SEMANTIC);
-	  return er_errid ();
-	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, 1, attr_name);
+      error = ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL;
+      goto error_exit;
     }
 
   attr_db_domain = pt_node_to_db_domain (parser, attribute, ctemplate->name);
   if (attr_db_domain == NULL)
     {
-      return (er_errid ());
+      error = er_errid ();
+      goto error_exit;
     }
 
-  if (ordering_info != NULL)
+  error = get_att_order_from_def (attribute, &add_first, &add_after_attr);
+  if (error != NO_ERROR)
     {
-      assert (ordering_info->node_type == PT_ATTR_ORDERING);
-
-      add_first = ordering_info->info.attr_ordering.first;
-
-      if (ordering_info->info.attr_ordering.after != NULL)
-	{
-	  PT_NODE *const after_name = ordering_info->info.attr_ordering.after;
-
-	  assert (after_name->node_type == PT_NAME);
-	  add_after_attr = after_name->info.name.original;
-	  assert (add_first == false);
-	}
-      else
-	{
-	  add_after_attr = NULL;
-	  /*
-	   * If we have no "AFTER name" then this must have been a "FIRST"
-	   * token
-	   */
-	  assert (add_first == true);
-	}
-    }
-  else
-    {
-      add_first = false;
-      add_after_attr = NULL;
+      goto error_exit;
     }
 
   if (meta)
@@ -8710,14 +9112,11 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
     }
 
   error = smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL,
-					    attr_db_domain, default_value,
+					    attr_db_domain, &stack_value,
 					    name_space, add_first,
 					    add_after_attr);
 
-  if (default_value)
-    {
-      db_value_clear (default_value);
-    }
+  db_value_clear (&stack_value);
 
   /* Does the attribute belong to a NON_NULL constraint? */
   if (error == NO_ERROR)
@@ -8752,6 +9151,10 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	}
     }
   return error;
+
+error_exit:
+  db_value_clear (&stack_value);
+  return error;
 }
 
 /*
@@ -8765,7 +9168,8 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
  * Note : The class object is modified
  */
 static int
-do_add_attribute_from_select_column (DB_CTMPL * ctemplate,
+do_add_attribute_from_select_column (PARSER_CONTEXT * parser,
+				     DB_CTMPL * ctemplate,
 				     DB_QUERY_TYPE * column)
 {
   DB_VALUE default_value;
@@ -8786,6 +9190,27 @@ do_add_attribute_from_select_column (DB_CTMPL * ctemplate,
       error = ER_CREATE_AS_SELECT_NULL_TYPE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto error_exit;
+    }
+  else if (TP_IS_SET_TYPE (column->domain->type->id))
+    {
+      TP_DOMAIN *elem;
+      for (elem = column->domain->setdomain; elem != NULL; elem = elem->next)
+	{
+	  if (elem->type->id == DB_TYPE_BLOB ||
+	      elem->type->id == DB_TYPE_CLOB)
+	    {
+	      PT_TYPE_ENUM elem_type, set_type;
+	      elem_type = pt_db_to_type_enum (elem->type->id);
+	      set_type = pt_db_to_type_enum (column->domain->type->id);
+	      PT_ERRORmf2 (parser, NULL,
+			   MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_INVALID_SET_ELEMENT,
+			   pt_show_type_enum (set_type),
+			   pt_show_type_enum (elem_type));
+	      error = ER_PT_SEMANTIC;
+	      goto error_exit;
+	    }
+	}
     }
 
   attr_name = db_query_format_name (column);
@@ -8931,7 +9356,8 @@ do_add_attributes (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 	}
       else
 	{
-	  error = do_add_attribute_from_select_column (ctemplate, column);
+	  error = do_add_attribute_from_select_column (parser, ctemplate,
+						       column);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -9142,20 +9568,20 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
       if (cnstr->info.constraint.type == PT_CONSTRAIN_UNIQUE)
 	{
 	  max_attrs = MAX (max_attrs,
-			   pt_length_of_list (cnstr->info.constraint.un.
-					      unique.attrs));
+			   pt_length_of_list (cnstr->info.constraint.
+					      un.unique.attrs));
 	}
       if (cnstr->info.constraint.type == PT_CONSTRAIN_PRIMARY_KEY)
 	{
 	  max_attrs = MAX (max_attrs,
-			   pt_length_of_list (cnstr->info.constraint.un.
-					      primary_key.attrs));
+			   pt_length_of_list (cnstr->info.constraint.
+					      un.primary_key.attrs));
 	}
       if (cnstr->info.constraint.type == PT_CONSTRAIN_FOREIGN_KEY)
 	{
 	  max_attrs = MAX (max_attrs,
-			   pt_length_of_list (cnstr->info.constraint.un.
-					      foreign_key.attrs));
+			   pt_length_of_list (cnstr->info.constraint.
+					      un.foreign_key.attrs));
 	}
     }
 
@@ -9180,19 +9606,20 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		  DB_CONSTRAINT_TYPE constraint_type = DB_CONSTRAINT_UNIQUE;
 		  int *asc_desc = NULL;
 
-		  asc_desc = (int *) malloc ((max_attrs) * sizeof (int));
+		  n_atts =
+		    pt_length_of_list (cnstr->info.constraint.un.unique.
+				       attrs);
+
+		  asc_desc = (int *) malloc (n_atts * sizeof (int));
 		  if (asc_desc == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      (max_attrs) * sizeof (int));
+			      (n_atts * sizeof (int)));
 		      error = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto constraint_error;
 		    }
 
-		  n_atts =
-		    pt_length_of_list (cnstr->info.constraint.un.unique.
-				       attrs);
 		  if (PT_NAME_INFO_IS_FLAGED
 		      (cnstr->info.constraint.un.unique.attrs,
 		       PT_NAME_INFO_DESC))
@@ -9245,9 +9672,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		    smt_add_constraint (ctemplate, constraint_type,
 					constraint_name,
 					(const char **) att_names,
-					(constraint_type ==
-					 DB_CONSTRAINT_UNIQUE) ? asc_desc :
-					NULL, class_attributes, NULL);
+					asc_desc, class_attributes, NULL);
 
 		  sm_free_constraint_name (constraint_name);
 		  free_and_init (asc_desc);
@@ -9256,21 +9681,35 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		      goto constraint_error;
 		    }
 		}
-
-	      if (cnstr->info.constraint.type == PT_CONSTRAIN_PRIMARY_KEY)
+	      else if (cnstr->info.constraint.type ==
+		       PT_CONSTRAIN_PRIMARY_KEY)
 		{
 		  PT_NODE *p;
 		  int i, n_atts;
 		  int class_attributes = 0;
 		  char *constraint_name = NULL;
+		  int *asc_desc = NULL;
 
 		  n_atts =
-		    pt_length_of_list (cnstr->info.constraint.un.primary_key.
-				       attrs);
+		    pt_length_of_list (cnstr->info.constraint.un.
+				       primary_key.attrs);
+
+		  asc_desc = (int *) malloc (n_atts * sizeof (int));
+		  if (asc_desc == NULL)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      (n_atts * sizeof (int)));
+		      error = ER_OUT_OF_VIRTUAL_MEMORY;
+		      goto constraint_error;
+		    }
+
 		  i = 0;
 		  for (p = cnstr->info.constraint.un.primary_key.attrs; p;
 		       p = p->next)
 		    {
+		      asc_desc[i] =
+			PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_DESC) ? 1 : 0;
 		      att_names[i++] = (char *) p->info.name.original;
 
 		      /* Determine if the unique constraint is being applied
@@ -9293,18 +9732,30 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 			cnstr->info.constraint.name->info.name.original;
 		    }
 
-		  error = dbt_add_constraint (ctemplate,
+		  constraint_name =
+		    sm_produce_constraint_name_tmpl (ctemplate,
+						     DB_CONSTRAINT_PRIMARY_KEY,
+						     (const char **)
+						     att_names, asc_desc,
+						     constraint_name);
+
+		  error = smt_add_constraint (ctemplate,
 					      DB_CONSTRAINT_PRIMARY_KEY,
 					      constraint_name,
 					      (const char **) att_names,
-					      class_attributes);
+					      asc_desc, class_attributes,
+					      NULL);
+
+		  sm_free_constraint_name (constraint_name);
+		  free_and_init (asc_desc);
+
 		  if (error != NO_ERROR)
 		    {
 		      goto constraint_error;
 		    }
 		}
-
-	      if (cnstr->info.constraint.type == PT_CONSTRAIN_FOREIGN_KEY)
+	      else if (cnstr->info.constraint.type ==
+		       PT_CONSTRAIN_FOREIGN_KEY)
 		{
 		  error = add_foreign_key (ctemplate, cnstr,
 					   (const char **) att_names);
@@ -9761,8 +10212,8 @@ do_add_resolutions (const PARSER_CONTEXT * parser,
   while (resolution && (error == NO_ERROR))
     {
       resolution_super_mop =
-	db_find_class (resolution->info.resolution.of_sup_class_name->info.
-		       name.original);
+	db_find_class (resolution->info.resolution.of_sup_class_name->
+		       info.name.original);
 
       if (resolution_super_mop == NULL)
 	{
@@ -9817,7 +10268,7 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser,
   const char *query;
   int error = NO_ERROR;
 
-  query = parser_print_tree (parser, queries);
+  query = parser_print_tree_with_quotes (parser, queries);
   error = dbt_add_query_spec (ctemplate, query);
 
   return (error);
@@ -9972,8 +10423,8 @@ do_create_local (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
     }
 
   error = do_check_fk_constraints (ctemplate,
-				   pt_node->info.create_entity.
-				   constraint_list);
+				   pt_node->info.
+				   create_entity.constraint_list);
   if (error != NO_ERROR)
     {
       return error;
@@ -10637,9 +11088,3507 @@ do_truncate (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = truncate_class_name (entity->info.name.original);
       if (error != NO_ERROR)
 	{
-	  (void) tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_TRUNCATE);
+	  if (error != ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      (void) tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_TRUNCATE);
+	    }
+
 	  return error;
 	}
+    }
+
+  return error;
+}
+
+/*
+ * do_alter_clause_change_attribute() - Executes an ALTER CHANGE or
+ *				        ALTER MODIFY clause
+ *   return: Error code
+ *   parser(in): Parser context
+ *   alter(in/out): Parse tree of a PT_RENAME_ENTITY clause potentially
+ *                  followed by the rest of the clauses in the ALTER
+ *                  statement.
+ */
+static int
+do_alter_clause_change_attribute (PARSER_CONTEXT * const parser,
+				  PT_NODE * const alter)
+{
+  int error = NO_ERROR;
+  const PT_ALTER_CODE alter_code = alter->info.alter.code;
+  const char *entity_name = NULL;
+  DB_OBJECT *class_obj = NULL;
+  DB_CTMPL *ctemplate = NULL;
+  SM_ATTR_CHG_SOL change_mode = SM_ATTR_CHG_ONLY_SCHEMA;
+  SM_ATTR_PROP_CHG attr_chg_prop;
+  bool tran_saved = false;
+  MOP class_mop = NULL;
+  OID *usr_oid_array = NULL;
+  int user_count = 0;
+  int i;
+  bool has_partitions = false;
+  bool is_srv_update_needed = false;
+  OID class_oid;
+  int att_id = -1;
+
+  assert (alter_code == PT_CHANGE_ATTR);
+  assert (alter->info.alter.super.resolution_list == NULL);
+
+  OID_SET_NULL (&class_oid);
+  reset_att_property_structure (&attr_chg_prop);
+
+  entity_name = alter->info.alter.entity_name->info.name.original;
+  if (entity_name == NULL)
+    {
+      error = ER_UNEXPECTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
+    }
+
+  class_obj = db_find_class (entity_name);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      goto exit;
+    }
+
+  error = locator_flush_class (class_obj);
+  if (error != NO_ERROR)
+    {
+      /* don't overwrite error */
+      goto exit;
+    }
+
+  /* force exclusive lock on class, even though it should have been already
+   * acquired*/
+  if (locator_fetch_class (class_obj, DB_FETCH_QUERY_WRITE) == NULL)
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  ctemplate = dbt_edit_class (class_obj);
+  if (ctemplate == NULL)
+    {
+      /* when dbt_edit_class fails (e.g. because the server unilaterally
+         aborts us), we must record the associated error message into the
+         parser.  Otherwise, we may get a confusing error msg of the form:
+         "so_and_so is not a class". */
+      pt_record_error (parser, parser->statement_number - 1,
+		       alter->line_number, alter->column_number, er_msg ());
+      error = er_errid ();
+      goto exit;
+    }
+
+  /* this ALTER CHANGE syntax supports only one attribute change per
+   * ALTER clause */
+  assert (alter->info.alter.alter_clause.attr_mthd.mthd_def_list == NULL);
+  assert (alter->info.alter.alter_clause.attr_mthd.attr_def_list->next ==
+	  NULL);
+
+  error = check_change_attribute (parser, ctemplate,
+				  alter->info.alter.alter_clause.attr_mthd.
+				  attr_def_list,
+				  alter->info.alter.alter_clause.attr_mthd.
+				  attr_old_name,
+				  alter->info.alter.constraint_list,
+				  &attr_chg_prop, &change_mode);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (change_mode == SM_ATTR_CHG_NOT_NEEDED)
+    {
+      /* nothing to do */
+      goto exit;
+    }
+
+  if (ctemplate->current->users != NULL && ctemplate->partition_of != NULL)
+    {
+      DB_OBJLIST *user_list = NULL;
+
+      user_count = ws_list_length ((DB_LIST *) ctemplate->current->users);
+
+      usr_oid_array = (OID *) calloc (user_count, sizeof (OID));
+      if (usr_oid_array == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  user_count * sizeof (OID));
+	  goto exit;
+	}
+
+      for (i = 0, user_list = ctemplate->current->users;
+	   i < user_count && user_list != NULL;
+	   i++, user_list = user_list->next)
+	{
+	  /* copy partition class OID for later use */
+	  COPY_OID (&(usr_oid_array[i]), &(user_list->op->oid_info.oid));
+
+	  /* force exclusive lock on class, even though it should have been already
+	   * acquired */
+	  if (locator_fetch_class (user_list->op, DB_FETCH_QUERY_WRITE) ==
+	      NULL)
+	    {
+	      error = ER_FAILED;
+	      goto exit;
+	    }
+	}
+      has_partitions = true;
+    }
+
+  error = tran_savepoint (UNIQUE_SAVEPOINT_CHANGE_ATTR, false);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  tran_saved = true;
+
+  /*
+   * The replication server will also receive a schema modification
+   * statement and it will perform the update itself, if necessary.
+   * We need to disable writing to the replication log because otherwise
+   * the replication server would have also received the logs for the
+   * update operations, duplicating the update.
+   */
+  db_set_suppress_repl_on_transaction (true);
+
+  error = do_change_att_schema_only (parser, ctemplate,
+				     alter->info.alter.alter_clause.attr_mthd.
+				     attr_def_list,
+				     alter->info.alter.alter_clause.attr_mthd.
+				     attr_old_name,
+				     alter->info.alter.constraint_list,
+				     &attr_chg_prop, &change_mode);
+
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* save class MOP */
+  class_mop = ctemplate->op;
+
+  /* check foreign key contraints */
+  error = do_check_fk_constraints (ctemplate,
+				   alter->info.alter.constraint_list);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  is_srv_update_needed = ((change_mode == SM_ATTR_CHG_WITH_ROW_UPDATE ||
+			   change_mode == SM_ATTR_CHG_BEST_EFFORT) &&
+			  attr_chg_prop.name_space == ID_ATTRIBUTE) ? true :
+    false;
+  if (is_srv_update_needed)
+    {
+      char tbl_name[DB_MAX_IDENTIFIER_LENGTH];
+
+      strncpy (tbl_name, ctemplate->name, DB_MAX_IDENTIFIER_LENGTH);
+      COPY_OID (&class_oid, &(ctemplate->op->oid_info.oid));
+      att_id = attr_chg_prop.att_id;
+    }
+
+  /* force schema update to server */
+  class_obj = dbt_finish_class (ctemplate);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      goto exit;
+    }
+  /* set NULL, avoid 'abort_class' in case of error */
+  ctemplate = NULL;
+
+  /* TODO : workaround code to force class templates for partitions
+   * it seems that after the 'dbt_finish_class' on the super-class, the
+   * representations are not properly updated on the server - function
+   * 'heap_object_upgrade_domain' seems to use for partition class the
+   * previous representation before the change as 'last_representation'
+   * instead of the updated representation */
+  if (has_partitions)
+    {
+      ctemplate = dbt_edit_class (class_obj);
+      if (ctemplate == NULL)
+	{
+	  pt_record_error (parser, parser->statement_number - 1,
+			   alter->line_number, alter->column_number,
+			   er_msg ());
+	  error = er_errid ();
+	  goto exit;
+	}
+      class_obj = dbt_finish_class (ctemplate);
+      if (class_obj == NULL)
+	{
+	  error = er_errid ();
+	  goto exit;
+	}
+      ctemplate = NULL;
+    }
+
+  if (is_srv_update_needed)
+    {
+      assert (att_id >= 0);
+      assert (!OID_ISNULL (&class_oid));
+
+      error = do_drop_att_constraints (class_mop, attr_chg_prop.constr_info);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      /* perform UPDATE or each row */
+      if (has_partitions)
+	{
+	  assert (user_count > 0);
+	  assert (usr_oid_array != NULL);
+
+	  for (i = 0; i < user_count; i++)
+	    {
+	      error = do_run_upgrade_instances_domain (parser,
+						       &(usr_oid_array[i]),
+						       att_id);
+	      if (error != NO_ERROR)
+		{
+		  goto exit;
+		}
+	    }
+	}
+      else
+	{
+	  error =
+	    do_run_upgrade_instances_domain (parser, &class_oid, att_id);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+
+      error = sort_constr_info_list (&(attr_chg_prop.constr_info));
+      if (error != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+	  goto exit;
+	}
+
+      error = do_recreate_att_constraints (class_mop,
+					   attr_chg_prop.constr_info);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+  else
+    {
+      assert (change_mode == SM_ATTR_CHG_ONLY_SCHEMA);
+    }
+
+  /* create any new constraints: */
+  if (attr_chg_prop.new_constr_info != NULL)
+    {
+      SM_CONSTRAINT_INFO *ci = NULL;
+
+      error = sort_constr_info_list (&(attr_chg_prop.new_constr_info));
+      if (error != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 0);
+	  goto exit;
+	}
+
+      /* add new constraints */
+      for (ci = attr_chg_prop.new_constr_info; ci != NULL; ci = ci->next)
+	{
+	  if (ci->constraint_type == DB_CONSTRAINT_NOT_NULL)
+	    {
+	      const char *att_name = *(ci->att_names);
+
+	      if (PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == false)
+		{
+		  char query[SM_MAX_IDENTIFIER_LENGTH * 4 + 36] = { 0 };
+		  const char *class_name = NULL;
+		  const char *hard_default =
+		    get_hard_default_for_type (alter->info.alter.alter_clause.
+					       attr_mthd.attr_def_list->
+					       type_enum);
+		  int update_rows_count = 0;
+
+		  class_name = db_get_class_name (class_mop);
+		  if (class_name == NULL)
+		    {
+		      error = ER_UNEXPECTED;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		      goto exit;
+		    }
+
+		  assert (class_name != NULL && att_name != NULL &&
+			  hard_default != NULL);
+
+		  snprintf (query, SM_MAX_IDENTIFIER_LENGTH * 4 + 30,
+			    "UPDATE [%s] SET [%s]=%s WHERE [%s] IS NULL",
+			    class_name, att_name, hard_default, att_name);
+		  error = do_run_update_query_for_class (query, class_mop,
+							 false,
+							 &update_rows_count);
+		  if (error != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+
+		  if (update_rows_count > 0)
+		    {
+		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+			      ER_ALTER_CHANGE_ADD_NOT_NULL_SET_HARD_DEFAULT,
+			      0);
+		    }
+		}
+
+	      error = db_constrain_non_null (class_mop, *(ci->att_names), 0,
+					     1);
+	      if (error != NO_ERROR)
+		{
+		  goto exit;
+		}
+	    }
+	  else
+	    {
+	      assert (ci->constraint_type == DB_CONSTRAINT_UNIQUE ||
+		      ci->constraint_type == DB_CONSTRAINT_PRIMARY_KEY);
+
+	      error = db_add_constraint (class_mop, ci->constraint_type, NULL,
+					 (const char **) ci->att_names, 0);
+	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+    }
+
+exit:
+
+  if (ctemplate != NULL)
+    {
+      dbt_abort_class (ctemplate);
+      ctemplate = NULL;
+    }
+
+  if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_savepoint (UNIQUE_SAVEPOINT_CHANGE_ATTR);
+    }
+
+  if (attr_chg_prop.constr_info != NULL)
+    {
+      sm_free_constraint_info (&(attr_chg_prop.constr_info));
+    }
+
+  if (attr_chg_prop.new_constr_info != NULL)
+    {
+      sm_free_constraint_info (&(attr_chg_prop.new_constr_info));
+    }
+
+  if (usr_oid_array != NULL)
+    {
+      free_and_init (usr_oid_array);
+    }
+
+  /* restore writing to replication logs */
+  db_set_suppress_repl_on_transaction (false);
+
+  return error;
+}
+
+/*
+ * do_change_att_schema_only() - Change an attribute of a class object
+ *   return: Error code
+ *   parser(in): Parser context
+ *   ctemplate(in/out): Class template
+ *   attribute(in/out): Attribute to add
+ */
+static int
+do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
+			   PT_NODE * attribute, PT_NODE * old_name_node,
+			   PT_NODE * constraints,
+			   SM_ATTR_PROP_CHG * attr_chg_prop,
+			   SM_ATTR_CHG_SOL * change_mode)
+{
+  DB_VALUE stack_value;
+  DB_DOMAIN *attr_db_domain = NULL;
+  DB_VALUE *new_default = NULL;
+  DB_VALUE *default_value = &stack_value;
+  SM_ATTRIBUTE *found_att = NULL;
+  int error = NO_ERROR;
+  bool change_first = false;
+  const char *change_after_attr = NULL;
+  const char *old_name = NULL;
+  const char *new_name = NULL;
+  const char *attr_name = NULL;
+
+  assert (attr_chg_prop != NULL);
+  assert (change_mode != NULL);
+
+  assert (attribute->node_type == PT_ATTR_DEF);
+
+  DB_MAKE_NULL (&stack_value);
+
+  attr_name = get_attr_name (attribute);
+
+  /* get new name */
+  if (old_name_node != NULL)
+    {
+      assert (old_name_node->node_type == PT_NAME);
+      old_name = old_name_node->info.name.original;
+      assert (old_name != NULL);
+
+      /* attr_name is supplied using the ATTR_DEF node and it means:
+       *  for MODIFY syntax : current and unchanged name (attr_name)
+       *  for CHANGE syntax : new name of the attribute  (new_name)
+       */
+      if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF))
+	{
+	  new_name = attr_name;
+	  attr_name = old_name;
+	}
+      else
+	{
+	  attr_name = old_name;
+	  new_name = NULL;
+	}
+    }
+
+  if (validate_attribute_domain (parser, attribute,
+				 smt_get_class_type (ctemplate) ==
+				 SM_CLASS_CT ? true : false))
+    {
+      /* validate_attribute_domain() is assumed to issue whatever
+         messages are pertinent. */
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  if (*change_mode == SM_ATTR_CHG_ONLY_SCHEMA)
+    {
+      if (attr_chg_prop->name_space == ID_ATTRIBUTE)
+	{
+	  assert (is_att_prop_set
+		  (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_UNCHANGED)
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				      ATT_CHG_TYPE_SET_CLS_COMPAT)
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				      ATT_CHG_TYPE_PREC_INCR));
+	}
+      else
+	{
+	  assert (attr_chg_prop->name_space == ID_CLASS_ATTRIBUTE
+		  || attr_chg_prop->name_space == ID_SHARED_ATTRIBUTE);
+	  assert (!is_att_prop_set
+		  (attr_chg_prop->p[P_TYPE],
+		   ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG)
+		  && !is_att_prop_set
+		  (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NOT_SUPPORTED));
+	}
+
+    }
+  else if (*change_mode == SM_ATTR_CHG_WITH_ROW_UPDATE)
+    {
+      assert (is_att_prop_set
+	      (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_UPGRADE));
+    }
+  else
+    {
+      assert (*change_mode == SM_ATTR_CHG_BEST_EFFORT);
+      /* this mode is needed when:
+       * - a type change other than UPGRADE */
+      assert (is_att_prop_set
+	      (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NEED_ROW_CHECK)
+	      || is_att_prop_set
+	      (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE));
+    }
+
+  /* default value: for CLASS and SHARED attributes this changes the value
+   * itself of the atribute*/
+  error = get_att_default_from_def (parser, attribute, &default_value);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  /* default_value is either NULL or pointing to address of stack_value */
+  assert (default_value == NULL || default_value == &stack_value);
+  new_default = default_value;
+
+  attr_db_domain = pt_node_to_db_domain (parser, attribute, ctemplate->name);
+  if (attr_db_domain == NULL)
+    {
+      error = er_errid ();
+      goto exit;
+    }
+
+  error =
+    get_att_order_from_def (attribute, &change_first, &change_after_attr);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  error =
+    smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL,
+					 attr_db_domain,
+					 attr_chg_prop->name_space,
+					 new_default,
+					 change_first, change_after_attr,
+					 &found_att);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  if (found_att == NULL)
+    {
+      error = ER_UNEXPECTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
+    }
+
+  if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF))
+    {
+      assert (new_name != NULL);
+      attr_name = new_name;
+    }
+
+  /* save attribute id */
+  attr_chg_prop->att_id = found_att->id;
+
+  if (attr_chg_prop->name_space != ID_ATTRIBUTE)
+    {
+      assert (error == NO_ERROR);
+      goto exit;
+    }
+
+  /* processing only for normal attributes */
+
+  /* DEFAULT value */
+  if (is_att_prop_set
+      (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_LOST))
+    {
+      pr_clear_value (&(found_att->value));
+    }
+
+  /* add or drop NOT NULL constraint */
+  if (is_att_prop_set (attr_chg_prop->p[P_NOT_NULL], ATT_CHG_PROPERTY_GAINED))
+    {
+      assert (attribute->info.attr_def.constrain_not_null != 0);
+      /* constraint is added later when new constraints are created */
+    }
+  else if (is_att_prop_set
+	   (attr_chg_prop->p[P_NOT_NULL], ATT_CHG_PROPERTY_LOST))
+    {
+      error = dbt_constrain_non_null (ctemplate, attr_name,
+				      (attr_chg_prop->name_space ==
+				       ID_CLASS_ATTRIBUTE) ? 1 : 0, 0);
+    }
+
+
+  /* delete or (re-)create auto_increment attribute's serial object */
+  if (is_att_prop_set
+      (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
+      || is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR],
+			  ATT_CHG_PROPERTY_LOST))
+    {
+      /* delete current serial */
+      int save;
+
+      error = au_check_serial_authorization (found_att->auto_increment);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+      AU_DISABLE (save);
+
+      assert (found_att->auto_increment);
+      error = obj_delete (found_att->auto_increment);
+
+      AU_ENABLE (save);
+
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+      found_att->flags &= ~(SM_ATTFLAG_AUTO_INCREMENT);
+      found_att->auto_increment = NULL;
+    }
+  /* create or re-create serial with new properties */
+  if (is_att_prop_set
+      (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
+      || is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR],
+			  ATT_CHG_PROPERTY_GAINED))
+    {
+      MOP auto_increment_obj = NULL;
+
+      assert (attribute->info.attr_def.auto_increment != NULL);
+
+      if (db_Enable_replications <= 0)
+	{
+	  error = do_create_auto_increment_serial (parser,
+						   &auto_increment_obj,
+						   ctemplate->name,
+						   attribute);
+	}
+      if (error == NO_ERROR)
+	{
+	  if (found_att != NULL)
+	    {
+	      found_att->auto_increment = auto_increment_obj;
+	      found_att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
+	    }
+	}
+    }
+
+  assert (attr_chg_prop->name_space == ID_ATTRIBUTE);
+
+exit:
+  db_value_clear (&stack_value);
+  return error;
+}
+
+/*
+ * build_attr_change_map() - This builds a map of changes on the attribute
+ *   return: Error code
+ *   parser(in): Parser context
+ *   ctemplate(in): Class template
+ *   attr_def(in): New attribute definition (PT_NODE : PT_ATTR_DEF)
+ *   attr_old_name(in): Old name of attribute (PT_NODE : PT_NAME)
+ *   constraints(in): New constraints for class template
+ *		      (PT_NODE : PT_CONSTRAINT)
+ *   attr_chg_properties(out): map of attribute changes to build
+ *
+ */
+static int
+build_attr_change_map (PARSER_CONTEXT * parser,
+		       DB_CTMPL * ctemplate,
+		       PT_NODE * attr_def,
+		       PT_NODE * attr_old_name,
+		       PT_NODE * constraints,
+		       SM_ATTR_PROP_CHG * attr_chg_properties)
+{
+  DB_DOMAIN *attr_db_domain = NULL;
+  SM_ATTRIBUTE *att = NULL;
+  SM_CLASS_CONSTRAINT *sm_cls_constr = NULL;
+  PT_NODE *cnstr = NULL;
+  const char *attr_name = NULL;
+  const char *old_name = NULL;
+  const char *new_name = NULL;
+  int error = NO_ERROR;
+
+  attr_name = get_attr_name (attr_def);
+
+  /* attribute name */
+  attr_chg_properties->p[P_NAME] = 0;
+  attr_chg_properties->p[P_NAME] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+  if (attr_old_name != NULL)
+    {
+      assert (attr_old_name->node_type == PT_NAME);
+      old_name = attr_old_name->info.name.original;
+      assert (old_name != NULL);
+
+      /* attr_name is supplied using the ATTR_DEF node and it means:
+       *  for MODIFY syntax : current and unchanged node (attr_name)
+       *  for CHANGE syntax : new name of the attribute  (new_name)
+       */
+      new_name = attr_name;
+      attr_name = old_name;
+
+      attr_chg_properties->p[P_NAME] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+      if (intl_mbs_casecmp (attr_name, new_name) == 0)
+	{
+	  attr_chg_properties->p[P_NAME] |= ATT_CHG_PROPERTY_UNCHANGED;
+	}
+      else
+	{
+	  attr_chg_properties->p[P_NAME] |= ATT_CHG_PROPERTY_DIFF;
+	}
+    }
+  else
+    {
+      attr_chg_properties->p[P_NAME] |= ATT_CHG_PROPERTY_UNCHANGED;
+    }
+
+  /* at this point, attr_name is the current name of the attribute,
+   * new_name is either the desired new name or NULL, if name change is not
+   * requested */
+
+  /* get the attribute structure */
+  error = smt_find_attribute (ctemplate, attr_name,
+			      (attr_chg_properties->name_space ==
+			       ID_CLASS_ATTRIBUTE) ? 1 : 0, &att);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  assert (att != NULL);
+
+  attr_chg_properties->name_space = att->header.name_space;
+
+  /* DEFAULT value */
+  attr_chg_properties->p[P_DEFAULT_VALUE] = 0;
+  if (attr_def->info.attr_def.data_default != NULL)
+    {
+      attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  if (!DB_IS_NULL (&(att->original_value)) || !DB_IS_NULL (&(att->value)))
+    {
+      attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
+  /* DEFFERABLE : not supported, just mark as checked */
+  attr_chg_properties->p[P_DEFFERABLE] = 0;
+
+  /* ORDERING */
+  attr_chg_properties->p[P_ORDER] = 0;
+  if (attr_def->info.attr_def.ordering_info != NULL)
+    {
+      attr_chg_properties->p[P_ORDER] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+
+  /* AUTO INCREMENT */
+  attr_chg_properties->p[P_AUTO_INCR] = 0;
+  if (attr_def->info.attr_def.auto_increment != NULL)
+    {
+      attr_chg_properties->p[P_AUTO_INCR] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
+    {
+      attr_chg_properties->p[P_AUTO_INCR] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
+  /* existing FOREIGN KEY (referencing) */
+  attr_chg_properties->p[P_CONSTR_FK] = 0;
+  if (att->flags & SM_ATTFLAG_FOREIGN_KEY)
+    {
+      attr_chg_properties->p[P_CONSTR_FK] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
+  /* existing PRIMARY KEY: mark as checked */
+  attr_chg_properties->p[P_S_CONSTR_PK] = 0;
+  attr_chg_properties->p[P_M_CONSTR_PK] = 0;
+
+  /* existing non-unique INDEX ? */
+  attr_chg_properties->p[P_CONSTR_NON_UNI] = 0;
+  if (att->flags & SM_ATTFLAG_INDEX)
+    {
+      attr_chg_properties->p[P_CONSTR_NON_UNI] |=
+	ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
+  /* constraint : NOT NULL */
+  attr_chg_properties->p[P_NOT_NULL] = 0;
+  if (att->flags & SM_ATTFLAG_NON_NULL)
+    {
+      attr_chg_properties->p[P_NOT_NULL] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
+  /* constraint  CHECK : not supported, just mark as checked */
+  attr_chg_properties->p[P_CONSTR_CHECK] = 0;
+
+  /* check for existing constraints: FK referenced, unique, non-unique idx */
+  if (ctemplate->current != NULL)
+    {
+      const char *attr_name_to_check = attr_name;
+
+      attr_chg_properties->p[P_S_CONSTR_UNI] = 0;
+      attr_chg_properties->p[P_M_CONSTR_UNI] = 0;
+
+      for (sm_cls_constr = ctemplate->current->constraints;
+	   sm_cls_constr != NULL; sm_cls_constr = sm_cls_constr->next)
+	{
+	  /* check if attribute is contained in this constraint */
+	  SM_ATTRIBUTE **sm_constr_attr = sm_cls_constr->attributes;
+	  bool name_found_in_constr = false;
+	  int nb_att_in_constr = 0;
+
+	  while (*sm_constr_attr != NULL)
+	    {
+	      if ((*sm_constr_attr)->header.name != NULL &&
+		  !intl_mbs_casecmp ((*sm_constr_attr)->header.name,
+				     attr_name_to_check))
+		{
+		  name_found_in_constr = true;
+		}
+	      sm_constr_attr++;
+	      nb_att_in_constr++;
+	    }
+
+	  if (name_found_in_constr)
+	    {
+	      bool save_constr = false;
+
+	      /* referenced FK */
+	      if (sm_cls_constr->fk_info != NULL)
+		{
+		  assert (sm_cls_constr->fk_info->name != NULL);
+		  attr_chg_properties->p[P_CONSTR_FK] |=
+		    ATT_CHG_PROPERTY_PRESENT_OLD;
+		}
+
+	      /* PRIMARY KEY */
+	      if (sm_cls_constr->type == SM_CONSTRAINT_PRIMARY_KEY)
+		{
+		  assert (nb_att_in_constr >= 1);
+		  if (nb_att_in_constr >= 2)
+		    {
+		      attr_chg_properties->p[P_M_CONSTR_PK] |=
+			ATT_CHG_PROPERTY_PRESENT_OLD;
+		    }
+		  else
+		    {
+		      attr_chg_properties->p[P_S_CONSTR_PK] |=
+			ATT_CHG_PROPERTY_PRESENT_OLD;
+		    }
+		  save_constr = true;
+		}
+	      /* non-unique index */
+	      else if (sm_cls_constr->type == SM_CONSTRAINT_INDEX)
+		{
+		  assert (nb_att_in_constr >= 1);
+		  attr_chg_properties->p[P_CONSTR_NON_UNI] |=
+		    ATT_CHG_PROPERTY_PRESENT_OLD;
+		  save_constr = true;
+		}
+	      /* UNIQUE */
+	      else if (sm_cls_constr->type == SM_CONSTRAINT_UNIQUE ||
+		       sm_cls_constr->type == SM_CONSTRAINT_REVERSE_UNIQUE)
+		{
+		  assert (nb_att_in_constr >= 1);
+		  if (nb_att_in_constr >= 2)
+		    {
+		      attr_chg_properties->p[P_M_CONSTR_UNI] |=
+			ATT_CHG_PROPERTY_PRESENT_OLD;
+		    }
+		  else
+		    {
+		      attr_chg_properties->p[P_S_CONSTR_UNI] |=
+			ATT_CHG_PROPERTY_PRESENT_OLD;
+		    }
+		  save_constr = true;
+		}
+
+	      if (save_constr)
+		{
+		  assert (attr_chg_properties->name_space == ID_ATTRIBUTE);
+
+		  error =
+		    sm_save_constraint_info (&
+					     (attr_chg_properties->
+					      constr_info), sm_cls_constr);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		}
+	    }
+	}
+    }
+  else
+    {
+      error = ER_OBJ_TEMPLATE_INTERNAL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  /* attribute is saved in constraints info with the old name;
+   * replace all occurences with the new name;
+   * constraints names are not adjusted to reflect new attribute name, but
+   * are kept with the old name, reason: MySQL compatibility */
+  if ((new_name != NULL) && (attr_name != NULL)
+      && (attr_chg_properties->constr_info != NULL)
+      && (intl_mbs_casecmp (new_name, attr_name) != 0))
+    {
+      SM_CONSTRAINT_INFO *saved_constr = NULL;
+
+      for (saved_constr = attr_chg_properties->constr_info;
+	   saved_constr != NULL; saved_constr = saved_constr->next)
+	{
+	  char **c_name = NULL;
+	  for (c_name = saved_constr->att_names; *c_name != NULL; ++c_name)
+	    {
+	      if (intl_mbs_casecmp (attr_name, *c_name) == 0)
+		{
+		  free_and_init (*c_name);
+		  *c_name = strdup (new_name);
+		  if (*c_name == NULL)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (new_name));
+
+		      return ER_OUT_OF_VIRTUAL_MEMORY;
+		    }
+		}
+	    }
+	}
+    }
+
+  /* check for constraints in the new attribute definition */
+  for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
+    {
+      PT_NODE *constr_att = NULL;
+      PT_NODE *constr_att_list = NULL;
+      bool save_pt_costraint = false;
+      int chg_prop_idx = NUM_ATT_CHG_PROP;
+      const char *attr_name_to_check = attr_name;
+
+      if (is_att_prop_set
+	  (attr_chg_properties->p[P_NAME], ATT_CHG_PROPERTY_DIFF))
+	{
+	  attr_name_to_check = new_name;
+	}
+
+      assert (cnstr->node_type == PT_CONSTRAINT);
+      switch (cnstr->info.constraint.type)
+	{
+	case PT_CONSTRAIN_FOREIGN_KEY:
+	  constr_att_list = cnstr->info.constraint.un.foreign_key.attrs;
+	  chg_prop_idx = P_CONSTR_FK;
+	  break;
+	case PT_CONSTRAIN_PRIMARY_KEY:
+	  constr_att_list = cnstr->info.constraint.un.primary_key.attrs;
+	  chg_prop_idx = P_S_CONSTR_PK;
+	  save_pt_costraint = true;
+	  break;
+	case PT_CONSTRAIN_UNIQUE:
+	  constr_att_list = cnstr->info.constraint.un.unique.attrs;
+	  chg_prop_idx = P_S_CONSTR_UNI;
+	  save_pt_costraint = true;
+	  break;
+	case PT_CONSTRAIN_NOT_NULL:
+	  constr_att_list = cnstr->info.constraint.un.not_null.attr;
+	  chg_prop_idx = P_NOT_NULL;
+	  save_pt_costraint = true;
+	  break;
+	case PT_CONSTRAIN_CHECK:
+	  /* not supported, just mark as 'PRESENT' */
+	  assert (false);
+	  attr_chg_properties->p[P_CONSTR_CHECK] |=
+	    ATT_CHG_PROPERTY_PRESENT_NEW;
+	  continue;
+	default:
+	  assert (false);
+	}
+
+      for (constr_att = constr_att_list; constr_att != NULL;
+	   constr_att = constr_att->next)
+	{
+	  assert (constr_att->node_type == PT_NAME);
+	  if (intl_mbs_casecmp
+	      (attr_name_to_check, constr_att->info.name.original) == 0)
+	    {
+	      if (chg_prop_idx >= NUM_ATT_CHG_PROP)
+		{
+		  continue;
+		}
+
+	      assert (chg_prop_idx < NUM_ATT_CHG_PROP);
+	      assert (chg_prop_idx >= 0);
+
+	      /* save new constraint only if it is not already present
+	       * in current template*/
+	      if (save_pt_costraint &&
+		  !is_att_prop_set (attr_chg_properties->p[chg_prop_idx],
+				    ATT_CHG_PROPERTY_PRESENT_OLD))
+		{
+		  error = save_constraint_info_from_pt_node
+		    (&(attr_chg_properties->new_constr_info), cnstr);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		}
+
+	      attr_chg_properties->p[chg_prop_idx] |=
+		ATT_CHG_PROPERTY_PRESENT_NEW;
+	      break;
+	    }
+	}
+    }
+
+  /* partitions: */
+  attr_chg_properties->p[P_IS_PARTITION_COL] = 0;
+  if (ctemplate->partition_of)
+    {
+      char keycol[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
+
+      assert (attr_chg_properties->name_space == ID_ATTRIBUTE);
+
+      error = do_get_partition_keycol (keycol, ctemplate->op);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (intl_mbs_casecmp (keycol, attr_name) == 0)
+	{
+	  attr_chg_properties->p[P_IS_PARTITION_COL] |=
+	    ATT_CHG_PROPERTY_PRESENT_OLD;
+	}
+    }
+
+  /* DOMAIN */
+  attr_db_domain = pt_node_to_db_domain (parser, attr_def, ctemplate->name);
+  if (attr_db_domain == NULL)
+    {
+      return (er_errid ());
+    }
+  attr_chg_properties->p[P_TYPE] = 0;
+  attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+  attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+
+  /* consolidate properties : */
+  {
+    int i = 0;
+
+    for (i = 0; i < NUM_ATT_CHG_PROP; i++)
+      {
+	int *const p = &(attr_chg_properties->p[i]);
+
+	if (*p & ATT_CHG_PROPERTY_PRESENT_OLD)
+	  {
+	    if (*p & ATT_CHG_PROPERTY_PRESENT_NEW)
+	      {
+		*p |= ATT_CHG_PROPERTY_UNCHANGED;
+	      }
+	    else
+	      {
+		*p |= ATT_CHG_PROPERTY_LOST;
+	      }
+	  }
+	else
+	  {
+	    if (*p & ATT_CHG_PROPERTY_PRESENT_NEW)
+	      {
+		*p |= ATT_CHG_PROPERTY_GAINED;
+	      }
+	    else
+	      {
+		*p |= ATT_CHG_PROPERTY_UNCHANGED;
+	      }
+	  }
+
+	if (is_att_prop_set (*p, ATT_CHG_PROPERTY_DIFF)
+	    && is_att_prop_set (*p, ATT_CHG_PROPERTY_UNCHANGED))
+	  {
+	    /* remove UNCHANGED flag if DIFF flag was already set */
+	    *p &= ~ATT_CHG_PROPERTY_UNCHANGED;
+	  }
+      }
+
+  }
+
+  /* special case : TYPE */
+  if (tp_domain_match (attr_db_domain, att->domain, TP_EXACT_MATCH) != 0)
+    {
+      attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_UNCHANGED;
+    }
+  else
+    {
+      assert (attr_db_domain->type != NULL);
+
+      /* remove "UNCHANGED" flag */
+      attr_chg_properties->p[P_TYPE] &= ~ATT_CHG_PROPERTY_UNCHANGED;
+
+      if ((attr_db_domain->type->id == att->domain->type->id) &&
+	  (TP_IS_CHAR_BIT_TYPE (attr_db_domain->type->id)
+	   && TP_IS_CHAR_BIT_TYPE (att->domain->type->id)))
+	{
+	  if (tp_domain_match (attr_db_domain, att->domain, TP_STR_MATCH) !=
+	      0)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PREC_INCR;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_DIFF;
+	      if (attr_db_domain->precision > att->domain->precision)
+		{
+		  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+		}
+	      else
+		{
+		  assert (attr_db_domain->precision < att->domain->precision);
+		  if (QSTR_IS_FIXED_LENGTH (attr_db_domain->type->id)
+		      && PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == true)
+		    {
+		      attr_chg_properties->p[P_TYPE] |=
+			ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;
+		    }
+		  else
+		    {
+		      attr_chg_properties->p[P_TYPE] |=
+			ATT_CHG_TYPE_NEED_ROW_CHECK;
+		    }
+		}
+	    }
+	}
+      else if (TP_IS_SET_TYPE (attr_db_domain->type->id)
+	       && TP_IS_SET_TYPE (att->domain->type->id))
+	{
+	  if (tp_domain_compatible (att->domain, attr_db_domain) != 0)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_SET_CLS_COMPAT;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_DIFF;
+	    }
+	}
+      else
+	{
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_DIFF;
+	  error =
+	    build_att_type_change_map (att->domain, attr_db_domain,
+				       attr_chg_properties);
+	  if (error != NO_ERROR)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	      return error;
+	    }
+	}
+    }
+
+  /* special case : AUTO INCREMENT */
+  if (is_att_prop_set
+      (attr_chg_properties->p[P_AUTO_INCR],
+       ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_PRESENT_NEW))
+    {
+      attr_chg_properties->p[P_AUTO_INCR] |= ATT_CHG_PROPERTY_DIFF;
+      /* remove "UNCHANGED" flag */
+      attr_chg_properties->p[P_AUTO_INCR] &= ~ATT_CHG_PROPERTY_UNCHANGED;
+    }
+
+  /* special case : DEFAULT */
+  if (is_att_prop_set
+      (attr_chg_properties->p[P_DEFAULT_VALUE],
+       ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_PRESENT_NEW))
+    {
+      attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_DIFF;
+      /* remove "UNCHANGED" flag */
+      attr_chg_properties->p[P_DEFAULT_VALUE] &= ~ATT_CHG_PROPERTY_UNCHANGED;
+    }
+
+  /* special case : UNIQUE on multiple columns */
+  if (is_att_prop_set
+      (attr_chg_properties->p[P_M_CONSTR_UNI], ATT_CHG_PROPERTY_PRESENT_OLD))
+    {
+      if (is_att_prop_set
+	  (attr_chg_properties->p[P_TYPE], ATT_CHG_PROPERTY_DIFF))
+	{
+	  attr_chg_properties->p[P_M_CONSTR_UNI] |= ATT_CHG_PROPERTY_DIFF;
+	  /* remove "UNCHANGED" flag */
+	  attr_chg_properties->p[P_M_CONSTR_UNI] &=
+	    ~ATT_CHG_PROPERTY_UNCHANGED;
+	}
+      else
+	{
+	  attr_chg_properties->p[P_M_CONSTR_UNI] |=
+	    ATT_CHG_PROPERTY_UNCHANGED;
+	}
+    }
+  return error;
+}
+
+/*
+ * build_att_type_change_map() - This checks the attribute type change
+ *
+ *   return: Error code
+ *   parser(in): Parser context
+ *   curr_domain(in): Current domain of the atribute
+ *   req_domain(in): Requested (new) domain of the attribute
+ *   attr_chg_properties(out): structure summarizing the changed properties
+ *   of attribute
+ */
+static int
+build_att_type_change_map (TP_DOMAIN * curr_domain, DB_DOMAIN * req_domain,
+			   SM_ATTR_PROP_CHG * attr_chg_properties)
+{
+  int error = NO_ERROR;
+  const int MIN_DIGITS_FOR_INTEGER = TP_INTEGER_PRECISION;
+  const int MIN_DIGITS_FOR_SHORT = TP_SMALLINT_PRECISION;
+  const int MIN_DIGITS_FOR_BIGINT = TP_BIGINT_PRECISION;
+  const int MIN_CHARS_FOR_TIME = TP_TIME_AS_CHAR_LENGTH;
+  const int MIN_CHARS_FOR_DATE = TP_DATE_AS_CHAR_LENGTH;
+  const int MIN_CHARS_FOR_DATETIME = TP_DATETIME_AS_CHAR_LENGTH;
+  const int MIN_CHARS_FOR_TIMESTAMP = TP_TIMESTAMP_AS_CHAR_LENGTH;
+
+  DB_TYPE current_type = curr_domain->type->id;
+  DB_TYPE new_type = req_domain->type->id;
+  int req_prec = req_domain->precision;
+  int req_scale = req_domain->scale;
+  int cur_prec = curr_domain->precision;
+  int cur_scale = curr_domain->scale;
+
+  bool is_req_max_prec = false;
+
+  /* check if maximum precision was requested for new domain */
+  if (new_type == DB_TYPE_VARCHAR)
+    {
+      if (req_prec == DB_MAX_VARCHAR_PRECISION)
+	{
+	  is_req_max_prec = true;
+	}
+      else if (req_prec == TP_FLOATING_PRECISION_VALUE)
+	{
+	  req_prec = DB_MAX_VARCHAR_PRECISION;
+	  is_req_max_prec = true;
+	}
+      else
+	{
+	  assert (req_prec >= 0);
+	}
+    }
+  else if (new_type == DB_TYPE_VARNCHAR)
+    {
+      if (req_prec == DB_MAX_VARNCHAR_PRECISION)
+	{
+	  is_req_max_prec = true;
+	}
+      else if (req_prec == TP_FLOATING_PRECISION_VALUE)
+	{
+	  req_prec = DB_MAX_VARNCHAR_PRECISION;
+	  is_req_max_prec = true;
+	}
+      else
+	{
+	  assert (req_prec >= 0);
+	}
+    }
+  else
+    {
+      assert (is_req_max_prec == false);
+    }
+
+  switch (current_type)
+    {
+    case DB_TYPE_SHORT:
+      switch (new_type)
+	{
+	case DB_TYPE_INTEGER:
+	case DB_TYPE_BIGINT:
+	case DB_TYPE_FLOAT:
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_MONETARY:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	  break;
+	case DB_TYPE_NUMERIC:
+	  if (req_prec - req_scale >= MIN_DIGITS_FOR_SHORT)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_VARNCHAR:
+	  if (req_prec >= MIN_DIGITS_FOR_SHORT + 1)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	default:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_INTEGER:
+      switch (new_type)
+	{
+	case DB_TYPE_SHORT:
+	case DB_TYPE_FLOAT:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
+	case DB_TYPE_BIGINT:
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_MONETARY:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	  break;
+	case DB_TYPE_NUMERIC:
+	  if (req_prec - req_scale >= MIN_DIGITS_FOR_INTEGER)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_VARNCHAR:
+	  if (req_prec >= MIN_DIGITS_FOR_INTEGER + 1)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	default:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_BIGINT:
+      switch (new_type)
+	{
+	case DB_TYPE_SHORT:
+	case DB_TYPE_INTEGER:
+	case DB_TYPE_FLOAT:
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_MONETARY:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
+	case DB_TYPE_NUMERIC:
+	  if (req_prec - req_scale >= MIN_DIGITS_FOR_BIGINT)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_VARNCHAR:
+	  if (req_prec >= MIN_DIGITS_FOR_BIGINT + 1)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	default:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_NUMERIC:
+      switch (new_type)
+	{
+	case DB_TYPE_SHORT:
+	  if ((cur_prec < MIN_DIGITS_FOR_SHORT) && (cur_scale == 0))
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	case DB_TYPE_INTEGER:
+	  if ((cur_prec < MIN_DIGITS_FOR_INTEGER) && (cur_scale == 0))
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	case DB_TYPE_BIGINT:
+	  if ((cur_prec < MIN_DIGITS_FOR_BIGINT) && (cur_scale == 0))
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	case DB_TYPE_FLOAT:
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_MONETARY:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_VARNCHAR:
+	  if (req_prec >= cur_prec + 2)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	case DB_TYPE_NUMERIC:
+	  if ((req_scale == cur_scale) && (req_prec >= cur_prec))
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PREC_INCR;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	default:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_FLOAT:
+      switch (new_type)
+	{
+	case DB_TYPE_SHORT:
+	case DB_TYPE_INTEGER:
+	case DB_TYPE_BIGINT:
+	case DB_TYPE_NUMERIC:
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_VARNCHAR:
+	  if (is_req_max_prec)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_MONETARY:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	  break;
+	default:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_DOUBLE:
+      switch (new_type)
+	{
+	case DB_TYPE_SHORT:
+	case DB_TYPE_INTEGER:
+	case DB_TYPE_BIGINT:
+	case DB_TYPE_NUMERIC:
+	case DB_TYPE_FLOAT:
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_VARNCHAR:
+	  if (is_req_max_prec)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	case DB_TYPE_MONETARY:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	  break;
+	default:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_MONETARY:
+      switch (new_type)
+	{
+	case DB_TYPE_SHORT:
+	case DB_TYPE_INTEGER:
+	case DB_TYPE_BIGINT:
+	case DB_TYPE_NUMERIC:
+	case DB_TYPE_FLOAT:
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_VARNCHAR:
+	  if (is_req_max_prec)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	case DB_TYPE_DOUBLE:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	  break;
+	default:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_TIME:
+      switch (new_type)
+	{
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_VARNCHAR:
+	  if (req_prec >= MIN_CHARS_FOR_TIME)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	    }
+	  break;
+	default:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_DATE:
+      switch (new_type)
+	{
+	case DB_TYPE_DATETIME:
+	case DB_TYPE_TIMESTAMP:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	  break;
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_VARNCHAR:
+	  if (req_prec >= MIN_CHARS_FOR_DATE)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	    }
+	  break;
+	default:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_DATETIME:
+      switch (new_type)
+	{
+	case DB_TYPE_TIME:
+	case DB_TYPE_DATE:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PSEUDO_UPGRADE;
+	  break;
+	case DB_TYPE_TIMESTAMP:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	  break;
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_VARNCHAR:
+	  if (req_prec >= MIN_CHARS_FOR_DATETIME)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	    }
+	  break;
+	default:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      switch (new_type)
+	{
+	case DB_TYPE_TIME:
+	case DB_TYPE_DATE:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PSEUDO_UPGRADE;
+	  break;
+	case DB_TYPE_DATETIME:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	  break;
+	case DB_TYPE_CHAR:
+	case DB_TYPE_NCHAR:
+	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMP)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	    }
+	  break;
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_VARNCHAR:
+	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMP)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	    }
+	  break;
+	default:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_CHAR:
+      switch (new_type)
+	{
+	case DB_TYPE_SHORT:
+	case DB_TYPE_INTEGER:
+	case DB_TYPE_BIGINT:
+	case DB_TYPE_NUMERIC:
+	case DB_TYPE_FLOAT:
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_MONETARY:
+	case DB_TYPE_DATE:
+	case DB_TYPE_TIME:
+	case DB_TYPE_DATETIME:
+	case DB_TYPE_TIMESTAMP:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
+	case DB_TYPE_VARCHAR:
+	  if (req_prec >= cur_prec)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      if (PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == true)
+		{
+		  attr_chg_properties->p[P_TYPE] |=
+		    ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;
+		}
+	      else
+		{
+		  attr_chg_properties->p[P_TYPE] |=
+		    ATT_CHG_TYPE_NEED_ROW_CHECK;
+		}
+	    }
+	  break;
+	default:
+	  assert (new_type != DB_TYPE_CHAR);
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_VARCHAR:
+      switch (new_type)
+	{
+	case DB_TYPE_SHORT:
+	case DB_TYPE_INTEGER:
+	case DB_TYPE_BIGINT:
+	case DB_TYPE_NUMERIC:
+	case DB_TYPE_FLOAT:
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_MONETARY:
+	case DB_TYPE_DATE:
+	case DB_TYPE_TIME:
+	case DB_TYPE_DATETIME:
+	case DB_TYPE_TIMESTAMP:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
+	case DB_TYPE_CHAR:
+	  if (req_prec >= cur_prec)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	default:
+	  assert (new_type != DB_TYPE_VARCHAR);
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_NCHAR:
+      switch (new_type)
+	{
+	case DB_TYPE_SHORT:
+	case DB_TYPE_INTEGER:
+	case DB_TYPE_BIGINT:
+	case DB_TYPE_NUMERIC:
+	case DB_TYPE_FLOAT:
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_MONETARY:
+	case DB_TYPE_DATE:
+	case DB_TYPE_TIME:
+	case DB_TYPE_DATETIME:
+	case DB_TYPE_TIMESTAMP:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
+	case DB_TYPE_VARNCHAR:
+	  if (req_prec >= cur_prec)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      if (PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == true)
+		{
+		  attr_chg_properties->p[P_TYPE] |=
+		    ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;
+		}
+	      else
+		{
+		  attr_chg_properties->p[P_TYPE] |=
+		    ATT_CHG_TYPE_NEED_ROW_CHECK;
+		}
+	    }
+	  break;
+	default:
+	  assert (new_type != DB_TYPE_NCHAR);
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_VARNCHAR:
+      switch (new_type)
+	{
+	case DB_TYPE_SHORT:
+	case DB_TYPE_INTEGER:
+	case DB_TYPE_BIGINT:
+	case DB_TYPE_NUMERIC:
+	case DB_TYPE_FLOAT:
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_MONETARY:
+	case DB_TYPE_DATE:
+	case DB_TYPE_TIME:
+	case DB_TYPE_DATETIME:
+	case DB_TYPE_TIMESTAMP:
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	  break;
+	case DB_TYPE_NCHAR:
+	  if (req_prec >= cur_prec)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	default:
+	  assert (new_type != DB_TYPE_VARNCHAR);
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_BIT:
+      switch (new_type)
+	{
+	case DB_TYPE_VARBIT:
+	  if (req_prec >= cur_prec)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      if (PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == true)
+		{
+		  attr_chg_properties->p[P_TYPE] |=
+		    ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;
+		}
+	      else
+		{
+		  attr_chg_properties->p[P_TYPE] |=
+		    ATT_CHG_TYPE_NEED_ROW_CHECK;
+		}
+	    }
+	  break;
+	default:
+	  assert (new_type != DB_TYPE_BIT);
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_VARBIT:
+      switch (new_type)
+	{
+	case DB_TYPE_BIT:
+	  if (req_prec >= cur_prec)
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
+	    }
+	  else
+	    {
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
+	    }
+	  break;
+	default:
+	  assert (new_type != DB_TYPE_VARBIT);
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_OBJECT:
+      if (new_type != DB_TYPE_OBJECT)
+	{
+	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+	}
+      else
+	{
+	  assert (db_is_class (curr_domain->class_mop) != 0);
+	  assert (db_is_class (req_domain->class_mop) != 0);
+
+	  if (req_domain->class_mop != curr_domain->class_mop)
+	    {
+	      if (db_is_subclass
+		  (curr_domain->class_mop, req_domain->class_mop) == 0)
+		{
+		  attr_chg_properties->p[P_TYPE] |=
+		    ATT_CHG_TYPE_NOT_SUPPORTED;
+		}
+	      else
+		{
+		  attr_chg_properties->p[P_TYPE] |=
+		    ATT_CHG_TYPE_SET_CLS_COMPAT;
+		}
+	    }
+	  else
+	    {
+	      /* same OBJECT, should have been checked earlier */
+	      assert (false);
+	      attr_chg_properties->p[P_TYPE] &= ~ATT_CHG_PROPERTY_DIFF;
+	    }
+	}
+      break;
+
+    default:
+      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
+      break;
+    }
+
+  return error;
+}
+
+/*
+ * check_att_chg_allowed() - This checks if the attribute change is possible,
+ *                           if not it sets an appropiate error
+ *
+ *   return: NO_ERROR if changed allowed, an error code if change not allowed
+ *   att_name(in): name of attribute (to display in error messages)
+ *   t(in): new type (parse tree namespace)
+ *   attr_chg_properties(in): structure summarizing the changed properties of
+ *                            attribute
+ *   chg_how(in): the strategy for which the check is requested
+ *   log_error_allowed(in): log the error if any
+ *   new_attempt(out): is set to false if a new attempt with different
+ *		       'chg_how' argument may produce a positive result
+ *
+ *  Note : this function may be called several times, each time esacalating
+ *	   the 'chg_how' mode parameter; the caller should ensure that only
+ *	   the last call allows also to log an error, by setting the
+ *	   'log_error_allowed' argument.
+ *	   The caller should also check the 'new_attempt' value before trying
+ *	   a new 'chg_how' argument.
+ *	   All error codes set in this function must correspond to messages
+ *	   with one argument, otherwise additional processing must be done
+ *	   before tracing the error.
+ */
+static int
+check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t,
+		       const SM_ATTR_PROP_CHG * attr_chg_prop,
+		       SM_ATTR_CHG_SOL chg_how, bool log_error_allowed,
+		       bool * new_attempt)
+{
+  int error = NO_ERROR;
+
+  /* these are error codes issued by ALTER CHANGE which map on other exising
+   * ALTER CHANGE error messages; they are kept with different names for
+   * better differentiation between error contexts*/
+  const int ER_ALTER_CHANGE_TYPE_WITH_NON_UNIQUE =
+    ER_ALTER_CHANGE_TYPE_WITH_INDEX;
+  const int ER_ALTER_CHANGE_TYPE_WITH_M_UNIQUE =
+    ER_ALTER_CHANGE_TYPE_WITH_INDEX;
+  const int ER_ALTER_CHANGE_TYPE_WITH_S_UNIQUE =
+    ER_ALTER_CHANGE_TYPE_WITH_INDEX;
+  const int ER_ALTER_CHANGE_TYPE_WITH_PK = ER_ALTER_CHANGE_TYPE_WITH_INDEX;
+  const int ER_ALTER_CHANGE_GAIN_PK = ER_ALTER_CHANGE_GAIN_CONSTRAINT;
+
+  /* by default we advise new attempt */
+  *new_attempt = true;
+
+  /* partitions not allowed : this check (by value instead of bit) ensures
+   * that the column doesn't have partitions in current schema and in new
+   * definition*/
+  if (attr_chg_prop->p[P_IS_PARTITION_COL] != ATT_CHG_PROPERTY_UNCHANGED)
+    {
+      error = ER_ALTER_CHANGE_PARTITIONS;
+      *new_attempt = false;
+      goto not_allowed;
+    }
+  /* foreign key not allowed : this check (by value instead of bit) ensures
+   * that the column doesn't have a foreign key in current schema and in new
+   * definition */
+  if (attr_chg_prop->p[P_CONSTR_FK] != ATT_CHG_PROPERTY_UNCHANGED)
+    {
+      error = ER_ALTER_CHANGE_FK;
+      *new_attempt = false;
+      goto not_allowed;
+    }
+
+  /* unique key : drop is allowed */
+  /* unique key : gaining UK is matter of adding a new constraint */
+
+  /* primary key : drop is allowed  */
+  /* primary key : gaining PK is matter of adding a new constraint */
+
+  /* NOT NULL : gaining is not always allowed */
+  if (is_att_prop_set (attr_chg_prop->p[P_NOT_NULL], ATT_CHG_PROPERTY_GAINED))
+    {
+      if (t == PT_TYPE_BLOB || t == PT_TYPE_CLOB)
+	{
+	  error = ER_SM_NOT_NULL_NOT_ALLOWED;
+	  *new_attempt = false;
+	  goto not_allowed;
+	}
+      if (attr_chg_prop->name_space == ID_CLASS_ATTRIBUTE)
+	{
+	  error = ER_SM_INVALID_CONSTRAINT;
+	  *new_attempt = false;
+	  goto not_allowed;
+	}
+      if (PRM_ALTER_TABLE_CHANGE_TYPE_STRICT == false)
+	{
+	  /*in permissive mode, we may have to convert existent NULL values
+	   *to hard- defaults, so make sure the hard default type exists*/
+	  if (get_hard_default_for_type (t) == NULL)
+	    {
+	      error = ER_ALTER_CHANGE_HARD_DEFAULT_NOT_EXIST;
+	      *new_attempt = false;
+	      goto not_allowed;
+	    }
+	}
+      /* gaining NOT NULL is matter of adding a new constraint */
+    }
+
+  /* check type changes and ... */
+  /* check if AUTO_INCR is gained: */
+  if (is_att_prop_set
+      (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_GAINED))
+    {
+      if (attr_chg_prop->name_space == ID_CLASS_ATTRIBUTE
+	  || attr_chg_prop->name_space == ID_SHARED_ATTRIBUTE)
+	{
+	  error = ER_SM_INVALID_CONSTRAINT;
+	  *new_attempt = false;
+	  goto not_allowed;
+	}
+
+      if (is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_DIFF))
+	{
+	  if (chg_how == SM_ATTR_CHG_ONLY_SCHEMA)
+	    {
+	      error = ER_ALTER_CHANGE_TYPE_WITH_AUTO_INCR;
+	      goto not_allowed;
+	    }
+	}
+    }
+
+  /* check type change */
+  if (is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NOT_SUPPORTED))
+    {
+      error = ER_ALTER_CHANGE_TYPE_NOT_SUPP;
+      *new_attempt = false;
+      goto not_allowed;
+    }
+  else
+    if (is_att_prop_set
+	(attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG))
+    {
+      error = ER_ALTER_CHANGE_TYPE_UPGRADE_CFG;
+      *new_attempt = false;
+      goto not_allowed;
+    }
+  else if (chg_how == SM_ATTR_CHG_ONLY_SCHEMA)
+    {
+      if (attr_chg_prop->name_space != ID_ATTRIBUTE)
+	{
+	  /* allow any type change (except when not supported by config) for
+	   * class and shared attributes */
+
+	  assert (attr_chg_prop->name_space == ID_CLASS_ATTRIBUTE
+		  || attr_chg_prop->name_space == ID_SHARED_ATTRIBUTE);
+
+	  assert (is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				   ATT_CHG_PROPERTY_UNCHANGED)
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				      ATT_CHG_TYPE_NEED_ROW_CHECK)
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				      ATT_CHG_TYPE_PSEUDO_UPGRADE)
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				      ATT_CHG_TYPE_UPGRADE)
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				      ATT_CHG_TYPE_PREC_INCR)
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				      ATT_CHG_TYPE_SET_CLS_COMPAT));
+	}
+      else
+	{
+	  if (is_att_prop_set
+	      (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NEED_ROW_CHECK)
+	      || is_att_prop_set
+	      (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE))
+	    {
+	      error = ER_ALTER_CHANGE_TYPE_NEED_ROW_CHECK;
+	      goto not_allowed;
+	    }
+	  else
+	    if (is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				 ATT_CHG_TYPE_UPGRADE))
+	    {
+	      error = ER_ALTER_CHANGE_TYPE_UPGRADE_CFG;
+	      goto not_allowed;
+	    }
+	  else
+	    if (is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				 ATT_CHG_PROPERTY_DIFF)
+		&& !(is_att_prop_set (attr_chg_prop->p[P_TYPE],
+				      ATT_CHG_TYPE_PREC_INCR)
+		     || is_att_prop_set (attr_chg_prop->p[P_TYPE],
+					 ATT_CHG_TYPE_SET_CLS_COMPAT)))
+	    {
+	      error = ER_ALTER_CHANGE_TYPE_NOT_SUPP;
+	      goto not_allowed;
+	    }
+	}
+    }
+  else if (chg_how == SM_ATTR_CHG_WITH_ROW_UPDATE)
+    {
+      assert (attr_chg_prop->name_space == ID_ATTRIBUTE);
+
+      if (is_att_prop_set
+	  (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NEED_ROW_CHECK)
+	  || is_att_prop_set
+	  (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE))
+	{
+	  error = ER_ALTER_CHANGE_TYPE_NEED_ROW_CHECK;
+	  goto not_allowed;
+	}
+    }
+  else
+    {
+      assert (attr_chg_prop->name_space == ID_ATTRIBUTE);
+
+      /* allow any change that is not "NOT_SUPPORTED" */
+      assert (chg_how == SM_ATTR_CHG_BEST_EFFORT);
+    }
+
+  /* these constraints are not allowed under a "schema only" change: */
+  if (chg_how == SM_ATTR_CHG_ONLY_SCHEMA)
+    {
+      /* CLASS and SHARED attribute are incompatible with UNIQUE, PK */
+      if (attr_chg_prop->name_space == ID_CLASS_ATTRIBUTE
+	  || attr_chg_prop->name_space == ID_SHARED_ATTRIBUTE)
+	{
+	  if (is_att_prop_set (attr_chg_prop->p[P_S_CONSTR_UNI],
+			       ATT_CHG_PROPERTY_PRESENT_NEW)
+	      || is_att_prop_set (attr_chg_prop->p[P_S_CONSTR_PK],
+				  ATT_CHG_PROPERTY_PRESENT_NEW))
+	    {
+
+	      error = ER_SM_INVALID_CONSTRAINT;
+	      *new_attempt = false;
+	      goto not_allowed;
+	    }
+	}
+
+      /* cannot keep UNIQUE constr if type is changed */
+      if (is_att_prop_set
+	  (attr_chg_prop->p[P_S_CONSTR_UNI],
+	   ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_PRESENT_NEW)
+	  && is_att_prop_set (attr_chg_prop->p[P_TYPE],
+			      ATT_CHG_PROPERTY_DIFF))
+	{
+	  error = ER_ALTER_CHANGE_TYPE_WITH_S_UNIQUE;
+	  goto not_allowed;
+	}
+      if (is_att_prop_set
+	  (attr_chg_prop->p[P_M_CONSTR_UNI], ATT_CHG_PROPERTY_PRESENT_OLD)
+	  && is_att_prop_set (attr_chg_prop->p[P_TYPE],
+			      ATT_CHG_PROPERTY_DIFF))
+	{
+	  error = ER_ALTER_CHANGE_TYPE_WITH_M_UNIQUE;
+	  goto not_allowed;
+	}
+
+      /* primary key not allowed to be kept when type changes: */
+      if (is_att_prop_set
+	  (attr_chg_prop->p[P_S_CONSTR_PK],
+	   ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_PRESENT_NEW)
+	  && is_att_prop_set (attr_chg_prop->p[P_TYPE],
+			      ATT_CHG_PROPERTY_DIFF))
+	{
+	  error = ER_ALTER_CHANGE_TYPE_WITH_PK;
+	  goto not_allowed;
+	}
+
+      /* non-unique index not allowed when type changes: */
+      if (is_att_prop_set
+	  (attr_chg_prop->p[P_CONSTR_NON_UNI], ATT_CHG_PROPERTY_PRESENT_OLD)
+	  && is_att_prop_set (attr_chg_prop->p[P_TYPE],
+			      ATT_CHG_PROPERTY_DIFF))
+	{
+	  error = ER_ALTER_CHANGE_TYPE_WITH_NON_UNIQUE;
+	  goto not_allowed;
+	}
+    }
+
+  /*we should not have multiple primary keys defined */
+  assert ((is_att_prop_set
+	   (attr_chg_prop->p[P_S_CONSTR_PK], ATT_CHG_PROPERTY_PRESENT_OLD)) ?
+	  (is_att_prop_set
+	   (attr_chg_prop->p[P_M_CONSTR_PK], ATT_CHG_PROPERTY_PRESENT_OLD) ?
+	   false : true) : true);
+
+  /* ALTER .. CHANGE <attribute> syntax should not allow to define PK on
+   * multiple rows*/
+  assert (!is_att_prop_set
+	  (attr_chg_prop->p[P_M_CONSTR_PK], ATT_CHG_PROPERTY_PRESENT_NEW));
+
+  /* check if multiple primary keys after new definition */
+  if ((is_att_prop_set
+       (attr_chg_prop->p[P_S_CONSTR_PK], ATT_CHG_PROPERTY_PRESENT_OLD)
+       || is_att_prop_set
+       (attr_chg_prop->p[P_S_CONSTR_PK], ATT_CHG_PROPERTY_PRESENT_NEW))
+      && (is_att_prop_set
+	  (attr_chg_prop->p[P_M_CONSTR_PK], ATT_CHG_PROPERTY_PRESENT_OLD)
+	  || is_att_prop_set
+	  (attr_chg_prop->p[P_M_CONSTR_PK], ATT_CHG_PROPERTY_PRESENT_NEW)))
+    {
+      error = ER_ALTER_CHANGE_MULTIPLE_PK;
+      *new_attempt = false;
+      goto not_allowed;
+    }
+
+  /* check if class has subclasses: */
+  if (attr_chg_prop->class_has_subclass &&
+      !(is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_UNCHANGED)
+	&& is_att_prop_set (attr_chg_prop->p[P_ORDER],
+			    ATT_CHG_PROPERTY_UNCHANGED)
+	&& is_att_prop_set (attr_chg_prop->p[P_TYPE],
+			    ATT_CHG_PROPERTY_UNCHANGED)
+	&& is_att_prop_set (attr_chg_prop->p[P_NOT_NULL],
+			    ATT_CHG_PROPERTY_UNCHANGED)
+	&& is_att_prop_set (attr_chg_prop->p[P_CONSTR_CHECK],
+			    ATT_CHG_PROPERTY_UNCHANGED)
+	&& is_att_prop_set (attr_chg_prop->p[P_DEFFERABLE],
+			    ATT_CHG_PROPERTY_UNCHANGED)
+	&& is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR],
+			    ATT_CHG_PROPERTY_UNCHANGED)
+	&& is_att_prop_set (attr_chg_prop->p[P_S_CONSTR_PK],
+			    ATT_CHG_PROPERTY_UNCHANGED)
+	&& is_att_prop_set (attr_chg_prop->p[P_S_CONSTR_UNI],
+			    ATT_CHG_PROPERTY_UNCHANGED)))
+    {
+      /* allowed changes for class with sub-classes is for DEFAULT value */
+      error = ER_ALTER_CHANGE_CLASS_HIERARCHY;
+      *new_attempt = false;
+      goto not_allowed;
+    }
+
+  return NO_ERROR;
+
+not_allowed:
+  if (log_error_allowed || !(*new_attempt))
+    {
+      if (error == ER_SM_NOT_NULL_NOT_ALLOWED
+	  || error == ER_SM_INVALID_CONSTRAINT)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  pt_show_type_enum (t));
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, att_name);
+	}
+    }
+  return error;
+}
+
+/*
+ * is_att_property_structure_checked() - Checks all properties from the
+ *				    attribute change properties structure
+ *
+ *   return : true, if all properties are marked as checked, false otherwise
+ *   attr_chg_properties(in): structure summarizing the changed properties of
+ *                            attribute
+ *
+ */
+static bool
+is_att_property_structure_checked (const SM_ATTR_PROP_CHG *
+				   attr_chg_properties)
+{
+  int i = 0;
+
+  for (i = 0; i < NUM_ATT_CHG_PROP; i++)
+    {
+      if (attr_chg_properties->p[i] >= ATT_CHG_PROPERTY_NOT_CHECKED)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
+ * is_att_change_needed() - Checks all properties from the attribute change
+ *			    properties structure and decides if the schema
+ *			    update is necessary
+ *
+ *   return : true, if schema change is needed, false otherwise
+ *   attr_chg_properties(in): structure summarizing the changed properties of
+ *			      attribute
+ *
+ */
+static bool
+is_att_change_needed (const SM_ATTR_PROP_CHG * attr_chg_properties)
+{
+  int i = 0;
+
+  for (i = 0; i < NUM_ATT_CHG_PROP; i++)
+    {
+      if (attr_chg_properties->p[i] >= ATT_CHG_PROPERTY_DIFF)
+	{
+	  return true;
+	}
+
+      if (!is_att_prop_set (attr_chg_properties->p[i],
+			    ATT_CHG_PROPERTY_UNCHANGED))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * is_att_prop_set() - Checks that the properties has the flag set
+ *
+ *   return : true, if property has the value flag set, false otherwise
+ *   prop(in): property
+ *   value(in): value
+ *
+ */
+static bool
+is_att_prop_set (const int prop, const int value)
+{
+  return ((prop & value) == value);
+}
+
+/*
+ * reset_att_property_structure() - Resets the attribute change properties
+ *				    structure, so that all properties are
+ *				    marked as 'unchecked'
+ *
+ *   attr_chg_properties(in): structure summarizing the changed properties of
+ *                            attribute
+ *
+ */
+static void
+reset_att_property_structure (SM_ATTR_PROP_CHG * attr_chg_properties)
+{
+  int i = 0;
+
+  assert (sizeof (attr_chg_properties->p) / sizeof (int) == NUM_ATT_CHG_PROP);
+
+  for (i = 0; i < NUM_ATT_CHG_PROP; i++)
+    {
+      attr_chg_properties->p[i] = ATT_CHG_PROPERTY_NOT_CHECKED;
+    }
+
+  attr_chg_properties->constr_info = NULL;
+  attr_chg_properties->new_constr_info = NULL;
+  attr_chg_properties->att_id = -1;
+  attr_chg_properties->name_space = ID_NULL;
+  attr_chg_properties->class_has_subclass = false;
+}
+
+/*
+ * get_att_order_from_def() - Retrieves the order properties (first,
+ *			   after name) from the attribute definition node
+ *
+ *  return : NO_ERROR, if success; error code otherwise
+ *  attribute(in): attribute definition node (PT_ATTR_DEF)
+ *  ord_first(out): true if definition contains 'FIRST' specification, false
+ *		    otherwise
+ *  ord_after_name(out): name of column 'AFTER <col_name>'
+ *
+ */
+static int
+get_att_order_from_def (PT_NODE * attribute, bool * ord_first,
+			const char **ord_after_name)
+{
+  PT_NODE *ordering_info = NULL;
+
+  assert (attribute->node_type == PT_ATTR_DEF);
+
+  ordering_info = attribute->info.attr_def.ordering_info;
+  if (ordering_info != NULL)
+    {
+      assert (ordering_info->node_type == PT_ATTR_ORDERING);
+
+      *ord_first = ordering_info->info.attr_ordering.first;
+
+      if (ordering_info->info.attr_ordering.after != NULL)
+	{
+	  PT_NODE *const after_name = ordering_info->info.attr_ordering.after;
+
+	  assert (after_name->node_type == PT_NAME);
+	  *ord_after_name = after_name->info.name.original;
+	  assert (*ord_first == false);
+	}
+      else
+	{
+	  *ord_after_name = NULL;
+	  /*
+	   * If we have no "AFTER name" then this must have been a "FIRST"
+	   * token
+	   */
+	  assert (*ord_first == true);
+	}
+    }
+  else
+    {
+      *ord_first = false;
+      *ord_after_name = NULL;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * get_att_default_from_def() - Retrieves the default value property from the
+ *				attribute definition node
+ *
+ *  return : NO_ERROR, if success; error code otherwise
+ *  parser(in): parser context
+ *  attribute(in): attribute definition node (PT_ATTR_DEF)
+ *  default_value(in/out): default value; this must be initially passed as
+ *			   pointer to an allocated DB_VALUE; it is returned
+ *			   as NULL if a DEFAULT is not specified for the
+ *			   attribute, otherwise the DEFAULT value is returned
+ *			   (the initially passed value is used for storage)
+ *
+ */
+static int
+get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute,
+			  DB_VALUE ** default_value)
+{
+  int error = NO_ERROR;
+
+  assert (attribute->node_type == PT_ATTR_DEF);
+
+  if (attribute->info.attr_def.data_default == NULL)
+    {
+      *default_value = NULL;
+    }
+  else
+    {
+      PT_NODE *def_val = NULL;
+      PT_TYPE_ENUM desired_type = attribute->type_enum;
+
+      /* try to coerce the default value into the attribute's type */
+      def_val =
+	attribute->info.attr_def.data_default->info.data_default.
+	default_value;
+      def_val = pt_semantic_check (parser, def_val);
+      if (pt_has_error (parser) || def_val == NULL)
+	{
+	  pt_report_to_ersys (parser, PT_SEMANTIC);
+	  return er_errid ();
+	}
+
+      error = pt_coerce_value (parser, def_val, def_val, desired_type,
+			       attribute->data_type);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      pt_evaluate_tree (parser, def_val, *default_value);
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys (parser, PT_SEMANTIC);
+	  return er_errid ();
+	}
+    }
+  return error;
+}
+
+
+/*
+ * get_hard_default_for_type() - Get a hard-coded default value for the given
+ *				 type, or NULL if there is no such value.
+ *
+ *  Note: the default is returned as a string, to be used in building queries.
+ *
+ *  return : pointer to a static char array or NULL
+ *  type(in): the type, as stored in the parse tree
+ *
+ */
+static const char *
+get_hard_default_for_type (PT_TYPE_ENUM type)
+{
+  static const char *zero = "0";
+  static const char *empty_str = "''";
+  static const char *empty_n_str = "N''";
+  static const char *empty_bit = "b'0'";
+  static const char *empty_date = "DATE '01/01/0001'";
+  static const char *empty_time = "TIME '00:00'";
+  static const char *empty_datetime = "DATETIME '01/01/0001 00:00'";
+
+  /* TODO : use db_value_domain_default instead, but make sure that
+   * db_value_domain_default is not using NULL DB_VALUE as default for any
+   * type*/
+
+  /* Timestamp is not midnight but noon(12 hrs later)
+   * to avoid UTC conflicts (the timestamp is interpreted as local and
+   * converted internally to UTC, so we need to make sure this works on every
+   * meridian).
+   */
+  static const char *empty_timestamp = "TIMESTAMP '00:00:00 PM 01/01/1970'";
+  static const char *empty_set = "{}";
+
+  switch (type)
+    {
+    case PT_TYPE_INTEGER:
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_MONETARY:
+    case PT_TYPE_NUMERIC:
+    case PT_TYPE_BIGINT:
+    case PT_TYPE_FLOAT:
+    case PT_TYPE_DOUBLE:
+      return zero;
+
+    case PT_TYPE_TIMESTAMP:
+      return empty_timestamp;
+
+    case PT_TYPE_DATE:
+      return empty_date;
+
+    case PT_TYPE_TIME:
+      return empty_time;
+
+    case PT_TYPE_DATETIME:
+      return empty_datetime;
+
+    case PT_TYPE_CHAR:
+    case PT_TYPE_VARCHAR:
+      return empty_str;
+
+    case PT_TYPE_VARNCHAR:
+    case PT_TYPE_NCHAR:
+      return empty_n_str;
+
+    case PT_TYPE_SET:
+    case PT_TYPE_MULTISET:
+    case PT_TYPE_SEQUENCE:
+      return empty_set;
+
+    case PT_TYPE_BIT:
+    case PT_TYPE_VARBIT:
+      return empty_bit;
+    case PT_TYPE_LOGICAL:
+    case PT_TYPE_NONE:
+    case PT_TYPE_MAYBE:
+    case PT_TYPE_NA:
+    case PT_TYPE_NULL:
+    case PT_TYPE_STAR:
+    case PT_TYPE_OBJECT:
+    case PT_TYPE_MIDXKEY:
+    case PT_TYPE_COMPOUND:
+    case PT_TYPE_RESULTSET:
+    case PT_TYPE_BLOB:
+    case PT_TYPE_CLOB:
+    case PT_TYPE_ELO:
+      return NULL;
+
+    default:
+      return NULL;
+    }
+}
+
+
+/*
+ * do_run_update_query_for_new_notnull_fields() - worker function for
+ *    do_update_new_notnull_cols_without_default().
+ *    It creates a complex UPDATE query and runs it.
+ */
+static int
+do_run_update_query_for_new_notnull_fields (PARSER_CONTEXT * parser,
+					    PT_NODE * alter,
+					    PT_NODE * attr_list,
+					    int attr_count, MOP class_mop)
+{
+  char *query, *q;
+  int query_len, remaining, n;
+
+  PT_NODE *attr;
+  int first = TRUE;
+  int error = NO_ERROR;
+  int row_count = 0;
+
+  assert (parser && alter && attr_list);
+  assert (attr_count > 0);
+
+  /* Allocate enough for each attribute's name, its default value, and for the
+   * "UPDATE table_name" part of the query.
+   * 42 is more than the maximum length of any default value for an attribute,
+   * including three spaces, the coma sign and an equal.
+   */
+
+  query_len = remaining = (attr_count + 1) * (DB_MAX_IDENTIFIER_LENGTH + 42);
+  if (query_len > QUERY_MAX_SIZE)
+    {
+      ERROR0 (error, ER_UNEXPECTED);
+      return error;
+    }
+
+  q = query = (char *) malloc (query_len + 1);
+  if (query == NULL)
+    {
+      ERROR1 (error, ER_OUT_OF_VIRTUAL_MEMORY, query_len);
+      return error;
+    }
+
+  query[0] = 0;
+
+  /* Using UPDATE ALL to update the current class and all its children. */
+
+  n = snprintf (q, remaining, "UPDATE ALL [%s] SET ",
+		alter->info.alter.entity_name->info.name.original);
+  if (n < 0)
+    {
+      ERROR0 (error, ER_UNEXPECTED);
+      goto end;
+    }
+  remaining -= n;
+  q += n;
+
+  for (attr = attr_list; attr != NULL; attr = attr->next)
+    {
+      const char *sep = first ? "" : ", ";
+      const char *hard_default = get_hard_default_for_type (attr->type_enum);
+
+
+      n = snprintf (q, remaining, "%s[%s] = %s",
+		    sep,
+		    attr->info.attr_def.attr_name->info.name.original,
+		    hard_default);
+      if (n < 0)
+	{
+	  ERROR0 (error, ER_UNEXPECTED);
+	  goto end;
+	}
+      remaining -= n;
+      q += n;
+
+      first = FALSE;
+    }
+
+  /* Now just RUN thew query */
+
+  error = do_run_update_query_for_class (query, class_mop, true, &row_count);
+
+
+end:
+  if (query)
+    {
+      free_and_init (query);
+    }
+
+  return error;
+}
+
+
+/*
+ * is_attribute_primary_key() - Returns true if the attribute given is part
+ *				of the primary key of the table.
+ *
+ *
+ *  return : true or false
+ *  class_name(in): the class name
+ *  attr_name(in):  the attribute name
+ *
+ */
+static bool
+is_attribute_primary_key (const char *class_name, const char *attr_name)
+{
+  DB_ATTRIBUTE *db_att = NULL;
+
+  if (class_name == NULL || attr_name == NULL)
+    {
+      return false;
+    }
+
+  db_att = db_get_attribute_by_name (class_name, attr_name);
+
+  if (db_att && db_attribute_is_primary_key (db_att))
+    {
+      return true;
+    }
+  return false;
+}
+
+
+
+
+/*
+ * do_update_new_notnull_cols_without_default()
+ * Populates the newly added columns with hard-coded defaults.
+ *
+ * Used only on ALTER TABLE ... ADD COLUMN, and only AFTER the operation has
+ * been performed (i.e. the columns have been added to the schema, even
+ * though the transaction has not been committed).
+ *
+ * IF the clause has added columns that:
+ *   1. have no default value AND
+ *     2a. have the NOT NULL constraint OR
+ *     2b. are part of the PRIMARY KEY
+ * THEN try to fill them with a hard-coded default (zero, empty string etc.)
+ *
+ * This is done in MySQL compatibility mode, to ensure consistency: otherwise
+ * columns with the NOT NULL constraint would have ended up being filled
+ * with NULL as a default.
+ *
+ * NOTE: there are types (such as OBJECT) that do not have a "zero"-like
+ * value, and if we encounter one of these, we block the entire operation.
+ *
+ *   return: Error code if operation fails or if one of the attributes to add
+ *           is of type OBJECT, with NOT NULL and no default value.
+ *   parser(in): Parser context
+ *   alter(in):  Parse tree of the statement
+ */
+static int
+do_update_new_notnull_cols_without_default (PARSER_CONTEXT * parser,
+					    PT_NODE * alter, MOP class_mop)
+{
+  PT_NODE *relevant_attrs = NULL;
+  int error = NO_ERROR;
+  int attr_count = 0;
+
+  PT_NODE *attr = NULL;
+  PT_NODE *save = NULL;
+  PT_NODE *copy = NULL;
+
+  assert (alter->node_type == PT_ALTER);
+  assert (alter->info.alter.code = PT_ADD_ATTR_MTHD);
+
+  /* Look for attributes that: have NOT NULL, do not have a DEFAULT
+   * and their type has a "hard" default.
+   * Also look for attributes that are primary keys
+   * Throw an error for types that do not have a hard default (like objects).
+   */
+  for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
+       attr; attr = attr->next)
+    {
+      const bool is_not_null = (attr->info.attr_def.constrain_not_null != 0);
+      const bool has_default = (attr->info.attr_def.data_default != NULL);
+      const bool is_pri_key =
+	is_attribute_primary_key (alter->info.alter.entity_name->info.name.
+				  original,
+				  attr->info.attr_def.attr_name->info.name.
+				  original);
+      if (has_default)
+	{
+	  continue;
+	}
+
+      if (!is_not_null && !is_pri_key)
+	{
+	  continue;
+	}
+
+
+      if (get_hard_default_for_type (attr->type_enum) == NULL)
+	{
+	  ERROR1 (error, ER_NOTNULL_ON_TYPE_WITHOUT_DEFAULT_VALUE,
+		  pt_show_type_enum (attr->type_enum));
+	  goto end;
+	}
+
+      /* now we have an interesting node. Copy it in our list. */
+      attr_count++;
+      save = attr->next;
+      attr->next = NULL;
+      copy = parser_copy_tree (parser, attr);
+      if (copy == NULL)
+	{
+	  ERROR0 (error, ER_OUT_OF_VIRTUAL_MEMORY);
+	  parser_free_tree (parser, relevant_attrs);
+	  goto end;
+	}
+      relevant_attrs = parser_append_node (copy, relevant_attrs);
+      attr->next = save;
+    }
+
+  if (relevant_attrs == NULL)
+    {
+      /* no interesting attribute found, just leave */
+      goto end;
+    }
+
+  /* RUN an UPDATE query comprising all the attributes */
+
+  error = do_run_update_query_for_new_notnull_fields (parser, alter,
+						      relevant_attrs,
+						      attr_count, class_mop);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+
+end:
+  if (relevant_attrs != NULL)
+    {
+      parser_free_tree (parser, relevant_attrs);
+    }
+
+  return error;
+}
+
+/*
+ * do_run_upgrade_instances_domain() - proxy function for server function
+ *				       'xlocator_upgrade_instances_domain'
+ *
+ *  parser(in):
+ *  p_class_oid(in): class OID
+ *  att_id(in): constraint list
+ */
+static int
+do_run_upgrade_instances_domain (PARSER_CONTEXT * parser,
+				 OID * p_class_oid, int att_id)
+{
+  int error = NO_ERROR;
+
+  assert (parser != NULL);
+  assert (p_class_oid != NULL);
+  assert (att_id >= 0);
+
+  error = locator_upgrade_instances_domain (p_class_oid, att_id);
+
+  return error;
+
+}
+
+/*
+ * do_drop_att_constraints() - drops contraints in list associated with a
+ *			       class
+ *  class_mop(in): class object
+ *  constr_info_list(in): constraint list
+ *
+ * Note: Warning : Only non-unique, unique, and primary constraints are
+ *	 handled;  FOREIGN KEY constraints are not supported
+ */
+static int
+do_drop_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_list)
+{
+  int error = NO_ERROR;
+
+  SM_CONSTRAINT_INFO *constr;
+
+  for (constr = constr_info_list; constr != NULL; constr = constr->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (constr->constraint_type))
+	{
+	  error = sm_drop_constraint (class_mop, constr->constraint_type,
+				      constr->name,
+				      (const char **) constr->att_names, 0,
+				      false);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+      else if (constr->constraint_type == DB_CONSTRAINT_INDEX)
+	{
+	  error = sm_drop_index (class_mop, constr->name);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+    }
+error_exit:
+  return error;
+}
+
+/*
+ * do_recreate_att_constraints() - (re-)creates contraints in list associated
+ *				    with a class
+ *  class_mop(in): class object
+ *  constr_info_list(in): constraint list
+ *
+ * Note: Warning : Only non-unique, unique, and primary constraints are
+ *	 handled;  FOREIGN KEY constraints are not supported
+ */
+static int
+do_recreate_att_constraints (MOP class_mop,
+			     SM_CONSTRAINT_INFO * constr_info_list)
+{
+  int error = NO_ERROR;
+
+  SM_CONSTRAINT_INFO *constr;
+
+  for (constr = constr_info_list; constr != NULL; constr = constr->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (constr->constraint_type))
+	{
+	  error = sm_add_constraint (class_mop, constr->constraint_type,
+				     constr->name,
+				     (const char **) constr->att_names,
+				     constr->asc_desc, constr->prefix_length,
+				     0);
+
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+      else if (constr->constraint_type == DB_CONSTRAINT_INDEX)
+	{
+	  error = sm_add_index (class_mop, constr->constraint_type,
+				constr->name,
+				(const char **) constr->att_names,
+				constr->asc_desc, constr->prefix_length);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+    }
+error_exit:
+  return error;
+}
+
+/*
+ * check_change_attribute() - Checks if an attribute change attribute is
+ *			      possible, in the context of the requested
+ *			      change mode
+ *   return: Error code
+ *   parser(in): Parser context
+ *   ctemplate(in/out): Class template
+ *   attribute(in/out): Attribute to add
+ */
+static int
+check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
+			PT_NODE * attribute, PT_NODE * old_name_node,
+			PT_NODE * constraints,
+			SM_ATTR_PROP_CHG * attr_chg_prop,
+			SM_ATTR_CHG_SOL * change_mode)
+{
+  SM_NAME_SPACE name_space = ID_NULL;
+  int meta = 0, shared = 0;
+  int error = NO_ERROR;
+  const char *old_name = NULL;
+  const char *attr_name = NULL;
+  bool new_attempt = true;
+  DB_VALUE def_value;
+  DB_VALUE *ptr_def = &def_value;
+  PT_NODE *cnstr;
+
+  assert (attr_chg_prop != NULL);
+  assert (change_mode != NULL);
+
+  assert (attribute->node_type == PT_ATTR_DEF);
+
+  *change_mode = SM_ATTR_CHG_ONLY_SCHEMA;
+
+  DB_MAKE_NULL (&def_value);
+
+  attr_name = get_attr_name (attribute);
+
+  meta = (attribute->info.attr_def.attr_type == PT_META_ATTR);
+  shared = (attribute->info.attr_def.attr_type == PT_SHARED);
+  name_space = (meta) ? ID_CLASS_ATTRIBUTE :
+    ((shared) ? ID_SHARED_ATTRIBUTE : ID_ATTRIBUTE);
+  attr_chg_prop->name_space = name_space;
+
+  /* check if class has subclasses : 'users' of class may be subclass, but
+   * also partitions of class */
+  if (ctemplate->current->users != NULL && ctemplate->partition_of == NULL)
+    {
+      attr_chg_prop->class_has_subclass = true;
+    }
+
+  error = get_att_default_from_def (parser, attribute, &ptr_def);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  /* ptr_def is either NULL or pointing to address of def_value */
+  assert (ptr_def == NULL || ptr_def == &def_value);
+
+  /* check if the class has a default NULL and a NOT NULL constraint */
+  if (ptr_def && DB_IS_NULL (ptr_def))
+    {
+      for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
+	{
+	  if (cnstr->info.constraint.type == PT_CONSTRAIN_NOT_NULL)
+	    {
+	      /* don't allow a default value of NULL for NOT NULL
+	       * constrained columns */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, 1, attr_name);
+	      error = ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL;
+	      goto exit;
+	    }
+	}
+    }
+
+  error =
+    build_attr_change_map (parser, ctemplate, attribute, old_name_node,
+			   constraints, attr_chg_prop);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (!is_att_property_structure_checked (attr_chg_prop))
+    {
+      assert (false);
+      error = ER_UNEXPECTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
+    }
+
+  /* get new name */
+  if (old_name_node != NULL)
+    {
+      assert (old_name_node->node_type == PT_NAME);
+      old_name = old_name_node->info.name.original;
+      assert (old_name != NULL);
+
+      /* attr_name is supplied using the ATTR_DEF node and it means:
+       *  for MODIFY syntax : current and unchanged name (attr_name)
+       *  for CHANGE syntax : new name of the attribute  (new_name)
+       */
+      if (is_att_prop_set (attr_chg_prop->p[P_NAME], ATT_CHG_PROPERTY_DIFF))
+	{
+	  attr_name = old_name;
+	}
+      else
+	{
+	  attr_name = old_name;
+	}
+    }
+
+  if (!is_att_change_needed (attr_chg_prop))
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+	      ER_ALTER_CHANGE_WARN_NO_CHANGE, 1, attr_name);
+      error = NO_ERROR;
+      /* just a warning : nothing to do */
+      *change_mode = SM_ATTR_CHG_NOT_NEEDED;
+      goto exit;
+    }
+
+  /* check if domain type is indexable : for contraints that may be
+   * acquired with ALTER.. CHANGE, check both if the contraint is present
+   * in either old or new schema;
+   * if constraint cannot be acquired with CHANGE, check only if it is present
+   * with old schema*/
+  /* TODO : this should be done at semantic check for all attribute
+   * definition nodes (including at table creation)*/
+  if (is_att_prop_set
+      (attr_chg_prop->p[P_S_CONSTR_PK], ATT_CHG_PROPERTY_PRESENT_NEW)
+      || is_att_prop_set
+      (attr_chg_prop->p[P_S_CONSTR_PK], ATT_CHG_PROPERTY_PRESENT_OLD)
+      || is_att_prop_set (attr_chg_prop->p[P_M_CONSTR_PK],
+			  ATT_CHG_PROPERTY_PRESENT_OLD)
+      || is_att_prop_set (attr_chg_prop->p[P_S_CONSTR_UNI],
+			  ATT_CHG_PROPERTY_PRESENT_NEW)
+      || is_att_prop_set (attr_chg_prop->p[P_S_CONSTR_UNI],
+			  ATT_CHG_PROPERTY_PRESENT_OLD)
+      || is_att_prop_set (attr_chg_prop->p[P_M_CONSTR_UNI],
+			  ATT_CHG_PROPERTY_PRESENT_OLD)
+      || is_att_prop_set (attr_chg_prop->p[P_CONSTR_NON_UNI],
+			  ATT_CHG_PROPERTY_PRESENT_OLD))
+    {
+      if (!tp_valid_indextype (pt_type_enum_to_db (attribute->type_enum)))
+	{
+	  error = ER_SM_INVALID_INDEX_TYPE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  pt_type_enum_to_db_domain_name (attribute->type_enum));
+	  goto exit;
+	}
+    }
+
+  /* check if attribute change is allowed : */
+  error = check_att_chg_allowed (attr_name, attribute->type_enum,
+				 attr_chg_prop, *change_mode, false,
+				 &new_attempt);
+  if (error != NO_ERROR && new_attempt)
+    {
+      *change_mode = SM_ATTR_CHG_WITH_ROW_UPDATE;
+      error =
+	check_att_chg_allowed (attr_name, attribute->type_enum, attr_chg_prop,
+			       *change_mode, false, &new_attempt);
+      if (error != NO_ERROR && new_attempt)
+	{
+	  *change_mode = SM_ATTR_CHG_BEST_EFFORT;
+	  error =
+	    check_att_chg_allowed (attr_name, attribute->type_enum,
+				   attr_chg_prop, *change_mode, true,
+				   &new_attempt);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+    }
+
+exit:
+  db_value_clear (&def_value);
+  return error;
+}
+
+/*
+ * sort_constr_info_list - sorts the list of constraints in the order:
+ *			   - non-unique indexes
+ *			   - unique indexes
+ *			   - primary keys
+ *			   - foreign key constraints
+ *   return: none
+ *   source(in/out): list to sort
+ */
+
+static int
+sort_constr_info_list (SM_CONSTRAINT_INFO ** orig_list)
+{
+  int error = NO_ERROR;
+  SM_CONSTRAINT_INFO *sorted, *next, *prev, *ins, *found, *constr;
+  int constr_order[7] = { 0 };
+
+  assert (orig_list != NULL);
+
+  if (*orig_list == NULL)
+    {
+      return error;
+    }
+
+  /* TODO change this to compile-time asserts when we have such a mechanism.
+   */
+  assert (DB_CONSTRAINT_UNIQUE == 0);
+  assert (DB_CONSTRAINT_FOREIGN_KEY == 6);
+
+  constr_order[DB_CONSTRAINT_UNIQUE] = 2;
+  constr_order[DB_CONSTRAINT_INDEX] = 0;
+  constr_order[DB_CONSTRAINT_NOT_NULL] = 6;
+  constr_order[DB_CONSTRAINT_REVERSE_UNIQUE] = 2;
+  constr_order[DB_CONSTRAINT_REVERSE_INDEX] = 0;
+  constr_order[DB_CONSTRAINT_PRIMARY_KEY] = 4;
+  constr_order[DB_CONSTRAINT_FOREIGN_KEY] = 5;
+
+  sorted = NULL;
+  for (constr = *orig_list, next = NULL; constr != NULL; constr = next)
+    {
+      next = constr->next;
+
+      for (ins = sorted, prev = NULL, found = NULL;
+	   ins != NULL && found == NULL; ins = ins->next)
+	{
+	  if (constr->constraint_type < 0 ||
+	      constr->constraint_type > DB_CONSTRAINT_FOREIGN_KEY ||
+	      ins->constraint_type < 0 ||
+	      ins->constraint_type > DB_CONSTRAINT_FOREIGN_KEY)
+	    {
+	      assert (false);
+	      return ER_UNEXPECTED;
+	    }
+
+	  if (constr_order[constr->constraint_type] <
+	      constr_order[ins->constraint_type])
+	    {
+	      found = ins;
+	    }
+	  else
+	    {
+	      prev = ins;
+	    }
+	}
+
+      constr->next = found;
+      if (prev == NULL)
+	{
+	  sorted = constr;
+	}
+      else
+	{
+	  prev->next = constr;
+	}
+    }
+  *orig_list = sorted;
+
+  return error;
+}
+
+/*
+ * save_constraint_info_from_pt_node() - Saves the information necessary to
+ *	 create a constraint from a PT_CONSTRAINT_INFO node
+ *
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   save_info(in/out): The information saved
+ *   pt_constr(in): The constraint node to be saved
+ *
+ *  Note :this function handles only constraints for single
+ *	  attributes : PT_CONSTRAIN_NOT_NULL, PT_CONSTRAIN_UNIQUE,
+ *	  PT_CONSTRAIN_PRIMARY_KEY.
+ *	  Foreign keys, indexes on multiple columns are not supported and also
+ *	  'prefix_length' and ASC/DESC info is not supported.
+ *	  It process only one node; the 'next' PT_NODE is ignored.
+ */
+static int
+save_constraint_info_from_pt_node (SM_CONSTRAINT_INFO ** save_info,
+				   const PT_NODE * const pt_constr)
+{
+  int error_code = NO_ERROR;
+  SM_CONSTRAINT_INFO *new_constraint = NULL;
+  PT_NODE *constr_att_name = NULL;
+  int num_atts = 0;
+  int i = 0;
+
+  assert (pt_constr->node_type == PT_CONSTRAINT);
+
+  new_constraint =
+    (SM_CONSTRAINT_INFO *) calloc (1, sizeof (SM_CONSTRAINT_INFO));
+  if (new_constraint == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+	      sizeof (SM_CONSTRAINT_INFO));
+      goto error_exit;
+    }
+
+  /* set NULL, expect to generate constraint name */
+  new_constraint->name = NULL;
+
+  switch (pt_constr->info.constraint.type)
+    {
+    case PT_CONSTRAIN_PRIMARY_KEY:
+      constr_att_name = pt_constr->info.constraint.un.primary_key.attrs;
+      new_constraint->constraint_type = DB_CONSTRAINT_PRIMARY_KEY;
+      break;
+    case PT_CONSTRAIN_UNIQUE:
+      constr_att_name = pt_constr->info.constraint.un.unique.attrs;
+      new_constraint->constraint_type = DB_CONSTRAINT_UNIQUE;
+      break;
+    case PT_CONSTRAIN_NOT_NULL:
+      constr_att_name = pt_constr->info.constraint.un.not_null.attr;
+      new_constraint->constraint_type = DB_CONSTRAINT_NOT_NULL;
+      break;
+    default:
+      assert (false);
+    }
+
+  if (constr_att_name->next != NULL)
+    {
+      error_code = ER_UNEXPECTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      goto error_exit;
+    }
+
+  new_constraint->att_names = (char **) calloc (1 + 1, sizeof (char *));
+  if (new_constraint->att_names == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+	      (1 + 1) * sizeof (char *));
+      goto error_exit;
+    }
+
+  assert (constr_att_name->info.name.original != NULL);
+
+  new_constraint->att_names[0] = strdup (constr_att_name->info.name.original);
+  if (new_constraint->att_names[0] == NULL)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+	      strlen (constr_att_name->info.name.original) + 1);
+      goto error_exit;
+    }
+
+  new_constraint->att_names[1] = NULL;
+
+  assert (new_constraint->next == NULL);
+  while ((*save_info) != NULL)
+    {
+      save_info = &((*save_info)->next);
+    }
+  *save_info = new_constraint;
+
+  return error_code;
+
+error_exit:
+  if (new_constraint != NULL)
+    {
+      sm_free_constraint_info (&new_constraint);
+    }
+  return error_code;
+}
+
+/*
+ * do_check_rows_for_null() - checks if a column has NULL values
+ *   return: NO_ERROR or error code
+ *
+ *   class_mop(in): class to check
+ *   att_name(in): name of column to check
+ *   has_nulls(out): true if column has rows with NULL
+ *
+ */
+int
+do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
+{
+  int error = NO_ERROR;
+  int n = 0;
+  int stmt_id = 0;
+  DB_SESSION *session = NULL;
+  DB_QUERY_RESULT *result = NULL;
+  const char *class_name = NULL;
+  char query[2 * SM_MAX_IDENTIFIER_LENGTH + 50] = { 0 };
+  DB_VALUE count;
+
+  assert (class_mop != NULL);
+  assert (att_name != NULL);
+  assert (has_nulls != NULL);
+
+  *has_nulls = false;
+  DB_MAKE_NULL (&count);
+
+  class_name = db_get_class_name (class_mop);
+  if (class_name == NULL)
+    {
+      error = ER_UNEXPECTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  n = snprintf (query, sizeof (query) / sizeof (char),
+		"SELECT count(*) FROM [%s] WHERE [%s] IS NULL LIMIT 1",
+		class_name, att_name);
+  if (n < 0 || (n == sizeof (query) / sizeof (char)))
+    {
+      error = ER_UNEXPECTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  /* RUN the query */
+  session = db_open_buffer (query);
+  if (session == NULL)
+    {
+      error = er_errid ();
+      goto end;
+    }
+
+  if (db_get_errors (session) || db_statement_count (session) != 1)
+    {
+      error = er_errid ();
+      goto end;
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id != 1)
+    {
+      error = er_errid ();
+      goto end;
+    }
+
+  error = db_execute_statement (session, stmt_id, &result);
+  if (error < 0)
+    {
+      goto end;
+    }
+
+  if (result == NULL)
+    {
+      error = ER_UNEXPECTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  error = db_query_first_tuple (result);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  assert (result->query_type->db_type == DB_TYPE_INTEGER);
+
+  error = db_query_set_copy_tplvalue (result, 0 /* peek */ );
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (result, 0, &count);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  assert (!DB_IS_NULL (&count));
+  assert (DB_VALUE_DOMAIN_TYPE (&count) == DB_TYPE_INTEGER);
+
+  if (DB_GET_INTEGER (&count) > 0)
+    {
+      *has_nulls = true;
+    }
+
+end:
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+  db_value_clear (&count);
+
+  return error;
+}
+
+/*
+ * do_run_update_query_for_class() - runs an UPDATE query.
+ *   return: NO_ERROR or error code
+ *
+ *   query(in): query statement
+ *   class_mop(in): class to check
+ *   suppress_replication(in): force suppress replication
+ *   row_count(out): count of updated rows
+ *
+ */
+static int
+do_run_update_query_for_class (char *query, MOP class_mop,
+			       bool suppress_replication, int *row_count)
+{
+  int error = NO_ERROR;
+  DB_SESSION *session = NULL;
+  int stmt_id = 0;
+  bool save_tr_state = tr_get_execution_state ();
+  bool check_tr_state = false;
+
+  assert (query != NULL);
+  assert (class_mop != NULL);
+  assert (row_count != NULL);
+
+  *row_count = -1;
+
+  session = db_open_buffer (query);
+  if (session == NULL)
+    {
+      error = er_errid ();
+      goto end;
+    }
+
+  if (db_get_errors (session) || db_statement_count (session) != 1)
+    {
+      error = er_errid ();
+      goto end;
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id != 1)
+    {
+      error = er_errid ();
+      goto end;
+    }
+
+  /*
+   * The replication server will also receive a schema modification
+   * statement and it will perform the update itself, if necessary.
+   * We need to disable writing to the replication log because otherwise
+   * the replication server would have also received the logs for the
+   * update operations, duplicating the update.
+   */
+  if (suppress_replication == true)
+    {
+      db_set_suppress_repl_on_transaction (true);
+    }
+
+  /*
+   * We are going to perform an UPDATE on the table. We need to disable
+   * the triggers because these are not UPDATES that the user required
+   * explicitly.
+   */
+
+  check_tr_state = tr_set_execution_state (false);
+  assert (check_tr_state == save_tr_state);
+
+  error = db_execute_statement (session, stmt_id, NULL);
+  if (error < 0)
+    {
+      goto end;
+    }
+
+  error = NO_ERROR;
+
+  /* Invalidate the XASL cache by using the touch function */
+  assert (class_mop);
+  error = sm_touch_class (class_mop);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  *row_count = db_get_parser (session)->execution_values.row_count;
+
+end:
+  if (session != NULL)
+    {
+      db_free_query (session);
+      db_close_session (session);
+    }
+
+  tr_set_execution_state (save_tr_state);
+  if (suppress_replication == true)
+    {
+      db_set_suppress_repl_on_transaction (false);
     }
 
   return error;

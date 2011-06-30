@@ -1,30 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
@@ -64,14 +64,14 @@ static HRESULT FetchData(int hReq, CStatisticsRow &tprData)
 	char *value;
 	int ind, res;
 	T_CCI_ERROR err_buf;
-	
+
 	res = cci_fetch(hReq, &err_buf);
 	if(res<0) return RaiseError(E_FAIL, 1, __uuidof(IDBSchemaRowset), err_buf.err_msg);
 
 	res = cci_get_data(hReq, 1, CCI_A_TYPE_STR, &value, &ind);
 	if(res<0) return RaiseError(E_FAIL, 0, __uuidof(IDBSchemaRowset));
 	wcscpy(tprData.m_szTableName, CA2W(value));
-	
+
 	return S_OK;
 }
 
@@ -81,8 +81,9 @@ static HRESULT GetCardinality(int hConn, WCHAR* tableName, ULARGE_INTEGER* cardi
 	T_CCI_ERROR error;
 	int hReq, res, ind;
 
-	query.Append("select count(*) from ");
+	query.Append("select count(*) from [");
 	query.Append(tableName);
+	query.Append("]");
 
 	hReq = cci_prepare(hConn, CW2A(query.m_str), 0, &error);
 	if (hReq < 0)
@@ -116,9 +117,9 @@ HRESULT CSRStatistics::Execute(LONG* pcRowsAffected,
 	int hConn = -1;
 	HRESULT hr = CCUBRIDSession::GetSessionPtr(this)->GetConnectionHandle(&hConn);
 	if(FAILED(hr)) return hr;
-	
+
 	char table_name[256]; table_name[0] = 0;
-	
+
 	GetRestrictions(cRestrictions, rgRestrictions, table_name);
 	{
 		T_CCI_ERROR err_buf;
@@ -157,7 +158,7 @@ HRESULT CSRStatistics::Execute(LONG* pcRowsAffected,
 					size_t nPos;
 					for( nPos=0 ; nPos<m_rgRowData.GetCount() ; nPos++ )
 					{
-						int res = CompareStringW(LOCALE_USER_DEFAULT, 
+						int res = CompareStringW(LOCALE_USER_DEFAULT,
 								NORM_IGNOREKANATYPE | NORM_IGNOREWIDTH | SORT_STRINGSORT,
 								m_rgRowData[nPos].m_szTableName, -1,
 								tprData.m_szTableName, -1);

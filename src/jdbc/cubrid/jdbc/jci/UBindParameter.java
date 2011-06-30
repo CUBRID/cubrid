@@ -34,118 +34,102 @@
  * @version 2.0
  */
 
-package @CUBRID_JCI@;
+package cubrid.jdbc.jci;
 
-import java.util.Vector;
+import cubrid.jdbc.driver.CUBRIDBlob;
+import cubrid.jdbc.driver.CUBRIDClob;
 
-/*
- * PreparedStatement에 사용되는 parameter들을 관리하는 class이다.
- * 1.0에서 parameter를 관리하던 class UBindParameterInfo가 1차원으로 parameter를
- * 관리하여 2.0에서는 사용하기가 곤란하여 만들어진 대체 class이다.
- * parameter는 1차원 array를 element로 갖는 java.util.Vector class로 관리된다.
- *
- * since 2.0
- */
+class UBindParameter extends UParameter {
+	private final static byte PARAM_MODE_UNKNOWN = 0;
+	private final static byte PARAM_MODE_IN = 1;
+	private final static byte PARAM_MODE_OUT = 2;
+	private final static byte PARAM_MODE_INOUT = 3;
 
-class UBindParameter extends UParameter
-{
-  private final static byte PARAM_MODE_UNKNOWN = 0;
-  private final static byte PARAM_MODE_IN = 1;
-  private final static byte PARAM_MODE_OUT = 2;
-  private final static byte PARAM_MODE_INOUT = 3;
+	byte paramMode[];
 
-  byte paramMode[];
+	private boolean isBinded[];
 
-  private boolean isBinded[];
+	UBindParameter(int parameterNumber) {
+		super(parameterNumber);
 
-  UBindParameter(int parameterNumber)
-  {
-    super(parameterNumber);
+		isBinded = new boolean[number];
+		paramMode = new byte[number];
 
-    isBinded = new boolean[number];
-    paramMode = new byte[number];
+		clear();
+	}
 
-    clear();
-  }
+	/*
+	 * ======================================================================= |
+	 * PACKAGE ACCESS METHODS
+	 * =======================================================================
+	 */
 
-  /*
-   * ======================================================================= |
-   * PACKAGE ACCESS METHODS
-   * =======================================================================
-   */
+	boolean checkAllBinded() {
+		for (int i = 0; i < number; i++) {
+			if (isBinded[i] == false && paramMode[i] == PARAM_MODE_UNKNOWN)
+				return false;
+		}
+		return true;
+	}
 
-  /*
-   * parameter의 current cursor에서 모든 parameter들이 bind되었는지를 check한다.
-   */
-  boolean checkAllBinded()
-  {
-    for (int i = 0; i < number; i++)
-    {
-      if (isBinded[i] == false && paramMode[i] == PARAM_MODE_UNKNOWN)
-        return false;
-    }
-    return true;
-  }
+	void clear() {
+		for (int i = 0; i < number; i++) {
+			isBinded[i] = false;
+			paramMode[i] = PARAM_MODE_UNKNOWN;
+			values[i] = null;
+			types[i] = UUType.U_TYPE_NULL;
+		}
+	}
 
-  void clear()
-  {
-    for (int i = 0; i < number; i++)
-    {
-      isBinded[i] = false;
-      paramMode[i] = PARAM_MODE_UNKNOWN;
-      values[i] = null;
-      types[i] = UUType.U_TYPE_NULL;
-    }
-  }
+	synchronized void close() {
+		for (int i = 0; i < number; i++)
+			values[i] = null;
+		isBinded = null;
+		paramMode = null;
+		values = null;
+		types = null;
+	}
 
-  synchronized void close()
-  {
-    for (int i = 0; i < number; i++)
-      values[i] = null;
-    isBinded = null;
-    paramMode = null;
-    values = null;
-    types = null;
-  }
+	synchronized void setParameter(int index, byte bType, Object bValue)
+			throws UJciException {
+		if (index < 0 || index >= number)
+			throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
 
-  /*
-   * current cursor의 index번 째 parameter value를 set한다.
-   */
-  synchronized void setParameter(int index, byte bType, Object bValue)
-      throws UJciException
-  {
-    if (index < 0 || index >= number)
-      throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+		types[index] = bType;
+		values[index] = bValue;
 
-    types[index] = bType;
-    values[index] = bValue;
+		isBinded[index] = true;
+		paramMode[index] |= PARAM_MODE_IN;
+	}
 
-    isBinded[index] = true;
-    paramMode[index] |= PARAM_MODE_IN;
-  }
+	void setOutParam(int index) throws UJciException {
+		if (index < 0 || index >= number)
+			throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+		paramMode[index] |= PARAM_MODE_OUT;
+	}
 
-  void setOutParam(int index) throws UJciException
-  {
-    if (index < 0 || index >= number)
-      throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
-    paramMode[index] |= PARAM_MODE_OUT;
-  }
+	synchronized void writeParameter(UOutputBuffer outBuffer)
+			throws UJciException {
+		for (int i = 0; i < number; i++) {
+			if (values[i] == null) {
+				outBuffer.addByte(UUType.U_TYPE_NULL);
+				outBuffer.addNull();
+			} else {
+				outBuffer.addByte((byte) types[i]);
+				outBuffer.writeParameter(((byte) types[i]), values[i]);
+			}
+		}
+	}
 
-  synchronized void writeParameter(UOutputBuffer outBuffer)
-      throws UJciException
-  {
-    for (int i = 0; i < number; i++)
-    {
-      if (values[i] == null)
-      {
-        outBuffer.addByte(UUType.U_TYPE_NULL);
-        outBuffer.addNull();
-      }
-      else
-      {
-        outBuffer.addByte((byte) types[i]);
-        outBuffer.writeParameter(((byte) types[i]), values[i]);
-      }
-    }
-  }
+	synchronized void flushLobStreams() {
+		for (int i = 0; i < number; i++) {
+			if (values[i] == null) {
+				continue;
+			} else if (values[i] instanceof CUBRIDBlob) {
+				((CUBRIDBlob) values[i]).flushFlushableStreams();
+			} else if (values[i] instanceof CUBRIDClob) {
+				((CUBRIDClob) values[i]).flushFlushableStreams();
+			}
+		}
+	}
 }

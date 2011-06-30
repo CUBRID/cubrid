@@ -150,7 +150,7 @@ sql_log2_write (const char *fmt, ...)
       t = tv.tv_sec;
       localtime_r (&t, &lt);
       va_start (ap, fmt);
-      fprintf (sql_log2_fp, "%02d/%02d %02d:%02d:%02d.%03d ",
+      fprintf (sql_log2_fp, "%02d/%02d %02d:%02d:%02d.%03ld ",
 	       lt.tm_mon + 1, lt.tm_mday, lt.tm_hour,
 	       lt.tm_min, lt.tm_sec, tv.tv_usec / 1000);
       vfprintf (sql_log2_fp, fmt, ap);

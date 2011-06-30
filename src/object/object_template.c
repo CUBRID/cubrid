@@ -281,8 +281,11 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
     {
       value = pr_make_ext_value ();
       if (value == NULL)
-	return NULL;
-      status = tp_value_coerce (proposed_value, value, att->domain);
+	{
+	  return NULL;
+	}
+      status = tp_value_cast (proposed_value, value, att->domain,
+			      !TP_IS_CHAR_TYPE (att->domain->type->id));
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  (void) pr_free_ext_value (value);
@@ -296,12 +299,7 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
 	  /* error has already been set */
 	  break;
 	case DOMAIN_OVERFLOW:
-	  if (db_value_domain_type (proposed_value) == DB_TYPE_CHAR ||
-	      db_value_domain_type (proposed_value) == DB_TYPE_VARCHAR ||
-	      db_value_domain_type (proposed_value) == DB_TYPE_NCHAR ||
-	      db_value_domain_type (proposed_value) == DB_TYPE_VARNCHAR ||
-	      db_value_domain_type (proposed_value) == DB_TYPE_BIT ||
-	      db_value_domain_type (proposed_value) == DB_TYPE_VARBIT)
+	  if (TP_IS_BIT_TYPE (db_value_domain_type (proposed_value)))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OBJ_STRING_OVERFLOW, 2, att->header.name,
@@ -745,6 +743,7 @@ make_template (MOP object, MOP classobj)
   SM_CLASS *class_, *base_class;
   MOP base_classobj, base_object;
   MOBJ obj;
+  OBJ_TEMPASSIGN **vec;
 
   base_classobj = NULL;
   base_class = NULL;
@@ -867,34 +866,35 @@ make_template (MOP object, MOP classobj)
       template_ptr->discard_on_finish = 1;
       template_ptr->is_fkeys_were_modified = 0;
 
-      {
-	/*
-	 * Don't do this until we've initialized the other stuff;
-	 * OTMPL_NASSIGNS relies on the "class" attribute of the template.
-	 */
-	OBJ_TEMPASSIGN **vec;
-	int i;
+      /*
+       * Don't do this until we've initialized the other stuff;
+       * OTMPL_NASSIGNS relies on the "class" attribute of the template.
+       */
 
-	template_ptr->nassigns = template_ptr->is_class_update ?
-	  template_ptr->class_->class_attribute_count :
-	  (template_ptr->class_->att_count +
-	   template_ptr->class_->shared_count);
-	vec = NULL;
-	if (template_ptr->nassigns)
-	  {
-	    vec =
-	      (OBJ_TEMPASSIGN **) malloc (template_ptr->nassigns *
-					  sizeof (OBJ_TEMPASSIGN *));
-	    if (!vec)
+      template_ptr->nassigns = template_ptr->is_class_update ?
+	template_ptr->class_->class_attribute_count :
+	(template_ptr->class_->att_count +
+	 template_ptr->class_->shared_count);
+      vec = NULL;
+      if (template_ptr->nassigns)
+	{
+	  int i;
+
+	  vec = (OBJ_TEMPASSIGN **) malloc (template_ptr->nassigns *
+					    sizeof (OBJ_TEMPASSIGN *));
+	  if (!vec)
+	    {
 	      return NULL;
-	    for (i = 0; i < template_ptr->nassigns; i++)
+	    }
+	  for (i = 0; i < template_ptr->nassigns; i++)
+	    {
 	      vec[i] = NULL;
-	  }
-	template_ptr->assignments = vec;
-      }
+	    }
+	}
+      template_ptr->assignments = vec;
     }
 
-  return (template_ptr);
+  return template_ptr;
 }
 
 /*
@@ -1164,7 +1164,11 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 		      DB_MAKE_STRING (&oid_str_val, oid_str);
 
 		      DB_MAKE_NULL (&val);
-		      error = serial_get_next_value (&val, &oid_str_val);
+		      /* Do not update LAST_INSERT_ID during executing a trigger. */
+		      error = serial_get_next_value (&val, &oid_str_val,
+		                                     do_Trigger_involved ?
+		                                     GENERATE_SERIAL :
+						     GENERATE_AUTO_INCREMENT);
 		      if (error != NO_ERROR)
 			{
 			  goto auto_increment_error;
@@ -1371,7 +1375,7 @@ obt_def_object (MOP class_mop)
       template_ptr = make_template (NULL, class_mop);
     }
 
-  return (template_ptr);
+  return template_ptr;
 }
 
 /*
@@ -1418,7 +1422,7 @@ obt_edit_object (MOP object)
 	      0);
     }
 
-  return (template_ptr);
+  return template_ptr;
 }
 
 /*
@@ -1436,7 +1440,7 @@ obt_quit (OBJ_TEMPLATE * template_ptr)
     {
       obt_free_template (template_ptr);
     }
-  return (NO_ERROR);
+  return NO_ERROR;
 }
 
 /*
@@ -2418,8 +2422,11 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
   if (trstate == NULL)
     {
       /* no triggers, lock/create the object */
-      if (!(error = access_object (template_ptr, &object, &mobj)))
-	pin = ws_pin (object, 1);
+      error = access_object (template_ptr, &object, &mobj);
+      if (error == NO_ERROR)
+	{
+	  pin = ws_pin (object, 1);
+	}
     }
   else
     {
@@ -2493,6 +2500,62 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	      error = obj_get_value (object, a->att, mem, NULL, a->old_value);
 	    }
 	}
+
+      /*
+       * The following code block is for handling LOB type.
+       * If the client is the log applier, it doesn't care LOB type.
+       */
+      if (db_get_client_type () != DB_CLIENT_TYPE_LOG_APPLIER)
+	{
+
+	  if (a->att->type->id == DB_TYPE_BLOB ||
+	      a->att->type->id == DB_TYPE_CLOB)
+	    {
+	      DB_VALUE old;
+	      DB_TYPE value_type;
+
+	      error = obj_get_value (object, a->att, mem, NULL, &old);
+	      if (error == NO_ERROR && !db_value_is_null (&old))
+		{
+		  DB_ELO *elo;
+
+		  value_type = db_value_type (&old);
+		  assert (value_type == DB_TYPE_BLOB ||
+			  value_type == DB_TYPE_CLOB);
+		  elo = db_get_elo (&old);
+		  if (elo)
+		    {
+		      error = db_elo_delete (elo);
+		    }
+		  db_value_clear (&old);
+		  error = (error >= 0 ? NO_ERROR : error);
+		}
+	      if (error == NO_ERROR && !db_value_is_null (a->variable))
+		{
+		  DB_ELO dest_elo, *elo_p;
+		  char *save_meta_data;
+
+		  value_type = db_value_type (a->variable);
+		  assert (value_type == DB_TYPE_BLOB ||
+			  value_type == DB_TYPE_CLOB);
+		  elo_p = db_get_elo (a->variable);
+
+		  assert (class_->header.name != NULL);
+		  save_meta_data = elo_p->meta_data;
+		  elo_p->meta_data = (char *) class_->header.name;
+		  error = db_elo_copy (db_get_elo (a->variable), &dest_elo);
+		  elo_p->meta_data = save_meta_data;
+
+		  error = (error >= 0 ? NO_ERROR : error);
+		  if (error == NO_ERROR)
+		    {
+		      db_value_clear (a->variable);
+		      db_make_elo (a->variable, value_type, &dest_elo);
+		      (a->variable)->need_clear = true;
+		    }
+		}
+	    }			/* if (a->att->type->id == DB_TYPE_BLOB) || */
+	}			/* if (db_get_client_type () !=  */
 
       if (!error)
 	{
@@ -2857,4 +2920,52 @@ free_temp_object (MOP obj)
       obj->object = NULL;
       ws_free_temp_mop (obj);
     }
+}
+
+/*
+ * obt_populate_known_arguments - Populate default and auto_increment
+ *				  arguments of template_ptr
+ *    return: error code if unsuccessful 
+ *
+ *    template_ptr(in): temporary object
+ *
+ * Note :
+ *    This is necessary for INSERT templates.  The assignments are marked
+ *    so that if an assignment is later made to the template with the
+ *    same name, we don't generate an error because its ok to override
+ *    a default value or an auto_increment value.
+ *    If an assignment is already found with the name, it is assumed
+ *    that an initial value has already been given and the default or
+ *    auto_increment value is ignored.
+ *
+ */
+int
+obt_populate_known_arguments (OBJ_TEMPLATE * template_ptr)
+{
+  if (validate_template (template_ptr))
+    {
+      return er_errid ();
+    }
+
+  if (template_ptr->is_class_update)
+    {
+      return NO_ERROR;
+    }
+
+  if (populate_defaults (template_ptr) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+  if (obt_Enable_autoincrement != true)
+    {
+      return NO_ERROR;
+    }
+
+  if (populate_auto_increment (template_ptr) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+  return NO_ERROR;
 }

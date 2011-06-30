@@ -204,10 +204,15 @@ pt_set_domain_class (SM_DOMAIN * dom, const PT_NODE * nam,
       if (nam->info.name.db_object != NULL)
 	{
 	  dom->class_mop = nam->info.name.db_object;
+	  COPY_OID (&dom->class_oid, &(dom->class_mop->oid_info.oid));
 	}
       else
 	{
 	  dom->class_mop = db_find_class (nam->info.name.original);
+	  if (dom->class_mop != NULL)
+	    {
+	      COPY_OID (&dom->class_oid, &(dom->class_mop->oid_info.oid));
+	    }
 	}
     }
 }
@@ -997,59 +1002,68 @@ pt_new_query_result_descriptor (PARSER_CONTEXT * parser, PT_NODE * query)
       return NULL;
     }
 
-  oids_included = query->info.query.oids_included;
-
   switch (query->node_type)
     {
     default:
+      return NULL;
       break;
 
+    case PT_EXECUTE_PREPARE:
+      if (query->info.execute.stmt_type != CUBRID_STMT_SELECT)
+	{
+	  return NULL;
+	}
+      oids_included = query->info.execute.oids_included;
+      degree = query->info.execute.column_count;
+      break;
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_UNION:
     case PT_SELECT:
+      oids_included = query->info.query.oids_included;
       degree = 0;
       degree = pt_length_of_select_list (pt_get_select_list (parser, query),
 					 EXCLUDE_HIDDEN_COLUMNS);
-
-      r = db_alloc_query_result (T_SELECT, degree);
-      if (r == NULL)
-	return NULL;
-
-      db_init_query_result (r, T_SELECT);
-      r->type = T_SELECT;
-      r->col_cnt = degree;
-
-      r->oid_included = oids_included == 1;
-      r->res.s.query_id = parser->query_id;
-      r->res.s.stmt_id = 0;
-      r->res.s.stmt_type = CUBRID_STMT_SELECT;
-      r->res.s.cache_time = query->cache_time;
-
-      /* the following is for clean up when the query fails */
-      memset (&r->res.s.cursor_id.list_id, 0, sizeof (QFILE_LIST_ID));
-      r->res.s.cursor_id.query_id = parser->query_id;
-      r->res.s.cursor_id.buffer = NULL;
-      r->res.s.cursor_id.tuple_record.tpl = NULL;
-
-      list_id = (QFILE_LIST_ID *) query->etc;
-      r->type_cnt = degree;
-      if (list_id)
-	{
-	  failure = !cursor_open (&r->res.s.cursor_id, list_id, false,
-				  r->oid_included);
-	  /* free result, which was copied by open cursor operation! */
-	  regu_free_listid (list_id);
-	}
-      else
-	{
-	  QFILE_LIST_ID empty_list_id;
-	  QFILE_CLEAR_LIST_ID (&empty_list_id);
-	  failure = !cursor_open (&r->res.s.cursor_id, &empty_list_id,
-				  false, r->oid_included);
-	}
-
       break;
+    }
+
+  r = db_alloc_query_result (T_SELECT, degree);
+  if (r == NULL)
+    {
+      return NULL;
+    }
+
+  db_init_query_result (r, T_SELECT);
+  r->type = T_SELECT;
+  r->col_cnt = degree;
+
+  r->oid_included = oids_included == 1;
+  r->res.s.query_id = parser->query_id;
+  r->res.s.stmt_id = 0;
+  r->res.s.stmt_type = CUBRID_STMT_SELECT;
+  r->res.s.cache_time = query->cache_time;
+
+  /* the following is for clean up when the query fails */
+  memset (&r->res.s.cursor_id.list_id, 0, sizeof (QFILE_LIST_ID));
+  r->res.s.cursor_id.query_id = parser->query_id;
+  r->res.s.cursor_id.buffer = NULL;
+  r->res.s.cursor_id.tuple_record.tpl = NULL;
+
+  list_id = (QFILE_LIST_ID *) query->etc;
+  r->type_cnt = degree;
+  if (list_id)
+    {
+      failure = !cursor_open (&r->res.s.cursor_id, list_id, false,
+			      r->oid_included);
+      /* free result, which was copied by open cursor operation! */
+      regu_free_listid (list_id);
+    }
+  else
+    {
+      QFILE_LIST_ID empty_list_id;
+      QFILE_CLEAR_LIST_ID (&empty_list_id);
+      failure = !cursor_open (&r->res.s.cursor_id, &empty_list_id,
+			      false, r->oid_included);
     }
 
   if (failure)

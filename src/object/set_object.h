@@ -58,6 +58,10 @@
        DB_GET_SET(value) == NULL) || \
       ((DB_VALUE_TYPE(value) == DB_TYPE_OBJECT) && \
        (DB_GET_OBJECT(value) == NULL)) || \
+      ((DB_VALUE_TYPE(value) == DB_TYPE_BLOB) && \
+       (DB_GET_OBJECT(value) == NULL)) || \
+      ((DB_VALUE_TYPE(value) == DB_TYPE_CLOB) && \
+       (DB_GET_OBJECT(value) == NULL)) || \
       ((DB_VALUE_TYPE(value) == DB_TYPE_ELO) && \
        (DB_GET_ELO(value) == NULL)) ) \
     DB_MAKE_NULL(value);
@@ -172,14 +176,6 @@ extern int set_filter (DB_COLLECTION * set);
 extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
 extern int set_get_element_nocopy (DB_COLLECTION * set, int index,
 				   DB_VALUE * value);
-extern int set_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey,
-					   int index, DB_VALUE * value,
-					   int *prev_indexp,
-					   char **prev_ptrp);
-extern int set_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
-				     int num_dbvals,
-				     TP_DOMAIN * dbvals_domain_list,
-				     TP_DOMAIN * domain);
 extern int set_add_element (DB_COLLECTION * set, DB_VALUE * value);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int set_add_element_quick (DB_COLLECTION * set, DB_VALUE * value);
@@ -339,9 +335,6 @@ extern int setobj_put_value (COL * col, int index, DB_VALUE * value);
 extern DB_COLLECTION *setobj_get_reference (COL * set);
 extern int setobj_release (COL * set);
 extern void setobj_assigned (COL * col);
-extern int setobj_midxkey_get_element (const DB_MIDXKEY * midxkey,
-				       int index, DB_VALUE * value,
-				       bool copy,
-				       int *prev_indexp, char **prev_ptrp);
+extern int setobj_build_domain_from_col (COL * col, TP_DOMAIN ** set_domain);
 
 #endif /* _SET_OBJECT_H_ */

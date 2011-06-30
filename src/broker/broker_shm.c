@@ -27,6 +27,7 @@
 #if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
+#include <aclapi.h>
 #endif
 
 #include <stdio.h>
@@ -185,33 +186,137 @@ uw_shm_create (int shm_key, int size, int which_shm)
   LPVOID lpvMem = NULL;
   HANDLE hMapObject = NULL;
   char *shm_name;
+  DWORD dwRes;
+  PSID pEveryoneSID = NULL;
+  PSID pAdminSID = NULL;
+  PACL pACL = NULL;
+  PSECURITY_DESCRIPTOR pSD = NULL;
+  EXPLICIT_ACCESS ea[2];
+  SID_IDENTIFIER_AUTHORITY SIDAuthWorld = SECURITY_WORLD_SID_AUTHORITY;
+  SID_IDENTIFIER_AUTHORITY SIDAuthNT = SECURITY_NT_AUTHORITY;
+  SECURITY_ATTRIBUTES sa;
+
+  /* Create a well-known SID for the Everyone group. */
+  if (!AllocateAndInitializeSid (&SIDAuthWorld, 1, SECURITY_WORLD_RID,
+				 0, 0, 0, 0, 0, 0, 0, &pEveryoneSID))
+    {
+      goto error_exit;
+    }
+
+  /*Initialize an EXPLICIT_ACCESS structure for an ACE.
+   * The ACE will allow Everyone read access to the shared memory.
+   */
+  memset (ea, '\0', 2 * sizeof (EXPLICIT_ACCESS));
+  ea[0].grfAccessPermissions = GENERIC_READ;
+  ea[0].grfAccessMode = SET_ACCESS;
+  ea[0].grfInheritance = NO_INHERITANCE;
+  ea[0].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+  ea[0].Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
+  ea[0].Trustee.ptstrName = (LPTSTR) pEveryoneSID;
+
+  /* Create a SID for the BUILTIN\Administrators group. */
+  if (!AllocateAndInitializeSid (&SIDAuthNT, 2,
+				 SECURITY_BUILTIN_DOMAIN_RID,
+				 DOMAIN_ALIAS_RID_ADMINS,
+				 0, 0, 0, 0, 0, 0, &pAdminSID))
+    {
+      goto error_exit;
+    }
+
+  /* Initialize an EXPLICIT_ACCESS structure for an ACE.
+   * The ACE will allow the Administrators group full access to
+   * the shared memory
+   */
+  ea[1].grfAccessPermissions = GENERIC_ALL;
+  ea[1].grfAccessMode = SET_ACCESS;
+  ea[1].grfInheritance = NO_INHERITANCE;
+  ea[1].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+  ea[1].Trustee.TrusteeType = TRUSTEE_IS_GROUP;
+  ea[1].Trustee.ptstrName = (LPTSTR) pAdminSID;
+
+  /* Create a new ACL that contains the new ACEs. */
+  dwRes = SetEntriesInAcl (2, ea, NULL, &pACL);
+  if (ERROR_SUCCESS != dwRes)
+    {
+      goto error_exit;
+    }
+
+  /* Initialize a security descriptor. */
+  pSD = (PSECURITY_DESCRIPTOR) LocalAlloc (LPTR,
+					   SECURITY_DESCRIPTOR_MIN_LENGTH);
+
+  if (NULL == pSD)
+    {
+      goto error_exit;
+    }
+
+  if (!InitializeSecurityDescriptor (pSD, SECURITY_DESCRIPTOR_REVISION))
+    {
+      goto error_exit;
+    }
+
+  /* Add the ACL to the security descriptor. */
+  if (!SetSecurityDescriptorDacl (pSD, TRUE, pACL, FALSE))
+    {
+      goto error_exit;
+    }
+
+  /* Initialize a security attributes structure. */
+  sa.nLength = sizeof (SECURITY_ATTRIBUTES);
+  sa.lpSecurityDescriptor = pSD;
+  sa.bInheritHandle = FALSE;
 
   shm_name = shm_id_to_name (shm_key);
 
   hMapObject = CreateFileMapping (INVALID_HANDLE_VALUE,
-				  NULL, PAGE_READWRITE, 0, size, shm_name);
+				  &sa, PAGE_READWRITE, 0, size, shm_name);
+
   if (hMapObject == NULL)
     {
-      return NULL;
+      goto error_exit;
     }
 
   if (GetLastError () == ERROR_ALREADY_EXISTS)
     {
       CloseHandle (hMapObject);
-      return NULL;
+      goto error_exit;
     }
 
   lpvMem = MapViewOfFile (hMapObject, FILE_MAP_WRITE, 0, 0, 0);
+
   if (lpvMem == NULL)
     {
       CloseHandle (hMapObject);
-      return NULL;
+      goto error_exit;
     }
 
   link_list_add (&shm_id_list_header,
 		 (void *) lpvMem, (void *) hMapObject, shm_info_assign_func);
 
   return lpvMem;
+
+error_exit:
+  if (pEveryoneSID)
+    {
+      FreeSid (pEveryoneSID);
+    }
+
+  if (pAdminSID)
+    {
+      FreeSid (pAdminSID);
+    }
+
+  if (pACL)
+    {
+      LocalFree (pACL);
+    }
+
+  if (pSD)
+    {
+      LocalFree (pSD);
+    }
+
+  return NULL;
 }
 #else
 void *
@@ -342,7 +447,7 @@ shm_id_to_name (int shm_key)
 {
   static char shm_name[32];
 
-  sprintf (shm_name, "v3mapfile%d", shm_key);
+  sprintf (shm_name, "Global\\v3mapfile%d", shm_key);
   return shm_name;
 }
 #endif
@@ -382,30 +487,37 @@ bs_last_error_msg (LPTSTR lpszFunction)
 #endif
 
 #if defined (WINDOWS)
-static HANDLE con_status_sem;
-
 static int
-uw_sem_open (char **sem_name)
+uw_sem_open (char *sem_name, HANDLE * sem_handle)
 {
-  con_status_sem = OpenMutex (SYNCHRONIZE, FALSE, sem_name);
-  if (con_status_sem == NULL)
+  HANDLE new_handle;
+
+  new_handle = OpenMutex (SYNCHRONIZE, FALSE, sem_name);
+  if (new_handle == NULL)
     {
       return -1;
     }
+
+  if (sem_handle)
+    {
+      *sem_handle = new_handle;
+    }
+
   return 0;
 }
 
 int
-uw_sem_init (char **sem_name, char *br_name, int as_index)
+uw_sem_init (char *sem_name)
 {
-  snprintf (sem_name, BROKER_NAME_LEN, "%s_%d", br_name, as_index);
-  con_status_sem = CreateMutex (NULL, FALSE, *sem_name);
-  if (con_status_sem == NULL && GetLastError () == ERROR_ALREADY_EXISTS)
+  HANDLE sem_handle;
+
+  sem_handle = CreateMutex (NULL, FALSE, sem_name);
+  if (sem_handle == NULL && GetLastError () == ERROR_ALREADY_EXISTS)
     {
-      con_status_sem = OpenMutex (SYNCHRONIZE, FALSE, sem_name);
+      sem_handle = OpenMutex (SYNCHRONIZE, FALSE, sem_name);
     }
 
-  if (con_status_sem == NULL)
+  if (sem_handle == NULL)
     {
       return -1;
     }
@@ -414,21 +526,27 @@ uw_sem_init (char **sem_name, char *br_name, int as_index)
       return 0;
     }
 }
-
+#else
 int
-uw_sem_wait (char **sem_name)
+uw_sem_init (sem_t * sem)
+{
+  return sem_init (sem, 1, 1);
+}
+#endif
+
+#if defined (WINDOWS)
+int
+uw_sem_wait (char *sem_name)
 {
   DWORD dwWaitResult;
+  HANDLE sem_handle;
 
-  if (con_status_sem == NULL)
+  if (uw_sem_open (sem_name, &sem_handle) != 0)
     {
-      if (uw_sem_open (sem_name) != 0)
-	{
-	  return -1;
-	}
+      return -1;
     }
 
-  dwWaitResult = WaitForSingleObject (con_status_sem, INFINITE);
+  dwWaitResult = WaitForSingleObject (sem_handle, INFINITE);
   switch (dwWaitResult)
     {
     case WAIT_OBJECT_0:
@@ -438,43 +556,62 @@ uw_sem_wait (char **sem_name)
     case WAIT_ABANDONED:
       return -1;
     }
-}
 
-int
-uw_sem_post (char **sem_name)
-{
-  /* if (con_status_sem == NULL) exit (-100); */
-  if (ReleaseMutex (con_status_sem) != 0)
-    return 0;
-  return -1;
-}
-
-int
-uw_sem_destroy (char **sem_name)
-{
-  if (con_status_sem != NULL && CloseHandle (con_status_sem) != 0)
-    return 0;
   return -1;
 }
 #else
-int
-uw_sem_init (sem_t * sem)
-{
-  return sem_init (sem, 1, 1);
-}
-
 int
 uw_sem_wait (sem_t * sem)
 {
   return sem_wait (sem);
 }
+#endif
 
+#if defined (WINDOWS)
+int
+uw_sem_post (char *sem_name)
+{
+  HANDLE sem_handle;
+
+  if (uw_sem_open (sem_name, &sem_handle) != 0)
+    {
+      return -1;
+    }
+
+  if (ReleaseMutex (sem_handle) != 0)
+    {
+      return 0;
+    }
+
+  return -1;
+}
+#else
 int
 uw_sem_post (sem_t * sem)
 {
   return sem_post (sem);
 }
+#endif
 
+#if defined (WINDOWS)
+int
+uw_sem_destroy (char *sem_name)
+{
+  HANDLE sem_handle;
+
+  if (uw_sem_open (sem_name, &sem_handle) != 0)
+    {
+      return -1;
+    }
+
+  if (sem_handle != NULL && CloseHandle (sem_handle) != 0)
+    {
+      return 0;
+    }
+
+  return -1;
+}
+#else
 int
 uw_sem_destroy (sem_t * sem)
 {

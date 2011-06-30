@@ -1027,6 +1027,8 @@ db_type_to_type (DB_TYPE dt, CI_TYPE * xt)
       break;
     case DB_TYPE_OBJECT:
     case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     case DB_TYPE_OID:
       *xt = CI_TYPE_OID;
       break;

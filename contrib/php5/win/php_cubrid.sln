@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "php_cubrid", "php_cubrid.vcproj", "{8D9AC140-A29F-4EEE-B221-BF449421253F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug_NTS|Win32 = Debug_NTS|Win32
+		Debug_TS|Win32 = Debug_TS|Win32
+		Release_NTS|Win32 = Release_NTS|Win32
+		Release_TS|Win32 = Release_TS|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8D9AC140-A29F-4EEE-B221-BF449421253F}.Debug_NTS|Win32.ActiveCfg = Debug_NTS|Win32
+		{8D9AC140-A29F-4EEE-B221-BF449421253F}.Debug_NTS|Win32.Build.0 = Debug_NTS|Win32
+		{8D9AC140-A29F-4EEE-B221-BF449421253F}.Debug_TS|Win32.ActiveCfg = DEBUG_TS|Win32
+		{8D9AC140-A29F-4EEE-B221-BF449421253F}.Debug_TS|Win32.Build.0 = DEBUG_TS|Win32
+		{8D9AC140-A29F-4EEE-B221-BF449421253F}.Release_NTS|Win32.ActiveCfg = Release_NTS|Win32
+		{8D9AC140-A29F-4EEE-B221-BF449421253F}.Release_NTS|Win32.Build.0 = Release_NTS|Win32
+		{8D9AC140-A29F-4EEE-B221-BF449421253F}.Release_TS|Win32.ActiveCfg = Release_TS|Win32
+		{8D9AC140-A29F-4EEE-B221-BF449421253F}.Release_TS|Win32.Build.0 = Release_TS|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

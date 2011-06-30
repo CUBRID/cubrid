@@ -91,6 +91,7 @@ struct disk_var_header
 				   manager */
   INT32 warnat;			/* Give warning when close to running
 				   out of space */
+  INT32 dummy;			/* Dummy field for 8byte align */
   LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the
 				   recovery process of this volume */
   HFID boot_hfid;		/* System Heap file for booting purposes and
@@ -131,7 +132,8 @@ extern INT32 disk_alloc_sector (THREAD_ENTRY * thread_p, INT16 volid,
 				INT32 nsects, int exp_npages);
 extern INT32 disk_alloc_special_sector (void);
 extern INT32 disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid,
-			      INT32 sectid, INT32 npages, INT32 near_pageid);
+			      INT32 sectid, INT32 npages, INT32 near_pageid,
+			      bool search_wrap_around);
 extern int disk_dealloc_sector (THREAD_ENTRY * thread_p, INT16 volid,
 				INT32 sectid, INT32 nsects);
 extern int disk_dealloc_page (THREAD_ENTRY * thread_p, INT16 volid,
@@ -183,7 +185,7 @@ extern INT32 disk_get_overhead_numpages (THREAD_ENTRY * thread_p,
 					 INT16 volid);
 #endif /* ENABLE_UNUSED_FUNCTION */
 extern INT32 disk_get_maxcontiguous_numpages (THREAD_ENTRY * thread_p,
-					      INT16 volid);
+					      INT16 volid, INT32 max_npages);
 extern HFID *disk_get_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid,
 				 HFID * hfid);
 extern char *disk_get_link (THREAD_ENTRY * thread_p, INT16 volid,

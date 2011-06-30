@@ -1311,33 +1311,98 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser,
   for (crt_list = node->info.insert.value_clauses;
        crt_list != NULL; crt_list = crt_list->next)
     {
-      for (crt_attr = node->info.insert.attr_list,
-	   crt_value = crt_list->info.node_list.list;
-	   crt_attr != NULL && crt_value != NULL;
-	   crt_attr = crt_attr->next, crt_value = crt_value->next)
+      /*
+       * If the statement such as "INSERT INTO tbl DEFAULT" is given,
+       * we rewrite it to "INSERT INTO tbl VALUES (DEFAULT, DEFAULT, ...)"
+       * to support "server-side insertion" simply.
+       * In this situation, the server will get "default value" from 
+       * "original_value" of the current representation, but sometimes 
+       * it is not the latest default value. (See the comment for sm_attribute
+       * structure on class_object.h for more information.)
+       * However, the client always knows it, so it's better for the server to
+       * get the value from the client.
+       */
+      if (crt_list->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
 	{
-	  PT_NODE *crt_arg = NULL;
+	  PT_NODE *crt_value_list = NULL;
 
-	  if (crt_value->node_type != PT_EXPR)
+	  assert (node->info.node_list.list == NULL);
+
+	  for (crt_attr = node->info.insert.attr_list;
+	       crt_attr != NULL; crt_attr = crt_attr->next)
 	    {
-	      continue;
+	      crt_value = parser_new_node (parser, PT_EXPR);
+
+	      if (crt_value == NULL)
+		{
+		  if (crt_value_list != NULL)
+		    {
+		      parser_free_tree (parser, crt_value_list);
+		    }
+		  PT_ERROR (parser, node, "allocation error");
+		  return;
+		}
+
+	      crt_value->info.expr.op = PT_DEFAULTF;
+	      crt_value->info.expr.arg1 = parser_copy_tree (parser, crt_attr);
+
+	      if (crt_value->info.expr.arg1 == NULL)
+		{
+		  parser_free_node (parser, crt_value);
+		  if (crt_value_list != NULL)
+		    {
+		      parser_free_tree (parser, crt_value_list);
+		    }
+		  PT_ERROR (parser, node, "allocation error");
+		  return;
+		}
+
+	      pt_set_fill_default_in_path_expression (crt_value->info.
+						      expr.arg1);
+
+	      if (crt_value_list == NULL)
+		{
+		  crt_value_list = crt_value;
+		}
+	      else
+		{
+		  crt_value_list =
+		    parser_append_node (crt_value, crt_value_list);
+		}
 	    }
-	  if (crt_value->info.expr.op != PT_DEFAULTF)
+	  crt_list->info.node_list.list = crt_value_list;
+	  crt_list->info.node_list.list_type = PT_IS_VALUE;
+	}
+      else
+	{
+	  for (crt_attr = node->info.insert.attr_list,
+	       crt_value = crt_list->info.node_list.list;
+	       crt_attr != NULL && crt_value != NULL;
+	       crt_attr = crt_attr->next, crt_value = crt_value->next)
 	    {
-	      continue;
+	      PT_NODE *crt_arg = NULL;
+
+	      if (crt_value->node_type != PT_EXPR)
+		{
+		  continue;
+		}
+	      if (crt_value->info.expr.op != PT_DEFAULTF)
+		{
+		  continue;
+		}
+	      if (crt_value->info.expr.arg1 != NULL)
+		{
+		  continue;
+		}
+	      crt_arg = parser_copy_tree (parser, crt_attr);
+	      if (crt_arg == NULL)
+		{
+		  PT_ERROR (parser, node, "allocation error");
+		  return;
+		}
+	      crt_value->info.expr.arg1 = crt_arg;
+	      pt_set_fill_default_in_path_expression (crt_arg);
 	    }
-	  if (crt_value->info.expr.arg1 != NULL)
-	    {
-	      continue;
-	    }
-	  crt_arg = parser_copy_tree (parser, crt_attr);
-	  if (crt_arg == NULL)
-	    {
-	      PT_ERROR (parser, node, "allocation error");
-	      return;
-	    }
-	  crt_value->info.expr.arg1 = crt_arg;
-	  pt_set_fill_default_in_path_expression (crt_arg);
 	}
     }
 }
@@ -1422,10 +1487,19 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  if (node->info.query.q.select.list->node_type == PT_VALUE
 	      && node->info.query.q.select.list->type_enum == PT_TYPE_STAR)
 	    {
-	      parser_free_tree (parser, node->info.query.q.select.list);
+	      PT_NODE *next = node->info.query.q.select.list->next;
+
+	      /* To consider 'select *, xxx ...', release "*" node only. */
+	      node->info.query.q.select.list->next = NULL;
+	      parser_free_node (parser, node->info.query.q.select.list);
+
 	      node->info.query.q.select.list =
 		pt_resolve_star (parser,
 				 node->info.query.q.select.from, NULL);
+	      if (next != NULL)
+		{
+		  parser_append_node (next, node->info.query.q.select.list);
+		}
 
 	      if (!node->info.query.q.select.list)
 		{
@@ -1484,8 +1558,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 			    {
 			      flat = spec->info.spec.flat_entity_list;
 
-			      if (pt_streq (attr->info.name.original,
-					    flat->info.name.resolved) == 0)
+			      if (pt_str_compare (attr->info.name.original,
+						  flat->info.name.resolved,
+						  CASE_INSENSITIVE) == 0)
 				{
 				  /* find spec
 				   * set attr's spec_id */
@@ -1497,9 +1572,10 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 			  else
 			    {	/* derived table */
 			      range_var = spec->info.spec.range_var;
-			      if (pt_streq (attr->info.name.original,
-					    range_var->info.name.original)
-				  == 0)
+			      if (pt_str_compare (attr->info.name.original,
+						  range_var->info.name.
+						  original,
+						  CASE_INSENSITIVE) == 0)
 				{
 				  break;
 				}
@@ -2947,7 +3023,8 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
   range_var = spec->info.spec.range_var;
   if (resolved_name && range_var)
     {
-      if (pt_streq (resolved_name, range_var->info.name.original) != 0)
+      if (pt_str_compare (resolved_name, range_var->info.name.original,
+			  CASE_INSENSITIVE) != 0)
 	{
 	  return 0;
 	}
@@ -3149,9 +3226,27 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
       while (q)
 	{			/* check that p->range !=
 				   q->range to the end of list */
-	  if (!pt_streq (p->info.spec.range_var->info.name.original,
-			 q->info.spec.range_var->info.name.original))
+	  if (!pt_str_compare (p->info.spec.range_var->info.name.original,
+			       q->info.spec.range_var->info.name.original,
+			       CASE_INSENSITIVE))
 	    {
+	      PT_MISC_TYPE p_type =
+		p->info.spec.range_var->info.name.meta_class;
+	      PT_MISC_TYPE q_type =
+		q->info.spec.range_var->info.name.meta_class;
+	      if (p_type != q_type &&
+		  (p_type = PT_META_CLASS || q_type == PT_META_CLASS))
+		{
+		  /* this happens in statements like:
+		   * SELECT class t, t.attr FROM t 
+		   * which are rewriten to:
+		   * SELECT class t, t.attr FROM t, class t
+		   * In this context, t is different from class t and we
+		   * should not flag an error
+		   */
+		  q = q->next;	/* check the next one inner loop */
+		  continue;
+		}
 	      PT_ERRORmf (parser, q, MSGCAT_SET_PARSER_SEMANTIC,
 			  MSGCAT_SEMANTIC_AMBIGUOUS_EXPOSED_NM,
 			  q->info.spec.range_var->info.name.original);
@@ -4343,7 +4438,8 @@ pt_get_resolution (PARSER_CONTEXT * parser,
 			(parser, path_correlation, MSGCAT_SET_PARSER_SEMANTIC,
 			 MSGCAT_SEMANTIC_SELECTOR_NOT_SUBCLASS,
 			 path_correlation->info.name.original,
-			 pt_short_print_l (parser, exposed_spec->info.spec.
+			 pt_short_print_l (parser,
+					   exposed_spec->info.spec.
 					   flat_entity_list),
 			 pt_short_print_l (parser, arg1dt));
 		      return NULL;
@@ -4621,8 +4717,9 @@ pt_is_correlation_name (PARSER_CONTEXT * parser,
       if (specs->info.spec.range_var
 	  && ((nam->info.name.meta_class != PT_META_CLASS)
 	      || (specs->info.spec.meta_class == PT_META_CLASS))
-	  && pt_streq (nam->info.name.original,
-		       specs->info.spec.range_var->info.name.original) == 0)
+	  && pt_str_compare (nam->info.name.original,
+			     specs->info.spec.range_var->info.name.original,
+			     CASE_INSENSITIVE) == 0)
 	{
 	  if (!owner)
 	    {
@@ -4638,8 +4735,9 @@ pt_is_correlation_name (PARSER_CONTEXT * parser,
 		  && entity_name->info.name.resolved
 		  /* actual class ownership test is done for spec
 		   * no need to repeat that here. */
-		  && (pt_streq (entity_name->info.name.resolved,
-				owner->info.name.original) == 0))
+		  && (pt_str_compare (entity_name->info.name.resolved,
+				      owner->info.name.original,
+				      CASE_INSENSITIVE) == 0))
 		{
 		  return specs;
 		}
@@ -4744,7 +4842,8 @@ pt_is_on_list (PARSER_CONTEXT * parser, const PT_NODE * p,
 	  return 0;		/* this is an error */
 	}
 
-      if (pt_streq (p->info.name.original, list->info.name.original) == 0)
+      if (pt_str_compare (p->info.name.original, list->info.name.original,
+			  CASE_INSENSITIVE) == 0)
 	{
 	  return (PT_NODE *) list;	/* found a match */
 	}
@@ -5507,8 +5606,8 @@ pt_resolve_hint_args (PARSER_CONTEXT * parser,
 	    }
 
 	  if ((range = spec->info.spec.range_var)
-	      && !pt_streq (range->info.name.original,
-			    arg->info.name.original))
+	      && !pt_str_compare (range->info.name.original,
+				  arg->info.name.original, CASE_INSENSITIVE))
 	    {
 	      /* found match */
 	      arg->info.name.spec_id = spec->info.spec.id;
@@ -5647,8 +5746,11 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 
   if (!index || index->info.name.original == NULL)
     {
-      /* the case of USING INDEX NONE */
-      return index;
+      if (index->etc != (void *) -3)
+	{
+	  /* the case of USING INDEX NONE */
+	  return index;
+	}
     }
   if (index->info.name.spec_id != 0)	/* already resolved */
     {
@@ -5669,8 +5771,10 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 
 	  range = spec->info.spec.range_var;
 	  entity = spec->info.spec.entity_name;
-	  if (range && entity && !pt_streq (range->info.name.original,
-					    index->info.name.resolved))
+	  if (range && entity
+	      && !pt_str_compare (range->info.name.original,
+				  index->info.name.resolved,
+				  CASE_INSENSITIVE))
 	    {
 	      classop = db_find_class (entity->info.name.original);
 	      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT)
@@ -5689,8 +5793,9 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 
 		  return NULL;
 		}
-	      if (!classobj_find_class_index (class_,
-					      index->info.name.original))
+	      if (index->info.name.original
+		  && !classobj_find_class_index (class_,
+						 index->info.name.original))
 		{
 		  /* error; the index is not for the specified class */
 		  PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC,
@@ -5781,7 +5886,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
 }
 
 /*
- * pt_streq () -
+ * pt_str_compare () -
  *   return: 0 if two strings are equal. 1 if not equal
  *   p(in): A string
  *   q(in): A string
@@ -5792,7 +5897,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser,
  * A NULL string does NOT match a zero length string
  */
 int
-pt_streq (const char *p, const char *q)
+pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag)
 {
   if (!p && !q)
     {
@@ -5802,7 +5907,15 @@ pt_streq (const char *p, const char *q)
     {
       return 1;
     }
-  return intl_mbs_casecmp (p, q);
+
+  if (case_flag == CASE_INSENSITIVE)
+    {
+      return intl_mbs_casecmp (p, q);
+    }
+  else
+    {
+      return intl_mbs_cmp (p, q);
+    }
 }
 
 /*
@@ -5835,13 +5948,18 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
 {
   PT_BIND_NAMES_ARG bind_arg;
   PT_NODE *chk_parent = NULL;
+
   bind_arg.scopes = NULL;
   bind_arg.spec_frames = NULL;
   bind_arg.sc_info = sc_info;
+
+  assert (sc_info != NULL);
+
   /* Replace each Entity Spec with an Equivalent flat list */
   statement =
     parser_walk_tree (parser, statement, pt_flat_spec_pre,
 		      &chk_parent, pt_continue_walk, NULL);
+
   /* resolve names in search conditions, assignments, and assignations */
   if (!parser->error_msgs)
     {
@@ -5849,6 +5967,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement,
 	parser_walk_tree (parser, statement, pt_bind_names, &bind_arg,
 			  pt_bind_names_post, &bind_arg);
     }
+
   return statement;
 }
 
@@ -6099,8 +6218,8 @@ pt_insert_conjunct (PARSER_CONTEXT * parser, PT_NODE * path_dot,
 
   if (conj_name->node_type == PT_METHOD_CALL)
     {
-      conjunct->info.expr.arg1->info.method_call.method_name->
-	info.name.spec_id = 0;
+      conjunct->info.expr.arg1->info.method_call.method_name->info.
+	name.spec_id = 0;
     }
   if (conj_res)
     {

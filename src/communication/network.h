@@ -31,7 +31,7 @@
 #include "perf_monitor.h"
 #include "locator.h"
 #include "log_comm.h"
-#include "thread_impl.h"
+#include "thread.h"
 
 
 /* Server statistics structure size, used to make sure the pack/unpack
@@ -41,11 +41,8 @@
    are not necesarily the same although they will be in most cases.
 */
 #define STAT_SIZE_PACKED \
-        (OR_INT_SIZE * MNT_SIZE_OF_SERVER_EXEC_STATS)
-#define STAT_SIZE_MEMORY STAT_SIZE_PACKED
-
-#define GLOBAL_STAT_SIZE_PACKED \
-        (OR_INT64_SIZE * MNT_SIZE_OF_SERVER_EXEC_GLOBAL_STATS)
+        (OR_INT64_SIZE * MNT_SIZE_OF_SERVER_EXEC_STATS)
+#define STAT_SIZE_MEMORY (STAT_SIZE_PACKED+sizeof(bool))
 
 /* These define the requests that the server will respond to */
 enum net_server_request
@@ -107,6 +104,7 @@ enum net_server_request
   NET_SERVER_LC_ASSIGN_OID_BATCH,
   NET_SERVER_LC_BUILD_FK_OBJECT_CACHE,
   NET_SERVER_LC_REM_CLASS_FROM_INDEX,
+  NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN,
 
   NET_SERVER_HEAP_CREATE,
   NET_SERVER_HEAP_DESTROY,
@@ -141,6 +139,11 @@ enum net_server_request
   NET_SERVER_LOG_DUMP_STAT,
   NET_SERVER_LOG_GETPACK_TRANTB,
   NET_SERVER_LOG_DUMP_TRANTB,
+
+  NET_SERVER_LOG_FIND_LOB_LOCATOR,
+  NET_SERVER_LOG_ADD_LOB_LOCATOR,
+  NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR,
+  NET_SERVER_LOG_DROP_LOB_LOCATOR,
 
   NET_SERVER_LK_DUMP,
 
@@ -179,7 +182,6 @@ enum net_server_request
 
   NET_SERVER_MNT_SERVER_START_STATS,
   NET_SERVER_MNT_SERVER_STOP_STATS,
-  NET_SERVER_MNT_SERVER_RESET_STATS,
   NET_SERVER_MNT_SERVER_COPY_STATS,
 
   NET_SERVER_CT_CAN_ACCEPT_NEW_REPR,
@@ -209,7 +211,6 @@ enum net_server_request
   NET_SERVER_REPL_BTREE_FIND_UNIQUE,
 
   NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS,
-  NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS,
 
   /* Followings are not grouped because they are appended after the above.
      It is necessary to rearrange with changing network compatibility. */
@@ -220,6 +221,31 @@ enum net_server_request
   NET_SERVER_SERIAL_DECACHE,
 
   NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION,
+
+  /* External storage supports */
+  NET_SERVER_ES_CREATE_FILE,
+  NET_SERVER_ES_WRITE_FILE,
+  NET_SERVER_ES_READ_FILE,
+  NET_SERVER_ES_DELETE_FILE,
+  NET_SERVER_ES_COPY_FILE,
+  NET_SERVER_ES_RENAME_FILE,
+  NET_SERVER_ES_GET_FILE_SIZE,
+
+  /* Session state requests */
+  NET_SERVER_SES_CHECK_SESSION,
+  NET_SERVER_SES_END_SESSION,
+  NET_SERVER_SES_SET_ROW_COUNT,
+  NET_SERVER_SES_GET_ROW_COUNT,
+  NET_SERVER_SES_GET_LAST_INSERT_ID,
+  NET_SERVER_SES_CREATE_PREPARED_STATEMENT,
+  NET_SERVER_SES_GET_PREPARED_STATEMENT,
+  NET_SERVER_SES_DELETE_PREPARED_STATEMENT,
+  NET_SERVER_SES_SET_SESSION_VARIABLES,
+  NET_SERVER_SES_GET_SESSION_VARIABLE,
+  NET_SERVER_SES_DROP_SESSION_VARIABLES,
+  NET_SERVER_ACL_DUMP,
+  NET_SERVER_ACL_RELOAD,
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
@@ -241,10 +267,6 @@ enum net_server_request
 extern char *net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
 extern char *net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats);
 
-extern char *net_pack_global_stats (char *buf,
-				    MNT_SERVER_EXEC_GLOBAL_STATS * stats);
-extern char *net_unpack_global_stats (char *buf,
-				      MNT_SERVER_EXEC_GLOBAL_STATS * stats);
 
 /* Server startup */
 extern int net_server_start (const char *name);

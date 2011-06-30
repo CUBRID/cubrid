@@ -77,13 +77,17 @@ cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat,
 		     T_CM_ERROR * err_buf)
 {
   T_CM_DB_PROC_STAT *p = NULL;
-  /* ps xo pid,cmd */
+  char cub_path[PATH_MAX];
+
+  /* cubrid server status */
   const char *argv[] = {
-    "/bin/ps",
-    "xo",
-    "pid,cmd",
+    cub_path,
+    PRINT_CMD_SERVER,
+    PRINT_CMD_STATUS,
     NULL,
   };
+
+  (void) envvar_bindir_file (cub_path, PATH_MAX, UTIL_CUBRID);
 
   cm_err_buf_reset (err_buf);
   if (db_name == NULL)
@@ -112,13 +116,17 @@ cm_db_proc_stat_free (T_CM_DB_PROC_STAT * stat)
 T_CM_DB_PROC_STAT_ALL *
 cm_get_db_proc_stat_all (T_CM_ERROR * err_buf)
 {
-  /* ps xo pid,cmd */
+  char cub_path[PATH_MAX];
+
+  /* cubrid server status */
   const char *argv[] = {
-    "/bin/ps",
-    "xo",
-    "pid,cmd",
+    cub_path,
+    PRINT_CMD_SERVER,
+    PRINT_CMD_STATUS,
     NULL,
   };
+
+  (void) envvar_bindir_file (cub_path, PATH_MAX, UTIL_CUBRID);
 
   cm_err_buf_reset (err_buf);
   return (T_CM_DB_PROC_STAT_ALL *) cm_get_command_result (argv,
@@ -168,7 +176,7 @@ broker_stat_alloc_init (const char *bname, int num_as, int br_pid,
       return NULL;
     }
 
-  if (!cm_get_proc_stat (&bp->br_stat, br_pid))
+  if (cm_get_proc_stat (&bp->br_stat, br_pid) != 0)
     {
       err_buf->err_code = CM_BROKER_STAT_NOT_FOUND;
       snprintf (err_buf->err_msg, sizeof (err_buf->err_msg) - 1,
@@ -182,7 +190,7 @@ broker_stat_alloc_init (const char *bname, int num_as, int br_pid,
 
   for (i = 0; i < num_as; i++)
     {
-      if (cm_get_proc_stat (&bp->cas_stats[nitem], as_pids[i]))
+      if (cm_get_proc_stat (&bp->cas_stats[nitem], as_pids[i]) == 0)
 	{
 	  nitem++;
 	}
@@ -496,7 +504,7 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
 
   if (!GetProcessTimes (hProcess, &dummy1, &dummy2, &kt, &ut))
     {
-      return 1;
+      return -1;
     }
 
   lk.HighPart = kt.dwHighDateTime;
@@ -512,7 +520,7 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
 
   if (!GetProcessMemoryInfo (GetCurrentProcess (), &pmc, sizeof (pmc)))
     {
-      return 1;
+      return -1;
     }
 
   stat->mem_physical = pmc.WorkingSetSize;
@@ -522,7 +530,7 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
 
   if (!GlobalMemoryStatusEx (&ms))
     {
-      return 1;
+      return -1;
     }
 
   stat->mem_virtual = ms.ullTotalVirtual - ms.ullAvailVirtual;
@@ -538,7 +546,7 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
 
   if (get_cpu_time (&kernel, &user, &idle) != 0)
     {
-      return 1;
+      return -1;
     }
 
   stat->cpu_kernel = kernel;
@@ -550,7 +558,7 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
   pi.cb = sizeof (pi);
   if (!GetPerformanceInfo (&pi, sizeof (pi)))
     {
-      return 1;
+      return -1;
     }
 
   stat->mem_physical_total = ((__int64) pi.PhysicalTotal) * pi.PageSize;
@@ -640,7 +648,7 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
 
   if (stat == NULL || pid == 0)
     {
-      return 0;
+      return -1;
     }
 
   stat->pid = pid;
@@ -649,7 +657,7 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
   cpufp = fopen (fname, "r");
   if (!cpufp)
     {
-      return 0;
+      return -1;
     }
 
   snprintf (fname, PATH_MAX - 1, "/proc/%d/statm", (int) pid);
@@ -657,7 +665,7 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
   if (memfp == NULL)
     {
       fclose (cpufp);
-      return 0;
+      return -1;
     }
 
   fscanf (cpufp, "%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%llu%llu",
@@ -669,7 +677,7 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
   fclose (cpufp);
   fclose (memfp);
 
-  return 1;
+  return 0;
 }
 
 int
@@ -678,6 +686,8 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
   char linebuf[LINE_MAX];
   char prefix[50];
   uint64_t nice;
+  uint64_t buffers;
+  uint64_t cached;
   FILE *cpufp = NULL;
   FILE *memfp = NULL;
   int n_cpuitem = 0;
@@ -740,6 +750,14 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
 	  sscanf (linebuf, "%*s%llu", &stat->mem_physical_free);
 	  n_memitem++;
 	}
+      if (!strcmp (prefix, "Buffers:"))
+	{
+	  sscanf (linebuf, "%*s%llu", &buffers);
+	}
+      if (!strcmp (prefix, "Cached:"))
+	{
+	  sscanf (linebuf, "%*s%llu", &cached);
+	}
       if (!strcmp (prefix, "SwapTotal:"))
 	{
 	  sscanf (linebuf, "%*s%llu", &stat->mem_swap_total);
@@ -756,6 +774,7 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
       goto error_handle;
     }
 
+  stat->mem_physical_free += (buffers + cached);
 
   stat->mem_physical_total *= 1024;
   stat->mem_physical_free *= 1024;
@@ -1108,16 +1127,34 @@ extract_db_stat (FILE * fp, const char *tdbname, T_CM_ERROR * err_buf)
 
   while (fgets (linebuf, sizeof (linebuf), fp))
     {
-      sscanf (linebuf, "%*s%511s", cmd_name);
-      if (strcmp (cmd_name, "cub_server") != 0)
+      int tok_num = 0;
+      char pid_t[20];
+
+      ut_trim (linebuf);
+      if (linebuf[0] == '@')
 	continue;
 
-      sscanf (linebuf, "%d%*s%511s", &pid, db_name);
+      tok_num =
+	sscanf (linebuf, "%511s %511s %*s %*s %*s %20s", cmd_name, db_name,
+		pid_t);
+
+      if (tok_num != 3 ||
+	  (strcmp (cmd_name, "Server") != 0 &&
+	   strcmp (cmd_name, "HA-Server") != 0))
+	continue;
+
+      /* remove the ")" at the end of the pid. */
+      pid_t[strlen (pid_t) - 1] = '\0';
+      pid = atoi (pid_t);
+
+      if (pid == 0)
+	continue;
+
       if (tdbname != NULL)
 	{
 	  if (!strcmp ((char *) tdbname, db_name))
 	    {
-	      if (cm_get_proc_stat (&pstat, pid))
+	      if (cm_get_proc_stat (&pstat, pid) == 0)
 		{
 		  assign_db_stat (db_stat, db_name, &pstat);
 		  return db_stat;
@@ -1139,7 +1176,7 @@ extract_db_stat (FILE * fp, const char *tdbname, T_CM_ERROR * err_buf)
 		  return NULL;
 		}
 	    }
-	  if (cm_get_proc_stat (&pstat, pid))
+	  if (cm_get_proc_stat (&pstat, pid) == 0)
 	    {
 	      assign_db_stat (&all_stat->db_stats[nitem++], db_name, &pstat);
 	    }
@@ -1186,52 +1223,4 @@ strcpy_limit (char *dest, const char *src, int buf_len)
   strncpy (dest, src, buf_len - 1);
   dest[buf_len - 1] = '\0';
   return dest;
-}
-
-void
-print_proc_stat (T_CM_PROC_STAT * stat)
-{
-  printf ("pid=%d cpu_user=%llu cpu_kernel=%llu vmem=%llu rmem=%llu\n",
-	  stat->pid, stat->cpu_user, stat->cpu_kernel, stat->mem_virtual,
-	  stat->mem_physical);
-}
-
-void
-print_host_stat (T_CM_HOST_STAT * stat)
-{
-  printf ("cpu_user=%llu\n", stat->cpu_user);
-  printf ("cpu_kernel=%llu\n", stat->cpu_kernel);
-  printf ("cpu_idle=%llu\n", stat->cpu_idle);
-  printf ("cpu_iowait=%llu\n", stat->cpu_iowait);
-
-  printf ("mem_physical_total=%llu\n", stat->mem_physical_total);
-  printf ("mem_physical_free=%llu\n", stat->mem_physical_free);
-  printf ("mem_swap_total=%llu\n", stat->mem_swap_total);
-  printf ("mem_swap_free=%llu\n", stat->mem_swap_free);
-}
-
-void
-print_broker_stat (T_CM_BROKER_PROC_STAT * stat)
-{
-  int i;
-  printf ("broker name: %s\n", stat->br_name);
-  print_proc_stat (&stat->br_stat);
-  for (i = 0; i < stat->ncas; i++)
-    {
-      printf ("cas %d stat:\n", i + 1);
-      print_proc_stat (&stat->cas_stats[i]);
-    }
-  printf ("\n");
-}
-
-void
-print_exec_stat_info (T_CM_DB_EXEC_STAT * exec_stat)
-{
-  unsigned int i;
-  for (i = 0; i < NELEMS (statdump_offset); i++)
-    {
-      unsigned int *mp =
-	get_statdump_member_ptr (exec_stat, statdump_offset[i].prop_name);
-      printf ("%s=%u\n", statdump_offset[i].prop_name, *mp);
-    }
 }

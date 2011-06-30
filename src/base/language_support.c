@@ -124,6 +124,10 @@ lang_init (void)
       lang_Loc_bytes_per_char = 2;
     }
 
+  /* static globals in db_date.c should also be initialized with the current
+   * locale (for parsing local am/pm strings for times) */
+  db_date_locale_init ();
+
   lang_Initialized = true;
   return (lang_Initialized);
 }

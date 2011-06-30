@@ -39,12 +39,6 @@ CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
 QATOOLS_DIR = $(SRC)/qatools
 
-INCLUDES = @SRC_INC@ @EXT_INC@
-DEFS = @SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
-	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_ORACLE
-
-ORACLE_LIBS = -lclntsh -lnnz11
-
 if BUILD_CAS_FOR_ORACLE
   CAS4O = cub_cas_oracle
 else
@@ -75,6 +69,12 @@ cub_cas_oracle_SOURCES = \
 	$(BROKER_DIR)/cas_dbms_util.c \
 	$(BROKER_DIR)/cas_error.c \
 	$(BROKER_DIR)/cas_error_log.c 
-cub_cas_oracle_CFLAGS = $(CFLAGS) @ORACLE_INC_PATH@
-cub_cas_oracle_LDFLAGS = @ORACLE_LIB_PATH@ $(ORACLE_LIBS)
+cub_cas_oracle_CPPFLAGS = @SRC_INC@ @EXT_INC@ @ORACLE_INC_PATH@\
+	@SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
+	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_ORACLE
+cub_cas_oracle_LDFLAGS = @ORACLE_LIB_PATH@ -lclntsh -lnnz11
 
+VERSIONED_FILES = \
+	$(BROKER_DIR)/cas_oracle_execute.c
+$(VERSIONED_FILES): $(top_srcdir)/BUILD_NUMBER
+	touch $@

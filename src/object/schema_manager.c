@@ -200,28 +200,6 @@ struct sm_candidate
 };
 
 /*
- * Structure used internally during truncating a class.
- * When truncating, indexes are dropped and recreated. The information needed
- * to recreate the constraints (indexes) are saved in this structure.
- */
-typedef struct sm_constraint_info SM_CONSTRAINT_INFO;
-
-struct sm_constraint_info
-{
-  struct sm_constraint_info *next;
-  char *name;
-  char **att_names;
-  int *asc_desc;
-  int *prefix_length;
-  char *ref_cls_name;
-  char **ref_attrs;
-  char *fk_cache_attr;
-  SM_FOREIGN_KEY_ACTION fk_delete_action;
-  SM_FOREIGN_KEY_ACTION fk_update_action;
-  DB_CONSTRAINT_TYPE constraint_type;
-};
-
-/*
  * Static_method_table
  *
  * description:
@@ -415,7 +393,7 @@ static int filter_resolutions (SM_TEMPLATE * def, SM_TEMPLATE * flat,
 			       MOP deleted_class);
 static SM_ATTRIBUTE *find_matching_att (SM_ATTRIBUTE * list,
 					SM_ATTRIBUTE * att, int idmatch);
-static void retain_former_ids (SM_TEMPLATE * flat);
+static int retain_former_ids (SM_TEMPLATE * flat);
 static int flatten_trigger_cache (SM_TEMPLATE * def, SM_TEMPLATE * flat);
 static int flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat);
 static int flatten_template (SM_TEMPLATE * def, MOP deleted_class,
@@ -510,8 +488,6 @@ static char *sm_default_constraint_name (const char *class_name,
 					 const int *asc_desc);
 
 
-static int sm_drop_index (MOP classop, const char *constraint_name);
-
 static const char *sm_locate_method_file (SM_CLASS * class_,
 					  const char *function);
 
@@ -534,9 +510,6 @@ static bool sm_is_possible_to_recreate_constraint (MOP class_mop,
 						   const SM_CLASS_CONSTRAINT *
 						   const constraint);
 
-static int save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
-				 const SM_CLASS_CONSTRAINT * const c);
-static void free_constraint_info (SM_CONSTRAINT_INFO ** save_info);
 static int sm_truncate_using_delete (MOP class_mop);
 #if 0
 static int sm_truncate_using_destroy_heap (MOP class_mop);
@@ -2006,6 +1979,10 @@ sm_prelink_methods (DB_OBJLIST * classes)
 	  /* put the links on the combined list */
 	  WS_LIST_APPEND (&total_links, links);
 	}
+      else
+	{
+	  db_ws_free (links);
+	}
 
       /* will need to have a composite list of loader commands !! */
     }
@@ -2261,7 +2238,7 @@ sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid)
   sm_Root_class_hfid = &sm_Root_class.header.heap;
 
   /* Sets up sm_Root_class_mop and Rootclass_oid */
-  locator_add_root (rootclass_oid, (MOBJ) & sm_Root_class);
+  locator_add_root (rootclass_oid, (MOBJ) (&sm_Root_class));
 }
 
 
@@ -2876,12 +2853,8 @@ sm_rename_class (MOP op, const char *new_name)
 			  int save;
 			  AU_DISABLE (save);
 			  error =
-			    do_update_auto_increment_serial_on_rename (att->
-								       auto_increment,
-								       newname,
-								       att->
-								       header.
-								       name);
+			    do_update_auto_increment_serial_on_rename
+			    (att->auto_increment, newname, att->header.name);
 			  AU_ENABLE (save);
 			}
 		      db_value_clear (&name_val);
@@ -3684,10 +3657,16 @@ sm_get_statistics_force (MOP classop)
  *    cache them with the class.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in): class object
+ *   do_now(in): update statistics right now or
+ *               delay it until a transaction is committed
+ *
+ * NOTE: We will delay updating statistics until a transaction is committed
+ *       when it is requested during other processing, such as
+ *       "alter table ..." or "create index ...".
  */
 
 int
-sm_update_statistics (MOP classop)
+sm_update_statistics (MOP classop, bool do_now)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -3710,7 +3689,8 @@ sm_update_statistics (MOP classop)
 	  return er_errid ();
 	}
 
-      error = stats_update_class_statistics (WS_OID (classop));
+      error =
+	stats_update_class_statistics (WS_OID (classop), do_now ? 1 : 0);
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */
@@ -3763,7 +3743,8 @@ sm_update_all_statistics ()
       return er_errid ();
     }
 
-  if ((error = stats_update_statistics ()) == NO_ERROR)
+  error = stats_update_statistics ();
+  if (error == NO_ERROR)
     {
       /* Need to reset the statistics cache for all resident classes */
       for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
@@ -3833,7 +3814,7 @@ sm_update_catalog_statistics (const char *class_name)
   obj = db_find_class (class_name);
   if (obj != NULL)
     {
-      error = sm_update_statistics (obj);
+      error = sm_update_statistics (obj, true);
     }
   else
     {
@@ -7885,6 +7866,7 @@ flatten_components (SM_TEMPLATE * def, SM_TEMPLATE * flat,
 		  insert_method (&flat->class_methods, (SM_METHOD *) comp);
 		  break;
 		default:
+		  db_ws_free (comp);
 		  break;
 		}
 	    }
@@ -8184,8 +8166,8 @@ check_resolution_target (SM_TEMPLATE * template_, SM_RESOLUTION * res,
 		{
 		  if (SM_FIND_NAME_IN_COMPONENT_LIST
 		      (super->new_->class_attributes, res->name) != NULL
-		      || SM_FIND_NAME_IN_COMPONENT_LIST (super->new_->
-							 class_methods,
+		      || SM_FIND_NAME_IN_COMPONENT_LIST (super->
+							 new_->class_methods,
 							 res->name) != NULL)
 		    {
 		      valid = 1;
@@ -8417,11 +8399,11 @@ find_matching_att (SM_ATTRIBUTE * list, SM_ATTRIBUTE * att, int idmatch)
  *    the correct behavior. A shadowed attribute is a "new" attribute and
  *    it should shadow the inherited attribute along with its previously
  *    stored values.
- *   return: none
+ *   return: error code
  *   flat(in): template
  */
 
-static void
+static int
 retain_former_ids (SM_TEMPLATE * flat)
 {
   SM_ATTRIBUTE *new_att, *found, *super_new, *super_old;
@@ -8430,6 +8412,25 @@ retain_former_ids (SM_TEMPLATE * flat)
   /* Does this class have a previous representation ? */
   if (flat->current != NULL)
     {
+      DB_VALUE pname;
+      bool is_partition = false;
+      int error = NO_ERROR;
+
+      if (flat->current->partition_of != NULL &&
+	  !(flat->current->partition_of->deleted))
+	{
+	  db_make_null (&pname);
+	  error = db_get (flat->current->partition_of, PARTITION_ATT_PNAME,
+			  &pname);
+	  if (error != NO_ERROR)
+	    {
+	      pr_clear_value (&pname);
+	      return error;
+	    }
+	  is_partition = (DB_IS_NULL (&pname) ? false : true);
+	  pr_clear_value (&pname);
+	}
+
       /* Check each new inherited attribute.  These attribute will not have
          an assigned id and their class MOPs will not match */
       for (new_att = flat->attributes; new_att != NULL;
@@ -8466,6 +8467,19 @@ retain_former_ids (SM_TEMPLATE * flat)
 						   new_att, 0);
 			      if (super_new != NULL)
 				{
+				  if (is_partition)
+				    {
+				      /* the current class is a partition 
+				       * it is not necessary to check the ID
+				       * of attribute in a the old configuration
+				       * Also, in case of ALTER .. CHANGE with
+				       * attribute rename and/or type change,
+				       * the old attribute will not be found by
+				       * name and type */
+				      found = super_new;
+				      new_att->id = found->id;
+				      continue;
+				    }
 				  /*
 				   * search the supers original attribute list
 				   * based on the id of the new one
@@ -8481,7 +8495,8 @@ retain_former_ids (SM_TEMPLATE * flat)
 					{
 					  /* search our old list with the old name */
 					  found =
-					    find_matching_att (flat->current->
+					    find_matching_att (flat->
+							       current->
 							       attributes,
 							       super_old, 0);
 					  if (found != NULL)
@@ -8529,6 +8544,8 @@ retain_former_ids (SM_TEMPLATE * flat)
 	    }
 	}
     }
+
+  return NO_ERROR;
 }
 
 
@@ -8910,16 +8927,17 @@ flatten_template (SM_TEMPLATE * def, MOP deleted_class,
       goto memory_error;
     }
 
+  if (error == NO_ERROR)
+    {
+      /* make sure these get kept */
+      error = retain_former_ids (flat);
+    }
+
   /* if errors, throw away the template and abort */
   if (error != NO_ERROR)
     {
       classobj_free_template (flat);
       flat = NULL;
-    }
-  else
-    {
-      /* make sure these get kept */
-      retain_former_ids (flat);
     }
 
   *flatp = flat;
@@ -9132,6 +9150,13 @@ build_storage_order (SM_CLASS * class_, SM_TEMPLATE * flat)
 	      if (new_att->id == current->id)
 		{
 		  found = new_att;
+		  /* ALTER CHANGE column : check if new representation is
+		   * required */
+		  if (!tp_domain_match (current->domain, new_att->domain,
+					TP_EXACT_MATCH))
+		    {
+		      newrep = 1;
+		    }
 		}
 	    }
 
@@ -9472,7 +9497,14 @@ construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts,
 	      goto mem_error;
 	    }
 
-	  new_domain->is_desc = asc_desc && asc_desc[0] == 1;
+	  if (asc_desc && asc_desc[0] == 1)
+	    {
+	      new_domain->is_desc = true;
+	    }
+	  else
+	    {
+	      new_domain->is_desc = false;
+	    }
 
 	  if (prefix_lengths && (*prefix_lengths != -1) &&
 	      QSTR_IS_ANY_CHAR_OR_BIT (atts[0]->domain->type->id))
@@ -9525,7 +9557,8 @@ construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts,
 	    }
 	}
 
-      set_domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, 0, 0, head);
+      set_domain =
+	tp_domain_construct (DB_TYPE_MIDXKEY, NULL, n_atts, 0, head);
       if (set_domain == NULL)
 	{
 	  goto mem_error;
@@ -9723,12 +9756,21 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses,
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,
 		  pr_type_name (type));
 	}
-      else if (attrs_prefix_length && attrs_prefix_length[i] >= 0 &&
-	       !TP_IS_CHAR_TYPE (type) && !TP_IS_BIT_TYPE (type))
+      else if (attrs_prefix_length && attrs_prefix_length[i] >= 0)
 	{
-	  error = ER_SM_INVALID_INDEX_WITH_PREFIX_TYPE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,
-		  pr_type_name (type));
+	  if (!TP_IS_CHAR_TYPE (type) && !TP_IS_BIT_TYPE (type))
+	    {
+	      error = ER_SM_INVALID_INDEX_WITH_PREFIX_TYPE;
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,
+		      pr_type_name (type));
+	    }
+	  else if (((long) attrs[i]->domain->precision) <
+		   attrs_prefix_length[i])
+	    {
+	      error = ER_SM_INVALID_PREFIX_LENGTH;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_SM_INVALID_PREFIX_LENGTH, 1, attrs_prefix_length[i]);
+	    }
 	}
     }
 
@@ -10082,7 +10124,8 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_,
       else
 	{
 	  if (con->type == SM_CONSTRAINT_UNIQUE
-	      || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
+	      || con->type == SM_CONSTRAINT_REVERSE_UNIQUE
+	      || con->type == SM_CONSTRAINT_PRIMARY_KEY)
 	    {
 	      asc_desc = con->asc_desc;
 	    }
@@ -10386,7 +10429,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_,
       goto structure_error;
     }
 
-  if (sm_update_statistics (classop))
+  if (sm_update_statistics (classop, false))
     {
       goto structure_error;
     }
@@ -11715,6 +11758,8 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
   cursubs = NULL;
   newsubs = NULL;
 
+  assert (template_ != NULL);
+
   /*
    *  Set a savepoint in the event that we are adding a unique constraint
    *  to a class with instances and the constraint is violated.  In this
@@ -11981,20 +12026,23 @@ remove_class_triggers (MOP classop, SM_CLASS * class_)
 {
   SM_ATTRIBUTE *att;
 
+  /* use tr_delete triggers_for_class() instead of tr_delete_schema_cache
+   * so that we physically delete the triggers.
+   */
   for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
     {
-      (void) tr_delete_schema_cache (att->triggers, classop);
+      (void) tr_delete_triggers_for_class (att->triggers, classop);
       att->triggers = NULL;
     }
 
   for (att = class_->class_attributes; att != NULL;
        att = (SM_ATTRIBUTE *) att->header.next)
     {
-      (void) tr_delete_schema_cache (att->triggers, classop);
+      (void) tr_delete_triggers_for_class (att->triggers, classop);
       att->triggers = NULL;
     }
 
-  (void) tr_delete_schema_cache (class_->triggers, classop);
+  (void) tr_delete_triggers_for_class (class_->triggers, classop);
   class_->triggers = NULL;
 }
 
@@ -12212,7 +12260,10 @@ sm_delete_class_mop (MOP op)
 			       */
 			      transfer_disk_structures (op, class_, NULL);
 
-			      /* notify all associated triggers that the class is gone */
+			      /* now that the class is gone, physically delete all
+			       * the triggers. Note that this does not just invalidate
+			       * the triggers, it deletes them forever.
+			       */
 			      remove_class_triggers (op, class_);
 
 			      /* This to be maintained as long as the class
@@ -12600,7 +12651,7 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type,
 	     to make use of the new index.  Recall that the optimizer
 	     looks at the statistics structures, not the schema structures.
 	   */
-	  if (sm_update_statistics (classop))
+	  if (sm_update_statistics (classop, false))
 	    {
 	      goto severe_error;
 	    }
@@ -12662,7 +12713,7 @@ severe_error:
  *   constraint_name(in): constraint name
  */
 
-static int
+int
 sm_drop_index (MOP classop, const char *constraint_name)
 {
   int error = NO_ERROR;
@@ -12788,7 +12839,7 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	      goto severe_error;
 	    }
 
-	  if (sm_update_statistics (classop))
+	  if (sm_update_statistics (classop, false))
 	    {
 	      goto severe_error;
 	    }
@@ -13181,6 +13232,10 @@ sm_check_index_exist (MOP classop,
  *   class_attributes(in): Flag.  A true value indicates that the names refer to
  *     		class attributes. A false value indicates that the names
  *     		refer to instance attributes.
+ *
+ *  Note: When adding NOT NULL constraint, this function doesn't check the
+ *	  existing values of the attribute. To make sure NOT NULL constraint
+ *	  checks the existing values, use API function 'db_add_constraint'.
  */
 int
 sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
@@ -13432,12 +13487,12 @@ sm_is_possible_to_recreate_constraint (MOP class_mop,
 }
 
 /*
- * free_constraint_info() - Frees a SM_CONSTRAINT_INFO list
+ * sm_free_constraint_info() - Frees a SM_CONSTRAINT_INFO list
  *   save_info(in/out): The list to be freed
  * NOTE: the pointer to the list is set to NULL after the list is freed.
  */
-static void
-free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
+void
+sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
 {
   SM_CONSTRAINT_INFO *info = NULL;
 
@@ -13482,16 +13537,52 @@ free_constraint_info (SM_CONSTRAINT_INFO ** save_info)
   return;
 }
 
+
+
+
 /*
- * save_constraint_info() - Saves the information necessary to recreate a
- *                          constraint
+ * sm_touch_class () - makes sure that the XASL query cache is emptied
+ *                     by performing a null operation on a class
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   classmop (in): The class to be "touched"
+ */
+
+int
+sm_touch_class (MOP classmop)
+{
+  DB_CTMPL *ctmpl = NULL;
+  int error = NO_ERROR;
+
+  ctmpl = dbt_edit_class (classmop);
+  if (ctmpl == NULL)
+    {
+      error = er_errid ();
+      goto exit;
+    }
+
+  if (dbt_finish_class (ctmpl) == NULL)
+    {
+      dbt_abort_class (ctmpl);
+      error = er_errid ();
+      goto exit;
+    }
+
+exit:
+  return error;
+}
+
+
+
+/*
+ * sm_save_constraint_info() - Saves the information necessary to recreate a
+ *			       constraint
  *   return: NO_ERROR on success, non-zero for ERROR
  *   save_info(in/out): The information saved
  *   c(in): The constraint to be saved
  */
-static int
-save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
-		      const SM_CLASS_CONSTRAINT * const c)
+int
+sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
+			 const SM_CLASS_CONSTRAINT * const c)
 {
   int error_code = NO_ERROR;
   SM_CONSTRAINT_INFO *new_constraint = NULL;
@@ -13630,7 +13721,7 @@ save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 
       new_constraint->ref_attrs =
 	(char **) calloc (num_atts + 1, sizeof (char *));
-      if (new_constraint->att_names == NULL)
+      if (new_constraint->ref_attrs == NULL)
 	{
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
@@ -13686,7 +13777,7 @@ save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
 error_exit:
   if (new_constraint != NULL)
     {
-      free_constraint_info (&new_constraint);
+      sm_free_constraint_info (&new_constraint);
     }
   return error_code;
 }
@@ -13844,11 +13935,11 @@ sm_truncate_class (MOP class_mop)
       return error;
     }
 
-  /* 
+  /*
    * DO NOT WRITE REPLICATION LOG DURING TRUNCATION.
    *
-   * Actually we do not want to write replication logs for deleting records 
-   * on sm_truncate_using_delete function. Because 'truncate' schema will 
+   * Actually we do not want to write replication logs for deleting records
+   * on sm_truncate_using_delete function. Because 'truncate' schema will
    * be transferred to the slave DB server after success of truncation.
    */
   db_set_suppress_repl_on_transaction (true);
@@ -13909,21 +14000,21 @@ sm_truncate_class (MOP class_mop)
 
 	  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
 	    {
-	      if (save_constraint_info (&unique_save_info, c) != NO_ERROR)
+	      if (sm_save_constraint_info (&unique_save_info, c) != NO_ERROR)
 		{
 		  goto error_exit;
 		}
 	    }
 	  else if (c->type == SM_CONSTRAINT_FOREIGN_KEY)
 	    {
-	      if (save_constraint_info (&fk_save_info, c) != NO_ERROR)
+	      if (sm_save_constraint_info (&fk_save_info, c) != NO_ERROR)
 		{
 		  goto error_exit;
 		}
 	    }
 	  else
 	    {
-	      if (save_constraint_info (&index_save_info, c) != NO_ERROR)
+	      if (sm_save_constraint_info (&index_save_info, c) != NO_ERROR)
 		{
 		  goto error_exit;
 		}
@@ -14083,17 +14174,17 @@ sm_truncate_class (MOP class_mop)
 
   if (unique_save_info != NULL)
     {
-      free_constraint_info (&unique_save_info);
+      sm_free_constraint_info (&unique_save_info);
     }
 
   if (fk_save_info != NULL)
     {
-      free_constraint_info (&fk_save_info);
+      sm_free_constraint_info (&fk_save_info);
     }
 
   if (index_save_info != NULL)
     {
-      free_constraint_info (&index_save_info);
+      sm_free_constraint_info (&index_save_info);
     }
 
   /* Do not suppress writing replication log any more. */
@@ -14110,21 +14201,44 @@ error_exit:
 
   if (unique_save_info != NULL)
     {
-      free_constraint_info (&unique_save_info);
+      sm_free_constraint_info (&unique_save_info);
     }
 
   if (fk_save_info != NULL)
     {
-      free_constraint_info (&fk_save_info);
+      sm_free_constraint_info (&fk_save_info);
     }
 
   if (index_save_info != NULL)
     {
-      free_constraint_info (&index_save_info);
+      sm_free_constraint_info (&index_save_info);
     }
 
   /* Do not suppress writing replication log any more. */
   db_set_suppress_repl_on_transaction (false);
 
   return error;
+}
+
+/*
+ * sm_has_non_null_attribute () - check if whether there is at least
+ *                                one non null constraint in a given
+ *                                attribute pointer array
+ *   return: 1 if it exists, otherwise 0
+ *   attrs(in): null terminated array of SM_ATTRIBUTE *
+ */
+int
+sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs)
+{
+  int i;
+
+  assert (attrs != NULL);
+  for (i = 0; attrs[i] != NULL; i++)
+    {
+      if (attrs[i]->flags & SM_ATTFLAG_NON_NULL)
+	{
+	  return 1;
+	}
+    }
+  return 0;
 }

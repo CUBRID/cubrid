@@ -54,6 +54,7 @@
 #include "query_opfunc.h"
 #include "parser_support.h"
 #include "system_parameter.h"
+#include "xasl_generation.h"
 
 #define DEFAULT_VAR "."
 
@@ -149,9 +150,84 @@ static void regu_selupd_list_init (SELUPD_LIST * ptr);
 static PT_NODE *pt_create_param_for_value (PARSER_CONTEXT * parser,
 					   PT_NODE * value,
 					   int host_var_index);
-
+static PT_NODE *pt_make_dotted_identifier (PARSER_CONTEXT * parser,
+					   const char *identifier_str);
+static PT_NODE *pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser,
+						    const char
+						    *identifier_str,
+						    int depth);
+static void pt_add_name_col_to_sel_list (PARSER_CONTEXT * parser,
+					 PT_NODE * select,
+					 const char *identifier_str,
+					 const char *col_alias);
+static PT_NODE *pt_make_pred_name_int_val (PARSER_CONTEXT * parser,
+					   PT_OP_TYPE op_type,
+					   const char *col_name,
+					   const int int_value);
+static PT_NODE *pt_make_pred_name_string_val (PARSER_CONTEXT * parser,
+					      PT_OP_TYPE op_type,
+					      const char *identifier_str,
+					      const char *str_value);
+static PT_NODE *pt_make_pred_with_identifiers (PARSER_CONTEXT * parser,
+					       PT_OP_TYPE op_type,
+					       const char *lhs_identifier,
+					       const char *rhs_identifier);
+static PT_NODE *pt_make_if_with_expressions (PARSER_CONTEXT * parser,
+					     PT_NODE * pred,
+					     PT_NODE * expr1,
+					     PT_NODE * expr2,
+					     const char *alias);
+static PT_NODE *pt_make_if_with_strings (PARSER_CONTEXT * parser,
+					 PT_NODE * pred,
+					 const char *string1,
+					 const char *string2,
+					 const char *alias);
+static PT_NODE *pt_make_like_col_expr (PARSER_CONTEXT * parser,
+				       PT_NODE * rhs_expr,
+				       const char *col_name);
+static PT_NODE *pt_make_outer_select_for_show_stmt (PARSER_CONTEXT * parser,
+						    PT_NODE * inner_select,
+						    const char *select_alias);
+static PT_NODE *pt_make_field_type_expr_node (PARSER_CONTEXT * parser);
+static PT_NODE *pt_make_select_count_star (PARSER_CONTEXT * parser);
+static PT_NODE *pt_make_field_extra_expr_node (PARSER_CONTEXT * parser);
+static PT_NODE *pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser);
+static PT_NODE *pt_make_sort_spec_with_identifier (PARSER_CONTEXT * parser,
+						   const char *identifier,
+						   PT_MISC_TYPE sort_mode);
+static PT_NODE *pt_make_sort_spec_with_number (PARSER_CONTEXT * parser,
+					       const int number_pos,
+					       PT_MISC_TYPE sort_mode);
+static PT_NODE *pt_make_collection_type_subquery_node (PARSER_CONTEXT *
+						       parser,
+						       const char
+						       *table_name);
+static PT_NODE *pt_make_dummy_query_check_table (PARSER_CONTEXT * parser,
+						 const char *table_name);
+static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser,
+					   const char *user_name);
 
 #define NULL_ATTRID -1
+
+/*
+ * pt_make_integer_value () -
+ *   return:  return a PT_NODE for the integer value
+ *   parser(in): parser context
+ *   value_int(in): integer value to make up a PT_NODE
+ */
+PT_NODE *
+pt_make_integer_value (PARSER_CONTEXT * parser, const int value_int)
+{
+  PT_NODE *node;
+
+  node = parser_new_node (parser, PT_VALUE);
+  if (node)
+    {
+      node->type_enum = PT_TYPE_INTEGER;
+      node->info.value.data_value.i = value_int;
+    }
+  return node;
+}
 
 /*
  * pt_make_string_value () -
@@ -490,7 +566,7 @@ pt_name_equal (PARSER_CONTEXT * parser, const PT_NODE * name1,
 
   if (name1->info.name.meta_class != name2->info.name.meta_class)
     {
-      /* check for equivilence class PT_SHARED == PT_NORMAL */
+      /* check for equivalence class PT_SHARED == PT_NORMAL */
       if (name1->info.name.meta_class != PT_SHARED
 	  && name1->info.name.meta_class != PT_NORMAL)
 	return false;
@@ -557,13 +633,42 @@ pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  || function_type == PT_SUM
 	  || function_type == PT_AVG
 	  || function_type == PT_STDDEV
+	  || function_type == PT_STDDEV_POP
+	  || function_type == PT_STDDEV_SAMP
 	  || function_type == PT_VARIANCE
+	  || function_type == PT_VAR_POP
+	  || function_type == PT_VAR_SAMP
 	  || function_type == PT_GROUPBY_NUM
 	  || function_type == PT_COUNT
 	  || function_type == PT_COUNT_STAR
 	  || function_type == PT_AGG_BIT_AND
 	  || function_type == PT_AGG_BIT_OR
-	  || function_type == PT_AGG_BIT_XOR)
+	  || function_type == PT_AGG_BIT_XOR
+	  || function_type == PT_GROUP_CONCAT)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * pt_is_expr_wrapped_function () -
+ *   return: true if node is a PT_FUNCTION node with which may be evaluated
+ *	     like an expression
+ *   parser(in): parser context
+ *   node(in): PT_FUNTION node
+ */
+bool
+pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  FUNC_TYPE function_type;
+
+  if (node->node_type == PT_FUNCTION)
+    {
+      function_type = node->info.function.function_type;
+      if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT)
 	{
 	  return true;
 	}
@@ -708,7 +813,7 @@ pt_find_spec_post (PARSER_CONTEXT * parser, PT_NODE * node,
  *   parser(in):
  *   tree(in):
  *   arg(in/out): true in arg if node is a PT_FUNCTION node with a
- * 	      PT_MIN, PT_MAX, PT_SUM, PT_AVG, or PT_COUNT type
+ * 	      PT_MIN, PT_MAX, PT_SUM, PT_AVG, PT_GROUP_CONCAT or PT_COUNT type
  *   continue_walk(in/out):
  */
 PT_NODE *
@@ -1510,7 +1615,7 @@ pt_right_part (const PT_NODE * node)
 /*
  * pt_get_end_path_node () -
  *   return: the original name node at the end of a path expression
- *   expr(in):
+ *   node(in):
  */
 PT_NODE *
 pt_get_end_path_node (PT_NODE * node)
@@ -1522,6 +1627,37 @@ pt_get_end_path_node (PT_NODE * node)
   return node;
 }
 
+/*
+ * pt_get_first_arg_ignore_prior () -
+ *   return: the first argument of an expression node; if the argument is
+ *           PRIOR (arg) then PRIOR's argument is returned instead
+ *   node(in):
+ * Note: Also see the related PT_IS_EXPR_WITH_PRIOR_ARG macro.
+ */
+PT_NODE *
+pt_get_first_arg_ignore_prior (PT_NODE * node)
+{
+  PT_NODE *arg1 = NULL;
+
+  assert (PT_IS_EXPR_NODE (node));
+
+  if (!PT_IS_EXPR_NODE (node))
+    {
+      return NULL;
+    }
+
+  arg1 = node->info.expr.arg1;
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg1, PT_PRIOR))
+    {
+      arg1 = arg1->info.expr.arg1;
+    }
+  /* Although semantically valid, PRIOR(PRIOR(expr)) is not allowed at runtime
+     so this combination is restricted during parsing. See the parser rule for
+     PRIOR for details. */
+  assert (!PT_IS_EXPR_NODE_WITH_OPERATOR (arg1, PT_PRIOR));
+
+  return arg1;
+}
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -2092,15 +2228,15 @@ pt_column_updatable (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (updatable)
 	    {
 	      updatable = pt_column_updatable (parser,
-					       statement->info.query.q.union_.
-					       arg1);
+					       statement->info.query.q.
+					       union_.arg1);
 	    }
 
 	  if (updatable)
 	    {
 	      updatable = pt_column_updatable (parser,
-					       statement->info.query.q.union_.
-					       arg2);
+					       statement->info.query.q.
+					       union_.arg2);
 	    }
 	  break;
 
@@ -3697,6 +3833,7 @@ regu_agg_init (AGGREGATE_TYPE * ptr)
   ptr->option = (QUERY_OPTIONS) 0;
   regu_var_init (&ptr->operand);
   ptr->list_id = NULL;
+  ptr->sort_list = NULL;
 }
 
 /*
@@ -3782,7 +3919,6 @@ regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
       break;
 
     case OBJFETCH_PROC:
-    case SETFETCH_PROC:
       break;
 
     case BUILDLIST_PROC:
@@ -3953,10 +4089,20 @@ regu_index_alloc (void)
 void
 regu_index_init (INDX_INFO * ptr)
 {
+  OID_SET_NULL (&ptr->class_oid);
+  ptr->coverage = 0;
   ptr->range_type = R_KEY;
   ptr->key_info.key_cnt = 0;
   ptr->key_info.key_ranges = NULL;
   ptr->key_info.is_constant = false;
+  ptr->key_info.key_limit_l = NULL;
+  ptr->key_info.key_limit_u = NULL;
+  ptr->key_info.key_limit_reset = false;
+  ptr->orderby_desc = 0;
+  ptr->groupby_desc = 0;
+  ptr->use_desc_index = 0;
+  ptr->orderby_skip = 0;
+  ptr->groupby_skip = 0;
 }
 
 /*
@@ -4259,10 +4405,20 @@ regu_domain_db_alloc (void)
 static void
 regu_domain_init (SM_DOMAIN * ptr)
 {
-  ptr->type = PR_TYPE_FROM_ID (DB_TYPE_INTEGER);
-  ptr->class_mop = NULL;
   ptr->next = NULL;
+  ptr->next_list = NULL;
+  ptr->type = PR_TYPE_FROM_ID (DB_TYPE_INTEGER);
+  ptr->precision = 0;
+  ptr->scale = 0;
+  ptr->class_mop = NULL;
+  ptr->self_ref = 0;
   ptr->setdomain = NULL;
+  OID_SET_NULL (&ptr->class_oid);
+  ptr->codeset = 0;
+  ptr->is_cached = 0;
+  ptr->built_in_index = 0;
+  ptr->is_parameterized = 0;
+  ptr->is_desc = 0;
 }
 
 /*
@@ -5690,4 +5846,2892 @@ error_exit:
       temp_copy = NULL;
     }
   return error;
+}
+
+/*
+ * pt_node_list_to_array() - returns an array of nodes(PT_NODE) from a 
+ *			     PT_NODE list. Used mainly to convert a list of
+ *			     argument nodes to an array of argument nodes
+ *   return: NO_ERROR on success, ER_GENERIC_ERROR on failure
+ *   parser(in): Parser context
+ *   arg_list(in): List of nodes (arguments) chained on next
+ *   arg_array(out): array of nodes (arguments)
+ *   array_size(in): the (allocated) size of array
+ *   num_args(out): the number of nodes found in list
+ *
+ * Note: the arg_array must be allocated and sized to 'array_size'
+ */
+int
+pt_node_list_to_array (PARSER_CONTEXT * parser, PT_NODE * arg_list,
+		       PT_NODE * arg_array[], const int array_size,
+		       int *num_args)
+{
+  PT_NODE *arg = NULL;
+  int error = NO_ERROR, len = 0;
+
+  assert (array_size > 0);
+  assert (arg_array != NULL);
+  assert (arg_list != NULL);
+  assert (num_args != NULL);
+
+  *num_args = 0;
+
+  for (arg = arg_list; arg != NULL; arg = arg->next)
+    {
+      if (len >= array_size)
+	{
+	  return ER_GENERIC_ERROR;
+	}
+      arg_array[len] = arg;
+      *num_args = ++len;
+    }
+  return error;
+}
+
+/*
+ * pt_make_dotted_identifier() - returns an identifier node (type PT_NAME) or
+ *			         a PT_DOT node tree
+ *
+ *   return: node with constructed identifier, NULL if construction fails
+ *   parser(in): Parser context
+ *   identifier_str(in): string containing full identifier name. Dots ('.') 
+ *			 are used to delimit class names and column
+ *			 names; for this reason, column and class names should
+ *			 not contain dots.
+ */
+static PT_NODE *
+pt_make_dotted_identifier (PARSER_CONTEXT * parser,
+			   const char *identifier_str)
+{
+  return pt_make_dotted_identifier_internal (parser, identifier_str, 0);
+}
+
+/*
+ * pt_make_dotted_identifier_internal() - builds an identifier node 
+ *				    (type PT_NAME) or tree (type PT_DOT)
+ *
+ *   return: node with constructed identifier, NULL if construction fails
+ *   parser(in): Parser context
+ *   identifier_str(in): string containing full identifier name (with dots);
+ *			 length must be smaller than maximum allowed 
+ *			 identifier length
+ *   depth(in): depth of current constructed node relative to PT_DOT subtree
+ * 
+ *  Note : the depth argument is used to flag the PT_NAME node corresponding 
+ *	   to the first scoping name as 'meta_class = PT_NORMAL'.
+ *	   This applies only to dotted identifier names.
+ */
+static PT_NODE *
+pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser,
+				    const char *identifier_str, int depth)
+{
+  PT_NODE *identifier = NULL;
+  char *p_dot = NULL;
+
+  assert (depth >= 0);
+  if (strlen (identifier_str) >= SM_MAX_IDENTIFIER_LENGTH)
+    {
+      assert (false);
+      return NULL;
+    }
+
+  p_dot = strrchr (identifier_str, '.');
+
+  if (p_dot != NULL)
+    {
+      char string_name1[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+      char string_name2[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+      PT_NODE *name1 = NULL;
+      PT_NODE *name2 = NULL;
+      int position = p_dot - identifier_str;
+      int remaining = strlen (identifier_str) - position - 1;
+
+      assert ((remaining > 0) && (remaining < strlen (identifier_str) - 1));
+      assert ((position > 0) && (position < strlen (identifier_str) - 1));
+
+      strncpy (string_name1, identifier_str, position);
+      string_name1[position] = '\0';
+      strncpy (string_name2, p_dot + 1, remaining);
+      string_name2[remaining] = '\0';
+
+      /* create PT_DOT_  - must be left - balanced */
+      name1 = pt_make_dotted_identifier_internal (parser, string_name1,
+						  depth + 1);
+      name2 = pt_name (parser, string_name2);
+      if (name1 == NULL || name2 == NULL)
+	{
+	  return NULL;
+	}
+
+      identifier = parser_new_node (parser, PT_DOT_);
+      if (identifier == NULL)
+	{
+	  return NULL;
+	}
+
+      identifier->info.dot.arg1 = name1;
+      identifier->info.dot.arg2 = name2;
+    }
+  else
+    {
+      identifier = pt_name (parser, identifier_str);
+      if (identifier == NULL)
+	{
+	  return NULL;
+	}
+
+      /* it is a dotted identifier, make the first name PT_NORMAL */
+      if (depth != 0)
+	{
+	  identifier->info.name.meta_class = PT_NORMAL;
+	}
+    }
+
+  assert (identifier != NULL);
+
+  return identifier;
+}
+
+/*
+ * pt_add_name_col_to_sel_list() - builds a corresponding node for a table 
+ *				   column and adds it to the end of the select
+ *				   list of a SELECT node
+ *
+ *   return: void
+ *   parser(in): Parser context
+ *   select(in): SELECT node
+ *   identifier_str(in): string identifying the column (may contain dots)
+ *   col_alias(in): alias of the new select item
+ */
+static void
+pt_add_name_col_to_sel_list (PARSER_CONTEXT * parser, PT_NODE * select,
+			     const char *identifier_str,
+			     const char *col_alias)
+{
+  PT_NODE *sel_item = NULL;
+
+  assert (select != NULL);
+  assert (identifier_str != NULL);
+
+  sel_item = pt_make_dotted_identifier (parser, identifier_str);
+
+  if (sel_item == NULL)
+    {
+      return;
+    }
+  sel_item->alias_print = pt_append_string (parser, NULL, col_alias);
+
+  select->info.query.q.select.list =
+    parser_append_node (sel_item, select->info.query.q.select.list);
+}
+
+/*
+ * pt_add_table_name_to_from_list() - builds a corresponding node for a table 
+ *				'spec' and adds it to the end of the FROM list
+ *                              of a SELECT node
+ *
+ *   return: newly build PT_NODE, NULL if construction fails
+ *   parser(in): Parser context
+ *   select(in): SELECT node
+ *   table_name(in): table name (should not contain dots), may be NULL if spec
+ *		     is a subquery (instead of a table)
+ *   table_alias(in): alias of the table
+ *   auth_bypass(in): bit mask of privileges flags that will bypass
+ *                    authorizations
+ */
+PT_NODE *
+pt_add_table_name_to_from_list (PARSER_CONTEXT * parser, PT_NODE * select,
+				const char *table_name,
+				const char *table_alias,
+				const DB_AUTH auth_bypass)
+{
+  PT_NODE *spec = NULL;
+  PT_NODE *from_item = NULL;
+  PT_NODE *range_var = NULL;
+
+  if (table_name != NULL)
+    {
+      from_item = pt_name (parser, table_name);
+      if (from_item == NULL)
+	{
+	  return NULL;
+	}
+    }
+  if (table_alias != NULL)
+    {
+      range_var = pt_name (parser, table_alias);
+      if (range_var == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  spec = pt_entity (parser, from_item, range_var, NULL);
+  if (spec == NULL)
+    {
+      return NULL;
+    }
+
+  spec->info.spec.only_all = PT_ONLY;
+  spec->info.spec.meta_class = PT_CLASS;
+  select->info.query.q.select.from =
+    parser_append_node (spec, select->info.query.q.select.from);
+  spec->info.spec.auth_bypass_mask = auth_bypass;
+
+  return spec;
+}
+
+/*
+ * pt_make_pred_name_int_val() - builds a predicate node (PT_EXPR) using a 
+ *			    column identifier on LHS and a integer value on 
+ *			    RHS
+ *
+ *   return: newly build node (PT_NODE)
+ *   parser(in): Parser context
+ *   op_type(in): operator type; should be a binary operator that makes sense
+ *                for the passed arguments (such as PT_EQ, PT_GT, ...)
+ *   col_name(in): column name (may contain dots)
+ *   int_value(in): integer to assign to PT_VALUE RHS node
+ */
+static PT_NODE *
+pt_make_pred_name_int_val (PARSER_CONTEXT * parser, PT_OP_TYPE op_type,
+			   const char *col_name, const int int_value)
+{
+  PT_NODE *pred_rhs = NULL;
+  PT_NODE *pred_lhs = NULL;
+  PT_NODE *pred = NULL;
+
+  /* create PT_VALUE for rhs */
+  pred_rhs = pt_make_integer_value (parser, int_value);
+  /* create PT_NAME for lhs */
+  pred_lhs = pt_make_dotted_identifier (parser, col_name);
+
+  pred = parser_make_expression (op_type, pred_lhs, pred_rhs, NULL);
+  return pred;
+}
+
+/*
+ * pt_make_pred_name_string_val() - builds a predicate node (PT_EXPR) using an 
+ *			            identifier on LHS and a string value on 
+ *			            RHS
+ *
+ *   return: newly build node (PT_NODE)
+ *   parser(in): Parser context
+ *   op_type(in): operator type; should be a binary operator that makes sense
+ *                for the passed arguments (such as PT_EQ, PT_GT, ...)
+ *   identifier_str(in): column name (may contain dots)
+ *   str_value(in): string to assign to PT_VALUE RHS node
+ */
+static PT_NODE *
+pt_make_pred_name_string_val (PARSER_CONTEXT * parser, PT_OP_TYPE op_type,
+			      const char *identifier_str,
+			      const char *str_value)
+{
+  PT_NODE *pred_rhs = NULL;
+  PT_NODE *pred_lhs = NULL;
+  PT_NODE *pred = NULL;
+
+  /* create PT_VALUE for rhs */
+  pred_rhs = pt_make_string_value (parser, str_value);
+  /* create PT_NAME for lhs */
+  pred_lhs = pt_make_dotted_identifier (parser, identifier_str);
+
+  pred = parser_make_expression (op_type, pred_lhs, pred_rhs, NULL);
+
+  return pred;
+}
+
+/*
+ * pt_make_pred_with_identifiers() - builds a predicate node (PT_EXPR) using 
+ *			    an identifier on LHS and another identifier on 
+ *			    RHS
+ *
+ *   return: newly build node (PT_NODE)
+ *   parser(in): Parser context
+ *   op_type(in): operator type; should be a binary operator that makes sense
+ *                for the passed arguments (such as PT_EQ, PT_GT, ...)
+ *   lhs_identifier(in): LHS column name (may contain dots)
+ *   rhs_identifier(in): RHS column name (may contain dots)
+ */
+static PT_NODE *
+pt_make_pred_with_identifiers (PARSER_CONTEXT * parser, PT_OP_TYPE op_type,
+			       const char *lhs_identifier,
+			       const char *rhs_identifier)
+{
+  PT_NODE *dot1 = NULL;
+  PT_NODE *dot2 = NULL;
+  PT_NODE *pred_rhs = NULL;
+  PT_NODE *pred_lhs = NULL;
+  PT_NODE *pred = NULL;
+
+  /* create PT_DOT_ for lhs */
+  pred_lhs = pt_make_dotted_identifier (parser, lhs_identifier);
+  /* create PT_DOT_ for rhs */
+  pred_rhs = pt_make_dotted_identifier (parser, rhs_identifier);
+
+  pred = parser_make_expression (op_type, pred_lhs, pred_rhs, NULL);
+
+  return pred;
+}
+
+/*
+ * pt_make_if_with_expressions() - builds an IF (pred, expr_true, expr_false) 
+ *				operator node (PT_EXPR) given two expression 
+ *				nodes for true/false values
+ *
+ *   return: newly build node (PT_NODE)
+ *   parser(in): Parser context
+ *   pred(in): a node for expression used as predicate
+ *   expr1(in): expression node for true value of predicate
+ *   expr2(in): expression node for false value of predicate
+ *   alias(in): alias for this new node
+ */
+static PT_NODE *
+pt_make_if_with_expressions (PARSER_CONTEXT * parser, PT_NODE * pred,
+			     PT_NODE * expr1, PT_NODE * expr2,
+			     const char *alias)
+{
+  PT_NODE *if_node = NULL;
+
+  if_node = parser_make_expression (PT_IF, pred, expr1, expr2);
+
+  if (alias != NULL)
+    {
+      if_node->alias_print = pt_append_string (parser, NULL, alias);
+    }
+  return if_node;
+}
+
+/*
+ * pt_make_if_with_strings() - builds an IF (pred, expr_true, expr_false) 
+ *			       operator node (PT_EXPR) using two strings as
+ *			       true/false values
+ *
+ *   return: newly build node (PT_NODE)
+ *   parser(in): Parser context
+ *   pred(in): a node for expression used as predicate
+ *   string1(in): string used to build a value node for true value of predicate
+ *   string1(in): string used to build a value node for false value of predicate
+ *   alias(in): alias for this new node
+ */
+static PT_NODE *
+pt_make_if_with_strings (PARSER_CONTEXT * parser, PT_NODE * pred,
+			 const char *string1, const char *string2,
+			 const char *alias)
+{
+  PT_NODE *val1_node = NULL;
+  PT_NODE *val2_node = NULL;
+  PT_NODE *if_node = NULL;
+
+  val1_node = pt_make_string_value (parser, string1);
+  val2_node = pt_make_string_value (parser, string2);
+
+  if_node = pt_make_if_with_expressions (parser,
+					 pred, val1_node, val2_node, alias);
+  return if_node;
+}
+
+/*
+ * pt_make_like_col_expr() - builds a LIKE operator node (PT_EXPR) using 
+ *			    an identifier on LHS an expression node on RHS
+ *			    '<col_name> LIKE <rhs_expr>'
+ *
+ *   return: newly build node (PT_NODE)
+ *   parser(in): Parser context
+ *   rhs_expr(in): expression node
+ *   col_name(in): LHS column name (may contain dots)
+ */
+static PT_NODE *
+pt_make_like_col_expr (PARSER_CONTEXT * parser, PT_NODE * rhs_expr,
+		       const char *col_name)
+{
+  PT_NODE *like_lhs = NULL;
+  PT_NODE *like_node = NULL;
+
+  like_lhs = pt_make_dotted_identifier (parser, col_name);
+  like_node = parser_make_expression (PT_LIKE, like_lhs, rhs_expr, NULL);
+
+  return like_node;
+}
+
+/*
+ * pt_make_outer_select_for_show_stmt() - builds a SELECT node and wrap the 
+ *				      inner supplied SELECT node
+ *		'SELECT * FROM (<inner_select>) <select_alias>'
+ *
+ *   return: newly build node (PT_NODE), NULL if construction fails
+ *   parser(in): Parser context
+ *   inner_select(in): PT_SELECT node
+ *   select_alias(in): alias for the 'FROM specs'
+ */
+static PT_NODE *
+pt_make_outer_select_for_show_stmt (PARSER_CONTEXT * parser,
+				    PT_NODE * inner_select,
+				    const char *select_alias)
+{
+  /* SELECT * from ( SELECT .... ) <select_alias>;  */
+  PT_NODE *val_node = NULL;
+  PT_NODE *outer_node = NULL;
+  PT_NODE *alias_subquery = NULL;
+  PT_NODE *from_item = NULL;
+
+  assert (inner_select != NULL);
+  assert (inner_select->node_type == PT_SELECT);
+
+  val_node = parser_new_node (parser, PT_VALUE);
+  if (val_node)
+    {
+      val_node->type_enum = PT_TYPE_STAR;
+    }
+  else
+    {
+      return NULL;
+    }
+
+  outer_node = parser_new_node (parser, PT_SELECT);
+  if (outer_node == NULL)
+    {
+      return NULL;
+    }
+
+  outer_node->info.query.q.select.list =
+    parser_append_node (val_node, outer_node->info.query.q.select.list);
+  inner_select->info.query.is_subquery = PT_IS_SUBQUERY;
+
+  alias_subquery = pt_name (parser, select_alias);
+  /* add to FROM an empty entity, the entity will be populated later */
+  from_item = pt_add_table_name_to_from_list (parser,
+					      outer_node, NULL, NULL,
+					      DB_AUTH_NONE);
+
+  if (from_item == NULL)
+    {
+      return NULL;
+
+    }
+
+  from_item->info.spec.derived_table = inner_select;
+  from_item->info.spec.meta_class = 0;
+  from_item->info.spec.range_var = alias_subquery;
+  from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
+  from_item->info.spec.join_type = PT_JOIN_NONE;
+
+  return outer_node;
+}
+
+/*
+ * pt_make_select_count_star() - builds a 'SELECT COUNT(*)' node 
+ *
+ *   return: newly build node (PT_NODE), NULL if construnction fails
+ *   parser(in): Parser context
+ *
+ *  Note : The created node is not complete : FROM and WHERE should be filled
+ *	  after using this function
+ */
+static PT_NODE *
+pt_make_select_count_star (PARSER_CONTEXT * parser)
+{
+  PT_NODE *query = NULL;
+  PT_NODE *sel_item = NULL;
+
+  query = parser_new_node (parser, PT_SELECT);
+
+  sel_item = parser_new_node (parser, PT_FUNCTION);
+
+  if (sel_item == NULL || query == NULL)
+    {
+      return NULL;
+    }
+  sel_item->info.function.arg_list = NULL;
+  sel_item->info.function.function_type = PT_COUNT_STAR;
+  query->info.query.q.select.list =
+    parser_append_node (sel_item, query->info.query.q.select.list);
+  return query;
+}
+
+
+/*
+ * pt_make_field_type_expr_node() - builds the node required to print the type
+ *                                  of column in SHOW COLUMNS
+ *
+ *    CONCAT(type_name, IF (type_id=27 OR 
+ *			      type_id=26 OR 
+ *			      type_id=25 OR 
+ *			      type_id=24 OR 
+ *			      type_id=23 OR 
+ * 			      type_id=4  OR 
+ *			      type_id=22,  
+ *			    CONCAT( '(', 
+ *				    prec ,
+ *				    IF (type_id=22,
+ *					CONCAT( ',',
+ *						scale,
+ *						')' )
+ *					,')')
+ *				   ) ,
+ *			    IF ( type_id = 6 OR
+ *				    type_id = 7 OR
+ *				    type_id=8 ,
+ *				  CONCAT( ' OF ',
+ *					  Types_t.Composed_types),
+ *				  '')  
+ *			  )
+ *	      ) AS Type 
+ *
+ *  - type_id values are defined in dbtype.h in DB_TYPE 
+ *
+ *
+ *   return: newly build node (PT_NODE)
+ *   parser(in): Parser context
+ */
+static PT_NODE *
+pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
+{
+  PT_NODE *concat_node = NULL;
+  PT_NODE *if_node = NULL;
+  PT_NODE *if_node_types = NULL;
+
+  /* CONCAT(',',scale,')') */
+  {
+    PT_NODE *concat_arg_list = NULL;
+    PT_NODE *concat_arg = NULL;
+
+    concat_arg = pt_make_string_value (parser, ",");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_arg = pt_name (parser, "scale");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_arg = pt_make_string_value (parser, ")");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_node = parser_keyword_func ("concat", concat_arg_list);
+    if (concat_node == NULL)
+      {
+	return NULL;
+      }
+  }
+
+  /* IF(  type_id=22  ,     CONCAT(',',scale,')')    ,   ')'   )  */
+  {
+    PT_NODE *pred_for_if = NULL;
+    PT_NODE *val1_node = NULL;
+    PT_NODE *val2_node = NULL;
+
+    pred_for_if = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 22);
+    assert (concat_node != NULL);
+    val1_node = concat_node;
+    val2_node = pt_make_string_value (parser, ")");
+
+    if_node = parser_make_expression (PT_IF,
+				      pred_for_if, val1_node, val2_node);
+    if (if_node == NULL)
+      {
+	return NULL;
+      }
+    concat_node = NULL;
+  }
+
+  /*  CONCAT( '(' ,  prec  ,    IF(..)  ) */
+  {
+    PT_NODE *concat_arg_list = NULL;
+    PT_NODE *concat_arg = NULL;
+
+    concat_arg = pt_make_string_value (parser, "(");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_arg = pt_name (parser, "prec");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    assert (if_node != NULL);
+    concat_arg = if_node;
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_node = parser_keyword_func ("concat", concat_arg_list);
+    if (concat_node == NULL)
+      {
+	return NULL;
+      }
+
+    if_node = NULL;
+  }
+
+  /* IF (type_id=27 OR type_id=26 OR type_id=25 OR type_id=24 OR 
+     type_id=23 OR type_id=4 or type_id=22,
+     CONCAT(...)  , 
+     '' )  */
+  {
+    PT_NODE *cond_item1 = NULL;
+    PT_NODE *cond_item2 = NULL;
+    PT_NODE *val1_node = NULL;
+    PT_NODE *val2_node = NULL;
+    PT_NODE *pred_for_if = NULL;
+
+    /* VARNCHAR and CHAR */
+    cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 27);
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 26);
+    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    /* CHAR */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 25);
+    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    /* VARBIT */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 24);
+    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    /* BIT */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 23);
+    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    /* VARCHAR */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 4);
+    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    /* NUMERIC */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 22);
+    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+
+    pred_for_if = cond_item1;
+    assert (concat_node != NULL);
+    val1_node = concat_node;
+    val2_node = pt_make_string_value (parser, "");
+
+    if_node = parser_make_expression (PT_IF,
+				      pred_for_if, val1_node, val2_node);
+    if (if_node == NULL)
+      {
+	return NULL;
+      }
+
+    concat_node = NULL;
+  }
+
+  /*   CONCAT(' OF ',Types_t.Composed_types)  */
+  {
+    PT_NODE *concat_arg_list = NULL;
+    PT_NODE *concat_arg = NULL;
+
+    concat_arg = pt_make_string_value (parser, " OF ");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_arg = pt_make_dotted_identifier (parser, "Types_t.Composed_types");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_node = parser_keyword_func ("concat", concat_arg_list);
+    if (concat_node == NULL)
+      {
+	return NULL;
+      }
+  }
+
+  /* IF ( type_id = 6 OR type_id = 7 OR type_id=8 , CONCAT( .. ),'') */
+  {
+    PT_NODE *cond_item1 = NULL;
+    PT_NODE *cond_item2 = NULL;
+    PT_NODE *val1_node = NULL;
+    PT_NODE *val2_node = NULL;
+    PT_NODE *pred_for_if = NULL;
+
+    /* SET  and MULTISET */
+    cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 6);
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 7);
+    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+    /* SEQUENCE */
+    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 8);
+    cond_item1 = parser_make_expression (PT_OR, cond_item1, cond_item2, NULL);
+
+    pred_for_if = cond_item1;
+    assert (concat_node != NULL);
+    val1_node = concat_node;
+    val2_node = pt_make_string_value (parser, "");
+
+    assert (pred_for_if != NULL && val1_node != NULL && val2_node != NULL);
+
+    if_node_types = parser_make_expression (PT_IF,
+					    pred_for_if,
+					    val1_node, val2_node);
+    if (if_node_types == NULL)
+      {
+	return NULL;
+      }
+  }
+
+  /*   CONCAT( type_name,  IF(...)  ,  IF (...) )  */
+  {
+    PT_NODE *concat_arg_list = NULL;
+    PT_NODE *concat_arg = NULL;
+
+    concat_arg = pt_name (parser, "type_name");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    assert (if_node != NULL);
+    concat_arg = if_node;
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    assert (if_node_types != NULL);
+    concat_arg = if_node_types;
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_node = parser_keyword_func ("concat", concat_arg_list);
+    if (concat_node == NULL)
+      {
+	return NULL;
+      }
+  }
+
+  concat_node->alias_print = pt_append_string (parser, NULL, "Type");
+
+  return concat_node;
+}
+
+
+/*
+ * pt_make_field_extra_expr_node() - builds the 'Extra' field for the 
+ *				SHOW COLUMNS statment
+ *
+ *   return: newly build node (PT_NODE), NULL if construction fails
+ *   parser(in): Parser context
+ *
+ *    IF( (SELECT count(*)  
+ *	      FROM db_serial S 
+ *	      WHERE S.att_name = A.attr_name AND 
+ *		    S.class_name =  C.class_name 
+ *	    ) >= 1 ,
+ *	  'auto_increment',
+ *	  '' )
+ *      AS Extra
+ *
+ *  Note : Currently, only 'auto_increment' is diplayed in the Extra field
+ */
+static PT_NODE *
+pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
+{
+  PT_NODE *where_item1 = NULL;
+  PT_NODE *where_item2 = NULL;
+  PT_NODE *from_item = NULL;
+  PT_NODE *sel_item = NULL;
+  PT_NODE *query = NULL;
+  PT_NODE *extra_node = NULL;
+  PT_NODE *pred = NULL;
+  PT_NODE *pred_rhs = NULL;
+
+  /*  SELECT .. FROM .. WHERE */
+  query = pt_make_select_count_star (parser);
+  if (query == NULL)
+    {
+      return NULL;
+    }
+
+  from_item = pt_add_table_name_to_from_list (parser,
+					      query, "db_serial", "S",
+					      DB_AUTH_NONE);
+
+  /* S.att_name = A.attr_name */
+  where_item1 = pt_make_pred_with_identifiers (parser,
+					       PT_EQ,
+					       "S.att_name", "A.attr_name");
+  /* S.class_name = C.class_name */
+  where_item2 =
+    pt_make_pred_with_identifiers (parser, PT_EQ, "S.class_name",
+				   "C.class_name");
+
+  /* item1 = item2 AND item2 */
+  where_item1 = parser_make_expression (PT_AND,
+					where_item1, where_item2, NULL);
+  query->info.query.q.select.where =
+    parser_append_node (where_item1, query->info.query.q.select.where);
+
+  /* IF ( SELECT (..) >=1 ,  'auto_increment' , '' ) */
+  pred_rhs = pt_make_integer_value (parser, 1);
+
+  pred = parser_make_expression (PT_GE, query, pred_rhs, NULL);
+
+  extra_node = pt_make_if_with_strings (parser,
+					pred, "auto_increment", "", "Extra");
+
+  return extra_node;
+}
+
+/*
+ * pt_make_field_key_type_expr_node() - builds the 'Key' field for the 
+ *				SHOW COLUMNS statment
+ *
+ *   return: newly build node (PT_NODE), NULL if construction fails
+ *   parser(in): Parser context
+ *
+ *     IF ( pri_key_count > 0,
+ *	  'PRI' , 
+ *	  IF (uni_key_count > 0 ,
+ *	      'UNI',  
+ *	      IF (mul_count > 0 ,
+ *		  'MUL', 
+ *		  '')
+ *	      )
+ *	  )
+ *
+ *
+ *  Note : PRI : when the column is part of an index with primary key
+ *	   UNI : when the column is part of an index with unique key
+ *	   MUL : when the column is the first column in a non-unique index
+ *	   if more than one applies to a column, only the one is displayed,
+ *	   in the order PRI,UNI,MUL
+ *	   '' : no index on the column
+ */
+static PT_NODE *
+pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
+{
+  PT_NODE *pri_key_query = NULL;
+  PT_NODE *uni_key_query = NULL;
+  PT_NODE *mul_query = NULL;
+  PT_NODE *key_node = NULL;
+
+  {
+    /* pri_key_count  :
+       (SELECT count (*)  
+       FROM (SELECT  IK.key_attr_name ATTR,  I.is_primary_key PRI_KEY  
+       FROM  _db_index_key IK , _db_index I   
+       WHERE IK IN I.key_attrs AND 
+       IK.key_attr_name = A.attr_name AND 
+       I.class_of = A.class_of AND 
+       A.class_of.class_name=C.class_name) 
+       constraints_pri_key  
+       WHERE PRI_KEY=1) 
+     */
+    PT_NODE *sub_query = NULL;
+    PT_NODE *from_item = NULL;
+    PT_NODE *where_item1 = NULL;
+    PT_NODE *where_item2 = NULL;
+    PT_NODE *alias_subquery = NULL;
+
+    /* SELECT  IK.key_attr_name ATTR,  I.is_primary_key PRI_KEY
+       FROM  _db_index_key IK , _db_index I
+       WHERE IK IN I.key_attrs AND 
+       IK.key_attr_name = A.attr_name AND 
+       I.class_of = A.class_of AND 
+       A.class_of.class_name = C.class_name */
+    sub_query = parser_new_node (parser, PT_SELECT);
+    if (sub_query == NULL)
+      {
+	return NULL;
+      }
+
+    /* SELECT list : */
+    pt_add_name_col_to_sel_list (parser, sub_query, "IK.key_attr_name",
+				 "ATTR");
+    pt_add_name_col_to_sel_list (parser, sub_query, "I.is_primary_key",
+				 "PRI_KEY");
+    /* .. FROM : */
+    from_item = pt_add_table_name_to_from_list (parser, sub_query,
+						"_db_index_key", "IK",
+						DB_AUTH_SELECT);
+    from_item = pt_add_table_name_to_from_list (parser, sub_query,
+						"_db_index", "I",
+						DB_AUTH_SELECT);
+
+    /* .. WHERE : */
+    where_item1 = pt_make_pred_with_identifiers (parser, PT_IS_IN,
+						 "IK", "I.key_attrs");
+    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
+						 "IK.key_attr_name",
+						 "A.attr_name");
+    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
+					  NULL);
+
+    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
+						 "I.class_of", "A.class_of");
+    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
+					  NULL);
+
+    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
+						 "A.class_of.class_name",
+						 "C.class_name");
+    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
+					  NULL);
+
+    /* WHERE clause should be empty */
+    assert (sub_query->info.query.q.select.where == NULL);
+    sub_query->info.query.q.select.where =
+      parser_append_node (where_item1, sub_query->info.query.q.select.where);
+
+    /* outer query : SELECT count (*) FROM (..) WHERE PRI_KEY=1 */
+    pri_key_query = pt_make_select_count_star (parser);
+    if (pri_key_query == NULL)
+      {
+	return NULL;
+      }
+
+    /* add to FROM and empy entity, the entity will be populated later */
+    from_item = pt_add_table_name_to_from_list (parser, pri_key_query,
+						NULL, NULL, DB_AUTH_NONE);
+    if (from_item == NULL)
+      {
+	return NULL;
+      }
+    alias_subquery = pt_name (parser, "constraints_pri_key");
+
+    from_item->info.spec.derived_table = sub_query;
+    from_item->info.spec.meta_class = 0;
+    from_item->info.spec.range_var = alias_subquery;
+    from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
+    from_item->info.spec.join_type = PT_JOIN_NONE;
+    where_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "PRI_KEY", 1);
+    pri_key_query->info.query.q.select.where =
+      parser_append_node (where_item1,
+			  pri_key_query->info.query.q.select.where);
+    /* pri_key_count   query is done */
+  }
+
+  {
+    /* uni_key_count  :
+       (SELECT count (*)  
+       FROM (SELECT  IK.key_attr_name ATTR, I.is_unique UNI_KEY  
+       FROM  _db_index_key IK , _db_index I   
+       WHERE IK IN I.key_attrs AND 
+       IK.key_attr_name = A.attr_name AND 
+       I.class_of = A.class_of AND 
+       A.class_of.class_name = C.class_name) 
+       constraints_pri_key  
+       WHERE UNI_KEY=1) 
+     */
+    PT_NODE *sub_query = NULL;
+    PT_NODE *from_item = NULL;
+    PT_NODE *where_item1 = NULL;
+    PT_NODE *where_item2 = NULL;
+    PT_NODE *alias_subquery = NULL;
+
+    /* SELECT  IK.key_attr_name ATTR,  I.is_unique UNI_KEY   
+       FROM  _db_index_key IK , _db_index I   
+       WHERE IK IN I.key_attrs AND 
+       IK.key_attr_name = A.attr_name AND 
+       I.class_of = A.class_of AND 
+       A.class_of.class_name = C.class_name */
+    sub_query = parser_new_node (parser, PT_SELECT);
+    if (sub_query == NULL)
+      {
+	return NULL;
+      }
+
+    /* SELECT list : */
+    pt_add_name_col_to_sel_list (parser, sub_query, "IK.key_attr_name",
+				 "ATTR");
+    pt_add_name_col_to_sel_list (parser, sub_query, "I.is_unique", "UNI_KEY");
+    /* .. FROM : */
+    from_item =
+      pt_add_table_name_to_from_list (parser, sub_query,
+				      "_db_index_key", "IK", DB_AUTH_SELECT);
+    from_item =
+      pt_add_table_name_to_from_list (parser, sub_query,
+				      "_db_index", "I", DB_AUTH_SELECT);
+
+    /* .. WHERE : */
+    where_item1 = pt_make_pred_with_identifiers (parser,
+						 PT_IS_IN,
+						 "IK", "I.key_attrs");
+    where_item2 = pt_make_pred_with_identifiers (parser,
+						 PT_EQ,
+						 "IK.key_attr_name",
+						 "A.attr_name");
+    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
+					  NULL);
+
+    where_item2 = pt_make_pred_with_identifiers (parser,
+						 PT_EQ,
+						 "I.class_of", "A.class_of");
+    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
+					  NULL);
+
+    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
+						 "A.class_of.class_name",
+						 "C.class_name");
+    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
+					  NULL);
+
+    /* where should be empty */
+    assert (sub_query->info.query.q.select.where == NULL);
+    sub_query->info.query.q.select.where =
+      parser_append_node (where_item1, sub_query->info.query.q.select.where);
+
+    /* outer query : SELECT count (*) FROM (..) WHERE PRI_KEY=1 */
+    uni_key_query = pt_make_select_count_star (parser);
+    if (uni_key_query == NULL)
+      {
+	return NULL;
+      }
+
+    /* add to FROM and empy entity, the entity will be populated later */
+    from_item = pt_add_table_name_to_from_list (parser, uni_key_query, NULL,
+						NULL, DB_AUTH_NONE);
+    if (from_item == NULL)
+      {
+	return NULL;
+      }
+    alias_subquery = pt_name (parser, "constraints_uni_key");
+
+    from_item->info.spec.derived_table = sub_query;
+    from_item->info.spec.meta_class = 0;
+    from_item->info.spec.range_var = alias_subquery;
+    from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
+    from_item->info.spec.join_type = PT_JOIN_NONE;
+
+    where_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "UNI_KEY", 1);
+    uni_key_query->info.query.q.select.where =
+      parser_append_node (where_item1,
+			  uni_key_query->info.query.q.select.where);
+    /* uni_key_count   query is done */
+  }
+
+  {
+    /* mul_count  :
+       (SELECT count (*)  
+       FROM (SELECT  IK.key_attr_name ATTR  
+       FROM  _db_index_key IK , _db_index I   
+       WHERE IK IN I.key_attrs AND 
+       IK.key_attr_name = A.attr_name AND 
+       I.class_of = A.class_of AND 
+       A.class_of.class_name = C.class_name AND
+       IK.key_order = 0) 
+       constraints_no_index  
+       ) 
+     */
+    PT_NODE *sub_query = NULL;
+    PT_NODE *from_item = NULL;
+    PT_NODE *where_item1 = NULL;
+    PT_NODE *where_item2 = NULL;
+    PT_NODE *alias_subquery = NULL;
+
+    /* SELECT  IK.key_attr_name ATTR    
+       FROM  _db_index_key IK , _db_index I   
+       WHERE IK IN I.key_attrs AND 
+       IK.key_attr_name = A.attr_name AND 
+       I.class_of = A.class_of AND 
+       A.class_of.class_name = C.class_name AND
+       IK.key_order = 0 */
+    sub_query = parser_new_node (parser, PT_SELECT);
+    if (sub_query == NULL)
+      {
+	return NULL;
+      }
+
+    /* SELECT list : */
+    pt_add_name_col_to_sel_list (parser, sub_query, "IK.key_attr_name",
+				 "ATTR");
+    /* .. FROM : */
+    from_item = pt_add_table_name_to_from_list (parser, sub_query,
+						"_db_index_key", "IK",
+						DB_AUTH_SELECT);
+    from_item = pt_add_table_name_to_from_list (parser, sub_query,
+						"_db_index", "I",
+						DB_AUTH_SELECT);
+
+    /* .. WHERE : */
+    where_item1 = pt_make_pred_with_identifiers (parser, PT_IS_IN,
+						 "IK", "I.key_attrs");
+    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
+						 "IK.key_attr_name",
+						 "A.attr_name");
+    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
+					  NULL);
+
+    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
+						 "I.class_of", "A.class_of");
+    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
+					  NULL);
+
+    where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
+						 "A.class_of.class_name",
+						 "C.class_name");
+    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
+					  NULL);
+
+    where_item2 = pt_make_pred_name_int_val (parser, PT_EQ,
+					     "IK.key_order", 0);
+    where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
+					  NULL);
+
+    /* where should be empty */
+    assert (sub_query->info.query.q.select.where == NULL);
+    sub_query->info.query.q.select.where =
+      parser_append_node (where_item1, sub_query->info.query.q.select.where);
+
+    /* outer query : SELECT count (*) FROM (..) WHERE PRI_KEY=1 */
+    mul_query = pt_make_select_count_star (parser);
+
+    /* add to FROM and empy entity, the entity will be populated later */
+    from_item = pt_add_table_name_to_from_list (parser, mul_query,
+						NULL, NULL, DB_AUTH_NONE);
+    if (from_item == NULL)
+      {
+	return NULL;
+      }
+    alias_subquery = pt_name (parser, "constraints_no_index");
+    assert (alias_subquery != NULL);
+
+    from_item->info.spec.derived_table = sub_query;
+    from_item->info.spec.meta_class = 0;
+    from_item->info.spec.range_var = alias_subquery;
+    from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
+    from_item->info.spec.join_type = PT_JOIN_NONE;
+    /* mul_count   query is done */
+  }
+
+  /* IF ( pri_key_count > 0, 
+     'PRI' ,
+     IF (uni_key_count > 0 ,
+     'UNI',  
+     IF (mul_count > 0 ,
+     'MUL', 
+     '')
+     )
+     )
+   */
+  {
+    PT_NODE *if_node1 = NULL;
+    PT_NODE *if_node2 = NULL;
+    PT_NODE *if_node3 = NULL;
+
+    {
+      /* IF (mul_count > 0 , 'MUL', '' */
+      PT_NODE *pred_rhs = NULL;
+      PT_NODE *pred = NULL;
+      PT_NODE *string1_node = NULL;
+
+      pred_rhs = pt_make_integer_value (parser, 0);
+
+      pred = parser_make_expression (PT_GT, mul_query, pred_rhs, NULL);
+
+      if_node3 = pt_make_if_with_strings (parser, pred, "MUL", "", NULL);
+    }
+
+    {
+      /* IF (uni_key_count > 0 , 'UNI', (..IF..) */
+      PT_NODE *pred_rhs = NULL;
+      PT_NODE *pred = NULL;
+      PT_NODE *string1_node = NULL;
+
+      pred_rhs = pt_make_integer_value (parser, 0);
+
+      pred = parser_make_expression (PT_GT, uni_key_query, pred_rhs, NULL);
+
+      string1_node = pt_make_string_value (parser, "UNI");
+
+      if_node2 = pt_make_if_with_expressions (parser, pred,
+					      string1_node, if_node3, NULL);
+    }
+
+    {
+      /* pri_key_count > 0, 'PRI',  (..IF..) */
+      PT_NODE *pred_rhs = NULL;
+      PT_NODE *pred = NULL;
+      PT_NODE *string1_node = NULL;
+
+      pred_rhs = pt_make_integer_value (parser, 0);
+
+      pred = parser_make_expression (PT_GT, pri_key_query, pred_rhs, NULL);
+
+      string1_node = pt_make_string_value (parser, "PRI");
+
+      if_node1 = pt_make_if_with_expressions (parser, pred,
+					      string1_node, if_node2, "Key");
+    }
+    key_node = if_node1;
+  }
+  return key_node;
+}
+
+/*
+ * pt_make_sort_spec_with_identifier() - builds a SORT_SPEC for GROUP BY or
+ *				        ORDER BY using a column indentifier
+ *
+ *   return: newly build node (PT_NODE), NULL if construction fails
+ *   parser(in): Parser context
+ *   identifier(in): full name of identifier 
+ *   sort_mode(in): sorting ascendint or descending; if this parameter is not
+ *		    PT_ASC or PT_DESC, the function will return NULL
+ */
+static PT_NODE *
+pt_make_sort_spec_with_identifier (PARSER_CONTEXT * parser,
+				   const char *identifier,
+				   PT_MISC_TYPE sort_mode)
+{
+  PT_NODE *group_by_node = NULL;
+  PT_NODE *group_by_col = NULL;
+
+  if (sort_mode != PT_ASC && sort_mode != PT_DESC)
+    {
+      assert (false);
+      return NULL;
+    }
+  group_by_node = parser_new_node (parser, PT_SORT_SPEC);
+  if (group_by_node == NULL)
+    {
+      return NULL;
+    }
+
+  group_by_col = pt_make_dotted_identifier (parser, identifier);
+  group_by_node->info.sort_spec.asc_or_desc = sort_mode;
+  group_by_node->info.sort_spec.expr = group_by_col;
+
+  return group_by_node;
+}
+
+/*
+ * pt_make_sort_spec_with_number() - builds a SORT_SPEC for ORDER BY using
+ *					a numeric indentifier
+ *  used in : < ORDER BY <x> <ASC|DESC> >
+ *
+ *   return: newly build node (PT_NODE), NULL if construction fails
+ *   parser(in): Parser context
+ *   number_pos(in): position number for ORDER BY 
+ *   sort_mode(in): sorting ascendint or descending; if this parameter is not
+ *		    PT_ASC or PT_DESC, the function will return NULL
+ */
+static PT_NODE *
+pt_make_sort_spec_with_number (PARSER_CONTEXT * parser,
+			       const int number_pos, PT_MISC_TYPE sort_mode)
+{
+  PT_NODE *sort_spec_node = NULL;
+  PT_NODE *sort_spec_num = NULL;
+
+  if (sort_mode != PT_ASC && sort_mode != PT_DESC)
+    {
+      assert (false);
+      return NULL;
+    }
+  sort_spec_node = parser_new_node (parser, PT_SORT_SPEC);
+  if (sort_spec_node == NULL)
+    {
+      return NULL;
+    }
+
+  sort_spec_num = pt_make_integer_value (parser, number_pos);
+  sort_spec_node->info.sort_spec.asc_or_desc = sort_mode;
+  sort_spec_node->info.sort_spec.expr = sort_spec_num;
+
+  return sort_spec_node;
+}
+
+/*
+ * pt_make_collection_type_subquery_node() - builds a SELECT subquery used
+ *					construct the string to display
+ *					the list of sub-types for a collection
+ *					type (SET , SEQUENCE, MULTISET);
+ *					used to build SHOW COLUMNS statement
+ *
+ *
+ *	  SELECT AA.attr_name ATTR,  
+ *		  GROUP_CONCAT( TT.type_name ORDER BY 1 SEPARATOR ',') 
+ *			Composed_types 
+ *	     FROM _db_attribute AA, _db_domain DD , _db_data_type TT  
+ *	     WHERE AA.class_of.class_name = '<table_name>' AND 
+ *		   DD.data_type = TT.type_id AND 
+ *		   DD.object_of IN AA.domains 
+ *	     GROUP BY AA.attr_name) 
+ *
+ *   return: newly build node (PT_NODE), NULL if construction fails
+ *   parser(in): Parser context
+ *   table_name(in): name of table to filter by ; only the columns from this 
+ *		     table are checked for their type
+ *
+ */
+static PT_NODE *
+pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser,
+				       const char *table_name)
+{
+  PT_NODE *where_item1 = NULL;
+  PT_NODE *where_item2 = NULL;
+  PT_NODE *from_item = NULL;
+  PT_NODE *query = NULL;
+
+  assert (table_name != NULL);
+
+  /*  SELECT .. FROM .. WHERE */
+  query = parser_new_node (parser, PT_SELECT);
+  if (query == NULL)
+    {
+      return NULL;
+    }
+
+  query->info.query.is_subquery = PT_IS_SUBQUERY;
+
+  /* SELECT list : */
+  pt_add_name_col_to_sel_list (parser, query, "AA.attr_name", "ATTR");
+
+  {
+    /* add GROUP_CONCAT (...) */
+    PT_NODE *sel_item = NULL;
+    PT_NODE *group_concat_field = NULL;
+    PT_NODE *group_concat_sep = NULL;
+    PT_NODE *order_by_item = NULL;
+
+    sel_item = parser_new_node (parser, PT_FUNCTION);
+    if (sel_item == NULL)
+      {
+	return NULL;
+      }
+
+    sel_item->info.function.function_type = PT_GROUP_CONCAT;
+    sel_item->info.function.all_or_distinct = PT_ALL;
+
+    group_concat_field = pt_make_dotted_identifier (parser, "TT.type_name");
+    group_concat_sep = pt_make_string_value (parser, ",");
+    sel_item->info.function.arg_list =
+      parser_append_node (group_concat_sep, group_concat_field);
+
+    /* add ORDER BY */
+    assert (sel_item->info.function.order_by == NULL);
+
+    /* By 1 */
+    order_by_item = pt_make_sort_spec_with_number (parser, 1, PT_ASC);
+    sel_item->info.function.order_by = order_by_item;
+
+    sel_item->alias_print = pt_append_string (parser, NULL, "Composed_types");
+    query->info.query.q.select.list =
+      parser_append_node (sel_item, query->info.query.q.select.list);
+  }
+
+  /* FROM : */
+  from_item = pt_add_table_name_to_from_list (parser, query,
+					      "_db_attribute", "AA",
+					      DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, query,
+					      "_db_domain", "DD",
+					      DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, query,
+					      "_db_data_type", "TT",
+					      DB_AUTH_SELECT);
+
+  /* WHERE : */
+  /* AA.class_of.class_name = '<table_name>' */
+  where_item1 = pt_make_pred_name_string_val (parser, PT_EQ,
+					      "AA.class_of.class_name",
+					      table_name);
+  /* DD.data_type = TT.type_id */
+  where_item2 = pt_make_pred_with_identifiers (parser, PT_EQ,
+					       "DD.data_type", "TT.type_id");
+  /* item1 = item2 AND item2 */
+  where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
+					NULL);
+
+  /* DD.object_of  IN  AA.domains */
+  where_item2 = pt_make_pred_with_identifiers (parser, PT_IS_IN,
+					       "DD.object_of", "AA.domains");
+  where_item1 = parser_make_expression (PT_AND, where_item1, where_item2,
+					NULL);
+
+  query->info.query.q.select.where =
+    parser_append_node (where_item1, query->info.query.q.select.where);
+
+  /* GROUP BY : */
+  {
+    PT_NODE *group_by_node = NULL;
+
+    group_by_node =
+      pt_make_sort_spec_with_identifier (parser, "AA.attr_name", PT_ASC);
+    if (group_by_node == NULL)
+      {
+	return NULL;
+      }
+    query->info.query.q.select.group_by = group_by_node;
+  }
+
+  return query;
+}
+
+/*
+ * pt_make_dummy_query_check_table() - builds a SELECT subquery used check
+ *				  if the table exists; when attached to 
+ *				  the SHOW statement, it should cause an 
+ *				  execution error, instead of displaying
+ *				  'no results';
+ *				  used to build SHOW COLUMNS statement
+ *
+ *		SELECT COUNT(*) FROM <table_name> LIMIT 1;
+ *
+ *   return: newly build node (PT_NODE), NULL if construction fails
+ *   parser(in): Parser context
+ *   table_name(in): name of table
+ *
+ */
+static PT_NODE *
+pt_make_dummy_query_check_table (PARSER_CONTEXT * parser,
+				 const char *table_name)
+{
+  PT_NODE *limit_item = NULL;
+  PT_NODE *from_item = NULL;
+  PT_NODE *sel_item = NULL;
+  PT_NODE *query = NULL;
+
+  assert (table_name != NULL);
+
+  /* This query should cause an execution errors when performing SHOW COLUMNS
+   * on a non-existing table or when the user doesn't have SELECT privilege on
+   * that table; A simpler query like:
+   *      SELECT 1 FROM <table_name> WHERE FALSE;
+   * is removed during parse tree optimizations, and no error is printed when 
+   * user has insuficient privileges.
+   * We need a query which will not be removed on translation (in order to be 
+   * kept up to the authentication stage, but also with low impact on
+   * performance.
+   */
+  /* We use  :  SELECT COUNT(*) FROM <table_name> LIMIT 1;
+   * TODO: this will impact performance so we might find a better solution */
+  query = pt_make_select_count_star (parser);
+  if (query == NULL)
+    {
+      return NULL;
+    }
+  from_item = pt_add_table_name_to_from_list (parser, query,
+					      table_name, "DUMMY",
+					      DB_AUTH_NONE);
+
+  limit_item = pt_make_integer_value (parser, 1);
+  query->info.query.limit = limit_item;
+
+  return query;
+}
+
+/*
+ * pt_make_query_show_table() - builds the query used for SHOW TABLES
+ *
+ *    SELECT * FROM (SELECT C.class_name AS tables_in_<dbname>,
+ *			    IF(class_type='CLASS','VIEW','BASE TABLE') 
+ *				AS table_type 
+ *		     FROM db_class C 
+ *		     WHERE is_system_class='NO') show_tables 
+ *    ORDER BY 1;
+ *
+ *   return: newly build node (PT_NODE), NULL if construnction fails
+ *   parser(in): Parser context
+ *   is_full_syntax(in): true, if the SHOW statement contains the 'FULL' token
+ *   like_where_syntax(in): indicator of presence for LIKE or WHERE clauses in
+ *			   SHOW statement. Values : 0 = none of LIKE or WHERE,
+ *			   1 = contains LIKE, 2 = contains WHERE
+ *   like_or_where_expr(in): node expression supplied as condition (in WHERE)
+ *			     or RHS for LIKE
+ *
+ */
+PT_NODE *
+pt_make_query_show_table (PARSER_CONTEXT * parser,
+			  bool is_full_syntax,
+			  int like_where_syntax, PT_NODE * like_or_where_expr)
+{
+  PT_NODE *node = NULL;
+  PT_NODE *sub_query = NULL;
+  PT_NODE *from_item = NULL;
+  PT_NODE *where_item = NULL;
+  char tables_col_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+
+  {
+    char *db_name = db_get_database_name ();
+    const char *const col_header = "Tables_in_";
+
+    strcpy (tables_col_name, col_header);
+    strncat (tables_col_name, db_name,
+	     SM_MAX_IDENTIFIER_LENGTH - strlen (col_header) - 1);
+    tables_col_name[SM_MAX_IDENTIFIER_LENGTH - 1] = '\0';
+    db_string_free (db_name);
+    db_name = NULL;
+  }
+
+  sub_query = parser_new_node (parser, PT_SELECT);
+  if (sub_query == NULL)
+    {
+      return NULL;
+    }
+
+  /* ------ SELECT list    ------- */
+  pt_add_name_col_to_sel_list (parser, sub_query, "C.class_name",
+			       tables_col_name);
+
+  /* ------ SELECT ... FROM   ------- */
+  /* db_class is a view on the _db_class table; we are selecting from the 
+   * view, to avoid checking the authorization as this check is already
+   * performed by the view
+   */
+  from_item = pt_add_table_name_to_from_list (parser, sub_query,
+					      "db_class", "C",
+					      DB_AUTH_SELECT);
+
+  /* ------ SELECT ... WHERE   ------- */
+  /* create item for "WHERE is_system_class = 'NO'" */
+  where_item = pt_make_pred_name_string_val (parser, PT_EQ,
+					     "is_system_class", "NO");
+  sub_query->info.query.q.select.where = parser_append_node (where_item,
+							     sub_query->
+							     info.query.q.
+							     select.where);
+
+  if (is_full_syntax)
+    {
+      /* SHOW FULL : add second column : 'BASE TABLE' or 'VIEW' */
+      PT_NODE *eq_node = NULL;
+      PT_NODE *if_node = NULL;
+
+      /* create  IF ( class_type = 'CLASS', 'BASE TABLE', 'VIEW')   */
+      eq_node = pt_make_pred_name_string_val (parser, PT_EQ,
+					      "class_type", "CLASS");
+      if_node = pt_make_if_with_strings (parser, eq_node, "BASE TABLE",
+					 "VIEW", "Table_type");
+
+      /* add IF to SELECT list, list should not be empty at this point */
+      assert (sub_query->info.query.q.select.list != NULL);
+
+      sub_query->info.query.q.select.list = parser_append_node (if_node,
+								sub_query->info.
+								query.
+								q.select.
+								list);
+    }
+
+  /*  done with subquery, create the enclosing query : 
+   * SELECT * from ( SELECT .... ) show_tables;  */
+
+  node = pt_make_outer_select_for_show_stmt (parser, sub_query,
+					     "show_tables");
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  {
+    /* add ORDER BY */
+    PT_NODE *order_by_item = NULL;
+
+    assert (node->info.query.order_by == NULL);
+    /* By Tables_in_<db_name> */
+    order_by_item = pt_make_sort_spec_with_number (parser, 1, PT_ASC);
+    node->info.query.order_by =
+      parser_append_node (order_by_item, node->info.query.order_by);
+  }
+
+  if (like_or_where_expr != NULL)
+    {
+      if (like_where_syntax == 1)
+	{
+	  /* make LIKE */
+	  where_item = pt_make_like_col_expr (parser, like_or_where_expr,
+					      tables_col_name);
+	}
+      else
+	{
+	  /* WHERE */
+	  assert (like_where_syntax == 2);
+	  where_item = like_or_where_expr;
+	}
+
+      node->info.query.q.select.where = parser_append_node (where_item,
+							    node->info.
+							    query.q.select.
+							    where);
+    }
+  else
+    {
+      assert (like_where_syntax == 0);
+    }
+
+  return node;
+}
+
+/*
+ * pt_make_query_show_columns() - builds the query used for SHOW TABLES
+ *
+ *  SELECT * FROM (
+ *  SELECT A.attr_name AS Field,  
+ *  <Type_field_query> AS Type,
+ *  IF (A.is_nullable = 1 OR 
+ *	(SELECT COUNT(*) FROM <tbl_name> LIMIT 1) = -1,
+ *     'YES','NO') AS Null ,
+ *  <Key_field_query> AS Key,
+ *  A.default_value AS Default ,
+ *  IF( (SELECT count(*)  
+ *       FROM db_serial S 
+ *	 WHERE S.att_name = A.attr_name AND 
+ *	       S.class_name =  C.class_name ) >= 1 , 
+ *     'auto_increment', '' ) AS Extra  
+ *  FROM  db_class CC, _db_class  C , _db_domain D ,
+ *	  _db_data_type T , _db_attribute A 
+ *  LEFT JOIN 
+ *     (SELECT AA.attr_name ATTR,  
+ *	       GROUP_CONCAT( TT.type_name ORDER BY 1 SEPARATOR ',')
+ *		    Composed_types 
+ *	FROM _db_attribute AA, _db_domain DD , _db_data_type TT  
+ *	WHERE AA.class_of.class_name = <tbl_name> AND 
+ *	      DD.data_type = TT.type_id AND 
+ *	      DD.object_of IN AA.domains
+ *	GROUP BY AA.attr_name) Types_t 
+ *  ON Types_t.ATTR = A.attr_name 
+ *  WHERE  A.class_of = C  AND  
+ *  A.data_type = T.type_id  AND  
+ *  D.object_of = A AND 
+ *  C.class_name = <tbl_name> AND
+ *  C.class_name = CC.class_name
+ *  ORDER BY A.attr_type DESC, A.def_order) show_columns 
+ *
+ *   return: newly build node (PT_NODE), NULL if construnction fails
+ *   parser(in): Parser context
+ *   original_cls_id(in): node containing the class identifier (PT_NAME)
+ *   like_where_syntax(in): indicator of presence for LIKE or WHERE clauses in
+ *			   SHOW statement. Values : 0 = none of LIKE or WHERE,
+ *			   1 = contains LIKE, 2 = contains WHERE
+ *   like_or_where_expr(in): node expression supplied as condition (in WHERE)
+ *			     or RHS for LIKE
+ *
+ * Note : Order is defined by: attr_type (shared attributes first, then
+ *	  class attributes, then normal attributes), order of definition in
+ *	  table
+ */
+PT_NODE *
+pt_make_query_show_columns (PARSER_CONTEXT * parser,
+			    PT_NODE * original_cls_id,
+			    int like_where_syntax,
+			    PT_NODE * like_or_where_expr)
+{
+  PT_NODE *node = NULL;
+  PT_NODE *sub_query = NULL;
+  PT_NODE *from_item = NULL;
+  PT_NODE *sel_item = NULL;
+
+  assert (original_cls_id != NULL);
+  assert (original_cls_id->node_type == PT_NAME);
+
+  sub_query = parser_new_node (parser, PT_SELECT);
+  if (sub_query == NULL)
+    {
+      return NULL;
+    }
+
+  /* ------ SELECT list    ------- */
+  /* Field */
+  pt_add_name_col_to_sel_list (parser, sub_query, "A.attr_name", "Field");
+
+  /* Type */
+  sel_item = pt_make_field_type_expr_node (parser);
+  sub_query->info.query.q.select.list =
+    parser_append_node (sel_item, sub_query->info.query.q.select.list);
+
+  /* create  
+   * IF (is_nullable = 1 OR 
+   *      (SELECT 1 FROM <table_name> WHERE false)=-1,'YES','NO') AS Null 
+   */
+  {
+    PT_NODE *cond1 = NULL;
+    PT_NODE *cond2 = NULL;
+    PT_NODE *dummy_val = NULL;
+    PT_NODE *if_node = NULL;
+    PT_NODE *dummy_check_table_query = NULL;
+
+    cond1 = pt_make_pred_name_int_val (parser, PT_EQ, "is_nullable", 1);
+
+    /* create the dummy query, and a condition that is never reached with OR */
+    /* the dummy query from table is required to print an error when table
+     * doens't exist, instead of 'no results' */
+    dummy_check_table_query = pt_make_dummy_query_check_table (parser,
+							       original_cls_id->info.
+							       name.original);
+    dummy_val = pt_make_integer_value (parser, -1);
+    cond2 = parser_make_expression (PT_EQ, dummy_check_table_query, dummy_val,
+				    NULL);
+    cond1 = parser_make_expression (PT_OR, cond1, cond2, NULL);
+
+    if_node = pt_make_if_with_strings (parser, cond1, "YES", "NO", "Null");
+    sub_query->info.query.q.select.list =
+      parser_append_node (if_node, sub_query->info.query.q.select.list);
+  }
+  /* Key */
+  sel_item = pt_make_field_key_type_expr_node (parser);
+  sub_query->info.query.q.select.list =
+    parser_append_node (sel_item, sub_query->info.query.q.select.list);
+
+  /* A.default_value AS Default : */
+  pt_add_name_col_to_sel_list (parser, sub_query,
+			       "A.default_value", "Default");
+
+  /* Extra */
+  sel_item = pt_make_field_extra_expr_node (parser);
+  sub_query->info.query.q.select.list =
+    parser_append_node (sel_item, sub_query->info.query.q.select.list);
+
+
+  /* ------ SELECT ... FROM   ------- */
+  from_item = pt_add_table_name_to_from_list (parser, sub_query,
+					      "db_class", "CC",
+					      DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, sub_query,
+					      "_db_class", "C",
+					      DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, sub_query,
+					      "_db_domain", "D",
+					      DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, sub_query,
+					      "_db_data_type", "T",
+					      DB_AUTH_SELECT);
+  /* _db_attribute MUST be added last before types subsquery in order 
+   * to corrrectly resolve the JOIN condition */
+  from_item = pt_add_table_name_to_from_list (parser, sub_query,
+					      "_db_attribute", "A",
+					      DB_AUTH_SELECT);
+
+  {
+    PT_NODE *types_subsquery = NULL;
+    PT_NODE *join_cond = NULL;
+
+    /* make types subquery using class name in order to optimize the query */
+    types_subsquery =
+      pt_make_collection_type_subquery_node (parser,
+					     original_cls_id->info.
+					     name.original);
+
+    /* JOIN condition :  ON Types_t.attr_name = A.attr_name */
+    join_cond =
+      pt_make_pred_with_identifiers (parser, PT_EQ, "Types_t.ATTR",
+				     "A.attr_name");
+
+    from_item =
+      pt_add_table_name_to_from_list (parser, sub_query, NULL, NULL,
+				      DB_AUTH_NONE);
+    if (from_item == NULL)
+      {
+	return NULL;
+      }
+    from_item->info.spec.derived_table = types_subsquery;
+    from_item->info.spec.meta_class = 0;
+    from_item->info.spec.range_var = pt_name (parser, "Types_t");
+    from_item->info.spec.derived_table_type = PT_IS_SUBQUERY;
+    from_item->info.spec.join_type = PT_JOIN_LEFT_OUTER;
+    from_item->info.spec.on_cond = join_cond;
+  }
+
+  /* ------ SELECT ... WHERE   ------- */
+  {
+    PT_NODE *where_item1 = NULL;
+    PT_NODE *where_item2 = NULL;
+    /* A.class_of=C */
+    where_item1 =
+      pt_make_pred_with_identifiers (parser, PT_EQ, "A.class_of", "C");
+    /* A.data_type=T.type_id */
+    where_item2 =
+      pt_make_pred_with_identifiers (parser, PT_EQ, "A.data_type",
+				     "T.type_id");
+
+    /* item1 = item2 AND item2 */
+    where_item1 =
+      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
+
+    /* D.object_of=A */
+    where_item2 =
+      pt_make_pred_with_identifiers (parser, PT_EQ, "D.object_of", "A");
+
+    /* item1 = item2 AND item2 */
+    where_item1 =
+      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
+
+    /* C.class_name = class_identifier.original_name */
+    where_item2 =
+      pt_make_pred_name_string_val (parser, PT_EQ, "C.class_name",
+				    original_cls_id->info.name.original);
+
+    /* item1 = item2 AND item2 */
+    where_item1 =
+      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
+
+    where_item2 =
+      pt_make_pred_with_identifiers (parser, PT_EQ, "C.class_name",
+				     "CC.class_name");
+    /* item1 = item2 AND item2 */
+    where_item1 =
+      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
+
+    /* where list should be empty */
+    assert (sub_query->info.query.q.select.where == NULL);
+    sub_query->info.query.q.select.where =
+      parser_append_node (where_item1, sub_query->info.query.q.select.where);
+  }
+
+  /* ORDER BY A.attr_type DESC, A.def_order  (type of attribute, 
+   * order defined in table) */
+  {
+    PT_NODE *order_by_item = NULL;
+
+    assert (sub_query->info.query.order_by == NULL);
+
+    order_by_item =
+      pt_make_sort_spec_with_identifier (parser, "A.attr_type", PT_DESC);
+    sub_query->info.query.order_by =
+      parser_append_node (order_by_item, sub_query->info.query.order_by);
+
+    order_by_item =
+      pt_make_sort_spec_with_identifier (parser, "A.def_order", PT_ASC);
+    sub_query->info.query.order_by =
+      parser_append_node (order_by_item, sub_query->info.query.order_by);
+  }
+
+  /*  --- done with subquery, create primary query -- : 
+   * SELECT * from ( SELECT .... ) show_columns;  */
+  node =
+    pt_make_outer_select_for_show_stmt (parser, sub_query, "show_columns");
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  /* no ORDER BY to outer SELECT */
+  /* add LIKE or WHERE from SHOW , if present */
+  if (like_or_where_expr != NULL)
+    {
+      PT_NODE *where_item = NULL;
+
+      if (like_where_syntax == 1)
+	{
+	  /* LIKE token */
+	  where_item =
+	    pt_make_like_col_expr (parser, like_or_where_expr, "Field");
+	}
+      else
+	{
+	  /* WHERE token */
+	  assert (like_where_syntax == 2);
+	  where_item = like_or_where_expr;
+	}
+
+      node->info.query.q.select.where =
+	parser_append_node (where_item, node->info.query.q.select.where);
+    }
+  else
+    {
+      assert (like_where_syntax == 0);
+    }
+
+  return node;
+}
+
+/*
+ * pt_make_query_show_create_view() - builds the query used for SHOW CREATE
+ *				      VIEW
+ *
+ *    SELECT * FROM
+ *      (SELECT IF( QS.class_of.class_name = '',
+ *		    (SELECT COUNT(*) FROM <view_name> LIMIT 1),
+ *		    QS.class_of.class_name  )
+ *		  AS  View_ ,
+ *	        QS.spec AS Create_View
+ *		FROM _db_query_spec QS
+ *		WHERE QS.class_of.class_name=<view_name>)
+ *     show_create_view;
+ *
+ *  Note : The first column in query (name of view = QS.class_of.class_name)
+ *	   is wrapped with IF, in order to accomodate a dummy query, which has
+ *	   the role to trigger the apropiate error if the view doesn't exist 
+ *	   or the user doesn't have the privilege to SELECT it; the condition
+ *	   in IF expression (QS.class_of.class_name = '') is supposed to 
+ *	   always evaluate to false (class name cannot be empty), in order for
+ *	   the query to always print what it is supposed to (view name); 
+ *	   second purpose of the condition is to avoid optimisation (otherwise
+ *	   the IF will evalute to <QS.class_of.class_name>)
+ *
+ *   return: newly build node (PT_NODE), NULL if construnction fails
+ *   parser(in): Parser context
+ *   view_identifier(in): node identifier for view
+ */
+PT_NODE *
+pt_make_query_show_create_view (PARSER_CONTEXT * parser,
+				PT_NODE * view_identifier)
+{
+  PT_NODE *node = NULL;
+  PT_NODE *from_item = NULL;
+
+  assert (view_identifier != NULL);
+  assert (view_identifier->node_type == PT_NAME);
+
+  node = parser_new_node (parser, PT_SELECT);
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  /* ------ SELECT list    ------- */
+  {
+    /* View name : IF( QS.class_of.class_name = '',  
+     *                 (SELECT COUNT(*) FROM <view_name> LIMIT 1),
+     *                  QS.class_of.class_name  )
+     *             AS View
+     */
+    PT_NODE *if_true_node = NULL;
+    PT_NODE *if_false_node = NULL;
+    PT_NODE *pred = NULL;
+    PT_NODE *view_field = NULL;
+
+    if_true_node =
+      pt_make_dummy_query_check_table (parser,
+				       view_identifier->info.name.original);
+    if_false_node =
+      pt_make_dotted_identifier (parser, "QS.class_of.class_name");
+    pred =
+      pt_make_pred_name_string_val (parser, PT_EQ, "QS.class_of.class_name",
+				    "");
+    view_field =
+      pt_make_if_with_expressions (parser, pred, if_true_node, if_false_node,
+				   "View");
+    node->info.query.q.select.list =
+      parser_append_node (view_field, node->info.query.q.select.list);
+  }
+  /* QS.spec AS "Create View" */
+  pt_add_name_col_to_sel_list (parser, node, "QS.spec", "Create View");
+
+  /* ------ SELECT ... FROM   ------- */
+  from_item = pt_add_table_name_to_from_list (parser, node,
+					      "_db_query_spec", "QS",
+					      DB_AUTH_SELECT);
+
+  /* ------ SELECT ... WHERE   ------- */
+  {
+    PT_NODE *where_item = NULL;
+
+    where_item =
+      pt_make_pred_name_string_val (parser, PT_EQ, "QS.class_of.class_name",
+				    view_identifier->info.name.original);
+    /* WHERE list should be empty */
+    assert (node->info.query.q.select.where == NULL);
+    node->info.query.q.select.where =
+      parser_append_node (where_item, node->info.query.q.select.where);
+  }
+
+  return node;
+}
+
+/*
+ * pt_make_query_user_groups() - builds the query to return the SET of DB 
+ *				 groups to which a DB user belongs to.
+ *
+ *    SELECT SUM(SET{t.g.name}) 
+ *    FROM db_user U, TABLE(groups) AS t(g) 
+ *    WHERE U.name=<user_name>
+ *
+ *
+ *   return: newly build node (PT_NODE), NULL if construnction fails
+ *   parser(in): Parser context
+ *   user_name(in): DB user name
+ */
+static PT_NODE *
+pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name)
+{
+  PT_NODE *query = NULL;
+  PT_NODE *sel_item = NULL;
+  PT_NODE *from_item = NULL;
+
+  assert (user_name != NULL);
+
+  query = parser_new_node (parser, PT_SELECT);
+  if (query == NULL)
+    {
+      return NULL;
+    }
+
+  /* SELECT list : */
+  /* SUM(SET{t.g.name}) */
+  {
+    PT_NODE *group_name_identifier = NULL;
+    PT_NODE *set_of_group_name = NULL;
+
+    group_name_identifier = pt_make_dotted_identifier (parser, "t.g.name");
+    set_of_group_name = parser_new_node (parser, PT_VALUE);
+    if (set_of_group_name == NULL)
+      {
+	return NULL;
+      }
+    set_of_group_name->info.value.data_value.set = group_name_identifier;
+    set_of_group_name->type_enum = PT_TYPE_SET;
+
+    sel_item = parser_new_node (parser, PT_FUNCTION);
+    if (sel_item == NULL)
+      {
+	return NULL;
+      }
+
+    sel_item->info.function.function_type = PT_SUM;
+    sel_item->info.function.all_or_distinct = PT_ALL;
+    sel_item->info.function.arg_list =
+      parser_append_node (set_of_group_name,
+			  sel_item->info.function.arg_list);
+  }
+  query->info.query.q.select.list =
+    parser_append_node (sel_item, query->info.query.q.select.list);
+
+  /* FROM : */
+  /* db_user U */
+  from_item = pt_add_table_name_to_from_list (parser, query,
+					      "db_user", "U", DB_AUTH_SELECT);
+
+
+  {
+    /* TABLE(groups) AS t(g) */
+    PT_NODE *table_col = NULL;
+    PT_NODE *alias_table = NULL;
+    PT_NODE *alias_col = NULL;
+
+    from_item = pt_add_table_name_to_from_list (parser, query,
+						NULL, NULL, DB_AUTH_SELECT);
+
+    if (from_item == NULL)
+      {
+	return NULL;
+      }
+    table_col = pt_name (parser, "groups");
+    alias_table = pt_name (parser, "t");
+    alias_col = pt_name (parser, "g");
+    if (table_col == NULL || alias_table == NULL || alias_col == NULL)
+      {
+	return NULL;
+      }
+    table_col->info.name.meta_class = PT_NORMAL;
+
+    from_item->info.spec.derived_table = table_col;
+    from_item->info.spec.meta_class = 0;
+    from_item->info.spec.range_var = alias_table;
+    from_item->info.spec.as_attr_list = alias_col;
+    from_item->info.spec.derived_table_type = PT_IS_SET_EXPR;
+    from_item->info.spec.join_type = PT_JOIN_NONE;
+  }
+  /* WHERE : */
+  {
+    /* U.name = <user_name> */
+    PT_NODE *where_item = NULL;
+
+    where_item =
+      pt_make_pred_name_string_val (parser, PT_EQ, "U.name", user_name);
+    /* WHERE list should be empty */
+    assert (query->info.query.q.select.where == NULL);
+    query->info.query.q.select.where =
+      parser_append_node (where_item, query->info.query.q.select.where);
+  }
+
+  return query;
+}
+
+/*
+ * pt_make_query_show_grants_curr_usr() - builds the query used for 
+ *					  SHOW GRANTS for current user
+ *
+ *   return: newly build node (PT_NODE), NULL if construnction fails
+ *   parser(in): Parser context
+ */
+PT_NODE *
+pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
+{
+  const char *user_name = NULL;
+  PT_NODE *node = NULL;
+
+  user_name = au_user_name ();
+  node = pt_make_query_show_grants (parser, user_name);
+
+  if (user_name != NULL)
+    {
+      db_string_free ((char *) user_name);
+    }
+  return node;
+}
+
+/*
+ * pt_make_query_show_grants() - builds the query used for SHOW GRANTS for a
+ *				 given user
+ *
+ *   SELECT CONCAT ( 'GRANT ',
+ *	 	    GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', '),
+ *	 	    ' ON ' ,
+ *	 	    AU.class_of.class_name,
+ *	 	    ' TO ',
+ *	 	    AU.grantee.name ,
+ *	 	    IF (AU.is_grantable=1,
+ *	 	       ' WITH GRANT OPTION',
+ *	 	       '')
+ *		 ) AS GRANTS 
+ *   FROM db_class C, _db_auth AU 
+ *   WHERE AU.class_of.class_name = C.class_name AND
+ *	    C.is_system_class='NO' AND
+ *	    ( AU.grantee.name=<user_name> OR
+ *	      SET{ AU.grantee.name} SUBSETEQ ( 
+ *		       SELECT SUM(SET{t.g.name}) 
+ *		       FROM db_user U, TABLE(groups) AS t(g) 
+ *		       WHERE U.name=<user_name>) 
+ *	     )
+ *   GROUP BY AU.grantee, AU.class_of, AU.is_grantable
+ *   ORDER BY 1;
+ *
+ *  Note : The purpose of GROUP BY is to group all the privilege by user,
+ *	   table and the presence of 'WITH GRANT OPTION' flag. We output the
+ *	   privileges for the user but also for all groups to which the user
+ *	   belongs to : these privileges are shown in separate lines. Multiple
+ *	   privileges for the same table are displayed on the same line,
+ *	   except when 'WITH GRANT OPTION' is present, case when these 
+ *	   privileges are displayed on another line.
+ *
+ *   return: newly build node (PT_NODE), NULL if construnction fails
+ *   parser(in): Parser context
+ *   user_name(in): DB user name
+ */
+PT_NODE *
+pt_make_query_show_grants (PARSER_CONTEXT * parser,
+			   const char *original_user_name)
+{
+  PT_NODE *node = NULL;
+  PT_NODE *from_item = NULL;
+  PT_NODE *where_expr = NULL;
+  PT_NODE *concat_node = NULL;
+  PT_NODE *group_by_item = NULL;
+  char user_name[2 * SM_MAX_IDENTIFIER_LENGTH + 1] = { 0 };
+  int i = 0;
+
+  assert (original_user_name != NULL);
+  assert (strlen (original_user_name) < SM_MAX_IDENTIFIER_LENGTH);
+
+  /* conversion to uppercase can cause <original_user_name> to double size, if 
+   * internationalization is used : size <user_name> accordingly */
+  toupper_string (original_user_name, user_name);
+
+  node = parser_new_node (parser, PT_SELECT);
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  /* ------ SELECT list    ------- */
+  /*
+   *      CONCAT ( 'GRANT ',
+   *                GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', '),
+   *                ' ON ' ,
+   *                AU.class_of.class_name,
+   *                ' TO ',
+   *                AU.grantee.name ,
+   *                IF (AU.is_grantable=1,
+   *                   ' WITH GRANT OPTION',
+   *                   '')
+   *             ) AS GRANTS 
+   */
+  {
+    PT_NODE *concat_arg_list = NULL;
+    PT_NODE *concat_arg = NULL;
+
+    concat_arg = pt_make_string_value (parser, "GRANT ");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    {
+      /* GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', ') */
+      PT_NODE *group_concat_field = NULL;
+      PT_NODE *group_concat_sep = NULL;
+      PT_NODE *order_by_item = NULL;
+
+      concat_arg = parser_new_node (parser, PT_FUNCTION);
+      if (concat_arg == NULL)
+	{
+	  return NULL;
+	}
+
+      concat_arg->info.function.function_type = PT_GROUP_CONCAT;
+      concat_arg->info.function.all_or_distinct = PT_ALL;
+
+      group_concat_field = pt_make_dotted_identifier (parser, "AU.auth_type");
+      group_concat_sep = pt_make_string_value (parser, ", ");
+      concat_arg->info.function.arg_list =
+	parser_append_node (group_concat_sep, group_concat_field);
+
+      /* add ORDER BY */
+      assert (concat_arg->info.function.order_by == NULL);
+
+      /* By 1 */
+      order_by_item = pt_make_sort_spec_with_number (parser, 1, PT_ASC);
+      concat_arg->info.function.order_by = order_by_item;
+    }
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_arg = pt_make_string_value (parser, " ON ");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_arg = pt_make_dotted_identifier (parser, "AU.class_of.class_name");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_arg = pt_make_string_value (parser, " TO ");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_arg = pt_make_dotted_identifier (parser, "AU.grantee.name");
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    /*  IF (AU.is_grantable=1, ' WITH GRANT OPTION','') */
+    {
+      PT_NODE *pred_for_if = NULL;
+
+      pred_for_if = pt_make_pred_name_int_val (parser, PT_EQ,
+					       "AU.is_grantable", 1);
+      concat_arg = pt_make_if_with_strings (parser, pred_for_if,
+					    " WITH GRANT OPTION", "", NULL);
+    }
+    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
+
+    concat_node = parser_keyword_func ("concat", concat_arg_list);
+    if (concat_node == NULL)
+      {
+	return NULL;
+      }
+
+    {
+      char col_alias[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+      const char *const col_header = "Grants for ";
+
+      strcpy (col_alias, col_header);
+      strncat (col_alias, user_name,
+	       SM_MAX_IDENTIFIER_LENGTH - strlen (col_header) - 1);
+      col_alias[SM_MAX_IDENTIFIER_LENGTH - 1] = '\0';
+      concat_node->alias_print = pt_append_string (parser, NULL, col_alias);
+    }
+  }
+  node->info.query.q.select.list =
+    parser_append_node (concat_node, node->info.query.q.select.list);
+
+  /* ------ SELECT ... FROM   ------- */
+  from_item = pt_add_table_name_to_from_list (parser, node,
+					      "db_class", "C",
+					      DB_AUTH_SELECT);
+
+  from_item = pt_add_table_name_to_from_list (parser, node,
+					      "_db_auth", "AU",
+					      DB_AUTH_SELECT);
+
+  /* ------ SELECT ... WHERE   ------- */
+  /*
+   * WHERE AU.class_of.class_name = C.class_name AND
+   *    C.is_system_class='NO' AND
+   *    ( AU.grantee.name=<user_name> OR
+   *      SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> ) 
+   *           )
+   */
+  {
+    /* AU.class_of.class_name = C.class_name */
+    PT_NODE *where_item = NULL;
+
+    where_item = pt_make_pred_with_identifiers (parser, PT_EQ,
+						"AU.class_of.class_name",
+						"C.class_name");
+    where_expr = where_item;
+  }
+  {
+    /* C.is_system_class = 'NO' */
+    PT_NODE *where_item = NULL;
+
+    where_item = pt_make_pred_name_string_val (parser, PT_EQ,
+					       "C.is_system_class", "NO");
+    /* <where_expr> = <where_expr> AND <where_item> */
+    where_expr =
+      parser_make_expression (PT_AND, where_expr, where_item, NULL);
+  }
+  {
+    PT_NODE *user_cond = NULL;
+    PT_NODE *group_cond = NULL;
+    /* AU.grantee.name = <user_name> */
+    user_cond = pt_make_pred_name_string_val (parser, PT_EQ,
+					      "AU.grantee.name", user_name);
+
+    /* SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> */
+    {
+      /* query to get a SET of user's groups */
+      PT_NODE *query_user_groups = NULL;
+      PT_NODE *set_of_grantee_name = NULL;
+
+      {
+	/* SET{ AU.grantee.name} */
+	PT_NODE *grantee_name_identifier = NULL;
+
+	grantee_name_identifier =
+	  pt_make_dotted_identifier (parser, "AU.grantee.name");
+	set_of_grantee_name = parser_new_node (parser, PT_VALUE);
+	if (set_of_grantee_name == NULL)
+	  {
+	    return NULL;
+	  }
+	set_of_grantee_name->info.value.data_value.set =
+	  grantee_name_identifier;
+	set_of_grantee_name->type_enum = PT_TYPE_SET;
+      }
+
+      query_user_groups = pt_make_query_user_groups (parser, user_name);
+
+      group_cond =
+	parser_make_expression (PT_SUBSETEQ, set_of_grantee_name,
+				query_user_groups, NULL);
+    }
+    user_cond = parser_make_expression (PT_OR, user_cond, group_cond, NULL);
+
+    where_expr = parser_make_expression (PT_AND, where_expr, user_cond, NULL);
+  }
+
+
+
+  /* WHERE list should be empty */
+  assert (node->info.query.q.select.where == NULL);
+  node->info.query.q.select.where =
+    parser_append_node (where_expr, node->info.query.q.select.where);
+
+  /* GROUP BY :  AU.grantee, AU.class_of, AU.is_grantable */
+  assert (node->info.query.q.select.group_by == NULL);
+  group_by_item =
+    pt_make_sort_spec_with_identifier (parser, "AU.grantee", PT_ASC);
+  node->info.query.q.select.group_by =
+    parser_append_node (group_by_item, node->info.query.q.select.group_by);
+
+  group_by_item =
+    pt_make_sort_spec_with_identifier (parser, "AU.class_of", PT_ASC);
+  node->info.query.q.select.group_by =
+    parser_append_node (group_by_item, node->info.query.q.select.group_by);
+
+  group_by_item =
+    pt_make_sort_spec_with_identifier (parser, "AU.is_grantable", PT_ASC);
+  node->info.query.q.select.group_by =
+    parser_append_node (group_by_item, node->info.query.q.select.group_by);
+  group_by_item = NULL;
+
+  {
+    PT_NODE *order_by_item = NULL;
+
+    assert (node->info.query.order_by == NULL);
+
+    /* By GROUPS */
+    order_by_item = pt_make_sort_spec_with_number (parser, 1, PT_ASC);
+    node->info.query.order_by =
+      parser_append_node (order_by_item, node->info.query.order_by);
+  }
+  return node;
+}
+
+/*
+ * pt_make_query_describe_w_identifier() - builds the query used for DESCRIBE
+ *					   with a column name
+ *
+ *    DESCRIBE <table_name> <column_name>
+ *
+ *   return: newly build node (PT_NODE), NULL if construnction fails
+ *   parser(in): Parser context
+ *   original_cls_id(in): node identifier for table (PT_NAME)
+ *   att_id(in): node identifier for attribute (PT_NAME)
+ */
+PT_NODE *
+pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser,
+				     PT_NODE * original_cls_id,
+				     PT_NODE * att_id)
+{
+  PT_NODE *node = NULL;
+  PT_NODE *where_node = NULL;
+
+  assert (original_cls_id != NULL);
+  assert (original_cls_id->node_type == PT_NAME);
+  assert (att_id != NULL);
+
+  if (att_id != NULL)
+    {
+      assert (att_id->node_type == PT_NAME);
+      if (att_id->node_type == PT_NAME)
+	{
+	  /* build WHERE */
+	  where_node =
+	    pt_make_pred_name_string_val (parser, PT_EQ, "Field",
+					  att_id->info.name.original);
+	}
+    }
+
+  node =
+    pt_make_query_show_columns (parser, original_cls_id,
+				(where_node == NULL) ? 0 : 2, where_node);
+
+  return node;
+}
+
+/*
+ * pt_make_query_show_index() - builds the query used for 
+ *				SHOW INDEX IN <table>
+ *
+ *   return: newly built node (PT_NODE), NULL if construnction fails
+ *   parser(in): Parser context
+ *   original_cls_id(in): node (PT_NAME) containing name of class
+ *
+ *
+ *    SELECT * FROM
+ *   (SELECT I.class_of.class_name  AS Table,
+ *	     IF(I.is_unique = 1,'0','1') AS Non_unique,
+ *	     I.index_name AS Key_name,
+ *	     (IK.key_order + 1) AS Seq_in_index,
+ *	     IK.key_attr_name AS Column_name,
+ *	     IF (IK.asc_desc = 1, 'D', 'A') AS Collation,
+ *	     INDEX_CARDINALITY (I.class_of.class_name, 
+ *				  I.index_name,
+ *				  IK.key_order) AS Cardinality,
+ *	     IF (IK.key_prefix_length > -1 OR 
+ *		      ((SELECT COUNT(*) FROM <table_name> LIMIT 1) = -1),
+ *		 IK.key_prefix_length,
+ *		 NULL ) AS Sub_part,
+ *	     NULL AS Packed,
+ *	     IF (A.is_nullable = 1, 'YES', 'NO') AS [Null],
+ *	     'BTREE' AS Index_type
+ *    FROM _db_index I,_db_index_key IK,_db_attribute A
+ *    WHERE IK.index_of = I AND
+ *	    A.attr_name = IK.key_attr_name AND
+ *	    A.class_of = I.class_of AND
+ *	    I.class_of.class_name=<table_name>) show_index
+ *    ORDER BY 3, 5;
+ *
+ */
+PT_NODE *
+pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
+{
+  PT_NODE *node = NULL;
+  PT_NODE *sub_query = NULL;
+  PT_NODE *from_item = NULL;
+  PT_NODE *sel_item = NULL;
+
+  assert (original_cls_id != NULL);
+  assert (original_cls_id->node_type == PT_NAME);
+
+  sub_query = parser_new_node (parser, PT_SELECT);
+  if (sub_query == NULL)
+    {
+      return NULL;
+    }
+
+  /* ------ SELECT list    ------- */
+  /* I.class_of.class_name  AS Table */
+  pt_add_name_col_to_sel_list (parser, sub_query, "I.class_of.class_name",
+			       "Table");
+
+  /* IF(I.is_unique = 1, 0, 1) AS Non_unique */
+  {
+    PT_NODE *cond = NULL;
+    PT_NODE *if_node = NULL;
+    PT_NODE *expr_zero = NULL;
+    PT_NODE *expr_one = NULL;
+
+    cond = pt_make_pred_name_int_val (parser, PT_EQ, "I.is_unique", 1);
+    expr_zero = pt_make_integer_value (parser, 0);
+    expr_one = pt_make_integer_value (parser, 1);
+
+    if_node =
+      pt_make_if_with_expressions (parser, cond, expr_zero, expr_one,
+				   "Non_unique");
+    sub_query->info.query.q.select.list =
+      parser_append_node (if_node, sub_query->info.query.q.select.list);
+  }
+
+  /* I.index_name AS Key_name */
+  pt_add_name_col_to_sel_list (parser, sub_query, "I.index_name", "Key_name");
+
+  /* (IK.key_order + 1) AS Seq_in_index */
+  {
+    PT_NODE *col_key_order = NULL;
+    PT_NODE *value_one = NULL;
+    PT_NODE *seq_in_index = NULL;
+
+    col_key_order = pt_make_dotted_identifier (parser, "IK.key_order");
+    value_one = pt_make_integer_value (parser, 1);
+
+    seq_in_index =
+      parser_make_expression (PT_PLUS, col_key_order, value_one, NULL);
+    seq_in_index->alias_print =
+      pt_append_string (parser, NULL, "Seq_in_index");
+
+    sub_query->info.query.q.select.list =
+      parser_append_node (seq_in_index, sub_query->info.query.q.select.list);
+  }
+  /* IK.key_attr_name AS Column_name */
+  pt_add_name_col_to_sel_list (parser, sub_query, "IK.key_attr_name",
+			       "Column_name");
+
+  /* IF (IK.asc_desc = 1, 'D', 'A') AS Collation 
+   * A = ASC ; D = DESC*/
+  {
+    PT_NODE *cond = NULL;
+    PT_NODE *if_node = NULL;
+    PT_NODE *string_asc = NULL;
+    PT_NODE *string_desc = NULL;
+
+    cond = pt_make_pred_name_int_val (parser, PT_EQ, "IK.asc_desc", 1);
+
+    string_asc = pt_make_string_value (parser, "A");
+    string_desc = pt_make_string_value (parser, "D");
+
+    if_node =
+      pt_make_if_with_expressions (parser, cond, string_desc, string_asc,
+				   "Collation");
+    sub_query->info.query.q.select.list =
+      parser_append_node (if_node, sub_query->info.query.q.select.list);
+  }
+
+  /* Cardinality : a function (PT_EXPR) to get the 
+   * cardinality of the index :
+   * INDEX_CARDINALITY(I.class_of.class_name, I.index_name, IK.key_order)*/
+  {
+    PT_NODE *cls_name =
+      pt_make_dotted_identifier (parser, "I.class_of.class_name");
+    PT_NODE *idx_name = pt_make_dotted_identifier (parser, "I.index_name");
+    PT_NODE *key_order = pt_make_dotted_identifier (parser, "IK.key_order");
+
+    PT_NODE *card_expr =
+      parser_make_expression (PT_INDEX_CARDINALITY, cls_name, idx_name,
+			      key_order);
+
+    card_expr->alias_print = pt_append_string (parser, NULL, "Cardinality");
+    sub_query->info.query.q.select.list =
+      parser_append_node (card_expr, sub_query->info.query.q.select.list);
+  }
+
+  /* IF ( (IK.key_prefix_length > -1) OR 
+   *        ((SELECT COUNT(*) FROM <table_name> LIMIT 1) = -1),
+   *       IK.key_prefix_length,
+   *       NULL) AS Sub_part 
+   *
+   * The dummy query is included to force an error when the SHOW INDEX table
+   * argument doesn't exist. The condition (query result = -1) is always false,
+   * so it doesn't affect the intended condition (on prefix length)*/
+  {
+    PT_NODE *cond = NULL;
+    PT_NODE *cond2 = NULL;
+    PT_NODE *if_node = NULL;
+    PT_NODE *null_expr = NULL;
+    PT_NODE *key_pref_len_id = NULL;
+    PT_NODE *dummy_check_table_query = NULL;
+    PT_NODE *dummy_val = NULL;
+
+    dummy_check_table_query = pt_make_dummy_query_check_table (parser,
+							       original_cls_id->info.
+							       name.original);
+    dummy_val = pt_make_integer_value (parser, -1);
+    cond2 = parser_make_expression (PT_EQ, dummy_check_table_query, dummy_val,
+				    NULL);
+
+    cond =
+      pt_make_pred_name_int_val (parser, PT_GT, "IK.key_prefix_length", -1);
+
+    cond = parser_make_expression (PT_OR, cond, cond2, NULL);
+
+    null_expr = parser_new_node (parser, PT_VALUE);
+    if (null_expr)
+      {
+	null_expr->type_enum = PT_TYPE_NULL;
+      }
+    key_pref_len_id =
+      pt_make_dotted_identifier (parser, "IK.key_prefix_length");
+
+    if_node =
+      pt_make_if_with_expressions (parser, cond, key_pref_len_id, null_expr,
+				   "Sub_part");
+    sub_query->info.query.q.select.list =
+      parser_append_node (if_node, sub_query->info.query.q.select.list);
+  }
+
+  /* Packed : always displays 'NULL' */
+  {
+    PT_NODE *null_expr = parser_new_node (parser, PT_VALUE);
+    if (null_expr)
+      {
+	null_expr->type_enum = PT_TYPE_NULL;
+      }
+    null_expr->alias_print = pt_append_string (parser, NULL, "Packed");
+    sub_query->info.query.q.select.list =
+      parser_append_node (null_expr, sub_query->info.query.q.select.list);
+  }
+
+  /* IF (A.is_nullable = 1, 'YES', 'NO') AS Null */
+  {
+    PT_NODE *cond = NULL;
+    PT_NODE *if_node = NULL;
+
+    cond = pt_make_pred_name_int_val (parser, PT_EQ, "A.is_nullable", 1);
+    if_node = pt_make_if_with_strings (parser, cond, "YES", "NO", "Null");
+    sub_query->info.query.q.select.list =
+      parser_append_node (if_node, sub_query->info.query.q.select.list);
+  }
+
+  /* 'BTREE' AS Index_type */
+  {
+    PT_NODE *dummy = pt_make_string_value (parser, "BTREE");
+
+    dummy->alias_print = pt_append_string (parser, NULL, "Index_type");
+    sub_query->info.query.q.select.list =
+      parser_append_node (dummy, sub_query->info.query.q.select.list);
+  }
+
+  /* ------ SELECT ... FROM   ------- */
+  from_item = pt_add_table_name_to_from_list (parser, sub_query,
+					      "_db_index", "I",
+					      DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, sub_query,
+					      "_db_index_key", "IK",
+					      DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, sub_query,
+					      "_db_attribute", "A",
+					      DB_AUTH_SELECT);
+
+  /* ------ SELECT ... WHERE   ------- */
+  {
+    PT_NODE *where_item1 = NULL;
+    PT_NODE *where_item2 = NULL;
+    /* IK.index_of=I */
+    where_item1 =
+      pt_make_pred_with_identifiers (parser, PT_EQ, "IK.index_of", "I");
+    /* A.attr_name = IK.key_attr_name */
+    where_item2 =
+      pt_make_pred_with_identifiers (parser, PT_EQ, "A.attr_name",
+				     "IK.key_attr_name");
+
+    /* item1 = item2 AND item2 */
+    where_item1 =
+      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
+
+    /* A.class_of = I.class_of */
+    where_item2 =
+      pt_make_pred_with_identifiers (parser, PT_EQ, "A.class_of",
+				     "I.class_of");
+
+    /* item1 = item2 AND item2 */
+    where_item1 =
+      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
+
+    /* I.class_of.class_name= <class_name> */
+    where_item2 =
+      pt_make_pred_name_string_val (parser, PT_EQ, "I.class_of.class_name",
+				    original_cls_id->info.name.original);
+
+    /* item1 = item2 AND item2 */
+    where_item1 =
+      parser_make_expression (PT_AND, where_item1, where_item2, NULL);
+
+    /* where list should be empty */
+    assert (sub_query->info.query.q.select.where == NULL);
+    sub_query->info.query.q.select.where =
+      parser_append_node (where_item1, sub_query->info.query.q.select.where);
+  }
+
+  /*  --- done with subquery, create primary query -- : 
+   * SELECT * from ( SELECT .... ) show_index;  */
+  node = pt_make_outer_select_for_show_stmt (parser, sub_query, "show_index");
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  {
+    PT_NODE *order_by_item = NULL;
+
+    assert (node->info.query.order_by == NULL);
+
+    /* By Key_name */
+    order_by_item = pt_make_sort_spec_with_number (parser, 3, PT_ASC);
+    node->info.query.order_by =
+      parser_append_node (order_by_item, node->info.query.order_by);
+
+    /* By Column_name */
+    order_by_item = pt_make_sort_spec_with_number (parser, 5, PT_ASC);
+    node->info.query.order_by =
+      parser_append_node (order_by_item, node->info.query.order_by);
+  }
+  return node;
+}
+
+/*
+ * pt_convert_to_logical_expr () -  if necessary, creates a logically correct
+ *				    expression from the given node
+ *
+ *   return: - the same node if conversion was not necessary, OR
+ *           - a new PT_EXPR: (node <> 0), OR
+ *	     - NULL on failures
+ *   parser (in): Parser context
+ *   node (in): the node to be checked and wrapped
+ *   use_parens (in): set to true if parantheses are needed around the original node
+ *
+ *   Note: we see if the given node is of type PT_TYPE_LOGICAL, and if not,
+ *         we create an expression of the form "(node <> 0)" - with parens
+ */
+PT_NODE *
+pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node,
+			    bool use_parens_inside, bool use_parens_outside)
+{
+  PT_NODE *expr = NULL;
+  PT_NODE *zero = NULL;
+
+  (void) use_parens_inside;
+  (void) use_parens_outside;
+
+  /* If there's nothing to be done, go away */
+  if (node == NULL || node->type_enum == PT_TYPE_LOGICAL)
+    {
+      return node;
+    }
+
+  /* allocate a new node for the zero value */
+  zero = parser_new_node (parser, PT_VALUE);
+  if (NULL == zero)
+    {
+      return NULL;
+    }
+
+  zero->info.value.data_value.i = 0;
+  zero->type_enum = PT_TYPE_INTEGER;
+
+  /* make a new expression comparing the node to zero */
+  expr = parser_make_expression (PT_NE, node, zero, NULL);
+  if (expr != NULL)
+    {
+      expr->type_enum = PT_TYPE_LOGICAL;
+    }
+
+  return expr;
+}
+
+/*
+ * pt_is_operator_logical() - returns TRUE if the operator has a logical
+ *			      return type (i.e. <, >, AND etc.) and FALSE
+ *			      otherwise.
+ *
+ *   return: boolean
+ *   op(in): the operator
+ */
+bool
+pt_is_operator_logical (PT_OP_TYPE op)
+{
+  switch (op)
+    {
+    case PT_OR:
+    case PT_XOR:
+    case PT_AND:
+    case PT_IS_NOT:
+    case PT_IS:
+    case PT_NOT:
+    case PT_EXISTS:
+    case PT_LIKE_ESCAPE:
+    case PT_LIKE:
+    case PT_NOT_LIKE:
+    case PT_EQ:
+    case PT_EQ_ALL:
+    case PT_EQ_SOME:
+    case PT_NE:
+    case PT_NE_ALL:
+    case PT_NE_SOME:
+    case PT_GT:
+    case PT_GT_ALL:
+    case PT_GT_SOME:
+    case PT_GE:
+    case PT_GE_ALL:
+    case PT_GE_SOME:
+    case PT_LT:
+    case PT_LT_ALL:
+    case PT_LT_SOME:
+    case PT_LE:
+    case PT_LE_ALL:
+    case PT_LE_SOME:
+    case PT_NULLSAFE_EQ:
+    case PT_IS_NOT_NULL:
+    case PT_IS_NULL:
+    case PT_NOT_BETWEEN:
+    case PT_BETWEEN:
+    case PT_IS_IN:
+    case PT_IS_NOT_IN:
+    case PT_BETWEEN_GE_LE:
+    case PT_BETWEEN_GT_LE:
+    case PT_BETWEEN_GE_LT:
+    case PT_BETWEEN_GT_LT:
+    case PT_BETWEEN_EQ_NA:
+    case PT_BETWEEN_GE_INF:
+    case PT_BETWEEN_GT_INF:
+    case PT_BETWEEN_INF_LE:
+    case PT_BETWEEN_INF_LT:
+    case PT_SETEQ:
+    case PT_SETNEQ:
+    case PT_SUBSET:
+    case PT_SUBSETEQ:
+    case PT_SUPERSETEQ:
+    case PT_SUPERSET:
+    case PT_RANGE:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * pt_list_has_logical_nodes () - returns TRUE if the node list contains
+ *                                top level PT_TYPE_LOGICAL nodes.
+ *
+ *   return: boolean
+ *   list(in): the node list
+ *
+ *   Note: this function is important because there are cases (such as arg lists)
+ *         when we want to forbid logical expressions, because of ambiguity over
+ *         the ->next node: is it in a list context, or a CNF context?
+ */
+bool
+pt_list_has_logical_nodes (PT_NODE * list)
+{
+  for (; list; list = list->next)
+    {
+      if (list->type_enum == PT_TYPE_LOGICAL)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * pt_sort_spec_cover_groupby () -
+ *   return: true if group list is covered by sort list
+ *   sort_list(in):
+ *   group_list(in):
+ */
+bool
+pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser, PT_NODE * sort_list,
+			    PT_NODE * group_list, PT_NODE * tree)
+{
+  PT_NODE *s1, *s2, *save_node, *col;
+  QFILE_TUPLE_VALUE_POSITION pos_descr;
+  int i;
+
+  if (group_list == NULL)
+    {
+      return false;
+    }
+
+  s1 = sort_list;
+  s2 = group_list;
+
+  while (s1 && s2)
+    {
+      pt_to_pos_descr (parser, &pos_descr, s2->info.sort_spec.expr,
+		       tree, NULL);
+      if (pos_descr.pos_no > 0)
+	{
+	  col = tree->info.query.q.select.list;
+	  for (i = 1; i < pos_descr.pos_no && col; i++)
+	    {
+	      col = col->next;
+	    }
+	  if (col != NULL)
+	    {
+	      col = pt_get_end_path_node (col);
+
+	      if (col->node_type == PT_NAME
+		  && PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_CONSTANT))
+		{
+		  s2 = s2->next;
+		  continue;	/* skip out constant order */
+		}
+	    }
+	}
+
+      save_node = s1->info.sort_spec.expr;
+      CAST_POINTER_TO_NODE (s1->info.sort_spec.expr);
+
+      if (!pt_name_equal (parser, s1->info.sort_spec.expr,
+			  s2->info.sort_spec.expr) ||
+	  s1->info.sort_spec.asc_or_desc != s2->info.sort_spec.asc_or_desc)
+	{
+	  s1->info.sort_spec.expr = save_node;
+	  return false;
+	}
+
+      s1->info.sort_spec.expr = save_node;
+
+      s1 = s1->next;
+      s2 = s2->next;
+    }
+
+  return (s2 == NULL) ? true : false;
 }

@@ -59,6 +59,7 @@ extern PT_NODE *mq_reset_paths (PARSER_CONTEXT * parser,
 				PT_NODE * statement, PT_NODE * root_spec);
 extern PT_NODE *mq_reset_ids (PARSER_CONTEXT * parser,
 			      PT_NODE * statement, PT_NODE * spec);
+extern PT_NODE *mq_clear_ids (PARSER_CONTEXT * parser, PT_NODE * node);
 
 extern PT_NODE *mq_set_references (PARSER_CONTEXT * parser,
 				   PT_NODE * statement, PT_NODE * spec);
@@ -108,5 +109,7 @@ extern int mq_get_expression (DB_OBJECT * object, const char *expr,
 extern PT_NODE *mq_reset_ids_in_statement (PARSER_CONTEXT * parser,
 					   PT_NODE * statement);
 
+extern PT_NODE *mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser,
+						 PT_NODE * agg_sel);
 
 #endif /* _VIEW_TRANSFORM_H_ */

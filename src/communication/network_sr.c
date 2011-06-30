@@ -39,7 +39,7 @@
 #include "boot_sr.h"
 #include "network_interface_sr.h"
 #include "query_list.h"
-#include "thread_impl.h"
+#include "thread.h"
 #include "critical_section.h"
 #include "release_string.h"
 #include "server_support.h"
@@ -453,6 +453,13 @@ net_server_init (void)
   net_Requests[NET_SERVER_LC_REM_CLASS_FROM_INDEX].name =
     "NET_SERVER_LC_REM_CLASS_FROM_INDEX";
 
+  net_Requests[NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN].action_attribute =
+    CHECK_DB_MODIFICATION | IN_TRANSACTION;
+  net_Requests[NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN].processing_function =
+    slocator_upgrade_instances_domain;
+  net_Requests[NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN].name =
+    "NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN";
+
   /*
    * heap
    */
@@ -666,6 +673,30 @@ net_server_init (void)
     slogtb_dump_trantable;
   net_Requests[NET_SERVER_LOG_DUMP_TRANTB].name =
     "NET_SERVER_LOG_DUMP_TRANTB";
+
+  net_Requests[NET_SERVER_LOG_FIND_LOB_LOCATOR].action_attribute = 0;
+  net_Requests[NET_SERVER_LOG_FIND_LOB_LOCATOR].processing_function =
+    slog_find_lob_locator;
+  net_Requests[NET_SERVER_LOG_DUMP_TRANTB].name =
+    "NET_SERVER_LOG_FIND_LOB_LOCATOR";
+
+  net_Requests[NET_SERVER_LOG_ADD_LOB_LOCATOR].action_attribute = 0;
+  net_Requests[NET_SERVER_LOG_ADD_LOB_LOCATOR].processing_function =
+    slog_add_lob_locator;
+  net_Requests[NET_SERVER_LOG_ADD_LOB_LOCATOR].name =
+    "NET_SERVER_LOG_ADD_LOB_LOCATOR";
+
+  net_Requests[NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR].action_attribute = 0;
+  net_Requests[NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR].processing_function =
+    slog_change_state_of_locator;
+  net_Requests[NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR].name =
+    "NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR";
+
+  net_Requests[NET_SERVER_LOG_DROP_LOB_LOCATOR].action_attribute = 0;
+  net_Requests[NET_SERVER_LOG_DROP_LOB_LOCATOR].processing_function =
+    slog_drop_lob_locator;
+  net_Requests[NET_SERVER_LOG_DROP_LOB_LOCATOR].name =
+    "NET_SERVER_LOG_DROP_LOB_LOCATOR";
 
   net_Requests[NET_SERVER_LOG_CHECKPOINT].action_attribute = 0;
   net_Requests[NET_SERVER_LOG_CHECKPOINT].processing_function =
@@ -885,13 +916,6 @@ net_server_init (void)
   net_Requests[NET_SERVER_MNT_SERVER_STOP_STATS].name =
     "NET_SERVER_MNT_SERVER_STOP_STATS";
 
-  net_Requests[NET_SERVER_MNT_SERVER_RESET_STATS].action_attribute =
-    CHECK_AUTHORIZATION;
-  net_Requests[NET_SERVER_MNT_SERVER_RESET_STATS].processing_function =
-    smnt_server_reset_stats;
-  net_Requests[NET_SERVER_MNT_SERVER_RESET_STATS].name =
-    "NET_SERVER_MNT_SERVER_RESET_STATS";
-
   net_Requests[NET_SERVER_MNT_SERVER_COPY_STATS].action_attribute =
     CHECK_AUTHORIZATION;
   net_Requests[NET_SERVER_MNT_SERVER_COPY_STATS].processing_function =
@@ -1044,12 +1068,115 @@ net_server_init (void)
   net_Requests[NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS].name =
     "NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS";
 
-  net_Requests[NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS].action_attribute =
-    CHECK_AUTHORIZATION;
-  net_Requests[NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS].processing_function =
-    smnt_server_reset_global_stats;
-  net_Requests[NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS].name =
-    "NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS";
+  /*
+   * esternal storage supports
+   */
+  net_Requests[NET_SERVER_ES_CREATE_FILE].action_attribute =
+    CHECK_DB_MODIFICATION | IN_TRANSACTION;
+  net_Requests[NET_SERVER_ES_CREATE_FILE].processing_function =
+    ses_posix_create_file;
+  net_Requests[NET_SERVER_ES_CREATE_FILE].name = "NET_SERVER_ES_CREATE_FILE";
+
+  net_Requests[NET_SERVER_ES_WRITE_FILE].action_attribute =
+    CHECK_DB_MODIFICATION | IN_TRANSACTION;
+  net_Requests[NET_SERVER_ES_WRITE_FILE].processing_function =
+    ses_posix_write_file;
+  net_Requests[NET_SERVER_ES_WRITE_FILE].name = "NET_SERVER_ES_WRITE_FILE";
+
+  net_Requests[NET_SERVER_ES_READ_FILE].action_attribute =
+    CHECK_DB_MODIFICATION | IN_TRANSACTION;
+  net_Requests[NET_SERVER_ES_READ_FILE].processing_function =
+    ses_posix_read_file;
+  net_Requests[NET_SERVER_ES_READ_FILE].name = "NET_SERVER_ES_READ_FILE";
+
+  net_Requests[NET_SERVER_ES_DELETE_FILE].action_attribute =
+    CHECK_DB_MODIFICATION | IN_TRANSACTION;
+  net_Requests[NET_SERVER_ES_DELETE_FILE].processing_function =
+    ses_posix_delete_file;
+  net_Requests[NET_SERVER_ES_DELETE_FILE].name = "NET_SERVER_ES_DELETE_FILE";
+
+  net_Requests[NET_SERVER_ES_COPY_FILE].action_attribute =
+    CHECK_DB_MODIFICATION | IN_TRANSACTION;
+  net_Requests[NET_SERVER_ES_COPY_FILE].processing_function =
+    ses_posix_copy_file;
+  net_Requests[NET_SERVER_ES_COPY_FILE].name = "NET_SERVER_ES_COPY_FILE";
+
+  net_Requests[NET_SERVER_ES_RENAME_FILE].action_attribute =
+    CHECK_DB_MODIFICATION | IN_TRANSACTION;
+  net_Requests[NET_SERVER_ES_RENAME_FILE].processing_function =
+    ses_posix_rename_file;
+  net_Requests[NET_SERVER_ES_RENAME_FILE].name = "NET_SERVER_ES_RENAME_FILE";
+
+  net_Requests[NET_SERVER_ES_GET_FILE_SIZE].action_attribute = IN_TRANSACTION;
+  net_Requests[NET_SERVER_ES_GET_FILE_SIZE].processing_function =
+    ses_posix_get_file_size;
+  net_Requests[NET_SERVER_ES_GET_FILE_SIZE].name =
+    "NET_SERVER_ES_GET_FILE_SIZE";
+
+  /* session state */
+  net_Requests[NET_SERVER_SES_CHECK_SESSION].name =
+    "NET_SERVER_SES_CHECK_SESSION";
+  net_Requests[NET_SERVER_SES_CHECK_SESSION].processing_function =
+    ssession_check_session;
+  net_Requests[NET_SERVER_SES_END_SESSION].name = "NET_SERVER_END_SESSION";
+  net_Requests[NET_SERVER_SES_END_SESSION].processing_function =
+    ssession_end_session;
+
+  net_Requests[NET_SERVER_SES_SET_ROW_COUNT].name =
+    "NET_SERVER_SET_ROW_COUNT";
+  net_Requests[NET_SERVER_SES_SET_ROW_COUNT].processing_function =
+    ssession_set_row_count;
+
+  net_Requests[NET_SERVER_SES_GET_ROW_COUNT].name =
+    "NET_SERVER_GET_ROW_COUNT";
+  net_Requests[NET_SERVER_SES_GET_ROW_COUNT].processing_function =
+    ssession_get_row_count;
+
+  net_Requests[NET_SERVER_SES_GET_LAST_INSERT_ID].name =
+    "NET_SERVER_SES_GET_LAST_INSERT_ID";
+  net_Requests[NET_SERVER_SES_GET_LAST_INSERT_ID].processing_function =
+    ssession_get_last_insert_id;
+
+  net_Requests[NET_SERVER_SES_CREATE_PREPARED_STATEMENT].name =
+    "NET_SERVER_SES_CREATE_PREPARED_STATEMENT";
+  net_Requests[NET_SERVER_SES_CREATE_PREPARED_STATEMENT].processing_function =
+    ssession_create_prepared_statement;
+
+  net_Requests[NET_SERVER_SES_GET_PREPARED_STATEMENT].name =
+    "NET_SERVER_SES_GET_PREPARED_STATEMENT";
+  net_Requests[NET_SERVER_SES_GET_PREPARED_STATEMENT].processing_function =
+    ssession_get_prepared_statement;
+
+  net_Requests[NET_SERVER_SES_DELETE_PREPARED_STATEMENT].name =
+    "NET_SERVER_SES_DELETE_PREPARED_STATEMENT";
+  net_Requests[NET_SERVER_SES_DELETE_PREPARED_STATEMENT].processing_function =
+    ssession_delete_prepared_statement;
+
+  net_Requests[NET_SERVER_SES_SET_SESSION_VARIABLES].name =
+    "NET_SERVER_SES_SET_SESSION_VARIABLES";
+  net_Requests[NET_SERVER_SES_SET_SESSION_VARIABLES].processing_function =
+    ssession_set_session_variables;
+
+  net_Requests[NET_SERVER_SES_GET_SESSION_VARIABLE].name =
+    "NET_SERVER_SES_GET_SESSION_VARIABLE";
+  net_Requests[NET_SERVER_SES_GET_SESSION_VARIABLE].processing_function =
+    ssession_get_session_variable;
+
+  net_Requests[NET_SERVER_SES_DROP_SESSION_VARIABLES].name =
+    "NET_SERVER_SES_DROP_SESSION_VARIABLES";
+  net_Requests[NET_SERVER_SES_DROP_SESSION_VARIABLES].processing_function =
+    ssession_drop_session_variables;
+
+  /*
+   * ip control
+   */
+  net_Requests[NET_SERVER_ACL_DUMP].action_attribute = 0;
+  net_Requests[NET_SERVER_ACL_DUMP].processing_function = sacl_dump;
+  net_Requests[NET_SERVER_ACL_DUMP].name = "NET_SERVER_ACL_DUMP";
+
+  net_Requests[NET_SERVER_ACL_RELOAD].action_attribute = 0;
+  net_Requests[NET_SERVER_ACL_RELOAD].processing_function = sacl_reload;
+  net_Requests[NET_SERVER_ACL_RELOAD].name = "NET_SERVER_ACL_RELOAD";
 }
 
 #if defined(CUBRID_DEBUG)
@@ -1321,7 +1448,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   client_id = conn_p->client_id;
 
   thread_set_info (thread_p, client_id, 0, tran_index);
-  MUTEX_UNLOCK (thread_p->tran_index_lock);
+  pthread_mutex_unlock (&thread_p->tran_index_lock);
 
   css_end_server_request (conn_p);
 
@@ -1467,11 +1594,8 @@ net_server_start (const char *server_name)
       printf ("Failed to initialize message catalog\n");
       return -1;
     }
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
-    {
-      printf ("Failed to load system parameter\n");
-      return -1;
-    }
+  sysprm_load_and_init (NULL, NULL);
+  sysprm_set_er_log_file (server_name);
   if (thread_initialize_manager () != NO_ERROR)
     {
       printf ("Failed to initialize thread manager\n");

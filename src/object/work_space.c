@@ -272,6 +272,7 @@ ws_make_mop (OID * oid)
       op->is_set = 0;
       op->is_temp = 0;
       op->released = 0;
+      op->decached = 0;
 
       /* this is NULL only for the Null_object hack */
       if (oid != NULL)
@@ -675,7 +676,7 @@ ws_insert_mop_on_hash_link (MOP mop, int slot)
        * because there can be redundancies of mops which have the same oid,
        * in case of VID.
        * Under 'Create table A -> rollback -> Create table B' scenario,
-       * the oid of the mop of table B can be same as that of table B.
+       * the oid of the mop of table B can be same as that of table A.
        * Because the newest one is located at the head of redundancies
        * in that case, we use the first fit method.
        */
@@ -796,6 +797,35 @@ ws_mop (OID * oid, MOP class_mop)
 	      c = oid_compare (oid, WS_OID (mop));
 	      if (c == 0)
 		{
+		  if (mop->decached)
+		    {
+		      /*
+		       * If a decached instance object has a class mop,
+		       * we need to clear the information related the class mop,
+		       * such as class_mop and class_link.
+		       * Actually the information should be cleared when the mop
+		       * is decached. The current implementation, however, assumes
+		       * that decached objects have the information and there are
+		       * many codes based on the assumption. So we clear them here,
+		       * when reusing decached objects.
+		       */
+		      if (mop->class_mop != sm_Root_class_mop
+			  && class_mop != mop->class_mop)
+			{
+			  if (mop->class_mop != NULL)
+			    {
+			      remove_class_object (mop->class_mop, mop);
+			    }
+			  assert (mop->class_mop == NULL
+				  && mop->class_link == NULL);
+			  mop->class_mop = mop->class_link = NULL;
+			  if (class_mop != NULL)
+			    {
+			      add_class_object (class_mop, mop);
+			    }
+			}
+		      mop->decached = 0;
+		    }
 		  return mop;
 		}
 	      else if (c < 0)
@@ -943,7 +973,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
   new_mop->is_vid = 1;
 
   vid_info = WS_VID_INFO (new_mop) =
-    (VID_INFO *) db_ws_alloc (sizeof (VID_INFO));
+    (VID_INFO *) GC_MALLOC (sizeof (VID_INFO));
   if (vid_info == NULL)
     {
       goto abort_it;
@@ -977,7 +1007,7 @@ abort_it:
   if (vid_info != NULL)
     {
       pr_clear_value (&vid_info->keys);
-      db_ws_free (vid_info);
+      GC_FREE (vid_info);
     }
   return NULL;
 }
@@ -2673,7 +2703,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
     {
 
       /* caching a class */
-      if ((mop->object != NULL) && (mop->object != (MOBJ) & sm_Root_class))
+      if ((mop->object != NULL) && (mop->object != (MOBJ) (&sm_Root_class)))
 	{
 	  /* remove information for existing class */
 	  ws_drop_classname ((MOBJ) mop->object);
@@ -2689,7 +2719,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
        */
       ws_class_has_object_dependencies (mop);
 
-      if (obj != (MOBJ) & sm_Root_class)
+      if (obj != (MOBJ) (&sm_Root_class))
 	{
 	  /* this initializes the class_link list and adds it to the
 	     list of resident classes */
@@ -2842,7 +2872,7 @@ ws_decache (MOP mop)
   else
     {
       /* free class object, not sure if this should be done here */
-      if (mop->object != NULL && mop->object != (MOBJ) & sm_Root_class)
+      if (mop->object != NULL && mop->object != (MOBJ) (&sm_Root_class))
 	{
 	  ws_drop_classname ((MOBJ) mop->object);
 
@@ -2856,6 +2886,7 @@ ws_decache (MOP mop)
 
   /* this no longer apples */
   mop->composition_fetch = 0;
+  mop->decached = 1;
 }
 
 /*
@@ -2926,6 +2957,7 @@ OID *
 ws_identifier_with_check (MOP mop, const bool check_non_referable)
 {
   OID *oid = NULL;
+  MOP class_mop;
 
   if (mop == NULL || WS_MARKED_DELETED (mop))
     {
@@ -2949,7 +2981,9 @@ ws_identifier_with_check (MOP mop, const bool check_non_referable)
 
   if (check_non_referable)
     {
-      if (sm_is_reuse_oid_class (ws_class_mop (mop)))
+      class_mop =
+	locator_is_class (mop, DB_FETCH_READ) ? mop : ws_class_mop (mop);
+      if (sm_is_reuse_oid_class (class_mop))
 	{
 	  /* should not return the oid of a non-referable instance */
 	  goto end;
@@ -3450,7 +3484,9 @@ ws_abort_mops (bool only_unpinned)
 	   * a security measure we also check for the dirty bit.
 	   */
 	  if (ws_get_lock (mop) == X_LOCK || WS_ISDIRTY (mop))
-	    ws_decache (mop);
+	    {
+	      ws_decache (mop);
+	    }
 	}
 
       /* clear all hint fields including the lock */

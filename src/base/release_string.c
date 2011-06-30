@@ -39,10 +39,6 @@
 #include "log_comm.h"
 #include "log_manager.h"
 
-
-#define CSQL_NAME_MAX_LENGTH 100
-#define MAXPATCHLEN  256
-
 /*
  * COMPATIBILITY_RULE - Structure that encapsulates compatibility rules.
  *                      For two revision levels, both a compatibility type
@@ -77,6 +73,7 @@ static const char *release_string = makestring (RELEASE_STRING);
 static const char *major_release_string = makestring (MAJOR_RELEASE_STRING);
 static const char *build_number = makestring (BUILD_NUMBER);
 static const char *package_string = PACKAGE_STRING;
+static const char *build_os = makestring (BUILD_OS);
 static int bit_platform = __WORDSIZE;
 
 
@@ -88,7 +85,41 @@ rel_is_compatible_internal (const char *base_rel_str,
 /*
  * Disk (database image) Version Compatibility
  */
-static float disk_compatibility_level = 8.301f;
+static float disk_compatibility_level = 8.41f;
+
+/*
+ * rel_copy_version_string - version string of the product
+ *   return: void
+ */
+void
+rel_copy_version_string (char *buf, size_t len)
+{
+#if defined (NDEBUG)
+#if defined (CUBRID_OWFS)
+  snprintf (buf, len,
+	    "%s (%s) (%dbit owfs release build for %s) (%s %s)",
+	    rel_name (), rel_build_number (), rel_bit_platform (),
+	    rel_build_os (), __DATE__, __TIME__);
+#else /* CUBRID_OWFS */
+  snprintf (buf, len,
+	    "%s (%s) (%dbit release build for %s) (%s %s)",
+	    rel_name (), rel_build_number (), rel_bit_platform (),
+	    rel_build_os (), __DATE__, __TIME__);
+#endif /* !CUBRID_OWFS */
+#else /* NDEBUG */
+#if defined (CUBRID_OWFS)
+  snprintf (buf, len,
+	    "%s (%s) (%dbit owfs debug build for %s) (%s %s)",
+	    rel_name (), rel_build_number (), rel_bit_platform (),
+	    rel_build_os (), __DATE__, __TIME__);
+#else /* CUBRID_OWFS */
+  snprintf (buf, len,
+	    "%s (%s) (%dbit debug build for %s) (%s %s)",
+	    rel_name (), rel_build_number (), rel_bit_platform (),
+	    rel_build_os (), __DATE__, __TIME__);
+#endif /* !CUBRID_OWFS */
+#endif /* !NDEBUG */
+}
 
 /*
  * rel_name - Name of the product from the message catalog
@@ -128,6 +159,16 @@ const char *
 rel_build_number (void)
 {
   return build_number;
+}
+
+/*
+ * rel_build_os - Build OS portion of the release string
+ *   return: static char string
+ */
+const char *
+rel_build_os (void)
+{
+  return build_os;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)

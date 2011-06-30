@@ -45,6 +45,8 @@
 #include "wintcp.h"
 #endif
 #include "environment_variable.h"
+#include "release_string.h"
+#include "dynamic_array.h"
 
 typedef enum
 {
@@ -52,12 +54,10 @@ typedef enum
   SERVER,
   BROKER,
   MANAGER,
-  REPL_SERVER,
-  REPL_AGENT,
   HEARTBEAT,
   UTIL_HELP,
   UTIL_VERSION,
-  ADMIN,
+  ADMIN
 } UTIL_SERVICE_INDEX_E;
 
 typedef enum
@@ -73,6 +73,8 @@ typedef enum
   RELOAD,
   ON,
   OFF,
+  ACCESS_CONTROL,
+  RESET
 } UTIL_SERVICE_COMMAND_E;
 
 typedef enum
@@ -80,11 +82,7 @@ typedef enum
   SERVICE_START_SERVER,
   SERVICE_START_BROKER,
   SERVICE_START_MANAGER,
-  SERVICE_START_REPL_SERVER,
-  SERVICE_START_REPL_AGENT,
   SERVER_START_LIST,
-  REPL_SERVER_START_LIST,
-  REPL_AGENT_START_LIST,
   SERVICE_START_HEARTBEAT
 } UTIL_SERVICE_PROPERTY_E;
 
@@ -105,18 +103,16 @@ typedef struct
 #define UTIL_TYPE_SERVER        "server"
 #define UTIL_TYPE_BROKER        "broker"
 #define UTIL_TYPE_MANAGER       "manager"
-#define UTIL_TYPE_REPL_SERVER   "repl_server"
-#define UTIL_TYPE_REPL_AGENT    "repl_agent"
 #define UTIL_TYPE_HEARTBEAT     "heartbeat"
+#define UTIL_TYPE_HB_SHORT      "hb"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {SERVICE, UTIL_TYPE_SERVICE, MASK_SERVICE},
   {SERVER, UTIL_TYPE_SERVER, MASK_SERVER},
   {BROKER, UTIL_TYPE_BROKER, MASK_BROKER},
   {MANAGER, UTIL_TYPE_MANAGER, MASK_MANAGER},
-  {REPL_SERVER, UTIL_TYPE_REPL_SERVER, MASK_REPL},
-  {REPL_AGENT, UTIL_TYPE_REPL_AGENT, MASK_REPL},
   {HEARTBEAT, UTIL_TYPE_HEARTBEAT, MASK_HEARTBEAT},
+  {HEARTBEAT, UTIL_TYPE_HB_SHORT, MASK_HEARTBEAT},
   {UTIL_HELP, "--help", MASK_ALL},
   {UTIL_VERSION, "--version", MASK_ALL},
   {ADMIN, UTIL_OPTION_CREATEDB, MASK_ADMIN},
@@ -146,6 +142,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {ADMIN, UTIL_OPTION_CHANGEMODE, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_COPYLOGDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_APPLYLOGDB, MASK_ADMIN},
+  {ADMIN, UTIL_OPTION_APPLYINFO, MASK_ADMIN},
   {-1, "", MASK_ADMIN}
 };
 
@@ -160,6 +157,8 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_RELOAD     "reload"
 #define COMMAND_TYPE_ON         "on"
 #define COMMAND_TYPE_OFF        "off"
+#define COMMAND_TYPE_ACL        "acl"
+#define COMMAND_TYPE_RESET      "reset"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL},
@@ -173,6 +172,8 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {RELOAD, COMMAND_TYPE_RELOAD, MASK_HEARTBEAT},
   {ON, COMMAND_TYPE_ON, MASK_BROKER},
   {OFF, COMMAND_TYPE_OFF, MASK_BROKER},
+  {ACCESS_CONTROL, COMMAND_TYPE_ACL, MASK_SERVER | MASK_BROKER},
+  {RESET, COMMAND_TYPE_RESET, MASK_BROKER},
   {-1, "", MASK_ALL}
 };
 
@@ -180,11 +181,7 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
   {SERVICE_START_SERVER, NULL},
   {SERVICE_START_BROKER, NULL},
   {SERVICE_START_MANAGER, NULL},
-  {SERVICE_START_REPL_SERVER, NULL},
-  {SERVICE_START_REPL_AGENT, NULL},
   {SERVER_START_LIST, NULL},
-  {REPL_SERVER_START_LIST, NULL},
-  {REPL_AGENT_START_LIST, NULL},
   {SERVICE_START_HEARTBEAT, NULL},
   {-1, NULL}
 };
@@ -198,12 +195,11 @@ static void finalize_properties (void);
 static const char *get_property (int property_type);
 static int parse_arg (UTIL_SERVICE_OPTION_MAP_T * option, const char *arg);
 static int process_service (int command_type, bool process_window_service);
-static int process_server (int command_type, char *name, bool show_usage);
-static int process_broker (int command_type, int argc, const char **argv);
-static int process_manager (int command_type);
-static int process_repl_server (int command_type, char *name, char *repl_port,
-				int argc, const char **argv);
-static int process_repl_agent (int command_type, char *name, char *password);
+static int process_server (int command_type, int argc, const char **argv,
+			   bool show_usage, bool process_window_service);
+static int process_broker (int command_type, int argc, const char **argv,
+			   bool process_window_service);
+static int process_manager (int command_type, bool process_window_service);
 static int process_heartbeat (int command_type, char *name);
 static int proc_execute (const char *file, const char *args[],
 			 bool wait_child, bool close_output, int *pid);
@@ -252,6 +248,9 @@ command_string (int command_type)
       break;
     case RELOAD:
       command = PRINT_CMD_RELOAD;
+      break;
+    case ACCESS_CONTROL:
+      command = PRINT_CMD_ACL;
       break;
     case STOP:
     default:
@@ -338,6 +337,8 @@ main (int argc, char *argv[])
 {
   int util_type, command_type;
   int status;
+  bool process_window_service = false;
+
 #if defined (DO_NOT_USE_CUBRIDENV)
   char *envval;
   char path[PATH_MAX];
@@ -442,56 +443,40 @@ main (int argc, char *argv[])
       printf ("Unable to initialize Winsock.\n");
       goto error;
     }
-#endif /* WINDOWS */
+
+  process_window_service = true;
+
+  if ((util_type == SERVICE || util_type == BROKER || util_type == MANAGER) &&
+      (argc > 3) && strcmp ((char *) argv[3], "--for-windows-service") == 0)
+    {
+      process_window_service = false;
+    }
+  else if ((util_type == SERVER || util_type == BROKER) && (argc > 4) &&
+	   strcmp ((char *) argv[4], "--for-windows-service") == 0)
+    {
+      process_window_service = false;
+    }
+#endif
 
   switch (util_type)
     {
     case SERVICE:
       {
-	bool process_window_service = false;
-
-#if defined(WINDOWS)
-	process_window_service = true;
-
-	if (argc > 3
-	    && strcmp ((char *) argv[3], "--for-windows-service") == 0)
-	  {
-	    process_window_service = false;
-	  }
-#endif
 	status = process_service (command_type, process_window_service);
       }
       break;
     case SERVER:
       status =
-	process_server (command_type, argc > 3 ? (char *) argv[3] : NULL,
-			true);
+	process_server (command_type, argc - 3, (const char **) &argv[3],
+			true, process_window_service);
       break;
     case BROKER:
       status = process_broker (command_type, argc - 3,
-			       (const char **) &argv[3]);
+			       (const char **) &argv[3],
+			       process_window_service);
       break;
     case MANAGER:
-      status = process_manager (command_type);
-      break;
-    case REPL_SERVER:
-#if defined (WINDOWS)
-      print_message (stderr, MSGCAT_UTIL_GENRIC_REPL_NOT_SUPPORTED);
-      return EXIT_FAILURE;
-#else /* WINDOWS */
-      status = process_repl_server (command_type, (char *) argv[3],
-				    (char *) argv[4], argc,
-				    (const char **) argv);
-#endif /* !WINDOWS */
-      break;
-    case REPL_AGENT:
-#if defined (WINDOWS)
-      print_message (stderr, MSGCAT_UTIL_GENRIC_REPL_NOT_SUPPORTED);
-      return EXIT_FAILURE;
-#else /* WINDOWS */
-      status = process_repl_agent (command_type, (char *) argv[3],
-				   (char *) argv[4]);
-#endif /* !WINDOWs */
+      status = process_manager (command_type, process_window_service);
       break;
     case HEARTBEAT:
 #if defined(WINDOWS)
@@ -553,9 +538,11 @@ static void
 util_service_version (const char *argv0)
 {
   const char *exec_name;
+  char buf[REL_MAX_VERSION_LENGTH];
 
   exec_name = basename ((char *) argv0);
-  print_message (stdout, MSGCAT_UTIL_GENERIC_VERSION, exec_name, VERSION);
+  rel_copy_version_string (buf, REL_MAX_VERSION_LENGTH);
+  print_message (stdout, MSGCAT_UTIL_GENERIC_VERSION, exec_name, buf);
 }
 
 
@@ -624,7 +611,7 @@ static int
 proc_execute (const char *file, const char *args[], bool wait_child,
 	      bool close_output, int *out_pid)
 {
-  pid_t pid;
+  pid_t pid, tmp;
   char executable_path[PATH_MAX];
 
   if (out_pid)
@@ -672,11 +659,16 @@ proc_execute (const char *file, const char *args[], bool wait_child,
       /* sleep (0); */
       if (wait_child)
 	{
-	  if (waitpid (pid, &status, 0) == -1)
+	  do
 	    {
-	      perror ("waitpid");
-	      return ER_GENERIC_ERROR;
+	      tmp = waitpid (-1, &status, 0);
+	      if (tmp == -1)
+		{
+		  perror ("waitpid");
+		  return ER_GENERIC_ERROR;
+		}
 	    }
+	  while (tmp != pid);
 	}
       else
 	{
@@ -808,7 +800,7 @@ is_windows_service_running (unsigned int sleep_time)
 static int
 process_service (int command_type, bool process_window_service)
 {
-  int status;
+  int status = NO_ERROR;
 
   switch (command_type)
     {
@@ -819,7 +811,9 @@ process_service (int command_type, bool process_window_service)
 	  if (!is_windows_service_running (0))
 	    {
 	      const char *args[] =
-		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, "-start", NULL };
+		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVICE,
+		PRINT_CMD_START, NULL
+	      };
 
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
 			    false, NULL);
@@ -840,26 +834,22 @@ process_service (int command_type, bool process_window_service)
 	  status = process_master (command_type);
 	  if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
 	    {
-	      status = process_server (command_type, NULL, false);
+	      status = process_server (command_type, 0, NULL, false, false);
 	    }
 	  if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
 	    {
-	      status = process_broker (command_type, 0, NULL);
+	      status = process_broker (command_type, 0, NULL, false);
 	    }
 	  if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
 	    {
-	      status = process_manager (command_type);
+	      status = process_manager (command_type, false);
 	    }
-	  if (strcmp (get_property (SERVICE_START_REPL_SERVER), PROPERTY_ON)
-	      == 0)
-	    {
-	      status = process_repl_server (command_type, NULL, 0, 0, 0);
-	    }
-	  if (strcmp (get_property (SERVICE_START_REPL_AGENT), PROPERTY_ON) ==
+	  if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) ==
 	      0)
 	    {
-	      status = process_repl_agent (command_type, NULL, NULL);
+	      status = process_heartbeat (command_type, NULL);
 	    }
+
 	}
       break;
     case STOP:
@@ -869,7 +859,9 @@ process_service (int command_type, bool process_window_service)
 	  if (is_windows_service_running (0))
 	    {
 	      const char *args[] =
-		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, "-stop", NULL };
+		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVICE,
+		PRINT_CMD_STOP, NULL
+	      };
 
 	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
 			    false, NULL);
@@ -889,25 +881,20 @@ process_service (int command_type, bool process_window_service)
 	{
 	  if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0)
 	    {
-	      status = process_server (command_type, NULL, false);
+	      status = process_server (command_type, 0, NULL, false, false);
 	    }
 	  if (strcmp (get_property (SERVICE_START_BROKER), PROPERTY_ON) == 0)
 	    {
-	      status = process_broker (command_type, 0, NULL);
+	      status = process_broker (command_type, 0, NULL, false);
 	    }
 	  if (strcmp (get_property (SERVICE_START_MANAGER), PROPERTY_ON) == 0)
 	    {
-	      status = process_manager (command_type);
+	      status = process_manager (command_type, false);
 	    }
-	  if (strcmp (get_property (SERVICE_START_REPL_SERVER), PROPERTY_ON)
-	      == 0)
-	    {
-	      status = process_repl_server (command_type, NULL, 0, 0, 0);
-	    }
-	  if (strcmp (get_property (SERVICE_START_REPL_AGENT), PROPERTY_ON) ==
+	  if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) ==
 	      0)
 	    {
-	      status = process_repl_agent (command_type, NULL, NULL);
+	      status = process_heartbeat (command_type, NULL);
 	    }
 	  status = process_master (command_type);
 	}
@@ -932,10 +919,13 @@ process_service (int command_type, bool process_window_service)
 
       {
 	const char *args[] = { "-b" };
-	status = process_server (command_type, NULL, false);
-	status = process_broker (command_type, 1, args);
-	status = process_manager (command_type);
-	status = process_repl_server (command_type, NULL, 0, 0, 0);
+	status = process_server (command_type, 0, NULL, false, false);
+	status = process_broker (command_type, 1, args, false);
+	status = process_manager (command_type, false);
+	if (strcmp (get_property (SERVICE_START_HEARTBEAT), PROPERTY_ON) == 0)
+	  {
+	    status = process_heartbeat (command_type, NULL);
+	  }
       }
       break;
     default:
@@ -1055,29 +1045,31 @@ is_server_running (const char *type, const char *server_name, int pid)
  * return:
  *
  *      command_type(in):
- *      name(in):
+ *      argc(in):
+ *      argv(in) :
  *      show_usage(in):
  *
  * NOTE:
  */
 static int
-process_server (int command_type, char *name, bool show_usage)
+process_server (int command_type, int argc, const char **argv,
+		bool show_usage, bool process_window_service)
 {
   char buf[4096];
   char *list, *token, *save;
-  const char *delim = " ,";
+  const char *delim = " ,:";
   int status = NO_ERROR;
   int master_port = prm_get_master_port_id ();
 
   /* A string is copyed because strtok_r() modify an original string. */
-  if (name == NULL)
+  if (argc == 0)
     {
       strncpy (buf, us_Property_map[SERVER_START_LIST].property_value,
 	       sizeof (buf) - 1);
     }
   else
     {
-      strncpy (buf, name, sizeof (buf) - 1);
+      strncpy (buf, argv[0], sizeof (buf) - 1);
     }
 
   if (command_type != STATUS && strlen (buf) == 0)
@@ -1092,34 +1084,66 @@ process_server (int command_type, char *name, bool show_usage)
   switch (command_type)
     {
     case START:
-      if (!css_does_master_exist (master_port))
+      if (process_window_service)
 	{
-	  status = process_master (command_type);
-	}
-      for (list = buf;; list = NULL)
-	{
-	  token = strtok_r (list, delim, &save);
-	  if (token == NULL)
+#if defined(WINDOWS)
+	  const char *args[] =
+	    { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVER,
+	    COMMAND_TYPE_START, NULL, NULL
+	  };
+
+	  for (list = buf;; list = NULL)
 	    {
-	      break;
-	    }
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S,
-			 PRINT_SERVER_NAME, PRINT_CMD_START, token);
-	  if (is_server_running (CHECK_SERVER, token, 0))
-	    {
-	      print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
-			     PRINT_SERVER_NAME, token);
-	      continue;
-	    }
-	  else
-	    {
-	      int pid;
-	      const char *args[] = { UTIL_CUBRID_NAME, token, NULL };
-	      status = proc_execute (UTIL_CUBRID_NAME, args, false, false,
-				     &pid);
-	      status = is_server_running (CHECK_SERVER, token, pid) ?
-		NO_ERROR : ER_GENERIC_ERROR;
+	      token = strtok_r (list, delim, &save);
+	      if (token == NULL)
+		{
+		  break;
+		}
+
+	      args[3] = token;
+	      status =
+		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			      false, NULL);
+	      status =
+		is_server_running (CHECK_SERVER, token,
+				   0) ? NO_ERROR : ER_GENERIC_ERROR;
 	      print_result (PRINT_SERVER_NAME, status, command_type);
+	    }
+#endif
+	}
+      else
+	{
+	  if (!css_does_master_exist (master_port))
+	    {
+	      status = process_master (command_type);
+	    }
+	  for (list = buf;; list = NULL)
+	    {
+	      token = strtok_r (list, delim, &save);
+	      if (token == NULL)
+		{
+		  break;
+		}
+	      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S,
+			     PRINT_SERVER_NAME, PRINT_CMD_START, token);
+	      if (is_server_running (CHECK_SERVER, token, 0))
+		{
+		  print_message (stdout,
+				 MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S,
+				 PRINT_SERVER_NAME, token);
+		  continue;
+		}
+	      else
+		{
+		  int pid;
+		  const char *args[] = { UTIL_CUBRID_NAME, token, NULL };
+		  status = proc_execute (UTIL_CUBRID_NAME, args, false, false,
+					 &pid);
+		  status =
+		    is_server_running (CHECK_SERVER, token,
+				       pid) ? NO_ERROR : ER_GENERIC_ERROR;
+		  print_result (PRINT_SERVER_NAME, status, command_type);
+		}
 	    }
 	}
       break;
@@ -1135,10 +1159,26 @@ process_server (int command_type, char *name, bool show_usage)
 			 PRINT_SERVER_NAME, PRINT_CMD_STOP, token);
 	  if (is_server_running (CHECK_SERVER, token, 0))
 	    {
-	      const char *args[] =
-		{ UTIL_COMMDB_NAME, COMMDB_SERVER_STOP, token, NULL };
-	      status = proc_execute (UTIL_COMMDB_NAME, args, true, false,
-				     NULL);
+	      if (process_window_service)
+		{
+#if defined(WINDOWS)
+		  const char *args[] =
+		    { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_SERVER,
+		    COMMAND_TYPE_STOP, NULL, NULL
+		  };
+		  args[3] = token;
+		  status =
+		    proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args,
+				  true, false, NULL);
+#endif
+		}
+	      else
+		{
+		  const char *args[] =
+		    { UTIL_COMMDB_NAME, COMMDB_SERVER_STOP, token, NULL };
+		  status = proc_execute (UTIL_COMMDB_NAME, args, true, false,
+					 NULL);
+		}
 	      print_result (PRINT_SERVER_NAME, status, command_type);
 	    }
 	  else
@@ -1149,8 +1189,11 @@ process_server (int command_type, char *name, bool show_usage)
 	}
       break;
     case RESTART:
-      status = process_server (STOP, name, show_usage);
-      status = process_server (START, name, show_usage);
+      status =
+	process_server (STOP, argc, argv, show_usage, process_window_service);
+      status =
+	process_server (START, argc, argv, show_usage,
+			process_window_service);
       break;
     case STATUS:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
@@ -1166,6 +1209,44 @@ process_server (int command_type, char *name, bool show_usage)
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			 PRINT_MASTER_NAME);
 	}
+      break;
+    case ACCESS_CONTROL:
+      {
+	if (argc != 2)
+	  {
+	    if (show_usage)
+	      {
+		util_service_usage (SERVER);
+	      }
+	    return ER_GENERIC_ERROR;
+	  }
+	if (strcasecmp (argv[0], "reload") == 0)
+	  {
+	    const char *args[] =
+	      { UTIL_ADMIN_NAME, UTIL_OPTION_ACLDB, ACLDB_RELOAD, argv[1],
+	      NULL
+	    };
+
+	    status = proc_execute (UTIL_ADMIN_NAME, args, true, false, NULL);
+	    print_result (PRINT_SERVER_NAME, status, command_type);
+	  }
+	else if (strcasecmp (argv[0], "status") == 0)
+	  {
+	    const char *args[] =
+	      { UTIL_ADMIN_NAME, UTIL_OPTION_ACLDB, argv[1], NULL };
+
+	    status = proc_execute (UTIL_ADMIN_NAME, args, true, false, NULL);
+	  }
+	else
+	  {
+	    if (show_usage)
+	      {
+		util_service_usage (SERVER);
+	      }
+	    return ER_GENERIC_ERROR;
+	  }
+      }
+
       break;
     default:
       return ER_GENERIC_ERROR;
@@ -1197,7 +1278,8 @@ is_broker_running (void)
  *
  */
 static int
-process_broker (int command_type, int argc, const char **argv)
+process_broker (int command_type, int argc, const char **argv,
+		bool process_window_service)
 {
   int status = NO_ERROR;
 
@@ -1214,8 +1296,27 @@ process_broker (int command_type, int argc, const char **argv)
 	}
       else
 	{
-	  const char *args[] = { UTIL_BROKER_NAME, COMMAND_TYPE_START, NULL };
-	  status = proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	  if (process_window_service)
+	    {
+#if defined(WINDOWS)
+	      const char *args[] =
+		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+		COMMAND_TYPE_START, NULL
+	      };
+
+	      status =
+		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			      false, NULL);
+#endif
+	    }
+	  else
+	    {
+	      const char *args[] =
+		{ UTIL_BROKER_NAME, COMMAND_TYPE_START, NULL };
+	      status =
+		proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	    }
+
 	  print_result (PRINT_BROKER_NAME, status, command_type);
 	}
       break;
@@ -1230,14 +1331,36 @@ process_broker (int command_type, int argc, const char **argv)
 	}
       else
 	{
-	  const char *args[] = { UTIL_BROKER_NAME, COMMAND_TYPE_STOP, NULL };
-	  status = proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	  if (process_window_service)
+	    {
+#if defined(WINDOWS)
+	      const char *args[] =
+		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+		COMMAND_TYPE_STOP, NULL
+	      };
+
+	      status =
+		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			      false, NULL);
+#endif
+	    }
+	  else
+	    {
+	      const char *args[] =
+		{ UTIL_BROKER_NAME, COMMAND_TYPE_STOP, NULL };
+	      status =
+		proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	    }
+
 	  print_result (PRINT_BROKER_NAME, status, command_type);
 	}
       break;
     case RESTART:
-      process_broker (STOP, 0, NULL);
-      process_broker (START, 0, NULL);
+      process_broker (STOP, 0, NULL, process_window_service);
+#if defined (WINDOWS)
+      Sleep (500);
+#endif
+      process_broker (START, 0, NULL, process_window_service);
       break;
     case STATUS:
       {
@@ -1274,26 +1397,112 @@ process_broker (int command_type, int argc, const char **argv)
       break;
     case ON:
       {
-	const char *args[] =
-	  { UTIL_BROKER_NAME, COMMAND_TYPE_ON, argv[0], NULL };
-	if (argc <= 0)
+	if (process_window_service)
 	  {
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
-	    return ER_GENERIC_ERROR;
+#if defined(WINDOWS)
+	    const char *args[] =
+	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	      COMMAND_TYPE_ON, argv[0], NULL
+	    };
+
+	    status =
+	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			    false, NULL);
+#endif
 	  }
-	status = proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	else
+	  {
+	    const char *args[] =
+	      { UTIL_BROKER_NAME, COMMAND_TYPE_ON, argv[0], NULL };
+	    if (argc <= 0)
+	      {
+		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+		return ER_GENERIC_ERROR;
+	      }
+	    status = proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	  }
       }
       break;
     case OFF:
       {
-	const char *args[] =
-	  { UTIL_BROKER_NAME, COMMAND_TYPE_OFF, argv[0], NULL };
-	if (argc <= 0)
+	if (process_window_service)
 	  {
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+#if defined(WINDOWS)
+	    const char *args[] =
+	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	      COMMAND_TYPE_OFF, argv[0], NULL
+	    };
+
+	    status =
+	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			    false, NULL);
+#endif
+	  }
+	else
+	  {
+	    const char *args[] =
+	      { UTIL_BROKER_NAME, COMMAND_TYPE_OFF, argv[0], NULL };
+	    if (argc <= 0)
+	      {
+		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+		return ER_GENERIC_ERROR;
+	      }
+	    status = proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	  }
+      }
+      break;
+    case ACCESS_CONTROL:
+      {
+	const char *args[5];
+
+	args[0] = UTIL_BROKER_NAME;
+	args[1] = COMMAND_TYPE_ACL;
+	args[2] = argv[0];
+
+	if (argc == 1)
+	  {
+	    args[3] = NULL;
+	  }
+	else if (argc == 2)
+	  {
+	    args[3] = argv[1];
+	    args[4] = NULL;
+	  }
+	else
+	  {
+	    util_service_usage (BROKER);
 	    return ER_GENERIC_ERROR;
 	  }
 	status = proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	print_result (PRINT_BROKER_NAME, status, command_type);
+	break;
+      }
+    case RESET:
+      {
+	if (process_window_service)
+	  {
+#if defined(WINDOWS)
+	    const char *args[] =
+	      { UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_BROKER,
+	      COMMAND_TYPE_RESET, argv[0], NULL
+	    };
+
+	    status =
+	      proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			    false, NULL);
+#endif
+	  }
+	else
+	  {
+	    const char *args[] =
+	      { UTIL_BROKER_NAME, COMMAND_TYPE_RESET, argv[0], NULL };
+	    if (argc <= 0)
+	      {
+		print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
+		return ER_GENERIC_ERROR;
+	      }
+	    status = proc_execute (UTIL_BROKER_NAME, args, true, false, NULL);
+	  }
       }
       break;
     default:
@@ -1363,7 +1572,7 @@ is_manager_running (unsigned int sleep_time)
  *
  */
 static int
-process_manager (int command_type)
+process_manager (int command_type, bool process_window_service)
 {
   int cub_auto, cub_js, status;
   char cub_auto_path[PATH_MAX];
@@ -1387,20 +1596,39 @@ process_manager (int command_type)
     case START:
       if (!is_manager_running (0))
 	{
-	  {
-	    const char *args[] =
-	      { UTIL_CUB_AUTO_NAME, COMMAND_TYPE_START, NULL };
-	    cub_auto = proc_execute (UTIL_CUB_AUTO_NAME, args, false, false,
-				     NULL);
-	  }
-	  {
-	    const char *args[] =
-	      { UTIL_CUB_JS_NAME, COMMAND_TYPE_START, NULL };
-	    cub_js =
-	      proc_execute (UTIL_CUB_JS_NAME, args, false, false, NULL);
-	  }
+	  if (process_window_service)
+	    {
+#if defined(WINDOWS)
+	      const char *args[] =
+		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_MANAGER,
+		COMMAND_TYPE_START, NULL
+	      };
+
+	      cub_auto =
+		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			      false, NULL);
+#endif
+	    }
+	  else
+	    {
+	      {
+		const char *args[] =
+		  { UTIL_CUB_AUTO_NAME, COMMAND_TYPE_START, NULL };
+		cub_auto =
+		  proc_execute (UTIL_CUB_AUTO_NAME, args, false, false, NULL);
+	      }
+	      {
+		const char *args[] =
+		  { UTIL_CUB_JS_NAME, COMMAND_TYPE_START, NULL };
+		cub_js =
+		  proc_execute (UTIL_CUB_JS_NAME, args, false, false, NULL);
+	      }
+
+	    }
+
 	  status = is_manager_running (3) ? NO_ERROR : ER_GENERIC_ERROR;
 	  print_result (PRINT_MANAGER_NAME, status, command_type);
+
 	}
       else
 	{
@@ -1412,17 +1640,35 @@ process_manager (int command_type)
     case STOP:
       if (is_manager_running (0))
 	{
-	  {
-	    const char *args[] =
-	      { UTIL_CUB_AUTO_NAME, COMMAND_TYPE_STOP, NULL };
-	    cub_auto = proc_execute (UTIL_CUB_AUTO_NAME, args, true, false,
-				     NULL);
-	  }
-	  {
-	    const char *args[] =
-	      { UTIL_CUB_JS_NAME, COMMAND_TYPE_STOP, NULL };
-	    cub_js = proc_execute (UTIL_CUB_JS_NAME, args, true, false, NULL);
-	  }
+	  if (process_window_service)
+	    {
+#if defined(WINDOWS)
+	      const char *args[] =
+		{ UTIL_WIN_SERVICE_CONTROLLER_NAME, PRINT_CMD_MANAGER,
+		COMMAND_TYPE_STOP, NULL
+	      };
+
+	      cub_auto =
+		proc_execute (UTIL_WIN_SERVICE_CONTROLLER_NAME, args, true,
+			      false, NULL);
+#endif
+	    }
+	  else
+	    {
+
+	      {
+		const char *args[] =
+		  { UTIL_CUB_AUTO_NAME, COMMAND_TYPE_STOP, NULL };
+		cub_auto =
+		  proc_execute (UTIL_CUB_AUTO_NAME, args, true, false, NULL);
+	      }
+	      {
+		const char *args[] =
+		  { UTIL_CUB_JS_NAME, COMMAND_TYPE_STOP, NULL };
+		cub_js =
+		  proc_execute (UTIL_CUB_JS_NAME, args, true, false, NULL);
+	      }
+	    }
 	  status = is_manager_running (2) ? ER_GENERIC_ERROR : NO_ERROR;
 	  print_result (PRINT_MANAGER_NAME, status, command_type);
 	}
@@ -1453,189 +1699,246 @@ process_manager (int command_type)
   return status;
 }
 
-/*
- * process_repl_server -
- *
- * return:
- *
- *      command_type(in):
- *      name(in):
- *      repl_port(in):
- *
- */
-static int
-process_repl_server (int command_type, char *name, char *repl_port,
-		     int argc, const char **argv)
+static bool
+ha_make_log_path (char *path, int size, char *base, char *db, char *node)
 {
-  int status = NO_ERROR;
-  int count;
+  return snprintf (path, size, "%s/%s_%s", base, db, node) >= 0;
+}
 
-  switch (command_type)
+static bool
+ha_concat_db_and_host (char *db_host, int size, const char *db,
+		       const char *host)
+{
+  return snprintf (db_host, size, "%s@%s", db, host) >= 0;
+}
+
+#if defined(WINDOWS)
+static bool
+ha_mkdir (const char *path, int dummy)
+{
+  return false;
+}
+#else
+static bool
+ha_mkdir (const char *path, mode_t mode)
+{
+  char dir[PATH_MAX];
+  struct stat statbuf;
+
+  if (stat (path, &statbuf) == 0 && S_ISDIR (statbuf.st_mode))
     {
-    case START:
-      count = argc - 5;
-      if (count > 4 || count % 2 != 0)
-	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
-	  return ER_GENERIC_ERROR;
-	}
-      if (name == NULL || repl_port == NULL)
-	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
-	  return ER_GENERIC_ERROR;
-	}
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S,
-		     PRINT_REPL_SERVER_NAME, PRINT_CMD_START, name);
-      if (is_server_running (CHECK_REPL_SERVER, name, 0))
-	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-			 PRINT_REPL_SERVER_NAME);
-	  return NO_ERROR;
-	}
-      else
-	{
-	  const char *args[] = { UTIL_REPL_SERVER_NAME, "-d", name,
-	    "-p", repl_port, NULL, NULL, NULL, NULL, NULL
-	  };
-	  if (count >= 2)
-	    {
-	      args[5] = argv[5];
-	      args[6] = argv[6];
-	    }
-	  if (count == 4)
-	    {
-	      args[7] = argv[7];
-	      args[8] = argv[8];
-	    }
-	  status = proc_execute (UTIL_REPL_SERVER_NAME, args, true, false,
-				 NULL);
-	  print_result (PRINT_REPL_SERVER_NAME, status, command_type);
-	}
-      break;
-    case STOP:
-      if (name == NULL)
-	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
-	  return ER_GENERIC_ERROR;
-	}
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S,
-		     PRINT_REPL_SERVER_NAME, PRINT_CMD_STOP, name);
-      if (is_server_running (CHECK_REPL_SERVER, name, 0))
-	{
-	  const char *args[] = { UTIL_COMMDB_NAME, "-K", name, NULL };
-	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
-	  print_result (PRINT_REPL_SERVER_NAME, status, command_type);
-	}
-      else
-	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			 PRINT_REPL_SERVER_NAME);
-	  return NO_ERROR;
-	}
-      break;
-    case STATUS:
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		     PRINT_REPL_NAME, PRINT_CMD_STATUS);
-      if (css_does_master_exist (prm_get_master_port_id ()))
-	{
-	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_REPL_STATUS, NULL };
-	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
-	}
-      else
-	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			 PRINT_MASTER_NAME);
-	}
-      break;
-    default:
-      return ER_GENERIC_ERROR;
+      return true;
     }
+
+  dirname_r (path, dir, PATH_MAX);
+  if (stat (dir, &statbuf) == -1)
+    {
+      if (errno == ENOENT && ha_mkdir (dir, mode))
+	{
+	  return mkdir (path, mode) == 0;
+	}
+      else
+	{
+	  return false;
+	}
+    }
+  else if (S_ISDIR (statbuf.st_mode))
+    {
+      return mkdir (path, mode) == 0;
+    }
+
+  return false;
+}
+#endif /* WINDOWS */
+
+static bool
+ha_is_registered (const char **v, bool copylogdb)
+{
+  char id[PATH_MAX];
+  int status;
+
+  if (copylogdb)
+    {
+      status = snprintf (id, PATH_MAX, "%s %s %s %s %s %s %s ", v[0], v[1],
+			 v[2], v[3], v[4], v[5], v[6]);
+    }
+  else
+    {
+      status = snprintf (id, PATH_MAX, "%s %s %s %s %s %s ", v[0], v[1],
+			 v[2], v[3], v[4], v[5]);
+    }
+
+  if (status > 0)
+    {
+      const char *args[] = { UTIL_COMMDB_NAME, COMMDB_IS_REG, id, NULL };
+      status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+      if (status == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+static int
+process_copylogdb (int command_type, HA_CONF * ha_conf, dynamic_array * da)
+{
+  char **nodes;
+  char **dbs;
+  HA_NODE_CONF *nc;
+  char log_path[PATH_MAX], db_host[PATH_MAX];
+  int i, j;
+  int status = NO_ERROR;
+  int pid;
+
+  nodes = ha_conf->node_names;
+  dbs = ha_conf->db_names;
+  nc = ha_conf->node_conf;
+
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		 UTIL_COPYLOGDB, PRINT_CMD_START);
+  for (i = 0; status == NO_ERROR && nodes[i] != NULL; i++)
+    {
+      if (util_is_localhost (nodes[i]))
+	{
+	  continue;
+	}
+
+      for (j = 0; status == NO_ERROR && dbs[j] != NULL; j++)
+	{
+	  if (ha_concat_db_and_host (db_host, PATH_MAX, dbs[j], nodes[i]) &&
+	      ha_make_log_path (log_path, PATH_MAX, nc[i].copy_log_base,
+				dbs[j], nodes[i]))
+	    {
+	      const char *args[] = { UTIL_ADMIN_NAME, UTIL_COPYLOGDB, "-L",
+		log_path, "-m", nc[i].copy_sync_mode, db_host, NULL
+	      };
+	      if (ha_is_registered (args, true))
+		{
+		  continue;
+		}
+
+	      if (ha_mkdir (log_path, 0755))
+		{
+		  status = proc_execute (UTIL_ADMIN_NAME, args, false, false,
+					 &pid);
+		  if (status == NO_ERROR && da_add (da, &pid) != NO_ERROR)
+		    {
+		      status = ER_GENERIC_ERROR;
+		    }
+		}
+	      else
+		{
+		  /* error - Coult not create the copy log directory. */
+		  status = ER_GENERIC_ERROR;
+		}
+	    }
+	}
+    }
+
+  print_result (UTIL_COPYLOGDB, status, command_type);
   return status;
 }
 
-/*
- * process_repl_agent -
- *
- * return:
- *
- *      command_type(in):
- *      name(in):
- *      password(in):
- *
- */
+static bool
+ha_make_mem_size (char *mem_size, int size, int value)
+{
+  return snprintf (mem_size, size, "--max-mem-size=%d", value) >= 0;
+}
+
 static int
-process_repl_agent (int command_type, char *name, char *password)
+process_applylogdb (int command_type, HA_CONF * ha_conf, dynamic_array * da)
+{
+  char **nodes;
+  char **dbs;
+  HA_NODE_CONF *nc;
+  char log_path[PATH_MAX], db_host[PATH_MAX], mem_size[PATH_MAX];
+  int i, j;
+  int status = NO_ERROR;
+  int pid;
+
+  nodes = ha_conf->node_names;
+  dbs = ha_conf->db_names;
+  nc = ha_conf->node_conf;
+
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		 UTIL_APPLYLOGDB, PRINT_CMD_START);
+
+  for (i = 0; status == NO_ERROR && nodes[i] != NULL; i++)
+    {
+      if (util_is_localhost (nodes[i]))
+	{
+	  continue;
+	}
+      for (j = 0; status == NO_ERROR && dbs[j] != NULL; j++)
+	{
+	  if (ha_concat_db_and_host (db_host, PATH_MAX, dbs[j], "localhost")
+	      && ha_make_log_path (log_path, PATH_MAX, nc[i].copy_log_base,
+				   dbs[j], nodes[i])
+	      && ha_make_mem_size (mem_size, PATH_MAX, nc[i].apply_max_mem))
+	    {
+	      const char *args[] = { UTIL_ADMIN_NAME, UTIL_APPLYLOGDB, "-L",
+		log_path, mem_size, db_host, NULL
+	      };
+	      if (ha_is_registered (args, false))
+		{
+		  continue;
+		}
+
+	      status = proc_execute (UTIL_ADMIN_NAME, args, false, false,
+				     &pid);
+	      if (status == NO_ERROR && da_add (da, &pid) != NO_ERROR)
+		{
+		  status = ER_GENERIC_ERROR;
+		}
+	    }
+	  else
+	    {
+	      status = ER_GENERIC_ERROR;
+	    }
+	}
+    }
+
+  print_result (UTIL_APPLYLOGDB, status, command_type);
+  return NO_ERROR;
+}
+
+static int
+us_start_all_ha_process (HA_CONF * ha_conf)
 {
   int status = NO_ERROR;
+  int i;
+  int pid;
+  dynamic_array *da = da_create (100, sizeof (int));
 
-  switch (command_type)
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		 PRINT_HA_PROCS_NAME, PRINT_CMD_START);
+
+  status = process_server (START, 1, &ha_conf->ha_db_list, true, false);
+  if (status == NO_ERROR)
     {
-    case START:
-      {
-	if (name == NULL)
-	  {
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
-	    return ER_GENERIC_ERROR;
-	  }
-	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S,
-		       PRINT_REPL_AGENT_NAME, PRINT_CMD_START, name);
-	if (is_server_running (CHECK_REPL_AGENT, name, 0))
-	  {
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_1S,
-			   PRINT_REPL_AGENT_NAME);
-	    return NO_ERROR;
-	  }
-	else
-	  {
-	    const char *args[] = { UTIL_REPL_AGENT_NAME, "-d", name,
-	      password != NULL ? "-p" : NULL, password, NULL
-	    };
-	    status = proc_execute (UTIL_REPL_AGENT_NAME, args, true, false,
-				   NULL);
-	    print_result (PRINT_REPL_AGENT_NAME, status, command_type);
-	  }
-      }
-      break;
-    case STOP:
-      {
-	if (name == NULL)
-	  {
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_MISS_ARGUMENT);
-	    return ER_GENERIC_ERROR;
-	  }
-	print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S,
-		       PRINT_REPL_AGENT_NAME, PRINT_CMD_STOP, name);
-	if (is_server_running (CHECK_REPL_AGENT, name, 0))
-	  {
-	    const char *args[] = { UTIL_COMMDB_NAME, "-k", name, NULL };
-	    status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
-	    print_result (PRINT_REPL_AGENT_NAME, status, command_type);
-	  }
-	else
-	  {
-	    print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			   CHECK_REPL_AGENT);
-	    return NO_ERROR;
-	  }
-      }
-      break;
-    case STATUS:
-      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
-		     PRINT_REPL_NAME, PRINT_CMD_STATUS);
-      if (css_does_master_exist (prm_get_master_port_id ()))
-	{
-	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_REPL_STATUS, NULL };
-	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
-	}
-      else
-	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
-			 PRINT_MASTER_NAME);
-	}
-      break;
-    default:
-      return ER_GENERIC_ERROR;
+      status = process_copylogdb (START, ha_conf, da);
     }
+  if (status == NO_ERROR)
+    {
+      status = process_applylogdb (START, ha_conf, da);
+    }
+
+  sleep (3);
+  for (i = 0; i < da_size (da); i++)
+    {
+      da_get (da, i, &pid);
+      if (is_terminated_process (pid))
+	{
+	  status = ER_GENERIC_ERROR;
+	  break;
+	}
+    }
+
+  da_destroy (da);
+
+  print_result (PRINT_HA_PROCS_NAME, status, START);
   return status;
 }
 
@@ -1654,9 +1957,59 @@ process_heartbeat (int command_type, char *name)
 {
   int status = NO_ERROR;
   int master_port = prm_get_master_port_id ();
+  HA_CONF ha_conf;
+
+  if (util_make_ha_conf (&ha_conf) == false)
+    {
+      print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
+      print_result (PRINT_HEARTBEAT_NAME, ER_FAILED, command_type);
+      return ER_FAILED;
+    }
 
   switch (command_type)
     {
+    case START:
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		     PRINT_HEARTBEAT_NAME, PRINT_CMD_START);
+
+      status = process_master (START);
+      if (status != NO_ERROR)
+	{
+	  return status;
+	}
+
+      if (css_does_master_exist (master_port))
+	{
+	  const char *args[] = { UTIL_COMMDB_NAME, COMMDB_HA_ACTIVATE, NULL };
+	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	}
+
+      status = us_start_all_ha_process (&ha_conf);
+      if (status != NO_ERROR)
+	{
+	  const char *args[] =
+	    { UTIL_COMMDB_NAME, COMMDB_HA_DEACTIVATE, NULL };
+	  process_server (STOP, 1, &ha_conf.ha_db_list, true, false);
+	  proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	}
+      print_result (PRINT_HEARTBEAT_NAME, status, command_type);
+      break;
+    case STOP:
+      print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
+		     PRINT_HEARTBEAT_NAME, PRINT_CMD_STOP);
+      if (css_does_master_exist (master_port))
+	{
+	  const char *args[] =
+	    { UTIL_COMMDB_NAME, COMMDB_HA_DEACTIVATE, NULL };
+	  status = proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
+	}
+      else
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
+			 PRINT_MASTER_NAME);
+	}
+      print_result (PRINT_HEARTBEAT_NAME, status, command_type);
+      break;
     case DEACTIVATE:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_HEARTBEAT_NAME, PRINT_CMD_DEACTIVATE);
@@ -1671,6 +2024,7 @@ process_heartbeat (int command_type, char *name)
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			 PRINT_MASTER_NAME);
 	}
+      print_result (PRINT_HEARTBEAT_NAME, status, command_type);
       break;
     case ACTIVATE:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
@@ -1684,6 +2038,15 @@ process_heartbeat (int command_type, char *name)
 	{
 	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_1S,
 			 PRINT_MASTER_NAME);
+	}
+
+      status = us_start_all_ha_process (&ha_conf);
+
+      if (status != NO_ERROR)
+	{
+	  const char *args[] =
+	    { UTIL_COMMDB_NAME, COMMDB_HA_DEACTIVATE, NULL };
+	  proc_execute (UTIL_COMMDB_NAME, args, true, false, NULL);
 	}
       break;
     case DEREGISTER:
@@ -1707,6 +2070,7 @@ process_heartbeat (int command_type, char *name)
 			 PRINT_MASTER_NAME);
 	}
       break;
+    case STATUS:
     case LIST:
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S,
 		     PRINT_HEARTBEAT_NAME, PRINT_CMD_LIST);
@@ -1750,8 +2114,12 @@ process_heartbeat (int command_type, char *name)
 	}
       break;
     default:
-      return ER_GENERIC_ERROR;
+      status = ER_GENERIC_ERROR;
+      break;
     }
+
+  util_free_ha_conf (&ha_conf);
+
   return status;
 
 }
@@ -1800,8 +2168,7 @@ load_properties (void)
   bool server_flag = false;
   bool broker_flag = false;
   bool manager_flag = false;
-  bool repl_server_flag = false;
-  bool repl_agent_flag = false;
+  bool heartbeat_flag = false;
   char *start_server_list = NULL;
 
   if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
@@ -1838,6 +2205,10 @@ load_properties (void)
 		{
 		  manager_flag = true;
 		}
+	      else if (strcmp (util, UTIL_TYPE_HEARTBEAT) == 0)
+		{
+		  heartbeat_flag = true;
+		}
 	      else
 		{
 		  return ER_GENERIC_ERROR;
@@ -1865,14 +2236,10 @@ load_properties (void)
     strdup (broker_flag ? PROPERTY_ON : PROPERTY_OFF);
   us_Property_map[SERVICE_START_MANAGER].property_value =
     strdup (manager_flag ? PROPERTY_ON : PROPERTY_OFF);
-  us_Property_map[SERVICE_START_REPL_SERVER].property_value =
-    strdup (repl_server_flag ? PROPERTY_ON : PROPERTY_OFF);
-  us_Property_map[SERVICE_START_REPL_AGENT].property_value =
-    strdup (repl_agent_flag ? PROPERTY_ON : PROPERTY_OFF);
+  us_Property_map[SERVICE_START_HEARTBEAT].property_value =
+    strdup (heartbeat_flag ? PROPERTY_ON : PROPERTY_OFF);
   us_Property_map[SERVER_START_LIST].property_value =
     start_server_list ? start_server_list : strdup ("");
-  us_Property_map[REPL_SERVER_START_LIST].property_value = strdup ("");
-  us_Property_map[REPL_AGENT_START_LIST].property_value = strdup ("");
   return NO_ERROR;
 }
 

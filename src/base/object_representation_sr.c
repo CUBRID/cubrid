@@ -49,6 +49,28 @@
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))
 #define OR_ARRAY_EXTENT 10
 
+/*
+ * VARIABLE OFFSET TABLE ACCESSORS
+ * The variable offset table is present in the headers of objects and sets.
+ */
+
+#define OR_VAR_TABLE_ELEMENT_OFFSET(table, index) 			\
+            OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, index, 		\
+                                                 BIG_VAR_OFFSET_SIZE)
+
+#define OR_VAR_TABLE_ELEMENT_LENGTH(table, index) 			\
+            OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL(table, index, 		\
+                                                 BIG_VAR_OFFSET_SIZE)
+
+/* ATTRIBUTE LOCATION */
+
+#define OR_FIXED_ATTRIBUTES_OFFSET(nvars) \
+   (OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL(nvars, BIG_VAR_OFFSET_SIZE))
+
+#define OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL(nvars, offset_size) \
+   (OR_HEADER_SIZE + OR_VAR_TABLE_SIZE_INTERNAL (nvars, offset_size))
+
+
 typedef struct or_btree_property OR_BTREE_PROPERTY;
 struct or_btree_property
 {
@@ -84,7 +106,7 @@ static void or_install_btids_constraint (OR_CLASSREP * rep,
 					 DB_SEQ * constraint_seq,
 					 BTREE_TYPE type,
 					 const char *cons_name);
-static void or_install_btids (OR_CLASSREP * rep, DB_SET * props);
+static void or_install_btids (OR_CLASSREP * rep, DB_SEQ * props);
 static OR_CLASSREP *or_get_current_representation (RECDES * record,
 						   int do_indexes);
 static OR_CLASSREP *or_get_old_representation (RECDES * record, int repid,
@@ -598,6 +620,8 @@ or_class_repid (RECDES * record)
   char *ptr;
   int id;
 
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
   ptr = (char *) record->data +
     OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT) + ORC_REPID_OFFSET;
 
@@ -623,6 +647,8 @@ or_class_hfid (RECDES * record, HFID * hfid)
 {
   char *ptr;
 
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
   ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
   hfid->vfid.fileid = OR_GET_INT (ptr + ORC_HFID_FILEID_OFFSET);
   hfid->vfid.volid = OR_GET_INT (ptr + ORC_HFID_VOLID_OFFSET);
@@ -641,6 +667,8 @@ void
 or_class_statistics (RECDES * record, OID * oid)
 {
   char *ptr;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
   ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
 
@@ -840,9 +868,9 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class,
       for (i = 0; i < nsubs; i++)
 	{
 	  OR_GET_OID (ptr, &sub_class);
-	  if (or_get_hierarchy_helper
-	      (thread_p, source_class, &sub_class, btid, class_oids, hfids,
-	       num_classes, max_classes) != NO_ERROR)
+	  if (or_get_hierarchy_helper (thread_p, source_class, &sub_class,
+				       btid, class_oids, hfids, num_classes,
+				       max_classes) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -979,6 +1007,9 @@ or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
 
   /* find the source class of the attribute from the record */
   start = record->data;
+
+  assert (OR_GET_OFFSET_SIZE (start) == BIG_VAR_OFFSET_SIZE);
+
   ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
 
   n_fixed = OR_GET_INT (ptr + ORC_FIXED_COUNT_OFFSET);
@@ -993,6 +1024,7 @@ or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
     {
       /* diskatt will now be pointing at the offset table for this attribute.
          this is logically the "start" of this nested object. */
+
       diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 
       /* set ptr to the beginning of the fixed attributes */
@@ -1018,10 +1050,12 @@ or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, int attrid,
 						      ORC_ATT_NAME_INDEX));
 
   if (!found
-      || (OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_NAME_INDEX) == 0)
-      || (or_get_hierarchy_helper (thread_p, &source_class, &source_class,
-				   btid, class_oids, hfids,
-				   num_classes, &max_classes) != NO_ERROR))
+      ||
+      (OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_NAME_INDEX) == 0)
+      ||
+      (or_get_hierarchy_helper (thread_p, &source_class, &source_class,
+				btid, class_oids, hfids, num_classes,
+				&max_classes) != NO_ERROR))
     {
       goto error;
     }
@@ -1822,15 +1856,15 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq,
  *   props(in): Class property list
  */
 static void
-or_install_btids (OR_CLASSREP * rep, DB_SET * props)
+or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 {
   OR_BTREE_PROPERTY property_vars[SM_PROPERTY_NUM_INDEX_FAMILY] = {
-    {SM_PROPERTY_INDEX, NULL, BTREE_INDEX, 0},
-    {SM_PROPERTY_UNIQUE, NULL, BTREE_UNIQUE, 0},
-    {SM_PROPERTY_REVERSE_INDEX, NULL, BTREE_REVERSE_INDEX, 0},
-    {SM_PROPERTY_REVERSE_UNIQUE, NULL, BTREE_REVERSE_UNIQUE, 0},
-    {SM_PROPERTY_PRIMARY_KEY, NULL, BTREE_PRIMARY_KEY, 0},
     {SM_PROPERTY_FOREIGN_KEY, NULL, BTREE_FOREIGN_KEY, 0},
+    {SM_PROPERTY_PRIMARY_KEY, NULL, BTREE_PRIMARY_KEY, 0},
+    {SM_PROPERTY_UNIQUE, NULL, BTREE_UNIQUE, 0},
+    {SM_PROPERTY_REVERSE_UNIQUE, NULL, BTREE_REVERSE_UNIQUE, 0},
+    {SM_PROPERTY_INDEX, NULL, BTREE_INDEX, 0},
+    {SM_PROPERTY_REVERSE_INDEX, NULL, BTREE_REVERSE_INDEX, 0}
   };
 
   DB_VALUE vals[SM_PROPERTY_NUM_INDEX_FAMILY];
@@ -1940,6 +1974,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
     }
 
   start = record->data;
+
+  assert (OR_GET_OFFSET_SIZE (start) == BIG_VAR_OFFSET_SIZE);
+
   ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
 
   rep->id = OR_GET_INT (ptr + ORC_REPID_OFFSET);
@@ -1994,7 +2031,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
   /* calculate the offset to the first fixed width attribute in instances
      of this class. */
-  start_offset = offset = OR_FIXED_ATTRIBUTES_OFFSET (n_variable);
+  start_offset = offset = 0;
 
   for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
     {
@@ -2007,8 +2044,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
 					     ORC_ATT_ORIGINAL_VALUE_INDEX));
 
-      vallen =
-	OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_ORIGINAL_VALUE_INDEX);
+      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt,
+					    ORC_ATT_ORIGINAL_VALUE_INDEX);
 
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
@@ -2045,7 +2082,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       if (OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_DOMAIN_INDEX) == 0)
 	{
 	  /* shouldn't happen, fake one up from the type ! */
-	  att->domain = tp_Domains[att->type];
+	  att->domain = tp_domain_resolve_default (att->type);
 	}
       else
 	{
@@ -2092,8 +2129,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
 					     ORC_ATT_CURRENT_VALUE_INDEX));
 
-      vallen =
-	OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
+      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt,
+					    ORC_ATT_CURRENT_VALUE_INDEX);
 
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
@@ -2118,7 +2155,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       if (OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_DOMAIN_INDEX) == 0)
 	{
 	  /* shouldn't happen, fake one up from the type ! */
-	  att->domain = tp_Domains[att->type];
+	  att->domain = tp_domain_resolve_default (att->type);
 	}
       else
 	{
@@ -2156,8 +2193,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		OR_VAR_TABLE_ELEMENT_OFFSET (diskatt,
 					     ORC_ATT_CURRENT_VALUE_INDEX));
 
-      vallen =
-	OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
+      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt,
+					    ORC_ATT_CURRENT_VALUE_INDEX);
 
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
@@ -2182,7 +2219,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       if (OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_DOMAIN_INDEX) == 0)
 	{
 	  /* shouldn't happen, fake one up from the type ! */
-	  att->domain = tp_Domains[att->type];
+	  att->domain = tp_domain_resolve_default (att->type);
 	}
       else
 	{
@@ -2293,6 +2330,8 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       return NULL;
     }
 
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
   repset = (record->data +
 	    OR_VAR_OFFSET (record->data, ORC_REPRESENTATIONS_INDEX));
 
@@ -2383,7 +2422,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
    * of this class.  Save the start of this region so we can calculate the
    * total fixed witdh size.
    */
-  start = offset = OR_FIXED_ATTRIBUTES_OFFSET (n_variable);
+  start = offset = 0;
 
   /* build up the attribute descriptions */
   for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
@@ -2415,7 +2454,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       if (OR_VAR_TABLE_ELEMENT_LENGTH (repatt, ORC_REPATT_DOMAIN_INDEX) == 0)
 	{
 	  /* shouldn't happen, fake one up from the type ! */
-	  att->domain = tp_Domains[att->type];
+	  att->domain = tp_domain_resolve_default (att->type);
 	}
       else
 	{
@@ -2490,6 +2529,8 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
     {
       *count = 0;
     }
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
   if (!OR_VAR_IS_NULL (record->data, ORC_REPRESENTATIONS_INDEX))
     {
@@ -2582,7 +2623,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
        * of this class.  Save the start of this region so we can calculate the
        * total fixed witdh size.
        */
-      start = offset = OR_FIXED_ATTRIBUTES_OFFSET (n_variable);
+      start = offset = 0;
 
       /* build up the attribute descriptions */
       for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
@@ -2611,11 +2652,11 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 
 	  /* Extract the full domain for this attribute, think about caching here
 	     it will add some time that may not be necessary. */
-	  if (OR_VAR_TABLE_ELEMENT_LENGTH
-	      (repatt, ORC_REPATT_DOMAIN_INDEX) == 0)
+	  if (OR_VAR_TABLE_ELEMENT_LENGTH (repatt,
+					   ORC_REPATT_DOMAIN_INDEX) == 0)
 	    {
 	      /* shouldn't happen, fake one up from the type ! */
-	      att->domain = tp_Domains[att->type];
+	      att->domain = tp_domain_resolve_default (att->type);
 	    }
 	  else
 	    {
@@ -2702,6 +2743,8 @@ or_get_classrep (RECDES * record, int repid)
   char *fixed;
   int current;
 
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
   if (repid == NULL_REPRID)
     {
       rep = or_get_current_representation (record, 1);
@@ -2738,6 +2781,8 @@ or_get_classrep_noindex (RECDES * record, int repid)
   OR_CLASSREP *rep;
   char *fixed;
   int current;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
 
   if (repid == NULL_REPRID)
     {
@@ -2931,6 +2976,9 @@ or_get_attrname (RECDES * record, int attrid)
   char *attr_name, *start, *ptr, *attset, *diskatt = NULL;
 
   start = record->data;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
   ptr = start + OR_FIXED_ATTRIBUTES_OFFSET (ORC_CLASS_VAR_ATT_COUNT);
   attr_name = NULL;
 

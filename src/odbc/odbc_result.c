@@ -42,7 +42,7 @@ PRIVATE void get_bind_info (ODBC_STATEMENT * stmt,
 			    short col_index,
 			    short *type,
 			    void **bound_ptr,
-			    long *buffer_length, SQLLEN **strlen_ind_ptr);
+			    long *buffer_length, SQLLEN ** strlen_ind_ptr);
 PRIVATE RETCODE move_catalog_rs (ODBC_STATEMENT * stmt,
 				 unsigned long *current_tpl_pos);
 PRIVATE RETCODE get_catalog_data (ODBC_STATEMENT * stmt,
@@ -63,7 +63,7 @@ odbc_bind_col (ODBC_STATEMENT * stmt,
 	       SQLUSMALLINT column_num,
 	       SQLSMALLINT target_type,
 	       SQLPOINTER target_value_ptr,
-	       SQLLEN buffer_len, SQLLEN *strlen_indicator)
+	       SQLLEN buffer_len, SQLLEN * strlen_indicator)
 {
 
   ODBC_DESC *ard;
@@ -142,12 +142,13 @@ error:
 PUBLIC RETCODE
 odbc_describe_col (ODBC_STATEMENT * stmt,
 		   SQLUSMALLINT column_number,
-		   SQLCHAR *column_name,
+		   SQLCHAR * column_name,
 		   SQLSMALLINT buffer_length,
-		   SQLSMALLINT *name_length_ptr,
-		   SQLSMALLINT *data_type_ptr,
-		   SQLULEN *column_size_ptr,
-		   SQLSMALLINT *decimal_digits_ptr, SQLSMALLINT *nullable_ptr)
+		   SQLSMALLINT * name_length_ptr,
+		   SQLSMALLINT * data_type_ptr,
+		   SQLULEN * column_size_ptr,
+		   SQLSMALLINT * decimal_digits_ptr,
+		   SQLSMALLINT * nullable_ptr)
 {
   ODBC_DESC *ird = NULL;
   ODBC_RECORD *record = NULL;
@@ -304,7 +305,7 @@ error:
 * NOTE:
 ************************************************************************/
 PUBLIC RETCODE
-odbc_row_count (ODBC_STATEMENT * stmt, SQLLEN *row_count)
+odbc_row_count (ODBC_STATEMENT * stmt, SQLLEN * row_count)
 {
   ODBC_DESC *ipd = NULL;
 
@@ -545,7 +546,8 @@ PUBLIC RETCODE
 odbc_get_data (ODBC_STATEMENT * stmt,
 	       SQLUSMALLINT col_number,
 	       SQLSMALLINT target_type,
-	       SQLPOINTER bound_ptr, SQLLEN buffer_length, SQLLEN *str_ind_ptr)
+	       SQLPOINTER bound_ptr, SQLLEN buffer_length,
+	       SQLLEN * str_ind_ptr)
 {
   RETCODE status = ODBC_SUCCESS, rc;
   short precision, scale;
@@ -619,8 +621,8 @@ odbc_get_data (ODBC_STATEMENT * stmt,
 		  || target_type == SQL_C_UNI_OBJECT)
 		{
 		  rc =
-		    str_value_assign (cci_value.str, bound_ptr, (int) buffer_length,
-				      str_ind_ptr);
+		    str_value_assign (cci_value.str, bound_ptr,
+				      (int) buffer_length, str_ind_ptr);
 		  if (rc == ODBC_SUCCESS_WITH_INFO)
 		    {
 		      if (buffer_length > 0)
@@ -878,7 +880,8 @@ get_bind_info (ODBC_STATEMENT * stmt,
 	       short row_index,
 	       short col_index,
 	       short *type,
-	       void **bound_ptr, long *buffer_length, SQLLEN **strlen_ind_ptr)
+	       void **bound_ptr, long *buffer_length,
+	       SQLLEN ** strlen_ind_ptr)
 {
   long element_size;
   long offset_size;
@@ -1050,14 +1053,14 @@ move_advanced_cursor (ODBC_STATEMENT * stmt,
       if (row_set_size > result_set_size)
 	{
 	  cci_rc =
-	    cci_cursor (stmt->stmthd, 1, CCI_CURSOR_FIRST, &cci_err_buf);
+	    cci_cursor (stmt->stmthd, 1, CCI_CURSOR_LAST, &cci_err_buf);
 	  tpl_pos = 1;
 	}
       else
 	{
 	  cci_rc =
 	    cci_cursor (stmt->stmthd, result_set_size - row_set_size + 1,
-			CCI_CURSOR_FIRST, &cci_err_buf);
+			CCI_CURSOR_LAST, &cci_err_buf);
 	  tpl_pos = result_set_size - row_set_size + 1;
 	}
       break;
@@ -1105,7 +1108,7 @@ move_advanced_cursor (ODBC_STATEMENT * stmt,
 
   if (cci_rc < 0 && cci_rc != CCI_ER_NO_MORE_DATA)
     {
-      odbc_set_diag_by_cci (stmt->diag, cci_rc, cci_err_buf.err_msg);
+      odbc_set_diag_by_cci (stmt->diag, cci_rc, &cci_err_buf);
       return ODBC_ERROR;
     }
   else if (cci_rc == CCI_ER_NO_MORE_DATA)
@@ -1155,7 +1158,7 @@ move_cursor (int req_handle, unsigned long *current_tpl_pos, ODBC_DIAG * diag)
 
   if (cci_rc < 0 && cci_rc != CCI_ER_NO_MORE_DATA && diag != NULL)
     {
-      odbc_set_diag_by_cci (diag, cci_rc, cci_err_buf.err_msg);
+      odbc_set_diag_by_cci (diag, cci_rc, &cci_err_buf);
       rc = ODBC_ERROR;
     }
   else if (cci_rc == CCI_ER_NO_MORE_DATA)
@@ -1207,46 +1210,28 @@ fetch_tuple (int req_handle, ODBC_DIAG * diag, long sensitivity)
   int cci_rc;
   T_CCI_ERROR cci_err_buf;
 
-
   if (sensitivity == SQL_SENSITIVE)
     {
-      cci_rc = cci_fetch_buffer_clear (req_handle);
-      if (cci_rc < 0 && diag != NULL)
-	{
-	  odbc_set_diag_by_cci (diag, cci_rc, cci_err_buf.err_msg);
-	  return ODBC_ERROR;
-	}
-
       cci_rc = cci_fetch_sensitive (req_handle, &cci_err_buf);
-      if (cci_rc < 0)
-	{
-	  if (cci_rc == CCI_ER_DELETED_TUPLE)
-	    return ODBC_ROW_DELETED;
-	  else
-	    {
-	      if (diag != NULL)
-		{
-		  odbc_set_diag_by_cci (diag, cci_rc, cci_err_buf.err_msg);
-		}
-	      return ODBC_ERROR;
-	    }
-	}
     }
   else
     {
       cci_rc = cci_fetch (req_handle, &cci_err_buf);
-      if (cci_rc < 0)
+    }
+
+  if (cci_rc < 0)
+    {
+      if (cci_rc == CCI_ER_DELETED_TUPLE)
 	{
-	  if (cci_rc == CCI_ER_DELETED_TUPLE)
-	    return ODBC_ROW_DELETED;
-	  else
+	  return ODBC_ROW_DELETED;
+	}
+      else
+	{
+	  if (diag != NULL)
 	    {
-	      if (diag != NULL)
-		{
-		  odbc_set_diag_by_cci (diag, cci_rc, cci_err_buf.err_msg);
-		}
-	      return ODBC_ERROR;
+	      odbc_set_diag_by_cci (diag, cci_rc, &cci_err_buf);
 	    }
+	  return ODBC_ERROR;
 	}
     }
 
@@ -1305,7 +1290,7 @@ odbc_more_results (ODBC_STATEMENT * stmt)
   if (stmt->conn->attr_access_mode == SQL_MODE_READ_ONLY &&
       !RESULTSET_STMT_TYPE (stmt->stmt_type))
     {
-      odbc_set_diag (stmt->diag, "UN012", 0, NULL);
+			odbc_set_diag (stmt->diag, "HY000", 0, "SQL Mode is read-only.");
       return ODBC_ERROR;
     }
 
@@ -1314,7 +1299,7 @@ odbc_more_results (ODBC_STATEMENT * stmt)
   return ODBC_SUCCESS;
 
 error:
-  odbc_set_diag_by_cci (stmt->diag, cci_rc, cci_err_buf.err_msg);
+  odbc_set_diag_by_cci (stmt->diag, cci_rc, &cci_err_buf);
   return ODBC_ERROR;
 }
 
@@ -1341,8 +1326,8 @@ c_value_to_bound_ptr (void *bound_ptr,
       *((long *) bound_ptr) = c_value->value.l;
       break;
     case SQL_C_UBIGINT:
-	case SQL_C_SBIGINT:
-      *((__int64 *)bound_ptr) = c_value->value.bi;
+    case SQL_C_SBIGINT:
+      *((__int64 *) bound_ptr) = c_value->value.bi;
     case SQL_C_FLOAT:
       *((float *) bound_ptr) = c_value->value.f;
       break;

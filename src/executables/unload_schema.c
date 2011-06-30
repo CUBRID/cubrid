@@ -614,7 +614,7 @@ emit_class_owner (FILE * fp, MOP class_)
 		  DB_GET_STRING (&value) != NULL)
 		{
 		  fprintf (fp,
-			   "call change_owner('%s', '%s') on class db_root;\n",
+			   "call [change_owner]('%s', '%s') on class [db_root];\n",
 			   classname, DB_GET_STRING (&value));
 		}
 	      db_value_clear (&value);
@@ -641,15 +641,15 @@ export_serial (FILE * outfp)
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
    * when changing the following query. Notice the order of the result.
    */
-  const char *query = "select name, owner.name, "
-    "current_val, "
-    "increment_val, "
-    "max_val, "
-    "min_val, "
-    "cyclic, "
-    "started, "
-    "cached_num "
-    "from db_serial where class_name is null and att_name is null";
+  const char *query = "select [name], [owner].[name], "
+    "[current_val], "
+    "[increment_val], "
+    "[max_val], "
+    "[min_val], "
+    "[cyclic], "
+    "[started], "
+    "[cached_num] "
+    "from [db_serial] where [class_name] is null and [att_name] is null";
 
   error = db_execute (query, &query_result, &query_error);
   if (error < 0)
@@ -787,7 +787,7 @@ export_serial (FILE * outfp)
 	    }
 	}
 
-      fprintf (outfp, "call find_user('%s') on class db_user to auser;\n",
+      fprintf (outfp, "call [find_user]('%s') on class [db_user] to [auser];\n",
 	       DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
       fprintf (outfp, "create serial %s%s%s\n",
 	       PRINT_IDENTIFIER (DB_PULL_STRING (&values[SERIAL_NAME])));
@@ -813,7 +813,7 @@ export_serial (FILE * outfp)
 
 	}
       fprintf (outfp,
-	       "call change_serial_owner ('%s', '%s') on class db_serial;\n\n",
+	       "call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
 	       DB_PULL_STRING (&values[SERIAL_NAME]),
 	       DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
 
@@ -941,6 +941,11 @@ extractschema (const char *exec_name, int do_auth)
 
   if ((size_t) total > sizeof (output_filename))
     {
+      if (vclass_list_has_using_index != NULL)
+	{
+	  db_objlist_free (vclass_list_has_using_index);
+	}
+
       return 1;
     }
 
@@ -950,12 +955,16 @@ extractschema (const char *exec_name, int do_auth)
   output_file = fopen_ex (output_filename, "w");
   if (output_file == NULL)
     {
+      if (vclass_list_has_using_index != NULL)
+	{
+	  db_objlist_free (vclass_list_has_using_index);
+	}
+
       (void) fprintf (stderr, "%s: %s.\n\n", exec_name, strerror (errno));
       return errno;
     }
 
-  if (tr_dump_selective_triggers (output_file, delimited_id_flag,
-				  classes) != NO_ERROR)
+  if (tr_dump_selective_triggers (output_file, classes) != NO_ERROR)
     {
       err_count++;
     }
@@ -1236,7 +1245,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth,
 	    {
 	      continue;
 	    }
-	  au_export_grants (output_file, cl->op, delimited_id_flag);
+	  au_export_grants (output_file, cl->op);
 	}
     }
 
@@ -2652,16 +2661,23 @@ emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier)
   const char *name;
 
   name = db_method_name (method);
+
   switch (qualifier)
     {
     case INSTANCE_METHOD:
       {
-	fprintf (output_file, "       %s%s%s(", PRINT_IDENTIFIER (name));
+	if (name != NULL)
+	  {
+	    fprintf (output_file, "       %s%s%s(", PRINT_IDENTIFIER (name));
+	  }
 	break;
       }				/* case INSTANCE_METHOD */
     case CLASS_METHOD:
       {
-	fprintf (output_file, "CLASS  %s%s%s(", PRINT_IDENTIFIER (name));
+	if (name != NULL)
+	  {
+	    fprintf (output_file, "CLASS  %s%s%s(", PRINT_IDENTIFIER (name));
+	  }
 	break;
       }				/* case CLASS_METHOD */
     }
@@ -2700,7 +2716,10 @@ emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier)
   if (method_function_name != NULL)
     {
       name = db_method_function (method);
-      fprintf (output_file, " FUNCTION %s%s%s", PRINT_IDENTIFIER (name));
+      if (name != NULL)
+	{
+	  fprintf (output_file, " FUNCTION %s%s%s", PRINT_IDENTIFIER (name));
+	}
     }
 }
 
@@ -2714,18 +2733,6 @@ static void
 emit_methfile_def (DB_METHFILE * methfile)
 {
   (void) fprintf (output_file, "       '%s'", db_methfile_name (methfile));
-}
-
-/*
- * need_quotes - check for quotes needed
- *    return: true if needed, false otherwise
- *    identifier(in): identifier to check for quote-needness
- */
-bool
-need_quotes (const char *identifier)
-{
-  return (delimited_id_flag || pt_is_keyword (identifier)
-	  || !lang_check_identifier (identifier, strlen (identifier)));
 }
 
 /*
@@ -3073,7 +3080,7 @@ emit_stored_procedure (void)
 	}
 
       fprintf (output_file,
-	       "call change_sp_owner('%s', '%s') on class db_root;\n",
+	       "call [change_sp_owner]('%s', '%s') on class [db_root];\n",
 	       DB_GET_STRING (&sp_name_val), DB_GET_STRING (&owner_name_val));
 
       db_value_clear (&owner_name_val);

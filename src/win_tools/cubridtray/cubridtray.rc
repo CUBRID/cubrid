@@ -66,7 +66,7 @@ END
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
-IDR_MAINFRAME           ICON    DISCARDABLE     "res\\smile1.ico"
+IDR_MAINFRAME           ICON    DISCARDABLE     "res\\ico00001.ico"
 IDR_UNITRATYPE          ICON    DISCARDABLE     "res\\unitrayDoc.ico"
 IDI_SMILE               ICON    DISCARDABLE     "res\\idr_main.ico"
 IDR_STOP                ICON    DISCARDABLE     "res\\ICON1.ICO"
@@ -509,15 +509,8 @@ BEGIN
     BEGIN
         MENUITEM "트레이 정보",                 PU_ABOUT
         MENUITEM SEPARATOR
-        POPUP "큐브리드 서버"
-        BEGIN
-            MENUITEM "구동",                        PU_EASY_STARTUP
-            MENUITEM "정지",                        PU_EASY_STOP
-        END
-        POPUP "도구"
-        BEGIN
-            MENUITEM "큐브리드 매니저",             PU_UNITOOL_EMANAGER
-        END
+        MENUITEM "서비스 구동",                 PU_EASY_STARTUP
+        MENUITEM "서비스 정지",                 PU_EASY_STOP
         MENUITEM SEPARATOR
         MENUITEM "끝내기",                      PU_STOP
     END
@@ -529,15 +522,8 @@ BEGIN
     BEGIN
         MENUITEM "About",                       PU_ABOUT
         MENUITEM SEPARATOR
-        POPUP "CUBRID Server"
-        BEGIN
-            MENUITEM "Start",                       PU_EASY_STARTUP
-            MENUITEM "Stop",                        PU_EASY_STOP
-        END
-        POPUP "Tools"
-        BEGIN
-            MENUITEM "CUBRID Manager",              PU_UNITOOL_EMANAGER
-        END
+        MENUITEM "Service Start",               PU_EASY_STARTUP
+        MENUITEM "Service Stop",                PU_EASY_STOP
         MENUITEM SEPARATOR
         MENUITEM "Exit",                        PU_STOP
     END

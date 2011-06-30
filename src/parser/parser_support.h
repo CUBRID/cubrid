@@ -126,13 +126,23 @@ typedef struct key_info
   KEY_RANGE *key_ranges;	/* a list of key ranges */
   int key_cnt;			/* key count */
   int is_constant;		/* every key value is a constant */
+  struct regu_variable_node *key_limit_l;	/* lower key limit */
+  struct regu_variable_node *key_limit_u;	/* upper key limit */
+  int key_limit_reset;		/* should key limit reset at each range */
 } KEY_INFO;			/* key information structure */
 
 typedef struct indx_info
 {
   INDX_ID indx_id;		/* index identifier */
+  int coverage;			/* index coverage state */
+  OID class_oid;
   RANGE_TYPE range_type;	/* range type */
   KEY_INFO key_info;		/* key information */
+  int orderby_desc;		/* first column of the order by is desc */
+  int groupby_desc;		/* first column of the group by is desc */
+  int use_desc_index;		/* using descending index */
+  int orderby_skip;		/* order by skip information */
+  int groupby_skip;		/* group by skip information */
 } INDX_INFO;			/* index information structure */
 
 

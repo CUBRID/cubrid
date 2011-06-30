@@ -52,6 +52,29 @@ struct root_class
   SM_CLASS_HEADER header;
 };
 
+/*
+ * Structure used when truncating a class and changing an attribute.
+ * During these operations, indexes are dropped and recreated. 
+ * The information needed to recreate the constraints (indexes) are saved in 
+ * this structure.
+ */
+typedef struct sm_constraint_info SM_CONSTRAINT_INFO;
+
+struct sm_constraint_info
+{
+  struct sm_constraint_info *next;
+  char *name;
+  char **att_names;
+  int *asc_desc;
+  int *prefix_length;
+  char *ref_cls_name;
+  char **ref_attrs;
+  char *fk_cache_attr;
+  SM_FOREIGN_KEY_ACTION fk_delete_action;
+  SM_FOREIGN_KEY_ACTION fk_update_action;
+  DB_CONSTRAINT_TYPE constraint_type;
+};
+
 extern ROOT_CLASS sm_Root_class;
 
 extern const char TEXT_CONSTRAINT_PREFIX[];
@@ -104,6 +127,7 @@ extern int sm_drop_constraint (MOP classop,
 			       const char *constraint_name,
 			       const char **att_names, bool class_attributes,
 			       bool mysql_index_name);
+extern int sm_drop_index (MOP classop, const char *constraint_name);
 
 /* Misc schema operations */
 extern int sm_rename_class (MOP op, const char *new_name);
@@ -134,6 +158,10 @@ extern char *sm_get_method_source_file (MOP obj, const char *name);
 
 extern int sm_truncate_class (MOP class_mop);
 
+extern int sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info,
+				    const SM_CLASS_CONSTRAINT * const c);
+extern void sm_free_constraint_info (SM_CONSTRAINT_INFO ** save_info);
+
 
 /* Utility functions */
 extern int sm_check_name (const char *name);
@@ -159,11 +187,12 @@ extern int sm_coerce_object_domain (TP_DOMAIN * domain, MOP object,
 
 /* Extra cached state */
 extern int sm_clean_class (MOP classmop, SM_CLASS * class_);
+extern int sm_touch_class (MOP classmop);
 
 /* Statistics functions */
 extern SM_CLASS *sm_get_class_with_statistics (MOP classop);
 extern CLASS_STATS *sm_get_statistics_force (MOP classop);
-extern int sm_update_statistics (MOP classop);
+extern int sm_update_statistics (MOP classop, bool do_now);
 extern int sm_update_all_statistics (void);
 
 /* Misc information functions */
@@ -289,5 +318,7 @@ extern int classobj_drop_foreign_key_ref (DB_SEQ ** properties, BTID * btid);
 /* currently this is a private function to be called only by AU_SET_USER */
 extern int sc_set_current_schema (MOP user);
 /* Obtain (pointer to) current schema name.                            */
+
+extern int sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs);
 
 #endif /* _SCHEMA_MANAGER_H_ */

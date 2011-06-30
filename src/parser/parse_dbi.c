@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -173,7 +173,8 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 	      else
 		{
 		  /* non-generic object. it must have a class name */
-		  cls = typs->data_type->info.data_type.entity->info.name.
+		  cls =
+		    typs->data_type->info.data_type.entity->info.name.
 		    db_object;
 		  cls_nam = db_get_class_name (cls);
 		  if (cls == NULL || cls_nam == NULL)
@@ -223,6 +224,17 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs,
 		    {
 		      if (s->info.data_type.precision !=
 			  typs->data_type->info.data_type.precision)
+			{
+			  continue;
+			}
+		      found = true;
+		    }
+		  else if (typ == PT_TYPE_NUMERIC)
+		    {
+		      if (s->info.data_type.precision <
+			  typs->data_type->info.data_type.precision
+			  || s->info.data_type.dec_precision <
+			  typs->data_type->info.data_type.dec_precision)
 			{
 			  continue;
 			}
@@ -397,6 +409,10 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
   assert (parser != NULL && val != NULL);
 
   result = parser_new_node (parser, PT_VALUE);
+  if (result == NULL)
+    {
+      return NULL;
+    }
 
   /* copy the db_value */
   db_value_clone ((DB_VALUE *) val, &result->info.value.db_value);
@@ -451,6 +467,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (result->data_type == NULL)
 	{
+	  parser_free_node (parser, result);
 	  result = NULL;
 	}
       else
@@ -465,8 +482,6 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:
-    case DB_TYPE_VARBIT:
-    case DB_TYPE_BIT:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
       bytes = db_get_string (val);
@@ -480,10 +495,6 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	{
 	  result->info.value.string_type = 'N';
 	}
-      else if (db_type == DB_TYPE_VARBIT || db_type == DB_TYPE_BIT)
-	{
-	  result->info.value.string_type = 'X';
-	}
       else
 	{
 	  result->info.value.string_type = ' ';
@@ -491,6 +502,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (result->data_type == NULL)
 	{
+	  parser_free_node (parser, result);
 	  result = NULL;
 	}
       else
@@ -502,7 +514,64 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	    db_get_string_codeset (val);
 	}
       break;
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      {
+	int max_length = 0;
+	char *printed_bit = NULL;
+	char *result_string = NULL;
+	size = 0;
+	bytes = DB_GET_BIT (val, &size);
+	max_length = ((size + 3) / 4) + 4;
+	printed_bit = (char *) db_private_alloc (NULL, max_length);
+	if (printed_bit == NULL)
+	  {
+	    PT_ERRORm (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC,
+		       MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	    parser_free_node (parser, result);
+	    result = NULL;
+	    break;
+	  }
+	if (db_bit_string (val, "%X", printed_bit, max_length) != NO_ERROR)
+	  {
+	    db_private_free_and_init (NULL, printed_bit);
+	    PT_ERRORmf (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC,
+			MSGCAT_SEMANTIC_DATA_OVERFLOW_ON,
+			pt_show_type_enum (PT_TYPE_BIT));
+	    parser_free_node (parser, result);
+	    result = NULL;
+	    break;
+	  }
 
+	/* get the printed size */
+	size = db_get_string_size (val);
+
+	result->info.value.string_type = 'X';
+	result->info.value.data_value.str =
+	  pt_append_bytes (parser, NULL, printed_bit, size);
+
+	db_private_free_and_init (NULL, printed_bit);
+
+	result->info.value.data_value.str->length = size;
+	result->info.value.text =
+	  (char *) result->info.value.data_value.str->bytes;
+
+	result->data_type = parser_new_node (parser, PT_DATA_TYPE);
+	if (result->data_type == NULL)
+	  {
+	    parser_free_node (parser, result);
+	    result = NULL;
+	  }
+	else
+	  {
+	    result->data_type->type_enum = result->type_enum;
+	    result->data_type->info.data_type.precision =
+	      db_value_precision (val);
+	    result->data_type->info.data_type.units =
+	      db_get_string_codeset (val);
+	  }
+	break;
+      }
     case DB_TYPE_OBJECT:
       result->info.value.data_value.op = DB_GET_OBJECT (val);
       result->data_type = pt_get_object_data_type (parser, val);
@@ -556,6 +625,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (result->data_type == NULL)
 	{
+	  parser_free_node (parser, result);
 	  result = NULL;
 	}
       else
@@ -572,6 +642,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_VOBJ:
       if (vid_vobj_to_object (val, &mop) != NO_ERROR)
 	{
+	  parser_free_node (parser, result);
 	  result = NULL;
 	}
       else
@@ -586,6 +657,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_OID:
       if (vid_oid_to_object (val, &mop) != NO_ERROR)
 	{
+	  parser_free_node (parser, result);
 	  result = NULL;
 	}
       else
@@ -597,6 +669,28 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       break;
 
+    case DB_TYPE_BLOB:
+      if (db_elo_copy_structure (db_get_elo (val),
+				 &result->info.value.data_value.elo) !=
+	  NO_ERROR)
+	{
+	  parser_free_node (parser, result);
+	  result = NULL;
+	}
+      result->type_enum = PT_TYPE_BLOB;
+      break;
+
+    case DB_TYPE_CLOB:
+      if (db_elo_copy_structure (db_get_elo (val),
+				 &result->info.value.data_value.elo) !=
+	  NO_ERROR)
+	{
+	  parser_free_node (parser, result);
+	  result = NULL;
+	}
+      result->type_enum = PT_TYPE_CLOB;
+      break;
+
       /* explicitly treat others as an error condition */
     case DB_TYPE_ELO:
     case DB_TYPE_VARIABLE:
@@ -605,12 +699,14 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_ERROR:
     case DB_TYPE_DB_VALUE:
     case DB_TYPE_TABLE:
+      parser_free_node (parser, result);
       result = NULL;
       break;
     default:
       /* ALL TYPES MUST HAVE AN EXPLICIT CONVERSION, OR THE CODE IS IN ERROR */
       assert (false);
     }
+
   return result;
 }
 
@@ -971,6 +1067,8 @@ pt_string_to_db_domain (const char *s, const char *class_name)
   stmt = (char *) malloc (strlen (prefix) + strlen (s) + 1);
   if (stmt == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      strlen (prefix) + strlen (s) + 1);
       return (DB_DOMAIN *) NULL;
     }
 
@@ -1130,6 +1228,13 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
     case PT_TYPE_VARBIT:
       name = "bit varying";
       break;
+
+    case PT_TYPE_BLOB:
+      name = "blob";
+      break;
+    case PT_TYPE_CLOB:
+      name = "clob";
+      break;
     }
 
   return name;
@@ -1153,6 +1258,8 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
     case DB_TYPE_UTIME:
     case DB_TYPE_DATETIME:
@@ -1198,8 +1305,11 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
       retval = &tp_Null_domain;
       break;
 
-    case DB_TYPE_DB_VALUE:
     case DB_TYPE_VARIABLE:
+      retval = &tp_Variable_domain;
+      break;
+
+    case DB_TYPE_DB_VALUE:
     case DB_TYPE_TABLE:
     case DB_TYPE_RESULTSET:
       break;
@@ -1284,6 +1394,8 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
     case DB_TYPE_UTIME:
     case DB_TYPE_DATETIME:
@@ -1436,6 +1548,8 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt,
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
     case DB_TYPE_UTIME:
     case DB_TYPE_DATETIME:
@@ -1557,7 +1671,7 @@ DB_DOMAIN *
 pt_node_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * node,
 		      const char *class_name)
 {
-  int error = NO_ERROR;
+  int error = NO_ERROR, natts = 0;
   DB_DOMAIN *retval = (DB_DOMAIN *) 0;
   DB_DOMAIN *domain = (DB_DOMAIN *) 0;
   DB_DOMAIN *setdomain = (DB_DOMAIN *) 0;
@@ -1585,6 +1699,7 @@ pt_node_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * node,
 		  if (domain_type == DB_TYPE_MIDXKEY)
 		    {
 		      error = tp_domain_attach (&setdomain, domain);
+		      natts++;
 		    }
 		  else
 		    {
@@ -1601,7 +1716,8 @@ pt_node_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (error == NO_ERROR)
 	    {
 	      retval = tp_domain_construct (domain_type,
-					    (DB_OBJECT *) 0, 0, 0, setdomain);
+					    (DB_OBJECT *) 0, natts, 0,
+					    setdomain);
 	    }
 	  break;
 
@@ -1715,6 +1831,18 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
 
     case PT_TYPE_RESULTSET:
       db_type = DB_TYPE_RESULTSET;
+      break;
+
+    case PT_TYPE_BLOB:
+      db_type = DB_TYPE_BLOB;
+      break;
+
+    case PT_TYPE_CLOB:
+      db_type = DB_TYPE_CLOB;
+      break;
+
+    case PT_TYPE_MAYBE:
+      db_type = DB_TYPE_VARIABLE;
       break;
 
     default:
@@ -1969,6 +2097,12 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_RESULTSET:
       pt_type = PT_TYPE_RESULTSET;
       break;
+    case DB_TYPE_BLOB:
+      pt_type = PT_TYPE_BLOB;
+      break;
+    case DB_TYPE_CLOB:
+      pt_type = PT_TYPE_CLOB;
+      break;
 
       /* these guys should not get encountered */
     case DB_TYPE_OID:
@@ -2107,6 +2241,8 @@ pt_bind_helper (PARSER_CONTEXT * parser,
     case DB_TYPE_UTIME:
     case DB_TYPE_DATE:
     case DB_TYPE_DATETIME:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
       /*
        * Nothing more to do for these guys; their type is completely
        * described by the type_enum.  Why don't we care about precision
@@ -2309,7 +2445,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 {
   DB_VALUE *val, *hv;
   DB_TYPE typ, val_typ;
-  TP_DOMAIN *dom;
+  TP_DOMAIN *hv_dom, *val_dom;
   int num_errors, i;
 
   if (parser == NULL || count <= 0 || values == NULL)
@@ -2331,10 +2467,43 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
     }
   else
     {
+      if (parser->host_var_count > 0 &&
+	  parser->host_variables_reset_flag == NULL)
+	{
+	  /* first usage of HV in this parser */
+	  parser->host_variables_reset_flag = (int *)
+	    malloc (parser->host_var_count * sizeof (int));
+	  if (parser->host_variables_reset_flag == NULL)
+	    {
+	      PT_ERRORmf (parser, NULL, MSGCAT_SET_PARSER_RUNTIME,
+			  MSGCAT_RUNTIME_OUT_OF_MEMORY,
+			  parser->host_var_count * sizeof (int));
+	      num_errors++;
+	      return;
+	    }
+	  (void) memset (parser->host_variables_reset_flag, 0,
+			 parser->host_var_count * sizeof (int));
+	}
       /* cast and copy the given values to the place holder */
       for (val = values, hv = parser->host_variables, i = 0;
 	   i < parser->host_var_count; val++, hv++, i++)
 	{
+	  if (parser->host_variables_reset_flag[i] == 1)
+	    {
+	      (void) pr_clear_value (hv);
+	    }
+	  else if (parser->host_variables_reset_flag[i] == 0)
+	    {
+	      if (DB_VALUE_DOMAIN_TYPE (hv) != DB_TYPE_NULL)
+		{
+		  parser->host_variables_reset_flag[i] = -1;
+		}
+	      else
+		{
+		  parser->host_variables_reset_flag[i] = 1;
+		}
+	    }
+
 	  if (pt_is_reference_to_reusable_oid (val))
 	    {
 	      PT_ERRORm (parser, NULL, MSGCAT_SET_ERROR,
@@ -2348,24 +2517,29 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	         it's first time to use */
 	      (void) pr_clone_value (val, hv);
 	    }
+	  else if (DB_VALUE_DOMAIN_TYPE (hv) == DB_TYPE_VARIABLE)
+	    {
+	      (void) pr_clone_value (val, hv);
+	    }
 	  else if (DB_VALUE_TYPE (hv) != DB_TYPE_NULL)
 	    {
 	      /* hv: value is null || (value is not null && type is null)
 	         the user are setting new host variables;
 	         host variable place holders were used before */
 	      (void) pr_clear_value (hv);
-	      typ = DB_VALUE_DOMAIN_TYPE (hv);
-	      if (typ == DB_VALUE_DOMAIN_TYPE (val))
+	      hv_dom = tp_domain_resolve_value (hv, NULL);
+	      val_dom = tp_domain_resolve_value (val, NULL);
+	      if (tp_domain_match (hv_dom, val_dom, TP_EXACT_MATCH))
 		{
 		  (void) pr_clone_value (val, hv);
 		}
 	      else
 		{
-		  dom = tp_domain_resolve_value (hv, NULL);
-		  if (!dom ||
-		      tp_value_cast (val, hv, dom,
+		  if (!hv_dom ||
+		      tp_value_cast (val, hv, hv_dom,
 				     false) != DOMAIN_COMPATIBLE)
 		    {
+		      typ = DB_VALUE_DOMAIN_TYPE (hv);
 		      PT_ERRORmf2 (parser, NULL,
 				   MSGCAT_SET_PARSER_SEMANTIC,
 				   MSGCAT_SEMANTIC_CANT_COERCE_TO,
@@ -2373,11 +2547,12 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 				   pt_type_enum_to_db_domain_name
 				   (pt_db_to_type_enum (typ)));
 		      num_errors++;
-		      if (dom)
+		      if (hv_dom)
 			{
 			  /* restore original type */
-			  db_value_domain_init (hv, dom->type->id,
-						dom->precision, dom->scale);
+			  db_value_domain_init (hv, hv_dom->type->id,
+						hv_dom->precision,
+						hv_dom->scale);
 			}
 		    }
 		}
@@ -2389,16 +2564,16 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	         with the expected domains */
 	      typ = DB_VALUE_DOMAIN_TYPE (hv);
 	      val_typ = DB_VALUE_DOMAIN_TYPE (val);
-	      dom = tp_domain_resolve_value (hv, NULL);
-	      if (typ == DB_TYPE_NUMERIC && typ == val_typ && dom
-		  && (dom->precision < DB_VALUE_PRECISION (val)
-		      || dom->scale < DB_VALUE_SCALE (val)))
+	      hv_dom = tp_domain_resolve_value (hv, NULL);
+	      if (typ == DB_TYPE_NUMERIC && typ == val_typ && hv_dom
+		  && (hv_dom->precision < DB_VALUE_PRECISION (val)
+		      || hv_dom->scale < DB_VALUE_SCALE (val)))
 		{
 		  /* we had made a miss prediction for numeric type */
 		  (void) pr_clone_value (val, hv);
 		}
-	      else if (!dom ||
-		       tp_value_cast (val, hv, dom,
+	      else if (!hv_dom ||
+		       tp_value_cast (val, hv, hv_dom,
 				      false) != DOMAIN_COMPATIBLE)
 		{
 		  PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC,
@@ -2406,11 +2581,11 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 			       pt_type_enum_to_db_domain_name
 			       (pt_db_to_type_enum (typ)));
 		  num_errors++;
-		  if (dom)
+		  if (hv_dom)
 		    {
 		      /* restore original type */
-		      db_value_domain_init (hv, dom->type->id, dom->precision,
-					    dom->scale);
+		      db_value_domain_init (hv, hv_dom->type->id,
+					    hv_dom->precision, hv_dom->scale);
 		    }
 		}
 	    }
@@ -2497,10 +2672,17 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 				    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
 	  return (DB_VALUE *) NULL;
 	}
+
       db_make_set (db_value, set);
-      db_value = pt_set_value_to_db (parser,
-				     &value->info.value.data_value.set,
-				     db_value, &value->data_type);
+
+      if (pt_set_value_to_db (parser,
+			      &value->info.value.data_value.set,
+			      db_value, &value->data_type) == NULL)
+	{
+	  pr_clear_value (db_value);
+	  return (DB_VALUE *) NULL;
+	}
+
       value->info.value.db_value_is_in_workspace = true;
       break;
 
@@ -2514,10 +2696,17 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 				    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
 	  return (DB_VALUE *) NULL;
 	}
+
       db_make_multiset (db_value, multiset);
-      db_value = pt_set_value_to_db (parser,
-				     &value->info.value.data_value.set,
-				     db_value, &value->data_type);
+
+      if (pt_set_value_to_db (parser,
+			      &value->info.value.data_value.set,
+			      db_value, &value->data_type) == NULL)
+	{
+	  pr_clear_value (db_value);
+	  return (DB_VALUE *) NULL;
+	}
+
       value->info.value.db_value_is_in_workspace = true;
       break;
 
@@ -2531,10 +2720,17 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 				    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
 	  return (DB_VALUE *) NULL;
 	}
+
       db_make_sequence (db_value, seq);
-      db_value =
-	pt_seq_value_to_db (parser, value->info.value.data_value.set,
-			    db_value, &value->data_type);
+
+      if (pt_seq_value_to_db (parser,
+			      value->info.value.data_value.set,
+			      db_value, &value->data_type) == NULL)
+	{
+	  pr_clear_value (db_value);
+	  return (DB_VALUE *) NULL;
+	}
+
       value->info.value.db_value_is_in_workspace = true;
       break;
 
@@ -2556,8 +2752,9 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       break;
 
     case PT_TYPE_NUMERIC:
-      if (numeric_coerce_string_to_num (value->info.value.text, db_value)
-	  != NO_ERROR)
+      if (numeric_coerce_string_to_num (value->info.value.text,
+					strlen (value->info.value.text),
+					db_value) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME,
 		      MSGCAT_RUNTIME_BAD_NUMERIC, value->info.value.text);
@@ -2635,8 +2832,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
     case PT_TYPE_VARNCHAR:
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
       db_make_varnchar (db_value, TP_FLOATING_PRECISION_VALUE,
-			(DB_C_NCHAR) value->info.value.data_value.str->
-			bytes, value->info.value.data_value.str->length);
+			(DB_C_NCHAR) value->info.value.data_value.str->bytes,
+			value->info.value.data_value.str->length);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
       break;
@@ -2685,8 +2882,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
 	      return (DB_VALUE *) NULL;
 	    }
 	  bits_converted = qstr_hex_to_bin (bstring, dst_length,
-					    (char *) value->info.
-					    value.text, src_length);
+					    (char *) value->info.value.text,
+					    src_length);
 	  if (bits_converted != src_length)
 	    {
 	      db_private_free_and_init (NULL, bstring);
@@ -2734,6 +2931,20 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       *more_type_info_needed = (value->data_type == NULL);
       break;
 
+    case PT_TYPE_BLOB:
+      /* db_make_blob (db_value, (DB_ELO *)value->info.value.data_value.elo); */
+      db_make_elo (db_value, DB_TYPE_BLOB, &value->info.value.data_value.elo);
+      db_value->domain.general_info.type = DB_TYPE_BLOB;
+      value->info.value.db_value_is_in_workspace = false;
+      break;
+
+    case PT_TYPE_CLOB:
+      /* db_make_clob (db_value, (DB_ELO *)value->info.value.data_value.elo); */
+      db_make_elo (db_value, DB_TYPE_CLOB, &value->info.value.data_value.elo);
+      db_value->domain.general_info.type = DB_TYPE_CLOB;
+      value->info.value.db_value_is_in_workspace = false;
+      break;
+
     case PT_TYPE_COMPOUND:
       PT_ERRORm (parser, value, MSGCAT_SET_PARSER_RUNTIME,
 		 MSGCAT_RUNTIME_UNIMPLEMENTED_CONV);
@@ -2749,6 +2960,9 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value,
       PT_ERRORm (parser, value, MSGCAT_SET_PARSER_RUNTIME,
 		 MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
       return (DB_VALUE *) NULL;
+
+    default:
+      break;
     }
 
   return db_value;

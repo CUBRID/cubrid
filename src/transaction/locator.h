@@ -31,9 +31,11 @@
 #include "storage_common.h"
 #include "oid.h"
 #include "object_representation.h"
-#include "thread_impl.h"
+#include "thread.h"
 
-#define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 5 + OR_HFID_SIZE + OR_OID_SIZE)
+#define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 4 + 			\
+                                    OR_HFID_SIZE + 			\
+                                    OR_OID_SIZE * 2)
 
 #define LC_MANYOBJS_PTR_IN_COPYAREA(copy_areaptr)                             \
   ((LC_COPYAREA_MANYOBJS *) ((char *)(copy_areaptr)->mem +             \
@@ -98,6 +100,7 @@ struct lc_copyarea_oneobj
   LC_COPYAREA_OPERATION operation;	/* Insert, delete, update  */
   int has_index;		/* Valid only for flushing */
   HFID hfid;			/* Valid only for flushing */
+  OID class_oid;		/* Oid of the Class of the object */
   OID oid;			/* Oid of the object       */
   int length;			/* Lenght of the object    */
   int offset;			/* location in the copy area where the
@@ -109,12 +112,9 @@ typedef struct lc_copyarea_manyobjs LC_COPYAREA_MANYOBJS;
 struct lc_copyarea_manyobjs
 {
   LC_COPYAREA_ONEOBJ objs;
-  OID class_oid;		/* class OID :
-				 * Not NULL_OID for multi-row update flush
-				 */
   int start_multi_update;	/* the start of flush request */
   int end_multi_update;		/* the end of flush request */
-  PGNSLOTS num_objs;		/* How many objects */
+  int num_objs;			/* How many objects */
 };
 
 typedef struct lc_copy_area LC_COPYAREA;

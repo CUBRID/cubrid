@@ -65,6 +65,7 @@ extern const char *boot_db_name (void);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern const char *boot_db_full_name (void);
 #endif
+extern const char *boot_get_lob_path (void);
 extern HFID *boot_find_root_heap (void);
 
 extern VOLID boot_find_next_permanent_volid (THREAD_ENTRY * thread_p);
@@ -76,6 +77,7 @@ extern VOLID boot_add_auto_volume_extension (THREAD_ENTRY * thread_p,
 					     DKNPAGES min_npages,
 					     DISK_SETPAGE_TYPE setpage_type);
 extern VOLID boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES npages);
+extern DKNPAGES boot_get_temp_temp_vol_max_npages (void);
 extern int boot_add_temp_volume_and_file (VFID * vfid, DKNPAGES npages);
 extern int boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
 				const char *db_name, bool from_backup,
@@ -85,38 +87,37 @@ extern int xboot_restart_from_backup (THREAD_ENTRY * thread_p,
 				      BO_RESTART_ARG * r_args);
 extern bool xboot_shutdown_server (THREAD_ENTRY * thread_p, bool is_er_final);
 extern int xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname,
-		       const char *newdb_name, const char *newdb_path,
-		       const char *newlog_path,
-		       const char *newdb_server_host,
+		       const char *new_db_name, const char *new_db_path,
+		       const char *new_log_path, const char *new_lob_path,
+		       const char *new_db_server_host,
 		       const char *new_volext_path,
 		       const char *fileof_vols_and_copypaths,
-		       bool newdb_overwrite);
+		       bool new_db_overwrite);
 extern int xboot_soft_rename (THREAD_ENTRY * thread_p,
-			      const char *olddb_name,
-			      const char *newdb_name,
-			      const char *newdb_path,
-			      const char *newlog_path,
-			      const char *newdb_server_host,
+			      const char *old_db_name,
+			      const char *new_db_name,
+			      const char *new_db_path,
+			      const char *new_log_path,
+			      const char *new_db_server_host,
 			      const char *new_volext_path,
 			      const char *fileof_vols_and_renamepaths,
-			      bool newdb_overwrite, bool extern_rename,
+			      bool new_db_overwrite, bool extern_rename,
 			      bool force_delete);
 extern int xboot_delete (THREAD_ENTRY * thread_p, const char *db_name,
 			 bool force_delete);
 extern int xboot_emergency_patch (THREAD_ENTRY * thread_p,
-				  const char *db_name, bool recreate_log);
+				  const char *db_name, bool recreate_log,
+				  DKNPAGES log_npages, FILE * out_fp);
 extern void boot_server_all_finalize (THREAD_ENTRY * thread_p,
 				      bool is_er_final);
 extern int boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids,
 			    int n_classes, int space_to_process,
-			    int instance_lock_timeout,
-			    int class_lock_timeout,
+			    int instance_lock_timeout, int class_lock_timeout,
 			    bool delete_old_repr,
 			    OID * last_processed_class_oid,
-			    OID * last_processed_oid,
-			    int *total_objects, int *failed_objects,
-			    int *modified_objects, int *big_objects,
-			    int *initial_last_repr_id);
+			    OID * last_processed_oid, int *total_objects,
+			    int *failed_objects, int *modified_objects,
+			    int *big_objects, int *initial_last_repr_id);
 extern int boot_heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid);
 extern int boot_compact_start (THREAD_ENTRY * thread_p);
 extern int boot_compact_stop (THREAD_ENTRY * thread_p);

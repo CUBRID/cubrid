@@ -28,219 +28,191 @@
  *
  */
 
-package @CUBRID_DRIVER@;
+package cubrid.jdbc.driver;
 
-import java.sql.*;
-import javax.naming.*;
 import java.io.PrintWriter;
 import java.net.InetAddress;
+import java.sql.SQLException;
 
-public class CUBRIDDataSourceBase
-{
-  // DataSource Standard Properties
-  private String databaseName;
-  private String dataSourceName;
-  private String description;
-  private String networkProtocol;
-  private String password;
-  private int portNumber;
-  private String roleName;
-  private String serverName;
-  private String user;
+import javax.naming.Reference;
+import javax.naming.StringRefAddr;
 
-  private int loginTimeout;
-  private PrintWriter logWriter;
+public class CUBRIDDataSourceBase {
+	// DataSource Standard Properties
+	private String databaseName;
+	private String dataSourceName;
+	private String description;
+	private String networkProtocol;
+	private String password;
+	private int portNumber;
+	private String roleName;
+	private String serverName;
+	private String user;
 
-  private String dataSourceID;
+	private int loginTimeout;
+	private PrintWriter logWriter;
 
-  protected CUBRIDDataSourceBase()
-  {
-    databaseName = "";
-    dataSourceName = "";
-    description = "";
-    networkProtocol = "";
-    password = "";
-    portNumber = 0;
-    roleName = "";
-    serverName = "";
-    user = "public";
+	private String dataSourceID;
 
-    loginTimeout = 0;
-    logWriter = null;
+	protected CUBRIDDataSourceBase() {
+		databaseName = "";
+		dataSourceName = "";
+		description = "";
+		networkProtocol = "";
+		password = "";
+		portNumber = 0;
+		roleName = "";
+		serverName = "";
+		user = "public";
 
-    dataSourceID = null;
-  }
+		loginTimeout = 0;
+		logWriter = null;
 
-  /*
-   * javax.sql.DataSource, javax.sql.ConnectionPoolDataSource,
-   * javax.sql.XADataSource interface
-   */
+		dataSourceID = null;
+	}
 
-  public PrintWriter getLogWriter() throws SQLException
-  {
-    return logWriter;
-  }
+	/*
+	 * javax.sql.DataSource, javax.sql.ConnectionPoolDataSource,
+	 * javax.sql.XADataSource interface
+	 */
 
-  public void setLogWriter(PrintWriter out) throws SQLException
-  {
-    logWriter = out;
-  }
+	public PrintWriter getLogWriter() throws SQLException {
+		return logWriter;
+	}
 
-  public void setLoginTimeout(int seconds) throws SQLException
-  {
-    loginTimeout = seconds;
-  }
+	public void setLogWriter(PrintWriter out) throws SQLException {
+		logWriter = out;
+	}
 
-  public int getLoginTimeout() throws SQLException
-  {
-    return loginTimeout;
-  }
+	public void setLoginTimeout(int seconds) throws SQLException {
+		loginTimeout = seconds;
+	}
 
-  public String getDatabaseName()
-  {
-    return databaseName;
-  }
+	public int getLoginTimeout() throws SQLException {
+		return loginTimeout;
+	}
 
-  public String getDataSourceName()
-  {
-    return dataSourceName;
-  }
+	public String getDatabaseName() {
+		return databaseName;
+	}
 
-  public String getDescription()
-  {
-    return description;
-  }
+	public String getDataSourceName() {
+		return dataSourceName;
+	}
 
-  public String getNetworkProtocol()
-  {
-    return networkProtocol;
-  }
+	public String getDescription() {
+		return description;
+	}
 
-  public String getPassword()
-  {
-    return password;
-  }
+	public String getNetworkProtocol() {
+		return networkProtocol;
+	}
 
-  public int getPortNumber()
-  {
-    return portNumber;
-  }
+	public String getPassword() {
+		return password;
+	}
 
-  public String getRoleName()
-  {
-    return roleName;
-  }
+	public int getPortNumber() {
+		return portNumber;
+	}
 
-  public String getServerName()
-  {
-    return serverName;
-  }
+	public String getRoleName() {
+		return roleName;
+	}
 
-  public String getUser()
-  {
-    return user;
-  }
+	public String getServerName() {
+		return serverName;
+	}
 
-  public void setDatabaseName(String dbName)
-  {
-    databaseName = dbName;
-  }
+	public String getUser() {
+		return user;
+	}
 
-  public void setDataSourceName(String dsName)
-  {
-    dataSourceName = dsName;
-  }
+	public void setDatabaseName(String dbName) {
+		databaseName = dbName;
+	}
 
-  public void setDescription(String desc)
-  {
-    description = desc;
-  }
+	public void setDataSourceName(String dsName) {
+		dataSourceName = dsName;
+	}
 
-  public void setNetworkProtocol(String netProtocol)
-  {
-    networkProtocol = netProtocol;
-  }
+	public void setDescription(String desc) {
+		description = desc;
+	}
 
-  public void setPassword(String psswd)
-  {
-    password = psswd;
-  }
+	public void setNetworkProtocol(String netProtocol) {
+		networkProtocol = netProtocol;
+	}
 
-  public void setPortNumber(int p)
-  {
-    portNumber = p;
-  }
+	public void setPassword(String psswd) {
+		password = psswd;
+	}
 
-  public void setRoleName(String rName)
-  {
-    roleName = rName;
-  }
+	public void setPortNumber(int p) {
+		portNumber = p;
+	}
 
-  public void setServerName(String svName)
-  {
-    serverName = svName;
-  }
+	public void setRoleName(String rName) {
+		roleName = rName;
+	}
 
-  public void setUser(String uName)
-  {
-    user = uName;
-  }
+	public void setServerName(String svName) {
+		serverName = svName;
+	}
 
-  synchronized String getDataSourceID(String username)
-  {
-    if (dataSourceID == null)
-    {
-      try
-      {
-        dataSourceID = InetAddress.getByName(serverName).getHostAddress();
-      }
-      catch (Exception e)
-      {
-        dataSourceID = serverName;
-      }
-      dataSourceID = dataSourceID + ":" + portNumber + ":" + databaseName;
-    }
+	public void setUser(String uName) {
+		user = uName;
+	}
 
-    return (dataSourceID + ":" + username);
-  }
+	synchronized String getDataSourceID(String username) {
+		if (dataSourceID == null) {
+			try {
+				dataSourceID = InetAddress.getByName(serverName)
+						.getHostAddress();
+			} catch (Exception e) {
+				dataSourceID = serverName;
+			}
+			dataSourceID = dataSourceID + ":" + portNumber + ":" + databaseName;
+		}
 
-  protected Reference getProperties(Reference ref)
-  {
-    ref.add(new StringRefAddr("serverName", getServerName()));
-    ref.add(new StringRefAddr("databaseName", getDatabaseName()));
-    ref.add(new StringRefAddr("portNumber", Integer.toString(getPortNumber())));
-    // ref.add(new StringRefAddr("url", getUrl()));
-    ref.add(new StringRefAddr("dataSourceName", getDataSourceName()));
-    ref.add(new StringRefAddr("description", getDescription()));
-    ref.add(new StringRefAddr("networkProtocol", getNetworkProtocol()));
-    ref.add(new StringRefAddr("password", getPassword()));
-    ref.add(new StringRefAddr("roleName", getRoleName()));
-    ref.add(new StringRefAddr("user", getUser()));
+		return (dataSourceID + ":" + username);
+	}
 
-    return ref;
-  }
+	protected Reference getProperties(Reference ref) {
+		ref.add(new StringRefAddr("serverName", getServerName()));
+		ref.add(new StringRefAddr("databaseName", getDatabaseName()));
+		ref.add(new StringRefAddr("portNumber", Integer
+				.toString(getPortNumber())));
+		// ref.add(new StringRefAddr("url", getUrl()));
+		ref.add(new StringRefAddr("dataSourceName", getDataSourceName()));
+		ref.add(new StringRefAddr("description", getDescription()));
+		ref.add(new StringRefAddr("networkProtocol", getNetworkProtocol()));
+		ref.add(new StringRefAddr("password", getPassword()));
+		ref.add(new StringRefAddr("roleName", getRoleName()));
+		ref.add(new StringRefAddr("user", getUser()));
 
-  protected void setProperties(Reference ref)
-  {
-    setServerName((String) ref.get("serverName").getContent());
-    setDatabaseName((String) ref.get("databaseName").getContent());
-    setPortNumber(Integer.parseInt((String) ref.get("portNumber").getContent()));
-    // uni_ds.setUrl((String) ref.get("url").getContent());
-    setDataSourceName((String) ref.get("dataSourceName").getContent());
-    setDescription((String) ref.get("description").getContent());
-    setNetworkProtocol((String) ref.get("networkProtocol").getContent());
-    setPassword((String) ref.get("password").getContent());
-    setRoleName((String) ref.get("roleName").getContent());
-    setUser((String) ref.get("user").getContent());
-  }
+		return ref;
+	}
 
-  protected void writeLog(String log)
-  {
-    if (logWriter != null)
-    {
-      java.util.Date dt = new java.util.Date(System.currentTimeMillis());
-      logWriter.println("[" + dt + "] " + log);
-      logWriter.flush();
-    }
-  }
+	protected void setProperties(Reference ref) {
+		setServerName((String) ref.get("serverName").getContent());
+		setDatabaseName((String) ref.get("databaseName").getContent());
+		setPortNumber(Integer.parseInt((String) ref.get("portNumber")
+				.getContent()));
+		// uni_ds.setUrl((String) ref.get("url").getContent());
+		setDataSourceName((String) ref.get("dataSourceName").getContent());
+		setDescription((String) ref.get("description").getContent());
+		setNetworkProtocol((String) ref.get("networkProtocol").getContent());
+		setPassword((String) ref.get("password").getContent());
+		setRoleName((String) ref.get("roleName").getContent());
+		setUser((String) ref.get("user").getContent());
+	}
+
+	protected void writeLog(String log) {
+		if (logWriter != null) {
+			java.util.Date dt = new java.util.Date(System.currentTimeMillis());
+			logWriter.println("[" + dt + "] " + log);
+			logWriter.flush();
+		}
+	}
 }

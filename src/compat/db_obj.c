@@ -275,8 +275,8 @@ db_get_shared (DB_OBJECT * object, const char *attname, DB_VALUE * value)
  *
  *    If the supplied object is an instance, this will look for and return
  *    the values of attributes or shared attributes.  If the supplied object
- *    is a class, this will only look for clas attributes.  The value of
- *    the attribute if found is copied into the value container.
+ *    is a class, this will only look for class attributes.  The value of
+ *    the attribute, if found, is copied into the value container.
  *
  * return : error code
  * object(in): class or instance
@@ -1907,7 +1907,8 @@ db_get_serial_next_value (const char *serial_name, DB_VALUE * serial_value)
       sprintf (oid_str, "%d %d %d %d", serial_obj_id.pageid,
 	       serial_obj_id.slotid, serial_obj_id.volid, cached_num);
       db_make_string (&oid_str_val, oid_str);
-      if (serial_get_next_value (serial_value, &oid_str_val) != NO_ERROR)
+      if (serial_get_next_value (serial_value, &oid_str_val, GENERATE_SERIAL)
+	  != NO_ERROR)
 	{
 	  result = er_errid ();
 	}

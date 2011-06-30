@@ -140,7 +140,7 @@
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 77 "../../src/executables/loader_old_grammar.y"
+#line 77 "../../../src/executables/loader_old_grammar.y"
 {
 	int 	intval;
 	LDR_STRING	*string;
@@ -150,7 +150,7 @@ typedef union YYSTYPE
 	LDR_OBJECT_REF *obj_ref;
 }
 /* Line 1529 of yacc.c.  */
-#line 154 "../../src/executables/loader_old_grammar.h"
+#line 154 "../../../src/executables/loader_old_grammar.h"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1

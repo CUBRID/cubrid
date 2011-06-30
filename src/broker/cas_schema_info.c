@@ -185,3 +185,24 @@ schema_primarykey_meta (T_NET_BUF * net_buf)
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
 			   "KEY_NAME");
 }
+
+void
+schema_fk_info_meta (T_NET_BUF * net_buf)
+{
+  net_buf_cp_int (net_buf, 9, NULL);
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
+			   "PKTABLE_NAME");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
+			   "PKCOLUMN_NAME");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
+			   "FKTABLE_NAME");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
+			   "FKCOLUMN_NAME");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, "KEY_SEQ");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, "UPDATE_RULE");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_SHORT, 0, 0, "DELETE_RULE");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
+			   "FK_NAME");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN,
+			   "PK_NAME");
+}

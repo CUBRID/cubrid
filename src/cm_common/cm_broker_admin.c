@@ -153,8 +153,10 @@ cm_get_cas_info (const char *br_name, T_CM_CAS_INFO_ALL * cas_info_all,
 
   memset (cas_info_all, 0, sizeof (T_CM_CAS_INFO_ALL));
   if (job_info_all == NULL)
-    num_as_info =
-      uc_as_info (br_name, &as_info, NULL, NULL, err_buf->err_msg);
+    {
+      num_as_info =
+	uc_as_info (br_name, &as_info, NULL, NULL, err_buf->err_msg);
+    }
   else
     {
       memset (job_info_all, 0, sizeof (T_CM_JOB_INFO_ALL));
@@ -164,7 +166,8 @@ cm_get_cas_info (const char *br_name, T_CM_CAS_INFO_ALL * cas_info_all,
   if (num_as_info < 0)
     {
       err_buf->err_code = CM_GENERAL_ERROR;
-      return -1;
+      res = -1;
+      goto as_info_finale;
     }
 
   cas_info_all->as_info =
@@ -448,6 +451,7 @@ as_info_copy (T_CM_CAS_INFO * dest_info, T_AS_INFO * src_info)
   dest_info->num_long_queries = src_info->num_long_queries;
   dest_info->num_long_transactions = src_info->num_long_transactions;
   dest_info->num_error_queries = src_info->num_error_queries;
+  dest_info->num_interrupts = src_info->num_interrupts;
 }
 
 static char *

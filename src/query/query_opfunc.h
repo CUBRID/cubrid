@@ -130,6 +130,11 @@ extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p,
 
 extern int qdata_add_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
 			    DB_VALUE * res, TP_DOMAIN * domain);
+extern int qdata_concatenate_dbval (THREAD_ENTRY * thread_p,
+				    DB_VALUE * dbval1, DB_VALUE * dbval2,
+				    DB_VALUE * res, TP_DOMAIN * domain,
+				    const int max_allowed_size,
+				    const char *warning_context);
 extern int qdata_increment_dbval (DB_VALUE * dbval1, DB_VALUE * res,
 				  int incval);
 extern int qdata_subtract_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
@@ -159,7 +164,8 @@ extern int qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p,
 extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p,
 						QFILE_LIST_ID * list_id,
 						VAL_LIST * single_tuple);
-extern int qdata_get_valptr_type_list (VALPTR_LIST * valptr_list,
+extern int qdata_get_valptr_type_list (THREAD_ENTRY * thread_p,
+				       VALPTR_LIST * valptr_list,
 				       QFILE_TUPLE_VALUE_TYPE_LIST *
 				       type_list);
 extern int qdata_evaluate_function (THREAD_ENTRY * thread_p,
@@ -219,4 +225,9 @@ extern int qdata_divmod_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2,
 
 extern int qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p);
 
+extern int qdata_get_cardinality (THREAD_ENTRY * thread_p,
+				  DB_VALUE * db_class_name,
+				  DB_VALUE * db_index_name,
+				  DB_VALUE * db_key_position,
+				  DB_VALUE * result_p);
 #endif /* _QUERY_OPFUNC_H_ */

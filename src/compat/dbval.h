@@ -128,7 +128,7 @@
 
 
 
-/* nore : this will have to change when we start using the small and large
+/* note : this will have to change when we start using the small and large
           string buffers. */
 #define DB_GET_CHAR(v, l) \
     (((v)->domain.general_info.is_null || \
@@ -196,10 +196,11 @@
 
 #define DB_GET_ELO(v) \
     (((v)->domain.general_info.is_null || \
-      (v)->domain.general_info.type == DB_TYPE_ERROR) ? NULL : (v)->data.elo)
+      (v)->domain.general_info.type == DB_TYPE_ERROR || \
+      (v)->data.elo.type == ELO_NULL) ? NULL : (DB_ELO *)(&(v)->data.elo))
 
 #define DB_PULL_ELO(v) \
-    ((v)->data.elo)
+    ((DB_ELO *)&((v)->data.elo))
 
 #define DB_GET_TIME(v) \
     ((DB_TIME *)(&(v)->data.time))
@@ -247,7 +248,7 @@
       ((v)->data.ch.info.style == SMALL_STRING) ? \
       (((v)->domain.general_info.type == DB_TYPE_BIT || \
         (v)->domain.general_info.type == DB_TYPE_VARBIT) ? \
-        ((v)->data.ch.medium.size + 7) / 8 : (v)->data.ch.medium.size) : 0))
+        ((v)->data.ch.sm.size + 7) / 8 : (v)->data.ch.sm.size) : 0))
 
 #define DB_GET_RESULTSET(v) \
     ((v)->data.rset)
@@ -352,12 +353,21 @@
     (((n) == NULL) ? ((v)->domain.general_info.is_null = 1, NO_ERROR) : \
      db_push_oid((v), (n)))
 
-#define db_make_elo(v, n) \
-    ((v)->domain.general_info.type = DB_TYPE_ELO, \
-     (v)->data.elo = (n), \
-     (v)->domain.general_info.is_null = ((n) ? 0 : 1), \
+#define db_push_elo(v, t, n) \
+    ((v)->domain.general_info.type = (t), \
+     (v)->data.elo.size = (n)->size, \
+     (v)->data.elo.loid = (n)->loid, \
+     (v)->data.elo.locator = (n)->locator, \
+     (v)->data.elo.meta_data = (n)->meta_data, \
+     (v)->data.elo.type = (n)->type, \
+     (v)->data.elo.es_type = (n)->es_type, \
+     (v)->domain.general_info.is_null = 0, \
      (v)->need_clear = false, \
      NO_ERROR)
+
+#define db_make_elo(v, t, n) \
+     (((n) == NULL) ? ((v)->domain.general_info.is_null = 1, NO_ERROR) : \
+      db_push_elo((v), (t), (n)))
 
 #define db_make_timestamp(v, n) \
     ((v)->domain.general_info.type = DB_TYPE_TIMESTAMP, \

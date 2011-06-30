@@ -34,363 +34,263 @@
  * @version 2.0
  */
 
-package @CUBRID_JCI@;
+package cubrid.jdbc.jci;
 
-import @CUBRID_SQL@.CUBRIDOID;
+public class UColumnInfo {
+	private byte type;
+	private byte collectionBaseType;
+	private short scale;
+	private int precision;
+	private String name, className, attributeName;
+	// private String FQDN;
+	private boolean isNullable;
 
-/*
- * resultset을 갖는 statement(execute(SQL query), getSchemaInfo, getByOid를 통해
- * 실행되어지는 statements)들을 실행하였을 때 얻어지는 각 column 정보를 저장하고
- * 있는 class이다.
- * normal statement를 실행했을 때 얻어지는 column 정보는 flag isNullable값과
- * column이 속한 class Name정보를 가지고 있다. getSchemaInfo와 getByOid에 의해
- * 얻어지는 column 정보에 대해 isNullable, getClassName이 call될 때에는 error가
- * set된다.
- *
- * since 1.0
- */
+	private String defaultValue;
+	private byte is_auto_increment;
+	private byte is_unique_key;
+	private byte is_primary_key;
+	private byte is_foreign_key;
+	private byte is_reverse_index;
+	private byte is_reverse_unique;
+	private byte is_shared;
 
-public class UColumnInfo
-{
-  private final static byte GLO_INSTANCE_FALSE = 0, GLO_INSTANCE_TRUE = 1,
-      GLO_INSTANCE_UNKNOWN = -1;
+	UColumnInfo(byte cType, short cScale, int cPrecision, String cName) {
+		byte realType[];
 
-  private byte type;
-  private byte collectionBaseType;
-  private short scale;
-  private int precision;
-  private String name, className, attributeName;
-  // private String FQDN;
-  private boolean isNullable;
-  private byte glo_instance_flag;
-  
-  private String defaultValue;
-  private byte is_auto_increment;
-  private byte is_unique_key;
-  private byte is_primary_key;
-  private byte is_foreign_key;
-  private byte is_reverse_index;
-  private byte is_reverse_unique;
-  private byte is_shared;
+		realType = UColumnInfo.confirmType(cType);
+		type = realType[0];
+		collectionBaseType = realType[1];
+		scale = cScale;
+		precision = cPrecision;
+		name = cName;
+		className = null;
+		attributeName = null;
+		isNullable = false;
+		// FQDN = UColumnInfo.findFQDN(type, precision, collectionBaseType);
 
-  UColumnInfo(byte cType, short cScale, int cPrecision, String cName)
-  {
-    byte realType[];
+		defaultValue = null;
+		is_auto_increment = 0;
+		is_unique_key = 0;
+		is_primary_key = 0;
+		is_foreign_key = 0;
+		is_reverse_index = 0;
+		is_reverse_unique = 0;
+		is_shared = 0;
+	}
 
-    realType = UColumnInfo.confirmType(cType);
-    type = realType[0];
-    collectionBaseType = realType[1];
-    scale = cScale;
-    precision = cPrecision;
-    name = cName;
-    className = null;
-    attributeName = null;
-    isNullable = false;
-    // FQDN = UColumnInfo.findFQDN(type, precision, collectionBaseType);
-    glo_instance_flag = GLO_INSTANCE_UNKNOWN;
+	/* get functions */
+	public String getDefaultValue() {
+		return defaultValue;
+	}
 
-    defaultValue = null;
-    is_auto_increment = 0;
-    is_unique_key = 0;
-    is_primary_key = 0;
-    is_foreign_key = 0;
-    is_reverse_index = 0;
-    is_reverse_unique = 0;
-    is_shared = 0;
-  }
-  
-  /* get functions */
-  public String getDefaultValue()
-  {
-    return defaultValue;
-  }
-  public byte getIsAutoIncrement()
-  {
-    return is_auto_increment;
-  }
-  public byte getIsUniqueKey()
-  {
-    return is_unique_key;
-  }
-  public byte getIsPrimaryKey()
-  {
-    return is_primary_key;
-  }
-  public byte getIsForeignKey()
-  {
-    return is_foreign_key;
-  }
-  public byte getIsReverseIndex()
-  {
-    return is_reverse_index;
-  }
-  public byte getIsReverseUnique()
-  {
-    return is_reverse_unique;
-  }
-  public byte getIsShared()
-  {
-    return is_shared;
-  }
+	public byte getIsAutoIncrement() {
+		return is_auto_increment;
+	}
 
-  /*
-   * 현재 Column이 nullable인지 아닌지에 대한 flag를 return해준다.
-   */
+	public byte getIsUniqueKey() {
+		return is_unique_key;
+	}
 
-  public boolean isNullable()
-  {
-    return isNullable;
-  }
+	public byte getIsPrimaryKey() {
+		return is_primary_key;
+	}
 
-  /*
-   * 현재 column이 속한 class name을 return해 준다.
-   */
+	public byte getIsForeignKey() {
+		return is_foreign_key;
+	}
 
-  public String getClassName()
-  {
-    return className;
-  }
+	public byte getIsReverseIndex() {
+		return is_reverse_index;
+	}
 
-  /*
-   * collection type의 경우 JDBC Driver는 각 element의 type이 모두 같은 경우에
-   * 얻을 수 있다. 이 때 collection의 base type을 확인하여 알려주는 method이다.
-   */
+	public byte getIsReverseUnique() {
+		return is_reverse_unique;
+	}
 
-  public int getCollectionBaseType()
-  {
-    return collectionBaseType;
-  }
+	public byte getIsShared() {
+		return is_shared;
+	}
 
-  /*
-   * column name을 return해 준다.
-   */
+	public boolean isNullable() {
+		return isNullable;
+	}
 
-  public String getColumnName()
-  {
-    return name;
-  }
+	public String getClassName() {
+		return className;
+	}
 
-  /*
-   * column precision을 return해 준다.
-   */
+	public int getCollectionBaseType() {
+		return collectionBaseType;
+	}
 
-  public int getColumnPrecision()
-  {
-    return precision;
-  }
+	public String getColumnName() {
+		return name;
+	}
 
-  /*
-   * column scale을 return해 준다.
-   */
+	public int getColumnPrecision() {
+		return precision;
+	}
 
-  public int getColumnScale()
-  {
-    return (int) scale;
-  }
+	public int getColumnScale() {
+		return (int) scale;
+	}
 
-  /*
-   * column type을 return해 준다. 이 때 return되어지는 type은 class UUType에
-   * 정의된 CUBRID Type이다.
-   */
+	public byte getColumnType() {
+		return type;
+	}
 
-  public byte getColumnType()
-  {
-    return type;
-  }
+	public String getFQDN() {
+		// return FQDN;
+		return (findFQDN(type, precision, collectionBaseType));
+	}
 
-  /*
-   * column value가 Driver를 통해 end-user에게 전해지는 value의 FQDN (Fully
-   * Qulified Domain Name)을 return한다.
-   */
+	public String getRealColumnName() {
+		return attributeName;
+	}
 
-  public String getFQDN()
-  {
-    // return FQDN;
-    return (UColumnInfo.findFQDN(type, precision, collectionBaseType));
-  }
+	static byte[] confirmType(byte originalType) {
+		int collectionTypeOrNot = 0;
+		byte typeInfo[];
 
-  public String getRealColumnName()
-  {
-    return attributeName;
-  }
+		typeInfo = new byte[2];
+		collectionTypeOrNot = originalType & (byte) 0140;
+		switch (collectionTypeOrNot) {
+		case 0:
+			typeInfo[0] = originalType;
+			typeInfo[1] = -1;
+			return typeInfo;
+		case 040:
+			typeInfo[0] = UUType.U_TYPE_SET;
+			typeInfo[1] = (byte) (originalType & 037);
+			return typeInfo;
+		case 0100:
+			typeInfo[0] = UUType.U_TYPE_MULTISET;
+			typeInfo[1] = (byte) (originalType & 037);
+			return typeInfo;
+		case 0140:
+			typeInfo[0] = UUType.U_TYPE_SEQUENCE;
+			typeInfo[1] = (byte) (originalType & 037);
+			return typeInfo;
+		default:
+			typeInfo[0] = UUType.U_TYPE_NULL;
+			typeInfo[1] = -1;
+		}
+		return typeInfo;
+	}
 
-  /*
-   * collection type의 경우 server쪽에서 넘어오는 type정보가 collection
-   * type정보와 collection base type정보가 logical or로 조합되어 넘어온다. 이
-   * method는 server쪽으로부터 넘어온 type정보를 읽고 collection type정보와
-   * collection base type정보를 따로 추출하여 array로 넘겨준다. (index 0 :
-   * collection type, index 1 : collection base type)
-   */
+	synchronized void setRemainedData(String aName, String cName, boolean hNull) {
+		attributeName = aName;
+		className = cName;
+		isNullable = hNull;
+	}
 
-  static byte[] confirmType(byte originalType)
-  {
-    int collectionTypeOrNot = 0;
-    byte typeInfo[];
+	/* set the extra fields */
+	synchronized void setExtraData(String defValue, byte bAI, byte bUK,
+			byte bPK, byte bFK, byte bRI, byte bRU, byte sh) {
+		defaultValue = defValue;
+		is_auto_increment = bAI;
+		is_unique_key = bUK;
+		is_primary_key = bPK;
+		is_foreign_key = bFK;
+		is_reverse_index = bRI;
+		is_reverse_unique = bRU;
+		is_shared = sh;
+	}
 
-    typeInfo = new byte[2];
-    collectionTypeOrNot = originalType & (byte) 0140;
-    switch (collectionTypeOrNot)
-    {
-    case 0:
-      typeInfo[0] = originalType;
-      typeInfo[1] = -1;
-      return typeInfo;
-    case 040:
-      typeInfo[0] = UUType.U_TYPE_SET;
-      typeInfo[1] = (byte) (originalType & 037);
-      return typeInfo;
-    case 0100:
-      typeInfo[0] = UUType.U_TYPE_MULTISET;
-      typeInfo[1] = (byte) (originalType & 037);
-      return typeInfo;
-    case 0140:
-      typeInfo[0] = UUType.U_TYPE_SEQUENCE;
-      typeInfo[1] = (byte) (originalType & 037);
-      return typeInfo;
-    default:
-      typeInfo[0] = UUType.U_TYPE_NULL;
-      typeInfo[1] = -1;
-    }
-    return typeInfo;
-  }
-
-  /*
-   * normal statement인 경우 flag isNullable와 column이 속한 class name 정보
-   * 또한 set한다.
-   */
-
-  synchronized void setRemainedData(String aName, String cName, boolean hNull)
-  {
-    attributeName = aName;
-    className = cName;
-    isNullable = hNull;
-  }
-  
-  /* set the extra fields */
-  synchronized void setExtraData(String defValue, byte bAI, byte bUK, byte bPK, byte bFK, byte bRI, byte bRU, byte sh)
-  {
-    defaultValue = defValue;
-    is_auto_increment = bAI;
-    is_unique_key = bUK;
-    is_primary_key = bPK;
-    is_foreign_key = bFK;
-    is_reverse_index = bRI;
-    is_reverse_unique = bRU;
-    is_shared = sh;
-  }
-
-  boolean isGloInstance(UConnection u_con, CUBRIDOID oid)
-  {
-    if (glo_instance_flag == GLO_INSTANCE_UNKNOWN)
-    {
-      Object obj;
-      synchronized (u_con)
-      {
-        obj = u_con.oidCmd(oid, UConnection.IS_GLO_INSTANCE);
-      }
-      if (obj == null)
-        glo_instance_flag = GLO_INSTANCE_FALSE;
-      else
-        glo_instance_flag = GLO_INSTANCE_TRUE;
-    }
-
-    if (glo_instance_flag == GLO_INSTANCE_TRUE)
-      return true;
-
-    return false;
-  }
-
-  /*
-   * 주어진 type과 precision, collection base type정보를 가지고 end-user에게
-   * 던져지는 column value의 FQDN(Fully Qulified Domain Name)을 발견한다.
-   */
-
-  private static String findFQDN(byte cType, int cPrecision, byte cBaseType)
-  {
-    switch (cType)
-    {
-    case UUType.U_TYPE_NULL:
-      return "null";
-    case UUType.U_TYPE_BIT:
-      return (cPrecision == 8) ? "java.lang.Boolean" : "byte[]";
-    case UUType.U_TYPE_VARBIT:
-      return "byte[]";
-    case UUType.U_TYPE_CHAR:
-    case UUType.U_TYPE_NCHAR:
-    case UUType.U_TYPE_VARCHAR:
-    case UUType.U_TYPE_VARNCHAR:
-      return "java.lang.String";
-    case UUType.U_TYPE_NUMERIC:
-      return "java.lang.Double";
-    case UUType.U_TYPE_SHORT:
-      return "java.lang.Short";
-    case UUType.U_TYPE_INT:
-      return "java.lang.Integer";
-    case UUType.U_TYPE_BIGINT:
-      return "java.lang.Long";
-    case UUType.U_TYPE_FLOAT:
-      return "java.lang.Float";
-    case UUType.U_TYPE_MONETARY:
-    case UUType.U_TYPE_DOUBLE:
-      return "java.lang.Double";
-    case UUType.U_TYPE_DATE:
-      return "java.sql.Date";
-    case UUType.U_TYPE_TIME:
-      return "java.sql.Time";
-    case UUType.U_TYPE_TIMESTAMP:
-    case UUType.U_TYPE_DATETIME:
-      return "java.sql.Timestamp";
-    case UUType.U_TYPE_SET:
-    case UUType.U_TYPE_SEQUENCE:
-    case UUType.U_TYPE_MULTISET:
-      break;
-    case UUType.U_TYPE_OBJECT:
-      return "@CUBRID_SQL@.CUBRIDOID";
-    default:
-      return "";
-    }
-    switch (cBaseType)
-    {
-    case UUType.U_TYPE_NULL:
-      return "null";
-    case UUType.U_TYPE_BIT:
-      return (cPrecision == 8) ? "java.lang.Boolean[]" : "byte[][]";
-    case UUType.U_TYPE_VARBIT:
-      return "byte[][]";
-    case UUType.U_TYPE_CHAR:
-    case UUType.U_TYPE_NCHAR:
-    case UUType.U_TYPE_VARCHAR:
-    case UUType.U_TYPE_VARNCHAR:
-      return "java.lang.String[]";
-    case UUType.U_TYPE_NUMERIC:
-      return "java.lang.Double[]";
-    case UUType.U_TYPE_SHORT:
-      return "java.lang.Short[]";
-    case UUType.U_TYPE_INT:
-      return "java.lang.Integer[]";
-    case UUType.U_TYPE_BIGINT:
-      return "java.lang.Long[]";
-    case UUType.U_TYPE_FLOAT:
-      return "java.lang.Float[]";
-    case UUType.U_TYPE_MONETARY:
-    case UUType.U_TYPE_DOUBLE:
-      return "java.lang.Double[]";
-    case UUType.U_TYPE_DATE:
-      return "java.sql.Date[]";
-    case UUType.U_TYPE_TIME:
-      return "java.sql.Time[]";
-    case UUType.U_TYPE_TIMESTAMP:
-    case UUType.U_TYPE_DATETIME:
-      return "java.sql.Timestamp[]";
-    case UUType.U_TYPE_SET:
-    case UUType.U_TYPE_SEQUENCE:
-    case UUType.U_TYPE_MULTISET:
-      break;
-    case UUType.U_TYPE_OBJECT:
-      return "@CUBRID_SQL@.CUBRIDOID[]";
-    default:
-      break;
-    }
-    return null;
-  }
+	private String findFQDN(byte cType, int cPrecision, byte cBaseType) {
+		switch (cType) {
+		case UUType.U_TYPE_NULL:
+			return "null";
+		case UUType.U_TYPE_BIT:
+			return (cPrecision == 8) ? "java.lang.Boolean" : "byte[]";
+		case UUType.U_TYPE_VARBIT:
+			return "byte[]";
+		case UUType.U_TYPE_CHAR:
+		case UUType.U_TYPE_NCHAR:
+		case UUType.U_TYPE_VARCHAR:
+		case UUType.U_TYPE_VARNCHAR:
+			return "java.lang.String";
+		case UUType.U_TYPE_NUMERIC:
+			if (UJCIUtil.isMysqlMode(this.getClass())) {
+				return "java.math.BigDecimal";
+			}
+			return "java.lang.Double";
+		case UUType.U_TYPE_SHORT:
+			return "java.lang.Short";
+		case UUType.U_TYPE_INT:
+			return "java.lang.Integer";
+		case UUType.U_TYPE_BIGINT:
+			return "java.lang.Long";
+		case UUType.U_TYPE_FLOAT:
+			return "java.lang.Float";
+		case UUType.U_TYPE_MONETARY:
+		case UUType.U_TYPE_DOUBLE:
+			return "java.lang.Double";
+		case UUType.U_TYPE_DATE:
+			return "java.sql.Date";
+		case UUType.U_TYPE_TIME:
+			return "java.sql.Time";
+		case UUType.U_TYPE_TIMESTAMP:
+		case UUType.U_TYPE_DATETIME:
+			return "java.sql.Timestamp";
+		case UUType.U_TYPE_SET:
+		case UUType.U_TYPE_SEQUENCE:
+		case UUType.U_TYPE_MULTISET:
+			break;
+		case UUType.U_TYPE_OBJECT:
+			return "cubrid.sql.CUBRIDOID";
+		case UUType.U_TYPE_BLOB:
+			return "java.sql.Blob";
+		case UUType.U_TYPE_CLOB:
+			return "java.sql.Clob";
+		default:
+			return "";
+		}
+		switch (cBaseType) {
+		case UUType.U_TYPE_NULL:
+			return "null";
+		case UUType.U_TYPE_BIT:
+			return (cPrecision == 8) ? "java.lang.Boolean[]" : "byte[][]";
+		case UUType.U_TYPE_VARBIT:
+			return "byte[][]";
+		case UUType.U_TYPE_CHAR:
+		case UUType.U_TYPE_NCHAR:
+		case UUType.U_TYPE_VARCHAR:
+		case UUType.U_TYPE_VARNCHAR:
+			return "java.lang.String[]";
+		case UUType.U_TYPE_NUMERIC:
+			return "java.lang.Double[]";
+		case UUType.U_TYPE_SHORT:
+			return "java.lang.Short[]";
+		case UUType.U_TYPE_INT:
+			return "java.lang.Integer[]";
+		case UUType.U_TYPE_BIGINT:
+			return "java.lang.Long[]";
+		case UUType.U_TYPE_FLOAT:
+			return "java.lang.Float[]";
+		case UUType.U_TYPE_MONETARY:
+		case UUType.U_TYPE_DOUBLE:
+			return "java.lang.Double[]";
+		case UUType.U_TYPE_DATE:
+			return "java.sql.Date[]";
+		case UUType.U_TYPE_TIME:
+			return "java.sql.Time[]";
+		case UUType.U_TYPE_TIMESTAMP:
+		case UUType.U_TYPE_DATETIME:
+			return "java.sql.Timestamp[]";
+		case UUType.U_TYPE_SET:
+		case UUType.U_TYPE_SEQUENCE:
+		case UUType.U_TYPE_MULTISET:
+			break;
+		case UUType.U_TYPE_OBJECT:
+			return "cubrid.sql.CUBRIDOID[]";
+		case UUType.U_TYPE_BLOB:
+			return "java.sql.Blob[]";
+		case UUType.U_TYPE_CLOB:
+			return "java.sql.Clob[]";
+		default:
+			break;
+		}
+		return null;
+	}
 }

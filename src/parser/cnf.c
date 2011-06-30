@@ -74,6 +74,43 @@ static void pt_tag_terms_with_id (PARSER_CONTEXT * parser, PT_NODE * terms,
 				  UINTPTR id, UINTPTR join_spec);
 static void pt_tag_terms_with_specs (PARSER_CONTEXT * parser, PT_NODE * terms,
 				     PT_NODE * join_spec, UINTPTR join_id);
+static PT_NODE *pt_tag_start_of_cnf_post (PARSER_CONTEXT * parser,
+					  PT_NODE * node, void *arg,
+					  int *continue_walk);
+
+
+
+/*
+ * pt_tag_start_of_cnf_post() - labels the node as CNF start if it has
+ *                              logical descendants (next / or_next)
+ *                              and removes their is_cnf_start label.
+ *                              This way, only the actual cnf start
+ *                              node gets to keep its label.
+ */
+static PT_NODE *
+pt_tag_start_of_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
+			  void *arg, int *continue_walk)
+{
+  if (node == NULL || node->type_enum != PT_TYPE_LOGICAL)
+    {
+      return node;
+    }
+
+  if (node->next && node->next->type_enum == PT_TYPE_LOGICAL)
+    {
+      node->next->is_cnf_start = false;
+    }
+
+  if (node->or_next && node->or_next->type_enum == PT_TYPE_LOGICAL)
+    {
+      node->or_next->is_cnf_start = false;
+    }
+
+  node->is_cnf_start = true;
+  return node;
+}
+
+
 /*
  * pt_and_or_form () - Converts a parse tree of boolean expressions into
  * 	an equivalent tree which is in and-or form. the basic algorithm is to
@@ -619,7 +656,7 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node,
 	      /* get parse tree string */
 	      rhs_str = parser_print_tree (parser, rhs);
 
-	      if (!pt_streq (lhs_str, rhs_str))
+	      if (!pt_str_compare (lhs_str, rhs_str, CASE_SENSITIVE))
 		{		/* found common cnf */
 		  common_found = true;
 		  break;
@@ -923,6 +960,8 @@ pt_cnf (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   while (next);
 
+  list = parser_walk_tree (parser, list,
+			   NULL, NULL, pt_tag_start_of_cnf_post, NULL);
   return list;
 }
 

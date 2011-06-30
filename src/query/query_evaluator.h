@@ -39,7 +39,7 @@
 #include "string_opfunc.h"
 #include "query_list.h"
 #include "parser_support.h"
-#include "thread_impl.h"
+#include "thread.h"
 
 typedef struct qproc_db_value_list *QPROC_DB_VALUE_LIST;	/* TODO */
 struct qproc_db_value_list
@@ -60,9 +60,12 @@ typedef enum
 /* aggregate functions */
   PT_MIN = 900, PT_MAX, PT_SUM, PT_AVG,
   PT_STDDEV, PT_VARIANCE,
+  PT_STDDEV_POP, PT_VAR_POP,
+  PT_STDDEV_SAMP, PT_VAR_SAMP,
   PT_COUNT, PT_COUNT_STAR,
   PT_GROUPBY_NUM,
   PT_AGG_BIT_AND, PT_AGG_BIT_OR, PT_AGG_BIT_XOR,
+  PT_GROUP_CONCAT,
   PT_TOP_AGG_FUNC,
 /* only aggregate functions should be below PT_TOP_AGG_FUNC */
 
@@ -76,10 +79,12 @@ typedef enum
   F_MIDXKEY,
 
 /* "normal" functions, arguments are values */
-  F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF
+  F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF,
+  F_INSERT_SUBSTRING, F_ELT
 } FUNC_TYPE;
 
 #define NUM_F_GENERIC_ARGS 32
+#define NUM_F_INSERT_SUBSTRING_ARGS 4
 
 /* type definitions for predicate evaluation */
 
@@ -159,6 +164,13 @@ struct regu_varlist_list_node
   REGU_VARIABLE_LIST list;	/* Pointer of regular variable list */
 };
 
+typedef struct regu_ptr_list_node *REGU_PTR_LIST;	/* TODO */
+struct regu_ptr_list_node
+{
+  REGU_PTR_LIST next;		/* Next node */
+  REGU_VARIABLE *var_p;		/* Regulator variable pointer */
+};
+
 typedef enum
 {
   T_ADD,
@@ -199,6 +211,8 @@ typedef enum
   T_FIELD,
   T_LEFT,
   T_RIGHT,
+  T_REPEAT,
+  T_SPACE,
   T_LOCATE,
   T_MID,
   T_STRCMP,
@@ -215,11 +229,15 @@ typedef enum
   T_MOD,
   T_POSITION,
   T_SUBSTRING,
+  T_SUBSTRING_INDEX,
   T_OCTET_LENGTH,
   T_BIT_LENGTH,
   T_CHAR_LENGTH,
+  T_MD5,
   T_LOWER,
   T_UPPER,
+  T_LIKE_LOWER_BOUND,
+  T_LIKE_UPPER_BOUND,
   T_TRIM,
   T_LTRIM,
   T_RTRIM,
@@ -233,10 +251,30 @@ typedef enum
   T_SYS_DATE,
   T_SYS_TIME,
   T_SYS_TIMESTAMP,
+  T_UTC_TIME,
+  T_UTC_DATE,
   T_TIME_FORMAT,
   T_TIMESTAMP,
   T_UNIX_TIMESTAMP,
+  T_FROM_UNIXTIME,
   T_SYS_DATETIME,
+  T_YEAR,
+  T_MONTH,
+  T_DAY,
+  T_HOUR,
+  T_MINUTE,
+  T_SECOND,
+  T_QUARTER,
+  T_WEEKDAY,
+  T_DAYOFWEEK,
+  T_DAYOFYEAR,
+  T_TODAYS,
+  T_FROMDAYS,
+  T_TIMETOSEC,
+  T_SECTOTIME,
+  T_MAKEDATE,
+  T_MAKETIME,
+  T_WEEK,
   T_TO_CHAR,
   T_TO_DATE,
   T_TO_TIME,
@@ -278,10 +316,23 @@ typedef enum
   T_DECR,
   T_SYS_CONNECT_BY_PATH,
   T_DATE,
+  T_TIME,
   T_DATEDIFF,
+  T_TIMEDIFF,
   T_ROW_COUNT,
+  T_LAST_INSERT_ID,
   T_DEFAULT,
-  T_LIST_DBS
+  T_LIST_DBS,
+  T_BIT_TO_BLOB,
+  T_BLOB_TO_BIT,
+  T_CHAR_TO_CLOB,
+  T_CLOB_TO_CHAR,
+  T_LOB_LENGTH,
+  T_TYPEOF,
+  T_INDEX_CARDINALITY,
+  T_EVALUATE_VARIABLE,
+  T_DEFINE_VARIABLE,
+  T_PREDICATE
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;
@@ -311,7 +362,7 @@ struct aggregate_list_node
   AGGREGATE_TYPE *next;		/* next aggregate node */
   TP_DOMAIN *domain;		/* domain of the result */
   DB_VALUE *value;		/* value of the aggregate */
-  DB_VALUE *value2;		/* for STTDEV and VARIANCE */
+  DB_VALUE *value2;		/* for GROUP_CONCAT, STTDEV and VARIANCE */
   int curr_cnt;			/* current number of items */
   FUNC_TYPE function;		/* aggregate function name */
   QUERY_OPTIONS option;		/* DISTINCT/ALL option */
@@ -320,6 +371,8 @@ struct aggregate_list_node
   QFILE_LIST_ID *list_id;	/* used for distinct handling */
   int flag_agg_optimize;
   BTID btid;
+  SORT_LIST *sort_list;		/* for sorting elements before aggregation;
+				 * used by GROUP_CONCAT */
 };
 
 typedef struct function_node FUNCTION_TYPE;

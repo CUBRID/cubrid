@@ -39,6 +39,7 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "databases_file.h"
+#include "boot_cl.h"
 #include "boot_sr.h"
 #include "db.h"
 #include "authenticate.h"
@@ -50,11 +51,15 @@
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "log_applier.h"
+#include "schema_manager.h"
+#include "locator_cl.h"
+#include "dynamic_array.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
 
 #define PASSBUF_SIZE 12
+#define SPACEDB_NUM_VOL_PURPOSE 5
 
 typedef enum
 {
@@ -65,10 +70,16 @@ typedef enum
   SPACEDB_SIZE_UNIT_HUMAN_READABLE
 } T_SPACEDB_SIZE_UNIT;
 
-static int changemode_keyword (int *keyval_p, char **keystr_p);
-static int copylogdb_keyword (int *keyval_p, char **keystr_p);
+
+static bool is_Sigint_caught = false;
+#if defined(WINDOWS)
+static BOOL WINAPI intr_handler (int sig_no);
+#else
+static void intr_handler (int sig_no);
+#endif
+
 static void backupdb_sig_interrupt_handler (int sig_no);
-static int spacedb_get_size_str (char *buf, int num_pages,
+static int spacedb_get_size_str (char *buf, UINT64 num_pages,
 				 T_SPACEDB_SIZE_UNIT size_unit);
 static void print_timestamp (FILE * outfp);
 
@@ -94,10 +105,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   FILEIO_ZIP_METHOD backup_zip_method = FILEIO_ZIP_NONE_METHOD;
   FILEIO_ZIP_LEVEL backup_zip_level = FILEIO_ZIP_NONE_LEVEL;
   bool skip_activelog = false;
-  int safe_pageid = -1;
-#if defined(SOLARIS) || defined(LINUX)
   char real_pathbuf[PATH_MAX];
-#endif
   char verbose_file_realpath[PATH_MAX];
 
   if (utility_get_option_string_table_size (arg_map) != 1)
@@ -127,7 +135,6 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   skip_activelog =
     utility_get_option_bool_value (arg_map, BACKUP_EXCEPT_ACTIVE_LOG_S);
   sa_mode = utility_get_option_bool_value (arg_map, BACKUP_SA_MODE_S);
-  safe_pageid = utility_get_option_int_value (arg_map, BACKUP_SAFE_PAGE_ID_S);
 
   /* Range checking of input */
   if (backup_level < 0 || backup_level >= FILEIO_BACKUP_UNDEFINED_LEVEL)
@@ -182,7 +189,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	  check_flag |= CHECKDB_LC_CHECK_CLASSNAMES;
 
 	  if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR ||
-	      boot_check_db_consistency (check_flag) != NO_ERROR)
+	      boot_check_db_consistency (check_flag, 0, 0) != NO_ERROR)
 	    {
 	      const char *tmpname;
 	      if ((tmpname = er_msglog_filename ()) == NULL)
@@ -208,7 +215,6 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
 
-#if defined(SOLARIS) || defined(LINUX)
       if (backup_path != NULL)
 	{
 	  memset (real_pathbuf, 0, sizeof (real_pathbuf));
@@ -217,7 +223,6 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	      backup_path = real_pathbuf;
 	    }
 	}
-#endif
 
       if (backup_verbose_file
 	  && *backup_verbose_file && *backup_verbose_file != '/')
@@ -237,7 +242,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 		       remove_log_archives, backup_verbose_file,
 		       backup_num_threads,
 		       backup_zip_method, backup_zip_level,
-		       skip_activelog, safe_pageid) == NO_ERROR)
+		       skip_activelog) == NO_ERROR)
 	{
 	  if (db_commit_transaction () != NO_ERROR)
 	    {
@@ -280,32 +285,63 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   int volext_npages = 0;
+  UINT64 volext_size;
   const char *volext_name = NULL;
   const char *volext_pathname = NULL;
   const char *volext_comments = NULL;
   const char *volext_string_purpose = NULL;
   const char *volext_npages_string = NULL;
+  const char *volext_size_str = NULL;
+  char real_volext_path_buf[PATH_MAX];
   DISK_VOLPURPOSE Volext_purpose;
 
-  if (utility_get_option_string_table_size (arg_map) != 2)
+  if (utility_get_option_string_table_size (arg_map) < 1)
     {
       goto print_addvol_usage;
     }
 
   database_name =
     utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-  volext_npages_string =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
-  if (database_name == NULL || volext_npages_string == NULL)
+  if (database_name == NULL)
     {
       goto print_addvol_usage;
     }
-  volext_npages = atoi (volext_npages_string);
+
+  volext_npages_string =
+    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+  if (volext_npages_string)
+    {
+      util_print_deprecated ("number-of-pages");
+      volext_npages = atoi (volext_npages_string);
+    }
+
+  volext_size_str =
+    utility_get_option_string_value (arg_map, ADDVOL_VOLUME_SIZE_S, 0);
+  if (volext_size_str)
+    {
+      if (util_size_string_to_byte (volext_size_str, &volext_size) !=
+	  NO_ERROR)
+	{
+	  goto print_addvol_usage;
+	}
+    }
+  else
+    {
+      volext_size = -1;
+    }
 
   volext_name =
     utility_get_option_string_value (arg_map, ADDVOL_VOLUME_NAME_S, 0);
   volext_pathname =
     utility_get_option_string_value (arg_map, ADDVOL_FILE_PATH_S, 0);
+  if (volext_pathname != NULL)
+    {
+      memset (real_volext_path_buf, 0, sizeof (real_volext_path_buf));
+      if (realpath (volext_pathname, real_volext_path_buf) != NULL)
+	{
+	  volext_pathname = real_volext_path_buf;
+	}
+    }
   volext_comments =
     utility_get_option_string_value (arg_map, ADDVOL_COMMENT_S, 0);
   volext_string_purpose =
@@ -317,14 +353,6 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 
   Volext_purpose = DISK_PERMVOL_GENERIC_PURPOSE;
 
-  if (volext_npages <= 0)
-    {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_ADDVOLDB,
-				       ADDVOLDB_MSG_BAD_NPAGES),
-	       volext_npages);
-      goto error_exit;
-    }
   if (strcasecmp (volext_string_purpose, "data") == 0)
     {
       Volext_purpose = DISK_PERMVOL_DATA_PURPOSE;
@@ -358,7 +386,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	   "%s_%s.err", database_name, arg->command_name);
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
@@ -370,6 +398,26 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   db_login ("dba", NULL);
   if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
+      if (volext_size == -1)
+	{
+	  volext_size = PRM_DB_VOLUME_SIZE;
+	}
+
+      if (volext_npages == 0)
+	{
+	  volext_npages = (int) (volext_size / IO_PAGESIZE);
+	}
+
+      if (volext_npages <= 0)
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_ADDVOLDB,
+					   ADDVOLDB_MSG_BAD_NPAGES),
+		   volext_npages);
+	  db_shutdown ();
+	  goto error_exit;
+	}
+
       if (db_add_volume (volext_pathname, volext_name, volext_comments,
 			 volext_npages, Volext_purpose) == NO_ERROR)
 	{
@@ -400,6 +448,126 @@ error_exit:
 }
 
 /*
+ * util_get_class_oids() -
+ *   return: OID array/NULL
+ */
+static OID *
+util_get_class_oids (dynamic_array * darray)
+{
+  MOP cls_mop;
+  OID *oids;
+  OID *cls_oid;
+  SM_CLASS *cls_sm;
+  char table[SM_MAX_IDENTIFIER_LENGTH];
+  char name[SM_MAX_IDENTIFIER_LENGTH];
+  int i;
+  int num_tables = da_size (darray);
+
+  oids = (OID *) malloc (sizeof (OID) * num_tables);
+  if (oids == NULL)
+    {
+      perror ("malloc");
+      return NULL;
+    }
+
+  for (i = 0; i < num_tables; i++)
+    {
+      if (da_get (darray, i, table) != NO_ERROR)
+	{
+	  free (oids);
+	  return NULL;
+	}
+
+      OID_SET_NULL (&oids[i]);
+      if (table == NULL || table[0] == '\0')
+	{
+	  continue;
+	}
+
+      sm_downcase_name (table, name, SM_MAX_IDENTIFIER_LENGTH);
+      cls_mop = locator_find_class (name);
+
+      ws_find (cls_mop, (MOBJ *) & cls_sm);
+      if (cls_sm == NULL || cls_sm->class_type != SM_CLASS_CT)
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_CHECKDB,
+					   CHECKDB_MSG_NO_SUCH_CLASS), table);
+	  continue;
+	}
+
+      cls_oid = ws_oid (cls_mop);
+      if (cls_oid)
+	{
+	  oids[i] = *cls_oid;
+	}
+      else
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_CHECKDB,
+					   CHECKDB_MSG_NO_SUCH_CLASS), table);
+	  continue;
+	}
+    }
+
+  return oids;
+}
+
+/*
+ * util_get_table_list_from_file() -
+ *   return: NO_ERROR/ER_GENERIC_ERROR
+ */
+static int
+util_get_table_list_from_file (char *fname, dynamic_array * darray)
+{
+  int c, i, p;
+  char name[SM_MAX_IDENTIFIER_LENGTH];
+  FILE *fp = fopen (fname, "r");
+
+  if (fp == NULL)
+    {
+      perror (fname);
+      return ER_GENERIC_ERROR;
+    }
+
+  i = p = 0;
+  while (1)
+    {
+      c = fgetc (fp);
+      if (c == ' ' || c == '\t' || c == ',' || c == '\n' || c == EOF)
+	{
+	  if (p != 0)
+	    {
+	      name[p] = '\0';
+	      if (da_add (darray, name) != NO_ERROR)
+		{
+		  perror ("calloc");
+		  fclose (fp);
+		  return ER_GENERIC_ERROR;
+		}
+	      i++;
+	      p = 0;
+	    }
+	  if (c == EOF)
+	    {
+	      break;
+	    }
+	  continue;
+	}
+      name[p++] = c;
+      if (p == SM_MAX_IDENTIFIER_LENGTH)
+	{
+	  /* too long table name */
+	  fclose (fp);
+	  return ER_GENERIC_ERROR;
+	}
+    }
+  fclose (fp);
+
+  return NO_ERROR;
+}
+
+/*
  * checkdb() - checkdb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
  */
@@ -409,10 +577,14 @@ checkdb (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
+  char *fname;
   bool repair = false;
   int flag;
+  int i, num_tables;
+  OID *oids = NULL;
+  dynamic_array *darray = NULL;
 
-  if (utility_get_option_string_table_size (arg_map) != 1)
+  if (utility_get_option_string_table_size (arg_map) < 1)
     {
       goto print_check_usage;
     }
@@ -424,19 +596,60 @@ checkdb (UTIL_FUNCTION_ARG * arg)
       goto print_check_usage;
     }
 
-  repair = utility_get_option_bool_value (arg_map, CHECK_REPAIR_S);
-
-  flag = CHECKDB_ALL_CHECK;
-
   /* extra validation */
   if (check_database_name (database_name))
     {
       goto error_exit;
     }
 
+  repair = utility_get_option_bool_value (arg_map, CHECK_REPAIR_S);
+  fname = utility_get_option_string_value (arg_map, CHECK_INPUT_FILE_S, 0);
+  num_tables = utility_get_option_string_table_size (arg_map);
+  num_tables -= 1;
+
+  darray = da_create (num_tables, SM_MAX_IDENTIFIER_LENGTH);
+  if (darray == NULL)
+    {
+      perror ("calloc");
+      goto error_exit;
+    }
+
+  if (num_tables > 0)
+    {
+      char n[SM_MAX_IDENTIFIER_LENGTH];
+      char *p;
+      for (i = 0; i < num_tables; i++)
+	{
+	  p =
+	    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE,
+					     i + 1);
+	  if (p == NULL)
+	    {
+	      continue;
+	    }
+	  strncpy (n, p, SM_MAX_IDENTIFIER_LENGTH);
+	  if (da_add (darray, n) != NO_ERROR)
+	    {
+	      perror ("calloc");
+	      goto error_exit;
+	    }
+	}
+    }
+
+  if (fname != NULL)
+    {
+      if (util_get_table_list_from_file (fname, darray) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
+  num_tables = da_size (darray);
+  flag = CHECKDB_ALL_CHECK;
+
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	   "%s_%s.err", database_name, arg->command_name);
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
@@ -450,12 +663,25 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 	{
 	  flag |= CHECKDB_REPAIR;
 	}
+
+      if (num_tables > 0)
+	{
+	  oids = util_get_class_oids (darray);
+	  if (oids == NULL)
+	    {
+	      db_shutdown ();
+	      goto error_exit;
+	    }
+	}
+
       if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR ||
-	  boot_check_db_consistency (flag) != NO_ERROR)
+	  boot_check_db_consistency (flag, oids, num_tables) != NO_ERROR)
 	{
 	  const char *tmpname;
 	  if ((tmpname = er_msglog_filename ()) == NULL)
-	    tmpname = "/dev/null";
+	    {
+	      tmpname = "/dev/null";
+	    }
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 					   MSGCAT_UTIL_SET_CHECKDB,
 					   CHECKDB_MSG_INCONSISTENT),
@@ -470,6 +696,16 @@ checkdb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
     }
+
+  if (darray != NULL)
+    {
+      da_destroy (darray);
+    }
+  if (oids != NULL)
+    {
+      free (oids);
+    }
+
   return EXIT_SUCCESS;
 
 print_check_usage:
@@ -477,6 +713,15 @@ print_check_usage:
 				   MSGCAT_UTIL_SET_CHECKDB,
 				   CHECKDB_MSG_USAGE), basename (arg->argv0));
 error_exit:
+  if (darray != NULL)
+    {
+      da_destroy (darray);
+    }
+  if (oids != NULL)
+    {
+      free (oids);
+    }
+
   return EXIT_FAILURE;
 }
 
@@ -484,6 +729,7 @@ error_exit:
 	    ((VOL_PURPOSE == DISK_PERMVOL_DATA_PURPOSE) ? "DATA"	\
 	    : (VOL_PURPOSE == DISK_PERMVOL_INDEX_PURPOSE) ? "INDEX"	\
 	    : (VOL_PURPOSE == DISK_PERMVOL_GENERIC_PURPOSE) ? "GENERIC"	\
+	    : (VOL_PURPOSE == DISK_TEMPVOL_TEMP_PURPOSE) ? "TEMP TEMP" \
 	    : "TEMP")
 
 /*
@@ -504,11 +750,16 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   int vol_ntotal_pages;
   int vol_nfree_pages;
   char vol_label[PATH_MAX];
-  int db_ntotal_pages, db_nfree_pages;
+  UINT64 db_ntotal_pages, db_nfree_pages;
+  UINT64 db_summarize_ntotal_pages[SPACEDB_NUM_VOL_PURPOSE];
+  UINT64 db_summarize_nfree_pages[SPACEDB_NUM_VOL_PURPOSE];
+  int db_summarize_nvols[SPACEDB_NUM_VOL_PURPOSE];
+  bool summarize;
   FILE *outfp = NULL;
   int nvols;
   VOLID temp_volid;
-  char num_total_str[64], num_free_str[64];
+  char num_total_str[64], num_free_str[64], num_used_str[64];
+  char io_size_str[64], log_size_str[64];
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -525,12 +776,17 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   output_file =
     utility_get_option_string_value (arg_map, SPACE_OUTPUT_FILE_S, 0);
   size_unit = utility_get_option_string_value (arg_map, SPACE_SIZE_UNIT_S, 0);
+  summarize = utility_get_option_bool_value (arg_map, SPACE_SUMMARIZE_S);
 
-  size_unit_type = SPACEDB_SIZE_UNIT_PAGE;
+  size_unit_type = SPACEDB_SIZE_UNIT_HUMAN_READABLE;
 
   if (size_unit != NULL)
     {
-      if (strcasecmp (size_unit, "m") == 0)
+      if (strcasecmp (size_unit, "page") == 0)
+	{
+	  size_unit_type = SPACEDB_SIZE_UNIT_PAGE;
+	}
+      else if (strcasecmp (size_unit, "m") == 0)
 	{
 	  size_unit_type = SPACEDB_SIZE_UNIT_MBYTES;
 	}
@@ -542,11 +798,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	{
 	  size_unit_type = SPACEDB_SIZE_UNIT_TBYTES;
 	}
-      else if (strcasecmp (size_unit, "h") == 0)
-	{
-	  size_unit_type = SPACEDB_SIZE_UNIT_HUMAN_READABLE;
-	}
-      else if (strcasecmp (size_unit, "page") != 0)
+      else if (strcasecmp (size_unit, "h") != 0)
 	{
 	  /* invalid option string */
 	  goto print_space_usage;
@@ -554,7 +806,9 @@ spacedb (UTIL_FUNCTION_ARG * arg)
     }
 
   if (output_file == NULL)
-    outfp = stdout;
+    {
+      outfp = stdout;
+    }
   else
     {
       outfp = fopen (output_file, "w");
@@ -575,7 +829,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	   "%s_%s.err", database_name, arg->command_name);
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
@@ -594,18 +848,50 @@ spacedb (UTIL_FUNCTION_ARG * arg)
     }
 
   nvols = db_num_volumes ();
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
-				  MSGCAT_UTIL_SET_SPACEDB,
-				  SPACEDB_OUTPUT_SUMMARY), database_name,
-	   IO_PAGESIZE, LOG_PAGESIZE);
-
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
-				  MSGCAT_UTIL_SET_SPACEDB,
-				  (size_unit_type == SPACEDB_SIZE_UNIT_PAGE) ?
-				  SPACEDB_OUTPUT_TITLE_PAGE :
-				  SPACEDB_OUTPUT_TITLE_SIZE));
 
   db_ntotal_pages = db_nfree_pages = 0;
+
+  util_byte_to_size_string (IO_PAGESIZE, io_size_str, 64);
+  util_byte_to_size_string (LOG_PAGESIZE, log_size_str, 64);
+
+  if (summarize)
+    {
+      for (i = 0; i < SPACEDB_NUM_VOL_PURPOSE; i++)
+	{
+	  db_summarize_ntotal_pages[i] = 0;
+	  db_summarize_nfree_pages[i] = 0;
+	  db_summarize_nvols[i] = 0;
+	}
+
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
+				      MSGCAT_UTIL_SET_SPACEDB,
+				      SPACEDB_OUTPUT_SUMMARIZED_TITLE),
+	       database_name, io_size_str, log_size_str);
+
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
+				      MSGCAT_UTIL_SET_SPACEDB,
+				      (size_unit_type ==
+				       SPACEDB_SIZE_UNIT_PAGE) ?
+				      SPACEDB_OUTPUT_SUMMARIZED_TITLE_PAGE :
+				      SPACEDB_OUTPUT_SUMMARIZED_TITLE_SIZE));
+      fprintf (outfp,
+	       "---------------------------------------------------"
+	       "----------\n");
+    }
+  else
+    {
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
+				      MSGCAT_UTIL_SET_SPACEDB,
+				      SPACEDB_OUTPUT_SUMMARY), database_name,
+	       io_size_str, log_size_str);
+
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
+				      MSGCAT_UTIL_SET_SPACEDB,
+				      (size_unit_type ==
+				       SPACEDB_SIZE_UNIT_PAGE) ?
+				      SPACEDB_OUTPUT_TITLE_PAGE :
+				      SPACEDB_OUTPUT_TITLE_SIZE));
+    }
 
   for (i = 0; i < nvols; i++)
     {
@@ -614,12 +900,26 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	{
 	  db_ntotal_pages += vol_ntotal_pages;
 	  db_nfree_pages += vol_nfree_pages;
-	  if (db_vol_label (i, vol_label) == NULL)
-	    strcpy (vol_label, " ");
 
-	  spacedb_get_size_str (num_total_str, vol_ntotal_pages,
+	  if (summarize)
+	    {
+	      if (vol_purpose < DISK_UNKNOWN_PURPOSE)
+		{
+		  db_summarize_ntotal_pages[vol_purpose] += vol_ntotal_pages;
+		  db_summarize_nfree_pages[vol_purpose] += vol_nfree_pages;
+		  db_summarize_nvols[vol_purpose]++;
+		}
+	      continue;
+	    }
+
+	  if (db_vol_label (i, vol_label) == NULL)
+	    {
+	      strcpy (vol_label, " ");
+	    }
+
+	  spacedb_get_size_str (num_total_str, (UINT64) vol_ntotal_pages,
 				size_unit_type);
-	  spacedb_get_size_str (num_free_str, vol_nfree_pages,
+	  spacedb_get_size_str (num_free_str, (UINT64) vol_nfree_pages,
 				size_unit_type);
 
 	  fprintf (outfp,
@@ -636,7 +936,8 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
     }
-  if (nvols > 1)
+
+  if (nvols > 1 && !summarize)
     {
       fprintf (outfp, "-------------------------------------------------");
       fprintf (outfp, "------------------------------\n");
@@ -653,18 +954,22 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   /* Find info on temp volumes */
   nvols = boot_find_number_temp_volumes ();
   temp_volid = boot_find_last_temp ();
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
-				  MSGCAT_UTIL_SET_SPACEDB,
-				  SPACEDB_OUTPUT_SUMMARY_TMP_VOL),
-	   database_name, IO_PAGESIZE);
 
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
-				  MSGCAT_UTIL_SET_SPACEDB,
-				  (size_unit_type == SPACEDB_SIZE_UNIT_PAGE) ?
-				  SPACEDB_OUTPUT_TITLE_PAGE :
-				  SPACEDB_OUTPUT_TITLE_SIZE));
+  if (!summarize)
+    {
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
+				      MSGCAT_UTIL_SET_SPACEDB,
+				      SPACEDB_OUTPUT_SUMMARY_TMP_VOL),
+	       database_name, io_size_str);
 
-  db_ntotal_pages = db_nfree_pages = 0;
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
+				      MSGCAT_UTIL_SET_SPACEDB,
+				      (size_unit_type ==
+				       SPACEDB_SIZE_UNIT_PAGE) ?
+				      SPACEDB_OUTPUT_TITLE_PAGE :
+				      SPACEDB_OUTPUT_TITLE_SIZE));
+      db_ntotal_pages = db_nfree_pages = 0;
+    }
 
   for (i = 0; i < nvols; i++)
     {
@@ -674,18 +979,33 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	{
 	  db_ntotal_pages += vol_ntotal_pages;
 	  db_nfree_pages += vol_nfree_pages;
-	  if (db_vol_label ((temp_volid + i), vol_label) == NULL)
-	    strcpy (vol_label, " ");
 
-	  spacedb_get_size_str (num_total_str, vol_ntotal_pages,
+	  if (summarize)
+	    {
+	      if (vol_purpose < DISK_UNKNOWN_PURPOSE)
+		{
+		  db_summarize_ntotal_pages[vol_purpose] += vol_ntotal_pages;
+		  db_summarize_nfree_pages[vol_purpose] += vol_nfree_pages;
+		  db_summarize_nvols[vol_purpose]++;
+		}
+	      continue;
+	    }
+
+	  if (db_vol_label ((temp_volid + i), vol_label) == NULL)
+	    {
+	      strcpy (vol_label, " ");
+	    }
+
+	  spacedb_get_size_str (num_total_str, (UINT64) vol_ntotal_pages,
 				size_unit_type);
-	  spacedb_get_size_str (num_free_str, vol_nfree_pages,
+	  spacedb_get_size_str (num_free_str, (UINT64) vol_nfree_pages,
 				size_unit_type);
 
 	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
 					  MSGCAT_UTIL_SET_SPACEDB,
 					  SPACEDB_OUTPUT_FORMAT),
-		   (temp_volid + i), VOL_PURPOSE_STRING (vol_purpose),
+		   (temp_volid + i),
+		   VOL_PURPOSE_STRING (DISK_PERMVOL_TEMP_PURPOSE),
 		   num_total_str, num_free_str, vol_label);
 	}
       else
@@ -695,19 +1015,72 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
     }
-  if (nvols > 1)
+
+  if (!summarize)
     {
-      fprintf (outfp, "-------------------------------------------------");
-      fprintf (outfp, "------------------------------\n");
+      if (nvols > 1)
+	{
+	  fprintf (outfp,
+		   "-------------------------------------------------");
+	  fprintf (outfp, "------------------------------\n");
 
-      spacedb_get_size_str (num_total_str, vol_ntotal_pages, size_unit_type);
-      spacedb_get_size_str (num_free_str, vol_nfree_pages, size_unit_type);
+	  spacedb_get_size_str (num_total_str, db_ntotal_pages,
+				size_unit_type);
+	  spacedb_get_size_str (num_free_str, db_nfree_pages, size_unit_type);
 
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
+					  MSGCAT_UTIL_SET_SPACEDB,
+					  SPACEDB_OUTPUT_FORMAT), nvols, " ",
+		   num_total_str, num_free_str, " ");
+
+	}
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS,
 				      MSGCAT_UTIL_SET_SPACEDB,
-				      SPACEDB_OUTPUT_FORMAT), nvols, " ",
-	       num_total_str, num_free_str, " ");
+				      SPACEDB_OUTPUT_SUMMARY_LOB),
+	       boot_get_lob_path ());
     }
+  else
+    {
+      int total_volume_count = 0;
+
+      for (i = 0; i < SPACEDB_NUM_VOL_PURPOSE; i++)
+	{
+	  spacedb_get_size_str (num_total_str, db_summarize_ntotal_pages[i],
+				size_unit_type);
+
+	  spacedb_get_size_str (num_used_str,
+				db_summarize_ntotal_pages[i] -
+				db_summarize_nfree_pages[i], size_unit_type);
+
+	  spacedb_get_size_str (num_free_str, db_summarize_nfree_pages[i],
+				size_unit_type);
+
+	  total_volume_count += db_summarize_nvols[i];
+
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_SPACEDB,
+				   SPACEDB_OUTPUT_SUMMARIZED_FORMAT),
+		   VOL_PURPOSE_STRING (i), num_total_str, num_used_str,
+		   num_free_str, db_summarize_nvols[i]);
+	}
+
+      fprintf (outfp,
+	       "---------------------------------------------------"
+	       "----------\n");
+
+      spacedb_get_size_str (num_total_str, db_ntotal_pages, size_unit_type);
+      spacedb_get_size_str (num_used_str, db_ntotal_pages - db_nfree_pages,
+			    size_unit_type);
+      spacedb_get_size_str (num_free_str, db_nfree_pages, size_unit_type);
+      fprintf (outfp,
+	       msgcat_message (MSGCAT_CATALOG_UTILS,
+			       MSGCAT_UTIL_SET_SPACEDB,
+			       SPACEDB_OUTPUT_SUMMARIZED_FORMAT),
+	       "TOTAL", num_total_str, num_used_str, num_free_str,
+	       total_volume_count);
+    }
+
   db_shutdown ();
   if (outfp != stdout)
     {
@@ -726,6 +1099,86 @@ error_exit:
       fclose (outfp);
     }
   return EXIT_FAILURE;
+}
+
+/*
+ * acldb() -
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+acldb (UTIL_FUNCTION_ARG * arg)
+{
+#if defined (CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  const char *output_file = NULL;
+  bool reload;
+  int ret_code = EXIT_SUCCESS;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_acl_usage;
+    }
+
+  reload = utility_get_option_bool_value (arg_map, ACLDB_RELOAD_S);
+
+  database_name =
+    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_acl_usage;
+    }
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  /* should have little copyright herald message ? */
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("dba", NULL);
+
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+    {
+      fprintf (stderr, "%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  if (reload)
+    {
+      ret_code = acl_reload ();
+      if (ret_code != NO_ERROR)
+	{
+	  fprintf (stderr, "%s\n", db_error_string (3));
+	}
+    }
+  else
+    {
+      acl_dump (stdout);
+    }
+  db_shutdown ();
+
+  return ret_code;
+
+print_acl_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_ACLDB, ACLDB_MSG_USAGE),
+	   basename (arg->argv0));
+error_exit:
+  return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_ACLDB,
+				   ACLDB_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
 }
 
 /*
@@ -779,7 +1232,7 @@ lockdb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	   "%s_%s.err", database_name, arg->command_name);
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
@@ -1176,7 +1629,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	   "%s_%s.err", database_name, arg->command_name);
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -1440,7 +1893,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	   "%s_%s.err", database_name, arg->command_name);
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
@@ -1529,6 +1982,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
   const char *output_file = NULL;
   int interval;
   bool cumulative;
+  const char *substr;
   FILE *outfp = NULL;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
@@ -1551,6 +2005,12 @@ statdump (UTIL_FUNCTION_ARG * arg)
       goto print_statdump_usage;
     }
   cumulative = utility_get_option_bool_value (arg_map, STATDUMP_CUMULATIVE_S);
+  substr = utility_get_option_string_value (arg_map, STATDUMP_SUBSTR_S, 0);
+
+  if (interval == 0)
+    {
+      cumulative = true;
+    }
 
   if (output_file == NULL)
     {
@@ -1576,7 +2036,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	   "%s_%s.err", database_name, arg->command_name);
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
@@ -1591,17 +2051,25 @@ statdump (UTIL_FUNCTION_ARG * arg)
     }
 
   histo_start (true);
+
+  if (interval > 0)
+    {
+      is_Sigint_caught = false;
+#if defined(WINDOWS)
+      SetConsoleCtrlHandler ((PHANDLER_ROUTINE) intr_handler, TRUE);
+#else
+      os_set_signal_handler (SIGINT, intr_handler);
+#endif
+    }
+
   do
     {
       print_timestamp (outfp);
-      histo_print_global_stats (outfp);
-      if (cumulative == false)
-	{
-	  histo_clear_global_stats ();
-	}
+      histo_print_global_stats (outfp, cumulative, substr);
       sleep (interval);
     }
-  while (interval > 0);
+  while (interval > 0 && !is_Sigint_caught);
+
   histo_stop ();
 
   db_shutdown ();
@@ -1661,29 +2129,6 @@ check_server_ha_mode (void)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * changemode_keyword() - get keyword value or string of the server mode
- *   return: NO_ERROR or ER_FAILED
- *   keyval_p(in/out): keyword value
- *   keystr_p(in/out): keyword string
- */
-static int
-changemode_keyword (int *keyval_p, char **keystr_p)
-{
-  static UTIL_KEYWORD keywords[] = {
-    {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_IDLE_STR},
-    {HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_ACTIVE_STR},
-    {HA_SERVER_STATE_TO_BE_ACTIVE, HA_SERVER_STATE_TO_BE_ACTIVE_STR},
-    {HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_STANDBY_STR},
-    {HA_SERVER_STATE_TO_BE_STANDBY, HA_SERVER_STATE_TO_BE_STANDBY_STR},
-    {HA_SERVER_STATE_MAINTENANCE, HA_SERVER_STATE_MAINTENANCE_STR},
-    {HA_SERVER_STATE_DEAD, HA_SERVER_STATE_DEAD_STR},
-    {-1, NULL}
-  };
-
-  return utility_keyword_search (keywords, keyval_p, keystr_p);
-}
-
-/*
  * changemode() - changemode main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
  */
@@ -1703,7 +2148,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   char *mode_name;
   int mode = -1, error;
-  bool wait, force;
+  bool force;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -1718,7 +2163,6 @@ changemode (UTIL_FUNCTION_ARG * arg)
     }
 
   mode_name = utility_get_option_string_value (arg_map, CHANGEMODE_MODE_S, 0);
-  wait = utility_get_option_bool_value (arg_map, CHANGEMODE_WAIT_S);
   force = utility_get_option_bool_value (arg_map, CHANGEMODE_FORCE_S);
 
   if (check_database_name (database_name))
@@ -1754,7 +2198,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	   "%s_%s.err", database_name, arg->command_name);
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   AU_DISABLE_PASSWORDS ();
@@ -1782,12 +2226,12 @@ changemode (UTIL_FUNCTION_ARG * arg)
   if (mode_name == NULL)
     {
       /* display the value of current mode */
-      mode = boot_change_ha_mode (HA_SERVER_MODE_NA, false, false);
+      mode = boot_change_ha_mode (HA_SERVER_MODE_NA, false);
     }
   else
     {
       /* change server's HA mode */
-      mode = boot_change_ha_mode (mode, force, wait);
+      mode = boot_change_ha_mode (mode, force);
     }
   if (mode != HA_SERVER_MODE_NA)
     {
@@ -1831,25 +2275,6 @@ error_exit:
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 #endif /* !WINDOWS */
-}
-
-/*
- * copylogdb_keyword() - get keyword value or string of the copylogdb mode
- *   return: NO_ERROR or ER_FAILED
- *   keyval_p(in/out): keyword value
- *   keystr_p(in/out): keyword string
- */
-static int
-copylogdb_keyword (int *keyval_p, char **keystr_p)
-{
-  static UTIL_KEYWORD keywords[] = {
-    {LOGWR_MODE_ASYNC, "async"},
-    {LOGWR_MODE_SEMISYNC, "semisync"},
-    {LOGWR_MODE_SYNC, "sync"},
-    {-1, NULL}
-  };
-
-  return utility_keyword_search (keywords, keyval_p, keystr_p);
 }
 
 /*
@@ -1936,9 +2361,13 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       mode = LOGWR_MODE_SYNC;
     }
 
+#if defined(NDEBUG)
+  util_redirect_stdout_to_null ();
+#endif
+
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	   "%s_%s.err", database_name, arg->command_name);
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   db_Enable_replications++;
@@ -1986,6 +2415,17 @@ retry:
 	}
       goto error_exit;
     }
+
+  /* initialize system parameters */
+  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+    {
+      (void) db_shutdown ();
+
+      error = ER_FAILED;
+      goto error_exit;
+    }
+  /* PRM_LOG_BACKGROUND_ARCHIVING is always true in CUBRID HA */
+  sysprm_set_to_default ("PRM_LOG_BACKGROUND_ARCHIVING", true);
 
   if (PRM_HA_MODE == HA_MODE_OFF)
     {
@@ -2070,7 +2510,6 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   const char *log_path;
   char log_path_buf[PATH_MAX];
   char *log_path_base;
-  int test_log;
   int max_mem_size;
   int error = NO_ERROR;
   int retried = 0, sleep_nsecs = 1;
@@ -2094,7 +2533,6 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 
   log_path =
     utility_get_option_string_value (arg_map, APPLYLOG_LOG_PATH_S, 0);
-  test_log = utility_get_option_int_value (arg_map, APPLYLOG_TEST_LOG_S);
   max_mem_size =
     utility_get_option_int_value (arg_map, APPLYLOG_MAX_MEM_SIZE_S);
 
@@ -2115,18 +2553,16 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
       goto print_applylog_usage;
     }
 
+#if defined(NDEBUG)
+  util_redirect_stdout_to_null ();
+#endif
+
   /* error message log file */
   log_path_base = strdup (log_path);
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s_%s.err",
 	    database_name, arg->command_name, basename (log_path_base));
   free (log_path_base);
   er_init (er_msg_file, ER_NEVER_EXIT);
-
-  if (test_log >= 0)
-    {
-      la_test_log_page (database_name, log_path, test_log);
-      return EXIT_SUCCESS;
-    }
 
   db_Enable_replications++;
   AU_DISABLE_PASSWORDS ();
@@ -2174,6 +2610,15 @@ retry:
     }
   /* set lock timeout to infinite */
   db_set_lock_timeout (-1);
+
+  /* initialize system parameters */
+  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+    {
+      (void) db_shutdown ();
+
+      error = ER_FAILED;
+      goto error_exit;
+    }
 
   if (PRM_HA_MODE == HA_MODE_OFF)
     {
@@ -2250,7 +2695,8 @@ backupdb_sig_interrupt_handler (int sig_no)
 }
 
 static int
-spacedb_get_size_str (char *buf, int num_pages, T_SPACEDB_SIZE_UNIT size_unit)
+spacedb_get_size_str (char *buf, UINT64 num_pages,
+		      T_SPACEDB_SIZE_UNIT size_unit)
 {
   int pgsize, i;
   double size;
@@ -2259,17 +2705,17 @@ spacedb_get_size_str (char *buf, int num_pages, T_SPACEDB_SIZE_UNIT size_unit)
 
   if (size_unit == SPACEDB_SIZE_UNIT_PAGE)
     {
-      sprintf (buf, "%11d", num_pages);
+      sprintf (buf, "%11llu", (long long unsigned int) num_pages);
     }
   else
     {
       pgsize = IO_PAGESIZE / 1024;
-      size = pgsize * num_pages;
+      size = pgsize * ((double) num_pages);
 
       if (size_unit == SPACEDB_SIZE_UNIT_HUMAN_READABLE)
 	{
 	  for (i = SPACEDB_SIZE_UNIT_MBYTES;
-	       i < SPACEDB_SIZE_UNIT_TBYTES; i++)
+	       i <= SPACEDB_SIZE_UNIT_TBYTES; i++)
 	    {
 	      size /= 1024;
 
@@ -2294,4 +2740,217 @@ spacedb_get_size_str (char *buf, int num_pages, T_SPACEDB_SIZE_UNIT size_unit)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * applyinfo() - ApplyInfo main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+applyinfo (UTIL_FUNCTION_ARG * arg)
+{
+#if defined (WINDOWS)
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_APPLYINFO,
+				   APPLYINFO_MSG_HA_NOT_SUPPORT),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#else /* WINDOWS */
+#if defined (CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  const char *master_node_name;
+  char local_database_name[MAXHOSTNAMELEN];
+  char master_database_name[MAXHOSTNAMELEN];
+  bool check_applied_info, check_copied_info, check_master_info;
+  bool verbose;
+  const char *log_path;
+  char log_path_buf[PATH_MAX];
+  char *log_path_base;
+  int error = NO_ERROR;
+  int pageid = 0;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_applyinfo_usage;
+    }
+
+  check_applied_info = check_copied_info = check_master_info = false;
+
+  database_name =
+    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_applyinfo_usage;
+    }
+
+  master_node_name =
+    utility_get_option_string_value (arg_map, APPLYINFO_REMOTE_NAME_S, 0);
+  if (master_node_name != NULL)
+    {
+      check_master_info = true;
+    }
+
+  check_applied_info =
+    utility_get_option_bool_value (arg_map, APPLYINFO_APPLIED_INFO_S);
+
+  log_path =
+    utility_get_option_string_value (arg_map, APPLYINFO_COPIED_LOG_PATH_S, 0);
+  if (log_path != NULL)
+    {
+      log_path = realpath (log_path, log_path_buf);
+    }
+  if (log_path != NULL)
+    {
+      check_copied_info = true;
+    }
+
+  if (check_applied_info && (log_path == NULL))
+    {
+      goto print_applyinfo_usage;
+    }
+
+  pageid = utility_get_option_int_value (arg_map, APPLYINFO_PAGE_S);
+  verbose = utility_get_option_bool_value (arg_map, APPLYINFO_VERBOSE_S);
+
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+
+  /* error message log file */
+  sprintf (er_msg_file, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  if (check_applied_info)
+    {
+      memset (local_database_name, 0x00, MAXHOSTNAMELEN);
+      strcpy (local_database_name, database_name);
+      strcat (local_database_name, "@localhost");
+
+      if (check_database_name (local_database_name))
+	{
+	  goto check_applied_info_end;
+	}
+      if (db_login ("dba", NULL) != NO_ERROR)
+	{
+	  goto check_applied_info_end;
+	}
+      error = db_restart (arg->command_name, TRUE, local_database_name);
+      if (error != NO_ERROR)
+	{
+	  goto check_applied_info_end;
+	}
+
+      if (PRM_HA_MODE == HA_MODE_OFF)
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+					   MSGCAT_UTIL_SET_APPLYINFO,
+					   APPLYINFO_MSG_NOT_HA_MODE));
+	  goto check_applied_info_end;
+	}
+
+      error =
+	la_log_page_check (local_database_name, log_path, pageid,
+			   check_applied_info, check_copied_info, verbose);
+
+      (void) db_shutdown ();
+    }
+  else if (check_copied_info)
+    {
+      memset (local_database_name, 0x00, MAXHOSTNAMELEN);
+      strcpy (local_database_name, database_name);
+      strcat (local_database_name, "@localhost");
+
+      error =
+	la_log_page_check (local_database_name, log_path, pageid,
+			   check_applied_info, check_copied_info, verbose);
+    }
+
+check_applied_info_end:
+  if (error != NO_ERROR)
+    {
+      printf ("%s\n", db_error_string (3));
+    }
+  error = NO_ERROR;
+
+  if (check_master_info)
+    {
+      memset (master_database_name, 0x00, MAXHOSTNAMELEN);
+      strcpy (master_database_name, database_name);
+      strcat (master_database_name, "@");
+      strcat (master_database_name, master_node_name);
+
+      db_clear_host_connected ();
+
+      if (check_database_name (master_database_name))
+	{
+	  goto check_master_info_end;
+	}
+
+      if (db_login ("dba", NULL) != NO_ERROR)
+	{
+	  goto check_master_info_end;
+	}
+
+      error = db_restart (arg->command_name, TRUE, master_database_name);
+      if (error != NO_ERROR)
+	{
+	  goto check_master_info_end;
+	}
+
+      error = logwr_copy_log_header_check (master_database_name, verbose);
+      if (error != NO_ERROR)
+	{
+	  goto check_master_info_end;
+	}
+
+      (void) db_shutdown ();
+    }
+
+check_master_info_end:
+  if (error != NO_ERROR)
+    {
+      printf ("%s\n", db_error_string (3));
+    }
+  return EXIT_SUCCESS;
+
+print_applyinfo_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_APPLYINFO,
+				   APPLYINFO_MSG_USAGE),
+	   basename (arg->argv0));
+
+  return EXIT_FAILURE;
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_APPLYINFO,
+				   APPLYINFO_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
+#endif /* !WINDOWS */
+}
+
+/*
+ * intr_handler() - Interrupt handler for utility
+ *   return: none
+ *   sig_no(in)
+ */
+#if defined(WINDOWS)
+static BOOL WINAPI
+#else
+static void
+#endif
+intr_handler (int sig_no)
+{
+  is_Sigint_caught = true;
+
+#if defined(WINDOWS)
+  if (sig_no == CTRL_C_EVENT)
+    {
+      return TRUE;
+    }
+
+  return FALSE;
+#endif /* WINDOWS */
 }

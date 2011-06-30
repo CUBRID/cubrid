@@ -37,7 +37,7 @@
 #include "thread.h"
 #include "error_manager.h"
 #include "connection_defs.h"
-#include "thread_impl.h"
+#include "thread.h"
 #endif /* SERVER_MODE */
 
 /* TODO: ER_CSS_NOERROR -> NO_ERROR */

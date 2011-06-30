@@ -34,60 +34,45 @@
  * @version 2.0
  */
 
-package @CUBRID_JCI@;
+package cubrid.jdbc.jci;
 
-import java.math.BigDecimal;
-import java.sql.Date;
-import java.sql.Time;
-import java.sql.Timestamp;
+class UPutByOIDParameter extends UParameter {
+	private String attributeNames[];
 
-import @CUBRID_SQL@.CUBRIDOID;
+	UPutByOIDParameter(String pNames[], Object pValues[]) throws UJciException {
+		super((pValues != null) ? pValues.length : 0);
 
-class UPutByOIDParameter extends UParameter
-{
-  private String attributeNames[];
+		if (pNames == null || pValues == null
+				|| pNames.length != pValues.length) {
+			throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+		}
 
-  UPutByOIDParameter(String pNames[], Object pValues[]) throws UJciException
-  {
-    super((pValues != null) ? pValues.length : 0);
+		byte[] pTypes = new byte[number];
+		attributeNames = new String[number];
 
-    if (pNames == null || pValues == null || pNames.length != pValues.length)
-    {
-      throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
-    }
+		for (int i = 0; i < number; i++) {
+			attributeNames[i] = pNames[i];
 
-    byte[] pTypes = new byte[number];
-    attributeNames = new String[number];
+			if (pValues[i] == null) {
+				pTypes[i] = UUType.U_TYPE_NULL;
+			} else {
+				pTypes[i] = UUType.getObjectDBtype(pValues[i]);
+				if (pTypes[i] == UUType.U_TYPE_NULL)
+					throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+			}
+		}
+		setParameters(pTypes, pValues);
+	}
 
-    for (int i = 0; i < number; i++)
-    {
-      attributeNames[i] = pNames[i];
-
-      if (pValues[i] == null)
-      {
-        pTypes[i] = UUType.U_TYPE_NULL;
-      }
-      else
-      {
-        pTypes[i] = UUType.getObjectDBtype(pValues[i]);
-        if (pTypes[i] == UUType.U_TYPE_NULL)
-          throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
-      }
-    }
-    setParameters(pTypes, pValues);
-  }
-
-  synchronized void writeParameter(UOutputBuffer outBuffer)
-      throws UJciException
-  {
-    for (int i = 0; i < number; i++)
-    {
-      if (attributeNames[i] != null)
-        outBuffer.addStringWithNull(attributeNames[i]);
-      else
-        outBuffer.addNull();
-      outBuffer.addByte(types[i]);
-      outBuffer.writeParameter(types[i], values[i]);
-    }
-  }
+	synchronized void writeParameter(UOutputBuffer outBuffer)
+			throws UJciException {
+		for (int i = 0; i < number; i++) {
+			if (attributeNames[i] != null)
+				outBuffer.addStringWithNull(attributeNames[i]);
+			else
+				outBuffer.addNull();
+			outBuffer.addByte(types[i]);
+			outBuffer.writeParameter(types[i], values[i]);
+		}
+	}
 }

@@ -119,6 +119,25 @@ static int smt_check_index_exist (SM_TEMPLATE * template_,
 				  const char *constraint_name,
 				  const char **att_names,
 				  const int *asc_desc);
+static int smt_change_attribute (SM_TEMPLATE * template_,
+				 const char *name,
+				 const char *new_name,
+				 const char *new_domain_string,
+				 DB_DOMAIN * new_domain,
+				 const SM_NAME_SPACE name_space,
+				 const bool change_first,
+				 const char *change_after_attribute,
+				 SM_ATTRIBUTE ** found_att);
+static int smt_change_attribute_pos_in_list (SM_ATTRIBUTE ** att_list,
+					     SM_ATTRIBUTE * att,
+					     const bool change_first,
+					     const char
+					     *change_after_attribute);
+static int smt_change_attribute_default (SM_ATTRIBUTE * att,
+					 DB_VALUE * proposed_value);
+static int smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att,
+						     DB_DOMAIN * new_domain);
+
 
 /* TEMPLATE SEARCH FUNCTIONS */
 /*
@@ -154,16 +173,15 @@ smt_find_attribute (SM_TEMPLATE * template_, const char *name,
       if (class_attribute)
 	{
 	  att =
-	    (SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->
-							     class_attributes,
-							     name);
+	    (SM_ATTRIBUTE *)
+	    SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_attributes,
+					    name);
 	}
       else
 	{
 	  att =
-	    (SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->
-							     attributes,
-							     name);
+	    (SM_ATTRIBUTE *)
+	    SM_FIND_NAME_IN_COMPONENT_LIST (template_->attributes, name);
 	}
 
       if (att != NULL)
@@ -225,9 +243,8 @@ find_method (SM_TEMPLATE * template_, const char *name,
       if (class_method)
 	{
 	  method =
-	    (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->
-							  class_methods,
-							  name);
+	    (SM_METHOD *)
+	    SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_methods, name);
 	}
       else
 	{
@@ -295,15 +312,14 @@ find_component (SM_TEMPLATE * template_, const char *name, int class_stuff)
   if (class_stuff)
     {
       att =
-	(SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->
-							 class_attributes,
-							 name);
+	(SM_ATTRIBUTE *)
+	SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_attributes, name);
     }
   else
     {
       att =
-	(SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->
-							 attributes, name);
+	(SM_ATTRIBUTE *)
+	SM_FIND_NAME_IN_COMPONENT_LIST (template_->attributes, name);
     }
 
   if (att != NULL)
@@ -316,9 +332,8 @@ find_component (SM_TEMPLATE * template_, const char *name, int class_stuff)
       if (class_stuff)
 	{
 	  method =
-	    (SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->
-							  class_methods,
-							  name);
+	    (SM_METHOD *)
+	    SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_methods, name);
 	}
       else
 	{
@@ -679,24 +694,32 @@ get_domain_internal (SM_TEMPLATE * tmp,
     }
   else
     {
-      if (domain_string[0] == '*')
+      if (domain_string == NULL)
 	{
-	  if (check_internal)
-	    {
-	      ERROR1 (error, ER_SM_DOMAIN_NOT_A_CLASS, domain_string);
-	    }
-	  else
-	    {
-	      type = pr_find_type (domain_string);
-	      if (type)
-		{
-		  domain = tp_domain_construct (type->id, NULL, 0, 0, NULL);
-		}
-	    }
+	  ERROR0 (error, ER_SM_INVALID_ARGUMENTS);
 	}
       else
 	{
-	  domain = pt_string_to_db_domain (domain_string, tmp->name);
+	  if (domain_string[0] == '*')
+	    {
+	      if (check_internal)
+		{
+		  ERROR1 (error, ER_SM_DOMAIN_NOT_A_CLASS, domain_string);
+		}
+	      else
+		{
+		  type = pr_find_type (domain_string);
+		  if (type)
+		    {
+		      domain =
+			tp_domain_construct (type->id, NULL, 0, 0, NULL);
+		    }
+		}
+	    }
+	  else
+	    {
+	      domain = pt_string_to_db_domain (domain_string, tmp->name);
+	    }
 	}
     }
 
@@ -726,8 +749,8 @@ get_domain (SM_TEMPLATE * tmp, const char *domain_string, DB_DOMAIN ** domain)
 
 /*
  * check_domain_class_type() - see if a class is of the appropriate type for
- *    an attribute. Basically, the class types must be the same although
- *    virtual classes can have domains that are of any class type.
+ *    an attribute. Classes can only have attributes of class domains and
+ *    virtual classes can have attributes of both class and vclass domains.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   template(in): class template
  *   domain_classobj(in): class to examine
@@ -1356,9 +1379,12 @@ smt_delete_set_attribute_domain (SM_TEMPLATE * template_,
 	  error = get_domain (template_, domain_string, &domain);
 	  if (error == NO_ERROR)
 	    {
-	      if (!tp_domain_drop (&att->domain->setdomain, domain))
+	      assert (domain != NULL);
+	      if (domain == NULL
+		  || !tp_domain_drop (&att->domain->setdomain, domain))
 		{
-		  ERROR2 (error, ER_SM_DOMAIN_NOT_FOUND, name, domain_string);
+		  ERROR2 (error, ER_SM_DOMAIN_NOT_FOUND, name,
+			  (domain_string ? domain_string : "unknown"));
 		}
 	    }
 	}
@@ -1397,12 +1423,25 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
   error = smt_find_attribute (template_, name, class_attribute, &att);
   if (error == NO_ERROR)
     {
+      if ((att->type->id == DB_TYPE_BLOB || att->type->id == DB_TYPE_CLOB) &&
+	  proposed_value && !DB_IS_NULL (proposed_value))
+	{
+	  ERROR1 (error, ER_SM_DEFAULT_NOT_ALLOWED, att->type->name);
+	  return error;
+	}
+
       value = proposed_value;
       status = tp_domain_check (att->domain, value, TP_EXACT_MATCH);
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  /* coerce it if we can */
 	  value = pr_make_ext_value ();
+	  if (value == NULL)
+	    {
+	      error = er_errid ();
+	      goto end;
+	    }
+
 	  status = tp_value_coerce (proposed_value, value, att->domain);
 	  /* value is freed at the bottom */
 	}
@@ -1421,22 +1460,23 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
 	      ERROR2 (error, ER_OBJ_STRING_OVERFLOW, att->header.name,
 		      att->domain->precision);
 	    }
-
 	  else
 	    {
 	      pr_clear_value (&att->value);
 	      pr_clone_value (value, &att->value);
 
-	      /* if there wasn't an previous original value, take this one,
-	         this can only happen for new templates OR if this is a new
-	         attribute that was added during this template, this should be
-	         handled by using candidates in the template and storing
-	         an extra bit field in the candidate structure */
-
+	      /* if there wasn't an previous original value, take this one.
+	       * This can only happen for new templates OR if this is a new
+	       * attribute that was added during this template OR if this is
+	       * the first time setting a default value to the attribute. 
+	       * This should be handled by using candidates in the template 
+	       * and storing an extra bit field in the candidate structure.
+	       * See the comment above sm_attribute for more information
+	       * about "original_value". 
+	       */
 	      if (att->flags & SM_ATTFLAG_NEW)
 		{
-		  pr_clear_value (&att->original_value);
-		  pr_clone_value (value, &att->original_value);
+		  smt_set_attribute_orig_default_value (att, value);
 		}
 	    }
 	}
@@ -1448,7 +1488,35 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
 	}
     }
 
+end:
   return error;
+}
+
+/*
+ * smt_set_attribute_orig_default_value() - Sets the original default value of
+ *					    the attribute.
+ *					    No domain checking is performed.
+ *   return: void
+ *   att(in): attribute
+ *   new_orig_value(in): original value to set 
+ *
+ *  Note : This function modifies the initial default value of the attribute.
+ *	   The initial default value is the default value assigned when adding
+ *	   the attribute. The default value of attribute may change after its
+ *	   creation (or after it was added), but the initial value remains
+ *	   unchanged (until attribute is dropped).
+ *	   The (current) default value is stored as att->value; the initial
+ *	   default value is stored as att->original_value.
+ */
+static void
+smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att,
+				      DB_VALUE * new_orig_value)
+{
+  assert (att != NULL);
+  assert (new_orig_value != NULL);
+
+  pr_clear_value (&att->original_value);
+  pr_clone_value (new_orig_value, &att->original_value);
 }
 
 /*
@@ -1962,6 +2030,8 @@ smt_add_constraint (SM_TEMPLATE * template_,
   char *shared_cons_name = NULL;
   SM_ATTRIBUTE_FLAG constraint;
 
+  assert (template_ != NULL);
+
   error = smt_check_index_exist (template_, &shared_cons_name,
 				 constraint_type, constraint_name, att_names,
 				 asc_desc);
@@ -2069,8 +2139,9 @@ smt_add_constraint (SM_TEMPLATE * template_,
 	    {
 	      if (!tp_valid_indextype (atts[i]->type->id))
 		{
-		  ERROR1 (error, ER_SM_INVALID_UNIQUE_TYPE,
-			  atts[i]->type->name);
+		  ERROR2 (error, ER_SM_INVALID_UNIQUE_TYPE,
+			  atts[i]->type->name,
+			  SM_GET_CONSTRAINT_STRING (constraint_type));
 		}
 	    }
 	}
@@ -2149,6 +2220,11 @@ smt_add_constraint (SM_TEMPLATE * template_,
       else if (class_attribute && DB_IS_NULL (&(atts[0]->value)))
 	{
 	  ERROR0 (error, ER_SM_INVALID_CONSTRAINT);
+	}
+      else if (atts[0]->type->id == DB_TYPE_BLOB ||
+	       atts[0]->type->id == DB_TYPE_CLOB)
+	{
+	  ERROR1 (error, ER_SM_NOT_NULL_NOT_ALLOWED, atts[0]->type->name);
 	}
       else
 	{
@@ -2348,8 +2424,8 @@ smt_change_method_implementation (SM_TEMPLATE * template_,
   if (class_method)
     {
       method =
-	(SM_METHOD *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->
-						      class_methods, name);
+	(SM_METHOD *)
+	SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_methods, name);
     }
   else
     {
@@ -2480,20 +2556,31 @@ smt_add_set_argument_domain (SM_TEMPLATE * template_,
   SM_METHOD_SIGNATURE *sig;
   SM_METHOD_ARGUMENT *arg;
 
-  if ((error = get_domain (template_, domain_string, &domain)) == NO_ERROR)
+  error = get_domain (template_, domain_string, &domain);
+  if (error == NO_ERROR)
     {
-      if ((error = find_argument (template_, name, class_method,
-				  implementation, index,
-				  false, &method, &sig, &arg)) == NO_ERROR)
+      if (domain != NULL)
 	{
-	  if (arg->domain == NULL || !pr_is_set_type (arg->domain->type->id))
+	  error = find_argument (template_, name, class_method,
+				 implementation, index,
+				 false, &method, &sig, &arg);
+	  if (error == NO_ERROR)
 	    {
-	      ERROR2 (error, ER_SM_ARG_DOMAIN_NOT_A_SET, name, index);
+	      if (arg->domain == NULL
+		  || !pr_is_set_type (arg->domain->type->id))
+		{
+		  ERROR2 (error, ER_SM_ARG_DOMAIN_NOT_A_SET, name, index);
+		}
+	      else
+		{
+		  error = tp_domain_add (&arg->domain->setdomain, domain);
+		}
 	    }
-	  else
-	    {
-	      error = tp_domain_add (&arg->domain->setdomain, domain);
-	    }
+	}
+      else
+	{
+	  ERROR2 (error, ER_SM_DOMAIN_NOT_FOUND, name,
+		  (domain_string ? domain_string : "unknown"));
 	}
     }
   return (error);
@@ -2531,8 +2618,8 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
       new_name = real_new_name;
 
       /* find the named component */
-      if ((error = find_any (template_, name, class_namespace,
-			     &comp)) == NO_ERROR)
+      error = find_any (template_, name, class_namespace, &comp);
+      if (error == NO_ERROR)
 	{
 	  if (comp->name_space == ID_ATTRIBUTE ||
 	      comp->name_space == ID_SHARED_ATTRIBUTE ||
@@ -2540,10 +2627,10 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
 	    {
 	      SM_ATTRIBUTE *att;
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
-	      if ((error = smt_find_attribute (template_, comp->name,
-					       (comp->name_space ==
-						ID_CLASS_ATTRIBUTE ? 1 : 0),
-					       &att)) == NO_ERROR)
+	      error = smt_find_attribute (template_, comp->name,
+					  (comp->name_space ==
+					   ID_CLASS_ATTRIBUTE ? 1 : 0), &att);
+	      if (error == NO_ERROR)
 		{
 		  if (sm_has_text_domain (att, 0))
 		    {
@@ -2563,8 +2650,8 @@ smt_rename_any (SM_TEMPLATE * template_, const char *name,
 		}
 	    }
 	  /* check for collisions on the new name */
-	  if ((error = check_namespace (template_, new_name,
-					class_namespace)) == NO_ERROR)
+	  error = check_namespace (template_, new_name, class_namespace);
+	  if (error == NO_ERROR)
 	    {
 	      ws_free_string (comp->name);
 	      comp->name = ws_copy_string (new_name);
@@ -3463,6 +3550,7 @@ smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
 	}
       else
 	{
+	  db_ws_free (query_spec);
 	  error = ER_SM_INVALID_CLASS;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
@@ -3471,7 +3559,6 @@ smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
   return error;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * smt_reset_query_spec() - Clears the query_spec list of a template.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -3488,7 +3575,6 @@ smt_reset_query_spec (SM_TEMPLATE * template_)
 
   return error;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * smt_drop_query_spec() - Removes a query_spec from a template.
@@ -3700,3 +3786,388 @@ smt_downcase_all_class_info (void)
     }
 }
 #endif
+
+/*
+ * smt_change_attribute() - Changes an attribute of a template (name, domain 
+ *    and ordering).
+ *    For class and shared atribute the value is changed according to new
+ *    domain. For normal attribute, the instance values are not changed, only
+ *    the schema modification is performed.
+ *    The new domain may be specified either with a string or a DB_DOMAIN *.
+ *    If new_domain is not NULL, it is used.  Otherwise new_domain_string is
+ *    used.
+ *    The attribute ordering may be changed if either the "change_first"
+ *    argument is "true" or "change_after_attribute" is non-null and contains
+ *    the name of an existing attribute.
+ *    If all operations are successful, the changed attribute is returned in 
+ *    "found_att".
+ *
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   template(in/out): schema template
+ *   name(in): attribute current name
+ *   new_name(in): attribute new name (may be NULL if unchanged)
+ *   new_domain_string(in): new domain name string
+ *   new_domain(in): new domain
+ *   name_space(in): class, share or normal attribute
+ *   change_first(in): the attribute will become the first in the attributes
+ *                     list
+ *   change_after_attribute(in): the attribute will be repositioned
+ *                               after the attribute with the given name
+ *   found_att(out) : the new attribute if successfully changed
+ */
+static int
+smt_change_attribute (SM_TEMPLATE * template_, const char *name,
+		      const char *new_name,
+		      const char *new_domain_string,
+		      DB_DOMAIN * new_domain,
+		      const SM_NAME_SPACE name_space,
+		      const bool change_first,
+		      const char *change_after_attribute,
+		      SM_ATTRIBUTE ** found_att)
+{
+  int error_code = NO_ERROR;
+  SM_ATTRIBUTE *att = NULL;
+  SM_ATTRIBUTE **att_list = NULL;
+  char real_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+  char real_new_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+  char change_after_attribute_real_name[SM_MAX_IDENTIFIER_LENGTH] = { 0 };
+
+  assert (template_ != NULL);
+
+  if (name_space == ID_CLASS_ATTRIBUTE)
+    {
+      att_list = &template_->class_attributes;
+    }
+  else
+    {
+      att_list = &template_->attributes;
+    }
+
+  sm_downcase_name (name, real_name, SM_MAX_IDENTIFIER_LENGTH);
+  name = real_name;
+  if (!sm_check_name (name))
+    {
+      error_code = er_errid ();
+      goto error_exit;
+    }
+
+  if (new_name != NULL)
+    {
+      sm_downcase_name (new_name, real_new_name, SM_MAX_IDENTIFIER_LENGTH);
+      new_name = real_new_name;
+
+      if (!sm_check_name (new_name))
+	{
+	  error_code = er_errid ();
+	  goto error_exit;
+	}
+    }
+
+  if (change_after_attribute != NULL)
+    {
+      sm_downcase_name (change_after_attribute,
+			change_after_attribute_real_name,
+			SM_MAX_IDENTIFIER_LENGTH);
+      change_after_attribute = change_after_attribute_real_name;
+    }
+
+  if (new_name != NULL)
+    {
+      error_code = check_namespace (template_, new_name,
+				    (name_space ==
+				     ID_CLASS_ATTRIBUTE) ? true : false);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
+  error_code = get_domain (template_, new_domain_string, &new_domain);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (new_domain == NULL)
+    {
+      ERROR0 (error_code, ER_SM_INVALID_ARGUMENTS);
+      goto error_exit;
+    }
+
+  if (new_domain->type->id == DB_TYPE_OBJECT)
+    {
+      error_code = check_domain_class_type (template_, new_domain->class_mop);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
+  error_code = smt_find_attribute (template_, name,
+				   (name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0,
+				   &att);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  assert (att != NULL);
+  *found_att = att;
+
+
+  if (name_space == ID_CLASS_ATTRIBUTE || name_space == ID_SHARED_ATTRIBUTE)
+    {
+      /* change the value according to new domain */
+      error_code = smt_change_class_shared_attribute_domain (att, new_domain);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+  else
+    {
+      assert (name_space == ID_ATTRIBUTE);
+    }
+
+  att->type = new_domain->type;
+  att->domain = new_domain;
+
+  /* change name */
+  if (new_name != NULL)
+    {
+      error_code = check_namespace (template_, new_name,
+				    (name_space ==
+				     ID_CLASS_ATTRIBUTE) ? true : false);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      ws_free_string (att->header.name);
+      att->header.name = ws_copy_string (new_name);
+      if (att->header.name == NULL)
+	{
+	  error_code = er_errid ();
+	  goto error_exit;
+	}
+    }
+  /* change order */
+  if (change_first || change_after_attribute != NULL)
+    {
+      error_code =
+	smt_change_attribute_pos_in_list (att_list, att, change_first,
+					  change_after_attribute);
+    }
+  return error_code;
+
+error_exit:
+
+  return error_code;
+}
+
+/*
+ * smt_change_attribute_w_dflt_w_order()
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   def(in/out):
+ *   name(in): attribute name
+ *   new_name(in): attribute's new name, otherwise NULL
+ *   domain_string(in): domain name string
+ *   domain(in): domain
+ *   name_space(in): class, shared or normal attribute
+ *   new_default_value(in):
+ *   change_first(in): the attribute should be added at the beginning of the
+ *                  attributes list
+ *   change_after_attribute(in): the attribute should be added in the
+ *                               attributes list after the attribute with the
+ *                               given name
+ *   found_att(out) : the new attribute if successfully changed
+ */
+int
+smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
+				     const char *name,
+				     const char *new_name,
+				     const char *new_domain_string,
+				     DB_DOMAIN * new_domain,
+				     const SM_NAME_SPACE name_space,
+				     DB_VALUE * new_default_value,
+				     const bool change_first,
+				     const char *change_after_attribute,
+				     SM_ATTRIBUTE ** found_att)
+{
+  int error = NO_ERROR;
+  DB_VALUE *orig_value = NULL;
+  DB_VALUE *new_orig_value = NULL;
+  TP_DOMAIN_STATUS status;
+
+  *found_att = NULL;
+  error = smt_change_attribute (def, name, new_name, new_domain_string,
+				new_domain, name_space, change_first,
+				change_after_attribute, found_att);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (*found_att == NULL)
+    {
+      assert (false);
+      ERROR1 (error, ER_UNEXPECTED, "Attribute not found.");
+      return error;
+    }
+
+  if (new_default_value != NULL)
+    {
+      assert (((*found_att)->flags & SM_ATTFLAG_NEW) == 0);
+      error =
+	smt_set_attribute_default (def,
+				   ((new_name != NULL) ? new_name : name),
+				   name_space == (ID_CLASS_ATTRIBUTE) ? 1 : 0,
+				   new_default_value);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  /* change original default : continue only for normal attibutes */
+  if (name_space == ID_CLASS_ATTRIBUTE || name_space == ID_SHARED_ATTRIBUTE)
+    {
+      assert (error == NO_ERROR);
+      return error;
+    }
+
+  assert (name_space == ID_ATTRIBUTE);
+
+  orig_value = &((*found_att)->original_value);
+  if (DB_IS_NULL (orig_value))
+    {
+      /* the attribute has not set a default original value, so need to 
+       * continue*/
+      assert (error == NO_ERROR);
+      return error;
+    }
+
+  /* adjust original_value domain to new attribute domain */
+  status = tp_domain_check ((*found_att)->domain, orig_value, TP_EXACT_MATCH);
+
+  if (status == DOMAIN_COMPATIBLE)
+    {
+      /* the attribute's current default original value has the same domain,
+       * no need to change it*/
+      assert (error == NO_ERROR);
+      return error;
+    }
+
+  /* cast the value to new one : explicit cast */
+  new_orig_value = pr_make_ext_value ();
+  status = db_value_coerce (orig_value, new_orig_value, (*found_att)->domain);
+  if (status == DOMAIN_COMPATIBLE)
+    {
+      smt_set_attribute_orig_default_value (*found_att, new_orig_value);
+    }
+  else
+    {
+      ERROR1 (error, ER_OBJ_DOMAIN_CONFLICT, (*found_att)->header.name);
+    }
+
+  pr_free_ext_value (new_orig_value);
+
+  return error;
+}
+
+/*
+ * smt_change_attribute_pos_in_list()
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   att_list(in/out): the list to add to
+ *   att(in): the attribute to add
+ *   add_first(in): the attribute should be added at the beginning of the
+ *                  attributes list
+ *   add_after_attribute(in): the attribute should be added in the attributes
+ *                            list after the attribute with the given name
+ */
+
+static int
+smt_change_attribute_pos_in_list (SM_ATTRIBUTE ** att_list,
+				  SM_ATTRIBUTE * att, const bool change_first,
+				  const char *change_after_attribute)
+{
+  int error_code = NO_ERROR;
+  SM_ATTRIBUTE *crt_att = NULL;
+
+  /* we must change the position : either to first or after another element */
+  assert ((change_first && change_after_attribute == NULL) ||
+	  (!change_first && change_after_attribute != NULL));
+
+  assert (att != NULL);
+  assert (att_list != NULL);
+
+  /* first remove the attribute from list */
+  if (WS_LIST_REMOVE (att_list, att) != 1)
+    {
+      error_code = ER_SM_ATTRIBUTE_NOT_FOUND;
+      return error_code;
+    }
+
+  att->header.next = NULL;
+  error_code = smt_add_attribute_to_list (att_list, att, change_first,
+					  change_after_attribute);
+  /* error code already set */
+  return error_code;
+}
+
+/*
+ * smt_change_class_shared_attribute_domain() - changes the value domain of a 
+ *   shared or class attribute
+ *
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   att(in/out): attribute to change
+ *   new_domain(in): new domain of attribute
+ */
+
+static int
+smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att,
+					  DB_DOMAIN * new_domain)
+{
+  int error = NO_ERROR;
+  TP_DOMAIN_STATUS status;
+  int cast_status = NO_ERROR;
+  DB_VALUE *new_value = NULL;
+  DB_VALUE *current_value = &(att->value);
+
+  if (DB_IS_NULL (current_value))
+    {
+      /* the attribute has not been set with a value, set only new domain */
+      assert (error == NO_ERROR);
+      return error;
+    }
+
+  /* adjust original_value domain to new attribute domain */
+  status = tp_domain_check (new_domain, current_value, TP_EXACT_MATCH);
+
+  if (status == DOMAIN_COMPATIBLE)
+    {
+      /* the attribute's current value has the same domain,
+       * no need to change it*/
+      assert (error == NO_ERROR);
+      return error;
+    }
+
+  /* cast the value to new domain : explicit cast */
+  new_value = pr_make_ext_value ();
+  cast_status = db_value_coerce (current_value, new_value, new_domain);
+  if (cast_status == DOMAIN_COMPATIBLE)
+    {
+      pr_clear_value (&att->value);
+      pr_clone_value (new_value, &att->value);
+
+      att->type = new_domain->type;
+      att->domain = new_domain;
+    }
+  else
+    {
+      ERROR1 (error, ER_OBJ_DOMAIN_CONFLICT, att->header.name);
+    }
+
+  pr_free_ext_value (new_value);
+
+  return error;
+}

@@ -87,11 +87,13 @@ struct br_monitoring_item
   INT64 num_lt;
   INT64 num_lq;
   INT64 num_eq;
+  INT64 num_interrupt;
   INT64 tps;
   INT64 qps;
   INT64 lts;
   INT64 lqs;
   INT64 eqs;
+  INT64 its;
 };
 
 static void str_to_screen (const char *msg);
@@ -125,6 +127,7 @@ static bool br_monitor_flag = false;
 static int last_access_sec = 0;
 static bool tty_mode = false;
 static bool full_info_flag = false;
+static int state_interval = 1;
 
 static int max_col_len = 0;
 
@@ -183,6 +186,11 @@ get_char (void)
   int i;
   for (i = 0; i < refresh_sec * 10; i++)
     {
+      if (shm_br != NULL && shm_br->magic == 0)
+	{
+	  return 0;
+	}
+
       if (_kbhit ())
 	{
 	  return _getch ();
@@ -218,7 +226,7 @@ main (int argc, char **argv)
     }
 
   err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL,
-			    0, NULL);
+			    0, NULL, NULL, NULL);
   if (err < 0)
     exit (1);
 
@@ -284,25 +292,24 @@ main (int argc, char **argv)
 	  refresh ();
 	}
 
-#if !defined(WINDOWS)
       if (shm_br == NULL || shm_br->magic == 0)
 	{
 	  if (shm_br)
-	    uw_shm_detach (shm_br);
+	    {
+	      uw_shm_detach (shm_br);
+	    }
+
 	  shm_br =
 	    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER,
 					  SHM_MODE_MONITOR);
 	}
       else
 	{
-#endif
 	  if (br_monitor_flag == true)
 	    br_monitor (br_vector);
 	  else
 	    appl_monitor (br_vector);
-#if !defined(WINDOWS)
 	}
-#endif
 
       if (refresh_sec > 0 && !tty_mode)
 	{
@@ -314,6 +321,13 @@ main (int argc, char **argv)
 	  refresh ();
 	  in_ch = get_char ();
 
+#if defined (WINDOWS)
+	  if (shm_br != NULL && shm_br->magic == 0)
+	    {
+	      uw_shm_detach (shm_br);
+	      shm_br = NULL;
+	    }
+#endif
 	  if (in_ch == 'q')
 	    {
 	      break;
@@ -326,7 +340,17 @@ main (int argc, char **argv)
 	}
       else if (refresh_sec > 0)
 	{
-	  SLEEP_MILISEC (refresh_sec, 0);
+	  for (i = 0; i < refresh_sec * 10; i++)
+	    {
+#if defined (WINDOWS)
+	      if (shm_br != NULL && shm_br->magic == 0)
+		{
+		  uw_shm_detach (shm_br);
+		  shm_br = NULL;
+		}
+#endif
+	      SLEEP_MILISEC (0, refresh_sec * 100);
+	    }
 	  fflush (stdout);
 	}
       else
@@ -335,10 +359,15 @@ main (int argc, char **argv)
 	}
     }				/* end of while(1) */
 
-  uw_shm_detach (shm_br);
+  if (shm_br != NULL)
+    {
+      uw_shm_detach (shm_br);
+    }
 
   if (refresh_sec > 0 && !tty_mode)
-    endwin ();
+    {
+      endwin ();
+    }
 
   exit (0);
 }
@@ -368,6 +397,7 @@ get_args (int argc, char *argv[], char *br_vector)
   br_monitor_flag = false;
   last_access_sec = 0;
   full_info_flag = false;
+  state_interval = 1;
 
   while ((c = getopt (argc, argv, "hbqts:l:f")) != EOF)
     {
@@ -386,7 +416,11 @@ get_args (int argc, char *argv[], char *br_vector)
 	  br_monitor_flag = true;
 	  break;
 	case 'l':
-	  last_access_sec = atoi (optarg);
+	  state_interval = last_access_sec = atoi (optarg);
+	  if (state_interval < 1)
+	    {
+	      state_interval = 1;
+	    }
 	  break;
 	case 'f':
 	  full_info_flag = true;
@@ -815,6 +849,8 @@ appl_monitor (char *br_vector)
 
 		  if (full_info_flag)
 		    {
+		      char sql_log_mode_string[16];
+
 		      last_access_time =
 			shm_appl->as_info[j].last_access_time;
 		      localtime_r (&last_access_time, &cur_tm);
@@ -856,6 +892,48 @@ appl_monitor (char *br_vector)
 		      col_len +=
 			sprintf (line_buf + col_len, "%15.15s ",
 				 shm_appl->as_info[j].clt_ip_addr);
+
+		      strncpy (sql_log_mode_string, "-",
+			       sizeof (sql_log_mode_string));
+
+		      if (shm_appl->as_info[j].cur_sql_log_mode !=
+			  shm_appl->sql_log_mode)
+			{
+			  if (shm_appl->as_info[j].cur_sql_log_mode ==
+			      SQL_LOG_MODE_NONE)
+			    {
+			      strncpy (sql_log_mode_string, "NONE",
+				       sizeof (sql_log_mode_string));
+			    }
+			  else if (shm_appl->as_info[j].cur_sql_log_mode ==
+				   SQL_LOG_MODE_ERROR)
+			    {
+			      strncpy (sql_log_mode_string, "ERROR",
+				       sizeof (sql_log_mode_string));
+			    }
+			  else if (shm_appl->as_info[j].cur_sql_log_mode ==
+				   SQL_LOG_MODE_TIMEOUT)
+			    {
+			      strncpy (sql_log_mode_string, "TIMEOUT",
+				       sizeof (sql_log_mode_string));
+			    }
+			  else if (shm_appl->as_info[j].cur_sql_log_mode ==
+				   SQL_LOG_MODE_NOTICE)
+			    {
+			      strncpy (sql_log_mode_string, "NOTICE",
+				       sizeof (sql_log_mode_string));
+			    }
+			  else if (shm_appl->as_info[j].cur_sql_log_mode ==
+				   SQL_LOG_MODE_ALL)
+			    {
+			      strncpy (sql_log_mode_string, "ALL",
+				       sizeof (sql_log_mode_string));
+			    }
+			}
+
+		      col_len +=
+			sprintf (line_buf + col_len, "%15.15s ",
+				 sql_log_mode_string);
 		    }
 
 		  if (col_len >= max_col_len)
@@ -914,17 +992,31 @@ br_monitor (char *br_vector)
   static BR_MONITORING_ITEM *br_mnt_olds = NULL;
   static time_t time_old;
   time_t time_cur;
-  INT64 num_tx_cur = 0, num_qx_cur = 0;
+  INT64 num_tx_cur = 0, num_qx_cur = 0, num_interrupts_cur = 0;
   INT64 num_lt_cur = 0, num_lq_cur = 0, num_eq_cur = 0;
-  INT64 tps = 0, qps = 0, lts = 0, lqs = 0, eqs = 0;
+  INT64 tps = 0, qps = 0, lts = 0, lqs = 0, eqs = 0, its = 0;
   static unsigned int tty_print_header = 0;
   double elapsed_time;
 
   buf_len = 0;
   buf_len += sprintf (buf + buf_len, "  %-12s", "NAME");
   buf_len += sprintf (buf + buf_len, "%6s", "PID");
+  if (full_info_flag)
+    {
+      buf_len += sprintf (buf + buf_len, "%7s", "PSIZE");
+    }
   buf_len += sprintf (buf + buf_len, "%6s", "PORT");
-  buf_len += sprintf (buf + buf_len, "%4s", "AS");
+  if (full_info_flag)
+    {
+      buf_len +=
+	sprintf (buf + buf_len, "  AS(T   W   B %2ds-W %2ds-B)",
+		 state_interval, state_interval);
+    }
+  else
+    {
+      buf_len += sprintf (buf + buf_len, "%4s", "AS");
+    }
+
   buf_len += sprintf (buf + buf_len, "%4s", "JQ");
 #ifdef GET_PSINFO
   buf_len += sprintf (buf + buf_len, "%4s", "THR");
@@ -934,9 +1026,16 @@ br_monitor (char *br_vector)
   buf_len += sprintf (buf + buf_len, "%9s", "REQ");
   buf_len += sprintf (buf + buf_len, "%5s", "TPS");
   buf_len += sprintf (buf + buf_len, "%5s", "QPS");
-  buf_len += sprintf (buf + buf_len, "%8s", "LONG-T");
-  buf_len += sprintf (buf + buf_len, "%8s", "LONG-Q");
-  buf_len += sprintf (buf + buf_len, "%6s", "ERR-Q");
+  buf_len += sprintf (buf + buf_len, "%10s", "LONG-T");
+  buf_len += sprintf (buf + buf_len, "%10s", "LONG-Q");
+  buf_len += sprintf (buf + buf_len, "%7s", "ERR-Q");
+
+  if (full_info_flag)
+    {
+      buf_len += sprintf (buf + buf_len, "%10s", "CANCELED");
+      buf_len += sprintf (buf + buf_len, "%13s", "ACCESS_MODE");
+      buf_len += sprintf (buf + buf_len, "%9s", "SQL_LOG");
+    }
 
   if (tty_mode == false || (tty_print_header++ % 20 == 0))
     {
@@ -966,6 +1065,8 @@ br_monitor (char *br_vector)
 
   for (i = 0; i < shm_br->num_broker; i++)
     {
+      int num_client_wait, num_busy, num_client_wait_nsec, num_busy_nsec;
+      time_t cur_time;
 
       if (br_vector[i] == 0)
 	continue;
@@ -985,9 +1086,86 @@ br_monitor (char *br_vector)
 	    }
 	  else
 	    {
+	      num_req = 0;
+	      num_client_wait = 0;
+	      num_client_wait_nsec = 0;
+	      num_busy = 0;
+	      num_busy_nsec = 0;
+
+	      cur_time = time (NULL);
+
+	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
+		{
+		  num_req += shm_appl->as_info[j].num_request;
+
+		  if (full_info_flag)
+		    {
+		      bool time_expired =
+			(cur_time - shm_appl->as_info[j].last_access_time >=
+			 state_interval);
+
+		      if (shm_appl->as_info[j].uts_status == UTS_STATUS_BUSY
+			  && shm_appl->as_info[j].con_status !=
+			  CON_STATUS_OUT_TRAN)
+			{
+			  if (shm_appl->as_info[j].log_msg[0] == '\0')
+			    {
+			      num_client_wait++;
+			      if (time_expired)
+				{
+				  num_client_wait_nsec++;
+				}
+			    }
+			  else
+			    {
+			      num_busy++;
+			      if (time_expired)
+				{
+				  num_busy_nsec++;
+				}
+			    }
+			}
+#if defined(WIDOWS)
+		      else if (shm_appl->as_info[j].uts_status ==
+			       UTS_STATUS_BUSY_WAIT)
+			{
+			  num_busy++;
+			  if (time_expired)
+			    {
+			      num_busy_nsec++;
+			    }
+			}
+#endif
+		    }
+		}
+
 	      str_out ("%6d", shm_br->br_info[i].pid);
+
+	      if (full_info_flag)
+		{
+#if defined(WINDOWS)
+		  if (shm_appl->use_pdh_flag == TRUE)
+		    {
+		      str_out ("%7d ", shm_br->br_info[i].pdh_workset);
+		    }
+#else
+		  str_out ("%7d", getsize (shm_br->br_info[i].pid));
+#endif
+		}
+
 	      str_out ("%6d", shm_br->br_info[i].port);
-	      str_out ("%4d", shm_br->br_info[i].appl_server_num);
+	      if (full_info_flag)
+		{
+		  str_out ("   %3d %3d %3d  %4d  %4d ",
+			   shm_br->br_info[i].appl_server_num,
+			   num_client_wait, num_busy, num_client_wait_nsec,
+			   num_busy_nsec);
+		}
+	      else
+		{
+		  str_out ("%4d", shm_br->br_info[i].appl_server_num);
+		}
+
 	      str_out ("%4d", shm_appl->job_queue[0].id);
 
 #ifdef GET_PSINFO
@@ -998,11 +1176,6 @@ br_monitor (char *br_vector)
 	      str_out ("%6s", time_str);
 #endif
 
-	      num_req = 0;
-	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
-		{
-		  num_req += shm_appl->as_info[j].num_request;
-		}
 	      str_out (" %8d", num_req);
 
 	      num_tx_cur = 0;
@@ -1010,6 +1183,7 @@ br_monitor (char *br_vector)
 	      num_lt_cur = 0;
 	      num_lq_cur = 0;
 	      num_eq_cur = 0;
+	      num_interrupts_cur = 0;
 	      for (j = 0; j < shm_br->br_info[i].appl_server_max_num; j++)
 		{
 		  num_tx_cur +=
@@ -1018,7 +1192,9 @@ br_monitor (char *br_vector)
 		  num_lt_cur += shm_appl->as_info[j].num_long_transactions;
 		  num_lq_cur += shm_appl->as_info[j].num_long_queries;
 		  num_eq_cur += shm_appl->as_info[j].num_error_queries;
+		  num_interrupts_cur += shm_appl->as_info[j].num_interrupts;
 		}
+
 	      if (elapsed_time > 0)
 		{
 		  tps = ((num_tx_cur - br_mnt_olds[i].num_tx) / elapsed_time);
@@ -1026,18 +1202,23 @@ br_monitor (char *br_vector)
 		  lts = ((num_lt_cur - br_mnt_olds[i].num_lt) / elapsed_time);
 		  lqs = ((num_lq_cur - br_mnt_olds[i].num_lq) / elapsed_time);
 		  eqs = ((num_eq_cur - br_mnt_olds[i].num_eq) / elapsed_time);
+		  its =
+		    ((num_interrupts_cur -
+		      br_mnt_olds[i].num_interrupt) / elapsed_time);
 
 		  br_mnt_olds[i].num_tx = num_tx_cur;
 		  br_mnt_olds[i].num_qx = num_qx_cur;
 		  br_mnt_olds[i].num_lt = num_lt_cur;
 		  br_mnt_olds[i].num_lq = num_lq_cur;
 		  br_mnt_olds[i].num_eq = num_eq_cur;
+		  br_mnt_olds[i].num_interrupt = num_interrupts_cur;
 
 		  br_mnt_olds[i].tps = tps;
 		  br_mnt_olds[i].qps = qps;
 		  br_mnt_olds[i].lts = lts;
 		  br_mnt_olds[i].lqs = lqs;
 		  br_mnt_olds[i].eqs = eqs;
+		  br_mnt_olds[i].its = its;
 		}
 	      else
 		{
@@ -1046,14 +1227,59 @@ br_monitor (char *br_vector)
 		  lts = br_mnt_olds[i].lts;
 		  lqs = br_mnt_olds[i].lqs;
 		  eqs = br_mnt_olds[i].eqs;
+		  its = br_mnt_olds[i].its;
 		}
+
 	      str_out (" %4ld", tps);
 	      str_out (" %4ld", qps);
 	      str_out (" %4ld/%-.1f", lts,
 		       (shm_appl->long_transaction_time / 1000.0));
 	      str_out (" %4ld/%-.1f", lqs,
 		       (shm_appl->long_query_time / 1000.0));
-	      str_out (" %4ld", eqs);
+	      str_out (" %6ld", eqs);
+
+	      if (full_info_flag)
+		{
+		  str_out (" %9ld", its);
+		  switch (shm_br->br_info[i].access_mode)
+		    {
+		    case READ_ONLY_ACCESS_MODE:
+		      str_out ("%13s", " RO");
+		      break;
+		    case SLAVE_ONLY_ACCESS_MODE:
+		      str_out ("%13s", " SO");
+		      break;
+		    case READ_WRITE_ACCESS_MODE:
+		      str_out ("%13s", " RW");
+		      break;
+		    default:
+		      str_out ("%13s", " --");
+		      break;
+		    }
+
+		  switch (shm_br->br_info[i].sql_log_mode)
+		    {
+		    case SQL_LOG_MODE_NONE:
+		      str_out ("%9s", " NONE");
+		      break;
+		    case SQL_LOG_MODE_ERROR:
+		      str_out ("%9s", " ERROR");
+		      break;
+		    case SQL_LOG_MODE_TIMEOUT:
+		      str_out ("%9s", " TIMEOUT");
+		      break;
+		    case SQL_LOG_MODE_NOTICE:
+		      str_out ("%9s", " NOTICE");
+		      break;
+		    case SQL_LOG_MODE_ALL:
+		      str_out ("%9s", " ALL");
+		      break;
+		    default:
+		      str_out ("%9s", " --");
+		      break;
+		    }
+		}
+
 	      print_newline ();
 
 	      if (shm_appl->suspend_mode != SUSPEND_NONE)
@@ -1135,6 +1361,7 @@ print_header (bool use_pdh_flag)
       col_len += sprintf (buf + col_len, "%16s ", "HOST");
       col_len += sprintf (buf + col_len, "%19s ", "LAST CONNECT TIME");
       col_len += sprintf (buf + col_len, "%15s ", "CLIENT IP");
+      col_len += sprintf (buf + col_len, "%15s ", "SQL_LOG_MODE");
     }
 
   for (i = 0; i < col_len; i++)

@@ -42,7 +42,6 @@
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
-#include "db.h"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;

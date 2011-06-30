@@ -36,6 +36,7 @@
 #if defined(WINDOWS)
 #include <process.h>
 #include <io.h>
+#include <tlhelp32.h>
 #else
 #include <unistd.h>
 #include <sys/wait.h>
@@ -43,6 +44,10 @@
 
 static T_CMD_RESULT *new_cmd_result (void);
 static void close_all_fds (int init_fd);
+
+#if defined(WINDOWS)
+static int is_master_start ();
+#endif
 
 #define CUBRID_SERVER_LOCK_EXT     "_lgat__lock"
 
@@ -234,7 +239,7 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file,
 	    }
 	}
 
-      execv (argv[0], argv);
+      execv ((const char *) argv[0], (char *const *) argv);
       exit (0);
     }
 
@@ -403,12 +408,18 @@ cmd_server_status (void)
   const char *argv[5];
   char tmpfile[100];
 
-
   res = new_servstat_result ();
   if (res == NULL)
     {
       return NULL;
     }
+
+#ifdef	WINDOWS
+  if (is_master_start () != 0)
+    {
+      return res;
+    }
+#endif
 
   snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_util_001.",
 	    getpid ());
@@ -428,6 +439,51 @@ cmd_server_status (void)
   return res;
 }
 
+#if defined(WINDOWS)
+static int
+is_master_start ()
+{
+  HANDLE h_proc_snap;
+  PROCESSENTRY32 pe32;
+  int retval = -1;
+
+  /* Take a snapshot of all processes in the system. */
+  h_proc_snap = CreateToolhelp32Snapshot (TH32CS_SNAPPROCESS, 0);
+  if (h_proc_snap == INVALID_HANDLE_VALUE)
+    {
+      return -1;
+    }
+
+  /* Set the size of the structure before using it. */
+  pe32.dwSize = sizeof (PROCESSENTRY32);
+
+  /* Retrieve information about the first process,
+     and return -1 if unsuccessful. */
+  if (Process32First (h_proc_snap, &pe32) == 0)
+    {
+      retval = -1;
+      goto func_clean_return;
+    }
+
+  /* Now walk the snapshot of processes, and find cub_master.exe. */
+  do
+    {
+      if (strcasecmp (pe32.szExeFile, UTIL_MASTER_NAME) == 0)
+	{
+	  retval = 0;
+	  break;
+	}
+
+    }
+  while (Process32Next (h_proc_snap, &pe32));
+
+func_clean_return:
+  CloseHandle (h_proc_snap);
+  return retval;
+}
+#endif
+
+
 static void
 read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
 {
@@ -439,7 +495,9 @@ read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
 
   fp = fopen (out_file, "r");
   if (fp == NULL)
-    return;
+    {
+      return;
+    }
 
   num_info = 0;
   num_alloc = 5;
@@ -447,7 +505,10 @@ read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
     (T_SERVER_STATUS_INFO *) malloc (sizeof (T_SERVER_STATUS_INFO) *
 				     num_alloc);
   if (info == NULL)
-    return;
+    {
+      fclose (fp);
+      return;
+    }
 
   while (fgets (str_buf, sizeof (str_buf), fp))
     {
@@ -610,7 +671,7 @@ unix_style_path (char *path)
 int
 uReadDBtxtFile (const char *dn, int idx, char *outbuf)
 {
-  char strbuf[1024];
+  char strbuf[PATH_MAX];
   FILE *dbf;
   char *value_p[4];
   int retval = ERR_DBDIRNAME_NULL;
@@ -628,7 +689,8 @@ uReadDBtxtFile (const char *dn, int idx, char *outbuf)
     {
       return ERR_GENERAL_ERROR;
     }
-  sprintf (strbuf, "%s/%s", cubrid_database_path, CUBRID_DATABASE_TXT);
+  snprintf (strbuf, PATH_MAX, "%s/%s", cubrid_database_path,
+	    CUBRID_DATABASE_TXT);
   dbf = fopen (strbuf, "r");
   if (dbf == NULL)
     return ERR_DBDIRNAME_NULL;

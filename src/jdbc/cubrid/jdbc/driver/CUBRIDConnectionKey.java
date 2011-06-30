@@ -28,21 +28,18 @@
  *
  */
 
-package @CUBRID_DRIVER@;
+package cubrid.jdbc.driver;
 
-import @CUBRID_JCI@.UConKey;
+import cubrid.jdbc.jci.UConKey;
 
-public class CUBRIDConnectionKey
-{
-  private UConKey conKey;
+public class CUBRIDConnectionKey {
+	private UConKey conKey;
 
-  public CUBRIDConnectionKey(String s)
-  {
-    conKey = new UConKey(s);
-  }
+	public CUBRIDConnectionKey(String s) {
+		conKey = new UConKey(s);
+	}
 
-  public UConKey getKey()
-  {
-    return conKey;
-  }
+	public UConKey getKey() {
+		return conKey;
+	}
 }

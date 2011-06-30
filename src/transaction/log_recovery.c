@@ -47,7 +47,7 @@
 #include "message_catalog.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
-#include "thread_impl.h"
+#include "thread.h"
 #endif /* SERVER_MODE */
 #include "log_compress.h"
 
@@ -217,7 +217,7 @@ static void log_recovery_resetlog (THREAD_ENTRY * thread_p,
  *
  * return: nothing
  *
- *   log_lsa(in/out): Log address identifer containing the log record
+ *   log_lsa(in/out): Log address identifier containing the log record
  *   log_pgptr(in/out): Pointer to page where data starts (Set as a side
  *              effect to the page where data ends)
  *   rcvindex(in): Index to recovery functions
@@ -442,7 +442,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
  *
  * return: nothing
  *
- *   log_lsa(in/out): Log address identifer containing the log record
+ *   log_lsa(in/out): Log address identifier containing the log record
  *   log_pgptr(in/out): Pointer to page where data starts (Set as a side
  *               effect to the page where data ends)
  *   redofun(in): Function to invoke to redo the data
@@ -580,7 +580,7 @@ log_rv_find_check_point (THREAD_ENTRY * thread_p, VOLID volid,
  * return:
  *
  *   length(in): log data size
- *   log_lsa(in/out): Log address identifer containing the log record
+ *   log_lsa(in/out): Log address identifier containing the log record
  *   log_pgptr(in): Log page pointer where LSA is located
  *   undo_unzip_ptr(in):
  *
@@ -674,7 +674,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   bool did_incom_recovery;
   int tran_index;
 
-  assert (LOG_CS_OWN (thread_p));
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   /* Save the transaction index and find the transaction descriptor */
 
@@ -1042,7 +1042,7 @@ log_rv_analysis_run_postpone (THREAD_ENTRY * thread_p, int tran_id,
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"log_recovery_analysis: SYSTEM ERROR\n"
-			" Incorrect state = %s\n at log_rec at %d|%d\n"
+			" Incorrect state = %s\n at log_rec at %lld|%d\n"
 			" for transaction = %d (index %d).\n"
 			" State should have been either of\n"
 			" %s\n %s\n %s\n", log_state_string (tdes->state),
@@ -1789,7 +1789,7 @@ log_rv_analysis_run_next_client_undo (THREAD_ENTRY * thread_p, int tran_id,
 	  er_log_debug
 	    (ARG_FILE_LINE,
 	     "log_recovery_analysis: SYSTEM ERROR\n"
-	     " Incorrect state = %s\n at log_rec at %d|%d\n"
+	     " Incorrect state = %s\n at log_rec at %lld|%d\n"
 	     " for transaction = %d (index %d).\n"
 	     " State should have been either of\n" " %s\n %s\n",
 	     log_state_string (tdes->state), log_lsa->pageid,
@@ -1889,7 +1889,7 @@ log_rv_analysis_run_next_client_postpone (THREAD_ENTRY * thread_p,
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"log_recovery_analysis: SYSTEM ERROR\n"
-			" Incorrect state = %s\n at log_rec at %d|%d\n"
+			" Incorrect state = %s\n at log_rec at %lld|%d\n"
 			" for transaction = %d (index %d).\n"
 			" State should have been either of\n" " %s\n %s\n",
 			log_state_string (tdes->state), log_lsa->pageid,
@@ -3077,7 +3077,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 	      er_log_debug (ARG_FILE_LINE,
 			    "log_recovery_analysis: ** System error:"
 			    " It seems to be a loop in the log\n."
-			    " Current log_rec at %d|%d. Next log_rec at %d|%d\n",
+			    " Current log_rec at %lld|%d. Next log_rec at %lld|%d\n",
 			    log_lsa.pageid, log_lsa.offset, lsa.pageid,
 			    lsa.offset);
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
@@ -3111,7 +3111,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa,
 	      er_log_debug (ARG_FILE_LINE,
 			    "log_recovery_analysis: ** WARNING:"
 			    " An end of the log record was not found."
-			    " Will Assume = %d|%d and Next Trid = %d\n",
+			    " Will Assume = %lld|%d and Next Trid = %d\n",
 			    log_Gl.hdr.append_lsa.pageid,
 			    log_Gl.hdr.append_lsa.offset, tran_id);
 	      log_Gl.hdr.next_trid = tran_id;
@@ -3404,7 +3404,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      er_log_debug (ARG_FILE_LINE,
 			    "log_recovery_redo: ** System error:"
 			    " It seems to be a loop in the log\n."
-			    " Current log_rec at %d|%d. Next log_rec at %d|%d\n",
+			    " Current log_rec at %lld|%d. Next log_rec at %lld|%d\n",
 			    log_lsa.pageid, log_lsa.offset, lsa.pageid,
 			    lsa.offset);
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
@@ -3525,7 +3525,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 			  if (temp_length + log_lsa.offset >=
 			      (int) LOGAREA_SIZE)
 			    {
-			      temp_length -= LOGAREA_SIZE - log_lsa.offset;
+			      temp_length -=
+				LOGAREA_SIZE - (int) (log_lsa.offset);
 			      assert (log_pgptr != NULL);
 			      if ((logpb_fetch_page
 				   (thread_p, ++log_lsa.pageid,
@@ -3554,14 +3555,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
-			   "TRACE REDOING: LSA = %d|%d, Rv_index = %s,\n"
+			   "TRACE REDOING: LSA = %lld|%d, Rv_index = %s,\n"
 			   "      volid = %d, pageid = %d, offset = %d,\n",
 			   rcv_lsa.pageid, rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			   rcv_vpid.pageid, rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
 		    {
-		      fprintf (stdout, "      page_lsa = %d|%d\n",
+		      fprintf (stdout, "      page_lsa = %lld|%d\n",
 			       rcv_page_lsaptr->pageid,
 			       rcv_page_lsaptr->offset);
 		    }
@@ -3672,20 +3673,20 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
-			   "TRACE REDOING: LSA = %d|%d, Rv_index = %s,\n"
+			   "TRACE REDOING: LSA = %lld|%d, Rv_index = %s,\n"
 			   "      volid = %d, pageid = %d, offset = %d,\n",
 			   rcv_lsa.pageid, rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			   rcv_vpid.pageid, rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
 		    {
-		      fprintf (stdout, "      page_lsa = %d|%d\n",
+		      fprintf (stdout, "      page_lsa = %lld|%d\n",
 			       rcv_page_lsaptr->pageid,
 			       rcv_page_lsaptr->offset);
 		    }
 		  else
 		    {
-		      fprintf (stdout, "      page_lsa = %d|%d\n", -1, -1);
+		      fprintf (stdout, "      page_lsa = %lld|%d\n", -1, -1);
 		    }
 		}
 #endif /* !NDEBUG */
@@ -3746,7 +3747,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
-			   "TRACE EXT REDOING: LSA = %d|%d, Rv_index = %s\n",
+			   "TRACE EXT REDOING: LSA = %lld|%d, Rv_index = %s\n",
 			   rcv_lsa.pageid, rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex));
 		}
@@ -3835,20 +3836,20 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
-			   "TRACE REDOING: LSA = %d|%d, Rv_index = %s,\n"
+			   "TRACE REDOING: LSA = %lld|%d, Rv_index = %s,\n"
 			   "      volid = %d, pageid = %d, offset = %d,\n",
 			   rcv_lsa.pageid, rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			   rcv_vpid.pageid, rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
 		    {
-		      fprintf (stdout, "      page_lsa = %d|%d\n",
+		      fprintf (stdout, "      page_lsa = %lld|%d\n",
 			       rcv_page_lsaptr->pageid,
 			       rcv_page_lsaptr->offset);
 		    }
 		  else
 		    {
-		      fprintf (stdout, "      page_lsa = %d|%d\n", -1, -1);
+		      fprintf (stdout, "      page_lsa = %lld|%d\n", -1, -1);
 		    }
 		}
 #endif /* !NDEBUG */
@@ -3940,20 +3941,20 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa,
 	      if (PRM_LOG_TRACE_DEBUG)
 		{
 		  fprintf (stdout,
-			   "TRACE REDOING: LSA = %d|%d, Rv_index = %s,\n"
+			   "TRACE REDOING: LSA = %lld|%d, Rv_index = %s,\n"
 			   "      volid = %d, pageid = %d, offset = %d,\n",
 			   rcv_lsa.pageid, rcv_lsa.offset,
 			   rv_rcvindex_string (rcvindex), rcv_vpid.volid,
 			   rcv_vpid.pageid, rcv.offset);
 		  if (rcv_page_lsaptr != NULL)
 		    {
-		      fprintf (stdout, "      page_lsa = %d|%d\n",
+		      fprintf (stdout, "      page_lsa = %lld|%d\n",
 			       rcv_page_lsaptr->pageid,
 			       rcv_page_lsaptr->offset);
 		    }
 		  else
 		    {
-		      fprintf (stdout, "      page_lsa = %d|%d\n", -1, -1);
+		      fprintf (stdout, "      page_lsa = %lld|%d\n", -1, -1);
 		    }
 		}
 #endif /* !NDEBUG */
@@ -4469,7 +4470,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 #if defined(CUBRID_DEBUG)
 	      er_log_debug (ARG_FILE_LINE,
 			    "log_recovery_undo: SYSTEM ERROR for"
-			    " log located at %d|%d\n", log_lsa.pageid,
+			    " log located at %lld|%d\n", log_lsa.pageid,
 			    log_lsa.offset);
 #endif /* CUBRID_DEBUG */
 	      logtb_free_tran_index_with_undo_lsa (thread_p, lsa_ptr);
@@ -4483,7 +4484,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 #if defined(CUBRID_DEBUG)
 		  er_log_debug (ARG_FILE_LINE,
 				"log_recovery_undo: SYSTEM ERROR for"
-				" log located at %d|%d\n", log_lsa.pageid,
+				" log located at %lld|%d\n", log_lsa.pageid,
 				log_lsa.offset);
 #endif /* CUBRID_DEBUG */
 		  logtb_free_tran_index_with_undo_lsa (thread_p, lsa_ptr);
@@ -4535,7 +4536,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  if (PRM_LOG_TRACE_DEBUG)
 		    {
 		      fprintf (stdout,
-			       "TRACE UNDOING: LSA = %d|%d, Rv_index = %s,\n"
+			       "TRACE UNDOING: LSA = %lld|%d, Rv_index = %s,\n"
 			       "      volid = %d, pageid = %d, offset = %d,\n",
 			       rcv_lsa.pageid, rcv_lsa.offset,
 			       rv_rcvindex_string (rcvindex), rcv_vpid.volid,
@@ -4607,7 +4608,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		  if (PRM_LOG_TRACE_DEBUG)
 		    {
 		      fprintf (stdout,
-			       "TRACE UNDOING: LSA = %d|%d, Rv_index = %s,\n"
+			       "TRACE UNDOING: LSA = %lld|%d, Rv_index = %s,\n"
 			       "      volid = %d, pageid = %d, offset = %d,\n",
 			       rcv_lsa.pageid, rcv_lsa.offset,
 			       rv_rcvindex_string (rcvindex), rcv_vpid.volid,
@@ -4835,7 +4836,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 #if defined(CUBRID_DEBUG)
 		  er_log_debug (ARG_FILE_LINE,
 				"log_recovery_undo: SYSTEM ERROR for"
-				" log located at %d|%d,"
+				" log located at %lld|%d,"
 				" Bad log_rectype = %d\n (%s).\n",
 				log_lsa.pageid, log_lsa.offset, log_rec->type,
 				log_to_string (log_rec->type));
@@ -5163,7 +5164,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
   char *catmsg_dup;
   int ret = NO_ERROR;
 
-  assert (LOG_CS_OWN (thread_p));
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (last_lsa != NULL);
 
   aligned_newappend_pgbuf = PTR_ALIGN (newappend_pgbuf, MAX_ALIGNMENT);
@@ -5263,7 +5264,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
 					      LOG_DBLOG_ACTIVE_VOLID,
 					      log_get_num_pages_for_creation
 					      (-1), false, true, false,
-					      LOG_PAGESIZE);
+					      LOG_PAGESIZE, false);
 
 	  if (log_Gl.append.vdes != NULL_VOLDES)
 	    {
@@ -5274,7 +5275,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
 	    {
 	      if (loghdr_pgptr != NULL)
 		{
-		  logpb_free_page (loghdr_pgptr);
+		  logpb_free_page (thread_p, loghdr_pgptr);
 		}
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 				 "log_recovery_resetlog");
@@ -5342,7 +5343,7 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, LOG_LSA * new_append_lsa,
 	    {
 	      memcpy ((char *) log_Gl.append.log_pgptr,
 		      (char *) newappend_pgptr, LOG_PAGESIZE);
-	      logpb_set_dirty (log_Gl.append.log_pgptr, DONT_FREE);
+	      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
 	    }
 	  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
 	}
@@ -5409,7 +5410,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa,
 
   if (logpb_fetch_page (thread_p, lsa->pageid, log_pgptr) == NULL)
     {
-      fprintf (stdout, " Error reading page %d... Quit\n", lsa->pageid);
+      fprintf (stdout, " Error reading page %lld... Quit\n", lsa->pageid);
       goto error;
     }
 

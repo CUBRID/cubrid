@@ -45,7 +45,7 @@
 
 static char cubrid_Dir[PATH_MAX] = "";
 
-#define NUM_CUBRID_FILE		17
+#define NUM_CUBRID_FILE		18
 static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_CUBRID_BROKER_CONF, ""},
   {FID_UV_ERR_MSG, ""},
@@ -63,7 +63,8 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_ER_HTML, ""},
   {FID_CUBRID_ERR_DIR, ""},
   {FID_CAS_FOR_ORACLE_DBINFO, ""},
-  {FID_CAS_FOR_MYSQL_DBINFO, ""}
+  {FID_CAS_FOR_MYSQL_DBINFO, ""},
+  {FID_ACCESS_CONTROL_FILE, ""}
 };
 
 void
@@ -104,17 +105,10 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
       return;
     }
 
-  if (value[0] == '/')
+  if (IS_ABS_PATH (value))
     {
       repath = false;
     }
-#if defined (WINDOWS)
-  if (isalpha (value[0]) && value[1] == ':')
-    {
-      repath = false;
-    }
-#endif
-
 
   switch (fid)
     {
@@ -153,6 +147,21 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	    }
 	}
       break;
+
+    case FID_ACCESS_CONTROL_FILE:
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+      if (repath)
+	{
+	  envvar_confdir_file (cubrid_file[fid].file_name, PATH_MAX, value);
+	}
+      else
+	{
+	  snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s", value);
+	}
+#else
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, "%s", value);
+#endif
+      break;
     default:
       if (repath)
 	{
@@ -165,6 +174,12 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	}
       break;
     }
+}
+
+char *
+get_cubrid_file_ptr (T_CUBRID_FILE_ID fid)
+{
+  return cubrid_file[fid].file_name;
 }
 
 char *

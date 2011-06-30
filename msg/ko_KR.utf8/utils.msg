@@ -56,14 +56,14 @@ $       30      mqueueldb
 $       31      migrate_v73
 $       32      load_audit_trail
 $       33      alterdbhost
-$       35      repl_server
-$       36      repl_agent
 $       37      plandump
 $       38      paramdump
 $       39      changemode
 $       40      copylogdb
 $       41      applylogdb
 $       43      statdump
+$       44      applyinfo
+$       45      acldb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 `%c'이(가) 데이터베이스 이름 `%s'에 포함되어 있습니다\n
@@ -73,7 +73,8 @@ $set 1 MSGCAT_UTIL_SET_GENERIC
 5 다음 리스트는 올바른 유틸리티 이름입니다:\n
 6 잘못된 문자 `%c'이(가) 볼륨 이름 `%s'에 포함되어 있습니다.\n
 9 \
-%s (cubrid 유틸리티) %s\n\
+%s (CUBRID 유틸리티)\n\
+%s\n\
 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 10 \
 cubrid 관리자 유틸리티, 버전 %s\n\
@@ -95,7 +96,6 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     optimizedb\n\
     compactdb\n\
     diagdb\n\
-    emergency_patchlog\n\
     checkdb\n\
     alterdbhost\n\
     plandump\n\
@@ -106,12 +106,14 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     changemode\n\
     copylogdb\n\
     applylogdb\n\
+    applyinfo\n\
+    acldb\n\
 \n\
 %s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.com\n
 12 '%s' 는 없는 유틸리티 이름입니다.\n'cubrid --help' 명령어로 사용법을 알아보세요.\n
 13 '%s' 는 잘못된 명령어입니다.\n'cubrid --help' 명령어로 사용법을 알아보세요.\n
-14 cubrid.conf 파일에서 서비스 속성을 읽어 들일 수 없습니다.\n
+14 설정 파일에서 하나 이상의 필요한 속성을 읽어 들일 수 없습니다.\n
 15 @ %s %s: %s\n
 16 @ %s %s\n
 17 ++ %s '%s' (이)가 수행되고 있지 않습니다.\n
@@ -129,8 +131,6 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     server\n\
     broker\n\
     manager\n\
-    repl_server\n\
-    repl_agent\n\
     heartbeat\n\
 \n\
 가용한 관리자 유틸리티 이름:\n\
@@ -143,7 +143,6 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     createdb\n\
     deletedb\n\
     diagdb\n\
-    emergency_patchlog\n\
     installdb\n\
     killtran\n\
     loaddb\n\
@@ -159,6 +158,7 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     changemode\n\
     copylogdb\n\
     applylogdb\n\
+    applyinfo\n\
 \n\
 %s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.com\n
@@ -177,7 +177,8 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     start       [데이터베이스 이름]\n\
     stop        [데이터베이스 이름]\n\
     restart     [데이터베이스 이름]\n\
-    status\n
+    status\n\
+    acl         <status|reload> 데이터베이스 이름\n
 26 cubrid 유틸리티, 버전 %s\n\
 사용법: %s broker <명령어> [인자]\n\
 \n\
@@ -187,7 +188,9 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     restart\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          <브로커 이름>\n\
-    off         <브로커 이름>\n
+    off         <브로커 이름>\n\
+    reset       <브로커 이름>\n\
+    acl         <status|reload> [브로커 이름]\n
 27 cubrid 유틸리티, 버전 %s\n\
 사용법: %s manager <명령어>\n\
 \n\
@@ -196,23 +199,11 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     stop\n\
     status\n
 28 cubrid 유틸리티, 버전 %s\n\
-사용법: %s repl_server <명령어> [인자]\n\
-\n\
-가용한 명령어:\n\
-    start       <마스터 데이터베이스 이름> <서버 네트워크 포트> [-a 최대 agent 개수] [-e 에러 파일]\n\
-    stop        <마스터 데이터베이스 이름>\n\
-    status\n
-29 cubrid 유틸리티, 버전 %s\n\
-사용법: %s repl_agent <명령어> [인자]\n\
-\n\
-가용한 명령어:\n\
-    start       <배포 데이터베이스 이름> [DBA 패스워드]\n\
-    stop        <배포 데이터베이스 이름>\n\
-    status\n
-30 cubrid 유틸리티, 버전 %s\n\
 사용법: %s heartbeat <명령어> [인자]\n\
 \n\
 가용한 명령어:\n\
+    start\n\
+    stop\n\
     act\n\
     deact\n\
     deregister  <프로세스 아이디>\n\
@@ -220,7 +211,9 @@ cubrid 관리자 유틸리티, 버전 %s\n\
     reload\n
 31 '%s' 인자가 필요 없습니다.\n
 32 데이터베이스 이름이 누락됐습니다.\n
-33 복제가 지원되지 않는 플랫폼입니다.\n
+33 %s: 이 옵션은 사용 중지 될 것입니다.\n
+34 설정에 오류가 있습니다. %s %s\n
+35 메모리 할당에 실패하였습니다.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n
@@ -239,10 +232,10 @@ backupdb: 데이터베이스를 백업합니다.\n\
   -o, --output-file=<파일> 자세한 백업 메시지를 파일에 출력합니다.\n\
   -S, --SA-mode                독립 실행 모드\n\
   -C, --CS-mode                클라이언트 서버 실행 모드\n\
-      --no-check               데이터베이스의 정합성 확인 작업을 수행하지 않습니다. (기본값: 수행)\n\
-  -t, --thread-count=COUNT     백업을 수행하는 스레드 개수. (기본값: 자동)\n\
-  -z, --compress               백업 볼륨을 압축합니다. (기본값: 압축하지 않음)\n\
-  -e, --except-active-log      백업 볼륨에 활동 로그를 포함하지 않습니다. (기본값 : 포함)\n
+      --no-check               데이터베이스의 정합성 확인 작업을 수행하지 않습니다; 기본값: 수행\n\
+  -t, --thread-count=COUNT     백업을 수행하는 스레드 개수; 기본값: 자동\n\
+  -z, --compress               백업 볼륨을 압축합니다; 기본값: 압축하지 않음\n\
+  -e, --except-active-log      백업 볼륨에 활동 로그를 포함하지 않습니다; 기본값 : 포함\n
 71 \"%s\" 와 \"%s\" (은)는 함께 사용할 수 없습니다.\n
 
 
@@ -255,13 +248,15 @@ copydb: 데이터베이스 복사.\n\
 사용법: %s copydb [옵션] <원본 데이터베이스 이름> <대상 데이터베이스 이름>\n\
 \n\
 옵션:\n\
-      --server-name=HOST     서버 호스트 이름 (기본값: 현재 호스트 이름)\n\
-  -F, --file-path=PATH            데이터베이스 볼륨 디렉터리 경로(기본값: 현재 디렉터리)\n\
-  -L, --log-path=PATH            데이터베이스 로그 파일 경로 (기본값: file-path 값과 동일)\n\
-  -E, --extended-volume-path=PATH 확장된 볼륨들을 copy/rename을 위한 디렉터리 경로,기본값은 원 볼륨과 같은 경로 혹은  control-file에 주어진 경로입니다. \n\
-  -i, --control-file=FILE       여러 장소에 있는 볼륨들을 copy/rename을 위한 제어 파일\n\
-  -r, --replace                   기존 데이터베이스 대체 허용(기본값: 대체 안 함)\n\
-  -d, --delete-source        기존 데이터베이스 삭제 (기본값: 삭제 안 함)\n
+      --server-name=HOST          서버 호스트 이름; 기본값: 현재 호스트 이름\n\
+  -F, --file-path=PATH            데이터베이스가 저장되는 디렉터리 경로; 기본값: 현재 디렉터리\n\
+  -L, --log-path=PATH             로그 볼륨이 저장되는 디렉터리 경로; 기본값: <file-path>\n\
+  -B, --lob-base-path=PATH        LOB 파일이 저장되는 디렉토리 경로; 기본값: <file-path>/lob\n\
+  -E, --extended-volume-path=PATH 확장 볼륨이 저장되는 디렉터리 경로; 기본값: 데이터베이스 저장 디렉터리 경로 또는 control-file에 주어진 경로\n\
+  -i, --control-file=FILE         여러 개의 볼륨들이 각각 저장되는 디렉터리 경로를 지정하는 제어 파일; 기본값: 없음\n\
+  -r, --replace                   같은 이름의 데이터베이스가 존재하면 덮어쓰기; 기본값: 덮어쓰기 안함\n\
+  -d, --delete-source             복사 후 원본 데이터베이스 삭제; 기본값: 삭제 안함\n\
+      --copy-lob-path             원본 데이터베이스의 LOB 파일 디렉터리 경로를 복사. -B 옵션과 같이 사용할 수 없음; 기본값: 복사 안함\n
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
@@ -270,30 +265,32 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 알 수 없는 명령어 `%s'\n
 43 출력 파일 '%s' 을(를) 열 수 없습니다.\n
 44 기존 데이터베이스를 삭제할 수 없습니다.\n
-45 %d 페이지의 데이터베이스 생성 중.\n
-46 데이터베이스 생성할 수 없습니다.\n
+45 %s 크기의 데이터베이스 생성 중.\n
+46 데이터베이스를 생성할 수 없습니다.\n
 47 user file `%s'에 오류가 있습니다.\n
-48 페이지 수는 최소 100 이상이어야 합니다.\n
-49 데이터베이스 `%s'가 `%s' 경로에 성공적으로 생성되었습니다.\n데이터베이스를 시작하려면 `cubrid start server %s' 명령을 실행하십시오.\n질의를 실행하려면 `csql %s' 명령을 실행하십시오.\n
+48 '%s'는 %s와 %s 사이 값이어야 합니다.\n
 60 \
 createdb: 데이터베이스 생성.\n\
 사용법: %s createdb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -p, --pages=NUMBER                  첫 번째 볼륨에 대한 초기 페이지 수.(기본값: 5000)\n\
-      --comment=COMMENT               데이터베이스 정보를 포함한 문자열.(기본값: 없음)\n\
-  -F, --file-path=PATH                데이터베이스 볼륨에 대한 디렉터리 경로.(기본값: 현재 디렉터리)\n\
-  -L, --log-path=PATH                 데이터베이스 로그 볼륨에 대한 디렉터리 경로.(기본값: file-path와 동일)\n\
-      --server-name=HOST              서버 호스트 이름.(기본값: 현재 호스트)\n\
-  -r, --replace                       기존 데이터베이스 대체 가능.(기본값: 허용하지 않음)\n\
-      --more-volume-file=FILE         추가 확장될 볼륨의 생성에 대한 제어 파일\n\
-      --user-definition-file=FILE     사용자 정의를 포함한 파일.(기본값: 없음)\n\
-      --csql-initialization-file=FILE FILE 데이터베이스 초기화 SQL 파일.(기본값: 없음)\n\
-  -o, --output-file=FILE              출력 메시지 저장 파일.(기본값: 없음)\n\
-  -v, --verbose                       많은 상태 메시지 출력.(기본값: 출력하지 않음)\n\
-  -l, --log-page-count=NUMBER         로그 archive에 사용될 페이지 수.(기본값: 첫 번 째 일반 볼륨과 동일)\n\
-  -s, --page-size=SIZE                바이트 단위의 데이터베이스 페이지 크기.(기본값: 4KB)\n\
-      --log-page-size=SIZE            바이트 단위의 로그 페이지 크기.(기본값: 데이터베이스 페이지 크기)\n
+      --db-volume-size=SIZE           처음 생성되는 볼륨(generic)의 크기\n\
+                                      기본값: cubrid.conf의 db_volume_size의 값\n\
+      --db-page-size=SIZE             바이트 단위의 데이터베이스 페이지 크기; 기본값: 16KB\n\
+      --log-volume-size=SIZE          로그 볼륨의 크기\n\
+                                      기본값: cubrid.conf의 log_volume_size의 값\n\
+      --log-page-size=SIZE            바이트 단위의 로그 페이지 크기; 기본값: 데이터베이스 페이지 크기\n\
+      --comment=COMMENT               데이터베이스에 관한 설명; 기본값: 없음\n\
+  -F, --file-path=PATH                데이터베이스가 생성되는 디렉터리 경로; 기본값: 현재 디렉터리\n\
+  -L, --log-path=PATH                 로그 볼륨이 저장되는 디렉터리 경로; 기본값: <file-path>\n\
+  -B, --lob-base-path=PATH            LOB 파일이 저장되는 디렉터리 경로; 기본값: <file-path>/lob\n\
+      --server-name=HOST              서버 호스트 이름; 기본값: 현재 호스트\n\
+  -r, --replace                       같은 이름의 데이터베이스가 존재하면 덮어쓰기; 기본값: 덮어쓰기 안함\n\
+      --more-volume-file=FILE         추가로 확장될 볼륨에 대한 제어 파일\n\
+      --user-definition-file=FILE     데이터베이스 사용자를 정의하는 파일; 기본값: 없음\n\
+      --csql-initialization-file=FILE 데이터베이스 생성 후 CSQL에서 FILE에 저장된 질의문을 실행; 기본값: 없음\n\
+  -o, --output-file=FILE              출력 메시지를 파일에 저장; 기본값: 없음\n\
+  -v, --verbose                       상세한 상태 정보를 화면 출력; 기본값: 출력하지 않음\n
 
 
 $set 6 MSGCAT_UTIL_SET_DELETEDB
@@ -302,18 +299,20 @@ deletedb: 데이터베이스 삭제.\n\
 사용법: %s deletedb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -o, --output-file=FILE       출력 메시지가 저장될 파일.(기본값: 없음)\n\
-  -d, --delete-backup          백업 볼륨을 지움(기본값: 지우지 않음)\n
+  -o, --output-file=FILE       출력 메시지가 저장될 파일; 기본값: 없음\n\
+  -d, --delete-backup          백업 볼륨을 지움; 기본값: 지우지 않음\n
 
 $set 7 MSGCAT_UTIL_SET_RENAMEDB
+31 에러: extended-volume-path 가 존재하지 않거나 쓰기 금지되어 있습니다.\n
+32 에러: control-file이 없거나 읽을 수 없습니다.\n
 60 \
 renamedb: 데이터베이스 이름 변경.\n\
 사용법: %s renamedb [옵션] <원본 데이터베이스 이름> <대상 데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -E, --extended-volume-path=PATH 확장된 볼륨들을 copy/rename을 위한 디렉터리 경로,기본값은 원 볼륨과 같은 경로 혹은  control-file에 주어진 경로입니다.\n\
-  -i, --control-file=FILE         여러 장소에 있는 볼륨들을 copy/rename을 위한 제어 파일\n\
-  -d, --delete-backup             백업 볼륨을 지움(기본값: 지우지 않음)\n
+  -E, --extended-volume-path=PATH 확장 볼륨이 저장되는 디렉터리 경로; 기본값: 데이터베이스 저장 디렉터리 경로 또는 control-file에 주어진 경로\n\
+  -i, --control-file=FILE         여러 개의 볼륨들이 각각 저장되는 디렉터리 경로를 지정하는 제어 파일; 기본값: 없음\n\
+  -d, --delete-backup             백업 볼륨을 지움; 기본값: 지우지 않음\n
 
 $set 9 MSGCAT_UTIL_SET_MASTER
 11 %s 프로세스가 이미 실행 중입니다\n
@@ -336,7 +335,7 @@ optimizedb: 데이터베이스 최적화.\n\
 사용법: %s optimizedb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -n, --class-name=NAME        해당 클래스의 통계 정보를 갱신함, 기본값: 전체 클래스\n
+  -n, --class-name=NAME        해당 클래스의 통계 정보를 갱신함; 기본값: 전체 클래스\n
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
@@ -350,9 +349,9 @@ restoredb: 데이터베이스 복구\n\
   -d, --up-to-date=DATE             주어진 시간으로 데이터베이스 상태를 복구. 날짜 형식: dd-mm-yyyy:hh:mm:ss 또는 'backuptime'\n\
       --list                        복구를 하지 않고 모든 백업 볼륨을 나열\n\
   -B, --backup-file-path=PATH       백업된 볼륨이 존재하는 디렉터리 경로\n\
-  -l, --level=LEVEL                 복구에 사용될 백업의 레벨, 기본값: 0(Full backup)\n\
+  -l, --level=LEVEL                 복구에 사용될 백업의 레벨; 기본값: 0(Full backup)\n\
   -p, --partial-recovery            archive 로그가 존재하지 않으면 강제로 partial recovery 수행함\n\
-  -o, --output-file=FILE            출력 메시지가 저장될 파일, 기본값: 없음\n\
+  -o, --output-file=FILE            출력 메시지가 저장될 파일; 기본값: 없음\n\
   -u, --use-database-location-path  데이터베이스 위치 파일에 설정된 경로에 데이터베이스 볼륨과 로그 볼륨을 복구\n
 
 
@@ -408,13 +407,13 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
 사용법: %s loaddb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -u, --user=ID                 데이터베이스 접근에 관한 사용자 이름, 기본값: "public"\n\
-  -p, --password=PASS           사용자 패스워드, 기본값: 없음\n\
-      --data-file-check-only    문법 체크만 수행, 기본값: 문법 체크 이후 적재\n\
-  -l, --load-only               문법 체크하지 않고 적재, 기본값: 문법 체크 이후 적재\n\
-      --estimated-size=NUMBER   인스턴스의 대략적인 개수, 기본값: 5000\n\
-  -v, --verbose                 많은 상태 정보를 출력, 기본값: 출력하지 않음\n\
-  -c, --periodic-commit=COUNT   주기적인 커밋에 대한 카운트, 기본값: 적재 중 커밋하지 않음\n\
+  -u, --user=ID                 데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
+  -p, --password=PASS           사용자 패스워드; 기본값: 없음\n\
+      --data-file-check-only    문법 체크만 수행; 기본값: 문법 체크 이후 적재\n\
+  -l, --load-only               문법 체크하지 않고 적재; 기본값: 문법 체크 이후 적재\n\
+      --estimated-size=NUMBER   인스턴스의 대략적인 개수; 기본값: 5000\n\
+  -v, --verbose                 많은 상태 정보를 출력; 기본값: 출력하지 않음\n\
+  -c, --periodic-commit=COUNT   주기적인 커밋에 대한 카운트; 기본값: 적재 중 커밋하지 않음\n\
       --no-oid                  OID 사용 안 함\n\
       --no-statistics           로딩 후에 통계 정보 갱신하지 않음\n\
   -s, --schema-file=FILE[:LINE] 파일[:라인] 정보로 스키마 생성\n\
@@ -427,13 +426,13 @@ load_noopt: 이 도구는 더 이상 추가 지원되지 않습니다. 사용에
 사용법: load_noopt [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -u, --user=ID                 데이터베이스 접근에 관한 사용자 이름, 기본값: "public"\n\
-  -p, --password=PASS           사용자 패스워드, 기본값: 없음\n\
-      --data-file-check-only    문법 체크만 수행, 기본값: 문법 체크 이후 적재\n\
-  -l, --load-only               문법 체크하지 않고 적재, 기본값: 문법 체크 이후 적재\n\
-      --estimated-size=NUMBER   인스턴스의 대략적인 개수, 기본값: 5000\n\
-  -v, --verbose                 많은 상태 정보를 출력, 기본값: 출력하지 않음\n\
-  -c, --periodic-commit=COUNT   주기적인 커밋에 대한 카운트, 기본값:적재 중 커밋하지 않음\n\
+  -u, --user=ID                 데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
+  -p, --password=PASS           사용자 패스워드; 기본값: 없음\n\
+      --data-file-check-only    문법 체크만 수행; 기본값: 문법 체크 이후 적재\n\
+  -l, --load-only               문법 체크하지 않고 적재; 기본값: 문법 체크 이후 적재\n\
+      --estimated-size=NUMBER   인스턴스의 대략적인 개수; 기본값: 5000\n\
+  -v, --verbose                 많은 상태 정보를 출력; 기본값: 출력하지 않음\n\
+  -c, --periodic-commit=COUNT   주기적인 커밋에 대한 카운트; 기본값: 적재 중 커밋하지 않음\n\
       --no-oid                  OID 사용 안 함\n\
   -s, --schema-file=FILE[:LINE] 파일[:라인] 정보로 스키마 생성\n\
   -i, --index-file=FILE[:LINE]  파일[:라인] 정보로 인덱스 생성\n\
@@ -455,21 +454,24 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
 사용법: %s unloaddb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -i, --input-class-file=FILE 테이블 이름이 기입된 파일, 기본값: 모든 클래스\n\
-      --include-reference     참조되는 테이블 포함, 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
-      --input-class-only      명세한 클래스만 처리 , 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
-      --lo-count=COUNT        하나의 디렉터리에 저장할 lo 파일 개수, 기본값: 0\n\
-      --estimated-size=NUMBER 인스턴스의 대략적인 개수, 기본값: 계산됨\n\
-      --cached-pages=NUMBER   cached 페이지 개수, 기본값: 계산됨\n\
-  -O, --output-path=PATH      출력 디렉터리 경로, 기본값: 현재 작업 디렉터리\n\
-  -s, --schema-only           스키마만 처리, 기본값: 스키마와 오브젝트 처리\n\
-  -d, --data-only             오브젝트만 처리, 기본값: 스키마와 오브젝트 처리\n\
-      --output-prefix=PREFIEX 출력 파일의 prefix, 기본값: 데이터베이스 이름 사용\n\
-      --hash-file=FILE        해쉬 파일이름, 기본값: 파일을 생성하기 위해 tmpnam()을 사용함\n\
+  -i, --input-class-file=FILE 테이블 이름이 기입된 파일; 기본값: 모든 클래스\n\
+      --include-reference     참조되는 테이블 포함; 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
+      --input-class-only      명세한 클래스만 처리; 기본값: 허용하지 않음(-i가 지정 되야 함)\n\
+      --lo-count=COUNT        하나의 디렉터리에 저장할 lo 파일 개수; 기본값: 0\n\
+      --estimated-size=NUMBER 인스턴스의 대략적인 개수; 기본값: 계산됨\n\
+      --cached-pages=NUMBER   cached 페이지 개수; 기본값: 계산됨\n\
+  -O, --output-path=PATH      출력 디렉터리 경로; 기본값: 현재 작업 디렉터리\n\
+  -s, --schema-only           스키마만 처리; 기본값: 스키마와 오브젝트 처리\n\
+  -d, --data-only             오브젝트만 처리; 기본값: 스키마와 오브젝트 처리\n\
+      --output-prefix=PREFIEX 출력 파일의 prefix; 기본값: 데이터베이스 이름 사용\n\
+      --hash-file=FILE        해쉬 파일이름; 기본값: 파일을 생성하기 위해 tmpnam()을 사용함\n\
   -v, --verbose               많은 상태 메시지를 출력; 기본값: 출력 안 함\n\
       --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\
   -S, --SA-mode               독립 모드 실행\n\
-  -C, --CS-mode               클라이언트 서버 모드 실행\n
+  -C, --CS-mode               클라이언트 서버 모드 실행\n\
+      --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트파일생성\n
+
+
 
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
@@ -542,20 +544,17 @@ cub_commdb: This utility is deprecated. Use 'cubrid' command instead.\n\
 \n\
 옵션:\n\
   -P, --server-list                서버 프로세스 출력\n\
-  -R, --repl-list                  복제 프로세스 출력\n\
   -O, --all-list                   모든 프로세스 출력\n\
   -S, --shutdown-server=NAME       해당 데이터베이스 서버 shutdown\n\
-  -K, --shutdown-repl-server=NAME  해당 복제 서버 shutdown\n\
-  -k, --shutdown-repl-agent=NAME   해당 복제 agent shutdown\n\
   -A, --shutdown-all               모든 프로세스 shutdown\n\
   -c, --server-mode=NAME           해당 데이터베이스 서버의 HA 모드 출력\n\
   -N, --node-list                  CUBRID heartbeat에 의해 관리되는 노드 조회\n\
   -L, --process-list               CUBRID heartbeat에 의해 관리되는 로컬 프로세스 정보 조회\n\
-  -D, --dereg-process              대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
+  -D, --dereg-process=PID          대상 프로세스를 종료하고 관리 대상 목록에서 제거\n\
   -F, --reconfig-node-list         CUBRID heartbeat 노드 설정 정보를 재 적용\n\
   -U, --deactivate-heartbeat       CUBRID heartbeat 기능을 비활성화하고 노드 그룹에서 탈퇴\n\
   -T, --activate-heartbeat         CUBRID heartbeat 기능을 활성화\n\
-  -V, --verbose                    많은 상태 메시지 출력.(기본값: 출력하지 않음)\n
+  -V, --verbose                    많은 상태 메시지 출력; 기본값: 출력하지 않음\n
 28 알 수 없는 명령입니다: %s\n
 29 호스트 이름을 찾을 수 없습니다-중지\n
 30 인자 파일을 찾을 수 없습니다\n
@@ -583,12 +582,13 @@ $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 21 볼륨 저장소이름 '%s'가 잘못되었습니다\n
 60 \
 addvoldb: 데이터베이스 볼륨 파일을 추가\n\
-사용법: %s addvoldb [옵션] <데이터베이스 이름> number-of-pages\n\
+사용법: %s addvoldb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -n, --volume-name=NAME       볼륨 이름, 기본값: "db"_ext1 과 같은 이름을 생성\n\
-  -F, --file-path=PATH         데이터베이스 파일에 대한 볼륨 패스, 기본값: 현재 디렉터리\n\
-      --comment=COMMENT        볼륨 주석, 기본값: 없음\n\
+      --db-volume-size=SIZE    추가될 볼륨의 크기; 기본값: 설정에서 읽음\n\
+  -n, --volume-name=NAME       볼륨 이름; 기본값: "db"_ext1 과 같은 이름을 생성\n\
+  -F, --file-path=PATH         데이터베이스 파일에 대한 볼륨 패스; 기본값: 현재 디렉터리\n\
+      --comment=COMMENT        볼륨 주석; 기본값: 없음\n\
   -p, --purpose=PURPOSE        볼륨 사용 용도; 다음과 같은 값이 허용됨\n\
                                        DATA - 데이터 볼륨\n\
                                        INDEX - 인덱스 볼륨\n\
@@ -599,23 +599,31 @@ addvoldb: 데이터베이스 볼륨 파일을 추가\n\
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 데이터베이스에서 비 일관성이 발견되었습니다.\n추가적인 정보는 error_log_file %s 을(를) 참고 하십시오\n
+21 %s: 클래스를 찾을 수 없어 무시합니다.\n
 60 \
 checkdb: 데이터베이스 일관성 검사.\n\
-사용법: %s checkdb [옵션] <데이터베이스 이름>\n\
+사용법: %s checkdb [옵션] <데이터베이스 이름> [class_name1 class_name2 ...]\n\
 \n\
 옵션:\n\
   -S, --SA-mode                독립 모드 실행\n\
   -C, --CS-mode                클라이언트 서버 실행\n\
-  -r, --repair                 비 일관성 발견 시 복구\n
+  -r, --repair                 비 일관성 발견 시 복구\n\
+  -i, --input-class-file=FILE  클래스 이름이 나열된 입력 파일 명시\n\
+                               기본값: 모든 클래스를 검사\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 데이터베이스 '%s'의 (페이지 크기 %d) 볼륨 정의 (로그 페이지 크기 %d)\n\n
+15 데이터베이스 '%s'의 (페이지 크기 %s) 볼륨 정의 (로그 페이지 크기 %s)\n\n
 16 %5d %8s  %s %s  %s\n
 17 출력파일 `%s' 을(를) 열 수 없습니다\n
-18 \n데이터베이스 '%s'의 (페이지크기 %d) 임시 볼륨\n\n
+18 \n데이터베이스 '%s'의 (페이지크기 %s) 임시 볼륨\n\n
 19 번호  용도       페이지수  여유페이지  볼륨이름\n\n
 20 번호  용도       전체크기    여유공간  볼륨이름\n\n
+21 LOB 파일 저장소 %s\n\n
+30 데이터베이스 '%s'(페이지 크기 %s)의 볼륨 용도별 합산 (로그 페이지 크기 %s)\n\n
+31 용도         페이지수  사용된페이지  여유페이지  볼륨개수\n
+32 용도         전체크기    사용된공간    여유공간  볼륨개수\n
+33 %10s %s %s %s %10d\n
 60 \
 spacedb: 데이터베이스 디스크 공간 정보 출력\n\
 사용법: %s spacedb [옵션] <데이터베이스 이름>\n\
@@ -625,8 +633,8 @@ spacedb: 데이터베이스 디스크 공간 정보 출력\n\
   -S, --SA-mode                독립 모드 실행\n\
   -C, --CS-mode                클라이언트 서버 모드 실행\n\
       --size-unit={PAGE|M|G|T|H}\n\
-                               출력 단위(page, mega, giga, tera, human readable) 설정;\n\
-                               기본값 : PAGE\n
+                               출력 단위(page, mega, giga, tera, human readable) 설정; 기본값: H\n\
+  -s, --summarize              볼륨 용도별 합계 결과 출력\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
@@ -713,7 +721,7 @@ diagdb: 데이터베이스 정보 덤프\n\
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
 15 출력 파일 `%s'을 열 수 없습니다.\n
-59 lockdb는 스탠드얼론 모드로 실행할 수 없습니다.\n
+59 lockdb는 스탠드얼론 모드에서 실행할 수 없습니다.\n
 60 \
 lockdb: 데이터베이스의 lock 정보 출력\n\
 사용법: %s lockdb [옵션] <데이터베이스 이름>\n\
@@ -735,7 +743,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 트랜잭션 인덱스 %d로 지정된 트랜잭션들을 종료시킵니다\n
 30 다음 트랜잭션들의 종료에 실패했습니다\n\n
 31 트랜잭션이 종료되지 않았습니다. 롤백 진행 중일 수 있습니다.\n 잠시 기다렸다가 확인하고 재시도하시기 바랍니다.\n
-59 killtran은 스탠드얼론 모드로 실행할 수 없습니다.\n
+59 killtran은 스탠드얼론 모드에서 실행할 수 없습니다.\n
 60 \
 killtran: 데이터베이스 transaction 제거 관리\n\
 사용법: %s killtran [옵션] <데이터베이스 이름>\n\
@@ -752,7 +760,7 @@ killtran: 데이터베이스 transaction 제거 관리\n\
 
 $set 31 MSGCAT_UTIL_SET_MIGRATE
 1  데이터베이스-이름
-2  필수 인자, 기본값 없음
+2  필수 인자; 기본값: 없음
 3  호환성 검사
 4  호환성 검사만 수행
 5  백업 경로 
@@ -781,74 +789,15 @@ alterdbhost: 데이터베이스의 호스트 변경\n\
 
 $set 34 MSGCAT_UTIL_SET_LOADJAVA
 1 database-name
-2 필수 인자, 기본값 없음
+2 필수 인자; 기본값: 없음
 3 java-class-file
-4 필수 인자, 기본값 없음
+4 필수 인자; 기본값: 없음
 5 force-overwrite
-6 클래스 파일이 이미 존재하면 덮어씀, 기본값:덮어쓰지 않음
-
-$set 35 MSGCAT_UTIL_SET_REPLSERVER
-1 데이터베이스 이름
-2 포트 번호
-3 에러 로그 파일
-4 지원 가능한 에이전트의 수
-11 내부오류(%d): 통신 오류가 발생했습니다. 
-12 내부오류(%d): 메모리를 할당 받지 못했습니다. 
-13 내부오류(%d): IO 오류가 발생했습니다. 
-14 내부오류(%d): 일반 오류
-21 오류(%d): MASTER DB의 액티브 로그 파일을 읽을 수 없습니다. - %s
-22 오류(%d): databases.txt 파일을 읽을 수 없습니다.
-23 오류(%d): %s 가 databases.txt 파일에 등록되어 있지 않습니다.
-24 오류(%d): 카탈로그 파일을 찾을 수 없습니다. 
-25 오류(%d): 파라미터 입력이 잘못되었습니다. 
-26 오류(%d): master에 접속할 수 없습니다. 동일한 repl_server가 구동되어 있는지 master가 구동되어 있는지 확인하시기 바랍니다.
-27 오류(%d): 포트 번호가 이미 사용되고 있습니다. 동일한 포트 번호를 사용하고 있는 repl_server가 이미 구동되고 있는지 확인하시기 바랍니다.
-28 안내(%d): 동시 접속 가능한 repl_agent의 수를 초과하였습니다. 신규로 들어온 요청은 무시합니다.
-29 안내(%d): repl_agent 접속이 종료되었습니다.
-30 안내(%d): repl_agent로부터의 요청을 받아들일 수 없습니다. 나중에 요청된 항목은 무시하였습니다.
-31 오류(%d): 보관 로그 파일을 열 수 없습니다. - %s
-32 오류(%d): 보관 로그 파일을 읽을 수 없습니다. - %s
-
-$set 36 MSGCAT_UTIL_SET_REPLAGENT
-1 데이터베이스 이름
-2 비밀 번호
-3 보관 로그 생성 모드
-4 로그 덤프 
-5 페이지 크기
-11 내부오류(%d): 통신 오류가 발생했습니다. 오류 코드를 기술지원팀으로 보내주시기 바랍니다. 
-12 내부오류(%d): 메모리를 할당 받지 못했습니다. 
-13 내부오류(%d): IO 오류가 발생했습니다. 
-14 내부오류(%d): 오류 코드를 기술지원팀으로 보내주시기 바랍니다.
-15 내부오류(%d): 로그압축해제에 실패했습니다.
-16 내부 오류(%d): 쿼리 에러:%s
-21 오류(%d): repl_server에 접속할 수 없습니다. repl_server의 상태와 포트번호를 확인하시기 바랍니다.
-22 오류(%d): 로그복사본 파일을 열 수 없습니다. - %s
-23 오류(%d): 로그복사본에 대한 보관 파일을 생성할 수 없습니다. -%s
-24 오류(%d): 카탈로그 파일을 찾을 수 없습니다. 
-25 오류(%d): 트레일 로그 파일에 접속할 수 없거나 데이터를 읽을 수 없습니다. - %s
-26 오류(%d): master에 접속할 수 없습니다. 동일한 repl_agent가 구동되어 있는지 master가 구동되어 있는지 확인하시기 바랍니다.
-27 오류(%d): SLAVE DB에 로그인할 수 없습니다. - %s
-28 오류(%d): SLAVE DB에 접속할 수 없습니다. - %s
-29 오류(%d): SLAVE DB가 정지하였습니다. - %s
-30 오류(%d): 복제 오류가 발생했습니다. MASTER DB와 재동기화가 필요합니다. - %s
-31 오류(%d): repl_server로부터 ID를 받을 수 없습니다. repl_server에 장애가 발생했는지 확인하시기 바랍니다.
-32 오류(%d): repl_server로부터 로그 헤더 정보를 받을 수 없습니다. repl_server에 장애가 발생했는지 확인하시기 바랍니다.
-33 오류(%d): repl_server로부터 로그 페이지를 받을 수 없습니다. repl_server에 장애가 발생했는지 확인하시기 바랍니다.
-34 오류(%d): 배포 DB로부터 필요한 정보를 찾지 못했습니다.
-35 오류(%d): 배포 DB에 로그인할 수 없습니다. - %s
-36 오류(%d): 배포 DB에 접속할 수 없습니다. - %s
-37 오류(%d): 배포 DB의 slave_info 클래스에 너무 많은 SLAVE DB가 등록되어 있습니다. 
-38 오류(%d): SLAVE DB <-> MASTER DB 간 복제 관계가 정의되지 않았습니다. 배포 DB의 trail_info 클래스를 확인하여 주시기 바랍니다.
-39 오류(%d): 배포 DB의 master_info 클래스에 너무 많은 MASTER DB가 등록되어 있습니다. 
-40 오류(%d): 배포 DB의 trail_info 클래스를 점검하여 주십시오.
-41 오류(%d): 트랜잭션이 철회되었습니다. 설정 파일의 (cubrid.conf) 의 max_block_size 및 max_block_count를 조정하여 워크스페이스의 용량을 늘려 주십시오.
-51 로그(%d): 복제 에이전트가 재 시작됩니다.
-52 로그(%d): 복제 로그의 타입이 UPDATE에서 INSERT로 변환되었습니다.
-53 로그(%d): %s
+6 클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 `%s'을 열 수 없습니다\n
-59 plandump는 스탠드얼론 모드로 실행할 수 없습니다.\n
+59 plandump는 스탠드얼론 모드에서 실행할 수 없습니다.\n
 60 \
 plandump: 쿼리 플랜 표시 및 관리\n\
 사용법: %s plandump [옵션] <데이터베이스 이름>\n\
@@ -862,6 +811,7 @@ $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 21 System parameters to be used by the client program.\n
 22 System parameters loaded by the server '%s'\n
 23 System parameters to be used in standalone mode.\n
+59 paramdump는 스탠드얼론 모드에서 실행할 수 없습니다.\n
 60 \
 paramdump: Dump system parameter settings.\n\
 usage: %s paramdump [OPTION] database-name\n\
@@ -880,21 +830,21 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 23 The server `%s''s HA running mode is changed to \"%s\".\n
 24 서버가 HA 모드로 설정되지 않았습니다.\n
 58 HA 기능이 지원되지 않는 플랫폼입니다.\n
-59 changemode는 스탠드얼론 모드로 실행할 수 없습니다.\n
+59 changemode는 스탠드얼론 모드에서 실행할 수 없습니다.\n
 60 \
 changemode: Display or change the server's HA running mode.\n\
 usage: %s changemode [OPTION] database-name\n\
 \n\
 valid options:\n\
   -m, --mode=MODE             change the server mode to MODE; default; none\n\
-  -w, --wait                  wait util the server mode is changed\n\
   -f, --force                 force to change\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
+11 Worng value \"%s\" for the copylogdb's running mode.\n
 21 Enter DBA password:
 22 서버가 HA 모드로 설정되지 않았습니다.\n
 58 HA 기능이 지원되지 않는 플랫폼입니다.\n
-59 copylogdb는 스탠드얼론 모드로 실행할 수 없습니다.\n
+59 copylogdb는 스탠드얼론 모드에서 실행할 수 없습니다.\n
 60 \
 copylogdb: Copy log pages from the server.\n\
 usage: %s copylogdb [OPTION] database-name\n\
@@ -905,11 +855,10 @@ valid options:\n\
                               MODE: sync or semisync or async\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
-11 Worng value \"%s\" for the copylogdb's running mode.\n
 21 Enter DBA password:
 22 서버가 HA 모드로 설정되지 않았습니다.\n
 58 HA 기능이 지원되지 않는 플랫폼입니다.\n
-59 applylogdb는 스탠드얼론 모드로 실행할 수 없습니다.\n
+59 applylogdb는 스탠드얼론 모드에서 실행할 수 없습니다.\n
 60 \
 applylogdb: Apply copied log to the server.\n\
 usage: %s applylogdb [OPTION] database-name\n\
@@ -927,5 +876,32 @@ usage: %s statdump [옵션] <데이터베이스 이름>\n\
 \n\
 valid options:\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
-  -c, --cumulative             통계를 지우지 않음\n\
-  -i, --interval=S             매 S 초마다 통계를 출력\n
+  -c, --cumulative             누적값을 출력\n\
+  -i, --interval=S             매 S 초마다 통계를 출력\n\
+  -s, --substr=STRING          지정한 문자열이 포함된 항목만 출력\n
+
+$set 44 MSGCAT_UTIL_SET_APPLYINFO
+21 Enter DBA password:
+22 서버가 HA 모드로 설정되지 않았습니다.\n
+58 HA 기능이 지원되지 않는 플랫폼입니다.\n
+59 applyinfo는 스탠드얼론 모드로 실행할 수 없습니다.\n
+60 \
+applyinfo: display CUBRID HA Apply information.\n\
+usage: %s applyinfo [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -r, --remote-host-name      remote host name; display remote node's active log information \n\
+  -a, --applied-info          display applied infomation \n\
+  -L, --copied-log-path=PATH  path of copied log volumes; display copied log information \n\
+  -p, --pageid=ID             page id; default : 0(active page)\n\
+  -v, --verbose               enable verbose status messages; default : disable\n
+
+$set 45 MSGCAT_UTIL_SET_ACLDB
+59  acldb는 스탠드얼론 모드에서 실행할 수 없습니다.\n
+60 \
+acldb: 서버의 접근권한 목록을 출력하거나 다시 읽습니다.\n\
+usage: %s acldb [옵션] <데이터베이스 이름>\n\
+\n\
+valid options:\n\
+  -r, --reload       접근 권한 파일 다시 읽기.\n
+

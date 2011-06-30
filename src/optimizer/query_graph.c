@@ -217,8 +217,6 @@ static PT_NODE *check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 
 static bool is_local_name (QO_ENV * env, PT_NODE * expr);
 
-static bool is_pseudo_const (QO_ENV * env, PT_NODE * expr);
-
 static void get_local_subqueries (QO_ENV * env, PT_NODE * tree);
 
 static void get_rank (QO_ENV * env);
@@ -227,13 +225,15 @@ static PT_NODE *get_referenced_attrs (PT_NODE * entity);
 
 static bool expr_is_mergable (PT_NODE * pt_expr);
 
-static bool expr_is_equi_join (PT_NODE * pt_expr);
+static bool qo_is_equi_join_term (QO_TERM * term);
 
 static void add_hint (QO_ENV * env, PT_NODE * tree);
 
 static void add_using_index (QO_ENV * env, PT_NODE * using_index);
 
 static int get_opcode_rank (PT_OP_TYPE opcode);
+
+static int get_expr_fcode_rank (FUNC_TYPE fcode);
 
 static int get_operand_rank (PT_NODE * node);
 
@@ -263,13 +263,14 @@ static void qo_partition_init (QO_ENV *, QO_PARTITION *, int);
 static void qo_partition_free (QO_PARTITION *);
 static void qo_partition_dump (QO_PARTITION *, FILE *);
 static void qo_find_index_terms (QO_ENV * env, BITSET * segsp,
-				 BITSET * termsp);
-static void qo_find_index_seg_terms (QO_ENV * env, int seg_idx,
-				     BITSET * seg_equal_termsp,
-				     BITSET * seg_other_termsp);
-static bool qo_find_index_segs (QO_ENV *,
-				SM_CLASS_CONSTRAINT *, QO_NODE *,
+				 BITSET * termsp,
+				 BITSET * just_segments_termsp);
+static void qo_find_index_seg_terms (QO_ENV * env,
+				     QO_INDEX_ENTRY * index_entry, int idx);
+static bool qo_find_index_segs (QO_ENV *, SM_CLASS_CONSTRAINT *, QO_NODE *,
 				int *, int, int *, BITSET *);
+static bool qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
+				  QO_INDEX_ENTRY * index_entry);
 static void qo_find_node_indexes (QO_ENV *, QO_NODE *);
 static int is_equivalent_indexes (QO_INDEX_ENTRY * index1,
 				  QO_INDEX_ENTRY * index2);
@@ -1174,8 +1175,9 @@ build_path:
       QO_ASSERT (env, next_entity->info.spec.path_conjuncts != NULL);
       QO_ASSERT (env, next_entity->info.spec.path_conjuncts->next == NULL);
 
-      (void) qo_join_segment (node, next_node, next_entity->info.spec.
-			      path_conjuncts->info.expr.arg1, env);
+      (void) qo_join_segment (node, next_node,
+			      next_entity->info.spec.path_conjuncts->
+			      info.expr.arg1, env);
     }
 
   /* create a term for the entity's path_conjunct if one exists */
@@ -1804,8 +1806,10 @@ qo_analyze_term (QO_TERM * term, int term_type)
      derived from OR term */
   if (pt_expr->or_next == NULL)
     {
+      QO_TERM_SET_FLAG (term, QO_TERM_SINGLE_PRED);
 
-      switch ((op_type = pt_expr->info.expr.op))
+      op_type = pt_expr->info.expr.op;
+      switch (op_type)
 	{
 
 	  /* operators classified as lhs- and rhs-indexable */
@@ -1822,6 +1826,36 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  /* operators classified as rhs-indexable */
 	case PT_BETWEEN:
 	case PT_RANGE:
+	  if (op_type == PT_RANGE)
+	    {
+	      assert (pt_expr->info.expr.arg2 != NULL);
+
+	      if (pt_expr->info.expr.arg2)
+		{
+		  PT_NODE *between_and;
+
+		  between_and = pt_expr->info.expr.arg2;
+		  if (between_and->or_next)
+		    {
+		      /* is RANGE (r1, r2, ...) */
+		      QO_TERM_SET_FLAG (term, QO_TERM_RANGELIST);
+		    }
+
+		  for (; between_and; between_and = between_and->or_next)
+		    {
+		      if (between_and->info.expr.op != PT_BETWEEN_EQ_NA)
+			{
+			  break;
+			}
+		    }
+
+		  if (between_and == NULL)
+		    {
+		      /* All ranges are EQ */
+		      QO_TERM_SET_FLAG (term, QO_TERM_EQUAL_OP);
+		    }
+		}
+	    }
 	case PT_IS_IN:
 	case PT_EQ_SOME:
 	  /* temporary guess; LHS could be a indexable segment */
@@ -1867,7 +1901,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  lhs_expr = pt_expr->info.expr.arg1;
 	  /* get segments from LHS of the expression */
 	  qo_expr_segs (env, lhs_expr, &lhs_segs);
-	  /* now break switch statment */
+	  /* now break switch statement */
 	  break;
 
 	case PT_OR:
@@ -1882,8 +1916,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  /* stop processing */
 	  QO_ABORT (env);
 
-	}			/* switch ((op_type = pt_expr->info.expr.op)) */
-
+	}			/* switch (op_type) */
     }
   else
     {				/* if (pt_expr->or_next == NULL) */
@@ -1925,9 +1958,9 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	         has a special meaning: in this case the select is treated as
 	         UNBOX_AS_TABLE instead of the usual UNBOX_AS_VALUE, and we
 	         can't use an index even if we want to (because of an XASL
-	         deficiency). Because is_pseudo_const() wants to believe that
+	         deficiency).Because pt_is_pseudo_const() wants to believe that
 	         subqueries are pseudo-constants, we have to check for that
-	         condition outside of is_pseudo_const(). */
+	         condition outside of pt_is_pseudo_const(). */
 	      switch (rhs_expr->node_type)
 		{
 		case PT_SELECT:
@@ -1949,14 +1982,32 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		      lhs_indexable = 0;
 		    }
 		  break;
+		case PT_VALUE:
+		  if (op_type == PT_EQ_SOME &&
+		      rhs_expr->info.value.db_value_is_initialized &&
+		      db_value_type_is_collection (&
+						   (rhs_expr->info.value.
+						    db_value)))
+		    {
+		      /* if we have the = some{} operator check its size */
+		      DB_COLLECTION *db_collectionp =
+			db_get_collection (&(rhs_expr->info.value.db_value));
+
+		      if (db_col_size (db_collectionp) == 0)
+			{
+			  lhs_indexable = 0;
+			}
+		    }
+		  lhs_indexable &= pt_is_pseudo_const (rhs_expr);
+		  break;
 		default:
-		  lhs_indexable &= is_pseudo_const (env, rhs_expr);
+		  lhs_indexable &= pt_is_pseudo_const (rhs_expr);
 		}
 	    }
 	  else
 	    {
 	      /* is LHS attribute and is RHS constant value ? */
-	      lhs_indexable &= is_pseudo_const (env, rhs_expr);
+	      lhs_indexable &= pt_is_pseudo_const (rhs_expr);
 	    }
 	}
 
@@ -1974,7 +2025,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
       /* is RHS attribute and is LHS constant value ? */
       rhs_indexable &= (rhs_indexable && is_local_name (env, rhs_expr)
-			&& is_pseudo_const (env, lhs_expr));
+			&& pt_is_pseudo_const (lhs_expr));
       if (rhs_indexable)
 	{
 	  if (!lhs_indexable)
@@ -2285,7 +2336,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	     operator), but the expressions might not be simple attribute
 	     references, and we mustn't try to establish equivalence classes
 	     in that case. */
-	  if (expr_is_equi_join (pt_expr))
+	  if (qo_is_equi_join_term (term))
 	    {
 	      qo_equivalence (head_seg, tail_seg);
 	      QO_TERM_NOMINAL_SEG (term) = head_seg;
@@ -2502,13 +2553,6 @@ wrapup:
       break;
     }				/* switch (term_type) */
 
-  /* set flag
-   * TEMPORARY CODE (DO NOT REMOVE ME) */
-  if (pt_expr->or_next == NULL)
-    {
-      QO_TERM_SET_FLAG (term, QO_TERM_SINGLE_PRED);
-    }
-
   bitset_delset (&lhs_segs);
   bitset_delset (&rhs_segs);
   bitset_delset (&lhs_nodes);
@@ -2674,33 +2718,39 @@ expr_is_mergable (PT_NODE * pt_expr)
 }
 
 /*
- * expr_is_equi_join () - Test if the pt_expr is an equi-join conjunct whose
+ * qo_is_equi_join_term () - Test if the term is an equi-join conjunct whose
  *			  left and right sides are simple attribute references
  *   return: bool
- *   pt_expr(in):
+ *   term(in):
  */
 static bool
-expr_is_equi_join (PT_NODE * pt_expr)
+qo_is_equi_join_term (QO_TERM * term)
 {
-  if (pt_expr->or_next == NULL)
-    {				/* keep out OR conjunct */
+  PT_NODE *pt_expr;
+  PT_NODE *rhs_expr;
+
+  if (QO_TERM_IS_FLAGED (term, QO_TERM_SINGLE_PRED)
+      && QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+    {
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_RANGELIST))
+	{
+	  /* keep out OR conjunct */
+	  return false;
+	}
+
+      pt_expr = QO_TERM_PT_EXPR (term);
       if (pt_is_attr (pt_expr->info.expr.arg1))
 	{
-	  if (pt_expr->info.expr.op == PT_EQ)
+	  rhs_expr = pt_expr->info.expr.arg2;
+	  if (pt_expr->info.expr.op == PT_RANGE)
 	    {
-	      return pt_is_attr (pt_expr->info.expr.arg2);
+	      assert (rhs_expr->info.expr.op == PT_BETWEEN_EQ_NA);
+	      assert (rhs_expr->or_next == NULL);
+	      /* has only one range */
+	      rhs_expr = rhs_expr->info.expr.arg1;
 	    }
-	  else if (pt_expr->info.expr.op == PT_RANGE)
-	    {
-	      PT_NODE *between_and;
 
-	      between_and = pt_expr->info.expr.arg2;
-	      if (between_and->or_next == NULL &&	/* has only one range */
-		  between_and->info.expr.op == PT_BETWEEN_EQ_NA)
-		{
-		  return pt_is_attr (between_and->info.expr.arg1);
-		}
-	    }			/* else if */
+	  return pt_is_attr (rhs_expr);
 	}
     }
 
@@ -2874,6 +2924,8 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_SYS_TIME:
     case PT_SYS_TIMESTAMP:
     case PT_SYS_DATETIME:
+    case PT_UTC_TIME:
+    case PT_UTC_DATE:
 
     case PT_CURRENT_USER:
     case PT_LOCAL_TRANSACTION_ID:
@@ -2926,20 +2978,47 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_LOG10:
 
     case PT_DATEF:
+    case PT_TIMEF:
     case PT_TIME_FORMAT:
     case PT_TIMESTAMP:
+    case PT_YEARF:
+    case PT_MONTHF:
+    case PT_DAYF:
+    case PT_DAYOFMONTH:
+    case PT_HOURF:
+    case PT_MINUTEF:
+    case PT_SECONDF:
     case PT_UNIX_TIMESTAMP:
+    case PT_FROM_UNIXTIME:
+    case PT_QUARTERF:
+    case PT_WEEKDAY:
+    case PT_DAYOFWEEK:
+    case PT_DAYOFYEAR:
+    case PT_TODAYS:
+    case PT_FROMDAYS:
+    case PT_TIMETOSEC:
+    case PT_SECTOTIME:
+    case PT_MAKEDATE:
+    case PT_MAKETIME:
+    case PT_WEEKF:
 
     case PT_SCHEMA:
     case PT_DATABASE:
+    case PT_VERSION:
     case PT_USER:
     case PT_ROW_COUNT:
+    case PT_LAST_INSERT_ID:
     case PT_DEFAULTF:
     case PT_LIST_DBS:
     case PT_OID_OF_DUPLICATE_KEY:
+    case PT_TYPEOF:
+    case PT_EVALUATE_VARIABLE:
+    case PT_DEFINE_VARIABLE:
       return RANK_EXPR_LIGHT;
 
       /* Group 2 -- medium */
+    case PT_REPEAT:
+    case PT_SPACE:
     case PT_SETEQ:
     case PT_SETNEQ:
     case PT_SUPERSETEQ:
@@ -2949,6 +3028,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
 
     case PT_POSITION:
     case PT_SUBSTRING:
+    case PT_SUBSTRING_INDEX:
     case PT_OCTET_LENGTH:
     case PT_BIT_LENGTH:
 
@@ -2957,6 +3037,8 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_UPPER:
     case PT_TRIM:
 
+    case PT_LIKE_LOWER_BOUND:
+    case PT_LIKE_UPPER_BOUND:
     case PT_LTRIM:
     case PT_RTRIM:
     case PT_LPAD:
@@ -3016,18 +3098,50 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_DATE_FORMAT:
     case PT_STR_TO_DATE:
     case PT_DATEDIFF:
+    case PT_TIMEDIFF:
       return RANK_EXPR_MEDIUM;
 
       /* Group 3 -- heavy */
     case PT_LIKE:
     case PT_NOT_LIKE:
 
+    case PT_MD5:
     case PT_ENCRYPT:
     case PT_DECRYPT:
-      return RANK_EXPR_HEAVY;
+    case PT_INDEX_CARDINALITY:
 
+      return RANK_EXPR_HEAVY;
+      /* special case operator */
+    case PT_FUNCTION_HOLDER:
+      /* should be solved at PT_EXPR */
+      assert (false);
+      return RANK_EXPR_MEDIUM;
+      break;
     default:
       return RANK_EXPR_MEDIUM;
+    }
+}
+
+/*
+ * get_expr_fcode_rank () -
+ *   return:
+ *   fcode(in): function code
+ *   Only the functions embedded in an expression (with PT_FUNCTION_HOLDER)
+ *   should be added here.
+ */
+static int
+get_expr_fcode_rank (FUNC_TYPE fcode)
+{
+  switch (fcode)
+    {
+    case F_ELT:
+      return RANK_EXPR_LIGHT;
+    case F_INSERT_SUBSTRING:
+      return RANK_EXPR_MEDIUM;
+    default:
+      /* each function must fill its rank */
+      assert (false);
+      return RANK_EXPR_FUNCTION;
     }
 }
 
@@ -3054,7 +3168,26 @@ get_operand_rank (PT_NODE * node)
 	  break;
 
 	case PT_EXPR:
-	  rank = get_opcode_rank (node->info.expr.op);
+	  if (node->info.expr.op == PT_FUNCTION_HOLDER)
+	    {
+	      PT_NODE *function = node->info.expr.arg1;
+
+	      assert (function != NULL);
+	      if (function == NULL)
+		{
+		  rank = RANK_EXPR_MEDIUM;
+		}
+	      else
+		{
+		  rank =
+		    get_expr_fcode_rank (function->info.
+					 function.function_type);
+		}
+	    }
+	  else
+	    {
+	      rank = get_opcode_rank (node->info.expr.op);
+	    }
 	  break;
 
 	case PT_FUNCTION:
@@ -3214,16 +3347,16 @@ is_local_name (QO_ENV * env, PT_NODE * expr)
 }
 
 /*
- * is_pseudo_const () -
- *   return: 1 iff the expression can serve as a pseudo-constant
+ * pt_is_pseudo_const () -
+ *   return: true iff the expression can serve as a pseudo-constant
  *	     during predicate evaluation.  Used primarily to help
  *	     determine whether a predicate can be implemented
  *	     with an index scan
  *   env(in): The optimizer environment
  *   expr(in): The parse tree for the expression to examine
  */
-static bool
-is_pseudo_const (QO_ENV * env, PT_NODE * expr)
+bool
+pt_is_pseudo_const (PT_NODE * expr)
 {
   if (expr == NULL)
     {
@@ -3264,6 +3397,8 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
     case PT_EXPR:
       switch (expr->info.expr.op)
 	{
+	case PT_FUNCTION_HOLDER:
+	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_PLUS:
 	case PT_STRCAT:
 	case PT_MINUS:
@@ -3278,38 +3413,41 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_MOD:
 	case PT_LEFT:
 	case PT_RIGHT:
+	case PT_REPEAT:
 	case PT_STRCMP:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg2)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg2)) ? true : false;
 	case PT_UNARY_MINUS:
 	case PT_BIT_NOT:
 	case PT_BIT_COUNT:
 	case PT_QPRIOR:
 	case PT_PRIOR:
-	  return is_pseudo_const (env, expr->info.expr.arg1);
+	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_BETWEEN_AND:
 	case PT_BETWEEN_GE_LE:
 	case PT_BETWEEN_GE_LT:
 	case PT_BETWEEN_GT_LE:
 	case PT_BETWEEN_GT_LT:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg2)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg2)) ? true : false;
 	case PT_BETWEEN_EQ_NA:
 	case PT_BETWEEN_INF_LE:
 	case PT_BETWEEN_INF_LT:
 	case PT_BETWEEN_GE_INF:
 	case PT_BETWEEN_GT_INF:
-	  return is_pseudo_const (env, expr->info.expr.arg1);
+	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_MODULUS:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg2)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg2)) ? true : false;
 	case PT_SCHEMA:
 	case PT_DATABASE:
+	case PT_VERSION:
 	case PT_PI:
 	case PT_USER:
+	case PT_LAST_INSERT_ID:
 	case PT_ROW_COUNT:
 	case PT_DEFAULTF:
 	case PT_LIST_DBS:
@@ -3335,75 +3473,95 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_LOG2:
 	case PT_LOG10:
 	case PT_DATEF:
-	  return is_pseudo_const (env, expr->info.expr.arg1);
+	case PT_TIMEF:
+	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_POWER:
 	case PT_ROUND:
 	case PT_TRUNC:
 	case PT_LOG:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg2)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg2)) ? true : false;
 	case PT_INSTR:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg3)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.expr.arg2)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg3)) ? true : false;
 	case PT_POSITION:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg2)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg2)) ? true : false;
 	case PT_SUBSTRING:
+	case PT_SUBSTRING_INDEX:
 	case PT_LOCATE:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2)
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.expr.arg2)
 		  && (expr->info.expr.arg3 ?
-		      is_pseudo_const (env,
-				       expr->info.expr.
-				       arg3) : true)) ? true : false;
+		      pt_is_pseudo_const (expr->info.
+					  expr.arg3) : true)) ? true : false;
 	case PT_CHAR_LENGTH:
 	case PT_OCTET_LENGTH:
 	case PT_BIT_LENGTH:
 	case PT_LOWER:
 	case PT_UPPER:
 	case PT_REVERSE:
-	  return is_pseudo_const (env, expr->info.expr.arg1);
+	case PT_SPACE:
+	case PT_MD5:
+	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_TRIM:
 	case PT_LTRIM:
 	case PT_RTRIM:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
+	case PT_LIKE_LOWER_BOUND:
+	case PT_LIKE_UPPER_BOUND:
+	case PT_FROM_UNIXTIME:
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && (expr->info.expr.arg2 ?
-		      is_pseudo_const (env,
-				       expr->info.expr.
-				       arg2) : true)) ? true : false;
+		      pt_is_pseudo_const (expr->info.
+					  expr.arg2) : true)) ? true : false;
 
 	case PT_LPAD:
 	case PT_RPAD:
 	case PT_REPLACE:
 	case PT_TRANSLATE:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2)
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.expr.arg2)
 		  && (expr->info.expr.arg3 ?
-		      is_pseudo_const (env,
-				       expr->info.expr.
-				       arg3) : true)) ? true : false;
+		      pt_is_pseudo_const (expr->info.
+					  expr.arg3) : true)) ? true : false;
 	case PT_ADD_MONTHS:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg2)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg2)) ? true : false;
 	case PT_LAST_DAY:
 	case PT_UNIX_TIMESTAMP:
 	  if (expr->info.expr.arg1)
 	    {
-	      return is_pseudo_const (env, expr->info.expr.arg1);
+	      return pt_is_pseudo_const (expr->info.expr.arg1);
 	    }
 	  else
 	    {
 	      return true;
 	    }
+	case PT_YEARF:
+	case PT_MONTHF:
+	case PT_DAYF:
+	case PT_DAYOFMONTH:
+	case PT_HOURF:
+	case PT_MINUTEF:
+	case PT_SECONDF:
+	case PT_QUARTERF:
+	case PT_WEEKDAY:
+	case PT_DAYOFWEEK:
+	case PT_DAYOFYEAR:
+	case PT_TODAYS:
+	case PT_FROMDAYS:
+	case PT_TIMETOSEC:
+	case PT_SECTOTIME:
+	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_TIMESTAMP:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg2)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg2)) ? true : false;
 	case PT_MONTHS_BETWEEN:
 	case PT_TIME_FORMAT:
 	case PT_FORMAT:
@@ -3415,13 +3573,18 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_DATE_FORMAT:
 	case PT_STR_TO_DATE:
 	case PT_DATEDIFF:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg2)) ? true : false;
+	case PT_TIMEDIFF:
+	case PT_MAKEDATE:
+	case PT_WEEKF:
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg2)) ? true : false;
 	case PT_SYS_DATE:
 	case PT_SYS_TIME:
 	case PT_SYS_TIMESTAMP:
 	case PT_SYS_DATETIME:
+	case PT_UTC_TIME:
+	case PT_UTC_DATE:
 	case PT_LOCAL_TRANSACTION_ID:
 	case PT_CURRENT_USER:
 	  return true;
@@ -3431,64 +3594,63 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	case PT_TO_TIMESTAMP:
 	case PT_TO_DATETIME:
 	case PT_TO_NUMBER:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && (expr->info.expr.arg2 ?
-		      is_pseudo_const (env,
-				       expr->info.expr.
-				       arg2) : true)) ? true : false;
+		      pt_is_pseudo_const (expr->info.
+					  expr.arg2) : true)) ? true : false;
 	case PT_CURRENT_VALUE:
 	case PT_NEXT_VALUE:
 	  return true;
 	case PT_CAST:
-	  return is_pseudo_const (env, expr->info.expr.arg1);
+	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_CASE:
 	case PT_DECODE:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg2)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg2)) ? true : false;
 	case PT_NULLIF:
 	case PT_COALESCE:
 	case PT_NVL:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg2)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg2)) ? true : false;
 	case PT_IF:
-	  return (is_pseudo_const (env, expr->info.expr.arg2)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg3)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg2)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg3)) ? true : false;
 	case PT_IFNULL:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg2)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg2)) ? true : false;
 
 	case PT_ISNULL:
-	  return is_pseudo_const (env, expr->info.expr.arg1);
+	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_CONCAT:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && (expr->info.expr.arg2 ?
-		      is_pseudo_const (env,
-				       expr->info.expr.
-				       arg2) : true)) ? true : false;
+		      pt_is_pseudo_const (expr->info.
+					  expr.arg2) : true)) ? true : false;
 	case PT_CONCAT_WS:
 	case PT_FIELD:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && (expr->info.expr.arg2 ?
-		      is_pseudo_const (env, expr->info.expr.arg2) : true)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg3)) ? true : false;
+		      pt_is_pseudo_const (expr->info.expr.arg2) : true)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg3)) ? true : false;
 	case PT_MID:
 	case PT_NVL2:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env, expr->info.expr.arg2)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg3)) ? true : false;
+	case PT_MAKETIME:
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.expr.arg2)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg3)) ? true : false;
 	case PT_EXTRACT:
-	  return is_pseudo_const (env, expr->info.expr.arg1);
+	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_LEAST:
 	case PT_GREATEST:
-	  return (is_pseudo_const (env, expr->info.expr.arg1)
-		  && is_pseudo_const (env,
-				      expr->info.expr.arg2)) ? true : false;
+	  return (pt_is_pseudo_const (expr->info.expr.arg1)
+		  && pt_is_pseudo_const (expr->info.
+					 expr.arg2)) ? true : false;
 	default:
 	  return false;
 	}
@@ -3513,7 +3675,7 @@ is_pseudo_const (QO_ENV * env, PT_NODE * expr)
 	  }
 	for (p = expr->info.function.arg_list; p; p = p->next)
 	  {
-	    if (!is_pseudo_const (env, p))
+	    if (!pt_is_pseudo_const (p))
 	      {
 		return false;
 	      }
@@ -3919,16 +4081,6 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 	}
     }
 
-  if (hint & PT_HINT_W)
-    {				/* not used */
-    }
-  if (hint & PT_HINT_X)
-    {				/* not used */
-    }
-  if (hint & PT_HINT_Y)
-    {				/* not used */
-    }
-
   if (hint & PT_HINT_USE_NL)
     {
       add_hint_args (env, tree->info.query.q.select.use_nl, PT_HINT_USE_NL);
@@ -3944,11 +4096,6 @@ add_hint (QO_ENV * env, PT_NODE * tree)
       add_hint_args (env, tree->info.query.q.select.use_merge,
 		     PT_HINT_USE_MERGE);
     }
-
-  if (hint & PT_HINT_USE_HASH)
-    {				/* not used */
-    }
-
 }
 
 /*
@@ -3965,6 +4112,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
   QO_NODE *nodep;
   QO_USING_INDEX *uip;
   PT_NODE *indexp;
+  bool is_none;
 
   if (!using_index)
     {
@@ -3977,6 +4125,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
   for (i = 0; i < env->nnodes; i++)
     {
       nodep = QO_ENV_NODE (env, i);
+      is_none = false;
 
       /* count number of indexes for this node */
       n = 0;
@@ -3985,6 +4134,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	  if (indexp->info.name.original == NULL
 	      && indexp->info.name.resolved == NULL)
 	    {
+	      is_none = true;
 	      break;		/* USING INDEX NONE case */
 	    }
 	  if (indexp->info.name.original == NULL
@@ -3998,9 +4148,26 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	    {
 	      n++;
 	    }
+	  if (indexp->info.name.original == NULL
+	      && !intl_mbs_casecmp (QO_NODE_NAME (nodep),
+				    indexp->info.name.resolved)
+	      && indexp->etc == (void *) -3)
+	    {
+	      n = 0;		/* USING INDEX class_name.NONE,... case */
+	      is_none = true;
+	      break;
+	    }
 	}
       /* if n == 0, it means that either no indexes in USING INDEX clause for
          this node or USING INDEX NONE case */
+
+      if (n == 0 && !is_none)
+	{
+	  /* no index for this node in USING INDEX clause, however give it
+	     a chance to be assigned an index later */
+	  QO_NODE_USING_INDEX (nodep) = NULL;
+	  continue;
+	}
 
       /* allocate QO_USING_INDEX structure */
       if (n == 0)
@@ -4021,6 +4188,13 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	}
 
       QO_UI_N (uip) = n;
+
+      /* USING INDEX NONE, or USING INDEX class_name.NONE,... case */
+      if (is_none)
+	{
+	  continue;
+	}
+
       /* attach indexes to QO_NODE */
       n = 0;
       for (indexp = using_index; indexp; indexp = indexp->next)
@@ -4042,6 +4216,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 				    indexp->info.name.resolved))
 	    {
 	      QO_UI_INDEX (uip, n) = indexp->info.name.original;
+	      QO_UI_KEYLIMIT (uip, n) = indexp->info.name.indx_key_limit;
 	      QO_UI_FORCE (uip, n++) = (int) (indexp->etc);
 	    }
 	}
@@ -4078,18 +4253,24 @@ qo_alloc_index (QO_ENV * env, int n)
       entryp = QO_INDEX_INDEX (indexp, i);
 
       entryp->next = NULL;
-      entryp->type = SM_CONSTRAINT_INDEX;
       entryp->class_ = NULL;
-      BTID_SET_NULL (&(entryp->btid));
-      entryp->name = NULL;
       entryp->col_num = 0;
       entryp->stats = NULL;
       entryp->bt_stats_idx = -1;
       entryp->nsegs = 0;
       entryp->seg_idxs = NULL;
+      entryp->rangelist_seg_idx = -1;
       entryp->seg_equal_terms = NULL;
       entryp->seg_other_terms = NULL;
       bitset_init (&(entryp->terms), env);
+      bitset_init (&(entryp->key_filter_terms), env);
+      entryp->cover_segments = false;
+      entryp->orderby_skip = false;
+      entryp->groupby_skip = false;
+      entryp->use_descending = false;
+      entryp->statistics_attribute_name = NULL;
+      entryp->key_limit = NULL;
+      entryp->constraints = NULL;
     }
 
   return indexp;
@@ -4117,6 +4298,7 @@ qo_free_index (QO_ENV * env, QO_INDEX * indexp)
     {
       entryp = QO_INDEX_INDEX (indexp, i);
       bitset_delset (&(entryp->terms));
+      bitset_delset (&(entryp->key_filter_terms));
       for (j = 0; j < entryp->nsegs; j++)
 	{
 	  bitset_delset (&(entryp->seg_equal_terms[j]));
@@ -4136,7 +4318,13 @@ qo_free_index (QO_ENV * env, QO_INDEX * indexp)
 	    {
 	      free_and_init (entryp->seg_idxs);
 	    }
+
+	  if (entryp->statistics_attribute_name)
+	    {
+	      free_and_init (entryp->statistics_attribute_name);
+	    }
 	}
+      entryp->constraints = NULL;
     }
 
   if (indexp)
@@ -4466,7 +4654,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		{
 		  cum_statsp->max_value = attr_statsp->max_value;
 		}
-	      /* 'qo_data_compare()' is a simplized function that works
+	      /* 'qo_data_compare()' is a simplified function that works
 	         with DB_DATA instead of DB_VALUE. However, this way
 	         would be enough to get minimum/maximum existing value,
 	         because the values are meaningful only when their types
@@ -4669,14 +4857,43 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	     'qo_find_index_seg_and_term()' function to keep the order of
 	     index key attributes. So, 'seg_idx[0]' is the right segment
 	     denoting the attribute that contains the index statisitcs that
-	     we want to get. */
-	  segp = QO_ENV_SEG (env, (index_entryp->seg_idxs[0]));
+	     we want to get. If seg_idx[0] is null (-1), then the name of the
+	     first attribute is taken from index_entryp->statistics_attribute_name
+	   */
+	  segp = NULL;
+	  for (k = 0; k < index_entryp->nsegs; k++)
+	    {
+	      if (index_entryp->seg_idxs[k] != -1)
+		{
+		  segp = QO_ENV_SEG (env, (index_entryp->seg_idxs[k]));
+
+		  if (segp != NULL)
+		    {
+		      break;
+		    }
+		}
+	    }
+
+	  if (segp == NULL)
+	    {
+	      index_entryp->stats = NULL;
+	      index_entryp->bt_stats_idx = -1;
+	      continue;
+	    }
 
 	  /* QO_NODE of the given segment */
 	  seg_node = QO_SEG_HEAD (segp);
 
-	  /* actual attribute name of the given segment */
-	  name = QO_SEG_NAME (segp);
+	  if (k == 0)
+	    {
+	      /* actual attribute name of the given segment */
+	      name = QO_SEG_NAME (segp);
+	    }
+	  else
+	    {
+	      /* actual attribute name of the given segment */
+	      name = index_entryp->statistics_attribute_name;
+	    }
 
 	  /* pointer to QO_CLASS_INFO_ENTRY[] array of the node */
 	  class_info_entryp = &QO_NODE_INFO (seg_node)->info[j];
@@ -4741,7 +4958,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		    {
 		      cum_statsp->max_value = attr_statsp->max_value;
 		    }
-		  /* 'qo_data_compare()' is a simplized function that works
+		  /* 'qo_data_compare()' is a simplified function that works
 		     with DB_DATA instead of DB_VALUE. However, this way
 		     would be enough to get minimum/maximum existing value,
 		     because the values are meaningful only when their types
@@ -4754,7 +4971,8 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	  for (k = 0, bt_statsp = attr_statsp->bt_stats;
 	       k < attr_statsp->n_btstats; k++, bt_statsp++)
 	    {
-	      if (BTID_IS_EQUAL (&bt_statsp->btid, &(index_entryp->btid)))
+	      if (BTID_IS_EQUAL
+		  (&bt_statsp->btid, &(index_entryp->constraints->index)))
 		{
 		  index_entryp->bt_stats_idx = k;
 		  break;
@@ -4772,7 +4990,8 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	         for example: select ... from all p */
 
 	      /* check index uniqueness */
-	      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (index_entryp->type))
+	      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY
+		  (index_entryp->constraints->type))
 		{
 		  /* is class hierarchy index: set unique index statistics */
 		  cum_statsp->leafs = bt_statsp->leafs;
@@ -4797,8 +5016,8 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			      ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->
-							   key_size));
+			      SIZEOF_ATTR_CUM_STATS_PKEYS
+			      (cum_statsp->key_size));
 		      return;	/* give up */
 		    }
 		  for (k = 0; k < cum_statsp->key_size; k++)
@@ -4895,7 +5114,7 @@ qo_free_node_index_info (QO_ENV * env, QO_NODE_INDEX * node_indexp)
  *   data2(in):
  *   type(in):
  *
- * Note: This is a simplized function that works with DB_DATA
+ * Note: This is a simplified function that works with DB_DATA
  *      instead of DB_VALUE, which is the same function of 'qst_data_compare()'.
  */
 static int
@@ -5365,18 +5584,23 @@ qo_discover_edges (QO_ENV * env)
 
 /*
  * qo_find_index_terms () - Find the terms which contain the passed segments
+ *			    and terms which contain just the passed segments
  *   return:
  *   env(in): The environment used
  *   segsp(in): Passed BITSET of interested segments
  *   termsp(in): Returned BITSET of terms which contain the segments
+ *   just_segments_termsp(in): Returned BITSET of terms which contain 
+ *			       just the segments
  */
 static void
-qo_find_index_terms (QO_ENV * env, BITSET * segsp, BITSET * termsp)
+qo_find_index_terms (QO_ENV * env, BITSET * segsp, BITSET * termsp,
+		     BITSET * just_segments_termsp)
 {
   int t;
   QO_TERM *qo_termp;
 
   BITSET_CLEAR (*termsp);
+  BITSET_CLEAR (*just_segments_termsp);
 
   /* traverse all terms */
   for (t = 0; t < env->nterms; t++)
@@ -5391,7 +5615,7 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp, BITSET * termsp)
 	{
 	  continue;
 	}
-      /* 'analyze_term()' function verifies that all indexable
+      /* 'qo_analyze_term()' function verifies that all indexable
          terms are expression so that they have 'pt_expr' filed of type
          PT_EXPR. */
 
@@ -5403,6 +5627,11 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp, BITSET * termsp)
 	  bitset_add (termsp, t);
 	}
 
+      if (bitset_subset (segsp, &(QO_TERM_SEGS (qo_termp))))
+	{
+	  bitset_add (just_segments_termsp, t);
+	}
+
     }				/* for (t = 0; t < env->nterms; t++) */
 
 }
@@ -5412,20 +5641,14 @@ qo_find_index_terms (QO_ENV * env, BITSET * segsp, BITSET * termsp)
  *                               Only indexable and SARG terms are included
  *   return:
  *   env(in): The environment used
- *   seg_idx(in): Passed idx of an interested segment
- *   seg_equal_termsp(in): Returned BITSET of equal erms which contain
- *			   the segments and its class is TC_SARG
- *   seg_other_termsp(in):
+ *   index_entry(in/out): Index entry
+ *   idx(in): Passed idx of an interested segment
  */
 static void
-qo_find_index_seg_terms (QO_ENV * env, int seg_idx,
-			 BITSET * seg_equal_termsp, BITSET * seg_other_termsp)
+qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx)
 {
   int t;
   QO_TERM *qo_termp;
-
-  BITSET_CLEAR (*seg_equal_termsp);
-  BITSET_CLEAR (*seg_other_termsp);
 
   /* traverse all terms */
   for (t = 0; t < env->nterms; t++)
@@ -5434,7 +5657,7 @@ qo_find_index_seg_terms (QO_ENV * env, int seg_idx,
       qo_termp = QO_ENV_TERM (env, t);
 
       /* ignore this term if it is not marked as indexable by
-         'analyze_term()' */
+         'qo_analyze_term()' */
       if (!qo_termp->can_use_index)
 	{
 	  continue;
@@ -5447,26 +5670,40 @@ qo_find_index_seg_terms (QO_ENV * env, int seg_idx,
 	{
 	  continue;
 	}
-      /* 'analyze_term()' function verifies that all indexable
+      /* 'qo_analyze_term()' function verifies that all indexable
          terms are expression so that they have 'pt_expr' filed of type
          PT_EXPR. */
 
       /* if the term is sarg and the given segment is involed in the
          expression that gives rise to the term */
       if (QO_TERM_CLASS (qo_termp) == QO_TC_SARG
-	  && BITSET_MEMBER (QO_TERM_SEGS (qo_termp), seg_idx))
+	  && BITSET_MEMBER (QO_TERM_SEGS (qo_termp),
+			    index_entry->seg_idxs[idx]))
 	{
+	  /* check for range list term; RANGE (r1, r2, ...) */
+	  if (QO_TERM_IS_FLAGED (qo_termp, QO_TERM_RANGELIST))
+	    {
+	      if (index_entry->rangelist_seg_idx != -1)
+		{
+		  continue;	/* already found. give up */
+		}
+
+	      /* is the first time */
+	      index_entry->rangelist_seg_idx = idx;
+	    }
+
 	  /* collect this term */
 	  if (QO_TERM_IS_FLAGED (qo_termp, QO_TERM_EQUAL_OP))
 	    {
-	      bitset_add (seg_equal_termsp, t);
+	      bitset_add (&(index_entry->seg_equal_terms[idx]), t);
 	    }
 	  else
 	    {
-	      bitset_add (seg_other_termsp, t);
+	      bitset_add (&(index_entry->seg_other_terms[idx]), t);
 	    }
 	}
     }
+
 }
 
 /*
@@ -5563,15 +5800,15 @@ qo_find_matching_index (QO_INDEX_ENTRY * index_entry,
  *   return: int (True/False)
  *   class_info(in): Class info structure
  *   n(in): Index into class info structure.  This determines the level
- *          in the class heirarchy that we're currently concerned with
+ *          in the class hierarchy that we're currently concerned with
  *   index_entry(in): Index entry to match against
  *
  * Note:
  *     This is a recursive function which is used to verify that a
- *     given index entry is compatible accross the class heirarchy.
+ *     given index entry is compatible accross the class hierarchy.
  *     An index entry is compatible if there exists an index definition
  *     on the same sequence of attributes at each level in the class
- *     heirarchy.  If the index entry is compatible, the entry will be
+ *     hierarchy.  If the index entry is compatible, the entry will be
  *     marked as such throughout the hierarchy.
  */
 static QO_INDEX_ENTRY *
@@ -5642,6 +5879,7 @@ qo_find_index_segs (QO_ENV * env,
   BITSET_ITERATOR iter;
   int i, iseg;
   bool matched;
+  int count_matched_index_attributes = 0;
 
   /* working set; indexed segments */
   bitset_init (&working, env);
@@ -5673,6 +5911,7 @@ qo_find_index_segs (QO_ENV * env,
 	         equality expressions are allowed except for the last
 	         matching segment. */
 	      matched = true;
+	      count_matched_index_attributes++;
 	      break;
 	    }			/* if (!intl_mbs_casecmp...) */
 
@@ -5688,9 +5927,118 @@ qo_find_index_segs (QO_ENV * env,
 
   bitset_delset (&working);
 
-  return (seg_idx[0] != -1) ? true : false;
-  /* this index is feasible to use if at least the first attribute of index
+  return count_matched_index_attributes > 0;
+  /* this index is feasible to use if at least one attribute of index
      is specified(matched) */
+}
+
+/*
+ * qo_is_coverage_index () - check if the index cover all query segments
+ *   return: bool
+ *   env(in): The environment
+ *   nodep(in): The node 
+ *   index_entry(in): The index entry
+ */
+static bool
+qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
+		      QO_INDEX_ENTRY * index_entry)
+{
+  int i, j, seg_idx;
+  QO_SEGMENT *seg;
+  bool found;
+  QO_CLASS_INFO *class_infop = NULL;
+  QO_NODE *seg_nodep = NULL;
+  PT_NODE *pt_node;
+
+  if (env == NULL || nodep == NULL || index_entry == NULL)
+    {
+      return false;
+    }
+
+  /* 
+   * If NO_COVERING_IDX hint is given, we do not generate a plan for
+   * covering index scan.
+   */
+  QO_ASSERT (env, QO_ENV_PT_TREE (env)->node_type == PT_SELECT);
+  if (QO_ENV_PT_TREE (env)->node_type == PT_SELECT
+      && (QO_ENV_PT_TREE (env)->info.query.q.select.hint
+	  & PT_HINT_NO_COVERING_IDX))
+    {
+      return false;
+    }
+
+  for (i = 0; i < index_entry->nsegs; i++)
+    {
+      seg_idx = (index_entry->seg_idxs[i]);
+      if (seg_idx == -1)
+	{
+	  continue;
+	}
+
+      /* We do not use covering index if there is a path expression. */
+      seg = QO_ENV_SEG (env, seg_idx);
+      pt_node = QO_SEG_PT_NODE (seg);
+      if (pt_node->node_type == PT_DOT_
+	  || (pt_node->node_type == PT_NAME
+	      && pt_node->info.name.resolved == NULL))
+	{
+	  return false;
+	}
+    }
+
+  for (i = 0; i < env->nsegs; i++)
+    {
+      seg = QO_ENV_SEG (env, i);
+
+      if (seg == NULL || QO_SEG_IS_OID_SEG (seg))
+	{
+	  continue;
+	}
+
+      /* the segment should belong to the given node */
+      seg_nodep = QO_SEG_HEAD (seg);
+      if (seg_nodep == NULL || seg_nodep != nodep)
+	{
+	  continue;
+	}
+
+      class_infop = QO_NODE_INFO (seg_nodep);
+      if (class_infop == NULL || !(class_infop->info[0].normal_class))
+	{
+	  return false;
+	}
+      QO_ASSERT (env, class_infop->n > 0);
+
+      found = false;
+      for (j = 0; j < class_infop->n; j++)
+	{
+	  if (class_infop->info[j].mop == index_entry->class_->mop)
+	    {
+	      found = true;
+	      break;
+	    }
+	}
+      if (!found)
+	{
+	  continue;
+	}
+
+      found = false;
+      for (j = 0; j < index_entry->col_num; j++)
+	{
+	  if (index_entry->seg_idxs[j] == QO_SEG_IDX (seg))
+	    {
+	      found = true;
+	      break;
+	    }
+	}
+      if (!found)
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /*
@@ -5860,11 +6208,16 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
 	      /* fill in QO_INDEX_ENTRY structure */
 	      index_entryp = QO_INDEX_INDEX (indexp, indexp->n);
+	      index_entryp->nsegs = nseg_idx;
 	      index_entryp->seg_idxs = NULL;
-	      if (nseg_idx > 0)
+	      index_entryp->rangelist_seg_idx = -1;
+	      index_entryp->seg_equal_terms = NULL;
+	      index_entryp->seg_other_terms = NULL;
+	      if (index_entryp->nsegs > 0)
 		{
-		  size_t size = sizeof (int) * nseg_idx;
+		  size_t size;
 
+		  size = sizeof (int) * index_entryp->nsegs;
 		  index_entryp->seg_idxs = (int *) malloc (size);
 		  if (index_entryp->seg_idxs == NULL)
 		    {
@@ -5876,16 +6229,13 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 			      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		      return;
 		    }
-		}
 
-	      index_entryp->seg_equal_terms = NULL;
-	      if (nseg_idx > 0)
-		{
-		  size_t size = sizeof (BITSET) * nseg_idx;
 
+		  size = sizeof (BITSET) * nseg_idx;
 		  index_entryp->seg_equal_terms = (BITSET *) malloc (size);
 		  if (index_entryp->seg_equal_terms == NULL)
 		    {
+		      free_and_init (index_entryp->seg_idxs);
 		      if (seg_idx != seg_idx_arr)
 			{
 			  free_and_init (seg_idx);
@@ -5894,15 +6244,11 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 			      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		      return;
 		    }
-		}
-
-	      index_entryp->seg_other_terms = NULL;
-	      if (nseg_idx > 0)
-		{
-		  size_t size = sizeof (BITSET) * nseg_idx;
 		  index_entryp->seg_other_terms = (BITSET *) malloc (size);
 		  if (index_entryp->seg_other_terms == NULL)
 		    {
+		      free_and_init (index_entryp->seg_equal_terms);
+		      free_and_init (index_entryp->seg_idxs);
 		      if (seg_idx != seg_idx_arr)
 			{
 			  free_and_init (seg_idx);
@@ -5912,34 +6258,64 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		      return;
 		    }
 		}
-
-	      index_entryp->type = consp->type;
 	      index_entryp->class_ = class_entryp;
-	      index_entryp->btid = consp->index;
 	      /* j == -1 iff no USING INDEX or USING INDEX ALL EXCEPT */
 	      index_entryp->force = (j == -1) ? 0 : QO_UI_FORCE (uip, j);
-	      index_entryp->name = consp->name;
 	      index_entryp->col_num = col_num;
 	      index_entryp->stats = NULL;
 	      index_entryp->bt_stats_idx = -1;
+	      index_entryp->constraints = consp;
 
-	      index_entryp->nsegs = nseg_idx;
+	      /* set key limits */
+	      index_entryp->key_limit =
+		(j == -1) ? NULL : QO_UI_KEYLIMIT (uip, j);
+
 	      /* assign seg_idx[] and seg_terms[] */
-	      for (j = 0; j < nseg_idx; j++)
+	      for (j = 0; j < index_entryp->nsegs; j++)
 		{
 		  bitset_init (&(index_entryp->seg_equal_terms[j]), env);
 		  bitset_init (&(index_entryp->seg_other_terms[j]), env);
 		  index_entryp->seg_idxs[j] = seg_idx[j];
 		  if (index_entryp->seg_idxs[j] != -1)
 		    {
-		      qo_find_index_seg_terms (env, seg_idx[j],
-					       &(index_entryp->
-						 seg_equal_terms[j]),
-					       &(index_entryp->
-						 seg_other_terms[j]));
+		      qo_find_index_seg_terms (env, index_entryp, j);
 		    }
-		}		/* for (j = 0; j < nseg_idx; j++) */
-	      qo_find_index_terms (env, &index_segs, &(index_entryp->terms));
+		}
+	      qo_find_index_terms (env, &index_segs, &(index_entryp->terms),
+				   &(index_entryp->key_filter_terms));
+
+	      index_entryp->cover_segments =
+		qo_is_coverage_index (env, nodep, index_entryp);
+
+	      index_entryp->statistics_attribute_name = NULL;
+	      if (index_entryp->col_num > 0)
+		{
+		  const char *temp_name = NULL;
+
+		  if (consp->attributes && consp->attributes[0])
+		    {
+		      temp_name = consp->attributes[0]->header.name;
+		      if (temp_name)
+			{
+			  int len = strlen (temp_name) + 1;
+			  index_entryp->statistics_attribute_name =
+			    (char *) malloc (sizeof (char) * len);
+			  if (index_entryp->statistics_attribute_name == NULL)
+			    {
+			      if (seg_idx != seg_idx_arr)
+				{
+				  free_and_init (seg_idx);
+				}
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+				      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+				      sizeof (char) * len);
+			      return;
+			    }
+			  strcpy (index_entryp->statistics_attribute_name,
+				  temp_name);
+			}
+		    }
+		}
 
 	      (indexp->n)++;
 
@@ -5957,7 +6333,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
     }				/* for (i = 0; i < class_infop->n; i++) */
   /* class_infop->n >= 1 */
 
-  /* find and mark indexes which are compatible across class heirarchy */
+  /* find and mark indexes which are compatible across class hierarchy */
 
   indexp = class_infop->info[0].index;
 
@@ -5984,7 +6360,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
   /* if we don`t have any indexes to process, we're through
      if there is only one, then make sure that the head pointer points to it
      if there are more than one, we also need to construct a linked list
-     of compatible indexes by recursively searching down the heirarchy */
+     of compatible indexes by recursively searching down the hierarchy */
   for (i = 0; i < indexp->n; i++)
     {
       index_entryp = QO_INDEX_INDEX (indexp, i);
@@ -6012,7 +6388,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
  *   env(in): The environment to be updated
  *
  * Note: Study each term to finish determination of whether it can use
- *	an index.  analyze_term() already determined whether each
+ *	an index.  qo_analyze_term() already determined whether each
  *	term qualifies structurally, and qo_get_class_info() has
  *	determined all of the indexes that are available, so all we
  *	have to do here is combine those two pieces of information.
@@ -6029,7 +6405,6 @@ qo_discover_indexes (QO_ENV * env)
   QO_TERM *termp;
   QO_NODE *nodep;
   QO_SEGMENT *segp;
-
 
   /* iterate over all nodes and find indexes for each node */
   for (i = 0; i < env->nnodes; i++)
@@ -6062,7 +6437,7 @@ qo_discover_indexes (QO_ENV * env)
       termp = QO_ENV_TERM (env, i);
 
       /* before, 'index_seg[]' has all possible indexed segments, that is
-         assigned at 'analyze_term()' */
+         assigned at 'qo_analyze_term()' */
       /* for all 'term.index_seg[]', examine if it really has index or not */
       k = 0;
       for (j = 0; j < termp->can_use_index; j++)
@@ -7476,7 +7851,9 @@ qo_is_prefix_index (QO_INDEX_ENTRY * ent)
   if (ent && ent->class_ && ent->class_->smclass)
     {
       SM_CLASS_CONSTRAINT *cons;
-      cons = classobj_find_class_index (ent->class_->smclass, ent->name);
+      cons =
+	classobj_find_class_index (ent->class_->smclass,
+				   ent->constraints->name);
       if (cons)
 	{
 	  if (cons->attrs_prefix_length && cons->attrs_prefix_length[0] != -1)

@@ -26,6 +26,7 @@
 
 #include "porting.h"
 #include "storage_common.h"
+#include "es_common.h"
 
 /* this enumeration should be matched with DB_CLIENT_TYPE_XXX in db.h */
 typedef enum boot_client_type BOOT_CLIENT_TYPE;
@@ -41,7 +42,8 @@ enum boot_client_type
   BOOT_CLIENT_ADMIN_UTILITY = 7,
   BOOT_CLIENT_ADMIN_CSQL = 8,
   BOOT_CLIENT_LOG_COPIER = 9,
-  BOOT_CLIENT_LOG_APPLIER = 10
+  BOOT_CLIENT_LOG_APPLIER = 10,
+  BOOT_CLIENT_PH_READ_ONLY_BROKER = 11
 };
 
 #define BOOT_NORMAL_CLIENT_TYPE(client_type) \
@@ -49,12 +51,14 @@ enum boot_client_type
          || (client_type) == BOOT_CLIENT_CSQL \
          || (client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
          || (client_type) == BOOT_CLIENT_BROKER \
-         || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER)
+         || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
+         || (client_type) == BOOT_CLIENT_PH_READ_ONLY_BROKER)
 
 #define BOOT_READ_ONLY_CLIENT_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
 	 || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
-	 || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER)
+	 || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER \
+         || (client_type) == BOOT_CLIENT_PH_READ_ONLY_BROKER)
 
 #define BOOT_ADMIN_CLIENT_TYPE(client_type) \
 	((client_type) == BOOT_CLIENT_ADMIN_UTILITY \
@@ -80,6 +84,7 @@ struct boot_client_credential
   char *program_name;		/* PATH_MAX */
   char *login_name;		/* L_cuserid */
   char *host_name;		/* MAXHOSTNAMELEN */
+  char *preferred_hosts;	/* LINE_MAX */
   int process_id;
 };
 
@@ -89,6 +94,7 @@ struct boot_db_path_info
   char *db_path;
   char *vol_path;
   char *log_path;
+  char *lob_path;
   char *db_host;
   char *db_comments;
 };
@@ -98,6 +104,7 @@ struct boot_server_credential
 {
   char *db_full_name;		/* PATH_MAX */
   char *host_name;		/* MAXHOSTNAMELEN */
+  char *lob_path;		/* PATH_MAX + LOB_PATH_PREFIX_MAX */
   int process_id;
   OID root_class_oid;
   HFID root_class_hfid;
@@ -107,7 +114,9 @@ struct boot_server_credential
   int ha_server_state;		/*  HA_SERVER_STATE */
 };
 
-
 extern char boot_Host_name[MAXHOSTNAMELEN];
+
+#define LOB_PATH_PREFIX_MAX     ES_URI_PREFIX_MAX
+#define LOB_PATH_DEFAULT_PREFIX ES_POSIX_PATH_PREFIX
 
 #endif /* _BOOT_H_ */

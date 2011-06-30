@@ -28,6 +28,7 @@
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <unistd.h>
 #endif
@@ -63,7 +64,8 @@ struct t_work_msg
 #endif
 
 static int log_top_query (int argc, char *argv[], int arg_start);
-static int log_top (FILE * fp, char *filename);
+static int log_top (FILE * fp, char *filename, long start_offset,
+		    long end_offset);
 static int log_execute (T_QUERY_INFO * qi, char *linebuf, char **query_p);
 static int get_args (int argc, char *argv[]);
 #ifdef MT_MODE
@@ -77,6 +79,7 @@ static int read_execute_end_msg (char *msg_p, int *res_code,
 				 int *runtime_msec);
 static int read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf,
 			    int *lineno, T_STRING * cas_log_buf);
+static int search_offset (FILE * fp, char *string, long *offset, bool start);
 
 T_LOG_TOP_MODE log_top_mode = MODE_PROC_TIME;
 
@@ -109,6 +112,38 @@ main (int argc, char *argv[])
 }
 
 int
+get_file_offset (char *filename, long *start_offset, long *end_offset)
+{
+  FILE *fp;
+
+  if (!start_offset || !end_offset)
+    {
+      return -1;
+    }
+
+  fp = fopen (filename, "r");
+  if (fp == NULL)
+    {
+      return -1;
+    }
+
+  if (from_date[0] == '\0' ||
+      search_offset (fp, from_date, start_offset, true) < 0)
+    {
+      *start_offset = -1;
+    }
+
+  if (to_date[0] == '\0' ||
+      search_offset (fp, to_date, end_offset, false) < 0)
+    {
+      *end_offset = -1;
+    }
+
+  fclose (fp);
+  return 0;
+}
+
+int
 check_log_time (char *start_date, char *end_date)
 {
   if (from_date[0])
@@ -131,6 +166,7 @@ log_top_query (int argc, char *argv[], int arg_start)
   FILE *fp;
   char *filename;
   int i;
+  long start_offset, end_offset;
 #ifdef MT_MODE
   T_THREAD thrid;
   int j;
@@ -168,6 +204,11 @@ log_top_query (int argc, char *argv[], int arg_start)
 	  return -1;
 	}
 
+      if (get_file_offset (filename, &start_offset, &end_offset) < 0)
+	{
+	  start_offset = end_offset = -1;
+	}
+
 #ifdef MT_MODE
       while (1)
 	{
@@ -186,7 +227,7 @@ log_top_query (int argc, char *argv[], int arg_start)
 	    break;
 	}
 #else
-      log_top (fp, filename);
+      log_top (fp, filename, start_offset, end_offset);
       fclose (fp);
 #endif
     }
@@ -235,7 +276,7 @@ thr_main (void *arg)
 #endif
 
 static int
-log_top (FILE * fp, char *filename)
+log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 {
   char *linebuf = NULL;
   T_QUERY_INFO query_info_buf[MAX_SRV_HANDLE];
@@ -249,7 +290,9 @@ log_top (FILE * fp, char *filename)
   char *msg_p;
   int lineno = 0;
   char read_flag = 1;
-  char cur_date[32];
+  char cur_date[DATE_STR_LEN + 1];
+  char start_date[DATE_STR_LEN + 1];
+  start_date[0] = '\0';
 
   for (i = 0; i < MAX_SRV_HANDLE; i++)
     query_info_init (&query_info_buf[i]);
@@ -269,8 +312,21 @@ log_top (FILE * fp, char *filename)
   t_string_clear (sql_buf);
   memset (prepare_buf, 0, sizeof (prepare_buf));
 
+  if (start_offset != -1)
+    {
+      fseek (fp, start_offset, SEEK_SET);
+    }
+
   while (1)
     {
+      if (end_offset != -1)
+	{
+	  if (ftell (fp) > end_offset)
+	    {
+	      break;
+	    }
+	}
+
       if (read_flag)
 	{
 	  if (ut_get_line (fp, linebuf_tstr, &linebuf, &lineno) <= 0)
@@ -289,6 +345,11 @@ log_top (FILE * fp, char *filename)
 	}
 
       GET_CUR_DATE_STR (cur_date, linebuf);
+      if (start_date[0] == '\0')
+	{
+	  strcpy (start_date, cur_date);
+	}
+
       GET_MSG_START_PTR (msg_p, linebuf);
       if (strncmp (msg_p, "execute", 7) == 0
 	  || strncmp (msg_p, "execute_all", 11) == 0
@@ -381,6 +442,8 @@ log_top (FILE * fp, char *filename)
 	  GET_MSG_START_PTR (msg_p, linebuf);
 	  GET_CUR_DATE_STR (cur_date, linebuf);
 
+	  strcpy (query_info_buf[qi_idx].start_date, start_date);
+
 	  if (log_top_mode == MODE_MAX_HANDLE)
 	    {
 	      if (qi_idx >= mode_max_handle_lower_bound)
@@ -422,6 +485,7 @@ log_top (FILE * fp, char *filename)
 		}
 	    }
 	}
+      start_date[0] = '\0';
     }
 
   for (i = 0; i < MAX_SRV_HANDLE; i++)
@@ -516,7 +580,7 @@ date_format_err:
   return -1;
 }
 
-#define  DATE_VALUE_COUNT 5
+#define  DATE_VALUE_COUNT 6
 static int
 str_to_log_date_format (char *str, char *date_format_str)
 {
@@ -535,8 +599,8 @@ str_to_log_date_format (char *str, char *date_format_str)
 	goto error;
       if (val < 0)
 	val = 0;
-      else if (val > 99)
-	val = 99;
+      else if (val > 999)
+	val = 999;
       date_val[i] = val;
       if (*endp == '\0')
 	break;
@@ -546,8 +610,9 @@ str_to_log_date_format (char *str, char *date_format_str)
     }
 
   sprintf (date_format_str,
-	   "%02d/%02d %02d:%02d:%02d",
-	   date_val[0], date_val[1], date_val[2], date_val[3], date_val[4]);
+	   "%02d/%02d %02d:%02d:%02d.%03d",
+	   date_val[0], date_val[1], date_val[2], date_val[3], date_val[4],
+	   date_val[5]);
   return 0;
 
 error:
@@ -654,4 +719,127 @@ read_execute_end_msg (char *msg_p, int *res_code, int *runtime_msec)
   *runtime_msec = sec * 1000 + msec;
 
   return 0;
+}
+
+static int
+search_offset (FILE * fp, char *string, long *offset, bool start)
+{
+  off_t start_ptr = 0;
+  off_t end_ptr = 0;
+  off_t cur_ptr;
+  off_t old_start_ptr;
+  bool old_start_saved = false;
+  long tmp_offset = -1;
+  struct stat stat_buf;
+  char *linebuf = NULL;
+  int line_no = 0;
+  T_STRING *linebuf_tstr = NULL;
+  int ret_val;
+
+  assert (offset != NULL);
+
+  *offset = -1;
+
+  if (fstat (fileno (fp), &stat_buf) < 0)
+    {
+      return -1;
+    }
+
+  end_ptr = stat_buf.st_size;
+
+  linebuf_tstr = t_string_make (1000);
+  if (linebuf_tstr == NULL)
+    {
+      return -1;
+    }
+
+  cur_ptr = 0;
+
+  while (true)
+    {
+      if (fseek (fp, cur_ptr, SEEK_SET) < 0)
+	{
+	  goto error;
+	}
+
+      while (ut_get_line (fp, linebuf_tstr, &linebuf, &line_no) > 0)
+	{
+	  if (IS_CAS_LOG_CMD (linebuf))
+	    {
+	      break;
+	    }
+	  cur_ptr = ftell (fp);
+
+	  if (cur_ptr >= end_ptr)
+	    {
+	      tmp_offset = old_start_saved ? old_start_ptr : start_ptr;
+	      goto end_loop;
+	    }
+	}
+
+      ret_val = strncmp (linebuf, string, DATE_STR_LEN);
+
+      if (ret_val < 0)
+	{
+	  old_start_saved = true;
+	  old_start_ptr = start_ptr;
+	  start_ptr = ftell (fp);
+	}
+
+      if (ret_val >= 0)
+	{
+	  if (ret_val == 0 && old_start_saved)
+	    {
+	      tmp_offset = start_ptr;
+	      goto end_loop;
+	    }
+	  else
+	    {
+	      old_start_saved = false;
+	      end_ptr = cur_ptr;
+	    }
+	}
+
+      cur_ptr = start_ptr + (end_ptr - start_ptr) / 2;
+      if (cur_ptr <= start_ptr)
+	{
+	  tmp_offset = start_ptr;
+	  goto end_loop;
+	}
+    }
+
+end_loop:
+  if (fseek (fp, tmp_offset, SEEK_SET) < 0)
+    {
+      goto error;
+    }
+
+  while (ut_get_line (fp, linebuf_tstr, &linebuf, &line_no) > 0)
+    {
+      if (start)
+	{
+	  /* the first line of the time */
+	  if (strncmp (linebuf, string, DATE_STR_LEN) >= 0)
+	    {
+	      break;
+	    }
+	}
+      else
+	{
+	  /* the last line of the time */
+	  if (strncmp (linebuf, string, DATE_STR_LEN) > 0)
+	    {
+	      break;
+	    }
+	}
+      tmp_offset = ftell (fp);
+    }
+
+  *offset = tmp_offset;
+  t_string_free (linebuf_tstr);
+  return 0;
+
+error:
+  t_string_free (linebuf_tstr);
+  return -1;
 }

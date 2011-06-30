@@ -39,7 +39,7 @@
 
 #include "disk_manager.h"
 #include "replication.h"
-#include "thread_impl.h"
+#include "thread.h"
 
 extern bool locator_Dont_check_foreign_key;
 
@@ -95,6 +95,12 @@ extern int locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid,
 					HEAP_SCANCACHE * scan_cache,
 					int *force_count, OID * prev_oid,
 					REPR_ID * new_reprid);
+extern DISK_ISVALID locator_check_class (THREAD_ENTRY * thtread_p,
+					 OID * class_oid, RECDES * peek,
+					 HFID * class_hfid, bool repair);
+extern DISK_ISVALID locator_check_by_class_oid (THREAD_ENTRY * thread_p,
+						OID * cls_oid, HFID * hfid,
+						bool repair);
 extern DISK_ISVALID locator_check_all_entries_of_all_btrees (THREAD_ENTRY *
 							     thread_p,
 							     bool repair);
@@ -120,5 +126,6 @@ extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes,
 				 HEAP_SCANCACHE * scan_cache,
 				 bool data_update, bool replyn,
 				 REPL_INFO_TYPE repl_info);
-
+extern int locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid,
+				     OID * oid, RECDES * recdes);
 #endif /* _LOCATOR_SR_H_ */

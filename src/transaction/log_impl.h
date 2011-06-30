@@ -41,7 +41,9 @@
 #include "critical_section.h"
 #include "release_string.h"
 #include "file_io.h"
-#include "thread_impl.h"
+#include "thread.h"
+#include "es.h"
+#include "rb_tree.h"
 
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
@@ -60,27 +62,62 @@
         csect_promote((thread_p), CSECT_LOG, INF_WAIT)
 #define LOG_CS_EXIT() \
         csect_exit(CSECT_LOG)
+
 #define TR_TABLE_CS_ENTER(thread_p) \
         csect_enter((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
 #define TR_TABLE_CS_ENTER_READ_MODE(thread_p) \
         csect_enter_as_reader((thread_p), CSECT_TRAN_TABLE, INF_WAIT)
 #define TR_TABLE_CS_EXIT() \
         csect_exit(CSECT_TRAN_TABLE)
+
+#define LOG_ARCHIVE_CS_ENTER(thread_p)                                       \
+        csect_enter_critical_section (thread_p, &log_Gl.archive.archives_cs, \
+                                      INF_WAIT)
+#define LOG_ARCHIVE_CS_ENTER_READ_MODE(thread_p)                             \
+        csect_enter_critical_section_as_reader (thread_p,                    \
+                                                &log_Gl.archive.archives_cs, \
+                                                INF_WAIT)
+#define LOG_ARCHIVE_CS_EXIT() \
+        csect_exit_critical_section (&log_Gl.archive.archives_cs)
+
 #else /* SERVER_MODE */
 #define LOG_CS_ENTER(thread_p)
 #define LOG_CS_ENTER_READ_MODE(thread_p)
 #define LOG_CS_DEMOTE(thread_p)
 #define LOG_CS_PROMOTE(thread_p)
 #define LOG_CS_EXIT()
+
 #define TR_TABLE_CS_ENTER(thread_p)
 #define TR_TABLE_CS_ENTER_READ_MODE(thread_p)
 #define TR_TABLE_CS_EXIT()
+
+#define LOG_ARCHIVE_CS_ENTER(thread_p)
+#define LOG_ARCHIVE_CS_ENTER_READ_MODE(thread_p)
+#define LOG_ARCHIVE_CS_EXIT()
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 #define LOG_CS_OWN(thread_p) (csect_check_own (thread_p, CSECT_LOG) >= 1)
+#define LOG_CS_OWN_WRITE_MODE(thread_p) (csect_check_own (thread_p, CSECT_LOG) == 1)
+#define LOG_CS_OWN_READ_MODE(thread_p) (csect_check_own (thread_p, CSECT_LOG) == 2)
+
+#define LOG_ARCHIVE_CS_OWN(thread_p)                 \
+        (csect_check_own_critical_section (thread_p, \
+           &log_Gl.archive.archives_cs) >= 1)
+#define LOG_ARCHIVE_CS_OWN_WRITE_MODE(thread_p)     \
+       (csect_check_own_critical_section (thread_p, \
+           &log_Gl.archive.archives_cs) == 1)
+#define LOG_ARCHIVE_CS_OWN_READ_MODE(thread_p)      \
+       (csect_check_own_critical_section (thread_p, \
+           &log_Gl.archive.archives_cs) == 2)
 #else /* SERVER_MODE */
 #define LOG_CS_OWN(thread_p) (true)
+#define LOG_CS_OWN_WRITE_MODE(thread_p) (true)
+#define LOG_CS_OWN_READ_MODE(thread_p) (true)
+
+#define LOG_ARCHIVE_CS_OWN(thread_p) (true)
+#define LOG_ARCHIVE_CS_OWN_WRITE_MODE(thread_p) (true)
+#define LOG_ARCHIVE_CS_OWN_READ_MODE(thread_p) (true)
 #endif /* !SERVER_MODE */
 
 
@@ -109,7 +146,7 @@
 #define LOG_APPEND_ALIGN(thread_p, current_setdirty)                                    \
   do {                                                                        \
     if ((current_setdirty) == LOG_SET_DIRTY)                                  \
-      logpb_set_dirty(log_Gl.append.log_pgptr, DONT_FREE);                     \
+      logpb_set_dirty((thread_p), log_Gl.append.log_pgptr, DONT_FREE);        \
     log_Gl.hdr.append_lsa.offset = DB_ALIGN(log_Gl.hdr.append_lsa.offset, DOUBLE_ALIGNMENT);                    \
     if (log_Gl.hdr.append_lsa.offset >= (int)LOGAREA_SIZE)                    \
       logpb_next_append_page((thread_p), LOG_DONT_SET_DIRTY);                               \
@@ -297,15 +334,6 @@ extern int db_Disable_modifications;
 #endif /* !SA_MODE */
 #endif /* CHECK_MODIFICATION_NO_RETURN */
 
-#if defined(CUBRID_DEBUG)
-#define LOG_MUTEX_LOCK(rv, mutex) log_lock_mutex_debug(ARG_FILE_LINE, #mutex)
-#define LOG_MUTEX_UNLOCK(mutex)   log_unlock_mutex_debug(ARG_FILE_LINE, #mutex)
-#else /* CUBRID_DEBUG */
-#define LOG_MUTEX_LOCK(rv, mutex) MUTEX_LOCK(rv, mutex)
-#define LOG_MUTEX_UNLOCK(mutex)   MUTEX_UNLOCK(mutex)
-#endif /* !CUBRID_DEBUG */
-
-
 /*
  * Message id in the set MSGCAT_SET_LOG
  * in the message catalog MSGCAT_CATALOG_CUBRID (file cubrid.msg).
@@ -379,7 +407,7 @@ enum LOG_HA_FILESTAT
 typedef struct log_hdrpage LOG_HDRPAGE;
 struct log_hdrpage
 {
-  PAGEID logical_pageid;	/* Logical pageid in infinite log                 */
+  LOG_PAGEID logical_pageid;	/* Logical pageid in infinite log                 */
   PGLENGTH offset;		/* Offset of first log record in this page.
 				   This may be useful when previous log page
 				   is corrupted and an archive of that page does
@@ -388,6 +416,8 @@ struct log_hdrpage
 				   log starting at the offset address, that is,
 				   at the next log record
 				 */
+  short dummy1;			/* Dummy field for 8byte align */
+  int dummy2;			/* Dummy field for 8byte align */
 };
 
 /* WARNING:
@@ -402,15 +432,6 @@ struct log_page
   LOG_HDRPAGE hdr;
   char area[1];
 };
-
-
-#if defined(CUBRID_DEBUG)
-typedef struct log_mutex_info
-{
-  int lock_count;
-  THREAD_T owner;
-} log_mutex_info;
-#endif /* CUBRID_DEBUG */
 
 typedef enum log_flush_type LOG_FLUSH_TYPE;
 enum log_flush_type
@@ -446,18 +467,7 @@ struct log_flush_info
 
 #if defined(SERVER_MODE)
   /* for protecting LOG_FLUSH_INFO */
-  MUTEX_T flush_mutex;
-#if defined(CUBRID_DEBUG)
-
-  /* Volatile for debugging in release mode.(-DCUBRID_DEBUG)
-   * It doesn't make an impact on execution in debug mode.
-   * log_*_mutex_not_own can't work properly in release mode
-   * without volatile because mutex_info can be changed unexpectedly.
-   * log_*_mutex_not_own is only called carefully in single thread context now.
-   * (when only log_cs acquired)
-   */
-  volatile log_mutex_info mutex_info;
-#endif				/* CUBRID_DEBUG */
+  pthread_mutex_t flush_mutex;
 #endif				/* SERVER_MODE */
 };
 
@@ -466,8 +476,8 @@ struct log_group_commit_info
 {
   /* group commit waiters count */
   int waiters;
-  MUTEX_T gc_mutex;
-  COND_T gc_cond;
+  pthread_mutex_t gc_mutex;
+  pthread_cond_t gc_cond;
 };
 
 typedef enum logwr_mode LOGWR_MODE;
@@ -492,7 +502,7 @@ typedef struct logwr_entry LOGWR_ENTRY;
 struct logwr_entry
 {
   THREAD_ENTRY *thread_p;
-  PAGEID fpageid;
+  LOG_PAGEID fpageid;
   LOGWR_MODE mode;
   LOGWR_STATUS status;
   LOGWR_ENTRY *next;
@@ -502,11 +512,11 @@ typedef struct logwr_info LOGWR_INFO;
 struct logwr_info
 {
   LOGWR_ENTRY *writer_list;
-  MUTEX_T wr_list_mutex;
-  COND_T flush_start_cond;
-  MUTEX_T flush_start_mutex;
-  COND_T flush_end_cond;
-  MUTEX_T flush_end_mutex;
+  pthread_mutex_t wr_list_mutex;
+  pthread_cond_t flush_start_cond;
+  pthread_mutex_t flush_start_mutex;
+  pthread_cond_t flush_end_cond;
+  pthread_mutex_t flush_end_mutex;
   bool skip_flush;
 };
 
@@ -604,10 +614,61 @@ struct log_clientids		/* see BOOT_CLIENT_CREDENTIAL */
 typedef struct modified_class_entry MODIFIED_CLASS_ENTRY;
 struct modified_class_entry
 {
-  OID class_oid;
   struct modified_class_entry *next;
+  OID class_oid;
+  LOG_LSA last_modified_lsa;
+  bool need_update_stats;
 };
 
+/* there can be following transitions in transient lobs
+
+   -------------------------------------------------------------------------
+   | 	       locator  | created               | deleted		   |
+   |--------------------|-----------------------|--------------------------|
+   | in     | transient | LOB_TRANSIENT_CREATED i LOB_UNKNOWN		   |
+   | tran   |-----------|-----------------------|--------------------------|
+   |        | permanent | LOB_PERMANENT_CREATED | LOB_PERMANENT_DELETED    |
+   |--------------------|-----------------------|--------------------------|
+   | out of | transient | LOB_UNKNOWN		| LOB_UNKNOWN		   |
+   | tran   |-----------|-----------------------|--------------------------|
+   |        | permanent | LOB_UNKNOWN 		| LOB_TRANSIENT_DELETED    |
+   -------------------------------------------------------------------------
+
+   s1: create a transient locator and delete it
+       LOB_TRANSIENT_CREATED -> LOB_UNKNOWN
+
+   s2: create a transient locator and bind it to a row in table
+       LOB_TRANSIENT_CREATED -> LOB_PERMANENT_CREATED
+
+   s3: bind a transient locator to a row and delete the locator
+       LOB_PERMANENT_CREATED -> LOB_PERMANENT_DELETED
+
+   s4: delete a locator to be create out of transaction
+       LOB_UNKNOWN -> LOB_TRANSIENT_DELETED
+
+ */
+typedef enum lob_locator_state LOB_LOCATOR_STATE;
+enum lob_locator_state
+{
+  LOB_UNKNOWN,
+  LOB_TRANSIENT_CREATED,
+  LOB_TRANSIENT_DELETED,
+  LOB_PERMANENT_CREATED,
+  LOB_PERMANENT_DELETED,
+  LOB_NOT_FOUND
+};
+
+/* lob entry */
+typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
+
+/*  lob rb tree head
+  The macro RB_HEAD is defined in rb_tree.h. It will be expanede like this;
+
+  struct lob_rb_root {
+    struct lob_locator_entry* rbh_root;
+  };
+ */
+RB_HEAD (lob_rb_root, lob_locator_entry);
 
 typedef struct log_tdes LOG_TDES;
 struct log_tdes
@@ -619,7 +680,7 @@ struct log_tdes
 				   aborted)
 				 */
   TRAN_ISOLATION isolation;	/* Isolation level                       */
-  int waitsecs;			/* Wait until this number of miliseconds
+  int waitsecs;			/* Wait until this number of milliseconds
 				   for locks; also see xlogtb_reset_wait_secs
 				 */
   LOG_LSA head_lsa;		/* First log address of transaction      */
@@ -636,6 +697,7 @@ struct log_tdes
 				   address of a postpone log record
 				 */
   LOG_LSA savept_lsa;		/* Address of last savepoint             */
+  LOG_LSA topop_lsa;		/* Address of last top operation         */
   LOG_LSA tail_topresult_lsa;	/* Address of last partial abort/commit  */
   LOG_LSA client_undo_lsa;	/* First address of a client undo log
 				   record
@@ -703,7 +765,10 @@ struct log_tdes
   int num_new_files;		/* # of new files created */
   int num_new_tmp_files;	/* # of new FILE_TMP files created */
   int num_new_tmp_tmp_files;	/* # of new FILE_TMP_TMP files created */
-  int suppress_replication;	/* suppress replication when flag is set */
+  int suppress_replication;	/* suppress writing replication logs when flag is set */
+
+  struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or
+					   delete during a transaction */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -792,27 +857,28 @@ struct log_header
   DKNPAGES npages;		/* Number of pages in the active log portion.
 				 * Does not include the log header page.
 				 */
-  PAGEID fpageid;		/* Logical pageid at physical location 1 in
+  INT32 dummy2;			/* Dummy field for 8byte align */
+  LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in
 				 * active log
 				 */
   LOG_LSA append_lsa;		/* Current append location                  */
   LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the
 				 * recovery process
 				 */
-  PAGEID nxarv_pageid;		/* Next logical page to archive             */
-  PAGEID nxarv_phy_pageid;	/* Physical location of logical page to
-				 * archive
-				 */
+  LOG_PAGEID nxarv_pageid;	/* Next logical page to archive             */
+  LOG_PHY_PAGEID nxarv_phy_pageid;	/* Physical location of logical page to
+					 * archive
+					 */
   int nxarv_num;		/* Next log archive number                  */
   int last_arv_num_for_syscrashes;	/* Last log archive needed for system
 					 * crashes
 					 */
   int last_deleted_arv_num;	/* Last deleted archive number              */
-  bool has_logging_been_skipped;	/* Has logging been skipped ?       */
   LOG_LSA bkup_level0_lsa;	/* Lsa of backup level 0                    */
   LOG_LSA bkup_level1_lsa;	/* Lsa of backup level 1                    */
   LOG_LSA bkup_level2_lsa;	/* Lsa of backup level 2                    */
   char prefix_name[MAXLOGNAME];	/* Log prefix name                          */
+  bool has_logging_been_skipped;	/* Has logging been skipped ?       */
   int lowest_arv_num_for_backup;	/* Last log archive needed to guarantee
 					 * a consistent restore for the most
 					 * recent backup
@@ -833,6 +899,8 @@ struct log_header
   int ha_server_state;
   int ha_file_status;
   LOG_LSA eof_lsa;
+
+  LOG_LSA smallest_lsa_at_last_chkpt;
 };
 
 struct log_arv_header
@@ -847,123 +915,124 @@ struct log_arv_header
 				 */
   TRANID next_trid;		/* Next Transaction identifier              */
   DKNPAGES npages;		/* Number of pages in the archive log       */
-  PAGEID fpageid;		/* Logical pageid at physical location 1 in
+  LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in
 				 * archive log
 				 */
   int arv_num;			/* The archive number                       */
+  INT32 dummy2;			/* Dummy field for 8byte align */
 };
 
 typedef enum log_rectype LOG_RECTYPE;
 enum log_rectype
 {
   /* In order of likely of appearance in the log */
-  LOG_SMALLER_LOGREC_TYPE,	/* A lower bound check             */
+  LOG_SMALLER_LOGREC_TYPE = 0,	/* A lower bound check             */
 
-  LOG_CLIENT_NAME,		/* Name of the client associated
+  LOG_CLIENT_NAME = 1,		/* Name of the client associated
 				   with transaction
 				 */
-  LOG_UNDOREDO_DATA,		/* An undo and redo data record    */
-  LOG_UNDO_DATA,		/* Only undo data                  */
-  LOG_REDO_DATA,		/* Only redo data                  */
-  LOG_DBEXTERN_REDO_DATA,	/* Only database external redo data */
-  LOG_POSTPONE,			/* Postpone redo data              */
-  LOG_RUN_POSTPONE,		/* Run/redo a postpone data. Only
+  LOG_UNDOREDO_DATA = 2,	/* An undo and redo data record    */
+  LOG_UNDO_DATA = 3,		/* Only undo data                  */
+  LOG_REDO_DATA = 4,		/* Only redo data                  */
+  LOG_DBEXTERN_REDO_DATA = 5,	/* Only database external redo data */
+  LOG_POSTPONE = 6,		/* Postpone redo data              */
+  LOG_RUN_POSTPONE = 7,		/* Run/redo a postpone data. Only
 				   for transactions committed with
 				   postpone operations
 				 */
-  LOG_COMPENSATE,		/* Compensation record (compensate a
+  LOG_COMPENSATE = 8,		/* Compensation record (compensate a
 				   undo record of an aborted tran)
 				 */
-  LOG_LCOMPENSATE,		/* Compensation record (compensate a
+  LOG_LCOMPENSATE = 9,		/* Compensation record (compensate a
 				   logical undo of an aborted tran)
 				 */
-  LOG_CLIENT_USER_UNDO_DATA,	/* User client undo data           */
-  LOG_CLIENT_USER_POSTPONE_DATA,	/* User client postpone            */
-  LOG_RUN_NEXT_CLIENT_UNDO,	/* Used to indicate that a set of
-				   client undo operations has
-				   been executed and the address of
-				   the next client undo to execute
-				 */
-  LOG_RUN_NEXT_CLIENT_POSTPONE,	/* Used to indicate that a set of
-				   client postpone operations has
-				   been executed and the address of
-				   the next client postpone to
-				   execute
-				 */
-  LOG_WILL_COMMIT,		/* Transaction will be committed */
-  LOG_COMMIT_WITH_POSTPONE,	/* Committing server postpone
-				   operations
-				 */
-  LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS,	/* Committing client postpone
+  LOG_CLIENT_USER_UNDO_DATA = 10,	/* User client undo data           */
+  LOG_CLIENT_USER_POSTPONE_DATA = 11,	/* User client postpone            */
+  LOG_RUN_NEXT_CLIENT_UNDO = 12,	/* Used to indicate that a set of
+					   client undo operations has
+					   been executed and the address of
+					   the next client undo to execute
+					 */
+  LOG_RUN_NEXT_CLIENT_POSTPONE = 13,	/* Used to indicate that a set of
+					   client postpone operations has
+					   been executed and the address of
+					   the next client postpone to
+					   execute
+					 */
+  LOG_WILL_COMMIT = 14,		/* Transaction will be committed */
+  LOG_COMMIT_WITH_POSTPONE = 15,	/* Committing server postpone
+					   operations
+					 */
+  LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS = 16,	/* Committing client postpone
 						   operations
 						 */
-  LOG_COMMIT,			/* A commit record                 */
-  LOG_COMMIT_TOPOPE_WITH_POSTPONE,	/* Committing server top system
+  LOG_COMMIT = 17,		/* A commit record                 */
+  LOG_COMMIT_TOPOPE_WITH_POSTPONE = 18,	/* Committing server top system
 					   postpone operations
 					 */
-  LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS,
+  LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 19,
   /* Committing client postpone
      top system operations
    */
-  LOG_COMMIT_TOPOPE,		/* A partial commit record, usually
+  LOG_COMMIT_TOPOPE = 20,	/* A partial commit record, usually
 				   from a top system operation
 				 */
-  LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS,	/* Aborting client loose ends      */
-  LOG_ABORT,			/* An abort record                 */
-  LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS,
+  LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS = 21,	/* Aborting client loose ends      */
+  LOG_ABORT = 22,		/* An abort record                 */
+  LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 23,
   /* Committing client postpone
      top system operations
    */
-  LOG_ABORT_TOPOPE,		/* A partial abort record, usually
+  LOG_ABORT_TOPOPE = 24,	/* A partial abort record, usually
 				   from a top system operation or
 				   partial rollback to a save point
 				 */
-  LOG_START_CHKPT,		/* Start a checkpoint              */
-  LOG_END_CHKPT,		/* Checkpoint information          */
-  LOG_SAVEPOINT,		/* A user savepoint record         */
-  LOG_2PC_PREPARE,		/* A prepare to commit record      */
-  LOG_2PC_START,		/* Start the 2PC protocol by sending
+  LOG_START_CHKPT = 25,		/* Start a checkpoint              */
+  LOG_END_CHKPT = 26,		/* Checkpoint information          */
+  LOG_SAVEPOINT = 27,		/* A user savepoint record         */
+  LOG_2PC_PREPARE = 28,		/* A prepare to commit record      */
+  LOG_2PC_START = 29,		/* Start the 2PC protocol by sending
 				   vote request messages to
 				   participants of distributed tran.
 				 */
-  LOG_2PC_COMMIT_DECISION,	/* Beginning of the second phase of
+  LOG_2PC_COMMIT_DECISION = 30,	/* Beginning of the second phase of
 				   2PC, need to perform local &
 				   global commits.
 				 */
-  LOG_2PC_ABORT_DECISION,	/* Beginning of the second phase of
+  LOG_2PC_ABORT_DECISION = 31,	/* Beginning of the second phase of
 				   2PC, need to perform local &
 				   global aborts.
 				 */
-  LOG_2PC_COMMIT_INFORM_PARTICPS,	/* Committing, need to inform the
+  LOG_2PC_COMMIT_INFORM_PARTICPS = 32,	/* Committing, need to inform the
 					   participants
 					 */
-  LOG_2PC_ABORT_INFORM_PARTICPS,	/* Aborting, need to inform the
+  LOG_2PC_ABORT_INFORM_PARTICPS = 33,	/* Aborting, need to inform the
 					   participants
 					 */
-  LOG_2PC_RECV_ACK,		/* Received ack. from the
+  LOG_2PC_RECV_ACK = 34,	/* Received ack. from the
 				   participant that it received the
 				   decision on the fate of dist.
 				   trans.
 				 */
-  LOG_END_OF_LOG,		/* End of log                      */
-  LOG_DUMMY_HEAD_POSTPONE,	/* A dummy log record. No-op       */
-  LOG_DUMMY_CRASH_RECOVERY,	/* A dummy log record which indicate
-				   the start of crash recovery.
-				   No-op
-				 */
-  LOG_DUMMY_FILLPAGE_FORARCHIVE,	/* Indicates logical end of current
+  LOG_END_OF_LOG = 35,		/* End of log                      */
+  LOG_DUMMY_HEAD_POSTPONE = 36,	/* A dummy log record. No-op       */
+  LOG_DUMMY_CRASH_RECOVERY = 37,	/* A dummy log record which indicate
+					   the start of crash recovery.
+					   No-op
+					 */
+  LOG_DUMMY_FILLPAGE_FORARCHIVE = 38,	/* Indicates logical end of current
 					   page so it could be archived
 					   safely. No-op
 					 */
-  LOG_REPLICATION_DATA,		/* Replicaion log for insert, delete or update */
-  LOG_REPLICATION_SCHEMA,	/* Replicaion log for schema, index, trigger or system catalog updates */
-  LOG_UNLOCK_COMMIT,		/* for repl_agent to guarantee the order of */
-  LOG_UNLOCK_ABORT,		/* transaction commit, we append the unlock info.
+  LOG_REPLICATION_DATA = 39,	/* Replicaion log for insert, delete or update */
+  LOG_REPLICATION_SCHEMA = 40,	/* Replicaion log for schema, index, trigger or system catalog updates */
+  LOG_UNLOCK_COMMIT = 41,	/* for repl_agent to guarantee the order of */
+  LOG_UNLOCK_ABORT = 42,	/* transaction commit, we append the unlock info.
 				   before calling lock_unlock_all()
 				 */
-  LOG_DIFF_UNDOREDO_DATA,	/* diff undo redo data             */
-  LOG_DUMMY_HA_SERVER_STATE,	/* HA server state */
-  LOG_DUMMY_OVF_RECORD,		/* indicator of the first part of an overflow record */
+  LOG_DIFF_UNDOREDO_DATA = 43,	/* diff undo redo data             */
+  LOG_DUMMY_HA_SERVER_STATE = 44,	/* HA server state */
+  LOG_DUMMY_OVF_RECORD = 45,	/* indicator of the first part of an overflow record */
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks       */
 };
 
@@ -992,12 +1061,12 @@ struct log_repl
 /* Description of a log record */
 struct log_rec
 {
-  TRANID trid;			/* Transaction identifier of the log record  */
   LOG_LSA prev_tranlsa;		/* Address of previous log record for the
 				 * same transaction
 				 */
   LOG_LSA back_lsa;		/* Backward log address                      */
   LOG_LSA forw_lsa;		/* Forward  log address                      */
+  TRANID trid;			/* Transaction identifier of the log record  */
   LOG_RECTYPE type;		/* Log record type (e.g., commit, abort)     */
 };
 
@@ -1268,13 +1337,14 @@ struct log_archives
   int max_unav;			/* Max size of unavailable array */
   int next_unav;		/* Last unavailable entry        */
   int *unav_archives;		/* Unavailable archives          */
+  CSS_CRITICAL_SECTION archives_cs;
 };
 
 typedef struct background_archiving_info BACKGROUND_ARCHIVING_INFO;
 struct background_archiving_info
 {
-  int start_page_id;
-  int current_page_id;
+  LOG_PAGEID start_page_id;
+  LOG_PAGEID current_page_id;
   int vdes;
 };
 
@@ -1286,10 +1356,10 @@ struct log_global
   struct log_append_info append;	/* The log append info         */
   struct log_header hdr;	/* The log header              */
   struct log_archives archive;	/* Current archive information */
-  int run_nxchkpt_atpageid;
+  LOG_PAGEID run_nxchkpt_atpageid;
 #if defined(SERVER_MODE)
   LOG_LSA flushed_lsa_lower_bound;	/* lsa */
-  MUTEX_T chkpt_lsa_lock;
+  pthread_mutex_t chkpt_lsa_lock;
 #endif				/* SERVER_MODE */
   DKNPAGES chkpt_every_npages;	/* How frequent a checkpoint
 				   should be taken ?
@@ -1323,14 +1393,14 @@ typedef struct log_logging_stat
   /* logpb_next_append_page() call count */
   unsigned long total_append_page_count;
   /* last created page id for logging */
-  PAGEID last_append_pageid;
+  LOG_PAGEID last_append_pageid;
   /* time taken to use a page for logging */
   double use_append_page_sec;
 
   /* total delayed page count */
   unsigned long total_delayed_page_count;
   /* last delayed page id */
-  PAGEID last_delayed_pageid;
+  LOG_PAGEID last_delayed_pageid;
 
   /* log buffer full count */
   unsigned long log_buffer_full_count;
@@ -1429,19 +1499,21 @@ extern char log_Name_info[];
 extern char log_Name_bkupinfo[];
 extern char log_Name_volinfo[];
 extern char log_Name_bg_archive[];
+extern char log_Name_removed_archive[];
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (void);
 extern bool logpb_is_initialize_pool (void);
 extern void logpb_invalidate_pool (THREAD_ENTRY * thread_p);
-extern LOG_PAGE *logpb_create (THREAD_ENTRY * thread_p, PAGEID pageid);
-extern LOG_PAGE *log_pbfetch (PAGEID pageid);
-extern void logpb_set_dirty (LOG_PAGE * log_pgptr, int free_page);
+extern LOG_PAGE *logpb_create (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
+extern LOG_PAGE *log_pbfetch (LOG_PAGEID pageid);
+extern void logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
+			     int free_page);
 extern int logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
 			     int free_page);
-extern void logpb_free_page (LOG_PAGE * log_pgptr);
+extern void logpb_free_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 extern void logpb_free_without_mutex (LOG_PAGE * log_pgptr);
-extern PAGEID logpb_get_page_id (LOG_PAGE * log_pgptr);
+extern LOG_PAGEID logpb_get_page_id (LOG_PAGE * log_pgptr);
 extern int logpb_print_hash_entry (FILE * outfp, const void *key,
 				   void *ent, void *ignore);
 extern int logpb_initialize_header (THREAD_ENTRY * thread_p,
@@ -1455,18 +1527,18 @@ extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p,
 					    struct log_header *hdr,
 					    LOG_PAGE * log_pgptr);
 extern void logpb_flush_header (THREAD_ENTRY * thread_p);
-extern LOG_PAGE *logpb_fetch_page (THREAD_ENTRY * thread_p, PAGEID pageid,
+extern LOG_PAGE *logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 				   LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_read_page_from_file (THREAD_ENTRY * thread_p,
-					    PAGEID pageid,
+					    LOG_PAGEID pageid,
 					    LOG_PAGE * log_pgptr);
 extern int logpb_read_page_from_active_log (THREAD_ENTRY * thread_p,
-					    PAGEID pageid,
+					    LOG_PAGEID pageid,
 					    int num_pages,
 					    LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_write_page_to_disk (THREAD_ENTRY * thread_p,
 					   LOG_PAGE * log_pgptr,
-					   PAGEID logical_pageid);
+					   LOG_PAGEID logical_pageid);
 extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 					      const char *db_fullname,
 					      const char *logpath,
@@ -1512,19 +1584,21 @@ extern int logpb_scan_volume_info (THREAD_ENTRY * thread_p,
 					       VOLID xvolid,
 					       const char *vlabel,
 					       void *args), void *args);
-extern PAGEID logpb_to_physical_pageid (PAGEID logical_pageid);
-extern bool logpb_is_page_in_archive (PAGEID pageid);
+extern LOG_PHY_PAGEID logpb_to_physical_pageid (LOG_PAGEID logical_pageid);
+extern bool logpb_is_page_in_archive (LOG_PAGEID pageid);
 extern bool logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p);
-extern int logpb_get_archive_number (THREAD_ENTRY * thread_p, PAGEID pageid);
+extern int logpb_get_archive_number (THREAD_ENTRY * thread_p,
+				     LOG_PAGEID pageid);
 extern void logpb_decache_archive_info (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_from_archive (THREAD_ENTRY * thread_p,
-					   PAGEID pageid,
+					   LOG_PAGEID pageid,
 					   LOG_PAGE * log_pgptr,
 					   int *ret_arv_num,
 					   struct log_arv_header *arv_hdr);
 extern void logpb_remove_archive_logs (THREAD_ENTRY * thread_p,
 				       const char *info_reason);
-extern void logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p);
+extern int logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
+						   int max_count);
 extern void logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area,
 				 int length, LOG_LSA * log_lsa,
 				 LOG_PAGE * log_pgptr);
@@ -1537,7 +1611,7 @@ extern bool logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname,
 #if defined(SERVER_MODE)
 extern void logpb_do_checkpoint (void);
 #endif /* SERVER_MODE */
-extern PAGEID logpb_checkpoint (THREAD_ENTRY * thread_p);
+extern LOG_PAGEID logpb_checkpoint (THREAD_ENTRY * thread_p);
 extern void logpb_dump_checkpoint_trans (FILE * out_fp, int length,
 					 void *data);
 extern void logpb_dump_checkpoint_topops (FILE * out_fp, int length,
@@ -1548,8 +1622,7 @@ extern int logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
 			 bool delete_unneeded_logarchives,
 			 const char *backup_verbose_file, int num_threads,
 			 FILEIO_ZIP_METHOD zip_method,
-			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
-			 PAGEID safe_pageid);
+			 FILEIO_ZIP_LEVEL zip_level, int skip_activelog);
 extern int logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 			  const char *logpath, const char *prefix_logname,
 			  BO_RESTART_ARG * r_args);
@@ -1582,6 +1655,7 @@ extern void logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit,
 			       const char *fmt, ...);
 extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p,
 					   VOLID volid);
+extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
 extern void logpb_flush_pages_background (THREAD_ENTRY * thread_p);
 extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
@@ -1767,8 +1841,8 @@ extern LOG_LSA *log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY *
 extern void logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern void
 logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p,
-					      PAGEID * smallest,
-					      PAGEID * largest);
+					      LOG_PAGEID * smallest,
+					      LOG_PAGEID * largest);
 /* For Debugging */
 extern void xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp);
 

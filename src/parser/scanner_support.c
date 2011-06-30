@@ -291,6 +291,13 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.index.hint |= hint_table[i].hint;
 		}
 	      break;
+	    case PT_HINT_USE_IDX_DESC:	/* descending index scan */
+	    case PT_HINT_NO_COVERING_IDX:	/* do not use covering index scan */
+	      if (node->node_type == PT_SELECT)
+		{
+		  node->info.query.q.select.hint |= hint_table[i].hint;
+		}
+	      break;
 	    default:
 	      break;
 	    }
@@ -388,8 +395,8 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 					PT_HINT_NAME;
 				      hint_table[i].arg_list =
 					parser_append_node (arg,
-							    hint_table[i].
-							    arg_list);
+							    hint_table
+							    [i].arg_list);
 				    }
 				}
 			      arg_start = &(hint_p[j + 1]);
@@ -439,8 +446,8 @@ pt_check_hint (const char *text, PT_HINT hint_table[],
 				  arg->info.name.meta_class = PT_HINT_NAME;
 				  hint_table[i].arg_list =
 				    parser_append_node (arg,
-							hint_table[i].
-							arg_list);
+							hint_table
+							[i].arg_list);
 				}
 			    }
 

@@ -34,6 +34,7 @@
 #include "dbtype.h"
 #include "dbdef.h"
 #include "db_date.h"
+#include "db_elo.h"
 #include "db_query.h"
 
 #define db_utime_encode db_timestamp_encode
@@ -58,7 +59,15 @@ extern int db_restart (const char *program,
 		       int print_version, const char *volume);
 extern int db_restart_ex (const char *program, const char *db_name,
 			  const char *db_user, const char *db_password,
-			  int client_type);
+			  const char *hosts, int client_type);
+extern SESSION_ID db_get_session_id ();
+extern void db_set_session_id (const SESSION_ID session_id);
+extern int db_end_session (void);
+extern int db_get_row_count_cache ();
+extern void db_update_row_count_cache (const int row_count);
+extern int db_get_row_count (int *row_count);
+extern int db_get_last_insert_id (DB_VALUE * value);
+extern int db_get_variable (DB_VALUE * name, DB_VALUE * value);
 extern int db_shutdown (void);
 extern int db_ping_server (int client_val, int *server_val);
 extern int db_disable_modification (void);
@@ -359,6 +368,7 @@ extern int db_drop_constraint (MOP classmop,
 extern char *db_get_database_name (void);
 extern const char *db_get_database_comments (void);
 extern void db_set_client_type (int client_type);
+extern void db_set_preferred_hosts (const char *hosts);
 extern int db_get_client_type (void);
 extern const char *db_get_type_name (DB_TYPE type_id);
 extern DB_TYPE db_type_from_string (const char *name);
@@ -462,6 +472,8 @@ extern int db_get_btree_statistics (DB_CONSTRAINT * cons,
 /* Constraint Functions */
 extern DB_CONSTRAINT *db_get_constraints (DB_OBJECT * obj);
 extern DB_CONSTRAINT *db_constraint_next (DB_CONSTRAINT * constraint);
+extern DB_CONSTRAINT *db_constraint_find_primary_key (DB_CONSTRAINT *
+						      constraint);
 extern DB_CONSTRAINT_TYPE db_constraint_type (const DB_CONSTRAINT *
 					      constraint);
 extern const char *db_constraint_name (DB_CONSTRAINT * constraint);
@@ -617,6 +629,7 @@ extern int dbt_drop_class_resolution (DB_CTMPL * def,
 
 extern int dbt_add_query_spec (DB_CTMPL * def, const char *query);
 extern int dbt_drop_query_spec (DB_CTMPL * def, const int query_no);
+extern int dbt_reset_query_spec (DB_CTMPL * def);
 extern int dbt_change_query_spec (DB_CTMPL * def,
 				  const char *new_query, const int query_no);
 extern int dbt_set_object_id (DB_CTMPL * def, DB_NAMELIST * id_list);
@@ -800,8 +813,8 @@ extern int db_get_statement_type (DB_SESSION * session, int stmt);
 
 extern void db_include_oid (DB_SESSION * session, int include_oid);
 
-extern void db_push_values (DB_SESSION * session, int count,
-			    DB_VALUE * in_values);
+extern int db_push_values (DB_SESSION * session, int count,
+			   DB_VALUE * in_values);
 
 extern int db_execute (const char *CSQL_query,
 		       DB_QUERY_RESULT ** result,
@@ -957,4 +970,7 @@ extern int db_set_system_parameters (const char *data);
 extern int db_get_system_parameters (char *data, int len);
 extern char *db_get_host_connected (void);
 extern int db_get_ha_server_state (char *buffer, int maxlen);
+
+extern void db_clear_host_connected ();
+extern char *db_get_database_version (void);
 #endif /* _DBI_H_ */

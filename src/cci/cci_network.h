@@ -82,7 +82,8 @@ typedef struct
 extern int net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
 			    char *db_user, char *db_passwd, char is_first,
 			    T_CCI_ERROR * err_buf, char *broker_info,
-			    char *cas_info, int *cas_pid, SOCKET * ret_sock);
+			    char *cas_info, int *cas_pid, SOCKET * ret_sock,
+			    T_CCI_SESSION_ID * session_id);
 extern int net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size);
 extern int net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *size,
 			 T_CCI_ERROR * err_buf);

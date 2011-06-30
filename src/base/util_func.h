@@ -42,5 +42,7 @@ typedef void (*SIG_HANDLER) (void);
 extern void util_arm_signal_handlers (SIG_HANDLER DB_INT32_handler,
 				      SIG_HANDLER quit_handler);
 extern void util_disarm_signal_handlers (void);
+extern char **util_split_string (const char *str, const char *delim);
+extern void util_free_string_array (char **array);
 
 #endif /* _UTIL_FUNC_H_ */

@@ -27,11 +27,13 @@
  * the number. The LSB's of the DB_NUMERIC are in buf[DB_NUMERIC_BUF_SIZE-1].
  */
 
+#include <float.h>
 #include <math.h>
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "mprec.h"
 #include "query_opfunc.h"
 #include "numeric_opfunc.h"
 #include "db.h"
@@ -40,7 +42,7 @@
 #include "system_parameter.h"
 
 #if defined(SERVER_MODE)
-#include "thread_impl.h"
+#include "thread.h"
 #endif
 
 /* this must be the last header file included!!! */
@@ -89,6 +91,15 @@ static double numeric_Upper_limit[10] = {
 static double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
+
+typedef enum fp_value_type
+{
+  FP_VALUE_TYPE_NUMBER,
+  FP_VALUE_TYPE_INFINITE,
+  FP_VALUE_TYPE_NAN,
+  FP_VALUE_TYPE_ZERO
+}
+FP_VALUE_TYPE;
 
 static bool numeric_is_negative (DB_C_NUMERIC arg);
 static void numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source);
@@ -152,7 +163,21 @@ static int numeric_get_msb_for_dec (int src_prec, int src_scale,
 				    int *dest_scale, DB_C_NUMERIC dest);
 static int numeric_fast_convert (double adouble, int dst_scale,
 				 DB_C_NUMERIC num, int *prec, int *scale);
-
+static FP_VALUE_TYPE get_fp_value_type (double d);
+static int numeric_internal_real_to_num (double adouble,
+					 int dst_scale,
+					 DB_C_NUMERIC num, int *prec,
+					 int *scale, bool is_float);
+static void numeric_get_integral_part (const DB_C_NUMERIC num,
+				       const int src_prec,
+				       const int src_scale,
+				       const int dst_prec, DB_C_NUMERIC dest);
+static void numeric_get_fractional_part (const DB_C_NUMERIC num,
+					 const int src_scale,
+					 const int dst_prec,
+					 DB_C_NUMERIC dest);
+static bool numeric_is_fraction_part_zero (const DB_C_NUMERIC num,
+					   const int scale);
 /*
  * numeric_is_negative () -
  *   return: true, false
@@ -1813,7 +1838,8 @@ numeric_db_value_is_positive (const DB_VALUE * dbvalue)
  *   return: NO_ERROR, or ER_code
  *     Errors:
  *       ER_OBJ_INVALID_ARGUMENTS - if dbv1, dbv2, or answer are NULL or
- *                                  are not DB_TYPE_NUMERIC
+ *                                  are not DB_TYPE_NUMERIC (for dbv*) or
+ *				    DB_TYPE_INTEGER (for answer);
  *   dbv1(in)   : ptr to a DB_VALUE of type DB_TYPE_NUMERIC
  *   dbv2(in)   : ptr to a DB_VALUE of type DB_TYPE_NUMERIC
  *   answer(out): ptr to a DB_VALUE of type DB_TYPE_INTEGER
@@ -1827,8 +1853,10 @@ numeric_db_value_is_positive (const DB_VALUE * dbvalue)
 int
 numeric_db_value_compare (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
 {
-  DB_VALUE dbv1_common, dbv2_common;
   int ret = NO_ERROR;
+  int prec1 = 0, prec2 = 0, scale1 = 0, scale2 = 0;
+  int prec_common = 0, scale_common = 0;
+  int cmp_rez = 0;
 
   /* Check for bad inputs */
   if (answer == NULL)
@@ -1854,27 +1882,98 @@ numeric_db_value_compare (DB_VALUE * dbv1, DB_VALUE * dbv2, DB_VALUE * answer)
       return NO_ERROR;
     }
 
-  /* Coerce, if necessary, to make prec & scale match */
-  ret = numeric_common_prec_scale (dbv1, dbv2, &dbv1_common, &dbv2_common);
-  if (ret != NO_ERROR)
+  scale1 = DB_VALUE_SCALE (dbv1);
+  scale2 = DB_VALUE_SCALE (dbv2);
+  prec1 = DB_VALUE_PRECISION (dbv1);
+  prec2 = DB_VALUE_PRECISION (dbv2);
+
+  if (prec1 == prec2 && scale1 == scale2)
     {
-      ret = ER_NUM_OVERFLOW;
-      goto exit_on_error;
+      /* Simple case. Just compare two numbers. */
+      cmp_rez = numeric_compare (db_locate_numeric (dbv1),
+				 db_locate_numeric (dbv2));
+      DB_MAKE_INTEGER (answer, cmp_rez);
+      return NO_ERROR;
+    }
+  else
+    {
+      DB_VALUE dbv1_common, dbv2_common;
+
+      /* First try to coerce to common prec/scale numbers and compare. */
+      ret = numeric_common_prec_scale (dbv1, dbv2,
+				       &dbv1_common, &dbv2_common);
+      if (ret == NO_ERROR)
+	{
+	  cmp_rez = numeric_compare (db_locate_numeric (&dbv1_common),
+				     db_locate_numeric (&dbv2_common));
+	  DB_MAKE_INTEGER (answer, cmp_rez);
+	  return NO_ERROR;
+	}
+      else if (ret == ER_NUM_OVERFLOW)
+	{
+	  /* For example, if we want to compare a NUMERIC(31,2) with a 
+	   * NUMERIC(21, 14) the common precision and scale is (43, 14) 
+	   * which is an overflow.
+	   * To avoid this issue we compare the integral parts and 
+	   * the fractional parts of dbv1 and dbv2 separately.
+	   */
+	  unsigned char num1_integ[DB_NUMERIC_BUF_SIZE];
+	  unsigned char num2_integ[DB_NUMERIC_BUF_SIZE];
+	  unsigned char num1_frac[DB_NUMERIC_BUF_SIZE];
+	  unsigned char num2_frac[DB_NUMERIC_BUF_SIZE];
+
+	  er_clear ();		/* reset ER_NUM_OVERFLOW */
+
+	  if (prec1 - scale1 < prec2 - scale2)
+	    {
+	      prec_common = prec2 - scale2;
+	    }
+	  else
+	    {
+	      prec_common = prec1 - scale1;
+	    }
+
+	  if (scale1 > scale2)
+	    {
+	      scale_common = scale1;
+	    }
+	  else
+	    {
+	      scale_common = scale2;
+	    }
+
+	  /* first compare integral parts */
+	  numeric_get_integral_part (db_locate_numeric (dbv1), prec1, scale1,
+				     prec_common, num1_integ);
+	  numeric_get_integral_part (db_locate_numeric (dbv2), prec2, scale2,
+				     prec_common, num2_integ);
+	  cmp_rez = numeric_compare (num1_integ, num2_integ);
+	  if (cmp_rez != 0)
+	    {
+	      /* if the integral parts differ, we don't need to compare fractional
+	         parts */
+	      DB_MAKE_INT (answer, cmp_rez);
+	      return NO_ERROR;
+	    }
+
+	  /* the integral parts are equal, now compare fractional parts */
+	  numeric_get_fractional_part (db_locate_numeric (dbv1), scale1,
+				       scale_common, num1_frac);
+	  numeric_get_fractional_part (db_locate_numeric (dbv2), scale2,
+				       scale_common, num2_frac);
+
+	  /* compare fractional parts and return the result */
+	  cmp_rez = numeric_compare (num1_frac, num2_frac);
+	  DB_MAKE_INT (answer, cmp_rez);
+	}
+      else
+	{
+	  DB_MAKE_NULL (answer);
+	  return ER_FAILED;
+	}
     }
 
-  /* Perform the comparison */
-  DB_MAKE_INTEGER (answer,
-		   numeric_compare (db_locate_numeric (&dbv1_common),
-				    db_locate_numeric (&dbv2_common)));
-  return ret;
-
-exit_on_error:
-
-  db_value_domain_init (answer, DB_TYPE_INTEGER,
-			DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-
-  return (ret == NO_ERROR
-	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return NO_ERROR;
 }
 
 /*
@@ -2291,6 +2390,135 @@ numeric_fast_convert (double adouble,
 }
 
 /*
+ * numeric_get_integral_part  () - return the integral part of a numeric
+ *   return: NO_ERROR, or ER_code
+ *   num(in)       : the numeric from which to get the integral part
+ *   src_prec(in)  : the precision of num
+ *   src_scale(in) : the scale of num
+ *   dst_prec(in)  : the desired precision of the result
+ *   dest(out)	   : the result
+ *
+ * Note: This function returns a NUMERIC value of precision dst_prec and 
+ *	 0 scale representing the integral part of the num number.
+ */
+static void
+numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec,
+			   const int src_scale, const int dst_prec,
+			   DB_C_NUMERIC dest)
+{
+  char dec_str[DB_MAX_NUMERIC_PRECISION * 4];
+  char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
+  int i = 0;
+
+  /* the number of digits of the result */
+  const int res_num_digits = src_prec - src_scale;
+
+  assert (src_prec - src_scale <= dst_prec);
+  assert (num != dest);
+
+  numeric_zero (dest, DB_NUMERIC_BUF_SIZE);
+  memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
+
+  /* 1. get the dec representation of the numeric value */
+  numeric_coerce_num_to_dec_str (num, dec_str);
+
+  /* 2. "zero" the MSB of new_dec_num. */
+  for (i = 0; i < dst_prec - res_num_digits; i++)
+    {
+      new_dec_num[i] = '0';
+    }
+
+  /* 3. copy the integral digits from dec_str to the end of the new_dec_num */
+  for (i = 0; i < res_num_digits; i++)
+    {
+      const int idx_new_dec = dst_prec - res_num_digits + i;
+      const int idx_dec_str = strlen (dec_str) - src_prec + i;
+      new_dec_num[idx_new_dec] = dec_str[idx_dec_str];
+    }
+
+  numeric_coerce_dec_str_to_num (new_dec_num, dest);
+  if (numeric_is_negative (num))
+    {
+      numeric_negate (dest);
+    }
+}
+
+/*
+ * numeric_get_fractional_part  () - return the fractional part of a numeric
+ *   return: NO_ERROR, or ER_code
+ *   num(in)       : the numeric from which to get the fractional part
+ *   src_prec(in)  : the precision of num
+ *   src_scale(in) : the scale of num
+ *   dst_scale(in) : the desired scale of the result
+ *   dest(out)	   : the result
+ *
+ * Note:  This function returns a numeric with precision dst_scale and scale 0
+ *	  which contains the fractional part of a numeric
+ */
+static void
+numeric_get_fractional_part (const DB_C_NUMERIC num, const int src_scale,
+			     const int dst_scale, DB_C_NUMERIC dest)
+{
+  char dec_str[DB_MAX_NUMERIC_PRECISION * 4];
+  char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
+  int i = 0;
+
+  assert (src_scale <= dst_scale);
+  assert (num != dest);
+
+  numeric_zero (dest, DB_NUMERIC_BUF_SIZE);
+  memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
+
+  /* 1. get the dec representation of the numeric value */
+  numeric_coerce_num_to_dec_str (num, dec_str);
+
+  /* 2. copy all scale digits to the beginning of the new_dec_num buffer */
+  for (i = 0; i < src_scale; i++)
+    {
+      new_dec_num[i] = dec_str[strlen (dec_str) - src_scale + i];
+    }
+
+  /* 3. add 0's for the reminder of the dst_scale */
+  for (i = src_scale; i < dst_scale; i++)
+    {
+      new_dec_num[i] = '0';
+    }
+
+  /* 4. null-terminate the string */
+  new_dec_num[dst_scale] = '\0';
+
+  numeric_coerce_dec_str_to_num (new_dec_num, dest);
+  if (numeric_is_negative (num))
+    {
+      numeric_negate (dest);
+    }
+}
+
+/*
+ * numeric_is_fraction_part_zero () - check if fractional part of a numeric is
+ *				      equal to 0
+ * return : boolean
+ * num (in)   : numeric value
+ * scale (in) : scale of the numeric
+ */
+static bool
+numeric_is_fraction_part_zero (const DB_C_NUMERIC num, const int scale)
+{
+  int i, len = 0;
+  char dec_str[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
+  numeric_coerce_num_to_dec_str (num, dec_str);
+  len = strlen (dec_str);
+  for (i = 0; i < scale; i++)
+    {
+      if (dec_str[len - scale + i] != '0')
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
  * numeric_internal_double_to_num () -
  *   return: NO_ERROR, or ER_code
  *   adouble(in)        :
@@ -2304,74 +2532,271 @@ numeric_internal_double_to_num (double adouble,
 				int dst_scale,
 				DB_C_NUMERIC num, int *prec, int *scale)
 {
-  char dbl_string[TWICE_NUM_MAX_PREC + 2];
-  char num_string[TWICE_NUM_MAX_PREC + 2];
-  int i, len;
+  return numeric_internal_real_to_num (adouble, dst_scale, num, prec, scale,
+				       false);
+}
 
-  /* Assert that hard coded values for DB_MAX_NUMERIC_PRECISION are correct */
-  assert (DB_MAX_NUMERIC_PRECISION == 38);
 
-  /* Check for DB_NUMERIC overflow */
-  if (NUMERIC_ABS (adouble) > 1.0E38)
+/*
+ * numeric_internal_float_to_num () - converts a float to a DB_C_NUMERIC
+ *
+ * return: NO_ERROR or ER_code
+ * afloat(in): floating-point value to be converted to NUMERIC
+ * dst_scale(in): expected scale for the destination NUMERIC type
+ * num(in): an allocated DB_C_NUMERIC to be filled with the converted numeric
+ *	    value
+ * prec(out): resulting precision of the converted value
+ * scale(out): resulting scale of the converted value
+ */
+int
+numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num,
+			       int *prec, int *scale)
+{
+  return numeric_internal_real_to_num (afloat, dst_scale, num,
+				       prec, scale, true);
+}
+
+/*
+ * fp_value_type() - returns the type of a given value of type double, as one
+ *		     of the above enumerators.
+ *
+ * returns: the type of the passed-in floating-point value
+ * d(in):   floating-point value whose type is to be returned
+ */
+FP_VALUE_TYPE
+get_fp_value_type (double d)
+{
+#ifdef WINDOWS
+  /* actually the following symbols are dependent on the _MSC macro,
+   * not the WINDOWS macro */
+  switch (_fpclass (d))
     {
-      return (ER_NUM_OVERFLOW);
+    case _FPCLASS_NINF:	/* -Inf */
+    case _FPCLASS_PINF:	/* +Inf */
+      return FP_VALUE_TYPE_INFINITE;
+
+    case _FPCLASS_SNAN:	/* signaling NaN */
+    case _FPCLASS_QNAN:	/* quiet NaN */
+      return FP_VALUE_TYPE_NAN;
+
+    case _FPCLASS_NZ:		/* -0 */
+    case _FPCLASS_PZ:		/* +0 */
+      return FP_VALUE_TYPE_ZERO;
+
+    default:
+      return FP_VALUE_TYPE_NUMBER;
     }
-
-  /*
-   * See if this combination of value and scale will permit the use of
-   * a fast conversion.  If the scale and value are small enough, we
-   * can do the conversion using native multiplication and casting, and
-   * that's a *lot* faster than going through the other stuff.
-   */
-  if (dst_scale < 10
-      && NUMERIC_ABS (adouble) < numeric_Upper_limit[dst_scale])
+#else
+  switch (fpclassify (d))
     {
-      return numeric_fast_convert (adouble, dst_scale, num, prec, scale);
+    case FP_INFINITE:
+      return FP_VALUE_TYPE_INFINITE;
+    case FP_NAN:
+      return FP_VALUE_TYPE_NAN;
+    case FP_ZERO:
+      return FP_VALUE_TYPE_ZERO;
+    default:
+      return FP_VALUE_TYPE_NUMBER;
     }
+#endif
+}
 
-  /*
-   * Print the double to a string.  Don't bother getting any more
-   * digits of scale than we'll need for the eventual answer; this pays
-   * off big in avoided calls to numeric_add_dec_str later on (because
-   * numeric_coerce_num_to_dec_str doesn't have to work on so many digits).
-   */
-  sprintf (dbl_string, "%38.*f", dst_scale, adouble);
-  /* Remove the decimal point, track the prec & scale */
-  *prec = 0;
-  *scale = 0;
-  for (i = 0, len = MIN (strlen (dbl_string), (int) sizeof (num_string));
-       i < len; i++)
+/*
+ * numeric_internal_real_to_num() - converts a floating point value (float or
+ *				    double) to a DB_C_NUMERIC.
+ *
+ * return: NO_ERROR or ER_code
+ * adouble(in):	floating-point value to be converted to NUMERIC. May be either
+ *		float promoted to double, or a double.
+ * dst_scale(in):   expected scale of the destination NUMERIC data type
+ * prec(out):	    resulting precision of the converted value
+ * scale(out):	    resulting scale of the converted value
+ * is_float(in):    indicates adouble is a float promoted to double
+ */
+int
+numeric_internal_real_to_num (double adouble, int dst_scale,
+			      DB_C_NUMERIC num, int *prec, int *scale,
+			      bool is_float)
+{
+  char
+    numeric_str[MAX
+		(TP_DOUBLE_AS_CHAR_LENGTH + 1, DB_MAX_NUMERIC_PRECISION + 4)];
+  int i = 0;
+
+  switch (get_fp_value_type (adouble))
     {
-      if (dbl_string[i] == '.')
+    case FP_VALUE_TYPE_INFINITE:
+      return ER_NUM_OVERFLOW;
+    case FP_VALUE_TYPE_NAN:
+    case FP_VALUE_TYPE_ZERO:
+      /* currently CUBRID returns 0 for a NaN converted to NUMERIC (??) */
+      *scale = dst_scale;
+      *prec = dst_scale ? dst_scale : 1;
+
+      while (i < *prec)
 	{
-	  *scale = len - (i + 1);
+	  numeric_str[i++] = '0';
 	}
-      else if (dbl_string[i] != ' ')
-	{
-	  num_string[*prec] = dbl_string[i];
-	  (*prec)++;
-	}
-    }
-  /* Have already checked for overflow, so if
-   * precision > DB_MAX_NUMERIC_PRECISION, then must have extra
-   * digits at the (least significant) end of the numeric string.
-   * If so, silently truncate and reset precision and scale.
-   */
-  if (*prec > DB_MAX_NUMERIC_PRECISION
-      && (*prec - *scale) <= DB_MAX_NUMERIC_PRECISION)
-    {
-      *scale = *scale - (*prec - DB_MAX_NUMERIC_PRECISION);
-      if (*scale < 0)
-	{
-	  *scale = 0;
-	}
-      *prec = DB_MAX_NUMERIC_PRECISION;
-    }
-  num_string[*prec] = '\0';
-  /* Convert to a DB_C_NUMERIC */
-  numeric_coerce_dec_str_to_num (num_string, num);
+      numeric_str[i] = '\0';
 
-  return NO_ERROR;
+      numeric_coerce_dec_str_to_num (numeric_str, num);
+      return NO_ERROR;
+    default:
+      /* compare against pow(10, DB_MAX_NUMERIC_PRECISION) to check for
+       * overflow/underflow before actual conversion */
+      if (NUMERIC_ABS (adouble) > DB_NUMERIC_OVERFLOW_LIMIT)
+	{
+	  return ER_NUM_OVERFLOW;
+	}
+      else
+	{
+	  if (NUMERIC_ABS (adouble) < DB_NUMERIC_UNDERFLOW_LIMIT)
+	    {
+	      /* the floating-point number underflows any possible CUBRID
+	       * NUMERIC domain type, so just return 0 with no other
+	       * conversion */
+	      *scale = dst_scale;
+	      *prec = dst_scale ? dst_scale : 1;
+
+	      while (i < *prec)
+		{
+		  numeric_str[i++] = '0';
+		}
+	      numeric_str[i] = '\0';
+
+	      numeric_coerce_dec_str_to_num ("0", num);
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      /* adouble might fit into a CUBRID NUMERIC domain type with
+	       * sufficient precision.
+	       * Invoke _dtoa() to get the sequence of digits and the 
+	       * decimal point position
+	       */
+	      int decpt, sign;
+	      char *rve;
+	      int ndigits;
+
+	      if (is_float)
+		{
+		  _dtoa (adouble, 0, TP_FLOAT_MANTISA_DECIMAL_PRECISION,
+			 &decpt, &sign, &rve, numeric_str + 1, 0);
+
+		  numeric_str[TP_FLOAT_MANTISA_DECIMAL_PRECISION + 1] = '\0';
+		}
+	      else
+		{
+		  _dtoa (adouble, 0, TP_DOUBLE_MANTISA_DECIMAL_PRECISION,
+			 &decpt, &sign, &rve, numeric_str + 1, 0);
+
+		  numeric_str[TP_DOUBLE_MANTISA_DECIMAL_PRECISION + 1] = '\0';
+		}
+
+	      /* shift the digits in the sequence to make room for and
+	       * to reach the decimal point */
+	      ndigits = strlen (numeric_str + 1);
+
+	      if (decpt <= 0)
+		{
+		  char *dst = MIN (numeric_str + 1 + ndigits - decpt,
+				   numeric_str + sizeof numeric_str / sizeof
+				   numeric_str[0] - 1), *src = dst + decpt;
+
+		  *prec = MIN (DB_MAX_NUMERIC_PRECISION, -decpt + ndigits);
+		  *scale = *prec;
+
+		  /* actually rounding should also be performed if value
+		   * gets truncated. */
+		  *dst = '\0';
+		  dst--;
+		  src--;
+
+		  /* shift all digits in the string */
+		  while (src >= numeric_str + 1)
+		    {
+		      *dst = *src;
+		      dst--;
+		      src--;
+		    }
+
+		  /* prepend 0s from right to left until the decimal
+		   * point position is reached */
+		  while (dst > numeric_str)
+		    {
+		      *dst-- = '0';
+		    }
+		}
+	      else
+		{
+		  /* the numer is greater than 1, either insert the
+		   * decimal point at the correct position in the digits
+		   * sequence, or append 0s to the digits from left to
+		   * right until the decimal point is reached. */
+
+		  if (decpt > DB_MAX_NUMERIC_PRECISION)
+		    {
+		      /* should not happen since overflow has been
+		       * checked for previously */
+		      return ER_NUM_OVERFLOW;
+		    }
+		  else
+		    {
+		      if (decpt < ndigits)
+			{
+			  *prec = ndigits;
+			  *scale = ndigits - decpt;
+			}
+		      else
+			{
+			  /* append 0s to the digits sequence until the
+			   * decimal point is reached */
+
+			  char
+			    *dst = numeric_str + 1 + decpt,
+			    *src = numeric_str + 1 + ndigits;
+
+			  while (src != dst)
+			    {
+			      *src++ = '0';
+			    }
+
+			  *src = '\0';
+
+			  *prec = decpt;
+			  *scale = 0;
+			}
+		    }
+		}
+
+	      /* append zeroes until dst_scale is reached */
+	      while (*prec < DB_MAX_NUMERIC_PRECISION && *scale < dst_scale)
+		{
+		  numeric_str[1 + *prec] = '0';
+		  (*prec)++;
+		  (*scale)++;
+		}
+
+	      numeric_str[1 + *prec] = '\0';
+
+	      /* The number without sign is now written in decimal
+	       * in numeric_str */
+
+	      if (sign)
+		{
+		  numeric_str[0] = '-';
+		  numeric_coerce_dec_str_to_num (numeric_str, num);
+		}
+	      else
+		{
+		  numeric_coerce_dec_str_to_num (numeric_str + 1, num);
+		}
+
+	      return NO_ERROR;
+	    }
+	}
+      break;
+    }
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -2402,18 +2827,19 @@ numeric_coerce_double_to_num (double adouble,
 /*
  * numeric_coerce_string_to_num () -
  *   return:
- *   astring(in) : ptr to the input character string (NULL term)
+ *   astring(in) : ptr to the input character string
+ *   astring_length(in) : length of the input character string
  *   result(out) : DB_VALUE of type numeric
  *
  * Note: This routine converts a string into a DB_VALUE.
  */
 int
-numeric_coerce_string_to_num (const char *astring, DB_VALUE * result)
+numeric_coerce_string_to_num (const char *astring, int astring_length,
+			      DB_VALUE * result)
 {
   char num_string[TWICE_NUM_MAX_PREC + 1];
   unsigned char num[DB_NUMERIC_BUF_SIZE];
   int i;
-  int astring_length = strlen (astring);
   int prec = 0;
   int scale = 0;
   bool leading_zeroes = true;
@@ -2595,6 +3021,11 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num,
   bool round_up = false;
   bool negate_answer;
 
+  if (src_num == NULL)
+    {
+      return ER_FAILED;
+    }
+
   /* Check for trivial case */
   if (src_prec <= dest_prec && src_scale == dest_scale)
     {
@@ -2718,9 +3149,9 @@ numeric_db_value_coerce_to_num (DB_VALUE * src,
 
     case DB_TYPE_FLOAT:
       {
-	double adouble = (double) DB_GET_FLOAT (src);
-	ret = numeric_internal_double_to_num (adouble, desired_scale, num,
-					      &precision, &scale);
+	float adouble = (float) DB_GET_FLOAT (src);
+	ret = numeric_internal_float_to_num (adouble, desired_scale, num,
+					     &precision, &scale);
 	break;
       }
 
@@ -2769,7 +3200,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src,
       }
 
     default:
-      ret = DOMAIN_INCOMPATIBLE;
+      ret = ER_FAILED;
       break;
     }
 
@@ -2790,9 +3221,19 @@ numeric_db_value_coerce_to_num (DB_VALUE * src,
       DB_MAKE_NUMERIC (dest, num, desired_precision, desired_scale);
     }
 
+  if (ret == ER_NUM_OVERFLOW)
+    {
+      *data_status = DATA_STATUS_TRUNCATED;
+    }
+
   return ret;
 
 exit_on_error:
+
+  if (ret == ER_NUM_OVERFLOW)
+    {
+      *data_status = DATA_STATUS_TRUNCATED;
+    }
 
   return (ret == NO_ERROR
 	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
@@ -3059,6 +3500,130 @@ exit_on_error:
 
   return (ret == NO_ERROR
 	  && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * numeric_db_value_coerce_from_num_strict () - coerce a numeric to the type
+ *						of dest 
+ * return : error code or NO_ERROR
+ * src (in)	: the numeric value
+ * dest(in/out) : the value to coerce to
+ */
+int
+numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
+{
+  int ret = NO_ERROR;
+
+  switch (DB_VALUE_DOMAIN_TYPE (dest))
+    {
+    case DB_TYPE_DOUBLE:
+      {
+	double adouble;
+	numeric_coerce_num_to_double (db_locate_numeric (src),
+				      DB_VALUE_SCALE (src), &adouble);
+	if (OR_CHECK_DOUBLE_OVERFLOW (adouble))
+	  {
+	    return ER_FAILED;
+	  }
+	DB_MAKE_DOUBLE (dest, adouble);
+	break;
+      }
+
+    case DB_TYPE_FLOAT:
+      {
+	double adouble;
+	numeric_coerce_num_to_double (db_locate_numeric (src),
+				      DB_VALUE_SCALE (src), &adouble);
+	if (OR_CHECK_FLOAT_OVERFLOW (adouble))
+	  {
+	    return ER_FAILED;
+	  }
+	DB_MAKE_FLOAT (dest, (float) adouble);
+	break;
+      }
+
+    case DB_TYPE_MONETARY:
+      {
+	double adouble;
+	numeric_coerce_num_to_double (db_locate_numeric (src),
+				      DB_VALUE_SCALE (src), &adouble);
+	if (OR_CHECK_FLOAT_OVERFLOW (adouble))
+	  {
+	    return ER_FAILED;
+	  }
+	DB_MAKE_MONETARY_AMOUNT (dest, adouble);
+	break;
+      }
+
+    case DB_TYPE_INTEGER:
+      {
+	double adouble;
+	numeric_coerce_num_to_double (db_locate_numeric (src),
+				      DB_VALUE_SCALE (src), &adouble);
+	if (OR_CHECK_INT_OVERFLOW (adouble))
+	  {
+	    return ER_FAILED;
+	  }
+	if (!numeric_is_fraction_part_zero (db_locate_numeric (src),
+					    DB_VALUE_SCALE (src)))
+	  {
+	    return ER_FAILED;
+	  }
+	DB_MAKE_INTEGER (dest, (int) (adouble));
+	break;
+      }
+
+    case DB_TYPE_BIGINT:
+      {
+	DB_BIGINT bint;
+
+	ret = numeric_coerce_num_to_bigint (db_locate_numeric (src),
+					    DB_VALUE_SCALE (src), &bint);
+	if (ret != NO_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
+
+	if (!numeric_is_fraction_part_zero (db_locate_numeric (src),
+					    DB_VALUE_SCALE (src)))
+	  {
+	    return ER_FAILED;
+	  }
+	DB_MAKE_BIGINT (dest, bint);
+	break;
+      }
+
+    case DB_TYPE_SMALLINT:
+      {
+	double adouble;
+	numeric_coerce_num_to_double (db_locate_numeric (src),
+				      DB_VALUE_SCALE (src), &adouble);
+	if (OR_CHECK_SHORT_OVERFLOW (adouble))
+	  {
+	    return ER_FAILED;
+	  }
+	if (!numeric_is_fraction_part_zero (db_locate_numeric (src),
+					    DB_VALUE_SCALE (src)))
+	  {
+	    return ER_FAILED;
+	  }
+	DB_MAKE_SMALLINT (dest, (DB_C_SHORT) ROUND (adouble));
+	break;
+      }
+
+    case DB_TYPE_NUMERIC:
+      {
+	DB_DATA_STATUS data_status = DATA_STATUS_OK;
+	ret = numeric_db_value_coerce_to_num (src, dest, &data_status);
+	break;
+      }
+
+    default:
+      ret = ER_FAILED;
+      break;
+    }
+
+  return ER_FAILED;
 }
 
 /*

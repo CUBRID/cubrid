@@ -55,59 +55,37 @@
 #include "transaction_sr.h"
 #include "jsp_sr.h"
 #include "replication.h"
+#include "es.h"
+
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
  */
-#if defined(DEBUG_DB_ON_SERVER)
 #define ENTER_SERVER() \
   do \
     { \
-      if (db_on_server) \
-        { \
-          int x = 1; \
-          fprintf (stderr, "call client code from server at %s:%d\n", \
-                   __FILE__, __LINE__); \
-          while (x) \
-            { \
-              sleep (1); \
-            } \
-        } \
-      db_on_server = 1; \
+      db_on_server++; \
       if (private_heap_id == 0) \
         { \
-	  private_heap_id = db_create_private_heap (); \
-        } \
-    } \
-  while (0)
-#else /* DEBUG_DB_ON_SERVER */
-#define ENTER_SERVER() \
-  do \
-    { \
-      db_on_server = 1; \
-      if (private_heap_id == 0) \
-        { \
+	  assert (db_on_server == 1); \
           private_heap_id = db_create_private_heap (); \
         } \
     } \
   while (0)
-#endif /* DEBUG_DB_ON_SERVER */
 
 #define EXIT_SERVER() \
   do \
     { \
-      if (private_heap_id != 0) \
+      if ((db_on_server - 1) == 0 && private_heap_id != 0) \
         { \
           db_clear_private_heap (NULL, private_heap_id); \
         } \
-      db_on_server = 0; \
+      db_on_server--; \
     } \
   while (0)
 
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
-
-#define MAX_ALIGN 7
 
 /*
  * Flag to indicate whether we've crossed the client/server boundary.
@@ -117,7 +95,7 @@ unsigned int db_on_server = 0;
 
 #if defined(CS_MODE)
 static char *pack_const_string (char *buffer, const char *cstring);
-static int length_const_string (const char *cstring);
+static int length_const_string (const char *cstring, int *strlen);
 #endif /* CS_MODE */
 static BTREE_SEARCH
 btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
@@ -141,18 +119,34 @@ pack_const_string (char *buffer, const char *cstring)
 }
 
 /*
+ * pack_const_string_with_length -
+ *
+ * return:
+ *
+ *   buffer(in):
+ *   cstring(in):
+ *   strlen(in):
+ *
+ * NOTE:
+ */
+static char *
+pack_const_string_with_length (char *buffer, const char *cstring, int strlen)
+{
+  return or_pack_string_with_length (buffer, cstring, strlen);
+}
+
+/*
  * length_const_string -
  *
  * return:
  *
  *   cstring(in):
- *
- * NOTE:
+ *   strlen(out): strlen(cstring)
  */
 static int
-length_const_string (const char *cstring)
+length_const_string (const char *cstring, int *strlen)
 {
-  return or_packed_string_length (cstring);
+  return or_packed_string_length (cstring, strlen);
 }
 #endif /* CS_MODE */
 
@@ -168,8 +162,6 @@ length_const_string (const char *cstring)
  *   class_chn(in):
  *   prefetch(in):
  *   fetch_copyarea(in):
- *
- * NOTE:
  */
 int
 locator_fetch (OID * oidp, int chn, LOCK lock, OID * class_oid,
@@ -344,7 +336,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, OID * class_oidp,
 						(a_request), reply,
 						OR_ALIGNED_BUF_SIZE (a_reply),
 						fetch_copyarea);
-  if (!req_error)
+  if (req_error == NO_ERROR)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
       ptr = or_unpack_lock (ptr, lock);
@@ -417,7 +409,7 @@ locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid,
   ptr = or_pack_int (ptr, need_fetching);
   ptr = or_pack_int (ptr, prefetch);
 
-  if (need_fetching)
+  if (fetch_copyarea != NULL && need_fetching)
     {
       *fetch_copyarea = NULL;
     }
@@ -436,7 +428,7 @@ locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid,
       if (does_exist == LC_EXIST && class_oid)
 	COPY_OID (class_oid, &class_);
     }
-  else
+  else if (fetch_copyarea != NULL)
     {
       *fetch_copyarea = NULL;
     }
@@ -522,7 +514,7 @@ locator_force (LC_COPYAREA * copy_area)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5 + OR_OID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_request;
   char *request;
   char *request_ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
@@ -546,7 +538,6 @@ locator_force (LC_COPYAREA * copy_area)
   request_ptr = or_pack_int (request, num_objs);
   request_ptr = or_pack_int (request_ptr, mobjs->start_multi_update);
   request_ptr = or_pack_int (request_ptr, mobjs->end_multi_update);
-  request_ptr = or_pack_oid (request_ptr, &mobjs->class_oid);
   request_ptr = or_pack_int (request_ptr, desc_size);
   request_ptr = or_pack_int (request_ptr, content_size);
 
@@ -804,18 +795,19 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock)
   int xfound;
   int req_error;
   char *ptr;
-  int request_size;
+  int request_size, strlen;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE) a_reply;
   char *reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (class_name) + OR_OID_SIZE + OR_INT_SIZE;
+  request_size = length_const_string (class_name, &strlen)
+    + OR_OID_SIZE + OR_INT_SIZE;
   request = (char *) malloc (request_size);
   if (request)
     {
-      ptr = pack_const_string (request, class_name);
+      ptr = pack_const_string_with_length (request, class_name, strlen);
       ptr = or_pack_oid (ptr, class_oid);
       ptr = or_pack_lock (ptr, lock);
 
@@ -831,9 +823,13 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock)
 	}
       free_and_init (request);
     }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
+    }
 
   return found;
-
 #else /* CS_MODE */
   LC_FIND_CLASSNAME found = LC_CLASSNAME_ERROR;
 
@@ -877,7 +873,8 @@ locator_reserve_class_names (const int num_classes, const char **class_names,
   request_size = OR_INT_SIZE;
   for (i = 0; i < num_classes; ++i)
     {
-      request_size += length_const_string (class_names[i]) + OR_OID_SIZE;
+      request_size +=
+	length_const_string (class_names[i], NULL) + OR_OID_SIZE;
     }
   request = (char *) malloc (request_size);
   if (request)
@@ -901,9 +898,13 @@ locator_reserve_class_names (const int num_classes, const char **class_names,
 
       free_and_init (request);
     }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
+    }
 
   return reserved;
-
 #else /* CS_MODE */
   LC_FIND_CLASSNAME reserved = LC_CLASSNAME_ERROR;
 
@@ -933,18 +934,18 @@ locator_delete_class_name (const char *class_name)
 #if defined(CS_MODE)
   LC_FIND_CLASSNAME deleted = LC_CLASSNAME_ERROR;
   int xdeleted;
-  int req_error, request_size;
+  int req_error, request_size, strlen;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (class_name);
+  request_size = length_const_string (class_name, &strlen);
   request = (char *) malloc (request_size);
   if (request)
     {
-      (void) pack_const_string (request, class_name);
+      (void) pack_const_string_with_length (request, class_name, strlen);
       req_error = net_client_request (NET_SERVER_LC_DELETE_CLASSNAME,
 				      request, request_size, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply),
@@ -957,8 +958,13 @@ locator_delete_class_name (const char *class_name)
 
       free_and_init (request);
     }
-  return deleted;
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
+    }
 
+  return deleted;
 #else /* CS_MODE */
   LC_FIND_CLASSNAME deleted = LC_CLASSNAME_ERROR;
 
@@ -990,7 +996,7 @@ locator_rename_class_name (const char *old_name, const char *new_name,
 #if defined(CS_MODE)
   LC_FIND_CLASSNAME renamed = LC_CLASSNAME_ERROR;
   int xrenamed;
-  int request_size;
+  int request_size, strlen1, strlen2;
   int req_error;
   char *request, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -998,13 +1004,13 @@ locator_rename_class_name (const char *old_name, const char *new_name,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (old_name)
-    + length_const_string (new_name) + OR_OID_SIZE;
+  request_size = length_const_string (old_name, &strlen1)
+    + length_const_string (new_name, &strlen2) + OR_OID_SIZE;
   request = (char *) malloc (request_size);
   if (request)
     {
-      ptr = pack_const_string (request, old_name);
-      ptr = pack_const_string (ptr, new_name);
+      ptr = pack_const_string_with_length (request, old_name, strlen1);
+      ptr = pack_const_string_with_length (ptr, new_name, strlen2);
       ptr = or_pack_oid (ptr, class_oid);
 
       req_error = net_client_request (NET_SERVER_LC_RENAME_CLASSNAME,
@@ -1017,6 +1023,11 @@ locator_rename_class_name (const char *old_name, const char *new_name,
 	  renamed = (LC_FIND_CLASSNAME) xrenamed;
 	}
       free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
     }
 
   return renamed;
@@ -1052,7 +1063,7 @@ locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_length,
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
-  int request_size;
+  int request_size, strlen;
   int req_error;
   char *request, *ptr;
   OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE) a_reply;
@@ -1061,14 +1072,14 @@ locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_length,
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   request_size = OR_HFID_SIZE + OR_INT_SIZE + OR_OID_SIZE
-    + length_const_string (class_name);
+    + length_const_string (class_name, &strlen);
   request = (char *) malloc (request_size);
   if (request)
     {
       ptr = or_pack_hfid (request, hfid);
       ptr = or_pack_int (ptr, expected_length);
       ptr = or_pack_oid (ptr, class_oid);
-      ptr = pack_const_string (ptr, class_name);
+      ptr = pack_const_string_with_length (ptr, class_name, strlen);
 
       req_error = net_client_request (NET_SERVER_LC_ASSIGN_OID,
 				      request, request_size, reply,
@@ -1080,6 +1091,11 @@ locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_length,
 	  ptr = or_unpack_oid (ptr, perm_oid);
 	}
       free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
     }
 
   return success;
@@ -1124,6 +1140,8 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
   buffer = (char *) malloc (packed_size);
   if (buffer == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (packed_size));
       return ER_FAILED;
     }
 
@@ -1199,8 +1217,7 @@ locator_find_lockhint_class_oids (int num_classes,
   int req_error;
   char *ptr;
   int request_size;
-  char *request;
-  char *packed;
+  char *request, *packed;
   int packed_size;
   OR_ALIGNED_BUF (NET_SENDRECV_BUFFSIZE + NET_COPY_AREA_SENDRECV_SIZE +
 		  OR_INT_SIZE) a_reply;
@@ -1215,13 +1232,15 @@ locator_find_lockhint_class_oids (int num_classes,
   request_size = OR_INT_SIZE + OR_INT_SIZE;
   for (i = 0; i < num_classes; i++)
     {
-      request_size += (length_const_string (many_classnames[i]) +
+      request_size += (length_const_string (many_classnames[i], NULL) +
 		       OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE + OR_INT_SIZE);
     }
 
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
       return allfind;
     }
 
@@ -1731,7 +1750,10 @@ disk_get_remarks (VOLID volid)
     {
       or_unpack_int (reply, &area_size);
       or_unpack_string_nocopy (area, &p);
-      remark = strdup (p);
+      if (p != NULL)
+	{
+	  remark = strdup (p);
+	}
       free_and_init (area);
     }
 
@@ -1943,7 +1965,7 @@ log_client_get_first_postpone (LOG_LSA * next_lsa)
   int req_error;
   char *ptr;
   LOG_COPY *log_area = NULL;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -1990,9 +2012,9 @@ log_client_get_next_postpone (LOG_LSA * next_lsa)
   int req_error;
   char *ptr;
   LOG_COPY *log_area = NULL;
-  OR_ALIGNED_BUF (OR_LOG_LSA_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -2044,7 +2066,7 @@ log_client_get_first_undo (LOG_LSA * next_lsa)
   LOG_COPY *log_area = NULL;
   int req_error;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -2092,9 +2114,9 @@ log_client_get_next_undo (LOG_LSA * next_lsa)
   LOG_COPY *log_area = NULL;
   int req_error;
   char *ptr;
-  OR_ALIGNED_BUF (OR_LOG_LSA_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -2146,7 +2168,7 @@ log_client_unknown_state_abort_get_first_undo (LOG_LSA * next_lsa)
   LOG_COPY *log_area = NULL;
   int req_error;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -2350,7 +2372,7 @@ log_has_finished_client_undo (void)
  *
  * return:
  *
- *   waitsecs(in):    in miliseconds
+ *   waitsecs(in):    in milliseconds
  *
  * NOTE:
  */
@@ -2542,7 +2564,6 @@ log_set_suppress_repl_on_transaction (int set)
 #if defined(CS_MODE)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
-
   request = OR_ALIGNED_BUF_START (a_request);
   or_pack_int (request, set);
 
@@ -2557,6 +2578,241 @@ log_set_suppress_repl_on_transaction (int set)
   xlogtb_set_suppress_repl_on_transaction (NULL, set);
 
   EXIT_SERVER ();
+#endif /* !CS_MODE */
+}
+
+/*
+ * log_find_lob_locator -
+ *
+ * return:
+ *
+ *   locator(in):
+ *   real_locator(out):
+ *
+ * NOTE:
+ */
+LOB_LOCATOR_STATE
+log_find_lob_locator (const char *locator, char *real_locator)
+{
+#if defined(CS_MODE)
+  LOB_LOCATOR_STATE state = LOB_UNKNOWN;
+  int req_error, state_int, request_size, strlen;
+  char *request, *reply, *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  int real_loc_size;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (locator, &strlen);
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      (void) pack_const_string_with_length (request, locator, strlen);
+      req_error =
+	net_client_request2_no_malloc (NET_SERVER_LOG_FIND_LOB_LOCATOR,
+				       request, request_size,
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				       NULL, 0, real_locator, &real_loc_size);
+      if (!req_error)
+	{
+	  ptr = or_unpack_int (reply, &real_loc_size);
+	  (void) or_unpack_int (ptr, &state_int);
+	  state = (LOB_LOCATOR_STATE) state_int;
+	}
+      free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
+    }
+
+  return state;
+#else /* CS_MODE */
+  LOB_LOCATOR_STATE state;
+
+  ENTER_SERVER ();
+
+  state = xlog_find_lob_locator (NULL, locator, real_locator);
+
+  EXIT_SERVER ();
+  return state;
+#endif /* !CS_MODE */
+}
+
+/*
+ * log_add_lob_locator -
+ *
+ * return: NO_ERROR or error status
+ *
+ *   locator(in):
+ *   state(in);
+ *
+ * NOTE:
+ */
+int
+log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
+{
+#if defined(CS_MODE)
+  int req_error, error_code = ER_FAILED, request_size, strlen;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (locator, &strlen) + OR_INT_SIZE;
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      ptr = pack_const_string_with_length (request, locator, strlen);
+      ptr = or_pack_int (ptr, (int) state);
+      req_error = net_client_request (NET_SERVER_LOG_ADD_LOB_LOCATOR,
+				      request, request_size,
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				      NULL, 0, NULL, 0);
+      if (!req_error)
+	{
+	  or_unpack_int (reply, &error_code);
+	}
+      free_and_init (request);
+    }
+  else
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+	      sizeof (request_size));
+    }
+  return error_code;
+#else /* CS_MODE */
+  int error_code;
+
+  ENTER_SERVER ();
+
+  error_code = xlog_add_lob_locator (NULL, locator, state);
+
+  EXIT_SERVER ();
+
+  return error_code;
+#endif /* !CS_MODE */
+}
+
+/*
+ * log_change_state_of_locator -
+ *
+ * return: NO_ERROR or error status
+ *
+ *   locator(in):
+ *   state(in);
+ *
+ * NOTE:
+ */
+int
+log_change_state_of_locator (const char *locator, const char *new_locator,
+			     LOB_LOCATOR_STATE state)
+{
+#if defined(CS_MODE)
+  int req_error, error_code = ER_NET_CLIENT_DATA_RECEIVE;
+  int request_size, strlen, strlen2;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (locator, &strlen) +
+    length_const_string (new_locator, &strlen2) + OR_INT_SIZE;
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      ptr = pack_const_string_with_length (request, locator, strlen);
+      ptr = pack_const_string_with_length (ptr, new_locator, strlen2);
+      ptr = or_pack_int (ptr, (int) state);
+      req_error = net_client_request (NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR,
+				      request, request_size,
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				      NULL, 0, NULL, 0);
+      if (!req_error)
+	{
+	  or_unpack_int (reply, &error_code);
+	}
+      free_and_init (request);
+    }
+  else
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+	      sizeof (request_size));
+    }
+
+  return error_code;
+#else /* CS_MODE */
+  int error_code;
+
+  ENTER_SERVER ();
+
+  error_code =
+    xlog_change_state_of_locator (NULL, locator, new_locator, state);
+
+  EXIT_SERVER ();
+
+  return error_code;
+#endif /* !CS_MODE */
+}
+
+/*
+ * log_drop_lob_locator -
+ *
+ * return: NO_ERROR or error status
+ *
+ *   locator(in):
+ *
+ * NOTE:
+ */
+int
+log_drop_lob_locator (const char *locator)
+{
+#if defined(CS_MODE)
+  int req_error, error_code = ER_NET_CLIENT_DATA_RECEIVE;
+  int request_size, strlen;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (locator, &strlen);
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      ptr = pack_const_string_with_length (request, locator, strlen);
+      req_error = net_client_request (NET_SERVER_LOG_DROP_LOB_LOCATOR,
+				      request, request_size,
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				      NULL, 0, NULL, 0);
+      if (!req_error)
+	{
+	  or_unpack_int (reply, &error_code);
+	}
+      free_and_init (request);
+    }
+  else
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1,
+	      sizeof (request_size));
+    }
+  return error_code;
+#else /* CS_MODE */
+  int error_code;
+
+  ENTER_SERVER ();
+
+  error_code = xlog_drop_lob_locator (NULL, locator);
+
+  EXIT_SERVER ();
+
+  return error_code;
 #endif /* !CS_MODE */
 }
 
@@ -2576,15 +2832,18 @@ tran_server_commit (bool retain_lock)
   TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
   int req_error, tran_state_int, reset_on_commit;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply;
+  int row_count = 0;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
+  row_count = db_get_row_count_cache ();
 
-  (void) or_pack_int (request, (int) retain_lock);
+  ptr = or_pack_int (request, (int) retain_lock);
+  (void) or_pack_int (ptr, row_count);
 
   req_error = net_client_request (NET_SERVER_TM_SERVER_COMMIT,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
@@ -3074,6 +3333,12 @@ tran_server_2pc_recovery_prepared (int gtrids[], int size)
 	      ptr = or_unpack_int (ptr, &gtrids[i]);
 	    }
 	}
+      free_and_init (reply);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (reply_size));
     }
 
   return count;
@@ -3204,7 +3469,7 @@ tran_server_start_topop (LOG_LSA * topop_lsa)
 #if defined(CS_MODE)
   int success = ER_FAILED;
   int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply;
   char *ptr;
 
@@ -3258,7 +3523,7 @@ tran_server_end_topop (LOG_RESULT_TOPOP result, LOG_LSA * topop_lsa)
   int req_error, tran_state_int;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply;
   char *ptr;
 
@@ -3306,20 +3571,18 @@ tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
-  int req_error;
-  int request_size;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_SIZE) a_reply;
-  char *reply;
+  int req_error, request_size, strlen;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *ptr;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (savept_name);
+  request_size = length_const_string (savept_name, &strlen);
   request = (char *) malloc (request_size);
   if (request)
     {
-      ptr = pack_const_string (request, savept_name);
+      ptr = pack_const_string_with_length (request, savept_name, strlen);
       req_error = net_client_request (NET_SERVER_TM_SERVER_SAVEPOINT,
 				      request, request_size, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply),
@@ -3330,6 +3593,11 @@ tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa)
 	  ptr = or_unpack_log_lsa (ptr, savept_lsa);
 	}
       free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
     }
 
   return success;
@@ -3362,20 +3630,18 @@ tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa)
 {
 #if defined(CS_MODE)
   TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
-  int req_error, tran_state_int;
-  int request_size;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_SIZE) a_reply;
-  char *reply;
+  int req_error, tran_state_int, request_size, strlen;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *ptr;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (savept_name);
+  request_size = length_const_string (savept_name, &strlen);
   request = (char *) malloc (request_size);
   if (request)
     {
-      ptr = pack_const_string (request, savept_name);
+      ptr = pack_const_string_with_length (request, savept_name, strlen);
       req_error = net_client_request (NET_SERVER_TM_SERVER_PARTIAL_ABORT,
 				      request, request_size, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply),
@@ -3387,6 +3653,11 @@ tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa)
 	  ptr = or_unpack_log_lsa (ptr, savept_lsa);
 	}
       free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
     }
 
   return tran_state;
@@ -3400,6 +3671,63 @@ tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa)
   EXIT_SERVER ();
 
   return tran_state;
+#endif /* !CS_MODE */
+}
+
+/*
+ * acl_reload -
+ *
+ * return:
+ *
+ */
+int
+acl_reload ()
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error = net_client_request (NET_SERVER_ACL_RELOAD,
+				  NULL, 0, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				  NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+
+/*
+ * acl_dump -
+ *
+ * return:
+ *
+ *   outfp(in):
+ */
+void
+acl_dump (FILE * outfp)
+{
+#if defined(CS_MODE)
+  int req_error;
+
+  if (outfp == NULL)
+    {
+      outfp = stdout;
+    }
+
+  req_error = net_client_request_recv_stream (NET_SERVER_ACL_DUMP,
+					      NULL, 0, NULL, 0,
+					      NULL, 0, outfp);
 #endif /* !CS_MODE */
 }
 
@@ -3473,6 +3801,7 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
 			int client_lock_wait, TRAN_ISOLATION client_isolation)
 {
 #if defined(CS_MODE)
+#if defined(ENABLE_UNUSED_FUNCTION)
   int tran_index = NULL_TRAN_INDEX;
   int request_size;
   int req_error;
@@ -3483,25 +3812,25 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   request_size = OR_INT_SIZE	/* client_type */
-    + length_const_string (client_credential->client_info)	/* client_info */
-    + length_const_string (client_credential->db_name)	/* db_name */
-    + length_const_string (client_credential->db_user)	/* db_user */
-    + length_const_string (client_credential->db_password)	/* db_password */
-    + length_const_string (client_credential->program_name)	/* program_name */
-    + length_const_string (client_credential->login_name)	/* login_name */
-    + length_const_string (client_credential->host_name)	/* host_name */
+    + length_const_string (client_credential->client_info, NULL)	/* client_info */
+    + length_const_string (client_credential->db_name, NULL)	/* db_name */
+    + length_const_string (client_credential->db_user, NULL)	/* db_user */
+    + length_const_string (client_credential->db_password, NULL)	/* db_password */
+    + length_const_string (client_credential->program_name, NULL)	/* program_name */
+    + length_const_string (client_credential->login_name, NULL)	/* login_name */
+    + length_const_string (client_credential->host_name, NULL)	/* host_name */
     + OR_INT_SIZE		/* process_id */
     + OR_INT_SIZE		/* db_overwrite */
     + OR_INT_SIZE		/* db_desired_pagesize */
     + OR_INT_SIZE		/* db_npages */
     + OR_INT_SIZE		/* db_desired_log_page_size */
     + OR_INT_SIZE		/* log_npages */
-    + length_const_string (db_path_info->db_path)	/* db_path */
-    + length_const_string (db_path_info->vol_path)	/* vol_path */
-    + length_const_string (db_path_info->log_path)	/* log_path */
-    + length_const_string (db_path_info->db_host)	/* db_host */
-    + length_const_string (db_path_info->db_comments)	/* db_comments */
-    + length_const_string (file_addmore_vols)	/* file_addmore_vols */
+    + length_const_string (db_path_info->db_path, NULL)	/* db_path */
+    + length_const_string (db_path_info->vol_path, NULL)	/* vol_path */
+    + length_const_string (db_path_info->log_path, NULL)	/* log_path */
+    + length_const_string (db_path_info->db_host, NULL)	/* db_host */
+    + length_const_string (db_path_info->db_comments, NULL)	/* db_comments */
+    + length_const_string (file_addmore_vols, NULL)	/* file_addmore_vols */
     + OR_INT_SIZE		/* client_lock_wait */
     + OR_INT_SIZE;		/* client_isolation */
 
@@ -3543,8 +3872,18 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
 	}
       free_and_init (request);
     }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
+    }
 
   return tran_index;
+#else /* ENABLE_UNUSED_FUNCTION */
+  /* Should not called in CS_MODE */
+  assert (0);
+  return NULL_TRAN_INDEX;
+#endif /* !ENABLE_UNUSED_FUNCTION */
 #else /* CS_MODE */
   int tran_index = NULL_TRAN_INDEX;
 
@@ -3584,21 +3923,23 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
   int tran_index = NULL_TRAN_INDEX;
   int request_size, area_size, req_error, temp_int;
   char *request, *reply, *area, *ptr;
+  int row_count = DB_ROW_COUNT_NOT_SET;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   request_size = OR_INT_SIZE	/* client_type */
-    + length_const_string (client_credential->client_info)	/* client_info */
-    + length_const_string (client_credential->db_name)	/* db_name */
-    + length_const_string (client_credential->db_user)	/* db_user */
-    + length_const_string (client_credential->db_password)	/* db_password */
-    + length_const_string (client_credential->program_name)	/* prog_name */
-    + length_const_string (client_credential->login_name)	/* login_name */
-    + length_const_string (client_credential->host_name)	/* host_name */
+    + length_const_string (client_credential->client_info, NULL)	/* client_info */
+    + length_const_string (client_credential->db_name, NULL)	/* db_name */
+    + length_const_string (client_credential->db_user, NULL)	/* db_user */
+    + length_const_string (client_credential->db_password, NULL)	/* db_password */
+    + length_const_string (client_credential->program_name, NULL)	/* prog_name */
+    + length_const_string (client_credential->login_name, NULL)	/* login_name */
+    + length_const_string (client_credential->host_name, NULL)	/* host_name */
     + OR_INT_SIZE		/* process_id */
     + OR_INT_SIZE		/* client_lock_wait */
-    + OR_INT_SIZE;		/* client_isolation */
+    + OR_INT_SIZE		/* client_isolation */
+    + OR_INT_SIZE;		/* session state id */
   request = (char *) malloc (request_size);
   if (request)
     {
@@ -3613,6 +3954,7 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
       ptr = or_pack_int (ptr, client_credential->process_id);
       ptr = or_pack_int (ptr, client_lock_wait);
       ptr = or_pack_int (ptr, (int) client_isolation);
+      ptr = or_pack_int (ptr, db_Session_id);
 
       req_error = net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT,
 				       request, request_size, reply,
@@ -3628,6 +3970,7 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 	      *tran_state = (TRAN_STATE) temp_int;
 	      ptr = or_unpack_string (ptr, &server_credential->db_full_name);
 	      ptr = or_unpack_string (ptr, &server_credential->host_name);
+	      ptr = or_unpack_string (ptr, &server_credential->lob_path);
 	      ptr = or_unpack_int (ptr, &server_credential->process_id);
 	      ptr = or_unpack_oid (ptr, &server_credential->root_class_oid);
 	      ptr = or_unpack_hfid (ptr, &server_credential->root_class_hfid);
@@ -3638,26 +3981,59 @@ boot_register_client (const BOOT_CLIENT_CREDENTIAL * client_credential,
 	      ptr = or_unpack_float (ptr,
 				     &server_credential->disk_compatibility);
 	      ptr = or_unpack_int (ptr, &server_credential->ha_server_state);
+	      ptr = or_unpack_int (ptr, &db_Session_id);
+	      ptr = or_unpack_int (ptr, &row_count);
 	    }
 	  free_and_init (area);
 	}
       free_and_init (request);
     }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
+    }
 
+  db_update_row_count_cache (row_count);
   return tran_index;
 #else /* CS_MODE */
+  int err_code = NO_ERROR;
   int tran_index = NULL_TRAN_INDEX;
+  int row_count = DB_ROW_COUNT_NOT_SET;
 
   ENTER_SERVER ();
 
   tran_index = xboot_register_client (NULL, client_credential,
 				      client_lock_wait, client_isolation,
 				      tran_state, server_credential);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      EXIT_SERVER ();
+      return NULL_TRAN_INDEX;
+    }
 
+  if (db_Session_id == DB_EMPTY_SESSION)
+    {
+      err_code = xsession_create_new (NULL, &db_Session_id);
+    }
+  else
+    {
+      if (xsession_check_session (NULL, db_Session_id) != NO_ERROR)
+	{
+	  err_code = xsession_create_new (NULL, &db_Session_id);
+	}
+    }
+
+  xsession_get_row_count (NULL, &row_count);
   EXIT_SERVER ();
 
-  return tran_index;
+  if (err_code != NO_ERROR)
+    {
+      return NULL_TRAN_INDEX;
+    }
 
+  db_update_row_count_cache (row_count);
+  return tran_index;
 #endif /* !CS_MODE */
 }
 
@@ -3723,7 +4099,6 @@ boot_unregister_client (int tran_index)
  *   zip_method(in):
  *   zip_level(in):
  *   skip_activelog(in):
- *   safe_pageid(in):
  *
  * NOTE:
  */
@@ -3732,11 +4107,11 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 	     bool delete_unneeded_logarchives,
 	     const char *backup_verbose_file, int num_threads,
 	     FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level,
-	     int skip_activelog, PAGEID safe_pageid)
+	     int skip_activelog)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
-  int request_size;
+  int request_size, strlen1, strlen2;
   char *request, *ptr;
   int req_error;
   OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
@@ -3747,22 +4122,21 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (backup_path) + OR_INT_SIZE
-    + OR_INT_SIZE + length_const_string (backup_verbose_file)
-    + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
+  request_size = length_const_string (backup_path, &strlen1) + OR_INT_SIZE
+    + OR_INT_SIZE + length_const_string (backup_verbose_file, &strlen2)
+    + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
   request = (char *) malloc (request_size);
   if (request)
     {
-      ptr = pack_const_string (request, backup_path);
+      ptr = pack_const_string_with_length (request, backup_path, strlen1);
       ptr = or_pack_int (ptr, backup_level);
       ptr = or_pack_int (ptr, delete_unneeded_logarchives ? 1 : 0);
-      ptr = or_pack_string (ptr, backup_verbose_file);
+      ptr = pack_const_string_with_length (ptr, backup_verbose_file, strlen2);
       ptr = or_pack_int (ptr, num_threads);
       ptr = or_pack_int (ptr, zip_method);
       ptr = or_pack_int (ptr, zip_level);
       ptr = or_pack_int (ptr, skip_activelog);
-      ptr = or_pack_int (ptr, safe_pageid);
       req_error = net_client_request_with_callback (NET_SERVER_BO_BACKUP,
 						    request, request_size,
 						    reply,
@@ -3777,6 +4151,11 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 	}
       free_and_init (request);
     }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
+    }
 
   return success;
 #else /* CS_MODE */
@@ -3786,8 +4165,7 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 
   success = xboot_backup (NULL, backup_path, backup_level,
 			  delete_unneeded_logarchives, backup_verbose_file,
-			  num_threads, zip_method, zip_level, skip_activelog,
-			  safe_pageid);
+			  num_threads, zip_method, zip_level, skip_activelog);
 
   EXIT_SERVER ();
 
@@ -3817,7 +4195,7 @@ boot_add_volume_extension (const char *ext_path, const char *ext_name,
 #if defined(CS_MODE)
   int int_volid;
   VOLID volid = NULL_VOLID;
-  int request_size;
+  int request_size, strlen1, strlen2, strlen3;
   char *request, *ptr;
   int req_error;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -3825,16 +4203,17 @@ boot_add_volume_extension (const char *ext_path, const char *ext_name,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (ext_path)
-    + length_const_string (ext_name) + length_const_string (ext_comments)
+  request_size = length_const_string (ext_path, &strlen1)
+    + length_const_string (ext_name, &strlen2)
+    + length_const_string (ext_comments, &strlen3)
     + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
   request = (char *) malloc (request_size);
   if (request)
     {
-      ptr = pack_const_string (request, ext_path);
-      ptr = pack_const_string (ptr, ext_name);
-      ptr = pack_const_string (ptr, ext_comments);
+      ptr = pack_const_string_with_length (request, ext_path, strlen1);
+      ptr = pack_const_string_with_length (ptr, ext_name, strlen2);
+      ptr = pack_const_string_with_length (ptr, ext_comments, strlen3);
       ptr = or_pack_int (ptr, (int) ext_npages);
       ptr = or_pack_int (ptr, (int) ext_purpose);
       ptr = or_pack_int (ptr, (int) ext_overwrite);
@@ -3848,6 +4227,11 @@ boot_add_volume_extension (const char *ext_path, const char *ext_name,
 	  volid = int_volid;
 	}
       free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
     }
 
   return volid;
@@ -3875,26 +4259,37 @@ boot_add_volume_extension (const char *ext_path, const char *ext_name,
  * NOTE:
  */
 int
-boot_check_db_consistency (int check_flag)
+boot_check_db_consistency (int check_flag, OID * oids, int num_oids)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
   int req_error;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request;
-  int request_size;
+  char *request, *ptr;
+  size_t request_size;
+  int i;
+
+  request_size = (sizeof (int) * 2) + (sizeof (OID) * num_oids);
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      return ER_FAILED;
+    }
+  ptr = or_pack_int (request, check_flag);
+  ptr = or_pack_int (ptr, num_oids);
+  for (i = 0; i < num_oids; i++)
+    {
+      ptr = or_pack_oid (ptr, &oids[i]);
+    }
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-  request = OR_ALIGNED_BUF_START (a_request);
-  request_size = OR_INT_SIZE;
-
-  or_pack_int (request, check_flag);
   req_error = net_client_request (NET_SERVER_BO_CHECK_DBCONSISTENCY,
 				  request, request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
 				  NULL, 0);
+  free_and_init (request);
+
   if (!req_error)
     {
       or_unpack_int (reply, &success);
@@ -3906,7 +4301,7 @@ boot_check_db_consistency (int check_flag)
 
   ENTER_SERVER ();
 
-  success = xboot_check_db_consistency (NULL, check_flag);
+  success = xboot_check_db_consistency (NULL, check_flag, oids, num_oids);
 
   EXIT_SERVER ();
 
@@ -4120,6 +4515,804 @@ boot_shutdown_server (bool iserfinal)
 }
 
 /*
+ * csession_check_session - check if session is still active
+ *
+ * return	   : error code or NO_ERROR
+ * session_id (in/out) : the id of the session to end
+ * row_count (out)     : the value of row count for this session
+ */
+int
+csession_check_session (SESSION_ID * session_id, int *row_count)
+{
+#if defined (CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  request = OR_ALIGNED_BUF_START (a_request);
+
+  ptr = or_pack_int (request, ((int) *session_id));
+
+  req_error = net_client_request (NET_SERVER_SES_CHECK_SESSION,
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				  NULL, 0, NULL, 0);
+  if (req_error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  ptr = or_unpack_int (reply, (int *) session_id);
+  or_unpack_int (ptr, row_count);
+  return NO_ERROR;
+#else
+  int result = NO_ERROR;
+
+  ENTER_SERVER ();
+
+  if (xsession_check_session (NULL, *session_id) != NO_ERROR)
+    {
+      /* create new session */
+      if (xsession_create_new (NULL, session_id) != NO_ERROR)
+	{
+	  result = ER_FAILED;
+	}
+    }
+
+  /* get row count */
+  if (result != ER_FAILED)
+    {
+      xsession_get_row_count (NULL, row_count);
+    }
+
+  EXIT_SERVER ();
+
+  return result;
+#endif
+}
+
+/*
+ * csession_end_session - end the session identified by session_id
+ *
+ * return	   : error code or NO_ERROR
+ * session_id (in) : the id of the session to end
+ */
+int
+csession_end_session (SESSION_ID session_id)
+{
+#if defined (CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  request = OR_ALIGNED_BUF_START (a_request);
+
+  ptr = or_pack_int (request, session_id);
+
+  req_error = net_client_request (NET_SERVER_SES_END_SESSION,
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				  NULL, 0, NULL, 0);
+  if (req_error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+#else
+  int result = NO_ERROR;
+
+  ENTER_SERVER ();
+
+  result = xsession_end_session (NULL, session_id);
+
+  EXIT_SERVER ();
+
+  return result;
+#endif
+}
+
+/*
+ * csession_set_row_count - set affected rows count for the current
+ *				session
+ * return    : error code or NO_ERROR
+ * rows (in) : the count of affected rows
+ * NOTE : the affected rows count is the number of rows affected by the last
+ * INSERT, UPDATE or DELETE statement
+ */
+int
+csession_set_row_count (int rows)
+{
+#if defined (CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  request = OR_ALIGNED_BUF_START (a_request);
+
+  ptr = or_pack_int (request, rows);
+
+  req_error = net_client_request (NET_SERVER_SES_SET_ROW_COUNT,
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				  NULL, 0, NULL, 0);
+  if (req_error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  or_unpack_int (reply, &req_error);
+  return req_error;
+#else
+  int result = NO_ERROR;
+
+  ENTER_SERVER ();
+
+  result = xsession_set_row_count (NULL, rows);
+
+  EXIT_SERVER ();
+
+  return result;
+#endif
+}
+
+/*
+ * csession_get_row_count - get affected rows count for the current
+ *			    session
+ * return    : error code or NO_ERROR
+ * rows (out): the count of affected rows
+ * NOTE : the affected rows count is the number of rows affected by the last
+ * INSERT, UPDATE or DELETE statement
+ */
+int
+csession_get_row_count (int *rows)
+{
+#if defined (CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  request = OR_ALIGNED_BUF_START (a_request);
+
+  req_error = net_client_request (NET_SERVER_SES_GET_ROW_COUNT,
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				  NULL, 0, NULL, 0);
+  if (req_error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  or_unpack_int (reply, &req_error);
+  or_unpack_int (reply, rows);
+
+  return NO_ERROR;
+#else
+  int result = NO_ERROR;
+
+  ENTER_SERVER ();
+
+  result = xsession_get_row_count (NULL, rows);
+
+  EXIT_SERVER ();
+
+  return result;
+#endif
+}
+
+/*
+ * csession_get_last_insert_id - get the value of the last update serial
+ * return   : error code or NO_ERROR
+ * value (out) : the value of the last insert id
+ */
+int
+csession_get_last_insert_id (DB_VALUE * value)
+{
+#if defined (CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply;
+  char *ptr = NULL;
+  char *data_reply = NULL;
+  int data_size = 0;
+
+  DB_MAKE_NULL (value);
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error = net_client_request2 (NET_SERVER_SES_GET_LAST_INSERT_ID,
+				   NULL, 0, reply,
+				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				   &data_reply, &data_size);
+  if (req_error != NO_ERROR)
+    {
+      DB_MAKE_NULL (value);
+      req_error = ER_FAILED;
+      goto cleanup;
+    }
+
+  /* data_size */
+  ptr = or_unpack_int (reply, &req_error);
+  /* req_error */
+  ptr = or_unpack_int (ptr, &req_error);
+  if (req_error != NO_ERROR || data_size == 0)
+    {
+      req_error = (req_error != NO_ERROR) ? req_error : ER_FAILED;
+      goto cleanup;
+    }
+
+  or_unpack_value (data_reply, value);
+
+cleanup:
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+
+  return req_error;
+#else
+  int result = NO_ERROR;
+  ENTER_SERVER ();
+
+  result = xsession_get_last_insert_id (NULL, value);
+
+  EXIT_SERVER ();
+
+  return result;
+#endif
+}
+
+/*
+ * csession_create_prepared_statement () - create a prepared session statement
+ * return	  : error code or NO_ERROR
+ * name (in)	  : the name of the prepared statement
+ * alias_print(in): the compiled statement string
+ * stmt_info (in) : serialized prepared statement information
+ * info_length(in): the size of the serialized buffer
+ */
+int
+csession_create_prepared_statement (const char *name, const char *alias_print,
+				    char *stmt_info, int info_length)
+{
+#if defined (CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = NULL;
+  char *reply = NULL;
+  char *ptr = NULL;
+  int req_size = 0, name_len = 0, alias_print_len = 0;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  /* packed size for user oid */
+  req_size = OR_OID_SIZE;
+  /* packed size for name */
+  req_size += length_const_string (name, &name_len);
+  /* packed size for alias_print */
+  req_size += length_const_string (alias_print, &alias_print_len);
+  /* data_size */
+  req_size += OR_INT_SIZE;
+
+  request = (char *) malloc (req_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      req_size);
+      req_error = ER_FAILED;
+      goto cleanup;
+    }
+
+  /* user */
+  ptr = or_pack_oid (request, ws_identifier (db_get_user ()));
+  /* name */
+  ptr = pack_const_string_with_length (ptr, name, name_len);
+  /* alias_print */
+  ptr = pack_const_string_with_length (ptr, alias_print, alias_print_len);
+  /* data size */
+  or_pack_int (ptr, info_length);
+
+  req_error = net_client_request (NET_SERVER_SES_CREATE_PREPARED_STATEMENT,
+				  request, req_size,
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				  stmt_info, info_length, NULL, 0);
+  if (req_error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  ptr = or_unpack_int (reply, &req_error);
+
+cleanup:
+  if (request != NULL)
+    {
+      free_and_init (request);
+    }
+  return req_error;
+#else
+  int result = NO_ERROR;
+  OID *user;
+  char *local_name = NULL;
+  char *local_alias_print = NULL;
+  char *local_stmt_info = NULL;
+  int len = 0;
+  user = ws_identifier (db_get_user ());
+
+  ENTER_SERVER ();
+
+  /* The server keeps a packed version of the prepared statement information
+   * and we need to pack it here
+   */
+
+  /* copy name */
+  if (name != NULL)
+    {
+      len = strlen (name);
+      local_name = (char *) malloc (len + 1);
+      if (local_name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, len + 1);
+	  result = ER_FAILED;
+	  goto error;
+	}
+      memcpy (local_name, name, len);
+      local_name[len] = 0;
+    }
+
+  /* copy alias print */
+  if (alias_print != NULL)
+    {
+      len = strlen (alias_print);
+      local_alias_print = (char *) malloc (len + 1);
+      if (local_alias_print == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, len + 1);
+	  result = ER_FAILED;
+	  goto error;
+	}
+      memcpy (local_alias_print, alias_print, len);
+      local_alias_print[len] = 0;
+    }
+
+  /* copy stmt_info */
+  if (stmt_info != NULL)
+    {
+      local_stmt_info = (char *) malloc (info_length);
+      if (local_stmt_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, len + 1);
+	  result = ER_FAILED;
+	  goto error;
+	}
+      memcpy (local_stmt_info, stmt_info, info_length);
+    }
+
+  result = xsession_create_prepared_statement (NULL, *user, local_name,
+					       local_alias_print,
+					       local_stmt_info, info_length);
+  EXIT_SERVER ();
+
+  return result;
+
+error:
+
+  if (local_name != NULL)
+    {
+      free_and_init (local_name);
+    }
+  if (local_alias_print != NULL)
+    {
+      free_and_init (local_alias_print);
+    }
+  if (local_stmt_info != NULL)
+    {
+      free_and_init (local_stmt_info);
+    }
+
+  EXIT_SERVER ();
+
+  return result;
+#endif
+}
+
+/*
+ * csession_get_prepared_statement () - get information about a prepared
+ *					session statement
+ * return : error code or no error
+ * name (in)	  : the name of the prepared statement
+ * xasl_id (out)  : XASL id
+ * stmt_info (out): serialized prepared statement information
+ */
+int
+csession_get_prepared_statement (const char *name, XASL_ID * xasl_id,
+				 char **stmt_info)
+{
+#if defined (CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_XASL_ID_SIZE) a_reply;
+  char *reply = NULL;
+  char *reply_data = NULL;
+  char *request = NULL;
+  char *ptr = NULL;
+  int req_size = 0, len = 0;
+  int reply_size = 0;
+
+  req_size = length_const_string (name, &len);
+  request = (char *) malloc (req_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      req_size);
+      goto error;
+    }
+
+  ptr = or_pack_string_with_length (request, name, len);
+
+  req_error = net_client_request2 (NET_SERVER_SES_GET_PREPARED_STATEMENT,
+				   request, req_size,
+				   OR_ALIGNED_BUF_START (a_reply),
+				   OR_ALIGNED_BUF_SIZE (a_reply),
+				   NULL, 0, &reply_data, &reply_size);
+  if (req_error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  /* unpack reply_size */
+  ptr = or_unpack_int (reply, &req_error);
+  /* unpack error code */
+  ptr = or_unpack_int (ptr, &req_error);
+  if (req_error != NO_ERROR)
+    {
+      /* there was an error fetching session data */
+      goto error;
+    }
+  OR_UNPACK_XASL_ID (ptr, xasl_id);
+
+  req_error = NO_ERROR;
+
+  /*prepared statement info */
+  *stmt_info = (char *) malloc (reply_size);
+  if (*stmt_info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      reply_size);
+      req_error = ER_FAILED;
+      goto error;
+    }
+
+  memcpy (*stmt_info, reply_data, reply_size);
+
+  if (request != NULL)
+    {
+      free_and_init (request);
+    }
+  if (reply_data != NULL)
+    {
+      free_and_init (reply_data);
+    }
+  return req_error;
+
+error:
+  if (request != NULL)
+    {
+      free_and_init (request);
+    }
+  if (reply_data != NULL)
+    {
+      free_and_init (reply_data);
+    }
+
+  return req_error;
+#else
+  int result = NO_ERROR;
+  int stmt_info_len = 0;
+
+  ENTER_SERVER ();
+
+  result = xsession_get_prepared_statement (NULL, name, stmt_info,
+					    &stmt_info_len, xasl_id);
+  if (result != NO_ERROR)
+    {
+      EXIT_SERVER ();
+      return result;
+    }
+
+  EXIT_SERVER ();
+
+  return result;
+#endif
+}
+
+/*
+ * csession_delete_prepared_statement () - delete a prepared session statement
+ * return    : error code or no error
+ * name (in) : name of the prepared statement
+ */
+int
+csession_delete_prepared_statement (const char *name)
+{
+#if defined (CS_MODE)
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = NULL;
+  int name_len, req_len;
+
+  req_len = length_const_string (name, &name_len);
+
+  request = (char *) malloc (req_len);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      req_len);
+      return ER_FAILED;
+    }
+
+  pack_const_string_with_length (request, name, name_len);
+
+  req_error = net_client_request (NET_SERVER_SES_DELETE_PREPARED_STATEMENT,
+				  request, req_len,
+				  OR_ALIGNED_BUF_START (a_reply),
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				  NULL, 0);
+  if (request != NULL)
+    {
+      free_and_init (request);
+    }
+
+  if (req_error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  or_unpack_int (OR_ALIGNED_BUF_START (a_reply), &req_error);
+
+  return req_error;
+#else
+  int result = NO_ERROR;
+
+  ENTER_SERVER ();
+
+  result = xsession_delete_prepared_statement (NULL, name);
+
+  EXIT_SERVER ();
+
+  return result;
+#endif
+}
+
+/*
+ * csession_set_session_variables () - set session variables
+ * return	  : error code or NO_ERROR
+ * variables (in) : variables
+ * count (in)	  : count
+ */
+int
+csession_set_session_variables (DB_VALUE * variables, const int count)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request = NULL, *reply = NULL, *data_request = NULL, *ptr = NULL;
+  int req_size = 0, i = 0, err = NO_ERROR;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  or_pack_int (request, count);
+
+  req_size = 0;
+  for (i = 0; i < count; i++)
+    {
+      req_size += OR_VALUE_ALIGNED_SIZE (&variables[i]);
+    }
+
+  data_request = (char *) malloc (req_size);
+  if (data_request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      req_size);
+      err = ER_FAILED;
+      goto cleanup;
+    }
+
+  ptr = data_request;
+  for (i = 0; i < count; i++)
+    {
+      ptr = or_pack_db_value (ptr, &variables[i]);
+    }
+
+  err = net_client_request (NET_SERVER_SES_SET_SESSION_VARIABLES,
+			    OR_ALIGNED_BUF_START (a_request),
+			    OR_ALIGNED_BUF_SIZE (a_request),
+			    OR_ALIGNED_BUF_START (a_reply),
+			    OR_ALIGNED_BUF_SIZE (a_reply),
+			    data_request, req_size, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  or_unpack_int (OR_ALIGNED_BUF_START (a_reply), &err);
+
+cleanup:
+  if (data_request != NULL)
+    {
+      free_and_init (data_request);
+    }
+
+  return err;
+#else
+  int err = 0;
+
+  ENTER_SERVER ();
+
+  err = xsession_set_session_variables (NULL, variables, count);
+
+  EXIT_SERVER ();
+
+  return err;
+#endif
+}
+
+/*
+ * csession_drop_session_variables () - drop session variables
+ * return	  : error code or NO_ERROR
+ * variables (in) : variables
+ * count (in)	  : count
+ */
+int
+csession_drop_session_variables (DB_VALUE * variables, const int count)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request = NULL, *reply = NULL, *data_request = NULL, *ptr = NULL;
+  int req_size = 0, i = 0, err = NO_ERROR;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  or_pack_int (request, count);
+
+  req_size = 0;
+  for (i = 0; i < count; i++)
+    {
+      req_size += OR_VALUE_ALIGNED_SIZE (&variables[i]);
+    }
+
+  data_request = (char *) malloc (req_size);
+  if (data_request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      req_size);
+      err = ER_FAILED;
+      goto cleanup;
+    }
+
+  ptr = data_request;
+  for (i = 0; i < count; i++)
+    {
+      ptr = or_pack_db_value (ptr, &variables[i]);
+    }
+
+  err = net_client_request (NET_SERVER_SES_DROP_SESSION_VARIABLES,
+			    OR_ALIGNED_BUF_START (a_request),
+			    OR_ALIGNED_BUF_SIZE (a_request),
+			    OR_ALIGNED_BUF_START (a_reply),
+			    OR_ALIGNED_BUF_SIZE (a_reply),
+			    data_request, req_size, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  or_unpack_int (OR_ALIGNED_BUF_START (a_reply), &err);
+
+cleanup:
+  if (data_request != NULL)
+    {
+      free_and_init (data_request);
+    }
+
+  return err;
+#else
+  int err = 0;
+
+  ENTER_SERVER ();
+
+  err = xsession_drop_session_variables (NULL, variables, count);
+
+  EXIT_SERVER ();
+
+  return err;
+#endif
+}
+
+/*
+ * csession_get_variable () - get the value of a session variable
+ * return : error code or NO_ERROR
+ * name (in)	: the name of the session variable
+ * value (out)	: the value of the session variable
+ */
+int
+csession_get_variable (DB_VALUE * name, DB_VALUE * value)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *request = NULL, *reply = NULL, *ptr = NULL;
+  int req_size = 0, i = 0, err = NO_ERROR, reply_size = 0;
+
+  assert (value != NULL);
+
+  req_size = OR_VALUE_ALIGNED_SIZE (name);
+
+  request = (char *) malloc (req_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      req_size);
+      return ER_FAILED;
+    }
+
+  or_pack_db_value (request, name);
+
+  err = net_client_request2 (NET_SERVER_SES_GET_SESSION_VARIABLE, request,
+			     req_size, OR_ALIGNED_BUF_START (a_reply),
+			     OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &reply,
+			     &reply_size);
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  /* a_reply contains reply_size code and error code */
+  ptr = OR_ALIGNED_BUF_START (a_reply);
+  ptr = or_unpack_int (ptr, &err);
+  ptr = or_unpack_int (ptr, &err);
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  or_unpack_db_value (reply, value);
+
+cleanup:
+  if (request != NULL)
+    {
+      free_and_init (request);
+    }
+  if (reply != NULL)
+    {
+      free_and_init (reply);
+    }
+
+  return err;
+#else
+  int err = NO_ERROR;
+
+  ENTER_SERVER ();
+
+  err = xsession_get_session_variable (NULL, name, value);
+
+  EXIT_SERVER ();
+
+  return err;
+#endif
+}
+
+/*
  * boot_soft_rename -
  *
  * return:
@@ -4127,12 +5320,14 @@ boot_shutdown_server (bool iserfinal)
  * NOTE:
  */
 int
-boot_soft_rename (const char *olddb_name,
-		  const char *newdb_name, const char *newdb_path,
-		  const char *newlog_path, const char *newdb_server_host,
+boot_soft_rename (const char *old_db_name,
+		  const char *new_db_name, const char *new_db_path,
+		  const char *new_log_path,
+		  const char *new_db_server_host,
 		  const char *new_volext_path,
 		  const char *fileof_vols_and_renamepaths,
-		  bool newdb_overwrite, bool extern_rename, bool force_delete)
+		  bool new_db_overwrite, bool extern_rename,
+		  bool force_delete)
 {
 #if defined(CS_MODE)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -4144,9 +5339,9 @@ boot_soft_rename (const char *olddb_name,
   ENTER_SERVER ();
 
   error_code =
-    xboot_soft_rename (NULL, olddb_name, newdb_name, newdb_path, newlog_path,
-		       newdb_server_host, new_volext_path,
-		       fileof_vols_and_renamepaths, newdb_overwrite,
+    xboot_soft_rename (NULL, old_db_name, new_db_name, new_db_path,
+		       new_log_path, new_db_server_host, new_volext_path,
+		       fileof_vols_and_renamepaths, new_db_overwrite,
 		       extern_rename, force_delete);
 
   EXIT_SERVER ();
@@ -4163,10 +5358,11 @@ boot_soft_rename (const char *olddb_name,
  * NOTE:
  */
 int
-boot_copy (const char *from_dbname, const char *newdb_name,
-	   const char *newdb_path, const char *newlog_path,
-	   const char *newdb_server_host, const char *new_volext_path,
-	   const char *fileof_vols_and_copypaths, bool newdb_overwrite)
+boot_copy (const char *from_dbname, const char *new_db_name,
+	   const char *new_db_path, const char *new_log_path,
+	   const char *new_lob_path, const char *new_db_server_host,
+	   const char *new_volext_path, const char *fileof_vols_and_copypaths,
+	   bool new_db_overwrite)
 {
 #if defined(CS_MODE)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -4177,9 +5373,10 @@ boot_copy (const char *from_dbname, const char *newdb_name,
 
   ENTER_SERVER ();
 
-  error_code = xboot_copy (NULL, from_dbname, newdb_name, newdb_path,
-			   newlog_path, newdb_server_host, new_volext_path,
-			   fileof_vols_and_copypaths, newdb_overwrite);
+  error_code = xboot_copy (NULL, from_dbname, new_db_name, new_db_path,
+			   new_log_path, new_lob_path, new_db_server_host,
+			   new_volext_path, fileof_vols_and_copypaths,
+			   new_db_overwrite);
 
   EXIT_SERVER ();
 
@@ -4194,9 +5391,9 @@ boot_copy (const char *from_dbname, const char *newdb_name,
  *
  * NOTE:
  */
-
 int
-boot_emergency_patch (const char *db_name, bool recreate_log)
+boot_emergency_patch (const char *db_name, bool recreate_log,
+		      DKNPAGES log_npages, FILE * out_fp)
 {
 #if defined(CS_MODE)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -4207,7 +5404,8 @@ boot_emergency_patch (const char *db_name, bool recreate_log)
 
   ENTER_SERVER ();
 
-  error_code = xboot_emergency_patch (NULL, db_name, recreate_log);
+  error_code =
+    xboot_emergency_patch (NULL, db_name, recreate_log, log_npages, out_fp);
 
   EXIT_SERVER ();
 
@@ -4220,7 +5418,7 @@ boot_emergency_patch (const char *db_name, bool recreate_log)
  *   return: new state
  */
 HA_SERVER_STATE
-boot_change_ha_mode (HA_SERVER_STATE state, bool force, bool wait)
+boot_change_ha_mode (HA_SERVER_STATE state, bool force)
 {
 #if defined(CS_MODE)
   int req_error, i;
@@ -4236,7 +5434,6 @@ boot_change_ha_mode (HA_SERVER_STATE state, bool force, bool wait)
 
   ptr = or_pack_int (request, (int) state);
   ptr = or_pack_int (ptr, (int) force);
-  ptr = or_pack_int (ptr, (int) wait);
 
   req_error = net_client_request (NET_SERVER_BO_CHANGE_HA_MODE,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
@@ -4891,20 +6088,22 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp,
  * NOTE:
  */
 int
-stats_update_class_statistics (OID * classoid)
+stats_update_class_statistics (OID * classoid, int do_now)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
-  OR_ALIGNED_BUF (OR_OID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
+  char *ptr;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  or_pack_oid (request, classoid);
+  ptr = or_pack_oid (request, classoid);
+  ptr = or_pack_int (ptr, do_now);
 
   req_error = net_client_request (NET_SERVER_QST_UPDATE_CLASS_STATISTICS,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
@@ -5004,33 +6203,39 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid,
     + OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
   request = (char *) malloc (request_size);
-  if (request == NULL)
+  if (request)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
 
-  ptr = or_pack_btid (request, btid);
-  ptr = or_pack_domain (ptr, key_type, 0, 0);
-  ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_int (ptr, attr_id);
-  ptr = or_pack_int (ptr, unique_btree);
-  ptr = or_pack_int (ptr, reverse_btree);
+      ptr = or_pack_btid (request, btid);
+      ptr = or_pack_domain (ptr, key_type, 0, 0);
+      ptr = or_pack_oid (ptr, class_oid);
+      ptr = or_pack_int (ptr, attr_id);
+      ptr = or_pack_int (ptr, unique_btree);
+      ptr = or_pack_int (ptr, reverse_btree);
 
-  req_error = net_client_request (NET_SERVER_BTREE_ADDINDEX,
-				  request, request_size, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				  NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &error);
-      ptr = or_unpack_btid (ptr, btid);
-      if (error != NO_ERROR)
+      req_error = net_client_request (NET_SERVER_BTREE_ADDINDEX,
+				      request, request_size, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				      NULL, 0);
+      if (!req_error)
 	{
-	  btid = NULL;
+	  ptr = or_unpack_int (reply, &error);
+	  ptr = or_unpack_btid (ptr, btid);
+	  if (error != NO_ERROR)
+	    {
+	      btid = NULL;
+	    }
 	}
+
+      free_and_init (request);
+    }
+  else
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      sizeof (request_size));
     }
 
-  free_and_init (request);
   return error;
 #else /* CS_MODE */
   int error = NO_ERROR;
@@ -5089,7 +6294,7 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply;
-  int i, total_attrs;
+  int i, total_attrs, strlen;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -5100,79 +6305,85 @@ btree_load_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oids,
     + ((n_classes == 1) ? (n_attrs * OR_INT_SIZE) : 0)
     + (n_classes * OR_HFID_SIZE)
     + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE
-    + OR_BTID_ALIGNED_SIZE + OR_INT_SIZE + or_packed_string_length (fk_name);
+    + OR_BTID_ALIGNED_SIZE + OR_INT_SIZE
+    + or_packed_string_length (fk_name, &strlen);
 
   request = (char *) malloc (request_size);
-
-  if (request == NULL)
+  if (request)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
 
-  ptr = or_pack_btid (request, btid);
-  ptr = or_pack_domain (ptr, key_type, 0, 0);
-  ptr = or_pack_int (ptr, n_classes);
-  ptr = or_pack_int (ptr, n_attrs);
+      ptr = or_pack_btid (request, btid);
+      ptr = or_pack_domain (ptr, key_type, 0, 0);
+      ptr = or_pack_int (ptr, n_classes);
+      ptr = or_pack_int (ptr, n_attrs);
 
-  for (i = 0; i < n_classes; i++)
-    {
-      ptr = or_pack_oid (ptr, &class_oids[i]);
-    }
-
-  total_attrs = n_classes * n_attrs;
-  for (i = 0; i < total_attrs; i++)
-    {
-      ptr = or_pack_int (ptr, attr_ids[i]);
-    }
-
-  if (n_classes == 1)
-    {
-      for (i = 0; i < n_attrs; i++)
+      for (i = 0; i < n_classes; i++)
 	{
-	  if (attrs_prefix_length)
+	  ptr = or_pack_oid (ptr, &class_oids[i]);
+	}
+
+      total_attrs = n_classes * n_attrs;
+      for (i = 0; i < total_attrs; i++)
+	{
+	  ptr = or_pack_int (ptr, attr_ids[i]);
+	}
+
+      if (n_classes == 1)
+	{
+	  for (i = 0; i < n_attrs; i++)
 	    {
-	      ptr = or_pack_int (ptr, attrs_prefix_length[i]);
-	    }
-	  else
-	    {
-	      ptr = or_pack_int (ptr, -1);
+	      if (attrs_prefix_length)
+		{
+		  ptr = or_pack_int (ptr, attrs_prefix_length[i]);
+		}
+	      else
+		{
+		  ptr = or_pack_int (ptr, -1);
+		}
 	    }
 	}
-    }
 
-  for (i = 0; i < n_classes; i++)
-    {
-      ptr = or_pack_hfid (ptr, &hfids[i]);
-    }
+      for (i = 0; i < n_classes; i++)
+	{
+	  ptr = or_pack_hfid (ptr, &hfids[i]);
+	}
 
-  ptr = or_pack_int (ptr, unique_flag);
-  ptr = or_pack_int (ptr, reverse_flag);
-  ptr = or_pack_int (ptr, last_key_desc);
+      ptr = or_pack_int (ptr, unique_flag);
+      ptr = or_pack_int (ptr, reverse_flag);
+      ptr = or_pack_int (ptr, last_key_desc);
 
-  ptr = or_pack_oid (ptr, fk_refcls_oid);
-  ptr = or_pack_btid (ptr, fk_refcls_pk_btid);
-  ptr = or_pack_int (ptr, cache_attr_id);
-  ptr = or_pack_string (ptr, fk_name);
+      ptr = or_pack_oid (ptr, fk_refcls_oid);
+      ptr = or_pack_btid (ptr, fk_refcls_pk_btid);
+      ptr = or_pack_int (ptr, cache_attr_id);
+      ptr = or_pack_string_with_length (ptr, fk_name, strlen);
 
-  req_error = net_client_request (NET_SERVER_BTREE_LOADINDEX,
-				  request, request_size, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				  NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &error);
-      ptr = or_unpack_btid (ptr, btid);
-      if (error != NO_ERROR)
+      req_error = net_client_request (NET_SERVER_BTREE_LOADINDEX,
+				      request, request_size, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				      NULL, 0);
+      if (!req_error)
+	{
+	  ptr = or_unpack_int (reply, &error);
+	  ptr = or_unpack_btid (ptr, btid);
+	  if (error != NO_ERROR)
+	    {
+	      btid = NULL;
+	    }
+	}
+      else
 	{
 	  btid = NULL;
 	}
+
+      free_and_init (request);
     }
   else
     {
-      btid = NULL;
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      sizeof (request_size));
     }
 
-  free_and_init (request);
   return error;
 #else /* CS_MODE */
   int error = NO_ERROR;
@@ -5234,7 +6445,6 @@ btree_delete_index (BTID * btid)
     }
 
   return status;
-
 #else /* CS_MODE */
   int success = ER_FAILED;
 
@@ -5291,31 +6501,28 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
 {
 #if defined(CS_MODE)
   char *request, *reply, *ptr;
-  int req_error, status = NO_ERROR, request_size;
+  int req_error, status = NO_ERROR;
   OR_ALIGNED_BUF (OR_OID_SIZE + OR_BTID_ALIGNED_SIZE +
 		  OR_HFID_SIZE) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
-  request_size = OR_OID_SIZE + OR_BTID_ALIGNED_SIZE + OR_HFID_SIZE;
   request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_pack_oid (request, oid);
   ptr = or_pack_btid (ptr, btid);
   ptr = or_pack_hfid (ptr, hfid);
 
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
   req_error = net_client_request (NET_SERVER_LC_REM_CLASS_FROM_INDEX,
-				  request, request_size, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				  NULL, 0);
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				  NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &status);
     }
 
   return status;
-
 #else /* CS_MODE */
   int success = ER_FAILED;
 
@@ -5377,18 +6584,25 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
       reply = OR_ALIGNED_BUF_START (a_reply);
 
       key_size = OR_VALUE_ALIGNED_SIZE (key);
-      request_size = OR_BTID_ALIGNED_SIZE + key_size + OR_OID_SIZE;
+      request_size = key_size + OR_OID_SIZE + OR_BTID_ALIGNED_SIZE;
 
       request = (char *) malloc (request_size);
       if (request == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (request_size));
 	  return status;
 	}
 
-      ptr = or_pack_btid (request, btid);
+      ptr = request;
       if (is_replication == true)
 	{
 	  ptr = or_pack_mem_value (ptr, key);
+	  if (ptr == NULL)
+	    {
+	      free_and_init (request);
+	      return status;
+	    }
 	  request_id = NET_SERVER_REPL_BTREE_FIND_UNIQUE;
 	}
       else
@@ -5396,7 +6610,9 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
 	  ptr = or_pack_value (ptr, key);
 	  request_id = NET_SERVER_BTREE_FIND_UNIQUE;
 	}
+
       ptr = or_pack_oid (ptr, class_oid);
+      ptr = or_pack_btid (ptr, btid);
 
       req_error = net_client_request (request_id,
 				      request, request_size, reply,
@@ -5418,8 +6634,8 @@ btree_find_unique_internal (BTID * btid, DB_VALUE * key, OID * class_oid,
 #else /* CS_MODE */
 
       ENTER_SERVER ();
-      status = xbtree_find_unique (NULL, btid, true, key, class_oid, oid,
-				   false);
+      status = xbtree_find_unique (NULL, btid, true, S_SELECT, key, class_oid,
+				   oid, false);
       EXIT_SERVER ();
 
 #endif /* !CS_MODE */
@@ -5558,13 +6774,14 @@ qmgr_prepare_query (const char *query_str, const OID * user_oid,
 {
 #if defined(CS_MODE)
   int success = NO_ERROR;
-  int req_error, request_size;
+  int req_error, request_size, strlen;
   char *request, *reply, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (query_str) + OR_OID_SIZE + OR_INT_SIZE;
+  request_size =
+    length_const_string (query_str, &strlen) + OR_OID_SIZE + OR_INT_SIZE;
   request = (char *) malloc (request_size);
   if (!request)
     {
@@ -5574,7 +6791,7 @@ qmgr_prepare_query (const char *query_str, const OID * user_oid,
     }
 
   /* pack query string as a request data */
-  ptr = pack_const_string (request, query_str);
+  ptr = pack_const_string_with_length (request, query_str, strlen);
   /* pack OID of the current user */
   ptr = or_pack_oid (ptr, (OID *) user_oid);
   /* pack size of XASL stream */
@@ -5610,7 +6827,6 @@ qmgr_prepare_query (const char *query_str, const OID * user_oid,
     }
 
   return xasl_id;
-
 #else /* CS_MODE */
   XASL_ID *p;
 
@@ -5688,6 +6904,8 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
       senddata = (char *) malloc (senddata_size);
       if (senddata == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (senddata_size));
 	  return NULL;
 	}
 
@@ -5814,6 +7032,8 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
       senddata = (char *) malloc (senddata_size);
       if (senddata == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (senddata_size));
 	  return NULL;
 	}
     }
@@ -5964,46 +7184,44 @@ qmgr_drop_query_plan (const char *query_str, const OID * user_oid,
 {
 #if defined(CS_MODE)
   int status = ER_FAILED;
-  int req_error, request_size;
+  int req_error, request_size, strlen;
   char *request, *reply, *ptr;
-  OR_ALIGNED_BUF (OR_XASL_ID_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size =
-    length_const_string (query_str) + OR_OID_SIZE + OR_XASL_ID_SIZE +
-    OR_INT_SIZE;
+  request_size = length_const_string (query_str, &strlen)
+    + OR_OID_SIZE + OR_XASL_ID_SIZE + OR_INT_SIZE;
 
   request = (char *) malloc (request_size);
-  if (!request)
-    {
-      return ER_FAILED;
-    }
-
-  /* pack query string as a request data */
-  ptr = pack_const_string (request, query_str);
-  /* pack OID of the current user */
-  ptr = or_pack_oid (ptr, (OID *) user_oid);
-  /* pack XASL file id (XASL_ID) */
-  OR_PACK_XASL_ID (ptr, xasl_id);
-  /* pack 'delete' flag */
-  ptr = or_pack_int (ptr, drop);
-
-  /* send SERVER_QM_QUERY_DROP_PLAN request with request data;
-     receive status code (int) as a reply */
-  req_error = net_client_request (NET_SERVER_QM_QUERY_DROP_PLAN,
-				  request, request_size,
-				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				  NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      /* first argument should be status code (int) */
-      (void) or_unpack_int (reply, &status);
-    }
-
   if (request)
     {
+      /* pack query string as a request data */
+      ptr = pack_const_string_with_length (request, query_str, strlen);
+      /* pack OID of the current user */
+      ptr = or_pack_oid (ptr, (OID *) user_oid);
+      /* pack XASL file id (XASL_ID) */
+      OR_PACK_XASL_ID (ptr, xasl_id);
+      /* pack 'delete' flag */
+      ptr = or_pack_int (ptr, drop);
+
+      /* send SERVER_QM_QUERY_DROP_PLAN request with request data;
+         receive status code (int) as a reply */
+      req_error = net_client_request (NET_SERVER_QM_QUERY_DROP_PLAN,
+				      request, request_size,
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				      NULL, 0, NULL, 0);
+      if (!req_error)
+	{
+	  /* first argument should be status code (int) */
+	  (void) or_unpack_int (reply, &status);
+	}
       free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (request_size));
     }
 
   return status;
@@ -6043,7 +7261,7 @@ qmgr_drop_all_query_plans (void)
   int req_error, request_size;
   char *request, *reply;
   OR_ALIGNED_BUF (OR_XASL_ID_SIZE) a_request;
-  OR_ALIGNED_BUF (OR_XASL_ID_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
   request_size = OR_INT_SIZE;
@@ -6363,69 +7581,51 @@ int
 serial_get_current_value (DB_VALUE * value, DB_VALUE * oid)
 {
 #if defined(CS_MODE)
-  int req_error;
-  char *request;
-  int request_size;
-  char *area = 0;
-  int val_size;
+  int req_error, error = ER_NET_CLIENT_DATA_RECEIVE;
+  char *request, *area = NULL;
+  int request_size, area_size;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
-  char *reply;
-  int rc;
+  char *reply, *ptr;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   request_size = or_db_value_size (oid);
   request = (char *) malloc (request_size);
-  if (request == NULL)
+  if (request)
     {
-      return ER_FAILED;
-    }
+      or_pack_value (request, oid);
 
-  or_pack_value (request, oid);
-
-  req_error = net_client_request2 (NET_SERVER_QPROC_GET_CURRENT_VALUE,
-				   request, request_size,
-				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				   NULL, 0, &area, &val_size);
-  free_and_init (request);
-  if (!req_error)
-    {
-      reply = or_unpack_int (reply, &val_size);
-      or_unpack_int (reply, &req_error);
-    }
-
-  if (!req_error)
-    {
-      or_unpack_value (area, value);
-      rc = NO_ERROR;
+      req_error = net_client_request2 (NET_SERVER_QPROC_GET_CURRENT_VALUE,
+				       request, request_size,
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				       NULL, 0, &area, &area_size);
+      if (!req_error && area != NULL)
+	{
+	  ptr = or_unpack_int (reply, &area_size);
+	  ptr = or_unpack_int (ptr, &error);
+	  (void) or_unpack_value (area, value);
+	  free_and_init (area);
+	}
+      free_and_init (request);
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, req_error, 0);
-      rc = ER_FAILED;
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      sizeof (request_size));
     }
 
-  if (area != NULL)
-    {
-      free_and_init (area);
-    }
-
-  return rc;
-
+  return error;
 #else /* CS_MODE */
-  int req_error = NO_ERROR;
+  int error = NO_ERROR;
 
   ENTER_SERVER ();
 
-  req_error = xserial_get_current_value (NULL, oid, value);
-  if (req_error != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_errid (), 0);
-    }
+  error = xserial_get_current_value (NULL, value, oid);
 
   EXIT_SERVER ();
 
-  return req_error;
+  return error;
 #endif /* !CS_MODE */
 }
 
@@ -6440,73 +7640,60 @@ serial_get_current_value (DB_VALUE * value, DB_VALUE * oid)
  * NOTE:
  */
 int
-serial_get_next_value (DB_VALUE * value, DB_VALUE * oid)
+serial_get_next_value (DB_VALUE * value, DB_VALUE * oid,
+		       int is_auto_increment)
 {
 #if defined(CS_MODE)
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request;
-  int request_size;
-  char *area = 0;
-  int val_size;
+  int req_error, error = ER_NET_CLIENT_DATA_RECEIVE;
+  char *request, *area = NULL;
+  int request_size, area_size;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
-  char *reply;
-  int rc;
+  char *reply, *ptr;
 
-  request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
+  /* packed oid size */
   request_size = or_db_value_size (oid);
+  /* packed is_auto_increment size */
+  request_size += OR_INT_SIZE;
+
   request = (char *) malloc (request_size);
-  if (request == NULL)
+  if (request)
     {
-      return ER_FAILED;
-    }
+      ptr = or_pack_value (request, oid);
+      ptr = or_pack_int (ptr, is_auto_increment);
 
-  or_pack_value (request, oid);
-
-  req_error = net_client_request2 (NET_SERVER_QPROC_GET_NEXT_VALUE,
-				   request, request_size,
-				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				   NULL, 0, &area, &val_size);
-  free_and_init (request);
-  if (!req_error)
-    {
-      reply = or_unpack_int (reply, &val_size);
-      (void) or_unpack_int (reply, &req_error);
-    }
-
-  if (req_error == NO_ERROR)
-    {
-      (void) or_unpack_value (area, value);
-      rc = NO_ERROR;
+      req_error = net_client_request2 (NET_SERVER_QPROC_GET_NEXT_VALUE,
+				       request, request_size,
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				       NULL, 0, &area, &area_size);
+      if (!req_error && area != NULL)
+	{
+	  ptr = or_unpack_int (reply, &area_size);
+	  ptr = or_unpack_int (ptr, &error);
+	  (void) or_unpack_value (area, value);
+	  free_and_init (area);
+	}
+      free_and_init (request);
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, req_error, 0);
-      rc = ER_FAILED;
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      sizeof (request_size));
     }
 
-  if (area != NULL)
-    {
-      free_and_init (area);
-    }
-
-  return rc;
+  return error;
 #else /* CS_MODE */
-  int req_error;
+  int error;
 
   ENTER_SERVER ();
 
-  req_error = xserial_get_next_value (NULL, oid, value);
-  if (req_error != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_errid (), 0);
-    }
+  error = xserial_get_next_value (NULL, value, oid, is_auto_increment);
 
   EXIT_SERVER ();
 
-  return req_error;
+  return error;
 #endif /* !CS_MODE */
 }
 
@@ -6639,67 +7826,6 @@ mnt_server_stop_stats (void)
 }
 
 /*
- * mnt_server_reset_stats -
- *
- * return:
- *
- * NOTE:
- */
-void
-mnt_server_reset_stats (void)
-{
-#if defined(CS_MODE)
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;	/* need dummy reply message */
-  char *reply;
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  req_error = net_client_request (NET_SERVER_MNT_SERVER_RESET_STATS,
-				  NULL, 0, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				  NULL, 0);
-#else /* CS_MODE */
-
-  ENTER_SERVER ();
-
-  xmnt_server_reset_stats (NULL);
-
-  EXIT_SERVER ();
-#endif /* !CS_MODE */
-}
-
-/*
- * mnt_server_reset_global_stats -
- *
- * return:
- *
- * NOTE:
- */
-void
-mnt_server_reset_global_stats (void)
-{
-#if defined(CS_MODE)
-  int req_error;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;	/* need dummy reply message */
-  char *reply;
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  req_error = net_client_request (NET_SERVER_MNT_SERVER_RESET_GLOBAL_STATS,
-				  NULL, 0, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				  NULL, 0);
-#else /* CS_MODE */
-  ENTER_SERVER ();
-
-  xmnt_server_reset_global_stats ();
-
-  EXIT_SERVER ();
-#endif /* !CS_MODE */
-}
-
-/*
  * mnt_server_copy_stats -
  *
  * return:
@@ -6726,6 +7852,10 @@ mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats)
     {
       net_unpack_stats (reply, to_stats);
     }
+  else
+    {
+      mnt_Iscollecting_stats = false;
+    }
 #else /* CS_MODE */
 
   ENTER_SERVER ();
@@ -6746,11 +7876,11 @@ mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats)
  * NOTE:
  */
 void
-mnt_server_copy_global_stats (MNT_SERVER_EXEC_GLOBAL_STATS * to_stats)
+mnt_server_copy_global_stats (MNT_SERVER_EXEC_STATS * to_stats)
 {
 #if defined(CS_MODE)
   int req_error;
-  OR_ALIGNED_BUF (GLOBAL_STAT_SIZE_PACKED) a_reply;
+  OR_ALIGNED_BUF (STAT_SIZE_PACKED) a_reply;
   char *reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -6761,7 +7891,11 @@ mnt_server_copy_global_stats (MNT_SERVER_EXEC_GLOBAL_STATS * to_stats)
 				  NULL, 0, NULL, 0);
   if (!req_error)
     {
-      net_unpack_global_stats (reply, to_stats);
+      net_unpack_stats (reply, to_stats);
+    }
+  else
+    {
+      mnt_Iscollecting_stats = false;
     }
 #else /* CS_MODE */
 
@@ -6809,13 +7943,13 @@ catalog_is_acceptable_new_representation (OID * class_id, HFID * hfid,
 
   if (req_error)
     {
-      status = (int) ER_FAILED;
+      status = ER_FAILED;
     }
   else
     {
       ptr = or_unpack_int (reply, &status);
       ptr = or_unpack_int (ptr, &accept);
-      *can_accept = (int) accept;
+      *can_accept = accept;
     }
 
   return status;
@@ -6853,7 +7987,7 @@ thread_kill_tran_index (int kill_tran_index, char *kill_user,
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
-  int request_size;
+  int request_size, strlen1, strlen2;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply, *ptr;
@@ -6861,15 +7995,16 @@ thread_kill_tran_index (int kill_tran_index, char *kill_user,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = OR_INT_SIZE + OR_INT_SIZE + length_const_string (kill_user)
-    + length_const_string (kill_host);
+  request_size = OR_INT_SIZE + OR_INT_SIZE
+    + length_const_string (kill_user, &strlen1)
+    + length_const_string (kill_host, &strlen2);
 
   request = (char *) malloc (request_size);
   if (request)
     {
       ptr = or_pack_int (request, kill_tran_index);
-      ptr = pack_const_string (ptr, kill_user);
-      ptr = pack_const_string (ptr, kill_host);
+      ptr = pack_const_string_with_length (ptr, kill_user, strlen1);
+      ptr = pack_const_string_with_length (ptr, kill_host, strlen2);
       ptr = or_pack_int (ptr, kill_pid);
 
       req_error = net_client_request (NET_SERVER_CSS_KILL_TRANSACTION,
@@ -6883,6 +8018,11 @@ thread_kill_tran_index (int kill_tran_index, char *kill_user,
 	}
 
       free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
     }
 
   return success;
@@ -7030,7 +8170,11 @@ logtb_get_trans_info (void)
   i = sizeof (TRANS_INFO) + ((num_trans - 1) * sizeof (ONE_TRAN_INFO));
   info = (TRANS_INFO *) malloc (i);
   if (info == NULL)
-    goto error;
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (i));
+      goto error;
+    }
 
   info->num_trans = num_trans;
   for (i = 0; i < num_trans; i++)
@@ -7115,7 +8259,7 @@ heap_get_class_num_objects_pages (HFID * hfid, int approximation,
 				  int *nobjs, int *npages)
 {
 #if defined(CS_MODE)
-  int req_error, status, num_objs, num_pages;
+  int req_error, status = ER_FAILED, num_objs, num_pages;
   OR_ALIGNED_BUF (OR_HFID_SIZE + OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
@@ -7132,12 +8276,7 @@ heap_get_class_num_objects_pages (HFID * hfid, int approximation,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
 				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				  NULL, 0, NULL, 0);
-
-  if (req_error)
-    {
-      status = ER_FAILED;
-    }
-  else
+  if (!req_error)
     {
       ptr = or_unpack_int (reply, &status);
       ptr = or_unpack_int (ptr, &num_objs);
@@ -7175,7 +8314,7 @@ int
 btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
 {
 #if defined(CS_MODE)
-  int req_error, status;
+  int req_error, status = ER_FAILED;
   OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
@@ -7193,12 +8332,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
 				  reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply),
 				  NULL, 0, NULL, 0);
-
-  if (req_error)
-    {
-      status = ER_FAILED;
-    }
-  else
+  if (!req_error)
     {
       ptr = or_unpack_int (reply, &status);
       ptr = or_unpack_int (ptr, &stat_info->leafs);
@@ -7208,7 +8342,6 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
     }
 
   return status;
-
 #else /* CS_MODE */
   int success = ER_FAILED;
 
@@ -7235,8 +8368,8 @@ int
 db_local_transaction_id (DB_VALUE * result_trid)
 {
 #if defined(CS_MODE)
-  int req_error, trid;
-  int success = NO_ERROR;
+  int req_error, trid = 0;
+  int success = ER_FAILED;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply, *ptr;
 
@@ -7251,14 +8384,9 @@ db_local_transaction_id (DB_VALUE * result_trid)
       ptr = or_unpack_int (reply, &success);
       ptr = or_unpack_int (ptr, &trid);
     }
-  else
-    {
-      success = ER_FAILED;
-    }
 
   DB_MAKE_INTEGER (result_trid, trid);
   return success;
-
 #else /* CS_MODE */
   int success;
 
@@ -7285,7 +8413,7 @@ int
 qp_get_server_info (SERVER_INFO * server_info)
 {
 #if defined(CS_MODE)
-  int req_error, status;
+  int req_error, status = ER_FAILED;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
@@ -7303,11 +8431,7 @@ qp_get_server_info (SERVER_INFO * server_info)
 				   reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				   NULL, 0, &area, &val_size);
 
-  if (req_error)
-    {
-      status = ER_FAILED;
-    }
-  else
+  if (!req_error && area != NULL)
     {
       ptr = or_unpack_int (reply, &val_size);
       ptr = or_unpack_int (ptr, &status);
@@ -7322,13 +8446,10 @@ qp_get_server_info (SERVER_INFO * server_info)
 		}
 	    }
 	}
+      free_and_init (area);
     }
 
-  if (area != NULL)
-    free_and_init (area);
-
   return status;
-
 #else /* CS_MODE */
   int success = NO_ERROR;
   int i;
@@ -7370,19 +8491,17 @@ sysprm_change_server_parameters (const char *data)
 {
 #if defined(CS_MODE)
   int rc = PRM_ERR_COMM_ERR;
-  int request_size;
-  int req_error;
-  char *request;
+  int request_size, strlen, req_error;
+  char *request, *reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (data);
+  request_size = length_const_string (data, &strlen);
   request = (char *) malloc (request_size);
   if (request)
     {
-      pack_const_string (request, data);
+      pack_const_string_with_length (request, data, strlen);
       req_error = net_client_request (NET_SERVER_PRM_SET_PARAMETERS,
 				      request, request_size,
 				      reply, OR_ALIGNED_BUF_SIZE (a_reply),
@@ -7495,7 +8614,7 @@ int
 heap_has_instance (HFID * hfid, OID * class_oid)
 {
 #if defined(CS_MODE)
-  int req_error, status;
+  int req_error, status = ER_FAILED;
   OR_ALIGNED_BUF (OR_HFID_SIZE + OR_OID_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -7512,12 +8631,7 @@ heap_has_instance (HFID * hfid, OID * class_oid)
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
 				  reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				  NULL, 0, NULL, 0);
-
-  if (req_error)
-    {
-      status = ER_FAILED;
-    }
-  else
+  if (!req_error)
     {
       ptr = or_unpack_int (reply, &status);
     }
@@ -7525,9 +8639,11 @@ heap_has_instance (HFID * hfid, OID * class_oid)
   return status;
 #else /* CS_MODE */
   int r = ER_FAILED;
+
   ENTER_SERVER ();
   r = xheap_has_instance (NULL, hfid, class_oid);
   EXIT_SERVER ();
+
   return r;
 #endif /* !CS_MODE */
 }
@@ -7588,7 +8704,7 @@ repl_log_get_append_lsa (LOG_LSA * lsa)
   int req_error, success = ER_FAILED;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_LOG_LSA_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -7607,6 +8723,7 @@ repl_log_get_append_lsa (LOG_LSA * lsa)
 #else /* CS_MODE */
   LOG_LSA *tmp_lsa = NULL;
   int r = ER_FAILED;
+
   ENTER_SERVER ();
   tmp_lsa = xrepl_log_get_append_lsa ();
   if (lsa && tmp_lsa)
@@ -7619,6 +8736,7 @@ repl_log_get_append_lsa (LOG_LSA * lsa)
       r = ER_FAILED;
     }
   EXIT_SERVER ();
+
   return r;
 #endif /* !CS_MODE */
 }
@@ -7637,7 +8755,7 @@ repl_set_info (REPL_INFO * repl_info)
 {
 #if defined(CS_MODE)
   int req_error, success = ER_FAILED;
-  int request_size = 0;
+  int request_size = 0, strlen1, strlen2;
   char *request = NULL, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
@@ -7649,38 +8767,34 @@ repl_set_info (REPL_INFO * repl_info)
     {
     case REPL_INFO_TYPE_SCHEMA:
       repl_schema = (REPL_INFO_SCHEMA *) repl_info->info;
-      request_size = OR_INT_SIZE;	/* REPL_INFO.REPL_INFO_TYPE */
-      request_size += OR_INT_SIZE;	/* REPL_INFO_SCHEMA.statement_type */
-      request_size += length_const_string (repl_schema->name);
-      request_size += length_const_string (repl_schema->ddl);
-      request = (char *) malloc (request_size);
-      if (request == NULL)
-	{
-	  return success;
-	}
+      request_size = OR_INT_SIZE	/* REPL_INFO.REPL_INFO_TYPE */
+	+ OR_INT_SIZE		/* REPL_INFO_SCHEMA.statement_type */
+	+ length_const_string (repl_schema->name, &strlen1)
+	+ length_const_string (repl_schema->ddl, &strlen2);
 
-      ptr = request;
-      ptr = or_pack_int (ptr, REPL_INFO_TYPE_SCHEMA);
-      ptr = or_pack_int (ptr, repl_schema->statement_type);
-      ptr = pack_const_string (ptr, repl_schema->name);
-      ptr = pack_const_string (ptr, repl_schema->ddl);
+      request = (char *) malloc (request_size);
+      if (request)
+	{
+	  ptr = or_pack_int (request, REPL_INFO_TYPE_SCHEMA);
+	  ptr = or_pack_int (ptr, repl_schema->statement_type);
+	  ptr =
+	    pack_const_string_with_length (ptr, repl_schema->name, strlen1);
+	  ptr =
+	    pack_const_string_with_length (ptr, repl_schema->ddl, strlen2);
+	  req_error =
+	    net_client_request (NET_SERVER_REPL_INFO, request, request_size,
+				reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				NULL, 0);
+	  if (!req_error)
+	    {
+	      or_unpack_int (reply, &success);
+	    }
+	  free_and_init (request);
+	}
       break;
 
     default:
-      return success;
-    }
-
-  if (request)
-    {
-      req_error = net_client_request (NET_SERVER_REPL_INFO,
-				      request, request_size, reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply),
-				      NULL, 0, NULL, 0);
-      free_and_init (request);
-      if (!req_error)
-	{
-	  or_unpack_int (reply, &success);
-	}
+      break;
     }
 
   return success;
@@ -7722,7 +8836,7 @@ locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
-  int i;
+  int i, strlen;
 
   error = NO_ERROR;
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -7730,39 +8844,43 @@ locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
   domain_size = or_packed_domain_size (key_type, 0);
   request_size = OR_OID_SIZE + OR_HFID_SIZE + domain_size + OR_INT_SIZE
     + (n_attrs * OR_INT_SIZE) + OR_OID_SIZE
-    + OR_BTID_ALIGNED_SIZE + OR_INT_SIZE + or_packed_string_length (fk_name);
+    + OR_BTID_ALIGNED_SIZE + OR_INT_SIZE
+    + or_packed_string_length (fk_name, &strlen);
 
   request = (char *) malloc (request_size);
-  if (request == NULL)
+  if (request)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      ptr = or_pack_oid (request, cls_oid);
+      ptr = or_pack_hfid (ptr, hfid);
+      ptr = or_pack_domain (ptr, key_type, 0, 0);
+      ptr = or_pack_int (ptr, n_attrs);
+      for (i = 0; i < n_attrs; i++)
+	{
+	  ptr = or_pack_int (ptr, attr_ids[i]);
+	}
+      ptr = or_pack_oid (ptr, pk_cls_oid);
+      ptr = or_pack_btid (ptr, pk_btid);
+      ptr = or_pack_int (ptr, cache_attr_id);
+      ptr = or_pack_string_with_length (ptr, fk_name, strlen);
+
+      req_error = net_client_request (NET_SERVER_LC_BUILD_FK_OBJECT_CACHE,
+				      request, request_size, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				      NULL, 0);
+      if (!req_error)
+	{
+	  ptr = or_unpack_int (reply, &error);
+	}
+
+      free_and_init (request);
+    }
+  else
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      sizeof (request_size));
     }
 
-  ptr = or_pack_oid (request, cls_oid);
-  ptr = or_pack_hfid (ptr, hfid);
-  ptr = or_pack_domain (ptr, key_type, 0, 0);
-  ptr = or_pack_int (ptr, n_attrs);
-
-  for (i = 0; i < n_attrs; i++)
-    {
-      ptr = or_pack_int (ptr, attr_ids[i]);
-    }
-
-  ptr = or_pack_oid (ptr, pk_cls_oid);
-  ptr = or_pack_btid (ptr, pk_btid);
-  ptr = or_pack_int (ptr, cache_attr_id);
-  ptr = or_pack_string (ptr, fk_name);
-
-  req_error = net_client_request (NET_SERVER_LC_BUILD_FK_OBJECT_CACHE,
-				  request, request_size, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				  NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &error);
-    }
-
-  free_and_init (request);
   return error;
 #else /* CS_MODE */
   int error = NO_ERROR;
@@ -7772,10 +8890,6 @@ locator_build_fk_obj_cache (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
   error = xlocator_build_fk_object_cache (NULL, cls_oid, hfid, key_type,
 					  n_attrs, attr_ids, pk_cls_oid,
 					  pk_btid, cache_attr_id, fk_name);
-  if (error == ER_FAILED)
-    {
-      error = er_errid ();
-    }
 
   EXIT_SERVER ();
   return error;
@@ -7795,13 +8909,13 @@ int
 logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 {
 #if defined(CS_MODE)
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_request;
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE * 2) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *request, *reply;
   char *replydata1, *replydata2;
   int replydata_size1, replydata_size2;
   char *ptr;
-  PAGEID first_pageid_torecv;
+  LOG_PAGEID first_pageid_torecv;
   LOGWR_MODE mode, save_mode;
   int req_error, error = NO_ERROR;
 
@@ -7832,18 +8946,29 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 	     sync'ed with the server. So, it requests the last page again
 	     to get the missing log records. */
 	  if (logwr_Gl.hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
-	    first_pageid_torecv = logwr_Gl.last_recv_pageid;
+	    {
+	      first_pageid_torecv = logwr_Gl.last_recv_pageid;
+	    }
 	  else
-	    first_pageid_torecv = logwr_Gl.last_recv_pageid + 1;
+	    {
+	      first_pageid_torecv = logwr_Gl.last_recv_pageid + 1;
+	    }
 	}
-      mode = LOGWR_MODE_ASYNC;
+      /* In case of archiving, not replication delay */
+      if (first_pageid_torecv == logwr_Gl.ori_nxarv_pageid)
+	{
+	  mode = logwr_Gl.mode;
+	}
+      else
+	{
+	  mode = LOGWR_MODE_ASYNC;
+	}
     }
 
-  er_log_debug (ARG_FILE_LINE, "logwr_get_log_pages, fpageid(%d), mode(%s)",
+  er_log_debug (ARG_FILE_LINE, "logwr_get_log_pages, fpageid(%lld), mode(%s)",
 		first_pageid_torecv,
-		mode == LOGWR_MODE_SYNC ? "sync" : (mode ==
-						    LOGWR_MODE_ASYNC ? "async"
-						    : "semisync"));
+		mode == LOGWR_MODE_SYNC ? "sync" :
+		(mode == LOGWR_MODE_ASYNC ? "async" : "semisync"));
 
   save_mode = logwr_Gl.mode;
   logwr_Gl.mode = mode;
@@ -7851,7 +8976,7 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_pack_int (request, first_pageid_torecv);
+  ptr = or_pack_int64 (request, first_pageid_torecv);
   ptr = or_pack_int (ptr, mode);
   ptr = or_pack_int (ptr, ctx_ptr->last_error);
 
@@ -7930,12 +9055,12 @@ histo_print (FILE * stream)
 }
 
 void
-histo_print_global_stats (FILE * stream)
+histo_print_global_stats (FILE * stream, bool cumulative, const char *substr)
 {
 #if defined (CS_MODE)
-  net_histo_print_global_stats (stream);
+  net_histo_print_global_stats (stream, cumulative, substr);
 #else /* CS_MODE */
-  mnt_print_global_stats (stream);
+  mnt_print_global_stats (stream, cumulative, substr);
 #endif /* !CS_MODE */
 }
 
@@ -7949,21 +9074,11 @@ histo_clear (void)
 #endif /* !CS_MODE */
 }
 
-void
-histo_clear_global_stats (void)
-{
-#if defined (CS_MODE)
-  net_histo_clear_global_stats ();
-#else /* CS_MODE */
-  mnt_reset_global_stats ();
-#endif /* !CS_MODE */
-}
-
 /*
  * boot_compact_classes () - compact specified classes
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
- *	    
+ *
  *   class_oids(in): the class oids list to process
  *   n_classes(in): the length of class_oids
  *   space_to_process(in): the maximum space to process
@@ -7976,9 +9091,9 @@ histo_clear_global_stats (void)
  *   failed_objects(in,out): count failed objects for each class
  *   modified_objects(in,out): count modified objects for each class
  *   big_objects(in,out): count big objects for each class
- *   initial_last_repr_id(in,out): the list of last class representation 
+ *   initial_last_repr_id(in,out): the list of last class representation
  *
- * Note: 
+ * Note:
  */
 int
 boot_compact_classes (OID ** class_oids, int num_classes,
@@ -8009,6 +9124,8 @@ boot_compact_classes (OID ** class_oids, int num_classes,
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -8107,10 +9224,10 @@ boot_compact_classes (OID ** class_oids, int num_classes,
  * boot_heap_compact () - compact heap file of gived class
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
- *	    
+ *
  *   class_oid(in): the class oid of heap to compact
  *
- * Note: 
+ * Note:
  */
 int
 boot_heap_compact (OID * class_oid)
@@ -8209,5 +9326,407 @@ compact_db_stop (void)
   return success;
 #else /* CS_MODE */
   return ER_FAILED;
+#endif /* !CS_MODE */
+}
+
+/*
+ * es_posix_create_file () - create an external file in a posix storage
+ *
+ * return :error code
+ *
+ */
+int
+es_posix_create_file (char *new_path)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, path_size;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply, *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error = net_client_request2_no_malloc (NET_SERVER_ES_CREATE_FILE,
+					     NULL, 0,
+					     reply,
+					     OR_ALIGNED_BUF_SIZE (a_reply),
+					     NULL, 0, new_path, &path_size);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &path_size);
+      ptr = or_unpack_int (ptr, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  return ER_FAILED;
+#endif /* !CS_MODE */
+}
+
+/*
+ * es_posix_write_file () - write data in an esternal file
+ *
+ * return :error code
+ * path(in):
+ * buf(in):
+ * count(in):
+ * offset(in):
+ */
+ssize_t
+es_posix_write_file (const char *path, const void *buf, size_t count,
+		     off_t offset)
+{
+#if defined(CS_MODE)
+  INT64 ret = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, request_size, strlen;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = DB_ALIGN (length_const_string (path, &strlen), MAX_ALIGNMENT)
+    + OR_INT64_SIZE + OR_INT64_SIZE;
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      ptr = pack_const_string_with_length (request, path, strlen);
+      ptr = or_pack_int64 (ptr, (INT64) offset);
+      ptr = or_pack_int64 (ptr, (INT64) count);
+
+      req_error = net_client_request (NET_SERVER_ES_WRITE_FILE,
+				      request, request_size,
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				      (char *) buf, (int) count, NULL, 0);
+      if (!req_error)
+	{
+	  ptr = or_unpack_int64 (reply, &ret);
+	}
+      free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  return ret;
+#else /* CS_MODE */
+  return ER_FAILED;
+#endif /* !CS_MODE */
+}
+
+/*
+ * es_posix_read_file () - read data from an esternal file
+ *
+ * return :error code
+ * path(in):
+ * buf(out):
+ * count(in):
+ * offset(in):
+ */
+ssize_t
+es_posix_read_file (const char *path, void *buf, size_t count, off_t offset)
+{
+#if defined(CS_MODE)
+  INT64 ret = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, request_size, strlen;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_reply;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = DB_ALIGN (length_const_string (path, &strlen), MAX_ALIGNMENT)
+    + OR_INT64_SIZE + OR_INT64_SIZE;
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      ptr = pack_const_string_with_length (request, path, strlen);
+      ptr = or_pack_int64 (ptr, (INT64) offset);
+      ptr = or_pack_int64 (ptr, (INT64) count);
+
+      req_error = net_client_request (NET_SERVER_ES_READ_FILE,
+				      request, request_size,
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				      NULL, 0, (char *) buf, count);
+      if (!req_error)
+	{
+	  ptr = or_unpack_int64 (reply, &ret);
+	}
+
+      free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  return ret;
+#else /* CS_MODE */
+  return ER_FAILED;
+#endif
+}
+
+/*
+ * es_posix_delete_file () - delete an external file
+ *
+ * return :error code
+ * path(in):
+ */
+int
+es_posix_delete_file (const char *path)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, request_size, strlen;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (path, &strlen);
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      ptr = pack_const_string_with_length (request, path, strlen);
+
+      req_error = net_client_request (NET_SERVER_ES_DELETE_FILE,
+				      request, request_size,
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				      NULL, 0, NULL, 0);
+      if (!req_error)
+	{
+	  ptr = or_unpack_int (reply, &error);
+	}
+
+      free_and_init (request);
+    }
+  else
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      sizeof (request_size));
+    }
+
+  return error;
+#else /* CS_MODE */
+  return ER_FAILED;
+#endif
+}
+
+/*
+ * es_posix_copy_file () - copy an external file
+ *
+ * return :error code
+ * src_path(in):
+ * metaname(in):
+ * new_path(out):
+ */
+int
+es_posix_copy_file (const char *src_path, const char *metaname,
+		    char *new_path)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, request_size, path_size, srclen, metalen;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (src_path, &srclen) +
+    length_const_string (metaname, &metalen);
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      ptr = pack_const_string_with_length (request, src_path, srclen);
+      ptr = pack_const_string_with_length (ptr, metaname, metalen);
+
+      req_error =
+	net_client_request2_no_malloc (NET_SERVER_ES_COPY_FILE,
+				       request, request_size,
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				       NULL, 0, new_path, &path_size);
+      if (!req_error)
+	{
+	  ptr = or_unpack_int (reply, &path_size);
+	  ptr = or_unpack_int (ptr, &error);
+	}
+
+      free_and_init (request);
+    }
+  else
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      sizeof (request_size));
+    }
+
+  return error;
+#else /* CS_MODE */
+  return ER_FAILED;
+#endif
+}
+
+/*
+ * es_posix_rename_file () - rename an external file
+ *
+ * return :error code
+ * src_path(in):
+ * metaname(in):
+ * new_path(out):
+ */
+int
+es_posix_rename_file (const char *src_path, const char *metaname,
+		      char *new_path)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, request_size, path_size, srclen, metalen;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (src_path, &srclen) +
+    length_const_string (metaname, &metalen);
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      ptr = pack_const_string_with_length (request, src_path, srclen);
+      ptr = pack_const_string_with_length (ptr, metaname, metalen);
+
+      req_error =
+	net_client_request2_no_malloc (NET_SERVER_ES_RENAME_FILE,
+				       request, request_size,
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				       NULL, 0, new_path, &path_size);
+      if (!req_error)
+	{
+	  ptr = or_unpack_int (reply, &path_size);
+	  ptr = or_unpack_int (ptr, &error);
+	}
+
+      free_and_init (request);
+    }
+  else
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      sizeof (request_size));
+    }
+
+  return error;
+#else /* CS_MODE */
+  return ER_FAILED;
+#endif
+}
+
+
+/*
+ * es_posix_get_file_size () - get the size of an esternal file
+ *
+ * return : file size or -1 on error
+ * path(in):
+ */
+off_t
+es_posix_get_file_size (const char *path)
+{
+#if defined(CS_MODE)
+  INT64 tmp_int64;
+  off_t file_size = -1;
+  int req_error, request_size, strlen;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (path, &strlen);
+  request = (char *) malloc (request_size);
+  if (request)
+    {
+      ptr = pack_const_string_with_length (request, path, strlen);
+
+      req_error = net_client_request (NET_SERVER_ES_DELETE_FILE,
+				      request, request_size,
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				      NULL, 0, NULL, 0);
+      if (!req_error)
+	{
+	  ptr = or_unpack_int64 (reply, &tmp_int64);
+	  file_size = (off_t) tmp_int64;
+	}
+
+      free_and_init (request);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (request_size));
+    }
+
+  return file_size;
+#else /* CS_MODE */
+  return -1;
+#endif
+}
+
+/*
+ * locator_upgrade_instances_domain () - performs an upgrade of domain for
+ *					 instances of a class
+ * return : NO_ERROR if all OK, error status otherwise
+ * class_oid(in) : class whose instances must be upgraded
+ * attribute_id(in) : id attribute which must be upgraded
+ *
+ * Note: Used on ALTER CHANGE (with type change syntax) context
+ */
+int
+locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED, req_error;
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE) a_request;
+  char *request, *reply, *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (class_oid == NULL || OID_ISNULL (class_oid) || attribute_id < 0)
+    {
+      return ER_QPROC_INVALID_PARAMETER;
+    }
+
+  ptr = request;
+  ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_int (ptr, attribute_id);
+
+  req_error = net_client_request (NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN,
+				  request, OR_ALIGNED_BUF_SIZE (a_request),
+				  reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+				  0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &success);
+    }
+
+  return success;
+#else /* CS_MODE */
+  int error = NO_ERROR;
+
+  ENTER_SERVER ();
+
+  error = xlocator_upgrade_instances_domain (NULL, class_oid, attribute_id);
+
+  EXIT_SERVER ();
+  return error;
 #endif /* !CS_MODE */
 }

@@ -35,6 +35,10 @@ extern int do_update_auto_increment_serial_on_rename (MOP serial_obj,
 						      const char *att_name);
 extern int do_reset_auto_increment_serial (MOP serial_obj);
 
+extern int do_change_auto_increment_serial (PARSER_CONTEXT * const parser,
+					    MOP serial_obj,
+					    PT_NODE * new_cur_val);
+
 
 extern MOP do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
 				 DB_OBJECT * serial_class_mop,
@@ -175,5 +179,13 @@ extern int do_check_internal_statements (PARSER_CONTEXT * parser,
 					 PT_DO_FUNC do_func);
 extern int do_truncate (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_set_session_variables (PARSER_CONTEXT * parser,
+				     PT_NODE * statement);
+extern int do_drop_session_variables (PARSER_CONTEXT * parser,
+				      PT_NODE * statement);
 
+extern int do_prepare_session_statement (PARSER_CONTEXT * parser,
+					 PT_NODE * statement);
+extern int do_execute_session_statement (PARSER_CONTEXT * parser,
+					 PT_NODE * statement);
 #endif /* _EXECUTE_STATEMENT_H_ */

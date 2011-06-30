@@ -28,18 +28,14 @@
  *
  */
 
-package @CUBRID_DRIVER@;
+package cubrid.jdbc.driver;
 
-import @CUBRID_DRIVER@.*;
-import @CUBRID_JCI@.*;
-import java.util.*;
-import javax.naming.*;
-import javax.naming.spi.*;
-import javax.sql.*;
+import java.util.Hashtable;
 
-import @CUBRID_DRIVER@.CUBRIDConnectionPoolDataSource;
-import @CUBRID_DRIVER@.CUBRIDDataSource;
-import @CUBRID_DRIVER@.CUBRIDXADataSource;
+import javax.naming.Context;
+import javax.naming.Name;
+import javax.naming.Reference;
+import javax.naming.spi.ObjectFactory;
 
 /**
  * Title: CUBRID JDBC Driver Description:
@@ -47,31 +43,28 @@ import @CUBRID_DRIVER@.CUBRIDXADataSource;
  * @version 3.0
  */
 
-public class CUBRIDDataSourceObjectFactory implements ObjectFactory
-{
-  public Object getObjectInstance(Object refObj, Name name, Context nameCtx,
-      Hashtable env) throws Exception
-  {
-    Reference ref = (Reference) refObj;
+public class CUBRIDDataSourceObjectFactory implements ObjectFactory {
+	public Object getObjectInstance(Object refObj, Name name, Context nameCtx,
+			Hashtable env) throws Exception {
+		Reference ref = (Reference) refObj;
 
-    if (ref.getClassName().equals("@CUBRID_DRIVER@.CUBRIDDataSource")
-        || ref.getClassName().equals("@CUBRID_DRIVER@.CUBRIDDataSource"))
-    {
-      return (new CUBRIDDataSource(ref));
-    }
-    if (ref.getClassName().equals(
-        "@CUBRID_DRIVER@.CUBRIDConnectionPoolDataSource")
-        || ref.getClassName().equals(
-            "@CUBRID_DRIVER@.CUBRIDConnectionPoolDataSource"))
-    {
-      return (new CUBRIDConnectionPoolDataSource(ref));
-    }
-    if (ref.getClassName().equals("@CUBRID_DRIVER@.CUBRIDXADataSource")
-        || ref.getClassName().equals("@CUBRID_DRIVER@.CUBRIDXADataSource"))
-    {
-      return (new CUBRIDXADataSource(ref));
-    }
-    return null;
-  }
+		if (ref.getClassName().equals("cubrid.jdbc.driver.CUBRIDDataSource")
+				|| ref.getClassName().equals(
+						"cubrid.jdbc.driver.CUBRIDDataSource")) {
+			return (new CUBRIDDataSource(ref));
+		}
+		if (ref.getClassName().equals(
+				"cubrid.jdbc.driver.CUBRIDConnectionPoolDataSource")
+				|| ref.getClassName().equals(
+						"cubrid.jdbc.driver.CUBRIDConnectionPoolDataSource")) {
+			return (new CUBRIDConnectionPoolDataSource(ref));
+		}
+		if (ref.getClassName().equals("cubrid.jdbc.driver.CUBRIDXADataSource")
+				|| ref.getClassName().equals(
+						"cubrid.jdbc.driver.CUBRIDXADataSource")) {
+			return (new CUBRIDXADataSource(ref));
+		}
+		return null;
+	}
 
 }

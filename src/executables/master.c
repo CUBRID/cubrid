@@ -104,16 +104,16 @@ static bool css_send_new_request_to_server (SOCKET server_fd,
 static void css_send_to_existing_server (CSS_CONN_ENTRY * conn,
 					 unsigned short rid);
 static void css_process_new_connection (SOCKET fd);
-static void css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p,
+static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p,
+				    fd_set * fd_var);
+static int css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p,
 				     fd_set * fd_var);
-static void css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p,
-				      fd_set * fd_var);
-static void css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p,
-					  fd_set * fd_var);
+static int css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p,
+					 fd_set * fd_var);
 
-static void css_enroll_master_read_sockets (fd_set * fd_var);
-static void css_enroll_master_write_sockets (fd_set * fd_var);
-static void css_enroll_master_exception_sockets (fd_set * fd_var);
+static int css_enroll_master_read_sockets (fd_set * fd_var);
+static int css_enroll_master_write_sockets (fd_set * fd_var);
+static int css_enroll_master_exception_sockets (fd_set * fd_var);
 static void css_select_error (SOCKET_QUEUE_ENTRY ** anchor_p);
 static void css_master_select_error (void);
 static void css_check_master_socket_input (int *count, fd_set * fd_var);
@@ -156,7 +156,7 @@ SOCKET css_Master_socket_fd[2] = { INVALID_SOCKET, INVALID_SOCKET };
 /* This is the queue anchor of sockets used by the Master server. */
 SOCKET_QUEUE_ENTRY *css_Master_socket_anchor = NULL;
 #if !defined(WINDOWS)
-MUTEX_T css_Master_socket_anchor_lock;
+pthread_mutex_t css_Master_socket_anchor_lock;
 #endif
 
 /*
@@ -211,7 +211,7 @@ css_master_timeout (void)
    * processes, at least initially.  There don't appear to be any
    * similarly named "wait" functions in the MSVC runtime library.
    */
-  MUTEX_LOCK (rv, css_Master_socket_anchor_lock);
+  rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
       if (kill (temp->pid, 0) && errno == ESRCH)
@@ -236,7 +236,7 @@ css_master_timeout (void)
 	  break;
 	}
     }
-  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 #endif
   return (1);
 }
@@ -295,7 +295,7 @@ css_master_init (int cport, SOCKET * clientfd)
 #endif /* ! WINDOWS */
 
 #if !defined(WINDOWS)
-  MUTEX_INIT (css_Master_socket_anchor_lock);
+  pthread_mutex_init (&css_Master_socket_anchor_lock, NULL);
 #endif
 
   return (css_tcp_master_open (cport, clientfd));
@@ -825,10 +825,11 @@ css_process_new_connection (SOCKET fd)
  *   anchor_p(in)
  *   fd_var(out)
  */
-static void
+static int
 css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 {
   SOCKET_QUEUE_ENTRY *temp;
+  int max_fd = 0;
 
   FD_ZERO (fd_var);
   for (temp = anchor_p; temp; temp = temp->next)
@@ -836,8 +837,14 @@ css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
       if (!IS_INVALID_SOCKET (temp->fd) && temp->fd_type != WRITE_ONLY)
 	{
 	  FD_SET (temp->fd, fd_var);
+	  if (temp->fd > max_fd)
+	    {
+	      max_fd = temp->fd;
+	    }
 	}
     }
+
+  return max_fd;
 }
 
 /*
@@ -846,10 +853,10 @@ css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
  *
  *   fd_var(out)
  */
-static void
+static int
 css_enroll_master_read_sockets (fd_set * fd_var)
 {
-  css_enroll_read_sockets (css_Master_socket_anchor, fd_var);
+  return css_enroll_read_sockets (css_Master_socket_anchor, fd_var);
 }
 
 /*
@@ -860,10 +867,11 @@ css_enroll_master_read_sockets (fd_set * fd_var)
  *   anchor_p(in)
  *   fd_var(out)
  */
-static void
+static int
 css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 {
   FD_ZERO (fd_var);
+  return 0;
 }
 
 /*
@@ -872,24 +880,25 @@ css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
  *   return: none
  *   fd_var(out)
  */
-static void
+static int
 css_enroll_master_write_sockets (fd_set * fd_var)
 {
-  css_enroll_write_sockets (css_Master_socket_anchor, fd_var);
+  return css_enroll_write_sockets (css_Master_socket_anchor, fd_var);
 }
 
 /*
  * css_enroll_exception_sockets() - Sets the fd positions in fd_set
  *            for the input fds we are interested in detecting error conditions
- *   return: none
+ *   return: last fd
  *
  *   anchor_p(int)
  *   fd_var(out)
  */
-static void
+static int
 css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 {
   SOCKET_QUEUE_ENTRY *temp;
+  int max_fd = 0;
 
   FD_ZERO (fd_var);
   for (temp = anchor_p; temp; temp = temp->next)
@@ -897,19 +906,25 @@ css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
       if (!IS_INVALID_SOCKET (temp->fd))
 	{
 	  FD_SET (temp->fd, fd_var);
+	  if (temp->fd > max_fd)
+	    {
+	      max_fd = temp->fd;
+	    }
 	}
     }
+
+  return max_fd;
 }
 
 /*
  * css_enroll_master_exception_sockets()
- *   return: none
+ *   return: last fd
  *   fd_var(out)
  */
-static void
+static int
 css_enroll_master_exception_sockets (fd_set * fd_var)
 {
-  css_enroll_exception_sockets (css_Master_socket_anchor, fd_var);
+  return css_enroll_exception_sockets (css_Master_socket_anchor, fd_var);
 }
 
 /*
@@ -925,7 +940,7 @@ css_master_select_error (void)
   SOCKET_QUEUE_ENTRY *temp;
 
 again:
-  MUTEX_LOCK (rv, css_Master_socket_anchor_lock);
+  rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
       if (!IS_INVALID_SOCKET (temp->fd) && fcntl (temp->fd, F_GETFL, 0) < 0)
@@ -947,11 +962,11 @@ again:
 	      css_remove_entry_by_conn (temp->conn_ptr,
 					&css_Master_socket_anchor);
 	    }
-	  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+	  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 	  goto again;
 	}
     }
-  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 #endif
 }
 
@@ -973,7 +988,7 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
   SOCKET new_fd;
 
 #if !defined(WINDOWS)
-  MUTEX_LOCK (rv, css_Master_socket_anchor_lock);
+  rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
 #endif
   for (temp = css_Master_socket_anchor; *count && temp; temp = next)
     {
@@ -1022,7 +1037,7 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
     }
 
 #if !defined(WINDOWS)
-  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 #endif
 }
 
@@ -1053,7 +1068,7 @@ css_check_master_socket_exception (fd_set * fd_var)
 
 again:
 #if !defined(WINDOWS)
-  MUTEX_LOCK (rv, css_Master_socket_anchor_lock);
+  rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
 #endif
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
@@ -1078,7 +1093,7 @@ again:
 	      temp->fd == css_Master_socket_fd[1])
 	    {
 #if !defined(WINDOWS)
-	      MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+	      pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 #endif
 	      return (0);
 	    }
@@ -1095,14 +1110,14 @@ again:
 					&css_Master_socket_anchor);
 	    }
 #if !defined(WINDOWS)
-	  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+	  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 #endif
 	  goto again;
 	}
     }
 
 #if !defined(WINDOWS)
-  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 #endif
   return (1);
 }
@@ -1121,12 +1136,18 @@ css_master_loop (void)
   run_code = 1;
   while (run_code)
     {
-      css_enroll_master_read_sockets (&read_fd);
-      css_enroll_master_write_sockets (&write_fd);
-      css_enroll_master_exception_sockets (&exception_fd);
+      int max_fd, max_fd1, max_fd2, max_fd3;
+
+      max_fd1 = css_enroll_master_read_sockets (&read_fd);
+      max_fd2 = css_enroll_master_write_sockets (&write_fd);
+      max_fd3 = css_enroll_master_exception_sockets (&exception_fd);
+
+      max_fd = MAX (MAX (max_fd1, max_fd2), max_fd3);
+
       timeout.tv_sec = css_Master_timeout_value_in_seconds;
       timeout.tv_usec = css_Master_timeout_value_in_microseconds;
-      rc = select (FD_SETSIZE, &read_fd, &write_fd, &exception_fd, &timeout);
+
+      rc = select (max_fd + 1, &read_fd, &write_fd, &exception_fd, &timeout);
       switch (rc)
 	{
 	case 0:

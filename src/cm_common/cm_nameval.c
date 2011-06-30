@@ -42,20 +42,25 @@
 #define REALLOC(PTR, SIZE)  \
     (PTR == NULL) ? malloc(SIZE) : realloc(PTR, SIZE)
 
+
+
+void uRemoveCRLF (char *str);
+static int _nv_make_room (nvplist * ref);
+static nvpair *_nv_search (nvplist * ref, const char *name);
+
 void
 uRemoveCRLF (char *str)
 {
   int i;
   if (str == NULL)
     return;
-  for (i = strlen (str) - 1; (i >= 0) && (str[i] == 10 || str[i] == 13); i--)
+  for (i = (int) strlen (str) - 1; (i >= 0) && (str[i] == 10 || str[i] == 13);
+       i--)
     {
       str[i] = '\0';
     }
 }
 
-static int _nv_make_room (nvplist * ref);
-static nvpair *_nv_search (nvplist * ref, const char *name);
 
 nvplist *
 nv_create (int defsize, const char *lom, const char *lcm, const char *dm,
@@ -111,13 +116,24 @@ nv_lookup (nvplist * ref, int index, char **name, char **value)
   if (ref->nvpairs[index] != NULL)
     {
       if (name != NULL)
-	(*name) = dst_buffer (ref->nvpairs[index]->name);
+	{
+	  (*name) = dst_buffer (ref->nvpairs[index]->name);
+	}
       if (value != NULL)
-	(*value) = dst_buffer (ref->nvpairs[index]->value);
+	{
+	  (*value) = dst_buffer (ref->nvpairs[index]->value);
+	}
     }
   else
     {
-      (*name) = (*value) = NULL;
+      if (name != NULL)
+	{
+	  (*name) = NULL;
+	}
+      if (value != NULL)
+	{
+	  (*value) = NULL;
+	}
       return -1;
     }
   return 1;
@@ -148,8 +164,8 @@ nv_add_nvp (nvplist * ref, const char *name, const char *value)
     }
   nv->name = dst_create ();
   nv->value = dst_create ();
-  dst_append (nv->name, name, (name == NULL) ? 0 : strlen (name));
-  dst_append (nv->value, value, (value == NULL) ? 0 : strlen (value));
+  dst_append (nv->name, name, (name == NULL) ? 0 : (int) strlen (name));
+  dst_append (nv->value, value, (value == NULL) ? 0 : (int) strlen (value));
 
   /* if nvplist is full, double the ptr list */
   if (ref->nvplist_size == ref->nvplist_leng)
@@ -245,7 +261,7 @@ nv_update_val (nvplist * ref, const char *name, const char *value)
 
   dst_reset (nvp->value);
   if (value != NULL)
-    dst_append (nvp->value, value, strlen (value));
+    dst_append (nvp->value, value, (int) strlen (value));
   return 1;
 }
 
@@ -485,13 +501,13 @@ nv_init (nvplist * ref, int defsize, const char *lom, const char *lcm,
   ref->endmarker = dst_create ();
 
   if (lom != NULL)
-    dst_append (ref->listopener, lom, strlen (lom));
+    dst_append (ref->listopener, lom, (int) strlen (lom));
   if (lcm != NULL)
-    dst_append (ref->listcloser, lcm, strlen (lcm));
+    dst_append (ref->listcloser, lcm, (int) strlen (lcm));
   if (dm != NULL)
-    dst_append (ref->delimiter, dm, strlen (dm));
+    dst_append (ref->delimiter, dm, (int) strlen (dm));
   if (em != NULL)
-    dst_append (ref->endmarker, em, strlen (em));
+    dst_append (ref->endmarker, em, (int) strlen (em));
 
   return 1;
 }

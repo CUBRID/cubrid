@@ -43,6 +43,7 @@
 #include <sys/param.h>
 #endif
 #include <assert.h>
+#include <ctype.h>
 
 #include "porting.h"
 #include "chartype.h"
@@ -76,13 +77,6 @@
 #include "heartbeat.h"
 
 
-#if defined (WINDOWS)
-#define PATH_SEPARATOR  '\\'
-#else
-#define PATH_SEPARATOR  '/'
-#endif
-#define PATH_CURRENT    '.'
-
 #define ER_LOG_FILE_DIR	"server"
 #if !defined (CS_MODE)
 static const char sysprm_error_log_file[] = "cub_server.err";
@@ -90,6 +84,7 @@ static const char sysprm_error_log_file[] = "cub_server.err";
 static const char sysprm_error_log_file[] = "cub_client.err";
 #endif /* CS_MODE */
 static const char sysprm_conf_file_name[] = "cubrid.conf";
+static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 
 /*
@@ -111,20 +106,25 @@ static const char sysprm_conf_file_name[] = "cubrid.conf";
 #define PRM_BOOLEAN         0x00000020	/* is boolean value */
 #define PRM_KEYWORD         0x00000040	/* is keyword value */
 #define PRM_ERROR_LIST      0x00000080	/* is error list value */
-#define PRM_DEFAULT         0x00000100	/* has system default */
-#define PRM_USER_CHANGE     0x00000200	/* user can change, not implemented */
-#define PRM_ALLOCATED       0x00000400	/* storage has been malloc'd */
-#define PRM_LOWER_LIMIT     0x00000800	/* has lower limit */
-#define PRM_UPPER_LIMIT     0x00001000	/* has upper limit */
-#define PRM_DEFAULT_USED    0x00002000	/* Default value has been used */
-#define PRM_FOR_CLIENT      0x00004000	/* is for client parameter */
-#define PRM_FOR_SERVER      0x00008000	/* is for server parameter */
-#define PRM_HIDDEN          0x00010000	/* is hidden */
-#define PRM_RELOADABLE      0x00020000	/* is reloadable */
-#define PRM_INTEGER_LIST    0x00040000	/* is integer list value */
-#define PRM_COMPOUND        0x00080000	/* sets the value of several others */
-#define PRM_TEST_CHANGE     0x00100000	/* can only be changed in the test mode */
-
+#define PRM_SIZE            0x00000100	/* is size value */
+#define PRM_DEFAULT         0x00000200	/* has system default */
+#define PRM_USER_CHANGE     0x00000400	/* user can change, not implemented */
+#define PRM_ALLOCATED       0x00000800	/* storage has been malloc'd */
+#define PRM_LOWER_LIMIT     0x00001000	/* has lower limit */
+#define PRM_UPPER_LIMIT     0x00002000	/* has upper limit */
+#define PRM_DEFAULT_USED    0x00004000	/* Default value has been used */
+#define PRM_FOR_CLIENT      0x00008000	/* is for client parameter */
+#define PRM_FOR_SERVER      0x00010000	/* is for server parameter */
+#define PRM_HIDDEN          0x00020000	/* is hidden */
+#define PRM_RELOADABLE      0x00040000	/* is reloadable */
+#define PRM_INTEGER_LIST    0x00080000	/* is integer list value */
+#define PRM_COMPOUND        0x00100000	/* sets the value of several others */
+#define PRM_TEST_CHANGE     0x00200000	/* can only be changed in the test mode */
+#define PRM_CLEAR_CACHE	    0x00400000	/* xasl cache should be cleared
+					   when this parameter is changed */
+#define PRM_FOR_HA          0x00800000	/* is for heartbeat */
+#define PRM_DEPRECATED      0x40000000	/* is deprecated */
+#define PRM_OBSOLETED       0x80000000	/* is obsoleted */
 /*
  * Macros to access bit fields
  */
@@ -138,6 +138,7 @@ static const char sysprm_conf_file_name[] = "cubrid.conf";
 #define PRM_IS_KEYWORD(x)         (x & PRM_KEYWORD)
 #define PRM_IS_ERROR_LIST(x)      (x & PRM_ERROR_LIST)
 #define PRM_IS_INTEGER_LIST(x)    (x & PRM_INTEGER_LIST)
+#define PRM_IS_SIZE(x)            (x & PRM_SIZE)
 #define PRM_HAS_DEFAULT(x)        (x & PRM_DEFAULT)
 #define PRM_USER_CAN_CHANGE(x)    (x & PRM_USER_CHANGE)
 #define PRM_IS_ALLOCATED(x)       (x & PRM_ALLOCATED)
@@ -150,6 +151,10 @@ static const char sysprm_conf_file_name[] = "cubrid.conf";
 #define PRM_IS_RELOADABLE(x)      (x & PRM_RELOADABLE)
 #define PRM_IS_COMPOUND(x)        (x & PRM_COMPOUND)
 #define PRM_TEST_CHANGE_ONLY(x)   (x & PRM_TEST_CHANGE)
+#define PRM_SHOULD_CLEAR_CACHE(x) (x & PRM_CLEAR_CACHE)
+#define PRM_IS_FOR_HA(x)          (x & PRM_FOR_HA)
+#define PRM_IS_DEPRECATED(x)      (x & PRM_DEPRECATED)
+#define PRM_IS_OBSOLETED(x)       (x & PRM_OBSOLETED)
 
 /*
  * Macros to manipulate bit fields
@@ -168,6 +173,7 @@ static const char sysprm_conf_file_name[] = "cubrid.conf";
 #define PRM_GET_BOOL(x)     (*((bool *) (x)))
 #define PRM_GET_ERROR_LIST(x)   (*((bool **) (x)))
 #define PRM_GET_INTEGER_LIST(x) (*((int **) (x)))
+#define PRM_GET_SIZE(x)     (*((UINT64 *) (x)))
 
 static bool error_list_intial[1] = { false };
 static int int_list_initial[1] = { 0 };
@@ -195,38 +201,57 @@ static bool prm_er_log_warning_default = false;
 int PRM_ER_EXIT_ASK = ER_EXIT_DEFAULT;
 static int prm_er_exit_ask_default = ER_EXIT_DEFAULT;
 
-int PRM_ER_LOG_SIZE = INT_MIN;
+int PRM_ER_LOG_SIZE = (100000 * 80L);
 static int prm_er_log_size_default = (100000 * 80L);
 static int prm_er_log_size_lower = (100 * 80);
 
 const char *PRM_ER_LOG_FILE = sysprm_error_log_file;
 static const char *prm_er_log_file_default = sysprm_error_log_file;
 
+bool PRM_ACCESS_IP_CONTROL = false;
+static bool prm_access_ip_control_default = false;
+
+const char *PRM_ACCESS_IP_CONTROL_FILE = "";
+static const char *prm_access_ip_control_file_default = NULL;
+
 bool PRM_IO_LOCKF_ENABLE = false;
 static bool prm_io_lockf_enable_default = true;
 
-int PRM_SR_NBUFFERS = INT_MIN;
-static int prm_sr_nbuffers_default = 16;
+int PRM_SR_NBUFFERS = 128;
+static int prm_sr_nbuffers_default = 128;
 static int prm_sr_nbuffers_lower = 1;
 
-int PRM_PB_NBUFFERS = INT_MIN;
-static int prm_pb_nbuffers_default = 25000;
+UINT64 PRM_SORT_BUFFER_SIZE = 2097152;
+static UINT64 prm_sort_buffer_size_default = 2097152;
+static UINT64 prm_sort_buffer_size_lower = 65536;
+
+int PRM_PB_NBUFFERS = 32768;
+static int prm_pb_nbuffers_default = 32768;
 static int prm_pb_nbuffers_lower = 1;
 
-float PRM_HF_UNFILL_FACTOR = FLT_MIN;
+UINT64 PRM_PAGE_BUFFER_SIZE = 536870912;
+static UINT64 prm_page_buffer_size_default = 536870912;
+static UINT64 prm_page_buffer_size_lower = 65536;
+
+float PRM_HF_UNFILL_FACTOR = 0.10f;
 static float prm_hf_unfill_factor_default = 0.10f;
 static float prm_hf_unfill_factor_lower = 0.0f;
 static float prm_hf_unfill_factor_upper = 0.3f;
 
-float PRM_BT_UNFILL_FACTOR = FLT_MIN;
-static float prm_bt_unfill_factor_default = 0.20f;
+float PRM_BT_UNFILL_FACTOR = 0.05f;
+static float prm_bt_unfill_factor_default = 0.05f;
 static float prm_bt_unfill_factor_lower = 0.0f;
-static float prm_bt_unfill_factor_upper = 0.35f;
+static float prm_bt_unfill_factor_upper = 0.5f;
 
-float PRM_BT_OID_NBUFFERS = FLT_MIN;
+float PRM_BT_OID_NBUFFERS = 4.0f;
 static float prm_bt_oid_nbuffers_default = 4.0f;
 static float prm_bt_oid_nbuffers_lower = 0.05f;
 static float prm_bt_oid_nbuffers_upper = 16.0f;
+
+UINT64 PRM_BT_OID_BUFFER_SIZE = 65536;
+static UINT64 prm_bt_oid_buffer_size_default = 65536;
+static UINT64 prm_bt_oid_buffer_size_lower = 1024;
+static UINT64 prm_bt_oid_buffer_size_upper = 262144;
 
 bool PRM_BT_INDEX_SCAN_OID_ORDER = false;
 static bool prm_bt_index_scan_oid_order_default = false;
@@ -234,57 +259,69 @@ static bool prm_bt_index_scan_oid_order_default = false;
 int PRM_BOSR_MAXTMP_PAGES = INT_MIN;
 static int prm_bosr_maxtmp_pages = -1;	/* Infinite */
 
-int PRM_LK_TIMEOUT_MESSAGE_DUMP_LEVEL = INT_MIN;
+int PRM_LK_TIMEOUT_MESSAGE_DUMP_LEVEL = 0;
 static int prm_lk_timeout_message_dump_level_default = 0;
 static int prm_lk_timeout_message_dump_level_lower = 0;
 static int prm_lk_timeout_message_dump_level_upper = 2;
 
-int PRM_LK_ESCALATION_AT = INT_MIN;
+int PRM_LK_ESCALATION_AT = 100000;
 static int prm_lk_escalation_at_default = 100000;
 static int prm_lk_escalation_at_lower = 5;
 
-int PRM_LK_TIMEOUT_SECS = INT_MIN;
+int PRM_LK_TIMEOUT_SECS = -1;
 static int prm_lk_timeout_secs_default = -1;	/* Infinite */
 static int prm_lk_timeout_secs_lower = -1;
 
-int PRM_LK_RUN_DEADLOCK_INTERVAL = INT_MIN;
+int PRM_LK_RUN_DEADLOCK_INTERVAL = 1;
 static int prm_lk_run_deadlock_interval_default = 1;
 static int prm_lk_run_deadlock_interval_lower = 1;
 
-int PRM_LOG_NBUFFERS = INT_MIN;
-static int prm_log_nbuffers_default = 50;
+int PRM_LOG_NBUFFERS = 128;
+static int prm_log_nbuffers_default = 128;
 static int prm_log_nbuffers_lower = 3;
 
-int PRM_LOG_CHECKPOINT_NPAGES = INT_MIN;
+UINT64 PRM_LOG_BUFFER_SIZE = 2097152;
+static UINT64 prm_log_buffer_size_default = 2097152;
+static UINT64 prm_log_buffer_size_lower = 196608;
+
+int PRM_LOG_CHECKPOINT_NPAGES = 10000;
 static int prm_log_checkpoint_npages_default = 10000;
 static int prm_log_checkpoint_npages_lower = 10;
 
-int PRM_LOG_CHECKPOINT_INTERVAL_MINUTES = INT_MIN;
+int PRM_LOG_CHECKPOINT_INTERVAL_MINUTES = 720;
 static int prm_log_checkpoint_interval_minutes_default = 720;
 static int prm_log_checkpoint_interval_minutes_lower = 1;
+
+int PRM_LOG_CHECKPOINT_SLEEP_MSECS = 1;
+static int prm_log_checkpoint_sleep_msecs_default = 1;
+static int prm_log_checkpoint_sleep_msecs_lower = 0;
 
 bool PRM_LOG_BACKGROUND_ARCHIVING = true;
 static bool prm_log_background_archiving_default = true;
 
-int PRM_LOG_ISOLATION_LEVEL = INT_MIN;
+int PRM_LOG_ISOLATION_LEVEL = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
 static int prm_log_isolation_level_default = TRAN_REP_CLASS_UNCOMMIT_INSTANCE;
 static int prm_log_isolation_level_lower =
   TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE;
 static int prm_log_isolation_level_upper = TRAN_SERIALIZABLE;
 
-bool PRM_LOG_MEDIA_FAILURE_SUPPORT = false;
+bool PRM_LOG_MEDIA_FAILURE_SUPPORT = true;
 static bool prm_log_media_failure_support_default = true;
 
 bool PRM_COMMIT_ON_SHUTDOWN = false;
 static bool prm_commit_on_shutdown_default = false;
 
-bool PRM_CSQL_AUTO_COMMIT = false;
+int PRM_SHUTDOWN_WAIT_TIME_IN_SECS = 60;
+static int prm_shutdown_wait_time_in_secs_default = 60;
+static int prm_shutdown_wait_time_in_secs_lower = 60;
+
+bool PRM_CSQL_AUTO_COMMIT = true;
 static bool prm_csql_auto_commit_default = true;
 
 bool PRM_LOG_SWEEP_CLEAN = true;
 static bool prm_log_sweep_clean_default = true;
 
-int PRM_WS_HASHTABLE_SIZE = INT_MIN;
+int PRM_WS_HASHTABLE_SIZE = 4096;
 static int prm_ws_hashtable_size_default = 4096;
 static int prm_ws_hashtable_size_lower = 1024;
 
@@ -294,57 +331,65 @@ static bool prm_ws_memory_report_default = false;
 bool PRM_GC_ENABLE = false;
 static bool prm_gc_enable_default = false;
 
-int PRM_TCP_PORT_ID = INT_MIN;
+int PRM_TCP_PORT_ID = 1523;
 static int prm_tcp_port_id_default = 1523;
 
-int PRM_TCP_CONNECTION_TIMEOUT = INT_MIN;
+int PRM_TCP_CONNECTION_TIMEOUT = 5;
 static int prm_tcp_connection_timeout_default = 5;
 static int prm_tcp_connection_timeout_lower = -1;
 
-int PRM_OPTIMIZATION_LEVEL = INT_MIN;
+int PRM_OPTIMIZATION_LEVEL = 1;
 static int prm_optimization_level_default = 1;
 
 bool PRM_QO_DUMP = false;
 static bool prm_qo_dump_default = false;
 
-int PRM_CSS_MAX_CLIENTS = INT_MIN;
-static int prm_css_max_clients_default = 50;
+int PRM_CSS_MAX_CLIENTS = 100;
+static int prm_css_max_clients_default = 100;
 static int prm_css_max_clients_lower = 10;
 static int prm_css_max_clients_upper = 1024;
 
-int PRM_THREAD_STACKSIZE = INT_MIN;
+int PRM_THREAD_STACKSIZE = (100 * 1024);
 static int prm_thread_stacksize_default = (100 * 1024);
 static int prm_thread_stacksize_lower = 64 * 1024;
 
 const char *PRM_CFG_DB_HOSTS = "";
 static const char *prm_cfg_db_hosts_default = NULL;
 
-int PRM_RESET_TR_PARSER = INT_MIN;
+int PRM_RESET_TR_PARSER = 10;
 static int prm_reset_tr_parser_default = 10;
 
-int PRM_IO_BACKUP_NBUFFERS = INT_MIN;
+int PRM_IO_BACKUP_NBUFFERS = 256;
 static int prm_io_backup_nbuffers_default = 256;
 static int prm_io_backup_nbuffers_lower = 256;
 
-int PRM_IO_BACKUP_MAX_VOLUME_SIZE = INT_MIN;
+int PRM_IO_BACKUP_MAX_VOLUME_SIZE = -1;
 static int prm_io_backup_max_volume_size_default = -1;
 static int prm_io_backup_max_volume_size_lower = 1024 * 32;
 
-int PRM_MAX_PAGES_IN_TEMP_FILE_CACHE = INT_MIN;
+int PRM_MAX_PAGES_IN_TEMP_FILE_CACHE = 1000;
 static int prm_max_pages_in_temp_file_cache_default = 1000;	/* pages */
 static int prm_max_pages_in_temp_file_cache_lower = 100;
 
-int PRM_MAX_ENTRIES_IN_TEMP_FILE_CACHE = INT_MIN;
+int PRM_MAX_ENTRIES_IN_TEMP_FILE_CACHE = 512;
 static int prm_max_entries_in_temp_file_cache_default = 512;
 static int prm_max_entries_in_temp_file_cache_lower = 10;
 
-bool PRM_PTHREAD_SCOPE_PROCESS = false;
+bool PRM_PTHREAD_SCOPE_PROCESS = true;
 static bool prm_pthread_scope_process_default = true;
 
-int PRM_TEMP_MEM_BUFFER_PAGES = INT_MIN;
+int PRM_TEMP_MEM_BUFFER_PAGES = 4;
 static int prm_temp_mem_buffer_pages_default = 4;
 static int prm_temp_mem_buffer_pages_lower = 0;
 static int prm_temp_mem_buffer_pages_upper = 20;
+
+int PRM_INDEX_SCAN_KEY_BUFFER_PAGES = 20;
+static int prm_index_scan_key_buffer_pages_default = 20;
+static int prm_index_scan_key_buffer_pages_lower = 0;
+
+UINT64 PRM_INDEX_SCAN_KEY_BUFFER_SIZE = 327680;
+static UINT64 prm_index_scan_key_buffer_size_default = 327680;
+static UINT64 prm_index_scan_key_buffer_size_lower = 0;
 
 bool PRM_DONT_REUSE_HEAP_FILE = false;
 static bool prm_dont_reuse_heap_file_default = false;
@@ -352,12 +397,12 @@ static bool prm_dont_reuse_heap_file_default = false;
 bool PRM_QUERY_MODE_SYNC = false;
 static bool prm_query_mode_sync_default = false;
 
-int PRM_INSERT_MODE = INT_MIN;
+int PRM_INSERT_MODE = 1 + 8 + 16;
 static int prm_insert_mode_default = 1 + 8 + 16;
 static int prm_insert_mode_lower = 0;
 static int prm_insert_mode_upper = 31;
 
-int PRM_LK_MAX_SCANID_BIT = INT_MIN;
+int PRM_LK_MAX_SCANID_BIT = 32;
 static int prm_lk_max_scanid_bit_default = 32;
 static int prm_lk_max_scanid_bit_lower = 32;
 static int prm_lk_max_scanid_bit_upper = 128;
@@ -368,27 +413,27 @@ static bool prm_hostvar_late_binding_default = false;
 bool PRM_ENABLE_HISTO = false;
 static bool prm_enable_histo_default = false;
 
-int PRM_MUTEX_BUSY_WAITING_CNT = INT_MIN;
+int PRM_MUTEX_BUSY_WAITING_CNT = 0;
 static int prm_mutex_busy_waiting_cnt_default = 0;
 
-int PRM_PB_NUM_LRU_CHAINS = INT_MIN;
+int PRM_PB_NUM_LRU_CHAINS = 0;
 static int prm_pb_num_LRU_chains_default = 0;	/* system define */
 static int prm_pb_num_LRU_chains_lower = 0;
 static int prm_pb_num_LRU_chains_upper = 1000;
 
-int PRM_PAGE_BG_FLUSH_INTERVAL_MSEC = INT_MIN;
+int PRM_PAGE_BG_FLUSH_INTERVAL_MSEC = 0;
 static int prm_page_bg_flush_interval_msec_default = 0;
 static int prm_page_bg_flush_interval_msec_lower = -1;
 
-bool PRM_ADAPTIVE_FLUSH_CONTROL = false;
+bool PRM_ADAPTIVE_FLUSH_CONTROL = true;
 static bool prm_adaptive_flush_control_default = true;
 
-int PRM_MAX_FLUSH_PAGES_PER_SECOND = INT_MAX;
+int PRM_MAX_FLUSH_PAGES_PER_SECOND = 10000;
 static int prm_max_flush_pages_per_second_default = 10000;
 static int prm_max_flush_pages_per_second_lower = 1;
 static int prm_max_flush_pages_per_second_upper = INT_MAX;
 
-int PRM_PB_SYNC_ON_NFLUSH = INT_MAX;
+int PRM_PB_SYNC_ON_NFLUSH = 200;
 static int prm_pb_sync_on_nflush_default = 200;
 static int prm_pb_sync_on_nflush_lower = 1;
 static int prm_pb_sync_on_nflush_upper = INT_MAX;
@@ -404,6 +449,11 @@ static int prm_compat_mode_upper = COMPAT_ORACLE;
 bool PRM_ANSI_QUOTES = true;
 static bool prm_ansi_quotes_default = true;
 
+int PRM_DEFAULT_WEEK_FORMAT = 0;
+static int prm_week_format_default = 0;
+static int prm_week_format_lower = 0;
+static int prm_week_format_upper = 7;
+
 bool PRM_TEST_MODE = false;
 static bool prm_test_mode_default = false;
 
@@ -416,22 +466,49 @@ static bool prm_pipes_as_concat_default = true;
 bool PRM_MYSQL_TRIGGER_CORRELATION_NAMES = false;
 static bool prm_mysql_trigger_correlation_names_default = false;
 
-int PRM_COMPACTDB_PAGE_RECLAIM_ONLY = INT_MIN;
+bool PRM_REQUIRE_LIKE_ESCAPE_CHARACTER = false;
+static bool prm_require_like_escape_character_default = false;
+
+bool PRM_NO_BACKSLASH_ESCAPES = true;
+static bool prm_no_backslash_escapes_default = true;
+
+int PRM_GROUP_CONCAT_MAX_LEN = 1024;
+static int prm_group_concat_max_len_default = 1024;
+static int prm_group_concat_max_len_lower = 4;
+
+int PRM_STRING_MAX_SIZE_BYTES = 1024 * 1024;
+static int prm_string_max_size_bytes_default = 1024 * 1024;
+static int prm_string_max_size_bytes_lower = 64;
+static int prm_string_max_size_bytes_upper = 32 * 1024 * 1024;
+
+bool PRM_ADD_COLUMN_UPDATE_HARD_DEFAULT = false;
+static bool prm_add_column_update_hard_default_default = false;
+
+bool PRM_RETURN_NULL_ON_FUNCTION_ERRORS = false;
+static bool prm_return_null_on_function_errors_default = false;
+
+bool PRM_ALTER_TABLE_CHANGE_TYPE_STRICT = false;
+static bool prm_alter_table_change_type_strict_default = false;
+
+bool PRM_PLUS_AS_CONCAT = true;
+static bool prm_plus_as_concat_default = true;
+
+int PRM_COMPACTDB_PAGE_RECLAIM_ONLY = 0;
 static int prm_compactdb_page_reclaim_only_default = 0;
 
-float PRM_LIKE_TERM_SELECTIVITY = 0;
+float PRM_LIKE_TERM_SELECTIVITY = 0.1f;
 static float prm_like_term_selectivity_default = 0.1f;
 static float prm_like_term_selectivity_upper = 1.0f;
 static float prm_like_term_selectivity_lower = 0.0f;
 
-int PRM_MAX_OUTER_CARD_OF_IDXJOIN = INT_MIN;
+int PRM_MAX_OUTER_CARD_OF_IDXJOIN = 0;
 static int prm_max_outer_card_of_idxjoin_default = 0;
 static int prm_max_outer_card_of_idxjoin_lower = 0;
 
 bool PRM_ORACLE_STYLE_EMPTY_STRING = false;
 static bool prm_oracle_style_empty_string_default = false;
 
-int PRM_SUPPRESS_FSYNC = INT_MIN;
+int PRM_SUPPRESS_FSYNC = 0;
 static int prm_suppress_fsync_default = 0;
 static int prm_suppress_fsync_upper = 100;
 static int prm_suppress_fsync_lower = 0;
@@ -451,45 +528,45 @@ static bool prm_compat_numeric_division_scale_default = false;
 bool PRM_DBFILES_PROTECT = false;
 static bool prm_dbfiles_protect_default = false;
 
-bool PRM_AUTO_RESTART_SERVER = false;
+bool PRM_AUTO_RESTART_SERVER = true;
 static bool prm_auto_restart_server_default = true;
 
-int PRM_XASL_MAX_PLAN_CACHE_ENTRIES = INT_MIN;
+int PRM_XASL_MAX_PLAN_CACHE_ENTRIES = 1000;
 static int prm_xasl_max_plan_cache_entries_default = 1000;
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-int PRM_XASL_MAX_PLAN_CACHE_CLONES = INT_MIN;
+int PRM_XASL_MAX_PLAN_CACHE_CLONES = -1;
 static int prm_xasl_max_plan_cache_clones_default = -1;	/* disabled */
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-int PRM_XASL_PLAN_CACHE_TIMEOUT = INT_MIN;
+int PRM_XASL_PLAN_CACHE_TIMEOUT = -1;
 static int prm_xasl_plan_cache_timeout_default = -1;	/* infinity */
 
-int PRM_LIST_QUERY_CACHE_MODE = INT_MIN;
+int PRM_LIST_QUERY_CACHE_MODE = 0;
 static int prm_list_query_cache_mode_default = 0;	/* disabled */
 static int prm_list_query_cache_mode_upper = 2;
 static int prm_list_query_cache_mode_lower = 0;
 
-int PRM_LIST_MAX_QUERY_CACHE_ENTRIES = INT_MIN;
+int PRM_LIST_MAX_QUERY_CACHE_ENTRIES = -1;
 static int prm_list_max_query_cache_entries_default = -1;	/* disabled */
 
-int PRM_LIST_MAX_QUERY_CACHE_PAGES = INT_MIN;
+int PRM_LIST_MAX_QUERY_CACHE_PAGES = -1;
 static int prm_list_max_query_cache_pages_default = -1;	/* infinity */
 
-bool PRM_REPLICATION_MODE = false;
-static bool prm_replication_mode_default = false;
+bool PRM_USE_ORDERBY_SORT_LIMIT = true;
+static int prm_use_orderby_sort_limit_default = true;
 
-int PRM_HA_MODE = INT_MIN;
+int PRM_HA_MODE = HA_MODE_OFF;
 static int prm_ha_mode_default = HA_MODE_OFF;
-static int prm_ha_mode_upper = HA_MODE_ROLE_CHANGE;
+static int prm_ha_mode_upper = HA_MODE_REPLICA;
 static int prm_ha_mode_lower = HA_MODE_OFF;
 
-int PRM_HA_SERVER_STATE = INT_MIN;
+int PRM_HA_SERVER_STATE = HA_SERVER_STATE_IDLE;
 static int prm_ha_server_state_default = HA_SERVER_STATE_IDLE;
 static int prm_ha_server_state_upper = HA_SERVER_STATE_DEAD;
 static int prm_ha_server_state_lower = HA_SERVER_STATE_IDLE;
 
-int PRM_HA_LOG_APPLIER_STATE = INT_MIN;
+int PRM_HA_LOG_APPLIER_STATE = HA_LOG_APPLIER_STATE_UNREGISTERED;
 static int prm_ha_log_applier_state_default =
   HA_LOG_APPLIER_STATE_UNREGISTERED;
 static int prm_ha_log_applier_state_upper = HA_LOG_APPLIER_STATE_ERROR;
@@ -498,47 +575,71 @@ static int prm_ha_log_applier_state_lower = HA_LOG_APPLIER_STATE_UNREGISTERED;
 const char *PRM_HA_NODE_LIST = "";
 static const char *prm_ha_node_list_default = NULL;
 
-int PRM_HA_PORT_ID = INT_MIN;
+const char *PRM_HA_REPLICA_LIST = "";
+static const char *prm_ha_replica_list_default = NULL;
+
+const char *PRM_HA_DB_LIST = "";
+static const char *prm_ha_db_list_default = NULL;
+
+const char *PRM_HA_COPY_LOG_BASE = "";
+static const char *prm_ha_copy_log_base_default = NULL;
+
+const char *PRM_HA_COPY_SYNC_MODE = "";
+static const char *prm_ha_copy_sync_mode_default = NULL;
+
+int PRM_HA_APPLY_MAX_MEM_SIZE = HB_DEFAULT_APPLY_MAX_MEM_SIZE;
+static int prm_ha_apply_max_mem_size_default = HB_DEFAULT_APPLY_MAX_MEM_SIZE;
+
+int PRM_HA_PORT_ID = HB_DEFAULT_HA_PORT_ID;
 static int prm_ha_port_id_default = HB_DEFAULT_HA_PORT_ID;
 
-int PRM_HA_INIT_TIMER_IN_MSECS = INT_MIN;
+int PRM_HA_INIT_TIMER_IN_MSECS = HB_DEFAULT_INIT_TIMER_IN_MSECS;
 static int prm_ha_init_timer_im_msecs_default =
   HB_DEFAULT_INIT_TIMER_IN_MSECS;
 
-int PRM_HA_HEARTBEAT_INTERVAL_IN_MSECS = INT_MIN;
+int PRM_HA_HEARTBEAT_INTERVAL_IN_MSECS =
+  HB_DEFAULT_HEARTBEAT_INTERVAL_IN_MSECS;
 static int prm_ha_heartbeat_interval_in_msecs_default =
   HB_DEFAULT_HEARTBEAT_INTERVAL_IN_MSECS;
 
-int PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS = INT_MIN;
+int PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS =
+  HB_DEFAULT_CALC_SCORE_INTERVAL_IN_MSECS;
 static int prm_ha_calc_score_interval_in_msecs_default =
   HB_DEFAULT_CALC_SCORE_INTERVAL_IN_MSECS;
 
-int PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS = INT_MIN;
+int PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS =
+  HB_DEFAULT_FAILOVER_WAIT_TIME_IN_MSECS;
 static int prm_ha_failover_wait_time_in_msecs_default =
   HB_DEFAULT_FAILOVER_WAIT_TIME_IN_MSECS;
 
-int PRM_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS = INT_MIN;
+int PRM_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS =
+  HB_DEFAULT_START_CONFIRM_INTERVAL_IN_MSECS;
 static int prm_ha_process_start_confirm_interval_in_msecs_default =
   HB_DEFAULT_START_CONFIRM_INTERVAL_IN_MSECS;
 
-int PRM_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS = INT_MIN;
+int PRM_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS =
+  HB_DEFAULT_DEREG_CONFIRM_INTERVAL_IN_MSECS;
 static int prm_ha_process_dereg_confirm_interval_in_msecs_default =
   HB_DEFAULT_DEREG_CONFIRM_INTERVAL_IN_MSECS;
 
-int PRM_HA_MAX_PROCESS_START_CONFIRM = INT_MIN;
+int PRM_HA_MAX_PROCESS_START_CONFIRM = HB_DEFAULT_MAX_PROCESS_START_CONFIRM;
 static int prm_ha_max_process_start_confirm_default =
   HB_DEFAULT_MAX_PROCESS_START_CONFIRM;
 
-int PRM_HA_MAX_PROCESS_DEREG_CONFIRM = INT_MIN;
+int PRM_HA_MAX_PROCESS_DEREG_CONFIRM = HB_DEFAULT_MAX_PROCESS_DEREG_CONFIRM;
 static int prm_ha_max_process_dereg_confirm_default =
   HB_DEFAULT_MAX_PROCESS_DEREG_CONFIRM;
 
-int PRM_HA_CHANGEMODE_INTERVAL_IN_MSECS = INT_MIN;
+int PRM_HA_CHANGEMODE_INTERVAL_IN_MSECS =
+  HB_DEFAULT_CHANGEMODE_INTERVAL_IN_MSECS;
 static int prm_ha_changemode_interval_in_msecs_default =
   HB_DEFAULT_CHANGEMODE_INTERVAL_IN_MSECS;
 
-int PRM_HA_MAX_HEARTBEAT_GAP = INT_MIN;
+int PRM_HA_MAX_HEARTBEAT_GAP = HB_DEFAULT_MAX_HEARTBEAT_GAP;
 static int prm_ha_max_heartbeat_gap_default = HB_DEFAULT_MAX_HEARTBEAT_GAP;
+
+const char *PRM_HA_PING_HOSTS = "";
+static const char *prm_ha_ping_hosts_default = NULL;
 
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
@@ -546,22 +647,22 @@ static bool prm_java_stored_procedure_default = false;
 bool PRM_COMPAT_PRIMARY_KEY = false;
 static bool prm_compat_primary_key_default = false;
 
-int PRM_LOG_HEADER_FLUSH_INTERVAL = INT_MIN;
+int PRM_LOG_HEADER_FLUSH_INTERVAL = 5;
 static int prm_log_header_flush_interval_default = 5;
 static int prm_log_header_flush_interval_lower = 1;
 
 bool PRM_LOG_ASYNC_COMMIT = false;
 static bool prm_log_async_commit_default = false;
 
-int PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS = INT_MIN;
+int PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS = 0;
 static int prm_log_group_commit_interval_msecs_default = 0;
 static int prm_log_group_commit_interval_msecs_lower = 0;
 
-int PRM_LOG_BG_FLUSH_INTERVAL_MSECS = INT_MIN;
+int PRM_LOG_BG_FLUSH_INTERVAL_MSECS = 1000;
 static int prm_log_bg_flush_interval_msecs_default = 1000;
 static int prm_log_bg_flush_interval_msecs_lower = 0;
 
-int PRM_LOG_BG_FLUSH_NUM_PAGES = INT_MIN;
+int PRM_LOG_BG_FLUSH_NUM_PAGES = 0;
 static int prm_log_bg_flush_num_pages_default = 0;
 static int prm_log_bg_flush_num_pages_lower = 0;
 
@@ -580,7 +681,7 @@ static bool prm_block_ddl_statement_default = false;
 bool PRM_SINGLE_BYTE_COMPARE = false;
 static bool prm_single_byte_compare_default = false;
 
-int PRM_CSQL_HISTORY_NUM = INT_MIN;
+int PRM_CSQL_HISTORY_NUM = 50;
 static int prm_csql_history_num_default = 50;
 static int prm_csql_history_num_upper = 200;
 static int prm_csql_history_num_lower = 1;
@@ -591,20 +692,20 @@ static bool prm_log_trace_debug_default = false;
 const char *PRM_DL_FORK = "";
 static const char *prm_dl_fork_default = NULL;
 
-bool PRM_ER_PRODUCTION_MODE = false;
+bool PRM_ER_PRODUCTION_MODE = true;
 static bool prm_er_production_mode_default = true;
 
-int PRM_ER_STOP_ON_ERROR = INT_MIN;
+int PRM_ER_STOP_ON_ERROR = 0;
 static int prm_er_stop_on_error_default = 0;
 static int prm_er_stop_on_error_upper = 0;
 
-int PRM_TCP_RCVBUF_SIZE = INT_MIN;
+int PRM_TCP_RCVBUF_SIZE = -1;
 static int prm_tcp_rcvbuf_size_default = -1;
 
-int PRM_TCP_SNDBUF_SIZE = INT_MIN;
+int PRM_TCP_SNDBUF_SIZE = -1;
 static int prm_tcp_sndbuf_size_default = -1;
 
-int PRM_TCP_NODELAY = INT_MIN;
+int PRM_TCP_NODELAY = -1;
 static int prm_tcp_nodelay_default = -1;
 
 bool PRM_CSQL_SINGLE_LINE_MODE = false;
@@ -613,9 +714,16 @@ static bool prm_csql_single_line_mode_default = false;
 bool PRM_XASL_DEBUG_DUMP = false;
 static bool prm_xasl_debug_dump_default = false;
 
-int PRM_LOG_MAX_ARCHIVES = INT_MIN;
+int PRM_LOG_MAX_ARCHIVES = INT_MAX;
 static int prm_log_max_archives_default = INT_MAX;
 static int prm_log_max_archives_lower = 0;
+
+bool PRM_FORCE_REMOVE_LOG_ARCHIVES = true;
+static bool prm_force_remove_log_archives_default = true;
+
+int PRM_REMOVE_LOG_ARCHIVES_INTERVAL = 0;
+static int prm_remove_log_archives_interval_default = 0;
+static int prm_remove_log_archives_interval_lower = 0;
 
 bool PRM_LOG_NO_LOGGING = false;
 static bool prm_log_no_logging_default = false;
@@ -623,11 +731,11 @@ static bool prm_log_no_logging_default = false;
 bool PRM_UNLOADDB_IGNORE_ERROR = false;
 static bool prm_unloaddb_ignore_error_default = false;
 
-int PRM_UNLOADDB_LOCK_TIMEOUT = INT_MIN;
+int PRM_UNLOADDB_LOCK_TIMEOUT = -1;
 static int prm_unloaddb_lock_timeout_default = -1;
 static int prm_unloaddb_lock_timeout_lower = -1;
 
-int PRM_LOADDB_FLUSH_INTERVAL = INT_MIN;
+int PRM_LOADDB_FLUSH_INTERVAL = 1000;
 static int prm_loaddb_flush_interval_default = 1000;
 static int prm_loaddb_flush_interval_lower = 0;
 
@@ -652,7 +760,7 @@ static bool *prm_event_activation_default = NULL;
 bool PRM_READ_ONLY_MODE = false;
 static bool prm_read_only_mode_default = false;
 
-int PRM_MNT_WAITING_THREAD = INT_MIN;
+int PRM_MNT_WAITING_THREAD = 0;
 static int prm_mnt_waiting_thread_default = 0;
 static int prm_mnt_waiting_thread_lower = 0;
 
@@ -664,6 +772,26 @@ static const char *prm_service_service_list_default = NULL;
 
 const char *PRM_SERVICE_SERVER_LIST = "";
 static const char *prm_service_server_list_default = NULL;
+
+int PRM_SESSION_STATE_TIMEOUT = 60 * 60 * 6;	/* 6 hours */
+static int prm_session_timeout_default = 60 * 60 * 6;	/* 6 hours */
+static int prm_session_timeout_lower = 60;	/* 1 minute */
+static int prm_session_timeout_upper = 60 * 60 * 24 * 365;	/* 1 nonleap year */
+
+int PRM_MULTI_RANGE_OPT_LIMIT = 100;
+static int prm_multi_range_opt_limit_default = 100;
+static int prm_multi_range_opt_limit_lower = 0;	/*disabled */
+static int prm_multi_range_opt_limit_upper = 100;
+
+UINT64 PRM_DB_VOLUME_SIZE = 536870912ULL;
+static UINT64 prm_db_volume_size_default = 536870912ULL;	/* 512M */
+static UINT64 prm_db_volume_size_lower = 20971520ULL;	/* 20M */
+static UINT64 prm_db_volume_size_upper = 21474836480ULL;	/* 20G */
+
+UINT64 PRM_LOG_VOLUME_SIZE = 536870912ULL;
+static UINT64 prm_log_volume_size_default = 536870912ULL;	/* 512M */
+static UINT64 prm_log_volume_size_lower = 20971520ULL;	/* 20M */
+static UINT64 prm_log_volume_size_upper = 4294967296ULL;	/* 4G */
 
 typedef struct sysprm_param SYSPRM_PARAM;
 struct sysprm_param
@@ -720,6 +848,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_ER_LOG_FILE,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
+  {PRM_NAME_ACCESS_IP_CONTROL,
+   (PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER),
+   (void *) &prm_access_ip_control_default,
+   (void *) &PRM_ACCESS_IP_CONTROL,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_ACCESS_IP_CONTROL_FILE,
+   (PRM_STRING | PRM_DEFAULT | PRM_FOR_SERVER),
+   (void *) &prm_access_ip_control_file_default,
+   (void *) &PRM_ACCESS_IP_CONTROL_FILE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
   {PRM_NAME_IO_LOCKF_ENABLE,
    (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER | PRM_HIDDEN),
    (void *) &prm_io_lockf_enable_default,
@@ -727,16 +867,30 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_SR_NBUFFERS,
-   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER),
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER |
+    PRM_DEPRECATED),
    (void *) &prm_sr_nbuffers_default,
    (void *) &PRM_SR_NBUFFERS,
    (void *) NULL, (void *) &prm_sr_nbuffers_lower,
    (char *) NULL},
+  {PRM_NAME_SORT_BUFFER_SIZE,
+   (PRM_REQUIRED | PRM_SIZE | PRM_DEFAULT | PRM_FOR_SERVER),
+   (void *) &prm_sort_buffer_size_default,
+   (void *) &PRM_SORT_BUFFER_SIZE,
+   (void *) NULL, (void *) &prm_sort_buffer_size_lower,
+   (char *) NULL},
   {PRM_NAME_PB_NBUFFERS,
-   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER),
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER |
+    PRM_DEPRECATED),
    (void *) &prm_pb_nbuffers_default,
    (void *) &PRM_PB_NBUFFERS,
    (void *) NULL, (void *) &prm_pb_nbuffers_lower,
+   (char *) NULL},
+  {PRM_NAME_PAGE_BUFFER_SIZE,
+   (PRM_REQUIRED | PRM_SIZE | PRM_DEFAULT | PRM_FOR_SERVER),
+   (void *) &prm_page_buffer_size_default,
+   (void *) &PRM_PAGE_BUFFER_SIZE,
+   (void *) NULL, (void *) &prm_page_buffer_size_lower,
    (char *) NULL},
   {PRM_NAME_HF_UNFILL_FACTOR,
    (PRM_REQUIRED | PRM_FLOAT | PRM_DEFAULT | PRM_FOR_SERVER),
@@ -751,10 +905,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_bt_unfill_factor_upper, (void *) &prm_bt_unfill_factor_lower,
    (char *) NULL},
   {PRM_NAME_BT_OID_NBUFFERS,
-   (PRM_REQUIRED | PRM_FLOAT | PRM_DEFAULT | PRM_FOR_SERVER),
+   (PRM_REQUIRED | PRM_FLOAT | PRM_DEFAULT | PRM_FOR_SERVER | PRM_DEPRECATED),
    (void *) &prm_bt_oid_nbuffers_default,
    (void *) &PRM_BT_OID_NBUFFERS,
    (void *) &prm_bt_oid_nbuffers_upper, (void *) &prm_bt_oid_nbuffers_lower,
+   (char *) NULL},
+  {PRM_NAME_BT_OID_BUFFER_SIZE,
+   (PRM_REQUIRED | PRM_SIZE | PRM_DEFAULT | PRM_FOR_SERVER),
+   (void *) &prm_bt_oid_buffer_size_default,
+   (void *) &PRM_BT_OID_BUFFER_SIZE,
+   (void *) &prm_bt_oid_buffer_size_upper,
+   (void *) &prm_bt_oid_buffer_size_lower,
    (char *) NULL},
   {PRM_NAME_BT_INDEX_SCAN_OID_ORDER,
    (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT |
@@ -798,10 +959,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) &prm_lk_run_deadlock_interval_lower,
    (char *) NULL},
   {PRM_NAME_LOG_NBUFFERS,
-   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER),
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER |
+    PRM_FOR_CLIENT | PRM_DEPRECATED),
    (void *) &prm_log_nbuffers_default,
    (void *) &PRM_LOG_NBUFFERS,
    (void *) NULL, (void *) &prm_log_nbuffers_lower,
+   (char *) NULL},
+  {PRM_NAME_LOG_BUFFER_SIZE,
+   (PRM_REQUIRED | PRM_SIZE | PRM_DEFAULT | PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   (void *) &prm_log_buffer_size_default,
+   (void *) &PRM_LOG_BUFFER_SIZE,
+   (void *) NULL, (void *) &prm_log_buffer_size_lower,
    (char *) NULL},
   {PRM_NAME_LOG_CHECKPOINT_NPAGES,
    (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER),
@@ -815,6 +983,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_log_checkpoint_interval_minutes_default,
    (void *) &PRM_LOG_CHECKPOINT_INTERVAL_MINUTES,
    (void *) NULL, (void *) &prm_log_checkpoint_interval_minutes_lower,
+   (char *) NULL},
+  {PRM_NAME_LOG_CHECKPOINT_SLEEP_MSECS,
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER |
+    PRM_USER_CHANGE | PRM_HIDDEN),
+   (void *) &prm_log_checkpoint_sleep_msecs_default,
+   (void *) &PRM_LOG_CHECKPOINT_SLEEP_MSECS,
+   (void *) NULL, (void *) &prm_log_checkpoint_sleep_msecs_lower,
    (char *) NULL},
   {PRM_NAME_LOG_BACKGROUND_ARCHIVING,
    (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER |
@@ -842,6 +1017,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_commit_on_shutdown_default,
    (void *) &PRM_COMMIT_ON_SHUTDOWN,
    (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_SHUTDOWN_WAIT_TIME_IN_SECS,
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER | PRM_USER_CHANGE |
+    PRM_HIDDEN),
+   (void *) &prm_shutdown_wait_time_in_secs_default,
+   (void *) &PRM_SHUTDOWN_WAIT_TIME_IN_SECS,
+   (void *) NULL, (void *) &prm_shutdown_wait_time_in_secs_lower,
    (char *) NULL},
   {PRM_NAME_CSQL_AUTO_COMMIT,
    (PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_USER_CHANGE),
@@ -964,6 +1146,21 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_temp_mem_buffer_pages_upper,
    (void *) &prm_temp_mem_buffer_pages_lower,
    (char *) NULL},
+  {PRM_NAME_INDEX_SCAN_KEY_BUFFER_PAGES,
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER |
+    PRM_DEPRECATED),
+   (void *) &prm_index_scan_key_buffer_pages_default,
+   (void *) &PRM_INDEX_SCAN_KEY_BUFFER_PAGES,
+   (void *) NULL,
+   (void *) &prm_index_scan_key_buffer_pages_lower,
+   (char *) NULL},
+  {PRM_NAME_INDEX_SCAN_KEY_BUFFER_SIZE,
+   (PRM_REQUIRED | PRM_SIZE | PRM_DEFAULT | PRM_FOR_SERVER),
+   (void *) &prm_index_scan_key_buffer_size_default,
+   (void *) &PRM_INDEX_SCAN_KEY_BUFFER_SIZE,
+   (void *) NULL,
+   (void *) &prm_index_scan_key_buffer_size_lower,
+   (char *) NULL},
   {PRM_NAME_DONT_REUSE_HEAP_FILE,
    (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER |
     PRM_USER_CHANGE | PRM_HIDDEN),
@@ -1055,10 +1252,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL},
   {PRM_NAME_ANSI_QUOTES,
    (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT |
-    PRM_TEST_CHANGE),
+    PRM_TEST_CHANGE | PRM_CLEAR_CACHE),
    (void *) &prm_ansi_quotes_default,
    (void *) &PRM_ANSI_QUOTES,
    (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_DEFAULT_WEEK_FORMAT,
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_SERVER
+    | PRM_USER_CHANGE),
+   (void *) &prm_week_format_default,
+   (void *) &PRM_DEFAULT_WEEK_FORMAT,
+   (void *) &prm_week_format_upper,
+   (void *) &prm_week_format_lower,
    (char *) NULL},
   {PRM_NAME_TEST_MODE,
    (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_SERVER
@@ -1076,7 +1281,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL},
   {PRM_NAME_PIPES_AS_CONCAT,
    (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT |
-    PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+    PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_CLEAR_CACHE),
    (void *) &prm_pipes_as_concat_default,
    (void *) &PRM_PIPES_AS_CONCAT,
    (void *) NULL, (void *) NULL,
@@ -1088,10 +1293,67 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_MYSQL_TRIGGER_CORRELATION_NAMES,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
+  {PRM_NAME_REQUIRE_LIKE_ESCAPE_CHARACTER,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT |
+    PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_CLEAR_CACHE),
+   (void *) &prm_require_like_escape_character_default,
+   (void *) &PRM_REQUIRE_LIKE_ESCAPE_CHARACTER,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_NO_BACKSLASH_ESCAPES,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT |
+    PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_CLEAR_CACHE),
+   (void *) &prm_no_backslash_escapes_default,
+   (void *) &PRM_NO_BACKSLASH_ESCAPES,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_GROUP_CONCAT_MAX_LEN,
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_USER_CHANGE |
+    PRM_FOR_SERVER),
+   (void *) &prm_group_concat_max_len_default,
+   (void *) &PRM_GROUP_CONCAT_MAX_LEN,
+   (void *) NULL, (void *) &prm_group_concat_max_len_lower,
+   (char *) NULL},
+  {PRM_NAME_STRING_MAX_SIZE_BYTES,
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_USER_CHANGE |
+    PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   (void *) &prm_string_max_size_bytes_default,
+   (void *) &PRM_STRING_MAX_SIZE_BYTES,
+   (void *) &prm_string_max_size_bytes_upper,
+   (void *) &prm_string_max_size_bytes_lower,
+   (char *) NULL},
+  {PRM_NAME_ADD_COLUMN_UPDATE_HARD_DEFAULT,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_USER_CHANGE |
+    PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   (void *) &prm_add_column_update_hard_default_default,
+   (void *) &PRM_ADD_COLUMN_UPDATE_HARD_DEFAULT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_RETURN_NULL_ON_FUNCTION_ERRORS,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT |
+    PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_CLEAR_CACHE),
+   (void *) &prm_return_null_on_function_errors_default,
+   (void *) &PRM_RETURN_NULL_ON_FUNCTION_ERRORS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_ALTER_TABLE_CHANGE_TYPE_STRICT,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_USER_CHANGE |
+    PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   (void *) &prm_alter_table_change_type_strict_default,
+   (void *) &PRM_ALTER_TABLE_CHANGE_TYPE_STRICT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
   {PRM_NAME_COMPACTDB_PAGE_RECLAIM_ONLY,
    (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT),
    (void *) &prm_compactdb_page_reclaim_only_default,
    (void *) &PRM_COMPACTDB_PAGE_RECLAIM_ONLY,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_PLUS_AS_CONCAT,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_CLIENT |
+    PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_CLEAR_CACHE),
+   (void *) &prm_plus_as_concat_default,
+   (void *) &PRM_PLUS_AS_CONCAT,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_LIKE_TERM_SELECTIVITY,
@@ -1203,22 +1465,27 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_LIST_MAX_QUERY_CACHE_PAGES,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
+  {PRM_NAME_USE_ORDERBY_SORT_LIMIT,
+   (PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (void *) &prm_use_orderby_sort_limit_default,
+   (void *) &PRM_USE_ORDERBY_SORT_LIMIT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
   {PRM_NAME_REPLICATION_MODE,
-   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER |
-    PRM_USER_CHANGE),
-   (void *) &prm_replication_mode_default,
-   (void *) &PRM_REPLICATION_MODE,
+   (PRM_OBSOLETED),
+   (void *) NULL,
+   (void *) NULL,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_HA_MODE,
-   (PRM_KEYWORD | PRM_DEFAULT | PRM_FOR_SERVER),
+   (PRM_KEYWORD | PRM_DEFAULT | PRM_FOR_SERVER | PRM_FOR_HA),
    (void *) &prm_ha_mode_default,
    (void *) &PRM_HA_MODE,
    (void *) &prm_ha_mode_upper,
    (void *) &prm_ha_mode_lower,
    (char *) NULL},
   {PRM_NAME_HA_SERVER_STATE,
-   (PRM_KEYWORD | PRM_DEFAULT | PRM_FOR_SERVER),
+   (PRM_KEYWORD | PRM_DEFAULT | PRM_FOR_SERVER | PRM_HIDDEN | PRM_FOR_HA),
    (void *) &prm_ha_server_state_default,
    (void *) &PRM_HA_SERVER_STATE,
    (void *) &prm_ha_server_state_upper,
@@ -1226,7 +1493,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL},
   {PRM_NAME_HA_LOG_APPLIER_STATE,
    (PRM_KEYWORD | PRM_DEFAULT | PRM_FOR_SERVER | PRM_USER_CHANGE |
-    PRM_HIDDEN),
+    PRM_HIDDEN | PRM_FOR_HA),
    (void *) &prm_ha_log_applier_state_default,
    (void *) &PRM_HA_LOG_APPLIER_STATE,
    (void *) &prm_ha_log_applier_state_upper,
@@ -1234,75 +1501,112 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL},
   {PRM_NAME_HA_NODE_LIST,
    (PRM_STRING | PRM_DEFAULT | PRM_FOR_SERVER | PRM_FOR_CLIENT |
-    PRM_USER_CHANGE | PRM_RELOADABLE),
+    PRM_USER_CHANGE | PRM_RELOADABLE | PRM_FOR_HA),
    (void *) &prm_ha_node_list_default,
    (void *) &PRM_HA_NODE_LIST,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
+  {PRM_NAME_HA_REPLICA_LIST,
+   (PRM_STRING | PRM_DEFAULT | PRM_FOR_CLIENT |
+    PRM_USER_CHANGE | PRM_RELOADABLE | PRM_FOR_HA),
+   (void *) &prm_ha_replica_list_default,
+   (void *) &PRM_HA_REPLICA_LIST,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_HA_DB_LIST,
+   (PRM_STRING | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_HA),
+   (void *) &prm_ha_db_list_default,
+   (void *) &PRM_HA_DB_LIST,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_HA_COPY_LOG_BASE,
+   (PRM_STRING | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_HA),
+   (void *) &prm_ha_copy_log_base_default,
+   (void *) &PRM_HA_COPY_LOG_BASE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_HA_COPY_SYNC_MODE,
+   (PRM_STRING | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_HA),
+   (void *) &prm_ha_copy_sync_mode_default,
+   (void *) &PRM_HA_COPY_SYNC_MODE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_HA_APPLY_MAX_MEM_SIZE,
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_HA),
+   (void *) &prm_ha_apply_max_mem_size_default,
+   (void *) &PRM_HA_APPLY_MAX_MEM_SIZE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
   {PRM_NAME_HA_PORT_ID,
-   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT),
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_HA),
    (void *) &prm_ha_port_id_default,
    (void *) &PRM_HA_PORT_ID,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_HA_INIT_TIMER_IN_MSECS,
-   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN),
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    (void *) &prm_ha_init_timer_im_msecs_default,
    (void *) &PRM_HA_INIT_TIMER_IN_MSECS,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_HA_HEARTBEAT_INTERVAL_IN_MSECS,
-   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN),
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    (void *) &prm_ha_heartbeat_interval_in_msecs_default,
    (void *) &PRM_HA_HEARTBEAT_INTERVAL_IN_MSECS,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_HA_CALC_SCORE_INTERVAL_IN_MSECS,
-   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN),
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    (void *) &prm_ha_calc_score_interval_in_msecs_default,
    (void *) &PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_HA_FAILOVER_WAIT_TIME_IN_MSECS,
-   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN),
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    (void *) &prm_ha_failover_wait_time_in_msecs_default,
    (void *) &PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS,
-   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN),
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    (void *) &prm_ha_process_start_confirm_interval_in_msecs_default,
    (void *) &PRM_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS,
-   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN),
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    (void *) &prm_ha_process_dereg_confirm_interval_in_msecs_default,
    (void *) &PRM_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_HA_MAX_PROCESS_START_CONFIRM,
-   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN),
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    (void *) &prm_ha_max_process_start_confirm_default,
    (void *) &PRM_HA_MAX_PROCESS_START_CONFIRM,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_HA_MAX_PROCESS_DEREG_CONFIRM,
-   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN),
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    (void *) &prm_ha_max_process_dereg_confirm_default,
    (void *) &PRM_HA_MAX_PROCESS_DEREG_CONFIRM,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_HA_CHANGEMODE_INTERVAL_IN_MSEC,
-   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT),
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    (void *) &prm_ha_changemode_interval_in_msecs_default,
    (void *) &PRM_HA_CHANGEMODE_INTERVAL_IN_MSECS,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_HA_MAX_HEARTBEAT_GAP,
-   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN),
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
    (void *) &prm_ha_max_heartbeat_gap_default,
    (void *) &PRM_HA_MAX_HEARTBEAT_GAP,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_HA_PING_HOSTS,
+   (PRM_STRING | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_RELOADABLE | PRM_FOR_HA),
+   (void *) &prm_ha_ping_hosts_default,
+   (void *) &PRM_HA_PING_HOSTS,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_JAVA_STORED_PROCEDURE,
@@ -1451,10 +1755,25 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_LOG_MAX_ARCHIVES,
-   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER),
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER |
+    PRM_USER_CHANGE),
    (void *) &prm_log_max_archives_default,
    (void *) &PRM_LOG_MAX_ARCHIVES,
    (void *) NULL, (void *) &prm_log_max_archives_lower,
+   (char *) NULL},
+  {PRM_NAME_FORCE_REMOVE_LOG_ARCHIVES,
+   (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER |
+    PRM_USER_CHANGE),
+   (void *) &prm_force_remove_log_archives_default,
+   (void *) &PRM_FORCE_REMOVE_LOG_ARCHIVES,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL},
+  {PRM_NAME_REMOVE_LOG_ARCHIVES_INTERVAL,
+   (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER |
+    PRM_USER_CHANGE | PRM_HIDDEN),
+   (void *) &prm_remove_log_archives_interval_default,
+   (void *) &PRM_REMOVE_LOG_ARCHIVES_INTERVAL,
+   (void *) NULL, (void *) &prm_remove_log_archives_interval_lower,
    (char *) NULL},
   {PRM_NAME_LOG_NO_LOGGING,
    (PRM_REQUIRED | PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER |
@@ -1549,21 +1868,52 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_SERVICE_SERVER_LIST,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
+  {PRM_NAME_SESSION_STATE_TIMEOUT,
+   (PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER | PRM_TEST_CHANGE),
+   (void *) &prm_session_timeout_default,
+   (void *) &PRM_SESSION_STATE_TIMEOUT,
+   (void *) &prm_session_timeout_upper,
+   (void *) &prm_session_timeout_lower,
+   (char *) NULL},
+  {PRM_NAME_MULTI_RANGE_OPT_LIMIT,
+   (PRM_INTEGER | PRM_REQUIRED | PRM_DEFAULT | PRM_FOR_SERVER |
+    PRM_USER_CHANGE | PRM_LOWER_LIMIT | PRM_UPPER_LIMIT | PRM_TEST_CHANGE),
+   (void *) &prm_multi_range_opt_limit_default,
+   (void *) &PRM_MULTI_RANGE_OPT_LIMIT,
+   (void *) &prm_multi_range_opt_limit_upper,
+   (void *) &prm_multi_range_opt_limit_lower,
+   (char *) NULL},
   /* All the compound parameters *must* be at the end of the array so that the
      changes they cause are not overridden by other parameters (for example in
      sysprm_load_and_init the parameters are set to their default in the order
      they are found in this array). */
   {PRM_NAME_COMPAT_MODE,
    (PRM_REQUIRED | PRM_KEYWORD | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_SERVER
-    | PRM_TEST_CHANGE | PRM_COMPOUND),
+    | PRM_TEST_CHANGE | PRM_COMPOUND | PRM_CLEAR_CACHE),
    (void *) &prm_compat_mode_default,
    (void *) &PRM_COMPAT_MODE,
    (void *) &prm_compat_mode_upper, (void *) &prm_compat_mode_lower,
+   (char *) NULL},
+  {PRM_NAME_DB_VOLUME_SIZE,
+   (PRM_SIZE | PRM_REQUIRED | PRM_DEFAULT | PRM_LOWER_LIMIT |
+    PRM_UPPER_LIMIT),
+   (void *) &prm_db_volume_size_default,
+   (void *) &PRM_DB_VOLUME_SIZE,
+   (void *) &prm_db_volume_size_upper,
+   (void *) &prm_db_volume_size_lower,
+   (char *) NULL},
+  {PRM_NAME_LOG_VOLUME_SIZE,
+   (PRM_SIZE | PRM_REQUIRED | PRM_DEFAULT | PRM_LOWER_LIMIT |
+    PRM_UPPER_LIMIT),
+   (void *) &prm_log_volume_size_default,
+   (void *) &PRM_LOG_VOLUME_SIZE,
+   (void *) &prm_log_volume_size_upper,
+   (void *) &prm_log_volume_size_lower,
    (char *) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
-
+#define PARAM_MSG_FMT(msgid) msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS, (msgid))
 
 /*
  * Keyword searches do a intl_mbs_ncasecmp(), using the LENGTH OF THE TABLE KEY
@@ -1657,7 +2007,11 @@ static KEYVAL ha_mode_words[] = {
   /*{HA_MODE_FAIL_OVER_STR, HA_MODE_FAIL_OVER}, *//* unused */
   {HA_MODE_FAIL_BACK_STR, HA_MODE_FAIL_BACK},
   /*{HA_MODE_LAZY_BACK_STR, HA_MODE_LAZY_BACK}, *//* not implemented yet */
-  {HA_MODE_ROLE_CHANGE_STR, HA_MODE_ROLE_CHANGE}
+  {HA_MODE_ROLE_CHANGE_STR, HA_MODE_ROLE_CHANGE},
+  {"r", HA_MODE_REPLICA},
+  {"repl", HA_MODE_REPLICA},
+  {"replica", HA_MODE_REPLICA},
+  {"2", HA_MODE_REPLICA}
 };
 
 static KEYVAL ha_server_state_words[] = {
@@ -1726,38 +2080,60 @@ static const char
   PRM_NAME_MYSQL_TRIGGER_CORRELATION_NAMES
 };
 
+static const char
+  *compat_mode_values_PRM_REQUIRE_LIKE_ESCAPE_CHARACTER[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID     */
+  "yes",			/* COMPAT_MYSQL      */
+  NULL,				/* COMPAT_ORACLE     */
+  PRM_NAME_REQUIRE_LIKE_ESCAPE_CHARACTER
+};
+
+static const char
+  *compat_mode_values_PRM_NO_BACKSLASH_ESCAPES[COMPAT_ORACLE + 2] = {
+  NULL,				/* COMPAT_CUBRID     */
+  "no",				/* COMPAT_MYSQL      */
+  NULL,				/* COMPAT_ORACLE     */
+  PRM_NAME_NO_BACKSLASH_ESCAPES
+};
+
+static const char
+  *compat_mode_values_PRM_ADD_COLUMN_UPDATE_HARD_DEFAULT[COMPAT_ORACLE + 2] =
+{
+  NULL,				/* COMPAT_CUBRID     */
+  "yes",			/* COMPAT_MYSQL      */
+  NULL,				/* COMPAT_ORACLE: leave it in cubrid
+				 * mode  for now     */
+  PRM_NAME_ADD_COLUMN_UPDATE_HARD_DEFAULT
+};
+
+static const char
+  *compat_mode_values_PRM_RETURN_NULL_ON_FUNCTION_ERRORS[COMPAT_ORACLE + 2] =
+{
+  NULL,				/* COMPAT_CUBRID     */
+  "yes",			/* COMPAT_MYSQL      */
+  NULL,				/* COMPAT_ORACLE     */
+  PRM_NAME_RETURN_NULL_ON_FUNCTION_ERRORS
+};
+
+static const char *compat_mode_values_PRM_PLUS_AS_CONCAT[COMPAT_ORACLE + 2] = {
+  "yes",			/* COMPAT_CUBRID     */
+  "no",				/* COMPAT_MYSQL      */
+  NULL,				/* COMPAT_ORACLE     */
+  PRM_NAME_PLUS_AS_CONCAT
+};
+
 static const char **compat_mode_values[] = {
   compat_mode_values_PRM_ANSI_QUOTES,
   compat_mode_values_PRM_ORACLE_STYLE_EMPTY_STRING,
   compat_mode_values_PRM_ORACLE_STYLE_OUTERJOIN,
   compat_mode_values_PRM_PIPES_AS_CONCAT,
-  compat_mode_values_PRM_MYSQL_TRIGGER_CORRELATION_NAMES
+  compat_mode_values_PRM_MYSQL_TRIGGER_CORRELATION_NAMES,
+  compat_mode_values_PRM_REQUIRE_LIKE_ESCAPE_CHARACTER,
+  compat_mode_values_PRM_NO_BACKSLASH_ESCAPES,
+  compat_mode_values_PRM_ADD_COLUMN_UPDATE_HARD_DEFAULT,
+  compat_mode_values_PRM_RETURN_NULL_ON_FUNCTION_ERRORS,
+  compat_mode_values_PRM_PLUS_AS_CONCAT
 };
-
-
-/*
- * Message id in the set MSGCAT_SET_PARAMETER
- * in the message catalog MSGCAT_CATALOG_CUBRID (file cubrid.msg).
- */
-#define MSGCAT_PARAM_NOT_DIRECTORY              2
-#define MSGCAT_PARAM_INIT_FILE_NOT_CREATED      3
-#define MSGCAT_PARAM_CANT_WRITE                 4
-#define MSGCAT_PARAM_CANT_ACCESS                6
-#define MSGCAT_PARAM_NO_HOME                    7
-#define MSGCAT_PARAM_NO_VALUE                   8
-#define MSGCAT_PARAM_CANT_OPEN_INIT             9
-#define MSGCAT_PARAM_BAD_LINE                   10
-#define MSGCAT_PARAM_BAD_ENV_VAR                11
-#define MSGCAT_PARAM_BAD_KEYWORD                12
-#define MSGCAT_PARAM_BAD_VALUE                  13
-#define MSGCAT_PARAM_NO_MEM                     14
-#define MSGCAT_PARAM_BAD_STRING                 15
-#define MSGCAT_PARAM_BAD_RANGE                  16
-#define MSGCAT_PARAM_UNIX_ERROR                 17
-#define MSGCAT_PARAM_NO_MSG                     18
-#define MSGCAT_PARAM_RESET_BAD_RANGE            19
-#define MSGCAT_PARAM_KEYWORD_INFO_INT           20
-#define MSGCAT_PARAM_KEYWORD_INFO_FLOAT         21
 
 static void prm_the_file_has_been_loaded (const char *path);
 static int prm_print_value (const SYSPRM_PARAM * prm, char *buf, size_t len);
@@ -1766,24 +2142,27 @@ static int prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len,
 static int sysprm_load_and_init_internal (const char *db_name,
 					  const char *conf_file, bool reload);
 static void prm_check_environment (void);
-static void prm_load_by_section (INI_TABLE * ini, const char *section,
-				 bool ignore_section, bool reload,
-				 const char *file);
+static int prm_check_parameters (void);
+static int prm_load_by_section (INI_TABLE * ini, const char *section,
+				bool ignore_section, bool reload,
+				const char *file, bool ha);
 static int prm_read_and_parse_ini_file (const char *prm_file_name,
 					const char *db_name,
-					const bool reload);
-static void prm_report_bad_entry (int line, int err, const char *where);
-static int prm_set (SYSPRM_PARAM * prm, const char *value);
+					const bool reload, const bool ha);
+static void prm_report_bad_entry (const char *key, int line, int err,
+				  const char *where);
+static int prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag);
 static int prm_set_force (SYSPRM_PARAM * prm, const char *value);
 static int prm_set_default (SYSPRM_PARAM * prm);
 static SYSPRM_PARAM *prm_find (const char *pname, const char *section);
 static const KEYVAL *prm_keyword (int val, const char *name,
 				  const KEYVAL * tbl, int dim);
 static void prm_tune_parameters (void);
-static int prm_compound_has_changed (SYSPRM_PARAM * prm);
+static int prm_compound_has_changed (SYSPRM_PARAM * prm, bool set_flag);
 static void prm_set_compound (SYSPRM_PARAM * param,
 			      const char **compound_param_values[],
-			      const int values_count);
+			      const int values_count, bool set_flag);
+static int prm_get_next_param_value (char **data, char **prm, char **value);
 
 /* conf files that have been loaded */
 #define MAX_NUM_OF_PRM_FILES_LOADED	10
@@ -1852,7 +2231,7 @@ sysprm_dump_parameters (FILE * fp)
   for (i = 0; i < NUM_PRM; i++)
     {
       prm = &prm_Def[i];
-      if (PRM_IS_HIDDEN (prm->flag))
+      if (PRM_IS_HIDDEN (prm->flag) || PRM_IS_OBSOLETED (prm->flag))
 	{
 	  continue;
 	}
@@ -1861,6 +2240,62 @@ sysprm_dump_parameters (FILE * fp)
     }
 
   return;
+}
+
+/*
+ * sysprm_set_er_log_file -
+ *   return: void
+ *   base_db_name(in): database name
+ *
+ */
+void
+sysprm_set_er_log_file (char *db_name)
+{
+  char *s, *base_db_name;
+  char local_db_name[DB_MAX_IDENTIFIER_LENGTH];
+  time_t log_time;
+  struct tm log_tm, *log_tm_p = &log_tm;
+  char error_log_name[PATH_MAX];
+  SYSPRM_PARAM *er_log_file;
+
+  if (db_name == NULL)
+    {
+      return;
+    }
+
+  er_log_file = prm_find (PRM_NAME_ER_LOG_FILE, NULL);
+  if (er_log_file == NULL || PRM_IS_SET (er_log_file->flag))
+    {
+      return;
+    }
+
+  strncpy (local_db_name, db_name, DB_MAX_IDENTIFIER_LENGTH);
+  s = strchr (local_db_name, '@');
+  if (s)
+    {
+      *s = '\0';
+    }
+  base_db_name = basename ((char *) local_db_name);
+  if (base_db_name == NULL)
+    {
+      return;
+    }
+
+  log_time = time (NULL);
+#if defined (SERVER_MODE) && !defined (WINDOWS)
+  log_tm_p = localtime_r (&log_time, &log_tm);
+#else
+  log_tm_p = localtime (&log_time);
+#endif /* SERVER_MODE && !WINDOWS */
+  if (log_tm_p != NULL)
+    {
+      snprintf (error_log_name, PATH_MAX - 1,
+		"%s%c%s_%04d%02d%02d_%02d%02d.err", ER_LOG_FILE_DIR,
+		PATH_SEPARATOR, base_db_name, log_tm_p->tm_year + 1900,
+		log_tm_p->tm_mon + 1, log_tm_p->tm_mday, log_tm_p->tm_hour,
+		log_tm_p->tm_min);
+      prm_set (er_log_file, error_log_name, true);
+    }
 }
 
 /*
@@ -1878,9 +2313,11 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 {
   char *base_db_name;
   char file_being_dealt_with[PATH_MAX];
+  char local_db_name[DB_MAX_IDENTIFIER_LENGTH];
   unsigned int i;
   struct stat stat_buf;
-  int r;
+  int r = NO_ERROR;
+  char *s;
 
   if (db_name == NULL)
     {
@@ -1894,32 +2331,19 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
     }
   else
     {
-      base_db_name = basename ((char *) db_name);
+      strncpy (local_db_name, db_name, DB_MAX_IDENTIFIER_LENGTH);
+      s = strchr (local_db_name, '@');
+      if (s)
+	{
+	  *s = '\0';
+	}
+      base_db_name = basename ((char *) local_db_name);
     }
 
 #if !defined (CS_MODE)
   if (base_db_name != NULL && reload == false)
     {
-      time_t log_time;
-      struct tm log_tm, *log_tm_p = &log_tm;
-      char error_log_name[PATH_MAX];
-
-      log_time = time (NULL);
-#if defined (SERVER_MODE) && !defined (WINDOWS)
-      log_tm_p = localtime_r (&log_time, &log_tm);
-#else
-      log_tm_p = localtime (&log_time);
-#endif /* SERVER_MODE && !WINDOWS */
-      if (log_tm_p != NULL)
-	{
-	  snprintf (error_log_name, PATH_MAX - 1,
-		    "%s%c%s_%04d%02d%02d_%02d%02d.err", ER_LOG_FILE_DIR,
-		    PATH_SEPARATOR, base_db_name, log_tm_p->tm_year + 1900,
-		    log_tm_p->tm_mon + 1, log_tm_p->tm_mday,
-		    log_tm_p->tm_hour, log_tm_p->tm_min);
-	  (void) prm_set (prm_find (PRM_NAME_ER_LOG_FILE, NULL),
-			  error_log_name);
-	}
+      sysprm_set_er_log_file (base_db_name);
     }
 #endif /* !CS_MODE */
 
@@ -1954,17 +2378,18 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_CUBRID,
 				       MSGCAT_SET_PARAMETERS,
-				       MSGCAT_PARAM_CANT_ACCESS),
+				       PRM_ERR_CANT_ACCESS),
 	       file_being_dealt_with, strerror (errno));
     }
   else
     {
-#if !defined(CS_MODE)
       r = prm_read_and_parse_ini_file (file_being_dealt_with,
-				       base_db_name, reload);
-#else /* !CS_MODE */
-      r = prm_read_and_parse_ini_file (file_being_dealt_with, NULL, reload);
-#endif /* CS_MODE */
+				       base_db_name, reload, HA_IGNORE);
+    }
+
+  if (r != NO_ERROR)
+    {
+      return r;
     }
 
 #if !defined (SERVER_MODE)
@@ -1977,23 +2402,49 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 		"%s", sysprm_conf_file_name);
       if (stat (file_being_dealt_with, &stat_buf) == 0)
 	{
-#if !defined(CS_MODE)
 	  r = prm_read_and_parse_ini_file (file_being_dealt_with,
-					   base_db_name, reload);
-#else /* !CS_MODE */
-	  r = prm_read_and_parse_ini_file (file_being_dealt_with,
-					   NULL, reload);
-#endif /* CS_MODE */
+					   base_db_name, reload, HA_IGNORE);
 	}
     }
 #endif /* !SERVER_MODE */
+
+  if (r != NO_ERROR)
+    {
+      return r;
+    }
+
+  if (PRM_HA_MODE != HA_MODE_OFF)
+    {
+      /* use environment variable's value if exist */
+      conf_file = envvar_get ("HA_CONF_FILE");
+      if (conf_file != NULL && conf_file[0] != '\0')
+	{
+	  strncpy (file_being_dealt_with, conf_file, PATH_MAX);
+	}
+      else
+	{
+	  envvar_confdir_file (file_being_dealt_with, PATH_MAX,
+			       sysprm_ha_conf_file_name);
+	}
+      if (stat (file_being_dealt_with, &stat_buf) == 0)
+	{
+	  r = prm_read_and_parse_ini_file (file_being_dealt_with, NULL,
+					   reload, HA_READ);
+	}
+    }
+
+  if (r != NO_ERROR)
+    {
+      return r;
+    }
 
   /*
    * If a parameter is not given, set it by default
    */
   for (i = 0; i < NUM_PRM; i++)
     {
-      if (!PRM_IS_SET (prm_Def[i].flag))
+      if (!PRM_IS_SET (prm_Def[i].flag)
+	  && !PRM_IS_OBSOLETED (prm_Def[i].flag))
 	{
 	  if (PRM_HAS_DEFAULT (prm_Def[i].flag))
 	    {
@@ -2004,8 +2455,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
 	      fprintf (stderr,
 		       msgcat_message (MSGCAT_CATALOG_CUBRID,
 				       MSGCAT_SET_PARAMETERS,
-				       MSGCAT_PARAM_NO_VALUE),
-		       prm_Def[i].name);
+				       PRM_ERR_NO_VALUE), prm_Def[i].name);
 	    }
 	}
     }
@@ -2015,6 +2465,16 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
    */
   prm_check_environment ();
   prm_tune_parameters ();
+  if (prm_adjust_parameters () != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+#if 0
+  if (prm_check_parameters () != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+#endif
 
   /*
    * Perform forced system parameter setting.
@@ -2023,7 +2483,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file,
     {
       if (prm_Def[i].force_value)
 	{
-	  prm_set (&prm_Def[i], prm_Def[i].force_value);
+	  prm_set (&prm_Def[i], prm_Def[i].force_value, false);
 	}
     }
 
@@ -2074,9 +2534,10 @@ sysprm_reload_and_init (const char *db_name, const char *conf_file)
  *   reload(in):
  *   file(in):
  */
-static void
+static int
 prm_load_by_section (INI_TABLE * ini, const char *section,
-		     bool ignore_section, bool reload, const char *file)
+		     bool ignore_section, bool reload, const char *file,
+		     bool ha)
 {
   int i, error;
   int sec_len;
@@ -2122,13 +2583,31 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
 	{
 	  continue;
 	}
+      if (ha == HA_READ && (prm && !PRM_IS_FOR_HA (prm->flag)))
+	{
+	  continue;
+	}
 
-      error = prm_set (prm, value);
+      if (prm && PRM_IS_OBSOLETED (prm->flag))
+	{
+	  continue;
+	}
+
+      if (prm && PRM_IS_DEPRECATED (prm->flag))
+	{
+	  prm_report_bad_entry (key + sec_len, ini->lineno[i],
+				PRM_ERR_DEPRICATED, file);
+	}
+
+      error = prm_set (prm, value, true);
       if (error != NO_ERROR)
 	{
-	  prm_report_bad_entry (ini->lineno[i], error, file);
+	  prm_report_bad_entry (key + sec_len, ini->lineno[i], error, file);
+	  return error;
 	}
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -2140,32 +2619,257 @@ prm_load_by_section (INI_TABLE * ini, const char *section,
  */
 static int
 prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name,
-			     const bool reload)
+			     const bool reload, const bool ha)
 {
   INI_TABLE *ini;
   char sec_name[LINE_MAX];
+  char host_name[MAXHOSTNAMELEN];
+  char user_name[MAXHOSTNAMELEN];
+  int error;
 
   ini = ini_parser_load (prm_file_name);
   if (ini == NULL)
     {
       fprintf (stderr,
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS,
-			       MSGCAT_PARAM_CANT_OPEN_INIT), prm_file_name,
+			       PRM_ERR_CANT_OPEN_INIT), prm_file_name,
 	       strerror (errno));
       return PRM_ERR_FILE_ERR;
     }
 
-  prm_load_by_section (ini, "common", true, reload, prm_file_name);
-  if (db_name != NULL && *db_name != '\0')
+  error =
+    prm_load_by_section (ini, "common", true, reload, prm_file_name, ha);
+  if (error == NO_ERROR && !ha && db_name != NULL && *db_name != '\0')
     {
       snprintf (sec_name, LINE_MAX, "@%s", db_name);
-      prm_load_by_section (ini, sec_name, true, reload, prm_file_name);
+      error =
+	prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha);
     }
-  prm_load_by_section (ini, "service", false, reload, prm_file_name);
+  if (error == NO_ERROR && !ha)
+    {
+      error =
+	prm_load_by_section (ini, "service", false, reload, prm_file_name,
+			     ha);
+    }
+  if (error == NO_ERROR && ha && PRM_HA_MODE != HA_MODE_OFF
+      && GETHOSTNAME (host_name, MAXHOSTNAMELEN) == 0)
+    {
+      snprintf (sec_name, LINE_MAX, "%%%s|*", host_name);
+      error =
+	prm_load_by_section (ini, sec_name, true, reload, prm_file_name, ha);
+      if (error == NO_ERROR && getlogin_r (user_name, MAXHOSTNAMELEN) == 0)
+	{
+	  snprintf (sec_name, LINE_MAX, "%%%s|%s", host_name, user_name);
+	  error =
+	    prm_load_by_section (ini, sec_name, true, reload, prm_file_name,
+				 ha);
+	}
+    }
 
   ini_parser_free (ini);
 
   prm_file_has_been_loaded (prm_file_name, db_name);
+
+  return error;
+}
+
+/*
+ * prm_calc_size_by_pages -
+ *   return: error code
+ */
+static int
+prm_calc_pages_by_size (const char *size, const char *page, PGLENGTH len)
+{
+  UINT64 size_value;
+  int page_value;
+  SYSPRM_PARAM *size_prm, *page_prm;
+  char newval[LINE_MAX];
+
+  size_prm = prm_find (size, NULL);
+  page_prm = prm_find (page, NULL);
+  if (size_prm == NULL || page_prm == NULL)
+    {
+      return PRM_ERR_UNKNOWN_PARAM;
+    }
+
+  if (PRM_DEFAULT_VAL_USED (size_prm->flag) && PRM_IS_SET (page_prm->flag))
+    {
+      return NO_ERROR;
+    }
+
+  if (PRM_IS_SET (size_prm->flag))
+    {
+      size_value = PRM_GET_SIZE (size_prm->value);
+      page_value = size_value / len;
+      snprintf (newval, LINE_MAX, "%d", page_value);
+      if (prm_set (page_prm, newval, false) != NO_ERROR)
+	{
+	  return PRM_ERR_BAD_VALUE;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * prm_calc_size_by_pages -
+ *   return: error code
+ */
+static int
+prm_calc_size_by_pages (const char *page, const char *size, PGLENGTH len)
+{
+  UINT64 size_value;
+  int int_page_value;
+  float float_page_value;
+  SYSPRM_PARAM *size_prm, *page_prm;
+  char newval[LINE_MAX];
+
+  size_prm = prm_find (size, NULL);
+  page_prm = prm_find (page, NULL);
+  if (size_prm == NULL || page_prm == NULL)
+    {
+      return PRM_ERR_UNKNOWN_PARAM;
+    }
+
+  if (PRM_IS_SET (size_prm->flag))
+    {
+      return NO_ERROR;
+    }
+
+  if (PRM_DEFAULT_VAL_USED (size_prm->flag) && PRM_IS_SET (page_prm->flag))
+    {
+      if (PRM_IS_INTEGER (page_prm->flag))
+	{
+	  int_page_value = PRM_GET_INT (page_prm->value);
+	  size_value = ((UINT64) int_page_value) * ((UINT64) len);
+	}
+      else if (PRM_IS_FLOAT (page_prm->flag))
+	{
+	  float_page_value = PRM_GET_FLOAT (page_prm->value);
+	  size_value = (UINT64) ((UINT64) len * float_page_value);
+	}
+      else
+	{
+	  assert (false);
+	  return PRM_ERR_BAD_VALUE;
+	}
+
+      /* backward compatibility for old cubrid.conf */
+      size_value = MAX (PRM_GET_SIZE (size_prm->lower_limit), size_value);
+
+      snprintf (newval, LINE_MAX, "%llu", (unsigned long long) size_value);
+      if (prm_set (size_prm, newval, false) != NO_ERROR)
+	{
+	  return PRM_ERR_BAD_VALUE;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * prm_is_set_both -
+ *   return: error code
+ */
+static int
+prm_is_set_both (const char *one, const char *other)
+{
+  SYSPRM_PARAM *one_prm, *other_prm;
+
+  one_prm = prm_find (one, NULL);
+  other_prm = prm_find (other, NULL);
+  if (one_prm == NULL || other_prm == NULL)
+    {
+      return PRM_ERR_NO_ERROR;
+    }
+
+  if (PRM_IS_SET (one_prm->flag) && PRM_IS_SET (other_prm->flag))
+    {
+      return PRM_ERR_NOT_BOTH;
+    }
+
+  return PRM_ERR_NO_ERROR;
+}
+
+/*
+ * prm_adjust_parameters -
+ *   return: error code
+ */
+int
+prm_adjust_parameters ()
+{
+  const char *size[] = {
+    PRM_NAME_PAGE_BUFFER_SIZE,
+    PRM_NAME_SORT_BUFFER_SIZE,
+    PRM_NAME_LOG_BUFFER_SIZE,
+    PRM_NAME_INDEX_SCAN_KEY_BUFFER_SIZE,
+    PRM_NAME_BT_OID_BUFFER_SIZE
+  };
+  const char *page[] = {
+    PRM_NAME_PB_NBUFFERS,
+    PRM_NAME_SR_NBUFFERS,
+    PRM_NAME_LOG_NBUFFERS,
+    PRM_NAME_INDEX_SCAN_KEY_BUFFER_PAGES,
+    PRM_NAME_BT_OID_NBUFFERS
+  };
+  PGLENGTH len[] = {
+    IO_PAGESIZE,
+    IO_PAGESIZE,
+    LOG_PAGESIZE,
+    IO_PAGESIZE,
+    IO_PAGESIZE,
+  };
+  int error;
+  unsigned int i;
+
+  for (i = 0; i < sizeof (size) / sizeof (size[0]); i++)
+    {
+      if (prm_is_set_both (size[i], page[i]) != PRM_ERR_NO_ERROR)
+	{
+	  char *fmt = PARAM_MSG_FMT (PRM_ERR_NOT_BOTH);
+	  fprintf (stderr, fmt, size[i], page[i]);
+	  return PRM_ERR_NOT_BOTH;
+	}
+    }
+
+  for (i = 0; i < sizeof (size) / sizeof (size[0]); i++)
+    {
+      error = prm_calc_pages_by_size (size[i], page[i], len[i]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      error = prm_calc_size_by_pages (page[i], size[i], len[i]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * prm_check_parameters -
+ *   return: int
+ */
+static int
+prm_check_parameters (void)
+{
+  /*
+   * ha_node_list and ha_db_list shold be not null for ha_mode=yes|replica
+   */
+  if (PRM_HA_MODE != HA_MODE_OFF)
+    {
+      if (PRM_HA_NODE_LIST == NULL || PRM_HA_NODE_LIST[0] == 0
+	  || PRM_HA_DB_LIST == NULL || PRM_HA_DB_LIST[0] == 0)
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_CUBRID,
+					   MSGCAT_SET_PARAMETERS,
+					   PRM_ERR_NO_VALUE),
+		   PRM_NAME_HA_NODE_LIST);
+	  return ER_FAILED;
+	}
+    }
 
   return NO_ERROR;
 }
@@ -2194,10 +2898,10 @@ prm_check_environment (void)
       if (str && str[0])
 	{
 	  int error;
-	  error = prm_set (prm, str);
+	  error = prm_set (prm, str, true);
 	  if (error != 0)
 	    {
-	      prm_report_bad_entry (-1, error, buf);
+	      prm_report_bad_entry (prm->name, -1, error, buf);
 	    }
 	}
     }
@@ -2213,7 +2917,7 @@ prm_check_environment (void)
 static int
 prm_change (const char *data, bool check)
 {
-  char buf[256], *p, *name, *value;
+  char buf[256], *p = NULL, *name = NULL, *value = NULL;
   SYSPRM_PARAM *prm;
   int err = PRM_ERR_NO_ERROR;
 
@@ -2222,7 +2926,7 @@ prm_change (const char *data, bool check)
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (intl_mbs_ncpy (buf, data, 255) == NULL)
+  if (intl_mbs_ncpy (buf, data, 256) == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
@@ -2230,89 +2934,10 @@ prm_change (const char *data, bool check)
   p = buf;
   do
     {
-      while (char_isspace (*p))
-	{
-	  p++;
-	}
-      if (*p == '\0')
+      err = prm_get_next_param_value (&p, &name, &value);
+      if (err != PRM_ERR_NO_ERROR || name == NULL || value == NULL)
 	{
 	  break;
-	}
-      name = p;
-
-      while (*p && !char_isspace (*p) && *p != '=')
-	{
-	  p++;
-	}
-      if (*p == '\0')
-	{
-	  return PRM_ERR_BAD_VALUE;
-	}
-      else if (*p == '=')
-	{
-	  *p++ = '\0';
-	}
-      else
-	{
-	  *p++ = '\0';
-	  while (char_isspace (*p))
-	    {
-	      p++;
-	    }
-	  if (*p == '=')
-	    {
-	      p++;
-	    }
-	}
-
-      while (char_isspace (*p))
-	{
-	  p++;
-	}
-      if (*p == '\0')
-	{
-	  break;
-	}
-      value = p;
-
-      if (*p == '"' || *p == '\'')
-	{
-	  char *t, delim;
-
-	  delim = *p++;
-	  value = t = p;
-	  while (*t && *t != delim)
-	    {
-	      if (*t == '\\')
-		{
-		  t++;
-		}
-	      *p++ = *t++;
-	    }
-	  if (*t != delim)
-	    {
-	      return PRM_ERR_BAD_STRING;
-	    }
-	}
-      else
-	{
-	  while (*p && !char_isspace (*p) && *p != ';')
-	    {
-	      p++;
-	    }
-	}
-
-      if (*p)
-	{
-	  *p++ = '\0';
-	  while (char_isspace (*p))
-	    {
-	      p++;
-	    }
-	  if (*p == ';')
-	    {
-	      p++;
-	    }
 	}
 
       prm = prm_find (name, NULL);
@@ -2332,14 +2957,14 @@ prm_change (const char *data, bool check)
 	  return PRM_ERR_CANNOT_CHANGE;
 	}
 #if defined (SA_MODE)
-      err = prm_set (prm, value);
+      err = prm_set (prm, value, true);
 #endif /* SA_MODE */
 #if defined(CS_MODE)
       if (check == true)
 	{
 	  if (PRM_IS_FOR_CLIENT (prm->flag))
 	    {
-	      err = prm_set (prm, value);
+	      err = prm_set (prm, value, true);
 	      if (PRM_IS_FOR_SERVER (prm->flag))
 		{
 		  /* for both client and server, return not for client after set it */
@@ -2362,7 +2987,7 @@ prm_change (const char *data, bool check)
 	}
       else
 	{
-	  err = prm_set (prm, value);
+	  err = prm_set (prm, value, true);
 	}
 #endif /* CS_MODE */
 #if defined (SERVER_MODE)
@@ -2370,10 +2995,10 @@ prm_change (const char *data, bool check)
 	{
 	  return PRM_ERR_NOT_FOR_SERVER;
 	}
-      err = prm_set (prm, value);
+      err = prm_set (prm, value, true);
 #endif /* SERVER_MODE */
     }
-  while (err == PRM_ERR_NO_ERROR && *p);
+  while (err == PRM_ERR_NO_ERROR && p);
 
   return err;
 }
@@ -2390,6 +3015,57 @@ int
 sysprm_change_parameters (const char *data)
 {
   return prm_change (data, true);
+}
+
+/*
+ * sysprm_prm_change_should_invalidate_cache - check if changing a parameter
+ *			value should cause the xasl cache to be cleared
+ *   return: true if the cache should be cleared
+ *   data(in): parameter setting line: "name1=value1; name2 = value2;..."
+ */
+bool
+sysprm_prm_change_should_clear_cache (char *data)
+{
+  char buf[256], *p = NULL, *name = NULL, *value = NULL;
+  SYSPRM_PARAM *prm;
+  int err = PRM_ERR_NO_ERROR;
+
+  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES <= 0)
+    {
+      /* if cache is disabled, there's no need to clear it */
+      return false;
+    }
+  if (!data || *data == '\0')
+    {
+      return false;
+    }
+  if (intl_mbs_ncpy (buf, data, 256) == NULL)
+    {
+      return false;
+    }
+
+  p = buf;
+  do
+    {
+      err = prm_get_next_param_value (&p, &name, &value);
+      if (err != PRM_ERR_NO_ERROR || name == NULL || value == NULL)
+	{
+	  break;
+	}
+
+      prm = prm_find (name, NULL);
+      if (prm == NULL)
+	{
+	  return false;
+	}
+      if (PRM_SHOULD_CLEAR_CACHE (prm->flag))
+	{
+	  return true;
+	}
+    }
+  while (err == PRM_ERR_NO_ERROR && p);
+
+  return false;
 }
 
 /*
@@ -2417,6 +3093,21 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, bool print_name)
       else
 	{
 	  n = snprintf (buf, len, "%d", PRM_GET_INT (prm->value));
+	}
+    }
+  else if (PRM_IS_SIZE (prm->flag))
+    {
+      UINT64 v = PRM_GET_SIZE (prm->value);
+
+      if (print_name)
+	{
+	  int name_len = strlen (prm->name) + 1;
+	  n = snprintf (buf, len, "%s=", prm->name);
+	  n = util_byte_to_size_string (v, buf + name_len, len - name_len);
+	}
+      else
+	{
+	  n = util_byte_to_size_string (v, buf, len);
 	}
     }
   else if (PRM_IS_BOOLEAN (prm->flag))
@@ -2577,7 +3268,7 @@ sysprm_obtain_parameters (char *data, int len)
       return PRM_ERR_BAD_VALUE;
     }
 
-  if (intl_mbs_ncpy (buf, data, LINE_MAX - 1) == NULL)
+  if (intl_mbs_ncpy (buf, data, LINE_MAX) == NULL)
     {
       return PRM_ERR_BAD_VALUE;
     }
@@ -2707,6 +3398,180 @@ xsysprm_dump_server_parameters (FILE * outfp)
 }
 #endif /* !CS_MODE */
 
+static int
+prm_make_size (UINT64 * pre, char post)
+{
+  switch (post)
+    {
+    case 'b':
+    case 'B':
+      /* bytes */
+      break;
+    case 'k':
+    case 'K':
+      /* kilo */
+      *pre = *pre * 1024ULL;
+      break;
+    case 'm':
+    case 'M':
+      /* mega */
+      *pre = *pre * 1048576ULL;
+      break;
+    case 'g':
+    case 'G':
+      /* giga */
+      *pre = *pre * 1073741824ULL;
+      break;
+    case 't':
+    case 'T':
+      /* tera */
+      *pre = *pre * 1099511627776ULL;
+      break;
+    default:
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * sysprm_get_range -
+ *   return: 
+ *   pname (in): parameter name
+ *   value (in): parameter value
+ */
+int
+sysprm_get_range (const char *pname, void *min, void *max)
+{
+  SYSPRM_PARAM *prm;
+
+  prm = prm_find (pname, NULL);
+  if (prm == NULL)
+    {
+      return PRM_ERR_UNKNOWN_PARAM;
+    }
+
+  if (PRM_IS_INTEGER (prm->flag))
+    {
+      if (prm->lower_limit)
+	{
+	  *((int *) min) = PRM_GET_INT (prm->lower_limit);
+	}
+      else
+	{
+	  *((int *) min) = INT_MIN;
+	}
+
+      if (prm->upper_limit)
+	{
+	  *((int *) max) = PRM_GET_INT (prm->upper_limit);
+	}
+      else
+	{
+	  *((int *) max) = INT_MAX;
+	}
+    }
+  else if (PRM_IS_FLOAT (prm->flag))
+    {
+      if (prm->lower_limit)
+	{
+	  *((float *) min) = PRM_GET_FLOAT (prm->lower_limit);
+	}
+      else
+	{
+	  *((float *) min) = FLT_MIN;
+	}
+
+      if (prm->upper_limit)
+	{
+	  *((float *) max) = PRM_GET_FLOAT (prm->upper_limit);
+	}
+      else
+	{
+	  *((float *) max) = FLT_MAX;
+	}
+    }
+  else if (PRM_IS_SIZE (prm->flag))
+    {
+      if (prm->lower_limit)
+	{
+	  *((UINT64 *) min) = PRM_GET_SIZE (prm->lower_limit);
+	}
+      else
+	{
+	  *((UINT64 *) min) = 0ULL;
+	}
+
+      if (prm->upper_limit)
+	{
+	  *((UINT64 *) max) = PRM_GET_SIZE (prm->upper_limit);
+	}
+      else
+	{
+	  *((UINT64 *) max) = ULLONG_MAX;
+	}
+    }
+  else
+    {
+      return PRM_ERR_BAD_VALUE;
+    }
+
+
+  return PRM_ERR_NO_ERROR;
+}
+
+/*
+ * sysprm_check_range -
+ *   return: 
+ *   pname (in): parameter name
+ *   value (in): parameter value
+ */
+int
+sysprm_check_range (const char *pname, void *value)
+{
+  SYSPRM_PARAM *prm;
+
+  prm = prm_find (pname, NULL);
+  if (prm == NULL)
+    {
+      return PRM_ERR_UNKNOWN_PARAM;
+    }
+
+  if (PRM_IS_INTEGER (prm->flag))
+    {
+      int v = *((int *) value);
+      if ((prm->upper_limit && PRM_GET_INT (prm->upper_limit) < v)
+	  || (prm->lower_limit && PRM_GET_INT (prm->lower_limit) > v))
+	{
+	  return PRM_ERR_BAD_RANGE;
+	}
+    }
+  else if (PRM_IS_FLOAT (prm->flag))
+    {
+      float v = *((float *) value);
+      if ((prm->upper_limit && PRM_GET_FLOAT (prm->upper_limit) < v)
+	  || (prm->lower_limit && PRM_GET_FLOAT (prm->lower_limit) > v))
+	{
+	  return PRM_ERR_BAD_RANGE;
+	}
+    }
+  else if (PRM_IS_SIZE (prm->flag))
+    {
+      UINT64 v = *((UINT64 *) value);
+      if ((prm->upper_limit && PRM_GET_SIZE (prm->upper_limit) < v)
+	  || (prm->lower_limit && PRM_GET_SIZE (prm->lower_limit) > v))
+	{
+	  return PRM_ERR_BAD_RANGE;
+	}
+    }
+  else
+    {
+      return PRM_ERR_BAD_VALUE;
+    }
+
+
+  return PRM_ERR_NO_ERROR;
+}
 
 /*
  * prm_set - Set the value of a parameter
@@ -2715,7 +3580,7 @@ xsysprm_dump_server_parameters (FILE * outfp)
  *   value(in):
  */
 static int
-prm_set (SYSPRM_PARAM * prm, const char *value)
+prm_set (SYSPRM_PARAM * prm, const char *value, bool set_flag)
 {
   char *end;
   int warning_status = NO_ERROR;
@@ -2741,23 +3606,7 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
       if ((prm->upper_limit && PRM_GET_INT (prm->upper_limit) < val)
 	  || (prm->lower_limit && PRM_GET_INT (prm->lower_limit) > val))
 	{
-	  if (PRM_HAS_DEFAULT (prm->flag))
-	    {
-	      if (val != PRM_GET_INT (prm->default_value))
-		{
-		  fprintf (stderr,
-			   msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_PARAMETERS,
-					   MSGCAT_PARAM_KEYWORD_INFO_INT),
-			   prm->name, val, PRM_GET_INT (prm->default_value));
-		  val = PRM_GET_INT (prm->default_value);
-		  warning_status = PRM_ERR_RESET_BAD_RANGE;
-		}
-	    }
-	  else
-	    {
-	      return PRM_ERR_BAD_RANGE;
-	    }
+	  return PRM_ERR_BAD_RANGE;
 	}
       valp = (int *) prm->value;
       *valp = val;
@@ -2774,24 +3623,7 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
       if ((prm->upper_limit && PRM_GET_FLOAT (prm->upper_limit) < val)
 	  || (prm->lower_limit && PRM_GET_FLOAT (prm->lower_limit) > val))
 	{
-	  if (PRM_HAS_DEFAULT (prm->flag))
-	    {
-	      if (val != PRM_GET_FLOAT (prm->default_value))
-		{
-		  fprintf (stderr,
-			   msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_PARAMETERS,
-					   MSGCAT_PARAM_KEYWORD_INFO_FLOAT),
-			   prm->name, val,
-			   PRM_GET_FLOAT (prm->default_value));
-		  val = PRM_GET_FLOAT (prm->default_value);
-		  warning_status = PRM_ERR_RESET_BAD_RANGE;
-		}
-	    }
-	  else
-	    {
-	      return PRM_ERR_BAD_RANGE;
-	    }
+	  return PRM_ERR_BAD_RANGE;
 	}
       valp = (float *) prm->value;
       *valp = val;
@@ -2830,6 +3662,8 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
 	  val = strdup (value);
 	  if (val == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (value));
 	      return (PRM_ERR_NO_MEM_FOR_PRM);
 	    }
 	  PRM_SET_BIT (PRM_ALLOCATED, prm->flag);
@@ -2891,23 +3725,7 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
       if ((prm->upper_limit && PRM_GET_INT (prm->upper_limit) < val)
 	  || (prm->lower_limit && PRM_GET_INT (prm->lower_limit) > val))
 	{
-	  if (PRM_HAS_DEFAULT (prm->flag))
-	    {
-	      if (val != PRM_GET_INT (prm->default_value))
-		{
-		  fprintf (stderr,
-			   msgcat_message (MSGCAT_CATALOG_CUBRID,
-					   MSGCAT_SET_PARAMETERS,
-					   MSGCAT_PARAM_KEYWORD_INFO_INT),
-			   prm->name, val, PRM_GET_INT (prm->default_value));
-		  val = PRM_GET_INT (prm->default_value);
-		  warning_status = PRM_ERR_RESET_BAD_RANGE;
-		}
-	    }
-	  else
-	    {
-	      return PRM_ERR_BAD_RANGE;
-	    }
+	  return PRM_ERR_BAD_RANGE;
 	}
       valp = (int *) prm->value;
       *valp = val;
@@ -2936,6 +3754,9 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
 	  val = calloc (-(ER_LAST_ERROR) + 1, sizeof (bool));
 	  if (val == NULL)
 	    {
+	      size_t size = (-(ER_LAST_ERROR) + 1) * sizeof (bool);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	      return (PRM_ERR_NO_MEM_FOR_PRM);
 	    }
 	  PRM_SET_BIT (PRM_ALLOCATED, prm->flag);
@@ -2988,6 +3809,9 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
 	  val = calloc (1024, sizeof (int));	/* max size is 1023 */
 	  if (val == NULL)
 	    {
+	      size_t size = 1024 * sizeof (bool);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	      return (PRM_ERR_NO_MEM_FOR_PRM);
 	    }
 	  PRM_SET_BIT (PRM_ALLOCATED, prm->flag);
@@ -3010,6 +3834,23 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
 	}
       *valp = val;
     }
+  else if (PRM_IS_SIZE (prm->flag))
+    {
+      UINT64 val, *valp;
+
+      if (util_size_string_to_byte (value, &val) != NO_ERROR)
+	{
+	  return PRM_ERR_BAD_VALUE;
+	}
+
+      if ((prm->upper_limit && PRM_GET_SIZE (prm->upper_limit) < val)
+	  || (prm->lower_limit && PRM_GET_SIZE (prm->lower_limit) > val))
+	{
+	  return PRM_ERR_BAD_RANGE;
+	}
+      valp = (UINT64 *) prm->value;
+      *valp = val;
+    }
   else
     {
       assert (false);
@@ -3017,23 +3858,27 @@ prm_set (SYSPRM_PARAM * prm, const char *value)
 
   if (PRM_IS_COMPOUND (prm->flag))
     {
-      prm_compound_has_changed (prm);
+      prm_compound_has_changed (prm, set_flag);
     }
 
-  PRM_SET_BIT (PRM_SET, prm->flag);
-  /* Indicate that the default value was not used */
-  PRM_CLEAR_BIT (PRM_DEFAULT_USED, prm->flag);
+  if (set_flag)
+    {
+      PRM_SET_BIT (PRM_SET, prm->flag);
+      /* Indicate that the default value was not used */
+      PRM_CLEAR_BIT (PRM_DEFAULT_USED, prm->flag);
+    }
   return warning_status;
 }
 
 static int
-prm_compound_has_changed (SYSPRM_PARAM * prm)
+prm_compound_has_changed (SYSPRM_PARAM * prm, bool set_flag)
 {
   assert (PRM_IS_COMPOUND (prm->flag));
 
   if (prm == prm_find (PRM_NAME_COMPAT_MODE, NULL))
     {
-      prm_set_compound (prm, compat_mode_values, DIM (compat_mode_values));
+      prm_set_compound (prm, compat_mode_values, DIM (compat_mode_values),
+			set_flag);
     }
   else
     {
@@ -3060,6 +3905,8 @@ prm_set_force (SYSPRM_PARAM * prm, const char *value)
   prm->force_value = strdup (value);
   if (prm->force_value == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      strlen (value));
       return PRM_ERR_NO_MEM_FOR_PRM;
     }
 
@@ -3084,6 +3931,13 @@ prm_set_default (SYSPRM_PARAM * prm)
       int val, *valp;
       val = PRM_GET_INT (prm->default_value);
       valp = (int *) prm->value;
+      *valp = val;
+    }
+  if (PRM_IS_SIZE (prm->flag))
+    {
+      UINT64 val, *valp;
+      val = PRM_GET_SIZE (prm->default_value);
+      valp = (UINT64 *) prm->value;
       *valp = val;
     }
   else if (PRM_IS_BOOLEAN (prm->flag))
@@ -3140,7 +3994,6 @@ prm_set_default (SYSPRM_PARAM * prm)
       *valp = val;
     }
 
-  PRM_SET_BIT (PRM_SET, prm->flag);
   /* Indicate that the default value was used */
   PRM_SET_BIT (PRM_DEFAULT_USED, prm->flag);
   return NO_ERROR;
@@ -3282,7 +4135,6 @@ prm_keyword (int val, const char *name, const KEYVAL * tbl, int dim)
   return NULL;
 }
 
-
 /*
  * prm_report_bad_entry -
  *   return:
@@ -3291,80 +4143,44 @@ prm_keyword (int val, const char *name, const KEYVAL * tbl, int dim)
  *   where(in):
  */
 static void
-prm_report_bad_entry (int line, int err, const char *where)
+prm_report_bad_entry (const char *key, int line, int err, const char *where)
 {
   if (line >= 0)
     {
-      fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS,
-			       MSGCAT_PARAM_BAD_LINE), line, where);
+      fprintf (stderr, PARAM_MSG_FMT (PRM_ERR_BAD_LINE), key, line, where);
     }
   else
     {
-      fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS,
-			       MSGCAT_PARAM_BAD_ENV_VAR), where);
+      fprintf (stderr, PARAM_MSG_FMT (PRM_ERR_BAD_ENV_VAR), where);
     }
 
   if (err > 0)
     {
       switch (err)
 	{
-	case PRM_ERR_UNKNOWN_PARAM:
-	  {
-	    fprintf (stderr, "%s\n",
-		     msgcat_message (MSGCAT_CATALOG_CUBRID,
-				     MSGCAT_SET_PARAMETERS,
-				     MSGCAT_PARAM_BAD_KEYWORD));
-	    break;
-	  }
-	case PRM_ERR_BAD_VALUE:
-	  {
-	    fprintf (stderr, "%s\n",
-		     msgcat_message (MSGCAT_CATALOG_CUBRID,
-				     MSGCAT_SET_PARAMETERS,
-				     MSGCAT_PARAM_BAD_VALUE));
-	    break;
-	  }
+	case PRM_ERR_DEPRICATED:
 	case PRM_ERR_NO_MEM_FOR_PRM:
-	  {
-	    fprintf (stderr, "%s\n",
-		     msgcat_message (MSGCAT_CATALOG_CUBRID,
-				     MSGCAT_SET_PARAMETERS,
-				     MSGCAT_PARAM_NO_MEM));
-	    break;
-	  }
-
+	  fprintf (stderr, "%s\n", PARAM_MSG_FMT (err));
+	  break;
+	case PRM_ERR_UNKNOWN_PARAM:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_UNKNOWN_SYSPRM, 3,
+		  key, line, where);
+	  fprintf (stderr, "%s\n", PARAM_MSG_FMT (err));
+	  break;
+	case PRM_ERR_BAD_VALUE:
 	case PRM_ERR_BAD_STRING:
-	  fprintf (stderr, "%s\n",
-		   msgcat_message (MSGCAT_CATALOG_CUBRID,
-				   MSGCAT_SET_PARAMETERS,
-				   MSGCAT_PARAM_BAD_STRING));
-	  break;
-
 	case PRM_ERR_BAD_RANGE:
-	  fprintf (stderr, "%s\n",
-		   msgcat_message (MSGCAT_CATALOG_CUBRID,
-				   MSGCAT_SET_PARAMETERS,
-				   MSGCAT_PARAM_BAD_RANGE));
-	  break;
-
 	case PRM_ERR_RESET_BAD_RANGE:
-	  fprintf (stderr, "%s\n",
-		   msgcat_message (MSGCAT_CATALOG_CUBRID,
-				   MSGCAT_SET_PARAMETERS,
-				   MSGCAT_PARAM_RESET_BAD_RANGE));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, key);
+	  fprintf (stderr, "%s\n", PARAM_MSG_FMT (err));
 	  break;
-
 	default:
 	  break;
 	}
     }
   else
     {
-      fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARAMETERS,
-			       MSGCAT_PARAM_UNIX_ERROR), strerror (err));
+      fprintf (stderr, PARAM_MSG_FMT (PRM_ERR_UNIX_ERROR), strerror (err));
     }
 
   fflush (stderr);
@@ -3434,11 +4250,12 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *query_cache_size_in_pages_prm;
   SYSPRM_PARAM *ha_mode_prm;
   SYSPRM_PARAM *ha_server_state_prm;
-  SYSPRM_PARAM *replication_prm;
   SYSPRM_PARAM *auto_restart_server_prm;
   SYSPRM_PARAM *log_background_archiving_prm;
   SYSPRM_PARAM *log_media_failure_support_prm;
   SYSPRM_PARAM *ha_node_list_prm;
+  SYSPRM_PARAM *max_log_archives_prm;
+  SYSPRM_PARAM *force_remove_log_archives_prm;
 
   char newval[LINE_MAX];
   char host_name[MAXHOSTNAMELEN];
@@ -3464,18 +4281,20 @@ prm_tune_parameters (void)
    */
   if (query_cache_mode_prm != NULL)
     {
-      prm_set (query_cache_mode_prm, "0");
+      prm_set (query_cache_mode_prm, "0", false);
     }
 
   ha_mode_prm = prm_find (PRM_NAME_HA_MODE, NULL);
   ha_server_state_prm = prm_find (PRM_NAME_HA_SERVER_STATE, NULL);
-  replication_prm = prm_find (PRM_NAME_REPLICATION_MODE, NULL);
   auto_restart_server_prm = prm_find (PRM_NAME_AUTO_RESTART_SERVER, NULL);
   log_background_archiving_prm =
     prm_find (PRM_NAME_LOG_BACKGROUND_ARCHIVING, NULL);
   log_media_failure_support_prm =
     prm_find (PRM_NAME_LOG_MEDIA_FAILURE_SUPPORT, NULL);
   ha_node_list_prm = prm_find (PRM_NAME_HA_NODE_LIST, NULL);
+  max_log_archives_prm = prm_find (PRM_NAME_LOG_MAX_ARCHIVES, NULL);
+  force_remove_log_archives_prm =
+    prm_find (PRM_NAME_FORCE_REMOVE_LOG_ARCHIVES, NULL);
 
   /* Check that max clients has been set */
   assert (max_clients_prm != NULL);
@@ -3496,8 +4315,7 @@ prm_tune_parameters (void)
 	  fprintf (stderr,
 		   msgcat_message (MSGCAT_CATALOG_CUBRID,
 				   MSGCAT_SET_PARAMETERS,
-				   MSGCAT_PARAM_NO_VALUE),
-		   max_clients_prm->name);
+				   PRM_ERR_NO_VALUE), max_clients_prm->name);
 	  return;
 	}
     }
@@ -3509,7 +4327,7 @@ prm_tune_parameters (void)
       if (PRM_GET_INT (max_clients_prm->value) > max_clients)
 	{
 	  sprintf (newval, "%d", max_clients);
-	  (void) prm_set (max_clients_prm, newval);
+	  (void) prm_set (max_clients_prm, newval, false);
 	}
     }
 
@@ -3525,7 +4343,7 @@ prm_tune_parameters (void)
       sprintf (newval, "%d",
 	       ((PRM_GET_INT (max_scanid_bit_prm->value)) +
 		32 - (PRM_GET_INT (max_scanid_bit_prm->value)) % 32));
-      (void) prm_set (max_scanid_bit_prm, newval);
+      (void) prm_set (max_scanid_bit_prm, newval, false);
     }
 #endif /* SERVER_MODE */
 
@@ -3555,7 +4373,7 @@ prm_tune_parameters (void)
   if (PRM_GET_INT (max_plan_cache_entries_prm->value) == 0)
     {
       /* 0 means disable plan cache */
-      (void) prm_set (max_plan_cache_entries_prm, "-1");
+      (void) prm_set (max_plan_cache_entries_prm, "-1", false);
     }
 
   if (PRM_GET_INT (max_plan_cache_entries_prm->value) <= 0)
@@ -3582,7 +4400,7 @@ prm_tune_parameters (void)
 	{
 	  sprintf (newval, "%d",
 		   PRM_GET_INT (max_plan_cache_entries_prm->value));
-	  (void) prm_set (max_plan_cache_clones_prm, newval);
+	  (void) prm_set (max_plan_cache_clones_prm, newval, false);
 	}
 #endif /* ENABLE_UNUSED_FUNCTION */
       if (PRM_GET_INT (query_cache_mode_prm->value) == 0)
@@ -3596,52 +4414,56 @@ prm_tune_parameters (void)
 	    {
 	      sprintf (newval, "%d",
 		       PRM_GET_INT (max_plan_cache_entries_prm->value));
-	      (void) prm_set (max_query_cache_entries_prm, newval);
+	      (void) prm_set (max_query_cache_entries_prm, newval, false);
 	    }
 	}
     }
 
   /* check HA related parameters */
   assert (ha_mode_prm != NULL);
-  assert (replication_prm != NULL);
   assert (auto_restart_server_prm != NULL);
   if (ha_mode_prm == NULL || ha_server_state_prm == NULL
-      || replication_prm == NULL || auto_restart_server_prm == NULL)
+      || auto_restart_server_prm == NULL)
     {
       return;
     }
 
-#if !defined (SERVER_MODE)
+#if defined (SA_MODE)
   /* reset to default 'active mode' for SA */
   (void) prm_set_default (ha_mode_prm);
-  (void) prm_set (ha_server_state_prm, HA_SERVER_STATE_ACTIVE_STR);
-  /* reset to default 'replication' for SA */
-  (void) prm_set_default (replication_prm);
+  (void) prm_set (ha_server_state_prm, HA_SERVER_STATE_ACTIVE_STR, false);
+  if (force_remove_log_archives_prm != NULL
+      && !PRM_GET_BOOL (force_remove_log_archives_prm->value))
+    {
+      (void) prm_set_default (max_log_archives_prm);
+    }
 #else /* !SERVER_MODE */
   if (PRM_GET_INT (ha_mode_prm->value) != HA_MODE_OFF)
     {
       if (PRM_DEFAULT_VAL_USED (ha_server_state_prm->flag))
 	{
 	  sprintf (newval, "%s", HA_SERVER_STATE_STANDBY_STR);
-	  prm_set (ha_server_state_prm, newval);
+	  prm_set (ha_server_state_prm, newval, false);
 	}
-      prm_set (replication_prm, "yes");
-      prm_set (auto_restart_server_prm, "no");
+      prm_set (auto_restart_server_prm, "no", false);
     }
   else
     {
       sprintf (newval, "%s", HA_SERVER_STATE_ACTIVE_STR);
-      prm_set (ha_server_state_prm, newval);
+      prm_set (ha_server_state_prm, newval, false);
+
+      if (force_remove_log_archives_prm != NULL
+	  && !PRM_GET_BOOL (force_remove_log_archives_prm->value))
+	{
+	  (void) prm_set_default (max_log_archives_prm);
+	}
     }
-#if defined (WINDOWS)
-  /* reset to default 'replication' for WIDOWS */
-  (void) prm_set_default (replication_prm);
-#endif
 #endif /* SERVER_MODE */
 
-  if (!PRM_GET_BOOL (log_media_failure_support_prm->value))
+  if (log_media_failure_support_prm != NULL
+      && !PRM_GET_BOOL (log_media_failure_support_prm->value))
     {
-      prm_set (log_background_archiving_prm, "no");
+      prm_set (log_background_archiving_prm, "no", false);
     }
 
   if (ha_node_list_prm == NULL
@@ -3653,7 +4475,7 @@ prm_tune_parameters (void)
 	}
 
       snprintf (newval, sizeof (newval) - 1, "%s@%s", host_name, host_name);
-      prm_set (ha_node_list_prm, newval);
+      prm_set (ha_node_list_prm, newval, false);
     }
 
   return;
@@ -3683,7 +4505,7 @@ prm_tune_parameters (void)
   if (PRM_GET_INT (max_plan_cache_entries_prm->value) == 0)
     {
       /* 0 means disable plan cache */
-      (void) prm_set (max_plan_cache_entries_prm, "-1");
+      (void) prm_set (max_plan_cache_entries_prm, "-1", false);
     }
 
   if (ha_node_list_prm == NULL
@@ -3695,7 +4517,7 @@ prm_tune_parameters (void)
 	}
 
       snprintf (newval, sizeof (newval) - 1, "%s@%s", host_name, host_name);
-      prm_set (ha_node_list_prm, newval);
+      prm_set (ha_node_list_prm, newval, false);
     }
 }
 #endif /* CS_MODE */
@@ -3711,13 +4533,15 @@ sysprm_tune_client_parameters (void)
 {
   char data[LINE_MAX], *newval;
 
+#if !defined(NDEBUG)
+  memset (data, 0, LINE_MAX);
+#endif
   /* those parameters should be same to them of server's */
-  snprintf (data, LINE_MAX, "%s;%s;%s;%s;%s;%s;",
+  snprintf (data, LINE_MAX, "%s;%s;%s;%s;%s;",
 	    PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES,
 	    PRM_NAME_ORACLE_STYLE_EMPTY_STRING,
 	    PRM_NAME_COMPAT_NUMERIC_DIVISION_SCALE,
-	    PRM_NAME_SINGLE_BYTE_COMPARE,
-	    PRM_NAME_HA_MODE, PRM_NAME_REPLICATION_MODE);
+	    PRM_NAME_SINGLE_BYTE_COMPARE, PRM_NAME_HA_MODE);
   if (sysprm_obtain_server_parameters (data, LINE_MAX) == NO_ERROR)
     {
       newval = strtok (data, ";");
@@ -3764,7 +4588,7 @@ prm_get_query_mode_sync (void)
  */
 static void
 prm_set_compound (SYSPRM_PARAM * param, const char **compound_param_values[],
-		  const int values_count)
+		  const int values_count, bool set_flag)
 {
   int i = 0;
   const int param_value = *(int *) param->value;
@@ -3790,7 +4614,126 @@ prm_set_compound (SYSPRM_PARAM * param, const char **compound_param_values[],
       else
 	{
 	  prm_set (prm_find (compound_param_name, NULL),
-		   compound_param_value);
+		   compound_param_value, set_flag);
 	}
     }
+}
+
+/*
+ * prm_get_next_param_value - get next param=value token from a string
+ *			      containing a "param1=val1;param2=val2..." list
+ *   return: NO_ERROR or error code if data format is incorrect
+ *   data (in): the string containing the list
+ *   prm (out): parameter name
+ *   val (out): parameter value
+ */
+static int
+prm_get_next_param_value (char **data, char **prm, char **val)
+{
+  char *p = *data;
+  char *name = NULL;
+  char *value = NULL;
+  int err = PRM_ERR_NO_ERROR;
+
+  while (char_isspace (*p))
+    {
+      p++;
+    }
+
+  if (*p == '\0')
+    {
+      /* reached the end of the list */
+      err = PRM_ERR_NO_ERROR;
+      goto cleanup;
+    }
+
+  name = p;
+  while (*p && !char_isspace (*p) && *p != '=')
+    {
+      p++;
+    }
+  if (*p == '\0')
+    {
+      err = PRM_ERR_BAD_VALUE;
+      goto cleanup;
+    }
+  else if (*p == '=')
+    {
+      *p++ = '\0';
+    }
+  else
+    {
+      *p++ = '\0';
+      while (char_isspace (*p))
+	{
+	  p++;
+	}
+      if (*p == '=')
+	{
+	  p++;
+	}
+    }
+
+  while (char_isspace (*p))
+    {
+      p++;
+    }
+  if (*p == '\0')
+    {
+      err = PRM_ERR_NO_ERROR;
+      goto cleanup;
+    }
+
+  value = p;
+
+  if (*p == '"' || *p == '\'')
+    {
+      char *t, delim;
+
+      delim = *p++;
+      value = t = p;
+      while (*t && *t != delim)
+	{
+	  if (*t == '\\')
+	    {
+	      t++;
+	    }
+	  *p++ = *t++;
+	}
+      if (*t != delim)
+	{
+	  err = PRM_ERR_BAD_STRING;
+	  goto cleanup;
+	}
+    }
+  else
+    {
+      while (*p && !char_isspace (*p) && *p != ';')
+	{
+	  p++;
+	}
+    }
+
+  if (*p)
+    {
+      *p++ = '\0';
+      while (char_isspace (*p))
+	{
+	  p++;
+	}
+      if (*p == ';')
+	{
+	  p++;
+	}
+    }
+  *data = p;
+  *val = value;
+  *prm = name;
+  return err;
+
+cleanup:
+  *prm = NULL;
+  *val = NULL;
+  *data = NULL;
+  return err;
 }

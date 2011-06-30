@@ -44,13 +44,13 @@ $set 1 MSGCAT_SET_GENERAL
 $set 4 MSGCAT_SET_PARAMETER
 2 %s is not a directory.  Creating %s in ".".
 3 Cannot open %s.  configuration file not created.
-4 Unable to write line %d to configuraiton file %s.
+4 Unable to write line %d to configuration file %s.
 6 Can't access system configuration file "%s": %s
 7 HOME not set
 8 Required parameter "%s" has no value.
 9 Cannot open configuration file "%s": %s
-10 Line %d in startup file %s:
-11 Environment variable %s:
+10 The '%s' parameter at line %d in file '%s' : 
+11 Environment variable %s: 
 12 Unrecognized keyword.
 13 Value type does not match parameter type.
 14 Cannot allocate memory to store value.
@@ -61,6 +61,8 @@ $set 4 MSGCAT_SET_PARAMETER
 19 Value is out of range. Resetting to the default value.
 20 Keyword = '%s'    Value = %d    Default Value = %d\n
 21 Keyword = '%s'    Value = %f    Default Value = %f\n
+22 Deprecated parameter
+23 The '%s' and '%s' parameters can not be used together.\n
 
 $set 5 MSGCAT_SET_ERROR
 1 Missing message for error code %1$d.
@@ -80,7 +82,7 @@ $set 5 MSGCAT_SET_ERROR
 15 Unable to write page %1$d of volume "%2$s" due to insufficient space in operating system device.
 16 Unable to rename disk volume "%1$s" to "%2$s".
 17 Internal error: fetching deallocated pageid %1$d of volume "%2$s".
-18 All page buffers are fixed.
+18 All page buffers are fixed (LRU: %1$d).
 19 Internal error: pageptr = %1$p of page %2$d of volume "%3$s" is not fixed.
 20 Internal error: unknown pageptr = %1$p.
 21 Internal error: unknown sector %1$d of volume "%2$s".
@@ -140,10 +142,10 @@ $set 5 MSGCAT_SET_ERROR
 75 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s. You are waiting for user(s) %10$s to finish.
 76 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s on page %6$d|%7$d. You are waiting for user(s) %8$s to release the page lock.
 77 Internal error: all buffers are fixed.
-78 Internal error: an I/O error occurred while reading logical log page %1$d (physical page %2$d) of "%3$s".
-79 Internal error: an I/O error occurred while writing logical log page %1$d (physical page %2$d) of "%3$s".
-80 Insufficient space in operating system device when writing logical log page %1$d (physical page %2$d) of "%3$s". Could not write more than %4$d bytes.
-81 Internal error: logical log page %1$d may be corrupted.
+78 Internal error: an I/O error occurred while reading logical log page %1$lld (physical page %2$lld) of "%3$s".
+79 Internal error: an I/O error occurred while writing logical log page %1$lld (physical page %2$lld) of "%3$s".
+80 Insufficient space in operating system device when writing logical log page %1$lld (physical page %2$lld) of "%3$s". Could not write more than %4$d bytes.
+81 Internal error: logical log page %1$lld may be corrupted.
 82 Unable to mount log disk volume/file "%1$s".
 83 Length of path "%1$s" plus length of prefix logname "%2$s" is too long; the combined length must be less than %3$d.
 84 Length of prefix logname "%1$s" is too long; the length must be less than %2$d.
@@ -159,8 +161,8 @@ $set 5 MSGCAT_SET_ERROR
 94 Warning: postpone logging is ignored during redo recovery and normal rollbacks.
 95 Warning: undo logging is ignored during recovery and normal rollback.
 96 Media recovery may be needed on volume "%1$s".
-97 Internal error: unable to find log page %1$d in log archives.
-98 Unable to create archive log "%1$s" to archive pages from %2$d to %3$d.
+97 Internal error: unable to find log page %1$lld in log archives.
+98 Unable to create archive log "%1$s" to archive pages from %2$lld to %3$lld.
 99 Unable to create backup directory information file "%1$s".
 100 Unable to backup database "%1$s".
 101 Unknown user file "%1$s".
@@ -175,7 +177,7 @@ $set 5 MSGCAT_SET_ERROR
 110 Isolation level value must be between %1$d and %2$d.
 111 Your transaction has been aborted by the system due to server failure or mode change.
 112 Host "%1$s" is not authorized to run database.
-113 Unable to restart/initialize the database server.
+113 Unable to restart/initialize the database server. %1$s
 114 Unable to interpret "%1$s" as a database. The database volumes/files may have been renamed/copied outside the database domain.
 115 Database "%1$s" already exists.
 116 Database "%1$s" is unknown, or the file "databases.txt" cannot be accessed.
@@ -310,7 +312,7 @@ $set 5 MSGCAT_SET_ERROR
 245 The name "%1$s" has already been used as an attribute name.
 246 The name "%1$s" has already been used as a method name.
 247 Invalid arguments to schema manager internal function.
-248 The attribute domain "%1$s" is not suitable for use with the UNIQUE integrity constraint.
+248 The attribute domain "%1$s" is not suitable for use with the %2$s constraint.
 249 The requested operation on class "%1$s" can only be performed before instances are created.
 250 Cannot create index on attribute "%1$s", defined with a shared value.
 251 Signature %2$s already exists for method "%1$s".
@@ -850,8 +852,8 @@ $ LOADDB
 784 Two arguments are mismatched.
 785 First argument string is too long. It must be less than 16K.
 786 Format is duplicated.
-787 ERROR: Conversion error in time format.
-788 ERROR: Conversion error in timestamp format.
+787 Conversion error in time format.
+788 Conversion error in timestamp format.
 789 Wrong number.
 790 Query execution has been interrupted by user.
 791 Invalid serial value.
@@ -957,7 +959,7 @@ $ LOADDB
 891 Appropriate partition does not exist.
 892 Primary key "%2$s" already defined for class "%1$s".
 893 Attribute '%1$s', a member of the primary key, could not be dropped.
-894 Stored procedure/function '%s' is not exist.
+894 Stored procedure/function '%s' does not exist.
 895 Invalid stored procedure type: '%s' is the '%s'.
 896 Compression failed. Zip Method: %d (%s), Zip Level: %d (%s)
 897 Decompression failed.
@@ -1037,11 +1039,11 @@ $ LOADDB
 971 Program '%1$s' (pid %2$d) connected to database server '%3$s' on the host '%4$s' (port %5$d).
 972 Program '%1$s' (pid %2$d) was connected from the host '%3$s'. (transaction index %4$d)
 973 Server status is %1$s.
-974 Archive log "%1$s" is created to archive pages from %2$d to %3$d.
+974 Archive log "%1$s" is created to archive pages from %2$lld to %3$lld.
 975 Current version of replication does not allow changing multiple rows with a single UPDATE statement which can violate the UNIQUE constraint.
 976 Internal error: Table size overflow (allocated size: %1$d, accessed size: %2$d) at file table page %3$d|%4$d(volume "%5$s")
-977 Checkpoint started (page %d).
-978 Checkpoint finished (page %d).
+977 Checkpoint started (page %lld).
+978 Checkpoint finished (page %lld).
 979 CONNECT BY loop in user data.
 980 A thread is waiting in %1$s more than %2$d msec.
 981 Transaction %1$d has reached to the threshold of monitoring statistics %2$s.
@@ -1067,17 +1069,81 @@ $ LOADDB
 1001 An unexpected condition or state has been reached. '%1$s'
 1002 The current transaction could not aquire a database lock it requires to continue processing.
 1003 The constraint '%1$s' exists but has a different type.
-1004 Please note that when using ALTER TABLE DROP FOREIGN KEY, MySQL will drop just the FOREIGN KEY constraint and keep its associated index. CUBRID drops both the constraint and its associated index.
-1005 The current version of CUBRID can only process basic REPLACE statements. Features such as triggers are not yet supported. Also check that the "insert_execution_mode" setting includes server-side REPLACE processing.
-1006 The current version of CUBRID can only process basic ON DUPLICATE KEY UPDATE statements. Features such as triggers are not yet supported. Also check that the "insert_execution_mode" setting includes server-side ON DUPLICATE KEY UPDATE processing and that "hostvar_late_binding" is not enabled.
+1004 Please note that when using ALTER TABLE DROP FOREIGN KEY, CUBRID drops both the constraint and its associated index.
+1005 Unused error code.
+1006 Unused error code.
 1007 Cannot create index with prefix length on unique, foreign key or primary key constraints.
 1008 Cannot create index with prefix length on partitioned class.
 1009 COMPACTDB already started.
 1010 Cannot define index with prefix length on domain "%1$s".
 1011 Cannot add the foreign key constraint %1$s on the shared attribute %2$s.
 1012 Cannot create table with NULL column type.
-
-1013 Last Error
+1013 Set DEFAULT or SHARED on %s typed column is not allowed.
+1014 Set NOT NULL on %s typed column is not allowed.
+1015 Specified directory '%s' does not exist.
+1016 %1$s external storage error: %2$s
+1017 Path for external storage '%s' is invalid.
+1018 Cannot copy the external file to the different type of storage. (source %1$s dest %2$s)
+1019 External storage is not initialized because the path is not specified in "databases.txt".
+1020 External file "%s" was not found.
+1021 A deadlock cycle is detected. %1$s.
+1022 Invalid value "%ld" for prefix length of the index.
+1023 Reserved error code for HA.
+1024 Reserved error code for HA.
+1025 Reserved error code for HA.
+1026 Reserved error code for HA.
+1027 log applier: failed to change apply state from '%1$s' to '%2$s'.
+1028 log applier: unexpected EOF record in archive log. LSA: %1$lld|%2$d.
+1029 log applier: invalid replication log page/offset. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
+1030 log applier: invalid replication record. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
+1031 log applier: failed to apply schema replication log. class: "%1$s", schema: "%2$s", internal error: %$3d. 
+1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
+1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
+1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", internal error: %3$d.  
+1035 log applier: mem size(%1$d MB) of log applier is greater than max mem size (%2$d MB) or has been grow more than 2 times (%3$d MB). required LSA: %4$lld|%5$d. last committed LSA: %6$lld|%7$d.
+1036 log applier: log applier shut itself down by signal.
+1037 log writer: log writer shut itself down by signal.
+1038 log applier: log applier started. required LSA: %1$lld|%2$d. last committed LSA: %3$lld|%4$d. 
+1039 log writer: log writer started. mode: %1$d.
+1040 HA generic: %1$s. 
+1041 A string was truncated in context of "%1$s".
+1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
+1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
+1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
+1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
+1046 Cannot change attribute "%1$s". CUBRID cannot change the attribute's domain. This change of domain is not supported.
+1047 Cannot change attribute "%1$s". CUBRID cannot change the attribute's domain. The new domain may not correctly represent all the existing attribute values.
+1048 Cannot change attribute "%1$s". CUBRID cannot currently change an attribute's AUTO_INCREMENT if the attribute's domain also changes.
+1049 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute's domain. The domain conversion is possible but this feature is not allowed by configuration.
+1050 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute's domain. The attribute has an index on it.
+1051 Cannot change attribute "%1$s". CUBRID cannot currently change the attribute to add a constraint. Existing attribute values may not check the constraint.
+1052 Attribute "%1$s" was not changed. CUBRID did not detect any effective changes in the attribute representation.
+1053 The Statements REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE are not allowed for partitioned classes or for classes that are part of an inheritance chain.
+1054 The new value of an auto increment constraint should be greater than or equal to the current value.
+1055 The new value of an auto increment constraint should be lower than the maximum value.
+1056 To avoid ambiguity, the AUTO_INCREMENT table option requires the table to have exactly one AUTO_INCREMENT column and no seed/increment specification.
+1057 Cannot add a NOT NULL '%s' typed attribute without a DEFAULT value.
+1058 ALTER TABLE .. CHANGE : changing to new domain : cast failed, current configuration doesn't allow truncation or overflow.
+1059 ALTER TABLE .. CHANGE : changing to new domain : cast failed, default value of new domain was set.
+1060 ALTER TABLE .. CHANGE : changing to new domain : cast failed, minimum value of new domain was set.
+1061 ALTER TABLE .. CHANGE : changing to new domain : cast failed, maximum value of new domain was set.
+1062 Cannot change attribute "%1$s". The change would result in multiple primary keys being defined.
+1063 Cannot add NOT NULL constraint for attribute "%1$s": there are existing NULL values for this attribute.
+1064 ALTER TABLE .. CHANGE : adding NOT NULL : all existing NULL values were changed to domain's hard default.
+1065 Cannot change attribute "%1$s". CUBRID cannot add NOT NULL constraint : a hard default value doesn't exist for the new domain.
+1066 Session expired.
+1067 Column '%s' cannot have a NOT NULL constraint and a NULL default value.
+1068 Maximum trigger depth cannot exceed %d.
+1069 Too many prepared statements.
+1070 Session variable '@%s' not defined.
+1071 Too many session variables.
+1072 IP address(%1$s) is not authorized.
+1073 Invalid format in file(%1$s).
+1074 Cannot read access list file(%1$s).
+1075 Descending index scan aborted because of lower priority on B+tree with index identifier: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
+1076 Could not load system parameter.
+1077 The '%s' parameter at line %d in file '%s' : Unknown parameter
+1078 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):
@@ -1125,7 +1191,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 17 invalid set system parameter\n  set_system: SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
 18 invalid set transaction\n  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                 | SET TRANSACTION LOCK TIMEOUT timeout_spec
 19 invalid set trigger trace\n  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
-20 invalid set trigger depth\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [INFINITE|unsigned_integer|parameter|host_param]
+20 invalid set trigger depth\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [unsigned_integer|parameter|host_param]
 21 invalid set optimization level\n  SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]
 22 invalid set optimization cost\n  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_
 23 invalid get optimization level\n  GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}
@@ -1196,6 +1262,18 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 88 invalid use of truncate\n TRUNCATE( expression, expression )
 89 invalid use of str_to_date\n STR_TO_DATE( expression, string_literal )
 90 invalid use of current_datetime\n CURRENT_DATETIME()
+91 invalid use of insert\n INSERT( expression, expression , expression, expression )
+92 invalid use of elt\n ELT(expression [, expression]...)
+93 invalid use of year\n YEAR( expression )
+94 invalid use of month\n MONTH( expression )
+95 invalid use of day\n DAY( expression )
+96 invalid use of hour\n HOUR( expression )
+97 invalid use of minute\n MINUTE( expression )
+98 invalid use of second\n SECOND( expression )
+99 invalid use of quarter\n QUARTER( expression )
+100 invalid use of week\n WEEK( expression ), WEEK( expression, expression)
+101 invalid use of time\n TIME(expression)
+102 invalid use of group_concat\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1336,7 +1414,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 136 Casting %s to type %s is not supported.
 137 %s is not a valid bit string.
 138 '%s' operator is not defined on type %s.
-139 '%s' operator is not defined on types %s, %s, and %s.
+139 '%s' operator is not defined on types %s with %s and %s.
 140 Operands of operator '%s' cannot both be dynamic host variables.
 141 Too many aguments to generic function %s.\nOnly %d arguments are allowed for generic functions.
 142 Selector {%s} class '%s' is not a subclass of '%s'.
@@ -1408,6 +1486,21 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 208 Attribute '%s' doesn't have a default value.
 209 ORDER BY items must appear in the select list if SELECT DISTINCT is specified.
 210 Host variable is not allowed on columns in the query specification.
+211 %s can not be an ORDER BY column
+212 %s can not be an GROUP BY column
+213 Can not define '%1$s of %2$s' as an column type.
+214 Invalid value "%s" for prefix length of the index.
+215 '%s' function is not defined on types %s, %s, %s and %s.
+216 '%s' function is not defined on types %s, %s and %s.
+217 '%s' function is not defined on types %s and %s.
+218 '%s' function is not defined on type %s.
+219 '%s' function is not defined for an index argument of type %s.
+220 ALTER VIEW '%s' AS SELECT is not allowed for views that have subclasses or superclasses. Use ALTER VIEW CHANGE QUERY instead.
+221 View attributes cannot be changed using this statement. 'ALTER VIEW name AS query' might help instead.
+222 CUBRID requires ORDER BY item to be the same expression as GROUP_CONCAT argument or an integer (argument position).
+223 The LIKE predicate requires an escape character to be specified. See the documentation for the '%1$s' and '%2$s' configuration parameters.
+224 KEYLIMIT can not be used in INDEX NONE clause.
+225 Session variable not allowed in this context.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.
@@ -1589,8 +1682,8 @@ $set 15 MSGCAT_SET_IO
  DB Creation Time: %s\
          Pagesize: %d\n
 7     Backup Level: %d (%s)\n\
-        Start_lsa: %d|%d\n\
-         Last_lsa: %d|%d\n
+        Start_lsa: %lld|%d\n\
+         Last_lsa: %lld|%d\n
 8      Backup Time: %s\
   Backup Unit Num: %d\n
 9  Database Volume name: %s\n\
@@ -1614,7 +1707,7 @@ Enter one of the following options:\n
 19 Backup volume %s timestamp mismatch\n  (Timestamp: %s, expecting %s).\n\n
 20 Backup volume information file error, line %d.\n
 21 Backup Volume Label: Level: %d, Unit: %d, Database %s, Backup Time: %s\n
-22     Previous Backup level: %d Time: %s (start_lsa was %d|%d)\n
+22     Previous Backup level: %d Time: %s (start_lsa was %lld|%d)\n
 23 The following database backup volume is needed to continue restoring:\n\n
 24 Backup destination is full, a new destination is required to continue:\n\n
 25 Preceding Backup Volume Name: %s\n
@@ -1642,16 +1735,16 @@ $set 16 MSGCAT_SET_LOG
 6 COMMENT: Log archive %s is not needed any longer unless a database media crash occurs.\n
 7 COMMENT: Log archives from %s to %s are not needed any longer unless a database media crash occurs.\n
 8 COMMENT: from renamed database = %s\n
-9 ARCHIVE: %d %s %d %d\n
+9 ARCHIVE: %d %s %lld %lld\n
 10 ARCHIVE:
 11 REMOVE: %d %s to \n \
        %d %s.\n \
        REASON: %s\n
 12 ACTIVE: %s %d pages\n
-13  Finish commit of tran_index %d with tranid = %d,\n just before LSA= %d|%d and at %s
-14  Finish abort of tran_index %d with tranid = %d,\n just before LSA= %d|%d and at %s
+13  Finish commit of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
+14  Finish abort of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
 15  Incomplete Media Recovery is in effect. The database will be \n \
- recovered up to LSA point address of %d|%d. Last commit/abort \n \
+ recovered up to LSA point address of %lld|%d. Last commit/abort \n \
  point time is approximately at %s \n \
  The database has lost all information of transactions committed \n \
  after this time.\n
@@ -1680,5 +1773,5 @@ including those from the current backup level and higher.\n
 ** WARNING: Do not use the database until an error-free restore is achieved.\n
 27 Error in input, choose a value between %d and %d.\n
 28 The time(%s) specified must be after the time(%s) of the specified backup.\n
-29 COMMENT: Log archive %s, which contains log pages before %d, is not needed any longer by any HA utilities.\n
+29 COMMENT: Log archive %s, which contains log pages before %lld, is not needed any longer by any HA utilities.\n
 30 Number of active log archives has been exceeded the max desired number.

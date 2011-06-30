@@ -1,7 +1,7 @@
 @echo off
 
-if "%1" == "" goto exit
-if "%2" == "" goto exit
+if %1 == "" goto exit
+if %2 == "" goto exit
 
 set SRC_DIR=%1
 set DEST_DIR=%2
@@ -35,7 +35,7 @@ copy %SRC_DIR%\*.exe %DEST_DIR%\bin
 copy %SRC_DIR%\*.dll %DEST_DIR%\bin
 copy %SRC_DIR%\..\..\external\dll\*.dll %DEST_DIR%\bin
 
-copy %SRC_DIR%\..\..\..\conf\*.conf %DEST_DIR%\conf
+copy %SRC_DIR%\..\..\..\conf\*conf* %DEST_DIR%\conf
 copy %SRC_DIR%\..\..\..\cmserver\conf\*.conf %DEST_DIR%\conf
 copy %SRC_DIR%\..\..\..\cmserver\conf\*.pass %DEST_DIR%\conf
 
@@ -53,10 +53,12 @@ copy %SRC_DIR%\..\..\..\msg\ko_KR.euckr\syntax.txt	%MSG_EUCKR_DIR%
 copy %SRC_DIR%\..\..\..\msg\ko_KR.utf8\*.msg 	%MSG_UTFKR_DIR%
 copy %SRC_DIR%\..\..\..\msg\ko_KR.utf8\syntax.txt 	%MSG_UTFKR_DIR%
 
+del %DEST_DIR%\bin\migrate_r40beta2ga.exe
+
 echo on
-for %%f in (%MSG_EN_US_DIR%,%MSG_EUCKR_DIR%,%MSG_UTFKR_DIR%) do "%GENCAT%" "%%f\csql.cat" "%%f\csql.msg"
-for %%f in (%MSG_EN_US_DIR%,%MSG_EUCKR_DIR%,%MSG_UTFKR_DIR%) do "%GENCAT%" "%%f\cubrid.cat" "%%f\cubrid.msg"
-for %%f in (%MSG_EN_US_DIR%,%MSG_EUCKR_DIR%,%MSG_UTFKR_DIR%) do "%GENCAT%" "%%f\esql.cat" "%%f\esql.msg"
-for %%f in (%MSG_EN_US_DIR%,%MSG_EUCKR_DIR%,%MSG_UTFKR_DIR%) do "%GENCAT%" "%%f\utils.cat" "%%f\utils.msg"
+for %%f in (%MSG_EN_US_DIR%,%MSG_EUCKR_DIR%,%MSG_UTFKR_DIR%) do %GENCAT% %%f\csql.cat %%f\csql.msg
+for %%f in (%MSG_EN_US_DIR%,%MSG_EUCKR_DIR%,%MSG_UTFKR_DIR%) do %GENCAT% %%f\cubrid.cat %%f\cubrid.msg
+for %%f in (%MSG_EN_US_DIR%,%MSG_EUCKR_DIR%,%MSG_UTFKR_DIR%) do %GENCAT% %%f\esql.cat %%f\esql.msg
+for %%f in (%MSG_EN_US_DIR%,%MSG_EUCKR_DIR%,%MSG_UTFKR_DIR%) do %GENCAT% %%f\utils.cat %%f\utils.msg
 
 :EXIT

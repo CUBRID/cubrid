@@ -44,8 +44,8 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
-				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;SA_MODE;_USE_32BIT_TIME_T"
+				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\src\session;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
+				PreprocessorDefinitions="WIN;WINDOWS;WIN32;_DEBUG;_CRT_SECURE_NO_WARNINGS;SA_MODE;_USE_32BIT_TIME_T;BUILD_OS#$(OS)"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
@@ -124,8 +124,8 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
-				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;SA_MODE"
+				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\src\session;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
+				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;_DEBUG;_CRT_SECURE_NO_WARNINGS;SA_MODE;BUILD_OS#$(OS)"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
@@ -205,8 +205,8 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
-				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;SA_MODE;_USE_32BIT_TIME_T"
+				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\session;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
+				PreprocessorDefinitions="WIN;WINDOWS;WIN32;NDEBUG;_CRT_SECURE_NO_WARNINGS;SA_MODE;_USE_32BIT_TIME_T;BUILD_OS#$(OS)"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				WarningLevel="3"
@@ -288,8 +288,8 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
-				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;SA_MODE"
+				AdditionalIncludeDirectories="..\..\win;..\..\include;..\..\src\api;..\..\src\base;..\..\src\communication;..\..\src\compat;..\..\src\connection;..\..\src\executables;..\..\src\jsp;..\..\src\object;..\..\src\optimizer;..\..\src\parser;..\..\src\query;..\..\src\storage;..\..\src\thread;..\..\src\transaction;..\..\src\heaplayers;..\..\src\heaplayers\util;..\..\src\session;..\..\win\grammar;..\..\pccts\h;..\..\win\external\include;..\..\win\external\include\lzo;&quot;$(JAVA_HOME)\include&quot;;&quot;$(JAVA_HOME)\include\win32&quot;"
+				PreprocessorDefinitions="WIN;WINDOWS;_WIN64;NDEBUG;_CRT_SECURE_NO_WARNINGS;SA_MODE;BUILD_OS#$(OS)"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				WarningLevel="3"
@@ -376,6 +376,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\compat\db_date.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\compat\db_elo.c"
 					>
 				</File>
 				<File
@@ -555,6 +559,14 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\dtoa.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\base\dynamic_array.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\encryption.c"
 					>
 				</File>
@@ -587,6 +599,10 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\base\md5.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\base\memory_alloc.c"
 					>
 				</File>
@@ -616,6 +632,10 @@
 				</File>
 				<File
 					RelativePath="..\..\src\base\misc_string.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\base\mprec.c"
 					>
 				</File>
 				<File
@@ -800,27 +820,7 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\object\elo_class.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\elo_holder.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\elo_recovery.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\esm_class.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\fbo_class.c"
-					>
-				</File>
-				<File
-					RelativePath="..\..\src\object\glo_class.c"
+					RelativePath="..\..\src\object\elo.c"
 					>
 				</File>
 				<File
@@ -1052,6 +1052,18 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\storage\es.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\storage\es_common.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\storage\es_posix.c"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\storage\extendible_hash.c"
 					>
 				</File>
@@ -1221,6 +1233,18 @@
 				</File>
 				<File
 					RelativePath="..\..\src\executables\util_sa.c"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="session"
+				>
+				<File
+					RelativePath="..\..\src\session\session.c"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\session\session_sr.c"
 					>
 				</File>
 			</Filter>

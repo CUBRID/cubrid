@@ -54,6 +54,7 @@
 #endif /* WINDOWS */
 #include "error_manager.h"
 #include "porting.h"
+#include "heartbeat.h"
 #include "master_util.h"
 #include "message_catalog.h"
 #include "utility.h"
@@ -63,13 +64,10 @@
 typedef enum
 {
   COMM_SERVER,
-  COMM_REPL_SERVER,
-  COMM_REPL_AGENT,
   COMM_ALL = 99
 } COMM_SERVER_TYPE;
 
 static int send_for_server_stats (CSS_CONN_ENTRY * conn);
-static int send_for_repl_stats (CSS_CONN_ENTRY * conn);
 static int send_for_all_stats (CSS_CONN_ENTRY * conn);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int send_for_server_downtime (CSS_CONN_ENTRY * conn);
@@ -82,8 +80,6 @@ static void process_status_query (CSS_CONN_ENTRY * conn, int server_type,
 static void process_master_kill (CSS_CONN_ENTRY * conn);
 static void process_master_stop_shutdown (CSS_CONN_ENTRY * conn);
 static void process_master_shutdown (CSS_CONN_ENTRY * conn, int minutes);
-static void process_repl_kill (CSS_CONN_ENTRY * conn, char *slave_name,
-			       int pid);
 static void process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name,
 				int minutes, int pid);
 static void process_immediate_kill (CSS_CONN_ENTRY * conn, char *slave_name);
@@ -98,23 +94,23 @@ static void process_dereg_ha_process (CSS_CONN_ENTRY * conn,
 				      char *pid_string);
 
 
-static void process_batch_command (CSS_CONN_ENTRY * conn);
+static int process_batch_command (CSS_CONN_ENTRY * conn);
 
 static char *commdb_Arg_server_name = NULL;
 static bool commdb_Arg_halt_shutdown = false;
 static int commdb_Arg_shutdown_time = 0;
 static bool commdb_Arg_kill_all = false;
 static bool commdb_Arg_print_info = false;
-static bool commdb_Arg_print_repl_info = false;
 static bool commdb_Arg_print_all_info = false;
-static char *commdb_Arg_repl_server_name = NULL;
-static char *commdb_Arg_repl_agent_name = NULL;
 static bool commdb_Arg_ha_mode_server_info = false;
 static char *commdb_Arg_ha_mode_server_name = NULL;
 static bool commdb_Arg_print_ha_node_info = false;
 static bool commdb_Arg_print_ha_process_info = false;
 static bool commdb_Arg_dereg_ha_process = false;
 static char *commdb_Arg_dereg_ha_process_pid = NULL;
+static bool commdb_Arg_kill_all_ha_utils = false;
+static bool commdb_Arg_is_registered = false;
+static char *commdb_Arg_is_registered_id = NULL;
 static bool commdb_Arg_reconfig_heartbeat = false;
 static bool commdb_Arg_deactivate_heartbeat = false;
 static bool commdb_Arg_activate_heartbeat = false;
@@ -219,17 +215,6 @@ send_for_server_count (CSS_CONN_ENTRY * conn)
 }
 
 /*
- * send_for_repl_count() - send request for replication server and agent count
- *   return: request id
- *   conn(in): connection info
- */
-static int
-send_for_repl_count (CSS_CONN_ENTRY * conn)
-{
-  return (send_request_no_args (conn, GET_REPL_COUNT));
-}
-
-/*
  * send_for_all_count() - send request for all processes count
  *   return: request id
  *   conn(in): connection info
@@ -249,17 +234,6 @@ static int
 send_for_server_stats (CSS_CONN_ENTRY * conn)
 {
   return (send_request_no_args (conn, GET_SERVER_LIST));
-}
-
-/*
- * send_for_repl_stats() - send request for replication processes info
- *   return: request id
- *   conn(in): connection info
- */
-static int
-send_for_repl_stats (CSS_CONN_ENTRY * conn)
-{
-  return (send_request_no_args (conn, GET_REPL_LIST));
 }
 
 /*
@@ -355,12 +329,6 @@ process_status_query (CSS_CONN_ENTRY * conn, int server_type,
       rid1 = send_for_start_time (conn);
       rid4 = send_for_server_stats (conn);
       break;
-    case COMM_REPL_SERVER:
-    case COMM_REPL_AGENT:
-      rid3 = send_for_repl_count (conn);
-      rid1 = send_for_start_time (conn);
-      rid4 = send_for_repl_stats (conn);
-      break;
     case COMM_ALL:
       rid3 = send_for_all_count (conn);
       rid1 = send_for_start_time (conn);
@@ -425,8 +393,7 @@ process_master_stop_shutdown (CSS_CONN_ENTRY * conn)
 }
 
 /*
- * process_master_shutdown() - send request to shut down master and
- *                             replication processes
+ * process_master_shutdown() - send request to shut down master
  *   return: none
  *   conn(in): connection info
  *   minutes(in): shutdown timeout in minutes
@@ -436,48 +403,11 @@ process_master_shutdown (CSS_CONN_ENTRY * conn, int minutes)
 {
   int down;
 
-  /*
-   * kill all the replication process..
-   * The replication processes are not listening from the master..
-   */
   down = htonl (minutes);
-  while (send_request_one_arg (conn,
-			       START_SHUTDOWN,
+  while (send_request_one_arg (conn, START_SHUTDOWN,
 			       (char *) &down, sizeof (int)) != 0)
     {
       ;				/* wait to master shutdown */
-    }
-}
-
-/*
- * process_repl_kill() - process request to kill replication server
- *   return:  none
- *   conn(in): connection info
- *   slave_name(in): target process name
- *   pid(in): process id
- */
-static void
-process_repl_kill (CSS_CONN_ENTRY * conn, char *slave_name, int pid)
-{
-  char *reply_buffer = NULL;
-  int size = 0;
-  unsigned short rid;
-
-  rid = send_request_one_arg (conn, KILL_REPL_SERVER,
-			      slave_name, strlen (slave_name) + 1);
-  return_string (conn, rid, &reply_buffer, &size);
-  if (size)
-    {
-      printf ("\n%s\n", reply_buffer);
-
-      if (pid > 0)
-	{
-	  master_util_wait_proc_terminate (pid);
-	}
-    }
-  if (reply_buffer != NULL)
-    {
-      free_and_init (reply_buffer);
     }
 }
 
@@ -572,12 +502,6 @@ process_server_info_pid (CSS_CONN_ENTRY * conn,
     {
       switch (server_type)
 	{
-	case COMM_REPL_SERVER:
-	  sprintf (search_pattern, "repl_server %s (", server);
-	  break;
-	case COMM_REPL_AGENT:
-	  sprintf (search_pattern, "repl_agent %s (", server);
-	  break;
 	default:
 	  sprintf (search_pattern, "Server %s (", server);
 	  break;
@@ -665,6 +589,79 @@ process_ha_process_info_query (CSS_CONN_ENTRY * conn, int verbose_yn)
     {
       free_and_init (reply_buffer);
     }
+}
+
+/*
+ * process_kill_all_ha_utils() - kill all copylogdb and applylogdb process
+ *   return:  none
+ *   conn(in): connection info
+ */
+static void
+process_kill_all_ha_utils (CSS_CONN_ENTRY * conn)
+{
+  char *reply_buffer = NULL;
+  int size = 0;
+#if !defined(WINDOWS)
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  rid = send_request_no_args (conn, KILL_ALL_HA_PROCESS);
+  return_string (conn, rid, &reply_buffer, &size);
+#endif
+
+  if (size)
+    {
+      printf ("\n%s\n", reply_buffer);
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+}
+
+/*
+ * process_is_registered_proc () - check registerd copylogdb and applylogdb
+ *   return:  none
+ *   conn(in): connection info
+ */
+static int
+process_is_registered_proc (CSS_CONN_ENTRY * conn, char *args)
+{
+  char *reply_buffer = NULL;
+  int size = 0;
+#if !defined(WINDOWS)
+  HBP_PROC_REGISTER send_data;
+  int send_len = sizeof (HBP_PROC_REGISTER);
+  unsigned short rid;
+#endif /* !WINDOWS */
+
+#if !defined(WINDOWS)
+  strcpy (send_data.args, args);
+  rid = send_request_one_arg (conn, IS_REGISTERED_HA_PROC, (char *) &send_data,
+			      send_len);
+  return_string (conn, rid, &reply_buffer, &size);
+#endif
+
+  if (size > 0)
+    {
+      if (reply_buffer[0] == '1')
+	{
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+
+  return 2;
 }
 
 /*
@@ -799,7 +796,7 @@ process_activate_heartbeat (CSS_CONN_ENTRY * conn)
  *   return: none
  *   conn(in): connection info
  */
-static void
+static int
 process_batch_command (CSS_CONN_ENTRY * conn)
 {
   int pid;
@@ -811,37 +808,12 @@ process_batch_command (CSS_CONN_ENTRY * conn)
       process_slave_kill (conn, (char *) commdb_Arg_server_name,
 			  commdb_Arg_shutdown_time, pid);
     }
-  if ((commdb_Arg_repl_server_name) && (!commdb_Arg_halt_shutdown))
-    {
-      char repl_name[DB_MAX_IDENTIFIER_LENGTH];
-
-      snprintf (repl_name, DB_MAX_IDENTIFIER_LENGTH - 1, "+%s",
-		commdb_Arg_repl_server_name);
-
-      pid = process_server_info_pid (conn,
-				     (char *) commdb_Arg_repl_server_name,
-				     COMM_REPL_SERVER);
-      process_repl_kill (conn, repl_name, pid);
-    }
-  if ((commdb_Arg_repl_agent_name) && (!commdb_Arg_halt_shutdown))
-    {
-      char repl_name[DB_MAX_IDENTIFIER_LENGTH];
-
-      snprintf (repl_name, sizeof (repl_name), "&%s",
-		commdb_Arg_repl_agent_name);
-      pid = process_server_info_pid (conn,
-				     (char *) commdb_Arg_repl_agent_name,
-				     COMM_REPL_AGENT);
-      process_repl_kill (conn, repl_name, pid);
-    }
   if (commdb_Arg_kill_all)
     process_master_shutdown (conn, commdb_Arg_shutdown_time);
   if (commdb_Arg_halt_shutdown)
     process_master_stop_shutdown (conn);
   if (commdb_Arg_print_info)
     process_status_query (conn, COMM_SERVER, NULL);
-  if (commdb_Arg_print_repl_info)
-    process_status_query (conn, COMM_REPL_SERVER, NULL);
   if (commdb_Arg_print_all_info)
     process_status_query (conn, COMM_ALL, NULL);
   if (commdb_Arg_ha_mode_server_info)
@@ -850,6 +822,10 @@ process_batch_command (CSS_CONN_ENTRY * conn)
     process_ha_node_info_query (conn, commdb_Arg_verbose_output);
   if (commdb_Arg_print_ha_process_info)
     process_ha_process_info_query (conn, commdb_Arg_verbose_output);
+  if (commdb_Arg_kill_all_ha_utils)
+    process_kill_all_ha_utils (conn);
+  if (commdb_Arg_is_registered)
+    return process_is_registered_proc (conn, commdb_Arg_is_registered_id);
   if (commdb_Arg_dereg_ha_process)
     process_dereg_ha_process (conn, (char *) commdb_Arg_dereg_ha_process_pid);
   if (commdb_Arg_reconfig_heartbeat)
@@ -858,6 +834,8 @@ process_batch_command (CSS_CONN_ENTRY * conn)
     process_deactivate_heartbeat (conn);
   if (commdb_Arg_activate_heartbeat)
     process_activate_heartbeat (conn);
+
+  return NO_ERROR;
 }
 
 /*
@@ -875,16 +853,15 @@ main (int argc, char **argv)
 
   static struct option commdb_options[] = {
     {COMMDB_SERVER_LIST_L, 0, 0, COMMDB_SERVER_LIST_S},
-    {COMMDB_REPL_LIST_L, 0, 0, COMMDB_REPL_LIST_S},
     {COMMDB_ALL_LIST_L, 0, 0, COMMDB_ALL_LIST_S},
     {COMMDB_SHUTDOWN_SERVER_L, 1, 0, COMMDB_SHUTDOWN_SERVER_S},
-    {COMMDB_SHUTDOWN_REPL_SERVER_L, 1, 0, COMMDB_SHUTDOWN_REPL_SERVER_S},
-    {COMMDB_SHUTDOWN_REPL_AGENT_L, 1, 0, COMMDB_SHUTDOWN_REPL_AGENT_S},
     {COMMDB_SHUTDOWN_ALL_L, 0, 0, COMMDB_SHUTDOWN_ALL_S},
     {COMMDB_SERVER_MODE_L, 1, 0, COMMDB_SERVER_MODE_S},
     {COMMDB_HA_NODE_LIST_L, 0, 0, COMMDB_HA_NODE_LIST_S},
     {COMMDB_HA_PROCESS_LIST_L, 0, 0, COMMDB_HA_PROCESS_LIST_S},
     {COMMDB_DEREG_HA_PROCESS_L, 1, 0, COMMDB_DEREG_HA_PROCESS_S},
+    {COMMDB_KILL_ALL_HA_PROCESS_L, 0, 0, COMMDB_KILL_ALL_HA_PROCESS_S},
+    {COMMDB_IS_REGISTERED_PROC_L, 1, 0, COMMDB_IS_REGISTERED_PROC_S},
     {COMMDB_RECONFIG_HEARTBEAT_L, 0, 0, COMMDB_RECONFIG_HEARTBEAT_S},
     {COMMDB_DEACTIVATE_HEARTBEAT_L, 0, 0, COMMDB_DEACTIVATE_HEARTBEAT_S},
     {COMMDB_ACTIVATE_HEARTBEAT_L, 0, 0, COMMDB_ACTIVATE_HEARTBEAT_S},
@@ -936,9 +913,6 @@ main (int argc, char **argv)
 	case 'P':
 	  commdb_Arg_print_info = true;
 	  break;
-	case 'R':
-	  commdb_Arg_print_repl_info = true;
-	  break;
 	case 'O':
 	  commdb_Arg_print_all_info = true;
 	  break;
@@ -951,20 +925,6 @@ main (int argc, char **argv)
 	      free (commdb_Arg_server_name);
 	    }
 	  commdb_Arg_server_name = strdup (optarg);
-	  break;
-	case 'K':
-	  if (commdb_Arg_repl_server_name != NULL)
-	    {
-	      free (commdb_Arg_repl_server_name);
-	    }
-	  commdb_Arg_repl_server_name = strdup (optarg);
-	  break;
-	case 'k':
-	  if (commdb_Arg_repl_agent_name != NULL)
-	    {
-	      free (commdb_Arg_repl_agent_name);
-	    }
-	  commdb_Arg_repl_agent_name = strdup (optarg);
 	  break;
 	case 'c':
 	  if (commdb_Arg_ha_mode_server_name != NULL)
@@ -987,6 +947,17 @@ main (int argc, char **argv)
 	    }
 	  commdb_Arg_dereg_ha_process_pid = strdup (optarg);
 	  commdb_Arg_dereg_ha_process = true;
+	  break;
+	case 'd':
+	  commdb_Arg_kill_all_ha_utils = true;
+	  break;
+	case 'C':
+	  if (commdb_Arg_is_registered_id != NULL)
+	    {
+	      free (commdb_Arg_is_registered_id);
+	    }
+	  commdb_Arg_is_registered_id = strdup (optarg);
+	  commdb_Arg_is_registered = true;
 	  break;
 	case 'F':
 	  commdb_Arg_reconfig_heartbeat = true;
@@ -1037,7 +1008,7 @@ main (int argc, char **argv)
     }
 
   /* command mode */
-  process_batch_command (conn);
+  return process_batch_command (conn);
 
 error:
 #if defined(WINDOWS)
@@ -1056,14 +1027,6 @@ end:
   if (commdb_Arg_server_name != NULL)
     {
       free_and_init (commdb_Arg_server_name);
-    }
-  if (commdb_Arg_repl_server_name != NULL)
-    {
-      free_and_init (commdb_Arg_repl_server_name);
-    }
-  if (commdb_Arg_repl_agent_name != NULL)
-    {
-      free_and_init (commdb_Arg_repl_agent_name);
     }
   if (commdb_Arg_dereg_ha_process_pid != NULL)
     {

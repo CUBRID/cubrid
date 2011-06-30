@@ -3,9 +3,6 @@
 %id nation 24
 %id "event" 27
 %id athlete 29
-%id glo_name 43
-%id glo_holder 44
-%id glo 45
 %id participant 46
 %id olympic 47
 %id game 48
@@ -7516,9 +7513,6 @@
 16690 'Zimmermann Kathrin' 'W' 'GDR' 'Swimming'
 16691 'Zuelow Andreas' 'M' 'GDR' 'Boxing'
 16692 'Zulianello Clavdio F' 'M' 'ARG' 'Volleyball'
-%class glo_name (pathname holder_ptr)
-%class glo_holder (glo "lock" "name")
-%class glo (holder_obj unit_size header_size)
 %class participant (host_year nation_code gold silver bronze)
 1988 'URS' 55 31 46
 1988 'GDR' 37 35 30

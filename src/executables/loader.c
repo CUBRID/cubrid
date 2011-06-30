@@ -54,7 +54,7 @@
 #include "work_space.h"
 #include "message_catalog.h"
 #include "locator_cl.h"
-#include "elo_class.h"
+#include "elo.h"
 #include "intl_support.h"
 #include "language_support.h"
 #include "environment_variable.h"
@@ -162,6 +162,11 @@ extern int loader_yylineno;
              return (ret);                       \
            }                               \
          } while (0)
+
+#define IS_OLD_GLO_CLASS(class_name)                    \
+	 (strncasecmp ((class_name), "glo", MAX(strlen(class_name), 3)) == 0      || \
+	  strncasecmp ((class_name), "glo_name", MAX(strlen(class_name), 8)) == 0  || \
+	  strncasecmp ((class_name), "glo_holder", MAX(strlen(class_name), 10)) == 0)
 
 typedef int (*LDR_SETTER) (LDR_CONTEXT *, const char *, int, SM_ATTRIBUTE *);
 typedef int (*LDR_ELEM) (LDR_CONTEXT *, const char *, int, DB_VALUE *);
@@ -425,7 +430,8 @@ static DB_VALUE ldr_date_tmpl;
 static DB_VALUE ldr_time_tmpl;
 static DB_VALUE ldr_timestamp_tmpl;
 static DB_VALUE ldr_datetime_tmpl;
-static DB_VALUE ldr_elo_tmpl;
+static DB_VALUE ldr_blob_tmpl;
+static DB_VALUE ldr_clob_tmpl;
 static DB_VALUE ldr_bit_tmpl;
 
 /* default for 64 bit signed big integers, i.e., 9223372036854775807 (0x7FFFFFFFFFFFFFFF) */
@@ -1457,7 +1463,8 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 	      CHECK_ERR (err,
 			 do_select_partition (context->psi, &curval,
 					      &retobj));
-	      if (ws_mop_compare (context->cls, retobj) != 0)
+	      if (retobj == NULL
+		  || ws_mop_compare (context->cls, retobj) != 0)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_PARTITION_WORK_FAILED, 0);
@@ -1803,8 +1810,8 @@ ldr_act_class_attr (LDR_CONTEXT * context,
 	  CHECK_ERR (err, ER_OBJ_DOMAIN_CONFLICT);
 	}
       CHECK_ERR (err, ldr_collection_db_collection (context, str, len,
-						    context->attrs[context->
-								   next_attr].
+						    context->attrs
+						    [context->next_attr].
 						    att));
     }
   else
@@ -1842,9 +1849,9 @@ ldr_act_class_attr (LDR_CONTEXT * context,
 			   context, domain->type->id, str);
 	}
       CHECK_ERR (err, ldr_class_attr_db_generic (context, str, len,
-						 context->attrs[context->
-								next_attr].
-						 att, val));
+						 context->attrs
+						 [context->next_attr].att,
+						 val));
     }
 
 error_exit:
@@ -3121,64 +3128,9 @@ static int
 ldr_elo_int_elem (LDR_CONTEXT * context,
 		  const char *str, int len, DB_VALUE * val)
 {
-  DB_ELO *elo;
-  int err = NO_ERROR;
-  char name[PATH_MAX + 8];
-  int new_len;
-  const char *filename;
-  int fd;
-
-  if (!context->valid)
-    {
-      err = ER_LDR_INVALID_STATE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-      /* reset the error count, by adding -1 since this is not real error */
-      LDR_INCREMENT_ERR_COUNT (context, -1);
-      return (err);
-    }
-
-  PARSE_ELO_STR (str, new_len);
-
-  if (new_len > 0 && new_len < (int) sizeof (name))
-    {
-      strncpy (name, str, new_len);
-      name[new_len] = '\0';
-      val->domain = ldr_elo_tmpl.domain;
-      if ((elo = elo_create (name)) == NULL)
-	err = er_errid ();
-      else
-	{
-	  /*
-	   * change the type to LO even though we have path name,
-	   * since I^ was specified
-	   */
-	  elo->type = ELO_LO;
-	  err = db_make_elo (val, elo);
-	  if (!err && elo->pathname != NULL)
-	    {
-	      filename = elo->pathname;
-	      fd = open (elo->pathname, O_RDONLY, 0);
-	      if (fd > 0)
-		{
-		  close (fd);
-		  ws_free_string ((char *) elo->original_pathname);
-		  elo->pathname = NULL;
-		  elo->original_pathname = NULL;
-		  err = lo_migrate_in (&elo->loid, filename);
-		  ws_free_string ((char *) filename);
-		}
-	      else
-		{
-		  err = ER_LDR_ELO_INPUT_FILE;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1,
-			  elo->pathname);
-		}
-	    }
-	}
-    }
-  if (err != NO_ERROR)
-    display_error (0);
-  return (err);
+  /* not implemented. should not be called */
+  assert (0);
+  return ER_FAILED;
 }
 
 /*
@@ -3193,27 +3145,9 @@ static int
 ldr_elo_int_db_elo (LDR_CONTEXT * context,
 		    const char *str, int len, SM_ATTRIBUTE * att)
 {
-  int err = NO_ERROR;
-  char *mem;
-  DB_VALUE val;
-  char name[PATH_MAX + 8];
-  int new_len;
-
-  PARSE_ELO_STR (str, new_len);
-
-  if (new_len > 0 && new_len < (int) sizeof (name))
-    {
-      strncpy (name, str, new_len);
-      name[new_len] = '\0';
-      CHECK_ERR (err, ldr_elo_int_elem (context, name, new_len, &val));
-      mem = context->mobj + att->offset;
-      CHECK_ERR (err,
-		 PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
-      OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
-    }
-
-error_exit:
-  return err;
+  /* not implemented. should not be called */
+  assert (0);
+  return ER_FAILED;
 }
 
 /*
@@ -3228,17 +3162,18 @@ static int
 ldr_elo_ext_elem (LDR_CONTEXT * context,
 		  const char *str, int len, DB_VALUE * val)
 {
-  DB_ELO *elo;
+  DB_ELO elo;
   int err = NO_ERROR;
-  char name[PATH_MAX + 8];
   int new_len;
-  const char *filename;
-  int fd;
+  INT64 size;
+  char *locator = NULL;
+  char *meta_data = NULL;
 
   if (!context->valid)
     {
       err = ER_LDR_INVALID_STATE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+
       /* reset the error count by adding -1, since this is not real error */
       LDR_INCREMENT_ERR_COUNT (context, -1);
       return (err);
@@ -3246,40 +3181,110 @@ ldr_elo_ext_elem (LDR_CONTEXT * context,
 
   PARSE_ELO_STR (str, new_len);
 
-  if (new_len > 0 && new_len < (int) sizeof (name))
+  /* parse elo string: see process_value () in unload_object.c */
+  if (new_len > 0)
     {
-      strncpy (name, str, new_len);
-      name[new_len] = '\0';
-      val->domain = ldr_elo_tmpl.domain;
-      if ((elo = elo_create (name)) == NULL)
-	err = er_errid ();
+      DB_TYPE type;
+      const char *size_sp, *size_ep;
+      const char *locator_sp, *locator_ep;
+      const char *meta_sp, *meta_ep;
+
+      /* db type */
+      assert (str[0] == 'B' || str[0] == 'C');
+      if (str[0] == 'B')
+	{
+	  type = DB_TYPE_BLOB;
+	  val->domain = ldr_blob_tmpl.domain;
+	}
       else
 	{
-	  err = db_make_elo (val, elo);
-	  if (!err && (elo->pathname != NULL) && (elo->type == ELO_LO))
+	  type = DB_TYPE_CLOB;
+	  val->domain = ldr_clob_tmpl.domain;
+	}
+
+      /* size */
+      size_sp = str + 1;
+      size_ep = strchr (size_sp, '|');
+      if (size_ep == NULL || size_ep - size_sp == 0)
+	{
+	  /* FBO TODO: error message --> invalid elo format */
+	  err = ER_LDR_ELO_INPUT_FILE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, str);
+	  goto error_exit;
+	}
+
+      /* locator */
+      locator_sp = size_ep + 1;
+      locator_ep = strchr (locator_sp, '|');
+      if (locator_ep == NULL || locator_ep - locator_sp == 0)
+	{
+	  /* FBO TODO: error message --> invalid elo format */
+	  err = ER_LDR_ELO_INPUT_FILE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, str);
+	  goto error_exit;
+	}
+
+      /* meta_data */
+      meta_ep = meta_sp = locator_ep + 1;
+      while (*meta_ep)
+	{
+	  meta_ep++;
+	}
+
+      /* make elo */
+      elo_init_structure (&elo);
+
+      size = strtoll (size_sp, NULL, 10);
+      locator = malloc (locator_ep - locator_sp + 1);
+      if (locator == NULL)
+	{
+	  goto error_exit;
+	}
+      memcpy (locator, locator_sp, locator_ep - locator_sp);
+      locator[locator_ep - locator_sp] = '\0';
+
+      if (meta_ep - meta_sp > 0)
+	{
+	  meta_data = malloc (meta_ep - meta_sp + 1);
+	  if (meta_data == NULL)
 	    {
-	      if ((fd = open (elo->pathname, O_RDONLY, 0) > 0))
-		{
-		  close (fd);
-		  filename = elo->pathname;
-		  ws_free_string ((char *) elo->original_pathname);
-		  elo->pathname = NULL;
-		  elo->original_pathname = NULL;
-		  err = lo_migrate_in (&elo->loid, filename);
-		  ws_free_string ((char *) filename);
-		}
-	      else
-		{
-		  err = ER_LDR_ELO_INPUT_FILE;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1,
-			  elo->pathname);
-		}
+	      goto error_exit;
 	    }
+	  memcpy (meta_data, meta_sp, meta_ep - meta_sp);
+	  meta_data[meta_ep - meta_sp] = '\0';
+	}
+
+      elo.size = size;
+      elo.locator = locator;
+      elo.meta_data = meta_data;
+      elo.type = ELO_FBO;
+
+      err = db_make_elo (val, type, &elo);
+      if (err == NO_ERROR)
+	{
+	  val->need_clear = true;
+	  locator = NULL;
+	  meta_data = NULL;
 	}
     }
+
+error_exit:
+  if (locator != NULL)
+    {
+      free (locator);
+    }
+
+  if (meta_data != NULL)
+    {
+      free (meta_data);
+    }
+
   if (err != NO_ERROR)
-    display_error (0);
-  return (err);
+    {
+      display_error (0);
+    }
+
+  return err;
 }
 
 /*
@@ -3297,27 +3302,45 @@ ldr_elo_ext_db_elo (LDR_CONTEXT * context,
   int err = NO_ERROR;
   char *mem;
   DB_VALUE val;
-  char name[PATH_MAX + 8];
+  char name_buf[8196];
+  char *name = NULL;
   int new_len;
 
-  PARSE_ELO_STR (str, new_len);
+  db_make_null (&val);
 
-  if (new_len && str[new_len - 1] == '\"')
+  PARSE_ELO_STR (str, new_len);
+  if (new_len >= 8196)
     {
-      new_len--;
+      name = malloc (new_len);
+
+      if (name == NULL)
+	{
+	  err = ER_LDR_MEMORY_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	  CHECK_CONTEXT_VALIDITY (context, true);
+	  ldr_abort ();
+	  goto error_exit;
+	}
     }
-  if (new_len > 0 && new_len < (int) sizeof (name))
+  else
     {
-      strncpy (name, str, new_len);
-      name[new_len] = '\0';
-      CHECK_ERR (err, ldr_elo_ext_elem (context, name, new_len, &val));
-      mem = context->mobj + att->offset;
-      CHECK_ERR (err,
-		 PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
-      OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
+      name = &name_buf[0];
     }
+
+  strncpy (name, str, new_len);
+  name[new_len] = '\0';
+  CHECK_ERR (err, ldr_elo_ext_elem (context, name, new_len, &val));
+  mem = context->mobj + att->offset;
+  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
+  if (name != NULL && name != &name_buf[0])
+    {
+      free (name);
+    }
+  db_value_clear (&val);
+
   return err;
 }
 
@@ -3439,11 +3462,10 @@ ldr_add_mop_tempoid_map (MOP mop, CLASS_TABLE * table, int id)
       mop_tempoid_maps_old = ldr_Mop_tempoid_maps->mop_tempoid_maps;
 
       ldr_Mop_tempoid_maps->mop_tempoid_maps =
-	(LDR_MOP_TEMPOID_MAP *) realloc (ldr_Mop_tempoid_maps->
-					 mop_tempoid_maps,
-					 sizeof (LDR_MOP_TEMPOID_MAP) *
-					 (ldr_Mop_tempoid_maps->size +
-					  LDR_MOP_TEMPOID_MAPS_PRESIZE));
+	(LDR_MOP_TEMPOID_MAP *)
+	realloc (ldr_Mop_tempoid_maps->mop_tempoid_maps,
+		 sizeof (LDR_MOP_TEMPOID_MAP) * (ldr_Mop_tempoid_maps->size +
+						 LDR_MOP_TEMPOID_MAPS_PRESIZE));
 
       if (ldr_Mop_tempoid_maps->mop_tempoid_maps == NULL)
 	{
@@ -3618,8 +3640,8 @@ find_instance (LDR_CONTEXT * context, DB_OBJECT * class_, OID * oid, int id)
 		   * when we encounter the real instance.
 		   */
 		  CHECK_PTR (err, mop =
-			     db_create_internal (context->
-						 attrs[context->next_attr].
+			     db_create_internal (context->attrs
+						 [context->next_attr].
 						 ref_class));
 		  COPY_OID (oid, WS_REAL_OID (mop));
 		  CHECK_ERR (err, otable_reserve (table, oid, id));
@@ -4276,10 +4298,12 @@ error_exit:
 static int
 ldr_finish_context (LDR_CONTEXT * context)
 {
-  int err = NO_ERROR;
+  int err = er_errid ();
 
-  if (err)
-    CHECK_CONTEXT_VALIDITY (context, true);
+  if (err != NO_ERROR)
+    {
+      CHECK_CONTEXT_VALIDITY (context, true);
+    }
   else
     {
       if (!context->validation_only)
@@ -4436,6 +4460,9 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
   DB_OBJECT *class_mop;
 
   CHECK_SKIP ();
+
+  er_clear ();
+
   if ((err = ldr_finish_context (context) != NO_ERROR))
     {
       display_error (-1);
@@ -4695,8 +4722,8 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
 					       &attdesc->attdesc));
   CHECK_ERR (err, sm_get_descriptor_component (context->cls, attdesc->attdesc, 1,	/* for update */
 					       &class_,
-					       (SM_COMPONENT **) & attdesc->
-					       att));
+					       (SM_COMPONENT
+						**) (&attdesc->att)));
 
   context->num_attrs += 1;
 
@@ -4851,6 +4878,8 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
       break;
 
     case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
       attdesc->setter[LDR_ELO_EXT] = &ldr_elo_ext_db_elo;
       attdesc->setter[LDR_ELO_INT] = &ldr_elo_int_db_elo;
       break;
@@ -5083,8 +5112,8 @@ insert_instance (LDR_CONTEXT * context)
 		  if (inst == NULL || !(inst->flags & INST_FLAG_RESERVED))
 		    {
 		      CHECK_ERR (err, otable_insert (context->table,
-						     WS_REAL_OID (context->
-								  obj),
+						     WS_REAL_OID
+						     (context->obj),
 						     context->inst_num));
 		      CHECK_PTR (err, inst =
 				 otable_find (context->table,
@@ -5186,8 +5215,8 @@ construct_instance (LDR_CONTEXT * context)
        i++, a++)
     {
       err = (*(elem_converter[context->attrs[a].parser_type])) (context,
-								context->
-								attrs[a].
+								context->attrs
+								[a].
 								parser_str,
 								context->
 								attrs[a].
@@ -5226,8 +5255,8 @@ construct_instance (LDR_CONTEXT * context)
 					     attdesc->attdesc,
 					     1,
 					     &class_,
-					     (SM_COMPONENT **) & attdesc->
-					     att);
+					     (SM_COMPONENT
+					      **) (&attdesc->att));
 
 	  if (!err)
 	    err = (*(attdesc->setter[attdesc->parser_type])) (context,
@@ -5653,6 +5682,7 @@ ldr_init_loader (LDR_CONTEXT * context)
   int i;
   int err = NO_ERROR;
   DB_DATETIME datetime;
+  DB_ELO *null_elo = NULL;
 
   /*
    * Definitely *don't* want to use oid preflushing in this app; it just
@@ -5685,6 +5715,8 @@ ldr_init_loader (LDR_CONTEXT * context)
   db_make_timestamp (&ldr_timestamp_tmpl, 0);
   db_datetime_encode (&datetime, 1, 1, 1996, 0, 0, 0, 0);
   db_make_datetime (&ldr_datetime_tmpl, &datetime);
+  db_make_elo (&ldr_blob_tmpl, DB_TYPE_BLOB, null_elo);
+  db_make_elo (&ldr_clob_tmpl, DB_TYPE_CLOB, null_elo);
   db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
 
   /*
@@ -5944,7 +5976,7 @@ ldr_update_statistics (void)
 		       sm_class_name (table->class_));
 	      fflush (stdout);
 	    }
-	  err = sm_update_statistics (table->class_);
+	  err = sm_update_statistics (table->class_, true);
 	}
     }
   return err;
@@ -5984,6 +6016,11 @@ void
 ldr_act_set_skipCurrentclass (char *classname, size_t size)
 {
   skipCurrentclass = ldr_is_ignore_class (classname, size);
+
+  if (skipCurrentclass && ldr_Current_context->validation_only != true)
+    {
+      print_log_msg (1, "Class %s is ignored.\n", classname);
+    }
 }
 
 bool
@@ -5997,11 +6034,16 @@ ldr_is_ignore_class (char *classname, size_t size)
       return false;
     }
 
+  if (IS_OLD_GLO_CLASS (classname))
+    {
+      return true;
+    }
+
   if (ignoreClasslist != NULL)
     {
       for (i = 0, p = ignoreClasslist; i < ignoreClassnum; i++, p++)
 	{
-	  if (strncasecmp (*p, classname, size) == 0)
+	  if (strncasecmp (*p, classname, MAX (strlen (*p), size)) == 0)
 	    {
 	      return true;
 	    }

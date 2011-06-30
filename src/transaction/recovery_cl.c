@@ -27,18 +27,39 @@
 
 #include "recovery_cl.h"
 #include "error_manager.h"
-#include "elo_recovery.h"
+
+static int dummy_redo (const int buffer_size, char *buffer);
+static int dummy_undo (const int buffer_size, char *buffer);
+static void dummy_dump (FILE * fp, const int buffer_size, void *data);
 
 /*
  * THE ARRAY OF CLIENT RECOVERY FUNCTIONS
  */
 struct rvcl_fun RVCL_fun[] = {
-  {RVMM_INTERFACE,
-   esm_undo,
-   esm_redo,
-   esm_dump,
-   esm_dump},
+  {RVCL_DUMMY,
+   dummy_undo,
+   dummy_redo,
+   dummy_dump,
+   dummy_dump},
 };
+
+static int
+dummy_redo (const int buffer_size, char *buffer)
+{
+  return true;
+}
+
+static int
+dummy_undo (const int buffer_size, char *buffer)
+{
+  return true;
+}
+
+static void
+dummy_dump (FILE * fp, const int buffer_size, void *data)
+{
+  return;
+}
 
 /*
  * rv_rcvcl_index_string - RETURN STRING ASSOCIATED WITH THE CLIENT LOG_RVINDEX
@@ -55,8 +76,8 @@ rv_rcvcl_index_string (LOG_RCVCLIENT_INDEX rcvindex)
 {
   switch (rcvindex)
     {
-    case RVMM_INTERFACE:
-      return "RVMM_INTERFACE";
+    case RVCL_DUMMY:
+      return "RVCL_DUMMY";
     default:
       break;
     }

@@ -78,11 +78,9 @@ typedef enum
   CCI_CON_STATUS_IN_TRAN = 1
 } T_CCI_CON_STATUS;
 
-typedef enum
-{
-  CCI_TRAN_STATUS_START = 0,
-  CCI_TRAN_STATUS_RUNNING = 1
-} T_CCI_TRAN_STATUS;
+typedef unsigned int T_CCI_SESSION_ID;
+
+#define CCI_EMPTY_SESSION 0
 
 typedef enum
 {
@@ -104,6 +102,7 @@ typedef struct
   int tuple_index;
   T_OBJECT tuple_oid;
   char **column_ptr;
+  char **decoded_ptr;
 } T_TUPLE_VALUE;
 
 typedef struct
@@ -165,23 +164,6 @@ typedef struct
 
 typedef struct
 {
-  char *sql;
-  int req_handle;
-  char available;
-  int next;
-} T_STMT_POOL_NODE;
-
-typedef struct
-{
-  T_STMT_POOL_NODE *stmt_list;
-  int head_index;
-  int tail_index;
-  int max_pool_entries;
-  int cur_pool_entries;
-} T_STMT_POOL;
-
-typedef struct
-{
   unsigned char ip_addr[4];
   int port;
 } T_ALTER_HOST;
@@ -190,8 +172,7 @@ typedef struct
 {
   char is_retry;
   char con_status;
-  char tran_status;
-  char autocommit_mode;
+  CCI_AUTOCOMMIT_MODE autocommit_mode;
   unsigned char ip_addr[4];
   int port;
   char *db_name;
@@ -207,8 +188,8 @@ typedef struct
   int cas_pid;
   char broker_info[BROKER_INFO_SIZE];
   char cas_info[CAS_INFO_SIZE];
-  T_STMT_POOL stmt_pool;
-
+  char *charset;
+  T_CCI_SESSION_ID session_id;
   /* HA */
   T_ALTER_HOST alter_hosts[ALTER_HOST_MAX_SIZE];
   int alter_host_count;
@@ -244,14 +225,6 @@ extern int hm_ip_str_to_addr (char *ip_str, unsigned char *ip_addr);
 extern int hm_get_con_from_pool (unsigned char *ip_addr, int port,
 				 char *dbname, char *dbuser, char *dbpasswd);
 extern int hm_put_con_to_pool (int con);
-extern int hm_get_req_handle_from_pool (T_CON_HANDLE * con_handle, char *sql);
-extern bool hm_mark_stmt_pool_node_available (T_STMT_POOL * stmt_pool,
-					      int req_handle);
-extern void hm_mark_all_stmt_pool_node_available (T_STMT_POOL * stmt_pool);
-extern int hm_add_stmt_node_to_pool (T_STMT_POOL * stmt_pool,
-				     T_STMT_POOL_NODE * node);
-extern void hm_make_stmt_pool_node (T_STMT_POOL_NODE * node, char *sql,
-				    int req_handle);
 
 extern void hm_set_ha_status (T_CON_HANDLE * con_handle, bool reset_rctime);
 extern int hm_get_ha_connected_host (T_CON_HANDLE * con_handle);

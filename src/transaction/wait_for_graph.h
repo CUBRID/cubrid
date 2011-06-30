@@ -29,7 +29,7 @@
 #ident "$Id$"
 
 #if defined(ENABLE_UNUSED_FUNCTION)
-#include "thread_impl.h"
+#include "thread.h"
 
 typedef enum
 {

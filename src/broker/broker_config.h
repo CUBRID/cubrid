@@ -100,7 +100,8 @@ enum t_access_mode_value
 {
   READ_WRITE_ACCESS_MODE = 0,
   READ_ONLY_ACCESS_MODE = 1,
-  SLAVE_ONLY_ACCESS_MODE = 2
+  SLAVE_ONLY_ACCESS_MODE = 2,
+  PH_READ_ONLY_ACCESS_MODE = 3
 };
 
 typedef struct t_broker_info T_BROKER_INFO;
@@ -145,12 +146,14 @@ struct t_broker_info
 #endif
   int max_string_length;
   int num_busy_count;
+  int max_prepared_stmt_count;
   char log_dir[CONF_LOG_FILE_LEN];
   char err_log_dir[CONF_LOG_FILE_LEN];
   char access_log_file[CONF_LOG_FILE_LEN];
   char error_log_file[CONF_LOG_FILE_LEN];
   char source_env[CONF_LOG_FILE_LEN];
   char acl_file[CONF_LOG_FILE_LEN];
+  char preferred_hosts[LINE_MAX];
 
   char jdbc_cache;
   char jdbc_cache_only_hint;
@@ -158,11 +161,13 @@ struct t_broker_info
   char select_auto_commit;
   int jdbc_cache_life_time;
   char ready_to_service;
+  char cci_default_autocommit;
 };
 
 extern int broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
 			       int *num_broker, int *br_shm_id,
 			       char *admin_log_file, char admin_flag,
+			       bool * acl_flag, char *acl_file,
 			       char *admin_err_msg);
 extern void broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 				int num_broker, int br_shm_id);
@@ -170,5 +175,6 @@ extern void broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 extern int conf_get_value_table_on_off (const char *value);
 extern int conf_get_value_sql_log_mode (const char *value);
 extern int conf_get_value_keep_con (const char *value);
+extern int conf_get_value_access_mode (const char *value);
 
 #endif /* _BROKER_CONFIG_H_ */

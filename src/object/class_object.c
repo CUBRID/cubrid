@@ -55,6 +55,28 @@
 
 const int SM_MAX_STRING_LENGTH = 1073741823;	/* 0x3fffffff */
 
+static SM_CONSTRAINT_TYPE Constraint_types[] = {
+  SM_CONSTRAINT_PRIMARY_KEY,
+  SM_CONSTRAINT_UNIQUE,
+  SM_CONSTRAINT_REVERSE_UNIQUE,
+  SM_CONSTRAINT_INDEX,
+  SM_CONSTRAINT_REVERSE_INDEX,
+  SM_CONSTRAINT_FOREIGN_KEY,
+};
+
+static const char *Constraint_properties[] = {
+  SM_PROPERTY_PRIMARY_KEY,
+  SM_PROPERTY_UNIQUE,
+  SM_PROPERTY_REVERSE_UNIQUE,
+  SM_PROPERTY_INDEX,
+  SM_PROPERTY_REVERSE_INDEX,
+  SM_PROPERTY_FOREIGN_KEY,
+};
+
+#define NUM_CONSTRAINT_TYPES            \
+  ((int)(sizeof(Constraint_types)/sizeof(Constraint_types[0])))
+#define NUM_CONSTRAINT_PROPERTIES       \
+  ((int)(sizeof(Constraint_properties)/sizeof(Constraint_properties[0])))
 
 static AREA *Template_area = NULL;
 
@@ -1994,27 +2016,9 @@ classobj_cache_constraints (SM_CLASS * class_)
   SM_ATTRIBUTE *att;
   DB_VALUE un_value;
   DB_SEQ *un_seq;
-  SM_CONSTRAINT_TYPE constraint_types[] = {
-    SM_CONSTRAINT_UNIQUE,
-    SM_CONSTRAINT_INDEX,
-    SM_CONSTRAINT_REVERSE_UNIQUE,
-    SM_CONSTRAINT_REVERSE_INDEX,
-    SM_CONSTRAINT_PRIMARY_KEY,
-    SM_CONSTRAINT_FOREIGN_KEY,
-  };
-  const char *property_name[] = {
-    SM_PROPERTY_UNIQUE,
-    SM_PROPERTY_INDEX,
-    SM_PROPERTY_REVERSE_UNIQUE,
-    SM_PROPERTY_REVERSE_INDEX,
-    SM_PROPERTY_PRIMARY_KEY,
-    SM_PROPERTY_FOREIGN_KEY,
-  };
   int i;
-
   bool ok = true;
-  int num_constraint_types =
-    sizeof (constraint_types) / sizeof (constraint_types[0]);
+  int num_constraint_types = NUM_CONSTRAINT_TYPES;
 
   /*
    *  Clear the attribute caches
@@ -2038,15 +2042,15 @@ classobj_cache_constraints (SM_CLASS * class_)
     }
   for (i = 0; i < num_constraint_types && ok; i++)
     {
-      if (classobj_get_prop (class_->properties, property_name[i], &un_value)
-	  > 0)
+      if (classobj_get_prop
+	  (class_->properties, Constraint_properties[i], &un_value) > 0)
 	{
 	  if (DB_VALUE_TYPE (&un_value) == DB_TYPE_SEQUENCE)
 	    {
 	      un_seq = DB_GET_SEQUENCE (&un_value);
 	      ok =
 		classobj_cache_constraint_list (un_seq, class_,
-						constraint_types[i]);
+						Constraint_types[i]);
 	    }
 	  pr_clear_value (&un_value);
 	}
@@ -2483,24 +2487,7 @@ classobj_make_class_constraints (DB_SET * class_props,
   DB_VALUE pvalue, uvalue, bvalue, avalue;
   int i, j, k, e, len, info_len, att_cnt;
   int *asc_desc;
-  const char *property_name[] = {
-    SM_PROPERTY_UNIQUE,
-    SM_PROPERTY_INDEX,
-    SM_PROPERTY_REVERSE_UNIQUE,
-    SM_PROPERTY_REVERSE_INDEX,
-    SM_PROPERTY_PRIMARY_KEY,
-    SM_PROPERTY_FOREIGN_KEY,
-  };
-  SM_CONSTRAINT_TYPE constraint_types[] = {
-    SM_CONSTRAINT_UNIQUE,
-    SM_CONSTRAINT_INDEX,
-    SM_CONSTRAINT_REVERSE_UNIQUE,
-    SM_CONSTRAINT_REVERSE_INDEX,
-    SM_CONSTRAINT_PRIMARY_KEY,
-    SM_CONSTRAINT_FOREIGN_KEY,
-  };
-  int num_constraint_types =
-    sizeof (constraint_types) / sizeof (constraint_types[0]);
+  int num_constraint_types = NUM_CONSTRAINT_TYPES;
 
   /* make sure these are initialized for the error cleanup code */
   db_make_null (&pvalue);
@@ -2520,7 +2507,8 @@ classobj_make_class_constraints (DB_SET * class_props,
    */
   for (k = 0; k < num_constraint_types; k++)
     {
-      if (classobj_get_prop (class_props, property_name[k], &pvalue) > 0)
+      if (classobj_get_prop
+	  (class_props, Constraint_properties[k], &pvalue) > 0)
 	{
 	  /* get the sequence & its size */
 	  if (DB_VALUE_TYPE (&pvalue) != DB_TYPE_SEQUENCE)
@@ -2549,7 +2537,7 @@ classobj_make_class_constraints (DB_SET * class_props,
 	       * become owned by the constraint so we don't have to free it.
 	       */
 	      new_ = classobj_make_class_constraint (DB_GET_STRING (&uvalue),
-						     constraint_types[k]);
+						     Constraint_types[k]);
 	      if (new_ == NULL)
 		{
 		  goto memory_error;
@@ -2668,8 +2656,8 @@ classobj_make_class_constraints (DB_SET * class_props,
 		  if (DB_VALUE_TYPE (&avalue) == DB_TYPE_INTEGER)
 		    {
 		      asc_desc[j] = DB_GET_INTEGER (&avalue);
-		      if (constraint_types[k] == SM_CONSTRAINT_REVERSE_UNIQUE
-			  || constraint_types[k] ==
+		      if (Constraint_types[k] == SM_CONSTRAINT_REVERSE_UNIQUE
+			  || Constraint_types[k] ==
 			  SM_CONSTRAINT_REVERSE_INDEX)
 			{
 			  asc_desc[j] = 1;	/* Desc */
@@ -2697,7 +2685,7 @@ classobj_make_class_constraints (DB_SET * class_props,
 		  new_->attributes[j] = NULL;
 		}
 
-	      if (constraint_types[k] == SM_CONSTRAINT_FOREIGN_KEY)
+	      if (Constraint_types[k] == SM_CONSTRAINT_FOREIGN_KEY)
 		{
 		  if (set_get_element (info, info_len - 1, &bvalue))
 		    {
@@ -2715,7 +2703,7 @@ classobj_make_class_constraints (DB_SET * class_props,
 
 		  pr_clear_value (&bvalue);
 		}
-	      else if (constraint_types[k] == SM_CONSTRAINT_PRIMARY_KEY)
+	      else if (Constraint_types[k] == SM_CONSTRAINT_PRIMARY_KEY)
 		{
 		  if (set_get_element (info, info_len - 1, &bvalue))
 		    {
@@ -3295,7 +3283,6 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons,
  *   att_names(in):
  *   asc_desc(in):
  */
-
 SM_CLASS_CONSTRAINT *
 classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
 				   DB_CONSTRAINT_TYPE new_cons,
@@ -3305,7 +3292,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
   SM_CLASS_CONSTRAINT *cons;
   SM_ATTRIBUTE **attp;
   const char **namep;
-  int i, len;
+  int i, len, order;
 
   for (cons = cons_list; cons; cons = cons->next)
     {
@@ -3330,24 +3317,20 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
 	  if (!*attp && !*namep
 	      && !classobj_is_possible_constraint (cons->type, new_cons))
 	    {
-	      if (asc_desc)
+	      for (i = 0; i < len; i++)
 		{
-		  for (i = 0; i < len; i++)
+		  /* if not specified, ascending order */
+		  order = (asc_desc ? asc_desc[i] : 0);
+		  assert (order == 0 || order == 1);
+		  if (order != cons->asc_desc[i])
 		    {
-		      if (asc_desc[i] != cons->asc_desc[i])
-			{
-			  break;	/* not match */
-			}
-		    }
-
-		  if (i == len)
-		    {
-		      break;	/* match */
+		      break;	/* not match */
 		    }
 		}
-	      else
+
+	      if (i == len)
 		{
-		  break;	/* match */
+		  return cons;	/* match */
 		}
 	    }
 	}
@@ -5665,8 +5648,8 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate,
       error = smt_add_constraint (ctemplate, constraint_type,
 				  new_cons_name, att_names,
 				  (constraint_type ==
-				   DB_CONSTRAINT_UNIQUE) ? constraint->
-				  asc_desc : NULL, 0, NULL);
+				   DB_CONSTRAINT_UNIQUE) ?
+				  constraint->asc_desc : NULL, 0, NULL);
     }
   else
     {

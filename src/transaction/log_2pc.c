@@ -44,7 +44,7 @@
 #include "system_parameter.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
-#include "thread_impl.h"
+#include "thread.h"
 #endif /* SERVER_MODE */
 #if !defined(WINDOWS)
 #include "tcp.h"		/* for css_gethostid */
@@ -483,7 +483,7 @@ log_get_global_tran_id (THREAD_ENTRY * thread_p)
  *   tranid(in): Transaction identifier
  *
  * NOTE:Build a global transaction identifier based on the host
- *              identifer, the process identifier and the transaction
+ *              identifier, the process identifier and the transaction
  *              identifier.
  */
 static int
@@ -1645,7 +1645,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
  *   acquire_locks(in): specify if list of locks needs to be read from the log
  *                record and the listed locks needs to be acquired.
  *   tdes(in): Transaction descriptor
- *   log_lsa(in): Log address identifer containing the log record
+ *   log_lsa(in): Log address identifier containing the log record
  *   log_pgptr(in): the buffer containing the log page
  *
  * NOTE:This function is used to read the prepared log record from the
@@ -2343,7 +2343,7 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "log_2pc_recovery_analysis_info:"
-			    " SYSTEM ERROR for log located at %d|%d",
+			    " SYSTEM ERROR for log located at %lld|%d",
 			    log_lsa->pageid, log_lsa->offset);
 	    }
 	  else

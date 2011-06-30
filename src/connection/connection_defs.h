@@ -44,7 +44,7 @@
 #include "connection_list_sr.h"
 #include "critical_section.h"
 #endif
-#include "thread_impl.h"
+#include "thread.h"
 
 /*
  * These are the types of top-level commands sent to the master server
@@ -108,7 +108,9 @@ enum css_client_request
   DEREGISTER_HA_PROCESS = 30,	/* HA: deregister ha process */
   RECONFIG_HEARTBEAT = 31,	/* HA: reconfigure ha node */
   DEACTIVATE_HEARTBEAT = 32,	/* HA: deactivate */
-  ACTIVATE_HEARTBEAT = 33	/* HA: activate */
+  ACTIVATE_HEARTBEAT = 33,	/* HA: activate */
+  KILL_ALL_HA_PROCESS = 34,	/* HA: kill all ha processes */
+  IS_REGISTERED_HA_PROC = 35	/* HA: check registered ha process */
 };
 
 /*
@@ -175,7 +177,8 @@ enum css_status
   SERVER_HAS_SHUT_DOWN = 4,	/* not used */
   ERROR_MESSAGE_FROM_MASTER = 5,	/* an error message is returned */
   SERVER_CONNECTED_NEW = 6,
-  SERVER_CLIENTS_EXCEEDED = 7
+  SERVER_CLIENTS_EXCEEDED = 7,
+  SERVER_INACCESSIBLE_IP = 8
 };
 
 /*
@@ -222,13 +225,16 @@ enum ha_mode
   HA_MODE_FAIL_OVER = 1,	/* unused */
   HA_MODE_FAIL_BACK = 2,
   HA_MODE_LAZY_BACK = 3,	/* not implemented yet */
-  HA_MODE_ROLE_CHANGE = 4
+  HA_MODE_ROLE_CHANGE = 4,
+  HA_MODE_REPLICA = 5
 };
 #define HA_MODE_OFF_STR		"off"
 #define HA_MODE_FAIL_OVER_STR	"fail-over"
 #define HA_MODE_FAIL_BACK_STR	"fail-back"
 #define HA_MODE_LAZY_BACK_STR	"lazy-back"
 #define HA_MODE_ROLE_CHANGE_STR	"role-change"
+#define HA_MODE_REPLICA_STR     "replica"
+#define HA_MODE_ON_STR          "on"
 
 /*
  * HA server mode
@@ -421,7 +427,7 @@ struct css_conn_entry
   CSS_QUEUE_ENTRY *error_queue;	/* queue of (server) error messages  */
   void *cnxn;
 #endif
-
+  SESSION_ID session_id;
   CSS_CONN_ENTRY *next;
 };
 

@@ -226,8 +226,7 @@ extern void au_link_static_methods (void);
 /* migration utilities */
 
 extern int au_export_users (FILE * outfp);
-extern int au_export_grants (FILE * outfp, MOP class_mop,
-			     bool quoted_id_flag);
+extern int au_export_grants (FILE * outfp, MOP class_mop);
 
 extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 
@@ -277,4 +276,5 @@ extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval,
 extern int au_check_serial_authorization (MOP serial_object);
 extern const char *au_get_public_user_name (void);
 extern const char *au_get_user_class_name (void);
+extern char *toupper_string (const char *name1, char *name2);
 #endif /* _AUTHENTICATE_H_ */

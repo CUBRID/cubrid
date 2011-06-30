@@ -125,7 +125,7 @@ cnet_buf_cp_str (T_NET_BUF * net_buf, const char *buf, int size)
 int
 cnet_buf_cp_bigint (T_NET_BUF * net_buf, INT64 value)
 {
-  int size = SIZE_BIGINT;
+  int size = NET_SIZE_BIGINT;
 
   if (net_buf_realloc (net_buf, size) < 0)
     return CCI_ER_NO_MORE_MEMORY;
@@ -140,7 +140,7 @@ cnet_buf_cp_bigint (T_NET_BUF * net_buf, INT64 value)
 int
 cnet_buf_cp_int (T_NET_BUF * net_buf, int value)
 {
-  int size = SIZE_INT;
+  int size = NET_SIZE_INT;
 
   if (net_buf_realloc (net_buf, size) < 0)
     return CCI_ER_NO_MORE_MEMORY;
@@ -155,7 +155,7 @@ cnet_buf_cp_int (T_NET_BUF * net_buf, int value)
 int
 cnet_buf_cp_float (T_NET_BUF * net_buf, float value)
 {
-  int size = SIZE_FLOAT;
+  int size = NET_SIZE_FLOAT;
 
   if (net_buf_realloc (net_buf, size) < 0)
     return CCI_ER_NO_MORE_MEMORY;
@@ -169,7 +169,7 @@ cnet_buf_cp_float (T_NET_BUF * net_buf, float value)
 int
 cnet_buf_cp_double (T_NET_BUF * net_buf, double value)
 {
-  int size = SIZE_DOUBLE;
+  int size = NET_SIZE_DOUBLE;
 
   if (net_buf_realloc (net_buf, size) < 0)
     return CCI_ER_NO_MORE_MEMORY;
@@ -183,7 +183,7 @@ cnet_buf_cp_double (T_NET_BUF * net_buf, double value)
 int
 cnet_buf_cp_short (T_NET_BUF * net_buf, short value)
 {
-  int size = SIZE_SHORT;
+  int size = NET_SIZE_SHORT;
 
   if (net_buf_realloc (net_buf, size) < 0)
     return CCI_ER_NO_MORE_MEMORY;

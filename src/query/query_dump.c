@@ -30,6 +30,7 @@
 #include "object_representation.h"
 #include "query_executor.h"
 #include "class_object.h"
+#include "system_parameter.h"
 
 #define foutput stdout
 
@@ -145,9 +146,6 @@ qdump_print_xasl_type (XASL_NODE * xasl_p)
       break;
     case OBJFETCH_PROC:
       type_string_p = "objfetch_proc";
-      break;
-    case SETFETCH_PROC:
-      type_string_p = "setfetch_proc";
       break;
     case SCAN_PROC:
       type_string_p = "scan_proc";
@@ -344,6 +342,7 @@ qdump_print_update_proc_node (UPDATE_PROC_NODE * node_p)
   fprintf (foutput, "[constant values:");
   qdump_print_db_value_array (node_p->consts, node_p->no_consts);
   fprintf (foutput, "]");
+  fprintf (foutput, "[numer of ORDER BY keys:%d]", node_p->no_orderby_keys);
 
   return true;
 }
@@ -572,6 +571,12 @@ qdump_print_key_info (KEY_INFO * key_info_p)
       fprintf (foutput, "]");
     }
   fprintf (foutput, "<is constant:%d>", key_info_p->is_constant);
+
+  fprintf (foutput, " key limit: [");
+  qdump_print_value (key_info_p->key_limit_l);
+  fprintf (foutput, "][");
+  qdump_print_value (key_info_p->key_limit_u);
+  fprintf (foutput, "][reset:%d]", key_info_p->key_limit_reset);
 
   return true;
 }
@@ -1087,6 +1092,10 @@ qdump_data_type_string (DB_TYPE type)
       return "SEQUENCE";
     case DB_TYPE_ELO:
       return "ELO";
+    case DB_TYPE_BLOB:
+      return "BLOB";
+    case DB_TYPE_CLOB:
+      return "CLOB";
     case DB_TYPE_TIME:
       return "TIME";
     case DB_TYPE_TIMESTAMP:
@@ -1248,8 +1257,16 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "AVG";
     case PT_STDDEV:
       return "STDDEV";
+    case PT_STDDEV_POP:
+      return "STDDEV_POP";
+    case PT_STDDEV_SAMP:
+      return "STDDEV_SAMP";
     case PT_VARIANCE:
       return "VARIANCE";
+    case PT_VAR_POP:
+      return "VAR_POP";
+    case PT_VAR_SAMP:
+      return "VAR_SAMP";
     case PT_COUNT:
       return "COUNT";
     case PT_COUNT_STAR:
@@ -1264,6 +1281,8 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "BIT_XOR";
     case PT_TOP_AGG_FUNC:
       return "TOP_AGG_FUNC";
+    case PT_GROUP_CONCAT:
+      return "GROUP_CONCAT";
     case PT_GENERIC:
       return "GENERIC";
     case F_TABLE_SET:
@@ -1288,6 +1307,10 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "F_GENERIC";
     case F_CLASS_OF:
       return "F_CLASS_OF";
+    case F_INSERT_SUBSTRING:
+      return "INSERT_SUBSTRING";
+    case F_ELT:
+      return "ELT";
     default:
       return "***UNKNOWN***";
     }
@@ -2433,6 +2456,15 @@ qdump_print_xasl (XASL_NODE * xasl_p)
 	fprintf (foutput, "-->ordbynum CONTINUE\n");
     }
 
+  if (xasl_p->orderby_limit)
+    {
+      fprintf (foutput, "-->orderby limit:");
+      qdump_print_value (xasl_p->orderby_limit);
+      fprintf (foutput, " (optimization %s)",
+	       PRM_USE_ORDERBY_SORT_LIMIT ? "enabled" : "disabled");
+      fprintf (foutput, "\n");
+    }
+
   if (xasl_p->is_single_tuple)
     {
       fprintf (foutput, "-->single tuple:");
@@ -2539,6 +2571,18 @@ qdump_print_xasl (XASL_NODE * xasl_p)
       fprintf (foutput, ">\n");
     }
 
+  if (xasl_p->save_instnum_val)
+    {
+      fprintf (foutput, "-->old instnum val:");
+      fprintf (foutput, "<addr:%p|", xasl_p->save_instnum_val);
+      fprintf (foutput, "type:%s",
+	       qdump_data_type_string (DB_VALUE_DOMAIN_TYPE
+				       (xasl_p->save_instnum_val)));
+      fprintf (foutput, "|value:");
+      qdump_print_db_value (xasl_p->save_instnum_val);
+      fprintf (foutput, ">\n");
+    }
+
   if (xasl_p->instnum_pred)
     {
       fprintf (foutput, "-->instnum predicate:");
@@ -2618,7 +2662,6 @@ qdump_print_xasl (XASL_NODE * xasl_p)
   switch (xasl_p->type)
     {
     case OBJFETCH_PROC:
-    case SETFETCH_PROC:
       qdump_print_fetch_node (xasl_p);
       break;
 

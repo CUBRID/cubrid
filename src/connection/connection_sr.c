@@ -61,7 +61,7 @@
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
-#include "thread_impl.h"
+#include "thread.h"
 #include "critical_section.h"
 #include "log_manager.h"
 #include "object_representation.h"
@@ -112,7 +112,7 @@ typedef struct wait_queue_search_arg
 static const int CSS_MAX_CLIENT_ID = 32766;
 
 static int css_Client_id = 0;
-static MUTEX_T css_Client_id_lock = MUTEX_INITIALIZER;
+static pthread_mutex_t css_Client_id_lock = PTHREAD_MUTEX_INITIALIZER;
 static CSS_CONN_ENTRY *css_Free_conn_anchor = NULL;
 static int css_Num_free_conn = 0;
 static CSS_CRITICAL_SECTION css_Free_conn_csect;
@@ -215,7 +215,7 @@ css_get_next_client_id (void)
 {
   int next_client_id, rv;
 
-  MUTEX_LOCK (rv, css_Client_id_lock);
+  rv = pthread_mutex_lock (&css_Client_id_lock);
   if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -230,7 +230,7 @@ css_get_next_client_id (void)
     }
   next_client_id = css_Client_id;
 
-  rv = MUTEX_UNLOCK (css_Client_id_lock);
+  rv = pthread_mutex_unlock (&css_Client_id_lock);
   if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -432,7 +432,7 @@ css_init_conn_list (void)
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_CSS_CONN_INIT, 0);
 	  return ER_CSS_CONN_INIT;
-    }
+	}
 
       if (i < PRM_CSS_MAX_CLIENTS - 1)
 	{
@@ -458,14 +458,6 @@ css_init_conn_list (void)
     }
 
   err = csect_initialize_critical_section (&css_Free_conn_csect);
-  if (err != NO_ERROR)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT,
-			   0);
-      return ER_CSS_CONN_INIT;
-    }
-
-  err = MUTEX_INIT (css_Client_id_lock);
   if (err != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT,
@@ -636,7 +628,7 @@ css_free_conn (CSS_CONN_ENTRY * conn)
 	    }
 
 	  css_Num_active_conn--;
-	  assert (css_Num_active_conn >= 0 
+	  assert (css_Num_active_conn >= 0
 		  && css_Num_active_conn < PRM_CSS_MAX_CLIENTS);
 
 	  break;
@@ -664,8 +656,8 @@ css_print_conn_entry_info (CSS_CONN_ENTRY * conn)
 {
   fprintf (stderr,
 	   "CONN_ENTRY: %p, next(%p), idx(%d),fd(%d),request_id(%d),transaction_id(%d),client_id(%d)\n",
-	   conn, conn->next, conn->idx, conn->fd, conn->request_id, conn->transaction_id,
-	   conn->client_id);
+	   conn, conn->next, conn->idx, conn->fd, conn->request_id,
+	   conn->transaction_id, conn->client_id);
 }
 
 /*
@@ -685,7 +677,8 @@ css_print_conn_list (void)
 
       fprintf (stderr, "active conn list (%d)\n", css_Num_active_conn);
 
-      for (conn = css_Active_conn_anchor, i = 0; conn != NULL; conn = next, i++)
+      for (conn = css_Active_conn_anchor, i = 0; conn != NULL;
+	   conn = next, i++)
 	{
 	  next = conn->next;
 	  css_print_conn_entry_info (conn);
@@ -1106,7 +1099,7 @@ css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
   header.transaction_id = htonl (conn->transaction_id);
   header.db_error = htonl (conn->db_error);
 
-  /* timeout in mili-second in css_net_send() */
+  /* timeout in milli-second in css_net_send() */
   return (css_net_send (conn, (char *) &header, sizeof (NET_HEADER),
 			PRM_TCP_CONNECTION_TIMEOUT * 1000));
 }
@@ -1646,7 +1639,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type,
     {
       next = p->next_wait_thrd;
       p->resume_status = THREAD_CSS_QUEUE_RESUMED;
-      COND_SIGNAL (p->wakeup_cond);
+      pthread_cond_signal (&p->wakeup_cond);
       p->next_wait_thrd = NULL;
       thread_unlock_entry (p);
       p = next;
@@ -1782,7 +1775,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
     {
       do
 	{
-	  /* timeout in mili-second in css_net_recv() */
+	  /* timeout in milli-second in css_net_recv() */
 	  rc = css_net_recv (conn->fd, buffer, &size,
 			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 	}
@@ -1861,7 +1854,7 @@ css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
     {
       do
 	{
-	  /* timeout in mili-second in css_net_recv() */
+	  /* timeout in milli-second in css_net_recv() */
 	  rc = css_net_recv (conn->fd, buffer, &size,
 			     PRM_TCP_CONNECTION_TIMEOUT * 1000);
 	}
@@ -2128,16 +2121,10 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 	      else
 		{
 		  int r;
-#if defined(WINDOWS)
-		  int abstime;
-
-		  abstime = waitsec * 1000;
-#else /* WINDOWS */
 		  struct timespec abstime;
 
 		  abstime.tv_sec = time (NULL) + waitsec;
 		  abstime.tv_nsec = 0;
-#endif /* WINDOWS */
 
 		  r = thread_suspend_timeout_wakeup_and_unlock_entry (thrd,
 								      &abstime,
@@ -2147,7 +2134,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 		      || thrd->resume_status != THREAD_CSS_QUEUE_RESUMED)
 		    {
 		      assert (r == ETIMEDOUT
-			      || (thrd->resume_status == 
+			      || (thrd->resume_status ==
 				  THREAD_RESUME_DUE_TO_INTERRUPT));
 
 		      *buffer = NULL;

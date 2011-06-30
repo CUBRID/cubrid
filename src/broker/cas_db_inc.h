@@ -44,8 +44,4 @@ extern int db_Connect_status;
 extern char **db_get_lock_classes (DB_SESSION * session);
 #endif
 
-extern void histo_clear ();
-extern void histo_print ();
-
-
 #endif /* _CAS_DB_INC_H_ */

@@ -52,9 +52,8 @@ static int compare_xid (XID * xid1, XID * xid2);
 static bool xa_prepare_flag = false;
 
 int
-fn_xa_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	       T_REQ_INFO * req_info)
 {
 #ifdef CAS_SUPPORT_XA
   XID xid;
@@ -99,15 +98,14 @@ fn_xa_prepare (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   cas_log_write (0, true, "xa_prepare");
 #else /* CAS_SUPPORT_XA */
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
-  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+  NET_BUF_ERR_SET (net_buf);
 #endif /* CAS_SUPPORT_XA */
   return 0;
 }
 
 int
-fn_xa_recover (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-	       void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-	       T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+	       T_REQ_INFO * req_info)
 {
 #ifdef CAS_SUPPORT_XA
   int count;
@@ -142,15 +140,14 @@ fn_xa_recover (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   cas_log_write (0, true, "xa_recover");
 #else /* CAS_SUPPORT_XA */
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
-  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+  NET_BUF_ERR_SET (net_buf);
 #endif /* CAS_SUPPORT_XA */
   return 0;
 }
 
 int
-fn_xa_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
-		void **CAS_FN_ARG_ARGV, T_NET_BUF * CAS_FN_ARG_NET_BUF,
-		T_REQ_INFO * CAS_FN_ARG_REQ_INFO)
+fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+		T_REQ_INFO * req_info)
 {
 #ifdef CAS_SUPPORT_XA
   int tran_type;
@@ -164,7 +161,7 @@ fn_xa_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
       NET_BUF_ERR_SET (net_buf);
       return 0;
     }
-  NET_ARG_GET_CHAR (tran_type, argv[1]);
+  net_arg_get_char (tran_type, argv[1]);
   if (tran_type != CCI_TRAN_COMMIT && tran_type != CCI_TRAN_ROLLBACK)
     {
       ERROR_INFO_SET (CAS_ER_TRAN_TYPE, CAS_ERROR_INDICATOR);
@@ -220,7 +217,7 @@ fn_xa_end_tran (SOCKET CAS_FN_ARG_SOCK_FD, int CAS_FN_ARG_ARGC,
   cas_log_write (0, true, "xa_end_tran %d", tran_type);
 #else /* CAS_SUPPORT_XA */
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
-  NET_BUF_ERR_SET (CAS_FN_ARG_NET_BUF);
+  NET_BUF_ERR_SET (net_buf);
 #endif /* CAS_SUPPORT_XA */
   return -1;
 }

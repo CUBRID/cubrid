@@ -1,4 +1,3 @@
-
 $
 $ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
 $
@@ -56,14 +55,14 @@ $       30      mqueueldb
 $       31      migrate_v73
 $       32      load_audit_trail
 $       33      alterdbhost
-$       35      repl_server
-$       36      repl_agent
 $       37      plandump
 $       38      paramdump
 $       39      changemode
 $       40      copylogdb
-$       41      appylogdb
+$       41      applylogdb
 $       43      statdump
+$       44      applyinfo
+$       45      acldb
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Invalid length or character `%c' in database name `%s'\n
@@ -73,7 +72,8 @@ $set 1 MSGCAT_UTIL_SET_GENERIC
 5 The following list contains the recognized utility names:\n
 6 Invalid character `%c' in volume name `%s'\n
 9 \
-%s (cubrid utilities) %s\n\
+%s (CUBRID utilities)\n\
+%s\n\
 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
 10 \
 cubrid administrator utility, version %s\n\
@@ -95,7 +95,6 @@ Available admin utility-name:\n\
     optimizedb\n\
     compactdb\n\
     diagdb\n\
-    emergency_patchlog\n\
     checkdb\n\
     alterdbhost\n\
     plandump\n\
@@ -106,12 +105,14 @@ Available admin utility-name:\n\
     changemode\n\
     copylogdb\n\
     applylogdb\n\
+    applyinfo\n\
+    acldb\n\
 \n\
 %s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.com\n
 12 '%s' utility-name is invalid.\nType 'cubrid --help' to see usage.\n
 13 '%s' command is invalid.\nType 'cubrid --help' to see usage.\n
-14 Could not load service properties in cubrid.conf.\n
+14 Could not load one or more mandatory properties in configuration files.\n
 15 @ %s %s: %s\n
 16 @ %s %s\n
 17 ++ %s '%s' is not running.\n
@@ -129,8 +130,6 @@ Available service's utilities:\n\
     server\n\
     broker\n\
     manager\n\
-    repl_server\n\
-    repl_agent\n\
     heartbeat\n\
 \n\
 Available administrator's utilities:\n\
@@ -143,7 +142,6 @@ Available administrator's utilities:\n\
     createdb\n\
     deletedb\n\
     diagdb\n\
-    emergency_patchlog\n\
     installdb\n\
     killtran\n\
     loaddb\n\
@@ -159,6 +157,7 @@ Available administrator's utilities:\n\
     changemode\n\
     copylogdb\n\
     applylogdb\n\
+    applyinfo\n\
 \n\
 %s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.com\n
@@ -177,7 +176,8 @@ Available command:\n\
     start       [database-name]\n\
     stop        [database-name]\n\
     restart     [database-name]\n\
-    status\n
+    status\n\
+    acl         <status|reload> database-name\n
 26 cubrid utility, version %s\n\
 usage: %s broker <command> [args]\n\
 \n\
@@ -187,7 +187,9 @@ Available command:\n\
     restart\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [<expr>]\n\
     on          broker-name\n\
-    off         broker-name\n
+    off         broker-name\n\
+    reset       broker-name\n\
+    acl         <status|reload> [broker-name]\n
 27 cubrid utility, version %s\n\
 usage: %s manager <command>\n\
 \n\
@@ -196,23 +198,11 @@ Available command:\n\
     stop\n\
     status\n
 28 cubrid utility, version %s\n\
-usage: %s repl_server <command> [args]\n\
-\n\
-Available command:\n\
-    start       master-database-name server-network-port [-a max-agent-num] [-e error-file]\n\
-    stop        master-database-name\n\
-    status\n
-29 cubrid utility, version %s\n\
-usage: %s repl_agent <command> [args]\n\
-\n\
-Available command:\n\
-    start       dist-database-name [dba-password]\n\
-    stop        dist-database-name\n\
-    status\n
-30 cubrid utility, version %s\n\
 usage: %s heartbeat <command> [args]\n\
 \n\
 Available command:\n\
+    start\n\
+    stop\n\
     act\n\
     deact\n\
     deregister  process-id\n\
@@ -220,7 +210,9 @@ Available command:\n\
     reload\n
 31 '%s' argument is not needed.\n
 32 A database-name is missing.\n
-33 Replication is not supported in this platform
+33 %s: Such option is deprecated.\n
+34 Invalid Parameter. %s %s\n
+35 Cannot allocate memory.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
@@ -258,10 +250,12 @@ valid options:\n\
       --server-name=HOST          server's HOST name; default: current host name\n\
   -F, --file-path=PATH            directory PATH for database volumes; default: current directory\n\
   -L, --log-path=PATH             directory PATH for log volumes; default: same as file-path\n\
-  -E, --extended-volume-path=PATH directory PATH for copying/renaming extended information volumes; default: same place as the original volumes or the specifications given in control-file\n\
-  -i, --control-file=FILE         FILE to control copying/renaming information volumes over several locations\n\
+  -B, --lob-base-path=PATH        base directory PATH for external LOB data; default: <file-path>/lob\n\
+  -E, --extended-volume-path=PATH directory PATH for extended information volumes; default: same path as the database volumes or the given path in control-file\n\
+  -i, --control-file=FILE         copying volumes over several locations written in the control file; default: none\n\
   -r, --replace                   replace an existing database; default: don't replace\n\
-  -d, --delete-source             delete a source database; default: don't delete\n
+  -d, --delete-source             delete a source database; default: don't delete\n\
+      --copy-lob-path             copy external storage PATH for LOB data from source database. cannot be used with -B option; default: don't copy\n
 
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
@@ -270,30 +264,32 @@ $set 4 MSGCAT_UTIL_SET_CREATEDB
 42 Unknown command `%s'\n
 43 Couldn't open output file `%s'\n
 44 Couldn't removing existing database.\n
-45 Creating database with %d pages.\n
+45 Creating database with %s size.\n
 46 Couldn't create database.\n
 47 Problem with user file `%s'\n
-48 Number of page must be greater than or equal to 100\n
-49 Database `%s' was successfully created at `%s'.\nIf you want to start this database, run command `start_server %s'.\nIf you want to execute query, run command `sqlx %s'.\n
+48 The '%s' must be between %s and %s\n
 60 \
 createdb: Create a database.\n\
 usage: %s createdb [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -p, --pages=NUMBER                  initial NUMBER of page for first information volume; default: 5000\n\
+      --db-volume-size=SIZE           size of first information volume\n\
+                                      default: db_volume_size in cubrid.conf\n\
+      --db-page-size=SIZE             database page SIZE in bytes; default: 16KB\n\
+      --log-volume-size=SIZE          size of log archives\n\
+                                      default: log_volume_size in cubrid.conf\n\
+      --log-page-size=SIZE            log page SIZE in bytes; default: database page size\n\
       --comment=COMMENT               COMMENT for a database; default: none\n\
   -F, --file-path=PATH                directory PATH for database volumes; default: current directory\n\
   -L, --log-path=PATH                 directory PATH for log volumes; default: same as file-path\n\
+  -B, --lob-base-path=PATH            base directory PATH for external LOB data; default: <file-path>/lob\n\
       --server-name=HOST              server's HOST name; default: current host name\n\
   -r, --replace                       replace an existing database; default: don't replace\n\
       --more-volume-file=FILE         FILE contain specifications for creation of additional volumes; default: none\n\
       --user-definition-file=FILE     FILE contain user definitions; default: none\n\
       --csql-initialization-file=FILE FILE contain SQLs for an initialization of the database; default: none\n\
   -o, --output-file=FILE              redirect output messages to FILE; default: none\n\
-  -v, --verbose                       enable verbose status messages; default: disabled\n\
-  -l, --log-page-count=NUMBER         NUMBER of pages for log archives; default: same as a first generic volume\n\
-  -s, --page-size=SIZE                database page SIZE in bytes; default: 4KB\n\
-      --log-page-size=SIZE            log page SIZE in bytes; default: database page size\n
+  -v, --verbose                       enable verbose status messages; default: disabled\n
 
 
 $set 6 MSGCAT_UTIL_SET_DELETEDB
@@ -306,13 +302,15 @@ valid options:\n\
   -d, --delete-backup          delete backup volumes; default: don't delete\n
 
 $set 7 MSGCAT_UTIL_SET_RENAMEDB
+31 ERROR: volext-pathname does not exist or is not writeable.\n
+32 ERROR: vols-tofrom-paths_file does not exist or is not readable.\n
 60 \
 renamedb: Rename a database.\n\
 usage: %s renamedb [OPTION] src-database-name dest-database-name\n\
 \n\
 valid options:\n\
-  -E, --extended-volume-path=PATH directory PATH for copying/renaming extended information volumes; default: same place as the original volumes or the specifications given in control-file\n\
-  -i, --control-file=FILE         FILE to control copying/renaming information volumes over several locations\n\
+  -E, --extended-volume-path=PATH directory PATH for extended information volumes; default: same path as the database volumes or the given path in control-file\n\
+  -i, --control-file=FILE         renaming volumes over several locations written in the control file; default: none\n\
   -d, --delete-backup             delete backup volumes; default: don't delete\n
 
 $set 9 MSGCAT_UTIL_SET_MASTER
@@ -326,8 +324,6 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Server %s notified of shutdown.\nThis may take several minutes. Please wait.
 19 Server %s not found.
 20 Master going down in %d minutes\n
-21 repl_server %s notified of shutdown.\nThis may take several minutes. Please wait.
-22 repl_agent %s notified of shutdown.\nThis may take several minutes. Please wait.
 
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
@@ -470,7 +466,9 @@ valid options:\n\
   -v, --verbose               enable verbose status messages; default: disabled\n\
       --use-delimiter         use '"' where an identifier begins and ends; default: don't use\n\
   -S, --SA-mode               stand-alone mode execution\n\
-  -C, --CS-mode               client-server mode execution\n
+  -C, --CS-mode               client-server mode execution\n\
+      --datafile-per-class    create a object file for each class; default: disabled\n
+
 
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
@@ -512,7 +510,7 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 46 Heap compact succedeed...\n
 60 \
 compactdb: Free unused space in a database.\n\
-usage: %s compactdb [OPTION] database-name [class_name1, class_name2,...]\n\
+usage: %s compactdb [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
 valid options:\n\
   -v, --verbose                     enable verbose status messages; default: disabled\n\
@@ -543,11 +541,8 @@ usage: cub_commdb [OPTION]\n\
 \n\
 valid options:\n\
   -P, --server-list                print server processes\n\
-  -R, --repl-list                  print replication processes\n\
   -O, --all-list                   print all processes\n\
   -S, --shutdown-server=NAME       shutdown NAME database server\n\
-  -K, --shutdown-repl-server=NAME  shutdown NAME replication server\n\
-  -k, --shutdown-repl-agent=NAME   shutdown NAME replication agent\n\
   -A, --shutdown-all               shutdown all processes\n\
   -c, --server-mode=NAME           print NAME database server's HA mode\n\
   -N, --node-list                  list nodes managed by CUBRID heartbeat\n\
@@ -584,9 +579,10 @@ $set 17 MSGCAT_UTIL_SET_ADDVOLDB
 21 Wrong value '%s' for volume storage purpose.\n
 60 \
 addvoldb: Add a volume-file for the database.\n\
-usage: %s addvoldb [OPTION] database-name number-of-pages\n\
+usage: %s addvoldb [OPTION] database-name\n\
 \n\
 valid options:\n\
+      --db-volume-size=SIZE    size of additional volume; default: db_volume_size in cubrid.conf\n\
   -n, --volume-name=NAME       NAME of information volume; default: generate such as "db"_ext1)\n\
   -F, --file-path=PATH         PATH for adding volume file; default: working directory\n\
       --comment=COMMENT        COMMENT for adding volume file; default: none\n\
@@ -600,23 +596,31 @@ valid options:\n\
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 Some inconsistencies were detected in your database.\n Please consult error_log_file %s for additional information.\n
+21 %s: Cannot find the class. It will be ommitted.\n
 60 \
 checkdb: Check consistency of the database.\n\
-usage: %s checkdb [OPTION] database-name\n\
+usage: %s checkdb [OPTION] database-name [class_name1 class_name2 ...]\n\
 \n\
 valid options:\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n\
-  -r, --repair                 repair when inconsistency is found\n
+  -r, --repair                 repair when inconsistency is found\n\
+  -i, --input-class-file=FILE  input FILE of class names\n\
+                               default: check all classes\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Space description for database '%s' with pagesize %d. (log pagesize: %d)\n\n
+15 Space description for database '%s' with pagesize %s. (log pagesize: %s)\n\n
 16 %5d %8s  %s %s  %s\n
 17 Couldn't open output file `%s'\n
-18 Space description for temporary volumes for database '%s' with pagesize %d.\n\n
+18 Space description for temporary volumes for database '%s' with pagesize %s.\n\n
 19 Volid  Purpose  total_pages  free_pages  Vol Name\n\n
 20 Volid  Purpose   total_size   free_size  Vol Name\n\n
+21 LOB space description %s \n\n
+30 Summarized space description for database '%s' with pagesize %s. (log pagesize: %s)\n\n
+31 Purpose    total_pages  used_pages  free_pages  volume_count\n
+32 Purpose     total_size   used_size   free_size  volume_count\n
+33 %10s %s %s %s %10d\n
 60 \
 spacedb: Display usage/free space of the database.\n\
 usage: %s spacedb [OPTION] database-name\n\
@@ -626,7 +630,8 @@ valid options:\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n\
       --size-unit={PAGE|M|G|T|H}\n\
-                               set the display unit (page, mega, giga, tera, human readable);default : PAGE\n
+                               set the display unit (page, mega, giga, tera, human readable); default: H\n\
+  -s, --summarize              display only a summary for each volume purpose\n
 
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
@@ -661,7 +666,6 @@ valid options:\n\
       --server-name=HOST       server HOST name; default: current host name\n\
   -F, --file-path=PATH         directory PATH for database volumes; default: current directory\n\
   -L, --log-path=PATH          directory PATH for log volumes; default: same as file-path\n
-
 
 $set 23 MSGCAT_UTIL_SET_MIGDB
 1 Temporary class OID\n
@@ -713,7 +717,7 @@ valid options:\n\
 
 $set 25 MSGCAT_UTIL_SET_LOCKDB
 15 Couldn't open output file `%s'\n
-59 lockdb cannot run as standlone mode.\n
+59 lockdb cannot run as standalone mode.\n
 60 \
 lockdb: Display lock-status of the database.\n\
 usage: %s lockdb [OPTION] database-name\n\
@@ -735,7 +739,7 @@ $set 26 MSGCAT_UTIL_SET_KILLTRAN
 29 Killing transaction associated with transaction index %d\n
 30 Killing of the following transactions has failed\n\n
 31 The transaction does not finish yet, but it may be doing the rollback work.\n Please, wait a second and try it later if needed.\n
-59 killrtan cannot run as standlone mode.\n
+59 killrtan cannot run as standalone mode.\n
 60 \
 killtran: Manage transactions of the database.\n\
 usage: %s killtran [OPTION] database-name\n\
@@ -787,68 +791,9 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 5 force-overwrite
 6 overwrite class file if exist, default no
 
-$set 35 MSGCAT_UTIL_SET_REPLSERVER
-1 database-name
-2 port-number
-3 error log file
-4 the number of agents
-11 Internal Error(%d): communication error
-12 Internal Error(%d): can't allocate memory
-13 Internal Error(%d): IO error
-14 Internal Error(%d): General
-21 ERROR(%d): can't open the active log file of the master - %s.
-22 ERROR(%d): can't open the databases.txt file.
-23 ERROR(%d): %s is not exists in databases.txt.
-24 ERROR(%d): can't open the catalog file.
-25 ERROR(%d): Invalid Argument. Please provide correct arguments.
-26 ERROR(%d): can't connect to master. Please check if the repl_server is already running, or the master is running.
-27 ERROR(%d): The port id of the repl_server is already used. Please check if the repl_server using same TCP port id is already run.
-28 WARNING(%d): excess of the maximum number of agent connections.Ignoring client connect request.
-29 WARNING(%d): close the connection of repl_agent.
-30 WARNING(%d): Request queue is full. Ignore the request.
-31 ERROR(%d): Can't open the archive log log - %s.
-32 ERROR(%d): Can't read the archive log log - %s.
-
-$set 36 MSGCAT_UTIL_SET_REPLAGENT
-1 database-name
-2 password
-3 create archive
-4 log dump
-5 page size
-11 Internal Error(%d): communication error
-12 Internal Error(%d): can't allocate memory
-13 Internal Error(%d): IO error
-14 Internal Error(%d): General
-15 Internal Error(%d): can't unzip log data
-16 Internal Error(%d): query error:%s
-21 ERROR(%d): can't connect to the repl_server. Please check the portnum and state of the repl_server process.
-22 ERROR(%d): can't open the copy log file - %s.
-23 ERROR(%d): can't create the archive file of the copy log - %s
-24 ERROR(%d): can't open the catalog file.
-25 ERROR(%d): error during access the trail log file. - %s
-26 ERROR(%d): can't connect to master. Please check if the repl_agent is already running, or the master is running.
-27 ERROR(%d): can't login to the slave. - %s
-28 ERROR(%d): can't connect to the slave. - %s
-29 ERROR(%d): Slave DB stopped - %s
-30 ERROR(%d): Replication is broken - %s
-31 ERROR(%d): Can't get agent id from the repl_server. Please check the state of the repl_server.
-32 ERROR(%d): Can't get log header from the repl_server. Please check the state of the repl_server.
-33 ERROR(%d): Can't get log page from the repl_server. Please check the state of the repl_server.
-34 ERROR(%d): Can't get the parameters from the distributor DB.
-35 ERROR(%d): can't login to the distributor DB. - %s
-36 ERROR(%d): can't connect to the distributor DB. - %s
-37 ERROR(%d): There are too many slaves registered in slave_info class of distributor db
-38 ERROR(%d): There is no master info for the target slave. Please check the trail_info class of distributor db.
-39 ERROR(%d): There are too many masters registered in master_info class of distributor db
-40 ERROR(%d): Invalid trail info. Please check the trail_info class of distributor DB
-41 ERROR(%d): Unilaterally aborted by the system. Try to increase the value of the max_block_size and max_block_count(cubrid.conf).
-51 LOG(%d): The repl_agent process is restarting.
-52 LOG(%d): An update log record of the replication was converted into insert log.
-53 LOG(%d): %s
-
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Cannot open output file `%s'\n
-59 plandump cannot run as standlone mode.\n
+59 plandump cannot run as standalone mode.\n
 60 \
 plandump: Display or control cached query plans.\n\
 usage: %s plandump [OPTION] database-name\n\
@@ -880,14 +825,13 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 23 The server `%s''s HA running mode is changed to \"%s\".\n
 24 The server was not set to HA mode.\n
 58 HA feature is not supported in this platform.\n
-59 changemode cannot run as standlone mode.\n
+59 changemode cannot run as standalone mode.\n
 60 \
 changemode: Display or change the server's HA running mode.\n\
 usage: %s changemode [OPTION] database-name\n\
 \n\
 valid options:\n\
   -m, --mode=MODE             change the server mode to MODE; default; none\n\
-  -w, --wait                  wait util the mode is changed\n\
   -f, --force                 force to change\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
@@ -895,7 +839,7 @@ $set 40 MSGCAT_UTIL_SET_COPYLOGDB
 21 Enter DBA password:
 22 The server was not set to HA mode.\n
 58 HA feature is not supported in this platform.\n
-59 copylogdb cannot run as standlone mode.\n
+59 copylogdb cannot run as standalone mode.\n
 60 \
 copylogdb: Copy log pages from the server.\n\
 usage: %s copylogdb [OPTION] database-name\n\
@@ -909,7 +853,7 @@ $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Enter DBA password:
 22 The server was not set to HA mode.\n
 58 HA feature is not supported in this platform.\n
-59 applylogdb cannot run as standlone mode.\n
+59 applylogdb cannot run as standalone mode.\n
 60 \
 applylogdb: Apply copied log to the server.\n\
 usage: %s applylogdb [OPTION] database-name\n\
@@ -920,12 +864,39 @@ valid options:\n\
 
 $set 43 MSGCAT_UTIL_SET_STATDUMP
 11 Cannot open output file `%s'\n
-59 statdump cannot run as standlone mode.\n
+59 statdump cannot run as standalone mode.\n
 60 \
 statdump: Dump global statistics.\n\
 usage: %s statdump [OPTION] database-name\n\
 \n\
 valid options:\n\
   -o, --output-file=FILE       redirect output message to FILE; default: none\n\
-  -c, --cumulative             do not clear stats\n\
-  -i, --interval=S             print stats every S secs\n
+  -c, --cumulative             print cumulative stats\n\
+  -i, --interval=S             print stats every S secs\n\
+  -s, --substr=STRING          print stat item only that match the substring\n
+
+$set 44 MSGCAT_UTIL_SET_APPLYINFO
+21 Enter DBA password:
+22 The server was not set to HA mode.\n
+58 HA feature is not supported in this platform.\n
+59 applyinfo cannot run as standlone mode.\n
+60 \
+applyinfo: display CUBRID HA Apply information.\n\
+usage: %s applyinfo [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -r, --remote-host-name      remote host name; display remote node's active log information \n\
+  -a, --applied-info 	      display applied infomation \n\
+  -L, --copied-log-path=PATH  path of copied log volumes; display copied log information \n\
+  -p, --pageid=ID             page id; default : 0(active page)\n\
+  -v, --verbose               enable verbose status messages; default : disable\n
+
+$set 45 MSGCAT_UTIL_SET_ACLDB
+59 acldb cannot run as standalone mode.\n
+60 \
+acldb: Display or reload access control setting of the database.\n\
+usage: %s acldb [OPTION] database-name\n\
+\n\
+valid options:\n\
+  -r, --reload       reload ip control file\n
+

@@ -265,7 +265,7 @@ int
 main (int argc, char **argv)
 {
   char *binary_name;
-  int ret_val;
+  int ret_val = 0;
 #if !defined(WINDOWS)
   sigset_t sigurg_mask;
 #endif

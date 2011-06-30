@@ -32,7 +32,6 @@
 #endif /* !WINDOWS */
 
 #include "thread.h"
-#include "thread_impl.h"
 
 enum
 { INF_WAIT = -1,		/* INFINITE WAIT */
@@ -68,6 +67,8 @@ enum
   CSECT_LOG_FLUSH,		/* for 2 flushing (by LFT, by normal thread) */
   CSECT_HA_SERVER_STATE,	/* Latch for HA server mode change */
   CSECT_COMPACTDB_ONE_INSTANCE,	/* Latch for compactdb */
+  CSECT_SESSION_STATE,		/* Latch for session state table */
+  CSECT_ACL,			/* Latch for accessible IP list table */
   CSECT_LAST
 };
 
@@ -75,19 +76,23 @@ typedef struct css_critical_section
 {
   int cs_index;
   const char *name;
-  MUTEX_T lock;			/* read/write monitor lock */
+  pthread_mutex_t lock;		/* read/write monitor lock */
   int rwlock;			/* >0 = # readers, <0 = writer, 0 = none */
   unsigned int waiting_writers;	/* # of waiting writers */
-  COND_T readers_ok;		/* start waiting readers */
+  pthread_cond_t readers_ok;	/* start waiting readers */
   THREAD_ENTRY *waiting_writers_queue;	/* queue of waiting writers */
   THREAD_ENTRY *waiting_promoters_queue;	/* queue of waiting promoters */
-  THREAD_T owner;		/* CS owner writer */
+  pthread_t owner;		/* CS owner writer */
   int tran_index;		/* transaction id acquiring CS */
   unsigned int total_enter;
   unsigned int total_nwaits;	/* total # of waiters */
   struct timeval max_wait;
   struct timeval total_wait;
 } CSS_CRITICAL_SECTION;
+
+#define CSS_CRITICAL_SECTION_INITIALIZER \
+  { 0, NULL, PTHREAD_MUTEX_INITIALIZER, 0, 0, PTHREAD_COND_INITIALIZER, \
+    NULL, NULL, (pthread_t) 0, -1, 0, 0, { 0, 0 }, { 0, 0 } }
 
 extern int csect_initialize (void);
 extern void cs_clear_tran_index (int tran_index);
@@ -119,6 +124,8 @@ extern int csect_promote_critical_section (THREAD_ENTRY * thread_p,
 extern int csect_exit_critical_section (CSS_CRITICAL_SECTION * cs_ptr);
 
 extern int csect_check_own (THREAD_ENTRY * thread_p, int cs_index);
+extern int csect_check_own_critical_section (THREAD_ENTRY * thread_p,
+					     CSS_CRITICAL_SECTION * cs_ptr);
 
 extern void csect_dump_statistics (FILE * fp);
 
@@ -129,7 +136,9 @@ extern void csect_dump_statistics (FILE * fp);
 #define csect_enter_as_reader(a, b, c) NO_ERROR
 #define csect_exit(a)
 #define csect_enter_critical_section(a,b,c)
+#define csect_enter_critical_section_as_reader(a, b, c)
 #define csect_exit_critical_section(a)
+#define csect_check_own_critical_section(a, b)
 #endif /* !SERVER_MODE */
 
 #endif /* _CRITICAL_SECTION_H_ */

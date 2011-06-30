@@ -28,40 +28,36 @@
  *
  */
 
-package @CUBRID_DRIVER@;
+package cubrid.jdbc.driver;
 
-import javax.transaction.xa.*;
-import java.io.*;
+import java.io.Serializable;
 
-public class CUBRIDXid implements Xid, Serializable
-{
-  private int formatId;
-  private byte[] globalTransactionId;
-  private byte[] branchQualifier;
+import javax.transaction.xa.Xid;
 
-  public CUBRIDXid(int fid, byte[] gid, byte[] bid)
-  {
-    formatId = fid;
-    globalTransactionId = gid;
-    branchQualifier = bid;
-  }
+public class CUBRIDXid implements Xid, Serializable {
+	private int formatId;
+	private byte[] globalTransactionId;
+	private byte[] branchQualifier;
 
-  /*
-   * javax.transaction.xa.Xid interface
-   */
+	public CUBRIDXid(int fid, byte[] gid, byte[] bid) {
+		formatId = fid;
+		globalTransactionId = gid;
+		branchQualifier = bid;
+	}
 
-  public byte[] getBranchQualifier()
-  {
-    return branchQualifier;
-  }
+	/*
+	 * javax.transaction.xa.Xid interface
+	 */
 
-  public int getFormatId()
-  {
-    return formatId;
-  }
+	public byte[] getBranchQualifier() {
+		return branchQualifier;
+	}
 
-  public byte[] getGlobalTransactionId()
-  {
-    return globalTransactionId;
-  }
+	public int getFormatId() {
+		return formatId;
+	}
+
+	public byte[] getGlobalTransactionId() {
+		return globalTransactionId;
+	}
 }

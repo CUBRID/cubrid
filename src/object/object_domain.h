@@ -32,7 +32,6 @@
 #include <stdio.h>
 #include "error_manager.h"
 #include "object_representation.h"
-#include "object_primitive.h"
 #include "area_alloc.h"
 
 
@@ -131,6 +130,8 @@ extern TP_DOMAIN tp_Set_domain;
 extern TP_DOMAIN tp_Multiset_domain;
 extern TP_DOMAIN tp_Sequence_domain;
 extern TP_DOMAIN tp_Elo_domain;
+extern TP_DOMAIN tp_Blob_domain;
+extern TP_DOMAIN tp_Clob_domain;
 extern TP_DOMAIN tp_Time_domain;
 extern TP_DOMAIN tp_Utime_domain;
 extern TP_DOMAIN tp_Date_domain;
@@ -149,9 +150,6 @@ extern TP_DOMAIN tp_VarNChar_domain;
 extern TP_DOMAIN tp_Bit_domain;
 extern TP_DOMAIN tp_VarBit_domain;
 extern TP_DOMAIN tp_Midxkey_domain;
-
-/* Type id to domain mapping array */
-extern TP_DOMAIN *tp_Domains[];
 
 /*
  * TP_DOMAIN_STATUS
@@ -243,6 +241,91 @@ typedef enum tp_match
 #define TP_IS_DOUBLE_ALIGN_TYPE(typeid) \
   ((typeid) == DB_TYPE_DOUBLE || (typeid) == DB_TYPE_BIGINT)
 
+#define TP_IS_DATE_TYPE(typeid) \
+  (((typeid) == DB_TYPE_TIME) || ((typeid) == DB_TYPE_DATE) \
+   || ((typeid) == DB_TYPE_DATETIME)  || ((typeid) == DB_TYPE_TIMESTAMP))
+
+#define TP_IS_FLOATING_NUMBER_TYPE(typeid) \
+  (((typeid) == DB_TYPE_FLOAT) || ((typeid) == DB_TYPE_DOUBLE) \
+   || ((typeid) == DB_TYPE_NUMERIC) || ((typeid) == DB_TYPE_MONETARY))
+
+/*
+ * Precision for non-parameterized predefined types
+ *
+ * SQL-3 says time and timestamp types should be parameterized.
+ * Should Cubrid implement the standard then the corresponding time/timestamp
+ * macros found here would be removed and placed in dbtype.h similar to
+ * the numeric macros (DB_MAX_NUMERIC_PRECISION).
+ */
+
+#define TP_DOUBLE_MANTISA_BINARY_PRECISION  53
+#define TP_DOUBLE_EXPONENT_BINARY_PRECISION 11
+#define TP_DOUBLE_BINARY_PRECISION	    TP_DOUBLE_MANTISA_BINARY_PRECISION
+
+#define TP_DOUBLE_MANTISA_DECIMAL_PRECISION   16	/* 15.955 */
+#define TP_DOUBLE_EXPONENT_DECIMAL_PRECISION  3	/*  3.311 */
+#define TP_DOUBLE_DECIMAL_PRECISION	    TP_DOUBLE_MANTISA_DECIMAL_PRECISION
+
+/* add 4 for exponent and mantisa sign, decimal point and the exponent
+ * introducer 'e' in a floating-point literal */
+#define TP_DOUBLE_AS_CHAR_LENGTH \
+    (4 + TP_DOUBLE_MANTISA_DECIMAL_PRECISION + \
+    TP_DOUBLE_EXPONENT_DECIMAL_PRECISION)
+
+#define TP_MONETARY_MANTISA_PRECISION	  TP_DOUBLE_MANTISA_DECIMAL_PRECISION
+#define TP_MONETARY_EXPONENT_PRECISION	  TP_DOUBLE_EXPONENT_DECIMAL_PRECISION
+#define TP_MONETARY_PRECISION		  TP_DOUBLE_DECIMAL_PRECISION
+#define TP_MONETARY_AS_CHAR_LENGTH	  TP_DOUBLE_AS_CHAR_LENGTH
+
+#define TP_FLOAT_MANTISA_BINARY_PRECISION   24
+#define TP_FLOAT_EXPONENT_BINARY_PRECISION  8
+#define TP_FLOAT_BINARY_PRECISION	    TP_FLOAT_MANTISA_BINARY_PRECISION
+
+#define TP_FLOAT_MANTISA_DECIMAL_PRECISION    7	/* 7.225 */
+#define TP_FLOAT_EXPONENT_DECIMAL_PRECISION   2	/* 2.408 */
+#define TP_FLOAT_DECIMAL_PRECISION	    TP_FLOAT_MANTISA_DECIMAL_PRECISION
+#define TP_FLOAT_AS_CHAR_LENGTH \
+    (4 + TP_FLOAT_MANTISA_DECIMAL_PRECISION + \
+    TP_FLOAT_EXPONENT_DECIMAL_PRECISION)
+
+#define TP_BIGINT_PRECISION	      19
+#define TP_BIGINT_SCALE		      0
+#define TP_BIGINT_AS_CHAR_LENGTH      20
+
+#define TP_INTEGER_PRECISION	      10
+#define TP_INTEGER_AS_CHAR_LENGTH     11
+
+#define TP_SMALLINT_PRECISION	      5
+#define TP_SMALLINT_AS_CHAR_LENGTH    6
+
+#define TP_TIME_PRECISION	      6
+#define TP_TIME_AS_CHAR_LENGTH	      11
+
+#define TP_DATE_PRECISION	      8
+#define TP_DATE_AS_CHAR_LENGTH	      10
+
+#define TP_TIMESTAMP_PRECISION	      14
+#define TP_TIMESTAMP_AS_CHAR_LENGTH   22
+
+#define TP_DATETIME_PRECISION	      17
+#define TP_DATETIME_AS_CHAR_LENGTH    26
+
+/* CHAR type and VARCHAR type are compatible with each other */
+/* NCHAR type and VARNCHAR type are compatible with each other */
+/* BIT type and VARBIT type are compatible with each other */
+/* OID type and OBJECT type are compatible with each other */
+/* Keys can come in with a type of DB_TYPE_OID, but the B+tree domain
+   itself will always be a DB_TYPE_OBJECT. The comparison routines
+   can handle OID and OBJECT as compatible type with each other . */
+#define TP_ARE_COMPARABLE_KEY_TYPES(key1_type, key2_type) \
+      (((key1_type) == (key2_type)) || \
+      (((key1_type) == DB_TYPE_CHAR || (key1_type) == DB_TYPE_VARCHAR) && \
+       ((key2_type) == DB_TYPE_CHAR || (key2_type) == DB_TYPE_VARCHAR)) || \
+      (((key1_type) == DB_TYPE_NCHAR || (key1_type) == DB_TYPE_VARNCHAR) && \
+       ((key2_type) == DB_TYPE_NCHAR || (key2_type) == DB_TYPE_VARNCHAR)) || \
+      (((key1_type) == DB_TYPE_BIT || (key1_type) == DB_TYPE_VARBIT) && \
+       ((key2_type) == DB_TYPE_BIT || (key2_type) == DB_TYPE_VARBIT)) || \
+      ((key1_type) == DB_TYPE_OID || (key1_type) == DB_TYPE_OBJECT))
 /*
  * FUNCTIONS
  */
@@ -281,9 +364,13 @@ extern int tp_domain_filter_list (TP_DOMAIN * dlist);
 
 extern int tp_domain_size (const TP_DOMAIN * domain);
 
+extern int tp_setdomain_size (const TP_DOMAIN * domain);
+
 extern int tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2,
 			    TP_MATCH exact);
-
+extern int tp_domain_match_ignore_order (const TP_DOMAIN * dom1,
+					 const TP_DOMAIN * dom2,
+					 TP_MATCH exact);
 extern int tp_domain_compatible (const TP_DOMAIN * dom1,
 				 const TP_DOMAIN * dom2);
 
@@ -324,6 +411,8 @@ int tp_domain_references_objects (const TP_DOMAIN * dom);
 extern TP_DOMAIN_STATUS tp_value_coerce (const DB_VALUE * src,
 					 DB_VALUE * dest,
 					 const TP_DOMAIN * desired_domain);
+extern int tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest,
+				   const TP_DOMAIN * desired_domain);
 
 extern TP_DOMAIN_STATUS tp_value_cast (const DB_VALUE * src, DB_VALUE * dest,
 				       const TP_DOMAIN * desired_domain,
@@ -335,6 +424,11 @@ extern TP_DOMAIN_STATUS tp_value_cast_no_domain_select (const DB_VALUE * src,
 							desired_domain,
 							bool
 							implicit_coercion);
+
+extern TP_DOMAIN_STATUS tp_value_strict_cast (const DB_VALUE * src,
+					      DB_VALUE * dest,
+					      const TP_DOMAIN *
+					      desired_domain);
 
 extern int tp_value_equal (const DB_VALUE * value1,
 			   const DB_VALUE * value2, int allow_coercion);
@@ -369,4 +463,11 @@ extern void tp_domain_fprint (FILE * fp, TP_DOMAIN * domain);
 #endif
 extern int tp_domain_attach (TP_DOMAIN ** dlist, TP_DOMAIN * domain);
 
+extern int tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest,
+			       const TP_DOMAIN * desired_domain);
+extern int tp_value_str_auto_cast_to_number (DB_VALUE ** value,
+					     DB_VALUE * number_val,
+					     DB_TYPE * val_type);
+extern int tp_value_string_to_double (const DB_VALUE * value,
+				      DB_VALUE * result);
 #endif /* _OBJECT_DOMAIN_H_ */

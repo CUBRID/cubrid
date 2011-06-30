@@ -47,27 +47,28 @@ LOG_GLOBAL log_Gl = {
   {NULL_VOLDES, {NULL_PAGEID, NULL_OFFSET},
    {NULL_PAGEID, NULL_OFFSET}, NULL, NULL},
   /* hdr */
-  {{'0'}, 0, 0, {'0'}, 0.0, 0, 0, 0, 0, 0, 0, 0, 0,
+  {{'0'}, 0, 0, {'0'}, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
    {NULL_PAGEID, NULL_OFFSET},
    {NULL_PAGEID, NULL_OFFSET},
-   0, 0, 0, 0, 0, false,
+   0, 0, 0, 0, 0,
    {NULL_PAGEID, NULL_OFFSET},
    {NULL_PAGEID, NULL_OFFSET},
    {NULL_PAGEID, NULL_OFFSET},
-   {'0'}, 0, 0, 0,
+   {'0'}, false, 0, 0, 0,
    {{0, 0, 0, 0, 0}},
    0, 0,
+   {NULL_PAGEID, NULL_OFFSET},
    {NULL_PAGEID, NULL_OFFSET}},
   /* archive */
   {NULL_VOLDES, {{'0'}, 0, 0, 0, 0, 0, 0},
-   0, 0, NULL},
+   0, 0, NULL, CSS_CRITICAL_SECTION_INITIALIZER},
   /* run_nxchkpt_atpageid */
   NULL_PAGEID,
 #if defined(SERVER_MODE)
   /* flushed_lsa_lower_bound */
   {NULL_PAGEID, NULL_OFFSET},
   /* chkpt_lsa_lock */
-  MUTEX_INITIALIZER,
+  PTHREAD_MUTEX_INITIALIZER,
 #endif /* SERVER_MODE */
   /* chkpt_every_npages */
   INT_MAX,
@@ -89,21 +90,17 @@ LOG_GLOBAL log_Gl = {
   /* flush info */
   {0, 0, NULL, LOG_FLUSH_NORMAL
 #if defined(SERVER_MODE)
-   , MUTEX_INITIALIZER
-#if defined(CUBRID_DEBUG)
-   /* mutex info */
-   , {0, NULL_THREAD_T}
-#endif /* CUBRID_DEBUG */
+   , PTHREAD_MUTEX_INITIALIZER
 #endif /* SERVER_MODE */
    },
 
   /* group_commit_info */
-  {0, MUTEX_INITIALIZER, COND_INITIALIZER},
+  {0, PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER},
 
   /* log writer info */
-  {NULL, MUTEX_INITIALIZER,
-   COND_INITIALIZER, MUTEX_INITIALIZER,
-   COND_INITIALIZER, MUTEX_INITIALIZER,
+  {NULL, PTHREAD_MUTEX_INITIALIZER,
+   PTHREAD_COND_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+   PTHREAD_COND_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
    false},
 
   /* background archiving info */
@@ -121,3 +118,4 @@ char log_Name_info[PATH_MAX];
 char log_Name_bkupinfo[PATH_MAX];
 char log_Name_volinfo[PATH_MAX];
 char log_Name_bg_archive[PATH_MAX];
+char log_Name_removed_archive[PATH_MAX];

@@ -38,7 +38,7 @@
 #include "file_manager.h"
 #include "large_object_directory.h"
 #if defined(SERVER_MODE)
-#include "thread_impl.h"
+#include "thread.h"
 #endif /* SERVER_MODE */
 
 #define LARGEOBJMGR_MAX_DIRMAP_ENTRY_CNT                              \

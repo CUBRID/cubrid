@@ -197,6 +197,8 @@ struct cls_spec_node
   REGU_VARIABLE_LIST cls_regu_list_key;	/* regu list for the key filter */
   REGU_VARIABLE_LIST cls_regu_list_pred;	/* regu list for the predicate */
   REGU_VARIABLE_LIST cls_regu_list_rest;	/* regu list for rest of attrs */
+  OUTPTR_LIST *cls_output_val_list;	/*regu list writer for val list */
+  REGU_VARIABLE_LIST cls_regu_val_list;	/*regu list reader for val list */
   HFID hfid;			/* heap file identifier */
   OID cls_oid;			/* class object identifier */
   ATTR_ID *attrids_key;		/* array of attr ids from the key filter */
@@ -278,7 +280,7 @@ struct union_proc_node
   XASL_NODE *right;		/* second subquery */
 };
 
-/* OBJFETCH_PROC, SETFETCH_PROC */
+/* OBJFETCH_PROC */
 typedef struct fetch_proc_node FETCH_PROC_NODE;
 struct fetch_proc_node
 {
@@ -355,6 +357,7 @@ struct update_proc_node
   int waitsecs;			/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
   int release_lock;		/* release lock */
+  int no_orderby_keys;		/* no of keys for ORDER_BY */
   struct xasl_partition_info **partition;	/* partition information */
 };
 
@@ -414,7 +417,6 @@ typedef enum
   DIFFERENCE_PROC,
   INTERSECTION_PROC,
   OBJFETCH_PROC,
-  SETFETCH_PROC,
   BUILDLIST_PROC,
   BUILDVALUE_PROC,
   SCAN_PROC,
@@ -456,6 +458,8 @@ struct xasl_node
   SORT_LIST *orderby_list;	/* sorting fields */
   PRED_EXPR *ordbynum_pred;	/* orderby_num() predicate */
   DB_VALUE *ordbynum_val;	/* orderby_num() value result */
+  REGU_VARIABLE *orderby_limit;	/* the limit to use in top K sorting. Computed
+				 * from [ordby_num < X] clauses */
   int ordbynum_flag;		/* stop or continue ordering? */
   XASL_STATUS status;		/* current status */
 
@@ -477,6 +481,8 @@ struct xasl_node
   PRED_EXPR *if_pred;		/* if predicate */
   PRED_EXPR *instnum_pred;	/* inst_num() predicate */
   DB_VALUE *instnum_val;	/* inst_num() value result */
+  DB_VALUE *save_instnum_val;	/* inst_num() value kept after being substi-
+				 * tuted for ordbynum_val; */
   XASL_NODE *fptr_list;		/* after OBJFETCH_PROC list */
   XASL_NODE *scan_ptr;		/* SCAN_PROC pointer */
 
@@ -515,9 +521,7 @@ struct xasl_node
 				 * DIFFERENCE_PROC,
 				 * INTERSECTION_PROC
 				 */
-    FETCH_PROC_NODE fetch;	/* OBJFETCH_PROC,
-				 * SETFETCH_PROC
-				 */
+    FETCH_PROC_NODE fetch;	/* OBJFETCH_PROC */
     BUILDLIST_PROC_NODE buildlist;	/* BUILDLIST_PROC */
     BUILDVALUE_PROC_NODE buildvalue;	/* BUILDVALUE_PROC */
     MERGELIST_PROC_NODE mergelist;	/* MERGELIST_PROC */
@@ -734,6 +738,11 @@ extern int qexec_get_tuple_column_value (QFILE_TUPLE tpl,
 extern int qexec_set_tuple_column_value (QFILE_TUPLE tpl,
 					 int index,
 					 DB_VALUE * valp, TP_DOMAIN * domain);
+extern int qexec_insert_tuple_into_list (THREAD_ENTRY * thread_p,
+					 QFILE_LIST_ID * list_id,
+					 OUTPTR_LIST * outptr_list,
+					 VAL_DESCR * vd,
+					 QFILE_TUPLE_RECORD * tplrec);
 extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p,
 						      REGU_VARIABLE * regu,
 						      XASL_NODE * xasl,

@@ -44,6 +44,9 @@
 #include "intl_support.h"
 #include "storage_common.h"
 #include "xasl_generation.h"
+#include "schema_manager.h"
+
+/* this must be the last header file included!!! */
 #include "dbval.h"
 
 #define INDENT_INCR		4
@@ -75,6 +78,8 @@
 
 typedef enum
 { JOIN_RIGHT_ORDER, JOIN_OPPOSITE_ORDER } JOIN_ORDER_TRY;
+
+typedef int (*QO_WALK_FUNCTION) (QO_PLAN *, void *);
 
 static int infos_allocated = 0;
 static int infos_deallocated = 0;
@@ -185,6 +190,11 @@ static QO_PLAN *qo_plan_finalize (QO_PLAN *);
 static QO_PLAN *qo_plan_order_by (QO_PLAN *, QO_EQCLASS *);
 static void qo_plan_fprint (QO_PLAN *, FILE *, int, const char *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp (QO_PLAN *, QO_PLAN *);
+static QO_PLAN_COMPARE_RESULT qo_cover_index_plans_cmp (QO_PLAN *, QO_PLAN *);
+static QO_PLAN_COMPARE_RESULT qo_order_by_skip_plans_cmp (QO_PLAN *,
+							  QO_PLAN *);
+static QO_PLAN_COMPARE_RESULT qo_group_by_skip_plans_cmp (QO_PLAN *,
+							  QO_PLAN *);
 static void qo_plan_free (QO_PLAN *);
 static QO_PLAN *qo_plan_malloc (QO_ENV *);
 static QO_PLAN *qo_worst_new (QO_ENV *);
@@ -200,6 +210,42 @@ static QO_PLAN *qo_index_scan_new (QO_INFO *, QO_NODE *,
 				   QO_NODE_INDEX_ENTRY *, BITSET *, BITSET *,
 				   BITSET *);
 static QO_PLAN *qo_seq_scan_new (QO_INFO *, QO_NODE *, BITSET *);
+static int qo_has_is_not_null_term (QO_NODE * node);
+
+static void qo_generate_index_scan_from_orderby (QO_INFO * info,
+						 QO_NODE * node,
+						 QO_NODE_INDEX_ENTRY *
+						 in_entry);
+static void qo_generate_index_scan_from_groupby (QO_INFO * info,
+						 QO_NODE * node,
+						 QO_NODE_INDEX_ENTRY *
+						 in_entry);
+static QO_PLAN *qo_index_scan_order_by_new (QO_INFO *, QO_NODE *,
+					    QO_NODE_INDEX_ENTRY *, BITSET *,
+					    BITSET *, BITSET *);
+static QO_PLAN *qo_index_scan_group_by_new (QO_INFO *, QO_NODE *,
+					    QO_NODE_INDEX_ENTRY *, BITSET *,
+					    BITSET *, BITSET *);
+static int qo_validate_index_for_orderby (QO_ENV * env,
+					  QO_NODE_INDEX_ENTRY * ni_entryp);
+static int qo_validate_index_for_groupby (QO_ENV * env,
+					  QO_NODE_INDEX_ENTRY * ni_entryp);
+static PT_NODE *search_isnull_key_expr_orderby (PARSER_CONTEXT * parser,
+						PT_NODE * tree, void *arg,
+						int *continue_walk);
+static PT_NODE *search_isnull_key_expr_groupby (PARSER_CONTEXT * parser,
+						PT_NODE * tree, void *arg,
+						int *continue_walk);
+static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
+static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
+static void qo_plan_compute_iscan_group_sort_list (QO_PLAN * root,
+						   PT_NODE ** out_list,
+						   bool * is_index_w_prefix);
+
+static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
+static int qo_set_use_desc (QO_PLAN * plan, void *arg);
+static int qo_set_orderby_skip (QO_PLAN * plan, void *arg);
+static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 
 static QO_PLAN_VTBL qo_seq_scan_plan_vtbl = {
   "sscan",
@@ -359,7 +405,9 @@ unsigned char qo_type_qualifiers[] = {
   0,				/* DB_TYPE_MIDXKEY      */
   0,				/* DB_TYPE_TABLE        */
   _INT + _NUM,			/* DB_TYPE_BIGINT       */
-  _INT + _NUM			/* DB_TYPE_DATETIME     */
+  _INT + _NUM,			/* DB_TYPE_DATETIME     */
+  0,				/* DB_TYPE_BLOB         */
+  0				/* DB_TYPE_CLOB         */
 };
 
 /* Structural equivalence classes for expressions */
@@ -669,14 +717,17 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
   QO_PLAN *plan;
   QO_ENV *env;
   PARSER_CONTEXT *parser;
-  PT_NODE *tree, *sort_list, *sort, *col, *node;
+  PT_NODE *tree, *sort_list, *sort, *col, *node, *expr;
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_INDEX_ENTRY *index_entryp;
-  int nterms, seg_idx, i, j;
+  int nterms, equi_nterms, seg_idx, i, j;
   QO_SEGMENT *seg;
   PT_MISC_TYPE asc_or_desc;
   QFILE_TUPLE_VALUE_POSITION pos_descr;
   TP_DOMAIN *key_type;
+  BITSET *terms;
+  BITSET_ITERATOR bi;
+  bool is_const_eq_term;
 
   *is_index_w_prefix = false;
 
@@ -707,7 +758,11 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 
   /* check for index scan plan */
   if (plan->plan_type != QO_PLANTYPE_SCAN
-      || plan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN
+      || (plan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN
+	  && plan->plan_un.scan.scan_method !=
+	  QO_SCANMETHOD_INDEX_ORDERBY_SCAN
+	  && plan->plan_un.scan.scan_method !=
+	  QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
       || (env = (plan->info)->env) == NULL
       || (parser = QO_ENV_PARSER (env)) == NULL
       || (tree = QO_ENV_PT_TREE (env)) == NULL)
@@ -717,7 +772,10 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 
   /* if no index scan terms, no index scan */
   nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
-  if (nterms <= 0)
+
+  if (nterms <= 0 &&
+      plan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN &&
+      plan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
     {
       return;			/* nop */
     }
@@ -731,8 +789,15 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
   /* check if this is an index with prefix */
   *is_index_w_prefix = qo_is_prefix_index (index_entryp);
 
-  asc_or_desc = (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->type)
-		 ? PT_DESC : PT_ASC);
+  asc_or_desc =
+    (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->constraints->type) ?
+     PT_DESC : PT_ASC);
+
+  equi_nterms = plan->plan_un.scan.equi ? nterms : nterms - 1;
+  if (index_entryp->rangelist_seg_idx != -1)
+    {
+      equi_nterms = MIN (equi_nterms, index_entryp->rangelist_seg_idx);
+    }
 
   key_type = NULL;		/* init */
   if (asc_or_desc != PT_DESC)
@@ -752,9 +817,8 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 	    }
 	}
 
-      i = plan->plan_un.scan.equi ? nterms : nterms - 1;
       /* get the first non-equal range key domain */
-      for (j = 0; j < i && key_type; j++)
+      for (j = 0; j < equi_nterms && key_type; j++)
 	{
 	  key_type = key_type->next;
 	}
@@ -767,8 +831,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 
   sort_list = NULL;		/* init */
 
-  for (i = plan->plan_un.scan.equi ? nterms : nterms - 1;
-       i < index_entryp->nsegs; i++)
+  for (i = equi_nterms; i < index_entryp->nsegs; i++)
     {
       if (key_type)
 	{
@@ -790,7 +853,26 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
 	  break;		/* give up */
 	}
 
-      pos_descr = pt_to_pos_descr (parser, node, tree);
+      /* skip segment of const eq term */
+      terms = &(QO_SEG_INDEX_TERMS (seg));
+      is_const_eq_term = false;
+      for (j = bitset_iterate (terms, &bi); j != -1;
+	   j = bitset_next_member (&bi))
+	{
+	  expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, j));
+	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ) &&
+	      (PT_IS_CONST (expr->info.expr.arg1) ||
+	       PT_IS_CONST (expr->info.expr.arg2)))
+	    {
+	      is_const_eq_term = true;
+	    }
+	}
+      if (is_const_eq_term)
+	{
+	  continue;
+	}
+
+      pt_to_pos_descr (parser, &pos_descr, node, tree, NULL);
       if (pos_descr.pos_no <= 0)
 	{			/* not found i-th key element */
 	  break;		/* give up */
@@ -835,6 +917,122 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
   root->iscan_sort_list = sort_list;
 
   return;
+}
+
+/*
+ * qo_walk_plan_tree () - applies a callback to every plan in a plan tree
+ *                        and stops on errors
+ *   return:  the error of the first callback function that returns something
+ *            other than NO_ERROR, or NO_ERROR.
+ *   plan(in): the root of the plan tree to walk
+ *   f(in): functor (callback) to apply to each non-null plan
+ *   arg(in/out): argument to be used liberally by the callback
+ */
+static int
+qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg)
+{
+  int ret = NO_ERROR;
+
+  if (!plan)
+    {
+      return NO_ERROR;
+    }
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      return f (plan, arg);
+
+    case QO_PLANTYPE_FOLLOW:
+      return qo_walk_plan_tree (plan->plan_un.follow.head, f, arg);
+
+    case QO_PLANTYPE_SORT:
+      return qo_walk_plan_tree (plan->plan_un.sort.subplan, f, arg);
+
+    case QO_PLANTYPE_JOIN:
+      ret = qo_walk_plan_tree (plan->plan_un.join.outer, f, arg);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
+
+      return qo_walk_plan_tree (plan->plan_un.join.inner, f, arg);
+
+    default:
+      return ER_FAILED;
+    }
+}
+
+/*
+ * qo_set_use_desc () - sets certain plans' use_descending index flag to the
+ *                      boolean value given in *arg.
+ * 
+ * return: NO_ERROR
+ * plan(in):
+ * arg(in): will be cast to bool* and its values used to set
+ *          the use_descending property
+ * note: the function only cares about index scans and skips other plan types
+ */
+static int
+qo_set_use_desc (QO_PLAN * plan, void *arg)
+{
+  if (plan->plan_type == QO_PLANTYPE_SCAN &&
+      (plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN ||
+       plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN))
+    {
+      bool yn = *((bool *) arg);
+      plan->plan_un.scan.index->head->use_descending = yn;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qo_set_orderby_skip () - sets certain plans' orderby_skip index flag to the
+ *                          boolean value given in *arg.
+ * 
+ * return: NO_ERROR
+ * plan(in):
+ * arg(in): will be cast to bool* and its values used to set
+ *          the orderby_skip property
+ * note: the function only cares about index scans and skips other plan types
+ */
+static int
+qo_set_orderby_skip (QO_PLAN * plan, void *arg)
+{
+  if (plan->plan_type == QO_PLANTYPE_SCAN &&
+      (plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN ||
+       plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN))
+    {
+      bool yn = *((bool *) arg);
+      plan->plan_un.scan.index->head->orderby_skip = yn;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qo_validate_indexes_for_orderby () - wrapper function for
+ *					qo_validate_index_for_orderby
+ *                                      used with qo_walk_plan_tree.
+ * return: NO_ERROR or ER_FAILED if the wrapped function returns false
+ * plan(in):
+ * arg(in): not used, must be NULL
+ */
+static int
+qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg)
+{
+  if (plan->plan_type == QO_PLANTYPE_SCAN &&
+      plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN)
+    {
+      if (!qo_validate_index_for_orderby (plan->info->env,
+					  plan->plan_un.scan.index))
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -901,29 +1099,88 @@ qo_top_plan_new (QO_PLAN * plan)
       (void) qo_plan_compute_iscan_sort_list (plan, &is_index_w_prefix);
 
       /* GROUP BY */
-      if (group_by)
+      /* if we have rollup, we do not skip the group by */
+      if (group_by && !group_by->with_rollup)
 	{
-#if 0				/* DO NOT DELETE ME - need future work */
-	  if (plan->iscan_sort_list)
+	  PT_NODE *group_sort_list = NULL;
+
+	  qo_plan_compute_iscan_group_sort_list (plan,
+						 &group_sort_list,
+						 &is_index_w_prefix);
+
+	  if (group_sort_list)
 	    {
-	      if (found_instnum && found_grpynum)
+	      if (found_instnum /* && found_grpynum */ )
 		{
 		  ;		/* give up */
 		}
 	      else
 		{
 		  groupby_skip =
-		    pt_sort_spec_cover (plan->iscan_sort_list, group_by);
+		    pt_sort_spec_cover_groupby (plan->info->env->parser,
+						group_sort_list, group_by,
+						tree);
+
+		  /* if index plan and can't skip group by, we search
+		   * that maybe a descending scan can be used.
+		   */
+		  if (plan->plan_type == QO_PLANTYPE_SCAN &&
+		      (plan->plan_un.scan.scan_method ==
+		       QO_SCANMETHOD_INDEX_GROUPBY_SCAN
+		       ||
+		       plan->plan_un.scan.scan_method ==
+		       QO_SCANMETHOD_INDEX_SCAN) && !groupby_skip)
+		    {
+		      groupby_skip = qo_check_groupby_skip_descending (plan,
+								       group_sort_list);
+
+		      if (groupby_skip)
+			{
+			  plan->plan_un.scan.
+			    index->head->use_descending = true;
+			}
+		    }
 		}
 	    }
-#endif
 
 	  if (groupby_skip)
 	    {
-	      ;			/* DO NOT DELETE ME - need future work */
+	      /* if the plan is index_groupby, we validate the plan
+	       */
+	      if (plan->plan_type == QO_PLANTYPE_SCAN
+		  && plan->plan_un.scan.scan_method ==
+		  QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
+		{
+		  if (!qo_validate_index_for_groupby
+		      (plan->info->env, plan->plan_un.scan.index))
+		    {
+		      /* drop the plan if it wasn't validated */
+		      qo_worst_cost (plan);
+		      return plan;
+		    }
+		}
+	      /* if all goes well, we have an indexed plan with group by
+	       * skip!
+	       */
+	      if (plan->plan_type == QO_PLANTYPE_SCAN &&
+		  plan->plan_un.scan.index)
+		{
+		  plan->plan_un.scan.index->head->groupby_skip = true;
+		}
 	    }
 	  else
 	    {
+	      /* if the order by is not skipped we drop the plan because it
+	       * didn't helped us
+	       */
+	      if (plan->plan_type == QO_PLANTYPE_SCAN
+		  && plan->plan_un.scan.scan_method ==
+		  QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
+		{
+		  qo_worst_cost (plan);
+		  return plan;
+		}
+
 	      plan = qo_sort_new (plan, QO_UNORDERED, SORT_GROUPBY);
 	    }
 	}
@@ -955,11 +1212,27 @@ qo_top_plan_new (QO_PLAN * plan)
 			   */
 			  ;	/* give up; DO NOT DELETE ME - need future work */
 			}
-		      else if (!is_index_w_prefix)
+		      else if (!is_index_w_prefix &&
+			       !tree->info.query.q.select.connect_by)
 			{
 			  orderby_skip =
 			    pt_sort_spec_cover (plan->iscan_sort_list,
 						order_by);
+
+			  /* try using a reverse scan */
+			  if (!orderby_skip)
+			    {
+			      orderby_skip =
+				qo_check_orderby_skip_descending (plan);
+
+			      if (orderby_skip)
+				{
+				  /* set the use_descending flag */
+				  bool yn = true;
+				  qo_walk_plan_tree (plan, qo_set_use_desc,
+						     &yn);
+				}
+			    }
 			}
 		    }
 		}		/* else */
@@ -967,13 +1240,52 @@ qo_top_plan_new (QO_PLAN * plan)
 
 	  if (orderby_skip)
 	    {
+	      if (plan->plan_type == QO_PLANTYPE_SCAN
+		  && plan->plan_un.scan.scan_method ==
+		  QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
+		{
+		  /* group by skipping plan and we have order by skip -> drop
+		   */
+		  qo_worst_cost (plan);
+		  return plan;
+		}
+
 	      if (orderby_for)
 		{		/* apply inst_num filter */
 		  ;		/* DO NOT DELETE ME - need future work */
 		}
+
+	      /* validate the index orderby plan or subplans
+	       */
+	      if (qo_walk_plan_tree
+		  (plan, qo_validate_indexes_for_orderby, NULL) != NO_ERROR)
+		{
+		  /* drop the plan if it wasn't validated */
+		  qo_worst_cost (plan);
+		  return plan;
+		}
+
+	      /* if all goes well, we have an indexed plan with order by
+	       * skip: set the flag to all suitable subplans
+	       */
+	      {
+		bool yn = true;
+		qo_walk_plan_tree (plan, qo_set_orderby_skip, &yn);
+	      }
 	    }
 	  else
 	    {
+	      /* if the order by is not skipped we drop the plan because it
+	       * didn't helped us
+	       */
+	      if (plan->plan_type == QO_PLANTYPE_SCAN
+		  && plan->plan_un.scan.scan_method ==
+		  QO_SCANMETHOD_INDEX_ORDERBY_SCAN)
+		{
+		  qo_worst_cost (plan);
+		  return plan;
+		}
+
 	      plan = qo_sort_new (plan, QO_UNORDERED,
 				  all_distinct == PT_DISTINCT ? SORT_DISTINCT
 				  : SORT_ORDERBY);
@@ -1367,16 +1679,14 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
   plan->plan_un.scan.index = ni_entry;
 
   bitset_assign (&(plan->plan_un.scan.terms), range_terms);	/* set key-range terms */
-  plan->plan_un.scan.equi = true;	/* init */
   for (t = bitset_iterate (range_terms, &iter);
        t != -1; t = bitset_next_member (&iter))
     {
       term = QO_ENV_TERM (env, t);
       if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 	{
-	  plan->plan_un.scan.equi = false;
 	  if (bitset_cardinality (&(plan->plan_un.scan.terms)) > 1)
-	    {			/* not the first term */
+	    {			/* is not the first term */
 	      pt_expr = QO_TERM_PT_EXPR (term);
 
 	      /* check for non-null RANGE sarg term only used for index scan
@@ -1388,10 +1698,20 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
 		{
 		  bitset_remove (&(plan->plan_un.scan.terms),
 				 QO_TERM_IDX (term));
+		  continue;	/* go ahead */
 		}
 	    }
 	  break;
 	}
+    }
+
+  if (t == -1)
+    {
+      plan->plan_un.scan.equi = true;	/* is all equi-cond key-range terms */
+    }
+  else
+    {
+      plan->plan_un.scan.equi = false;
     }
 
   /* remove key-range terms from sarged terms */
@@ -1402,7 +1722,9 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node,
   for (t = 0; t < index_entryp->nsegs; t++)
     {
       if ((index_entryp->seg_idxs[t]) != -1)
-	bitset_add (&index_segs, (index_entryp->seg_idxs[t]));
+	{
+	  bitset_add (&index_segs, (index_entryp->seg_idxs[t]));
+	}
     }
 
   /* for each sarged terms */
@@ -1494,7 +1816,7 @@ qo_iscan_cost (QO_PLAN * planp)
   sel = 1.0;
   n = index_entryp->col_num;
 
-  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (index_entryp->type)
+  if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (index_entryp->constraints->type)
       && n == index_entryp->nsegs)
     {
       assert (n > 0);
@@ -1520,36 +1842,20 @@ qo_iscan_cost (QO_PLAN * planp)
 	}
     }
 
-  i = 0;
-
   pkeys_num = MIN (n, cum_statsp->key_size);
-  for (t = bitset_iterate (&(planp->plan_un.scan.terms), &iter);
-       t != -1; t = bitset_next_member (&iter))
+  if (bitset_is_empty (&(planp->plan_un.scan.terms)))
     {
-      termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
-
-      if (i == 0)
-	{			/* the first key-range term of the index scan */
-	  sel *= QO_TERM_SELECTIVITY (termp);
-	}
-      else
-	{			/* apply heuristic factor */
-	  if (QO_TERM_SELECTIVITY (termp) < 0.1)
-	    sel *= QO_TERM_SELECTIVITY (termp) * pow ((double) n, 2);
-	  else
-	    sel *= QO_TERM_SELECTIVITY (termp);
-	}
-
-      /* check upper bound */
-      sel = MIN (sel, 1.0);
+      bool is_null_sel = false;
+      sel = 0.1;
 
       /* set selectivity limit */
-      if (i < pkeys_num && cum_statsp->pkeys[i] > 0)
+      if (pkeys_num > 0 && cum_statsp->pkeys[0] > 0)
 	{
-	  sel_limit = 1.0 / (double) cum_statsp->pkeys[i];
+	  sel_limit = 1.0 / (double) cum_statsp->pkeys[0];
 	}
       else
-	{			/* can not use btree partial-key statistics */
+	{
+	  /* can not use btree partial-key statistics */
 	  if (cum_statsp->keys > 0)
 	    {
 	      sel_limit = 1.0 / (double) cum_statsp->keys;
@@ -1559,17 +1865,73 @@ qo_iscan_cost (QO_PLAN * planp)
 	      if (QO_NODE_NCARD (nodep) == 0)
 		{		/* empty class */
 		  sel = 0.0;
-		  break;	/* immediately exit loop */
+		  is_null_sel = true;
 		}
-	      sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
+	      else
+		{
+		  sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
+		}
 	    }
 	}
 
       /* check lower bound */
-      sel = MAX (sel, sel_limit);
+      if (is_null_sel == false)
+	{
+	  sel = MAX (sel, sel_limit);
+	}
+    }
+  else
+    {
+      i = 0;
 
-      i++;
-      n--;
+      for (t = bitset_iterate (&(planp->plan_un.scan.terms), &iter);
+	   t != -1; t = bitset_next_member (&iter))
+	{
+	  termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
+
+	  if (i == 0)
+	    {			/* the first key-range term of the index scan */
+	      sel *= QO_TERM_SELECTIVITY (termp);
+	    }
+	  else
+	    {			/* apply heuristic factor */
+	      if (QO_TERM_SELECTIVITY (termp) < 0.1)
+		sel *= QO_TERM_SELECTIVITY (termp) * pow ((double) n, 2);
+	      else
+		sel *= QO_TERM_SELECTIVITY (termp);
+	    }
+
+	  /* check upper bound */
+	  sel = MIN (sel, 1.0);
+
+	  /* set selectivity limit */
+	  if (i < pkeys_num && cum_statsp->pkeys[i] > 0)
+	    {
+	      sel_limit = 1.0 / (double) cum_statsp->pkeys[i];
+	    }
+	  else
+	    {			/* can not use btree partial-key statistics */
+	      if (cum_statsp->keys > 0)
+		{
+		  sel_limit = 1.0 / (double) cum_statsp->keys;
+		}
+	      else
+		{
+		  if (QO_NODE_NCARD (nodep) == 0)
+		    {		/* empty class */
+		      sel = 0.0;
+		      break;	/* immediately exit loop */
+		    }
+		  sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
+		}
+	    }
+
+	  /* check lower bound */
+	  sel = MAX (sel, sel_limit);
+
+	  i++;
+	  n--;
+	}
     }
 
   /* number of objects to be selected */
@@ -1645,15 +2007,69 @@ qo_iscan_cost (QO_PLAN * planp)
 static void
 qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
 {
+  bool natural_desc_index = false;
+
   fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "class:");
   qo_node_fprint (plan->plan_un.scan.node, f);
 
-  if (plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN)
+  if (plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN ||
+      plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN ||
+      plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
     {
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "index: ");
-      fprintf (f, "%s ", plan->plan_un.scan.index->head->name);
+      fprintf (f, "%s ", plan->plan_un.scan.index->head->constraints->name);
+
+      /* print key limit */
+      if (plan->plan_un.scan.index->head->key_limit)
+	{
+	  PT_NODE *key_limit = plan->plan_un.scan.index->head->key_limit;
+	  PT_NODE *saved_next = key_limit->next;
+	  PARSER_CONTEXT *parser = QO_ENV_PARSER (plan->info->env);
+	  PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
+	  parser->print_db_value = pt_print_node_value;
+	  if (saved_next)
+	    {
+	      saved_next->next = key_limit;
+	      key_limit->next = NULL;
+	    }
+	  fprintf (f, "keylimit %s ",
+		   parser_print_tree_list (parser, saved_next ?
+					   saved_next : key_limit));
+	  parser->print_db_value = saved_func;
+	  if (saved_next)
+	    {
+	      key_limit->next = saved_next;
+	      saved_next->next = NULL;
+	    }
+	}
 
       qo_termset_fprint ((plan->info)->env, &plan->plan_un.scan.terms, f);
+
+      /* print index covering */
+      if (plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->cover_segments
+	  && qo_is_prefix_index (plan->plan_un.scan.index->head) == false)
+	{
+	  if (bitset_cardinality (&(plan->plan_un.scan.terms)) > 0)
+	    {
+	      fprintf (f, " ");
+	    }
+	  fprintf (f, "(covers)");
+	}
+
+      if (plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->use_descending)
+	{
+	  fprintf (f, " (desc_index)");
+	  natural_desc_index = true;
+	}
+
+      if (!natural_desc_index &&
+	  (QO_ENV_PT_TREE (plan->info->env)->info.query.q.select.hint &
+	   PT_HINT_USE_IDX_DESC))
+	{
+	  fprintf (f, " (desc_index forced)");
+	}
 
       if (!bitset_is_empty (&(plan->plan_un.scan.kf_terms)))
 	{
@@ -1693,17 +2109,20 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
   else
     fprintf (f, "as %s", (name ? name : "(unknown)"));
 
-  if (plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN)
+  if (plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN ||
+      plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN)
     {
       BITSET_ITERATOR bi;
       QO_ENV *env;
       int i;
       const char *separator;
+      bool natural_desc_index = false;
 
       env = (plan->info)->env;
       separator = ", ";
 
-      fprintf (f, "%s%s", separator, plan->plan_un.scan.index->head->name);
+      fprintf (f, "%s%s", separator,
+	       plan->plan_un.scan.index->head->constraints->name);
 
       for (i = bitset_iterate (&(plan->plan_un.scan.terms), &bi);
 	   i != -1; i = bitset_next_member (&bi))
@@ -1723,6 +2142,28 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 	      separator = " and ";
 	    }
 	  fprintf (f, "]");
+	}
+
+      /* print index covering */
+      if (plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->cover_segments
+	  && qo_is_prefix_index (plan->plan_un.scan.index->head) == false)
+	{
+	  fprintf (f, " (covers)");
+	}
+
+      if (plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->use_descending)
+	{
+	  fprintf (f, " (desc_index)");
+	  natural_desc_index = true;
+	}
+
+      if (!natural_desc_index &&
+	  (QO_ENV_PT_TREE (plan->info->env)->info.query.q.select.hint &
+	   PT_HINT_USE_IDX_DESC))
+	{
+	  fprintf (f, " (desc_index forced)");
 	}
     }
 
@@ -2139,7 +2580,8 @@ qo_join_new (QO_INFO * info,
     QO_ENV_NODE (info->env, bitset_first_member (&((inner->info)->nodes)));
 
   /* check for cselect of method */
-  if ((spec = QO_NODE_ENTITY_SPEC (node))
+  spec = QO_NODE_ENTITY_SPEC (node);
+  if (spec
       && spec->info.spec.flat_entity_list == NULL
       && spec->info.spec.derived_table_type == PT_IS_CSELECT)
     {
@@ -2837,6 +3279,51 @@ qo_plan_order_by (QO_PLAN * plan, QO_EQCLASS * order)
 }
 
 /*
+ * qo_plan_cmp_prefer_covering_index () -
+ *   return: one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_GT}
+ *   scan_plan_p(in):
+ *   sort_plan_p(in):
+ */
+static QO_PLAN_COMPARE_RESULT
+qo_plan_cmp_prefer_covering_index (QO_PLAN * scan_plan_p,
+				   QO_PLAN * sort_plan_p)
+{
+  QO_PLAN *sort_subplan_p;
+
+  assert (scan_plan_p->plan_type == QO_PLANTYPE_SCAN
+	  && sort_plan_p->plan_type == QO_PLANTYPE_SORT);
+
+  sort_subplan_p = sort_plan_p->plan_un.sort.subplan;
+  if (sort_subplan_p->plan_type == QO_PLANTYPE_SCAN
+      && sort_subplan_p->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN
+      && sort_subplan_p->plan_un.scan.index->head->cover_segments)
+    {
+      /* if the sort plan contains a index plan with segment covering,
+       * prefer it
+       */
+      if ((scan_plan_p->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN
+	   || scan_plan_p->plan_un.scan.scan_method ==
+	   QO_SCANMETHOD_INDEX_ORDERBY_SCAN
+	   || scan_plan_p->plan_un.scan.scan_method ==
+	   QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
+	  && scan_plan_p->plan_un.scan.index->head->cover_segments)
+	{
+	  if (scan_plan_p->plan_un.scan.index->head ==
+	      sort_subplan_p->plan_un.scan.index->head)
+	    {
+	      return PLAN_COMP_LT;
+	    }
+	}
+      else
+	{
+	  return PLAN_COMP_GT;
+	}
+    }
+
+  return PLAN_COMP_UNK;
+}
+
+/*
  * qo_plan_cmp () -
  *   return: one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
  *   a(in):
@@ -2858,6 +3345,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 #else /* OLD_CODE */
   double af, aa, bf, ba;
   QO_NODE *a_node, *b_node;
+  QO_PLAN_COMPARE_RESULT temp_res;
 
   /* skip out top-level sort plan */
   if (a->top_rooted && b->top_rooted)
@@ -2917,6 +3405,88 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       return PLAN_COMP_EQ;
     }
 
+  /* a order by skip plan is always preferred to a sort plan */
+  if (a->plan_type == QO_PLANTYPE_SCAN && b->plan_type == QO_PLANTYPE_SORT)
+    {
+      temp_res = qo_plan_cmp_prefer_covering_index (a, b);
+      if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
+	{
+	  return temp_res;
+	}
+
+      if (a->plan_un.scan.index && a->plan_un.scan.index->head->groupby_skip)
+	{
+	  return PLAN_COMP_LT;
+	}
+      if (a->plan_un.scan.index && a->plan_un.scan.index->head->orderby_skip)
+	{
+	  return PLAN_COMP_LT;
+	}
+    }
+
+  if (b->plan_type == QO_PLANTYPE_SCAN && a->plan_type == QO_PLANTYPE_SORT)
+    {
+      temp_res = qo_plan_cmp_prefer_covering_index (b, a);
+
+      /* Since we swapped its position, we have to negate the comp result */
+      if (temp_res == PLAN_COMP_LT)
+	{
+	  return PLAN_COMP_GT;
+	}
+      else if (temp_res == PLAN_COMP_GT)
+	{
+	  return PLAN_COMP_LT;
+	}
+
+      if (b->plan_un.scan.index && b->plan_un.scan.index->head->groupby_skip)
+	{
+	  return PLAN_COMP_GT;
+	}
+      if (b->plan_un.scan.index && b->plan_un.scan.index->head->orderby_skip)
+	{
+	  return PLAN_COMP_GT;
+	}
+    }
+
+  if (a->plan_type == QO_PLANTYPE_SCAN && b->plan_type == QO_PLANTYPE_SCAN)
+    {
+      if ((a->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN ||
+	   a->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN ||
+	   a->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_GROUPBY_SCAN) &&
+	  a->plan_un.scan.index->head->cover_segments &&
+	  b->plan_un.scan.scan_method == QO_SCANMETHOD_SEQ_SCAN)
+	{
+	  return PLAN_COMP_LT;
+	}
+
+      if ((b->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN ||
+	   b->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN ||
+	   b->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_GROUPBY_SCAN) &&
+	  b->plan_un.scan.index->head->cover_segments &&
+	  a->plan_un.scan.scan_method == QO_SCANMETHOD_SEQ_SCAN)
+	{
+	  return PLAN_COMP_GT;
+	}
+
+      /* a plan does order by skip, the other does group by skip - prefer the
+       * group by skipping because it's done in the final step
+       */
+      if (a->plan_un.scan.scan_method != QO_SCANMETHOD_SEQ_SCAN &&
+	  b->plan_un.scan.scan_method != QO_SCANMETHOD_SEQ_SCAN)
+	{
+	  if (a->plan_un.scan.index->head->orderby_skip &&
+	      b->plan_un.scan.index->head->groupby_skip)
+	    {
+	      return PLAN_COMP_LT;
+	    }
+	  else if (a->plan_un.scan.index->head->groupby_skip &&
+		   b->plan_un.scan.index->head->orderby_skip)
+	    {
+	      return PLAN_COMP_GT;
+	    }
+	}
+    }
+
   if (a->plan_type != QO_PLANTYPE_SCAN || b->plan_type != QO_PLANTYPE_SCAN)
     {				/* impossible case */
       goto cost_cmp;		/* give up */
@@ -2945,11 +3515,43 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     }
 
   /* check for both index scan of the same spec */
-  if (a->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN ||
-      b->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN)
+  if ((a->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN &&
+       a->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN &&
+       a->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
+      ||
+      (b->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN &&
+       b->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN &&
+       b->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_GROUPBY_SCAN))
     {
       goto cost_cmp;		/* give up */
     }
+
+  /* check index coverage */
+  temp_res = qo_cover_index_plans_cmp (a, b);
+  if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
+    {
+      return temp_res;
+    }
+
+  /* check if one of the plans skips the order by, and if so, prefer it */
+  {
+    QO_PLAN_COMPARE_RESULT temp_res;
+    temp_res = qo_order_by_skip_plans_cmp (a, b);
+    if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
+      {
+	return temp_res;
+      }
+  }
+
+  /* check if one of the plans skips the group by, and if so, prefer it */
+  {
+    QO_PLAN_COMPARE_RESULT temp_res;
+    temp_res = qo_group_by_skip_plans_cmp (a, b);
+    if (temp_res == PLAN_COMP_LT || temp_res == PLAN_COMP_GT)
+      {
+	return temp_res;
+      }
+  }
 
   /* iscan vs iscan index rule comparison */
 
@@ -3036,6 +3638,16 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     if (bitset_is_equivalent
 	(&(a->plan_un.scan.terms), &(b->plan_un.scan.terms)))
       {
+	/* take the one which has more key filters */
+	if (at_kf > bt_kf)
+	  {
+	    return PLAN_COMP_LT;
+	  }
+	else if (at_kf < bt_kf)
+	  {
+	    return PLAN_COMP_GT;
+	  }
+
 	/* take the smaller index */
 	if (a_cum->pages < b_cum->pages)
 	  {
@@ -3068,10 +3680,19 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	a_keys = 1;		/* init as full range */
 	if (a_last > 0)
 	  {
-	    term =
-	      QO_ENV_TERM ((a->info)->env,
-			   bitset_first_member (&(a->plan_un.scan.terms)));
-	    a_keys = (int) ceil (1.0 / QO_TERM_SELECTIVITY (term));
+	    if (bitset_cardinality (&(a->plan_un.scan.terms)) > 0)
+	      {
+		term =
+		  QO_ENV_TERM ((a->info)->env,
+			       bitset_first_member (&
+						    (a->plan_un.scan.terms)));
+		a_keys = (int) ceil (1.0 / QO_TERM_SELECTIVITY (term));
+	      }
+	    else
+	      {
+		a_keys = (int) ceil (1.0 / DEFAULT_SELECTIVITY);
+	      }
+
 	    a_keys = MIN (a_cum->pkeys[0], a_keys);
 	  }
       }
@@ -3102,10 +3723,19 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	b_keys = 1;		/* init as full range */
 	if (b_last > 0)
 	  {
-	    term =
-	      QO_ENV_TERM ((b->info)->env,
-			   bitset_first_member (&(b->plan_un.scan.terms)));
-	    b_keys = (int) ceil (1.0 / QO_TERM_SELECTIVITY (term));
+	    if (bitset_cardinality (&(b->plan_un.scan.terms)) > 0)
+	      {
+		term =
+		  QO_ENV_TERM ((b->info)->env,
+			       bitset_first_member (&
+						    (b->plan_un.scan.terms)));
+		b_keys = (int) ceil (1.0 / QO_TERM_SELECTIVITY (term));
+	      }
+	    else
+	      {
+		b_keys = (int) ceil (1.0 / DEFAULT_SELECTIVITY);
+	      }
+
 	    b_keys = MIN (b_cum->pkeys[0], b_keys);
 	  }
       }
@@ -3154,6 +3784,50 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       {
 	return PLAN_COMP_GT;
       }
+
+    if (af == bf && aa == ba)
+      {
+	if (a_ent->cover_segments && b_ent->cover_segments)
+	  {
+	    if (a_ent->col_num > b_ent->col_num)
+	      {
+		return PLAN_COMP_GT;
+	      }
+	    else if (a_ent->col_num < b_ent->col_num)
+	      {
+		return PLAN_COMP_LT;
+	      }
+	  }
+
+	/* if both plans skip order by and same costs, take the larger one */
+	if (a_ent->orderby_skip && b_ent->orderby_skip)
+	  {
+	    if (a_ent->col_num > b_ent->col_num)
+	      {
+		return PLAN_COMP_LT;
+	      }
+	    else if (a_ent->col_num < b_ent->col_num)
+	      {
+		/* if the new plan has more columns, prefer it */
+		return PLAN_COMP_GT;
+	      }
+	  }
+
+	/* if both plans skip group by and same costs, take the larger one */
+	if (a_ent->groupby_skip && b_ent->groupby_skip)
+	  {
+	    if (a_ent->col_num > b_ent->col_num)
+	      {
+		return PLAN_COMP_LT;
+	      }
+	    else if (a_ent->col_num < b_ent->col_num)
+	      {
+		/* if the new plan has more columns, prefer it */
+		return PLAN_COMP_GT;
+	      }
+	  }
+      }
+
   }
 
 cost_cmp:
@@ -3175,6 +3849,69 @@ cost_cmp:
 #endif /* OLD_CODE */
 }
 
+/*
+ * qo_cover_index_plans_cmp () - compare 2 index scan plans by coverage
+ *   return:  one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
+ *   a(in):
+ *   b(in):
+ */
+static QO_PLAN_COMPARE_RESULT
+qo_cover_index_plans_cmp (QO_PLAN * a, QO_PLAN * b)
+{
+  QO_INDEX_ENTRY *a_ent, *b_ent;
+
+  if (a == NULL || b == NULL ||
+      (a->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN &&
+       a->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN)
+      ||
+      (b->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN &&
+       b->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN))
+    {
+      return PLAN_COMP_UNK;
+    }
+
+  a_ent = a->plan_un.scan.index->head;
+  b_ent = b->plan_un.scan.index->head;
+
+  if (a_ent == NULL || b_ent == NULL)
+    {
+      return PLAN_COMP_UNK;
+    }
+
+  if (a_ent->cover_segments)
+    {
+      if (b_ent->cover_segments)
+	{
+	  if (bitset_cardinality (&(a->plan_un.scan.terms)) > 0)
+	    {
+	      if (bitset_cardinality ((&b->plan_un.scan.terms)) == 0)
+		{
+		  return PLAN_COMP_LT;
+		}
+	    }
+	  else
+	    {
+	      if (bitset_cardinality (&(b->plan_un.scan.terms)) > 0)
+		{
+		  return PLAN_COMP_GT;
+		}
+	    }
+	}
+      else
+	{
+	  return PLAN_COMP_LT;
+	}
+    }
+  else
+    {
+      if (b_ent->cover_segments)
+	{
+	  return PLAN_COMP_GT;
+	}
+    }
+
+  return PLAN_COMP_EQ;
+}
 
 /*
  * qo_plan_fprint () -
@@ -3689,7 +4426,12 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
   int already_retained;
   QO_PLAN_COMPARE_RESULT cmp;
   int num_eq;
-  bool is_prefix_length_constraint;
+
+  if (plan == NULL)
+    {
+      /* There is no new plan to be compared. */
+      return PLAN_COMP_LT;
+    }
 
   /* init */
   already_retained = 0;
@@ -3697,27 +4439,7 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 
   for (i = 0; i < planvec->nplans; i++)
     {
-      is_prefix_length_constraint = false;
-      if (plan && plan->plan_type == QO_PLANTYPE_SCAN)
-	{
-	  QO_NODE_INDEX_ENTRY *ni = NULL;
-	  QO_INDEX_ENTRY *ni_ent = NULL;
-
-	  ni = plan->plan_un.scan.index;
-	  if (ni)
-	    {
-	      ni_ent = ni->head;
-	      is_prefix_length_constraint = qo_is_prefix_index (ni_ent);
-	    }
-	}
-      if (is_prefix_length_constraint)
-	{
-	  cmp = PLAN_COMP_GT;
-	}
-      else
-	{
-	  cmp = qo_plan_cmp (planvec->plan[i], plan);
-	}
+      cmp = qo_plan_cmp (planvec->plan[i], plan);
 
       /* cmp : PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT */
       if (cmp == PLAN_COMP_GT)
@@ -4216,6 +4938,28 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
   best_info = info->planner->best_info;
   plan_order = plan->order;
 
+  /* if the plan is of type QO_SCANMETHOD_INDEX_ORDERBY_SCAN but it doesn't
+   * skip the orderby, we release the plan.
+   */
+  if (plan->plan_type == QO_PLANTYPE_SCAN &&
+      plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN &&
+      !plan->plan_un.scan.index->head->orderby_skip)
+    {
+      qo_plan_release (plan);
+      return 0;
+    }
+
+  /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't
+   * skip the groupby, we release the plan.
+   */
+  if (plan->plan_type == QO_PLANTYPE_SCAN &&
+      plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_GROUPBY_SCAN &&
+      !plan->plan_un.scan.index->head->groupby_skip)
+    {
+      qo_plan_release (plan);
+      return 0;
+    }
+
   /*
    * If the cost of the new Plan already exceeds the cost of the best
    * known solution with the same order, there is no point in
@@ -4225,8 +4969,9 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
     {
       cmp = qo_cmp_planvec (plan_order == QO_UNORDERED
 			    ? &best_info->best_no_order
-			    : &best_info->
-			    planvec[QO_EQCLASS_IDX (plan_order)], plan);
+			    :
+			    &best_info->planvec[QO_EQCLASS_IDX (plan_order)],
+			    plan);
       /* cmp : PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT */
       if (cmp == PLAN_COMP_LT || cmp == PLAN_COMP_EQ)
 	{
@@ -4498,6 +5243,7 @@ examine_nl_join (QO_INFO * info,
 	{
 	  goto exit;
 	}
+
       {
 	int t;
 	QO_TERM *term;
@@ -4541,14 +5287,14 @@ examine_nl_join (QO_INFO * info,
 	    }
 	}
 
-      if ((outer_plan =
-	   qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0)) == NULL)
+      outer_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
+      if (outer_plan == NULL)
 	{
 	  goto exit;
 	}
-      if ((inner_plan =
-	   qo_find_best_nljoin_inner_plan_on_info (outer_plan, outer,
-						   join_type)) == NULL)
+      inner_plan =
+	qo_find_best_nljoin_inner_plan_on_info (outer_plan, outer, join_type);
+      if (inner_plan == NULL)
 	{
 	  goto exit;
 	}
@@ -4571,14 +5317,14 @@ examine_nl_join (QO_INFO * info,
 	  goto exit;
 	}
 
-      if ((outer_plan =
-	   qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0)) == NULL)
+      outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
+      if (outer_plan == NULL)
 	{
 	  goto exit;
 	}
-      if ((inner_plan =
-	   qo_find_best_nljoin_inner_plan_on_info (outer_plan, inner,
-						   join_type)) == NULL)
+      inner_plan =
+	qo_find_best_nljoin_inner_plan_on_info (outer_plan, inner, join_type);
+      if (inner_plan == NULL)
 	{
 	  goto exit;
 	}
@@ -5449,6 +6195,7 @@ planner_visit_node (QO_PLANNER * planner,
   QO_TERM *follow_term = NULL;
   int idx_join_cnt = 0;		/* number of idx-join edges */
   QO_TERM *term;
+  PT_NODE *pt_expr;
   QO_NODE *node;
   QO_INFO *head_info = (QO_INFO *) NULL;
   QO_INFO *tail_info = (QO_INFO *) NULL;
@@ -5585,9 +6332,9 @@ planner_visit_node (QO_PLANNER * planner,
     {
       /* current prefix has two or more nodes */
       head_info =
-	planner->
-	join_info[QO_INFO_INDEX
-		  (QO_PARTITION_M_OFFSET (partition), *visited_rel_nodes)];
+	planner->join_info[QO_INFO_INDEX
+			   (QO_PARTITION_M_OFFSET (partition),
+			    *visited_rel_nodes)];
       /* currently, do not permit cross join plan. for future work,
        *                  NEED MORE CONSIDERAION
        */
@@ -5609,9 +6356,9 @@ planner_visit_node (QO_PLANNER * planner,
   bitset_remove (remaining_nodes, QO_NODE_IDX (tail_node));
 
   new_info =
-    planner->
-    join_info[QO_INFO_INDEX
-	      (QO_PARTITION_M_OFFSET (partition), *visited_rel_nodes)];
+    planner->join_info[QO_INFO_INDEX
+		       (QO_PARTITION_M_OFFSET (partition),
+			*visited_rel_nodes)];
 
   /* check for already examined join_info */
   if (new_info && new_info->join_unit < planner->join_unit)
@@ -5691,6 +6438,17 @@ planner_visit_node (QO_PLANNER * planner,
 	if (!bitset_subset (visited_nodes, &(QO_TERM_NODES (term))))
 	  {
 	    continue;
+	  }
+
+	pt_expr = QO_TERM_PT_EXPR (term);
+
+	/* check for non-null RANGE sarg term only used for index scan
+	 * only used for the first segment of the index key
+	 */
+	if (pt_expr
+	    && PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE))
+	  {
+	    continue;		/* skip and go ahead */
 	  }
 
 	found_edge = false;	/* init */
@@ -6027,9 +6785,9 @@ planner_visit_node (QO_PLANNER * planner,
       bitset_union (&eqclasses, &(tail_info->eqclasses));
 
       new_info =
-	planner->
-	join_info[QO_INFO_INDEX
-		  (QO_PARTITION_M_OFFSET (partition), *visited_rel_nodes)] =
+	planner->join_info[QO_INFO_INDEX
+			   (QO_PARTITION_M_OFFSET (partition),
+			    *visited_rel_nodes)] =
 	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses,
 		       cardinality);
 
@@ -6282,7 +7040,7 @@ planner_nodeset_join_cost (QO_PLANNER * planner, BITSET * nodeset)
 	  /* apply merge cost; add to the total cost */
 	  if (plan->plan_type == QO_PLANTYPE_SORT)
 	    {
-	      /* alread apply inner cost: apply only outer cost */
+	      /* already apply inner cost: apply only outer cost */
 	      total_cost += pages;
 	    }
 	  else
@@ -6583,6 +7341,7 @@ qo_generate_join_index_scan (QO_INFO * infop,
   QO_TERM *termp;
   QO_PLAN *inner_plan;
   int i, t, last_t, j, n, seg;
+  bool found_rangelist;
   BITSET range_terms;
   BITSET kf_terms;
   BITSET empty_terms;
@@ -6601,6 +7360,7 @@ qo_generate_join_index_scan (QO_INFO * infop,
   /* pointer to QO_INDEX_ENTRY structure */
   index_entryp = (ni_entryp)->head;
 
+  found_rangelist = false;
   for (i = 0; i < index_entryp->nsegs; i++)
     {
       seg = index_entryp->seg_idxs[i];
@@ -6613,7 +7373,6 @@ qo_generate_join_index_scan (QO_INFO * infop,
       for (t = bitset_iterate (indexable_terms, &iter); t != -1;
 	   t = bitset_next_member (&iter))
 	{
-
 	  termp = QO_ENV_TERM (env, t);
 
 	  /* check for always true dummy join term */
@@ -6632,12 +7391,25 @@ qo_generate_join_index_scan (QO_INFO * infop,
 		{
 		  /* save last found term */
 		  last_t = t;
+
 		  /* found EQ term */
 		  if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
 		    {
+		      if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
+			{
+			  if (found_rangelist == true)
+			    {
+			      break;	/* already found. give up */
+			    }
+
+			  /* is the first time */
+			  found_rangelist = true;
+			}
+
 		      bitset_add (&range_terms, t);
 		      n++;
 		    }
+
 		  break;
 		}
 	    }
@@ -6655,6 +7427,14 @@ qo_generate_join_index_scan (QO_INFO * infop,
 	  /* found term. add last non-EQ term */
 	  if (last_t != -1)
 	    {
+	      if (found_rangelist == true)
+		{
+		  termp = QO_ENV_TERM (env, last_t);
+		  if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
+		    {
+		      break;	/* give up */
+		    }
+		}
 	      bitset_add (&range_terms, last_t);
 	    }
 	  break;
@@ -6708,13 +7488,18 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 {
   QO_INDEX_ENTRY *index_entryp;
   BITSET_ITERATOR iter;
+  QO_TERM *term;
+  PT_NODE *pt_expr;
   int i, t, nsegs, n;
   QO_PLAN *planp;
   BITSET range_terms;
   BITSET kf_terms;
+  BITSET seg_other_terms;
+  bool plan_created = false;
 
   bitset_init (&range_terms, infop->env);
   bitset_init (&kf_terms, infop->env);
+  bitset_init (&seg_other_terms, infop->env);
 
   /* pointer to QO_INDEX_ENTRY structure */
   index_entryp = (ni_entryp)->head;
@@ -6722,7 +7507,11 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 
   if (QO_ENTRY_MULTI_COL (index_entryp))
     {
-
+      /* the section below counts the total number of segments including
+       * all equal ones + the next non-equal found. These will be the range
+       * segments. For example: SELECT ... WHERE a = 1 and b = 2 and c > 10
+       * chooses all a, b, c for range because the first two are with =
+       */
       for (nsegs = 0; nsegs < index_entryp->nsegs; nsegs++)
 	{
 	  if (bitset_is_empty (&(index_entryp->seg_equal_terms[nsegs])))
@@ -6737,12 +7526,29 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 	    }
 	}			/* for (nsegs = 0; nsegs < index_entryp->nsegs; nsegs++) */
 
+      if (nsegs == 0)
+	{
+	  if (bitset_cardinality (&(index_entryp->key_filter_terms)) &&
+	      index_entryp->cover_segments)
+	    {
+	      bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
+	      planp = qo_index_scan_new (infop, nodep, ni_entryp,
+					 &range_terms,
+					 &kf_terms,
+					 &QO_NODE_SUBQUERIES (nodep));
+
+	      n = qo_check_plan_on_info (infop, planp);
+	    }
+
+	  goto end;
+	}
+
       for (i = 0; i < nsegs - 1; i++)
 	{
 	  bitset_add (&range_terms,
 		      bitset_first_member (&
-					   (index_entryp->
-					    seg_equal_terms[i])));
+					   (index_entryp->seg_equal_terms
+					    [i])));
 	}
 
       /* for each terms associated with the last segment */
@@ -6784,10 +7590,28 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 	  bitset_remove (&range_terms, t);
 	}			/* for (t = ... ) */
 
-      for (t =
-	   bitset_iterate (&(index_entryp->seg_other_terms[nsegs - 1]),
-			   &iter); t != -1; t = bitset_next_member (&iter))
+      bitset_assign (&seg_other_terms,
+		     &(index_entryp->seg_other_terms[nsegs - 1]));
+      for (t = bitset_iterate (&seg_other_terms, &iter);
+	   t != -1; t = bitset_next_member (&iter))
 	{
+	  term = QO_ENV_TERM (infop->env, t);
+	  if (bitset_cardinality (&(index_entryp->seg_other_terms[nsegs - 1]))
+	      > 1)
+	    {
+	      pt_expr = QO_TERM_PT_EXPR (term);
+
+	      /* check for non-null RANGE sarg term only used for index scan
+	       * only used for the first segment of the index key
+	       */
+	      if (pt_expr
+		  && PT_EXPR_INFO_IS_FLAGED (pt_expr,
+					     PT_EXPR_INFO_FULL_RANGE))
+		{
+		  continue;	/* skip */
+		}
+	    }
+
 	  bitset_add (&range_terms, t);
 	  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
 	  bitset_difference (&kf_terms, &range_terms);
@@ -6825,7 +7649,6 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
     }
   else
     {				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
-
       /* for all segments covered by this index and found in
          'find_node_indexes()' */
       for (i = 0; i < index_entryp->nsegs; i++)
@@ -6847,6 +7670,11 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 
 	      n = qo_check_plan_on_info (infop, planp);
 
+	      if (n)
+		{
+		  plan_created = true;
+		}
+
 	      /*if (envvar_get("ENABLE_TEMP_JOIN")) */
 	      {
 		/* temporary list file plan */
@@ -6866,10 +7694,28 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 	      bitset_remove (&range_terms, t);
 	    }			/* for (t = ... ) */
 
-	  for (t = bitset_iterate (&(index_entryp->seg_other_terms[i]),
-				   &iter);
+	  bitset_assign (&seg_other_terms,
+			 &(index_entryp->seg_other_terms[i]));
+	  for (t = bitset_iterate (&seg_other_terms, &iter);
 	       t != -1; t = bitset_next_member (&iter))
 	    {
+	      term = QO_ENV_TERM (infop->env, t);
+	      if (bitset_cardinality (&(index_entryp->seg_other_terms[i])) >
+		  1)
+		{
+		  pt_expr = QO_TERM_PT_EXPR (term);
+
+		  /* check for non-null RANGE sarg term only used for index scan
+		   * only used for the first segment of the index key
+		   */
+		  if (pt_expr
+		      && PT_EXPR_INFO_IS_FLAGED (pt_expr,
+						 PT_EXPR_INFO_FULL_RANGE))
+		    {
+		      continue;	/* skip */
+		    }
+		}
+
 	      bitset_add (&range_terms, t);
 	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
 	      bitset_difference (&kf_terms, &range_terms);
@@ -6880,6 +7726,11 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 					 &QO_NODE_SUBQUERIES (nodep));
 
 	      n = qo_check_plan_on_info (infop, planp);
+
+	      if (n)
+		{
+		  plan_created = true;
+		}
 
 	      /*if (envvar_get("ENABLE_TEMP_JOIN")) */
 	      {
@@ -6902,12 +7753,103 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 
 	}			/* for (i = 0; i < index_entryp->nsegs; i++) */
 
+      /* we have only key filter terms and single column index. Use index
+       * only if covering, to be sure that we have all segments correct.
+       */
+      if (!plan_created && index_entryp->cover_segments)
+	{
+	  /* section added to support key filter terms for order by skipping
+	   * also when we do not have covering.
+	   * For example (select * from T where col is not null order by col)
+	   */
+	  if (bitset_cardinality (&(index_entryp->key_filter_terms)))
+	    {
+	      bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
+
+	      planp = qo_index_scan_new (infop, nodep, ni_entryp,
+					 &range_terms,
+					 &kf_terms,
+					 &QO_NODE_SUBQUERIES (nodep));
+
+	      n = qo_check_plan_on_info (infop, planp);
+
+	      if (n)
+		{
+		  plan_created = true;
+		}
+	    }
+	}
     }				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
 
+end:
+  bitset_delset (&seg_other_terms);
   bitset_delset (&kf_terms);
   bitset_delset (&range_terms);
 }
 
+/*
+ * qo_has_is_not_null_term () - Check if whether a given node has sarg term
+ *                              with not null operation
+ *   return: 1 if it is found, otherwise 0
+ *   node(in): pointer to QO_NODE
+ */
+static int
+qo_has_is_not_null_term (QO_NODE * node)
+{
+  QO_ENV *env;
+  QO_TERM *term;
+  PT_NODE *expr;
+  int i;
+  bool found;
+
+
+  assert (node != NULL && node->env != NULL);
+  if (node == NULL || node->env == NULL)
+    {
+      return 0;
+    }
+
+  env = QO_NODE_ENV (node);
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+
+      /* term should belong to the given node */
+      if (!bitset_intersects (&(QO_TERM_SEGS (term)), &(QO_NODE_SEGS (node))))
+	{
+	  continue;
+	}
+
+      expr = QO_TERM_PT_EXPR (term);
+      if (!PT_IS_EXPR_NODE (expr))
+	{
+	  continue;
+	}
+
+      found = false;
+      while (expr)
+	{
+	  if (expr->info.expr.op == PT_IS_NOT_NULL)
+	    {
+	      found = true;
+	    }
+	  else if (expr->info.expr.op == PT_IS_NULL)
+	    {
+	      found = false;
+	      break;
+	    }
+
+	  expr = expr->or_next;
+	}
+
+      /* return if one of sarg term has not null operation */
+      if (found)
+	{
+	  return 1;
+	}
+    }
+  return 0;
+}
 
 /*
  * qo_search_planner () -
@@ -6919,7 +7861,7 @@ qo_search_planner (QO_PLANNER * planner)
 {
   int i, j, k;
   bool broken;
-  QO_PLAN *plan;
+  QO_PLAN *plan, *index_plan;
   QO_NODE *node;
   QO_INFO *info;
   BITSET_ITERATOR si;
@@ -6932,6 +7874,7 @@ qo_search_planner (QO_PLANNER * planner)
   BITSET seg_terms;
   BITSET nodes, subqueries, remaining_subqueries;
   int join_info_bytes;
+  int have_range_terms = 0;
 
   bitset_init (&nodes, planner->env);
   bitset_init (&subqueries, planner->env);
@@ -7064,6 +8007,7 @@ qo_search_planner (QO_PLANNER * planner)
        *  There is no purpose looking for index scans for a node without
        *  indexes so skip the search in this case.
        */
+
       if (node_index != NULL)
 	{
 	  bitset_init (&seg_terms, planner->env);
@@ -7071,7 +8015,9 @@ qo_search_planner (QO_PLANNER * planner)
 	  for (j = 0; j < QO_NI_N (node_index); j++)
 	    {
 	      ni_entry = QO_NI_ENTRY (node_index, j);
+
 	      index_entry = (ni_entry)->head;
+
 	      BITSET_CLEAR (seg_terms);
 	      for (k = 0; k < index_entry->nsegs; k++)
 		{
@@ -7085,9 +8031,57 @@ qo_search_planner (QO_PLANNER * planner)
 		  bitset_union (&seg_terms,
 				&(index_entry->seg_other_terms[k]));
 		}
-	      if (bitset_intersects (&(QO_NODE_SARGS (node)), &seg_terms))
+
+	      index_plan = NULL;
+	      have_range_terms = bitset_intersects (&(QO_NODE_SARGS (node)),
+						    &seg_terms);
+#if 1
+	      /* Currently we do not consider the following optimization. */
+	      if (have_range_terms)
+#else
+	      /* We can generate a plan using index scan if terms are covered,
+	       * even though no range term is found. In this case, however,
+	       * one of the following conditions should be satisfied.
+	       *  1) the index has at least one attribute which has not null constraint
+	       *  2) one of sarg term belonging to the node has not null operation
+	       * If not, we cannot do index full scan, because we cannot guarantee
+	       * that result of index scan is same with sequential scan's.
+	       */
+	      if (have_range_terms ||
+		  (bitset_cardinality (&(index_entry->key_filter_terms)) > 0
+		   && index_entry->cover_segments
+		   && (sm_has_non_null_attribute (index_entry->
+						  constraints->
+						  attributes)
+		       || qo_has_is_not_null_term (node))))
+#endif
 		{
 		  qo_generate_index_scan (info, node, ni_entry);
+		}
+
+	      /* if the index didn't normally skipped the order by, we try
+	       * the new plan, maybe this will be better.
+	       * DO NOT generate a order by index if there is no order by!
+	       */
+	      if (!ni_entry->head->orderby_skip &&
+		  QO_ENV_PT_TREE (info->env) &&
+		  QO_ENV_PT_TREE (info->env)->info.query.order_by &&
+		  !QO_ENV_PT_TREE (info->env)->info.query.q.select.connect_by
+		  && !qo_is_prefix_index (ni_entry->head))
+		{
+		  qo_generate_index_scan_from_orderby (info, node, ni_entry);
+		}
+
+	      /* if the index didn't normally skipped the group by, we try
+	       * the new plan, maybe this will be better.
+	       * DO NOT generate a group by index if there is no group by!
+	       */
+	      if (!ni_entry->head->groupby_skip &&
+		  QO_ENV_PT_TREE (info->env) &&
+		  QO_ENV_PT_TREE (info->env)->info.query.q.select.group_by &&
+		  !qo_is_prefix_index (ni_entry->head))
+		{
+		  qo_generate_index_scan_from_groupby (info, node, ni_entry);
 		}
 	    }
 
@@ -7175,7 +8169,73 @@ qo_search_planner (QO_PLANNER * planner)
   plan =
     broken ? NULL : qo_combine_partitions (planner, &remaining_subqueries);
 
+  /* if we have use_desc_idx hint and order by or group by, do some checking */
+  if (plan)
+    {
+      bool has_hint;
+      PT_HINT_ENUM *hint;
+      PT_NODE *node = NULL;
+
+      hint = &(QO_ENV_PT_TREE (planner->env)->info.query.q.select.hint);
+      has_hint = (*hint & PT_HINT_USE_IDX_DESC) > 0;
+
+      /* check direction of the first order by column. */
+      node = QO_ENV_PT_TREE (planner->env)->info.query.order_by;
+      if (node != NULL)
+	{
+	  if (QO_ENV_PT_TREE (planner->env)->info.query.q.select.connect_by)
+	    {
+	      ;
+	    }
+	  /* if we have order by and the hint, we allow the hint only if we
+	   * have order by descending on first column. Otherwise we clear it
+	   */
+	  else if (has_hint && node->info.sort_spec.asc_or_desc == PT_ASC)
+	    {
+	      *hint &= ~PT_HINT_USE_IDX_DESC;
+	    }
+	}
+
+      /* check direction of the first order by column. */
+      node = QO_ENV_PT_TREE (planner->env)->info.query.q.select.group_by;
+      if (node != NULL)
+	{
+	  if (node->with_rollup);
+	  /* if we have group by and the hint, we allow the hint only if we
+	   * have group by descending on first column. Otherwise we clear it
+	   */
+	  else if (has_hint && node->info.sort_spec.asc_or_desc == PT_ASC)
+	    {
+	      *hint &= ~PT_HINT_USE_IDX_DESC;
+	    }
+	}
+    }
+
+  if (plan && plan->plan_type == QO_PLANTYPE_SCAN &&
+      plan->plan_un.scan.scan_method != QO_SCANMETHOD_SEQ_SCAN)
+    {
+      if (plan->plan_un.scan.index && plan->plan_un.scan.index->head)
+	{
+	  if (plan->plan_un.scan.index->head->use_descending)
+	    {
+	      /* We no longer need to set the USE_DESC_IDX hint if the planner
+	       * wants a descending index, because the requirement is copied
+	       * to each scan_ptr's index info at XASL generation.
+	       *
+	       * plan->info->env->pt_tree->info.query.q.select.hint |=
+	       *   PT_HINT_USE_IDX_DESC;
+	       */
+	    }
+	  else if (plan->plan_un.scan.index->head->orderby_skip)
+	    {
+	      plan->info->env->pt_tree->info.query.q.select.hint &=
+		~PT_HINT_USE_IDX_DESC;
+	    }
+	}
+    }
+
 end:
+
   bitset_delset (&nodes);
   bitset_delset (&subqueries);
   bitset_delset (&remaining_subqueries);
@@ -7523,9 +8583,9 @@ qo_search_partition_join (QO_PLANNER * planner,
 	{
 	  /* current prefix has two or more nodes */
 	  visited_info =
-	    planner->
-	    join_info[QO_INFO_INDEX
-		      (QO_PARTITION_M_OFFSET (partition), visited_rel_nodes)];
+	    planner->join_info[QO_INFO_INDEX
+			       (QO_PARTITION_M_OFFSET (partition),
+				visited_rel_nodes)];
 	}
 
       if (visited_info == NULL)
@@ -8649,8 +9709,8 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       if (pc_rhs == PC_SET)
 	{
 	  list_card =
-	    pt_length_of_list (pt_expr->info.expr.arg2->info.value.data_value.
-			       set);
+	    pt_length_of_list (pt_expr->info.expr.arg2->info.value.
+			       data_value.set);
 	}
       if (pc_rhs == PC_SUBQUERY)
 	{
@@ -8966,4 +10026,1881 @@ qo_get_range (QO_ENV * env, PT_NODE * attr, double *low_value,
     }
 
   return rc;
+}
+
+/*
+ * qo_index_scan_order_by_new () -
+ *   return:
+ *   info(in):
+ *   node(in):
+ *   ni_entry(in):
+ *   range_terms(in):
+ *   kf_terms(in):
+ *   pinned_subqueries(in):
+ */
+static QO_PLAN *
+qo_index_scan_order_by_new (QO_INFO * info, QO_NODE * node,
+			    QO_NODE_INDEX_ENTRY * ni_entry,
+			    BITSET * range_terms, BITSET * kf_terms,
+			    BITSET * pinned_subqueries)
+{
+  QO_PLAN *plan;
+  BITSET_ITERATOR iter;
+  int t;
+  QO_ENV *env = info->env;
+  QO_INDEX_ENTRY *index_entryp;
+  QO_TERM *term;
+  PT_NODE *pt_expr;
+  BITSET index_segs;
+  BITSET term_segs;
+
+  bitset_init (&index_segs, env);
+  bitset_init (&term_segs, env);
+
+  plan = qo_scan_new (info, node, QO_SCANMETHOD_INDEX_ORDERBY_SCAN,
+		      pinned_subqueries);
+  if (plan == NULL)
+    {
+      return NULL;
+    }
+
+  /*
+   * This is, in essence, the selectivity of the index.  We
+   * really need to do a better job of figuring out the cost of
+   * an indexed scan.
+   */
+  plan->vtbl = &qo_index_scan_plan_vtbl;
+  plan->plan_un.scan.index = ni_entry;
+
+  bitset_assign (&(plan->plan_un.scan.terms), range_terms);	/* set key-range terms */
+  plan->plan_un.scan.equi = true;	/* init */
+  for (t = bitset_iterate (range_terms, &iter);
+       t != -1; t = bitset_next_member (&iter))
+    {
+      term = QO_ENV_TERM (env, t);
+      if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+	{
+	  plan->plan_un.scan.equi = false;
+	  if (bitset_cardinality (&(plan->plan_un.scan.terms)) > 1)
+	    {			/* not the first term */
+	      pt_expr = QO_TERM_PT_EXPR (term);
+
+	      /* check for non-null RANGE sarg term only used for index scan
+	       * only used for the first segment of the index key
+	       */
+	      if (pt_expr
+		  && PT_EXPR_INFO_IS_FLAGED (pt_expr,
+					     PT_EXPR_INFO_FULL_RANGE))
+		{
+		  bitset_remove (&(plan->plan_un.scan.terms),
+				 QO_TERM_IDX (term));
+		}
+	    }
+	  break;
+	}
+    }
+
+  /* remove key-range terms from sarged terms */
+  bitset_difference (&(plan->sarged_terms), range_terms);
+
+  /* all segments consisting in key columns */
+  index_entryp = (ni_entry)->head;
+  for (t = 0; t < index_entryp->nsegs; t++)
+    {
+      if ((index_entryp->seg_idxs[t]) != -1)
+	bitset_add (&index_segs, (index_entryp->seg_idxs[t]));
+    }
+
+  /* for each sarged terms */
+  for (t = bitset_iterate (kf_terms, &iter);
+       t != -1; t = bitset_next_member (&iter))
+    {
+      term = QO_ENV_TERM (env, t);
+
+      if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	{
+	  continue;		/* term contains correlated subquery */
+	}
+
+      pt_expr = QO_TERM_PT_EXPR (term);
+
+      /* check for non-null RANGE sarg term only used for index scan
+       * only used for the first segment of the index key
+       */
+      if (pt_expr
+	  && PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE))
+	{
+	  continue;		/* skip out unnecessary term */
+	}
+
+      bitset_assign (&term_segs, &(QO_TERM_SEGS (term)));
+      bitset_intersect (&term_segs, &(QO_NODE_SEGS (node)));
+
+      /* if the term is consisted by only the node's segments which
+       * appear in scan terms, it will be key-filter.
+       * otherwise will be data filter
+       */
+      if (!bitset_is_empty (&term_segs))
+	{
+	  if (bitset_subset (&index_segs, &term_segs))
+	    {
+	      bitset_add (&(plan->plan_un.scan.kf_terms), t);
+	    }
+	}
+    }				/* for (t = ... ) */
+
+  /* exclude key filter terms from sargs terms */
+  bitset_difference (&(plan->sarged_terms), &(plan->plan_un.scan.kf_terms));
+
+#if 0
+  /* not yet used, please DO NOT DELETE ! */
+  /* if the terms from key filter have the PT_IS_NOT_NULL op
+   * we cut him from the plan because we will have a full index
+   * scan
+   */
+  for (t = bitset_iterate (&(plan->plan_un.scan.kf_terms), &iter);
+       t != -1; t = bitset_next_member (&iter))
+    {
+      QO_TERM *term = QO_ENV_TERM (info->env, t);
+      PT_NODE *node = term->pt_expr;
+
+      /* treat only the simplest case -> pt_is_not_null(name) */
+      if (node->node_type == PT_EXPR &&
+	  node->info.expr.op == PT_IS_NOT_NULL &&
+	  node->info.expr.arg1->node_type == PT_NAME &&
+	  index_entryp->seg_idxs[0] != -1 && node->or_next == NULL)
+	{
+	  /* check it's the same column as the first in the index */
+	  const char *node_name = node->info.expr.arg1->info.name.original;
+	  const char *index_key_name = info->env->
+	    segs[index_entryp->seg_idxs[0]].name;
+
+	  if (!intl_mbs_casecmp (node_name, index_key_name))
+	    {
+	      bitset_remove (&plan->plan_un.scan.kf_terms, t);
+	    }
+	}
+    }
+#endif
+
+  bitset_delset (&term_segs);
+  bitset_delset (&index_segs);
+
+  qo_plan_compute_cost (plan);
+
+  plan = qo_top_plan_new (plan);
+
+  return plan;
+}
+
+/*
+ * qo_generate_index_scan_from_orderby () - returns a plan which uses the
+ *	supplied index, based upon the order by columns
+ *   infop(in): pointer to QO_INFO (environment info node which holds plans)
+ *   nodep(in): pointer to QO_NODE (node in the join graph)
+ *   ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ */
+void
+qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
+				     QO_NODE_INDEX_ENTRY * ni_entryp)
+{
+  QO_INDEX_ENTRY *index_entryp;
+  BITSET_ITERATOR iter;
+  int i, t, nsegs, n;
+  QO_PLAN *planp;
+  BITSET range_terms;
+  BITSET kf_terms;
+
+  bitset_init (&range_terms, infop->env);
+  bitset_init (&kf_terms, infop->env);
+
+  /* pointer to QO_INDEX_ENTRY structure */
+  index_entryp = (ni_entryp)->head;
+
+  /* if virtual class, prevent the use of an index of the base class */
+  if (nodep && nodep->class_name && index_entryp && index_entryp->class_ &&
+      index_entryp->class_->name &&
+      intl_mbs_casecmp (nodep->class_name, index_entryp->class_->name))
+    {
+      goto end;
+    }
+
+  if (QO_ENTRY_MULTI_COL (index_entryp))
+    {
+      bool plan_created = false;
+
+      /* the section below counts the total number of segments including
+       * all equal ones + the next non-equal found. These will be the range
+       * segments. For example: SELECT ... WHERE a = 1 and b = 2 and c > 10
+       * chooses all a, b, c for range because the first two are with =
+       */
+      for (nsegs = 0; nsegs < index_entryp->nsegs; nsegs++)
+	{
+	  if (bitset_is_empty (&(index_entryp->seg_equal_terms[nsegs])))
+	    {
+	      if (!bitset_is_empty (&(index_entryp->seg_other_terms[nsegs])))
+		{
+		  /* include this term */
+		  nsegs++;
+		}
+
+	      break;
+	    }
+	}			/* for (nsegs = 0; nsegs < index_entryp->nsegs; nsegs++) */
+
+      if (nsegs == 0)
+	{
+	  /* this type of plan does not need the index to be covered if there
+	   * are only kf terms
+	   */
+	  if (bitset_cardinality (&(index_entryp->key_filter_terms)))
+	    {
+	      bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
+	      planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
+						  &range_terms,
+						  &kf_terms,
+						  &QO_NODE_SUBQUERIES
+						  (nodep));
+
+	      n = qo_check_plan_on_info (infop, planp);
+	      if (n)
+		{
+		  plan_created = true;
+		}
+	    }
+
+	  /* Case #1: we have only sarg terms:
+	   * index on b,c only, select * from T where a < b + c order by b, c)
+	   * -> use full scan index with sarg (a < b + c)
+	   */
+	  if (!plan_created)
+	    {
+	      planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
+						  &range_terms,
+						  &kf_terms,
+						  &QO_NODE_SUBQUERIES
+						  (nodep));
+
+	      n = qo_check_plan_on_info (infop, planp);
+	      if (n)
+		{
+		  plan_created = true;
+		}
+	    }
+
+	  goto end;
+	}
+
+      for (i = 0; i < nsegs - 1; i++)
+	{
+	  bitset_add (&range_terms,
+		      bitset_first_member (&
+					   (index_entryp->
+					    seg_equal_terms[i])));
+	}
+
+      /* for each terms associated with the last segment */
+      for (t =
+	   bitset_iterate (&(index_entryp->seg_equal_terms[nsegs - 1]),
+			   &iter); t != -1; t = bitset_next_member (&iter))
+	{
+	  bitset_add (&range_terms, t);
+	  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
+	  bitset_difference (&kf_terms, &range_terms);
+	  /* generate index scan plan */
+	  planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
+					      &range_terms,
+					      &kf_terms,
+					      &QO_NODE_SUBQUERIES (nodep));
+
+	  n = qo_check_plan_on_info (infop, planp);
+
+	  /* is it safe to ignore the result of qo_check_plan_on_info()? */
+	  bitset_remove (&range_terms, t);
+	}			/* for (t = ... ) */
+
+      for (t =
+	   bitset_iterate (&(index_entryp->seg_other_terms[nsegs - 1]),
+			   &iter); t != -1; t = bitset_next_member (&iter))
+	{
+	  bitset_add (&range_terms, t);
+	  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
+	  bitset_difference (&kf_terms, &range_terms);
+	  /* generate index scan plan */
+	  planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
+					      &range_terms,
+					      &kf_terms,
+					      &QO_NODE_SUBQUERIES (nodep));
+
+	  n = qo_check_plan_on_info (infop, planp);
+
+	  /* is it safe to ignore the result of qo_check_plan_on_info()? */
+	  bitset_remove (&range_terms, t);
+	}			/* for (t = ... ) */
+
+    }
+  else
+    {				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
+      bool plan_created = false;
+
+      /* for all segments covered by this index and found in
+         'find_node_indexes()' */
+      for (i = 0; i < index_entryp->nsegs; i++)
+	{
+
+	  /* for each terms associated with the segment */
+	  for (t = bitset_iterate (&(index_entryp->seg_equal_terms[i]),
+				   &iter);
+	       t != -1; t = bitset_next_member (&iter))
+	    {
+	      bitset_add (&range_terms, t);
+	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
+	      bitset_difference (&kf_terms, &range_terms);
+	      /* generate index scan plan */
+	      planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
+						  &range_terms,
+						  &kf_terms,
+						  &QO_NODE_SUBQUERIES
+						  (nodep));
+
+	      n = qo_check_plan_on_info (infop, planp);
+	      if (n)
+		{
+		  plan_created = true;
+		}
+
+	      /* is it safe to ignore the result of qo_check_plan_on_info()? */
+	      bitset_remove (&range_terms, t);
+	    }			/* for (t = ... ) */
+
+	  for (t = bitset_iterate (&(index_entryp->seg_other_terms[i]),
+				   &iter);
+	       t != -1; t = bitset_next_member (&iter))
+	    {
+	      bitset_add (&range_terms, t);
+	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
+	      bitset_difference (&kf_terms, &range_terms);
+	      /* generate index scan plan */
+	      planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
+						  &range_terms,
+						  &kf_terms,
+						  &QO_NODE_SUBQUERIES
+						  (nodep));
+
+	      n = qo_check_plan_on_info (infop, planp);
+	      if (n)
+		{
+		  plan_created = true;
+		}
+
+	      /* is it safe to ignore the result of qo_check_plan_on_info()? */
+	      bitset_remove (&range_terms, t);
+	    }			/* for (t = ... ) */
+
+	}			/* for (i = 0; i < index_entryp->nsegs; i++) */
+
+      /* Case #1: we reach this if we have only key filter terms and single
+       * column index
+       */
+      if (!plan_created)
+	{
+	  /* section added to support key filter terms for order by skipping
+	   * also when we do not have covering.
+	   * For example (select * from T where col is not null order by col)
+	   */
+	  if (bitset_cardinality (&(index_entryp->key_filter_terms)))
+	    {
+	      bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
+
+	      planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
+						  &range_terms,
+						  &kf_terms,
+						  &QO_NODE_SUBQUERIES
+						  (nodep));
+
+	      n = qo_check_plan_on_info (infop, planp);
+
+	      if (n)
+		{
+		  plan_created = true;
+		}
+	    }
+	}
+
+      /* Case #2: we have only sarg terms:
+       * index_treeid, select * from T where treeid < id order by treeid)
+       * -> use full scan index with sarg (treeid < id)
+       */
+      if (!plan_created && bitset_cardinality (&(index_entryp->terms)) > 0)
+	{
+	  planp = qo_index_scan_order_by_new (infop, nodep, ni_entryp,
+					      &range_terms,
+					      &kf_terms,
+					      &QO_NODE_SUBQUERIES (nodep));
+
+	  n = qo_check_plan_on_info (infop, planp);
+	  if (n)
+	    {
+	      plan_created = true;
+	    }
+	}
+    }				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
+
+end:
+  bitset_delset (&kf_terms);
+  bitset_delset (&range_terms);
+}
+
+/*
+ * qo_validate_index_for_orderby () - checks for isnull(key) or not null flag
+ *  env(in): pointer to the optimizer environment
+ *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ *  return: 1 if the index can be used, 0 elseware
+ */
+int
+qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
+{
+  int have_orderby_index = 0;
+  PT_NODE *orderby_col = NULL;
+  PT_NODE *node = NULL;
+  int i, pos;
+  QO_CLASS_INFO_ENTRY *index_class = ni_entryp->head->class_;
+  void *env_seg[2];
+
+  /* key_term_status is -1 if no term with key, 0 if isnull or is not null
+   * terms with key and 1 if other term with key
+   */
+  int old_bail_out, key_term_status;
+  bool key_notnull = false;
+  QO_SEGMENT *segm = NULL;
+
+  have_orderby_index = 0;
+  if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.order_by)
+    {
+      goto end;
+    }
+
+  /* do a check on the first column - it should be present in the where clause
+   * with a non-null predicate (id > 3 or isnull(id) = false, etc, some
+   * statement that ensures us the key cannot have null value) or if no
+   * predicate in where clause, the attribute should have the not_null flag
+   */
+
+  /* check if exists a simple expression with PT_IS_NOT_NULL on the first key
+   * this should not contain OR operator and the PT_IS_NOT_NULL should contain
+   * the column directly as parameter (PT_NAME)
+   */
+  for (node = QO_ENV_PT_TREE (env)->info.query.q.select.where; node;
+       node = node->next)
+    {
+      if (node->or_next)
+	{
+	  /* cancel the flag */
+	  key_notnull = false;
+	  break;
+	}
+      if (node->node_type == PT_EXPR && node->info.expr.op == PT_IS_NOT_NULL
+	  && node->info.expr.arg1->node_type == PT_NAME)
+	{
+	  /* check it's the same column as the first in the index */
+	  const char *node_name = pt_get_name (node->info.expr.arg1);
+	  const char *index_key_name =
+	    env->segs[ni_entryp->head->seg_idxs[0]].name;
+
+	  if (!intl_mbs_casecmp (node_name, index_key_name))
+	    {
+	      /* we have found a term with no OR and with IS_NOT_NULL on our
+	       * key. The plan is ready for order by skip!
+	       */
+	      key_notnull = true;
+	      break;
+	    }
+	}
+    }
+  if (key_notnull)
+    {
+      goto final;
+    }
+
+  pos =
+    QO_ENV_PT_TREE (env)->info.query.order_by->info.sort_spec.pos_descr.
+    pos_no;
+  node = QO_ENV_PT_TREE (env)->info.query.q.select.list;
+
+  while (pos > 1 && node)
+    {
+      node = node->next;
+      pos--;
+    }
+  if (!node)
+    {
+      goto end;
+    }
+
+  for (i = 0; i < env->nsegs; i++)
+    {
+      if (!intl_mbs_casecmp (QO_ENV_SEG (env, i)->name, pt_get_name (node)))
+	{
+	  segm = QO_ENV_SEG (env, i);
+	  break;
+	}
+    }
+  if (!segm)
+    {
+      goto end;
+    }
+
+  /* we now search in the class columns for the index key */
+  for (i = 0; i < index_class->smclass->att_count; i++)
+    {
+      SM_ATTRIBUTE *attr = &index_class->smclass->attributes[i];
+
+      if (attr && !intl_mbs_casecmp (segm->name, attr->header.name))
+	{
+	  key_notnull = (attr->flags & SM_ATTFLAG_NON_NULL) != 0;
+	  break;
+	}			/* end if attr->order == pos */
+    }				/* end for */
+
+  if (i == index_class->smclass->att_count)
+    {
+      /* column wasn't found - this should not happen! */
+      goto end;
+    }
+  if (key_notnull)
+    {
+      goto final;
+    }
+
+  /* now search for not terms with the key */
+
+  /* save old value of bail_out */
+  old_bail_out = env->bail_out;
+  env->bail_out = -1;		/* no term found value */
+
+  /* check for isnull terms with the key */
+  env_seg[0] = (void *) env;
+  env_seg[1] = (void *) segm;
+  parser_walk_tree (env->parser,
+		    QO_ENV_PT_TREE (env)->info.query.q.select.where,
+		    search_isnull_key_expr_orderby, env_seg, NULL, NULL);
+
+  /* restore old value and keep walk_tree result in key_term_status */
+  key_term_status = env->bail_out;
+  env->bail_out = old_bail_out;
+
+  /* if there is no isnull on the key, check that the key appears in some term
+   * and if so, make sure that that term doesn't have a OR
+   */
+  if (key_term_status == 1)
+    {
+      BITSET expr_segments, key_segment;
+
+      /* key segment bitset */
+      bitset_init (&key_segment, env);
+      bitset_add (&key_segment, QO_SEG_IDX (segm));
+
+      /* key found in a term */
+      for (i = 0; i < env->nterms; i++)
+	{
+	  QO_TERM *term = QO_ENV_TERM (env, i);
+
+	  if (term && term->pt_expr)
+	    {
+	      bitset_init (&expr_segments, env);
+	      qo_expr_segs (env, term->pt_expr, &expr_segments);
+
+	      if (bitset_intersects (&expr_segments, &key_segment))
+		{
+		  if (term->pt_expr->or_next)
+		    {
+		      goto end;
+		    }
+		}
+	    }
+	}
+    }
+
+  /* Now we have the information we need: if the key column can be null
+   * and if there is a PT_IS_NULL or PT_IS_NOT_NULL expression with this
+   * key column involved and also if we have other terms with the key.
+   * We must decide if there can be NULLs in the results and if so,
+   * drop this index.
+   *
+   * 1. If the key cannot have null values, we have a winner.
+   * 2. Otherwise, if we found a term isnull/isnotnull(key) we drop it
+   *    (because we cannot evaluate if this yields true or false so we skip all,
+   *    for safety)
+   * 3. If we have a term with other operator except isnull/isnotnull and
+   *    does not have an OR following we have a winner again! (because we
+   *    cannot have a null value).
+   */
+final:
+  if (key_notnull || key_term_status == 1)
+    {
+      return 1;
+    }
+end:
+  return 0;
+}
+
+/*
+ * search_isnull_key_expr_orderby () -
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   tree(in): tree to walk
+ *   arg(in):
+ *   continue_walk(in):
+ *
+ * Note: for env->bail_out values, check key_term_status in
+ *	  qo_validate_index_for_orderby
+ */
+static PT_NODE *
+search_isnull_key_expr_orderby (PARSER_CONTEXT * parser,
+				PT_NODE * tree, void *arg, int *continue_walk)
+{
+  BITSET expr_segments, key_segment;
+  QO_ENV *env;
+  QO_SEGMENT *segm;
+  void **env_seg = (void **) arg;
+
+  env = (QO_ENV *) env_seg[0];
+  segm = (QO_SEGMENT *) env_seg[1];
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  /* key segment bitset */
+  bitset_init (&key_segment, env);
+  bitset_add (&key_segment, QO_SEG_IDX (segm));
+
+  bitset_init (&expr_segments, env);
+  if (tree->node_type == PT_EXPR)
+    {
+      /* get all segments in this expression */
+      qo_expr_segs (env, tree, &expr_segments);
+
+      /* now check if the key segment is in there */
+      if (bitset_intersects (&expr_segments, &key_segment))
+	{
+	  /* this expr contains the key segment */
+	  if (tree->info.expr.op == PT_IS_NULL ||
+	      tree->info.expr.op == PT_IS_NOT_NULL ||
+	      tree->info.expr.op == PT_IFNULL ||
+	      tree->info.expr.op == PT_NULLSAFE_EQ)
+	    {
+	      /* 0 all the way, suppress other terms found */
+	      env->bail_out = 0;
+	      *continue_walk = PT_STOP_WALK;
+
+	      return tree;
+	    }
+	  else if (env->bail_out == -1)
+	    {
+	      /* set as 1 only if we haven't found any isnull terms */
+	      env->bail_out = 1;
+	    }
+	}
+    }
+
+  return tree;
+}
+
+/*
+ * qo_group_by_skip_plans_cmp () - compare 2 index scan plans by group by skip
+ *   return:  one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
+ *   a(in):
+ *   b(in):
+ */
+static QO_PLAN_COMPARE_RESULT
+qo_group_by_skip_plans_cmp (QO_PLAN * a, QO_PLAN * b)
+{
+  QO_INDEX_ENTRY *a_ent, *b_ent;
+
+  if (a == NULL || b == NULL ||
+      (a->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN &&
+       a->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_GROUPBY_SCAN &&
+       a->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN)
+      ||
+      (b->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN &&
+       b->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_GROUPBY_SCAN &&
+       b->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN))
+    {
+      return PLAN_COMP_UNK;
+    }
+
+  a_ent = a->plan_un.scan.index->head;
+  b_ent = b->plan_un.scan.index->head;
+
+  if (a_ent == NULL || b_ent == NULL)
+    {
+      return PLAN_COMP_UNK;
+    }
+
+  if (a_ent->groupby_skip)
+    {
+      if (b_ent->groupby_skip)
+	{
+	  if (bitset_cardinality (&(a->plan_un.scan.terms)) > 0)
+	    {
+	      if (bitset_cardinality ((&b->plan_un.scan.terms)) == 0)
+		{
+		  return PLAN_COMP_LT;
+		}
+	    }
+	  else
+	    {
+	      if (bitset_cardinality (&(b->plan_un.scan.terms)) > 0)
+		{
+		  return PLAN_COMP_GT;
+		}
+	    }
+	  /* both plans have the same number of range terms
+	   * we will check now the key filter terms
+	   */
+	  if (bitset_cardinality (&(a->plan_un.scan.kf_terms)) > 0)
+	    {
+	      if (bitset_cardinality ((&b->plan_un.scan.kf_terms)) == 0)
+		{
+		  return PLAN_COMP_LT;
+		}
+	    }
+	  else
+	    {
+	      if (bitset_cardinality (&(b->plan_un.scan.kf_terms)) > 0)
+		{
+		  return PLAN_COMP_GT;
+		}
+	    }
+	}
+      else
+	{
+	  return PLAN_COMP_LT;
+	}
+    }
+  else
+    {
+      if (b_ent->groupby_skip)
+	{
+	  return PLAN_COMP_GT;
+	}
+    }
+
+  return PLAN_COMP_EQ;
+}
+
+/*
+ * qo_order_by_skip_plans_cmp () - compare 2 index scan plans by order by skip
+ *   return:  one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
+ *   a(in):
+ *   b(in):
+ */
+static QO_PLAN_COMPARE_RESULT
+qo_order_by_skip_plans_cmp (QO_PLAN * a, QO_PLAN * b)
+{
+  QO_INDEX_ENTRY *a_ent, *b_ent;
+
+  if (a == NULL || b == NULL ||
+      (a->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN &&
+       a->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_GROUPBY_SCAN &&
+       a->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN)
+      ||
+      (b->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN &&
+       b->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_GROUPBY_SCAN &&
+       b->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN))
+    {
+      return PLAN_COMP_UNK;
+    }
+
+  a_ent = a->plan_un.scan.index->head;
+  b_ent = b->plan_un.scan.index->head;
+
+  if (a_ent == NULL || b_ent == NULL)
+    {
+      return PLAN_COMP_UNK;
+    }
+
+  if (a_ent->orderby_skip)
+    {
+      if (b_ent->orderby_skip)
+	{
+	  if (bitset_cardinality (&(a->plan_un.scan.terms)) > 0)
+	    {
+	      if (bitset_cardinality ((&b->plan_un.scan.terms)) == 0)
+		{
+		  return PLAN_COMP_LT;
+		}
+	    }
+	  else
+	    {
+	      if (bitset_cardinality (&(b->plan_un.scan.terms)) > 0)
+		{
+		  return PLAN_COMP_GT;
+		}
+	    }
+	  /* both plans have the same number of range terms
+	   * we will check now the key filter terms
+	   */
+	  if (bitset_cardinality (&(a->plan_un.scan.kf_terms)) > 0)
+	    {
+	      if (bitset_cardinality ((&b->plan_un.scan.kf_terms)) == 0)
+		{
+		  return PLAN_COMP_LT;
+		}
+	    }
+	  else
+	    {
+	      if (bitset_cardinality (&(b->plan_un.scan.kf_terms)) > 0)
+		{
+		  return PLAN_COMP_GT;
+		}
+	    }
+	}
+      else
+	{
+	  return PLAN_COMP_LT;
+	}
+    }
+  else
+    {
+      if (b_ent->orderby_skip)
+	{
+	  return PLAN_COMP_GT;
+	}
+    }
+
+  return PLAN_COMP_EQ;
+}
+
+/*
+ * qo_check_orderby_skip_descending - checks whether an index plan will
+ *	    skip order by if its columns changes their direction.
+ *   return:  true or false
+ *   plan (in): input index plan to be analyzed
+ */
+static bool
+qo_check_orderby_skip_descending (QO_PLAN * plan)
+{
+  bool orderby_skip = false;
+  QO_ENV *env;
+  PT_NODE *tree, *trav, *order_by;
+
+  env = NULL;
+  tree = order_by = NULL;
+
+  if (plan == NULL)
+    {
+      goto end;
+    }
+  if (plan->info)
+    {
+      env = plan->info->env;
+    }
+
+  if (env == NULL)
+    {
+      goto end;
+    }
+
+  tree = QO_ENV_PT_TREE (env);
+
+  if (tree == NULL)
+    {
+      goto end;
+    }
+
+  order_by = tree->info.query.order_by;
+
+  for (trav = plan->iscan_sort_list; trav; trav = trav->next)
+    {
+      /* change PT_ASC to PT_DESC and vice-versa */
+      trav->info.sort_spec.asc_or_desc = PT_ASC + PT_DESC -
+	trav->info.sort_spec.asc_or_desc;
+    }
+
+  /* test again the order by skip */
+  orderby_skip = pt_sort_spec_cover (plan->iscan_sort_list, order_by);
+
+  /* change back directions */
+  for (trav = plan->iscan_sort_list; trav; trav = trav->next)
+    {
+      /* change PT_ASC to PT_DESC and vice-versa */
+      trav->info.sort_spec.asc_or_desc = PT_ASC + PT_DESC -
+	trav->info.sort_spec.asc_or_desc;
+    }
+
+end:
+  return orderby_skip;
+}
+
+/*
+ * qo_generate_index_scan_from_groupby () - returns a plan which uses the
+ *	supplied index, based upon the group by columns
+ *   infop(in): pointer to QO_INFO (environment info node which holds plans)
+ *   nodep(in): pointer to QO_NODE (node in the join graph)
+ *   ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ */
+void
+qo_generate_index_scan_from_groupby (QO_INFO * infop, QO_NODE * nodep,
+				     QO_NODE_INDEX_ENTRY * ni_entryp)
+{
+  QO_INDEX_ENTRY *index_entryp;
+  BITSET_ITERATOR iter;
+  int i, t, nsegs, n;
+  QO_PLAN *planp;
+  BITSET range_terms;
+  BITSET kf_terms;
+
+  bitset_init (&range_terms, infop->env);
+  bitset_init (&kf_terms, infop->env);
+
+  /* pointer to QO_INDEX_ENTRY structure */
+  index_entryp = (ni_entryp)->head;
+
+  /* if virtual class, prevent the use of an index of the base class */
+  if (nodep && nodep->class_name && index_entryp && index_entryp->class_ &&
+      index_entryp->class_->name &&
+      intl_mbs_casecmp (nodep->class_name, index_entryp->class_->name))
+    {
+      goto end;
+    }
+
+  if (QO_ENTRY_MULTI_COL (index_entryp))
+    {
+      bool plan_created = false;
+
+      /* the section below counts the total number of segments including
+       * all equal ones + the next non-equal found. These will be the range
+       * segments. For example: SELECT ... WHERE a = 1 and b = 2 and c > 10
+       * chooses all a, b, c for range because the first two are with =
+       */
+      for (nsegs = 0; nsegs < index_entryp->nsegs; nsegs++)
+	{
+	  if (bitset_is_empty (&(index_entryp->seg_equal_terms[nsegs])))
+	    {
+	      if (!bitset_is_empty (&(index_entryp->seg_other_terms[nsegs])))
+		{
+		  /* include this term */
+		  nsegs++;
+		}
+
+	      break;
+	    }
+	}			/* for (nsegs = 0; nsegs < index_entryp->nsegs; nsegs++) */
+
+      if (nsegs == 0)
+	{
+	  /* this type of plan does not need the index to be covered if there
+	   * are only kf terms
+	   */
+	  if (bitset_cardinality (&(index_entryp->key_filter_terms)))
+	    {
+	      bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
+	      planp = qo_index_scan_group_by_new (infop, nodep, ni_entryp,
+						  &range_terms,
+						  &kf_terms,
+						  &QO_NODE_SUBQUERIES
+						  (nodep));
+
+	      n = qo_check_plan_on_info (infop, planp);
+	      if (n)
+		{
+		  plan_created = true;
+		}
+	    }
+
+	  /* Case #1: we have only sarg terms:
+	   * index on b,c only, select * from T where a < b + c group by b, c)
+	   * -> use full scan index with sarg (a < b + c)
+	   */
+	  if (!plan_created)
+	    {
+	      planp = qo_index_scan_group_by_new (infop, nodep, ni_entryp,
+						  &range_terms,
+						  &kf_terms,
+						  &QO_NODE_SUBQUERIES
+						  (nodep));
+
+	      n = qo_check_plan_on_info (infop, planp);
+	      if (n)
+		{
+		  plan_created = true;
+		}
+	    }
+
+	  goto end;
+	}
+
+      for (i = 0; i < nsegs - 1; i++)
+	{
+	  bitset_add (&range_terms,
+		      bitset_first_member (&
+					   (index_entryp->
+					    seg_equal_terms[i])));
+	}
+
+      /* for each terms associated with the last segment */
+      for (t =
+	   bitset_iterate (&(index_entryp->seg_equal_terms[nsegs - 1]),
+			   &iter); t != -1; t = bitset_next_member (&iter))
+	{
+	  bitset_add (&range_terms, t);
+	  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
+	  bitset_difference (&kf_terms, &range_terms);
+	  /* generate index scan plan */
+	  planp = qo_index_scan_group_by_new (infop, nodep, ni_entryp,
+					      &range_terms,
+					      &kf_terms,
+					      &QO_NODE_SUBQUERIES (nodep));
+
+	  n = qo_check_plan_on_info (infop, planp);
+
+	  /* is it safe to ignore the result of qo_check_plan_on_info()? */
+	  bitset_remove (&range_terms, t);
+	}			/* for (t = ... ) */
+
+      for (t =
+	   bitset_iterate (&(index_entryp->seg_other_terms[nsegs - 1]),
+			   &iter); t != -1; t = bitset_next_member (&iter))
+	{
+	  bitset_add (&range_terms, t);
+	  bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
+	  bitset_difference (&kf_terms, &range_terms);
+	  /* generate index scan plan */
+	  planp = qo_index_scan_group_by_new (infop, nodep, ni_entryp,
+					      &range_terms,
+					      &kf_terms,
+					      &QO_NODE_SUBQUERIES (nodep));
+
+	  n = qo_check_plan_on_info (infop, planp);
+
+	  /* is it safe to ignore the result of qo_check_plan_on_info()? */
+	  bitset_remove (&range_terms, t);
+	}			/* for (t = ... ) */
+
+    }
+  else
+    {				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
+      bool plan_created = false;
+
+      /* for all segments covered by this index and found in
+         'find_node_indexes()' */
+      for (i = 0; i < index_entryp->nsegs; i++)
+	{
+
+	  /* for each terms associated with the segment */
+	  for (t = bitset_iterate (&(index_entryp->seg_equal_terms[i]),
+				   &iter);
+	       t != -1; t = bitset_next_member (&iter))
+	    {
+	      bitset_add (&range_terms, t);
+	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
+	      bitset_difference (&kf_terms, &range_terms);
+	      /* generate index scan plan */
+	      planp = qo_index_scan_group_by_new (infop, nodep, ni_entryp,
+						  &range_terms,
+						  &kf_terms,
+						  &QO_NODE_SUBQUERIES
+						  (nodep));
+
+	      n = qo_check_plan_on_info (infop, planp);
+	      if (n)
+		{
+		  plan_created = true;
+		}
+
+	      /* is it safe to ignore the result of qo_check_plan_on_info()? */
+	      bitset_remove (&range_terms, t);
+	    }			/* for (t = ... ) */
+
+	  for (t = bitset_iterate (&(index_entryp->seg_other_terms[i]),
+				   &iter);
+	       t != -1; t = bitset_next_member (&iter))
+	    {
+	      bitset_add (&range_terms, t);
+	      bitset_assign (&kf_terms, &(QO_NODE_SARGS (nodep)));
+	      bitset_difference (&kf_terms, &range_terms);
+	      /* generate index scan plan */
+	      planp = qo_index_scan_group_by_new (infop, nodep, ni_entryp,
+						  &range_terms,
+						  &kf_terms,
+						  &QO_NODE_SUBQUERIES
+						  (nodep));
+
+	      n = qo_check_plan_on_info (infop, planp);
+	      if (n)
+		{
+		  plan_created = true;
+		}
+
+	      /* is it safe to ignore the result of qo_check_plan_on_info()? */
+	      bitset_remove (&range_terms, t);
+	    }			/* for (t = ... ) */
+
+	}			/* for (i = 0; i < index_entryp->nsegs; i++) */
+
+      /* Case #1: we reach this if we have only key filter terms and single
+       * column index
+       */
+      if (!plan_created)
+	{
+	  /* section added to support key filter terms for group by skipping
+	   * also when we do not have covering.
+	   * For example (select * from T where col is not null group by col)
+	   */
+	  if (bitset_cardinality (&(index_entryp->key_filter_terms)))
+	    {
+	      bitset_assign (&kf_terms, &(index_entryp->key_filter_terms));
+
+	      planp = qo_index_scan_group_by_new (infop, nodep, ni_entryp,
+						  &range_terms,
+						  &kf_terms,
+						  &QO_NODE_SUBQUERIES
+						  (nodep));
+
+	      n = qo_check_plan_on_info (infop, planp);
+
+	      if (n)
+		{
+		  plan_created = true;
+		}
+	    }
+	}
+
+      /* Case #2: we have only sarg terms:
+       * index_treeid, select * from T where treeid < id group by treeid)
+       * -> use full scan index with sarg (treeid < id)
+       */
+      if (!plan_created && bitset_cardinality (&(index_entryp->terms)) > 0)
+	{
+	  planp = qo_index_scan_group_by_new (infop, nodep, ni_entryp,
+					      &range_terms,
+					      &kf_terms,
+					      &QO_NODE_SUBQUERIES (nodep));
+
+	  n = qo_check_plan_on_info (infop, planp);
+	  if (n)
+	    {
+	      plan_created = true;
+	    }
+	}
+    }				/* if (QO_ENTRY_MULTI_COL(index_entryp)) */
+
+end:
+  bitset_delset (&kf_terms);
+  bitset_delset (&range_terms);
+}
+
+/*
+ * qo_index_scan_group_by_new () -
+ *   return:
+ *   info(in):
+ *   node(in):
+ *   ni_entry(in):
+ *   range_terms(in):
+ *   kf_terms(in):
+ *   pinned_subqueries(in):
+ */
+static QO_PLAN *
+qo_index_scan_group_by_new (QO_INFO * info, QO_NODE * node,
+			    QO_NODE_INDEX_ENTRY * ni_entry,
+			    BITSET * range_terms, BITSET * kf_terms,
+			    BITSET * pinned_subqueries)
+{
+  QO_PLAN *plan;
+  BITSET_ITERATOR iter;
+  int t;
+  QO_ENV *env = info->env;
+  QO_INDEX_ENTRY *index_entryp;
+  QO_TERM *term;
+  PT_NODE *pt_expr;
+  BITSET index_segs;
+  BITSET term_segs;
+
+  bitset_init (&index_segs, env);
+  bitset_init (&term_segs, env);
+
+  plan = qo_scan_new (info, node, QO_SCANMETHOD_INDEX_GROUPBY_SCAN,
+		      pinned_subqueries);
+  if (plan == NULL)
+    {
+      return NULL;
+    }
+
+  /*
+   * This is, in essence, the selectivity of the index.  We
+   * really need to do a better job of figuring out the cost of
+   * an indexed scan.
+   */
+  plan->vtbl = &qo_index_scan_plan_vtbl;
+  plan->plan_un.scan.index = ni_entry;
+
+  /* set key-range terms */
+  bitset_assign (&(plan->plan_un.scan.terms), range_terms);
+  plan->plan_un.scan.equi = true;	/* init */
+
+  for (t = bitset_iterate (range_terms, &iter);
+       t != -1; t = bitset_next_member (&iter))
+    {
+      term = QO_ENV_TERM (env, t);
+      if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+	{
+	  plan->plan_un.scan.equi = false;
+	  if (bitset_cardinality (&(plan->plan_un.scan.terms)) > 1)
+	    {			/* not the first term */
+	      pt_expr = QO_TERM_PT_EXPR (term);
+
+	      /* check for non-null RANGE sarg term only used for index scan
+	       * only used for the first segment of the index key
+	       */
+	      if (pt_expr
+		  && PT_EXPR_INFO_IS_FLAGED (pt_expr,
+					     PT_EXPR_INFO_FULL_RANGE))
+		{
+		  bitset_remove (&(plan->plan_un.scan.terms),
+				 QO_TERM_IDX (term));
+		}
+	    }
+	  break;
+	}
+    }
+
+  /* remove key-range terms from sarged terms */
+  bitset_difference (&(plan->sarged_terms), range_terms);
+
+  /* all segments consisting in key columns */
+  index_entryp = (ni_entry)->head;
+  for (t = 0; t < index_entryp->nsegs; t++)
+    {
+      if ((index_entryp->seg_idxs[t]) != -1)
+	bitset_add (&index_segs, (index_entryp->seg_idxs[t]));
+    }
+
+  /* for each sarged terms */
+  for (t = bitset_iterate (kf_terms, &iter);
+       t != -1; t = bitset_next_member (&iter))
+    {
+      term = QO_ENV_TERM (env, t);
+
+      if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	{
+	  continue;		/* term contains correlated subquery */
+	}
+
+      pt_expr = QO_TERM_PT_EXPR (term);
+
+      /* check for non-null RANGE sarg term only used for index scan
+       * only used for the first segment of the index key
+       */
+      if (pt_expr
+	  && PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE))
+	{
+	  continue;		/* skip out unnecessary term */
+	}
+
+      bitset_assign (&term_segs, &(QO_TERM_SEGS (term)));
+      bitset_intersect (&term_segs, &(QO_NODE_SEGS (node)));
+
+      /* if the term is consisted by only the node's segments which
+       * appear in scan terms, it will be key-filter.
+       * otherwise will be data filter
+       */
+      if (!bitset_is_empty (&term_segs))
+	{
+	  if (bitset_subset (&index_segs, &term_segs))
+	    {
+	      bitset_add (&(plan->plan_un.scan.kf_terms), t);
+	    }
+	}
+    }				/* for (t = ... ) */
+
+  /* exclude key filter terms from sargs terms */
+  bitset_difference (&(plan->sarged_terms), &(plan->plan_un.scan.kf_terms));
+
+#if 0
+  /* not yet used, please DO NOT DELETE ! */
+  /* if the terms from key filter have the PT_IS_NOT_NULL op
+   * we cut him from the plan because we will have a full index
+   * scan
+   */
+  for (t = bitset_iterate (&(plan->plan_un.scan.kf_terms), &iter);
+       t != -1; t = bitset_next_member (&iter))
+    {
+      QO_TERM *term = QO_ENV_TERM (info->env, t);
+      PT_NODE *node = term->pt_expr;
+
+      /* treat only the simplest case -> pt_is_not_null(name) */
+      if (node->node_type == PT_EXPR &&
+	  node->info.expr.op == PT_IS_NOT_NULL &&
+	  node->info.expr.arg1->node_type == PT_NAME &&
+	  index_entryp->seg_idxs[0] != -1 && node->or_next == NULL)
+	{
+	  /* check it's the same column as the first in the index */
+	  const char *node_name = node->info.expr.arg1->info.name.original;
+	  const char *index_key_name = info->env->
+	    segs[index_entryp->seg_idxs[0]].name;
+
+	  if (!intl_mbs_casecmp (node_name, index_key_name))
+	    {
+	      bitset_remove (&plan->plan_un.scan.kf_terms, t);
+	    }
+	}
+    }
+#endif
+
+  bitset_delset (&term_segs);
+  bitset_delset (&index_segs);
+
+  qo_plan_compute_cost (plan);
+
+  plan = qo_top_plan_new (plan);
+
+  return plan;
+}
+
+/*
+ * qo_validate_index_for_groupby () - checks for isnull(key) or not null flag
+ *  env(in): pointer to the optimizer environment
+ *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ *  return: 1 if the index can be used, 0 elseware
+ */
+int
+qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
+{
+  int have_groupby_index = 0;
+  PT_NODE *groupby_col = NULL;
+  PT_NODE *node = NULL;
+  int i;
+  QO_CLASS_INFO_ENTRY *index_class = ni_entryp->head->class_;
+  void *env_seg[2];
+
+  /* key_term_status is -1 if no term with key, 0 if isnull or is not null
+   * terms with key and 1 if other term with key
+   */
+  int old_bail_out, key_term_status;
+  bool key_notnull = false;
+  const char *first_col_name = NULL;
+  PT_NODE *groupby_expr = NULL;
+  QO_SEGMENT *segm = NULL;
+
+  have_groupby_index = 0;
+  if (!QO_ENV_PT_TREE (env) ||
+      !QO_ENV_PT_TREE (env)->info.query.q.select.group_by)
+    {
+      goto end;
+    }
+
+  /* do a check on the first column - it should be present in the where clause
+   * with a non-null predicate (id > 3 or isnull(id) = false, etc, some
+   * statement that ensures us the key cannot have null value) or if no
+   * predicate in where clause, the attribute should have the not_null flag
+   */
+
+  /* check if exists a simple expression with PT_IS_NOT_NULL on the first key
+   * this should not contain OR operator and the PT_IS_NOT_NULL should contain
+   * the column directly as parameter (PT_NAME)
+   */
+  for (node = QO_ENV_PT_TREE (env)->info.query.q.select.where; node;
+       node = node->next)
+    {
+      if (node->or_next)
+	{
+	  /* cancel the flag */
+	  key_notnull = false;
+	  break;
+	}
+      if (node->node_type == PT_EXPR && node->info.expr.op == PT_IS_NOT_NULL
+	  && node->info.expr.arg1->node_type == PT_NAME)
+	{
+	  /* check it's the same column as the first in the index */
+	  const char *node_name = pt_get_name (node->info.expr.arg1);
+	  const char *index_key_name =
+	    env->segs[ni_entryp->head->seg_idxs[0]].name;
+
+	  if (!intl_mbs_casecmp (node_name, index_key_name))
+	    {
+	      /* we have found a term with no OR and with IS_NOT_NULL on our
+	       * key. The plan is ready for group by skip!
+	       */
+	      key_notnull = true;
+	      break;
+	    }
+	}
+    }
+  if (key_notnull)
+    {
+      goto final;
+    }
+
+  /* get the name of the first column in the group by list */
+  groupby_expr =
+    QO_ENV_PT_TREE (env)->info.query.q.select.group_by->info.sort_spec.expr;
+  first_col_name = pt_get_name (groupby_expr);
+  if (!first_col_name)
+    {
+      goto end;
+    }
+
+  /* we now search in the class columns for the index key */
+  for (i = 0; i < index_class->smclass->att_count; i++)
+    {
+      SM_ATTRIBUTE *attr = &index_class->smclass->attributes[i];
+
+      if (first_col_name && attr &&
+	  !intl_mbs_casecmp (first_col_name, attr->header.name))
+	{
+	  key_notnull = (attr->flags & SM_ATTFLAG_NON_NULL) != 0;
+	  break;
+	}
+    }				/* end for */
+
+  if (i == index_class->smclass->att_count)
+    {
+      /* column wasn't found - this should not happen! */
+      goto end;
+    }
+  if (key_notnull)
+    {
+      goto final;
+    }
+
+  for (i = 0; i < env->nsegs; i++)
+    {
+      if (!intl_mbs_casecmp (QO_ENV_SEG (env, i)->name, first_col_name))
+	{
+	  segm = QO_ENV_SEG (env, i);
+	  break;
+	}
+    }
+  if (!segm)
+    {
+      goto end;
+    }
+
+  /* now search for not terms with the key */
+
+  /* save old value of bail_out */
+  old_bail_out = env->bail_out;
+  env->bail_out = -1;		/* no term found value */
+
+  env_seg[0] = (void *) env;
+  env_seg[1] = (void *) segm;
+  /* check for isnull terms with the key */
+  parser_walk_tree (env->parser,
+		    QO_ENV_PT_TREE (env)->info.query.q.select.where,
+		    search_isnull_key_expr_groupby, env_seg, NULL, NULL);
+
+  /* restore old value and keep walk_tree result in key_term_status */
+  key_term_status = env->bail_out;
+  env->bail_out = old_bail_out;
+
+  /* if there is no isnull on the key, check that the key appears in some term
+   * and if so, make sure that that term doesn't have a OR
+   */
+  if (key_term_status == 1)
+    {
+      BITSET expr_segments, key_segment;
+
+      /* key segment bitset */
+      bitset_init (&key_segment, env);
+      bitset_add (&key_segment, QO_SEG_IDX (segm));
+
+      /* key found in a term */
+      for (i = 0; i < env->nterms; i++)
+	{
+	  QO_TERM *term = QO_ENV_TERM (env, i);
+
+	  if (term && term->pt_expr)
+	    {
+	      bitset_init (&expr_segments, env);
+	      qo_expr_segs (env, term->pt_expr, &expr_segments);
+
+	      if (bitset_intersects (&expr_segments, &key_segment))
+		{
+		  if (term->pt_expr->or_next)
+		    {
+		      goto end;
+		    }
+		}
+	    }
+	}
+    }
+
+  /* Now we have the information we need: if the key column can be null
+   * and if there is a PT_IS_NULL or PT_IS_NOT_NULL expression with this
+   * key column involved and also if we have other terms with the key.
+   * We must decide if there can be NULLs in the results and if so,
+   * drop this index.
+   *
+   * 1. If the key cannot have null values, we have a winner.
+   * 2. Otherwise, if we found a term isnull/isnotnull(key) we drop it
+   *    (because we cannot evaluate if this yields true or false so we skip all,
+   *    for safety)
+   * 3. If we have a term with other operator except isnull/isnotnull and
+   *    does not have an OR following we have a winner again! (because we
+   *    cannot have a null value).
+   */
+final:
+  if (key_notnull || key_term_status == 1)
+    {
+      return 1;
+    }
+end:
+  return 0;
+}
+
+/*
+ * qo_check_groupby_skip_descending - checks whether an index plan will
+ *	    skip group by if its columns changes their direction.
+ *   return:  true or false
+ *   plan (in): input index plan to be analyzed
+ */
+static bool
+qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
+{
+  bool groupby_skip = false;
+  QO_ENV *env;
+  PT_NODE *tree, *trav, *group_by;
+
+  env = NULL;
+  tree = group_by = NULL;
+
+  if (plan == NULL)
+    {
+      goto end;
+    }
+  if (plan->info)
+    {
+      env = plan->info->env;
+    }
+
+  if (env == NULL)
+    {
+      goto end;
+    }
+
+  tree = QO_ENV_PT_TREE (env);
+
+  if (tree == NULL)
+    {
+      goto end;
+    }
+
+  group_by = tree->info.query.q.select.group_by;
+
+  for (trav = list; trav; trav = trav->next)
+    {
+      /* change PT_ASC to PT_DESC and vice-versa */
+      trav->info.sort_spec.asc_or_desc = PT_ASC + PT_DESC -
+	trav->info.sort_spec.asc_or_desc;
+    }
+
+  /* test again the group by skip */
+  groupby_skip = pt_sort_spec_cover_groupby (env->parser, list, group_by,
+					     tree);
+
+  /* change back directions */
+  for (trav = list; trav; trav = trav->next)
+    {
+      /* change PT_ASC to PT_DESC and vice-versa */
+      trav->info.sort_spec.asc_or_desc = PT_ASC + PT_DESC -
+	trav->info.sort_spec.asc_or_desc;
+    }
+
+end:
+  return groupby_skip;
+}
+
+/*
+ * search_isnull_key_expr_groupby () -
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   tree(in): tree to walk
+ *   arg(in):
+ *   continue_walk(in):
+ *
+ * Note: for env->bail_out values, check key_term_status in
+ *	  qo_validate_index_for_groupby
+ */
+static PT_NODE *
+search_isnull_key_expr_groupby (PARSER_CONTEXT * parser,
+				PT_NODE * tree, void *arg, int *continue_walk)
+{
+  BITSET expr_segments, key_segment;
+  QO_ENV *env;
+  QO_SEGMENT *segm;
+  void **env_seg = (void **) arg;
+
+  env = (QO_ENV *) env_seg[0];
+  segm = (QO_SEGMENT *) env_seg[1];
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  /* key segment bitset */
+  bitset_init (&key_segment, env);
+  bitset_add (&key_segment, QO_SEG_IDX (segm));
+
+  bitset_init (&expr_segments, env);
+  if (tree->node_type == PT_EXPR)
+    {
+      /* get all segments in this expression */
+      qo_expr_segs (env, tree, &expr_segments);
+
+      /* now check if the key segment is in there */
+      if (bitset_intersects (&expr_segments, &key_segment))
+	{
+	  /* this expr contains the key segment */
+	  if (tree->info.expr.op == PT_IS_NULL ||
+	      tree->info.expr.op == PT_IS_NOT_NULL ||
+	      tree->info.expr.op == PT_IFNULL ||
+	      tree->info.expr.op == PT_NULLSAFE_EQ)
+	    {
+	      /* 0 all the way, suppress other terms found */
+	      env->bail_out = 0;
+	      *continue_walk = PT_STOP_WALK;
+
+	      return tree;
+	    }
+	  else if (env->bail_out == -1)
+	    {
+	      /* set as 1 only if we haven't found any isnull terms */
+	      env->bail_out = 1;
+	    }
+	}
+    }
+
+  return tree;
+}
+
+/*
+ * qo_plan_compute_iscan_group_sort_list () -
+ *   return:
+ *   root(in):
+ *   out_list(out): sort_list for group by node
+ *
+ */
+static void
+qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
+				       bool * is_index_w_prefix)
+{
+  QO_PLAN *plan;
+  QO_ENV *env;
+  PARSER_CONTEXT *parser;
+  PT_NODE *tree, *sort_list, *sort, *col, *node, *expr;
+  QO_NODE_INDEX_ENTRY *ni_entryp;
+  QO_INDEX_ENTRY *index_entryp;
+  int nterms, equi_nterms, seg_idx, i, j;
+  QO_SEGMENT *seg;
+  PT_MISC_TYPE asc_or_desc;
+  QFILE_TUPLE_VALUE_POSITION pos_descr;
+  TP_DOMAIN *key_type;
+  BITSET *terms;
+  BITSET_ITERATOR bi;
+  bool is_const_eq_term;
+
+  *is_index_w_prefix = false;
+
+  /* find sortable plan */
+  plan = root;
+  while (plan->plan_type == QO_PLANTYPE_FOLLOW
+	 || (plan->plan_type == QO_PLANTYPE_JOIN
+	     && (plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
+		 || (plan->plan_un.join.join_method ==
+		     QO_JOINMETHOD_IDX_JOIN))))
+    {
+      plan = ((plan->plan_type == QO_PLANTYPE_FOLLOW)
+	      ? plan->plan_un.follow.head : plan->plan_un.join.outer);
+    }
+
+  /* check for plan type */
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN)
+    {
+      return;			/* nop */
+    }
+
+  /* exclude class hierarchy scan */
+  if (QO_NODE_INFO (plan->plan_un.scan.node) == NULL ||	/* may be impossible */
+      QO_NODE_INFO_N (plan->plan_un.scan.node) > 1)
+    {
+      return;			/* nop */
+    }
+
+  /* check for index scan plan */
+  if (plan->plan_type != QO_PLANTYPE_SCAN
+      || (plan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN
+	  && plan->plan_un.scan.scan_method !=
+	  QO_SCANMETHOD_INDEX_ORDERBY_SCAN
+	  && plan->plan_un.scan.scan_method !=
+	  QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
+      || (env = (plan->info)->env) == NULL
+      || (parser = QO_ENV_PARSER (env)) == NULL
+      || (tree = QO_ENV_PT_TREE (env)) == NULL)
+    {
+      return;			/* nop */
+    }
+
+  /* if no index scan terms, no index scan */
+  nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
+
+  if (nterms <= 0 &&
+      plan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN &&
+      plan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
+    {
+      return;			/* nop */
+    }
+
+  /* pointer to QO_NODE_INDEX_ENTRY structure in QO_PLAN */
+  ni_entryp = plan->plan_un.scan.index;
+  /* pointer to linked list of index node, 'head' field(QO_INDEX_ENTRY
+     strucutre) of QO_NODE_INDEX_ENTRY */
+  index_entryp = (ni_entryp)->head;
+
+  /* check if this is an index with prefix */
+  *is_index_w_prefix = qo_is_prefix_index (index_entryp);
+
+  asc_or_desc =
+    (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->constraints->type)
+     ? PT_DESC : PT_ASC);
+
+  equi_nterms = plan->plan_un.scan.equi ? nterms : nterms - 1;
+  if (index_entryp->rangelist_seg_idx != -1)
+    {
+      equi_nterms = MIN (equi_nterms, index_entryp->rangelist_seg_idx);
+    }
+
+  key_type = NULL;		/* init */
+  if (asc_or_desc != PT_DESC)
+    {				/* is not reverse index */
+      ATTR_STATS *attr_stats;
+      int idx;
+
+      attr_stats = index_entryp->stats;
+      idx = index_entryp->bt_stats_idx;
+      if (attr_stats && idx >= 0 && idx < attr_stats->n_btstats)
+	{
+	  key_type = attr_stats->bt_stats[idx].key_type;
+	  if (key_type && key_type->type->id == DB_TYPE_MIDXKEY)
+	    {
+	      /* get the column key-type of multi-column index */
+	      key_type = key_type->setdomain;
+	    }
+	}
+
+      /* get the first non-equal range key domain */
+      for (j = 0; j < equi_nterms && key_type; j++)
+	{
+	  key_type = key_type->next;
+	}
+
+      if (key_type == NULL)
+	{			/* invalid case */
+	  return;		/* nop */
+	}
+    }
+
+  sort_list = NULL;		/* init */
+
+  for (i = equi_nterms; i < index_entryp->nsegs; i++)
+    {
+      if (key_type)
+	{
+	  asc_or_desc = (key_type->is_desc) ? PT_DESC : PT_ASC;
+	  key_type = key_type->next;
+	}
+
+      seg_idx = (index_entryp->seg_idxs[i]);
+      if (seg_idx == -1)
+	{			/* not exist in query */
+	  break;		/* give up */
+	}
+
+      seg = QO_ENV_SEG (env, seg_idx);
+      node = QO_SEG_PT_NODE (seg);
+      if (node->node_type == PT_DOT_)
+	{
+	  /* FIXME :: we do not handle path-expr here */
+	  break;		/* give up */
+	}
+
+      /* skip segment of const eq term */
+      terms = &(QO_SEG_INDEX_TERMS (seg));
+      is_const_eq_term = false;
+      for (j = bitset_iterate (terms, &bi); j != -1;
+	   j = bitset_next_member (&bi))
+	{
+	  expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, j));
+	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ) &&
+	      (PT_IS_CONST (expr->info.expr.arg1) ||
+	       PT_IS_CONST (expr->info.expr.arg2)))
+	    {
+	      is_const_eq_term = true;
+	    }
+	}
+      if (is_const_eq_term)
+	{
+	  continue;
+	}
+
+      /* check for constant col's order node
+       */
+      pt_to_pos_descr (parser, &pos_descr, node, tree, NULL);
+      if (pos_descr.pos_no > 0)
+	{
+	  col = tree->info.query.q.select.list;
+	  for (j = 1; j < pos_descr.pos_no && col; j++)
+	    {
+	      col = col->next;
+	    }
+	  if (col != NULL)
+	    {
+	      col = pt_get_end_path_node (col);
+
+	      if (col->node_type == PT_NAME
+		  && PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_CONSTANT))
+		{
+		  continue;	/* skip out constant order */
+		}
+	    }
+	}
+
+      pt_to_pos_descr_groupby (parser, &pos_descr, node, tree);
+      if (pos_descr.pos_no <= 0)
+	{			/* not found i-th key element */
+	  break;		/* give up */
+	}
+
+      col = tree->info.query.q.select.group_by;
+      for (j = 1; j < pos_descr.pos_no && col; j++)
+	{
+	  col = col->next;
+	}
+      while (col != NULL && col->node_type == PT_SORT_SPEC)
+	{
+	  col = col->info.sort_spec.expr;
+	}
+      col = pt_get_end_path_node (col);
+
+      if (col == NULL)
+	{			/* impossible case */
+	  break;		/* give up */
+	}
+
+      /* set sort info */
+      sort = parser_new_node (parser, PT_SORT_SPEC);
+      if (sort == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  break;		/* give up */
+	}
+
+      sort->info.sort_spec.expr = pt_point (parser, col);
+      sort->info.sort_spec.pos_descr = pos_descr;
+      sort->info.sort_spec.asc_or_desc = asc_or_desc;
+
+      sort_list = parser_append_node (sort, sort_list);
+    }
+
+  *out_list = sort_list;
+
+  return;
 }

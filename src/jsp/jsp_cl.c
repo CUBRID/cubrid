@@ -1283,14 +1283,14 @@ jsp_get_value_size (DB_VALUE * value)
       break;
 
     case DB_TYPE_NUMERIC:
-      size = or_packed_string_length (numeric_db_value_print (value));
+      size = or_packed_string_length (numeric_db_value_print (value), NULL);
       break;
 
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_STRING:
-      size = or_packed_string_length (DB_GET_STRING (value));
+      size = or_packed_string_length (DB_GET_STRING (value), NULL);
       break;
 
     case DB_TYPE_BIT:
@@ -1401,12 +1401,12 @@ jsp_pack_int_argument (char *buffer, DB_VALUE * value)
 static char *
 jsp_pack_bigint_argument (char *buffer, DB_VALUE * value)
 {
-  DB_BIGINT pack_value;
+  DB_BIGINT tmp_value;
   char *ptr;
 
   ptr = or_pack_int (buffer, sizeof (DB_BIGINT));
-  OR_PUT_BIGINT (&pack_value, DB_GET_BIGINT (value));
-  memcpy (ptr, (char *) (&pack_value), OR_BIGINT_SIZE);
+  tmp_value = DB_GET_BIGINT (value);
+  OR_PUT_BIGINT (ptr, &tmp_value);
 
   return ptr + OR_BIGINT_SIZE;
 }
@@ -1872,13 +1872,13 @@ jsp_pack_argument (char *buffer, DB_VALUE * value)
 static int
 jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args)
 {
-  int req_code, arg_count, i;
+  int req_code, arg_count, i, strlen;
   int req_size, nbytes;
   DB_ARG_LIST *p;
   char *buffer, *ptr;
 
   req_size = (int) sizeof (int) * 4
-    + or_packed_string_length (sp_args->name) +
+    + or_packed_string_length (sp_args->name, &strlen) +
     jsp_get_argument_size (sp_args->args);
 
   buffer = (char *) malloc (req_size);
@@ -1892,7 +1892,7 @@ jsp_send_call_request (const SOCKET sockfd, const SP_ARGS * sp_args)
   req_code = 0x1;
   ptr = or_pack_int (buffer, req_code);
 
-  ptr = or_pack_string (ptr, sp_args->name);
+  ptr = or_pack_string_with_length (ptr, sp_args->name, strlen);
 
   arg_count = jsp_get_argument_count (sp_args);
   ptr = or_pack_int (ptr, arg_count);
@@ -1957,7 +1957,7 @@ jsp_unpack_bigint_value (char *buffer, DB_VALUE * retval)
   DB_BIGINT val;
 
   memcpy ((char *) (&val), buffer, OR_BIGINT_SIZE);
-  val = OR_GET_BIGINT (&val);
+  OR_GET_BIGINT (&val, &val);
   db_make_bigint (retval, val);
 
   return buffer + OR_BIGINT_SIZE;
@@ -2044,7 +2044,8 @@ jsp_unpack_numeric_value (char *buffer, DB_VALUE * retval)
   char *ptr;
 
   ptr = or_unpack_string_nocopy (buffer, &val);
-  if (val == NULL || numeric_coerce_string_to_num (val, retval) != NO_ERROR)
+  if (val == NULL || numeric_coerce_string_to_num (val, strlen (val),
+						   retval) != NO_ERROR)
     {
       ptr = NULL;
     }

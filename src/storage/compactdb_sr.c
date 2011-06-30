@@ -105,7 +105,7 @@ process_value (DB_VALUE * value)
 	    break;
 	  }
 
-	if (!heap_get_class_oid (NULL, ref_oid, &ref_class_oid))
+	if (heap_get_class_oid (NULL, &ref_class_oid, ref_oid) == NULL)
 	  {
 	    OID_SET_NULL (ref_oid);
 	    return_value = 1;
@@ -126,7 +126,7 @@ process_value (DB_VALUE * value)
 		ref_class_oid.slotid);
 #endif
 
-	if (!heap_does_exist (NULL, ref_oid, &ref_class_oid))
+	if (!heap_does_exist (NULL, &ref_class_oid, ref_oid))
 	  {
 	    OID_SET_NULL (ref_oid);
 	    return_value = 1;

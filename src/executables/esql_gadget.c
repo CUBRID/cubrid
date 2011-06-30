@@ -344,7 +344,8 @@ gadget_attr_index (DB_GADGET * gadget, const char *attr_name)
   for (i = 0; i < gadget->num_attrs; i++)
     {
       if (gadget->attrs[i].attr_desc &&
-	  pt_streq (attr_name, gadget->attrs[i].attr_desc->name) == 0)
+	  pt_str_compare (attr_name, gadget->attrs[i].attr_desc->name,
+			  CASE_INSENSITIVE) == 0)
 	{
 	  return i;
 	}

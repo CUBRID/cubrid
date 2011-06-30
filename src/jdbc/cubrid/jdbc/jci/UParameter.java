@@ -34,43 +34,33 @@
  * @version 2.0
  */
 
-package @CUBRID_JCI@;
+package cubrid.jdbc.jci;
 
-import java.math.BigDecimal;
-import java.sql.Date;
-import java.sql.Time;
-import java.sql.Timestamp;
+abstract class UParameter {
+	UParameter(int pNumber) {
+		number = pNumber;
+		types = new byte[number];
+		values = new Object[number];
+	}
 
-import @CUBRID_SQL@.CUBRIDOID;
+	synchronized void setParameters(byte[] pTypes, Object[] pValues)
+			throws UJciException {
+		if (pTypes == null
+				|| (pValues != null && pTypes.length != pValues.length))
+			throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
 
-abstract class UParameter
-{
-  UParameter(int pNumber)
-  {
-    number = pNumber;
-    types = new byte[number];
-    values = new Object[number];
-  }
+		for (int i = 0; i < number; i++) {
+			types[i] = pTypes[i];
+			if (UUType.isCollectionType(types[i]))
+				values[i] = new CUBRIDArray(pValues[i]);
+			else
+				values[i] = pValues[i];
+		}
+	}
 
-  synchronized void setParameters(byte[] pTypes, Object[] pValues)
-      throws UJciException
-  {
-    if (pTypes == null || (pValues != null && pTypes.length != pValues.length))
-      throw new UJciException(UErrorCode.ER_INVALID_ARGUMENT);
+	abstract void writeParameter(UOutputBuffer outBuffer) throws UJciException;
 
-    for (int i = 0; i < number; i++)
-    {
-      types[i] = pTypes[i];
-      if (UUType.isCollectionType(types[i]))
-        values[i] = new CUBRIDArray(pValues[i]);
-      else
-        values[i] = pValues[i];
-    }
-  }
-
-  abstract void writeParameter(UOutputBuffer outBuffer) throws UJciException;
-
-  int number;
-  byte types[];
-  Object values[];
+	int number;
+	byte types[];
+	Object values[];
 }

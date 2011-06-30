@@ -49,10 +49,9 @@ extern MOBJ tf_disk_to_mem (MOBJ classobj, RECDES * record, int *convertp);
 
 extern TF_STATUS tf_class_to_disk (MOBJ classobj, RECDES * record);
 
-extern MOBJ tf_disk_to_class (RECDES * record);
+extern MOBJ tf_disk_to_class (OID * oid, RECDES * record);
 
 extern int tf_object_size (MOBJ classobj, MOBJ obj);
-extern int tf_class_size (MOBJ classobj);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void tf_dump_class_size (MOBJ classobj);
 #endif

@@ -28,20 +28,17 @@
  *
  */
 
-package @CUBRID_JCI@;
+package cubrid.jdbc.jci;
 
-public class UConKey
-{
+public class UConKey {
 
-  private String conKey;
+	private String conKey;
 
-  public UConKey(String s)
-  {
-    conKey = s;
-  }
+	public UConKey(String s) {
+		conKey = s;
+	}
 
-  String getKeyString()
-  {
-    return (conKey == null ? "" : conKey);
-  }
+	String getKeyString() {
+		return (conKey == null ? "" : conKey);
+	}
 }

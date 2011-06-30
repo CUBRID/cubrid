@@ -63,11 +63,17 @@ typedef enum
   BTREE_CONSTRAINT_PRIMARY_KEY = 0x02
 } BTREE_CONSTRAINT_TYPE;
 
+enum
+{ BTREE_COERCE_KEY_WITH_MIN_VALUE = 1, BTREE_COERCE_KEY_WITH_MAX_VALUE = 2 };
+
 #define BTREE_IS_PRIMARY_KEY(unique) ((unique) & BTREE_CONSTRAINT_PRIMARY_KEY)
 #define BTREE_IS_UNIQUE(btid)  ((btid)->unique & BTREE_CONSTRAINT_UNIQUE)
 #define BTREE_IS_PART_KEY_DESC(btid) ((btid)->part_key_desc == true)
 #define BTREE_IS_LAST_KEY_DESC(btid) ((btid)->last_key_desc == true)
 #define BTREE_IS_NEW_FILE(btid) ((btid)->new_file == true)
+
+#define BTREE_NORMAL_KEY 0
+#define BTREE_OVERFLOW_KEY 1
 
 /* BTID_INT structure from btree_load.h */
 typedef struct btid_int BTID_INT;
@@ -94,6 +100,7 @@ struct btid_int
 				 * derived from INDX_SCAN_ID.copy_buf_len */
   int rev_level;
   int new_file;			/* if it is new index */
+  OID topclass_oid;		/* class oid for which index is created */
 };
 
 /* key range structure */
@@ -103,10 +110,7 @@ struct btree_keyrange
   RANGE range;			/* range type */
   DB_VALUE *lower_key;
   DB_VALUE *upper_key;
-  DB_VALUE lower_value;		/* lower value of key range */
-  DB_VALUE upper_value;		/* upper value of key range */
-  bool clear_lower;
-  bool clear_upper;
+  int num_index_term;
 };
 
 #if defined(SERVER_MODE)
@@ -140,10 +144,10 @@ struct btree_scan
   DB_VALUE cur_key;		/* current key value */
   bool clear_cur_key;		/* clear flag for current key value */
 
-  int keysize;			/* term# associated with index key range */
-
   BTREE_KEYRANGE key_range;	/* key range information */
   FILTER_INFO *key_filter;	/* key filter information */
+
+  int use_desc_index;		/* use descending index */
 
 #if defined(SERVER_MODE)
   OID cls_oid;			/* class OID */
@@ -167,6 +171,7 @@ struct btree_scan
    * lock_mode, escalated_mode
    */
   LOCK lock_mode;		/* S_LOCK or U_LOCK */
+  LOCK key_lock_mode;		/* S_LOCK, or NX_LOCK */
   LOCK escalated_mode;		/* escalated mode of class lock */
 
   /*
@@ -253,6 +258,10 @@ extern int btree_get_stats (THREAD_ENTRY * thread_p, BTID * btid,
 extern DISK_ISVALID btree_check_tree (THREAD_ENTRY * thread_p,
 				      const OID * class_oid_p, BTID * btid,
 				      const char *btname);
+extern DISK_ISVALID btree_check_by_btid (THREAD_ENTRY * thread_p,
+					 BTID * btid);
+extern DISK_ISVALID btree_check_by_class_oid (THREAD_ENTRY * thread_p,
+					      OID * cls_oid);
 extern DISK_ISVALID btree_check_all (THREAD_ENTRY * thread_p);
 extern int btree_keyoid_checkscan_start (BTID * btid,
 					 BTREE_CHECKSCAN * btscan);
@@ -263,8 +272,7 @@ extern DISK_ISVALID btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p,
 extern void btree_keyoid_checkscan_end (BTREE_CHECKSCAN * btscan);
 extern int btree_estimate_total_numpages (THREAD_ENTRY * thread_p,
 					  int dis_key_cnt, int avg_key_len,
-					  TP_DOMAIN * domain, int tot_val_cnt,
-					  int *blt_pgcnt_est,
+					  int tot_val_cnt, int *blt_pgcnt_est,
 					  int *blt_wrs_pgcnt_est);
 extern int btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid,
 				 BTREE_CAPACITY * cpc);
@@ -387,20 +395,32 @@ extern int btree_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 #include "scan_manager.h"
 
 extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid,
-				int readonly_purpose, BTREE_SCAN * btree_scan,
+				int readonly_purpose,
+				SCAN_OPERATION_TYPE scan_op_type,
+				BTREE_SCAN * btree_scan,
 				DB_VALUE * key,
 				OID * class_oid,
 				OID * oids_ptr, int oids_size,
 				FILTER_INFO * filter, INDX_SCAN_ID * isidp,
 				bool is_all_class_srch);
 extern int btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
-			       int readonly_purpose, int lock_hint,
-			       BTREE_SCAN * BTS, DB_VALUE * key1,
-			       DB_VALUE * key2, RANGE range,
-			       int num_classes,
+			       int readonly_purpose,
+			       SCAN_OPERATION_TYPE scan_op_type,
+			       int lock_hint,
+			       BTREE_SCAN * BTS,
+			       KEY_VAL_RANGE * key_val_range, int num_classes,
 			       OID * class_oids_ptr, OID * oids_ptr,
 			       int oids_size, FILTER_INFO * filter,
 			       INDX_SCAN_ID * isidp, bool construct_BTID_INT,
-			       bool need_count_only);
+			       bool need_count_only,
+			       DB_BIGINT * key_limit_upper,
+			       DB_BIGINT * key_limit_lower);
+extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p,
+					 DB_VALUE * curr_key,
+					 int *btree_att_ids,
+					 int btree_num_att,
+					 HEAP_CACHE_ATTRINFO * attr_info);
+extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize,
+			     TP_DOMAIN * btree_domainp, int key_minmax);
 
 #endif /* _BTREE_H_ */

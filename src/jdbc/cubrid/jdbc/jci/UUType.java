@@ -34,14 +34,17 @@
  * @version 2.0
  */
 
-package @CUBRID_JCI@;
+package cubrid.jdbc.jci;
 
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
-import @CUBRID_SQL@.CUBRIDOID;
-import @CUBRID_SQL@.CUBRIDTimestamp;
+
+import cubrid.jdbc.driver.CUBRIDBlob;
+import cubrid.jdbc.driver.CUBRIDClob;
+import cubrid.sql.CUBRIDOID;
+import cubrid.sql.CUBRIDTimestamp;
 
 /**
  * CUBRID Data Type을 정의해 놓은 class이다.
@@ -49,131 +52,130 @@ import @CUBRID_SQL@.CUBRIDTimestamp;
  * since 1.0
  */
 
-abstract public class UUType
-{
-  public static final int U_TYPE_MIN = 0;
-  public static final int U_TYPE_MAX = 19;
+abstract public class UUType {
+	public static final int U_TYPE_MIN = 0;
+	public static final int U_TYPE_MAX = 24;
 
-  public static final byte U_TYPE_NULL = 0;
-  public static final byte U_TYPE_CHAR = 1;
-  public static final byte U_TYPE_STRING = 2;
-  public static final byte U_TYPE_VARCHAR = 2;
-  public static final byte U_TYPE_NCHAR = 3;
-  public static final byte U_TYPE_VARNCHAR = 4;
-  public static final byte U_TYPE_BIT = 5;
-  public static final byte U_TYPE_VARBIT = 6;
-  public static final byte U_TYPE_NUMERIC = 7;
-  public static final byte U_TYPE_DECIMAL = 7;
-  public static final byte U_TYPE_INT = 8;
-  public static final byte U_TYPE_SHORT = 9;
-  public static final byte U_TYPE_MONETARY = 10;
-  public static final byte U_TYPE_FLOAT = 11;
-  public static final byte U_TYPE_DOUBLE = 12;
-  public static final byte U_TYPE_DATE = 13;
-  public static final byte U_TYPE_TIME = 14;
-  public static final byte U_TYPE_TIMESTAMP = 15;
-  public static final byte U_TYPE_SET = 16;
-  public static final byte U_TYPE_MULTISET = 17;
-  public static final byte U_TYPE_SEQUENCE = 18;
-  public static final byte U_TYPE_OBJECT = 19;
-  public static final byte U_TYPE_RESULTSET = 20;
-  public static final byte U_TYPE_BIGINT = 21;
-  public static final byte U_TYPE_DATETIME = 22;
+	public static final byte U_TYPE_NULL = 0;
+	public static final byte U_TYPE_CHAR = 1;
+	public static final byte U_TYPE_STRING = 2;
+	public static final byte U_TYPE_VARCHAR = 2;
+	public static final byte U_TYPE_NCHAR = 3;
+	public static final byte U_TYPE_VARNCHAR = 4;
+	public static final byte U_TYPE_BIT = 5;
+	public static final byte U_TYPE_VARBIT = 6;
+	public static final byte U_TYPE_NUMERIC = 7;
+	public static final byte U_TYPE_DECIMAL = 7;
+	public static final byte U_TYPE_INT = 8;
+	public static final byte U_TYPE_SHORT = 9;
+	public static final byte U_TYPE_MONETARY = 10;
+	public static final byte U_TYPE_FLOAT = 11;
+	public static final byte U_TYPE_DOUBLE = 12;
+	public static final byte U_TYPE_DATE = 13;
+	public static final byte U_TYPE_TIME = 14;
+	public static final byte U_TYPE_TIMESTAMP = 15;
+	public static final byte U_TYPE_SET = 16;
+	public static final byte U_TYPE_MULTISET = 17;
+	public static final byte U_TYPE_SEQUENCE = 18;
+	public static final byte U_TYPE_OBJECT = 19;
+	public static final byte U_TYPE_RESULTSET = 20;
+	public static final byte U_TYPE_BIGINT = 21;
+	public static final byte U_TYPE_DATETIME = 22;
+	public static final byte U_TYPE_BLOB = 23;
+	public static final byte U_TYPE_CLOB = 24;
 
-  static boolean isCollectionType(byte type)
-  {
-    if (type == UUType.U_TYPE_SET || type == UUType.U_TYPE_MULTISET
-        || type == UUType.U_TYPE_SEQUENCE)
-    {
-      return true;
-    }
-    return false;
-  }
+	static boolean isCollectionType(byte type) {
+		if (type == UUType.U_TYPE_SET || type == UUType.U_TYPE_MULTISET
+				|| type == UUType.U_TYPE_SEQUENCE) {
+			return true;
+		}
+		return false;
+	}
 
-  static byte getObjArrBaseDBtype(Object values)
-  {
-    if (values instanceof String[])
-      return UUType.U_TYPE_VARCHAR;
-    else if (values instanceof Byte[])
-      return UUType.U_TYPE_SHORT;
-    else if (values instanceof byte[][])
-      return UUType.U_TYPE_VARBIT;
-    else if (values instanceof Boolean[])
-      return UUType.U_TYPE_BIT;
-    else if (values instanceof Short[])
-      return UUType.U_TYPE_SHORT;
-    else if (values instanceof Integer[])
-      return UUType.U_TYPE_INT;
-    else if (values instanceof Long[])
-      return UUType.U_TYPE_BIGINT;
-    else if (values instanceof Double[])
-      return UUType.U_TYPE_DOUBLE;
-    else if (values instanceof Float[])
-      return UUType.U_TYPE_FLOAT;
-    else if (values instanceof BigDecimal[])
-      return UUType.U_TYPE_NUMERIC;
-    else if (values instanceof Date[])
-      return UUType.U_TYPE_DATE;
-    else if (values instanceof Time[])
-      return UUType.U_TYPE_TIME;
-    else if (values instanceof Timestamp[])
-    {
-      for (int i = 0; i < ((Object[])values).length ; i++)
-      {
-        if (!CUBRIDTimestamp.isTimestampType((Timestamp)(((Object[])values)[i])))
-        {
-          return UUType.U_TYPE_DATETIME;
-        }
-      }
-      return UUType.U_TYPE_TIMESTAMP;
-    }
-    else if (values instanceof CUBRIDOID[])
-      return UUType.U_TYPE_OBJECT;
-    else
-      return UUType.U_TYPE_NULL;
-  }
+	static byte getObjArrBaseDBtype(Object values) {
+		if (values instanceof String[])
+			return UUType.U_TYPE_VARCHAR;
+		else if (values instanceof Byte[])
+			return UUType.U_TYPE_SHORT;
+		else if (values instanceof byte[][])
+			return UUType.U_TYPE_VARBIT;
+		else if (values instanceof Boolean[])
+			return UUType.U_TYPE_BIT;
+		else if (values instanceof Short[])
+			return UUType.U_TYPE_SHORT;
+		else if (values instanceof Integer[])
+			return UUType.U_TYPE_INT;
+		else if (values instanceof Long[])
+			return UUType.U_TYPE_BIGINT;
+		else if (values instanceof Double[])
+			return UUType.U_TYPE_DOUBLE;
+		else if (values instanceof Float[])
+			return UUType.U_TYPE_FLOAT;
+		else if (values instanceof BigDecimal[])
+			return UUType.U_TYPE_NUMERIC;
+		else if (values instanceof Date[])
+			return UUType.U_TYPE_DATE;
+		else if (values instanceof Time[])
+			return UUType.U_TYPE_TIME;
+		else if (values instanceof Timestamp[]) {
+			for (int i = 0; i < ((Object[]) values).length; i++) {
+				if (!CUBRIDTimestamp
+						.isTimestampType((Timestamp) (((Object[]) values)[i]))) {
+					return UUType.U_TYPE_DATETIME;
+				}
+			}
+			return UUType.U_TYPE_TIMESTAMP;
+		} else if (values instanceof CUBRIDOID[])
+			return UUType.U_TYPE_OBJECT;
+		else if (values instanceof CUBRIDBlob[])
+			return UUType.U_TYPE_BLOB;
+		else if (values instanceof CUBRIDClob[])
+			return UUType.U_TYPE_CLOB;
+		else
+			return UUType.U_TYPE_NULL;
+	}
 
-  static byte getObjectDBtype(Object value)
-  {
-    if (value == null)
-      return UUType.U_TYPE_NULL;
-    else if (value instanceof String)
-      return UUType.U_TYPE_STRING;
-    else if (value instanceof Byte)
-      return UUType.U_TYPE_SHORT;
-    else if (value instanceof byte[])
-      return UUType.U_TYPE_VARBIT;
-    else if (value instanceof Boolean)
-      return UUType.U_TYPE_BIT;
-    else if (value instanceof Short)
-      return UUType.U_TYPE_SHORT;
-    else if (value instanceof Integer)
-      return UUType.U_TYPE_INT;
-    else if (value instanceof Long)
-      return UUType.U_TYPE_BIGINT;
-    else if (value instanceof Double)
-      return UUType.U_TYPE_DOUBLE;
-    else if (value instanceof Float)
-      return UUType.U_TYPE_FLOAT;
-    else if (value instanceof BigDecimal || value instanceof Long)
-      return UUType.U_TYPE_NUMERIC;
-    else if (value instanceof Date)
-      return UUType.U_TYPE_DATE;
-    else if (value instanceof Time)
-      return UUType.U_TYPE_TIME;
-    else if (value instanceof Timestamp)
-    {
-      if (CUBRIDTimestamp.isTimestampType((Timestamp)value))
-      {
-        return UUType.U_TYPE_TIMESTAMP;
-      }
-      return UUType.U_TYPE_DATETIME;
-    }
-    else if (value instanceof CUBRIDOID)
-      return UUType.U_TYPE_OBJECT;
-    else if (value instanceof Object[])
-      return UUType.U_TYPE_SEQUENCE;
-    else
-      return UUType.U_TYPE_NULL;
-  }
+	static byte getObjectDBtype(Object value) {
+		if (value == null)
+			return UUType.U_TYPE_NULL;
+		else if (value instanceof String)
+			return UUType.U_TYPE_STRING;
+		else if (value instanceof Byte)
+			return UUType.U_TYPE_SHORT;
+		else if (value instanceof byte[])
+			return UUType.U_TYPE_VARBIT;
+		else if (value instanceof Boolean)
+			return UUType.U_TYPE_BIT;
+		else if (value instanceof Short)
+			return UUType.U_TYPE_SHORT;
+		else if (value instanceof Integer)
+			return UUType.U_TYPE_INT;
+		else if (value instanceof Long)
+			return UUType.U_TYPE_BIGINT;
+		else if (value instanceof Double)
+			return UUType.U_TYPE_DOUBLE;
+		else if (value instanceof Float)
+			return UUType.U_TYPE_FLOAT;
+		else if (value instanceof BigDecimal || value instanceof Long)
+			return UUType.U_TYPE_NUMERIC;
+		else if (value instanceof Date)
+			return UUType.U_TYPE_DATE;
+		else if (value instanceof Time)
+			return UUType.U_TYPE_TIME;
+		else if (value instanceof Timestamp) {
+			if (CUBRIDTimestamp.isTimestampType((Timestamp) value)) {
+				return UUType.U_TYPE_TIMESTAMP;
+			}
+			return UUType.U_TYPE_DATETIME;
+		} else if (value instanceof CUBRIDOID)
+			return UUType.U_TYPE_OBJECT;
+		else if (value instanceof CUBRIDBlob)
+			return UUType.U_TYPE_BLOB;
+		else if (value instanceof CUBRIDClob)
+			return UUType.U_TYPE_CLOB;
+		else if (value instanceof Object[])
+			return UUType.U_TYPE_SEQUENCE;
+		else
+			return UUType.U_TYPE_NULL;
+	}
 }

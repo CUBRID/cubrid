@@ -46,7 +46,7 @@
 #include "db.h"
 #include "set_object.h"
 #if defined (SERVER_MODE)
-#include "thread_impl.h"
+#include "thread.h"
 #endif /* !SERVER_MODE */
 
 /* this must be the last header file included!!! */
@@ -61,6 +61,14 @@ static char *or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *unpack_str_array (char *buffer, char ***string_array, int count);
 #endif
+static int
+or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align);
+static int or_varbit_length_internal (int bitlen, int align);
+static int or_varchar_length_internal (int charlen, int align);
+static int
+or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align);
+char *or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars,
+				    int offset_size);
 
 /*
  * classobj_get_prop - searches a property list for a value with the given name
@@ -288,86 +296,6 @@ or_class_name (RECDES * record)
 }
 
 /*
- * or_isinstance - Compare an OID with the class OID in the disk
- * representation of an object.
- *    return: true if object is an instance of the class. false otherwise
- *    record(in): record with disk representation of object
- *    class_oid(in): OID of the class
- *
- */
-bool
-or_isinstance (RECDES * record, OID * class_oid)
-{
-  OID oid;
-  bool status = false;
-
-  if (record->length < OR_HEADER_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
-    }
-  else
-    {
-      OR_GET_OID (record->data, &oid);
-      /*
-       * kludge, rootclass is identified with a NULL class OID but we must
-       * substitute the actual OID here - think about this
-       */
-      if (OID_ISNULL (&oid))
-	{
-	  if (class_oid == oid_Root_class_oid)
-	    {
-	      status = true;
-	    }
-	}
-      else
-	{
-	  if (oid.volid == class_oid->volid
-	      && oid.pageid == class_oid->pageid
-	      && oid.slotid == class_oid->slotid)
-	    {
-	      status = true;
-	    }
-	}
-    }
-
-  return status;
-}
-
-/*
- * or_class_oid - Extracts the class OID from the disk representation of
- * an object.
- *    return: void
- *    record(in): disk record
- *    oid(out): oid structure
- *
- */
-void
-or_class_oid (RECDES * record, OID * oid)
-{
-  if (record->length < OR_HEADER_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
-    }
-  else
-    {
-      /* could code this inline */
-      OR_GET_OID (record->data, oid);
-
-      /*
-       * kludge, rootclass is identified with a NULL class OID but we must
-       * substitute the actual OID here - think about this
-       */
-      if (OID_ISNULL (oid))
-	{
-	  /* rootclass class oid, substitute with global */
-	  oid->volid = oid_Root_class_oid->volid;
-	  oid->pageid = oid_Root_class_oid->pageid;
-	  oid->slotid = oid_Root_class_oid->slotid;
-	}
-    }
-}
-
-/*
  * or_rep_id - Extracts the representation id from the disk representation of
  * an object.
  *    return: representation of id of object. or -1 for error
@@ -384,7 +312,7 @@ or_rep_id (RECDES * record)
     }
   else
     {
-      rep = OR_GET_REPRID (record->data);
+      rep = OR_GET_REPID (record->data);
     }
 
   return (rep);
@@ -399,7 +327,6 @@ or_rep_id (RECDES * record)
 int
 or_chn (RECDES * record)
 {
-  char *ptr;
   int chn = -1;
 
   if (record->length < OR_HEADER_SIZE)
@@ -408,8 +335,7 @@ or_chn (RECDES * record)
     }
   else
     {
-      ptr = record->data + OR_CHN_OFFSET;
-      chn = OR_GET_INT (ptr);
+      chn = OR_GET_CHN (record->data);
     }
   return (chn);
 }
@@ -636,6 +562,30 @@ or_get_align64 (OR_BUF * buf)
 }
 
 /*
+ * or_get_align - adnvance or buf pointer to next alignment position
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    align(in):
+ */
+int
+or_get_align (OR_BUF * buf, int align)
+{
+  char *ptr;
+  int rc = NO_ERROR;
+
+  ptr = PTR_ALIGN (buf->ptr, align);
+  if (ptr > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+  else
+    {
+      buf->ptr = ptr;
+      return NO_ERROR;
+    }
+}
+
+/*
  * or_packed_varchar_length - returns length of place holder that can contain
  * package varchar length. Also ajust length up to 4 byte boundary.
  *    return: length of placeholder that can contain packed varchar length
@@ -644,18 +594,42 @@ or_get_align64 (OR_BUF * buf)
 int
 or_packed_varchar_length (int charlen)
 {
+  return or_varchar_length_internal (charlen, INT_ALIGNMENT);
+}
+
+/*
+ * or_varchar_length - returns length of place holder that can contain
+ * package varchar length.
+ *    return: length of place holder that can contain packed varchar length
+ *    charlen(in): varchar length
+ */
+int
+or_varchar_length (int charlen)
+{
+  return or_varchar_length_internal (charlen, CHAR_ALIGNMENT);
+}
+
+static int
+or_varchar_length_internal (int charlen, int align)
+{
   int len;
 
   if (charlen < 0xFF)
     {
-      len = 1 + charlen + 1;
+      len = 1 + charlen;
     }
   else
     {
-      len = 1 + OR_INT_SIZE + charlen + 1;
+      len = 1 + OR_INT_SIZE + charlen;
     }
 
-  len = DB_ALIGN (len, INT_ALIGNMENT);
+  if (align == INT_ALIGNMENT)
+    {
+      /* size of NULL terminator */
+      len += 1;
+
+      len = DB_ALIGN (len, INT_ALIGNMENT);
+    }
 
   return len;
 }
@@ -669,6 +643,25 @@ or_packed_varchar_length (int charlen)
  */
 int
 or_put_varchar (OR_BUF * buf, char *string, int charlen)
+{
+  return or_put_varchar_internal (buf, string, charlen, CHAR_ALIGNMENT);
+}
+
+/*
+ * or_packed_put_varchar - put varchar to or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    string(in): string to put into the or buffer
+ *    charlen(in): string length
+ */
+int
+or_packed_put_varchar (OR_BUF * buf, char *string, int charlen)
+{
+  return or_put_varchar_internal (buf, string, charlen, INT_ALIGNMENT);
+}
+
+static int
+or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 {
   int net_charlen;
   char *start;
@@ -702,15 +695,18 @@ or_put_varchar (OR_BUF * buf, char *string, int charlen)
       return rc;
     }
 
-  /* kludge, temporary NULL terminator */
-  rc = or_put_byte (buf, 0);
-  if (rc != NO_ERROR)
+  if (align == INT_ALIGNMENT)
     {
-      return rc;
-    }
+      /* kludge, temporary NULL terminator */
+      rc = or_put_byte (buf, 0);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
 
-  /* round up to a word boundary */
-  rc = or_put_align32 (buf);
+      /* round up to a word boundary */
+      rc = or_put_align32 (buf);
+    }
 
   return rc;
 }
@@ -799,18 +795,30 @@ or_get_varchar_length (OR_BUF * buf, int *rc)
 }
 
 /*
- * or_skip_varchar_remainder - skip varchar field of given length and ajust
- * buffer position round up to 4 byte boundary position
+ * or_skip_varchar_remainder - skip varchar field of given length
  *    return: NO_ERROR if successful, error code otherwise
  *    buf(in/out): or buffer
  *    charlen(in): length of varchar field to skip
+ *    align(in):
  */
 int
-or_skip_varchar_remainder (OR_BUF * buf, int charlen)
+or_skip_varchar_remainder (OR_BUF * buf, int charlen, int align)
 {
   int rc = NO_ERROR;
-  rc = or_advance (buf, charlen + 1);
-  or_get_align32 (buf);
+
+  if (align == INT_ALIGNMENT)
+    {
+      rc = or_advance (buf, charlen + 1);
+      if (rc == NO_ERROR)
+	{
+	  rc = or_get_align32 (buf);
+	}
+    }
+  else
+    {
+      rc = or_advance (buf, charlen);
+    }
+
   return rc;
 }
 
@@ -818,9 +826,10 @@ or_skip_varchar_remainder (OR_BUF * buf, int charlen)
  * or_skip_varchar - skip varchar field (length + data) from or buffer
  *    return: NO_ERROR or error code.
  *    buf(in/out): or buffer
+ *    align(in):
  */
 int
-or_skip_varchar (OR_BUF * buf)
+or_skip_varchar (OR_BUF * buf, int align)
 {
   int charlen, rc = NO_ERROR;
 
@@ -828,7 +837,7 @@ or_skip_varchar (OR_BUF * buf)
 
   if (rc == NO_ERROR)
     {
-      return (or_skip_varchar_remainder (buf, charlen));
+      return (or_skip_varchar_remainder (buf, charlen, align));
     }
 
   return rc;
@@ -841,6 +850,23 @@ or_skip_varchar (OR_BUF * buf)
  */
 int
 or_packed_varbit_length (int bitlen)
+{
+  return or_varbit_length_internal (bitlen, INT_ALIGNMENT);
+}
+
+/*
+ * or_packed_varbit_length - returns packed varbit length of or buffer encoding
+ *    return: varbit encoding length
+ *    bitlen(in): varbit length
+ */
+int
+or_varbit_length (int bitlen)
+{
+  return or_varbit_length_internal (bitlen, CHAR_ALIGNMENT);
+}
+
+static int
+or_varbit_length_internal (int bitlen, int align)
 {
   int len;
 
@@ -857,8 +883,11 @@ or_packed_varbit_length (int bitlen)
   /* add in the string length in bytes */
   len += ((bitlen + 7) / 8);
 
-  /* round up to a word boundary */
-  len = DB_ALIGN (len, INT_ALIGNMENT);
+  if (align == INT_ALIGNMENT)
+    {
+      /* round up to a word boundary */
+      len = DB_ALIGN (len, INT_ALIGNMENT);
+    }
   return len;
 }
 
@@ -870,7 +899,26 @@ or_packed_varbit_length (int bitlen)
  *    bitlen(in): length of varbit
  */
 int
+or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen)
+{
+  return or_put_varbit_internal (buf, string, bitlen, INT_ALIGNMENT);
+}
+
+/*
+ * or_put_varbit - put varbit into or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    string(in): string contains varbit value
+ *    bitlen(in): length of varbit
+ */
+int
 or_put_varbit (OR_BUF * buf, char *string, int bitlen)
+{
+  return or_put_varbit_internal (buf, string, bitlen, CHAR_ALIGNMENT);
+}
+
+static int
+or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align)
 {
   int net_bitlen;
   int bytelen;
@@ -908,8 +956,11 @@ or_put_varbit (OR_BUF * buf, char *string, int bitlen)
       /* store the string bytes */
       or_put_data (buf, string, bytelen);
 
-      /* round up to a word boundary */
-      or_put_align32 (buf);
+      if (align == INT_ALIGNMENT)
+	{
+	  /* round up to a word boundary */
+	  or_put_align32 (buf);
+	}
     }
   else
     {
@@ -936,6 +987,55 @@ or_put_varbit (OR_BUF * buf, char *string, int bitlen)
 
   return status;
 
+}
+
+int
+or_put_offset (OR_BUF * buf, int num)
+{
+  return or_put_offset_internal (buf, num, BIG_VAR_OFFSET_SIZE);
+}
+
+int
+or_put_offset_internal (OR_BUF * buf, int num, int offset_size)
+{
+  if (offset_size == OR_BYTE_SIZE)
+    {
+      return or_put_byte (buf, num);
+    }
+  else if (offset_size == OR_SHORT_SIZE)
+    {
+      return or_put_short (buf, num);
+    }
+  else
+    {
+      assert (offset_size == BIG_VAR_OFFSET_SIZE);
+
+      return or_put_int (buf, num);
+    }
+}
+
+int
+or_get_offset (OR_BUF * buf, int *error)
+{
+  return or_get_offset_internal (buf, error, BIG_VAR_OFFSET_SIZE);
+}
+
+int
+or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
+{
+  if (offset_size == OR_BYTE_SIZE)
+    {
+      return or_get_byte (buf, error);
+    }
+  else if (offset_size == OR_SHORT_SIZE)
+    {
+      return or_get_short (buf, error);
+    }
+  else
+    {
+      assert (offset_size == BIG_VAR_OFFSET_SIZE);
+      return or_get_int (buf, error);
+    }
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -1027,14 +1127,15 @@ or_get_varbit_length (OR_BUF * buf, int *rc)
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
  *    bitlen(in): bitlen to skip
+ *    align(in):
  */
 int
-or_skip_varbit_remainder (OR_BUF * buf, int bitlen)
+or_skip_varbit_remainder (OR_BUF * buf, int bitlen, int align)
 {
   int rc = NO_ERROR;
 
   rc = or_advance (buf, BITS_TO_BYTES (bitlen));
-  if (rc == NO_ERROR)
+  if (rc == NO_ERROR && align == INT_ALIGNMENT)
     {
       rc = or_get_align32 (buf);
     }
@@ -1045,9 +1146,10 @@ or_skip_varbit_remainder (OR_BUF * buf, int bitlen)
  * or_skip_varbit - skip varbit in or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
+ *    align(in):
  */
 int
-or_skip_varbit (OR_BUF * buf)
+or_skip_varbit (OR_BUF * buf, int align)
 {
   int bitlen;
   int rc = NO_ERROR;
@@ -1055,7 +1157,7 @@ or_skip_varbit (OR_BUF * buf)
   bitlen = or_get_varbit_length (buf, &rc);
   if (rc == NO_ERROR)
     {
-      return (or_skip_varbit_remainder (buf, bitlen));
+      return (or_skip_varbit_remainder (buf, bitlen, align));
     }
   return rc;
 }
@@ -1123,6 +1225,8 @@ or_get_byte (OR_BUF * buf, int *error)
 int
 or_put_short (OR_BUF * buf, int num)
 {
+  ASSERT_ALIGN (buf->ptr, SHORT_ALIGNMENT);
+
   if ((buf->ptr + OR_SHORT_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
@@ -1145,6 +1249,8 @@ int
 or_get_short (OR_BUF * buf, int *error)
 {
   int value = 0;
+
+  ASSERT_ALIGN (buf->ptr, SHORT_ALIGNMENT);
 
   if ((buf->ptr + OR_SHORT_SIZE) > buf->endptr)
     {
@@ -1169,6 +1275,8 @@ or_get_short (OR_BUF * buf, int *error)
 int
 or_put_int (OR_BUF * buf, int num)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
@@ -1192,6 +1300,8 @@ or_get_int (OR_BUF * buf, int *error)
 {
   int value = 0;
 
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
     {
       *error = or_underflow (buf);
@@ -1214,13 +1324,15 @@ or_get_int (OR_BUF * buf, int *error)
 int
 or_put_bigint (OR_BUF * buf, DB_BIGINT num)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_BIGINT_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
     }
   else
     {
-      OR_PUT_BIGINT (buf->ptr, num);
+      OR_PUT_BIGINT (buf->ptr, &num);
       buf->ptr += OR_BIGINT_SIZE;
     }
   return NO_ERROR;
@@ -1237,13 +1349,15 @@ or_get_bigint (OR_BUF * buf, int *error)
 {
   DB_BIGINT value = 0;
 
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_BIGINT_SIZE) > buf->endptr)
     {
       *error = or_underflow (buf);
     }
   else
     {
-      value = OR_GET_BIGINT (buf->ptr);
+      OR_GET_BIGINT (buf->ptr, &value);
       buf->ptr += OR_BIGINT_SIZE;
       *error = NO_ERROR;
     }
@@ -1259,6 +1373,8 @@ or_get_bigint (OR_BUF * buf, int *error)
 int
 or_put_float (OR_BUF * buf, float fnum)
 {
+  ASSERT_ALIGN (buf->ptr, FLOAT_ALIGNMENT);
+
   if ((buf->ptr + OR_FLOAT_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
@@ -1282,6 +1398,8 @@ or_get_float (OR_BUF * buf, int *error)
 {
   float value = 0.0;
 
+  ASSERT_ALIGN (buf->ptr, FLOAT_ALIGNMENT);
+
   if ((buf->ptr + OR_FLOAT_SIZE) > buf->endptr)
     {
       *error = or_underflow (buf);
@@ -1304,6 +1422,8 @@ or_get_float (OR_BUF * buf, int *error)
 int
 or_put_double (OR_BUF * buf, double dnum)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_DOUBLE_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
@@ -1326,6 +1446,8 @@ double
 or_get_double (OR_BUF * buf, int *error)
 {
   double value = 0.0;
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   if ((buf->ptr + OR_DOUBLE_SIZE) > buf->endptr)
     {
@@ -1355,6 +1477,8 @@ or_get_double (OR_BUF * buf, int *error)
 int
 or_put_time (OR_BUF * buf, DB_TIME * timeval)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_TIME_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
@@ -1376,6 +1500,8 @@ or_put_time (OR_BUF * buf, DB_TIME * timeval)
 int
 or_get_time (OR_BUF * buf, DB_TIME * timeval)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_TIME_SIZE) > buf->endptr)
     {
       return or_underflow (buf);
@@ -1397,6 +1523,8 @@ or_get_time (OR_BUF * buf, DB_TIME * timeval)
 int
 or_put_utime (OR_BUF * buf, DB_UTIME * timeval)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_UTIME_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
@@ -1418,6 +1546,8 @@ or_put_utime (OR_BUF * buf, DB_UTIME * timeval)
 int
 or_get_utime (OR_BUF * buf, DB_UTIME * timeval)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_UTIME_SIZE) > buf->endptr)
     {
       return or_underflow (buf);
@@ -1439,6 +1569,8 @@ or_get_utime (OR_BUF * buf, DB_UTIME * timeval)
 int
 or_put_date (OR_BUF * buf, DB_DATE * date)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_DATE_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
@@ -1460,6 +1592,8 @@ or_put_date (OR_BUF * buf, DB_DATE * date)
 int
 or_get_date (OR_BUF * buf, DB_DATE * date)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_DATE_SIZE) > buf->endptr)
     {
       return or_underflow (buf);
@@ -1481,6 +1615,8 @@ or_get_date (OR_BUF * buf, DB_DATE * date)
 int
 or_put_datetime (OR_BUF * buf, DB_DATETIME * datetimeval)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_DATETIME_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
@@ -1502,6 +1638,8 @@ or_put_datetime (OR_BUF * buf, DB_DATETIME * datetimeval)
 int
 or_get_datetime (OR_BUF * buf, DB_DATETIME * datetime)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_DATETIME_SIZE) > buf->endptr)
     {
       return or_underflow (buf);
@@ -1523,6 +1661,8 @@ or_get_datetime (OR_BUF * buf, DB_DATETIME * datetime)
 int
 or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_MONETARY_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
@@ -1544,6 +1684,8 @@ or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary)
 int
 or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_MONETARY_SIZE) > buf->endptr)
     {
       return or_underflow (buf);
@@ -1565,6 +1707,8 @@ or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary)
 int
 or_put_oid (OR_BUF * buf, OID * oid)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_OID_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
@@ -1599,6 +1743,8 @@ or_put_oid (OR_BUF * buf, OID * oid)
 int
 or_get_oid (OR_BUF * buf, OID * oid)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_OID_SIZE) > buf->endptr)
     {
       return or_underflow (buf);
@@ -1620,6 +1766,8 @@ or_get_oid (OR_BUF * buf, OID * oid)
 int
 or_put_loid (OR_BUF * buf, LOID * loid)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_LOID_SIZE) > buf->endptr)
     {
       return (or_overflow (buf));
@@ -1648,6 +1796,8 @@ or_put_loid (OR_BUF * buf, LOID * loid)
 int
 or_get_loid (OR_BUF * buf, LOID * loid)
 {
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
   if ((buf->ptr + OR_LOID_SIZE) > buf->endptr)
     {
       return or_underflow (buf);
@@ -1926,20 +2076,46 @@ or_seek (OR_BUF * buf, int psn)
 char *
 or_unpack_var_table (char *ptr, int nvars, OR_VARINFO * vars)
 {
+  return or_unpack_var_table_internal (ptr, nvars, vars, BIG_VAR_OFFSET_SIZE);
+}
+
+/*
+ * or_unpack_var_table_internal - Extracts a variable offset table from the disk
+ * representation of an object and converts it into a memory structure
+ *    return: advanced buffer pointer
+ *    ptr(in): pointer into a disk representation
+ *    nvars(in): number of variables expected
+ *    vars(out): array of var table info
+ *
+ * Note:
+ *    This is a little easier than dealing with the offset table in its raw
+ *    disk format.  It assumes that you know the number of elements
+ *    in the table and have previously allocated an array of OR_VARINFO
+ *    structures that will be filled in.
+ */
+char *
+or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars,
+			      int offset_size)
+{
   int i, offset, offset2;
+  int rc = NO_ERROR;
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
   if (nvars)
     {
-      offset = OR_GET_INT (ptr);
-      ptr += OR_INT_SIZE;
+      offset = OR_GET_OFFSET_INTERNAL (ptr, offset_size);
+      ptr += offset_size;
+
       for (i = 0; i < nvars; i++)
 	{
-	  offset2 = OR_GET_INT (ptr);
-	  ptr += OR_INT_SIZE;
+	  offset2 = OR_GET_OFFSET_INTERNAL (ptr, offset_size);
+	  ptr += offset_size;
 	  vars[i].offset = offset;
 	  vars[i].length = offset2 - offset;
 	  offset = offset2;
 	}
+      ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
     }
   return (ptr);
 }
@@ -1955,6 +2131,22 @@ or_unpack_var_table (char *ptr, int nvars, OR_VARINFO * vars)
 OR_VARINFO *
 or_get_var_table (OR_BUF * buf, int nvars, char *(*allocator) (int))
 {
+  return or_get_var_table_internal (buf, nvars, allocator,
+				    BIG_VAR_OFFSET_SIZE);
+}
+
+/*
+ * or_get_var_table_internal - Extracts an array of OR_VARINFO structures from a
+ * disk variable offset table
+ *    return: array of OR_VARINFO structures
+ *    buf(in/out): or buffer
+ *    nvars(in): expected number of variables
+ *    allocator(in): allocator for return value allocation
+ */
+OR_VARINFO *
+or_get_var_table_internal (OR_BUF * buf, int nvars, char *(*allocator) (int),
+			   int offset_size)
+{
   OR_VARINFO *vars;
   int length;
 
@@ -1965,7 +2157,8 @@ or_get_var_table (OR_BUF * buf, int nvars, char *(*allocator) (int))
       return vars;
     }
 
-  length = OR_INT_SIZE * (nvars + 1);
+  length = DB_ALIGN (offset_size * (nvars + 1), INT_ALIGNMENT);
+
   if ((buf->ptr + length) > buf->endptr)
     {
       or_underflow (buf);
@@ -1979,7 +2172,8 @@ or_get_var_table (OR_BUF * buf, int nvars, char *(*allocator) (int))
 	}
       else
 	{
-	  (void) or_unpack_var_table (buf->ptr, nvars, vars);
+	  (void) or_unpack_var_table_internal (buf->ptr, nvars, vars,
+					       offset_size);
 	}
       buf->ptr += length;
     }
@@ -2010,6 +2204,8 @@ or_pack_int (char *ptr, int number)
       return NULL;
     }
 
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_PUT_INT (ptr, number);
   return (ptr + OR_INT_SIZE);
 }
@@ -2028,6 +2224,8 @@ or_unpack_int (char *ptr, int *number)
       return NULL;
       *number = 0;
     }
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
   *number = OR_GET_INT (ptr);
   return (ptr + OR_INT_SIZE);
@@ -2070,7 +2268,7 @@ or_pack_int64 (char *ptr, INT64 number)
 {
   ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
 
-  OR_PUT_INT64 (ptr, number);
+  OR_PUT_INT64 (ptr, &number);
   return (ptr + OR_INT64_SIZE);
 }
 
@@ -2085,7 +2283,7 @@ or_unpack_int64 (char *ptr, INT64 * number)
 {
   ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
 
-  *number = OR_GET_INT64 (ptr);
+  OR_GET_INT64 (ptr, number);
   return (ptr + OR_INT64_SIZE);
 }
 
@@ -2099,6 +2297,8 @@ or_unpack_int64 (char *ptr, INT64 * number)
 char *
 or_pack_short (char *ptr, short number)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_PUT_INT (ptr, (int) number);
   return (ptr + OR_INT_SIZE);
 }
@@ -2112,6 +2312,8 @@ or_pack_short (char *ptr, short number)
 char *
 or_unpack_short (char *ptr, short *number)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   *number = (short) OR_GET_INT (ptr);
   return (ptr + OR_INT_SIZE);
 }
@@ -2126,6 +2328,8 @@ or_unpack_short (char *ptr, short *number)
 char *
 or_pack_errcode (char *ptr, int error)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_PUT_INT (ptr, (int) error);
   return (ptr + OR_INT_SIZE);
 }
@@ -2139,6 +2343,8 @@ or_pack_errcode (char *ptr, int error)
 char *
 or_unpack_errcode (char *ptr, int *error)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   *error = (int) OR_GET_INT (ptr);
   return (ptr + OR_INT_SIZE);
 }
@@ -2153,6 +2359,8 @@ or_unpack_errcode (char *ptr, int *error)
 char *
 or_pack_lock (char *ptr, LOCK lock)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_PUT_INT (ptr, (int) lock);
   return (ptr + OR_INT_SIZE);
 }
@@ -2166,6 +2374,8 @@ or_pack_lock (char *ptr, LOCK lock)
 char *
 or_unpack_lock (char *ptr, LOCK * lock)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   *lock = (LOCK) OR_GET_INT (ptr);
   return (ptr + OR_INT_SIZE);
 }
@@ -2179,6 +2389,8 @@ or_unpack_lock (char *ptr, LOCK * lock)
 char *
 or_pack_float (char *ptr, float number)
 {
+  ASSERT_ALIGN (ptr, FLOAT_ALIGNMENT);
+
   OR_PUT_FLOAT (ptr, &number);
   return (ptr + OR_FLOAT_SIZE);
 }
@@ -2192,6 +2404,8 @@ or_pack_float (char *ptr, float number)
 char *
 or_unpack_float (char *ptr, float *number)
 {
+  ASSERT_ALIGN (ptr, FLOAT_ALIGNMENT);
+
   OR_GET_FLOAT (ptr, number);
   return (ptr + OR_FLOAT_SIZE);
 }
@@ -2237,6 +2451,8 @@ or_unpack_double (char *ptr, double *number)
 char *
 or_pack_time (char *ptr, DB_TIME time)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_PUT_TIME (ptr, &time);
   return (ptr + OR_TIME_SIZE);
 }
@@ -2250,6 +2466,8 @@ or_pack_time (char *ptr, DB_TIME time)
 char *
 or_unpack_time (char *ptr, DB_TIME * time)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_GET_TIME (ptr, time);
   return (ptr + OR_TIME_SIZE);
 }
@@ -2263,6 +2481,8 @@ or_unpack_time (char *ptr, DB_TIME * time)
 char *
 or_pack_utime (char *ptr, DB_UTIME utime)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_PUT_UTIME (ptr, &utime);
   return (ptr + OR_UTIME_SIZE);
 }
@@ -2276,6 +2496,8 @@ or_pack_utime (char *ptr, DB_UTIME utime)
 char *
 or_unpack_utime (char *ptr, DB_UTIME * utime)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_GET_UTIME (ptr, utime);
   return (ptr + OR_UTIME_SIZE);
 }
@@ -2289,6 +2511,8 @@ or_unpack_utime (char *ptr, DB_UTIME * utime)
 char *
 or_pack_date (char *ptr, DB_DATE date)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_PUT_DATE (ptr, &date);
   return (ptr + OR_DATE_SIZE);
 }
@@ -2302,6 +2526,8 @@ or_pack_date (char *ptr, DB_DATE date)
 char *
 or_unpack_date (char *ptr, DB_DATE * date)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_GET_DATE (ptr, date);
   return (ptr + OR_DATE_SIZE);
 }
@@ -2315,6 +2541,8 @@ or_unpack_date (char *ptr, DB_DATE * date)
 char *
 or_pack_monetary (char *ptr, DB_MONETARY * money)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_PUT_MONETARY (ptr, money);
   return (ptr + OR_MONETARY_SIZE);
 }
@@ -2328,6 +2556,8 @@ or_pack_monetary (char *ptr, DB_MONETARY * money)
 char *
 or_unpack_monetary (char *ptr, DB_MONETARY * money)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_GET_MONETARY (ptr, money);
   return (ptr + OR_MONETARY_SIZE);
 }
@@ -2348,6 +2578,7 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
   *number_array = (int *) db_private_alloc (NULL, (n * sizeof (int)));
   if (*number_array)
     {
+      ASSERT_ALIGN (ptr, INT_ALIGNMENT);
       for (i = 0; i < n; i++)
 	{
 	  ptr = or_unpack_int (ptr, &(*number_array)[i]);
@@ -2377,6 +2608,8 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
 char *
 or_pack_oid (char *ptr, OID * oid)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   if (oid != NULL)
     {
       OR_PUT_OID (ptr, oid);
@@ -2397,6 +2630,8 @@ or_pack_oid (char *ptr, OID * oid)
 char *
 or_unpack_oid (char *ptr, OID * oid)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_GET_OID (ptr, oid);
   return (ptr + OR_OID_SIZE);
 }
@@ -2422,6 +2657,7 @@ or_unpack_oid_array (char *ptr, int n, OID ** oids)
       return ptr;
     }
 
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
   for (i = 0; i < n; i++)
     {
@@ -2441,6 +2677,8 @@ or_unpack_oid_array (char *ptr, int n, OID ** oids)
 char *
 or_pack_loid (char *ptr, LOID * loid)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   if (loid != NULL)
     {
       OR_PUT_LOID (ptr, loid);
@@ -2462,6 +2700,8 @@ or_pack_loid (char *ptr, LOID * loid)
 char *
 or_unpack_loid (char *ptr, LOID * loid)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_GET_LOID (ptr, loid);
   return (ptr + OR_LOID_SIZE);
 }
@@ -2476,6 +2716,8 @@ char *
 or_pack_hfid (const char *ptr, const HFID * hfid)
 {
   char *new_;
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
   if (hfid != NULL)
     {
@@ -2500,6 +2742,8 @@ or_pack_hfid (const char *ptr, const HFID * hfid)
 char *
 or_unpack_hfid (char *ptr, HFID * hfid)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_GET_HFID (ptr, hfid);
   return (ptr + OR_HFID_SIZE);
 }
@@ -2525,6 +2769,8 @@ or_unpack_hfid_array (char *ptr, int n, HFID ** hfids)
       return (ptr);
     }
 
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   for (i = 0; i < n; i++)
     {
       OR_GET_HFID (ptr, &((*hfids)[i]));
@@ -2543,6 +2789,8 @@ or_unpack_hfid_array (char *ptr, int n, HFID ** hfids)
 char *
 or_pack_ehid (char *ptr, EHID * ehid)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_PUT_EHID (ptr, ehid);
 
   return (ptr + OR_EHID_SIZE);
@@ -2557,6 +2805,8 @@ or_pack_ehid (char *ptr, EHID * ehid)
 char *
 or_unpack_ehid (char *ptr, EHID * ehid)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_GET_EHID (ptr, ehid);
 
   return (ptr + OR_EHID_SIZE);
@@ -2571,6 +2821,8 @@ or_unpack_ehid (char *ptr, EHID * ehid)
 char *
 or_pack_btid (char *ptr, BTID * btid)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   if (btid)
     {
       OR_PUT_BTID (ptr, btid);
@@ -2579,6 +2831,11 @@ or_pack_btid (char *ptr, BTID * btid)
     {
       OR_PUT_NULL_BTID (ptr);
     }
+
+#if !defined(NDEBUG)
+  /* to make valgrind quiet */
+  OR_PUT_SHORT (ptr + OR_BTID_SIZE, 0);
+#endif
 
   return (ptr + OR_BTID_ALIGNED_SIZE);
 }
@@ -2592,6 +2849,8 @@ or_pack_btid (char *ptr, BTID * btid)
 char *
 or_unpack_btid (char *ptr, BTID * btid)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_GET_BTID (ptr, btid);
 
   return (ptr + OR_BTID_ALIGNED_SIZE);
@@ -2608,6 +2867,8 @@ or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa)
 {
   char *new_;
 
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   if (lsa != NULL)
     {
       OR_PUT_LOG_LSA (ptr, lsa);
@@ -2617,8 +2878,13 @@ or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa)
       OR_PUT_NULL_LOG_LSA (ptr);
     }
 
+#if !defined(NDEBUG)
+  /* to make valgrind quiet */
+  OR_PUT_SHORT (ptr + OR_LOG_LSA_SIZE, 0);
+#endif
+
   /* kludge, need to have all of these accept and return const args */
-  new_ = (char *) ptr + OR_LOG_LSA_SIZE;
+  new_ = (char *) ptr + OR_LOG_LSA_ALIGNED_SIZE;
   return (new_);
 }
 
@@ -2631,8 +2897,10 @@ or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa)
 char *
 or_unpack_log_lsa (char *ptr, LOG_LSA * lsa)
 {
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_GET_LOG_LSA (ptr, lsa);
-  return (ptr + OR_LOG_LSA_SIZE);
+  return (ptr + OR_LOG_LSA_ALIGNED_SIZE);
 }
 
 /*
@@ -2698,6 +2966,8 @@ or_pack_string (char *ptr, const char *string)
 {
   int len, bits, pad;
 
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   if (string == NULL)
     {
       OR_PUT_INT (ptr, -1);
@@ -2733,22 +3003,21 @@ or_pack_string (char *ptr, const char *string)
  *    length(in): length
  */
 char *
-or_pack_string_with_length (char *ptr, char *string, int length)
+or_pack_string_with_length (char *ptr, const char *string, int length)
 {
   int len, bits, pad;
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
   if (string == NULL)
     {
       OR_PUT_INT (ptr, -1);
-
       ptr += OR_INT_SIZE;
     }
   else
     {
       len = length + 1;
-
       bits = len & 3;
-
       if (bits)
 	{
 	  pad = 4 - bits;
@@ -2757,11 +3026,8 @@ or_pack_string_with_length (char *ptr, char *string, int length)
 	{
 	  pad = 0;
 	}
-
       OR_PUT_INT (ptr, len + pad);
-
       ptr += OR_INT_SIZE;
-
       (void) memcpy (ptr, string, len);
       ptr += len;
       (void) memset (ptr, '\0', pad);
@@ -2782,6 +3048,8 @@ or_unpack_string (char *ptr, char **string)
 {
   char *new_;
   int length;
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
   length = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
@@ -2810,6 +3078,50 @@ or_unpack_string (char *ptr, char **string)
 }
 
 /*
+ * or_unpack_string_alloc - extracts a string from a buffer.
+ *    return: advanced pointer
+ *    ptr(in): current pointer
+ *    string(out): return pointer
+ *
+ * Note: Unlike or_unpack_string which uses db_private_alloc to allocate
+ * memory for the resulting string, this function uses malloc and the string
+ * has to be freed using free_and_init.
+ */
+char *
+or_unpack_string_alloc (char *ptr, char **string)
+{
+  char *new_;
+  int length;
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  length = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+  if (length == -1)
+    {
+      *string = NULL;
+    }
+  else
+    {
+      new_ = (char *) malloc (length * sizeof (char));
+      /* need to handle allocation errors */
+      if (new_ == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	  ptr += length;
+	}
+      else
+	{
+	  (void) memcpy (new_, ptr, length);
+	  ptr += length;
+	}
+      *string = new_;
+    }
+  return (ptr);
+}
+
+/*
  * or_unpack_string_nocopy - extracts a string from a buffer.
  *    return: advanced pointer
  *    ptr(in): current pointer
@@ -2819,6 +3131,8 @@ char *
 or_unpack_string_nocopy (char *ptr, char **string)
 {
   int length;
+
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
   length = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
@@ -2839,12 +3153,14 @@ or_unpack_string_nocopy (char *ptr, char **string)
  * the packed representation of a string.
  *    return: length of packed string
  *    string(in): string to examine
- * Note: This includes padding bytes necesary to bring the length up to a
+ *    strlen(out): strlen(string)
+ *
+ * Note: This includes padding bytes necessary to bring the length up to a
  * word boundary and also includes a word for the string length which is
  * stored at the top.
  */
 int
-or_packed_string_length (const char *string)
+or_packed_string_length (const char *string, int *strlenp)
 {
   int total, len, bits, pad;
 
@@ -2852,7 +3168,14 @@ or_packed_string_length (const char *string)
   total = OR_INT_SIZE;
   if (string != NULL)
     {
-      len = strlen (string) + 1;
+      if (strlenp != NULL)
+	{
+	  len = (*strlenp = strlen (string)) + 1;
+	}
+      else
+	{
+	  len = strlen (string) + 1;
+	}
       bits = len & 3;
       if (bits)
 	{
@@ -2863,6 +3186,13 @@ or_packed_string_length (const char *string)
 	  pad = 0;
 	}
       total += len + pad;
+    }
+  else
+    {
+      if (strlenp != NULL)
+	{
+	  *strlenp = 0;
+	}
     }
   return (total);
 }
@@ -3251,6 +3581,14 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain,
 	      carrier |= OR_DOMAIN_SET_DOMAIN_FLAG;
 	      has_subdomain = 1;
 	    }
+
+	  if (id == DB_TYPE_MIDXKEY)
+	    {
+	      assert (d->precision > 0
+		      && d->precision == tp_domain_size (d->setdomain));
+	      precision = d->precision;
+	    }
+
 	  break;
 
 	default:
@@ -3377,7 +3715,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    {
 	      goto error;
 	    }
-	  domain = tp_Domains[index - 1];
+	  domain = tp_domain_resolve_default (index - 1);
 	  /* stop the loop */
 	  more = false;
 	}
@@ -3454,6 +3792,12 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_TABLE:
 	    case DB_TYPE_MIDXKEY:
 	      has_setdomain = carrier & OR_DOMAIN_SET_DOMAIN_FLAG;
+	      if (type == DB_TYPE_MIDXKEY)
+		{
+		  precision =
+		    (carrier & OR_DOMAIN_PRECISION_MASK) >>
+		    OR_DOMAIN_PRECISION_SHIFT;
+		}
 	      break;
 
 	    default:
@@ -3528,6 +3872,14 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 		  goto error;
 		}
 	    }
+
+#if !defined (NDEBUG)
+	  if (type == DB_TYPE_MIDXKEY)
+	    {
+	      assert (d->precision > 0
+		      && d->precision == tp_domain_size (d->setdomain));
+	    }
+#endif /* NDEBUG */
 
 	  if (is_desc)
 	    {
@@ -3607,7 +3959,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	   * based,
 	   * must adjust prior to indexing the table.
 	   */
-	  domain = tp_Domains[index - 1];
+	  domain = tp_domain_resolve_default (index - 1);
 	  /* stop the loop */
 	  more = false;
 	}
@@ -3624,6 +3976,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_FLOAT:
 	    case DB_TYPE_DOUBLE:
 	    case DB_TYPE_ELO:
+	    case DB_TYPE_BLOB:
+	    case DB_TYPE_CLOB:
 	    case DB_TYPE_TIME:
 	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_DATETIME:
@@ -3750,16 +4104,19 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  goto error;
 		}
 
+	      if (type == DB_TYPE_MIDXKEY)
+		{
+		  precision = (carrier & OR_DOMAIN_PRECISION_MASK)
+		    >> OR_DOMAIN_PRECISION_SHIFT;
+		}
+
 	      dom = tp_domain_find_set (type, setdomain, is_desc);
 	      if (dom)
 		{
-		  if (setdomain != NULL)
+		  for (td = setdomain, next = NULL; td != NULL; td = next)
 		    {
-		      for (td = setdomain, next = NULL; td != NULL; td = next)
-			{
-			  next = td->next;
-			  tp_domain_free (td);
-			}
+		      next = td->next;
+		      tp_domain_free (td);
 		    }
 		}
 	      break;
@@ -3771,7 +4128,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	  if (dom == NULL)
 	    {
 	      /* not found. need to construct one */
-	      dom = tp_domain_construct (type, NULL, precision, scale, NULL);
+	      dom =
+		tp_domain_construct (type, NULL, precision, scale, setdomain);
 	      if (dom == NULL)
 		{
 		  goto error;
@@ -3779,20 +4137,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 
 	      switch (type)
 		{
-		case DB_TYPE_NULL:
-		case DB_TYPE_INTEGER:
-		case DB_TYPE_FLOAT:
-		case DB_TYPE_DOUBLE:
-		case DB_TYPE_ELO:
-		case DB_TYPE_TIME:
-		case DB_TYPE_TIMESTAMP:
-		case DB_TYPE_DATETIME:
-		case DB_TYPE_DATE:
-		case DB_TYPE_MONETARY:
-		case DB_TYPE_SHORT:
-		case DB_TYPE_BIGINT:
-		case DB_TYPE_NUMERIC:
-		  break;
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_CHAR:
@@ -3807,16 +4151,18 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  dom->class_mop = class_mop;
 #endif /* !SERVER_MODE */
 		  break;
-		case DB_TYPE_SET:
-		case DB_TYPE_MULTISET:
-		case DB_TYPE_SEQUENCE:
-		case DB_TYPE_TABLE:
-		case DB_TYPE_MIDXKEY:
-		  dom->setdomain = setdomain;
-		  break;
 		default:
 		  break;
 		}
+
+#if !defined (NDEBUG)
+	      if (type == DB_TYPE_MIDXKEY)
+		{
+		  assert (dom->precision > 0
+			  && dom->precision ==
+			  tp_domain_size (dom->setdomain));
+		}
+#endif /* NDEBUG */
 
 	      if (is_desc)
 		{
@@ -3824,6 +4170,14 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		}
 	      dom = tp_domain_cache (dom);
 	    }
+
+#if !defined (NDEBUG)
+	  if (type == DB_TYPE_MIDXKEY)
+	    {
+	      assert (dom->precision > 0
+		      && dom->precision == tp_domain_size (dom->setdomain));
+	    }
+#endif /* NDEBUG */
 
 	  if (last == NULL)
 	    {
@@ -4153,7 +4507,9 @@ or_get_set_header (OR_BUF * buf, DB_TYPE * set_type, int *size,
       *offset_table = ((header & OR_SET_VARIABLE_BIT) != 0);
       *element_tags = ((header & OR_SET_TAG_BIT) != 0);
       if (common_sub != NULL)
-	*common_sub = ((header & OR_SET_COMMON_SUB_BIT) != 0);
+	{
+	  *common_sub = ((header & OR_SET_COMMON_SUB_BIT) != 0);
+	}
       *size = or_get_int (buf, &rc);
     }
   return rc;
@@ -4407,8 +4763,8 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 	  if (offset_ptr != NULL)
 	    {
 	      /* offset table entry */
-	      OR_PUT_INT (offset_ptr, offset);
-	      offset_ptr += OR_INT_SIZE;
+	      OR_PUT_OFFSET (offset_ptr, offset);
+	      offset_ptr += BIG_VAR_OFFSET_SIZE;
 	    }
 	  else if (bound_ptr != NULL)
 	    {
@@ -4472,7 +4828,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
       /* store the ending offset in the table if we're using one */
       if (offset_ptr != NULL)
 	{
-	  OR_PUT_INT (offset_ptr, offset);
+	  OR_PUT_OFFSET (offset_ptr, offset);
 	}
 
       if (bound_ptr != NULL && bit != 0x1f)
@@ -4589,8 +4945,8 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
       /* read the first offset or bound word */
       if (offset_table)
 	{
-	  offset = OR_GET_INT (offset_ptr);
-	  offset_ptr += OR_INT_SIZE;
+	  offset = OR_GET_OFFSET (offset_ptr);
+	  offset_ptr += BIG_VAR_OFFSET_SIZE;
 	}
       else if (bound_bits)
 	{
@@ -4605,10 +4961,10 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 	  element_size = -1;
 	  if (offset_ptr != NULL)
 	    {
-	      offset2 = OR_GET_INT (offset_ptr);
+	      offset2 = OR_GET_OFFSET (offset_ptr);
+	      offset_ptr += BIG_VAR_OFFSET_SIZE;
 	      element_size = offset2 - offset;
 	      offset = offset2;
-	      offset_ptr += OR_INT_SIZE;
 	    }
 	  else if (bound_ptr != NULL)
 	    {
@@ -4772,8 +5128,8 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
       /* read the first offset or bound word */
       if (offset_table)
 	{
-	  offset = OR_GET_INT (offset_ptr);
-	  offset_ptr += OR_INT_SIZE;
+	  offset = OR_GET_OFFSET (offset_ptr);
+	  offset_ptr += BIG_VAR_OFFSET_SIZE;
 	}
       else if (bound_bits)
 	{
@@ -4787,10 +5143,10 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
 	  element_size = -1;
 	  if (offset_ptr != NULL)
 	    {
-	      offset2 = OR_GET_INT (offset_ptr);
+	      offset2 = OR_GET_OFFSET (offset_ptr);
+	      offset_ptr += BIG_VAR_OFFSET_SIZE;
 	      element_size = offset2 - offset;
 	      offset = offset2;
-	      offset_ptr += OR_INT_SIZE;
 	    }
 	  else if (bound_ptr != NULL)
 	    {
@@ -4940,13 +5296,13 @@ or_packed_value_size (DB_VALUE * value,
 	      return size;
 	    }
 	}
-      if (type->lengthval == NULL)
+      if (type->data_lengthval == NULL)
 	{
 	  size += type->disksize;
 	}
       else
 	{
-	  size += (*(type->lengthval)) (value, 1);
+	  size += (*(type->data_lengthval)) (value, 1);
 	}
     }
 
@@ -5038,7 +5394,7 @@ or_put_value (OR_BUF * buf, DB_VALUE * value,
        * domain ? */
       if (rc == NO_ERROR)
 	{
-	  rc = (*(type->writeval)) (buf, value);
+	  rc = (*(type->data_writeval)) (buf, value);
 	}
     }
 
@@ -5150,14 +5506,14 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 	{
 	  if (value)
 	    {
-	      (*(domain->type->readval)) (buf, value, domain, expected,
-					  copy, NULL, 0);
+	      (*(domain->type->data_readval)) (buf, value, domain, expected,
+					       copy, NULL, 0);
 	    }
 	  else
 	    {
 	      /* the NULL value, will cause readval to skip the value */
-	      (*(domain->type->readval)) (buf, NULL, domain, expected,
-					  false, NULL, 0);
+	      (*(domain->type->data_readval)) (buf, NULL, domain, expected,
+					       false, NULL, 0);
 	    }
 
 	  if (rc != NO_ERROR)
@@ -5207,9 +5563,17 @@ char *
 or_pack_value (char *buf, DB_VALUE * value)
 {
   OR_BUF orbuf;
+  char *aligned_buf;
 
-  buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
-  or_init (&orbuf, buf, 0);
+  aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
+#if !defined(NDEBUG)
+  /* to make valgrind quiet */
+  if (aligned_buf - buf > 0)
+    {
+      memset (buf, 0, aligned_buf - buf);
+    }
+#endif
+  or_init (&orbuf, aligned_buf, 0);
   /* don't collapse nulls, include the domain, and include domain class oids */
   or_put_value (&orbuf, value, 0, 1, 1);
 
@@ -5274,7 +5638,7 @@ or_pack_mem_value (char *ptr, DB_VALUE * value)
       if (rc == NO_ERROR)
 	{
 	  or_get_align64 (buf);
-	  rc = (*(type->writeval)) (buf, value);
+	  rc = (*(type->data_writeval)) (buf, value);
 	}
     }
 
@@ -5352,7 +5716,9 @@ or_unpack_mem_value (char *ptr, DB_VALUE * value)
     }
   else
     {
-      rc = (*(domain->type->readval)) (buf, value, domain, -1, true, NULL, 0);
+      rc =
+	(*(domain->type->data_readval)) (buf, value, domain, -1, true, NULL,
+					 0);
       if (rc != NO_ERROR)
 	{
 	  return NULL;
@@ -5807,8 +6173,8 @@ or_method_sig_list_length (void *method_sig_list_ptr)
   for (n = 0, method_sig = method_sig_list->method_sig;
        n < method_sig_list->no_methods; ++n, method_sig = method_sig->next)
     {
-      length += or_packed_string_length (method_sig->method_name);
-      length += or_packed_string_length (method_sig->class_name);
+      length += or_packed_string_length (method_sig->method_name, NULL);
+      length += or_packed_string_length (method_sig->class_name, NULL);
       length += OR_INT_SIZE * 2;	/* method_type & no_method_args */
       /* + object ptr */
       length += OR_INT_SIZE * (method_sig->no_method_args + 1);
@@ -5816,76 +6182,6 @@ or_method_sig_list_length (void *method_sig_list_ptr)
     }
   return length;
 }
-
-/*
- * ELO PACKING
- */
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * or_pack_elo - write a ELO value
- *    return: advanced buffer pointer
- *    ptr(out): starting pointer
- *    elo_ptr(in): elo
- */
-char *
-or_pack_elo (char *ptr, void *elo_ptr)
-{
-  DB_ELO *elo = (DB_ELO *) elo_ptr;
-
-  ptr = or_pack_loid (ptr, &elo->loid);
-  ptr = or_pack_string (ptr, elo->pathname);
-  ptr = or_pack_int (ptr, elo->type);
-  return ptr;
-}
-
-/*
- * or_unpack_elo - read a ELO value
- *    return: advanced buffer pointer
- *    ptr(in): starting pointer
- *    elo_ptr(out): elo
- * Note:
- *    This unpacks a DB_ELO.
- */
-char *
-or_unpack_elo (char *ptr, void **elo_ptr)
-{
-  DB_ELO *elo;
-
-  elo = (DB_ELO *) db_private_alloc (NULL, sizeof (DB_ELO));
-
-  if (elo == (DB_ELO *) 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
-      return (NULL);
-    }
-  ptr = or_unpack_loid (ptr, &elo->loid);
-  ptr = or_unpack_string (ptr, (char **) &elo->pathname);
-  ptr = or_unpack_int (ptr, (int *) &elo->type);
-  *(DB_ELO **) elo_ptr = elo;
-  return ptr;
-}
-
-/*
- * or_elo_length - get the length of given ELO
- *    return: length of DB_ELO in bytes.
- *    elo_ptr(in): elo pointer
- * Note:
- *    Calculates the number of bytes required to store the disk/comm
- *    representation of a DB_ELO structure.
- */
-int
-or_elo_length (void *elo_ptr)
-{
-  DB_ELO *elo = (DB_ELO *) elo_ptr;
-
-  int length = 0;
-  length += OR_LOID_SIZE;
-  length += or_packed_string_length (elo->pathname);
-  length += OR_INT_SIZE;
-  return length;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * GENERIC DB_VALUE PACKING

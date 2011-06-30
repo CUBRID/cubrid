@@ -69,8 +69,6 @@ extern void master_util_wait_proc_terminate (int pid);
 
 
 #define IS_MASTER_CONN_NAME_DRIVER(name)        (*((char *)name) == '-')
-#define IS_MASTER_CONN_NAME_REPL_AGENT(name)    (*((char *)name) == '&')
-#define IS_MASTER_CONN_NAME_REPL_SERVER(name)   (*((char *)name) == '+')
 #define IS_MASTER_CONN_NAME_HA_SERVER(name)     (*((char *)name) == '#')
 #define IS_MASTER_CONN_NAME_HA_COPYLOG(name)    (*((char *)name) == '$')
 #define IS_MASTER_CONN_NAME_HA_APPLYLOG(name)   (*((char *)name) == '%')

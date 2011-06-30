@@ -1467,8 +1467,8 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
       return ER_DL_ESYS;
     }
 
-  (&keys)->domain.general_info.is_null = 1;
-  (&keys)->need_clear = false;
+  keys.domain.general_info.is_null = 1;
+  keys.need_clear = false;
 
   *mop = NULL;
 
@@ -1485,11 +1485,11 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	{
 	case 0:
 
-	  if ((&elem_value)->domain.general_info.is_null != 0)
+	  if (elem_value.domain.general_info.is_null != 0)
 	    {
 	      vclass = NULL;
 	    }
-	  else if ((&elem_value)->domain.general_info.type == DB_TYPE_OBJECT)
+	  else if (elem_value.domain.general_info.type == DB_TYPE_OBJECT)
 	    {
 	      vclass = db_get_object (&elem_value);
 	      /*
@@ -1512,11 +1512,11 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	  break;
 
 	case 1:
-	  if ((&elem_value)->domain.general_info.is_null != 0)
+	  if (elem_value.domain.general_info.is_null != 0)
 	    {
 	      bclass = NULL;
 	    }
-	  else if ((&elem_value)->domain.general_info.type == DB_TYPE_OBJECT)
+	  else if (elem_value.domain.general_info.type == DB_TYPE_OBJECT)
 	    {
 	      bclass = db_get_object (&elem_value);
 	      if (bclass && bclass->object == NULL
@@ -1534,7 +1534,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	  break;
 
 	case 2:
-	  if ((&elem_value)->domain.general_info.is_null == 0)
+	  if (elem_value.domain.general_info.is_null == 0)
 	    {
 	      keys = elem_value;	/* structure copy */
 	    }
@@ -1544,7 +1544,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	}
 
     }
-  if ((&keys)->domain.general_info.is_null == 0)
+  if (keys.domain.general_info.is_null == 0)
     {
       /*
        * does it have a class/proxy component specified?
@@ -1556,7 +1556,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	  flags = VID_UPDATABLE | VID_BASE;
 	  obj = ws_vmop (bclass, flags, &keys);
 	}
-      else if ((&keys)->domain.general_info.type == DB_TYPE_OBJECT)
+      else if (keys.domain.general_info.type == DB_TYPE_OBJECT)
 	{
 	  /*
 	   * The vclass refers to a class, but we left
@@ -1591,7 +1591,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	    }
 	  else
 	    {
-	      if ((&keys)->domain.general_info.type == DB_TYPE_SEQUENCE)
+	      if (keys.domain.general_info.type == DB_TYPE_SEQUENCE)
 		{
 		  /*
 		   * The vclass refers to a non-updatable view result.
@@ -1810,7 +1810,7 @@ vid_db_value_size (DB_VALUE * dbval)
 {
   int val_size;
 
-  val_size = pr_writeval_disk_size (dbval);
+  val_size = pr_data_writeval_disk_size (dbval);
 
   /*
    * some OR_PUT functions assume data to be copied is always properly aligned,
@@ -1849,11 +1849,11 @@ vid_pack_db_value (char *lbuf, DB_VALUE * dbval)
     }
 
   pr_type = tp_Type_id_map[(int) dbval_type];
-  val_size = pr_writeval_disk_size (dbval);
+  val_size = pr_data_writeval_disk_size (dbval);
 
   or_init (&buf, lbuf, val_size);
 
-  if ((*(pr_type->writeval)) (&buf, dbval) != NO_ERROR)
+  if ((*(pr_type->data_writeval)) (&buf, dbval) != NO_ERROR)
     {
       return NULL;
     }

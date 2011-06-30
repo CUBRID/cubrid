@@ -1,25 +1,40 @@
-#!/bin/bash
+#!/bin/sh
 
-PWD=`pwd`
-CMD=$0
-PREPATH=${CMD%/*}
-EXTERNAL=${PWD%/*}
-CONFIGURE=$PREPATH/configure
-ARGS="CC=\"$CC\" CXX=\"$CXX\" --prefix=$EXTERNAL --enable-cplusplus --disable-shared"
+opts="--prefix=$PWD/.. --enable-cplusplus --disable-shared"
+srdrir=''
 
-while [ -n "$(echo $1)" ]; do
-	case $1 in
-		--enable-64bit ) ARGS="$ARGS --with-pic" ;;
-		--enable-debug ) ARGS="$ARGS --enable-full-debug --enable-gc-assertions";;
-	esac
-	shift
+while test $# -ge 1; do
+  case "$1" in
+    -h | --help)
+      echo 'configure script for external package'
+      exit 0
+      ;;
+    --prefix=*)
+      shift
+      ;;
+    --srcdir=*)
+      opts="$opts '$1'"
+      srcdiropt=`echo $1 | sed 's/--srcdir=//'`
+      srcdir=`readlink -f $srcdiropt`
+      shift
+      ;;
+    --enable-64bit)
+      opts="$opts --with-pic"
+      shift
+      ;;
+    --enable-debug)
+      opts="$opts --enable-full-debug --enable-gc-assertions"
+      shift
+      ;;
+    *)
+      opts="$opts '$1'"
+      shift
+      ;;
+  esac
 done
 
-#echo "$CONFIGURE $ARGS"
-if [ -f config.status ]; then
-	TMP=""
+if test -f config.status; then
+  echo "configured already. skip $PWD"
 else
-	eval $CONFIGURE $ARGS
-	eval make
-	eval make install
+  eval "$srcdir/configure $opts"
 fi

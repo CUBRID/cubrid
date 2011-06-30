@@ -58,6 +58,7 @@
 #include "execute_statement.h"
 #include "query_graph.h"
 #include "transform.h"
+#include "query_planner.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -164,11 +165,7 @@ static REGU_VARIABLE *pt_make_regu_constant (PARSER_CONTEXT * parser,
 					     DB_VALUE * db_value,
 					     const DB_TYPE db_type,
 					     const PT_NODE * node);
-static REGU_VARIABLE *pt_make_regu_arith (const REGU_VARIABLE * arg1,
-					  const REGU_VARIABLE * arg2,
-					  const REGU_VARIABLE * arg3,
-					  const OPERATOR_TYPE op,
-					  const TP_DOMAIN * domain);
+static REGU_VARIABLE *pt_make_regu_pred (const PRED_EXPR * pred);
 static REGU_VARIABLE *pt_make_function (PARSER_CONTEXT * parser,
 					int function_code,
 					const REGU_VARIABLE_LIST arg_list,
@@ -199,6 +196,11 @@ static REGU_VARIABLE *pt_make_vid (PARSER_CONTEXT * parser,
 				   const REGU_VARIABLE * regu3);
 static PT_NODE *pt_make_empty_string (PARSER_CONTEXT * parser,
 				      const PT_NODE * node);
+static PT_NODE *pt_make_prefix_index_data_filter (PARSER_CONTEXT * parser,
+						  PT_NODE * where_key_part,
+						  PT_NODE * where_part,
+						  QO_XASL_INDEX_INFO *
+						  index_pred);
 static REGU_VARIABLE *pt_make_pos_regu_var_from_scratch (TP_DOMAIN * dom,
 							 DB_VALUE * fetch_to,
 							 int pos_no);
@@ -228,6 +230,35 @@ static PT_NODE *pt_set_qprior_node_etc_pre (PARSER_CONTEXT * parser,
 static void pt_fix_pseudocolumns_pos_regu_list (PARSER_CONTEXT * parser,
 						PT_NODE * node_list,
 						REGU_VARIABLE_LIST regu_list);
+static int pt_find_subplan_with_orderby_column (PARSER_CONTEXT *
+						parser,
+						PT_NODE *
+						orderby_node,
+						QO_PLAN * plan,
+						QO_PLAN ** result,
+						int *sort_col_seg_idx);
+static XASL_NODE *pt_find_oid_scan_block (XASL_NODE * xasl, OID * oid);
+static int pt_check_subplan_join_cond_for_ordby_keylimit (QO_PLAN * parent,
+							  QO_PLAN *
+							  subplan,
+							  QO_PLAN * sortplan,
+							  int
+							  sort_col_seg_idx);
+static int pt_validate_subplans_for_ordby_keylimit (QO_PLAN * parent,
+						    QO_PLAN * plan,
+						    QO_PLAN * sortplan,
+						    bool * isvalid,
+						    bool firstlayer,
+						    int sort_col_seg_idx);
+static int pt_check_subplan_and_orderby_correlation (QO_PLAN * plan,
+						     SORT_ORDER s_order,
+						     bool use_desc_index,
+						     PT_NODE * orderby_col,
+						     PARSER_CONTEXT * parser,
+						     int *can_optimize);
+static PT_NODE *pt_numbering_set_continue_post (PARSER_CONTEXT * parser,
+						PT_NODE * node, void *arg,
+						int *continue_walk);
 
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail)                      \
@@ -275,6 +306,7 @@ FILE *query_Plan_dump_fp = NULL;
 char *query_Plan_dump_filename = NULL;
 
 static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, 0, 0 };
+
 static const int OID_LIST_GROWTH = 10;
 
 
@@ -288,7 +320,17 @@ static int pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs,
 			   int nterms, bool multi_col, KEY_INFO * key_infop);
 static int pt_to_rangelist_key (PARSER_CONTEXT * parser,
 				PT_NODE ** term_exprs, int nterms,
-				bool multi_col, KEY_INFO * key_infop);
+				bool multi_col, KEY_INFO * key_infop,
+				int rangelist_idx);
+static int pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit,
+			    QO_LIMIT_INFO * limit_infop, KEY_INFO * key_infop,
+			    bool key_limit_reset);
+static int pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan,
+				    XASL_NODE * xasl);
+static int pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser,
+						     PT_NODE * query,
+						     QO_PLAN * plan,
+						     XASL_NODE * xasl);
 static INDX_INFO *pt_to_index_info (PARSER_CONTEXT * parser,
 				    DB_OBJECT * class_,
 				    QO_XASL_INDEX_INFO * qo_index_infop);
@@ -482,6 +524,10 @@ static ACCESS_SPEC_TYPE *pt_make_class_access_spec (PARSER_CONTEXT * parser,
 						    attr_list_pred,
 						    REGU_VARIABLE_LIST
 						    attr_list_rest,
+						    OUTPTR_LIST *
+						    output_val_list,
+						    REGU_VARIABLE_LIST
+						    regu_val_list,
 						    HEAP_CACHE_ATTRINFO *
 						    cache_key,
 						    HEAP_CACHE_ATTRINFO *
@@ -601,6 +647,20 @@ static XASL_NODE *pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser,
 						      PT_NODE * select_node,
 						      XASL_NODE * xasl);
 
+static void pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node);
+
+static SORT_LIST *pt_to_order_siblings_by (PARSER_CONTEXT * parser,
+					   XASL_NODE * xasl,
+					   XASL_NODE * connect_by_xasl);
+static SORT_LIST *pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser,
+					       PT_NODE * order_list,
+					       PT_NODE * agg_args_list);
+static bool pt_check_seg_belongs_to_range_term (QO_PLAN * subplan,
+						QO_ENV * env, int seg_idx);
+static int pt_check_parent_eq_class_for_ordby_keylimit (QO_PLAN * parent,
+							QO_PLAN * subplan,
+							QO_PLAN * sortplan,
+							int sort_col_seg_idx);
 
 /*
  * pt_make_connect_by_proc () - makes the XASL of the CONNECT BY node
@@ -809,26 +869,14 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
    * for fetching val_list from a tuple)
    */
   connect_by->regu_list_rest = pt_make_pos_regu_list (parser, xasl->val_list);
-  if (!connect_by->regu_list_rest)
-    {
-      goto exit_on_error;
-    }
 
   /* do the same for fetching prior_val_list from parent tuple */
   connect_by->prior_regu_list_rest =
     pt_make_pos_regu_list (parser, connect_by->prior_val_list);
-  if (!connect_by->prior_regu_list_rest)
-    {
-      goto exit_on_error;
-    }
 
   /* make regu list for after CONNECT BY iteration */
   connect_by->after_cb_regu_list_rest =
     pt_make_pos_regu_list (parser, xasl->val_list);
-  if (!connect_by->after_cb_regu_list_rest)
-    {
-      goto exit_on_error;
-    }
 
   /* sepparate CONNECT BY predicate regu list;
    * obs: we split prior_regu_list too, for possible future optimizations
@@ -913,7 +961,7 @@ pt_add_pseudocolumns_placeholders (PARSER_CONTEXT * parser,
     }
 
   regu_list = outptr_list->valptrp;
-  while (regu_list->next)
+  while (regu_list && regu_list->next)
     {
       regu_list = regu_list->next;
     }
@@ -928,7 +976,14 @@ pt_add_pseudocolumns_placeholders (PARSER_CONTEXT * parser,
       return ER_FAILED;
     }
 
-  regu_list->next = regu_list_pc;
+  if (regu_list)
+    {
+      regu_list->next = regu_list_pc;
+    }
+  else
+    {
+      regu_list = outptr_list->valptrp = regu_list_pc;
+    }
 
   regu_list_pc->next = NULL;
   regu_list_pc->value.type = TYPE_CONSTANT;
@@ -953,7 +1008,10 @@ pt_add_pseudocolumns_placeholders (PARSER_CONTEXT * parser,
   /* add string placeholder for computing node's path from parent */
 
   outptr_list->valptr_cnt++;
-  regu_list = regu_list->next;
+  if (regu_list->next)
+    {
+      regu_list = regu_list->next;
+    }
 
   regu_list_pc = regu_varlist_alloc ();
   if (regu_list_pc == NULL)
@@ -1851,9 +1909,29 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node,
 						       UNBOX_AS_VALUE);
 		    arg2 = arg2->info.expr.arg1;
 		  }
-		else if (PRM_COMPAT_MODE == COMPAT_MYSQL)
+		else if (PRM_REQUIRE_LIKE_ESCAPE_CHARACTER)
 		  {
+		    PT_NODE *arg1 = node->info.expr.arg1;
 		    PT_NODE *node = pt_make_string_value (parser, "\\");
+
+		    assert (!PRM_NO_BACKSLASH_ESCAPES);
+
+		    switch (arg1->type_enum)
+		      {
+		      case PT_TYPE_MAYBE:
+			if (!PT_IS_NATIONAL_CHAR_STRING_TYPE
+			    (arg2->type_enum))
+			  {
+			    break;
+			  }
+		      case PT_TYPE_NCHAR:
+		      case PT_TYPE_VARNCHAR:
+			node->type_enum = PT_TYPE_NCHAR;
+			node->info.value.string_type = 'N';
+		      default:
+			break;
+		      }
+
 		    regu_escape = pt_to_regu_variable (parser,
 						       node, UNBOX_AS_VALUE);
 		    parser_free_node (parser, node);
@@ -1894,7 +1972,19 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node,
 	  /* It should be ( ? ). */
 	  /* The predicate expression is ( ( ? <> 0 ) ). */
 
-	  PT_NODE *arg2 = parser_new_node (parser, PT_VALUE);
+	  PT_NODE *arg2;
+	  bool is_logical = false;
+
+	  /* we may have type_enum set to PT_TYPE_LOGICAL by type checking,
+	     if this is the case set it to PT_TYPE_INTEGER to avoid
+	     recursion */
+	  if (node->type_enum == PT_TYPE_LOGICAL)
+	    {
+	      node->type_enum = PT_TYPE_INTEGER;
+	      is_logical = true;
+	    }
+
+	  arg2 = parser_new_node (parser, PT_VALUE);
 
 	  if (arg2)
 	    {
@@ -1910,6 +2000,12 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node,
 	  else
 	    {
 	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	    }
+
+	  /* restore original type */
+	  if (is_logical)
+	    {
+	      node->type_enum = PT_TYPE_LOGICAL;
 	    }
 	}
       else
@@ -2024,6 +2120,12 @@ pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	    {
 	      goto error;
 	    }
+
+	  /* set PT_PRED_ARG_INSTNUM_CONTINUE flag for numbering in each
+	   * node of the predicate
+	   */
+	  parser_walk_tree (parser, dnf_node, NULL, NULL,
+			    pt_numbering_set_continue_post, argp);
 
 	  dnf_pred = (dnf_pred)
 	    ? pt_make_pred_expr_pred (temp, dnf_pred, B_OR) : temp;
@@ -3019,8 +3121,8 @@ pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info,
 
   if (PRM_ORACLE_STYLE_EMPTY_STRING)
     {
-      term_exprs = qo_xasl_get_terms (index_pred);
       nterms = qo_xasl_get_num_terms (index_pred);
+      term_exprs = qo_xasl_get_terms (index_pred);
 
       /* Traverse key-range pred */
       for (i = 0; i < nterms; i++)
@@ -3534,6 +3636,7 @@ pt_make_val_list (PT_NODE * attribute_list)
 	      && regu_dbval_type_init (dbval_list->val,
 				       pt_node_to_db_type (attribute)))
 	    {
+	      pt_init_precision_and_scale (dbval_list->val, attribute);
 	      value_list->val_cnt++;
 	      (*dbval_list_tail) = dbval_list;
 	      dbval_list_tail = &dbval_list->next;
@@ -3645,6 +3748,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
   VAL_LIST *value_list;
   QPROC_DB_VALUE_LIST value_temp;
   MOP classop;
+  PT_NODE *group_concat_sep_node_save = NULL;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3732,9 +3836,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	      if (tree->info.function.arg_list->node_type == PT_NAME)
 		{
 		  (void) sm_find_index (classop,
-					(char **) &tree->info.function.
-					arg_list->info.name.original, 1,
-					need_unique_index,
+					(char **) &tree->info.
+					function.arg_list->info.name.original,
+					1, need_unique_index,
 					&aggregate_list->btid);
 		  if (!BTID_IS_NULL (&aggregate_list->btid))
 		    {
@@ -3759,8 +3863,66 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
 	  aggregate_list->domain = pt_xasl_node_to_domain (parser, tree);
 	  regu_dbval_type_init (aggregate_list->value,
 				pt_node_to_db_type (tree));
-	  regu_dbval_type_init (aggregate_list->value2,
-				pt_node_to_db_type (tree));
+	  if (aggregate_list->function == PT_GROUP_CONCAT)
+	    {
+	      group_concat_sep_node_save = tree->info.function.arg_list->next;
+	      /* store SEPARATOR for GROUP_CONCAT */
+	      if (group_concat_sep_node_save != NULL)
+		{
+		  if (group_concat_sep_node_save->node_type == PT_VALUE
+		      && PT_IS_STRING_TYPE (group_concat_sep_node_save->
+					    type_enum))
+		    {
+		      pr_clone_value (&group_concat_sep_node_save->info.value.
+				      db_value, aggregate_list->value2);
+		      /* set the next argument pointer (the separator
+		       * argument) to NULL in order to avoid impacting
+		       * the regu vars generation.
+		       */
+		      tree->info.function.arg_list->next = NULL;
+		    }
+		  else
+		    {
+		      assert (false);
+		    }
+		}
+	      else
+		{
+		  PT_TYPE_ENUM arg_type;
+		  /* set default separator, if one is not specified , only if
+		   * argument is not bit */
+		  arg_type = tree->type_enum;
+		  if (arg_type != PT_TYPE_BIT && arg_type != PT_TYPE_VARBIT)
+		    {
+		      char *buf = NULL;
+		      /* create a default separator with same type as result */
+		      /* size in bytes for ',' is always 1 even for nchar */
+		      buf = (char *) db_private_alloc (NULL, 1 + 1);
+		      if (buf == NULL)
+			{
+			  PT_ERROR (parser, tree,
+				    msgcat_message (MSGCAT_CATALOG_CUBRID,
+						    MSGCAT_SET_PARSER_SEMANTIC,
+						    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return tree;
+			}
+		      strcpy (buf, ",");
+		      qstr_make_typed_string (pt_type_enum_to_db (arg_type),
+					      aggregate_list->value2,
+					      DB_DEFAULT_PRECISION, buf, 1);
+		      aggregate_list->value2->need_clear = true;
+		    }
+		  else
+		    {
+		      DB_MAKE_NULL (aggregate_list->value2);
+		    }
+		}
+	    }
+	  else
+	    {
+	      regu_dbval_type_init (aggregate_list->value2,
+				    pt_node_to_db_type (tree));
+	    }
 	  aggregate_list->opr_dbtype =
 	    pt_node_to_db_type (tree->info.function.arg_list);
 
@@ -3872,6 +4034,39 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree,
       info->head_list = aggregate_list;
 
       *continue_walk = PT_LIST_WALK;
+
+      /* GROUP_CONCAT : process ORDER BY and restore SEPARATOR node (just to
+       * keep original tree)*/
+      if (aggregate_list->function == PT_GROUP_CONCAT)
+	{
+	  /* Separator of GROUP_CONCAT is not a 'real' argument of
+	   * GROUP_CONCAT, but for convenience it is kept in 'arg_list' of
+	   * PT_FUNCTION.
+	   * It is not involved in sorting process, so conversion of ORDER BY
+	   * to SORT_LIST must be performed before restoring separator
+	   * argument into the arg_list*/
+	  if (tree->info.function.order_by != NULL)
+	    {
+	      /* convert to SORT_LIST */
+	      aggregate_list->sort_list =
+		pt_agg_orderby_to_sort_list (parser,
+					     tree->info.function.order_by,
+					     tree->info.function.arg_list);
+	    }
+	  else
+	    {
+	      aggregate_list->sort_list = NULL;
+	    }
+
+	  /* restore group concat separator node */
+	  tree->info.function.arg_list->next = group_concat_sep_node_save;
+	}
+      else
+	{
+	  /* only GROUP_CONCAT agg supports ORDER BY */
+	  assert (tree->info.function.order_by == NULL);
+	  assert (group_concat_sep_node_save == NULL);
+	}
     }
 
   if (tree->node_type == PT_DOT_)
@@ -4449,28 +4644,40 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser,
 			   REGU_VARIABLE_LIST attr_list_key,
 			   REGU_VARIABLE_LIST attr_list_pred,
 			   REGU_VARIABLE_LIST attr_list_rest,
+			   OUTPTR_LIST * output_val_list,
+			   REGU_VARIABLE_LIST regu_val_list,
 			   HEAP_CACHE_ATTRINFO * cache_key,
 			   HEAP_CACHE_ATTRINFO * cache_pred,
 			   HEAP_CACHE_ATTRINFO * cache_rest)
 {
   ACCESS_SPEC_TYPE *spec;
   HFID *hfid;
+  OID *cls_oid;
   int attrnum;
 
   spec = pt_make_access_spec (scan_type, access, indexptr,
 			      where_key, where_pred);
   if (spec)
     {
+      assert (class_ != NULL);
+
       /* need to lock class for read
        * We may have already locked it for write, but that is ok, isn't it? */
       spec->lock_hint = lock_hint;
-      if (!locator_fetch_class (class_, DB_FETCH_CLREAD_INSTREAD))
+      if (locator_fetch_class (class_, DB_FETCH_CLREAD_INSTREAD) == NULL)
 	{
 	  PT_ERRORc (parser, flat, er_msg ());
 	  return NULL;
 	}
+
       hfid = sm_get_heap (class_);
-      if (!class_ || !hfid)
+      if (hfid == NULL)
+	{
+	  return NULL;
+	}
+
+      cls_oid = WS_OID (class_);
+      if (cls_oid == NULL || OID_ISNULL (cls_oid))
 	{
 	  return NULL;
 	}
@@ -4478,8 +4685,11 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser,
       spec->s.cls_node.cls_regu_list_key = attr_list_key;
       spec->s.cls_node.cls_regu_list_pred = attr_list_pred;
       spec->s.cls_node.cls_regu_list_rest = attr_list_rest;
+      spec->s.cls_node.cls_output_val_list = output_val_list;
+      spec->s.cls_node.cls_regu_val_list = regu_val_list;
       spec->s.cls_node.hfid = *hfid;
-      spec->s.cls_node.cls_oid = *WS_OID (class_);
+      spec->s.cls_node.cls_oid = *cls_oid;
+
       spec->s.cls_node.num_attrs_key = pt_cnt_attrs (attr_list_key);
       spec->s.cls_node.attrids_key =
 	regu_int_array_alloc (spec->s.cls_node.num_attrs_key);
@@ -4628,26 +4838,33 @@ pt_make_cselect_access_spec (XASL_NODE * xasl,
  * pt_to_pos_descr () - Translate PT_SORT_SPEC node to QFILE_TUPLE_VALUE_POSITION node
  *   return:
  *   parser(in):
+ *   pos_p(out):
  *   node(in):
  *   root(in):
+ *   referred_node(in/out): optional parameter to get real name or expression node
+ *                          referred by a position
  */
-QFILE_TUPLE_VALUE_POSITION
-pt_to_pos_descr (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * root)
+void
+pt_to_pos_descr (PARSER_CONTEXT * parser, QFILE_TUPLE_VALUE_POSITION * pos_p,
+		 PT_NODE * node, PT_NODE * root, PT_NODE ** referred_node)
 {
-  QFILE_TUPLE_VALUE_POSITION pos;
-  int i;
   PT_NODE *temp;
   char *node_str = NULL;
+  int i;
 
-  pos.pos_no = -1;		/* init */
-  pos.dom = NULL;		/* init */
+  pos_p->pos_no = -1;		/* init */
+  pos_p->dom = NULL;		/* init */
+
+  if (referred_node != NULL)
+    {
+      *referred_node = NULL;
+    }
 
   switch (root->node_type)
     {
     case PT_SELECT:
-      i = 1;			/* PT_SORT_SPEC pos_no start from 1 */
 
-      if (node->node_type == PT_EXPR)
+      if (node->node_type == PT_EXPR || node->node_type == PT_DOT_)
 	{
 	  unsigned int save_custom;
 
@@ -4659,6 +4876,7 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * root)
 	  parser->custom_print = save_custom;	/* restore */
 	}
 
+      i = 1;			/* PT_SORT_SPEC pos_no start from 1 */
       for (temp = root->info.query.q.select.list; temp != NULL;
 	   temp = temp->next)
 	{
@@ -4666,30 +4884,38 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * root)
 	    {
 	      if (pt_name_equal (parser, temp, node))
 		{
-		  pos.pos_no = i;
+		  pos_p->pos_no = i;
 		}
 	    }
-	  else if (node->node_type == PT_EXPR)
+	  else if (node->node_type == PT_EXPR || node->node_type == PT_DOT_)
 	    {
-	      if (pt_streq (node_str, parser_print_tree (parser, temp)) == 0)
+	      if (pt_str_compare (node_str, parser_print_tree (parser, temp),
+				  CASE_INSENSITIVE) == 0)
 		{
-		  pos.pos_no = i;
+		  pos_p->pos_no = i;
 		}
 	    }
 	  else
 	    {			/* node type must be an integer */
+	      assert (node->node_type == PT_VALUE
+		      && node->type_enum == PT_TYPE_INTEGER);
 	      if (node->info.value.data_value.i == i)
 		{
-		  pos.pos_no = i;
+		  pos_p->pos_no = i;
+
+		  if (referred_node != NULL)
+		    {
+		      *referred_node = temp;
+		    }
 		}
 	    }
 
-	  if (pos.pos_no != -1)
+	  if (pos_p->pos_no != -1)
 	    {			/* found match */
 	      if (temp->type_enum != PT_TYPE_NONE
 		  && temp->type_enum != PT_TYPE_MAYBE)
 		{		/* is resolved */
-		  pos.dom = pt_xasl_node_to_domain (parser, temp);
+		  pos_p->dom = pt_xasl_node_to_domain (parser, temp);
 		}
 	      break;
 	    }
@@ -4702,7 +4928,8 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * root)
     case PT_UNION:
     case PT_INTERSECTION:
     case PT_DIFFERENCE:
-      pos = pt_to_pos_descr (parser, node, root->info.query.q.union_.arg1);
+      pt_to_pos_descr (parser, pos_p, node, root->info.query.q.union_.arg1,
+		       referred_node);
       break;
 
     default:
@@ -4710,13 +4937,11 @@ pt_to_pos_descr (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * root)
       break;
     }
 
-  if (pos.pos_no == -1 || pos.dom == NULL)
+  if (pos_p->pos_no == -1 || pos_p->dom == NULL)
     {				/* an error */
-      pos.pos_no = -1;
-      pos.dom = NULL;
+      pos_p->pos_no = -1;
+      pos_p->dom = NULL;
     }
-
-  return pos;
 }
 
 
@@ -4736,10 +4961,37 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
   SORT_LIST *sort_list, *sort, *lastsort;
   PT_NODE *node, *expr, *col, *col_list;
   int i, k;
+  int adjust_for_hidden_col_from = -1;
 
   sort_list = sort = lastsort = NULL;
   i = 0;			/* SORT_LIST pos_no start from 0 */
   col_list = pt_get_select_list (parser, root);
+
+  /* check if a hidden column is in the select list; if it is the case, store
+     the position in 'adjust_for_hidden_col_from' - index starting from 1
+     !! Only PT_FUNCTION nodes are checked, and only one column is supported!
+     This adjustement is needed for UPDATE statements with SELECT subqueries,
+     executed on broker (ex: on tables with triggers); in this case,
+     the class OID field in select list is marked as hidden, and the
+     coresponding sort value is skipped in 'qdata_get_valptr_type_list', but
+     the sorting position is not adjusted - this code anticipates the
+     problem */
+  if (sort_mode == SORT_LIST_ORDERBY)
+    {
+      for (col = col_list, k = 1; col; col = col->next, k++)
+	{
+	  if (col->node_type == PT_FUNCTION)
+	    {
+	      if (col->info.function.hidden_column &&
+		  col->info.function.function_type == F_CLASS_OF)
+		{
+		  assert (adjust_for_hidden_col_from == -1);
+		  adjust_for_hidden_col_from = k;
+		  break;
+		}
+	    }
+	}
+    }
 
   for (node = node_list; node != NULL; node = node->next)
     {
@@ -4777,8 +5029,7 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 	  if (sort_mode == SORT_LIST_GROUPBY)
 	    {
 	      /* get domain from sort_spec node */
-	      if (expr->type_enum != PT_TYPE_NONE
-		  && expr->type_enum != PT_TYPE_MAYBE)
+	      if (expr->type_enum != PT_TYPE_NONE)
 		{		/* is resolved */
 		  node->info.sort_spec.pos_descr.dom =
 		    pt_xasl_node_to_domain (parser, expr);
@@ -4795,9 +5046,7 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 		    }
 		}
 
-	      if (col
-		  && col->type_enum != PT_TYPE_NONE
-		  && col->type_enum != PT_TYPE_MAYBE)
+	      if (col && col->type_enum != PT_TYPE_NONE)
 		{		/* is resolved */
 		  node->info.sort_spec.pos_descr.dom =
 		    pt_xasl_node_to_domain (parser, col);
@@ -4818,6 +5067,38 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 		     : (sort_mode == SORT_LIST_GROUPBY)
 		     ? "generate group_by" : "generate after_group_by");
 		}
+	      return NULL;
+	    }
+	}
+
+      /* GROUP BY ?  or  ORDER BY ? are not allowed */
+      if (node->info.sort_spec.pos_descr.dom->type->id == DB_TYPE_BLOB ||
+	  node->info.sort_spec.pos_descr.dom->type->id == DB_TYPE_CLOB ||
+	  (node->info.sort_spec.expr->node_type == PT_HOST_VAR &&
+	   db_domain_type (node->info.sort_spec.pos_descr.dom) ==
+	   DB_TYPE_VARIABLE))
+	{
+	  if (sort_mode == SORT_LIST_ORDERBY)
+	    {
+	      for (col = col_list, k = 1; col; col = col->next, k++)
+		{
+		  if (node->info.sort_spec.pos_descr.pos_no == k)
+		    {
+		      break;
+		    }
+		}
+	      PT_ERRORmf (parser, col,
+			  MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_NO_ORDERBY_ALLOWED,
+			  pt_short_print (parser, col));
+	      return NULL;
+	    }
+	  else if (sort_mode == SORT_LIST_GROUPBY)
+	    {
+	      PT_ERRORmf (parser, expr,
+			  MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_NO_GROUPBY_ALLOWED,
+			  pt_short_print (parser, expr));
 	      return NULL;
 	    }
 	}
@@ -4843,6 +5124,17 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
       else
 	{
 	  sort->pos_descr.pos_no--;
+	  if (adjust_for_hidden_col_from != -1)
+	    {
+	      assert (sort_mode == SORT_LIST_ORDERBY);
+	      /* adjust for hidden column */
+	      if (node->info.sort_spec.pos_descr.pos_no >=
+		  adjust_for_hidden_col_from)
+		{
+		  sort->pos_descr.pos_no--;
+		  assert (sort->pos_descr.pos_no >= 0);
+		}
+	    }
 	}
 
       /* link up */
@@ -5380,7 +5672,7 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value,
 	    {
 	      /* just use the type to create the domain,
 	       * this is a special case */
-	      regu->domain = tp_Domains[db_type];
+	      regu->domain = tp_domain_resolve_default (db_type);
 	    }
 
 	  regu->type = TYPE_CONSTANT;
@@ -5481,7 +5773,7 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value,
  *   op(in):
  *   domain(in):
  */
-static REGU_VARIABLE *
+REGU_VARIABLE *
 pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2,
 		    const REGU_VARIABLE * arg3, const OPERATOR_TYPE op,
 		    const TP_DOMAIN * domain)
@@ -5519,6 +5811,61 @@ pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2,
 
   return regu;
 }
+
+/*
+ * pt_make_regu_pred () - takes a pred expr and makes a special arith
+ *			  regu variable, with T_PREDICATE as opcode,
+ *			  that holds the predicate expression.
+ *
+ *   return: A NULL return indicates an error occurred
+ *   pred(in):
+ */
+static REGU_VARIABLE *
+pt_make_regu_pred (const PRED_EXPR * pred)
+{
+  REGU_VARIABLE *regu = NULL;
+  ARITH_TYPE *arith = NULL;
+  DB_VALUE *dbval = NULL;
+  TP_DOMAIN *domain = NULL;
+
+  if (pred == NULL)
+    {
+      return NULL;
+    }
+
+  arith = regu_arith_alloc ();
+  dbval = regu_dbval_alloc ();
+  regu = regu_var_alloc ();
+
+  if (arith == NULL || dbval == NULL || regu == NULL)
+    {
+      return NULL;
+    }
+
+  domain = pt_type_enum_to_db_domain (PT_TYPE_INTEGER);
+  if (domain == NULL)
+    {
+      return NULL;
+    }
+  regu->domain = domain;
+  regu_dbval_type_init (dbval, domain->type->id);
+  arith->domain = (TP_DOMAIN *) domain;
+  arith->value = dbval;
+  arith->opcode = T_PREDICATE;
+  arith->next = NULL;
+  arith->leftptr = NULL;
+  arith->rightptr = NULL;
+  arith->thirdptr = NULL;
+  arith->pred = (PRED_EXPR *) pred;
+  arith->rand_seed = NULL;
+  regu->type = TYPE_INARITH;
+  regu->value.arithptr = arith;
+
+  return regu;
+}
+
+
+
 
 /*
  * pt_make_vid () - takes a pt_data_type and a regu variable and makes
@@ -5787,6 +6134,10 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	  break;
 	case F_CLASS_OF:
 	  result_type = DB_TYPE_OID;
+	  break;
+	case F_INSERT_SUBSTRING:
+	case F_ELT:
+	  result_type = pt_node_to_db_type (function);
 	  break;
 	default:
 	  PT_ERRORf (parser, function,
@@ -6087,6 +6438,8 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
     case PT_TYPE_TIMESTAMP:
     case PT_TYPE_DATETIME:
     case PT_TYPE_MONETARY:
+    case PT_TYPE_BLOB:
+    case PT_TYPE_CLOB:
       dt->data_type = NULL;
       break;
 
@@ -6108,6 +6461,16 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
     case PT_TYPE_VARNCHAR:
       dt->info.data_type.precision = DB_MAX_VARNCHAR_PRECISION;
       dt->info.data_type.units = (int) lang_charset ();
+      break;
+
+    case PT_TYPE_BIT:
+      dt->info.data_type.precision = DB_MAX_BIT_PRECISION;
+      dt->info.data_type.units = INTL_CODESET_RAW_BITS;
+      break;
+
+    case PT_TYPE_VARBIT:
+      dt->info.data_type.precision = DB_MAX_VARBIT_PRECISION;
+      dt->info.data_type.units = INTL_CODESET_RAW_BITS;
       break;
 
     case PT_TYPE_NUMERIC:
@@ -6292,6 +6655,86 @@ pt_make_empty_string (PARSER_CONTEXT * parser, const PT_NODE * node)
 }
 
 /*
+ * pt_make_prefix_index_data_filter  () - make data filter for index
+ *					  with prefix
+ *   return: the resulting data filter for index with prefix
+ *   where_key_part(in): the key filter
+ *   where_part(in): the data filter
+ *   index_pred (in): the range
+ */
+static PT_NODE *
+pt_make_prefix_index_data_filter (PARSER_CONTEXT * parser,
+				  PT_NODE * where_key_part,
+				  PT_NODE * where_part,
+				  QO_XASL_INDEX_INFO * index_pred)
+{
+  PT_NODE *ipl_where_part = NULL, *where_part_save = NULL;
+  PT_NODE *diff_part;
+  PT_NODE *ipl_where_term = NULL;
+  PT_NODE *ipl_if_part, *ipl_instnum_part;
+  int i;
+  PT_NODE *save_next = NULL;
+
+  assert (parser != NULL);
+
+  ipl_where_part = parser_copy_tree_list (parser, where_part);
+  if ((index_pred == NULL || (index_pred && index_pred->nterms <= 0)) &&
+      where_key_part == NULL)
+    {
+      return ipl_where_part;
+    }
+
+  if (where_key_part)
+    {
+      diff_part = parser_copy_tree_diff (parser, where_key_part, where_part);
+      ipl_where_part = parser_append_node (diff_part, ipl_where_part);
+    }
+
+  if (index_pred && index_pred->nterms > 0)
+    {
+      PT_NODE *save_last = NULL;
+      if (where_part)
+	{
+	  save_last = where_part;
+	  while (save_last->next)
+	    {
+	      save_last = save_last->next;
+	    }
+	  save_last->next = where_key_part;
+	}
+      else
+	{
+	  where_part = where_key_part;
+	}
+
+      for (i = 0; i < index_pred->nterms; i++)
+	{
+	  save_next = index_pred->term_exprs[i]->next;
+	  index_pred->term_exprs[i]->next = NULL;
+	  diff_part =
+	    parser_copy_tree_diff (parser, index_pred->term_exprs[i],
+				   where_part);
+	  pt_split_if_instnum (parser, diff_part, &ipl_if_part,
+			       &ipl_instnum_part);
+	  ipl_where_part = parser_append_node (ipl_if_part, ipl_where_part);
+	  parser_free_tree (parser, ipl_instnum_part);
+	  index_pred->term_exprs[i]->next = save_next;
+	}
+
+      if (save_last)
+	{
+	  save_last->next = NULL;
+	}
+      else
+	{
+	  where_part = NULL;
+	}
+    }
+
+  return ipl_where_part;
+}
+
+/*
  * pt_to_regu_variable () - converts a parse expression tree to regu_variables
  *   return:
  *   parser(in):
@@ -6329,7 +6772,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
       CAST_POINTER_TO_NODE (node);
 
-      if (node != NULL)
+      if (node != NULL && node->type_enum == PT_TYPE_LOGICAL)
+	{
+	  regu = pt_make_regu_pred (pt_to_pred_expr (parser, node));
+	}
+      else if (node != NULL)
 	{
 	  /* save and cut-off node link */
 	  save_next = node->next;
@@ -6377,14 +6824,20 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      break;
 
 	    case PT_EXPR:
+	      if (node->info.expr.op == PT_FUNCTION_HOLDER)
+		{
+		  regu = pt_function_to_regu (parser, node->info.expr.arg1);
+		  return regu;
+		}
+
 	      if (PT_REQUIRES_HIERARCHICAL_QUERY (node->info.expr.op))
 		{
 		  if (parser->symbols && parser->symbols->query_node)
 		    {
 		      if ((parser->symbols->query_node->node_type !=
 			   PT_SELECT)
-			  || (parser->symbols->query_node->info.query.q.
-			      select.connect_by == NULL))
+			  || (parser->symbols->query_node->info.query.
+			      q.select.connect_by == NULL))
 			{
 			  const char *opcode =
 			    pt_show_binopcode (node->info.expr.op);
@@ -6407,8 +6860,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      if (node->info.expr.op == PT_CONNECT_BY_ISCYCLE
 			  && ((parser->symbols->query_node->node_type !=
 			       PT_SELECT)
-			      || (!parser->symbols->query_node->info.query.
-				  q.select.has_nocycle)))
+			      || (!parser->symbols->query_node->info.query.q.
+				  select.has_nocycle)))
 			{
 			  PT_ERRORm (parser, node,
 				     MSGCAT_SET_PARSER_SEMANTIC,
@@ -6420,7 +6873,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      assert (false);
 		    }
 		}
-
 	      domain = NULL;
 	      if (node->info.expr.op == PT_PLUS
 		  || node->info.expr.op == PT_MINUS
@@ -6445,6 +6897,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_STR_TO_DATE
 		  || node->info.expr.op == PT_TIME_FORMAT
 		  || node->info.expr.op == PT_DATEDIFF
+		  || node->info.expr.op == PT_TIMEDIFF
 		  || node->info.expr.op == PT_TO_NUMBER
 		  || node->info.expr.op == PT_LEAST
 		  || node->info.expr.op == PT_GREATEST
@@ -6466,11 +6919,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_CONCAT
 		  || node->info.expr.op == PT_LEFT
 		  || node->info.expr.op == PT_RIGHT
-		  || node->info.expr.op == PT_STRCMP)
+		  || node->info.expr.op == PT_STRCMP
+		  || node->info.expr.op == PT_REPEAT
+		  || node->info.expr.op == PT_WEEKF
+		  || node->info.expr.op == PT_MAKEDATE
+		  || node->info.expr.op == PT_DEFINE_VARIABLE)
 		{
 		  r1 = pt_to_regu_variable (parser,
 					    node->info.expr.arg1, unbox);
-
 		  if (node->info.expr.op == PT_CONCAT
 		      && node->info.expr.arg2 == NULL)
 		    {
@@ -6481,14 +6937,24 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      r2 = pt_to_regu_variable (parser,
 						node->info.expr.arg2, unbox);
 		    }
-
 		  if (node->info.expr.op != PT_ADD_MONTHS
 		      && node->info.expr.op != PT_MONTHS_BETWEEN
 		      && node->info.expr.op != PT_TO_NUMBER)
 		    {
 		      if (node->type_enum == PT_TYPE_MAYBE)
 			{
-			  domain = node->expected_domain;
+			  /* PT_COALESCE is not full hv_late_bind op:
+			   * it supports late binding only when both arguments
+			   * are HV */
+			  if (pt_is_op_hv_late_bind (node->info.expr.op)
+			      || node->info.expr.op == PT_COALESCE)
+			    {
+			      domain = pt_xasl_node_to_domain (parser, node);
+			    }
+			  else
+			    {
+			      domain = node->expected_domain;
+			    }
 			}
 		      else
 			{
@@ -6566,6 +7032,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_COT
 		       || node->info.expr.op == PT_DEGREES
 		       || node->info.expr.op == PT_DATEF
+		       || node->info.expr.op == PT_TIMEF
 		       || node->info.expr.op == PT_RADIANS
 		       || node->info.expr.op == PT_LN
 		       || node->info.expr.op == PT_LOG2
@@ -6582,13 +7049,32 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_EXTRACT
 		       || node->info.expr.op == PT_ENCRYPT
 		       || node->info.expr.op == PT_DECRYPT
+		       || node->info.expr.op == PT_MD5
+		       || node->info.expr.op == PT_SPACE
 		       || node->info.expr.op == PT_PRIOR
 		       || node->info.expr.op == PT_CONNECT_BY_ROOT
 		       || node->info.expr.op == PT_QPRIOR
 		       || node->info.expr.op == PT_BIT_NOT
 		       || node->info.expr.op == PT_REVERSE
 		       || node->info.expr.op == PT_BIT_COUNT
-		       || node->info.expr.op == PT_ISNULL)
+		       || node->info.expr.op == PT_ISNULL
+		       || node->info.expr.op == PT_TYPEOF
+		       || node->info.expr.op == PT_YEARF
+		       || node->info.expr.op == PT_MONTHF
+		       || node->info.expr.op == PT_DAYF
+		       || node->info.expr.op == PT_DAYOFMONTH
+		       || node->info.expr.op == PT_HOURF
+		       || node->info.expr.op == PT_MINUTEF
+		       || node->info.expr.op == PT_SECONDF
+		       || node->info.expr.op == PT_QUARTERF
+		       || node->info.expr.op == PT_WEEKDAY
+		       || node->info.expr.op == PT_DAYOFWEEK
+		       || node->info.expr.op == PT_DAYOFYEAR
+		       || node->info.expr.op == PT_TODAYS
+		       || node->info.expr.op == PT_FROMDAYS
+		       || node->info.expr.op == PT_TIMETOSEC
+		       || node->info.expr.op == PT_SECTOTIME
+		       || node->info.expr.op == PT_EVALUATE_VARIABLE)
 		{
 		  r1 = NULL;
 
@@ -6626,7 +7112,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      if (node->type_enum == PT_TYPE_MAYBE)
 			{
-			  domain = node->expected_domain;
+			  if (pt_is_op_hv_late_bind (node->info.expr.op))
+			    {
+			      domain = pt_xasl_node_to_domain (parser, node);
+			    }
+			  else
+			    {
+			      domain = node->expected_domain;
+			    }
 			}
 		      else
 			{
@@ -6638,7 +7131,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			}
 		    }
 		}
-	      else if (node->info.expr.op == PT_TIMESTAMP)
+	      else if (node->info.expr.op == PT_TIMESTAMP ||
+		       node->info.expr.op == PT_LIKE_LOWER_BOUND ||
+		       node->info.expr.op == PT_LIKE_UPPER_BOUND)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1,
 					    unbox);
@@ -6668,7 +7163,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 					    node->info.expr.arg1, unbox);
 		  r2 = pt_to_regu_variable (parser,
 					    node->info.expr.arg2, unbox);
-		  /* store the info.expr.qualifier which is the unit parameter 
+		  /* store the info.expr.qualifier which is the unit parameter
 		     into a constant regu variable */
 		  val = regu_dbval_alloc ();
 		  if (val)
@@ -6721,7 +7216,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_CONCAT_WS
 		       || node->info.expr.op == PT_FIELD
 		       || node->info.expr.op == PT_LOCATE
-		       || node->info.expr.op == PT_MID)
+		       || node->info.expr.op == PT_MID
+		       || node->info.expr.op == PT_SUBSTRING_INDEX
+		       || node->info.expr.op == PT_MAKETIME
+		       || node->info.expr.op == PT_INDEX_CARDINALITY)
 		{
 		  r1 = pt_to_regu_variable (parser,
 					    node->info.expr.arg1, unbox);
@@ -6777,16 +7275,46 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_SYS_TIME
 		       || node->info.expr.op == PT_SYS_TIMESTAMP
 		       || node->info.expr.op == PT_SYS_DATETIME
+		       || node->info.expr.op == PT_UTC_TIME
+		       || node->info.expr.op == PT_UTC_DATE
 		       || node->info.expr.op == PT_PI
 		       || node->info.expr.op == PT_LOCAL_TRANSACTION_ID
 		       || node->info.expr.op == PT_ROW_COUNT
-		       || node->info.expr.op == PT_LIST_DBS)
+		       || node->info.expr.op == PT_LIST_DBS
+		       || node->info.expr.op == PT_LAST_INSERT_ID)
 		{
 		  domain = pt_xasl_node_to_domain (parser, node);
 		  if (domain == NULL)
 		    {
 		      goto end_expr_op_switch;
 		    }
+		}
+	      else if (node->info.expr.op == PT_BIT_TO_BLOB
+		       || node->info.expr.op == PT_CHAR_TO_BLOB
+		       || node->info.expr.op == PT_BLOB_LENGTH
+		       || node->info.expr.op == PT_CHAR_TO_CLOB
+		       || node->info.expr.op == PT_CLOB_LENGTH)
+		{
+		  r1 = pt_to_regu_variable (parser,
+					    node->info.expr.arg1, unbox);
+		  r2 = NULL;
+		  r3 = NULL;
+		}
+	      else if (node->info.expr.op == PT_BLOB_TO_BIT
+		       || node->info.expr.op == PT_CLOB_TO_CHAR)
+		{
+		  r1 = pt_to_regu_variable (parser,
+					    node->info.expr.arg1, unbox);
+		  if (node->info.expr.arg2 == NULL)
+		    {
+		      r2 = NULL;
+		    }
+		  else
+		    {
+		      r2 = pt_to_regu_variable (parser,
+						node->info.expr.arg2, unbox);
+		    }
+		  r3 = NULL;
 		}
 	      else if (node->info.expr.op == PT_IF)
 		{
@@ -6907,6 +7435,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_RIGHT, domain);
 		  break;
 
+		case PT_REPEAT:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_REPEAT, domain);
+		  break;
+
 		case PT_TIME_FORMAT:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_TIME_FORMAT,
 					     domain);
@@ -6945,6 +7477,41 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_ISNULL, domain);
 		  break;
 
+		case PT_EVALUATE_VARIABLE:
+		  regu = pt_make_regu_arith (r1, r2, NULL,
+					     T_EVALUATE_VARIABLE, domain);
+		  break;
+
+		case PT_DEFINE_VARIABLE:
+		  regu = pt_make_regu_arith (r1, r2, NULL,
+					     T_DEFINE_VARIABLE, domain);
+		  break;
+
+		case PT_YEARF:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_YEAR, domain);
+		  break;
+
+		case PT_MONTHF:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_MONTH, domain);
+		  break;
+
+		case PT_DAYOFMONTH:
+		case PT_DAYF:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_DAY, domain);
+		  break;
+
+		case PT_HOURF:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_HOUR, domain);
+		  break;
+
+		case PT_MINUTEF:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_MINUTE, domain);
+		  break;
+
+		case PT_SECONDF:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_SECOND, domain);
+		  break;
+
 		case PT_UNIX_TIMESTAMP:
 		  regu = pt_make_regu_arith (NULL, r2, NULL,
 					     T_UNIX_TIMESTAMP, domain);
@@ -6953,6 +7520,66 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_TIMESTAMP:
 		  regu = pt_make_regu_arith (r1, r2, NULL,
 					     T_TIMESTAMP, domain);
+		  break;
+
+		case PT_LIKE_LOWER_BOUND:
+		  regu = pt_make_regu_arith (r1, r2, NULL,
+					     T_LIKE_LOWER_BOUND, domain);
+		  break;
+
+		case PT_LIKE_UPPER_BOUND:
+		  regu = pt_make_regu_arith (r1, r2, NULL,
+					     T_LIKE_UPPER_BOUND, domain);
+		  break;
+
+		case PT_QUARTERF:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_QUARTER, domain);
+		  break;
+
+		case PT_WEEKDAY:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_WEEKDAY, domain);
+		  break;
+
+		case PT_DAYOFWEEK:
+		  regu = pt_make_regu_arith (r1, r2, NULL,
+					     T_DAYOFWEEK, domain);
+		  break;
+
+		case PT_DAYOFYEAR:
+		  regu = pt_make_regu_arith (r1, r2, NULL,
+					     T_DAYOFYEAR, domain);
+		  break;
+
+		case PT_TODAYS:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_TODAYS, domain);
+		  break;
+
+		case PT_FROMDAYS:
+		  regu = pt_make_regu_arith (r1, r2, NULL,
+					     T_FROMDAYS, domain);
+		  break;
+
+		case PT_TIMETOSEC:
+		  regu = pt_make_regu_arith (r1, r2, NULL,
+					     T_TIMETOSEC, domain);
+		  break;
+
+		case PT_SECTOTIME:
+		  regu = pt_make_regu_arith (r1, r2, NULL,
+					     T_SECTOTIME, domain);
+		  break;
+
+		case PT_MAKEDATE:
+		  regu = pt_make_regu_arith (r1, r2, NULL,
+					     T_MAKEDATE, domain);
+		  break;
+
+		case PT_MAKETIME:
+		  regu = pt_make_regu_arith (r1, r2, r3, T_MAKETIME, domain);
+		  break;
+
+		case PT_WEEKF:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_WEEK, domain);
 		  break;
 
 		case PT_SCHEMA:
@@ -6977,8 +7604,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			dbname_val->info.value.data_value.str =
 			  pt_append_nulstring (parser, NULL, dbname);
 			dbname_val->info.value.text =
-			  (char *) dbname_val->info.value.data_value.str->
-			  bytes;
+			  (char *) dbname_val->info.value.data_value.
+			  str->bytes;
 
 			db_string_free (dbname);
 		      }
@@ -6988,6 +7615,40 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      }
 
 		    regu = pt_to_regu_variable (parser, dbname_val, unbox);
+		    break;
+		  }
+		case PT_VERSION:
+		  {
+		    PT_NODE *dbversion_val;
+		    char *dbversion;
+
+		    dbversion_val = parser_new_node (parser, PT_VALUE);
+		    if (dbversion_val == NULL)
+		      {
+			PT_INTERNAL_ERROR (parser, "allocate new node");
+			return NULL;
+		      }
+
+		    dbversion = db_get_database_version ();
+		    if (dbversion)
+		      {
+			dbversion_val->type_enum = node->type_enum;
+			dbversion_val->info.value.string_type = ' ';
+
+			dbversion_val->info.value.data_value.str =
+			  pt_append_nulstring (parser, NULL, dbversion);
+			dbversion_val->info.value.text =
+			  (char *) dbversion_val->info.value.data_value.
+			  str->bytes;
+
+			db_string_free (dbversion);
+		      }
+		    else
+		      {
+			dbversion_val->type_enum = PT_TYPE_NULL;
+		      }
+
+		    regu = pt_to_regu_variable (parser, dbversion_val, unbox);
 		    break;
 		  }
 
@@ -7103,6 +7764,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_DATE, domain);
 		  break;
 
+		case PT_TIMEF:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_TIME, domain);
+		  break;
+
 		case PT_RADIANS:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_RADIANS, domain);
 		  break;
@@ -7153,6 +7818,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    pt_make_regu_arith (r1, r2, NULL, T_DATEDIFF, domain);
 		  break;
 
+		case PT_TIMEDIFF:
+		  regu =
+		    pt_make_regu_arith (r1, r2, NULL, T_TIMEDIFF, domain);
+		  break;
+
 		case PT_SUBDATE:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_SUBDATE, domain);
 		  break;
@@ -7191,6 +7861,12 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  pt_to_misc_operand (regu, node->info.expr.qualifier);
 		  break;
 
+		case PT_SUBSTRING_INDEX:
+		  regu =
+		    pt_make_regu_arith (r1, r2, r3, T_SUBSTRING_INDEX,
+					domain);
+		  break;
+
 		case PT_OCTET_LENGTH:
 		  regu = pt_make_regu_arith (r1, r2, NULL,
 					     T_OCTET_LENGTH, domain);
@@ -7212,6 +7888,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_UPPER:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_UPPER, domain);
+		  break;
+
+		case PT_MD5:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_MD5, domain);
+		  break;
+
+		case PT_SPACE:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_SPACE, domain);
 		  break;
 
 		case PT_LTRIM:
@@ -7259,6 +7943,21 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      parser_free_tree (parser, empty_str);
 		    }
+		  break;
+
+		case PT_FROM_UNIXTIME:
+		  r1 = pt_to_regu_variable (parser,
+					    node->info.expr.arg1, unbox);
+		  r2 = (node->info.expr.arg2)
+		    ? pt_to_regu_variable (parser, node->info.expr.arg2,
+					   unbox) : NULL;
+		  domain = pt_xasl_node_to_domain (parser, node);
+		  if (domain == NULL)
+		    {
+		      break;
+		    }
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_FROM_UNIXTIME,
+					     domain);
 		  break;
 
 		case PT_LPAD:
@@ -7377,6 +8076,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 					     T_SYS_DATETIME, domain);
 		  break;
 
+		case PT_UTC_TIME:
+		  regu = pt_make_regu_arith (NULL, NULL, NULL,
+					     T_UTC_TIME, domain);
+		  break;
+
+		case PT_UTC_DATE:
+		  regu = pt_make_regu_arith (NULL, NULL, NULL,
+					     T_UTC_DATE, domain);
+		  break;
+
 		case PT_LOCAL_TRANSACTION_ID:
 		  regu = pt_make_regu_arith (NULL, NULL, NULL,
 					     T_LOCAL_TRANSACTION_ID, domain);
@@ -7385,26 +8094,35 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_CURRENT_USER:
 		  {
 		    PT_NODE *current_user_val;
+		    const char *username;
+
+		    username = au_user_name ();
+		    if (username == NULL)
+		      {
+			PT_INTERNAL_ERROR (parser, "get user name");
+			return NULL;
+		      }
 
 		    current_user_val = parser_new_node (parser, PT_VALUE);
-
 		    if (current_user_val == NULL)
 		      {
+			db_string_free (username);
 			PT_INTERNAL_ERROR (parser, "allocate new node");
 			return NULL;
 		      }
+
 		    current_user_val->type_enum = PT_TYPE_VARCHAR;
 		    current_user_val->info.value.string_type = ' ';
-
 		    current_user_val->info.value.data_value.str =
-		      pt_append_nulstring (parser, NULL, au_user_name ());
+		      pt_append_nulstring (parser, NULL, username);
 		    current_user_val->info.value.text =
-		      (char *) current_user_val->info.value.data_value.str->
-		      bytes;
+		      (char *) current_user_val->info.value.data_value.
+		      str->bytes;
 
 		    regu = pt_to_regu_variable (parser,
 						current_user_val, unbox);
 
+		    db_string_free (username);
 		    parser_free_node (parser, current_user_val);
 		    break;
 		  }
@@ -7422,7 +8140,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			return NULL;
 		      }
 
-		    username = db_get_user_name ();
+		    username = au_user_name ();
 		    if (username == NULL)
 		      {
 			PT_INTERNAL_ERROR (parser, "get user name");
@@ -7458,24 +8176,28 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    current_user_val->info.value.data_value.str =
 		      pt_append_nulstring (parser, NULL, user);
 		    current_user_val->info.value.text =
-		      (char *) current_user_val->info.value.data_value.str->
-		      bytes;
+		      (char *) current_user_val->info.value.data_value.
+		      str->bytes;
 
 		    regu = pt_to_regu_variable (parser,
 						current_user_val, unbox);
 
+		    db_private_free_and_init (NULL, user);
 		    parser_free_node (parser, current_user_val);
 		    break;
 		  }
 
 		case PT_ROW_COUNT:
 		  {
-		    DB_VALUE temp;
-		    db_make_int (&temp, parser->execution_values.row_count);
-		    r1 = pt_make_regu_constant (parser, &temp,
-						DB_TYPE_INTEGER, NULL);
 		    regu = pt_make_regu_arith (NULL, r1, NULL, T_ROW_COUNT,
 					       domain);
+		    break;
+		  }
+
+		case PT_LAST_INSERT_ID:
+		  {
+		    regu = pt_make_regu_arith (NULL, r1, NULL,
+					       T_LAST_INSERT_ID, domain);
 		    break;
 		  }
 
@@ -7613,8 +8335,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			  pt_append_bytes (parser, NULL, oid_str,
 					   strlen (oid_str) + 1);
 			oid_str_val->info.value.text =
-			  (char *) oid_str_val->info.value.data_value.str->
-			  bytes;
+			  (char *) oid_str_val->info.value.data_value.
+			  str->bytes;
 
 			r1 = NULL;
 			r2 = pt_to_regu_variable (parser, oid_str_val, unbox);
@@ -7650,8 +8372,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		    /* convert node->info.expr.arg1 into serial object's OID */
 		    serial_name =
-		      (char *) node->info.expr.arg1->info.value.data_value.
-		      str->bytes;
+		      (char *) node->info.expr.arg1->info.value.
+		      data_value.str->bytes;
 		    t = strchr (serial_name, '.');	/* FIXME */
 		    serial_name = (t != NULL) ? t + 1 : serial_name;
 
@@ -7682,8 +8404,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			  pt_append_bytes (parser, NULL, oid_str,
 					   strlen (oid_str) + 1);
 			oid_str_val->info.value.text =
-			  (char *) oid_str_val->info.value.data_value.str->
-			  bytes;
+			  (char *) oid_str_val->info.value.data_value.
+			  str->bytes;
 
 			r1 = NULL;
 			r2 = pt_to_regu_variable (parser, oid_str_val, unbox);
@@ -7758,8 +8480,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_CAST:
 		  domain = pt_xasl_data_type_to_domain (parser,
-							node->info.expr.
-							cast_type);
+							node->info.
+							expr.cast_type);
 		  if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_NOFAIL))
 		    {
 		      regu = pt_make_regu_arith (r1, r2, NULL,
@@ -7826,6 +8548,65 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_LIST_DBS:
 		  regu = pt_make_regu_arith (NULL, NULL, NULL, T_LIST_DBS,
 					     domain);
+		  break;
+
+		case PT_BIT_TO_BLOB:
+		case PT_CHAR_TO_BLOB:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_BLOB);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_BIT_TO_BLOB,
+					     domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_BLOB_TO_BIT:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_VARBIT);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_BLOB_TO_BIT,
+					     domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_CHAR_TO_CLOB:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_CLOB);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_CHAR_TO_CLOB,
+					     domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_CLOB_TO_CHAR:
+		  data_type =
+		    pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_CLOB_TO_CHAR,
+					     domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_BLOB_LENGTH:
+		case PT_CLOB_LENGTH:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_BIGINT);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_LOB_LENGTH,
+					     domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_TYPEOF:
+		  regu =
+		    pt_make_regu_arith (NULL, r2, NULL, T_TYPEOF, domain);
+		  break;
+
+		case PT_INDEX_CARDINALITY:
+		  regu =
+		    pt_make_regu_arith (r1, r2, r3, T_INDEX_CARDINALITY,
+					domain);
 		  break;
 
 		default:
@@ -8576,6 +9357,17 @@ pt_to_single_key (PARSER_CONTEXT * parser,
       rhs = term_exprs[i]->info.expr.arg2;
       /* only PT_EQ */
 
+      /* incidentally we may have a term with only one range left out by
+         pt_to_index_info(), which semantically is the same as PT_EQ */
+      if (op_type == PT_RANGE)
+	{
+	  assert (PT_IS_EXPR_NODE_WITH_OPERATOR (rhs, PT_BETWEEN_EQ_NA));
+	  assert (rhs->or_next == NULL);
+
+	  /* has only one range */
+	  rhs = rhs->info.expr.arg1;
+	}
+
       /* make sure the key value(RHS) can actually be compared against the
          index attribute(LHS) */
       if (pt_coerce_value (parser, rhs, rhs, lhs->type_enum, lhs->data_type))
@@ -8910,6 +9702,13 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 
   /* get number of elements of the IN predicate */
   rhs = term_exprs[nterms - 1]->info.expr.arg2;
+
+  if (rhs->node_type == PT_EXPR && rhs->info.expr.op == PT_CAST)
+    {
+      /* strip CAST operator off */
+      rhs = rhs->info.expr.arg1;
+    }
+
   switch (rhs->node_type)
     {
     case PT_FUNCTION:
@@ -8922,18 +9721,21 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 	default:
 	  goto error;
 	}
+
       for (elem = rhs->info.function.arg_list, n_elem = 0; elem;
 	   elem = elem->next, n_elem++)
 	{
 	  ;
 	}
       break;
+
     case PT_NAME:
       if (rhs->info.name.meta_class != PT_PARAMETER)
 	{
 	  goto error;
 	}
       /* fall through into next case PT_VALUE */
+
     case PT_VALUE:
       p = (rhs->node_type == PT_NAME)
 	? pt_find_value_of_label (rhs->info.name.original)
@@ -8953,9 +9755,11 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 	default:
 	  goto error;
 	}
+
       db_collectionp = db_get_collection (p);
       n_elem = db_col_size (db_collectionp);
       break;
+
     case PT_HOST_VAR:
       p = pt_value_to_db (parser, rhs);
       if (p == NULL)
@@ -8972,12 +9776,15 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 	default:
 	  goto error;
 	}
+
       db_collectionp = db_get_collection (p);
       n_elem = db_col_size (db_collectionp);
       break;
+
     default:
       goto error;
     }
+
   if (n_elem <= 0)
     {
       goto error;
@@ -9092,7 +9899,9 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 							  UNBOX_AS_VALUE);
 		  if (regu_var_list[j] == NULL ||
 		      !VALIDATE_REGU_KEY (regu_var_list[j]))
-		    goto error;
+		    {
+		      goto error;
+		    }
 
 		  /* is the key value constant(value or host variable)? */
 		  key_infop->is_constant &= (elem->node_type == PT_VALUE ||
@@ -9115,9 +9924,14 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 	      for (j = 0; j < n_elem; j++)
 		{
 		  if (db_col_get (db_collectionp, j, &db_value) < 0)
-		    goto error;
-		  if ((elem = pt_dbval_to_value (parser, &db_value)) == NULL)
-		    goto error;
+		    {
+		      goto error;
+		    }
+		  elem = pt_dbval_to_value (parser, &db_value);
+		  if (elem == NULL)
+		    {
+		      goto error;
+		    }
 		  pr_clear_value (&db_value);
 
 		  /* make sure the key value(RHS) can actually be compared
@@ -9145,10 +9959,10 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 		      midxkey_list[j] =
 			parser_append_node (elem, midxkey_list[j]);
 		    }
-		}		/* for (j = 0; ...) */
-	    }			/* else (rhs->node_type == PT_FUNCTION) */
+		}
+	    }
 	}
-    }				/* for (i = 0; i < nterms; i++) */
+    }
 
   if (multi_col)
     {
@@ -9225,11 +10039,12 @@ error:
  *   nterms(in):
  *   multi_col(in):
  *   key_infop(out): Construct a list of search range values
+ *   rangelist_idx(in):
  */
 static int
 pt_to_rangelist_key (PARSER_CONTEXT * parser,
 		     PT_NODE ** term_exprs, int nterms,
-		     bool multi_col, KEY_INFO * key_infop)
+		     bool multi_col, KEY_INFO * key_infop, int rangelist_idx)
 {
   PT_NODE *lhs, *rhs, *llim, *ulim, *elem, *tmp;
   PT_NODE **midxkey_list1 = NULL, **midxkey_list2 = NULL;
@@ -9246,7 +10061,7 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
   n_elem = 0;
 
   /* get number of elements of the RANGE predicate */
-  rhs = term_exprs[nterms - 1]->info.expr.arg2;
+  rhs = term_exprs[rangelist_idx]->info.expr.arg2;
   for (elem = rhs, n_elem = 0; elem; elem = elem->or_next, n_elem++)
     {
       ;
@@ -9296,8 +10111,12 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
       lhs = term_exprs[i]->info.expr.arg1;
       rhs = term_exprs[i]->info.expr.arg2;
 
+      llim = ulim = NULL;	/* init */
+
       if (op_type != PT_RANGE)
 	{
+	  assert (i != rangelist_idx);
+
 	  /* PT_EQ */
 
 	  /* make sure the key value(RHS) can actually be compared against the
@@ -9310,7 +10129,9 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 
 	  regu_var = pt_to_regu_variable (parser, rhs, UNBOX_AS_VALUE);
 	  if (regu_var == NULL)
-	    goto error;
+	    {
+	      goto error;
+	    }
 	  if (!VALIDATE_REGU_KEY (regu_var))
 	    {
 	      /* correlared join index case swap LHS and RHS */
@@ -9329,18 +10150,25 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 	      /* try on RHS */
 	      regu_var = pt_to_regu_variable (parser, rhs, UNBOX_AS_VALUE);
 	      if (regu_var == NULL || !VALIDATE_REGU_KEY (regu_var))
-		goto error;
+		{
+		  goto error;
+		}
 	    }
 
 	  /* is the key value constant(value or host variable)? */
 	  key_infop->is_constant &= (rhs->node_type == PT_VALUE
 				     || rhs->node_type == PT_HOST_VAR);
 
-	  /* if it is multi-column index, make one PT_NODE for sequence key
-	     value by concatenating all RHS of the terms */
-	  if (multi_col)
+	  for (j = 0; j < n_elem; j++)
 	    {
-	      for (j = 0; j < n_elem; j++)
+	      if (i == nterms - 1)
+		{		/* the last term */
+		  range_list[j] = op_type_to_range (op_type, nterms);
+		}
+
+	      /* if it is multi-column index, make one PT_NODE for sequence key
+	         value by concatenating all RHS of the terms */
+	      if (multi_col)
 		{
 		  midxkey_list1[j] = parser_append_node (pt_point (parser,
 								   rhs),
@@ -9353,6 +10181,9 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 	}
       else
 	{
+	  assert ((i == rangelist_idx)
+		  || (i != rangelist_idx && rhs->or_next == NULL));
+
 	  /* PT_RANGE */
 	  for (j = 0, elem = rhs; j < n_elem && elem;
 	       j++, elem = elem->or_next)
@@ -9360,7 +10191,6 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 	      /* range type and spec(lower limit and upper limit) from
 	         operands of RANGE expression */
 	      op_type = elem->info.expr.op;
-	      range_list[j] = op_type_to_range (op_type, nterms);
 	      switch (op_type)
 		{
 		case PT_BETWEEN_EQ_NA:
@@ -9397,7 +10227,9 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 							   UNBOX_AS_VALUE);
 		  if (regu_var_list1[j] == NULL ||
 		      !VALIDATE_REGU_KEY (regu_var_list1[j]))
-		    goto error;
+		    {
+		      goto error;
+		    }
 
 		  /* is the key value constant(value or host variable)? */
 		  key_infop->is_constant &= (llim->node_type == PT_VALUE ||
@@ -9422,7 +10254,9 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 							   UNBOX_AS_VALUE);
 		  if (regu_var_list2[j] == NULL ||
 		      !VALIDATE_REGU_KEY (regu_var_list2[j]))
-		    goto error;
+		    {
+		      goto error;
+		    }
 
 		  /* is the key value constant(value or host variable)? */
 		  key_infop->is_constant &= (ulim->node_type == PT_VALUE ||
@@ -9432,6 +10266,11 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 		{
 		  regu_var_list2[j] = NULL;
 		}		/* if (ulim) */
+
+	      if (i == nterms - 1)
+		{		/* the last term */
+		  range_list[j] = op_type_to_range (op_type, nterms);
+		}
 
 	      /* if it is multi-column index, make one PT_NODE for sequence
 	         key value by concatenating all RHS of the terms */
@@ -9451,6 +10290,42 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 		    }
 		}
 	    }			/* for (j = 0, elem = rhs; ... ) */
+
+	  if (i == rangelist_idx)
+	    {
+	      assert (j == n_elem);
+	      /* OK; nop */
+	    }
+	  else
+	    {
+	      int k;
+
+	      assert (j == 1);
+
+	      for (k = j; k < n_elem; k++)
+		{
+		  if (i == nterms - 1)
+		    {		/* the last term */
+		      range_list[k] = op_type_to_range (op_type, nterms);
+		    }
+
+		  if (multi_col)
+		    {
+		      if (llim)
+			{
+			  midxkey_list1[k] =
+			    parser_append_node (pt_point (parser, llim),
+						midxkey_list1[k]);
+			}
+		      if (ulim)
+			{
+			  midxkey_list2[k] =
+			    parser_append_node (pt_point (parser, ulim),
+						midxkey_list2[k]);
+			}
+		    }
+		}		/* for */
+	    }
 	}			/* else (op_type != PT_RANGE) */
     }				/* for (i = 0; i < nterms; i++) */
 
@@ -9501,7 +10376,6 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 	}
       free_and_init (midxkey_list2);
     }
-
 
   /* set KEY_INFO structure */
   key_infop->key_cnt = n_elem;	/* n_elem ranges */
@@ -9560,6 +10434,236 @@ error:
 
 
 /*
+ * pt_to_key_limit () - Create index key limit regu variables
+ *   return:
+ *   parser(in):
+ *   key_limit(in):
+ *   key_infop(in):
+ *   key_limit_reset(in);
+ */
+static int
+pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit,
+		 QO_LIMIT_INFO * limit_infop, KEY_INFO * key_infop,
+		 bool key_limit_reset)
+{
+  REGU_VARIABLE *regu_var_u = NULL, *regu_var_l = NULL;
+  PT_NODE *limit_u, *limit_l;
+  TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
+
+  /* at least one of them should be NULL, although they both can */
+  assert (!key_limit || !limit_infop);
+
+  limit_u = key_limit;
+  if (limit_u)
+    {
+      if (limit_u->type_enum == PT_TYPE_MAYBE)
+	{
+	  limit_u->expected_domain = dom_bigint;
+	}
+      regu_var_u = pt_to_regu_variable (parser, limit_u, UNBOX_AS_VALUE);
+      if (regu_var_u == NULL)
+	{
+	  goto error;
+	}
+
+      limit_l = limit_u->next;
+      if (limit_l)
+	{
+	  if (limit_l->type_enum == PT_TYPE_MAYBE)
+	    {
+	      limit_l->expected_domain = dom_bigint;
+	    }
+	  regu_var_l = pt_to_regu_variable (parser, limit_l, UNBOX_AS_VALUE);
+	  if (regu_var_l == NULL)
+	    {
+	      goto error;
+	    }
+	}
+    }
+
+  if (limit_infop)
+    {
+      regu_var_u = limit_infop->upper;
+      regu_var_l = limit_infop->lower;
+    }
+
+  if (key_infop->key_limit_u)
+    {
+      if (regu_var_u)
+	{
+	  key_infop->key_limit_u = pt_make_regu_arith (key_infop->key_limit_u,
+						       regu_var_u,
+						       NULL, T_LEAST,
+						       dom_bigint);
+	  if (key_infop->key_limit_u == NULL)
+	    {
+	      goto error;
+	    }
+	  key_infop->key_limit_u->domain = dom_bigint;
+	}
+    }
+  else
+    {
+      key_infop->key_limit_u = regu_var_u;
+    }
+
+  if (key_infop->key_limit_l)
+    {
+      if (regu_var_l)
+	{
+	  key_infop->key_limit_l = pt_make_regu_arith (key_infop->key_limit_l,
+						       regu_var_l,
+						       NULL, T_GREATEST,
+						       dom_bigint);
+	  if (key_infop->key_limit_l == NULL)
+	    {
+	      goto error;
+	    }
+	  key_infop->key_limit_l->domain = dom_bigint;
+	}
+    }
+  else
+    {
+      key_infop->key_limit_l = regu_var_l;
+    }
+
+  key_infop->key_limit_reset = key_limit_reset;
+
+  return NO_ERROR;
+
+error:
+
+  return ER_FAILED;
+}
+
+
+/*
+ * pt_instnum_to_key_limit () - try to convert instnum to keylimit
+ *   return:
+ *   parser(in):
+ *   plan(in):
+ *   xasl(in):
+ */
+static int
+pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan,
+			 XASL_NODE * xasl)
+{
+  XASL_NODE *xptr;
+  ACCESS_SPEC_TYPE *spec_list;
+  QO_LIMIT_INFO *limit_infop;
+  int ret = NO_ERROR;
+
+  /* If ANY of the spec lists has a data filter, we cannot convert
+   * instnum to keylimit, because in the worst case scenario the data filter
+   * could require all the records in a join operation and chose only the last
+   * Cartesian tuple, and any keylimit on the joined tables would be wrong.
+   */
+  for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
+    {
+      for (spec_list = xptr->spec_list; spec_list;
+	   spec_list = spec_list->next)
+	{
+	  if (spec_list->where_pred)
+	    {
+	      /* this is not an error, just halt the optimization tentative */
+	      return NO_ERROR;
+	    }
+	}
+    }
+
+  /* if there is an orderby_num pred, meaning order by was not skipped */
+  if (xasl->ordbynum_pred)
+    {
+      /* can't optimize */
+      return NO_ERROR;
+    }
+
+  limit_infop = qo_get_key_limit_from_instnum (parser, plan, xasl);
+  if (!limit_infop)
+    {
+      return NO_ERROR;
+    }
+  if (!limit_infop->upper)
+    {
+      db_private_free (NULL, limit_infop);
+      return NO_ERROR;
+    }
+
+
+  /* there is at least an upper limit, but we need to take some decisions
+   * depending on the presence of a lower limit and the query complexity */
+
+  /* do we have a join or other non-trivial select? */
+  if (xasl->scan_ptr || (xasl->spec_list && xasl->spec_list->next))
+    {
+      /* If we are joining multiple tables, we cannot afford to use the
+       * lower limit: it should be applied only at the higher, join level
+       * and not at lower table scan levels. Discard the lower limit.*/
+      limit_infop->lower = NULL;
+    }
+  else
+    {
+      /* a trivial select: we can keep the lower limit, but we must adjust
+       * the upper limit. qo_get_key_limit_from_instnum gets a lower and an
+       * upper limit, but keylimit requires a min and a count (i.e.
+       * how many should we skip, and then how many should we fetch) */
+      if (limit_infop->lower)
+	{
+	  TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
+
+	  limit_infop->upper = pt_make_regu_arith (limit_infop->upper,
+						   limit_infop->lower, NULL,
+						   T_SUB, dom_bigint);
+	  if (limit_infop->upper == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+
+	  limit_infop->upper->domain = dom_bigint;
+	}
+
+      /* we must also delete the instnum predicate, because we don't want
+       * two sets of lower limits for the same data */
+      assert (xasl->instnum_pred);
+      xasl->instnum_pred = NULL;
+    }
+
+  /* set the key limit to all the eligible spec lists (the ones
+   * that have index scans.) */
+  for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
+    {
+      for (spec_list = xptr->spec_list; spec_list;
+	   spec_list = spec_list->next)
+	{
+	  if (!spec_list->indexptr)
+	    {
+	      continue;
+	    }
+
+	  ret = pt_to_key_limit (parser, NULL, limit_infop,
+				 &(spec_list->indexptr->key_info), false);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+    }
+
+  /* we're done with the generated key limit tree */
+  db_private_free (NULL, limit_infop);
+
+  return NO_ERROR;
+
+exit_on_error:
+  if (limit_infop)
+    {
+      db_private_free (NULL, limit_infop);
+    }
+  return ER_FAILED;
+}
+
+
+/*
  * pt_to_index_info () - Create an INDX_INFO structure for communication
  * 	to a class access spec for eventual incorporation into an index scan
  *   return:
@@ -9571,37 +10675,96 @@ static INDX_INFO *
 pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
 		  QO_XASL_INDEX_INFO * qo_index_infop)
 {
-  PT_NODE **term_exprs;
   int nterms;
+  int rangelist_idx;
+  PT_NODE **term_exprs;
+  PT_NODE *pt_expr;
   bool multi_col;
   BTID *btidp;
   PT_OP_TYPE op_type;
   INDX_INFO *indx_infop;
+  QO_NODE_INDEX_ENTRY *ni_entryp;
+  QO_INDEX_ENTRY *index_entryp;
   KEY_INFO *key_infop;
+  PT_NODE *key_limit;
   int rc;
   int i;
+  bool is_prefix_index;
 
-  assert (parser != NULL);
+  assert (parser != NULL
+	  && qo_index_infop->ni_entry != NULL
+	  && qo_index_infop->ni_entry->head != NULL);
 
   /* get array of term expressions and number of them which are associated
      with this index */
-  term_exprs = qo_xasl_get_terms (qo_index_infop);
   nterms = qo_xasl_get_num_terms (qo_index_infop);
+  term_exprs = qo_xasl_get_terms (qo_index_infop);
   multi_col = qo_xasl_get_multi_col (class_, qo_index_infop);
   btidp = qo_xasl_get_btid (class_, qo_index_infop);
-  if (!class_ || !term_exprs || nterms <= 0 || !btidp)
+
+  ni_entryp = qo_index_infop->ni_entry;
+  index_entryp = ni_entryp->head;
+
+  is_prefix_index = qo_is_prefix_index (index_entryp);
+  if (!class_ || nterms < 0 || !btidp)
     {
       PT_INTERNAL_ERROR (parser, "index plan generation - invalid arg");
       return NULL;
     }
 
-  /* The last term expression in the array(that is, [nterms - 1]) is
-     interesting because the multi-column index scan depends on it. For
-     multi-column index, the other terms except the last one should be
-     equality expression. */
-  op_type = term_exprs[nterms - 1]->info.expr.op;
+  if (nterms > 0)
+    {
+      rangelist_idx = -1;	/* init */
+      for (i = 0; i < nterms; i++)
+	{
+	  pt_expr = term_exprs[i];
+	  assert (pt_expr != NULL);
+	  if (pt_expr->info.expr.op == PT_RANGE)
+	    {
+	      assert (pt_expr->info.expr.arg2 != NULL);
 
-  /* make INDX_INFO strucutre and fill it up using information in
+	      if (pt_expr->info.expr.arg2)
+		{
+		  PT_NODE *between_and;
+
+		  between_and = pt_expr->info.expr.arg2;
+		  if (between_and->or_next)
+		    {
+		      /* is RANGE (r1, r2, ...) */
+		      rangelist_idx = i;
+		      break;
+		    }
+		}
+	    }
+	}
+
+      if (rangelist_idx == -1)
+	{
+	  /* The last term expression in the array(that is, [nterms - 1]) is
+	     interesting because the multi-column index scan depends on it.
+	     For example:
+	     a = ? AND b = ? AND c = ?
+	     a = ? AND b = ? AND c RANGE (r1)
+	     a = ? AND b = ? AND c RANGE (r1, r2, ...)
+	   */
+	  rangelist_idx = nterms - 1;
+	  op_type = term_exprs[rangelist_idx]->info.expr.op;
+	}
+      else
+	{
+	  /* Have non-last EQUAL range term and is only one.
+	     For example:
+	     a = ? AND b RANGE (r1=, r2=, ...) AND c = ?
+	     a = ? AND b RANGE (r1=, r2=, ...) AND c RANGE (r1)
+
+	     but, the following is not permitted.
+	     a = ? AND b RANGE (r1=, r2=, ...) AND c RANGE (r1, r2, ...) 
+	   */
+	  op_type = PT_RANGE;
+	}
+    }
+
+  /* make INDX_INFO structure and fill it up using information in
      QO_XASL_INDEX_INFO structure */
   indx_infop = regu_index_alloc ();
   if (indx_infop == NULL)
@@ -9613,8 +10776,47 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   /* BTID */
   indx_infop->indx_id.type = T_BTID;
   indx_infop->indx_id.i.btid = *btidp;
+  indx_infop->coverage = (int) qo_xasl_get_coverage (class_, qo_index_infop)
+    && (is_prefix_index == false);
+
+  indx_infop->class_oid = class_->oid_info.oid;
+  indx_infop->use_desc_index = index_entryp->use_descending;
+  indx_infop->orderby_skip = index_entryp->orderby_skip;
+  indx_infop->groupby_skip = index_entryp->groupby_skip;
+
+  /* 0 for now, see gen optimized plan for its computation */
+  indx_infop->orderby_desc = 0;
+  indx_infop->groupby_desc = 0;
 
   key_infop = &indx_infop->key_info;
+
+  /* key limits */
+  key_limit = qo_xasl_get_key_limit (class_, qo_index_infop);
+  if (pt_to_key_limit (parser, key_limit, NULL, key_infop, false) != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "index plan generation - invalid key limit");
+      return NULL;
+    }
+
+  if (nterms == 0)
+    {
+      key_infop->key_cnt = 1;
+      key_infop->is_constant = false;
+      key_infop->key_ranges = regu_keyrange_array_alloc (1);
+      if (key_infop->key_ranges == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "index plan generation - memory alloc");
+	  return NULL;
+	}
+
+      key_infop->key_ranges[0].key1 = NULL;
+      key_infop->key_ranges[0].key2 = NULL;
+      key_infop->key_ranges[0].range = INF_INF;
+
+      indx_infop->range_type = R_RANGE;
+
+      return indx_infop;
+    }
 
   /* scan range spec and index key information */
   switch (op_type)
@@ -9639,7 +10841,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
       break;
     case PT_RANGE:
       rc = pt_to_rangelist_key (parser, term_exprs, nterms, multi_col,
-				key_infop);
+				key_infop, rangelist_idx);
       for (i = 0; i < key_infop->key_cnt; i++)
 	{
 	  if (key_infop->key_ranges[i].range != EQ_NA)
@@ -9660,10 +10862,30 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
       /* the other operators are not applicable to index scan */
       rc = -1;
     }
+
   if (rc < 0)
     {
       PT_INTERNAL_ERROR (parser, "index plan generation - invalid key value");
       return NULL;
+    }
+
+  if (is_prefix_index)
+    {
+      for (i = 0; i < key_infop->key_cnt; i++)
+	{
+	  if (key_infop->key_ranges[i].range == GT_INF)
+	    {
+	      key_infop->key_ranges[i].range = GE_INF;
+	    }
+	  if (key_infop->key_ranges[i].range == GT_LT)
+	    {
+	      key_infop->key_ranges[i].range = GE_LT;
+	    }
+	  if (key_infop->key_ranges[i].range == GT_LE)
+	    {
+	      key_infop->key_ranges[i].range = GE_LE;
+	    }
+	}
     }
 
   return indx_infop;
@@ -9702,7 +10924,9 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
   INDX_INFO *index_info;
   HEAP_CACHE_ATTRINFO *cache_pred = NULL, *cache_rest = NULL;
   PT_NODE *pred_attrs = NULL, *rest_attrs = NULL;
-  int *pred_offsets = NULL, *rest_offsets = NULL, i;
+  int *pred_offsets = NULL, *rest_offsets = NULL;
+  OUTPTR_LIST *output_val_list = NULL;
+  REGU_VARIABLE_LIST regu_val_list = NULL;
 
   assert (parser != NULL);
 
@@ -9782,6 +11006,9 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 							       value_list,
 							       rest_offsets);
 
+	      output_val_list = NULL;
+	      regu_val_list = NULL;
+
 	      parser_free_tree (parser, pred_attrs);
 	      parser_free_tree (parser, rest_attrs);
 	      free_and_init (pred_offsets);
@@ -9794,34 +11021,34 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 						  NULL, NULL, where, NULL,
 						  regu_attributes_pred,
 						  regu_attributes_rest,
-						  NULL, cache_pred,
-						  cache_rest);
+						  output_val_list,
+						  regu_val_list, NULL,
+						  cache_pred, cache_rest);
 	    }
 	  else
 	    {
 	      /* for index with prefix length */
-	      PT_NODE *ipl_where_part = NULL, *where_part_save = NULL;
+	      PT_NODE *where_part_save = NULL, *where_key_part_save = NULL;
+	      PT_NODE *ipl_where_part = NULL;
 
 	      if (index_pred->ni_entry && index_pred->ni_entry->head
 		  && qo_is_prefix_index (index_pred->ni_entry->head))
 		{
-		  PT_NODE *ipl_where_term = NULL;
-
-		  for (i = 0; i < index_pred->nterms; i++)
+		  if (index_pred->nterms > 0 || where_key_part)
 		    {
-		      ipl_where_term =
-			parser_copy_tree_list (parser,
-					       index_pred->term_exprs[i]);
 		      ipl_where_part =
-			parser_append_node (ipl_where_term, ipl_where_part);
+			pt_make_prefix_index_data_filter (parser,
+							  where_key_part,
+							  where_part,
+							  index_pred);
 		    }
 
 		  if (ipl_where_part)
 		    {
 		      where_part_save = where_part;
-		      where_part = parser_copy_tree_list (parser, where_part);
-		      where_part =
-			parser_append_node (ipl_where_part, where_part);
+		      where_part = ipl_where_part;
+		      where_key_part_save = where_key_part;
+		      where_key_part = NULL;
 		    }
 		}
 
@@ -9833,6 +11060,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 		    {
 		      parser_free_tree (parser, where_part);
 		      where_part = where_part_save;
+		      where_key_part = where_key_part_save;
 		    }
 		  return NULL;
 		}
@@ -9844,6 +11072,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 		    {
 		      parser_free_tree (parser, where_part);
 		      where_part = where_part_save;
+		      where_key_part = where_key_part_save;
 		    }
 		  parser_free_tree (parser, key_attrs);
 		  free_and_init (key_offsets);
@@ -9886,6 +11115,15 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 							       value_list,
 							       rest_offsets);
 
+	      output_val_list = pt_make_outlist_from_vallist (parser,
+							      table_info->
+							      value_list);
+
+	      regu_val_list =
+		pt_to_position_regu_variable_list (parser, rest_attrs,
+						   table_info->value_list,
+						   rest_offsets);
+
 	      parser_free_tree (parser, key_attrs);
 	      parser_free_tree (parser, pred_attrs);
 	      parser_free_tree (parser, rest_attrs);
@@ -9909,6 +11147,8 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 						  where, regu_attributes_key,
 						  regu_attributes_pred,
 						  regu_attributes_rest,
+						  output_val_list,
+						  regu_val_list,
 						  cache_key, cache_pred,
 						  cache_rest);
 
@@ -9916,6 +11156,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
 		{
 		  parser_free_tree (parser, where_part);
 		  where_part = where_part_save;
+		  where_key_part = where_key_part_save;
 		}
 	    }
 
@@ -9993,11 +11234,9 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser,
 							    tbl_info->
 							    value_list,
 							    pred_offsets);
-  regu_attributes_rest = pt_to_position_regu_variable_list (parser,
-							    rest_attrs,
-							    tbl_info->
-							    value_list,
-							    rest_offsets);
+  regu_attributes_rest =
+    pt_to_position_regu_variable_list (parser, rest_attrs,
+				       tbl_info->value_list, rest_offsets);
 
   parser_free_tree (parser, pred_attrs);
   parser_free_tree (parser, rest_attrs);
@@ -10111,8 +11350,8 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
     (XASL_NODE *) src_derived_tbl->info.spec.derived_table->info.query.xasl;
 
   method_sig_list = pt_to_method_sig_list (parser, cselect,
-					   src_derived_tbl->info.spec.
-					   as_attr_list);
+					   src_derived_tbl->info.
+					   spec.as_attr_list);
 
   /* This generates a list of TYPE_POSITION regu_variables
    * There information is stored in a QFILE_TUPLE_VALUE_POSITION, which
@@ -10120,9 +11359,9 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec,
    */
 
   regu_attributes = pt_to_position_regu_variable_list (parser,
-						       spec->info.spec.
-						       as_attr_list, NULL,
-						       NULL);
+						       spec->info.
+						       spec.as_attr_list,
+						       NULL, NULL);
 
   access = pt_make_cselect_access_spec (subquery_proc, method_sig_list,
 					SEQUENTIAL, NULL, NULL,
@@ -10445,7 +11684,12 @@ pt_set_connect_by_xasl (PARSER_CONTEXT * parser, PT_NODE * select_node,
   /* move ORDER SIBLINGS BY column list in the CONNECT BY xasl */
   if (select_node->info.query.order_siblings == 1)
     {
-      connect_by_xasl->orderby_list = xasl->orderby_list;
+      connect_by_xasl->orderby_list = pt_to_order_siblings_by (parser, xasl,
+							       connect_by_xasl);
+      if (!connect_by_xasl->orderby_list)
+	{
+	  return NULL;
+	}
       xasl->orderby_list = NULL;
     }
 
@@ -10690,7 +11934,8 @@ pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser,
     }
   if (node == NULL)
     {
-      if ((node = regu_selupd_list_alloc ()) == NULL)
+      node = regu_selupd_list_alloc ();
+      if (node == NULL)
 	{
 	  return NULL;
 	}
@@ -10899,8 +12144,8 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list,
 		  PT_NODE *upd_obj = col->info.expr.arg2;
 		  PT_NODE *upd_dom = (upd_obj)
 		    ? (upd_obj->node_type == PT_DOT_)
-		    ? upd_obj->info.dot.arg2->data_type : upd_obj->
-		    data_type : NULL;
+		    ? upd_obj->info.dot.arg2->
+		    data_type : upd_obj->data_type : NULL;
 		  PT_NODE *upd_dom_nm;
 		  DB_OBJECT *upd_dom_cls;
 		  OID nulloid;
@@ -11080,7 +12325,7 @@ pt_to_fetch_as_scan_proc (PARSER_CONTEXT * parser, PT_NODE * spec,
 
 /*
  * pt_to_fetch_proc () - Translate a PT_NODE path entity spec to
- *                       an OBJFETCH proc(SETFETCH disabled for now)
+ *                       an OBJFETCH_PROC
  *   return:
  *   parser(in):
  *   spec(in):
@@ -11091,7 +12336,6 @@ pt_to_fetch_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * pred)
 {
   XASL_NODE *xasl = NULL;
   PT_NODE *oid_name = NULL;
-  int proc_type = OBJFETCH_PROC;	/* SETFETCH_PROC not used for now */
   REGU_VARIABLE *regu;
   PT_NODE *flat;
   PT_NODE *conjunct;
@@ -11110,7 +12354,7 @@ pt_to_fetch_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * pred)
       flat = spec->info.spec.flat_entity_list;
       if (flat)
 	{
-	  xasl = regu_xasl_node_alloc ((PROC_TYPE) proc_type);
+	  xasl = regu_xasl_node_alloc (OBJFETCH_PROC);
 
 	  if (xasl)
 	    {
@@ -11119,8 +12363,8 @@ pt_to_fetch_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * pred)
 	      xasl->next = NULL;
 
 	      xasl->outptr_list = pt_to_outlist (parser,
-						 spec->info.spec.
-						 referenced_attrs, NULL,
+						 spec->info.
+						 spec.referenced_attrs, NULL,
 						 UNBOX_AS_VALUE);
 
 	      if (xasl->outptr_list == NULL)
@@ -11168,8 +12412,8 @@ pt_to_fetch_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * pred)
 	{
 	  /* this is a derived table path spec */
 	  xasl = pt_to_fetch_as_scan_proc (parser, spec, conjunct,
-					   (XASL_NODE *) derived->info.query.
-					   xasl);
+					   (XASL_NODE *) derived->info.
+					   query.xasl);
 	}
     }
 
@@ -11589,10 +12833,54 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, XASL_NODE * xasl,
   if (xasl && select_node && !parser->error_msgs)
     {
       ret = qo_to_xasl (plan, xasl);
+
       if (ret == NULL)
 	{
 	  xasl->spec_list = NULL;
 	  xasl->scan_ptr = NULL;
+	}
+      else
+	{
+	  /* if the user asked for a descending scan, force it on all iscans */
+	  if (select_node->info.query.q.select.hint & PT_HINT_USE_IDX_DESC)
+	    {
+	      XASL_NODE *ptr;
+	      for (ptr = xasl; ptr; ptr = ptr->scan_ptr)
+		{
+		  if (ptr->spec_list && ptr->spec_list->indexptr)
+		    {
+		      ptr->spec_list->indexptr->use_desc_index = 1;
+		    }
+		}
+	    }
+
+	  /* check direction of the first order by column.
+	   * see also scan_get_index_oidset() in scan_manager.c
+	   */
+	  if (xasl->spec_list && select_node->info.query.order_by &&
+	      xasl->spec_list->indexptr)
+	    {
+	      PT_NODE *ob = select_node->info.query.order_by;
+
+	      if (ob->info.sort_spec.asc_or_desc == PT_DESC)
+		{
+		  xasl->spec_list->indexptr->orderby_desc = 1;
+		}
+	    }
+
+	  /* check direction of the first group by column.
+	   * see also scan_get_index_oidset() in scan_manager.c
+	   */
+	  if (xasl->spec_list && select_node->info.query.q.select.group_by &&
+	      xasl->spec_list->indexptr)
+	    {
+	      PT_NODE *gb = select_node->info.query.q.select.group_by;
+
+	      if (gb->info.sort_spec.asc_or_desc == PT_DESC)
+		{
+		  xasl->spec_list->indexptr->groupby_desc = 1;
+		}
+	    }
 	}
     }
 
@@ -11881,6 +13169,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
   PT_NODE *having_part, *grbynum_part;
   int grbynum_flag, ordbynum_flag;
   bool orderby_skip = false, orderby_ok = true;
+  bool groupby_skip = false;
   BUILDLIST_PROC_NODE *buildlist;
 
   assert (parser != NULL);
@@ -11927,25 +13216,23 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 			       select_node->info.query.q.select.group_by,
 			       &xasl->iscycle_val);
       pt_set_connect_by_operator_node_etc (parser,
-					   select_node->info.query.q.
-					   select.group_by, xasl);
+					   select_node->info.query.q.select.
+					   group_by, xasl);
       pt_set_qprior_node_etc (parser,
 			      select_node->info.query.q.select.group_by,
 			      xasl);
-      pt_set_level_node_etc (parser,
-			     select_node->info.query.q.select.having,
+      pt_set_level_node_etc (parser, select_node->info.query.q.select.having,
 			     &xasl->level_val);
-      pt_set_isleaf_node_etc (parser,
-			      select_node->info.query.q.select.having,
+      pt_set_isleaf_node_etc (parser, select_node->info.query.q.select.having,
 			      &xasl->isleaf_val);
       pt_set_iscycle_node_etc (parser,
 			       select_node->info.query.q.select.having,
 			       &xasl->iscycle_val);
       pt_set_connect_by_operator_node_etc (parser,
-					   select_node->info.query.q.
-					   select.having, xasl);
-      pt_set_qprior_node_etc (parser,
-			      select_node->info.query.q.select.having, xasl);
+					   select_node->info.query.q.select.
+					   having, xasl);
+      pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having,
+			      xasl);
 
       group_out_list = NULL;
       for (group = select_node->info.query.q.select.group_by;
@@ -12016,10 +13303,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 			       select_node->info.query.q.select.list,
 			       &xasl->iscycle_val);
       pt_set_connect_by_operator_node_etc (parser,
-					   select_node->info.query.q.
-					   select.list, xasl);
-      pt_set_qprior_node_etc (parser,
-			      select_node->info.query.q.select.list, xasl);
+					   select_node->info.query.q.select.
+					   list, xasl);
+      pt_set_qprior_node_etc (parser, select_node->info.query.q.select.list,
+			      xasl);
 
       /* set 'etc' field of PT_NODEs which belong to inst_num() and
          orderby_num() expression in order to use at
@@ -12096,10 +13383,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 			       select_node->info.query.q.select.list,
 			       &xasl->iscycle_val);
       pt_set_connect_by_operator_node_etc (parser,
-					   select_node->info.query.q.
-					   select.list, xasl);
-      pt_set_qprior_node_etc (parser,
-			      select_node->info.query.q.select.list, xasl);
+					   select_node->info.query.q.select.
+					   list, xasl);
+      pt_set_qprior_node_etc (parser, select_node->info.query.q.select.list,
+			      xasl);
 
       /* set 'etc' field of PT_NODEs which belong to inst_num() and
          orderby_num() expression in order to use at
@@ -12204,10 +13491,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 				   select_node->info.query.orderby_for,
 				   &xasl->iscycle_val);
 	  pt_set_connect_by_operator_node_etc (parser,
-					       select_node->info.query.
-					       orderby_for, xasl);
-	  pt_set_qprior_node_etc (parser,
-				  select_node->info.query.orderby_for, xasl);
+					       select_node->info.
+					       query.orderby_for, xasl);
+	  pt_set_qprior_node_etc (parser, select_node->info.query.orderby_for,
+				  xasl);
 
 	  /* set 'etc' field of PT_NODEs which belong to inst_num() and
 	     orderby_num() expression in order to use at
@@ -12226,7 +13513,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	    }
 
 	  /* check order by opt */
-	  if (qo_plan && qo_plan_skip_orderby (qo_plan) == true)
+	  if (qo_plan && qo_plan_skip_orderby (qo_plan))
 	    {
 	      orderby_skip = true;
 
@@ -12234,6 +13521,17 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	      if (xasl->ordbynum_val)
 		{
 		  xasl->instnum_pred = xasl->ordbynum_pred;
+
+		  /* When we set instnum_val to point to the DBVALUE
+		   * referenced by ordbynum_val, we lose track the DBVALUE
+		   * originally stored in instnum_val. This is an important
+		   * value because it is referenced by any regu var that was
+		   * converted from ROWNUM in the select list (before we knew
+		   * we were going to optimize away the ORDER BY clause).
+		   * We will save the dbval in save_instnum_val and update it
+		   * whenever we update the new instnum_val.
+		   */
+		  xasl->save_instnum_val = xasl->instnum_val;
 		  xasl->instnum_val = xasl->ordbynum_val;
 		  xasl->instnum_flag = xasl->ordbynum_flag;
 
@@ -12258,6 +13556,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
       /* union fields for BUILDLIST_PROC_NODE - BUILDLIST_PROC */
       if (select_node->info.query.q.select.group_by)
 	{
+	  if (qo_plan && qo_plan_skip_groupby (qo_plan))
+	    {
+	      groupby_skip = true;
+	    }
+
 	  /* finish group by processing */
 	  buildlist->groupby_list =
 	    pt_to_groupby (parser,
@@ -12267,8 +13570,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	  /* Build SORT_LIST of the list file created by GROUP BY */
 	  buildlist->after_groupby_list =
 	    pt_to_after_groupby (parser,
-				 select_node->info.query.q.select.
-				 group_by, select_node);
+				 select_node->info.query.q.select.group_by,
+				 select_node);
 
 	  /* this is not useful, set it to NULL
 	     it was set by the old parser, but not used anywhere */
@@ -12278,8 +13581,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 	   * subqueries, they must be run each group */
 	  buildlist->eptr_list =
 	    pt_to_corr_subquery_list (parser,
-				      select_node->info.query.q.select.
-				      having, 0);
+				      select_node->info.query.q.select.having,
+				      0);
 
 	  /* otherwise should be run once, at beginning.
 	     these have already been put on the aptr list above */
@@ -12288,6 +13591,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 			&& (buildlist->g_having_pred
 			    || buildlist->g_grbynum_pred
 			    || !select_node->info.query.q.select.having));
+
+	  if (groupby_skip)
+	    {
+	      groupby_ok = 1;
+	    }
 	}
       else
 	{
@@ -12325,6 +13633,35 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
   /* set CONNECT BY xasl */
   xasl = pt_set_connect_by_xasl (parser, select_node, xasl);
+  if (!xasl)
+    {
+      goto exit_on_error;
+    }
+
+  /* convert instnum to key limit (optimization) */
+  if (pt_instnum_to_key_limit (parser, qo_plan, xasl) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  xasl->orderby_limit = NULL;
+  if (xasl->ordbynum_pred)
+    {
+      QO_LIMIT_INFO *limit_infop =
+	qo_get_key_limit_from_ordbynum (parser, qo_plan, xasl);
+      if (limit_infop)
+	{
+	  xasl->orderby_limit = limit_infop->upper;
+	  db_private_free (NULL, limit_infop);
+	}
+    }
+
+  /* convert ordbynum to key limit if we have iscan with multiple key ranges */
+  if (pt_ordbynum_to_key_limit_multiple_ranges (parser, select_node, qo_plan,
+						xasl) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   return xasl;
 
@@ -12380,20 +13717,19 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 			   select_node->info.query.q.select.list,
 			   &xasl->iscycle_val);
   pt_set_connect_by_operator_node_etc (parser,
-				       select_node->info.query.q.select.
-				       list, xasl);
+				       select_node->info.query.q.select.list,
+				       xasl);
   pt_set_qprior_node_etc (parser, select_node->info.query.q.select.list,
 			  xasl);
   pt_set_level_node_etc (parser, select_node->info.query.q.select.having,
 			 &xasl->level_val);
   pt_set_isleaf_node_etc (parser, select_node->info.query.q.select.having,
 			  &xasl->isleaf_val);
-  pt_set_iscycle_node_etc (parser,
-			   select_node->info.query.q.select.having,
+  pt_set_iscycle_node_etc (parser, select_node->info.query.q.select.having,
 			   &xasl->iscycle_val);
   pt_set_connect_by_operator_node_etc (parser,
-				       select_node->info.query.q.select.
-				       having, xasl);
+				       select_node->info.query.q.
+				       select.having, xasl);
   pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having,
 			  xasl);
 
@@ -12413,8 +13749,8 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
    * calculating subquery lists, etc.
    */
   xasl->outptr_list = pt_to_outlist (parser,
-				     select_node->info.query.q.select.
-				     list, &xasl->selected_upd_list,
+				     select_node->info.query.q.select.list,
+				     &xasl->selected_upd_list,
 				     UNBOX_AS_VALUE);
 
   /* check if this select statement has click counter */
@@ -12530,6 +13866,23 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node,
 
   /* set CONNECT BY xasl */
   xasl = pt_set_connect_by_xasl (parser, select_node, xasl);
+  if (!xasl)
+    {
+      goto exit_on_error;
+    }
+
+  /* convert instnum to key limit (optimization) */
+  if (pt_instnum_to_key_limit (parser, qo_plan, xasl) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  /* convert ordbynum to key limit if we have iscan with multiple key ranges */
+  if (pt_ordbynum_to_key_limit_multiple_ranges (parser, select_node, qo_plan,
+						xasl) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   return xasl;
 
@@ -12758,9 +14111,19 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	       parser_print_tree (parser, select_node));
       if (select_node->info.query.order_by)
 	{
-	  if (xasl && xasl->orderby_list == NULL)
+	  if (xasl && xasl->spec_list && xasl->spec_list->indexptr &&
+	      xasl->spec_list->indexptr->orderby_skip)
 	    {
 	      fprintf (query_Plan_dump_fp, "/* ---> skip ORDER BY */\n");
+	    }
+	}
+
+      if (select_node->info.query.q.select.group_by)
+	{
+	  if (xasl && xasl->spec_list && xasl->spec_list->indexptr &&
+	      xasl->spec_list->indexptr->groupby_skip)
+	    {
+	      fprintf (query_Plan_dump_fp, "/* ---> skip GROUP BY */\n");
 	    }
 	}
       parser->custom_print = save_custom;
@@ -12869,9 +14232,13 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
 	  && node->info.query.xasl
 	  && node->info.query.composite_locking
 	  && (spec = node->info.query.q.select.from)
-	  && spec->info.spec.flat_entity_list)
+	  && (spec->info.spec.flat_entity_list ||
+	      (spec->info.spec.derived_table_type == PT_IS_SET_EXPR &&
+	       spec->info.spec.path_entities &&
+	       spec->info.spec.path_entities->node_type == PT_SPEC &&
+	       spec->info.spec.path_entities->info.spec.flat_entity_list)))
 	{
-	  xasl->composite_locking = 1;
+	  xasl->composite_locking = node->info.query.composite_locking;
 	}
 
       /* set as zero correlation-level; this uncorrelated subquery need to
@@ -13278,8 +14645,9 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   value_clause = values_list->info.node_list.list;
   attrs = statement->info.insert.attr_list;
 
-  class_obj = statement->info.insert.spec->
-    info.spec.flat_entity_list->info.name.db_object;
+  class_obj =
+    statement->info.insert.spec->info.spec.flat_entity_list->info.name.
+    db_object;
 
   class_ = locator_create_heap_if_needed (class_obj,
 					  sm_is_reuse_oid_class (class_obj));
@@ -13384,8 +14752,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  insert->partition = NULL;
 	}
 
-      if (statement->info.insert.spec->
-	  info.spec.flat_entity_list->info.name.partition_of)
+      if (statement->info.insert.spec->info.spec.flat_entity_list->info.name.
+	  partition_of)
 	{
 	  error = do_build_partition_xasl (parser, xasl, class_obj, 0);
 	}
@@ -13393,7 +14761,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   if (pt_has_error (parser))
     {
-      pt_report_to_ersys (parser, PT_EXECUTION);
+      pt_report_to_ersys (parser, PT_SEMANTIC);
       xasl = NULL;
     }
 
@@ -13446,7 +14814,10 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
  *   class_specs(in):
  *   where(in):
  *   using_index(in):
+ *   order_by(in):
+ *   orderby_for(in):
  *   server_op(in):
+ *   for_update(in): true if query is used in update operation
  *
  * Note :
  * Prepends the class oid and the instance oid onto the select list for use
@@ -13458,7 +14829,9 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 PT_NODE *
 pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 		     PT_NODE * from, PT_NODE * class_specs,
-		     PT_NODE * where, PT_NODE * using_index, int server_op)
+		     PT_NODE * where, PT_NODE * using_index,
+		     PT_NODE * order_by, PT_NODE * orderby_for, int server_op,
+		     bool for_update)
 {
   PT_NODE *statement = NULL;
 
@@ -13486,9 +14859,36 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
       statement = pt_add_row_classoid_name (parser, statement, server_op);
       statement = pt_add_row_oid_name (parser, statement);
 
+      /* don't allow orderby_for without order_by */
+      assert (!((orderby_for != NULL) && (order_by == NULL)));
+
+      statement->info.query.order_by =
+	parser_copy_tree_list (parser, order_by);
+
+      if (statement->info.query.order_by != NULL)
+	{
+	  /* translate col names into col numbers */
+	  if (pt_check_order_by (parser, statement) != NO_ERROR)
+	    {
+	      /* leave the error code set by check_order_by, will be
+	         handled by the calling function */
+	      return NULL;
+	    }
+	}
+
+      statement->info.query.orderby_for =
+	parser_copy_tree_list (parser, orderby_for);
+
       if (statement)
 	{
-	  statement->info.query.composite_locking = 1;
+	  if (for_update)
+	    {
+	      statement->info.query.composite_locking = 2;
+	    }
+	  else
+	    {
+	      statement->info.query.composite_locking = 1;
+	    }
 	}
     }
 
@@ -13531,16 +14931,53 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (from && from->node_type == PT_SPEC && from->info.spec.range_var)
     {
-      if (((aptr_statement = pt_to_upd_del_query (parser, NULL,
+      PT_NODE *select_node, *select_list = NULL;
+
+      /* append LOB type attributes to select_list */
+      cl_name_node = from->info.spec.range_var;
+      class_obj = cl_name_node->info.name.db_object;
+      if (class_obj)
+	{
+	  DB_ATTRIBUTE *attr;
+	  attr = db_get_attributes (class_obj);
+	  while (attr)
+	    {
+	      if (attr->type->id == DB_TYPE_BLOB ||
+		  attr->type->id == DB_TYPE_CLOB)
+		{
+		  /* make select list nodes */
+		  select_node = pt_name (parser, attr->header.name);
+		  if (select_node)
+		    {
+		      select_node->info.name.spec_id = from->info.spec.id;
+		      select_node->type_enum =
+			pt_db_to_type_enum (attr->type->id);
+		      select_list =
+			parser_append_node (select_node, select_list);
+		    }
+		}
+	      attr = db_attribute_next (attr);
+	    }
+	}
+
+      if (((aptr_statement = pt_to_upd_del_query (parser, select_list,
 						  from, class_specs,
 						  where, using_index,
-						  1)) == NULL)
+						  NULL, NULL,
+						  1, false)) == NULL)
 	  || ((aptr_statement = mq_translate (parser, aptr_statement)) ==
 	      NULL)
 	  || ((xasl = pt_make_aptr_parent_node (parser, aptr_statement,
 						DELETE_PROC)) == NULL))
 	{
 	  error = er_errid ();
+	}
+
+      while (select_list)
+	{
+	  select_node = select_list;
+	  select_list = select_list->next;
+	  parser_free_node (parser, select_node);
 	}
     }
 
@@ -13628,7 +15065,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (pt_has_error (parser) || error < 0)
     {
-      pt_report_to_ersys (parser, PT_EXECUTION);
+      pt_report_to_ersys (parser, PT_SEMANTIC);
       xasl = NULL;
     }
 
@@ -13694,6 +15131,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   XASL_NODE *xasl = NULL;
   UPDATE_PROC_NODE *update = NULL;
   PT_NODE *aptr_statement = NULL;
+  PT_NODE *p = NULL;
   PT_NODE *cl_name_node = NULL;
   int no_classes;
   PT_NODE *from;
@@ -13713,6 +15151,8 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   DB_OBJECT *class_obj;
   HFID *hfid;
   PT_NODE *hint_arg;
+  PT_NODE *order_by = NULL;
+  PT_NODE *orderby_for = NULL;
   float waitsecs;
 
   assert (parser != NULL && statement != NULL);
@@ -13721,6 +15161,8 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   where = statement->info.update.search_cond;
   using_index = statement->info.update.using_index;
   class_specs = statement->info.update.class_specs;
+  order_by = statement->info.update.order_by;
+  orderby_for = statement->info.update.orderby_for;
 
   if (from != NULL)
     {
@@ -13741,7 +15183,8 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       if (((aptr_statement = pt_to_upd_del_query (parser, select_values,
 						  from, class_specs,
 						  where, using_index,
-						  1)) == NULL)
+						  order_by, orderby_for,
+						  1, true)) == NULL)
 	  || ((aptr_statement = mq_translate (parser, aptr_statement)) ==
 	      NULL)
 	  || ((xasl = pt_make_aptr_parent_node (parser, aptr_statement,
@@ -14005,6 +15448,16 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      error = er_errid ();
 	    }
 	}
+
+      /* store number of ORDER BY keys in XASL tree */
+      if (aptr_statement != NULL)
+	{
+	  update->no_orderby_keys =
+	    pt_length_of_list (aptr_statement->info.query.q.select.list) -
+	    pt_length_of_select_list (aptr_statement->info.query.q.select.
+				      list, EXCLUDE_HIDDEN_COLUMNS);
+	  assert (update->no_orderby_keys >= 0);
+	}
     }
 
   if (xasl != NULL && error >= 0)
@@ -14021,7 +15474,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
   if (pt_has_error (parser))
     {
-      pt_report_to_ersys (parser, PT_EXECUTION);
+      pt_report_to_ersys (parser, PT_SEMANTIC);
       xasl = NULL;
     }
   else if (error < 0)
@@ -14158,13 +15611,11 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node,
 	      /* fill in XASL cache related information;
 	         list of class OIDs used in this XASL */
 	      if (xasl
-		  && (pt_spec_to_xasl_class_oid_list (node->info.query.q.
-						      select.from,
-						      &(info->class_oid_list),
-						      &(info->repr_id_list),
-						      &(info->n_oid_list),
-						      &(info->
-							oid_list_size)) < 0))
+		  &&
+		  (pt_spec_to_xasl_class_oid_list
+		   (node->info.query.q.select.from, &(info->class_oid_list),
+		    &(info->repr_id_list), &(info->n_oid_list),
+		    &(info->oid_list_size)) < 0))
 		{
 		  /* might be memory allocation error */
 		  PT_INTERNAL_ERROR (parser, "generate xasl");
@@ -14849,8 +16300,7 @@ pt_make_outlist_from_vallist (PARSER_CONTEXT * parser, VAL_LIST * val_list_p)
 
       regu_list->next = NULL;
       regu_list->value.type = TYPE_CONSTANT;
-      regu_list->value.domain =
-	tp_Domains[vallist->val->domain.general_info.type];
+      regu_list->value.domain = tp_domain_resolve_value (vallist->val, NULL);
       regu_list->value.value.dbvalptr = vallist->val;
 
       if (regulist != regu_list)
@@ -14887,8 +16337,10 @@ pt_make_pos_regu_list (PARSER_CONTEXT * parser, VAL_LIST * val_list_p)
     {
       (*tail) = regu_varlist_alloc ();
 
-      regu = pt_make_pos_regu_var_from_scratch
-	(tp_Domains[valp->val->domain.general_info.type], valp->val, i);
+      regu =
+	pt_make_pos_regu_var_from_scratch (tp_domain_resolve_value (valp->val,
+								    NULL),
+					   valp->val, i);
 
       i++;
 
@@ -15159,29 +16611,29 @@ pt_get_pred_regu_variable_p_list (const PRED_EXPR * pred, int *err)
 	{
 	case T_COMP_EVAL_TERM:
 	  nextl =
-	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_comp.
-					     lhs, false, err);
+	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.
+					     et_comp.lhs, false, err);
 	  nextr =
-	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_comp.
-					     rhs, false, err);
+	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.
+					     et_comp.rhs, false, err);
 	  break;
 
 	case T_ALSM_EVAL_TERM:
 	  nextl =
-	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_alsm.
-					     elem, false, err);
+	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.
+					     et_alsm.elem, false, err);
 	  nextr =
-	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_alsm.
-					     elemset, false, err);
+	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.
+					     et_alsm.elemset, false, err);
 	  break;
 
 	case T_LIKE_EVAL_TERM:
 	  nextl =
-	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_like.
-					     pattern, false, err);
+	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.
+					     et_like.pattern, false, err);
 	  nextr =
-	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_like.
-					     src, false, err);
+	    pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.
+					     et_like.src, false, err);
 	  break;
 	}
       break;
@@ -15448,4 +16900,1316 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   return xasl;
+}
+
+/*
+ * pt_init_precision_and_scale () -
+ *   return:
+ *   value(in):
+ *   node(in):
+ */
+static void
+pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node)
+{
+  PT_NODE *dt;
+  DB_TYPE domain_type;
+
+  if (!value || !node)
+    {
+      return;
+    }
+
+  CAST_POINTER_TO_NODE (node);
+
+  if (!node->data_type)
+    {
+      return;
+    }
+
+  dt = node->data_type;
+  domain_type = pt_type_enum_to_db (dt->type_enum);
+
+  switch (domain_type)
+    {
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      value->domain.char_info.length = dt->info.data_type.precision;
+      break;
+
+    case DB_TYPE_NUMERIC:
+      value->domain.numeric_info.precision = dt->info.data_type.precision;
+      value->domain.numeric_info.scale = dt->info.data_type.dec_precision;
+      break;
+
+    default:
+      ;				/* Do nothing. This suppresses compiler's warnings. */
+    }
+}
+
+/*
+ * pt_to_order_siblings_by () - modify order by list to match tuples used
+ *                              at order siblings by execution
+ *   return:
+ *   parser(in):
+ *   node(in):
+ */
+static SORT_LIST *
+pt_to_order_siblings_by (PARSER_CONTEXT * parser, XASL_NODE * xasl,
+			 XASL_NODE * connect_by_xasl)
+{
+  SORT_LIST *orderby;
+  REGU_VARIABLE_LIST regu_list1, regu_list2;
+  int i, j;
+
+  if (!xasl || !xasl->outptr_list || !connect_by_xasl
+      || !connect_by_xasl->outptr_list)
+    {
+      return NULL;
+    }
+
+  for (orderby = xasl->orderby_list; orderby; orderby = orderby->next)
+    {
+      for (i = 0, regu_list1 = xasl->outptr_list->valptrp; regu_list1;
+	   regu_list1 = regu_list1->next, i++)
+	{
+	  if (i == orderby->pos_descr.pos_no)
+	    {
+	      if (regu_list1->value.type != TYPE_CONSTANT)
+		{
+		  PT_INTERNAL_ERROR (parser,
+				     "invalid column in order siblings by");
+		}
+	      for (j = 0, regu_list2 = connect_by_xasl->outptr_list->valptrp;
+		   regu_list2; regu_list2 = regu_list2->next, j++)
+		{
+		  if (regu_list2->value.type == TYPE_CONSTANT &&
+		      regu_list1->value.value.dbvalptr ==
+		      regu_list2->value.value.dbvalptr)
+		    {
+		      orderby->pos_descr.pos_no = j;
+		      break;
+		    }
+		}
+	      break;
+	    }
+	}
+    }
+
+  return xasl->orderby_list;
+}
+
+/*
+ * pt_agg_orderby_to_sort_list() - Translates a list of order by PT_SORT_SPEC
+ *				   nodes from a aggregate function to a XASL
+ *				   SORT_LIST list
+ *
+ *   return: newly created XASL SORT_LIST
+ *   parser(in): parser context
+ *   order_list(in): list of PT_SORT_SPEC nodes
+ *   agg_args_list(in): list of aggregate function arguments
+ *
+ *  Note : Code is similar to 'pt_to_sort_list', but tweaked for ORDERBY's for
+ *	   aggregate functions.
+ *	   Although the existing single aggregate supporting ORDER BY, allows
+ *	   only one ORDER BY item, this functions handles the general case of
+ *	   multiple ORDER BY items. However, it doesn't handle the 'hidden'
+ *	   argument case (see 'pt_to_sort_list'), so it may require extension
+ *	   in order to support multiple ORDER BY items.
+ */
+static SORT_LIST *
+pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list,
+			     PT_NODE * agg_args_list)
+{
+  SORT_LIST *sort_list = NULL;
+  SORT_LIST *sort = NULL;
+  SORT_LIST *lastsort = NULL;
+  PT_NODE *node = NULL;
+  PT_NODE *arg = NULL;
+  int i, k;
+
+  i = 0;			/* SORT_LIST pos_no start from 0 */
+
+  for (node = order_list; node != NULL; node = node->next)
+    {
+      /* safe guard: invalid parse tree */
+      if (node->node_type != PT_SORT_SPEC ||
+	  node->info.sort_spec.expr == NULL)
+	{
+	  regu_set_error_with_zero_args (ER_REGU_SYSTEM);
+	  return NULL;
+	}
+
+      /* check for end-of-sort */
+      if (node->info.sort_spec.pos_descr.pos_no <= 0)
+	{
+	  /* internal error */
+	  if (!parser->error_msgs)
+	    {
+	      PT_INTERNAL_ERROR (parser, "generate order_by");
+	    }
+	  return NULL;
+	}
+
+      /* check for domain info */
+      if (node->info.sort_spec.pos_descr.dom == NULL)
+	{
+	  /* get domain from corresponding column node */
+	  for (arg = agg_args_list, k = 1; arg; arg = arg->next, k++)
+	    {
+	      if (node->info.sort_spec.pos_descr.pos_no == k)
+		{
+		  break;	/* match */
+		}
+	    }
+
+	  if (arg != NULL && arg->type_enum != PT_TYPE_NONE)
+	    {			/* is resolved */
+	      node->info.sort_spec.pos_descr.dom =
+		pt_xasl_node_to_domain (parser, arg);
+	    }
+
+	  /* still no domain ? -> internal error */
+	  if (node->info.sort_spec.pos_descr.dom == NULL)
+	    {
+	      if (!parser->error_msgs)
+		{
+		  PT_INTERNAL_ERROR (parser, "generate order_by");
+		}
+	      return NULL;
+	    }
+	}
+
+      sort = regu_sort_list_alloc ();
+      if (!sort)
+	{
+	  regu_set_error_with_zero_args (ER_REGU_SYSTEM);
+	  return NULL;
+	}
+
+      /* set values */
+      sort->s_order =
+	(node->info.sort_spec.asc_or_desc == PT_ASC) ? S_ASC : S_DESC;
+      sort->pos_descr = node->info.sort_spec.pos_descr;
+
+      /* PT_SORT_SPEC pos_no start from 1, SORT_LIST pos_no start from 0 */
+      sort->pos_descr.pos_no--;
+      assert (sort->pos_descr.pos_no >= 0);
+
+      /* link up */
+      if (sort_list)
+	{
+	  lastsort->next = sort;
+	}
+      else
+	{
+	  sort_list = sort;
+	}
+
+      lastsort = sort;
+    }
+
+  return sort_list;
+}
+
+/*
+ * pt_find_subplan_with_orderby_column () -
+ *   return:       NO_ERROR on success, otherwise an error code
+ *   parser (in):
+ *   orderby_node (in):
+ *   plan (in):
+ *   result (out):
+ *   sort_col_seg_idx (out): a pointer to an integer that will store the
+ *                           segment number (index in the env->segments[]) of
+ *                           the sort column. Will be used later in
+ *                           pt_check_join_cond_on_subplan_for_orderby...
+ */
+static int
+pt_find_subplan_with_orderby_column (PARSER_CONTEXT * parser,
+				     PT_NODE * orderby_node,
+				     QO_PLAN * plan,
+				     QO_PLAN ** result, int *sort_col_seg_idx)
+{
+  QO_PLANTYPE pt;
+  QO_ENV *env;
+  QO_INDEX_ENTRY *index_entryp;
+  int ret;
+
+  *result = NULL;
+  *sort_col_seg_idx = -1;
+
+  if (plan == NULL)
+    {
+      goto exit;
+    }
+
+  CAST_POINTER_TO_NODE (orderby_node);
+  if (orderby_node->node_type != PT_NAME)
+    {
+      goto exit;
+    }
+
+  pt = plan->plan_type;
+
+  if (pt == QO_PLANTYPE_SORT &&
+      (plan->plan_un.sort.sort_type == SORT_ORDERBY ||
+       plan->plan_un.sort.sort_type == SORT_TEMP))
+    {
+      return pt_find_subplan_with_orderby_column (parser,
+						  orderby_node,
+						  plan->plan_un.sort.
+						  subplan, result,
+						  sort_col_seg_idx);
+    }
+
+  if (pt == QO_PLANTYPE_JOIN && plan->plan_un.join.join_type == JOIN_INNER)
+    {
+      /* first look at the outer (left) node */
+      ret = pt_find_subplan_with_orderby_column (parser,
+						 orderby_node,
+						 plan->plan_un.join.
+						 outer, result,
+						 sort_col_seg_idx);
+
+      if (ret != NO_ERROR || *result != NULL)
+	{
+	  return ret;
+	}
+
+      /* not found in the outer subplan? continue with inner subplan */
+      ret = pt_find_subplan_with_orderby_column (parser,
+						 orderby_node,
+						 plan->plan_un.join.
+						 inner, result,
+						 sort_col_seg_idx);
+
+      return ret;
+    }
+
+  if (pt == QO_PLANTYPE_SCAN &&
+      (plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN ||
+       plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_ORDERBY_SCAN))
+    {
+      int i;
+
+      env = plan->info->env;
+      index_entryp = plan->plan_un.scan.index->head;
+      if (!env || !index_entryp)
+	{
+	  goto exit;
+	}
+
+      for (i = 0; i < index_entryp->nsegs; i++)
+	{
+	  PT_NODE *n;
+	  int idx;
+
+	  idx = index_entryp->seg_idxs[i];
+	  if (idx < 0)
+	    {
+	      continue;
+	    }
+	  n = QO_SEG_PT_NODE (QO_ENV_SEG (env, index_entryp->seg_idxs[i]));
+	  CAST_POINTER_TO_NODE (n);
+	  if (n && n->node_type == PT_NAME &&
+	      pt_name_equal (parser, orderby_node, n))
+	    {
+	      *result = plan;
+	      *sort_col_seg_idx = index_entryp->seg_idxs[i];
+	      goto exit;
+	    }
+	}
+    }
+
+exit:
+  return NO_ERROR;
+}
+
+/*
+ * pt_find_oid_scan_block () -
+ *   return:       the XASL node or NULL
+ *   xasl (in):	   the beginning of the XASL chain
+ *   oi (in):      the OID we're looking for
+ *
+ *   note: in trying to optimize a general query (multiple tables, joins etc.)
+ *         for using (index) keylimit for "ORDER BY ... LIMIT n" queries,
+ *         we need to gather information that's scattered around the generated
+ *         XASL blocks and the plan tree that was selected by the optimizer,
+ *         and was used to generate the afore mentioned XASL.
+ *         This method acts as a "link": it connects an xasl block with
+ *         the (sub?) plan that generated it.
+ */
+static XASL_NODE *
+pt_find_oid_scan_block (XASL_NODE * xasl, OID * oid)
+{
+  for (; xasl; xasl = xasl->scan_ptr)
+    {
+      /* only check required condition: OID match. Other, more sophisticated
+         conditions should be checked from the caller */
+      if (xasl->spec_list &&
+	  xasl->spec_list->indexptr &&
+	  oid_compare (&xasl->spec_list->indexptr->class_oid, oid) == 0)
+	{
+	  return xasl;
+	}
+    }
+  return NULL;
+}
+
+/*
+ * pt_check_seg_belongs_to_range_term () -
+ *   return:       true or false
+ *   subplan:      the subplan possibly containing the RANGE expression
+ *   env:
+ *   seg_idx:      segment index (in env) of the segment that we want
+ *                 to check
+ *
+ *   note: returns true if the specified subplan contains a term that
+ *         references the given segment in a RANGE expression
+ *         (t.i in (1,2,3) would be an example).
+ *         Used in keylimit for multiple key ranges in joins optimization.
+ */
+static bool
+pt_check_seg_belongs_to_range_term (QO_PLAN * subplan, QO_ENV * env,
+				    int seg_idx)
+{
+  int t, u;
+  BITSET_ITERATOR iter, iter_s;
+
+  assert (subplan->plan_type == QO_PLANTYPE_SCAN);
+  if (subplan->plan_type != QO_PLANTYPE_SCAN)
+    {
+      return false;
+    }
+
+  for (t = bitset_iterate (&(subplan->plan_un.scan.terms), &iter); t != -1;
+       t = bitset_next_member (&iter))
+    {
+      QO_TERM *termp = QO_ENV_TERM (env, t);
+      BITSET *segs = &(QO_TERM_SEGS (termp));
+      if (!segs)
+	{
+	  continue;
+	}
+      for (u = bitset_iterate (segs, &iter_s); u != -1;
+	   u = bitset_next_member (&iter_s))
+	{
+	  if (u == seg_idx)
+	    {
+	      QO_SEGMENT *seg = QO_ENV_SEG (env, u);
+	      PT_NODE *node = QO_TERM_PT_EXPR (termp);
+	      if (!node)
+		{
+		  continue;
+		}
+
+	      switch (node->info.expr.op)
+		{
+		case PT_IS_IN:
+		case PT_EQ_SOME:
+		case PT_RANGE:
+		  return true;
+		default:
+		  continue;
+		}
+	    }
+	}
+    }
+  return false;
+}
+
+/*
+ * pt_check_subplan_join_cond_for_ordby_keylimit () - validate a given
+ *                 subplan regarding the possibility of applying the
+ *                 keylimit optimization.
+ *
+ * return: NO_ERROR or error code
+ * parent (in):  if the subplan is a scan, parent is the join that contains
+ *               the subplan and its join conditions
+ * subplan (in): the subplan to be verified at this step
+ * sortplan (in):  the subplan that refers to the table that has the orderby
+ *               column (earlier on we impose the condition that there is a
+ *               single order by column, and it is a real table column).
+ * sort_col_index_seg (in): the idx of the segment that refers to the sort
+ *                          column.
+ *
+ *   note: the function assumes that subplan occurs "to the right" of
+ *         sortplan, the plan that refers to the orderby table.
+ *         The condition checked looks like this: for every join condition
+ *         that refers to a column in the orderby table, the join condition
+ *         must be "eq", and the referenced column must appear before the sort
+ *         column in the index that is used to scan the orderby table.
+ *         If it is not in the index, if it is in a different index or if it
+ *         is appears after the sort column, an error occurs.
+ */
+static int
+pt_check_subplan_join_cond_for_ordby_keylimit (QO_PLAN * parent,
+					       QO_PLAN * subplan,
+					       QO_PLAN * sortplan,
+					       int sort_col_seg_idx)
+{
+  int t, n;
+  BITSET_ITERATOR iter_t, iter_n, iter_segs;
+  QO_TERM *jt;
+  QO_NODE *jn;
+  QO_ENV *env;
+  QO_NODE *node_of_sort_table;
+
+  if (!parent || parent->plan_type != QO_PLANTYPE_JOIN ||
+      !subplan || subplan->plan_type != QO_PLANTYPE_SCAN ||
+      !sortplan->plan_un.scan.node ||
+      !sortplan->plan_un.scan.node->info ||
+      sortplan->plan_un.scan.node->info->n <= 0 ||
+      !sortplan->plan_un.scan.index || sortplan->plan_un.scan.index->n <= 0)
+    {
+      return false;
+    }
+
+  env = subplan->info->env;
+  node_of_sort_table = sortplan->plan_un.scan.node;
+
+  /*
+   * Scan all the parent's join terms: jt.
+   *   Join terms contain references to the tables that they reference.
+   *   For each such table t, referenced in the above mentioned jt:
+   *     - is t the same as the "orderby table"? If not, carry on to the next
+   *       table referenced by jt;
+   *     - if t is exactly the "orderby table", it means that the current join
+   *       term jt refers to that table.
+   *         - scan all the segments (seg) referenced by this join term,
+   *           only pay attention at the ones that pertain to t (== the
+   *           orderby table), and for each such segment "seg":
+   *             1. does seg appear in the index used to scan the orderby
+   *                table (get that info from the plan, sortplan). If the seg
+   *                does not appear in the index, it means that it would
+   *                qualify as a "virtual data filter" and would be able to
+   *                further restrict the result set, so halt everything and
+   *                remember that the optimization is not possible.
+   *             2. if seg DOES appear in the index used to scan the orderby
+   *                table, does it do so at a position to the left of the
+   *                actual orderby column? If not, it would also mean that
+   *                the join condition here could restrict the result set of
+   *                the btree range search on the orderby table, and the
+   *                optimization cannot be applied.
+   *
+   *   We MUST be as conservative as possible when deciding to apply the
+   *   optimization, because if we fail, the optimization would yield
+   *   too few results: a "LIMIT 10" query could end up with less than 10
+   *   results, even though there are enough records to choose from.
+   */
+
+
+  /* for each join term */
+  for (t = bitset_iterate (&(parent->plan_un.join.join_terms), &iter_t);
+       t != -1; t = bitset_next_member (&iter_t))
+    {
+      jt = QO_ENV_TERM (env, t);
+      if (jt == NULL)
+	{
+	  return false;
+	}
+
+      /* for each of the tables (nodes) the join term references */
+      for (n = bitset_iterate (&(jt->nodes), &iter_n);
+	   n != -1; n = bitset_next_member (&iter_n))
+	{
+	  int seg_idx;
+	  jn = QO_ENV_NODE (env, n);
+
+	  /* better safe than sorry */
+	  if (jn == NULL)
+	    {
+	      return false;
+	    }
+
+	  /* alternative is to use jn->info->info[0].oid; */
+	  if (jn != node_of_sort_table)
+	    {
+	      /* better luck next time! */
+	      continue;
+	    }
+
+	  /* We are here because:
+	   * there exists a join term t, that references the same table
+	   * as the table that contains the sort column.
+	   */
+
+	  /* for each of the segments referenced in jt */
+	  for (seg_idx = bitset_iterate (&(jt->segments), &iter_segs);
+	       seg_idx != -1; seg_idx = bitset_next_member (&iter_segs))
+	    {
+	      QO_SEGMENT *seg = QO_ENV_SEG (env, seg_idx);
+	      QO_NODE *seg_node = QO_SEG_HEAD (seg);
+	      int k;
+
+	      /* let the seg go if it doesn't refer to the orderby table */
+	      if (seg_node != node_of_sort_table)
+		{
+		  continue;
+		}
+
+	      /* try to find the segment in the index that is used when
+	       * scanning the orderby table - take that info from the subplan
+	       * (sortplan) rather than from the node info, because the node
+	       * info lists all the indexes, not only those that are used at
+	       * this particular scan.
+	       */
+	      for (k = 0; k < sortplan->plan_un.scan.index->head->nsegs; k++)
+		{
+		  int k_seg_idx =
+		    sortplan->plan_un.scan.index->head->seg_idxs[k];
+
+		  /* we got to our segment ! */
+		  if (k_seg_idx == seg_idx)
+		    {
+		      /* done with seg_idx, we found it before finding the sort column! */
+		      if (pt_check_seg_belongs_to_range_term
+			  (sortplan, env, seg_idx))
+			{
+			  return false;
+			}
+		      break;
+		    }
+
+		  if (k_seg_idx == sort_col_seg_idx)
+		    {
+		      /* the current segment (which is used in a join predicate
+		       * in a scan that is "more inner" than the scan that
+		       * contains the sort column) does NOT appear before the
+		       * sort column in the index that is used to scan the
+		       * table that contains the sort column.
+		       */
+		      return false;
+		    }
+		}
+	    }
+	}
+    }
+
+  return true;
+}
+
+/*
+ * pt_check_parent_eq_class_for_ordby_keylimit () - validate a given
+ *                 join node regarding the possibility of applying the
+ *                 keylimit optimization.
+ *
+ * return: NO_ERROR or error code
+ * parent (in):  the join that needs to be checked
+ * sortplan (in):  the subplan that refers to the table that has the orderby
+ *                 column (earlier on we impose the condition that there is a
+ *                 single order by column, and it is a real table column).
+ * sort_col_index_seg (in): the idx of the segment that refers to the sort
+ *                          column.
+ *
+ */
+static int
+pt_check_parent_eq_class_for_ordby_keylimit (QO_PLAN * parent,
+					     QO_PLAN * subplan,
+					     QO_PLAN * sortplan,
+					     int sort_col_seg_idx)
+{
+  int t, eq_idx;
+  BITSET_ITERATOR iter_t;
+  QO_ENV *env;
+  QO_NODE *node_of_sort_table;
+  QO_NODE *node_of_cur_table;
+
+  if (!parent || parent->plan_type != QO_PLANTYPE_JOIN ||
+      !subplan || subplan->plan_type != QO_PLANTYPE_SCAN ||
+      !sortplan->plan_un.scan.node ||
+      !sortplan->plan_un.scan.node->info ||
+      sortplan->plan_un.scan.node->info->n <= 0 ||
+      !sortplan->plan_un.scan.index || sortplan->plan_un.scan.index->n <= 0)
+    {
+      return false;
+    }
+
+  env = parent->info->env;
+  node_of_sort_table = sortplan->plan_un.scan.node;
+  node_of_cur_table = subplan->plan_un.scan.node;
+
+  /* for each eq class */
+  for (eq_idx = 0; eq_idx < env->neqclasses; eq_idx++)
+    {
+      QO_EQCLASS *eq = QO_ENV_EQCLASS (env, eq_idx);
+      bool is_eqclass_relevant = false;
+
+      /* for each segment */
+      for (t = bitset_iterate (&QO_EQCLASS_SEGS (eq), &iter_t);
+	   t != -1; t = bitset_next_member (&iter_t))
+	{
+	  QO_SEGMENT *seg = QO_ENV_SEG (env, t);
+	  QO_NODE *node = QO_SEG_HEAD (seg);
+
+	  if (node == node_of_cur_table)
+	    {
+	      is_eqclass_relevant = true;
+	      break;
+	    }
+	}
+
+      if (!is_eqclass_relevant)
+	{
+	  continue;
+	}
+
+      /* here: we have an equivalence class that has a segment belonging
+       * to our current class. Must see if it also has segments belonging
+       * to the sort table: iterate again over it.
+       */
+
+      for (t = bitset_iterate (&QO_EQCLASS_SEGS (eq), &iter_t);
+	   t != -1; t = bitset_next_member (&iter_t))
+	{
+	  QO_SEGMENT *seg = QO_ENV_SEG (env, t);
+	  QO_NODE *node = QO_SEG_HEAD (seg);
+
+	  if (node == node_of_sort_table)
+	    {
+	      int k;
+	      int seg_idx = t;
+
+	      /* try to find the segment in the index that is used when
+	       * scanning the orderby table - take that info from the subplan
+	       * (sortplan) rather than from the node info, because the node
+	       * info lists all the indexes, not only those that are used at
+	       * this particular scan.
+	       */
+	      for (k = 0; k < sortplan->plan_un.scan.index->head->nsegs; k++)
+		{
+		  int k_seg_idx =
+		    sortplan->plan_un.scan.index->head->seg_idxs[k];
+
+		  /* we got to our segment ! */
+		  if (k_seg_idx == seg_idx)
+		    {
+		      /* done with seg_idx, we found it before finding the sort column! */
+		      if (pt_check_seg_belongs_to_range_term
+			  (sortplan, env, seg_idx))
+			{
+			  return false;
+			}
+		      break;
+		    }
+
+		  if (k_seg_idx == sort_col_seg_idx)
+		    {
+		      /* the current segment (which is used in a join predicate
+		       * in a scan that is "more inner" than the scan that
+		       * contains the sort column) does NOT appear before the
+		       * sort column in the index that is used to scan the
+		       * table that contains the sort column.
+		       */
+		      return false;
+		    }
+		}
+	    }
+	}
+    }
+  return true;
+}
+
+/*
+ * pt_validate_subplans_for_ordby_keylimit () - validate some of the plan's
+ *                 subplans for the possibility of applying the
+ *                 keylimit optimization.
+ *
+ * return: NO_ERROR or error code
+ * parent (in):     parent is the join that contains the subplan (or NULL)
+ * plan (in):       the subplan to be verified at this step
+ * sortplan (in):     the subplan that refers to the table that has the orderby
+ *                  column (earlier on we impose the condition that there is a
+ *                  single order by column, and it is a real table column).
+ * isvalid (out):   will be set to 1 if we can apply the optimization
+ * firstlayer (in): flag to distinguish from different recurrence layers
+ * sort_col_seg_idx (in): parameter to pass to pt_check_subplan_join_cond_for_ordby_keylimit.
+ *
+ *   note: the function scans the plan tree and after it passes the plan for
+ *         the orderby table, checks
+ *         all scan subplans (they are "right" of the orderby table).
+ *         See pt_check_subplan_join_cond_for_ordby_keylimit for more info.
+ */
+static int
+pt_validate_subplans_for_ordby_keylimit (QO_PLAN * parent,
+					 QO_PLAN * plan,
+					 QO_PLAN * sortplan,
+					 bool * isvalid, bool firstlayer,
+					 int sort_col_seg_idx)
+{
+  QO_PLANTYPE pt;
+
+  /* seen: flag to remember that we have passed the orderby table and from now
+   * on we are looking at potentially suspect scans (they are "to the right"
+   * of the orderby table).
+   */
+  static bool seen;
+
+  if (!plan || !sortplan)
+    {
+      goto exit;
+    }
+
+  if (firstlayer == 1)
+    {
+      seen = false;
+    }
+
+  *isvalid = true;
+  pt = plan->plan_type;
+
+  /* node is a scan */
+  if (pt == QO_PLANTYPE_SCAN)
+    {
+      /* if we have passed the sort plan already, check the current plan */
+      if (seen)
+	{
+	  /* judge carefully */
+	  if (parent == NULL)
+	    {
+	      *isvalid = false;
+	      goto exit;
+	    }
+	  *isvalid =
+	    pt_check_subplan_join_cond_for_ordby_keylimit (parent, plan,
+							   sortplan,
+							   sort_col_seg_idx);
+	  if (*isvalid == true)
+	    {
+	      *isvalid =
+		pt_check_parent_eq_class_for_ordby_keylimit (parent, plan,
+							     sortplan,
+							     sort_col_seg_idx);
+	    }
+
+	  return NO_ERROR;
+	}
+      if (plan == sortplan)
+	{
+	  seen = true;
+	}
+
+      /* a scan has no descendants, so no recursion here */
+    }
+  else				/* plan_type is NOT a scan */
+    {
+      if (pt == QO_PLANTYPE_SORT)
+	{
+	  return pt_validate_subplans_for_ordby_keylimit (NULL,
+							  plan->plan_un.sort.
+							  subplan, sortplan,
+							  isvalid, false,
+							  sort_col_seg_idx);
+	}
+
+      if (pt == QO_PLANTYPE_FOLLOW)
+	{
+	  return pt_validate_subplans_for_ordby_keylimit (NULL,
+							  plan->plan_un.
+							  follow.head,
+							  sortplan, isvalid,
+							  false,
+							  sort_col_seg_idx);
+	}
+
+      if (pt == QO_PLANTYPE_JOIN)
+	{
+	  int ret;
+	  ret =
+	    pt_validate_subplans_for_ordby_keylimit (plan,
+						     plan->plan_un.join.outer,
+						     sortplan, isvalid, false,
+						     sort_col_seg_idx);
+	  if (ret != NO_ERROR || !*isvalid)
+	    {
+	      return ret;
+	    }
+
+	  ret =
+	    pt_validate_subplans_for_ordby_keylimit (plan,
+						     plan->plan_un.join.inner,
+						     sortplan, isvalid, false,
+						     sort_col_seg_idx);
+	  return ret;
+	}
+
+      /* a case we have not foreseen? Be conservative. */
+      *isvalid = false;
+    }
+
+
+exit:
+  return NO_ERROR;
+}
+
+/*
+ * pt_check_subplan_and_orderby_correlation () - Checks if the given plan
+ *                              contains the orderby_col column in its index,
+ *                              and if it is in the desired order.
+ *
+ * return: NO_ERROR or error code
+ * plan (in):       the subplan to be verified at this step
+ * s_order (in):    the sort order of the orderby column (asc / desc)
+ * orderby_col (in):
+ * parser (in):
+ * can_optimize (out):
+ *
+ */
+static int
+pt_check_subplan_and_orderby_correlation (QO_PLAN * plan,
+					  SORT_ORDER s_order,
+					  bool use_desc_index,
+					  PT_NODE * orderby_col,
+					  PARSER_CONTEXT * parser,
+					  int *can_optimize)
+{
+  QO_NODE_INDEX_ENTRY *ni_entryp;
+  QO_INDEX_ENTRY *index_entryp;
+  int nterms;
+  TP_DOMAIN *key_type;
+  ATTR_STATS *attr_stats;
+  int idx;
+  int i;
+  bool desc;
+  int seg_idx;
+  PT_NODE *cur_node;
+  QO_ENV *env;
+
+  *can_optimize = false;
+
+  if (!plan || !orderby_col)
+    {
+      return ER_FAILED;
+    }
+
+  env = (plan->info)->env;
+  nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
+  if (nterms <= 0
+      && plan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN)
+    {
+      return NO_ERROR;
+    }
+
+  ni_entryp = plan->plan_un.scan.index;
+  index_entryp = (ni_entryp)->head;
+
+  if (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->constraints->type))
+    {
+      return NO_ERROR;
+    }
+
+  attr_stats = index_entryp->stats;
+  idx = index_entryp->bt_stats_idx;
+  if (!attr_stats || idx < 0 || idx >= attr_stats->n_btstats)
+    {
+      return NO_ERROR;
+    }
+  key_type = attr_stats->bt_stats[idx].key_type;
+  if (key_type && key_type->type->id == DB_TYPE_MIDXKEY)
+    {
+      /* get the column key-type of multi-column index */
+      key_type = key_type->setdomain;
+    }
+  else
+    {
+      return NO_ERROR;
+    }
+
+  for (i = 0; i < index_entryp->nsegs; i++)
+    {
+      desc = key_type->is_desc;
+      if (use_desc_index)
+	{
+	  desc = !desc;
+	}
+
+      seg_idx = (index_entryp->seg_idxs[i]);
+      if (seg_idx == -1)
+	{
+	  return NO_ERROR;
+	}
+
+      cur_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_idx));
+      if (pt_name_equal (parser, cur_node, orderby_col))
+	{
+	  if ((desc && s_order == S_DESC) || (!desc && s_order == S_ASC))
+	    {
+	      *can_optimize = true;
+	    }
+	  return NO_ERROR;
+	}
+
+      key_type = key_type->next;
+      if (!key_type)
+	{
+	  return NO_ERROR;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * pt_ordbynum_to_key_limit_multiple_ranges () - add key limit to optimize
+ *					 index access with multiple key ranges
+ *					 and ordbynum predicate
+ *   return:
+ *   parser(in):
+ *   plan(in):
+ *   xasl(in):
+ *
+ *   Note: The optimization requres a series of conditions to be met:
+ *         - single table query
+ *         - index scan with no data filter
+ *         - ordering on a single column, and orderby_num predicate (or
+ *           limit clause)
+ *         - index access must have multiple key ranges, but only one range
+ *           column; the range column should match the ordering column and
+ *           sort order
+ *         - the query should have an upper limit, but not a lower limit (or
+ *           a minumum in the orderby_num predicate)
+ *
+ *         The generic type of query that is optimized is the following:
+ *         SELECT ... FROM table
+ *             WHERE col_1 = ? AND col_2 = ? AND ...
+ *                   AND col_(j) IN (?,?,...)
+ *                   AND col_(j+1) = ? AND ... AND col_(p-1) = ?
+ *                   AND key_filter_terms
+ *             ORDER BY col_(p) [ASC/DESC]
+ *             FOR ordbynum_pred / LIMIT n
+ *
+ *         In other words, if the ordering column is col_(p):
+ *         - there should be only one column col_(j), j<p, within a key list
+ *           term: col_(j) IN (?,?,...)
+ *         - any other column at left of col_(p) should be in an eq term:
+ *           col_(k) = ?, for every k<p, k!=j
+ *         - the rest of the WHERE clause may have any other key filter terms
+ *
+ */
+static int
+pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser,
+					  PT_NODE * query,
+					  QO_PLAN * plan, XASL_NODE * xasl)
+{
+  QO_LIMIT_INFO *limit_infop;
+  int can_optimize = 0, ret, i;
+  PT_NODE *select_list;
+  PT_NODE *orderby_col = NULL;
+
+  QO_PLAN *subplan = NULL;
+  XASL_NODE *scan;
+  bool is_valid_subplan;
+  bool use_desc_index = false;
+  int sort_col_seg_idx;
+
+  if (!plan)			/* simple plan, nothing to do */
+    {
+      goto exit;
+    }
+
+  if (!xasl || !xasl->spec_list)
+    {
+      goto error_exit;
+    }
+
+  /* check that ORDER BY list has a single column, and it has a valid pred */
+  if (!xasl->orderby_list || xasl->orderby_list->next || !xasl->ordbynum_pred)
+    {
+      goto exit;
+    }
+
+  /* get that one and only ORDER BY node */
+  orderby_col = select_list = pt_get_select_list (parser, query);
+  if (orderby_col == NULL)
+    {
+      goto error_exit;
+    }
+
+  i = xasl->orderby_list->pos_descr.pos_no;
+  while (i-- > 0 && orderby_col)
+    {
+      orderby_col = orderby_col->next;
+      if (!orderby_col)
+	{
+	  goto exit;
+	}
+    }
+
+  /* find the right subplan */
+  if (pt_find_subplan_with_orderby_column
+      (parser, orderby_col, plan, &subplan, &sort_col_seg_idx) != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (subplan == NULL)
+    {
+      goto exit;
+    }
+
+  if (subplan->plan_un.scan.index == NULL)
+    {
+      goto error_exit;
+    }
+
+  scan = pt_find_oid_scan_block (xasl,
+				 &(subplan->plan_un.scan.index->
+				   head->class_->oid));
+  if (scan == NULL)
+    {
+      goto exit;
+    }
+
+  /* check that we have index scan */
+  if (scan->spec_list->type != TARGET_CLASS ||
+      scan->spec_list->access != INDEX || !scan->spec_list->indexptr)
+    {
+      goto exit;
+    }
+
+  use_desc_index = scan->spec_list->indexptr->use_desc_index;
+
+  /* no data filter */
+  if (scan->spec_list->where_pred)
+    {
+      goto exit;
+    }
+
+  ret =
+    pt_validate_subplans_for_ordby_keylimit (NULL, plan, subplan,
+					     &is_valid_subplan, true,
+					     sort_col_seg_idx);
+  if (ret != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  if (!is_valid_subplan)
+    {
+      goto exit;
+    }
+
+  /* Apply optimization to single key selection paths ("j=1") and also
+   * ranges like "i in (1,2,3)".
+   */
+  if (scan->spec_list->indexptr->range_type != R_KEYLIST &&
+      scan->spec_list->indexptr->range_type != R_KEY)
+    {
+      goto exit;
+    }
+
+  /* recheck orderby column and sort order */
+  can_optimize = false;
+  ret = pt_check_subplan_and_orderby_correlation (subplan,
+						  xasl->orderby_list->s_order,
+						  use_desc_index,
+						  orderby_col, parser,
+						  &can_optimize);
+  if (ret != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  if (!can_optimize)
+    {
+      goto exit;
+    }
+
+
+  /* check plan to match the cases we're optimizing */
+  ret = qo_check_plan_for_multiple_ranges_limit_opt (parser, subplan,
+						     orderby_col,
+						     &can_optimize);
+  if (ret != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  if (!can_optimize)
+    {
+      goto exit;
+    }
+
+  /* generate key limit expression from limit/ordbynum */
+  limit_infop = qo_get_key_limit_from_ordbynum (parser, plan, xasl);
+  if (!limit_infop)
+    {
+      goto exit;
+    }
+
+  /* set an auto-resetting key limit for the iscan */
+  ret = pt_to_key_limit (parser, NULL, limit_infop,
+			 &scan->spec_list->indexptr->key_info, true);
+  db_private_free (NULL, limit_infop);
+
+  if (ret != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+exit:
+  return NO_ERROR;
+
+error_exit:
+  return ER_FAILED;
+}
+
+/*
+ * pt_to_pos_descr_groupby () - Translate PT_SORT_SPEC node to
+ *				QFILE_TUPLE_VALUE_POSITION node
+ *   return:
+ *   parser(in):
+ *   pos_p(out):
+ *   node(in):
+ *   root(in):
+ */
+void
+pt_to_pos_descr_groupby (PARSER_CONTEXT * parser,
+			 QFILE_TUPLE_VALUE_POSITION * pos_p,
+			 PT_NODE * node, PT_NODE * root)
+{
+  PT_NODE *temp;
+  char *node_str = NULL;
+  int i;
+
+  pos_p->pos_no = -1;		/* init */
+  pos_p->dom = NULL;		/* init */
+
+  switch (root->node_type)
+    {
+    case PT_SELECT:
+      i = 1;			/* PT_SORT_SPEC pos_no start from 1 */
+
+      if (node->node_type == PT_EXPR)
+	{
+	  unsigned int save_custom;
+
+	  save_custom = parser->custom_print;	/* save */
+	  parser->custom_print |= PT_CONVERT_RANGE;
+
+	  node_str = parser_print_tree (parser, node);
+
+	  parser->custom_print = save_custom;	/* restore */
+	}
+
+      for (temp = root->info.query.q.select.group_by; temp != NULL;
+	   temp = temp->next)
+	{
+	  PT_NODE *expr = NULL;
+	  if (temp->node_type != PT_SORT_SPEC)
+	    {
+	      continue;
+	    }
+
+	  expr = temp->info.sort_spec.expr;
+
+	  if (node->node_type == PT_NAME)
+	    {
+	      if (pt_name_equal (parser, expr, node))
+		{
+		  pos_p->pos_no = i;
+		}
+	    }
+	  else if (node->node_type == PT_EXPR)
+	    {
+	      if (pt_str_compare (node_str, parser_print_tree (parser, expr),
+				  CASE_INSENSITIVE) == 0)
+		{
+		  pos_p->pos_no = i;
+		}
+	    }
+	  else
+	    {			/* node type must be an integer */
+	      if (node->info.value.data_value.i == i)
+		{
+		  pos_p->pos_no = i;
+		}
+	    }
+
+	  if (pos_p->pos_no != -1)
+	    {			/* found match */
+	      if (expr->type_enum != PT_TYPE_NONE
+		  && expr->type_enum != PT_TYPE_MAYBE)
+		{		/* is resolved */
+		  pos_p->dom = pt_xasl_node_to_domain (parser, expr);
+		}
+	      break;
+	    }
+
+	  i++;
+	}
+
+      break;
+
+    case PT_UNION:
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+      pt_to_pos_descr_groupby (parser, pos_p, node,
+			       root->info.query.q.union_.arg1);
+      break;
+
+    default:
+      /* an error */
+      break;
+    }
+
+  if (pos_p->pos_no == -1 || pos_p->dom == NULL)
+    {				/* an error */
+      pos_p->pos_no = -1;
+      pos_p->dom = NULL;
+    }
+}
+
+/*
+ * pt_numbering_set_continue_post () - set PT_PRED_ARG_INSTNUM_CONTINUE,
+ * PT_PRED_ARG_GRBYNUM_CONTINUE and PT_PRED_ARG_ORDBYNUM_CONTINUE flag
+ * for numbering node
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_numbering_set_continue_post (PARSER_CONTEXT * parser,
+				PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *child = NULL;
+  int *flagp = (int *) arg;
+  PT_NODE *children[3];
+  int i;
+
+  if (!node)
+    {
+      return NULL;
+    }
+
+  if (node->node_type == PT_EXPR && node->type_enum != PT_TYPE_LOGICAL)
+    {
+      children[0] = node->info.expr.arg1;
+      children[1] = node->info.expr.arg2;
+      children[2] = node->info.expr.arg3;
+
+      for (i = 0; i < 3; i++)
+	{
+	  child = children[i];
+	  if (child && ((child->node_type == PT_FUNCTION &&
+			 child->info.function.function_type ==
+			 PT_GROUPBY_NUM)
+			||
+			(child->node_type == PT_EXPR &&
+			 PT_IS_NUMBERING_AFTER_EXECUTION (child->info.expr.
+							  op))))
+	    {
+	      /* we have a subexpression with numbering functions and we
+	       * don't have a logical operator therefore we set the continue
+	       * flag to ensure we treat all values in the pred evaluation
+	       */
+	      *flagp |= PT_PRED_ARG_INSTNUM_CONTINUE;
+	      *flagp |= PT_PRED_ARG_GRBYNUM_CONTINUE;
+	      *flagp |= PT_PRED_ARG_ORDBYNUM_CONTINUE;
+	    }
+	}
+    }
+
+  return node;
 }

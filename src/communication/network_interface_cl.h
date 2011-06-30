@@ -165,6 +165,13 @@ extern void log_set_interrupt (int set);
 extern void log_checkpoint (void);
 extern void log_dump_stat (FILE * outfp);
 extern void log_set_suppress_repl_on_transaction (int set);
+extern LOB_LOCATOR_STATE log_find_lob_locator (const char *locator,
+					       char *real_locator);
+extern int log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state);
+extern int log_change_state_of_locator (const char *locator,
+					const char *real_locator,
+					LOB_LOCATOR_STATE state);
+extern int log_drop_lob_locator (const char *locator);
 
 extern TRAN_STATE tran_server_commit (bool retain_lock);
 extern TRAN_STATE tran_server_abort (void);
@@ -192,6 +199,8 @@ extern int tran_server_savepoint (const char *savept_name,
 extern TRAN_STATE tran_server_partial_abort (const char *savept_name,
 					     LOG_LSA * savept_lsa);
 extern void lock_dump (FILE * outfp);
+extern int acl_reload (void);
+extern void acl_dump (FILE * outfp);
 
 int boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential,
 			    BOOT_DB_PATH_INFO * db_path_info,
@@ -213,15 +222,15 @@ extern int boot_backup (const char *backup_path,
 			bool delete_unneeded_logarchives,
 			const char *backup_verbose_file, int num_threads,
 			FILEIO_ZIP_METHOD zip_method,
-			FILEIO_ZIP_LEVEL zip_level, int skip_activelog,
-			PAGEID safe_pageid);
+			FILEIO_ZIP_LEVEL zip_level, int skip_activelog);
 extern VOLID boot_add_volume_extension (const char *ext_path,
 					const char *ext_name,
 					const char *ext_comments,
 					DKNPAGES ext_npages,
 					DISK_VOLPURPOSE ext_purpose,
 					int ext_overwrite);
-extern int boot_check_db_consistency (int check_flag);
+extern int boot_check_db_consistency (int check_flag, OID * oids,
+				      int num_oids);
 extern int boot_find_number_permanent_volumes (void);
 extern int boot_find_number_temp_volumes (void);
 extern int boot_find_last_temp (void);
@@ -229,23 +238,25 @@ extern int boot_delete (const char *db_name, bool force_delete);
 extern int boot_restart_from_backup (int print_restart, const char *db_name,
 				     BO_RESTART_ARG * r_args);
 extern bool boot_shutdown_server (bool iserfinal);
-extern int boot_soft_rename (const char *olddb_name,
-			     const char *newdb_name, const char *newdb_path,
-			     const char *newlog_path,
-			     const char *newdb_server_host,
+extern int boot_soft_rename (const char *old_db_name,
+			     const char *new_db_name, const char *new_db_path,
+			     const char *new_log_path,
+			     const char *new_db_server_host,
 			     const char *new_volext_path,
 			     const char *fileof_vols_and_renamepaths,
 			     bool newdb_overwrite, bool extern_rename,
 			     bool force_delete);
-extern int boot_copy (const char *from_dbname, const char *newdb_name,
-		      const char *newdb_path, const char *newlog_path,
-		      const char *newdb_server_host,
+extern int boot_copy (const char *from_dbname, const char *new_db_name,
+		      const char *new_db_path, const char *new_log_path,
+		      const char *new_lob_path,
+		      const char *new_db_server_host,
 		      const char *new_volext_path,
 		      const char *fileof_vols_and_copypaths,
 		      bool newdb_overwrite);
-extern int boot_emergency_patch (const char *db_name, bool recreate_log);
+extern int boot_emergency_patch (const char *db_name, bool recreate_log,
+				 DKNPAGES log_npages, FILE * out_fp);
 extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state,
-					    bool force, bool wait);
+					    bool force);
 extern int boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state);
 extern LOID *largeobjmgr_create (LOID * loid, int length, char *buffer,
 				 int est_lo_length, OID * oid);
@@ -264,7 +275,7 @@ extern INT64 largeobjmgr_length (LOID * loid);
 extern char *stats_get_statistics_from_server (OID * classoid,
 					       unsigned int timestamp,
 					       int *length_ptr);
-extern int stats_update_class_statistics (OID * classoid);
+extern int stats_update_class_statistics (OID * classoid, int do_now);
 extern int stats_update_statistics (void);
 
 extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type,
@@ -317,17 +328,15 @@ extern int qmgr_sync_query (DB_QUERY_RESULT * query_result, int wait);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int qp_get_sys_timestamp (DB_VALUE * value);
 #endif
-extern int serial_get_next_value (DB_VALUE * value, DB_VALUE * oid);
+extern int serial_get_next_value (DB_VALUE * value, DB_VALUE * oid,
+				  int is_auto_increment);
 extern int serial_get_current_value (DB_VALUE * value, DB_VALUE * oid);
 extern int serial_decache (OID * oid);
 
 extern int mnt_server_start_stats (bool for_all_trans);
 extern int mnt_server_stop_stats (void);
-extern void mnt_server_reset_stats (void);
-extern void mnt_server_reset_global_stats (void);
 extern void mnt_server_copy_stats (MNT_SERVER_EXEC_STATS * to_stats);
-extern void mnt_server_copy_global_stats (MNT_SERVER_EXEC_GLOBAL_STATS *
-					  to_stats);
+extern void mnt_server_copy_global_stats (MNT_SERVER_EXEC_STATS * to_stats);
 extern int catalog_is_acceptable_new_representation (OID * class_id,
 						     HFID * hfid,
 						     int *can_accept);
@@ -354,20 +363,21 @@ extern int repl_set_info (REPL_INFO * repl_info);
 
 extern int logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr);
 
+
 extern bool histo_is_supported (void);
 extern int histo_start (bool for_all_trans);
 extern int histo_stop (void);
 extern void histo_print (FILE * stream);
-extern void histo_print_global_stats (FILE * stream);
+extern void histo_print_global_stats (FILE * stream, bool cumulative,
+				      const char *substr);
 extern void histo_clear (void);
-extern void histo_clear_global_stats (void);
 
 extern int net_histo_start (bool for_all_trans);
 extern int net_histo_stop (void);
 extern void net_histo_print (FILE * stream);
-extern void net_histo_print_global_stats (FILE * stream);
+extern void net_histo_print_global_stats (FILE * stream, bool cumulative,
+					  const char *substr);
 extern void net_histo_clear (void);
-extern void net_histo_clear_global_stats (void);
 
 extern int net_client_request_no_reply (int request, char *argbuf,
 					int argsize);
@@ -411,6 +421,10 @@ extern int net_client_request_with_callback (int request, char *argbuf,
 					     int *replydatasize_ptr1,
 					     char **replydata_ptr2,
 					     int *replydatasize_ptr2);
+extern int net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf,
+					int argsize, char *replybuf,
+					int replysize, char **logpg_area_buf,
+					bool verbose);
 extern int net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
 						  int request, char *argbuf,
 						  int argsize, char *replybuf,
@@ -423,6 +437,7 @@ extern int net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
 						  int *replydatasize_ptr1,
 						  char **replydata_ptr2,
 						  int *replydatasize_ptr2);
+extern void net_client_logwr_send_end_msg (int rc, int error);
 extern int net_client_get_next_log_pages (int rc, char *replybuf,
 					  int replysize, int length);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -502,4 +517,41 @@ extern int boot_heap_compact (OID * class_oid);
 extern int compact_db_start (void);
 extern int compact_db_stop (void);
 
+/* external storage supports */
+extern int es_posix_create_file (char *new_path);
+extern ssize_t es_posix_write_file (const char *path, const void *buf,
+				    size_t count, off_t offset);
+extern ssize_t es_posix_read_file (const char *path, void *buf, size_t count,
+				   off_t offset);
+extern int es_posix_delete_file (const char *path);
+extern int es_posix_copy_file (const char *src_path, const char *metaname,
+			       char *new_path);
+extern int es_posix_rename_file (const char *src_path, const char *metaname,
+				 char *new_path);
+extern off_t es_posix_get_file_size (const char *path);
+
+extern int locator_upgrade_instances_domain (OID * class_oid,
+					     int attribute_id);
+
+/* session state API */
+extern int csession_check_session (SESSION_ID * session_id, int *row_count);
+extern int csession_end_session (SESSION_ID session_id);
+extern int csession_set_row_count (int rows);
+extern int csession_get_row_count (int *rows);
+extern int csession_get_last_insert_id (DB_VALUE * value);
+extern int csession_create_prepared_statement (const char *name,
+					       const char *alias_print,
+					       char *stmt_info,
+					       int info_length);
+extern int csession_get_prepared_statement (const char *name,
+					    XASL_ID * xasl_id,
+					    char **stmt_info);
+
+extern int csession_delete_prepared_statement (const char *name);
+
+extern int csession_set_session_variables (DB_VALUE * variables,
+					   const int count);
+extern int csession_get_variable (DB_VALUE * name, DB_VALUE * value);
+extern int csession_drop_session_variables (DB_VALUE * variables,
+					    const int count);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

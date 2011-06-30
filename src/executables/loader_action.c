@@ -965,26 +965,15 @@ act_system (const char *token, ACT_SYSOBJ_TYPE type)
       strncpy (name, token, len);
       name[len] = '\0';
 
-      if (type == SYS_ELO_INTERNAL || type == SYS_ELO_EXTERNAL)
+      /* we don't handle user or class object references yet,
+         convert to unauthorized class error for now */
+      if (type == SYS_USER)
 	{
-	  external = type == SYS_ELO_EXTERNAL;
-	  if (ldr_add_elo (name, external))
-	    {
-	      display_error (0);
-	    }
+	  unauthorized_class_error ("db_user");
 	}
       else
 	{
-	  /* we don't handle user or class object references yet,
-	     convert to unauthorized class error for now */
-	  if (type == SYS_USER)
-	    {
-	      unauthorized_class_error ("db_user");
-	    }
-	  else
-	    {
-	      unauthorized_class_error ("*system class*");
-	    }
+	  unauthorized_class_error ("*system class*");
 	}
     }
 }
@@ -1020,8 +1009,9 @@ act_bstring (char *token, int type)
 	   * that all of the source digits got converted
 	   */
 	  char *bstring = db_private_alloc (NULL, dest_size + 1);
-	  if (qstr_bit_to_bin (bstring, dest_size, token, src_size) !=
-	      src_size)
+	  if (bstring == NULL
+	      || qstr_bit_to_bin (bstring, dest_size, token,
+				  src_size) != src_size)
 	    {
 	      parse_error (DB_TYPE_BIT, token);
 	    }

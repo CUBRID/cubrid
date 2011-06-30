@@ -30,9 +30,11 @@
 #include "error_manager.h"
 #include "storage_common.h"
 #include "query_list.h"
-#include "thread_impl.h"
+#include "thread.h"
 
 #define SORT_PUT_STOP     2
+
+#define NO_SORT_LIMIT (-1)
 
 #define SORT_RECORD_LENGTH_SIZE (sizeof(INT64))	/* for 8byte align */
 #define SORT_RECORD_LENGTH(item_p) (*((int *) ((item_p) - SORT_RECORD_LENGTH_SIZE)))
@@ -142,6 +144,6 @@ extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid,
 			  int est_inp_pg_cnt, SORT_GET_FUNC * get_fn,
 			  void *get_arg, SORT_PUT_FUNC * put_fn,
 			  void *put_arg, SORT_CMP_FUNC * cmp_fn,
-			  void *cmp_arg, SORT_DUP_OPTION option);
+			  void *cmp_arg, SORT_DUP_OPTION option, int limit);
 
 #endif /* _EXTERNAL_SORT_H_ */

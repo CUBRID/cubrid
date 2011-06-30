@@ -101,14 +101,11 @@ struct qo_index_entry
   /* information of the class to which the index belongs */
   QO_CLASS_INFO_ENTRY *class_;
 
-  /* index name */
-  const char *name;
+  /* index information;
+   * name, type, btid and attributes will be referred during query optimization
+   */
+  SM_CLASS_CONSTRAINT *constraints;
 
-  /* type of index; either SM_CONSTRAINT_INDEX or SM_CONSTRAINT_UNIQUE */
-  SM_CONSTRAINT_TYPE type;
-
-  /* B-tree ID of the index */
-  BTID btid;
   int force;
 
   /* number of columns of the index */
@@ -126,6 +123,9 @@ struct qo_index_entry
   /* array of segment idx's constrained by the index */
   int *seg_idxs;
 
+  /* Idx of the first range list term; RANGE (r1, r2, ...) */
+  int rangelist_seg_idx;
+
   /* array of equal operator term sets */
   BITSET *seg_equal_terms;
 
@@ -134,6 +134,32 @@ struct qo_index_entry
 
   /* terms constrained by the index */
   BITSET terms;
+
+  /* key filtered terms constrained by the index */
+  BITSET key_filter_terms;
+
+  /* true if the index cover all segments */
+  bool cover_segments;
+
+  /* true if the index can skip the order by */
+  bool orderby_skip;
+
+  /* true if the index can skip the group by */
+  bool groupby_skip;
+
+  /* true if the index will skip the order by or the group by with the usage
+   * of descending index
+   */
+  bool use_descending;
+
+  /*
+   * the name of the first indexed attribute in a multi column index
+   * the first indexed attribute contain valid statistics
+   */
+  char *statistics_attribute_name;
+
+  /* key limits */
+  PT_NODE *key_limit;
 };
 
 #define QO_ENTRY_MULTI_COL(entry)       ((entry)->col_num > 1 ? true : false)
@@ -196,6 +222,7 @@ struct qo_using_index_entry
 {
   const char *name;
   int force;
+  PT_NODE *key_limit;
 };
 
 struct qo_using_index
@@ -207,9 +234,10 @@ struct qo_using_index
   struct qo_using_index_entry index[1];
 };
 
-#define QO_UI_N(ui)         ((ui)->n)
-#define QO_UI_INDEX(ui, n)  ((ui)->index[(n)].name)
-#define QO_UI_FORCE(ui, n)  ((ui)->index[(n)].force)
+#define QO_UI_N(ui)	      ((ui)->n)
+#define QO_UI_INDEX(ui, n)    ((ui)->index[(n)].name)
+#define QO_UI_FORCE(ui, n)    ((ui)->index[(n)].force)
+#define QO_UI_KEYLIMIT(ui, n) ((ui)->index[(n)].key_limit)
 
 
 struct qo_node
@@ -643,9 +671,10 @@ struct qo_term
 
 
 #define QO_TERM_EQUAL_OP             1	/* is equal op ? */
-#define QO_TERM_SINGLE_PRED          2	/* is single_pred ? */
-#define QO_TERM_COPY_PT_EXPR         4	/* pt_expr is copyed ? */
-#define QO_TERM_MERGEABLE_EDGE       8	/* suitable as a m-join edge ? */
+#define QO_TERM_RANGELIST            2	/* is RANGE (r1, r2, ...) ? */
+#define QO_TERM_SINGLE_PRED          4	/* is single_pred ? */
+#define QO_TERM_COPY_PT_EXPR         8	/* pt_expr is copyed ? */
+#define QO_TERM_MERGEABLE_EDGE      16	/* suitable as a m-join edge ? */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
@@ -844,6 +873,9 @@ struct qo_env
  */
 struct qo_xasl_index_info
 {
+  /* Number of term expressions. */
+  int nterms;
+
   /*  Array of term expressions which are associated with this index. */
   PT_NODE **term_exprs;
 
@@ -852,9 +884,6 @@ struct qo_xasl_index_info
    *  infomation regarding the index itself.
    */
   struct qo_node_index_entry *ni_entry;
-
-  /* Number of term expressions. */
-  int nterms;
 };
 
 #define QO_INNER_JOIN_TERM(term) \

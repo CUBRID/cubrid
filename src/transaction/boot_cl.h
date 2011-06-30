@@ -65,6 +65,7 @@ extern void boot_client_all_finalize (bool iserfinal);
 #if defined(CS_MODE)
 extern char *boot_get_host_connected (void);
 extern int boot_get_ha_server_state (void);
+extern const char *boot_get_lob_path (void);
 #endif /* CS_MODE */
 
 #if defined(SA_MODE)
@@ -74,4 +75,6 @@ extern int boot_destroy_catalog_classes (void);
 extern int boot_rebuild_catalog_classes (const char *dbname);
 #endif /* ENABLE_UNUSED_FUNCTION */
 #endif /* SA_MODE */
+extern void boot_clear_host_connected ();
+
 #endif /* _BOOT_CL_H_ */

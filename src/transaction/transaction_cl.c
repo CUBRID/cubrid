@@ -99,7 +99,7 @@ tran_cache_tran_settings (int tran_index, float lock_timeout,
 			  TRAN_ISOLATION tran_isolation)
 {
   tm_Tran_index = tran_index;
-  tm_Tran_waitsecs = (int) (lock_timeout * 1000);	/* lock timeout in miliseconds */
+  tm_Tran_waitsecs = (int) (lock_timeout * 1000);	/* lock timeout in milliseconds */
   tm_Tran_isolation = tran_isolation;
 
   /* This is a dirty, but quick, method by which we can flag that
@@ -129,7 +129,7 @@ tran_get_tran_settings (float *lock_wait, TRAN_ISOLATION * tran_isolation,
 			bool * async_ws)
 {
   *lock_wait = (float) TM_TRAN_WAITSECS () / 1000;
-  /* lock timeout in miliseconds */ ;
+  /* lock timeout in milliseconds */ ;
   *tran_isolation = TM_TRAN_ISOLATION ();
   *async_ws = TM_TRAN_ASYNC_WS ();
 
@@ -154,7 +154,7 @@ tran_reset_wait_times (float waitsecs)
 {
   if (waitsecs > 0)
     {
-      /* set lock timeout in miliseconds */
+      /* set lock timeout in milliseconds */
       tm_Tran_waitsecs = (int) (waitsecs * 1000);
     }
   else

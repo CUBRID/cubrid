@@ -2773,6 +2773,7 @@ locator_fun_get_all_mops (MOP class_mop,
 	      keep_mops.list = (LIST_MOPS *) malloc (size);
 	      if (keep_mops.list == NULL)
 		{
+		  locator_free_copy_area (fetch_area);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		  break;
@@ -2784,6 +2785,7 @@ locator_fun_get_all_mops (MOP class_mop,
 	      keep_mops.list = (LIST_MOPS *) realloc (keep_mops.list, size);
 	      if (keep_mops.list == NULL)
 		{
+		  locator_free_copy_area (fetch_area);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 		  break;
@@ -3089,6 +3091,8 @@ locator_find_class_by_name (const char *classname, LOCK lock, MOP * class_mop)
       return LC_CLASSNAME_ERROR;
     }
 
+  OID_SET_NULL (&class_oid);
+
   /*
    * Check if the classname to OID entry is cached. Trust the cache only if
    * there is a lock on the class
@@ -3325,7 +3329,7 @@ locator_cache_object_class (MOP mop, LC_COPYAREA_ONEOBJ * obj,
   switch (obj->operation)
     {
     case LC_FETCH:
-      *object_p = tf_disk_to_class (recdes_p);
+      *object_p = tf_disk_to_class (&obj->oid, recdes_p);
       if (*object_p == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -3357,7 +3361,7 @@ locator_cache_object_class (MOP mop, LC_COPYAREA_ONEOBJ * obj,
 
       if (*object_p == NULL || WS_CHN (*object_p) != or_chn (recdes_p))
 	{
-	  *object_p = tf_disk_to_class (recdes_p);
+	  *object_p = tf_disk_to_class (&obj->oid, recdes_p);
 	  if (*object_p == NULL)
 	    {
 	      /* an error should have been set */
@@ -3609,13 +3613,8 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p,
 {
   MOP class_mop;		/* The class mop of object described by obj */
   int error_code = NO_ERROR;
-  OID class_oid;
 
-  /*
-   * Is the object a class ?
-   */
-  or_class_oid (recdes_p, &class_oid);
-  if (OID_IS_ROOTOID (&class_oid))
+  if (OID_IS_ROOTOID (&obj->class_oid))
     {
       /* Object is a class */
       *mop_p = ws_mop (&obj->oid, sm_Root_class_mop);
@@ -3666,7 +3665,7 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p,
   else
     {
       /* Object is an instance */
-      class_mop = ws_mop (&class_oid, sm_Root_class_mop);
+      class_mop = ws_mop (&obj->class_oid, sm_Root_class_mop);
       if (class_mop == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -3920,7 +3919,6 @@ locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush,
   mflush->mop_toids = NULL;
   mflush->mop_tail_toid = NULL;
   mflush->mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (mflush->copy_area);
-  OID_SET_NULL (&mflush->mobjs->class_oid);
   mflush->mobjs->start_multi_update = 0;
   mflush->mobjs->end_multi_update = 0;
   mflush->mobjs->num_objs = 0;
@@ -4623,6 +4621,7 @@ locator_mflush (MOP mop, void *mf)
   mflush->obj->operation = operation;
   mflush->obj->has_index = has_index ? 1 : 0;
   HFID_COPY (&mflush->obj->hfid, hfid);
+  COPY_OID (&mflush->obj->class_oid, ws_oid (class_mop));
   COPY_OID (&mflush->obj->oid, oid);
   if (operation == LC_FLUSH_DELETE)
     {
@@ -4996,8 +4995,6 @@ locator_flush_for_multi_update (MOP class_mop)
 
   /* special code for uniqueness checking */
   mflush.mobjs->start_multi_update = 1;
-  mflush.mobjs->end_multi_update = 0;
-  COPY_OID (&(mflush.mobjs->class_oid), ws_oid (class_mop));
 
   /* flush all dirty instances of this class */
   map_status = ws_map_class_dirty (class_mop, locator_mflush, &mflush);

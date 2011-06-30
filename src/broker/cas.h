@@ -37,10 +37,10 @@
 #include "cas_common.h"
 
 #define ERROR_INDICATOR_UNSET	0
-#define CAS_ERROR_INDICATOR		-1
+#define CAS_ERROR_INDICATOR	-1
 #define DBMS_ERROR_INDICATOR	-2
 #define CAS_NO_ERROR		0
-#define ERR_MSG_LENGTH			1024
+#define ERR_MSG_LENGTH		1024
 #define ERR_FILE_LENGTH		256
 
 typedef struct t_object T_OBJECT;
@@ -49,6 +49,15 @@ struct t_object
   int pageid;
   short slotid;
   short volid;
+};
+
+typedef struct t_lob_handle T_LOB_HANDLE;
+struct t_lob_handle
+{
+  int db_type;
+  INT64 lob_size;
+  int locator_size;
+  char *locator;
 };
 
 enum tran_auto_commit
@@ -90,6 +99,7 @@ extern struct timeval tran_start_time;
 extern struct timeval query_start_time;
 extern int tran_timeout;
 extern int query_timeout;
+
 #endif
 
 extern int errors_in_transaction;

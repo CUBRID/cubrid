@@ -36,21 +36,7 @@
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "error_manager.h"
-#include "thread_impl.h"
-
-
-/* Replication would be started only when
- *    is_replicated is set by 1  (cubrid.conf)
- *    the target index is unique (would be replaced by primary key index)
- *    the caller wants to replicate
- *    the master has been backuped
- *    is_repliated is set by 1 for the target class
- */
-#define IS_REPLICATED_MODE(class_oid, unique, need_replication)             \
-               (PRM_REPLICATION_MODE &&                                     \
-                need_replication &&                                         \
-                repl_class_is_replicated(class_oid) &&                      \
-                unique)
+#include "thread.h"
 
 typedef enum
 {

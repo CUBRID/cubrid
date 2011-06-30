@@ -257,12 +257,18 @@ css_find_exception_conn (void)
   fd_set fd_var;
   struct timeval timeout;
   int rc;
+  int max_fd = 0;
 
   FD_ZERO (&fd_var);
   for (p = css_Conn_anchor; p; p = p->next)
     {
       if (!IS_INVALID_SOCKET (p->fd))
 	{
+	  if (p->fd > max_fd)
+	    {
+	      max_fd = p->fd;
+	    }
+
 	  FD_SET (p->fd, &fd_var);
 	}
     }
@@ -270,7 +276,7 @@ css_find_exception_conn (void)
   timeout.tv_sec = 0;
   timeout.tv_usec = 0;
 
-  rc = select (FD_SETSIZE, NULL, NULL, &fd_var, &timeout);
+  rc = select (max_fd + 1, NULL, NULL, &fd_var, &timeout);
   switch (rc)
     {
     case 0:
@@ -379,7 +385,7 @@ css_send_close_request (CSS_CONN_ENTRY * conn)
       header.type = htonl (CLOSE_TYPE);
       header.transaction_id = htonl (conn->transaction_id);
       header.db_error = htonl (conn->db_error);
-      /* timeout in mili-second in css_net_send() */
+      /* timeout in milli-second in css_net_send() */
       css_net_send (conn, (char *) &header, sizeof (NET_HEADER),
 		    PRM_TCP_CONNECTION_TIMEOUT * 1000);
     }
@@ -583,7 +589,7 @@ begin:
 		{
 		  do
 		    {
-		      /* timeout in mili-second in css_net_recv() */
+		      /* timeout in milli-second in css_net_recv() */
 		      rc = css_net_recv (conn->fd, *buffer, buffer_size,
 					 PRM_TCP_CONNECTION_TIMEOUT * 1000);
 		    }
@@ -704,7 +710,7 @@ begin:
 		{
 		  do
 		    {
-		      /* timeout in mili-second in css_net_recv() */
+		      /* timeout in milli-second in css_net_recv() */
 		      rc = css_net_recv (conn->fd, *buffer, buffer_size,
 					 PRM_TCP_CONNECTION_TIMEOUT * 1000);
 		    }
@@ -783,7 +789,7 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn,
 
 #if !defined (WINDOWS)
   if (timeout > 0)
-    /* timeout in mili-seconds in css_tcp_client_open_with_timeout() */
+    /* timeout in milli-seconds in css_tcp_client_open_with_timeout() */
     fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
   else
     fd = css_tcp_client_open_with_retry (host_name, port, true);
@@ -1135,6 +1141,7 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 
 	    case SERVER_IS_RECOVERING:
 	    case SERVER_CLIENTS_EXCEEDED:
+	    case SERVER_INACCESSIBLE_IP:
 	      {
 		if (css_receive_error (conn, rid, &error_area, &error_length))
 		  {
@@ -1143,7 +1150,6 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
 		  }
 		break;
 	      }
-
 	    case SERVER_NOT_FOUND:
 	    default:
 	      break;
@@ -1528,7 +1534,7 @@ int
 css_check_magic (CSS_CONN_ENTRY * conn)
 {
   unsigned int i;
-  int nbytes, templen, left;
+  int templen, left;
   NET_HEADER header;
   char *p;
 

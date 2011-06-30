@@ -46,17 +46,16 @@
 #include "job_queue.h"
 #include "connection_error.h"
 #endif
-#include "thread_impl.h"
+#include "thread.h"
 
 #ifndef SERVER_MODE
-#undef MUTEX_INIT
-#define MUTEX_INIT(a)
-#undef MUTEX_DESTROY
-#define MUTEX_DESTROY(a)
-#undef MUTEX_LOCK
-#define MUTEX_LOCK(a, b)
-#undef MUTEX_UNLOCK
-#define MUTEX_UNLOCK(a)
+
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)	0
+#define pthread_mutex_unlock(a)
+static int rv;
+
 #define qmgr_initialize_mutex(a)
 #define qmgr_destroy_mutex(a)
 #define qmgr_lock_mutex(a, b)
@@ -68,6 +67,12 @@
 #define TEMP_FILE_DEFAULT_PAGES         10
 
 #define QMGR_TEMP_FILE_FREE_LIST_SIZE   100
+
+#define QMGR_NUM_TEMP_FILE_LISTS        (TEMP_FILE_MEMBUF_NUM_TYPES)
+
+/* We have two valid types of membuf used by temporary file. */
+#define QMGR_IS_VALID_MEMBUF_TYPE(m)    ((m) == TEMP_FILE_MEMBUF_NORMAL \
+    || (m) == TEMP_FILE_MEMBUF_KEY_BUFFER)
 
 /* For streaming queries */
 typedef struct query_async QMGR_ASYNC_QUERY;
@@ -96,13 +101,11 @@ struct query_async
 typedef struct qmgr_mutex QMGR_MUTEX;
 struct qmgr_mutex
 {
-  THREAD_T owner;		/* mutex owner */
+  pthread_t owner;		/* mutex owner */
   unsigned int lock_count;	/* how many times we acquired mutex */
-  MUTEX_T lock;
-#if !defined (WINDOWS)
-  COND_T not_busy_cond;
+  pthread_mutex_t lock;
+  pthread_cond_t not_busy_cond;
   unsigned int nwaits;		/* the number of waiters */
-#endif				/* WINDOWS */
 };
 #endif
 
@@ -124,6 +127,13 @@ struct qmgr_tran_entry
 #endif
 };
 
+typedef struct qmgr_temp_file_list QMGR_TEMP_FILE_LIST;
+struct qmgr_temp_file_list
+{
+  pthread_mutex_t mutex;
+  QMGR_TEMP_FILE *list;
+  int count;
+};
 /*
  * Global query table variable used to keep track of query entries and
  * the anchor for the out of space in the temp vol WFG.
@@ -146,13 +156,11 @@ struct qmgr_query_table
   OID_BLOCK_LIST *free_oid_block_list_p;	/* free OID block list */
 
   /* temp file free list info */
-  MUTEX_T temp_file_free_mutex;
-  QMGR_TEMP_FILE *temp_file_free_list;
-  int temp_file_free_count;
+  QMGR_TEMP_FILE_LIST temp_file_list[QMGR_NUM_TEMP_FILE_LISTS];
 };
 
 QMGR_QUERY_TABLE qmgr_Query_table = { NULL, 0, 0, 0, 0, 0, NULL, NULL, NULL,
-  MUTEX_INITIALIZER, NULL, 0
+  {{PTHREAD_MUTEX_INITIALIZER, NULL, 0}, {PTHREAD_MUTEX_INITIALIZER, NULL, 0}}
 };
 
 static int qmgr_Query_id_count;	/* global query identifier count */
@@ -215,7 +223,8 @@ static PAGE_PTR qmgr_get_external_file_page (THREAD_ENTRY * thread_p,
 static int qmgr_free_query_temp_file_by_query_entry (THREAD_ENTRY * thread_p,
 						     QMGR_QUERY_ENTRY * qptr,
 						     int tran_idx);
-static QMGR_TEMP_FILE *qmgr_allocate_tempfile_with_buffer (void);
+static QMGR_TEMP_FILE *qmgr_allocate_tempfile_with_buffer (int
+							   num_buffer_pages);
 
 #if defined (SERVER_MODE)
 static void qmgr_execute_async_select (THREAD_ENTRY * thread_p,
@@ -223,12 +232,23 @@ static void qmgr_execute_async_select (THREAD_ENTRY * thread_p,
 static XASL_NODE *qmgr_find_leaf (XASL_NODE * xasl);
 static bool qmgr_is_async_executable (XASL_NODE * xasl,
 				      QMGR_QUERY_TYPE * query_type);
+static bool qmgr_has_unresolved_types (XASL_NODE * xasl_p);
 static QFILE_LIST_ID *qmgr_process_async_select (THREAD_ENTRY * thread_p,
 						 XASL_CACHE_CLONE * clo,
 						 QMGR_QUERY_ENTRY * q_ptr,
 						 int dbval_cnt,
 						 const DB_VALUE * dbval_ptr);
 #endif
+
+static void qmgr_initialize_temp_file_list (QMGR_TEMP_FILE_LIST *
+					    temp_file_list_p,
+					    QMGR_TEMP_FILE_MEMBUF_TYPE
+					    membuf_type);
+static void qmgr_finalize_temp_file_list (QMGR_TEMP_FILE_LIST *
+					  temp_file_list_p);
+static QMGR_TEMP_FILE *qmgr_get_temp_file_from_list (QMGR_TEMP_FILE_LIST *
+						     temp_file_list_p);
+static void qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p);
 
 static bool
 qmgr_is_page_in_temp_file_buffer (PAGE_PTR page_p,
@@ -284,7 +304,7 @@ qmgr_check_mutex_error (int r, const char *file, int line)
     {
       fprintf (stderr, "Error at %s(%d) : (%s)\n **** THREAD EXIT ****\n",
 	       file, line, "Mutex operation error");
-      THREAD_EXIT (NULL);
+      pthread_exit (NULL);
     }
 }
 
@@ -298,17 +318,15 @@ qmgr_initialize_mutex (QMGR_MUTEX * mutex_p)
 {
   int r;
 
-  mutex_p->owner = (THREAD_T) 0;	/* null thread id */
+  mutex_p->owner = (pthread_t) 0;	/* null thread id */
   mutex_p->lock_count = 0;
 
-  r = MUTEX_INIT (mutex_p->lock);
+  r = pthread_mutex_init (&mutex_p->lock, NULL);
   qmgr_check_mutex_error (r, __FILE__, __LINE__);
 
-#if !defined (WINDOWS)
-  r = COND_INIT (mutex_p->not_busy_cond);
+  r = pthread_cond_init (&mutex_p->not_busy_cond, NULL);
   qmgr_check_mutex_error (r, __FILE__, __LINE__);
   mutex_p->nwaits = 0;
-#endif /* WINDOWS */
 }
 
 /*
@@ -319,12 +337,9 @@ qmgr_initialize_mutex (QMGR_MUTEX * mutex_p)
 static void
 qmgr_destroy_mutex (QMGR_MUTEX * mutex_p)
 {
-  mutex_p->owner = (THREAD_T) 0;
-  MUTEX_DESTROY (mutex_p->lock);
-
-#if !defined (WINDOWS)
-  COND_DESTROY (mutex_p->not_busy_cond);
-#endif /* WINDOWS */
+  mutex_p->owner = (pthread_t) 0;
+  pthread_mutex_destroy (&mutex_p->lock);
+  pthread_cond_destroy (&mutex_p->not_busy_cond);
 }
 
 /*
@@ -342,29 +357,25 @@ qmgr_lock_mutex (THREAD_ENTRY * thread_p, QMGR_MUTEX * mutex_p)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  MUTEX_LOCK (r, mutex_p->lock);
+  r = pthread_mutex_lock (&mutex_p->lock);
   qmgr_check_mutex_error (r, __FILE__, __LINE__);
 
-#if !defined (WINDOWS)
   /* If other thread owns this mutex wait until released */
   if (mutex_p->lock_count > 0 && mutex_p->owner != thread_p->tid)
     {
       do
 	{
 	  mutex_p->nwaits++;
-	  COND_WAIT (mutex_p->not_busy_cond, mutex_p->lock);
+	  pthread_cond_wait (&mutex_p->not_busy_cond, &mutex_p->lock);
 	  mutex_p->nwaits--;
 	}
       while (mutex_p->lock_count != 0);
     }
-#endif /* WINDOWS */
 
   mutex_p->owner = thread_p->tid;
   mutex_p->lock_count++;
 
-#if !defined (WINDOWS)
-  MUTEX_UNLOCK (mutex_p->lock);
-#endif /* WINDOWS */
+  pthread_mutex_unlock (&mutex_p->lock);
 }
 
 /*
@@ -375,25 +386,21 @@ qmgr_lock_mutex (THREAD_ENTRY * thread_p, QMGR_MUTEX * mutex_p)
 static void
 qmgr_unlock_mutex (QMGR_MUTEX * mutex_p)
 {
-#if !defined (WINDOWS)
   int r;
 
-  MUTEX_LOCK (r, mutex_p->lock);
+  r = pthread_mutex_lock (&mutex_p->lock);
   qmgr_check_mutex_error (r, __FILE__, __LINE__);
-#endif /* WINDOWS */
 
   if (--mutex_p->lock_count == 0)
     {
-      mutex_p->owner = (THREAD_T) 0;
-#if !defined (WINDOWS)
+      mutex_p->owner = (pthread_t) 0;
       if (mutex_p->nwaits > 0)	/* there is an waiter */
 	{
-	  COND_SIGNAL (mutex_p->not_busy_cond);
+	  pthread_cond_signal (&mutex_p->not_busy_cond);
 	}
-#endif /* WINDOWS */
     }
 
-  MUTEX_UNLOCK (mutex_p->lock);
+  pthread_mutex_unlock (&mutex_p->lock);
 }
 #endif
 
@@ -403,7 +410,7 @@ qmgr_mark_query_as_completed (QMGR_QUERY_ENTRY * query_p)
 #if defined (SERVER_MODE)
   int rv;
 
-  MUTEX_LOCK (rv, query_p->lock);
+  rv = pthread_mutex_lock (&query_p->lock);
 
   query_p->query_mode = QUERY_COMPLETED;
   query_p->interrupt = false;
@@ -411,10 +418,10 @@ qmgr_mark_query_as_completed (QMGR_QUERY_ENTRY * query_p)
 
   if (query_p->nwaits > 0)
     {
-      COND_SIGNAL (query_p->cond);
+      pthread_cond_signal (&query_p->cond);
     }
 
-  MUTEX_UNLOCK (query_p->lock);
+  pthread_mutex_unlock (&query_p->lock);
 #else
   query_p->query_mode = QUERY_COMPLETED;
   query_p->interrupt = false;
@@ -469,12 +476,12 @@ qmgr_allocate_query_entry_array (void)
     {
       query_p->list_id = NULL;
       query_p->next_free =
-	&query_table_p->query_entry_array_p[query_table_p->
-					    num_alloced_array][i];
+	&query_table_p->
+	query_entry_array_p[query_table_p->num_alloced_array][i];
 
 #if defined (SERVER_MODE)
-      MUTEX_INIT (query_p->lock);
-      COND_INIT (query_p->cond);
+      pthread_mutex_init (&query_p->lock, NULL);
+      pthread_cond_init (&query_p->cond, NULL);
       query_p->nwaits = 0;
 #endif
 
@@ -485,8 +492,8 @@ qmgr_allocate_query_entry_array (void)
   query_p->next_free = NULL;
 
 #if defined (SERVER_MODE)
-  MUTEX_INIT (query_p->lock);
-  COND_INIT (query_p->cond);
+  pthread_mutex_init (&query_p->lock, NULL);
+  pthread_cond_init (&query_p->cond, NULL);
   query_p->nwaits = 0;
 #endif
 
@@ -495,8 +502,8 @@ qmgr_allocate_query_entry_array (void)
     query_table_p->free_query_entry_count;
 
   /* csect_exit(CSECT_QP_QUERY_TABLE); */
-  return query_table_p->query_entry_array_p[query_table_p->
-					    num_alloced_array++];
+  return query_table_p->
+    query_entry_array_p[query_table_p->num_alloced_array++];
 }
 
 /*
@@ -1146,35 +1153,18 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
 	}
     }
 
-  if (qmgr_Query_table.temp_file_free_list == NULL)
+  if (qmgr_Query_table.temp_file_list[TEMP_FILE_MEMBUF_NORMAL].list == NULL)
     {
-      int i;
-#if defined(SERVER_MODE)
-      int rv;
-#endif /* SERVER_MODE */
-      QMGR_TEMP_FILE *temp;
-
-      MUTEX_INIT (qmgr_Query_table.temp_file_free_mutex);
-
-      MUTEX_LOCK (rv, qmgr_Query_table.temp_file_free_mutex);
-
-      for (i = 0; i < QMGR_TEMP_FILE_FREE_LIST_SIZE; i++)
-	{
-	  temp = qmgr_allocate_tempfile_with_buffer ();
-	  if (temp == NULL)
-	    {
-	      break;
-	    }
-
-	  /* add to the free list */
-	  temp->prev = NULL;
-	  temp->next = qmgr_Query_table.temp_file_free_list;
-	  qmgr_Query_table.temp_file_free_list = temp;
-	}
-
-      qmgr_Query_table.temp_file_free_count = i;
-
-      MUTEX_UNLOCK (qmgr_Query_table.temp_file_free_mutex);
+      qmgr_initialize_temp_file_list (&qmgr_Query_table.temp_file_list
+				      [TEMP_FILE_MEMBUF_NORMAL],
+				      TEMP_FILE_MEMBUF_NORMAL);
+    }
+  if (qmgr_Query_table.temp_file_list[TEMP_FILE_MEMBUF_KEY_BUFFER].list ==
+      NULL)
+    {
+      qmgr_initialize_temp_file_list (&qmgr_Query_table.temp_file_list
+				      [TEMP_FILE_MEMBUF_KEY_BUFFER],
+				      TEMP_FILE_MEMBUF_KEY_BUFFER);
     }
 
   csect_exit (CSECT_QPROC_QUERY_TABLE);
@@ -1204,8 +1194,6 @@ void
 qmgr_finalize (THREAD_ENTRY * thread_p)
 {
   QMGR_QUERY_ENTRY *query_p;
-  QMGR_TEMP_FILE *temp_file_p;
-
   int i, j;
 
   scan_finalize ();
@@ -1231,8 +1219,8 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
 	    }
 
 #if defined (SERVER_MODE)
-	  MUTEX_DESTROY (query_p->lock);
-	  COND_DESTROY (query_p->cond);
+	  pthread_mutex_destroy (&query_p->lock);
+	  pthread_cond_destroy (&query_p->cond);
 #endif
 	}
 
@@ -1246,15 +1234,10 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
   qmgr_Query_table.free_query_entry_list_p = NULL;
   free_and_init (qmgr_Query_table.query_entry_array_p);
 
-  while (qmgr_Query_table.temp_file_free_list)
+  for (i = 0; i < QMGR_NUM_TEMP_FILE_LISTS; i++)
     {
-      temp_file_p = qmgr_Query_table.temp_file_free_list;
-      qmgr_Query_table.temp_file_free_list = temp_file_p->next;
-      free_and_init (temp_file_p);
+      qmgr_finalize_temp_file_list (&qmgr_Query_table.temp_file_list[i]);
     }
-  MUTEX_DESTROY (qmgr_Query_table.temp_file_free_mutex);
-  qmgr_Query_table.temp_file_free_count = 0;
-
   csect_exit (CSECT_QPROC_QUERY_TABLE);
 }
 
@@ -1484,8 +1467,8 @@ qmgr_check_active_query_and_wait (THREAD_ENTRY * thread_p,
 
 	  ((QMGR_QUERY_ENTRY *) current_thread_p->query_entry)->interrupt =
 	    true;
-	  ((QMGR_QUERY_ENTRY *) current_thread_p->query_entry)->
-	    propagate_interrupt = true;
+	  ((QMGR_QUERY_ENTRY *) current_thread_p->
+	   query_entry)->propagate_interrupt = true;
 
 	  /* remove current thread_p from the tran wait list, if exist */
 	  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
@@ -1673,7 +1656,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 	{
 	  /* found the cached result */
 	  cached_result = true;
-	  /* treate as sync query */
+	  /* treat as sync query */
 	  is_sync_query = true;
 	  *flag_p &= ~ASYNC_EXEC;
 
@@ -1701,7 +1684,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
   tran_entry_p->trans_stat = QMGR_TRAN_RUNNING;
   if (tran_entry_p->active_sync_query_count > 0)
     {
-      /* treate as sync query */
+      /* treat as sync query */
       is_sync_query = true;
       *flag_p &= ~ASYNC_EXEC;
     }
@@ -1822,6 +1805,14 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 	  is_sync_query = true;
 	  *flag_p &= ~ASYNC_EXEC;
 	}
+      else if (qmgr_has_unresolved_types (query_p->xasl))
+	{
+	  /* if this query has unresolved types and we want to delay sending
+	   * the results to the client until those types have been resolved 
+	   */
+	  is_sync_query = true;
+	  *flag_p &= ~ASYNC_EXEC;
+	}
 #endif
     }
 
@@ -1855,7 +1846,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
     {
       /* Adjust XASL flag for query result cache.
          For the last list file(QFILE_LIST_ID) as the query result,
-         the permanamt query result file(FILE_QUERY_AREA) rather than
+         the permanent query result file(FILE_QUERY_AREA) rather than
          temporary file(FILE_EITHER_TMP) will be created
          if and only if XASL_TO_BE_CACHED flag is set. */
       if (!qmgr_is_not_allowed_result_cache (*flag_p))
@@ -2001,10 +1992,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 	         the used parameter values (DB_VALUE array) if there is,
 	         or make new one */
 	      list_cache_entry_p =
-		qfile_update_list_cache_entry (thread_p, &xasl_cache_entry_p->
-					       list_ht_no, &params, list_id_p,
-					       xasl_cache_entry_p->
-					       query_string);
+		qfile_update_list_cache_entry (thread_p,
+					       &xasl_cache_entry_p->list_ht_no,
+					       &params, list_id_p,
+					       xasl_cache_entry_p->query_string);
 	      if (list_cache_entry_p == NULL)
 		{
 		  char *s;
@@ -2371,7 +2362,7 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     }
 
 #if defined (SERVER_MODE)
-  MUTEX_LOCK (rv, query_p->lock);
+  rv = pthread_mutex_lock (&query_p->lock);
   if (query_p->query_mode != QUERY_COMPLETED)
     {
       logtb_set_tran_index_interrupt (thread_p, tran_index, true);
@@ -2380,21 +2371,17 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       qmgr_unlock_mutex (&tran_entry_p->lock);
       query_p->nwaits++;
 
-      rv = COND_WAIT (query_p->cond, query_p->lock);
-#if defined (WINDOWS)
-      /* implement cond_wait() semantic */
-      MUTEX_LOCK (rv, query_p->lock);
-#endif /* WINDOWS */
+      rv = pthread_cond_wait (&query_p->cond, &query_p->lock);
       query_p->nwaits--;
 
       query_p->interrupt = false;
       logtb_set_tran_index_interrupt (thread_p, tran_index, false);
 
-      MUTEX_UNLOCK (query_p->lock);
+      pthread_mutex_unlock (&query_p->lock);
     }
   else
     {
-      MUTEX_UNLOCK (query_p->lock);
+      pthread_mutex_unlock (&query_p->lock);
       qmgr_unlock_mutex (&tran_entry_p->lock);
     }
 #endif
@@ -2645,7 +2632,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index,
   /* interrupt all active queries */
   while (q != NULL)
     {
-      MUTEX_LOCK (rv, q->lock);
+      rv = pthread_mutex_lock (&q->lock);
 
       if (q->query_mode != QUERY_COMPLETED)
 	{
@@ -2653,7 +2640,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index,
 	  q->interrupt = true;
 	}
 
-      MUTEX_UNLOCK (q->lock);
+      pthread_mutex_unlock (&q->lock);
       q = q->next;
     }
 #endif
@@ -2670,27 +2657,24 @@ again:
 
   while (q != NULL)
     {
-      MUTEX_LOCK (rv, q->lock);
+      rv = pthread_mutex_lock (&q->lock);
       /* If I'm the async_query executor, "q_ptr->query_mode" will be set to
        * QUERY_COMPLETED by me. Do you feel uneasy about skipping my query ?
        * Q : Why don't you use "thread_get_thread_entry_info()->tid" instead of
        * "THREAD_ID()" ? */
-      if (q->query_mode != QUERY_COMPLETED && q->tid != THREAD_ID ())
+      if (q->query_mode != QUERY_COMPLETED && q->tid != pthread_self ())
 	{
 	  qmgr_unlock_mutex (&tran_entry_p->lock);
 
 	  q->nwaits++;
-	  COND_WAIT (q->cond, q->lock);
+	  pthread_cond_wait (&q->cond, &q->lock);
 	  q->nwaits--;
-
-#if !defined (WINDOWS)
-	  MUTEX_UNLOCK (q->lock);
-#endif /* WINDOWS */
+	  pthread_mutex_unlock (&q->lock);
 
 	  qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
 	  goto again;
 	}
-      MUTEX_UNLOCK (q->lock);
+      pthread_mutex_unlock (&q->lock);
       q = q->next;
     }
 #endif
@@ -3040,6 +3024,11 @@ qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
   int rv;
 #endif /* SERVER_MODE */
 
+  if (tfile_vfid_p == NULL)	/* already closed */
+    {
+      return;
+    }
+
   if (!qmgr_is_page_in_temp_file_buffer (page_p, tfile_vfid_p))
     {
       pgbuf_unfix (thread_p, page_p);
@@ -3047,7 +3036,7 @@ qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 #if defined (SERVER_MODE)
   else
     {
-      MUTEX_LOCK (rv, tfile_vfid_p->membuf_mutex);
+      rv = pthread_mutex_lock (&tfile_vfid_p->membuf_mutex);
       if (tfile_vfid_p->membuf_thread_p)
 	{
 #if 0				/* wakeup */
@@ -3066,7 +3055,7 @@ qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
 #endif
 	}
 
-      MUTEX_UNLOCK (tfile_vfid_p->membuf_mutex);
+      pthread_mutex_unlock (&tfile_vfid_p->membuf_mutex);
     }
 #endif
 }
@@ -3095,7 +3084,7 @@ qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page,
 #if defined (SERVER_MODE)
   else if (free_page == FREE)
     {
-      MUTEX_LOCK (rv, tfile_vfid_p->membuf_mutex);
+      rv = pthread_mutex_lock (&tfile_vfid_p->membuf_mutex);
       if (tfile_vfid_p->membuf_thread_p)
 	{
 	  /* xqfile_get_list_file_page() is doing conditional wait */
@@ -3113,7 +3102,7 @@ qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page,
 	  tfile_vfid_p->membuf_thread_p = NULL;
 #endif
 	}
-      MUTEX_UNLOCK (tfile_vfid_p->membuf_mutex);
+      pthread_mutex_unlock (&tfile_vfid_p->membuf_mutex);
     }
 #endif
 }
@@ -3144,7 +3133,8 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p,
     }
 
   /* first page, return memory buffer instead real temp file page */
-  if (tfile_vfid_p->membuf_last < PRM_TEMP_MEM_BUFFER_PAGES - 1)
+  if (tfile_vfid_p->membuf != NULL
+      && tfile_vfid_p->membuf_last < tfile_vfid_p->membuf_npages - 1)
     {
       vpid_p->volid = NULL_VOLID;
       vpid_p->pageid = ++(tfile_vfid_p->membuf_last);
@@ -3339,15 +3329,14 @@ qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p,
 }
 
 static QMGR_TEMP_FILE *
-qmgr_allocate_tempfile_with_buffer (void)
+qmgr_allocate_tempfile_with_buffer (int num_buffer_pages)
 {
   size_t size;
   QMGR_TEMP_FILE *tempfile_p;
 
   size = DB_ALIGN (sizeof (QMGR_TEMP_FILE), MAX_ALIGNMENT);
-  size += DB_ALIGN (sizeof (PAGE_PTR) * PRM_TEMP_MEM_BUFFER_PAGES,
-		    MAX_ALIGNMENT);
-  size += DB_PAGESIZE * PRM_TEMP_MEM_BUFFER_PAGES;
+  size += DB_ALIGN (sizeof (PAGE_PTR) * num_buffer_pages, MAX_ALIGNMENT);
+  size += DB_PAGESIZE * num_buffer_pages;
 
   tempfile_p = (QMGR_TEMP_FILE *) malloc (size);
   if (tempfile_p == NULL)
@@ -3355,6 +3344,7 @@ qmgr_allocate_tempfile_with_buffer (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      size);
     }
+  memset (tempfile_p, 0x00, size);
 
   return tempfile_p;
 }
@@ -3365,40 +3355,33 @@ qmgr_allocate_tempfile_with_buffer (void)
  *   query_id(in)       :
  */
 QMGR_TEMP_FILE *
-qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
+qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id,
+			   QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type)
 {
   QMGR_QUERY_ENTRY *query_p;
   QMGR_TRAN_ENTRY *tran_entry_p;
-  int tran_index, i;
+  int tran_index, i, num_buffer_pages;
   QMGR_TEMP_FILE *tfile_vfid_p, *temp;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
   PAGE_PTR page_p;
   QFILE_PAGE_HEADER pgheader = { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID,
     NULL_VOLID, NULL_VOLID, NULL_VOLID
   };
 
-  MUTEX_LOCK (rv, qmgr_Query_table.temp_file_free_mutex);
-
-  /* delete from the free list */
-  if (qmgr_Query_table.temp_file_free_list)
+  assert (QMGR_IS_VALID_MEMBUF_TYPE (membuf_type));
+  if (!QMGR_IS_VALID_MEMBUF_TYPE (membuf_type))
     {
-      tfile_vfid_p = qmgr_Query_table.temp_file_free_list;
-      qmgr_Query_table.temp_file_free_list = tfile_vfid_p->next;
-      tfile_vfid_p->prev = tfile_vfid_p->next = NULL;
-      qmgr_Query_table.temp_file_free_count--;
-    }
-  else
-    {
-      tfile_vfid_p = NULL;
+      return NULL;
     }
 
-  MUTEX_UNLOCK (qmgr_Query_table.temp_file_free_mutex);
+  num_buffer_pages = (membuf_type == TEMP_FILE_MEMBUF_NORMAL) ?
+    PRM_TEMP_MEM_BUFFER_PAGES : PRM_INDEX_SCAN_KEY_BUFFER_PAGES;
 
+  tfile_vfid_p =
+    qmgr_get_temp_file_from_list (&qmgr_Query_table.temp_file_list
+				  [membuf_type]);
   if (tfile_vfid_p == NULL)
     {
-      tfile_vfid_p = qmgr_allocate_tempfile_with_buffer ();
+      tfile_vfid_p = qmgr_allocate_tempfile_with_buffer (num_buffer_pages);
     }
 
   if (tfile_vfid_p == NULL)
@@ -3417,6 +3400,8 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tfile_vfid_p->last_free_page_index = -1;
   tfile_vfid_p->vpid_index = -1;
   tfile_vfid_p->vpid_count = 0;
+  tfile_vfid_p->membuf_npages = num_buffer_pages;
+  tfile_vfid_p->membuf_type = membuf_type;
 
   for (i = 0; i < QMGR_VPID_ARRAY_SIZE; i++)
     {
@@ -3427,9 +3412,9 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tfile_vfid_p->membuf_last = -1;
   page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf +
 		       DB_ALIGN (sizeof (PAGE_PTR) *
-				 PRM_TEMP_MEM_BUFFER_PAGES, MAX_ALIGNMENT));
+				 tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
 
-  for (i = 0; i < PRM_TEMP_MEM_BUFFER_PAGES; i++)
+  for (i = 0; i < tfile_vfid_p->membuf_npages; i++)
     {
       tfile_vfid_p->membuf[i] = page_p;
       qmgr_put_page_header (page_p, &pgheader);
@@ -3437,7 +3422,7 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     }
 
 #if defined (SERVER_MODE)
-  MUTEX_INIT (tfile_vfid_p->membuf_mutex);
+  pthread_mutex_init (&tfile_vfid_p->membuf_mutex, NULL);
   tfile_vfid_p->membuf_thread_p = NULL;
 #if 0				/* async wakeup */
   tfile_vfid_p->wait_page_ptr = NULL;
@@ -3542,9 +3527,11 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tfile_vfid_p->total_count = 0;
   tfile_vfid_p->membuf_last = PRM_TEMP_MEM_BUFFER_PAGES - 1;
   tfile_vfid_p->membuf = NULL;
+  tfile_vfid_p->membuf_npages = 0;
+  tfile_vfid_p->membuf_type = TEMP_FILE_MEMBUF_NONE;
 
 #if defined (SERVER_MODE)
-  MUTEX_INIT (tfile_vfid_p->membuf_mutex);
+  pthread_mutex_init (&tfile_vfid_p->membuf_mutex, NULL);
   tfile_vfid_p->membuf_thread_p = NULL;
 #endif
 
@@ -3667,7 +3654,7 @@ qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 	  tfile_vfid_p = tfile_vfid_p->next;
 
 #if defined (SERVER_MODE)
-	  MUTEX_LOCK (rv, temp->membuf_mutex);
+	  rv = pthread_mutex_lock (&temp->membuf_mutex);
 
 	  if (temp->membuf_thread_p)
 	    {
@@ -3679,13 +3666,14 @@ qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 			     THREAD_QMGR_MEMBUF_PAGE_RESUMED);
 	      temp->membuf_thread_p = NULL;
 	    }
-	  MUTEX_UNLOCK (temp->membuf_mutex);
-	  MUTEX_DESTROY (temp->membuf_mutex);
+	  pthread_mutex_unlock (&temp->membuf_mutex);
+	  pthread_mutex_destroy (&temp->membuf_mutex);
 #endif
 
 	  if (temp->temp_file_type != FILE_QUERY_AREA)
 	    {
-	      MUTEX_LOCK (rv, qmgr_Query_table.temp_file_free_mutex);
+	      rv =
+		pthread_mutex_lock (&qmgr_Query_table.temp_file_free_mutex);
 
 	      /* add to the free list */
 	      if (qmgr_Query_table.temp_file_free_count <
@@ -3698,7 +3686,7 @@ qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 		  temp = NULL;
 		}
 
-	      MUTEX_UNLOCK (qmgr_Query_table.temp_file_free_mutex);
+	      pthread_mutex_unlock (&qmgr_Query_table.temp_file_free_mutex);
 	    }
 
 	  /* free too many temp_file */
@@ -3772,7 +3760,7 @@ qmgr_free_query_temp_file_by_query_entry (THREAD_ENTRY * thread_p,
 	  tfile_vfid_p = tfile_vfid_p->next;
 
 #if defined (SERVER_MODE)
-	  MUTEX_LOCK (rv, temp->membuf_mutex);
+	  rv = pthread_mutex_lock (&temp->membuf_mutex);
 	  if (temp->membuf_thread_p)
 	    {
 	      if (er_errid () != NO_ERROR)
@@ -3784,31 +3772,17 @@ qmgr_free_query_temp_file_by_query_entry (THREAD_ENTRY * thread_p,
 	      temp->membuf_thread_p = NULL;
 	    }
 
-	  MUTEX_UNLOCK (temp->membuf_mutex);
-	  MUTEX_DESTROY (temp->membuf_mutex);
+	  pthread_mutex_unlock (&temp->membuf_mutex);
+	  pthread_mutex_destroy (&temp->membuf_mutex);
 #endif
 
 	  if (temp->temp_file_type != FILE_QUERY_AREA)
 	    {
-	      MUTEX_LOCK (rv, qmgr_Query_table.temp_file_free_mutex);
-
-	      /* add to the free list */
-	      if (qmgr_Query_table.temp_file_free_count <
-		  QMGR_TEMP_FILE_FREE_LIST_SIZE)
-		{
-		  temp->prev = NULL;
-		  temp->next = qmgr_Query_table.temp_file_free_list;
-		  qmgr_Query_table.temp_file_free_list = temp;
-		  qmgr_Query_table.temp_file_free_count++;
-		  temp = NULL;
-		}
-
-	      MUTEX_UNLOCK (qmgr_Query_table.temp_file_free_mutex);
+	      qmgr_put_temp_file_into_list (temp);
 	    }
-
-	  /* free too many temp_file */
-	  if (temp)
+	  else if (temp)
 	    {
+	      /* free too many temp_file */
 	      free_and_init (temp);
 	    }
 	}
@@ -3887,7 +3861,7 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 	}
 
 #if defined (SERVER_MODE)
-      MUTEX_LOCK (rv, tfile_vfid_p->membuf_mutex);
+      rv = pthread_mutex_lock (&tfile_vfid_p->membuf_mutex);
 
       if (tfile_vfid_p->membuf_thread_p)
 	{
@@ -3900,31 +3874,17 @@ qmgr_free_list_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 	  tfile_vfid_p->membuf_thread_p = NULL;
 	}
 
-      MUTEX_UNLOCK (tfile_vfid_p->membuf_mutex);
-      MUTEX_DESTROY (tfile_vfid_p->membuf_mutex);
+      pthread_mutex_unlock (&tfile_vfid_p->membuf_mutex);
+      pthread_mutex_destroy (&tfile_vfid_p->membuf_mutex);
 #endif
 
       if (tfile_vfid_p->temp_file_type != FILE_QUERY_AREA)
 	{
-	  MUTEX_LOCK (rv, qmgr_Query_table.temp_file_free_mutex);
-
-	  /* add to the free list */
-	  if (qmgr_Query_table.temp_file_free_count <
-	      QMGR_TEMP_FILE_FREE_LIST_SIZE)
-	    {
-	      tfile_vfid_p->prev = NULL;
-	      tfile_vfid_p->next = qmgr_Query_table.temp_file_free_list;
-	      qmgr_Query_table.temp_file_free_list = tfile_vfid_p;
-	      qmgr_Query_table.temp_file_free_count++;
-	      tfile_vfid_p = NULL;
-	    }
-
-	  MUTEX_UNLOCK (qmgr_Query_table.temp_file_free_mutex);
+	  qmgr_put_temp_file_into_list (tfile_vfid_p);
 	}
-
-      /* free too many temp_file */
-      if (tfile_vfid_p)
+      else if (tfile_vfid_p)
 	{
+	  /* free too many temp_file */
 	  free_and_init (tfile_vfid_p);
 	}
     }
@@ -3984,7 +3944,7 @@ qmgr_execute_async_select (THREAD_ENTRY * thread_p,
   pri_heap_id = async_query_p->pri_heap_id;
 
   thread_p->tran_index = tran_index;
-  MUTEX_UNLOCK (thread_p->tran_index_lock);
+  pthread_mutex_unlock (&thread_p->tran_index_lock);
 
   free_and_init (async_query_p);
 
@@ -4158,7 +4118,7 @@ qmgr_get_area_error_async (THREAD_ENTRY * thread_p, int *length_p, int count,
   VPID vpid;
 #endif
   int done = true;
-  int s_len;
+  int s_len, strlen;
   int errid;
   char *er_msg;
 #if 0
@@ -4177,19 +4137,20 @@ qmgr_get_area_error_async (THREAD_ENTRY * thread_p, int *length_p, int count,
     }
 
 
-  MUTEX_LOCK (rv, query_p->lock);
+  rv = pthread_mutex_lock (&query_p->lock);
   errid = query_p->errid;
   er_msg = query_p->er_msg;
   done = (query_p->query_mode == ASYNC_MODE) ? false : true;
-  MUTEX_UNLOCK (query_p->lock);
+  pthread_mutex_unlock (&query_p->lock);
 
   if (er_msg == NULL || errid == NO_ERROR)
     {
       *length_p = len = (OR_INT_SIZE * 5);
+      strlen = 0;
     }
   else
     {
-      s_len = or_packed_string_length (er_msg);
+      s_len = or_packed_string_length (er_msg, &strlen);
       *length_p = len = (OR_INT_SIZE * 4) + s_len;
     }
 
@@ -4234,7 +4195,7 @@ qmgr_get_area_error_async (THREAD_ENTRY * thread_p, int *length_p, int count,
    */
   OR_PUT_INT (ptr, (int) (errid));
   ptr += OR_INT_SIZE;
-  or_pack_string (ptr, er_msg);
+  or_pack_string_with_length (ptr, er_msg, strlen);
 
   return area;
 }
@@ -4332,7 +4293,7 @@ xqmgr_sync_query (THREAD_ENTRY * thread_p, QUERY_ID query_id, int wait,
       goto end;
     }
 
-  MUTEX_LOCK (rv, query_p->lock);
+  rv = pthread_mutex_lock (&query_p->lock);
   qmgr_unlock_mutex (&tran_entry_p->lock);
   /*
    * If the query is not completed and "wait" is set, then wait else
@@ -4354,15 +4315,13 @@ xqmgr_sync_query (THREAD_ENTRY * thread_p, QUERY_ID query_id, int wait,
       if (query_p->query_mode != QUERY_COMPLETED)
 	{
 	  query_p->nwaits++;
-	  rv = COND_WAIT (query_p->cond, query_p->lock);
+	  rv = pthread_cond_wait (&query_p->cond, &query_p->lock);
 	  query_p->nwaits--;
-#if !defined (WINDOWS)
-	  MUTEX_UNLOCK (query_p->lock);
-#endif /* WINDOWS */
+	  pthread_mutex_unlock (&query_p->lock);
 	}
       else
 	{
-	  MUTEX_UNLOCK (query_p->lock);
+	  pthread_mutex_unlock (&query_p->lock);
 	}
     }
 
@@ -4463,10 +4422,10 @@ qmgr_get_query_error_with_entry (QMGR_QUERY_ENTRY * query_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  MUTEX_LOCK (rv, query_p->lock);
+  rv = pthread_mutex_lock (&query_p->lock);
   errid = query_p->errid;
   er_msg = query_p->er_msg;
-  MUTEX_UNLOCK (query_p->lock);
+  pthread_mutex_unlock (&query_p->lock);
 
   if (errid < 0)
     {
@@ -4504,11 +4463,11 @@ qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   query_p = qmgr_get_query_entry (thread_p, query_id, NULL_TRAN_INDEX);
   if (query_p != NULL)
     {
-      MUTEX_LOCK (rv, query_p->lock);
+      rv = pthread_mutex_lock (&query_p->lock);
       if (query_p->errid != NO_ERROR)
 	{
 	  /* if an error was already set, don't overwrite it */
-	  MUTEX_UNLOCK (query_p->lock);
+	  pthread_mutex_unlock (&query_p->lock);
 	  return;
 	}
 
@@ -4535,7 +4494,7 @@ qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 	  query_p->er_msg = NULL;
 	}
 
-      MUTEX_UNLOCK (query_p->lock);
+      pthread_mutex_unlock (&query_p->lock);
     }
 }
 
@@ -4559,6 +4518,54 @@ qmgr_find_leaf (XASL_NODE * xasl_p)
     }
 
   return xasl_p;
+}
+
+/*
+ * qmgr_has_unresolved_types () - check if the outptr list has unresolved
+ *				  types
+ * return : boolean
+ * xasl_p (in) : XASL tree
+ */
+static bool
+qmgr_has_unresolved_types (XASL_NODE * xasl_p)
+{
+  PROC_TYPE xasl_type = xasl_p->type;
+  REGU_VARIABLE_LIST list = NULL;
+
+  if (xasl_p->outptr_list == NULL)
+    {
+      return false;
+    }
+
+  switch (xasl_type)
+    {
+    case UNION_PROC:
+    case DIFFERENCE_PROC:
+    case INTERSECTION_PROC:
+    case BUILDLIST_PROC:
+    case BUILDVALUE_PROC:
+    case SCAN_PROC:
+    case MERGELIST_PROC:
+    case CONNECTBY_PROC:
+      break;
+    default:
+      return false;
+      break;
+    }
+  list = xasl_p->outptr_list->valptrp;
+  while (list != NULL)
+    {
+      if (list->value.domain == NULL)
+	{
+	  continue;
+	}
+      if (list->value.domain->type->id == DB_TYPE_VARIABLE)
+	{
+	  return true;
+	}
+      list = list->next;
+    }
+  return false;
 }
 
 /*
@@ -4702,8 +4709,8 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
 	    }
 #endif
 	  /* now set up the 'type_list' in the new list file */
-	  if (qdata_get_valptr_type_list (outptr_list_p, &type_list) !=
-	      NO_ERROR)
+	  if (qdata_get_valptr_type_list (thread_p, outptr_list_p, &type_list)
+	      != NO_ERROR)
 	    {
 	      free_and_init (tmp_list_p);
 	      return (QFILE_LIST_ID *) NULL;
@@ -4738,8 +4745,8 @@ qmgr_process_async_select (THREAD_ENTRY * thread_p,
 	    }
 
 	  /* now set up the 'type_list' in the new list file */
-	  if (qdata_get_valptr_type_list (outptr_list_p, &type_list) !=
-	      NO_ERROR)
+	  if (qdata_get_valptr_type_list (thread_p, outptr_list_p, &type_list)
+	      != NO_ERROR)
 	    {
 	      free_and_init (tmp_list_p);
 	      return (QFILE_LIST_ID *) NULL;
@@ -4857,4 +4864,173 @@ qmgr_setup_empty_list_file (char *page_p)
   header.prev_volid = header.next_volid = header.ovfl_volid = NULL_VOLID;
 
   qmgr_put_page_header (page_p, &header);
+}
+
+/*
+ * qmgr_initialize_temp_file_list () -
+ *   return: none
+ *   temp_file_list_p(in): temporary file list to be initialized
+ *   membuf_type(in):
+ */
+void
+qmgr_initialize_temp_file_list (QMGR_TEMP_FILE_LIST * temp_file_list_p,
+				QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type)
+{
+  int i, num_buffer_pages;
+  QMGR_TEMP_FILE *temp_file_p;
+#if defined(SERVER_MODE)
+  int rv;
+#endif
+
+  assert (temp_file_list_p != NULL
+	  && QMGR_IS_VALID_MEMBUF_TYPE (membuf_type));
+  if (temp_file_list_p == NULL || !QMGR_IS_VALID_MEMBUF_TYPE (membuf_type))
+    {
+      return;
+    }
+
+  num_buffer_pages = (membuf_type == TEMP_FILE_MEMBUF_NORMAL) ?
+    PRM_TEMP_MEM_BUFFER_PAGES : PRM_INDEX_SCAN_KEY_BUFFER_PAGES;
+
+  pthread_mutex_init (&temp_file_list_p->mutex, NULL);
+  rv = pthread_mutex_lock (&temp_file_list_p->mutex);
+  temp_file_list_p->list = NULL;
+
+  for (i = 0; i < QMGR_TEMP_FILE_FREE_LIST_SIZE; i++)
+    {
+      temp_file_p = qmgr_allocate_tempfile_with_buffer (num_buffer_pages);
+      if (temp_file_p == NULL)
+	{
+	  break;
+	}
+      /* add to the free list */
+      temp_file_p->prev = NULL;
+      temp_file_p->next = temp_file_list_p->list;
+      temp_file_p->membuf_npages = num_buffer_pages;
+      temp_file_p->membuf_type = membuf_type;
+      temp_file_list_p->list = temp_file_p;
+    }
+
+  temp_file_list_p->count = i;
+
+  pthread_mutex_unlock (&temp_file_list_p->mutex);
+}
+
+/*
+ * qmgr_finalize_temp_file_list () -
+ *   return: none
+ *   temp_file_list_p(in): temporary file list to be finalized
+ */
+void
+qmgr_finalize_temp_file_list (QMGR_TEMP_FILE_LIST * temp_file_list_p)
+{
+  QMGR_TEMP_FILE *temp_file_p;
+
+  assert (temp_file_list_p != NULL);
+  if (temp_file_list_p == NULL)
+    {
+      return;
+    }
+
+  while (temp_file_list_p->list)
+    {
+      temp_file_p = temp_file_list_p->list;
+      temp_file_list_p->list = temp_file_p->next;
+      free_and_init (temp_file_p);
+    }
+  temp_file_list_p->count = 0;
+  pthread_mutex_destroy (&temp_file_list_p->mutex);
+}
+
+/*
+ * qmgr_get_temp_file_from_list () -
+ *   return: temporary file
+ *   temp_file_list_p(in): temporary file list
+ */
+QMGR_TEMP_FILE *
+qmgr_get_temp_file_from_list (QMGR_TEMP_FILE_LIST * temp_file_list_p)
+{
+  QMGR_TEMP_FILE *temp_file_p = NULL;
+#if defined(SERVER_MODE)
+  int rv;
+#endif
+  assert (temp_file_list_p != NULL);
+  if (temp_file_list_p == NULL)
+    {
+      return NULL;
+    }
+
+  rv = pthread_mutex_lock (&temp_file_list_p->mutex);
+
+  /* delete from the free list */
+  if (temp_file_list_p->list)
+    {
+      temp_file_p = temp_file_list_p->list;
+      temp_file_list_p->list = temp_file_p->next;
+      temp_file_p->prev = temp_file_p->next = NULL;
+      temp_file_list_p->count--;
+    }
+
+  pthread_mutex_unlock (&temp_file_list_p->mutex);
+
+  return temp_file_p;
+}
+
+/*
+ * qmgr_put_temp_file_into_list () -
+ *   return: none
+ *   temp_file_list_p(in): temporary file list
+ */
+void
+qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p)
+{
+  QMGR_TEMP_FILE_LIST *temp_file_list_p;
+#if defined(SERVER_MODE)
+  int rv;
+#endif
+  assert (temp_file_p != NULL);
+  if (temp_file_p == NULL)
+    {
+      return;
+    }
+
+  if (QMGR_IS_VALID_MEMBUF_TYPE (temp_file_p->membuf_type))
+    {
+      temp_file_list_p =
+	&qmgr_Query_table.temp_file_list[temp_file_p->membuf_type];
+
+      rv = pthread_mutex_lock (&temp_file_list_p->mutex);
+
+      /* add to the free list */
+      if (temp_file_list_p->count < QMGR_TEMP_FILE_FREE_LIST_SIZE)
+	{
+	  temp_file_p->prev = NULL;
+	  temp_file_p->next = temp_file_list_p->list;
+	  temp_file_list_p->list = temp_file_p;
+	  temp_file_list_p->count++;
+	  temp_file_p = NULL;
+	}
+
+      pthread_mutex_unlock (&temp_file_list_p->mutex);
+    }
+  if (temp_file_p)
+    {
+      free_and_init (temp_file_p);
+    }
+}
+
+/*
+ * qmgr_get_temp_file_membuf_pages () -
+ *   return: number of membuf pages belonging to the temporary file
+ *   temp_file_list_p(in): temporary file
+ */
+int
+qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p)
+{
+  assert (temp_file_p != NULL);
+  if (temp_file_p == NULL)
+    {
+      return -1;
+    }
+  return temp_file_p->membuf_npages;
 }

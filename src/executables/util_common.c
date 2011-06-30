@@ -31,6 +31,16 @@
 #include "message_catalog.h"
 #include "error_code.h"
 
+#include "system_parameter.h"
+#include "util_func.h"
+#include "ini_parser.h"
+#include "environment_variable.h"
+#include "heartbeat.h"
+#include "log_impl.h"
+#if !defined(WINDOWS)
+#include <fcntl.h>
+#endif /* !defined(WINDOWS) */
+
 typedef enum
 {
   EXISTING_DATABASE,
@@ -372,4 +382,422 @@ utility_localtime (const time_t * ts, struct tm *result)
 
   memcpy (result, tm_p, sizeof (struct tm));
   return 0;
+}
+
+/*
+ * util_is_localhost -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+bool
+util_is_localhost (char *host)
+{
+  char localhost[PATH_MAX];
+
+  GETHOSTNAME (localhost, PATH_MAX);
+  if (strcmp (host, localhost) == 0)
+    {
+      return true;
+    }
+
+  return false;
+}
+
+static char **
+util_split_ha_node (const char *str)
+{
+  char *start_node;
+
+  start_node = strchr (str, '@');
+  return util_split_string (start_node + 1, ":");
+}
+
+static char **
+util_split_ha_db (const char *str)
+{
+  return util_split_string (str, ",");
+}
+
+static char **
+util_split_ha_sync (const char *str)
+{
+  return util_split_string (str, ":");
+}
+
+/*
+ * copylogdb_keyword() - get keyword value or string of the copylogdb mode
+ *   return: NO_ERROR or ER_FAILED
+ *   keyval_p(in/out): keyword value
+ *   keystr_p(in/out): keyword string
+ */
+int
+copylogdb_keyword (int *keyval_p, char **keystr_p)
+{
+  static UTIL_KEYWORD keywords[] = {
+    {LOGWR_MODE_ASYNC, "async"},
+    {LOGWR_MODE_SEMISYNC, "semisync"},
+    {LOGWR_MODE_SYNC, "sync"},
+    {-1, NULL}
+  };
+
+  return utility_keyword_search (keywords, keyval_p, keystr_p);
+}
+
+/*
+ * changemode_keyword() - get keyword value or string of the server mode
+ *   return: NO_ERROR or ER_FAILED
+ *   keyval_p(in/out): keyword value
+ *   keystr_p(in/out): keyword string
+ */
+int
+changemode_keyword (int *keyval_p, char **keystr_p)
+{
+  static UTIL_KEYWORD keywords[] = {
+    {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_IDLE_STR},
+    {HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_ACTIVE_STR},
+    {HA_SERVER_STATE_TO_BE_ACTIVE, HA_SERVER_STATE_TO_BE_ACTIVE_STR},
+    {HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_STANDBY_STR},
+    {HA_SERVER_STATE_TO_BE_STANDBY, HA_SERVER_STATE_TO_BE_STANDBY_STR},
+    {HA_SERVER_STATE_MAINTENANCE, HA_SERVER_STATE_MAINTENANCE_STR},
+    {HA_SERVER_STATE_DEAD, HA_SERVER_STATE_DEAD_STR},
+    {-1, NULL}
+  };
+
+  return utility_keyword_search (keywords, keyval_p, keystr_p);
+}
+
+/*
+ * util_free_ha_conf -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+void
+util_free_ha_conf (HA_CONF * ha_conf)
+{
+  int i;
+  HA_NODE_CONF *nc = ha_conf->node_conf;
+
+  for (i = 0; ha_conf->node_names[i] != NULL; i++)
+    {
+      free (nc[i].node_name);
+      free (nc[i].copy_log_base);
+      free (nc[i].copy_sync_mode);
+    }
+  free (ha_conf->node_conf);
+
+  util_free_string_array (ha_conf->node_names);
+  util_free_string_array (ha_conf->node_syncs);
+  util_free_string_array (ha_conf->db_names);
+  free (ha_conf->ha_node_list);
+  free (ha_conf->ha_copy_log_base);
+}
+
+/*
+ * util_make_ha_conf -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+int
+util_make_ha_conf (HA_CONF * ha_conf)
+{
+  char **nodes;
+  int i;
+
+  int ha_port_id, ha_apply_max_mem;
+  const char *ha_node_list, *ha_db_list;
+  const char *ha_copy_log_base, *ha_copy_sync_mode;
+
+  HA_NODE_CONF *nc = NULL;
+
+  ha_port_id = PRM_HA_PORT_ID;
+  ha_node_list = PRM_HA_NODE_LIST;
+  ha_db_list = PRM_HA_DB_LIST;
+  ha_copy_log_base = PRM_HA_COPY_LOG_BASE;
+  if (ha_copy_log_base == NULL || ha_copy_log_base[0] == 0)
+    {
+      ha_copy_log_base = envvar_get ("DATABASES");
+      if (ha_copy_log_base == NULL)
+	{
+	  ha_copy_log_base = ".";
+	}
+    }
+  ha_copy_sync_mode = PRM_HA_COPY_SYNC_MODE;
+  ha_apply_max_mem = PRM_HA_APPLY_MAX_MEM_SIZE;
+
+  if (ha_db_list == NULL || ha_db_list[0] == 0)
+    {
+      const char *message =
+	utility_get_generic_message (MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
+      fprintf (stderr, message, PRM_NAME_HA_DB_LIST, "");
+      return false;
+    }
+
+  ha_conf->ha_port_id = ha_port_id;
+  ha_conf->node_names = util_split_ha_node (ha_node_list);
+  if (ha_conf->node_names == NULL)
+    {
+      const char *message =
+	utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+      fprintf (stderr, message);
+      return false;
+    }
+
+  ha_conf->node_syncs = NULL;
+  if (ha_copy_sync_mode == NULL || ha_copy_sync_mode[0] == 0)
+    {
+      for (i = 0, nodes = ha_conf->node_names; nodes[i] != NULL; i++)
+	{
+	  ha_conf->node_syncs = (char **) realloc (ha_conf->node_syncs,
+						   sizeof (char *) * (i + 2));
+	  if (ha_conf->node_syncs == NULL)
+	    {
+	      const char *message =
+		utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+	      fprintf (stderr, message);
+	      return false;
+	    }
+	  ha_conf->node_syncs[i] = strdup ("sync");
+	  if (ha_conf->node_syncs[i] == NULL)
+	    {
+	      const char *message =
+		utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+	      fprintf (stderr, message);
+	      return false;
+	    }
+	  ha_conf->node_syncs[i + 1] = NULL;
+	}
+    }
+  else
+    {
+      ha_conf->node_syncs = util_split_ha_sync (ha_copy_sync_mode);
+      for (i = 0, nodes = ha_conf->node_names; nodes[i] != NULL; i++)
+	{
+	  int mode = -1;
+	  if (ha_conf->node_syncs[i] == NULL
+	      || copylogdb_keyword (&mode, &ha_conf->node_syncs[i]) == -1)
+	    {
+	      const char *message =
+		utility_get_generic_message
+		(MSGCAT_UTIL_GENERIC_INVALID_PARAMETER);
+
+	      fprintf (stderr, message, PRM_NAME_HA_COPY_SYNC_MODE,
+		       ha_conf->node_syncs[i]);
+	      return false;
+	    }
+	}
+    }
+  ha_conf->ha_copy_log_base = strdup (ha_copy_log_base);
+  ha_conf->db_names = util_split_ha_db (ha_db_list);
+  ha_conf->ha_node_list = strdup (ha_node_list);
+  ha_conf->ha_db_list = strdup (ha_db_list);
+  ha_conf->ha_apply_max_mem = ha_apply_max_mem;
+  if (ha_conf->ha_copy_log_base == NULL || ha_conf->db_names == NULL
+      || ha_conf->ha_node_list == NULL || ha_conf->ha_db_list == NULL)
+    {
+      const char *message =
+	utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+      fprintf (stderr, message);
+      return false;
+    }
+
+  for (i = 0, nodes = ha_conf->node_names; nodes[i] != NULL; i++)
+    {
+      nc = (HA_NODE_CONF *) realloc (nc, sizeof (HA_NODE_CONF) * (i + 1));
+      if (nc == NULL)
+	{
+	  const char *message =
+	    utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+	  fprintf (stderr, message);
+	  return false;
+	}
+      nc[i].node_name = strdup (nodes[i]);
+      nc[i].copy_log_base = strdup (ha_conf->ha_copy_log_base);
+      nc[i].copy_sync_mode = strdup (ha_conf->node_syncs[i]);
+      nc[i].apply_max_mem = ha_conf->ha_apply_max_mem;
+      if (nc[i].node_name == NULL || nc[i].copy_log_base == NULL
+	  || nc[i].copy_sync_mode == NULL)
+	{
+	  const char *message =
+	    utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+	  fprintf (stderr, message);
+	  return false;
+	}
+    }
+  ha_conf->node_conf = nc;
+
+  return true;
+}
+
+#if !defined(WINDOWS)
+/*
+ * util_redirect_stdout_to_null - redirect stdout/stderr to /dev/null
+ *
+ * return:
+ *
+ */
+void
+util_redirect_stdout_to_null (void)
+{
+  const char *null_dev = "/dev/null";
+  int fd;
+
+  fd = open (null_dev, O_WRONLY);
+  if (fd != -1)
+    {
+      close (1);
+      close (2);
+      dup2 (fd, 1);
+      dup2 (fd, 2);
+      close (fd);
+    }
+}
+#endif /* !defined(WINDOWS) */
+
+/*
+ * util_size_to_byte -
+ *
+ * return:
+ *
+ */
+static int
+util_size_to_byte (UINT64 * pre, char post)
+{
+  switch (post)
+    {
+    case 'b':
+    case 'B':
+      /* bytes */
+      break;
+    case 'k':
+    case 'K':
+      /* kilo */
+      *pre = *pre * 1024ULL;
+      break;
+    case 'm':
+    case 'M':
+      /* mega */
+      *pre = *pre * 1048576ULL;
+      break;
+    case 'g':
+    case 'G':
+      /* giga */
+      *pre = *pre * 1073741824ULL;
+      break;
+    case 't':
+    case 'T':
+      /* tera */
+      *pre = *pre * 1099511627776ULL;
+      break;
+    case 'p':
+    case 'P':
+      /* peta */
+      *pre = *pre * 1125899906842624ULL;
+      break;
+    default:
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * util_byte_to_size_string -
+ *
+ * return:
+ *
+ */
+int
+util_byte_to_size_string (UINT64 size_num, char *buf, size_t len)
+{
+  const char *ss = "BKMGTP";
+  double v = (double) size_num;
+  int pow = 0;
+
+  if (buf == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  while (pow < 6 && v > 1024.0)
+    {
+      pow++;
+      v /= 1024.0;
+    }
+
+  if (snprintf (buf, len, "%.1f%c", v, ss[pow]) < 0)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * util_size_string_to_byte -
+ *
+ * return:
+ *
+ */
+int
+util_size_string_to_byte (char *size_str, UINT64 * size_num)
+{
+  int len;
+  UINT64 val;
+  char c = 'B';
+  char *end;
+
+  if (size_str == NULL)
+    {
+      return ER_FAILED;
+    }
+  len = strlen (size_str);
+
+  val = strtoll (size_str, &end, 10);
+  if (end == size_str)
+    {
+      return ER_FAILED;
+    }
+
+  if (isalpha (*end))
+    {
+      c = *end;
+      end += 1;
+    }
+
+  if (end != (size_str + len) || util_size_to_byte (&val, c) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  *size_num = val;
+  return NO_ERROR;
+}
+
+/*
+ * util_print_deprecated -
+ *
+ * return:
+ *
+ */
+void
+util_print_deprecated (const char *option)
+{
+  int cat = MSGCAT_CATALOG_UTILS;
+  int set = MSGCAT_UTIL_SET_GENERIC;
+  int msg = MSGCAT_UTIL_GENERIC_DEPRECATED;
+  const char *fmt = msgcat_message (cat, set, msg);
+  if (fmt == NULL)
+    {
+      fprintf (stderr, "error: msgcat_message");
+    }
+  else
+    {
+      fprintf (stderr, fmt, option);
+    }
 }

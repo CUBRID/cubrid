@@ -71,18 +71,20 @@ struct logwr_global
   LOGWR_MODE mode;
   LOGWR_ACTION action;
 
-  PAGEID last_chkpt_pageid;
-  PAGEID last_recv_pageid;
-  PAGEID last_arv_fpageid;
-  PAGEID last_arv_lpageid;
+  LOG_PAGEID last_chkpt_pageid;
+  LOG_PAGEID last_recv_pageid;
+  LOG_PAGEID last_arv_fpageid;
+  LOG_PAGEID last_arv_lpageid;
   int last_arv_num;
-  int last_deleted_arv_num;
 
   bool force_flush;
   struct timeval last_flush_time;
   /* background log archiving info */
   BACKGROUND_ARCHIVING_INFO bg_archive_info;
   char bg_archive_name[PATH_MAX];
+
+  /* original next logical page to archive             */
+  LOG_PAGEID ori_nxarv_pageid;
 };
 
 #define LOGWR_AT_NEXT_ARCHIVE_PAGE_ID(pageid) \
@@ -99,15 +101,18 @@ extern LOGWR_GLOBAL logwr_Gl;
 extern void logwr_flush_header_page (void);
 extern int logwr_write_log_pages (void);
 extern int logwr_set_hdr_and_flush_info (void);
+#if !defined(WINDOWS)
+extern int logwr_copy_log_header_check (const char *db_name, bool verbose);
+#endif /* !WINDOWS */
 #endif /* CS_MODE */
 
 extern int logwr_copy_log_file (const char *db_name, const char *log_path,
 				int mode);
-extern PAGEID logwr_to_physical_pageid (PAGEID logical_pageid);
+extern LOG_PHY_PAGEID logwr_to_physical_pageid (LOG_PAGEID logical_pageid);
 
 #if defined(SERVER_MODE)
-int xlogwr_get_log_pages (THREAD_ENTRY * thread_p, PAGEID first_pageid,
+int xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 			  int mode);
-extern int logwr_get_min_copied_fpageid (void);
+extern LOG_PAGEID logwr_get_min_copied_fpageid (void);
 #endif /* SERVER_MODE */
 #endif /* _LOG_WRITER_HEADER_ */

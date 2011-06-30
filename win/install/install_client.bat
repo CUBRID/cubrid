@@ -1,7 +1,7 @@
 @echo off
 
-if "%1" == "" goto exit
-if "%2" == "" goto exit
+if %1 == "" goto exit
+if %2 == "" goto exit
 
 set SRC_DIR=%1
 set DEST_DIR=%2

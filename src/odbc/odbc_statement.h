@@ -49,9 +49,20 @@
   ( stmt_type == CUBRID_STMT_GET_STATS )
 
 typedef enum
-{ NULL_RESULT =
-0, QUERY, TABLES, STATISTICS, COLUMNS, SPECIALCOLUMNS,
-TYPE_INFO } RESULT_TYPE;
+{
+  NULL_RESULT = 0,
+  QUERY,
+  TABLES,
+  STATISTICS,
+  COLUMNS,
+  SPECIALCOLUMNS,
+  TYPE_INFO,
+  PRIMARY_KEYS,
+  FOREIGN_KEYS,
+  TABLE_PRIVILEGES,
+  PROCEDURES,
+  PROCEDURE_COLUMNS
+} RESULT_TYPE;
 
 typedef long SQL_STMT_OPTION;	/* SQL_CLOSE, etc */
 
@@ -121,15 +132,15 @@ typedef struct st_odbc_statement
   struct tagREVISED_SQL revised_sql;
   char *cursor;			/* cursor name */
   short data_at_exec_state;	/*      > 0일 때는 현재 보내야할 bind parameter,
-                            STMT_NEED_DATA 아직 보내기 직전,
-                            STMT_NEED_NO_MORE_DATA 보낼 data가 없거나,
-                            모두 보낸 이후 */
+				   STMT_NEED_DATA 아직 보내기 직전,
+				   STMT_NEED_NO_MORE_DATA 보낼 data가 없거나,
+				   모두 보낸 이후 */
   unsigned long tpl_number;	/* tpl_number - result set의 tuple 개수, 또는
-                            * update가 반영된 row 수
-                            * row_number - currunt row position */
+				 * update가 반영된 row 수
+				 * row_number - currunt row position */
   unsigned long current_tpl_pos;	/* result set에서 cursor의 위치,
-                                    * attr_row_number와 의미상 같다. 
-                                    * 0 Befor start, -1 After end */
+					 * attr_row_number와 의미상 같다. 
+					 * 0 Befor start, -1 After end */
 
   // param number는 column number와는 달리 ipd의 record개수가 아니다.
   // 왜냐면 ird와 달리 auto ipd가 아니기 때문이다.
@@ -145,9 +156,9 @@ typedef struct st_odbc_statement
   unsigned long attr_cursor_type;	// core, 2
   unsigned long attr_async_enable;	// 1, 2
   unsigned long attr_use_bookmark;	/* 2    
-                                    * bookmark가 ok인 경우 
-                                    * prepare시 0번 record를 추가로
-                                    * 생성한다. */
+					 * bookmark가 ok인 경우 
+					 * prepare시 0번 record를 추가로
+					 * 생성한다. */
 
 
   /* Not supported attributes */
@@ -180,49 +191,50 @@ typedef struct st_odbc_statement
 } ODBC_STATEMENT;
 
 PUBLIC RETCODE odbc_alloc_statement (struct st_odbc_connection *conn,
-                                     ODBC_STATEMENT ** stmt_ptr);
+				     ODBC_STATEMENT ** stmt_ptr);
 PUBLIC RETCODE odbc_free_statement (ODBC_STATEMENT * stmt);
 PUBLIC RETCODE odbc_reset_statement (ODBC_STATEMENT * stmt,
-                                     unsigned short option);
+				     unsigned short option);
 PUBLIC RETCODE odbc_set_stmt_attr (ODBC_STATEMENT * stmt,
-                                   long attribute,
-                                   void *valueptr,
-                                   long stringlength, short is_driver);
+				   long attribute,
+				   void *valueptr,
+				   long stringlength, short is_driver);
 PUBLIC RETCODE odbc_get_stmt_attr (ODBC_STATEMENT * stmt,
-                                   long attr,
-                                   void *value_ptr,
-                                   long buffer_length, long *length_ptr);
+				   long attr,
+				   void *value_ptr,
+				   long buffer_length, long *length_ptr);
 PUBLIC RETCODE odbc_set_cursor_name (ODBC_STATEMENT * stmt,
-                                     char *cursor_name, short name_length);
+				     char *cursor_name, short name_length);
 PUBLIC RETCODE odbc_get_cursor_name (ODBC_STATEMENT * stmt,
-                                     SQLCHAR *cursor_name,
-                                     SQLSMALLINT buffer_length,
-                                     SQLLEN *name_length_ptr);
+				     SQLCHAR * cursor_name,
+				     SQLSMALLINT buffer_length,
+				     SQLLEN * name_length_ptr);
 PUBLIC RETCODE odbc_bind_parameter (ODBC_STATEMENT * stmt,
-                                    SQLUSMALLINT parameter_num,
-                                    SQLSMALLINT input_output_type,
-                                    SQLSMALLINT value_type,
-                                    SQLSMALLINT parameter_type,
-                                    SQLULEN column_size,
-                                    SQLSMALLINT decimal_digits,
-                                    SQLPOINTER parameter_value_ptr,
-                                    SQLLEN buffer_length, SQLLEN *strlen_ind_ptr);
+				    SQLUSMALLINT parameter_num,
+				    SQLSMALLINT input_output_type,
+				    SQLSMALLINT value_type,
+				    SQLSMALLINT parameter_type,
+				    SQLULEN column_size,
+				    SQLSMALLINT decimal_digits,
+				    SQLPOINTER parameter_value_ptr,
+				    SQLLEN buffer_length,
+				    SQLLEN * strlen_ind_ptr);
 PUBLIC RETCODE odbc_num_params (ODBC_STATEMENT * stmt,
-                                short *parameter_count);
+				short *parameter_count);
 PUBLIC RETCODE odbc_prepare (ODBC_STATEMENT * stmt, char *statement_text);
 PUBLIC RETCODE odbc_execute (ODBC_STATEMENT * stmt);
 PUBLIC RETCODE odbc_param_data (ODBC_STATEMENT * stmt, void **valueptr_ptr);
 PUBLIC RETCODE odbc_put_data (ODBC_STATEMENT * stmt,
-                              void *data_ptr, SQLLEN strlen_or_ind);
+			      void *data_ptr, SQLLEN strlen_or_ind);
 PUBLIC RETCODE odbc_close_cursor (ODBC_STATEMENT * stmt);
 PUBLIC RETCODE odbc_cancel (ODBC_STATEMENT * stmt);
 PUBLIC RETCODE odbc_bulk_operations (ODBC_STATEMENT * stmt, short pperation);
 PUBLIC RETCODE odbc_set_pos (ODBC_STATEMENT * stmt,
-                             SQLSETPOSIROW row_number,
-                             SQLUSMALLINT operation, SQLUSMALLINT lock_type);
+			     SQLSETPOSIROW row_number,
+			     SQLUSMALLINT operation, SQLUSMALLINT lock_type);
 PUBLIC void free_column_data (COLUMN_DATA * data, int option);
 PUBLIC void reset_result_set (ODBC_STATEMENT * stmt);
 PUBLIC void create_ird (ODBC_STATEMENT * stmt, T_CCI_COL_INFO * cci_col_info,
-                        int column_number);
+			int column_number);
 
 #endif /* ! __ODBC_STMT_HEADER */

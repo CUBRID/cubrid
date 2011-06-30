@@ -28,7 +28,7 @@
 #ident "$Id$"
 
 #include "query_opfunc.h"	/* for VACOMM stuff */
-#include "thread_impl.h"
+#include "thread.h"
 
 extern void return_error_to_client (THREAD_ENTRY * thread_p,
 				    unsigned int rid);
@@ -120,6 +120,20 @@ extern void slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid,
 				    char *request, int reqlen);
 extern void slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid,
 			      char *request, int reqlen);
+extern void slog_find_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid,
+				   char *request, int reqlen);
+extern void slog_add_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid,
+				  char *request, int reqlen);
+extern void slog_change_state_of_locator (THREAD_ENTRY * thread_p,
+					  unsigned int rid,
+					  char *request, int reqlen);
+extern void slog_drop_lob_locator (THREAD_ENTRY * thread_p,
+				   unsigned int rid,
+				   char *request, int reqlen);
+extern void sacl_reload (THREAD_ENTRY * thread_p, unsigned int rid,
+			 char *request, int reqlen);
+extern void sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid,
+		       char *request, int reqlen);
 extern void slock_dump (THREAD_ENTRY * thread_p, unsigned int rid,
 			char *request, int reqlen);
 extern void shf_create (THREAD_ENTRY * thread_p, unsigned int rid,
@@ -300,12 +314,6 @@ extern void smnt_server_start_stats (THREAD_ENTRY * thread_p,
 				     int reqlen);
 extern void smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid,
 				    char *request, int reqlen);
-extern void smnt_server_reset_stats (THREAD_ENTRY * thread_p,
-				     unsigned int rid, char *request,
-				     int reqlen);
-extern void smnt_server_reset_global_stats (THREAD_ENTRY * thread_p,
-					    unsigned int rid, char *request,
-					    int reqlen);
 extern void smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid,
 				    char *request, int reqlen);
 extern void smnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
@@ -357,7 +365,7 @@ extern int xlog_send_log_pages_to_client (THREAD_ENTRY * thread_p,
 					  char *logpb_area, int area_size,
 					  LOGWR_MODE mode);
 extern int xlog_get_page_request_with_reply (THREAD_ENTRY * thread_p,
-					     PAGEID * fpageid_ptr,
+					     LOG_PAGEID * fpageid_ptr,
 					     LOGWR_MODE * mode_ptr);
 extern void shf_get_class_num_objs_and_pages (THREAD_ENTRY * thread_p,
 					      unsigned int rid, char *request,
@@ -392,6 +400,22 @@ extern void slocator_build_fk_object_cache (THREAD_ENTRY * thread_p,
 					    int reqlen);
 extern void slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid,
 				  char *request, int reqlen);
+/* external storage supports */
+extern void ses_posix_write_file (THREAD_ENTRY * thread_p, unsigned int rid,
+				  char *request, int reqlen);
+extern void ses_posix_read_file (THREAD_ENTRY * thread_p, unsigned int rid,
+				 char *request, int reqlen);
+extern void ses_posix_copy_file (THREAD_ENTRY * thread_p, unsigned int rid,
+				 char *request, int reqlen);
+extern void ses_posix_rename_file (THREAD_ENTRY * thread_p, unsigned int rid,
+				   char *request, int reqlen);
+extern void ses_posix_get_file_size (THREAD_ENTRY * thread_p,
+				     unsigned int rid, char *request,
+				     int reqlen);
+extern void ses_posix_delete_file (THREAD_ENTRY * thread_p, unsigned int rid,
+				   char *request, int reqlen);
+extern void ses_posix_create_file (THREAD_ENTRY * thread_p, unsigned int rid,
+				   char *request, int reqlen);
 
 extern void net_cleanup_server_queues (unsigned int rid);
 
@@ -406,4 +430,39 @@ extern void sboot_compact_start (THREAD_ENTRY * thread_p, unsigned int rid,
 extern void sboot_compact_stop (THREAD_ENTRY * thread_p, unsigned int rid,
 				char *request, int reqlen);
 
+extern void slocator_upgrade_instances_domain (THREAD_ENTRY * thread_p,
+					       unsigned int rid,
+					       char *request, int reqlen);
+extern void ssession_check_session (THREAD_ENTRY * thread_p,
+				    unsigned int rid, char *request,
+				    int reqlen);
+extern int ssession_end_session (THREAD_ENTRY * thread_p,
+				 unsigned int rid, char *request, int reqlen);
+extern int ssession_set_row_count (THREAD_ENTRY * thread_p,
+				   unsigned int rid, char *request,
+				   int reqlen);
+extern int ssession_get_row_count (THREAD_ENTRY * thread_p,
+				   unsigned int rid, char *request,
+				   int reqlen);
+extern void ssession_get_last_insert_id (THREAD_ENTRY * thread_p,
+					 unsigned int rid, char *request,
+					 int reqlen);
+extern void ssession_create_prepared_statement (THREAD_ENTRY * thread_p,
+						unsigned int rid,
+						char *request, int reqlen);
+extern void ssession_get_prepared_statement (THREAD_ENTRY * thread_p,
+					     unsigned int rid,
+					     char *request, int reqlen);
+extern void ssession_delete_prepared_statement (THREAD_ENTRY * thread_p,
+						unsigned int rid,
+						char *request, int reqlen);
+extern void ssession_set_session_variables (THREAD_ENTRY * thread_p,
+					    unsigned int rid, char *request,
+					    int reqlen);
+extern void ssession_get_session_variable (THREAD_ENTRY * thread_p,
+					   unsigned int rid, char *request,
+					   int reqlen);
+extern void ssession_drop_session_variables (THREAD_ENTRY * thread_p,
+					     unsigned int rid, char *request,
+					     int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

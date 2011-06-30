@@ -38,6 +38,12 @@
 #define SRV_HANDLE_QUERY_SEQ_NUM(SRV_HANDLE)    \
         ((SRV_HANDLE) ? (SRV_HANDLE)->query_seq_num : 0)
 
+#if defined(CAS_FOR_ORACLE)
+#define CLOB_LOCATOR_LIMIT	32 * 1000	/* 32K */
+#define MAX_LOCP_COUNT 		1024
+#define DATA_SIZE		1024 * 1000
+#endif
+
 typedef struct t_prepare_call_info T_PREPARE_CALL_INFO;
 struct t_prepare_call_info
 {
@@ -79,16 +85,26 @@ union db_data
   void *p;
 };
 
+#if defined(CAS_FOR_ORACLE)
+typedef struct locator_list LOCATOR_LIST;
+struct locator_list
+{
+  OCILobLocator *locp[MAX_LOCP_COUNT];
+  int locp_count;
+};
+#endif
+
 typedef struct db_value DB_VALUE;
 #if defined(CAS_FOR_ORACLE)
 struct db_value
 {
   unsigned short db_type;
-  unsigned char is_null;
+  sb2 is_null;
   void *define;
   void *buf;			/* data pointer */
   DB_DATA data;
   unsigned int size;
+  unsigned short rlen;
   bool need_clear;
 };
 #else
@@ -179,6 +195,7 @@ extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle,
 			      unsigned int seq_num);
 extern void hm_srv_handle_free (int h_id);
 extern void hm_srv_handle_free_all (void);
+extern void hm_srv_handle_qresult_end_all (void);
 extern T_SRV_HANDLE *hm_find_srv_handle (int h_id);
 extern void hm_qresult_clear (T_QUERY_RESULT * q_result);
 extern void hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag);

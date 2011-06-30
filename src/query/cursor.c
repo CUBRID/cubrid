@@ -387,8 +387,8 @@ cursor_copy_vobj_to_dbvalue (OR_BUF * buffer_p, DB_VALUE * value_p)
       return ER_FAILED;
     }
 
-  if ((*(pr_type->readval)) (buffer_p, &vobj_dbval, NULL, -1, true, NULL, 0)
-      != NO_ERROR)
+  if ((*(pr_type->data_readval)) (buffer_p, &vobj_dbval, NULL, -1, true,
+				  NULL, 0) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -440,8 +440,8 @@ cursor_get_tuple_value_to_dbvalue (OR_BUF * buffer_p, TP_DOMAIN * domain_p,
     }
 
   /* for all other types, we can use the prim routines */
-  if ((*(pr_type->readval))
-      (buffer_p, value_p, domain_p, -1, is_copy, NULL, 0) != NO_ERROR)
+  if ((*(pr_type->data_readval)) (buffer_p, value_p, domain_p, -1, is_copy,
+				  NULL, 0) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1401,7 +1401,7 @@ cursor_peek_tuple (CURSOR_ID * cursor_id_p)
 
 /*
  * cursor_get_current_oid () -
- *   return: NO_CURSOR_SUCCESS, DB_CURSOR_END, error_code
+ *   return: DB_CURSOR_SUCCESS, DB_CURSOR_END, error_code
  *   cursor_id(in): Cursor Identifier
  *   db_value(out): Set to the object identifier
  * Note: The object identifier stored in the first column of the
@@ -1430,7 +1430,7 @@ cursor_get_current_oid (CURSOR_ID * cursor_id_p, DB_VALUE * value_p)
 
 /*
  * cursor_next_tuple () -
- *   return: NO_CURSOR_SUCCESS, DB_CURSOR_END, error_code
+ *   return: DB_CURSOR_SUCCESS, DB_CURSOR_END, error_code
  *   cursor_id(in/out): Cursor Identifier
  * Note: Makes the next tuple in the LIST FILE referred by the cursor
  *       identifier the current active tuple of the cursor and returns
@@ -1517,7 +1517,7 @@ cursor_next_tuple (CURSOR_ID * cursor_id_p)
 
 /*
  * cursor_prev_tuple () -
- *   return: NO_CURSOR_SUCCESS, DB_CURSOR_END, error_code
+ *   return: DB_CURSOR_SUCCESS, DB_CURSOR_END, error_code
  *   cursor_id(in/out): Cursor Identifier
  * Note: Makes the previous tuple in the LIST FILE referred by cursor
  *       identifier the current active tuple of the cursor and returns
@@ -1601,7 +1601,7 @@ cursor_prev_tuple (CURSOR_ID * cursor_id_p)
  * cursor_first_tuple () -
  *
  * arguments:
- *   return: NO_CURSOR_SUCCESS, DB_CURSOR_END, error_code
+ *   return: DB_CURSOR_SUCCESS, DB_CURSOR_END, error_code
  *   cursor_id(in/out): Cursor Identifier
  * Note: Makes the first tuple in the LIST FILE referred by the cursor
  *       identifier the current active tuple of the cursor and returns
@@ -1642,7 +1642,7 @@ cursor_first_tuple (CURSOR_ID * cursor_id_p)
 
 /*
  * cursor_last_tuple () -
- *   return: NO_CURSOR_SUCCESS, DB_CURSOR_END, error_code
+ *   return: DB_CURSOR_SUCCESS, DB_CURSOR_END, error_code
  *   cursor_id(in/out): Cursor Identifier
  * Note: Makes the last tuple in the LIST FILE referred by the cursor
  *       identifier the current active tuple of the cursor and returns

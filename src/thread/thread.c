@@ -44,7 +44,7 @@
 #include "porting.h"
 #include "connection_error.h"
 #include "job_queue.h"
-#include "thread_impl.h"
+#include "thread.h"
 #include "critical_section.h"
 #include "system_parameter.h"
 #include "memory_alloc.h"
@@ -62,6 +62,7 @@
 #include "server_support.h"
 #include "log_compress.h"
 #include "perf_monitor.h"
+#include "session.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -89,15 +90,16 @@ struct thread_manager
   bool initialized;
 };
 
-/* deadlock + checkpoint + oob + page flush + log flush + flush control */
-static const int PREDEFINED_DAEMON_THREAD_NUM = 6;
+/* deadlock + checkpoint + oob + page flush + log flush + flush control
+ * + session control + purge archive logs */
+static const int PREDEFINED_DAEMON_THREAD_NUM = 8;
 
 static const int THREAD_RETRY_MAX_SLAM_TIMES = 10;
 
 #if defined(HPUX)
 static __thread THREAD_ENTRY *tsd_ptr;
 #else /* HPUX */
-static THREAD_KEY_T css_Thread_key;
+static pthread_key_t css_Thread_key;
 #endif /* HPUX */
 
 static THREAD_MANAGER thread_Manager;
@@ -107,26 +109,39 @@ static THREAD_MANAGER thread_Manager;
  *    Under the win32-threads system, *_cond variables are an auto-reset event
  */
 static DAEMON_THREAD_MONITOR thread_Deadlock_detect_thread =
-  { 0, true, false, false, MUTEX_INITIALIZER, COND_INITIALIZER };
+  { 0, true, false, false, PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_COND_INITIALIZER
+};
 static DAEMON_THREAD_MONITOR thread_Checkpoint_thread =
-  { 0, false, false, false, MUTEX_INITIALIZER, COND_INITIALIZER };
+  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_COND_INITIALIZER
+};
+static DAEMON_THREAD_MONITOR thread_Purge_archive_logs_thread =
+  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_COND_INITIALIZER
+};
 static DAEMON_THREAD_MONITOR thread_Oob_thread =
-  { 0, true, true, false, MUTEX_INITIALIZER, COND_INITIALIZER };
+  { 0, true, true, false, PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_COND_INITIALIZER
+};
 static DAEMON_THREAD_MONITOR thread_Page_flush_thread =
-  { 0, false, false, false, MUTEX_INITIALIZER, COND_INITIALIZER };
+  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_COND_INITIALIZER
+};
 static DAEMON_THREAD_MONITOR thread_Flush_control_thread =
-  { 0, false, false, false, MUTEX_INITIALIZER, COND_INITIALIZER };
+  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_COND_INITIALIZER
+};
+static DAEMON_THREAD_MONITOR thread_Session_control_thread =
+  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_COND_INITIALIZER
+};
 DAEMON_THREAD_MONITOR thread_Log_flush_thread =
-  { 0, false, false, false, MUTEX_INITIALIZER, COND_INITIALIZER };
+  { 0, false, false, false, PTHREAD_MUTEX_INITIALIZER,
+  PTHREAD_COND_INITIALIZER
+};
 
-#if defined(WINDOWS)
-/*
- * Because WINDOWS threads don't have static mutex initializer,
- * we must initialize mutex when MUTEX_LOCK() is called at first time.
- * This variable is used in that moment to syncronize CREATE_MUTEX.
- */
-HANDLE css_Internal_mutex_for_mutex_initialize;
-#endif /* WINDOWS */
+
 
 static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
 static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
@@ -137,16 +152,20 @@ static void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 #if defined(WINDOWS)
 static unsigned __stdcall thread_deadlock_detect_thread (void *);
 static unsigned __stdcall thread_checkpoint_thread (void *);
+static unsigned __stdcall thread_purge_archive_logs_thread (void *);
 static unsigned __stdcall thread_page_flush_thread (void *);
 static unsigned __stdcall thread_flush_control_thread (void *);
 static unsigned __stdcall thread_log_flush_thread (void *);
+static unsigned __stdcall thread_session_control_thread (void *);
 static int css_initialize_sync_object (void);
 #else /* WINDOWS */
 static void *thread_deadlock_detect_thread (void *);
 static void *thread_checkpoint_thread (void *);
+static void *thread_purge_archive_logs_thread (void *);
 static void *thread_page_flush_thread (void *);
 static void *thread_flush_control_thread (void *);
 static void *thread_log_flush_thread (void *);
+static void *thread_session_control_thread (void *);
 #endif /* WINDOWS */
 
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason,
@@ -187,7 +206,7 @@ thread_initialize_key (void)
 {
   int r;
 
-  r = TLS_KEY_ALLOC (css_Thread_key, NULL);
+  r = pthread_key_create (&css_Thread_key, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -207,7 +226,7 @@ thread_set_thread_entry_info (THREAD_ENTRY * entry_p)
 {
   int r;
 
-  r = TLS_SET_SPECIFIC (css_Thread_key, (void *) entry_p);
+  r = pthread_setspecific (css_Thread_key, (void *) entry_p);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -226,7 +245,7 @@ thread_get_thread_entry_info (void)
 {
   void *p;
 
-  p = TLS_GET_SPECIFIC (css_Thread_key);
+  p = pthread_getspecific (css_Thread_key);
 #if defined (SERVER_MODE)
   assert (p != NULL);
 #endif
@@ -280,7 +299,7 @@ thread_initialize_manager (void)
 	}
 
 #if defined(WINDOWS)
-      r = MUTEX_INIT (css_Internal_mutex_for_mutex_initialize);
+      r = pthread_mutex_init (&css_Internal_mutex_for_mutex_initialize, NULL);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -290,15 +309,6 @@ thread_initialize_manager (void)
       css_initialize_sync_object ();
 #endif /* WINDOWS */
 
-#ifdef CHECK_MUTEX
-      r = MUTEXATTR_SETTYPE (mattr, PTHREAD_MUTEX_ERRORCHECK);
-      if (r != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			       ER_CSS_PTHREAD_MUTEXATTR_SETTYPE, 0);
-	  return ER_CSS_PTHREAD_MUTEXATTR_SETTYPE;
-	}
-#endif /* CHECK_MUTEX */
     }
   else
     {
@@ -343,7 +353,7 @@ thread_initialize_manager (void)
     }
 
   tsd_ptr->index = 0;
-  tsd_ptr->tid = THREAD_ID ();
+  tsd_ptr->tid = pthread_self ();
   tsd_ptr->status = TS_RUN;
   tsd_ptr->resume_status = THREAD_RESUME_NONE;
   tsd_ptr->tran_index = 0;	/* system transaction */
@@ -379,15 +389,13 @@ thread_start_workers (void)
 {
   int thread_index, r;
   THREAD_ENTRY *thread_p;
-#if !defined(WINDOWS)
-  THREAD_ATTR_T thread_attr;
+  pthread_attr_t thread_attr;
   size_t ts_size;
-#endif /* not WINDOWS */
 
   assert (thread_Manager.initialized == true);
 
 #if !defined(WINDOWS)
-  r = THREAD_ATTR_INIT (thread_attr);
+  r = pthread_attr_init (&thread_attr);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -395,7 +403,7 @@ thread_start_workers (void)
       return ER_CSS_PTHREAD_ATTR_INIT;
     }
 
-  r = THREAD_ATTR_SETDETACHSTATE (thread_attr, PTHREAD_CREATE_DETACHED);
+  r = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -407,11 +415,11 @@ thread_start_workers (void)
   /* AIX's pthread is slightly different from other systems.
      Its performance highly depends on the pthread's scope and its related
      kernel parameters. */
-  r = THREAD_ATTR_SETSCOPE (thread_attr,
-			    PRM_PTHREAD_SCOPE_PROCESS ?
-			    PTHREAD_SCOPE_PROCESS : PTHREAD_SCOPE_SYSTEM);
+  r = pthread_attr_setscope (&thread_attr,
+			     PRM_PTHREAD_SCOPE_PROCESS ?
+			     PTHREAD_SCOPE_PROCESS : PTHREAD_SCOPE_SYSTEM);
 #else /* AIX */
-  r = THREAD_ATTR_SETSCOPE (thread_attr, PTHREAD_SCOPE_SYSTEM);
+  r = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
 #endif /* AIX */
   if (r != 0)
     {
@@ -423,10 +431,10 @@ thread_start_workers (void)
 /* Sun Solaris allocates 1M for a thread stack, and it is quite enough */
 #if !defined(sun) && !defined(SOLARIS)
 #if defined(_POSIX_THREAD_ATTR_STACKSIZE)
-  r = THREAD_ATTR_GETSTACKSIZE (thread_attr, ts_size);
+  r = pthread_attr_getstacksize (&thread_attr, &ts_size);
   if (ts_size < (size_t) PRM_THREAD_STACKSIZE)
     {
-      r = THREAD_ATTR_SETSTACKSIZE (thread_attr, PRM_THREAD_STACKSIZE);
+      r = pthread_attr_setstacksize (&thread_attr, PRM_THREAD_STACKSIZE);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -434,7 +442,7 @@ thread_start_workers (void)
 	  return ER_CSS_PTHREAD_ATTR_SETSTACKSIZE;
 	}
 
-      THREAD_ATTR_GETSTACKSIZE (thread_attr, ts_size);
+      pthread_attr_getstacksize (&thread_attr, &ts_size);
     }
 #endif /* _POSIX_THREAD_ATTR_STACKSIZE */
 #endif /* not sun && not SOLARIS */
@@ -445,7 +453,7 @@ thread_start_workers (void)
        thread_index++)
     {
       thread_p = &thread_Manager.thread_array[thread_index];
-      MUTEX_LOCK (r, thread_p->th_entry_lock);
+      r = pthread_mutex_lock (&thread_p->th_entry_lock);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -453,17 +461,18 @@ thread_start_workers (void)
 	  return ER_CSS_PTHREAD_MUTEX_LOCK;
 	}
       /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
-      r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
-			 thread_worker, thread_p, &(thread_p->tid));
+      r =
+	pthread_create (&thread_p->tid, &thread_attr, thread_worker,
+			thread_p);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_CSS_PTHREAD_CREATE, 0);
-	  MUTEX_UNLOCK (thread_p->th_entry_lock);
+	  pthread_mutex_unlock (&thread_p->th_entry_lock);
 	  return ER_CSS_PTHREAD_CREATE;
 	}
 
-      r = MUTEX_UNLOCK (thread_p->th_entry_lock);
+      r = pthread_mutex_unlock (&thread_p->th_entry_lock);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -476,7 +485,7 @@ thread_start_workers (void)
   thread_Deadlock_detect_thread.thread_index = thread_index++;
   thread_p =
     &thread_Manager.thread_array[thread_Deadlock_detect_thread.thread_index];
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -484,18 +493,17 @@ thread_start_workers (void)
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
-		     thread_deadlock_detect_thread, thread_p,
-		     &(thread_p->tid));
+  r = pthread_create (&thread_p->tid, &thread_attr,
+		      thread_deadlock_detect_thread, thread_p);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_CREATE, 0);
-      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      pthread_mutex_unlock (&thread_p->th_entry_lock);
       return ER_CSS_PTHREAD_CREATE;
     }
 
-  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -507,7 +515,7 @@ thread_start_workers (void)
   thread_Checkpoint_thread.thread_index = thread_index++;
   thread_p =
     &thread_Manager.thread_array[thread_Checkpoint_thread.thread_index];
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -515,17 +523,50 @@ thread_start_workers (void)
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
-		     thread_checkpoint_thread, thread_p, &(thread_p->tid));
+  r =
+    pthread_create (&thread_p->tid, &thread_attr, thread_checkpoint_thread,
+		    thread_p);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_CREATE, 0);
-      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      pthread_mutex_unlock (&thread_p->th_entry_lock);
       return ER_CSS_PTHREAD_CREATE;
     }
 
-  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
+
+  /* start purge archive logs daemon thread */
+  thread_Purge_archive_logs_thread.thread_index = thread_index++;
+  thread_p =
+    &thread_Manager.thread_array[thread_Purge_archive_logs_thread.
+				 thread_index];
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
+
+  r =
+    pthread_create (&thread_p->tid, &thread_attr,
+		    thread_purge_archive_logs_thread, thread_p);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_CREATE, 0);
+      pthread_mutex_unlock (&thread_p->th_entry_lock);
+      return ER_CSS_PTHREAD_CREATE;
+    }
+
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -536,7 +577,7 @@ thread_start_workers (void)
   /* start oob-handler thread */
   thread_Oob_thread.thread_index = thread_index++;
   thread_p = &thread_Manager.thread_array[thread_Oob_thread.thread_index];
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -544,17 +585,17 @@ thread_start_workers (void)
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
-		     css_oob_handler_thread, thread_p, &(thread_p->tid));
+  r = pthread_create (&thread_p->tid, &thread_attr,
+		      css_oob_handler_thread, thread_p);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_CREATE, 0);
-      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      pthread_mutex_unlock (&thread_p->th_entry_lock);
       return ER_CSS_PTHREAD_CREATE;
     }
 
-  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -566,7 +607,7 @@ thread_start_workers (void)
   thread_Page_flush_thread.thread_index = thread_index++;
   thread_p =
     &thread_Manager.thread_array[thread_Page_flush_thread.thread_index];
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -574,17 +615,17 @@ thread_start_workers (void)
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
-		     thread_page_flush_thread, thread_p, &(thread_p->tid));
+  r = pthread_create (&thread_p->tid, &thread_attr,
+		      thread_page_flush_thread, thread_p);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_CREATE, 0);
-      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      pthread_mutex_unlock (&thread_p->th_entry_lock);
       return ER_CSS_PTHREAD_CREATE;
     }
 
-  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -596,7 +637,7 @@ thread_start_workers (void)
   thread_Flush_control_thread.thread_index = thread_index++;
   thread_p =
     &thread_Manager.thread_array[thread_Flush_control_thread.thread_index];
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -604,17 +645,17 @@ thread_start_workers (void)
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
-		     thread_flush_control_thread, thread_p, &(thread_p->tid));
+  r = pthread_create (&thread_p->tid, &thread_attr,
+		      thread_flush_control_thread, thread_p);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_CREATE, 0);
-      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      pthread_mutex_unlock (&thread_p->th_entry_lock);
       return ER_CSS_PTHREAD_CREATE;
     }
 
-  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -626,7 +667,7 @@ thread_start_workers (void)
   thread_Log_flush_thread.thread_index = thread_index++;
   thread_p =
     &thread_Manager.thread_array[thread_Log_flush_thread.thread_index];
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -634,17 +675,47 @@ thread_start_workers (void)
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  r = THREAD_CREATE (thread_p->thread_handle, &thread_attr,
-		     thread_log_flush_thread, thread_p, &(thread_p->tid));
+  r = pthread_create (&thread_p->tid, &thread_attr,
+		      thread_log_flush_thread, thread_p);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_CREATE, 0);
-      MUTEX_UNLOCK (thread_p->th_entry_lock);
+      pthread_mutex_unlock (&thread_p->th_entry_lock);
       return ER_CSS_PTHREAD_CREATE;
     }
 
-  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
+    }
+
+  /* start session control thread */
+  thread_Session_control_thread.thread_index = thread_index++;
+  thread_p =
+    &thread_Manager.thread_array[thread_Session_control_thread.thread_index];
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_CSS_PTHREAD_MUTEX_LOCK;
+    }
+
+  r = pthread_create (&thread_p->tid, &thread_attr,
+		      thread_session_control_thread, thread_p);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_CREATE, 0);
+      pthread_mutex_unlock (&thread_p->th_entry_lock);
+      return ER_CSS_PTHREAD_CREATE;
+    }
+
+  pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -653,7 +724,7 @@ thread_start_workers (void)
     }
 
   /* destroy thread_attribute */
-  r = THREAD_ATTR_DESTROY (thread_attr);
+  r = pthread_attr_destroy (&thread_attr);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -733,7 +804,7 @@ loop:
 
   if (repeat_loop)
     {
-      if (count++ > 60)
+      if (count++ > PRM_SHUTDOWN_WAIT_TIME_IN_SECS)
 	{
 #if CUBRID_DEBUG
 	  logtb_dump_trantable (NULL, stderr);
@@ -774,10 +845,12 @@ thread_stop_active_daemons (void)
 
   thread_wakeup_deadlock_detect_thread ();
   thread_wakeup_checkpoint_thread ();
+  thread_wakeup_purge_archive_logs_thread ();
   thread_wakeup_oob_handler_thread ();
   thread_wakeup_page_flush_thread ();
   thread_wakeup_flush_control_thread ();
   thread_wakeup_log_flush_thread ();
+  thread_wakeup_session_control_thread ();
 
 loop:
   repeat_loop = false;
@@ -847,7 +920,7 @@ loop:
 
   if (repeat_loop)
     {
-      if (count++ > 60)
+      if (count++ > PRM_SHUTDOWN_WAIT_TIME_IN_SECS)
 	{
 #if CUBRID_DEBUG
 	  xlogtb_dump_trantable (NULL, stderr);
@@ -880,7 +953,7 @@ thread_final_manager (void)
   free_and_init (thread_Manager.thread_array);
 
 #ifndef HPUX
-  TLS_KEY_FREE (css_Thread_key);
+  pthread_key_delete (css_Thread_key);
 #endif /* not HPUX */
 }
 
@@ -895,10 +968,10 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   int r;
 
   entry_p->index = -1;
-  entry_p->tid = NULL_THREAD_T;
+  entry_p->tid = ((pthread_t) 0);
   entry_p->client_id = -1;
   entry_p->tran_index = -1;
-  r = MUTEX_INIT (entry_p->tran_index_lock);
+  r = pthread_mutex_init (&entry_p->tran_index_lock, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -916,11 +989,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
   entry_p->conn_entry = NULL;
   entry_p->worker_thrd_list = NULL;
 
-#ifdef CHECK_MUTEX
-  r = MUTEX_INIT_WITH_ATT (entry_p->th_entry_lock, mattr);
-#else /* not CHECK_MUTEX */
-  r = MUTEX_INIT (entry_p->th_entry_lock);
-#endif /* not CHECK_MUTEX */
+  r = pthread_mutex_init (&entry_p->th_entry_lock, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -928,7 +997,7 @@ thread_initialize_entry (THREAD_ENTRY * entry_p)
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
-  r = COND_INIT (entry_p->wakeup_cond);
+  r = pthread_cond_init (&entry_p->wakeup_cond, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -975,7 +1044,7 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
   int r, i, error = NO_ERROR;
 
   entry_p->index = -1;
-  entry_p->tid = NULL_THREAD_T;
+  entry_p->tid = ((pthread_t) 0);;
   entry_p->client_id = -1;
   entry_p->tran_index = -1;
   entry_p->rid = 0;
@@ -994,21 +1063,21 @@ thread_finalize_entry (THREAD_ENTRY * entry_p)
 
   entry_p->conn_entry = NULL;
 
-  r = MUTEX_DESTROY (entry_p->tran_index_lock);
+  r = pthread_mutex_destroy (&entry_p->tran_index_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
       error = ER_CSS_PTHREAD_MUTEX_DESTROY;
     }
-  r = MUTEX_DESTROY (entry_p->th_entry_lock);
+  r = pthread_mutex_destroy (&entry_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
       error = ER_CSS_PTHREAD_MUTEX_DESTROY;
     }
-  r = COND_DESTROY (entry_p->wakeup_cond);
+  r = pthread_cond_destroy (&entry_p->wakeup_cond);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1077,7 +1146,7 @@ thread_find_entry_by_tran_index_except_me (int tran_index)
 {
   THREAD_ENTRY *thread_p;
   int i;
-  THREAD_T me = THREAD_ID ();
+  pthread_t me = pthread_self ();
 
   for (i = 1; i <= thread_Manager.num_workers; i++)
     {
@@ -1127,6 +1196,25 @@ thread_get_current_entry_index (void)
   assert (thread_p != NULL);
 
   return thread_p->index;
+}
+
+/*
+ * thread_get_current_session_id () - get session id for current thread
+ *   return: session id
+ */
+SESSION_ID
+thread_get_current_session_id (void)
+{
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  if (thread_p->conn_entry == NULL)
+    {
+      return 0;
+    }
+  return thread_p->conn_entry->session_id;
 }
 
 /*
@@ -1205,7 +1293,7 @@ thread_lock_entry (THREAD_ENTRY * thread_p)
 
   assert (thread_p != NULL);
 
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1231,7 +1319,7 @@ thread_lock_entry_with_tran_index (int tran_index)
   thread_p = thread_find_entry_by_tran_index (tran_index);
   assert (thread_p != NULL);
 
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1255,7 +1343,7 @@ thread_unlock_entry (THREAD_ENTRY * thread_p)
 
   assert (thread_p != NULL);
 
-  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1288,7 +1376,7 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
 
   thread_p->resume_status = suspended_reason;
 
-  r = COND_WAIT (thread_p->wakeup_cond, thread_p->th_entry_lock);
+  r = pthread_cond_wait (&thread_p->wakeup_cond, &thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1296,18 +1384,10 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
       return ER_CSS_PTHREAD_COND_WAIT;
     }
 
-#if defined(WINDOWS)
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-      return ER_CSS_PTHREAD_MUTEX_LOCK;
-    }
-#endif /* WINDOWS */
+
   thread_p->status = old_status;
 
-  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1327,16 +1407,11 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
  */
 int
 thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
-						void *time_p,
+						struct timespec *time_p,
 						int suspended_reason)
 {
   int r;
   int old_status;
-#if defined(WINDOWS)
-  int tmp_timespec;
-#else /* WINDOWS */
-  struct timespec tmp_timespec;
-#endif /* WINDOWS */
 
   assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
   old_status = thread_p->status;
@@ -1344,14 +1419,9 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
 
   thread_p->resume_status = suspended_reason;
 
-#if defined(WINDOWS)
-  tmp_timespec = *(int *) time_p;
-#else /* WINDOWS */
-  memcpy (&tmp_timespec, time_p, sizeof (struct timespec));
-#endif /* WINDOWS */
-
-  r = COND_TIMEDWAIT (thread_p->wakeup_cond, thread_p->th_entry_lock,
-		      tmp_timespec);
+  r =
+    pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock,
+			    time_p);
   if (r == ETIMEDOUT)
     {
       r = 0;
@@ -1362,19 +1432,10 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p,
 			   ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
       return ER_CSS_PTHREAD_COND_TIMEDWAIT;
     }
-#if defined(WINDOWS)
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-      return ER_CSS_PTHREAD_MUTEX_LOCK;
-    }
-#endif /* WINDOWS */
 
   thread_p->status = old_status;
 
-  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1415,26 +1476,17 @@ thread_suspend_wakeup_and_unlock_entry_with_tran_index (int tran_index,
 
   thread_p->resume_status = suspended_reason;
 
-  r = COND_WAIT (thread_p->wakeup_cond, thread_p->th_entry_lock);
+  r = pthread_cond_wait (&thread_p->wakeup_cond, &thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_WAIT, 0);
       return ER_CSS_PTHREAD_COND_WAIT;
     }
-#if defined(WINDOWS)
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-      return ER_CSS_PTHREAD_MUTEX_LOCK;
-    }
-#endif /* WINDOWS */
 
   thread_p->status = old_status;
 
-  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1462,12 +1514,12 @@ thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason,
     {
       r = thread_lock_entry (thread_p);
       if (r != 0)
-        {
-          return r;
-        }
+	{
+	  return r;
+	}
     }
 
-  r = COND_SIGNAL (thread_p->wakeup_cond);
+  r = pthread_cond_signal (&thread_p->wakeup_cond);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -1502,8 +1554,7 @@ thread_wakeup (THREAD_ENTRY * thread_p, int resume_reason)
  *   resume_reason:
  */
 int
-thread_wakeup_already_had_mutex (THREAD_ENTRY * thread_p,
-				 int resume_reason)
+thread_wakeup_already_had_mutex (THREAD_ENTRY * thread_p, int resume_reason)
 {
   return thread_wakeup_internal (thread_p, resume_reason, true);
 }
@@ -1564,16 +1615,10 @@ thread_wait (THREAD_ENTRY * thread_p, CSS_THREAD_FN func, CSS_THREAD_ARG arg)
  *   to(in):
  *   suspended_reason(in):
  */
-#if defined (WINDOWS)
 int
-thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p,
-				 int timeout, int *to, int suspended_reason)
-#else /* WINDOWS */
-int
-thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p,
-				 int timeout, struct timespec *to,
-				 int suspended_reason)
-#endif				/* WINDOWS */
+thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p,
+				 pthread_mutex_t * mutex_p, int timeout,
+				 struct timespec *to, int suspended_reason)
 {
   int r;
   int old_status;
@@ -1581,8 +1626,8 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p,
   assert (thread_p != NULL);
   old_status = thread_p->status;
 
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
-  if (r != 0)
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
+  if (r != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
@@ -1592,54 +1637,42 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, MUTEX_T * mutex_p,
   thread_p->status = TS_WAIT;
   thread_p->resume_status = suspended_reason;
 
-  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
-  if (r != 0)
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
+  if (r != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
-      MUTEX_UNLOCK (thread_p->th_entry_lock);
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
   if (timeout == INF_WAIT)
     {
-      r = COND_WAIT (thread_p->wakeup_cond, *mutex_p);
+      r = pthread_cond_wait (&thread_p->wakeup_cond, mutex_p);
     }
   else
     {
-      r = COND_TIMEDWAIT (thread_p->wakeup_cond, *mutex_p, *to);
+      r = pthread_cond_timedwait (&thread_p->wakeup_cond, mutex_p, to);
     }
 
-  if (r != 0)
+  if (r != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_WAIT, 0);
       return ER_CSS_PTHREAD_COND_WAIT;
     }
 
-#if defined(WINDOWS)
-  MUTEX_LOCK (r, *mutex_p);
-  if (r != 0)
+  r = pthread_mutex_lock (&thread_p->th_entry_lock);
+  if (r != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-      return ER_CSS_PTHREAD_MUTEX_LOCK;
-    }
-#endif /* WINDOWS */
-
-  MUTEX_LOCK (r, thread_p->th_entry_lock);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-      MUTEX_UNLOCK (thread_p->th_entry_lock);
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
   thread_p->status = old_status;
 
-  r = MUTEX_UNLOCK (thread_p->th_entry_lock);
-  if (r != 0)
+  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
+  if (r != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -1789,8 +1822,8 @@ thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id)
 	{
 	  continue;
 	}
-      MUTEX_LOCK (rv, thread_p->tran_index_lock);
-      if (thread_p->tid != THREAD_ID () && thread_p->status != TS_DEAD
+      rv = pthread_mutex_lock (&thread_p->tran_index_lock);
+      if (thread_p->tid != pthread_self () && thread_p->status != TS_DEAD
 	  && thread_p->status != TS_FREE && thread_p->status != TS_CHECK)
 	{
 	  conn_p = thread_p->conn_entry;
@@ -1805,7 +1838,7 @@ thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id)
 	      n++;
 	    }
 	}
-      MUTEX_UNLOCK (thread_p->tran_index_lock);
+      pthread_mutex_unlock (&thread_p->tran_index_lock);
     }
 
   return n;
@@ -2051,8 +2084,8 @@ thread_worker (void *arg_p)
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finish */
-  MUTEX_LOCK (rv, tsd_ptr->th_entry_lock);
-  MUTEX_UNLOCK (tsd_ptr->th_entry_lock);
+  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
+  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_WORKER;	/* not defined yet */
@@ -2068,7 +2101,7 @@ thread_worker (void *arg_p)
       if (job_entry_p == NULL)
 	{
 	  /* if there was no job to process */
-	  MUTEX_UNLOCK (tsd_ptr->tran_index_lock);
+	  pthread_mutex_unlock (&tsd_ptr->tran_index_lock);
 	  continue;
 	}
 
@@ -2092,9 +2125,9 @@ thread_worker (void *arg_p)
       /* reset tsd_ptr information */
       tsd_ptr->conn_entry = NULL;
       tsd_ptr->status = TS_FREE;
-      MUTEX_LOCK (rv, tsd_ptr->tran_index_lock);
+      rv = pthread_mutex_lock (&tsd_ptr->tran_index_lock);
       tsd_ptr->tran_index = -1;
-      MUTEX_UNLOCK (tsd_ptr->tran_index_lock);
+      pthread_mutex_unlock (&tsd_ptr->tran_index_lock);
       tsd_ptr->check_interrupt = true;
     }
 
@@ -2124,14 +2157,14 @@ css_initialize_sync_object (void)
 {
   int r;
 
-  r = COND_INIT (thread_Deadlock_detect_thread.cond);
+  r = pthread_cond_init (&thread_Deadlock_detect_thread.cond, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_INIT, 0);
       return ER_CSS_PTHREAD_COND_INIT;
     }
-  r = MUTEX_INIT (thread_Deadlock_detect_thread.lock);
+  r = pthread_mutex_init (&thread_Deadlock_detect_thread.lock, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2139,14 +2172,14 @@ css_initialize_sync_object (void)
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
-  r = COND_INIT (thread_Checkpoint_thread.cond);
+  r = pthread_cond_init (&thread_Checkpoint_thread.cond, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_INIT, 0);
       return ER_CSS_PTHREAD_COND_INIT;
     }
-  r = MUTEX_INIT (thread_Checkpoint_thread.lock);
+  r = pthread_mutex_init (&thread_Checkpoint_thread.lock, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2154,14 +2187,14 @@ css_initialize_sync_object (void)
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
-  r = COND_INIT (thread_Oob_thread.cond);
+  r = pthread_cond_init (&thread_Purge_archive_logs_thread.cond, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_INIT, 0);
       return ER_CSS_PTHREAD_COND_INIT;
     }
-  r = MUTEX_INIT (thread_Oob_thread.lock);
+  r = pthread_mutex_init (&thread_Purge_archive_logs_thread.lock, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2169,14 +2202,14 @@ css_initialize_sync_object (void)
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
-  r = COND_INIT (thread_Page_flush_thread.cond);
+  r = pthread_cond_init (&thread_Oob_thread.cond, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_INIT, 0);
       return ER_CSS_PTHREAD_COND_INIT;
     }
-  r = MUTEX_INIT (thread_Page_flush_thread.lock);
+  r = pthread_mutex_init (&thread_Oob_thread.lock, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2184,14 +2217,14 @@ css_initialize_sync_object (void)
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
-  r = COND_INIT (thread_Flush_control_thread.cond);
+  r = pthread_cond_init (&thread_Page_flush_thread.cond, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_INIT, 0);
       return ER_CSS_PTHREAD_COND_INIT;
     }
-  r = MUTEX_INIT (thread_Flush_control_thread.lock);
+  r = pthread_mutex_init (&thread_Page_flush_thread.lock, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2199,14 +2232,44 @@ css_initialize_sync_object (void)
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
-  r = COND_INIT (thread_Log_flush_thread.cond);
+  r = pthread_cond_init (&thread_Flush_control_thread.cond, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_COND_INIT, 0);
       return ER_CSS_PTHREAD_COND_INIT;
     }
-  r = MUTEX_INIT (thread_Log_flush_thread.lock);
+  r = pthread_mutex_init (&thread_Flush_control_thread.lock, NULL);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
+
+  r = pthread_cond_init (&thread_Log_flush_thread.cond, NULL);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_INIT, 0);
+      return ER_CSS_PTHREAD_COND_INIT;
+    }
+  r = pthread_mutex_init (&thread_Log_flush_thread.lock, NULL);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_MUTEX_INIT, 0);
+      return ER_CSS_PTHREAD_MUTEX_INIT;
+    }
+
+  r = pthread_cond_init (&thread_Session_control_thread.cond, NULL);
+  if (r != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_CSS_PTHREAD_COND_INIT, 0);
+      return ER_CSS_PTHREAD_COND_INIT;
+    }
+  r = pthread_mutex_init (&thread_Session_control_thread.lock, NULL);
   if (r != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2241,8 +2304,8 @@ thread_deadlock_detect_thread (void *arg_p)
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finish */
-  MUTEX_LOCK (rv, tsd_ptr->th_entry_lock);
-  MUTEX_UNLOCK (tsd_ptr->th_entry_lock);
+  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
+  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
@@ -2260,17 +2323,14 @@ thread_deadlock_detect_thread (void *arg_p)
       if (thread_p == (THREAD_ENTRY *) NULL)
 	{
 	  /* none is lock-waiting */
-	  MUTEX_LOCK (rv, thread_Deadlock_detect_thread.lock);
+	  rv = pthread_mutex_lock (&thread_Deadlock_detect_thread.lock);
 	  thread_Deadlock_detect_thread.is_running = false;
-	  COND_WAIT (thread_Deadlock_detect_thread.cond,
-		     thread_Deadlock_detect_thread.lock);
-#if defined(WINDOWS)
-	  MUTEX_LOCK (rv, thread_Deadlock_detect_thread.lock);
-#endif /* WINDOWS */
+	  pthread_cond_wait (&thread_Deadlock_detect_thread.cond,
+			     &thread_Deadlock_detect_thread.lock);
 
 	  thread_Deadlock_detect_thread.is_running = true;
 
-	  MUTEX_UNLOCK (thread_Deadlock_detect_thread.lock);
+	  pthread_mutex_unlock (&thread_Deadlock_detect_thread.lock);
 	  continue;
 	}
 
@@ -2317,75 +2377,60 @@ thread_wakeup_deadlock_detect_thread (void)
 {
   int rv;
 
-  MUTEX_LOCK (rv, thread_Deadlock_detect_thread.lock);
+  rv = pthread_mutex_lock (&thread_Deadlock_detect_thread.lock);
   if (thread_Deadlock_detect_thread.is_running == false)
     {
-      COND_SIGNAL (thread_Deadlock_detect_thread.cond);
+      pthread_cond_signal (&thread_Deadlock_detect_thread.cond);
     }
-  MUTEX_UNLOCK (thread_Deadlock_detect_thread.lock);
+  pthread_mutex_unlock (&thread_Deadlock_detect_thread.lock);
 }
 
-/*
- * css_checkpoint_thread() -
- *   return:
- *   arg_p(in):
- */
 #if defined(WINDOWS)
 static unsigned __stdcall
-thread_checkpoint_thread (void *arg_p)
+thread_session_control_thread (void *arg_p)
 #else /* WINDOWS */
 static void *
-thread_checkpoint_thread (void *arg_p)
+thread_session_control_thread (void *arg_p)
 #endif				/* WINDOWS */
 {
 #if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr;
+  THREAD_ENTRY *tsd_ptr = NULL;
 #endif /* !HPUX */
-  int rv;
-#if defined(WINDOWS)
-  int to = 0;
-#else /* WINDOWS */
+  struct timeval timeout;
   struct timespec to = {
     0, 0
   };
-#endif /* WINDOWS */
+  int rv = 0;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finish */
-  MUTEX_LOCK (rv, tsd_ptr->th_entry_lock);
-  MUTEX_UNLOCK (tsd_ptr->th_entry_lock);
+
+  /* wait until THREAD_CREATE() finishes */
+  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
+  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  thread_Session_control_thread.is_running = true;
 
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-
-  /* during server is active */
   while (!tsd_ptr->shutdown)
     {
       er_clear ();
 
-#if defined(WINDOWS)
-      to = PRM_LOG_CHECKPOINT_INTERVAL_MINUTES * 60 * 1000;
-#else /* WINDOWS */
-      to.tv_sec = time (NULL) + PRM_LOG_CHECKPOINT_INTERVAL_MINUTES * 60;
-#endif /* WINDOWS */
+      gettimeofday (&timeout, NULL);
+      to.tv_sec = timeout.tv_sec + 300;
 
-      MUTEX_LOCK (rv, thread_Checkpoint_thread.lock);
-      COND_TIMEDWAIT (thread_Checkpoint_thread.cond,
-		      thread_Checkpoint_thread.lock, to);
-#if !defined(WINDOWS)
-      MUTEX_UNLOCK (thread_Checkpoint_thread.lock);
-#endif /* !WINDOWS */
+      rv = pthread_mutex_lock (&thread_Session_control_thread.lock);
+      pthread_cond_timedwait (&thread_Session_control_thread.cond,
+			      &thread_Session_control_thread.lock, &to);
+      pthread_mutex_unlock (&thread_Session_control_thread.lock);
+
       if (tsd_ptr->shutdown)
 	{
 	  break;
 	}
 
-      logpb_checkpoint (tsd_ptr);
-      logpb_remove_archive_logs_exceed_limit (tsd_ptr);
-
+      session_remove_expired_sessions (&timeout);
     }
 
   er_clear ();
@@ -2399,6 +2444,72 @@ thread_checkpoint_thread (void *arg_p)
 }
 
 /*
+ * thread_wakeup_session_control_thread() -
+ *   return:
+ */
+void
+thread_wakeup_session_control_thread (void)
+{
+  pthread_mutex_lock (&thread_Session_control_thread.lock);
+  pthread_cond_signal (&thread_Session_control_thread.cond);
+  pthread_mutex_unlock (&thread_Session_control_thread.lock);
+}
+
+/*
+ * css_checkpoint_thread() -
+ *   return:
+ *   arg_p(in):
+ */
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+thread_checkpoint_thread (void *arg_p)
+{
+#if !defined(HPUX)
+  THREAD_ENTRY *tsd_ptr;
+#endif /* !HPUX */
+  int rv;
+
+  struct timespec to = {
+    0, 0
+  };
+
+  tsd_ptr = (THREAD_ENTRY *) arg_p;
+  /* wait until THREAD_CREATE() finish */
+  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
+  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
+
+  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
+  tsd_ptr->type = TT_DAEMON;
+  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+
+  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+
+  /* during server is active */
+  while (!tsd_ptr->shutdown)
+    {
+      er_clear ();
+
+      to.tv_sec = time (NULL) + PRM_LOG_CHECKPOINT_INTERVAL_MINUTES * 60;
+
+      rv = pthread_mutex_lock (&thread_Checkpoint_thread.lock);
+      pthread_cond_timedwait (&thread_Checkpoint_thread.cond,
+			      &thread_Checkpoint_thread.lock, &to);
+      pthread_mutex_unlock (&thread_Checkpoint_thread.lock);
+      if (tsd_ptr->shutdown)
+	{
+	  break;
+	}
+
+      logpb_checkpoint (tsd_ptr);
+    }
+
+  er_clear ();
+  tsd_ptr->status = TS_DEAD;
+
+  return (THREAD_RET_T) 0;
+}
+
+/*
  * thread_wakeup_checkpoint_thread() -
  *   return:
  */
@@ -2407,9 +2518,119 @@ thread_wakeup_checkpoint_thread (void)
 {
   int rv;
 
-  MUTEX_LOCK (rv, thread_Checkpoint_thread.lock);
-  COND_SIGNAL (thread_Checkpoint_thread.cond);
-  MUTEX_UNLOCK (thread_Checkpoint_thread.lock);
+  rv = pthread_mutex_lock (&thread_Checkpoint_thread.lock);
+  pthread_cond_signal (&thread_Checkpoint_thread.cond);
+  pthread_mutex_unlock (&thread_Checkpoint_thread.lock);
+}
+
+/*
+ * css_purge_archive_logs_thread() -
+ *   return:
+ *   arg_p(in):
+ */
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+thread_purge_archive_logs_thread (void *arg_p)
+{
+#if !defined(HPUX)
+  THREAD_ENTRY *tsd_ptr;
+#endif /* !HPUX */
+  int rv;
+  time_t cur_time, last_deleted_time = 0;
+  struct timespec to = {
+    0, 0
+  };
+
+  tsd_ptr = (THREAD_ENTRY *) arg_p;
+  /* wait until THREAD_CREATE() finish */
+  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
+  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
+
+  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
+  tsd_ptr->type = TT_DAEMON;
+  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+
+  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+
+  /* during server is active */
+  while (!tsd_ptr->shutdown)
+    {
+      er_clear ();
+
+      if (PRM_REMOVE_LOG_ARCHIVES_INTERVAL > 0)
+	{
+	  to.tv_sec = time (NULL);
+	  if (to.tv_sec >
+	      last_deleted_time + PRM_REMOVE_LOG_ARCHIVES_INTERVAL)
+	    {
+	      to.tv_sec += PRM_REMOVE_LOG_ARCHIVES_INTERVAL;
+	    }
+	  else
+	    {
+	      to.tv_sec =
+		last_deleted_time + PRM_REMOVE_LOG_ARCHIVES_INTERVAL;
+	    }
+	}
+
+      rv = pthread_mutex_lock (&thread_Purge_archive_logs_thread.lock);
+      if (PRM_REMOVE_LOG_ARCHIVES_INTERVAL > 0)
+	{
+	  pthread_cond_timedwait (&thread_Purge_archive_logs_thread.cond,
+				  &thread_Purge_archive_logs_thread.lock,
+				  &to);
+	}
+      else
+	{
+	  pthread_cond_wait (&thread_Purge_archive_logs_thread.cond,
+			     &thread_Purge_archive_logs_thread.lock);
+	}
+      pthread_mutex_unlock (&thread_Purge_archive_logs_thread.lock);
+      if (tsd_ptr->shutdown)
+	{
+	  break;
+	}
+
+      if (PRM_REMOVE_LOG_ARCHIVES_INTERVAL > 0)
+	{
+	  cur_time = time (NULL);
+	  if (cur_time - last_deleted_time < PRM_REMOVE_LOG_ARCHIVES_INTERVAL)
+	    {
+	      /* do not delete logs. wait more time */
+	      continue;
+	    }
+	  /* remove a log */
+	  if (logpb_remove_archive_logs_exceed_limit (tsd_ptr, 1) > 0)
+	    {
+	      /* A log was deleted */
+	      last_deleted_time = time (NULL);
+	    }
+	}
+      else
+	{
+	  /* remove all unnecessary logs */
+	  logpb_remove_archive_logs_exceed_limit (tsd_ptr, 0);
+	}
+
+    }
+
+  er_clear ();
+  tsd_ptr->status = TS_DEAD;
+
+  return (THREAD_RET_T) 0;
+}
+
+/*
+ * thread_wakeup_checkpoint_thread() -
+ *   return:
+ */
+void
+thread_wakeup_purge_archive_logs_thread (void)
+{
+  int rv;
+
+  rv = pthread_mutex_lock (&thread_Purge_archive_logs_thread.lock);
+  pthread_cond_signal (&thread_Purge_archive_logs_thread.cond);
+  pthread_mutex_unlock (&thread_Purge_archive_logs_thread.lock);
 }
 
 /*
@@ -2432,13 +2653,9 @@ thread_wakeup_oob_handler_thread (void)
  *   return:
  *   arg_p(in):
  */
-#if defined(WINDOWS)
-static unsigned __stdcall
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_page_flush_thread (void *arg_p)
-#else /* WINDOWS */
-static void *
-thread_page_flush_thread (void *arg_p)
-#endif				/* WINDOWS */
 {
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
@@ -2447,20 +2664,17 @@ thread_page_flush_thread (void *arg_p)
   struct timeval cur_time = {
     0, 0
   };
-#if defined(WINDOWS)
-  int wakeup_time = 0;
-#else /* WINDOWS */
+
   struct timespec wakeup_time = {
     0, 0
   };
   int tmp_usec;
-#endif /* WINDOWS */
   int wakeup_interval;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finishes */
-  MUTEX_LOCK (rv, tsd_ptr->th_entry_lock);
-  MUTEX_UNLOCK (tsd_ptr->th_entry_lock);
+  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
+  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;	/* daemon thread */
@@ -2484,9 +2698,7 @@ thread_page_flush_thread (void *arg_p)
       if (wakeup_interval > 0)
 	{
 	  gettimeofday (&cur_time, NULL);
-#if defined(WINDOWS)
-	  wakeup_time = wakeup_interval;
-#else /* WINDOWS */
+
 	  wakeup_time.tv_sec = cur_time.tv_sec + (wakeup_interval / 1000);
 	  tmp_usec = cur_time.tv_usec + (wakeup_interval % 1000) * 1000;
 	  if (tmp_usec >= 1000000)
@@ -2495,35 +2707,30 @@ thread_page_flush_thread (void *arg_p)
 	      tmp_usec -= 1000000;
 	    }
 	  wakeup_time.tv_nsec = tmp_usec * 1000;
-#endif /* WINDOWS */
 	}
 
-      MUTEX_LOCK (rv, thread_Page_flush_thread.lock);
+      rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
       thread_Page_flush_thread.is_running = false;
 
       if (wakeup_interval > 0)
 	{
 	  do
 	    {
-	      rv = COND_TIMEDWAIT (thread_Page_flush_thread.cond,
-				   thread_Page_flush_thread.lock,
-				   wakeup_time);
+	      rv = pthread_cond_timedwait (&thread_Page_flush_thread.cond,
+					   &thread_Page_flush_thread.lock,
+					   &wakeup_time);
 	    }
 	  while (rv == 0);
 	}
       else
 	{
-	  COND_WAIT (thread_Page_flush_thread.cond,
-		     thread_Page_flush_thread.lock);
+	  pthread_cond_wait (&thread_Page_flush_thread.cond,
+			     &thread_Page_flush_thread.lock);
 	}
-
-#if defined(WINDOWS)
-      MUTEX_LOCK (rv, thread_Page_flush_thread.lock);
-#endif /* WINDOWS */
 
       thread_Page_flush_thread.is_running = true;
 
-      MUTEX_UNLOCK (thread_Page_flush_thread.lock);
+      pthread_mutex_unlock (&thread_Page_flush_thread.lock);
 
       if (tsd_ptr->shutdown)
 	{
@@ -2538,11 +2745,7 @@ thread_page_flush_thread (void *arg_p)
 
   thread_Page_flush_thread.is_running = false;
 
-#if defined(WINDOWS)
-  return 0;
-#else /* WINDOWS */
-  return NULL;
-#endif /* WINDOWS */
+  return (THREAD_RET_T) 0;
 }
 
 /*
@@ -2559,33 +2762,26 @@ thread_wakeup_page_flush_thread (void)
       return;
     }
 
-  MUTEX_LOCK (rv, thread_Page_flush_thread.lock);
+  rv = pthread_mutex_lock (&thread_Page_flush_thread.lock);
   if (!thread_Page_flush_thread.is_running)
     {
-      COND_SIGNAL (thread_Page_flush_thread.cond);
+      pthread_cond_signal (&thread_Page_flush_thread.cond);
     }
-  MUTEX_UNLOCK (thread_Page_flush_thread.lock);
+  pthread_mutex_unlock (&thread_Page_flush_thread.lock);
 }
 
-#if defined(WINDOWS)
-static unsigned __stdcall
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_flush_control_thread (void *arg_p)
-#else /* WINDOWS */
-static void *
-thread_flush_control_thread (void *arg_p)
-#endif				/* WINDOWS */
 {
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
   int rv;
-#if defined(WINDOWS)
-  int wakeup_time = 0;
-#else /* WINDOWS */
+
   struct timespec wakeup_time = {
     0, 0
   };
-#endif /* WINDOWS */
+
   struct timeval begin_tv, end_tv, diff_tv;
   int diff_usec;
   int wakeup_interval_in_msec = 50;	/* 1 msec */
@@ -2602,8 +2798,8 @@ thread_flush_control_thread (void *arg_p)
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
   /* wait until THREAD_CREATE() finishes */
-  MUTEX_LOCK (rv, tsd_ptr->th_entry_lock);
-  MUTEX_UNLOCK (tsd_ptr->th_entry_lock);
+  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
+  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;	/* daemon thread */
@@ -2620,16 +2816,11 @@ thread_flush_control_thread (void *arg_p)
 
   while (!tsd_ptr->shutdown)
     {
-#if !defined(WINDOWS)
       int tmp_usec;
-#endif
 
       (void) gettimeofday (&begin_tv, NULL);
       er_clear ();
 
-#if defined(WINDOWS)
-      wakeup_time = wakeup_interval_in_msec;
-#else /* WINDOWS */
       wakeup_time.tv_sec = begin_tv.tv_sec + (wakeup_interval_in_msec / 1000);
       tmp_usec = begin_tv.tv_usec + (wakeup_interval_in_msec % 1000) * 1000;
       if (tmp_usec >= 1000000)
@@ -2638,20 +2829,17 @@ thread_flush_control_thread (void *arg_p)
 	  tmp_usec -= 1000000;
 	}
       wakeup_time.tv_nsec = tmp_usec * 1000;
-#endif /* WINDOWS */
 
-      MUTEX_LOCK (rv, thread_Flush_control_thread.lock);
+      rv = pthread_mutex_lock (&thread_Flush_control_thread.lock);
       thread_Flush_control_thread.is_running = false;
 
-      COND_TIMEDWAIT (thread_Flush_control_thread.cond,
-		      thread_Flush_control_thread.lock, wakeup_time);
-#if defined(WINDOWS)
-      MUTEX_LOCK (rv, thread_Flush_control_thread.lock);
-#endif /* WINDOWS */
+      pthread_cond_timedwait (&thread_Flush_control_thread.cond,
+			      &thread_Flush_control_thread.lock,
+			      &wakeup_time);
 
       thread_Flush_control_thread.is_running = true;
 
-      MUTEX_UNLOCK (thread_Flush_control_thread.lock);
+      pthread_mutex_unlock (&thread_Flush_control_thread.lock);
 
       if (tsd_ptr->shutdown)
 	{
@@ -2675,11 +2863,7 @@ error:
 
   thread_Flush_control_thread.is_running = false;
 
-#if defined(WINDOWS)
-  return 0;
-#else /* WINDOWS */
-  return NULL;
-#endif /* WINDOWS */
+  return (THREAD_RET_T) 0;
 }
 
 void
@@ -2692,12 +2876,12 @@ thread_wakeup_flush_control_thread (void)
       return;
     }
 
-  MUTEX_LOCK (rv, thread_Flush_control_thread.lock);
+  rv = pthread_mutex_lock (&thread_Flush_control_thread.lock);
   if (!thread_Flush_control_thread.is_running)
     {
-      COND_SIGNAL (thread_Flush_control_thread.cond);
+      pthread_cond_signal (&thread_Flush_control_thread.cond);
     }
-  MUTEX_UNLOCK (thread_Flush_control_thread.lock);
+  pthread_mutex_unlock (&thread_Flush_control_thread.lock);
 }
 
 /*
@@ -2740,26 +2924,17 @@ thread_get_LFT_min_wait_time (void)
  *   arg(in) : thread entry information
  *
  */
-#if defined(WINDOWS)
-static unsigned __stdcall
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_log_flush_thread (void *arg_p)
-#else /* WINDOWS */
-static void *
-thread_log_flush_thread (void *arg_p)
-#endif				/* WINDOWS */
 {
 #if !defined(HPUX)
   THREAD_ENTRY *tsd_ptr;
 #endif /* !HPUX */
   int rv;
 
-#if defined(WINDOWS)
-  int LFT_wait_time = 0;
-#else /* WINDOWS */
   struct timespec LFT_wait_time = {
     0, 0
   };
-#endif /* WINDOWS */
 
   struct timeval start_time = {
     0, 0
@@ -2782,16 +2957,14 @@ thread_log_flush_thread (void *arg_p)
   int ret;
   bool have_wake_up_thread;
   int flushed;
-#if !defined(WINDOWS)
   int temp_wait_usec;
-#endif
   bool is_background_flush = true;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finishes */
-  MUTEX_LOCK (rv, tsd_ptr->th_entry_lock);
-  MUTEX_UNLOCK (tsd_ptr->th_entry_lock);
+  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
+  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;	/* daemon thread */
@@ -2803,7 +2976,7 @@ thread_log_flush_thread (void *arg_p)
 
   gettimeofday (&start_time, NULL);
 
-  MUTEX_LOCK (rv, thread_Log_flush_thread.lock);
+  rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
 
   while (!tsd_ptr->shutdown)
     {
@@ -2819,9 +2992,6 @@ thread_log_flush_thread (void *arg_p)
 	  diff_wait_time = 0;
 	}
 
-#if defined(WINDOWS)
-      LFT_wait_time = diff_wait_time;
-#else /* WINDOWS */
       LFT_wait_time.tv_sec = work_time.tv_sec + (diff_wait_time / 1000);
 
       temp_wait_usec = work_time.tv_usec + ((diff_wait_time % 1000) * 1000);
@@ -2832,17 +3002,13 @@ thread_log_flush_thread (void *arg_p)
 	  temp_wait_usec -= 1000000;
 	}
       LFT_wait_time.tv_nsec = temp_wait_usec * 1000;
-#endif /* WINDOWS */
 
       thread_Log_flush_thread.is_log_flush_force = false;
       thread_Log_flush_thread.is_running = false;
 
-      ret = COND_TIMEDWAIT (thread_Log_flush_thread.cond,
-			    thread_Log_flush_thread.lock, LFT_wait_time);
-
-#if defined(WINDOWS)
-      MUTEX_LOCK (rv, thread_Log_flush_thread.lock);
-#endif /* WINDOWS */
+      ret = pthread_cond_timedwait (&thread_Log_flush_thread.cond,
+				    &thread_Log_flush_thread.lock,
+				    &LFT_wait_time);
 
       thread_Log_flush_thread.is_running = true;
 
@@ -2871,11 +3037,11 @@ thread_log_flush_thread (void *arg_p)
 		    gc_elapsed, repl_elapsed, work_elapsed, diff_wait_time);
 #endif /* CUBRID_DEBUG */
 
-      MUTEX_LOCK (rv, group_commit_info->gc_mutex);
+      rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
 
       is_background_flush = false;
       have_wake_up_thread = false;
-      if (ret == TIMEDWAIT_TIMEOUT)
+      if (ret == ETIMEDOUT)
 	{
 	  if (thread_Log_flush_thread.is_log_flush_force)
 	    {
@@ -2910,7 +3076,7 @@ thread_log_flush_thread (void *arg_p)
 	    }
 
 #if 0				/* disabled temporarily */
-	  if (PRM_REPLICATION_MODE
+	  if (PRM_HA_MODE != HA_MODE_OFF
 	      && (repl_elapsed >= (double) PRM_LOG_HEADER_FLUSH_INTERVAL))
 	    {
 	      LOG_CS_ENTER (tsd_ptr);
@@ -2924,15 +3090,18 @@ thread_log_flush_thread (void *arg_p)
 
       if (is_background_flush)
 	{
-	  LOG_MUTEX_LOCK (rv, log_Gl.flush_info.flush_mutex);
+	  rv = pthread_mutex_lock (&log_Gl.flush_info.flush_mutex);
 	  if (log_Gl.flush_info.num_toflush > 2)
 	    {
-	      LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
+	      pthread_mutex_unlock (&log_Gl.flush_info.flush_mutex);
 	      LOG_CS_ENTER (tsd_ptr);
 	      logpb_flush_pages_background (tsd_ptr);
 	      LOG_CS_EXIT ();
 	    }
-	  LOG_MUTEX_UNLOCK (log_Gl.flush_info.flush_mutex);
+	  else
+	    {
+	      pthread_mutex_unlock (&log_Gl.flush_info.flush_mutex);
+	    }
 	}
       else
 	{
@@ -2965,10 +3134,10 @@ thread_log_flush_thread (void *arg_p)
 
 	  for (loop = 0; loop != group_commit_info->waiters; ++loop)
 	    {
-	      COND_BROADCAST (group_commit_info->gc_cond);
+	      pthread_cond_broadcast (&group_commit_info->gc_cond);
 	    }
 #else /* WINDOWS */
-	  COND_BROADCAST (group_commit_info->gc_cond);
+	  pthread_cond_broadcast (&group_commit_info->gc_cond);
 #endif /* WINDOWS */
 
 #if defined(CUBRID_DEBUG)
@@ -2979,12 +3148,12 @@ thread_log_flush_thread (void *arg_p)
 #endif /* CUBRID_DEBUG */
 	  group_commit_info->waiters = 0;
 	}
-      MUTEX_UNLOCK (group_commit_info->gc_mutex);
+      pthread_mutex_unlock (&group_commit_info->gc_mutex);
     }
 
   thread_Log_flush_thread.is_valid = false;
   thread_Log_flush_thread.is_running = false;
-  MUTEX_UNLOCK (thread_Log_flush_thread.lock);
+  pthread_mutex_unlock (&thread_Log_flush_thread.lock);
 
   er_clear ();
   tsd_ptr->status = TS_DEAD;
@@ -2994,11 +3163,7 @@ thread_log_flush_thread (void *arg_p)
 		"css_log_flush_thread: " "[%d]end \n", (int) THREAD_ID ());
 #endif /* CUBRID_DEBUG */
 
-#if defined(WINDOWS)
-  return 0;
-#else /* WINDOWS */
-  return NULL;
-#endif /* WINDOWS */
+  return (THREAD_RET_T) 0;
 }
 
 
@@ -3016,12 +3181,12 @@ thread_wakeup_log_flush_thread (void)
       return;
     }
 
-  MUTEX_LOCK (rv, thread_Log_flush_thread.lock);
+  rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
   if (!thread_Log_flush_thread.is_running)
     {
-      COND_SIGNAL (thread_Log_flush_thread.cond);
+      pthread_cond_signal (&thread_Log_flush_thread.cond);
     }
-  MUTEX_UNLOCK (thread_Log_flush_thread.lock);
+  pthread_mutex_unlock (&thread_Log_flush_thread.lock);
 }
 
 

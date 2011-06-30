@@ -27,321 +27,251 @@
 
 #ident "$Id$"
 
-
+#if defined(SERVER_MODE)
+#include <sys/types.h>
 #if !defined(WINDOWS)
+#include <pthread.h>
+#endif /* !WINDOWS */
 
-/* Data types */
-#define THREAD_T	pthread_t
-#define MUTEX_T		pthread_mutex_t
-#define COND_T		pthread_cond_t
-#define NULL_THREAD_T	((pthread_t) 0)
-#define THREAD_KEY_T	pthread_key_t
-#define MUTEXATTR_T	pthread_mutexattr_t
-#define THREAD_ATTR_T	pthread_attr_t
+#include "error_manager.h"
+#include "adjustable_array.h"
+#include "system_parameter.h"
+#endif /* SERVER_MODE */
 
-/* Create/Destroy thread */
-#define THREAD_CREATE(dummy, attr_ptr, start_addr, arg_ptr, id_ptr) \
-     	pthread_create(id_ptr, attr_ptr, start_addr, arg_ptr)
+#if !defined(SERVER_MODE)
+#define thread_get_thread_entry_info()  (NULL)
+#define thread_num_worker_threads()  (1)
+#define thread_num_total_threads()   (1)
+#define thread_get_current_session_id() (db_Session_id)
 
-#define THREAD_EXIT(ret_val)	pthread_exit((void *)(ret_val))
-#define THREAD_ID()		pthread_self()
+typedef void THREAD_ENTRY;
+#else /* !SERVER_MODE */
 
-#define THREAD_JOIN(id_ptr, ret_val) \
-	ret_val = pthread_join(id_ptr, NULL)
+#if defined(HPUX)
+#define thread_set_thread_entry_info(entry)
+#endif /* HPUX */
 
+typedef struct thread_entry THREAD_ENTRY;
+
+enum
+{ TS_DEAD = 0, TS_FREE, TS_RUN, TS_WAIT, TS_CHECK };
+enum
+{ THREAD_RESUME_NONE,
+  THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_RESUME_DUE_TO_SHUTDOWN,
+  THREAD_PGBUF_SUSPENDED, THREAD_PGBUF_RESUMED,
+  THREAD_JOB_QUEUE_SUSPENDED, THREAD_JOB_QUEUE_RESUMED,
+  THREAD_CSECT_READER_SUSPENDED, THREAD_CSECT_READER_RESUMED,
+  THREAD_CSECT_WRITER_SUSPENDED, THREAD_CSECT_WRITER_RESUMED,
+  THREAD_CSECT_PROMOTER_SUSPENDED, THREAD_CSECT_PROMOTER_RESUMED,
+  THREAD_CSS_QUEUE_SUSPENDED, THREAD_CSS_QUEUE_RESUMED,
+  THREAD_QMGR_ACTIVE_QRY_SUSPENDED, THREAD_QMGR_ACTIVE_QRY_RESUMED,
+  THREAD_QMGR_MEMBUF_PAGE_SUSPENDED, THREAD_QMGR_MEMBUF_PAGE_RESUMED,
+  THREAD_HEAP_CLSREPR_SUSPENDED, THREAD_HEAP_CLSREPR_RESUMED,
+  THREAD_LOCK_SUSPENDED, THREAD_LOCK_RESUMED,
+  THREAD_HA_ACTIVE_STATE_SUSPENDED, THREAD_HA_ACTIVE_STATE_RESUMED,
+  THREAD_LOGWR_SUSPENDED, THREAD_LOGWR_RESUMED
+};
+enum
+{ TT_MASTER, TT_SERVER, TT_WORKER, TT_DAEMON, TT_NONE };
+
+enum
+{ THREAD_WORKER_STOP_PHASE_0, THREAD_WORKER_STOP_PHASE_1 };
+
+struct thread_entry
+{
+#if defined(WINDOWS)
+  UINTPTR thread_handle;	/* thread handle */
+#endif				/* WINDOWS */
+  int index;			/* thread entry index */
+  int type;			/* thread type */
+  pthread_t tid;		/* thread id */
+  int client_id;		/* client id whom this thread is responding */
+  int tran_index;		/* tran index to which this thread belongs */
+  pthread_mutex_t tran_index_lock;
+  unsigned int rid;		/* request id which this thread is processing */
+  int status;			/* thread status */
+
+  pthread_mutex_t th_entry_lock;	/* latch for this thread entry */
+  pthread_cond_t wakeup_cond;	/* wakeup condition */
+
+  HL_HEAPID private_heap_id;	/* id of thread private memory allocator */
+  ADJ_ARRAY *cnv_adj_buffer[3];	/* conversion buffer */
+
+  struct css_conn_entry *conn_entry;	/* conn entry ptr */
+
+  ER_MSG ermsg;			/* error msg area */
+  ER_MSG *er_Msg;		/* last error */
+  char er_emergency_buf[256];	/* error msg buffer for emergency */
+
+  void *xasl_unpack_info_ptr;	/* XASL_UNPACK_INFO * */
+  int xasl_errcode;		/* xasl errorcode */
+
+  unsigned int rand_seed;	/* seed for rand_r() */
+
+  char qp_num_buf[81];		/* buffer which contains number as
+				   string form;
+				   used in the qp/numeric_db_value_print() */
+
+  int resume_status;		/* resume status */
+  int request_latch_mode;	/* for page latch support */
+  int request_fix_count;
+  bool victim_request_fail;
+  bool interrupted;		/* is this request/transaction interrupted ? */
+  bool shutdown;		/* is server going down? */
+  bool check_interrupt;		/* check_interrupt == false, during
+				   fl_alloc* function call. */
+  struct thread_entry *next_wait_thrd;
+
+  void *lockwait;
+  double lockwait_stime;	/* time in milliseconds */
+  int lockwait_nsecs;
+  int lockwait_state;
+  void *query_entry;
+  struct thread_entry *tran_next_wait;
+  struct thread_entry *worker_thrd_list;	/* worker thrd on jobq list */
+
+  void *log_zip_undo;
+  void *log_zip_redo;
+  char *log_data_ptr;
+  int log_data_length;
+};
+
+#define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
+  ((thread_p)->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT && \
+   (thread_p)->interrupted == true)
+
+typedef struct daemon_thread_monitor DAEMON_THREAD_MONITOR;
+struct daemon_thread_monitor
+{
+  int thread_index;
+  bool is_valid;
+  bool is_running;
+  bool is_log_flush_force;
+  pthread_mutex_t lock;
+  pthread_cond_t cond;
+};
+
+typedef void *CSS_THREAD_ARG;
+
+typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
+
+extern DAEMON_THREAD_MONITOR thread_Log_flush_thread;
+
+#if !defined(HPUX)
+extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
+#endif /* not HPUX */
+
+extern THREAD_ENTRY *thread_get_thread_entry_info (void);
+
+extern int thread_initialize_manager (void);
+extern int thread_start_workers (void);
+extern int thread_stop_active_workers (unsigned short stop_phase);
+extern int thread_stop_active_daemons (void);
+extern int thread_kill_all_workers (void);
+extern void thread_final_manager (void);
+
+extern int thread_lock_entry (THREAD_ENTRY * entry);
+#if defined (ENABLE_UNUSED_FUNCTION)
+extern int thread_lock_entry_with_tran_index (int tran_index);
+#endif
+extern int thread_unlock_entry (THREAD_ENTRY * p);
+extern int thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * p,
+						   int suspended_reason);
+extern int thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * p,
+							   struct timespec *t,
+							   int
+							   suspended_reason);
+#if defined (ENABLE_UNUSED_FUNCTION)
+extern int thread_suspend_wakeup_and_unlock_entry_with_tran_index (int
+								   tran_index,
+								   int
+								   suspended_reason);
+#endif
+extern int thread_wakeup (THREAD_ENTRY * p, int resume_reason);
+extern int thread_wakeup_already_had_mutex (THREAD_ENTRY * p,
+					    int resume_reason);
+extern int thread_wakeup_with_tran_index (int tran_index, int resume_reason);
+
+extern ADJ_ARRAY *css_get_cnv_adj_buffer (int idx);
+extern void css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer);
+extern int thread_is_manager_initialized (void);
+
+extern void thread_wait (THREAD_ENTRY * thread_p, CSS_THREAD_FN func,
+			 CSS_THREAD_ARG arg);
+#if defined(ENABLE_UNUSED_FUNCTION)
+extern void thread_exit (int exit_code);
+#endif
+extern void thread_sleep (int, int);
+extern void thread_get_info_threads (int *num_total_threads,
+				     int *num_worker_threads,
+				     int *num_free_threads,
+				     int *num_suspended_threads);
+extern int thread_num_worker_threads (void);
+extern int thread_num_total_threads (void);
+extern int thread_get_client_id (THREAD_ENTRY * thread_p);
+extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
+#if defined (ENABLE_UNUSED_FUNCTION)
+extern void thread_set_comm_request_id (unsigned int rid);
+#endif
+extern THREAD_ENTRY *thread_find_entry_by_tran_index_except_me (int
+								tran_index);
+extern int thread_get_current_entry_index (void);
+extern unsigned int thread_get_current_session_id (void);
+extern int thread_get_current_tran_index (void);
+extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p,
+					   int tran_index);
+#if defined (ENABLE_UNUSED_FUNCTION)
+extern void thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index);
+#endif
+extern struct css_conn_entry *thread_get_current_conn_entry (void);
+extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index,
+			       int client_id);
+extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
+extern void thread_wakeup_deadlock_detect_thread (void);
+extern void thread_wakeup_log_flush_thread (void);
+extern void thread_wakeup_page_flush_thread (void);
+extern void thread_wakeup_flush_control_thread (void);
+extern void thread_wakeup_checkpoint_thread (void);
+extern void thread_wakeup_purge_archive_logs_thread (void);
+extern void thread_wakeup_oob_handler_thread (void);
+extern void thread_wakeup_session_control_thread (void);
+extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
+extern THREAD_ENTRY *thread_find_next_lockwait_entry (int *thrd_index);
+extern THREAD_ENTRY *thread_find_entry_by_index (int thrd_index);
+extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
+
+
+extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p,
+					    pthread_mutex_t * mutexp,
+					    int timeout, struct timespec *to,
+					    int suspended_reason);
 #if defined(CUBRID_DEBUG)
-#define THREAD_EQUAL(lhs, rhs) pthread_equal(lhs, rhs)
-#endif /* CUBRID_DEBUG */
-
-#define THREAD_ATTR_INIT(attr) pthread_attr_init(&(attr))
-
-#define THREAD_ATTR_SETDETACHSTATE(attr, detachstate) \
-   	pthread_attr_setdetachstate(&(attr), detachstate)
-
-#define THREAD_ATTR_SETSCOPE(attr, scope) \
- 	pthread_attr_setscope(&(attr), scope)
-
-#define THREAD_ATTR_GETSTACKSIZE(attr, size) \
- 	pthread_attr_getstacksize(&(attr), &(size))
-
-#define THREAD_ATTR_SETSTACKSIZE(attr, size) \
- 	pthread_attr_setstacksize(&(attr), size)
-
-#define THREAD_ATTR_DESTROY(attr) pthread_attr_destroy(&(attr))
-
-/* Mutex */
-#define MUTEX_INITIALIZER	PTHREAD_MUTEX_INITIALIZER
-#define TRYLOCK_SUCCESS		0
-#define TRYLOCK_EBUSY		EBUSY
-
-#define MUTEXATTR_INIT(mattr) \
-	( pthread_mutexattr_init(&(mattr)) == 0 ? \
-		NO_ERROR : ER_CSS_PTHREAD_MUTEX_UNLOCK)
-
-#define MUTEXATTR_SETTYPE(mattr, type) \
-  	pthread_mutexattr_settype(&(mattr), type)
-
-#define MUTEXATTR_DESTROY(mattr) pthread_mutexattr_destroy(&(mattr))
-
-#if 1				/* TODO: move porting.h */
-#define MUTEX_INIT(mutex) \
-    ( pthread_mutex_init(&(mutex), NULL) == 0 ? \
-	NO_ERROR : ER_CSS_PTHREAD_MUTEX_INIT )
+extern void thread_print_entry_info (THREAD_ENTRY * p);
+extern void thread_dump_threads (void);
 #endif
+extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
 
-#define MUTEX_INIT_WITH_ATT(mutex, attr) \
-	pthread_mutex_init(&(mutex), &(attr))
+extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p,
+				    int kill_tran_index, char *kill_user,
+				    char *kill_host, int kill_pid);
 
-#if 1				/* TODO: move porting.h */
-#define MUTEX_DESTROY(mutex)	\
-    ( pthread_mutex_destroy(&(mutex)) == 0 ? \
-	NO_ERROR : ER_CSS_PTHREAD_MUTEX_DESTROY )
+extern HL_HEAPID css_get_private_heap (THREAD_ENTRY * thread_p);
+extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p,
+				       HL_HEAPID heap_id);
 
-#define MUTEX_LOCK(r, mutex) \
-    ( (r = pthread_mutex_lock(&(mutex)) ) == 0 ? \
-	NO_ERROR : ER_CSS_PTHREAD_MUTEX_LOCK )
+extern void thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid,
+			     int tran_index);
+#if defined(WINDOWS)
+extern unsigned __stdcall thread_worker (void *);
 
-#define MUTEX_UNLOCK(mutex) \
-    ( pthread_mutex_unlock(&(mutex)) == 0 ? \
-	NO_ERROR : ER_CSS_PTHREAD_MUTEX_UNLOCK )
-#endif
-
-#define MUTEX_TRYLOCK(mutex)	pthread_mutex_trylock(&(mutex))
-
-/* Condition Signal */
-#define COND_INITIALIZER		PTHREAD_COND_INITIALIZER
-#define TIMEDWAIT_GET_LK		0
-#define TIMEDWAIT_TIMEOUT		ETIMEDOUT
-#define COND_INIT(condvar)		pthread_cond_init(&(condvar), NULL)
-
-#define COND_INIT_WITH_ATTR(condvar, attr) \
-	pthread_cond_init(&(condvar), &(attr))
-
-#define CONDATTR_INIT(attr)		pthread_cond_attr_init(&(attr))
-#define CONDATTR_DESTROY(attr)	        pthread_cond_attr_destroy(&(attr))
-#define COND_DESTROY(condvar)		pthread_cond_destroy(&(condvar))
-
-/* Caution:
- *   There are some differences between pthreads and win32 threads
- *   over these macros of condition signal. Under the win32 threads,
- *     1. COND_WAIT() returns without acquiring lock.
- *     2. COND_BROADCAST() does not release all waiting threads, but keep
- *        signaling until only a thread is released. It continues signaling
- *        even if there is no thread to be waken up when this macro is called.
- *   You should take these into account for portability.
+/* There is no static mutex initializer - PTHREAD_MUTEX_INITIALIZER - in win32
+ * threads. So all mutexes are initialized at the first time it used. This
+ * variable is used to syncronize mutex initialization.
  */
-#define COND_WAIT(c, m)		pthread_cond_wait(&(c), &(m))
-#define COND_TIMEDWAIT(c, m, t)	pthread_cond_timedwait(&(c), &(m), &(t))
-#define COND_SIGNAL(c)		pthread_cond_signal(&(c))
-#define COND_BROADCAST(c)		pthread_cond_broadcast(&(c))
-
-/* Thread Specific Data */
-#define TLS_KEY_ALLOC(key, destructor)  pthread_key_create(&key, destructor)
-#define TLS_KEY_FREE(key)		pthread_key_delete(key)
-#define TLS_SET_SPECIFIC(key, valueptr) pthread_setspecific(key, valueptr)
-#define TLS_GET_SPECIFIC(key)		pthread_getspecific(key)
-
+extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
 #else /* WINDOWS */
-
-/* Data Types */
-#define THREAD_T	unsigned int
-#define MUTEX_T	        HANDLE
-#define COND_T	        HANDLE
-#define NULL_THREAD_T	((int)0)
-#define THREAD_KEY_T	int
-
-/* Create/Destroy */
-#ifdef WIN32_GENERAL_DEBUG
-#define THREAD_CREATE(handle, dummy, start_addr, arg_ptr, id_ptr) \
-	((handle = _beginthreadex(NULL, 1024*256, start_addr, \
-    		(void *)arg_ptr, 0, id_ptr))  <= 0 ? -1 : 0)
-#else /* not WIN32_GENERAL_DEBUG */
-#define THREAD_CREATE(handle, dummy, start_addr, arg_ptr, id_ptr) \
-	((handle = _beginthreadex(NULL, 0, start_addr, \
-    		(void *)arg_ptr, 0, id_ptr))  <= 0 ? -1 : 0)
-#endif /* not WIN32_GENERAL_DEBUG */
-
-#define THREAD_EXIT(ret_val)	_endthreadex((unsigned int) ret_val)
-#define THREAD_ID()		GetCurrentThreadId()
-
-#define THREAD_JOIN(handle, ret_val) \
-	ret_val = WaitForSingleObject(handle, INFINITE)
-
-#if defined(CUBRID_DEBUG)
-#define THREAD_EQUAL(lhs, rhs) (lhs == rhs ? 1 : 0)
-#endif /* CUBRID_DEBUG */
-
-#define THREAD_ATTR_INIT(dummy1)			0
-#define THREAD_ATTR_SETDETACHSTATE(dummy1, dummy2)	0
-#define THREAD_ATTR_SETSCOPE(dummy1, dummy2)		0
-#define THREAD_ATTR_GETSTACKSIZE(dummy1, dummy2)	0
-#define THREAD_ATTR_SETSTACKSIZE(dummy1, dummy2)	0
-#define THREAD_ATTR_DESTROY(dummy1)			0
-
-/* Mutex */
-#define MUTEX_INITIALIZER	NULL
-
-#define TRYLOCK_SUCCESS	        WAIT_OBJECT_0
-#define TRYLOCK_SUCCESS2	WAIT_ABANDONED
-#define TRYLOCK_EBUSY		WAIT_TIMEOUT
-#define TRYLOCK_FAIL		WAIT_FAIL
-
-#define MUTEXATTR_INIT(dummy1)		        0
-#define MUTEXATTR_SETTYPE(dummy1, dummy2)	0
-#define MUTEXATTR_DESTROY(dummy1)		0
-
-#if 1				/* TODO: move porting.h */
-#ifdef WIN32_GENERAL_DEBUG
-#define MUTEX_INIT(handle) \
-    ( (handle = CreateMutex(NULL, FALSE, NULL)) != NULL ? \
-		NO_ERROR : \
-	( printf("(%s:%d) [[ Mutex_Create Error(%d) ]]\n", \
-		 __FILE__, __LINE__, GetLastError()), \
-	  fflush(stdout), Sleep(1000), ER_CSS_PTHREAD_MUTEX_INIT) \
-    )
-
-#define MUTEX_DESTROY(handle)	\
-    ( (handle = (void *)(!CloseHandle(handle))) == 0 ? \
-      NO_ERROR : \
-     ( (printf("(%s:%d) [[[  Mutex_destroy Error(%d) ]]]\n", \
-	       __FILE__, __LINE__, GetLastError()), \
-        fflush(stdout), Sleep(1000), ER_CSS_PTHREAD_MUTEX_DESTROY) ) \
-    )
-
-#define MUTEX_LOCK(r, mutex) \
-    do { \
-      if(mutex) { \
-	  r = (WaitForSingleObject(mutex, INFINITE) == WAIT_OBJECT_0 ? \
-	    NO_ERROR : ER_CSS_PTHREAD_MUTEX_LOCK); \
-      } else { \
-	  WaitForSingleObject(css_Internal_mutex_for_mutex_initialize, INFINITE); \
-	  if(mutex) { \
-	    r = (WaitForSingleObject(mutex, INFINITE) == WAIT_OBJECT_0 ? \
-	      NO_ERROR : ER_CSS_PTHREAD_MUTEX_LOCK); \
-	  } else { \
-	    r = ((mutex = CreateMutex(NULL, TRUE, NULL)) != NULL ? \
-	      NO_ERROR : ER_CSS_PTHREAD_MUTEX_LOCK); \
-	  } \
-	  ReleaseMutex(css_Internal_mutex_for_mutex_initialize); \
-      } \
-      if(r != NO_ERROR) { \
-	printf("(%s:%d) [[[[   Mutex lock Error(%d) ]]]]\n", \
-	    __FILE__, __LINE__, GetLastError()); \
-        fflush(stdout); Sleep(1000) ; \
-      } \
-    } while(0)
-
-#define MUTEX_UNLOCK(mutex) \
-    ( ReleaseMutex(mutex) != 0 ?  NO_ERROR : \
-	(printf("(%s:%d) [[[  Mutex unlock Error(%d) ]]]\n", \
-		__FILE__, __LINE__, GetLastError()), \
-        fflush(stdout), Sleep(1000), ER_CSS_PTHREAD_MUTEX_UNLOCK )\
-    )
-
-#else /* not WIN32_GENERAL_DEBUG */
-
-#define MUTEX_INIT(handle) \
-    ( (handle = CreateMutex(NULL, FALSE, NULL)) != NULL ? \
-		NO_ERROR : ER_CSS_PTHREAD_MUTEX_INIT )
-
-#define MUTEX_DESTROY(handle)	\
-    ( (handle = (void *)(!CloseHandle(handle))) == 0 ? \
-      NO_ERROR : ER_CSS_PTHREAD_MUTEX_DESTROY )
-
-#define MUTEX_LOCK(r, mutex) \
-    do { \
-      if(mutex) { \
-	  r = (WaitForSingleObject(mutex, INFINITE) == WAIT_OBJECT_0 ? \
-	    NO_ERROR : ER_CSS_PTHREAD_MUTEX_LOCK); \
-      } else { \
-	  WaitForSingleObject(css_Internal_mutex_for_mutex_initialize, INFINITE); \
-	  if(mutex) { \
-	    r = (WaitForSingleObject(mutex, INFINITE) == WAIT_OBJECT_0 ? \
-	      NO_ERROR : ER_CSS_PTHREAD_MUTEX_LOCK); \
-	  } else { \
-	    r = ((mutex = CreateMutex(NULL, TRUE, NULL)) != NULL ? \
-	      NO_ERROR : ER_CSS_PTHREAD_MUTEX_LOCK); \
-	  } \
-	  ReleaseMutex(css_Internal_mutex_for_mutex_initialize); \
-      } \
-    } while(0)
-
-#define MUTEX_UNLOCK(mutex) \
-    ( ReleaseMutex(mutex) != 0 ?  NO_ERROR : ER_CSS_PTHREAD_MUTEX_UNLOCK )
-#endif /* not WIN32_GENERAL_DEBUG */
-
-#endif
-
-#define MUTEX_INIT_WITH_ATT(handle, attr)  MUTEX_INIT(handle)
-#define MUTEX_TRYLOCK(mutex)               WaitForSingleObject(mutex, 0)
-
-/* Condition Signal */
-#define COND_INITIALIZER	0
-#define TIMEDWAIT_GET_LK	WAIT_OBJECT_0
-#define TIMEDWAIT_TIMEOUT	WAIT_TIMEOUT
-#define ETIMEDOUT		WAIT_TIMEOUT
-
-/* Creates an Event of auto-reset mode */
-#define COND_INIT(cond_var) \
-    ((cond_var = CreateEvent(NULL, FALSE, FALSE, NULL)) != NULL ? 0 : -1)
-
-#define COND_INIT_WITH_ATTR(cond_var, attr) COND_INIT(cond_var)
-#define CONDATTR_INIT(dummy1)
-
-#define COND_DESTROY(cond_var) \
-	( (cond_var = (void *)CloseHandle(cond_var)) != 0 ? 0 : -1)
-
-#ifdef WIN32_GENERAL_DEBUG
-#define COND_WAIT(cond_var, mutex) \
-    (SignalObjectAndWait(mutex, cond_var, INFINITE, FALSE) == WAIT_OBJECT_0 ? \
-    0 : \
-	(printf("(%s:%d) [[ CondWait Error(%d) ]]\n", \
-		__FILE__, __LINE__, GetLastError()), \
-        fflush(stdout), Sleep(1000), -1 ) \
-    )
-
-#define COND_TIMEDWAIT(cond_var, mutex, timeout) \
-    SignalObjectAndWait(mutex, cond_var, timeout, FALSE)
-
-#define COND_SIGNAL(cond_var)		(PulseEvent(cond_var) !=0 ? 0 : \
-	(printf("(%s:%d) [[ CondSignal Error(%d) ]]\n", \
-		__FILE__, __LINE__, GetLastError()), \
-        fflush(stdout), Sleep(1000), -1 ) \
-     )
-
-#define COND_BROADCAST(cond_var)	(SetEvent(cond_var) !=0 ? 0 : -1 )
-#else /* not WIN32_GENERAL_DEBUG */
-
-#define COND_WAIT(cond_var, mutex) \
-    (SignalObjectAndWait(mutex, cond_var, INFINITE, FALSE) == WAIT_OBJECT_0 ? \
-    0 : -1)
-
-#define COND_TIMEDWAIT(cond_var, mutex, timeout) \
-    SignalObjectAndWait(mutex, cond_var, timeout, FALSE)
-
-/* For an auto-reset event object, PulseEvent() returns after releasing a
- * waiting thread. If no threads are waiting, nothing happens - it simply
- * returns.
- */
-#define COND_SIGNAL(cond_var)		(PulseEvent(cond_var) !=0 ? 0 : -1)
-
-/* SetEvent() just wakes up one thread. It's actually not the broadcast. */
-#define COND_BROADCAST(cond_var)	(SetEvent(cond_var) !=0 ? 0 : -1 )
-#endif /* not WIN32_GENERAL_DEBUG */
-
-/* Thread Specific Data */
-#define TLS_KEY_ALLOC(key, dummy_destructor) \
-    ((key = TlsAlloc()) != 0xFFFFFFFF ? 0 : -1)
-
-#define TLS_KEY_FREE(key) (TlsFree(key) != 0 ? 0 : -1)
-
-#define TLS_SET_SPECIFIC(key, valueptr) \
-    (TlsSetValue(key, valueptr) != 0 ? 0 : -1)
-
-#define TLS_GET_SPECIFIC(key) TlsGetValue(key)
-
-extern HANDLE css_Internal_mutex_for_mutex_initialize;
-
-#endif /* WINDOWS */
+extern void *thread_worker (void *);
+#endif /* !WINDOWS */
+#endif /* SERVER_MODE */
 
 #endif /* _THREAD_H_ */

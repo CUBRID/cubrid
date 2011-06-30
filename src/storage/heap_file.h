@@ -37,7 +37,7 @@
 #include "slotted_page.h"
 #include "oid.h"
 #include "object_representation_sr.h"
-#include "thread_impl.h"
+#include "thread.h"
 #include "system_catalog.h"
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
@@ -45,20 +45,19 @@
    ((hfid_ptr1)->hpgid == (hfid_ptr2)->hpgid && \
     VFID_EQ(&((hfid_ptr1)->vfid), &((hfid_ptr2)->vfid))))
 
+#define HEAP_HEADER_AND_CHAIN_SLOTID  0	/* Slot for chain and header */
+
+#define HEAP_MAX_ALIGN INT_ALIGNMENT	/* maximum alignment for heap record */
+
 /*
  * Heap scan structures
  */
-
-
 
 typedef struct heap_bestspace HEAP_BESTSPACE;
 struct heap_bestspace
 {
   VPID vpid;			/* Vpid of one of the best pages */
   int freespace;		/* Estimated free space in this page */
-#if 1				/* TODO: for future use - DO NOT DELETE ME */
-  TRANID last_tranid;
-#endif
 };
 
 
@@ -99,6 +98,9 @@ struct heap_scancache
 				 */
   int collect_nrecs;		/* Total num of rec on scanned pages    */
   float collect_recs_sumlen;	/* Total len of recs on scanned pages   */
+  int collect_nother_best;	/* Total num of best pages not collected
+				 * in collect_best array
+				 */
   int collect_nbest;		/* Total of best pages that were found
 				 * by scanning the heap. This is a hint
 				 */
@@ -135,7 +137,8 @@ typedef enum
 {
   HEAP_READ_ATTRVALUE,
   HEAP_WRITTEN_ATTRVALUE,
-  HEAP_UNINIT_ATTRVALUE
+  HEAP_UNINIT_ATTRVALUE,
+  HEAP_WRITTEN_LOB_ATTRVALUE
 } HEAP_ATTRVALUE_STATE;
 
 typedef enum
@@ -222,14 +225,15 @@ extern int heap_manager_finalize (void);
 extern int heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid,
 				OID * oid, int expected_length);
 extern int heap_assign_address_with_class_oid (THREAD_ENTRY * thread_p,
-					       const HFID * hfid, OID * oid,
-					       int expected_length,
-					       OID * class_oid);
+					       const HFID * hfid,
+					       OID * class_oid, OID * oid,
+					       int expected_length);
 extern OID *heap_insert (THREAD_ENTRY * thread_p, const HFID * hfid,
-			 OID * oid, RECDES * recdes,
+			 OID * class_oid, OID * oid, RECDES * recdes,
 			 HEAP_SCANCACHE * scan_cache);
 extern const OID *heap_update (THREAD_ENTRY * thread_p, const HFID * hfid,
-			       const OID * oid, RECDES * recdes, bool * old,
+			       const OID * class_oid, const OID * oid,
+			       RECDES * recdes, bool * old,
 			       HEAP_SCANCACHE * scan_cache);
 extern const OID *heap_delete (THREAD_ENTRY * thread_p, const HFID * hfid,
 			       const OID * oid, HEAP_SCANCACHE * scan_cache);
@@ -246,6 +250,7 @@ extern int heap_scancache_start_modify (THREAD_ENTRY * thread_p,
 					const HFID * hfid,
 					const OID * class_oid, int op_type);
 extern int heap_scancache_quick_start (HEAP_SCANCACHE * scan_cache);
+extern int heap_scancache_quick_start_modify (HEAP_SCANCACHE * scan_cache);
 extern int heap_scancache_end (THREAD_ENTRY * thread_p,
 			       HEAP_SCANCACHE * scan_cache);
 extern int heap_scancache_end_when_scan_will_resume (THREAD_ENTRY * thread_p,
@@ -263,9 +268,10 @@ extern SCAN_CODE heap_get (THREAD_ENTRY * thread_p, const OID * oid,
 			   RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 			   int ispeeking, int chn);
 extern SCAN_CODE heap_get_with_class_oid (THREAD_ENTRY * thread_p,
-					  const OID * oid, RECDES * recdes,
+					  OID * class_oid, const OID * oid,
+					  RECDES * recdes,
 					  HEAP_SCANCACHE * scan_cache,
-					  OID * class_oid, int ispeeking);
+					  int ispeeking);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid,
 			    OID * class_oid, OID * next_oid, RECDES * recdes,
 			    HEAP_SCANCACHE * scan_cache, int ispeeking);
@@ -313,8 +319,8 @@ extern SCAN_CODE heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid,
 				      HEAP_SCANRANGE * scan_range,
 				      int ispeeking);
 
-extern bool heap_does_exist (THREAD_ENTRY * thread_p, const OID * oid,
-			     OID * class_oid);
+extern bool heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid,
+			     const OID * oid);
 extern int heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid,
 				 int *npages, int *nobjs, int *avg_length);
 
@@ -327,8 +333,8 @@ extern INT32 heap_estimate_num_pages_needed (THREAD_ENTRY * thread_p,
 					     int avg_obj_size, int num_attrs,
 					     int num_var_attrs);
 
-extern OID *heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid,
-				OID * class_oid);
+extern OID *heap_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid,
+				const OID * oid);
 extern char *heap_get_class_name (THREAD_ENTRY * thread_p,
 				  const OID * class_oid);
 extern char *heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p,
@@ -352,6 +358,9 @@ extern int heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p,
 					const OID * inst_oid, RECDES * recdes,
 					HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p,
+				     RECDES * recdes,
+				     HEAP_CACHE_ATTRINFO * attr_info);
 extern DB_VALUE *heap_attrinfo_access (ATTR_ID attrid,
 				       HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid,
@@ -415,13 +424,15 @@ extern int heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p,
 				       ATTR_ID ** attr_ids,
 				       int **attrs_prefix_length,
 				       char **btnamepp);
-extern int heap_get_referenced_by (THREAD_ENTRY * thread_p,
+extern int heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid,
 				   const OID * obj_oid, RECDES * obj,
 				   int *max_oid_cnt, OID ** oid_list);
 
-extern int heap_prefetch (THREAD_ENTRY * thread_p, const OID * oid,
-			  OID * class_oid, LC_COPYAREA_DESC * prefetch);
+extern int heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid,
+			  const OID * oid, LC_COPYAREA_DESC * prefetch);
 extern DISK_ISVALID heap_check_all_pages (THREAD_ENTRY * thread_p,
+					  HFID * hfid);
+extern DISK_ISVALID heap_check_heap_file (THREAD_ENTRY * thread_p,
 					  HFID * hfid);
 extern DISK_ISVALID heap_check_all_heaps (THREAD_ENTRY * thread_p);
 
@@ -447,8 +458,9 @@ extern int heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 					 HEAP_SCANCACHE * scan_cache);
 
 extern void heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid,
-		       bool rec_p);
-extern void heap_dump_all (THREAD_ENTRY * thread_p, FILE * fp, bool rec_p);
+		       bool dump_records);
+extern void heap_dump_all (THREAD_ENTRY * thread_p, FILE * fp,
+			   bool dump_records);
 extern void heap_attrinfo_dump (THREAD_ENTRY * thread_p, FILE * fp,
 				HEAP_CACHE_ATTRINFO * attr_info,
 				bool dump_schema);
@@ -458,6 +470,12 @@ extern void heap_chnguess_dump (FILE * fp);
 extern void heap_dump_all_capacities (THREAD_ENTRY * thread_p, FILE * fp);
 
 /* partition-support */
+extern OR_CLASSREP *heap_classrepr_get (THREAD_ENTRY * thread_p,
+					OID * class_oid,
+					RECDES * class_recdes, REPR_ID reprid,
+					int *idx_incache,
+					bool use_last_reprid);
+extern int heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache);
 extern REPR_ID heap_get_class_repr_id (THREAD_ENTRY * thread_p,
 				       OID * class_oid);
 extern int heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p,
@@ -497,5 +515,15 @@ extern int heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid);
 
 extern void heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp,
 				     OID * class_oid);
+
+extern int heap_get_btid_from_index_name (THREAD_ENTRY * thread_p,
+					  const OID * p_class_oid,
+					  const char *index_name,
+					  BTID * p_found_btid);
+
+extern int heap_object_upgrade_domain (THREAD_ENTRY * thread_p,
+				       HEAP_SCANCACHE * upd_scancache,
+				       HEAP_CACHE_ATTRINFO * attr_info,
+				       OID * oid, const ATTR_ID att_id);
 
 #endif /* _HEAP_FILE_H_ */

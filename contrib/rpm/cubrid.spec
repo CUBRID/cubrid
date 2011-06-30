@@ -1,6 +1,6 @@
 
-%define cubrid_version 8.3.0.0337
-%define build_version  8.3.0
+%define cubrid_version 8.4.0.0243
+%define build_version  8.4.0
 %define cubrid_vendor  Search Solution Corporation
 %define release        el5
 %define cubrid_user    cubrid
@@ -12,7 +12,7 @@ Release:       %{release}%{?dist}
 License:       GPLv2+/BSD
 Group:         Applications/Databases
 URL:           http://www.cubrid.com
-Source0:       cubrid-%{cubrid_version}.tar.gz
+Source0:       %{name}-%{cubrid_version}.tar.gz
 Source1:       cubrid.sh
 Source2:       cubrid.csh
 Provides:      cubrid
@@ -28,28 +28,41 @@ BuildRequires: glibc-devel
 BuildRoot:     %{_tmppath}/%{name}-%{version}-build
 Prefix:        %{_prefix}
 
+%description -l ko
+Please see the documentation and the manual
+or visit http://www.cubrid.com/developer.cub for more information.
 %description
 Please see the documentation and the manual
-or visit http://www.cubrid.com/developer for more information.
+or visit http://www.cubrid.org/documentation for more information.
 
 %prep
-%setup -q -n cubrid-%{version}
+%setup -q -n %{name}-%{version}
 
 
 %build
 CUBRID_COMMON_CONFIGURE="--prefix=%{buildroot}/opt/cubrid"
+CUBRIDMANAGER_COMMON_CONFIGURE="--prefix=%{buildroot}/opt/cubrid --with-cubrid-libdir=$RPM_BUILD_DIR/%{name}-%{version}/cm_common --with-cubrid-includedir=$RPM_BUILD_DIR/%{name}-%{version}/src/cm_common --with-cubrid-jdbcdir=$RPM_BUILD_DIR/%{name}-%{version}/jdbc"
 %ifarch x86_64
-	CUBRID_COMMON_CONFIGURE="${CUBRID_COMMON_CONFIGURE} --enable-64bit"
+        CUBRID_COMMON_CONFIGURE="${CUBRID_COMMON_CONFIGURE} --enable-64bit"
+        CUBRIDMANAGER_COMMON_CONFIGURE="${CUBRIDMANAGER_COMMON_CONFIGURE} --enable-64bit"
 %endif
 
 ./configure $CUBRID_COMMON_CONFIGURE
-
 make
+
+cd cubridmanager/server
+./configure $CUBRIDMANAGER_COMMON_CONFIGURE
+make
+cd -
 
 %install
 rm -rf %{buildroot}
 
 make install
+
+cd cubridmanager/server
+make install
+cd -
 
 install -d %{buildroot}%{_sysconfdir}/profile.d
 install -c -m 755 %{SOURCE1} %{buildroot}%{_sysconfdir}/profile.d/cubrid.sh
@@ -124,17 +137,7 @@ install -c -m 755 %{SOURCE2} %{buildroot}%{_sysconfdir}/profile.d/cubrid.csh
 #install -c -m 755 util/.libs/cubrid_esql %{buildroot}%{_bindir}/cubrid_esql
 #install -c -m 755 util/.libs/cubrid_rel %{buildroot}%{_bindir}/cubrid_rel
 #install -c -m 755 util/.libs/loadjava %{buildroot}%{_bindir}/loadjava
-#install -c -m 755 util/.libs/repl_agent %{buildroot}%{_bindir}/repl_agent
-#install -c -m 755 util/.libs/repl_server %{buildroot}%{_bindir}/repl_server
 #install -c -m 755 util/.libs/migrate_r22 %{buildroot}%{_bindir}/migrate_r22
-#install -c -m 755 util/repl_make_distdb %{buildroot}%{_bindir}/repl_make_distdb
-#install -c -m 755 util/repl_make_slavedb %{buildroot}%{_bindir}/repl_make_slavedb
-#install -c -m 755 util/repl_make_group %{buildroot}%{_bindir}/repl_make_group
-#install -c -m 755 util/repl_make_snapshot %{buildroot}%{_bindir}/repl_make_snapshot
-#install -c -m 755 util/repl_check_sync %{buildroot}%{_bindir}/repl_check_sync
-#install -c -m 755 util/repl_safe_page %{buildroot}%{_bindir}/repl_safe_page
-#install -c -m 755 util/repl_change_param %{buildroot}%{_bindir}/repl_change_param
-#install -c -m 755 util/repl_change_master %{buildroot}%{_bindir}/repl_change_master
 
 # bin-broker
 #install -c -m 755 broker/.libs/cub_broker %{buildroot}%{_bindir}/cub_broker
@@ -295,9 +298,6 @@ chown cubrid:cubrid -R /opt/cubrid
 #echo "sed -e $REG_EXP --in-place %{_sysconfdir}/profile.d/cubrid.csh"
 #eval sed --in-place -e $REG_EXP %{_sysconfdir}/profile.d/cubrid.csh
 
-echo "
-Thank you for installing the CUBRID Database System! 
-Visit http://www.cubrid.com/developer for more information."
 
 
 %preun

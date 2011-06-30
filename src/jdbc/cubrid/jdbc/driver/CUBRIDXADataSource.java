@@ -28,15 +28,16 @@
  *
  */
 
-package @CUBRID_DRIVER@;
+package cubrid.jdbc.driver;
 
-import java.sql.*;
-import java.util.*;
-import java.io.*;
-import javax.sql.*;
-import javax.naming.*;
+import java.io.Serializable;
+import java.sql.SQLException;
 
-import @CUBRID_DRIVER@.CUBRIDXAConnection;
+import javax.naming.NamingException;
+import javax.naming.Reference;
+import javax.naming.Referenceable;
+import javax.sql.XAConnection;
+import javax.sql.XADataSource;
 
 /**
  * Title: CUBRID JDBC Driver Description:
@@ -45,45 +46,39 @@ import @CUBRID_DRIVER@.CUBRIDXAConnection;
  */
 
 public class CUBRIDXADataSource extends CUBRIDPoolDataSourceBase implements
-    XADataSource, Referenceable, Serializable
-{
-  public CUBRIDXADataSource()
-  {
-    super();
-  }
+		XADataSource, Referenceable, Serializable {
+	public CUBRIDXADataSource() {
+		super();
+	}
 
-  protected CUBRIDXADataSource(Reference ref)
-  {
-    super();
-    setProperties(ref);
-  }
+	protected CUBRIDXADataSource(Reference ref) {
+		super();
+		setProperties(ref);
+	}
 
-  /*
-   * javax.sql.XADataSource interface
-   */
+	/*
+	 * javax.sql.XADataSource interface
+	 */
 
-  public synchronized XAConnection getXAConnection() throws SQLException
-  {
-    return getXAConnection(getUser(), getPassword());
-  }
+	public synchronized XAConnection getXAConnection() throws SQLException {
+		return getXAConnection(getUser(), getPassword());
+	}
 
-  public synchronized XAConnection getXAConnection(String username,
-      String passwd) throws SQLException
-  {
-    return (new CUBRIDXAConnection(this, getServerName(), getPortNumber(),
-        getDatabaseName(), username, passwd));
-  }
+	public synchronized XAConnection getXAConnection(String username,
+			String passwd) throws SQLException {
+		return (new CUBRIDXAConnection(this, getServerName(), getPortNumber(),
+				getDatabaseName(), username, passwd));
+	}
 
-  /*
-   * javax.naming.Referenceable interface
-   */
+	/*
+	 * javax.naming.Referenceable interface
+	 */
 
-  public synchronized Reference getReference() throws NamingException
-  {
-    Reference ref = new Reference(this.getClass().getName(),
-        "@CUBRID_DRIVER@.CUBRIDDataSourceObjectFactory", null);
+	public synchronized Reference getReference() throws NamingException {
+		Reference ref = new Reference(this.getClass().getName(),
+				"cubrid.jdbc.driver.CUBRIDDataSourceObjectFactory", null);
 
-    ref = getProperties(ref);
-    return ref;
-  }
+		ref = getProperties(ref);
+		return ref;
+	}
 }

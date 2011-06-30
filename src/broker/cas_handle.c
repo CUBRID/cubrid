@@ -54,6 +54,9 @@ static void srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle);
 static T_SRV_HANDLE **srv_handle_table = NULL;
 static int max_srv_handle = 0;
 static int max_handle_id = 0;
+#if !defined(LIBCAS_FOR_JSP)
+static int current_handle_count = 0;
+#endif
 
 static T_SRV_HANDLE **active_handle_table = NULL;
 static int active_handle_table_size = 0;
@@ -67,6 +70,14 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   int new_handle_id = 0;
   T_SRV_HANDLE **new_srv_handle_table = NULL;
   T_SRV_HANDLE *srv_handle;
+
+#if !defined(LIBCAS_FOR_JSP)
+  if (current_handle_count >= shm_appl->max_prepared_stmt_count)
+    {
+      return ERROR_INFO_SET (CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED,
+			     CAS_ERROR_INDICATOR);
+    }
+#endif
 
   for (i = 0; i < max_srv_handle; i++)
     {
@@ -112,6 +123,11 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   srv_handle_table[new_handle_id - 1] = srv_handle;
   if (new_handle_id > max_handle_id)
     max_handle_id = new_handle_id;
+
+#if !defined(LIBCAS_FOR_JSP)
+  current_handle_count++;
+#endif
+
   return new_handle_id;
 }
 
@@ -146,6 +162,9 @@ hm_srv_handle_free (int h_id)
 
   FREE_MEM (srv_handle);
   srv_handle_table[h_id - 1] = NULL;
+#if !defined(LIBCAS_FOR_JSP)
+  current_handle_count--;
+#endif
 }
 
 void
@@ -165,6 +184,41 @@ hm_srv_handle_free_all ()
       srv_handle_table[i] = NULL;
     }
   max_handle_id = 0;
+#if !defined(LIBCAS_FOR_JSP)
+  current_handle_count = 0;
+#endif
+}
+
+void
+hm_srv_handle_qresult_end_all ()
+{
+  T_SRV_HANDLE *srv_handle;
+  int i;
+
+  for (i = 0; i < max_handle_id; i++)
+    {
+      srv_handle = srv_handle_table[i];
+      if (srv_handle == NULL)
+	{
+	  continue;
+	}
+
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
+      hm_qresult_end (srv_handle, FALSE);
+#else /* CAS_FOR_MYSQL */
+      if (srv_handle->schema_type < 0
+	  || srv_handle->schema_type == CCI_SCH_CLASS
+	  || srv_handle->schema_type == CCI_SCH_VCLASS
+	  || srv_handle->schema_type == CCI_SCH_ATTRIBUTE
+	  || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE
+	  || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
+	  || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS
+	  || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY)
+	{
+	  hm_qresult_end (srv_handle, FALSE);
+	}
+#endif
+    }
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -304,6 +358,18 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 	db_objlist_free ((DB_OBJLIST *) (srv_handle->session));
       srv_handle->cur_result = NULL;
     }
+  else if (srv_handle->schema_type == CCI_SCH_IMPORTED_KEYS
+	   || srv_handle->schema_type == CCI_SCH_EXPORTED_KEYS
+	   || srv_handle->schema_type == CCI_SCH_CROSS_REFERENCE)
+    {
+      T_FK_INFO_RESULT *fk_res = (T_FK_INFO_RESULT *) srv_handle->session;
+      if (fk_res != NULL)
+	{
+	  release_all_fk_info_results (fk_res);
+	  srv_handle->session = NULL;
+	}
+      srv_handle->cur_result = NULL;
+    }
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 }
 
@@ -335,11 +401,6 @@ srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle)
     {
       char *p;
       p = cas_log_query_plan_file (h_id);
-      if (p != NULL)
-	{
-	  unlink (p);
-	}
-      p = cas_log_query_histo_file (h_id);
       if (p != NULL)
 	{
 	  unlink (p);

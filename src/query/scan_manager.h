@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -37,6 +37,8 @@
 /*
  *       	TYPEDEFS RELATED TO THE SCAN DATA STRUCTURES
  */
+
+#define IDX_COV_DEFAULT_TUPLES 200
 
 typedef enum
 {
@@ -72,6 +74,55 @@ struct key_val_range
   RANGE range;
   DB_VALUE key1;
   DB_VALUE key2;
+  bool is_truncated;
+  int num_index_term;		/* term# associated with index key range.
+				 * only used for mulit-column index
+				 * with PRM_ORACLE_STYLE_EMPTY_STRING,
+				 * otherwise set as zero
+				 */
+};
+
+typedef struct indx_cov INDX_COV;
+struct indx_cov
+{
+  QFILE_LIST_ID *list_id;	/* list file identifier */
+  QFILE_TUPLE_VALUE_TYPE_LIST *type_list;	/* type list */
+  QFILE_TUPLE_RECORD *tplrec;	/* tuple record */
+  QFILE_LIST_SCAN_ID *lsid;	/* list file scan identifier */
+  VAL_DESCR *val_descr;		/* val descriptor */
+  OUTPTR_LIST *output_val_list;	/* output val list */
+  REGU_VARIABLE_LIST regu_val_list;	/* regulator variable list */
+  QUERY_ID query_id;		/* query id */
+  int max_tuples;		/* maximum tuples stored in list_id */
+};
+
+/* multiple range optimization used on range search index scan:
+ * - uses memory instead of lists to store range search results
+ * - drops range search faster when key condition is not fullfilled */
+typedef struct range_opt_item RANGE_OPT_ITEM;
+struct range_opt_item
+{
+  DB_VALUE index_value;		/* index value (MIDXKEY) as it is read from B+ tree */
+  OID inst_oid;			/* instance OID corresponding to index key */
+  OID ck_ps_oid;		/* pseudo-OID corresponding to current key index key;
+				   used of unlocking */
+  OID nk_ps_oid;		/* pseudo-OID corresponding to next key of index key;
+				   used of unlocking */
+  OID class_oid;		/* class OID corresponding to index key/instance OID;
+				   used of unlocking */
+};
+
+typedef struct multi_range_opt MULTI_RANGE_OPT;
+struct multi_range_opt
+{
+  bool use;			/* true/false */
+  int cnt;			/* current number of entries */
+  int size;			/* expected number of entries */
+  bool is_desc_order;		/* sorting in descending order */
+  int sort_att_idx;		/* index of MIDXKEY attribute on which the
+				   sort is performed */
+  TP_DOMAIN *sort_col_dom;
+  RANGE_OPT_ITEM **top_n_items;	/* array with top n items */
 };
 
 typedef struct indx_scan_id INDX_SCAN_ID;
@@ -108,6 +159,11 @@ struct indx_scan_id
   bool need_count_only;		/* get count only, no OIDs are copied */
   bool caches_inited;		/* are the caches initialized?? */
   bool scancache_inited;
+  DB_BIGINT key_limit_lower;	/* lower key limit */
+  DB_BIGINT key_limit_upper;	/* upper key limit */
+  INDX_COV indx_cov;		/* index covering information */
+  MULTI_RANGE_OPT multi_range_opt;	/* optimization for multiple range
+					 * search*/
 };
 
 typedef struct llist_scan_id LLIST_SCAN_ID;
@@ -154,6 +210,7 @@ struct scan_id_struct
   SCAN_POSITION position;	/* Scan Position */
   SCAN_DIRECTION direction;	/* Forward/Backward Direction */
   int readonly_scan;
+  SCAN_OPERATION_TYPE scan_op_type;	/* SELECT, DELETE, UPDATE */
 
   int fixed;			/* if true, pages containing scan
 				   items in a group keep fixed */
@@ -188,9 +245,12 @@ struct scan_id_struct
   } s;
 };				/* Scan Identifier */
 
+#define SCAN_IS_INDEX_COVERED(iscan_id_p)   ((iscan_id_p)->indx_cov.list_id != NULL)
+
 extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				int readonly_scan,
+				SCAN_OPERATION_TYPE scan_op_type,
 				int fixed,
 				int lock_hint,
 				int grouped,
@@ -231,6 +291,7 @@ extern int scan_open_class_attr_scan (THREAD_ENTRY * thread_p,
 extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 /* fields of SCAN_ID */
 				 int readonly_scan,
+				 SCAN_OPERATION_TYPE scan_op_type,
 				 int fixed,
 				 int lock_hint,
 				 int grouped,
@@ -246,6 +307,8 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 REGU_VARIABLE_LIST regu_list_pred,
 				 PRED_EXPR * pr,
 				 REGU_VARIABLE_LIST regu_list_rest,
+				 OUTPTR_LIST * output_val_list,
+				 REGU_VARIABLE_LIST regu_val_list,
 				 int num_attrs_key,
 				 ATTR_ID * attrids_key,
 				 HEAP_CACHE_ATTRINFO * cache_key,
@@ -255,7 +318,7 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 int num_attrs_rest,
 				 ATTR_ID * attrids_rest,
 				 HEAP_CACHE_ATTRINFO * cache_rest,
-				 bool iscan_oid_order);
+				 bool iscan_oid_order, QUERY_ID query_id);
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				int grouped,

@@ -75,11 +75,8 @@ extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id,
 						     int name_length);
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 
-#if defined(WINDOWS)
-static unsigned __stdcall hb_thread_master_reader (void *arg);
-#else
-static void *hb_thread_master_reader (void *arg);
-#endif
+static THREAD_RET_T THREAD_CALLING_CONVENTION hb_thread_master_reader (void
+								       *arg);
 static char *hb_pack_server_name (const char *server_name, int *name_length,
 				  const char *log_path, bool copylogdbyn);
 
@@ -89,7 +86,7 @@ static CSS_CONN_ENTRY *hb_connect_to_master (const char *server_name,
 static int hb_create_master_reader (void);
 static int hb_process_master_request_info (CSS_CONN_ENTRY * conn);
 
-static THREAD_T hb_Master_mon_th;
+static pthread_t hb_Master_mon_th;
 
 static CSS_CONN_ENTRY *hb_Conn = NULL;
 static char hb_Exec_path[PATH_MAX];
@@ -254,19 +251,14 @@ css_receive_heartbeat_data (CSS_CONN_ENTRY * conn, char *data, int size)
 *
 *   arg(in):
 */
-#if defined(WINDOWS)
-static unsigned __stdcall
+static THREAD_RET_T THREAD_CALLING_CONVENTION
 hb_thread_master_reader (void *arg)
-#else
-static void *
-hb_thread_master_reader (void *arg)
-#endif
 {
   int error;
 
   er_log_debug (ARG_FILE_LINE,
 		"hb_thread_master_reader started. (TID:%u). \n",
-		THREAD_ID ());
+		pthread_self ());
 
   error = hb_process_master_request ();
   if (error != NO_ERROR)
@@ -284,11 +276,7 @@ hb_thread_master_reader (void *arg)
       kill (getpid (), SIGTERM);
     }
 
-#if defined(WINDOWS)
-  return 0;
-#else /* WINDOWS */
-  return NULL;
-#endif /* WINDOWS */
+  return (THREAD_RET_T) 0;
 }
 
 
@@ -436,6 +424,7 @@ hb_process_master_request (void)
 
   while (false == hb_Proc_shutdown)
     {
+      int max_fd = 0;
       FD_ZERO (&read_fdset);
       FD_ZERO (&exception_fdset);
 
@@ -443,13 +432,14 @@ hb_process_master_request (void)
 	{
 	  FD_SET (hb_Conn->fd, &read_fdset);
 	  FD_SET (hb_Conn->fd, &exception_fdset);
+	  max_fd = hb_Conn->fd;
 	}
 
       /* select() sets timeout value to 0 or waited time */
       timeout.tv_sec = PRM_TCP_CONNECTION_TIMEOUT;
       timeout.tv_usec = 0;
 
-      r = select (FD_SETSIZE, &read_fdset, NULL, &exception_fdset, &timeout);
+      r = select (max_fd + 1, &read_fdset, NULL, &exception_fdset, &timeout);
       switch (r)
 	{
 	case 0:
@@ -594,18 +584,11 @@ static int
 hb_create_master_reader (void)
 {
   int rv;
-#if !defined(WINDOWS)
-  THREAD_ATTR_T thread_attr;
+  pthread_attr_t thread_attr;
   size_t ts_size;
-#endif /* not WINDOWS */
-  THREAD_T master_reader_th;
+  pthread_t master_reader_th;
 
-#if defined(WINDOWS)
-  UINTPTR thread_handle;
-#endif /* WINDOWS */
-
-#if !defined(WINDOWS)
-  rv = THREAD_ATTR_INIT (thread_attr);
+  rv = pthread_attr_init (&thread_attr);
   if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -613,7 +596,7 @@ hb_create_master_reader (void)
       return ER_CSS_PTHREAD_ATTR_INIT;
     }
 
-  rv = THREAD_ATTR_SETDETACHSTATE (thread_attr, PTHREAD_CREATE_DETACHED);
+  rv = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
   if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -625,11 +608,11 @@ hb_create_master_reader (void)
   /* AIX's pthread is slightly different from other systems.
      Its performance highly depends on the pthread's scope and it's related
      kernel parameters. */
-  rv = THREAD_ATTR_SETSCOPE (thread_attr,
-			     PRM_PTHREAD_SCOPE_PROCESS ?
-			     PTHREAD_SCOPE_PROCESS : PTHREAD_SCOPE_SYSTEM);
+  rv = pthread_attr_setscope (thread_attr,
+			      PRM_PTHREAD_SCOPE_PROCESS ?
+			      PTHREAD_SCOPE_PROCESS : PTHREAD_SCOPE_SYSTEM);
 #else /* AIX */
-  rv = THREAD_ATTR_SETSCOPE (thread_attr, PTHREAD_SCOPE_SYSTEM);
+  rv = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
 #endif /* AIX */
   if (rv != 0)
     {
@@ -641,10 +624,10 @@ hb_create_master_reader (void)
   /* Sun Solaris allocates 1M for a thread stack, and it is quite enough */
 #if !defined(sun) && !defined(SOLARIS)
 #if defined(_POSIX_THREAD_ATTR_STACKSIZE)
-  rv = THREAD_ATTR_GETSTACKSIZE (thread_attr, ts_size);
+  rv = pthread_attr_getstacksize (&thread_attr, &ts_size);
   if (ts_size < (size_t) PRM_THREAD_STACKSIZE)
     {
-      rv = THREAD_ATTR_SETSTACKSIZE (thread_attr, PRM_THREAD_STACKSIZE);
+      rv = pthread_attr_setstacksize (&thread_attr, PRM_THREAD_STACKSIZE);
       if (rv != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -652,16 +635,15 @@ hb_create_master_reader (void)
 	  return ER_CSS_PTHREAD_ATTR_SETSTACKSIZE;
 	}
 
-      THREAD_ATTR_GETSTACKSIZE (thread_attr, ts_size);
+      pthread_attr_getstacksize (&thread_attr, &ts_size);
     }
 #endif /* _POSIX_THREAD_ATTR_STACKSIZE */
 #endif /* not sun && not SOLARIS */
-#endif /* not WINDOWS */
 
 
-  rv = THREAD_CREATE (thread_handle, &thread_attr,
-		      hb_thread_master_reader, (void *) NULL,
-		      &master_reader_th);
+  rv =
+    pthread_create (&master_reader_th, &thread_attr, hb_thread_master_reader,
+		    (void *) NULL);
   if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -681,7 +663,7 @@ hb_create_master_reader (void)
 *   copylogdbyn(in):
 */
 int
-hb_process_init (const char *server_name, const char *log_path, 
+hb_process_init (const char *server_name, const char *log_path,
 		 bool copylogdbyn)
 {
   int error;

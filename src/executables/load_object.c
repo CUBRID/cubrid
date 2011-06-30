@@ -64,14 +64,15 @@
 #define MIGRATION_CHUNK 4096
 static char migration_buffer[MIGRATION_CHUNK];
 
-static int object_disk_size (DESC_OBJ * obj);
-static void put_varinfo (OR_BUF * buf, DESC_OBJ * obj);
+static int object_disk_size (DESC_OBJ * obj, int *offset_size_ptr);
+static void put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size);
 static void put_attributes (OR_BUF * buf, DESC_OBJ * obj);
 static void get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj,
-			      int bound_bit_flag);
+			      int bound_bit_flag, int offset_size);
 static SM_ATTRIBUTE *find_current_attribute (SM_CLASS * class_, int id);
 static void get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
-			  DESC_OBJ * obj, int bound_bit_flag);
+			  DESC_OBJ * obj, int bound_bit_flag,
+			  int offset_size);
 static void fprint_set (FILE * fp, DB_SET * set);
 static int fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string,
@@ -180,20 +181,25 @@ desc_free (DESC_OBJ * obj)
  *    obj(in): object descriptor
  */
 static int
-object_disk_size (DESC_OBJ * obj)
+object_disk_size (DESC_OBJ * obj, int *offset_size_ptr)
 {
   SM_ATTRIBUTE *att;
   SM_CLASS *class_;
   int a, size, i;
 
+  *offset_size_ptr = OR_BYTE_SIZE;
+
   class_ = obj->class_;
+
+re_check:
   size =
     OR_HEADER_SIZE + class_->fixed_size +
     OR_BOUND_BIT_BYTES (class_->fixed_count);
 
   if (class_->variable_count)
     {
-      size += OR_VAR_TABLE_SIZE (class_->variable_count);
+      size +=
+	OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, *offset_size_ptr);
       for (a = class_->fixed_count; a < class_->att_count; a++)
 	{
 	  att = &class_->attributes[a];
@@ -209,7 +215,7 @@ object_disk_size (DESC_OBJ * obj)
 	    {
 	      if (att->type->variable_p)
 		{
-		  size += pr_writeval_disk_size (&obj->values[i]);
+		  size += pr_data_writeval_disk_size (&obj->values[i]);
 		}
 	      else
 		{
@@ -222,7 +228,7 @@ object_disk_size (DESC_OBJ * obj)
 		{
 		  if (!DB_IS_NULL (&att->value))
 		    {
-		      size += pr_writeval_disk_size (&att->value);
+		      size += pr_data_writeval_disk_size (&att->value);
 		    }
 		}
 	      else
@@ -231,6 +237,17 @@ object_disk_size (DESC_OBJ * obj)
 		}
 	    }
 	}
+    }
+
+  if (*offset_size_ptr == OR_BYTE_SIZE && size > OR_MAX_BYTE)
+    {
+      *offset_size_ptr = OR_SHORT_SIZE;	/* 2byte */
+      goto re_check;
+    }
+  if (*offset_size_ptr == OR_SHORT_SIZE && size > OR_MAX_SHORT)
+    {
+      *offset_size_ptr = BIG_VAR_OFFSET_SIZE;	/*4byte */
+      goto re_check;
     }
   return (size);
 }
@@ -244,7 +261,7 @@ object_disk_size (DESC_OBJ * obj)
  *    obj(in): object
  */
 static void
-put_varinfo (OR_BUF * buf, DESC_OBJ * obj)
+put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size)
 {
   SM_ATTRIBUTE *att;
   SM_CLASS *class_;
@@ -255,7 +272,8 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj)
   if (class_->variable_count)
     {
 
-      offset = OR_HEADER_SIZE + OR_VAR_TABLE_SIZE (class_->variable_count) +
+      offset = OR_HEADER_SIZE +
+	OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, offset_size) +
 	class_->fixed_size + OR_BOUND_BIT_BYTES (class_->fixed_count);
 
       for (a = class_->fixed_count; a < class_->att_count; a++)
@@ -274,7 +292,7 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj)
 	    {
 	      if (att->type->variable_p)
 		{
-		  len = pr_writeval_disk_size (&obj->values[i]);
+		  len = pr_data_writeval_disk_size (&obj->values[i]);
 		}
 	      else
 		{
@@ -287,7 +305,7 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj)
 		{
 		  if (!DB_IS_NULL (&att->value))
 		    {
-		      len = pr_writeval_disk_size (&att->value);
+		      len = pr_data_writeval_disk_size (&att->value);
 		    }
 		}
 	      else
@@ -295,10 +313,11 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj)
 		  len = tp_domain_disk_size (att->domain);
 		}
 	    }
-	  or_put_int (buf, offset);
+	  or_put_offset_internal (buf, offset, offset_size);
 	  offset += len;
 	}
-      or_put_int (buf, offset);
+      or_put_offset_internal (buf, offset, offset_size);
+      buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
 }
 
@@ -352,7 +371,7 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
 	    }
 	  else
 	    {
-	      pr_writeval (buf, &obj->values[i]);
+	      pr_data_writeval (buf, &obj->values[i]);
 	      if (bits != NULL)
 		{
 		  OR_ENABLE_BOUND_BIT (bits, att->storage_order);
@@ -368,7 +387,7 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
 	    }
 	  else
 	    {
-	      pr_writeval (buf, &att->value);
+	      pr_data_writeval (buf, &att->value);
 	      if (bits != NULL)
 		{
 		  OR_ENABLE_BOUND_BIT (bits, att->storage_order);
@@ -396,8 +415,9 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
       or_put_data (buf, bits, bsize);
       /*
        * We do not need the bits array anymore, lets free it now.
-       * the pr_writeval() function can perform a longjmp() back to the calling
-       * function if we get an overflow, and bits will not be freed.
+       * the pr_data_writeval() function can perform a longjmp()
+       * back to the calling function if we get an overflow,
+       * and bits will not be freed.
        */
       free_and_init (bits);
     }
@@ -411,14 +431,14 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
 	{
 	  if (!DB_IS_NULL (&obj->values[i]))
 	    {
-	      pr_writeval (buf, &obj->values[i]);
+	      pr_data_writeval (buf, &obj->values[i]);
 	    }
 	}
       else
 	{
 	  if (!DB_IS_NULL (&att->value))
 	    {
-	      pr_writeval (buf, &att->value);
+	      pr_data_writeval (buf, &att->value);
 	    }
 	}
     }
@@ -537,10 +557,23 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
   int error, status;
   bool has_index = false;
   unsigned int repid_bits;
+  int expected_disk_size;
+  int offset_size;
 
   buf = &orep;
   or_init (buf, record->data, record->area_size);
   buf->error_abort = 1;
+
+  expected_disk_size = object_disk_size (obj, &offset_size);
+  if (record->area_size < expected_disk_size)
+    {
+      record->length = -expected_disk_size;
+      error = 1;
+      has_index = false;
+
+      *index_flag = has_index;
+      return (error);
+    }
 
   status = setjmp (buf->env);
   if (status == 0)
@@ -555,23 +588,24 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
 	  return (1);
 	}
 
-      pr_write_mop (buf, obj->classop);
+      /* header */
 
       repid_bits = obj->class_->repid;
       if (obj->class_->fixed_count)
 	{
 	  repid_bits |= OR_BOUND_BIT_FLAG;
 	}
+
+      /* offset size */
+      OR_SET_VAR_OFFSET_SIZE (repid_bits, offset_size);
+
       or_put_int (buf, repid_bits);
 
       /* start chn off at 0 ? */
       or_put_int (buf, 0);
 
-      /* dummy header word */
-      or_put_int (buf, 0);
-
       /* variable info block */
-      put_varinfo (buf, obj);
+      put_varinfo (buf, obj, offset_size);
 
       /* attributes, fixed followed by bound bits, followed by variable */
       put_attributes (buf, obj);
@@ -583,13 +617,15 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
     }
   else
     {
+      assert (false);		/* impossible case */
+
       /*
        * error, currently can only be from buffer overflow
        * might be nice to store the "size guess" from the class
        * SHOULD BE USING TF_STATUS LIKE tf_mem_to_disk, need to
        * merge these two programs !
        */
-      record->length = 0 - object_disk_size (obj);
+      record->length = -expected_disk_size;
       error = 1;
       has_index = false;
     }
@@ -612,7 +648,7 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
  */
 static void
 get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj,
-		  int bound_bit_flag)
+		  int bound_bit_flag, int offset_size)
 {
   SM_ATTRIBUTE *att;
   int *vars = NULL;
@@ -628,13 +664,14 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj,
 	{
 	  return;
 	}
-      offset = or_get_int (buf, &rc);
+      offset = or_get_offset_internal (buf, &rc, offset_size);
       for (i = 0; i < class_->variable_count; i++)
 	{
-	  offset2 = or_get_int (buf, &rc);
+	  offset2 = or_get_offset_internal (buf, &rc, offset_size);
 	  vars[i] = offset2 - offset;
 	  offset = offset2;
 	}
+      buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
 
   bits = NULL;
@@ -660,8 +697,8 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj,
       else
 	{
 	  /* read the disk value into the db_value */
-	  (*(att->type->readval)) (buf, &obj->values[i], att->domain, -1,
-				   true, NULL, 0);
+	  (*(att->type->data_readval)) (buf, &obj->values[i], att->domain, -1,
+					true, NULL, 0);
 	}
     }
 
@@ -685,8 +722,8 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj,
 	   i < class_->att_count && j < class_->variable_count;
 	   i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
 	{
-	  (*(att->type->readval)) (buf, &obj->values[i], att->domain, vars[j],
-				   true, NULL, 0);
+	  (*(att->type->data_readval)) (buf, &obj->values[i], att->domain,
+					vars[j], true, NULL, 0);
 	}
 
       free_and_init (vars);
@@ -734,7 +771,7 @@ find_current_attribute (SM_CLASS * class_, int id)
  */
 static void
 get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
-	      DESC_OBJ * obj, int bound_bit_flag)
+	      DESC_OBJ * obj, int bound_bit_flag, int offset_size)
 {
   SM_REPRESENTATION *oldrep;
   SM_REPR_ATTRIBUTE *rat, *found;
@@ -763,13 +800,14 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
 	    {
 	      goto abort_on_error;
 	    }
-	  offset = or_get_int (buf, &rc);
+	  offset = or_get_offset_internal (buf, &rc, offset_size);
 	  for (i = 0; i < oldrep->variable_count; i++)
 	    {
-	      offset2 = or_get_int (buf, &rc);
+	      offset2 = or_get_offset_internal (buf, &rc, offset_size);
 	      vars[i] = offset2 - offset;
 	      offset = offset2;
 	    }
+	  buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 	}
 
       /* calculate an attribute map */
@@ -801,13 +839,15 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
 	  if (attmap[i] == NULL)
 	    {
 	      /* its gone, skip over it */
-	      (*(type->readval)) (buf, NULL, rat->domain, -1, true, NULL, 0);
+	      (*(type->data_readval)) (buf, NULL, rat->domain, -1, true, NULL,
+				       0);
 	    }
 	  else
 	    {
 	      /* its real, get it into the proper value */
-	      (*(type->readval)) (buf, &obj->values[attmap[i]->storage_order],
-				  rat->domain, -1, true, NULL, 0);
+	      (*(type->data_readval)) (buf,
+				       &obj->values[attmap[i]->storage_order],
+				       rat->domain, -1, true, NULL, 0);
 	    }
 	}
 
@@ -862,16 +902,17 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
 	  if (attmap[att_index] == NULL)
 	    {
 	      /* its null, skip over it */
-	      (*(type->readval)) (buf, NULL, rat->domain, vars[i], true, NULL,
-				  0);
+	      (*(type->data_readval)) (buf, NULL, rat->domain, vars[i], true,
+				       NULL, 0);
 	    }
 	  else
 	    {
 	      /* read it into the proper value */
-	      (*(type->readval)) (buf,
-				  &obj->values[attmap[att_index]->
-					       storage_order], rat->domain,
-				  vars[i], true, NULL, 0);
+	      (*(type->data_readval)) (buf,
+				       &obj->values[attmap
+						    [att_index]->
+						    storage_order],
+				       rat->domain, vars[i], true, NULL, 0);
 	    }
 	}
 
@@ -947,6 +988,7 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record,
   int save;
   int i;
   int rc = NO_ERROR;
+  int offset_size;
 
   if (obj == NULL)
     {
@@ -974,27 +1016,23 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record,
   status = setjmp (buf->env);
   if (status == 0)
     {
-      /* Skip over the class OID.  Could be doing a comparison of the class OID
-       * and the expected OID here.  Domain & size arguments aren't necessary
-       * for the object "readval" function.
-       */
-      (*(tp_Object.readval)) (buf, NULL, NULL, -1, true, NULL, 0);
+      /* offset size */
+      offset_size = OR_GET_OFFSET_SIZE (buf->ptr);
 
       repid_bits = or_get_int (buf, &rc);
       (void) or_get_int (buf, &rc);	/* skip chn */
-      (void) or_get_int (buf, &rc);	/* skip dummy header word */
 
-      /* mask out the repid & bound bit flag */
-      repid = repid_bits & ~OR_BOUND_BIT_FLAG;
+      /* mask out the repid & bound bit flag & offset size flag */
+      repid = repid_bits & ~OR_BOUND_BIT_FLAG & ~OR_OFFSET_SIZE_FLAG;
       bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
 
       if (repid == class_->repid)
 	{
-	  get_desc_current (buf, class_, obj, bound_bit_flag);
+	  get_desc_current (buf, class_, obj, bound_bit_flag, offset_size);
 	}
       else
 	{
-	  get_desc_old (buf, class_, repid, obj, bound_bit_flag);
+	  get_desc_old (buf, class_, repid, obj, bound_bit_flag, offset_size);
 	}
     }
   else
@@ -1180,7 +1218,7 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 static char *
 strnchr (char *str, char ch, int nbytes)
 {
-  for (; (*str) && nbytes; str++, nbytes--)
+  for (; nbytes; str++, nbytes--)
     {
       if (*str == ch)
 	{
@@ -1586,6 +1624,8 @@ desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
       break;
 
     case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_MIGDB,
 			      MIGDB_MSG_CANT_PRINT_ELO));
@@ -1627,6 +1667,8 @@ desc_value_fprint (FILE * fp, DB_VALUE * value)
       break;
 
     case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_MIGDB,
 			      MIGDB_MSG_CANT_PRINT_ELO));
@@ -1814,6 +1856,7 @@ lo_migrate_in (LOID * loid, const char *pathname)
 
 
 static bool filter_ignore_errors[-ER_LAST_ERROR] = { false, };
+
 static bool filter_ignore_init = false;
 /*
  * init_load_err_filter - init error filter array

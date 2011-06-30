@@ -382,7 +382,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   DISK_REPR *disk_repr_p;
   DISK_ATTR *disk_attr_p;
   BTREE_STATS *btree_stats_p;
-  int estimated_npages, estimated_nobjs, estimated_avglen;
+  int estimated_npages, estimated_nobjs, dummy_avg_length;
   int i, j, k, size, n_attrs, tot_n_btstats, tot_key_info_size;
   char *buf_p, *start_p;
 
@@ -474,14 +474,19 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   OR_PUT_INT (buf_p, cls_info_p->time_stamp);
   buf_p += OR_INT_SIZE;
 
+  estimated_npages = estimated_nobjs = dummy_avg_length = 0;
+
   if (!HFID_IS_NULL (&cls_info_p->hfid)
       && heap_estimate (thread_p, &cls_info_p->hfid, &estimated_npages,
-			&estimated_nobjs, &estimated_avglen) > 0)
+			&estimated_nobjs, &dummy_avg_length) != ER_FAILED)
     {
       /* use estimates from the heap since it is likely that its estimates
          are more accurate than the ones gathered at update statistics time */
+      assert (estimated_nobjs >= 0 && estimated_npages >= 0);
 
-      OR_PUT_INT (buf_p, cls_info_p->tot_objects);
+      /* heuristic is that big nobjs is better than small */
+      estimated_nobjs = MAX (estimated_nobjs, cls_info_p->tot_objects);
+      OR_PUT_INT (buf_p, estimated_nobjs);
       buf_p += OR_INT_SIZE;
 
       OR_PUT_INT (buf_p, estimated_npages);
@@ -490,14 +495,13 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
   else
     {
       /* cannot get estimates from the heap, use ones from the catalog */
+      assert (cls_info_p->tot_objects >= 0 && cls_info_p->tot_pages >= 0);
 
       OR_PUT_INT (buf_p, cls_info_p->tot_objects);
       buf_p += OR_INT_SIZE;
 
       OR_PUT_INT (buf_p, cls_info_p->tot_pages);
       buf_p += OR_INT_SIZE;
-
-      estimated_npages = estimated_nobjs = estimated_avglen = 0;
     }
 
   OR_PUT_INT (buf_p, n_attrs);
@@ -531,9 +535,9 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p,
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  OR_PUT_BIGINT (buf_p, disk_attr_p->min_value.bigint);
+	  OR_PUT_BIGINT (buf_p, &(disk_attr_p->min_value.bigint));
 	  buf_p += STATS_MIN_MAX_SIZE;
-	  OR_PUT_BIGINT (buf_p, disk_attr_p->max_value.bigint);
+	  OR_PUT_BIGINT (buf_p, &(disk_attr_p->max_value.bigint));
 	  buf_p += STATS_MIN_MAX_SIZE;
 	  break;
 
@@ -1045,6 +1049,14 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 
 	case DB_TYPE_ELO:
 	  fprintf (fpp, "DB_TYPE_ELO \n");
+	  break;
+
+	case DB_TYPE_BLOB:
+	  fprintf (fpp, "DB_TYPE_BLOB \n");
+	  break;
+
+	case DB_TYPE_CLOB:
+	  fprintf (fpp, "DB_TYPE_CLOB \n");
 	  break;
 
 	case DB_TYPE_VARIABLE:

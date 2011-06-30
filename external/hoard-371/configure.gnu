@@ -1,42 +1,46 @@
-#!/bin/bash
+#!/bin/sh
 
-PWD=`pwd`
-CMD=$0
-PREPATH=${CMD%/*}
-EXTERNAL=${PWD%/*}
-XDBMS=`cd ${EXTERNAL%/*} && pwd`
-ARGS="CC=\"$CC\" CXX=\"$CXX\""
+srcdir=''
+TARGET='linux-gcc-x86-static'
 
-while [ -n "$(echo $1)" ]; do
-	case $1 in
-		--enable-64bit ) ;;
-	esac
-	shift
+while test $# -ge 1; do
+  case "$1" in
+    -h | --help)
+      echo 'configure script for external package'
+      exit 0
+      ;;
+    --srcdir=*)
+      srcdiropt=`echo $1 | sed 's/--srcdir=//'`
+      srcdir=`readlink -f $srcdiropt`
+      shift
+      ;;
+    --enable-64bit)
+      TARGET='linux-gcc-x86-64-static'
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
 done
 
 case $SYSTEM_TYPE in
-	*linux*) 
-		if test "$BIT_MODEL"="-m32"
-		then
-			TARGET="linux-gcc-x86-static"
-		else
-			TARGET="linux-gcc-$MACHING_TYPE-static"
-		fi
-		;;
-	*)       TARGET="" ;;
+  *linux*) 
+    echo "building hoard with target $TARGET"
+    ;;
+  *)
+    TARGET=""
+    ;;
 esac
 
 LIBHOARD=libhoard.a
-#echo "$CONFIGURE $ARGS"
 if [ -f $LIBHOARD ]; then
-	TMP=""
+	echo "built already. skip $PWD"
 else
-	HOARD=$(readlink -f $PREPATH)
-	(cd $HOARD/src; find . -type f) | while read F; do
+	HOARD=$srcdir
+	(cd $HOARD/src; find . -type f | grep -vw ".svn") | while read F; do
 		mkdir -p `dirname $F`
 		rm -f $F; ln -s $HOARD/src/$F $F
 	done
-	eval make $TARGET
-	eval mkdir -p $EXTERNAL/lib
-	eval cp -f $LIBHOARD $EXTERNAL/lib
+	eval make -j $TARGET
 fi

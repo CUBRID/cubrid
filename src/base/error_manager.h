@@ -31,7 +31,6 @@
 
 #include <stdarg.h>
 #if defined (SERVER_MODE)
-#include "thread.h"
 #if defined (WINDOWS)
 #include <winsock2.h>
 #include <windows.h>

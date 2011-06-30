@@ -48,7 +48,7 @@
 #include "cnvlex.h"
 #include "cnverr.h"
 #if defined(SERVER_MODE)
-#include "thread_impl.h"
+#include "thread.h"
 #endif
 #include "critical_section.h"
 #include "dbval.h"		/* this must be the last header file included!!! */
@@ -7105,6 +7105,8 @@ db_string_value (const char *string, const char *format, DB_VALUE * value)
 	  break;
 #endif
 	case DB_TYPE_ELO:
+	case DB_TYPE_BLOB:
+	case DB_TYPE_CLOB:
 	case DB_TYPE_ERROR:
 	case DB_TYPE_DB_VALUE:
 	case DB_TYPE_MULTISET:
@@ -7290,6 +7292,8 @@ db_value_string (const DB_VALUE * value, const char *format,
       break;
 
     case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     case DB_TYPE_ERROR:
     case DB_TYPE_DB_VALUE:
     case DB_TYPE_MULTISET:
@@ -9070,6 +9074,8 @@ db_validate_format (const char *format, DB_TYPE type)
       break;
 
     case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     case DB_TYPE_ERROR:
     case DB_TYPE_DB_VALUE:
     case DB_TYPE_MULTISET:

@@ -354,7 +354,7 @@ odbc_get_desc_field (ODBC_DESC * desc,
 		     SQLSMALLINT rec_number,
 		     SQLSMALLINT field_id,
 		     SQLPOINTER value_ptr,
-		     SQLLEN buffer_length, SQLLEN *string_length_ptr)
+		     SQLLEN buffer_length, SQLLEN * string_length_ptr)
 {
   RETCODE status = ODBC_SUCCESS, rc;
   ODBC_RECORD *record;
@@ -841,14 +841,14 @@ error:
 PUBLIC RETCODE
 odbc_get_desc_rec (ODBC_DESC * desc,
 		   SQLSMALLINT rec_number,
-		   SQLCHAR *name,
+		   SQLCHAR * name,
 		   SQLSMALLINT buffer_length,
-		   SQLSMALLINT *string_length_ptr,
-		   SQLSMALLINT *type_ptr,
-		   SQLSMALLINT *subtype_ptr,
-		   SQLLEN *length_ptr,
-		   SQLSMALLINT *precision_ptr,
-		   SQLSMALLINT *scale_ptr, SQLSMALLINT *nullable_ptr)
+		   SQLSMALLINT * string_length_ptr,
+		   SQLSMALLINT * type_ptr,
+		   SQLSMALLINT * subtype_ptr,
+		   SQLLEN * length_ptr,
+		   SQLSMALLINT * precision_ptr,
+		   SQLSMALLINT * scale_ptr, SQLSMALLINT * nullable_ptr)
 {
   ODBC_RECORD *record = NULL;
   SQLLEN tmp_length;
@@ -863,8 +863,7 @@ odbc_get_desc_rec (ODBC_DESC * desc,
 
   /* WARN : type converting  string_length_ptr(short*) -> (long*) */
   odbc_get_desc_field (desc, rec_number, SQL_DESC_NAME,
-		       (void *) name, buffer_length,
-                       &tmp_length);
+		       (void *) name, buffer_length, &tmp_length);
   *string_length_ptr = (SQLSMALLINT) tmp_length;
 
   odbc_get_desc_field (desc, rec_number, SQL_DESC_TYPE,
@@ -1225,7 +1224,7 @@ odbc_set_desc_rec (ODBC_DESC * desc,
 		   SQLSMALLINT precision,
 		   SQLSMALLINT scale,
 		   SQLPOINTER data_ptr,
-		   SQLLEN *string_length_ptr, SQLLEN *indicator_ptr)
+		   SQLLEN * string_length_ptr, SQLLEN * indicator_ptr)
 {
   /* ODBC_RECORD *record; */
   short concise_type;
@@ -1549,14 +1548,12 @@ is_header_field (short desc_field_id)
 PRIVATE int
 odbc_consistency_check (ODBC_RECORD * record)
 {
-  if (!odbc_is_valid_verbose_type (record->type))
+  if (!odbc_is_valid_type (record->concise_type) ||
+      !odbc_is_valid_type (record->type))
     {
       return FALSE;
     }
-  if (!odbc_is_valid_concise_type (record->concise_type))
-    {
-      return FALSE;
-    }
+
   if (odbc_is_valid_date_verbose_type (record->type) ||
       odbc_is_valid_interval_verbose_type (record->type))
     {

@@ -29,7 +29,7 @@
 
 #include "dbtype.h"
 #include "object_domain.h"
-#include "thread_impl.h"
+#include "thread.h"
 
 #define PI ((double) (3.14159265358979323846264338))
 
@@ -64,5 +64,6 @@ extern int db_atan2_dbval (DB_VALUE * result, DB_VALUE * value,
 extern int db_degrees_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_radians_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_log_generic_dbval (DB_VALUE * result, DB_VALUE * value, long b);
+extern int db_typeof_dbval (DB_VALUE * result, DB_VALUE * value);
 
 #endif /* _ARITHMETIC_H_ */

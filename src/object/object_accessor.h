@@ -53,6 +53,10 @@
        DB_GET_SET(dbvalue) == NULL) || \
       ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_OBJECT) && \
        (DB_GET_OBJECT(dbvalue) == NULL)) || \
+       ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_BLOB) && \
+	(DB_GET_ELO(dbvalue) == NULL)) || \
+       ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_CLOB) && \
+	(DB_GET_ELO(dbvalue) == NULL)) || \
       ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_ELO) && \
        (DB_GET_ELO(dbvalue) == NULL)) ) \
   DB_MAKE_NULL(dbvalue);

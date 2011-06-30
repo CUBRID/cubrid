@@ -18,16 +18,16 @@
 			<value>-670</value>
 		</property>
 		<property name="dataIntegrityViolationCodes">
-			<value>-631, -919, -920, -921, -922, -923, -924</value>
+			<value>-631, -919, -920, -921, -922, -923, -924, -1063, -1067</value>
 		</property>
 		<property name="dataAccessResourceFailureCodes">
-			<value>-669, -673, -677, -2101</value>
+			<value>-669, -673, -677, -1069, -1071, -2101</value>
 		</property>
 		<property name="cannotAcquireLockCodes">
 			<value>-73, -74, -75</value>
 		</property>
 		<property name="deadlockLoserCodes">
-			<value>-966, -967, -968</value>
+			<value>-72, -966, -967, -968</value>
 		</property>
 				
   </bean>

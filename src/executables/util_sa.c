@@ -45,7 +45,6 @@
 #include "db.h"
 #include "authenticate.h"
 #include "schema_manager.h"
-#include "glo_class.h"
 #include "heap_file.h"
 #include "btree.h"
 #include "extendible_hash.h"
@@ -254,6 +253,34 @@ parse_user_define_file (FILE * user_define_file, FILE * output_file)
   return status;
 }
 
+static void
+make_valid_page_size (int *v)
+{
+  int pow_size;
+
+  if (*v < IO_MIN_PAGE_SIZE)
+    {
+      *v = IO_MIN_PAGE_SIZE;
+      return;
+    }
+
+  if (*v > IO_MAX_PAGE_SIZE)
+    {
+      *v = IO_MAX_PAGE_SIZE;
+      return;
+    }
+
+  pow_size = IO_MIN_PAGE_SIZE;
+  if ((*v & (*v - 1)) != 0)
+    {
+      while (pow_size < *v)
+	{
+	  pow_size *= 2;
+	}
+      *v = pow_size;
+    }
+}
+
 /*
  * createdb() - createdb main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -272,26 +299,40 @@ createdb (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   const char *volume_path;
   const char *log_path;
+  const char *lob_path;
   const char *host_name;
   bool overwrite;
   bool verbose;
   const char *comment;
-  int volume_page_count;
   const char *init_file_name;
   const char *volume_spec_file_name;
   const char *user_define_file_name;
-  int page_size;
-  int log_page_count;
+
+  int db_volume_pages;
+  int db_page_size;
+  UINT64 db_volume_size;
+  int log_volume_pages;
   int log_page_size;
+  UINT64 log_volume_size;
+  char *db_volume_str;
+  char *db_page_str;
+  char *log_volume_str;
+  char *log_page_str;
+
+  database_name =
+    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   output_file_name =
     utility_get_option_string_value (arg_map, CREATE_OUTPUT_FILE_S, 0);
   program_name = arg->command_name;
-  database_name =
-    utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   volume_path =
     utility_get_option_string_value (arg_map, CREATE_FILE_PATH_S, 0);
   log_path = utility_get_option_string_value (arg_map, CREATE_LOG_PATH_S, 0);
+  lob_path = utility_get_option_string_value (arg_map, CREATE_LOB_PATH_S, 0);
   host_name =
     utility_get_option_string_value (arg_map, CREATE_SERVER_NAME_S, 0);
   overwrite = utility_get_option_bool_value (arg_map, CREATE_REPLACE_S);
@@ -300,17 +341,103 @@ createdb (UTIL_FUNCTION_ARG * arg)
   init_file_name =
     utility_get_option_string_value (arg_map,
 				     CREATE_CSQL_INITIALIZATION_FILE_S, 0);
-  volume_page_count = utility_get_option_int_value (arg_map, CREATE_PAGES_S);
   volume_spec_file_name =
     utility_get_option_string_value (arg_map, CREATE_MORE_VOLUME_FILE_S, 0);
   user_define_file_name =
     utility_get_option_string_value (arg_map, CREATE_USER_DEFINITION_FILE_S,
 				     0);
-  page_size = utility_get_option_int_value (arg_map, CREATE_PAGE_SIZE_S);
-  log_page_count =
+
+  db_page_size = utility_get_option_int_value (arg_map, CREATE_PAGE_SIZE_S);
+  if (db_page_size != -1)
+    {
+      util_print_deprecated ("--" CREATE_PAGE_SIZE_L);
+    }
+  else
+    {
+      db_page_size = IO_PAGESIZE;
+    }
+
+  db_page_str =
+    utility_get_option_string_value (arg_map, CREATE_DB_PAGE_SIZE_S, 0);
+  if (db_page_str != NULL)
+    {
+      UINT64 v;
+      if (util_size_string_to_byte (db_page_str, &v) != NO_ERROR)
+	{
+	  goto print_create_usage;
+	}
+      db_page_size = (int) v;
+    }
+  make_valid_page_size (&db_page_size);
+
+  db_volume_str =
+    utility_get_option_string_value (arg_map, CREATE_DB_VOLUME_SIZE_S, 0);
+  if (db_volume_str == NULL)
+    {
+      db_volume_size = PRM_DB_VOLUME_SIZE;
+    }
+  else
+    {
+      if (util_size_string_to_byte (db_volume_str, &db_volume_size) !=
+	  NO_ERROR)
+	{
+	  goto print_create_usage;
+	}
+    }
+
+  db_volume_pages = utility_get_option_int_value (arg_map, CREATE_PAGES_S);
+  if (db_volume_pages != -1)
+    {
+      util_print_deprecated ("--" CREATE_PAGES_L);
+      db_volume_size = db_volume_pages * db_page_size;
+    }
+  else
+    {
+      db_volume_pages = db_volume_size / db_page_size;
+    }
+
+  log_page_str =
+    utility_get_option_string_value (arg_map, CREATE_LOG_PAGE_SIZE_S, 0);
+  if (log_page_str == NULL)
+    {
+      log_page_size = db_page_size;
+    }
+  else
+    {
+      UINT64 v;
+      if (util_size_string_to_byte (log_page_str, &v) != NO_ERROR)
+	{
+	  goto print_create_usage;
+	}
+      log_page_size = (int) v;
+    }
+  make_valid_page_size (&log_page_size);
+
+  log_volume_str =
+    utility_get_option_string_value (arg_map, CREATE_LOG_VOLUME_SIZE_S, 0);
+  if (log_volume_str == NULL)
+    {
+      log_volume_size = PRM_LOG_VOLUME_SIZE;
+    }
+  else
+    {
+      if (util_size_string_to_byte (log_volume_str, &log_volume_size) !=
+	  NO_ERROR)
+	{
+	  goto print_create_usage;
+	}
+    }
+
+  log_volume_pages =
     utility_get_option_int_value (arg_map, CREATE_LOG_PAGE_COUNT_S);
-  log_page_size =
-    utility_get_option_int_value (arg_map, CREATE_LOG_PAGE_SIZE_S);
+  if (log_volume_pages != -1)
+    {
+      util_print_deprecated ("--" CREATE_LOG_PAGE_COUNT_L);
+    }
+  else
+    {
+      log_volume_pages = log_volume_size / log_page_size;
+    }
 
   if (database_name == 0 || database_name[0] == 0 ||
       utility_get_option_string_table_size (arg_map) != 1)
@@ -341,15 +468,46 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (volume_page_count < 100)
+  if (sysprm_check_range (PRM_NAME_DB_VOLUME_SIZE, &db_volume_size) !=
+      NO_ERROR)
     {
+      UINT64 min, max;
+      char min_buf[64], max_buf[64];
+
+      if (sysprm_get_range (PRM_NAME_DB_VOLUME_SIZE, &min, &max) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      util_byte_to_size_string (min, min_buf, 64);
+      util_byte_to_size_string (max, max_buf, 64);
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
 				       CREATEDB_MSG_FAILURE));
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
 				       MSGCAT_UTIL_SET_CREATEDB,
-				       CREATEDB_MSG_FEW_PAGES));
-      fclose (output_file);
+				       CREATEDB_MSG_BAD_RANGE),
+	       PRM_NAME_DB_VOLUME_SIZE, min_buf, max_buf);
+      goto error_exit;
+    }
+  if (sysprm_check_range (PRM_NAME_LOG_VOLUME_SIZE, &log_volume_size) !=
+      NO_ERROR)
+    {
+      UINT64 min, max;
+      char min_buf[64], max_buf[64];
+
+      if (sysprm_get_range (PRM_NAME_LOG_VOLUME_SIZE, &min, &max) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      util_byte_to_size_string (min, min_buf, 64);
+      util_byte_to_size_string (max, max_buf, 64);
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_CREATEDB,
+				       CREATEDB_MSG_FAILURE));
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
+				       MSGCAT_UTIL_SET_CREATEDB,
+				       CREATEDB_MSG_BAD_RANGE),
+	       PRM_NAME_LOG_VOLUME_SIZE, min_buf, max_buf);
       goto error_exit;
     }
 
@@ -366,10 +524,11 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  fprintf (output_file, msgcat_message (MSGCAT_CATALOG_UTILS,
-					MSGCAT_UTIL_SET_CREATEDB,
-					CREATEDB_MSG_CREATING),
-	   volume_page_count);
+  util_byte_to_size_string (db_volume_size, er_msg_file,
+			    sizeof (er_msg_file));
+  fprintf (output_file,
+	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB,
+			   CREATEDB_MSG_CREATING), er_msg_file);
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
@@ -377,7 +536,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_to_default (PRM_NAME_PB_NBUFFERS, true);
+  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1000");
   sysprm_set_force (PRM_NAME_XASL_MAX_PLAN_CACHE_ENTRIES, "-1");
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
@@ -386,9 +545,9 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
   db_login ("dba", NULL);
   status = db_init (program_name, true, database_name, volume_path,
-		    NULL, log_path, host_name, overwrite, comment,
-		    volume_spec_file_name, volume_page_count, page_size,
-		    log_page_count, log_page_size);
+		    NULL, log_path, lob_path, host_name, overwrite, comment,
+		    volume_spec_file_name, db_volume_pages, db_page_size,
+		    log_volume_pages, log_page_size);
 
   if (status != NO_ERROR)
     {
@@ -399,7 +558,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  esm_define_esm_classes ();
   sm_mark_system_classes ();
 
   lang_set_national_charset (NULL);
@@ -540,11 +698,11 @@ deletedb (UTIL_FUNCTION_ARG * arg)
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1,
-	   "%s_%s.err", database_name, arg->command_name);
+	    "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_to_default (PRM_NAME_PB_NBUFFERS, true);
+  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1000");
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
@@ -657,7 +815,6 @@ restoredb (UTIL_FUNCTION_ARG * arg)
   char *up_to_date;
   char *database_name;
   bool partial_recovery;
-  bool set_replication;
   BO_RESTART_ARG restart_arg;
 
   database_name =
@@ -666,8 +823,6 @@ restoredb (UTIL_FUNCTION_ARG * arg)
     utility_get_option_string_value (arg_map, RESTORE_UP_TO_DATE_S, 0);
   partial_recovery =
     utility_get_option_bool_value (arg_map, RESTORE_PARTIAL_RECOVERY_S);
-  set_replication =
-    utility_get_option_bool_value (arg_map, RESTORE_REPLICATION_MODE_S);
   restart_arg.printtoc =
     utility_get_option_bool_value (arg_map, RESTORE_LIST_S);
   restart_arg.stopat = -1;
@@ -735,13 +890,6 @@ restoredb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      if (set_replication == true)
-	{
-	  LOG_LSA *final_restored_lsa;
-	  final_restored_lsa = log_get_final_restored_lsa ();
-	  fprintf (stdout, "Last_lsa: %d|%d\n",
-		   final_restored_lsa->pageid, final_restored_lsa->offset);
-	}
       boot_shutdown_server (true);
     }
 
@@ -801,15 +949,15 @@ renamedb (UTIL_FUNCTION_ARG * arg)
   else if (ext_path && access (ext_path, F_OK) == -1)
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_COPYDB,
-				       COPYDB_VOLEXT_PATH_INVALID));
+				       MSGCAT_UTIL_SET_RENAMEDB,
+				       RENAMEDB_VOLEXT_PATH_INVALID));
       goto error_exit;
     }
   else if (control_file_name && access (control_file_name, F_OK) == -1)
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS,
-				       MSGCAT_UTIL_SET_COPYDB,
-				       COPYDB_VOLS_TOFROM_PATHS_FILE_INVALID));
+				       MSGCAT_UTIL_SET_RENAMEDB,
+				       RENAMEDB_VOLS_TOFROM_PATHS_FILE_INVALID));
       goto error_exit;
     }
 
@@ -819,7 +967,7 @@ renamedb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_to_default (PRM_NAME_PB_NBUFFERS, true);
+  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1000");
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
@@ -832,8 +980,8 @@ renamedb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      if (boot_soft_rename (src_db_name, dest_db_name, NULL, NULL, NULL,
-			    ext_path, control_file_name, FALSE, TRUE,
+      if (boot_soft_rename (src_db_name, dest_db_name, NULL, NULL,
+			    NULL, ext_path, control_file_name, FALSE, TRUE,
 			    force_delete) != NO_ERROR)
 	{
 	  fprintf (stdout, "%s\n", db_error_string (3));
@@ -911,7 +1059,7 @@ installdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  db = cfg_add_db (&dir, db_name, db_path, log_path, server_name);
+  db = cfg_add_db (&dir, db_name, db_path, log_path, NULL, server_name);
   if (db == NULL)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
@@ -984,10 +1132,11 @@ copydb (UTIL_FUNCTION_ARG * arg)
   const char *server_name;
   const char *db_path;
   const char *log_path;
+  const char *lob_path;
+  char lob_pathbuf[PATH_MAX];
   const char *ext_path;
   const char *control_file_name;
-  bool overwrite;
-  bool move;
+  bool overwrite, delete_src, copy_lob_path;
 
   src_db_name =
     utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
@@ -1002,16 +1151,28 @@ copydb (UTIL_FUNCTION_ARG * arg)
     utility_get_option_string_value (arg_map, COPY_SERVER_NAME_S, 0);
   db_path = utility_get_option_string_value (arg_map, COPY_FILE_PATH_S, 0);
   log_path = utility_get_option_string_value (arg_map, COPY_LOG_PATH_S, 0);
+  lob_path = utility_get_option_string_value (arg_map, COPY_LOB_PATH_S, 0);
   ext_path =
     utility_get_option_string_value (arg_map, COPY_EXTENTED_VOLUME_PATH_S, 0);
   control_file_name =
     utility_get_option_string_value (arg_map, COPY_CONTROL_FILE_S, 0);
   overwrite = utility_get_option_bool_value (arg_map, COPY_REPLACE_S);
-  move = utility_get_option_bool_value (arg_map, COPY_DELETE_SOURCE_S);
+  delete_src = utility_get_option_bool_value (arg_map, COPY_DELETE_SOURCE_S);
+  copy_lob_path =
+    utility_get_option_bool_value (arg_map, COPY_COPY_LOB_PATH_S);
 
   if (utility_get_option_string_table_size (arg_map) != 2)
     {
       goto print_copy_usage;
+    }
+
+  if (lob_path != NULL && copy_lob_path == true)
+    {
+      goto print_copy_usage;
+    }
+  if (delete_src == true && lob_path == NULL)
+    {
+      copy_lob_path = true;
     }
 
   if (check_database_name (src_db_name)
@@ -1034,7 +1195,7 @@ copydb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_to_default (PRM_NAME_PB_NBUFFERS, true);
+  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1000");
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
@@ -1047,13 +1208,22 @@ copydb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (boot_copy (src_db_name, dest_db_name, db_path, log_path, server_name,
-		 ext_path, control_file_name, overwrite) != NO_ERROR)
+  if (copy_lob_path)
+    {
+      const char *s = boot_get_lob_path ();
+      if (*s != '\0')
+	{
+	  lob_path = strcpy (lob_pathbuf, s);
+	}
+    }
+  if (boot_copy (src_db_name, dest_db_name, db_path, log_path, lob_path,
+		 server_name, ext_path, control_file_name,
+		 overwrite) != NO_ERROR)
     {
       fprintf (stdout, "%s\n", db_error_string (3));
       goto error_exit;
     }
-  if (move)
+  if (delete_src)
     {
       boot_delete (src_db_name, true);
     }
@@ -1121,7 +1291,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
   if (class_name != NULL && class_name[0] != 0)
     {
       if ((class_mop = db_find_class (class_name)) == NULL ||
-	  sm_update_statistics (class_mop) != NO_ERROR)
+	  sm_update_statistics (class_mop, true) != NO_ERROR)
 	{
 	  fprintf (stderr, "%s\n", db_error_string (3));
 	  db_shutdown ();
@@ -1271,7 +1441,8 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_LOG)
     {
       /* this dumps the content of log */
-      int isforward, start_logpageid, dump_npages, desired_tranid;
+      int isforward, dump_npages, desired_tranid;
+      LOG_PAGEID start_logpageid;
       if (diag == DIAGDUMP_ALL
 	  || utility_get_option_string_table_size (arg_map) == 1)
 	{
@@ -1282,12 +1453,12 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	      printf ("isforward (1 or 0) ? ");
 	      scanf ("%d", &isforward);
 	      printf ("start_logpageid (-1 for the first/last page) ? ");
-	      scanf ("%d", &start_logpageid);
+	      scanf ("%lld", &start_logpageid);
 	      printf ("dump_npages (-1 for all pages) ? ");
 	      scanf ("%d", &dump_npages);
 	      printf ("desired_tranid (-1 for all transactions) ? ");
 	      scanf ("%d", &desired_tranid);
-	      printf ("log_dump(%d, %d, %d, %d) (y/n) ? ",
+	      printf ("log_dump(%d, %lld, %d, %d) (y/n) ? ",
 		      isforward, start_logpageid, dump_npages,
 		      desired_tranid);
 	      scanf ("%1s", yn);
@@ -1296,18 +1467,36 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	}
       else if (utility_get_option_string_table_size (arg_map) == 5)
 	{
-	  isforward =
-	    atoi (utility_get_option_string_value (arg_map,
-						   OPTION_STRING_TABLE, 1));
-	  start_logpageid =
-	    atoi (utility_get_option_string_value (arg_map,
-						   OPTION_STRING_TABLE, 2));
-	  dump_npages =
-	    atoi (utility_get_option_string_value (arg_map,
-						   OPTION_STRING_TABLE, 3));
-	  desired_tranid =
-	    atoi (utility_get_option_string_value (arg_map,
-						   OPTION_STRING_TABLE, 4));
+	  const char *cp;
+	  start_logpageid = isforward = dump_npages = desired_tranid = 0;
+
+	  cp = utility_get_option_string_value (arg_map,
+						OPTION_STRING_TABLE, 1);
+	  if (cp != NULL)
+	    {
+	      isforward = atoi (cp);
+	    }
+
+	  cp = utility_get_option_string_value (arg_map,
+						OPTION_STRING_TABLE, 2);
+	  if (cp != NULL)
+	    {
+	      start_logpageid = atoll (cp);
+	    }
+
+	  cp = utility_get_option_string_value (arg_map,
+						OPTION_STRING_TABLE, 3);
+	  if (cp != NULL)
+	    {
+	      dump_npages = atoi (cp);
+	    }
+
+	  cp = utility_get_option_string_value (arg_map,
+						OPTION_STRING_TABLE, 4);
+	  if (cp != NULL)
+	    {
+	      desired_tranid = atoi (cp);
+	    }
 	}
       else
 	{
@@ -1370,7 +1559,7 @@ patchdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (boot_emergency_patch (db_name, recreate_log) != NO_ERROR)
+  if (boot_emergency_patch (db_name, recreate_log, 0, NULL) != NO_ERROR)
     {
       fprintf (stderr, "emergency patch fail.\n");
       goto error_exit;
@@ -1525,7 +1714,7 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
 		       */
 		      npages =
 			btree_estimate_total_numpages (NULL, num_diffkeys,
-						       avg_key_size, domain,
+						       avg_key_size,
 						       num_instance,
 						       &blt_npages,
 						       &blt_wrs_npages);

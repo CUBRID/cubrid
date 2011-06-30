@@ -48,6 +48,7 @@
 
 #include "cas_cci.h"
 #include "cci_handle_mng.h"
+#include "cci_t_lob.h"
 
 #ifdef CCI_XA
 #include "cci_xa.h"
@@ -63,7 +64,7 @@
 #define NET_STR_TO_INT64(INT64_VALUE, PTR)                              \
         do {                                                            \
           INT64           macro_var_tmp_value;                          \
-          memcpy((char*) &macro_var_tmp_value, PTR, SIZE_INT64);        \
+          memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_INT64);        \
           macro_var_tmp_value = ntohi64(macro_var_tmp_value);           \
           INT64_VALUE = macro_var_tmp_value;                            \
         } while (0)
@@ -74,7 +75,7 @@
 #define NET_STR_TO_INT(INT_VALUE, PTR)		                        \
 	do {					                        \
 	  int		macro_var_tmp_value;		                \
-	  memcpy((char*) &macro_var_tmp_value, PTR, SIZE_INT);	        \
+	  memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_INT);	        \
 	  macro_var_tmp_value = ntohl(macro_var_tmp_value);		\
 	  INT_VALUE = macro_var_tmp_value;		                \
 	} while (0)
@@ -82,7 +83,7 @@
 #define NET_STR_TO_SHORT(SHORT_VALUE, PTR)	                        \
 	do {					                        \
 	  short		macro_var_tmp_value;		                \
-	  memcpy((char*) &macro_var_tmp_value, PTR, SIZE_SHORT);        \
+	  memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_SHORT);        \
 	  macro_var_tmp_value = ntohs(macro_var_tmp_value);		\
 	  SHORT_VALUE = macro_var_tmp_value;		                \
 	} while (0)
@@ -90,7 +91,7 @@
 #define NET_STR_TO_FLOAT(FLOAT_VALUE, PTR)	                        \
 	do {					                        \
 	  float		macro_var_tmp_value;		                \
-	  memcpy((char*) &macro_var_tmp_value, PTR, SIZE_FLOAT);        \
+	  memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_FLOAT);        \
 	  macro_var_tmp_value = ntohf(macro_var_tmp_value);	        \
 	  FLOAT_VALUE = macro_var_tmp_value;		                \
 	} while (0)
@@ -98,7 +99,7 @@
 #define NET_STR_TO_DOUBLE(DOUBLE_VALUE, PTR)	                        \
 	do {					                        \
 	  double	macro_var_tmp_value;		                \
-	  memcpy((char*) &macro_var_tmp_value, PTR, SIZE_DOUBLE);       \
+	  memcpy((char*) &macro_var_tmp_value, PTR, NET_SIZE_DOUBLE);       \
 	  macro_var_tmp_value = ntohd(macro_var_tmp_value);             \
 	  DOUBLE_VALUE = macro_var_tmp_value;		                \
 	} while (0)
@@ -108,9 +109,9 @@
 	  short		macro_var_yr, macro_var_mon, macro_var_day;	\
 	  int           pos = 0;                                        \
 	  NET_STR_TO_SHORT(macro_var_yr, (PTR) + pos);		        \
-	  pos += SIZE_SHORT;                                            \
+	  pos += NET_SIZE_SHORT;                                            \
 	  NET_STR_TO_SHORT(macro_var_mon, (PTR) + pos);	                \
-	  pos += SIZE_SHORT;                                            \
+	  pos += NET_SIZE_SHORT;                                            \
           NET_STR_TO_SHORT(macro_var_day, (PTR) + pos);	                \
 	  (DATE_VAL).yr = macro_var_yr;			                \
 	  (DATE_VAL).mon = macro_var_mon;			        \
@@ -122,9 +123,9 @@
 	  short	macro_var_hh, macro_var_mm, macro_var_ss;	        \
           int           pos = 0;                                        \
 	  NET_STR_TO_SHORT(macro_var_hh, (PTR) + pos);                  \
-          pos += SIZE_SHORT;                                            \
+          pos += NET_SIZE_SHORT;                                            \
 	  NET_STR_TO_SHORT(macro_var_mm, (PTR) + pos);                  \
-          pos += SIZE_SHORT;                                            \
+          pos += NET_SIZE_SHORT;                                            \
 	  NET_STR_TO_SHORT(macro_var_ss, (PTR) + pos);                  \
 	  (TIME_VAL).hh = macro_var_hh;			                \
 	  (TIME_VAL).mm = macro_var_mm;			                \
@@ -136,11 +137,11 @@
           short macro_var_hh, macro_var_mm, macro_var_ss, macro_var_ms; \
           int           pos = 0;                                        \
           NET_STR_TO_SHORT(macro_var_hh, (PTR) + pos);                  \
-          pos += SIZE_SHORT;                                            \
+          pos += NET_SIZE_SHORT;                                            \
           NET_STR_TO_SHORT(macro_var_mm, (PTR) + pos);                  \
-          pos += SIZE_SHORT;                                            \
+          pos += NET_SIZE_SHORT;                                            \
           NET_STR_TO_SHORT(macro_var_ss, (PTR) + pos);                  \
-          pos += SIZE_SHORT;                                            \
+          pos += NET_SIZE_SHORT;                                            \
           NET_STR_TO_SHORT(macro_var_ms, (PTR) + pos);                  \
           (TIME_VAL).hh = macro_var_hh;                                 \
           (TIME_VAL).mm = macro_var_mm;                                 \
@@ -151,13 +152,13 @@
 #define NET_STR_TO_TIMESTAMP(TS_VAL, PTR)	        \
 	do {					        \
 	  NET_STR_TO_DATE((TS_VAL), (PTR));		\
-	  NET_STR_TO_TIME((TS_VAL), (PTR) + SIZE_DATE);	\
+	  NET_STR_TO_TIME((TS_VAL), (PTR) + NET_SIZE_DATE);	\
 	} while (0)
 
 #define NET_STR_TO_DATETIME(TS_VAL, PTR)                \
         do {                                            \
           NET_STR_TO_DATE((TS_VAL), (PTR));             \
-          NET_STR_TO_MTIME((TS_VAL), (PTR) + SIZE_DATE);\
+          NET_STR_TO_MTIME((TS_VAL), (PTR) + NET_SIZE_DATE);\
         } while (0)
 
 #define NET_STR_TO_OBJECT(OBJ_VAL, PTR)		                \
@@ -166,9 +167,9 @@
 	  short 	macro_var_volid, macro_var_slotid;	\
           int           pos = 0;                                \
 	  NET_STR_TO_INT(macro_var_pageid, (PTR) + pos);	\
-          pos += SIZE_INT;                                      \
+          pos += NET_SIZE_INT;                                      \
 	  NET_STR_TO_SHORT(macro_var_slotid, (PTR) + pos);	\
-          pos += SIZE_SHORT;                                    \
+          pos += NET_SIZE_SHORT;                                    \
 	  NET_STR_TO_SHORT(macro_var_volid, (PTR) + pos);	\
 	  (OBJ_VAL).pageid = macro_var_pageid;		        \
 	  (OBJ_VAL).slotid = macro_var_slotid;		        \
@@ -177,13 +178,13 @@
 
 #define ADD_ARG_INT(BUF, VALUE)			\
 	do {					\
-	  net_buf_cp_int((BUF), SIZE_INT);	\
+	  net_buf_cp_int((BUF), NET_SIZE_INT);	\
 	  net_buf_cp_int((BUF), (VALUE));	\
 	} while (0)
 
 #define ADD_ARG_INT64(BUF, VALUE)               \
         do {                                    \
-          net_buf_cp_int((BUF), SIZE_INT64);    \
+          net_buf_cp_int((BUF), NET_SIZE_INT64);    \
           net_buf_cp_bigint((BUF), (VALUE));    \
         } while (0)
 
@@ -191,7 +192,7 @@
 
 
 #ifdef UNICODE_DATA
-#define ADD_ARG_STR(BUF, STR, SIZE)				\
+#define ADD_ARG_STR(BUF, STR, SIZE, CHARSET)			\
 	do {							\
 	  char *_macro_tmp_str = STR;				\
 	  int _macro_tmp_int = 0;				\
@@ -203,8 +204,35 @@
 	  FREE_MEM(_macro_tmp_str);				\
 	} while (0)
 #else
-#define ADD_ARG_STR(BUF, STR, SIZE)				\
-  	ADD_ARG_BYTES(BUF, STR, SIZE)
+#if defined (WINDOWS)
+#define ADD_ARG_STR(BUF, STR, SIZE, CHARSET)		 \
+	do {                                             \
+ 	  if (CHARSET != NULL) {                         \
+ 	    int new_size;                                \
+ 	    char * target;                               \
+	    new_size = encode_string(STR, SIZE, &target, CHARSET);\
+ 	    if (new_size < 0)                            \
+ 	      {                                          \
+ 		return new_size;                         \
+ 	      }                                          \
+	    else if (new_size == 0)                      \
+	      {                                          \
+ 	        ADD_ARG_BYTES(BUF, STR, SIZE);           \
+	      }                                          \
+	    else                                         \
+	      {                                          \
+ 	        ADD_ARG_BYTES(BUF, target, new_size);    \
+ 	        free (target);                           \
+	      }                                          \
+ 	  }                                              \
+ 	  else {                                         \
+ 	    ADD_ARG_BYTES(BUF, STR, SIZE);               \
+ 	  }                                              \
+ 	} while (0)
+#else
+#define ADD_ARG_STR(BUF, STR, SIZE, CHARSET)		 \
+ 	ADD_ARG_BYTES(BUF, STR, SIZE);
+#endif
 #endif
 
 #define ADD_ARG_BYTES(BUF, STR, SIZE)		\
@@ -215,20 +243,20 @@
 
 #define ADD_ARG_FLOAT(BUF, VALUE)		\
 	do {					\
-	  net_buf_cp_int(BUF, SIZE_FLOAT);      \
+	  net_buf_cp_int(BUF, NET_SIZE_FLOAT);      \
 	  net_buf_cp_float(BUF, VALUE);		\
 	} while (0)
 
 #define ADD_ARG_DOUBLE(BUF, VALUE)		\
 	do {					\
-	  net_buf_cp_int(BUF, SIZE_DOUBLE);	\
+	  net_buf_cp_int(BUF, NET_SIZE_DOUBLE);	\
 	  net_buf_cp_double(BUF, VALUE);	\
 	} while (0)
 
 #define ADD_ARG_DATETIME(BUF, VALUE_P)		\
 	do {					\
 	  T_CCI_DATE	*macro_var_date_p = (T_CCI_DATE*) (VALUE_P);	\
-	  net_buf_cp_int(BUF, SIZE_DATETIME);	\
+	  net_buf_cp_int(BUF, NET_SIZE_DATETIME);	\
 	  net_buf_cp_short(BUF, macro_var_date_p->yr);	\
 	  net_buf_cp_short(BUF, macro_var_date_p->mon);	\
 	  net_buf_cp_short(BUF, macro_var_date_p->day);	\
@@ -241,7 +269,7 @@
 #define ADD_ARG_OBJECT(BUF, OID_P)			\
 	do {						\
 	  T_OBJECT	*macro_var_obj_p = (T_OBJECT*) (OID_P);	\
-	  net_buf_cp_int(BUF, SIZE_OBJECT);		\
+	  net_buf_cp_int(BUF, NET_SIZE_OBJECT);		\
 	  net_buf_cp_int(BUF, macro_var_obj_p->pageid);		\
 	  net_buf_cp_short(BUF, macro_var_obj_p->slotid);		\
 	  net_buf_cp_short(BUF, macro_var_obj_p->volid);		\
@@ -249,10 +277,18 @@
 
 #define ADD_ARG_CACHE_TIME(BUF, SEC, USEC)	\
 	do {					\
-	  net_buf_cp_int(BUF, SIZE_INT*2);	\
+	  net_buf_cp_int(BUF, NET_SIZE_INT*2);	\
 	  net_buf_cp_int(BUF, SEC);		\
 	  net_buf_cp_int(BUF, USEC);		\
 	} while (0)
+
+#define ADD_ARG_LOB(BUF, VALUE_P)		\
+	do {					\
+	  T_LOB		*macro_var_lob_p = (T_LOB*) (VALUE_P);	\
+	  net_buf_cp_int(BUF, macro_var_lob_p->handle_size);	\
+	  net_buf_cp_str(BUF, (char*) macro_var_lob_p->handle, macro_var_lob_p->handle_size);	\
+	} while (0)
+
 
 /************************************************************************
  * EXPORTED TYPE DEFINITIONS						*
@@ -277,6 +313,7 @@ extern int qe_execute (T_REQ_HANDLE * req_handle,
 		       char flag, int max_col_size, T_CCI_ERROR * err_buf);
 extern int qe_end_tran (T_CON_HANDLE * con_handle,
 			char type, T_CCI_ERROR * err_buf);
+extern int qe_end_session (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf);
 extern int qe_get_db_parameter (T_CON_HANDLE * con_handle,
 				T_CCI_DB_PARAM param_name,
 				void *value, T_CCI_ERROR * err_buf);
@@ -292,18 +329,10 @@ extern int qe_fetch (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 extern int qe_get_data (T_REQ_HANDLE * req_handle, int col_no, int a_type,
 			void *value, int *indicator);
 extern int qe_get_cur_oid (T_REQ_HANDLE * req_handle, char *oid_str_buf);
-extern int qe_glo_new (T_CON_HANDLE * con_handle,
-		       char *class_name,
-		       char *filename, char *oid_str, T_CCI_ERROR * err_buf);
-extern int qe_glo_save (T_CON_HANDLE * con_handle,
-			char *oid_str, char *filename, T_CCI_ERROR * err_buf);
-extern int qe_glo_load (T_CON_HANDLE * con_handle,
-			char *oid_str, int out_fd, T_CCI_ERROR * err_buf);
 extern int qe_schema_info (T_REQ_HANDLE * req_handle,
 			   T_CON_HANDLE * con_handle,
-			   int type,
-			   char *class_name,
-			   char *attr_name, char flag, T_CCI_ERROR * err_buf);
+			   int type, char *arg1, char *arg2,
+			   char flag, T_CCI_ERROR * err_buf);
 extern int qe_oid_get (T_REQ_HANDLE * req_handle,
 		       T_CON_HANDLE * con_handle,
 		       char *oid_str,
@@ -333,6 +362,12 @@ extern int qe_col_get (T_REQ_HANDLE * req_handle,
 		       char *oid_str,
 		       const char *col_attr,
 		       int *col_size, int *col_type, T_CCI_ERROR * err_buf);
+extern int qe_get_row_count (T_REQ_HANDLE * req_handle,
+			     T_CON_HANDLE * con_handle,
+			     int *row_count, T_CCI_ERROR * err_buf);
+extern int qe_get_last_insert_id (T_REQ_HANDLE * req_handle,
+				  T_CON_HANDLE * con_handle,
+				  void *value, T_CCI_ERROR * err_buf);
 extern int qe_col_size (T_CON_HANDLE * con_handle,
 			char *oid_str,
 			const char *col_attr, int *col_size,
@@ -380,6 +415,8 @@ extern int qe_get_data_date (T_CCI_U_TYPE u_type,
 			     char *col_value_p, void *value);
 extern int qe_get_data_bit (T_CCI_U_TYPE u_type,
 			    char *col_value_p, int col_val_size, void *value);
+extern int qe_get_data_lob (T_CCI_U_TYPE u_type,
+			    char *col_value_p, int col_val_size, void *value);
 extern int qe_get_attr_type_str (T_CON_HANDLE * con_handle,
 				 char *class_name,
 				 char *attr_name,
@@ -397,6 +434,11 @@ extern int qe_get_param_info (T_REQ_HANDLE * req_handle,
 			      T_CCI_ERROR * err_buf);
 extern void qe_param_info_free (T_CCI_PARAM_INFO * param);
 
+#if defined(WINDOWS)
+extern int qe_set_charset (T_CON_HANDLE * con_handle, char *str);
+extern int encode_string (char *str, int size, char **target, char *charset);
+#endif
+
 #ifdef CCI_XA
 extern int qe_xa_prepare (T_CON_HANDLE * con_handle,
 			  XID * xid, T_CCI_ERROR * err_buf);
@@ -406,8 +448,17 @@ extern int qe_xa_end_tran (T_CON_HANDLE * con_handle,
 			   XID * xid, char type, T_CCI_ERROR * err_buf);
 #endif
 
+extern int qe_lob_new (T_CON_HANDLE * con_handle, T_LOB ** lob,
+		       T_CCI_U_TYPE type, T_CCI_ERROR * err_buf);
+extern int qe_lob_write (T_CON_HANDLE * con_handle, T_LOB * lob,
+			 INT64 start_pos, int length, const char *buf,
+			 T_CCI_ERROR * err_buf);
+extern int qe_lob_read (T_CON_HANDLE * con_handle, T_LOB * lob,
+			INT64 start_pos, int length, char *buf,
+			T_CCI_ERROR * err_buf);
+
+
 /************************************************************************
  * EXPORTED VARIABLES							*
  ************************************************************************/
-
 #endif /* _CCI_QUERY_EXECUTE_H_ */

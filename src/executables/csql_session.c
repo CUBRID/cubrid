@@ -163,6 +163,12 @@ csql_get_session_cmd_no (const char *input)
   int num_matches = 0;		/* # of matched commands */
   int matched_index = -1;	/* last matched entry index */
 
+  if (*input == '\0')
+    {
+      /* csql>; means csql>;xrun */
+      return S_CMD_XRUN;
+    }
+
   /*
    * Use mbslen() here (which returns the number of *characters*, not the
    * number of *bytes*), because intl_mbs_ncasecmp counts in characters, not

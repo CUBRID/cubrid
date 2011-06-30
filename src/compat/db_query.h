@@ -134,10 +134,15 @@ typedef struct db_prepare_info DB_PREPARE_INFO;
 
 struct db_prepare_info
 {
-  const char *name;		/* the name of the prepared statement */
-  const char *statement;	/* the string literal that defines the statement */
-  DB_SESSION *prepared_session;	/* a sub-session used to compile and run the statement */
-  DB_PREPARE_INFO *next;	/* linked list */
+  char *statement;		/* statement literal */
+  DB_QUERY_TYPE *columns;	/* columns */
+  CUBRID_STMT_TYPE stmt_type;	/* statement type */
+  DB_VALUE_ARRAY host_variables;	/* statement host variables */
+  int auto_param_count;		/* number of auto parametrized values */
+  int recompile;		/* statement should be recompiled */
+  int oids_included;
+  char **into_list;		/* names of the "into" variables */
+  int into_count;		/* count of elements from the into array */
 };
 
 extern SM_DOMAIN *db_query_format_src_domain (DB_QUERY_TYPE * query_type);
@@ -233,6 +238,9 @@ extern int db_query_end_internal (DB_QUERY_RESULT * result,
 				  bool notify_server);
 
 extern void db_clear_client_query_result (int notify_server);
+extern void db_init_prepare_info (DB_PREPARE_INFO * info);
+extern int db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer);
+extern int db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void db_final_client_query_result (void);
 #endif

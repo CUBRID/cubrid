@@ -44,7 +44,8 @@ struct t_log_info
   char *logstr;
 };
 
-static int log_top (FILE * fp, char *filename);
+static int log_top (FILE * fp, char *filename, long start_offset,
+		    long end_offset);
 static int info_delete (T_LOG_INFO * info);
 static void print_result (void);
 static int info_add (T_LOG_INFO * info, char *start_date, char *end_date);
@@ -59,6 +60,7 @@ log_top_tran (int argc, char *argv[], int arg_start)
   int i;
   char *filename;
   FILE *fp;
+  long start_offset, end_offset;
 
   info_arr_size = 0;
 
@@ -73,7 +75,12 @@ log_top_tran (int argc, char *argv[], int arg_start)
 	  fprintf (stderr, "%s[%s]\n", strerror (errno), filename);
 	  return -1;
 	}
-      log_top (fp, filename);
+      if (get_file_offset (filename, &start_offset, &end_offset) < 0)
+	{
+	  start_offset = end_offset = -1;
+	}
+
+      log_top (fp, filename, start_offset, end_offset);
       fclose (fp);
     }
 
@@ -83,7 +90,7 @@ log_top_tran (int argc, char *argv[], int arg_start)
 }
 
 static int
-log_top (FILE * fp, char *filename)
+log_top (FILE * fp, char *filename, long start_offset, long end_offset)
 {
   char *linebuf;
   T_STRING *str_buf = NULL;
@@ -104,8 +111,21 @@ log_top (FILE * fp, char *filename)
       goto error;
     }
 
+  if (start_offset != -1)
+    {
+      fseek (fp, start_offset, SEEK_SET);
+    }
+
   while (1)
     {
+      if (end_offset != -1)
+	{
+	  if (ftell (fp) > end_offset)
+	    {
+	      break;
+	    }
+	}
+
       if (ut_get_line (fp, linebuf_tstr, &linebuf, &lineno) <= 0)
 	break;
 

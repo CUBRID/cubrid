@@ -39,7 +39,7 @@
 #include "recovery.h"
 #include "disk_manager.h"
 #include "file_io.h"
-#include "thread_impl.h"
+#include "thread.h"
 
 /*
  * NOTE: NULL_VOLID generally means a bad volume identifier
@@ -216,6 +216,10 @@ extern void log_append_abort_client_loose_ends (THREAD_ENTRY * thread_p,
 						LOG_TDES * tdes);
 extern int log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
 					   const OID * class_oid);
+extern int log_mark_modified_class_as_update_stats_required (THREAD_ENTRY *
+							     thread_p,
+							     const OID *
+							     class_oid);
 extern void log_increase_num_transient_classnames (int tran_index);
 extern void log_decrease_num_transient_classnames (int tran_index);
 extern int log_get_num_transient_classnames (int tran_index);
@@ -237,7 +241,8 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		 bool skip_head);
 extern void log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 			  const char *db_fullname, const char *logpath,
-			  const char *prefix_logname, DKNPAGES log_npages);
+			  const char *prefix_logname, DKNPAGES log_npages,
+			  FILE * outfp);
 extern PGLENGTH log_get_io_page_size (THREAD_ENTRY * thread_p,
 				      const char *db_fullname,
 				      const char *logpath,
@@ -260,7 +265,7 @@ extern void log_append_run_postpone (THREAD_ENTRY * thread_p,
  * FOR DEBUGGING
  */
 extern void xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
-		       PAGEID start_logpageid, DKNPAGES dump_npages,
+		       LOG_PAGEID start_logpageid, DKNPAGES dump_npages,
 		       TRANID desired_tranid);
 
 #endif /* _LOG_MANAGER_H_ */

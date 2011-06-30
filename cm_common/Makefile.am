@@ -21,10 +21,9 @@
 SRC = $(top_srcdir)/src
 CM_COMMON_DIR = $(SRC)/cm_common
 
-INCLUDES = @SRC_INC@
-DEFS += @SYS_DEFS@ @VERSION_DEFS@ @COMMON_DEFS@ @DIR_DEFS@
-LIBS += @SYS_LIBS@
-
+AM_CPPFLAGS = @SRC_INC@ \
+	@SYS_DEFS@ @VERSION_DEFS@ @COMMON_DEFS@ @DIR_DEFS@
+#AM_LIBADD = @SYS_LIBS@
 
 
 bin_PROGRAMS = cub_jobsa cub_sainfo 
@@ -36,20 +35,19 @@ libcmstat_la_SOURCES = \
 	$(CM_COMMON_DIR)/cm_errmsg.c   \
 	$(CM_COMMON_DIR)/cm_utils.c	\
 	$(CM_COMMON_DIR)/cm_broker_jni.c
-
-libcmstat_la_LDFLAGS = @BROKER_ADMIN_LIB@ -version-number @LT_VERSION@
+libcmstat_la_LDFLAGS = -version-number @LT_VERSION@
+libcmstat_la_LIBADD = @BROKER_ADMIN_LIB@
 
 libcmdep_la_SOURCES = \
 	$(CM_COMMON_DIR)/cm_dep_tasks.c   \
 	$(CM_COMMON_DIR)/cm_dstring.c   \
 	$(CM_COMMON_DIR)/cm_nameval.c   \
 	$(CM_COMMON_DIR)/cm_utils.c
-
-libcmdep_la_LDFLAGS = @CS_LIB@ -version-number @LT_VERSION@
-
+libcmdep_la_LDFLAGS = -version-number @LT_VERSION@
+libcmdep_la_LIBADD = @CS_LIB@
 
 cub_jobsa_SOURCES = $(CM_COMMON_DIR)/cm_class_info_sa.c
-cub_jobsa_LDFLAGS = @SA_LIB@
+cub_jobsa_LDADD = @SA_LIB@
 
 cub_sainfo_SOURCES = $(CM_COMMON_DIR)/cm_trigger_info_sa.c
-cub_sainfo_LDFLAGS = @SA_LIB@
+cub_sainfo_LDADD = @SA_LIB@

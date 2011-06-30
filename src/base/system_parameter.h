@@ -32,23 +32,39 @@
 #include <stdio.h>
 
 #include "error_manager.h"
+#include "error_code.h"
 #include "porting.h"
 
 typedef enum
 {
   PRM_ERR_NO_ERROR = NO_ERROR,
-  PRM_ERR_UNKNOWN_PARAM,
-  PRM_ERR_BAD_VALUE,
-  PRM_ERR_NO_MEM_FOR_PRM,
-  PRM_ERR_BAD_STRING,
-  PRM_ERR_BAD_RANGE,
-  PRM_ERR_RESET_BAD_RANGE,
-  PRM_ERR_CANNOT_CHANGE,
-  PRM_ERR_NOT_FOR_CLIENT,
-  PRM_ERR_NOT_FOR_SERVER,
-  PRM_ERR_NOT_SOLE_TRAN,
-  PRM_ERR_COMM_ERR,
-  PRM_ERR_FILE_ERR
+  PRM_ERR_NOT_DIRECTORY = 2,
+  PRM_ERR_INIT_FILE_NOT_CREATED = 3,
+  PRM_ERR_CANT_WRITE = 4,
+  PRM_ERR_CANT_ACCESS = 6,
+  PRM_ERR_NO_HOME = 7,
+  PRM_ERR_NO_VALUE = 8,
+  PRM_ERR_CANT_OPEN_INIT = 9,
+  PRM_ERR_BAD_LINE = 10,
+  PRM_ERR_BAD_ENV_VAR = 11,
+  PRM_ERR_UNKNOWN_PARAM = 12,
+  PRM_ERR_BAD_VALUE = 13,
+  PRM_ERR_NO_MEM_FOR_PRM = 14,
+  PRM_ERR_BAD_STRING = 15,
+  PRM_ERR_BAD_RANGE = 16,
+  PRM_ERR_UNIX_ERROR = 17,
+  PRM_ERR_NO_MSG = 18,
+  PRM_ERR_RESET_BAD_RANGE = 19,
+  PRM_ERR_KEYWROD_INFO_INT = 20,
+  PRM_ERR_KEYWORK_INFO_FLOAT = 21,
+  PRM_ERR_DEPRICATED = 22,
+  PRM_ERR_NOT_BOTH = 23,
+  PRM_ERR_CANNOT_CHANGE = 24,
+  PRM_ERR_NOT_FOR_CLIENT = 25,
+  PRM_ERR_NOT_FOR_SERVER = 26,
+  PRM_ERR_NOT_SOLE_TRAN = 27,
+  PRM_ERR_COMM_ERR = 28,
+  PRM_ERR_FILE_ERR = 29
 } SYSPRM_ERR;
 
 typedef enum compat_mode COMPAT_MODE;
@@ -95,8 +111,14 @@ extern bool PRM_IO_LOCKF_ENABLE;
 #define PRM_NAME_SR_NBUFFERS "sort_buffer_pages"
 extern int PRM_SR_NBUFFERS;
 
+#define PRM_NAME_SORT_BUFFER_SIZE "sort_buffer_size"
+extern UINT64 PRM_SORT_BUFFER_SIZE;
+
 #define PRM_NAME_PB_NBUFFERS "data_buffer_pages"
 extern int PRM_PB_NBUFFERS;
+
+#define PRM_NAME_PAGE_BUFFER_SIZE "data_buffer_size"
+extern UINT64 PRM_PAGE_BUFFER_SIZE;
 
 #define PRM_NAME_HF_UNFILL_FACTOR "unfill_factor"
 extern float PRM_HF_UNFILL_FACTOR;
@@ -106,6 +128,9 @@ extern float PRM_BT_UNFILL_FACTOR;
 
 #define PRM_NAME_BT_OID_NBUFFERS "index_scan_oid_buffer_pages"
 extern float PRM_BT_OID_NBUFFERS;
+
+#define PRM_NAME_BT_OID_BUFFER_SIZE "index_scan_oid_buffer_size"
+extern UINT64 PRM_BT_OID_BUFFER_SIZE;
 
 #define PRM_NAME_BT_INDEX_SCAN_OID_ORDER "index_scan_in_oid_order"
 extern bool PRM_BT_INDEX_SCAN_OID_ORDER;
@@ -128,11 +153,17 @@ extern int PRM_LK_RUN_DEADLOCK_INTERVAL;
 #define PRM_NAME_LOG_NBUFFERS "log_buffer_pages"
 extern int PRM_LOG_NBUFFERS;
 
+#define PRM_NAME_LOG_BUFFER_SIZE "log_buffer_size"
+extern UINT64 PRM_LOG_BUFFER_SIZE;
+
 #define PRM_NAME_LOG_CHECKPOINT_NPAGES "checkpoint_every_npages"
 extern int PRM_LOG_CHECKPOINT_NPAGES;
 
 #define PRM_NAME_LOG_CHECKPOINT_INTERVAL_MINUTES "checkpoint_interval_in_mins"
 extern int PRM_LOG_CHECKPOINT_INTERVAL_MINUTES;
+
+#define PRM_NAME_LOG_CHECKPOINT_SLEEP_MSECS "checkpoint_sleep_msecs"
+extern int PRM_LOG_CHECKPOINT_SLEEP_MSECS;
 
 #define PRM_NAME_LOG_BACKGROUND_ARCHIVING "background_archiving"
 extern bool PRM_LOG_BACKGROUND_ARCHIVING;
@@ -148,6 +179,9 @@ extern bool PRM_LOG_SWEEP_CLEAN;
 
 #define PRM_NAME_COMMIT_ON_SHUTDOWN "commit_on_shutdown"
 extern bool PRM_COMMIT_ON_SHUTDOWN;
+
+#define PRM_NAME_SHUTDOWN_WAIT_TIME_IN_SECS "shutdown_wait_time_in_secs"
+extern int PRM_SHUTDOWN_WAIT_TIME_IN_SECS;
 
 #define PRM_NAME_CSQL_AUTO_COMMIT "csql_auto_commit"
 extern bool PRM_CSQL_AUTO_COMMIT;
@@ -203,6 +237,12 @@ extern bool PRM_PTHREAD_SCOPE_PROCESS;
 #define PRM_NAME_TEMP_MEM_BUFFER_PAGES "temp_file_memory_size_in_pages"
 extern int PRM_TEMP_MEM_BUFFER_PAGES;
 
+#define PRM_NAME_INDEX_SCAN_KEY_BUFFER_PAGES "index_scan_key_buffer_pages"
+extern int PRM_INDEX_SCAN_KEY_BUFFER_PAGES;
+
+#define PRM_NAME_INDEX_SCAN_KEY_BUFFER_SIZE "index_scan_key_buffer_size"
+extern UINT64 PRM_INDEX_SCAN_KEY_BUFFER_SIZE;
+
 #define PRM_NAME_DONT_REUSE_HEAP_FILE "dont_reuse_heap_file"
 extern bool PRM_DONT_REUSE_HEAP_FILE;
 
@@ -248,6 +288,9 @@ extern int PRM_COMPAT_MODE;
 #define PRM_NAME_ANSI_QUOTES "ansi_quotes"
 extern bool PRM_ANSI_QUOTES;
 
+#define PRM_NAME_DEFAULT_WEEK_FORMAT "default_week_format"
+extern int PRM_DEFAULT_WEEK_FORMAT;
+
 #define PRM_NAME_TEST_MODE "test_mode"
 extern bool PRM_TEST_MODE;
 
@@ -259,6 +302,30 @@ extern bool PRM_PIPES_AS_CONCAT;
 
 #define PRM_NAME_MYSQL_TRIGGER_CORRELATION_NAMES "mysql_trigger_correlation_names"
 extern bool PRM_MYSQL_TRIGGER_CORRELATION_NAMES;
+
+#define PRM_NAME_REQUIRE_LIKE_ESCAPE_CHARACTER "require_like_escape_character"
+extern bool PRM_REQUIRE_LIKE_ESCAPE_CHARACTER;
+
+#define PRM_NAME_NO_BACKSLASH_ESCAPES "no_backslash_escapes"
+extern bool PRM_NO_BACKSLASH_ESCAPES;
+
+#define PRM_NAME_GROUP_CONCAT_MAX_LEN "group_concat_max_len"
+extern int PRM_GROUP_CONCAT_MAX_LEN;
+
+#define PRM_NAME_STRING_MAX_SIZE_BYTES "string_max_size_bytes"
+extern int PRM_STRING_MAX_SIZE_BYTES;
+
+#define PRM_NAME_ADD_COLUMN_UPDATE_HARD_DEFAULT "add_column_update_hard_default"
+extern bool PRM_ADD_COLUMN_UPDATE_HARD_DEFAULT;
+
+#define PRM_NAME_RETURN_NULL_ON_FUNCTION_ERRORS "return_null_on_function_errors"
+extern bool PRM_RETURN_NULL_ON_FUNCTION_ERRORS;
+
+#define PRM_NAME_PLUS_AS_CONCAT "plus_as_concat"
+extern bool PRM_PLUS_AS_CONCAT;
+
+#define PRM_NAME_ALTER_TABLE_CHANGE_TYPE_STRICT "alter_table_change_type_strict"
+extern bool PRM_ALTER_TABLE_CHANGE_TYPE_STRICT;
 
 #define PRM_NAME_COMPACTDB_PAGE_RECLAIM_ONLY "compactdb_page_reclaim_only"
 extern int PRM_COMPACTDB_PAGE_RECLAIM_ONLY;
@@ -313,6 +380,9 @@ extern int PRM_LIST_MAX_QUERY_CACHE_ENTRIES;
 #define PRM_NAME_LIST_MAX_QUERY_CACHE_PAGES "query_cache_size_in_pages"
 extern int PRM_LIST_MAX_QUERY_CACHE_PAGES;
 
+#define PRM_NAME_USE_ORDERBY_SORT_LIMIT  "use_orderby_sort_limit"
+extern bool PRM_USE_ORDERBY_SORT_LIMIT;
+
 #define PRM_NAME_REPLICATION_MODE "replication"
 extern bool PRM_REPLICATION_MODE;
 
@@ -327,6 +397,21 @@ extern int PRM_HA_LOG_APPLIER_STATE;
 
 #define PRM_NAME_HA_NODE_LIST "ha_node_list"
 extern const char *PRM_HA_NODE_LIST;
+
+#define PRM_NAME_HA_REPLICA_LIST "ha_replica_list"
+extern const char *PRM_HA_REPLICA_LIST;
+
+#define PRM_NAME_HA_DB_LIST "ha_db_list"
+extern const char *PRM_HA_DB_LIST;
+
+#define PRM_NAME_HA_COPY_LOG_BASE "ha_copy_log_base"
+extern const char *PRM_HA_COPY_LOG_BASE;
+
+#define PRM_NAME_HA_COPY_SYNC_MODE "ha_copy_sync_mode"
+extern const char *PRM_HA_COPY_SYNC_MODE;
+
+#define PRM_NAME_HA_APPLY_MAX_MEM_SIZE "ha_apply_max_mem_size"
+extern int PRM_HA_APPLY_MAX_MEM_SIZE;
 
 #define PRM_NAME_HA_PORT_ID "ha_port_id"
 extern int PRM_HA_PORT_ID;
@@ -360,6 +445,9 @@ extern int PRM_HA_CHANGEMODE_INTERVAL_IN_MSECS;
 
 #define PRM_NAME_HA_MAX_HEARTBEAT_GAP "ha_max_heartbeat_gap"
 extern int PRM_HA_MAX_HEARTBEAT_GAP;
+
+#define PRM_NAME_HA_PING_HOSTS "ha_ping_hosts"
+extern const char *PRM_HA_PING_HOSTS;
 
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 extern bool PRM_JAVA_STORED_PROCEDURE;
@@ -430,6 +518,12 @@ extern bool PRM_XASL_DEBUG_DUMP;
 #define PRM_NAME_LOG_MAX_ARCHIVES "log_max_archives"
 extern int PRM_LOG_MAX_ARCHIVES;
 
+#define PRM_NAME_FORCE_REMOVE_LOG_ARCHIVES "force_remove_log_archives"
+extern bool PRM_FORCE_REMOVE_LOG_ARCHIVES;
+
+#define PRM_NAME_REMOVE_LOG_ARCHIVES_INTERVAL "remove_log_archive_interval_in_secs"
+extern int PRM_REMOVE_LOG_ARCHIVES_INTERVAL;
+
 #define PRM_NAME_LOG_NO_LOGGING "no_logging"
 extern bool PRM_LOG_NO_LOGGING;
 
@@ -475,17 +569,37 @@ extern const char *PRM_SERVICE_SERVICE_LIST;
 #define PRM_NAME_SERVICE_SERVER_LIST "service::server"
 extern const char *PRM_SERVICE_SERVER_LIST;
 
+#define PRM_NAME_SESSION_STATE_TIMEOUT "session_state_timeout"
+extern int PRM_SESSION_STATE_TIMEOUT;
+
+#define PRM_NAME_MULTI_RANGE_OPT_LIMIT "multi_range_optimization_limit"
+extern int PRM_MULTI_RANGE_OPT_LIMIT;
+
+#define PRM_NAME_ACCESS_IP_CONTROL "access_ip_control"
+extern bool PRM_ACCESS_IP_CONTROL;
+
+#define PRM_NAME_ACCESS_IP_CONTROL_FILE "access_ip_control_file"
+extern const char *PRM_ACCESS_IP_CONTROL_FILE;
+
+#define PRM_NAME_DB_VOLUME_SIZE "db_volume_size"
+extern UINT64 PRM_DB_VOLUME_SIZE;
+
+#define PRM_NAME_LOG_VOLUME_SIZE "log_volume_size"
+extern UINT64 PRM_LOG_VOLUME_SIZE;
+
 extern int sysprm_load_and_init (const char *db_name, const char *conf_file);
 extern int sysprm_reload_and_init (const char *db_name,
 				   const char *conf_file);
 extern void sysprm_final (void);
 extern void sysprm_dump_parameters (FILE * fp);
+extern void sysprm_set_er_log_file (char *base_db_name);
 extern void sysprm_dump_server_parameters (FILE * fp);
 extern int sysprm_change_parameters (const char *data);
 extern int sysprm_obtain_parameters (char *data, int len);
 extern int sysprm_change_server_parameters (const char *data);
 extern int sysprm_obtain_server_parameters (char *data, int len);
 extern void sysprm_tune_client_parameters (void);
+extern bool sysprm_prm_change_should_clear_cache (char *data);
 #if !defined (CS_MODE)
 extern int xsysprm_change_server_parameters (const char *data);
 extern int xsysprm_obtain_server_parameters (char *data, int len);
@@ -493,7 +607,11 @@ extern void xsysprm_dump_server_parameters (FILE * fp);
 #endif /* !CS_MODE */
 extern int sysprm_set_force (const char *pname, const char *pvalue);
 extern int sysprm_set_to_default (const char *pname, bool set_to_force);
+extern int sysprm_check_range (const char *pname, void *value);
+extern int sysprm_get_range (const char *pname, void *min, void *max);
 extern int prm_get_master_port_id (void);
 extern bool prm_get_commit_on_shutdown (void);
 extern bool prm_get_query_mode_sync (void);
+extern int prm_adjust_parameters (void);
+
 #endif /* _SYSTEM_PARAMETER_H_ */

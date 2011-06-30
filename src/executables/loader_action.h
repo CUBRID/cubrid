@@ -29,8 +29,6 @@
 
 typedef enum
 {
-  SYS_ELO_INTERNAL,
-  SYS_ELO_EXTERNAL,
   SYS_USER,
   SYS_CLASS
 } ACT_SYSOBJ_TYPE;

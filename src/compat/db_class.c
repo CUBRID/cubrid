@@ -1473,6 +1473,20 @@ db_constrain_non_null (MOP class_, const char *name,
   att_names[1] = NULL;
   if (on_or_off)
     {
+      bool has_nulls = false;
+      retval = do_check_rows_for_null (class_, name, &has_nulls);
+      if (retval != NO_ERROR)
+	{
+	  return retval;
+	}
+
+      if (has_nulls)
+	{
+	  retval = ER_SM_ATTR_NOT_NULL;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, retval, 1, name);
+	  return retval;
+	}
+
       retval = db_add_constraint (class_, DB_CONSTRAINT_NOT_NULL,
 				  NULL, att_names, class_attribute);
     }

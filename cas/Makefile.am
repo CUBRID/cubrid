@@ -39,11 +39,11 @@ DBMT_DIR = $(SRC)/dbmt
 QATOOLS_DIR = $(SRC)/qatools
 API_DIR = $(SRC)/api
 
-INCLUDES = @SRC_INC@ @EXT_INC@
-DEFS = @SYS_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
+AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ \
+	@SYS_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
 
-lib_LIBRARIES = libcas.a
-libcas_a_SOURCES = \
+noinst_LTLIBRARIES = libcas.la
+libcas_la_SOURCES = \
 	$(BROKER_DIR)/cas.c \
 	$(BROKER_DIR)/cas_network.c \
 	$(BROKER_DIR)/cas_net_buf.c \
@@ -59,7 +59,9 @@ libcas_a_SOURCES = \
 	$(BROKER_DIR)/broker_filename.c \
 	$(BROKER_DIR)/broker_util.c \
 	$(BROKER_DIR)/cas_error.c
-libcas_a_CFLAGS = $(AM_CFLAGS) -DLIBCAS_FOR_JSP -fPIC
+libcas_la_CFLAGS = $(AM_CFLAGS) -fPIC
+libcas_la_CPPFLAGS = $(AM_CPPFLAGS) -DLIBCAS_FOR_JSP
+libcas_la_LDFLAGS = -static
 
 lib_LTLIBRARIES = libcascci.la
 libcascci_la_SOURCES = \
@@ -69,11 +71,17 @@ libcascci_la_SOURCES = \
 	$(CCI_DIR)/cci_net_buf.c \
 	$(CCI_DIR)/cci_network.c \
 	$(CCI_DIR)/cci_handle_mng.c \
-	$(CCI_DIR)/cci_t_set.c
+	$(CCI_DIR)/cci_t_set.c \
+	$(CCI_DIR)/cci_t_lob.c
 #	$(API_DIR)/api_util.c \
 #	$(API_DIR)/api_value_indexer.c \
 #	$(API_DIR)/api_handle.c \
 #	$(API_DIR)/cci_stub.c
-	
 libcascci_la_LDFLAGS = -version-number @LT_VERSION@
 
+VERSIONED_FILES = \
+	$(BROKER_DIR)/cas.c \
+	$(CCI_DIR)/cas_cci.c \
+	$(CCI_DIR)/cci_network.c
+$(VERSIONED_FILES): $(top_srcdir)/BUILD_NUMBER
+	touch $@

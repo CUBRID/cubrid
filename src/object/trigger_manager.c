@@ -141,7 +141,9 @@ const char *TR_ATT_ACTION_OLD = "action";
 const char *TR_ATT_PROPERTIES = "properties";
 
 int tr_Current_depth = 0;
-int tr_Maximum_depth = TR_INFINITE_RECURSION_LEVEL;
+int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
+OID tr_Stack[TR_MAX_RECURSION_LEVEL + 1];
+
 bool tr_Invalid_transaction = false;
 char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2];
 
@@ -262,6 +264,10 @@ static int is_required_trigger (TR_TRIGGER * trigger, DB_OBJLIST * classes);
 
 static int map_flush_helper (const void *key, void *data, void *args);
 static int define_trigger_classes (void);
+
+static TR_RECURSION_DECISION tr_check_recursivity (OID oid, OID stack[],
+						   int stack_size,
+						   bool is_statement);
 
 /* ERROR HANDLING */
 
@@ -2810,8 +2816,84 @@ tr_delete_schema_cache (TR_SCHEMA_CACHE * cache, DB_OBJECT * class_object)
       tr_free_schema_cache (cache);
     }
   AU_ENABLE (save);
-  return (NO_ERROR);
+  return NO_ERROR;
 }
+
+
+/*
+ * tr_delete_triggers_for_class - Finds all triggers on a class and deletes
+ *                                them one by one.
+ *                                WARNING: it really deletes them, not the wimpy
+ *                                delete_schema_cache() which only invalidates them.
+ *
+ *
+ *
+ *    return: error code
+ *    cache(in): schema cache
+ *    class_object(in): class_object
+ *
+ * Note:
+ *    This removes only the triggers that have the given class as
+ *    the trigger object, and not attributes, or super- or subclasses.
+ *    The idea is that if the user deletes a class, it is reasonable
+ *    to assume that he does not want its triggers to remain around.
+ */
+int
+tr_delete_triggers_for_class (TR_SCHEMA_CACHE * cache,
+			      DB_OBJECT * class_object)
+{
+  TR_TRIGGER *trigger;
+  int save;
+  DB_OBJLIST *m;
+  int didwork = 1;
+  int error;
+
+  if (NULL == cache)
+    {
+      return (NO_ERROR);
+    }
+
+  AU_DISABLE (save);
+
+  while (didwork)
+    {
+      didwork = 0;
+
+      /* need better error handling here */
+      if ((error = tr_validate_schema_cache (cache)) != NO_ERROR)
+	{
+	  break;
+	}
+      for (m = cache->objects; m != NULL; m = m->next)
+	{
+	  trigger = tr_map_trigger (m->op, 0);
+	  if (trigger == NULL)
+	    {
+	      continue;
+	    }
+	  if (trigger->class_mop != class_object)
+	    {
+	      continue;
+	    }
+
+	  tr_drop_trigger_internal (trigger, 0);
+	  didwork = 1;
+
+	  /* we can only delete one trigger per operation, because we need
+	   * to re-validate the schema cache after each delete, so that we
+	   * can iterate through the rest of its elements.
+	   */
+	  break;
+	}
+    }
+
+
+  tr_free_schema_cache (cache);
+
+  AU_ENABLE (save);
+  return NO_ERROR;
+}
+
 
 
 /* TRIGGER TABLE */
@@ -4444,6 +4526,47 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
 }
 
 /*
+ * tr_check_recursivity() - Analyze the trigger stack and detect if the
+ *                          given trigger has occured earlier: this is a way
+ *                          to detect recursive trigger chains at runtime.
+ *    return: TR_DECISION_CONTINUE - no recursion found
+ *            TR_DECISION_HALT_WITH_ERROR - found recursive triggers
+ *            TR_DECISION_DO_NOT_CONTINUE - found recursive STATEMENT trigger
+ *    oid (in): OID of trigger to analyze
+ *    stack(in): array of stack_size OIDs of the calling triggers
+ *    stack_size(in):
+ *    is_statement(in): if the current trigger is a STATEMENT one and it turns
+ *                      out it is recursive, ignore it silently, with no error
+ */
+static TR_RECURSION_DECISION
+tr_check_recursivity (OID oid, OID stack[], int stack_size, bool is_statement)
+{
+  int i, min;
+  assert (stack);
+  assert (stack_size < TR_MAX_RECURSION_LEVEL);
+
+  /* we allow recursive triggers, if they are not STATEMENT triggers */
+  if (!is_statement)
+    {
+      return TR_DECISION_CONTINUE;
+    }
+
+  min = MIN (stack_size, TR_MAX_RECURSION_LEVEL);
+  for (i = 0; i < min; i++)
+    {
+      if (oid_compare (&oid, &stack[i]) == 0)
+	{
+	  /* this is a STATEMENT trigger, we should not go further
+	   * with the action, but we should allow the call to succeed.
+	   */
+	  return TR_DECISION_DO_NOT_CONTINUE;
+	}
+    }
+
+  return TR_DECISION_CONTINUE;
+}
+
+/*
  * eval_action() - The function evaluates the input trigger action.
  *    return: int
  *    trigger(in):
@@ -4460,6 +4583,58 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp,
   TR_ACTIVITY *act;
   DB_VALUE value;
   int pt_status;
+  OID oid_of_trigger;
+  TR_RECURSION_DECISION dec;
+  bool is_statement = false;
+
+  if (trigger->object)
+    {
+      oid_of_trigger = trigger->object->oid_info.oid;
+    }
+  else
+    {
+      error = ER_TR_INTERNAL_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, trigger->name);
+      return error;
+    }
+
+  /* If this is NOT a statement trigger, we just continue through. Recursive
+   * triggers will step past the max depth and will be rejected.
+   * STATEMENT triggers, on the other side, should be fired only once. This
+   * is why we keep the OID stack and we check it if we have a STATEMENT trig.
+   */
+  is_statement = (trigger->event == TR_EVENT_STATEMENT_DELETE ||
+		  trigger->event == TR_EVENT_STATEMENT_INSERT ||
+		  trigger->event == TR_EVENT_STATEMENT_UPDATE);
+
+  if (is_statement)
+    {
+      dec = tr_check_recursivity (oid_of_trigger, tr_Stack,
+				  tr_Current_depth - 1, is_statement);
+      switch (dec)
+	{
+	case TR_DECISION_HALT_WITH_ERROR:
+	  error = ER_TR_EXCEEDS_MAX_REC_LEVEL;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
+		  tr_Current_depth, trigger->name);
+	  return error;
+
+	case TR_DECISION_DO_NOT_CONTINUE:
+	  return NO_ERROR;
+
+	case TR_DECISION_CONTINUE:
+	  break;
+	}
+    }
+
+  if (tr_Current_depth <= TR_MAX_RECURSION_LEVEL)
+    {
+      tr_Stack[tr_Current_depth - 1] = oid_of_trigger;
+    }
+  else
+    {
+      assert (false);
+    }
 
   act = trigger->action;
   if (act != NULL)
@@ -4822,14 +4997,6 @@ compare_recursion_levels (int rl_1, int rl_2)
     {
       ret = 0;
     }
-  else if (rl_2 == TR_INFINITE_RECURSION_LEVEL)
-    {
-      ret = -1;
-    }
-  else if (rl_1 == TR_INFINITE_RECURSION_LEVEL)
-    {
-      ret = 1;
-    }
   else
     {
       ret = (rl_1 > rl_2) ? 1 : -1;
@@ -4862,6 +5029,7 @@ start_state (TR_STATE ** current, const char *name)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_TR_EXCEEDS_MAX_REC_LEVEL, 2, tr_Maximum_depth, name);
+	  --tr_Current_depth;
 	}
       else
 	{
@@ -5523,7 +5691,7 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object,
   TR_DEFERRED_CONTEXT *c, *c_next;
   TR_TRIGLIST *t, *next;
   TR_TRIGGER *trigger;
-  int save_recursion, status;
+  int status;
   bool rejected;
 
   /*
@@ -5532,9 +5700,6 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object,
    */
   if (!TR_EXECUTION_ENABLED)
     return NO_ERROR;
-
-  /* save the current recursion level */
-  save_recursion = tr_Current_depth;
 
   for (c = tr_Deferred_activities, c_next = NULL;
        c != NULL && !error; c = c_next)
@@ -5566,7 +5731,11 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object,
 		   * temporarily restore the recursion level in effect when
 		   * this was scheduled
 		   */
-		  tr_Current_depth = t->recursion_level;
+		  /* Removed: the depth must not be touched since we
+		   * keep track of the entire trigger stack to detect recursive
+		   * trigger calls. Re-setting the current depth to a (possibly
+		   * lower value) could destroy the stack contents. */
+		  /* tr_Current_depth = t->recursion_level; */
 
 		  status = execute_activity (trigger, TR_TIME_DEFERRED,
 					     t->target, NULL, &rejected);
@@ -5591,7 +5760,7 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object,
 		    }
 
 		  /*
-		   * else, thinks the trigger can't be evaulated yet,
+		   * else, thinks the trigger can't be evaluated yet,
 		   * shouldn't happen
 		   */
 		}
@@ -5607,9 +5776,6 @@ tr_execute_deferred_activities (DB_OBJECT * trigger_object,
 	  remove_deferred_context (c);
 	}
     }
-
-  /* restore the recursion level */
-  tr_Current_depth = save_recursion;
 
   return (error);
 }
@@ -6261,7 +6427,7 @@ tr_status_as_string (DB_TRIGGER_STATUS status)
  *    quoted_id_flag(in):
  */
 int
-tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp, bool quoted_id_flag)
+tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
@@ -6281,16 +6447,7 @@ tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp, bool quoted_id_flag)
     {
 
       fprintf (fp, "CREATE TRIGGER ");
-      if (quoted_id_flag ||
-	  pt_is_keyword (trigger->name) ||
-	  !lang_check_identifier (trigger->name, strlen (trigger->name)))
-	{
-	  fprintf (fp, "[%s]\n", trigger->name);
-	}
-      else
-	{
-	  fprintf (fp, "%s\n", trigger->name);
-	}
+      fprintf (fp, "[%s]\n", trigger->name);
       fprintf (fp, "  STATUS %s\n", tr_status_as_string (trigger->status));
       fprintf (fp, "  PRIORITY %f\n", trigger->priority);
 
@@ -6312,30 +6469,11 @@ tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp, bool quoted_id_flag)
 	{
 	  name = db_get_class_name (trigger->class_mop);
 	  fprintf (fp, " ON ");
-	  if (quoted_id_flag ||
-	      pt_is_keyword (name) ||
-	      !lang_check_identifier (name, strlen (name)))
-	    {
-	      fprintf (fp, "[%s]", name);
-	    }
-	  else
-	    {
-	      fprintf (fp, "%s", name);
-	    }
+	  fprintf (fp, "[%s]", name);
 
 	  if (trigger->attribute != NULL)
 	    {
-	      if (quoted_id_flag ||
-		  pt_is_reserved_word (trigger->attribute) ||
-		  !lang_check_identifier (trigger->attribute,
-					  strlen (trigger->attribute)))
-		{
-		  fprintf (fp, "([%s])", trigger->attribute);
-		}
-	      else
-		{
-		  fprintf (fp, "(%s)", trigger->attribute);
-		}
+	      fprintf (fp, "([%s])", trigger->attribute);
 	    }
 	}
       fprintf (fp, "\n");
@@ -6488,8 +6626,8 @@ tr_dump_all_triggers (FILE * fp, bool quoted_id_flag)
 				  tr_dump_trigger (trigger_object, fp,
 						   quoted_id_flag);
 				  fprintf (fp,
-					   "call change_trigger_owner('%s',"
-					   " '%s') on class db_root;\n\n",
+					   "call [change_trigger_owner]('%s',"
+					   " '%s') on class [db_root];\n\n",
 					   trigger->name,
 					   get_user_name (trigger->owner));
 				}
@@ -6536,8 +6674,7 @@ is_required_trigger (TR_TRIGGER * trigger, DB_OBJLIST * classes)
  *    classes(in):
  */
 int
-tr_dump_selective_triggers (FILE * fp, bool quoted_id_flag,
-			    DB_OBJLIST * classes)
+tr_dump_selective_triggers (FILE * fp, DB_OBJLIST * classes)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
@@ -6573,28 +6710,28 @@ tr_dump_selective_triggers (FILE * fp, bool quoted_id_flag,
 		    {
 		      trigger_object = DB_GET_OBJECT (&value);
 		      trigger = tr_map_trigger (trigger_object, 1);
-		      if (trigger->class_mop != NULL
-			  && !is_required_trigger (trigger, classes))
-			{
-			  continue;
-			}
 		      if (trigger == NULL)
 			{
 			  error = er_errid ();
 			}
 		      else
 			{
+			  if (trigger->class_mop != NULL
+			      && !is_required_trigger (trigger, classes))
+			    {
+			      continue;
+			    }
+
 			  /* don't dump system class triggers */
 			  if (trigger->class_mop == NULL
 			      || !sm_is_system_class (trigger->class_mop))
 			    {
 			      if (trigger->status != TR_STATUS_INVALID)
 				{
-				  tr_dump_trigger (trigger_object, fp,
-						   quoted_id_flag);
+				  tr_dump_trigger (trigger_object, fp);
 				  fprintf (fp,
-					   "call change_trigger_owner('%s',"
-					   " '%s') on class db_root;\n\n",
+					   "call [change_trigger_owner]('%s',"
+					   " '%s') on class [db_root];\n\n",
 					   trigger->name,
 					   get_user_name (trigger->owner));
 				}
@@ -6874,6 +7011,13 @@ tr_get_depth (void)
 int
 tr_set_depth (int depth)
 {
+  if (depth > TR_MAX_RECURSION_LEVEL || depth < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_MAX_DEPTH_TOO_BIG, 1,
+	      TR_MAX_RECURSION_LEVEL);
+      return ER_TR_MAX_DEPTH_TOO_BIG;
+    }
+
   tr_Maximum_depth = depth;
   return NO_ERROR;
 }
@@ -6915,7 +7059,7 @@ void
 tr_init (void)
 {
   tr_Current_depth = 0;
-  tr_Maximum_depth = TR_INFINITE_RECURSION_LEVEL;
+  tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
   tr_Invalid_transaction = false;
   tr_Deferred_activities = NULL;
   tr_Deferred_activities_tail = NULL;

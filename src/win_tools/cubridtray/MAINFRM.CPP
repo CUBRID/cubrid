@@ -404,15 +404,15 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	if (!m_TrayIcon.Create(this, theLang.GetMenu(), "CUBRID Service Tray", AfxGetApp()->LoadIcon(IDR_STOP), WM_TRAYNOTIFY)) {
 		int fail = 1;
 
-		CString msg = "CUBRID Service Tray를 등록하는데 실패했습니다. 다시 시도하시겠습니까?";
+		CString msg = "Unable to register the CUBRID Service Tray. Retry?";
 		if (AfxMessageBox(msg, MB_YESNO | MB_ICONSTOP) == IDYES) {
 			if(m_TrayIcon.Create(this, theLang.GetMenu(), "CUBRID Service Tray", AfxGetApp()->LoadIcon(IDR_STOP), WM_TRAYNOTIFY)) {
 				fail = 0;
 			}
-			msg = "CUBRID Service Tray를 등록하는데 실패했습니다. 제어판-관리도구-서비스에서 CUBRIDService 동작 상태를 점검하시기 바랍니다.";
+			msg = "Unable to register the CUBRID Service Tray. Check if the CUBRIDService has been started in your Control Panel > Administrative Tools > Services.";
 		}
 		else {
-			msg = "제어판-관리도구-서비스에서 CUBRIDService 동작 상태를 점검하시기 바랍니다.";
+			msg = "Check if the CUBRIDService has been started in your Control Panel > Administrative Tools > Services.";
 		}
 
 		if (fail == 1){

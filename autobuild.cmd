@@ -1,20 +1,23 @@
 #!/bin/bash
 
-JAVA_HOME=/home1/irteam/app/jdk/jdk6
+if [ "x$JAVA_HOME" = "x" ]; then
+	JAVA_HOME=/home1/irteam/app/jdk/jdk6
+fi
 
 . ./autogen.sh
 
-./configure --prefix=`pwd`/../deploy
+if [ -d build ]; then
+	rm -rf build
+fi
 
-make
+mkdir -p build && cd build
+../configure --prefix=`pwd`/../../deploy && make -j
 
-make install
-
-if [ $? = 0 ] 
-  then
-    echo "build success"
-    exit 0
-  else
-    echo "build error"
-    exit -1 
+if [ $? = 0 ]
+	then
+	echo "build success"
+	exit 0
+else
+	echo "build error"
+	exit -1 
 fi

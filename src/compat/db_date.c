@@ -49,6 +49,9 @@
 #define MMDDYYYY        0
 #define YYYYMMDD        1
 
+/* affects DATE/TIME parsing (from string) for mysql compatibility */
+#define DATETIME_FIELD_LIMIT 1000000
+
 #if defined(WINDOWS)
 #define snprintf _snprintf
 #endif
@@ -59,6 +62,7 @@ typedef struct ampm_buf
   int len;
 } AMPM_BUF;
 
+static void fill_local_ampm_str (char str[10], bool am);
 static void decode_time (int timeval, int *hourp, int *minutep, int *secondp);
 static int encode_time (int hour, int minute, int second);
 static void decode_mtime (int mtimeval, int *hourp, int *minutep,
@@ -67,12 +71,46 @@ static unsigned int encode_mtime (int hour, int minute, int second,
 				  int millisecond);
 static int init_tm (struct tm *);
 static int get_current_year (void);
-static const char *parse_date (const char *buf, DB_DATE * date);
-static const char *parse_time (const char *buf, DB_TIME * mtime);
-static const char *parse_mtime (const char *buf, unsigned int *mtime,
-				bool * is_msec, bool * is_explicit);
-static const char *parse_timestamp (const char *buf, DB_TIMESTAMP * utime);
-static const char *parse_datetime (const char *buf, DB_DATETIME * datetime);
+static const char *parse_date (const char *buf, int buf_len, DB_DATE * date);
+static const char *parse_time (const char *buf, int buf_len, DB_TIME * mtime);
+static const char *parse_mtime (const char *buf, int buf_len,
+				unsigned int *mtime, bool * is_msec,
+				bool * is_explicit);
+static const char *parse_timestamp (const char *buf, int buf_len,
+				    DB_TIMESTAMP * utime);
+static const char *parse_datetime (const char *buf, int buf_len,
+				   DB_DATETIME * datetime);
+static char const *parse_date_separated (char const *str, char const *strend,
+					 DB_DATE * date,
+					 char const **syntax_check,
+					 int *year_digits, char *sep_ch);
+static char const *parse_mtime_separated (char const *str, char const *strend,
+					  unsigned int *mtime,
+					  char const **syntax_check,
+					  int *time_parts, char *sep_ch,
+					  bool * has_explicit_msec,
+					  bool is_datetime);
+static char const *parse_explicit_mtime_separated (char const *str,
+						   char const *strend,
+						   unsigned int *mtime,
+						   char const **syntax_check,
+						   bool * has_explicit_msec);
+static char const *parse_explicit_mtime_compact (char const *str,
+						 char const *strend,
+						 unsigned int *mtime);
+static char const *parse_timestamp_compact (char const *str,
+					    char const *strend,
+					    DB_DATE * date,
+					    unsigned int *mtime,
+					    bool * has_explicit_time,
+					    bool * has_explicit_msec);
+static char const *parse_timedate_separated (char const *str,
+					     char const *strend,
+					     DB_DATE * date,
+					     unsigned int *mtime,
+					     char const **syntax_check,
+					     bool * has_explicit_msec);
+static int get_end_of_week_one_of_year (int year, int mode);
 
 /*
  * julian_encode() - Generic routine for calculating a julian date given
@@ -701,10 +739,11 @@ get_current_year (void)
  *    current year will be discovered and used.
  * return : NULL on error
  * buf(in): a buffer containing a date to be parsed
+ * buf_len(in): the length of the string to be parsed
  * date(out): a pointer to a DB_DATE to be modified
  */
 static const char *
-parse_date (const char *buf, DB_DATE * date)
+parse_date (const char *buf, int buf_len, DB_DATE * date)
 {
   int part[3] = { 0, 0, 0 };
   int part_char_len[3] = { 0, 0, 0 };
@@ -716,20 +755,24 @@ parse_date (const char *buf, DB_DATE * date)
   int date_style = -1;
   int year_part, month_part, day_part;
   int seperator = '\0';
+  const char *strend = buf + buf_len;
 
   if (buf == NULL)
     {
       return NULL;
     }
 
+  /* for each date part (year, month, day) */
   for (i = 0, p = buf; i < DIM (part); i++)
     {
-      for (c = *p; char_isspace (c); c = *++p)
+      /* skip leading space */
+      for (c = *p; p < strend && char_isspace (c); c = *++p)
 	{
 	  ;
 	}
 
-      for (c = *p; char_isdigit (c); c = *++p)
+      /* read found decimal field value */
+      for (c = *p; p < strend && char_isdigit (c); c = *++p)
 	{
 	  part[i] = part[i] * 10 + (c - '0');
 	  part_char_len[i]++;
@@ -737,16 +780,19 @@ parse_date (const char *buf, DB_DATE * date)
 
       if (i < DIM (part) - 1)
 	{
-	  for (c = *p; char_isspace (c); c = *++p)
+	  /* skip inter-field space */
+	  for (c = *p; p < strend && char_isspace (c); c = *++p)
 	    {
 	      ;
 	    }
 
+	  /* check date separator ('/' or '-'), if any */
 	  if (seperator != '\0' && c != '\0' && c != seperator)
 	    {
 	      return NULL;
 	    }
 
+	  /* find and skip the separator */
 	  if (c == '/')
 	    {
 	      ++p;
@@ -766,7 +812,8 @@ parse_date (const char *buf, DB_DATE * date)
 	}
     }
 
-  for (c = *p; char_isspace (c); c = *++p)
+  /* skip trailing space */
+  for (c = *p; p < strend && char_isspace (c); c = *++p)
     {
       ;
     }
@@ -804,11 +851,13 @@ parse_date (const char *buf, DB_DATE * date)
       return NULL;
     }
 
+  /* stop parsing if year is present and over 10000 */
   if (0 <= year_part && 10000 <= part[year_part])
     {
       return NULL;
     }
 
+  /* fill the year if not present */
   if (year_part == -1)
     {
       year = get_current_year ();
@@ -831,6 +880,18 @@ parse_date (const char *buf, DB_DATE * date)
 
   month = part[month_part];
   day = part[day_part];
+
+  /*
+   * 0000-00-00 00:00:00 means timestamp 1970-01-01 00:00:00
+   * but 0000-00-00 XX:XX:XX (one of X is not zero) means error
+   * so in this parse_date return OK but set date as 0
+   * (It should be treated differ with '1970-01-01')
+   */
+  if (year == 0 && month == 0 && day == 0)
+    {
+      *date = 0;
+      return p;
+    }
 
   /*
    * Now encode it and then decode it again and see if we get the same
@@ -861,16 +922,17 @@ parse_date (const char *buf, DB_DATE * date)
  *   Minutes and seconds can be omitted; they will default to 0.
  * return : const char or NULL on error
  * buf(in): pointer to time expression
+ * buf_len(in): the length of the string to be parsed
  * time(out): pointer to DB_TIME to be updated with the parsed time
  */
 static const char *
-parse_time (const char *buf, DB_TIME * time)
+parse_time (const char *buf, int buf_len, DB_TIME * time)
 {
   unsigned int mtime;
   const char *p;
   bool is_msec;
 
-  p = parse_mtime (buf, &mtime, &is_msec, NULL);
+  p = parse_mtime (buf, buf_len, &mtime, &is_msec, NULL);
 
   if (p != NULL)
     {
@@ -889,15 +951,19 @@ parse_time (const char *buf, DB_TIME * time)
  * db_string_check_explicit_time() -
  * return : true if explicit time expression 
  * str(in): pointer to time expression
+ * str_len(in): the length of the string to be checked
  */
 bool
-db_string_check_explicit_time (const char *str)
+db_string_check_explicit_time (const char *str, int str_len)
 {
   unsigned int mtime;
   bool is_explicit;
 
-  parse_mtime (str, &mtime, NULL, &is_explicit);
-
+  const char *result = parse_mtime (str, str_len, &mtime, NULL, &is_explicit);
+  if (result == NULL || *result != '\0')
+    {
+      return false;
+    }
   return is_explicit;
 }
 
@@ -905,11 +971,12 @@ db_string_check_explicit_time (const char *str)
  * parse_mtime() -
  * return : const char or NULL on error
  * buf(in): pointer to time expression
+ * buf_len(in): the length of the string to be parsed
  * mtime(out): pointer to unsigned int to be updated with the parsed time
  */
 static const char *
-parse_mtime (const char *buf, unsigned int *mtime, bool * is_msec,
-	     bool * is_explicit)
+parse_mtime (const char *buf, int buf_len, unsigned int *mtime,
+	     bool * is_msec, bool * is_explicit)
 {
   static AMPM_BUF ampm[2];
   static int initialized = 0;
@@ -919,6 +986,7 @@ parse_mtime (const char *buf, unsigned int *mtime, bool * is_msec,
   int c;
   const char *p;
   double fraction = 100;
+  const char *strend = buf + buf_len;
 
   if (buf == NULL)
     {
@@ -961,9 +1029,9 @@ parse_mtime (const char *buf, unsigned int *mtime, bool * is_msec,
 
   for (i = 0, p = buf; i < DIM (part); i++)
     {
-      for (c = *p; char_isspace (c); c = *++p)
+      for (c = *p; p < strend && char_isspace (c); c = *++p)
 	;
-      for (c = *p; char_isdigit (c); c = *++p)
+      for (c = *p; p < strend && char_isdigit (c); c = *++p)
 	{
 	  if (i != 3)
 	    {
@@ -977,10 +1045,14 @@ parse_mtime (const char *buf, unsigned int *mtime, bool * is_msec,
 	}
       if (i < DIM (part) - 1)
 	{
-	  for (c = *p; char_isspace (c); c = *++p)
+	  for (c = *p; p < strend && char_isspace (c); c = *++p)
 	    ;
 	  if (c == ':')
 	    {
+	      if (i == 2)
+		{
+		  return NULL;
+		}
 	      ++p;
 	    }
 	  else if (c == '.' && i == 2)
@@ -1009,9 +1081,10 @@ parse_mtime (const char *buf, unsigned int *mtime, bool * is_msec,
 	}
     }
 
-  for (c = *p; char_isspace (c); c = *++p)
+  for (c = *p; p < strend && char_isspace (c); c = *++p)
     ;
-  if (intl_mbs_ncasecmp (p, ampm[0].str, ampm[0].len) == 0)
+  if (p + ampm[0].len - 1 < strend
+      && intl_mbs_ncasecmp (p, ampm[0].str, ampm[0].len) == 0)
     {
       p += ampm[0].len;
       if (part[0] == 12)
@@ -1023,7 +1096,8 @@ parse_mtime (const char *buf, unsigned int *mtime, bool * is_msec,
 	  part[0] = -1;
 	}
     }
-  else if (intl_mbs_ncasecmp (p, ampm[1].str, ampm[1].len) == 0)
+  else if (p + ampm[1].len - 1 < strend
+	   && intl_mbs_ncasecmp (p, ampm[1].str, ampm[1].len) == 0)
     {
       p += ampm[1].len;
       if (part[0] < 12)
@@ -1064,14 +1138,2116 @@ parse_mtime (const char *buf, unsigned int *mtime, bool * is_msec,
 }
 
 /*
+ * fill_local_ampm_str() - writes the "am" or "pm" string as by the current
+ *			    locale into the given string
+ * str(out):	string buffer to receive the "am" or the "pm" string from the
+ *		current locale
+ * am(in):	true to return the current "am" string, "false" to return the
+ *		current "pm" string from the current locale
+ */
+static void
+fill_local_ampm_str (char str[10], bool am)
+{
+  struct tm tm;
+  if (init_tm (&tm) == -1)
+    {
+      if (am)
+	strcpy (str, "am");
+      else
+	strcpy (str, "pm");
+    }
+  else
+    {
+      /*
+       * Use strftime() to try to find out this locale's idea of
+       * the am/pm designators.
+       */
+      if (am)
+	{
+	  tm.tm_hour = 0;
+	  strftime (str, 10, "%p", &tm);
+	}
+      else
+	{
+	  tm.tm_hour = 12;
+	  strftime (str, 10, "%p", &tm);
+	}
+    }
+}
+
+/* should be regarded as const */
+static char local_am_str[10], local_pm_str[10];
+static int local_am_strlen, local_pm_strlen;
+
+
+/*
+ * db_date_locale_init() - Initializes the am/pm strings from the current
+ *			    locale, to be used when parsing TIME values.
+ *			    Should be invoked when CUBRID starts up
+ */
+void
+db_date_locale_init (void)
+{
+  fill_local_ampm_str (local_am_str, true);
+  local_am_strlen = strlen (local_am_str);
+
+  fill_local_ampm_str (local_pm_str, false);
+  local_pm_strlen = strlen (local_pm_str);
+}
+
+/*
+ * parse_date_separated() - Reads  DATE in '09-10-12' format
+ *
+ * returns:	position in str where parsing stopped, if successfull,
+ *		NULL otherwise
+ * str(in):	string with the date to be parsed
+ * strend(in):  the end of the string to be parsed
+ * date(out):   resulting date, after parsing, if successfull
+ * syntax_check(out):
+ *		if not null and conversion fails, will be set to
+ *		the last read character from the input string, when the
+ *		syntax (parsing) was successfull, but resulting
+ *		value is incorrect (for example for 2009-120-21). Should be
+ *		set to NULL before making the function call.
+ * year_digits(out):
+ *		if not null will receive the number of digits that the year in
+ *		the date string was specified with. The number can be received
+ *		even if conversion fails. If not null it will also turn any
+ *		date part found larger than DATETIME_FIELD_LIMIT into a syntax
+ *		error (as opposed to an invalid, but correctly delimited, date
+ *		value).
+ * sep_ch(out): separator character that the parsed date is using, or '\0' if
+ *		parsed date uses more than one separator. Can be modified even
+ *	        if parsing fails.
+ */
+static char const *
+parse_date_separated (char const *str, char const *strend, DB_DATE * date,
+		      char const **syntax_check, int *year_digits,
+		      char *sep_ch)
+{
+  DB_DATE cdate;
+  char unsigned
+    /* 0 - yet to be read
+       1 - only single slashes read
+       2 - non-slashes (or multiple slashes) read */
+    separator = 0;
+
+  int date_parts[3] = { 0, 0, 0 };
+  char unsigned
+    date_parts_len[3] = { 0, 0, 0 },
+    parts_found = 0, year_part, month_part, day_part;
+
+  char const *p = str, *q;
+
+  assert (!syntax_check || *syntax_check == NULL);
+
+  /* skip leading spaces in string */
+  while (p < strend && char_isspace (*p))
+    {
+      p++;
+    }
+
+  if (p == strend || !char_isdigit (*p))
+    {
+      return NULL;		/* date should begin with a digit */
+    }
+
+  /* read up to three date parts (year, month, day) from string,
+   * separated by non-blank, non-alphanumeric characters */
+  if (sep_ch)
+    {
+      *sep_ch = '0';		/* a digit can not be a separator */
+    }
+
+  q = p;
+
+  while (p < strend && q == p && !char_isspace (*p) && !char_isalpha (*p)
+	 && parts_found < DIM (date_parts))
+    {
+      char unsigned new_separator = separator;
+
+      /* read any separator */
+      while (p < strend && !char_isspace (*p) && !char_isdigit (*p)
+	     && !char_isalpha (*p))
+	{
+	  if (*p == '/')
+	    {
+	      /* '/' separator found */
+	      if (separator == 0)
+		new_separator = 1;
+	    }
+	  else
+	    {
+	      /* non-slash separator found */
+	      new_separator = 2;
+	    }
+
+	  if (sep_ch)
+	    {
+	      if (*sep_ch)
+		{
+		  if (*sep_ch == '0')
+		    {
+		      *sep_ch = *p;
+		    }
+		  else
+		    {
+		      if (*sep_ch != *p)
+			{
+			  /* more than one separator found */
+			  *sep_ch = '\0';
+			}
+		    }
+		}
+	    }
+
+	  p++;
+	}
+
+      /* read the number (date part value) */
+      if (p < strend && char_isdigit (*p))
+	{
+	  separator = new_separator;
+
+	  while (p < strend && char_isdigit (*p))
+	    {
+	      if (date_parts[parts_found] < DATETIME_FIELD_LIMIT)
+		{
+		  date_parts[parts_found] *= 10;
+		  date_parts[parts_found] += *p - '0';
+		}
+
+	      if (date_parts_len[parts_found] < 4)
+		{
+		  date_parts_len[parts_found]++;
+		}
+
+	      p++;
+	    }
+
+	  if (year_digits && date_parts[parts_found] >= DATETIME_FIELD_LIMIT)
+	    {
+	      /* In a context where the number of digits specified for the year is
+	       * requested (when reading a time from a datetime string), having
+	       * any date part larger than the field limit is not only an invalid
+	       * value, but also a parsing error. */
+	      return NULL;
+	    }
+
+	  parts_found++;
+	  q = p;
+	}
+    }
+
+  p = q;
+
+  if (parts_found < 2)
+    {
+      /* Insufficient number of year/month/day fields could be read */
+      return NULL;
+    }
+
+  /* Infer the order of date fields: MM/DD[/YY] or [YY-]MM-DD */
+  if (separator == 1)
+    {
+      /* mm/dd[/yy] date format */
+      year_part = 2;
+      month_part = 0;
+      day_part = 1;
+
+    }
+  else
+    {
+      /* [yy-]mm-dd format */
+      year_part = 0;
+      month_part = 1;
+      day_part = 2;
+
+      if (parts_found == 2)
+	{
+	  date_parts[2] = date_parts[1];
+	  date_parts[1] = date_parts[0];
+	  date_parts_len[2] = date_parts_len[1];
+	  date_parts_len[1] = date_parts_len[0];
+	}
+    }
+
+  /* Fill in the year or the century, if omitted */
+  if (parts_found == 2)
+    {
+      if (year_digits)
+	{
+	  *year_digits = 0;
+	}
+      date_parts[year_part] = get_current_year ();
+    }
+  else
+    {
+      if (year_digits)
+	{
+	  *year_digits = date_parts_len[year_part];
+	}
+
+      if (date_parts_len[year_part] == 2)
+	{
+	  if (date_parts[year_part] < 70)
+	    {
+	      date_parts[year_part] += 2000;
+	    }
+	  else
+	    {
+	      date_parts[year_part] += 1900;
+	    }
+	}
+    }
+
+  /* Check and return the resulting date */
+  if (date_parts[year_part] >= 10000 || date_parts[month_part] > 12
+      || date_parts[month_part] < 1 || date_parts[day_part] > 31
+      || date_parts[day_part] < 1)
+    {
+      /* malformed or invalid date string */
+      if (syntax_check)
+	{
+	  /* parsing successfull, but unexpected value */
+	  *syntax_check = p;
+	}
+      return NULL;
+    }
+  else
+    {
+      int year, month, day;
+
+      cdate =
+	julian_encode
+	(date_parts[month_part], date_parts[day_part], date_parts[year_part]);
+      julian_decode (cdate, &month, &day, &year, NULL);
+
+      if (day == date_parts[day_part]
+	  && month == date_parts[month_part] && year == date_parts[year_part])
+	{
+	  *date = cdate;
+	  return p;
+	}
+      else
+	{
+	  /* parsing successfull, but unexpected value */
+	  if (syntax_check)
+	    *syntax_check = p;
+
+	  return NULL;
+	}
+    }
+}
+
+/*
+ * parse_mtime_separated() - Reads a TIME from a string, reading hours first
+ *				and accepting any separators
+ * returns: pointer to the next character in the input string that fallows the
+ *	    parsed time value if successfull, NULL otherwise
+ * str(in): string with the time value to be parsed
+ * strend(in):  the end of the string to be parsed
+ * mtime(out): the converted time
+ * syntax_check(out): if not null, upon conversion failure it will be filled
+ *			with the pointer to the last character read if the
+ *			time could be parsed but the time value
+ *			found is invalid (like 10:65:24). Should be set to
+ *			NULL before the function invocation
+ * time_parts(out): if not NULL will receive the number of time components
+ *		    (hour, minute, second) found in the string. The number can
+ *		    be received even if parsing later fails. If not NULL this
+ *		    parameter will also turn any TIME part larger than
+ *		    DATETIME_FIELD_LIMIT into a syntax error (as opposed to an
+ *		    invalid, but correctly delimited, time value).
+ * sep_ch(out):	    if not NULL will receive the separator character used for
+ *		    the time, or '\0' if more separators are used.
+ * has_explicit_msec(out):
+ *		    If not NULL and parsing successfull, will receive true if
+ *		    the input string explicitly sepcifies a number of
+ *		    milliseconds or the decimal point for time
+ */
+static char const *
+parse_mtime_separated (char const *str, char const *strend,
+		       unsigned int *mtime, char const **syntax_check,
+		       int *time_parts, char *sep_ch,
+		       bool * has_explicit_msec, bool is_datetime)
+{
+  int h = 0, m = 0, s = 0, msec = 0;
+  char const *p = str, *q;
+
+  assert (!syntax_check || !*syntax_check);
+
+  if (sep_ch)
+    {
+      *sep_ch = '0';		/* a digit can not be a separator */
+    }
+
+  if (p == strend || !char_isdigit (*p))
+    {
+      /* no time value written in this string */
+      return NULL;
+    }
+
+  /* read hours value */
+  while (p < strend && char_isdigit (*p))
+    {
+      if (h < DATETIME_FIELD_LIMIT)
+	{
+	  h *= 10;
+	  h += *p - '0';
+	}
+
+      p++;
+    }
+
+  /* numeric datetime field overflowed and failed parsing */
+  if (time_parts && h >= DATETIME_FIELD_LIMIT)
+    {
+      return NULL;
+    }
+
+
+  /* skip separators */
+  q = p;
+  while (p < strend && !char_isspace (*p) && !char_isalpha (*p) &&
+	 !char_isdigit (*p))
+    {
+      if (sep_ch)
+	{
+	  if (*sep_ch)
+	    {
+	      if (*sep_ch == '0')
+		{
+		  *sep_ch = *p;
+		}
+	      else
+		{
+		  if (*sep_ch != *p)
+		    {
+		      *sep_ch = '\0';
+		    }
+		}
+	    }
+	}
+
+      p++;
+    }
+
+  if (is_datetime && p < strend && char_isspace (*p))
+    {
+      *syntax_check = p;
+      return NULL;
+    }
+
+  /* read minutes value */
+  if (p < strend && char_isdigit (*p))
+    {
+      while (p < strend && char_isdigit (*p) &&
+	     DATETIME_FIELD_LIMIT - (*p - '0') / 10 > m)
+	{
+	  if (m < DATETIME_FIELD_LIMIT)
+	    {
+	      m *= 10;
+	      m += *p - '0';
+	    }
+
+	  p++;
+	}
+
+      if (time_parts && m >= DATETIME_FIELD_LIMIT)
+	{
+	  return NULL;
+	}
+
+      /* skip any separators */
+      q = p;
+
+      while
+	(p < strend && !char_isspace (*p) && !char_isalpha (*p) &&
+	 !char_isdigit (*p))
+	{
+	  if (sep_ch)
+	    {
+	      if (*sep_ch)
+		{
+		  if (*sep_ch == '0')
+		    {
+		      *sep_ch = *p;
+		    }
+		  else
+		    {
+		      if (*sep_ch != *p)
+			{
+			  *sep_ch = '\0';
+			}
+		    }
+		}
+	    }
+	  p++;
+	}
+
+      if (is_datetime && p < strend && char_isspace (*p))
+	{
+	  *syntax_check = p;
+	  return NULL;
+	}
+
+      /* read seconds value */
+      if (p < strend && char_isdigit (*p))
+	{
+	  while
+	    (p < strend && char_isdigit (*p) &&
+	     DATETIME_FIELD_LIMIT - (*p - '0') / 10 > s)
+	    {
+	      if (s < DATETIME_FIELD_LIMIT)
+		{
+		  s *= 10;
+		  s += *p - '0';
+		}
+	      p++;
+	    }
+
+	  /* numeric datetime field overflowed and failed parsing */
+	  if (time_parts && s >= DATETIME_FIELD_LIMIT)
+	    {
+	      return NULL;
+	    }
+
+
+	  if (time_parts)
+	    {
+	      *time_parts = 3;	/* hh:mm:ss */
+	    }
+
+	  /* read milliseconds value */
+	  if (*p == '.')
+	    {
+	      p++;
+	      if (p < strend && char_isdigit (*p))
+		{
+		  msec += (*p - '0') * 100;
+		  p++;
+
+		  if (p < strend && char_isdigit (*p))
+		    {
+		      msec += (*p - '0') * 10;
+		      p++;
+
+		      if (p < strend && char_isdigit (*p))
+			{
+			  msec += *p - '0';
+			  p++;
+
+			  /* attempting to round, instead of truncate, the
+			   * number of milliseconds will result in
+			   * userspace problems when '11-02-24 23:59:59.9999'
+			   * is converted to DATETIME, and then '11-02-24' is
+			   * converted to DATE and '23:59:59:9999' is
+			   * converted to TIME
+			   * User might expect to get the same results
+			   * in both cases, when in fact the wrap-around for
+			   * the time value will give different results if
+			   * the number of milliseconds is rounded. */
+			  while (p < strend && char_isdigit (*p))
+			    {
+			      p++;
+			    }
+			}
+		    }
+		}
+	      if (has_explicit_msec)
+		{
+		  *has_explicit_msec = true;
+		}
+	    }
+	}
+      else
+	{
+	  /* No seconds present after the minutes and the separator. */
+
+	  if (time_parts)
+	    {
+	      *time_parts = 2;
+	    }
+	}
+    }
+  else
+    {
+      /* No minutes value present after the hour and separator */
+
+      if (time_parts)
+	{
+	  if (char_isdigit (*(p - 1)))
+	    {
+	      *time_parts = 1;	/* hh */
+	    }
+	  else
+	    {
+	      *time_parts = 2;	/* { hh sep } is just like { hh sep mm } */
+	    }
+	}
+    }
+
+  /* look for the am/pm string following the time */
+  q = p;			/* save p just in case there is no am/pm string */
+
+  while (p < strend && char_isspace (*p))
+    {
+      p++;
+    }
+
+  /* look for either the local or the English am/pm strings */
+  if (p + local_am_strlen - 1 < strend
+      && !intl_mbs_ncasecmp (p, local_am_str, local_am_strlen)
+      && (p + local_am_strlen == strend
+	  || !char_isalpha (p[local_am_strlen])))
+    {
+      p += local_am_strlen;
+      if (h == 12)
+	{
+	  /* 12:01am means 00:01 */
+	  h = 0;
+	}
+    }
+  else
+    {
+      if (p + local_pm_strlen - 1 < strend
+	  && !intl_mbs_ncasecmp (p, local_pm_str, local_pm_strlen)
+	  && (p + local_pm_strlen == strend
+	      || !char_isalpha (p[local_pm_strlen])))
+	{
+	  p += local_pm_strlen;
+	  if (h < 12)
+	    {
+	      /* only a 12-hour clock uses the am/pm string */
+	      h += 12;
+	    }
+	}
+      else
+	{
+	  if (p + 1 < strend
+	      && !intl_mbs_ncasecmp (p, "am", 2) && (p + 2 == strend
+						     || !char_isalpha (p[2])))
+	    {
+	      p += 2;
+	      if (h == 12)
+		{
+		  h = 0;
+		}
+	    }
+	  else
+	    {
+	      if (p + 1 < strend
+		  && !intl_mbs_ncasecmp (p, "pm", 2)
+		  && (p + 2 == strend || !char_isalpha (p[2])))
+		{
+		  p += 2;
+		  if (h < 12)
+		    {
+		      /* only a 12-hour clock uses the am/pm string */
+		      h += 12;
+		    }
+		}
+	      else
+		{
+		  /* no "am"/"pm" string found */
+		  p = q;
+
+		  /* check if an incomplete time is followed by a space */
+		  if (time_parts && *time_parts < 3)
+		    {
+		      if (p < strend && char_isspace (*p))
+			{
+			  /* turn off parsing just the time off the
+			     timestamp */
+
+			  *time_parts = 1;
+			}
+		    }
+		}
+	    }
+	}
+    }
+
+  /* check the numeric values
+   *
+   * allowing an hours value of 24, to be treated as 00, would no
+   * longer be mysql-compatible, since mysql actually stores the
+   * value '24', not 00 */
+  if (h > 23 || m > 59 || s > 59)
+    {
+      /* time parsed successfully, but the found value was unexpected */
+      if (syntax_check)
+	*syntax_check = p;
+      return NULL;
+    }
+
+  /* encode (from the components) and return the parsed time */
+  *mtime = encode_mtime (h, m, s, msec);
+  return p;
+}
+
+/*
+ * parse_explicit_mtime_separated() - Reads a TIME in '10:22:10.45 am' format.
+ *				    Hours (and minutes) field may be omitted,
+ *				    but only together with the separator.
+ * returns:	pointer to the next character in the input string that follows
+ *		the parsed time
+ * str(in):	string with the time to be parsed
+ * strend(in):  the end of the string to be parsed
+ * mtime(out):	the converted time
+ * syntax_check(out):
+ *		if not NULL, upon conversion failure it will be set to
+ *		the pointer in the input string to the last character parsed
+ *		if the time could be parsed but the time value
+ *		found is invalid (like 10:65:24). Should be set to
+ *		false before the function invocation
+ * has_explicit_msec(out):
+ *		if not NULL and converstion successfull, will receive true if
+ *		the input string explicitly specifies the number of
+ *		milliseconds or the decimal point for time
+ */
+static char const *
+parse_explicit_mtime_separated (char const *str, char const *strend,
+				unsigned int *mtime,
+				char const **syntax_check,
+				bool * has_explicit_msec)
+{
+  int h = 0, m = 0, s = 0, msec = 0, time_parts[3] = { 0, 0, 0 };
+  unsigned time_parts_found = 0;
+  char const *p = str, *q;
+  int msec_digit_order = 100;
+
+  /* skip leading spaces */
+  while (p < strend && char_isspace (*p))
+    {
+      p++;
+    }
+
+  if (p >= strend)
+    {
+      return NULL;
+    }
+
+  /* read up to 3 time parts (hours, minutes, seconds) from the string */
+  if (p[0] == ':')
+    {
+      /* allow for ':MM:SS.ssss' format */
+      time_parts_found++;
+    }
+
+  while
+    (((time_parts_found && p[0] == ':' &&
+       (++p < strend && char_isdigit (*p)))
+      ||
+      (!time_parts_found && char_isdigit (p[0])))
+     && time_parts_found < DIM (time_parts))
+    {
+      do
+	{
+	  time_parts[time_parts_found] *= 10;
+	  time_parts[time_parts_found] += *p - '0';
+	  p++;
+	}
+      while (time_parts[time_parts_found] < DATETIME_FIELD_LIMIT
+	     && p < strend && char_isdigit (*p));
+
+      if (p < strend && char_isdigit (*p))
+	{
+	  /* invalid number of seconds/minutes/hours */
+	  return NULL;
+	}
+      else
+	time_parts_found++;
+    }
+
+  /* Allow trailing ':' separator if time is incomplete */
+  if (time_parts_found == DIM (time_parts) && *(p - 1) == ':')
+    {
+      p--;
+    }
+
+  if (*p == '.')
+    {
+      p++;
+
+      while (msec_digit_order && p < strend && char_isdigit (*p))
+	{
+	  msec += (*p++ - '0') * msec_digit_order;
+	  msec_digit_order /= 10;
+	}
+
+      /* skip remaining digits in the fractional seconds part, if any
+       * trying to round, instead of truncate, the milliseconds part can
+       * lead to user space problems if wrap-around is needed. */
+      while (p < strend && char_isdigit (*p))
+	{
+	  p++;
+	}
+
+      if (has_explicit_msec)
+	{
+	  *has_explicit_msec = true;
+	}
+    }
+
+  /* infer the hours, minutes and seconds from the number of time parts read
+   * */
+  switch (time_parts_found)
+    {
+    case 3:
+      h = time_parts[0];
+      m = time_parts[1];
+      s = time_parts[2];
+      break;
+    case 2:
+      h = time_parts[0];
+      m = time_parts[1];
+      break;
+    case 1:
+    case 0:
+      return NULL;
+    }
+
+  /* skip optional whitespace before the am/pm string following the numeric
+   * time value */
+  q = p;			/* save p in case there is no am/pm string */
+
+  while (p < strend && char_isspace (*p))
+    {
+      p++;
+    }
+
+  /* look for either the local or the English am/pm strings */
+  if (p + local_am_strlen - 1 < strend
+      && !intl_mbs_ncasecmp (p, local_am_str, local_am_strlen)
+      && (p + local_am_strlen == strend
+	  || !char_isalpha (p[local_am_strlen])))
+    {
+      p += local_am_strlen;
+      if (h == 12)
+	{
+	  h = 0;		/* 12:01am means 00:01 */
+	}
+    }
+  else
+    {
+      if (p + local_pm_strlen - 1 < strend
+	  && !intl_mbs_ncasecmp (p, local_pm_str, local_pm_strlen)
+	  && (p + local_pm_strlen == strend
+	      || !char_isalpha (p[local_pm_strlen])))
+	{
+	  p += local_pm_strlen;
+	  if (h < 12)
+	    {
+	      /* only a 12-hour clock uses the am/pm string */
+	      h += 12;
+	    }
+	}
+      else
+	{
+	  if (p + 1 < strend
+	      && !intl_mbs_ncasecmp (p, "am", 2) && (p + 2 == strend
+						     || !char_isalpha (p[2])))
+	    {
+	      p += 2;
+	      if (h == 12)
+		{
+		  h = 0;
+		}
+	    }
+	  else
+	    {
+	      if (p + 1 < strend
+		  && !intl_mbs_ncasecmp (p, "pm", 2)
+		  && (p + 2 == strend || !char_isalpha (p[2])))
+		{
+		  p += 2;
+		  if (h < 12)
+		    {
+		      /* only a 12-hour clock uses the am/pm string */
+		      h += 12;
+		    }
+		}
+	      else
+		{
+		  p = q;
+		}
+	    }
+	}
+    }
+
+  /* check the time parts read */
+  if (h > 23 || m > 59 || s > 59)
+    {
+      if (syntax_check)
+	{
+	  *syntax_check = p;
+	}
+      return NULL;
+    }
+
+  *mtime = encode_mtime (h, m, s, msec);
+
+  return p;
+}
+
+/*
+ * parse_explicit_mtime_compact()   - Reads a time in
+ *				     [[[[YY MM DD] HH] MM] SS[[.][sss]
+ *					format
+ *				    '.0' is a valid time that can also be
+ *				    written as '.'
+ * returns:	pointer in the input string to the character after 
+ *		the converted time, if successfull, or NULL on error
+ * str(in):	the [DATE]TIME string, in compact form, to be converted
+ * strend(in):  the end of the string to be parsed
+ * mtime(out):	pointer to the converted time
+ *
+ */
+static char const *
+parse_explicit_mtime_compact (char const *str, char const *strend,
+			      unsigned int *mtime)
+{
+  char const *p = str, *q = str, *r = str;
+  int y = 0, mo = 0, d = 0, h = 0, m = 0, s = 0, msec = 0;
+
+  /* skip leading whitespace */
+  while (p < strend && char_isspace (*p))
+    {
+      p++;
+    }
+
+  /* count number of decimal digits in the string */
+  q = p;
+  r = p;
+
+  while (q < strend && char_isdigit (*q))
+    {
+      q++;
+    }
+
+  if (p != q || q[0] == '.')
+    {
+      if (q - p > 14)
+	{
+	  /* YYYY MM DD HH MM SS [.] [ssss..] */
+	  /* if (q[0] != '.') */
+	  {
+	    y =
+	      DECODE (p[0]) * 1000
+	      + DECODE (p[1]) * 100 + DECODE (p[2]) * 10 + DECODE (p[3]);
+	    mo = DECODE (p[4]) * 10 + DECODE (p[5]);
+	    d = DECODE (p[6]) * 10 + DECODE (p[7]);
+	    h = DECODE (p[8]) * 10 + DECODE (p[9]);
+	    m = DECODE (p[10]) * 10 + DECODE (p[11]);
+	    s = DECODE (p[12]) * 10 + DECODE (p[13]);
+
+	    p += 14;
+	    msec += DECODE (*p++) * 100;
+	    if (p < strend && char_isdigit (*p))
+	      {
+		msec += DECODE (*p++) * 10;
+		if (p < strend && char_isdigit (*p))
+		  {
+		    /* reading 3 digits after decimal point is not
+		     * mysql compatible (which only reads 2 digits)
+		     * but is the expected CUBRID behaviour */
+		    msec += DECODE (*p++);
+
+		    /* skil all other digits in the milliseconds
+		     * field. */
+		    p = q;
+		  }
+	      }
+	  }
+	}
+      else
+	{
+	  switch (q - p)
+	    {
+	    case 14:
+	      /* YYYY-MM-DD HH:MM:SS */
+	      y += DECODE (*p++);
+	    case 13:
+	      y *= 10;
+	      y += DECODE (*p++);
+	    case 12:
+	      /*   YY-MM-DD HH:MM:SS */
+	      y *= 10;
+	      y += DECODE (*p++);
+	    case 11:
+	      y *= 10;
+	      y += DECODE (*p++);
+	    case 10:
+	      /*      MM-DD HH:MM:SS */
+	      mo += DECODE (*p++);
+	    case 9:
+	      /*       M-DD HH:MM:SS */
+	      mo *= 10;
+	      mo += DECODE (*p++);
+	      d += DECODE (*p++) * 10;
+	      d += DECODE (*p++);
+	    case 6:
+	      /*                HH:MM:SS */
+	      h += DECODE (*p++);
+	    case 5:
+	      /*             H:MM:SS */
+	      h *= 10;
+	      h += DECODE (*p++);
+	    case 4:
+	      /*               MM:SS */
+	      m += DECODE (*p++);
+	    case 3:
+	      /*                M:SS */
+	      m *= 10;
+	      m += DECODE (*p++);
+	    case 2:
+	      /*                      SS */
+	      s += DECODE (*p++);
+	    case 1:
+	      /*                       S */
+	      s *= 10;
+	      s += DECODE (*p++);
+	    case 0:
+	      if (*p == '.')
+		{
+		  /* read number of milliseconds */
+
+		  p++;
+		  if (p < strend && char_isdigit (*p))
+		    {
+		      msec += DECODE (*p++) * 100;
+		      if (p < strend && char_isdigit (*p))
+			{
+			  msec += DECODE (*p++) * 10;
+			  if (p < strend && char_isdigit (*p))
+			    {
+			      msec += DECODE (*p++);
+
+			      while (p < strend && char_isdigit (*p))
+				{
+				  p++;
+				}
+			    }
+			}
+		    }
+		}
+	      break;
+	    default:
+	      /* should not be reached */
+	    case 8:
+	      /*         DD HH:MM:SS */
+	    case 7:
+	      /*          D HH:MM:SS */
+	      return NULL;
+	    }
+	}
+
+      /* year, month, day, hour, minute, seconds have been read */
+      if (q - r > 6)
+	{
+	  /* a date precedes the time in the input string */
+
+	  DB_DATE cdate;
+	  int year, month, day;
+
+	  if (q - r > 10)
+	    {
+	      /* year is also specified in the date */
+	      if (q - r == 12)
+		{
+		  /* 2-digits year specified, fill in the century */
+		  if (y < 70)
+		    {
+		      y += 2000;
+		    }
+		  else
+		    {
+		      y += 1900;
+		    }
+		}
+	    }
+	  else
+	    {
+	      /* No year specified with the date, fill in the current year
+	       * */
+	      y = get_current_year ();
+	    }
+
+	  /* check for a valid date preceding the time in the input string
+	   * */
+	  cdate = julian_encode (mo, d, y);
+	  julian_decode (cdate, &month, &day, &year, NULL);
+
+	  if (y != year || mo != month || d != day)
+	    {
+	      /* invalid date specified in front of the time in the input
+	       * string */
+	      return NULL;
+	    }
+	}
+
+      /* look for either the local or the English am/pm strings */
+      /* skip optional whitespace before the am/pm string following the numeric
+       * time value */
+      q = p;			/* save p just in case there is no am/pm string */
+
+      while (p < strend && char_isspace (*p))
+	{
+	  p++;
+	}
+
+      if (p + local_am_strlen - 1 < strend
+	  && !intl_mbs_ncasecmp (p, local_am_str, local_am_strlen)
+	  && (p + local_am_strlen == strend
+	      || !char_isalpha (p[local_am_strlen])))
+	{
+	  p += local_am_strlen;
+	  if (h == 12)
+	    {
+	      h = 0;		/* 12:01am means 00:01 */
+	    }
+	}
+      else
+	{
+	  if (p + local_pm_strlen - 1 < strend
+	      && !intl_mbs_ncasecmp (p, local_pm_str, local_pm_strlen)
+	      && (p + local_pm_strlen == strend
+		  || !char_isalpha (p[local_pm_strlen])))
+	    {
+	      p += local_pm_strlen;
+	      if (h < 12)
+		{
+		  /* only a 12-hour clock uses the am/pm string */
+		  h += 12;
+		}
+	    }
+	  else
+	    {
+	      if (p + 1 < strend
+		  && !intl_mbs_ncasecmp (p, "am", 2)
+		  && (p + 2 == strend || !char_isalpha (p[2])))
+		{
+		  p += 2;
+
+		  if (h == 12)
+		    {
+		      h = 0;
+		    }
+		}
+	      else
+		{
+		  if (p + 1 < strend
+		      && !intl_mbs_ncasecmp (p, "pm", 2)
+		      && (p + 2 == strend || !char_isalpha (p[2])))
+		    {
+		      p += 2;
+		      if (h < 12)
+			{
+			  /* only a 12-hour clock uses the am/pm string */
+			  h += 12;
+			}
+		    }
+		  else
+		    {
+		      p = q;
+		    }
+		}
+	    }
+	}
+
+      /* check and return the parsed time value */
+
+      if (h > 23 || m > 59 || s > 59)
+	{
+	  return NULL;
+	}
+      else
+	{
+	  *mtime = encode_mtime (h, m, s, msec);
+	  return p;
+	}
+    }
+  else
+    {
+      /* No time field nor a decimal point are prezent */
+      return NULL;
+    }
+}
+
+
+/* parse_timestamp_compact() - Reads a DATETIME in
+ *				    [YYYY] MM DD [HH [MM [SS ["."] [msec]]]]
+ *				    format
+ * returns:	    pointer into the input string pointer to the char after
+ *		    the read timestamp, if successfull, or NULL otherwise
+ * str(in):	    the input string with the compact timestamp to be
+ *		    converted
+ * strend(in):  the end of the string to be parsed
+ * date(out):	    the parsed julian date, if successfull
+ * mtime(out):	    the parsed time of day (with milliseconds) if successfull
+ * has_explicit_time(out):
+ *		    If not NULL and parsing sucessfull, will receive true if
+ *		    the input string explicitly specifies the time part
+ * has_explicit_msec(out):
+ *		    If not NULL and parsing successfull, will receive true if
+ *		    the input string explicitly specifies the number of
+ *		    milliseconds or the decimal point for time
+ * 
+ */
+static char const *
+parse_timestamp_compact (char const *str, char const *strend, DB_DATE * date,
+			 unsigned int *mtime, bool * has_explicit_time,
+			 bool * has_explicit_msec)
+{
+  int y = 0, mo = 0, d = 0, h = 0, m = 0, s = 0, msec = 0, ndigits = 0;
+  char const *p = str, *q = str;
+
+  /* skip leading whitespace */
+  while (p < strend && char_isspace (*p))
+    {
+      p++;
+    }
+
+  /* cound number of continous digits in the string */
+  q = p;
+
+  while (q < strend && char_isdigit (*q))
+    {
+      q++;
+    }
+
+  ndigits = q - p;
+
+  if (ndigits < 3)
+    {
+      /* no, or too few, datetime fields present */
+      return NULL;
+    }
+
+  switch (ndigits)
+    {
+    case 7:
+      /* YY MM DD H */
+      y = DECODE (p[0]) * 10 + DECODE (p[1]);
+      mo = DECODE (p[2]) * 10 + DECODE (p[3]);
+      d = DECODE (p[4]) * 10 + DECODE (p[5]);
+      h = DECODE (p[6]);
+      break;
+    case 8:
+      /* YYYY MM DD */
+      y += DECODE (*p++);
+      /*  YYY MM DD */
+      y *= 10;
+      y += DECODE (*p++);
+    case 6:
+      /*   YY MM DD */
+      y *= 10;
+      y += DECODE (*p++);
+    case 5:
+      /*    Y MM DD */
+      y *= 10;
+      y += DECODE (*p++);
+    case 4:
+      /*      MM DD */
+      mo += DECODE (*p++);
+    case 3:
+      /*       M DD */
+      mo *= 10;
+      mo += DECODE (*p++);
+
+      d += DECODE (*p++);
+      d *= 10;
+      d += DECODE (*p++);
+
+      /* HH:MM:SS remain 00:00:00 */
+      break;
+    default:
+      /* YYYY MM DD HH [MM [SS ["."] [sssss]]] */
+
+      /* read year */
+      if (ndigits < 14)
+	{
+	  y = DECODE (p[0]) * 10 + DECODE (p[1]);
+	  if (y < 70)
+	    {
+	      y += 2000;
+	    }
+	  else
+	    {
+	      y += 1900;
+	    }
+
+	  p += 2;
+	}
+      else
+	{
+	  y =
+	    DECODE (p[0]) * 1000
+	    + DECODE (p[1]) * 100 + DECODE (p[2]) * 10 + DECODE (p[3]);
+
+	  p += 4;
+	}
+
+      /* read month, day, hour, minute */
+      mo = DECODE (p[0]) * 10 + DECODE (p[1]);
+      d = DECODE (p[2]) * 10 + DECODE (p[3]);
+      h = DECODE (p[4]) * 10 + DECODE (p[5]);
+      p += 6;
+
+      m = DECODE (*p++);
+      if (p < strend && char_isdigit (*p))
+	{
+	  m *= 10;
+	  m += DECODE (*p++);
+
+	  if (p < strend && char_isdigit (*p))
+	    {
+	      s += DECODE (*p++);
+
+	      if (p < strend && char_isdigit (*p))
+		{
+		  s *= 10;
+		  s += DECODE (*p++);
+		}
+
+	      /* read milliseconds */
+	      if (*p == '.')
+		{
+		  if (has_explicit_msec)
+		    {
+		      *has_explicit_msec = true;
+		    }
+		  p++;
+		}
+
+	      if (p < strend && char_isdigit (*p))
+		{
+		  if (has_explicit_msec)
+		    {
+		      *has_explicit_msec = true;
+		    }
+
+		  msec += DECODE (*p++) * 100;
+
+		  if (p < strend && char_isdigit (*p))
+		    {
+		      msec += DECODE (*p++) * 10;
+
+		      if (p < strend && char_isdigit (*p))
+			{
+			  msec += DECODE (*p);
+
+			  /* skip remaining digits */
+			  while (p < strend && char_isdigit (*p))
+			    {
+			      p++;
+			    }
+			}
+		    }
+		}
+	    }
+	}
+    }
+
+  if (has_explicit_time)
+    {
+      *has_explicit_time = (ndigits == 7 || ndigits > 8);
+    }
+
+  if (ndigits < 5)
+    {
+      /* [M]M DD format */
+      y = get_current_year ();
+    }
+  else
+    {
+      if (ndigits == 6 || ndigits == 7)
+	{
+	  /* YY MM DD */
+	  if (y < 70)
+	    {
+	      y += 2000;
+	    }
+	  else
+	    {
+	      y += 1900;
+	    }
+	}
+    }
+
+
+  /* y, mo, d, h, m, s and msec are now read from string, p is pointing past
+   * last digit read */
+
+  if (ndigits > 8 || ndigits == 7)
+    {
+      /* the hour or the time-of-day are included in the compact string
+       *
+       * look for either the local or the English am/pm strings */
+
+      /* skip optional whitespace before the am/pm string following the numeric
+       * time value */
+      q = p;			/* save p just in case there is no am/pm string */
+
+      while (p < strend && char_isspace (*p))
+	{
+	  p++;
+	}
+
+      if (p + local_am_strlen - 1 < strend
+	  && !intl_mbs_ncasecmp (p, local_am_str, local_am_strlen)
+	  && (p + local_am_strlen == strend
+	      || !char_isalpha (p[local_am_strlen])))
+	{
+	  p += local_am_strlen;
+	  if (h == 12)
+	    {
+	      h = 0;		/* 12:01am means 00:01 */
+	    }
+	}
+      else
+	{
+	  if (p + local_pm_strlen - 1 < strend
+	      && !intl_mbs_ncasecmp (p, local_pm_str, local_pm_strlen)
+	      && (p + local_pm_strlen == strend
+		  || !char_isalpha (p[local_pm_strlen])))
+	    {
+	      p += local_pm_strlen;
+	      if (h < 12)
+		{
+		  /* only a 12-hour clock uses the am/pm string */
+		  h += 12;
+		}
+	    }
+	  else
+	    {
+	      if (p + 1 < strend
+		  && !intl_mbs_ncasecmp (p, "am", 2)
+		  && (p + 2 == strend || !char_isalpha (p[2])))
+		{
+		  p += 2;
+
+		  if (h == 12)
+		    {
+		      h = 0;
+		    }
+		}
+	      else
+		{
+		  if (p + 1 < strend
+		      && !intl_mbs_ncasecmp (p, "pm", 2)
+		      && (p + 2 == strend || !char_isalpha (p[2])))
+		    {
+		      p += 2;
+		      if (h < 12)
+			{
+			  /* only a 12-hour clock uses the am/pm string */
+			  h += 12;
+			}
+		    }
+		  else
+		    {
+		      p = q;
+		    }
+		}
+	    }
+	}
+    }
+
+  /* check and return the date and time read */
+  if (mo <= 12 && d <= 31 && h <= 23 && m <= 59 && s <= 59)
+    {
+      DB_DATE cdate = julian_encode (mo, d, y);
+      int year, month, day;
+
+      julian_decode (cdate, &month, &day, &year, NULL);
+
+      if (y != year || mo != month || d != day)
+	{
+	  /* invalid date in the input string */
+	  return NULL;
+	}
+
+      *date = cdate;
+      *mtime = encode_mtime (h, m, s, msec);
+
+      return (p == strend ? "" : p);
+    }
+  else
+    {
+      /* Invalid date or time specified */
+      return NULL;
+    }
+}
+
+
+/*
+ * parse_timedate_separated() - Reads a time and a date from a time-date
+ *				string. Note that there is no compact timedate
+ *				possible, only separated timedate strings.
+ * returns:	    pointer to the character in str immediately following the
+ *		    parsed time and date
+ * str(in):	    the time-date string with the time and the date to be
+ *		    parsed (read)
+ * strend(in):      the end of the string to be parsed
+ * date(out):	    the parsed date from the input string str
+ * mtime(out):	    the parsed time from the input string str
+ * syntax_check(out):
+ *		    If not NULL and if parsing was successfull but the found
+ *		    value invalid (like '10:80:12 2011-12-18') it will receive
+ *		    the pointer to the character in str immediately following
+ *		    the parsed time and date.
+ * has_explicit_msec(out):
+ *		    If not NULL and parsing successfull will receive the value
+ *		    true if the input string explicitly specifies the number
+ *		    of milliseconds for time or specifies the decimal point
+ *		    for milliseconds
+ */
+static char const *
+parse_timedate_separated (char const *str, char const *strend, DB_DATE * date,
+			  unsigned int *mtime, char const **syntax,
+			  bool * has_explicit_msec)
+{
+  char sep_ch = '0';
+  char const *p = str, *syntax_check = NULL;
+
+  /* attempts to read time in explicit format */
+  p =
+    parse_explicit_mtime_separated (p, strend, mtime, &syntax_check,
+				    has_explicit_msec);
+
+  if (!p && !syntax_check)
+    {
+      /* attempt to read time in the relaxed format if explicit format failed */
+      if (has_explicit_msec)
+	{
+	  *has_explicit_msec = false;
+	}
+
+      p =
+	parse_mtime_separated (str, strend, mtime, &syntax_check, NULL,
+			       &sep_ch, has_explicit_msec, false);
+
+      if (p || syntax_check)
+	{
+	  if (sep_ch != '0' && sep_ch != ':')
+	    {
+	      /* the parsed time uses no ':' separator, so fallback to reading a
+	       * date-time string instead of a time-date string */
+	      p = NULL;
+	      syntax_check = NULL;
+	    }
+	}
+    }
+
+  if (p || syntax_check)
+    {
+      bool space_separator = false;
+
+      if (!syntax_check)
+	{
+	  syntax_check = p;
+	}
+
+      while (syntax_check < strend && !char_isalpha (*syntax_check)
+	     && !char_isdigit (*syntax_check))
+	{
+	  if (char_isspace (*syntax_check++))
+	    {
+	      space_separator = true;
+	    }
+	}
+
+      if (space_separator)
+	{
+	  char const *q = syntax_check;
+
+	  syntax_check = NULL;
+	  sep_ch = '0';
+
+	  if (p)
+	    {
+	      p =
+		parse_date_separated (q, strend, date, &syntax_check, NULL,
+				      &sep_ch);
+
+	      if (p || syntax_check)
+		{
+		  if (sep_ch == '-' || sep_ch == '/')
+		    {
+		      if (p)
+			{
+			  /* parsed a time-date string with valid values */
+			  return p;
+			}
+		      else
+			{
+			  /* parsed a time-date string, with an invalid date value */
+			  *syntax = syntax_check;
+			  return NULL;
+			}
+		    }
+		}
+	    }
+	  else
+	    {
+	      p =
+		parse_date_separated (q, strend, date, &syntax_check, NULL,
+				      &sep_ch);
+
+	      if ((p || syntax_check) && (sep_ch == '-' || sep_ch == '/'))
+		{
+		  if (p)
+		    {
+		      *syntax = p;
+		    }
+		  else
+		    {
+		      *syntax = syntax_check;
+		    }
+
+		  /* parsed a time-date string, with an invalid time value */
+		  return NULL;
+		}
+	    }
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * db_date_parse_time() - Reads a TIME from a time or date-time (or
+ *			  time-date) string, in any of the separated
+ *			  or compact formats the string is in.
+ * returns:	0 on success, ER_DATE_CONVERSION on error.
+ * str(in):	the time or date-time string to be converted
+ * str_len(in):	the length of the string to be converted
+ * time(out):	the converted time.
+ * millisecond(out):   the milliseconds part of the converted time
+ */
+int
+db_date_parse_time (char const *str, int str_len, DB_TIME * time,
+		    int *millisecond)
+{
+  char const *syntax_check = NULL;
+  int year_digits = 0;
+  DB_DATE date = 0;
+  unsigned int mtime = 0;
+  char sep_ch = '0';
+  char const *strend = str + str_len;
+  /* attempt to read a time-date string first */
+  char const *p =
+    parse_timedate_separated (str, strend, &date, &mtime, &syntax_check,
+			      NULL);
+
+  if (p)
+    {
+      *time = mtime / 1000;
+      *millisecond = mtime % 1000;
+      return NO_ERROR;
+    }
+  else
+    {
+      if (syntax_check)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+	  return ER_TIME_CONVERSION;
+	}
+      else
+	{
+	  date = 0;
+	  mtime = 0;
+	}
+    }
+
+  /* attempt to read a separated DATETIME string after parsing a time-date
+   * string failed */
+
+  p = parse_date_separated (str, strend, &date, &syntax_check, &year_digits,
+			    NULL);
+
+  if (p || syntax_check)
+    {
+      bool space_separator = false;
+
+      if (!syntax_check)
+	{
+	  syntax_check = p;
+	}
+
+      while (syntax_check < strend && !char_isalpha (*syntax_check)
+	     && !char_isdigit (*syntax_check))
+	{
+	  if (char_isspace (*syntax_check++))
+	    {
+	      space_separator = true;
+	    }
+	}
+
+      if (space_separator)
+	{
+	  if (p)
+	    {
+	      /* Valid date followed by separator */
+	      int time_parts = 0;
+
+	      p = syntax_check;
+	      syntax_check = NULL;
+	      p =
+		parse_mtime_separated (p, strend, &mtime, &syntax_check,
+				       &time_parts, NULL, NULL, false);
+
+	      if (p)
+		{
+		  if (year_digits >= 3 || (time_parts >= 2 && year_digits))
+		    {
+		      *time = mtime / 1000;
+		      *millisecond = mtime % 1000;
+		      return NO_ERROR;
+		    }
+		}
+	      else
+		{
+		  if (syntax_check)
+		    {
+		      /* date-time string with an invalid time */
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_TIME_CONVERSION, 0);
+		      return ER_TIME_CONVERSION;
+		    }
+		  else
+		    {
+		      /* no time value found following the date and separator
+		       * keep trying to parse the string as a (separated and
+		       * then) compact time */
+		    }
+		}
+	    }
+	  else
+	    {
+	      /* Invalid date followed by separator */
+	      int time_parts = 0;
+
+	      p = syntax_check;
+	      syntax_check = NULL;
+	      p =
+		parse_mtime_separated (p, strend, &mtime, &syntax_check,
+				       &time_parts, NULL, NULL, false);
+
+	      if (p || syntax_check)
+		{
+		  /* date-time string with an invalid date and/or time */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			  ER_TIME_CONVERSION, 0);
+		  return ER_TIME_CONVERSION;
+		}
+	    }
+	}
+    }
+
+  /* attempt to read an explicit separated TIME string (a time-only string)
+   * */
+  mtime = 0;
+  syntax_check = false;
+
+  p = parse_explicit_mtime_separated (str, strend, &mtime, &syntax_check,
+				      NULL);
+
+  if (p)
+    {
+      *time = mtime / 1000;
+      *millisecond = mtime % 1000;
+      return NO_ERROR;
+    }
+  else
+    {
+      if (syntax_check)
+	{
+	  /* Time could be parsed as [[HH : ]MM] : SS[.sss], but is an invalid time
+	   * value */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+	  return ER_TIME_CONVERSION;
+	}
+      else
+	{
+	  /* read a compact TIME string */
+	  p = parse_explicit_mtime_compact (str, strend, &mtime);
+
+	  if (p)
+	    {
+	      *time = mtime / 1000;
+	      *millisecond = mtime % 1000;
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
+		      0);
+	      return ER_TIME_CONVERSION;
+	    }
+	}
+    }
+}
+
+/*
+ * db_date_parse_datetime_parts() - Reads a DATETIME from a DATE, DATETIME or
+ *			    time-date string, in any of the separated or
+ *			    compact formats the string might be in.
+ * returns:	0 on success, ER_DATE_CONVERSION on error.
+ * str(in):	the date or date-time string to be read and converted
+ * str_len(in): the length of the string to be converted
+ * datetime(out):
+ *		the read and converted datetime
+ * is_explicit_time(out):
+ *		If not NULL and parsing successfull will receive true if the
+ *		input string explicitly specifies the time part
+ * has_explicit_msec(out):
+ *		If not NULL and parsing successfull will receive true if the 
+ *		input string explicitly specifies the number of milliseconds
+ *		or the decimal point for the time part
+ * fits_as_timestamp(out):
+ *		If not NULL and has_explicit_msec is not NULL and parsing
+ *		is successfull will receive true if the	value parsed from
+ *		the given input string can be represented exactly as a
+ *		TIMESTAMP value
+ * endp(out):	if the datetime is found to have compact format (110918, as
+ *		opposed to 11-09-18), endp receives the pointer to the end of
+ *		the source string or to the trailing character in the source
+ *		string that was no longer part of the datetime value to be
+ *		read. if given, the pointed value should be NULL before entry
+ *		to the function
+ */
+int
+db_date_parse_datetime_parts (char const *str, int str_len,
+			      DB_DATETIME * datetime,
+			      bool * has_explicit_time,
+			      bool * has_explicit_msec,
+			      bool * fits_as_timestamp, char const **endp)
+{
+  DB_DATE date = 0;
+  unsigned int mtime = 0;
+  char const *strend = str + str_len;
+  char const *syntax_check = NULL,
+    /* read a separated time-date string first */
+    *p = parse_timedate_separated (str, strend, &date, &mtime, &syntax_check,
+				   has_explicit_msec);
+
+  if (p)
+    {
+      if (has_explicit_time)
+	{
+	  *has_explicit_time = true;
+	}
+
+      if (has_explicit_msec && !*has_explicit_msec && fits_as_timestamp)
+	{
+	  DB_TIMESTAMP timestamp;
+	  DB_TIME time = mtime / 1000;
+
+	  if (!
+	      (*fits_as_timestamp =
+	       db_timestamp_encode (&timestamp, &date, &time) == NO_ERROR))
+	    {
+	      er_clear ();
+	    }
+	}
+
+      datetime->date = date;
+      datetime->time = mtime;
+
+      return NO_ERROR;
+    }
+  else
+    {
+      if (syntax_check)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION,
+		  0);
+	  return ER_TIMESTAMP_CONVERSION;
+	}
+    }
+
+  /* read a separated DATETIME string */
+  if (has_explicit_msec)
+    {
+      *has_explicit_msec = true;
+    }
+
+  p = parse_date_separated (str, strend, &datetime->date, &syntax_check, NULL,
+			    NULL);
+  if (p)
+    {
+      char const *q;
+
+      syntax_check = NULL;
+
+      /* skip the date and time separator from the string */
+      while (p < strend && !char_isalpha (*p) && !char_isdigit (*p))
+	{
+	  p++;
+	}
+
+      /* parse the time portion in the string */
+      q =
+	parse_mtime_separated (p, strend, &datetime->time, &syntax_check,
+			       NULL, NULL, has_explicit_msec, true);
+      if (q)
+	{
+	  if (has_explicit_time)
+	    {
+	      *has_explicit_time = true;
+	    }
+
+	  if (has_explicit_msec && !*has_explicit_msec && fits_as_timestamp)
+	    {
+	      DB_TIMESTAMP timestamp;
+	      DB_TIME time = datetime->time / 1000;
+
+	      if (!
+		  (*fits_as_timestamp =
+		   db_timestamp_encode (&timestamp, &datetime->date,
+					&time) == NO_ERROR))
+		{
+		  er_clear ();
+		}
+	    }
+
+	  return NO_ERROR;
+	}
+      else
+	{
+	  if (syntax_check)
+	    {
+	      /* Invalid time value present in the string */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_TIMESTAMP_CONVERSION, 0);
+	      return ER_TIMESTAMP_CONVERSION;
+	    }
+	  else
+	    {
+	      /* no time value present */
+	      if (has_explicit_time)
+		{
+		  *has_explicit_time = false;
+		}
+
+	      if (has_explicit_msec)
+		{
+		  *has_explicit_msec = false;
+		}
+
+	      if (fits_as_timestamp)
+		{
+		  DB_TIMESTAMP timestamp;
+		  DB_TIME time = 0;
+
+		  if (!
+		      (*fits_as_timestamp =
+		       db_timestamp_encode (&timestamp, &datetime->date,
+					    &time) == NO_ERROR))
+		    {
+		      er_clear ();
+		    }
+		}
+
+	      datetime->time = 0;
+	      return NO_ERROR;
+	    }
+	}
+    }
+  else
+    {
+      char const *r;
+
+      if (syntax_check)
+	{
+	  /* try to parse the first date portion as YY MM DD (or more) */
+	  DB_DATETIME cdatetime;
+
+	  while (str < strend && char_isspace (*str))
+	    {
+	      str++;
+	    }
+
+	  r =
+	    parse_timestamp_compact (str, strend, &cdatetime.date,
+				     &cdatetime.time, has_explicit_time,
+				     has_explicit_msec);
+
+	  /* mysql prefers a large value here like 14, and returns NULL
+	   * otherwise */
+	  if (r && (*r == 0 || (*r && (r - str >= 6))))
+	    {
+	      if (has_explicit_msec && !*has_explicit_msec
+		  && fits_as_timestamp)
+		{
+		  DB_TIMESTAMP timestamp;
+		  DB_TIME time = cdatetime.time / 1000;
+
+		  if (!
+		      (*fits_as_timestamp =
+		       db_timestamp_encode (&timestamp, &cdatetime.date,
+					    &time) == NO_ERROR))
+		    {
+		      er_clear ();
+		    }
+		}
+
+	      if (endp)
+		{
+		  *endp = r;
+		}
+	      *datetime = cdatetime;
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      /* invalid date value present in the string */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_TIMESTAMP_CONVERSION, 0);
+	      return ER_TIMESTAMP_CONVERSION;
+	    }
+	}
+      else
+	{
+	  /* read a compact DATETIME string */
+	  r = parse_timestamp_compact
+	    (str, strend, &datetime->date, &datetime->time,
+	     has_explicit_time, has_explicit_msec);
+
+	  if (r)
+	    {
+	      if (has_explicit_msec && !*has_explicit_msec
+		  && fits_as_timestamp)
+		{
+		  DB_TIMESTAMP timestamp;
+		  DB_TIME time = datetime->time / 1000;
+
+		  if (!
+		      (*fits_as_timestamp =
+		       db_timestamp_encode (&timestamp, &datetime->date,
+					    &time) == NO_ERROR))
+		    {
+		      er_clear ();
+		    }
+		}
+
+	      if (endp)
+		{
+		  *endp = r;
+		}
+
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_TIMESTAMP_CONVERSION, 0);
+	      return ER_TIMESTAMP_CONVERSION;
+	    }
+	}
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+  return ER_TIMESTAMP_CONVERSION;
+}
+
+/*
+ * db_date_parse_datetime() - Reads a DATETIME from a DATE or DATETIME string, in any
+ *			    of the separated or compact formats the string
+ *			    might be in.
+ * returns:	0 on success, ER_DATE_CONVERSION on error.
+ * str(in):	the date or date-time string to be read and converted
+ * str_len(in): the length of the string to be converted
+ * datetime(out):
+ *		the read and converted datetime
+ */
+int
+db_date_parse_datetime (char const *str, int str_len, DB_DATETIME * datetime)
+{
+  return db_date_parse_datetime_parts (str, str_len, datetime, NULL, NULL,
+				       NULL, NULL);
+}
+
+/*
+ * db_date_parse_timestamp() - Reads a TIMESTAMP from a DATE or DATETIME
+ *			    string, in any of the separated or compact formats
+ *			    the string might be in.
+ * returns:	0 on success, ER_DATE_CONVERSION on error.
+ * str(in):	the date string or datetime string to be read and converted
+ * str_len(in): the length of the string to be converted
+ * utime(out):	the converted timestamp read from string
+ */
+int
+db_date_parse_timestamp (char const *str, int str_len, DB_TIMESTAMP * utime)
+{
+  DB_DATETIME datetime;
+  int err = db_date_parse_datetime (str, str_len, &datetime);
+
+  if (err == NO_ERROR)
+    {
+      datetime.time /= 1000;
+      if (db_timestamp_encode (utime, &datetime.date, &datetime.time)
+	  == NO_ERROR)
+	{
+	  return NO_ERROR;
+	}
+      else
+	{
+	  er_clear ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION,
+		  0);
+	  return ER_TIMESTAMP_CONVERSION;
+	}
+    }
+
+  er_clear ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+  return ER_TIMESTAMP_CONVERSION;
+}
+
+/* 
+ * db_date_parse_date() - Reads a DATE from a DATE string or a DATETIME
+ *			    string, in any of the separated or compact formats
+ *			    the string might be in.
+ * returns:	0 on success, ER_DATE_CONVERSION on error.
+ * str(in):	the date or datetime string to be read and converted
+ * str_len(in): the length of the string to be converted
+ * date(out):	the read and converted date
+ */
+int
+db_date_parse_date (char const *str, int str_len, DB_DATE * date)
+{
+  DB_DATETIME datetime = { 0, 0 };
+  int err = db_date_parse_datetime (str, str_len, &datetime);
+
+  if (err == NO_ERROR)
+    {
+      *date = datetime.date;
+    }
+  else
+    {
+      er_clear ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      err = ER_DATE_CONVERSION;
+    }
+
+  return err;
+}
+
+/*
  * parse_timestamp() - Tries to parse a utime by finding a date and a time, in
  *              order.
  * Returns: const char or NULL on error
  * buf(in): pointer to a date-time expression
+ * buf_len(in): the length of the string to be parsed
  * utime(out): pointer to a DB_TIMESTAMP to be modified
  */
 static const char *
-parse_timestamp (const char *buf, DB_TIMESTAMP * utime)
+parse_timestamp (const char *buf, int buf_len, DB_TIMESTAMP * utime)
 {
   DB_DATE date;
   DB_TIME time;
@@ -1080,10 +3256,10 @@ parse_timestamp (const char *buf, DB_TIMESTAMP * utime)
   const char *p;
 
   /* First try to parse a date followed by a time. */
-  p = parse_date (buf, &date);
+  p = parse_date (buf, buf_len, &date);
   if (p)
     {
-      p = parse_time (p, &time);
+      p = parse_time (p, buf_len, &time);
       if (p)
 	{
 	  goto finalcheck;
@@ -1091,10 +3267,10 @@ parse_timestamp (const char *buf, DB_TIMESTAMP * utime)
     }
 
   /* If that fails, try to parse a time followed by a date. */
-  p = parse_time (buf, &time);
+  p = parse_time (buf, buf_len, &time);
   if (p)
     {
-      p = parse_date (p, &date);
+      p = parse_date (p, buf_len, &date);
       if (p)
 	{
 	  goto finalcheck;
@@ -1104,6 +3280,18 @@ parse_timestamp (const char *buf, DB_TIMESTAMP * utime)
   return NULL;
 
 finalcheck:
+  /* 0000-00-00 00:00:00 treated as time_t 0 */
+  if (date == 0)
+    {
+      if (time != 0)
+	{
+	  return NULL;
+	}
+
+      *utime = 0;
+      return p;
+    }
+
   /*
    * Since parse_date() willingly accepts dates that won't fit into a
    * utime, we have to do one final check here before we accept the
@@ -1125,10 +3313,11 @@ finalcheck:
  * parse_datetime() -
  * Returns: const char or NULL on error
  * buf(in): pointer to a date-time expression
+ * buf_len(in): the length of the string to be parsed
  * datetime(out): pointer to a DB_DATETIME to be modified
  */
 static const char *
-parse_datetime (const char *buf, DB_DATETIME * datetime)
+parse_datetime (const char *buf, int buf_len, DB_DATETIME * datetime)
 {
   DB_DATE date = 0;
   unsigned int mtime;
@@ -1136,20 +3325,20 @@ parse_datetime (const char *buf, DB_DATETIME * datetime)
   const char *p;
 
   /* First try to parse a date followed by a time. */
-  p = parse_date (buf, &date);
+  p = parse_date (buf, buf_len, &date);
   if (p)
     {
-      p = parse_mtime (p, &mtime, NULL, NULL);
+      p = parse_mtime (p, buf_len, &mtime, NULL, NULL);
       if (p)
 	{
 	  goto finalcheck;
 	}
     }
 
-  p = parse_mtime (buf, &mtime, NULL, NULL);
+  p = parse_mtime (buf, buf_len, &mtime, NULL, NULL);
   if (p)
     {
-      p = parse_date (p, &date);
+      p = parse_date (p, buf_len, &date);
       if (p)
 	{
 	  goto finalcheck;
@@ -1159,10 +3348,14 @@ parse_datetime (const char *buf, DB_DATETIME * datetime)
   return NULL;
 
 finalcheck:
-
   if (date == 0)
     {
-      return NULL;
+      if (mtime != 0)
+	{
+	  return NULL;
+	}
+
+      date = julian_encode (1, 1, 1);
     }
 
   datetime->date = date;
@@ -1172,28 +3365,106 @@ finalcheck:
 }
 
 /*
+ * db_string_check_explicit_date() - check if a string is formated as a date
+ * return : true if str is formated exactly as a date 
+ *	    (not a datetime or a timestamp)
+ * str(in): the string to be checked
+ * str_len(in): the length of the string to be parsed
+ */
+bool
+db_string_check_explicit_date (const char *str, int str_len)
+{
+  DB_DATE date;
+  const char *result = NULL;
+
+  result = parse_date (str, str_len, &date);
+  if (result)
+    {
+      while (char_isspace (result[0]))
+	{
+	  result++;
+	}
+    }
+  if (result == NULL || result[0] != '\0' || date == 0)
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * db_string_to_date_ex() - Parse an ordinary date string (e.g., '10/15/86').
+ *    Whitespace is not permitted between slashed components. If the year is
+ *    omitted, the current year is assumed.  Dates are currently accepted
+ *    only in the slashified US style.
+ * returns: 0 on success, ER_DATE_CONVERSION on error
+ * str(in): a buffer containing a date to be parsed
+ * str_len(in): the length of the string to be parsed
+ * date(out): a pointer to a DB_DATE to be modified
+ */
+int
+db_string_to_date_ex (const char *str, int str_len, DB_DATE * date)
+{
+  const char *p;
+  const char *p_end = str + str_len;
+
+  p = parse_date (str, str_len, date);
+  if (p != NULL)
+    {
+      while (p < p_end && char_isspace (p[0]))
+	{
+	  p++;
+	}
+    }
+  if (p == NULL || (p < p_end && p[0] != '\0') || *date == 0)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      return ER_DATE_CONVERSION;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * db_string_to_date() - Parse an ordinary date string (e.g., '10/15/86').
  *    Whitespace is not permitted between slashed components. If the year is
  *    omitted, the current year is assumed.  Dates are currently accepted
  *    only in the slashified US style.
  * returns: 0 on success, ER_DATE_CONVERSION on error
- * buf(in): a buffer containing a date to be parsed
+ * str(in): a buffer containing a date to be parsed
  * date(out): a pointer to a DB_DATE to be modified
  */
 int
 db_string_to_date (const char *str, DB_DATE * date)
 {
-  const char *p;
+  return db_string_to_date_ex (str, strlen (str), date);
+}
 
-  p = parse_date (str, date);
-  if (p)
+/*
+ * db_string_to_time_ex() - Parse an ordinary time string (e.g., '3:30am').
+ *    Whitespace is not permitted between numeric components, it is permitted
+ *    between the last number and the optional am/pm designator.
+ * return : 0 on success, ER_DATE_CONVERSION on error.
+ * str(in): a buffer containing a date to be parsed
+ * str_len(in): the length of the string to be parsed
+ * time(out): a pointer to a DB_TIME to be modified
+ */
+int
+db_string_to_time_ex (const char *str, int str_len, DB_TIME * time)
+{
+  const char *p;
+  const char *p_end = str + str_len;
+
+  p = parse_time (str, str_len, time);
+  if (p != NULL)
     {
-      while (char_isspace (p[0]))
+      while (p < p_end && char_isspace (p[0]))
 	{
 	  p++;
 	}
     }
-  if (p == NULL || p[0] != '\0')
+  if (p == NULL || (p < p_end && p[0] != '\0'))
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       return ER_DATE_CONVERSION;
@@ -1207,21 +3478,40 @@ db_string_to_date (const char *str, DB_DATE * date)
  *    Whitespace is not permitted between numeric components, it is permitted
  *    between the last number and the optional am/pm designator.
  * return : 0 on success, ER_DATE_CONVERSION on error.
- * buf(in): a buffer containing a date to be parsed
+ * str(in): a buffer containing a date to be parsed
  * time(out): a pointer to a DB_TIME to be modified
  */
 int
 db_string_to_time (const char *str, DB_TIME * time)
 {
-  const char *p;
+  return db_string_to_time_ex (str, strlen (str), time);
+}
 
-  p = parse_time (str, time);
-  if (p)
+/*
+ * db_string_to_timestamp_ex() - Parse a date and time string into a utime.
+ *    The time and date are parsed according to the same rules as
+ *    db_string_to_time() and db_string_to_date().
+ *    they may appear in either order.
+ * return : 0 on success, -1 on error.
+ * str(in): a buffer containing a date to be parsed
+ * str_len(in): the length of the string to be parsed
+ * utime(out): a pointer to a DB_TIMESTAMP to be modified
+ */
+int
+db_string_to_timestamp_ex (const char *str, int str_len, DB_TIMESTAMP * utime)
+{
+  const char *p;
+  const char *p_end = str + str_len;
+
+  p = parse_timestamp (str, str_len, utime);
+  if (p != NULL)
     {
-      while (char_isspace (p[0]))
-	p++;
+      while (p < p_end && char_isspace (p[0]))
+	{
+	  p++;
+	}
     }
-  if (p == NULL || p[0] != '\0')
+  if (p == NULL || (p < p_end && p[0] != '\0'))
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       return ER_DATE_CONVERSION;
@@ -1236,27 +3526,13 @@ db_string_to_time (const char *str, DB_TIME * time)
  *    db_string_to_time() and db_string_to_date().
  *    they may appear in either order.
  * return : 0 on success, -1 on error.
- * buf(in): a buffer containing a date to be parsed
+ * str(in): a buffer containing a date to be parsed
  * utime(out): a pointer to a DB_TIMESTAMP to be modified
  */
 int
 db_string_to_timestamp (const char *str, DB_TIMESTAMP * utime)
 {
-  const char *p;
-
-  p = parse_timestamp (str, utime);
-  if (p)
-    {
-      while (char_isspace (p[0]))
-	p++;
-    }
-  if (p == NULL || p[0] != '\0')
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
-      return ER_DATE_CONVERSION;
-    }
-
-  return NO_ERROR;
+  return db_string_to_timestamp_ex (str, strlen (str), utime);
 }
 
 /*
@@ -1556,29 +3832,44 @@ db_datetime_to_string2 (char *buf, int bufsize, DB_DATETIME * datetime)
 }
 
 /*
- * db_string_to_datetime() -
+ * db_string_to_datetime_ex() -
  * return : 0 on success, -1 on error.
- * buf(in): a buffer containing a date to be parsed
+ * str(in): a buffer containing a date to be parsed
+ * str_len(in): the length of the string to be parsed
  * datetime(out): a pointer to a DB_DATETIME to be modified
  */
 int
-db_string_to_datetime (const char *str, DB_DATETIME * datetime)
+db_string_to_datetime_ex (const char *str, int str_len,
+			  DB_DATETIME * datetime)
 {
   const char *p;
+  const char *p_end = str + str_len;
 
-  p = parse_datetime (str, datetime);
-  if (p)
+  p = parse_datetime (str, str_len, datetime);
+  if (p != NULL)
     {
-      while (char_isspace (p[0]))
+      while (p < p_end && char_isspace (p[0]))
 	p++;
     }
-  if (p == NULL || p[0] != '\0')
+  if (p == NULL || (p < p_end && p[0] != '\0'))
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       return ER_DATE_CONVERSION;
     }
 
   return NO_ERROR;
+}
+
+/*
+ * db_string_to_datetime() -
+ * return : 0 on success, -1 on error.
+ * str(in): a buffer containing a date to be parsed
+ * datetime(out): a pointer to a DB_DATETIME to be modified
+ */
+int
+db_string_to_datetime (const char *str, DB_DATETIME * datetime)
+{
+  return db_string_to_datetime_ex (str, strlen (str), datetime);
 }
 
 /*
@@ -1725,6 +4016,54 @@ db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT bi2,
 }
 
 /*
+ *  is_leap_year () - returns true if year is a leap year
+ *    year(in) : the year 
+ */
+bool
+is_leap_year (int year)
+{
+  return (year % 400 == 0) || ((year % 100 != 0) && (year % 4 == 0));
+}
+
+/*
+ *  db_get_day_of_year() - returns the day of the year (1 to 365(6))
+ */
+int
+db_get_day_of_year (int year, int month, int day)
+{
+  int days[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30 };
+  int day_of_year = 0;
+  int i;
+
+  for (i = 1; i < month; i++)
+    {
+      day_of_year += days[i - 1];
+    }
+
+  day_of_year += day;
+
+  /* for leap years, add one extra day if we're past February.
+     A leap year i a year that is divisible by 4 and if it is divisible 100
+     it is also divisible by 400
+   */
+  if (month > 2 && year % 4 == 0)
+    {
+      if (year % 100 != 0)
+	{
+	  day_of_year++;
+	}
+      else
+	{
+	  if (year % 400 == 0)
+	    {
+	      day_of_year++;
+	    }
+	}
+    }
+  return day_of_year;
+}
+
+/*
  *  db_get_day_of_week() - returns the day of week (0 = Sunday, 6 = Saturday)
  */
 int
@@ -1742,6 +4081,171 @@ db_get_day_of_week (int year, int month, int day)
 	  + year
 	  + (int) (year / 4)
 	  - (int) (year / 100) + (int) (year / 400) + 1) % 7;
+}
+
+/* 
+ *  get_end_of_week_one_of_year() - returns the day number (1-15) at which
+ *                                  week 1 in the year ends
+ *    year(in)	: year
+ *    mode	: specifies the way in which to consider what "week 1" means
+ *
+ *	    mode  First day   Range Week 1 is the first week 
+ *		  of week
+ *	    0	  Sunday      0-53  with a Sunday in this year
+ *	    1	  Monday      0-53  with more than 3 days this year
+ *	    2	  Sunday      1-53  with a Sunday in this year
+ *	    3	  Monday      1-53  with more than 3 days this year
+ *	    4	  Sunday      0-53  with more than 3 days this year
+ *	    5	  Monday      0-53  with a Monday in this year
+ *	    6	  Sunday      1-53  with more than 3 days this year
+ *	    7	  Monday      1-53  with a Monday in this year
+ */
+static int
+get_end_of_week_one_of_year (int year, int mode)
+{
+  int dow_1Jan = 1 + db_get_day_of_week (year, 1, 1);
+
+  switch (mode)
+    {
+    case 0:
+    case 2:
+      if (dow_1Jan == 1)
+	{
+	  return 7;
+	}
+      else
+	{
+	  return 7 + 8 - dow_1Jan;
+	}
+    case 1:
+    case 3:
+      if (dow_1Jan == 1)
+	{
+	  return 7 + 1;
+	}
+      else if (dow_1Jan > 5)
+	{
+	  return 16 - dow_1Jan;
+	}
+      else
+	{
+	  return 9 - dow_1Jan;
+	}
+    case 4:
+      if (dow_1Jan > 4)
+	{
+	  return 7 + 8 - dow_1Jan;
+	}
+      else
+	{
+	  return 8 - dow_1Jan;
+	}
+    case 5:
+      if (dow_1Jan == 1)
+	{
+	  return 7 + 1;
+	}
+      else if (dow_1Jan == 2)
+	{
+	  return 7;
+	}
+      else
+	{
+	  return 16 - dow_1Jan;
+	}
+    case 6:
+      if (dow_1Jan > 4)
+	{
+	  return 7 + 8 - dow_1Jan;
+	}
+      else
+	{
+	  return 8 - dow_1Jan;
+	}
+    case 7:
+      if (dow_1Jan == 2)
+	{
+	  return 7;
+	}
+      else
+	{
+	  return 16 - dow_1Jan;
+	}
+    }
+
+  assert (false);
+
+  return 7;
+}
+
+/*
+ *  db_get_week_of_year() - returns the week number
+ *    year(in)	: year
+ *    month(in)	: month
+ *    day(in)	: day of month
+ *    mode	: specifies the way in which to compute the week number:
+ *
+ *	    mode  First day   Range Week 1 is the first week 
+ *		  of week
+ *	    0	  Sunday      0-53  with a Sunday in this year
+ *	    1	  Monday      0-53  with more than 3 days this year
+ *	    2	  Sunday      1-53  with a Sunday in this year
+ *	    3	  Monday      1-53  with more than 3 days this year
+ *	    4	  Sunday      0-53  with more than 3 days this year
+ *	    5	  Monday      0-53  with a Monday in this year
+ *	    6	  Sunday      1-53  with more than 3 days this year
+ *	    7	  Monday      1-53  with a Monday in this year
+ */
+int
+db_get_week_of_year (int year, int month, int day, int mode)
+{
+  const int day_of_year = db_get_day_of_year (year, month, day);
+  const int end_of_first_week = get_end_of_week_one_of_year (year, mode);
+  int week_number = 0;
+  int last_week_of_year = 0;
+  int days_last_year = 0;
+
+  assert ((0 <= mode) && (mode <= 7));
+
+  if (day_of_year > end_of_first_week)
+    {
+      /* if it isn't in the first week, compute week number */
+      week_number = 1 + (day_of_year - end_of_first_week) / 7;
+      if ((day_of_year - end_of_first_week) % 7)
+	{
+	  week_number++;
+	}
+      return week_number;
+    }
+
+  if (day_of_year > end_of_first_week - 7)
+    {
+      /* it is in the first week */
+      return 1;
+    }
+
+  /* day_of_year is in the last week of the previous year */
+  if (mode == 0 || mode == 1 || mode == 4 || mode == 5)
+    {
+      /* return 0 for those modes */
+      return 0;
+    }
+
+  last_week_of_year = get_end_of_week_one_of_year (year - 1, mode);
+
+  days_last_year = 365;
+  /* if it is a leap year */
+  if (is_leap_year (year - 1))
+    {
+      days_last_year++;
+    }
+
+  week_number = 1 + (days_last_year - last_week_of_year) / 7;
+  if ((days_last_year - last_week_of_year) % 7 != 0)
+    {
+      week_number++;
+    }
+  return week_number;
 }
 
 /* db_check_time_date_format()

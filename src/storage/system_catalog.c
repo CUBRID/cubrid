@@ -51,10 +51,12 @@
 #endif /* SERVER_MODE */
 
 #if !defined(SERVER_MODE)
-#undef  MUTEX_LOCK
-#define MUTEX_LOCK(a, b)
-#undef  MUTEX_UNLOCK
-#define MUTEX_UNLOCK(a)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)	0
+#define pthread_mutex_trylock(a)   0
+#define pthread_mutex_unlock(a)
+static int rv;
 #endif /* not SERVER_MODE */
 
 #define CATALOG_HEADER_SLOT             0
@@ -98,7 +100,7 @@
 #define CATALOG_PUT_PGHEADER_PG_OVFL(ptr,val) \
   OR_PUT_INT((ptr) + CATALOG_PGHEADER_PG_OVFL_OFF, (int)(val))
 
-/* Each disk representation is aligned with MAX_ALIGN (= DOUBLE_ALIGN) */
+/* Each disk representation is aligned with MAX_ALIGNMENT */
 #define CATALOG_DISK_REPR_ID_OFF             0
 #define CATALOG_DISK_REPR_N_FIXED_OFF        4
 #define CATALOG_DISK_REPR_FIXED_LENGTH_OFF   8
@@ -106,7 +108,7 @@
 #define CATALOG_DISK_REPR_NUM_OBJECTS_OFF    16
 #define CATALOG_DISK_REPR_SIZE               56
 
-/* Each disk attribute is aligned with MAX_ALIGN( = DOUBLE_ALIGN )
+/* Each disk attribute is aligned with MAX_ALIGNMENT
    Each disk attribute may be followed by a "value" which is of
    variable size. The below constants does not consider the
    optional value field following the attribute structure. */
@@ -230,18 +232,14 @@ static PGLENGTH catalog_Max_record_size;	/* Maximum Record Size */
  * for the same class representation information.
  */
 static MHT_TABLE *catalog_Hash_table = NULL;	/* Catalog memory hash table */
-#if defined(SERVER_MODE)
-static MUTEX_T catalog_Hash_table_lock = MUTEX_INITIALIZER;
-#endif /* SERVER_MODE */
+static pthread_mutex_t catalog_Hash_table_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static CATALOG_KEY catalog_Keys[CATALOG_KEY_VALUE_ARRAY_SIZE];	/* array of catalog keys */
 static CATALOG_VALUE catalog_Values[CATALOG_KEY_VALUE_ARRAY_SIZE];	/* array of catalog values */
 static int catalog_key_value_entry_point;	/* entry point in the key and val arrays */
 
 static CATALOG_MAX_SPACE catalog_Max_space;	/* Global space information */
-#if defined(SERVER_MODE)
-static MUTEX_T catalog_Max_space_lock = MUTEX_INITIALIZER;
-#endif /* SERVER_MODE */
+static pthread_mutex_t catalog_Max_space_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool catalog_is_header_initialized = false;
 
 static void catalog_initialize_max_space (CATALOG_MAX_SPACE * header_p);
@@ -573,29 +571,21 @@ catalog_put_repr_item_to_record (char *rec_p, CATALOG_REPR_ITEM * item_p)
 static void
 catalog_initialize_max_space (CATALOG_MAX_SPACE * max_space_p)
 {
-#if defined(SERVER_MODE)
   int rv;
-
-  MUTEX_LOCK (rv, catalog_Max_space_lock);
-#endif
+  rv = pthread_mutex_lock (&catalog_Max_space_lock);
 
   max_space_p->max_page_id.pageid = NULL_PAGEID;
   max_space_p->max_page_id.volid = NULL_VOLID;
   max_space_p->max_space = -1;
 
-#if defined(SERVER_MODE)
-  MUTEX_UNLOCK (catalog_Max_space_lock);
-#endif
+  pthread_mutex_unlock (&catalog_Max_space_lock);
 }
 
 static void
 catalog_update_max_space (VPID * page_id_p, PGLENGTH space)
 {
-#if defined(SERVER_MODE)
   int rv;
-
-  MUTEX_LOCK (rv, catalog_Max_space_lock);
-#endif
+  rv = pthread_mutex_lock (&catalog_Max_space_lock);
 
   if (VPID_EQ (page_id_p, &catalog_Max_space.max_page_id))
     {
@@ -607,9 +597,7 @@ catalog_update_max_space (VPID * page_id_p, PGLENGTH space)
       catalog_Max_space.max_space = space;
     }
 
-#if defined(SERVER_MODE)
-  MUTEX_UNLOCK (catalog_Max_space_lock);
-#endif
+  pthread_mutex_unlock (&catalog_Max_space_lock);
 }
 
 /*
@@ -741,13 +729,11 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size,
   float empty_ratio;
   int page_count;
   bool is_overflow_page;
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
 
   aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
 
-  MUTEX_LOCK (rv, catalog_Max_space_lock);
+  rv = pthread_mutex_lock (&catalog_Max_space_lock);
   recdes_set_data_area (&record, aligned_data, CATALOG_PAGE_HEADER_SIZE);
 
   if (catalog_Max_space.max_page_id.pageid == NULL_PAGEID)
@@ -768,7 +754,7 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size,
 			      PGBUF_UNCONDITIONAL_LATCH);
 	  if (page_p == NULL)
 	    {
-	      MUTEX_UNLOCK (catalog_Max_space_lock);
+	      pthread_mutex_unlock (&catalog_Max_space_lock);
 	      return NULL;
 	    }
 
@@ -776,7 +762,7 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size,
 	      S_SUCCESS)
 	    {
 	      pgbuf_unfix_and_init (thread_p, page_p);
-	      MUTEX_UNLOCK (catalog_Max_space_lock);
+	      pthread_mutex_unlock (&catalog_Max_space_lock);
 	      return NULL;
 	    }
 
@@ -800,13 +786,13 @@ catalog_find_optimal_page (THREAD_ENTRY * thread_p, int size,
   if (catalog_Max_space.max_page_id.pageid == NULL_PAGEID
       || size > catalog_Max_space.max_space)
     {
-      MUTEX_UNLOCK (catalog_Max_space_lock);
+      pthread_mutex_unlock (&catalog_Max_space_lock);
       return catalog_get_new_page (thread_p, page_id_p, &near_vpid, false);
     }
   else
     {
       *page_id_p = catalog_Max_space.max_page_id;
-      MUTEX_UNLOCK (catalog_Max_space_lock);
+      pthread_mutex_unlock (&catalog_Max_space_lock);
 
       page_p = pgbuf_fix (thread_p, page_id_p, OLD_PAGE, PGBUF_LATCH_WRITE,
 			  PGBUF_UNCONDITIONAL_LATCH);
@@ -1813,18 +1799,16 @@ static void
 catalog_delete_key (OID * class_id_p, REPR_ID repr_id)
 {
   CATALOG_KEY catalog_key;
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
 
   catalog_key.page_id = class_id_p->pageid;
   catalog_key.volid = class_id_p->volid;
   catalog_key.slot_id = class_id_p->slotid;
   catalog_key.repr_id = repr_id;
 
-  MUTEX_LOCK (rv, catalog_Hash_table_lock);
+  rv = pthread_mutex_lock (&catalog_Hash_table_lock);
   mht_rem (catalog_Hash_table, (void *) &catalog_key, NULL, NULL);
-  MUTEX_UNLOCK (catalog_Hash_table_lock);
+  pthread_mutex_unlock (&catalog_Hash_table_lock);
 }
 
 static char *
@@ -2073,8 +2057,9 @@ catalog_put_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
 	      recdes_set_data_area (&tmp_record, aligned_page_header_data,
 				    CATALOG_PAGE_HEADER_SIZE);
 
-	      if (catalog_adjust_directory_count
-		  (thread_p, page_p, &tmp_record, -1) != NO_ERROR)
+	      if (catalog_adjust_directory_count (thread_p, page_p,
+						  &tmp_record,
+						  -1) != NO_ERROR)
 		{
 		  pgbuf_unfix_and_init (thread_p, page_p);
 		  recdes_free_data_area (&record);
@@ -2084,8 +2069,8 @@ catalog_put_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
 	      pgbuf_set_dirty (thread_p, page_p, FREE);
 	      catalog_update_max_space (&page_id, new_space);
 
-	      if (catalog_insert_representation_item
-		  (thread_p, &tmp_record, key) != NO_ERROR)
+	      if (catalog_insert_representation_item (thread_p, &tmp_record,
+						      key) != NO_ERROR)
 		{
 		  recdes_free_data_area (&record);
 		  return ER_FAILED;
@@ -2128,16 +2113,14 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
   int repr_pos, repr_count;
   char *repr_p;
   CATALOG_KEY catalog_key;
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
 
   catalog_key.page_id = class_id_p->pageid;
   catalog_key.volid = class_id_p->volid;
   catalog_key.slot_id = class_id_p->slotid;
   catalog_key.repr_id = repr_item_p->repr_id;
 
-  MUTEX_LOCK (rv, catalog_Hash_table_lock);
+  rv = pthread_mutex_lock (&catalog_Hash_table_lock);
   catalog_value_p =
     (CATALOG_VALUE *) mht_get (catalog_Hash_table, (void *) &catalog_key);
 
@@ -2146,11 +2129,11 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
       repr_item_p->page_id.volid = catalog_value_p->page_id.volid;
       repr_item_p->page_id.pageid = catalog_value_p->page_id.pageid;
       repr_item_p->slot_id = catalog_value_p->slot_id;
-      MUTEX_UNLOCK (catalog_Hash_table_lock);
+      pthread_mutex_unlock (&catalog_Hash_table_lock);
     }
   else
     {
-      MUTEX_UNLOCK (catalog_Hash_table_lock);
+      pthread_mutex_unlock (&catalog_Hash_table_lock);
 
       page_p =
 	catalog_get_representation_record_after_search (thread_p, class_id_p,
@@ -2183,7 +2166,7 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
       repr_item_p->slot_id = CATALOG_GET_REPR_ITEM_SLOTID (repr_p);
       pgbuf_unfix_and_init (thread_p, page_p);
 
-      MUTEX_LOCK (rv, catalog_Hash_table_lock);
+      rv = pthread_mutex_lock (&catalog_Hash_table_lock);
 
       if (catalog_key_value_entry_point >= (CATALOG_KEY_VALUE_ARRAY_SIZE - 1)
 	  || mht_count (catalog_Hash_table) > CATALOG_HASH_SIZE)
@@ -2218,7 +2201,7 @@ catalog_get_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p,
 	{
 	  catalog_key_value_entry_point++;
 	}
-      MUTEX_UNLOCK (catalog_Hash_table_lock);
+      pthread_mutex_unlock (&catalog_Hash_table_lock);
     }
 
   return NO_ERROR;
@@ -2919,7 +2902,7 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p,
  * possible to update the old record in_place without moving.
  *
  * Note: The skip_logging parameter of the function may have FALSE value
- * in most cases. However it may have TRUE value in exceptional cases such as 
+ * in most cases. However it may have TRUE value in exceptional cases such as
  * the locator_increase_catalog_count() or locator_decrease_catalog_count().
  * Be sure that no log will be made when the parameter is TRUE.
  */
@@ -3445,9 +3428,9 @@ xcatalog_is_acceptable_new_representation (THREAD_ENTRY * thread_p,
 	}
 
       if ((min_repr_id == -1)
-	  || (int) OR_GET_REPRID (record.data) < min_repr_id)
+	  || (int) OR_GET_REPID (record.data) < min_repr_id)
 	{
-	  min_repr_id = OR_GET_REPRID (record.data);
+	  min_repr_id = OR_GET_REPID (record.data);
 	}
     }
 
@@ -3691,7 +3674,6 @@ catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p,
     }
 
   return NO_ERROR;
-
 }
 
 /*
@@ -3798,11 +3780,9 @@ start:
 
   if (disk_repr_p->n_fixed > 0)
     {
-      disk_repr_p->fixed = (DISK_ATTR *) db_private_alloc (thread_p,
-							   (sizeof (DISK_ATTR)
-							    *
-							    disk_repr_p->
-							    n_fixed));
+      disk_repr_p->fixed = 
+	(DISK_ATTR *) db_private_alloc (thread_p, (sizeof (DISK_ATTR) *
+						   disk_repr_p->n_fixed));
       if (!disk_repr_p->fixed)
 	{
 	  goto exit_on_error;
@@ -3814,6 +3794,7 @@ start:
 	  disk_attr_p = &disk_repr_p->fixed[i];
 	  disk_attr_p->value = NULL;
 	  disk_attr_p->bt_stats = NULL;
+	  disk_attr_p->n_btstats = 0;
 	}
     }
   else
@@ -3823,11 +3804,9 @@ start:
 
   if (disk_repr_p->n_variable > 0)
     {
-      disk_repr_p->variable = (DISK_ATTR *) db_private_alloc (thread_p,
-							      (sizeof
-							       (DISK_ATTR) *
-							       disk_repr_p->
-							       n_variable));
+      disk_repr_p->variable = 
+	(DISK_ATTR *) db_private_alloc (thread_p, (sizeof (DISK_ATTR) *
+						   disk_repr_p->n_variable));
       if (!disk_repr_p->variable)
 	{
 	  goto exit_on_error;
@@ -3839,6 +3818,7 @@ start:
 	  disk_attr_p = &disk_repr_p->variable[i - disk_repr_p->n_fixed];
 	  disk_attr_p->value = NULL;
 	  disk_attr_p->bt_stats = NULL;
+	  disk_attr_p->n_btstats = 0;
 	}
     }
   else
@@ -4527,6 +4507,12 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
     case DB_TYPE_ELO:
       fprintf (stdout, "DB_TYPE_ELO \n");
       break;
+    case DB_TYPE_BLOB:
+      fprintf (stdout, "DB_TYPE_BLOB \n");
+      break;
+    case DB_TYPE_CLOB:
+      fprintf (stdout, "DB_TYPE_CLOB \n");
+      break;
     case DB_TYPE_VARIABLE:
       fprintf (stdout, "DB_TYPE_VARIABLE \n");
       break;
@@ -4860,17 +4846,15 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 static void
 catalog_clear_hash_table ()
 {
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
 
-  MUTEX_LOCK (rv, catalog_Hash_table_lock);
+  rv = pthread_mutex_lock (&catalog_Hash_table_lock);
   if (catalog_Hash_table != NULL)
     {
       (void) mht_clear (catalog_Hash_table);
       catalog_key_value_entry_point = 0;
     }
-  MUTEX_UNLOCK (catalog_Hash_table_lock);
+  pthread_mutex_unlock (&catalog_Hash_table_lock);
 }
 
 

@@ -39,12 +39,6 @@ CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
 QATOOLS_DIR = $(SRC)/qatools
 
-INCLUDES = @SRC_INC@ @EXT_INC@
-DEFS = @SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
-	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_MYSQL
-
-MYSQL_LIBS = -lmysqlclient
-
 if BUILD_CAS_FOR_MYSQL
   CAS4M = cub_cas_mysql
 else
@@ -75,5 +69,13 @@ cub_cas_mysql_SOURCES = \
 	$(BROKER_DIR)/cas_dbms_util.c \
 	$(BROKER_DIR)/cas_error.c \
 	$(BROKER_DIR)/cas_error_log.c 
-cub_cas_mysql_CFLAGS = $(CFLAGS) @MYSQL_INC_PATH@
-cub_cas_mysql_LDFLAGS = @MYSQL_LIB_PATH@ $(MYSQL_LIBS)
+cub_cas_mysql_CPPFLAGS = @SRC_INC@ @EXT_INC@ @MYSQL_INC_PATH@\
+	@SYS_DEFS@ @VERSION_DEFS@ -DASYNC_MODE -D_XOPEN_SOURCE -D_BSD_SOURCE \
+	-DDIAG_DEVEL -DCAS_BROKER @DIR_DEFS@ -DCAS_FOR_MYSQL
+
+cub_cas_mysql_LDFLAGS = @MYSQL_LIB_PATH@ -lmysqlclient
+
+VERSIONED_FILES = \
+	$(BROKER_DIR)/cas_mysql_execute.c
+$(VERSIONED_FILES): $(top_srcdir)/BUILD_NUMBER
+	touch $@

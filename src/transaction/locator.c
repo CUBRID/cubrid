@@ -37,13 +37,14 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
-#include "thread_impl.h"
+#include "thread.h"
 
 #if !defined(SERVER_MODE)
-#define MUTEX_INIT(a)
-#define MUTEX_DESTROY(a)
-#define MUTEX_LOCK(a, b)
-#define MUTEX_UNLOCK(a)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)	0
+#define pthread_mutex_unlock(a)
+static int rv;
 #endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
@@ -60,7 +61,7 @@ struct locator_global
     int number;			/* Num of copy areas that has been kept */
     LC_COPYAREA *areas[LC_NKEEP_LIMIT];	/* Array of free copy areas */
 #if defined(SERVER_MODE)
-    MUTEX_T lock;
+    pthread_mutex_t lock;
 #endif				/* SERVER_MODE */
   } copy_areas;
 
@@ -69,7 +70,7 @@ struct locator_global
     int number;			/* Num of requested areas that has been kept */
     LC_LOCKSET *areas[LC_NKEEP_LIMIT];	/* Array of free lockset areas */
 #if defined(SERVER_MODE)
-    MUTEX_T lock;
+    pthread_mutex_t lock;
 #endif				/* SERVER_MODE */
   } lockset_areas;
 
@@ -78,7 +79,7 @@ struct locator_global
     int number;			/* Num of lockhinted areas that has been kept */
     LC_LOCKHINT *areas[LC_NKEEP_LIMIT];	/* Array of free lockhinted */
 #if defined(SERVER_MODE)
-    MUTEX_T lock;
+    pthread_mutex_t lock;
 #endif				/* SERVER_MODE */
   } lockhint_areas;
 
@@ -87,7 +88,7 @@ struct locator_global
     int number;			/* Num of packed areas that have been kept */
     LC_COPYAREA *areas[LC_NKEEP_LIMIT];	/* Array of free packed areas */
 #if defined(SERVER_MODE)
-    MUTEX_T lock;
+    pthread_mutex_t lock;
 #endif				/* SERVER_MODE */
   } packed_areas;
 };
@@ -192,10 +193,10 @@ locator_initialize_areas (void)
   locator_Keep.packed_areas.number = 0;
 
 #if defined(SERVER_MODE)
-  MUTEX_INIT (locator_Keep.copy_areas.lock);
-  MUTEX_INIT (locator_Keep.lockset_areas.lock);
-  MUTEX_INIT (locator_Keep.lockhint_areas.lock);
-  MUTEX_INIT (locator_Keep.packed_areas.lock);
+  pthread_mutex_init (&locator_Keep.copy_areas.lock, NULL);
+  pthread_mutex_init (&locator_Keep.lockset_areas.lock, NULL);
+  pthread_mutex_init (&locator_Keep.lockhint_areas.lock, NULL);
+  pthread_mutex_init (&locator_Keep.packed_areas.lock, NULL);
 #endif /* SERVER_MODE */
 
   for (i = 0; i < LC_NKEEP_LIMIT; i++)
@@ -260,10 +261,10 @@ locator_free_areas (void)
   locator_Keep.packed_areas.number = 0;
 
 #if defined(SERVER_MODE)
-  MUTEX_DESTROY (locator_Keep.copy_areas.lock);
-  MUTEX_DESTROY (locator_Keep.lockset_areas.lock);
-  MUTEX_DESTROY (locator_Keep.lockhint_areas.lock);
-  MUTEX_DESTROY (locator_Keep.packed_areas.lock);
+  pthread_mutex_destroy (&locator_Keep.copy_areas.lock);
+  pthread_mutex_destroy (&locator_Keep.lockset_areas.lock);
+  pthread_mutex_destroy (&locator_Keep.lockhint_areas.lock);
+  pthread_mutex_destroy (&locator_Keep.packed_areas.lock);
 #endif /* SERVER_MODE */
 
   locator_Is_initialized = false;
@@ -295,7 +296,7 @@ locator_allocate_packed (int packed_size)
   int rv;
 #endif /* SERVER_MODE */
 
-  MUTEX_LOCK (rv, locator_Keep.packed_areas.lock);
+  rv = pthread_mutex_lock (&locator_Keep.packed_areas.lock);
 
   for (i = 0; i < locator_Keep.packed_areas.number; i++)
     {
@@ -311,7 +312,7 @@ locator_allocate_packed (int packed_size)
 	  packed_area = locator_Keep.packed_areas.areas[i]->mem;
 	  packed_size = locator_Keep.packed_areas.areas[i]->length;
 
-	  --locator_Keep.packed_areas.number;
+	  locator_Keep.packed_areas.number--;
 
 	  /* Move the tail to current location */
 	  locator_Keep.packed_areas.areas[i]->mem =
@@ -325,7 +326,7 @@ locator_allocate_packed (int packed_size)
 	}
     }
 
-  MUTEX_UNLOCK (locator_Keep.packed_areas.lock);
+  pthread_mutex_unlock (&locator_Keep.packed_areas.lock);
 
   if (packed_area == NULL)
     {
@@ -368,7 +369,7 @@ locator_free_packed (char *packed_area, int packed_size)
   int rv;
 #endif /* SERVER_MODE */
 
-  MUTEX_LOCK (rv, locator_Keep.packed_areas.lock);
+  rv = pthread_mutex_lock (&locator_Keep.packed_areas.lock);
 
   if (locator_Keep.packed_areas.number < LC_NKEEP_LIMIT)
     {
@@ -386,14 +387,14 @@ locator_free_packed (char *packed_area, int packed_size)
 			   locator_Keep.packed_areas.areas[locator_Keep.
 							   packed_areas.
 							   number]->length);
-      ++locator_Keep.packed_areas.number;
+      locator_Keep.packed_areas.number++;
     }
   else
     {
       free_and_init (packed_area);
     }
 
-  MUTEX_UNLOCK (locator_Keep.packed_areas.lock);
+  pthread_mutex_unlock (&locator_Keep.packed_areas.lock);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -449,7 +450,7 @@ locator_allocate_copy_area_by_length (int min_length,
    * Do we have an area of given or larger length cached ?
    */
 
-  MUTEX_LOCK (rv, locator_Keep.copy_areas.lock);
+  rv = pthread_mutex_lock (&locator_Keep.copy_areas.lock);
 
   for (i = 0; i < locator_Keep.copy_areas.number; i++)
     {
@@ -468,7 +469,7 @@ locator_allocate_copy_area_by_length (int min_length,
 	}
     }
 
-  MUTEX_UNLOCK (locator_Keep.copy_areas.lock);
+  pthread_mutex_unlock (&locator_Keep.copy_areas.lock);
 
   if (copyarea == NULL)
     {
@@ -505,7 +506,7 @@ locator_free_copy_area (LC_COPYAREA * copyarea)
   int rv;
 #endif /* SERVER_MODE */
 
-  MUTEX_LOCK (rv, locator_Keep.copy_areas.lock);
+  rv = pthread_mutex_lock (&locator_Keep.copy_areas.lock);
 
   if (locator_Keep.copy_areas.number < LC_NKEEP_LIMIT)
     {
@@ -522,7 +523,7 @@ locator_free_copy_area (LC_COPYAREA * copyarea)
       free_and_init (copyarea);
     }
 
-  MUTEX_UNLOCK (locator_Keep.copy_areas.lock);
+  pthread_mutex_unlock (&locator_Keep.copy_areas.lock);
 }
 
 /*
@@ -550,11 +551,12 @@ locator_pack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea,
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copyarea);
   ptr = desc;
   for (i = 0, obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
-       i < num_objs; ++i, obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj))
+       i < num_objs; i++, obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj))
     {
       ptr = or_pack_int (ptr, obj->operation);
       ptr = or_pack_int (ptr, obj->has_index);
       ptr = or_pack_hfid (ptr, &obj->hfid);
+      ptr = or_pack_oid (ptr, &obj->class_oid);
       ptr = or_pack_oid (ptr, &obj->oid);
       ptr = or_pack_int (ptr, obj->length);
       ptr = or_pack_int (ptr, obj->offset);
@@ -587,12 +589,13 @@ locator_unpack_copy_area_descriptor (int num_objs, LC_COPYAREA * copyarea,
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copyarea);
   mobjs->num_objs = num_objs;
   for (i = 0, obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
-       i < num_objs; ++i, obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj))
+       i < num_objs; i++, obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj))
     {
       desc = or_unpack_int (desc, &ope);
       obj->operation = (LC_COPYAREA_OPERATION) ope;
       desc = or_unpack_int (desc, &obj->has_index);
       desc = or_unpack_hfid (desc, &obj->hfid);
+      desc = or_unpack_oid (desc, &obj->class_oid);
       desc = or_unpack_oid (desc, &obj->oid);
       desc = or_unpack_int (desc, &obj->length);
       desc = or_unpack_int (desc, &obj->offset);
@@ -933,7 +936,7 @@ locator_allocate_lockset (int max_reqobjs, LOCK reqobj_inst_lock,
    * Do we have an area cached, as big as the one needed ?
    */
 
-  MUTEX_LOCK (rv, locator_Keep.lockset_areas.lock);
+  rv = pthread_mutex_lock (&locator_Keep.lockset_areas.lock);
 
   for (i = 0; i < locator_Keep.lockset_areas.number; i++)
     {
@@ -957,7 +960,7 @@ locator_allocate_lockset (int max_reqobjs, LOCK reqobj_inst_lock,
 	  break;
 	}
     }
-  MUTEX_UNLOCK (locator_Keep.lockset_areas.lock);
+  pthread_mutex_unlock (&locator_Keep.lockset_areas.lock);
 
   if (lockset == NULL)
     {
@@ -1129,7 +1132,7 @@ locator_free_lockset (LC_LOCKSET * lockset)
       lockset->packed_size = 0;
     }
 
-  MUTEX_LOCK (rv, locator_Keep.lockset_areas.lock);
+  rv = pthread_mutex_lock (&locator_Keep.lockset_areas.lock);
 
   if (locator_Keep.lockset_areas.number < LC_NKEEP_LIMIT)
     {
@@ -1148,7 +1151,7 @@ locator_free_lockset (LC_LOCKSET * lockset)
       free_and_init (lockset);
     }
 
-  MUTEX_UNLOCK (locator_Keep.lockset_areas.lock);
+  pthread_mutex_unlock (&locator_Keep.lockset_areas.lock);
 }
 
 #if defined(CUBRID_DEBUG)
@@ -1373,7 +1376,7 @@ locator_pack_lockset_classes (char *packed, LC_LOCKSET * lockset)
   int i;
 
   for (i = 0, class_lockset = lockset->classes;
-       i < lockset->num_classes_of_reqobjs; ++i, ++class_lockset)
+       i < lockset->num_classes_of_reqobjs; i++, class_lockset++)
     {
       packed = or_pack_oid (packed, &class_lockset->oid);
       packed = or_pack_int (packed, class_lockset->chn);
@@ -1399,7 +1402,7 @@ locator_pack_lockset_objects (char *packed, LC_LOCKSET * lockset)
   int i;
 
   for (i = 0, object = lockset->objects;
-       i < lockset->num_reqobjs; ++i, ++object)
+       i < lockset->num_reqobjs; i++, object++)
     {
       packed = or_pack_oid (packed, &object->oid);
       packed = or_pack_int (packed, object->chn);
@@ -1542,7 +1545,7 @@ locator_unpack_lockset_classes (char *unpacked, LC_LOCKSET * lockset)
   int i;
 
   for (i = 0, class_lockset = lockset->classes;
-       i < lockset->num_classes_of_reqobjs; ++i, ++class_lockset)
+       i < lockset->num_classes_of_reqobjs; i++, class_lockset++)
     {
       unpacked = or_unpack_oid (unpacked, &class_lockset->oid);
       unpacked = or_unpack_int (unpacked, &class_lockset->chn);
@@ -1568,7 +1571,7 @@ locator_unpack_lockset_objects (char *unpacked, LC_LOCKSET * lockset)
   int i;
 
   for (i = 0, object = lockset->objects;
-       i < lockset->num_reqobjs; ++i, ++object)
+       i < lockset->num_reqobjs; i++, object++)
     {
       unpacked = or_unpack_oid (unpacked, &object->oid);
       unpacked = or_unpack_int (unpacked, &object->chn);
@@ -1645,7 +1648,7 @@ locator_allocate_lockhint (int max_classes, int quit_on_errors)
 
   /* Do we have a lockhint area cached ? */
 
-  MUTEX_LOCK (rv, locator_Keep.lockhint_areas.lock);
+  rv = pthread_mutex_lock (&locator_Keep.lockhint_areas.lock);
 
   for (i = 0; i < locator_Keep.lockhint_areas.number; i++)
     {
@@ -1669,7 +1672,7 @@ locator_allocate_lockhint (int max_classes, int quit_on_errors)
 	}
     }
 
-  MUTEX_UNLOCK (locator_Keep.lockhint_areas.lock);
+  pthread_mutex_unlock (&locator_Keep.lockhint_areas.lock);
 
   if (lockhint == NULL)
     {
@@ -1787,7 +1790,7 @@ locator_free_lockhint (LC_LOCKHINT * lockhint)
       lockhint->packed_size = 0;
     }
 
-  MUTEX_LOCK (rv, locator_Keep.lockhint_areas.lock);
+  rv = pthread_mutex_lock (&locator_Keep.lockhint_areas.lock);
 
   if (locator_Keep.lockhint_areas.number < LC_NKEEP_LIMIT)
     {
@@ -1805,7 +1808,7 @@ locator_free_lockhint (LC_LOCKHINT * lockhint)
       free_and_init (lockhint);
     }
 
-  MUTEX_UNLOCK (locator_Keep.lockhint_areas.lock);
+  pthread_mutex_unlock (&locator_Keep.lockhint_areas.lock);
 }
 
 #if defined(CUBRID_DEBUG)
@@ -1961,7 +1964,7 @@ locator_pack_lockhint_classes (char *packed, LC_LOCKHINT * lockhint)
   int i;
 
   for (i = 0, class_lockhint = lockhint->classes;
-       i < lockhint->num_classes; ++i, class_lockhint++)
+       i < lockhint->num_classes; i++, class_lockhint++)
     {
       packed = or_pack_oid (packed, &class_lockhint->oid);
       packed = or_pack_int (packed, class_lockhint->chn);
@@ -2081,7 +2084,7 @@ locator_unpack_lockhint_classes (char *unpacked, LC_LOCKHINT * lockhint)
   int i;
 
   for (i = 0, class_lockhint = lockhint->classes;
-       i < lockhint->num_classes; ++i, class_lockhint++)
+       i < lockhint->num_classes; i++, class_lockhint++)
     {
       unpacked = or_unpack_oid (unpacked, &class_lockhint->oid);
       unpacked = or_unpack_int (unpacked, &class_lockhint->chn);

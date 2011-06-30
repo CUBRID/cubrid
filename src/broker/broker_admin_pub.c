@@ -36,6 +36,7 @@
 #include <sys/stat.h>
 #include <signal.h>
 #include <time.h>
+#include <errno.h>
 
 #if defined(WINDOWS)
 #include <direct.h>
@@ -82,6 +83,8 @@
 	  }								\
 	} while (0)
 
+#define ACCESS_FILE_DELIMITER ":"
+
 static int br_activate (T_BROKER_INFO *, int, T_SHM_BROKER *);
 static int br_inactivate (T_BROKER_INFO *);
 static void as_activate (T_APPL_SERVER_INFO *, int, T_BROKER_INFO *, char **,
@@ -91,7 +94,10 @@ static char **make_env (char *env_file, int *env_num);
 static const char *get_appl_server_name (int appl_server_type, char **env,
 					 int env_num);
 static int broker_create_dir (const char *new_dir);
-
+static int read_from_access_control_file (T_SHM_APPL_SERVER * shm_appl,
+					  char *filename);
+static int read_ip_info (IP_INFO * ip_info, char *filename);
+static void access_control_file_repath (char *path);
 #if !defined(WINDOWS)
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int get_cubrid_version (void);
@@ -186,7 +192,8 @@ admin_isstarted_cmd (int master_shm_id)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 int
-admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
+admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
+		 bool acl_flag, char *acl_file)
 {
   T_SHM_BROKER *shm_br;
   int shm_size, i;
@@ -257,6 +264,14 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id)
 		"%s/%s.access", br_info[i].access_log_file, br_info[i].name);
       snprintf (shm_br->br_info[i].error_log_file, CONF_LOG_FILE_LEN - 1,
 		"%s/%s.err", br_info[i].error_log_file, br_info[i].name);
+
+      shm_br->access_control = acl_flag;
+
+      if (acl_file != NULL)
+	{
+	  strncpy (shm_br->access_control_file, acl_file, PATH_MAX - 1);
+	}
+
       if (shm_br->br_info[i].service_flag == ON)
 	{
 	  res = br_activate (&(shm_br->br_info[i]), master_shm_id, shm_br);
@@ -986,7 +1001,8 @@ admin_broker_info_cmd (int master_shm_id)
   T_SHM_BROKER *shm_br;
 
   shm_br =
-    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
+    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER,
+				  SHM_MODE_MONITOR);
   if (shm_br == NULL)
     {
       SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
@@ -1155,7 +1171,8 @@ admin_broker_job_first_cmd (int master_shm_id, const char *broker_name,
 
 int
 admin_broker_conf_change (int master_shm_id, const char *br_name,
-			  const char *conf_name, const char *conf_value)
+			  const char *conf_name, const char *conf_value,
+			  int as_number)
 {
   T_SHM_BROKER *shm_br = NULL;
   T_SHM_APPL_SERVER *shm_appl = NULL;
@@ -1166,9 +1183,8 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
     (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
   if (shm_br == NULL)
     {
-      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
-			uw_get_os_error_code ());
-      return -1;
+      sprintf (admin_err_msg, "Broker is not started.");
+      goto set_broker_conf_error;
     }
 
   br_index = -1;
@@ -1184,6 +1200,12 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
   if (br_index < 0)
     {
       sprintf (admin_err_msg, "Cannot find broker [%s]", br_name);
+      goto set_broker_conf_error;
+    }
+
+  if (shm_br->br_info[br_index].service_flag == OFF)
+    {
+      sprintf (admin_err_msg, "Broker[%s] is not running.", br_name);
       goto set_broker_conf_error;
     }
 
@@ -1207,8 +1229,46 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
 	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
 	  goto set_broker_conf_error;
 	}
-      shm_br->br_info[br_index].sql_log_mode = sql_log_mode;
-      shm_appl->sql_log_mode = sql_log_mode;
+
+      if (as_number <= 0)
+	{
+	  shm_br->br_info[br_index].sql_log_mode = sql_log_mode;
+	  shm_appl->sql_log_mode = sql_log_mode;
+	  for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
+	    {
+	      shm_appl->as_info[i].cur_sql_log_mode = sql_log_mode;
+	    }
+	}
+      else
+	{
+	  if (as_number > shm_appl->num_appl_server)
+	    {
+	      sprintf (admin_err_msg, "Invalid cas number : %d", as_number);
+	      goto set_broker_conf_error;
+	    }
+	  shm_appl->as_info[as_number - 1].cur_sql_log_mode = sql_log_mode;
+	}
+    }
+  else if (strcasecmp (conf_name, "ACCESS_MODE") == 0)
+    {
+      char access_mode = conf_get_value_access_mode (conf_value);
+
+      if (access_mode == -1)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_broker_conf_error;
+	}
+      if (shm_br->br_info[br_index].access_mode == access_mode)
+	{
+	  sprintf (admin_err_msg, "same as previous value : %s", conf_value);
+	  goto set_broker_conf_error;
+	}
+      shm_br->br_info[br_index].access_mode = access_mode;
+      shm_appl->access_mode = access_mode;
+      for (i = 0; i < shm_appl->num_appl_server; i++)
+	{
+	  shm_appl->as_info[i].reset_flag = TRUE;
+	}
     }
   else if (strcasecmp (conf_name, "SQL_LOG_MAX_SIZE") == 0)
     {
@@ -1523,6 +1583,268 @@ admin_init_env ()
     }
 }
 
+int
+admin_broker_acl_status_cmd (int master_shm_id, const char *broker_name)
+{
+  int i, j, k, m;
+  int br_index;
+  T_SHM_BROKER *shm_br;
+  T_SHM_APPL_SERVER *shm_appl;
+
+  shm_br =
+    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER,
+				  SHM_MODE_MONITOR);
+
+  if (shm_br == NULL)
+    {
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			uw_get_os_error_code ());
+      return -1;
+    }
+
+  br_index = -1;
+  if (broker_name != NULL)
+    {
+      for (i = 0; i < shm_br->num_broker; i++)
+	{
+	  if (strcmp (shm_br->br_info[i].name, broker_name) == 0)
+	    {
+	      br_index = i;
+	      break;
+	    }
+	}
+      if (br_index == -1)
+	{
+	  sprintf (admin_err_msg, "Cannot find broker [%s]\n", broker_name);
+	  uw_shm_detach (shm_br);
+	  return -1;
+	}
+    }
+
+  fprintf (stdout, "ACCESS_CONTROL=%s\n",
+	   (shm_br->access_control) ? "ON" : "OFF");
+  fprintf (stdout, "ACCESS_CONTROL_FILE=%s\n\n", shm_br->access_control_file);
+
+  if (shm_br->access_control == false ||
+      shm_br->access_control_file[0] == '\0')
+    {
+      uw_shm_detach (shm_br);
+      return 0;
+    }
+
+  if (br_index < 0)
+    {
+      for (i = 0; i < shm_br->num_broker; i++)
+	{
+	  if (shm_br->br_info[i].service_flag == OFF)
+	    {
+	      continue;
+	    }
+
+	  shm_appl =
+	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].
+					       appl_server_shm_id,
+					       SHM_APPL_SERVER,
+					       SHM_MODE_MONITOR);
+	  if (shm_appl == NULL)
+	    {
+	      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+				uw_get_os_error_code ());
+	      uw_shm_detach (shm_br);
+	      return -1;
+	    }
+
+	  fprintf (stdout, "[%%%s]\n", shm_appl->broker_name);
+
+	  for (j = 0; j < shm_appl->num_access_info; j++)
+	    {
+	      fprintf (stdout, "%s:%s:%s\n", shm_appl->access_info[j].dbname,
+		       shm_appl->access_info[j].dbuser,
+		       shm_appl->access_info[j].ip_filename);
+	      for (k = 0; k < shm_appl->access_info[j].ip_info.num_list; k++)
+		{
+		  int address_index = k * IP_BYTE_COUNT;
+
+		  for (m = 0;
+		       m <
+		       shm_appl->access_info[j].ip_info.
+		       address_list[address_index]; m++)
+		    {
+		      fprintf (stdout, "%d%s",
+			       shm_appl->access_info[j].ip_info.
+			       address_list[address_index + m + 1],
+			       ((m != 3) ? "." : ""));
+		    }
+
+		  if (m != 4)
+		    {
+		      fprintf (stdout, "*");
+		    }
+
+		  fprintf (stdout, "\n");
+		}
+	      fprintf (stdout, "\n");
+	    }
+	  uw_shm_detach (shm_appl);
+	}
+    }
+  else
+    {
+      shm_appl =
+	(T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[br_index].
+					   appl_server_shm_id,
+					   SHM_APPL_SERVER, SHM_MODE_MONITOR);
+      if (shm_appl == NULL)
+	{
+	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			    uw_get_os_error_code ());
+	  uw_shm_detach (shm_br);
+	  return -1;
+	}
+
+      fprintf (stdout, "[%%%s]\n", shm_appl->broker_name);
+
+      for (j = 0; j < shm_appl->num_access_info; j++)
+	{
+	  fprintf (stdout, "%s:%s:%s\n", shm_appl->access_info[j].dbname,
+		   shm_appl->access_info[j].dbuser,
+		   shm_appl->access_info[j].ip_filename);
+	  for (k = 0; k < shm_appl->access_info[j].ip_info.num_list; k++)
+	    {
+	      int address_index = k * IP_BYTE_COUNT;
+
+	      for (m = 0;
+		   m <
+		   shm_appl->access_info[j].ip_info.
+		   address_list[address_index]; m++)
+		{
+		  fprintf (stdout, "%d%s",
+			   shm_appl->access_info[j].ip_info.
+			   address_list[address_index + m + 1],
+			   ((m != 3) ? "." : ""));
+		}
+
+	      if (m != 4)
+		{
+		  fprintf (stdout, "*");
+		}
+	      fprintf (stdout, "\n");
+	    }
+	  fprintf (stdout, "\n");
+	}
+      uw_shm_detach (shm_appl);
+    }
+
+  uw_shm_detach (shm_br);
+  return 0;
+}
+
+int
+admin_broker_acl_reload_cmd (int master_shm_id, const char *broker_name)
+{
+  int i;
+  int br_index;
+  T_SHM_BROKER *shm_br;
+  T_SHM_APPL_SERVER *shm_appl;
+  char *access_file_name;
+
+  shm_br =
+    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
+
+  if (shm_br == NULL)
+    {
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			uw_get_os_error_code ());
+      return -1;
+    }
+
+  br_index = -1;
+  if (broker_name != NULL)
+    {
+      for (i = 0; i < shm_br->num_broker; i++)
+	{
+	  if (strcmp (shm_br->br_info[i].name, broker_name) == 0)
+	    {
+	      br_index = i;
+	      break;
+	    }
+	}
+      if (br_index == -1)
+	{
+	  sprintf (admin_err_msg, "Cannot find broker [%s]\n", broker_name);
+	  uw_shm_detach (shm_br);
+	  return -1;
+	}
+    }
+
+  if (shm_br->access_control == false ||
+      shm_br->access_control_file[0] == '\0')
+    {
+      uw_shm_detach (shm_br);
+      return 0;
+    }
+
+  set_cubrid_file (FID_ACCESS_CONTROL_FILE, shm_br->access_control_file);
+  access_file_name = get_cubrid_file_ptr (FID_ACCESS_CONTROL_FILE);
+
+  if (br_index < 0)
+    {
+      for (i = 0; i < shm_br->num_broker; i++)
+	{
+	  if (shm_br->br_info[i].service_flag == OFF)
+	    {
+	      continue;
+	    }
+
+	  shm_appl =
+	    (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[i].
+					       appl_server_shm_id,
+					       SHM_APPL_SERVER,
+					       SHM_MODE_ADMIN);
+	  if (shm_appl == NULL)
+	    {
+	      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+				uw_get_os_error_code ());
+	      uw_shm_detach (shm_br);
+	      return -1;
+	    }
+	  if (read_from_access_control_file (shm_appl, access_file_name) != 0)
+	    {
+	      uw_shm_detach (shm_appl);
+	      uw_shm_detach (shm_br);
+	      return -1;
+	    }
+	  uw_shm_detach (shm_appl);
+	}
+    }
+  else
+    {
+      shm_appl =
+	(T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[br_index].
+					   appl_server_shm_id,
+					   SHM_APPL_SERVER, SHM_MODE_ADMIN);
+      if (shm_appl == NULL)
+	{
+	  SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (),
+			    uw_get_os_error_code ());
+	  uw_shm_detach (shm_br);
+	  return -1;
+	}
+
+      if (read_from_access_control_file (shm_appl, access_file_name) != 0)
+	{
+	  uw_shm_detach (shm_appl);
+	  uw_shm_detach (shm_br);
+	  return -1;
+	}
+
+      uw_shm_detach (shm_appl);
+    }
+
+  uw_shm_detach (shm_br);
+  return 0;
+}
+
 #if defined(WINDOWS)
 static int
 admin_get_host_ip (unsigned char *ip_addr)
@@ -1579,12 +1901,56 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
       return -1;
     }
 
+  shm_appl->cci_default_autocommit = br_info->cci_default_autocommit;
   shm_appl->suspend_mode = SUSPEND_NONE;
   shm_appl->job_queue_size = br_info->job_queue_size;
   shm_appl->job_queue[0].id = 0;	/* initialize max heap */
+  shm_appl->max_prepared_stmt_count = br_info->max_prepared_stmt_count;
   strcpy (shm_appl->log_dir, br_info->log_dir);
   strcpy (shm_appl->err_log_dir, br_info->err_log_dir);
+  strcpy (shm_appl->broker_name, br_info->name);
+  shm_appl->access_control = shm_br->access_control;
+  shm_appl->acl_chn = 0;
 
+  if (shm_br->access_control && shm_br->access_control_file[0] != '\0')
+    {
+      char *access_file_name;
+#if defined (WINDOWS)
+      char sem_name[BROKER_NAME_LEN];
+
+      MAKE_ACL_SEM_NAME (sem_name, br_info->name);
+
+      if (uw_sem_init (sem_name) < 0)
+	{
+	  sprintf (admin_err_msg, "%s: cannot initialize acl semaphore",
+		   br_info->name);
+	  uw_shm_detach (shm_appl);
+	  uw_shm_destroy (br_info->appl_server_shm_id);
+	  return -1;
+	}
+#else
+      if (uw_sem_init (&shm_appl->acl_sem) < 0)
+	{
+	  sprintf (admin_err_msg, "%s: cannot initialize acl semaphore",
+		   br_info->name);
+	  uw_shm_detach (shm_appl);
+	  uw_shm_destroy (br_info->appl_server_shm_id);
+	  return -1;
+	}
+#endif
+      if (shm_br->access_control_file[0] != '\0')
+	{
+	  set_cubrid_file (FID_ACCESS_CONTROL_FILE,
+			   shm_br->access_control_file);
+	  access_file_name = get_cubrid_file_ptr (FID_ACCESS_CONTROL_FILE);
+	  if (read_from_access_control_file (shm_appl, access_file_name) != 0)
+	    {
+	      uw_shm_detach (shm_appl);
+	      uw_shm_destroy (br_info->appl_server_shm_id);
+	      return -1;
+	    }
+	}
+    }
 #if defined(WINDOWS)
   shm_appl->use_pdh_flag = FALSE;
   br_info->pdh_workset = 0;
@@ -1706,7 +2072,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   shm_appl->jdbc_cache_only_hint = br_info->jdbc_cache_only_hint;
   shm_appl->jdbc_cache_life_time = br_info->jdbc_cache_life_time;
 
-  strcpy (shm_appl->broker_name, br_info->name);
+  strcpy (shm_appl->preferred_hosts, br_info->preferred_hosts);
 
   for (i = 0; i < shm_appl->num_appl_server; i++)
     {
@@ -1728,10 +2094,12 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
       shm_appl->as_info[i].num_long_queries = 0;
       shm_appl->as_info[i].num_long_transactions = 0;
       shm_appl->as_info[i].num_error_queries = 0;
+      shm_appl->as_info[i].num_interrupts = 0;
       shm_appl->as_info[i].auto_commit_mode = FALSE;
       shm_appl->as_info[i].database_name[0] = '\0';
       shm_appl->as_info[i].database_host[0] = '\0';
       shm_appl->as_info[i].last_connect_time = 0;
+      shm_appl->as_info[i].cur_sql_log_mode = br_info->sql_log_mode;
       CON_STATUS_LOCK_INIT (&(shm_appl->as_info[i]));
     }
 
@@ -1786,6 +2154,9 @@ br_inactivate (T_BROKER_INFO * br_info)
   struct tm ct;
   int i;
   char cmd_buf[BUFSIZ];
+#if defined(WINDOWS)
+  char acl_sem_name[BROKER_NAME_LEN];
+#endif
 
 #if defined(WINDOWS)
   if (localtime_r (&cur_time, &ct) < 0)
@@ -1845,6 +2216,13 @@ br_inactivate (T_BROKER_INFO * br_info)
 
   br_info->num_busy_count = 0;
 
+#if defined (WINDOWS)
+  MAKE_ACL_SEM_NAME (acl_sem_name, shm_appl->broker_name);
+  uw_sem_destroy (acl_sem_name);
+#else
+  uw_sem_destroy (&shm_appl->acl_sem);
+#endif
+
   uw_shm_detach (shm_appl);
   uw_shm_destroy (br_info->appl_server_shm_id);
 
@@ -1892,6 +2270,7 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
   as_info->clt_appl_name[0] = '\0';
   as_info->clt_req_path_info[0] = '\0';
   as_info->clt_ip_addr[0] = '\0';
+  as_info->cur_sql_log_mode = shm_appl->sql_log_mode;
 
 #if defined(WINDOWS)
   as_info->pdh_pid = 0;
@@ -2053,6 +2432,272 @@ get_appl_server_name (int appl_server_type, char **env, int env_num)
   if (appl_server_type == APPL_SERVER_CAS_MYSQL)
     return APPL_SERVER_CAS_MYSQL_NAME;
   return APPL_SERVER_CAS_NAME;
+}
+
+static int
+read_from_access_control_file (T_SHM_APPL_SERVER * shm_appl, char *filename)
+{
+  char buf[1024];
+  FILE *fd_access_list;
+  int num_access_list = 0;
+  ACCESS_INFO new_access_info[ACL_MAX_ITEM_COUNT];
+  bool is_current_broker_section;
+#if defined(WINDOWS)
+  char acl_sem_name[BROKER_NAME_LEN];
+#endif
+
+  fd_access_list = fopen (filename, "r");
+
+  if (fd_access_list == NULL)
+    {
+      sprintf (admin_err_msg,
+	       "%s: error while loading access control file(%s)",
+	       shm_appl->broker_name, filename);
+      return -1;
+    }
+
+  is_current_broker_section = false;
+
+  memset (new_access_info, '\0', sizeof (new_access_info));
+
+  while (fgets (buf, 1024, fd_access_list))
+    {
+      char *dbname, *dbuser, *ip_file, *p;
+
+      p = strchr (buf, '#');
+      if (p != NULL)
+	{
+	  *p = '\0';
+	}
+
+      trim (buf);
+
+      if (buf[0] == '\0')
+	{
+	  continue;
+	}
+
+      if (is_current_broker_section == false &&
+	  strncmp (buf, "[%", 2) == 0 && buf[strlen (buf) - 1] == ']')
+	{
+	  buf[strlen (buf) - 1] = '\0';
+	  if (strcasecmp (shm_appl->broker_name, buf + 2) == 0)
+	    {
+	      is_current_broker_section = true;
+	      continue;
+	    }
+	}
+      if (is_current_broker_section == false)
+	{
+	  continue;
+	}
+
+      if (strncmp (buf, "[%", 2) == 0 && buf[strlen (buf) - 1] == ']')
+	{
+	  buf[strlen (buf) - 1] = '\0';
+	  if (strcasecmp (shm_appl->broker_name, buf + 2) != 0)
+	    {
+	      break;
+	    }
+	}
+
+      if (num_access_list >= ACL_MAX_ITEM_COUNT)
+	{
+	  sprintf (admin_err_msg,
+		   "%s: error while loading access control file(%s)"
+		   " - max item count(%d) exceeded.",
+		   shm_appl->broker_name, filename, ACL_MAX_ITEM_COUNT);
+	  goto error;
+	}
+
+      dbname = strtok (buf, ACCESS_FILE_DELIMITER);
+      if (dbname == NULL)
+	{
+	  sprintf (admin_err_msg,
+		   "%s: error while loading access control file(%s).",
+		   shm_appl->broker_name, filename);
+	  goto error;
+	}
+
+      dbuser = strtok (NULL, ACCESS_FILE_DELIMITER);
+      if (dbuser == NULL)
+	{
+	  sprintf (admin_err_msg,
+		   "%s: error while loading access control file(%s).",
+		   shm_appl->broker_name, filename);
+	  goto error;
+	}
+
+      ip_file = strtok (NULL, ACCESS_FILE_DELIMITER);
+      if (ip_file == NULL)
+	{
+	  sprintf (admin_err_msg,
+		   "%s: error while loading access control file(%s).",
+		   shm_appl->broker_name, filename);
+	  goto error;
+	}
+
+      access_control_file_repath (ip_file);
+
+      if (read_ip_info
+	  (&(new_access_info[num_access_list].ip_info), ip_file) < 0)
+	{
+	  goto error;
+	}
+
+      strncpy (new_access_info[num_access_list].dbname,
+	       dbname, ACL_MAX_DBNAME_LENGTH);
+      strncpy (new_access_info[num_access_list].dbuser,
+	       dbuser, ACL_MAX_DBUSER_LENGTH);
+      strcpy (new_access_info[num_access_list].ip_filename, ip_file);
+
+      num_access_list++;
+    }
+
+  fclose (fd_access_list);
+
+#if defined (WINDOWS)
+  MAKE_ACL_SEM_NAME (acl_sem_name, shm_appl->broker_name);
+  uw_sem_wait (acl_sem_name);
+#else
+  uw_sem_wait (&shm_appl->acl_sem);
+#endif
+
+  memcpy (shm_appl->access_info, new_access_info, sizeof (new_access_info));
+  shm_appl->num_access_info = num_access_list;
+  shm_appl->acl_chn++;
+
+#if defined(WINDOWS)
+  uw_sem_post (acl_sem_name);
+#else
+  uw_sem_post (&shm_appl->acl_sem);
+#endif
+
+  return 0;
+
+error:
+  fclose (fd_access_list);
+
+  return -1;
+}
+
+static void
+access_control_file_repath (char *path)
+{
+  char tmp_str[PATH_MAX];
+
+  trim (path);
+
+  if (IS_ABS_PATH (path))
+    {
+      return;
+    }
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  envvar_confdir_file (tmp_str, PATH_MAX, path);
+  strcpy (path, tmp_str);
+#endif
+
+  return;
+}
+
+static int
+read_ip_info (IP_INFO * ip_info, char *filename)
+{
+  char buf[32];
+  FILE *fd_ip_list;
+  unsigned char i;
+
+  fd_ip_list = fopen (filename, "r");
+
+  if (fd_ip_list == NULL)
+    {
+      sprintf (admin_err_msg,
+	       "Error while loading ip info file(%s).", filename);
+      return -1;
+    }
+
+  ip_info->num_list = 0;
+
+  while (fgets (buf, 32, fd_ip_list))
+    {
+      char *token, *p;
+      int address_index;
+
+      p = strchr (buf, '#');
+      if (p != NULL)
+	{
+	  *p = '\0';
+	}
+
+      trim (buf);
+      if (buf[0] == '\0')
+	{
+	  continue;
+	}
+
+      if (ip_info->num_list >= ACL_MAX_IP_COUNT)
+	{
+	  sprintf (admin_err_msg,
+		   "Error while loading ip info file(%s)"
+		   " - max ip count(%d) exceeded.",
+		   filename, ACL_MAX_IP_COUNT);
+	  goto error;
+	}
+
+      token = strtok (buf, ".");
+
+      address_index = ip_info->num_list * IP_BYTE_COUNT;
+      for (i = 0; i < 4; i++)
+	{
+	  if (token == NULL)
+	    {
+	      sprintf (admin_err_msg,
+		       "Error while loading ip info file(%s)", filename);
+	      goto error;
+	    }
+
+	  if (strcmp (token, "*") == 0)
+	    {
+	      break;
+	    }
+	  else
+	    {
+	      long adr;
+	      char *p = NULL;
+
+	      adr = strtol (token, &p, 10);
+	      if ((errno == ERANGE) ||
+		  (errno != 0 && adr == 0) ||
+		  (p && *p != '\0') || (adr > 255 || adr < 0))
+		{
+		  sprintf (admin_err_msg,
+			   "Error while loading ip info file(%s)", filename);
+		  goto error;
+		}
+
+	      ip_info->address_list[address_index + 1 + i] =
+		(unsigned char) adr;
+	    }
+
+	  token = strtok (NULL, ".");
+	  if (i == 3 && token != NULL)
+	    {
+	      sprintf (admin_err_msg,
+		       "Error while loading ip info file(%s)", filename);
+	      goto error;
+	    }
+	}
+      ip_info->address_list[address_index] = i;
+      ip_info->num_list++;
+    }
+
+  fclose (fd_ip_list);
+  return 0;
+
+error:
+  fclose (fd_ip_list);
+  return -1;
 }
 
 #if !defined(WINDOWS)

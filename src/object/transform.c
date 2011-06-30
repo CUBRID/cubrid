@@ -30,6 +30,7 @@
 #include "error_manager.h"
 #include "object_representation.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "transform.h"
 
 /* server side only */
@@ -382,61 +383,90 @@ static CT_ATTR ct_indexkey_atts[] = {
   {"key_prefix_length", NULL_ATTRID, DB_TYPE_INTEGER}
 };
 
-#define SET_CT_CLS(name, n_atts, atts) \
-        {CT_CLASS_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 20, ct_class_atts};
+#define NULL_OID_INITIALIZER    {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}
 
-CT_CLASS ct_Class =
-  { CT_CLASS_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 20,
-ct_class_atts
+CT_CLASS ct_Class = {
+  CT_CLASS_NAME,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_class_atts) / sizeof (ct_class_atts[0])),
+  ct_class_atts
 };
 
-CT_CLASS ct_Attribute =
-  { CT_ATTRIBUTE_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 10,
-ct_attribute_atts
+CT_CLASS ct_Attribute = {
+  CT_ATTRIBUTE_NAME,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_attribute_atts) / sizeof (ct_attribute_atts[0])),
+  ct_attribute_atts
 };
 
-CT_CLASS ct_Attrid =
-  { NULL, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 2, ct_attrid_atts };
-
-CT_CLASS ct_Domain =
-  { CT_DOMAIN_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 7,
-ct_domain_atts
+CT_CLASS ct_Attrid = {
+  NULL,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_attrid_atts) / sizeof (ct_attrid_atts[0])),
+  ct_attrid_atts
 };
 
-CT_CLASS ct_Method =
-  { CT_METHOD_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 6,
-ct_method_atts
+CT_CLASS ct_Domain = {
+  CT_DOMAIN_NAME,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_domain_atts) / sizeof (ct_domain_atts[0])),
+  ct_domain_atts
 };
 
-CT_CLASS ct_Methsig =
-  { CT_METHSIG_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 5,
-ct_methsig_atts
+CT_CLASS ct_Method = {
+  CT_METHOD_NAME,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_method_atts) / sizeof (ct_method_atts[0])),
+  ct_method_atts
 };
 
-CT_CLASS ct_Metharg =
-  { CT_METHARG_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 4,
-ct_metharg_atts
+CT_CLASS ct_Methsig = {
+  CT_METHSIG_NAME,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_methsig_atts) / sizeof (ct_methsig_atts[0])),
+  ct_methsig_atts
 };
 
-CT_CLASS ct_Methfile =
-  { CT_METHFILE_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 3,
-ct_methfile_atts
+CT_CLASS ct_Metharg = {
+  CT_METHARG_NAME,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_metharg_atts) / sizeof (ct_metharg_atts[0])),
+  ct_metharg_atts
 };
 
-CT_CLASS ct_Queryspec =
-  { CT_QUERYSPEC_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 2,
-ct_queryspec_atts
+CT_CLASS ct_Methfile = {
+  CT_METHFILE_NAME,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_methfile_atts) / sizeof (ct_methfile_atts[0])),
+  ct_methfile_atts
 };
 
-CT_CLASS ct_Resolution =
-  { NULL, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 4, ct_resolution_atts };
+CT_CLASS ct_Queryspec = {
+  CT_QUERYSPEC_NAME,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_queryspec_atts) / sizeof (ct_queryspec_atts[0])),
+  ct_queryspec_atts
+};
 
-CT_CLASS ct_Index =
-  { CT_INDEX_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 8, ct_index_atts };
+CT_CLASS ct_Resolution = {
+  NULL,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_resolution_atts) / sizeof (ct_resolution_atts[0])),
+  ct_resolution_atts
+};
 
-CT_CLASS ct_Indexkey =
-  { CT_INDEXKEY_NAME, {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}, 5,
-ct_indexkey_atts
+CT_CLASS ct_Index = {
+  CT_INDEX_NAME,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_index_atts) / sizeof (ct_index_atts[0])),
+  ct_index_atts
+};
+
+CT_CLASS ct_Indexkey = {
+  CT_INDEXKEY_NAME,
+  NULL_OID_INITIALIZER,
+  (sizeof (ct_indexkey_atts) / sizeof (ct_indexkey_atts[0])),
+  ct_indexkey_atts
 };
 
 CT_CLASS *ct_Classes[] = {

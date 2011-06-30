@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -46,7 +46,7 @@ main (int argc, char *argv[])
 {
   float disk_compat_level = 0.0f;
   char *prog_name;
-  const char *qp1 = "select db_user, password.password from db_user";
+  const char *qp1 = "select [db_user], [password].[password] from [db_user]";
   DB_VALUE user_val, password_val;
   MOP user_class;
   MOP user;
@@ -145,7 +145,7 @@ io_relseek_old (const char *pass, int has_prefix, char *dest)
       /*
        * Make sure the destination buffer is larger than actually required,
        * the decryption stuff is sensitive about this. Basically for the
-       * scrambled strings, the destination buffer has to be the acutal
+       * scrambled strings, the destination buffer has to be the actual
        * length rounded up to 8 plus another 8.
        */
       if (has_prefix)

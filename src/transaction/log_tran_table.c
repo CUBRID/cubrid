@@ -64,9 +64,11 @@
 #include "query_manager.h"
 #include "perf_monitor.h"
 #include "object_representation.h"
+#include "connection_defs.h"
 #if defined(SERVER_MODE)
-#include "thread_impl.h"
+#include "thread.h"
 #endif /* SERVER_MODE */
+#include "rb_tree.h"
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 #include "replication.h"
@@ -90,6 +92,7 @@ static BOOT_CLIENT_CREDENTIAL log_Client_credential = {
   (char *) "(system)",		/* program_name */
   NULL,				/* login_name */
   NULL,				/* host_name */
+  NULL,				/* preferred_hosts */
   -1				/* process_id */
 };
 
@@ -377,7 +380,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p,
 {
   int error_code = NO_ERROR;
 
-  assert (LOG_CS_OWN (thread_p));
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   /*
    * for XA support: there is prepared transaction after recovery.
@@ -718,7 +721,6 @@ logtb_am_i_sole_tran (THREAD_ENTRY * thread_p)
       return true;
     }
 
-  TR_TABLE_CS_EXIT ();
   return false;
 }
 
@@ -741,7 +743,7 @@ logtb_am_i_dba_client (THREAD_ENTRY * thread_p)
   const char *db_user;
 
   db_user = logtb_find_current_client_name (thread_p);
-  return (db_user != NULL && !strcmp (db_user, "dba"));
+  return (db_user != NULL && !strcasecmp (db_user, "dba"));
 }
 
 /*
@@ -879,6 +881,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   tdes->num_new_files = 0;
   tdes->num_new_tmp_files = 0;
   tdes->num_new_tmp_tmp_files = 0;
+  RB_INIT (&tdes->lob_locator_root);
 }
 
 /*
@@ -1334,12 +1337,12 @@ logtb_dump_tdes (FILE * out_fp, LOG_TDES * tdes)
 	   "    State = %s,\n"
 	   "    Isolation = %s,\n"
 	   "    Waitsecs = %d, isloose_end = %d,\n"
-	   "    Head_lsa = %d|%d, Tail_lsa = %d|%d,"
-	   " Postpone_lsa = %d|%d,\n"
-	   "    SaveLSA = %d|%d, UndoNextLSA = %d|%d,\n"
+	   "    Head_lsa = %lld|%d, Tail_lsa = %lld|%d,"
+	   " Postpone_lsa = %lld|%d,\n"
+	   "    SaveLSA = %lld|%d, UndoNextLSA = %lld|%d,\n"
 	   "    Client_User: (Type = %d, User = %s, Program = %s, "
 	   "Login = %s, Host = %s, Pid = %d,\n"
-	   "                  undo_lsa = %d|%d, posp_nxlsa = %d|%d)"
+	   "                  undo_lsa = %lld|%d, posp_nxlsa = %lld|%d)"
 	   "\n",
 	   tdes->tran_index, tdes->trid,
 	   log_state_string (tdes->state),
@@ -1385,8 +1388,8 @@ logtb_dump_top_operations (FILE * out_fp, LOG_TOPOPS_STACK * topops_p)
   fprintf (out_fp, "    Active top system operations for tran:\n");
   for (i = topops_p->last; i >= 0; i--)
     {
-      fprintf (out_fp, " Head = %d|%d, Posp_Head = %d|%d,"
-	       "Client_posp_Head = %d|%d, Client_undo_Head = %d|%d\n",
+      fprintf (out_fp, " Head = %lld|%d, Posp_Head = %lld|%d,"
+	       "Client_posp_Head = %lld|%d, Client_undo_Head = %lld|%d\n",
 	       topops_p->stack[i].lastparent_lsa.pageid,
 	       topops_p->stack[i].lastparent_lsa.offset,
 	       topops_p->stack[i].posp_lsa.pageid,
@@ -1519,6 +1522,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->undo_nxlsa);
   LSA_SET_NULL (&tdes->posp_nxlsa);
   LSA_SET_NULL (&tdes->savept_lsa);
+  LSA_SET_NULL (&tdes->topop_lsa);
   LSA_SET_NULL (&tdes->tail_topresult_lsa);
   LSA_SET_NULL (&tdes->client_undo_lsa);
   LSA_SET_NULL (&tdes->client_posp_lsa);
@@ -1608,6 +1612,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->num_new_tmp_files = 0;
   tdes->num_new_tmp_tmp_files = 0;
   tdes->suppress_replication = 0;
+  RB_INIT (&tdes->lob_locator_root);
 }
 
 /*
@@ -1999,11 +2004,11 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p,
 	  /* The index is not assigned or is system transaction (no-client) */
 	  continue;
 	}
-      size += 3 * OR_INT_SIZE;	/* tran index + tran state + process id */
-      size += or_packed_string_length (tdes->client.db_user);
-      size += or_packed_string_length (tdes->client.program_name);
-      size += or_packed_string_length (tdes->client.login_name);
-      size += or_packed_string_length (tdes->client.host_name);
+      size += 3 * OR_INT_SIZE	/* tran index + tran state + process id */
+	+ or_packed_string_length (tdes->client.db_user, NULL)
+	+ or_packed_string_length (tdes->client.program_name, NULL)
+	+ or_packed_string_length (tdes->client.login_name, NULL)
+	+ or_packed_string_length (tdes->client.host_name, NULL);
       num_clients++;
     }
 
@@ -2116,7 +2121,7 @@ logtb_find_state (int tran_index)
  *               is granted or transaction is selected as a victim of a
  *               deadlock.
  *               A value of zero means do not wait at all, timeout immediately
- *               (in miliseconds)
+ *               (in milliseconds)
  *
  * Note:Reset the default waiting time for the current transaction index(client).
  */
@@ -2409,7 +2414,7 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
- * logtb_is_interrupted - find if execution must be stopped due to 
+ * logtb_is_interrupted - find if execution must be stopped due to
  *			  an interrupt (^C)
  *
  * return:
@@ -2452,7 +2457,7 @@ logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear,
 }
 
 /*
- * logtb_is_interrupted_tran - find if the execution of the given transaction 
+ * logtb_is_interrupted_tran - find if the execution of the given transaction
  *			       must be stopped due to an interrupt (^C)
  *
  * return:
@@ -2504,7 +2509,7 @@ xlogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int set)
 
 /*
  * logtb_set_suppress_repl_on_transaction - set or unset suppress_replication flag
- *                                          on transaction descriptor 
+ *                                          on transaction descriptor
  *
  * return: false is returned when the tran_index is not associated
  *              with a transaction
@@ -2719,7 +2724,7 @@ logtb_disable_replication (THREAD_ENTRY * thread_p)
 void
 logtb_enable_replication (THREAD_ENTRY * thread_p)
 {
-  if (PRM_REPLICATION_MODE == true)
+  if (PRM_HA_MODE != HA_MODE_OFF)
     {
       db_Enable_replications = 1;
       er_log_debug (ARG_FILE_LINE,
@@ -3058,8 +3063,8 @@ logtb_find_largest_lsa (THREAD_ENTRY * thread_p)
  */
 void
 logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p,
-					      PAGEID * smallest,
-					      PAGEID * largest)
+					      LOG_PAGEID * smallest,
+					      LOG_PAGEID * largest)
 {
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */

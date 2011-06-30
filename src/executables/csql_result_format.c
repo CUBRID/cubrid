@@ -709,7 +709,7 @@ date_as_string (DB_DATE * date_value, int format)
     {
     case DATE_FORMAT_MMDDYYYY:
       {
-	(void) sprintf (temp_buffer, "%02d/%02d/%d", month, day, year);
+	(void) sprintf (temp_buffer, "%02d/%02d/%04d", month, day, year);
       }
       break;
     case DATE_FORMAT_FULL_TEXT:
@@ -1492,6 +1492,24 @@ csql_db_value_as_string (DB_VALUE * value, int *length)
 	  len = strlen (result);
 	}
       break;
+
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      {
+	DB_ELO *elo = DB_GET_ELO (value);;
+
+	if (elo != NULL)
+	  {
+	    result = duplicate_string (elo->locator);
+	  }
+
+	if (result != NULL)
+	  {
+	    len = strlen (result);
+	  }
+      }
+      break;
+
     default:
       {
 	char temp_buffer[256];

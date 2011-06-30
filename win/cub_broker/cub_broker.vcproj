@@ -371,6 +371,14 @@
 					>
 				</File>
 			</Filter>
+			<Filter
+				Name="base"
+				>
+				<File
+					RelativePath="..\..\src\base\porting.c"
+					>
+				</File>
+			</Filter>
 		</Filter>
 		<Filter
 			Name="Header Files"

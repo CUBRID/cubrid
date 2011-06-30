@@ -60,6 +60,7 @@
 #define DEFAULT_SQL_LOG_MODE		"ALL"
 #define DEFAULT_KEEP_CONNECTION         "AUTO"
 #define DEFAULT_JDBC_CACHE_LIFE_TIME    1000
+#define DEFAULT_MAX_PREPARED_STMT_COUNT 2000
 
 #define	TRUE	1
 #define	FALSE	0
@@ -118,6 +119,7 @@ static T_CONF_TABLE tbl_access_mode[] = {
   {"RW", READ_WRITE_ACCESS_MODE},
   {"RO", READ_ONLY_ACCESS_MODE},
   {"SO", SLAVE_ONLY_ACCESS_MODE},
+  {"PHRO", PH_READ_ONLY_ACCESS_MODE},
   {NULL, 0}
 };
 
@@ -200,15 +202,10 @@ dir_repath (char *path)
 
   trim (path);
 
-  if (path[0] == '/')
-    return;
-
-#if defined (WINDOWS)
-  if (isalpha (path[0]) && path[1] == ':')
+  if (IS_ABS_PATH (path))
     {
       return;
     }
-#endif
 
   strcpy (tmp_str, path);
   snprintf (path, PATH_MAX, "%s/%s", get_cubrid_home (), tmp_str);
@@ -262,7 +259,8 @@ static int
 broker_config_read_internal (const char *conf_file,
 			     T_BROKER_INFO * br_info, int *num_broker,
 			     int *br_shm_id, char *admin_log_file,
-			     char admin_flag, char *admin_err_msg)
+			     char admin_flag, bool * acl_flag,
+			     char *acl_file, char *admin_err_msg)
 {
 #if defined (_UC_ADMIN_SO_)
 #define PRINTERROR(...)	sprintf(admin_err_msg, __VA_ARGS__)
@@ -320,6 +318,27 @@ broker_config_read_internal (const char *conf_file,
 			  DEFAULT_ADMIN_LOG_FILE, &lineno));
     }
 
+  if (acl_flag != NULL)
+    {
+      tmp_int =
+	conf_get_value_table_on_off (ini_getstr
+				     (ini, BROKER_SECTION, "ACCESS_CONTROL",
+				      "OFF", &lineno));
+      if (tmp_int < 0)
+	{
+	  errcode = PARAM_BAD_RANGE;
+	  goto conf_error;
+	}
+      *acl_flag = tmp_int;
+    }
+
+  if (acl_file != NULL)
+    {
+      strcpy (acl_file,
+	      ini_getstr (ini, BROKER_SECTION, "ACCESS_CONTROL_FILE", "",
+			  &lineno));
+    }
+
   for (i = 0; i < ini->nsec; i++)
     {
       char *sec_name;
@@ -338,6 +357,16 @@ broker_config_read_internal (const char *conf_file,
 	}
 
       strcpy (br_info[num_brs].name, sec_name + 1);
+
+      br_info[num_brs].cci_default_autocommit =
+	conf_get_value_table_on_off (ini_getstr
+				     (ini, sec_name, "CCI_DEFAULT_AUTOCOMMIT",
+				      "OFF", &lineno));
+      if (br_info[num_brs].cci_default_autocommit < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
 
       br_info[num_brs].port =
 	ini_getint (ini, sec_name, "BROKER_PORT", 0, &lineno);
@@ -403,6 +432,15 @@ broker_config_read_internal (const char *conf_file,
 			  &lineno));
       strcpy (br_info[num_brs].access_log_file, CUBRID_BASE_DIR);
       strcpy (br_info[num_brs].error_log_file, CUBRID_BASE_DIR);
+
+      br_info[num_brs].max_prepared_stmt_count =
+	ini_getint (ini, sec_name, "MAX_PREPARED_STMT_COUNT",
+		    DEFAULT_MAX_PREPARED_STMT_COUNT, &lineno);
+      if (br_info[num_brs].max_prepared_stmt_count < 1)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
 
       br_info[num_brs].log_backup =
 	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "LOG_BACKUP",
@@ -568,6 +606,7 @@ broker_config_read_internal (const char *conf_file,
 						 &lineno));
       if (br_info[num_brs].cci_pconnect < 0)
 	{
+	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
@@ -577,6 +616,7 @@ broker_config_read_internal (const char *conf_file,
 						 &lineno));
       if (br_info[num_brs].select_auto_commit < 0)
 	{
+	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
@@ -586,6 +626,7 @@ broker_config_read_internal (const char *conf_file,
 						 &lineno));
       if (tmp_int < 0)
 	{
+	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
       else if (tmp_int == ON)
@@ -602,9 +643,19 @@ broker_config_read_internal (const char *conf_file,
 	}
       if (br_info[num_brs].access_mode < 0)
 	{
+	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 
+      strcpy (br_info[num_brs].preferred_hosts,
+	      ini_getstr (ini, sec_name, "PREFERRED_HOSTS",
+			  DEFAULT_EMPTY_STRING, &lineno));
+      if (br_info[num_brs].access_mode == PH_READ_ONLY_ACCESS_MODE
+	  && br_info[num_brs].preferred_hosts[0] == '\0')
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
       num_brs++;
     }
 
@@ -748,7 +799,8 @@ conf_error:
 int
 broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
 		    int *num_broker, int *br_shm_id, char *admin_log_file,
-		    char admin_flag, char *admin_err_msg)
+		    char admin_flag, bool * acl_flag, char *acl_file,
+		    char *admin_err_msg)
 {
   int err = 0;
   char default_conf_file_path[PATH_MAX], file_name[PATH_MAX],
@@ -789,7 +841,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
       err = broker_config_read_internal (file_being_dealt_with, br_info,
 					 num_broker, br_shm_id,
 					 admin_log_file, admin_flag,
-					 admin_err_msg);
+					 acl_flag, acl_file, admin_err_msg);
     }
 
   if (conf_file == NULL)
@@ -805,6 +857,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info,
 	  err = broker_config_read_internal (file_being_dealt_with, br_info,
 					     num_broker, br_shm_id,
 					     admin_log_file, admin_flag,
+					     acl_flag, acl_file,
 					     admin_err_msg);
 	}
     }
@@ -960,4 +1013,15 @@ int
 conf_get_value_keep_con (const char *value)
 {
   return (get_conf_value (value, tbl_keep_connection));
+}
+
+/*
+ * conf_get_value_access_mode - get value from access_mode table
+ *   return: -1 if fail
+ *   value(in):
+ */
+int
+conf_get_value_access_mode (const char *value)
+{
+  return (get_conf_value (value, tbl_access_mode));
 }

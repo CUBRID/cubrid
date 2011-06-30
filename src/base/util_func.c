@@ -214,3 +214,60 @@ util_arm_signal_handlers (SIG_HANDLER sigint_handler,
     }
 #endif
 }
+
+/*
+ *  The returned char** is null terminated char* array;
+ *    ex: "a,b" --> { "a", "b", NULL }
+ */
+char **
+util_split_string (const char *str, const char *delim)
+{
+  char *t, *o;
+  char *save, *v;
+  char **r = NULL;
+  int count = 1;
+
+  if (str == NULL)
+    {
+      return NULL;
+    }
+
+  o = strdup (str);
+  if (o == NULL)
+    {
+      return NULL;
+    }
+
+  for (t = o;; t = NULL)
+    {
+      v = strtok_r (t, delim, &save);
+      if (v == NULL)
+	{
+	  break;
+	}
+      r = (char **) realloc (r, sizeof (char *) * (count + 1));
+      if (r == NULL)
+	{
+	  free (o);
+	  return NULL;
+	}
+      r[count - 1] = strdup (v);
+      r[count] = NULL;
+      count++;
+    }
+
+  free (o);
+  return r;
+}
+
+void
+util_free_string_array (char **array)
+{
+  int i;
+
+  for (i = 0; array[i] != NULL; i++)
+    {
+      free (array[i]);
+    }
+  free (array);
+}

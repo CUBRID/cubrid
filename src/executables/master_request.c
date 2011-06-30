@@ -84,8 +84,6 @@ extern void css_process_start_shutdown (SOCKET_QUEUE_ENTRY * sock_entq,
       ((FD) == css_Master_socket_fd[0] || (FD) == css_Master_socket_fd[1])
 
 #define SERVER_FORMAT_STRING " Server %s (rel %s, pid %d)\n"
-#define REPL_SERVER_FORMAT_STRING " repl_server %s (rel %s, pid %d)\n"
-#define REPL_AGENT_FORMAT_STRING  " repl_agent %s (rel %s, pid %d)\n"
 #define HA_SERVER_FORMAT_STRING " HA-Server %s (rel %s, pid %d)\n"
 #define HA_COPYLOGDB_FORMAT_STRING " HA-copylogdb %s (rel %s, pid %d)\n"
 #define HA_APPLYLOGDB_FORMAT_STRING " HA-applylogdb %s (rel %s, pid %d)\n"
@@ -101,14 +99,10 @@ static void css_process_shutdown_time_info (CSS_CONN_ENTRY * conn,
 					    unsigned short request_id);
 static void css_process_server_count_info (CSS_CONN_ENTRY * conn,
 					   unsigned short request_id);
-static void css_process_repl_count_info (CSS_CONN_ENTRY * conn,
-					 unsigned short request_id);
 static void css_process_all_count_info (CSS_CONN_ENTRY * conn,
 					unsigned short request_id);
 static void css_process_server_list_info (CSS_CONN_ENTRY * conn,
 					  unsigned short request_id);
-static void css_process_repl_list_info (CSS_CONN_ENTRY * conn,
-					unsigned short request_id);
 static void css_process_all_list_info (CSS_CONN_ENTRY * conn,
 				       unsigned short request_id);
 static void css_process_kill_slave (CSS_CONN_ENTRY * conn,
@@ -118,9 +112,6 @@ static void css_process_kill_immediate (CSS_CONN_ENTRY * conn,
 					unsigned short request_id,
 					char *server_name);
 static void css_send_term_signal (int pid);
-static void css_process_kill_repl_process (CSS_CONN_ENTRY * conn,
-					   unsigned short request_id,
-					   char *server_name);
 static void css_process_kill_master (void);
 static void css_process_request_count_info (CSS_CONN_ENTRY * conn,
 					    unsigned short request_id);
@@ -135,6 +126,11 @@ static void css_process_ha_process_list_info (CSS_CONN_ENTRY * conn,
 					      unsigned short request_id,
 					      bool verbose_yn);
 
+static void css_process_kill_all_ha_process (CSS_CONN_ENTRY * conn,
+					     unsigned short request_id);
+static void css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
+					       unsigned short request_id,
+					       void *buf);
 static void css_process_dereg_ha_process (CSS_CONN_ENTRY * conn,
 					  unsigned short request_id,
 					  char *pid_p);
@@ -151,6 +147,7 @@ static void css_process_change_ha_mode (CSS_CONN_ENTRY * conn);
 #if !defined(WINDOWS)
 extern void hb_get_node_info_string (char **str, bool verbose_yn);
 extern void hb_get_process_info_string (char **str, bool verbose_yn);
+extern void hb_kill_all_heartbeat_process (char **str);
 extern void hb_dereg_process (pid_t pid, char **str);
 extern void hb_reconfig_heartbeat (char **str);
 extern void hb_deactivate_heartbeat (char **str);
@@ -300,41 +297,8 @@ css_process_server_count_info (CSS_CONN_ENTRY * conn,
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name &&
 	  !IS_MASTER_CONN_NAME_DRIVER (temp->name) &&
-	  !IS_MASTER_CONN_NAME_REPL_AGENT (temp->name) &&
-	  !IS_MASTER_CONN_NAME_REPL_SERVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
-	{
-	  count++;
-	}
-    }
-
-  count = htonl (count);
-  if (css_send_data (conn, request_id,
-		     (char *) &count, sizeof (int)) != NO_ERRORS)
-    {
-      css_cleanup_info_connection (conn);
-    }
-}
-
-/*
- * css_process_repl_count_info()
- *   return: none
- *   conn(in)
- *   request_id(in)
- */
-static void
-css_process_repl_count_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
-{
-  int count = 0;
-  SOCKET_QUEUE_ENTRY *temp;
-
-  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
-    {
-      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name &&
-	  (IS_MASTER_CONN_NAME_REPL_AGENT (temp->name) ||
-	   IS_MASTER_CONN_NAME_REPL_SERVER (temp->name)))
 	{
 	  count++;
 	}
@@ -396,8 +360,6 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn,
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name != NULL &&
 	  !IS_MASTER_CONN_NAME_DRIVER (temp->name) &&
-	  !IS_MASTER_CONN_NAME_REPL_AGENT (temp->name) &&
-	  !IS_MASTER_CONN_NAME_REPL_SERVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
@@ -488,109 +450,6 @@ error_return:
 }
 
 /*
- * css_process_repl_list_info()
- *   return: none
- *   conn(in)
- *   request_id(in)
- */
-static void
-css_process_repl_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
-{
-  int bufsize = 0, required_size;
-  char *buffer = NULL;
-  SOCKET_QUEUE_ENTRY *temp;
-
-  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
-    {
-      if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name != NULL &&
-	  (IS_MASTER_CONN_NAME_REPL_AGENT (temp->name) ||
-	   IS_MASTER_CONN_NAME_REPL_SERVER (temp->name)))
-	{
-	  required_size = 0;
-
-	  if (IS_MASTER_CONN_NAME_REPL_AGENT (temp->name))
-	    {
-	      required_size += strlen (REPL_AGENT_FORMAT_STRING);
-	    }
-	  else
-	    {
-	      required_size += strlen (REPL_SERVER_FORMAT_STRING);
-	    }
-	  required_size += strlen (temp->name);
-	  if (temp->version_string != NULL)
-	    {
-	      required_size += strlen (temp->version_string);
-	    }
-	  required_size += 5;	/* length of pid string */
-
-	  bufsize += required_size;
-
-	  if (buffer == NULL)
-	    {
-	      buffer = malloc (bufsize * sizeof (char));
-	      if (buffer == NULL)
-		{
-		  goto error_return;
-		}
-	      buffer[0] = '\0';
-	    }
-	  else
-	    {
-	      char *oldbuffer = buffer;	/* save pointer in case realloc fails */
-	      buffer = realloc (buffer, bufsize * sizeof (char));
-	      if (buffer == NULL)
-		{
-		  free_and_init (oldbuffer);
-		  goto error_return;
-		}
-	    }
-
-	  if (IS_MASTER_CONN_NAME_REPL_AGENT (temp->name))
-	    {
-	      snprintf (buffer + strlen (buffer), required_size,
-			REPL_AGENT_FORMAT_STRING, temp->name + 1,
-			(temp->version_string ==
-			 NULL ? "?" : temp->version_string), temp->pid);
-	    }
-	  else
-	    {
-	      snprintf (buffer + strlen (buffer), required_size,
-			REPL_SERVER_FORMAT_STRING, temp->name + 1,
-			(temp->version_string ==
-			 NULL ? "?" : temp->version_string), temp->pid);
-	    }
-	}
-    }
-
-  if (buffer == NULL)
-    {
-      goto error_return;
-    }
-
-  if (css_send_data (conn, request_id,
-		     buffer, strlen (buffer) + 1) != NO_ERRORS)
-    {
-      css_cleanup_info_connection (conn);
-    }
-
-  free_and_init (buffer);
-  return;
-
-error_return:
-  if (css_send_data (conn, request_id, "\0", 1) != NO_ERRORS)
-    {
-      css_cleanup_info_connection (conn);
-    }
-
-  if (buffer != NULL)
-    {
-      free_and_init (buffer);
-    }
-  return;
-}
-
-/*
  * css_process_all_list_info()
  *   return: none
  *   conn(in)
@@ -612,12 +471,6 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
 	  switch (temp->name[0])
 	    {
-	    case '+':
-	      required_size += strlen (REPL_SERVER_FORMAT_STRING);
-	      break;
-	    case '&':
-	      required_size += strlen (REPL_AGENT_FORMAT_STRING);
-	      break;
 	    case '#':
 	      required_size += strlen (HA_SERVER_FORMAT_STRING);
 	      break;
@@ -662,18 +515,6 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
 	  switch (temp->name[0])
 	    {
-	    case '+':
-	      snprintf (buffer + strlen (buffer), required_size,
-			REPL_SERVER_FORMAT_STRING, temp->name + 1,
-			(temp->version_string ==
-			 NULL ? "?" : temp->version_string), temp->pid);
-	      break;
-	    case '&':
-	      snprintf (buffer + strlen (buffer), required_size,
-			REPL_AGENT_FORMAT_STRING, temp->name + 1,
-			(temp->version_string ==
-			 NULL ? "?" : temp->version_string), temp->pid);
-	      break;
 	    case '#':
 	      snprintf (buffer + strlen (buffer), required_size,
 			HA_SERVER_FORMAT_STRING, temp->name + 1,
@@ -863,14 +704,7 @@ css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id,
  * css_send_term_signal() - send a signal to the target process
  *   return: none
  *   pid(in)
- *     This function is created to send a SIGTERM to the replication
- *     processes. Unlike the server processes, the replication processes
- *     (repl_agent & repl_server) don't communicate with master after they
- *     register to master when they start up. The only reason that the repl
- *     processes register to the master is to show the status of processes
- *     using commdb command. So, it's too expensive to implement communication
- *     protocol between master and repl processes only for "shutdown" case.
- *     Just use SIGTERM signal.
+ *     This function is created to send a SIGTERM to the processe.
  */
 static void
 css_send_term_signal (int pid)
@@ -888,52 +722,6 @@ css_send_term_signal (int pid)
 #else /* ! WINDOWS */
   kill (pid, SIGTERM);
 #endif /* ! WINDOWS */
-}
-
-/*
- * css_process_kill_repl_process() - send a request to kill the specified
- *                                   replication process
- *   return: none
- *   conn(in)
- *   request_id(in)
- *   server_name(in/out)
- */
-static void
-css_process_kill_repl_process (CSS_CONN_ENTRY * conn,
-			       unsigned short request_id, char *server_name)
-{
-  SOCKET_QUEUE_ENTRY *temp;
-  char buffer[512];
-
-  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
-    {
-      if ((temp->name != NULL) && (strcmp (temp->name, server_name) == 0))
-	{
-	  css_send_term_signal (temp->pid);
-	  sprintf (buffer, IS_MASTER_CONN_NAME_REPL_SERVER (server_name) ?
-		   msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_REPL_SERVER_NOTIFIED) :
-		   msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_REPL_AGENT_NOTIFIED),
-		   server_name + 1);
-	  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-	      NO_ERRORS)
-	    {
-	      css_cleanup_info_connection (conn);
-	    }
-	  return;
-	}
-    }
-  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
-				   MSGCAT_UTIL_SET_MASTER,
-				   MASTER_MSG_SERVER_NOT_FOUND), server_name);
-  if (css_send_data (conn, request_id, buffer, strlen (buffer) + 1) !=
-      NO_ERRORS)
-    {
-      css_cleanup_info_connection (conn);
-    }
 }
 
 /*
@@ -1029,23 +817,12 @@ css_process_shutdown (char *time_buffer)
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
-      if (temp->fd > 0 && !IS_MASTER_SOCKET_FD (temp->fd) &&
-	  temp->name && IS_MASTER_CONN_NAME_REPL_AGENT (temp->name))
-	{
-	  css_send_term_signal (temp->pid);
-	}
-    }
-
-  for (temp = css_Master_socket_anchor; temp; temp = temp->next)
-    {
       /* do not send shutdown command to master and connector, only to servers:
        * cause connector crash
        */
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name &&
 	  !IS_MASTER_CONN_NAME_DRIVER (temp->name) &&
-	  !IS_MASTER_CONN_NAME_REPL_AGENT (temp->name) &&
-	  !IS_MASTER_CONN_NAME_REPL_SERVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_SERVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
@@ -1054,14 +831,6 @@ css_process_shutdown (char *time_buffer)
 
 	  /* wait process terminated */
 	  master_util_wait_proc_terminate (temp->pid);
-	}
-      /* for the replication processes, replication processes stop by SIGTERM */
-      else if (!IS_INVALID_SOCKET (temp->fd) &&
-	       !IS_MASTER_SOCKET_FD (temp->fd) && temp->name &&
-	       (IS_MASTER_CONN_NAME_REPL_AGENT (temp->name) ||
-		IS_MASTER_CONN_NAME_REPL_SERVER (temp->name)))
-	{
-	  css_send_term_signal (temp->pid);
 	}
     }
 
@@ -1110,8 +879,6 @@ css_process_stop_shutdown (void)
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) &&
 	  temp->name &&
 	  !IS_MASTER_CONN_NAME_DRIVER (temp->name) &&
-	  !IS_MASTER_CONN_NAME_REPL_AGENT (temp->name) &&
-	  !IS_MASTER_CONN_NAME_REPL_SERVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_SERVER (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) &&
 	  !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
@@ -1358,6 +1125,110 @@ error_return:
 #endif
 }
 
+/*
+ * css_process_kill_all_ha_process()
+ *   return: none
+ *   conn(in):
+ *   request_id(in):
+ */
+static void
+css_process_kill_all_ha_process (CSS_CONN_ENTRY * conn,
+				 unsigned short request_id)
+{
+#if !defined(WINDOWS)
+  char *buffer = NULL;
+
+  if (PRM_HA_MODE == HA_MODE_OFF)
+    {
+      goto error_return;
+    }
+
+  hb_kill_all_heartbeat_process (&buffer);
+
+  if (buffer == NULL)
+    {
+      goto error_return;
+    }
+
+  if (css_send_data (conn, request_id,
+		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
+    }
+  return;
+
+error_return:
+  if (css_send_data (conn, request_id, "\0", 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
+    }
+  return;
+#else
+  char buffer[MASTER_TO_SRV_MSG_SIZE];
+
+  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_MASTER,
+				   MASTER_MSG_PROCESS_ERROR));
+
+  if (css_send_data (conn, request_id,
+		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+#endif
+}
+
+/*
+ * css_process_is_registered_ha_proc()
+ *   return: none
+ *   conn(in):
+ *   request_id(in):
+ */
+static void
+css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn,
+				   unsigned short request_id, void *buf)
+{
+#if !defined(WINDOWS)
+  if (PRM_HA_MODE != HA_MODE_OFF)
+    {
+      if (hb_is_registered_process (conn, buf))
+	{
+	  if (css_send_data (conn, request_id, "1\0", 2) != NO_ERRORS)
+	    {
+	      css_cleanup_info_connection (conn);
+	    }
+	  return;
+	}
+    }
+
+  if (css_send_data (conn, request_id, "0\0", 2) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+  return;
+#else
+  char buffer[MASTER_TO_SRV_MSG_SIZE];
+
+  sprintf (buffer, msgcat_message (MSGCAT_CATALOG_UTILS,
+				   MSGCAT_UTIL_SET_MASTER,
+				   MASTER_MSG_PROCESS_ERROR));
+
+  if (css_send_data (conn, request_id,
+		     buffer, strlen (buffer) + 1) != NO_ERRORS)
+    {
+      css_cleanup_info_connection (conn);
+    }
+#endif
+}
 
 /*
  * css_process_dereg_ha_process()
@@ -1673,23 +1544,11 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	      css_process_kill_immediate (conn, request_id, buffer);
 	    }
 	  break;
-	case GET_REPL_COUNT:
-	  css_process_repl_count_info (conn, request_id);
-	  break;
 	case GET_ALL_COUNT:
 	  css_process_all_count_info (conn, request_id);
 	  break;
-	case GET_REPL_LIST:
-	  css_process_repl_list_info (conn, request_id);
-	  break;
 	case GET_ALL_LIST:
 	  css_process_all_list_info (conn, request_id);
-	  break;
-	case KILL_REPL_SERVER:
-	  if (buffer != NULL)
-	    {
-	      css_process_kill_repl_process (conn, request_id, buffer);
-	    }
 	  break;
 	case GET_SERVER_HA_MODE:
 	  if (buffer != NULL)
@@ -1708,6 +1567,12 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
 	  break;
 	case GET_HA_PROCESS_LIST_VERBOSE:
 	  css_process_ha_process_list_info (conn, request_id, true);
+	  break;
+	case KILL_ALL_HA_PROCESS:
+	  css_process_kill_all_ha_process (conn, request_id);
+	  break;
+	case IS_REGISTERED_HA_PROC:
+	  css_process_is_registered_ha_proc (conn, request_id, buffer);
 	  break;
 	case DEREGISTER_HA_PROCESS:
 	  css_process_dereg_ha_process (conn, request_id, buffer);

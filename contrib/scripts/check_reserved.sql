@@ -1,8 +1,12 @@
-SELECT 
-{'database', 'day_millisecond', 'day_second', 'day_minute', 'day_hour', 'distinctrow',
+SELECT {
+ -- R3.0, R3.1
+ 'database', 'day_millisecond', 'day_second', 'day_minute', 'day_hour', 'distinctrow',
  'div', 'do', 'duplicate', 'hour_millisecond', 'hour_second', 'hour_minute', 'localtime',
  'localtimestamp', 'minute_millisecond', 'minute_second', 'mod', 'rollup',
- 'second_millisecond', 'truncate', 'xor', 'year_month'} AS "R30_new_reversed_keyword"
+ 'second_millisecond', 'truncate', 'xor', 'year_month', 'blob', 'clob',
+ -- R4.0
+ 'mediumint', 'tinyint', 'keylimit'
+} AS "new_reversed_keywords_since_R30"
 INTO :reserved 
 FROM db_root;
 

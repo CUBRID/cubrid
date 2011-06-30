@@ -88,6 +88,12 @@ typedef enum
   SUBSTR
 } MISC_OPERAND;
 
+#define  LIKE_WILDCARD_MATCH_MANY '%'
+#define LIKE_WILDCARD_MATCH_ONE '_'
+
+#define QSTR_IS_LIKE_WILDCARD_CHAR(ch)	((ch) == LIKE_WILDCARD_MATCH_ONE || \
+					 (ch) == LIKE_WILDCARD_MATCH_MANY)
+
 extern int qstr_compare (const unsigned char *string1, int size1,
 			 const unsigned char *string2, int size2);
 extern int char_compare (const unsigned char *string1, int size1,
@@ -108,7 +114,8 @@ extern int db_string_compare (const DB_VALUE * string1,
 			      const DB_VALUE * string2, DB_VALUE * result);
 extern int db_string_unique_prefix (const DB_VALUE * db_string1,
 				    const DB_VALUE * db_string2,
-				    DB_VALUE * db_result, int is_reverse);
+				    DB_VALUE * db_result, int is_reverse,
+				    TP_DOMAIN *key_domain);
 extern int db_string_concatenate (const DB_VALUE * string1,
 				  const DB_VALUE * string2,
 				  DB_VALUE * result,
@@ -125,6 +132,21 @@ extern int db_string_substring (const MISC_OPERAND substr_operand,
 				const DB_VALUE * start_position,
 				const DB_VALUE * extraction_length,
 				DB_VALUE * sub_string);
+extern int db_string_repeat (const DB_VALUE * src_string,
+			     const DB_VALUE * count, DB_VALUE * result);
+extern int db_string_substring_index (DB_VALUE * src_string,
+				      DB_VALUE * delim_string,
+				      const DB_VALUE * count,
+				      DB_VALUE * result);
+extern int db_string_md5 (DB_VALUE const *val, DB_VALUE * result);
+extern int db_string_space (DB_VALUE const *count, DB_VALUE * result);
+extern int db_string_insert_substring (DB_VALUE * src_string,
+				       const DB_VALUE * position,
+				       const DB_VALUE * length,
+				       DB_VALUE * sub_string,
+				       DB_VALUE * result);
+extern int db_string_elt (DB_VALUE * result,
+			  DB_VALUE * args[], int const num_args);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int db_string_byte_length (const DB_VALUE * string,
@@ -149,6 +171,9 @@ extern int db_string_pad (const MISC_OPERAND pad_operand,
 extern int db_string_like (const DB_VALUE * src_string,
 			   const DB_VALUE * pattern,
 			   const DB_VALUE * esc_char, int *result);
+extern int db_string_limit_size_string (DB_VALUE * src_string,
+					DB_VALUE * result,
+					const int new_size);
 extern int db_string_replace (const DB_VALUE * src_string,
 			      const DB_VALUE * srch_string,
 			      const DB_VALUE * repl_string,
@@ -163,6 +188,10 @@ extern int db_bit_string_coerce (const DB_VALUE * src_string,
 extern int db_char_string_coerce (const DB_VALUE * src_string,
 				  DB_VALUE * dest_string,
 				  DB_DATA_STATUS * data_status);
+extern int db_string_make_empty_typed_string (THREAD_ENTRY * thread_p,
+					      DB_VALUE * db_val,
+					      const DB_TYPE db_type,
+					      int precision);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int db_string_convert (const DB_VALUE * src_string,
 			      DB_VALUE * dest_string);
@@ -189,7 +218,7 @@ extern int db_add_months (const DB_VALUE * src_date,
 extern int db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day);
 extern int db_str_to_date (const DB_VALUE * src_date,
 			   const DB_VALUE * src_format,
-			   DB_VALUE * result_date);
+			   DB_VALUE * result_date, TP_DOMAIN * domain);
 extern int db_time_format (const DB_VALUE * src_time,
 			   const DB_VALUE * src_format,
 			   DB_VALUE * result_time);
@@ -205,14 +234,14 @@ extern int db_sys_date (DB_VALUE * result_date);
 extern int db_sys_time (DB_VALUE * result_time);
 extern int db_sys_timestamp (DB_VALUE * result_timestamp);
 extern int db_sys_datetime (DB_VALUE * result_datetime);
+extern int db_sys_timezone (DB_VALUE * result_timezone);
 extern int db_to_char (const DB_VALUE * src_value,
-		       const DB_VALUE * format_str,
+		       const DB_VALUE * format_or_length,
 		       const DB_VALUE * lang_str, DB_VALUE * result_str);
 extern int db_to_date (const DB_VALUE * src_str,
 		       const DB_VALUE * format_str,
 		       const DB_VALUE * date_lang, DB_VALUE * result_date);
-extern int db_to_time (const DB_VALUE * src_str,
-		       const DB_VALUE * format_str,
+extern int db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str,
 		       const DB_VALUE * date_lang, DB_VALUE * result_time);
 extern int db_to_timestamp (const DB_VALUE * src_str,
 			    const DB_VALUE * format_str,
@@ -243,10 +272,81 @@ extern int db_date_sub_interval_expr (DB_VALUE * result,
 				      const DB_VALUE * expr, const int unit);
 extern int db_date_format (const DB_VALUE * date_value,
 			   const DB_VALUE * format, DB_VALUE * result);
-extern int db_date_dbval (const DB_VALUE * date_value, DB_VALUE * result);
+extern int db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value);
+extern int db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value);
 extern int count_leap_years_up_to (int year);
 extern int count_nonleap_years_up_to (int year);
 extern int db_date_diff (const DB_VALUE * date_value1,
 			 const DB_VALUE * date_value2, DB_VALUE * result);
+extern int db_from_unixtime (const DB_VALUE * src_date,
+			     const DB_VALUE * format, DB_VALUE * result);
+extern int db_time_diff (const DB_VALUE * datetime_value1,
+			 const DB_VALUE * datetime_value2, DB_VALUE * result);
+extern int db_bit_to_blob (const DB_VALUE * src_value,
+			   DB_VALUE * result_value);
+extern int db_char_to_blob (const DB_VALUE * src_value,
+			    DB_VALUE * result_value);
+extern int db_blob_to_bit (const DB_VALUE * src_value,
+			   const DB_VALUE * length_value,
+			   DB_VALUE * result_value);
+extern int db_blob_from_file (const DB_VALUE * src_value,
+			      DB_VALUE * result_value);
+extern int db_blob_length (const DB_VALUE * src_value,
+			   DB_VALUE * result_value);
+extern int db_char_to_clob (const DB_VALUE * src_value,
+			    DB_VALUE * result_value);
+extern int db_clob_to_char (const DB_VALUE * src_value,
+			    const DB_VALUE * length_value,
+			    DB_VALUE * result_value);
+extern int db_clob_from_file (const DB_VALUE * src_value,
+			      DB_VALUE * result_value);
+extern int db_clob_length (const DB_VALUE * src_value,
+			   DB_VALUE * result_value);
+extern int db_get_date_quarter (const DB_VALUE * src_date, DB_VALUE * result);
+extern int db_get_date_weekday (const DB_VALUE * src_date, const int type,
+				DB_VALUE * result);
+extern int db_get_date_dayofyear (const DB_VALUE * src_date,
+				  DB_VALUE * result);
+extern int db_get_date_totaldays (const DB_VALUE * src_date,
+				  DB_VALUE * result);
+extern int db_convert_time_to_sec (const DB_VALUE * src_date,
+				   DB_VALUE * result);
+extern int db_convert_sec_to_time (const DB_VALUE * src, DB_VALUE * result);
+extern int db_get_date_from_days (const DB_VALUE * src, DB_VALUE * result);
+extern int db_add_days_to_year (const DB_VALUE * src_year,
+				const DB_VALUE * src_days, DB_VALUE * result);
+extern int db_convert_to_time (const DB_VALUE * src_hour,
+			       const DB_VALUE * src_minute,
+			       const DB_VALUE * src_second,
+			       DB_VALUE * result);
+extern int db_get_date_week (const DB_VALUE * src_date, const DB_VALUE * mode,
+			     DB_VALUE * result);
+extern int db_get_date_item (const DB_VALUE * src_date, const int item_type,
+			     DB_VALUE * result);
+extern int db_get_time_item (const DB_VALUE * src_date, const int item_type,
+			     DB_VALUE * result);
+extern int db_null_terminate_string (const DB_VALUE * src_value, char **strp);
 
+extern int db_get_info_for_like_optimization (const DB_VALUE * const pattern,
+					      const bool has_escape_char,
+					      const char escape_char,
+					      int *const num_logical_chars,
+					      int *const
+					      last_safe_logical_pos,
+					      int *const num_match_many,
+					      int *const num_match_one);
+extern int db_compress_like_pattern (const DB_VALUE * const pattern,
+				     DB_VALUE * compressed_pattern,
+				     const bool has_escape_char,
+				     const char escape_char);
+extern int db_get_like_optimization_bounds (const DB_VALUE * const pattern,
+					    DB_VALUE * bound,
+					    const bool has_escape_char,
+					    const char escape_char,
+					    const bool compute_lower_bound,
+					    const int last_safe_logical_pos);
+extern int db_like_bound (const DB_VALUE * const src_pattern,
+			  const DB_VALUE * const src_escape,
+			  DB_VALUE * const result_bound,
+			  const bool compute_lower_bound);
 #endif /* _STRING_OPFUNC_H_ */

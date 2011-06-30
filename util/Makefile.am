@@ -39,12 +39,12 @@ BROKER_DIR = $(SRC)/broker
 CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
 
-BISON = bison
 FLEX = flex
 
-INCLUDES = @SRC_INC@ @EXT_INC@
-DEFS += @SYS_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY
-LIBS += @SYS_LIBS@
+AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ \
+	@SYS_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ \
+	-DPRODUCE_ANSI_CODE -DUCI_TEMPORARY
+#AM_LDADD = @SYS_LIBS@
 
 
 $(EXECUTABLE_DIR)/esql_grammar.c : $(EXECUTABLE_DIR)/esql_grammar.y
@@ -62,12 +62,13 @@ $(EXECUTABLE_DIR)/loader_old_lexer.c : $(EXECUTABLE_DIR)/loader_old_lexer.l
 
 bin_PROGRAMS = \
 	csql cub_master cub_server cubrid cub_admin cub_commdb \
-	cubrid_esql cubrid_rel loadjava repl_agent repl_server migrate_r30
+	cubrid_esql cubrid_rel loadjava 
 
 compat_PROGRAMS = \
 	addvoldb backupdb checkdb commdb compactdb copydb \
 	createdb deletedb installdb killtran load_noopt loaddb lockdb \
-	optimizedb renamedb restoredb spacedb sqlx unloaddb get_disk_compat convert_password
+	optimizedb renamedb restoredb spacedb sqlx unloaddb get_disk_compat \
+	convert_password
 
 addvoldb_SOURCES = $(EXECUTABLE_DIR)/util_front.c
 
@@ -88,12 +89,15 @@ deletedb_SOURCES = $(EXECUTABLE_DIR)/util_front.c
 installdb_SOURCES = $(EXECUTABLE_DIR)/util_front.c
 
 killtran_SOURCES = $(EXECUTABLE_DIR)/util_front.c
+
 get_disk_compat_SOURCES = $(EXECUTABLE_DIR)/get_disk_compat.c
-get_disk_compat_LDFLAGS = @SA_LIB@
+get_disk_compat_LDADD = @SA_LIB@
+
 convert_password_SOURCES = $(EXECUTABLE_DIR)/convert_password.c
-convert_password_LDFLAGS = @SA_LIB@
-migrate_r30_SOURCES = $(EXECUTABLE_DIR)/migrate.c
-migrate_r30_LDFLAGS = @SA_LIB@
+convert_password_LDADD = @SA_LIB@
+
+migrate_r40beta2ga_SOURCES = $(EXECUTABLE_DIR)/migrate.c
+migrate_r40beta2ga_LDADD = @SA_LIB@
 
 load_noopt_SOURCES = $(EXECUTABLE_DIR)/loader_old_grammar.c \
 		$(EXECUTABLE_DIR)/loader_old_lexer.c \
@@ -106,7 +110,7 @@ load_noopt_SOURCES = $(EXECUTABLE_DIR)/loader_old_grammar.c \
 		$(EXECUTABLE_DIR)/util_support.c \
 		$(EXECUTABLE_DIR)/loader_noopt.c
 load_noopt_CFLAGS = $(AM_CFLAGS) -DLDR_OLD_LOADDB
-load_noopt_LDFLAGS = @SA_LIB@
+load_noopt_LDADD = @SA_LIB@
 
 loaddb_SOURCES = $(EXECUTABLE_DIR)/util_front.c
 
@@ -124,11 +128,6 @@ sqlx_SOURCES = $(EXECUTABLE_DIR)/util_front.c
 
 unloaddb_SOURCES = $(EXECUTABLE_DIR)/util_front.c
 
-bin_SCRIPTS = \
-	repl_make_distdb repl_make_slavedb repl_make_group \
-	repl_make_snapshot repl_check_sync repl_safe_page \
-	repl_change_param repl_change_master
-
 compat_SCRIPTS = start_cubrid stop_cubrid
 
 install-exec-hook:
@@ -142,53 +141,41 @@ libcubridesql_la_CFLAGS = $(AM_CFLAGS) -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY
 libcubridesql_la_LDFLAGS = -version-number @LT_VERSION@
 
 cub_server_SOURCES = $(EXECUTABLE_DIR)/server.c
-cub_server_LDFLAGS = @CUBRID_LIB@
+cub_server_LDADD = @CUBRID_LIB@
 
 cub_commdb_SOURCES = \
 	$(EXECUTABLE_DIR)/commdb.c \
 	$(EXECUTABLE_DIR)/util_support.c \
 	$(EXECUTABLE_DIR)/master_util.c
-cub_commdb_LDFLAGS = @CS_LIB@
+cub_commdb_LDADD = @CS_LIB@
 
 cub_master_SOURCES = \
 	$(EXECUTABLE_DIR)/master.c \
 	$(EXECUTABLE_DIR)/master_request.c \
 	$(EXECUTABLE_DIR)/master_util.c \
 	$(EXECUTABLE_DIR)/master_heartbeat.c
-cub_master_LDFLAGS = @CS_LIB@
-
-repl_server_SOURCES = \
-	$(EXECUTABLE_DIR)/repl_server.c \
-	$(EXECUTABLE_DIR)/repl_svr_sock.c \
-	$(EXECUTABLE_DIR)/repl_svr_tp.c \
-	$(EXECUTABLE_DIR)/repl_support.c
-repl_server_LDFLAGS = @SA_LIB@
-
-repl_agent_SOURCES = \
-	$(EXECUTABLE_DIR)/repl_agent.c \
-	$(EXECUTABLE_DIR)/repl_ag_sock.c \
-	$(EXECUTABLE_DIR)/repl_ag_tp.c \
-	$(EXECUTABLE_DIR)/repl_support.c
-repl_agent_LDFLAGS = @CS_LIB@
+cub_master_LDADD = @CS_LIB@
 
 cubrid_rel_SOURCES = \
 	$(EXECUTABLE_DIR)/cubrid_version.c
-cubrid_rel_LDFLAGS = @SA_LIB@
+cubrid_rel_LDADD = @SA_LIB@
 
 loadjava_SOURCES = \
 	$(EXECUTABLE_DIR)/loadjava.c
-loadjava_LDFLAGS = @SA_LIB@
+loadjava_LDADD = @SA_LIB@
 
 cubrid_SOURCES = \
 	$(EXECUTABLE_DIR)/util_service.c \
 	$(EXECUTABLE_DIR)/util_support.c
-cubrid_LDFLAGS = @SA_LIB@
+cubrid_LDADD = @SA_LIB@
 
 cub_admin_SOURCES = \
 	$(EXECUTABLE_DIR)/util_admin.c \
 	$(EXECUTABLE_DIR)/util_support.c
 
-csql_SOURCES = $(EXECUTABLE_DIR)/csql_launcher.c $(EXECUTABLE_DIR)/util_support.c
+csql_SOURCES = \
+	$(EXECUTABLE_DIR)/csql_launcher.c \
+	$(EXECUTABLE_DIR)/util_support.c
 
 cubrid_esql_SOURCES = \
 	$(EXECUTABLE_DIR)/esql_symbol_table.c \
@@ -201,9 +188,8 @@ cubrid_esql_SOURCES = \
 	$(EXECUTABLE_DIR)/esql_host_variable.c \
 	$(EXECUTABLE_DIR)/esql_grammar.c \
 	$(EXECUTABLE_DIR)/esql_lexer.c 
-
 cubrid_esql_CFLAGS = $(AM_CFLAGS) -DPRODUCE_ANSI_CODE -DUCI_TEMPORARY 
-cubrid_esql_LDFLAGS = @CS_LIB@
+cubrid_esql_LDADD = @CS_LIB@
 
-noinst_PROGRAMS = gencat
+noinst_PROGRAMS = gencat migrate_r40beta2ga
 gencat_SOURCES = $(EXECUTABLE_DIR)/gencat.c

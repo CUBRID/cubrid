@@ -99,114 +99,12 @@ begin
 			LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + SCH_FILE, WAIT) ;
 			LaunchAppAndWait(WINSYSDIR + "\\cmd.exe", " /c del " + OBJ_FILE, WAIT) ;
 		endif;
-	endif;
-end;
-
-///////////////////////////////////////////////////////////////////////////////
-//  EVENT:      Installing event is sent just before files for the component: 
-//              cubridmanager are transferred. 
-///////////////////////////////////////////////////////////////////////////////
-export prototype cubridmanager_Installing();
-function cubridmanager_Installing()
-	STRING	szKey;
-	NUMBER	nvType, nvSize, nResult, ExitCode;
-	STRING	svNumValue;
-	STRING        szProgram;
-	STRING  szDir, szFile;
-begin
-    // registry 
-    if( CreateRegistrySet ("cubridmanager") < 0 ) then
-    	MessageBox (@SCRIPT_STR_0048,SEVERE);
-		abort;
-	endif;
-
-	szKey = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
-	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
-	RegDBGetKeyValueEx (szKey, "PATH" , nvType, svNumValue, nvSize);
-
-	Disable(LOGGING);         
-	nResult = RegDBSetKeyValueEx(szKey, "PATH", REGDB_STRING_EXPAND, TARGETDIR^"\\Manager\\cmclient\\;"+ svNumValue  , -1);
-	Enable(LOGGING);
+	endif;  
 	
-	// remove old meta-data file if exist.
-	szProgram = WINSYSDIR^"\\cmd.exe";
-	LongPathToQuote(szProgram, TRUE);
-
-	szDir = TARGETDIR^"Manager\\cmclient\\configuration\\org.eclipse.core.runtime";
-	if (ExistsDir(szDir) == EXISTS) then
-		// .contributions.*
-		szFile = szDir^".contributions.*";
-		LongPathToQuote(szFile, TRUE);
-		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);   
-
-		// .extraData.*
-		szFile = szDir^".extraData.*";
-		LongPathToQuote(szFile, TRUE);
-		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
-		
-		// .mainData.*
-		szFile = szDir^".mainData.*";
-		LongPathToQuote(szFile, TRUE);
-		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
-
-		// .orphans.*
-		szFile = szDir^".orphans.*";
-		LongPathToQuote(szFile, TRUE);
-		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
-		
-		// .table.*
-		szFile = szDir^".table.*";
-		LongPathToQuote(szFile, TRUE);
-		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
-		
-		szDir = TARGETDIR^"Manager\\cmclient\\configuration\\org.eclipse.core.runtime\\.manager";
-		if (ExistsDir(szDir) == EXISTS) then
-			// .fileTable.*
-			szFile = szDir^".fileTable.*";
-			LongPathToQuote(szFile, TRUE);
-			RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
-
-			// .fileTableLock
-			szFile = szDir^".fileTableLock";
-			LongPathToQuote(szFile, TRUE);
-			RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode); 
-		endif;
-	endif;
-
-	szDir = TARGETDIR^"Manager\\cmclient\\configuration\\org.eclipse.osgi";
-	if (ExistsDir(szDir) == EXISTS) then
-		// .bundledata.*
-		szFile = szDir^".bundledata.*";
-		LongPathToQuote(szFile, TRUE);
-		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
-		
-		// .lazy.*
-		szFile = szDir^".lazy.*";
-		LongPathToQuote(szFile, TRUE);
-		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
-		                                                                         
-		// .state.*
-		szFile = szDir^".state.*";
-		LongPathToQuote(szFile, TRUE);
-		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
-		
-		//	splash.bmp
-		szFile = szDir^"splash.bmp";
-		LongPathToQuote(szFile, TRUE);
-		RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
-
-		szDir = TARGETDIR^"Manager\\cmclient\\configuration\\org.eclipse.osgi\\.manager";
-		if (ExistsDir(szDir) == EXISTS) then
-			// .fileTable.*	
-			szFile = szDir^".fileTable.*";
-			LongPathToQuote(szFile, TRUE);
-			RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
-                                                                            
-			// .fileTableLock	
-			szFile = szDir^".fileTableLock";
-			LongPathToQuote(szFile, TRUE);
-			RunProgram(szProgram, "/c del " + szFile, WAIT, SW_HIDE, -1, ExitCode);
-		endif;
+	if(SYSINFO.nOSMajor >= 6) then
+		LaunchAppAndWait("SCHTASKS.exe ","/Create /TN \"CUBRID Service Tray\" /TR " + TARGETDIR + "\\bin\\CUBRID_Service_Tray.exe /SC ONLOGON /RL HIGHEST", WAIT) ;
+	else
+		LaunchAppAndWait("SCHTASKS.exe ", "/Create /TN \"CUBRID Service Tray\" /TR " + TARGETDIR + "\\bin\\CUBRID_Service_Tray.exe /SC ONLOGON /RU SYSTEM", WAIT) ;
 	endif;
 end;
 
@@ -229,7 +127,9 @@ begin
 
 	if RegDBGetKeyValueEx( szKeyTray, "CUBRID_Service_Tray" , nvType, svNumValue, nvSize ) >= 0 then
 		RegDBDeleteValue( szKeyTray, "CUBRID_Service_Tray" );
-	endif;	
+	endif;	  
+	
+	LaunchAppAndWait("SCHTASKS.exe ", "/Delete /TN \"CUBRID Service Tray\" /F", WAIT) ;
 
 	PROGRAM = TARGETDIR + "\\bin\\ctrlService.exe ";
 	LongPathToQuote(PROGRAM, TRUE);
@@ -270,12 +170,7 @@ begin
 	szKey = "SOFTWARE\\ODBC\\ODBCINST.INI\\CUBRID Driver";
 	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
 
-	Disable(LOGGING);
-
 	nResult = RegDBSetKeyValueEx(szKey, "DriverODBCVer", REGDB_STRING, ODBC_VERSION , -1);
-	
-	Enable(LOGGING);
-
 end;
 
 export prototype OLEDB_Installed();

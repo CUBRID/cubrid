@@ -89,6 +89,7 @@ struct t_as_info
   INT64 num_long_queries;
   INT64 num_long_transactions;
   INT64 num_error_queries;
+  INT64 num_interrupts;
 };
 
 typedef struct t_br_info T_BR_INFO;
@@ -113,6 +114,7 @@ struct t_br_info
   INT64 num_long_query;
   INT64 num_long_tran;
   INT64 num_error_query;
+  INT64 num_interrupts;
   int session_timeout;
   int as_max_size;
   int time_to_kill;
@@ -226,7 +228,10 @@ DLL_EXPORT void uc_change_config (T_UC_CONF * unicas_conf,
 				  const char *br_name, const char *name,
 				  const char *value);
 DLL_EXPORT int uc_changer (const char *br_name, const char *name,
-			   const char *value, char *);
+			   const char *value, char *err_msg);
+DLL_EXPORT int uc_cas_changer (const char *br_name, const char *name,
+			       const char *value, int as_number,
+			       char *err_msg);
 DLL_EXPORT int uc_del_cas_log (const char *br_name, int asid, char *errmsg);
 DLL_EXPORT int uc_get_active_session_with_opened_shm (void *, char *);
 DLL_EXPORT void *uc_broker_shm_open (char *err_msg);

@@ -34,7 +34,7 @@
 #include "util_func.h"
 #include "error_manager.h"
 #include "intl_support.h"
-#include "thread_impl.h"
+#include "thread.h"
 #include "customheaps.h"
 #if !defined (SERVER_MODE)
 #include "quick_fit.h"
@@ -378,7 +378,9 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 /*
  * db_private_alloc () - call allocation function for current private heap
  *   return: allocated memory pointer
- *   thrd(in): thread conext if it is server, otherwise NULL
+ *   thrd(in): thread context if it is available, otherwise NULL; if called
+ *             on the server and this parameter is NULL, the function will
+ *             determine the appropriate thread context
  *   size(in): size to allocate
  */
 void *
@@ -457,6 +459,7 @@ db_private_alloc (void *thrd, size_t size)
     }
 #endif /* SA_MODE */
 }
+
 
 /*
  * db_private_realloc () - call re-allocation function for current private heap
@@ -553,6 +556,37 @@ db_private_realloc (void *thrd, void *ptr, size_t size)
 	}
     }
 #endif /* SA_MODE */
+}
+
+/*
+ * db_private_private_strdup () - duplicate string. memory for the duplicated
+ *   string is obtanined by db_private_alloc
+ *   return: pointer to duplicated str
+ *   thrd(in): thread conext if it is server, otherwise NULL
+ *   size(s): source string
+ */
+char *
+db_private_strdup (void *thrd, const char *s)
+{
+  char *cp;
+  int len;
+
+  /* fast return */
+  if (s == NULL)
+    {
+      return NULL;
+    }
+
+  len = strlen (s);
+  cp = db_private_alloc (thrd, len + 1);
+
+  if (cp != NULL)
+    {
+      memcpy (cp, s, len);
+      cp[len] = '\0';
+    }
+
+  return cp;
 }
 
 /*

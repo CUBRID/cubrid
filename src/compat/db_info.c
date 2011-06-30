@@ -1837,6 +1837,27 @@ db_constraint_next (DB_CONSTRAINT * constraint)
   return (next);
 }
 
+/*
+ * db_constraint_find_primary_key()- This function is used to return primary key constraint
+ * return : constraint descriptor (or NULL if not found)
+ * constraint(in): constraint descriptor
+ */
+DB_CONSTRAINT *
+db_constraint_find_primary_key (DB_CONSTRAINT * constraint)
+{
+  while (constraint != NULL)
+    {
+      if (constraint->type == SM_CONSTRAINT_PRIMARY_KEY)
+	{
+	  break;
+	}
+
+      constraint = db_constraint_next (constraint);
+    }
+
+  return constraint;
+}
+
 
 /*
  * db_constraint_type()- This function is used to return the type of constraint

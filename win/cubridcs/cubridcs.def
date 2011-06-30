@@ -32,6 +32,12 @@ EXPORTS
     css_get_sock_name
     css_check_magic
     cub_vsnprintf
+    da_create
+    da_destroy
+    da_add
+    da_put
+    da_get
+    da_size
     db_2pc_attach_transaction
     db_2pc_prepare_transaction
     db_2pc_prepared_transactions
@@ -82,6 +88,7 @@ EXPORTS
     db_constraint_name
     db_constraint_next
     db_constraint_type
+    db_constraint_find_primary_key
     db_create_vclass
     db_date_decode
     db_date_encode
@@ -257,6 +264,15 @@ EXPORTS
     db_resolution_next
     db_restart
     db_restart_ex
+    db_set_session_id
+    db_get_session_id
+    db_check_session
+    db_end_session
+    db_get_row_count_cache
+    db_update_row_count_cache
+    db_get_row_count
+    db_get_last_insert_id
+    db_get_variable
     db_revoke
     db_savepoint_transaction
     db_send
@@ -351,15 +367,24 @@ EXPORTS
     numeric_db_value_print
     os_set_signal_handler
     prm_get_master_port_id
+    rel_copy_version_string
     rel_build_number
     rel_release_string
     set_get_element
     set_size
     sysprm_load_and_init
     sysprm_obtain_parameters
+    sysprm_set_er_log_file
+    sysprm_check_range
+    sysprm_get_range
     tran_reset_wait_times
     utility_get_generic_message
+    util_make_ha_conf
+    util_is_localhost
+    util_free_ha_conf
     utility_initialize
+    util_byte_to_size_string
+    util_size_string_to_byte
     au_get_public_user_name
 ;
 ; utility functions
@@ -374,12 +399,12 @@ EXPORTS
     paramdump
     unloaddb
     csql
-    paramdump
     changemode
     copylogdb
     applylogdb
     statdump
     compactdb
+    acldb
 ;
 ; libesql reference's functions
 ;
@@ -403,7 +428,7 @@ EXPORTS
     pt_evaluate_tree_having_serial
     pt_from_entity_part
     pt_length_of_list
-    pt_streq
+    pt_str_compare
     pt_value_to_db
     pt_values_part
     tp_value_coerce
@@ -775,3 +800,20 @@ EXPORTS
     dbt_set_label
     dbt_set_loader_commands
     dbt_set_object_id
+; elo
+	db_elo_copy_structure
+	db_elo_free_structure
+	db_elo_copy
+	db_elo_delete
+	db_elo_size
+	db_elo_read
+	db_elo_write
+	db_create_fbo
+	elo_init_structure
+; db private
+	db_private_alloc
+	db_private_realloc
+	db_private_strdup
+	db_private_free
+	ws_mop
+	oid_compare

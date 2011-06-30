@@ -367,7 +367,7 @@ css_recv_and_queue_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 
   do
     {
-      /* timeout in mili-seconds in css_net_recv() */
+      /* timeout in milli-seconds in css_net_recv() */
       rc = css_net_recv (conn->fd, buffer, &size,
 			 PRM_TCP_CONNECTION_TIMEOUT * 1000);
     }

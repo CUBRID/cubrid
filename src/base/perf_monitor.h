@@ -36,7 +36,7 @@
 #include "connection_defs.h"
 #endif /* SERVER_MODE */
 
-#include "thread_impl.h"
+#include "thread.h"
 
 #include <time.h>
 #if !defined(WINDOWS)
@@ -143,89 +143,6 @@ typedef struct mnt_server_exec_stats MNT_SERVER_EXEC_STATS;
 struct mnt_server_exec_stats
 {
   /* Execution statistics for the file io */
-  unsigned int file_num_creates;
-  unsigned int file_num_removes;
-  unsigned int file_num_ioreads;
-  unsigned int file_num_iowrites;
-  unsigned int file_num_iosynches;
-
-  /* Execution statistics for the page buffer manager */
-  unsigned int pb_num_fetches;
-  unsigned int pb_num_dirties;
-  unsigned int pb_num_ioreads;
-  unsigned int pb_num_iowrites;
-  unsigned int pb_num_victims;
-  unsigned int pb_num_replacements;
-
-  /* Execution statistics for the log manager */
-  unsigned int log_num_ioreads;
-  unsigned int log_num_iowrites;
-  unsigned int log_num_appendrecs;
-  unsigned int log_num_archives;
-  unsigned int log_num_checkpoints;
-  unsigned int log_num_wals;
-
-  /* Execution statistics for the lock manager */
-  unsigned int lk_num_acquired_on_pages;
-  unsigned int lk_num_acquired_on_objects;
-  unsigned int lk_num_converted_on_pages;
-  unsigned int lk_num_converted_on_objects;
-  unsigned int lk_num_re_requested_on_pages;
-  unsigned int lk_num_re_requested_on_objects;
-  unsigned int lk_num_waited_on_pages;
-  unsigned int lk_num_waited_on_objects;
-
-  /* Execution statistics for transactions */
-  unsigned int tran_num_commits;
-  unsigned int tran_num_rollbacks;
-  unsigned int tran_num_savepoints;
-  unsigned int tran_num_start_topops;
-  unsigned int tran_num_end_topops;
-  unsigned int tran_num_interrupts;
-
-  /* Execution statistics for the btree manager */
-  unsigned int bt_num_inserts;
-  unsigned int bt_num_deletes;
-  unsigned int bt_num_updates;
-
-  /* Execution statistics for the query manager */
-  unsigned int qm_num_selects;
-  unsigned int qm_num_inserts;
-  unsigned int qm_num_deletes;
-  unsigned int qm_num_updates;
-  unsigned int qm_num_sscans;
-  unsigned int qm_num_iscans;
-  unsigned int qm_num_lscans;
-  unsigned int qm_num_setscans;
-  unsigned int qm_num_methscans;
-  unsigned int qm_num_nljoins;
-  unsigned int qm_num_mjoins;
-  unsigned int qm_num_objfetches;
-
-  /* Execution statistics for network communication */
-  unsigned int net_num_requests;
-
-  /* flush control stat */
-  unsigned int fc_num_pages;
-  unsigned int fc_num_log_pages;
-  unsigned int fc_tokens;
-
-  /* Other statistics */
-  unsigned int pb_hit_ratio;
-  /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
-
-#if defined (SERVER_MODE)
-  MUTEX_T lock;
-#endif				/* SERVER_MODE */
-};
-
-/* number of field of MNT_SEVER_EXEC_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_STATS 51
-
-typedef struct mnt_server_exec_global_stats MNT_SERVER_EXEC_GLOBAL_STATS;
-struct mnt_server_exec_global_stats
-{
-  /* Execution statistics for the file io */
   UINT64 file_num_creates;
   UINT64 file_num_removes;
   UINT64 file_num_ioreads;
@@ -270,6 +187,9 @@ struct mnt_server_exec_global_stats
   UINT64 bt_num_inserts;
   UINT64 bt_num_deletes;
   UINT64 bt_num_updates;
+  UINT64 bt_num_covered;
+  UINT64 bt_num_noncovered;
+  UINT64 bt_num_resumes;
 
   /* Execution statistics for the query manager */
   UINT64 qm_num_selects;
@@ -288,6 +208,7 @@ struct mnt_server_exec_global_stats
   /* Execution statistics for network communication */
   UINT64 net_num_requests;
 
+  /* flush control stat */
   UINT64 fc_num_pages;
   UINT64 fc_num_log_pages;
   UINT64 fc_tokens;
@@ -295,40 +216,46 @@ struct mnt_server_exec_global_stats
   /* Other statistics */
   UINT64 pb_hit_ratio;
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
+
+  bool enable_local_stat;	/* used for local stats */
 };
 
-/* number of field of MNT_SERVER_EXEC_GLOBAL_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_GLOBAL_STATS 51
+/* number of field of MNT_SERVER_EXEC_STATS structure */
+#define MNT_SIZE_OF_SERVER_EXEC_STATS 54
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
-				   FILE * stream);
-extern void mnt_server_dump_global_stats (const MNT_SERVER_EXEC_GLOBAL_STATS
-					  * stats, FILE * stream);
+				   FILE * stream, const char *substr);
 
 extern void mnt_get_current_times (time_t * cpu_usr_time,
 				   time_t * cpu_sys_time,
 				   time_t * elapsed_time);
 
+
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */
-typedef struct mnt_exec_stats MNT_EXEC_STATS;
-struct mnt_exec_stats
+typedef struct mnt_client_stat_info MNT_CLIENT_STAT_INFO;
+struct mnt_client_stat_info
 {
   time_t cpu_start_usr_time;
   time_t cpu_start_sys_time;
   time_t elapsed_start_time;
-  MNT_SERVER_EXEC_STATS *server_stats;	/* A copy of server statistics */
-  MNT_SERVER_EXEC_GLOBAL_STATS server_global_stats;
+  MNT_SERVER_EXEC_STATS *base_server_stats;
+  MNT_SERVER_EXEC_STATS *current_server_stats;
+  MNT_SERVER_EXEC_STATS *old_global_stats;
+  MNT_SERVER_EXEC_STATS *current_global_stats;
 };
+
+extern bool mnt_Iscollecting_stats;
 
 extern int mnt_start_stats (bool for_all_trans);
 extern int mnt_stop_stats (void);
 extern void mnt_reset_stats (void);
-extern void mnt_reset_global_stats (void);
 extern void mnt_print_stats (FILE * stream);
-extern void mnt_print_global_stats (FILE * stream);
-extern MNT_EXEC_STATS *mnt_get_stats (void);
-extern MNT_SERVER_EXEC_GLOBAL_STATS *mnt_get_global_stats (void);
+extern void mnt_print_global_stats (FILE * stream, bool cumulative,
+				    const char *substr);
+extern MNT_SERVER_EXEC_STATS *mnt_get_stats (void);
+extern MNT_SERVER_EXEC_STATS *mnt_get_global_stats (void);
+extern int mnt_get_global_diff_stats (MNT_SERVER_EXEC_STATS * diff_stats);
 #endif /* CS_MODE || SA_MODE */
 
 #if defined (DIAG_DEVEL)
@@ -548,6 +475,12 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_deletes(thread_p)
 #define mnt_bt_updates(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_updates(thread_p)
+#define mnt_bt_covered(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_covered(thread_p)
+#define mnt_bt_noncovered(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_noncovered(thread_p)
+#define mnt_bt_resumes(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_bt_resumes(thread_p)
 
 /* Execution statistics for the query manager */
 #define mnt_qm_selects(thread_p) \
@@ -585,8 +518,6 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_net_requests(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_net_requests(thread_p)
 
-
-extern void mnt_server_reflect_local_stats (THREAD_ENTRY * thread_p);
 extern MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY * thread_p);
 
 extern int mnt_server_init (int num_tran_indices);
@@ -628,6 +559,9 @@ extern void mnt_x_tran_interrupts (THREAD_ENTRY * thread_p);
 extern void mnt_x_bt_inserts (THREAD_ENTRY * thread_p);
 extern void mnt_x_bt_deletes (THREAD_ENTRY * thread_p);
 extern void mnt_x_bt_updates (THREAD_ENTRY * thread_p);
+extern void mnt_x_bt_covered (THREAD_ENTRY * thread_p);
+extern void mnt_x_bt_noncovered (THREAD_ENTRY * thread_p);
+extern void mnt_x_bt_resumes (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_selects (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_inserts (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_deletes (THREAD_ENTRY * thread_p);
@@ -686,6 +620,9 @@ extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
 #define mnt_bt_inserts(thread_p)
 #define mnt_bt_deletes(thread_p)
 #define mnt_bt_updates(thread_p)
+#define mnt_bt_covered(thread_p)
+#define mnt_bt_noncovered(thread_p)
+#define mnt_bt_resumes(thread_p)
 
 #define mnt_qm_selects(thread_p)
 #define mnt_qm_inserts(thread_p)

@@ -478,14 +478,15 @@ process_value (DB_VALUE * value)
 	    break;
 	  }
 
-	if (!heap_get_class_oid (NULL, ref_oid, &ref_class_oid))
+	if (heap_get_class_oid (NULL, &ref_class_oid, ref_oid) == NULL)
 	  {
 	    OID_SET_NULL (ref_oid);
 	    return_value = 1;
 	    break;
 	  }
 
-	if ((classop = is_class (ref_oid, &ref_class_oid)))
+	classop = is_class (ref_oid, &ref_class_oid);
+	if (classop)
 	  {
 	    break;
 	  }
@@ -499,7 +500,7 @@ process_value (DB_VALUE * value)
 		ref_class_oid.slotid);
 #endif
 
-	if (!heap_does_exist (NULL, ref_oid, &ref_class_oid))
+	if (!heap_does_exist (NULL, &ref_class_oid, ref_oid))
 	  {
 	    OID_SET_NULL (ref_oid);
 	    return_value = 1;
@@ -519,6 +520,8 @@ process_value (DB_VALUE * value)
 
     case DB_TYPE_NULL:
     case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     default:
       break;
     }
@@ -595,7 +598,8 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 	  save_newsize = -Diskrec->length + DB_PAGESIZE;
 	  /* make the record larger */
 	  free_recdes (Diskrec);
-	  if ((Diskrec = alloc_recdes (save_newsize)) == NULL)
+	  Diskrec = alloc_recdes (save_newsize);
+	  if (Diskrec == NULL)
 	    {
 	      return 0;
 	    }
@@ -624,7 +628,8 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
       update_indexes (WS_OID (classop), oid, Diskrec);
     }
 
-  if (heap_update (NULL, hfid, oid, Diskrec, &oldflag, NULL) != oid)
+  if (heap_update (NULL, hfid, WS_OID (classop), oid, Diskrec, &oldflag, NULL)
+      != oid)
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS,
 			      MSGCAT_UTIL_SET_COMPACTDB,

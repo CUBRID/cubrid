@@ -30,12 +30,9 @@
 int
 main (int argc, char *argv[])
 {
-#if defined (NDEBUG)
-  fprintf (stdout, "\n%s (%s) (%s %s)\n\n", rel_name (), rel_build_number (),
-	   __DATE__, __TIME__);
-#else /* NDEBUG */
-  fprintf (stdout, "\n%s (%s) (%d debug build) (%s %s)\n\n", rel_name (),
-	   rel_build_number (), rel_bit_platform (), __DATE__, __TIME__);
-#endif /* !NDEBUG */
+  char buf[REL_MAX_VERSION_LENGTH];
+
+  rel_copy_version_string (buf, REL_MAX_VERSION_LENGTH);
+  fprintf (stdout, "\n%s\n\n", buf);
   return 0;
 }

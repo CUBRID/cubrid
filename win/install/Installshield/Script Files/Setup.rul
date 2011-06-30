@@ -46,7 +46,8 @@ prototype NUMBER Kernel32.GetACP();
 
 // your script function prototypes
 prototype RefreshEnvironment();
-prototype makeconf(STRING);
+prototype makeconf(STRING);  
+prototype TaskKill(STRING);
 
 // your global variables
 STRING  nSetupType;
@@ -66,8 +67,8 @@ NUMBER  nvCodePage;
 #define SD_AGREE				14
 #define SD_DISAGREE				15
 #define SD_CUSTOM_LICENSE                 104
-#define	ST_CUBRID_VERSION		@PRODUCT_VERSION
-#define ODBC_VERSION            @PRODUCT_VERSION
+#define	ST_CUBRID_VERSION		@IFX_PRODUCT_VERSION
+#define ODBC_VERSION            @IFX_PRODUCT_VERSION
 
 #ifndef STILL_ACTIVE
 	#define STILL_ACTIVE    0x00000103
@@ -103,7 +104,7 @@ begin
 	siData.hStdOutput = NULL;
 	siData.hStdError = NULL;
 
-    if (CreateProcessA(NULL, szProgram + " " + szCmdLine, NULL, NULL,
+    if (kernel32.CreateProcessA(NULL, szProgram + " " + szCmdLine, NULL, NULL,
                        TRUE, 0, NULL, NULL, &siData, &piData) = 0) then
        return (-1);
     endif;
@@ -115,10 +116,10 @@ begin
 	
     WaitForSingleObject(piData.hProcess, nTimeOut);
 
-    GetExitCodeProcess(piData.hProcess, &nvExitCode);
+    kernel32.GetExitCodeProcess(piData.hProcess, &nvExitCode);
 
-    CloseHandle(piData.hProcess);
-    CloseHandle(piData.hThread);    
+    kernel32.CloseHandle(piData.hProcess);
+    kernel32.CloseHandle(piData.hThread);    
 
     return 0;
 end;
@@ -170,8 +171,6 @@ begin
 	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "tmp", WAIT, SW_HIDE, -1, ExitCode) ;
 	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "var", WAIT, SW_HIDE, -1, ExitCode) ;
 	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "log", WAIT, SW_HIDE, -1, ExitCode) ;
-	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "cubridmanager", WAIT, SW_HIDE, -1, ExitCode) ;
-	RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR ^ "doc", WAIT, SW_HIDE, -1, ExitCode) ;
    
 	if (remove_completely = TRUE) then
 		RunProgram(WINSYSDIR + "\\cmd.exe", " /c RD /S /Q " + TARGETDIR^"conf", WAIT, SW_HIDE, -1, ExitCode) ;
@@ -229,15 +228,8 @@ begin
 	nvCheckDeskTopIcon = TRUE;
 	nvCheckQuickLaunchIcon = FALSE;
 	nvCheckStartMenuIcon = TRUE;
-/*		
-	szVersionList = ListCreate(STRINGLIST);
-    StrGetTokens(szVersionList, @PRODUCT_VERSION, ".");
-    ListGetFirstString(szVersionList, szVersionName1);
-    ListGetNextString(szVersionList, szVersionName2);
-    szVersionName = szVersionName1 + "." + szVersionName2;
-    ListDestroy(szVersionList);	    
-*/
-    szVersionName = @PRODUCT_VERSION;    
+
+    szVersionName = @IFX_PRODUCT_VERSION;    
     // 현재 System의 Code page를 가져온다.
     nvCodePage = GetACP();
     
@@ -245,7 +237,7 @@ Dlg_Start:
     // beginning of dialogs label
     TARGETDIR = "C:\\CUBRID";
     szDir = TARGETDIR;
-    SHELL_OBJECT_FOLDER = @FOLDER_NAME;
+    SHELL_OBJECT_FOLDER = @IFX_PRODUCT_NAME;
 
 Dlg_SdWelcome:
     szTitle = "CUBRID " + ST_CUBRID_VERSION + " for Windows";       
@@ -289,7 +281,7 @@ Dlg_SdAskDestPath:
     
     TARGETDIR = szTarget;
     szDir = TARGETDIR;
-    SHELL_OBJECT_FOLDER = @FOLDER_NAME;             
+    SHELL_OBJECT_FOLDER = @IFX_PRODUCT_NAME;             
 
 Dlg_SdLicense:                               
    	szLicenseFile = SUPPORTDIR ^ "license.txt";
@@ -406,48 +398,9 @@ Dlg_SdStartCopy:
     if (nResult = BACK) goto Dlg_AskShortcutPath;
   
     ListDestroy(listStartCopy);
-
-    REGDB_OPTIONS = REGDB_OPTIONS | REGDB_OPTION_WOW64_64KEY;
-
-	/* check if 2008 redistributable is installed */
-	// 1. check registry key(redistributable)      
-	nvType = REGDB_STRING;
-	szValue = "";
-
-	// 2. check System is 64bit OS
-	if (SYSINFO.bIsWow64) then
-	  if ( nvCodePage = 949 ) then
-		  szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{484D36AC-327E-390E-85C8-9F2B176BA2B6}";
-		  szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{92B8FD1F-C1AE-3750-8577-631B0AA85DF5}";
-	  else
-		  szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{350AA351-21FA-3270-8B7A-835434E766AD}";
-		  szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{8220EEFE-38CD-377E-8595-13398D740ACE}";
-	  endif;
-	else
-	  if ( nvCodePage = 949 ) then
-		  szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{9B775AA1-7B10-379A-9B16-7E373790568C}";
-		  szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{887868A2-D6DE-3255-AA92-AA0B5A59B874}";
-	  else
-		  szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{FF66E9F6-83E7-3A3E-AF14-8DE9A809A6A4}";
-		  szKey_sp1 = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{9A25302D-30C0-39D9-BD6F-21E6EC160475}";
-	  endif;
-	endif;
-
-	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
-	nResult = RegDBGetKeyValueEx (szKey, "DisplayVersion", nvType, szValue, nvSize);
-	if (nResult < 0) then
-		nResult = RegDBGetKeyValueEx (szKey_sp1, "DisplayVersion", nvType, szValue, nvSize);
-		
-		if (nResult < 0) then
-			szTitle = @SCRIPT_STR_0034;
-			szMsg = @SCRIPT_STR_0035;
-
-			nResult = SprintfBox(MB_YESNO, szTitle, "%s", szMsg);
-			if (nResult = IDYES) then
-				abort;
-			endif;
-		endif;
-	endif;
+    if (@CUBRID_ARCH = "x64") then
+    	REGDB_OPTIONS = REGDB_OPTIONS | REGDB_OPTION_WOW64_64KEY;
+    endif;
 
     /* check if jvm is installed */
     if (RunProgram("javaw.exe", "", WAIT, SW_HIDE, -1, ExitCode) < 0) then
@@ -507,7 +460,7 @@ begin
     
     szAppPath = TARGETDIR;
     RegDBSetItem(REGDB_APPPATH, szAppPath);
-    RegDBSetItem(REGDB_APPPATH_DEFAULT, szAppPath ^ @PRODUCT_KEY);
+    RegDBSetItem(REGDB_APPPATH_DEFAULT, szAppPath ^ @IFX_PRODUCT_KEY);
     if (!MAINTENANCE) then
         if (nvCheckStartMenuIcon = TRUE) then
             szAppPath = UNINSTALL_STRING;
@@ -515,24 +468,44 @@ begin
         endif;
     endif;
 end;
- 
+    
+function TaskKill(szFile)
+	STRING msg;
+begin	
+	msg = @SCRIPT_STR_0052;
+	StrReplace(szFile, TARGETDIR^"bin\\", "", 0);
+	StrReplace(msg, "TOKEN", szFile, 0);
+		
+	if (AskYesNo (msg, YES) = YES) then                                                                                          
+		LaunchAppAndWait(WINSYSDIR + "\\taskkill", " /im " + szFile, WAIT) ;   
+		Delay(2);
+	else
+		exit;
+	endif;    
+end;
+
 function OnFileLocked(szFile)
 	STRING msg;
 	int	   nResult;
 begin
 	if (ExistsDir(szFile) == EXISTS) then // 디렉토리일때
 		return ERR_IGNORE;
-	else                                  // 파일일때
-		msg = @SCRIPT_STR_0038;
+	else                                 // 파일일때
+		if (szFile = TARGETDIR^"bin\\CUBRID_service_tray.exe") then
+			TaskKill(szFile);
+			return ERR_RETRY;
+		endif;
+	
+	    msg = @SCRIPT_STR_0038;
 		StrReplace(msg, "TOKEN", szFile, 0);
 		
 		if (AskYesNo (msg, YES) = NO) then
-		    msg = @SCRIPT_STR_0039;
-            MessageBox(msg, WARNING);
-       		exit;
-       else
-            return ERR_RETRY;
-       endif;
+			msg = @SCRIPT_STR_0039;
+			MessageBox(msg, WARNING);
+			exit;
+		else
+			return ERR_RETRY;
+		endif;
 	endif;
 end;
 
@@ -575,8 +548,8 @@ function OnFirstUIAfter()
 	STRING  szDocTempFolder, szServiceTray;
 	STRING  setupfilecopy_program, setupfilecopy_param;
 
-	STRING  szValue;
-	NUMBER  nSize;
+	STRING	szValue;
+	NUMBER	nSize;
 begin
    szTitle = "";
    nOption   = SYS_BOOTMACHINE;
@@ -591,36 +564,13 @@ begin
 
 Dlg_Completed:
 	// Make ShortCut icon
-    szProgramEMC = TARGETDIR^"\\cubridmanager\\cubridmanager.exe";
 	szProgramQA = TARGETDIR^"\\doc\\Q&A.lnk";
 	szQATarget = WINSYSDIR + "\\Q&A.lnk";
 
-    LongPathToQuote( szProgramEMC, TRUE );
     LongPathToQuote( szProgramQA, TRUE);
 	LongPathToQuote( szQATarget, TRUE);
 
 	CopyFile(szProgramQA, szQATarget);
-
-	if (nvCheckDeskTopIcon = TRUE) then
-		AddFolderIcon(FOLDER_DESKTOP, "CUBRID Manager Client", szProgramEMC,  TARGETDIR^"\\cubridmanager", "", 0, "", REPLACE );
-	endif;
-	
-	Delay(1);
-	
-	if (nvCheckQuickLaunchIcon = TRUE) then
-        UseDLL(WINSYSDIR ^ "Shell32.dll");
-
-	    nAppDataCISDL=26;
-	    if (SHGetSpecialFolderPathA(0, szAppDataPath, nAppDataCISDL,0)= TRUE) then
-	    	szQuickLaunchPath=szAppDataPath^"Microsoft\\Internet Explorer\\Quick Launch";
-        	AddFolderIcon(szQuickLaunchPath,"CUBRID Manager Client",szProgramEMC,TARGETDIR^"\\cubridmanager","",0,"",REPLACE);
-        else
-        	MessageBox(@SCRIPT_STR_0041, WARNING);
-    	endif;
-
-    	UnUseDLL(WINSYSDIR ^ "Shell32.dll");
-
-	endif;
 	
 	Delay(1);
 		
@@ -628,27 +578,22 @@ Dlg_Completed:
 		nResult = CreateShellObjects( "" );
 
 		szDocTempFolder = "CUBRID";
-		CreateProgramFolder(szDocTempFolder);
-					
-		szDocCUBRIDManual = TARGETDIR^"\\\cubridmanager\\plugins\\com.cubrid.cubridmanager.help_"
-		                    + VERSION_STRING;
+		CreateProgramFolder(szDocTempFolder);     
+		
 		if ( nvCodePage = 949 ) then
-			szDocCUBRIDManual = szDocCUBRIDManual + "\\nl\\ko\\KR";
-		endif;
-		
-		szDocCUBRIDManual = szDocCUBRIDManual + "\\html\\index.htm";
-		
-		LongPathToQuote( szDocCUBRIDManual, TRUE);
-		AddFolderIcon (szDocTempFolder, "CUBRID Manual", szDocCUBRIDManual , TARGETDIR^"\\doc", "", 0, "", REPLACE);
-		AddFolderIcon (TARGETDIR^"\\doc", "CUBRID Manual", szDocCUBRIDManual , TARGETDIR^"\\doc", "", 0, "", REPLACE);
+            szDocCUBRIDManual = "http://www.cubrid.com";
+        else
+            szDocCUBRIDManual = "http://www.cubrid.org";
+        endif;
+
+        LongPathToQuote( szDocCUBRIDManual, TRUE); 
+        AddFolderIcon(szDocTempFolder, "CUBRID Website", "rundll32.exe url.dll,FileProtocolHandler "+ szDocCUBRIDManual,"" , "", 0, "", NULL);
 
 		if (nSetupType = "ALL") then
 			szServiceTray = TARGETDIR^"\\bin\\CUBRID_Service_Tray.exe";
 			LongPathToQuote( szServiceTray, TRUE);
 			AddFolderIcon(szDocTempFolder, "CUBRID Service Tray", szServiceTray, TARGETDIR^"\\bin" , "", 0, "", REPLACE );
 		endif;
-
-		AddFolderIcon( szDocTempFolder,"CUBRID Manager Client", szProgramEMC, TARGETDIR^"\\cubridmanager", "", 0, "", REPLACE );
     endif;
     
 	Delay(1);
@@ -656,16 +601,7 @@ Dlg_Completed:
 	SdFinish(szTitle, "", "", "", "", bOpt1, bOpt2);
 
 	if ( nvCodePage = 949 ) then
-		nvType = REGDB_STRING;
-		szValue = "";
-		nSize = -1;
-		RegDBSetDefaultRoot(HKEY_CLASSES_ROOT);
-		nResult = RegDBGetKeyValueEx ("http\\shell\\open\\command", "", nvType, szValue, nSize);
-		if ( nResult < 0 ) then
-			RunProgram(PROGRAMFILES^"Internet Explorer\\iexplore.exe","http://www.cubrid.com/developer.cub", NOWAIT, SW_SHOW, -1, ExitCode);
-		else
-			RunProgram(szValue,"http://www.cubrid.com/developer.cub", NOWAIT, SW_SHOW, -1, ExitCode);
-		endif;
+		RunProgram ("rundll32.exe url.dll,FileProtocolHandler http://www.cubrid.com/developer.cub", "", NOWAIT, SW_SHOW, -1, ExitCode);
 	endif;
 
     if (nSetupType = "ALL") then
@@ -678,8 +614,9 @@ Dlg_Completed:
 		LongPathToQuote (PROGRAM, TRUE);
 		LaunchAppAndWait (PROGRAM, "-start", NOWAIT);
 	endif;
-	
-    REGDB_OPTIONS = REGDB_OPTIONS & ~REGDB_OPTION_WOW64_64KEY;
+    if (@CUBRID_ARCH = "x64") then	
+    	REGDB_OPTIONS = REGDB_OPTIONS & ~REGDB_OPTION_WOW64_64KEY;
+    endif;
     return 0;
 end;
 
@@ -691,12 +628,6 @@ begin
 	sParam      = "Environment";
 	pParam      = &sParam;
 	pResult     = &lResult;
-
-	if (!SendMessageTimeout(HWND_BROADCAST, WM_WININICHANGE, 0, pParam, SMTO_ABORTIFHUNG, 300, pResult))
-	then
-//		MessageBox("failed...", SEVERE);
-//		SprintfBox(WARNING, "", "SendMessageTimeout failed in RefreshEnvironment, Error %d", GetLastError());
-	endif;
 end;  
 
 function makeconf(conffile)

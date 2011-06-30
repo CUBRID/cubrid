@@ -34,6 +34,8 @@
 #include <time.h>
 #include <stdio.h>
 
+#include "porting.h"
+
 #include "dbdef.h"
 #include "dbtype.h"
 
@@ -52,6 +54,8 @@
 #define VOL_MAX_NPAGES(page_size) \
   ((sizeof(off_t) == 4) ? (INT_MAX / (page_size)) : INT_MAX)
 
+#define LOGPAGEID_MAX   0x7fffffffffffLL	/* 6 bytes length */
+
 /* NULL_CHN is a special value for an unspecified cache coherency number.
  * It should only be used in error conditions.  This should never be
  * found as a stored chn in a disk or memory object.
@@ -61,17 +65,11 @@ enum
 
 /* Compose the full name of a database */
 
-#if defined(WINDOWS)
-#define PATHSLASH       '\\'
-#else /* WINDOWS */
-#define PATHSLASH       '/'
-#endif /* WINDOWS */
-
 #define COMPOSE_FULL_NAME(buf, buf_size, path, name) \
   do { \
     int len = strlen(path); \
-    if (len > 0 && path[len - 1] != PATHSLASH) { \
-      snprintf(buf, buf_size - 1, "%s%c%s", path, PATHSLASH, name); \
+    if (len > 0 && path[len - 1] != PATH_SEPARATOR) { \
+      snprintf(buf, buf_size - 1, "%s%c%s", path, PATH_SEPARATOR, name); \
     } else { \
       snprintf(buf, buf_size - 1, "%s%s", path, name); \
     } \
@@ -79,7 +77,9 @@ enum
 
 /* Type definitions related to disk information	*/
 
-typedef INT32 PAGEID;		/* Page identifier */
+typedef INT32 PAGEID;		/* Data page identifier */
+typedef INT64 LOG_PAGEID;	/* Log page identifier */
+typedef PAGEID LOG_PHY_PAGEID;	/* physical log page identifier */
 
 typedef INT16 VOLID;		/* Volume identifier */
 typedef PAGEID DKNPAGES;	/* Number of disk pages */
@@ -93,11 +93,13 @@ typedef INT32 LOLENGTH;		/* Length for a large object */
 
 /* Log address structure */
 
-typedef struct log_lsa LOG_LSA;	/* Log address identifer */
+typedef struct log_lsa LOG_LSA;	/* Log address identifier */
 struct log_lsa
 {
-  INT32 pageid;			/* Log page identifier */
-  INT16 offset;			/* Offset in page */
+  INT64 pageid:48;		/* Log page identifier : 6 bytes length */
+  INT64 offset:16;		/* Offset in page : 2 bytes length */
+  /* The offset field is defined as 16bit-INT64 type (not short),
+   * because of alignment in windows */
 };
 
 #define LSA_COPY(lsa_ptr1, lsa_ptr2) *(lsa_ptr1) = *(lsa_ptr2)
@@ -137,8 +139,8 @@ struct log_lsa
 /* BOTH IO_PAGESIZE AND DB_PAGESIZE MUST BE MULTIPLE OF sizeof(int) */
 
 #define ONE_K                   1024
-#define IO_DEFAULT_PAGE_SIZE    (4 * ONE_K)
-#define IO_MIN_PAGE_SIZE        (1 * ONE_K)
+#define IO_DEFAULT_PAGE_SIZE    (16 * ONE_K)
+#define IO_MIN_PAGE_SIZE        (4 * ONE_K)
 #define IO_MAX_PAGE_SIZE        (16 * ONE_K)
 
 #define LOG_PAGESIZE            (db_log_page_size())
@@ -177,32 +179,11 @@ typedef enum			/* range search option */
 
 /* File structure identifiers */
 
-typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
-struct vpid
-{
-  INT32 pageid;			/* Page identifier */
-  INT16 volid;			/* Volume identifier where the page reside */
-};
-
-typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
-struct vfid
-{
-  INT32 fileid;			/* File identifier */
-  INT16 volid;			/* Volume identifier where the file reside */
-};
-
 typedef struct hfid HFID;	/* FILE HEAP IDENTIFIER */
 struct hfid
 {
   VFID vfid;			/* Volume and file identifier */
   INT32 hpgid;			/* First page identifier (the header page) */
-};
-
-typedef struct loid LOID;	/* LARGE OBJECT IDENTIFIER */
-struct loid
-{
-  VPID vpid;			/* Real page identifier */
-  VFID vfid;			/* Real file identifier */
 };
 
 typedef struct btid BTID;	/* B+tree identifier */
@@ -290,13 +271,13 @@ typedef enum
   INCON_NON_TWO_PHASE_LOCK = 1,	/* Incompatible 2 phase lock. */
   NULL_LOCK = 2,		/* NULL LOCK */
   IS_LOCK = 3,			/* Intention Shared lock */
-  NS_LOCK = 4,			/* Next Key Shared lock */
-  S_LOCK = 5,			/* Shared lock */
-  IX_LOCK = 6,			/* Intention exclusive lock */
-  SIX_LOCK = 7,			/* Shared and intention exclusive lock */
-  U_LOCK = 8,			/* Update lock */
-  NX_LOCK = 9,			/* Next Key Exclusive lock */
-  X_LOCK = 10			/* Exclusive lock */
+  S_LOCK = 4,			/* Shared lock */
+  IX_LOCK = 5,			/* Intention exclusive lock */
+  SIX_LOCK = 6,			/* Shared and intention exclusive lock */
+  U_LOCK = 7,			/* Update lock */
+  X_LOCK = 8,			/* Exclusive lock */
+  NS_LOCK = 9,			/* Next Key Shared lock */
+  NX_LOCK = 10			/* Next Key Exclusive lock */
 } LOCK;
 
 extern LOCK lock_Conv[11][11];
@@ -366,6 +347,7 @@ struct bo_restart_arg
 
 /* Magic default values */
 #define CUBRID_MAGIC_MAX_LENGTH                 25
+#define CUBRID_MAGIC_PREFIX			"CUBRID/"
 #define CUBRID_MAGIC_DATABASE_VOLUME            "CUBRID/Volume"
 #define CUBRID_MAGIC_LOG_ACTIVE                 "CUBRID/LogActive"
 #define CUBRID_MAGIC_LOG_ARCHIVE                "CUBRID/LogArchive"
@@ -419,6 +401,13 @@ typedef enum
   S_DOESNT_FIT,			/* only for slotted page */
   S_DOESNT_EXIST		/* only for slotted page */
 } SCAN_CODE;
+
+typedef enum
+{
+  S_SELECT,
+  S_DELETE,
+  S_UPDATE
+} SCAN_OPERATION_TYPE;
 
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);

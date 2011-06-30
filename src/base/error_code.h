@@ -1236,13 +1236,10 @@
 
 #define ER_LOG_FLUSH_VICTIM_STARTED                 -991
 #define ER_LOG_FLUSH_VICTIM_FINISHED                -992
-
 #define	ER_QPROC_OVERFLOW_BITOP			    -993
-
 #define ER_IT_IS_DISALLOWED_AS_PREPARED             -994
 #define ER_IT_PREPARED_NAME_NOT_FOUND               -995
 #define ER_IT_INCORRECT_HOSTVAR_COUNT               -996
-
 #define ER_FK_CANT_ON_PARTITION                     -997
 #define ER_FK_MUST_NOT_BE_NOT_NULL                  -998
 
@@ -1253,19 +1250,97 @@
 #define ER_CANNOT_GET_LOCK                          -1002
 #define ER_SM_CONSTRAINT_HAS_DIFFERENT_TYPE         -1003
 #define ER_SM_FK_MYSQL_DIFFERENT                    -1004
-#define ER_REPLACE_NOT_YET_ON_BROKER                -1005
-#define ER_ODKU_NOT_YET_ON_BROKER                   -1006
 #define ER_SM_INDEX_PREFIX_LENGTH_ON_UNIQUE_FOREIGN -1007
 #define ER_SM_INDEX_PREFIX_LENGTH_ON_PARTITIONED_CLASS -1008
 
 #define ER_COMPACTDB_ALREADY_STARTED		    -1009
 #define ER_SM_INVALID_INDEX_WITH_PREFIX_TYPE        -1010
-
 #define ER_FK_CANT_ON_SHARED_ATTRIBUTE		    -1011
-
 #define ER_CREATE_AS_SELECT_NULL_TYPE		    -1012
 
-#define ER_LAST_ERROR                               -1013
+#define ER_SM_DEFAULT_NOT_ALLOWED                   -1013
+#define ER_SM_NOT_NULL_NOT_ALLOWED                  -1014
+
+#define ER_BO_DIRECTORY_DOESNOT_EXIST               -1015
+
+#define ER_ES_GENERAL                               -1016
+#define ER_ES_INVALID_PATH                          -1017
+#define ER_ES_COPY_TO_DIFFERENT_TYPE                -1018
+#define ER_ES_NO_LOB_PATH			    -1019
+#define ER_ES_FILE_NOT_FOUND                        -1020
+#define ER_LK_DEADLOCK_CYCLE_DETECTED		    -1021
+
+#define ER_SM_INVALID_PREFIX_LENGTH                 -1022
+
+/* Please note that error codes from -1023 to -1026 are reserved for HA */
+
+#define ER_HA_LA_FAILED_TO_CHANGE_STATE             -1027
+#define ER_HA_LA_UNEXPECTED_EOF_IN_ARCHIVE_LOG      -1028
+#define ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET     -1029
+#define ER_HA_LA_INVALID_REPL_LOG_RECORD            -1030
+#define ER_HA_LA_FAILED_TO_APPLY_SCHEMA		    -1031
+#define ER_HA_LA_FAILED_TO_APPLY_INSERT             -1032
+#define ER_HA_LA_FAILED_TO_APPLY_UPDATE             -1033
+#define ER_HA_LA_FAILED_TO_APPLY_DELETE             -1034
+#define ER_HA_LA_EXCEED_MAX_MEM_SIZE                -1035
+#define ER_HA_LA_STOPPED_BY_SIGNAL                  -1036
+#define ER_HA_LW_STOPPED_BY_SIGNAL                  -1037
+#define ER_HA_LA_STARTED		            -1038
+#define ER_HA_LW_STARTED			    -1039
+#define ER_HA_GENERIC_ERROR			    -1040
+
+#define ER_QPROC_SIZE_STRING_TRUNCATED		    -1041
+#define ER_QPROC_STRING_SIZE_TOO_BIG		    -1042
+
+#define ER_ALTER_CHANGE_CLASS_HIERARCHY		    -1043
+#define ER_ALTER_CHANGE_PARTITIONS		    -1044
+#define ER_ALTER_CHANGE_FK			    -1045
+#define ER_ALTER_CHANGE_TYPE_NOT_SUPP		    -1046
+#define ER_ALTER_CHANGE_TYPE_NEED_ROW_CHECK	    -1047
+#define ER_ALTER_CHANGE_TYPE_WITH_AUTO_INCR	    -1048
+#define ER_ALTER_CHANGE_TYPE_UPGRADE_CFG	    -1049
+#define ER_ALTER_CHANGE_TYPE_WITH_INDEX		    -1050
+#define ER_ALTER_CHANGE_GAIN_CONSTRAINT		    -1051
+#define ER_ALTER_CHANGE_WARN_NO_CHANGE		    -1052
+
+#define ER_REPLACE_ODKU_NOT_ALLOWED		    -1053
+
+#define ER_AUTO_INCREMENT_NEWVAL_MUST_GT_OLDVAL	    -1054
+#define ER_AUTO_INCREMENT_NEWVAL_MUST_LT_MAXVAL	    -1055
+#define ER_AUTO_INCREMENT_SINGLE_COL_AMBIGUITY	    -1056
+
+#define ER_NOTNULL_ON_TYPE_WITHOUT_DEFAULT_VALUE    -1057
+
+#define ER_ALTER_CHANGE_TRUNC_OVERFLOW_NOT_ALLOWED  -1058
+#define ER_ALTER_CHANGE_CAST_FAILED_SET_DEFAULT	    -1059
+#define ER_ALTER_CHANGE_CAST_FAILED_SET_MIN	    -1060
+#define ER_ALTER_CHANGE_CAST_FAILED_SET_MAX	    -1061
+#define ER_ALTER_CHANGE_MULTIPLE_PK		    -1062
+
+#define ER_SM_ATTR_NOT_NULL			    -1063
+#define ER_ALTER_CHANGE_ADD_NOT_NULL_SET_HARD_DEFAULT   -1064
+#define ER_ALTER_CHANGE_HARD_DEFAULT_NOT_EXIST	    -1065
+
+#define ER_SES_SESSION_EXPIRED			    -1066
+#define ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL	    -1067
+
+#define ER_TR_MAX_DEPTH_TOO_BIG			    -1068
+
+#define ER_SES_TOO_MANY_STATEMENTS		    -1069
+
+#define ER_SES_VARIABLE_NOT_FOUND		    -1070
+#define ER_SES_TOO_MANY_VARIABLES		    -1071
+#define ER_INACCESSIBLE_IP			    -1072
+#define ER_INVALID_ACCESS_IP_CONTROL_FILE_FORMAT    -1073
+#define ER_OPEN_ACCESS_LIST_FILE		    -1074
+
+#define ER_DESC_ISCAN_ABORTED			    -1075
+
+#define ER_BO_CANT_LOAD_SYSPRM                      -1076
+
+#define ER_PRM_UNKNOWN_SYSPRM                       -1077
+
+#define ER_LAST_ERROR                               -1078
 
 /*
  * CAUTION!

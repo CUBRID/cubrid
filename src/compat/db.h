@@ -51,6 +51,11 @@
 #define DB_CONNECTION_STATUS_CONNECTED          1
 #define DB_CONNECTION_STATUS_RESET              -1
 extern int db_Connect_status;
+extern char *db_Preferred_hosts;
+
+extern SESSION_ID db_Session_id;
+
+extern int db_Row_count;
 
 #if !defined(_DB_ENABLE_REPLICATIONS_)
 extern int db_Enable_replications;
@@ -72,7 +77,8 @@ extern int db_Disable_modifications;
 #define DB_CLIENT_TYPE_ADMIN_CSQL       8
 #define DB_CLIENT_TYPE_LOG_COPIER       9
 #define DB_CLIENT_TYPE_LOG_APPLIER      10
-#define DB_CLIENT_TYPE_MAX		DB_CLIENT_TYPE_LOG_APPLIER
+#define DB_CLIENT_TYPE_PH_READ_ONLY_BROKER 11
+#define DB_CLIENT_TYPE_MAX		DB_CLIENT_TYPE_PH_READ_ONLY_BROKER
 extern int db_Client_type;
 
 extern char db_Database_name[];
@@ -241,7 +247,8 @@ extern char db_Program_name[];
 extern int db_init (const char *program, int print_version,
 		    const char *dbname, const char *db_path,
 		    const char *vol_path,
-		    const char *log_path, const char *host_name,
+		    const char *log_path, const char *lob_path,
+		    const char *host_name,
 		    const bool overwrite, const char *comments,
 		    const char *addmore_vols_file,
 		    int npages, int desired_pagesize,

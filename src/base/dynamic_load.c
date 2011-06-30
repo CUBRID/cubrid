@@ -905,17 +905,20 @@ dl_find_daemon (DYNAMIC_LOADER * this_)
   assert (this_ != NULL);
 
   path = this_->daemon.daemon_name;
-  envvar_bindir_file (path, PATH_MAX, DAEMON_NAME);
-
-  if (path && path[0] != '\0')
+  if (path != NULL)
     {
-      if (access (path, X_OK) == 0)
-	{
-	  return;
-	}
-    }
+      envvar_bindir_file (path, PATH_MAX, DAEMON_NAME);
 
-  this_->daemon.daemon_name[0] = '\0';
+      if (path[0] != '\0')
+	{
+	  if (access (path, X_OK) == 0)
+	    {
+	      return;
+	    }
+	}
+
+      this_->daemon.daemon_name[0] = '\0';
+    }
   this_->daemon.daemon_fd = DAEMON_NOT_AVAILABLE;
 
   if (dl_Debug)

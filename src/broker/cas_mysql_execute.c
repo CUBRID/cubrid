@@ -230,6 +230,7 @@ static int mysql_connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 static char database_name[SRV_CON_DBNAME_SIZE] = "";
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
+static int multi_byte_character_max_length = 3;
 
 int
 ux_check_connection (void)
@@ -250,6 +251,7 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
   const char *p;
   int size;
   const char *host_connected = NULL;
+  MY_CHARSET_INFO cs;
 
   if (db_alias == NULL || db_alias[0] == '\0')
     return -1;
@@ -268,6 +270,10 @@ ux_database_connect (char *db_alias, char *db_user, char *db_passwd,
 	  goto connect_error;
 	}
       host_connected = cas_mysql_get_connected_host_info ();
+
+      mysql_get_character_set_info (_db_conn, &cs);
+      multi_byte_character_max_length = cs.mbmaxlen;
+
       cas_log_debug (ARG_FILE_LINE,
 		     "ux_database_connect: cas_mysql_connect_db(%s, %s) at %s",
 		     db_user, db_alias, host_connected);
@@ -303,7 +309,6 @@ connect_error:
   if (db_err_msg)
     {
       *db_err_msg = (char *) malloc (size);
-      memset (*db_err_msg, 0x00, size);
       if ((*db_err_msg) && (p != NULL))
 	{
 	  strcpy (*db_err_msg, p);
@@ -616,11 +621,21 @@ execute_all_error:
     }
   errors_in_transaction++;
 
-  for (i = 0; i < num_bind; i++)
+  if (db_vals)
     {
-      db_value_clear (db_vals[i]);
+      for (i = 0; i < num_bind; i++)
+	{
+	  db_value_clear (db_vals[i]);
+	}
     }
   return err_code;
+}
+
+int
+ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv,
+		  T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  return ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
 }
 
 int
@@ -745,12 +760,11 @@ ux_db_type_to_cas_type (int db_type)
   char cas_type;
   switch (db_type)
     {
-      /* DB_TYPE_NUMERIC  
-         case MYSQL_TYPE_DECIMAL:
-         case MYSQL_TYPE_NEWDECIMAL:
-         cas_type = CCI_U_TYPE_NUMERIC;
-         break;
-       */
+      /* DB_TYPE_NUMERIC  */
+    case MYSQL_TYPE_DECIMAL:
+    case MYSQL_TYPE_NEWDECIMAL:
+      cas_type = CCI_U_TYPE_NUMERIC;
+      break;
       /* DB_TYPE_INTEGER */
     case MYSQL_TYPE_TINY:
     case MYSQL_TYPE_INT24:
@@ -758,11 +772,9 @@ ux_db_type_to_cas_type (int db_type)
       cas_type = CCI_U_TYPE_INT;
       break;
       /* DB_TYPE_SHORT */
-#if 0
     case MYSQL_TYPE_SHORT:
       cas_type = CCI_U_TYPE_SHORT;
       break;
-#endif /* 0 */
       /* DB_TYPE_FLOAT */
     case MYSQL_TYPE_FLOAT:
       cas_type = CCI_U_TYPE_FLOAT;
@@ -795,8 +807,11 @@ ux_db_type_to_cas_type (int db_type)
       /* DB_TYPE_VARCHAR */
     case MYSQL_TYPE_VARCHAR:
     case MYSQL_TYPE_VAR_STRING:
-    case MYSQL_TYPE_STRING:
       cas_type = CCI_U_TYPE_STRING;
+      break;
+      /* DB_TYPE_CHAR */
+    case MYSQL_TYPE_STRING:
+      cas_type = CCI_U_TYPE_CHAR;
       break;
       /* DB_TYPE_BIT */
     case MYSQL_TYPE_BIT:
@@ -853,9 +868,13 @@ prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec,
   net_buf_cp_str (net_buf, class_name_p, class_name_len + 1);
 
   if (is_non_null >= 1)
-    is_non_null = 1;
+    {
+      is_non_null = 1;
+    }
   else if (is_non_null < 0)
-    is_non_null = 0;
+    {
+      is_non_null = 0;
+    }
 
   net_buf_cp_byte (net_buf, is_non_null);
 
@@ -900,11 +919,11 @@ cubval_to_mysqlval (int cub_type)
     return ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
   switch (cub_type)
     {
+    case CCI_U_TYPE_NULL:
+      return MYSQL_TYPE_NULL;
     case CCI_U_TYPE_CHAR:
-      return MYSQL_TYPE_TINY;
-    case CCI_U_TYPE_STRING:
       return MYSQL_TYPE_STRING;
-    case CCI_U_TYPE_NCHAR:
+    case CCI_U_TYPE_STRING:
     case CCI_U_TYPE_VARNCHAR:
       return MYSQL_TYPE_VARCHAR;
     case CCI_U_TYPE_BIT:
@@ -915,10 +934,8 @@ cubval_to_mysqlval (int cub_type)
       return MYSQL_TYPE_LONG;
     case CCI_U_TYPE_BIGINT:
       return MYSQL_TYPE_LONGLONG;
-#if 0
     case CCI_U_TYPE_SHORT:
       return MYSQL_TYPE_SHORT;
-#endif /* 0 */
     case CCI_U_TYPE_FLOAT:
       return MYSQL_TYPE_FLOAT;
     case CCI_U_TYPE_DOUBLE:
@@ -931,13 +948,13 @@ cubval_to_mysqlval (int cub_type)
     case CCI_U_TYPE_TIMESTAMP:
     case CCI_U_TYPE_DATETIME:
       return MYSQL_TYPE_TIMESTAMP;
+    case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_NUMERIC:
     case CCI_U_TYPE_OBJECT:
     case CCI_U_TYPE_SET:
     case CCI_U_TYPE_MULTISET:
     case CCI_U_TYPE_SEQUENCE:
     case CCI_U_TYPE_RESULTSET:
-    case CCI_U_TYPE_SHORT:	/* TODO */
     default:
       cas_log_write (0, false, "type convert fail : [%d]", cub_type);
       return ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
@@ -955,14 +972,14 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
   int data_size;
   char coercion_flag = TRUE;
 
-  NET_ARG_GET_CHAR (cub_type, net_type);
+  net_arg_get_char (cub_type, net_type);
   type = cubval_to_mysqlval (cub_type);
   if (type < 0)
     {
       return type;
     }
 
-  NET_ARG_GET_SIZE (data_size, net_value);
+  net_arg_get_size (&data_size, net_value);
   if (data_size <= 0)
     {
       type = MYSQL_TYPE_NULL;
@@ -986,7 +1003,7 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
     case MYSQL_TYPE_BLOB:
       {
 	char *value;
-	NET_ARG_GET_STR (value, db_val->size, net_value);
+	net_arg_get_str (&value, &db_val->size, net_value);
 
 	data = (char *) MALLOC (db_val->size);
 	if (data == NULL)
@@ -994,7 +1011,10 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
 	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
 				   CAS_ERROR_INDICATOR);
 	  }
-	memcpy (data, value, db_val->size);
+	if (db_val->size > 0)
+	  {
+	    memcpy (data, value, db_val->size);
+	  }
 
 	db_val->data.p = data;
 	db_val->need_clear = true;
@@ -1003,11 +1023,11 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
 	out_val->buffer_length = db_val->size;
       }
       break;
-    case MYSQL_TYPE_STRING:
-    case MYSQL_TYPE_VARCHAR:
+    case MYSQL_TYPE_STRING:	/* CHAR(n) */
+    case MYSQL_TYPE_VARCHAR:	/* VARCHAR(n) */
       {
 	char *value;
-	NET_ARG_GET_STR (value, db_val->size, net_value);
+	net_arg_get_str (&value, &db_val->size, net_value);
 
 	data = (char *) MALLOC (db_val->size);
 	if (data == NULL)
@@ -1015,7 +1035,10 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
 	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
 				   CAS_ERROR_INDICATOR);
 	  }
-	memcpy (data, value, db_val->size);
+	if (db_val->size > 0)
+	  {
+	    memcpy (data, value, db_val->size);
+	  }
 
 	db_val->data.p = data;
 	db_val->need_clear = true;
@@ -1028,7 +1051,7 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
       {
 	int *i_val = &(db_val->data.i);
 
-	NET_ARG_GET_INT (*i_val, net_value);
+	net_arg_get_int (i_val, net_value);
 	db_val->size = sizeof (int);
 
 	out_val->buffer = (void *) &(db_val->data.i);
@@ -1039,36 +1062,29 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
       {
 	int64_t *l_val = &(db_val->data.bi);
 
-	NET_ARG_GET_BIGINT (*l_val, net_value);
+	net_arg_get_bigint (l_val, net_value);
 	db_val->size = sizeof (int64_t);
 
 	out_val->buffer = (void *) &(db_val->data.bi);
 	out_val->buffer_length = db_val->size;
       }
       break;
-#if 0
     case MYSQL_TYPE_SHORT:
       {
-	short s_val;
-	int asize = sizeof (short);
+	short *s_val = &(db_val->data.sh);
 
-	NET_ARG_GET_SHORT (s_val, net_value);
-	out_val->buffer = (char *) MALLOC (asize);
-	if (out_val->buffer == NULL)
-	  {
-	    return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
-				   CAS_ERROR_INDICATOR);
-	  }
-	memcpy (out_val->buffer, (char *) &s_val, asize);
-	out_val->buffer_length = asize;
+	net_arg_get_short (s_val, net_value);
+	db_val->size = sizeof (short);
+
+	out_val->buffer = (void *) &(db_val->data.sh);
+	out_val->buffer_length = db_val->size;
       }
       break;
-#endif /* 0 */
     case MYSQL_TYPE_FLOAT:
       {
 	float *f_val = &(db_val->data.f);
 
-	NET_ARG_GET_FLOAT (*f_val, net_value);
+	net_arg_get_float (f_val, net_value);
 	db_val->size = sizeof (float);
 
 	out_val->buffer = (void *) &(db_val->data.f);
@@ -1079,7 +1095,7 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
       {
 	double *d_val = &(db_val->data.d);
 
-	NET_ARG_GET_DOUBLE (*d_val, net_value);
+	net_arg_get_double (d_val, net_value);
 	db_val->size = sizeof (double);
 
 	out_val->buffer = (void *) &(db_val->data.d);
@@ -1089,8 +1105,12 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
     case MYSQL_TYPE_DATE:
       {
 	MYSQL_TIME *mt = &(db_val->data.t);
+	short year, month, day;
 
-	NET_ARG_GET_DATE (mt->year, mt->month, mt->day, net_value);
+	net_arg_get_date (&year, &month, &day, net_value);
+	mt->year = year;
+	mt->month = month;
+	mt->day = day;
 	db_val->size = sizeof (MYSQL_TIME);
 
 	out_val->buffer = (void *) &(db_val->data.t);
@@ -1100,8 +1120,12 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
     case MYSQL_TYPE_TIME:
       {
 	MYSQL_TIME *mt = &(db_val->data.t);
+	short hour, minute, second;
 
-	NET_ARG_GET_TIME (mt->hour, mt->minute, mt->second, net_value);
+	net_arg_get_time (&hour, &minute, &second, net_value);
+	mt->hour = hour;
+	mt->minute = minute;
+	mt->second = second;
 	db_val->size = sizeof (MYSQL_TIME);
 
 	out_val->buffer = (void *) &(db_val->data.t);
@@ -1111,9 +1135,16 @@ netval_to_dbval (void *net_type, void *net_value, MYSQL_BIND * out_val,
     case MYSQL_TYPE_TIMESTAMP:
       {
 	MYSQL_TIME *mt = &(db_val->data.t);
+	short year, month, day, hour, minute, second;
 
-	NET_ARG_GET_TIMESTAMP (mt->year, mt->month, mt->day, mt->hour,
-			       mt->minute, mt->second, net_value);
+	net_arg_get_timestamp (&year, &month, &day, &hour,
+			       &minute, &second, net_value);
+	mt->year = year;
+	mt->month = month;
+	mt->day = day;
+	mt->hour = hour;
+	mt->minute = minute;
+	mt->second = second;
 	db_val->size = sizeof (MYSQL_TIME);
 
 	out_val->buffer = (void *) &(db_val->data.t);
@@ -1198,7 +1229,6 @@ dbval_to_net_buf (void *val, int type, my_bool is_null, unsigned long length,
 	data_size = 4 + 8 + 0;
 	break;
       }
-#if 0
     case MYSQL_TYPE_SHORT:
       {
 	short smallint;
@@ -1207,7 +1237,6 @@ dbval_to_net_buf (void *val, int type, my_bool is_null, unsigned long length,
 	data_size = 4 + 2 + 0;
 	break;
       }
-#endif /* 0 */
     case MYSQL_TYPE_FLOAT:
       {
 	float f_val;
@@ -1239,7 +1268,7 @@ dbval_to_net_buf (void *val, int type, my_bool is_null, unsigned long length,
 	add_res_data_timestamp (net_buf, (short) tm->year, (short) tm->month,
 				(short) tm->day, (short) tm->hour,
 				(short) tm->minute, (short) tm->second, 0);
-	data_size = 4 + CAS_TIMESTAMP_SIZE + 0;
+	data_size = 4 + NET_SIZE_TIMESTAMP + 0;
 	break;
       }
     case MYSQL_TYPE_DATETIME:
@@ -1249,7 +1278,7 @@ dbval_to_net_buf (void *val, int type, my_bool is_null, unsigned long length,
 			       (short) tm->day, (short) tm->hour,
 			       (short) tm->minute, (short) tm->second,
 			       (short) 0, 0);
-	data_size = 4 + CAS_DATETIME_SIZE + 0;
+	data_size = 4 + NET_SIZE_DATETIME + 0;
 	break;
       }
     case MYSQL_TYPE_DATE:
@@ -1258,7 +1287,7 @@ dbval_to_net_buf (void *val, int type, my_bool is_null, unsigned long length,
 	MYSQL_TIME *tm = (MYSQL_TIME *) val;
 	add_res_data_date (net_buf, (short) tm->year, (short) tm->month,
 			   (short) tm->day, 0);
-	data_size = 4 + SIZE_DATE + 0;
+	data_size = 4 + NET_SIZE_DATE + 0;
 	break;
       }
     case MYSQL_TYPE_TIME:
@@ -1266,7 +1295,7 @@ dbval_to_net_buf (void *val, int type, my_bool is_null, unsigned long length,
 	MYSQL_TIME *tm = (MYSQL_TIME *) val;
 	add_res_data_time (net_buf, (short) tm->hour, (short) tm->minute,
 			   (short) tm->second, 0);
-	data_size = 4 + SIZE_TIME + 0;
+	data_size = 4 + NET_SIZE_TIME + 0;
 	break;
       }
     case MYSQL_TYPE_VARCHAR:
@@ -1322,7 +1351,7 @@ get_attr_name_from_argv (int argc, void **argv, char ***ret_attr_name)
       int name_size;
       char *tmp_p;
 
-      NET_ARG_GET_STR (tmp_p, name_size, argv[i + 1]);
+      net_arg_get_str (&tmp_p, &name_size, argv[i + 1]);
       if (name_size <= 1 || tmp_p[name_size - 1] != '\0')
 	{
 	  FREE_MEM (attr_name);
@@ -1383,7 +1412,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 
       net_buf_cp_int (net_buf, cursor_pos, NULL);
 
-      NET_BUF_CP_OBJECT (net_buf, &tuple_obj);
+      net_buf_cp_object (net_buf, &tuple_obj);
 
       err_code = cur_tuple (srv_handle, tuple++, net_buf);
       if (err_code < 0)
@@ -1532,11 +1561,11 @@ add_res_data_timestamp (T_NET_BUF * net_buf, short yr, short mon, short day,
 {
   if (type)
     {
-      net_buf_cp_int (net_buf, CAS_TIMESTAMP_SIZE + 1, NULL);
+      net_buf_cp_int (net_buf, NET_SIZE_TIMESTAMP + 1, NULL);
       net_buf_cp_byte (net_buf, type);
     }
   else
-    net_buf_cp_int (net_buf, CAS_TIMESTAMP_SIZE, NULL);
+    net_buf_cp_int (net_buf, NET_SIZE_TIMESTAMP, NULL);
 
   net_buf_cp_short (net_buf, yr);
   net_buf_cp_short (net_buf, mon);
@@ -1552,12 +1581,12 @@ add_res_data_datetime (T_NET_BUF * net_buf, short yr, short mon, short day,
 {
   if (type)
     {
-      net_buf_cp_int (net_buf, CAS_DATETIME_SIZE + 1, NULL);
+      net_buf_cp_int (net_buf, NET_SIZE_DATETIME + 1, NULL);
       net_buf_cp_byte (net_buf, type);
     }
   else
     {
-      net_buf_cp_int (net_buf, CAS_DATETIME_SIZE, NULL);
+      net_buf_cp_int (net_buf, NET_SIZE_DATETIME, NULL);
     }
 
   net_buf_cp_short (net_buf, yr);
@@ -1575,12 +1604,12 @@ add_res_data_time (T_NET_BUF * net_buf, short hh, short mm, short ss,
 {
   if (type)
     {
-      net_buf_cp_int (net_buf, SIZE_TIME + 1, NULL);
+      net_buf_cp_int (net_buf, NET_SIZE_TIME + 1, NULL);
       net_buf_cp_byte (net_buf, type);
     }
   else
     {
-      net_buf_cp_int (net_buf, SIZE_TIME, NULL);
+      net_buf_cp_int (net_buf, NET_SIZE_TIME, NULL);
     }
   net_buf_cp_short (net_buf, hh);
   net_buf_cp_short (net_buf, mm);
@@ -1593,12 +1622,12 @@ add_res_data_date (T_NET_BUF * net_buf, short yr, short mon, short day,
 {
   if (type)
     {
-      net_buf_cp_int (net_buf, SIZE_DATE + 1, NULL);
+      net_buf_cp_int (net_buf, NET_SIZE_DATE + 1, NULL);
       net_buf_cp_byte (net_buf, type);
     }
   else
     {
-      net_buf_cp_int (net_buf, SIZE_DATE, NULL);
+      net_buf_cp_int (net_buf, NET_SIZE_DATE, NULL);
     }
   net_buf_cp_short (net_buf, yr);
   net_buf_cp_short (net_buf, mon);
@@ -1611,15 +1640,15 @@ add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj, char type)
 {
   if (type)
     {
-      net_buf_cp_int (net_buf, SIZE_OBJECT + 1, NULL);
+      net_buf_cp_int (net_buf, NET_SIZE_OBJECT + 1, NULL);
       net_buf_cp_byte (net_buf, type);
     }
   else
     {
-      net_buf_cp_int (net_buf, SIZE_OBJECT, NULL);
+      net_buf_cp_int (net_buf, NET_SIZE_OBJECT, NULL);
     }
 
-  NET_BUF_CP_OBJECT (net_buf, obj);
+  net_buf_cp_object (net_buf, obj);
 }
 
 static void
@@ -1728,7 +1757,7 @@ prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, int stmt_type,
 			      T_BROKER_VERSION client_version)
 {
   int err_code;
-  int asize, size;
+  int asize, size, scale, precision;
   int type;
   int num_cols = 0;
   int updatable_flag = 0;
@@ -1785,13 +1814,10 @@ prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, int stmt_type,
 	      col = cas_mysql_fetch_field (result);
 	      char set_type, cas_type;
 	      cas_type = ux_db_type_to_cas_type (col->type);
-	      prepare_column_info_set (net_buf, (char) cas_type, 0, 0,
-				       col->name, (const char *) col->def, 0,
-				       0, 0, 0, 0, 0, 0, col->name,
-				       col->org_table, (char) 0,
-				       client_version);
 	      size = col->length;
 	      type = col->type;
+	      scale = col->decimals;
+	      precision = col->length;
 	      columns[i].need_clear = false;
 	      switch (type)
 		{		/* set type specific value */
@@ -1805,6 +1831,7 @@ prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, int stmt_type,
 		   */
 		case MYSQL_TYPE_STRING:
 		case MYSQL_TYPE_VAR_STRING:
+		  precision /= multi_byte_character_max_length;
 		  size += 1;
 		  break;
 		case MYSQL_TYPE_BLOB:
@@ -1816,6 +1843,9 @@ prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, int stmt_type,
 		  break;
 		case MYSQL_TYPE_DECIMAL:
 		case MYSQL_TYPE_NEWDECIMAL:
+		  if (scale > 0)
+		    precision -= 1;
+		  precision -= 1;
 		  type = MYSQL_TYPE_STRING;
 		  break;
 		}
@@ -1841,6 +1871,10 @@ prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, int stmt_type,
 
 		  defines[i].buffer = (void *) columns[i].data.p;
 		  defines[i].buffer_length = size;
+		  break;
+		case MYSQL_TYPE_SHORT:
+		  defines[i].buffer = (void *) &(columns[i].data.sh);
+		  defines[i].buffer_length = sizeof (short);
 		  break;
 		case MYSQL_TYPE_LONG:
 		  defines[i].buffer = (void *) &(columns[i].data.i);
@@ -1873,6 +1907,14 @@ prepare_column_list_info_set (T_SRV_HANDLE * srv_handle, int stmt_type,
 	      defines[i].length = &(columns[i].size);
 	      defines[i].is_unsigned = col->flags & UNSIGNED_FLAG;
 	      defines[i].error = NULL;
+
+	      prepare_column_info_set (net_buf, (char) cas_type,
+				       scale, precision,
+				       col->name, (const char *) col->def, 0,
+				       0, 0, 0, 0, 0, 0, col->name,
+				       col->org_table,
+				       IS_NOT_NULL (col->flags),
+				       client_version);
 	    }
 	}
 
@@ -1914,7 +1956,7 @@ execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf,
   net_buf_cp_int (net_buf, tuple_count, NULL);
 
   memset (&ins_oid, 0, sizeof (T_OBJECT));
-  NET_BUF_CP_OBJECT (net_buf, &ins_oid);
+  net_buf_cp_object (net_buf, &ins_oid);
   net_buf_cp_int (net_buf, 0, NULL);	/* cache time sec */
   net_buf_cp_int (net_buf, 0, NULL);	/* cache time usec */
 
@@ -2195,9 +2237,11 @@ cas_mysql_connect_db (char *alias, char *user, char *passwd)
 
   mysql_options (_db_conn, MYSQL_OPT_RECONNECT, &reconnect);
   mysql_options (_db_conn, MYSQL_SET_CHARSET_NAME, "utf8");
+  mysql_options (_db_conn, MYSQL_INIT_COMMAND,
+		 "SET SESSION sql_mode=STRICT_TRANS_TABLES");
   if (!mysql_real_connect
       (_db_conn, host, user, passwd, dbname, port, NULL,
-       CLIENT_MULTI_STATEMENTS))
+       CLIENT_MULTI_STATEMENTS | CLIENT_FOUND_ROWS))
     return cas_mysql_get_errno ();
 
   mysql_set_server_option (_db_conn, MYSQL_OPTION_MULTI_STATEMENTS_ON);

@@ -65,22 +65,22 @@
 #if defined(SERVER_MODE)
 #include "connection_defs.h"
 #include "connection_error.h"
-#include "thread_impl.h"
+#include "thread.h"
 #include "job_queue.h"
 #endif /* SERVER_MODE */
 #include "log_compress.h"
 #include "object_print.h"
 #include "replication.h"
+#include "es.h"
+#include "memory_hash.h"
 
 #if !defined(SERVER_MODE)
-#undef MUTEX_INIT
-#define MUTEX_INIT(a)
-#undef MUTEX_DESTROY
-#define MUTEX_DESTROY(a)
-#undef MUTEX_LOCK
-#define MUTEX_LOCK(a, b)
-#undef MUTEX_UNLOCK
-#define MUTEX_UNLOCK(a)
+
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)	0
+#define pthread_mutex_unlock(a)
+static int rv;
 #endif /* !SERVER_MODE */
 
 /*
@@ -134,11 +134,48 @@
 
 #define LOG_TOPOP_STACK_INIT_SIZE 1024
 
+/* Assume that locator end with <path>/<meta_name>.<key_name> */
+#define LOCATOR_KEY(locator_) (strrchr (locator_, '.') + 1)
+#define LOCATOR_META(locator_) (strrchr (locator_, '/') + 1)
+#define PUT_LOCATOR_META(meta_name_, locator_) \
+   do { \
+     char *key_, *meta_; \
+     key_ = LOCATOR_KEY (locator_); \
+     meta_ = LOCATOR_META (locator_); \
+     memcpy (meta_name_, meta_, (key_ - meta_) -1); \
+     meta_name_[(key_ - meta_) -1] = '\0'; \
+   } while (0)
+
 typedef struct log_topop_range LOG_TOPOP_RANGE;
 struct log_topop_range
 {
   LOG_LSA start_lsa;
   LOG_LSA end_lsa;
+};
+
+/* definitions for lob locator tree */
+typedef struct lob_savepoint_entry LOB_SAVEPOINT_ENTRY;
+
+struct lob_savepoint_entry
+{
+  LOB_LOCATOR_STATE state;
+  LOG_LSA savept_lsa;
+  LOB_SAVEPOINT_ENTRY *prev;
+  ES_URI locator;
+};
+
+struct lob_locator_entry
+{
+  /* RB_ENTRY defines red-black tree node header for this structure.
+     see base/rb_tree.h for more information. */
+  RB_ENTRY (lob_locator_entry) head;
+  LOB_SAVEPOINT_ENTRY *top;
+  /* key_hash is used to reduce the number of strcmp.
+     see the comment of lob_locator_cmp for more information */
+  int key_hash;
+  /* normal case: points &key_data[0], search key: supplied */
+  char *key;
+  char key_data[1];
 };
 
 /*
@@ -202,9 +239,15 @@ static void log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				   LOG_RECTYPE iscommitted);
 static void log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				 LOG_RECTYPE iscommitted);
-static void log_free_modifed_class_list (THREAD_ENTRY * thread_p,
-					 LOG_TDES * tdes,
-					 bool decache_classrepr);
+static void log_rollback_classrepr_cache (THREAD_ENTRY * thread_p,
+					  LOG_TDES * tdes,
+					  LOG_LSA * upto_lsa);
+static void log_free_lob_locator (LOB_LOCATOR_ENTRY * entry);
+static int lob_locator_cmp (const LOB_LOCATOR_ENTRY * e1,
+			    const LOB_LOCATOR_ENTRY * e2);
+/* RB_PROTOTYPE_STATIC declares red-black tree functions. see base/rb_tree.h */
+RB_PROTOTYPE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
+
 static TRAN_STATE log_complete_system_op (THREAD_ENTRY * thread_p,
 					  LOG_TDES * tdes,
 					  LOG_RESULT_TOPOP result,
@@ -355,6 +398,30 @@ static LOG_ZIP *log_get_zip_undo (THREAD_ENTRY * thread_p);
 static LOG_ZIP *log_get_zip_redo (THREAD_ENTRY * thread_p);
 static char *log_get_data_ptr (THREAD_ENTRY * thread_p);
 
+static int log_is_valid_locator (const char *locator);
+static int log_add_to_modified_class_list_internal (THREAD_ENTRY * thread_p,
+						    const OID * class_oid,
+						    bool
+						    mark_as_update_stats_required);
+static void log_cleanup_modified_class (THREAD_ENTRY * thread_p,
+					MODIFIED_CLASS_ENTRY * class,
+					void *arg);
+static void log_update_stats_on_modified_class (THREAD_ENTRY * thread_p,
+						MODIFIED_CLASS_ENTRY * class,
+						void *arg);
+static void log_map_modified_class_list (THREAD_ENTRY * thread_p,
+					 LOG_TDES * tdes, bool release,
+					 void
+					 (*map_func) (THREAD_ENTRY * thread_p,
+						      MODIFIED_CLASS_ENTRY *
+						      class, void *arg),
+					 void *arg);
+static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p,
+					     LOG_TDES * tdes, bool release,
+					     bool decache_classrepr);
+static void log_update_stats_on_modified_class_list (THREAD_ENTRY * thread_p,
+						     LOG_TDES * tdes,
+						     bool release);
 /*
  * log_rectype_string - RETURN TYPE OF LOG RECORD IN STRING FORMAT
  *
@@ -686,9 +753,9 @@ log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa)
   int rv;
 #endif /* SERVER_MODE */
   memcpy (db_creation, &log_Gl.hdr.db_creation, sizeof (*db_creation));
-  MUTEX_LOCK (rv, log_Gl.chkpt_lsa_lock);
+  rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
   memcpy (chkpt_lsa, &log_Gl.hdr.chkpt_lsa, sizeof (*chkpt_lsa));
-  MUTEX_UNLOCK (log_Gl.chkpt_lsa_lock);
+  pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
   return NO_ERROR;
 }
@@ -847,7 +914,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   log_Gl.append.vdes = fileio_format (thread_p, db_fullname, log_Name_active,
 				      LOG_DBLOG_ACTIVE_VOLID, npages,
 				      PRM_LOG_SWEEP_CLEAN, true, false,
-				      LOG_PAGESIZE);
+				      LOG_PAGESIZE, false);
   loghdr_pgptr = logpb_create_header_page (thread_p);
   if (log_Gl.append.vdes == NULL_VOLDES
       || logpb_fetch_start_append_page (thread_p) == NULL
@@ -865,7 +932,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
    * Flush the append page, so that the end of the log mark is written.
    * Then, free the page, same for the header page.
    */
-  logpb_set_dirty (log_Gl.append.log_pgptr, DONT_FREE);
+  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_FORCE);
 
   log_Gl.chkpt_every_npages = PRM_LOG_CHECKPOINT_NPAGES;
@@ -873,7 +940,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   /* Flush the log header */
 
   memcpy (loghdr_pgptr->area, &log_Gl.hdr, sizeof (log_Gl.hdr));
-  logpb_set_dirty (loghdr_pgptr, DONT_FREE);
+  logpb_set_dirty (thread_p, loghdr_pgptr, DONT_FREE);
 
 #if defined(CUBRID_DEBUG)
   {
@@ -909,15 +976,14 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   }
 #endif /* CUBRID_DEBUG */
 
-  logpb_free_page (loghdr_pgptr);
+  logpb_free_page (thread_p, loghdr_pgptr);
 
-
-/*   logpb_flush_header(); */
+  /* logpb_flush_header(); */
 
   /*
    * Free the append and header page and dismount the lg active volume
    */
-  logpb_free_page (log_Gl.append.log_pgptr);
+  logpb_free_page (thread_p, log_Gl.append.log_pgptr);
   log_Gl.append.log_pgptr = NULL;
 
   fileio_dismount (thread_p, log_Gl.append.vdes);
@@ -1189,12 +1255,12 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 	    {
 	      goto error;
 	    }
-	  log_Gl.hdr.fpageid = PAGEID_MAX;
-	  log_Gl.hdr.append_lsa.pageid = PAGEID_MAX;
+	  log_Gl.hdr.fpageid = LOGPAGEID_MAX;
+	  log_Gl.hdr.append_lsa.pageid = LOGPAGEID_MAX;
 	  LSA_SET_NULL (&log_Gl.hdr.chkpt_lsa);
-	  log_Gl.hdr.nxarv_pageid = PAGEID_MAX;
-	  log_Gl.hdr.nxarv_num = PAGEID_MAX;
-	  log_Gl.hdr.last_arv_num_for_syscrashes = PAGEID_MAX;
+	  log_Gl.hdr.nxarv_pageid = LOGPAGEID_MAX;
+	  log_Gl.hdr.nxarv_num = DB_INT32_MAX;
+	  log_Gl.hdr.last_arv_num_for_syscrashes = DB_INT32_MAX;
 	}
       else
 	{
@@ -1274,9 +1340,9 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   compat = rel_is_disk_compatible (log_Gl.hdr.db_compatibility,
 				   &disk_compatibility_functions);
 
-  /* If we're not completely compatible, signal an error. 
+  /* If we're not completely compatible, signal an error.
    * There had been no compatibility rules on R2.1 or earlier version.
-   * However, a compatibility rule between R2.2 and R2.1 (or earlier)  
+   * However, a compatibility rule between R2.2 and R2.1 (or earlier)
    * was added to provide restoration from R2.1 to R2.2.
    */
   if (compat != REL_FULLY_COMPATIBLE)
@@ -1462,6 +1528,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 	}
     }
 
+  logpb_initialize_arv_page_info_table ();
   logpb_initialize_logging_statistics ();
   log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
 
@@ -1478,7 +1545,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 					 log_Name_bg_archive,
 					 LOG_DBLOG_BG_ARCHIVE_VOLID,
 					 log_Gl.hdr.npages + 1, false, false,
-					 false, LOG_PAGESIZE);
+					 false, LOG_PAGESIZE, false);
       if (bg_arv_info->vdes != NULL_VOLDES)
 	{
 	  bg_arv_info->start_page_id = log_Gl.hdr.nxarv_pageid;
@@ -1587,7 +1654,7 @@ log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
 
   thread_p->tran_index = tdes->tran_index;
-  MUTEX_UNLOCK (thread_p->tran_index_lock);
+  pthread_mutex_unlock (&thread_p->tran_index_lock);
 
   (void) log_abort (thread_p, tdes->tran_index);
 
@@ -1936,7 +2003,7 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   LOG_DATA_ADDR addr;
   int error_code = NO_ERROR;
   LOG_ZIP *zip_undo, *zip_redo;
-  char *data_ptr;
+  char *data_ptr = NULL;
 
   addr.vfid = vfid;
   addr.pgptr = pgptr;
@@ -2018,16 +2085,20 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   zip_undo = log_get_zip_undo (thread_p);
   zip_redo = log_get_zip_redo (thread_p);
-  data_ptr = log_get_data_ptr (thread_p);
 
   is_diff = false;
   is_undo_zip = false;
   is_redo_zip = false;
 
-  if (log_zip_support && zip_undo && zip_redo && data_ptr)
+  if (log_zip_support && zip_undo && zip_redo)
     {				/* disable_log_compress = 0 in cubrid.conf */
       if ((undo_length > 0) && (redo_length > 0)
 	  && log_realloc_data_ptr (thread_p, redo_length))
+	{
+	  data_ptr = log_get_data_ptr (thread_p);
+	}
+
+      if (data_ptr)
 	{
 	  (void) memcpy (data_ptr, redo_data, redo_length);
 	  (void) log_diff (undo_length, undo_data, redo_length, data_ptr);
@@ -2362,7 +2433,7 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 		       int length, const void *data)
 {
   struct log_redo *redo;	/* A redo log record                  */
-  VPID *vpid;			/* Volume_page identifer for the data */
+  VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
   bool is_zipped = false;
@@ -2538,7 +2609,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 			    const LOG_CRUMB * redo_crumbs)
 {
   struct log_undoredo *undoredo;	/* Undo_redo log record               */
-  VPID *vpid;			/* Volume_page identifer for the data */
+  VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
   int i = 0;
@@ -2555,7 +2626,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   int error_code = NO_ERROR;
 
   LOG_ZIP *zip_undo, *zip_redo;
-  char *data_ptr;
+  char *data_ptr = NULL;
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
@@ -2636,15 +2707,19 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 
   zip_undo = log_get_zip_undo (thread_p);
   zip_redo = log_get_zip_redo (thread_p);
-  data_ptr = log_get_data_ptr (thread_p);
 
   is_undo_zip = false;
   is_redo_zip = false;
   is_diff = false;
 
-  if (log_zip_support && zip_undo && zip_redo && data_ptr)
+  if (log_zip_support && zip_undo && zip_redo)
     {
       if (log_realloc_data_ptr (thread_p, undo_length + redo_length))
+	{
+	  data_ptr = log_get_data_ptr (thread_p);
+	}
+
+      if (data_ptr)
 	{
 	  if (undo_length > 0)
 	    {
@@ -2805,7 +2880,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 			const LOG_CRUMB * crumbs)
 {
   struct log_undo *undo;	/* Undo log record                    */
-  VPID *vpid;			/* Volume_page identifer for the data */
+  VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
   int i = 0;
@@ -2815,7 +2890,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   int error_code = NO_ERROR;
   int total_length = 0;
   LOG_ZIP *zip_undo;
-  char *data_ptr;
+  char *data_ptr = NULL;
 
 #if defined(CUBRID_DEBUG)
   if (RV_fun[rcvindex].undofun == NULL)
@@ -2874,16 +2949,20 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
 
   zip_undo = log_get_zip_undo (thread_p);
-  data_ptr = log_get_data_ptr (thread_p);
 
   for (i = 0; i < num_crumbs; i++)
     {
       total_length += crumbs[i].length;
     }
 
-  if (log_zip_support && zip_undo && data_ptr)
+  if (log_zip_support && zip_undo)
     {
       if ((total_length > 0) && log_realloc_data_ptr (thread_p, total_length))
+	{
+	  data_ptr = log_get_data_ptr (thread_p);
+	}
+
+      if (data_ptr)
 	{
 	  undo_data = data_ptr;
 	  tmp_ptr = undo_data;
@@ -3002,7 +3081,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 			const LOG_CRUMB * crumbs)
 {
   struct log_redo *redo;	/* A redo log record                  */
-  VPID *vpid;			/* Volume_page identifer for the data */
+  VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
   int i = 0;
@@ -3012,7 +3091,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   int error_code = NO_ERROR;
   int total_length = 0;
   LOG_ZIP *zip_redo;
-  char *data_ptr;
+  char *data_ptr = NULL;
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
@@ -3075,28 +3154,29 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
 
   zip_redo = log_get_zip_redo (thread_p);
-  data_ptr = log_get_data_ptr (thread_p);
 
   for (i = 0; i < num_crumbs; i++)
     {
       total_length += crumbs[i].length;
     }
 
-  if (log_zip_support && zip_redo && data_ptr)
+  if (log_zip_support && zip_redo)
     {
-      if (log_realloc_data_ptr (thread_p, total_length))
+      if ((total_length > 0) && log_realloc_data_ptr (thread_p, total_length))
 	{
-	  if (total_length > 0)
+	  data_ptr = log_get_data_ptr (thread_p);
+	}
+
+      if (data_ptr)
+	{
+	  redo_data = data_ptr;
+	  tmp_ptr = redo_data;
+	  for (i = 0; i < num_crumbs; i++)
 	    {
-	      redo_data = data_ptr;
-	      tmp_ptr = redo_data;
-	      for (i = 0; i < num_crumbs; i++)
-		{
-		  memcpy (tmp_ptr, (char *) crumbs[i].data, crumbs[i].length);
-		  tmp_ptr += crumbs[i].length;
-		}
-	      is_zipped = log_zip (zip_redo, total_length, redo_data);
+	      memcpy (tmp_ptr, (char *) crumbs[i].data, crumbs[i].length);
+	      tmp_ptr += crumbs[i].length;
 	    }
+	  is_zipped = log_zip (zip_redo, total_length, redo_data);
 	}
     }
 
@@ -3489,7 +3569,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 		     LOG_DATA_ADDR * addr, int length, const void *data)
 {
   struct log_redo *redo;	/* A redo log record                  */
-  VPID *vpid;			/* Volume_page identifer for the data */
+  VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   LOG_RCV rcv;			/* Recovery structure for execution   */
   bool skipredo;
@@ -4110,9 +4190,9 @@ log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 	    {
 	      LOG_LSA chkpt_lsa;
 
-	      MUTEX_LOCK (rv, log_Gl.chkpt_lsa_lock);
+	      rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
 	      LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
-	      MUTEX_UNLOCK (log_Gl.chkpt_lsa_lock);
+	      pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
 	      if (LSA_GT (&chkpt_lsa, &log_Gl.rcv_phase_lsa))
 		{
@@ -4274,8 +4354,9 @@ xlog_append_client_undo (THREAD_ENTRY * thread_p,
 	  if (LSA_ISNULL
 	      (&tdes->topops.stack[tdes->topops.last].client_undo_lsa))
 	    {
-	      LSA_COPY (&tdes->topops.stack[tdes->topops.last].
-			client_undo_lsa, &tdes->tail_lsa);
+	      LSA_COPY (&tdes->topops.
+			stack[tdes->topops.last].client_undo_lsa,
+			&tdes->tail_lsa);
 	    }
 	}
       else if (LSA_ISNULL (&tdes->client_undo_lsa))
@@ -4383,8 +4464,9 @@ xlog_append_client_postpone (THREAD_ENTRY * thread_p,
 	  if (LSA_ISNULL
 	      (&tdes->topops.stack[tdes->topops.last].client_posp_lsa))
 	    {
-	      LSA_COPY (&tdes->topops.stack[tdes->topops.last].
-			client_posp_lsa, &tdes->tail_lsa);
+	      LSA_COPY (&tdes->topops.
+			stack[tdes->topops.last].client_posp_lsa,
+			&tdes->tail_lsa);
 	    }
 	}
       else if (LSA_ISNULL (&tdes->client_posp_lsa))
@@ -4605,7 +4687,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name,
 		    }
 		  else
 		    {
-		      copy_length = LOGAREA_SIZE - log_lsa.offset;
+		      copy_length = LOGAREA_SIZE - (int) (log_lsa.offset);
 		    }
 
 		  memcpy (ptr + area_offset,
@@ -4693,6 +4775,7 @@ log_start_system_op (THREAD_ENTRY * thread_p)
   tdes->topops.last++;
   LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa,
 	    &tdes->tail_lsa);
+  LSA_COPY (&tdes->topop_lsa, &tdes->tail_lsa);
 
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].client_posp_lsa);
@@ -4822,16 +4905,20 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
 	    {
 	      repl_log_abort_after_lsa (tdes,
-					&tdes->topops.stack[tdes->topops.
-							    last].
+					&tdes->topops.stack[tdes->
+							    topops.last].
 					lastparent_lsa);
 	    }
 
 	  /* Abort the top system operation */
 	  tdes->state = TRAN_UNACTIVE_ABORTED;
 	  log_rollback (thread_p, tdes,
-			&tdes->topops.stack[tdes->topops.last].
-			lastparent_lsa);
+			&tdes->topops.stack[tdes->topops.
+					    last].lastparent_lsa);
+
+	  log_rollback_classrepr_cache (thread_p, tdes,
+					&tdes->topops.stack
+					[tdes->topops.last].lastparent_lsa);
 
 	  /* Are there any loose ends to be done in the client ? */
 	  if (!LSA_ISNULL
@@ -4839,7 +4926,7 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	    {
 	      log_append_topope_abort_client_loose_ends (thread_p, tdes);
 	      /*
-	       * Now the client transaction manager should request 
+	       * Now the client transaction manager should request
 	       * all client undo actions.
 	       */
 	      state = tdes->state;
@@ -4872,8 +4959,8 @@ log_end_system_op (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result)
 	  if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
 	    {
 	      repl_log_abort_after_lsa (tdes,
-					&tdes->topops.stack[tdes->topops.
-							    last].
+					&tdes->topops.stack[tdes->
+							    topops.last].
 					lastparent_lsa);
 	    }
 	}
@@ -5469,7 +5556,7 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 {
   struct log_donetime *donetime;
 
-  assert (LOG_CS_OWN (thread_p));
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   logpb_start_append (thread_p, iscommitted, tdes);
 
@@ -5526,17 +5613,27 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
- * log_add_to_modified_class_list -
+ * log_add_to_modified_class_list_internal -
  *
  * return:
  *
  *   class_oid(in):
+ *   mark_as_update_stats_required(in):
  *
- * NOTE: Functions for LOG_TDES.modified_class_list
+ * NOTE: Function for LOG_TDES.modified_class_list
+ *       This list keeps the following information:
+ *        1) OID of modified class and LSA for the last modification
+ *        2) whether updating statistics on a class was requested or not
+ *
+ *       The function "log_add_to_modified_class_list" will add
+ *       the first information to the list, and the function
+ *       "log_mark_modified_class_as_update_stats_required" will register
+ *       the second information.
  */
 int
-log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
-				const OID * class_oid)
+log_add_to_modified_class_list_internal (THREAD_ENTRY * thread_p,
+					 const OID * class_oid,
+					 bool mark_as_update_stats_required)
 {
   LOG_TDES *tdes;
   MODIFIED_CLASS_ENTRY *t = NULL;
@@ -5556,6 +5653,7 @@ log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
 	  break;
 	}
     }
+
   if (t == NULL)
     {				/* class_oid is not in modified_class_list */
       t = (MODIFIED_CLASS_ENTRY *) malloc (sizeof (MODIFIED_CLASS_ENTRY));
@@ -5565,54 +5663,237 @@ log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
 		  1, sizeof (MODIFIED_CLASS_ENTRY));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+
       COPY_OID (&t->class_oid, class_oid);
       t->next = tdes->modified_class_list;
       tdes->modified_class_list = t;
+
+      if (mark_as_update_stats_required)
+	{
+	  LSA_SET_NULL (&t->last_modified_lsa);
+	}
+      else
+	{
+	  t->need_update_stats = false;
+	}
+    }
+
+  if (mark_as_update_stats_required)
+    {
+      /* In this case, we do not update "last_modified_lsa", because
+       * this is aimed at delaying updating statistics of this class
+       * until "the transaction is committed". This is not a modification.
+       */
+      t->need_update_stats = true;
+    }
+  else
+    {
+      LSA_COPY (&t->last_modified_lsa, &tdes->tail_lsa);
     }
 
   return NO_ERROR;
 }
 
 /*
- * log_free_modifed_class_list -
+ * log_add_to_modified_class_list -
+ *
+ * return:
+ *
+ *   class_oid(in):
+ *
+ * NOTE: See the function "log_add_to_modified_class_list_internal".
+ */
+int
+log_add_to_modified_class_list (THREAD_ENTRY * thread_p,
+				const OID * class_oid)
+{
+  return log_add_to_modified_class_list_internal (thread_p, class_oid, false);
+}
+
+/*
+ * log_mark_modified_class_as_update_stats_required -
+ *
+ * return:
+ *
+ *   class_oid(in):
+ *
+ * NOTE: See the function "log_add_to_modified_class_list_internal".
+ */
+int
+log_mark_modified_class_as_update_stats_required (THREAD_ENTRY *
+						  thread_p,
+						  const OID * class_oid)
+{
+  return log_add_to_modified_class_list_internal (thread_p, class_oid, true);
+}
+
+/*
+ * log_cleanup_modified_class -
+ *
+ * return:
+ *
+ *   class(in):
+ *   arg(in):
+ *
+ * NOTE: Function for LOG_TDES.modified_class_list
+ *       This will be used to decache the class representations and XASLs
+ *       when a transaction is finished.
+ */
+static void
+log_cleanup_modified_class (THREAD_ENTRY * thread_p,
+			    MODIFIED_CLASS_ENTRY * class, void *arg)
+{
+  bool decache_classrepr = (bool) * ((bool *) arg);
+
+  if (decache_classrepr && !LSA_ISNULL (&class->last_modified_lsa))
+    {
+      (void) heap_classrepr_decache (thread_p, &class->class_oid);
+    }
+
+  /* remove XASL cache entries which are relevant with this class */
+  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0
+      && (qexec_remove_xasl_cache_ent_by_class (thread_p,
+						&class->class_oid) !=
+	  NO_ERROR))
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "log_cleanup_modified_class: "
+		    "xs_remove_xasl_cache_ent_by_class"
+		    " failed for class { %d %d %d }\n",
+		    class->class_oid.pageid, class->class_oid.slotid,
+		    class->class_oid.volid);
+    }
+}
+
+/*
+ * log_update_stats_on_modified_class -
+ *
+ * return:
+ *
+ *   class(in):
+ *   arg(in): not used
+ *
+ * NOTE: Function for LOG_TDES.modified_class_list
+ *       This will be used to update statistics on the modified classes
+ *       when a transaction is committed.
+ */
+static void
+log_update_stats_on_modified_class (THREAD_ENTRY * thread_p,
+				    MODIFIED_CLASS_ENTRY * class, void *arg)
+{
+  if (class->need_update_stats)
+    {
+      (void) xstats_update_class_statistics (thread_p, &class->class_oid);
+    }
+}
+
+/*
+ * log_map_modified_class_list -
  *
  * return:
  *
  *   tdes(in):
- *   decache_classrepr(in):
+ *   release(in): release the memory or not
+ *   map_func(in): optinal
+ *   arg(in): optional
  *
- * NOTE:
+ * NOTE: Function for LOG_TDES.modified_class_list
+ *       This will be used to traverse a modified class list and to do
+ *       something on each entry.
  */
 static void
-log_free_modifed_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-			     bool decache_classrepr)
+log_map_modified_class_list (THREAD_ENTRY * thread_p,
+			     LOG_TDES * tdes, bool release,
+			     void
+			     (*map_func) (THREAD_ENTRY * thread_p,
+					  MODIFIED_CLASS_ENTRY * class,
+					  void *arg), void *arg)
 {
   MODIFIED_CLASS_ENTRY *t;
 
-  if (tdes->modified_class_list)
+  t = tdes->modified_class_list;
+  while (t != NULL)
     {
-      while (tdes->modified_class_list)
+      if (map_func)
 	{
-	  t = tdes->modified_class_list;
+	  (void) (*map_func) (thread_p, t, arg);
+	}
+
+      if (release)
+	{
 	  tdes->modified_class_list = t->next;
-	  if (decache_classrepr)
-	    {
-	      (void) heap_classrepr_decache (thread_p, &t->class_oid);
-	    }
-	  /* remove XASL cache entries which are relevant with this class */
-	  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0
-	      && (qexec_remove_xasl_cache_ent_by_class (thread_p,
-							&t->class_oid) !=
-		  NO_ERROR))
-	    {
-	      er_log_debug (ARG_FILE_LINE,
-			    "log_free_modifed_class_list: "
-			    "xs_remove_xasl_cache_ent_by_class"
-			    " failed for class { %d %d %d }\n",
-			    t->class_oid.pageid, t->class_oid.slotid,
-			    t->class_oid.volid);
-	    }
 	  free_and_init (t);
+	  t = tdes->modified_class_list;
+	}
+      else
+	{
+	  t = t->next;
+	}
+    }
+}
+
+/*
+ * log_cleanup_modified_class_list -
+ *
+ * return:
+ *
+ *   tdes(in):
+ *   bool(in): release the memory or not
+ *   decache_classrepr(in): decache the class representation or not
+ *
+ * NOTE: Function for LOG_TDES.modified_class_list
+ */
+static void
+log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+				 bool release, bool decache_classrepr)
+{
+  (void) log_map_modified_class_list (thread_p, tdes, release,
+				      log_cleanup_modified_class,
+				      &decache_classrepr);
+}
+
+/*
+ * log_update_stats_on_modified_class_list -
+ *
+ * return:
+ *
+ *   tdes(in):
+ *   bool(in): release the memory or not
+ *
+ * NOTE: Function for LOG_TDES.modified_class_list
+ */
+static void
+log_update_stats_on_modified_class_list (THREAD_ENTRY * thread_p,
+					 LOG_TDES * tdes, bool release)
+{
+  (void) log_map_modified_class_list (thread_p, tdes, release,
+				      log_update_stats_on_modified_class,
+				      NULL);
+}
+
+/*
+ * log_rollback_classrepr_cache - Decache class repr to rollback
+ *
+ * return:
+ *
+ *   thread_p(in):
+ *   tdes(in): transaction description
+ *   upto_lsa(in): LSA to rollback
+ *
+ */
+static void
+log_rollback_classrepr_cache (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+			      LOG_LSA * upto_lsa)
+{
+  MODIFIED_CLASS_ENTRY *t;
+
+  for (t = tdes->modified_class_list; t; t = t->next)
+    {
+      if (LSA_GT (&t->last_modified_lsa, upto_lsa))
+	{
+	  (void) heap_classrepr_decache (thread_p, &t->class_oid);
+	  LSA_SET_NULL (&t->last_modified_lsa);
+	  t->need_update_stats = false;
 	}
     }
 }
@@ -5688,6 +5969,449 @@ log_get_num_transient_classnames (int tran_index)
 }
 
 /*
+ * log_is_valid_locator -
+ *
+ * return: true if the locator is valid, false otherwise
+ *
+ *   locator(in):
+ *
+ * NOTE:
+ */
+static int
+log_is_valid_locator (const char *locator)
+{
+  if (locator)
+    {
+      char *key, *meta;
+
+      key = LOCATOR_KEY (locator);
+      meta = LOCATOR_META (locator);
+      if (key && meta && (key > meta))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * xlog_find_lob_locator -
+ *
+ * return: state of locator
+ *
+ *   thread_p(in):
+ *   locator(in):
+ *   real_loc_ptr(out):
+ *
+ * NOTE:
+ */
+LOB_LOCATOR_STATE
+xlog_find_lob_locator (THREAD_ENTRY * thread_p, const char *locator,
+		       char *real_locator)
+{
+  int tran_index;
+  LOG_TDES *tdes;
+
+  assert (log_is_valid_locator (locator));
+  assert (real_locator != NULL);
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+
+  if (tdes != NULL)
+    {
+      LOB_LOCATOR_ENTRY *entry, find;
+
+      find.key = LOCATOR_KEY (locator);
+      find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
+      /* Find entry from red-black tree (see base/rb_tree.h) */
+      entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
+      if (entry != NULL)
+	{
+	  memcpy (real_locator, entry->top->locator,
+		  strlen (entry->top->locator) + 1);
+	  return entry->top->state;
+	}
+    }
+
+  memcpy (real_locator, locator, strlen (locator) + 1);
+  return LOB_NOT_FOUND;
+}
+
+/*
+ * xlog_add_lob_locator -
+ *
+ * return: error code
+ *
+ *   thread_p(in):
+ *   locator(in):
+ *   state(in):
+ *
+ * NOTE:
+ */
+int
+xlog_add_lob_locator (THREAD_ENTRY * thread_p, const char *locator,
+		      LOB_LOCATOR_STATE state)
+{
+  int tran_index;
+  LOG_TDES *tdes;
+  LOB_LOCATOR_ENTRY *entry;
+  LOB_SAVEPOINT_ENTRY *savept;
+  char *key;
+  int key_len;
+
+  assert (log_is_valid_locator (locator));
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return ER_LOG_UNKNOWN_TRANINDEX;
+    }
+
+  key = LOCATOR_KEY (locator);
+  key_len = strlen (key);
+
+  entry = malloc (sizeof (LOB_LOCATOR_ENTRY) + key_len);
+  if (entry == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (LOB_LOCATOR_ENTRY) + key_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  savept = malloc (sizeof (LOB_SAVEPOINT_ENTRY));
+  if (savept == NULL)
+    {
+      free_and_init (entry);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (LOB_SAVEPOINT_ENTRY));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  entry->top = savept;
+  entry->key = &entry->key_data[0];
+  memcpy (entry->key_data, key, key_len + 1);
+  entry->key_hash = (int) mht_5strhash (entry->key, INT_MAX);
+
+  savept->state = state;
+  savept->savept_lsa = LSA_LT (&tdes->savept_lsa, &tdes->topop_lsa) ?
+    tdes->topop_lsa : tdes->savept_lsa;
+  savept->prev = NULL;
+  strlcpy (savept->locator, locator, sizeof (ES_URI));
+
+  /* Insert entry to the red-black tree (see base/rb_tree.h) */
+  RB_INSERT (lob_rb_root, &tdes->lob_locator_root, entry);
+
+  return NO_ERROR;
+}
+
+/*
+ * xlog_change_state_of_locator
+ *
+ * return: error code
+ *
+ *   thread_p(in):
+ *   locator(in):
+ *   new_locator(in):
+ *   state(in):
+ *
+ * NOTE:
+ */
+int
+xlog_change_state_of_locator (THREAD_ENTRY * thread_p, const char *locator,
+			      const char *new_locator,
+			      LOB_LOCATOR_STATE state)
+{
+  int tran_index;
+  LOG_TDES *tdes;
+  LOB_LOCATOR_ENTRY *entry, find;
+
+  assert (log_is_valid_locator (locator));
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return ER_LOG_UNKNOWN_TRANINDEX;
+    }
+
+  find.key = LOCATOR_KEY (locator);
+  find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
+  entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
+
+  if (entry != NULL)
+    {
+      LOG_LSA last_lsa;
+
+      last_lsa = LSA_GE (&tdes->savept_lsa, &tdes->topop_lsa) ?
+	tdes->savept_lsa : tdes->topop_lsa;
+
+      /* if it is created prior to current savepoint,
+         push the previous state in the savepoint list */
+      if (LSA_LT (&entry->top->savept_lsa, &last_lsa))
+	{
+	  LOB_SAVEPOINT_ENTRY *savept;
+
+	  savept = malloc (sizeof (LOB_SAVEPOINT_ENTRY));
+	  if (savept == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      sizeof (LOB_SAVEPOINT_ENTRY));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
+	  /* copy structure (avoid reduncant memory copy) */
+	  savept->state = entry->top->state;
+	  savept->savept_lsa = entry->top->savept_lsa;
+	  memcpy (savept->locator, entry->top->locator,
+		  strlen (entry->top->locator) + 1);
+	  savept->prev = entry->top;
+	  entry->top = savept;
+	}
+
+      /* set the current state */
+      if (new_locator != NULL)
+	{
+	  strlcpy (entry->top->locator, new_locator, sizeof (ES_URI));
+	}
+      entry->top->state = state;
+      entry->top->savept_lsa = last_lsa;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * xlog_drop_lob_locator -
+ *
+ * return: error code
+ *
+ *   thread_p(in):
+ *   locator(in):
+ *
+ * NOTE:
+ */
+int
+xlog_drop_lob_locator (THREAD_ENTRY * thread_p, const char *locator)
+{
+  int tran_index;
+  LOG_TDES *tdes;
+  LOB_LOCATOR_ENTRY *entry, find;
+
+  assert (log_is_valid_locator (locator));
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return ER_LOG_UNKNOWN_TRANINDEX;
+    }
+
+  find.key = LOCATOR_KEY (locator);
+  find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
+  /* Remove entry that matches 'find' entry from the red-black tree.
+     see base/rb_tree.h for more information */
+  entry = RB_REMOVE (lob_rb_root, &tdes->lob_locator_root, &find);
+  if (entry != NULL)
+    {
+      log_free_lob_locator (entry);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * log_free_lob_locator -
+ *
+ * return: void
+ *
+ *   entry(in):
+ *
+ * NOTE:
+ */
+static void
+log_free_lob_locator (LOB_LOCATOR_ENTRY * entry)
+{
+  while (entry->top != NULL)
+    {
+      LOB_SAVEPOINT_ENTRY *savept;
+
+      savept = entry->top;
+      entry->top = savept->prev;
+      free_and_init (savept);
+    }
+
+  free_and_init (entry);
+}
+
+/*
+ * log_clear_lob_locator_list -
+ *
+ * return: void
+ *
+ *   thread_p(in):
+ *   tdes(in):
+ *   at_commit(in):
+ *   savept_lsa(in): savepoint lsa to rollback
+ *
+ * NOTE:
+ */
+void
+log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+			    bool at_commit, LOG_LSA * savept_lsa)
+{
+  LOB_LOCATOR_ENTRY *entry, *next;
+  bool need_to_delete;
+
+  if (tdes == NULL)
+    {
+      return;
+    }
+#if 0
+  er_log_debug (ARG_FILE_LINE, "log_clear_lob_locator_list");
+#endif
+
+  for (entry = RB_MIN (lob_rb_root, &tdes->lob_locator_root); entry != NULL;
+       entry = next)
+    {
+#if 0
+      er_log_debug (ARG_FILE_LINE,
+		    "   locator=%s, state=%s\n, savept_lsa=(%d,%d)",
+		    entry->key,
+		    (entry->top->state ==
+		     LOB_TRANSIENT_CREATED) ? "LOB_TRANSIENT_CREATED"
+		    : ((entry->top->state ==
+			LOB_TRANSIENT_DELETED) ? "LOB_TRANSIENT_DELETED"
+		       : ((entry->top->state ==
+			   LOB_PERMANENT_CREATED) ?
+			  "LOB_PERMANENT_CREATED" : (entry->top->state ==
+						     LOB_PERMANENT_DELETED)
+			  ? "LOB_PERMANENT_DELETED" : "LOB_UNKNOWN")),
+		    entry->top->savept_lsa.pageid,
+		    entry->top->savept_lsa.offset);
+#endif
+      /* setup next link before destroy */
+      next = RB_NEXT (lob_rb_root, &tdes->lob_locator_root, entry);
+
+      need_to_delete = false;
+
+      if (at_commit)
+	{
+	  if (entry->top->state != LOB_PERMANENT_CREATED)
+	    {
+	      need_to_delete = true;
+	    }
+	}
+      else			/* rollback */
+	{
+	  /* at partial rollback, pop the previous states in the savepoint
+	     list util it meets the rollback savepoint */
+	  if (savept_lsa != NULL)
+	    {
+	      LOB_SAVEPOINT_ENTRY *savept, *tmp;
+
+	      assert (entry->top != NULL);
+	      savept = entry->top->prev;
+
+	      while (savept != NULL)
+		{
+		  if (LSA_LT (&entry->top->savept_lsa, savept_lsa))
+		    {
+		      break;
+		    }
+
+		  /* rollback file renaming */
+		  if (strcmp (entry->top->locator, savept->locator) != 0)
+		    {
+		      char meta_name[DB_MAX_SCHEMA_LENGTH];
+
+		      assert (log_is_valid_locator (savept->locator));
+		      PUT_LOCATOR_META (meta_name, savept->locator);
+		      /* ignore return value */
+		      (void) es_rename_file (entry->top->locator, meta_name,
+					     savept->locator);
+		    }
+		  tmp = entry->top;
+		  entry->top = savept;
+		  savept = savept->prev;
+		  free_and_init (tmp);
+		}
+	    }
+
+	  /* delete the locator to be created */
+	  if ((savept_lsa == NULL ||
+	       LSA_GE (&entry->top->savept_lsa, savept_lsa)) &&
+	      entry->top->state != LOB_TRANSIENT_DELETED)
+	    {
+	      need_to_delete = true;
+	    }
+	}
+
+      /* remove from the locator tree */
+      if (need_to_delete)
+	{
+	  (void) es_delete_file (entry->top->locator);
+	  RB_REMOVE (lob_rb_root, &tdes->lob_locator_root, entry);
+	  log_free_lob_locator (entry);
+	}
+    }
+
+  /* at the end of transaction, free the locator list */
+  if (savept_lsa == NULL)
+    {
+      for (entry = RB_MIN (lob_rb_root, &tdes->lob_locator_root);
+	   entry != NULL; entry = next)
+	{
+	  next = RB_NEXT (lob_rb_root, &tdes->lob_locator_root, entry);
+	  RB_REMOVE (lob_rb_root, &tdes->lob_locator_root, entry);
+	  log_free_lob_locator (entry);
+	}
+      assert (RB_EMPTY (&tdes->lob_locator_root));
+    }
+}
+
+/*
+ * lob_locator_cmp - compare function used lob rb tree
+ *
+ * return: < 0, 0, > 0
+ * e1(in): entry 1
+ * e2(in): entry 2
+ *
+ * NOTE:
+ *
+ * Ordering relation of lob locator entry is defined as (key_hash, key).
+ * Because it is very UNLIKELY in normal case that two different locators
+ * have same hash value, this compare function is very efficient.
+ *
+ */
+static int
+lob_locator_cmp (const LOB_LOCATOR_ENTRY * e1, const LOB_LOCATOR_ENTRY * e2)
+{
+  if (e1->key_hash != e2->key_hash)
+    {
+      return e1->key_hash - e2->key_hash;
+    }
+  else
+    {
+      return strcmp (e1->key, e2->key);
+    }
+}
+
+/*
+ * Below macro generates lob rb tree functions (see base/rb_tree.h)
+ * Note: semi-colon is intentionally added to be more beautiful
+ */
+RB_GENERATE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
+
+/*
  * log_commit_local - Perform the local commit operations of a transaction
  *
  * return: state of commit operation
@@ -5719,6 +6443,14 @@ TRAN_STATE
 log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 {
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
+
+  if (!LSA_ISNULL (&tdes->tail_lsa))
+    {
+      /* Do postponed update statistics operation. We should do this before
+       * changing tdes->state. If not, logs will not be written.
+       */
+      log_update_stats_on_modified_class_list (thread_p, tdes, false);
+    }
 
   tdes->state = TRAN_UNACTIVE_WILL_COMMIT;
   if (tdes->num_new_tmp_files + tdes->num_new_tmp_tmp_files > 0)
@@ -5753,7 +6485,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 	}
       assert (tdes->num_new_files == 0);
 
-      log_free_modifed_class_list (thread_p, tdes, false);
+      log_cleanup_modified_class_list (thread_p, tdes, true, false);
 
       if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
 	{
@@ -5814,6 +6546,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
       tdes->state = TRAN_UNACTIVE_COMMITTED;
       /* There is no need to create a new transaction identifier */
     }
+
+  log_clear_lob_locator_list (thread_p, tdes, true, NULL);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
   /*
@@ -5879,7 +6613,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	}
       assert (tdes->num_new_files == 0);
 
-      log_free_modifed_class_list (thread_p, tdes, true);
+      log_cleanup_modified_class_list (thread_p, tdes, true, true);
 
       if (tdes->first_save_entry != NULL)
 	{
@@ -5918,6 +6652,8 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       lock_unlock_all (thread_p);
       /* There is no need to create a new transaction identifier */
     }
+
+  log_clear_lob_locator_list (thread_p, tdes, false, NULL);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
   /*
@@ -6297,7 +7033,8 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name,
       return tdes->state;
     }
 
-  if (log_get_savepoint_lsa (thread_p, savepoint_name, tdes, savept_lsa) ==
+  if (savepoint_name == NULL
+      || log_get_savepoint_lsa (thread_p, savepoint_name, tdes, savept_lsa) ==
       NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_SAVEPOINT, 1,
@@ -6375,6 +7112,9 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name,
     }
 
   state = log_end_system_op (thread_p, LOG_RESULT_TOPOP_ABORT);
+
+  log_clear_lob_locator_list (thread_p, tdes, false, savept_lsa);
+
   /*
    * The following is done so that if we go over several savepoints, they
    * get undefined and cannot get call by the user any longer.
@@ -6616,14 +7356,10 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	  state = tdes->state;
 	}
 
-      /* Finish the append operation and flush the log */
-      LOG_CS_EXIT ();
-
       /* If recovery restart operation, or, if this is a coordinator loose end
-       * transaction  return this index and decrement coordinator loose end
+       * transaction return this index and decrement coordinator loose end
        * transactions counter.
        */
-
       if (return_2pc_loose_tranindex == false)
 	{
 	  if (get_newtrid == LOG_NEED_NEWTRID)
@@ -6646,6 +7382,9 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    }
 	  logtb_free_tran_index (thread_p, tdes->tran_index);
 	}
+
+      /* Finish the append operation and flush the log */
+      LOG_CS_EXIT ();
     }
 
   if (LOG_ISCHECKPOINT_TIME ())
@@ -6714,15 +7453,15 @@ log_complete_topop_attach (LOG_TDES * tdes)
       if (LSA_ISNULL
 	  (&tdes->topops.stack[tdes->topops.last - 1].client_posp_lsa))
 	{
-	  LSA_COPY (&tdes->topops.stack[tdes->topops.last - 1].
-		    client_posp_lsa,
+	  LSA_COPY (&tdes->topops.
+		    stack[tdes->topops.last - 1].client_posp_lsa,
 		    &tdes->topops.stack[tdes->topops.last].client_posp_lsa);
 	}
       if (LSA_ISNULL
 	  (&tdes->topops.stack[tdes->topops.last - 1].client_undo_lsa))
 	{
-	  LSA_COPY (&tdes->topops.stack[tdes->topops.last - 1].
-		    client_undo_lsa,
+	  LSA_COPY (&tdes->topops.
+		    stack[tdes->topops.last - 1].client_undo_lsa,
 		    &tdes->topops.stack[tdes->topops.last].client_undo_lsa);
 	}
     }
@@ -6784,8 +7523,16 @@ log_complete_system_op (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
    * return to normal transaction state
    */
   tdes->topops.last--;
+  if (tdes->topops.last >= 0)
+    {
+      LSA_COPY (&tdes->topop_lsa,
+		&tdes->topops.stack[tdes->topops.last].lastparent_lsa);
+    }
+  else
+    {
+      LSA_SET_NULL (&tdes->topop_lsa);
+    }
   tdes->state = back_to_state;
-
   if (LOG_ISCHECKPOINT_TIME ())
     {
 #if defined(SERVER_MODE)
@@ -7493,8 +8240,8 @@ xlog_client_complete_postpone (THREAD_ENTRY * thread_p)
 	  (void) log_2pc_send_commit_decision (tdes->gtrid,
 					       tdes->coord->num_particps,
 					       tdes->coord->ack_received,
-					       tdes->coord->
-					       block_particps_ids);
+					       tdes->
+					       coord->block_particps_ids);
 	}
       state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID);
     }
@@ -7728,8 +8475,9 @@ xlog_client_complete_undo (THREAD_ENTRY * thread_p)
 	      (void) log_2pc_send_abort_decision (tdes->gtrid,
 						  tdes->coord->num_particps,
 						  tdes->coord->ack_received,
-						  tdes->coord->
-						  block_particps_ids, true);
+						  tdes->
+						  coord->block_particps_ids,
+						  true);
 	    }
 	  else
 	    {
@@ -7744,8 +8492,9 @@ xlog_client_complete_undo (THREAD_ENTRY * thread_p)
 	      (void) log_2pc_send_abort_decision (tdes->gtrid,
 						  tdes->coord->num_particps,
 						  tdes->coord->ack_received,
-						  tdes->coord->
-						  block_particps_ids, false);
+						  tdes->
+						  coord->block_particps_ids,
+						  false);
 	    }
 	}
       state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID);
@@ -7830,7 +8579,7 @@ log_repl_schema_dump (FILE * out_fp, int length, void *data)
  * return: nothing
  *
  *   length(in): Length of the data
- *   log_lsa(in/out):Log address identifer containing the log record
+ *   log_lsa(in/out):Log address identifier containing the log record
  *   log_pgptr(in/out):  Pointer to page where data starts (Set as a side
  *              effect to the page where data ends)
  *   dumpfun(in): Function to invoke to dump the data
@@ -7931,8 +8680,8 @@ log_dump_header (FILE * out_fp, struct log_header *log_header_p)
 	   "     Release = %s, Compatibility_disk_version = %g,\n"
 	   "     Db_pagesize = %d, log_pagesize= %d, Shutdown = %d,\n"
 	   "     Next_trid = %d, Num_avg_trans = %d, Num_avg_locks = %d,\n"
-	   "     Num_active_log_pages = %d, First_active_log_page = %d,\n"
-	   "     Current_append = %d|%d, Checkpoint = %d|%d,\n",
+	   "     Num_active_log_pages = %d, First_active_log_page = %lld,\n"
+	   "     Current_append = %lld|%d, Checkpoint = %lld|%d,\n",
 	   log_header_p->magic, (long long) offsetof (LOG_PAGE, area),
 	   ctime (&tmp_time), log_header_p->db_release,
 	   log_header_p->db_compatibility, log_header_p->db_iopagesize,
@@ -7944,10 +8693,10 @@ log_dump_header (FILE * out_fp, struct log_header *log_header_p)
 	   log_header_p->chkpt_lsa.offset);
 
   fprintf (out_fp,
-	   "     Next_archive_pageid = %d at active_phy_pageid = %d,\n"
+	   "     Next_archive_pageid = %lld at active_phy_pageid = %d,\n"
 	   "     Next_archive_num = %d, Last_archiv_num_for_syscrashes = %d,\n"
 	   "     Last_deleted_arv_num = %d, has_logging_been_skipped = %d,\n"
-	   "     bkup_lsa: level0 = %d|%d, level1 = %d|%d, level2 = %d|%d,\n"
+	   "     bkup_lsa: level0 = %lld|%d, level1 = %lld|%d, level2 = %lld|%d,\n"
 	   "     Log_prefix = %s\n",
 	   log_header_p->nxarv_pageid,
 	   log_header_p->nxarv_phy_pageid, log_header_p->nxarv_num,
@@ -8008,15 +8757,15 @@ log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, undo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_undofun !=
-		   NULL) ? RV_fun[rcvindex].
-		  dump_undofun : log_ascii_dump), log_zip_p);
+		   NULL) ? RV_fun[rcvindex].dump_undofun : log_ascii_dump),
+		 log_zip_p);
   /* Print REDO (AFTER) DATA */
   fprintf (out_fp, "-->> Redo (After) Data:\n");
   log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun !=
-		   NULL) ? RV_fun[rcvindex].
-		  dump_redofun : log_ascii_dump), log_zip_p);
+		   NULL) ? RV_fun[rcvindex].dump_redofun : log_ascii_dump),
+		 log_zip_p);
 
   return log_page_p;
 }
@@ -8051,8 +8800,8 @@ log_dump_record_undo (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, undo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_undofun !=
-		   NULL) ? RV_fun[rcvindex].
-		  dump_undofun : log_ascii_dump), log_zip_p);
+		   NULL) ? RV_fun[rcvindex].dump_undofun : log_ascii_dump),
+		 log_zip_p);
 
   return log_page_p;
 }
@@ -8087,8 +8836,8 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun !=
-		   NULL) ? RV_fun[rcvindex].
-		  dump_redofun : log_ascii_dump), log_zip_p);
+		   NULL) ? RV_fun[rcvindex].dump_redofun : log_ascii_dump),
+		 log_zip_p);
 
   return log_page_p;
 }
@@ -8111,7 +8860,7 @@ log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp,
   fprintf (out_fp,
 	   "     Volid = %d Pageid = %d Offset = %d,\n"
 	   "     Run postpone (Redo/After) length = %d, corresponding" " to\n"
-	   "         Postpone record with LSA = %d|%d\n",
+	   "         Postpone record with LSA = %lld|%d\n",
 	   run_posp->data.volid, run_posp->data.pageid, run_posp->data.offset,
 	   run_posp->length, run_posp->ref_lsa.pageid,
 	   run_posp->ref_lsa.offset);
@@ -8125,8 +8874,8 @@ log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
 		 ((RV_fun[rcvindex].dump_redofun !=
-		   NULL) ? RV_fun[rcvindex].
-		  dump_redofun : log_ascii_dump), NULL);
+		   NULL) ? RV_fun[rcvindex].dump_redofun : log_ascii_dump),
+		 NULL);
 
   return log_page_p;
 }
@@ -8157,8 +8906,9 @@ log_dump_record_dbout_redo (THREAD_ENTRY * thread_p, FILE * out_fp,
   fprintf (out_fp, "-->> Database external Data:\n");
   log_dump_data (thread_p, out_fp, redo_length, log_lsa,
 		 log_page_p,
-		 ((RV_fun[rcvindex].dump_redofun != NULL) ? RV_fun[rcvindex].
-		  dump_redofun : log_ascii_dump), NULL);
+		 ((RV_fun[rcvindex].dump_redofun !=
+		   NULL) ? RV_fun[rcvindex].dump_redofun : log_ascii_dump),
+		 NULL);
 
   return log_page_p;
 }
@@ -8180,7 +8930,7 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp,
   fprintf (out_fp, ", Recv_index = %s,\n",
 	   rv_rcvindex_string (compensate->data.rcvindex));
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n"
-	   "     Compensate length = %d, Next_to_UNDO = %d|%d\n",
+	   "     Compensate length = %d, Next_to_UNDO = %lld|%d\n",
 	   compensate->data.volid, compensate->data.pageid,
 	   compensate->data.offset, compensate->length,
 	   compensate->undo_nxlsa.pageid, compensate->undo_nxlsa.offset);
@@ -8194,8 +8944,8 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp,
   log_dump_data (thread_p, out_fp, length_compensate, log_lsa,
 		 log_page_p,
 		 (RV_fun[rcvindex].dump_undofun !=
-		  NULL) ? RV_fun[rcvindex].
-		 dump_undofun : log_ascii_dump, NULL);
+		  NULL) ? RV_fun[rcvindex].dump_undofun : log_ascii_dump,
+		 NULL);
 
   return log_page_p;
 }
@@ -8215,7 +8965,7 @@ log_dump_record_logical_compensate (THREAD_ENTRY * thread_p, FILE * out_fp,
 
   fprintf (out_fp, ", Recv_index = %s,\n",
 	   rv_rcvindex_string (logical_comp->rcvindex));
-  fprintf (out_fp, "     Next_to_UNDO = %d|%d\n",
+  fprintf (out_fp, "     Next_to_UNDO = %lld|%d\n",
 	   logical_comp->undo_nxlsa.pageid, logical_comp->undo_nxlsa.offset);
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*logical_comp), log_lsa, log_page_p);
@@ -8315,7 +9065,7 @@ log_dump_record_next_client_undo (THREAD_ENTRY * thread_p, FILE * out_fp,
 				    log_lsa, log_page_p);
   run_client =
     (struct log_run_client *) ((char *) log_page_p->area + log_lsa->offset);
-  fprintf (out_fp, ", Next Lsa = %d|%d \n",
+  fprintf (out_fp, ", Next Lsa = %lld|%d \n",
 	   run_client->nxlsa.pageid, run_client->nxlsa.offset);
 
   return log_page_p;
@@ -8335,7 +9085,7 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp,
 				   log_lsa->offset);
   fprintf (out_fp,
 	   ", First postpone record at before or after"
-	   " Page = %d and offset = %d\n", start_posp->posp_lsa.pageid,
+	   " Page = %lld and offset = %d\n", start_posp->posp_lsa.pageid,
 	   start_posp->posp_lsa.offset);
 
   return log_page_p;
@@ -8355,7 +9105,7 @@ log_dump_record_commit_client_loose_end (THREAD_ENTRY * thread_p,
     (struct log_start_client *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp,
 	   ",\n     First POSTPONE CLIENT USER LOOSE END record"
-	   " at Page = %d, offset = %d\n",
+	   " at Page = %lld, offset = %d\n",
 	   start_client->lsa.pageid, start_client->lsa.offset);
 
   return log_page_p;
@@ -8393,7 +9143,7 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp,
 				    log_page_p);
   repl_log =
     (struct log_replication *) ((char *) log_page_p->area + log_lsa->offset);
-  fprintf (out_fp, ", Target log lsa = %d|%d\n", repl_log->lsa.pageid,
+  fprintf (out_fp, ", Target log lsa = %lld|%d\n", repl_log->lsa.pageid,
 	   repl_log->lsa.offset);
   length = repl_log->length;
 
@@ -8444,12 +9194,11 @@ log_dump_record_commit_topope_postpone (THREAD_ENTRY * thread_p,
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*top_start_posp),
 				    log_lsa, log_page_p);
   top_start_posp =
-    ((struct log_topope_start_postpone *) ((char *) log_page_p->
-					   area + log_lsa->offset));
+    ((struct log_topope_start_postpone *) ((char *) log_page_p->area +
+					   log_lsa->offset));
   fprintf (out_fp,
-	   ", Lastparent_LSA = %d|%d, First postpone_LSA"
-	   " at or after = %d|%d\n",
-	   top_start_posp->lastparent_lsa.pageid,
+	   ", Lastparent_LSA = %lld|%d, First postpone_LSA"
+	   " at or after = %lld|%d\n", top_start_posp->lastparent_lsa.pageid,
 	   top_start_posp->lastparent_lsa.offset,
 	   top_start_posp->posp_lsa.pageid, top_start_posp->posp_lsa.offset);
 
@@ -8469,8 +9218,8 @@ log_dump_record_commit_loose_end (THREAD_ENTRY * thread_p, FILE * out_fp,
     ((struct log_topope_start_client *) ((char *) log_page_p->area
 					 + log_lsa->offset));
   fprintf (out_fp,
-	   ", Lastparent_LSA = %d|%d, First client_postpone_LSA"
-	   " at or after = %d|%d\n",
+	   ", Lastparent_LSA = %lld|%d, First client_postpone_LSA"
+	   " at or after = %lld|%d\n",
 	   top_start_client->lastparent_lsa.pageid,
 	   top_start_client->lastparent_lsa.offset,
 	   top_start_client->lsa.pageid, top_start_client->lsa.offset);
@@ -8491,8 +9240,8 @@ log_dump_record_abort_loose_end (THREAD_ENTRY * thread_p, FILE * out_fp,
     ((struct log_topope_start_client *) ((char *) log_page_p->area
 					 + log_lsa->offset));
   fprintf (out_fp,
-	   ", Lastparent_LSA = %d|%d, First client_UNDO_LSA"
-	   " at or after = %d|%d\n",
+	   ", Lastparent_LSA = %lld|%d, First client_UNDO_LSA"
+	   " at or after = %lld|%d\n",
 	   top_start_client->lastparent_lsa.pageid,
 	   top_start_client->lastparent_lsa.offset,
 	   top_start_client->lsa.pageid, top_start_client->lsa.offset);
@@ -8513,8 +9262,9 @@ log_dump_record_topope_finish (THREAD_ENTRY * thread_p, FILE * out_fp,
     ((struct log_topop_result *) ((char *) log_page_p->area +
 				  log_lsa->offset));
   fprintf (out_fp,
-	   ",\n     Next UNDO at/before = %d|%d,"
-	   " Prev_topresult_lsa = %d|%d\n", top_result->lastparent_lsa.pageid,
+	   ",\n     Next UNDO at/before = %lld|%d,"
+	   " Prev_topresult_lsa = %lld|%d\n",
+	   top_result->lastparent_lsa.pageid,
 	   top_result->lastparent_lsa.offset,
 	   top_result->prv_topresult_lsa.pageid,
 	   top_result->prv_topresult_lsa.offset);
@@ -8536,7 +9286,7 @@ log_dump_record_abort_client_loose_end (THREAD_ENTRY * thread_p,
     (struct log_start_client *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp,
 	   ",\n     First UNDO CLIENT USER LOOSE END record"
-	   " at Page = %d, offset = %d\n",
+	   " at Page = %lld, offset = %d\n",
 	   start_client->lsa.pageid, start_client->lsa.offset);
 
   return log_page_p;
@@ -8556,7 +9306,7 @@ log_dump_record_check_point (THREAD_ENTRY * thread_p, FILE * out_fp,
 
   chkpt = (struct log_chkpt *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Num_trans = %d,\n", chkpt->ntrans);
-  fprintf (out_fp, "     Redo_LSA = %d|%d\n",
+  fprintf (out_fp, "     Redo_LSA = %lld|%d\n",
 	   chkpt->redo_lsa.pageid, chkpt->redo_lsa.offset);
 
   length_active_tran = sizeof (struct log_chkpt_trans) * chkpt->ntrans;
@@ -8587,7 +9337,7 @@ log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp,
   savept =
     (struct log_savept *) ((char *) log_page_p->area + log_lsa->offset);
 
-  fprintf (out_fp, ", Prev_savept_Lsa = %d|%d, length = %d,\n",
+  fprintf (out_fp, ", Prev_savept_Lsa = %lld|%d, length = %d,\n",
 	   savept->prv_savept.pageid,
 	   savept->prv_savept.offset, savept->length);
 
@@ -8932,7 +9682,7 @@ log_dump_page (void)
  */
 void
 xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
-	   PAGEID start_logpageid, DKNPAGES dump_npages,
+	   LOG_PAGEID start_logpageid, DKNPAGES dump_npages,
 	   TRANID desired_tranid)
 {
   LOG_LSA lsa;			/* LSA of log record to dump */
@@ -9006,7 +9756,8 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
       dump_npages = log_Gl.hdr.npages;
     }
 
-  fprintf (out_fp, "\n START DUMPING LOG_RECORDS: %s, start_logpageid = %d,\n"
+  fprintf (out_fp,
+	   "\n START DUMPING LOG_RECORDS: %s, start_logpageid = %lld,\n"
 	   " Num_pages_to_dump = %d, desired_tranid = %d\n",
 	   (isforward ? "Forward" : "Backaward"), start_logpageid,
 	   dump_npages, desired_tranid);
@@ -9031,7 +9782,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
     {
       if ((logpb_fetch_page (thread_p, lsa.pageid, log_pgptr)) == NULL)
 	{
-	  fprintf (out_fp, " Error reading page %d... Quit\n", lsa.pageid);
+	  fprintf (out_fp, " Error reading page %lld... Quit\n", lsa.pageid);
 	  if (log_dump_ptr != NULL)
 	    {
 	      log_zip_free (log_dump_ptr);
@@ -9083,7 +9834,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
 	      {
 		fprintf (out_fp, "\n\n>>>>>****\n");
 		fprintf (out_fp,
-			 "Guess next address = %d|%d for LSA = %d|%d\n",
+			 "Guess next address = %lld|%d for LSA = %lld|%d\n",
 			 next_lsa.pageid, next_lsa.offset, lsa.pageid,
 			 lsa.offset);
 		fprintf (out_fp, "<<<<<****\n");
@@ -9136,9 +9887,9 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
 	      continue;
 	    }
 
-	  fprintf (out_fp, "\nLSA = %3d|%3d, Forw log = %3d|%3d,"
-		   " Backw log = %3d|%3d,\n"
-		   "     Trid = %3d, Prev tran logrec = %3d|%3d\n"
+	  fprintf (out_fp, "\nLSA = %3lld|%3d, Forw log = %3lld|%3d,"
+		   " Backw log = %3lld|%3d,\n"
+		   "     Trid = %3d, Prev tran logrec = %3lld|%3d\n"
 		   "     Type = %s",
 		   log_lsa.pageid, log_lsa.offset,
 		   log_rec->forw_lsa.pageid, log_rec->forw_lsa.offset,
@@ -9202,7 +9953,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
  *
  * return: nothing
  *
- *   log_lsa(in/out):Log address identifer containing the log record
+ *   log_lsa(in/out):Log address identifier containing the log record
  *   log_pgptr(in/out): Pointer to page where data starts (Set as a side
  *              effect to the page where data ends)
  *   rcvindex(in): Index to recovery functions
@@ -9410,7 +10161,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	    {
 	      er_log_debug (ARG_FILE_LINE,
 			    "log_rollback_record: SYSTEM ERROR... Transaction %d, "
-			    "Log record %d|%d, rcvindex = %s, "
+			    "Log record %lld|%d, rcvindex = %s, "
 			    "was not undone due to error (%d)\n",
 			    tdes->tran_index, log_lsa->pageid,
 			    log_lsa->offset, rv_rcvindex_string (rcvindex),
@@ -9829,7 +10580,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_TOPOP_RANGE *prev_nxtop_stack;
   int nxtop_count = 0;
   int nxtop_stack_size = 0;
-  PAGEID last_fetch_page_id = NULL_PAGEID;
+  LOG_PAGEID last_fetch_page_id = NULL_PAGEID;
 
   if (LSA_ISNULL (&tdes->tail_topresult_lsa)
       || !LSA_GT (&tdes->tail_topresult_lsa, start_postpone_lsa))
@@ -10088,8 +10839,8 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		}
 	      /*
 	       * If an offset is missing, it is because we archive an incomplete
-	       * log record. This log_record was completed later. 
-	       * Thus, we have to find the offset by searching 
+	       * log record. This log_record was completed later.
+	       * Thus, we have to find the offset by searching
 	       * for the next log_record in the page.
 	       */
 	      if (forward_lsa.offset == NULL_OFFSET)
@@ -10392,7 +11143,7 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 static void
 log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 {
-  PAGEID pageid;		/* Log page identifier   */
+  LOG_PAGEID pageid;		/* Log page identifier   */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Pointer to a log page */
   struct log_rec *eof = NULL;	/* End of log record     */
@@ -10523,6 +11274,7 @@ error:
  *                      Log_information = db_loginfo
  *                      Database Backup = db_backup
  *   log_npages(in): Size of active log in pages
+ *   out_fp (in) :
  *
  * NOTE: Recreate the active log volume with the new specifications.
  *              All recovery information in each data volume is removed.
@@ -10544,7 +11296,7 @@ error:
 void
 log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 	      const char *db_fullname, const char *logpath,
-	      const char *prefix_logname, DKNPAGES log_npages)
+	      const char *prefix_logname, DKNPAGES log_npages, FILE * out_fp)
 {
   const char *vlabel;
   INT64 db_creation;
@@ -10559,6 +11311,7 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   ret = disk_get_creation_time (thread_p, LOG_DBFIRST_VOLID, &db_creation);
   log_create_internal (thread_p, db_fullname, logpath, prefix_logname,
 		       log_npages, &db_creation);
+
   (void) log_initialize_internal (thread_p, db_fullname, logpath,
 				  prefix_logname, false, NULL, true);
 
@@ -10627,6 +11380,12 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
        */
       xdisk_get_fullname (thread_p, volid, vol_fullname);
       logpb_add_volume (NULL, volid, vol_fullname, vol_purpose);
+
+      if (out_fp != NULL)
+	{
+	  fprintf (out_fp, "%s... done\n", vol_fullname);
+	  fflush (out_fp);
+	}
     }
 
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);

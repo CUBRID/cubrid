@@ -63,14 +63,15 @@
 	    }						\
 	  }					\
 	  else if ((ERRCODE) < 0) {		\
+	    char msgbuf[1024] = "";		\
 	    cas_error_flag = 1;			\
 	    if (cubrid_manager_run) {		\
-	      char msgbuf[1024] = "";		\
-	      cci_get_error_msg(ERRCODE, NULL, msgbuf, sizeof(msgbuf));		\
+	      cci_get_error_msg(ERRCODE, NULL, msgbuf, sizeof(msgbuf));	\
 	      fprintf(cas_error_fp, "%s\n", msgbuf);	\
 	    }					\
 	    else				\
-	      fprintf(cas_error_fp, "%s: cci_error : %d\n", exec_script_file, (ERRCODE));	\
+	      cci_get_error_msg(ERRCODE, NULL, msgbuf, sizeof(msgbuf));	\
+	      fprintf(cas_error_fp, "%s: cci_error : %d %s\n", exec_script_file, (ERRCODE), msgbuf);	\
 	  }					\
 	} while (0)
 
@@ -190,7 +191,7 @@ static int num_ign_srv_err = 0;
 int
 main (int argc, char *argv[])
 {
-  T_THREAD *thr_id;
+  pthread_t *thr_id;
   int i;
   const char *err_str = "-";
   double avg;
@@ -279,7 +280,7 @@ main (int argc, char *argv[])
 	}
     }
 
-  thr_id = (T_THREAD *) malloc (sizeof (T_THREAD) * num_thread);
+  thr_id = (pthread_t *) malloc (sizeof (pthread_t) * num_thread);
   if (thr_id == NULL)
     {
       fprintf (stderr, "malloc error\n");
@@ -327,12 +328,7 @@ main (int argc, char *argv[])
 	  SLEEP_SEC (fork_delay);
 	}
 
-#if defined(WINDOWS)
-      if ((thr_id[i] =
-	   _beginthreadex (NULL, 0, thr_main, (void *) &i, 0, NULL)) < 0)
-#else
       if (pthread_create (&thr_id[i], NULL, thr_main, (void *) &i) < 0)
-#endif
 	{
 	  FREE_MEM (thr_id);
 	  perror ("Error:cannot create thread");
@@ -342,17 +338,10 @@ main (int argc, char *argv[])
 
   for (i = 0; i < num_thread; i++)
     {
-#if defined(WINDOWS)
-      if (WaitForSingleObject (thr_id[i], INFINITE) == WAIT_FAILED)
-	{
-	  printf ("Error: wait thread %d\n", GetLastError ());
-	}
-#else
       if (pthread_join (thr_id[i], NULL) < 0)
 	{
 	  perror ("pthread_join");
 	}
-#endif
     }
 
   if (cm_out_msg_fname != NULL)
@@ -750,6 +739,8 @@ cas_runner (FILE * fp, FILE * result_fp, double *ret_exec_time,
 
 	  if (req_h[req_id] < 0)
 	    {
+	      fprintf (cas_error_fp, "prepare error\n%s\nrequest id %d\n",
+		       linebuf, req_id);
 	      PRINT_CCI_ERROR (req_h[req_id], &cci_error);
 	    }
 #ifdef DUP_RUN
@@ -989,6 +980,14 @@ process_bind (char *linebuf, int *num_bind_p, T_BIND_INFO * bind_info)
 	  return -1;
 	}
     }
+  else if (bind_info[num_bind].type == CCI_U_TYPE_BLOB
+	   || bind_info[num_bind].type == CCI_U_TYPE_CLOB)
+    {
+      fprintf (stderr,
+	       "binding BLOB/CLOB is not implemented : %s\nreplaced with NULL value.\n",
+	       p + 1);
+      bind_info[num_bind].type = CCI_U_TYPE_NULL;
+    }
 
   bind_info[num_bind].value = strdup (p + 1);
   if (bind_info[num_bind].value == NULL)
@@ -1059,6 +1058,9 @@ process_execute (char *linebuf, int *req_h, int num_bind,
 		    }
 		  if (res < 0)
 		    {
+		      fprintf (cas_error_fp,
+			       "bind error\n%s\nrequest id %d bind %d\n",
+			       linebuf, req_id, i);
 		      PRINT_CCI_ERROR (res, NULL);
 		    }
 		}
@@ -1079,6 +1081,8 @@ process_execute (char *linebuf, int *req_h, int num_bind,
 
       if (res < 0)
 	{
+	  fprintf (cas_error_fp, "execute error\n%s\nrequest id %d\n",
+		   linebuf, req_id);
 	  PRINT_CCI_ERROR (res, &cci_error);
 	}
       else
@@ -1100,6 +1104,8 @@ process_close_req (char *linebuf, int *req_h)
   req_id = atoi (linebuf + 2);
   if (req_id < 0 || req_id >= SERVER_HANDLE_ALLOC_SIZE)
     {
+      fprintf (cas_error_fp, "close error\n%s\nrequest id %d\n",
+	       linebuf, req_id);
       PRINT_CCI_ERROR (CCI_ER_REQ_HANDLE, NULL);
       return 0;
     }
@@ -1108,6 +1114,8 @@ process_close_req (char *linebuf, int *req_h)
       res = cci_close_req_handle (req_h[req_id]);
       if (res < 0)
 	{
+	  fprintf (cas_error_fp, "close error\n%s\nrequest id %d\n",
+		   linebuf, req_id);
 	  PRINT_CCI_ERROR (res, NULL);
 	}
     }
@@ -1121,6 +1129,11 @@ process_endtran (int con_h, int *req_h)
   int res, i;
   T_CCI_ERROR cci_error;
   res = cci_end_tran (con_h, CCI_TRAN_ROLLBACK, &cci_error);
+  if (res < 0)
+    {
+      fprintf (cas_error_fp, "end tran error\nconnection handle id %d\n",
+	       con_h);
+    }
   PRINT_CCI_ERROR (res, &cci_error);
 
   for (i = 0; i < SERVER_HANDLE_ALLOC_SIZE; i++)
@@ -1174,6 +1187,7 @@ print_result (int cci_res, int req_id, FILE * fp)
     return;
   if (res < 0)
     {
+      fprintf (cas_error_fp, "cursor error\nrequest id %d\n", req_id);
       PRINT_CCI_ERROR (res, &cci_error);
       return;
     }
@@ -1185,6 +1199,7 @@ print_result (int cci_res, int req_id, FILE * fp)
       res = cci_fetch (req_id, &cci_error);
       if (res < 0)
 	{
+	  fprintf (cas_error_fp, "fetch error\nrequest id %d\n", req_id);
 	  PRINT_CCI_ERROR (res, &cci_error);
 	  break;
 	}
@@ -1193,6 +1208,8 @@ print_result (int cci_res, int req_id, FILE * fp)
 	  res = cci_get_data (req_id, i + 1, CCI_A_TYPE_STR, &buffer, &ind);
 	  if (res < 0)
 	    {
+	      fprintf (cas_error_fp, "get data error\nrequest id %d\n",
+		       req_id);
 	      PRINT_CCI_ERROR (res, NULL);
 	      break;
 	    }
@@ -1215,6 +1232,7 @@ print_result (int cci_res, int req_id, FILE * fp)
 	    break;
 	  if (res < 0)
 	    {
+	      fprintf (cas_error_fp, "cursor error\nrequest id %d\n", req_id);
 	      PRINT_CCI_ERROR (res, NULL);
 	      break;
 	    }

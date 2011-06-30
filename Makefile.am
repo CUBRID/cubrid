@@ -17,10 +17,14 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-
 AUTOMAKE_OPTIONS = foreign
 
-SUBDIRS = include cas sa cs cubrid util broker cm_common conf msg jdbc java demo contrib cas4mysql cas4oracle
+SUBDIRS = external include cas sa cs cubrid util broker cas4mysql cas4oracle cm_common conf msg demo contrib @OPTIONAL_DIR@
 
 EXTRA_DIST = BUILD_NUMBER COPYING CREDITS README
 
+logdir = @CUBRID_LOGDIR@
+log_DATA = # EMPTY
+
+tmpdir = @CUBRID_TMPDIR@
+tmp_DATA = # EMPTY

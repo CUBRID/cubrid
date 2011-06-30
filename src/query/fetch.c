@@ -44,8 +44,10 @@
 #include "object_representation.h"
 #include "arithmetic.h"
 #include "serial.h"
+#include "session.h"
 #include "fetch.h"
 #include "list_file.h"
+#include "string_opfunc.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -57,6 +59,8 @@ static int fetch_peek_arith (THREAD_ENTRY * thread_p,
 static int fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl,
 				 int pos, DB_VALUE ** peek_dbval,
 				 QFILE_TUPLE * next_tpl);
+
+static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
 
 /*
  * fetch_peek_arith () -
@@ -74,6 +78,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 {
   ARITH_TYPE *arithptr = regu_var->value.arithptr;
   DB_VALUE *peek_left, *peek_right, *peek_third;
+  TP_DOMAIN *original_domain = NULL;
 
   peek_left = NULL;
   peek_right = NULL;
@@ -159,6 +164,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_ADDDATE:
     case T_SUBDATE:
     case T_DATEDIFF:
+    case T_TIMEDIFF:
     case T_DATE_FORMAT:
     case T_STR_TO_DATE:
       /* fetch lhs and rhs value */
@@ -173,7 +179,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	      && (arithptr->opcode == T_STRCAT || arithptr->opcode == T_ADD))
 	    {
 	      /* check for result type. */
-	      if (QSTR_IS_ANY_CHAR_OR_BIT (regu_var->domain->type->id))
+	      if (db_domain_type (regu_var->domain) == DB_TYPE_VARIABLE
+		  || QSTR_IS_ANY_CHAR_OR_BIT (regu_var->domain->type->id))
 		{
 		  if (fetch_peek_dbval (thread_p, arithptr->rightptr,
 					vd, NULL, obj_oid, tpl,
@@ -195,8 +202,27 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_FROM_UNIXTIME:
+
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid,
+			    tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (arithptr->rightptr != NULL)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL,
+				obj_oid, tpl, &peek_right) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_SUBSTRING_INDEX:
     case T_CONCAT_WS:
     case T_FIELD:
+    case T_INDEX_CARDINALITY:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
 			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
@@ -286,6 +312,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_REPEAT:
     case T_LEAST:
     case T_GREATEST:
     case T_SYS_CONNECT_BY_PATH:
@@ -304,10 +331,75 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_MAKEDATE:
+    case T_WEEK:
+    case T_DEFINE_VARIABLE:
+      /* fetch both lhs and rhs value */
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  if (is_argument_wrapped_with_cast_op (arithptr->leftptr))
+	    {
+	      /* cast might have failed: set ER_DATE_CONVERSION */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION,
+		      0);
+	    }
+	  goto error;
+	}
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	{
+	  if (is_argument_wrapped_with_cast_op (arithptr->rightptr))
+	    {
+	      /* cast might have failed: set ER_DATE_CONVERSION */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION,
+		      0);
+	    }
+	  goto error;
+	}
+      break;
+
+    case T_MAKETIME:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  if (is_argument_wrapped_with_cast_op (arithptr->leftptr))
+	    {
+	      /* cast might have failed: set ER_TIME_CONVERSION */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
+		      0);
+	    }
+	  goto error;
+	}
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	{
+	  if (is_argument_wrapped_with_cast_op (arithptr->rightptr))
+	    {
+	      /* cast might have failed: set ER_TIME_CONVERSION */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
+		      0);
+	    }
+	  goto error;
+	}
+      if (fetch_peek_dbval (thread_p, arithptr->thirdptr,
+			    vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+	{
+	  if (is_argument_wrapped_with_cast_op (arithptr->thirdptr))
+	    {
+	      /* cast might have failed: set ER_TIME_CONVERSION */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
+		      0);
+	    }
+	  goto error;
+	}
+      break;
+
     case T_CASE:
     case T_DECODE:
     case T_IF:
     case T_IFNULL:
+    case T_PREDICATE:
       /* defer fetch values */
       break;
 
@@ -323,6 +415,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_CHAR_LENGTH:
     case T_LOWER:
     case T_UPPER:
+    case T_SPACE:
+    case T_MD5:
     case T_CAST:
     case T_CAST_NOFAIL:
     case T_EXTRACT:
@@ -350,16 +444,60 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_LOG10:
     case T_ATAN:
     case T_DATE:
-    case T_ROW_COUNT:
+    case T_TIME:
     case T_ISNULL:
     case T_RAND:
     case T_DRAND:
     case T_RANDOM:
     case T_DRANDOM:
+    case T_TYPEOF:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr,
 			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
 	{
+	  goto error;
+	}
+      break;
+
+    case T_YEAR:
+    case T_MONTH:
+    case T_DAY:
+    case T_QUARTER:
+    case T_WEEKDAY:
+    case T_DAYOFWEEK:
+    case T_DAYOFYEAR:
+    case T_TODAYS:
+    case T_FROMDAYS:
+    case T_EVALUATE_VARIABLE:
+      /* fetch rhs value */
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	{
+	  if (is_argument_wrapped_with_cast_op (arithptr->rightptr))
+	    {
+	      /* cast might have failed: set ER_DATE_CONVERSION */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION,
+		      0);
+	    }
+	  goto error;
+	}
+      break;
+
+    case T_HOUR:
+    case T_MINUTE:
+    case T_SECOND:
+    case T_TIMETOSEC:
+    case T_SECTOTIME:
+      /* fetch rhs value */
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	{
+	  if (is_argument_wrapped_with_cast_op (arithptr->rightptr))
+	    {
+	      /* if cast failed, set ER_TIME_CONVERSION */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
+		      0);
+	    }
 	  goto error;
 	}
       break;
@@ -378,6 +516,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_TIMESTAMP:
+    case T_LIKE_LOWER_BOUND:
+    case T_LIKE_UPPER_BOUND:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr,
 			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
@@ -400,10 +540,42 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_SYS_TIME:
     case T_SYS_TIMESTAMP:
     case T_SYS_DATETIME:
+    case T_UTC_TIME:
+    case T_UTC_DATE:
     case T_LOCAL_TRANSACTION_ID:
     case T_PI:
+    case T_ROW_COUNT:
+    case T_LAST_INSERT_ID:
     case T_LIST_DBS:
       /* nothing to fetch */
+      break;
+
+    case T_BLOB_TO_BIT:
+    case T_CLOB_TO_CHAR:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (!PRIM_IS_NULL (peek_left) && arithptr->rightptr)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr,
+				vd, NULL, obj_oid, tpl,
+				&peek_right) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_BIT_TO_BLOB:
+    case T_CHAR_TO_CLOB:
+    case T_LOB_LENGTH:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr,
+			    vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
       break;
 
     default:
@@ -415,6 +587,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
   /* clear any previous result */
   pr_clear_value (arithptr->value);
+  if (regu_var->domain != NULL
+      && db_domain_type (regu_var->domain) == DB_TYPE_VARIABLE)
+    {
+      original_domain = regu_var->domain;
+      regu_var->domain = NULL;
+    }
   switch (arithptr->opcode)
     {
     case T_ADD:
@@ -425,6 +603,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
 	/* check for result type. */
 	if (check_empty_string
+	    && regu_var->domain != NULL
 	    && QSTR_IS_ANY_CHAR_OR_BIT (regu_var->domain->type->id))
 	  {
 	    /* at here, T_ADD is really T_STRCAT */
@@ -765,7 +944,18 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_date_dbval (peek_right, arithptr->value) != NO_ERROR)
+      else if (db_date_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_TIME:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_time_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1012,6 +1202,28 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_MD5:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_string_md5 (peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_SPACE:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_string_space (peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     case T_TRIM:
       if (PRIM_IS_NULL (peek_left))
 	{
@@ -1046,6 +1258,18 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       else if (db_string_trim (TRAILING,
 			       peek_right, peek_left,
 			       arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_FROM_UNIXTIME:
+      if (PRIM_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_from_unixtime (peek_left, peek_right, arithptr->value)
+	       != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1134,6 +1358,173 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_YEAR:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_get_date_item (peek_right, PT_YEARF,
+				 arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_MONTH:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_get_date_item (peek_right, PT_MONTHF,
+				 arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_DAY:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_get_date_item (peek_right, PT_DAYF,
+				 arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_HOUR:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_get_time_item (peek_right, PT_HOURF,
+				 arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_MINUTE:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_get_time_item (peek_right, PT_MINUTEF,
+				 arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_SECOND:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_get_time_item (peek_right, PT_SECONDF,
+				 arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_QUARTER:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_get_date_quarter (peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_WEEKDAY:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_get_date_weekday (peek_right, PT_WEEKDAY,
+				    arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_DAYOFWEEK:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_get_date_weekday (peek_right, PT_DAYOFWEEK,
+				    arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_DAYOFYEAR:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_get_date_dayofyear (peek_right, arithptr->value)
+	       != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_TODAYS:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_get_date_totaldays (peek_right, arithptr->value)
+	       != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_FROMDAYS:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_get_date_from_days (peek_right, arithptr->value)
+	       != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_TIMETOSEC:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_convert_time_to_sec (peek_right, arithptr->value)
+	       != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_SECTOTIME:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_convert_sec_to_time (peek_right, arithptr->value)
+	       != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     case T_TIMESTAMP:
       if (PRIM_IS_NULL (peek_left)
 	  || (peek_right != NULL && PRIM_IS_NULL (peek_right)))
@@ -1144,6 +1535,71 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  if (db_timestamp (peek_left, peek_right, arithptr->value) !=
 	      NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_LIKE_LOWER_BOUND:
+    case T_LIKE_UPPER_BOUND:
+      if (PRIM_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  const bool compute_lower_bound =
+	    (arithptr->opcode == T_LIKE_LOWER_BOUND);
+
+	  if (db_like_bound (peek_left, peek_right, arithptr->value,
+			     compute_lower_bound) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_MAKEDATE:
+      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_add_days_to_year (peek_left, peek_right, arithptr->value)
+	      != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_MAKETIME:
+      if (PRIM_IS_NULL (peek_left)
+	  || PRIM_IS_NULL (peek_right) || PRIM_IS_NULL (peek_third))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_convert_to_time (peek_left, peek_right, peek_third,
+				  arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_WEEK:
+      if (PRIM_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_get_date_week (peek_left, peek_right, arithptr->value)
+	      != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -1241,7 +1697,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  PRIM_SET_NULL (arithptr->value);
 	}
       else if (db_str_to_date (peek_left, peek_right,
-			       arithptr->value) != NO_ERROR)
+			       arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1301,6 +1757,18 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_TIMEDIFF:
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_time_diff (peek_left, peek_right,
+			     arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     case T_DATE_SUB:
       if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right)
 	  || PRIM_IS_NULL (peek_third))
@@ -1348,6 +1816,50 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       DB_MAKE_DATETIME (arithptr->value, &vd->sys_datetime);
       break;
 
+    case T_UTC_TIME:
+      {
+	DB_TIME db_time;
+	DB_VALUE timezone;
+	int timezone_val;
+
+	db_time = vd->sys_datetime.time / 1000;
+
+	/* extract the timezone part */
+	if (db_sys_timezone (&timezone) != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	timezone_val = DB_GET_INT (&timezone);
+	db_time = db_time + timezone_val * 60 + SECONDS_OF_ONE_DAY;
+	db_time = db_time % SECONDS_OF_ONE_DAY;
+
+	DB_MAKE_ENCODED_TIME (arithptr->value, &db_time);
+	break;
+      }
+
+    case T_UTC_DATE:
+      {
+	DB_VALUE timezone;
+	DB_BIGINT timezone_milis;
+	DB_DATETIME db_datetime;
+	DB_DATE db_date;
+
+	/* extract the timezone part */
+	if (db_sys_timezone (&timezone) != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	timezone_milis = DB_GET_INT (&timezone) * 60000;
+	if (db_add_int_to_datetime (&vd->sys_datetime, timezone_milis,
+				    &db_datetime) != NO_ERROR)
+	  {
+	    goto error;
+	  }
+
+	db_date = db_datetime.date;
+	DB_MAKE_ENCODED_DATE (arithptr->value, &db_date);
+	break;
+      }
     case T_LOCAL_TRANSACTION_ID:
       db_make_int (arithptr->value, logtb_find_current_tranid (thread_p));
       break;
@@ -1361,6 +1873,90 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 			   arithptr->value) != NO_ERROR)
 	{
 	  goto error;
+	}
+
+      break;
+
+    case T_BLOB_TO_BIT:
+      if (PRIM_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_blob_to_bit (peek_left, peek_right, arithptr->value) !=
+	       NO_ERROR)
+	{
+	  goto error;
+	}
+
+      break;
+
+    case T_CLOB_TO_CHAR:
+      if (PRIM_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_clob_to_char (peek_left, peek_right, arithptr->value) !=
+	       NO_ERROR)
+	{
+	  goto error;
+	}
+
+      break;
+
+    case T_BIT_TO_BLOB:
+      if (PRIM_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (PRIM_TYPE (peek_left) == DB_TYPE_BIT
+	       || PRIM_TYPE (peek_left) == DB_TYPE_VARBIT)
+	{
+	  if (db_bit_to_blob (peek_left, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      else			/* (PRIM_TYPE (peek_left) == DB_TYPE_CHAR || DB_TYPE_VARCHAR) */
+	{
+	  if (db_char_to_blob (peek_left, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+
+      break;
+
+    case T_CHAR_TO_CLOB:
+      if (PRIM_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_char_to_clob (peek_left, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      break;
+
+    case T_LOB_LENGTH:
+      if (PRIM_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (PRIM_TYPE (peek_left) == DB_TYPE_BLOB)
+	{
+
+	  if (db_blob_length (peek_left, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      else			/* (PRIM_TYPE (peek_left) == DB_TYPE_BLOB) */
+	{
+	  if (db_clob_length (peek_left, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
 
       break;
@@ -1445,7 +2041,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_CURRENT_VALUE:
-      if (xserial_get_current_value (thread_p, peek_right, arithptr->value)
+      if (xserial_get_current_value (thread_p, arithptr->value, peek_right)
 	  != NO_ERROR)
 	{
 	  goto error;
@@ -1453,16 +2049,16 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_NEXT_VALUE:
-      if (xserial_get_next_value (thread_p, peek_right, arithptr->value) !=
-	  NO_ERROR)
+      if (xserial_get_next_value (thread_p, arithptr->value, peek_right,
+				  false) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_CAST:
-      if (tp_value_cast (peek_right, arithptr->value,
-			 arithptr->domain, false) != NO_ERROR)
+      if (tp_value_strict_cast (peek_right, arithptr->value,
+				arithptr->domain) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
 		  pr_type_name (PRIM_TYPE (peek_right)),
@@ -1510,6 +2106,41 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  break;
 
 	default:
+	  goto error;
+	}
+
+      if (tp_value_coerce (peek_left,
+			   arithptr->value,
+			   regu_var->domain) != DOMAIN_COMPATIBLE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		  pr_type_name (PRIM_TYPE (peek_left)),
+		  pr_type_name (arithptr->domain->type->id));
+	  goto error;
+	}
+      break;
+
+    case T_PREDICATE:
+      /* return 0,1 or NULL accordingly */
+      peek_left = db_value_create ();
+      if (peek_left == NULL)
+	{
+	  goto error;
+	}
+
+      switch (eval_pred (thread_p, arithptr->pred, vd, obj_oid))
+	{
+	case V_UNKNOWN:
+	  DB_MAKE_NULL (peek_left);
+	  break;
+	case V_FALSE:
+	  DB_MAKE_INT (peek_left, 0);
+	  break;
+	case V_TRUE:
+	  DB_MAKE_INT (peek_left, 1);
+	  break;
+	default:
+	  pr_clear_value (peek_left);
 	  goto error;
 	}
 
@@ -1683,6 +2314,21 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_REPEAT:
+      if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_string_repeat (peek_left, peek_right,
+				arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
     case T_LEFT:
       if (PRIM_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
@@ -1748,9 +2394,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 		      pr_type_name (DB_TYPE_INTEGER));
 	      goto error;
 	    }
-	  /* If len, defined as second argument, is negative value,        
-	   * RIGHT function returns the entire string.             
-	   * It's same behavior with LEFT and SUBSTRING.           
+	  /* If len, defined as second argument, is negative value,
+	   * RIGHT function returns the entire string.
+	   * It's same behavior with LEFT and SUBSTRING.
 	   */
 	  if (db_get_int (&tmp_val2) < 0)
 	    {
@@ -1830,6 +2476,22 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 			       db_get_int (arithptr->value) +
 			       db_get_int (&tmp_arg3) - 1);
 		}
+	    }
+	}
+      break;
+
+    case T_SUBSTRING_INDEX:
+      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right)
+	  || PRIM_IS_NULL (peek_third))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_string_substring_index (peek_left, peek_right, peek_third,
+					 arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
 	    }
 	}
       break;
@@ -1987,9 +2649,15 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	    }
 	}
 
-      if (tp_value_coerce (peek_left,
-			   arithptr->value,
-			   regu_var->domain) != DOMAIN_COMPATIBLE)
+      if (regu_var->domain == NULL)
+	{
+	  /* COALESCE late binding : both arguments were HV */
+	  assert (arithptr->opcode == T_COALESCE);
+	  pr_clone_value (peek_left, arithptr->value);
+	}
+      else if (tp_value_coerce (peek_left,
+				arithptr->value,
+				regu_var->domain) != DOMAIN_COMPATIBLE)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
 		  pr_type_name (PRIM_TYPE (peek_left)),
@@ -2084,8 +2752,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_SYS_CONNECT_BY_PATH:
       {
 	if (!qdata_evaluate_sys_connect_by_path (thread_p,
-						 (void *) arithptr->thirdptr->
-						 xasl, arithptr->leftptr,
+						 (void *) arithptr->
+						 thirdptr->xasl,
+						 arithptr->leftptr,
 						 peek_right, arithptr->value,
 						 vd))
 	  {
@@ -2117,7 +2786,40 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_ROW_COUNT:
-      pr_clone_value (peek_right, arithptr->value);
+      {
+	int row_count = -1;
+	if (session_get_row_count (thread_p, &row_count) != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	DB_MAKE_INTEGER (arithptr->value, row_count);
+      }
+      break;
+
+    case T_LAST_INSERT_ID:
+      {
+	if (session_get_last_insert_id (thread_p, arithptr->value)
+	    != NO_ERROR)
+	  {
+	    goto error;
+	  }
+      }
+      break;
+
+    case T_EVALUATE_VARIABLE:
+      if (session_get_variable (thread_p, peek_right, arithptr->value)
+	  != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_DEFINE_VARIABLE:
+      if (session_define_variable (thread_p, peek_left, peek_right,
+				   arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
       break;
 
     case T_RAND:
@@ -2155,10 +2857,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	   *  2) fetched from tuple (rightptr's type is TYPE_CONSTANT)
 	   *   e.g, select rand(i) from table;
 	   *
-	   * Regarding the former case, rand(1) will generate a sequence of pseudo-random 
-	   * values up to the number of rows. However, on the latter case, rand(i) generates 
-	   * values depending on the column i's value. If, for example, there are three 
-	   * tuples which include column i of 1 in a table, results of the above statements 
+	   * Regarding the former case, rand(1) will generate a sequence of pseudo-random
+	   * values up to the number of rows. However, on the latter case, rand(i) generates
+	   * values depending on the column i's value. If, for example, there are three
+	   * tuples which include column i of 1 in a table, results of the above statements
 	   * are as follows.
 	   *
 	   *       rand(1)             rand(i)
@@ -2260,9 +2962,50 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  goto error;
 	}
       break;
+
+    case T_TYPEOF:
+      db_typeof_dbval (arithptr->value, peek_right);
+      break;
+
+    case T_INDEX_CARDINALITY:
+      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right)
+	  || PRIM_IS_NULL (peek_third))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (qdata_get_cardinality
+	      (thread_p, peek_left, peek_right, peek_third,
+	       arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    default:
+      break;
     }
 
   *peek_dbval = arithptr->value;
+
+  if (original_domain != NULL
+      && original_domain->type->id == DB_TYPE_VARIABLE)
+    {
+      TP_DOMAIN *resolved_dom =
+	tp_domain_resolve_value (arithptr->value, NULL);
+
+      /*keep DB_TYPE_VARIABLE if resolved domain is NULL */
+      if (db_domain_type (resolved_dom) != DB_TYPE_NULL)
+	{
+	  regu_var->domain = arithptr->domain = resolved_dom;
+	}
+      else
+	{
+	  regu_var->domain = arithptr->domain = original_domain;
+	}
+    }
 
   return NO_ERROR;
 
@@ -2334,9 +3077,10 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
       flag =
 	(QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tpl,
-							   regu_var->value.
-							   pos_descr.pos_no,
-							   &ptr, &length);
+							   regu_var->
+							   value.pos_descr.
+							   pos_no, &ptr,
+							   &length);
       if (flag == V_BOUND)
 	{
 	  pr_type = regu_var->value.pos_descr.dom->type;
@@ -2347,10 +3091,10 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
 	  OR_BUF_INIT (buf, ptr, length);
 
-	  if ((*(pr_type->readval)) (&buf, *peek_dbval,
-				     regu_var->value.pos_descr.dom, -1,
-				     false /* Don't copy */ ,
-				     NULL, 0) != NO_ERROR)
+	  if ((*(pr_type->data_readval)) (&buf, *peek_dbval,
+					  regu_var->value.pos_descr.dom, -1,
+					  false /* Don't copy */ ,
+					  NULL, 0) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -2413,6 +3157,12 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       goto error;
     }
 
+  if (*peek_dbval != NULL && !DB_IS_NULL (*peek_dbval) &&
+      db_domain_type (regu_var->domain) == DB_TYPE_VARIABLE)
+    {
+      regu_var->domain = tp_domain_resolve_value (*peek_dbval, NULL);
+    }
+
   return NO_ERROR;
 
 error:
@@ -2455,9 +3205,9 @@ fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl,
 
       OR_BUF_INIT (buf, ptr, length);
       /* read value from the tuple */
-      if ((*(pr_type->readval)) (&buf, *peek_dbval, pos_descr->dom,
-				 -1, false /* Don't copy */ ,
-				 NULL, 0) != NO_ERROR)
+      if ((*(pr_type->data_readval)) (&buf, *peek_dbval, pos_descr->dom,
+				      -1, false /* Don't copy */ ,
+				      NULL, 0) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -2653,4 +3403,31 @@ fetch_init_val_list (REGU_VARIABLE_LIST regu_list)
       regu_var = &regu_p->value;
       regu_var->value.attr_descr.cache_dbvalp = NULL;
     }
+}
+
+/*
+ * is_argument_wrapped_with_cast_op () - check if regu_var is a cast 
+ *					 expression 
+ *   return: true/false
+ *   regu_list(in/out): Regulator Variable list
+ *   vd(in): Value Descriptor
+ *   class_oid(in): Class Identifier
+ *   obj_oid(in): Object Identifier
+ *   tpl(in): Tuple
+ *   peek(int):
+ */
+static bool
+is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
+{
+  if (regu_var == NULL)
+    {
+      return false;
+    }
+
+  if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
+    {
+      return (regu_var->value.arithptr->opcode == T_CAST);
+    }
+
+  return false;
 }

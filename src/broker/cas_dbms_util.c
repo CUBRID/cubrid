@@ -147,6 +147,7 @@ cfg_read_dbinfo (DB_INFO ** db_info_p)
 		  cfg_free_dbinfo_all (databases);
 		}
 	      *db_info_p = NULL;
+	      fclose (file);
 	      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY,
 				     CAS_ERROR_INDICATOR);
 	    }
@@ -177,6 +178,7 @@ cfg_read_dbinfo (DB_INFO ** db_info_p)
 		  cfg_free_dbinfo_all (databases);
 		}
 	      *db_info_p = NULL;
+	      fclose (file);
 	      return ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
 	    }
 	}

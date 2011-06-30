@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -511,9 +511,9 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item,
 	{
 	  OR_BUF_INIT (buf, ptr, length);
 
-	  if ((*(pr_type->readval)) (&buf, &list_val,
-				     list_id->type_list.domp[0], -1, true,
-				     NULL, 0) != NO_ERROR)
+	  if ((*(pr_type->data_readval)) (&buf, &list_val,
+					  list_id->type_list.domp[0], -1,
+					  true, NULL, 0) != NO_ERROR)
 	    {
 	      return V_ERROR;
 	    }
@@ -657,8 +657,9 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item,
 
       OR_BUF_INIT (buf, ptr, length);
 
-      (*(pr_type->readval)) (&buf, &list_val,
-			     list_id->type_list.domp[0], -1, true, NULL, 0);
+      (*(pr_type->data_readval)) (&buf, &list_val,
+				  list_id->type_list.domp[0], -1, true, NULL,
+				  0);
 
       if (eval_value_rel_cmp (item, &list_val, R_LT) == V_TRUE)
 	{
@@ -869,8 +870,9 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p,
       pr_clear_value (&list_val);
       OR_BUF_INIT (buf, ptr, length);
 
-      (*(pr_type->readval)) (&buf, &list_val,
-			     list_id->type_list.domp[0], -1, true, NULL, 0);
+      (*(pr_type->data_readval)) (&buf, &list_val,
+				  list_id->type_list.domp[0], -1, true, NULL,
+				  0);
 
       if (list_on == true)
 	{
@@ -879,9 +881,9 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p,
 	  or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE,
 		   QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
 
-	  (*(pr_type->readval)) (&buf, &list_val2,
-				 list_id->type_list.domp[0], -1, true, NULL,
-				 0);
+	  (*(pr_type->data_readval)) (&buf, &list_val2,
+				      list_id->type_list.domp[0], -1, true,
+				      NULL, 0);
 
 	  if (eval_value_rel_cmp (&list_val, &list_val2, R_EQ) != V_TRUE)
 	    {
@@ -948,8 +950,9 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p,
       or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE,
 	       QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
 
-      (*(pr_type->readval)) (&buf, &list_val2,
-			     list_id->type_list.domp[0], -1, true, NULL, 0);
+      (*(pr_type->data_readval)) (&buf, &list_val2,
+				  list_id->type_list.domp[0], -1, true, NULL,
+				  0);
 
       card2 = eval_item_card_set (&list_val2, set, R_EQ);
       if (card2 == ER_FAILED)
@@ -1060,8 +1063,9 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
 
       OR_BUF_INIT (buf, ptr, length);
 
-      (*(pr_type->readval)) (&buf, &list_val,
-			     list_id1->type_list.domp[0], -1, true, NULL, 0);
+      (*(pr_type->data_readval)) (&buf, &list_val,
+				  list_id1->type_list.domp[0], -1, true, NULL,
+				  0);
 
       if (list_on == true)
 	{
@@ -1070,9 +1074,9 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
 	  or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE,
 		   QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
 
-	  (*(pr_type->readval)) (&buf, &list_val2,
-				 list_id1->type_list.domp[0], -1, true, NULL,
-				 0);
+	  (*(pr_type->data_readval)) (&buf, &list_val2,
+				      list_id1->type_list.domp[0], -1, true,
+				      NULL, 0);
 
 	  if (eval_value_rel_cmp (&list_val, &list_val2, R_EQ) != V_TRUE)
 	    {
@@ -1140,9 +1144,9 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p,
       or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE,
 	       QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
 
-      if ((*(pr_type->readval)) (&buf, &list_val2,
-				 list_id1->type_list.domp[0], -1, true, NULL,
-				 0) != NO_ERROR)
+      if ((*(pr_type->data_readval)) (&buf, &list_val2,
+				      list_id1->type_list.domp[0], -1, true,
+				      NULL, 0) != NO_ERROR)
 	{
 	  /* TODO: look once more, need to free (tpl)? */
 	  pr_clear_value (&list_val);
@@ -1793,8 +1797,8 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		}
 
 	      if (DB_VALUE_DOMAIN_TYPE (peek_val1) == DB_TYPE_OID
-		  && !heap_does_exist (thread_p, DB_PULL_OID (peek_val1),
-				       (OID *) 0))
+		  && !heap_does_exist (thread_p, (OID *) NULL,
+				       DB_PULL_OID (peek_val1)))
 		{
 		  result = V_TRUE;
 		}
@@ -2024,10 +2028,6 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 		{
 		  return V_ERROR;
 		}
-	      else if (db_value_is_null (peek_val3))
-		{
-		  return V_UNKNOWN;
-		}
 	    }
 	  /* evaluate regular expression match */
 	  /* Note: Currently only STRING type is supported */
@@ -2137,7 +2137,7 @@ eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
     }
 
   if (DB_VALUE_DOMAIN_TYPE (peek_val1) == DB_TYPE_OID
-      && !heap_does_exist (thread_p, DB_PULL_OID (peek_val1), (OID *) 0))
+      && !heap_does_exist (thread_p, (OID *) NULL, DB_PULL_OID (peek_val1)))
     {
       return V_TRUE;
     }
@@ -2445,10 +2445,6 @@ eval_pred_like6 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd,
 	{
 	  return V_ERROR;
 	}
-      else if (db_value_is_null (peek_val3))
-	{
-	  return V_UNKNOWN;
-	}
     }
 
   /* evaluate regular expression match */
@@ -2563,7 +2559,7 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp,
   if (scan_attrsp->attr_cache && scan_predp->regu_list)
     {
       /* read the predicate values from the heap into the attribute cache */
-      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdesp, 
+      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdesp,
 				       scan_attrsp->attr_cache) != NO_ERROR)
 	{
 	  return V_ERROR;
@@ -2577,8 +2573,8 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp,
 	   * know class OID so that TYPE_CLASSOID regu cannot be handled
 	   * correctly.
 	   */
-	  if (fetch_val_list (thread_p, scan_predp->regu_list, 
-			      filterp->val_descr, filterp->class_oid, oid, 
+	  if (fetch_val_list (thread_p, scan_predp->regu_list,
+			      filterp->val_descr, filterp->class_oid, oid,
 			      NULL, PEEK) != NO_ERROR)
 	    {
 	      return V_ERROR;
@@ -2706,10 +2702,9 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 		    }
 
 		  /* get j-th element value from the midxkey */
-		  if (set_midxkey_get_element_nocopy (midxkey, j, valp,
-						      &prev_j_index,
-						      &prev_j_ptr) !=
-		      NO_ERROR)
+		  if (pr_midxkey_get_element_nocopy (midxkey, j, valp,
+						     &prev_j_index,
+						     &prev_j_ptr) != NO_ERROR)
 		    {
 		      return V_ERROR;
 		    }

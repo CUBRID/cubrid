@@ -33,7 +33,7 @@
 #include "log_manager.h"
 #include "log_impl.h"
 #include "wait_for_graph.h"
-#include "thread_impl.h"
+#include "thread.h"
 #if defined(SERVER_MODE)
 #include "server_support.h"
 #endif
@@ -273,6 +273,19 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result,
 	  (void) locator_drop_transient_class_name_entries (thread_p,
 							    tran_index,
 							    topop_lsa);
+	}
+      if (result == LOG_RESULT_TOPOP_ABORT)
+	{
+	  LOG_TDES *tdes;
+	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	  tdes = LOG_FIND_TDES (tran_index);
+	  if (tdes == NULL)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+	      return TRAN_UNACTIVE_UNKNOWN;
+	    }
+	  log_clear_lob_locator_list (thread_p, tdes, false, topop_lsa);
 	}
       state = log_end_system_op (thread_p, result);
       break;

@@ -76,17 +76,18 @@
 #define ntohd(X)		htond(X)
 #endif
 
-#define SIZE_SHORT      ((int) sizeof(short))
-#define SIZE_INT        ((int) sizeof(int))
-#define SIZE_INT64      ((int) sizeof(INT64))
-#define SIZE_BIGINT     SIZE_INT64
-#define SIZE_DOUBLE     ((int) sizeof(double))
-#define SIZE_FLOAT      ((int) sizeof(float))
-#define SIZE_DATE       6
-#define SIZE_TIME       6
-#define SIZE_TIMESTAMP  12
-#define SIZE_DATETIME   14
-#define SIZE_OBJECT     8
+#define NET_SIZE_BYTE		((int) sizeof(char))
+#define NET_SIZE_SHORT		((int) sizeof(short))
+#define NET_SIZE_INT        	((int) sizeof(int))
+#define NET_SIZE_FLOAT      	((int) sizeof(float))
+#define NET_SIZE_DOUBLE     	((int) sizeof(double))
+#define NET_SIZE_INT64      	((int) sizeof(INT64))
+#define NET_SIZE_BIGINT     	NET_SIZE_INT64
+#define NET_SIZE_DATE       	(NET_SIZE_SHORT + NET_SIZE_SHORT + NET_SIZE_SHORT)
+#define NET_SIZE_TIME       	(NET_SIZE_SHORT + NET_SIZE_SHORT + NET_SIZE_SHORT)
+#define NET_SIZE_OBJECT     	(NET_SIZE_INT + NET_SIZE_SHORT + NET_SIZE_SHORT)
+#define NET_SIZE_TIMESTAMP	(NET_SIZE_SHORT * 6)
+#define NET_SIZE_DATETIME       (NET_SIZE_SHORT * 7)
 
 /*
  *  change function names to avoid naming conflict with cas server.

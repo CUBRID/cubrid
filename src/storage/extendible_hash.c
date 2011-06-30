@@ -903,7 +903,7 @@ eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
  * The identifier of bucket file is kept in the directory header.
  * The directory file identifier and directory root page
  * identifier are loaded into the remaining fields of "Dir"
- * to be used as the complete identifer of this extendible
+ * to be used as the complete identifier of this extendible
  * hashing structure for future reference.
  */
 EHID *
@@ -4394,7 +4394,7 @@ ehash_hash_string_type (char *key_p, char *original_key_p)
   for (i = 1; i <= remaining; i++)
     {
       /* shift left to align with previous content */
-      Int = (int) *key_p++ << (sizeof (int) - (i * 8));
+      Int = (int) *key_p++ << i;
       hash_key += Int;
     }
 

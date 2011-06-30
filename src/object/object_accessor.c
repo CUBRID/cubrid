@@ -626,7 +626,9 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 		}
 
 	      if (new_set != NULL)
-		new_set->ref_count++;
+		{
+		  new_set->ref_count++;
+		}
 	    }
 	}
     }
@@ -1497,9 +1499,13 @@ obj_get (MOP op, const char *name, DB_VALUE * value)
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
     }
-  else if (!(error = find_attribute (&class_, &att, op, name, 0)))
+  else
     {
-      error = obj_get_att (op, class_, att, value);
+      error = find_attribute (&class_, &att, op, name, 0);
+      if (error == NO_ERROR)
+	{
+	  error = obj_get_att (op, class_, att, value);
+	}
     }
 
   return error;
@@ -3468,6 +3474,8 @@ find_unique (MOP classop, SM_ATTRIBUTE * att,
    * then return an error indicating that the indexes do not exist rather than
    * the "object not found" error.
    */
+
+  BTID_SET_NULL (&btid);
 
   /* look for a unique index on this attribute */
   r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_UNIQUE,

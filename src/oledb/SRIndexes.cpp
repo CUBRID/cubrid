@@ -1,30 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
- * are permitted provided that the following conditions are met: 
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
  *
- * - Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer. 
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
  *
- * - Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution. 
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
  *
- * - Neither the name of the <ORGANIZATION> nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without 
- *   specific prior written permission. 
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
- * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
- * OF SUCH DAMAGE. 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
  *
  */
 
@@ -77,12 +77,12 @@ static HRESULT FetchData(int hReq, CIndexesRow &irData, const char *index_name)
 	res = cci_fetch(hReq, &err_buf);
 	if (res==CCI_ER_NO_MORE_DATA) return S_OK;
 	if(res<0) return RaiseError(E_FAIL, 1, __uuidof(IDBSchemaRowset), err_buf.err_msg);
-	
+
 	res = cci_get_data(hReq, 1, CCI_A_TYPE_INT, &int_val, &ind); //index type
 	if(res<0) return RaiseError(E_FAIL, 0, __uuidof(IDBSchemaRowset));
 	if (int_val == 0)
 		irData.m_bUnique = ATL_VARIANT_TRUE;
-	
+
 	res = cci_get_data(hReq, 2, CCI_A_TYPE_STR, &value, &ind); //index name
 	if(res<0) return RaiseError(E_FAIL, 0, __uuidof(IDBSchemaRowset));
 
@@ -117,8 +117,9 @@ static HRESULT GetCardinality(int hConn, WCHAR* tableName, ULARGE_INTEGER* cardi
 	T_CCI_ERROR error;
 	int hReq, res, ind;
 
-	query.Append("select count(*) from ");
+	query.Append("select count(*) from [");
 	query.Append(tableName);
+	query.Append("]");
 
 	hReq = cci_prepare(hConn, CW2A(query.m_str), 0, &error);
 	if (hReq < 0)
@@ -161,11 +162,11 @@ HRESULT CSRIndexes::FillRowData(int hConn, int hReq, LONG* pcRowsAffected,
 		int hReq2, int_val, ind;
 
 		hr = FetchData(hReq, irData, index_name);
-		if(FAILED(hr)) 
+		if(FAILED(hr))
 			return E_FAIL;
 
 		HRESULT hrCard = GetCardinality(hConn, irData.m_szTableName, &irData.m_ulCardinality);
-		if(FAILED(hrCard)) 
+		if(FAILED(hrCard))
 			return E_FAIL;
 #if 0
 		//Column Ordinal을 얻어온다.
@@ -181,13 +182,13 @@ HRESULT CSRIndexes::FillRowData(int hConn, int hReq, LONG* pcRowsAffected,
 
 			res = cci_cursor(hReq2, 1, CCI_CURSOR_FIRST, &err_buf);
 			if (res < 0) return RaiseError(E_FAIL, 3, __uuidof(IDBSchemaRowset), err_buf.err_msg);
-			
+
 			res = cci_fetch(hReq2, &err_buf);
 			if(res<0) return RaiseError(E_FAIL, 4, __uuidof(IDBSchemaRowset), err_buf.err_msg);
 
 			res = cci_get_data(hReq2, 10, CCI_A_TYPE_INT, &int_val, &ind); //column ordinal
 			irData.m_uOrdinalPosition = int_val;
-			
+
 			cci_close_req_handle(hReq2);
 		}
 #endif
@@ -200,15 +201,15 @@ HRESULT CSRIndexes::FillRowData(int hConn, int hReq, LONG* pcRowsAffected,
 				if (m_rgRowData[nPos].m_bUnique < irData.m_bUnique) break;
 				if (m_rgRowData[nPos].m_bUnique == irData.m_bUnique)
 				{
-					int res = CompareStringW(LOCALE_USER_DEFAULT, 
-							NORM_IGNOREKANATYPE | NORM_IGNOREWIDTH | SORT_STRINGSORT, 
+					int res = CompareStringW(LOCALE_USER_DEFAULT,
+							NORM_IGNOREKANATYPE | NORM_IGNOREWIDTH | SORT_STRINGSORT,
 							m_rgRowData[nPos].m_szIndexName, -1,
 							irData.m_szIndexName, -1);
 					if(res==CSTR_GREATER_THAN) break;
 					if(res==CSTR_EQUAL)
 					{
-						res = CompareStringW(LOCALE_USER_DEFAULT, 
-							NORM_IGNOREKANATYPE | NORM_IGNOREWIDTH | SORT_STRINGSORT, 
+						res = CompareStringW(LOCALE_USER_DEFAULT,
+							NORM_IGNOREKANATYPE | NORM_IGNOREWIDTH | SORT_STRINGSORT,
 							m_rgRowData[nPos].m_szTableName, -1,
 							irData.m_szTableName, -1);
 						if(res==CSTR_GREATER_THAN) break;
@@ -227,7 +228,7 @@ HRESULT CSRIndexes::FillRowData(int hConn, int hReq, LONG* pcRowsAffected,
 
 			(*pcRowsAffected)++;
 		}
-		
+
 		res = cci_cursor(hReq, 1, CCI_CURSOR_CURRENT, &err_buf);
 		if(res==CCI_ER_NO_MORE_DATA) return S_OK;
 		if(res<0) return RaiseError(E_FAIL, 5, __uuidof(IDBSchemaRowset), err_buf.err_msg);
@@ -246,11 +247,11 @@ HRESULT CSRIndexes::Execute(LONG* pcRowsAffected,
 	int hConn = -1;
 	HRESULT hr = CCUBRIDSession::GetSessionPtr(this)->GetConnectionHandle(&hConn);
 	if(FAILED(hr)) return hr;
-	
+
 	char table_name[256]; table_name[0] = 0;
 	char index_name[256]; index_name[0] = 0;
 	GetRestrictions(cRestrictions, rgRestrictions, table_name, index_name);
-	
+
 	if (pcRowsAffected)
 		*pcRowsAffected = 0;
 

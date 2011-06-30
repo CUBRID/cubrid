@@ -48,7 +48,7 @@
 #include "environment_variable.h"
 #include "xserver_interface.h"
 #if defined(SERVER_MODE)
-#include "thread_impl.h"
+#include "thread.h"
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 #include "query_manager.h"
@@ -62,14 +62,11 @@
 
 /* TODO */
 #if !defined(SERVER_MODE)
-#undef  MUTEX_INIT
-#undef  MUTEX_DESTROY
-#undef  MUTEX_LOCK
-#undef  MUTEX_UNLOCK
-#define MUTEX_INIT(a)
-#define MUTEX_DESTROY(a)
-#define MUTEX_LOCK(a, b)
-#define MUTEX_UNLOCK(a)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)	0
+#define pthread_mutex_unlock(a)
+static int rv;
 
 #define thread_sleep(a, b)
 #endif /* not SERVER_MODE */
@@ -121,9 +118,9 @@ struct qfile_list_cache_candidate
   int num_candidates;		/* number of candidates */
   int num_victims;		/* number of victims */
   int selcnt;
-  QFILE_LIST_CACHE_ENTRY **time_candidates;	/* candiates who are old aged */
+  QFILE_LIST_CACHE_ENTRY **time_candidates;	/* candidates who are old aged */
   QFILE_LIST_CACHE_ENTRY **ref_candidates;	/* candidates who are recently used */
-  QFILE_LIST_CACHE_ENTRY **victims;	/* vitims; cache entries to be deleted */
+  QFILE_LIST_CACHE_ENTRY **victims;	/* victims; cache entries to be deleted */
   int c_idx;
   int v_idx;
   bool include_in_use;
@@ -179,7 +176,7 @@ static QFILE_LIST_CACHE_ENTRY_POOL qfile_List_cache_entry_pool =
   { NULL, 0, 0 };
 
 #if defined(SERVER_MODE)
-static MUTEX_T qfile_Free_sort_list_mutex = MUTEX_INITIALIZER;
+static pthread_mutex_t qfile_Free_sort_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif /* SERVER_MODE */
 static SORT_LIST *qfile_Free_sort_list = NULL;
 static int qfile_Free_sort_list_total = 0;
@@ -391,7 +388,7 @@ qfile_modify_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p,
 }
 
 /*
- * qfile_copy_list_id - Copy contents of source list_id into destionation list_id
+ * qfile_copy_list_id - Copy contents of source list_id into destination list_id
  *  return: NO_ERROR or ER_FAILED
  *  dest_list_id(out): destination list_id
  *  src_list_id(in): source list_id
@@ -570,7 +567,7 @@ qfile_free_sort_list (SORT_LIST * sort_list_p)
       count++;
     }
 
-  MUTEX_LOCK (rv, qfile_Free_sort_list_mutex);
+  rv = pthread_mutex_lock (&qfile_Free_sort_list_mutex);
 
   /* TODO: introduce other param rather than MAX_THREADS */
   if (qfile_Free_sort_list_count < thread_num_worker_threads ())
@@ -579,12 +576,12 @@ qfile_free_sort_list (SORT_LIST * sort_list_p)
       qfile_Free_sort_list = sort_list_p;
       qfile_Free_sort_list_count += count;
 
-      MUTEX_UNLOCK (qfile_Free_sort_list_mutex);
+      pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
     }
   else
     {
       qfile_Free_sort_list_total -= count;
-      MUTEX_UNLOCK (qfile_Free_sort_list_mutex);
+      pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
 
       while (sort_list_p != NULL)
 	{
@@ -623,7 +620,7 @@ qfile_allocate_sort_list (int count)
   /* allocate complete list */
   if (qfile_Free_sort_list != NULL)
     {
-      MUTEX_LOCK (rv, qfile_Free_sort_list_mutex);
+      rv = pthread_mutex_lock (&qfile_Free_sort_list_mutex);
 
       if (qfile_Free_sort_list != NULL)
 	{
@@ -637,7 +634,7 @@ qfile_allocate_sort_list (int count)
 
 	      qfile_Free_sort_list = p->next;
 	      qfile_Free_sort_list_count -= count;
-	      MUTEX_UNLOCK (qfile_Free_sort_list_mutex);
+	      pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
 	      p->next = NULL;
 	    }
 	  else
@@ -646,7 +643,7 @@ qfile_allocate_sort_list (int count)
 	      s = qfile_Free_sort_list;
 	      qfile_Free_sort_list = NULL;
 	      qfile_Free_sort_list_count = 0;
-	      MUTEX_UNLOCK (qfile_Free_sort_list_mutex);
+	      pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
 
 	      for (i = 0; i < num_remains; i++)
 		{
@@ -661,15 +658,15 @@ qfile_allocate_sort_list (int count)
 		}
 	      if (i > 0)
 		{
-		  MUTEX_LOCK (rv, qfile_Free_sort_list_mutex);
+		  rv = pthread_mutex_lock (&qfile_Free_sort_list_mutex);
 		  qfile_Free_sort_list_total += i;
-		  MUTEX_UNLOCK (qfile_Free_sort_list_mutex);
+		  pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
 		}
 	    }
 	  return s;
 	}
 
-      MUTEX_UNLOCK (qfile_Free_sort_list_mutex);
+      pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
     }
 
   s = NULL;
@@ -688,9 +685,9 @@ qfile_allocate_sort_list (int count)
 
   if (i > 0)
     {
-      MUTEX_LOCK (rv, qfile_Free_sort_list_mutex);
+      rv = pthread_mutex_lock (&qfile_Free_sort_list_mutex);
       qfile_Free_sort_list_total += count;
-      MUTEX_UNLOCK (qfile_Free_sort_list_mutex);
+      pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
     }
 
   return s;
@@ -794,8 +791,8 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2,
       or_init (&buf, (char *) tuple1 + QFILE_TUPLE_VALUE_HEADER_SIZE,
 	       length1);
       rc =
-	(*(pr_type_p->readval)) (&buf, &dbval1, domain_p, -1, is_copy, NULL,
-				 0);
+	(*(pr_type_p->data_readval)) (&buf, &dbval1, domain_p, -1, is_copy,
+				      NULL, 0);
       if (rc != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -814,8 +811,8 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2,
       or_init (&buf, (char *) tuple2 + QFILE_TUPLE_VALUE_HEADER_SIZE,
 	       length2);
       rc =
-	(*(pr_type_p->readval)) (&buf, &dbval2, domain_p, -1, is_copy, NULL,
-				 0);
+	(*(pr_type_p->data_readval)) (&buf, &dbval2, domain_p, -1, is_copy,
+				      NULL, 0);
       if (rc != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -971,9 +968,9 @@ qfile_locate_tuple_value_r (QFILE_TUPLE tuple, int index,
  *   return: none
  *   type_list(in): type list
  *   tpl(in): tuple
- * Note: Each tuple start is aligned with MAX_ALIGN
- *       Each tuple value header is aligned with MAX_ALIGN,
- *       Each tuple value is aligned with MAX_ALIGN
+ * Note: Each tuple start is aligned with MAX_ALIGNMENT
+ *       Each tuple value header is aligned with MAX_ALIGNMENT,
+ *       Each tuple value is aligned with MAX_ALIGNMENT
  */
 static void
 qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p,
@@ -1270,7 +1267,7 @@ qfile_initialize (void)
   qfile_Max_tuple_page_size = QFILE_MAX_TUPLE_SIZE_IN_PAGE;
   qfile_Xasl_page_size = spage_max_record_size () - QFILE_PAGE_HEADER_SIZE;
 
-  MUTEX_LOCK (rv, qfile_Free_sort_list_mutex);
+  rv = pthread_mutex_lock (&qfile_Free_sort_list_mutex);
 
   if (qfile_Free_sort_list == NULL)
     {
@@ -1291,7 +1288,7 @@ qfile_initialize (void)
       qfile_Free_sort_list_count = i;
     }
 
-  MUTEX_UNLOCK (qfile_Free_sort_list_mutex);
+  pthread_mutex_unlock (&qfile_Free_sort_list_mutex);
 
   return true;
 }
@@ -1330,6 +1327,11 @@ qfile_finalize (void)
  *       the list file identifier is set. The first page of the list
  *       file is allocated only when the first tuple is inserted to
  *       list file, if any.
+ *	 A 'SORT_LIST' is associated to the output list file according to 
+ *	 'sort_list_p' input argument (if not null), or created if the
+ *	 QFILE_FLAG_DISTINCT flag is specified; if neither QFILE_FLAG_DISTINCT
+ *	 or 'sort_list_p' are supplied, no SORT_LIST is associated.
+ *	 
  */
 QFILE_LIST_ID *
 qfile_open_list (THREAD_ENTRY * thread_p,
@@ -1358,9 +1360,17 @@ qfile_open_list (THREAD_ENTRY * thread_p,
     {
       list_id_p->tfile_vfid = qmgr_create_result_file (thread_p, query_id);
     }
+  else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_USE_KEY_BUFFER))
+    {
+      list_id_p->tfile_vfid =
+	qmgr_create_new_temp_file (thread_p, query_id,
+				   TEMP_FILE_MEMBUF_KEY_BUFFER);
+    }
   else
     {
-      list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id);
+      list_id_p->tfile_vfid =
+	qmgr_create_new_temp_file (thread_p, query_id,
+				   TEMP_FILE_MEMBUF_NORMAL);
     }
 
   if (list_id_p->tfile_vfid == NULL)
@@ -1409,7 +1419,7 @@ qfile_open_list (THREAD_ENTRY * thread_p,
 	    }
 	}
     }
-  else
+  else if (sort_list_p != NULL)
     {
       len = qfile_get_sort_list_size (sort_list_p);
       if (len > 0)
@@ -1434,6 +1444,11 @@ qfile_open_list (THREAD_ENTRY * thread_p,
 		src_sort_list_p->pos_descr.pos_no;
 	    }
 	}
+    }
+  else
+    {
+      /* no DISTINCT and no source SORT_LIST supplied */
+      list_id_p->sort_list = NULL;
     }
 
   return list_id_p;
@@ -1818,8 +1833,8 @@ qfile_save_merge_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p,
 	  if (tuple_rec1_p)
 	    {
 	      QFILE_GET_TUPLE_VALUE_HEADER_POSITION (tuple_rec1_p->tpl,
-						     merge_info_p->
-						     ls_pos_list[i], src_p);
+						     merge_info_p->ls_pos_list
+						     [i], src_p);
 	    }
 	  else
 	    {
@@ -1831,8 +1846,8 @@ qfile_save_merge_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p,
 	  if (tuple_rec2_p)
 	    {
 	      QFILE_GET_TUPLE_VALUE_HEADER_POSITION (tuple_rec2_p->tpl,
-						     merge_info_p->
-						     ls_pos_list[i], src_p);
+						     merge_info_p->ls_pos_list
+						     [i], src_p);
 	    }
 	  else
 	    {
@@ -2053,7 +2068,8 @@ qfile_get_first_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p)
   if (list_id_p->tfile_vfid == NULL)
     {
       list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p,
-							 list_id_p->query_id);
+							 list_id_p->query_id,
+							 TEMP_FILE_MEMBUF_NORMAL);
       if (list_id_p->tfile_vfid == NULL)
 	{
 	  return ER_FAILED;
@@ -2283,10 +2299,10 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
       VPID_SET (&vpid, vol_id, page_id);
     }
 
-  MUTEX_LOCK (rv, query_entry_p->lock);
+  rv = pthread_mutex_lock (&query_entry_p->lock);
   list_id_p = query_entry_p->list_id;
   tfile_vfid_p = list_id_p->tfile_vfid;
-  MUTEX_UNLOCK (query_entry_p->lock);
+  pthread_mutex_unlock (&query_entry_p->lock);
 
   if (query_entry_p->query_mode == ASYNC_MODE)
     {
@@ -2317,7 +2333,7 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 		   * save my thread entry into tfile_vfid and conditionally
 		   * wait for qmgr_free_old_page() or qmgr_set_dirty_page() to wake me.
 		   */
-		  MUTEX_LOCK (rv, tfile_vfid_p->membuf_mutex);
+		  rv = pthread_mutex_lock (&tfile_vfid_p->membuf_mutex);
 		  if (rv != NO_ERROR)
 		    {
 		      qmgr_free_old_page (thread_p, page_p, tfile_vfid_p);
@@ -2329,7 +2345,7 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 		      || (qmgr_is_async_query_interrupted (thread_p, query_id)
 			  != false))
 		    {
-		      MUTEX_UNLOCK (tfile_vfid_p->membuf_mutex);
+		      pthread_mutex_unlock (&tfile_vfid_p->membuf_mutex);
 		      qmgr_free_old_page (thread_p, page_p, tfile_vfid_p);
 		      return error;
 		    }
@@ -2344,14 +2360,12 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 #endif /* 0 */
 		      slept = true;
 
-		      thread_suspend_with_other_mutex (tfile_vfid_p->
-						       membuf_thread_p,
-						       &tfile_vfid_p->
-						       membuf_mutex,
-						       INF_WAIT, NULL,
-						       THREAD_QMGR_MEMBUF_PAGE_SUSPENDED);
+		      thread_suspend_with_other_mutex
+			(tfile_vfid_p->membuf_thread_p,
+			 &tfile_vfid_p->membuf_mutex, INF_WAIT, NULL,
+			 THREAD_QMGR_MEMBUF_PAGE_SUSPENDED);
 		    }
-		  MUTEX_UNLOCK (tfile_vfid_p->membuf_mutex);
+		  pthread_mutex_unlock (&tfile_vfid_p->membuf_mutex);
 
 		  error = er_errid ();
 		  if (error != NO_ERROR
@@ -2427,10 +2441,10 @@ xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 	}
     }
 
-  MUTEX_LOCK (rv, query_entry_p->lock);
+  rv = pthread_mutex_lock (&query_entry_p->lock);
   list_id_p = query_entry_p->list_id;
   tfile_vfid_p = (list_id_p) ? list_id_p->tfile_vfid : NULL;
-  MUTEX_UNLOCK (query_entry_p->lock);
+  pthread_mutex_unlock (&query_entry_p->lock);
 #else /* not SERVER_MODE */
   list_id_p = query_entry_p->list_id;
   tfile_vfid_p = list_id_p->tfile_vfid;
@@ -3939,7 +3953,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p,
 	  subkey = &key_info_p->key[i];
 	  subkey->col = p->pos_descr.pos_no;
 	  subkey->col_dom = p->pos_descr.dom;
-	  subkey->sort_f = p->pos_descr.dom->type->cmpdisk;
+	  subkey->sort_f = p->pos_descr.dom->type->data_cmpdisk;
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;
 
 	  if (key_info_p->use_original)
@@ -3961,7 +3975,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p,
 	  subkey->col = i;
 	  subkey->permuted_col = i;
 	  subkey->col_dom = types->domp[i];
-	  subkey->sort_f = types->domp[i]->type->cmpdisk;
+	  subkey->sort_f = types->domp[i]->type->data_cmpdisk;
 	  subkey->is_desc = 0;
 	}
     }
@@ -4061,13 +4075,14 @@ qfile_clear_sort_info (SORT_INFO * sort_info_p)
  *   put_fn(in):
  *   cmp_fn(in):
  *   extra_arg(in):
+ *   limit(in):
  */
 QFILE_LIST_ID *
 qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 			   SORT_LIST * sort_list_p, QUERY_OPTIONS option,
 			   int flag, SORT_GET_FUNC * get_func,
 			   SORT_PUT_FUNC * put_func, SORT_CMP_FUNC * cmp_func,
-			   void *extra_arg)
+			   void *extra_arg, int limit)
 {
   QFILE_LIST_ID *srlist_id;
   QFILE_LIST_SCAN_ID t_scan_id;
@@ -4133,7 +4148,8 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
 
   sort_result =
     sort_listfile (thread_p, NULL_VOLID, estimated_pages, get_func, &info,
-		   put_func, &info, cmp_func, &info.key_info, dup_option);
+		   put_func, &info, cmp_func, &info.key_info, dup_option,
+		   limit);
 
   if (sort_result < 0)
     {
@@ -4194,7 +4210,8 @@ qfile_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
   ls_flag = (option == Q_DISTINCT) ? QFILE_FLAG_DISTINCT : QFILE_FLAG_ALL;
 
   return qfile_sort_list_with_func (thread_p, list_id_p, sort_list_p, option,
-				    ls_flag, NULL, NULL, NULL, NULL);
+				    ls_flag, NULL, NULL, NULL, NULL,
+				    NO_SORT_LIMIT);
 }
 
 /*
@@ -5209,10 +5226,9 @@ qfile_initialize_list_cache (THREAD_ENTRY * thread_p)
   qfile_List_cache_entry_pool.n_entries =
     PRM_LIST_MAX_QUERY_CACHE_ENTRIES + 10;
   qfile_List_cache_entry_pool.pool =
-    (QFILE_POOLED_LIST_CACHE_ENTRY *) calloc (qfile_List_cache_entry_pool.
-					      n_entries,
-					      sizeof
-					      (QFILE_POOLED_LIST_CACHE_ENTRY));
+    (QFILE_POOLED_LIST_CACHE_ENTRY *)
+    calloc (qfile_List_cache_entry_pool.n_entries,
+	    sizeof (QFILE_POOLED_LIST_CACHE_ENTRY));
   if (qfile_List_cache_entry_pool.pool == NULL)
     {
       goto error;
@@ -5383,7 +5399,7 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
     {
       rc = mht_map_no_key (thread_p, qfile_List_cache.list_hts[list_ht_no],
 			   qfile_end_use_of_list_cache_entry_local, &del);
-      if (rc == false)
+      if (rc != NO_ERROR)
 	{
 	  csect_exit (CSECT_QPROC_LIST_CACHE);
 	  thread_sleep (0, 10000);	/* 10 msec */
@@ -5394,9 +5410,9 @@ qfile_clear_list_cache (THREAD_ENTRY * thread_p, int list_ht_no, bool release)
 	    }
 	}
     }
-  while (rc == false && cnt++ < 10);
+  while (rc != NO_ERROR && cnt++ < 10);
 
-  if (rc == false)
+  if (rc != NO_ERROR)
     {
       /* unhappy condition; if this happens, memory leak will occurrs */
       er_log_debug (ARG_FILE_LINE,
@@ -6679,4 +6695,76 @@ bool
 qfile_has_next_page (PAGE_PTR page_p)
 {
   return (QFILE_GET_NEXT_PAGE_ID (page_p) != NULL_PAGEID);
+}
+
+/*
+ * qfile_update_domains_on_type_list() - Update domain pointers belongs to
+ *   type list of a given list file
+ *  return: error code
+ *  
+ */
+int
+qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p,
+				   QFILE_LIST_ID * list_id_p,
+				   VALPTR_LIST * valptr_list_p,
+				   bool * resolved_all)
+{
+  REGU_VARIABLE_LIST reg_var_p;
+  int i, count = 0;
+
+  assert (resolved_all != NULL);
+
+  *resolved_all = true;
+  reg_var_p = valptr_list_p->valptrp;
+
+  for (i = 0; i < valptr_list_p->valptr_cnt; i++, reg_var_p = reg_var_p->next)
+    {
+      if (reg_var_p->value.hidden_column)
+	{
+	  continue;
+	}
+
+      if (count >= list_id_p->type_list.type_cnt)
+	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  goto exit_on_error;
+	}
+
+      if (db_domain_type (list_id_p->type_list.domp[count]) ==
+	  DB_TYPE_VARIABLE)
+	{
+	  if (db_domain_type (reg_var_p->value.domain) == DB_TYPE_VARIABLE)
+	    {
+	      /* In this case, we cannot resolve the value's domain.
+	       * We will try to do for the next tuple.
+	       */
+	      if (*resolved_all == true)
+		{
+		  *resolved_all = false;
+		}
+	    }
+	  else
+	    {
+	      list_id_p->type_list.domp[count] = reg_var_p->value.domain;
+	    }
+	}
+
+      count++;
+    }
+
+  /* The number of columns should be same. */
+  if (count != list_id_p->type_list.type_cnt)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto exit_on_error;
+    }
+
+  return NO_ERROR;
+
+exit_on_error:
+
+  *resolved_all = false;
+  return ER_FAILED;
 }

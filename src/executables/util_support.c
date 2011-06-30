@@ -326,7 +326,9 @@ util_parse_string_table (UTIL_MAP * util_map, int index, int count,
     }
   string_table_arg->arg_value.p = string_table;
   string_table_arg->value_info.num_strings = num_string_args;
-  if (need_args_num < num_string_args && util_map->utility_index != COMPACTDB)
+  if (need_args_num < num_string_args
+      && (util_map->utility_index != COMPACTDB
+	  && util_map->utility_index != CHECKDB))
     {
       fprintf (stderr, "'%s' argument is not needed.\n",
 	       string_table[need_args_num] == NULL ?

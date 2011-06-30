@@ -148,6 +148,12 @@ typedef enum
   QO_PARAM_COST
 } QO_PARAM;
 
+typedef struct qo_limit_info
+{
+  REGU_VARIABLE *lower;
+  REGU_VARIABLE *upper;
+} QO_LIMIT_INFO;
+
 extern QO_NODE *lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity);
 
 extern QO_SEGMENT *lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env);
@@ -163,17 +169,22 @@ extern void qo_plan_dump (QO_PLAN *, FILE *);
 extern const char *qo_plan_set_cost_fn (const char *, int);
 extern int qo_plan_get_cost_fn (const char *);
 extern PT_NODE *qo_plan_iscan_sort_list (QO_PLAN *);
+extern PT_NODE *qo_subplan_iscan_sort_list (QO_PLAN *);
 extern bool qo_plan_skip_orderby (QO_PLAN * plan);
+extern bool qo_plan_skip_groupby (QO_PLAN * plan);
 extern void qo_set_cost (DB_OBJECT * target, DB_VALUE * result,
 			 DB_VALUE * plan, DB_VALUE * cost);
 
 /*
  *  QO_XASL support functions
  */
-extern PT_NODE **qo_xasl_get_terms (QO_XASL_INDEX_INFO *);
 extern int qo_xasl_get_num_terms (QO_XASL_INDEX_INFO * info);
+extern PT_NODE **qo_xasl_get_terms (QO_XASL_INDEX_INFO *);
 extern BTID *qo_xasl_get_btid (MOP classop, QO_XASL_INDEX_INFO * info);
 extern bool qo_xasl_get_multi_col (MOP class_mop, QO_XASL_INDEX_INFO * infop);
+extern PT_NODE *qo_xasl_get_key_limit (MOP class_mop,
+				       QO_XASL_INDEX_INFO * infop);
+extern bool qo_xasl_get_coverage (MOP class_mop, QO_XASL_INDEX_INFO * infop);
 extern PT_NODE *qo_check_nullable_expr (PARSER_CONTEXT * parser,
 					PT_NODE * node, void *arg,
 					int *continue_walk);
@@ -191,5 +202,19 @@ extern double qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
 extern XASL_NODE *qo_add_hq_iterations_access_spec (QO_PLAN * plan,
 						    XASL_NODE * xasl);
+
+extern QO_LIMIT_INFO *qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser,
+						     QO_PLAN * plan,
+						     XASL_NODE * xasl);
+
+extern QO_LIMIT_INFO *qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser,
+						      QO_PLAN * plan,
+						      XASL_NODE * xasl);
+
+extern int qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT *
+							parser,
+							QO_PLAN * subplan,
+							PT_NODE * sort_node,
+							int *can_optimize);
 
 #endif /* _OPTIMIZER_H_ */

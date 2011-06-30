@@ -125,6 +125,8 @@ main (int argc, char *argv[])
   CSQL_ARGUMENT csql_arg;
   DSO_HANDLE util_library;
   CSQL csql;
+  bool explicit_single_line = false;
+
   GETOPT_LONG csql_option[] = {
     {CSQL_SA_MODE_L, 0, 0, CSQL_SA_MODE_S},
     {CSQL_CS_MODE_L, 0, 0, CSQL_CS_MODE_S},
@@ -139,6 +141,7 @@ main (int argc, char *argv[])
     {CSQL_READ_ONLY_L, 0, 0, CSQL_READ_ONLY_S},
     {CSQL_NO_AUTO_COMMIT_L, 0, 0, CSQL_NO_AUTO_COMMIT_S},
     {CSQL_NO_PAGER_L, 0, 0, CSQL_NO_PAGER_S},
+    {CSQL_NO_SINGLE_LINE_L, 0, 0, CSQL_NO_SINGLE_LINE_S},
     {CSQL_SYSADM_L, 0, 0, CSQL_SYSADM_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
@@ -146,6 +149,7 @@ main (int argc, char *argv[])
 
   memset (&csql_arg, 0, sizeof (CSQL_ARGUMENT));
   csql_arg.auto_commit = true;
+  csql_arg.single_line_execution = true;
   utility_make_getopt_optstring (csql_option, option_string);
 
   while (1)
@@ -165,9 +169,11 @@ main (int argc, char *argv[])
 	case CSQL_SA_MODE_S:
 	  csql_arg.sa_mode = true;
 	  break;
+
 	case CSQL_CS_MODE_S:
 	  csql_arg.cs_mode = true;
 	  break;
+
 	case CSQL_USER_S:
 	  if (csql_arg.user_name != NULL)
 	    {
@@ -175,6 +181,7 @@ main (int argc, char *argv[])
 	    }
 	  csql_arg.user_name = strdup (optarg);
 	  break;
+
 	case CSQL_PASSWORD_S:
 	  if (csql_arg.passwd != NULL)
 	    {
@@ -182,9 +189,11 @@ main (int argc, char *argv[])
 	    }
 	  csql_arg.passwd = strdup (optarg);
 	  break;
+
 	case CSQL_ERROR_CONTINUE_S:
 	  csql_arg.continue_on_error = true;
 	  break;
+
 	case CSQL_INPUT_FILE_S:
 	  if (csql_arg.in_file_name != NULL)
 	    {
@@ -192,6 +201,7 @@ main (int argc, char *argv[])
 	    }
 	  csql_arg.in_file_name = strdup (optarg);
 	  break;
+
 	case CSQL_OUTPUT_FILE_S:
 	  if (csql_arg.out_file_name != NULL)
 	    {
@@ -199,9 +209,15 @@ main (int argc, char *argv[])
 	    }
 	  csql_arg.out_file_name = strdup (optarg);
 	  break;
+
 	case CSQL_SINGLE_LINE_S:
-	  csql_arg.single_line_execution = true;
+	  explicit_single_line = true;
 	  break;
+
+	case CSQL_NO_SINGLE_LINE_S:
+	  csql_arg.single_line_execution = false;
+	  break;
+
 	case CSQL_COMMAND_S:
 	  if (csql_arg.command != NULL)
 	    {
@@ -209,25 +225,32 @@ main (int argc, char *argv[])
 	    }
 	  csql_arg.command = strdup (optarg);
 	  break;
+
 	case CSQL_LINE_OUTPUT_S:
 	  csql_arg.line_output = true;
 	  break;
+
 	case CSQL_READ_ONLY_S:
 	  csql_arg.read_only = true;
 	  break;
+
 	case CSQL_NO_AUTO_COMMIT_S:
 	  csql_arg.auto_commit = false;
 	  break;
+
 	case CSQL_NO_PAGER_S:
 	  csql_arg.nopager = true;
 	  break;
+
 	case CSQL_SYSADM_S:
 	  csql_arg.sysadm = true;
 	  break;
+
 	case VERSION_S:
 	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME,
 			      VERSION);
 	  goto exit_on_end;
+
 	default:
 	  goto print_usage;
 	}
@@ -255,6 +278,11 @@ main (int argc, char *argv[])
       goto print_usage;
     }
   if (csql_arg.sa_mode && csql_arg.cs_mode)
+    {
+      /* Don't allow both at once. */
+      goto print_usage;
+    }
+  else if (explicit_single_line && csql_arg.single_line_execution == false)
     {
       /* Don't allow both at once. */
       goto print_usage;

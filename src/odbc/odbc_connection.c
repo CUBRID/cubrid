@@ -50,10 +50,85 @@ static const char *CUBRID_SPECIAL_CHARACTERS = "#%";
 static const char *CUBRID_TABLE_TERM = "table";
 static const char *CUBRID_KEYWORDS = "";
 
+#define GET_SET_SIZE(x) ((sizeof (x)) / (sizeof ((x)[0])))
 
 #define SQL_FUNC_SET(pfExists, uwAPI) \
 				( *(((short*) (pfExists)) + ((uwAPI) >> 4)) \
 				|= 1 << ((uwAPI) & 0x000F)  )
+
+typedef struct tagODBC_FUNCTIONS_SUPPORT_INFO
+{
+  SQLUSMALLINT func_id;
+  SQLUSMALLINT supported;
+} ODBC_FUNCTIONS_SUPPORT_INFO;
+
+static ODBC_FUNCTIONS_SUPPORT_INFO functions_support_info_set[] = {
+  {SQL_API_SQLALLOCHANDLE, SQL_TRUE},
+  {SQL_API_SQLBINDCOL, SQL_TRUE},
+  {SQL_API_SQLCANCEL, SQL_TRUE},
+  {SQL_API_SQLCLOSECURSOR, SQL_TRUE},
+  {SQL_API_SQLCOLATTRIBUTE, SQL_TRUE},
+  {SQL_API_SQLCONNECT, SQL_TRUE},
+  {SQL_API_SQLCOPYDESC, SQL_TRUE},
+  {SQL_API_SQLDATASOURCES, SQL_TRUE},
+  {SQL_API_SQLDESCRIBECOL, SQL_TRUE},
+  {SQL_API_SQLDISCONNECT, SQL_TRUE},
+  {SQL_API_SQLDRIVERS, SQL_TRUE},
+  {SQL_API_SQLENDTRAN, SQL_TRUE},
+  {SQL_API_SQLEXECDIRECT, SQL_TRUE},
+  {SQL_API_SQLEXECUTE, SQL_TRUE},
+  {SQL_API_SQLEXTENDEDFETCH, SQL_TRUE},
+  {SQL_API_SQLFETCH, SQL_TRUE},
+  {SQL_API_SQLFETCHSCROLL, SQL_TRUE},
+  {SQL_API_SQLFREEHANDLE, SQL_TRUE},
+  {SQL_API_SQLFREESTMT, SQL_TRUE},
+  {SQL_API_SQLGETCONNECTATTR, SQL_TRUE},
+  {SQL_API_SQLGETCURSORNAME, SQL_TRUE},
+  {SQL_API_SQLGETDATA, SQL_TRUE},
+  {SQL_API_SQLGETDESCFIELD, SQL_TRUE},
+  {SQL_API_SQLGETDESCREC, SQL_TRUE},
+  {SQL_API_SQLGETDIAGFIELD, SQL_TRUE},
+  {SQL_API_SQLGETDIAGREC, SQL_TRUE},
+  {SQL_API_SQLGETENVATTR, SQL_TRUE},
+  {SQL_API_SQLGETFUNCTIONS, SQL_TRUE},
+  {SQL_API_SQLGETINFO, SQL_TRUE},
+  {SQL_API_SQLGETSTMTATTR, SQL_TRUE},
+  {SQL_API_SQLGETTYPEINFO, SQL_TRUE},
+  {SQL_API_SQLNUMRESULTCOLS, SQL_TRUE},
+  {SQL_API_SQLPARAMDATA, SQL_TRUE},
+  {SQL_API_SQLPREPARE, SQL_TRUE},
+  {SQL_API_SQLPUTDATA, SQL_TRUE},
+  {SQL_API_SQLROWCOUNT, SQL_TRUE},
+  {SQL_API_SQLSETCONNECTATTR, SQL_TRUE},
+  {SQL_API_SQLSETCURSORNAME, SQL_TRUE},
+  {SQL_API_SQLSETDESCFIELD, SQL_TRUE},
+  {SQL_API_SQLSETDESCREC, SQL_TRUE},
+  {SQL_API_SQLSETENVATTR, SQL_TRUE},
+  {SQL_API_SQLSETSTMTATTR, SQL_TRUE},
+  {SQL_API_SQLBINDPARAMETER, SQL_TRUE},
+  {SQL_API_SQLDRIVERCONNECT, SQL_TRUE},
+  {SQL_API_SQLNATIVESQL, SQL_TRUE},
+  {SQL_API_SQLNUMPARAMS, SQL_TRUE},
+  {SQL_API_SQLMORERESULTS, SQL_TRUE},
+  {SQL_API_SQLBULKOPERATIONS, SQL_TRUE},
+  {SQL_API_SQLSETPOS, SQL_TRUE},
+  {SQL_API_SQLCOLUMNS, SQL_TRUE},
+  {SQL_API_SQLSPECIALCOLUMNS, SQL_TRUE},
+  {SQL_API_SQLTABLES, SQL_TRUE},
+  {SQL_API_SQLSTATISTICS, SQL_TRUE},
+  {SQL_API_SQLPRIMARYKEYS, SQL_TRUE},
+  {SQL_API_SQLFOREIGNKEYS, SQL_TRUE},
+  {SQL_API_SQLPROCEDURECOLUMNS, SQL_TRUE},
+  {SQL_API_SQLPROCEDURES, SQL_TRUE},
+  {SQL_API_SQLTABLEPRIVILEGES, SQL_TRUE},
+
+  /* not support */
+  {SQL_API_SQLCOLUMNPRIVILEGES, SQL_FALSE},
+
+  /* support by ODBC manager */
+  {SQL_API_SQLBROWSECONNECT, SQL_FALSE},
+  {SQL_API_SQLDESCRIBEPARAM, SQL_FALSE},
+};
 
 PRIVATE int get_server_setting (ODBC_CONNECTION * conn);
 PRIVATE RETCODE set_isolation_level (ODBC_CONNECTION * conn);
@@ -407,7 +482,8 @@ PUBLIC RETCODE
 odbc_get_connect_attr (ODBC_CONNECTION * conn,
 		       SQLINTEGER attribute,
 		       SQLPOINTER value_ptr,
-		       SQLINTEGER buffer_length, SQLINTEGER *string_length_ptr)
+		       SQLINTEGER buffer_length,
+		       SQLINTEGER * string_length_ptr)
 {
   RETCODE rc = ODBC_SUCCESS;
   SQLLEN tmp_length;
@@ -436,12 +512,14 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
       odbc_set_diag (conn->diag, "HYC00", 0, NULL);
       goto error;
 
+#if 0
       if (value_ptr != NULL)
 	*((unsigned long *) value_ptr) = conn->attr_auto_ipd;
 
       if (string_length_ptr != NULL)
 	*string_length_ptr = sizeof (unsigned long);
       break;
+#endif
 
     case SQL_ATTR_AUTOCOMMIT:
       if (value_ptr != NULL)
@@ -474,12 +552,14 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
       odbc_set_diag (conn->diag, "HYC00", 0, NULL);
       goto error;
 
+#if 0
       if (value_ptr != NULL)
 	*((unsigned long *) value_ptr) = conn->attr_connection_timeout;
 
       if (string_length_ptr != NULL)
 	*string_length_ptr = sizeof (unsigned long);
       break;
+#endif
 
     case SQL_ATTR_CURRENT_CATALOG:
 
@@ -500,6 +580,7 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
       odbc_set_diag (conn->diag, "HYC00", 0, NULL);
       goto error;
 
+#if 0
       rc =
 	str_value_assign (conn->attr_current_catalog, value_ptr,
 			  buffer_length, &tmp_length);
@@ -511,6 +592,7 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
 	}
 
       break;
+#endif
 
     case SQL_ATTR_LOGIN_TIMEOUT:
       /* HYC00 */
@@ -541,6 +623,7 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
       odbc_set_diag (conn->diag, "HYC00", 0, NULL);
       goto error;
 
+#if 0
       if (value_ptr != NULL)
 	*((unsigned long *) value_ptr) = conn->attr_odbc_cursors;
 
@@ -548,6 +631,7 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
 	*string_length_ptr = sizeof (unsigned long);
 
       break;
+#endif
 
     case SQL_ATTR_PACKET_SIZE:
       /* HYC00 */
@@ -555,6 +639,7 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
       odbc_set_diag (conn->diag, "HYC00", 0, NULL);
       goto error;
 
+#if 0
       if (value_ptr != NULL)
 	*((unsigned long *) value_ptr) = conn->attr_packet_size;
 
@@ -562,6 +647,7 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
 	*string_length_ptr = sizeof (unsigned long);
 
       break;
+#endif
 
     case SQL_ATTR_QUIET_MODE:
       if (value_ptr != NULL)
@@ -598,6 +684,7 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
       odbc_set_diag (conn->diag, "HYC00", 0, NULL);
       goto error;
 
+#if 0
       rc =
 	str_value_assign (conn->attr_translate_lib, value_ptr, buffer_length,
 			  &tmp_length);
@@ -608,6 +695,7 @@ odbc_get_connect_attr (ODBC_CONNECTION * conn,
 	  odbc_set_diag (conn->diag, "01004", 0, NULL);
 	}
       break;
+#endif
 
     case SQL_ATTR_TRANSLATE_OPTION:
       /* HYC00 */
@@ -653,127 +741,6 @@ error:
   return ODBC_ERROR;
 }
 
-
-/************************************************************************
-* name: odbc_connect
-* arguments:
-* returns/side-effects:
-* description:
-* NOTE:
-* CHECK : error check
-************************************************************************/
-PUBLIC RETCODE
-odbc_connect (ODBC_CONNECTION * conn,
-	      const char *data_source, const char *user, const char *password)
-{
-  const char *odbc_state = "";
-  int connhd;
-  RETCODE rc;
-  int cci_rc;
-  T_CCI_ERROR cci_err_buf;
-
-  conn->data_source = UT_MAKE_STRING (data_source, -1);
-  conn->user = UT_MAKE_STRING (user, -1);
-  conn->password = UT_MAKE_STRING (password, -1);
-
-  get_server_setting (conn);
-
-  connhd = cci_connect (conn->server, conn->port, conn->db_name,
-			conn->user, conn->password);
-
-  if (connhd < 0)
-    goto error;
-
-  conn->connhd = connhd;
-
-  rc = get_db_version (conn);
-  ERROR_GOTO (rc, error);
-
-  // disconnect with cas
-  if (conn->connhd > 0)
-    {
-      cci_rc = cci_end_tran (conn->connhd, CCI_TRAN_ROLLBACK, &cci_err_buf);
-      if (cci_rc < 0)
-	{
-	  odbc_set_diag_by_cci (conn->diag, cci_rc, cci_err_buf.err_msg);
-	  return ODBC_ERROR;
-	}
-    }
-
-  /*
-     rc = set_isolation_level(conn);
-     ERROR_GOTO(rc, error);
-   */
-
-  return ODBC_SUCCESS;
-
-error:
-  // CHECK : error messaging
-  return ODBC_ERROR;
-}
-
-/************************************************************************
-* name: odbc_connect_by_filedsn
-* arguments:
-* returns/side-effects:
-* description:
-* NOTE:
-* CHECK : error check
-************************************************************************/
-PUBLIC RETCODE
-odbc_connect_by_filedsn (ODBC_CONNECTION * conn,
-			 const char *file_dsn,
-			 const char *db_name,
-			 const char *user,
-			 const char *password,
-			 const char *server, const char *port)
-{
-  int connhd;
-  RETCODE rc;
-  int cci_rc;
-  T_CCI_ERROR cci_err_buf;
-
-  conn->data_source = UT_MAKE_STRING (file_dsn, -1);
-  conn->db_name = UT_MAKE_STRING (db_name, -1);
-  conn->user = UT_MAKE_STRING (user, -1);
-  conn->password = UT_MAKE_STRING (password, -1);
-  conn->server = UT_MAKE_STRING (server, -1);
-  conn->port = atoi (port);
-
-  connhd = cci_connect (conn->server, conn->port, conn->db_name,
-			conn->user, conn->password);
-
-  if (connhd < 0)
-    goto error;
-
-  conn->connhd = connhd;
-
-  rc = get_db_version (conn);
-  ERROR_GOTO (rc, error);
-
-  // disconnect with cas
-  if (conn->connhd > 0)
-    {
-      cci_rc = cci_end_tran (conn->connhd, CCI_TRAN_ROLLBACK, &cci_err_buf);
-      if (cci_rc < 0)
-	{
-	  odbc_set_diag_by_cci (conn->diag, cci_rc, cci_err_buf.err_msg);
-	  return ODBC_ERROR;
-	}
-    }
-
-  /*
-     rc = set_isolation_level(conn);
-     ERROR_GOTO(rc, error);
-   */
-
-  return ODBC_SUCCESS;
-
-error:
-  // CHECK : error messaging
-  return ODBC_ERROR;
-}
-
 /************************************************************************
 * name: odbc_connect_new
 * arguments:
@@ -788,7 +755,8 @@ odbc_connect_new (ODBC_CONNECTION * conn,
 		  const char *db_name,
 		  const char *user,
 		  const char *password,
-		  const char *server, int port, int fetch_size)
+		  const char *server, int port, int fetch_size,
+		  const char *charset)
 {
   int connhd;
   RETCODE rc;
@@ -801,6 +769,7 @@ odbc_connect_new (ODBC_CONNECTION * conn,
   NA_FREE (conn->user);
   NA_FREE (conn->password);
   NA_FREE (conn->server);
+  NA_FREE (conn->charset);
 
   pt = data_source == NULL ? "" : data_source;
   conn->data_source = UT_MAKE_STRING (pt, -1);
@@ -816,6 +785,9 @@ odbc_connect_new (ODBC_CONNECTION * conn,
 
   pt = server == NULL ? "" : server;
   conn->server = UT_MAKE_STRING (pt, -1);
+
+  pt = charset == NULL ? "" : charset;
+  conn->charset = UT_MAKE_STRING (pt, -1);
 
   if (port > 0)
     {
@@ -834,6 +806,11 @@ odbc_connect_new (ODBC_CONNECTION * conn,
 
   conn->connhd = connhd;
 
+  if (conn->charset[0] != '\0')
+    {
+      cci_set_charset(connhd, conn->charset);
+    }
+
   rc = get_db_version (conn);
   ERROR_GOTO (rc, error);
 
@@ -843,7 +820,7 @@ odbc_connect_new (ODBC_CONNECTION * conn,
       cci_rc = cci_end_tran (conn->connhd, CCI_TRAN_ROLLBACK, &cci_err_buf);
       if (cci_rc < 0)
 	{
-	  odbc_set_diag_by_cci (conn->diag, cci_rc, cci_err_buf.err_msg);
+	  odbc_set_diag_by_cci (conn->diag, cci_rc, &cci_err_buf);
 	  return ODBC_ERROR;
 	}
     }
@@ -910,7 +887,7 @@ odbc_disconnect (ODBC_CONNECTION * conn)
   return ODBC_SUCCESS;
 
 error:
-  odbc_set_diag_by_cci (conn->diag, cci_rc, cci_err_buf.err_msg);
+  odbc_set_diag_by_cci (conn->diag, cci_rc, &cci_err_buf);
   return ODBC_ERROR;
 }
 
@@ -937,7 +914,7 @@ odbc_auto_commit (ODBC_CONNECTION * conn)
 	  cci_rc = cci_end_tran (conn->connhd, CCI_TRAN_COMMIT, &cci_err_buf);
 	  if (cci_rc < 0)
 	    {
-	      odbc_set_diag_by_cci (conn->diag, cci_rc, cci_err_buf.err_msg);
+	      odbc_set_diag_by_cci (conn->diag, cci_rc, &cci_err_buf);
 	      return ODBC_ERROR;
 	    }
 	}
@@ -956,9 +933,9 @@ odbc_auto_commit (ODBC_CONNECTION * conn)
  ************************************************************************/
 PUBLIC RETCODE
 odbc_native_sql (ODBC_CONNECTION * conn,
-		 SQLCHAR *in_stmt_text,
-		 SQLCHAR *out_stmt_text,
-		 SQLINTEGER buffer_length, SQLINTEGER *out_stmt_length)
+		 SQLCHAR * in_stmt_text,
+		 SQLCHAR * out_stmt_text,
+		 SQLINTEGER buffer_length, SQLINTEGER * out_stmt_length)
 {
   RETCODE rc = ODBC_SUCCESS;
   SQLLEN tmp_length;
@@ -975,292 +952,41 @@ odbc_native_sql (ODBC_CONNECTION * conn,
   return rc;
 }
 
-
-/************************************************************************
-* name: odbc_get_functions
-* arguments:
-* returns/side-effects:
-* description:
-* NOTE:
-************************************************************************/
 PUBLIC RETCODE
 odbc_get_functions (ODBC_CONNECTION * conn,
 		    unsigned short function_id, unsigned short *supported_ptr)
 {
+  int i;
+  int set_size = GET_SET_SIZE (functions_support_info_set);
 
-  switch (function_id)
+  if (function_id == SQL_API_ALL_FUNCTIONS)
     {
-    case SQL_API_ALL_FUNCTIONS:
       /* Yet not implemented */
       memset (supported_ptr, 0, 100);
-      break;
-    case SQL_API_ODBC3_ALL_FUNCTIONS:
-      memset (supported_ptr, 0, SQL_API_ODBC3_ALL_FUNCTIONS_SIZE);
-
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLALLOCHANDLE);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLBINDCOL);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLBINDPARAMETER);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLCANCEL);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLCLOSECURSOR);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLCOLATTRIBUTE);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLCOLATTRIBUTES);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLCONNECT);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLCOPYDESC);
-      // (DM) SQL_FUNC_SET(supported_ptr,SQL_API_SQLDATASOURCES );
-      // (DM) SQL_FUNC_SET(supported_ptr,SQL_API_SQLDRIVERS );
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLDESCRIBECOL);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLDISCONNECT);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLDRIVERCONNECT);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLENDTRAN);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLEXECDIRECT);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLEXECUTE);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLEXTENDEDFETCH);	// for 2.x backward compatibility
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLFETCH);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLFETCHSCROLL);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLFREEHANDLE);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLFREESTMT);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLGETCONNECTATTR);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLGETCURSORNAME);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLGETDATA);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLGETDESCFIELD);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLGETDESCREC);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLGETDIAGFIELD);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLGETDIAGREC);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLGETENVATTR);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLGETFUNCTIONS);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLGETINFO);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLGETSTMTATTR);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLGETTYPEINFO);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLNUMPARAMS);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLNUMRESULTCOLS);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLPARAMDATA);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLPREPARE);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLPUTDATA);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLROWCOUNT);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLSETCONNECTATTR);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLSETCURSORNAME);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLSETDESCFIELD);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLSETDESCREC);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLSETENVATTR);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLSETSTMTATTR);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLCOLUMNS);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLSPECIALCOLUMNS);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLTABLES);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLTRANSACT);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLSTATISTICS);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLNATIVESQL);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLDRIVERCONNECT);
-
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLMORERESULTS);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLBULKOPERATIONS);
-      SQL_FUNC_SET (supported_ptr, SQL_API_SQLSETPOS);
-
-      // Not supported
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLBROWSECONNECT );
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLCOLUMNPRIVILEGES );
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLDESCRIBEPARAM );
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLFOREIGNKEYS );
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLPRIMARYKEYS );
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLPROCEDURECOLUMNS );
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLPROCEDURES );
-
-      //SQL_FUNC_SET(supported_ptr,SQL_API_SQLTABLEPRIVILEGES );
-      break;
-
-    case SQL_API_SQLALLOCHANDLE:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLBINDCOL:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLCANCEL:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLCLOSECURSOR:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLCOLATTRIBUTE:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLCONNECT:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLCOPYDESC:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLDATASOURCES:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLDESCRIBECOL:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLDISCONNECT:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLDRIVERS:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLENDTRAN:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLEXECDIRECT:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLEXECUTE:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLEXTENDEDFETCH:	// for 2.x backward compatibility
-      *supported_ptr = SQL_TRUE;
-      *supported_ptr = SQL_FALSE;
-      break;
-    case SQL_API_SQLFETCH:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLFETCHSCROLL:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLFREEHANDLE:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLFREESTMT:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLGETCONNECTATTR:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLGETCURSORNAME:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLGETDATA:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLGETDESCFIELD:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLGETDESCREC:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLGETDIAGFIELD:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLGETDIAGREC:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLGETENVATTR:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLGETFUNCTIONS:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLGETINFO:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLGETSTMTATTR:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLGETTYPEINFO:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLNUMRESULTCOLS:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLPARAMDATA:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLPREPARE:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLPUTDATA:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLROWCOUNT:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLSETCONNECTATTR:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLSETCURSORNAME:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLSETDESCFIELD:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLSETDESCREC:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLSETENVATTR:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLSETSTMTATTR:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLCOLUMNS:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLSPECIALCOLUMNS:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLTABLES:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLSTATISTICS:
-      *supported_ptr = SQL_TRUE;
-      break;
-
-    case SQL_API_SQLBINDPARAMETER:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLDRIVERCONNECT:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLNATIVESQL:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLNUMPARAMS:
-      *supported_ptr = SQL_TRUE;
-      break;
-
-    case SQL_API_SQLMORERESULTS:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLBULKOPERATIONS:
-      *supported_ptr = SQL_TRUE;
-      break;
-    case SQL_API_SQLSETPOS:
-      *supported_ptr = SQL_TRUE;
-      break;
-
-      // FALSE
-    case SQL_API_SQLBROWSECONNECT:
-      *supported_ptr = SQL_FALSE;
-      break;
-    case SQL_API_SQLCOLUMNPRIVILEGES:
-      *supported_ptr = SQL_FALSE;
-      break;
-    case SQL_API_SQLDESCRIBEPARAM:
-      *supported_ptr = SQL_FALSE;
-      break;
-    case SQL_API_SQLFOREIGNKEYS:
-      *supported_ptr = SQL_FALSE;
-      break;
-
-    case SQL_API_SQLPRIMARYKEYS:
-      *supported_ptr = SQL_FALSE;
-      break;
-    case SQL_API_SQLPROCEDURECOLUMNS:
-      *supported_ptr = SQL_FALSE;
-      break;
-    case SQL_API_SQLPROCEDURES:
-      *supported_ptr = SQL_FALSE;
-      break;
-
-    case SQL_API_SQLTABLEPRIVILEGES:
-      *supported_ptr = SQL_FALSE;
-      break;
-    default:
-      *supported_ptr = SQL_FALSE;
-      break;
     }
+  else if (function_id == SQL_API_ODBC3_ALL_FUNCTIONS)
+    {
+      memset (supported_ptr, 0, SQL_API_ODBC3_ALL_FUNCTIONS_SIZE);
+      for (i = 0; i < set_size; i++)
+	{
+	  if (functions_support_info_set[i].supported == SQL_TRUE)
+	    {
+	      SQL_FUNC_SET (supported_ptr,
+			    functions_support_info_set[i].func_id);
+	    }
+	}
+    }
+  else
+    {
+      for (i = 0; i < set_size; i++)
+	{
+	  if (functions_support_info_set[i].func_id == function_id)
+	    {
+	      *supported_ptr = functions_support_info_set[i].supported;
+	    }
+	}
+    }
+
   return ODBC_SUCCESS;
 }
 
@@ -1276,7 +1002,7 @@ PUBLIC RETCODE
 odbc_get_info (ODBC_CONNECTION * conn,
 	       SQLUSMALLINT info_type,
 	       SQLPOINTER info_value_ptr,
-	       SQLSMALLINT buffer_length, SQLLEN *string_length_ptr)
+	       SQLSMALLINT buffer_length, SQLLEN * string_length_ptr)
 {
   RETCODE rc = ODBC_SUCCESS;
   char buf[1024];
@@ -1459,10 +1185,10 @@ odbc_get_info (ODBC_CONNECTION * conn,
 
     case SQL_CONVERT_BIGINT:
       if (info_value_ptr != NULL)
-        *(unsigned long *) info_value_ptr = SQL_CVT_DECIMAL | SQL_CVT_DOUBLE |
-                SQL_CVT_FLOAT | SQL_CVT_INTEGER | SQL_CVT_NUMERIC | SQL_CVT_REAL |
-                SQL_CVT_SMALLINT | SQL_CVT_CHAR | SQL_CVT_LONGVARCHAR |
-                SQL_CVT_VARCHAR | SQL_CONVERT_BIGINT;
+	*(unsigned long *) info_value_ptr = SQL_CVT_DECIMAL | SQL_CVT_DOUBLE |
+	  SQL_CVT_FLOAT | SQL_CVT_INTEGER | SQL_CVT_NUMERIC | SQL_CVT_REAL |
+	  SQL_CVT_SMALLINT | SQL_CVT_CHAR | SQL_CVT_LONGVARCHAR |
+	  SQL_CVT_VARCHAR | SQL_CONVERT_BIGINT;
       if (string_length_ptr != NULL)
 	*string_length_ptr = sizeof (unsigned long);
       break;
@@ -2881,7 +2607,9 @@ get_dsn_info (const char *dsn,
 	      char *db_name, int db_name_len,
 	      char *user, int user_len,
 	      char *pwd, int pwd_len,
-	      char *server, int server_len, int *port, int *fetch_size)
+	      char *server, int server_len, int *port, int *fetch_size,
+	      char *charset, int charset_len)
+
 {
   char buf[1024];
   int rcn;			// return char number
@@ -2959,6 +2687,17 @@ get_dsn_info (const char *dsn,
 	*fetch_size = 0;
       else
 	*fetch_size = atoi (buf);
+    }
+
+  if (charset != NULL)
+    {
+      rcn =
+	SQLGetPrivateProfileString (dsn, KEYWORD_CHARSET, "", buf,
+				    sizeof (buf), "ODBC.INI");
+      if (rcn == 0)
+	buf[0] = '\0';
+      else
+        str_value_assign (buf, charset, server_len, NULL);
     }
 
   return 0;
@@ -3062,7 +2801,7 @@ set_isolation_level (ODBC_CONNECTION * conn)
 				 &isolation_level, &cci_err_buf);
   if (cci_rc < 0)
     {
-      odbc_set_diag_by_cci (conn->diag, cci_rc, cci_err_buf.err_msg);
+      odbc_set_diag_by_cci (conn->diag, cci_rc, &cci_err_buf);
       return ODBC_ERROR;
     }
 
@@ -3098,7 +2837,7 @@ get_db_version (ODBC_CONNECTION * conn)
 
   if (cci_rc < 0)
     {
-      odbc_set_diag_by_cci (conn->diag, cci_rc, NULL);
+      odbc_set_diag_by_cci (conn->diag, cci_rc, &error);
       return ODBC_ERROR;
     }
 

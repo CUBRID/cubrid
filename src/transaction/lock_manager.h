@@ -41,7 +41,7 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
-#include "thread_impl.h"
+#include "thread.h"
 
 #define LK_GRANTED                           1
 #define LK_NOTGRANTED                        2
@@ -87,7 +87,7 @@ struct lk_entry
   LK_ACQUISITION_HISTORY *history;	/* lock acquisition history         */
   LK_ACQUISITION_HISTORY *recent;	/* last node of history list        */
   int ngranules;		/* number of finer granules         */
-  int mlk_count;		/* number of instant lock requests  */
+  int instant_lock_count;	/* number of instant lock requests  */
   unsigned char scanid_bitset[1];	/* PRM_LK_MAX_SCANID_BIT/8];       */
 #else				/* not SERVER_MODE */
   int dummy;
@@ -144,6 +144,8 @@ extern int lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid,
 		      int *scanid_bit);
 extern int lock_classes_lock_hint (THREAD_ENTRY * thread_p,
 				   LC_LOCKHINT * lockhint);
+extern void lock_remove_object_lock (THREAD_ENTRY * thread_p, const OID * oid,
+				     const OID * class_oid, LOCK lock);
 extern void lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid,
 				const OID * class_oid, LOCK lock, int force);
 extern void lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p,
@@ -154,7 +156,6 @@ extern void lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p,
 					   LC_LOCKHINT * lockhint);
 extern void lock_unlock_all (THREAD_ENTRY * thread_p);
 extern void lock_unlock_by_isolation_level (THREAD_ENTRY * thread_p);
-extern void lock_demote_all_update_inst_locks (THREAD_ENTRY * thread_p);
 extern LOCK lock_get_object_lock (const OID * oid, const OID * class_oid,
 				  int tran_index);
 extern bool lock_has_xlock (THREAD_ENTRY * thread_p);
@@ -168,7 +169,8 @@ extern void lock_force_timeout_lock_wait_transactions (unsigned short
 extern bool lock_force_timeout_expired_wait_transactions (void *thrd_entry);
 extern void
 lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
-			      bool (*fun) (const OID * oid, void *args),
+			      bool (*fun) (const OID * class_oid,
+					   const OID * oid, void *args),
 			      void *args);
 extern bool lock_check_local_deadlock_detection (void);
 extern void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
@@ -195,5 +197,6 @@ extern int lock_add_composite_lock (THREAD_ENTRY * thread_p,
 extern int lock_finalize_composite_lock (THREAD_ENTRY * thread_p,
 					 LK_COMPOSITE_LOCK * comp_lock);
 extern void lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock);
-
+extern bool lock_is_class_lock_escalated (LOCK class_lock,
+					  LOCK lock_escalation);
 #endif /* _LOCK_MANAGER_H_ */

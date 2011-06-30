@@ -36,13 +36,12 @@ EXECUTABLE_DIR = $(SRC)/executables
 BROKER_DIR = $(SRC)/broker
 CCI_DIR = $(SRC)/cci
 DBMT_DIR = $(SRC)/dbmt
+SESSION_DIR = $(SRC)/session
 
-BISON = bison
 FLEX = flex
 
-INCLUDES = @SRC_INC@ -I$(HEAPLAYER_DIR)/util @EXT_INC@ @JAVA_INC@
-DEFS += @SYS_DEFS@ @SA_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
-LIBS += @CAS_LIB@ @EXT_LIBS@ @SYS_LIBS@
+AM_CPPFLAGS = @SRC_INC@ -I$(HEAPLAYER_DIR)/util @EXT_INC@ @JAVA_INC@ \
+	@SYS_DEFS@ @SA_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
 
 #BUILT_SOURCES = cnvlex.c
 #CLEANFILES = cnvlex.c
@@ -72,6 +71,7 @@ $(EXECUTABLE_DIR)/loader_lexer.c : $(EXECUTABLE_DIR)/loader_lexer.l
 #	$(SRC)/api/api_handle.c \
 #	$(SRC)/api/db_stub.c \
 #	$(SRC)/api/cubrid_api.c
+
 EXECUTABLE_SOURCES = \
 	$(EXECUTABLE_DIR)/csql.c \
 	$(EXECUTABLE_DIR)/csql_session.c \
@@ -92,6 +92,7 @@ EXECUTABLE_SOURCES = \
 	$(EXECUTABLE_DIR)/loader_object_table.c \
 	$(EXECUTABLE_DIR)/loader_grammar.c \
 	$(EXECUTABLE_DIR)/loader_lexer.c 
+
 COMPAT_SOURCES = \
 	$(COMPAT_DIR)/cnv.c \
 	$(COMPAT_DIR)/cnvlex.c \
@@ -99,6 +100,7 @@ COMPAT_SOURCES = \
 	$(COMPAT_DIR)/db_class.c \
 	$(COMPAT_DIR)/db_date.c \
 	$(COMPAT_DIR)/db_info.c	\
+	$(COMPAT_DIR)/db_elo.c	\
 	$(COMPAT_DIR)/db_macro.c \
 	$(COMPAT_DIR)/db_obj.c \
 	$(COMPAT_DIR)/db_old.c \
@@ -107,7 +109,9 @@ COMPAT_SOURCES = \
 	$(COMPAT_DIR)/db_temp.c	\
 	$(COMPAT_DIR)/db_vdb.c \
 	$(COMPAT_DIR)/db_virt.c
+
 BASE_SOURCES = \
+	$(BASE_DIR)/dynamic_array.c \
 	$(BASE_DIR)/porting.c \
 	$(BASE_DIR)/area_alloc.c \
 	$(BASE_DIR)/fixed_alloc.c \
@@ -115,6 +119,7 @@ BASE_SOURCES = \
 	$(BASE_DIR)/databases_file.c \
 	$(BASE_DIR)/encryption.c \
 	$(BASE_DIR)/sha1.c \
+	$(BASE_DIR)/md5.c \
 	$(BASE_DIR)/error_manager.c \
 	$(BASE_DIR)/language_support.c \
 	$(BASE_DIR)/memory_hash.c \
@@ -126,6 +131,10 @@ BASE_SOURCES = \
 	$(BASE_DIR)/message_catalog.c \
 	$(BASE_DIR)/dynamic_load.c \
 	$(BASE_DIR)/object_representation_sr.c \
+	$(BASE_DIR)/ieeefp.h \
+	$(BASE_DIR)/mprec.h \
+	$(BASE_DIR)/mprec.c \
+	$(BASE_DIR)/dtoa.c \
 	$(BASE_DIR)/adjustable_array.c \
 	$(BASE_DIR)/chartype.c \
 	$(BASE_DIR)/condition_handler.c \
@@ -147,8 +156,10 @@ CONNECTION_SOURCES = \
 	$(CONNECTION_DIR)/tcp.c \
 	$(CONNECTION_DIR)/client_support.c \
 	$(CONNECTION_DIR)/connection_support.c
+
 COMMUNICATION_SOURCES = \
 	$(COMMUNICATION_DIR)/network_interface_cl.c
+
 PARSER_SOURCES = \
 	$(PARSER_DIR)/csql_grammar.c \
 	$(PARSER_DIR)/csql_lexer.c \
@@ -169,12 +180,14 @@ PARSER_SOURCES = \
 	$(PARSER_DIR)/xasl_generation.c \
 	$(PARSER_DIR)/scanner_support.c \
 	$(PARSER_DIR)/view_transform.c
+
 OPTIMIZER_SOURCES = \
 	$(OPTIMIZER_DIR)/query_bitset.c \
 	$(OPTIMIZER_DIR)/query_graph.c \
 	$(OPTIMIZER_DIR)/query_planner.c \
 	$(OPTIMIZER_DIR)/plan_generation.c \
 	$(OPTIMIZER_DIR)/query_rewrite.c
+
 QUERY_SOURCES = \
 	$(QUERY_DIR)/execute_schema.c \
 	$(QUERY_DIR)/execute_statement.c \
@@ -196,14 +209,10 @@ QUERY_SOURCES = \
 	$(QUERY_DIR)/query_opfunc.c \
 	$(QUERY_DIR)/xasl_to_stream.c \
 	$(QUERY_DIR)/stream_to_xasl.c
+
 OBJECT_SOURCES = \
-	$(OBJECT_DIR)/esm_class.c \
-	$(OBJECT_DIR)/glo_class.c \
-	$(OBJECT_DIR)/elo_holder.c \
-	$(OBJECT_DIR)/elo_recovery.c \
+	$(OBJECT_DIR)/elo.c \
 	$(OBJECT_DIR)/authenticate.c \
-	$(OBJECT_DIR)/elo_class.c \
-	$(OBJECT_DIR)/fbo_class.c \
 	$(OBJECT_DIR)/object_print.c \
 	$(OBJECT_DIR)/object_accessor.c \
 	$(OBJECT_DIR)/object_template.c \
@@ -220,9 +229,11 @@ OBJECT_SOURCES = \
 	$(OBJECT_DIR)/transform.c \
 	$(OBJECT_DIR)/object_domain.c \
 	$(OBJECT_DIR)/work_space.c
+
 JSP_SOURCES = \
 	$(JSP_DIR)/jsp_cl.c \
 	$(JSP_DIR)/jsp_sr.c
+
 TRANSACTION_SOURCES = \
 	$(TRANSACTION_DIR)/log_compress.c \
 	$(TRANSACTION_DIR)/boot_cl.c \
@@ -246,6 +257,7 @@ TRANSACTION_SOURCES = \
 	$(TRANSACTION_DIR)/transaction_sr.c \
 	$(TRANSACTION_DIR)/wait_for_graph.c \
 	$(TRANSACTION_DIR)/log_writer.c
+
 STORAGE_SOURCES = \
 	$(STORAGE_DIR)/btree.c \
 	$(STORAGE_DIR)/btree_load.c \
@@ -266,7 +278,15 @@ STORAGE_SOURCES = \
 	$(STORAGE_DIR)/statistics_cl.c \
 	$(STORAGE_DIR)/statistics_sr.c \
 	$(STORAGE_DIR)/slotted_page.c \
-	$(STORAGE_DIR)/external_sort.c
+	$(STORAGE_DIR)/external_sort.c \
+	$(STORAGE_DIR)/es_common.c \
+	$(STORAGE_DIR)/es.c \
+	$(STORAGE_DIR)/es_posix.c \
+	$(STORAGE_DIR)/es_owfs.c
+
+SESSION_SOURCES = \
+	$(SESSION_DIR)/session.c \
+	$(SESSION_DIR)/session_sr.c
 
 lib_LTLIBRARIES = libcubridsa.la
 libcubridsa_la_SOURCES = \
@@ -282,8 +302,16 @@ libcubridsa_la_SOURCES = \
 	$(OBJECT_SOURCES) \
 	$(JSP_SOURCES) \
 	$(TRANSACTION_SOURCES) \
-	$(STORAGE_SOURCES)
+	$(STORAGE_SOURCES) \
+	$(ES_SOURCES) \
+	$(SESSION_SOURCES)
 #	$(API_SOURCES)
 libcubridsa_la_LDFLAGS = -version-number @LT_VERSION@
-libcubridsa_la_LIBADD = $(LIBADD_DL)
+libcubridsa_la_LIBADD = @CAS_LIB@ @EXT_LIBS@ @SYS_LIBS@ $(LIBADD_DL)
 libcubridsa_la_LINK = $(LINK)
+
+VERSIONED_FILES = \
+	$(BASE_DIR)/release_string.c
+
+$(VERSIONED_FILES): $(top_srcdir)/BUILD_NUMBER
+	touch $@

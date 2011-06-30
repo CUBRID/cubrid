@@ -821,6 +821,12 @@ loader_process_object_ref (LDR_OBJECT_REF * ref, int type)
   char *class_name;
   DB_OBJECT *ref_class = NULL;
 
+  assert (ref != NULL);
+  if (ref == NULL)
+    {
+      return;
+    }
+
   if (ref->class_id && ref->class_id->val)
     {
       ldr_act_set_ref_class_id (ldr_Current_context,

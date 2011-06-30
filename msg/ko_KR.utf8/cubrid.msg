@@ -49,7 +49,7 @@ $set 4 MSGCAT_SET_PARAMETER
 7 HOME 환경 변수가 설정되지 않았습니다.
 8 필요한 인자 "%s"의 값이 지정되지 않았습니다.
 9 설정 파일 "%s" 을(를) 열 수 없습니다: %s
-10 startup 파일 %2$s의 %1$d 라인:
+10 '%3$s' 파일 %2$d 줄의 '%1$s' 파라미터 : 
 11 환경 변수 %s:
 12 알 수 없는 키워드입니다.
 13 값의 타입이 인자의 타입과 일치하지 않습니다.
@@ -61,6 +61,8 @@ $set 4 MSGCAT_SET_PARAMETER
 19 값이 범위를 넘었습니다. 기본 설정 값으로 재설정합니다.
 20 키워드 = '%s'    값 = %d    기본 설정 값 = %d\n
 21 키워드 = '%s'    값 = %f    기본 설정 값 = %f\n
+22 권장되지 않는 파라미터 입니다.
+23 '%s'와 '%s' 시스템 설정은 같이 사용할 수 없습니다.\n
 
 $set 5 MSGCAT_SET_ERROR
 1 에러 코드 %1$d에 대한 메시지가 없습니다.
@@ -80,7 +82,7 @@ $set 5 MSGCAT_SET_ERROR
 15 디바이스의 스페이스가 부족하여 볼륨 "%2$s"의 %1$d 페이지를 쓸 수 없습니다.
 16 "%1$s" 에서 "%2$s"으로 디스크 볼륨의 이름을 바꿀 수 없습니다.
 17 내부 에러: 이미 해제된 볼륨 "%2$s"의 %1$d 페이지에 대한 읽기 시도. 
-18 모든 페이지 버퍼가 fix 되었습니다.
+18 모든 페이지 버퍼가 fix 되었습니다 (LRU: %1$d).
 19 내부 에러: pageptr = %1$p of page %2$d of volume "%3$s" is not fixed.
 20 내부 에러: unknown pageptr = %1$p.
 21 내부 에러: unknown sector %1$d of volume "%2$s".
@@ -140,10 +142,10 @@ $set 5 MSGCAT_SET_ERROR
 75 트랜잭션이(인덱스  %1$d, %2$s@%3$s|%4$d) %9$s 클래스의 %6$d|%7$d|%8$d 인스턴스에 대한 %5$s 락 대기 중에 타임아웃 되었습니다. 사용자 %10$s 이(가) 종료할 때까지 기다리고 있었습니다.
 76 트랜잭션이(인덱스 %1$d, %2$s@%3$s|%4$d) %6$d|%7$d 페이지에 대한 %5$s 락 대기 중에 타임아웃 되었습니다. 사용자 %8$s 이(가) 페이지 락을 해제할 때까지 기다리고 있었습니다.
 77 내부에러: all buffers are fixed.
-78 내부에러: an I/O error occurred while reading logical log page %1$d (physical page %2$d) of "%3$s".
-79 내부에러: an I/O error occurred while writing logical log page %1$d (physical page %2$d) of "%3$s".
-80 "%3$s"의 logical log page %1$d (physical page %2$d) 쓰는 도중 시스템 디바이스의 공간이 부족합니다. %4$d 바이트 이상은 쓸 수 없습니다. 
-81 내부에러: logical log page %1$d may be corrupted.
+78 내부에러: an I/O error occurred while reading logical log page %1$lld (physical page %2$lld) of "%3$s".
+79 내부에러: an I/O error occurred while writing logical log page %1$lld (physical page %2$lld) of "%3$s".
+80 "%3$s"의 logical log page %1$lld (physical page %2$lld) 쓰는 도중 시스템 디바이스의 공간이 부족합니다. %4$d 바이트 이상은 쓸 수 없습니다. 
+81 내부에러: logical log page %1$lld may be corrupted.
 82 로그 디스크 볼륨/파일 "%1$s"을(를) 마운트할 수 없습니다.  
 83 경로 "%1$s"의 길이와 로그 prefix "%2$s"의 길이를 더한 것이 %3$d 보다 작아야 합니다.
 84 로그 prefix "%1$s"의 길이가 너무 깁니다. %2$d 보다 작아야 합니다.
@@ -159,8 +161,8 @@ $set 5 MSGCAT_SET_ERROR
 94 경고: postpone logging is ignored during redo recovery and normal rollbacks.
 95 경고: undo logging is ignored during recovery and normal rollback.
 96 "%1$s" 볼륨에 대해 media recovery가 필요합니다.
-97 내부 에러: unable to find log page %1$d in log archives.
-98 %2$d에서 %3$d까지의 페이지들을 archive하기 위한 archive 로그 "%1$s"를 생성할 수 없습니다.
+97 내부 에러: unable to find log page %1$lld in log archives.
+98 %2$lld에서 %3$lld까지의 페이지들을 archive하기 위한 archive 로그 "%1$s"를 생성할 수 없습니다.
 99 백업 디렉터리 정보 파일 "%1$s" 을(를) 생성할 수 없습니다.
 100 데이터베이스 "%1$s"를 백업할 수 없습니다.
 101 알 수 없는 사용자 파일 "%1$s" 입니다.
@@ -175,7 +177,7 @@ $set 5 MSGCAT_SET_ERROR
 110 Isolation 레벨 값은 %1$d 와(과) %2$d 사이가 되어야 합니다.
 111 당신의 트랜잭션은 서버 failure 혹은 모드 변경으로 인해 취소되었습니다.
 112 호스트 "%1$s" 은(는) 한글 CUBRID를 수행할 수 있는 권한이 없습니다.
-113 한글 CUBRID 서버를 재수행/초기화할 수 없습니다.
+113 한글 CUBRID 서버를 재수행/초기화할 수 없습니다. "%1$s"
 114 "%1$s"을 데이터베이스로 인식할 수 없습니다. 데이터베이스 볼륨/파일들은 외부에서 rename/copy 되었습니다. 
 115 데이터베이스 "%1$s" 이(가) 이미 존재합니다.
 116 데이터베이스 "%1$s" 이(가) 없거나, 파일 "databases.txt"를 액세스할 수 없습니다.
@@ -310,7 +312,7 @@ $set 5 MSGCAT_SET_ERROR
 245 "%1$s"은(는) 애트리뷰트 이름으로 사용되고 있습니다.
 246 "%1$s"은(는) 메소드 이름으로 사용되고 있습니다.
 247 스키마 관리자 내부 함수에 잘못된 인자 발생.
-248 애트리뷰트 도메인 "%1$s"은(는) UNIQUE 제약 조건 사용에 적합하지 않습니다.
+248 애트리뷰트 도메인 "%1$s"은(는) %2$s 제약 조건 사용에 적합하지 않습니다.
 249 클래스 "%1$s"에 주어진 오퍼레이션은 인스턴스를 생성하기 전에만 수행될 수 있습니다. 
 250 shared 값이 정의된 애트리뷰트 "%1$s"에 인덱스를 생성할 수 없습니다.
 251 메소드 "%1$s"에 signature %2$s이(가) 이미 존재합니다.
@@ -550,7 +552,7 @@ $set 5 MSGCAT_SET_ERROR
 485 프락시 클래스 "%1$s"의 인스턴스의 하나 이상의 object_id 애트리뷰트의 값이 NULL입니다.
 486 오브젝트는 수정 가능한 가상 클래스 인스턴스가 아닙니다.
 487 오브젝트는 인스턴스가 아닙니다.
-488 클래스의 애트리뷰트는 가상클래스 또는 프락시 가상 클래스가 될 수 없습니다. 
+488 클래스의 애트리뷰트는 가상 클래스 또는 프락시 가상 클래스가 될 수 없습니다. 
 489 프락시 가상 클래스의 애트리뷰트는 클래스, 가상 클래스, 또는 오브젝트가 될 수 없습니다.
 490 슈퍼 클래스 "%1$s"은(는) "%2$s"와(과) 같은 클래스 타입이어야 합니다.
 491 프락시 질의 명세 "%1$s"(으)로부터 개체 이름을 추출할 수 없습니다.
@@ -653,7 +655,7 @@ $ LOADDB
 587 "%1$s" volinfo 파일의 영구 볼륨 엔트리들이 정렬되어 있지 않습니다. 엔트리 %2$d: %3$d %4$s이(가) 순서를 벗어 났습니다.
 588 내부 에러: Failed optimizer assertion. Optimization aborted.
 589 사용자 이름 "%1$s"이(가) 잘못되었습니다.
-590 클래스의 애트리뷰트 도메인 "%1$s"은(는) 가상클래스 또는 프락시 가상 클래스일 수 없습니다. 
+590 클래스의 애트리뷰트 도메인 "%1$s"은(는) 가상 클래스 또는 프락시 가상 클래스일 수 없습니다. 
 591 프락시 가상 클래스의 애트리뷰트 도메인 "%1$s"은(는) 반드시 프락시 가상 클래스이어야 합니다.
 592 프락시 가상 클래스의 애트리뷰트 도메인 "%1$s"와(과) 프락시 가상 클래스는 동일한 로컬 데이터베이스에 존재해야 합니다.  
 593 갱신할 수 없는 가상 인스턴스가 회수되었으며 재생성할 수 없습니다.
@@ -1037,11 +1039,11 @@ $ LOADDB
 971 프로그램 '%1$s' (pid %2$d)가 호스트 '%4$s' (포트 %5$d) 의 데이터베이스 서버 '%3$s'에 접속되었습니다.
 972 프로그램 '%1$s' (pid %2$d)가 호스트 '%3$s'로부터 접속되었습니다. (트랜잭션 인덱스 %4$d)
 973 서버 상태 %1$s
-974 %2$d에서 %3$d까지의 페이지들을 archive하기 위한 archive 로그 "%1$s"를 생성했습니다.
+974 %2$lld에서 %3$lld까지의 페이지들을 archive하기 위한 archive 로그 "%1$s"를 생성했습니다.
 975 현재 버전의 복제는 하나의 UPDATE 질의로 여러 레코드를 변경시키는 것이 UNIQUE 제약을 위반하는 경우 허용되지 않습니다.
 976 내부 에러: 파일 테이블의 사이즈가 초과했습니다. (할당된 사이즈: %1$d, 사용된 사이즈: %2$d) 발생한 테이블 페이지의 위치 %3$d|%4$d (볼륨명: "%5$s")
-977 체크포인트가 시작되었습니다. (페이지 %d)
-978 체크포인트가 완료되었습니다. (페이지 %d)
+977 체크포인트가 시작되었습니다. (페이지 %lld)
+978 체크포인트가 완료되었습니다. (페이지 %lld)
 979 CONNECT BY 질의문 수행 중에 루프가 발견되었습니다.
 980 쓰레드가 %2$d msec 동안 %1$s 대기했습니다.
 981 트랜잭션 %1$d이 모니터링 통계값 %2$s의 임계치를 넘었습니다.
@@ -1067,17 +1069,81 @@ $ LOADDB
 1001 예상하지 못한 상황이 발생되었습니다. '%1$s'
 1002 현재 트랜잭션이 작업을 계속하는데 필요한 데이터베이스 락을 획득하지 못하였습니다.
 1003 동일한 이름으로 타입이 다른 제약 조건 '%1$s'이 존재합니다.
-1004 Please note that when using ALTER TABLE DROP FOREIGN KEY, MySQL will drop just the FOREIGN KEY constraint and keep its associated index. CUBRID drops both the constraint and its associated index.
-1005 현재 CUBRID 버전의 REPLACE문은 트리거와 같이 클라이언트 측에서 동작하는 기능을 지원하지 않습니다. 서버 측에서 수행하는 경우라면, insert_execution_mode의 설정을 확인하십시오.
-1006 현재 CUBRID 버전의 ON DUPLICATE KEY UPDATE문은 트리거와 같이 클라이언트 측에서 동작하는 기능을 지원하지 않습니다. 서버 측에서 수행하는 경우라면, insert_execution_mode의 설정을 확인하시고 hostvar_late_binding 파라미터 값이 no인지 확인하십시오. 
+1004 ALTER TABLE DROP FOREIGN KEY 문 수행 시 제약조건과 관련 인덱스가 모두 제거됩니다.
+1005 사용하지 않는 에러코드입니다.
+1006 사용하지 않는 에러코드입니다. 
 1007 UNIQUE, FOREIGN KEY, PRIMARY KEY 생성 시 컬럼에 prefix length를 명시할 수 없습니다.
 1008 파티션 테이블에 대해 인덱스 생성 시 컬럼에 prefix length를 명시할 수 없습니다.
 1009 COMPACTDB 작업이 이미 시작되었습니다. 
 1010 "%1$s" 타입 컬럼에 대해 prefix length를 명시하여 인덱스를 정의할 수 없습니다.
 1011 외래 키 제약 조건 %1$s 를 SHARED 속성 컬럼 %2$s에 추가할 수 없습니다.
 1012 NULL 타입 컬럼이 포함된 테이블은 생성할 수 없습니다.
-
-1013 마지막 에러
+1013 %s 타입 컬럼에 대한 DEFAULT나 SHARED 설정은 허용하지 않습니다.
+1014 %s 타입 컬럼에 대한 NOT NULL 설정은 허용하지 않습니다.
+1015 지정된 디렉터리 '%s'가 존재하지 않습니다.
+1016 %1$s 외부 저장소 오류 (%2$s)
+1017 외부 저장소 경로 '%s'가 올바르지 않습니다.
+1018 다른 종류의 저장소로는 파일을 복사할 수 없습니다. (원본 %1$s 대상 %2$s)
+1019 "databases.txt"에 경로가 지정되지 않아서 외부 저장소가 초기화되지 않았습니다.
+1020 외부 파일 "%s"을 찾을 수 없습니다.
+1021 다음 트랜잭션들 간에 교착상태가 발견되었습니다. %1$s
+1022 prefix length의 값(%ld)이 유효하지 않습니다.
+1023 Reserved error code for HA.
+1024 Reserved error code for HA.
+1025 Reserved error code for HA.
+1026 Reserved error code for HA.
+1027 log applier: '%1$s'에서 '%2$s'로 복제 반영 상태를 변경하지 못하였습니다.
+1028 log applier: Archive 로그에 예상치 못한 EOF 로그 레코드가 있습니다. LSA: %1$lld|%2$d.
+1029 log applier: 잘못된 로그 페이지/오프셋. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
+1030 log applier: 잘못된 로그 레코드. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
+1031 log applier: Schema 복제 로그 반영에 실패하였습니다. class: "%1$s", schema: "%2$s", internal error: %$3d.
+1032 log applier: Insert 복제 로그 반영에 실패하였습니다. class: "%1$s", key: "%2$s", internal error: %3$d.
+1033 log applier: Update 복제 로그 반영에 실패하였습니다. class: "%1$s", key: "%2$s", internal error: %3$d.
+1034 log applier: Delete 복제 로그 반영에 실패하였습니다. class: "%1$s", key: "%2$s", internal error: %3$d.
+1035 log applier: log applier의 메모리 크기(%1$d MB)가 최대 메모리 크기(%2$d MB) 보다 크거나 시작 시 메모리 크기(%3$d MB) 보다 2배 이상 증가하였습니다. required LSA: %4$lld|%5$d. last committed LSA: %6$lld|%7$d.
+1036 log applier: log applier가 시그널에 의해 종료됩니다.
+1037 log writer: log writer가 시그널에 의해 종료됩니다.
+1038 log applier: log applier가 시작되었습니다. required LSA: %1$lld|%2$d. last committed LSA: %3$lld|%4$d.
+1039 log writer: log writer가 시작되었습니다. mode: %1$d.
+1040 HA generic: %1$s.
+1041 구문 "%1$s" 수행 시 지정한 크기를 초과하는 문자열에 잘림이 발생하였습니다.
+1042 %1$d 바이트의 메모리를 요구하는 문자열 생성을 시도하였으나, 최대 허용 크기는 %2$d 바이트입니다.
+1043 애트리뷰트 "%1$s"를 변경할 수 없습니다. 서브클래스를 가진 클래스는 애트리뷰트의 속성을 변경할 수 없습니다.
+1044 애트리뷰트 "%1$s"를 변경할 수 없습니다. 분할 키인 애트리뷰트를 변경할 수 없습니다.
+1045 애트리뷰트 "%1$s"를 변경할 수 없습니다. 외래 키를 참조하거나 참조되는 애트리뷰트를 변경할 수 없습니다.
+1046 애트리뷰트 "%1$s"를 변경할 수 없습니다. 애트리뷰트의 도메인을 변경할 수 없습니다. 이 도메인으로의 변경은 지원하지 않습니다.
+1047 애트리뷰트 "%1$s"를 변경할 수 없습니다. 애트리뷰트의 도메인을 변경할 수 없습니다. 새로 변경할 애트리뷰트의 도메인은 존재하는 모든 애트리뷰트 값들을 표현하지 못하는 것 같습니다.
+1048 애트리뷰트 "%1$s"를 변경할 수 없습니다. 애트리뷰트의 도메인이 변경되면 애트리뷰트의 AUTO_INCREMENT를 변경할 수 없습니다.
+1049 애트리뷰트 "%1$s"를 변경할 수 없습니다. 애트리뷰트의 도메인을 변경하는 것이 시스템 파라미터의 설정에 의해 제한되었습니다.
+1050 애트리뷰트 "%1$s"를 변경할 수 없습니다. 애트리뷰트의 도메인을 변경할 수 없습니다. 애트리뷰트가 인덱스를 가지고 있습니다.
+1051 애트리뷰트 "%1$s"를 변경할 수 없습니다. 제약조건을 추가하기 위해 애트리뷰트를 변경할 수 없습니다. 존재하는 애트리뷰트 값들은 제약조건을 검사하지 않을 수 있습니다.
+1052 애트리뷰트 "%1$s"이 변경되지 않았습니다. 애트리뷰트 표현에서 유효한 변경을 감지할 수 없습니다.
+1053 REPLACE INTO... and INSERT ... ON DUPLICATE KEY UPDATE 문은 분할 클래스나 상속 관계를 포함하는 클래스를 지원하지 않습니다.
+1054 AUTO INCREMENT 제약조건의 새로운 값은 현재 값보다 크거나 같아야 합니다.
+1055 AUTO INCREMENT 제약조건의 새로운 값은 최대 값보다 작아야 합니다.
+1056 모호함을 피하기 위해, 테이블은 하나의 AUTO_INCREMENT 컬럼만 가져야 하며 (seed, increment) 부분이 없어야 합니다.
+1057 '%s' 타입의 애트리뷰트에 DEFAULT 값 없이 NOT NULL 제약조건을 추가할 수 없습니다.
+1058 ALTER TABLE .. CHANGE : 도메인 변경 : 변환 실패, 현재 시스템 파라미터 설정은 값의 잘림이나 오버플로우를 허용하지 않습니다.
+1059 ALTER TABLE .. CHANGE : 도메인 변경 : 변환 실패, 새 도메인의 기본값이 지정되었습니다.
+1060 ALTER TABLE .. CHANGE : 도메인 변경 : 변환 실패, 새 도메인의 최소값이 지정되었습니다.
+1061 ALTER TABLE .. CHANGE : 도메인 변경 : 변환 실패, 새 도메인의 최대값이 지정되었습니다.
+1062 애트리뷰트 "%1$s" 을 변경할 수 없습니다. 기본 키 여러 개를 지정할 수 없습니다.
+1063 "%1$s"에 대해 NOT NULL 제약조건을 추가할 수 없습니다. 이 애트리뷰트에 NULL 값이 존재합니다.
+1064 ALTER TABLE .. CHANGE : NOT NULL 추가 : 존재하는 모든 NULL 값은 도메인의 hard default 값으로 변경되었습니다.
+1065 애트리뷰트 "%1$s"을 변경할 수 없습니다. NOT NULL 제약조건을 추가할 수 없습니다. : 새로운 도메인에는 hard default 값이 없습니다.
+1066 세션이 만료되었습니다.
+1067 애트리뷰트 '%s'는 NOT NULL 제약조건과 DEFAULT NULL을 동시에 가질 수 없습니다.
+1068 트리거의 깊이는 최대 %d를 초과할 수 없습니다.
+1069 prepared statement 개수가 한계를 초과하였습니다.
+1070 세션 변수 '@%s' 이(가) 정의되지 않았습니다.
+1071 세션 변수가 제한된 개수를 초과하였습니다.
+1072 허용되지 않은 주소(%1$s)입니다.
+1073 파일(%1$s)의 내용이 유효하지 않습니다.
+1074 접근 권한 파일(%1$s)을 읽을 수 없습니다.
+1075 B+tree(vfid = (%1$d, %2$d), rt_pgid: %3$d)에 대한 내림차순 스캔이 우선순위에 의해 실패되었습니다.
+1076 시스템 설정을 읽을 수 없습니다.
+1077 '%3$s' 파일 %2$d 줄의 '%1$s' 파라미터 : 알수 없는 파라미터
+1078 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %d):
@@ -1125,7 +1191,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 17 잘못된 형식의 set system parameter 구문입니다.\n  set_system: SET SYSTEM PARAMETERS 'STRING' {, 'STRING_N'}*
 18 잘못된 형식의 set transaction 구문입니다.\n  set_transaction: SET TRANSACTION ISOLATION LEVEL expression {, expression}\n                 | SET TRANSACTION LOCK TIMEOUT timeout_spec
 19 잘못된 형식의 set trigger trace 구문입니다.\n  set_trigger: SET TRIGGER TRACE [ON|OFF|unsigned_integer|parameter|host_param]
-20 잘못된 형식의 set trigger depth 구문입니다.\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [INFINITE|unsigned_integer|parameter|host_param]
+20 잘못된 형식의 set trigger depth 구문입니다.\n  set_trigger: SET TRIGGER {MAXIMUM} DEPTH [unsigned_integer|parameter|host_param]
 21 잘못된 형식의 set optimization level 구문입니다.\n  SET OPTIMIZATION LEVEL {=|to} [ON|OFF|unsigned_integer|parameter|host_param]
 22 잘못된 형식의 set optimization cost 구문입니다.\n  SET OPTIMIZATION COST {of} 'STRING' {=|to} literal_
 23 잘못된 형식의 get optimization level 구문입니다.\n  GET OPTIMIZATION LEVEL {[INTO|TO] [host_param|parameter|identifier]}
@@ -1196,6 +1262,18 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 88 잘못된 형식의 truncate 함수입니다.\n TRUNCATE( expression, expression )
 89 잘못된 형식의 str_to_date 함수입니다.\n STR_TO_DATE( expression, string_literal )
 90 잘못된 형식의 current_datetime 함수입니다.\n CURRENT_DATETIME()
+91 잘못된 형식의 insert 함수입니다.\n INSERT( expression, expression , expression, expression )
+92 잘못된 형식의 elt 함수입니다.\n ELT( expression [, expression]... )
+93 잘못된 형식의 year 함수입니다.\n YEAR( expression )
+94 잘못된 형식의 month 함수입니다.\n MONTH( expression )
+95 잘못된 형식의 day 함수입니다.\n DAY( expression )
+96 잘못된 형식의 hour 함수입니다.\n HOUR( expression )
+97 잘못된 형식의 minute 함수입니다.\n MINUTE( expression )
+98 잘못된 형식의 second 함수입니다.\n SECOND( expression )
+99 잘못된 형식의 quarter 함수입니다.\n QUARTER( expression )
+100 잘못된 형식의 week 함수입니다.\n WEEK( expression ), WEEK( expression, expression)
+101 잘못된 형식의 time 함수입니다.\n TIME(expression)
+102 잘못된 형식의 group_concat 함수입니다.\n GROUP_CONCAT (([DISTINCT] {col | expr} \n [ORDER BY {col | unsigned_int} [ASC | DESC] ] \n [SEPARATOR str_val])
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1235,7 +1313,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 35 %s 을(를) 위한 속성 이름이 없습니다.
 36 속성 '%s' 은(는) 질의 명세의 컬럼 '%s' 와(과) 호환되지 않습니다.
 37 %s는 클래스가 아닙니다.
-38 가상클래스에서는 인덱스를 생성할 수 없습니다.
+38 가상 클래스에서는 인덱스를 생성할 수 없습니다.
 39 인덱스는 하나의 속성에 대해서 생성할 수 있습니다.
 40 FROM 절 내 다중 테이블이 유효하지 않은 형태로 사용되었습니다.
 41 시스템 에러 --  %s 에서 resolution 할 수 없습니다. 
@@ -1296,7 +1374,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 96 EXCEPT 절 내의 %s 은(는) 서브클래스가 아닙니다.
 97 ALL ... EXCEPT 리스트는 클래스 내 EVERYTHING 을 배제합니다.
 98 '%s' is inconsistent with\nother use of path selector '%s' or of path root '%s'.
-99 정의 되지 않은 인자입니다.
+99 정의되지 않은 인자입니다.
 100 인자가 오브젝트가 아닙니다.
 101 %s는 %s의 클래스 메소드나 속성이 아닙니다.
 102 질의 명세는 into-절을 가질 수 없습니다.
@@ -1327,7 +1405,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 127 set expression이 서브질의 내에 포함되어 있지 않으면 외부와 correlate된 \nset derived table에 대한 메소드를 호출할 수 없습니다.
 128 공유 속성 '%s'에 해당하는 질의 명세 컬럼은 NULL 이나 NA 이어야 합니다.
 129 뷰 정의시 애트리뷰트가 정의되지 않은 경우에는 질의 명세의 select 리스트에 NULL 컬럼이 포함될 수 없습니다.
-130 set 내에 가상클래스 오브젝트를 사용할 수 없습니다.
+130 set 내에 가상 클래스 오브젝트를 사용할 수 없습니다.
 131 문자열이 예상됩니다.
 132 문장 또는 문자열이 예상됩니다.
 133 프락시 object_id 속성 '%s'는 질의 명세의 컬럼으로 대응될 수 없습니다.
@@ -1336,7 +1414,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 136 %s에서 타입 %s로의 변환은 제공되지 않습니다.
 137 %s 은 유효한 비트 문자열이 아닙니다.
 138 '%s' 연산자는 타입 %s에 대해 사용할 수 없습니다.
-139 '%s' 연산자는 타입 %s, %s, 그리고 %s 에 대해 사용할 수 없습니다.
+139 '%s' 연산자는 %s, %s, %s 을 인자로 사용할 수 없습니다.
 140 연산자 '%s'의 피연산자는 동적 호스트 변수로 사용할 수 없습니다.
 141 generic 함수 %s에 너무 많은 인자가 주어졌습니다.\n오직 %d 개의 인자만이 허용됩니다.
 142 Selector {%s} class '%s'는 '%s'의 서브클래스가 아닙니다.
@@ -1408,6 +1486,21 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 208 애트리뷰트 '%s'에 대한 DEFAULT 값이 정의되지 않았습니다.
 209 SELECT DISTINCT가 지정된 경우에는 ORDER BY 항목이 SELECT 목록에 나타나야 합니다.
 210 질의 명세의 컬럼 정의에는 호스트 변수를 사용할 수 없습니다.
+211 %s는 ORDER BY 컬럼으로 올 수 없습니다.
+212 %s는 GROUP BY 컬럼으로 올 수 없습니다.
+213 '%2$s의 %1$s'는 컬럼의 타입으로 정의할 수 없습니다.
+214 prefix length의 값(%s)이 유효하지 않습니다.
+215 '%s' 함수는 다음 타입 - %s, %s, %s, %s 에 대해 정의되지 않았습니다.
+216 '%s' 함수는 다음 타입 - %s, %s, %s 에 대해 정의되지 않았습니다.
+217 '%s' 함수는 다음 타입 - %s, %s에 대해 정의되지 않았습니다.
+218 '%s' 함수는 다음 타입 -  %s에 대해 정의되지 않았습니다.
+219 '%s' 함수는 %s 타입의 인덱스 인자에 대해 정의되지 않았습니다.
+220 ALTER VIEW '%s' AS SELECT 는 서브클래스나 슈퍼클래스가 있는 뷰를 허용하지 않습니다. ALTER VIEW CHANGE QUERY를 사용하십시오.
+221 이 질의문은 뷰 애트리뷰트를 변경할 수 없습니다. 'ALTER VIEW name AS' 질의문을 사용하십시오.
+222 ORDER BY 항목이 GROUP_CONCAT 인자와 같은 표현식이거나 숫자(인자의 위치)여야 합니다.
+223 LIKE 구문에 이스케이프 문자가 지정되어야 합니다. '%1$s'과 '%2$s' 시스템 파라미터에 대해서는 매뉴얼을 참고하시기 바랍니다.
+224 INDEX NONE 절에서는 KEYLIMIT을 사용할 수 없습니다.
+225 이 구문에서는 세션 변수를 사용할 수 없습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.
@@ -1438,8 +1531,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 26 Virtual assignment target (%s) 은(는) 반전 시킬 수 없습니다.
 27 질의 명세에 지정된 컬럼이 클래스 %s의 속성보다 많습니다.
 28 질의 명세에 지정된 컬럼보다 클래스 %s의 속성이 많습니다.
-29 현재 버전은 aggregate 질의 명세 없는 가상클래스들에 대한 aggregation을 제한하고 있습니다.
-30 현재 버전은 union 질의 명세 없는 가상클래스들에 대한 aggregation을 제한하고 있습니다. 
+29 현재 버전은 aggregate 질의 명세 없는 가상 클래스들에 대한 aggregation을 제한하고 있습니다.
+30 현재 버전은 union 질의 명세 없는 가상 클래스들에 대한 aggregation을 제한하고 있습니다. 
 31 composition hierarchy 상의 가상 클래스(%s)는 update 가능해야 합니다.\n 실제 클래스 %s에 대해 update할 수 없습니다.
 32 (사용되지 않음)
 33 path expression '%s' 이(가) 잘못되어 있습니다.
@@ -1525,9 +1618,9 @@ $set 12 MSGCAT_SET_HELP
 15 \n예제 :\n
 16 메타 클래스 명
 17 클래스 명
-18 가상클래스(VClass) 명
+18 가상 클래스(VClass) 명
 $  Don't delete the space at the end of the next message
-19 ldb 상의 가상클래스 
+19 ldb 상의 가상 클래스 
 20 GENERAL
 
 $set 13 MSGCAT_SET_TRIGGER
@@ -1589,8 +1682,8 @@ $set 15 MSGCAT_SET_IO
  DB Creation Time: %s\
          Pagesize: %d\n
 7      Backup Level: %d (%s)\n\
-        Start_lsa: %d|%d\n\
-         Last_lsa: %d|%d\n
+        Start_lsa: %lld|%d\n\
+         Last_lsa: %lld|%d\n
 8       Backup Time: %s\
   Backup Unit Num: %d\n
 9  Database Volume name: %s\n\
@@ -1614,7 +1707,7 @@ $set 15 MSGCAT_SET_IO
 19 백업 볼륨 %s의 timestamp가 올바르지 않습니다.\n   (Timestamp: %s, 예상: %s).\n\n
 20 Backup volume information file error, line %d.\n
 21 Backup Volume Label: Level: %d, Unit: %d, Database %s, Backup Time: %s\n
-22      Previous Backup level: %d Time: %s (start_lsa was %d|%d)\n
+22      Previous Backup level: %d Time: %s (start_lsa was %lld|%d)\n
 23 데이터베이스 복구를 위해서 다음의 백업 볼륨이 필요합니다:\n\n
 24 백업 장치의 여유 공간이 없습니다. 계속 진행하기 위해서 새로운 백업 장치가 필요합니다:\n\n
 25 이전 백업 볼륨 이름: %s\n
@@ -1642,14 +1735,14 @@ $set 16 MSGCAT_SET_LOG
 6 COMMENT: 아카이브 로그 %s는 media crash가 발생하지 않는 한 필요하지 않습니다. \n
 7 COMMENT: 아카이브 로그 %s 부터 %s 까지는 media crash가 발생하지 않는 한 필요하지 않습니다. \n
 8 COMMENT: from renamed database = %s\n
-9 ARCHIVE: %d %s %d %d\n
+9 ARCHIVE: %d %s %lld %lld\n
 10 ARCHIVE:
 11 REMOVE: %d %s - %d %s . REASON: %s\n
 12 ACTIVE: %s %d pages\n
-13  Finish commit of tran_index %d with tranid = %d,\n just before LSA= %d|%d and at %s
-14  Finish abort of tran_index %d with tranid = %d,\n just before LSA= %d|%d and at %s
+13  Finish commit of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
+14  Finish abort of tran_index %d with tranid = %d,\n just before LSA= %lld|%d and at %s
 15  Incomplete Media Recovery is in effect. The database will be \n \
- recovered up to LSA point address of %d|%d. Last commit/abort \n \
+ recovered up to LSA point address of %lld|%d. Last commit/abort \n \
  point time is approximately at %s \n \
  The database has lost all information of transactions committed \n \
  after this time.\n
@@ -1677,5 +1770,5 @@ $set 16 MSGCAT_SET_LOG
 ** 경고: 에러 없이 데이터베이스가 복구되기 전까지는 데이터베이스를 사용하지 마시오. 
 27 입력 오류, %d와 %d 사이의 값을 선택하시오.\n
 28 복구 시점(%s)은 반드시 백업 시점(%s) 이후로 지정해야 합니다. \n
-29 COMMENT: 로그 페이지 %d 이전까지만 포함하는 아카이브 로그 %s 는 HA 유틸리티에서 더 이상 사용되지 않습니다.
+29 COMMENT: 아카이브 로그 %s는 로그 페이지 %lld 이전까지만 포함되어 HA 유틸리티에서 더 이상 사용되지 않습니다.
 30 아카이브 로그의 개수가 허용 최대치를 초과했습니다.

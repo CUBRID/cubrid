@@ -240,6 +240,9 @@
 
 #define FILEIO_END_OF_FILE                (1)
 
+#define FILEIO_MIN_FLUSH_PAGES_PER_SEC    10	/* minimum unit: #pages */
+#define FILEIO_PAGE_FLUSH_RATE            0.01	/* minimum unit: 1% */
+
 #if defined(WINDOWS)
 #define fileio_lock_file_write(fd, offset, whence, len) \
   fileio_lock_region(fd, F_TLOCK, offset, len)
@@ -267,14 +270,11 @@
 #define FILEIO_VOLINFO_INCREMENT        32
 
 #if !defined(SERVER_MODE)
-#undef MUTEX_LOCK
-#define MUTEX_LOCK(a, b) (a) = 0
-#undef MUTEX_UNLOCK
-#define MUTEX_UNLOCK(a)
-#undef MUTEX_INIT
-#define MUTEX_INIT(a)
-#undef MUTEX_DESTROY
-#define MUTEX_DESTROY(a)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)	0
+#define pthread_mutex_unlock(a)
+static int rv;
 #endif
 
 /* User input states when requesting relocation of a (backup) volume. */
@@ -300,6 +300,8 @@ struct fileio_backup_file_header
 {
   INT64 nbytes;
   VOLID volid;
+  short dummy1;			/* Dummy field for 8byte align */
+  int dummy2;			/* Dummy field for 8byte align */
   char vlabel[PATH_MAX];
 };
 
@@ -329,7 +331,7 @@ struct fileio_sys_volinfo
   FILEIO_LOCKF_TYPE lockf_type;
   char vlabel[PATH_MAX];
 #if defined(SERVER_MODE) && defined(WINDOWS)
-  MUTEX_T sysvol_mutex;
+  pthread_mutex_t sysvol_mutex;
 #endif				/* SERVER_MODE && WINDOWS */
   FILEIO_SYSTEM_VOLUME_INFO *next;
 };
@@ -338,7 +340,7 @@ struct fileio_sys_volinfo
 struct fileio_sys_volinfo_header
 {
 #if defined(SERVER_MODE)
-  MUTEX_T mutex;
+  pthread_mutex_t mutex;
 #endif				/* SERVER_MODE */
   int num_vols;
   FILEIO_SYSTEM_VOLUME_INFO anchor;
@@ -351,14 +353,13 @@ struct fileio_volinfo
   int vdes;
   FILEIO_LOCKF_TYPE lockf_type;
 #if defined(SERVER_MODE) && defined(WINDOWS)
-  MUTEX_T vol_mutex;		/* for fileio_read()/fileio_write() */
+  pthread_mutex_t vol_mutex;	/* for fileio_read()/fileio_write() */
 #endif				/* SERVER_MODE && WINDOWS */
   char vlabel[PATH_MAX];
 };
 
 typedef union fileio_apply_function_arg
 {
-  int vol_fd;
   int vol_id;
   int vdes;
   const char *vol_label;
@@ -369,7 +370,7 @@ typedef union fileio_apply_function_arg
 struct fileio_volinfo_header
 {
 #if defined(SERVER_MODE)
-  MUTEX_T mutex;
+  pthread_mutex_t mutex;
 #endif				/* SERVER_MODE */
   int max_perm_vols;		/* # of max. io_volinfo entries for perm. vol */
   int next_perm_volid;		/* # of used io_volinfo entries for perm. vol */
@@ -381,22 +382,29 @@ struct fileio_volinfo_header
   FILEIO_VOLUME_INFO **volinfo;	/* array of pointer for io_volinfo chunks     */
 };
 
+typedef bool (*VOLINFO_APPLY_FN) (THREAD_ENTRY * thread_p,
+				  FILEIO_VOLUME_INFO * vol_info_p,
+				  APPLY_ARG * arg);
+typedef bool (*SYS_VOLINFO_APPLY_FN) (THREAD_ENTRY * thread_p,
+				      FILEIO_SYSTEM_VOLUME_INFO *
+				      sys_vol_info_p, APPLY_ARG * arg);
+
 static FILEIO_SYSTEM_VOLUME_HEADER fileio_Sys_vol_info_header = {
 #if defined(SERVER_MODE)
-  MUTEX_INITIALIZER,
+  PTHREAD_MUTEX_INITIALIZER,
 #endif /* SERVER_MODE */
   0,
   {
    NULL_VOLID, NULL_VOLDES, FILEIO_NOT_LOCKF, "",
 #if defined(SERVER_MODE) && defined(WINDOWS)
-   MUTEX_INITIALIZER,
+   PTHREAD_MUTEX_INITIALIZER,
 #endif /* SERVER_MODE && WINDOWS */
    NULL}
 };
 
 static FILEIO_VOLUME_HEADER fileio_Vol_info_header = {
 #if defined(SERVER_MODE)
-  MUTEX_INITIALIZER,
+  PTHREAD_MUTEX_INITIALIZER,
 #endif /* SERVER_MODE */
   0, 0, 0, LOG_MAX_DBVOLID, 0, NULL
 };
@@ -406,7 +414,8 @@ static FILEIO_BACKUP_INFO_QUEUE fileio_Backup_vol_info_data[2] =
   { {false, {NULL, NULL, NULL}, NULL}, {false, {NULL, NULL, NULL}, NULL} };
 
 /* Flush Control */
-static MUTEX_T fileio_Flushed_page_counter_mutex = MUTEX_INITIALIZER;
+static pthread_mutex_t fileio_Flushed_page_counter_mutex =
+  PTHREAD_MUTEX_INITIALIZER;
 static int fileio_Flushed_page_count = 0;
 
 static TOKEN_BUCKET fc_Token_bucket_s;
@@ -438,54 +447,53 @@ static int fileio_create_backup_volume (THREAD_ENTRY * thread_p,
 					int atleast_pages);
 static void fileio_dismount_without_fsync (THREAD_ENTRY * thread_p, int vdes);
 static int fileio_max_permanent_volumes (int index, int num_permanent_volums);
-static int
-fileio_min_temporary_volumes (int index, int num_temp_volums,
-			      int num_volinfo_array);
-static FILEIO_SYSTEM_VOLUME_INFO
-  * fileio_traverse_system_volume (THREAD_ENTRY * thread_p,
-				   bool (*apply_function)
-				   (THREAD_ENTRY *,
-				    FILEIO_SYSTEM_VOLUME_INFO *, APPLY_ARG),
-				   APPLY_ARG arg);
-static FILEIO_VOLUME_INFO
-  * fileio_traverse_permanent_volume (THREAD_ENTRY * thread_p,
-				      bool (*apply_function)
-				      (THREAD_ENTRY *, FILEIO_VOLUME_INFO *,
-				       APPLY_ARG), APPLY_ARG arg);
-static FILEIO_VOLUME_INFO
-  * fileio_traverse_temporary_volume (THREAD_ENTRY * thread_p,
-				      bool (*apply_function)
-				      (THREAD_ENTRY *, FILEIO_VOLUME_INFO *,
-				       APPLY_ARG), APPLY_ARG arg);
+static int fileio_min_temporary_volumes (int index, int num_temp_volums,
+					 int num_volinfo_array);
+static FILEIO_SYSTEM_VOLUME_INFO *fileio_traverse_system_volume (THREAD_ENTRY
+								 * thread_p,
+								 SYS_VOLINFO_APPLY_FN
+								 apply_function,
+								 APPLY_ARG
+								 * arg);
+static FILEIO_VOLUME_INFO *fileio_traverse_permanent_volume (THREAD_ENTRY *
+							     thread_p,
+							     VOLINFO_APPLY_FN
+							     apply_function,
+							     APPLY_ARG * arg);
+static FILEIO_VOLUME_INFO *fileio_traverse_temporary_volume (THREAD_ENTRY *
+							     thread_p,
+							     VOLINFO_APPLY_FN
+							     apply_function,
+							     APPLY_ARG * arg);
 static bool fileio_dismount_volume (THREAD_ENTRY * thread_p,
 				    FILEIO_VOLUME_INFO * vol_info_p,
-				    APPLY_ARG ignore_arg);
-static bool
-fileio_is_volume_descriptor_equal (THREAD_ENTRY * thread_p,
-				   FILEIO_VOLUME_INFO * vol_info_p,
-				   APPLY_ARG arg);
-static FILEIO_SYSTEM_VOLUME_INFO
-  * fileio_find_system_volume (THREAD_ENTRY * thread_p,
-			       bool (*apply_function)
-			       (THREAD_ENTRY *, FILEIO_SYSTEM_VOLUME_INFO *,
-				APPLY_ARG), APPLY_ARG arg);
-static bool
-fileio_is_system_volume_descriptor_equal (THREAD_ENTRY * thread_p,
-					  FILEIO_SYSTEM_VOLUME_INFO *
-					  sys_vol_info_p, APPLY_ARG arg);
+				    APPLY_ARG * ignore_arg);
+static bool fileio_is_volume_descriptor_equal (THREAD_ENTRY * thread_p,
+					       FILEIO_VOLUME_INFO *
+					       vol_info_p, APPLY_ARG * arg);
+static FILEIO_SYSTEM_VOLUME_INFO *fileio_find_system_volume (THREAD_ENTRY *
+							     thread_p,
+							     SYS_VOLINFO_APPLY_FN
+							     apply_function,
+							     APPLY_ARG * arg);
+static bool fileio_is_system_volume_descriptor_equal (THREAD_ENTRY * thread_p,
+						      FILEIO_SYSTEM_VOLUME_INFO
+						      * sys_vol_info_p,
+						      APPLY_ARG * arg);
 static bool fileio_is_system_volume_id_equal (THREAD_ENTRY * thread_p,
 					      FILEIO_SYSTEM_VOLUME_INFO *
-					      sys_vol_info_p, APPLY_ARG arg);
+					      sys_vol_info_p,
+					      APPLY_ARG * arg);
 static bool fileio_is_system_volume_label_equal (THREAD_ENTRY * thread_p,
 						 FILEIO_SYSTEM_VOLUME_INFO *
 						 sys_vol_info_p,
-						 APPLY_ARG arg);
+						 APPLY_ARG * arg);
 static bool fileio_synchronize_sys_volume (THREAD_ENTRY * thread_p,
 					   FILEIO_SYSTEM_VOLUME_INFO *
-					   vol_sys_info_p, APPLY_ARG arg);
+					   vol_sys_info_p, APPLY_ARG * arg);
 static bool fileio_synchronize_volume (THREAD_ENTRY * thread_p,
 				       FILEIO_VOLUME_INFO * vol_info_p,
-				       APPLY_ARG arg);
+				       APPLY_ARG * arg);
 static int fileio_synchronize_bg_archive_volume (THREAD_ENTRY * thread_p);
 static int fileio_cache (VOLID volid, const char *vlabel, int vdes,
 			 FILEIO_LOCKF_TYPE lockf_type);
@@ -493,7 +501,7 @@ static void fileio_decache (THREAD_ENTRY * thread_p, int vdes);
 static VOLID fileio_get_volume_id (int vdes);
 static bool fileio_is_volume_label_equal (THREAD_ENTRY * thread_p,
 					  FILEIO_VOLUME_INFO * vol_info_p,
-					  APPLY_ARG arg);
+					  APPLY_ARG * arg);
 static void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes,
 				      void *io_pgptr, DKNPAGES npages,
 				      size_t page_size);
@@ -642,7 +650,7 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
     }
 
   need_sync = false;
-  MUTEX_LOCK (rv, fileio_Flushed_page_counter_mutex);
+  rv = pthread_mutex_lock (&fileio_Flushed_page_counter_mutex);
 
   fileio_Flushed_page_count += npage;
   if (fileio_Flushed_page_count > PRM_PB_SYNC_ON_NFLUSH)
@@ -651,7 +659,7 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
       fileio_Flushed_page_count = 0;
     }
 
-  MUTEX_UNLOCK (fileio_Flushed_page_counter_mutex);
+  pthread_mutex_unlock (&fileio_Flushed_page_counter_mutex);
 
   if (need_sync)
     {
@@ -681,7 +689,7 @@ fileio_flush_control_initialize (void)
   assert (fc_Token_bucket == NULL);
   tb = &fc_Token_bucket_s;
 
-  rv = MUTEX_INIT (tb->token_mutex);
+  rv = pthread_mutex_init (&tb->token_mutex, NULL);
   if (rv != NO_ERROR)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -691,7 +699,7 @@ fileio_flush_control_initialize (void)
   tb->tokens = 0;
   tb->token_consumed = 0;
 
-  rv = COND_INIT (tb->waiter_cond);
+  rv = pthread_cond_init (&tb->waiter_cond, NULL);
   if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -704,10 +712,6 @@ fileio_flush_control_initialize (void)
   fc_Stats.num_pages = 0;
 
   max_flush_pages_per_sec = PRM_MAX_FLUSH_PAGES_PER_SECOND;
-
-#if defined (WINDOWS)
-  tb->num_waiter = 0;
-#endif
 
   fc_Token_bucket = tb;
   return rv;
@@ -738,8 +742,8 @@ fileio_flush_control_finalize (void)
   tb = fc_Token_bucket;
   fc_Token_bucket = NULL;
 
-  (void) MUTEX_DESTROY (tb->token_mutex);
-  (void) COND_DESTROY (tb->waiter_cond);
+  (void) pthread_mutex_destroy (&tb->token_mutex);
+  (void) pthread_cond_destroy (&tb->waiter_cond);
 #endif
 }
 
@@ -778,7 +782,7 @@ fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken)
   while (nreq > 0 && retry_count < 10)
     {
       /* try to get a token from share tokens */
-      MUTEX_LOCK (rv, tb->token_mutex);
+      rv = pthread_mutex_lock (&tb->token_mutex);
       assert (rv == NO_ERROR);
 
       if (log_cs_own == true)
@@ -794,7 +798,7 @@ fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken)
 	{
 	  tb->tokens -= nreq;
 	  tb->token_consumed += nreq;
-	  MUTEX_UNLOCK (tb->token_mutex);
+	  pthread_mutex_unlock (&tb->token_mutex);
 	  return NO_ERROR;
 	}
       else if (tb->tokens > 0)
@@ -808,21 +812,14 @@ fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken)
 
       if (log_cs_own == true)
 	{
-	  MUTEX_UNLOCK (tb->token_mutex);
+	  pthread_mutex_unlock (&tb->token_mutex);
 	  return NO_ERROR;
 	}
 
       /* Wait for signal */
-#if defined(WINDOWS)
-      tb->num_waiter++;
-      rv = COND_WAIT (tb->waiter_cond, tb->token_mutex);
+      rv = pthread_cond_wait (&tb->waiter_cond, &tb->token_mutex);
 
-      MUTEX_LOCK (rv, tb->token_mutex);
-      tb->num_waiter--;
-#else
-      rv = COND_WAIT (tb->waiter_cond, tb->token_mutex);
-#endif
-      MUTEX_UNLOCK (tb->token_mutex);
+      pthread_mutex_unlock (&tb->token_mutex);
       retry_count++;
     }
 
@@ -851,7 +848,7 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, int diff_usec,
   TOKEN_BUCKET *tb = fc_Token_bucket;
   int gen_tokens;
   int overflow_tokens = 0, overflow_capacity = 0;
-  int i, rv = NO_ERROR;
+  int rv = NO_ERROR;
 
   assert (token_gen != NULL);
 
@@ -861,7 +858,7 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, int diff_usec,
     }
 
   /* add remaining tokens to shared tokens */
-  MUTEX_LOCK (rv, tb->token_mutex);
+  rv = pthread_mutex_lock (&tb->token_mutex);
 
   *token_consumed = tb->token_consumed;
   tb->token_consumed = 0;
@@ -872,8 +869,8 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, int diff_usec,
   if (PRM_ADAPTIVE_FLUSH_CONTROL == true)
     {
       max_flush_pages_per_sec += fileio_flush_control_get_desired_rate (tb);
-      max_flush_pages_per_sec = MIN (5000, max_flush_pages_per_sec);
-      max_flush_pages_per_sec = MAX (1, max_flush_pages_per_sec);
+      max_flush_pages_per_sec = MAX (FILEIO_MIN_FLUSH_PAGES_PER_SEC,
+				     max_flush_pages_per_sec);
     }
   else if (max_flush_pages_per_sec != PRM_MAX_FLUSH_PAGES_PER_SECOND)
     {
@@ -882,7 +879,7 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, int diff_usec,
 
   gen_tokens = (int) ((double) max_flush_pages_per_sec / 1000000.0
 		      * (double) diff_usec);
-  gen_tokens = MAX (1, gen_tokens);
+  gen_tokens = MAX (FILEIO_MIN_FLUSH_PAGES_PER_SEC, gen_tokens);
 
   *token_gen = gen_tokens;
 
@@ -894,16 +891,8 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, int diff_usec,
   tb->tokens = gen_tokens;
 
   /* signal to waiters */
-#if defined (WINDOWS)
-  for (i = 0; i < tb->num_waiter; i++)
-    {
-      COND_BROADCAST (tb->waiter_cond);
-    }
-#else
-  COND_BROADCAST (tb->waiter_cond);
-#endif
-
-  MUTEX_UNLOCK (tb->token_mutex);
+  pthread_cond_broadcast (&tb->waiter_cond);
+  pthread_mutex_unlock (&tb->token_mutex);
   return rv;
 
 #endif
@@ -916,16 +905,23 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, int diff_usec,
 static int
 fileio_flush_control_get_desired_rate (TOKEN_BUCKET * tb)
 {
-  assert (PRM_ADAPTIVE_FLUSH_CONTROL == true);
-
   if (tb->tokens > 0)
     {
       return -(tb->tokens);
     }
   else
     {
-      return ((fc_Stats.num_pages + fc_Stats.num_log_pages)
-	      - fc_Stats.num_tokens);
+      if (fc_Stats.num_log_pages == 0)
+	{
+	  return (fc_Stats.num_tokens
+		  + MAX (FILEIO_MIN_FLUSH_PAGES_PER_SEC,
+			 fc_Stats.num_tokens * FILEIO_PAGE_FLUSH_RATE));
+	}
+      else
+	{
+	  return ((fc_Stats.num_pages + fc_Stats.num_log_pages)
+		  - fc_Stats.num_tokens);
+	}
     }
 }
 
@@ -944,7 +940,7 @@ fileio_initialize_volume_info_cache (void)
   int i, n;
   int rv;
 
-  MUTEX_LOCK (rv, fileio_Vol_info_header.mutex);
+  rv = pthread_mutex_lock (&fileio_Vol_info_header.mutex);
 
   if (fileio_Vol_info_header.volinfo == NULL)
     {
@@ -955,7 +951,7 @@ fileio_initialize_volume_info_cache (void)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 		  1, sizeof (FILEIO_VOLUME_INFO *) * n);
-	  MUTEX_UNLOCK (fileio_Vol_info_header.mutex);
+	  pthread_mutex_unlock (&fileio_Vol_info_header.mutex);
 	  return -1;
 	}
       fileio_Vol_info_header.num_volinfo_array = n;
@@ -966,18 +962,18 @@ fileio_initialize_volume_info_cache (void)
 	}
     }
 
-  MUTEX_UNLOCK (fileio_Vol_info_header.mutex);
+  pthread_mutex_unlock (&fileio_Vol_info_header.mutex);
   return 0;
 }
 
 /* TODO: check not use */
 #if 0
 /*
- * io_final_volinfo_cache () - Free volinfo_header.volinfo array
+ * fileio_final_volinfo_cache () - Free volinfo_header.volinfo array
  *   return: void
  */
 void
-io_final_volinfo_cache (void)
+fileio_final_volinfo_cache (void)
 {
   int i;
 #if defined(WINDOWS) && defined(SERVER_MODE)
@@ -994,7 +990,7 @@ io_final_volinfo_cache (void)
 	    {
 	      if (vf[j].vol_mutex != NULL)
 		{
-		  MUTEX_DESTROY (vf[j].vol_mutex);
+		  pthread_mutex_destroy (&vf[j].vol_mutex);
 		}
 	    }
 #endif /* WINDOWS && SERVER_MODE */
@@ -1030,7 +1026,7 @@ fileio_allocate_and_initialize_volume_info (FILEIO_VOLUME_HEADER * header_p,
       vol_info_p[i].lockf_type = FILEIO_NOT_LOCKF;
       vol_info_p[i].vlabel[0] = '\0';
 #if defined(WINDOWS)
-      MUTEX_INIT (vol_info_p[i].vol_mutex);
+      pthread_mutex_init (&vol_info_p[i].vol_mutex, NULL);
 #endif /* WINDOWS */
     }
 
@@ -1056,7 +1052,7 @@ fileio_expand_permanent_volume_info (FILEIO_VOLUME_HEADER * header_p,
   int from_idx, to_idx;
   int rv;
 
-  MUTEX_LOCK (rv, header_p->mutex);
+  rv = pthread_mutex_lock (&header_p->mutex);
 
   from_idx = (header_p->max_perm_vols / FILEIO_VOLINFO_INCREMENT);
   to_idx = (volid + 1) / FILEIO_VOLINFO_INCREMENT;
@@ -1065,7 +1061,7 @@ fileio_expand_permanent_volume_info (FILEIO_VOLUME_HEADER * header_p,
   if (to_idx >= (header_p->num_volinfo_array - 1
 		 - header_p->max_temp_vols / FILEIO_VOLINFO_INCREMENT))
     {
-      MUTEX_UNLOCK (header_p->mutex);
+      pthread_mutex_unlock (&header_p->mutex);
       return -1;
     }
 
@@ -1074,14 +1070,14 @@ fileio_expand_permanent_volume_info (FILEIO_VOLUME_HEADER * header_p,
       if (fileio_allocate_and_initialize_volume_info (header_p, from_idx)
 	  != NO_ERROR)
 	{
-	  MUTEX_UNLOCK (header_p->mutex);
+	  pthread_mutex_unlock (&header_p->mutex);
 	  return -1;
 	}
 
       header_p->max_perm_vols = (from_idx + 1) * FILEIO_VOLINFO_INCREMENT;
     }
 
-  MUTEX_UNLOCK (header_p->mutex);
+  pthread_mutex_unlock (&header_p->mutex);
   return 0;
 }
 
@@ -1104,7 +1100,7 @@ fileio_expand_temporary_volume_info (FILEIO_VOLUME_HEADER * header_p,
   int from_idx, to_idx;
   int rv;
 
-  MUTEX_LOCK (rv, header_p->mutex);
+  rv = pthread_mutex_lock (&header_p->mutex);
 
   from_idx = header_p->num_volinfo_array - 1
     - (header_p->max_temp_vols / FILEIO_VOLINFO_INCREMENT);
@@ -1114,7 +1110,7 @@ fileio_expand_temporary_volume_info (FILEIO_VOLUME_HEADER * header_p,
   /* check if to_idx chunks are used for perm. volume information */
   if (to_idx <= (header_p->max_perm_vols - 1) / FILEIO_VOLINFO_INCREMENT)
     {
-      MUTEX_UNLOCK (header_p->mutex);
+      pthread_mutex_unlock (&header_p->mutex);
       return -1;
     }
 
@@ -1123,7 +1119,7 @@ fileio_expand_temporary_volume_info (FILEIO_VOLUME_HEADER * header_p,
       if (fileio_allocate_and_initialize_volume_info (header_p, from_idx)
 	  != NO_ERROR)
 	{
-	  MUTEX_UNLOCK (header_p->mutex);
+	  pthread_mutex_unlock (&header_p->mutex);
 	  return -1;
 	}
 
@@ -1131,13 +1127,13 @@ fileio_expand_temporary_volume_info (FILEIO_VOLUME_HEADER * header_p,
 	* FILEIO_VOLINFO_INCREMENT;
     }
 
-  MUTEX_UNLOCK (header_p->mutex);
+  pthread_mutex_unlock (&header_p->mutex);
   return 0;
 }
 
 /* TODO: recoding to use APR
  *
- * io_ctime() - VARIANT OF NORMAL CTIME THAT ALWAYS REMOVES THE NEWLINE
+ * fileio_ctime() - VARIANT OF NORMAL CTIME THAT ALWAYS REMOVES THE NEWLINE
  *   return: ptr to time string returned by ctime
  *   time_t(in):
  *   buf(in):
@@ -1171,7 +1167,7 @@ fileio_ctime (INT64 * clock_p, char *buffer_p)
 }
 
 /*
- * io_is_terminated_process () -
+ * fileio_is_terminated_process () -
  *   return:
  *   pid(in):
  */
@@ -1204,7 +1200,7 @@ fileio_is_terminated_process (int pid)
 }
 
 /*
- * io_lock () - LOCKF A DATABASE VOLUME
+ * fileio_lock () - LOCKF A DATABASE VOLUME
  *   return:
  *   db_fullname(in): Name of the database where the volume belongs
  *   vlabel(in): Volume label
@@ -1439,16 +1435,17 @@ again:
 }
 
 /*
- * io_lock_la () - LOCKF A applylogdb lock
+ * fileio_lock_la () - LOCKF A applylogdb lock
  *   return:
  *   db_fullname(in): Name of the database where the volume belongs
  *   lock_path(in): Lock file path
  *   vdes(in): Volume descriptor
+ *   last_deleted_arv_num(out):
  *
  */
 FILEIO_LOCKF_TYPE
 fileio_lock_la (const char *db_full_name_p, const char *lock_path_p,
-		int vol_fd)
+		int vol_fd, int *last_deleted_arv_num)
 {
   FILE *fp;
   char host[MAXHOSTNAMELEN];
@@ -1495,8 +1492,8 @@ fileio_lock_la (const char *db_full_name_p, const char *lock_path_p,
    *       the lock. This is important to avoid a possible synchronization
    *       problem with this secundary technique
    */
-  sprintf (format_string, "%%%ds %%d %%%ds %%lld", FILEIO_USER_NAME_SIZE - 1,
-	   MAXHOSTNAMELEN - 1);
+  sprintf (format_string, "%%d %%%ds %%d %%%ds %%lld",
+	   FILEIO_USER_NAME_SIZE - 1, MAXHOSTNAMELEN - 1);
 
   while (retry == true && fileio_lock_file_write (vol_fd, 0, SEEK_SET, 0) < 0)
     {
@@ -1523,13 +1520,15 @@ fileio_lock_la (const char *db_full_name_p, const char *lock_path_p,
 	    }
 	}
 
-      if (fp == NULL || fscanf (fp, format_string, user, &pid, host,
-				&tmp_lock_time) != 4)
+      if (fp == NULL
+	  || fscanf (fp, format_string, last_deleted_arv_num, user, &pid,
+		     host, &tmp_lock_time) != 5)
 	{
 	  strcpy (user, "???");
 	  strcpy (host, "???");
 	  pid = 0;
 	  lock_time = 0;
+	  *last_deleted_arv_num = -1;
 	}
       else
 	{
@@ -1556,9 +1555,18 @@ fileio_lock_la (const char *db_full_name_p, const char *lock_path_p,
 
   /* Create the information lock file and write the information about the
      lock */
-  fp = fdopen (vol_fd, "w");
+  fp = fdopen (vol_fd, "w+");
   if (fp != NULL)
     {
+      if (fscanf
+	  (fp, format_string, last_deleted_arv_num, user, &pid, host,
+	   &tmp_lock_time) != 5)
+	{
+	  *last_deleted_arv_num = -1;
+	}
+
+      lseek (vol_fd, (off_t) 0, SEEK_SET);
+
       if (GETHOSTNAME (host, MAXHOSTNAMELEN) != 0)
 	{
 	  strcpy (host, "???");
@@ -1569,8 +1577,13 @@ fileio_lock_la (const char *db_full_name_p, const char *lock_path_p,
 	  strcpy (login_name, "???");
 	}
 
-      (void) fprintf (fp, "%s %d %s %ld", login_name, (int) GETPID (),
-		      host, time (NULL));
+      if (*last_deleted_arv_num < 0)
+	{
+	  *last_deleted_arv_num = -1;
+	}
+
+      (void) fprintf (fp, "%-10d %s %d %s %ld", *last_deleted_arv_num,
+		      login_name, (int) GETPID (), host, time (NULL));
       fflush (fp);
     }
   else
@@ -1632,7 +1645,7 @@ fileio_check_lockby_file (char *name_info_lock_p)
 }
 
 /*
- * io_unlock () - UNLOCK A DATABASE VOLUME
+ * fileio_unlock () - UNLOCK A DATABASE VOLUME
  *   return: void
  *   vlabel(in): Volume label
  *   vdes(in): Volume descriptor
@@ -1682,7 +1695,7 @@ fileio_unlock (const char *vol_label_p, int vol_fd,
 }
 
 /*
- * io_init_pages () - Initialize the first npages of the given volume with the
+ * fileio_initialize_pages () - Initialize the first npages of the given volume with the
  *                    content of given page
  *   return: io_pgptr on success, NULL on failure
  *   vdes(in): Volume descriptor
@@ -1708,6 +1721,14 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 	}
 #endif /* !CS_MODE */
 
+#if !defined(NDEBUG)
+      /* skip volume header page to find abnormal update */
+      if (page_id == 0)
+	{
+	  continue;
+	}
+#endif
+
       if (fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size) ==
 	  NULL)
 	{
@@ -1720,7 +1741,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 
 
 /*
- * io_open () - Same as Unix open, but with retry during interrupts
+ * fileio_open () - Same as Unix open, but with retry during interrupts
  *   return: volume descriptor identifier on success, NULL_VOLDES on failure
  *   vlabel(in): Volume label
  *   flags(in): open the volume as specified by the flags
@@ -1742,6 +1763,20 @@ fileio_open (const char *vol_label_p, int flags, int mode)
   while (vol_fd == NULL_VOLDES && errno == EINTR);
 
 #if !defined(WINDOWS)
+  if (vol_fd > NULL_VOLDES)
+    {
+      int high_vol_fd;
+      int range = PRM_CSS_MAX_CLIENTS + 10;
+
+      /* move fd to the over max_clients range */
+      high_vol_fd = fcntl (vol_fd, F_DUPFD, range);
+      if (high_vol_fd != -1)
+	{
+	  close (vol_fd);
+	  vol_fd = high_vol_fd;
+	}
+    }
+
   if (PRM_DBFILES_PROTECT == true && vol_fd > 0)
     {
       fileio_get_lock (vol_fd, vol_label_p);
@@ -1791,7 +1826,7 @@ fileio_set_permission (const char *vol_label_p)
 }
 
 /*
- * io_get_lock () -
+ * fileio_get_lock () -
  *   return:
  *   fd(in):
  *   vlabel(in):
@@ -1812,7 +1847,7 @@ fileio_get_lock (int fd, const char *vol_label_p)
 }
 
 /*
- * io_release_lock () -
+ * fileio_release_lock () -
  *   return:
  *   fd(in):
  */
@@ -1832,7 +1867,7 @@ fileio_release_lock (int fd)
 #endif /* !WINDOWS */
 
 /*
- * io_close () - Close the volume associated with the given volume descriptor
+ * fileio_close () - Close the volume associated with the given volume descriptor
  *   return: void
  *   vdes(in): Volume descriptor
  */
@@ -1962,7 +1997,7 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 }
 
 /*
- * io_create_forbackup () - CREATE A BACKUP VOLUME (INSURE ENOUGH SPACE EXISTS)
+ * fileio_create_backup_volume () - CREATE A BACKUP VOLUME (INSURE ENOUGH SPACE EXISTS)
  *   return: volume descriptor identifier on success, NULL_VOLDES on failure
  *   db_fullname(in): Name of the database where the volume belongs
  *   vlabel(in): Volume label
@@ -2008,7 +2043,7 @@ fileio_create_backup_volume (THREAD_ENTRY * thread_p,
 
 	      if (errno == ENXIO)
 		{
-		  /* sleep for 100 mili-seconds : consider cs & sa mode */
+		  /* sleep for 100 milli-seconds : consider cs & sa mode */
 		  select (0, NULL, NULL, NULL, &to);
 
 #if !defined(CS_MODE)
@@ -2067,7 +2102,7 @@ int
 fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 	       const char *vol_label_p, VOLID vol_id, DKNPAGES npages,
 	       bool is_sweep_clean, bool is_do_lock, bool is_do_sync,
-	       size_t page_size)
+	       size_t page_size, bool reuse_file)
 {
   int vol_fd;
   FILEIO_PAGE *malloc_io_page_p;
@@ -2086,7 +2121,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
       return NULL_VOLDES;
     }
 
-  if (fileio_is_volume_exist (vol_label_p) == true)
+  if (fileio_is_volume_exist (vol_label_p) == true && reuse_file == false)
     {
       /* The volume that we are trying to create already exist.
          Remove it and try again */
@@ -2144,7 +2179,8 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 	}
       else
 	{
-	  ;			/* There was an error in io_partiotn_nfree_pages */
+	  /* There was an error in fileio_get_number_of_partition_free_pages */
+	  ;
 	}
 
       return NULL_VOLDES;
@@ -2192,9 +2228,13 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p,
 	  fileio_dismount (thread_p, vol_fd);
 	  fileio_unformat (thread_p, vol_label_p);
 	  free_and_init (malloc_io_page_p);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_OUT_OF_SPACE,
-		  5, vol_label_p, npages, (offset / 1024), max_npages,
-		  ((page_size / 1024) * max_npages));
+	  if (er_errid () != ER_INTERRUPTED)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_IO_FORMAT_OUT_OF_SPACE, 5, vol_label_p, npages,
+		      (offset / 1024), max_npages,
+		      ((page_size / 1024) * max_npages));
+	    }
 	  vol_fd = NULL_VOLDES;
 	  return vol_fd;
 	}
@@ -2282,7 +2322,7 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd)
 	}
       else
 	{
-	  /* There was an error in io_partiotn_nfree_pages */
+	  /* There was an error in fileio_get_number_of_partition_free_pages */
 	}
       return -1;
     }
@@ -2383,17 +2423,26 @@ fileio_truncate (VOLID vol_id, DKNPAGES npages_to_resize)
 void
 fileio_unformat (THREAD_ENTRY * thread_p, const char *vol_label_p)
 {
+  fileio_unformat_and_rename (thread_p, vol_label_p, NULL);
+}
+
+/*
+ * fileio_unformat_and_rename () - DESTROY A VOLUME
+ *   return: void
+ *   vol_label(in): Label of volume to unformat
+ *   new_vlabel(in): New volume label. if NULL, volume will be deleted
+ *
+ * Note: If the volume is mounted, it is dismounted. Then, the volume is
+ *       destroyed/unformatted.
+ */
+void
+fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p,
+			    const char *new_label_p)
+{
   struct timeval start_time, end_time, elapsed_time;
 #if !defined(CS_MODE)
   int vol_fd;
-#endif
-  char tmp_vol_label[PATH_MAX];	/* Name of the volume */
 
-  /* Copy the label since it may have been part of the io module.. the label
-     does not exist anylonger once the volume is dismounted */
-  strncpy (tmp_vol_label, vol_label_p, PATH_MAX);
-
-#if !defined(CS_MODE)
   /* Dismount the volume if it is mounted */
   vol_fd = fileio_find_volume_descriptor_with_label (vol_label_p);
   if (vol_fd != NULL_VOLDES)
@@ -2406,7 +2455,21 @@ fileio_unformat (THREAD_ENTRY * thread_p, const char *vol_label_p)
     {
       gettimeofday (&start_time, NULL);
     }
-  (void) remove (tmp_vol_label);
+
+  if (new_label_p == NULL)
+    {
+      (void) remove (vol_label_p);
+    }
+  else
+    {
+      if (os_rename_file (vol_label_p, new_label_p) != NO_ERROR)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			       ER_IO_RENAME_FAIL, 2, vol_label_p,
+			       new_label_p);
+	}
+    }
+
   if (0 < PRM_MNT_WAITING_THREAD)
     {
       gettimeofday (&end_time, NULL);
@@ -2458,7 +2521,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc,
 #else /* HPUX */
   to_vol_desc =
     fileio_format (thread_p, NULL, to_vol_label_p, to_vol_id, npages, false,
-		   false, false, IO_PAGESIZE);
+		   false, false, IO_PAGESIZE, false);
 #endif /* HPUX */
   if (to_vol_desc == NULL_VOLDES)
     {
@@ -2541,7 +2604,7 @@ error:
  *   reset_lsa(in): The reset recovery information LSA
  */
 int
-fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, char *vlabel,
+fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel,
 		     DKNPAGES npages, LOG_LSA * reset_lsa_p)
 {
   PAGEID page_id;
@@ -2701,7 +2764,7 @@ start:
 void
 fileio_dismount (THREAD_ENTRY * thread_p, int vol_fd)
 {
-  char *vlabel;
+  const char *vlabel;
   FILEIO_LOCKF_TYPE lockf_type;
 
   /*
@@ -2780,35 +2843,33 @@ fileio_min_temporary_volumes (int index, int num_temp_volums,
 
 static FILEIO_SYSTEM_VOLUME_INFO *
 fileio_traverse_system_volume (THREAD_ENTRY * thread_p,
-			       bool (*apply_function)
-			       (THREAD_ENTRY *, FILEIO_SYSTEM_VOLUME_INFO *,
-				APPLY_ARG), APPLY_ARG arg)
+			       SYS_VOLINFO_APPLY_FN apply_function,
+			       APPLY_ARG * arg)
 {
   FILEIO_SYSTEM_VOLUME_INFO *sys_vol_info_p;
   int rv;
 
-  MUTEX_LOCK (rv, fileio_Sys_vol_info_header.mutex);
+  rv = pthread_mutex_lock (&fileio_Sys_vol_info_header.mutex);
 
   for (sys_vol_info_p = &fileio_Sys_vol_info_header.anchor;
        sys_vol_info_p != NULL && sys_vol_info_p->vdes != NULL_VOLDES;
        sys_vol_info_p = sys_vol_info_p->next)
     {
-      if (apply_function (thread_p, sys_vol_info_p, arg) == true)
+      if ((*apply_function) (thread_p, sys_vol_info_p, arg) == true)
 	{
-	  MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+	  pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
 	  return sys_vol_info_p;
 	}
     }
-  MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+  pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
 
   return NULL;
 }
 
 static FILEIO_VOLUME_INFO *
 fileio_traverse_permanent_volume (THREAD_ENTRY * thread_p,
-				  bool (*apply_function)
-				  (THREAD_ENTRY *, FILEIO_VOLUME_INFO *,
-				   APPLY_ARG), APPLY_ARG arg)
+				  VOLINFO_APPLY_FN apply_function,
+				  APPLY_ARG * arg)
 {
   int i, j, max_j;
   FILEIO_VOLUME_HEADER *header_p;
@@ -2824,7 +2885,7 @@ fileio_traverse_permanent_volume (THREAD_ENTRY * thread_p,
       for (j = 0; j <= max_j; j++)
 	{
 	  vol_info_p = &header_p->volinfo[i][j];
-	  if (apply_function (thread_p, vol_info_p, arg) == true)
+	  if ((*apply_function) (thread_p, vol_info_p, arg) == true)
 	    {
 	      return vol_info_p;
 	    }
@@ -2836,9 +2897,8 @@ fileio_traverse_permanent_volume (THREAD_ENTRY * thread_p,
 
 static FILEIO_VOLUME_INFO *
 fileio_traverse_temporary_volume (THREAD_ENTRY * thread_p,
-				  bool (*apply_function)
-				  (THREAD_ENTRY *, FILEIO_VOLUME_INFO *,
-				   APPLY_ARG), APPLY_ARG arg)
+				  VOLINFO_APPLY_FN apply_function,
+				  APPLY_ARG * arg)
 {
   int i, j, min_j, num_temp_vols;
   FILEIO_VOLUME_HEADER *header_p;
@@ -2858,7 +2918,7 @@ fileio_traverse_temporary_volume (THREAD_ENTRY * thread_p,
       for (j = FILEIO_VOLINFO_INCREMENT - 1; j >= min_j; j--)
 	{
 	  vol_info_p = &header_p->volinfo[i][j];
-	  if (apply_function (thread_p, vol_info_p, arg) == true)
+	  if ((*apply_function) (thread_p, vol_info_p, arg) == true)
 	    {
 	      return vol_info_p;
 	    }
@@ -2870,7 +2930,8 @@ fileio_traverse_temporary_volume (THREAD_ENTRY * thread_p,
 
 static bool
 fileio_dismount_volume (THREAD_ENTRY * thread_p,
-			FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG ignore_arg)
+			FILEIO_VOLUME_INFO * vol_info_p,
+			APPLY_ARG * ignore_arg)
 {
   if (vol_info_p->vdes != NULL_VOLDES)
     {
@@ -2887,10 +2948,7 @@ fileio_dismount_volume (THREAD_ENTRY * thread_p,
     }
 
 #if defined(WINDOWS) && defined(SERVER_MODE)
-  if (vol_info_p->vol_mutex != NULL)
-    {
-      MUTEX_DESTROY (vol_info_p->vol_mutex);
-    }
+  pthread_mutex_destroy (&vol_info_p->vol_mutex);
 #endif /* WINDOWS && SERVER_MODE */
 
   return false;
@@ -2912,7 +2970,7 @@ fileio_dismount_all (THREAD_ENTRY * thread_p)
 
   /* First, traverse sys volumes */
   sys_header_p = &fileio_Sys_vol_info_header;
-  MUTEX_LOCK (rv, sys_header_p->mutex);
+  rv = pthread_mutex_lock (&sys_header_p->mutex);
 
   for (sys_vol_info_p = &sys_header_p->anchor; sys_vol_info_p != NULL;)
     {
@@ -2935,24 +2993,22 @@ fileio_dismount_all (THREAD_ENTRY * thread_p)
       if (tmp_sys_vol_info_p != &sys_header_p->anchor)
 	{
 #if defined(SERVER_MODE) && defined(WINDOWS)
-	  if (tmp_sys_vol_info_p->sysvol_mutex != NULL)
-	    {
-	      MUTEX_DESTROY (tmp_sys_vol_info_p->sysvol_mutex);
-	    }
+	  pthread_mutex_destroy (&tmp_sys_vol_info_p->sysvol_mutex);
+
 #endif /* WINDOWS */
 	  free_and_init (tmp_sys_vol_info_p);
 	}
     }
 
-  MUTEX_UNLOCK (sys_header_p->mutex);
+  pthread_mutex_unlock (&sys_header_p->mutex);
 
   /* Second, traverse perm/temp volumes */
   vol_header_p = &fileio_Vol_info_header;
-  MUTEX_LOCK (rv, vol_header_p->mutex);
+  rv = pthread_mutex_lock (&vol_header_p->mutex);
   num_perm_vols = vol_header_p->next_perm_volid;
 
   (void) fileio_traverse_permanent_volume (thread_p, fileio_dismount_volume,
-					   ignore_arg);
+					   &ignore_arg);
 
   for (i = 0; i <= (num_perm_vols - 1) / FILEIO_VOLINFO_INCREMENT; i++)
     {
@@ -2968,7 +3024,7 @@ fileio_dismount_all (THREAD_ENTRY * thread_p)
   num_temp_vols = LOG_MAX_DBVOLID - vol_header_p->next_temp_volid;
 
   (void) fileio_traverse_temporary_volume (thread_p, fileio_dismount_volume,
-					   ignore_arg);
+					   &ignore_arg);
 
   for (i = vol_header_p->num_volinfo_array - 1;
        i > (vol_header_p->num_volinfo_array - 1
@@ -2986,7 +3042,7 @@ fileio_dismount_all (THREAD_ENTRY * thread_p)
 
   free_and_init (vol_header_p->volinfo);
 
-  MUTEX_UNLOCK (vol_header_p->mutex);
+  pthread_mutex_unlock (&vol_header_p->mutex);
 }
 
 /*
@@ -3057,16 +3113,15 @@ fileio_map_mounted (THREAD_ENTRY * thread_p,
 static bool
 fileio_is_volume_descriptor_equal (THREAD_ENTRY * thread_p,
 				   FILEIO_VOLUME_INFO * vol_info_p,
-				   APPLY_ARG arg)
+				   APPLY_ARG * arg)
 {
-  return vol_info_p->vdes == arg.vol_fd;
+  return (vol_info_p->vdes == arg->vdes);
 }
 
 static FILEIO_SYSTEM_VOLUME_INFO *
 fileio_find_system_volume (THREAD_ENTRY * thread_p,
-			   bool (*apply_function)
-			   (THREAD_ENTRY *, FILEIO_SYSTEM_VOLUME_INFO *,
-			    APPLY_ARG), APPLY_ARG arg)
+			   SYS_VOLINFO_APPLY_FN apply_function,
+			   APPLY_ARG * arg)
 {
   FILEIO_SYSTEM_VOLUME_INFO *sys_vol_info_p;
 
@@ -3074,7 +3129,7 @@ fileio_find_system_volume (THREAD_ENTRY * thread_p,
        sys_vol_info_p != NULL && sys_vol_info_p->vdes != NULL_VOLDES;
        sys_vol_info_p = sys_vol_info_p->next)
     {
-      if (apply_function (thread_p, sys_vol_info_p, arg) == true)
+      if ((*apply_function) (thread_p, sys_vol_info_p, arg) == true)
 	{
 	  return sys_vol_info_p;
 	}
@@ -3086,25 +3141,25 @@ fileio_find_system_volume (THREAD_ENTRY * thread_p,
 static bool
 fileio_is_system_volume_descriptor_equal (THREAD_ENTRY * thread_p,
 					  FILEIO_SYSTEM_VOLUME_INFO *
-					  sys_vol_info_p, APPLY_ARG arg)
+					  sys_vol_info_p, APPLY_ARG * arg)
 {
-  return sys_vol_info_p->vdes == arg.vol_fd;
+  return (sys_vol_info_p->vdes == arg->vdes);
 }
 
 static bool
 fileio_is_system_volume_id_equal (THREAD_ENTRY * thread_p,
 				  FILEIO_SYSTEM_VOLUME_INFO * sys_vol_info_p,
-				  APPLY_ARG arg)
+				  APPLY_ARG * arg)
 {
-  return sys_vol_info_p->volid == arg.vol_id;
+  return (sys_vol_info_p->volid == arg->vol_id);
 }
 
 static bool
 fileio_is_system_volume_label_equal (THREAD_ENTRY * thread_p,
 				     FILEIO_SYSTEM_VOLUME_INFO *
-				     sys_vol_info_p, APPLY_ARG arg)
+				     sys_vol_info_p, APPLY_ARG * arg)
 {
-  return strncmp (sys_vol_info_p->vlabel, arg.vol_label, PATH_MAX) == 0;
+  return (strncmp (sys_vol_info_p->vlabel, arg->vol_label, PATH_MAX) == 0);
 }
 
 #if defined(HPUX) && !defined(IA64)
@@ -3195,7 +3250,7 @@ pwrite (int fd, const void *buf, size_t nbytes, off_t offset)
  *   return: I/O volume mutex
  *   vdes(in): Volume descriptor
  */
-static MUTEX_T
+static pthread_mutex_t *
 fileio_get_volume_mutex (THREAD_ENTRY * thread_p, int vdes)
 {
   FILEIO_VOLUME_INFO *volinfo;
@@ -3210,48 +3265,38 @@ fileio_get_volume_mutex (THREAD_ENTRY * thread_p, int vdes)
   arg.vdes = vdes;
   volinfo =
     fileio_traverse_permanent_volume (thread_p,
-				      fileio_is_volume_descriptor_equal, arg);
+				      fileio_is_volume_descriptor_equal,
+				      &arg);
   if (volinfo)
     {
-      if (volinfo->vol_mutex == NULL)
-	{
-	  MUTEX_INIT (volinfo->vol_mutex);
-	}
-      return volinfo->vol_mutex;
+      return &volinfo->vol_mutex;
     }
 
   arg.vdes = vdes;
   volinfo =
     fileio_traverse_temporary_volume (thread_p,
-				      fileio_is_volume_descriptor_equal, arg);
+				      fileio_is_volume_descriptor_equal,
+				      &arg);
   if (volinfo)
     {
-      if (volinfo->vol_mutex == NULL)
-	{
-	  MUTEX_INIT (volinfo->vol_mutex);
-	}
-      return volinfo->vol_mutex;
+      return &volinfo->vol_mutex;
     }
 
   /* sys volume ? */
-  MUTEX_LOCK (rv, fileio_Sys_vol_info_header.mutex);
+  rv = pthread_mutex_lock (&fileio_Sys_vol_info_header.mutex);
 
   arg.vdes = vdes;
   sys_volinfo =
     fileio_find_system_volume (thread_p,
-			       fileio_is_system_volume_descriptor_equal, arg);
+			       fileio_is_system_volume_descriptor_equal,
+			       &arg);
   if (sys_volinfo)
     {
-      MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
-
-      if (sys_volinfo->sysvol_mutex == NULL)
-	{
-	  MUTEX_INIT (sys_volinfo->sysvol_mutex);
-	}
-      return sys_volinfo->sysvol_mutex;
+      pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
+      return &sys_volinfo->sysvol_mutex;
     }
 
-  MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+  pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
   return NULL;
 }
 #endif /* WINDOWS && SERVER_MODE */
@@ -3279,7 +3324,8 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;
-  MUTEX_T io_mutex;
+  pthread_mutex_t *io_mutex;
+  static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
 #endif /* WINDOWS && SERVER_MODE */
 #if defined(USE_AIO)
   struct aiocb cb;
@@ -3311,7 +3357,12 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
       if (nbytes != page_size)
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
-      MUTEX_LOCK (rv, io_mutex);
+      if (io_mutex == NULL)
+	{
+	  io_mutex = &io_mutex_instance;
+	}
+
+      rv = pthread_mutex_lock (io_mutex);
       if (rv != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
@@ -3325,13 +3376,13 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 			       ER_IO_READ, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
 							(vol_fd)));
-	  MUTEX_UNLOCK (io_mutex);
+	  pthread_mutex_unlock (io_mutex);
 	  return NULL;
 	}
 
       /* Read the desired page */
       nbytes = read (vol_fd, io_page_p, page_size);
-      if (MUTEX_UNLOCK (io_mutex) != 0)
+      if (pthread_mutex_unlock (io_mutex) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -3429,7 +3480,8 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
   bool is_retry = true;
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv, nbytes;
-  MUTEX_T io_mutex;
+  pthread_mutex_t *io_mutex;
+  static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
 #endif /* WINDOWS && SERVER_MODE */
 #if defined(USE_AIO)
   struct aiocb cb;
@@ -3459,7 +3511,12 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
       if (write (vol_fd, io_page_p, page_size) != page_size)
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
-      MUTEX_LOCK (rv, io_mutex);
+      if (io_mutex == NULL)
+	{
+	  io_mutex = &io_mutex_instance;
+	}
+
+      rv = pthread_mutex_lock (io_mutex);
       if (rv != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
@@ -3468,7 +3525,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 
       if (lseek (vol_fd, offset, SEEK_SET) != offset)
 	{
-	  MUTEX_UNLOCK (io_mutex);
+	  pthread_mutex_unlock (io_mutex);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_WRITE, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
@@ -3478,7 +3535,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 
       /* write the page */
       nbytes = write (vol_fd, io_page_p, page_size);
-      MUTEX_UNLOCK (io_mutex);
+      pthread_mutex_unlock (io_mutex);
 
       if (nbytes != page_size)
 #else /* WINDOWS */
@@ -3565,7 +3622,8 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;
-  MUTEX_T io_mutex;
+  pthread_mutex_t *io_mutex;
+  static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
 #endif /* WINDOWS && SERVER_MODE */
 #if defined(USE_AIO)
   struct aiocb cb;
@@ -3599,7 +3657,12 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
       nbytes = read (vol_fd, io_pages_p, read_bytes);
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
-      MUTEX_LOCK (rv, io_mutex);
+      if (io_mutex == NULL)
+	{
+	  io_mutex = &io_mutex_instance;
+	}
+
+      rv = pthread_mutex_lock (io_mutex);
       if (rv != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
@@ -3613,13 +3676,13 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 			       ER_IO_READ, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
 							(vol_fd)));
-	  MUTEX_UNLOCK (io_mutex);
+	  pthread_mutex_unlock (io_mutex);
 	  return NULL;
 	}
 
       /* Read the desired page */
       nbytes = read (vol_fd, io_pages_p, read_bytes);
-      if (MUTEX_UNLOCK (io_mutex) != 0)
+      if (pthread_mutex_unlock (io_mutex) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -3707,7 +3770,8 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;
-  MUTEX_T io_mutex;
+  pthread_mutex_t *io_mutex;
+  static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
 #endif /* WINDOWS && SERVER_MODE */
 #if defined(USE_AIO)
   struct aiocb cb;
@@ -3740,7 +3804,12 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
       nbytes = write (vol_fd, io_pages_p, write_bytes);
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
-      MUTEX_LOCK (rv, io_mutex);
+      if (io_mutex == NULL)
+	{
+	  io_mutex = &io_mutex_instance;
+	}
+
+      rv = pthread_mutex_lock (io_mutex);
       if (rv != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
@@ -3754,13 +3823,13 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
 			       ER_IO_WRITE, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
 							(vol_fd)));
-	  MUTEX_UNLOCK (io_mutex);
+	  pthread_mutex_unlock (io_mutex);
 	  return NULL;
 	}
 
       /* Write the desired page */
       nbytes = write (vol_fd, io_pages_p, write_bytes);
-      if (MUTEX_UNLOCK (io_mutex) != 0)
+      if (pthread_mutex_unlock (io_mutex) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -3880,23 +3949,24 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array,
  *   vlabel(in): Volume label
  */
 int
-fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, char *vlabel)
+fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 {
   int ret;
   struct timeval start_time, end_time, elapsed_time;
 #if defined (SERVER_MODE)
-  static MUTEX_T inc_cnt_mutex = MUTEX_INITIALIZER;
+  static pthread_mutex_t inc_cnt_mutex = PTHREAD_MUTEX_INITIALIZER;
   int r;
 #endif
   static int inc_cnt = 0;
 #if defined(USE_AIO)
   struct aiocb cb;
 #endif /* USE_AIO */
+  char *s;
 
   if (PRM_SUPPRESS_FSYNC > 0)
     {
 #if defined (SERVER_MODE)
-      MUTEX_LOCK (r, inc_cnt_mutex);
+      r = pthread_mutex_lock (&inc_cnt_mutex);
 #endif
       if (++inc_cnt >= PRM_SUPPRESS_FSYNC)
 	{
@@ -3905,12 +3975,12 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, char *vlabel)
       else
 	{
 #if defined (SERVER_MODE)
-	  MUTEX_UNLOCK (inc_cnt_mutex);
+	  pthread_mutex_unlock (&inc_cnt_mutex);
 #endif
 	  return vol_fd;
 	}
 #if defined (SERVER_MODE)
-      MUTEX_UNLOCK (inc_cnt_mutex);
+      pthread_mutex_unlock (&inc_cnt_mutex);
 #endif
     }
 
@@ -3932,12 +4002,9 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, char *vlabel)
     }
   if (ret != 0)
     {
-      if (vlabel == NULL)
-	{
-	  vlabel = "Unknown";
-	}
+      s = (vlabel == NULL) ? "Unknown" : vlabel;
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC,
-			   1, vlabel);
+			   1, s);
       return NULL_VOLDES;
     }
   else
@@ -3956,12 +4023,9 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, char *vlabel)
 	;
       if (aio_return (&cb) != 0)
 	{
-	  if (vlabel == NULL)
-	    {
-	      vlabel = "Unknown";
-	    }
+	  s = (vlabel == NULL) ? "Unknown" : vlabel;
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC,
-			       1, vlabel);
+			       1, s);
 	  return NULL_VOLDES;
 	}
 #endif
@@ -3982,7 +4046,7 @@ fileio_synchronize_bg_archive_volume (THREAD_ENTRY * thread_p)
 
   arg.vol_id = LOG_DBLOG_BG_ARCHIVE_VOLID;
   (void) fileio_traverse_system_volume (thread_p,
-					fileio_synchronize_sys_volume, arg);
+					fileio_synchronize_sys_volume, &arg);
   return NO_ERROR;
 }
 
@@ -3994,7 +4058,7 @@ fileio_synchronize_bg_archive_volume (THREAD_ENTRY * thread_p)
 static bool
 fileio_synchronize_sys_volume (THREAD_ENTRY * thread_p,
 			       FILEIO_SYSTEM_VOLUME_INFO * sys_vol_info_p,
-			       APPLY_ARG arg)
+			       APPLY_ARG * arg)
 {
   bool found = false;
 
@@ -4003,12 +4067,12 @@ fileio_synchronize_sys_volume (THREAD_ENTRY * thread_p,
       /* sync when match is found or
        * arg.vol_id is given as NULL_VOLID for all sys volumes.
        */
-      if (arg.vol_id == NULL_VOLID)
+      if (arg->vol_id == NULL_VOLID)
 	{
 	  /* fall through */
 	  ;
 	}
-      else if (sys_vol_info_p->volid == arg.vol_id)
+      else if (sys_vol_info_p->volid == arg->vol_id)
 	{
 	  found = true;
 	}
@@ -4032,7 +4096,7 @@ fileio_synchronize_sys_volume (THREAD_ENTRY * thread_p,
  */
 static bool
 fileio_synchronize_volume (THREAD_ENTRY * thread_p,
-			   FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG arg)
+			   FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG * arg)
 {
   if (vol_info_p->vdes != NULL_VOLDES)
     {
@@ -4058,11 +4122,11 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
       arg.vol_id = NULL_VOLID;
       (void) fileio_traverse_system_volume (thread_p,
 					    fileio_synchronize_sys_volume,
-					    arg);
+					    &arg);
     }
 
   (void) fileio_traverse_permanent_volume (thread_p,
-					   fileio_synchronize_volume, arg);
+					   fileio_synchronize_volume, &arg);
 
   if (er_errid () == ER_IO_SYNC)
     {
@@ -4094,7 +4158,7 @@ fileio_read_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
   bool is_retry = true;
   FILEIO_PAGE *io_page_p;
 #if defined(WINDOWS) && defined(SERVER_MODE)
-  MUTEX_T io_mutex;
+  pthread_mutex_t io_mutex;
   int rv;
   int actual_nread;
 #endif /* WINDOWS && SERVER_MODE */
@@ -4134,7 +4198,7 @@ fileio_read_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
       if (read (vol_fd, io_page_p, IO_PAGESIZE) != IO_PAGESIZE)
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
-      MUTEX_LOCK (rv, io_mutex);
+      rv = pthread_mutex_lock (&io_mutex);
       if (rv != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
@@ -4148,13 +4212,13 @@ fileio_read_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
 			       ER_IO_READ, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
 							(vol_fd)));
-	  MUTEX_UNLOCK (io_mutex);
+	  pthread_mutex_unlock (&io_mutex);
 	  return NULL;
 	}
 
       /* Read the desired page */
       actual_nread = read (vol_fd, io_page_p, IO_PAGESIZE);
-      if (MUTEX_UNLOCK (io_mutex) != 0)
+      if (pthread_mutex_unlock (&io_mutex) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
@@ -4219,7 +4283,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
   struct stat stat_buf;
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int actual_nwrite, rv;
-  MUTEX_T io_mutex;
+  pthread_mutex_t io_mutex;
 #endif /* WINDOWS && SERVER_MODE */
 
   if (fstat (vol_fd, &stat_buf) != 0)
@@ -4312,7 +4376,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
       if (write (vol_fd, write_p, nbytes) != nbytes)
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
-      MUTEX_LOCK (rv, io_mutex);
+      rv = pthread_mutex_lock (&io_mutex);
       if (rv != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
@@ -4321,7 +4385,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
       /* Locate the desired page */
       if (lseek (vol_fd, offset, SEEK_SET) != offset)
 	{
-	  MUTEX_UNLOCK (io_mutex);
+	  pthread_mutex_unlock (&io_mutex);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ER_IO_WRITE, 2, page_id,
 			       fileio_get_volume_label (fileio_get_volume_id
@@ -4332,7 +4396,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
       /* write the page */
 
       actual_nwrite = write (vol_fd, write_p, (int) nbytes);
-      MUTEX_UNLOCK (io_mutex);
+      pthread_mutex_unlock (&io_mutex);
       if (actual_nwrite != nbytes)
 #else /* WINDOWS */
       if (pwrite (vol_fd, write_p, nbytes, offset) != nbytes)
@@ -4626,7 +4690,7 @@ fileio_check_file_is_same (char *name_p, char *new_guess_path_p,
 }
 
 /*
- * io_prmtvway_maxfilename_maxpathname () - Find the longest names of files and
+ * fileio_get_primitive_way_max () - Find the longest names of files and
  *                                          path names that can be given for
  *                                          the given file system (path) in a
  *                                          primitive way
@@ -4967,7 +5031,7 @@ fileio_get_base_file_name (const char *full_name_p)
 {
   const char *no_path_name_p;
 
-  no_path_name_p = strrchr (full_name_p, PATHSLASH);
+  no_path_name_p = strrchr (full_name_p, PATH_SEPARATOR);
 #if defined(WINDOWS)
   {
     const char *nn_tmp = strrchr (full_name_p, '/');
@@ -5042,7 +5106,7 @@ fileio_get_volume_max_suffix (void)
 }
 
 /*
- * io_sprintf_vol_lock () - Build the name of volumes
+ * fileio_make_volume_lock_name () - Build the name of volumes
  *   return: void
  *   vol_lockname(out):
  *   vol_fullname(in):
@@ -5135,7 +5199,8 @@ fileio_make_volume_temp_name (char *vol_tmp_full_name_p,
 			      VOLID vol_id)
 {
   sprintf (vol_tmp_full_name_p, "%s%c%s%s%03d",
-	   tmp_path_p, PATHSLASH, tmp_name_p, FILEIO_VOLTMP_PREFIX, vol_id);
+	   tmp_path_p, PATH_SEPARATOR, tmp_name_p, FILEIO_VOLTMP_PREFIX,
+	   vol_id);
 }
 
 /*
@@ -5198,6 +5263,27 @@ fileio_make_log_archive_name (char *log_archive_name_p,
   sprintf (log_archive_name_p, "%s%s%s%s%03d",
 	   log_path_p, FILEIO_PATH_SEPARATOR (log_path_p), db_name_p,
 	   FILEIO_SUFFIX_LOGARCHIVE, archive_number);
+}
+
+/*
+ * fileio_make_removed_log_archive_name () - Build the name of removed volumes
+ *   return: void
+ *   logarchive_name(out):
+ *   log_path(in):
+ *   dbname(in):
+ *
+ * Note: The caller must have enough space to store the name of the volume
+ *       that is constructed(sprintf). It is recommended to have at least
+ *       DB_MAX_PATH_LENGTH length.
+ */
+void
+fileio_make_removed_log_archive_name (char *log_archive_name_p,
+				      const char *log_path_p,
+				      const char *db_name_p)
+{
+  sprintf (log_archive_name_p, "%s%s%s%s.removed",
+	   log_path_p, FILEIO_PATH_SEPARATOR (log_path_p), db_name_p,
+	   FILEIO_SUFFIX_LOGARCHIVE);
 }
 
 /*
@@ -5283,12 +5369,12 @@ fileio_make_backup_name (char *backup_name_p, const char *no_path_vol_name_p,
 			 int unit_num)
 {
   sprintf (backup_name_p, "%s%c%s%s%dv%03d",
-	   backup_path_p, PATHSLASH, no_path_vol_name_p, FILEIO_SUFFIX_BACKUP,
-	   level, unit_num);
+	   backup_path_p, PATH_SEPARATOR, no_path_vol_name_p,
+	   FILEIO_SUFFIX_BACKUP, level, unit_num);
 }
 
 /*
- * io_cache () - Cache information related to a mounted volume
+ * fileio_cache () - Cache information related to a mounted volume
  *   return: vdes on success, NULL_VOLDES on failure
  *   volid(in): Permanent volume identifier
  *   vlabel(in): Name/label of the volume
@@ -5344,7 +5430,7 @@ fileio_cache (VOLID vol_id, const char *vol_label_p, int vol_fd,
       vol_info_p->lockf_type = lockf_type;
       strncpy (vol_info_p->vlabel, vol_label_p, PATH_MAX);
       /* modify next volume id */
-      MUTEX_LOCK (rv, fileio_Vol_info_header.mutex);
+      rv = pthread_mutex_lock (&fileio_Vol_info_header.mutex);
       if (is_permanent_volume)
 	{
 	  if (fileio_Vol_info_header.next_perm_volid <= vol_id)
@@ -5359,12 +5445,12 @@ fileio_cache (VOLID vol_id, const char *vol_label_p, int vol_fd,
 	      fileio_Vol_info_header.next_temp_volid = vol_id - 1;
 	    }
 	}
-      MUTEX_UNLOCK (fileio_Vol_info_header.mutex);
+      pthread_mutex_unlock (&fileio_Vol_info_header.mutex);
     }
   else
     {
       /* system volume */
-      MUTEX_LOCK (rv, fileio_Sys_vol_info_header.mutex);
+      rv = pthread_mutex_lock (&fileio_Sys_vol_info_header.mutex);
       if (fileio_Sys_vol_info_header.anchor.vdes != NULL_VOLDES)
 	{
 	  sys_vol_info_p = (FILEIO_SYSTEM_VOLUME_INFO *)
@@ -5386,7 +5472,7 @@ fileio_cache (VOLID vol_id, const char *vol_label_p, int vol_fd,
 	      fileio_Sys_vol_info_header.anchor.next = sys_vol_info_p;
 	      fileio_Sys_vol_info_header.num_vols++;
 #if defined(WINDOWS)
-	      MUTEX_INIT (sys_vol_info_p->sysvol_mutex);
+	      pthread_mutex_init (&sys_vol_info_p->sysvol_mutex, NULL);
 #endif /* WINDOWS */
 	    }
 	}
@@ -5399,19 +5485,19 @@ fileio_cache (VOLID vol_id, const char *vol_label_p, int vol_fd,
 	  sys_vol_info_p->next = NULL;
 	  strncpy (sys_vol_info_p->vlabel, vol_label_p, PATH_MAX);
 #if defined(WINDOWS)
-	  MUTEX_INIT (sys_vol_info_p->sysvol_mutex);
+	  pthread_mutex_init (&sys_vol_info_p->sysvol_mutex, NULL);
 #endif /* WINDOWS */
 	  fileio_Sys_vol_info_header.num_vols++;
 	}
 
-      MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+      pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
     }
 
   return vol_fd;
 }
 
 /*
- * io_decache () - Decache volume information. Used when the volume is
+ * fileio_decache () - Decache volume information. Used when the volume is
  *                 dismounted
  *   return: void
  *   vdes(in): I/O Volume descriptor
@@ -5425,7 +5511,7 @@ fileio_decache (THREAD_ENTRY * thread_p, int vol_fd)
   int rv;
   APPLY_ARG arg = { 0 };
 
-  MUTEX_LOCK (rv, fileio_Sys_vol_info_header.mutex);
+  rv = pthread_mutex_lock (&fileio_Sys_vol_info_header.mutex);
   /* sys volume ? */
   for ((sys_vol_info_p =
 	&fileio_Sys_vol_info_header.anchor, prev_sys_vol_info_p =
@@ -5454,10 +5540,7 @@ fileio_decache (THREAD_ENTRY * thread_p, int vol_fd)
 		  fileio_Sys_vol_info_header.anchor.next =
 		    sys_vol_info_p->next;
 #if defined(SERVER_MODE) && defined(WINDOWS)
-		  if (sys_vol_info_p->sysvol_mutex != NULL)
-		    {
-		      MUTEX_DESTROY (sys_vol_info_p->sysvol_mutex);
-		    }
+		  pthread_mutex_destroy (&sys_vol_info_p->sysvol_mutex);
 #endif /* WINDOWS */
 		  free_and_init (sys_vol_info_p);
 		}
@@ -5470,11 +5553,8 @@ fileio_decache (THREAD_ENTRY * thread_p, int vol_fd)
 		  fileio_Sys_vol_info_header.anchor.vlabel[0] = '\0';
 		  fileio_Sys_vol_info_header.anchor.next = NULL;
 #if defined(SERVER_MODE) && defined(WINDOWS)
-		  if (fileio_Sys_vol_info_header.anchor.sysvol_mutex != NULL)
-		    {
-		      MUTEX_DESTROY (fileio_Sys_vol_info_header.anchor.
-				     sysvol_mutex);
-		    }
+		  pthread_mutex_destroy (&fileio_Sys_vol_info_header.anchor.
+					 sysvol_mutex);
 #endif /* WINDOWS */
 		}
 	    }
@@ -5482,23 +5562,21 @@ fileio_decache (THREAD_ENTRY * thread_p, int vol_fd)
 	    {
 	      prev_sys_vol_info_p->next = sys_vol_info_p->next;
 #if defined(SERVER_MODE) && defined(WINDOWS)
-	      if (sys_vol_info_p->sysvol_mutex != NULL)
-		{
-		  MUTEX_DESTROY (sys_vol_info_p->sysvol_mutex);
-		}
+	      pthread_mutex_destroy (&sys_vol_info_p->sysvol_mutex);
 #endif /* WINDOWS */
 	      free_and_init (sys_vol_info_p);
 	    }
 	  fileio_Sys_vol_info_header.num_vols--;
-	  MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+	  pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
 	  return;
 	}
     }
-  MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
-  arg.vol_fd = vol_fd;
+  pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
+  arg.vdes = vol_fd;
   vol_info_p =
     fileio_traverse_permanent_volume (thread_p,
-				      fileio_is_volume_descriptor_equal, arg);
+				      fileio_is_volume_descriptor_equal,
+				      &arg);
   if (vol_info_p)
     {
       vol_id = vol_info_p->volid;
@@ -5507,27 +5585,25 @@ fileio_decache (THREAD_ENTRY * thread_p, int vol_fd)
       vol_info_p->lockf_type = FILEIO_NOT_LOCKF;
       vol_info_p->vlabel[0] = '\0';
 #if defined(SERVER_MODE) && defined(WINDOWS)
-      if (vol_info_p->vol_mutex)
-	{
-	  MUTEX_DESTROY (vol_info_p->vol_mutex);
-	}
+      pthread_mutex_destroy (&vol_info_p->vol_mutex);
 #endif /* WINDOWS */
 
       /* update next_perm_volid, if needed */
-      MUTEX_LOCK (rv, fileio_Vol_info_header.mutex);
+      rv = pthread_mutex_lock (&fileio_Vol_info_header.mutex);
       if (fileio_Vol_info_header.next_perm_volid == vol_id + 1)
 	{
 	  fileio_Vol_info_header.next_perm_volid = vol_id;
 	}
 
-      MUTEX_UNLOCK (fileio_Vol_info_header.mutex);
+      pthread_mutex_unlock (&fileio_Vol_info_header.mutex);
       return;
     }
 
-  arg.vol_fd = vol_fd;
+  arg.vdes = vol_fd;
   vol_info_p =
     fileio_traverse_temporary_volume (thread_p,
-				      fileio_is_volume_descriptor_equal, arg);
+				      fileio_is_volume_descriptor_equal,
+				      &arg);
   if (vol_info_p)
     {
       vol_id = vol_info_p->volid;
@@ -5536,20 +5612,17 @@ fileio_decache (THREAD_ENTRY * thread_p, int vol_fd)
       vol_info_p->lockf_type = FILEIO_NOT_LOCKF;
       vol_info_p->vlabel[0] = '\0';
 #if defined(SERVER_MODE) && defined(WINDOWS)
-      if (vol_info_p->vol_mutex)
-	{
-	  MUTEX_DESTROY (vol_info_p->vol_mutex);
-	}
+      pthread_mutex_destroy (&vol_info_p->vol_mutex);
 #endif /* WINDOWS */
 
       /* update next_perm_volid, if needed */
-      MUTEX_LOCK (rv, fileio_Vol_info_header.mutex);
+      rv = pthread_mutex_lock (&fileio_Vol_info_header.mutex);
       if (fileio_Vol_info_header.next_perm_volid == vol_id - 1)
 	{
 	  fileio_Vol_info_header.next_perm_volid = vol_id;
 	}
 
-      MUTEX_UNLOCK (fileio_Vol_info_header.mutex);
+      pthread_mutex_unlock (&fileio_Vol_info_header.mutex);
       return;
     }
 }
@@ -5610,17 +5683,17 @@ fileio_get_volume_label (VOLID vol_id)
   else
     {
       /* system volume */
-      MUTEX_LOCK (rv, fileio_Sys_vol_info_header.mutex);
+      rv = pthread_mutex_lock (&fileio_Sys_vol_info_header.mutex);
       arg.vol_id = vol_id;
       sys_vol_info_p =
 	fileio_find_system_volume (NULL, fileio_is_system_volume_id_equal,
-				   arg);
+				   &arg);
       if (sys_vol_info_p)
 	{
 	  vol_label_p = (const char *) sys_vol_info_p->vlabel;
 	}
 
-      MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+      pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
     }
 
   return vol_label_p;
@@ -5656,33 +5729,33 @@ fileio_get_volume_id (int vol_fd)
 
   FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
   /* sys volume ? */
-  MUTEX_LOCK (rv, fileio_Sys_vol_info_header.mutex);
-  arg.vol_fd = vol_fd;
+  rv = pthread_mutex_lock (&fileio_Sys_vol_info_header.mutex);
+  arg.vdes = vol_fd;
   sys_vol_info_p =
     fileio_find_system_volume (NULL, fileio_is_system_volume_descriptor_equal,
-			       arg);
+			       &arg);
   if (sys_vol_info_p)
     {
       vol_id = sys_vol_info_p->volid;
-      MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+      pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
       return vol_id;
     }
 
-  MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+  pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
 
-  arg.vol_fd = vol_fd;
+  arg.vdes = vol_fd;
   vol_info_p =
     fileio_traverse_permanent_volume (NULL, fileio_is_volume_descriptor_equal,
-				      arg);
+				      &arg);
   if (vol_info_p)
     {
       return vol_info_p->volid;
     }
 
-  arg.vol_fd = vol_fd;
+  arg.vdes = vol_fd;
   vol_info_p =
     fileio_traverse_temporary_volume (NULL, fileio_is_volume_descriptor_equal,
-				      arg);
+				      &arg);
   if (vol_info_p)
     {
       return vol_info_p->volid;
@@ -5693,9 +5766,10 @@ fileio_get_volume_id (int vol_fd)
 
 static bool
 fileio_is_volume_label_equal (THREAD_ENTRY * thread_p,
-			      FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG arg)
+			      FILEIO_VOLUME_INFO * vol_info_p,
+			      APPLY_ARG * arg)
 {
-  return strncmp (vol_info_p->vlabel, arg.vol_label, PATH_MAX) == 0;
+  return (strncmp (vol_info_p->vlabel, arg->vol_label, PATH_MAX) == 0);
 }
 
 /*
@@ -5715,24 +5789,24 @@ fileio_find_volume_id_with_label (THREAD_ENTRY * thread_p,
   APPLY_ARG arg = { 0 };
 
   FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
-  MUTEX_LOCK (rv, fileio_Sys_vol_info_header.mutex);
+  rv = pthread_mutex_lock (&fileio_Sys_vol_info_header.mutex);
   arg.vol_label = vol_label_p;
   sys_vol_info_p =
     fileio_find_system_volume (thread_p, fileio_is_system_volume_label_equal,
-			       arg);
+			       &arg);
   if (sys_vol_info_p)
     {
       vol_id = sys_vol_info_p->volid;
-      MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+      pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
       return vol_id;
     }
 
-  MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+  pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
 
   arg.vol_label = vol_label_p;
   vol_info_p =
     fileio_traverse_permanent_volume (thread_p, fileio_is_volume_label_equal,
-				      arg);
+				      &arg);
   if (vol_info_p)
     {
       return vol_info_p->volid;
@@ -5741,7 +5815,7 @@ fileio_find_volume_id_with_label (THREAD_ENTRY * thread_p,
   arg.vol_label = vol_label_p;
   vol_info_p =
     fileio_traverse_temporary_volume (thread_p, fileio_is_volume_label_equal,
-				      arg);
+				      &arg);
   if (vol_info_p)
     {
       return vol_info_p->volid;
@@ -5796,17 +5870,17 @@ fileio_get_volume_descriptor (VOLID vol_id)
     }
   else
     {
-      MUTEX_LOCK (rv, fileio_Sys_vol_info_header.mutex);
+      rv = pthread_mutex_lock (&fileio_Sys_vol_info_header.mutex);
       arg.vol_id = vol_id;
       sys_vol_info_p =
 	fileio_find_system_volume (NULL, fileio_is_system_volume_id_equal,
-				   arg);
+				   &arg);
       if (sys_vol_info_p)
 	{
 	  vol_fd = sys_vol_info_p->vdes;
 	}
 
-      MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+      pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
     }
 
   return vol_fd;
@@ -5827,24 +5901,24 @@ fileio_find_volume_descriptor_with_label (const char *vol_label_p)
   APPLY_ARG arg = { 0 };
 
   FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLDES);
-  MUTEX_LOCK (rv, fileio_Sys_vol_info_header.mutex);
+  rv = pthread_mutex_lock (&fileio_Sys_vol_info_header.mutex);
   arg.vol_label = vol_label_p;
   sys_vol_info_p =
     fileio_find_system_volume (NULL, fileio_is_system_volume_label_equal,
-			       arg);
+			       &arg);
   if (sys_vol_info_p)
     {
       vol_fd = sys_vol_info_p->vdes;
-      MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+      pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
       return vol_fd;
     }
 
-  MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+  pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
 
   arg.vol_label = vol_label_p;
   vol_info_p =
     fileio_traverse_permanent_volume (NULL, fileio_is_volume_label_equal,
-				      arg);
+				      &arg);
   if (vol_info_p)
     {
       return vol_info_p->vdes;
@@ -5853,7 +5927,7 @@ fileio_find_volume_descriptor_with_label (const char *vol_label_p)
   arg.vol_label = vol_label_p;
   vol_info_p =
     fileio_traverse_temporary_volume (NULL, fileio_is_volume_label_equal,
-				      arg);
+				      &arg);
   if (vol_info_p)
     {
       return vol_info_p->vdes;
@@ -5863,7 +5937,7 @@ fileio_find_volume_descriptor_with_label (const char *vol_label_p)
 }
 
 /*
- * io_lockf_type () - Find the lock type applied to a mounted volume
+ * fileio_get_lockf_type () - Find the lock type applied to a mounted volume
  *   return: lockf_type
  *   vdes(in): I/O volume descriptor
  */
@@ -5877,32 +5951,32 @@ fileio_get_lockf_type (int vol_fd)
   APPLY_ARG arg = { 0 };
 
   FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (FILEIO_NOT_LOCKF);
-  MUTEX_LOCK (rv, fileio_Sys_vol_info_header.mutex);
-  arg.vol_fd = vol_fd;
+  rv = pthread_mutex_lock (&fileio_Sys_vol_info_header.mutex);
+  arg.vdes = vol_fd;
   sys_vol_info_p =
     fileio_find_system_volume (NULL, fileio_is_system_volume_descriptor_equal,
-			       arg);
+			       &arg);
   if (sys_vol_info_p)
     {
       lockf_type = sys_vol_info_p->lockf_type;
-      MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+      pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
       return lockf_type;
     }
-  MUTEX_UNLOCK (fileio_Sys_vol_info_header.mutex);
+  pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
 
-  arg.vol_fd = vol_fd;
+  arg.vdes = vol_fd;
   vol_info_p =
     fileio_traverse_permanent_volume (NULL, fileio_is_volume_descriptor_equal,
-				      arg);
+				      &arg);
   if (vol_info_p)
     {
       return vol_info_p->lockf_type;
     }
 
-  arg.vol_fd = vol_fd;
+  arg.vdes = vol_fd;
   vol_info_p =
     fileio_traverse_temporary_volume (NULL, fileio_is_volume_descriptor_equal,
-				      arg);
+				      &arg);
   if (vol_info_p)
     {
       return vol_info_p->lockf_type;
@@ -5956,28 +6030,21 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p,
   queue_p = &thread_info_p->io_queue;
 
 #if defined(SERVER_MODE)
-  rv = MUTEX_INIT (thread_info_p->mtx);
+  rv = pthread_mutex_init (&thread_info_p->mtx, NULL);
   if (rv != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
-#if defined(WINDOWS)
-  /* Create as a manual-reset event object to broadcast the signal */
-  rv =
-    ((thread_info_p->rcv =
-      CreateEvent (NULL, TRUE, FALSE, NULL)) != NULL ? 0 : -1);
-#else /* WINDOWS */
-  rv = COND_INIT (thread_info_p->rcv);
-#endif /* WINDOWS */
+  rv = pthread_cond_init (&thread_info_p->rcv, NULL);
   if (rv != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_INIT, 0);
       return ER_CSS_PTHREAD_COND_INIT;
     }
 
-  rv = COND_INIT (thread_info_p->wcv);
+  rv = pthread_cond_init (&thread_info_p->wcv, NULL);
   if (rv != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_INIT, 0);
@@ -6281,21 +6348,21 @@ fileio_finalize_backup_thread (FILEIO_BACKUP_SESSION * session_p,
   qp = &tp->io_queue;
 
 #if defined(SERVER_MODE)
-  rv = MUTEX_DESTROY (tp->mtx);
+  rv = pthread_mutex_destroy (&tp->mtx);
   if (rv != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
     }
 
-  rv = COND_DESTROY (tp->rcv);
+  rv = pthread_cond_destroy (&tp->rcv);
   if (rv != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ER_CSS_PTHREAD_COND_DESTROY, 0);
     }
 
-  rv = COND_DESTROY (tp->wcv);
+  rv = pthread_cond_destroy (&tp->wcv);
   if (rv != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -6603,6 +6670,14 @@ fileio_write_backup_end_time_to_header (FILEIO_BACKUP_SESSION * session_p,
 					FILEIO_INITIAL_BACKUP_UNITS,
 					FILEIO_FIRST_BACKUP_VOL_INFO);
 
+  if (first_bkvol_name == NULL)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			   ER_IO_MOUNT_FAIL, 1,
+			   "(backup volume name is null)");
+      return ER_IO_MOUNT_FAIL;
+    }
+
   if (strncmp (first_bkvol_name, session_p->bkup.vlabel, PATH_MAX) == 0)
     {
       session_p->bkup.bkuphdr->end_time = end_time;
@@ -6759,8 +6834,8 @@ fileio_finish_backup (THREAD_ENTRY * thread_p,
 				MSGCAT_FILEIO_BACKUP_LABEL_INFO),
 		session_p->bkup.bkuphdr->level,
 		session_p->bkup.bkuphdr->unit_num,
-		fileio_get_base_file_name (session_p->bkup.
-					   bkuphdr->db_fullname),
+		fileio_get_base_file_name (session_p->bkup.bkuphdr->
+					   db_fullname),
 		fileio_ctime (&session_p->bkup.bkuphdr->start_time,
 			      io_time_val)) < 0)
 #else /* SERVER_MODE && !WINDOWS */
@@ -6770,8 +6845,8 @@ fileio_finish_backup (THREAD_ENTRY * thread_p,
 				MSGCAT_FILEIO_BACKUP_LABEL_INFO),
 		session_p->bkup.bkuphdr->level,
 		session_p->bkup.bkuphdr->unit_num,
-		fileio_get_base_file_name (session_p->bkup.
-					   bkuphdr->db_fullname),
+		fileio_get_base_file_name (session_p->bkup.bkuphdr->
+					   db_fullname),
 		fileio_ctime (&session_p->bkup.bkuphdr->start_time,
 			      io_time_val)) < 0)
 #endif /* SERVER_MODE && !WINDOWS */
@@ -6851,7 +6926,7 @@ fileio_remove_all_backup (THREAD_ENTRY * thread_p, int start_level)
 }
 
 /*
- * io_node_alloc () -
+ * fileio_allocate_node () -
  *   return:
  *   qp(in):
  *   backup_hdr(in):
@@ -6959,7 +7034,7 @@ exit_on_error:
 }
 
 /*
- * io_node_free () -
+ * fileio_free_node () -
  *   return:
  *   qp(in):
  *   node(in):
@@ -6978,7 +7053,7 @@ fileio_free_node (FILEIO_QUEUE * queue_p, FILEIO_NODE * node_p)
 }
 
 /*
- * io_queue_add_tail () -
+ * fileio_append_queue () -
  *   return:
  *   qp(in):
  *   node(in):
@@ -7010,7 +7085,7 @@ fileio_append_queue (FILEIO_QUEUE * queue_p, FILEIO_NODE * node_p)
 #endif /* SERVER_MODE */
 
 /*
- * io_queue_del_head () -
+ * fileio_delete_queue_head () -
  *   return:
  *   qp(in):
  */
@@ -7039,7 +7114,7 @@ fileio_delete_queue_head (FILEIO_QUEUE * queue_p)
 }
 
 /*
- * io_backup_node_compress () -
+ * fileio_compress_backup_node () -
  *   return:
  *   node(in):
  *   backup_hdr(in):
@@ -7086,8 +7161,7 @@ fileio_compress_backup_node (FILEIO_NODE * node_p,
 	  error = ER_IO_LZO_COMPRESS_FAIL;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 4,
 		  backup_header_p->zip_method,
-		  fileio_get_zip_method_string (backup_header_p->
-						zip_method),
+		  fileio_get_zip_method_string (backup_header_p->zip_method),
 		  backup_header_p->zip_level,
 		  fileio_get_zip_level_string (backup_header_p->zip_level));
 #if defined(CUBRID_DEBUG)
@@ -7133,7 +7207,7 @@ exit_on_error:
 }
 
 /*
- * io_backup_node_write () -
+ * fileio_write_backup_node () -
  *   return:
  *   session(in/out):
  *   node(in):
@@ -7183,7 +7257,7 @@ exit_on_error:
 }
 
 /*
- * io_backup_volume_read () -
+ * fileio_read_backup_volume () -
  *   return:
  *   session(in/out):
  */
@@ -7220,7 +7294,7 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p,
   /* thread service routine has tran_index_lock,
    * and should release before it is working
    */
-  MUTEX_UNLOCK (thread_p->tran_index_lock);
+  pthread_mutex_unlock (&thread_p->tran_index_lock);
   thread_p->tran_index = thread_info_p->tran_index;
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "start io_backup_volume_read, session = %p\n", session_p);
@@ -7229,19 +7303,10 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p,
   node_p = NULL;		/* init */
   while (1)
     {
-      MUTEX_LOCK (rv, thread_info_p->mtx);
+      rv = pthread_mutex_lock (&thread_info_p->mtx);
       while (thread_info_p->io_type == FILEIO_WRITE)
 	{
-	  COND_WAIT (thread_info_p->rcv, thread_info_p->mtx);
-#if defined(WINDOWS)
-	  MUTEX_LOCK (rv, thread_info_p->mtx);
-	  if (rv != 0)
-	    {
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-	      thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	    }
-#endif /* WINDOWS */
+	  pthread_cond_wait (&thread_info_p->rcv, &thread_info_p->mtx);
 	}
 
       if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT)
@@ -7256,19 +7321,10 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p,
 	{
 	  node_p->writeable = true;
 	  thread_info_p->io_type = FILEIO_WRITE;
-	  COND_SIGNAL (thread_info_p->wcv);	/* wake up write thread */
+	  pthread_cond_signal (&thread_info_p->wcv);	/* wake up write thread */
 	  while (thread_info_p->io_type == FILEIO_WRITE)
 	    {
-	      COND_WAIT (thread_info_p->rcv, thread_info_p->mtx);
-#if defined(WINDOWS)
-	      MUTEX_LOCK (rv, thread_info_p->mtx);
-	      if (rv != 0)
-		{
-		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				       ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-		  thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-		}
-#endif /* WINDOWS */
+	      pthread_cond_wait (&thread_info_p->rcv, &thread_info_p->mtx);
 	    }
 
 	  if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT)
@@ -7286,9 +7342,9 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p,
 	  if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads)
 	    {
 	      thread_info_p->io_type = FILEIO_WRITE;
-	      COND_SIGNAL (thread_info_p->wcv);	/* wake up write thread */
+	      pthread_cond_signal (&thread_info_p->wcv);	/* wake up write thread */
 	    }
-	  MUTEX_UNLOCK (thread_info_p->mtx);
+	  pthread_mutex_unlock (&thread_info_p->mtx);
 	  break;
 	}
 
@@ -7363,7 +7419,7 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p,
 	       thread_info_p->from_npages, thread_info_p->pageid);
 #endif /* CUBRID_DEBUG */
       thread_info_p->pageid++;
-      MUTEX_UNLOCK (thread_info_p->mtx);
+      pthread_mutex_unlock (&thread_info_p->mtx);
       if (node_p)
 	{
 	  node_p->nread += FILEIO_BACKUP_PAGE_OVERHEAD;
@@ -7409,12 +7465,12 @@ exit_on_error:
   thread_info_p->end_r_threads++;
   if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads)
     {
-      COND_SIGNAL (thread_info_p->wcv);	/* wake up write thread */
+      pthread_cond_signal (&thread_info_p->wcv);	/* wake up write thread */
     }
 
   if (need_unlock)
     {
-      MUTEX_UNLOCK (thread_info_p->mtx);
+      pthread_mutex_unlock (&thread_info_p->mtx);
     }
 
   if (node_p != NULL)
@@ -7426,7 +7482,7 @@ exit_on_error:
 }
 
 /*
- * io_backup_volume_write () -
+ * fileio_write_backup_volume () -
  *   return:
  *   session(in/out):
  */
@@ -7453,23 +7509,12 @@ fileio_write_backup_volume (THREAD_ENTRY * thread_p,
   fprintf (stdout, "start io_backup_volume_write\n");
 #endif /* CUBRID_DEBUG */
   backup_header_p = session_p->bkup.bkuphdr;
-  MUTEX_LOCK (rv, thread_info_p->mtx);
+  rv = pthread_mutex_lock (&thread_info_p->mtx);
   while (1)
     {
       while (thread_info_p->io_type == FILEIO_READ)
 	{
-	  COND_WAIT (thread_info_p->wcv, thread_info_p->mtx);
-#if defined(WINDOWS)
-	  MUTEX_LOCK (rv, thread_info_p->mtx);
-	  /* Sets the manual-reset event object to the nonsignaled state. */
-	  ResetEvent (thread_info_p->rcv);
-	  if (rv != 0)
-	    {
-	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-				   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-	      thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	    }
-#endif /* WINDOWS */
+	  pthread_cond_wait (&thread_info_p->wcv, &thread_info_p->mtx);
 	}
 
       if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT)
@@ -7528,11 +7573,11 @@ fileio_write_backup_volume (THREAD_ENTRY * thread_p,
       if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads)
 	{
 	  /* only write thread alive */
-	  MUTEX_UNLOCK (thread_info_p->mtx);
+	  pthread_mutex_unlock (&thread_info_p->mtx);
 	  break;
 	}
 
-      COND_BROADCAST (thread_info_p->rcv);	/* wake up all read threads */
+      pthread_cond_broadcast (&thread_info_p->rcv);	/* wake up all read threads */
     }
 
 #if defined(CUBRID_DEBUG)
@@ -7565,25 +7610,14 @@ exit_on_error:
        * an error (i.e, INTERRUPT) was broken out, so terminate the all threads.
        * But, I am the last one, and all the readers are terminated
        */
-      MUTEX_UNLOCK (thread_info_p->mtx);
+      pthread_mutex_unlock (&thread_info_p->mtx);
       goto exit_on_end;
     }
 
   /* wake up all read threads and wait for all killed */
-  COND_BROADCAST (thread_info_p->rcv);
-  COND_WAIT (thread_info_p->wcv, thread_info_p->mtx);
-#if defined(WINDOWS)
-  MUTEX_LOCK (rv, thread_info_p->mtx);
-  /* Sets the manual-reset event object to the nonsignaled state. */
-  ResetEvent (thread_info_p->rcv);
-  if (rv != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-      thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-    }
-#endif /* WINDOWS */
-  MUTEX_UNLOCK (thread_info_p->mtx);
+  pthread_cond_broadcast (&thread_info_p->rcv);
+  pthread_cond_wait (&thread_info_p->wcv, &thread_info_p->mtx);
+  pthread_mutex_unlock (&thread_info_p->mtx);
   goto exit_on_end;
 }
 
@@ -8076,7 +8110,7 @@ error:
 #endif /* !CS_MODE */
 
 /*
- * io_backup_flush () - Flush any buffered data
+ * fileio_flush_backup () - Flush any buffered data
  *   return:
  *   session(in/out): The session array
  *
@@ -8181,10 +8215,9 @@ fileio_flush_backup (THREAD_ENTRY * thread_p,
 			  er_set_with_oserror (ER_ERROR_SEVERITY,
 					       ARG_FILE_LINE,
 					       ER_IO_WRITE, 2,
-					       CEIL_PTVDIV (session_p->
-							    bkup.
-							    voltotalio,
-							    IO_PAGESIZE),
+					       CEIL_PTVDIV
+					       (session_p->bkup.voltotalio,
+						IO_PAGESIZE),
 					       session_p->bkup.vlabel);
 			  return ER_FAILED;
 			}
@@ -8236,7 +8269,7 @@ fileio_flush_backup (THREAD_ENTRY * thread_p,
 }
 
 /*
- * io_backup_read () - Read a database page from the current database
+ * fileio_read_backup () - Read a database page from the current database
  *                     volume/file that is backed up
  *   return:
  *   session(in/out): The session array
@@ -8288,8 +8321,8 @@ fileio_read_backup (FILEIO_BACKUP_SESSION * session_p, int page_id)
 	    {
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				   ER_IO_READ, 2,
-				   FILEIO_GET_BACKUP_PAGE_ID (session_p->
-							      dbfile.area),
+				   FILEIO_GET_BACKUP_PAGE_ID
+				   (session_p->dbfile.area),
 				   session_p->dbfile.vlabel);
 	      return -1;
 	    }
@@ -8322,7 +8355,7 @@ fileio_read_backup (FILEIO_BACKUP_SESSION * session_p, int page_id)
 }
 
 /*
- * io_backup_write () - Write the number of indicated bytes from the dbfile
+ * fileio_write_backup () - Write the number of indicated bytes from the dbfile
  *                      area to to the backup destination
  *   return:
  *   session(in/out): The session array
@@ -8369,7 +8402,7 @@ fileio_write_backup (THREAD_ENTRY * thread_p,
 }
 
 /*
- * io_backup_write_header () - Immediately write the backup header to the
+ * fileio_write_backup_header () - Immediately write the backup header to the
  *                             destination
  *   return:
  *   session(in/out): The session array
@@ -8415,8 +8448,7 @@ fileio_write_backup_header (FILEIO_BACKUP_SESSION * session_p)
 	    {
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				   ER_IO_WRITE, 2,
-				   CEIL_PTVDIV (session_p->bkup.
-						voltotalio,
+				   CEIL_PTVDIV (session_p->bkup.voltotalio,
 						IO_PAGESIZE),
 				   session_p->bkup.vlabel);
 	    }
@@ -8434,7 +8466,7 @@ fileio_write_backup_header (FILEIO_BACKUP_SESSION * session_p)
 }
 
 /*
- * io_restore_init () - Initialize the restore session structure with the given
+ * fileio_initialize_restore () - Initialize the restore session structure with the given
  *                      information
  *   return: session or NULL
  *   db_fullname(in): Name of the database to backup
@@ -8502,13 +8534,13 @@ fileio_abort_restore (THREAD_ENTRY * thread_p,
 }
 
 /*
- * io_restore_read () - The number of bytes to read from the backup destination
+ * fileio_read_restore () - The number of bytes to read from the backup destination
  *   return:
  *   session(in/out): The session array
  *   toread_nbytes(in): Number of bytes to read
  *
  * Note: Now handles reads which span volumes, as well as reading incomplete
- *       blocks at the end of one volume.  See io_backup_flush for details
+ *       blocks at the end of one volume.  See fileio_flush_backup for details
  *       about how the final block is repeated at the start of the new volumes.
  */
 static int
@@ -8583,10 +8615,9 @@ fileio_read_restore (THREAD_ENTRY * thread_p,
 			    er_set_with_oserror (ER_ERROR_SEVERITY,
 						 ARG_FILE_LINE,
 						 ER_IO_READ, 2,
-						 CEIL_PTVDIV (session_p->
-							      bkup.
-							      voltotalio,
-							      IO_PAGESIZE),
+						 CEIL_PTVDIV
+						 (session_p->bkup.voltotalio,
+						  IO_PAGESIZE),
 						 session_p->bkup.vlabel);
 			    return ER_FAILED;
 			  }
@@ -8596,10 +8627,11 @@ fileio_read_restore (THREAD_ENTRY * thread_p,
 		  if (is_need_next_vol)
 		    {
 		      next_vol_p =
-			fileio_get_backup_info_volume_name (session_p->bkup.
-							    bkuphdr->level,
-							    session_p->bkup.
-							    bkuphdr->
+			fileio_get_backup_info_volume_name (session_p->
+							    bkup.bkuphdr->
+							    level,
+							    session_p->
+							    bkup.bkuphdr->
 							    unit_num + 1,
 							    FILEIO_FIRST_BACKUP_VOL_INFO);
 		      if (next_vol_p == NULL)
@@ -8607,10 +8639,10 @@ fileio_read_restore (THREAD_ENTRY * thread_p,
 			  if (session_p->bkup.dtype !=
 			      FILEIO_BACKUP_VOL_DEVICE)
 			    {
-			      fileio_get_directory_path (session_p->bkup.
-							 current_path,
-							 session_p->bkup.
-							 vlabel);
+			      fileio_get_directory_path (session_p->
+							 bkup.current_path,
+							 session_p->
+							 bkup.vlabel);
 			      next_vol_p = session_p->bkup.current_path;
 			    }
 			}
@@ -8619,8 +8651,8 @@ fileio_read_restore (THREAD_ENTRY * thread_p,
 			  if (!fileio_is_volume_exist (next_vol_p)
 			      && strncmp (next_vol_p,
 					  session_p->bkup.current_path,
-					  strlen (session_p->bkup.
-						  current_path)) != 0)
+					  strlen (session_p->
+						  bkup.current_path)) != 0)
 			    {
 			      /* assume the changed path, not bkvinf file */
 			      next_vol_p = session_p->bkup.current_path;
@@ -8677,12 +8709,13 @@ fileio_read_restore (THREAD_ENTRY * thread_p,
 		      /* reset ptr */
 		      session_p->bkup.ptr = session_p->bkup.buffer;
 		      /* add new backup volume info info new_bkvinf */
-		      fileio_add_volume_to_backup_info (session_p->bkup.
-							vlabel,
-							session_p->bkup.
-							bkuphdr->level,
-							session_p->bkup.
-							bkuphdr->unit_num,
+		      fileio_add_volume_to_backup_info (session_p->
+							bkup.vlabel,
+							session_p->
+							bkup.bkuphdr->level,
+							session_p->
+							bkup.bkuphdr->
+							unit_num,
 							FILEIO_SECOND_BACKUP_VOL_INFO);
 		      /* Retry the buffered read from the new volume */
 		      goto restart_newvol;
@@ -8727,13 +8760,13 @@ fileio_read_restore (THREAD_ENTRY * thread_p,
 }
 
 /*
- * io_restore_read_header () - READ A BACKUP VOLUME HEADER
+ * fileio_read_restore_header () - READ A BACKUP VOLUME HEADER
  *   return:
  *   session(in/out): The session array
  *
  * Note: This routine should be the first read from a backup volume or device.
  *       It reads the backup volume header that was written with the
- *       io_backup_write_header routine.  The header was written with a
+ *       fileio_write_backup_header routine.  The header was written with a
  *       specific buffer block size to be more compatible with tape devices so
  *       we can read it in without knowing how the rest of the data was
  *       buffered. Note this also means that backup volume headers are not the
@@ -8763,8 +8796,7 @@ fileio_read_restore_header (FILEIO_BACKUP_SESSION * session_p)
 	    {
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 				   ER_IO_READ, 2,
-				   CEIL_PTVDIV (session_p->bkup.
-						voltotalio,
+				   CEIL_PTVDIV (session_p->bkup.voltotalio,
 						IO_PAGESIZE),
 				   session_p->bkup.vlabel);
 	      return ER_FAILED;
@@ -8889,7 +8921,7 @@ fileio_make_error_message (THREAD_ENTRY * thread_p, char *error_message_p)
 }
 
 /*
- * io_restore_continue () - CONTINUE A RESTORE SESSION
+ * fileio_continue_restore () - CONTINUE A RESTORE SESSION
  *   return: session or NULL
  *   db_fullname(in): Name of the database to backup
  *   db_creation(in): Creation of time data base
@@ -9403,8 +9435,7 @@ fileio_list_restore (THREAD_ENTRY * thread_p,
 	   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO,
 			   MSGCAT_FILEIO_BKUP_HDR_LEVEL),
 	   backup_header_p->level,
-	   fileio_get_backup_level_string (backup_header_p->
-					   level),
+	   fileio_get_backup_level_string (backup_header_p->level),
 	   backup_header_p->start_lsa.pageid,
 	   backup_header_p->start_lsa.offset,
 	   backup_header_p->chkpt_lsa.pageid,
@@ -9427,8 +9458,7 @@ fileio_list_restore (THREAD_ENTRY * thread_p,
 	   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO,
 			   MSGCAT_FILEIO_BKUP_HDR_ZIP_INFO),
 	   backup_header_p->zip_method,
-	   fileio_get_zip_method_string (backup_header_p->
-					 zip_method),
+	   fileio_get_zip_method_string (backup_header_p->zip_method),
 	   backup_header_p->zip_level,
 	   fileio_get_zip_level_string (backup_header_p->zip_level));
   fprintf (stdout,
@@ -9587,14 +9617,14 @@ fileio_get_next_restore_file (THREAD_ENTRY * thread_p,
 	  || (session_p->dbfile.volid == LOG_DBLOG_ACTIVE_VOLID))
 	{
 	  sprintf (file_name_p, "%s%c%s", session_p->bkup.log_path,
-		   PATHSLASH,
+		   PATH_SEPARATOR,
 		   fileio_get_base_file_name (file_header_p->vlabel));
 	}
       else
 	{
 	  fileio_get_directory_path (file_path,
 				     session_p->bkup.loc_db_fullname);
-	  sprintf (file_name_p, "%s%c%s", file_path, PATHSLASH,
+	  sprintf (file_name_p, "%s%c%s", file_path, PATH_SEPARATOR,
 		   fileio_get_base_file_name (file_header_p->vlabel));
 	}
     }
@@ -9608,7 +9638,7 @@ fileio_get_next_restore_file (THREAD_ENTRY * thread_p,
 }
 
 /*
- * io_restore_fill_hole () - Fill in a hole found in the e backup during
+ * fileio_fill_hole_during_restore () - Fill in a hole found in the backup during
  *                           a restore
  *   return:
  *   next_pageid(out):
@@ -9673,7 +9703,7 @@ fileio_fill_hole_during_restore (THREAD_ENTRY * thread_p, int *next_page_id_p,
 }
 
 /*
- * io_restore_volume_decompress_read () - The number of bytes to decompress/read
+ * fileio_decompress_restore_volume () - The number of bytes to decompress/read
  *                                        from the backup destination
  *   return:
  *   session(in/out): The session array
@@ -9740,9 +9770,8 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p,
 	    error = ER_IO_LZO_COMPRESS_FAIL;	/* may be compress fail */
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 4,
 		    backup_header_p->zip_method,
-		    fileio_get_zip_method_string (backup_header_p->
-						  zip_method),
-		    backup_header_p->zip_level,
+		    fileio_get_zip_method_string
+		    (backup_header_p->zip_method), backup_header_p->zip_level,
 		    fileio_get_zip_level_string (backup_header_p->zip_level));
 #if defined(CUBRID_DEBUG)
 	    fprintf (stdout, "io_restore_volume_decompress_read: "
@@ -9775,8 +9804,8 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p,
 	    unzip_len = nbytes;
 	    rv = lzo1x_decompress_safe (node->zip_page->buf,
 					node->zip_page->buf_len,
-					(lzo_bytep) session_p->dbfile.
-					area, &unzip_len, NULL);
+					(lzo_bytep) session_p->dbfile.area,
+					&unzip_len, NULL);
 	    if (rv != LZO_E_OK || unzip_len != (size_t) nbytes)
 	      {
 		error = ER_IO_LZO_DECOMPRESS_FAIL;
@@ -9905,7 +9934,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
 					      session_p->dbfile.vlabel,
 					      session_p->dbfile.volid, npages,
 					      false, false, false,
-					      IO_PAGESIZE);
+					      IO_PAGESIZE, false);
     }
   else
     {
@@ -9989,8 +10018,8 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
 	      FILEIO_GET_BACKUP_PAGE_ID (session_p->dbfile.area)))
 	{
 	  if (fileio_fill_hole_during_restore (thread_p, &next_page_id,
-					       session_p->dbfile.area->
-					       iopageid, session_p,
+					       session_p->dbfile.
+					       area->iopageid, session_p,
 					       cache_p) != NO_ERROR)
 	    {
 	      goto error;
@@ -10125,7 +10154,7 @@ error:
 #endif /* !CS_MODE */
 
 /*
- * io_restore_write () - Write the content of the page described by pageid
+ * fileio_write_restore () - Write the content of the page described by pageid
  *                       to disk
  *   return: o_pgptr on success, NULL on failure
  *   pages_cache(in): Page and volume cache to record which pages have
@@ -10538,9 +10567,8 @@ fileio_get_next_backup_volume (THREAD_ENTRY * thread_p,
 				MSGCAT_FILEIO_BACKUP_LABEL_INFO),
 		session_p->bkup.bkuphdr->level,
 		session_p->bkup.bkuphdr->unit_num,
-		fileio_get_base_file_name (session_p->bkup.
-					   bkuphdr->db_fullname),
-		io_timeval) < 0)
+		fileio_get_base_file_name (session_p->bkup.bkuphdr->
+					   db_fullname), io_timeval) < 0)
     {
       /* Note: we do not know the exact malloc size that failed */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -10596,8 +10624,8 @@ fileio_get_next_backup_volume (THREAD_ENTRY * thread_p,
       if (is_new_user)
 	{
 	  if (fileio_find_restore_volume (thread_p,
-					  session_p->bkup.bkuphdr->
-					  db_fullname, copy_name,
+					  session_p->bkup.
+					  bkuphdr->db_fullname, copy_name,
 					  session_p->bkup.bkuphdr->unit_num,
 					  session_p->dbfile.level,
 					  MSGCAT_FILEIO_BKUP_FIND_REASON) ==
@@ -10905,7 +10933,7 @@ fileio_finalize_backup_info (int which_bkvinf)
 }
 
 /*
- * io_bkvinf_init () - Initialize the bkvinf cache and related structures
+ * fileio_initialize_backup_info () - Initialize the bkvinf cache and related structures
  *   return:
  *   which_bkvinf(in):
  *
@@ -10940,7 +10968,7 @@ fileio_initialize_backup_info (int which_bkvinf)
 }
 
 /*
- * io_bkvinf_alloc () - Allocate a bkvinf_entry
+ * fileio_allocate_backup_info () - Allocate a bkvinf_entry
  *   return:  a pointer to the node allocated, or NULL if failure
  *   which_bkvinf(in):
  */
@@ -11375,7 +11403,7 @@ fileio_lock_region (int fd, int cmd, int type, off_t offset,
 
 #if defined(SERVER_MODE)
 /*
- * io_os_sysconf () -
+ * fileio_os_sysconf () -
  *   return:
  */
 static int

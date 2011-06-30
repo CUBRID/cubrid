@@ -56,7 +56,7 @@ static RECDES *Diskrec = NULL;
 
 static RECDES *alloc_recdes (int length);
 static void free_recdes (RECDES * rec);
-static int estimate_object_size (SM_CLASS * class_);
+static int estimate_object_size (SM_CLASS * class_, int *offset_size_ptr);
 static HFID *get_class_heap (MOP classop, SM_CLASS * class_);
 static int update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec);
 
@@ -139,18 +139,23 @@ disk_final (void)
  *    class(in): class structure to examine
  */
 static int
-estimate_object_size (SM_CLASS * class_)
+estimate_object_size (SM_CLASS * class_, int *offset_size_ptr)
 {
   SM_ATTRIBUTE *att;
   int size, exact, bits;
 
+  *offset_size_ptr = OR_BYTE_SIZE;	/* 1byte */
+
   exact = 1;
+re_check:
   size = OR_HEADER_SIZE;
   if (class_ != NULL)
     {
-      size += class_->fixed_size + OR_VAR_TABLE_SIZE (class_->variable_count);
-      for (att = class_->attributes;
-	   att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+      size +=
+	class_->fixed_size +
+	OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, *offset_size_ptr);
+      for (att = class_->attributes; att != NULL;
+	   att = (SM_ATTRIBUTE *) att->header.next)
 	{
 	  if (att->type->id == DB_TYPE_STRING)
 	    {
@@ -179,6 +184,17 @@ estimate_object_size (SM_CLASS * class_)
    * if we couldn't make an exact estimate, return a negative number indicating
    * the minimum size to expect
    */
+  if (*offset_size_ptr == OR_BYTE_SIZE && size > OR_MAX_BYTE)
+    {
+      *offset_size_ptr = OR_SHORT_SIZE;
+      goto re_check;
+    }
+  if (*offset_size_ptr == OR_SHORT_SIZE && size > OR_MAX_SHORT)
+    {
+      *offset_size_ptr = BIG_VAR_OFFSET_SIZE;
+      goto re_check;
+    }
+
   if (!exact)
     size = -size;
 
@@ -216,7 +232,8 @@ get_class_heap (MOP classop, SM_CLASS * class_)
 	  const bool reuse_oid =
 	    (class_->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
 
-	  if (OID_ISTEMP (class_oid = ws_oid (classop)))
+	  class_oid = ws_oid (classop);
+	  if (OID_ISTEMP (class_oid))
 	    {			/* not defined function */
 	      class_oid = locator_assign_permanent_oid (classop);
 	    }
@@ -244,6 +261,7 @@ disk_reserve_instance (MOP classop, OID * oid)
   SM_CLASS *class_;
   HFID *hfid;
   int expected;
+  int dummy;
 
   class_ = (SM_CLASS *) locator_fetch_class (classop, DB_FETCH_READ);
   if (class_ == NULL)
@@ -252,7 +270,7 @@ disk_reserve_instance (MOP classop, OID * oid)
     }
   else
     {
-      expected = estimate_object_size (class_);
+      expected = estimate_object_size (class_, &dummy);
       hfid = get_class_heap (classop, class_);
       if (hfid == NULL)
 	{
@@ -260,9 +278,8 @@ disk_reserve_instance (MOP classop, OID * oid)
 	}
       else
 	{
-	  if (heap_assign_address_with_class_oid (NULL, hfid, oid, expected,
-						  ws_oid (classop)) !=
-	      NO_ERROR)
+	  if (heap_assign_address_with_class_oid
+	      (NULL, hfid, ws_oid (classop), oid, expected) != NO_ERROR)
 	    {
 	      error = ER_LDR_CANT_INSERT;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -357,7 +374,8 @@ disk_insert_instance (MOP classop, DESC_OBJ * obj, OID * oid)
       else
 	{
 	  /* oid is set here as a side effect */
-	  if (heap_insert (NULL, hfid, oid, Diskrec, NULL) == NULL)
+	  if (heap_insert (NULL, hfid, WS_OID (classop), oid, Diskrec, NULL)
+	      == NULL)
 	    {
 	      error = er_errid ();
 	    }
@@ -373,7 +391,7 @@ disk_insert_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 
 /*
  * disk_update_instance - This updates an object that had previously been
- * reserved with the acutal contents.
+ * reserved with the actual contents.
  *    return: NO_ERROR if successful, error code otherwise
  *    classop(in): class object
  *    obj(in): description of object
@@ -409,7 +427,8 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 	{
 	  error = er_errid ();
 	}
-      else if (heap_update (NULL, hfid, oid, Diskrec, &oldflag, NULL) != oid)
+      else if (heap_update (NULL, hfid, WS_OID (classop), oid, Diskrec,
+			    &oldflag, NULL) != oid)
 	{
 	  error = er_errid ();
 	}
@@ -434,7 +453,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * disk_insert_instance_using_mobj - inserts a new object in the database
- * given a memory object  and class object
+ * given a memory object and class object
  *    return: NO_ERROR if successful, error code otherwise
  *    classop(in): class object
  *    classobj(in): class memory object
@@ -497,7 +516,8 @@ disk_insert_instance_using_mobj (MOP classop, MOBJ classobj,
       else
 	{
 	  /* oid is set here as a side effect */
-	  if (heap_insert (NULL, hfid, oid, Diskrec, NULL) == NULL)
+	  if (heap_insert (NULL, hfid, WS_OID (classop), oid, Diskrec, NULL)
+	      == NULL)
 	    {
 	      error = er_errid ();
 	    }
@@ -513,7 +533,7 @@ disk_insert_instance_using_mobj (MOP classop, MOBJ classobj,
 
 /*
  * disk_update_instance_using_mobj - updates an object that had previously
- * been reserved with the acutal contents.
+ * been reserved with the actual contents.
  *    return: NO_ERROR if successful, error code otherwise
  *    classop(in): class object
  *    classobj(in): class memory object
@@ -572,7 +592,8 @@ disk_update_instance_using_mobj (MOP classop, MOBJ classobj,
 	{
 	  error = er_errid ();
 	}
-      else if (heap_update (NULL, hfid, oid, Diskrec, &oldflag, NULL) != oid)
+      else if (heap_update (NULL, hfid, WS_OID (classop), oid, Diskrec,
+			    &oldflag, NULL) != oid)
 	{
 	  error = er_errid ();
 	}

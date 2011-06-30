@@ -66,446 +66,465 @@
      BIT_LENGTH = 283,
      BITSHIFT_LEFT = 284,
      BITSHIFT_RIGHT = 285,
-     BOOLEAN_ = 286,
-     BOTH_ = 287,
-     BREADTH = 288,
-     BY = 289,
-     CALL = 290,
-     CASCADE = 291,
-     CASCADED = 292,
-     CASE = 293,
-     CAST = 294,
-     CATALOG = 295,
-     CHANGE = 296,
-     CHAR_ = 297,
-     CHECK = 298,
-     CLASS = 299,
-     CLASSES = 300,
-     CLOSE = 301,
-     CLUSTER = 302,
-     COALESCE = 303,
-     COLLATE = 304,
-     COLLATION = 305,
-     COLUMN = 306,
-     COMMIT = 307,
-     COMP_NULLSAFE_EQ = 308,
-     COMPLETION = 309,
-     CONNECT = 310,
-     CONNECT_BY_ISCYCLE = 311,
-     CONNECT_BY_ISLEAF = 312,
-     CONNECT_BY_ROOT = 313,
-     CONNECTION = 314,
-     CONSTRAINT = 315,
-     CONSTRAINTS = 316,
-     CONTINUE = 317,
-     CONVERT = 318,
-     CORRESPONDING = 319,
-     COUNT = 320,
-     CREATE = 321,
-     CROSS = 322,
-     CURRENT = 323,
-     CURRENT_DATE = 324,
-     CURRENT_DATETIME = 325,
-     CURRENT_TIME = 326,
-     CURRENT_TIMESTAMP = 327,
-     CURRENT_USER = 328,
-     CURSOR = 329,
-     CYCLE = 330,
-     DATA = 331,
-     DATABASE = 332,
-     DATA_TYPE = 333,
-     Date = 334,
-     DATETIME = 335,
-     DAY_ = 336,
-     DAY_MILLISECOND = 337,
-     DAY_SECOND = 338,
-     DAY_MINUTE = 339,
-     DAY_HOUR = 340,
-     DEALLOCATE = 341,
-     DECLARE = 342,
-     DEFAULT = 343,
-     DEFERRABLE = 344,
-     DEFERRED = 345,
-     DELETE_ = 346,
-     DEPTH = 347,
-     DESC = 348,
-     DESCRIBE = 349,
-     DESCRIPTOR = 350,
-     DIAGNOSTICS = 351,
-     DICTIONARY = 352,
-     DIFFERENCE_ = 353,
-     DISCONNECT = 354,
-     DISTINCT = 355,
-     DISTINCTROW = 356,
-     DIV = 357,
-     DO = 358,
-     Domain = 359,
-     Double = 360,
-     DROP = 361,
-     DUPLICATE_ = 362,
-     EACH = 363,
-     ELSE = 364,
-     ELSEIF = 365,
-     END = 366,
-     EQUALS = 367,
-     ESCAPE = 368,
-     EVALUATE = 369,
-     EXCEPT = 370,
-     EXCEPTION = 371,
-     EXCLUDE = 372,
-     EXEC = 373,
-     EXECUTE = 374,
-     EXISTS = 375,
-     EXTERNAL = 376,
-     EXTRACT = 377,
-     False = 378,
-     FETCH = 379,
-     File = 380,
-     FIRST = 381,
-     FLOAT_ = 382,
-     For = 383,
-     FOREIGN = 384,
-     FOUND = 385,
-     FROM = 386,
-     FULL = 387,
-     FUNCTION = 388,
-     GENERAL = 389,
-     GET = 390,
-     GLOBAL = 391,
-     GO = 392,
-     GOTO = 393,
-     GRANT = 394,
-     GROUP_ = 395,
-     HAVING = 396,
-     HOUR_ = 397,
-     HOUR_MILLISECOND = 398,
-     HOUR_SECOND = 399,
-     HOUR_MINUTE = 400,
-     IDENTITY = 401,
-     IF = 402,
-     IGNORE_ = 403,
-     IMMEDIATE = 404,
-     IN_ = 405,
-     INDEX = 406,
-     INDICATOR = 407,
-     INHERIT = 408,
-     INITIALLY = 409,
-     INNER = 410,
-     INOUT = 411,
-     INPUT_ = 412,
-     INSERT = 413,
-     INTEGER = 414,
-     INTERSECT = 415,
-     INTERSECTION = 416,
-     INTERVAL = 417,
-     INTO = 418,
-     IS = 419,
-     ISOLATION = 420,
-     JOIN = 421,
-     KEY = 422,
-     LANGUAGE = 423,
-     LAST = 424,
-     LDB = 425,
-     LEADING_ = 426,
-     LEAVE = 427,
-     LEFT = 428,
-     LESS = 429,
-     LEVEL = 430,
-     LIKE = 431,
-     LIMIT = 432,
-     LIST = 433,
-     LOCAL = 434,
-     LOCAL_TRANSACTION_ID = 435,
-     LOCALTIME = 436,
-     LOCALTIMESTAMP = 437,
-     LOOP = 438,
-     LOWER = 439,
-     MATCH = 440,
-     Max = 441,
-     METHOD = 442,
-     MILLISECOND_ = 443,
-     Min = 444,
-     MINUTE_ = 445,
-     MINUTE_MILLISECOND = 446,
-     MINUTE_SECOND = 447,
-     MOD = 448,
-     MODIFY = 449,
-     MODULE = 450,
-     Monetary = 451,
-     MONTH_ = 452,
-     MULTISET = 453,
-     MULTISET_OF = 454,
-     NA = 455,
-     NAMES = 456,
-     NATIONAL = 457,
-     NATURAL = 458,
-     NCHAR = 459,
-     NEXT = 460,
-     NO = 461,
-     NONE = 462,
-     NOT = 463,
-     Null = 464,
-     NULLIF = 465,
-     NUMERIC = 466,
-     OBJECT = 467,
-     OCTET_LENGTH = 468,
-     OF = 469,
-     OFF_ = 470,
-     OID_ = 471,
-     ON_ = 472,
-     ONLY = 473,
-     OPEN = 474,
-     OPERATION = 475,
-     OPERATORS = 476,
-     OPTIMIZATION = 477,
-     OPTION = 478,
-     OR = 479,
-     ORDER = 480,
-     OTHERS = 481,
-     OUT_ = 482,
-     OUTER = 483,
-     OUTPUT = 484,
-     OVERLAPS = 485,
-     PARAMETERS = 486,
-     PARTIAL = 487,
-     PENDANT = 488,
-     POSITION = 489,
-     PRECISION = 490,
-     PREORDER = 491,
-     PREPARE = 492,
-     PRESERVE = 493,
-     PRIMARY = 494,
-     PRIOR = 495,
-     Private = 496,
-     PRIVILEGES = 497,
-     PROCEDURE = 498,
-     PROTECTED = 499,
-     PROXY = 500,
-     QUERY = 501,
-     READ = 502,
-     REBUILD = 503,
-     RECURSIVE = 504,
-     REF = 505,
-     REFERENCES = 506,
-     REFERENCING = 507,
-     REGISTER = 508,
-     RELATIVE_ = 509,
-     RENAME = 510,
-     REPLACE = 511,
-     RESIGNAL = 512,
-     RESTRICT = 513,
-     RETURN = 514,
-     RETURNS = 515,
-     REVOKE = 516,
-     RIGHT = 517,
-     ROLE = 518,
-     ROLLBACK = 519,
-     ROLLUP = 520,
-     ROUTINE = 521,
-     ROW = 522,
-     ROWNUM = 523,
-     ROWS = 524,
-     SAVEPOINT = 525,
-     SCHEMA = 526,
-     SCOPE = 527,
-     SCROLL = 528,
-     SEARCH = 529,
-     SECOND_ = 530,
-     SECOND_MILLISECOND = 531,
-     SECTION = 532,
-     SELECT = 533,
-     SENSITIVE = 534,
-     SEQUENCE = 535,
-     SEQUENCE_OF = 536,
-     SERIALIZABLE = 537,
-     SESSION = 538,
-     SESSION_USER = 539,
-     SET = 540,
-     SET_OF = 541,
-     SETEQ = 542,
-     SETNEQ = 543,
-     SHARED = 544,
-     SIBLINGS = 545,
-     SIGNAL = 546,
-     SIMILAR = 547,
-     SIZE_ = 548,
-     SmallInt = 549,
-     SOME = 550,
-     SQL = 551,
-     SQLCODE = 552,
-     SQLERROR = 553,
-     SQLEXCEPTION = 554,
-     SQLSTATE = 555,
-     SQLWARNING = 556,
-     STATISTICS = 557,
-     String = 558,
-     STRUCTURE = 559,
-     SUBCLASS = 560,
-     SUBSET = 561,
-     SUBSETEQ = 562,
-     SUBSTRING_ = 563,
-     SUM = 564,
-     SUPERCLASS = 565,
-     SUPERSET = 566,
-     SUPERSETEQ = 567,
-     SYS_CONNECT_BY_PATH = 568,
-     SYS_DATE = 569,
-     SYS_DATETIME = 570,
-     SYS_TIME_ = 571,
-     SYS_TIMESTAMP = 572,
-     SYS_USER = 573,
-     SYSTEM_USER = 574,
-     TABLE = 575,
-     TEMPORARY = 576,
-     TEST = 577,
-     THEN = 578,
-     THERE = 579,
-     Time = 580,
-     TIMESTAMP = 581,
-     TIMEZONE_HOUR = 582,
-     TIMEZONE_MINUTE = 583,
-     TO = 584,
-     TRAILING_ = 585,
-     TRANSACTION = 586,
-     TRANSLATE = 587,
-     TRANSLATION = 588,
-     TRIGGER = 589,
-     TRIM = 590,
-     True = 591,
-     TRUNCATE = 592,
-     TYPE = 593,
-     UNDER = 594,
-     Union = 595,
-     UNIQUE = 596,
-     UNKNOWN = 597,
-     UNTERMINATED_STRING = 598,
-     UNTERMINATED_IDENTIFIER = 599,
-     UPDATE = 600,
-     UPPER = 601,
-     USAGE = 602,
-     USE = 603,
-     USER = 604,
-     USING = 605,
-     Utime = 606,
-     VALUE = 607,
-     VALUES = 608,
-     VARCHAR = 609,
-     VARIABLE_ = 610,
-     VARYING = 611,
-     VCLASS = 612,
-     VIEW = 613,
-     VIRTUAL = 614,
-     VISIBLE = 615,
-     WAIT = 616,
-     WHEN = 617,
-     WHENEVER = 618,
-     WHERE = 619,
-     WHILE = 620,
-     WITH = 621,
-     WITHOUT = 622,
-     WORK = 623,
-     WRITE = 624,
-     XOR = 625,
-     YEAR_ = 626,
-     YEAR_MONTH = 627,
-     ZONE = 628,
-     YEN_SIGN = 629,
-     DOLLAR_SIGN = 630,
-     WON_SIGN = 631,
-     RIGHT_ARROW = 632,
-     STRCAT = 633,
-     COMP_NOT_EQ = 634,
-     COMP_GE = 635,
-     COMP_LE = 636,
-     PARAM_HEADER = 637,
-     ACTIVE = 638,
-     ADDDATE = 639,
-     ANALYZE = 640,
-     AUTO_INCREMENT = 641,
-     BIT_AND = 642,
-     BIT_OR = 643,
-     BIT_XOR = 644,
-     CACHE = 645,
-     COMMITTED = 646,
-     COST = 647,
-     DATE_ADD = 648,
-     DATE_SUB = 649,
-     DECREMENT = 650,
-     GE_INF_ = 651,
-     GE_LE_ = 652,
-     GE_LT_ = 653,
-     GROUPS = 654,
-     GT_INF_ = 655,
-     GT_LE_ = 656,
-     GT_LT_ = 657,
-     HASH = 658,
-     IFNULL = 659,
-     INACTIVE = 660,
-     INCREMENT = 661,
-     INF_LE_ = 662,
-     INF_LT_ = 663,
-     INFINITE_ = 664,
-     INSTANCES = 665,
-     INVALIDATE = 666,
-     ISNULL = 667,
-     JAVA = 668,
-     LCASE = 669,
-     LOCK_ = 670,
-     MAXIMUM = 671,
-     MAXVALUE = 672,
-     MEMBERS = 673,
-     MINVALUE = 674,
-     NAME = 675,
-     NOCYCLE = 676,
-     NOCACHE = 677,
-     NOMAXVALUE = 678,
-     NOMINVALUE = 679,
-     PARTITION = 680,
-     PARTITIONING = 681,
-     PARTITIONS = 682,
-     PASSWORD = 683,
-     PRINT = 684,
-     PRIORITY = 685,
-     QUARTER = 686,
-     RANGE_ = 687,
-     REJECT_ = 688,
-     REMOVE = 689,
-     REORGANIZE = 690,
-     REPEATABLE = 691,
-     RETAIN = 692,
-     REUSE_OID = 693,
-     REVERSE = 694,
-     SERIAL = 695,
-     STABILITY = 696,
-     START_ = 697,
-     STATEMENT = 698,
-     STATUS = 699,
-     STDDEV = 700,
-     STR_TO_DATE = 701,
-     SUBDATE = 702,
-     SYSTEM = 703,
-     THAN = 704,
-     TIMEOUT = 705,
-     TRACE = 706,
-     TRIGGERS = 707,
-     UCASE = 708,
-     UNCOMMITTED = 709,
-     VARIANCE = 710,
-     WEEK = 711,
-     WORKSPACE = 712,
-     IdName = 713,
-     BracketDelimitedIdName = 714,
-     BacktickDelimitedIdName = 715,
-     DelimitedIdName = 716,
-     UNSIGNED_INTEGER = 717,
-     UNSIGNED_REAL = 718,
-     CHAR_STRING = 719,
-     NCHAR_STRING = 720,
-     BIT_STRING = 721,
-     HEX_STRING = 722,
-     CPP_STYLE_HINT = 723,
-     C_STYLE_HINT = 724,
-     SQL_STYLE_HINT = 725
+     BLOB_ = 286,
+     BOOLEAN_ = 287,
+     BOTH_ = 288,
+     BREADTH = 289,
+     BY = 290,
+     CALL = 291,
+     CASCADE = 292,
+     CASCADED = 293,
+     CASE = 294,
+     CAST = 295,
+     CATALOG = 296,
+     CHANGE = 297,
+     CHAR_ = 298,
+     CHECK = 299,
+     CLASS = 300,
+     CLASSES = 301,
+     CLOB_ = 302,
+     CLOSE = 303,
+     CLUSTER = 304,
+     COALESCE = 305,
+     COLLATE = 306,
+     COLLATION = 307,
+     COLUMN = 308,
+     COMMIT = 309,
+     COMP_NULLSAFE_EQ = 310,
+     COMPLETION = 311,
+     CONNECT = 312,
+     CONNECT_BY_ISCYCLE = 313,
+     CONNECT_BY_ISLEAF = 314,
+     CONNECT_BY_ROOT = 315,
+     CONNECTION = 316,
+     CONSTRAINT = 317,
+     CONSTRAINTS = 318,
+     CONTINUE = 319,
+     CONVERT = 320,
+     CORRESPONDING = 321,
+     COUNT = 322,
+     CREATE = 323,
+     CROSS = 324,
+     CURRENT = 325,
+     CURRENT_DATE = 326,
+     CURRENT_DATETIME = 327,
+     CURRENT_TIME = 328,
+     CURRENT_TIMESTAMP = 329,
+     CURRENT_USER = 330,
+     CURSOR = 331,
+     CYCLE = 332,
+     DATA = 333,
+     DATABASE = 334,
+     DATA_TYPE = 335,
+     Date = 336,
+     DATETIME = 337,
+     DAY_ = 338,
+     DAY_MILLISECOND = 339,
+     DAY_SECOND = 340,
+     DAY_MINUTE = 341,
+     DAY_HOUR = 342,
+     DEALLOCATE = 343,
+     DECLARE = 344,
+     DEFAULT = 345,
+     DEFERRABLE = 346,
+     DEFERRED = 347,
+     DELETE_ = 348,
+     DEPTH = 349,
+     DESC = 350,
+     DESCRIBE = 351,
+     DESCRIPTOR = 352,
+     DIAGNOSTICS = 353,
+     DICTIONARY = 354,
+     DIFFERENCE_ = 355,
+     DISCONNECT = 356,
+     DISTINCT = 357,
+     DISTINCTROW = 358,
+     DIV = 359,
+     DO = 360,
+     Domain = 361,
+     Double = 362,
+     DROP = 363,
+     DUPLICATE_ = 364,
+     EACH = 365,
+     ELSE = 366,
+     ELSEIF = 367,
+     END = 368,
+     EQUALS = 369,
+     ESCAPE = 370,
+     EVALUATE = 371,
+     EXCEPT = 372,
+     EXCEPTION = 373,
+     EXCLUDE = 374,
+     EXEC = 375,
+     EXECUTE = 376,
+     EXISTS = 377,
+     EXTERNAL = 378,
+     EXTRACT = 379,
+     False = 380,
+     FETCH = 381,
+     File = 382,
+     FIRST = 383,
+     FLOAT_ = 384,
+     For = 385,
+     FOREIGN = 386,
+     FOUND = 387,
+     FROM = 388,
+     FULL = 389,
+     FUNCTION = 390,
+     GENERAL = 391,
+     GET = 392,
+     GLOBAL = 393,
+     GO = 394,
+     GOTO = 395,
+     GRANT = 396,
+     GROUP_ = 397,
+     HAVING = 398,
+     HOUR_ = 399,
+     HOUR_MILLISECOND = 400,
+     HOUR_SECOND = 401,
+     HOUR_MINUTE = 402,
+     IDENTITY = 403,
+     IF = 404,
+     IGNORE_ = 405,
+     IMMEDIATE = 406,
+     IN_ = 407,
+     INDEX = 408,
+     INDICATOR = 409,
+     INHERIT = 410,
+     INITIALLY = 411,
+     INNER = 412,
+     INOUT = 413,
+     INPUT_ = 414,
+     INSERT = 415,
+     INTEGER = 416,
+     INTERNAL = 417,
+     INTERSECT = 418,
+     INTERSECTION = 419,
+     INTERVAL = 420,
+     INTO = 421,
+     IS = 422,
+     ISOLATION = 423,
+     JOIN = 424,
+     KEY = 425,
+     KEYLIMIT = 426,
+     LANGUAGE = 427,
+     LAST = 428,
+     LDB = 429,
+     LEADING_ = 430,
+     LEAVE = 431,
+     LEFT = 432,
+     LESS = 433,
+     LEVEL = 434,
+     LIKE = 435,
+     LIMIT = 436,
+     LIST = 437,
+     LOCAL = 438,
+     LOCAL_TRANSACTION_ID = 439,
+     LOCALTIME = 440,
+     LOCALTIMESTAMP = 441,
+     LOOP = 442,
+     LOWER = 443,
+     MATCH = 444,
+     Max = 445,
+     METHOD = 446,
+     MILLISECOND_ = 447,
+     Min = 448,
+     MINUTE_ = 449,
+     MINUTE_MILLISECOND = 450,
+     MINUTE_SECOND = 451,
+     MOD = 452,
+     MODIFY = 453,
+     MODULE = 454,
+     Monetary = 455,
+     MONTH_ = 456,
+     MULTISET = 457,
+     MULTISET_OF = 458,
+     NA = 459,
+     NAMES = 460,
+     NATIONAL = 461,
+     NATURAL = 462,
+     NCHAR = 463,
+     NEXT = 464,
+     NO = 465,
+     NONE = 466,
+     NOT = 467,
+     Null = 468,
+     NULLIF = 469,
+     NUMERIC = 470,
+     OBJECT = 471,
+     OCTET_LENGTH = 472,
+     OF = 473,
+     OFF_ = 474,
+     OID_ = 475,
+     ON_ = 476,
+     ONLY = 477,
+     OPEN = 478,
+     OPERATION = 479,
+     OPERATORS = 480,
+     OPTIMIZATION = 481,
+     OPTION = 482,
+     OR = 483,
+     ORDER = 484,
+     OTHERS = 485,
+     OUT_ = 486,
+     OUTER = 487,
+     OUTPUT = 488,
+     OVERLAPS = 489,
+     PARAMETERS = 490,
+     PARTIAL = 491,
+     PENDANT = 492,
+     POSITION = 493,
+     PRECISION = 494,
+     PREORDER = 495,
+     PREPARE = 496,
+     PRESERVE = 497,
+     PRIMARY = 498,
+     PRIOR = 499,
+     Private = 500,
+     PRIVILEGES = 501,
+     PROCEDURE = 502,
+     PROTECTED = 503,
+     PROXY = 504,
+     QUERY = 505,
+     READ = 506,
+     REBUILD = 507,
+     RECURSIVE = 508,
+     REF = 509,
+     REFERENCES = 510,
+     REFERENCING = 511,
+     REGISTER = 512,
+     RELATIVE_ = 513,
+     RENAME = 514,
+     REPLACE = 515,
+     RESIGNAL = 516,
+     RESTRICT = 517,
+     RETURN = 518,
+     RETURNS = 519,
+     REVOKE = 520,
+     RIGHT = 521,
+     ROLE = 522,
+     ROLLBACK = 523,
+     ROLLUP = 524,
+     ROUTINE = 525,
+     ROW = 526,
+     ROWNUM = 527,
+     ROWS = 528,
+     SAVEPOINT = 529,
+     SCHEMA = 530,
+     SCOPE = 531,
+     SCROLL = 532,
+     SEARCH = 533,
+     SECOND_ = 534,
+     SECOND_MILLISECOND = 535,
+     SECTION = 536,
+     SELECT = 537,
+     SENSITIVE = 538,
+     SEQUENCE = 539,
+     SEQUENCE_OF = 540,
+     SERIALIZABLE = 541,
+     SESSION = 542,
+     SESSION_USER = 543,
+     SET = 544,
+     SET_OF = 545,
+     SETEQ = 546,
+     SETNEQ = 547,
+     SHARED = 548,
+     SIBLINGS = 549,
+     SIGNAL = 550,
+     SIMILAR = 551,
+     SIZE_ = 552,
+     SmallInt = 553,
+     SOME = 554,
+     SQL = 555,
+     SQLCODE = 556,
+     SQLERROR = 557,
+     SQLEXCEPTION = 558,
+     SQLSTATE = 559,
+     SQLWARNING = 560,
+     STATISTICS = 561,
+     String = 562,
+     STRUCTURE = 563,
+     SUBCLASS = 564,
+     SUBSET = 565,
+     SUBSETEQ = 566,
+     SUBSTRING_ = 567,
+     SUM = 568,
+     SUPERCLASS = 569,
+     SUPERSET = 570,
+     SUPERSETEQ = 571,
+     SYS_CONNECT_BY_PATH = 572,
+     SYS_DATE = 573,
+     SYS_DATETIME = 574,
+     SYS_TIME_ = 575,
+     SYS_TIMESTAMP = 576,
+     SYS_USER = 577,
+     SYSTEM_USER = 578,
+     TABLE = 579,
+     TEMPORARY = 580,
+     TEST = 581,
+     THEN = 582,
+     THERE = 583,
+     Time = 584,
+     TIMESTAMP = 585,
+     TIMEZONE_HOUR = 586,
+     TIMEZONE_MINUTE = 587,
+     TO = 588,
+     TRAILING_ = 589,
+     TRANSACTION = 590,
+     TRANSLATE = 591,
+     TRANSLATION = 592,
+     TRIGGER = 593,
+     TRIM = 594,
+     True = 595,
+     TRUNCATE = 596,
+     TYPE = 597,
+     UNDER = 598,
+     Union = 599,
+     UNIQUE = 600,
+     UNKNOWN = 601,
+     UNTERMINATED_STRING = 602,
+     UNTERMINATED_IDENTIFIER = 603,
+     UPDATE = 604,
+     UPPER = 605,
+     USAGE = 606,
+     USE = 607,
+     USER = 608,
+     USING = 609,
+     Utime = 610,
+     VALUE = 611,
+     VALUES = 612,
+     VAR_ASSIGN = 613,
+     VARCHAR = 614,
+     VARIABLE_ = 615,
+     VARYING = 616,
+     VCLASS = 617,
+     VIEW = 618,
+     VIRTUAL = 619,
+     VISIBLE = 620,
+     WAIT = 621,
+     WHEN = 622,
+     WHENEVER = 623,
+     WHERE = 624,
+     WHILE = 625,
+     WITH = 626,
+     WITHOUT = 627,
+     WORK = 628,
+     WRITE = 629,
+     XOR = 630,
+     YEAR_ = 631,
+     YEAR_MONTH = 632,
+     ZONE = 633,
+     YEN_SIGN = 634,
+     DOLLAR_SIGN = 635,
+     WON_SIGN = 636,
+     RIGHT_ARROW = 637,
+     STRCAT = 638,
+     COMP_NOT_EQ = 639,
+     COMP_GE = 640,
+     COMP_LE = 641,
+     PARAM_HEADER = 642,
+     ACTIVE = 643,
+     ADDDATE = 644,
+     ANALYZE = 645,
+     AUTO_INCREMENT = 646,
+     BIT_AND = 647,
+     BIT_OR = 648,
+     BIT_XOR = 649,
+     CACHE = 650,
+     COLUMNS = 651,
+     COMMITTED = 652,
+     COST = 653,
+     DATE_ADD = 654,
+     DATE_SUB = 655,
+     DECREMENT = 656,
+     ELT = 657,
+     EXPLAIN = 658,
+     GE_INF_ = 659,
+     GE_LE_ = 660,
+     GE_LT_ = 661,
+     GRANTS = 662,
+     GROUP_CONCAT = 663,
+     GROUPS = 664,
+     GT_INF_ = 665,
+     GT_LE_ = 666,
+     GT_LT_ = 667,
+     HASH = 668,
+     IFNULL = 669,
+     INACTIVE = 670,
+     INCREMENT = 671,
+     INDEXES = 672,
+     INF_LE_ = 673,
+     INF_LT_ = 674,
+     INFINITE_ = 675,
+     INSTANCES = 676,
+     INVALIDATE = 677,
+     ISNULL = 678,
+     KEYS = 679,
+     JAVA = 680,
+     LCASE = 681,
+     LOCK_ = 682,
+     MAXIMUM = 683,
+     MAXVALUE = 684,
+     MEMBERS = 685,
+     MINVALUE = 686,
+     NAME = 687,
+     NOCYCLE = 688,
+     NOCACHE = 689,
+     NOMAXVALUE = 690,
+     NOMINVALUE = 691,
+     PARTITION = 692,
+     PARTITIONING = 693,
+     PARTITIONS = 694,
+     PASSWORD = 695,
+     PRINT = 696,
+     PRIORITY = 697,
+     QUARTER = 698,
+     RANGE_ = 699,
+     REJECT_ = 700,
+     REMOVE = 701,
+     REORGANIZE = 702,
+     REPEATABLE = 703,
+     RETAIN = 704,
+     REUSE_OID = 705,
+     REVERSE = 706,
+     SEPARATOR = 707,
+     SERIAL = 708,
+     SHOW = 709,
+     STABILITY = 710,
+     START_ = 711,
+     STATEMENT = 712,
+     STATUS = 713,
+     STDDEV = 714,
+     STDDEV_POP = 715,
+     STDDEV_SAMP = 716,
+     STR_TO_DATE = 717,
+     SUBDATE = 718,
+     SYSTEM = 719,
+     TABLES = 720,
+     THAN = 721,
+     TIMEOUT = 722,
+     TRACE = 723,
+     TRIGGERS = 724,
+     UCASE = 725,
+     UNCOMMITTED = 726,
+     VAR_POP = 727,
+     VAR_SAMP = 728,
+     VARIANCE = 729,
+     WEEK = 730,
+     WORKSPACE = 731,
+     IdName = 732,
+     BracketDelimitedIdName = 733,
+     BacktickDelimitedIdName = 734,
+     DelimitedIdName = 735,
+     UNSIGNED_INTEGER = 736,
+     UNSIGNED_REAL = 737,
+     CHAR_STRING = 738,
+     NCHAR_STRING = 739,
+     BIT_STRING = 740,
+     HEX_STRING = 741,
+     CPP_STYLE_HINT = 742,
+     C_STYLE_HINT = 743,
+     SQL_STYLE_HINT = 744
    };
 #endif
 
@@ -539,6 +558,7 @@
 #define snprintf _snprintf
 #endif /* WINDOWS */
 #include "memory_alloc.h"
+#include "db_elo.h"
 
 /* Bit mask to be used to check constraints of a column.
  * COLUMN_CONSTRAINT_SHARED_DEFAULT_AI is special-purpose mask
@@ -572,7 +592,7 @@
 typedef struct function_map FUNCTION_MAP;
 struct function_map
 {
-  const char* keyword;
+  const char *keyword;
   PT_OP_TYPE op;
 };
 
@@ -584,19 +604,33 @@ static FUNCTION_MAP functions[] = {
   {"atan", PT_ATAN},
   {"atan2", PT_ATAN2},
   {"bit_count", PT_BIT_COUNT},
+  {"bit_to_blob", PT_BIT_TO_BLOB},
+  {"blob_from_file", PT_BLOB_FROM_FILE},
+  {"blob_length", PT_BLOB_LENGTH},
+  {"blob_to_bit", PT_BLOB_TO_BIT},
   {"ceil", PT_CEIL},
   {"ceiling", PT_CEIL},
   {"char_length", PT_CHAR_LENGTH},
+  {"char_to_blob", PT_CHAR_TO_BLOB},
+  {"char_to_clob", PT_CHAR_TO_CLOB},
   {"character_length", PT_CHAR_LENGTH},
   {"chr", PT_CHR},
+  {"clob_from_file", PT_CLOB_FROM_FILE},
+  {"clob_length", PT_CLOB_LENGTH},
+  {"clob_to_char", PT_CLOB_TO_CHAR},
   {"concat", PT_CONCAT},
   {"concat_ws", PT_CONCAT_WS},
   {"cos", PT_COS},
   {"cot", PT_COT},
   {"curtime", PT_SYS_TIME},
   {"curdate", PT_SYS_DATE},
+  {"utc_time", PT_UTC_TIME},
+  {"utc_date", PT_UTC_DATE},
   {"datediff", PT_DATEDIFF},
+  {"timediff",PT_TIMEDIFF},
   {"date_format", PT_DATE_FORMAT},
+  {"dayofmonth", PT_DAYOFMONTH},
+  {"dayofyear", PT_DAYOFYEAR},
   {"decode", PT_DECODE},
   {"decr", PT_DECR},
   {"degrees", PT_DEGREES},
@@ -605,9 +639,11 @@ static FUNCTION_MAP functions[] = {
   {"exp", PT_EXP},
   {"field", PT_FIELD},
   {"floor", PT_FLOOR},
+  {"from_days", PT_FROMDAYS},
   {"greatest", PT_GREATEST},
   {"groupby_num", PT_GROUPBY_NUM},
   {"incr", PT_INCR},
+  {"index_cardinality", PT_INDEX_CARDINALITY},
   {"inst_num", PT_INST_NUM},
   {"instr", PT_INSTR},
   {"instrb", PT_INSTR},
@@ -615,6 +651,8 @@ static FUNCTION_MAP functions[] = {
   {"length", PT_CHAR_LENGTH},
   {"lengthb", PT_CHAR_LENGTH},
   {"least", PT_LEAST},
+  {"like_match_lower_bound", PT_LIKE_LOWER_BOUND},
+  {"like_match_upper_bound", PT_LIKE_UPPER_BOUND},
   {"list_dbs", PT_LIST_DBS},
   {"locate", PT_LOCATE},
   {"ln", PT_LN},
@@ -623,6 +661,8 @@ static FUNCTION_MAP functions[] = {
   {"log", PT_LOG},
   {"lpad", PT_LPAD},
   {"ltrim", PT_LTRIM},
+  {"makedate", PT_MAKEDATE},
+  {"maketime", PT_MAKETIME},
   {"mid", PT_MID},
   {"months_between", PT_MONTHS_BETWEEN},
   {"format", PT_FORMAT},
@@ -636,27 +676,42 @@ static FUNCTION_MAP functions[] = {
   {"radians", PT_RADIANS},
   {"rand", PT_RAND},
   {"random", PT_RANDOM},
+  {"repeat", PT_REPEAT},
+  {"space", PT_SPACE},
   {"reverse", PT_REVERSE},
   {"round", PT_ROUND},
   {"row_count", PT_ROW_COUNT},
+  {"last_insert_id", PT_LAST_INSERT_ID},
   {"rpad", PT_RPAD},
   {"rtrim", PT_RTRIM},
+  {"sec_to_time", PT_SECTOTIME},
   {"sign", PT_SIGN},
   {"sin", PT_SIN},
   {"sqrt", PT_SQRT},
   {"strcmp", PT_STRCMP},
   {"substr", PT_SUBSTRING},
+  {"substring_index", PT_SUBSTRING_INDEX},
+  {"md5", PT_MD5},
   {"substrb", PT_SUBSTRING},
   {"tan", PT_TAN},
   {"time_format", PT_TIME_FORMAT},
   {"to_char", PT_TO_CHAR},
   {"to_date", PT_TO_DATE},
-  {"to_datetime",PT_TO_DATETIME},
+  {"to_datetime", PT_TO_DATETIME},
+  {"to_days", PT_TODAYS},
+  {"time_to_sec", PT_TIMETOSEC},
   {"to_number", PT_TO_NUMBER},
   {"to_time", PT_TO_TIME},
   {"to_timestamp", PT_TO_TIMESTAMP},
   {"trunc", PT_TRUNC},
-  {"unix_timestamp", PT_UNIX_TIMESTAMP}
+  {"unix_timestamp", PT_UNIX_TIMESTAMP},
+  {"typeof", PT_TYPEOF},
+  {"from_unixtime", PT_FROM_UNIXTIME},
+  {"weekday", PT_WEEKDAY},
+  {"dayofweek", PT_DAYOFWEEK},
+  {"version", PT_VERSION},
+  {"quarter", PT_QUARTERF},
+  {"week", PT_WEEKF}
 };
 
 
@@ -702,35 +757,39 @@ static int parser_select_level = -1;
 /* handle inner increment exprs in select list */
 static PT_NODE *parser_hidden_incr_list = NULL;
 
-typedef struct {
-	PT_NODE* c1;
-	PT_NODE* c2;
+typedef struct
+{
+  PT_NODE *c1;
+  PT_NODE *c2;
 } container_2;
 
-typedef struct {
-	PT_NODE* c1;
-	PT_NODE* c2;
-	PT_NODE* c3;
+typedef struct
+{
+  PT_NODE *c1;
+  PT_NODE *c2;
+  PT_NODE *c3;
 } container_3;
 
-typedef struct {
-	PT_NODE* c1;
-	PT_NODE* c2;
-	PT_NODE* c3;
-	PT_NODE* c4;
+typedef struct
+{
+  PT_NODE *c1;
+  PT_NODE *c2;
+  PT_NODE *c3;
+  PT_NODE *c4;
 } container_4;
 
-typedef struct {
-	PT_NODE* c1;
-	PT_NODE* c2;
-	PT_NODE* c3;
-	PT_NODE* c4;
-	PT_NODE* c5;
-	PT_NODE* c6;
-	PT_NODE* c7;
-	PT_NODE* c8;
-	PT_NODE* c9;
-	PT_NODE* c10;
+typedef struct
+{
+  PT_NODE *c1;
+  PT_NODE *c2;
+  PT_NODE *c3;
+  PT_NODE *c4;
+  PT_NODE *c5;
+  PT_NODE *c6;
+  PT_NODE *c7;
+  PT_NODE *c8;
+  PT_NODE *c9;
+  PT_NODE *c10;
 } container_10;
 
 #define PT_EMPTY INT_MAX
@@ -763,7 +822,7 @@ typedef struct {
 #define DOLLAR_SIGN_TEXT	"$"
 #define WON_SIGN_TEXT		"\\"
 
-typedef enum 
+typedef enum
 {
   SERIAL_START,
   SERIAL_INC,
@@ -773,99 +832,100 @@ typedef enum
   SERIAL_CACHE,
 } SERIAL_DEFINE;
 
-void csql_yyerror_explicit(int line, int column);
-void csql_yyerror(const char* s);
+void csql_yyerror_explicit (int line, int column);
+void csql_yyerror (const char *s);
 
-FUNCTION_MAP* keyword_offset(const char* name);
-PT_NODE* keyword_func(const char* name, PT_NODE* args);
+FUNCTION_MAP *keyword_offset (const char *name);
 
-static PT_NODE* parser_make_expression(PT_OP_TYPE OP, PT_NODE* arg1, PT_NODE* arg2, PT_NODE* arg3);
-static PT_NODE* parser_make_link(PT_NODE* list, PT_NODE* node);
-static PT_NODE* parser_make_link_or(PT_NODE* list, PT_NODE* node);
-
-
-
-static void parser_save_and_set_cannot_cache(bool value);
-static void parser_restore_cannot_cache(void);
-
-static void parser_save_and_set_si_datetime(int value);
-static void parser_restore_si_datetime(void);
-
-static void parser_save_and_set_si_tran_id(int value);
-static void parser_restore_si_tran_id(void);
-
-static void parser_save_and_set_cannot_prepare(bool value);
-static void parser_restore_cannot_prepare(void);
-
-static void parser_save_and_set_wjc(int value);
-static void parser_restore_wjc(void);
-
-static void parser_save_and_set_ic(int value);
-static void parser_restore_ic(void);
-
-static void parser_save_and_set_gc(int value);
-static void parser_restore_gc(void);
-
-static void parser_save_and_set_oc(int value);
-static void parser_restore_oc(void);
-
-static void parser_save_and_set_sysc(int value);
-static void parser_restore_sysc(void);
-
-static void parser_save_and_set_prc(int value);
-static void parser_restore_prc(void);
-
-static void parser_save_and_set_cbrc(int value);
-static void parser_restore_cbrc(void);
-
-static void parser_save_and_set_serc(int value);
-static void parser_restore_serc(void);
-
-static void parser_save_and_set_pseudoc(int value);
-static void parser_restore_pseudoc(void);
-
-static void parser_save_and_set_sqc(int value);
-static void parser_restore_sqc(void);
-
-static void parser_save_and_set_hvar(int value);
-static void parser_restore_hvar(void);
-
-static void parser_save_found_Oracle_outer(void);
-static void parser_restore_found_Oracle_outer(void);
-
-static void parser_save_alter_node(PT_NODE* node);
-static PT_NODE* parser_get_alter_node(void);
-
-static void parser_save_attr_def_one(PT_NODE* node);
-static PT_NODE* parser_get_attr_def_one(void);
-
-static void parser_push_orderby_node(PT_NODE* node);
-static PT_NODE* parser_top_orderby_node(void);
-static PT_NODE* parser_pop_orderby_node(void);
-
-static void parser_push_select_stmt_node(PT_NODE* node);
-static PT_NODE* parser_top_select_stmt_node(void);
-static PT_NODE* parser_pop_select_stmt_node(void);
+static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser,
+					    FUNC_TYPE func_code,
+					    PT_NODE * args_list);
+static PT_NODE *parser_make_link (PT_NODE * list, PT_NODE * node);
+static PT_NODE *parser_make_link_or (PT_NODE * list, PT_NODE * node);
 
 
-static void parser_push_hint_node(PT_NODE* node);
-static PT_NODE* parser_top_hint_node(void);
-static PT_NODE* parser_pop_hint_node(void);
 
-static void parser_push_join_type(int v);
-static int parser_top_join_type(void);
-static int parser_pop_join_type(void);
+static void parser_save_and_set_cannot_cache (bool value);
+static void parser_restore_cannot_cache (void);
 
-static void parser_save_is_reverse(bool v);
-static bool parser_get_is_reverse(void);
+static void parser_save_and_set_si_datetime (int value);
+static void parser_restore_si_datetime (void);
 
-static void parser_stackpointer_init(void);
-static PT_NODE* parser_make_date_lang(int arg_cnt, PT_NODE* arg3);
-static void parser_remove_dummy_select(PT_NODE** node);
-static int parser_count_list(PT_NODE* list);
+static void parser_save_and_set_si_tran_id (int value);
+static void parser_restore_si_tran_id (void);
 
-static void resolve_alias_in_expr_node(PT_NODE * node, PT_NODE * list);
-static void resolve_alias_in_name_node(PT_NODE ** node, PT_NODE * list);
+static void parser_save_and_set_cannot_prepare (bool value);
+static void parser_restore_cannot_prepare (void);
+
+static void parser_save_and_set_wjc (int value);
+static void parser_restore_wjc (void);
+
+static void parser_save_and_set_ic (int value);
+static void parser_restore_ic (void);
+
+static void parser_save_and_set_gc (int value);
+static void parser_restore_gc (void);
+
+static void parser_save_and_set_oc (int value);
+static void parser_restore_oc (void);
+
+static void parser_save_and_set_sysc (int value);
+static void parser_restore_sysc (void);
+
+static void parser_save_and_set_prc (int value);
+static void parser_restore_prc (void);
+
+static void parser_save_and_set_cbrc (int value);
+static void parser_restore_cbrc (void);
+
+static void parser_save_and_set_serc (int value);
+static void parser_restore_serc (void);
+
+static void parser_save_and_set_pseudoc (int value);
+static void parser_restore_pseudoc (void);
+
+static void parser_save_and_set_sqc (int value);
+static void parser_restore_sqc (void);
+
+static void parser_save_and_set_hvar (int value);
+static void parser_restore_hvar (void);
+
+static void parser_save_found_Oracle_outer (void);
+static void parser_restore_found_Oracle_outer (void);
+
+static void parser_save_alter_node (PT_NODE * node);
+static PT_NODE *parser_get_alter_node (void);
+
+static void parser_save_attr_def_one (PT_NODE * node);
+static PT_NODE *parser_get_attr_def_one (void);
+
+static void parser_push_orderby_node (PT_NODE * node);
+static PT_NODE *parser_top_orderby_node (void);
+static PT_NODE *parser_pop_orderby_node (void);
+
+static void parser_push_select_stmt_node (PT_NODE * node);
+static PT_NODE *parser_top_select_stmt_node (void);
+static PT_NODE *parser_pop_select_stmt_node (void);
+
+
+static void parser_push_hint_node (PT_NODE * node);
+static PT_NODE *parser_top_hint_node (void);
+static PT_NODE *parser_pop_hint_node (void);
+
+static void parser_push_join_type (int v);
+static int parser_top_join_type (void);
+static int parser_pop_join_type (void);
+
+static void parser_save_is_reverse (bool v);
+static bool parser_get_is_reverse (void);
+
+static void parser_initialize_parser_context (void);
+static PT_NODE *parser_make_date_lang (int arg_cnt, PT_NODE * arg3);
+static void parser_remove_dummy_select (PT_NODE ** node);
+static int parser_count_list (PT_NODE * list);
+
+static void resolve_alias_in_expr_node (PT_NODE * node, PT_NODE * list);
+static void resolve_alias_in_name_node (PT_NODE ** node, PT_NODE * list);
 
 static PT_MISC_TYPE parser_attr_type;
 
@@ -880,26 +940,26 @@ int msg_ptr;
 
 #define push_msg(a) _push_msg(a, __LINE__)
 
-void _push_msg(int code, int line);
-void pop_msg(void);
+void _push_msg (int code, int line);
+void pop_msg (void);
 
 
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 406 "../../src/parser/csql_grammar.y"
+#line 448 "../../src/parser/csql_grammar.y"
 {
-	int number;
-	bool boolean;
-	PT_NODE* node;
-	char* cptr;
-	container_2 c2;
-	container_3 c3;
-	container_4 c4;
-	container_10 c10;
+  int number;
+  bool boolean;
+  PT_NODE *node;
+  char *cptr;
+  container_2 c2;
+  container_3 c3;
+  container_4 c4;
+  container_10 c10;
 }
 /* Line 2616 of glr.c.  */
-#line 903 "../../src/parser/csql_grammar.h"
+#line 963 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

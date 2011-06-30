@@ -42,7 +42,10 @@
 bool
 master_util_config_startup (const char *db_name, int *port_id)
 {
-  sysprm_load_and_init (db_name, NULL);
+  if (sysprm_load_and_init (db_name, NULL) != NO_ERROR)
+    {
+      return false;
+    }
   *port_id = prm_get_master_port_id ();
 
   /*

@@ -205,6 +205,7 @@ extern int obt_find_attribute (OBJ_TEMPLATE * template_ptr,
 extern int obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc,
 			 DB_VALUE * value);
 extern int obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr);
+extern int obt_populate_known_arguments (OBJ_TEMPLATE * template_ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void obt_retain_after_finish (OBJ_TEMPLATE * template_ptr);
 #endif

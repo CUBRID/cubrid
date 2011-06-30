@@ -28,58 +28,44 @@
  *
  */
 
-package @CUBRID_JCI@;
+package cubrid.jdbc.jci;
 
-import java.util.Hashtable;
-import @CUBRID_DRIVER@.*;
-import java.sql.*;
+public class UResCache {
+	UBindKey key;
 
-public class UResCache
-{
-  UBindKey key;
+	private boolean used;
+	private UStatementCacheData cache_data;
 
-  private boolean used;
-  private UStatementCacheData cache_data;
+	public UResCache(UBindKey key) {
+		this.key = key;
 
-  public UResCache(UBindKey key)
-  {
-    this.key = key;
+		cache_data = null;
+		used = true;
+	}
 
-    cache_data = null;
-    used = true;
-  }
+	public UStatementCacheData getCacheData() {
+		used = true;
 
-  public UStatementCacheData getCacheData()
-  {
-    used = true;
+		return (new UStatementCacheData(cache_data));
+	}
 
-    return (new UStatementCacheData(cache_data));
-  }
+	public void saveCacheData(UStatementCacheData cd) {
+		if (cd.srvCacheTime <= 0)
+			return;
 
-  public void saveCacheData(UStatementCacheData cd)
-  {
-    if (cd.srvCacheTime <= 0)
-      return;
+		synchronized (this) {
+			if (cache_data == null || cd.srvCacheTime > cache_data.srvCacheTime) {
+				cache_data = cd;
+			}
+		}
+	}
 
-    synchronized (this)
-    {
-      if (cache_data == null || cd.srvCacheTime > cache_data.srvCacheTime)
-      {
-        cache_data = cd;
-      }
-    }
-  }
-
-  boolean isExpired(long checkTime)
-  {
-    if (cache_data != null && used == false)
-    {
-      return true;
-    }
-    else
-    {
-      used = false;
-      return false;
-    }
-  }
+	boolean isExpired(long checkTime) {
+		if (cache_data != null && used == false) {
+			return true;
+		} else {
+			used = false;
+			return false;
+		}
+	}
 }

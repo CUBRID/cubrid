@@ -70,7 +70,7 @@
 #include "release_string.h"
 #include "environment_variable.h"
 #if defined (SERVER_MODE)
-#include "thread_impl.h"
+#include "thread.h"
 #else /* SERVER_MODE */
 #include "transaction_cl.h"
 #endif /* !SERVER_MODE */
@@ -91,16 +91,25 @@ syslog (long priority, const char *message, ...)
 {
   return 0;
 }
-
 #endif
 
-#if defined (WINDOWS)
-#define PATH_SEPARATOR  '\\'
-#else
-#define PATH_SEPARATOR  '/'
-#endif
-#define PATH_CURRENT    '.'
+#if defined (SERVER_MODE)
+#define ER_CSECT_ENTER_LOG_FILE() \
+    (csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT))
+#define ER_CSECT_EXIT_LOG_FILE() \
+    (csect_exit (CSECT_ER_LOG_FILE))
+#elif defined (CS_MODE)
+static pthread_mutex_t er_log_file_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int er_csect_enter_log_file ();
 
+#define ER_CSECT_ENTER_LOG_FILE() \
+   er_csect_enter_log_file()
+#define ER_CSECT_EXIT_LOG_FILE() \
+   pthread_mutex_unlock (&er_log_file_mutex)
+#else /* SA_MODE */
+#define ER_CSECT_ENTER_LOG_FILE() NO_ERROR
+#define ER_CSECT_EXIT_LOG_FILE()
+#endif
 /*
  * These are done via complied constants rather than the message
  * catalog, because they must be avilable if the message catalog is not
@@ -605,7 +614,7 @@ er_init (const char *msglog_file_name, int exit_ask)
       er_fmt_msg_fail_count = abs (ER_LAST_ERROR) - 2;
     }
 
-  r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
+  r = ER_CSECT_ENTER_LOG_FILE ();
   if (r != NO_ERROR)
     {
       return ER_FAILED;
@@ -639,14 +648,14 @@ er_init (const char *msglog_file_name, int exit_ask)
     }
   if (msglog_file_name)
     {
-      if (msglog_file_name[0] != PATH_SEPARATOR
-	  && msglog_file_name[0] != PATH_CURRENT)
+      if (IS_ABS_PATH (msglog_file_name)
+	  || msglog_file_name[0] == PATH_CURRENT)
 	{
-	  envvar_logdir_file (er_Log_file_name, PATH_MAX, msglog_file_name);
+	  strncpy (er_Log_file_name, msglog_file_name, PATH_MAX - 1);
 	}
       else
 	{
-	  strncpy (er_Log_file_name, msglog_file_name, PATH_MAX - 1);
+	  envvar_logdir_file (er_Log_file_name, PATH_MAX, msglog_file_name);
 	}
       er_Log_file_name[PATH_MAX - 1] = '\0';
       er_Msglog_file_name = er_Log_file_name;
@@ -670,7 +679,7 @@ er_init (const char *msglog_file_name, int exit_ask)
 	}
     }
 
-  csect_exit (CSECT_ER_LOG_FILE);
+  ER_CSECT_EXIT_LOG_FILE ();
 
   return NO_ERROR;
 }
@@ -806,7 +815,7 @@ er_start (THREAD_ENTRY * th_entry)
   th_entry->er_Msg->args = NULL;
   th_entry->er_Msg->nargs = 0;
 
-  r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
+  r = ER_CSECT_ENTER_LOG_FILE ();
   if (r != NO_ERROR)
     {
       return ER_FAILED;
@@ -884,7 +893,7 @@ er_start (THREAD_ENTRY * th_entry)
       er_is_cached_msg = true;
     }
 
-  r = csect_exit (CSECT_ER_LOG_FILE);
+  r = ER_CSECT_EXIT_LOG_FILE ();
   return status;
 }
 
@@ -1019,24 +1028,14 @@ er_start (void)
 void
 er_final (bool do_global_final)
 {
-  int i;
-  int r;
-  THREAD_ENTRY *th_entry;
-
-  r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
-  if (r != NO_ERROR)
-    {
-      return;
-    }
-
-  er_event_final ();
-
   if (do_global_final == false)
     {
+      THREAD_ENTRY *th_entry;
+
       th_entry = thread_get_thread_entry_info ();
       if (th_entry == NULL)
 	{
-	  goto exit;
+	  return;
 	}
 
       if (th_entry->er_Msg != NULL)
@@ -1059,9 +1058,18 @@ er_final (bool do_global_final)
 	  th_entry->er_Msg = NULL;
 	}
     }
-
   else
     {
+      int i;
+
+      if (ER_CSECT_ENTER_LOG_FILE () != NO_ERROR)
+	{
+	  assert (false);
+	  return;
+	}
+
+      er_event_final ();
+
       if (logfile_opened == true)
 	{
 	  if (er_Msglog != NULL && er_Msglog != stderr)
@@ -1085,10 +1093,10 @@ er_final (bool do_global_final)
 	      er_cached_msg[i] = (char *) er_builtin_msg[i];
 	    }
 	}
+
+      er_hasalready_initiated = false;
+      ER_CSECT_EXIT_LOG_FILE ();
     }
-exit:
-  er_hasalready_initiated = false;
-  r = csect_exit (CSECT_ER_LOG_FILE);
 }
 
 #else /* SERVER_MODE */
@@ -1357,14 +1365,17 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 #if defined (SERVER_MODE)
   ER_MSG *er_Msg;
   THREAD_ENTRY *th_entry;
-  th_entry = thread_get_thread_entry_info ();
-  er_Msg = th_entry->er_Msg;
 #endif
 
   if (er_hasalready_initiated == false)
     {
       return ER_FAILED;
     }
+
+#if defined (SERVER_MODE)
+  th_entry = thread_get_thread_entry_info ();
+  er_Msg = th_entry->er_Msg;
+#endif
 
   /*
    * Get the UNIX error message if needed. We need to get this as soon
@@ -1388,6 +1399,9 @@ er_set_internal (int severity, const char *file_name, const int line_no,
   if ((severity == ER_NOTIFICATION_SEVERITY) && (er_Msg->err_id != NO_ERROR))
     {
       er_stack_push ();
+#if defined (SERVER_MODE)
+      er_Msg = th_entry->er_Msg;
+#endif
       need_stack_pop = true;
     }
 
@@ -1461,7 +1475,7 @@ er_set_internal (int severity, const char *file_name, const int line_no,
       && !(PRM_ER_LOG_WARNING == false && severity == ER_WARNING_SEVERITY)
       && er_Fnlog[severity] != NULL)
     {
-      r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
+      r = ER_CSECT_ENTER_LOG_FILE ();
       if (r == NO_ERROR)
 	{
 	  (*er_Fnlog[severity]) ();
@@ -1472,7 +1486,7 @@ er_set_internal (int severity, const char *file_name, const int line_no,
 	  /* event handler */
 	  er_notify_event_on_error (err_id);
 
-	  csect_exit (CSECT_ER_LOG_FILE);
+	  ER_CSECT_EXIT_LOG_FILE ();
 	}
     }
 
@@ -1779,7 +1793,7 @@ er_errid (void)
 }
 
 /*
- * er_clearid - Clear only error identifer
+ * er_clearid - Clear only error identifier
  *   return: none
  */
 void
@@ -2057,7 +2071,7 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
   er_Msg = th_entry->er_Msg;
 #endif /* SERVER_MODE */
 
-  r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
+  r = ER_CSECT_ENTER_LOG_FILE ();
   if (r != NO_ERROR)
     {
       return;
@@ -2114,7 +2128,7 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 
   va_end (ap);
 
-  csect_exit (CSECT_ER_LOG_FILE);
+  ER_CSECT_EXIT_LOG_FILE ();
 }
 
 /*
@@ -2240,11 +2254,11 @@ er_set_area_error (void *server_area)
       && !(PRM_ER_LOG_WARNING == false && severity == ER_WARNING_SEVERITY)
       && er_Fnlog[severity] != NULL)
     {
-      r = csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT);
+      r = ER_CSECT_ENTER_LOG_FILE ();
       if (r == NO_ERROR)
 	{
 	  (*er_Fnlog[severity]) ();
-	  csect_exit (CSECT_ER_LOG_FILE);
+	  ER_CSECT_EXIT_LOG_FILE ();
 	}
     }
 
@@ -3352,3 +3366,17 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
 
   return NO_ERROR;
 }
+
+#if defined(CS_MODE)
+/*
+ * er_csect_enter_log_file -
+ *   return:
+ */
+static int
+er_csect_enter_log_file ()
+{
+  int ret;
+  ret = pthread_mutex_lock (&er_log_file_mutex);
+  return ret;
+}
+#endif

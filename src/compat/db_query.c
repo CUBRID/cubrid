@@ -91,6 +91,10 @@ static int query_execute_local (const char *CSQL_query, void *result,
 				QUERY_EXEC_MODE exec_mode);
 static DB_QUERY_TYPE *db_cp_query_type_helper (DB_QUERY_TYPE * src,
 					       DB_QUERY_TYPE * dest);
+static int or_packed_query_format_size (const DB_QUERY_TYPE * q, int *count);
+static char *or_pack_query_format (char *buf, const DB_QUERY_TYPE * q,
+				   const int count);
+static char *or_unpack_query_format (char *buf, DB_QUERY_TYPE ** q);
 
 /*
  * allocate_query_result() - This function allocates a query_result structure
@@ -184,6 +188,459 @@ db_free_query_format (DB_QUERY_TYPE * q)
 	}
       free_and_init (p);
     }
+}
+
+/*
+ * or_packed_query_format_size - calculate the size of the packed query format
+ *    return: size
+ *    columns(in): query format information
+ *    count (out): will hold the count of columns when the function returns
+ */
+static int
+or_packed_query_format_size (const DB_QUERY_TYPE * columns, int *count)
+{
+  int size = 0;
+  int len = 0;
+  int columns_cnt = 0;
+  const DB_QUERY_TYPE *column = NULL;
+  /* number of columns in the list */
+  size = OR_INT_SIZE;
+  if (columns == NULL)
+    {
+      /* only an integer containing the size (0) */
+      return size;
+    }
+
+  for (column = columns; column != NULL; column = column->next)
+    {
+      /* column type */
+      size += OR_INT_SIZE;
+      /* column name */
+      size += or_packed_string_length (column->name, &len);
+      /* attribute name */
+      size += or_packed_string_length (column->attr_name, &len);
+      /* spec name */
+      size += or_packed_string_length (column->spec_name, &len);
+      /* user specified column name */
+      size += or_packed_string_length (column->original_name, &len);
+      /* column data type */
+      size += OR_INT_SIZE;
+      /* column data size */
+      size += OR_INT_SIZE;
+      /* column domain information */
+      size += or_packed_domain_size (column->domain, true);
+      /* column source domain information */
+      size += or_packed_domain_size (column->src_domain, true);
+      /* column user visible */
+      size += OR_INT_SIZE;
+      columns_cnt++;
+    }
+  *count = columns_cnt;
+  return size;
+}
+
+/*
+ * or_pack_query_format - pack a query format list
+ *    return	  : advanced pointer
+ *    buf (in)	  : buffer pointer
+ *    columns (in): the query format list
+ *    count (in)  : the count of query format contained in the list
+ */
+static char *
+or_pack_query_format (char *buf, const DB_QUERY_TYPE * columns,
+		      const int count)
+{
+  char *ptr = NULL;
+  int len = 0;
+  const DB_QUERY_TYPE *column;
+
+  if (count != 0)
+    {
+      /* sanity check */
+      assert (columns != NULL);
+    }
+  /* pack the number of columns */
+  ptr = or_pack_int (buf, count);
+  if (count == 0)
+    {
+      return ptr;
+    }
+
+  for (column = columns; column != NULL; column = column->next)
+    {
+      /* column type */
+      ptr = or_pack_int (ptr, (int) column->col_type);
+      /* column name */
+      len = (column->name == NULL) ? 0 : strlen (column->name);
+      ptr = or_pack_string_with_length (ptr, column->name, len);
+
+      /* attribute name */
+      len = (column->attr_name == NULL) ? 0 : strlen (column->attr_name);
+      ptr = or_pack_string_with_length (ptr, column->attr_name, len);
+
+      /* spec name */
+      len = (column->spec_name == NULL) ? 0 : strlen (column->spec_name);
+      ptr = or_pack_string_with_length (ptr, column->spec_name, len);
+
+      /* user specified column name */
+      len =
+	(column->original_name == NULL) ? 0 : strlen (column->original_name);
+      ptr = or_pack_string_with_length (ptr, column->original_name, len);
+      /* column data type */
+      ptr = or_pack_int (ptr, column->db_type);
+      /* column data size */
+      ptr = or_pack_int (ptr, column->size);
+      /* column domain information */
+      ptr = or_pack_domain (ptr, column->domain, 1, 1);
+      /* column source domain information */
+      ptr = or_pack_domain (ptr, column->src_domain, 1, 1);
+      /* column user visible */
+      ptr = or_pack_int (ptr, column->visible_type);
+    }
+
+  return ptr;
+}
+
+/*
+ * or_unpack_query_format - unpack a query format list
+ *    return	      : advanced pointer
+ *    buf (in)	      : buffer pointer
+ *    columns (in/out): the columns list
+ *    count (in/out)  : the count of columns contained in the list
+ *
+ * Note: This function allocates memory for all members of the query format
+ * object. This memory is not allocated in the private heap of the current
+ * thread and needs to be released using free_and_init.
+ */
+static char *
+or_unpack_query_format (char *buf, DB_QUERY_TYPE ** columns)
+{
+  char *ptr = NULL;
+  int size = 0, i = 0;
+  DB_QUERY_TYPE *head = NULL, *current = NULL;
+  TP_DOMAIN *tp_dom = NULL;
+  ptr = or_unpack_int (buf, &size);
+  for (i = 0; i < size; i++)
+    {
+      int tmp = 0;
+      DB_QUERY_TYPE *column
+	= (DB_QUERY_TYPE *) malloc (sizeof (DB_QUERY_TYPE));
+
+      if (column == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, sizeof (DB_QUERY_TYPE));
+	  goto error_cleanup;
+	}
+      /* column type */
+      ptr = or_unpack_int (ptr, &tmp);
+      column->col_type = (DB_COL_TYPE) tmp;
+      /* column name */
+      ptr = or_unpack_string_alloc (ptr, &(column->name));
+      /* attribute name */
+      ptr = or_unpack_string_alloc (ptr, &(column->attr_name));
+      /* spec name */
+      ptr = or_unpack_string_alloc (ptr, &(column->spec_name));
+      /* user specified column name */
+      ptr = or_unpack_string_alloc (ptr, &(column->original_name));
+      /* column data type */
+      ptr = or_unpack_int (ptr, &tmp);
+      column->db_type = (DB_TYPE) tmp;
+      /* column data size */
+      ptr = or_unpack_int (ptr, &(column->size));
+      /* column domain information */
+      ptr = or_unpack_domain (ptr, &tp_dom, NULL);
+      if (tp_dom != NULL)
+	{
+	  column->domain = tp_domain_cache (tp_dom);
+	}
+      else
+	{
+	  column->domain = NULL;
+	}
+      tp_domain_free (tp_dom);
+      tp_dom = NULL;
+      /* column source domain */
+      ptr = or_unpack_domain (ptr, &tp_dom, NULL);
+      if (tp_dom != NULL)
+	{
+	  column->src_domain = regu_cp_domain (tp_dom);
+	}
+      else
+	{
+	  column->src_domain = NULL;
+	}
+      tp_domain_free (tp_dom);
+      /* column user visible */
+      ptr = or_unpack_int (ptr, &tmp);
+      column->visible_type = (COL_VISIBLE_TYPE) tmp;
+
+      column->next = NULL;
+
+      if (head == NULL)
+	{
+	  head = column;
+	  current = head;
+	}
+      else
+	{
+	  current->next = column;
+	  current = current->next;
+	}
+    }
+
+  *columns = head;
+  return ptr;
+
+error_cleanup:
+  while (head != NULL)
+    {
+      current = head;
+      head = head->next;
+
+      /* free name */
+      free_and_init (current->name);
+      /* free attribute name */
+      free_and_init (current->attr_name);
+      /* free spec name */
+      free_and_init (current->spec_name);
+      /* free user specified column name */
+      free_and_init (current->original_name);
+      free_and_init (current);
+    }
+  return ptr;
+}
+
+
+/*
+ * db_init_prepare_info () - initialize a prepare info object
+ * return	: void
+ * info (in/out): prepare info
+ */
+void
+db_init_prepare_info (DB_PREPARE_INFO * info)
+{
+  assert (info != NULL);
+  info->statement = NULL;
+  info->columns = NULL;
+  info->host_variables.size = 0;
+  info->host_variables.vals = NULL;
+  info->auto_param_count = 0;
+  info->recompile = 0;
+  info->oids_included = 0;
+  info->into_list = NULL;
+  info->into_count = 0;
+}
+
+/*
+ * db_pack_prepare_info () - pack a prepare info object
+ * return    : packed size or error
+ * info (in) : prepared info
+ * buffer (out) : buffer to pack to
+ */
+int
+db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
+{
+  char *ptr = NULL;
+  int packed_size = 0, i = 0;
+  int query_len = 0, columns_cnt = 0;
+
+  assert (*buffer == NULL);
+  assert (info != NULL);
+
+  /* calculate packed size */
+  /* parameters */
+  packed_size += OR_INT_SIZE;
+  if (info->host_variables.size != 0)
+    {
+      int size = 0, i = 0;
+      for (i = 0; i < info->host_variables.size; i++)
+	{
+	  size += OR_VALUE_ALIGNED_SIZE (&(info->host_variables.vals[i]));
+	}
+      packed_size += size;
+    }
+  /* calculate size for columns */
+  packed_size += or_packed_query_format_size (info->columns, &columns_cnt);
+  /* packed size for query */
+  packed_size += or_packed_string_length (info->statement, &query_len);
+  /* statement type */
+  packed_size += OR_INT_SIZE;
+  /* auto parameters count */
+  packed_size += OR_INT_SIZE;
+  /* recompile */
+  packed_size += OR_INT_SIZE;
+  /* oids included */
+  packed_size += OR_INT_SIZE;
+  /* into list length */
+  packed_size += OR_INT_SIZE;
+  /* into list names */
+  for (i = 0; i < info->into_count; i++)
+    {
+      packed_size += or_packed_string_length (info->into_list[i], NULL);
+    }
+
+  ptr = (char *) malloc (packed_size);
+  if (ptr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, packed_size);
+      return ER_FAILED;
+    }
+  *buffer = ptr;
+
+  /* begin packing */
+  /* parameters */
+  if (info->host_variables.size == 0)
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+  else
+    {
+      int i = 0;
+      ptr = or_pack_int (ptr, info->host_variables.size);
+      for (i = 0; i < info->host_variables.size; i++)
+	{
+	  ptr = or_pack_db_value (ptr, &(info->host_variables.vals[i]));
+	}
+    }
+  /* columns */
+  ptr = or_pack_query_format (ptr, info->columns, columns_cnt);
+  /* query */
+  ptr = or_pack_string_with_length (ptr, info->statement, query_len);
+  /* statement type */
+  ptr = or_pack_int (ptr, info->stmt_type);
+  /* auto parameters count */
+  ptr = or_pack_int (ptr, info->auto_param_count);
+  /* recompile */
+  ptr = or_pack_int (ptr, info->recompile);
+  /* oids included */
+  ptr = or_pack_int (ptr, info->oids_included);
+  /* into list length */
+  ptr = or_pack_int (ptr, info->into_count);
+  for (i = 0; i < info->into_count; i++)
+    {
+      ptr = or_pack_string (ptr, info->into_list[i]);
+    }
+
+  return packed_size;
+}
+
+/*
+ * db_unpack_prepare_info () - unpack a DB_PREPARE_INFO object
+ * return    : error code or NO_ERROR
+ * info (out) : DB_PREPARE_INFO object
+ * buffer (in): serialized form of the DB_PREPARE_INFO object
+ */
+int
+db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
+{
+  int param_cnt = 0, len = 0, i = 0;
+  char *ptr = NULL;
+
+  assert (info != NULL);
+  assert (buffer != NULL);
+
+  /* unpack parameters */
+  ptr = or_unpack_int (buffer, &(info->host_variables.size));
+  if (info->host_variables.size > 0)
+    {
+      int i = 0;
+      info->host_variables.vals =
+	(DB_VALUE *) malloc (info->host_variables.size * sizeof (DB_VALUE));
+      if (info->host_variables.vals == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, info->host_variables.size * sizeof (DB_VALUE));
+	  goto error;
+	}
+      for (i = 0; i < info->host_variables.size; i++)
+	{
+	  ptr = or_unpack_db_value (ptr, &(info->host_variables.vals[i]));
+	}
+    }
+  /* unpack column info */
+  ptr = or_unpack_query_format (ptr, &info->columns);
+  /* unpack query */
+  ptr = or_unpack_string_alloc (ptr, &info->statement);
+  /* unpack statement type */
+  ptr = or_unpack_int (ptr, (int *) &info->stmt_type);
+  /* unpack auto parameters count */
+  ptr = or_unpack_int (ptr, &info->auto_param_count);
+  /* unpack recompile */
+  ptr = or_unpack_int (ptr, &info->recompile);
+  /* oids included */
+  ptr = or_unpack_int (ptr, &info->oids_included);
+  /* unpack into list length */
+  ptr = or_unpack_int (ptr, &info->into_count);
+  if (info->into_count > 0)
+    {
+      info->into_list = (char **) malloc (info->into_count * sizeof (char *));
+      if (info->into_list == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, info->into_count * sizeof (char *));
+	  goto error;
+	}
+      for (i = 0; i < info->into_count; i++)
+	{
+	  ptr = or_unpack_string_alloc (ptr, &info->into_list[i]);
+	}
+    }
+  return NO_ERROR;
+
+error:
+  if (info->statement != NULL)
+    {
+      free_and_init (info->statement);
+    }
+  if (info->columns != NULL)
+    {
+      DB_QUERY_TYPE *col = info->columns;
+      DB_QUERY_TYPE *next_p = NULL;
+      while (col != NULL)
+	{
+	  next_p = col->next;
+	  if (col->name != NULL)
+	    {
+	      free_and_init (col->name);
+	    }
+	  if (col->attr_name != NULL)
+	    {
+	      free_and_init (col->attr_name);
+	    }
+	  if (col->spec_name != NULL)
+	    {
+	      free_and_init (col->spec_name);
+	    }
+	  if (col->original_name != NULL)
+	    {
+	      free_and_init (col->original_name);
+	    }
+	  tp_domain_free (col->domain);
+	  tp_domain_free (col->src_domain);
+
+	  free_and_init (col);
+	  col = next_p;
+	}
+    }
+  if (info->host_variables.vals != NULL)
+    {
+      db_value_clear_array (&info->host_variables);
+      free_and_init (info->host_variables.vals);
+    }
+  if (info->into_list != NULL)
+    {
+      for (i = 0; i < info->into_count; i++)
+	{
+	  if (info->into_list[i] != NULL)
+	    {
+	      free_and_init (info->into_list[i]);
+	    }
+	}
+      free_and_init (info->into_list);
+    }
+  return ER_FAILED;
 }
 
 #if defined(WINDOWS) || defined (ENABLE_UNUSED_FUNCTION)

@@ -250,8 +250,6 @@ static PT_NODE *mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
 						   PT_NODE * statement,
 						   PT_NODE * spec,
 						   PT_NODE * query_spec);
-static PT_NODE *mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser,
-						 PT_NODE * agg_sel);
 static PT_NODE *mq_translate_select (PARSER_CONTEXT * parser,
 				     PT_NODE * select_statement);
 static void mq_check_update (PARSER_CONTEXT * parser,
@@ -306,6 +304,8 @@ static PT_NODE *mq_coerce_resolved (PARSER_CONTEXT * parser, PT_NODE * node,
 static PT_NODE *mq_set_all_ids (PARSER_CONTEXT * parser, PT_NODE * node,
 				void *void_arg, int *continue_walk);
 static PT_NODE *mq_reset_all_ids (PARSER_CONTEXT * parser, PT_NODE * node,
+				  void *void_arg, int *continue_walk);
+static PT_NODE *mq_clear_all_ids (PARSER_CONTEXT * parser, PT_NODE * node,
 				  void *void_arg, int *continue_walk);
 static PT_NODE *mq_reset_spec_ids (PARSER_CONTEXT * parser, PT_NODE * node,
 				   void *void_arg, int *continue_walk);
@@ -466,6 +466,13 @@ static void mq_insert_symbol (PARSER_CONTEXT * parser, PT_NODE ** listhead,
 static DB_OBJECT **mq_fetch_real_classes (DB_OBJECT * vclass);
 
 static const char *get_authorization_name (DB_AUTH auth);
+
+static PT_NODE *mq_add_dummy_from_pre (PARSER_CONTEXT * parser,
+				       PT_NODE * node, void *arg,
+				       int *continue_walk);
+static PT_NODE *mq_add_dummy_from_post (PARSER_CONTEXT * parser,
+					PT_NODE * node, void *arg,
+					int *continue_walk);
 
 
 
@@ -1449,7 +1456,13 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	}
 
       if (pt_has_aggregate (parser, query_spec)
-	  || pt_is_distinct (query_spec))
+	  || pt_is_distinct (query_spec)
+	  || query_spec->info.query.orderby_for)
+	{
+	  rewrite_as_derived = true;
+	}
+      else if (query_spec->node_type == PT_SELECT
+	       && query_spec->info.query.q.select.connect_by)
 	{
 	  rewrite_as_derived = true;
 	}
@@ -1579,13 +1592,28 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 				 query_spec->info.query.q.select.use_merge),
 				derived_table->info.query.q.select.use_merge);
 
-	  if (!order_by && query_spec->info.query.order_by)
+	  if (!order_by || query_spec->info.query.orderby_for)
 	    {
-	      derived_table->info.query.order_by =
-		parser_append_node (parser_copy_tree_list
-				    (parser,
-				     query_spec->info.query.order_by),
-				    derived_table->info.query.order_by);
+	      if (query_spec->info.query.order_by)
+		{
+		  derived_table->info.query.order_by =
+		    parser_append_node (parser_copy_tree_list
+					(parser,
+					 query_spec->info.query.order_by),
+					derived_table->info.query.order_by);
+		  derived_table->info.query.order_siblings =
+		    query_spec->info.query.order_siblings;
+		}
+
+	      if (query_spec->info.query.orderby_for)
+		{
+		  derived_table->info.query.orderby_for =
+		    parser_append_node (parser_copy_tree_list
+					(parser,
+					 query_spec->info.query.orderby_for),
+					derived_table->info.query.
+					orderby_for);
+		}
 	    }
 
 	  /* merge USING INDEX clause of vclass spec */
@@ -1605,7 +1633,9 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 
 	  tmp_class = parser_copy_tree (parser, class_);
 	  if (tmp_class == NULL)
-	    goto exit_on_error;
+	    {
+	      goto exit_on_error;
+	    }
 	  tmp_class->info.name.spec_id = derived_class->info.name.spec_id;
 
 	  spec->info.spec.derived_table =
@@ -1669,6 +1699,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 				    tmp_result->info.query.q.select.
 				    use_merge);
 
+	      assert (query_spec->info.query.orderby_for == NULL);
 	      if (!order_by && query_spec->info.query.order_by)
 		{
 		  tmp_result->info.query.order_by =
@@ -1745,9 +1776,9 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser,
 	  arg1 = mq_substitute_subquery_in_statement (parser, statement, arg1,
 						      class_, order_by,
 						      what_for);
-	  arg2 =
-	    mq_substitute_subquery_in_statement (parser, statement, arg2,
-						 class_, order_by, what_for);
+	  arg2 = mq_substitute_subquery_in_statement (parser, statement, arg2,
+						      class_, order_by,
+						      what_for);
 
 	  if (arg1 && arg2)
 	    {
@@ -1837,11 +1868,14 @@ mq_substitute_subquery_list_in_statement (PARSER_CONTEXT *
 
   while (query_spec)
     {
-      result = mq_substitute_subquery_in_statement
-	(parser, statement, query_spec, class_, order_by, what_for);
+      result = mq_substitute_subquery_in_statement (parser, statement,
+						    query_spec, class_,
+						    order_by, what_for);
 
       if (result)
-	result_list = parser_append_node (result, result_list);
+	{
+	  result_list = parser_append_node (result, result_list);
+	}
 
       query_spec = query_spec->next;
     }
@@ -1942,8 +1976,20 @@ mq_check_authorization_path_entities (PARSER_CONTEXT * parser,
 {
   PT_NODE *path_spec, *entity;
   int error;
+  bool skip_auth_check = false;
 
   error = NO_ERROR;		/* init */
+
+  /* check for authorization bypass: this feature should be
+   * used only for specs in SHOW statements;
+   * Note : all classes expanded under the current spec
+   * sub-tree will be skipped by the authorization process
+   */
+  if (((int) class_spec->info.spec.auth_bypass_mask & what_for) == what_for)
+    {
+      assert (what_for != DB_AUTH_NONE);
+      skip_auth_check = true;
+    }
 
   /* Traverse each path list */
   for (path_spec = class_spec->info.spec.path_entities; path_spec != NULL;
@@ -1954,6 +2000,10 @@ mq_check_authorization_path_entities (PARSER_CONTEXT * parser,
 	   entity = entity->next)
 	{
 	  /* check for current path */
+	  if (skip_auth_check)
+	    {
+	      continue;
+	    }
 	  error =
 	    db_check_authorization (entity->info.name.db_object,
 				    (DB_AUTH) what_for);
@@ -2047,9 +2097,17 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
        * Currently, theres no way to represent the all correct results
        * in a parse tree or in xasl.
        */
+      bool skip_auth_check = false;
       had_some_virtual_classes = 0;
       real_classes = NULL;
       tree_union = NULL;
+
+      if (((int) class_spec->info.spec.auth_bypass_mask & what_for) ==
+	  what_for)
+	{
+	  assert (what_for != DB_AUTH_NONE);
+	  skip_auth_check = true;
+	}
 
       if (class_spec->info.spec.derived_table)
 	{
@@ -2079,8 +2137,15 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree,
 		  my_class = parser_copy_tree (parser, entity);
 		  if (!my_class)
 		    return NULL;
-		  if (db_check_authorization (my_class->info.name.db_object,
-					      (DB_AUTH) what_for) != NO_ERROR)
+		  /* check for authorization bypass: this feature should be
+		   * used only for specs in SHOW statements;
+		   * Note : all classes expanded under the current spec
+		   * sub-tree will be skipped by the authorization process
+		   */
+		  if (!skip_auth_check &&
+		      (db_check_authorization
+		       (my_class->info.name.db_object,
+			(DB_AUTH) what_for) != NO_ERROR))
 		    {
 		      PT_ERRORmf2 (parser, entity, MSGCAT_SET_PARSER_RUNTIME,
 				   MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
@@ -2759,15 +2824,10 @@ pt_check_copypush_subquery (PARSER_CONTEXT * parser, PT_NODE * query)
 	{
 	  copy_cnt++;		/* found not-pushable query */
 	}
-      else
+      else if (pt_has_aggregate (parser, query)
+	       && query->info.query.q.select.group_by == NULL)
 	{
-	  if (pt_has_aggregate (parser, query))
-	    {
-	      if (query->info.query.q.select.group_by == NULL)
-		{
-		  copy_cnt++;	/* found not-pushable query */
-		}
-	    }
+	  copy_cnt++;		/* found not-pushable query */
 	}
       break;
 
@@ -2782,7 +2842,7 @@ pt_check_copypush_subquery (PARSER_CONTEXT * parser, PT_NODE * query)
 
     default:
       break;
-    }				/* switch (query->node_type) */
+    }
 
   return copy_cnt;
 }
@@ -3004,6 +3064,8 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement,
   FIND_ID_INFO info;
 
   if (statement->node_type == PT_SELECT
+      /* never do copy-push optimization for a hierarchical query */
+      && statement->info.query.q.select.connect_by == NULL
       && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
       && (derived_table = spec->info.spec.derived_table)
       && PT_IS_QUERY (derived_table))
@@ -3148,6 +3210,25 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
 						new_query, &info);
     }
 
+  if (PT_IS_SELECT (query_spec) && query_spec->info.query.q.select.connect_by)
+    {
+      /* query spec of the vclass is hierarchical */
+      new_query->info.query.q.select.connect_by =
+	parser_copy_tree_list (parser,
+			       query_spec->info.query.q.select.connect_by);
+      new_query->info.query.q.select.start_with =
+	parser_copy_tree_list (parser,
+			       query_spec->info.query.q.select.start_with);
+      new_query->info.query.q.select.after_cb_filter =
+	parser_copy_tree_list (parser,
+			       query_spec->info.query.q.select.
+			       after_cb_filter);
+      new_query->info.query.q.select.has_nocycle =
+	query_spec->info.query.q.select.has_nocycle;
+      new_query->info.query.q.select.single_table_opt =
+	query_spec->info.query.q.select.single_table_opt;
+    }
+
   new_query = mq_reset_ids_and_references (parser, new_query, new_spec);
 
   spec->info.spec.derived_table = new_query;
@@ -3162,7 +3243,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser,
  *   parser(in):
  *   agg_sel(in):
  */
-static PT_NODE *
+PT_NODE *
 mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
 {
   PT_NODE *derived, *range, *spec;
@@ -3333,8 +3414,8 @@ mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
       /* for each table/class in select_statements from part,
          do leaf expansion or vclass/view expansion. */
 
-      select_statement = mq_translate_tree
-	(parser, select_statement, from, order_by, DB_AUTH_SELECT);
+      select_statement = mq_translate_tree (parser, select_statement,
+					    from, order_by, DB_AUTH_SELECT);
     }
 
   /* restore the into part. and order by, if they are not already set. */
@@ -3344,6 +3425,7 @@ mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 	{
 	  select_statement->info.query.order_by = order_by;
 	}
+
       select_statement->info.query.into_list = into;
       if (all_distinct == PT_DISTINCT)
 	{
@@ -3414,10 +3496,9 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   PT_NODE *next = insert_statement->next;
   PT_NODE *flat, *temp, **last;
   PT_NODE save = *insert_statement;
-  int viable;
+  bool viable;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   int what_for = DB_AUTH_INSERT;
-
 
   insert_statement->next = NULL;
   from = insert_statement->info.insert.spec;
@@ -3426,13 +3507,15 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
     {
       what_for = DB_AUTH_INSERT_UPDATE;
     }
+
   if (insert_statement->info.insert.do_replace)
     {
       assert (insert_statement->info.insert.on_dup_key_update == NULL);
       what_for = DB_AUTH_REPLACE;
     }
-  insert_statement = mq_translate_tree
-    (parser, insert_statement, from, NULL, what_for);
+
+  insert_statement = mq_translate_tree (parser, insert_statement, from,
+					NULL, what_for);
 
   if (insert_statement)
     {
@@ -3451,6 +3534,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	      attr = insert_statement->info.insert.attr_list;
 	      val_hook = &crt_list->info.node_list.list;
 	      val = *val_hook;
+
 	      while (attr && val)
 		{
 		  if (val->node_type == PT_INSERT && val->etc)
@@ -3465,6 +3549,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 			{
 			  return NULL;
 			}
+
 		      /* this is case 3 above. Need to choose the appropriate
 		       * nested insert statement. */
 		      /* do you solve your problem? */
@@ -3480,6 +3565,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 			  head = val;
 			  val->etc = NULL;
 			}
+
 		      if (attr->data_type
 			  && attr->data_type->info.data_type.entity)
 			{
@@ -3487,28 +3573,36 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 			    attr->data_type->info.data_type.entity->info.name.
 			    db_object;
 			}
+
 		      /* if there is a real class this must match, use it.
 		       * otherwise it must be a "db_object" type, so any
 		       * will do. */
 		      if (real_class)
-			while (val)
-			  {
-			    if (val->info.insert.spec
-				&& (flat = val->info.insert.spec->
-				    info.spec.flat_entity_list)
-				&& flat->info.name.db_object == real_class)
-			      {
-				break;	/* found it */
-			      }
-			    prev = val;
-			    val = val->next;
-			  }
+			{
+			  while (val)
+			    {
+			      if (val->info.insert.spec
+				  && (flat = val->info.insert.spec->
+				      info.spec.flat_entity_list)
+				  && flat->info.name.db_object == real_class)
+				{
+				  break;	/* found it */
+				}
+			      prev = val;
+			      val = val->next;
+			    }
+			}
+
 		      if (val)
 			{
 			  if (val == head)
-			    head = head->next;
+			    {
+			      head = head->next;
+			    }
 			  else
-			    prev->next = val->next;
+			    {
+			      prev->next = val->next;
+			    }
 			}
 		      else
 			{
@@ -3521,10 +3615,12 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 
 			  val->type_enum = PT_TYPE_NULL;
 			}
+
 		      val->next = val_next;
 		      /* and finally replace it */
 		      *val_hook = val;
 		    }
+
 		  attr = attr->next;
 		  val_hook = &val->next;
 		  val = *val_hook;
@@ -3532,10 +3628,13 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	    }
 
 	  insert_statement = insert_statement->next;
-	}			/* while */
+	}
 
       if (head)
-	parser_free_tree (parser, head);
+	{
+	  parser_free_tree (parser, head);
+	}
+
       insert_statement = t_save;
 
       /* Now deal with case 1, 2 */
@@ -3547,21 +3646,24 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	  temp = *last;
 	  from = temp->info.insert.spec;
 	  flat = from->info.spec.flat_entity_list;
-	  viable = 0;
+
+	  viable = false;
 	  if (db_is_class (flat->info.name.db_object))
-	    viable = 1;
+	    {
+	      viable = true;
+	    }
+
 	  if (viable)
 	    {
 	      /* propagate temp's type information upward now because
 	       * mq_check_insert_compatibility calls pt_class_assignable
-	       * which expects accurate type information. If we don't,
-	       * we can get a failure like the one described in PR6762.
+	       * which expects accurate type information.
 	       */
 	      sc_info.top_node = temp;
 	      sc_info.donot_fold = false;
 	      pt_semantic_type (parser, temp, &sc_info);
-
 	    }
+
 	  /* here we just go to the next item in the list.
 	   * If it is a nested insert, the correct one will
 	   * be selected from the list at the outer level.
@@ -3590,7 +3692,6 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   return insert_statement;
 }
 
-
 /*
  * mq_translate_delete() - leaf expansion or vclass/view expansion
  *   return:
@@ -3616,7 +3717,6 @@ mq_translate_delete (PARSER_CONTEXT * parser, PT_NODE * delete_statement)
 
   return delete_statement;
 }
-
 
 /*
  * mq_push_paths_select() -
@@ -4307,6 +4407,86 @@ mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec,
 
 
 /*
+ * mq_add_dummy_from_pre () - adds a dummy "FROM db-root" to view definitions
+ *			  that do not have one.
+
+ *   Note:      This is required so that the view handling code remains
+ *		consistent with the assumption that each SELECT in a view
+ *              has some hidden OID columns.
+ *	        This only happens for views or sub-queries of views.
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+mq_add_dummy_from_pre (PARSER_CONTEXT * parser, PT_NODE * node,
+		       void *arg, int *continue_walk)
+{
+  PT_NODE *fake_from;
+
+  if (!node)
+    {
+      return node;
+    }
+
+  if (node->node_type != PT_SELECT || node->info.query.q.select.from != NULL)
+    {
+      return node;
+    }
+
+  if (node->info.query.is_subquery == PT_IS_SUBQUERY)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  fake_from = pt_add_table_name_to_from_list (parser, node, "db_root",
+					      NULL, DB_AUTH_NONE);
+  if (fake_from == NULL)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return NULL;
+    }
+
+  return node;
+}
+
+
+
+/*
+ * mq_add_dummy_from_post () - restore the PT_CONTINUE_WALK flag so that
+ *			       subquery sibilings are also visited.
+ *
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+mq_add_dummy_from_post (PARSER_CONTEXT * parser, PT_NODE * node,
+			void *arg, int *continue_walk)
+{
+  /* set to PT_CONTINUE_WALK only for the nodes that set it to
+   * PT_STOP_WALK in mq_add_dummy_from_pre(). So the conditions
+   * below replicate the ones in that function: only select nodes without
+   * from and that are sub-queries.
+   */
+  if (node &&
+      node->node_type == PT_SELECT &&
+      node->info.query.q.select.from == NULL &&
+      node->info.query.is_subquery == PT_IS_SUBQUERY)
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return node;
+}
+
+
+/*
  * mq_translate_subqueries() - Translates virtual instance population
  *                             queries of any class
  *   return: a select or union of selects
@@ -4359,6 +4539,15 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
 	return NULL;
 
       query_spec = *result;
+
+      query_spec = parser_walk_tree (parser, query_spec,
+				     mq_add_dummy_from_pre, NULL,
+				     mq_add_dummy_from_post, NULL);
+      if (query_spec == NULL)
+	{
+	  return NULL;
+	}
+
       parser_walk_tree (parser, query_spec, pt_set_is_view_spec, NULL, NULL,
 			NULL);
 
@@ -4650,7 +4839,7 @@ mq_virtual_queries (DB_OBJECT * class_object)
       return NULL;
     }
 
-  snprintf (buf, sizeof (buf), "select * from %s; ", cname);
+  snprintf (buf, sizeof (buf), "select * from [%s]; ", cname);
   statements = parser_parse_string (parser, buf);
   parser->view_cache = (VIEW_CACHE_INFO *)
     parser_alloc (parser, sizeof (VIEW_CACHE_INFO));
@@ -5307,6 +5496,38 @@ mq_reset_ids (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec)
   return statement;
 }
 
+/*
+ * mq_clear_all_ids() - clear previously resolved PT_NAME node
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   void_arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+mq_clear_all_ids (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
+		  int *continue_walk)
+{
+  if (node->node_type == PT_NAME)
+    {
+      node->info.name.spec_id = 0;
+    }
+  return node;
+}
+
+/*
+ * mq_clear_ids () - recursively clear previously resolved PT_NAME nodes
+ *   return:
+ *   parser(in):
+ *   statement(in):
+ *   spec(in):
+ */
+PT_NODE *
+mq_clear_ids (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  node = parser_walk_tree (parser, node, mq_clear_all_ids, NULL, NULL, NULL);
+  return node;
+}
 
 /*
  * mq_reset_spec_ids() - resets spec ids for a spec node
@@ -6705,7 +6926,7 @@ mq_make_derived_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	    }
 	}
 
-      if (!col)
+      if (!col && !subquery->info.query.q.select.connect_by)
 	{
 	  parser_free_tree (parser, subquery->info.query.order_by);
 	  subquery->info.query.order_by = NULL;
@@ -9075,7 +9296,7 @@ mq_get_expression (DB_OBJECT * object, const char *expr, DB_VALUE * value)
   buffer = pt_append_string (parser, buffer, " from ");
   buffer = pt_append_string (parser, buffer, db_get_class_name (object));
 
-  statements = parser_parse_string (parser, buffer);
+  statements = parser_parse_string_with_escapes (parser, buffer, false);
 
   if (statements)
     {

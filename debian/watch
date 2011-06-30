@@ -1,0 +1,3 @@
+version=3
+opts=filenamemangle=s/.*filename=(.*)/$1/,downloadurlmangle=s/\/projects\/cubrid\/download\/([0-9]+).*/\/frs\/download\.php\/$1/ \
+http://dev.naver.com/projects/cubrid/download/[0-9]+\?filename=CUBRID-([^A-Za-z]*)\.src\.tar\.gz

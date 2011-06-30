@@ -90,7 +90,7 @@ static SORT_LIST *make_sort_list_after_eqclass (QO_ENV * env, int column_cnt);
 static XASL_NODE *gen_outer (QO_ENV *, QO_PLAN *, BITSET *,
 			     XASL_NODE *, XASL_NODE *, XASL_NODE *);
 static XASL_NODE *gen_inner (QO_ENV *, QO_PLAN *, BITSET *, BITSET *,
-			     XASL_NODE *, XASL_NODE *);
+			     XASL_NODE *, XASL_NODE *, bool);
 static XASL_NODE *preserve_info (QO_ENV * env, QO_PLAN * plan,
 				 XASL_NODE * xasl);
 
@@ -104,6 +104,22 @@ static int is_always_true (QO_TERM *);
 static QO_XASL_INDEX_INFO *qo_get_xasl_index_info (QO_ENV * env,
 						   QO_PLAN * plan);
 static void qo_free_xasl_index_info (QO_ENV * env, QO_XASL_INDEX_INFO * info);
+
+static bool qo_validate_regu_var_for_limit (REGU_VARIABLE * var_p);
+static bool qo_get_limit_from_instnum_pred (PARSER_CONTEXT * parser,
+					    PRED_EXPR * pred,
+					    REGU_PTR_LIST * lower,
+					    REGU_PTR_LIST * upper);
+static bool qo_get_limit_from_eval_term (PARSER_CONTEXT * parser,
+					 PRED_EXPR * pred,
+					 REGU_PTR_LIST * lower,
+					 REGU_PTR_LIST * upper);
+
+static REGU_PTR_LIST regu_ptr_list_create ();
+static void regu_ptr_list_free (REGU_PTR_LIST list);
+static REGU_PTR_LIST regu_ptr_list_add_regu (REGU_VARIABLE * var_p,
+					     REGU_PTR_LIST list);
+
 
 /*
  * make_scan_proc () -
@@ -1778,8 +1794,16 @@ gen_outer (QO_ENV * env,
 	  /* exclude totally after join term and push into inner */
 	  bitset_difference (&predset, &taj_terms);
 
+	  /*
+	   * In case of outer join, we should not use sarg terms as key filter terms.
+	   * If not, a term, which should be applied after single scan, can be applied
+	   * during btree_range_search. It means that there can be no records fetched
+	   * by single scan due to key filtering, and null records can be returned
+	   * by scan_handle_single_scan. It might lead to making a wrong result.
+	   */
 	  scan = gen_inner (env, inner,
-			    &predset, &new_subqueries, inner_scans, fetches);
+			    &predset, &new_subqueries, inner_scans, fetches,
+			    IS_OUTER_JOIN_TYPE (join_type));
 	  if (scan)
 	    {
 	      if (IS_OUTER_JOIN_TYPE (join_type))
@@ -2190,12 +2214,14 @@ gen_outer (QO_ENV * env,
  *		      scan_ptr list
  *   fetches(in): A list of fetch procs to be run every time plan produces
  *		  a new row
+ *   do_not_push_sarg_to_kf(in): Do not use sarg as key filter if it is true
  */
 static XASL_NODE *
 gen_inner (QO_ENV * env,
 	   QO_PLAN * plan,
 	   BITSET * predset,
-	   BITSET * subqueries, XASL_NODE * inner_scans, XASL_NODE * fetches)
+	   BITSET * subqueries, XASL_NODE * inner_scans, XASL_NODE * fetches,
+	   bool do_not_push_sarg_to_kf)
 {
   XASL_NODE *scan, *listfile, *fetch;
   PT_NODE *namelist;
@@ -2214,7 +2240,23 @@ gen_inner (QO_ENV * env,
   switch (plan->plan_type)
     {
     case QO_PLANTYPE_SCAN:
-      bitset_union (&(plan->sarged_terms), predset);
+      /*
+       * For nl-join and idx-join, we push join edge to sarg term of inner scan
+       * to filter out unsatisfied records earlier. Especially, if a scan plan
+       * uses a covered index and join type is not outer join, we push them to
+       * key filter instead of sarg term.
+       */
+      if (do_not_push_sarg_to_kf == false
+	  && plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN
+	  && plan->plan_un.scan.index->head
+	  && plan->plan_un.scan.index->head->cover_segments)
+	{
+	  bitset_union (&(plan->plan_un.scan.kf_terms), predset);
+	}
+      else
+	{
+	  bitset_union (&(plan->sarged_terms), predset);
+	}
       scan = init_class_scan_proc (env, scan, plan);
       scan = add_scan_proc (env, scan, inner_scans);
       scan = add_fetch_proc (env, scan, fetches);
@@ -2239,7 +2281,7 @@ gen_inner (QO_ENV * env,
        */
       scan = gen_inner (env,
 			plan->plan_un.follow.head,
-			&EMPTY_SET, &EMPTY_SET, inner_scans, fetch);
+			&EMPTY_SET, &EMPTY_SET, inner_scans, fetch, false);
       break;
 #else
       /* Fall through */
@@ -2414,6 +2456,27 @@ qo_plan_iscan_sort_list (QO_PLAN * plan)
 }
 
 /*
+ * qo_subplan_iscan_sort_list () - get after index scan PT_SORT_SPEC list for
+ *                                 subplan of a sort plan
+ *   return: sort list
+ *   plan(in): QO_PLAN
+ */
+PT_NODE *
+qo_subplan_iscan_sort_list (QO_PLAN * plan)
+{
+  if (!plan || plan->plan_type != QO_PLANTYPE_SORT)
+    {
+      return NULL;
+    }
+  if (!plan->plan_un.sort.subplan)
+    {
+      return NULL;
+    }
+
+  return plan->plan_un.sort.subplan->iscan_sort_list;
+}
+
+/*
  * qo_plan_skip_orderby () - check the plan info for order by
  *   return: true/false
  *   plan(in): QO_PLAN
@@ -2425,6 +2488,19 @@ qo_plan_skip_orderby (QO_PLAN * plan)
 	   && (plan->plan_un.sort.sort_type == SORT_DISTINCT
 	       || plan->plan_un.sort.sort_type == SORT_ORDERBY))
 	  ? false : true);
+}
+
+/*
+ * qo_plan_skip_groupby () - check the plan info for order by
+ *   return: true/false
+ *   plan(in): QO_PLAN
+ */
+bool
+qo_plan_skip_groupby (QO_PLAN * plan)
+{
+  return (plan->plan_type == QO_PLANTYPE_SCAN &&
+	  plan->plan_un.scan.index &&
+	  plan->plan_un.scan.index->head->groupby_skip) ? true : false;
 }
 
 /******************************************************************************
@@ -2446,7 +2522,7 @@ qo_plan_skip_orderby (QO_PLAN * plan)
 static QO_XASL_INDEX_INFO *
 qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 {
-  int nterms, nsegs;
+  int nterms, nsegs, nkfterms;
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_INDEX_ENTRY *index_entryp;
   QO_XASL_INDEX_INFO *index_infop;
@@ -2456,8 +2532,25 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 
   /* if no index scan terms, no index scan */
   nterms = bitset_cardinality (&(plan->plan_un.scan.terms));
-  if (nterms <= 0)
-    return NULL;
+  nkfterms = bitset_cardinality (&(plan->plan_un.scan.kf_terms));
+
+  /* support also indexes with only sarg terms */
+  if (plan && plan->plan_type == QO_PLANTYPE_SCAN &&
+      plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
+    {
+      /* if group by skip plan do not return */
+      ;
+    }
+  else if (nterms <= 0 && nkfterms <= 0 &&
+	   bitset_cardinality (&(plan->sarged_terms)) == 0)
+    {
+      return NULL;
+    }
+
+  if (plan->plan_un.scan.index == NULL)
+    {
+      return NULL;
+    }
 
   /* pointer to QO_NODE_INDEX_ENTRY structure in QO_PLAN */
   ni_entryp = plan->plan_un.scan.index;
@@ -2474,6 +2567,14 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      sizeof (QO_XASL_INDEX_INFO));
       goto error;
+    }
+
+  if (nterms == 0)
+    {
+      index_infop->nterms = 0;
+      index_infop->term_exprs = NULL;
+      index_infop->ni_entry = ni_entryp;
+      return index_infop;
     }
 
   index_infop->nterms = nterms;
@@ -2531,7 +2632,6 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 	}
 
       index_infop->term_exprs[pos] = QO_TERM_PT_EXPR (termp);
-
     }				/* for (t = bitset_iterate(...); ...) */
 
   /* return QO_XASL_INDEX_INFO */
@@ -2557,13 +2657,26 @@ qo_free_xasl_index_info (QO_ENV * env, QO_XASL_INDEX_INFO * info)
   if (info)
     {
       if (info->term_exprs)
-	free_and_init (info->term_exprs);
+	{
+	  free_and_init (info->term_exprs);
+	}
       /*      DEALLOCATE (env, info->term_exprs); */
 
       free_and_init (info);
       /*    DEALLOCATE(env, info); */
     }
 }
+
+/*
+ * qo_xasl_get_num_terms () - Return the number of terms in the array
+ *   return: int
+ *   info(in): Pointer to info structure
+ */
+int
+qo_xasl_get_num_terms (QO_XASL_INDEX_INFO * info)
+{
+  return info->nterms;
+}				/* qo_xasl_get_num_terms */
 
 /*
  * qo_xasl_get_terms () - Return a point to the NULL terminated list
@@ -2576,17 +2689,6 @@ qo_xasl_get_terms (QO_XASL_INDEX_INFO * info)
 {
   return info->term_exprs;
 }				/* qo_xasl_get_terms */
-
-/*
- * qo_xasl_get_num_terms () - Return the number of terms in the array
- *   return: int
- *   info(in): Pointer to info structure
- */
-int
-qo_xasl_get_num_terms (QO_XASL_INDEX_INFO * info)
-{
-  return info->nterms;
-}				/* qo_xasl_get_num_terms */
 
 /*
  * qo_xasl_get_btid () - Return a point to the index BTID
@@ -2607,7 +2709,7 @@ qo_xasl_get_btid (MOP classop, QO_XASL_INDEX_INFO * info)
        ((i < n_classes) && (btid == NULL)); i++, index = index->next)
     {
       if (classop == (index->class_)->mop)
-	btid = &(index->btid);
+	btid = &(index->constraints->index);
     }
 
   return btid;
@@ -2630,10 +2732,65 @@ qo_xasl_get_multi_col (MOP class_mop, QO_XASL_INDEX_INFO * infop)
        i < n_classes && index_entryp; i++, index_entryp = index_entryp->next)
     {
       if (class_mop == (index_entryp->class_)->mop)
-	return QO_ENTRY_MULTI_COL (index_entryp);
+	{
+	  return QO_ENTRY_MULTI_COL (index_entryp);
+	}
     }
 
   /* cannot find the index entry with class MOP, is it possible? */
+  return false;
+}
+
+/*
+ * qo_xasl_get_key_limit () - get the index key limits
+ *   return: Key limit PT_NODE
+ *   class_mop(in): Pointer to class MOP to which the index belongs
+ *   infop(in): Pointer to the index info structure
+ */
+PT_NODE *
+qo_xasl_get_key_limit (MOP class_mop, QO_XASL_INDEX_INFO * infop)
+{
+  int i, n_classes;
+  QO_INDEX_ENTRY *index_entryp;
+  PT_NODE *key_limit = NULL;
+
+  n_classes = (infop->ni_entry)->n;
+  for (i = 0, index_entryp = (infop->ni_entry)->head;
+       i < n_classes && index_entryp; i++, index_entryp = index_entryp->next)
+    {
+      if (class_mop == (index_entryp->class_)->mop)
+	{
+	  key_limit = index_entryp->key_limit;
+	  break;
+	}
+    }
+
+  return key_limit;
+}
+
+
+/*
+ * qo_xasl_get_coverage () - get the index coverage state
+ *   return: index coverage state
+ *   class_mop(in): Pointer to class MOP to which the index belongs
+ *   infop(in): Pointer to the index info structure
+ */
+bool
+qo_xasl_get_coverage (MOP class_mop, QO_XASL_INDEX_INFO * infop)
+{
+  int i, n_classes;
+  QO_INDEX_ENTRY *index_entryp;
+
+  n_classes = (infop->ni_entry)->n;
+  for (i = 0, index_entryp = (infop->ni_entry)->head;
+       i < n_classes && index_entryp; i++, index_entryp = index_entryp->next)
+    {
+      if (class_mop == (index_entryp->class_)->mop)
+	{
+	  return index_entryp->cover_segments;
+	}
+    }
+
   return false;
 }
 
@@ -2712,4 +2869,690 @@ qo_add_hq_iterations_access_spec (QO_PLAN * plan, XASL_NODE * xasl)
     }
 
   return xasl;
+}
+
+/*
+ * regu_ptr_list_create () - creates and initializes a REGU_PTR_LIST - a linked
+ *                           list of POINTERS to REGU VARIBLES
+ *   return: a new node, or NULL on error
+ */
+static REGU_PTR_LIST
+regu_ptr_list_create ()
+{
+  REGU_PTR_LIST p;
+
+  p = (REGU_PTR_LIST) db_private_alloc (NULL,
+					sizeof (struct regu_ptr_list_node));
+  if (!p)
+    {
+      return NULL;
+    }
+
+  p->next = NULL;
+  p->var_p = NULL;
+
+  return p;
+}
+
+/*
+ * regu_ptr_list_free () - iterates over a linked list of regu var pointers
+ *                         and frees each node (the containing node, NOT the
+ *                         actual REGU_VARIABLE).
+ *   list(in): the REGU_PTR_LIST. It can be NULL.
+ *   return: 
+ */
+static void
+regu_ptr_list_free (REGU_PTR_LIST list)
+{
+  REGU_PTR_LIST next;
+
+  while (list)
+    {
+      next = list->next;
+      db_private_free (NULL, list);
+      list = next;
+    }
+}
+
+/*
+ * regu_ptr_list_add_regu () - adds a pointer to a regu variable to the list,
+ *                             initializing the list if required.
+ * 
+ * regu(in): REGU_VAR ptr to add to the head of the list
+ * list(in): the initial list. It can be NULL - in this case it will be initialised.
+ * return: the list with the added element, or NULL on error.
+ */
+static REGU_PTR_LIST
+regu_ptr_list_add_regu (REGU_VARIABLE * var_p, REGU_PTR_LIST list)
+{
+  REGU_PTR_LIST node;
+
+  if (!var_p)
+    {
+      return list;
+    }
+
+  node =
+    (REGU_PTR_LIST) db_private_alloc (NULL,
+				      sizeof (struct regu_ptr_list_node));
+  if (!node)
+    {
+      regu_ptr_list_free (list);
+      return NULL;
+    }
+
+  node->next = list;
+  node->var_p = var_p;
+
+  return node;
+}
+
+static bool
+qo_validate_regu_var_for_limit (REGU_VARIABLE * var_p)
+{
+  if (var_p == NULL)
+    {
+      return true;
+    }
+
+  if (var_p->type == TYPE_DBVAL)
+    {
+      return true;
+    }
+  else if (var_p->type == TYPE_POS_VALUE)
+    {
+      return true;
+    }
+  else if (var_p->type == TYPE_INARITH && var_p->value.arithptr)
+    {
+      struct arith_list_node *aptr = var_p->value.arithptr;
+
+      return (qo_validate_regu_var_for_limit (aptr->leftptr)
+	      && qo_validate_regu_var_for_limit (aptr->rightptr)
+	      && qo_validate_regu_var_for_limit (aptr->thirdptr));
+    }
+
+  return false;
+}
+
+/*
+ * qo_get_limit_from_eval_term () - get lower and upper limits from an
+ *                                  eval term involving instnum
+ *   return:   true on success.
+ *   parser(in):
+ *   pred(in): the predicate expression.
+ *   lower(out): lower limit node
+ *   upper(out): upper limit node
+ *
+ *   Note: handles terms of the form:
+ *         instnum rel_op value/hostvar
+ *         value/hostvar rel_op instnum
+ */
+static bool
+qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred,
+			     REGU_PTR_LIST * lower, REGU_PTR_LIST * upper)
+{
+  REGU_VARIABLE *lhs, *rhs;
+  REL_OP op;
+  PT_NODE *node_one = NULL;
+  TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
+  REGU_VARIABLE *regu_one, *regu_low;
+
+  if (pred == NULL || pred->type != T_EVAL_TERM ||
+      pred->pe.eval_term.et_type != T_COMP_EVAL_TERM)
+    {
+      return false;
+    }
+
+  lhs = pred->pe.eval_term.et.et_comp.lhs;
+  rhs = pred->pe.eval_term.et.et_comp.rhs;
+  op = pred->pe.eval_term.et.et_comp.rel_op;
+
+  if (!lhs || !rhs)
+    {
+      return false;
+    }
+  if (op != R_LE && op != R_LT && op != R_GE && op != R_GT && op != R_EQ)
+    {
+      return false;
+    }
+
+  /* the TYPE_CONSTANT regu variable must be instnum, otherwise it would not
+   * be accepted by the parser*/
+
+  /* switch the ops to transform into instnum rel_op value/hostvar */
+  if (rhs->type == TYPE_CONSTANT)
+    {
+      rhs = pred->pe.eval_term.et.et_comp.lhs;
+      lhs = pred->pe.eval_term.et.et_comp.rhs;
+      switch (op)
+	{
+	case R_LE:
+	  op = R_GE;
+	  break;
+	case R_LT:
+	  op = R_GT;
+	  break;
+	case R_GE:
+	  op = R_LE;
+	  break;
+	case R_GT:
+	  op = R_LT;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  if (lhs->type != TYPE_CONSTANT || !qo_validate_regu_var_for_limit (rhs))
+    {
+      return false;
+    }
+
+  /* Bring every accepted relation to a form similar to
+   * lower < rownum <= upper.
+   */
+  switch (op)
+    {
+    case R_EQ:
+      /* decrement node value for lower, but remember current value
+       * for upper
+       */
+      node_one = pt_make_integer_value (parser, 1);
+      if (!node_one)
+	{
+	  return false;
+	}
+
+      if (!(regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE))
+	  || !(regu_low =
+	       pt_make_regu_arith (rhs, regu_one, NULL, T_SUB, dom_bigint)))
+	{
+	  parser_free_node (parser, node_one);
+	  return false;
+	}
+      regu_low->domain = dom_bigint;
+
+      *lower = regu_ptr_list_add_regu (regu_low, *lower);
+      *upper = regu_ptr_list_add_regu (rhs, *upper);
+      break;
+
+    case R_LE:
+      *upper = regu_ptr_list_add_regu (rhs, *upper);
+      break;
+
+    case R_LT:
+      /* decrement node value */
+      node_one = pt_make_integer_value (parser, 1);
+      if (!node_one)
+	{
+	  return false;
+	}
+
+      if (!(regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE))
+	  || !(regu_low =
+	       pt_make_regu_arith (rhs, regu_one, NULL, T_SUB, dom_bigint)))
+	{
+	  parser_free_node (parser, node_one);
+	  return false;
+	}
+      regu_low->domain = dom_bigint;
+
+      *upper = regu_ptr_list_add_regu (regu_low, *upper);
+      break;
+
+    case R_GE:
+      /* decrement node value for lower */
+      node_one = pt_make_integer_value (parser, 1);
+      if (!node_one)
+	{
+	  return false;
+	}
+
+      if (!(regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE))
+	  || !(regu_low =
+	       pt_make_regu_arith (rhs, regu_one, NULL, T_SUB, dom_bigint)))
+	{
+	  parser_free_node (parser, node_one);
+	  return false;
+	}
+      regu_low->domain = dom_bigint;
+
+      *lower = regu_ptr_list_add_regu (regu_low, *lower);
+      break;
+
+    case R_GT:
+      /* leave node value as it is */
+      *lower = regu_ptr_list_add_regu (rhs, *lower);
+      break;
+    }
+
+  if (node_one)
+    {
+      parser_free_node (parser, node_one);
+    }
+
+  return true;
+}
+
+/*
+ * qo_get_limit_from_instnum_pred () - get lower and upper limits from an
+ *                                     instnum predicate
+ *   return: true if successful
+ *   parser(in):
+ *   pred(in): the predicate expression
+ *   lower(out): lower limit node
+ *   upper(out): upper limit node
+ */
+static bool
+qo_get_limit_from_instnum_pred (PARSER_CONTEXT * parser, PRED_EXPR * pred,
+				REGU_PTR_LIST * lower, REGU_PTR_LIST * upper)
+{
+  if (pred == NULL)
+    {
+      return false;
+    }
+
+  if (pred->type == T_PRED && pred->pe.pred.bool_op == B_AND)
+    {
+      return (qo_get_limit_from_instnum_pred (parser, pred->pe.pred.lhs,
+					      lower, upper)
+	      && qo_get_limit_from_instnum_pred (parser, pred->pe.pred.rhs,
+						 lower, upper));
+    }
+
+  if (pred->type == T_EVAL_TERM)
+    {
+      return qo_get_limit_from_eval_term (parser, pred, lower, upper);
+    }
+
+  return false;
+}
+
+/*
+ * qo_get_key_limit_from_instnum () - creates a keylimit node from an
+ *                                    instnum predicate, if possible.
+ *   return:     a new node, or NULL if a keylimit node cannot be
+ *               initialized (not necessarily an error)
+ *   parser(in): the parser context
+ *   plan (in):  the query plan
+ *   xasl (in):  the full XASL node
+ */
+QO_LIMIT_INFO *
+qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan,
+			       XASL_NODE * xasl)
+{
+  REGU_PTR_LIST lower = NULL, upper = NULL, ptr = NULL;
+  QO_LIMIT_INFO *limit_infop = NULL;
+  TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
+
+  if (xasl == NULL || xasl->instnum_pred == NULL || plan == NULL)
+    {
+      return NULL;
+    }
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      if (plan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN
+	  && (plan->plan_un.scan.scan_method !=
+	      QO_SCANMETHOD_INDEX_ORDERBY_SCAN)
+	  && (plan->plan_un.scan.scan_method !=
+	      QO_SCANMETHOD_INDEX_GROUPBY_SCAN))
+	{
+	  return NULL;
+	}
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      /* only allow inner joins */
+      if (plan->plan_un.join.join_type != JOIN_INNER)
+	{
+	  return NULL;
+	}
+      break;
+
+    default:
+      return NULL;
+    }
+
+  /* get lower and upper limits */
+  if (!qo_get_limit_from_instnum_pred (parser, xasl->instnum_pred, &lower,
+				       &upper))
+    {
+      return NULL;
+    }
+  /* not having upper limit is not helpful */
+  if (upper == NULL)
+    {
+      regu_ptr_list_free (lower);
+      return NULL;
+    }
+
+  limit_infop = (QO_LIMIT_INFO *) db_private_alloc (NULL,
+						    sizeof (QO_LIMIT_INFO));
+  if (limit_infop == NULL)
+    {
+      regu_ptr_list_free (lower);
+      regu_ptr_list_free (upper);
+      return NULL;
+    }
+
+  limit_infop->lower = limit_infop->upper = NULL;
+
+
+  /* upper limit */
+  limit_infop->upper = upper->var_p;
+  ptr = upper->next;
+  while (ptr)
+    {
+      limit_infop->upper = pt_make_regu_arith (limit_infop->upper,
+					       ptr->var_p, NULL, T_LEAST,
+					       dom_bigint);
+      if (!limit_infop->upper)
+	{
+	  regu_ptr_list_free (upper);
+	  regu_ptr_list_free (lower);
+	  db_private_free (NULL, limit_infop);
+	  return NULL;
+	}
+
+      limit_infop->upper->domain = dom_bigint;
+      ptr = ptr->next;
+    }
+  regu_ptr_list_free (upper);
+
+  if (lower)
+    {
+      limit_infop->lower = lower->var_p;
+      ptr = lower->next;
+      while (ptr)
+	{
+	  limit_infop->lower =
+	    pt_make_regu_arith (limit_infop->lower, ptr->var_p, NULL,
+				T_GREATEST, dom_bigint);
+	  if (!limit_infop->lower)
+	    {
+	      regu_ptr_list_free (lower);
+	      db_private_free (NULL, limit_infop);
+	      return NULL;
+	    }
+
+	  limit_infop->lower->domain = dom_bigint;
+	  ptr = ptr->next;
+	}
+      regu_ptr_list_free (lower);
+    }
+
+  return limit_infop;
+}
+
+/*
+ * qo_get_key_limit_from_ordbynum () - creates a keylimit node from an
+ *                                     orderby_num predicate, if possible.
+ *   return:     a new node, or NULL if a keylimit node cannot be
+ *               initialized (not necessarily an error)
+ *   parser(in): the parser context
+ *   plan (in):  the query plan
+ *   xasl (in):  the full XASL node
+ */
+QO_LIMIT_INFO *
+qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan,
+				XASL_NODE * xasl)
+{
+  REGU_PTR_LIST lower = NULL, upper = NULL, ptr = NULL;
+  QO_LIMIT_INFO *limit_infop;
+  TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
+
+  if (xasl == NULL || xasl->ordbynum_pred == NULL)
+    {
+      return NULL;
+    }
+
+  /* get lower and upper limits */
+  if (!qo_get_limit_from_instnum_pred (parser, xasl->ordbynum_pred, &lower,
+				       &upper))
+    {
+      return NULL;
+    }
+  /* having a lower limit, or not having upper limit is not helpful */
+  if (upper == NULL || lower != NULL)
+    {
+      regu_ptr_list_free (lower);
+      regu_ptr_list_free (upper);
+      return NULL;
+    }
+
+  limit_infop =
+    (QO_LIMIT_INFO *) db_private_alloc (NULL, sizeof (QO_LIMIT_INFO));
+  if (!limit_infop)
+    {
+      regu_ptr_list_free (lower);
+      regu_ptr_list_free (upper);
+      return NULL;
+    }
+
+  limit_infop->lower = limit_infop->upper = NULL;
+
+  /* upper limit */
+  limit_infop->upper = upper->var_p;
+  ptr = upper->next;
+  while (ptr)
+    {
+      limit_infop->upper =
+	pt_make_regu_arith (limit_infop->upper, ptr->var_p, NULL, T_LEAST,
+			    dom_bigint);
+      if (!limit_infop->upper)
+	{
+	  regu_ptr_list_free (upper);
+	  regu_ptr_list_free (lower);
+	  db_private_free (NULL, limit_infop);
+	  return NULL;
+	}
+
+      limit_infop->upper->domain = dom_bigint;
+      ptr = ptr->next;
+    }
+
+  regu_ptr_list_free (upper);
+  regu_ptr_list_free (lower);
+
+  return limit_infop;
+}
+
+/*
+ * qo_check_plan_for_multiple_ranges_limit_opt () - check the plan to find out
+ *                                                  if multiple ranges keylimit
+ *                                                  optimization can be used
+ *   return:
+ *   parser(in):
+ *   plan(in):
+ *   sort_node(in):
+ *   can_optimize(out):
+ *
+ *   Note: Find the sort column position in the index, and check that all
+ *         columns that come before the sort column (on the left side of the
+ *         sort column) in the index are either in an equality term, or in
+ *         a key list term. Only one column should be in a key list term.
+ *
+ */
+int
+qo_check_plan_for_multiple_ranges_limit_opt (PARSER_CONTEXT * parser,
+					     QO_PLAN * subplan,
+					     PT_NODE * sort_node,
+					     int *can_optimize)
+{
+  int t, i, j, pos;
+  BITSET_ITERATOR iter;
+  QO_TERM *termp;
+  QO_ENV *env;
+  QO_INDEX_ENTRY *index_entryp;
+  PT_NODE *seg_node;
+  int *used_cols, idx_col;
+  int kl_terms = 0;
+
+  *can_optimize = false;
+
+  if (!subplan || !subplan->info || !subplan->plan_un.scan.index ||
+      subplan->plan_type != QO_PLANTYPE_SCAN ||
+      (subplan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN &&
+       subplan->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_ORDERBY_SCAN
+       && subplan->plan_un.scan.scan_method !=
+       QO_SCANMETHOD_INDEX_GROUPBY_SCAN))
+    {
+      return NO_ERROR;
+    }
+
+  env = subplan->info->env;
+  if (!env)
+    {
+      return NO_ERROR;
+    }
+
+  index_entryp = subplan->plan_un.scan.index->head;
+  if (!index_entryp)
+    {
+      return NO_ERROR;
+    }
+
+  CAST_POINTER_TO_NODE (sort_node);
+  if (sort_node->node_type != PT_NAME)
+    {
+      return NO_ERROR;
+    }
+
+  idx_col = -1;
+
+  /* find the position of the sort column in the index */
+  for (i = 0; i < index_entryp->nsegs; i++)
+    {
+      seg_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, index_entryp->seg_idxs[i]));
+      CAST_POINTER_TO_NODE (seg_node);
+      if (seg_node->node_type == PT_NAME &&
+	  pt_name_equal (parser, sort_node, seg_node))
+	{
+	  idx_col = i;
+	  break;
+	}
+    }
+  if (idx_col < 1)
+    {
+      return NO_ERROR;
+    }
+
+  /* index columns that are used in terms */
+  used_cols = (int *) malloc (idx_col * sizeof (int));
+  if (!used_cols)
+    {
+      return ER_FAILED;
+    }
+  for (i = 0; i < idx_col; i++)
+    {
+      used_cols[i] = 0;
+    }
+
+  /* check all index scan terms */
+  for (t = bitset_iterate (&(subplan->plan_un.scan.terms), &iter); t != -1;
+       t = bitset_next_member (&iter))
+    {
+      termp = QO_ENV_TERM (env, t);
+
+      pos = -1;
+      for (i = 0; i < termp->can_use_index && i < 2 && pos == -1; i++)
+	{
+	  for (j = 0; j < index_entryp->nsegs; j++)
+	    {
+	      if ((index_entryp->seg_idxs[j]) ==
+		  QO_SEG_IDX (termp->index_seg[i]))
+		{
+		  pos = j;
+		  break;
+		}
+	    }
+	}
+      if (pos == -1)
+	{
+	  free (used_cols);
+	  return NO_ERROR;
+	}
+
+      if (pos < idx_col)
+	{
+	  used_cols[pos]++;
+	  /* only helpful if term is equality or key list */
+	  switch (QO_TERM_PT_EXPR (termp)->info.expr.op)
+	    {
+	    case PT_EQ:
+	      break;
+	    case PT_IS_IN:
+	    case PT_EQ_SOME:
+	    case PT_RANGE:
+	      kl_terms++;
+	      break;
+	    default:
+	      free (used_cols);
+	      return NO_ERROR;
+	    }
+	}
+    }				/* for (t = bitset_iterate(...); ...) */
+
+  /* check all key filter terms */
+  for (t = bitset_iterate (&(subplan->plan_un.scan.kf_terms), &iter); t != -1;
+       t = bitset_next_member (&iter))
+    {
+      termp = QO_ENV_TERM (env, t);
+
+      pos = -1;
+      for (i = 0; i < termp->can_use_index && i < 2 && pos == -1; i++)
+	{
+	  for (j = 0; j < index_entryp->nsegs; j++)
+	    {
+	      if ((index_entryp->seg_idxs[j]) ==
+		  QO_SEG_IDX (termp->index_seg[i]))
+		{
+		  pos = j;
+		  break;
+		}
+	    }
+	}
+      if (pos == -1)
+	{
+	  if (termp->can_use_index == 0)
+	    {
+	      continue;
+	    }
+	  free (used_cols);
+	  return NO_ERROR;
+	}
+
+      if (pos < idx_col)
+	{
+	  /* for key filter terms we are only interested if it is an eq term */
+	  if (QO_TERM_PT_EXPR (termp)->info.expr.op == PT_EQ)
+	    {
+	      used_cols[pos]++;
+	    }
+	}
+    }				/* for (t = bitset_iterate(...); ...) */
+
+  /* check key list terms */
+  if (kl_terms > 1)
+    {
+      free (used_cols);
+      return NO_ERROR;
+    }
+  /* check used columns */
+  for (i = 0; i < idx_col; i++)
+    {
+      if (used_cols[i] == 0)
+	{
+	  free (used_cols);
+	  return NO_ERROR;
+	}
+    }
+
+  *can_optimize = true;
+
+  free (used_cols);
+  return NO_ERROR;
 }

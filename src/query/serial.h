@@ -28,14 +28,15 @@
 #ident "$Id$"
 
 #include "dbtype.h"
-#include "thread_impl.h"
+#include "thread.h"
 
 extern int xserial_get_current_value (THREAD_ENTRY * thread_p,
-				      const DB_VALUE * oid_str_val,
-				      DB_VALUE * result_num);
+				      DB_VALUE * result_num,
+				      const DB_VALUE * oid_str_val);
 extern int xserial_get_next_value (THREAD_ENTRY * thread_p,
+				   DB_VALUE * result_num,
 				   const DB_VALUE * oid_str_val,
-				   DB_VALUE * result_num);
+				   int is_auto_increment);
 extern void serial_finalize_cache_pool (void);
 extern int serial_initialize_cache_pool (THREAD_ENTRY * thread_p);
 extern void xserial_decache (OID * oidp);

@@ -181,17 +181,9 @@ typedef struct tagST_LIST
 
 PUBLIC void InitStr (D_STRING * str);
 PUBLIC void FreeStr (D_STRING * str);
-PUBLIC ERR_CODE ReallocImproved (char **dest, int *destSize, int usedSize,
-				 int allocSize);
-PUBLIC ERR_CODE StrcatImproved (D_STRING * dest, char *source);
+
 PUBLIC ERR_CODE MemcatImproved (D_STRING * dest, char *src, int srcSize);
-PUBLIC ERR_CODE MemcpyImproved (D_STRING * dest, char *src, int srcSize);
-PUBLIC void ConcatPath (char *prePath, char *postPath, char *resultPath);
-PUBLIC _BOOL_ IsAlphaNumeric (int num);
-PUBLIC void long_to_byte (long value, unsigned char *bytes, int length);
-PUBLIC void byte_to_long (unsigned char *bytes, int length, long *value);
-PUBLIC ERR_CODE bincpy (D_BINARY * dest, char *src, int size);
-PUBLIC ERR_CODE binfree (D_BINARY * src);
+
 PUBLIC void *ut_alloc (SQLLEN size);
 PUBLIC void ut_free (void *ptr);
 PUBLIC void *ut_realloc (void *ptr, int size);
@@ -200,55 +192,30 @@ PUBLIC char *ut_append_string (char *str1, char *str2, int len2);
 PUBLIC char *ut_make_binary (const char *src, int length);
 
 PUBLIC int element_from_setstring (char **current, char *buf);
-PUBLIC int size_from_setstring (char *setstring);
+
 PUBLIC void add_element_to_setstring (char *setstring, char *element);
 
 PUBLIC char *trim (char *str);
 PUBLIC RETCODE str_value_assign (const char *in_value,
 				 char *out_buf,
-				 SQLLEN out_buf_len, SQLLEN *val_len_ptr);
+				 SQLLEN out_buf_len, SQLLEN * val_len_ptr);
 PUBLIC RETCODE bin_value_assign (const void *in_value,
 				 SQLLEN in_val_len,
 				 char *out_buf,
-				 SQLLEN out_buf_len, SQLLEN *val_len_ptr);
+				 SQLLEN out_buf_len, SQLLEN * val_len_ptr);
 
 PUBLIC short is_oidstr (char *str);
 PUBLIC short is_oidstr_array (char **array, int size);
 PUBLIC int replace_oid (char *sql_text, char **org_param_pos_pt,
 			char **oid_param_pos_pt, char **oid_param_val_pt);
 
-
-/*---------------------------------------------------------------------
- *					char util
-* *--------------------------------------------------------------------*/
-
-PUBLIC short char_islower (int c);
-PUBLIC short char_isupper (int c);
-PUBLIC short char_isalpha (int c);
-PUBLIC short char_isdigit (int c);
-PUBLIC short char_isxdigit (int c);
-PUBLIC short char_isalnum (int c);
-PUBLIC short char_isspace (int c);
-PUBLIC short char_isascii (int c);
-
-PUBLIC short char_tolower (int c);
-PUBLIC short char_toupper (int c);
-
-
-extern ERR_CODE ListHeadAdd (ST_LIST * head, void *key, void *val,
-			     ERR_CODE (*assignFunc) (ST_LIST *, void *,
-						     void *));
 extern ERR_CODE ListTailAdd (ST_LIST * head, void *key, void *val,
 			     ERR_CODE (*assignFunc) (ST_LIST *, void *,
 						     void *));
-extern void *ListFind (ST_LIST * head, void *key,
-		       ERR_CODE (*cmpFunc) (void *, void *));
-extern ERR_CODE ListDeleteNode (ST_LIST * head, void *key,
-				ERR_CODE (*cmpFunc) (void *, void *),
-				void (*nodeDelete) (ST_LIST *));
+
 extern void ListDelete (ST_LIST * head, void (*nodeDelete) (ST_LIST *));
 extern ERR_CODE ListCreate (ST_LIST ** head);
-extern _BOOL_ IsAnyNode (ST_LIST * head);
+
 extern ST_LIST *HeadNode (ST_LIST * dummyHead);
 extern ST_LIST *NextNode (ST_LIST * node);
 
@@ -258,17 +225,6 @@ extern void ListPrint (ST_LIST * head, void (*nodePrint) (ST_LIST *));
 
 /* node assign function */
 extern ERR_CODE NodeAssign (ST_LIST * node, void *key, void *value);
-/* node compare function */
-extern ERR_CODE NodeCompare (void *key, void *search);
-/* node free function */
-extern void NodeFree (ST_LIST * node);
-
-PUBLIC int str_like (const unsigned char *src,
-		     const unsigned char *pattern,
-		     const unsigned char esc_char, short case_sensitive);
-
-PUBLIC void get_value_from_connect_str (char *szConnStrIn,
-					char *value, int size, char *keyword);
 
 /*-------------  connection string util	------------------------*/
 PUBLIC const char *next_element (const char *element_list);

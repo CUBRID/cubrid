@@ -18,7 +18,7 @@
  */
 
 /*
- * cm_stat.h - 
+ * cm_stat.h -
  */
 
 #ifndef _CM_STAT_H_
@@ -159,6 +159,7 @@ extern "C"
     int64_t num_long_queries;
     int64_t num_long_transactions;
     int64_t num_error_queries;
+    int64_t num_interrupts;
   } T_CM_CAS_INFO;
 
   typedef struct
@@ -379,12 +380,6 @@ extern "C"
   char *cm_get_broker_file (T_UNICAS_FILE_ID uc_fid, char *buf);
   int cm_del_cas_log (char *br_name, int as_id, T_CM_ERROR * err_buf);
   char *cm_cpu_time_str (int t, char *buf);
-
-/* for debug, remove in production version */
-  void print_proc_stat (T_CM_PROC_STAT * stat);
-  void print_host_stat (T_CM_HOST_STAT * stat);
-  void print_broker_stat (T_CM_BROKER_PROC_STAT * stat);
-  void print_exec_stat_info (T_CM_DB_EXEC_STAT * exec_stat);
 
 #ifdef __cplusplus
 }

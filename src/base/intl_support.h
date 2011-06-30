@@ -136,6 +136,7 @@ extern "C"
   extern char *intl_mbs_ncpy (char *mbs1, const char *mbs2, size_t n);
   extern int intl_mbs_namecmp (const char *mbs1, const char *mbs2);
   extern int intl_mbs_casecmp (const char *mbs1, const char *mbs2);
+  extern int intl_mbs_cmp (const char *mbs1, const char *mbs2);
   extern int intl_mbs_ncasecmp (const char *mbs1, const char *mbs2, size_t n);
 
 #ifdef __cplusplus

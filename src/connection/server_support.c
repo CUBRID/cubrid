@@ -52,7 +52,7 @@
 #include "environment_variable.h"
 #include "error_manager.h"
 #include "job_queue.h"
-#include "thread_impl.h"
+#include "thread.h"
 #include "connection_error.h"
 #include "message_catalog.h"
 #include "critical_section.h"
@@ -66,6 +66,7 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 #include "connection_sr.h"
+#include "xserver_interface.h"
 #include "server_support.h"
 #include "utility.h"
 #if !defined(WINDOWS)
@@ -89,13 +90,18 @@ static CSS_CONN_ENTRY *css_Master_conn;
 #if defined(WINDOWS)
 static int css_Win_kill_signaled = 0;
 #endif /* WINDOWS */
+static IP_INFO *css_Server_accessible_ip_info;
+static char *ip_list_file_name = NULL;
+static char ip_file_real_path[PATH_MAX];
+
 /* internal request hander function */
 static int (*css_Server_request_handler) (THREAD_ENTRY *, unsigned int,
 					  int, int, char *);
 
 /* server's state for HA feature */
 static HA_SERVER_STATE ha_Server_state = HA_SERVER_STATE_IDLE;
-static MUTEX_T ha_Server_state_waiting_mutex = MUTEX_INITIALIZER;
+static pthread_mutex_t ha_Server_state_waiting_mutex =
+  PTHREAD_MUTEX_INITIALIZER;
 static int *ha_Server_state_waiting_clients = NULL;
 static int ha_Server_state_waiting_num = 0;
 static int ha_Server_num_of_hosts = 0;
@@ -103,34 +109,34 @@ static int ha_Server_num_of_hosts = 0;
 typedef struct job_queue JOB_QUEUE;
 struct job_queue
 {
-  MUTEX_T job_lock;
+  pthread_mutex_t job_lock;
   CSS_LIST job_list;
   THREAD_ENTRY *worker_thrd_list;
-  MUTEX_T free_lock;
+  pthread_mutex_t free_lock;
   CSS_JOB_ENTRY *free_list;
 };
 
 static JOB_QUEUE css_Job_queue[CSS_NUM_JOB_QUEUE] = {
-  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, MUTEX_INITIALIZER, NULL},
-  {MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, MUTEX_INITIALIZER, NULL}
+  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL},
+  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
+   NULL, PTHREAD_MUTEX_INITIALIZER, NULL}
 };
 
 #define HA_LOG_APPLIER_STATE_TABLE_MAX  5
@@ -180,6 +186,7 @@ static int css_test_for_client_errors (CSS_CONN_ENTRY * conn,
 static int css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd,
 					   int jobq_index);
 static int css_wakeup_worker_thread_on_jobq (int jobq_index);
+static int css_check_accessibility (SOCKET new_fd);
 
 #if defined(WINDOWS)
 static int css_process_new_connection_request (void);
@@ -239,10 +246,10 @@ css_make_job_entry (CSS_CONN_ENTRY * conn, CSS_THREAD_FN func,
     }
   else
     {
-      MUTEX_LOCK (rv, css_Job_queue[jobq_index].free_lock);
+      rv = pthread_mutex_lock (&css_Job_queue[jobq_index].free_lock);
       if (css_Job_queue[jobq_index].free_list == NULL)
 	{
-	  MUTEX_UNLOCK (css_Job_queue[jobq_index].free_lock);
+	  pthread_mutex_unlock (&css_Job_queue[jobq_index].free_lock);
 	  job_entry_p = (CSS_JOB_ENTRY *) malloc (sizeof (CSS_JOB_ENTRY));
 	  if (job_entry_p == NULL)
 	    {
@@ -257,7 +264,7 @@ css_make_job_entry (CSS_CONN_ENTRY * conn, CSS_THREAD_FN func,
 	{
 	  job_entry_p = css_Job_queue[jobq_index].free_list;
 	  css_Job_queue[jobq_index].free_list = job_entry_p->next;
-	  MUTEX_UNLOCK (css_Job_queue[jobq_index].free_lock);
+	  pthread_mutex_unlock (&css_Job_queue[jobq_index].free_lock);
 	}
     }
 
@@ -283,12 +290,15 @@ css_free_job_entry (CSS_JOB_ENTRY * job_entry_p)
 
   if (job_entry_p != NULL)
     {
-      MUTEX_LOCK (rv, css_Job_queue[job_entry_p->jobq_index].free_lock);
+      rv =
+	pthread_mutex_lock (&css_Job_queue[job_entry_p->jobq_index].
+			    free_lock);
 
       job_entry_p->next = css_Job_queue[job_entry_p->jobq_index].free_list;
       css_Job_queue[job_entry_p->jobq_index].free_list = job_entry_p;
 
-      MUTEX_UNLOCK (css_Job_queue[job_entry_p->jobq_index].free_lock);
+      pthread_mutex_unlock (&css_Job_queue[job_entry_p->jobq_index].
+			    free_lock);
     }
 }
 
@@ -308,9 +318,9 @@ css_init_job_queue (void)
   for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
     {
 #if defined(WINDOWS)
-      r = MUTEX_INIT (css_Job_queue[i].job_lock);
+      r = pthread_mutex_init (&css_Job_queue[i].job_lock, NULL);
       CSS_CHECK_RETURN (r, ER_CSS_PTHREAD_MUTEX_INIT);
-      r = MUTEX_INIT (css_Job_queue[i].free_lock);
+      r = pthread_mutex_init (&css_Job_queue[i].free_lock, NULL);
       CSS_CHECK_RETURN (r, ER_CSS_PTHREAD_MUTEX_INIT);
 #endif /* WINDOWS */
 
@@ -361,7 +371,7 @@ css_broadcast_shutdown_thread (void)
   /* idle worker threads are blocked on the job queue. */
   for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
     {
-      MUTEX_LOCK (rv, css_Job_queue[i].job_lock);
+      rv = pthread_mutex_lock (&css_Job_queue[i].job_lock);
 
       thrd = css_Job_queue[i].worker_thrd_list;
       thread_count = 0;
@@ -378,7 +388,7 @@ css_broadcast_shutdown_thread (void)
 	    }
 	}
 
-      MUTEX_UNLOCK (css_Job_queue[i].job_lock);
+      pthread_mutex_unlock (&css_Job_queue[i].job_lock);
     }
 }
 
@@ -392,13 +402,13 @@ css_add_to_job_queue (CSS_JOB_ENTRY * job_entry_p)
 {
   int rv;
 
-  MUTEX_LOCK (rv, css_Job_queue[job_entry_p->jobq_index].job_lock);
+  rv = pthread_mutex_lock (&css_Job_queue[job_entry_p->jobq_index].job_lock);
 
   css_add_list (&css_Job_queue[job_entry_p->jobq_index].job_list,
 		job_entry_p);
   css_wakeup_worker_thread_on_jobq (job_entry_p->jobq_index);
 
-  MUTEX_UNLOCK (css_Job_queue[job_entry_p->jobq_index].job_lock);
+  pthread_mutex_unlock (&css_Job_queue[job_entry_p->jobq_index].job_lock);
 }
 
 /*
@@ -413,15 +423,15 @@ css_get_new_job (void)
   int jobq_index = thrd->index % CSS_NUM_JOB_QUEUE;
   int r;
 
-  MUTEX_LOCK (r, css_Job_queue[jobq_index].job_lock);
+  r = pthread_mutex_lock (&css_Job_queue[jobq_index].job_lock);
 
   if (css_Job_queue[jobq_index].job_list.count == 0)
     {
       r = css_wait_worker_thread_on_jobq (thrd, jobq_index);
       if (r != NO_ERROR)
 	{
-	  MUTEX_UNLOCK (css_Job_queue[jobq_index].job_lock);
-	  MUTEX_LOCK (r, thrd->tran_index_lock);
+	  pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
+	  r = pthread_mutex_lock (&thrd->tran_index_lock);
 
 	  return NULL;
 	}
@@ -429,9 +439,9 @@ css_get_new_job (void)
   job_entry_p = (CSS_JOB_ENTRY *)
     css_remove_list_from_head (&css_Job_queue[jobq_index].job_list);
 
-  MUTEX_UNLOCK (css_Job_queue[jobq_index].job_lock);
+  pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
 
-  MUTEX_LOCK (r, thrd->tran_index_lock);
+  r = pthread_mutex_lock (&thrd->tran_index_lock);
 
   /* if job_entry_p == NULL, system will be shutdown soon. */
   return job_entry_p;
@@ -449,12 +459,12 @@ css_free_job_entry_func (void *data, void *dummy)
   CSS_JOB_ENTRY *job_entry_p = (CSS_JOB_ENTRY *) data;
   int rv;
 
-  MUTEX_LOCK (rv, css_Job_queue[job_entry_p->jobq_index].free_lock);
+  rv = pthread_mutex_lock (&css_Job_queue[job_entry_p->jobq_index].free_lock);
 
   job_entry_p->next = css_Job_queue[job_entry_p->jobq_index].free_list;
   css_Job_queue[job_entry_p->jobq_index].free_list = job_entry_p;
 
-  MUTEX_UNLOCK (css_Job_queue[job_entry_p->jobq_index].free_lock);
+  pthread_mutex_unlock (&css_Job_queue[job_entry_p->jobq_index].free_lock);
 
   return TRAV_CONT_DELETE;
 }
@@ -471,12 +481,12 @@ css_empty_job_queue (void)
 
   for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
     {
-      MUTEX_LOCK (rv, css_Job_queue[i].job_lock);
+      rv = pthread_mutex_lock (&css_Job_queue[i].job_lock);
 
       css_traverse_list (&css_Job_queue[i].job_list, css_free_job_entry_func,
 			 NULL);
 
-      MUTEX_UNLOCK (css_Job_queue[i].job_lock);
+      pthread_mutex_unlock (&css_Job_queue[i].job_lock);
     }
 }
 
@@ -493,7 +503,7 @@ css_final_job_queue (void)
 
   for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
     {
-      MUTEX_LOCK (rv, css_Job_queue[i].job_lock);
+      rv = pthread_mutex_lock (&css_Job_queue[i].job_lock);
 
       css_traverse_list (&css_Job_queue[i].job_list, css_free_job_entry_func,
 			 NULL);
@@ -505,7 +515,7 @@ css_final_job_queue (void)
 	  free_and_init (p);
 	}
 
-      MUTEX_UNLOCK (css_Job_queue[i].job_lock);
+      pthread_mutex_unlock (&css_Job_queue[i].job_lock);
     }
 
   free_and_init (ha_Server_state_waiting_clients);
@@ -518,7 +528,6 @@ css_final_job_queue (void)
 static void
 css_setup_server_loop (void)
 {
-  int r;
 #if !defined(WINDOWS)
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* not WINDOWS */
@@ -534,20 +543,6 @@ css_setup_server_loop (void)
 
   if (!IS_INVALID_SOCKET (css_Pipe_to_master))
     {
-      /* startup worker/daemon threads */
-      r = thread_start_workers ();
-      if (r != NO_ERROR)
-	{
-	  if (r == ER_CSS_PTHREAD_CREATE)
-	    {
-	      /* thread creation error */
-	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK,
-		      1, PRM_CSS_MAX_CLIENTS);
-	      er_print ();
-	    }
-	  return;
-	}
-
       /* execute master thread. */
       css_master_thread ();
 
@@ -616,6 +611,7 @@ css_master_thread (void)
   fd_set read_fdset, exception_fdset;
   struct timeval timeout;
   int r, run_code = 1, status = 0;
+  int max_fd = 0;
 
   timeout.tv_sec = PRM_TCP_CONNECTION_TIMEOUT;
   timeout.tv_usec = 0;
@@ -636,20 +632,27 @@ css_master_thread (void)
 	{
 	  FD_SET (css_Pipe_to_master, &read_fdset);
 	  FD_SET (css_Pipe_to_master, &exception_fdset);
+	  if (css_Pipe_to_master > max_fd)
+	    {
+	      max_fd = css_Pipe_to_master;
+	    }
 	}
 #if defined(WINDOWS)
       if (!IS_INVALID_SOCKET (css_Server_connection_socket))
 	{
 	  FD_SET (css_Server_connection_socket, &read_fdset);
 	  FD_SET (css_Server_connection_socket, &exception_fdset);
+	  if (css_Server_connection_socket > max_fd)
+	    {
+	      max_fd = css_Server_connection_socket;
+	    }
 	}
 #endif /* WINDOWS */
 
       /* select() sets timeout value to 0 or waited time */
       timeout.tv_sec = PRM_TCP_CONNECTION_TIMEOUT;
       timeout.tv_usec = 0;
-
-      r = select (FD_SETSIZE, &read_fdset, NULL, &exception_fdset, &timeout);
+      r = select (max_fd + 1, &read_fdset, NULL, &exception_fdset, &timeout);
       if (r > 0
 	  && (IS_INVALID_SOCKET (css_Pipe_to_master)
 	      || !FD_ISSET (css_Pipe_to_master, &read_fdset))
@@ -875,6 +878,25 @@ css_process_new_client (SOCKET master_fd, fd_set * read_fd_var,
       return;
     }
 
+  if (PRM_ACCESS_IP_CONTROL == true &&
+      css_check_accessibility (new_fd) != NO_ERROR)
+    {
+      css_initialize_conn (&temp_conn, new_fd);
+      csect_initialize_critical_section (&temp_conn.csect);
+
+      reason = htonl (SERVER_INACCESSIBLE_IP);
+      css_send_data (&temp_conn, rid, (char *) &reason, (int) sizeof (int));
+
+      area = er_get_area_error (buffer, &length);
+
+      temp_conn.db_error = ER_INACCESSIBLE_IP;
+      css_send_error (&temp_conn, rid, (const char *) area, length);
+      css_shutdown_conn (&temp_conn);
+      css_dealloc_conn_csect (&temp_conn);
+      er_clear ();
+      return;
+    }
+
   if (read_fd_var != NULL)
     FD_CLR (new_fd, read_fd_var);
   if (exception_fd_var != NULL)
@@ -957,7 +979,7 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 
   if (state == HA_SERVER_STATE_ACTIVE)
     {
-      if (css_change_ha_server_state (thread_p, state, false, false)
+      if (css_change_ha_server_state (thread_p, state, false, true)
 	  != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER,
@@ -1049,6 +1071,33 @@ css_process_new_connection_request (void)
 
   if (!IS_INVALID_SOCKET (new_fd))
     {
+      if (PRM_ACCESS_IP_CONTROL == true &&
+	  css_check_accessibility (new_fd) != NO_ERROR)
+	{
+	  CSS_CONN_ENTRY new_conn;
+	  void *error_string;
+
+	  css_initialize_conn (&new_conn, new_fd);
+	  csect_initialize_critical_section (&new_conn.csect);
+
+	  rc = css_read_header (&new_conn, &header);
+	  buffer_size = rid = 0;
+
+	  reason = htonl (SERVER_INACCESSIBLE_IP);
+	  css_send_data (&new_conn, rid, (char *) &reason,
+			 (int) sizeof (int));
+
+	  error_string = er_get_area_error (buffer, &length);
+	  new_conn.db_error = ER_INACCESSIBLE_IP;
+	  css_send_error (&new_conn, rid, (const char *) error_string,
+			  length);
+	  css_shutdown_conn (&new_conn);
+	  css_dealloc_conn_csect (&new_conn);
+
+	  er_clear ();
+	  return -1;
+	}
+
       conn = css_make_conn (new_fd);
       if (conn == NULL)
 	{
@@ -1218,7 +1267,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
   fd = conn->fd;
 
-  MUTEX_UNLOCK (thread_p->tran_index_lock);
+  pthread_mutex_unlock (&thread_p->tran_index_lock);
 
   thread_p->type = TT_SERVER;	/* server thread */
 
@@ -1239,7 +1288,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
       FD_SET (fd, &efds);
       tv.tv_sec = PRM_TCP_CONNECTION_TIMEOUT;
       tv.tv_usec = 0;
-      n = select (FD_SETSIZE, &rfds, NULL, &efds, &tv);
+      n = select (fd + 1, &rfds, NULL, &efds, &tv);
 #if 0
       if (n > 0 && !FD_ISSET (fd, &rfds) && !FD_ISSET (fd, &efds))
 	{
@@ -1334,7 +1383,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 		    "db_error %d stop_talk %d stop_phase %d }\n",
 		    status, conn->status, conn->transaction_id,
 		    conn->db_error, conn->stop_talk, conn->stop_phase);
-      MUTEX_LOCK (rv, thread_p->tran_index_lock);
+      rv = pthread_mutex_lock (&thread_p->tran_index_lock);
       (*css_Connection_error_handler) (thread_p, conn);
     }
   else
@@ -1393,8 +1442,8 @@ css_oob_handler_thread (void *arg)
   thrd_entry = (THREAD_ENTRY *) arg;
 
   /* wait until THREAD_CREATE finish */
-  MUTEX_LOCK (r, thrd_entry->th_entry_lock);
-  MUTEX_UNLOCK (thrd_entry->th_entry_lock);
+  r = pthread_mutex_lock (&thrd_entry->th_entry_lock);
+  pthread_mutex_unlock (&thrd_entry->th_entry_lock);
 
   thread_set_thread_entry_info (thrd_entry);
   thrd_entry->status = TS_RUN;
@@ -1479,9 +1528,9 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
 
   css_insert_into_active_conn_list (conn);
 
-  job = css_make_job_entry (conn, 
-			    (CSS_THREAD_FN) css_connection_handler_thread, 
-			    (CSS_THREAD_ARG) conn, 
+  job = css_make_job_entry (conn,
+			    (CSS_THREAD_FN) css_connection_handler_thread,
+			    (CSS_THREAD_ARG) conn,
 			    -1 /* implicit: DEFAULT */ );
   assert (job != NULL);
 
@@ -1533,7 +1582,7 @@ css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
       /* 1. change thread's transaction id to this connection's */
       thread_p->tran_index = conn->transaction_id;
 
-      MUTEX_UNLOCK (thread_p->tran_index_lock);
+      pthread_mutex_unlock (&thread_p->tran_index_lock);
 
       if (size)
 	{
@@ -1559,7 +1608,7 @@ css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
     }
   else
     {
-      MUTEX_UNLOCK (thread_p->tran_index_lock);
+      pthread_mutex_unlock (&thread_p->tran_index_lock);
 
       if (rc == ERROR_WHEN_READING_SIZE || rc == NO_DATA_AVAILABLE)
 	{
@@ -1612,6 +1661,19 @@ css_init (char *server_name, int name_length, int port_id)
 
   if (server_name == NULL || port_id <= 0)
     {
+      return -1;
+    }
+
+  /* startup worker/daemon threads */
+  status = thread_start_workers ();
+  if (status != NO_ERROR)
+    {
+      if (status == ER_CSS_PTHREAD_CREATE)
+	{
+	  /* thread creation error */
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK,
+		  1, PRM_CSS_MAX_CLIENTS);
+	}
       return -1;
     }
 
@@ -2216,9 +2278,6 @@ css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index)
 #if defined(DEBUG)
   THREAD_ENTRY *t;
 #endif /* DEBUG */
-#if defined(WINDOWS)
-  int r;
-#endif /* WINDOWS */
 
 #if defined(DEBUG)
   /* to detect whether the job queue has a cycle or not */
@@ -2237,12 +2296,7 @@ css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index)
   thrd->resume_status = THREAD_JOB_QUEUE_SUSPENDED;
 
   /* sleep on the thrd's condition variable with the mutex of the job queue */
-  COND_WAIT (thrd->wakeup_cond, css_Job_queue[jobq_index].job_lock);
-#if defined(WINDOWS)
-  MUTEX_LOCK (r, css_Job_queue[jobq_index].job_lock);
-  CSS_CHECK_RETURN_ERROR (r, ER_CSS_PTHREAD_MUTEX_LOCK);
-#endif /* WINDOWS */
-
+  pthread_cond_wait (&thrd->wakeup_cond, &css_Job_queue[jobq_index].job_lock);
   if (thrd->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN)
     {
       return ER_FAILED;
@@ -2439,7 +2493,7 @@ css_wait_ha_active_state (THREAD_ENTRY * thread_p)
 {
   int r;
 
-  MUTEX_LOCK (r, ha_Server_state_waiting_mutex);
+  r = pthread_mutex_lock (&ha_Server_state_waiting_mutex);
   while (ha_Server_state != HA_SERVER_STATE_ACTIVE
 	 && thread_p->interrupted == false)
     {
@@ -2453,7 +2507,7 @@ css_wait_ha_active_state (THREAD_ENTRY * thread_p)
 				       INF_WAIT, NULL,
 				       THREAD_HA_ACTIVE_STATE_SUSPENDED);
     }
-  MUTEX_UNLOCK (ha_Server_state_waiting_mutex);
+  pthread_mutex_unlock (&ha_Server_state_waiting_mutex);
 
   return (ha_Server_state == HA_SERVER_STATE_ACTIVE);
 }
@@ -2467,7 +2521,7 @@ css_wakeup_ha_active_state (THREAD_ENTRY * thread_p)
 {
   int i, r, tran_index;
 
-  MUTEX_LOCK (r, ha_Server_state_waiting_mutex);
+  r = pthread_mutex_lock (&ha_Server_state_waiting_mutex);
   for (i = 0; i < ha_Server_state_waiting_num; i++)
     {
       tran_index = ha_Server_state_waiting_clients[i];
@@ -2482,7 +2536,7 @@ css_wakeup_ha_active_state (THREAD_ENTRY * thread_p)
 	}
     }
   ha_Server_state_waiting_num = 0;
-  MUTEX_UNLOCK (ha_Server_state_waiting_mutex);
+  pthread_mutex_unlock (&ha_Server_state_waiting_mutex);
 }
 
 /*
@@ -2630,20 +2684,20 @@ css_check_ha_log_applier_working (void)
  *   return: NO_ERROR or ER_FAILED
  *   state(in): new state for server to be
  *   force(in): force to change
- *   wait(in): wait until the state is changed
+ *   heartbeat(in): from heartbeat master 
  */
 int
 css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
-			    bool force, bool wait)
+			    bool force, bool heartbeat)
 {
   HA_SERVER_STATE orig_state;
 
   er_log_debug (ARG_FILE_LINE,
 		"css_change_ha_server_state: ha_Server_state %s "
-		"state %s force %c wait %c\n",
+		"state %s force %c heartbeat %c\n",
 		css_ha_server_state_string (ha_Server_state),
 		css_ha_server_state_string (state), (force ? 't' : 'f'),
-		(wait ? 't' : 'f'));
+		(heartbeat ? 't' : 'f'));
 
   assert (state >= HA_SERVER_STATE_IDLE && state <= HA_SERVER_STATE_DEAD);
 
@@ -2652,6 +2706,17 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 	  && state == HA_SERVER_STATE_ACTIVE)
       || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY
 	  && state == HA_SERVER_STATE_STANDBY))
+    {
+      return NO_ERROR;
+    }
+
+  if (heartbeat == false
+      && !(ha_Server_state == HA_SERVER_STATE_STANDBY
+	   && state == HA_SERVER_STATE_MAINTENANCE)
+      && !(ha_Server_state == HA_SERVER_STATE_MAINTENANCE
+	   && state == HA_SERVER_STATE_STANDBY)
+      && !(force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE
+	   && state == HA_SERVER_STATE_ACTIVE))
     {
       return NO_ERROR;
     }
@@ -2871,3 +2936,178 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p,
   csect_exit (CSECT_HA_SERVER_STATE);
   return NO_ERROR;
 }
+
+#if defined(SERVER_MODE)
+static int
+css_check_accessibility (SOCKET new_fd)
+{
+#if defined(WINDOWS) || defined(SOLARIS)
+  int saddr_len;
+#elif defined(UNIXWARE7)
+  size_t saddr_len;
+#else
+  socklen_t saddr_len;
+#endif
+  struct sockaddr_in clt_sock_addr;
+  unsigned char *ip_addr;
+  int err_code;
+
+  saddr_len = sizeof (clt_sock_addr);
+
+  if (getpeername (new_fd,
+		   (struct sockaddr *) &clt_sock_addr, &saddr_len) != 0)
+    {
+      return ER_FAILED;
+    }
+
+  ip_addr = (unsigned char *) &(clt_sock_addr.sin_addr);
+
+  if (clt_sock_addr.sin_family == AF_UNIX ||
+      (ip_addr[0] == 127 && ip_addr[1] == 0 &&
+       ip_addr[2] == 0 && ip_addr[3] == 1))
+    {
+      return NO_ERROR;
+    }
+
+  if (css_Server_accessible_ip_info == NULL)
+    {
+      char ip_str[32];
+
+      sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0],
+	       ip_addr[1], ip_addr[2], ip_addr[3]);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_INACCESSIBLE_IP, 1, ip_str);
+
+      return ER_INACCESSIBLE_IP;
+    }
+
+  csect_enter_as_reader (NULL, CSECT_ACL, INF_WAIT);
+  err_code = css_check_ip (css_Server_accessible_ip_info, ip_addr);
+  csect_exit (CSECT_ACL);
+
+  if (err_code != NO_ERROR)
+    {
+      char ip_str[32];
+
+      sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0],
+	       ip_addr[1], ip_addr[2], ip_addr[3]);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_INACCESSIBLE_IP, 1, ip_str);
+    }
+
+  return err_code;
+}
+
+int
+css_set_accessible_ip_info ()
+{
+  int ret_val;
+  IP_INFO *tmp_accessible_ip_info;
+
+  if (PRM_ACCESS_IP_CONTROL_FILE == NULL)
+    {
+      css_Server_accessible_ip_info = NULL;
+      return NO_ERROR;
+    }
+
+#if defined (WINDOWS)
+  if (strlen (PRM_ACCESS_IP_CONTROL_FILE) > 2
+      && isalpha (PRM_ACCESS_IP_CONTROL_FILE[0])
+      && PRM_ACCESS_IP_CONTROL_FILE[1] == ':')
+#else
+  if (PRM_ACCESS_IP_CONTROL_FILE[0] == PATH_SEPARATOR)
+#endif
+    {
+      ip_list_file_name = PRM_ACCESS_IP_CONTROL_FILE;
+    }
+  else
+    {
+      ip_list_file_name =
+	envvar_confdir_file (ip_file_real_path, PATH_MAX,
+			     PRM_ACCESS_IP_CONTROL_FILE);
+    }
+
+  ret_val = css_read_ip_info (&tmp_accessible_ip_info, ip_list_file_name);
+  if (ret_val == NO_ERROR)
+    {
+      csect_enter (NULL, CSECT_ACL, INF_WAIT);
+
+      if (css_Server_accessible_ip_info != NULL)
+	{
+	  css_free_accessible_ip_info ();
+	}
+      css_Server_accessible_ip_info = tmp_accessible_ip_info;
+
+      csect_exit (CSECT_ACL);
+    }
+
+  return ret_val;
+}
+
+int
+css_free_accessible_ip_info ()
+{
+  int ret_val;
+
+  ret_val = css_free_ip_info (css_Server_accessible_ip_info);
+  css_Server_accessible_ip_info = NULL;
+
+  return ret_val;
+}
+
+void
+xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp)
+{
+  int i, j;
+
+  if (outfp == NULL)
+    {
+      outfp = stdout;
+    }
+
+  fprintf (outfp, "access_ip_control=%s\n",
+	   (PRM_ACCESS_IP_CONTROL ? "yes" : "no"));
+  fprintf (outfp, "access_ip_control_file=%s\n",
+	   (ip_list_file_name != NULL) ? ip_list_file_name : "NULL");
+
+  if (PRM_ACCESS_IP_CONTROL == false || css_Server_accessible_ip_info == NULL)
+    {
+      return;
+    }
+
+  csect_enter_as_reader (thread_p, CSECT_ACL, INF_WAIT);
+
+  for (i = 0; i < css_Server_accessible_ip_info->num_list; i++)
+    {
+      int address_index = i * IP_BYTE_COUNT;
+
+      for (j = 0;
+	   j < css_Server_accessible_ip_info->
+	   address_list[address_index]; j++)
+	{
+	  fprintf (outfp, "%d%s",
+		   css_Server_accessible_ip_info->
+		   address_list[address_index + j + 1],
+		   ((j != 3) ? "." : ""));
+	}
+      if (j != 4)
+	{
+	  fprintf (outfp, "*");
+	}
+      fprintf (outfp, "\n");
+    }
+
+  fprintf (outfp, "\n");
+  csect_exit (CSECT_ACL);
+
+  return;
+}
+
+int
+xacl_reload (THREAD_ENTRY * thread_p)
+{
+  return css_set_accessible_ip_info ();
+}
+#endif

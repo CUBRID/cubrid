@@ -52,13 +52,13 @@
 	<summary>
 		<codepage>1252</codepage>
 		<title>Installation Database</title>
-		<subject>Blank Project Template</subject>
-		<author>InstallShield Software Corporation</author>
+		<subject>CUBRID 2008</subject>
+		<author>CUBRID</author>
 		<keywords>Installer,MSI,Database</keywords>
 		<comments>Contact:  Your local administrator</comments>
 		<template>Intel;1033</template>
-		<lastauthor>HidenoriYamanishi</lastauthor>
-		<revnumber>{7989A0F5-B45D-4257-97F5-C9ACD943AA89}</revnumber>
+		<lastauthor>Administrator</lastauthor>
+		<revnumber>{F05D3EB5-4F7F-4247-974F-724675395355}</revnumber>
 		<lastprinted/>
 		<createdtm>06/21/1999 22:00</createdtm>
 		<lastsavedtm>07/15/2000 01:50</lastsavedtm>
@@ -73,7 +73,6 @@
 		<col key="yes" def="s72">Name</col>
 		<col def="V0">Data</col>
 		<col def="S255">ISBuildSourcePath</col>
-		<row><td>NewBinary1</td><td/><td>&lt;ISProductFolder&gt;Script\Dialogs\BitmapId_103.bmp</td></row>
 	</table>
 
 	<table name="CheckBox">
@@ -103,14 +102,12 @@
 		<col def="S0">ISDotNetInstallerArgsCommit</col>
 		<col def="S0">ISDotNetInstallerArgsUninstall</col>
 		<col def="S0">ISDotNetInstallerArgsRollback</col>
-		<row><td>CCI</td><td>{440ABDB2-587F-4261-B99D-2768A5DCF866}</td><td>TARGETDIR</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>CUBRID</td><td>{85896AE4-B3E5-4527-8261-69CF2D1AD85B}</td><td>TARGETDIR</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>CUBRIDMANAGER</td><td>{BECB83A4-D54B-4F09-B9B4-86F22C62068A}</td><td>CUBRIDMANAGER</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>Document</td><td>{915FB46B-0977-4064-A2B9-F7AF2359DFA4}</td><td>DOC</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>JDBC</td><td>{3FEA98F1-15E1-4EE9-9136-38FC7B4D3EC4}</td><td>JDBC</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>ODBC</td><td>{D45A36B4-979F-4B9C-9767-C1E72D348F26}</td><td>BIN</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>OLEDB</td><td>{A3D79762-A93D-4F9E-9C3F-7FF94196A120}</td><td>BIN</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
-		<row><td>msg</td><td>{E946B8D9-B924-41CA-9049-4225C567F9A5}</td><td>MSG</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>CCI</td><td>{08857469-5D35-47EB-97C9-E9DA32D5B94B}</td><td>TARGETDIR</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>CUBRID</td><td>{B1705AB8-DE04-49AE-A15D-65B661DA11C5}</td><td>TARGETDIR</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>JDBC</td><td>{88159C1F-B1FA-459D-B8CD-2C6995EFDB82}</td><td>JDBC</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>ODBC</td><td>{AC82C62C-829A-4B02-A546-93C214952E58}</td><td>BIN</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>OLEDB</td><td>{584E36DE-7E5C-4F7F-8FC8-9ED14EA43FE5}</td><td>BIN</td><td>0</td><td/><td/><td>51713</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>msg</td><td>{E98137A1-F67B-4C6E-BF83-60059F362216}</td><td>MSG</td><td>0</td><td/><td/><td>51729</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 	</table>
 
 	<table name="Control">
@@ -130,31 +127,21 @@
 		<col def="I4">ISControlId</col>
 		<col def="S255">ISBuildSourcePath</col>
 		<col def="S72">Binary_</col>
-		<row><td>DialogId_103</td><td>ControlId_12</td><td>PushButton</td><td>186</td><td>234</td><td>57</td><td>17</td><td>3</td><td/><td>##IDS__DialogId_103_ControlId_12##</td><td>ControlId_6</td><td/><td>131072</td><td>12</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_1200</td><td>Text</td><td>8</td><td>5</td><td>374</td><td>44</td><td>65539</td><td/><td>##IDS__DialogId_103_ControlId_1200##</td><td>ControlId_301</td><td/><td>131072</td><td>1200</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_1301</td><td>Line</td><td>10</td><td>50</td><td>373</td><td>2</td><td>3</td><td/><td/><td>ControlId_52</td><td/><td>131088</td><td>1301</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_14</td><td>RadioButtonGroup</td><td>40</td><td>221</td><td>73</td><td>23</td><td>3</td><td>I_accept</td><td/><td/><td/><td>0</td><td>14</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_2</td><td>PushButton</td><td>0</td><td>244</td><td>23</td><td>19</td><td>2</td><td/><td>##IDS__DialogId_103_ControlId_2##</td><td>ControlId_1301</td><td/><td>0</td><td>2</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_301</td><td>Edit</td><td>31</td><td>87</td><td>339</td><td>93</td><td>16842755</td><td/><td/><td>ControlId_12</td><td/><td>2230272</td><td>301</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_50</td><td>Text</td><td>22</td><td>15</td><td>248</td><td>10</td><td>65539</td><td/><td>##IDS__DialogId_103_ControlId_50##</td><td>ControlId_51</td><td/><td>131072</td><td>50</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_51</td><td>Text</td><td>31</td><td>28</td><td>240</td><td>24</td><td>65539</td><td/><td>##IDS__DialogId_103_ControlId_51##</td><td>ControlId_2</td><td/><td>131072</td><td>51</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_52</td><td>Text</td><td>0</td><td>0</td><td>384</td><td>49</td><td>3</td><td/><td/><td>ControlId_1200</td><td/><td>131072</td><td>52</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_6</td><td>PushButton</td><td>242</td><td>234</td><td>57</td><td>17</td><td>3</td><td/><td>##IDS__DialogId_103_ControlId_6##</td><td>ControlId_9</td><td/><td>0</td><td>6</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_711</td><td>Text</td><td>31</td><td>61</td><td>336</td><td>15</td><td>131075</td><td/><td>##IDS__DialogId_103_ControlId_711##</td><td>ControlId_712</td><td/><td>131072</td><td>711</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_712</td><td>Text</td><td>31</td><td>190</td><td>336</td><td>21</td><td>131075</td><td/><td>##IDS__DialogId_103_ControlId_712##</td><td>ControlId_50</td><td/><td>131072</td><td>712</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_9</td><td>PushButton</td><td>309</td><td>234</td><td>57</td><td>17</td><td>3</td><td/><td>##IDS__DialogId_103_ControlId_9##</td><td>ControlId_711</td><td/><td>0</td><td>9</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_Negative1_1</td><td>GroupBox</td><td>28</td><td>210</td><td>94</td><td>44</td><td>2</td><td/><td/><td/><td/><td>131072</td><td>-1</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_1</td><td>PushButton</td><td>281</td><td>347</td><td>56</td><td>17</td><td>3</td><td/><td>##IDS__DialogId_12033_ControlId_1##</td><td>ControlId_9</td><td/><td>0</td><td>1</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_12</td><td>PushButton</td><td>219</td><td>347</td><td>56</td><td>17</td><td>3</td><td/><td>##IDS__DialogId_12033_ControlId_12##</td><td>ControlId_1</td><td/><td>131072</td><td>12</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_1200</td><td>Text</td><td>0</td><td>43</td><td>135</td><td>293</td><td>65539</td><td/><td>##IDS__DialogId_12033_ControlId_1200##</td><td>ControlId_401</td><td/><td>131072</td><td>1200</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_2</td><td>PushButton</td><td>0</td><td>355</td><td>56</td><td>17</td><td>2</td><td/><td>##IDS__DialogId_12033_ControlId_2##</td><td/><td/><td>131072</td><td>2</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_401</td><td>ListBox</td><td>152</td><td>77</td><td>201</td><td>146</td><td>65539</td><td/><td/><td>ControlId_710</td><td/><td>2097411</td><td>401</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_1</td><td>PushButton</td><td>242</td><td>239</td><td>56</td><td>17</td><td>3</td><td/><td>##IDS__DialogId_12033_ControlId_1##</td><td>ControlId_9</td><td/><td>0</td><td>1</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_12</td><td>PushButton</td><td>187</td><td>239</td><td>56</td><td>17</td><td>3</td><td/><td>##IDS__DialogId_12033_ControlId_12##</td><td>ControlId_1</td><td/><td>131072</td><td>12</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_1200</td><td>Text</td><td>0</td><td>0</td><td>374</td><td>44</td><td>65539</td><td/><td>##IDS__DialogId_12033_ControlId_1200##</td><td>ControlId_50</td><td/><td>131072</td><td>1200</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_1300</td><td>Line</td><td>47</td><td>227</td><td>325</td><td>1</td><td>3</td><td/><td/><td>ControlId_1301</td><td/><td>131079</td><td>1300</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_1301</td><td>Line</td><td>0</td><td>44</td><td>374</td><td>1</td><td>3</td><td/><td/><td>ControlId_52</td><td/><td>131088</td><td>1301</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_2</td><td>PushButton</td><td>185</td><td>274</td><td>56</td><td>17</td><td>2</td><td/><td>##IDS__DialogId_12033_ControlId_2##</td><td/><td/><td>0</td><td>2</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_401</td><td>ListBox</td><td>19</td><td>65</td><td>201</td><td>146</td><td>65539</td><td/><td/><td>ControlId_710</td><td/><td>2097411</td><td>401</td><td/><td/></row>
 		<row><td>DialogId_12033</td><td>ControlId_50</td><td>Text</td><td>11</td><td>4</td><td>248</td><td>10</td><td>65539</td><td/><td>##IDS__DialogId_12033_ControlId_50##</td><td>ControlId_51</td><td/><td>131072</td><td>50</td><td/><td/></row>
 		<row><td>DialogId_12033</td><td>ControlId_51</td><td>Text</td><td>19</td><td>18</td><td>240</td><td>23</td><td>196611</td><td/><td>##IDS__DialogId_12033_ControlId_51##</td><td>ControlId_12</td><td/><td>131072</td><td>51</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_710</td><td>Text</td><td>152</td><td>61</td><td>349</td><td>11</td><td>131075</td><td/><td>##IDS__DialogId_12033_ControlId_710##</td><td>ControlId_711</td><td/><td>131072</td><td>710</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_711</td><td>Text</td><td>369</td><td>88</td><td>125</td><td>127</td><td>131075</td><td/><td/><td>ControlId_50</td><td/><td>131072</td><td>711</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_9</td><td>PushButton</td><td>450</td><td>347</td><td>56</td><td>17</td><td>3</td><td/><td>##IDS__DialogId_12033_ControlId_9##</td><td>ControlId_1200</td><td/><td>0</td><td>9</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_Negative1_1</td><td>GroupBox</td><td>360</td><td>74</td><td>142</td><td>149</td><td>3</td><td/><td>##IDS__DialogId_12033_ControlId_Negative1_1##</td><td/><td/><td>0</td><td>-1</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_52</td><td>Text</td><td>0</td><td>0</td><td>374</td><td>44</td><td>3</td><td/><td/><td>ControlId_401</td><td/><td>131072</td><td>52</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_7</td><td>Text</td><td>2</td><td>222</td><td>45</td><td>12</td><td>2</td><td/><td/><td>ControlId_1300</td><td/><td>131072</td><td>7</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_710</td><td>Text</td><td>19</td><td>49</td><td>333</td><td>11</td><td>131075</td><td/><td>##IDS__DialogId_12033_ControlId_710##</td><td>ControlId_711</td><td/><td>131072</td><td>710</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_711</td><td>Text</td><td>236</td><td>76</td><td>120</td><td>127</td><td>131075</td><td/><td/><td>ControlId_1200</td><td/><td>131072</td><td>711</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_9</td><td>PushButton</td><td>306</td><td>239</td><td>56</td><td>17</td><td>3</td><td/><td>##IDS__DialogId_12033_ControlId_9##</td><td>ControlId_7</td><td/><td>0</td><td>9</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_Negative1_1</td><td>GroupBox</td><td>227</td><td>62</td><td>137</td><td>149</td><td>3</td><td/><td>##IDS__DialogId_12033_ControlId_Negative1_1##</td><td/><td/><td>0</td><td>-1</td><td/><td/></row>
 	</table>
 
 	<table name="Dialog">
@@ -172,8 +159,7 @@
 		<col def="S72">TextStyle_</col>
 		<col def="I4">ISWindowStyle</col>
 		<col def="I4">ISResourceId</col>
-		<row><td>DialogId_103</td><td>0</td><td>0</td><td>384</td><td>262</td><td>1</td><td>##IDS__DialogId_103##</td><td>ControlId_52</td><td>ControlId_6</td><td>ControlId_2</td><td/><td>MSSansSerif8</td><td>-2134376256</td><td>103</td></row>
-		<row><td>DialogId_12033</td><td>0</td><td>0</td><td>518</td><td>372</td><td>1</td><td>##IDS__DialogId_12033##</td><td>ControlId_1200</td><td>ControlId_1</td><td>ControlId_2</td><td/><td>MSSansSerif8</td><td>-2134376256</td><td>12033</td></row>
+		<row><td>DialogId_12033</td><td>0</td><td>0</td><td>374</td><td>266</td><td>1</td><td>##IDS__DialogId_12033##</td><td>ControlId_52</td><td>ControlId_1</td><td>ControlId_2</td><td/><td>TextStyle</td><td>-2134376256</td><td>12033</td></row>
 	</table>
 
 	<table name="Directory">
@@ -186,14 +172,15 @@
 		<row><td>BIN</td><td>TARGETDIR</td><td>bin</td><td/><td>0</td><td/></row>
 		<row><td>COMMONFILES</td><td>PROGRAMFILES</td><td>Common Files</td><td/><td>0</td><td/></row>
 		<row><td>COMMONFILES64</td><td>PROGRAMFILES64</td><td>Common Files (64-bit)</td><td/><td>0</td><td/></row>
+		<row><td>CONFIGURATION</td><td>CUBRIDMANAGER</td><td>configuration</td><td/><td>0</td><td/></row>
 		<row><td>CUBRIDMANAGER</td><td>TARGETDIR</td><td>cubridmanager</td><td/><td>0</td><td/></row>
 		<row><td>DOC</td><td>TARGETDIR</td><td>doc</td><td/><td>0</td><td/></row>
-		<row><td>DOCUMENTS</td><td>TARGETDIR</td><td>Documents</td><td/><td>0</td><td/></row>
 		<row><td>DesktopFolder</td><td/><td>Desktop</td><td/><td>3</td><td/></row>
 		<row><td>FOLDER_FONTS</td><td>WINDIR</td><td>Fonts Folder</td><td/><td>0</td><td/></row>
 		<row><td>ISRUNTIMETEXTSUBS</td><td/><td>Script-defined Folders</td><td/><td>0</td><td/></row>
 		<row><td>JDBC</td><td>TARGETDIR</td><td>jdbc</td><td/><td>0</td><td/></row>
 		<row><td>MSG</td><td>TARGETDIR</td><td>msg</td><td/><td>0</td><td/></row>
+		<row><td>PLUGINS</td><td>CUBRIDMANAGER</td><td>plugins</td><td/><td>0</td><td/></row>
 		<row><td>PROGRAMFILES</td><td/><td>Program Files</td><td/><td>0</td><td/></row>
 		<row><td>PROGRAMFILES64</td><td/><td>Program Files (64-bit)</td><td/><td>0</td><td/></row>
 		<row><td>ProgramMenuFolder</td><td/><td>Programs</td><td/><td>3</td><td/></row>
@@ -201,12 +188,9 @@
 		<row><td>StartMenuFolder</td><td/><td>Start Menu</td><td/><td>3</td><td/></row>
 		<row><td>StartupFolder</td><td/><td>Startup</td><td/><td>3</td><td/></row>
 		<row><td>TARGETDIR</td><td/><td>Application Target Folder</td><td/><td>0</td><td/></row>
-		<row><td>TARGETDIR1</td><td>ISRUNTIMETEXTSUBS</td><td>TARGETDIR</td><td/><td>0</td><td/></row>
-		<row><td>VARNAME_1</td><td>ISRUNTIMETEXTSUBS</td><td>VARNAME-1</td><td/><td>0</td><td/></row>
-		<row><td>VARNAME_2</td><td>ISRUNTIMETEXTSUBS</td><td>VARNAME-2</td><td/><td>0</td><td/></row>
 		<row><td>WINDIR</td><td/><td>Windows</td><td/><td>0</td><td/></row>
 		<row><td>WINSYSDIR</td><td>WINDIR</td><td>Windows System</td><td/><td>0</td><td/></row>
-		<row><td>WINSYSDIR64</td><td>WINDIR</td><td>System Folder (64-bit)</td><td/><td>0</td><td/></row>
+		<row><td>WINSYSDIR64</td><td>WINDIR</td><td>Windows System (64-bit)</td><td/><td>0</td><td/></row>
 	</table>
 
 	<table name="Feature">
@@ -222,25 +206,23 @@
 		<col def="S255">ISComments</col>
 		<col def="S255">ISFeatureCabName</col>
 		<col def="S255">ISProFeatureName</col>
-		<row><td>{573BEA45-481E-4C78-8987-A2FBA41A02EA}</td><td/><td>JDBC Driver</td><td>JDBC Driver Setup...</td><td>16</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>JDBC</td></row>
-		<row><td>{687F1454-8BDB-4D4C-A08E-3FF7A5B4BF17}</td><td/><td>CUBRID</td><td>CUBRID Setup...</td><td>8</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CUBRID</td></row>
-		<row><td>{803EF3AB-8984-4285-B1D0-ECB98F08F4D1}</td><td/><td>CUBRID ODBC</td><td>CUBRID ODBC Driver Setup...</td><td>10</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>ODBC</td></row>
-		<row><td>{95D570A9-47F8-45FD-8C4C-8820D1499F7B}</td><td/><td>CUBRID OLEDB</td><td>CUBRID OLEDB Driver setup...</td><td>12</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>OLEDB</td></row>
-		<row><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td><td/><td>CCI Library</td><td>CCI Library Setup...</td><td>18</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CCI</td></row>
-		<row><td>{EC8A1CC9-AD2D-4254-9FE0-48B6E70DE126}</td><td/><td>CUBRID Manager Client</td><td>CUBRID Manager Client Setup...</td><td>20</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>cubridmanager</td></row>
+		<row><td>{573BEA45-481E-4C78-8987-A2FBA41A02EA}</td><td/><td>##ID_STRING12##</td><td>##ID_STRING13##</td><td>8</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>JDBC</td></row>
+		<row><td>{803EF3AB-8984-4285-B1D0-ECB98F08F4D1}</td><td/><td>##ID_STRING22##</td><td>##ID_STRING23##</td><td>4</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>ODBC</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>New Merge Module Holder Object 1</td><td/><td>16</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CRT</td></row>
+		<row><td>{95D570A9-47F8-45FD-8C4C-8820D1499F7B}</td><td/><td>##ID_STRING10##</td><td>##ID_STRING11##</td><td>6</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>OLEDB</td></row>
+		<row><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td><td/><td>##ID_STRING14##</td><td>##ID_STRING15##</td><td>14</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CCI</td></row>
+		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td/><td>##ID_STRING6##</td><td>##ID_STRING20##</td><td>2</td><td>1</td><td>TARGETDIR</td><td>0</td><td/><td/><td/><td>CUBRID</td></row>
 	</table>
 
 	<table name="FeatureComponents">
 		<col key="yes" def="s38">Feature_</col>
 		<col key="yes" def="s72">Component_</col>
 		<row><td>{573BEA45-481E-4C78-8987-A2FBA41A02EA}</td><td>JDBC</td></row>
-		<row><td>{687F1454-8BDB-4D4C-A08E-3FF7A5B4BF17}</td><td>CUBRID</td></row>
-		<row><td>{687F1454-8BDB-4D4C-A08E-3FF7A5B4BF17}</td><td>msg</td></row>
 		<row><td>{803EF3AB-8984-4285-B1D0-ECB98F08F4D1}</td><td>ODBC</td></row>
 		<row><td>{95D570A9-47F8-45FD-8C4C-8820D1499F7B}</td><td>OLEDB</td></row>
 		<row><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td><td>CCI</td></row>
-		<row><td>{EC8A1CC9-AD2D-4254-9FE0-48B6E70DE126}</td><td>CUBRIDMANAGER</td></row>
-		<row><td>{EC8A1CC9-AD2D-4254-9FE0-48B6E70DE126}</td><td>Document</td></row>
+		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>CUBRID</td></row>
+		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>msg</td></row>
 	</table>
 
 	<table name="File">
@@ -255,78 +237,88 @@
 		<col def="S255">ISBuildSourcePath</col>
 		<col def="I4">ISAttributes</col>
 		<col def="S72">ISComponentSubFolder_</col>
-		<row><td>autoaddvoldb.conf</td><td>CUBRID</td><td>autoaddvoldb.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\autoaddvoldb.conf</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>autobackupdb.conf</td><td>CUBRID</td><td>autobackupdb.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\autobackupdb.conf</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>autoexecquery.conf</td><td>CUBRID</td><td>autoexecquery.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\autoexecquery.conf</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>autohistory.conf</td><td>CUBRID</td><td>autohistory.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\autohistory.conf</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>broker_changer.exe</td><td>CUBRID</td><td>broker_changer.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\broker_changer.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>broker_log_converter.exe</td><td>CUBRID</td><td>broker_log_converter.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\broker_log_converter.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>broker_log_runner.exe</td><td>CUBRID</td><td>broker_log_runner.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\broker_log_runner.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>broker_log_top.exe</td><td>CUBRID</td><td>broker_log_top.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\broker_log_top.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>broker_monitor.exe</td><td>CUBRID</td><td>broker_monitor.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\broker_monitor.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>brokeradmin.dll</td><td>CUBRID</td><td>brokeradmin.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\brokeradmin.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cas_cci.h</td><td>CCI</td><td>cas_cci.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\cas_cci.h</td><td>1</td><td>NewSubFolder15</td></row>
-		<row><td>cas_error.h</td><td>CCI</td><td>cas_error.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\cas_error.h</td><td>1</td><td>NewSubFolder15</td></row>
-		<row><td>cascci.dll1</td><td>CUBRID</td><td>cascci.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cascci.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cascci.dll2</td><td>CCI</td><td>cascci.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cascci.dll</td><td>1</td><td>NewSubFolder12</td></row>
-		<row><td>cascci.lib</td><td>CCI</td><td>cascci.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_LIB_FILES&gt;\cascci.lib</td><td>1</td><td>NewSubFolder13</td></row>
-		<row><td>cm.conf-dist</td><td>CUBRID</td><td>cm.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\cm.conf-dist</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>cm.pass-dist</td><td>CUBRID</td><td>cm.pass-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\cm.pass-dist</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>cm_dep.h</td><td>CUBRID</td><td>cm_dep.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\cm_dep.h</td><td>1</td><td>NewSubFolder15</td></row>
-		<row><td>cm_stat.h</td><td>CUBRID</td><td>cm_stat.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\cm_stat.h</td><td>1</td><td>NewSubFolder15</td></row>
-		<row><td>cmdb.pass-dist</td><td>CUBRID</td><td>cmdb.pass-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\cmdb.pass-dist</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>cmdep.dll</td><td>CUBRID</td><td>cmdep.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cmdep.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cmdep.lib</td><td>CUBRID</td><td>cmdep.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_LIB_FILES&gt;\cmdep.lib</td><td>1</td><td>NewSubFolder13</td></row>
-		<row><td>cmstat.dll</td><td>CUBRID</td><td>cmstat.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cmstat.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cmstat.lib</td><td>CUBRID</td><td>cmstat.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_LIB_FILES&gt;\cmstat.lib</td><td>1</td><td>NewSubFolder13</td></row>
-		<row><td>convert_password.exe</td><td>CUBRID</td><td>convert_password.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\convert_password.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>csql.exe</td><td>CUBRID</td><td>csql.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\csql.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>ctrlservice.exe</td><td>CUBRID</td><td>ctrlservice.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\ctrlservice.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cub_admin.exe</td><td>CUBRID</td><td>cub_admin.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cub_admin.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cub_auto.exe</td><td>CUBRID</td><td>cub_auto.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cub_auto.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cub_broker.exe</td><td>CUBRID</td><td>cub_broker.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cub_broker.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cub_cas.exe</td><td>CUBRID</td><td>cub_cas.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cub_cas.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cub_commdb.exe</td><td>CUBRID</td><td>cub_commdb.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cub_commdb.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cub_job.exe</td><td>CUBRID</td><td>cub_job.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cub_job.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cub_jobsa.exe</td><td>CUBRID</td><td>cub_jobsa.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cub_jobsa.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cub_js.exe</td><td>CUBRID</td><td>cub_js.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cub_js.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cub_master.exe</td><td>CUBRID</td><td>cub_master.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cub_master.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cub_sainfo.exe</td><td>CUBRID</td><td>cub_sainfo.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cub_sainfo.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cub_server.exe</td><td>CUBRID</td><td>cub_server.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cub_server.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubrid.conf-dist</td><td>CUBRID</td><td>cubrid.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\cubrid.conf-dist</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>cubrid.exe</td><td>CUBRID</td><td>cubrid.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubrid.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubrid_broker.conf-dist</td><td>CUBRID</td><td>cubrid_broker.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\cubrid_broker.conf-dist</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>cubrid_broker.exe</td><td>CUBRID</td><td>cubrid_broker.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubrid_broker.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubrid_esql.exe</td><td>CUBRID</td><td>cubrid_esql.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubrid_esql.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubrid_esql.h</td><td>CUBRID</td><td>cubrid_esql.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\cubrid_esql.h</td><td>1</td><td>NewSubFolder6</td></row>
-		<row><td>cubrid_jdbc.jar</td><td>JDBC</td><td>cubrid_jdbc.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_JDBC_FILES&gt;\cubrid_jdbc.jar</td><td>1</td><td/></row>
-		<row><td>cubrid_odbc.dll</td><td>ODBC</td><td>cubrid_odbc.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubrid_odbc.dll</td><td>1</td><td/></row>
-		<row><td>cubrid_rel.exe</td><td>CUBRID</td><td>cubrid_rel.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubrid_rel.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubrid_service_tray.exe</td><td>CUBRID</td><td>CUBRID_Service_Tray.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\CUBRID_Service_Tray.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubridcs.dll</td><td>CUBRID</td><td>cubridcs.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubridcs.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubridcs.lib</td><td>CUBRID</td><td>cubridcs.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_LIB_FILES&gt;\cubridcs.lib</td><td>1</td><td>NewSubFolder11</td></row>
-		<row><td>cubridprovider.dll</td><td>OLEDB</td><td>CUBRIDProvider.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\CUBRIDProvider.dll</td><td>1</td><td/></row>
-		<row><td>cubridprovider.dll1</td><td>CUBRID</td><td>CUBRIDProvider.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\CUBRIDProvider.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubridprovider.tlb</td><td>OLEDB</td><td>CUBRIDProvider.tlb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\CUBRIDProvider.tlb</td><td>1</td><td/></row>
-		<row><td>cubridprovider.tlb1</td><td>CUBRID</td><td>CUBRIDProvider.tlb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\CUBRIDProvider.tlb</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubridsa.dll</td><td>CUBRID</td><td>cubridsa.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubridsa.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>cubridsa.lib</td><td>CUBRID</td><td>cubridsa.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_LIB_FILES&gt;\cubridsa.lib</td><td>1</td><td>NewSubFolder11</td></row>
-		<row><td>cubridservice.exe</td><td>CUBRID</td><td>cubridservice.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\cubridservice.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>dbi.h</td><td>CUBRID</td><td>dbi.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_INCLUDE_FILES&gt;\dbi.h</td><td>1</td><td>NewSubFolder6</td></row>
-		<row><td>demodb_objects</td><td>CUBRID</td><td>demodb_objects</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_DEMODB_FILES&gt;\demodb_objects</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>demodb_schema</td><td>CUBRID</td><td>demodb_schema</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_DEMODB_FILES&gt;\demodb_schema</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>diagactivitytemplate.conf</td><td>CUBRID</td><td>diagactivitytemplate.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\diagactivitytemplate.conf</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>diagstatustemplate.conf</td><td>CUBRID</td><td>diagstatustemplate.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CONF_FILES&gt;\diagstatustemplate.conf</td><td>1</td><td>NewSubFolder5</td></row>
-		<row><td>gc64_dll.dll</td><td>CUBRID</td><td>gc64_dll.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\gc64_dll.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>jspserver.jar</td><td>CUBRID</td><td>jspserver.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_JAVA_FILES&gt;\jspserver.jar</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>libcubrid.dll</td><td>CUBRID</td><td>libcubrid.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\libcubrid.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>libesql.dll</td><td>CUBRID</td><td>libesql.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\libesql.dll</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>libesql.lib</td><td>CUBRID</td><td>libesql.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_LIB_FILES&gt;\libesql.lib</td><td>1</td><td>NewSubFolder11</td></row>
-		<row><td>loadjava.exe</td><td>CUBRID</td><td>loadjava.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\loadjava.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>logging.properties</td><td>CUBRID</td><td>logging.properties</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_JAVA_FILES&gt;\logging.properties</td><td>1</td><td>NewSubFolder14</td></row>
-		<row><td>makedemo_is.bat</td><td>CUBRID</td><td>makedemo_is.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;ISPROJECTDIR&gt;\makedemo_is.bat</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>migrate_r30.exe</td><td>CUBRID</td><td>migrate_r30.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\migrate_r30.exe</td><td>1</td><td>NewSubFolder4</td></row>
-		<row><td>setupmanage.exe</td><td>CUBRID</td><td>setupmanage.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_BIN_FILES&gt;\setupmanage.exe</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>autoaddvoldb.conf</td><td>CUBRID</td><td>autoaddvoldb.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\autoaddvoldb.conf</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>autobackupdb.conf</td><td>CUBRID</td><td>autobackupdb.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\autobackupdb.conf</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>autoexecquery.conf</td><td>CUBRID</td><td>autoexecquery.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\autoexecquery.conf</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>autohistory.conf</td><td>CUBRID</td><td>autohistory.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\autohistory.conf</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>broker_changer.exe</td><td>CUBRID</td><td>broker_changer.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\broker_changer.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>broker_log_converter.exe</td><td>CUBRID</td><td>broker_log_converter.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\broker_log_converter.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>broker_log_runner.exe</td><td>CUBRID</td><td>broker_log_runner.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\broker_log_runner.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>broker_log_top.exe</td><td>CUBRID</td><td>broker_log_top.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\broker_log_top.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>broker_monitor.exe</td><td>CUBRID</td><td>broker_monitor.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\broker_monitor.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>brokeradmin.dll</td><td>CUBRID</td><td>brokeradmin.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\brokeradmin.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cas_cci.h</td><td>CCI</td><td>cas_cci.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cas_cci.h</td><td>1</td><td>NewSubFolder1</td></row>
+		<row><td>cas_cci.h1</td><td>CUBRID</td><td>cas_cci.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cas_cci.h</td><td>1</td><td>NewSubFolder6</td></row>
+		<row><td>cas_error.h</td><td>CCI</td><td>cas_error.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cas_error.h</td><td>1</td><td>NewSubFolder1</td></row>
+		<row><td>cas_error.h1</td><td>CUBRID</td><td>cas_error.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cas_error.h</td><td>1</td><td>NewSubFolder6</td></row>
+		<row><td>cascci.dll</td><td>CCI</td><td>cascci.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cascci.dll</td><td>1</td><td>NewSubFolder2</td></row>
+		<row><td>cascci.lib</td><td>CCI</td><td>cascci.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cascci.lib</td><td>1</td><td>NewSubFolder3</td></row>
+		<row><td>cascci.lib1</td><td>CUBRID</td><td>cascci.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cascci.lib</td><td>1</td><td>NewSubFolder7</td></row>
+		<row><td>cm.conf_dist</td><td>CUBRID</td><td>cm.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cm.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cm.pass_dist</td><td>CUBRID</td><td>cm.pass-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cm.pass-dist</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cm_dep.h</td><td>CCI</td><td>cm_dep.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cm_dep.h</td><td>1</td><td>NewSubFolder1</td></row>
+		<row><td>cm_dep.h1</td><td>CUBRID</td><td>cm_dep.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cm_dep.h</td><td>1</td><td>NewSubFolder6</td></row>
+		<row><td>cm_stat.h</td><td>CCI</td><td>cm_stat.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cm_stat.h</td><td>1</td><td>NewSubFolder1</td></row>
+		<row><td>cm_stat.h1</td><td>CUBRID</td><td>cm_stat.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cm_stat.h</td><td>1</td><td>NewSubFolder6</td></row>
+		<row><td>cmdb.pass_dist</td><td>CUBRID</td><td>cmdb.pass-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cmdb.pass-dist</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cmdep.dll</td><td>CUBRID</td><td>cmdep.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cmdep.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cmdep.lib</td><td>CCI</td><td>cmdep.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cmdep.lib</td><td>1</td><td>NewSubFolder3</td></row>
+		<row><td>cmdep.lib1</td><td>CUBRID</td><td>cmdep.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cmdep.lib</td><td>1</td><td>NewSubFolder7</td></row>
+		<row><td>cmstat.dll</td><td>CUBRID</td><td>cmstat.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cmstat.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cmstat.lib</td><td>CCI</td><td>cmstat.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cmstat.lib</td><td>1</td><td>NewSubFolder3</td></row>
+		<row><td>cmstat.lib1</td><td>CUBRID</td><td>cmstat.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cmstat.lib</td><td>1</td><td>NewSubFolder7</td></row>
+		<row><td>convert_password.exe</td><td>CUBRID</td><td>convert_password.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\convert_password.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>copying</td><td>CUBRID</td><td>COPYING</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\COPYING</td><td>1</td><td/></row>
+		<row><td>credits</td><td>CUBRID</td><td>CREDITS</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\CREDITS</td><td>1</td><td/></row>
+		<row><td>csql.exe</td><td>CUBRID</td><td>csql.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\csql.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>ctrlservice.exe</td><td>CUBRID</td><td>ctrlservice.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\ctrlservice.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_admin.exe</td><td>CUBRID</td><td>cub_admin.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_admin.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_auto.exe</td><td>CUBRID</td><td>cub_auto.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_auto.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_broker.exe</td><td>CUBRID</td><td>cub_broker.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_broker.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_cas.exe</td><td>CUBRID</td><td>cub_cas.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_cas.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_commdb.exe</td><td>CUBRID</td><td>cub_commdb.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_commdb.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_job.exe</td><td>CUBRID</td><td>cub_job.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_job.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_jobsa.exe</td><td>CUBRID</td><td>cub_jobsa.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_jobsa.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_js.exe</td><td>CUBRID</td><td>cub_js.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_js.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_master.exe</td><td>CUBRID</td><td>cub_master.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_master.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_sainfo.exe</td><td>CUBRID</td><td>cub_sainfo.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_sainfo.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cub_server.exe</td><td>CUBRID</td><td>cub_server.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cub_server.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cubrid.conf.large</td><td>CUBRID</td><td>cubrid.conf.large</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid.conf.large</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cubrid.conf.small</td><td>CUBRID</td><td>cubrid.conf.small</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid.conf.small</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cubrid.conf_dist</td><td>CUBRID</td><td>cubrid.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cubrid.exe</td><td>CUBRID</td><td>cubrid.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cubrid_broker.conf_dist</td><td>CUBRID</td><td>cubrid_broker.conf-dist</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\cubrid_broker.conf-dist</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>cubrid_broker.exe</td><td>CUBRID</td><td>cubrid_broker.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_broker.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cubrid_esql.exe</td><td>CUBRID</td><td>cubrid_esql.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_esql.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cubrid_esql.h</td><td>CUBRID</td><td>cubrid_esql.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\cubrid_esql.h</td><td>1</td><td>NewSubFolder6</td></row>
+		<row><td>cubrid_jdbc.jar</td><td>JDBC</td><td>cubrid_jdbc.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\jdbc\cubrid_jdbc.jar</td><td>1</td><td/></row>
+		<row><td>cubrid_odbc.dll</td><td>ODBC</td><td>cubrid_odbc.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_odbc.dll</td><td>1</td><td/></row>
+		<row><td>cubrid_rel.exe</td><td>CUBRID</td><td>cubrid_rel.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubrid_rel.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cubrid_service_tray.exe</td><td>CUBRID</td><td>CUBRID_Service_Tray.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\CUBRID_Service_Tray.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cubridcs.dll</td><td>CUBRID</td><td>cubridcs.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridcs.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cubridcs.lib</td><td>CUBRID</td><td>cubridcs.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cubridcs.lib</td><td>1</td><td>NewSubFolder7</td></row>
+		<row><td>cubridprovider.dll</td><td>OLEDB</td><td>CUBRIDProvider.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\CUBRIDProvider.dll</td><td>1</td><td/></row>
+		<row><td>cubridprovider.tlb</td><td>OLEDB</td><td>CUBRIDProvider.tlb</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\CUBRIDProvider.tlb</td><td>1</td><td/></row>
+		<row><td>cubridsa.dll</td><td>CUBRID</td><td>cubridsa.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridsa.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>cubridsa.lib</td><td>CUBRID</td><td>cubridsa.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\cubridsa.lib</td><td>1</td><td>NewSubFolder7</td></row>
+		<row><td>cubridservice.exe</td><td>CUBRID</td><td>cubridservice.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\cubridservice.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>dbghelp.dll</td><td>CUBRID</td><td>dbghelp.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\dbghelp.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>dbi.h</td><td>CUBRID</td><td>dbi.h</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\include\dbi.h</td><td>1</td><td>NewSubFolder6</td></row>
+		<row><td>demodb_objects</td><td>CUBRID</td><td>demodb_objects</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_DEMO_FILES&gt;\demodb_objects</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>demodb_schema</td><td>CUBRID</td><td>demodb_schema</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_DEMO_FILES&gt;\demodb_schema</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>diagactivitytemplate.conf</td><td>CUBRID</td><td>diagactivitytemplate.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\diagactivitytemplate.conf</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>diagstatustemplate.conf</td><td>CUBRID</td><td>diagstatustemplate.conf</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\conf\diagstatustemplate.conf</td><td>1</td><td>NewSubFolder4</td></row>
+		<row><td>gc64_dll.dll</td><td>CUBRID</td><td>gc64_dll.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\gc64_dll.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>jspserver.jar</td><td>CUBRID</td><td>jspserver.jar</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\java\jspserver.jar</td><td>1</td><td>NewSubFolder8</td></row>
+		<row><td>libcubrid.dll</td><td>CUBRID</td><td>libcubrid.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libcubrid.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>libesql.dll</td><td>CUBRID</td><td>libesql.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\libesql.dll</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>libesql.lib</td><td>CUBRID</td><td>libesql.lib</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\lib\libesql.lib</td><td>1</td><td>NewSubFolder7</td></row>
+		<row><td>loadjava.exe</td><td>CUBRID</td><td>loadjava.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\loadjava.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>logging.properties</td><td>CUBRID</td><td>logging.properties</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\java\logging.properties</td><td>1</td><td>NewSubFolder8</td></row>
+		<row><td>makedemo_is.bat</td><td>CUBRID</td><td>makedemo_is.bat</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;ISPROJECTDIR&gt;\makedemo_is.bat</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>migrate_r30.exe</td><td>CUBRID</td><td>migrate_r30.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\migrate_r30.exe</td><td>1</td><td>NewSubFolder5</td></row>
+		<row><td>readme</td><td>CUBRID</td><td>README</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\README</td><td>1</td><td/></row>
+		<row><td>setupmanage.exe</td><td>CUBRID</td><td>setupmanage.exe</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\bin\setupmanage.exe</td><td>1</td><td>NewSubFolder5</td></row>
 	</table>
 
 	<table name="Font">
@@ -338,9 +330,6 @@
 		<col key="yes" def="S0">Alias</col>
 		<col key="yes" def="S72">Identifier</col>
 		<col key="yes" def="S50">Table</col>
-		<row><td>TARGETDIR</td><td>TARGETDIR1</td><td>Directory</td></row>
-		<row><td>VARNAME-1</td><td>VARNAME_1</td><td>Directory</td></row>
-		<row><td>VARNAME-2</td><td>VARNAME_2</td><td>Directory</td></row>
 	</table>
 
 	<table name="ISAssistantTag">
@@ -350,9 +339,9 @@
 		<row><td>BiildInternetEnabled</td><td/></row>
 		<row><td>BiildSingleExeEnabled</td><td/></row>
 		<row><td>BiildSingleMSIEnabled</td><td/></row>
-		<row><td>PROJECT_ASSISTANT_DEFAULT_FEATURE</td><td>{EC8A1CC9-AD2D-4254-9FE0-48B6E70DE126}</td></row>
+		<row><td>PROJECT_ASSISTANT_DEFAULT_FEATURE</td><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td></row>
 		<row><td>PROJECT_ASSISTANT_FEATURES</td><td>NonSelectable</td></row>
-		<row><td>RegistryPageEnabled</td><td>Yes</td></row>
+		<row><td>PROJECT_ASSISTANT_LICENSE_FILE</td><td/></row>
 	</table>
 
 	<table name="ISComponentExtended">
@@ -364,14 +353,12 @@
 		<col def="S0">FTPLocation</col>
 		<col def="S0">HTTPLocation</col>
 		<col def="S0">Miscellaneous</col>
-		<row><td>CCI</td><td>0</td><td/><td>_B99E6E70_29F0_4044_8FBE_34FBE4991F8A_FILTER</td><td/><td/><td/><td/></row>
-		<row><td>CUBRID</td><td>0</td><td/><td>_BC084FAE_20F7_48A1_9CFA_C9D4DC842815_FILTER</td><td/><td/><td/><td/></row>
-		<row><td>CUBRIDMANAGER</td><td>0</td><td/><td>_A4CD898C_66AF_4DCC_A504_4D05B49E6B68_FILTER</td><td/><td/><td/><td/></row>
-		<row><td>Document</td><td/><td/><td>_7EA5F23A_CD2C_4F66_8688_CA22F62CFEC6_FILTER</td><td/><td/><td/><td/></row>
-		<row><td>JDBC</td><td>0</td><td/><td>_511706FE_138E_45CD_8117_B8359E85FF11_FILTER</td><td/><td/><td/><td/></row>
-		<row><td>ODBC</td><td>0</td><td/><td>_C2098893_E748_4114_8B8F_784B5152E99A_FILTER</td><td/><td/><td/><td/></row>
-		<row><td>OLEDB</td><td>0</td><td/><td>_2886C66D_BA6D_4862_A475_BD6BE37A23DC_FILTER</td><td/><td/><td/><td/></row>
-		<row><td>msg</td><td/><td/><td>_F0465D85_15FF_482E_812C_26FA09A1FE67_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>CCI</td><td/><td/><td>_6074D733_15A8_448F_B51E_132462F85128_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>CUBRID</td><td/><td/><td>_0D8A47D7_17BA_4E0F_B747_19EDF5E0BAA9_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>JDBC</td><td/><td/><td>_7AA7B79B_2B45_4714_A5B4_B933918E7AEE_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>ODBC</td><td/><td/><td>_14223EE5_76E1_4525_9AFA_F99B34C67702_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>OLEDB</td><td/><td/><td>_CC188D73_72AC_4608_816E_D660DBEBFC3C_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>msg</td><td/><td/><td>_D3051DC3_008A_4972_BD79_5572BA0DF955_FILTER</td><td/><td/><td/><td/></row>
 	</table>
 
 	<table name="ISComponentSubFolder">
@@ -379,19 +366,19 @@
 		<col def="s72">Component_</col>
 		<col def="S72">ISSubFolder_Parent</col>
 		<col def="s255">Path</col>
-		<row><td>NewSubFolder1</td><td>CUBRID</td><td/><td>databases</td></row>
+		<row><td>NewSubFolder1</td><td>CCI</td><td/><td>include</td></row>
 		<row><td>NewSubFolder10</td><td>CUBRID</td><td/><td>var</td></row>
-		<row><td>NewSubFolder11</td><td>CUBRID</td><td/><td>lib</td></row>
-		<row><td>NewSubFolder12</td><td>CCI</td><td/><td>bin</td></row>
-		<row><td>NewSubFolder13</td><td>CCI</td><td/><td>lib</td></row>
-		<row><td>NewSubFolder14</td><td>CUBRID</td><td/><td>java</td></row>
-		<row><td>NewSubFolder15</td><td>CCI</td><td/><td>include</td></row>
-		<row><td>NewSubFolder4</td><td>CUBRID</td><td/><td>bin</td></row>
-		<row><td>NewSubFolder5</td><td>CUBRID</td><td/><td>conf</td></row>
+		<row><td>NewSubFolder11</td><td>CUBRID</td><td/><td>log</td></row>
+		<row><td>NewSubFolder12</td><td>CUBRID</td><td/><td>tmp</td></row>
+		<row><td>NewSubFolder13</td><td>CUBRID</td><td>NewSubFolder9</td><td>demodb</td></row>
+		<row><td>NewSubFolder2</td><td>CCI</td><td/><td>bin</td></row>
+		<row><td>NewSubFolder3</td><td>CCI</td><td/><td>lib</td></row>
+		<row><td>NewSubFolder4</td><td>CUBRID</td><td/><td>conf</td></row>
+		<row><td>NewSubFolder5</td><td>CUBRID</td><td/><td>bin</td></row>
 		<row><td>NewSubFolder6</td><td>CUBRID</td><td/><td>include</td></row>
-		<row><td>NewSubFolder7</td><td>CUBRID</td><td/><td>log</td></row>
-		<row><td>NewSubFolder8</td><td>CUBRID</td><td>NewSubFolder1</td><td>demodb</td></row>
-		<row><td>NewSubFolder9</td><td>CUBRID</td><td/><td>tmp</td></row>
+		<row><td>NewSubFolder7</td><td>CUBRID</td><td/><td>lib</td></row>
+		<row><td>NewSubFolder8</td><td>CUBRID</td><td/><td>java</td></row>
+		<row><td>NewSubFolder9</td><td>CUBRID</td><td/><td>databases</td></row>
 	</table>
 
 	<table name="ISDRMFile">
@@ -426,8 +413,8 @@
 		<col key="yes" def="s72">ISDisk1File</col>
 		<col def="s255">ISBuildSourcePath</col>
 		<col def="I4">Disk</col>
-		<row><td>NewDisk1File1</td><td>&lt;ISPROJECTDIR&gt;\Setup Files\Uncompressed Files\Disk1\makeconf.bat</td><td>1</td></row>
-		<row><td>NewDisk1File2</td><td>&lt;ISPROJECTDIR&gt;\Setup Files\Uncompressed Files\Disk1\setupManage.exe</td><td>1</td></row>
+		<row><td>NewDisk1File1</td><td>&lt;ISPROJECTDIR&gt;\setup files\uncompressed files\disk1\makeconf.bat</td><td>1</td></row>
+		<row><td>NewDisk1File2</td><td>&lt;ISPROJECTDIR&gt;\setup files\uncompressed files\disk1\setupManage.exe</td><td>1</td></row>
 	</table>
 
 	<table name="ISDynamicFile">
@@ -437,9 +424,7 @@
 		<col def="S0">IncludeFiles</col>
 		<col def="S0">ExcludeFiles</col>
 		<col def="I4">ISAttributes</col>
-		<row><td>CUBRIDMANAGER</td><td>&lt;PATH_TO_CUBRIDMANAGER_FILE&gt;</td><td>1</td><td>*.*</td><td/><td>2</td></row>
-		<row><td>Document</td><td>&lt;PATH_TO_DOCUMENT_FILES&gt;</td><td>1</td><td>*.*</td><td/><td>2</td></row>
-		<row><td>msg</td><td>&lt;PATH_TO_MSG_FILES&gt;</td><td>1</td><td>*.*</td><td/><td>2</td></row>
+		<row><td>msg</td><td>&lt;PATH_TO_CUBRID_FILES&gt;\msg</td><td>1</td><td>*.*</td><td/><td>2</td></row>
 	</table>
 
 	<table name="ISFeatureExtended">
@@ -456,12 +441,12 @@
 		<col def="S255">Password</col>
 		<col def="S50">CDRomFolder</col>
 		<col def="S50">Moniker</col>
-		<row><td>{573BEA45-481E-4C78-8987-A2FBA41A02EA}</td><td/><td/><td/><td/><td/><td/><td/><td>Copying JDBC Driver File...</td><td>36</td><td/><td/><td/></row>
-		<row><td>{687F1454-8BDB-4D4C-A08E-3FF7A5B4BF17}</td><td>CUBRID_Installing</td><td>CUBRID_Installed</td><td>CUBRID_UnInstalling</td><td>CUBRID_UnInstalled</td><td/><td/><td/><td>Copying CUBRID files...</td><td>36</td><td/><td/><td/></row>
-		<row><td>{803EF3AB-8984-4285-B1D0-ECB98F08F4D1}</td><td>ODBC_Installing</td><td/><td/><td/><td/><td/><td/><td>Copying files...</td><td>36</td><td/><td/><td/></row>
-		<row><td>{95D570A9-47F8-45FD-8C4C-8820D1499F7B}</td><td/><td>OLEDB_Installed</td><td>OLEDB_UnInstalling</td><td/><td/><td/><td/><td>Copying files...</td><td>36</td><td/><td/><td/></row>
-		<row><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td><td/><td/><td/><td/><td/><td/><td/><td>Copying CCI Library Files...</td><td>36</td><td/><td/><td/></row>
-		<row><td>{EC8A1CC9-AD2D-4254-9FE0-48B6E70DE126}</td><td>EasyManagerClient_Installing</td><td>EasyManagerClient_Installed</td><td/><td/><td/><td/><td/><td>Copying CUBRID Manager Client files...</td><td>36</td><td/><td/><td/></row>
+		<row><td>{573BEA45-481E-4C78-8987-A2FBA41A02EA}</td><td/><td/><td/><td/><td/><td/><td/><td>##ID_STRING9##</td><td>36</td><td/><td/><td/></row>
+		<row><td>{803EF3AB-8984-4285-B1D0-ECB98F08F4D1}</td><td>ODBC_Installing</td><td/><td/><td/><td/><td/><td/><td>##ID_STRING9##</td><td>36</td><td/><td/><td/></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td/><td/><td/><td/><td/><td/><td/><td/><td>20</td><td/><td/><td>@ismk16:ED4FF843-0DE2-4F5F-936C-29845A706E45</td></row>
+		<row><td>{95D570A9-47F8-45FD-8C4C-8820D1499F7B}</td><td/><td>OLEDB_Installed</td><td>OLEDB_UnInstalling</td><td/><td/><td/><td/><td>##ID_STRING9##</td><td>36</td><td/><td/><td/></row>
+		<row><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td><td/><td/><td/><td/><td/><td/><td/><td>##ID_STRING9##</td><td>36</td><td/><td/><td/></row>
+		<row><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td><td>CUBRID_Installing</td><td>CUBRID_Installed</td><td>CUBRID_UnInstalling</td><td/><td/><td/><td/><td>##ID_STRING9##</td><td>36</td><td/><td/><td/></row>
 	</table>
 
 	<table name="ISFeatureMergeModuleExcludes">
@@ -474,6 +459,10 @@
 		<col key="yes" def="s38">Feature_</col>
 		<col key="yes" def="s255">ISMergeModule_</col>
 		<col key="yes" def="i2">Language_</col>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>Microsoft_VC90_CRT_x64.50FC30FE_9758_3B08_B886_7BAABC047B61</td><td>0</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>Microsoft_VC90_MFC_x64.3A64C3FA_2DE3_340C_BA32_0582AEABB672</td><td>0</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>policy_9_0_Microsoft_VC90_CRT_x64.D8FD5D7A_D7AD_3E2F_9ACB_44D8D43BD919</td><td>0</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>policy_9_0_Microsoft_VC90_MFC_x64.323F6B94_3385_3B2A_AD8B_6BA2FEFC999C</td><td>0</td></row>
 	</table>
 
 	<table name="ISFeatureSetupPrerequisites">
@@ -534,26 +523,7 @@
 		<col def="I2">Height</col>
 		<col def="S72">Binary_</col>
 		<col def="S255">ISBuildSourcePath</col>
-		<row><td>DialogId_103</td><td>ControlId_12</td><td>1042</td><td>3</td><td>160</td><td>254</td><td>48</td><td>18</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_1200</td><td>1042</td><td>65539</td><td>7</td><td>5</td><td>321</td><td>48</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_1301</td><td>1042</td><td>3</td><td>9</td><td>54</td><td>320</td><td>2</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_14</td><td>1042</td><td>3</td><td>34</td><td>239</td><td>63</td><td>24</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_2</td><td>1042</td><td>2</td><td>0</td><td>264</td><td>20</td><td>21</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_301</td><td>1042</td><td>16842755</td><td>27</td><td>94</td><td>290</td><td>101</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_50</td><td>1042</td><td>65539</td><td>19</td><td>16</td><td>213</td><td>11</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_51</td><td>1042</td><td>65539</td><td>27</td><td>30</td><td>206</td><td>26</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_52</td><td>1042</td><td>3</td><td>0</td><td>0</td><td>330</td><td>54</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_6</td><td>1042</td><td>3</td><td>207</td><td>254</td><td>48</td><td>18</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_711</td><td>1042</td><td>131075</td><td>27</td><td>66</td><td>288</td><td>16</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_712</td><td>1042</td><td>131075</td><td>27</td><td>206</td><td>288</td><td>23</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_9</td><td>1042</td><td>3</td><td>264</td><td>254</td><td>48</td><td>18</td><td/><td/></row>
-		<row><td>DialogId_103</td><td>ControlId_Negative1_1</td><td>1042</td><td>2</td><td>24</td><td>228</td><td>81</td><td>48</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_401</td><td>1042</td><td>65539</td><td>174</td><td>77</td><td>195</td><td>146</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_50</td><td>1042</td><td>65539</td><td>12</td><td>4</td><td>285</td><td>10</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_51</td><td>1042</td><td>196611</td><td>21</td><td>18</td><td>275</td><td>23</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_710</td><td>1042</td><td>131075</td><td>174</td><td>61</td><td>326</td><td>11</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_711</td><td>1042</td><td>131075</td><td>384</td><td>88</td><td>113</td><td>127</td><td/><td/></row>
-		<row><td>DialogId_12033</td><td>ControlId_Negative1_1</td><td>1042</td><td>3</td><td>375</td><td>74</td><td>125</td><td>149</td><td/><td/></row>
+		<row><td>DialogId_12033</td><td>ControlId_401</td><td>1033</td><td>3</td><td>19</td><td>65</td><td>201</td><td>146</td><td/><td/></row>
 	</table>
 
 	<table name="ISLocalDialog">
@@ -563,8 +533,7 @@
 		<col def="S72">TextStyle_</col>
 		<col def="i2">Width</col>
 		<col def="i2">Height</col>
-		<row><td>DialogId_103</td><td>1042</td><td>1</td><td>MSSansSerif8</td><td>330</td><td>284</td></row>
-		<row><td>DialogId_12033</td><td>1042</td><td>1</td><td>New_TextStyle</td><td>518</td><td>372</td></row>
+		<row><td>DialogId_12033</td><td>1033</td><td>1</td><td>MSSansSerif8</td><td>374</td><td>266</td></row>
 	</table>
 
 	<table name="ISLocalRadioButton">
@@ -575,8 +544,9 @@
 		<col def="i2">Y</col>
 		<col def="i2">Width</col>
 		<col def="i2">Height</col>
-		<row><td>New_Property</td><td>1</td><td>1042</td><td>0</td><td>0</td><td>289</td><td>21</td></row>
-		<row><td>New_Property</td><td>2</td><td>1042</td><td>0</td><td>26</td><td>289</td><td>21</td></row>
+		<row><td>Typical</td><td>1</td><td>1033</td><td>0</td><td>0</td><td>46</td><td>13</td></row>
+		<row><td>Typical</td><td>2</td><td>1033</td><td>0</td><td>43</td><td>46</td><td>11</td></row>
+		<row><td>Typical</td><td>3</td><td>1033</td><td>0</td><td>80</td><td>46</td><td>11</td></row>
 	</table>
 
 	<table name="ISMergeModule">
@@ -585,6 +555,10 @@
 		<col def="s255">Name</col>
 		<col def="S255">Destination</col>
 		<col def="I4">ISAttributes</col>
+		<row><td>Microsoft_VC90_CRT_x64.50FC30FE_9758_3B08_B886_7BAABC047B61</td><td>0</td><td>Visual C++ 9.0 CRT (x86) WinSXS MSM</td><td/><td/></row>
+		<row><td>Microsoft_VC90_MFC_x64.3A64C3FA_2DE3_340C_BA32_0582AEABB672</td><td>0</td><td>Visual C++ 9.0 MFC (x86) WinSXS MSM</td><td/><td/></row>
+		<row><td>policy_9_0_Microsoft_VC90_CRT_x64.D8FD5D7A_D7AD_3E2F_9ACB_44D8D43BD919</td><td>0</td><td>Visual C++ 9.0 CRT (x86) WinSXS MSM</td><td/><td/></row>
+		<row><td>policy_9_0_Microsoft_VC90_MFC_x64.323F6B94_3385_3B2A_AD8B_6BA2FEFC999C</td><td>0</td><td>Visual C++ 9.0 MFC (x86) WinSXS MSM</td><td/><td/></row>
 	</table>
 
 	<table name="ISMergeModuleCfgValues">
@@ -608,31 +582,16 @@
 		<col def="S255">Value</col>
 		<col def="S255">TestValue</col>
 		<col def="i4">Type</col>
-		<row><td>COMMONFILES</td><td>&lt;CommonFilesFolder&gt;</td><td/><td>2</td></row>
 		<row><td>CommonFilesFolder</td><td/><td/><td>1</td></row>
 		<row><td>ISPROJECTDIR</td><td>1</td><td/><td>1</td></row>
 		<row><td>ISProductFolder</td><td/><td/><td>1</td></row>
 		<row><td>ISProjectDataFolder</td><td>1</td><td/><td>1</td></row>
 		<row><td>ISProjectFolder</td><td/><td/><td>1</td></row>
-		<row><td>PATH_TO_BIN_FILES</td><td>..\CUBRID_Release_x64\bin</td><td/><td>2</td></row>
-		<row><td>PATH_TO_CONF_FILES</td><td>..\CUBRID_Release_x64\conf</td><td/><td>2</td></row>
-		<row><td>PATH_TO_CUBRIDMANAGER_FILE</td><td>..\CUBRID_Release_x64\cubridmanager</td><td/><td>2</td></row>
-		<row><td>PATH_TO_DATABASES_FILES</td><td>..\CUBRID_Release_x64\databases</td><td/><td>2</td></row>
-		<row><td>PATH_TO_DEMODB_FILES</td><td>&lt;ISPROJECTDIR&gt;\..\..\..\demo</td><td/><td>2</td></row>
-		<row><td>PATH_TO_DOCUMENT_FILES</td><td>..\CUBRID_Release_x64\document</td><td/><td>2</td></row>
-		<row><td>PATH_TO_EN_US_FILES</td><td>..\CUBRID_Release_x64\msg\en_US</td><td/><td>2</td></row>
-		<row><td>PATH_TO_INCLUDE_FILES</td><td>..\CUBRID_Release_x64\include</td><td/><td>2</td></row>
-		<row><td>PATH_TO_JAVA_FILES</td><td>..\CUBRID_Release_x64\java</td><td/><td>2</td></row>
-		<row><td>PATH_TO_JDBC_FILES</td><td>..\CUBRID_Release_x64\jdbc</td><td/><td>2</td></row>
-		<row><td>PATH_TO_KO_KR.EUCKR_FILES</td><td>..\CUBRID_Release_x64\msg\ko_KR.euckr</td><td/><td>2</td></row>
-		<row><td>PATH_TO_KO_KR.UTF8_FILES</td><td>..\CUBRID_Release_x64\msg\ko_KR.utf8</td><td/><td>2</td></row>
-		<row><td>PATH_TO_LIB_FILES</td><td>..\CUBRID_Release_x64\lib</td><td/><td>2</td></row>
-		<row><td>PATH_TO_MSG_FILES</td><td>..\CUBRID_Release_x64\msg</td><td/><td>2</td></row>
-		<row><td>PROGRAMFILES</td><td>&lt;ProgramFilesFolder&gt;</td><td/><td>2</td></row>
+		<row><td>PATH_TO_CUBRID_FILES</td><td>&lt;ISProjectFolder&gt;\..\CUBRID_Release_x64</td><td/><td>2</td></row>
+		<row><td>PATH_TO_DEMO_FILES</td><td>&lt;ISPROJECTDIR&gt;\..\..\..\demo</td><td/><td>2</td></row>
+		<row><td>PATH_TO_RES_FILES</td><td>&lt;ISPROJECTDIR&gt;\..\..\..\src\win_tools\cubridtray\RES</td><td/><td>2</td></row>
 		<row><td>ProgramFilesFolder</td><td/><td/><td>1</td></row>
 		<row><td>SystemFolder</td><td/><td/><td>1</td></row>
-		<row><td>WINDIR</td><td>&lt;WindowsFolder&gt;</td><td/><td>2</td></row>
-		<row><td>WINSYSDIR</td><td>&lt;SystemFolder&gt;</td><td/><td>2</td></row>
 		<row><td>WindowsFolder</td><td/><td/><td>1</td></row>
 	</table>
 
@@ -640,6 +599,17 @@
 		<col key="yes" def="s72">Feature_</col>
 		<col key="yes" def="s72">Property</col>
 		<col def="L0">Value</col>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>Cache</td><td>0,Bool</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>CommandLine</td><td>""</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>InstallStatusText</td><td>""</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>Logging</td><td>0,Bool</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>Msi12Engine</td><td>3,Long</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>Msi20Engine</td><td>3,Long</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>MsiTargetPath</td><td>""</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>ProductCode</td><td>""</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>UIOption</td><td>2,Long</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>Uninstall</td><td>0,Bool</td></row>
+		<row><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td><td>UninstallStatusText</td><td>""</td></row>
 	</table>
 
 	<table name="ISProductConfiguration">
@@ -653,7 +623,6 @@
 		<col key="yes" def="s72">ISProductConfiguration_</col>
 		<col key="yes" def="s72">Property</col>
 		<col def="L255">Value</col>
-		<row><td>Media</td><td>IncludeActionHelp</td><td>1</td></row>
 	</table>
 
 	<table name="ISRegistrySet">
@@ -662,7 +631,6 @@
 		<row><td>&lt;Default&gt;</td><td>Default Registry Set.  Always installed.</td></row>
 		<row><td>CUBRID</td><td/></row>
 		<row><td>ODBC</td><td/></row>
-		<row><td>cubridmanager</td><td/></row>
 	</table>
 
 	<table name="ISRegistrySetComponents">
@@ -670,7 +638,6 @@
 		<col key="yes" def="s72">Component_</col>
 		<row><td>CUBRID</td><td>CUBRID</td></row>
 		<row><td>ODBC</td><td>ODBC</td></row>
-		<row><td>cubridmanager</td><td>CUBRIDMANAGER</td></row>
 	</table>
 
 	<table name="ISRelease">
@@ -704,8 +671,8 @@
 		<col def="S255">DotNetBuildConfiguration</col>
 		<col def="S255">MsiCommandLine</col>
 		<col def="I4">ISSetupPrerequisiteLocation</col>
-		<row><td>CUBRID</td><td>Media</td><td>&lt;ISPROJECTDIR&gt;\packaging\product</td><td>PackageName</td><td>0</td><td>1042,1033</td><td>2</td><td>1</td><td>Intel</td><td/><td>1033</td><td>2</td><td>650</td><td>0</td><td>2048</td><td/><td>0</td><td/><td>MediaLocation</td><td/><td>http://</td><td/><td/><td/><td/><td>12</td><td/><td/><td/><td/></row>
-		<row><td>CUBRID_x86</td><td>Media</td><td/><td>PackageName</td><td>0</td><td>1033</td><td>1</td><td>1</td><td>Intel</td><td/><td>1033</td><td>3</td><td>0</td><td>0</td><td>0</td><td/><td>0</td><td/><td>MediaLocation</td><td/><td>http://</td><td/><td/><td/><td/><td>12</td><td/><td/><td/><td/></row>
+		<row><td>CUBRID</td><td>Media</td><td/><td>PackageName</td><td>0</td><td>1033,1042</td><td>2</td><td>1</td><td>Intel</td><td/><td>1033</td><td>3</td><td>650</td><td>0</td><td>2048</td><td/><td>0</td><td/><td>MediaLocation</td><td/><td>http://</td><td/><td/><td/><td/><td>12</td><td/><td/><td/><td/></row>
+		<row><td>CUBRID_x86</td><td>Media</td><td/><td>PackageName</td><td>0</td><td>1033</td><td>2</td><td>1</td><td>Intel</td><td/><td>1033</td><td>3</td><td>0</td><td>0</td><td>0</td><td/><td>0</td><td/><td>MediaLocation</td><td/><td>http://</td><td/><td/><td/><td/><td>12</td><td/><td/><td/><td/></row>
 	</table>
 
 	<table name="ISReleasePro">
@@ -730,8 +697,8 @@
 		<col def="S255">InitDlgProductName</col>
 		<col def="I4">Attributes</col>
 		<col def="S255">CertPassword</col>
-		<row><td>CUBRID</td><td>Media</td><td/><td/><td>{5335578E-E427-4896-AE69-6066733F6395}</td><td>CUBRID.EXE</td><td/><td/><td/><td>30474448</td><td/><td>-1</td><td/><td/><td/><td/><td/><td/><td/><td>14336</td><td/></row>
-		<row><td>CUBRID_x86</td><td>Media</td><td/><td/><td>{E1127081-DD2B-476C-8D4E-9B42CFFFAFD2}</td><td/><td/><td/><td/><td>-1</td><td/><td>-1</td><td/><td/><td/><td/><td/><td/><td/><td>15296</td><td/></row>
+		<row><td>CUBRID</td><td>Media</td><td/><td/><td>{4BD68AC1-ADE8-4CBE-85E8-8FCD42C33327}</td><td>CUBRID.exe</td><td>&lt;PATH_TO_RES_FILES&gt;\cubrid_icon.ico,0</td><td/><td/><td>-1</td><td/><td/><td/><td/><td/><td>&lt;ISPROJECTDIR&gt;\packaging\product\package</td><td/><td/><td/><td>14336</td><td/></row>
+		<row><td>CUBRID_x86</td><td>Media</td><td/><td/><td>{9F39B147-9FA2-48BE-AB0E-43EC0EF46343}</td><td/><td/><td/><td/><td>-1</td><td/><td>-1</td><td/><td/><td/><td/><td/><td/><td/><td>15296</td><td/></row>
 	</table>
 
 	<table name="ISReleaseProDataAsFiles">
@@ -906,8 +873,8 @@
 
 	<table name="ISScriptFile">
 		<col key="yes" def="s255">ISScriptFile</col>
-		<row><td>&lt;ISProjectFolder&gt;\Script Files\ComponentEvents.rul</td></row>
-		<row><td>&lt;ISProjectFolder&gt;\Script Files\Setup.rul</td></row>
+		<row><td>&lt;ISProjectDataFolder&gt;\Script Files\Setup.Rul</td></row>
+		<row><td>&lt;ISProjectDataFolder&gt;\script files\componentevents.rul</td></row>
 	</table>
 
 	<table name="ISSetupFile">
@@ -917,13 +884,9 @@
 		<col def="S50">Language</col>
 		<col def="I2">Splash</col>
 		<col def="S0">Path</col>
-		<row><td>LicenseAgreement</td><td>license.txt</td><td/><td>0</td><td>0</td><td>&lt;ISProductFolder&gt;\Redist\0409\license.txt</td></row>
-		<row><td>SetupFile1</td><td>empty_dir</td><td/><td>1033</td><td>0</td><td>&lt;ISPROJECTDIR&gt;\Setup Files\Compressed Files\0009-English\OS Independent\empty_dir</td></row>
-		<row><td>SetupFile2</td><td>empty_dir</td><td/><td>1033</td><td>0</td><td>&lt;ISPROJECTDIR&gt;\Setup Files\Compressed Files\0009-English\Intel 32\empty_dir</td></row>
-		<row><td>SetupFile3</td><td>license.txt</td><td/><td>0</td><td>0</td><td>&lt;ISPROJECTDIR&gt;\Setup Files\Compressed Files\Language Independent\OS Independent\license.txt</td></row>
-		<row><td>SetupFile4</td><td>license.txt</td><td/><td>0</td><td>0</td><td>&lt;ISPROJECTDIR&gt;\Setup Files\Compressed Files\Language Independent\Intel 32\license.txt</td></row>
-		<row><td>SetupFile5</td><td>license_eng.txt</td><td/><td>0</td><td>0</td><td>&lt;ISPROJECTDIR&gt;\Setup Files\Compressed Files\Language Independent\Intel 32\license_eng.txt</td></row>
-		<row><td>SetupFile6</td><td>empty_dir</td><td/><td>0</td><td>1</td><td>&lt;ISPROJECTDIR&gt;\Setup Files\Uncompressed Files\Language Independent\OS Independent\empty_dir</td></row>
+		<row><td>SetupFile1</td><td>license_eng.txt</td><td/><td>0</td><td>0</td><td>&lt;ISPROJECTDIR&gt;\setup files\compressed files\language independent\intel 32\license_eng.txt</td></row>
+		<row><td>SetupFile2</td><td>license.txt</td><td/><td>0</td><td>0</td><td>&lt;ISPROJECTDIR&gt;\setup files\compressed files\language independent\intel 32\license.txt</td></row>
+		<row><td>SetupFile3</td><td>license.txt</td><td/><td>0</td><td>0</td><td>&lt;ISPROJECTDIR&gt;\setup files\compressed files\language independent\os independent\license.txt</td></row>
 	</table>
 
 	<table name="ISSetupPrerequisites">
@@ -940,30 +903,30 @@
 		<col def="L255">Display_Name</col>
 		<col def="i2">Display</col>
 		<col def="S255">Comments</col>
-		<row><td>ALL</td><td>##ALL_DESC##</td><td>ALL</td><td>0</td><td>##ALL_DESC##</td></row>
-		<row><td>CLIENT_ONLY</td><td>##CLIENT_ONLY_DESC##</td><td>CLIENT_ONLY</td><td>1</td><td>##CLIENT_ONLY_DESC##</td></row>
+		<row><td>ALL</td><td>##IDPROP_SETUPTYPE_COMPLETE_DESC##</td><td>##IDPROP_SETUPTYPE_COMPLETE##</td><td>1</td><td>##IDPROP_SETUPTYPE_COMPLETE_DESC##</td></row>
+		<row><td>CLIENT_ONLY</td><td>##IDPROP_SETUPTYPE_CUSTOM_DESC_PRO##</td><td>##IDPROP_SETUPTYPE_CUSTOM##</td><td>2</td><td>##IDPROP_SETUPTYPE_CUSTOM_DESC_PRO##</td></row>
 	</table>
 
 	<table name="ISSetupTypeFeatures">
 		<col key="yes" def="s38">ISSetupType_</col>
 		<col key="yes" def="s38">Feature_</col>
 		<row><td>ALL</td><td>{573BEA45-481E-4C78-8987-A2FBA41A02EA}</td></row>
-		<row><td>ALL</td><td>{687F1454-8BDB-4D4C-A08E-3FF7A5B4BF17}</td></row>
 		<row><td>ALL</td><td>{803EF3AB-8984-4285-B1D0-ECB98F08F4D1}</td></row>
+		<row><td>ALL</td><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td></row>
 		<row><td>ALL</td><td>{95D570A9-47F8-45FD-8C4C-8820D1499F7B}</td></row>
 		<row><td>ALL</td><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td></row>
-		<row><td>ALL</td><td>{EC8A1CC9-AD2D-4254-9FE0-48B6E70DE126}</td></row>
+		<row><td>ALL</td><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td></row>
 		<row><td>CLIENT_ONLY</td><td>{573BEA45-481E-4C78-8987-A2FBA41A02EA}</td></row>
 		<row><td>CLIENT_ONLY</td><td>{803EF3AB-8984-4285-B1D0-ECB98F08F4D1}</td></row>
+		<row><td>CLIENT_ONLY</td><td>{920FA8BC-722E-4BAD-95E1-8DC4707C6FFD}</td></row>
 		<row><td>CLIENT_ONLY</td><td>{95D570A9-47F8-45FD-8C4C-8820D1499F7B}</td></row>
 		<row><td>CLIENT_ONLY</td><td>{C864535E-B1E3-4F7B-8464-9ED38F055DB6}</td></row>
-		<row><td>CLIENT_ONLY</td><td>{EC8A1CC9-AD2D-4254-9FE0-48B6E70DE126}</td></row>
+		<row><td>CLIENT_ONLY</td><td>{DA7957A1-DD10-4DF5-90D9-8B107A7FBD97}</td></row>
 	</table>
 
 	<table name="ISShortcutComponents">
 		<col key="yes" def="s38">Shortcut_</col>
 		<col key="yes" def="s72">Component_</col>
-		<row><td>NewShortcut1</td><td>CUBRID</td></row>
 	</table>
 
 	<table name="ISStorages">
@@ -978,262 +941,370 @@
 		<col def="I2">Encoded</col>
 		<col def="S0">Comment</col>
 		<col def="I4">TimeStamp</col>
-		<row><td>ALL</td><td>1033</td><td>Complete</td><td>0</td><td/><td>-2070042927</td></row>
-		<row><td>ALL</td><td>1042</td><td>전체 설치</td><td>0</td><td/><td>-2070047023</td></row>
-		<row><td>ALL_DESC</td><td>1033</td><td>Installs CUBRID server, Command line tools, CUBRID Manager(Management Tool), Interface drivers(OLE DB Provider, ODBC, JDBC, C API) and Manual.</td><td>0</td><td/><td>-2070040879</td></row>
-		<row><td>ALL_DESC</td><td>1042</td><td>CUBRID 서버와 클라이언트가 모두 설치됩니다.</td><td>0</td><td/><td>-2070044975</td></row>
-		<row><td>CLIENT_ONLY</td><td>1033</td><td>Manager and Drivers</td><td>0</td><td/><td>-2070034735</td></row>
-		<row><td>CLIENT_ONLY</td><td>1042</td><td>관리 도구 및 드라이버 설치</td><td>0</td><td/><td>-2070028591</td></row>
-		<row><td>CLIENT_ONLY_DESC</td><td>1033</td><td>Installs CUBRID Manager(management tool), Interface drivers(OLE DB Provider, ODBC, JDBC, C API) and Manual.</td><td>0</td><td/><td>-862079826</td></row>
-		<row><td>CLIENT_ONLY_DESC</td><td>1042</td><td>CUBRID 클라이언트(CUBRID Manager, OLEDB Provider, ODBC Driver, JDBC Driver) 가 설치됩니다.</td><td>0</td><td/><td>-2070075663</td></row>
-		<row><td>COMPANY_NAME</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553852721</td></row>
-		<row><td>COMPANY_NAME</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553793361</td></row>
-		<row><td>FOLDER_NAME</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553807697</td></row>
-		<row><td>FOLDER_NAME</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553807697</td></row>
-		<row><td>IDPROP_SETUPTYPE_COMPLETE</td><td>1033</td><td>Complete</td><td>0</td><td/><td>1553805777</td></row>
-		<row><td>IDPROP_SETUPTYPE_COMPLETE</td><td>1042</td><td>!,BTS"``),%8S@``</td><td>5</td><td/><td>1553805777</td></row>
-		<row><td>IDPROP_SETUPTYPE_COMPLETE_DESC</td><td>1033</td><td>Complete</td><td>0</td><td/><td>1553801681</td></row>
-		<row><td>IDPROP_SETUPTYPE_COMPLETE_DESC</td><td>1042</td><td>!,BTS"``),%8SB``),&amp;%N@``</td><td>8</td><td/><td>1553801681</td></row>
-		<row><td>IDPROP_SETUPTYPE_CUSTOM</td><td>1033</td><td>Custom</td><td>0</td><td/><td>1553799633</td></row>
-		<row><td>IDPROP_SETUPTYPE_CUSTOM</td><td>1042</td><td>K,"IQI#'(``5R%C'</td><td>6</td><td/><td>1553799633</td></row>
-		<row><td>IDPROP_SETUPTYPE_CUSTOM_DESC_PRO</td><td>1033</td><td>Custom</td><td>0</td><td/><td/></row>
-		<row><td>IDPROP_SETUPTYPE_CUSTOM_DESC_PRO</td><td>1042</td><td>K,"IQI#'(``5R%C'(``DP86Z</td><td>9</td><td/><td>480015307</td></row>
-		<row><td>IDS_ERROR_27530</td><td>1042</td><td>Unknown error returned from NetAPI. System error: [2]</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PREREQUISITE_SETUP_BROWSE</td><td>1042</td><td>Open [ProductName]'s original [SETUPEXENAME]</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PREREQUISITE_SETUP_INVALID</td><td>1042</td><td>This executable file does not appear to be the original executable file for [ProductName]. Without using the original [SETUPEXENAME] to install additional dependencies, [ProductName] may not work correctly. Would you like to find the original [SETUPEXENAME]?</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PREREQUISITE_SETUP_SEARCH</td><td>1042</td><td>This installation may require additional dependencies. Without its dependencies, [ProductName] may not work correctly. Would you like to find the original [SETUPEXENAME]?</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_CREATEVROOT</td><td>1042</td><td>Creating IIS virtual directory %s</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_CREATEVROOTS</td><td>1042</td><td>Creating IIS virtual directories...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_CREATEWEBSITE</td><td>1042</td><td>Creating IIS website %s</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_CREATEWEBSITES</td><td>1042</td><td>Creating IIS websites...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_EXTRACT</td><td>1042</td><td>Extracting information for IIS virtual directories...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_EXTRACTDONE</td><td>1042</td><td>Extracted information for IIS virtual directories...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_REMOVESITE</td><td>1042</td><td>Removing web site at port %d</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_REMOVEVROOT</td><td>1042</td><td>Removing IIS virtual directory %s</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_REMOVEVROOTS</td><td>1042</td><td>Removing IIS virtual directories...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_REMOVEWEBSITES</td><td>1042</td><td>Removing IIS websites...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_PROGMSG_IIS_ROLLBACKVROOTS</td><td>1042</td><td>Rolling back virtual directory and web site changes...</td><td>0</td><td/><td>480013259</td></row>
-		<row><td>IDS_SQLSCRIPT_INSTALLING</td><td>1033</td><td>Executing SQL Install Script...</td><td>0</td><td/><td/></row>
-		<row><td>IDS_SQLSCRIPT_INSTALLING</td><td>1042</td><td>,*YTR%C'(`!3`%$`3``@`"3!6,X@`*3";-"]N;C2+@`N`"X`</td><td>18</td><td/><td>480015307</td></row>
-		<row><td>IDS_SQLSCRIPT_UNINSTALLING</td><td>1033</td><td>Executing SQL Uninstall Script...</td><td>0</td><td/><td/></row>
-		<row><td>IDS_SQLSCRIPT_UNINSTALLING</td><td>1042</td><td>4P!1`$P`(``&lt;R'"L(`"DPFS0O;FXTB``Y,*)U2X`+@`N````</td><td>17</td><td/><td>480015307</td></row>
-		<row><td>IDS__DialogId_10106</td><td>1033</td><td>InstallShield Wizard</td><td>0</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106</td><td>1042</td><td>InstallShield Wizard</td><td>0</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_1</td><td>1033</td><td>&amp;Next &gt;</td><td>0</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_1</td><td>1042</td><td>Y+),QR@`)@!.`"D`/@``</td><td>7</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_12</td><td>1042</td><td>/``@`*2T7+@H`"8`0@`I````</td><td>8</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_1200</td><td>1033</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_1200</td><td>1042</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_50</td><td>1033</td><td>Password</td><td>0</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_50</td><td>1042</td><td>5,4XU@``C</td><td>2</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_51</td><td>1033</td><td>This setup has been password protected.</td><td>0</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_51</td><td>1042</td><td>),%8SI2R(`!4Q3C67+@@`/2\.-88M+3%(`"(Q[7"R++DLBX`</td><td>18</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_9</td><td>1033</td><td>Cancel</td><td>0</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_9</td><td>1042</td><td>Z,V,P0``C</td><td>2</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_901</td><td>1033</td><td>Enter the password required to run this setup.  Please note that passwords are case sensitive.  Click Next to continue.</td><td>0</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_10106_ControlId_901</td><td>1042</td><td>),%8SB``!-5&lt;N/BMJ+=$QR``Y,*)U5C5E+)PLR``1-64QES5(`!4Q3C6?+D@`(7');A8U&gt;W"W,(DQBX`(`!4Q3C6E+(@``"SC,$XNY#'?+D@`&amp;RMA+UIU&lt;BRY+(N`"``6P#DLDS'70!$QR``#++LMR``Q*R-P5C5[&lt;+&lt;PB3&amp;+@``</td><td>64</td><td/><td>-753036593</td></row>
-		<row><td>IDS__DialogId_103</td><td>1033</td><td>InstallShield Wizard</td><td>0</td><td/><td>1553797873</td></row>
-		<row><td>IDS__DialogId_103</td><td>1042</td><td>InstallShield Wizard</td><td>0</td><td/><td>1553797873</td></row>
-		<row><td>IDS__DialogId_103_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>1553810161</td></row>
-		<row><td>IDS__DialogId_103_ControlId_12</td><td>1042</td><td>&lt; 뒤로(&amp;B)</td><td>0</td><td/><td>-2070065298</td></row>
-		<row><td>IDS__DialogId_103_ControlId_1200</td><td>1033</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>1553822449</td></row>
-		<row><td>IDS__DialogId_103_ControlId_1200</td><td>1042</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>1553822449</td></row>
-		<row><td>IDS__DialogId_103_ControlId_14_1</td><td>1033</td><td>I accept</td><td>0</td><td/><td>1553830641</td></row>
-		<row><td>IDS__DialogId_103_ControlId_14_1</td><td>1042</td><td>I accept</td><td>0</td><td/><td>1553830641</td></row>
-		<row><td>IDS__DialogId_103_ControlId_14_2</td><td>1033</td><td>I do not accept</td><td>0</td><td/><td>1553847025</td></row>
-		<row><td>IDS__DialogId_103_ControlId_14_2</td><td>1042</td><td>I do not accept</td><td>0</td><td/><td>1553847025</td></row>
-		<row><td>IDS__DialogId_103_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>1553799953</td></row>
-		<row><td>IDS__DialogId_103_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>1553799953</td></row>
-		<row><td>IDS__DialogId_103_ControlId_50</td><td>1033</td><td>License Agreement</td><td>0</td><td/><td>1553812241</td></row>
-		<row><td>IDS__DialogId_103_ControlId_50</td><td>1042</td><td>License Agreement</td><td>0</td><td/><td>1553812241</td></row>
-		<row><td>IDS__DialogId_103_ControlId_51</td><td>1033</td><td>Please read the following license agreement carefully.</td><td>0</td><td/><td>1553822481</td></row>
-		<row><td>IDS__DialogId_103_ControlId_51</td><td>1042</td><td>Please read the following license agreement carefully.</td><td>0</td><td/><td>1553822481</td></row>
-		<row><td>IDS__DialogId_103_ControlId_6</td><td>1033</td><td>&amp;Next&gt;</td><td>0</td><td/><td>1553834769</td></row>
-		<row><td>IDS__DialogId_103_ControlId_6</td><td>1042</td><td>다음(&amp;N)&gt;</td><td>0</td><td/><td>-2070061202</td></row>
-		<row><td>IDS__DialogId_103_ControlId_711</td><td>1033</td><td>Press the PAGE DOWN key to see the rest of the agreement.</td><td>0</td><td/><td>1553849105</td></row>
-		<row><td>IDS__DialogId_103_ControlId_711</td><td>1042</td><td>Press the PAGE DOWN key to see the rest of the agreement.</td><td>0</td><td/><td>1553849105</td></row>
+		<row><td>CUBRID_ARCH</td><td>1033</td><td>x64</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>CUBRID_ARCH</td><td>1042</td><td>x64</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>FOLDER_NAME</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-920696785</td></row>
+		<row><td>FOLDER_NAME</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-920700881</td></row>
+		<row><td>IDPROP_SETUPTYPE_COMPLETE</td><td>1033</td><td>Complete</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDPROP_SETUPTYPE_COMPLETE</td><td>1042</td><td>전체 설치</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDPROP_SETUPTYPE_COMPLETE_DESC</td><td>1033</td><td>Installs CUBRID server, Command line tools and Interface drivers(OLE DB Provider, ODBC, JDBC, C API).</td><td>0</td><td/><td>-1709196849</td></row>
+		<row><td>IDPROP_SETUPTYPE_COMPLETE_DESC</td><td>1042</td><td>CUBRID 서버와 명령행 도구 및 인터페이스 드라이버가 모두 설치됩니다.</td><td>0</td><td/><td>-1709186609</td></row>
+		<row><td>IDPROP_SETUPTYPE_CUSTOM</td><td>1033</td><td>Installs Interface drivers</td><td>0</td><td/><td>-1709235729</td></row>
+		<row><td>IDPROP_SETUPTYPE_CUSTOM</td><td>1042</td><td>인터페이스 드라이버 설치</td><td>0</td><td/><td>-1709227537</td></row>
+		<row><td>IDPROP_SETUPTYPE_CUSTOM_DESC_PRO</td><td>1033</td><td>Installs Interface drivers(OLE DB Provider, ODBC, JDBC, C API).</td><td>0</td><td/><td>2048864399</td></row>
+		<row><td>IDPROP_SETUPTYPE_CUSTOM_DESC_PRO</td><td>1042</td><td>CUBRID 드라이버(OLEDB Provider, ODBC Driver, JDBC Driver)가 설치됩니다.</td><td>0</td><td/><td>1914638354</td></row>
+		<row><td>IDS_ERROR_27530</td><td>1033</td><td>Unknown error returned from NetAPI. System error: [2]</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_ERROR_27530</td><td>1042</td><td>Unknown error returned from NetAPI. System error: [2]</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PREREQUISITE_SETUP_BROWSE</td><td>1033</td><td>Open [ProductName]'s original [SETUPEXENAME]</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PREREQUISITE_SETUP_BROWSE</td><td>1042</td><td>Open [ProductName]'s original [SETUPEXENAME]</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PREREQUISITE_SETUP_INVALID</td><td>1033</td><td>This executable file does not appear to be the original executable file for [ProductName]. Without using the original [SETUPEXENAME] to install additional dependencies, [ProductName] may not work correctly. Would you like to find the original [SETUPEXENAME]?</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PREREQUISITE_SETUP_INVALID</td><td>1042</td><td>This executable file does not appear to be the original executable file for [ProductName]. Without using the original [SETUPEXENAME] to install additional dependencies, [ProductName] may not work correctly. Would you like to find the original [SETUPEXENAME]?</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PREREQUISITE_SETUP_SEARCH</td><td>1033</td><td>This installation may require additional dependencies. Without its dependencies, [ProductName] may not work correctly. Would you like to find the original [SETUPEXENAME]?</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PREREQUISITE_SETUP_SEARCH</td><td>1042</td><td>This installation may require additional dependencies. Without its dependencies, [ProductName] may not work correctly. Would you like to find the original [SETUPEXENAME]?</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_CREATEVROOT</td><td>1033</td><td>Creating IIS virtual directory %s</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_CREATEVROOT</td><td>1042</td><td>Creating IIS virtual directory %s</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_CREATEVROOTS</td><td>1033</td><td>Creating IIS virtual directories...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_CREATEVROOTS</td><td>1042</td><td>Creating IIS virtual directories...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_CREATEWEBSITE</td><td>1033</td><td>Creating IIS website %s</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_CREATEWEBSITE</td><td>1042</td><td>Creating IIS website %s</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_CREATEWEBSITES</td><td>1033</td><td>Creating IIS websites...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_CREATEWEBSITES</td><td>1042</td><td>Creating IIS websites...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_EXTRACT</td><td>1033</td><td>Extracting information for IIS virtual directories...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_EXTRACT</td><td>1042</td><td>Extracting information for IIS virtual directories...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_EXTRACTDONE</td><td>1033</td><td>Extracted information for IIS virtual directories...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_EXTRACTDONE</td><td>1042</td><td>Extracted information for IIS virtual directories...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_REMOVESITE</td><td>1033</td><td>Removing web site at port %d</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_REMOVESITE</td><td>1042</td><td>Removing web site at port %d</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_REMOVEVROOT</td><td>1033</td><td>Removing IIS virtual directory %s</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_REMOVEVROOT</td><td>1042</td><td>Removing IIS virtual directory %s</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_REMOVEVROOTS</td><td>1033</td><td>Removing IIS virtual directories...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_REMOVEVROOTS</td><td>1042</td><td>Removing IIS virtual directories...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_REMOVEWEBSITES</td><td>1033</td><td>Removing IIS websites...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_REMOVEWEBSITES</td><td>1042</td><td>Removing IIS websites...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_ROLLBACKVROOTS</td><td>1033</td><td>Rolling back virtual directory and web site changes...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_PROGMSG_IIS_ROLLBACKVROOTS</td><td>1042</td><td>Rolling back virtual directory and web site changes...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_SHORTCUT_DISPLAY_NAME1</td><td>1033</td><td>Launch CUBRID_Service_Tray.exe</td><td>0</td><td/><td>-1323359281</td></row>
+		<row><td>IDS_SHORTCUT_DISPLAY_NAME1</td><td>1042</td><td>Launch CUBRID_Service_Tray.exe</td><td>0</td><td/><td>-1189094134</td></row>
+		<row><td>IDS_SQLSCRIPT_INSTALLING</td><td>1033</td><td>Executing SQL Install Script...</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS_SQLSCRIPT_INSTALLING</td><td>1042</td><td>기존의 SQL 설치 스크립트...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS_SQLSCRIPT_UNINSTALLING</td><td>1033</td><td>Executing SQL Uninstall Script...</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS_SQLSCRIPT_UNINSTALLING</td><td>1042</td><td>SQL 제거 스크립트 실행...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_10106</td><td>1033</td><td>Installation</td><td>0</td><td/><td>-1323321293</td></row>
+		<row><td>IDS__DialogId_10106</td><td>1042</td><td>설치</td><td>0</td><td/><td>-1323317197</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_1</td><td>1033</td><td>&amp;Next &gt;</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_1</td><td>1042</td><td>다음(&amp;N)&gt;</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_12</td><td>1042</td><td>&lt; 뒤로(&amp;B)</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_1200</td><td>1033</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_1200</td><td>1042</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_50</td><td>1033</td><td>Password</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_50</td><td>1042</td><td>암호</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_51</td><td>1033</td><td>This setup has been password protected.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_51</td><td>1042</td><td>설치는 암호로 보호되어 있습니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_9</td><td>1033</td><td>Cancel</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_9</td><td>1042</td><td>취소</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_901</td><td>1033</td><td>Enter the password required to run this setup.  Please note that passwords are case sensitive.  Click Next to continue.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_10106_ControlId_901</td><td>1042</td><td>설치 프로그램을 실행하는데 필요한 암호를 입력하십시오. 암호는 대소문자를 구분합니다. [다음]을 눌러 계속하십시오.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_10201</td><td>1033</td><td>Installation</td><td>0</td><td/><td>-1323358125</td></row>
+		<row><td>IDS__DialogId_10201</td><td>1042</td><td>설치</td><td>0</td><td/><td>-1323313101</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_1</td><td>1033</td><td>&amp;Next &gt;</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_1</td><td>1042</td><td>다음(&amp;N) &gt;</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_12</td><td>1042</td><td>&lt; 뒤로(&amp;B)</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_1200</td><td>1033</td><td>@10550,10551;1;0;;0,128,128</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_1200</td><td>1042</td><td>@10550,10551;1;0;;0,128,128</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_201</td><td>1033</td><td>c:\path\company\product\suite\version</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_201</td><td>1042</td><td>c:\path\company\product\suite\version</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_202</td><td>1033</td><td>Setup will install %P in the following folder.\n\nTo install to this folder, click Next. To install to a different folder, click Browse and select another folder.</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_202</td><td>1042</td><td>설치 프로그램이 다음 폴더에 '%P'을(를) 설치합니다.\n\n이 폴더에 설치하려면 [다음] 단추를 누르고, 다른 폴더에 설치하려면 [찾아보기] 단추를 눌러 다른 폴더를 선택하십시오.</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_31</td><td>1033</td><td>B&amp;rowse...</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_31</td><td>1042</td><td>찾아보기(&amp;R)...</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_50</td><td>1033</td><td>Choose Destination Location</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_50</td><td>1042</td><td>대상 위치 선택</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_51</td><td>1033</td><td>Select folder where setup will install files.</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_51</td><td>1042</td><td>파일을 설치할 폴더를 선택하십시오.</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_9</td><td>1033</td><td>Cancel</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_9</td><td>1042</td><td>취소</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_Negative1_1</td><td>1033</td><td>Destination Folder</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_10201_ControlId_Negative1_1</td><td>1042</td><td>대상 폴더</td><td>0</td><td/><td>-1323345330</td></row>
+		<row><td>IDS__DialogId_103</td><td>1033</td><td>Installation</td><td>0</td><td/><td>-1323356077</td></row>
+		<row><td>IDS__DialogId_103</td><td>1042</td><td>설치</td><td>0</td><td/><td>-1323311053</td></row>
+		<row><td>IDS__DialogId_103_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_103_ControlId_12</td><td>1042</td><td>&lt; 뒤로(&amp;B)</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_1200</td><td>1033</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_1200</td><td>1042</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_14_1</td><td>1033</td><td>I accept</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_14_1</td><td>1042</td><td>I accept</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_14_2</td><td>1033</td><td>I do not accept</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_14_2</td><td>1042</td><td>I do not accept</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_50</td><td>1033</td><td>License Agreement</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_50</td><td>1042</td><td>License Agreement</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_51</td><td>1033</td><td>Please read the following license agreement carefully.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_51</td><td>1042</td><td>Please read the following license agreement carefully.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_6</td><td>1033</td><td>&amp;Next&gt;</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_103_ControlId_6</td><td>1042</td><td>다음(&amp;N)&gt;</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_711</td><td>1033</td><td>Press the PAGE DOWN key to see the rest of the agreement.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_711</td><td>1042</td><td>Press the PAGE DOWN key to see the rest of the agreement.</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>IDS__DialogId_103_ControlId_712</td><td>1033</td><td>Do you accept all the terms of the preceding License Agreement?  If you choose No,  the setup will close.  To install %p, you must accept this agreement.
-</td><td>0</td><td/><td>1553804081</td></row>
+</td><td>0</td><td/><td>-1323328437</td></row>
 		<row><td>IDS__DialogId_103_ControlId_712</td><td>1042</td><td>Do you accept all the terms of the preceding License Agreement?  If you choose No,  the setup will close.  To install %p, you must accept this agreement.
-</td><td>0</td><td/><td>1553804081</td></row>
-		<row><td>IDS__DialogId_103_ControlId_9</td><td>1033</td><td>&amp;Cancel</td><td>0</td><td/><td>1553816369</td></row>
-		<row><td>IDS__DialogId_103_ControlId_9</td><td>1042</td><td>&amp;Cancel</td><td>0</td><td/><td>1553816369</td></row>
-		<row><td>IDS__DialogId_12006</td><td>1033</td><td>InstallShield Wizard</td><td>0</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006</td><td>1042</td><td>InstallShield Wizard</td><td>0</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_1</td><td>1033</td><td>&amp;Next &gt;</td><td>0</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_1</td><td>1042</td><td>Y+),QR@`)@!.`"D`(``^````</td><td>8</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_12</td><td>1042</td><td>/``@`*2T7+@H`"8`0@`I````</td><td>8</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_1200</td><td>1033</td><td>@10553,10553;1;0;;0,128,128   </td><td>0</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_1200</td><td>1042</td><td>@10553,10553;1;0;;0,128,128   </td><td>0</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_50</td><td>1033</td><td>Welcome to the InstallShield Wizard for %P</td><td>0</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_50</td><td>1042</td><td>)0!0`"``20!N`',`=`!A`&amp;P`;`!3`&amp;@`:0!E`&amp;P`9``@`%&lt;`:0!Z`&amp;$`&lt;@!D`(7'R++DLBX`</td><td>27</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_710</td><td>1033</td><td>The InstallShield Wizard will install %P on your computer.  To continue, click Next.</td><td>0</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_710</td><td>1042</td><td>20!N`',`=`!A`&amp;P`;`!3`&amp;@`:0!E`&amp;P`9``H`%(`*0`@`,BYE;RLP`"L(`#TSNC4,-'0Q2``)P`E`%``)P!$QR@`?+DI`"``),%8SFG5R++DLBX`(`#$K(W!6-4DN'2Z(`!;`.2R3,==`"``Z+*4S7RY(``$LG2Y[&lt;+&lt;PB3&amp;+@``</td><td>64</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_9</td><td>1033</td><td>Cancel</td><td>0</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12006_ControlId_9</td><td>1042</td><td>Z,V,P0``C</td><td>2</td><td/><td>1260219216</td></row>
-		<row><td>IDS__DialogId_12033</td><td>1033</td><td>InstallShield Wizard</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033</td><td>1042</td><td>InstallShield Wizard</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_1</td><td>1033</td><td>&amp;Next &gt;</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_1</td><td>1042</td><td>다음(&amp;N)&gt;</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_12</td><td>1042</td><td>&lt; 뒤로(&amp;B)</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_1200</td><td>1033</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_1200</td><td>1042</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_50</td><td>1033</td><td>Setup Type</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_50</td><td>1042</td><td>설치 유형</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_51</td><td>1033</td><td>Select the setup type that best suits your needs.</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_51</td><td>1042</td><td>사용자에게 가장 적합한 설치 유형을 선택하십시오.</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_710</td><td>1033</td><td>Click the type of setup you prefer.</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_710</td><td>1042</td><td>원하는 설치 유형을 누르십시오.</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_9</td><td>1033</td><td>Cancel</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_9</td><td>1042</td><td>취소</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_Negative1_1</td><td>1033</td><td>Description</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12033_ControlId_Negative1_1</td><td>1042</td><td>설명</td><td>0</td><td/><td>840840916</td></row>
-		<row><td>IDS__DialogId_12066</td><td>1033</td><td>InstallShield Wizard</td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066</td><td>1042</td><td>InstallShield Wizard</td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_1</td><td>1033</td><td>&amp;Next &gt;</td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_1</td><td>1042</td><td>Y+),QR@`)@!.`"D`/@``</td><td>7</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_10</td><td>1033</td><td>&amp;Print</td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_10</td><td>1042</td><td>&gt;,?$P2@`)@!0`"D`</td><td>6</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_1000_1</td><td>1033</td><td>I &amp;accept the terms of the license agreement</td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_1000_1</td><td>1042</td><td>K,"IQHRM(`#$K'W%6,&lt;@`'#(;=70Q2``V;-8QVG5R++DLB@`)@!!`"D`</td><td>21</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_1000_2</td><td>1033</td><td>I &amp;do not accept the terms of the license agreement</td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_1000_2</td><td>1042</td><td>K,"IQHRM(`#$K'W%6,&lt;@`'#(;=70Q2``V;-8QUC5P,D@`$K%M&lt;+(LN2R*``F`$0`*0``</td><td>25</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_12</td><td>1042</td><td>/``@`*2T7+@H`"8`0@`I````</td><td>8</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_1200</td><td>1033</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_1200</td><td>1042</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_50</td><td>1033</td><td>License Agreement</td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_50</td><td>1042</td><td>K,"IQHRM(`#$K'W%</td><td>6</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_51</td><td>1033</td><td>Please read the following license agreement carefully.</td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_51</td><td>1042</td><td>Y+),QR``K,"IQHRM(`#$K'W%1,&lt;@`)#'.,&amp;(UR``?&lt;&gt;TQ2``_,CMPMS"),8N````</td><td>23</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_9</td><td>1033</td><td>Cancel</td><td>0</td><td/><td>-753026321</td></row>
-		<row><td>IDS__DialogId_12066_ControlId_9</td><td>1042</td><td>Z,V,P0``C</td><td>2</td><td/><td>-753026321</td></row>
-		<row><td>ID_STRING1</td><td>1042</td><td>NewFeature1</td><td>0</td><td/><td>480013104</td></row>
-		<row><td>ID_STRING2</td><td>1033</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-191071731</td></row>
-		<row><td>ID_STRING2</td><td>1042</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-191071731</td></row>
-		<row><td>PRODUCT_KEY</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553804241</td></row>
-		<row><td>PRODUCT_KEY</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553804241</td></row>
-		<row><td>PRODUCT_NAME</td><td>1033</td><td>CUBRID 2008 R3.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553820625</td></row>
-		<row><td>PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R3.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553820625</td></row>
-		<row><td>PRODUCT_VERSION</td><td>1033</td><td>2008 R3.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553834961</td></row>
-		<row><td>PRODUCT_VERSION</td><td>1042</td><td>2008 R3.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553834961</td></row>
-		<row><td>SCRIPT_STR_0001</td><td>1033</td><td>CUBRID has already been installed in your system. Use Add/Remove Programs in Cotrol Panel to remove the old version of CUBRID and then retry it.</td><td>0</td><td/><td>-862094898</td></row>
-		<row><td>SCRIPT_STR_0001</td><td>1042</td><td>CUBRID가 이미 설치되어 있습니다. 먼저 제어판의 '프로그램 제거'기능을 통해 이전 버전을 제거한 후 다시 시도해주기 바랍니다.</td><td>0</td><td/><td>-2070053393</td></row>
-		<row><td>SCRIPT_STR_0002</td><td>1033</td><td>Make sure that all of databases and configuration files will be completely deleted. If you continue to use the existing databases, please select the "No" button. </td><td>0</td><td/><td>-862066226</td></row>
-		<row><td>SCRIPT_STR_0002</td><td>1042</td><td>데이터베이스와 설정파일을 모두 삭제 하시겠습니까?\n데이터베이스를 다시 사용하려면 '아니오'를 선택하시기 바랍니다.</td><td>0</td><td/><td>-2095138066</td></row>
-		<row><td>SCRIPT_STR_0003</td><td>1033</td><td>Comfirm Delete</td><td>0</td><td/><td>-862115346</td></row>
-		<row><td>SCRIPT_STR_0003</td><td>1042</td><td>데이터베이스 삭제 확인</td><td>0</td><td/><td>-2070041105</td></row>
-		<row><td>SCRIPT_STR_0004</td><td>1033</td><td>Completed deleting.</td><td>0</td><td/><td>-862098962</td></row>
-		<row><td>SCRIPT_STR_0004</td><td>1042</td><td>삭제가 완료되었습니다.</td><td>0</td><td/><td>-2070049455</td></row>
-		<row><td>SCRIPT_STR_0005</td><td>1033</td><td>This wizard helps you install CUBRID on your system.\n\n Make sure that database volumes created by earlier versions than CUBRID 2008 R3.0 are incompatible with CUBRID TOKEN.\nData migration is required to access old version data in CUBRID TOKEN.</td><td>0</td><td/><td>-862076370</td></row>
-		<row><td>SCRIPT_STR_0005</td><td>1042</td><td>본 설치 프로그램은 컴퓨터에 CUBRID를 설치할 것입니다.\n\nCUBRID 2008 R3.0 이전 버전에서 생성된 CUBRID 데이터베이스는 \nCUBRID TOKEN 와 호환되지 않습니다. CUBRID TOKEN 에서 사용하려면\n마이그레이션이 필요합니다.</td><td>0</td><td/><td>-2070073231</td></row>
-		<row><td>SCRIPT_STR_0006</td><td>1033</td><td>Enter a destination directory</td><td>0</td><td/><td>-862123442</td></row>
-		<row><td>SCRIPT_STR_0006</td><td>1042</td><td>설치 디렉토리 입력</td><td>0</td><td/><td>-2070037873</td></row>
-		<row><td>SCRIPT_STR_0007</td><td>1033</td><td>Please enter a destination directory to install CUBRID.</td><td>0</td><td/><td>-862115250</td></row>
-		<row><td>SCRIPT_STR_0007</td><td>1042</td><td>CUBRID를 설치할 대상 디렉토리를 입력하십시오.\n</td><td>0</td><td/><td>-2070052177</td></row>
-		<row><td>SCRIPT_STR_0008</td><td>1033</td><td>Invalid directory name. The directory name may not consist of white space.</td><td>0</td><td/><td>-862090674</td></row>
-		<row><td>SCRIPT_STR_0008</td><td>1042</td><td>대상 디렉토리 경로명에는 공백이 포함될 수 없습니다.</td><td>0</td><td/><td>-2070039889</td></row>
-		<row><td>SCRIPT_STR_0009</td><td>1033</td><td>The directory already exists.  If you continue, the existing files in the directory will be overwritten with this new version. Do you want to continue?</td><td>0</td><td/><td>-862096786</td></row>
-		<row><td>SCRIPT_STR_0009</td><td>1042</td><td>입력한 디렉토리는 이미 존재합니다. 설치를 계속 진행한다면 이전 버전의 파일들이 본 버전의 파일로 덮어쓰기 될 것입니다. 계속 진행하시겠습니까?</td><td>0</td><td/><td>-2070070577</td></row>
-		<row><td>SCRIPT_STR_0010</td><td>1033</td><td>Unable to create a directory\nPlease try again.</td><td>0</td><td/><td>-862070162</td></row>
-		<row><td>SCRIPT_STR_0010</td><td>1042</td><td>디렉토리를 생성할 수 없습니다. 다시 시도하십시오.</td><td>0</td><td/><td>-2070043953</td></row>
-		<row><td>SCRIPT_STR_0011</td><td>1033</td><td>License</td><td>0</td><td/><td>-2070063088</td></row>
-		<row><td>SCRIPT_STR_0011</td><td>1042</td><td>라이선스</td><td>0</td><td/><td>-2070065136</td></row>
-		<row><td>SCRIPT_STR_0012</td><td>1033</td><td>License agreement</td><td>0</td><td/><td>-2070078737</td></row>
-		<row><td>SCRIPT_STR_0012</td><td>1042</td><td>라이선스 동의서</td><td>0</td><td/><td>-2070072593</td></row>
-		<row><td>SCRIPT_STR_0013</td><td>1033</td><td>I accept the terms of the license agreement</td><td>0</td><td/><td>-2070056848</td></row>
-		<row><td>SCRIPT_STR_0013</td><td>1042</td><td>예 동의합니다</td><td>0</td><td/><td>-2070064401</td></row>
-		<row><td>SCRIPT_STR_0014</td><td>1033</td><td>I do not accept the terms of the license agreement</td><td>0</td><td/><td>-2070058896</td></row>
-		<row><td>SCRIPT_STR_0014</td><td>1042</td><td>아니오</td><td>0</td><td/><td>-2070054161</td></row>
-		<row><td>SCRIPT_STR_0015</td><td>1033</td><td>Unable to install CUBRID Server on the OS(Windows 9X, Windows ME).\nClient Components can be installed only.</td><td>0</td><td/><td>-862072178</td></row>
-		<row><td>SCRIPT_STR_0015</td><td>1042</td><td>Windows 9X, Windows ME에서는 CUBRID 서버를 설치할 수 없고,\n 오직 클라이언트 구성요소만 설치 가능합니다.</td><td>0</td><td/><td>-2070055055</td></row>
-		<row><td>SCRIPT_STR_0016</td><td>1033</td><td/><td>0</td><td/><td>-2070066609</td></row>
-		<row><td>SCRIPT_STR_0016</td><td>1042</td><td/><td>0</td><td/><td>-2070066609</td></row>
-		<row><td>SCRIPT_STR_0017</td><td>1033</td><td>Setup Type</td><td>0</td><td/><td>-2070054736</td></row>
-		<row><td>SCRIPT_STR_0017</td><td>1042</td><td>설치 유형</td><td>0</td><td/><td>-2070050640</td></row>
-		<row><td>SCRIPT_STR_0018</td><td>1033</td><td>Choose a Setup Type.</td><td>0</td><td/><td>-862094674</td></row>
-		<row><td>SCRIPT_STR_0018</td><td>1042</td><td>설치유형을 선택 하십시오.</td><td>0</td><td/><td>-2070084817</td></row>
-		<row><td>SCRIPT_STR_0019</td><td>1033</td><td>Setup Type : CUBRID Server Components and Client Components</td><td>0</td><td/><td>-2070076625</td></row>
-		<row><td>SCRIPT_STR_0019</td><td>1042</td><td>설치유형: CUBRID 서버 컴포넌트와 클라이언트 컴포넌트</td><td>0</td><td/><td>-2070034256</td></row>
-		<row><td>SCRIPT_STR_0020</td><td>1033</td><td>Setup Type : CUBRID Client Components</td><td>0</td><td/><td>-2070039761</td></row>
-		<row><td>SCRIPT_STR_0020</td><td>1042</td><td>설치유형: CUBRID 클라이언트 컴포넌트</td><td>0</td><td/><td>-2070030160</td></row>
-		<row><td>SCRIPT_STR_0021</td><td>1033</td><td>In case a different version of the CUBRID product is being used in other machines,\nplease note that the CUBRID TOKEN servers are only compatible with the CUBRID TOKEN clients and vice versa.\nDo you want to continue?</td><td>0</td><td/><td>-2070055087</td></row>
-		<row><td>SCRIPT_STR_0021</td><td>1042</td><td>다른 버전의 CUBRID가 각각 다른 기기에서 이용될 경우, \nCUBRID 서버 TOKEN 은 CUBRID 클라이언트 TOKEN 과만 호환됩니다.\n계속 진행하시겠습니까?</td><td>0</td><td/><td>-2070075567</td></row>
-		<row><td>SCRIPT_STR_0022</td><td>1033</td><td>Compatibility information</td><td>0</td><td/><td>-2070068401</td></row>
-		<row><td>SCRIPT_STR_0022</td><td>1042</td><td>호환성 정보</td><td>0</td><td/><td>-2070064305</td></row>
-		<row><td>SCRIPT_STR_0023</td><td>1033</td><td>Additional Options</td><td>0</td><td/><td>-2070058161</td></row>
-		<row><td>SCRIPT_STR_0023</td><td>1042</td><td>바로가기 아이콘 생성</td><td>0</td><td/><td>-2070052017</td></row>
-		<row><td>SCRIPT_STR_0024</td><td>1033</td><td>Select Additional Options to create shortcuts.</td><td>0</td><td/><td>-862096658</td></row>
-		<row><td>SCRIPT_STR_0024</td><td>1042</td><td>바로 가기 아이콘을 생성하시려면 다음 옵션을 선택하시기 바랍니다.</td><td>0</td><td/><td>-2070035633</td></row>
-		<row><td>SCRIPT_STR_0025</td><td>1033</td><td>Create Desktop Shortcut</td><td>0</td><td/><td>-862082322</td></row>
-		<row><td>SCRIPT_STR_0025</td><td>1042</td><td>데스크탑 아이콘 생성</td><td>0</td><td/><td>-2070082705</td></row>
-		<row><td>SCRIPT_STR_0026</td><td>1033</td><td>Create Quick Launch Shortcut</td><td>0</td><td/><td>-862070034</td></row>
-		<row><td>SCRIPT_STR_0026</td><td>1042</td><td>빠른 실행 아이콘 생성</td><td>0</td><td/><td>-2070076561</td></row>
-		<row><td>SCRIPT_STR_0027</td><td>1033</td><td>Create Start Menu Shortcut</td><td>0</td><td/><td>-862123250</td></row>
-		<row><td>SCRIPT_STR_0027</td><td>1042</td><td>시작 메뉴 아이콘 생성</td><td>0</td><td/><td>-2070068369</td></row>
-		<row><td>SCRIPT_STR_0028</td><td>1033</td><td>Setup is starting</td><td>0</td><td/><td>-862084338</td></row>
-		<row><td>SCRIPT_STR_0028</td><td>1042</td><td>설치를 시작합니다</td><td>0</td><td/><td>-2070081136</td></row>
-		<row><td>SCRIPT_STR_0029</td><td>1033</td><td>Destination Directory : </td><td>0</td><td/><td>-862070002</td></row>
-		<row><td>SCRIPT_STR_0029</td><td>1042</td><td>대상 디렉토리 : </td><td>0</td><td/><td>-2070039697</td></row>
-		<row><td>SCRIPT_STR_0030</td><td>1033</td><td>Shortcuts : </td><td>0</td><td/><td>-862121170</td></row>
-		<row><td>SCRIPT_STR_0030</td><td>1042</td><td>바로가기 아이콘 :</td><td>0</td><td/><td>-2070051953</td></row>
-		<row><td>SCRIPT_STR_0031</td><td>1033</td><td>Configuration files</td><td>0</td><td/><td>-862074066</td></row>
-		<row><td>SCRIPT_STR_0031</td><td>1042</td><td>설정 파일 유지</td><td>0</td><td/><td>-2070041649</td></row>
-		<row><td>SCRIPT_STR_0032</td><td>1033</td><td/><td>0</td><td/><td>-2070080913</td></row>
-		<row><td>SCRIPT_STR_0032</td><td>1042</td><td/><td>0</td><td/><td>-2070080913</td></row>
-		<row><td>SCRIPT_STR_0033</td><td>1033</td><td/><td>0</td><td/><td>-2070076817</td></row>
-		<row><td>SCRIPT_STR_0033</td><td>1042</td><td/><td>0</td><td/><td>-2070076817</td></row>
-		<row><td>SCRIPT_STR_0034</td><td>1033</td><td>Microsoft Visual C++ 2008 Redistributable Package</td><td>0</td><td/><td>-862078098</td></row>
-		<row><td>SCRIPT_STR_0034</td><td>1042</td><td>Microsoft Visual C++ 2008 재배포 가능 패키지</td><td>0</td><td/><td>-2070027377</td></row>
-		<row><td>SCRIPT_STR_0035</td><td>1033</td><td>Microsoft Visual C++ 2008 Redistributable Package is not installed in this machine.\nIf you continue installing, one or more components of CUBRID 2008 may no longer work correctly.\n(CUBRID download web page may provide further details.)\nDo you want to quit Setup now? </td><td>0</td><td/><td>-862110834</td></row>
-		<row><td>SCRIPT_STR_0035</td><td>1042</td><td>Microsoft Visual C++ 2008 재배포 패키지가 설치되어 있지 않습니다.\n계속 설치를 진행할 경우 CUBRID 2008의 일부 구성요소가 정상적으로 동작하지 않을 수 있습니다.\n(상세 정보는 CUBRID 다운로드 페이지에서 확인 가능합니다.)\nCUBRID 2008 설치를 중단 하시겠습니까?</td><td>0</td><td/><td>-862092402</td></row>
-		<row><td>SCRIPT_STR_0036</td><td>1033</td><td>CUBRID Manager is available only on JAVA environments. \nJRE or JDK  is  required in this machine to run CUBRID normally after installing CUBRID.</td><td>0</td><td/><td>-862121042</td></row>
-		<row><td>SCRIPT_STR_0036</td><td>1042</td><td>JAVA가 설치되어 있지 않거나 사용할 수 없는 상태이기 때문에 CUBRID 설치 완료 후 CUBRID Manager를 사용할 수 없습니다.\nCUBRID Manager를 사용하려면 CUBRID 설치 후 JAVA를 설치하시기 바랍니다.\n</td><td>0</td><td/><td>-2095185138</td></row>
-		<row><td>SCRIPT_STR_0037</td><td>1033</td><td>Configuration files(.conf or .pass) already exist. \nDo you want to keep the existing files? </td><td>0</td><td/><td>-862106770</td></row>
-		<row><td>SCRIPT_STR_0037</td><td>1042</td><td>설정파일(.conf또는 .pass파일)이 이미 존재합니다.\n기존 파일을 유지하시겠습니까?</td><td>0</td><td/><td>-862123154</td></row>
-		<row><td>SCRIPT_STR_0038</td><td>1033</td><td>Detected files or components(TOKEN) which are locked.\nStop CUBRID services and terminate all client programs and CUBRID Service Tray. Then try again.\nContinue to uninstall?</td><td>0</td><td/><td>-862102578</td></row>
-		<row><td>SCRIPT_STR_0038</td><td>1042</td><td>잠금된 파일(TOKEN)이 발견되었습니다.\nCUBRID 서비스를 중지시키고, 모든 클라이언트 프로그램과 CUBRID 서비스 트레이를 종료후 계속 진행하십시오.\n계속 진행하시겠습니까?</td><td>0</td><td/><td>-2070026415</td></row>
-		<row><td>SCRIPT_STR_0039</td><td>1033</td><td>Uninstall failed.\nStop CUBRID services and terminate all client programs and CUBRID Service Tray first and then try again.</td><td>0</td><td/><td>-862082098</td></row>
-		<row><td>SCRIPT_STR_0039</td><td>1042</td><td>삭제가 중단되었습니다.\nCUBRID 서비스를 중지시키고, 모든 클라이언트 프로그램과 CUBRID 서비스 트레이를 종료후, 다시 삭제해 주시기 바랍니다. </td><td>0</td><td/><td>-862098514</td></row>
-		<row><td>SCRIPT_STR_0040</td><td>1033</td><td>CUBRID Manager Client</td><td>0</td><td/><td>-2070062097</td></row>
-		<row><td>SCRIPT_STR_0040</td><td>1042</td><td>CUBRID Manager Client</td><td>0</td><td/><td>-2070062097</td></row>
-		<row><td>SCRIPT_STR_0041</td><td>1033</td><td>Failed to create Quick Launch Shortcut.</td><td>0</td><td/><td>-862123026</td></row>
-		<row><td>SCRIPT_STR_0041</td><td>1042</td><td>빠른 실행 아이콘 생성에 실패했습니다.</td><td>0</td><td/><td>-2070049809</td></row>
-		<row><td>SCRIPT_STR_0042</td><td>1033</td><td>CUBRID Manual</td><td>0</td><td/><td>-2070043665</td></row>
-		<row><td>SCRIPT_STR_0042</td><td>1042</td><td>CUBRID Manual</td><td>0</td><td/><td>-2070041617</td></row>
-		<row><td>SCRIPT_STR_0043</td><td>1033</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-2070037521</td></row>
-		<row><td>SCRIPT_STR_0043</td><td>1042</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-2070037521</td></row>
-		<row><td>SCRIPT_STR_0044</td><td>1033</td><td>Failed to configure registry for CUBRID. </td><td>0</td><td/><td>-862104594</td></row>
-		<row><td>SCRIPT_STR_0044</td><td>1042</td><td>CUBRID 사용을 위한 레지스트리를 구성 할 수 없습니다.</td><td>0</td><td/><td>-2070070257</td></row>
-		<row><td>SCRIPT_STR_0045</td><td>1033</td><td>Failed to register with Windows Service</td><td>0</td><td/><td>-862116722</td></row>
-		<row><td>SCRIPT_STR_0045</td><td>1042</td><td>윈도우 서비스에 등록되지 않았습니다.</td><td>0</td><td/><td>-2070062065</td></row>
-		<row><td>SCRIPT_STR_0046</td><td>1033</td><td>Do you want to make sample databases(demodb)?</td><td>0</td><td/><td>-2070047729</td></row>
-		<row><td>SCRIPT_STR_0046</td><td>1042</td><td>샘플 데이터베이스(demodb)를 생성하겠습니까?</td><td>0</td><td/><td>-2070043633</td></row>
-		<row><td>SCRIPT_STR_0047</td><td>1033</td><td>Confirm the sample databases(demodb).</td><td>0</td><td/><td>-862077842</td></row>
-		<row><td>SCRIPT_STR_0047</td><td>1042</td><td>샘플 데이터베이스(demodb)를 확인하십시오.</td><td>0</td><td/><td>-2070029297</td></row>
-		<row><td>SCRIPT_STR_0048</td><td>1033</td><td>Failed to configure registry for CUBRID Manager Client.</td><td>0</td><td/><td>-862098290</td></row>
-		<row><td>SCRIPT_STR_0048</td><td>1042</td><td>CUBRID 매니저 클라이언트를 위한 레지스트리 구성을 생성할 수 없습니다.</td><td>0</td><td/><td>-2070076369</td></row>
-		<row><td>SCRIPT_STR_0049</td><td>1033</td><td>Failed to configure registry. </td><td>0</td><td/><td>-862090098</td></row>
-		<row><td>SCRIPT_STR_0049</td><td>1042</td><td>레지스트리 구성에 실패했습니다.</td><td>0</td><td/><td>-2070043601</td></row>
-		<row><td>SCRIPT_STR_0050</td><td>1033</td><td>Failed to remove CUBRIDProvider from the registery.</td><td>0</td><td/><td>-862079858</td></row>
-		<row><td>SCRIPT_STR_0050</td><td>1042</td><td>CUBRIDProvider를 제거하지 못했습니다.</td><td>0</td><td/><td>-2070056048</td></row>
-		<row><td>SCRIPT_STR_0051</td><td>1033</td><td>Failed to register CUBRIDProvider to the registery.</td><td>0</td><td/><td>-862114642</td></row>
-		<row><td>SCRIPT_STR_0051</td><td>1042</td><td>CUBRIDProvider를 등록하지 못했습니다.</td><td>0</td><td/><td>-2070070384</td></row>
-		<row><td>TITLE_CAPTIONBAR</td><td>1033</td><td>CUBRID Installation</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-2070058737</td></row>
-		<row><td>TITLE_CAPTIONBAR</td><td>1042</td><td>CUBRID 설치</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-2070038257</td></row>
-		<row><td>TITLE_MAIN</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553798129</td></row>
-		<row><td>TITLE_MAIN</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>1553798129</td></row>
+</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_9</td><td>1033</td><td>&amp;Cancel</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_103_ControlId_9</td><td>1042</td><td>&amp;Cancel</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12006</td><td>1033</td><td>Installation</td><td>0</td><td/><td>-1323354029</td></row>
+		<row><td>IDS__DialogId_12006</td><td>1042</td><td>설치</td><td>0</td><td/><td>-1323309005</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_1</td><td>1033</td><td>&amp;Next &gt;</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_1</td><td>1042</td><td>다음(&amp;N) &gt;</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_12</td><td>1042</td><td>&lt; 뒤로(&amp;B)</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_1200</td><td>1033</td><td>@10553,10553;1;0;;0,128,128   </td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_1200</td><td>1042</td><td>@10553,10553;1;0;;0,128,128   </td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_50</td><td>1033</td><td>Welcome to the Installation Wizard for %P</td><td>0</td><td/><td>-1323353933</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_50</td><td>1042</td><td>%P 설치 마법사입니다.</td><td>0</td><td/><td>-1323327405</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_710</td><td>1033</td><td>The Installation Wizard will install %P on your computer.  To continue, click Next.</td><td>0</td><td/><td>-1323349837</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_710</td><td>1042</td><td>설치 마법사가 컴퓨터에 '%P'을(를) 설치합니다. 계속하려면 [다음] 단추를 누르십시오.</td><td>0</td><td/><td>-1323321261</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_9</td><td>1033</td><td>Cancel</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_12006_ControlId_9</td><td>1042</td><td>취소</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12009</td><td>1033</td><td>Installation</td><td>0</td><td/><td>-1323345837</td></row>
+		<row><td>IDS__DialogId_12009</td><td>1042</td><td>설치</td><td>0</td><td/><td>-1323366317</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_1</td><td>1033</td><td>&amp;Next &gt;</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_1</td><td>1042</td><td>다음(&amp;N) &gt;</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_12</td><td>1042</td><td>&lt; 뒤로(&amp;B)</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_1200</td><td>1033</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_1200</td><td>1042</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_196</td><td>1033</td><td>B&amp;rowse...</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_196</td><td>1042</td><td>찾아보기(&amp;R)...</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_50</td><td>1033</td><td>Setup Type</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_50</td><td>1042</td><td>설치 유형</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_501_1</td><td>1033</td><td>Typical</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_501_1</td><td>1042</td><td>표준 설치</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_501_2</td><td>1033</td><td>Compact</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_501_2</td><td>1042</td><td>최소 설치</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_501_3</td><td>1033</td><td>Custom</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_501_3</td><td>1042</td><td>사용자 정의 설치</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_51</td><td>1033</td><td>Select the setup type that best suits your needs.</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_51</td><td>1042</td><td>사용자에게 가장 적합한 설치 유형을 선택하십시오.</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_701</td><td>1033</td><td>Program will be installed with the most common options. Recommended for most users.</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_701</td><td>1042</td><td>가장 일반적인 옵션만 설치합니다. 대부분의 사용자에게 권장됩니다.</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_702</td><td>1033</td><td>Program will be installed with minimum required options.</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_702</td><td>1042</td><td>필요한 최소 옵션만 설치합니다.</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_703</td><td>1033</td><td>You may select the options you want to install. Recommended for advanced users.</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_703</td><td>1042</td><td>설치할 옵션을 선택할 수 있습니다. 고급 사용자에게 권장됩니다.</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_710</td><td>1033</td><td>Click the type of setup you prefer. </td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_710</td><td>1042</td><td>원하는 설치 유형을 선택하십시오. </td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_715</td><td>1033</td><td>c:\path\company\product</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_715</td><td>1042</td><td>c:\path\company\product</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_9</td><td>1033</td><td>Cancel</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_9</td><td>1042</td><td>취소</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_Negative1_1</td><td>1033</td><td>Destination Folder</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12009_ControlId_Negative1_1</td><td>1042</td><td>대상 폴더</td><td>0</td><td/><td>-1323344910</td></row>
+		<row><td>IDS__DialogId_12033</td><td>1033</td><td>Installation</td><td>0</td><td/><td>-1323343789</td></row>
+		<row><td>IDS__DialogId_12033</td><td>1042</td><td>설치</td><td>0</td><td/><td>-1323364269</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_1</td><td>1033</td><td>&amp;Next &gt;</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_1</td><td>1042</td><td>다음(&amp;N) &gt;</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_12</td><td>1042</td><td>&lt; 뒤로(&amp;B)</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_1200</td><td>1033</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_1200</td><td>1042</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_50</td><td>1033</td><td>Setup Type</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_50</td><td>1042</td><td>설치 유형</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_51</td><td>1033</td><td>Select the setup type that best suits your needs.</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_51</td><td>1042</td><td>사용자에게 가장 적합한 설치 유형을 선택하십시오.</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_710</td><td>1033</td><td>Click the type of setup you prefer.</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_710</td><td>1042</td><td>원하는 설치 유형을 누르십시오.</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_9</td><td>1033</td><td>Cancel</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_9</td><td>1042</td><td>취소</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_Negative1_1</td><td>1033</td><td>Description</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12033_ControlId_Negative1_1</td><td>1042</td><td>설명</td><td>0</td><td/><td>-1323324430</td></row>
+		<row><td>IDS__DialogId_12066</td><td>1033</td><td>Installation</td><td>0</td><td/><td>-1323343789</td></row>
+		<row><td>IDS__DialogId_12066</td><td>1042</td><td>설치</td><td>0</td><td/><td>-1323362221</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_1</td><td>1033</td><td>&amp;Next &gt;</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_1</td><td>1042</td><td>다음(&amp;N)&gt;</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_10</td><td>1033</td><td>&amp;Print</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_10</td><td>1042</td><td>인쇄(&amp;P)</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_1000_1</td><td>1033</td><td>I &amp;accept the terms of the license agreement</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_1000_1</td><td>1042</td><td>사용권 계약의 조항에 동의합니다(&amp;A)</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_1000_2</td><td>1033</td><td>I &amp;do not accept the terms of the license agreement</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_1000_2</td><td>1042</td><td>사용권 계약의 조항에 동의하지 않습니다(&amp;D)</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_12</td><td>1033</td><td>&lt; &amp;Back</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_12</td><td>1042</td><td>&lt; 뒤로(&amp;B)</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_1200</td><td>1033</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_1200</td><td>1042</td><td>@10550,10551;1;0;;0,128,128   </td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_2</td><td>1033</td><td>C</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_2</td><td>1042</td><td>C</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_50</td><td>1033</td><td>License Agreement</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_50</td><td>1042</td><td>사용권 계약</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_51</td><td>1033</td><td>Please read the following license agreement carefully.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_51</td><td>1042</td><td>다음 사용권 계약을 자세히 읽어 주십시오.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_9</td><td>1033</td><td>Cancel</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>IDS__DialogId_12066_ControlId_9</td><td>1042</td><td>취소</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>ID_STRING10</td><td>1033</td><td>CUBRID OLEDB</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>ID_STRING10</td><td>1042</td><td>CUBRID OLEDB</td><td>0</td><td/><td>-1189141238</td></row>
+		<row><td>ID_STRING11</td><td>1033</td><td>CUBRID OLEDB Driver setup...</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>ID_STRING11</td><td>1042</td><td>CUBRID OLEDB Driver setup...</td><td>0</td><td/><td>-1189145334</td></row>
+		<row><td>ID_STRING12</td><td>1033</td><td>JDBC Driver</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>ID_STRING12</td><td>1042</td><td>JDBC Driver</td><td>0</td><td/><td>-1189147382</td></row>
+		<row><td>ID_STRING13</td><td>1033</td><td>JDBC Driver Setup...</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>ID_STRING13</td><td>1042</td><td>JDBC Driver Setup...</td><td>0</td><td/><td>-1189090070</td></row>
+		<row><td>ID_STRING14</td><td>1033</td><td>CCI Library</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>ID_STRING14</td><td>1042</td><td>CCI Library</td><td>0</td><td/><td>-1189094166</td></row>
+		<row><td>ID_STRING15</td><td>1033</td><td>CCI Library Setup...</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>ID_STRING15</td><td>1042</td><td>CCI Library Setup...</td><td>0</td><td/><td>-1189098262</td></row>
+		<row><td>ID_STRING17</td><td>1033</td><td>CUBRID Manager Client</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>ID_STRING17</td><td>1042</td><td>CUBRID Manager Client</td><td>0</td><td/><td>-1189100310</td></row>
+		<row><td>ID_STRING18</td><td>1033</td><td>CUBRID Manager Client Setup...</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>ID_STRING18</td><td>1042</td><td>CUBRID Manager Client Setup...</td><td>0</td><td/><td>-1189110550</td></row>
+		<row><td>ID_STRING2</td><td>1033</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>ID_STRING2</td><td>1042</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>ID_STRING20</td><td>1033</td><td>CUBRID Setup...</td><td>0</td><td/><td>-1323314993</td></row>
+		<row><td>ID_STRING20</td><td>1042</td><td>CUBRID Setup...</td><td>0</td><td/><td>-1323314993</td></row>
+		<row><td>ID_STRING22</td><td>1033</td><td>CUBRID ODBC</td><td>0</td><td/><td>-1323357937</td></row>
+		<row><td>ID_STRING22</td><td>1042</td><td>CUBRID ODBC</td><td>0</td><td/><td>-1323357937</td></row>
+		<row><td>ID_STRING23</td><td>1033</td><td>CUBRID ODBC Driver Setup...</td><td>0</td><td/><td>-1323345649</td></row>
+		<row><td>ID_STRING23</td><td>1042</td><td>CUBRID ODBC Driver Setup...</td><td>0</td><td/><td>-1323345649</td></row>
+		<row><td>ID_STRING3</td><td>1033</td><td>CUBRID</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>ID_STRING3</td><td>1042</td><td>CUBRID</td><td>0</td><td/><td>-1189139222</td></row>
+		<row><td>ID_STRING4</td><td>1033</td><td>CUBRID Setup...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>ID_STRING4</td><td>1042</td><td>CUBRID Setup...</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>ID_STRING6</td><td>1033</td><td>CUBRID</td><td>0</td><td/><td>-1323329329</td></row>
+		<row><td>ID_STRING6</td><td>1042</td><td>CUBRID</td><td>0</td><td/><td>-1323329329</td></row>
+		<row><td>ID_STRING7</td><td>1033</td><td>CUBRID ODBC</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>ID_STRING7</td><td>1042</td><td>CUBRID ODBC</td><td>0</td><td/><td>-1189126934</td></row>
+		<row><td>ID_STRING8</td><td>1033</td><td>CUBRID ODBC Driver Setup...</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>ID_STRING8</td><td>1042</td><td>CUBRID ODBC Driver Setup...</td><td>0</td><td/><td>-1189116694</td></row>
+		<row><td>ID_STRING9</td><td>1033</td><td>Copying files...</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>ID_STRING9</td><td>1042</td><td>파일 복사 중...</td><td>0</td><td/><td>-1189116303</td></row>
+		<row><td>IFX_COMPANY _NAME</td><td>1033</td><td>CUBRID</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>IFX_COMPANY _NAME</td><td>1042</td><td>CUBRID</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>IFX_PRODUCT_KEY</td><td>1033</td><td/><td>0</td><td/><td>-1323326126</td></row>
+		<row><td>IFX_PRODUCT_KEY</td><td>1042</td><td/><td>0</td><td/><td>-1323326126</td></row>
+		<row><td>IFX_PRODUCT_NAME</td><td>1033</td><td>CUBRID 2008 R4.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>IFX_PRODUCT_NAME</td><td>1042</td><td>CUBRID 2008 R4.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>IFX_PRODUCT_VERSION</td><td>1033</td><td>2008 R4.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>IFX_PRODUCT_VERSION</td><td>1042</td><td>2008 R4.0</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>IFX_SETUP_TITLE</td><td>1033</td><td>CUBRID Installation</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323342357</td></row>
+		<row><td>IFX_SETUP_TITLE</td><td>1042</td><td>CUBRID 설치</td><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0001</td><td>1033</td><td>CUBRID has already been installed in your system. Use Add/Remove Programs in Cotrol Panel to remove the old version of CUBRID and then retry it.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0001</td><td>1042</td><td>CUBRID가 이미 설치되어 있습니다. 먼저 제어판의 '프로그램 제거'기능을 통해 이전 버전을 제거한 후 다시 시도해주기 바랍니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0002</td><td>1033</td><td>Make sure that all of databases and configuration files will be completely deleted. If you continue to use the existing databases, please select the "No" button. </td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0002</td><td>1042</td><td>데이터베이스와 설정파일을 모두 삭제 하시겠습니까?\n데이터베이스를 다시 사용하려면 '아니오'를 선택하시기 바랍니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0003</td><td>1033</td><td>Comfirm Delete</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0003</td><td>1042</td><td>데이터베이스 삭제 확인</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0004</td><td>1033</td><td>Completed deleting.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0004</td><td>1042</td><td>삭제가 완료되었습니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0005</td><td>1033</td><td>This wizard will help you install CUBRID on your system.\n Remember that the database volumes created by previous versions of CUBRID are incompatible with CUBRID 2008 R4.0. If you want to use CUBRID 2008 R4.0, migrate your data from previous version.</td><td>0</td><td/><td>-1054896374</td></row>
+		<row><td>SCRIPT_STR_0005</td><td>1042</td><td>본 설치 프로그램은 컴퓨터에 CUBRID를 설치할 것입니다.\n\nCUBRID 2008 R4.0 이전 버전에서 생성된 CUBRID 데이터베이스는 CUBRID TOKEN 와 호환되지 않습니다. CUBRID TOKEN 에서 사용하려면 마이그레이션이 필요합니다.</td><td>0</td><td/><td>-1323333969</td></row>
+		<row><td>SCRIPT_STR_0006</td><td>1033</td><td>Enter a destination directory</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0006</td><td>1042</td><td>설치 디렉토리 입력</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0007</td><td>1033</td><td>Please enter a destination directory to install CUBRID.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0007</td><td>1042</td><td>CUBRID를 설치할 대상 디렉토리를 입력하십시오.\n</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0008</td><td>1033</td><td>Invalid directory name. The directory name may not consist of white space.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0008</td><td>1042</td><td>대상 디렉토리 경로명에는 공백이 포함될 수 없습니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0009</td><td>1033</td><td>The directory already exists.  If you continue, the existing files in the directory will be overwritten with this new version. Do you want to continue?</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0009</td><td>1042</td><td>입력한 디렉토리는 이미 존재합니다. 설치를 계속 진행한다면 이전 버전의 파일들이 본 버전의 파일로 덮어쓰기 될 것입니다. 계속 진행하시겠습니까?</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0010</td><td>1033</td><td>Unable to create a directory\nPlease try again.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0010</td><td>1042</td><td>디렉토리를 생성할 수 없습니다. 다시 시도하십시오.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0011</td><td>1033</td><td>License</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0011</td><td>1042</td><td>라이선스</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0012</td><td>1033</td><td>License agreement</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0012</td><td>1042</td><td>라이선스 동의서</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0013</td><td>1033</td><td>I accept the terms of the license agreement</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0013</td><td>1042</td><td>예 동의합니다</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0014</td><td>1033</td><td>I do not accept the terms of the license agreement</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0014</td><td>1042</td><td>아니오</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0015</td><td>1033</td><td>Unable to install CUBRID Server on the OS(Windows 9X, Windows ME).\nClient Components can be installed only.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0015</td><td>1042</td><td>Windows 9X, Windows ME에서는 CUBRID 서버를 설치할 수 없고,\n 오직 클라이언트 구성요소만 설치 가능합니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0016</td><td>1033</td><td/><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0016</td><td>1042</td><td/><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0017</td><td>1033</td><td>Setup Type</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0017</td><td>1042</td><td>설치 유형</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0018</td><td>1033</td><td>Choose a Setup Type.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0018</td><td>1042</td><td>설치유형을 선택 하십시오.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0019</td><td>1033</td><td>Setup Type : CUBRID Server Components and Client Components</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0019</td><td>1042</td><td>설치유형: CUBRID 서버 컴포넌트와 클라이언트 컴포넌트</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0020</td><td>1033</td><td>Setup Type : CUBRID Client Components</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0020</td><td>1042</td><td>설치유형: CUBRID 클라이언트 컴포넌트</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0021</td><td>1033</td><td>In case a different version of the CUBRID product is being used in other machines,\nplease note that the CUBRID TOKEN servers are only compatible with the CUBRID TOKEN clients and vice versa.\nDo you want to continue?</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0021</td><td>1042</td><td>다른 버전의 CUBRID가 각각 다른 기기에서 이용될 경우, \nCUBRID 서버 TOKEN 은 CUBRID 클라이언트 TOKEN 이상에서만 호환됩니다.\n계속 진행하시겠습니까?</td><td>0</td><td/><td>1914636370</td></row>
+		<row><td>SCRIPT_STR_0022</td><td>1033</td><td>Compatibility information</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0022</td><td>1042</td><td>호환성 정보</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0023</td><td>1033</td><td>Additional Options</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0023</td><td>1042</td><td>바로가기 아이콘 생성</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0024</td><td>1033</td><td>Select Additional Options to create shortcuts.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0024</td><td>1042</td><td>바로 가기 아이콘을 생성하시려면 다음 옵션을 선택하시기 바랍니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0025</td><td>1033</td><td>Create Desktop Shortcut</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0025</td><td>1042</td><td>데스크탑 아이콘 생성</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0026</td><td>1033</td><td>Create Quick Launch Shortcut</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0026</td><td>1042</td><td>빠른 실행 아이콘 생성</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0027</td><td>1033</td><td>Create Start Menu Shortcut</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0027</td><td>1042</td><td>시작 메뉴 아이콘 생성</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0028</td><td>1033</td><td>Setup is starting</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0028</td><td>1042</td><td>설치를 시작합니다</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0029</td><td>1033</td><td>Destination Directory : </td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0029</td><td>1042</td><td>대상 디렉토리 : </td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0030</td><td>1033</td><td>Shortcuts : </td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0030</td><td>1042</td><td>바로가기 아이콘 :</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0031</td><td>1033</td><td>Configuration files</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0031</td><td>1042</td><td>설정 파일 유지</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0032</td><td>1033</td><td/><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0032</td><td>1042</td><td/><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0033</td><td>1033</td><td/><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0033</td><td>1042</td><td/><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0034</td><td>1033</td><td>Microsoft Visual C++ 2008 Redistributable Package</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0034</td><td>1042</td><td>Microsoft Visual C++ 2008 재배포 가능 패키지</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0035</td><td>1033</td><td>Microsoft Visual C++ 2008 Redistributable Package is not installed in this machine.\nIf you continue installing, one or more components of CUBRID 2008 may no longer work correctly.\n(CUBRID download web page may provide further details.)\nDo you want to quit Setup now? </td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0035</td><td>1042</td><td>Microsoft Visual C++ 2008 재배포 패키지가 설치되어 있지 않습니다.\n계속 설치를 진행할 경우 CUBRID 2008의 일부 구성요소가 정상적으로 동작하지 않을 수 있습니다.\n(상세 정보는 CUBRID 다운로드 페이지에서 확인 가능합니다.)\nCUBRID 2008 설치를 중단 하시겠습니까?</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0036</td><td>1033</td><td>CUBRID Manager is available only on JAVA environments. \nJRE or JDK  is  required in this machine to run CUBRID normally after installing CUBRID.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0036</td><td>1042</td><td>JAVA가 설치되어 있지 않거나 사용할 수 없는 상태이기 때문에 CUBRID 설치 완료 후 CUBRID Manager를 사용할 수 없습니다.\nCUBRID Manager를 사용하려면 CUBRID 설치 후 JAVA를 설치하시기 바랍니다.\n</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0037</td><td>1033</td><td>Configuration files(.conf or .pass) already exist. \nDo you want to keep the existing files? </td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0037</td><td>1042</td><td>설정파일(.conf또는 .pass파일)이 이미 존재합니다.\n기존 파일을 유지하시겠습니까?</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0038</td><td>1033</td><td>Detected files or components(TOKEN) which are locked.\nStop CUBRID services and terminate all client programs. Then try again.\nContinue to uninstall?</td><td>0</td><td/><td>-1046500816</td></row>
+		<row><td>SCRIPT_STR_0038</td><td>1042</td><td>잠금된 파일(TOKEN)이 발견되었습니다.\nCUBRID 서비스를 중지시키고, 모든 클라이언트 프로그램을 종료 후 계속 진행하십시오.\n계속 진행하시겠습니까?</td><td>0</td><td/><td>-1046519410</td></row>
+		<row><td>SCRIPT_STR_0039</td><td>1033</td><td>Uninstall failed.\nStop CUBRID services and terminate all client programs and then try again.</td><td>0</td><td/><td>-1046486674</td></row>
+		<row><td>SCRIPT_STR_0039</td><td>1042</td><td>삭제가 중단되었습니다.\nCUBRID 서비스를 중지시키고, 모든 클라이언트 프로그램을 종료 후, 다시 삭제해 주시기 바랍니다. </td><td>0</td><td/><td>-1046531856</td></row>
+		<row><td>SCRIPT_STR_0040</td><td>1033</td><td>CUBRID Manager Client</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0040</td><td>1042</td><td>CUBRID Manager Client</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0041</td><td>1033</td><td>Failed to create Quick Launch Shortcut.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0041</td><td>1042</td><td>빠른 실행 아이콘 생성에 실패했습니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0042</td><td>1033</td><td>CUBRID Manual</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0042</td><td>1042</td><td>CUBRID Manual</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0043</td><td>1033</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0043</td><td>1042</td><td>CUBRID Service Tray</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0044</td><td>1033</td><td>Failed to configure registry for CUBRID. </td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0044</td><td>1042</td><td>CUBRID 사용을 위한 레지스트리를 구성 할 수 없습니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0045</td><td>1033</td><td>Failed to register with Windows Service</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0045</td><td>1042</td><td>윈도우 서비스에 등록되지 않았습니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0046</td><td>1033</td><td>Do you want to create a sample 'demodb' database?</td><td>0</td><td/><td>-1189098454</td></row>
+		<row><td>SCRIPT_STR_0046</td><td>1042</td><td>샘플 'demodb' 데이터베이스를 생성하겠습니까?</td><td>0</td><td/><td>-1189122998</td></row>
+		<row><td>SCRIPT_STR_0047</td><td>1033</td><td>Creating the sample database.</td><td>0</td><td/><td>-1189104566</td></row>
+		<row><td>SCRIPT_STR_0047</td><td>1042</td><td>샘플 데이터베이스 생성.</td><td>0</td><td/><td>-1189090230</td></row>
+		<row><td>SCRIPT_STR_0048</td><td>1033</td><td>Failed to configure registry for CUBRID Manager Client.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0048</td><td>1042</td><td>CUBRID 매니저 클라이언트를 위한 레지스트리 구성을 생성할 수 없습니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0049</td><td>1033</td><td>Failed to configure registry. </td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0049</td><td>1042</td><td>레지스트리 구성에 실패했습니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0050</td><td>1033</td><td>Failed to remove CUBRIDProvider from the registery.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0050</td><td>1042</td><td>CUBRIDProvider를 제거하지 못했습니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0051</td><td>1033</td><td>Failed to register CUBRIDProvider to the registery.</td><td>0</td><td/><td>-1323342357</td></row>
+		<row><td>SCRIPT_STR_0051</td><td>1042</td><td>CUBRIDProvider를 등록하지 못했습니다.</td><td>0</td><td/><td>-1323328437</td></row>
+		<row><td>SCRIPT_STR_0052</td><td>1033</td><td>TOKEN is running. Terminate it?</td><td>0</td><td/><td>-1046510738</td></row>
+		<row><td>SCRIPT_STR_0052</td><td>1042</td><td>TOKEN가 실행 중입니다. 자동 종료 후 진행하겠습니까?</td><td>0</td><td/><td>-1046519536</td></row>
+		<row><td>SUPPORT_URL</td><td>1033</td><td>http://www.cubrid.com</td><td>0</td><td/><td>-1323323310</td></row>
+		<row><td>SUPPORT_URL</td><td>1042</td><td>http://www.cubrid.com</td><td>0</td><td/><td>-1323318674</td></row>
+		<row><td>TITLE_MAIN</td><td>1033</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323327310</td></row>
+		<row><td>TITLE_MAIN</td><td>1042</td><td/><td>0</td><td>Do not delete. Setup requires this Identifier even if your script doesn't use it.</td><td>-1323327310</td></row>
 	</table>
 
 	<table name="ISVirtualDirectory">
@@ -1318,40 +1389,37 @@
 		<col key="yes" def="s72">Property</col>
 		<col def="S0">Value</col>
 		<row><td>ActiveLanguage</td><td>1033</td></row>
-		<row><td>ApplicationType</td><td/></row>
 		<row><td>Comments</td><td/></row>
-		<row><td>CurrentMedia</td><td dt:dt="bin.base64" md5="89642c442a80eb8375fdb042e8c34789">
-QwBVAEIAUgBJAEQAXwB4ADgANgABAE0AZQBkAGkAYQA=
+		<row><td>CurrentMedia</td><td dt:dt="bin.base64" md5="97a1281bbb3de0de419f13bc54cbe86a">
+QwBVAEIAUgBJAEQAAQBNAGUAZABpAGEA
 			</td></row>
 		<row><td>DoMaintenance</td><td>1</td></row>
 		<row><td>GenerateMIF</td><td>0</td></row>
 		<row><td>ISCompilerOption_CompileBeforeBuild</td><td>1</td></row>
-		<row><td>ISCompilerOption_Debug</td><td>1</td></row>
+		<row><td>ISCompilerOption_Debug</td><td>0</td></row>
 		<row><td>ISCompilerOption_IncludePath</td><td/></row>
+		<row><td>ISCompilerOption_LibraryPath</td><td/></row>
 		<row><td>ISCompilerOption_MaxErrors</td><td>50</td></row>
 		<row><td>ISCompilerOption_MaxWarnings</td><td>50</td></row>
 		<row><td>ISCompilerOption_OutputPath</td><td>&lt;ISProjectDataFolder&gt;\Script Files</td></row>
-		<row><td>ISCompilerOption_PreProcessor</td><td>ISINCLUDE_NO_WINAPI_H</td></row>
+		<row><td>ISCompilerOption_PreProcessor</td><td>_ISSCRIPT_NEW_STYLE_DLG_DEFS</td></row>
 		<row><td>ISCompilerOption_WarningLevel</td><td>3</td></row>
 		<row><td>ISCompilerOption_WarningsAsErrors</td><td>0</td></row>
-		<row><td>ISDialogLangID</td><td/></row>
 		<row><td>ISEnableUpdateService</td><td>0</td></row>
 		<row><td>ISEngineBinding</td><td>1</td></row>
 		<row><td>ISMaintenanceExperience</td><td>0</td></row>
-		<row><td>ISOSFilter</td><td>30474448</td></row>
+		<row><td>ISOSFilter</td><td>-1</td></row>
 		<row><td>ISShowUpdateUI</td><td>1</td></row>
-		<row><td>ISUSLock</td><td>{40A28561-105D-4276-9207-CBB7B7C75D8C}</td></row>
-		<row><td>ISUSSignature</td><td>{7EB4F4C7-C071-46EE-9A13-0EE09A71E8C4}</td></row>
-		<row><td>MIFFileName</td><td>Status.mif</td></row>
+		<row><td>MIFFileName</td><td>Status</td></row>
 		<row><td>MIFSerial</td><td/></row>
-		<row><td>Owner</td><td>CUBRID</td></row>
+		<row><td>Owner</td><td/></row>
 		<row><td>SaveAsSchema</td><td/></row>
 		<row><td>SccEnabled</td><td>0</td></row>
 		<row><td>SccPath</td><td/></row>
 		<row><td>SchemaVersion</td><td>769</td></row>
 		<row><td>Script</td><td>1</td></row>
 		<row><td>SetupArguments</td><td/></row>
-		<row><td>Skin</td><td>&lt;ISProductFolder&gt;\Skins\Slate.skin</td></row>
+		<row><td>Skin</td><td/></row>
 		<row><td>TARGETDIR</td><td>&lt;FOLDER_APPLICATIONS&gt;\&lt;IFX_COMPANY_NAME&gt;\&lt;IFX_PRODUCT_NAME&gt;</td></row>
 		<row><td>Type</td><td>PRO</td></row>
 	</table>
@@ -1402,47 +1470,56 @@ QwBVAEIAUgBJAEQAXwB4ADgANgABAE0AZQBkAGkAYQA=
 		<col key="yes" def="s72">Property</col>
 		<col def="L0">Value</col>
 		<col def="S255">ISComments</col>
-		<row><td>ARPHELPLINK</td><td>www.cubrid.com</td><td/></row>
-		<row><td>ARPURLINFOABOUT</td><td>www.nhncorp.com</td><td/></row>
-		<row><td>ARPURLUPDATEINFO</td><td>www.cubrid.com</td><td/></row>
+		<row><td>ARPHELPLINK</td><td>##SUPPORT_URL##</td><td/></row>
+		<row><td>ARPURLINFOABOUT</td><td>http://www.cubrid.com</td><td/></row>
 		<row><td>DWUSINTERVAL</td><td>30</td><td/></row>
-		<row><td>DWUSLINK</td><td>CE9CC0BFAE4B87D8AEACB08FEEFB978F8E8BA08FCE9B87CFCE9BE7FFBE1BF0C8AEAB5038B9AC</td><td/></row>
 		<row><td>DefaultUIFont</td><td>Tahoma8</td><td/></row>
-		<row><td>ISAppExeFile</td><td>YourApp.exe</td><td/></row>
+		<row><td>ISAppExeFile</td><td>CUBRID.exe</td><td/></row>
 		<row><td>ISENABLEDWUSFINISHDIALOG</td><td/><td/></row>
+		<row><td>ISVROOT_PORT_NO</td><td>0</td><td/></row>
 		<row><td>IS_SQLSERVER_AUTHENTICATION</td><td>0</td><td/></row>
 		<row><td>IS_SQLSERVER_DATABASE</td><td/><td/></row>
 		<row><td>IS_SQLSERVER_PASSWORD</td><td/><td/></row>
 		<row><td>IS_SQLSERVER_SERVER</td><td/><td/></row>
 		<row><td>IS_SQLSERVER_USERNAME</td><td>sa</td><td/></row>
-		<row><td>I__accept_the_terms_of_the_license_agreement</td><td>***DO_NOT_BUILD***</td><td/></row>
-		<row><td>I_accept</td><td>***DO_NOT_BUILD***</td><td/></row>
 		<row><td>Manufacturer</td><td>CUBRID</td><td/></row>
-		<row><td>New_Property</td><td>***DO_NOT_BUILD***</td><td/></row>
-		<row><td>PROGMSG_IIS_CREATEVROOT</td><td>##IDS_PROGMSG_IIS_CREATEVROOT##</td><td/></row>
-		<row><td>PROGMSG_IIS_CREATEVROOTS</td><td>##IDS_PROGMSG_IIS_CREATEVROOTS##</td><td/></row>
-		<row><td>PROGMSG_IIS_CREATEWEBSITE</td><td>##IDS_PROGMSG_IIS_CREATEWEBSITE##</td><td/></row>
-		<row><td>PROGMSG_IIS_CREATEWEBSITES</td><td>##IDS_PROGMSG_IIS_CREATEWEBSITES##</td><td/></row>
-		<row><td>PROGMSG_IIS_EXTRACT</td><td>##IDS_PROGMSG_IIS_EXTRACT##</td><td/></row>
-		<row><td>PROGMSG_IIS_EXTRACTDONE</td><td>##IDS_PROGMSG_IIS_EXTRACTDONE##</td><td/></row>
-		<row><td>PROGMSG_IIS_REMOVESITE</td><td>##IDS_PROGMSG_IIS_REMOVESITE##</td><td/></row>
-		<row><td>PROGMSG_IIS_REMOVEVROOT</td><td>##IDS_PROGMSG_IIS_REMOVEVROOT##</td><td/></row>
-		<row><td>PROGMSG_IIS_REMOVEVROOTS</td><td>##IDS_PROGMSG_IIS_REMOVEVROOTS##</td><td/></row>
-		<row><td>PROGMSG_IIS_REMOVEWEBSITES</td><td>##IDS_PROGMSG_IIS_REMOVEWEBSITES##</td><td/></row>
-		<row><td>PROGMSG_IIS_ROLLBACKVROOTS</td><td>##IDS_PROGMSG_IIS_ROLLBACKVROOTS##</td><td/></row>
+		<row><td>PROGMSG_IIS_CREATEAPPPOOL</td><td>##IDS_PROGMSG_IIS_CREATEAPPPOOL##</td><td/></row>
+		<row><td>PROGMSG_IIS_CREATEAPPPOOLS</td><td>##IDS_PROGMSG_IIS_CREATEAPPPOOLS##</td><td/></row>
+		<row><td>PROGMSG_IIS_CREATEVROOT</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_CREATEVROOTS</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_CREATEWEBSERVICEEXTENSION</td><td>##IDS_PROGMSG_IIS_CREATEWEBSERVICEEXTENSION##</td><td/></row>
+		<row><td>PROGMSG_IIS_CREATEWEBSERVICEEXTENSIONS</td><td>##IDS_PROGMSG_IIS_CREATEWEBSERVICEEXTENSIONS##</td><td/></row>
+		<row><td>PROGMSG_IIS_CREATEWEBSITE</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_CREATEWEBSITES</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_EXTRACT</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_EXTRACTDONE</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_EXTRACTDONEz</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_EXTRACTzDONE</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_REMOVEAPPPOOL</td><td>##IDS_PROGMSG_IIS_REMOVEAPPPOOL##</td><td/></row>
+		<row><td>PROGMSG_IIS_REMOVEAPPPOOLS</td><td>##IDS_PROGMSG_IIS_REMOVEAPPPOOLS##</td><td/></row>
+		<row><td>PROGMSG_IIS_REMOVESITE</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_REMOVEVROOT</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_REMOVEVROOTS</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_REMOVEWEBSERVICEEXTENSION</td><td>##IDS_PROGMSG_IIS_REMOVEWEBSERVICEEXTENSION##</td><td/></row>
+		<row><td>PROGMSG_IIS_REMOVEWEBSERVICEEXTENSIONS</td><td>##IDS_PROGMSG_IIS_REMOVEWEBSERVICEEXTENSIONS##</td><td/></row>
+		<row><td>PROGMSG_IIS_REMOVEWEBSITES</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_ROLLBACKAPPPOOLS</td><td>##IDS_PROGMSG_IIS_ROLLBACKAPPPOOLS##</td><td/></row>
+		<row><td>PROGMSG_IIS_ROLLBACKVROOTS</td><td>***IS_STRING_NOT_DEFINED***</td><td/></row>
+		<row><td>PROGMSG_IIS_ROLLBACKWEBSERVICEEXTENSIONS</td><td>##IDS_PROGMSG_IIS_ROLLBACKWEBSERVICEEXTENSIONS##</td><td/></row>
 		<row><td>ProObjDiffSupported</td><td>0</td><td/></row>
 		<row><td>ProObjDisplayName</td><td>##IDS_PROOBJ_DISPLAYNAME##</td><td/></row>
-		<row><td>ProObjFlags</td><td>21</td><td/></row>
+		<row><td>ProObjFlags</td><td/><td/></row>
 		<row><td>ProObjHTMLPage</td><td>##IDS_PROOBJ_HTMLPAGE##</td><td/></row>
 		<row><td>ProObjIconFile</td><td>##IDS_PROOBJ_ICONFILE##</td><td/></row>
 		<row><td>ProObjRegAtBuild</td><td>1</td><td/></row>
 		<row><td>ProObjRegWizard</td><td>0</td><td/></row>
 		<row><td>ProObjShortName</td><td>##IDS_PROOBJ_SHORTNAME##</td><td/></row>
 		<row><td>ProObjUseDefaultSettings</td><td>##IDS_PROOBJ_USEDEFAULTSETTINGS##</td><td/></row>
-		<row><td>ProObjWizard</td><td>_stock_</td><td/></row>
-		<row><td>ProductCode</td><td>ebc1985e-606d-4dd2-9913-44853da85f19</td><td/></row>
+		<row><td>ProductCode</td><td>{F9D3936B-33BA-4A5C-BF34-B41F08F942E5}</td><td/></row>
 		<row><td>ProductName</td><td>CUBRID</td><td/></row>
-		<row><td>ProductVersion</td><td>2008</td><td/></row>
+		<row><td>ProductVersion</td><td>8.4.0</td><td/></row>
+		<row><td>Property</td><td>***DO_NOT_BUILD***</td><td/></row>
+		<row><td>Typical</td><td>***DO_NOT_BUILD***</td><td/></row>
 	</table>
 
 	<table name="RadioButton">
@@ -1456,10 +1533,9 @@ QwBVAEIAUgBJAEQAXwB4ADgANgABAE0AZQBkAGkAYQA=
 		<col def="L64">Text</col>
 		<col def="L50">Help</col>
 		<col def="I4">ISControlId</col>
-		<row><td>I_accept</td><td>1</td><td>I accept</td><td>0</td><td>0</td><td>48</td><td>10</td><td>##IDS__DialogId_103_ControlId_14_1##</td><td/><td>14</td></row>
-		<row><td>I_accept</td><td>2</td><td>I do not accept</td><td>0</td><td>12</td><td>73</td><td>11</td><td>##IDS__DialogId_103_ControlId_14_2##</td><td/><td>15</td></row>
-		<row><td>New_Property</td><td>1</td><td>I &amp;accept the terms of the license agreement</td><td>0</td><td>0</td><td>267</td><td>21</td><td>##IDS__DialogId_12066_ControlId_1000_1##</td><td/><td>1000</td></row>
-		<row><td>New_Property</td><td>2</td><td>I &amp;do not accept the terms of the license agreement</td><td>0</td><td>25</td><td>267</td><td>21</td><td>##IDS__DialogId_12066_ControlId_1000_2##</td><td/><td>1001</td></row>
+		<row><td>Typical</td><td>1</td><td>표준 설치</td><td>0</td><td>0</td><td>52</td><td>12</td><td>##IDS__DialogId_12009_ControlId_501_1##</td><td/><td>501</td></row>
+		<row><td>Typical</td><td>2</td><td>최소 설치</td><td>0</td><td>43</td><td>52</td><td>12</td><td>##IDS__DialogId_12009_ControlId_501_2##</td><td/><td>502</td></row>
+		<row><td>Typical</td><td>3</td><td>사용자 정의 설치</td><td>0</td><td>80</td><td>78</td><td>12</td><td>##IDS__DialogId_12009_ControlId_501_3##</td><td/><td>503</td></row>
 	</table>
 
 	<table name="Registry">
@@ -1470,97 +1546,80 @@ QwBVAEIAUgBJAEQAXwB4ADgANgABAE0AZQBkAGkAYQA=
 		<col def="S0">Value</col>
 		<col def="s72">ISRegistrySet_</col>
 		<col def="I4">ISAttributes</col>
-		<row><td>Registry1</td><td>2</td><td>SYSTEM</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry10</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry100</td><td>2</td><td>SOFTWARE\CUBRID\cmclient</td><td>ROOT_PATH</td><td>&lt;TARGETDIR&gt;\cubridmanager</td><td>cubridmanager</td><td>0</td></row>
-		<row><td>Registry101</td><td>2</td><td>SOFTWARE\CUBRID\cmclient</td><td>Version</td><td>2.1.1</td><td>cubridmanager</td><td>0</td></row>
-		<row><td>Registry105</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td/><td/><td>CUBRID</td><td>1</td></row>
-		<row><td>Registry106</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td/><td/><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry107</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td>ROOT_PATH</td><td>&lt;TARGETDIR&gt;</td><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry108</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td>Version</td><td>2.1.1</td><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry11</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>UNITOOL_EMGR</td><td>&lt;TARGETDIR&gt;\Manager\cmserver</td><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry12</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_MANAGER</td><td>&lt;TARGETDIR&gt;\Manager\cmserver</td><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry13</td><td>2</td><td>SOFTWARE</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry14</td><td>2</td><td>SOFTWARE</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry15</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry16</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry17</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry18</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry19</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td>ROOT_PATH</td><td>&lt;TARGETDIR&gt;\Manager\cmserver</td><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry2</td><td>2</td><td>SYSTEM</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry20</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td>Version</td><td>2.1.1</td><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry21</td><td>2</td><td>SYSTEM</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry22</td><td>2</td><td>SYSTEM</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry23</td><td>2</td><td>SYSTEM\CurrentControlSet</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry24</td><td>2</td><td>SYSTEM\CurrentControlSet</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry25</td><td>2</td><td>SYSTEM\CurrentControlSet\Control</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry26</td><td>2</td><td>SYSTEM\CurrentControlSet\Control</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry27</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry28</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry29</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry3</td><td>2</td><td>SYSTEM\CurrentControlSet</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry30</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry31</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_BROKER</td><td>&lt;TARGETDIR&gt;\Broker</td><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry32</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>UNICAS</td><td>&lt;TARGETDIR&gt;\Broker</td><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry33</td><td>2</td><td>SOFTWARE</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry34</td><td>2</td><td>SOFTWARE</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry35</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry36</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry37</td><td>2</td><td>SOFTWARE\CUBRID\CUBRIDCAS</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry38</td><td>2</td><td>SOFTWARE\CUBRID\CUBRIDCAS</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry39</td><td>2</td><td>SOFTWARE</td><td/><td/><td>CUBRID</td><td>1</td></row>
-		<row><td>Registry4</td><td>2</td><td>SYSTEM\CurrentControlSet</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry40</td><td>2</td><td>SOFTWARE</td><td/><td/><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry41</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>CUBRID</td><td>1</td></row>
-		<row><td>Registry42</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry43</td><td>2</td><td>SOFTWARE\CUBRID\CUBRID</td><td/><td/><td>CUBRID</td><td>1</td></row>
-		<row><td>Registry44</td><td>2</td><td>SOFTWARE\CUBRID\CUBRID</td><td/><td/><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry45</td><td>2</td><td>SOFTWARE\CUBRID\CUBRID</td><td>ROOT_PATH</td><td>&lt;TARGETDIR&gt;</td><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry46</td><td>2</td><td>SOFTWARE\CUBRID\CUBRID</td><td>Version</td><td>6.0.1</td><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry47</td><td>2</td><td>SOFTWARE\CUBRID\CUBRID</td><td>Patch</td><td>8</td><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry48</td><td>2</td><td>SYSTEM</td><td/><td/><td>CUBRID</td><td>1</td></row>
-		<row><td>Registry49</td><td>2</td><td>SYSTEM</td><td/><td/><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry5</td><td>2</td><td>SYSTEM\CurrentControlSet\Control</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry50</td><td>2</td><td>SYSTEM\CurrentControlSet</td><td/><td/><td>CUBRID</td><td>1</td></row>
-		<row><td>Registry51</td><td>2</td><td>SYSTEM\CurrentControlSet</td><td/><td/><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry52</td><td>2</td><td>SYSTEM\CurrentControlSet\Control</td><td/><td/><td>CUBRID</td><td>1</td></row>
-		<row><td>Registry53</td><td>2</td><td>SYSTEM\CurrentControlSet\Control</td><td/><td/><td>CUBRID</td><td>0</td></row>
+		<row><td>Registry1</td><td>2</td><td>SOFTWARE</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry10</td><td>2</td><td>SOFTWARE\CUBRID</td><td>Patch</td><td>8</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry11</td><td>2</td><td>SYSTEM</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry12</td><td>2</td><td>SYSTEM\CurrentControlSet</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry13</td><td>2</td><td>SYSTEM\CurrentControlSet\Control</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry14</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry15</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry16</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry17</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID</td><td>&lt;TARGETDIR&gt;</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry18</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_DATABASES</td><td>&lt;TARGETDIR&gt;\databases</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry19</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_LANG</td><td>en_US</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry2</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry20</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_MODE</td><td>client</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry21</td><td>2</td><td>SOFTWARE</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry22</td><td>2</td><td>SOFTWARE\ODBC</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry23</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry24</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI\ODBC Driver</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry25</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI\CUBRID Driver</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry26</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI\ODBC Driver</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry27</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI\ODBC Driver</td><td>CUBRID Driver</td><td>Installed</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry28</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI\CUBRID Driver</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry29</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI\CUBRID Driver</td><td>APILevel</td><td>2</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry3</td><td>2</td><td>SOFTWARE\cmserver</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry30</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI\CUBRID Driver</td><td>ConnectFunctions</td><td>YYN</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry31</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI\CUBRID Driver</td><td>Create DSN</td><td>CUBRID Driver</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry32</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI\CUBRID Driver</td><td>Driver</td><td>&lt;TARGETDIR&gt;\bin\cubrid_odbc.dll</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry33</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI\CUBRID Driver</td><td>Setup</td><td>&lt;TARGETDIR&gt;\bin\cubrid_odbc.dll</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry34</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI\CUBRID Driver</td><td>SQLLevel</td><td>0</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry35</td><td>2</td><td>SOFTWARE\ODBC\ODBCINST.INI\CUBRID Driver</td><td>UsageCount</td><td>#1</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry36</td><td>2</td><td>SOFTWARE</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry37</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry38</td><td>2</td><td>SOFTWARE\CUBRID\cmclient</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
+		<row><td>Registry39</td><td>2</td><td>SOFTWARE\CUBRID\cmclient</td><td>ROOT_PATH</td><td>&lt;TARGETDIR&gt;\cubridmanager</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry4</td><td>2</td><td>SOFTWARE\cmserver</td><td>ROOT_PATH</td><td>&lt;TARGETDIR&gt;</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry40</td><td>2</td><td>SOFTWARE\CUBRID\cmclient</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry41</td><td>2</td><td>SOFTWARE\CUBRID\cmclient</td><td>Version</td><td>2.1.1</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry42</td><td>2</td><td>SOFTWARE</td><td/><td/><td>CUBRID</td><td>1</td></row>
+		<row><td>Registry43</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>CUBRID</td><td>1</td></row>
+		<row><td>Registry44</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td/><td/><td>CUBRID</td><td>1</td></row>
+		<row><td>Registry45</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td>ROOT_PATH</td><td>&lt;TARGETDIR&gt;</td><td>CUBRID</td><td>0</td></row>
+		<row><td>Registry46</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td>Version</td><td>2.1.1</td><td>CUBRID</td><td>0</td></row>
+		<row><td>Registry47</td><td>2</td><td>SOFTWARE\CUBRID\CUBRID</td><td/><td/><td>CUBRID</td><td>1</td></row>
+		<row><td>Registry48</td><td>2</td><td>SOFTWARE\CUBRID\CUBRID</td><td>ROOT_PATH</td><td>&lt;TARGETDIR&gt;</td><td>CUBRID</td><td>0</td></row>
+		<row><td>Registry49</td><td>2</td><td>SOFTWARE\CUBRID\CUBRID</td><td>Version</td><td>6.0.1</td><td>CUBRID</td><td>0</td></row>
+		<row><td>Registry5</td><td>2</td><td>SOFTWARE\cmserver</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry50</td><td>2</td><td>SOFTWARE\CUBRID\CUBRID</td><td>Patch</td><td>8</td><td>CUBRID</td><td>0</td></row>
+		<row><td>Registry51</td><td>2</td><td>SYSTEM</td><td/><td/><td>CUBRID</td><td>1</td></row>
+		<row><td>Registry52</td><td>2</td><td>SYSTEM\CurrentControlSet</td><td/><td/><td>CUBRID</td><td>1</td></row>
+		<row><td>Registry53</td><td>2</td><td>SYSTEM\CurrentControlSet\Control</td><td/><td/><td>CUBRID</td><td>1</td></row>
 		<row><td>Registry54</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager</td><td/><td/><td>CUBRID</td><td>1</td></row>
-		<row><td>Registry55</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager</td><td/><td/><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry56</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td/><td/><td>CUBRID</td><td>1</td></row>
-		<row><td>Registry57</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td/><td/><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry59</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_DATABASES</td><td>&lt;TARGETDIR&gt;\databases</td><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry6</td><td>2</td><td>SYSTEM\CurrentControlSet\Control</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry61</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_MODE</td><td>client</td><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry63</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_LANG</td><td>en_US</td><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry65</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID</td><td>&lt;TARGETDIR&gt;</td><td>CUBRID</td><td>0</td></row>
-		<row><td>Registry66</td><td>2</td><td>Software</td><td/><td/><td>ODBC</td><td>1</td></row>
-		<row><td>Registry67</td><td>2</td><td>Software</td><td/><td/><td>ODBC</td><td>0</td></row>
-		<row><td>Registry68</td><td>2</td><td>Software\ODBC</td><td/><td/><td>ODBC</td><td>1</td></row>
-		<row><td>Registry69</td><td>2</td><td>Software\ODBC</td><td/><td/><td>ODBC</td><td>0</td></row>
-		<row><td>Registry7</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry70</td><td>2</td><td>Software\ODBC\ODBCINST.INI</td><td/><td/><td>ODBC</td><td>1</td></row>
-		<row><td>Registry71</td><td>2</td><td>Software\ODBC\ODBCINST.INI</td><td/><td/><td>ODBC</td><td>0</td></row>
-		<row><td>Registry72</td><td>2</td><td>Software\ODBC\ODBCINST.INI\ODBC Drivers</td><td/><td/><td>ODBC</td><td>1</td></row>
-		<row><td>Registry73</td><td>2</td><td>Software\ODBC\ODBCINST.INI\ODBC Drivers</td><td/><td/><td>ODBC</td><td>0</td></row>
-		<row><td>Registry75</td><td>2</td><td>Software\ODBC\ODBCINST.INI\ODBC Drivers</td><td>CUBRID Driver</td><td>Installed</td><td>ODBC</td><td>0</td></row>
-		<row><td>Registry8</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
-		<row><td>Registry85</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td/><td/><td>ODBC</td><td>1</td></row>
-		<row><td>Registry86</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td/><td/><td>ODBC</td><td>0</td></row>
-		<row><td>Registry87</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>APILevel</td><td>2</td><td>ODBC</td><td>0</td></row>
-		<row><td>Registry88</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>ConnectFunctions</td><td>YYN</td><td>ODBC</td><td>0</td></row>
-		<row><td>Registry89</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>CreateDSN</td><td>CUBRID Driver</td><td>ODBC</td><td>0</td></row>
-		<row><td>Registry9</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td/><td/><td>NoISRegistrySet</td><td>1</td></row>
-		<row><td>Registry90</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>Driver</td><td>&lt;TARGETDIR&gt;\bin\cubrid_odbc.dll</td><td>ODBC</td><td>0</td></row>
-		<row><td>Registry91</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>Setup</td><td>&lt;TARGETDIR&gt;\bin\cubrid_odbc.dll</td><td>ODBC</td><td>0</td></row>
-		<row><td>Registry92</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>SQLLevel</td><td>0</td><td>ODBC</td><td>0</td></row>
-		<row><td>Registry93</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>UsageCount</td><td>#1</td><td>ODBC</td><td>0</td></row>
-		<row><td>Registry94</td><td>2</td><td>SOFTWARE</td><td/><td/><td>cubridmanager</td><td>1</td></row>
-		<row><td>Registry95</td><td>2</td><td>SOFTWARE</td><td/><td/><td>cubridmanager</td><td>0</td></row>
-		<row><td>Registry96</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>cubridmanager</td><td>1</td></row>
-		<row><td>Registry97</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>cubridmanager</td><td>0</td></row>
-		<row><td>Registry98</td><td>2</td><td>SOFTWARE\CUBRID\cmclient</td><td/><td/><td>cubridmanager</td><td>1</td></row>
-		<row><td>Registry99</td><td>2</td><td>SOFTWARE\CUBRID\cmclient</td><td/><td/><td>cubridmanager</td><td>0</td></row>
+		<row><td>Registry55</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td/><td/><td>CUBRID</td><td>1</td></row>
+		<row><td>Registry56</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_DATABASES</td><td>&lt;TARGETDIR&gt;\databases</td><td>CUBRID</td><td>0</td></row>
+		<row><td>Registry57</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_MODE</td><td>client</td><td>CUBRID</td><td>0</td></row>
+		<row><td>Registry58</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID_LANG</td><td>en_US</td><td>CUBRID</td><td>0</td></row>
+		<row><td>Registry59</td><td>2</td><td>SYSTEM\CurrentControlSet\Control\Session Manager\Environment</td><td>CUBRID</td><td>&lt;TARGETDIR&gt;</td><td>CUBRID</td><td>0</td></row>
+		<row><td>Registry6</td><td>2</td><td>SOFTWARE\cmserver</td><td>Version</td><td>2.1.1</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry7</td><td>2</td><td>SOFTWARE\CUBRID</td><td/><td/><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry8</td><td>2</td><td>SOFTWARE\CUBRID</td><td>Version</td><td>6.0.1</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>Registry9</td><td>2</td><td>SOFTWARE\CUBRID</td><td>ROOT_PATH</td><td>&lt;TARGETDIR&gt;</td><td>NoISRegistrySet</td><td>0</td></row>
+		<row><td>_02CB13F4F9DF975D8B606E99567ACA3B</td><td>2</td><td>SOFTWARE\CUBRID\CUBRID</td><td>Patch</td><td>8</td><td>NoISRegistrySet</td><td/></row>
+		<row><td>_099FA9FB6DC2E79DFD22B3E9948590B1</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>APILevel</td><td>2</td><td>ODBC</td><td/></row>
+		<row><td>_5387AE3823428C7BD9F2EF996BF582F3</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>CreateDSN</td><td>CUBRID Driver</td><td>ODBC</td><td/></row>
+		<row><td>_5D6DE6141F8DE1F093A17A260E5132EC</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>ConnectFunctions</td><td>YYN</td><td>ODBC</td><td/></row>
+		<row><td>_7373908FA91E8A2B0603830FBD81870F</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td>Version</td><td>2.1.1</td><td>NoISRegistrySet</td><td/></row>
+		<row><td>_816A786B628D827BD619615382809756</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>Driver</td><td>&lt;TARGETDIR&gt;\bin\cubrid_odbc.dll</td><td>ODBC</td><td/></row>
+		<row><td>_8D9BB42BD9A514F572B62EBFA8A64A44</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>SQLLevel</td><td>0</td><td>ODBC</td><td/></row>
+		<row><td>_9126299A0A8775EB2BFC30F6C1C7AD8A</td><td>2</td><td>Software\ODBC\ODBCINST.INI\ODBC Drivers</td><td>CUBRID Driver</td><td>Installed</td><td>ODBC</td><td/></row>
+		<row><td>_A95E9730AB7925BAD33A5548E6E07514</td><td>2</td><td>SOFTWARE\CUBRID\cmclient</td><td>Version</td><td>2.1.1</td><td>NoISRegistrySet</td><td/></row>
+		<row><td>_ACCFDD90427E2E0032745908128C43E4</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>Setup</td><td>&lt;TARGETDIR&gt;\bin\cubrid_odbc.dll</td><td>ODBC</td><td/></row>
+		<row><td>_AF171A2798D9F3E6E69B2344F56551BB</td><td>2</td><td>SOFTWARE\CUBRID\cmserver</td><td>ROOT_PATH</td><td>&lt;TARGETDIR&gt;</td><td>NoISRegistrySet</td><td/></row>
+		<row><td>_EE40609A732F3CDE4743609A234C23C1</td><td>2</td><td>SOFTWARE\CUBRID\CUBRID</td><td>ROOT_PATH</td><td>&lt;TARGETDIR&gt;</td><td>NoISRegistrySet</td><td/></row>
+		<row><td>_FBBC6C110DD8E90854ED00C33A69807E</td><td>2</td><td>Software\ODBC\ODBCINST.INI\CUBRID Driver</td><td>UsageCount</td><td>#1</td><td>ODBC</td><td/></row>
+		<row><td>_FC262E8E2DF7F2B2B18B1FD4B7BFC3F6</td><td>2</td><td>SOFTWARE\CUBRID\CUBRID</td><td>Version</td><td>6.0.1</td><td>NoISRegistrySet</td><td/></row>
+		<row><td>_FCAE4DA77A0AD7CDE59738EE64EB10F8</td><td>2</td><td>SOFTWARE\CUBRID\cmclient</td><td>ROOT_PATH</td><td>&lt;TARGETDIR&gt;\cubridmanager</td><td>NoISRegistrySet</td><td/></row>
 	</table>
 
 	<table name="Shortcut">
@@ -1583,7 +1642,6 @@ QwBVAEIAUgBJAEQAXwB4ADgANgABAE0AZQBkAGkAYQA=
 		<col def="S255">ISComments</col>
 		<col def="S255">ISShortcutName</col>
 		<col def="I4">ISAttributes</col>
-		<row><td>NewShortcut1</td><td>StartupFolder</td><td>##ID_STRING2##</td><td/><td>&lt;TARGETDIR&gt;\bin\CUBRID_Service_Tray.exe</td><td/><td/><td/><td/><td/><td>1</td><td/><td/><td/><td/><td/><td/><td>tray_short_cut</td><td>18</td></row>
 	</table>
 
 	<table name="TextStyle">
@@ -1594,27 +1652,21 @@ QwBVAEIAUgBJAEQAXwB4ADgANgABAE0AZQBkAGkAYQA=
 		<col def="I2">StyleBits</col>
 		<row><td>Arial8</td><td>Arial</td><td>8</td><td/><td/></row>
 		<row><td>Arial9</td><td>Arial</td><td>9</td><td/><td/></row>
-		<row><td>ArialBlue10</td><td>Arial</td><td>10</td><td>16711680</td><td/></row>
-		<row><td>ArialBlueStrike10</td><td>Arial</td><td>10</td><td>16711680</td><td>8</td></row>
 		<row><td>CourierNew8</td><td>Courier New</td><td>8</td><td/><td/></row>
 		<row><td>CourierNew9</td><td>Courier New</td><td>9</td><td/><td/></row>
 		<row><td>MSGothic9</td><td>MS Gothic</td><td>9</td><td/><td/></row>
-		<row><td>MSSGreySerif8</td><td>MS Sans Serif</td><td>8</td><td>8421504</td><td/></row>
-		<row><td>MSSWhiteSerif8</td><td>Tahoma</td><td>8</td><td>16777215</td><td/></row>
 		<row><td>MSSansBold8</td><td>Tahoma</td><td>8</td><td/><td>1</td></row>
 		<row><td>MSSansSerif8</td><td>MS Sans Serif</td><td>8</td><td/><td/></row>
 		<row><td>MSSansSerif9</td><td>MS Sans Serif</td><td>9</td><td/><td/></row>
-		<row><td>New_TextStyle</td><td>굴림</td><td>9</td><td>0</td><td>0</td></row>
 		<row><td>Tahoma10</td><td>Tahoma</td><td>10</td><td/><td/></row>
 		<row><td>Tahoma8</td><td>Tahoma</td><td>8</td><td/><td/></row>
 		<row><td>Tahoma9</td><td>Tahoma</td><td>9</td><td/><td/></row>
 		<row><td>TahomaBold10</td><td>Tahoma</td><td>10</td><td/><td>1</td></row>
 		<row><td>TahomaBold8</td><td>Tahoma</td><td>8</td><td/><td>1</td></row>
+		<row><td>TextStyle</td><td>굴림</td><td>9</td><td/><td/></row>
 		<row><td>Times8</td><td>Times New Roman</td><td>8</td><td/><td/></row>
 		<row><td>Times9</td><td>Times New Roman</td><td>9</td><td/><td/></row>
 		<row><td>TimesItalic12</td><td>Times New Roman</td><td>12</td><td/><td>2</td></row>
-		<row><td>TimesItalicBlue10</td><td>Times New Roman</td><td>10</td><td>16711680</td><td>2</td></row>
-		<row><td>TimesRed16</td><td>Times New Roman</td><td>16</td><td>255</td><td/></row>
 	</table>
 
 	<table name="_Validation">
@@ -1654,7 +1706,7 @@ QwBVAEIAUgBJAEQAXwB4ADgANgABAE0AZQBkAGkAYQA=
 		<row><td>Control</td><td>Attributes</td><td>Y</td><td>0</td><td>2147483647</td><td/><td/><td/><td/><td>A 32-bit word that specifies the attribute flags to be applied to this control.</td></row>
 		<row><td>Control</td><td>Binary_</td><td>Y</td><td/><td/><td>Binary</td><td>1</td><td>Identifier</td><td/><td>External key to the Binary table.</td></row>
 		<row><td>Control</td><td>Control</td><td>N</td><td/><td/><td/><td/><td>Identifier</td><td/><td>Name of the control. This name must be unique within a dialog, but can repeat on different dialogs.</td></row>
-		<row><td>Control</td><td>Control_Next</td><td>Y</td><td/><td/><td>Control</td><td>2</td><td>Identifier</td><td/><td>The name of another control on the same dialog. This link defines the tab order of the controls. The links have to form one or more cycles!</td></row>
+		<row><td>Control</td><td>Control_Next</td><td>Y</td><td/><td/><td>Control</td><td>2</td><td>Identifier</td><td/><td>The name of an other control on the same dialog. This link defines the tab order of the controls. The links have to form one or more cycles!</td></row>
 		<row><td>Control</td><td>Dialog_</td><td>N</td><td/><td/><td>Dialog</td><td>1</td><td>Identifier</td><td/><td>External key to the Dialog table, name of the dialog.</td></row>
 		<row><td>Control</td><td>Height</td><td>N</td><td>0</td><td>32767</td><td/><td/><td/><td/><td>Height of the bounding rectangle of the control.</td></row>
 		<row><td>Control</td><td>Help</td><td>Y</td><td/><td/><td/><td/><td>Text</td><td/><td>The help strings used with the button. The text is optional.</td></row>

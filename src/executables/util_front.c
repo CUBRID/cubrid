@@ -70,6 +70,7 @@ static ARG_MAP_TABLE ua_Copy_map[] = {
   {"-tf", "--" COPY_CONTROL_FILE_L},
   {"-r", "--" COPY_REPLACE_L},
   {"-m", "--" COPY_DELETE_SOURCE_L},
+  {"-B", "--" COPY_LOB_PATH_L},
   {0, 0}
 };
 
@@ -91,7 +92,6 @@ static ARG_MAP_TABLE ua_Backup_map[] = {
   {"-zip", "--" BACKUP_COMPRESS_L},
   {"-ni", "--" BACKUP_EXCEPT_ACTIVE_LOG_L},
   {"-c", (char *) -1},
-  {"-sp", "--" BACKUP_SAFE_PAGE_ID_L},
   {0, 0}
 };
 
@@ -102,7 +102,6 @@ static ARG_MAP_TABLE ua_Restore_map[] = {
   {"-lv", "--" RESTORE_LEVEL_L},
   {"-p", "--" RESTORE_PARTIAL_RECOVERY_L},
   {"-o", "--" RESTORE_OUTPUT_FILE_L},
-  {"-r", "--" RESTORE_REPLICATION_MODE_L},
   {"-n", "--" RESTORE_USE_DATABASE_LOCATION_PATH_L},
   {0, 0}
 };
@@ -199,6 +198,7 @@ static ARG_MAP_TABLE ua_Unload_map[] = {
   {"-di", "--" UNLOAD_USE_DELIMITER_L},
   {"-sa", "--" UNLOAD_SA_MODE_L},
   {"-cs", "--" UNLOAD_CS_MODE_L},
+  {"-dpc", "--" UNLOAD_DATAFILE_PER_CLASS_L},
   {0, 0}
 };
 
@@ -220,20 +220,23 @@ static ARG_MAP_TABLE ua_Sqlx_map[] = {
   {"-lo", "--" CSQL_LINE_OUTPUT_L},
   {"-noac", "--" CSQL_NO_AUTO_COMMIT_L},
   {"-nopager", "--" CSQL_NO_PAGER_L},
+  {"-nosl", "--" CSQL_NO_SINGLE_LINE_L},
   {"-co", (char *) -1},
   {0, 0}
 };
 
 static ARG_MAP_TABLE us_Commdb_map[] = {
   {"-P", "--" COMMDB_SERVER_LIST_L},
-  {"-R", "--" COMMDB_REPL_LIST_L},
   {"-O", "--" COMMDB_ALL_LIST_L},
   {"-S", "--" COMMDB_SHUTDOWN_SERVER_L},
   {"-I", "--" COMMDB_SHUTDOWN_SERVER_L},
-  {"-K", "--" COMMDB_SHUTDOWN_REPL_SERVER_L},
-  {"-k", "--" COMMDB_SHUTDOWN_REPL_AGENT_L},
   {"-A", "--" COMMDB_SHUTDOWN_ALL_L},
   {"-h", "--" COMMDB_HOST_L},
+  {0, 0}
+};
+
+static ARG_MAP_TABLE ua_Acldb_map[] = {
+  {"-r", "--" ACLDB_RELOAD_L},
   {0, 0}
 };
 
@@ -262,6 +265,7 @@ UTIL_MAP_TABLE ua_Util_table[] = {
   {"loaddb", UTIL_OPTION_LOADDB, ua_Load_map},
   {"unloaddb", UTIL_OPTION_UNLOADDB, ua_Unload_map},
   {"compactdb", UTIL_OPTION_COMPACTDB, ua_Compact_map},
+  {"acldb", UTIL_OPTION_ACLDB, ua_Acldb_map},
   {0, 0, 0}
 };
 

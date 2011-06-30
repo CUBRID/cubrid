@@ -34,7 +34,7 @@
 int admin_isstarted_cmd (int);
 #endif
 
-int admin_start_cmd (T_BROKER_INFO *, int, int);
+int admin_start_cmd (T_BROKER_INFO *, int, int, bool, char *);
 int admin_stop_cmd (int);
 int admin_add_cmd (int, const char *);
 int admin_restart_cmd (int, const char *, int);
@@ -47,8 +47,12 @@ int admin_broker_reset_cmd (int, const char *);
 int admin_broker_info_cmd (int);
 int admin_get_broker_status (int, const char *);
 int admin_broker_job_first_cmd (int, const char *, int);
-int admin_broker_conf_change (int, const char *, const char *, const char *);
+int admin_broker_conf_change (int, const char *, const char *, const char *,
+			      int);
 int admin_del_cas_log (int master_shmid, const char *broker, int asid);
+int admin_broker_acl_status_cmd (int master_shm_id, const char *broker_name);
+int admin_broker_acl_reload_cmd (int master_shm_id, const char *broker_name);
+
 
 void admin_init_env (void);
 

@@ -39,7 +39,7 @@
 #include <stdint.h>
 #endif
 
-#include "thread_impl.h"
+#include "thread.h"
 #include "dbtype.h"
 
 /* Ceiling of positive division */
@@ -165,6 +165,7 @@ extern void db_destroy_private_heap (THREAD_ENTRY * thread_p,
 				     HL_HEAPID heap_id);
 extern void *db_private_alloc (void *thrd, size_t size);
 extern void *db_private_realloc (void *thrd, void *ptr, size_t size);
+extern char *db_private_strdup (void *thrd, const char *s);
 extern void db_private_free (void *thrd, void *ptr);
 
 extern HL_HEAPID db_create_fixed_heap (int req_size, int recs_per_chunk);

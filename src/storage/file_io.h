@@ -38,12 +38,8 @@
 #include "release_string.h"
 #include "dbtype.h"
 #include "memory_hash.h"
-#if defined(SERVER_MODE)
-#include "thread_impl.h"
-#endif /* SERVER_MODE */
 #include "lzoconf.h"
 #include "lzo1x.h"
-#include "thread_impl.h"
 #include "thread.h"
 
 #define NULL_VOLDES   (-1)	/* Value of a null (invalid) vol descriptor */
@@ -63,14 +59,14 @@
 #define FILEIO_NUM_THREADS_AUTO           0
 
 #if defined(WINDOWS)
-#define STR_PATHSLASH "\\"
+#define STR_PATH_SEPARATOR "\\"
 #else /* WINDOWS */
-#define STR_PATHSLASH "/"
+#define STR_PATH_SEPARATOR "/"
 #endif /* WINDOWS */
 
-/* If the last character of path string is PATHSLASH, don't append PATHSLASH */
+/* If the last character of path string is PATH_SEPARATOR, don't append PATH_SEPARATOR */
 #define FILEIO_PATH_SEPARATOR(path) \
-  (path[strlen(path) - 1] == PATHSLASH ? "" : STR_PATHSLASH)
+  (path[strlen(path) - 1] == PATH_SEPARATOR ? "" : STR_PATH_SEPARATOR)
 
 typedef enum
 {
@@ -164,6 +160,7 @@ typedef struct fileio_backup_page FILEIO_BACKUP_PAGE;
 struct fileio_backup_page
 {
   PAGEID iopageid;		/* Identifier of page to buffer */
+  INT32 dummy;			/* Dummy field for 8byte align */
   FILEIO_PAGE iopage;		/* The content of the page */
   PAGEID iopageid_dup;		/* Copy of pageid for redundant checking during
 				 * restore. Note: that the offset of this field
@@ -291,6 +288,9 @@ struct fileio_backup_db_buffer
   VOLID volid;			/* Identifier of volume to backup/restore */
   INT64 nbytes;			/* Number of bytes of file */
   const char *vlabel;		/* Pointer to file name to backup */
+#if (__WORDSIZE == 32)
+  int dummy;			/* Dummy field for 8byte align */
+#endif
   FILEIO_BACKUP_PAGE *area;	/* Area to read/write the page */
 };
 
@@ -327,9 +327,9 @@ typedef struct fileio_thread_info FILEIO_THREAD_INFO;
 struct fileio_thread_info
 {
 #if defined(SERVER_MODE)
-  MUTEX_T mtx;
-  COND_T rcv;			/* condition variable of read_thread */
-  COND_T wcv;			/* condition variable of write_thread */
+  pthread_mutex_t mtx;
+  pthread_cond_t rcv;		/* condition variable of read_thread */
+  pthread_cond_t wcv;		/* condition variable of write_thread */
 #endif				/* SERVER_MODE */
 
   int tran_index;
@@ -365,14 +365,11 @@ struct io_backup_session
 typedef struct token_bucket TOKEN_BUCKET;
 struct token_bucket
 {
-  MUTEX_T token_mutex;
+  pthread_mutex_t token_mutex;
   int tokens;			/* shared tokens between all lines */
   int token_consumed;
 
-  COND_T waiter_cond;
-#if defined(WINDOWS)
-  int num_waiter;
-#endif
+  pthread_cond_t waiter_cond;
 };
 
 typedef struct flush_stats FLUSH_STATS;
@@ -388,18 +385,21 @@ extern void fileio_close (int vdes);
 extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname,
 			  const char *vlabel, VOLID volid, DKNPAGES npages,
 			  bool sweep_clean, bool dolock, bool dosync,
-			  size_t page_size);
+			  size_t page_size, bool reuse_file);
 extern DKNPAGES fileio_expand (THREAD_ENTRY * threda_p, VOLID volid,
 			       DKNPAGES npages_toadd);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern DKNPAGES fileio_truncate (VOLID volid, DKNPAGES npages_to_resize);
 #endif
 extern void fileio_unformat (THREAD_ENTRY * thread_p, const char *vlabel);
+extern void fileio_unformat_and_rename (THREAD_ENTRY * thread_p,
+					const char *vlabel,
+					const char *new_vlabel);
 extern int fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vdes,
 			       DKNPAGES npages, const char *to_vlabel,
 			       VOLID to_volid, bool reset_recvinfo);
 extern int fileio_reset_volume (THREAD_ENTRY * thread_p, int vdes,
-				char *vlabel, DKNPAGES npages,
+				const char *vlabel, DKNPAGES npages,
 				LOG_LSA * reset_lsa);
 extern int fileio_mount (THREAD_ENTRY * thread_p, const char *db_fullname,
 			 const char *vlabel, VOLID volid, int lockwait,
@@ -420,7 +420,7 @@ extern void *fileio_writev (THREAD_ENTRY * thread_p, int vdes,
 			    void **arrayof_io_pgptr, PAGEID start_pageid,
 			    DKNPAGES npages, size_t page_size);
 extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes,
-			       char *vlabel);
+			       const char *vlabel);
 extern int fileio_synchronize_all (THREAD_ENTRY * thread_p, bool include_log);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void *fileio_read_user_area (THREAD_ENTRY * thread_p, int vdes,
@@ -474,6 +474,9 @@ extern void fileio_make_log_active_temp_name (char *logactive_tmpname,
 extern void fileio_make_log_archive_name (char *logarchive_name,
 					  const char *log_path,
 					  const char *dbname, int arvnum);
+extern void fileio_make_removed_log_archive_name (char *logarchive_name,
+						  const char *log_path,
+						  const char *dbname);
 extern void fileio_make_log_archive_temp_name (char *log_archive_temp_name_p,
 					       const char *log_path_p,
 					       const char *db_name_p);
@@ -568,7 +571,8 @@ extern int fileio_request_user_response (THREAD_ENTRY * thread_p,
 					 const char *secondary_prompt,
 					 int reprompt_value);
 extern FILEIO_LOCKF_TYPE fileio_lock_la (const char *db_fullname,
-					 const char *lock_path, int vdes);
+					 const char *lock_path, int vdes,
+					 int *last_deleted_arv_num);
 #if !defined(WINDOWS)
 extern int fileio_symlink (const char *src, const char *dest, int overwrite);
 extern int fileio_set_permission (const char *vlabel);

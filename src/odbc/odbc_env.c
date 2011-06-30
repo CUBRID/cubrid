@@ -341,7 +341,7 @@ connection_end_tran (ODBC_CONNECTION * conn, short completion_type)
       cci_rc = cci_end_tran (conn->connhd, type, &cci_err_buf);
       if (cci_rc < 0)
 	{
-	  odbc_set_diag_by_cci (conn->diag, cci_rc, cci_err_buf.err_msg);
+	  odbc_set_diag_by_cci (conn->diag, cci_rc, &cci_err_buf);
 	  return ODBC_ERROR;
 	}
     }

@@ -31,6 +31,7 @@
 
 /* heartbeat */
 #define HB_DEFAULT_HA_PORT_ID                           (59901)
+#define HB_DEFAULT_APPLY_MAX_MEM_SIZE                   (500)
 
 #define HB_DEFAULT_INIT_TIMER_IN_MSECS                  (10*1000)
 #define HB_DEFAULT_HEARTBEAT_INTERVAL_IN_MSECS          (500)
@@ -46,6 +47,11 @@
 #define HB_JOB_TIMER_IMMEDIATELY                        (0)
 #define HB_JOB_TIMER_WAIT_A_SECOND                      (1*1000)
 
+enum HA_READ_MODE
+{
+  HA_IGNORE = 0,
+  HA_READ = 1
+};
 
 #if !defined(WINDOWS)
 

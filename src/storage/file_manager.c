@@ -55,30 +55,15 @@
 #endif /* SERVER_MODE */
 
 #if !defined(SERVER_MODE)
-#ifdef MUTEX_INIT
-#undef MUTEX_INIT
-#endif /* MUTEX_INIT */
-
-#ifdef MUTEX_DESTROY
-#undef MUTEX_DESTROY
-#endif /* MUTEX_DESTROY */
-
-#ifdef MUTEX_LOCK
-#undef MUTEX_LOCK
-#endif /* MUTEX_LOCK */
-
-#ifdef MUTEX_UNLOCK
-#undef MUTEX_UNLOCK
-#endif /* MUTEX_UNLOCK */
-
-#define MUTEX_INIT(a)
-#define MUTEX_DESTROY(a)
-#define MUTEX_LOCK(a, b)
-#define MUTEX_UNLOCK(a)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)	0
+#define pthread_mutex_unlock(a)
+static int rv;
 #endif /* !SERVER_MODE */
 
 #define FILE_SET_NUMVPIDS     10
-#define FILE_NUM_EMPTY_SECTS  10
+#define FILE_NUM_EMPTY_SECTS  500
 
 #define FILE_HEADER_OFFSET      0
 #define FILE_FTAB_CHAIN_OFFSET  0
@@ -105,6 +90,9 @@
 
 #define FILE_SIZEOF_FHDR_WITH_DES_COMMENTS(fhdr_ptr) \
   (SSIZEOF(*fhdr_ptr) - 1 + fhdr_ptr->des.first_length)
+
+#define FILE_CREATE_FILE_TABLE 0
+#define FILE_EXPAND_FILE_TABLE 1
 
 typedef struct file_rest_des FILE_REST_DES;
 struct file_rest_des
@@ -277,6 +265,7 @@ static FILE_TEMPFILE_CACHE file_Tempfile_cache;
 /* TODO: STL::vector for file_Type_cache.entry */
 static FILE_TYPE_CACHE file_Type_cache;
 static VFID file_Tracker_vfid = { NULL_FILEID, NULL_VOLID };
+
 static FILE_TRACKER_CACHE file_Tracker_cache = {
   NULL,
   {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
@@ -284,11 +273,13 @@ static FILE_TRACKER_CACHE file_Tracker_cache = {
    NULL, NULL, NULL},
   {NULL, NULL, NULL}
 };
+
 static FILE_TRACKER_CACHE *file_Tracker = &file_Tracker_cache;
 
 #if defined(SERVER_MODE)
-static MUTEX_T file_Type_cache_lock = MUTEX_INITIALIZER;
-static MUTEX_T file_Num_mark_deleted_hint_lock = MUTEX_INITIALIZER;
+static pthread_mutex_t file_Type_cache_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t file_Num_mark_deleted_hint_lock =
+  PTHREAD_MUTEX_INITIALIZER;
 #endif /* SERVER_MODE */
 static CSS_CRITICAL_SECTION file_Cs_tempfile_cache;
 
@@ -322,7 +313,8 @@ static INT32 file_find_good_maxpages (THREAD_ENTRY * thread_p,
 				      FILE_TYPE file_type);
 static int file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
 				INT32 hint_pageid, VPID * ftb_vpids,
-				INT32 num_ftb_pages, FILE_TYPE file_type);
+				INT32 num_ftb_pages, FILE_TYPE file_type,
+				int create_or_expand_file_table);
 static int file_ftabvpid_next (const FILE_HEADER * fhdr,
 			       PAGE_PTR current_ftb_pgptr,
 			       VPID * next_ftbvpid);
@@ -1455,10 +1447,12 @@ file_find_limits (PAGE_PTR ftb_pgptr, const FILE_ALLOCSET * allocset,
 static int
 file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
 		     INT32 hint_pageid, VPID * ftb_vpids, INT32 num_ftb_pages,
-		     FILE_TYPE file_type)
+		     FILE_TYPE file_type, int create_or_expand_file_table)
 {
   INT32 pageid;
   int i;
+  INT16 original_hint_volid;
+  INT32 original_hint_pageid;
 
   /*
    * If the file is of type FILE_TMP, it can have allocated pages which are
@@ -1501,14 +1495,23 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
 	}
     }
 
+  original_hint_volid = hint_volid;
+  original_hint_pageid = hint_pageid;
+
   do
     {
       if (hint_volid != NULL_VOLID)
 	{
-	  pageid =
-	    disk_alloc_page (thread_p, hint_volid, DISK_SECTOR_WITH_ALL_PAGES,
-			     num_ftb_pages, hint_pageid);
-	  if (pageid != NULL_PAGEID)
+	  bool search_wrap_around;
+
+	  search_wrap_around = (create_or_expand_file_table
+				== FILE_CREATE_FILE_TABLE);
+	  pageid = disk_alloc_page (thread_p, hint_volid,
+				    DISK_SECTOR_WITH_ALL_PAGES,
+				    num_ftb_pages, hint_pageid,
+				    search_wrap_around);
+	  if (pageid != NULL_PAGEID
+	      && pageid != DISK_NULL_PAGEID_WITH_ENOUGH_DISK_PAGES)
 	    {
 	      for (i = 0; i < num_ftb_pages; i++)
 		{
@@ -1524,10 +1527,20 @@ file_ftabvpid_alloc (THREAD_ENTRY * thread_p, INT16 hint_volid,
 	      continue;
 	    }
 	}
-      hint_volid =
-	file_find_goodvol (thread_p, NULL_VOLID, hint_volid, num_ftb_pages,
-			   DISK_CONTIGUOUS_PAGES, file_type);
-      hint_pageid = NULL_PAGEID;
+
+      hint_volid = file_find_goodvol (thread_p, NULL_VOLID, hint_volid,
+				      num_ftb_pages, DISK_CONTIGUOUS_PAGES,
+				      file_type);
+
+      if (original_hint_volid == hint_volid)
+	{
+	  /* temporary volume can be expanded */
+	  hint_pageid = original_hint_pageid;
+	}
+      else
+	{
+	  hint_pageid = NULL_PAGEID;
+	}
     }
   while (hint_volid != NULL_VOLID);
 
@@ -1676,7 +1689,7 @@ file_descriptor_insert (THREAD_ENTRY * thread_p, FILE_HEADER * fhdr,
 	}
       ret = file_ftabvpid_alloc (thread_p, fhdr->vfid.volid,
 				 (INT32) fhdr->vfid.fileid, set_vpids,
-				 npages, fhdr->type);
+				 npages, fhdr->type, FILE_CREATE_FILE_TABLE);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -1939,10 +1952,11 @@ file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid,
 	  if (VPID_ISNULL (&next_vpid))
 	    {
 	      /* We need to allocate a new page */
-	      if (file_ftabvpid_alloc
-		  (thread_p, pgbuf_get_volume_id (addr.pgptr),
-		   pgbuf_get_page_id (addr.pgptr), &next_vpid, 1,
-		   file_type) != NO_ERROR)
+	      if (file_ftabvpid_alloc (thread_p,
+				       pgbuf_get_volume_id (addr.pgptr),
+				       pgbuf_get_page_id (addr.pgptr),
+				       &next_vpid, 1, file_type,
+				       FILE_EXPAND_FILE_TABLE) != NO_ERROR)
 		{
 		  /* Something went wrong */
 		  pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
@@ -2846,7 +2860,8 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
     }
 
   ret = file_ftabvpid_alloc (thread_p, vfid->volid, NULL_PAGEID,
-			     table_vpids, num_ftb_pages, *file_type);
+			     table_vpids, num_ftb_pages, *file_type,
+			     FILE_CREATE_FILE_TABLE);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -3099,8 +3114,11 @@ file_xcreate (THREAD_ENTRY * thread_p, VFID * vfid, INT32 exp_numpages,
 	      addr.offset = sizeof (*chain);
 	      logdata = (char *) aid_ptr;
 	    }
+
+	  assert (NULL_PAGEID <= (sectid + i));	/* FIXME: upper bound */
 	  *aid_ptr++ = sectid + i;
 	}
+
       /* Don't need to log before image (undo) since file and pages of file
          would be deallocated during undo(abort). */
       log_append_redo_data (thread_p, RVFL_IDSTABLE, &addr,
@@ -3302,8 +3320,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 
 		  for (; aid_ptr < outptr; aid_ptr++)
 		    {
-		      if (*aid_ptr != NULL_PAGEID
-			  && *aid_ptr != NULL_PAGEID_MARKED_DELETED)
+		      if (*aid_ptr > NULL_PAGEID)
 			{
 			  if (batch_ndealloc == 0)
 			    {
@@ -3335,17 +3352,20 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 				   * volumes (i.e., FILE_TMP), set all the pages
 				   * as permanent
 				   */
-				  pgbuf_invalidate_temporary_file (allocset->
-								   volid,
-								   batch_firstid,
-								   batch_ndealloc,
-								   true);
+				  pgbuf_invalidate_temporary_file
+				    (allocset->volid, batch_firstid,
+				     batch_ndealloc, true);
 
 				  /* Start again */
 				  batch_firstid = *aid_ptr;
 				  batch_ndealloc = 1;
 				}
 			    }
+			}
+		      else
+			{
+			  assert (*aid_ptr == NULL_PAGEID
+				  || *aid_ptr == NULL_PAGEID_MARKED_DELETED);
 			}
 		    }
 
@@ -3523,8 +3543,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 
 	      for (; aid_ptr < outptr; aid_ptr++)
 		{
-		  if (*aid_ptr != NULL_PAGEID
-		      && *aid_ptr != NULL_PAGEID_MARKED_DELETED)
+		  if (*aid_ptr > NULL_PAGEID)
 		    {
 		      if (batch_ndealloc == 0)
 			{
@@ -3572,11 +3591,9 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 			      if (file_type == FILE_TMP_TMP
 				  && !pb_invalid_temp_called)
 				{
-				  pgbuf_invalidate_temporary_file (allocset->
-								   volid,
-								   batch_firstid,
-								   batch_ndealloc,
-								   false);
+				  pgbuf_invalidate_temporary_file
+				    (allocset->volid, batch_firstid,
+				     batch_ndealloc, false);
 				}
 
 			      (void) disk_dealloc_page (thread_p,
@@ -3589,7 +3606,13 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 			    }
 			}
 		    }
+		  else
+		    {
+		      assert (*aid_ptr == NULL_PAGEID
+			      || *aid_ptr == NULL_PAGEID_MARKED_DELETED);
+		    }
 		}
+
 	      if (batch_ndealloc > 0)
 		{
 		  /* Deallocate any accumulated pages */
@@ -3713,6 +3736,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 			    }
 			}
 		    }
+
 		  if (batch_ndealloc > 0)
 		    {
 		      /* Deallocate any accumulated sectors */
@@ -3898,7 +3922,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid)
 				FILE_SIZEOF_FHDR_WITH_DES_COMMENTS (fhdr),
 				fhdr);
 	  addr.vfid = vfid;
-	  pgbuf_set_dirty (thread_p, fhdr_pgptr, DONT_FREE);
+	  pgbuf_set_dirty (thread_p, fhdr_pgptr, FREE);
 	  fhdr_pgptr = NULL;
 
 	  if (log_end_system_op (thread_p, LOG_RESULT_TOPOP_COMMIT) !=
@@ -4090,7 +4114,7 @@ file_type_cache_check (const VFID * vfid)
   int rv;
 #endif /* SERVER_MODE */
 
-  MUTEX_LOCK (rv, file_Type_cache_lock);
+  rv = pthread_mutex_lock (&file_Type_cache_lock);
 
   for (i = 0; i < file_Type_cache.max; i++)
     {
@@ -4102,7 +4126,7 @@ file_type_cache_check (const VFID * vfid)
 	}
     }
 
-  MUTEX_UNLOCK (file_Type_cache_lock);
+  pthread_mutex_unlock (&file_Type_cache_lock);
 
   return file_type;
 }
@@ -4125,7 +4149,7 @@ file_type_cache_add_entry (const VFID * vfid, FILE_TYPE type)
 #endif /* SERVER_MODE */
   int ret = NO_ERROR;
 
-  MUTEX_LOCK (rv, file_Type_cache_lock);
+  rv = pthread_mutex_lock (&file_Type_cache_lock);
 
   if (file_Type_cache.max < FILE_TYPE_CACHE_SIZE)
     {
@@ -4156,7 +4180,7 @@ file_type_cache_add_entry (const VFID * vfid, FILE_TYPE type)
   file_Type_cache.entry[candidate].file_type = type;
   file_Type_cache.entry[candidate].timestamp = file_Type_cache.clock++;
 
-  MUTEX_UNLOCK (file_Type_cache_lock);
+  pthread_mutex_unlock (&file_Type_cache_lock);
 
   return ret;
 }
@@ -4181,7 +4205,7 @@ file_type_cache_entry_remove (const VFID * vfid)
 #endif /* SERVER_MODE */
   int ret = NO_ERROR;
 
-  MUTEX_LOCK (rv, file_Type_cache_lock);
+  rv = pthread_mutex_lock (&file_Type_cache_lock);
 
   for (i = 0; i < file_Type_cache.max; i++)
     {
@@ -4200,7 +4224,7 @@ file_type_cache_entry_remove (const VFID * vfid)
 	}
     }
 
-  MUTEX_UNLOCK (file_Type_cache_lock);
+  pthread_mutex_unlock (&file_Type_cache_lock);
 
   return ret;
 }
@@ -4224,12 +4248,12 @@ file_typecache_clear (void)
 #endif /* SERVER_MODE */
   int ret = NO_ERROR;
 
-  MUTEX_LOCK (rv, file_Type_cache_lock);
+  rv = pthread_mutex_lock (&file_Type_cache_lock);
 
   file_Type_cache.max = 0;
   file_Type_cache.clock = 0;
 
-  MUTEX_UNLOCK (file_Type_cache_lock);
+  pthread_mutex_unlock (&file_Type_cache_lock);
 
   return ret;
 }
@@ -4537,6 +4561,7 @@ file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid,
 	}
 
       fhdr = (FILE_HEADER *) (fhdr_pgptr + FILE_HEADER_OFFSET);
+
       allocset_pgptr = pgbuf_fix (thread_p, &fhdr->last_allocset_vpid,
 				  OLD_PAGE, PGBUF_LATCH_READ,
 				  PGBUF_UNCONDITIONAL_LATCH);
@@ -4552,7 +4577,9 @@ file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid,
 	{
 	  num_overhead_pages = 0;
 	}
+
       pgbuf_unfix_and_init (thread_p, allocset_pgptr);
+      pgbuf_unfix_and_init (thread_p, fhdr_pgptr);
     }
 
   return CEIL_PTVDIV (num_overhead_pages, DB_PAGESIZE);
@@ -4565,7 +4592,7 @@ file_guess_numpages_overhead (THREAD_ENTRY * thread_p, const VFID * vfid,
  *   allocset(in): pointer to a The first nth page desired in the allocation set
  *   num_desired_pages(in): The number of page identfiers that at desired
  *
- * Note: Find a set (num_desired_pages) of page identifers starting at
+ * Note: Find a set (num_desired_pages) of page identifiers starting at
  *       start_nthpage for the given allocation set. The number of returned
  *       identifiers is indicated in the return value. The numbering of pages
  *       start with zero.
@@ -4598,6 +4625,7 @@ file_allocset_nthpage (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
 	{
 	  return -1;
 	}
+
       /* Calculate the portion of pageids that we can look at current page */
       if (file_find_limits (pgptr, allocset, &aid_ptr, &outptr,
 			    FILE_PAGE_TABLE) != NO_ERROR)
@@ -4605,6 +4633,7 @@ file_allocset_nthpage (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
 	  pgbuf_unfix_and_init (thread_p, pgptr);
 	  return -1;
 	}
+
       /* Find the nth page. If there is not any holes in this allocation set,
          we could address the desired page directly. */
       if (allocset->num_holes == 0 && num_returned == 0)
@@ -4633,8 +4662,7 @@ file_allocset_nthpage (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
 
       for (; num_returned < num_desired_pages && aid_ptr < outptr; aid_ptr++)
 	{
-	  if (*aid_ptr != NULL_PAGEID
-	      && *aid_ptr != NULL_PAGEID_MARKED_DELETED)
+	  if (*aid_ptr > NULL_PAGEID)
 	    {
 	      if (count >= start_nthpage)
 		{
@@ -4643,6 +4671,11 @@ file_allocset_nthpage (THREAD_ENTRY * thread_p, const FILE_HEADER * fhdr,
 		  num_returned += 1;
 		}
 	      count++;
+	    }
+	  else
+	    {
+	      assert (*aid_ptr == NULL_PAGEID
+		      || *aid_ptr == NULL_PAGEID_MARKED_DELETED);
 	    }
 	}
 
@@ -5130,7 +5163,7 @@ file_allocset_alloc_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	}
     }
 
-  /* Find the end of the table of sector identifers */
+  /* Find the end of the table of sector identifiers */
   while (!VPID_ISNULL (&allocset->end_sects_vpid))
     {
       addr.pgptr = pgbuf_fix (thread_p, &allocset->end_sects_vpid, OLD_PAGE,
@@ -5195,6 +5228,7 @@ file_allocset_alloc_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 			    sizeof (*aid_ptr), aid_ptr, &sectid);
 
   /* Now update the sector table */
+  assert (sectid > NULL_PAGEID);
   *aid_ptr = sectid;
 
   /* Save the allocation set undo recovery information.
@@ -5225,25 +5259,20 @@ file_allocset_alloc_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	  pgbuf_unfix_and_init (thread_p, addr.pgptr);
 	  return NULL_SECTID;
 	}
+
       if (VPID_ISNULL (&vpid))
 	{
-	  if (file_expand_ftab (thread_p, fhdr_pgptr) != NULL)
+	  if (file_expand_ftab (thread_p, fhdr_pgptr) == NULL
+	      || file_ftabvpid_next (fhdr, addr.pgptr, &vpid) != NO_ERROR
+	      || VPID_ISNULL (&vpid))
 	    {
-	      if (file_ftabvpid_next (fhdr, addr.pgptr, &vpid) != NO_ERROR)
-		{
-		  pgbuf_unfix_and_init (thread_p, addr.pgptr);
-		  return NULL_SECTID;
-		}
+	      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+	      return NULL_SECTID;
 	    }
-	  /* WARNING we appear to be eating an error here if expansion fails. */
 	}
 
-      /* Expansion succeeded. */
-      if (!VPID_ISNULL (&vpid))
-	{
-	  allocset->end_sects_vpid = vpid;
-	  allocset->end_sects_offset = sizeof (FILE_FTAB_CHAIN);
-	}
+      allocset->end_sects_vpid = vpid;
+      allocset->end_sects_offset = sizeof (FILE_FTAB_CHAIN);
     }
 
   pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
@@ -5431,6 +5460,15 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
       allocset->end_pages_vpid = to_vpid;
       allocset->end_pages_offset = (INT16) ((nsects * sizeof (to_vpid.pageid))
 					    + sizeof (*chain));
+
+      assert ((allocset->end_pages_vpid.volid !=
+	       allocset->start_pages_vpid.volid)
+	      || (allocset->end_pages_vpid.pageid >
+		  allocset->start_pages_vpid.pageid)
+	      || ((allocset->end_pages_vpid.pageid ==
+		   allocset->start_pages_vpid.pageid)
+		  && (allocset->end_pages_offset >=
+		      allocset->start_pages_offset)));
     }
 
   /*
@@ -5567,6 +5605,8 @@ file_allocset_expand_sector (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	    {
 	      length += sizeof (*to_aid_ptr);
 	      to_aid_ptr--;
+
+	      assert (NULL_PAGEID < *from_aid_ptr);
 	      *to_aid_ptr = *from_aid_ptr;
 	    }
 	}
@@ -5656,7 +5696,7 @@ file_expand_ftab (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr)
   /* Allocate a new page for file table in any volume */
   if (file_ftabvpid_alloc (thread_p, fhdr->last_table_vpid.volid,
 			   fhdr->last_table_vpid.pageid, &new_ftb_vpid, 1,
-			   fhdr->type) != NO_ERROR)
+			   fhdr->type, FILE_EXPAND_FILE_TABLE) != NO_ERROR)
     {
       return NULL;
     }
@@ -5858,19 +5898,10 @@ file_allocset_new_set (THREAD_ENTRY * thread_p, INT16 last_allocset_volid,
 		       exp_numpages, setpage_type, fhdr->type);
   if (volid == NULL_VOLID)
     {
-      goto exit_on_error;
+      return ER_FAILED;
     }
 
   return file_allocset_add_set (thread_p, fhdr_pgptr, volid);
-
-exit_on_error:
-
-  if (ret == NO_ERROR)
-    {
-      ret = ER_FAILED;
-    }
-
-  return ret;
 }
 
 /*
@@ -6088,7 +6119,7 @@ exit_on_error:
 }
 
 /*
- * file_allocset_add_pageids () - Add allocated page identifers to the page table
+ * file_allocset_add_pageids () - Add allocated page identifiers to the page table
  *                             of the given allocation set
  *   return: alloc_pageid or NULL_PAGEID when error
  *   fhdr_pgptr(in): Page pointer to file header
@@ -6235,7 +6266,9 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 				    sizeof (npages) * length, logdata);
 	    }
 	}
+
       /* Store the identifier */
+      assert (NULL_PAGEID < (alloc_pageid + i));
       *aid_ptr++ = alloc_pageid + i;
       if (alloc_vpids != NULL)
 	{
@@ -6244,6 +6277,7 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	  alloc_vpids->index++;
 	}
     }
+
   /* Log the pageids stored on this page */
   log_append_redo_data (thread_p, RVFL_IDSTABLE, &addr,
 			CAST_BUFLEN ((char *) aid_ptr - logdata), logdata);
@@ -6262,6 +6296,15 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   allocset->end_pages_vpid = vpid;
   allocset->end_pages_offset = (INT16) ((char *) aid_ptr - (char *) pgptr);
   allocset->num_pages += npages;
+
+  assert ((allocset->end_pages_vpid.volid !=
+	   allocset->start_pages_vpid.volid)
+	  || (allocset->end_pages_vpid.pageid >
+	      allocset->start_pages_vpid.pageid)
+	  || ((allocset->end_pages_vpid.pageid ==
+	       allocset->start_pages_vpid.pageid)
+	      && (allocset->end_pages_offset >=
+		  allocset->start_pages_offset)));
 
   /* Free the page table */
   pgbuf_set_dirty (thread_p, pgptr, FREE);
@@ -6309,7 +6352,7 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
  *   allocset_vpid(in): Page where the allocation set is located
  *   allocset_offset(in): Location in allocset_pgptr where allocation set is
  *                        located
- *   first_new_vpid(out): The identifer of the allocated page
+ *   first_new_vpid(out): The identifier of the allocated page
  *   npages(in): Number of pages to allocate
  *   near_vpid(in): Near vpid identifier. Hint only, it may be ignored
  *   alloc_vpids(out): buffer for saving allocated vpids
@@ -6383,7 +6426,7 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
   alloc_pageid = ((sectid != NULL_SECTID)
 		  ? disk_alloc_page (thread_p, allocset->volid, sectid,
 				     npages,
-				     near_pageid) :
+				     near_pageid, true) :
 		  DISK_NULL_PAGEID_WITH_ENOUGH_DISK_PAGES);
 
   if (alloc_pageid == DISK_NULL_PAGEID_WITH_ENOUGH_DISK_PAGES
@@ -6420,7 +6463,8 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	    {
 	      sectid = *aid_ptr;
 	      alloc_pageid = disk_alloc_page (thread_p, allocset->volid,
-					      sectid, npages, near_pageid);
+					      sectid, npages, near_pageid,
+					      true);
 	    }
 
 	  /* Was page found ? */
@@ -6471,7 +6515,7 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	}
 
       alloc_pageid = disk_alloc_page (thread_p, allocset->volid, sectid,
-				      npages, near_pageid);
+				      npages, near_pageid, true);
 #if !defined (NDEBUG)
       if (++retry > 1)
 	{
@@ -6520,6 +6564,7 @@ file_allocset_alloc_pages (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
       VPID_SET_NULL (first_new_vpid);
       first_new_vpid->volid = allocset->volid;	/* Hint for undesirable volid */
     }
+
   pgbuf_unfix_and_init (thread_p, allocset_pgptr);
 
   /* In the case of temporary file on permanent volumes (i.e., FILE_TMP), set
@@ -6868,7 +6913,6 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
 
   VPID_SET_NULL (first_alloc_vpid);
   *first_alloc_nthpage = fhdr->num_user_pages;
-  allocate_npages = npages;
 
   is_tmp_file = ((file_type == FILE_TMP || file_type == FILE_TMP_TMP
 		  || file_type == FILE_EITHER_TMP
@@ -6881,8 +6925,8 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
        * among sectors.
        * We don't use DISK_SECTOR_WITH_ALL_PAGES way for these files any more.
        */
-      allocate_npages = (is_tmp_file ? allocate_npages
-			 : MIN (allocate_npages, DISK_SECTOR_NPAGES));
+      allocate_npages = (is_tmp_file ? npages
+			 : MIN (npages, DISK_SECTOR_NPAGES));
 
 #ifdef FILE_DEBUG
       /* FOR EASY DEBUGGING OF MULTI VOLUME IN DEBUGGING MODE
@@ -6921,7 +6965,8 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
 	  /* Get whatever we can from the current volume, before we try another
 	     volume */
 
-	  max_npages = disk_get_maxcontiguous_numpages (thread_p, vpid.volid);
+	  max_npages =
+	    disk_get_maxcontiguous_numpages (thread_p, vpid.volid, npages);
 
 	  if (max_npages > 0 && max_npages < allocate_npages)
 	    {
@@ -6950,23 +6995,6 @@ file_alloc_pages_as_noncontiguous (THREAD_ENTRY * thread_p, const VFID * vfid,
       if (allocstate == FILE_ALLOCSET_ALLOC_NPAGES)
 	{
 	  npages -= allocate_npages;
-	  if (npages > 0)
-	    {
-	      max_npages = disk_get_maxcontiguous_numpages (thread_p,
-							    vpid.volid);
-	      if (max_npages > 0 && max_npages < npages)
-		{
-		  allocate_npages = max_npages;
-		}
-	      else
-		{
-		  allocate_npages = npages;
-		}
-	    }
-	  else
-	    {
-	      allocate_npages = npages;
-	    }
 
 	  if (VPID_ISNULL (first_alloc_vpid))
 	    {
@@ -7303,7 +7331,7 @@ file_find_maxpages_allocable (THREAD_ENTRY * thread_p, const VFID * vfid)
   INT32 num_pages;
 
   file_type = file_get_type (thread_p, vfid);
-  if (file_type != FILE_UNKNOWN_TYPE)
+  if (file_type == FILE_UNKNOWN_TYPE)
     {
       return -1;
     }
@@ -7379,21 +7407,22 @@ file_allocset_find_page (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
          stored. The pages are stored by the allocation order */
 
       for (; aid_ptr < outptr; aid_ptr++)
-	if (pageid == *aid_ptr)
-	  {
-	    isfound = DISK_VALID;
-	    if (fun)
-	      {
-		if ((*fun)
-		    (thread_p, fhdr, allocset, fhdr_pgptr, allocset_pgptr,
-		     allocset_offset, pgptr, aid_ptr, pageid,
-		     args) != NO_ERROR)
-		  {
-		    isfound = DISK_ERROR;
-		  }
-	      }
-	    break;
-	  }
+	{
+	  if (pageid == *aid_ptr)
+	    {
+	      isfound = DISK_VALID;
+	      if (fun)
+		{
+		  if ((*fun) (thread_p, fhdr, allocset, fhdr_pgptr,
+			      allocset_pgptr, allocset_offset, pgptr,
+			      aid_ptr, pageid, args) != NO_ERROR)
+		    {
+		      isfound = DISK_ERROR;
+		    }
+		}
+	      break;
+	    }
+	}
 
       if (isfound == DISK_INVALID)
 	{
@@ -7569,7 +7598,6 @@ file_allocset_remove_pageid (THREAD_ENTRY * thread_p, FILE_HEADER * fhdr,
 						fhdr_pgptr, allocset_pgptr,
 						allocset_offset, pgptr,
 						aid_ptr, 1);
-
 }
 
 /*
@@ -8666,41 +8694,45 @@ file_allocset_reuse_last_set (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 	  batch_ndealloc = 0;
 
 	  for (; aid_ptr < outptr; aid_ptr++)
-	    if (*aid_ptr != NULL_SECTID)
-	      {
-		if (batch_ndealloc == 0)
-		  {
-		    /* Start accumulating contiguous sectors */
-		    batch_firstid = *aid_ptr;
-		    batch_ndealloc = 1;
-		  }
-		else
-		  {
-		    /* Is sector contiguous ? */
-		    if (*aid_ptr == (batch_firstid + batch_ndealloc))
-		      {
-			/* contiguous */
-			batch_ndealloc++;
-		      }
-		    else
-		      {
-			/*
-			 * This is not a contiguous sector.
-			 * Deallocate any previous sectors and start
-			 * accumulating contiguous sectors again.
-			 * We do not care if the sector deallocation failed,
-			 * since we are destroying the file.. Deallocate as
-			 * much as we can.
-			 */
-			(void) disk_dealloc_sector (thread_p, allocset->volid,
-						    batch_firstid,
-						    batch_ndealloc);
-			/* Start again */
-			batch_firstid = *aid_ptr;
-			batch_ndealloc = 1;
-		      }
-		  }
-	      }
+	    {
+	      if (*aid_ptr != NULL_SECTID)
+		{
+		  if (batch_ndealloc == 0)
+		    {
+		      /* Start accumulating contiguous sectors */
+		      batch_firstid = *aid_ptr;
+		      batch_ndealloc = 1;
+		    }
+		  else
+		    {
+		      /* Is sector contiguous ? */
+		      if (*aid_ptr == (batch_firstid + batch_ndealloc))
+			{
+			  /* contiguous */
+			  batch_ndealloc++;
+			}
+		      else
+			{
+			  /*
+			   * This is not a contiguous sector.
+			   * Deallocate any previous sectors and start
+			   * accumulating contiguous sectors again.
+			   * We do not care if the sector deallocation failed,
+			   * since we are destroying the file.. Deallocate as
+			   * much as we can.
+			   */
+			  (void) disk_dealloc_sector (thread_p,
+						      allocset->volid,
+						      batch_firstid,
+						      batch_ndealloc);
+			  /* Start again */
+			  batch_firstid = *aid_ptr;
+			  batch_ndealloc = 1;
+			}
+		    }
+		}
+	    }
+
 	  if (batch_ndealloc > 0)
 	    {
 	      /* Deallocate any accumulated sectors */
@@ -9261,6 +9293,15 @@ file_allocset_compact_page_table (THREAD_ENTRY * thread_p,
   allocset->end_pages_offset =
     (INT16) ((char *) to_aid_ptr - (char *) to_pgptr);
   allocset->num_holes = 0;
+
+  assert ((allocset->end_pages_vpid.volid !=
+	   allocset->start_pages_vpid.volid)
+	  || (allocset->end_pages_vpid.pageid >
+	      allocset->start_pages_vpid.pageid)
+	  || ((allocset->end_pages_vpid.pageid ==
+	       allocset->start_pages_vpid.pageid)
+	      && (allocset->end_pages_offset >=
+		  allocset->start_pages_offset)));
 
   /* save changes for redo purposes */
   recv_redo.start_pages_vpid = allocset->start_pages_vpid;
@@ -10073,8 +10114,8 @@ file_check_all_pages (THREAD_ENTRY * thread_p, const VFID * vfid,
 	{
 	  num_found = file_find_nthpages (thread_p, vfid, &set_vpids[0], i,
 					  ((fhdr->num_user_pages - i <
-					    FILE_SET_NUMVPIDS) ? fhdr->
-					   num_user_pages -
+					    FILE_SET_NUMVPIDS) ?
+					   fhdr->num_user_pages -
 					   i : FILE_SET_NUMVPIDS));
 	  if (num_found <= 0)
 	    {
@@ -10320,7 +10361,7 @@ file_dump_ftabs (THREAD_ENTRY * thread_p, FILE * fp, const FILE_HEADER * fhdr)
 {
   PAGE_PTR ftb_pgptr = NULL;
   VPID ftb_vpid;
-  int num_out;			/* Number of identifer that has been printed */
+  int num_out;			/* Number of identifier that has been printed */
   int ret = NO_ERROR;
 
   (void) fprintf (fp, "FILE TABLE PAGES:\n");
@@ -10430,7 +10471,7 @@ file_allocset_dump_tables (THREAD_ENTRY * thread_p, FILE * fp,
   INT32 *aid_ptr;		/* Pointer to portion of sector/page table */
   INT32 *outptr;		/* Out of portion of table */
   VPID vpid;
-  int num_out;			/* Number of identifer that has been printed */
+  int num_out;			/* Number of identifier that has been printed */
   int num_aids;
   int ret = NO_ERROR;
 
@@ -11570,13 +11611,13 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE file_type,
    * Thus, it is used as a good approximation that may fail in some cases..
    */
 
-  MUTEX_LOCK (rv, file_Num_mark_deleted_hint_lock);
+  rv = pthread_mutex_lock (&file_Num_mark_deleted_hint_lock);
 
   if (file_Tracker->vfid == NULL ||
       file_Tracker->hint_num_mark_deleted[file_type] == 0)
     {
       VFID_SET_NULL (vfid);
-      MUTEX_UNLOCK (file_Num_mark_deleted_hint_lock);
+      pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
       return NULL;
     }
 
@@ -11658,7 +11699,7 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE file_type,
 
   if (file_mark_deleted_file_list_remove (&tmp_vfid, file_type) != NO_ERROR)
     {
-      MUTEX_UNLOCK (file_Num_mark_deleted_hint_lock);
+      pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
       VFID_SET_NULL (vfid);
       return NULL;
     }
@@ -11691,7 +11732,7 @@ file_reuse_deleted (THREAD_ENTRY * thread_p, VFID * vfid, FILE_TYPE file_type,
 
   pgbuf_set_dirty (thread_p, fhdr_pgptr, FREE);
   fhdr_pgptr = NULL;
-  MUTEX_UNLOCK (file_Num_mark_deleted_hint_lock);
+  pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
 
   return vfid;
 
@@ -11708,7 +11749,7 @@ exit_on_error:
     }
 
   VFID_SET_NULL (vfid);
-  MUTEX_UNLOCK (file_Num_mark_deleted_hint_lock);
+  pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
 
   return NULL;
 }
@@ -12171,7 +12212,7 @@ file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   fhdr->ismark_as_deleted = isdeleted;
 
-  MUTEX_LOCK (rv, file_Num_mark_deleted_hint_lock);
+  rv = pthread_mutex_lock (&file_Num_mark_deleted_hint_lock);
   if (file_Tracker->hint_num_mark_deleted[fhdr->type] != -1
       && isdeleted == true
       && (fhdr->type == FILE_HEAP || fhdr->type == FILE_HEAP_REUSE_SLOTS))
@@ -12179,11 +12220,11 @@ file_rv_undoredo_mark_as_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       ret = file_mark_deleted_file_list_add (&fhdr->vfid, fhdr->type);
       if (ret != NO_ERROR)
 	{
-	  MUTEX_UNLOCK (file_Num_mark_deleted_hint_lock);
+	  pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
 	  return NO_ERROR;	/* do not permit error */
 	}
     }
-  MUTEX_UNLOCK (file_Num_mark_deleted_hint_lock);
+  pthread_mutex_unlock (&file_Num_mark_deleted_hint_lock);
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -12267,6 +12308,15 @@ file_rv_allocset_undoredo_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   allocset->start_pages_offset = rvstb->start_pages_offset;
   allocset->end_pages_offset = rvstb->end_pages_offset;
   allocset->num_holes = rvstb->num_holes;
+
+  assert ((allocset->end_pages_vpid.volid !=
+	   allocset->start_pages_vpid.volid)
+	  || (allocset->end_pages_vpid.pageid >
+	      allocset->start_pages_vpid.pageid)
+	  || ((allocset->end_pages_vpid.pageid ==
+	       allocset->start_pages_vpid.pageid)
+	      && (allocset->end_pages_offset >=
+		  allocset->start_pages_offset)));
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -12509,6 +12559,15 @@ file_rv_allocset_undoredo_add_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   allocset->num_pages = rvpgs->num_pages;
   allocset->num_holes = rvpgs->num_holes;
 
+  assert ((allocset->end_pages_vpid.volid !=
+	   allocset->start_pages_vpid.volid)
+	  || (allocset->end_pages_vpid.pageid >
+	      allocset->start_pages_vpid.pageid)
+	  || ((allocset->end_pages_vpid.pageid ==
+	       allocset->start_pages_vpid.pageid)
+	      && (allocset->end_pages_offset >=
+		  allocset->start_pages_offset)));
+
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   return NO_ERROR;		/* do not permit error */
@@ -12744,7 +12803,7 @@ file_rv_descriptor_undoredo_firstrest_nextvpid (THREAD_ENTRY * thread_p,
 
 /*
  * file_rv_descriptor_dump_firstrest_nextvpid () - Dump undo/redo first rest
- *                                         description VPID page identifer
+ *                                         description VPID page identifier
  *   return: void
  *   length_ignore(in): Length of Recovery Data
  *   data(in): The data being logged
@@ -12782,7 +12841,7 @@ file_rv_descriptor_undoredo_nrest_nextvpid (THREAD_ENTRY * thread_p,
 
 /*
  * file_rv_descriptor_dump_nrest_nextvpid () - Dump undo/redo first rest description
- *                                     VPID page identifer
+ *                                     VPID page identifier
  *   return: void
  *   length_ignore(in): Length of Recovery Data
  *   data(in): The data being logged

@@ -84,6 +84,7 @@
 				OutputFile="$(OutDir)\CUBRID_Service_Tray.exe"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
+				UACExecutionLevel="2"
 				GenerateDebugInformation="true"
 				ProgramDatabaseFile="$(IntDir)\CUBRID_Service_Tray.pdb"
 				SubSystem="2"
@@ -178,6 +179,7 @@
 				OutputFile="$(OutDir)\CUBRID_Service_Tray.exe"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
+				UACExecutionLevel="2"
 				GenerateDebugInformation="true"
 				ProgramDatabaseFile="$(IntDir)\CUBRID_Service_Tray.pdb"
 				SubSystem="2"
@@ -272,6 +274,7 @@
 				OutputFile="$(OutDir)\CUBRID_Service_Tray.exe"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
+				UACExecutionLevel="2"
 				ProgramDatabaseFile="$(IntDir)\CUBRID_Service_Tray.pdb"
 				SubSystem="2"
 				RandomizedBaseAddress="1"
@@ -365,6 +368,7 @@
 				OutputFile="$(OutDir)\CUBRID_Service_Tray.exe"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
+				UACExecutionLevel="2"
 				ProgramDatabaseFile="$(IntDir)\CUBRID_Service_Tray.pdb"
 				SubSystem="2"
 				RandomizedBaseAddress="1"
@@ -1975,14 +1979,7 @@
 				RelativePath="..\..\src\win_tools\cubridtray\res\ico00002.ico"
 				>
 			</File>
-			<File
-				RelativePath="..\..\src\win_tools\cubridtray\res\ico00003.ico"
-				>
-			</File>
-			<File
-				RelativePath="..\..\src\win_tools\cubridtray\res\icon1.ico"
-				>
-			</File>
+			
 			<File
 				RelativePath="..\..\src\win_tools\cubridtray\RES\icon2.ico"
 				>
@@ -1992,23 +1989,11 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\src\win_tools\cubridtray\res\network.ico"
-				>
-			</File>
-			<File
 				RelativePath="..\..\src\win_tools\cubridtray\res\smile1.ico"
 				>
 			</File>
 			<File
-				RelativePath="..\..\src\win_tools\cubridtray\res\unitray.ico"
-				>
-			</File>
-			<File
 				RelativePath="..\..\src\win_tools\cubridtray\res\unitray.rc2"
-				>
-			</File>
-			<File
-				RelativePath="..\..\src\win_tools\cubridtray\res\unitrayDoc.ico"
 				>
 			</File>
 		</Filter>

@@ -77,6 +77,11 @@
 #include "environment_variable.h"
 #include "tcp.h"
 
+#ifndef HAVE_GETHOSTBYNAME_R
+#include <pthread.h>
+static pthread_mutex_t gethostbyname_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif /* HAVE_GETHOSTBYNAME_R */
+
 #define HOST_ID_ARRAY_SIZE 8	/* size of the host_id string */
 #define TCP_MIN_NUM_RETRIES 3
 #define CONTROLLEN (sizeof(struct cmsghdr) + sizeof(int))
@@ -85,10 +90,6 @@
 #endif /* !INADDR_NONE */
 
 static const int css_Maximum_server_count = 50;
-
-#ifndef HAVE_GETHOSTBYNAME_R
-static MUTEX_T gethostbyname_lock = MUTEX_INITIALIZER;
-#endif /* HAVE_GETHOSTBYNAME_R */
 
 #if !defined (WINDOWS)
 #define SET_NONBLOCKING(fd) { \
@@ -227,18 +228,18 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr,
       struct hostent *hp;
       int r;
 
-      MUTEX_LOCK (r, gethostbyname_lock);
+      r = pthread_mutex_lock (&gethostbyname_lock);
       hp = gethostbyname (host);
       if (hp == NULL)
 	{
-	  MUTEX_UNLOCK (gethostbyname_lock);
+	  pthread_mutex_unlock (&gethostbyname_lock);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hp->h_addr,
 	      hp->h_length);
-      MUTEX_UNLOCK (gethostbyname_lock);
+      pthread_mutex_unlock (&gethostbyname_lock);
 #endif /* !HAVE_GETHOSTBYNAME_R */
     }
 
@@ -414,7 +415,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
  *   return: socket descriptor
  *   host(in): host name
  *   port(in): port no
- *   timeout(in): timeout in mili-seconds
+ *   timeout(in): timeout in milli-seconds
  */
 SOCKET
 css_tcp_client_open_with_timeout (const char *host, int port, int timeout)
@@ -478,10 +479,10 @@ again_eintr:
   FD_SET (sd, &wfds);
   FD_ZERO (&efds);
   FD_SET (sd, &efds);
-  /* wait mili-seconds of the timeout */
+  /* wait milli-seconds of the timeout */
   tv.tv_sec = timeout / 1000;
   tv.tv_usec = (timeout % 1000) * 1000;
-  if ((n = select (FD_SETSIZE, NULL, &wfds, &efds, &tv)) == 0)
+  if ((n = select (sd + 1, NULL, &wfds, &efds, &tv)) == 0)
     {
       /* 0 means it timed out and no fd is changed */
       errno = ETIMEDOUT;
@@ -1327,7 +1328,7 @@ css_ping (SOCKET sd, struct sockaddr_in *sa_send, int timeout)
       /* wait one second */
       tv.tv_sec = timeout >= 1000 ? 1 : 0;
       tv.tv_usec = timeout >= 1000 ? 0 : timeout * 1000;
-      n = select (FD_SETSIZE, &fds, NULL, NULL, &tv);
+      n = select (sd + 1, &fds, NULL, NULL, &tv);
       if (n < 0 && errno != EINTR)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_ping: select() errno %d\n",
@@ -1455,10 +1456,10 @@ css_peer_alive (SOCKET sd, int timeout)
       FD_SET (nsd, &wfds);
       FD_ZERO (&efds);
       FD_SET (nsd, &efds);
-      /* wait mili-seconds of the timeout */
+      /* wait milli-seconds of the timeout */
       tv.tv_sec = timeout / 1000;
       tv.tv_usec = (timeout % 1000) * 1000;
-      n = select (FD_SETSIZE, NULL, &wfds, &efds, &tv);
+      n = select (nsd + 1, NULL, &wfds, &efds, &tv);
       if (n < 0 && errno != EINTR)
 	{
 	  er_log_debug (ARG_FILE_LINE,

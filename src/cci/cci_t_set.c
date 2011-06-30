@@ -234,7 +234,7 @@ t_set_make (T_SET * set, char ele_type, int size, void *value, int *indicator)
 	  {
 	    char *ele_value;
 	    ele_value = ((char **) value)[i];
-	    ADD_ARG_STR (&net_buf, ele_value, strlen (ele_value) + 1);
+	    ADD_ARG_STR (&net_buf, ele_value, strlen (ele_value) + 1, NULL);
 	  }
 	  break;
 	case CCI_U_TYPE_BIT:

@@ -40,7 +40,7 @@
 #include "query_evaluator.h"
 #include "log_comm.h"
 #include "object_domain.h"
-#include "thread_impl.h"
+#include "thread.h"
 
 #define QFILE_IS_LIST_CACHE_DISABLED \
   (PRM_LIST_QUERY_CACHE_MODE == 0 || PRM_LIST_MAX_QUERY_CACHE_ENTRIES <= 0)
@@ -147,7 +147,7 @@ extern QFILE_LIST_ID *qfile_sort_list_with_func (THREAD_ENTRY * thread_p,
 						 SORT_GET_FUNC * get_fn,
 						 SORT_PUT_FUNC * put_fn,
 						 SORT_CMP_FUNC * cmp_fn,
-						 void *extra_arg);
+						 void *extra_arg, int limit);
 extern QFILE_LIST_ID *qfile_sort_list (THREAD_ENTRY * thread_p,
 				       QFILE_LIST_ID * list_id,
 				       SORT_LIST * sort_list,
@@ -249,4 +249,8 @@ extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value_r (QFILE_TUPLE tpl,
 							  char **tpl_val,
 							  int *val_size);
 extern bool qfile_has_next_page (PAGE_PTR page_p);
+extern int qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p,
+					      QFILE_LIST_ID * list_id_p,
+					      VALPTR_LIST * valptr_list_p,
+					      bool * resolved_all);
 #endif /* _LIST_FILE_H_ */

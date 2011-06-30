@@ -35,7 +35,7 @@
 #include "log_comm.h"
 #include "error_manager.h"
 
-#define RVMM_INTERFACE 0
+#define RVCL_DUMMY 0
 
 struct rvcl_fun
 {

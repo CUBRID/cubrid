@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include "error_manager.h"
 #include "object_representation.h"
+#include "object_domain.h"
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #endif
@@ -65,25 +66,41 @@ typedef struct pr_type
   /* set DB_VALUE from DB_VALUE */
   int (*setval) (DB_VALUE * dest, DB_VALUE * src, bool copy);
   /* return memory size */
-  int (*lengthmem) (void *memptr, struct tp_domain * domain, int disk);
+  int (*data_lengthmem) (void *memptr, struct tp_domain * domain, int disk);
   /* return DB_VALUE size */
-  int (*lengthval) (DB_VALUE * value, int disk);
+  int (*data_lengthval) (DB_VALUE * value, int disk);
   /* write disk rep from memory */
-  void (*writemem) (OR_BUF * buf, void *memptr, struct tp_domain * domain);
+  void (*data_writemem) (OR_BUF * buf, void *memptr,
+			 struct tp_domain * domain);
   /* read disk rep to memory */
-  void (*readmem) (OR_BUF * buf, void *memptr, struct tp_domain * domain,
-		   int size);
+  void (*data_readmem) (OR_BUF * buf, void *memptr, struct tp_domain * domain,
+			int size);
   /* write disk rep from DB_VALUE */
-  int (*writeval) (OR_BUF * buf, DB_VALUE * value);
+  int (*data_writeval) (OR_BUF * buf, DB_VALUE * value);
   /* read disk rep to DB_VALUE */
-  int (*readval) (OR_BUF * buf, DB_VALUE * value, struct tp_domain * domain,
-		  int size, bool copy, char *copy_buf, int copy_buf_len);
+  int (*data_readval) (OR_BUF * buf, DB_VALUE * value,
+		       struct tp_domain * domain, int size, bool copy,
+		       char *copy_buf, int copy_buf_len);
+  /* btree memory size */
+  int (*index_lengthmem) (void *memptr, struct tp_domain * domain);
+  /* return DB_VALUE size */
+  int (*index_lengthval) (DB_VALUE * value);
+  /* write btree rep from DB_VALUE */
+  int (*index_writeval) (OR_BUF * buf, DB_VALUE * value);
+  /* read btree rep to DB_VALUE */
+  int (*index_readval) (OR_BUF * buf, DB_VALUE * value,
+			struct tp_domain * domain, int size, bool copy,
+			char *copy_buf, int copy_buf_len);
+  /* btree value compare */
+  int (*index_cmpdisk) (void *memptr1, void *memptr2,
+			struct tp_domain * domain, int do_reverse,
+			int do_coercion, int total_order, int *start_colp);
   /* free memory for swap or GC */
   void (*freemem) (void *memptr);
   /* memory value compare */
-  int (*cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain,
-		  int do_reverse, int do_coercion,
-		  int total_order, int *start_colp);
+  int (*data_cmpdisk) (void *memptr1, void *memptr2,
+		       struct tp_domain * domain, int do_reverse,
+		       int do_coercion, int total_order, int *start_colp);
   /* db value compare */
   int (*cmpval) (DB_VALUE * value, DB_VALUE * value2,
 		 struct tp_domain * domain, int do_reverse,
@@ -114,6 +131,8 @@ extern PR_TYPE tp_Date;
 extern PR_TYPE tp_Datetime;
 extern PR_TYPE tp_Monetary;
 extern PR_TYPE tp_Elo;
+extern PR_TYPE tp_Blob;
+extern PR_TYPE tp_Clob;
 extern PR_TYPE tp_Variable;
 extern PR_TYPE tp_Substructure;
 extern PR_TYPE tp_Pointer;
@@ -147,6 +166,8 @@ extern PR_TYPE *tp_Type_utime;
 extern PR_TYPE *tp_Type_date;
 extern PR_TYPE *tp_Type_monetary;
 extern PR_TYPE *tp_Type_elo;
+extern PR_TYPE *tp_Type_blob;
+extern PR_TYPE *tp_Type_clob;
 extern PR_TYPE *tp_Type_variable;
 extern PR_TYPE *tp_Type_substructure;
 extern PR_TYPE *tp_Type_vobj;
@@ -218,12 +239,12 @@ extern int pr_ordered_mem_size_total;
  * Read a value from a disk buffer into instance memory.
  */
 #define PRIM_READ(type, domain, tr, mem, len) \
-  (*((type)->readmem))(tr, mem, domain, len)
+  (*((type)->data_readmem))(tr, mem, domain, len)
 
 /* PRIM_WRITE
  * Write a value from instance memory into a disk buffer.
  */
-#define PRIM_WRITE(type, domain, tr, mem) (*((type)->writemem))(tr, mem, domain)
+#define PRIM_WRITE(type, domain, tr, mem) (*((type)->data_writemem))(tr, mem, domain)
 
 #define PRIM_WRITEVAL(type, buf, val) (*((type)->writeval))(buf, val)
 #define PRIM_LENGTHVAL(type, val, size) (*((type)->lengthval))(val, size)
@@ -268,6 +289,7 @@ extern const char *pr_type_name (DB_TYPE id);
 
 extern int pr_is_set_type (DB_TYPE type);
 extern int pr_is_string_type (DB_TYPE type);
+extern int pr_is_prefix_key_type (DB_TYPE type);
 extern int pr_is_variable_type (DB_TYPE type);
 
 /* Size calculators */
@@ -311,15 +333,29 @@ extern int pr_free_ext_value (DB_VALUE * value);
 
 /* Special transformation functions */
 
-extern int pr_writemem_disk_size (char *mem, DB_DOMAIN * domain);
-extern int pr_writeval_disk_size (DB_VALUE * value);
-extern void pr_writeval (OR_BUF * buf, DB_VALUE * value);
-extern int pr_estimate_size (DB_DOMAIN * domain, int avg_key_len);
+extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey,
+					  int index, DB_VALUE * value,
+					  int *prev_indexp, char **prev_ptrp);
+extern int pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
+				    int num_dbvals,
+				    TP_DOMAIN * dbvals_domain_list);
+extern int pr_midxkey_init_boundbits (char *bufptr, int n_atts);
+extern int pr_index_writeval_disk_size (DB_VALUE * value);
+extern int pr_data_writeval_disk_size (DB_VALUE * value);
+extern void pr_data_writeval (OR_BUF * buf, DB_VALUE * value);
+extern int pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1,
+				     const DB_VALUE * db_midxkey2,
+				     DB_VALUE * db_result, int is_reverse);
 
 extern int pr_Inhibit_oid_promotion;
 
 #if !defined (SERVER_MODE)
 extern void pr_write_mop (OR_BUF * buf, MOP mop);
+#endif
+#if defined (ENABLE_UNUSED_FUNCTION)
+/* Utility functions */
+extern char *pr_copy_string (const char *str);
+extern void pr_free_string (char *str);
 #endif
 
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */

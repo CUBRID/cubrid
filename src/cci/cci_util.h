@@ -51,6 +51,7 @@
  ************************************************************************/
 
 #include "cci_handle_mng.h"
+#include "cci_t_lob.h"
 
 /************************************************************************
  * EXPORTED DEFINITIONS							*
@@ -81,6 +82,7 @@ extern void ut_double_to_str (double value, char *str);
 extern void ut_date_to_str (T_CCI_DATE * value, T_CCI_U_TYPE u_type,
 			    char *str);
 extern void ut_oid_to_str (T_OBJECT * oid, char *str);
+extern void ut_lob_to_str (T_LOB *lob, char *str);
 extern void ut_bit_to_str (char *bit_str, int size, char *str);
 extern int ut_is_deleted_oid (T_OBJECT * oid);
 

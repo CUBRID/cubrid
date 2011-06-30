@@ -147,6 +147,9 @@ struct sort_param
   /* Estimated number of pages in each temp file (used in initialization) */
   int tmp_file_pgs;
 
+  /* Details about the "limit" clause */
+  int limit;
+
 };
 
 typedef struct sort_rec_list SORT_REC_LIST;
@@ -310,21 +313,24 @@ sort_spage_initialize (PAGE_PTR pgptr, INT16 slots_type, INT16 alignment)
   if (!spage_is_valid_anchor_type (slots_type))
     {
       (void) fprintf (stderr,
-		      "sp_init: **INTERFACE SYSTEM ERROR BAD value for"
-		      " slots_type = %d.\n ANCHORED was assumed **\n",
+		      "sort_spage_initialize:"
+		      " **INTERFACE SYSTEM ERROR BAD value for"
+		      " slots_type = %d.\n"
+		      " UNANCHORED_KEEP_SEQUENCE was assumed **\n",
 		      slots_type);
-      slots_type = ANCHORED;
+      slots_type = UNANCHORED_KEEP_SEQUENCE;
     }
   if (!(alignment == CHAR_ALIGNMENT || alignment == SHORT_ALIGNMENT ||
 	alignment == INT_ALIGNMENT || alignment == LONG_ALIGNMENT ||
 	alignment == FLOAT_ALIGNMENT || alignment == DOUBLE_ALIGNMENT))
     {
       (void) fprintf (stderr,
-		      "sp_init: **INTERFACE SYSTEM ERROR BAD value = %d"
+		      "sort_spage_initialize:"
+		      " **INTERFACE SYSTEM ERROR BAD value = %d"
 		      " for alignment. %d was assumed\n. Alignment must be"
 		      " either SIZEOF char, short, int, long, float, or double",
-		      alignment, CHAR_ALIGNMENT);
-      alignment = CHAR_ALIGNMENT;
+		      alignment, MAX_ALIGNMENT);
+      alignment = MAX_ALIGNMENT;
     }
 #endif /* CUBRID_DEBUG */
 
@@ -709,7 +715,7 @@ sort_spage_dump_sptr (SLOT * sptr, INT16 nslots, INT16 alignment)
 		       (sptr->rtype == REC_DELETED_WILL_REUSE) ?
 		       "DELETED_WILL_REUSE" :
 		       (sptr->rtype ==
-			REC_ASSIGN_ADDRESS) ? "REC_ASSIGN_ADDRESS" :
+			REC_ASSIGN_ADDRESS) ? "ASSIGN_ADDRESS" :
 		       "UNKNOWN-BY-CURRENT-MODULE"));
 
       if (sptr->roffset != NULL_OFFSET)
@@ -1359,12 +1365,18 @@ sort_run_sort (char ***base, long limit, long sort_numrecs, char **otherbase,
  *               neither precedes the other.
  *   cmp_arg(in): arguments to the cmp_fn function
  *   option(in):
+ *   limit(in):  optional arg, can represent the limit clause. If we only want
+ *               the top K elements of a processed list, it makes sense to use
+ *               special optimizations instead of sorting the entire list and
+ *               returning the first K elements.
+ *               Parameter: -1 if not to be used, > 0 if it should be taken
+ *               into account. Zero is a reserved value.
  */
 int
 sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
 	       SORT_GET_FUNC * get_fn, void *get_arg, SORT_PUT_FUNC * put_fn,
 	       void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg,
-	       SORT_DUP_OPTION option)
+	       SORT_DUP_OPTION option, int limit)
 {
   SORT_PARAM sort_param;
   INT32 input_pages;
@@ -1377,18 +1389,15 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
   sort_param.put_fn = put_fn;
   sort_param.put_arg = put_arg;
 
+  sort_param.limit = limit;
+
   input_pages = ((est_inp_pg_cnt > 0)
 		 ? est_inp_pg_cnt + MAX ((int) (est_inp_pg_cnt * 0.1), 2)
 		 /* 10% of overhead and fragmentation */
 		 : SORT_INIT_INPUT_PAGE_EST);
 
-  /* Adjust the max sort buffer space for a constant amount when page size
-   * varies. Otherwise this confuses benchmarks varying page size, aand
-   * doing sorting by making them look artificcially slow because the more
-   * sorting passes are done.
-   */
-  sort_param.tot_buffers = MIN
-    (((int) (((double) 4096) / DB_PAGESIZE) * PRM_SR_NBUFFERS), input_pages);
+  /* The size of a sort buffer is limited to PRM_SR_NBUFFERS. */
+  sort_param.tot_buffers = MIN (PRM_SR_NBUFFERS, input_pages);
   sort_param.tot_buffers = MAX (4, sort_param.tot_buffers);
 
   sort_param.internal_memory = (char *) malloc (sort_param.tot_buffers *
@@ -1402,11 +1411,13 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
 
   if (sort_param.internal_memory == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, (sort_param.tot_buffers * DB_PAGESIZE));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   sort_param.half_files = sort_get_num_half_tmpfiles (sort_param.tot_buffers,
-						      est_inp_pg_cnt);
+						      input_pages);
   sort_param.tot_tempfiles = sort_param.half_files << 1;
   sort_param.in_half = 0;
 
@@ -1425,8 +1436,8 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt,
 	  for (j = 0; j < i; j++)
 	    {
 	      db_private_free_and_init (thread_p,
-					sort_param.file_contents[j].
-					num_pages);
+					sort_param.
+					file_contents[j].num_pages);
 	      sort_param.file_contents[j].num_pages = NULL;
 	    }
 
@@ -1985,6 +1996,8 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
   RECDES out_recdes;
   int i;
   SORT_REC *key, *next;
+  int flushed_items = 0;
+  int should_continue = true;
 
   /* Make sure the the temp file indexed by out_file has been created;
      if not, create it now. */
@@ -2007,11 +2020,18 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 
   /* Insert each record to the output buffer and flush the buffer
      when it is full */
-  for (i = 0; i < numrecs; i++)
+  for (i = 0; i < numrecs && should_continue; i++)
     {
       /* Traverse next link */
       for (key = (SORT_REC *) index_area[i]; key; key = next)
 	{
+	  /* If we've already flushed the required number, stop. */
+	  if (sort_param->limit > 0 && flushed_items >= sort_param->limit)
+	    {
+	      should_continue = false;
+	      break;
+	    }
+
 	  /* cut-off and save duplicate sort_key value link */
 	  if (rec_type == REC_HOME)
 	    {
@@ -2051,6 +2071,7 @@ sort_run_flush (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param,
 		  return ER_GENERIC_ERROR;
 		}
 	    }
+	  flushed_items++;
 	}
     }
 
@@ -2366,20 +2387,19 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  error = sort_read_area (thread_p,
 						  &sort_param->temp[act],
 						  cur_page[act], read_pages,
-						  sort_param->
-						  internal_memory);
+						  sort_param->internal_memory);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
 			    }
 
 			  cur_page[act] += read_pages;
-			  error = sort_write_area (thread_p, &sort_param->
-						   temp[cur_outfile],
-						   cur_page[cur_outfile],
-						   read_pages,
-						   sort_param->
-						   internal_memory);
+			  error =
+			    sort_write_area (thread_p,
+					     &sort_param->temp[cur_outfile],
+					     cur_page[cur_outfile],
+					     read_pages,
+					     sort_param->internal_memory);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -2669,12 +2689,12 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			      /* Output section is full */
 
 			      /* Flush output section */
-			      error = sort_write_area (thread_p, &sort_param->
-						       temp[cur_outfile],
-						       cur_page
-						       [cur_outfile],
-						       out_sectsize,
-						       out_sectaddr);
+			      error =
+				sort_write_area (thread_p,
+						 &sort_param->temp
+						 [cur_outfile],
+						 cur_page[cur_outfile],
+						 out_sectsize, out_sectaddr);
 			      if (error != NO_ERROR)
 				{
 				  goto bailout;
@@ -2737,9 +2757,10 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		  else
 		    {		/* The input section is finished */
 		      big_index = sort_param->in_half + min;
-		      if (sort_param->file_contents[big_index].
-			  num_pages[sort_param->file_contents[big_index].
-				    first_run])
+		      if (sort_param->
+			  file_contents[big_index].num_pages[sort_param->
+							     file_contents
+							     [big_index].first_run])
 			{
 			  /* There are still some pages in the current input
 			     run */
@@ -2747,9 +2768,10 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  in_cur_bufaddr[min] = in_sectaddr[min];
 
 			  read_pages =
-			    sort_param->file_contents[big_index].
-			    num_pages[sort_param->file_contents[big_index].
-				      first_run];
+			    sort_param->
+			    file_contents[big_index].num_pages[sort_param->
+							       file_contents
+							       [big_index].first_run];
 			  if (in_sectsize < read_pages)
 			    {
 			      read_pages = in_sectsize;
@@ -2758,8 +2780,8 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  in_last_buf[min] = read_pages;
 
 			  error = sort_read_area (thread_p,
-						  &sort_param->
-						  temp[big_index],
+						  &sort_param->temp
+						  [big_index],
 						  cur_page[big_index],
 						  read_pages,
 						  in_cur_bufaddr[min]);
@@ -2772,9 +2794,11 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  cur_page[big_index] += read_pages;
 
 			  in_act_bufno[min] = 0;
-			  sort_param->file_contents[big_index].
-			    num_pages[sort_param->file_contents[big_index].
-				      first_run] -= read_pages;
+			  sort_param->
+			    file_contents[big_index].num_pages[sort_param->
+							       file_contents
+							       [big_index].first_run]
+			    -= read_pages;
 			}
 		      else
 			{
@@ -3246,20 +3270,19 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  error = sort_read_area (thread_p,
 						  &sort_param->temp[act],
 						  cur_page[act], read_pages,
-						  sort_param->
-						  internal_memory);
+						  sort_param->internal_memory);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
 			    }
 
 			  cur_page[act] += read_pages;
-			  error = sort_write_area (thread_p, &sort_param->
-						   temp[cur_outfile],
-						   cur_page[cur_outfile],
-						   read_pages,
-						   sort_param->
-						   internal_memory);
+			  error =
+			    sort_write_area (thread_p,
+					     &sort_param->temp[cur_outfile],
+					     cur_page[cur_outfile],
+					     read_pages,
+					     sort_param->internal_memory);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -3523,11 +3546,11 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			{
 			  /* Output section is full */
 			  /* Flush output section */
-			  error = sort_write_area (thread_p, &sort_param->
-						   temp[cur_outfile],
-						   cur_page[cur_outfile],
-						   out_sectsize,
-						   out_sectaddr);
+			  error =
+			    sort_write_area (thread_p,
+					     &sort_param->temp[cur_outfile],
+					     cur_page[cur_outfile],
+					     out_sectsize, out_sectaddr);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -3584,10 +3607,10 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		    {
 		      /* The input section is finished */
 		      big_index = sort_param->in_half + min;
-		      first_run = sort_param->file_contents[big_index].
-			first_run;
-		      if (sort_param->file_contents[big_index].
-			  num_pages[first_run])
+		      first_run =
+			sort_param->file_contents[big_index].first_run;
+		      if (sort_param->
+			  file_contents[big_index].num_pages[first_run])
 			{
 			  /* There are still some pages in the current input
 			     run */
@@ -3595,9 +3618,10 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  in_cur_bufaddr[min] = in_sectaddr[min];
 
 			  read_pages =
-			    sort_param->file_contents[big_index].
-			    num_pages[sort_param->file_contents[big_index].
-				      first_run];
+			    sort_param->
+			    file_contents[big_index].num_pages[sort_param->
+							       file_contents
+							       [big_index].first_run];
 			  if (in_sectsize < read_pages)
 			    {
 			      read_pages = in_sectsize;
@@ -3606,8 +3630,8 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  in_last_buf[min] = read_pages;
 
 			  error = sort_read_area (thread_p,
-						  &sort_param->
-						  temp[big_index],
+						  &sort_param->temp
+						  [big_index],
 						  cur_page[big_index],
 						  read_pages,
 						  in_cur_bufaddr[min]);
@@ -3620,10 +3644,11 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  cur_page[big_index] += read_pages;
 
 			  in_act_bufno[min] = 0;
-			  first_run = sort_param->file_contents[big_index].
-			    first_run;
-			  sort_param->file_contents[big_index].
-			    num_pages[first_run] -= read_pages;
+			  first_run =
+			    sort_param->file_contents[big_index].first_run;
+			  sort_param->
+			    file_contents[big_index].num_pages[first_run] -=
+			    read_pages;
 			}
 		      else
 			{

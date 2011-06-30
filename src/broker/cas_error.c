@@ -52,9 +52,6 @@
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#include "glo_class.h"
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 static bool server_aborted = false;
 
 void
@@ -193,101 +190,6 @@ error_info_clear (void)
   err_info.err_line = 0;
 }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-void
-glo_err_msg_set (T_NET_BUF * net_buf, int err_code, const char *method_nm)
-{
-  char err_msg[256];
-
-  if (net_buf == NULL)
-    return;
-
-  glo_err_msg_get (err_code, err_msg);
-#ifdef CAS_DEBUG
-  sprintf (err_msg, "%s:%s", method_nm, err_msg);
-#endif
-  NET_BUF_ERROR_MSG_SET (net_buf, CAS_ERROR_INDICATOR, CAS_ER_GLO, err_msg);
-}
-
-void
-glo_err_msg_get (int err_code, char *err_msg)
-{
-  switch (err_code)
-    {
-    case INVALID_STRING_INPUT_ARGUMENT:
-      strcpy (err_msg, "INVALID_STRING_INPUT_ARGUMENT");
-      break;
-    case INVALID_INTEGER_INPUT_ARGUMENT:
-      strcpy (err_msg, "INVALID_INTEGER_INPUT_ARGUMENT");
-      break;
-    case INVALID_STRING_OR_OBJ_ARGUMENT:
-      strcpy (err_msg, "INVALID_STRING_OR_OBJ_ARGUMENT");
-      break;
-    case INVALID_OBJECT_INPUT_ARGUMENT:
-      strcpy (err_msg, "INVALID_OBJECT_INPUT_ARGUMENT");
-      break;
-    case UNABLE_TO_FIND_GLO_STRUCTURE:
-      strcpy (err_msg, "UNABLE_TO_FIND_GLO_STRUCTURE");
-      break;
-    case COULD_NOT_ACQUIRE_WRITE_LOCK:
-      strcpy (err_msg, "COULD_NOT_ACQUIRE_WRITE_LOCK");
-      break;
-    case ERROR_DURING_TRUNCATION:
-      strcpy (err_msg, "ERROR_DURING_TRUNCATION");
-      break;
-    case ERROR_DURING_DELETE:
-      strcpy (err_msg, "ERROR_DURING_DELETE");
-      break;
-    case ERROR_DURING_INSERT:
-      strcpy (err_msg, "ERROR_DURING_INSERT");
-      break;
-    case ERROR_DURING_WRITE:
-      strcpy (err_msg, "ERROR_DURING_WRITE");
-      break;
-    case ERROR_DURING_READ:
-      strcpy (err_msg, "ERROR_DURING_READ");
-      break;
-    case ERROR_DURING_SEEK:
-      strcpy (err_msg, "ERROR_DURING_SEEK");
-      break;
-    case ERROR_DURING_APPEND:
-      strcpy (err_msg, "ERROR_DURING_APPEND");
-      break;
-    case ERROR_DURING_MIGRATE:
-      strcpy (err_msg, "ERROR_DURING_MIGRATE");
-      break;
-    case COPY_TO_ERROR:
-      strcpy (err_msg, "COPY_TO_ERROR");
-      break;
-    case COPY_FROM_ERROR:
-      strcpy (err_msg, "COPY_FROM_ERROR");
-      break;
-    case COULD_NOT_ALLOCATE_SEARCH_BUFFERS:
-      strcpy (err_msg, "COULD_NOT_ALLOCATE_SEARCH_BUFFERS");
-      break;
-    case COULD_NOT_COMPILE_REGULAR_EXPRESSION:
-      strcpy (err_msg, "COULD_NOT_COMPILE_REGULAR_EXPRESSION");
-      break;
-    case COULD_NOT_RESET_WORKING_BUFFER:
-      strcpy (err_msg, "COULD_NOT_RESET_WORKING_BUFFER");
-      break;
-    case SEARCH_ERROR_ON_POSITION_CACHE:
-      strcpy (err_msg, "SEARCH_ERROR_ON_POSITION_CACHE");
-      break;
-    case SEARCH_ERROR_ON_DATA_READ:
-      strcpy (err_msg, "SEARCH_ERROR_ON_DATA_READ");
-      break;
-    case SEARCH_ERROR_DURING_LOOKUP:
-      strcpy (err_msg, "SEARCH_ERROR_DURING_LOOKUP");
-      break;
-    case SEARCH_ERROR_REPOSITIONING_POINTER:
-      strcpy (err_msg, "SEARCH_ERROR_REPOSITIONING_POINTER");
-      break;
-    default:
-      sprintf (err_msg, "%d", err_code);
-    }
-}
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 void
 set_server_aborted (bool is_aborted)

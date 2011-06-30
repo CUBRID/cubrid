@@ -107,7 +107,7 @@ str_eval_like (const unsigned char *tar,
 {
   const int IN_CHECK = 0;
   const int IN_PERCENT = 1;
-  const int IN_PERCENT_UNDERLINE = 2;
+  const int IN_PERCENT_UNDERSCORE = 2;
 
   int status = IN_CHECK;
   const unsigned char *tarstack[STK_SIZE], *exprstack[STK_SIZE];
@@ -115,7 +115,9 @@ str_eval_like (const unsigned char *tar,
   int inescape = 0;
 
   if (escape == 0)
-    escape = 2;
+    {
+      escape = 2;
+    }
   while (1)
     {
       if (status == IN_CHECK)
@@ -123,12 +125,35 @@ str_eval_like (const unsigned char *tar,
 	  if (*expr == escape)
 	    {
 	      expr++;
-	      inescape = 1;
-	      if (*expr != '%' && *expr != '_')
+	      if (*expr == '%' || *expr == '_')
 		{
-		  return B_ERROR;
+		  inescape = 1;
+		  continue;
 		}
-	      continue;
+	      else if (*tar
+		       && ((!is_korean (*tar) && *tar == *expr)
+			   || (is_korean (*tar)
+			       && *tar == *expr
+			       && *(tar + 1) == *(expr + 1))))
+		{
+		  if (is_korean (*tar))
+		    {
+		      tar += 2;
+		    }
+		  else
+		    {
+		      tar++;
+		    }
+		  if (is_korean (*expr))
+		    {
+		      expr += 2;
+		    }
+		  else
+		    {
+		      expr++;
+		    }
+		  continue;
+		}
 	    }
 
 	  if (inescape)
@@ -261,7 +286,7 @@ str_eval_like (const unsigned char *tar,
 	      expr++;
 
 	      inescape = 0;
-	      status = IN_PERCENT_UNDERLINE;
+	      status = IN_PERCENT_UNDERSCORE;
 	      continue;
 	    }
 
@@ -308,7 +333,7 @@ str_eval_like (const unsigned char *tar,
 	      status = IN_CHECK;
 	    }
 	}
-      if (status == IN_PERCENT_UNDERLINE)
+      if (status == IN_PERCENT_UNDERSCORE)
 	{
 	  if (*expr == escape)
 	    {

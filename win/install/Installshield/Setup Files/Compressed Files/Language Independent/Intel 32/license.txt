@@ -1,6 +1,6 @@
 License Agreement
 
-Copyright (C) 2008-2010 Search Solution Corporation. All rights reserved by Search Solution.
+Copyright (C) 2008-2011 Search Solution Corporation. All rights reserved by Search Solution.
 
 CUBRID is registered trademark of Search Solution Corporation.
 

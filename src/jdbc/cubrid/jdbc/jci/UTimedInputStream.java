@@ -34,96 +34,67 @@
  * @version 2.0
  */
 
-package @CUBRID_JCI@;
+package cubrid.jdbc.jci;
 
-import java.lang.String;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 
-public class UTimedInputStream
-{
-  public final static int PING_TIMEOUT = 5000;
-  private InputStream stream = null;
-  private String ip = null;
-  private int port = 0;
+public class UTimedInputStream {
+	public final static int PING_TIMEOUT = 5000;
+	private InputStream stream = null;
+	private String ip = null;
+	private int port = 0;
 
-  UTimedInputStream()
-  {
-  }
-
-  public UTimedInputStream(InputStream stream, String ip, int port)
-  {
-	this.stream = stream;
-	this.ip = ip;
-        this.port = port;
-  }
-
-  public int read() throws IOException
-  {
-	while (true)
-	{
-	  try
-	  {
-		return stream.read();
-	  }
-	  catch (SocketTimeoutException e)
-	  {
-            try
-            {
-              UConnection.ping(ip,port,PING_TIMEOUT);
-            }
-            catch(Exception f)
-            {
-              throw new IOException(f.getMessage());
-            }
-	  }
+	UTimedInputStream() {
 	}
-  }
 
-  public int read(byte[] b) throws IOException
-  {
-	while (true)
-	{
-	  try
-	  {
-		return stream.read(b);
-	  }
-	  catch (SocketTimeoutException e)
-	  {
-            try
-            {
-              UConnection.ping(ip,port,PING_TIMEOUT);
-            }
-            catch(Exception f)
-            {
-              throw new IOException(f.getMessage());
-            }
-	  }
+	public UTimedInputStream(InputStream stream, String ip, int port) {
+		this.stream = stream;
+		this.ip = ip;
+		this.port = port;
 	}
-  }
 
-  public int read(byte[] b, int off, int len) throws IOException
-  {
-	while (true)
-	{
-	  try
-	  {
-		return stream.read(b, off, len);
-	  }
-	  catch (SocketTimeoutException e)
-	  {
-            try
-            {
-              UConnection.ping(ip,port,PING_TIMEOUT);
-            }
-            catch(Exception f)
-            {
-              throw new IOException(f.getMessage());
-            }
-	  }
+	public int read() throws IOException {
+		while (true) {
+			try {
+				return stream.read();
+			} catch (SocketTimeoutException e) {
+				try {
+					UConnection.ping(ip, port, PING_TIMEOUT);
+				} catch (Exception f) {
+					throw new IOException(f.getMessage());
+				}
+			}
+		}
 	}
-  }
+
+	public int read(byte[] b) throws IOException {
+		while (true) {
+			try {
+				return stream.read(b);
+			} catch (SocketTimeoutException e) {
+				try {
+					UConnection.ping(ip, port, PING_TIMEOUT);
+				} catch (Exception f) {
+					throw new IOException(f.getMessage());
+				}
+			}
+		}
+	}
+
+	public int read(byte[] b, int off, int len) throws IOException {
+		while (true) {
+			try {
+				return stream.read(b, off, len);
+			} catch (SocketTimeoutException e) {
+				try {
+					UConnection.ping(ip, port, PING_TIMEOUT);
+				} catch (Exception f) {
+					throw new IOException(f.getMessage());
+				}
+			}
+		}
+	}
 
 }

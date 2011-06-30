@@ -18,6 +18,12 @@ EXPORTS
     css_windows_startup
     css_get_peer_name
     css_get_sock_name
+    da_create
+    da_destroy
+    da_add
+    da_put
+    da_get
+    da_size
     db_create_internal
     db_error_string
     db_find_all_triggers
@@ -34,13 +40,20 @@ EXPORTS
     db_is_system_class
     db_is_vclass
     db_login
+    db_log_page_size
     db_objlist_free
     db_page_size
     db_put_internal
     db_restart
     db_restart_ex
+    db_set_session_id
+    db_get_session_id
+    db_check_session
+    db_end_session
+    db_get_variable
     db_set_get
     db_set_size
+    db_set_page_size
     db_shutdown
     db_string_free
     db_trigger_action
@@ -55,7 +68,6 @@ EXPORTS
     db_trigger_priority
     db_trigger_status
     do_is_partitioned_subclass
-    elo_get_pathname
     er_errid
     file_alloc_pages
     file_dealloc_page
@@ -71,7 +83,9 @@ EXPORTS
     pgbuf_get_vpid_ptr
     pgbuf_set_dirty
     prm_get_master_port_id
+    rel_copy_version_string
     rel_build_number
+    rel_build_os
     rel_disk_compatible
     rel_name
     rel_release_string
@@ -88,10 +102,19 @@ EXPORTS
     sysprm_set_to_default
     sysprm_set_force
     sysprm_obtain_parameters
+    sysprm_set_er_log_file
+    sysprm_check_range
+    sysprm_get_range
     utility_get_generic_message
+    util_make_ha_conf
+    util_is_localhost
+    util_free_ha_conf
     utility_initialize
+    util_byte_to_size_string
+    util_size_string_to_byte
     au_get_user_class_name
     tr_get_class_name
+    boot_emergency_patch
     boot_set_skip_check_ct_classes
 ; utility functions
 	createdb
@@ -113,6 +136,7 @@ EXPORTS
 	copylogdb
 	applylogdb
 	statdump
+	acldb
 
 ;
 ;	enable below two functions when
@@ -192,6 +216,8 @@ EXPORTS
     db_chn
     db_clear_client_query_result
     db_close_session
+    db_get_row_count_cache
+    db_update_row_count_cache
     db_col_add
     db_col_cardinality
     db_col_copy
@@ -222,6 +248,7 @@ EXPORTS
     db_constraint_name
     db_constraint_next
     db_constraint_type
+    db_constraint_find_primary_key
     db_copy
     db_cp_colname_list
     db_cp_domain_list

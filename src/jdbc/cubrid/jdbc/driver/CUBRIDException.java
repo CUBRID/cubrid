@@ -28,35 +28,29 @@
  *
  */
 
-package @CUBRID_DRIVER@;
+package cubrid.jdbc.driver;
 
 import java.sql.SQLException;
 
-import @CUBRID_DRIVER@.CUBRIDJDBCErrorCode;
-import @CUBRID_JCI@.UError;
+import cubrid.jdbc.jci.UError;
 
-public class CUBRIDException extends SQLException
-{
+public class CUBRIDException extends SQLException {
 
-  protected CUBRIDException(String msg, int errCode)
-  {
-    super(msg, null, errCode);
-  }
+	protected CUBRIDException(String msg, int errCode) {
+		super(msg, null, errCode);
+	}
 
-  public CUBRIDException(UError error)
-  {
-    this(error.getErrorMsg(), error.getJdbcErrorCode());
-  }
+	public CUBRIDException(UError error) {
+		this(error.getErrorMsg(), error.getJdbcErrorCode());
+	}
 
-  public CUBRIDException(int errCode)
-  {
-    this(CUBRIDJDBCErrorCode.getMessage(errCode), UError.DRIVER_ERROR_CODE_BASE
-        - errCode);
-  }
+	public CUBRIDException(int errCode) {
+		this(CUBRIDJDBCErrorCode.getMessage(errCode),
+				UError.DRIVER_ERROR_CODE_BASE - errCode);
+	}
 
-  public CUBRIDException(int errCode, String msg)
-  {
-    this(CUBRIDJDBCErrorCode.getMessage(errCode) + msg,
-        UError.DRIVER_ERROR_CODE_BASE - errCode);
-  }
+	public CUBRIDException(int errCode, String msg) {
+		this(CUBRIDJDBCErrorCode.getMessage(errCode) + msg,
+				UError.DRIVER_ERROR_CODE_BASE - errCode);
+	}
 }

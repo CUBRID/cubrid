@@ -39,7 +39,8 @@ enum HB_CLUSTER_JOB
   HB_CJOB_INIT = 0,
   HB_CJOB_HEARTBEAT = 1,
   HB_CJOB_CALC_SCORE = 2,
-  HB_CJOB_FAILOVER = 3,
+  HB_CJOB_CHECK_PING = 3,
+  HB_CJOB_FAILOVER = 4,
   HB_CJOB_MAX
 };
 
@@ -48,12 +49,16 @@ enum HB_NODE_STATE
 {
   HB_NSTATE_UNKNOWN = 0,
   HB_NSTATE_SLAVE = 1,
-  HB_NSTATE_MASTER = 2,
+  HB_NSTATE_TO_BE_MASTER = 2,
+  HB_NSTATE_MASTER = 3,
+  HB_NSTATE_REPLICA = 4,
   HB_NSTATE_MAX
 };
 #define HB_NSTATE_UNKNOWN_STR   "unknown"
 #define HB_NSTATE_SLAVE_STR     "slave"
+#define HB_NSTATE_TO_BE_MASTER_STR    "to-be-master"
 #define HB_NSTATE_MASTER_STR    "master"
+#define HB_NSTATE_REPLICA_STR   "replica"
 #define HB_NSTATE_STR_SZ        (8)
 
 /* heartbeat resource jobs */
@@ -88,15 +93,20 @@ enum HB_PROC_STATE
 #define HB_PSTATE_REGISTERED_AND_ACTIVE_STR     "registered_and_active"
 #define HB_PSTATE_STR_SZ                        (32)
 
+#define HB_REPLICA_PRIORITY                     0x7FFF
 
 /* heartbeat node score bitmask */
 #define HB_NODE_SCORE_MASTER                    0x8000
+#define HB_NODE_SCORE_TO_BE_MASTER              0xF000
 #define HB_NODE_SCORE_SLAVE                     0x0000
 #define HB_NODE_SCORE_UNKNOWN                   0x7FFF
 
 #define HB_BUFFER_SZ                            (4096)
 #define HB_MAX_NUM_NODES                        (8)
 #define HB_MAX_NUM_RESOURCE_PROC                (16)
+#define HB_MAX_PING_CHECK                       (3)
+#define HB_MAX_CHANGEMODE_DIFF_TO_TERM		(12)
+#define HB_MAX_CHANGEMODE_DIFF_TO_KILL		(24)
 
 /* various strings for er_set */
 #define HB_RESULT_SUCCESS_STR                   "Success"
@@ -136,7 +146,7 @@ struct hb_node_entry
 typedef struct hb_cluster HB_CLUSTER;
 struct hb_cluster
 {
-  MUTEX_T lock;
+  pthread_mutex_t lock;
 
   SOCKET sfd;
 
@@ -176,6 +186,7 @@ struct hb_proc_entry
   struct timeval stime;		/* start time */
 
   unsigned short changemode_rid;
+  unsigned short changemode_gap;
 
   CSS_CONN_ENTRY *conn;
 };
@@ -184,7 +195,7 @@ struct hb_proc_entry
 typedef struct hb_resource HB_RESOURCE;
 struct hb_resource
 {
-  MUTEX_T lock;
+  pthread_mutex_t lock;
 
   unsigned int state;		/* mode/state */
 
@@ -199,7 +210,7 @@ struct hb_resource
 typedef struct hb_cluster_job_arg HB_CLUSTER_JOB_ARG;
 struct hb_cluster_job_arg
 {
-  char reserved[256];
+  unsigned int ping_check_count;
 };
 
 /* heartbeat resource job argument */
@@ -247,7 +258,7 @@ struct hb_job_entry
 typedef struct hb_job HB_JOB;
 struct hb_job
 {
-  MUTEX_T lock;
+  pthread_mutex_t lock;
 
   unsigned short num_jobs;
   HB_JOB_ENTRY *jobs;

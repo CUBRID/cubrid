@@ -44,6 +44,9 @@
 #if !defined(SERVER_MODE)
 #include "object_accessor.h"
 #endif
+#include "db_elo.h"
+
+#define DB_NUMBER_ZERO	    0
 
 enum
 {
@@ -60,6 +63,10 @@ typedef enum
   LARGE_STRING
 } STRING_STYLE;
 
+SESSION_ID db_Session_id = DB_EMPTY_SESSION;
+
+int db_Row_count = DB_ROW_COUNT_NOT_SET;
+
 #if defined(SERVER_MODE)
 int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 #else
@@ -68,6 +75,7 @@ int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
 #endif
 int db_Enable_replications = 0;
 int db_Disable_modifications = 0;
+char *db_Preferred_hosts = NULL;
 
 static int transfer_string (char *dst, int *xflen, int *outlen,
 			    const int dstlen, const char *src,
@@ -290,6 +298,8 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_MIDXKEY:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     case DB_TYPE_ELO:
     case DB_TYPE_TIME:
     case DB_TYPE_TIMESTAMP:
@@ -349,11 +359,13 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_FLOAT:
-      value->data.f = FLT_MIN;
+      /* FLT_MIN is minimum normalized positive floating-point number. */
+      value->data.f = -FLT_MAX;
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_DOUBLE:
-      value->data.d = DBL_MIN;
+      /* DBL_MIN is minimum normalized positive double precision number. */
+      value->data.d = -DBL_MAX;
       value->domain.general_info.is_null = 0;
       break;
       /* case DB_TYPE_OBJECT: not in server-side code */
@@ -363,8 +375,10 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->data.set = NULL;
       value->domain.general_info.is_null = 1;	/* NULL SET value */
       break;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     case DB_TYPE_ELO:
-      value->data.elo = NULL;
+      elo_init_structure (&value->data.elo);
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
       break;
     case DB_TYPE_TIME:
@@ -385,7 +399,8 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_MONETARY:
-      value->data.money.amount = DBL_MIN;
+      /* DBL_MIN is minimum normalized positive double precision number. */
+      value->data.money.amount = -DBL_MAX;
       value->data.money.type = DB_CURRENCY_DEFAULT;
       value->domain.general_info.is_null = 0;
       break;
@@ -425,6 +440,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->domain.general_info.is_null = 0;
       break;
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
+      /* space is the min value, matching the comparison in qstr_compare */
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
@@ -500,8 +516,10 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->data.set = NULL;
       value->domain.general_info.is_null = 1;	/* NULL SET value */
       break;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     case DB_TYPE_ELO:
-      value->data.elo = NULL;
+      elo_init_structure (&value->data.elo);
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
       break;
     case DB_TYPE_TIME:
@@ -552,6 +570,10 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
 	value->domain.general_info.is_null = 0;
       }
       break;
+      /* TODO: The string "\377" (one character of code 255) is not a perfect
+         representation of the maximum value of a string's domain. We
+         should find a better way to do this.
+       */
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value->data.ch.info.style = MEDIUM_STRING;
@@ -589,6 +611,176 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
 }
 
 /*
+ * db_value_domain_default() - Initialize value(db_value_init)
+ *			       and set to the default value of the domain.
+ * return : Error indicator
+ * value(in/out) : Pointer to a DB_VALUE
+ * type(in)      : type
+ * precision(in) : precision
+ * scale(in)     : scale
+ */
+int
+db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
+			 const int precision, const int scale)
+{
+  int error = NO_ERROR;
+
+  if (TP_IS_NUMERIC_TYPE (type))
+    {
+      return db_value_domain_zero (value, type, precision, scale);
+    }
+
+  error = db_value_domain_init (value, type, precision, scale);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  switch (type)
+    {
+    case DB_TYPE_NULL:
+      break;
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_NUMERIC:
+      assert (false);
+      break;
+    case DB_TYPE_SET:
+      /* empty set */
+      db_make_set (value, db_set_create_basic (NULL, NULL));
+      break;
+    case DB_TYPE_MULTISET:
+      /* empty multi-set */
+      db_make_multiset (value, db_set_create_multi (NULL, NULL));
+      break;
+    case DB_TYPE_SEQUENCE:
+      /* empty sequence */
+      db_make_sequence (value, db_seq_create (NULL, NULL, 0));
+      break;
+    case DB_TYPE_TIME:
+      value->data.time = DB_TIME_MIN;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_TIMESTAMP:
+      value->data.utime = DB_UTIME_MIN;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_DATETIME:
+      value->data.datetime.date = DB_DATE_MIN;
+      value->data.datetime.time = DB_TIME_MIN;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_DATE:
+      value->data.date = DB_DATE_MIN;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_OID:
+      value->data.oid.pageid = NULL_PAGEID;
+      value->data.oid.slotid = NULL_PAGEID;
+      value->data.oid.volid = NULL_PAGEID;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      db_make_bit (value, 1, "0", 1);
+      break;
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      value->data.ch.info.style = MEDIUM_STRING;
+      value->data.ch.info.codeset = INTL_CODESET_ISO88591;
+      value->data.ch.medium.size = 0;
+      value->data.ch.medium.buf = (char *) "";
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      value->data.ch.info.style = MEDIUM_STRING;
+      value->data.ch.info.codeset = lang_charset ();
+      value->data.ch.medium.size = 1;
+      value->data.ch.medium.buf = (char *) "";
+      value->domain.general_info.is_null = 0;
+      break;
+    default:
+      error = ER_UCI_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UCI_INVALID_DATA_TYPE, 0);
+      break;
+    }
+
+  return error;
+}
+
+/*
+ * db_value_domain_zero() - Initialize value(db_value_init)
+ *			    and set to the value 'zero' of the domain.
+ * return : Error indicator
+ * value(in/out) : Pointer to a DB_VALUE
+ * type(in)      : type
+ * precision(in) : precision
+ * scale(in)     : scale
+ *
+ * Note : this makes sense only for number data types, for all other
+ *	  types it returns an error (ER_UCI_INVALID_DATA_TYPE);
+ */
+int
+db_value_domain_zero (DB_VALUE * value, const DB_TYPE type,
+		      const int precision, const int scale)
+{
+  int error = NO_ERROR;
+
+  assert (TP_IS_NUMERIC_TYPE (type));
+
+  error = db_value_domain_init (value, type, precision, scale);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  switch (type)
+    {
+    case DB_TYPE_INTEGER:
+      value->data.i = DB_NUMBER_ZERO;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_BIGINT:
+      value->data.bigint = DB_NUMBER_ZERO;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_FLOAT:
+      value->data.f = DB_NUMBER_ZERO;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_DOUBLE:
+      value->data.d = DB_NUMBER_ZERO;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_MONETARY:
+      value->data.money.amount = DB_NUMBER_ZERO;
+      value->data.money.type = DB_CURRENCY_DEFAULT;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_SHORT:
+      value->data.sh = DB_NUMBER_ZERO;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_NUMERIC:
+      numeric_coerce_dec_str_to_num ("0", value->data.num.d.buf);
+      value->domain.general_info.is_null = 0;
+      break;
+    default:
+      error = ER_UCI_INVALID_DATA_TYPE;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+	      ER_UCI_INVALID_DATA_TYPE, 0);
+      break;
+    }
+
+  return error;
+}
+
+/*
  * db_string_truncate() - truncate string in DB_TYPE_STRING value container
  * return         : Error indicator.
  * value(in/out)  : Pointer to a DB_VALUE
@@ -599,186 +791,159 @@ db_string_truncate (DB_VALUE * value, const int precision)
 {
   int error = NO_ERROR;
   DB_VALUE src_value;
-  char *string, *val_str;
+  char *string = NULL, *val_str;
   int length;
 
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_STRING:
-      if (DB_GET_STRING_LENGTH (value) > precision)
+      val_str = DB_GET_STRING (value);
+      if (val_str != NULL && DB_GET_STRING_LENGTH (value) > precision)
 	{
-	  string = (char *) malloc (precision);
+	  string = (char *) db_private_alloc (NULL, precision + 1);
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
+	      break;
 	    }
-	  else
-	    {
-	      val_str = DB_GET_STRING (value);
-	      if (val_str != NULL)
-		{
-		  strncpy (string, val_str, precision);
-		  db_make_varchar (&src_value, precision, string, precision);
 
-		  pr_clear_value (value);
-		  (*(tp_String.setval)) (value, &src_value, true);
+	  assert (precision < DB_GET_STRING_SIZE (value));
+	  strncpy (string, val_str, precision);
+	  string[precision] = '\0';
+	  db_make_varchar (&src_value, precision, string, precision);
 
-		  pr_clear_value (&src_value);
-		}
+	  pr_clear_value (value);
+	  (*(tp_String.setval)) (value, &src_value, true);
 
-	      free (string);
-	    }
+	  pr_clear_value (&src_value);
 	}
       break;
 
     case DB_TYPE_CHAR:
       val_str = DB_GET_CHAR (value, &length);
-      if (length > precision)
+      if (val_str != NULL && length > precision)
 	{
-	  string = (char *) malloc (precision);
+	  string = (char *) db_private_alloc (NULL, precision + 1);
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
+	      break;
 	    }
-	  else
-	    {
-	      if (val_str != NULL)
-		{
-		  strncpy (string, val_str, precision);
-		  db_make_char (&src_value, precision, string, precision);
 
-		  pr_clear_value (value);
-		  (*(tp_Char.setval)) (value, &src_value, true);
+	  assert (precision < DB_GET_STRING_SIZE (value));
+	  strncpy (string, val_str, precision);
+	  string[precision] = '\0';
+	  db_make_char (&src_value, precision, string, precision);
 
-		  pr_clear_value (&src_value);
-		}
+	  pr_clear_value (value);
+	  (*(tp_Char.setval)) (value, &src_value, true);
 
-	      free (string);
-	    }
+	  pr_clear_value (&src_value);
+
 	}
       break;
 
     case DB_TYPE_VARNCHAR:
       val_str = DB_GET_NCHAR (value, &length);
-      if (length > precision)
+      if (val_str != NULL && length > precision)
 	{
-	  string = (char *) malloc (precision);
+	  string = (char *) db_private_alloc (NULL, precision + 1);
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
+	      break;
 	    }
-	  else
-	    {
-	      if (val_str != NULL)
-		{
-		  strncpy (string, val_str, precision);
-		  db_make_varnchar (&src_value, precision, string, precision);
 
-		  pr_clear_value (value);
-		  (*(tp_VarNChar.setval)) (value, &src_value, true);
+	  assert (precision < DB_GET_STRING_SIZE (value));
+	  strncpy (string, val_str, precision);
+	  string[precision] = '\0';
+	  db_make_varnchar (&src_value, precision, string, precision);
 
-		  pr_clear_value (&src_value);
-		}
+	  pr_clear_value (value);
+	  (*(tp_VarNChar.setval)) (value, &src_value, true);
 
-	      free (string);
-	    }
+	  pr_clear_value (&src_value);
 	}
       break;
 
     case DB_TYPE_NCHAR:
       val_str = DB_GET_NCHAR (value, &length);
-      if (length > precision)
+      if (val_str != NULL && length > precision)
 	{
-	  string = (char *) malloc (precision);
+	  string = (char *) db_private_alloc (NULL, precision + 1);
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
+	      break;
 	    }
-	  else
-	    {
-	      if (val_str != NULL)
-		{
-		  strncpy (string, val_str, precision);
-		  db_make_nchar (&src_value, precision, string, precision);
 
-		  pr_clear_value (value);
-		  (*(tp_NChar.setval)) (value, &src_value, true);
+	  assert (precision < DB_GET_STRING_SIZE (value));
+	  strncpy (string, val_str, precision);
+	  string[precision] = '\0';
+	  db_make_nchar (&src_value, precision, string, precision);
 
-		  pr_clear_value (&src_value);
-		}
+	  pr_clear_value (value);
+	  (*(tp_NChar.setval)) (value, &src_value, true);
 
-	      free (string);
-	    }
+	  pr_clear_value (&src_value);
+
 	}
       break;
 
     case DB_TYPE_BIT:
       val_str = DB_GET_BIT (value, &length);
       length = (length + 7) >> 3;
-      if (length > precision)
+      if (val_str != NULL && length > precision)
 	{
-	  string = (char *) malloc (precision);
+	  string = (char *) db_private_alloc (NULL, precision);
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
+	      break;
 	    }
-	  else
-	    {
-	      if (val_str != NULL)
-		{
-		  memcpy (string, val_str, precision);
-		  db_make_bit (&src_value, precision << 3, string,
-			       precision << 3);
 
-		  pr_clear_value (value);
-		  (*(tp_Bit.setval)) (value, &src_value, true);
+	  memcpy (string, val_str, precision);
+	  db_make_bit (&src_value, precision << 3, string, precision << 3);
 
-		  pr_clear_value (&src_value);
-		}
+	  pr_clear_value (value);
+	  (*(tp_Bit.setval)) (value, &src_value, true);
 
-	      free (string);
-	    }
+	  pr_clear_value (&src_value);
 	}
       break;
 
     case DB_TYPE_VARBIT:
       val_str = DB_GET_BIT (value, &length);
       length = (length >> 3) + ((length & 7) ? 1 : 0);
-      if (length > precision)
+      if (val_str != NULL && length > precision)
 	{
-	  string = (char *) malloc (precision);
+	  string = (char *) db_private_alloc (NULL, precision);
 	  if (string == NULL)
 	    {
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, precision);
+	      break;
 	    }
-	  else
-	    {
-	      if (val_str != NULL)
-		{
-		  memcpy (string, val_str, precision);
-		  db_make_varbit (&src_value, precision << 3, string,
-				  precision << 3);
 
-		  pr_clear_value (value);
-		  (*(tp_VarBit.setval)) (value, &src_value, true);
+	  memcpy (string, val_str, precision);
+	  db_make_varbit (&src_value, precision << 3, string, precision << 3);
 
-		  pr_clear_value (&src_value);
-		}
+	  pr_clear_value (value);
+	  (*(tp_VarBit.setval)) (value, &src_value, true);
 
-	      free (string);
-	    }
+	  pr_clear_value (&src_value);
+
 	}
       break;
 
@@ -791,6 +956,11 @@ db_string_truncate (DB_VALUE * value, const int precision)
 		ER_UCI_INVALID_DATA_TYPE, 0);
       }
       break;
+    }
+
+  if (string != NULL)
+    {
+      db_private_free (NULL, string);
     }
 
   return error;
@@ -858,6 +1028,8 @@ db_value_precision (const DB_VALUE * value)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_ELO:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
     case DB_TYPE_UTIME:
     case DB_TYPE_DATE:
@@ -1782,6 +1954,34 @@ db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey)
 }
 
 /*
+ * db_make_elo () -
+ * return:
+ * value(out):
+ * type(in):
+ * elo(in):
+ */
+int
+db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo)
+{
+  CHECK_1ARG_ERROR (value);
+
+  value->domain.general_info.type = type;
+  if (elo == NULL)
+    {
+      elo_init_structure (&value->data.elo);
+      value->domain.general_info.is_null = 1;
+    }
+  else
+    {
+      value->data.elo = *elo;
+      value->domain.general_info.is_null = 0;
+    }
+  value->need_clear = false;
+
+  return NO_ERROR;
+}
+
+/*
  * db_make_pointer() -
  * return :
  * value(out) :
@@ -2115,32 +2315,6 @@ db_get_method_error_msg (void)
 #else
   return NULL;
 #endif
-}
-
-/*
- * db_make_elo() -
- * return :
- * value(out):
- * elo(in):
- */
-int
-db_make_elo (DB_VALUE * value, DB_ELO * elo)
-{
-  CHECK_1ARG_ERROR (value);
-
-  value->domain.general_info.type = DB_TYPE_ELO;
-  value->data.elo = elo;
-  if (elo)
-    {
-      value->domain.general_info.is_null = 0;
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-  value->need_clear = false;
-
-  return NO_ERROR;
 }
 
 /*
@@ -2876,9 +3050,11 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_NULL:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+    case DB_TYPE_ELO:
       result = tp_domain_resolve_default (type);
       break;
-    case DB_TYPE_ELO:
     case DB_TYPE_SUB:
     case DB_TYPE_POINTER:
     case DB_TYPE_ERROR:
@@ -3038,9 +3214,13 @@ db_get_elo (const DB_VALUE * value)
     {
       return NULL;
     }
+  else if (value->data.elo.type == ELO_NULL)
+    {
+      return NULL;
+    }
   else
     {
-      return value->data.elo;
+      return &value->data.elo;
     }
 }
 
@@ -4125,6 +4305,8 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type,
       }				/* DB_TYPE_BIT, DB_TYPE_VARBIT */
       break;
 
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     case DB_TYPE_ELO:
     case DB_TYPE_VARIABLE:
     case DB_TYPE_SUB:
@@ -4326,7 +4508,8 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	 * and scale.
 	 */
 
-	if (numeric_coerce_string_to_num (buf, &tmp_value) != NO_ERROR)
+	if (numeric_coerce_string_to_num (buf, buflen,
+					  &tmp_value) != NO_ERROR)
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
 	  }

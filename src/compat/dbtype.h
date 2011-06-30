@@ -68,6 +68,12 @@
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION 38
 
+/* The upper limit for a numeber that can be represented by a numeric type */
+#define DB_NUMERIC_OVERFLOW_LIMIT 1e38
+
+/* The lower limit for a number that can be represented by a numeric type */
+#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
+
 /* The maximum precision that can be specified for a CHAR(n) domain. */
 #define DB_MAX_CHAR_PRECISION DB_MAX_STRING_LENGTH
 
@@ -177,7 +183,7 @@
 
 #define DB_MAKE_MIDXKEY(value, midxkey) db_make_midxkey(value, midxkey)
 
-#define DB_MAKE_ELO(value, elo) db_make_elo(value, elo)
+#define DB_MAKE_ELO(value, type, elo) db_make_elo(value, type, elo)
 
 #define DB_MAKE_TIME(value, hour, minute, second) \
     db_make_time(value, hour, minute, second)
@@ -397,12 +403,14 @@ typedef enum
   DB_TYPE_TABLE = 30,		/* internal use only */
   DB_TYPE_BIGINT = 31,
   DB_TYPE_DATETIME = 32,
+  DB_TYPE_BLOB = 33,
+  DB_TYPE_CLOB = 34,
   DB_TYPE_LIST = DB_TYPE_SEQUENCE,
   DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT           */
   DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values   */
   DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP  */
 
-  DB_TYPE_LAST = DB_TYPE_DATETIME
+  DB_TYPE_LAST = DB_TYPE_CLOB
 } DB_TYPE;
 
 /* Domain information stored in DB_VALUE structures. */
@@ -501,9 +509,61 @@ struct db_midxkey
   char *buf;			/* key structure */
 };
 
-/* This is used only by the system Glo objects.  User defined
-   classes are not allowed to use these data types. */
+
+/*
+ * DB_ELO
+ * This is the run-time state structure for an ELO. The ELO is part of 
+ * the implementation of large object type and not intended to be used 
+ * directly by the API. 
+ *
+ * NOTE: 
+ *  1. LOID and related definition which were in storage_common.h moved here.
+ *  2. DB_ELO definition in dbi_compat.h does not expose the LOID and
+ *     related data type. BE CAREFUL when you change following definitions.
+ *     - VPID
+ *     - VFID
+ */
+
+typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
+struct vpid
+{
+  INT32 pageid;			/* Page identifier */
+  INT16 volid;			/* Volume identifier where the page reside */
+};
+
+typedef struct vfid VFID;	/* REAL FILE IDENTIFIER */
+struct vfid
+{
+  INT32 fileid;			/* File identifier */
+  INT16 volid;			/* Volume identifier where the file reside */
+};
+
+typedef struct loid LOID;	/* LARGE OBJECT IDENTIFIER */
+struct loid
+{
+  VPID vpid;			/* Real page identifier */
+  VFID vfid;			/* Real file identifier */
+};
+
+typedef enum db_elo_type DB_ELO_TYPE;
 typedef struct db_elo DB_ELO;
+
+enum db_elo_type
+{
+  ELO_NULL,
+  ELO_LO,
+  ELO_FBO
+};
+
+struct db_elo
+{
+  INT64 size;
+  LOID loid;
+  char *locator;
+  char *meta_data;
+  DB_ELO_TYPE type;
+  int es_type;
+};
 
 /* This is the memory representation of an internal object
  * identifier.  It is in the API only for a few functions that
@@ -587,7 +647,7 @@ union db_data
   DB_COLLECTION *set;
   DB_COLLECTION *collect;
   DB_MIDXKEY midxkey;
-  DB_ELO *elo;
+  DB_ELO elo;
   int error;
   DB_IDENTIFIER oid;
   DB_NUMERIC num;
@@ -728,6 +788,10 @@ extern int db_value_domain_min (DB_VALUE * value, DB_TYPE type,
 				const int precision, const int scale);
 extern int db_value_domain_max (DB_VALUE * value, DB_TYPE type,
 				const int precision, const int scale);
+extern int db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
+				    const int precision, const int scale);
+extern int db_value_domain_zero (DB_VALUE * value, const DB_TYPE type,
+				 const int precision, const int scale);
 extern int db_string_truncate (DB_VALUE * value, const int max_precision);
 extern DB_TYPE db_value_domain_type (const DB_VALUE * value);
 extern DB_TYPE db_value_type (const DB_VALUE * value);
@@ -772,7 +836,7 @@ extern int db_make_multiset (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_sequence (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_collection (DB_VALUE * value, DB_C_SET * set);
 extern int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey);
-extern int db_make_elo (DB_VALUE * value, DB_C_ELO * elo);
+extern int db_make_elo (DB_VALUE * value, DB_TYPE type, const DB_ELO * elo);
 extern int db_make_time (DB_VALUE * value,
 			 const int hour, const int minute, const int second);
 extern int db_value_put_encoded_time (DB_VALUE * value,

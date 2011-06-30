@@ -30,7 +30,7 @@
 #include "storage_common.h"
 #include "log_comm.h"
 #include "connection_defs.h"
-#include "thread_impl.h"
+#include "thread.h"
 
 extern void tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)

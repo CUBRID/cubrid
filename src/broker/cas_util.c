@@ -38,6 +38,7 @@
 
 #include "cas_common.h"
 #include "cas_util.h"
+#include "cas_net_buf.h"
 
 char *
 ut_uchar2ipstr (unsigned char *ip_addr)

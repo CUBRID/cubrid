@@ -67,7 +67,6 @@ typedef struct __st_DriverConnectInfo
 
 PRIVATE INT_PTR CALLBACK
 ConnectDlgProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
-PRIVATE BOOL FAR PASCAL ConnectDatabase (HWND hWnd);
 
 PUBLIC HINSTANCE hInstance;
 
@@ -272,12 +271,11 @@ SQLColAttribute (SQLHSTMT StatementHandle,
 		 SQLUSMALLINT ColumnNumber,
 		 SQLUSMALLINT FieldIdentifier,
 		 SQLPOINTER CharacterAttribute,
-		 SQLSMALLINT BufferLength,
-		 SQLSMALLINT * StringLength,
+		 SQLSMALLINT BufferLength, SQLSMALLINT * StringLength,
 #ifdef _WIN64
-                 SQLLEN *NumericAttribute)
+		 SQLLEN * NumericAttribute)
 #else
-                 SQLPOINTER NumericAttribute)
+		 SQLPOINTER NumericAttribute)
 #endif
 {
   RETCODE rc = SQL_SUCCESS;
@@ -361,6 +359,7 @@ SQLConnect (SQLHDBC ConnectionHandle,
   SQLCHAR stDBName[ITEMBUFLEN];
   SQLCHAR stServerName[ITEMBUFLEN];
   SQLINTEGER Port, FetchSize;
+  SQLCHAR stCharSet[ITEMBUFLEN];
 
 
   OutputDebugString ("SQLConnect called\n");
@@ -374,10 +373,11 @@ SQLConnect (SQLHDBC ConnectionHandle,
   odbc_free_diag (((ODBC_CONNECTION *) ConnectionHandle)->diag, RESET);
 
   get_dsn_info (stDataSource, stDBName, sizeof (stDBName), NULL, 0, NULL, 0,
-		stServerName, sizeof (stServerName), &Port, &FetchSize);
+		stServerName, sizeof (stServerName), &Port, &FetchSize,
+		stCharSet, sizeof (stCharSet));
   rc = odbc_connect_new ((ODBC_CONNECTION *) ConnectionHandle, stDataSource,
 			 stDBName, stUserName, stAuthentication, stServerName,
-			 Port, FetchSize);
+			 Port, FetchSize, stCharSet);
 
   NA_FREE (stDataSource);
   NA_FREE (stUserName);
@@ -495,6 +495,7 @@ SQLDriverConnect (HDBC hdbc,
   const char *ptSaveFile;
   const char *ptFetchSize;
   const char *ptDescription;
+  const char *ptCharSet;
 
   // Deprecated : char            szDriver[ITEMBUFLEN];
   char ConnStrIn[4096];
@@ -504,6 +505,7 @@ SQLDriverConnect (HDBC hdbc,
   char pwd[ITEMBUFLEN] = "";
   char db_name[ITEMBUFLEN] = "";
   char server[ITEMBUFLEN] = "";
+  char charset[ITEMBUFLEN] = "";
   int port = 0;
   int fetch_size = 0;
 
@@ -538,6 +540,7 @@ SQLDriverConnect (HDBC hdbc,
   ptUser = element_value_by_key (ConnStrIn, KEYWORD_USER);
   ptPWD = element_value_by_key (ConnStrIn, KEYWORD_PASSWORD);
   ptSaveFile = element_value_by_key (ConnStrIn, KEYWORD_SAVEFILE);
+  ptCharSet = element_value_by_key (ConnStrIn, KEYWORD_CHARSET);
 
   if (ptSaveFile == NULL)
     {				// for just connect
@@ -548,7 +551,7 @@ SQLDriverConnect (HDBC hdbc,
 	  if (ptDSN != NULL)
 	    {
 	      get_dsn_info (ptDSN, NULL, 0, user, sizeof (user),
-			    pwd, sizeof (pwd), NULL, 0, NULL, NULL);
+			    pwd, sizeof (pwd), NULL, 0, NULL, NULL, NULL, 0);
 	    }
 	  if (ptUser == NULL || ptUser[0] == '\0')
 	    {
@@ -577,12 +580,13 @@ SQLDriverConnect (HDBC hdbc,
 	  ptServer = element_value_by_key (ConnStrIn, KEYWORD_SERVER);
 	  ptPort = element_value_by_key (ConnStrIn, KEYWORD_PORT);
 	  ptFetchSize = element_value_by_key (ConnStrIn, KEYWORD_FETCH_SIZE);
+	  ptCharSet = element_value_by_key (ConnStrIn, KEYWORD_CHARSET);
 
 	  port = ptPort ? atoi (ptPort) : 0;
 	  fetch_size = ptFetchSize ? atoi (ptFetchSize) : 0;
 
 	  rc = odbc_connect_new (hdbc, ptFileDSN, ptDBName, ptUser,
-				 ptPWD, ptServer, port, fetch_size);
+				 ptPWD, ptServer, port, fetch_size, ptCharSet);
 	}
       else
 	{
@@ -591,9 +595,11 @@ SQLDriverConnect (HDBC hdbc,
 	  ptServer = element_value_by_key (ConnStrIn, KEYWORD_SERVER);
 	  ptPort = element_value_by_key (ConnStrIn, KEYWORD_PORT);
 	  ptFetchSize = element_value_by_key (ConnStrIn, KEYWORD_FETCH_SIZE);
+	  ptCharSet = element_value_by_key (ConnStrIn, KEYWORD_CHARSET);
 
 	  get_dsn_info (ptDSN, db_name, sizeof (db_name), NULL, 0,
-			NULL, 0, server, sizeof (server), &port, &fetch_size);
+			NULL, 0, server, sizeof (server), &port, &fetch_size,
+			charset, sizeof(charset));
 
 	  // cbConnStrIn이 DSN의 정보보다 우선하다.
 	  if (ptDBName == NULL)
@@ -612,9 +618,13 @@ SQLDriverConnect (HDBC hdbc,
 	    {
 	      fetch_size = atoi (ptFetchSize);
 	    }
+	  if (ptCharSet == NULL)
+	    {
+	      ptCharSet = charset;
+	    }
 
 	  rc = odbc_connect_new (hdbc, ptDSN, ptDBName, ptUser,
-				 ptPWD, ptServer, port, fetch_size);
+				 ptPWD, ptServer, port, fetch_size, ptCharSet);
 	}
 
       // Building ConnStrOut
@@ -662,6 +672,11 @@ SQLDriverConnect (HDBC hdbc,
 	  sprintf (buf2, "%s=%d;", KEYWORD_FETCH_SIZE, fetch_size);
 	  strcat (buf, buf2);
 	}
+      if (ptCharSet != NULL)
+	{
+	  sprintf (buf2, "%s=%s;", KEYWORD_CHARSET, ptCharSet);
+	  strcat (buf, buf2);
+	}
 
       if ((szConnStrOut) && cbConnStrOut > 0)
 	{
@@ -684,6 +699,7 @@ SQLDriverConnect (HDBC hdbc,
       ptPort = element_value_by_key (buf, KEYWORD_PORT);
       ptFetchSize = element_value_by_key (buf, KEYWORD_FETCH_SIZE);
       ptDescription = element_value_by_key (buf, KEYWORD_DESCRIPTION);
+      ptCharSet = element_value_by_key (buf, KEYWORD_CHARSET);
 
 
       memset (&dsn_item, 0, sizeof (CUBRIDDSNItem));
@@ -703,11 +719,13 @@ SQLDriverConnect (HDBC hdbc,
 	strcpy (dsn_item.fetch_size, ptFetchSize);
       if (ptDescription != NULL)
 	strcpy (dsn_item.description, ptDescription);
+      if (ptCharSet != NULL)
+	strcpy (dsn_item.charset, ptCharSet);
 
       dlgrc = DialogBoxParam (hInstance, (LPCTSTR) IDD_CONFIGDSN, hWnd,
 			      ConfigDSNDlgProc, (LPARAM) & dsn_item);
 
-      sprintf (buf, "%s=%s;%s=%s;%s=%s;%s=%s;%s=%s;%s=%s;%s=%s;%s=%s;%s=%s",
+      sprintf (buf, "%s=%s;%s=%s;%s=%s;%s=%s;%s=%s;%s=%s;%s=%s;%s=%s;%s=%s;%s=%s",
 	       KEYWORD_DRIVER, ptDriver,
 	       KEYWORD_SAVEFILE, ptSaveFile,
 	       KEYWORD_DESCRIPTION, dsn_item.description,
@@ -716,7 +734,8 @@ SQLDriverConnect (HDBC hdbc,
 	       KEYWORD_USER, dsn_item.user,
 	       KEYWORD_SERVER, dsn_item.server,
 	       KEYWORD_PORT, dsn_item.port,
-	       KEYWORD_FETCH_SIZE, dsn_item.fetch_size);
+	       KEYWORD_FETCH_SIZE, dsn_item.fetch_size,
+	       KEYWORD_CHARSET, dsn_item.charset);
 
       if ((szConnStrOut) && cbConnStrOut > 0)
 	{
@@ -735,209 +754,6 @@ SQLDriverConnect (HDBC hdbc,
 
   ODBC_RETURN (rc, hdbc);
 }
-
-#if 0
-ODBC_INTERFACE RETCODE SQL_API
-SQLDriverConnect (HDBC hdbc,
-		  HWND hWnd,
-		  UCHAR * szConnStrIn,
-		  SWORD cbConnStrIn,
-		  UCHAR * szConnStrOut,
-		  SWORD cbConnStrOut,
-		  UNALIGNED SWORD * pcbConnStrOut, UWORD uwMode)
-{
-  /* NOTE
-   * string buffer 조절 필요, 낭비가 너무 심함
-   */
-  RETCODE rc = ODBC_SUCCESS;
-  int dlgrc;
-  char *pt, *pt2;
-
-  DriverConnectInfo dci;
-
-  CUBRIDDSNItem dsn_item;
-
-  const char *ptDriver;
-  const char *ptDSN;
-  const char *ptDBName;
-  const char *ptUser;
-  const char *ptPWD;
-  const char *ptServer;
-  const char *ptPort;
-  const char *ptFileDSN;
-  const char *ptSaveFile;
-  const char *ptFetchSize;
-  const char *ptDescription;
-
-  char szRetcode[ITEMBUFLEN + 1];
-  char szDriver[ITEMBUFLEN];
-  char buf[BUF_SIZE], buf2[BUF_SIZE] = "";
-
-
-  // This really doesn't show nearly all that you need to know
-  // about driver connect, read the programmer's reference
-
-  OutputDebugString ("SQLDriverConnect called\n");
-
-  DEBUG_TIMESTAMP (START_SQLDriverConnect);
-
-  if ((cbConnStrIn == SQL_NTS) && (szConnStrIn))
-    cbConnStrIn = strlen (szConnStrIn);
-
-  strncpy (buf, szConnStrIn, cbConnStrIn);
-  buf[cbConnStrIn] = '\0';	// for end of list, if cbConnStrIn isn't end
-  // with ';'
-  DEBUG_LOG (buf);
-
-  pt = buf;
-  while (*pt != '\0')
-    {
-      if (*pt == ';')		// connection string delimiter
-	*pt = '\0';
-      ++pt;
-    }
-
-
-  ptDSN = element_value_by_key (buf, KEYWORD_DSN);
-  ptUser = element_value_by_key (buf, KEYWORD_USER);
-  ptPWD = element_value_by_key (buf, KEYWORD_PASSWORD);
-  ptSaveFile = element_value_by_key (buf, KEYWORD_SAVEFILE);
-
-  if (ptSaveFile == NULL)
-    {				// for just connect
-      if (ptDSN == NULL)
-	{
-	  ptFileDSN = element_value_by_key (buf, KEYWORD_FILEDSN);
-	  ptDBName = element_value_by_key (buf, KEYWORD_DBNAME);
-	  ptServer = element_value_by_key (buf, KEYWORD_SERVER);
-	  ptPort = element_value_by_key (buf, KEYWORD_PORT);
-
-	  rc = odbc_connect_by_filedsn (hdbc,
-					ptFileDSN,
-					ptDBName,
-					ptUser, ptPWD, ptServer, ptPort);
-	  strncpy (buf, szConnStrIn,
-		   (cbConnStrIn == SQL_NTS) ? sizeof (buf) - 1 :
-		   min (sizeof (buf), cbConnStrIn));
-	  buf[(cbConnStrIn == SQL_NTS) ? sizeof (buf) - 1 :
-	      min (sizeof (buf), cbConnStrIn)] = '\0';
-	}
-      else
-	{
-	  if ((ptUser != NULL && ptUser[0] != '\0') && ptPWD != NULL)
-	    {
-	      rc = odbc_connect (hdbc, ptDSN, ptUser, ptPWD);
-	    }
-	  else
-	    {
-	      sprintf (dci.db_name, "%s", ptDSN);
-	      sprintf (dci.hdbc, "%d", hdbc);
-	      DialogBoxParam (hInstance, (LPCTSTR) IDD_DRIVERCONNECT, hWnd,
-			      ConnectDlgProc, (LPARAM) & dci);
-	      sprintf (buf2, "UID=%s", ((ODBC_CONNECTION *) hdbc)->user);
-
-	    }
-
-	  GetDlgItemText (hWnd, IDC_CONNECTSTR, szRetcode, ITEMBUFLEN);
-
-	  rc = atoi (szRetcode);
-
-	  strncpy (buf, szConnStrIn,
-		   (cbConnStrIn == SQL_NTS) ? sizeof (buf) - 1 :
-		   min (sizeof (buf), cbConnStrIn));
-	  buf[(cbConnStrIn == SQL_NTS) ? sizeof (buf) - 1 :
-	      min (sizeof (buf), cbConnStrIn)] = '\0';
-	  if (buf2[0] != '\0')
-	    {
-	      strcat (buf, buf2);
-	    }
-	}
-
-      if ((szConnStrOut) && cbConnStrOut > 0)
-	{
-	  strncpy (szConnStrOut, buf,
-		   MIN (strlen (buf), (unsigned) cbConnStrOut));
-	  szConnStrOut[MIN (strlen (buf), (unsigned) cbConnStrOut)] = '\0';
-	}
-
-      if (pcbConnStrOut)
-	*pcbConnStrOut = MIN (strlen (buf), (unsigned) cbConnStrOut);
-    }
-  else
-    {
-      // for creating & managing FILEDSN
-      // SAVEFILE이 있는 경우, DSN은 찾을 수 없다.
-
-      ptDriver = element_value_by_key (buf, KEYWORD_DRIVER);
-      pt = strchr (ptDriver, '{');
-      if (pt == NULL)
-	{
-	  strcpy (szDriver, ptDriver);
-	}
-      else
-	{
-	  pt2 = strchr (ptDriver, '}');
-	  // if ( pt2 == NULL ) error;
-	  strncpy (szDriver, pt + 1, pt2 - pt - 1);
-	  szDriver[pt2 - pt - 1] = '\0';
-	}
-      ptDBName = element_value_by_key (buf, KEYWORD_DBNAME);
-      ptUser = element_value_by_key (buf, KEYWORD_USER);
-      ptPWD = element_value_by_key (buf, KEYWORD_PASSWORD);
-      ptServer = element_value_by_key (buf, KEYWORD_SERVER);
-      ptPort = element_value_by_key (buf, KEYWORD_PORT);
-      ptFetchSize = element_value_by_key (buf, KEYWORD_FETCH_SIZE);
-      ptDescription = element_value_by_key (buf, KEYWORD_DESCRIPTION);
-
-
-      memset (&dsn_item, 0, sizeof (CUBRIDDSNItem));
-
-      strcpy (dsn_item.save_file, ptSaveFile);
-      if (ptDBName != NULL)
-	strcpy (dsn_item.db_name, ptDBName);
-      if (ptUser != NULL)
-	strcpy (dsn_item.user, ptUser);
-      if (ptPWD != NULL)
-	strcpy (dsn_item.password, ptPWD);
-      if (ptServer != NULL)
-	strcpy (dsn_item.server, ptServer);
-      if (ptPort != NULL)
-	strcpy (dsn_item.port, ptPort);
-      if (ptFetchSize != NULL)
-	strcpy (dsn_item.fetch_size, ptFetchSize);
-
-      dlgrc = DialogBoxParam (hInstance, (LPCTSTR) IDD_CONFIGDSN, hWnd,
-			      ConfigDSNDlgProc, (LPARAM) & dsn_item);
-
-      sprintf (buf, "%s=%s;%s=%s;%s=%s;%s=%s;%s=%s;%s=%s;%s=%s;",
-	       KEYWORD_DRIVER, ptDriver,
-	       KEYWORD_SAVEFILE, ptSaveFile,
-	       KEYWORD_DBNAME, dsn_item.db_name,
-	       KEYWORD_USER, dsn_item.user,
-	       KEYWORD_SERVER, dsn_item.server,
-	       KEYWORD_PORT, dsn_item.port,
-	       KEYWORD_FETCH_SIZE, dsn_item.fetch_size);
-
-      if ((szConnStrOut) && cbConnStrOut > 0)
-	{
-	  strncpy (szConnStrOut, buf,
-		   MIN (strlen (buf), (unsigned) cbConnStrOut));
-	  szConnStrOut[MIN (strlen (buf), (unsigned) cbConnStrOut)] = '\0';
-	}
-
-      if (pcbConnStrOut)
-	*pcbConnStrOut = MIN (strlen (buf), (unsigned) cbConnStrOut);
-
-      // CHECK : return value
-    }
-
-  DEBUG_TIMESTAMP (END_SQLDriverConnect);
-
-  ODBC_RETURN (rc, hdbc);
-}
-
-#endif
-
 
 #if (ODBCVER >= 0x0300)
 ODBC_INTERFACE RETCODE SQL_API
@@ -1606,8 +1422,7 @@ SQLPrepare (SQLHSTMT StatementHandle,
 }
 
 ODBC_INTERFACE RETCODE SQL_API
-SQLPutData (SQLHSTMT StatementHandle,
-	    SQLPOINTER Data, SQLLEN StrLen_or_Ind)
+SQLPutData (SQLHSTMT StatementHandle, SQLPOINTER Data, SQLLEN StrLen_or_Ind)
 {
   RETCODE rc = SQL_SUCCESS;
   ODBC_STATEMENT *stmt_handle;
@@ -1737,8 +1552,7 @@ SQLSetDescRec (SQLHDESC DescriptorHandle,
 	       SQLLEN Length,
 	       SQLSMALLINT Precision,
 	       SQLSMALLINT Scale,
-	       SQLPOINTER Data,
-	       SQLLEN * StringLength, SQLLEN * Indicator)
+	       SQLPOINTER Data, SQLLEN * StringLength, SQLLEN * Indicator)
 {
   RETCODE rc = SQL_SUCCESS;
 
@@ -1898,6 +1712,44 @@ SQLStatistics (SQLHSTMT StatementHandle,
   ODBC_RETURN (rc, StatementHandle);
 }
 
+ODBC_INTERFACE RETCODE SQL_API
+SQLTablePrivileges (SQLHSTMT StatementHandle,
+		    SQLCHAR * CatalogName,
+		    SQLSMALLINT NameLength1,
+		    SQLCHAR * SchemaName,
+		    SQLSMALLINT NameLength2,
+		    SQLCHAR * TableName, SQLSMALLINT NameLength3)
+{
+  RETCODE odbc_retval = SQL_SUCCESS;
+
+  SQLCHAR *stCatalogName = NULL;
+  SQLCHAR *stSchemaName = NULL;
+  SQLCHAR *stTableName = NULL;
+
+  ODBC_STATEMENT *stmt_handle;
+
+  OutputDebugString ("SQLTablePrivileges called\n");
+  DEBUG_TIMESTAMP (START_SQLTablePrivileges);
+
+  stmt_handle = (ODBC_STATEMENT *) StatementHandle;
+  odbc_free_diag (stmt_handle->diag, RESET);
+
+  stCatalogName = UT_MAKE_STRING (CatalogName, NameLength1);
+  stSchemaName = UT_MAKE_STRING (SchemaName, NameLength2);
+  stTableName = UT_MAKE_STRING (TableName, NameLength3);
+
+  odbc_retval =
+    odbc_table_privileges (stmt_handle, stCatalogName, stSchemaName,
+			   stTableName);
+
+  NA_FREE (stCatalogName);
+  NA_FREE (stSchemaName);
+  NA_FREE (stTableName);
+
+  DEBUG_TIMESTAMP (END_SQLTablePrivileges);
+
+  ODBC_RETURN (odbc_retval, StatementHandle);
+}
 
 ODBC_INTERFACE RETCODE SQL_API
 SQLTables (SQLHSTMT StatementHandle,
@@ -2077,71 +1929,118 @@ SQLDescribeParam (SQLHSTMT StatementHandle,
   return (rc);
 }
 
-
-ODBC_INTERFACE RETCODE SQL_API
-SQLForeignKeys (SQLHSTMT StatementHandle,
-		SQLCHAR * PKCatalogName,
-		SQLSMALLINT NameLength1,
-		SQLCHAR * PKSchemaName,
-		SQLSMALLINT NameLength2,
-		SQLCHAR * PKTableName,
-		SQLSMALLINT NameLength3,
-		SQLCHAR * FKCatalogName,
-		SQLSMALLINT NameLength4,
-		SQLCHAR * FKSchemaName,
-		SQLSMALLINT NameLength5,
-		SQLCHAR * FKTableName, SQLSMALLINT NameLength6)
-{
-  RETCODE rc = SQL_SUCCESS;
-  ODBC_STATEMENT *stmt_handle;
-
-  OutputDebugString ("SQLForeignKeys called\n");
-
-  stmt_handle = (ODBC_STATEMENT *) StatementHandle;
-  odbc_free_diag (stmt_handle->diag, RESET);
-
-  return (rc);
-}
-
+#endif
 
 ODBC_INTERFACE RETCODE SQL_API
 SQLPrimaryKeys (SQLHSTMT StatementHandle,
-		SQLCHAR * CatalogName,
-		SQLSMALLINT NameLength1,
-		SQLCHAR * SchemaName,
-		SQLSMALLINT NameLength2,
+		SQLCHAR * CatalogName, SQLSMALLINT NameLength1,
+		SQLCHAR * SchemaName, SQLSMALLINT NameLength2,
 		SQLCHAR * TableName, SQLSMALLINT NameLength3)
 {
-  RETCODE rc = SQL_SUCCESS;
+  RETCODE odbc_retval = SQL_SUCCESS;
+
+  SQLCHAR *stCatalogName = NULL;
+  SQLCHAR *stSchemaName = NULL;
+  SQLCHAR *stTableName = NULL;
+
   ODBC_STATEMENT *stmt_handle;
 
   OutputDebugString ("SQLPrimaryKeys called\n");
+  DEBUG_TIMESTAMP (START_SQLPrimaryKeys);
 
   stmt_handle = (ODBC_STATEMENT *) StatementHandle;
   odbc_free_diag (stmt_handle->diag, RESET);
 
-  return (rc);
+  stCatalogName = UT_MAKE_STRING (CatalogName, NameLength1);
+  stSchemaName = UT_MAKE_STRING (SchemaName, NameLength2);
+  stTableName = UT_MAKE_STRING (TableName, NameLength3);
+
+  odbc_retval =
+    odbc_primary_keys (stmt_handle, stCatalogName, stSchemaName, stTableName);
+
+  NA_FREE (stCatalogName);
+  NA_FREE (stSchemaName);
+  NA_FREE (stTableName);
+
+  DEBUG_TIMESTAMP (END_SQLPrimaryKeys);
+
+  ODBC_RETURN (odbc_retval, StatementHandle);
+}
+
+ODBC_INTERFACE RETCODE SQL_API
+SQLForeignKeys (SQLHSTMT StatementHandle,
+		SQLCHAR * PKCatalogName, SQLSMALLINT NameLength1,
+		SQLCHAR * PKSchemaName, SQLSMALLINT NameLength2,
+		SQLCHAR * PKTableName, SQLSMALLINT NameLength3,
+		SQLCHAR * FKCatalogName, SQLSMALLINT NameLength4,
+		SQLCHAR * FKSchemaName, SQLSMALLINT NameLength5,
+		SQLCHAR * FKTableName, SQLSMALLINT NameLength6)
+{
+  RETCODE odbc_retval = SQL_SUCCESS;
+
+  SQLCHAR *stPKTableName = NULL;
+  SQLCHAR *stFKTableName = NULL;
+
+  ODBC_STATEMENT *stmt_handle;
+
+  OutputDebugString ("SQLForeignKeys called\n");
+  DEBUG_TIMESTAMP (START_SQLForeignKeys);
+
+  stmt_handle = (ODBC_STATEMENT *) StatementHandle;
+  odbc_free_diag (stmt_handle->diag, RESET);
+
+  stPKTableName = UT_MAKE_STRING (PKTableName, NameLength3);
+  stFKTableName = UT_MAKE_STRING (FKTableName, NameLength6);
+
+  odbc_retval = odbc_foreign_keys (stmt_handle, stPKTableName, stFKTableName);
+
+  NA_FREE (stPKTableName);
+  NA_FREE (stFKTableName);
+
+  DEBUG_TIMESTAMP (END_SQLForeignKeys);
+
+  ODBC_RETURN (odbc_retval, StatementHandle);
 }
 
 ODBC_INTERFACE RETCODE SQL_API
 SQLProcedureColumns (SQLHSTMT StatementHandle,
-		     SQLCHAR * CatalogName,
-		     SQLSMALLINT NameLength1,
-		     SQLCHAR * SchemaName,
-		     SQLSMALLINT NameLength2,
-		     SQLCHAR * ProcName,
-		     SQLSMALLINT NameLength3,
+		     SQLCHAR * CatalogName, SQLSMALLINT NameLength1,
+		     SQLCHAR * SchemaName, SQLSMALLINT NameLength2,
+		     SQLCHAR * ProcName, SQLSMALLINT NameLength3,
 		     SQLCHAR * ColumnName, SQLSMALLINT NameLength4)
 {
-  RETCODE rc = SQL_SUCCESS;
+  RETCODE odbc_retval = SQL_SUCCESS;
+
+  SQLCHAR *stCatalogName = NULL;
+  SQLCHAR *stSchemaName = NULL;
+  SQLCHAR *stProcName = NULL;
+  SQLCHAR *stColumnName = NULL;
+
   ODBC_STATEMENT *stmt_handle;
 
   OutputDebugString ("SQLProcedureColumns called\n");
+  DEBUG_TIMESTAMP (START_SQLProcedureColumns);
+
+  stCatalogName = UT_MAKE_STRING (CatalogName, NameLength1);
+  stSchemaName = UT_MAKE_STRING (SchemaName, NameLength2);
+  stProcName = UT_MAKE_STRING (ProcName, NameLength3);
+  stColumnName = UT_MAKE_STRING (ColumnName, NameLength4);
 
   stmt_handle = (ODBC_STATEMENT *) StatementHandle;
   odbc_free_diag (stmt_handle->diag, RESET);
 
-  return (rc);
+  odbc_retval =
+    odbc_procedure_columns (stmt_handle, stCatalogName, stSchemaName,
+			    stProcName, stColumnName);
+
+  NA_FREE (stCatalogName);
+  NA_FREE (stSchemaName);
+  NA_FREE (stProcName);
+  NA_FREE (stColumnName);
+
+  DEBUG_TIMESTAMP (END_SQLProcedureColumns);
+
+  ODBC_RETURN (odbc_retval, StatementHandle);
 }
 
 ODBC_INTERFACE RETCODE SQL_API
@@ -2152,17 +2051,35 @@ SQLProcedures (SQLHSTMT StatementHandle,
 	       SQLSMALLINT NameLength2,
 	       SQLCHAR * ProcName, SQLSMALLINT NameLength3)
 {
-  RETCODE rc = SQL_SUCCESS;
+  RETCODE odbc_retval = SQL_SUCCESS;
+
+  SQLCHAR *stCatalogName = NULL;
+  SQLCHAR *stSchemaName = NULL;
+  SQLCHAR *stProcName = NULL;
+
   ODBC_STATEMENT *stmt_handle;
 
   OutputDebugString ("SQLProcedures called\n");
+  DEBUG_TIMESTAMP (START_SQLProcedures);
 
   stmt_handle = (ODBC_STATEMENT *) StatementHandle;
   odbc_free_diag (stmt_handle->diag, RESET);
 
-  return (rc);
+  stCatalogName = UT_MAKE_STRING (CatalogName, NameLength1);
+  stSchemaName = UT_MAKE_STRING (SchemaName, NameLength2);
+  stProcName = UT_MAKE_STRING (ProcName, NameLength3);
+
+  odbc_retval =
+    odbc_procedures (stmt_handle, stCatalogName, stSchemaName, stProcName);
+
+  NA_FREE (stCatalogName);
+  NA_FREE (stSchemaName);
+  NA_FREE (stProcName);
+
+  DEBUG_TIMESTAMP (END_SQLProcedures);
+
+  ODBC_RETURN (odbc_retval, StatementHandle);
 }
-#endif // Level 2
 
 /****************************************************************
  *                  Driver Manager implements                   *
@@ -2564,66 +2481,5 @@ ConnectDlgProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
       break;
     }
 
-  return (TRUE);
-}
-
-/************************************************************************
- * name: ConnectDatabase
- * arguments:
- * returns/side-effects:
- * description:
- *  ConnectDlgProc()에서 얻은 정보를 바탕으로 Data Source(DS)에 연결한다.
- * NOTE:
- ************************************************************************/
-PRIVATE BOOL FAR PASCAL
-ConnectDatabase (HWND hWnd)
-{
-  char szDBName[ITEMBUFLEN + 1];	// DSN sting
-  char szUserName[ITEMBUFLEN + 1];	// User name
-  char szPassword[ITEMBUFLEN + 1];	// Password
-  char szConnectHandle[ITEMBUFLEN + 1];
-  char buf[ITEMBUFLEN + 1];
-  SQLHDBC hdbc;			// hdbc
-  SQLRETURN rc;			// Result code
-
-  // check if enough windows are already open, refuse connection
-
-  /*
-     if (nChildCount >= MAXCHILDWNDS) {
-     MessageBox(hWndFrame, MAXCHILDEXCEEDED, MAXCHLDERR, MB_OK | MB_ICONHAND);
-     return (FALSE);
-     }
-   */
-
-
-  // retrieve DSN, UID and PWD values from the connect dialog box
-
-
-  GetDlgItemText (hWnd, IDTEXT_USERNAME, szUserName, ITEMBUFLEN);
-  GetDlgItemText (hWnd, IDTEXT_PASSWORD, szPassword, ITEMBUFLEN);
-  GetDlgItemText (hWnd, IDC_CONNECTHANDLE, szConnectHandle, ITEMBUFLEN);
-  GetDlgItemText (hWnd, IDC_CONNECTSTR, szDBName, ITEMBUFLEN);
-
-  hdbc = (void *) atol (szConnectHandle);
-
-
-
-  rc = odbc_connect (hdbc, szDBName, szUserName, szPassword);
-
-  sprintf (buf, "%d", rc);
-
-  SetDlgItemText (hWnd, IDC_RETCODE, buf);
-
-
-  // update the hdbc(s) combo-box and create a new hstmt and its
-  // associated window.
-  /*
-     wsprintf(szBuffer, DSN_HDBC_FORMAT, (LPSTR)szDBName, hdbc);
-     nResult = (UINT)SendMessage(hWndCrsrList, CB_ADDSTRING, 0, (LPARAM)(LPSTR)szBuffer);
-     SendMessage(hWndCrsrList, CB_SETCURSEL, (WPARAM)nResult, 0);
-     SendMessage(hWndCrsrList, CB_SELECTSTRING, 0, (LPARAM)(LPSTR)szBuffer);
-     ChangeCurrentCursor(hWndCrsrList);
-     NewQueryWindow();
-   */
   return (TRUE);
 }

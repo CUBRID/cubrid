@@ -104,6 +104,7 @@ struct db_object
   unsigned is_set:1;		/* temporary kludge for disconnected sets */
   unsigned is_temp:1;		/* set if template MOP (for triggers) */
   unsigned released:1;		/* set by code that knows that an instance can be released, used currently by the loader only */
+  unsigned decached:1;          /* set if mop is decached by calling ws_decache function */
 };
 
 

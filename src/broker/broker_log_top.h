@@ -29,7 +29,7 @@
 
 #define LINE_BUF_SIZE           30000
 
-#define DATE_STR_LEN    14
+#define DATE_STR_LEN    18
 
 #define IS_CAS_LOG_CMD(STR)     \
   ((strlen(STR) >= 23 && (STR)[2] == '/' && (STR)[5] == ' ' && (STR)[8] == ':' && (STR)[11] == ':' && (STR)[18] == ' ') ? 1 : 0)
@@ -49,6 +49,8 @@ enum t_log_top_mode
 
 extern int check_log_time (char *start_date, char *end_date);
 extern int log_top_tran (int argc, char *argv[], int arg_start);
+extern int get_file_offset (char *filename, long *start_offset,
+			    long *end_offset);
 
 extern T_LOG_TOP_MODE log_top_mode;
 

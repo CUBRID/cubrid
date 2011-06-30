@@ -34,74 +34,53 @@
  * @version 2.0
  */
 
-package @CUBRID_JCI@;
+package cubrid.jdbc.jci;
 
-import java.lang.String;
-import java.io.InputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
-import java.net.InetAddress;
+import java.io.InputStream;
 import java.net.SocketTimeoutException;
 
-class UTimedDataInputStream
-{
-  public final static int PING_TIMEOUT = 5000;
-  private DataInputStream stream = null;
-  private String ip = null;
-  private int port = 0;
+class UTimedDataInputStream {
+	public final static int PING_TIMEOUT = 5000;
+	private DataInputStream stream = null;
+	private String ip = null;
+	private int port = 0;
 
-  UTimedDataInputStream()
-  {
-  }
+	UTimedDataInputStream() {
+	}
 
-  public UTimedDataInputStream (InputStream stream, String ip, int port)
-  {
-    this.stream = new DataInputStream(stream);
-    this.ip = ip;
-    this.port = port;
-  }
+	public UTimedDataInputStream(InputStream stream, String ip, int port) {
+		this.stream = new DataInputStream(stream);
+		this.ip = ip;
+		this.port = port;
+	}
 
-  public int readInt() throws IOException
-  {
-    while (true)
-    {
-      try
-      {
-        return stream.readInt();
-      }
-      catch (SocketTimeoutException e)
-      {
-        try
-        {
-	  UConnection.ping(ip,port,PING_TIMEOUT);
-        }
-        catch(Exception f)
-	{			  
-          throw new IOException(f.getMessage());
-        }
-      }
-    }
-  }
+	public int readInt() throws IOException {
+		while (true) {
+			try {
+				return stream.readInt();
+			} catch (SocketTimeoutException e) {
+				try {
+					UConnection.ping(ip, port, PING_TIMEOUT);
+				} catch (Exception f) {
+					throw new IOException(f.getMessage());
+				}
+			}
+		}
+	}
 
-  public int readByte(byte[] b) throws IOException
-  {
-    while (true)
-    {
-      try
-      {
-        return stream.read(b);
-      }
-      catch (SocketTimeoutException e)
-      {
-        try
-        {
-	  UConnection.ping(ip,port,PING_TIMEOUT);
-        }
-        catch(Exception f)
-	{			  
-          throw new IOException(f.getMessage());
-        }
-      }
-    }
-  }
+	public int readByte(byte[] b) throws IOException {
+		while (true) {
+			try {
+				return stream.read(b);
+			} catch (SocketTimeoutException e) {
+				try {
+					UConnection.ping(ip, port, PING_TIMEOUT);
+				} catch (Exception f) {
+					throw new IOException(f.getMessage());
+				}
+			}
+		}
+	}
 }

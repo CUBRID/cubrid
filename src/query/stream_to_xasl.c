@@ -40,7 +40,7 @@
 #include "heap_file.h"
 #include "release_string.h"
 #if defined(SERVER_MODE)
-#include "thread_impl.h"
+#include "thread.h"
 #endif /* SERVER_MODE */
 
 /* memory alignment unit - to align stored XASL tree nodes */
@@ -1738,6 +1738,22 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	}
     }
 
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      xasl->orderby_limit = NULL;
+    }
+  else
+    {
+      xasl->orderby_limit =
+	stx_restore_regu_variable (thread_p,
+				   &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->orderby_limit == NULL)
+	{
+	  goto error;
+	}
+    }
+
   ptr = or_unpack_int (ptr, (int *) &xasl->ordbynum_flag);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -1945,6 +1961,22 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	}
     }
 
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      xasl->save_instnum_val = NULL;
+    }
+  else
+    {
+      xasl->save_instnum_val =
+	stx_restore_db_value (thread_p,
+			      &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->save_instnum_val == NULL)
+	{
+	  goto error;
+	}
+    }
+
   ptr = or_unpack_int (ptr, (int *) &xasl->instnum_flag);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2144,7 +2176,6 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       break;
 
     case OBJFETCH_PROC:
-    case SETFETCH_PROC:
       ptr = stx_build_fetch_proc (thread_p, ptr, &xasl->proc.fetch);
       break;
 
@@ -2930,6 +2961,7 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &update_info->waitsecs);
   ptr = or_unpack_int (ptr, &update_info->no_logging);
   ptr = or_unpack_int (ptr, &update_info->release_lock);
+  ptr = or_unpack_int (ptr, &(update_info->no_orderby_keys));
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0 || update_info->no_classes == 0)
@@ -3716,6 +3748,8 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr,
       return NULL;
     }
 
+  ptr = or_unpack_int (ptr, (int *) &(indx_info->coverage));
+
   ptr = or_unpack_int (ptr, (int *) &indx_info->range_type);
 
   ptr = stx_build_key_info (thread_p, ptr, &indx_info->key_info);
@@ -3723,6 +3757,16 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr,
     {
       return NULL;
     }
+
+  ptr = or_unpack_int (ptr, (int *) &(indx_info->orderby_desc));
+
+  ptr = or_unpack_int (ptr, (int *) &(indx_info->groupby_desc));
+
+  ptr = or_unpack_int (ptr, (int *) &(indx_info->use_desc_index));
+
+  ptr = or_unpack_int (ptr, (int *) &(indx_info->orderby_skip));
+
+  ptr = or_unpack_int (ptr, (int *) &(indx_info->groupby_skip));
 
   return ptr;
 }
@@ -3783,6 +3827,42 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 
   ptr = or_unpack_int (ptr, &key_info->is_constant);
 
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      key_info->key_limit_l = NULL;
+    }
+  else
+    {
+      key_info->key_limit_l =
+	stx_restore_regu_variable (thread_p,
+				   &xasl_unpack_info->packed_xasl[offset]);
+      if (key_info->key_limit_l == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      key_info->key_limit_u = NULL;
+    }
+  else
+    {
+      key_info->key_limit_u =
+	stx_restore_regu_variable (thread_p,
+				   &xasl_unpack_info->packed_xasl[offset]);
+      if (key_info->key_limit_u == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &key_info->key_limit_reset);
+
   return ptr;
 }
 
@@ -3840,6 +3920,38 @@ stx_build_cls_spec_type (THREAD_ENTRY * thread_p, char *ptr,
 	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->
 					packed_xasl[offset]);
       if (cls_spec->cls_regu_list_rest == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      cls_spec->cls_output_val_list = NULL;
+    }
+  else
+    {
+      cls_spec->cls_output_val_list =
+	stx_restore_outptr_list (thread_p,
+				 &xasl_unpack_info->packed_xasl[offset]);
+      if (cls_spec->cls_output_val_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      cls_spec->cls_regu_val_list = NULL;
+    }
+  else
+    {
+      cls_spec->cls_regu_val_list =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->
+					packed_xasl[offset]);
+      if (cls_spec->cls_regu_val_list == NULL)
 	{
 	  goto error;
 	}
@@ -4541,7 +4653,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr,
 
   ptr = or_unpack_int (ptr, (int *) &arith_type->misc_operand);
   if (arith_type->opcode == T_CASE || arith_type->opcode == T_DECODE
-      || arith_type->opcode == T_IF)
+      || arith_type->opcode == T_PREDICATE || arith_type->opcode == T_IF)
     {
       ptr = or_unpack_int (ptr, &offset);
       if (offset == 0)
@@ -4664,6 +4776,22 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr,
 
   ptr = or_unpack_int (ptr, (int *) &aggregate->flag_agg_optimize);
   ptr = or_unpack_btid (ptr, &aggregate->btid);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      aggregate->sort_list = NULL;
+    }
+  else
+    {
+      aggregate->sort_list =
+	stx_restore_sort_list (thread_p,
+			       &xasl_unpack_info->packed_xasl[offset]);
+      if (aggregate->sort_list == NULL)
+	{
+	  goto error;
+	}
+    }
 
   return ptr;
 

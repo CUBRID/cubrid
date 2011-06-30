@@ -122,6 +122,8 @@ static CSQL_CMD_STRING_TABLE csql_Cmd_string_table[] = {
   {CUBRID_STMT_CREATE_STORED_PROCEDURE, "CREATE PROCEDURE"},
   {CUBRID_STMT_DROP_STORED_PROCEDURE, "DROP PROCEDURE"},
   {CUBRID_STMT_TRUNCATE, "TRUNCATE"},
+  {CUBRID_STMT_SET_SESSION_VARIABLES, "SET"},
+  {CUBRID_STMT_DROP_SESSION_VARIABLES, "DROP VARIABLE"},
   {CUBRID_STMT_DO, "DO"}
 };
 
@@ -493,6 +495,7 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info)
       assert (value_type == DB_TYPE_NULL
 	      /* UNKNOWN, maybe host variable */
 	      || result_info->attr_types[i] == DB_TYPE_NULL
+	      || result_info->attr_types[i] == DB_TYPE_VARIABLE
 	      || value_type == result_info->attr_types[i]);
 
       switch (value_type)

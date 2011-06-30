@@ -575,8 +575,9 @@ net_histo_setup_names (void)
     "NET_SERVER_LOG_CLIENT_GET_NEXT_POSTPONE";
   net_Req_buffer[NET_SERVER_LOG_CLIENT_GET_NEXT_UNDO].name =
     "NET_SERVER_LOG_CLIENT_GET_NEXT_UNDO";
-  net_Req_buffer[NET_SERVER_LOG_CLIENT_UNKNOWN_STATE_ABORT_GET_FIRST_UNDO].
-    name = "NET_SERVER_LOG_CLIENT_UNKNOWN_STATE_ABORT_GET_FIRST_UNDO";
+  net_Req_buffer
+    [NET_SERVER_LOG_CLIENT_UNKNOWN_STATE_ABORT_GET_FIRST_UNDO].name =
+    "NET_SERVER_LOG_CLIENT_UNKNOWN_STATE_ABORT_GET_FIRST_UNDO";
   net_Req_buffer[NET_SERVER_LOG_DUMP_STAT].name = "NET_SERVER_LOG_DUMP_STAT";
   net_Req_buffer[NET_SERVER_LOG_GETPACK_TRANTB].name =
     "NET_SERVER_LOG_GETPACK_TRANTB";
@@ -584,6 +585,15 @@ net_histo_setup_names (void)
     "NET_SERVER_LOG_DUMP_TRANTB";
   net_Req_buffer[NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION].name =
     "NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION";
+
+  net_Req_buffer[NET_SERVER_LOG_FIND_LOB_LOCATOR].name =
+    "NET_SERVER_LOG_FIND_LOB_LOCATOR";
+  net_Req_buffer[NET_SERVER_LOG_ADD_LOB_LOCATOR].name =
+    "NET_SERVER_LOG_ADD_LOB_LOCATOR";
+  net_Req_buffer[NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR].name =
+    "NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR";
+  net_Req_buffer[NET_SERVER_LOG_DROP_LOB_LOCATOR].name =
+    "NET_SERVER_LOG_DROP_LOB_LOCATOR";
 
   net_Req_buffer[NET_SERVER_LK_DUMP].name = "NET_SERVER_LK_DUMP";
 
@@ -645,8 +655,6 @@ net_histo_setup_names (void)
     "NET_SERVER_MNT_SERVER_START_STATS";
   net_Req_buffer[NET_SERVER_MNT_SERVER_STOP_STATS].name =
     "NET_SERVER_MNT_SERVER_STOP_STATS";
-  net_Req_buffer[NET_SERVER_MNT_SERVER_RESET_STATS].name =
-    "NET_SERVER_MNT_SERVER_RESET_STATS";
   net_Req_buffer[NET_SERVER_MNT_SERVER_COPY_STATS].name =
     "NET_SERVER_MNT_SERVER_COPY_STATS";
 
@@ -688,10 +696,47 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_LOGWR_GET_LOG_PAGES].name =
     "NET_SERVER_LOGWR_GET_LOG_PAGES";
 
+  net_Req_buffer[NET_SERVER_ES_CREATE_FILE].name =
+    "NET_SERVER_ES_CREATE_FILE";
+  net_Req_buffer[NET_SERVER_ES_WRITE_FILE].name = "NET_SERVER_ES_WRITE_FILE";
+  net_Req_buffer[NET_SERVER_ES_READ_FILE].name = "NET_SERVER_ES_READ_FILE";
+  net_Req_buffer[NET_SERVER_ES_DELETE_FILE].name =
+    "NET_SERVER_ES_DELETE_FILE";
+  net_Req_buffer[NET_SERVER_ES_COPY_FILE].name = "NET_SERVER_ES_COPY_FILE";
+  net_Req_buffer[NET_SERVER_ES_RENAME_FILE].name =
+    "NET_SERVER_ES_RENAME_FILE";
+  net_Req_buffer[NET_SERVER_ES_GET_FILE_SIZE].name =
+    "NET_SERVER_ES_GET_FILE_SIZE";
+
   net_Req_buffer[NET_SERVER_TEST_PERFORMANCE].name =
     "NET_SERVER_TEST_PERFORMANCE";
 
   net_Req_buffer[NET_SERVER_SHUTDOWN].name = "NET_SERVER_SHUTDOWN";
+
+  net_Req_buffer[NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN].name =
+    "NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN";
+
+  net_Req_buffer[NET_SERVER_SES_CHECK_SESSION].name =
+    "NET_SERVER_SES_CHECK_SESSION";
+  net_Req_buffer[NET_SERVER_SES_END_SESSION].name = "NET_SERVER_END_SESSION";
+  net_Req_buffer[NET_SERVER_SES_SET_ROW_COUNT].name =
+    "NET_SERVER_SES_SET_ROW_COUNT";
+  net_Req_buffer[NET_SERVER_SES_GET_ROW_COUNT].name =
+    "NET_SERVER_GET_ROW_COUNT";
+  net_Req_buffer[NET_SERVER_SES_GET_LAST_INSERT_ID].name =
+    "NET_SERVER_SES_GET_LAST_INSERT_ID";
+  net_Req_buffer[NET_SERVER_SES_CREATE_PREPARED_STATEMENT].name =
+    "NET_SERVER_SES_CREATE_PREPARED_STATEMENT";
+  net_Req_buffer[NET_SERVER_SES_GET_PREPARED_STATEMENT].name =
+    "NET_SERVER_SES_GET_PREPARED_STATEMENT";
+  net_Req_buffer[NET_SERVER_SES_DELETE_PREPARED_STATEMENT].name =
+    "NET_SERVER_SES_DELETE_PREPARED_STATEMENT";
+  net_Req_buffer[NET_SERVER_SES_SET_SESSION_VARIABLES].name =
+    "NET_SERVER_SES_SET_SESSION_VARIABLES";
+  net_Req_buffer[NET_SERVER_SES_GET_SESSION_VARIABLE].name =
+    "NET_SERVER_SES_GET_SESSION_VARIABLE";
+  net_Req_buffer[NET_SERVER_SES_DROP_SESSION_VARIABLES].name =
+    "NET_SERVER_SES_DROP_SESSION_VARIABLES";
 }
 
 /*
@@ -720,22 +765,6 @@ net_histo_clear (void)
       net_Req_buffer[i].total_size_sent = 0;
       net_Req_buffer[i].total_size_received = 0;
       net_Req_buffer[i].elapsed_time = 0;
-    }
-}
-
-/*
- * net_histo_clear_global_stats -
- *
- * return:
- *
- * NOTE:
- */
-void
-net_histo_clear_global_stats (void)
-{
-  if (net_Histo_setup_mnt)
-    {
-      mnt_reset_global_stats ();
     }
 }
 
@@ -814,11 +843,12 @@ net_histo_print (FILE * stream)
  * Note:
  */
 void
-net_histo_print_global_stats (FILE * stream)
+net_histo_print_global_stats (FILE * stream, bool cumulative,
+			      const char *substr)
 {
   if (net_Histo_setup_mnt)
     {
-      mnt_print_global_stats (stream);
+      mnt_print_global_stats (stream, cumulative, substr);
     }
 }
 
@@ -2290,6 +2320,127 @@ net_client_request_with_callback (int request, char *argbuf, int argsize,
 }
 
 /*
+ * net_client_check_log_header -
+ *
+ * return:
+ * Note:
+ */
+int
+net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr,
+			     char *argbuf, int argsize,
+			     char *replybuf, int replysize,
+			     char **logpg_area_buf, bool verbose)
+{
+  unsigned int rc;
+  char *reply = NULL;
+  char *ptr;
+  int error = NO_ERROR;
+  int size;
+  int fillsize;
+  int request = NET_SERVER_LOGWR_GET_LOG_PAGES;
+  QUERY_SERVER_REQUEST server_request;
+  int server_request_num;
+
+  if (net_Server_name[0] == '\0')
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
+      error = ER_NET_SERVER_CRASHED;
+    }
+  else
+    {
+      if (ctx_ptr->rc == -1)
+	{
+	  /* HEADER PAGE REQUEST */
+	  rc =
+	    css_send_req_to_server_2_data (net_Server_host, request, argbuf,
+					   argsize, NULL, 0, NULL, 0,
+					   replybuf, replysize);
+	  if (rc == 0)
+	    {
+	      return set_server_error (css_Errno);
+	    }
+	  ctx_ptr->rc = rc;
+	}
+      else
+	{
+	  /* END PROTOCOL */
+	  rc = ctx_ptr->rc;
+	  error = net_client_send_data (net_Server_host, rc, argbuf, argsize);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  (void) css_queue_receive_data_buffer (rc, replybuf, replysize);
+	}
+
+      error = css_receive_data_from_server (rc, &reply, &size);
+      if (error != NO_ERROR || reply == NULL)
+	{
+	  COMPARE_AND_FREE_BUFFER (replybuf, reply);
+	  return set_server_error (error);
+	}
+      else
+	{
+	  error =
+	    COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+
+      ptr = or_unpack_int (reply, &server_request_num);
+      server_request = (QUERY_SERVER_REQUEST) server_request_num;
+
+      switch (server_request)
+	{
+	case GET_NEXT_LOG_PAGES:
+	  {
+	    int length;
+	    char *logpg_area;
+	    char *reply_logpg = NULL;
+	    ptr = or_unpack_int (ptr, (int *) (&length));
+	    if (length <= 0)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			ER_NET_SERVER_CRASHED, 0);
+		error = ER_NET_SERVER_CRASHED;
+	      }
+
+	    logpg_area = (char *) malloc (length);
+	    if (logpg_area == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			ER_OUT_OF_VIRTUAL_MEMORY, 0);
+		error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
+	    css_queue_receive_data_buffer (rc, logpg_area, length);
+	    error =
+	      css_receive_data_from_server (rc, &reply_logpg, &fillsize);
+	    if (error != NO_ERROR)
+	      {
+		COMPARE_AND_FREE_BUFFER (logpg_area, reply_logpg);
+		return set_server_error (error);
+	      }
+	    else
+	      {
+		*logpg_area_buf = logpg_area;
+	      }
+	  }
+	  break;
+	case END_CALLBACK:
+	  error = NO_ERROR;
+	  break;
+	default:
+	  error = ER_NET_SERVER_DATA_RECEIVE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  break;
+	}
+    }
+  return error;
+}
+
+/*
  * net_client_request_with_logwr_context -
  *
  * return:
@@ -2472,6 +2623,32 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr,
 #endif /* HISTO */
     }
   return (error);
+}
+
+/*
+ * net_client_logwr_send_end_msg
+ *
+ * return:
+ * note:
+ */
+void
+net_client_logwr_send_end_msg (int rc, int error)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_INT64_SIZE) a_request;
+  char *request;
+  char *ptr;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+
+  /* END REQUEST */
+  ptr = or_pack_int64 (request, LOGPB_HEADER_PAGE_ID);
+  ptr = or_pack_int (ptr, LOGWR_MODE_ASYNC);
+  ptr = or_pack_int (ptr, error);
+
+  net_client_send_data (net_Server_host, rc, request,
+			OR_ALIGNED_BUF_SIZE (a_request));
+
+  return;
 }
 
 /*
@@ -2795,7 +2972,7 @@ net_client_request_recv_copyarea (int request,
 
       if (packed_desc_size != 0 || content_size != 0)
 	{
-	  if (error == NO_ERROR)
+	  if (error == NO_ERROR && reply_copy_area != NULL)
 	    {
 	      *reply_copy_area = locator_recv_allocate_copyarea (num_objs,
 								 &packed_desc,
@@ -2814,6 +2991,8 @@ net_client_request_recv_copyarea (int request,
 			{
 			  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 			  free_and_init (packed_desc);
+			  locator_free_copy_area (*reply_copy_area);
+			  *reply_copy_area = NULL;
 			  return set_server_error (error);
 			}
 		      else
@@ -2849,6 +3028,8 @@ net_client_request_recv_copyarea (int request,
 			    {
 			      free_and_init (packed_desc);
 			    }
+			  locator_free_copy_area (*reply_copy_area);
+			  *reply_copy_area = NULL;
 			  return set_server_error (error);
 			}
 		    }
@@ -3993,6 +4174,7 @@ net_client_ping_server_with_handshake (bool check_capabilities)
   char *reply = OR_ALIGNED_BUF_START (a_reply), *reply_ptr;
   int reply_size = OR_ALIGNED_BUF_SIZE (a_reply);
   int eid, request_size, server_capabilities, server_bit_platform;
+  int strlen1, strlen2;
   REL_COMPATIBILITY compat;
 
   if (net_Server_host[0] == '\0' || net_Server_name[0] == '\0')
@@ -4004,12 +4186,12 @@ net_client_ping_server_with_handshake (bool check_capabilities)
 
   client_release = rel_release_string ();
 
-  request_size = or_packed_string_length (client_release) + (OR_INT_SIZE * 2)
-    + or_packed_string_length (boot_Host_name);
-  ptr = or_pack_string (request, client_release);
+  request_size = or_packed_string_length (client_release, &strlen1)
+    + (OR_INT_SIZE * 2) + or_packed_string_length (boot_Host_name, &strlen2);
+  ptr = or_pack_string_with_length (request, client_release, strlen1);
   ptr = or_pack_int (ptr, client_capabilities ());
   ptr = or_pack_int (ptr, rel_bit_platform ());
-  ptr = or_pack_string (ptr, boot_Host_name);
+  ptr = or_pack_string_with_length (ptr, boot_Host_name, strlen2);
 
   eid = css_send_request_to_server_with_buffer (net_Server_host,
 						NET_SERVER_PING_WITH_HANDSHAKE,

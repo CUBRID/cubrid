@@ -34,7 +34,7 @@
 #include "wait_for_graph.h"
 #include "critical_section.h"
 #if defined(SERVER_MODE)
-#include "thread_impl.h"
+#include "thread.h"
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 

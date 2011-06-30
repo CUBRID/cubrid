@@ -51,15 +51,29 @@ static jmp_buf iq_Jmp_buf;
 
 #define DEFAULT_DB_ERROR_MSG_LEVEL      3	/* current max */
 
+typedef enum csql_statement_state
+{
+  CSQL_STATE_GENERAL = 0,
+  CSQL_STATE_C_COMMENT,
+  CSQL_STATE_CPP_COMMENT,
+  CSQL_STATE_SQL_COMMENT,
+  CSQL_STATE_SINGLE_QUOTE,
+  CSQL_STATE_DOUBLE_QOUTE,
+  CSQL_STATE_MYSQL_QUOTE,
+  CSQL_STATE_STATEMENT_END
+} CSQL_STATEMENT_STATE;
+
 /* editor buffer management */
 typedef struct
 {
   char *contents;
   int data_size;
   int alloc_size;
+  CSQL_STATEMENT_STATE state;
 } CSQL_EDIT_CONTENTS;
 
-static CSQL_EDIT_CONTENTS csql_Edit_contents = { NULL, 0, 0 };
+static CSQL_EDIT_CONTENTS csql_Edit_contents =
+  { NULL, 0, 0, CSQL_STATE_GENERAL };
 
 
 static void iq_pipe_handler (int sig_no);
@@ -882,6 +896,142 @@ csql_edit_contents_append (const char *str, bool flag_append_new_line)
 }
 
 /*
+ * csql_is_statement_end () - parse str and see if end of statement is reached
+ * return : true if statement end is reached, false otherwise
+ * str (in) : the new statement chunk received from input
+ */
+bool
+csql_is_statement_end (const char *str)
+{
+  const char *p = str;
+  CSQL_STATEMENT_STATE state = csql_Edit_contents.state;
+
+  if (str == NULL)
+    {
+      return false;
+    }
+
+  if (state == CSQL_STATE_CPP_COMMENT || state == CSQL_STATE_SQL_COMMENT)
+    {
+      /* these are single line comments and we're parsing a new line */
+      state = CSQL_STATE_GENERAL;
+    }
+
+  while (*p != 0)
+    {
+      if (state == CSQL_STATE_STATEMENT_END)
+	{
+	  /* ignore ';' if not the last character in the string */
+	  state = CSQL_STATE_GENERAL;
+	}
+
+      switch (*p)
+	{
+	case '/':
+	  if (state != CSQL_STATE_GENERAL)
+	    {
+	      break;
+	    }
+	  if (*(p + 1) == '/')
+	    {
+	      state = CSQL_STATE_CPP_COMMENT;
+	      p++;
+	      break;
+	    }
+	  if (*(p + 1) == '*')
+	    {
+	      state = CSQL_STATE_C_COMMENT;
+	      p++;
+	      break;
+	    }
+	  break;
+	case '*':
+	  if (state != CSQL_STATE_C_COMMENT)
+	    {
+	      break;
+	    }
+	  if (*(p + 1) == '/')
+	    {
+	      state = CSQL_STATE_GENERAL;
+	      p++;
+	      break;
+	    }
+	  break;
+	case '\'':
+	  switch (state)
+	    {
+	    case CSQL_STATE_SINGLE_QUOTE:
+	      if (*(p + 1) == '\'')
+		{
+		  p++;
+		  break;
+		}
+	      /* end of single quoted value */
+	      state = CSQL_STATE_GENERAL;
+	      break;
+	    case CSQL_STATE_GENERAL:
+	      state = CSQL_STATE_SINGLE_QUOTE;
+	      break;
+	    default:
+	      break;
+	    }
+	  break;
+	case '"':
+	  switch (state)
+	    {
+	    case CSQL_STATE_GENERAL:
+	      state = CSQL_STATE_MYSQL_QUOTE;
+	      break;
+	    case CSQL_STATE_MYSQL_QUOTE:
+	      state = CSQL_STATE_GENERAL;
+	      break;
+	    default:
+	      break;
+	    }
+	  break;
+	case '-':
+	  if (state != CSQL_STATE_GENERAL)
+	    {
+	      break;
+	    }
+	  if (*(p + 1) == '-')
+	    {
+	      state = CSQL_STATE_SQL_COMMENT;
+	      p++;
+	      break;
+	    }
+	  break;
+	case '\n':
+	  if (state == CSQL_STATE_SQL_COMMENT
+	      || state == CSQL_STATE_CPP_COMMENT)
+	    {
+	      state = CSQL_STATE_GENERAL;
+	      break;
+	    }
+	  break;
+	case ';':
+	  if (state == CSQL_STATE_GENERAL && *(p + 1) == 0)
+	    {
+	      state = CSQL_STATE_STATEMENT_END;
+	      break;
+	    }
+	default:
+	  break;
+	}
+
+      p++;
+    }
+
+  csql_Edit_contents.state = state;
+  if (state == CSQL_STATE_STATEMENT_END)
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
  * csql_edit_buffer_clear() - clear current editor contents
  *   return: none
  * NOTE: allocated memory in csql_Edit_contents is not freed.
@@ -890,6 +1040,7 @@ void
 csql_edit_contents_clear ()
 {
   csql_Edit_contents.data_size = 0;
+  csql_Edit_contents.state = CSQL_STATE_GENERAL;
 }
 
 void

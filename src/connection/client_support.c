@@ -595,7 +595,7 @@ css_receive_data_from_server (unsigned int eid, char **buffer, int *size)
  *   eid(in): enquiry id
  *   buffer(out): data buffer to be returned
  *   size(out): size of data buffer that was returned
- *   timeout(in) : timeout in mili-second
+ *   timeout(in) : timeout in milli-second
  */
 unsigned int
 css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
@@ -620,7 +620,7 @@ css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
 	  FD_SET (entry->conn->fd, &rfds);
 	  tv.tv_sec = timeout / 1000;
 	  tv.tv_usec = (timeout % 1000) * 1000;
-	  n = select (FD_SETSIZE, &rfds, NULL, NULL, &tv);
+	  n = select (entry->conn->fd + 1, &rfds, NULL, NULL, &tv);
 	  if (n == 0)
 	    {
 	      if (css_peer_alive (entry->conn->fd, timeout))

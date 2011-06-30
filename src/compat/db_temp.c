@@ -388,9 +388,6 @@ dbt_add_constraint (DB_CTMPL * def,
 {
   int error = NO_ERROR;
   char *name = NULL;
-  SM_CLASS_CONSTRAINT *temp_cons = NULL;
-  SM_ATTRIBUTE_FLAG attflag = SM_ATTFLAG_UNIQUE;
-  char *shared_cons_name = NULL;
 
   CHECK_CONNECT_ERROR ();
   CHECK_2ARGS_ERROR (def, attnames);
@@ -402,13 +399,11 @@ dbt_add_constraint (DB_CTMPL * def,
       ERROR_SET (error, ER_SM_INVALID_CONSTRAINT);
     }
 
-  attflag = SM_MAP_CONSTRAINT_TO_ATTFLAG (constraint_type);
-
   if (error == NO_ERROR)
     {
       name = sm_produce_constraint_name_tmpl (def, constraint_type,
-					      attnames, NULL, constraint_name);
-
+					      attnames, NULL,
+					      constraint_name);
       if (name == NULL)
 	{
 	  error = er_errid ();
@@ -423,14 +418,6 @@ dbt_add_constraint (DB_CTMPL * def,
   if (name)
     {
       sm_free_constraint_name (name);
-    }
-
-  if (DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type))
-    {
-      if (def->op == NULL && temp_cons != NULL)
-	{
-	  classobj_free_class_constraints (temp_cons);
-	}
     }
 
   return (error);
@@ -475,7 +462,8 @@ dbt_drop_constraint (DB_CTMPL * def,
   if (error == NO_ERROR)
     {
       name = sm_produce_constraint_name_tmpl (def, constraint_type,
-					      attnames, NULL, constraint_name);
+					      attnames, NULL,
+					      constraint_name);
 
       if (name == NULL)
 	{
@@ -1242,6 +1230,25 @@ dbt_drop_query_spec (DB_CTMPL * def, const int query_no)
   CHECK_MODIFICATION_ERROR ();
 
   error = smt_drop_query_spec (def, query_no);
+
+  return (error);
+}
+
+/*
+ * dbt_reset_query_spec() - delete all query specs from template
+ * return:
+ * def(in) :
+ */
+int
+dbt_reset_query_spec (DB_CTMPL * def)
+{
+  int error = NO_ERROR;
+
+  CHECK_CONNECT_ERROR ();
+  CHECK_1ARG_ERROR (def);
+  CHECK_MODIFICATION_ERROR ();
+
+  error = smt_reset_query_spec (def);
 
   return (error);
 }

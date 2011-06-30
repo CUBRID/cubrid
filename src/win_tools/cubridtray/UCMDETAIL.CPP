@@ -368,7 +368,7 @@ void CUCMDetail::OnUnitoolVsql()
 
 	if( !sRootPath || !sVersion || !sBuild )
 	{
-		AfxMessageBox( "Visual-SQL이 설치되지 않았습니다.\n설치 후에 재시도 해주십시오.", MB_OK | MB_SYSTEMMODAL | MB_ICONEXCLAMATION );
+		AfxMessageBox( "Visual-SQL is not installed.\nPlease install Visual-SQL and then retry.", MB_OK | MB_SYSTEMMODAL | MB_ICONEXCLAMATION );
 
 		if( sRootPath ) delete sRootPath;
 		if( sVersion  ) delete sVersion;
@@ -412,7 +412,7 @@ void CUCMDetail::OnUnitoolEmanager()
 
 	if( !sRootPath )
 	{
-		AfxMessageBox( "Easy-Manager가 설치되지 않았습니다.\n설치 후에 재시도 해주십시오.", MB_OK | MB_SYSTEMMODAL | MB_ICONEXCLAMATION );
+		AfxMessageBox( "Easy-Manager is not installed.\nPlease install Easy-Manager and then retry.", MB_OK | MB_SYSTEMMODAL | MB_ICONEXCLAMATION );
 
 		if( sRootPath ) delete sRootPath;
 		delete cReg;

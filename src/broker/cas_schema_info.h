@@ -52,5 +52,6 @@ extern void schema_classpriv_meta (T_NET_BUF * net_buf);
 extern void schema_attrpriv_meta (T_NET_BUF * net_buf);
 extern void schema_directsuper_meta (T_NET_BUF * net_buf);
 extern void schema_primarykey_meta (T_NET_BUF * net_buf);
+extern void schema_fk_info_meta (T_NET_BUF * net_buf);
 
 #endif /* _CAS_SCHEMA_INFO_H_ */

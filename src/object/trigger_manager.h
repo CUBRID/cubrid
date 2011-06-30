@@ -45,7 +45,7 @@
  *
  */
 
-#define TR_INFINITE_RECURSION_LEVEL    	-1
+#define TR_MAX_RECURSION_LEVEL    	32
 
 /*
  * TR_MAX_PRINT_STRING
@@ -173,6 +173,22 @@ typedef enum
   TR_CACHE_CLASS,
   TR_CACHE_ATTRIBUTE
 } TR_CACHE_TYPE;
+
+/* TR_RECURSION_DECISION */
+/* When analyzing the stack searching for recursion (which is forbidden),
+ * there are three scenarios:
+ * 1. no recursive activity found: continue
+ * 2. we found a recursive trigger and we must return an error
+ * 3. we found a recursive STATEMENT trigger. This is supposed to happen, and
+ *    we should not continue the trigger firing chain, but we should allow
+ *    the transaction to go on.
+ */
+typedef enum
+{
+  TR_DECISION_CONTINUE,
+  TR_DECISION_HALT_WITH_ERROR,
+  TR_DECISION_DO_NOT_CONTINUE
+} TR_RECURSION_DECISION;
 
 /* TRIGGER OBJECT ATTRIBUTES */
 /*
@@ -360,6 +376,9 @@ extern int tr_add_cache_trigger (TR_SCHEMA_CACHE * cache,
 extern int tr_drop_cache_trigger (TR_SCHEMA_CACHE * cache,
 				  DB_OBJECT * trigger_object);
 
+extern int tr_delete_triggers_for_class (TR_SCHEMA_CACHE * cache,
+					 DB_OBJECT * class_object);
+
 
 /* Shouldn't be external any more ? */
 
@@ -376,13 +395,11 @@ extern void tr_invalidate_user_cache (void);
 extern const char *tr_time_as_string (DB_TRIGGER_TIME time);
 extern const char *tr_event_as_string (DB_TRIGGER_EVENT event);
 extern const char *tr_status_as_string (DB_TRIGGER_STATUS status);
-extern int tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp,
-			    bool quoted_id_flag);
+extern int tr_dump_trigger (DB_OBJECT * trigger_object, FILE * fp);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int tr_dump_all_triggers (FILE * fp, bool quoted_id_flag);
 #endif
-extern int tr_dump_selective_triggers (FILE * fp, bool quoted_id_flag,
-				       DB_OBJLIST * classes);
+extern int tr_dump_selective_triggers (FILE * fp, DB_OBJLIST * classes);
 
 extern void tr_free_trigger_list (TR_TRIGLIST * list);
 extern const char *tr_get_class_name (void);

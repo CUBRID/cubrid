@@ -117,6 +117,8 @@ typedef enum
   CUBRID_STMT_TRUNCATE,
   CUBRID_STMT_DO,
   CUBRID_STMT_SELECT_UPDATE,
+  CUBRID_STMT_SET_SESSION_VARIABLES,
+  CUBRID_STMT_DROP_SESSION_VARIABLES,
 
   CUBRID_MAX_STMT_TYPE
 } CUBRID_STMT_TYPE;
@@ -339,27 +341,6 @@ extern int ci_oid_delete (CI_OID * oid);
 extern int ci_oid_get_classname (CI_OID * oid, char *name, size_t size);
 extern int ci_oid_get_resultset (CI_OID * oid, CI_RESULTSET * rs);
 
-/* glo related */
-extern int ci_glo_create (CI_CONNECTION conn, const char *file_path,
-			  const char *init_file_path, CI_OID * glo);
-extern int ci_glo_get_path_name (CI_OID * glo,
-				 char *buf, size_t bufsz, bool full_path);
-extern int ci_glo_do_compaction (CI_OID * glo);
-extern int ci_glo_insert (CI_OID * glo, const char *buf, size_t bufsz);
-extern int ci_glo_delete (CI_OID * glo, size_t sz, size_t * ndeleted);
-extern int ci_glo_read (CI_OID * glo, char *buf, size_t bufsz,
-			size_t * nread);
-extern int ci_glo_write (CI_OID * glo, const char *buf, size_t sz);
-extern int ci_glo_truncate (CI_OID * glo, size_t * ndeleted);
-extern int ci_glo_seek (CI_OID * glo, long offset, int whence);
-extern int ci_glo_tell (CI_OID * glo, long *offset);
-extern int ci_glo_like_search (CI_OID * glo,
-			       const char *str, size_t strsz, bool * found);
-extern int ci_glo_reg_search (CI_OID * glo, const char *str,
-			      size_t strsz, bool * found);
-extern int ci_glo_bin_search (CI_OID * glo, const char *str,
-			      size_t strsz, bool * found);
-extern int ci_glo_copy (CI_OID * to, CI_OID * from);
 extern int ci_collection_new (CI_CONNECTION conn, CI_COLLECTION * coll);
 extern int ci_collection_free (CI_COLLECTION coll);
 extern int ci_collection_length (CI_COLLECTION coll, long *length);

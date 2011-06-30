@@ -42,41 +42,54 @@
 #define UNANCHORED_ANY_SEQUENCE   3
 #define UNANCHORED_KEEP_SEQUENCE  4
 
-#define REC_UNKNOWN           -1	/* Unknown record type */
-#define REC_ASSIGN_ADDRESS     1	/* Record without content, just the address */
+#define REC_UNKNOWN            0	/* Unknown record type */
+#define REC_ASSIGN_ADDRESS     1	/* Record without content,
+					   just the address */
 #define REC_HOME               2	/* Home of record */
 #define REC_NEWHOME            3	/* No the original home of record.
 					   part of relocation process */
 #define REC_RELOCATION         4	/* Record describe new home of record */
 #define REC_BIGONE             5	/* Record describe location of big record */
 #define REC_MARKDELETED        6	/* Slot does not describe any record.
-					   A record was stored in this slot. Slot
-					   cannot be reused. */
-#define REC_DELETED_WILL_REUSE 7	/* Slot does not describe any record. A
-					   record was stored in this slot. Slot
-					   will be reused. */
+					   A record was stored in this slot.
+					   Slot cannot be reused. */
+#define REC_DELETED_WILL_REUSE 7	/* Slot does not describe any record.
+					   A record was stored in this slot.
+					   Slot will be reused. */
+#define REC_4BIT_USED_TYPE_MAX 7	/* current used 4bit record type max */
+
+/* unused reserved record type */
+#define REC_RESERVED_TYPE_08   8
+#define REC_RESERVED_TYPE_09   9
+#define REC_RESERVED_TYPE_10   10
+#define REC_RESERVED_TYPE_11   11
+#define REC_RESERVED_TYPE_12   12
+#define REC_RESERVED_TYPE_13   13
+#define REC_RESERVED_TYPE_14   14
+#define REC_RESERVED_TYPE_15   15
+#define REC_4BIT_TYPE_MAX      15	/* 4bit record type max */
 
 /* Some platform like windows used their own SP_ERROR. */
 #ifdef SP_ERROR
 #undef SP_ERROR
 #endif
 
-#define SP_ERROR      1
-#define SP_DOESNT_FIT 2
-#define SP_SUCCESS    3
+#define SP_ERROR      (-1)
+#define SP_SUCCESS     (1)
+#define SP_DOESNT_FIT  (3)
 
 #define SAFEGUARD_RVSPACE      true
 #define DONT_SAFEGUARD_RVSPACE false
 
+/* 4-byte disk storage slot design */
 typedef struct spage_slot SPAGE_SLOT;
 struct spage_slot
 {
-  int offset_to_record;		/* Byte Offset from the beginning of the page
-				   to the beginning of the record */
-  int record_length;		/* Length of record */
-  INT16 record_type;		/* Record type (REC_HOME, REC_NEWHOME,
-				   REC_RELOCATION, REC_BIGONE, REC_MARKDELETED)
-				   described by slot. */
+  unsigned int offset_to_record:14;	/* Byte Offset from the beginning of the page
+					 * to the beginning of the record */
+  unsigned int record_length:14;	/* Length of record */
+  unsigned int record_type:4;	/* Record type (REC_HOME, REC_NEWHOME, ...)
+				 * described by slot. */
 };
 
 extern int spage_boot (THREAD_ENTRY * thread_p);
@@ -86,6 +99,12 @@ extern void spage_free_saved_spaces (THREAD_ENTRY * thread_p,
 extern int spage_slot_size (void);
 extern int spage_header_size (void);
 extern int spage_get_free_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+extern int spage_get_free_space_without_saving (THREAD_ENTRY * thread_p,
+						PAGE_PTR page_p,
+						bool * need_update);
+extern void spage_set_need_update_best_hint (THREAD_ENTRY * thread_p,
+					     PAGE_PTR page_p,
+					     bool need_update);
 extern PGNSLOTS spage_number_of_records (PAGE_PTR pgptr);
 extern PGNSLOTS spage_number_of_slots (PAGE_PTR pgptr);
 extern void spage_initialize (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,

@@ -28,10 +28,6 @@ EXPORTS
 	cci_oid_get
 	cci_oid_put
 	cci_oid_put2
-	cci_glo_new
-	cci_glo_save
-	cci_glo_load
-	cci_glo_load_file_name
 	cci_get_db_version
 	cci_get_class_num_objs
 	cci_oid
@@ -62,31 +58,34 @@ EXPORTS
 	cci_set_make
 	cci_get_attr_type_str
 	cci_get_query_plan
-	cci_get_query_histogram
 	cci_query_info_free
 	cci_set_max_row
 	cci_savepoint
 	cci_get_param_info
 	cci_param_info_free
-	cci_glo_read_data
-	cci_glo_write_data
-	cci_glo_insert_data
-	cci_glo_delete_data
-	cci_glo_truncate_data
-	cci_glo_append_data
-	cci_glo_data_size
-	cci_glo_compress_data
-	cci_glo_destroy_data
-	cci_glo_like_search
-	cci_glo_reg_search
-	cci_glo_binary_search
+	cci_blob_new
+	cci_blob_size
+	cci_blob_write
+	cci_blob_read
+	cci_blob_free
+	cci_clob_new
+	cci_clob_size
+	cci_clob_write
+	cci_clob_read
+	cci_clob_free
 	cci_get_dbms_type
 	cci_register_out_param
 	cci_cancel
 	cci_get_thread_result
 	cci_get_error_msg
 	cci_get_err_msg
-
+	
+	cci_set_charset
+	cci_row_count
+	cci_last_insert_id
+	cci_get_autocommit
+	cci_set_autocommit
+	
 ;          WEP PRIVATE
 ; To implement your own Windows Exit Procedure add the following
 ; function to your application (referring to it in the .def file is

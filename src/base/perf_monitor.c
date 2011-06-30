@@ -26,6 +26,7 @@
 
 #include <stdio.h>
 #include <time.h>
+#include <assert.h>
 #if !defined (WINDOWS)
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -56,12 +57,11 @@
 #include "databases_file.h"
 #endif /* SERVER_MODE */
 
-#include "thread_impl.h"
+#include "thread.h"
 #include "log_impl.h"
 
 #if !defined(CS_MODE)
 #include <string.h>
-#include <assert.h>
 
 #include "error_manager.h"
 #include "log_manager.h"
@@ -69,40 +69,53 @@
 #include "xserver_interface.h"
 
 #if defined (SERVER_MODE)
-#include "thread_impl.h"
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 
 #if !defined(SERVER_MODE)
-#undef MUTEX_INIT
-#define MUTEX_INIT(a)
-#undef MUTEX_DESTROY
-#define MUTEX_DESTROY(a)
-#undef MUTEX_LOCK
-#define MUTEX_LOCK(a, b)
-#undef MUTEX_UNLOCK
-#define MUTEX_UNLOCK(a)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)	0
+#define pthread_mutex_unlock(a)
+static int rv;
 #endif /* SERVER_MODE */
 #endif /* !CS_MODE */
 
+#define CALC_GLOBAL_STAT_DIFF(NEW,OLD) (((NEW)>=(OLD))?((NEW)-(OLD)):0)
+#define CALC_STAT_DIFF(DIFF, NEW, OLD) \
+  do {                                 \
+    if ((NEW)>=(OLD))                  \
+      {                                \
+        (DIFF) = (NEW)-(OLD);          \
+      }                                \
+   else                                \
+     {                                 \
+       (DIFF) = (NEW);                 \
+       (OLD) = 0;                      \
+     }                                 \
+  } while (0)
+
 static void mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats);
 static void mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats);
-static void mnt_server_calc_global_stats (MNT_SERVER_EXEC_GLOBAL_STATS *
-					  stats);
 static void mnt_server_check_stats_threshold (int tran_index,
 					      MNT_SERVER_EXEC_STATS * stats);
 
 
 #if defined(CS_MODE) || defined(SA_MODE)
-/* Client execution statistics */
-static MNT_EXEC_STATS mnt_Stats;
-static bool mnt_Iscollecting_stats = false;
-static void mnt_client_reset_stats (void);
+bool mnt_Iscollecting_stats = false;
 
-#if defined(CS_MODE)
-/* Server execution statistics */
-static MNT_SERVER_EXEC_STATS mnt_Server_stats;
-#endif /* CS_MODE */
+/* Client execution statistics */
+static MNT_CLIENT_STAT_INFO mnt_Stat_info;
+static void mnt_client_reset_stats (void);
+static int mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
+				MNT_SERVER_EXEC_STATS * new_stats,
+				MNT_SERVER_EXEC_STATS * old_stats);
+static int mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
+				       MNT_SERVER_EXEC_STATS * new_stats,
+				       MNT_SERVER_EXEC_STATS * old_stats);
+
+static MNT_SERVER_EXEC_STATS mnt_Server_stats[2];
+static MNT_SERVER_EXEC_STATS mnt_Global_server_stats[2];
 
 /*
  * mnt_start_stats - Start collecting client execution statistics
@@ -116,10 +129,35 @@ mnt_start_stats (bool for_all_trans)
   if (mnt_Iscollecting_stats != true)
     {
       err = mnt_server_start_stats (for_all_trans);
+
       if (err != ER_FAILED)
 	{
 	  mnt_Iscollecting_stats = true;
-	  mnt_client_reset_stats ();
+
+	  mnt_get_current_times (&mnt_Stat_info.cpu_start_usr_time,
+				 &mnt_Stat_info.cpu_start_sys_time,
+				 &mnt_Stat_info.elapsed_start_time);
+
+	  if (for_all_trans)
+	    {
+	      mnt_Stat_info.old_global_stats = &mnt_Global_server_stats[0];
+	      mnt_Stat_info.current_global_stats =
+		&mnt_Global_server_stats[1];
+
+	      mnt_get_global_stats ();
+	      *(mnt_Stat_info.old_global_stats) =
+		*(mnt_Stat_info.current_global_stats);
+	    }
+	  else
+	    {
+	      mnt_Stat_info.base_server_stats = &mnt_Server_stats[0];
+	      mnt_Stat_info.current_server_stats = &mnt_Server_stats[1];
+
+	      mnt_get_stats ();
+	      *(mnt_Stat_info.base_server_stats) =
+		*(mnt_Stat_info.current_server_stats);
+	    }
+
 	}
     }
   return err;
@@ -137,15 +175,13 @@ mnt_stop_stats (void)
   if (mnt_Iscollecting_stats != false)
     {
       err = mnt_server_stop_stats ();
-      mnt_client_reset_stats ();
       mnt_Iscollecting_stats = false;
-      mnt_Stats.server_stats = NULL;
     }
   return err;
 }
 
 /*
- * mnt_reset_stats - Reset client and server statistics
+ * mnt_reset_stats - Reset client statistics
  *   return: none
  */
 void
@@ -153,81 +189,54 @@ mnt_reset_stats (void)
 {
   if (mnt_Iscollecting_stats != false)
     {
-      mnt_server_reset_stats ();
-      mnt_client_reset_stats ();
-    }
-}
+      mnt_get_current_times (&mnt_Stat_info.cpu_start_usr_time,
+			     &mnt_Stat_info.cpu_start_sys_time,
+			     &mnt_Stat_info.elapsed_start_time);
 
-/*
- * mnt_reset_global_stats - Reset server global statistics
- *   return: none
- */
-void
-mnt_reset_global_stats (void)
-{
-  if (mnt_Iscollecting_stats != false)
-    {
-      mnt_server_reset_global_stats ();
+      mnt_get_stats ();
+      *(mnt_Stat_info.base_server_stats) =
+	*(mnt_Stat_info.current_server_stats);
     }
-}
-
-/*
- * mnt_client_reset_stats - Reset the client statistics
- *   return: none
- */
-static void
-mnt_client_reset_stats (void)
-{
-  mnt_get_current_times (&mnt_Stats.cpu_start_usr_time,
-			 &mnt_Stats.cpu_start_sys_time,
-			 &mnt_Stats.elapsed_start_time);
-  mnt_Stats.server_stats = NULL;
 }
 
 /*
  * mnt_get_stats - Get the recorded client statistics
  *   return: client statistics
  */
-MNT_EXEC_STATS *
+MNT_SERVER_EXEC_STATS *
 mnt_get_stats ()
 {
   if (mnt_Iscollecting_stats != true)
     {
       return NULL;
     }
-  else
-    {
-      /* Refresh statistics from server */
-#if defined (SA_MODE)
-      mnt_Stats.server_stats = mnt_server_get_stats (NULL);
-      mnt_server_calc_stats (mnt_Stats.server_stats);
-#else /* SA_MODE */
-      mnt_server_copy_stats (&mnt_Server_stats);
-      mnt_Stats.server_stats = &mnt_Server_stats;
-#endif /* SA_MODE */
 
-      return &mnt_Stats;
-    }
+  mnt_server_copy_stats (mnt_Stat_info.current_server_stats);
+  return mnt_Stat_info.current_server_stats;
 }
 
 /*
  * mnt_get_global_stats - Get the recorded client statistics
  *   return: client statistics
  */
-MNT_SERVER_EXEC_GLOBAL_STATS *
+MNT_SERVER_EXEC_STATS *
 mnt_get_global_stats (void)
 {
+  MNT_SERVER_EXEC_STATS *tmp_stats;
+
   if (mnt_Iscollecting_stats != true)
     {
       return NULL;
     }
-  else
-    {
-      /* Refresh statistics from server */
-      mnt_server_copy_global_stats (&mnt_Stats.server_global_stats);
 
-      return &mnt_Stats.server_global_stats;
-    }
+  tmp_stats = mnt_Stat_info.current_global_stats;
+  mnt_Stat_info.current_global_stats = mnt_Stat_info.old_global_stats;
+  mnt_Stat_info.old_global_stats = tmp_stats;
+
+  /* Refresh statistics from server */
+  mnt_server_copy_global_stats (mnt_Stat_info.current_global_stats);
+
+  return mnt_Stat_info.current_global_stats;
 }
 
 /*
@@ -238,18 +247,22 @@ mnt_get_global_stats (void)
 void
 mnt_print_stats (FILE * stream)
 {
-  MNT_EXEC_STATS *stats;
+  MNT_SERVER_EXEC_STATS diff_result;
   time_t cpu_total_usr_time;
   time_t cpu_total_sys_time;
   time_t elapsed_total_time;
+
+  if (mnt_Iscollecting_stats != true)
+    {
+      return;
+    }
 
   if (stream == NULL)
     {
       stream = stdout;
     }
 
-  stats = mnt_get_stats ();
-  if (stats != NULL)
+  if (mnt_get_stats () != NULL)
     {
       mnt_get_current_times (&cpu_total_usr_time, &cpu_total_sys_time,
 			     &elapsed_total_time);
@@ -257,14 +270,42 @@ mnt_print_stats (FILE * stream)
       fprintf (stream, "\n *** CLIENT EXECUTION STATISTICS ***\n");
 
       fprintf (stream, "System CPU (sec)              = %10d\n",
-	       (int) (cpu_total_sys_time - mnt_Stats.cpu_start_sys_time));
+	       (int) (cpu_total_sys_time - mnt_Stat_info.cpu_start_sys_time));
       fprintf (stream, "User CPU (sec)                = %10d\n",
-	       (int) (cpu_total_usr_time - mnt_Stats.cpu_start_usr_time));
+	       (int) (cpu_total_usr_time - mnt_Stat_info.cpu_start_usr_time));
       fprintf (stream, "Elapsed (sec)                 = %10d\n",
-	       (int) (elapsed_total_time - mnt_Stats.elapsed_start_time));
+	       (int) (elapsed_total_time - mnt_Stat_info.elapsed_start_time));
 
-      mnt_server_dump_stats (stats->server_stats, stream);
+      if (mnt_calc_diff_stats (&diff_result,
+			       mnt_Stat_info.current_server_stats,
+			       mnt_Stat_info.base_server_stats) == NO_ERROR)
+	{
+	  mnt_server_dump_stats (&diff_result, stream, NULL);
+	}
     }
+}
+
+/*
+ *   mnt_get_global_diff_stats -
+ *   diff_stats(out) :
+ *   return: global statistics
+ */
+int
+mnt_get_global_diff_stats (MNT_SERVER_EXEC_STATS * diff_stats)
+{
+  if (mnt_Iscollecting_stats != true || !diff_stats)
+    {
+      return ER_FAILED;
+    }
+
+  if (mnt_get_global_stats () != NULL)
+    {
+      return mnt_calc_global_diff_stats (diff_stats,
+					 mnt_Stat_info.current_global_stats,
+					 mnt_Stat_info.old_global_stats);
+    }
+
+  return ER_FAILED;
 }
 
 /*
@@ -273,18 +314,330 @@ mnt_print_stats (FILE * stream)
  *   stream(in): if NULL is given, stdout is used
  */
 void
-mnt_print_global_stats (FILE * stream)
+mnt_print_global_stats (FILE * stream, bool cumulative, const char *substr)
 {
-  MNT_SERVER_EXEC_GLOBAL_STATS *stats;
+  MNT_SERVER_EXEC_STATS diff_result;
 
   if (stream == NULL)
-    stream = stdout;
-
-  stats = mnt_get_global_stats ();
-  if (stats != NULL)
     {
-      mnt_server_dump_global_stats (stats, stream);
+      stream = stdout;
     }
+
+  if (mnt_get_global_stats () != NULL)
+    {
+      if (cumulative)
+	{
+	  mnt_server_dump_stats (mnt_Stat_info.current_global_stats, stream,
+				 substr);
+	}
+      else
+	{
+	  if (mnt_calc_global_diff_stats (&diff_result,
+					  mnt_Stat_info.current_global_stats,
+					  mnt_Stat_info.old_global_stats) ==
+	      NO_ERROR)
+	    {
+	      mnt_server_dump_stats (&diff_result, stream, substr);
+	    }
+	}
+    }
+}
+
+/*
+ *   mnt_calc_diff_stats -
+ *   return:
+ *   stats_diff :
+ *   new_stats :
+ *   old_stats :
+ */
+static int
+mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
+		     MNT_SERVER_EXEC_STATS * new_stats,
+		     MNT_SERVER_EXEC_STATS * old_stats)
+{
+  MNT_SERVER_EXEC_STATS *p, *q;
+
+  assert (stats_diff && new_stats && old_stats);
+
+  if (!stats_diff || !new_stats || !old_stats)
+    {
+      return ER_FAILED;
+    }
+
+  p = new_stats;
+  q = old_stats;
+
+  CALC_STAT_DIFF (stats_diff->file_num_creates, p->file_num_creates,
+		  q->file_num_creates);
+  CALC_STAT_DIFF (stats_diff->file_num_removes, p->file_num_removes,
+		  q->file_num_removes);
+  CALC_STAT_DIFF (stats_diff->file_num_ioreads, p->file_num_ioreads,
+		  q->file_num_ioreads);
+  CALC_STAT_DIFF (stats_diff->file_num_iowrites, p->file_num_iowrites,
+		  q->file_num_iowrites);
+  CALC_STAT_DIFF (stats_diff->file_num_iosynches, p->file_num_iosynches,
+		  q->file_num_iosynches);
+
+  CALC_STAT_DIFF (stats_diff->pb_num_fetches, p->pb_num_fetches,
+		  q->pb_num_fetches);
+  CALC_STAT_DIFF (stats_diff->pb_num_dirties, p->pb_num_dirties,
+		  q->pb_num_dirties);
+  CALC_STAT_DIFF (stats_diff->pb_num_ioreads, p->pb_num_ioreads,
+		  q->pb_num_ioreads);
+  CALC_STAT_DIFF (stats_diff->pb_num_iowrites, p->pb_num_iowrites,
+		  q->pb_num_iowrites);
+  CALC_STAT_DIFF (stats_diff->pb_num_victims, p->pb_num_victims,
+		  q->pb_num_victims);
+  CALC_STAT_DIFF (stats_diff->pb_num_replacements, p->pb_num_replacements,
+		  q->pb_num_replacements);
+
+  CALC_STAT_DIFF (stats_diff->fc_num_pages, p->fc_num_pages, q->fc_num_pages);
+  CALC_STAT_DIFF (stats_diff->fc_num_log_pages, p->fc_num_log_pages,
+		  q->fc_num_log_pages);
+  CALC_STAT_DIFF (stats_diff->fc_tokens, p->fc_tokens, q->fc_tokens);
+
+  CALC_STAT_DIFF (stats_diff->log_num_ioreads, p->log_num_ioreads,
+		  q->log_num_ioreads);
+  CALC_STAT_DIFF (stats_diff->log_num_iowrites, p->log_num_iowrites,
+		  q->log_num_iowrites);
+  CALC_STAT_DIFF (stats_diff->log_num_appendrecs, p->log_num_appendrecs,
+		  q->log_num_appendrecs);
+  CALC_STAT_DIFF (stats_diff->log_num_archives, p->log_num_archives,
+		  q->log_num_archives);
+  CALC_STAT_DIFF (stats_diff->log_num_checkpoints, p->log_num_checkpoints,
+		  q->log_num_checkpoints);
+  CALC_STAT_DIFF (stats_diff->log_num_wals, p->log_num_wals, q->log_num_wals);
+
+  CALC_STAT_DIFF (stats_diff->lk_num_acquired_on_pages,
+		  p->lk_num_acquired_on_pages, q->lk_num_acquired_on_pages);
+  CALC_STAT_DIFF (stats_diff->lk_num_acquired_on_objects,
+		  p->lk_num_acquired_on_objects,
+		  q->lk_num_acquired_on_objects);
+  CALC_STAT_DIFF (stats_diff->lk_num_converted_on_pages,
+		  p->lk_num_converted_on_pages, q->lk_num_converted_on_pages);
+  CALC_STAT_DIFF (stats_diff->lk_num_converted_on_objects,
+		  p->lk_num_converted_on_objects,
+		  q->lk_num_converted_on_objects);
+  CALC_STAT_DIFF (stats_diff->lk_num_re_requested_on_pages,
+		  p->lk_num_re_requested_on_pages,
+		  q->lk_num_re_requested_on_pages);
+  CALC_STAT_DIFF (stats_diff->lk_num_re_requested_on_objects,
+		  p->lk_num_re_requested_on_objects,
+		  q->lk_num_re_requested_on_objects);
+  CALC_STAT_DIFF (stats_diff->lk_num_waited_on_pages,
+		  p->lk_num_waited_on_pages, q->lk_num_waited_on_pages);
+  CALC_STAT_DIFF (stats_diff->lk_num_waited_on_objects,
+		  p->lk_num_waited_on_objects, q->lk_num_waited_on_objects);
+
+  CALC_STAT_DIFF (stats_diff->tran_num_commits, p->tran_num_commits,
+		  q->tran_num_commits);
+  CALC_STAT_DIFF (stats_diff->tran_num_rollbacks, p->tran_num_rollbacks,
+		  q->tran_num_rollbacks);
+  CALC_STAT_DIFF (stats_diff->tran_num_savepoints, p->tran_num_savepoints,
+		  q->tran_num_savepoints);
+  CALC_STAT_DIFF (stats_diff->tran_num_start_topops, p->tran_num_start_topops,
+		  q->tran_num_start_topops);
+  CALC_STAT_DIFF (stats_diff->tran_num_end_topops, p->tran_num_end_topops,
+		  q->tran_num_end_topops);
+  CALC_STAT_DIFF (stats_diff->tran_num_interrupts, p->tran_num_interrupts,
+		  q->tran_num_interrupts);
+
+  CALC_STAT_DIFF (stats_diff->bt_num_inserts, p->bt_num_inserts,
+		  q->bt_num_inserts);
+  CALC_STAT_DIFF (stats_diff->bt_num_deletes, p->bt_num_deletes,
+		  q->bt_num_deletes);
+  CALC_STAT_DIFF (stats_diff->bt_num_updates, p->bt_num_updates,
+		  q->bt_num_updates);
+  CALC_STAT_DIFF (stats_diff->bt_num_covered, p->bt_num_covered,
+		  q->bt_num_covered);
+  CALC_STAT_DIFF (stats_diff->bt_num_noncovered, p->bt_num_noncovered,
+		  q->bt_num_noncovered);
+  CALC_STAT_DIFF (stats_diff->bt_num_resumes, p->bt_num_resumes,
+		  q->bt_num_resumes);
+
+  CALC_STAT_DIFF (stats_diff->qm_num_selects, p->qm_num_selects,
+		  q->qm_num_selects);
+  CALC_STAT_DIFF (stats_diff->qm_num_inserts, p->qm_num_inserts,
+		  q->qm_num_inserts);
+  CALC_STAT_DIFF (stats_diff->qm_num_deletes, p->qm_num_deletes,
+		  q->qm_num_deletes);
+  CALC_STAT_DIFF (stats_diff->qm_num_updates, p->qm_num_updates,
+		  q->qm_num_updates);
+  CALC_STAT_DIFF (stats_diff->qm_num_sscans, p->qm_num_sscans,
+		  q->qm_num_sscans);
+  CALC_STAT_DIFF (stats_diff->qm_num_iscans, p->qm_num_iscans,
+		  q->qm_num_iscans);
+  CALC_STAT_DIFF (stats_diff->qm_num_lscans, p->qm_num_lscans,
+		  q->qm_num_lscans);
+  CALC_STAT_DIFF (stats_diff->qm_num_setscans, p->qm_num_setscans,
+		  q->qm_num_setscans);
+  CALC_STAT_DIFF (stats_diff->qm_num_methscans, p->qm_num_methscans,
+		  q->qm_num_methscans);
+  CALC_STAT_DIFF (stats_diff->qm_num_nljoins, p->qm_num_nljoins,
+		  q->qm_num_nljoins);
+  CALC_STAT_DIFF (stats_diff->qm_num_mjoins, p->qm_num_mjoins,
+		  q->qm_num_mjoins);
+  CALC_STAT_DIFF (stats_diff->qm_num_objfetches, p->qm_num_objfetches,
+		  q->qm_num_objfetches);
+
+  CALC_STAT_DIFF (stats_diff->net_num_requests, p->net_num_requests,
+		  q->net_num_requests);
+
+  mnt_server_calc_stats (stats_diff);
+
+  return NO_ERROR;
+}
+
+/*
+ *   mnt_calc_global_diff_stats -
+ *   return:
+ *   stats_diff :
+ *   new_stats :
+ *   old_stats :
+ */
+static int
+mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
+			    MNT_SERVER_EXEC_STATS * new_stats,
+			    MNT_SERVER_EXEC_STATS * old_stats)
+{
+  MNT_SERVER_EXEC_STATS *p, *q;
+
+  assert (stats_diff && new_stats && old_stats);
+
+  if (!stats_diff || !new_stats || !old_stats)
+    {
+      return ER_FAILED;
+    }
+
+  p = new_stats;
+  q = old_stats;
+
+  stats_diff->file_num_creates =
+    CALC_GLOBAL_STAT_DIFF (p->file_num_creates, q->file_num_creates);
+  stats_diff->file_num_removes =
+    CALC_GLOBAL_STAT_DIFF (p->file_num_removes, q->file_num_removes);
+  stats_diff->file_num_ioreads =
+    CALC_GLOBAL_STAT_DIFF (p->file_num_ioreads, q->file_num_ioreads);
+  stats_diff->file_num_iowrites =
+    CALC_GLOBAL_STAT_DIFF (p->file_num_iowrites, q->file_num_iowrites);
+  stats_diff->file_num_iosynches =
+    CALC_GLOBAL_STAT_DIFF (p->file_num_iosynches, q->file_num_iosynches);
+
+  stats_diff->pb_num_fetches =
+    CALC_GLOBAL_STAT_DIFF (p->pb_num_fetches, q->pb_num_fetches);
+  stats_diff->pb_num_dirties =
+    CALC_GLOBAL_STAT_DIFF (p->pb_num_dirties, q->pb_num_dirties);
+  stats_diff->pb_num_ioreads =
+    CALC_GLOBAL_STAT_DIFF (p->pb_num_ioreads, q->pb_num_ioreads);
+  stats_diff->pb_num_iowrites =
+    CALC_GLOBAL_STAT_DIFF (p->pb_num_iowrites, q->pb_num_iowrites);
+  stats_diff->pb_num_victims =
+    CALC_GLOBAL_STAT_DIFF (p->pb_num_victims, q->pb_num_victims);
+  stats_diff->pb_num_replacements =
+    CALC_GLOBAL_STAT_DIFF (p->pb_num_replacements, q->pb_num_replacements);
+
+  stats_diff->fc_num_pages =
+    CALC_GLOBAL_STAT_DIFF (p->fc_num_pages, q->fc_num_pages);
+  stats_diff->fc_num_log_pages =
+    CALC_GLOBAL_STAT_DIFF (p->fc_num_log_pages, q->fc_num_log_pages);
+  stats_diff->fc_tokens = CALC_GLOBAL_STAT_DIFF (p->fc_tokens, q->fc_tokens);
+
+  stats_diff->log_num_ioreads =
+    CALC_GLOBAL_STAT_DIFF (p->log_num_ioreads, q->log_num_ioreads);
+  stats_diff->log_num_iowrites =
+    CALC_GLOBAL_STAT_DIFF (p->log_num_iowrites, q->log_num_iowrites);
+  stats_diff->log_num_appendrecs =
+    CALC_GLOBAL_STAT_DIFF (p->log_num_appendrecs, q->log_num_appendrecs);
+  stats_diff->log_num_archives =
+    CALC_GLOBAL_STAT_DIFF (p->log_num_archives, q->log_num_archives);
+  stats_diff->log_num_checkpoints =
+    CALC_GLOBAL_STAT_DIFF (p->log_num_checkpoints, q->log_num_checkpoints);
+  stats_diff->log_num_wals =
+    CALC_GLOBAL_STAT_DIFF (p->log_num_wals, q->log_num_wals);
+
+  stats_diff->lk_num_acquired_on_pages =
+    CALC_GLOBAL_STAT_DIFF (p->lk_num_acquired_on_pages,
+			   q->lk_num_acquired_on_pages);
+  stats_diff->lk_num_acquired_on_objects =
+    CALC_GLOBAL_STAT_DIFF (p->lk_num_acquired_on_objects,
+			   q->lk_num_acquired_on_objects);
+  stats_diff->lk_num_converted_on_pages =
+    CALC_GLOBAL_STAT_DIFF (p->lk_num_converted_on_pages,
+			   q->lk_num_converted_on_pages);
+  stats_diff->lk_num_converted_on_objects =
+    CALC_GLOBAL_STAT_DIFF (p->lk_num_converted_on_objects,
+			   q->lk_num_converted_on_objects);
+  stats_diff->lk_num_re_requested_on_pages =
+    CALC_GLOBAL_STAT_DIFF (p->lk_num_re_requested_on_pages,
+			   q->lk_num_re_requested_on_pages);
+  stats_diff->lk_num_re_requested_on_objects =
+    CALC_GLOBAL_STAT_DIFF (p->lk_num_re_requested_on_objects,
+			   q->lk_num_re_requested_on_objects);
+  stats_diff->lk_num_waited_on_pages =
+    CALC_GLOBAL_STAT_DIFF (p->lk_num_waited_on_pages,
+			   q->lk_num_waited_on_pages);
+  stats_diff->lk_num_waited_on_objects =
+    CALC_GLOBAL_STAT_DIFF (p->lk_num_waited_on_objects,
+			   q->lk_num_waited_on_objects);
+
+  stats_diff->tran_num_commits =
+    CALC_GLOBAL_STAT_DIFF (p->tran_num_commits, q->tran_num_commits);
+  stats_diff->tran_num_rollbacks =
+    CALC_GLOBAL_STAT_DIFF (p->tran_num_rollbacks, q->tran_num_rollbacks);
+  stats_diff->tran_num_savepoints =
+    CALC_GLOBAL_STAT_DIFF (p->tran_num_savepoints, q->tran_num_savepoints);
+  stats_diff->tran_num_start_topops =
+    CALC_GLOBAL_STAT_DIFF (p->tran_num_start_topops,
+			   q->tran_num_start_topops);
+  stats_diff->tran_num_end_topops =
+    CALC_GLOBAL_STAT_DIFF (p->tran_num_end_topops, q->tran_num_end_topops);
+  stats_diff->tran_num_interrupts =
+    CALC_GLOBAL_STAT_DIFF (p->tran_num_interrupts, q->tran_num_interrupts);
+
+  stats_diff->bt_num_inserts =
+    CALC_GLOBAL_STAT_DIFF (p->bt_num_inserts, q->bt_num_inserts);
+  stats_diff->bt_num_deletes =
+    CALC_GLOBAL_STAT_DIFF (p->bt_num_deletes, q->bt_num_deletes);
+  stats_diff->bt_num_updates =
+    CALC_GLOBAL_STAT_DIFF (p->bt_num_updates, q->bt_num_updates);
+  stats_diff->bt_num_covered =
+    CALC_GLOBAL_STAT_DIFF (p->bt_num_covered, q->bt_num_covered);
+  stats_diff->bt_num_noncovered =
+    CALC_GLOBAL_STAT_DIFF (p->bt_num_noncovered, q->bt_num_noncovered);
+  stats_diff->bt_num_resumes =
+    CALC_GLOBAL_STAT_DIFF (p->bt_num_resumes, q->bt_num_resumes);
+
+  stats_diff->qm_num_selects =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_selects, q->qm_num_selects);
+  stats_diff->qm_num_inserts =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_inserts, q->qm_num_inserts);
+  stats_diff->qm_num_deletes =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_deletes, q->qm_num_deletes);
+  stats_diff->qm_num_updates =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_updates, q->qm_num_updates);
+  stats_diff->qm_num_sscans =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_sscans, q->qm_num_sscans);
+  stats_diff->qm_num_iscans =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_iscans, q->qm_num_iscans);
+  stats_diff->qm_num_lscans =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_lscans, q->qm_num_lscans);
+  stats_diff->qm_num_setscans =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_setscans, q->qm_num_setscans);
+  stats_diff->qm_num_methscans =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_methscans, q->qm_num_methscans);
+  stats_diff->qm_num_nljoins =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_nljoins, q->qm_num_nljoins);
+  stats_diff->qm_num_mjoins =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_mjoins, q->qm_num_mjoins);
+  stats_diff->qm_num_objfetches =
+    CALC_GLOBAL_STAT_DIFF (p->qm_num_objfetches, q->qm_num_objfetches);
+
+  stats_diff->net_num_requests =
+    CALC_GLOBAL_STAT_DIFF (p->net_num_requests, q->net_num_requests);
+
+  mnt_server_calc_stats (stats_diff);
+
+  return NO_ERROR;
 }
 #endif /* CS_MODE || SA_MODE */
 
@@ -1401,6 +1754,9 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_btree_inserts",
   "Num_btree_deletes",
   "Num_btree_updates",
+  "Num_btree_covered",
+  "Num_btree_noncovered",
+  "Num_btree_resumes",
   "Num_query_selects",
   "Num_query_inserts",
   "Num_query_deletes",
@@ -1423,48 +1779,40 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
 #if defined(SERVER_MODE) || defined(SA_MODE)
 int mnt_Num_tran_exec_stats = 0;
 
+#if defined(SERVER_MODE) && defined(HAVE_ATOMIC_BUILTINS)
+#define ATOMIC_INC(A,VAL)   ATOMIC_INC_64(&(A),(VAL))
+#else /* SERVER_MODE && HAVE_ATOMIC_BUILTINS */
+#define ATOMIC_INC(A,VAL)          (A)+=(VAL)
+#if defined (SERVER_MODE)
+pthread_mutex_t mnt_Num_tran_stats_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif
+#endif /* SERVER_MODE && HAVE_ATOMIC_BUILTINS */
+
+#define ADD_STATS(STAT,VAR,VALUE)                        \
+do {                                                     \
+  if (STAT->enable_local_stat)                           \
+    {                                                    \
+      STAT->VAR += VALUE;                                \
+    }                                                    \
+  ATOMIC_INC(mnt_Server_table.global_stats->VAR, VALUE); \
+} while (0)
+
 /* Server execution statistics on each transactions */
 struct mnt_server_table
 {
   int num_tran_indices;
-  MNT_SERVER_EXEC_STATS **stats;
-  MNT_SERVER_EXEC_GLOBAL_STATS global_stats;
-#if defined (SERVER_MODE)
-  MUTEX_T lock;
-#endif				/* SERVER_MODE */
+  MNT_SERVER_EXEC_STATS *stats;
+  MNT_SERVER_EXEC_STATS *global_stats;
 };
+
 static struct mnt_server_table mnt_Server_table = {
   /* num_tran_indices */
   0,
   /* stats */
   NULL,
   /* global_stats */
-  {
-   /* file io */
-   0, 0, 0, 0, 0,
-   /* page buffer manager */
-   0, 0, 0, 0, 0, 0,
-   /* log manager */
-   0, 0, 0, 0, 0, 0,
-   /* lock manager */
-   0, 0, 0, 0, 0, 0, 0, 0,
-   /* transactions */
-   0, 0, 0, 0, 0, 0,
-   /* btree manager */
-   0, 0, 0,
-   /* query manager */
-   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-   /* network communication */
-   0,
-   /* flush control statistics */
-   0, 0, 0,
-   /* other statistics */
-   0}
-#if defined (SERVER_MODE)
-  , MUTEX_INITIALIZER
-#endif /* SERVER_MODE */
+  NULL
 };
-
 
 /*
  * mnt_server_init - Initialize monitoring resources in the server
@@ -1474,36 +1822,29 @@ static struct mnt_server_table mnt_Server_table = {
 int
 mnt_server_init (int num_tran_indices)
 {
-  MNT_SERVER_EXEC_STATS **stats;
-  size_t size;
-  int i;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  size = num_tran_indices * sizeof (*stats);
-
-  MUTEX_LOCK (rv, mnt_Server_table.lock);
-  if (mnt_Server_table.stats != NULL)
-    {
-      MUTEX_UNLOCK (mnt_Server_table.lock);
-      return ER_FAILED;
-    }
-
-  mnt_Server_table.stats = malloc (size);
-  if (mnt_Server_table.stats == NULL)
-    {
-      MUTEX_UNLOCK (mnt_Server_table.lock);
-      return ER_FAILED;
-    }
-
-  for (i = 0; i < num_tran_indices; i++)
-    {
-      mnt_Server_table.stats[i] = NULL;
-    }
   mnt_Server_table.num_tran_indices = num_tran_indices;
   mnt_Num_tran_exec_stats = 0;
-  MUTEX_UNLOCK (mnt_Server_table.lock);
+
+  mnt_Server_table.stats =
+    malloc (num_tran_indices * sizeof (MNT_SERVER_EXEC_STATS));
+
+  if (mnt_Server_table.stats == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  mnt_Server_table.global_stats = malloc (sizeof (MNT_SERVER_EXEC_STATS));
+
+  if (mnt_Server_table.global_stats == NULL)
+    {
+      free_and_init (mnt_Server_table.stats);
+      return ER_FAILED;
+    }
+
+  memset (mnt_Server_table.stats, 0,
+	  sizeof (MNT_SERVER_EXEC_STATS) * num_tran_indices);
+
+  memset (mnt_Server_table.global_stats, 0, sizeof (MNT_SERVER_EXEC_STATS));
 
   return NO_ERROR;
 }
@@ -1515,29 +1856,18 @@ mnt_server_init (int num_tran_indices)
 void
 mnt_server_final (void)
 {
-  void *table;
-  int i;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  MUTEX_LOCK (rv, mnt_Server_table.lock);
   if (mnt_Server_table.stats != NULL)
     {
-      table = mnt_Server_table.stats;
-      for (i = 0; i < mnt_Server_table.num_tran_indices; i++)
-	{
-	  if (mnt_Server_table.stats[i] != NULL)
-	    free_and_init (mnt_Server_table.stats[i]);
-	}
-      mnt_Server_table.stats = NULL;
-      mnt_Server_table.num_tran_indices = 0;
-      mnt_Num_tran_exec_stats = 0;
-      free_and_init (table);
+      free_and_init (mnt_Server_table.stats);
     }
-  MUTEX_UNLOCK (mnt_Server_table.lock);
-}
+  if (mnt_Server_table.global_stats != NULL)
+    {
+      free_and_init (mnt_Server_table.global_stats);
+    }
 
+  mnt_Server_table.num_tran_indices = 0;
+  mnt_Num_tran_exec_stats = 0;
+}
 
 /*
  * xmnt_server_start_stats - Start collecting server execution statistics
@@ -1547,74 +1877,27 @@ mnt_server_final (void)
 int
 xmnt_server_start_stats (THREAD_ENTRY * thread_p, bool for_all_trans)
 {
-  int i, tran_index;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
+  int tran_index;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0);
 
-  MUTEX_LOCK (rv, mnt_Server_table.lock);
-
-  if (for_all_trans == false)
+  if (tran_index >= mnt_Server_table.num_tran_indices)
     {
-      /* Get an statistic block for current transaction if one is not available */
-      if (mnt_Server_table.num_tran_indices > tran_index)
-	{
-	  if (mnt_Server_table.stats[tran_index] == NULL)
-	    {
-	      mnt_Server_table.stats[tran_index] =
-		malloc (sizeof (MNT_SERVER_EXEC_STATS));
-	      if (mnt_Server_table.stats[tran_index] == NULL)
-		{
-		  MUTEX_UNLOCK (mnt_Server_table.lock);
-		  return ER_FAILED;
-		}
-	      MUTEX_INIT (mnt_Server_table.stats[tran_index]->lock);
-	    }
-	}
-
-      if (mnt_Server_table.stats[0] == NULL)
-	{
-	  mnt_Server_table.stats[0] = malloc (sizeof (MNT_SERVER_EXEC_STATS));
-	  if (mnt_Server_table.stats[0] == NULL)
-	    {
-	      MUTEX_UNLOCK (mnt_Server_table.lock);
-	      return ER_FAILED;
-	    }
-	  MUTEX_INIT (mnt_Server_table.stats[0]->lock);
-	  mnt_server_reset_stats_internal (mnt_Server_table.stats[0]);
-	}
-
-      /* Restart the statistics */
-      mnt_server_reset_stats_internal (mnt_Server_table.stats[tran_index]);
-    }
-  else
-    {
-      for (i = 0; i < mnt_Server_table.num_tran_indices; i++)
-	{
-	  if (mnt_Server_table.stats[i] != NULL)
-	    {
-	      continue;
-	    }
-
-	  mnt_Server_table.stats[i] =
-	    (MNT_SERVER_EXEC_STATS *) malloc (sizeof (MNT_SERVER_EXEC_STATS));
-	  if (mnt_Server_table.stats[i] == NULL)
-	    {
-	      MUTEX_UNLOCK (mnt_Server_table.lock);
-	      return ER_FAILED;
-	    }
-
-	  MUTEX_INIT (mnt_Server_table.stats[i]->lock);
-	  mnt_server_reset_stats_internal (mnt_Server_table.stats[i]);
-	}
+      return ER_FAILED;
     }
 
+  memset (&mnt_Server_table.stats[tran_index], '\0',
+	  sizeof (MNT_SERVER_EXEC_STATS));
+  mnt_Server_table.stats[tran_index].enable_local_stat = true;
+
+#if defined (HAVE_ATOMIC_BUILTINS)
+  ATOMIC_INC_32 (&mnt_Num_tran_exec_stats, 1);
+#else
+  int rv = pthread_mutex_lock (&mnt_Num_tran_stats_lock);
   mnt_Num_tran_exec_stats++;
-
-  MUTEX_UNLOCK (mnt_Server_table.lock);
+  pthread_mutex_unlock (&mnt_Num_tran_stats_lock);
+#endif
 
   return NO_ERROR;
 }
@@ -1628,126 +1911,24 @@ void
 xmnt_server_stop_stats (THREAD_ENTRY * thread_p)
 {
   int tran_index;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0);
 
-  MUTEX_LOCK (rv, mnt_Server_table.lock);
-  if (mnt_Server_table.num_tran_indices > tran_index
-      && mnt_Server_table.stats[tran_index] != NULL)
+  if (tran_index >= mnt_Server_table.num_tran_indices)
     {
-      MUTEX_DESTROY (mnt_Server_table.stats[tran_index]->lock);
-      free_and_init (mnt_Server_table.stats[tran_index]);
-      mnt_Num_tran_exec_stats--;
-    }
-  MUTEX_UNLOCK (mnt_Server_table.lock);
-}
-
-/*
- * mnt_server_reflect_local_stats - Reflect the recorded server statistics
- *				    to the global server statistics
- */
-void
-mnt_server_reflect_local_stats (THREAD_ENTRY * thread_p)
-{
-  int tran_index;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-  MNT_SERVER_EXEC_STATS *p = NULL;
-  MNT_SERVER_EXEC_GLOBAL_STATS *global_stats;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0);
-
-  MUTEX_LOCK (rv, mnt_Server_table.lock);
-  if (mnt_Server_table.num_tran_indices > tran_index)
-    {
-      p = mnt_Server_table.stats[tran_index];
-    }
-
-  if (p == NULL)
-    {
-      MUTEX_UNLOCK (mnt_Server_table.lock);
       return;
     }
 
-  MUTEX_LOCK (rv, p->lock);
+  mnt_Server_table.stats[tran_index].enable_local_stat = false;
 
-  global_stats = &mnt_Server_table.global_stats;
-  global_stats->file_num_creates += p->file_num_creates;
-  global_stats->file_num_removes += p->file_num_removes;
-  global_stats->file_num_ioreads += p->file_num_ioreads;
-  global_stats->file_num_iowrites += p->file_num_iowrites;
-  global_stats->file_num_iosynches += p->file_num_iosynches;
-
-  global_stats->pb_num_fetches += p->pb_num_fetches;
-  global_stats->pb_num_dirties += p->pb_num_dirties;
-  global_stats->pb_num_ioreads += p->pb_num_ioreads;
-  global_stats->pb_num_iowrites += p->pb_num_iowrites;
-  global_stats->pb_num_victims += p->pb_num_victims;
-  global_stats->pb_num_replacements += p->pb_num_replacements;
-
-  global_stats->fc_num_pages += p->fc_num_pages;
-  global_stats->fc_num_log_pages += p->fc_num_log_pages;
-  global_stats->fc_tokens += p->fc_tokens;
-
-  global_stats->log_num_ioreads += p->log_num_ioreads;
-  global_stats->log_num_iowrites += p->log_num_iowrites;
-  global_stats->log_num_appendrecs += p->log_num_appendrecs;
-  global_stats->log_num_archives += p->log_num_archives;
-  global_stats->log_num_checkpoints += p->log_num_checkpoints;
-  global_stats->log_num_wals += p->log_num_wals;
-
-  global_stats->lk_num_acquired_on_pages += p->lk_num_acquired_on_pages;
-  global_stats->lk_num_acquired_on_objects += p->lk_num_acquired_on_objects;
-  global_stats->lk_num_converted_on_pages += p->lk_num_converted_on_pages;
-  global_stats->lk_num_converted_on_objects += p->lk_num_converted_on_objects;
-  global_stats->lk_num_re_requested_on_pages +=
-    p->lk_num_re_requested_on_pages;
-  global_stats->lk_num_re_requested_on_objects +=
-    p->lk_num_re_requested_on_objects;
-  global_stats->lk_num_waited_on_pages += p->lk_num_waited_on_pages;
-  global_stats->lk_num_waited_on_objects += p->lk_num_waited_on_objects;
-
-  global_stats->tran_num_commits += p->tran_num_commits;
-  global_stats->tran_num_rollbacks += p->tran_num_rollbacks;
-  global_stats->tran_num_savepoints += p->tran_num_savepoints;
-  global_stats->tran_num_start_topops += p->tran_num_start_topops;
-  global_stats->tran_num_end_topops += p->tran_num_end_topops;
-  global_stats->tran_num_interrupts += p->tran_num_interrupts;
-
-  global_stats->bt_num_inserts += p->bt_num_inserts;
-  global_stats->bt_num_deletes += p->bt_num_deletes;
-  global_stats->bt_num_updates += p->bt_num_updates;
-
-  global_stats->qm_num_selects += p->qm_num_selects;
-  global_stats->qm_num_inserts += p->qm_num_inserts;
-  global_stats->qm_num_deletes += p->qm_num_deletes;
-  global_stats->qm_num_updates += p->qm_num_updates;
-  global_stats->qm_num_sscans += p->qm_num_sscans;
-  global_stats->qm_num_iscans += p->qm_num_iscans;
-  global_stats->qm_num_lscans += p->qm_num_lscans;
-  global_stats->qm_num_setscans += p->qm_num_setscans;
-  global_stats->qm_num_methscans += p->qm_num_methscans;
-  global_stats->qm_num_nljoins += p->qm_num_nljoins;
-  global_stats->qm_num_mjoins += p->qm_num_mjoins;
-  global_stats->qm_num_objfetches += p->qm_num_objfetches;
-
-  global_stats->net_num_requests += p->net_num_requests;
-
-  mnt_server_calc_stats (p);
-  mnt_server_check_stats_threshold (LOG_FIND_THREAD_TRAN_INDEX (thread_p), p);
-  mnt_server_reset_stats_internal (p);
-
-  MUTEX_UNLOCK (p->lock);
-
-  mnt_server_calc_global_stats (global_stats);
-
-  MUTEX_UNLOCK (mnt_Server_table.lock);
+#if defined (HAVE_ATOMIC_BUILTINS)
+  ATOMIC_INC_32 (&mnt_Num_tran_exec_stats, -1);
+#else
+  int rv = pthread_mutex_lock (&mnt_Num_tran_stats_lock);
+  mnt_Num_tran_exec_stats--;
+  pthread_mutex_unlock (&mnt_Num_tran_stats_lock);
+#endif
 }
 
 /*
@@ -1758,26 +1939,17 @@ MNT_SERVER_EXEC_STATS *
 mnt_server_get_stats (THREAD_ENTRY * thread_p)
 {
   int tran_index;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
   MNT_SERVER_EXEC_STATS *p;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0);
 
-  MUTEX_LOCK (rv, mnt_Server_table.lock);
-  if (mnt_Server_table.num_tran_indices > tran_index)
+  if (tran_index >= mnt_Server_table.num_tran_indices)
     {
-      p = mnt_Server_table.stats[tran_index];
+      return NULL;
     }
-  else
-    {
-      p = NULL;
-    }
-  MUTEX_UNLOCK (mnt_Server_table.lock);
 
-  return p;
+  return &mnt_Server_table.stats[tran_index];
 }
 
 /*
@@ -1822,21 +1994,13 @@ xmnt_server_copy_stats (THREAD_ENTRY * thread_p,
 			MNT_SERVER_EXEC_STATS * to_stats)
 {
   MNT_SERVER_EXEC_STATS *from_stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   from_stats = mnt_server_get_stats (thread_p);
-  if (from_stats == NULL)
+
+  if (from_stats != NULL)
     {
-      mnt_server_reset_stats_internal (to_stats);
-    }
-  else
-    {
-      MUTEX_LOCK (rv, from_stats->lock);
       mnt_server_calc_stats (from_stats);
       *to_stats = *from_stats;	/* Structure copy */
-      MUTEX_UNLOCK (from_stats->lock);
     }
 }
 
@@ -1847,304 +2011,13 @@ xmnt_server_copy_stats (THREAD_ENTRY * thread_p,
  */
 void
 xmnt_server_copy_global_stats (THREAD_ENTRY * thread_p,
-			       MNT_SERVER_EXEC_GLOBAL_STATS * to_stats)
+			       MNT_SERVER_EXEC_STATS * to_stats)
 {
-  MNT_SERVER_EXEC_STATS *p;
-  MNT_SERVER_EXEC_GLOBAL_STATS *global_stats;
-  int i;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  MUTEX_LOCK (rv, mnt_Server_table.lock);
-
-  global_stats = &mnt_Server_table.global_stats;
-  for (i = 0; i < mnt_Server_table.num_tran_indices; i++)
+  if (to_stats)
     {
-      p = mnt_Server_table.stats[i];
-      if (p == NULL)
-	{
-	  continue;
-	}
-
-      MUTEX_LOCK (rv, p->lock);
-
-      global_stats->file_num_creates += p->file_num_creates;
-      global_stats->file_num_removes += p->file_num_removes;
-      global_stats->file_num_ioreads += p->file_num_ioreads;
-      global_stats->file_num_iowrites += p->file_num_iowrites;
-      global_stats->file_num_iosynches += p->file_num_iosynches;
-
-      global_stats->pb_num_fetches += p->pb_num_fetches;
-      global_stats->pb_num_dirties += p->pb_num_dirties;
-      global_stats->pb_num_ioreads += p->pb_num_ioreads;
-      global_stats->pb_num_iowrites += p->pb_num_iowrites;
-      global_stats->pb_num_victims += p->pb_num_victims;
-      global_stats->pb_num_replacements += p->pb_num_replacements;
-
-      global_stats->fc_num_pages += p->fc_num_pages;
-      global_stats->fc_num_log_pages += p->fc_num_log_pages;
-      global_stats->fc_tokens += p->fc_tokens;
-
-      global_stats->log_num_ioreads += p->log_num_ioreads;
-      global_stats->log_num_iowrites += p->log_num_iowrites;
-      global_stats->log_num_appendrecs += p->log_num_appendrecs;
-      global_stats->log_num_archives += p->log_num_archives;
-      global_stats->log_num_checkpoints += p->log_num_checkpoints;
-      global_stats->log_num_wals += p->log_num_wals;
-
-      global_stats->lk_num_acquired_on_pages += p->lk_num_acquired_on_pages;
-      global_stats->lk_num_acquired_on_objects +=
-	p->lk_num_acquired_on_objects;
-      global_stats->lk_num_converted_on_pages += p->lk_num_converted_on_pages;
-      global_stats->lk_num_converted_on_objects +=
-	p->lk_num_converted_on_objects;
-      global_stats->lk_num_re_requested_on_pages +=
-	p->lk_num_re_requested_on_pages;
-      global_stats->lk_num_re_requested_on_objects +=
-	p->lk_num_re_requested_on_objects;
-      global_stats->lk_num_waited_on_pages += p->lk_num_waited_on_pages;
-      global_stats->lk_num_waited_on_objects += p->lk_num_waited_on_objects;
-
-      global_stats->tran_num_commits += p->tran_num_commits;
-      global_stats->tran_num_rollbacks += p->tran_num_rollbacks;
-      global_stats->tran_num_savepoints += p->tran_num_savepoints;
-      global_stats->tran_num_start_topops += p->tran_num_start_topops;
-      global_stats->tran_num_end_topops += p->tran_num_end_topops;
-      global_stats->tran_num_interrupts += p->tran_num_interrupts;
-
-      global_stats->bt_num_inserts += p->bt_num_inserts;
-      global_stats->bt_num_deletes += p->bt_num_deletes;
-      global_stats->bt_num_updates += p->bt_num_updates;
-
-      global_stats->qm_num_selects += p->qm_num_selects;
-      global_stats->qm_num_inserts += p->qm_num_inserts;
-      global_stats->qm_num_deletes += p->qm_num_deletes;
-      global_stats->qm_num_updates += p->qm_num_updates;
-      global_stats->qm_num_sscans += p->qm_num_sscans;
-      global_stats->qm_num_iscans += p->qm_num_iscans;
-      global_stats->qm_num_lscans += p->qm_num_lscans;
-      global_stats->qm_num_setscans += p->qm_num_setscans;
-      global_stats->qm_num_methscans += p->qm_num_methscans;
-      global_stats->qm_num_nljoins += p->qm_num_nljoins;
-      global_stats->qm_num_mjoins += p->qm_num_mjoins;
-      global_stats->qm_num_objfetches += p->qm_num_objfetches;
-
-      global_stats->net_num_requests += p->net_num_requests;
-
-      mnt_server_calc_stats (p);
-      mnt_server_check_stats_threshold (i, p);
-      mnt_server_reset_stats_internal (p);
-
-      MUTEX_UNLOCK (p->lock);
+      *to_stats = *mnt_Server_table.global_stats;
+      mnt_server_calc_stats (to_stats);
     }
-  mnt_server_calc_global_stats (global_stats);
-
-  *to_stats = *global_stats;	/* Structure copy */
-
-  MUTEX_UNLOCK (mnt_Server_table.lock);
-}
-
-/*
- * xmnt_server_reset_stats - Reset the server statistics for current
- *                           transaction index
- *   return: none
- */
-void
-xmnt_server_reset_stats (THREAD_ENTRY * thread_p)
-{
-  MNT_SERVER_EXEC_STATS *stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  stats = mnt_server_get_stats (thread_p);
-  if (stats != NULL)
-    {
-      MUTEX_LOCK (rv, stats->lock);
-      mnt_server_check_stats_threshold (LOG_FIND_THREAD_TRAN_INDEX (thread_p),
-					stats);
-      mnt_server_reset_stats_internal (stats);
-      MUTEX_UNLOCK (stats->lock);
-    }
-}
-
-/*
- * mnt_server_reset_stats_internal - Reset server statistics of given block
- *   return: none
- *   stats(in/out): server statistics block to reset
- */
-static void
-mnt_server_reset_stats_internal (MNT_SERVER_EXEC_STATS * stats)
-{
-  stats->file_num_creates = 0;
-  stats->file_num_removes = 0;
-  stats->file_num_ioreads = 0;
-  stats->file_num_iowrites = 0;
-  stats->file_num_iosynches = 0;
-
-  stats->pb_num_fetches = 0;
-  stats->pb_num_dirties = 0;
-  stats->pb_num_ioreads = 0;
-  stats->pb_num_iowrites = 0;
-  stats->pb_num_victims = 0;
-  stats->pb_num_replacements = 0;
-
-  stats->fc_num_pages = 0;
-  stats->fc_num_log_pages = 0;
-  stats->fc_tokens = 0;
-
-  stats->log_num_ioreads = 0;
-  stats->log_num_iowrites = 0;
-  stats->log_num_appendrecs = 0;
-  stats->log_num_archives = 0;
-  stats->log_num_checkpoints = 0;
-  stats->log_num_wals = 0;
-
-  stats->lk_num_acquired_on_pages = 0;
-  stats->lk_num_acquired_on_objects = 0;
-  stats->lk_num_converted_on_pages = 0;
-  stats->lk_num_converted_on_objects = 0;
-  stats->lk_num_re_requested_on_pages = 0;
-  stats->lk_num_re_requested_on_objects = 0;
-  stats->lk_num_waited_on_pages = 0;
-  stats->lk_num_waited_on_objects = 0;
-
-  stats->tran_num_commits = 0;
-  stats->tran_num_rollbacks = 0;
-  stats->tran_num_savepoints = 0;
-  stats->tran_num_start_topops = 0;
-  stats->tran_num_end_topops = 0;
-  stats->tran_num_interrupts = 0;
-
-  stats->bt_num_inserts = 0;
-  stats->bt_num_deletes = 0;
-  stats->bt_num_updates = 0;
-
-  stats->qm_num_selects = 0;
-  stats->qm_num_inserts = 0;
-  stats->qm_num_deletes = 0;
-  stats->qm_num_updates = 0;
-  stats->qm_num_sscans = 0;
-  stats->qm_num_iscans = 0;
-  stats->qm_num_lscans = 0;
-  stats->qm_num_setscans = 0;
-  stats->qm_num_methscans = 0;
-  stats->qm_num_nljoins = 0;
-  stats->qm_num_mjoins = 0;
-  stats->qm_num_objfetches = 0;
-
-  stats->net_num_requests = 0;
-
-  stats->pb_hit_ratio = 0;
-}
-
-/*
- * mnt_server_calc_stats - Do post processing of server statistics
- *   return: none
- *   stats(in/out): server statistics block to be processed
- */
-static void
-mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
-{
-  stats->pb_hit_ratio =
-    stats->pb_num_fetches == 0 ? 0 :
-    (stats->pb_num_fetches - stats->pb_num_ioreads) * 100 * 100
-    / stats->pb_num_fetches;
-}
-
-/*
- * mnt_server_calc_global_stats - Do post processing of server statistics
- *   return: none
- *   stats(in/out): server statistics block to be processed
- */
-static void
-mnt_server_calc_global_stats (MNT_SERVER_EXEC_GLOBAL_STATS * stats)
-{
-  stats->pb_hit_ratio =
-    stats->pb_num_fetches == 0 ? 0 :
-    (stats->pb_num_fetches - stats->pb_num_ioreads) * 100 * 100
-    / stats->pb_num_fetches;
-}
-
-/*
- * xmnt_server_reset_global_stats - Reset the server global statistics
- *   return: none
- */
-void
-xmnt_server_reset_global_stats (void)
-{
-  MNT_SERVER_EXEC_GLOBAL_STATS *global_stats;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
-
-  global_stats = &mnt_Server_table.global_stats;
-
-  MUTEX_LOCK (rv, mnt_Server_table.lock);
-
-  global_stats->file_num_creates = 0;
-  global_stats->file_num_removes = 0;
-  global_stats->file_num_ioreads = 0;
-  global_stats->file_num_iowrites = 0;
-  global_stats->file_num_iosynches = 0;
-
-  global_stats->pb_num_fetches = 0;
-  global_stats->pb_num_dirties = 0;
-  global_stats->pb_num_ioreads = 0;
-  global_stats->pb_num_iowrites = 0;
-  global_stats->pb_num_victims = 0;
-  global_stats->pb_num_replacements = 0;
-
-  global_stats->fc_num_pages = 0;
-  global_stats->fc_num_log_pages = 0;
-  global_stats->fc_tokens = 0;
-
-  global_stats->log_num_ioreads = 0;
-  global_stats->log_num_iowrites = 0;
-  global_stats->log_num_appendrecs = 0;
-  global_stats->log_num_archives = 0;
-  global_stats->log_num_checkpoints = 0;
-  global_stats->log_num_wals = 0;
-
-  global_stats->lk_num_acquired_on_pages = 0;
-  global_stats->lk_num_acquired_on_objects = 0;
-  global_stats->lk_num_converted_on_pages = 0;
-  global_stats->lk_num_converted_on_objects = 0;
-  global_stats->lk_num_re_requested_on_pages = 0;
-  global_stats->lk_num_re_requested_on_objects = 0;
-  global_stats->lk_num_waited_on_pages = 0;
-  global_stats->lk_num_waited_on_objects = 0;
-
-  global_stats->tran_num_commits = 0;
-  global_stats->tran_num_rollbacks = 0;
-  global_stats->tran_num_savepoints = 0;
-  global_stats->tran_num_start_topops = 0;
-  global_stats->tran_num_end_topops = 0;
-  global_stats->tran_num_interrupts = 0;
-
-  global_stats->bt_num_inserts = 0;
-  global_stats->bt_num_deletes = 0;
-  global_stats->bt_num_updates = 0;
-
-  global_stats->qm_num_selects = 0;
-  global_stats->qm_num_inserts = 0;
-  global_stats->qm_num_deletes = 0;
-  global_stats->qm_num_updates = 0;
-  global_stats->qm_num_sscans = 0;
-  global_stats->qm_num_iscans = 0;
-  global_stats->qm_num_lscans = 0;
-  global_stats->qm_num_setscans = 0;
-  global_stats->qm_num_methscans = 0;
-  global_stats->qm_num_nljoins = 0;
-  global_stats->qm_num_mjoins = 0;
-  global_stats->qm_num_objfetches = 0;
-
-  global_stats->net_num_requests = 0;
-
-  global_stats->pb_hit_ratio = 0;
-
-  MUTEX_UNLOCK (mnt_Server_table.lock);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -2166,9 +2039,9 @@ mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream)
     {
       return;
     }
-  MUTEX_LOCK (rv, stats->lock);
+  rv = pthread_mutex_lock (&stats->lock);
   mnt_server_dump_stats (stats, stream);
-  MUTEX_UNLOCK (stats->lock);
+  pthread_mutex_unlock (&stats->lock);
 }
 #endif
 
@@ -2185,11 +2058,7 @@ mnt_x_file_creates (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->file_num_creates++;
+      ADD_STATS (stats, file_num_creates, 1);
     }
 }
 
@@ -2206,11 +2075,7 @@ mnt_x_file_removes (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->file_num_removes++;
+      ADD_STATS (stats, file_num_removes, 1);
     }
 }
 
@@ -2227,11 +2092,7 @@ mnt_x_file_ioreads (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->file_num_ioreads++;
+      ADD_STATS (stats, file_num_ioreads, 1);
     }
 }
 
@@ -2248,11 +2109,7 @@ mnt_x_file_iowrites (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->file_num_iowrites++;
+      ADD_STATS (stats, file_num_iowrites, 1);
     }
 }
 
@@ -2269,11 +2126,7 @@ mnt_x_file_iosynches (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->file_num_iosynches++;
+      ADD_STATS (stats, file_num_iosynches, 1);
     }
 }
 
@@ -2290,11 +2143,7 @@ mnt_x_pb_fetches (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->pb_num_fetches++;
+      ADD_STATS (stats, pb_num_fetches, 1);
     }
 }
 
@@ -2311,11 +2160,7 @@ mnt_x_pb_dirties (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->pb_num_dirties++;
+      ADD_STATS (stats, pb_num_dirties, 1);
     }
 }
 
@@ -2332,11 +2177,7 @@ mnt_x_pb_ioreads (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->pb_num_ioreads++;
+      ADD_STATS (stats, pb_num_ioreads, 1);
     }
 }
 
@@ -2353,11 +2194,7 @@ mnt_x_pb_iowrites (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->pb_num_iowrites++;
+      ADD_STATS (stats, pb_num_iowrites, 1);
     }
 }
 
@@ -2374,11 +2211,7 @@ mnt_x_pb_victims (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->pb_num_victims++;
+      ADD_STATS (stats, pb_num_victims, 1);
     }
 }
 
@@ -2395,11 +2228,7 @@ mnt_x_pb_replacements (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->pb_num_replacements++;
+      ADD_STATS (stats, pb_num_replacements, 1);
     }
 }
 
@@ -2416,9 +2245,9 @@ mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      stats->fc_num_pages += num_pages;
-      stats->fc_num_log_pages += num_log_pages;
-      stats->fc_tokens += tokens;
+      ADD_STATS (stats, fc_num_pages, num_pages);
+      ADD_STATS (stats, fc_num_log_pages, num_log_pages);
+      ADD_STATS (stats, fc_tokens, tokens);
     }
 }
 
@@ -2435,11 +2264,7 @@ mnt_x_log_ioreads (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->log_num_ioreads++;
+      ADD_STATS (stats, log_num_ioreads, 1);
     }
 }
 
@@ -2456,11 +2281,7 @@ mnt_x_log_iowrites (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->log_num_iowrites++;
+      ADD_STATS (stats, log_num_iowrites, 1);
     }
 }
 
@@ -2477,11 +2298,7 @@ mnt_x_log_appendrecs (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->log_num_appendrecs++;
+      ADD_STATS (stats, log_num_appendrecs, 1);
     }
 }
 
@@ -2498,11 +2315,7 @@ mnt_x_log_archives (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->log_num_archives++;
+      ADD_STATS (stats, log_num_archives, 1);
     }
 }
 
@@ -2519,11 +2332,7 @@ mnt_x_log_checkpoints (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->log_num_checkpoints++;
+      ADD_STATS (stats, log_num_checkpoints, 1);
     }
 }
 
@@ -2540,11 +2349,7 @@ mnt_x_log_wals (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->log_num_wals++;
+      ADD_STATS (stats, log_num_wals, 1);
     }
 }
 
@@ -2561,11 +2366,7 @@ mnt_x_lk_acquired_on_pages (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->lk_num_acquired_on_pages++;
+      ADD_STATS (stats, lk_num_acquired_on_pages, 1);
     }
 }
 
@@ -2582,11 +2383,7 @@ mnt_x_lk_acquired_on_objects (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->lk_num_acquired_on_objects++;
+      ADD_STATS (stats, lk_num_acquired_on_objects, 1);
     }
 }
 
@@ -2603,11 +2400,7 @@ mnt_x_lk_converted_on_pages (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->lk_num_converted_on_pages++;
+      ADD_STATS (stats, lk_num_converted_on_pages, 1);
     }
 }
 
@@ -2624,11 +2417,7 @@ mnt_x_lk_converted_on_objects (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->lk_num_converted_on_objects++;
+      ADD_STATS (stats, lk_num_converted_on_objects, 1);
     }
 }
 
@@ -2645,11 +2434,7 @@ mnt_x_lk_re_requested_on_pages (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->lk_num_re_requested_on_pages++;
+      ADD_STATS (stats, lk_num_re_requested_on_pages, 1);
     }
 }
 
@@ -2666,11 +2451,7 @@ mnt_x_lk_re_requested_on_objects (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->lk_num_re_requested_on_objects++;
+      ADD_STATS (stats, lk_num_re_requested_on_objects, 1);
     }
 }
 
@@ -2687,11 +2468,7 @@ mnt_x_lk_waited_on_pages (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->lk_num_waited_on_pages++;
+      ADD_STATS (stats, lk_num_waited_on_pages, 1);
     }
 }
 
@@ -2708,11 +2485,7 @@ mnt_x_lk_waited_on_objects (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->lk_num_waited_on_objects++;
+      ADD_STATS (stats, lk_num_waited_on_objects, 1);
     }
 }
 
@@ -2729,11 +2502,7 @@ mnt_x_tran_commits (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->tran_num_commits++;
+      ADD_STATS (stats, tran_num_commits, 1);
     }
 }
 
@@ -2750,11 +2519,7 @@ mnt_x_tran_rollbacks (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->tran_num_rollbacks++;
+      ADD_STATS (stats, tran_num_rollbacks, 1);
     }
 }
 
@@ -2771,11 +2536,7 @@ mnt_x_tran_savepoints (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->tran_num_savepoints++;
+      ADD_STATS (stats, tran_num_savepoints, 1);
     }
 }
 
@@ -2792,11 +2553,7 @@ mnt_x_tran_start_topops (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->tran_num_start_topops++;
+      ADD_STATS (stats, tran_num_start_topops, 1);
     }
 }
 
@@ -2813,11 +2570,7 @@ mnt_x_tran_end_topops (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->tran_num_end_topops++;
+      ADD_STATS (stats, tran_num_end_topops, 1);
     }
 }
 
@@ -2834,11 +2587,7 @@ mnt_x_tran_interrupts (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->tran_num_interrupts++;
+      ADD_STATS (stats, tran_num_interrupts, 1);
     }
 }
 
@@ -2855,11 +2604,7 @@ mnt_x_bt_inserts (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->bt_num_inserts++;
+      ADD_STATS (stats, bt_num_inserts, 1);
     }
 }
 
@@ -2876,11 +2621,7 @@ mnt_x_bt_deletes (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->bt_num_deletes++;
+      ADD_STATS (stats, bt_num_deletes, 1);
     }
 }
 
@@ -2897,11 +2638,58 @@ mnt_x_bt_updates (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->bt_num_updates++;
+      ADD_STATS (stats, bt_num_updates, 1);
+    }
+}
+
+/*
+ * mnt_x_bt_covered - Increase bt_num_covered counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_bt_covered (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_num_covered, 1);
+    }
+}
+
+/*
+ * mnt_x_bt_noncovered - Increase bt_num_noncovered counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_bt_noncovered (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_num_noncovered, 1);
+    }
+}
+
+/*
+ * mnt_x_bt_resumes - Increase bt_num_resumes counter of the current
+                      transaction index
+ *   return: none
+ */
+void
+mnt_x_bt_resumes (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, bt_num_resumes, 1);
     }
 }
 
@@ -2918,11 +2706,7 @@ mnt_x_qm_selects (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->qm_num_selects++;
+      ADD_STATS (stats, qm_num_selects, 1);
     }
 }
 
@@ -2939,11 +2723,7 @@ mnt_x_qm_inserts (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->qm_num_inserts++;
+      ADD_STATS (stats, qm_num_inserts, 1);
     }
 }
 
@@ -2960,11 +2740,7 @@ mnt_x_qm_deletes (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->qm_num_deletes++;
+      ADD_STATS (stats, qm_num_deletes, 1);
     }
 }
 
@@ -2981,11 +2757,7 @@ mnt_x_qm_updates (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->qm_num_updates++;
+      ADD_STATS (stats, qm_num_updates, 1);
     }
 }
 
@@ -3002,11 +2774,7 @@ mnt_x_qm_sscans (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->qm_num_sscans++;
+      ADD_STATS (stats, qm_num_sscans, 1);
     }
 }
 
@@ -3023,11 +2791,7 @@ mnt_x_qm_iscans (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->qm_num_iscans++;
+      ADD_STATS (stats, qm_num_iscans, 1);
     }
 }
 
@@ -3044,11 +2808,7 @@ mnt_x_qm_lscans (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->qm_num_lscans++;
+      ADD_STATS (stats, qm_num_lscans, 1);
     }
 }
 
@@ -3065,11 +2825,7 @@ mnt_x_qm_setscans (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->qm_num_setscans++;
+      ADD_STATS (stats, qm_num_setscans, 1);
     }
 }
 
@@ -3086,11 +2842,7 @@ mnt_x_qm_methscans (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->qm_num_methscans++;
+      ADD_STATS (stats, qm_num_methscans, 1);
     }
 }
 
@@ -3107,11 +2859,7 @@ mnt_x_qm_nljoins (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->qm_num_nljoins++;
+      ADD_STATS (stats, qm_num_nljoins, 1);
     }
 }
 
@@ -3128,11 +2876,7 @@ mnt_x_qm_mjoins (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->qm_num_mjoins++;
+      ADD_STATS (stats, qm_num_mjoins, 1);
     }
 }
 
@@ -3149,11 +2893,7 @@ mnt_x_qm_objfetches (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->qm_num_objfetches++;
+      ADD_STATS (stats, qm_num_objfetches, 1);
     }
 }
 
@@ -3170,11 +2910,7 @@ mnt_x_net_requests (THREAD_ENTRY * thread_p)
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      /*
-       * We will suffer lost update for these counters.
-       * You may use atomic operation instead.
-       */
-      stats->net_num_requests++;
+      ADD_STATS (stats, net_num_requests, 1);
     }
 }
 #endif /* SERVER_MODE || SA_MODE */
@@ -3186,9 +2922,12 @@ mnt_x_net_requests (THREAD_ENTRY * thread_p)
  *   stream(in): if NULL is given, stdout is used
  */
 void
-mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream)
+mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream,
+		       const char *substr)
 {
-  unsigned int i, *stats_ptr;
+  unsigned int i;
+  UINT64 *stats_ptr;
+  const char *s;
 
   if (stream == NULL)
     {
@@ -3197,48 +2936,21 @@ mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats, FILE * stream)
 
   fprintf (stream, "\n *** SERVER EXECUTION STATISTICS *** \n");
 
-  stats_ptr = (unsigned int *) stats;
+  stats_ptr = (UINT64 *) stats;
   for (i = 0; i < MNT_SIZE_OF_SERVER_EXEC_STATS - 1; i++)
     {
-      if (mnt_Stats_name[i])
+      if (substr != NULL)
 	{
-	  fprintf (stream, "%-29s = %10u\n", mnt_Stats_name[i], *stats_ptr++);
+	  s = strstr (mnt_Stats_name[i], substr);
 	}
-    }
-
-  fprintf (stream, "\n *** OTHER STATISTICS *** \n");
-
-  fprintf (stream, "Data_page_buffer_hit_ratio    = %10.2f\n",
-	   (float) stats->pb_hit_ratio / 100);
-}
-
-/*
- * mnt_server_dump_global_stats - Print the given server global statistics
- *   return: none
- *   stats(in) server statistics to print
- *   stream(in): if NULL is given, stdout is used
- */
-void
-mnt_server_dump_global_stats (const MNT_SERVER_EXEC_GLOBAL_STATS * stats,
-			      FILE * stream)
-{
-  unsigned int i;
-  UINT64 *stats_ptr;
-
-  if (stream == NULL)
-    {
-      stream = stdout;
-    }
-
-  fprintf (stream, "\n *** SERVER EXECUTION GLOBAL STATISTICS *** \n");
-
-  stats_ptr = (UINT64 *) stats;
-  for (i = 0; i < MNT_SIZE_OF_SERVER_EXEC_GLOBAL_STATS - 1; i++)
-    {
-      if (mnt_Stats_name[i])
+      else
+	{
+	  s = mnt_Stats_name[i];
+	}
+      if (s)
 	{
 	  fprintf (stream, "%-29s = %10llu\n", mnt_Stats_name[i],
-		   (unsigned long long) *stats_ptr++);
+		   (unsigned long long) stats_ptr[i]);
 	}
     }
 
@@ -3282,4 +2994,18 @@ mnt_get_current_times (time_t * cpu_user_time, time_t * cpu_sys_time,
       *cpu_sys_time = rusage.ru_stime.tv_sec;
     }
 #endif /* WINDOWS */
+}
+
+/*
+ * mnt_server_calc_stats - Do post processing of server statistics
+ *   return: none
+ *   stats(in/out): server statistics block to be processed
+ */
+static void
+mnt_server_calc_stats (MNT_SERVER_EXEC_STATS * stats)
+{
+  stats->pb_hit_ratio =
+    stats->pb_num_fetches == 0 ? 0 :
+    (stats->pb_num_fetches - stats->pb_num_ioreads) * 100 * 100
+    / stats->pb_num_fetches;
 }

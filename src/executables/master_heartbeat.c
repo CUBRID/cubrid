@@ -83,7 +83,7 @@ extern SOCKET_QUEUE_ENTRY *css_return_entry_by_conn (CSS_CONN_ENTRY * conn_p,
 
 extern SOCKET_QUEUE_ENTRY *css_Master_socket_anchor;
 #if !defined(WINDOWS)
-extern MUTEX_T css_Master_socket_anchor_lock;
+extern pthread_mutex_t css_Master_socket_anchor_lock;
 #endif
 
 /* list */
@@ -107,6 +107,7 @@ static void hb_cluster_job_init (HB_JOB_ARG * arg);
 static void hb_cluster_job_heartbeat (HB_JOB_ARG * arg);
 static void hb_cluster_job_calc_score (HB_JOB_ARG * arg);
 static void hb_cluster_job_failover (HB_JOB_ARG * arg);
+static void hb_cluster_job_check_ping (HB_JOB_ARG * arg);
 
 static void hb_cluster_request_heartbeat_to_all (void);
 static void hb_cluster_send_heartbeat (bool is_req, char *host_name);
@@ -136,7 +137,8 @@ static void hb_cluster_remove_all_nodes (HB_NODE_ENTRY * first);
 static HB_NODE_ENTRY *hb_return_node_by_name (char *name);
 static HB_NODE_ENTRY *hb_return_node_by_name_except_me (char *name);
 
-static int hb_cluster_load_group_and_node_list (char *ha_node_list);
+static int hb_cluster_load_group_and_node_list (char *ha_node_list,
+						char *ha_replica_list);
 
 
 /* resource jobs */
@@ -166,6 +168,7 @@ static void hb_proc_make_arg (char **arg, char *argv);
 /* resource process connection */
 void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd);
 static int hb_resource_send_changemode (HB_PROC_ENTRY * proc);
+extern int hb_is_registered_process (CSS_CONN_ENTRY * conn, void *buffer);
 extern void hb_register_new_process (CSS_CONN_ENTRY * conn);
 extern void hb_resource_receive_changemode (CSS_CONN_ENTRY * conn);
 
@@ -182,7 +185,7 @@ static void *hb_thread_resource_worker (void *arg);
 
 
 /* initializer */
-static int hb_cluster_initialize (const char *nodes);
+static int hb_cluster_initialize (const char *nodes, const char *replicas);
 static int hb_cluster_job_initialize (void);
 static int hb_resource_initialize (void);
 static int hb_resource_job_initialize (void);
@@ -222,6 +225,7 @@ static HB_JOB_FUNC hb_cluster_jobs[] = {
   hb_cluster_job_init,
   hb_cluster_job_heartbeat,
   hb_cluster_job_calc_score,
+  hb_cluster_job_check_ping,
   hb_cluster_job_failover,
   NULL
 };
@@ -475,7 +479,7 @@ hb_job_queue (HB_JOB * jobs, unsigned int job_type, HB_JOB_ARG * arg,
   memcpy ((void *) &(new_job->expire), (void *) &now,
 	  sizeof (struct timeval));
 
-  MUTEX_LOCK (rv, jobs->lock);
+  rv = pthread_mutex_lock (&jobs->lock);
   for (job = &(jobs->jobs); *job; job = &((*job)->next))
     {
       /*
@@ -490,7 +494,7 @@ hb_job_queue (HB_JOB * jobs, unsigned int job_type, HB_JOB_ARG * arg,
     }
   hb_list_add ((HB_LIST **) job, (HB_LIST *) new_job);
 
-  MUTEX_UNLOCK (jobs->lock);
+  pthread_mutex_unlock (&jobs->lock);
   return NO_ERROR;
 }
 
@@ -510,17 +514,17 @@ hb_job_dequeue (HB_JOB * jobs)
 
   gettimeofday (&now, NULL);
 
-  MUTEX_LOCK (rv, jobs->lock);
+  rv = pthread_mutex_lock (&jobs->lock);
   if (jobs->shutdown == true)
     {
-      MUTEX_UNLOCK (jobs->lock);
+      pthread_mutex_unlock (&jobs->lock);
       return NULL;
     }
 
   job = jobs->jobs;
   if (job == NULL)
     {
-      MUTEX_UNLOCK (jobs->lock);
+      pthread_mutex_unlock (&jobs->lock);
       return NULL;
     }
 
@@ -530,10 +534,10 @@ hb_job_dequeue (HB_JOB * jobs)
     }
   else
     {
-      MUTEX_UNLOCK (jobs->lock);
+      pthread_mutex_unlock (&jobs->lock);
       return NULL;
     }
-  MUTEX_UNLOCK (jobs->lock);
+  pthread_mutex_unlock (&jobs->lock);
 
   return job;
 }
@@ -550,7 +554,7 @@ hb_job_shutdown (HB_JOB * jobs)
   int rv;
   HB_JOB_ENTRY *job, *job_next;
 
-  MUTEX_LOCK (rv, jobs->lock);
+  rv = pthread_mutex_lock (&jobs->lock);
   for (job = jobs->jobs; job; job = job_next)
     {
       job_next = job->next;
@@ -559,7 +563,7 @@ hb_job_shutdown (HB_JOB * jobs)
       free_and_init (job);
     }
   jobs->shutdown = true;
-  MUTEX_UNLOCK (jobs->lock);
+  pthread_mutex_unlock (&jobs->lock);
 }
 
 
@@ -586,7 +590,10 @@ hb_cluster_job_init (HB_JOB_ARG * arg)
 				PRM_HA_INIT_TIMER_IN_MSECS);
   assert (error == NO_ERROR);
 
-  free_and_init (arg);
+  if (arg)
+    {
+      free_and_init (arg);
+    }
 }
 
 /*
@@ -600,14 +607,17 @@ hb_cluster_job_heartbeat (HB_JOB_ARG * arg)
 {
   int error, rv;
 
-  MUTEX_LOCK (rv, hb_Cluster->lock);
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
   hb_cluster_request_heartbeat_to_all ();
-  MUTEX_UNLOCK (hb_Cluster->lock);
+  pthread_mutex_unlock (&hb_Cluster->lock);
   error = hb_cluster_job_queue (HB_CJOB_HEARTBEAT, NULL,
 				PRM_HA_HEARTBEAT_INTERVAL_IN_MSECS);
   assert (error == NO_ERROR);
 
-  free_and_init (arg);
+  if (arg)
+    {
+      free_and_init (arg);
+    }
   return;
 }
 
@@ -622,15 +632,22 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 {
   int error, rv;
   int num_master;
+  HB_JOB_ARG *job_arg;
+  HB_CLUSTER_JOB_ARG *clst_arg;
 
-  MUTEX_LOCK (rv, hb_Cluster->lock);
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
 
   num_master = hb_cluster_calc_score ();
+  if (hb_Cluster->state == HB_NSTATE_REPLICA)
+    {
+      goto calc_end;
+    }
 
   /* case : split-brain */
-  if ((num_master > 1) &&
-      (hb_Cluster->master && hb_Cluster->myself &&
-       hb_Cluster->master->priority != hb_Cluster->myself->priority))
+  if ((num_master > 1)
+      && (hb_Cluster->master && hb_Cluster->myself
+	  && hb_Cluster->myself->state == HB_NSTATE_MASTER
+	  && hb_Cluster->master->priority != hb_Cluster->myself->priority))
     {
       hb_Cluster->shutdown = true;
       hb_Cluster->state = HB_NSTATE_UNKNOWN;
@@ -638,12 +655,16 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 
       hb_print_nodes ();
 
-      MUTEX_UNLOCK (hb_Cluster->lock);
+      pthread_mutex_unlock (&hb_Cluster->lock);
 
-      free_and_init (arg);
+      if (arg)
+	{
+	  free_and_init (arg);
+	}
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	      "More than one master detected and local processes and cub_master will be terminated");
+	      "More than one master detected and local "
+	      "processes and cub_master will be terminated");
 
       /* TODO : hb_terminate() */
       css_master_cleanup (SIGTERM);
@@ -651,40 +672,192 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
     }
 
   /* case : failover */
-  if ((hb_Cluster->state == HB_NSTATE_SLAVE) &&
-      (hb_Cluster->master && hb_Cluster->myself &&
-       hb_Cluster->master->priority == hb_Cluster->myself->priority))
+  if ((hb_Cluster->state == HB_NSTATE_SLAVE)
+      && (hb_Cluster->master && hb_Cluster->myself
+	  && hb_Cluster->master->priority == hb_Cluster->myself->priority))
     {
-      hb_Cluster->state = HB_NSTATE_MASTER;
+      hb_Cluster->state = HB_NSTATE_TO_BE_MASTER;
       hb_cluster_request_heartbeat_to_all ();
 
-      hb_print_nodes ();
+      /* hb_print_nodes (); */
 
-      MUTEX_UNLOCK (hb_Cluster->lock);
+      pthread_mutex_unlock (&hb_Cluster->lock);
 
-      error = hb_cluster_job_queue (HB_CJOB_FAILOVER, NULL,
-				    PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS);
+      job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
+      if (job_arg)
+	{
+	  clst_arg = &(job_arg->cluster_job_arg);
+	  clst_arg->ping_check_count = 0;
 
-      assert (error == NO_ERROR);
+	  error = hb_cluster_job_queue (HB_CJOB_CHECK_PING, job_arg,
+					HB_JOB_TIMER_IMMEDIATELY);
+	  assert (error == NO_ERROR);
 
-      free_and_init (arg);
+	}
+      else
+	{
+	  error = hb_cluster_job_queue (HB_CJOB_FAILOVER, NULL,
+					PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS);
+	  assert (error == NO_ERROR);
 
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	      "A failover attempted to make the current node a master");
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT,
+		  1,
+		  "A failover attempted to make the current node a master");
+	}
+
+      if (arg)
+	{
+	  free_and_init (arg);
+	}
+
       return;
     }
 
   hb_print_nodes ();
 
-  MUTEX_UNLOCK (hb_Cluster->lock);
+calc_end:
+  pthread_mutex_unlock (&hb_Cluster->lock);
 
   error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
 				PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS);
   assert (error == NO_ERROR);
 
-  free_and_init (arg);
+  if (arg)
+    {
+      free_and_init (arg);
+    }
+
   return;
 }
+
+/*
+ * hb_cluster_job_check_ping() -
+ *   return: none
+ *
+ *   jobs(in):
+ */
+static void
+hb_cluster_job_check_ping (HB_JOB_ARG * arg)
+{
+
+#define PING_COMMAND_FORMAT \
+"ping -w 1 -c 1 %s >/dev/null 2>&1; " \
+"echo $?"
+
+  int error;
+  bool ping_success = false;
+  char *host_list = NULL;
+  char *host_list_p, *host_p, *host_pp;
+  char ping_command[256], result_str[16];
+  long result_val;
+  FILE *fp;
+  HB_CLUSTER_JOB_ARG *clst_arg = (arg) ? &(arg->cluster_job_arg) : NULL;
+
+  if (clst_arg == NULL || PRM_HA_PING_HOSTS == NULL
+      || *PRM_HA_PING_HOSTS == '\0')
+    {
+      goto failover_confirm;
+    }
+
+  host_list = strdup (PRM_HA_PING_HOSTS);
+  if (host_list == NULL)
+    {
+      goto failover_cancel;
+    }
+
+  for (host_list_p = host_list;; host_list_p = NULL)
+    {
+      host_p = strtok_r (host_list_p, " :\t\n", &host_pp);
+      if (host_p == NULL)
+	{
+	  break;
+	}
+
+      snprintf (ping_command, sizeof (ping_command), PING_COMMAND_FORMAT,
+		host_p);
+      fp = popen (ping_command, "r");
+      if (fp == NULL)
+	{
+	  continue;
+	}
+
+      if (fgets (result_str, sizeof (result_str), fp) == NULL)
+	{
+	  pclose (fp);
+	  continue;
+	}
+      result_str[sizeof (result_str) - 1] = 0;
+
+      pclose (fp);
+
+      result_val = strtol (result_str, (char **) NULL, 10);
+      if (result_val == 0)
+	{
+	  ping_success = true;
+	  break;
+	}
+    }
+
+  if (ping_success == false)
+    {
+      goto failover_cancel;
+    }
+
+  if ((++clst_arg->ping_check_count) < HB_MAX_PING_CHECK)
+    {
+      error =
+	hb_cluster_job_queue (HB_CJOB_CHECK_PING, arg,
+			      HB_JOB_TIMER_WAIT_A_SECOND);
+      assert (error == NO_ERROR);
+
+      if (host_list)
+	{
+	  free_and_init (host_list);
+	}
+
+      return;
+    }
+
+failover_confirm:
+  error = hb_cluster_job_queue (HB_CJOB_FAILOVER, NULL,
+				PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS);
+  assert (error == NO_ERROR);
+
+  if (arg)
+    {
+      free_and_init (arg);
+    }
+
+  if (host_list)
+    {
+      free_and_init (host_list);
+    }
+
+  return;
+
+failover_cancel:
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+	  "Failover cancelled");
+  hb_Cluster->state = HB_NSTATE_SLAVE;
+  hb_cluster_request_heartbeat_to_all ();
+
+  error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
+				PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS);
+  assert (error == NO_ERROR);
+
+  if (arg)
+    {
+      free_and_init (arg);
+    }
+
+  if (host_list)
+    {
+      free_and_init (host_list);
+    }
+
+  return;
+}
+
 
 /*
  * hb_cluster_job_failover() -
@@ -698,7 +871,7 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
   int error, rv;
   int num_master;
 
-  MUTEX_LOCK (rv, hb_Cluster->lock);
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
 
   num_master = hb_cluster_calc_score ();
 
@@ -707,6 +880,7 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
     {
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
 	      "Failover completed");
+      hb_Cluster->state = HB_NSTATE_MASTER;
       hb_Resource->state = HB_NSTATE_MASTER;
     }
   else
@@ -717,16 +891,18 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
     }
 
   hb_cluster_request_heartbeat_to_all ();
-  MUTEX_UNLOCK (hb_Cluster->lock);
+  pthread_mutex_unlock (&hb_Cluster->lock);
 
   error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
 				PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS);
   assert (error == NO_ERROR);
 
-  free_and_init (arg);
+  if (arg)
+    {
+      free_and_init (arg);
+    }
   return;
 }
-
 
 
 /*
@@ -768,11 +944,17 @@ hb_cluster_calc_score (void)
 	    node->score = node->priority | HB_NODE_SCORE_MASTER;
 	  }
 	  break;
+	case HB_NSTATE_TO_BE_MASTER:
+	  {
+	    node->score = node->priority | HB_NODE_SCORE_TO_BE_MASTER;
+	  }
+	  break;
 	case HB_NSTATE_SLAVE:
 	  {
 	    node->score = node->priority | HB_NODE_SCORE_SLAVE;
 	  }
 	  break;
+	case HB_NSTATE_REPLICA:
 	case HB_NSTATE_UNKNOWN:
 	default:
 	  {
@@ -781,13 +963,13 @@ hb_cluster_calc_score (void)
 	  break;
 	}
 
-      if (min_score > node->score)
+      if (node->score < min_score)
 	{
 	  hb_Cluster->master = node;
 	  min_score = node->score;
 	}
 
-      if (node->score < 0)
+      if (node->score < (short) HB_NODE_SCORE_TO_BE_MASTER)
 	{
 	  num_master++;
 	}
@@ -901,10 +1083,10 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 
   hbp_header = (HBP_HEADER *) (buffer);
 
-  MUTEX_LOCK (rv, hb_Cluster->lock);
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
   if (hb_Cluster->shutdown)
     {
-      MUTEX_UNLOCK (hb_Cluster->lock);
+      pthread_mutex_unlock (&hb_Cluster->lock);
       return;
     }
 
@@ -914,7 +1096,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
       er_log_debug (ARG_FILE_LINE, "hostname mismatch. "
 		    "(host_name:{%s}, dest_host_name:{%s}).\n",
 		    hb_Cluster->host_name, hbp_header->dest_host_name);
-      MUTEX_UNLOCK (hb_Cluster->lock);
+      pthread_mutex_unlock (&hb_Cluster->lock);
       return;
     }
 
@@ -923,7 +1105,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
       er_log_debug (ARG_FILE_LINE, "size mismatch. "
 		    "(len:%d, msg_size:%d).\n", len,
 		    (sizeof (*hbp_header) + htons (hbp_header->len)));
-      MUTEX_UNLOCK (hb_Cluster->lock);
+      pthread_mutex_unlock (&hb_Cluster->lock);
       return;
     }
 
@@ -947,7 +1129,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 	    er_log_debug (ARG_FILE_LINE,
 			  "receive heartbeat have unknown state. "
 			  "(state:%u).\n", state);
-	    MUTEX_UNLOCK (hb_Cluster->lock);
+	    pthread_mutex_unlock (&hb_Cluster->lock);
 	    return;
 	  }
 #if 0
@@ -960,7 +1142,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 	 */
 	if (strcmp (hbp_header->group_id, hb_Cluster->group_id))
 	  {
-	    MUTEX_UNLOCK (hb_Cluster->lock);
+	    pthread_mutex_unlock (&hb_Cluster->lock);
 	    return;
 	  }
 
@@ -997,7 +1179,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 
     }
 
-  MUTEX_UNLOCK (hb_Cluster->lock);
+  pthread_mutex_unlock (&hb_Cluster->lock);
 
   return;
 }
@@ -1114,18 +1296,18 @@ hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
       struct hostent *hp;
       int r;
 
-      MUTEX_LOCK (r, gethostbyname_lock);
+      r = pthread_mutex_lock (&gethostbyname_lock);
       hp = gethostbyname (host);
       if (hp == NULL)
 	{
-	  MUTEX_UNLOCK (gethostbyname_lock);
+	  pthread_mutex_unlock (&gethostbyname_lock);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			       ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &udp_saddr.sin_addr, (void *) hp->h_addr,
 	      hp->h_length);
-      MUTEX_UNLOCK (gethostbyname_lock);
+      pthread_mutex_unlock (&gethostbyname_lock);
 #endif /* !HAVE_GETHOSTBYNAME_R */
     }
 
@@ -1326,10 +1508,11 @@ hb_return_node_by_name_except_me (char *name)
  *   host_list(in):
  */
 static int
-hb_cluster_load_group_and_node_list (char *ha_node_list)
+hb_cluster_load_group_and_node_list (char *ha_node_list,
+				     char *ha_replica_list)
 {
-  int priority;
-  char *tmp_ha_node_list = NULL;
+  int priority, num_nodes;
+  char tmp_string[LINE_MAX];
   char *p, *savep;
   HB_NODE_ENTRY *node;
 
@@ -1340,14 +1523,10 @@ hb_cluster_load_group_and_node_list (char *ha_node_list)
       return ER_FAILED;
     }
 
-  tmp_ha_node_list = strdup (ha_node_list);
-  if (tmp_ha_node_list == NULL)
-    {
-      return ER_FAILED;
-    }
-
   hb_Cluster->myself = NULL;
-  for (priority = 0, p = strtok_r (tmp_ha_node_list, "@\r\n", &savep);
+
+  strncpy (tmp_string, ha_node_list, LINE_MAX);
+  for (priority = 0, p = strtok_r (tmp_string, "@\r\n", &savep);
        p; priority++, p = strtok_r (NULL, ",:\r\n", &savep))
     {
 
@@ -1380,7 +1559,48 @@ hb_cluster_load_group_and_node_list (char *ha_node_list)
 	}
     }
 
-  free_and_init (tmp_ha_node_list);
+  if (hb_Cluster->state == HB_NSTATE_REPLICA && hb_Cluster->myself != NULL)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "myself should be in the ha_replica_list. \n");
+      return ER_FAILED;
+    }
+  num_nodes = priority;
+
+  if (ha_replica_list)
+    {
+      strncpy (tmp_string, ha_replica_list, LINE_MAX);
+    }
+  else
+    {
+      tmp_string[0] = '\0';
+    }
+  for (priority = 0, p = strtok_r (tmp_string, "@\r\n", &savep);
+       p; priority++, p = strtok_r (NULL, ",:\r\n", &savep))
+    {
+
+      if (priority == 0)
+	{
+	  if (strcmp (hb_Cluster->group_id, p) != 0)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "different group id ('ha_node_list', 'ha_replica_list') \n");
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  node = hb_add_node_to_cluster (p, HB_REPLICA_PRIORITY);
+	  if (node)
+	    {
+	      if (strcmp (node->host_name, hb_Cluster->host_name) == 0)
+		{
+		  hb_Cluster->myself = node;
+		  hb_Cluster->state = HB_NSTATE_REPLICA;
+		}
+	    }
+	}
+    }
 
   if (hb_Cluster->myself == NULL)
     {
@@ -1388,7 +1608,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list)
       return ER_FAILED;
     }
 
-  return priority;
+  return num_nodes + priority;
 }
 
 
@@ -1418,15 +1638,14 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
       er_log_debug (ARG_FILE_LINE,
 		    "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
 		    arg, proc_arg);
-      free_and_init (arg);
       return;
     }
 
-  MUTEX_LOCK (rv, hb_Resource->lock);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
   proc = hb_return_proc_by_args (proc_arg->args);
   if (proc == NULL || proc->state == HB_PSTATE_DEREGISTERED)
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       free_and_init (arg);
       return;
     }
@@ -1440,7 +1659,7 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
   pid = fork ();
   if (pid < 0)
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
 
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_CANNOT_FORK, 0);
 
@@ -1468,7 +1687,7 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
 		    (argv[9]) ? argv[9] : "");
 #endif
       error = execv (proc->exec_path, argv);
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
 
       free_and_init (arg);
       css_master_cleanup (SIGTERM);
@@ -1481,7 +1700,7 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
       gettimeofday (&proc->stime, NULL);
     }
 
-  MUTEX_UNLOCK (hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Resource->lock);
 
   error = hb_resource_job_queue (HB_RJOB_CONFIRM_START, arg,
 				 PRM_HA_PROCESS_START_CONFIRM_INTERVAL_IN_MSECS);
@@ -1514,7 +1733,6 @@ hb_resource_job_proc_dereg (HB_JOB_ARG * arg)
       er_log_debug (ARG_FILE_LINE,
 		    "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
 		    arg, proc_arg);
-      free_and_init (arg);
       return;
     }
 #if defined (HB_VERBOSE_DEBUG)
@@ -1522,18 +1740,18 @@ hb_resource_job_proc_dereg (HB_JOB_ARG * arg)
 		proc_arg->pid);
 #endif
 #if !defined(WINDOWS)
-  MUTEX_LOCK (rv, css_Master_socket_anchor_lock);
+  rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
 #endif
-  MUTEX_LOCK (rv, hb_Resource->lock);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
   proc = hb_return_proc_by_pid (proc_arg->pid);
   if (proc == NULL)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "cannot find process entry. (unknown pid, pid:%d). \n",
 		    proc_arg->pid);
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
 #if !defined(WINDOWS)
-      MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+      pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 #endif
 
       free_and_init (arg);
@@ -1545,9 +1763,9 @@ hb_resource_job_proc_dereg (HB_JOB_ARG * arg)
       er_log_debug (ARG_FILE_LINE,
 		    "invalid process state. (pid:%d, state:%d). \n",
 		    proc_arg->pid, proc->state);
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
 #if !defined(WINDOWS)
-      MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+      pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 #endif
 
       free_and_init (arg);
@@ -1583,9 +1801,9 @@ hb_resource_job_proc_dereg (HB_JOB_ARG * arg)
 	  hb_remove_proc (proc);
 	  proc = NULL;
 
-	  MUTEX_UNLOCK (hb_Resource->lock);
+	  pthread_mutex_unlock (&hb_Resource->lock);
 #if !defined(WINDOWS)
-	  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+	  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 #endif
 	  free_and_init (arg);
 	  return;
@@ -1593,9 +1811,9 @@ hb_resource_job_proc_dereg (HB_JOB_ARG * arg)
     }
 
 hb_resource_job_proc_dereg_end:
-  MUTEX_UNLOCK (hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Resource->lock);
 #if !defined(WINDOWS)
-  MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 #endif
 
   error = hb_resource_job_queue (HB_RJOB_CONFIRM_DEREG, arg,
@@ -1629,22 +1847,21 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
       er_log_debug (ARG_FILE_LINE,
 		    "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
 		    arg, proc_arg);
-      free_and_init (arg);
       return;
     }
 
-  MUTEX_LOCK (rv, hb_Resource->lock);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
   proc = hb_return_proc_by_args (proc_arg->args);
   if (proc == NULL || proc->state == HB_PSTATE_DEREGISTERED)
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       free_and_init (arg);
       return;
     }
 
   if (++(proc_arg->retries) > proc_arg->max_retries)
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
 
       snprintf (error_string, LINE_MAX, "(exceed max retry count, args:%s)",
 		proc->args);
@@ -1675,7 +1892,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
   error = kill (proc->pid, 0);
   if (error)
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       if (errno == ESRCH)
 	{
 	  snprintf (error_string, LINE_MAX, "(process not found, args:%s)",
@@ -1711,7 +1928,7 @@ hb_resource_job_confirm_start (HB_JOB_ARG * arg)
       retry = false;
     }
 
-  MUTEX_UNLOCK (hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Resource->lock);
 
   hb_print_procs ();
 
@@ -1751,7 +1968,6 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG * arg)
       er_log_debug (ARG_FILE_LINE,
 		    "invalid arg or proc_arg. (arg:%p, proc_arg:%p). \n",
 		    arg, proc_arg);
-      free_and_init (arg);
       return;
     }
 
@@ -1761,11 +1977,11 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG * arg)
 		proc_arg->pid, proc_arg->args);
 #endif
 
-  MUTEX_LOCK (rv, hb_Resource->lock);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
   proc = hb_return_proc_by_pid (proc_arg->pid);
   if (proc == NULL)
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       free_and_init (arg);
       return;
     }
@@ -1775,7 +1991,7 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG * arg)
       er_log_debug (ARG_FILE_LINE,
 		    "invalid process state. (pid:%d, state:%d). \n",
 		    proc_arg->pid, proc->state);
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
 
       free_and_init (arg);
       return;
@@ -1800,7 +2016,7 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG * arg)
 
   if (retry)
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       error = hb_resource_job_queue (HB_RJOB_CONFIRM_DEREG, arg,
 				     PRM_HA_PROCESS_DEREG_CONFIRM_INTERVAL_IN_MSECS);
       if (error != NO_ERROR)
@@ -1815,7 +2031,7 @@ hb_resource_job_confirm_dereg (HB_JOB_ARG * arg)
   hb_remove_proc (proc);
   proc = NULL;
 
-  MUTEX_UNLOCK (hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Resource->lock);
 
   free_and_init (arg);
 
@@ -1837,9 +2053,9 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
   if (hb_Resource->state == HB_NSTATE_MASTER)
     {
 #if !defined(WINDOWS)
-      MUTEX_LOCK (rv, css_Master_socket_anchor_lock);
+      rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
 #endif
-      MUTEX_LOCK (rv, hb_Resource->lock);
+      rv = pthread_mutex_lock (&hb_Resource->lock);
       for (proc = hb_Resource->procs; proc; proc = proc->next)
 	{
 	  if (proc->type != HB_PTYPE_SERVER
@@ -1859,6 +2075,8 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
 	    {
 	      /* TODO : if error */
 	    }
+
+	  ++proc->changemode_gap;
 	}
 
       if (hb_Resource->procs)
@@ -1866,9 +2084,9 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
 	  hb_print_procs ();
 	}
 
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
 #if !defined(WINDOWS)
-      MUTEX_UNLOCK (css_Master_socket_anchor_lock);
+      pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 #endif
     }
 
@@ -1876,7 +2094,10 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
 				 PRM_HA_CHANGEMODE_INTERVAL_IN_MSECS);
   assert (error == NO_ERROR);
 
-  free_and_init (arg);
+  if (arg)
+    {
+      free_and_init (arg);
+    }
   return;
 }
 
@@ -2118,12 +2339,12 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
       return;
     }
 
-  MUTEX_LOCK (rv, hb_Resource->lock);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
   proc = hb_return_proc_by_fd (sfd);
   if (proc == NULL)
     {
       er_log_debug (ARG_FILE_LINE, "cannot find process. (fd:%d). \n", sfd);
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       return;
     }
 
@@ -2133,7 +2354,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
       er_log_debug (ARG_FILE_LINE, "unexpected process's state. "
 		    "(fd:%d, pid:%d, state:%d, args:{%s}). \n", sfd,
 		    proc->pid, proc->state, proc->args);
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       return;
     }
 
@@ -2152,7 +2373,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
   job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
   if (job_arg == NULL)
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      sizeof (HB_JOB_ARG));
       return;
@@ -2170,13 +2391,55 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
   proc->sfd = INVALID_SOCKET;
   proc->conn = NULL;
 
-  MUTEX_UNLOCK (hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Resource->lock);
 
   error = hb_resource_job_queue (HB_RJOB_PROC_START, job_arg,
 				 HB_JOB_TIMER_WAIT_A_SECOND);
   assert (error == NO_ERROR);
 
   return;
+}
+
+/*
+ * hb_is_regiestered_process() -
+ *   return: none
+ *
+ *   conn(in):
+ */
+int
+hb_is_registered_process (CSS_CONN_ENTRY * conn, void *buffer)
+{
+  int rv;
+  HB_PROC_ENTRY *proc;
+  HBP_PROC_REGISTER *hbp_proc_register = NULL;
+
+  if (hb_Resource == NULL)
+    {
+      return false;
+    }
+
+  hbp_proc_register = (HBP_PROC_REGISTER *) buffer;
+
+  rv = pthread_mutex_lock (&hb_Resource->lock);
+
+  if (hb_Resource->shutdown)
+    {
+      pthread_mutex_unlock (&hb_Resource->lock);
+      css_remove_entry_by_conn (conn, &css_Master_socket_anchor);
+      return false;
+    }
+
+  proc = hb_return_proc_by_args (hbp_proc_register->args);
+  pthread_mutex_unlock (&hb_Resource->lock);
+
+  if (proc == NULL)
+    {
+      return false;
+    }
+  else
+    {
+      return true;
+    }
 }
 
 /*
@@ -2212,10 +2475,10 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
 
   hbp_proc_register = (HBP_PROC_REGISTER *) buffer;
 
-  MUTEX_LOCK (rv, hb_Resource->lock);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
   if (hb_Resource->shutdown)
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       css_remove_entry_by_conn (conn, &css_Master_socket_anchor);
       return;
     }
@@ -2226,7 +2489,7 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
       proc = hb_alloc_new_proc ();
       if (proc == NULL)
 	{
-	  MUTEX_UNLOCK (hb_Resource->lock);
+	  pthread_mutex_unlock (&hb_Resource->lock);
 	  css_remove_entry_by_conn (conn, &css_Master_socket_anchor);
 	  return;
 	}
@@ -2252,6 +2515,7 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
       proc->sfd = conn->fd;
       proc->conn = conn;
       gettimeofday (&proc->rtime, NULL);
+      proc->changemode_gap = 0;
 
       if (proc->state == HB_PSTATE_REGISTERED)
 	{
@@ -2283,11 +2547,11 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 	      "Registered as local process entries", error_string);
 
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       return;
     }
 
-  MUTEX_UNLOCK (hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Resource->lock);
 
   snprintf (error_string, LINE_MAX, "%s (pid:%d, state:%d, args:%s)",
 	    HB_RESULT_FAILURE_STR, ntohl (hbp_proc_register->pid),
@@ -2310,9 +2574,34 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
 {
   int error = NO_ERROR;
   int state;
+  int sig = 0;
+  char buffer[256];
 
   if (proc->conn == NULL)
     {
+      return ER_FAILED;
+    }
+
+  if (proc->changemode_gap == HB_MAX_CHANGEMODE_DIFF_TO_TERM)
+    {
+      sig = SIGTERM;
+    }
+  else if (proc->changemode_gap >= HB_MAX_CHANGEMODE_DIFF_TO_KILL)
+    {
+      sig = SIGKILL;
+    }
+
+  if (sig)
+    {
+      if (proc->pid && kill (proc->pid, 0) == 0)
+	{
+	  snprintf (buffer, sizeof (buffer),
+		    "process does not respond for a long time. kill pid %d signal %d.",
+		    proc->pid, sig);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HB_PROCESS_EVENT, 2, "Process failure detected", buffer);
+	  kill (proc->pid, sig);
+	}
       return ER_FAILED;
     }
 
@@ -2375,12 +2664,12 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
   state = ntohl (state);
 
   sfd = conn->fd;
-  MUTEX_LOCK (rv, hb_Resource->lock);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
   proc = hb_return_proc_by_fd (sfd);
   if (proc == NULL)
     {
       er_log_debug (ARG_FILE_LINE, "cannot find process. (fd:%d). \n", sfd);
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       return;
     }
 
@@ -2400,7 +2689,9 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
       break;
     }
 
-  MUTEX_UNLOCK (hb_Resource->lock);
+  proc->changemode_gap = 0;
+
+  pthread_mutex_unlock (&hb_Resource->lock);
 
   return;
 }
@@ -2470,7 +2761,7 @@ hb_thread_cluster_reader (void *arg)
   SOCKET sfd;
   fd_set rfds;
   struct timeval tv;
-  char buffer[HB_BUFFER_SZ];
+  char buffer[HB_BUFFER_SZ + MAX_ALIGNMENT], *aligned_buffer;
   int len;
 
   struct sockaddr_in from;
@@ -2481,6 +2772,7 @@ hb_thread_cluster_reader (void *arg)
 		__func__, THREAD_ID ());
 #endif
 
+  aligned_buffer = PTR_ALIGN (buffer, MAX_ALIGNMENT);
   sfd = hb_Cluster->sfd;
   while (hb_Cluster->shutdown == false)
     {
@@ -2489,7 +2781,7 @@ hb_thread_cluster_reader (void *arg)
 
       tv.tv_sec = 0;
       tv.tv_usec = 1000;
-      error = select (FD_SETSIZE, &rfds, NULL, NULL, &tv);
+      error = select (sfd + 1, &rfds, NULL, NULL, &tv);
       if (error <= 0)
 	{
 	  continue;
@@ -2499,11 +2791,12 @@ hb_thread_cluster_reader (void *arg)
 	{
 	  from_len = sizeof (from);
 	  len =
-	    recvfrom (sfd, (void *) &buffer[0], sizeof (buffer),
+	    recvfrom (sfd, (void *) aligned_buffer, HB_BUFFER_SZ,
 		      0, (struct sockaddr *) &from, &from_len);
 	  if (len > 0)
 	    {
-	      hb_cluster_receive_heartbeat (buffer, len, &from, from_len);
+	      hb_cluster_receive_heartbeat (aligned_buffer, len, &from,
+					    from_len);
 	    }
 	}
     }
@@ -2587,15 +2880,15 @@ hb_cluster_job_initialize (void)
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      MUTEX_INIT (cluster_Jobs->lock);
+      pthread_mutex_init (&cluster_Jobs->lock, NULL);
     }
 
-  MUTEX_LOCK (rv, cluster_Jobs->lock);
+  rv = pthread_mutex_lock (&cluster_Jobs->lock);
   cluster_Jobs->shutdown = false;
   cluster_Jobs->num_jobs = 0;
   cluster_Jobs->jobs = NULL;
   cluster_Jobs->job_funcs = &hb_cluster_jobs[0];
-  MUTEX_UNLOCK (cluster_Jobs->lock);
+  pthread_mutex_unlock (&cluster_Jobs->lock);
 
   error = hb_cluster_job_queue (HB_CJOB_INIT, NULL, HB_JOB_TIMER_IMMEDIATELY);
   if (error != NO_ERROR)
@@ -2614,13 +2907,12 @@ hb_cluster_job_initialize (void)
  *
  */
 static int
-hb_cluster_initialize (const char *nodes)
+hb_cluster_initialize (const char *nodes, const char *replicas)
 {
   int rv, error;
   HB_NODE_ENTRY *node;
   struct sockaddr_in udp_saddr;
   char host_name[MAXHOSTNAMELEN];
-  char host_list[(MAXHOSTNAMELEN + 1) * HB_MAX_NUM_NODES];
 
   if (nodes == NULL)
     {
@@ -2640,7 +2932,7 @@ hb_cluster_initialize (const char *nodes)
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      MUTEX_INIT (hb_Cluster->lock);
+      pthread_mutex_init (&hb_Cluster->lock, NULL);
     }
 
   if (GETHOSTNAME (host_name, sizeof (host_name)))
@@ -2650,27 +2942,32 @@ hb_cluster_initialize (const char *nodes)
       return ER_BO_UNABLE_TO_FIND_HOSTNAME;
     }
 
-  MUTEX_LOCK (rv, hb_Cluster->lock);
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
   hb_Cluster->shutdown = false;
   hb_Cluster->sfd = INVALID_SOCKET;
   strncpy (hb_Cluster->host_name, host_name,
 	   sizeof (hb_Cluster->host_name) - 1);
   hb_Cluster->host_name[sizeof (hb_Cluster->host_name) - 1] = '\0';
-  hb_Cluster->state = HB_NSTATE_SLAVE;
+  if (PRM_HA_MODE == HA_MODE_REPLICA)
+    {
+      hb_Cluster->state = HB_NSTATE_REPLICA;
+    }
+  else
+    {
+      hb_Cluster->state = HB_NSTATE_SLAVE;
+    }
   hb_Cluster->master = NULL;
   hb_Cluster->myself = NULL;
   hb_Cluster->nodes = NULL;
 
-  strncpy (host_list, nodes, sizeof (host_list) - 1);
-  host_list[sizeof (host_list) - 1] = '\0';
-
-  hb_Cluster->num_nodes = hb_cluster_load_group_and_node_list (host_list);
+  hb_Cluster->num_nodes =
+    hb_cluster_load_group_and_node_list ((char *) nodes, (char *) replicas);
   if (hb_Cluster->num_nodes < 1)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "hb_Cluster->num_nodes is smaller than '1'. (num_nodes=%d). \n",
 		    hb_Cluster->num_nodes);
-      MUTEX_UNLOCK (hb_Cluster->lock);
+      pthread_mutex_unlock (&hb_Cluster->lock);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
 	      PRM_NAME_HA_NODE_LIST);
@@ -2687,7 +2984,7 @@ hb_cluster_initialize (const char *nodes)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_TCP_DATAGRAM_SOCKET, 0);
-      MUTEX_UNLOCK (hb_Cluster->lock);
+      pthread_mutex_unlock (&hb_Cluster->lock);
       return ERR_CSS_TCP_DATAGRAM_SOCKET;
     }
 
@@ -2702,10 +2999,10 @@ hb_cluster_initialize (const char *nodes)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ERR_CSS_TCP_DATAGRAM_BIND, 0);
-      MUTEX_UNLOCK (hb_Cluster->lock);
+      pthread_mutex_unlock (&hb_Cluster->lock);
       return ERR_CSS_TCP_DATAGRAM_BIND;
     }
-  MUTEX_UNLOCK (hb_Cluster->lock);
+  pthread_mutex_unlock (&hb_Cluster->lock);
 
   return NO_ERROR;
 }
@@ -2732,15 +3029,15 @@ hb_resource_initialize (void)
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      MUTEX_INIT (hb_Resource->lock);
+      pthread_mutex_init (&hb_Resource->lock, NULL);
     }
 
-  MUTEX_LOCK (rv, hb_Resource->lock);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
   hb_Resource->shutdown = false;
   hb_Resource->state = HB_NSTATE_SLAVE;
   hb_Resource->num_procs = 0;
   hb_Resource->procs = NULL;
-  MUTEX_UNLOCK (hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Resource->lock);
 
   return NO_ERROR;
 }
@@ -2765,15 +3062,15 @@ hb_resource_job_initialize ()
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      MUTEX_INIT (resource_Jobs->lock);
+      pthread_mutex_init (&resource_Jobs->lock, NULL);
     }
 
-  MUTEX_LOCK (rv, resource_Jobs->lock);
+  rv = pthread_mutex_lock (&resource_Jobs->lock);
   resource_Jobs->shutdown = false;
   resource_Jobs->num_jobs = 0;
   resource_Jobs->jobs = NULL;
   resource_Jobs->job_funcs = &hb_resource_jobs[0];
-  MUTEX_UNLOCK (resource_Jobs->lock);
+  pthread_mutex_unlock (&resource_Jobs->lock);
 
   error = hb_resource_job_queue (HB_RJOB_CHANGE_MODE, NULL,
 				 PRM_HA_INIT_TIMER_IN_MSECS +
@@ -2797,20 +3094,13 @@ hb_thread_initialize (void)
 {
   int rv;
 
-#if !defined(WINDOWS)
-  THREAD_ATTR_T thread_attr;
+  pthread_attr_t thread_attr;
   size_t ts_size;
-#endif /* not WINDOWS */
-  THREAD_T cluster_worker_th;
-  THREAD_T cluster_reader_th;
-  THREAD_T resource_worker_th;
+  pthread_t cluster_worker_th;
+  pthread_t cluster_reader_th;
+  pthread_t resource_worker_th;
 
-#if defined(WINDOWS)
-  UINTPTR thread_handle;
-#endif /* WINDOWS */
-
-#if !defined(WINDOWS)
-  rv = THREAD_ATTR_INIT (thread_attr);
+  rv = pthread_attr_init (&thread_attr);
   if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2818,7 +3108,7 @@ hb_thread_initialize (void)
       return ER_CSS_PTHREAD_ATTR_INIT;
     }
 
-  rv = THREAD_ATTR_SETDETACHSTATE (thread_attr, PTHREAD_CREATE_DETACHED);
+  rv = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
   if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2830,11 +3120,11 @@ hb_thread_initialize (void)
   /* AIX's pthread is slightly different from other systems.
      Its performance highly depends on the pthread's scope and it's related
      kernel parameters. */
-  rv = THREAD_ATTR_SETSCOPE (thread_attr,
-			     PRM_PTHREAD_SCOPE_PROCESS ?
-			     PTHREAD_SCOPE_PROCESS : PTHREAD_SCOPE_SYSTEM);
+  rv = pthread_attr_setscope (&thread_attr,
+			      PRM_PTHREAD_SCOPE_PROCESS ?
+			      PTHREAD_SCOPE_PROCESS : PTHREAD_SCOPE_SYSTEM);
 #else /* AIX */
-  rv = THREAD_ATTR_SETSCOPE (thread_attr, PTHREAD_SCOPE_SYSTEM);
+  rv = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
 #endif /* AIX */
   if (rv != 0)
     {
@@ -2846,10 +3136,10 @@ hb_thread_initialize (void)
   /* Sun Solaris allocates 1M for a thread stack, and it is quite enough */
 #if !defined(sun) && !defined(SOLARIS)
 #if defined(_POSIX_THREAD_ATTR_STACKSIZE)
-  rv = THREAD_ATTR_GETSTACKSIZE (thread_attr, ts_size);
+  rv = pthread_attr_getstacksize (&thread_attr, &ts_size);
   if (ts_size < (size_t) PRM_THREAD_STACKSIZE)
     {
-      rv = THREAD_ATTR_SETSTACKSIZE (thread_attr, PRM_THREAD_STACKSIZE);
+      rv = pthread_attr_setstacksize (&thread_attr, PRM_THREAD_STACKSIZE);
       if (rv != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2857,15 +3147,14 @@ hb_thread_initialize (void)
 	  return ER_CSS_PTHREAD_ATTR_SETSTACKSIZE;
 	}
 
-      THREAD_ATTR_GETSTACKSIZE (thread_attr, ts_size);
+      pthread_attr_getstacksize (&thread_attr, &ts_size);
     }
 #endif /* _POSIX_THREAD_ATTR_STACKSIZE */
 #endif /* not sun && not SOLARIS */
-#endif /* not WINDOWS */
 
 
-  rv = THREAD_CREATE (thread_handle, &thread_attr,
-		      hb_thread_cluster_reader, NULL, &cluster_worker_th);
+  rv = pthread_create (&cluster_worker_th, &thread_attr,
+		       hb_thread_cluster_reader, NULL);
   if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2873,8 +3162,8 @@ hb_thread_initialize (void)
       return ER_CSS_PTHREAD_CREATE;
     }
 
-  rv = THREAD_CREATE (thread_handle, &thread_attr,
-		      hb_thread_cluster_worker, NULL, &cluster_worker_th);
+  rv = pthread_create (&cluster_worker_th, &thread_attr,
+		       hb_thread_cluster_worker, NULL);
   if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2882,8 +3171,8 @@ hb_thread_initialize (void)
       return ER_CSS_PTHREAD_CREATE;
     }
 
-  rv = THREAD_CREATE (thread_handle, &thread_attr,
-		      hb_thread_resource_worker, NULL, &resource_worker_th);
+  rv = pthread_create (&resource_worker_th, &thread_attr,
+		       hb_thread_resource_worker, NULL);
   if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -2891,16 +3180,14 @@ hb_thread_initialize (void)
       return ER_CSS_PTHREAD_CREATE;
     }
 
-#if !defined(WINDOWS)
   /* destroy thread_attribute */
-  rv = THREAD_ATTR_DESTROY (thread_attr);
+  rv = pthread_attr_destroy (&thread_attr);
   if (rv != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 			   ER_CSS_PTHREAD_ATTR_DESTROY, 0);
       return ER_CSS_PTHREAD_ATTR_DESTROY;
     }
-#endif /* not WINDOWS */
 
   return NO_ERROR;
 }
@@ -2925,7 +3212,7 @@ hb_master_init (void)
 #endif
 
   sysprm_reload_and_init (NULL, NULL);
-  error = hb_cluster_initialize (PRM_HA_NODE_LIST);
+  error = hb_cluster_initialize (PRM_HA_NODE_LIST, PRM_HA_REPLICA_LIST);
   if (error != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "hb_cluster_initialize failed. "
@@ -3007,7 +3294,7 @@ hb_resource_cleanup (void)
   int rv, i, num_active_process;
   HB_PROC_ENTRY *proc;
 
-  MUTEX_LOCK (rv, hb_Resource->lock);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
 
   /* set process state to deregister and close connection  */
   for (proc = hb_Resource->procs; proc; proc = proc->next)
@@ -3086,7 +3373,7 @@ hb_resource_cleanup (void)
   hb_Resource->num_procs = 0;
   hb_Resource->state = HB_NSTATE_UNKNOWN;
   hb_Resource->shutdown = true;
-  MUTEX_UNLOCK (hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Resource->lock);
 
   return;
 }
@@ -3115,7 +3402,7 @@ hb_cluster_cleanup (void)
   int rv;
   HB_NODE_ENTRY *node;
 
-  MUTEX_LOCK (rv, hb_Cluster->lock);
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
   hb_Cluster->state = HB_NSTATE_UNKNOWN;
 
   for (node = hb_Cluster->nodes; node; node = node->next)
@@ -3138,7 +3425,7 @@ hb_cluster_cleanup (void)
       hb_Cluster->sfd = INVALID_SOCKET;
     }
 
-  MUTEX_UNLOCK (hb_Cluster->lock);
+  pthread_mutex_unlock (&hb_Cluster->lock);
 }
 
 /*
@@ -3169,8 +3456,12 @@ hb_node_state_string (int nstate)
       return HB_NSTATE_UNKNOWN_STR;
     case HB_NSTATE_SLAVE:
       return HB_NSTATE_SLAVE_STR;
+    case HB_NSTATE_TO_BE_MASTER:
+      return HB_NSTATE_TO_BE_MASTER_STR;
     case HB_NSTATE_MASTER:
       return HB_NSTATE_MASTER_STR;
+    case HB_NSTATE_REPLICA:
+      return HB_NSTATE_REPLICA_STR;
     }
 
   return "invalid";
@@ -3236,7 +3527,7 @@ hb_reload_config (void)
       return ER_FAILED;
     }
 
-  MUTEX_LOCK (rv, hb_Cluster->lock);
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
 
   old_node_pp = &old_nodes;
   first_node_pp = &hb_Cluster->nodes;
@@ -3247,7 +3538,8 @@ hb_reload_config (void)
 
   hb_Cluster->nodes = NULL;
   hb_Cluster->num_nodes =
-    hb_cluster_load_group_and_node_list ((char *) PRM_HA_NODE_LIST);
+    hb_cluster_load_group_and_node_list ((char *) PRM_HA_NODE_LIST,
+					 (char *) PRM_HA_REPLICA_LIST);
 
   if (hb_Cluster->num_nodes < 1 ||
       (hb_Cluster->master
@@ -3268,7 +3560,7 @@ hb_reload_config (void)
       first_node_pp = &hb_Cluster->nodes;
       hb_list_move ((HB_LIST **) first_node_pp, (HB_LIST **) old_node_pp);
 
-      MUTEX_UNLOCK (hb_Cluster->lock);
+      pthread_mutex_unlock (&hb_Cluster->lock);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1,
 	      PRM_NAME_HA_NODE_LIST);
@@ -3302,7 +3594,7 @@ hb_reload_config (void)
       hb_cluster_remove_all_nodes (old_nodes);
     }
 
-  MUTEX_UNLOCK (hb_Cluster->lock);
+  pthread_mutex_unlock (&hb_Cluster->lock);
   return NO_ERROR;
 }
 
@@ -3348,7 +3640,7 @@ hb_get_node_info_string (char **str, bool verbose_yn)
       required_size += 6;	/* length of heartbeat-gap */
     }
 
-  MUTEX_LOCK (rv, hb_Cluster->lock);
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
 
   required_size *= hb_Cluster->num_nodes;
   buf_size += required_size;
@@ -3356,7 +3648,7 @@ hb_get_node_info_string (char **str, bool verbose_yn)
   *str = (char *) malloc (sizeof (char) * buf_size);
   if (*str == NULL)
     {
-      MUTEX_UNLOCK (hb_Cluster->lock);
+      pthread_mutex_unlock (&hb_Cluster->lock);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      sizeof (char) * buf_size);
       return;
@@ -3387,7 +3679,7 @@ hb_get_node_info_string (char **str, bool verbose_yn)
 		      node->heartbeat_gap);
 	}
     }
-  MUTEX_UNLOCK (hb_Cluster->lock);
+  pthread_mutex_unlock (&hb_Cluster->lock);
 
   return;
 }
@@ -3445,7 +3737,7 @@ hb_get_process_info_string (char **str, bool verbose_yn)
       required_size += 64;	/* length of start time */
     }
 
-  MUTEX_LOCK (rv, hb_Resource->lock);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
 
   required_size *= hb_Resource->num_procs;
   buf_size += required_size;
@@ -3453,7 +3745,7 @@ hb_get_process_info_string (char **str, bool verbose_yn)
   *str = (char *) malloc (sizeof (char) * buf_size);
   if (*str == NULL)
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      sizeof (char) * buf_size);
       return;
@@ -3525,11 +3817,59 @@ hb_get_process_info_string (char **str, bool verbose_yn)
 	}
     }
 
-  MUTEX_UNLOCK (hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Resource->lock);
 
   return;
 }
 
+/*
+ * hb_kill_all_heartbeat_process -
+ *   return: none
+ *
+ *   str(out):
+ */
+void
+hb_kill_all_heartbeat_process (char **str)
+{
+  int rv, count, i;
+  pid_t *pids;
+  HB_PROC_ENTRY *proc;
+
+  if (hb_Resource == NULL)
+    {
+      return;
+    }
+
+  count = 0;
+  pids = NULL;
+
+  rv = pthread_mutex_lock (&hb_Resource->lock);
+  for (proc = hb_Resource->procs; proc; proc = proc->next)
+    {
+      if (proc->type == HB_PTYPE_APPLYLOGDB ||
+	  proc->type == HB_PTYPE_COPYLOGDB)
+	{
+	  pids = (pid_t *) realloc (pids, sizeof (pid_t) * count + 1);
+	  if (pids == NULL)
+	    {
+	      pthread_mutex_unlock (&hb_Resource->lock);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HB_JOB_ARG));
+	      return;
+	    }
+	  pids[count] = proc->pid;
+	  count++;
+	}
+    }
+  pthread_mutex_unlock (&hb_Resource->lock);
+
+  for (i = 0; i < count; i++)
+    {
+      hb_dereg_process (pids[i], str);
+    }
+
+  free (pids);
+}
 
 /*
  * hb_dereg_process -
@@ -3553,11 +3893,11 @@ hb_dereg_process (pid_t pid, char **str)
       return;
     }
 
-  MUTEX_LOCK (rv, hb_Resource->lock);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
   proc = hb_return_proc_by_pid (pid);
   if (proc == NULL)
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
 
       snprintf (error_string, LINE_MAX,
 		"%s. (cannot find process to deregister, pid:%d)",
@@ -3572,7 +3912,7 @@ hb_dereg_process (pid_t pid, char **str)
   if ((proc->state < HB_PSTATE_NOT_REGISTERED)
       || (proc->state >= HB_PSTATE_MAX) || (proc->pid < 0))
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
 
       snprintf (error_string, LINE_MAX,
 		"%s. (unexpected process status or invalid pid, status:%d, pid:%d)",
@@ -3589,7 +3929,7 @@ hb_dereg_process (pid_t pid, char **str)
   job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
   if (job_arg == NULL)
     {
-      MUTEX_UNLOCK (hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Resource->lock);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      sizeof (HB_JOB_ARG));
       return;
@@ -3604,7 +3944,7 @@ hb_dereg_process (pid_t pid, char **str)
 
   proc->state = HB_PSTATE_DEREGISTERED;
 
-  MUTEX_UNLOCK (hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Resource->lock);
 
   error = hb_resource_job_queue (HB_RJOB_PROC_DEREG, job_arg,
 				 HB_JOB_TIMER_IMMEDIATELY);
@@ -3877,7 +4217,7 @@ hb_print_jobs (HB_JOB * jobs)
   p += snprintf (p, MAX ((last - p), 0), "------------------------------"
 		 "--------------------------------------------------\n");
 
-  MUTEX_LOCK (rv, jobs->lock);
+  rv = pthread_mutex_lock (&jobs->lock);
   for (job = jobs->jobs; job; job = job->next)
     {
 
@@ -3888,7 +4228,7 @@ hb_print_jobs (HB_JOB * jobs)
 		     (unsigned int) job->expire.tv_usec);
     }
 
-  MUTEX_UNLOCK (jobs->lock);
+  pthread_mutex_unlock (&jobs->lock);
 
   p += snprintf (p, MAX ((last - p), 0), "=============================="
 		 "==================================================\n");

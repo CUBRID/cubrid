@@ -142,6 +142,8 @@ extern int do_create_local (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
 			    PT_NODE * pt_node,
 			    DB_QUERY_TYPE * create_select_columns);
 extern int do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node);
+extern int do_check_rows_for_null (MOP class_mop, const char *att_name,
+				   bool * has_nulls);
 
 
 #endif /* _EXECUTE_SCHEMA_H_ */

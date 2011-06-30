@@ -66,15 +66,15 @@ typedef enum
   MSGCAT_UTIL_SET_KILLTRAN = 26,
   MSGCAT_UTIL_SET_ALTERDBHOST = 33,
   MSGCAT_UTIL_SET_LOADJAVA = 34,
-  MSGCAT_UTIL_SET_REPLSERVER = 35,
-  MSGCAT_UTIL_SET_REPLAGENT = 36,
   MSGCAT_UTIL_SET_PLANDUMP = 37,
   MSGCAT_UTIL_SET_PARAMDUMP = 38,
   MSGCAT_UTIL_SET_CHANGEMODE = 39,
   MSGCAT_UTIL_SET_COPYLOGDB = 40,
   MSGCAT_UTIL_SET_APPLYLOGDB = 41,
   MSGCAT_UTIL_SET_LOGFILEDUMP = 42,
-  MSGCAT_UTIL_SET_STATDUMP = 43
+  MSGCAT_UTIL_SET_STATDUMP = 43,
+  MSGCAT_UTIL_SET_APPLYINFO = 44,
+  MSGCAT_UTIL_SET_ACLDB = 45
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -99,7 +99,9 @@ typedef enum
   MSGCAT_UTIL_GENERIC_CUBRID_USAGE = 23,
   MSGCAT_UTIL_GENERIC_ARGS_OVER = 31,
   MSGCAT_UTIL_GENERIC_MISS_DBNAME = 32,
-  MSGCAT_UTIL_GENRIC_REPL_NOT_SUPPORTED = 33
+  MSGCAT_UTIL_GENERIC_DEPRECATED = 33,
+  MSGCAT_UTIL_GENERIC_INVALID_PARAMETER = 34,
+  MSGCAT_UTIL_GENERIC_NO_MEM = 35
 } MSGCAT_UTIL_GENERIC_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DELETEDB */
@@ -118,6 +120,8 @@ typedef enum
 /* Message id in the set MSGCAT_UTIL_SET_RENAMEDB */
 typedef enum
 {
+  RENAMEDB_VOLEXT_PATH_INVALID = 31,
+  RENAMEDB_VOLS_TOFROM_PATHS_FILE_INVALID = 32,
   RENAMEDB_MSG_USAGE = 60
 } MSGCAT_RENAMEDB_MSG;
 
@@ -164,7 +168,7 @@ typedef enum
   CREATEDB_MSG_CREATING = 45,
   CREATEDB_MSG_FAILURE = 46,
   CREATEDB_MSG_BAD_USERFILE = 47,
-  CREATEDB_MSG_FEW_PAGES = 48,
+  CREATEDB_MSG_BAD_RANGE = 48,
   CREATEDB_MSG_USAGE = 60
 } MSGCAT_CREATEDB_MSG;
 
@@ -179,9 +183,7 @@ typedef enum
   MASTER_MSG_SERVER_STATUS = 17,
   MASTER_MSG_SERVER_NOTIFIED = 18,
   MASTER_MSG_SERVER_NOT_FOUND = 19,
-  MASTER_MSG_GOING_DOWN = 20,
-  MASTER_MSG_REPL_SERVER_NOTIFIED = 21,
-  MASTER_MSG_REPL_AGENT_NOTIFIED = 22
+  MASTER_MSG_GOING_DOWN = 20
 } MSGCAT_MASTER_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_RESTOREDB */
@@ -204,6 +206,7 @@ typedef enum
 typedef enum
 {
   CHECKDB_MSG_INCONSISTENT = 20,
+  CHECKDB_MSG_NO_SUCH_CLASS = 21,
   CHECKDB_MSG_USAGE = 60
 } MSGCAT_CHECKDB_MSG;
 
@@ -216,6 +219,11 @@ typedef enum
   SPACEDB_OUTPUT_SUMMARY_TMP_VOL = 18,
   SPACEDB_OUTPUT_TITLE_PAGE = 19,
   SPACEDB_OUTPUT_TITLE_SIZE = 20,
+  SPACEDB_OUTPUT_SUMMARY_LOB = 21,
+  SPACEDB_OUTPUT_SUMMARIZED_TITLE = 30,
+  SPACEDB_OUTPUT_SUMMARIZED_TITLE_PAGE = 31,
+  SPACEDB_OUTPUT_SUMMARIZED_TITLE_SIZE = 32,
+  SPACEDB_OUTPUT_SUMMARIZED_FORMAT = 33,
   SPACEDB_MSG_USAGE = 60
 } MSGCAT_SPACEDB_MSG;
 
@@ -308,63 +316,6 @@ typedef enum
   LOADJAVA_ARG_FORCE_OVERWRITE = 5,
   LOADJAVA_ARG_FORCE_OVERWRITE_HELP = 6
 } MSGCAT_LOADJAVA_MSG;
-
-/* Message id in the set MSGCAT_UTIL_SET_REPLSERVER */
-typedef enum
-{
-  REPL_SERVER_SOCK_ERROR = 11,
-  REPL_SERVER_MEMORY_ERROR = 12,
-  REPL_SERVER_IO_ERROR = 13,
-  REPL_SERVER_INTERNAL_ERROR = 14,
-  REPL_SERVER_CANT_OPEN_ACTIVE = 21,
-  REPL_SERVER_CANT_OPEN_DBINFO = 22,
-  REPL_SERVER_CANT_FIND_DBINFO = 23,
-  REPL_SERVER_CANT_OPEN_CATALOG = 24,
-  REPL_SERVER_INVALID_ARGUMENT = 25,
-  REPL_SERVER_CANT_CONNECT_TO_MASTER = 26,
-  REPL_SERVER_CANT_BIND_SOCKET = 27,
-  REPL_SERVER_EXCEED_MAXIMUM_CONNECTION = 28,
-  REPL_SERVER_CLIENT_CONNECTION_FAIL = 29,
-  REPL_SERVER_REQ_QUEUE_IS_FULL = 30,
-  REPL_SERVER_CANT_OPEN_ARCHIVE = 31,
-  REPL_SERVER_CANT_READ_ARCHIVE = 32
-} MSGCAT_REPL_SERVER_MSG;
-
-/* Message id in the set MSGCAT_UTIL_SET_REPLAGENT */
-typedef enum
-{
-  REPL_AGENT_SOCK_ERROR = 11,
-  REPL_AGENT_MEMORY_ERROR = 12,
-  REPL_AGENT_IO_ERROR = 13,
-  REPL_AGENT_INTERNAL_ERROR = 14,
-  REPL_AGENT_UNZIP_ERROR = 15,
-  REPL_AGENT_QUERY_ERROR = 16,
-  REPL_AGENT_REPL_SERVER_CONNECT = 21,
-  REPL_AGENT_COPY_LOG_OPEN_ERROR = 22,
-  REPL_AGENT_CANT_CREATE_ARCHIVE = 23,
-  REPL_AGENT_CANT_OPEN_CATALOG = 24,
-  REPL_AGENT_CANT_READ_TRAIL_LOG = 25,
-  REPL_AGENT_CANT_CONNECT_TO_MASTER = 26,
-  REPL_AGENT_CANT_LOGIN_TO_SLAVE = 27,
-  REPL_AGENT_CANT_CONNECT_TO_SLAVE = 28,
-  REPL_AGENT_SLAVE_STOP = 29,
-  REPL_AGENT_REPLICATION_BROKEN = 30,
-  REPL_AGENT_GET_ID_FAIL = 31,
-  REPL_AGENT_GET_LOG_HDR_FAIL = 32,
-  REPL_AGENT_GET_LOG_PAGE_FAIL = 33,
-  REPL_AGENT_GET_PARARMETER_FAIL = 34,
-  REPL_AGENT_CANT_LOGIN_TO_DIST = 35,
-  REPL_AGENT_CANT_CONNECT_TO_DIST = 36,
-  REPL_AGENT_TOO_MANY_SLAVES = 37,
-  REPL_AGENT_SLAVE_HAS_NO_MASTER = 38,
-  REPL_AGENT_TOO_MANY_MASTERS = 39,
-  REPL_AGENT_INVALID_TRAIL_INFO = 40,
-  REPL_AGENT_NEED_MORE_WS = 41,
-  REPL_AGENT_CANT_READ_STATUS_LOG = 42,
-  REPL_AGENT_RESTART_MESSAGE = 51,
-  REPL_AGENT_RECORD_TYPE_ERROR = 52,
-  REPL_AGENT_INFO_MSG = 53
-} MSGCAT_REPL_AGENT_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_COMPACTDB */
 typedef enum
@@ -555,6 +506,23 @@ typedef enum
   STATDUMP_MSG_USAGE = 60
 } MSGCAT_STATDUMP_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_APPLYINFO */
+typedef enum
+{
+  APPLYINFO_MSG_DBA_PASSWORD = 21,
+  APPLYINFO_MSG_NOT_HA_MODE = 22,
+  APPLYINFO_MSG_HA_NOT_SUPPORT = 58,
+  APPLYINFO_MSG_NOT_IN_STANDALONE = 59,
+  APPLYINFO_MSG_USAGE = 60
+} MSGCAT_APPLYINFO_MSG;
+
+/* Message id in the set MSGCAT_UTIL_SET_ACLDB */
+typedef enum
+{
+  ACLDB_MSG_NOT_IN_STANDALONE = 59,
+  ACLDB_MSG_USAGE = 60
+} MSGCAT_ACLDB_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -586,6 +554,8 @@ typedef enum
   CHANGEMODE,
   COPYLOGDB,
   APPLYLOGDB,
+  APPLYINFO,
+  ACLDB,
   LOGFILEDUMP
 } UTIL_INDEX;
 
@@ -631,6 +601,27 @@ typedef struct
   UTIL_ARG_MAP *arg_map;
 } UTIL_MAP;
 
+typedef struct _node_config
+{
+  char *node_name;
+  char *copy_log_base;
+  char *copy_sync_mode;
+  int apply_max_mem;
+} HA_NODE_CONF;
+
+typedef struct _ha_config
+{
+  int ha_port_id;
+  int ha_apply_max_mem;
+  char **node_names;
+  char **node_syncs;
+  char **db_names;
+  char *ha_node_list;
+  char *ha_db_list;
+  char *ha_copy_log_base;
+  HA_NODE_CONF *node_conf;
+} HA_CONF;
+
 #define OPTION_STRING_TABLE                     10000
 
 #if defined(WINDOWS)
@@ -650,14 +641,14 @@ typedef struct
 #define UTIL_MONITOR_NAME       "broker_monitor" UTIL_EXE_EXT
 #define UTIL_CUB_AUTO_NAME      "cub_auto" UTIL_EXE_EXT
 #define UTIL_CUB_JS_NAME        "cub_js" UTIL_EXE_EXT
-#define UTIL_REPL_SERVER_NAME   "repl_server" UTIL_EXE_EXT
-#define UTIL_REPL_AGENT_NAME    "repl_agent" UTIL_EXE_EXT
 #define UTIL_ADMIN_NAME         "cub_admin" UTIL_EXE_EXT
 #define UTIL_SQLX_NAME          "sqlx" UTIL_EXE_EXT
 #define UTIL_CSQL_NAME          "csql" UTIL_EXE_EXT
 #define UTIL_CUBRID_REL_NAME    "cubrid_rel" UTIL_EXE_EXT
 #define UTIL_OLD_COMMDB_NAME    "commdb" UTIL_EXE_EXT
 #define UTIL_CUBRID             "cubrid" UTIL_EXE_EXT
+#define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
+#define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
@@ -670,11 +661,12 @@ typedef struct
 #define PRINT_SERVER_NAME       "cubrid server"
 #define PRINT_BROKER_NAME       "cubrid broker"
 #define PRINT_MANAGER_NAME      "cubrid manager server"
-#define PRINT_REPL_NAME         "cubrid replication"
-#define PRINT_REPL_SERVER_NAME  "cubrid replication server"
-#define PRINT_REPL_AGENT_NAME   "cubrid replication agent"
 #define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
+#define PRINT_HA_PROCS_NAME     "HA processes"
 
+#define PRINT_CMD_SERVICE       "service"
+#define PRINT_CMD_BROKER        "broker"
+#define PRINT_CMD_MANAGER       "manager"
 #define PRINT_CMD_SERVER        "server"
 #define PRINT_CMD_START         "start"
 #define PRINT_CMD_STOP          "stop"
@@ -684,33 +676,34 @@ typedef struct
 #define PRINT_CMD_DEREG         "deregister"
 #define PRINT_CMD_LIST          "list"
 #define PRINT_CMD_RELOAD        "reload"
+#define PRINT_CMD_ACL           "acl"
 
 #define PRINT_RESULT_SUCCESS    "success"
 #define PRINT_RESULT_FAIL       "fail"
 
 #define CHECK_SERVER            "Server"
 #define CHECK_HA_SERVER         "HA-Server"
-#define CHECK_REPL_SERVER       "repl_server"
-#define CHECK_REPL_AGENT        "repl_agent"
 
 #define COMMDB_SERVER_STOP      "-S"
 #define COMMDB_SERVER_STATUS    "-P"
-#define COMMDB_REPL_STATUS      "-R"
 #define COMMDB_ALL_STATUS       "-O"
 #define COMMDB_ALL_STOP         "-A"
 #define COMMDB_HA_DEREG         "-D"
+#define COMMDB_HA_ALL_STOP      "-d"
+#define COMMDB_IS_REG           "-C"
 #define COMMDB_HA_NODE_LIST     "-N"
 #define COMMDB_HA_PROC_LIST     "-L"
 #define COMMDB_HA_RELOAD        "-F"
 #define COMMDB_HA_DEACTIVATE    "-U"
 #define COMMDB_HA_ACTIVATE      "-T"
 
+#define ACLDB_RELOAD            "-r"
+
 #define MASK_ALL                0xFF
 #define MASK_SERVICE            0x01
 #define MASK_SERVER             0x02
 #define MASK_BROKER             0x04
 #define MASK_MANAGER            0x08
-#define MASK_REPL               0x10
 #define MASK_ADMIN              0x20
 #define MASK_HEARTBEAT          0x40
 
@@ -743,6 +736,8 @@ typedef struct
 #define UTIL_OPTION_COPYLOGDB                   "copylogdb"
 #define UTIL_OPTION_APPLYLOGDB                  "applylogdb"
 #define UTIL_OPTION_LOGFILEDUMP                 "logfiledump"
+#define UTIL_OPTION_APPLYINFO                   "applyinfo"
+#define UTIL_OPTION_ACLDB			"acldb"
 
 /* createdb option list */
 #define CREATE_PAGES_S                          'p'
@@ -753,6 +748,8 @@ typedef struct
 #define CREATE_FILE_PATH_L                      "file-path"
 #define CREATE_LOG_PATH_S                       'L'
 #define CREATE_LOG_PATH_L                       "log-path"
+#define CREATE_LOB_PATH_S                       'B'
+#define CREATE_LOB_PATH_L                       "lob-base-path"
 #define CREATE_SERVER_NAME_S                    10105
 #define CREATE_SERVER_NAME_L                    "server-name"
 #define CREATE_REPLACE_S                        'r'
@@ -775,6 +772,12 @@ typedef struct
 #define CREATE_PAGE_SIZE_L                      "page-size"
 #define CREATE_LOG_PAGE_SIZE_S                  10113
 #define CREATE_LOG_PAGE_SIZE_L                  "log-page-size"
+#define CREATE_DB_PAGE_SIZE_S                   10114
+#define CREATE_DB_PAGE_SIZE_L                   "db-page-size"
+#define CREATE_DB_VOLUME_SIZE_S                 10115
+#define CREATE_DB_VOLUME_SIZE_L                 "db-volume-size"
+#define CREATE_LOG_VOLUME_SIZE_S                10116
+#define CREATE_LOG_VOLUME_SIZE_L                "log-volume-size"
 
 /* renamedb option list */
 #define RENAME_EXTENTED_VOLUME_PATH_S           'E'
@@ -799,6 +802,10 @@ typedef struct
 #define COPY_REPLACE_L                          "replace"
 #define COPY_DELETE_SOURCE_S                    'd'
 #define COPY_DELETE_SOURCE_L                    "delete-source"
+#define COPY_LOB_PATH_S				'B'
+#define COPY_LOB_PATH_L				"lob-path"
+#define COPY_COPY_LOB_PATH_S			10308
+#define COPY_COPY_LOB_PATH_L			"copy-lob-path"
 
 /* deletedb option list */
 #define DELETE_OUTPUT_FILE_S                    'o'
@@ -827,8 +834,6 @@ typedef struct
 #define BACKUP_COMPRESS_L                       "compress"
 #define BACKUP_EXCEPT_ACTIVE_LOG_S              'e'
 #define BACKUP_EXCEPT_ACTIVE_LOG_L              "except-active-log"
-#define BACKUP_SAFE_PAGE_ID_S                    10510
-#define BACKUP_SAFE_PAGE_ID_L                    "safe-page-id"
 
 /* restoredb option list */
 #define RESTORE_UP_TO_DATE_S                    'd'
@@ -843,8 +848,6 @@ typedef struct
 #define RESTORE_PARTIAL_RECOVERY_L              "partial-recovery"
 #define RESTORE_OUTPUT_FILE_S                   'o'
 #define RESTORE_OUTPUT_FILE_L                   "output-file"
-#define RESTORE_REPLICATION_MODE_S              'r'
-#define RESTORE_REPLICATION_MODE_L              "replication-mode"
 #define RESTORE_USE_DATABASE_LOCATION_PATH_S    'u'
 #define RESTORE_USE_DATABASE_LOCATION_PATH_L    "use-database-location-path"
 
@@ -861,6 +864,8 @@ typedef struct
 #define ADDVOL_SA_MODE_L                        "SA-mode"
 #define ADDVOL_CS_MODE_S                        'C'
 #define ADDVOL_CS_MODE_L                        "CS-mode"
+#define ADDVOL_VOLUME_SIZE_S                    10706
+#define ADDVOL_VOLUME_SIZE_L                    "db-volume-size"
 
 /* spacedb option list */
 #define SPACE_OUTPUT_FILE_S                     'o'
@@ -871,6 +876,8 @@ typedef struct
 #define SPACE_CS_MODE_L                         "CS-mode"
 #define SPACE_SIZE_UNIT_S                       10803
 #define SPACE_SIZE_UNIT_L                       "size-unit"
+#define SPACE_SUMMARIZE_S                       's'
+#define SPACE_SUMMARIZE_L                       "summarize"
 
 /* lockdb option list */
 #define LOCK_OUTPUT_FILE_S                      'o'
@@ -909,6 +916,8 @@ typedef struct
 #define CHECK_CS_MODE_L                         "CS-mode"
 #define CHECK_REPAIR_S                          'r'
 #define CHECK_REPAIR_L                          "repair"
+#define CHECK_INPUT_FILE_S                      'i'
+#define CHECK_INPUT_FILE_L                      "input-file"
 
 /* plandump option list */
 #define PLANDUMP_DROP_S			        'd'
@@ -999,6 +1008,8 @@ typedef struct
 #define UNLOAD_SA_MODE_L                        "SA-mode"
 #define UNLOAD_CS_MODE_S                        'C'
 #define UNLOAD_CS_MODE_L                        "CS-mode"
+#define UNLOAD_DATAFILE_PER_CLASS_S             11915
+#define UNLOAD_DATAFILE_PER_CLASS_L             "datafile-per-class"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'
@@ -1047,19 +1058,15 @@ typedef struct
 #define CSQL_NO_PAGER_L                         "no-pager"
 #define CSQL_SYSADM_S                           12012
 #define CSQL_SYSADM_L                           "sysadm"
+#define CSQL_NO_SINGLE_LINE_S                   12013
+#define CSQL_NO_SINGLE_LINE_L                   "no-single-line"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"
-#define COMMDB_REPL_LIST_S                      'R'
-#define COMMDB_REPL_LIST_L                      "repl-list"
 #define COMMDB_ALL_LIST_S                       'O'
 #define COMMDB_ALL_LIST_L                       "all-list"
 #define COMMDB_SHUTDOWN_SERVER_S                'S'
 #define COMMDB_SHUTDOWN_SERVER_L                "shutdown-server"
-#define COMMDB_SHUTDOWN_REPL_SERVER_S           'K'
-#define COMMDB_SHUTDOWN_REPL_SERVER_L           "shutdown-repl-server"
-#define COMMDB_SHUTDOWN_REPL_AGENT_S            'k'
-#define COMMDB_SHUTDOWN_REPL_AGENT_L            "shutdown-repl-agent"
 #define COMMDB_SHUTDOWN_ALL_S                   'A'
 #define COMMDB_SHUTDOWN_ALL_L                   "shutdown-all"
 #define COMMDB_HOST_S                           'h'
@@ -1072,6 +1079,10 @@ typedef struct
 #define COMMDB_HA_PROCESS_LIST_L                "process-list"
 #define COMMDB_DEREG_HA_PROCESS_S               'D'
 #define COMMDB_DEREG_HA_PROCESS_L               "dereg-process"
+#define COMMDB_KILL_ALL_HA_PROCESS_S            'd'
+#define COMMDB_KILL_ALL_HA_PROCESS_L            "kill-all-ha-process"
+#define COMMDB_IS_REGISTERED_PROC_S             'C'
+#define COMMDB_IS_REGISTERED_PROC_L             "is-registered-proc"
 #define COMMDB_RECONFIG_HEARTBEAT_S             'F'
 #define COMMDB_RECONFIG_HEARTBEAT_L             "reconfig-node-list"
 #define COMMDB_DEACTIVATE_HEARTBEAT_S           'U'
@@ -1098,12 +1109,16 @@ typedef struct
 #define STATDUMP_INTERVAL_L                     "interval"
 #define STATDUMP_CUMULATIVE_S                   'c'
 #define STATDUMP_CUMULATIVE_L                   "cumulative"
+#define STATDUMP_SUBSTR_S			's'
+#define STATDUMP_SUBSTR_L			"substr"
+
+/* acl option list */
+#define ACLDB_RELOAD_S                          'r'
+#define ACLDB_RELOAD_L				"reload"
 
 /* changemode option list */
 #define CHANGEMODE_MODE_S                       'm'
 #define CHANGEMODE_MODE_L                       "mode"
-#define CHANGEMODE_WAIT_S                       'w'
-#define CHANGEMODE_WAIT_L                       "wait"
 #define CHANGEMODE_FORCE_S                      'f'
 #define CHANGEMODE_FORCE_L                      "force"
 
@@ -1116,10 +1131,20 @@ typedef struct
 /* applylogdb option list */
 #define APPLYLOG_LOG_PATH_S                     'L'
 #define APPLYLOG_LOG_PATH_L                     "log-path"
-#define APPLYLOG_TEST_LOG_S                     't'
-#define APPLYLOG_TEST_LOG_L                     "test-log"
 #define APPLYLOG_MAX_MEM_SIZE_S			12401
 #define APPLYLOG_MAX_MEM_SIZE_L			"max-mem-size"
+
+/* applyinfo option list */
+#define APPLYINFO_COPIED_LOG_PATH_S             'L'
+#define APPLYINFO_COPIED_LOG_PATH_L             "copied-log-path"
+#define APPLYINFO_PAGE_S                        'p'
+#define APPLYINFO_PAGE_L                        "page"
+#define APPLYINFO_REMOTE_NAME_S                 'r'
+#define APPLYINFO_REMOTE_NAME_L                 "remote-host-name"
+#define APPLYINFO_APPLIED_INFO_S		'a'
+#define APPLYINFO_APPLIED_INFO_L                "applied-info"
+#define APPLYINFO_VERBOSE_S                     'v'
+#define APPLYINFO_VERBOSE_L                     "verbose"
 
 #define VERSION_S                               20000
 #define VERSION_L                               "version"
@@ -1153,11 +1178,25 @@ extern int utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map);
 
 extern FILE *fopen_ex (const char *filename, const char *type);
 
+extern bool util_is_localhost (char *host);
+
+extern void util_free_ha_conf (HA_CONF * ha_conf);
+extern int util_make_ha_conf (HA_CONF * ha_conf);
+#if !defined(WINDOWS)
+extern void util_redirect_stdout_to_null (void);
+#endif /* !defined(WINDOWS) */
+extern int util_byte_to_size_string (UINT64 size_num, char *buf, size_t len);
+extern int util_size_string_to_byte (char *size_str, UINT64 * size_num);
+extern void util_print_deprecated (const char *option);
+
 typedef struct
 {
   int keyval;
   const char *keystr;
 } UTIL_KEYWORD;
+
+extern int changemode_keyword (int *keyval_p, char **keystr_p);
+extern int copylogdb_keyword (int *keyval_p, char **keystr_p);
 
 extern int utility_keyword_value (UTIL_KEYWORD * keywords,
 				  int *keyval_p, char **keystr_p);
@@ -1211,6 +1250,8 @@ extern int statdump (UTIL_FUNCTION_ARG * arg_map);
 extern int changemode (UTIL_FUNCTION_ARG * arg_map);
 extern int copylogdb (UTIL_FUNCTION_ARG * arg_map);
 extern int applylogdb (UTIL_FUNCTION_ARG * arg_map);
+extern int applyinfo (UTIL_FUNCTION_ARG * arg_map);
+extern int acldb (UTIL_FUNCTION_ARG * arg_map);
 
 extern void util_admin_usage (const char *argv0);
 extern void util_admin_version (const char *argv0);

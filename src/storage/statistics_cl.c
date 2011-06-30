@@ -101,13 +101,22 @@ stats_client_unpack_statistics (char *buf_p)
 
   class_stats_p->num_objects = OR_GET_INT (buf_p);
   buf_p += OR_INT_SIZE;
+  if (class_stats_p->num_objects < 0)
+    {
+      assert (false);
+      class_stats_p->num_objects = 0;
+    }
 
   class_stats_p->heap_size = OR_GET_INT (buf_p);
   buf_p += OR_INT_SIZE;
+  if (class_stats_p->heap_size < 0)
+    {
+      assert (false);
+      class_stats_p->heap_size = 0;
+    }
 
   class_stats_p->n_attrs = OR_GET_INT (buf_p);
   buf_p += OR_INT_SIZE;
-
   if (class_stats_p->n_attrs == 0)
     {
       db_ws_free (class_stats_p);
@@ -125,7 +134,6 @@ stats_client_unpack_statistics (char *buf_p)
   for (i = 0, attr_stats_p = class_stats_p->attr_stats;
        i < class_stats_p->n_attrs; i++, attr_stats_p++)
     {
-
       attr_stats_p->id = OR_GET_INT (buf_p);
       buf_p += OR_INT_SIZE;
 
@@ -142,9 +150,9 @@ stats_client_unpack_statistics (char *buf_p)
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  attr_stats_p->min_value.bigint = OR_GET_BIGINT (buf_p);
+	  OR_GET_BIGINT (buf_p, &(attr_stats_p->min_value.bigint));
 	  buf_p += STATS_MIN_MAX_SIZE;
-	  attr_stats_p->max_value.bigint = OR_GET_BIGINT (buf_p);
+	  OR_GET_BIGINT (buf_p, &(attr_stats_p->max_value.bigint));
 	  buf_p += STATS_MIN_MAX_SIZE;
 	  break;
 
@@ -454,6 +462,14 @@ stats_dump (const char *class_name_p, FILE * file_p)
 
 	case DB_TYPE_ELO:
 	  fprintf (file_p, "DB_TYPE_ELO\n");
+	  break;
+
+	case DB_TYPE_BLOB:
+	  fprintf (file_p, "DB_TYPE_BLOB\n");
+	  break;
+
+	case DB_TYPE_CLOB:
+	  fprintf (file_p, "DB_TYPE_CLOB\n");
 	  break;
 
 	case DB_TYPE_VARIABLE:

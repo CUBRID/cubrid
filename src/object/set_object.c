@@ -54,7 +54,7 @@
 #include "object_accessor.h"
 #include "virtual_object.h"
 #else /* !SERVER_MODE */
-#include "thread_impl.h"
+#include "thread.h"
 #include "connection_error.h"
 #endif
 
@@ -68,15 +68,11 @@
  */
 
 #if !defined(SERVER_MODE)
-#undef MUTEX_INIT
-#undef MUTEX_DESTROY
-#undef MUTEX_LOCK
-#undef MUTEX_UNLOCK
-
-#define MUTEX_INIT(a)
-#define MUTEX_DESTROY(a)
-#define MUTEX_LOCK(a, b)
-#define MUTEX_UNLOCK(a)
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(b) 0
+#define pthread_mutex_unlock(a)
+static int rv;
 #endif
 
 #if !defined(SERVER_MODE)
@@ -154,15 +150,11 @@ static void free_set_reference (DB_COLLECTION * ref);
 static void merge_set_references (COL * set, DB_COLLECTION * ref);
 #endif
 
-static int init_boundbits (char *bufptr, int n_atts);
 static int set_op (DB_COLLECTION * collection1, DB_COLLECTION * collection2,
 		   DB_COLLECTION ** result, DB_DOMAIN * domain, SETOBJ_OP op);
 
 static SET_ITERATOR *make_iterator (void);
 static void free_iterator (SET_ITERATOR * it);
-
-static int set_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals,
-				      int total);
 
 static int assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest,
 			     bool implicit_coercion);
@@ -2582,31 +2574,6 @@ set_create_with_domain (TP_DOMAIN * domain, int initial_size)
 }
 
 /*
- * init_boundbits() -
- *      return: int
- *  bufptr(in) :
- *  n_atts(in) :
- *
- */
-
-static int
-init_boundbits (char *bufptr, int n_atts)
-{
-  unsigned int *bits;
-  int i, nwords;
-
-  nwords = OR_BOUND_BIT_WORDS (n_atts);
-  bits = (unsigned int *) bufptr;
-
-  for (i = 0; i < nwords; i++)
-    {
-      bits[i] = 0;
-    }
-
-  return (nwords * 4);
-}
-
-/*
  * set_copy() -
  *      return: DB_COLLECTION *
  *  set(in) :
@@ -2775,26 +2742,6 @@ set_get_element_nocopy (DB_COLLECTION * set, int index, DB_VALUE * value)
 }
 
 /*
- * set_midxkey_get_element_nocopy() -
- *      return: error code
- *  midxkey(in) :
- *  index(in) :
- *  value(in) :
- *  prev_indexp(in) :
- *  prev_ptrp(in) :
- */
-
-int
-set_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index,
-				DB_VALUE * value,
-				int *prev_indexp, char **prev_ptrp)
-{
-  return setobj_midxkey_get_element (midxkey, index, value,
-				     false /* not copy */ ,
-				     prev_indexp, prev_ptrp);
-}
-
-/*
  * set_add_element() -
  *      return: error code
  *  set(in) :
@@ -2838,169 +2785,6 @@ set_add_element (DB_COLLECTION * set, DB_VALUE * value)
 	}
     }
   return (error);
-}
-
-/*
- * set_midxkey_get_vals_size() -
- *      return: int
- *  domains(in) :
- *  dbvals(in) :
- *  total(in) :
- *
- */
-
-static int
-set_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals, int total)
-{
-  TP_DOMAIN *dom;
-  int i;
-
-  for (dom = domains, i = 0; dom; dom = dom->next, i++)
-    {
-      if (DB_IS_NULL (&dbvals[i]))
-	{
-	  continue;
-	}
-
-      if (TP_IS_DOUBLE_ALIGN_TYPE (dom->type->id))
-	{
-	  total = DB_ALIGN (total, MAX_ALIGNMENT);
-	}
-      else
-	{
-	  total = DB_ALIGN (total, INT_ALIGNMENT);
-	}
-
-      total += pr_writeval_disk_size (&dbvals[i]);
-    }
-
-  return total;
-}
-
-/*
- * set_midxkey_add_elements() -
- *      return:
- *  keyval(in) :
- *  dbvals(in) :
- *  num_dbvals(in) :
- *  dbvals_domain_list(in) :
- *  domain(in) :
- */
-
-int
-set_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
-			  int num_dbvals, TP_DOMAIN * dbvals_domain_list,
-			  TP_DOMAIN * domain)
-{
-  int i;
-  TP_DOMAIN *dom;
-  DB_MIDXKEY *midxkey;
-  int total_size = 0;
-  int bitmap_size = 0;
-  char *new_IDXbuf;
-  char *new_valptr;		/* current value ptr in new midxkey->buf */
-  OR_BUF buf;
-
-  /* phase 1: find old */
-  midxkey = DB_GET_MIDXKEY (keyval);
-  if (midxkey == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  if (midxkey->ncolumns > 0 && midxkey->size > 0)
-    {
-      /* bitmap is always fully sized */
-      bitmap_size = OR_BOUND_BIT_BYTES (midxkey->ncolumns);
-      total_size = midxkey->size;
-    }
-  else
-    {
-      bitmap_size = OR_BOUND_BIT_BYTES (num_dbvals);
-      /* phase 2: calculate how many bytes need */
-      if (TP_IS_DOUBLE_ALIGN_TYPE (domain->setdomain->type->id))
-	{
-	  total_size = DB_ALIGN (bitmap_size, MAX_ALIGNMENT);
-	}
-      else
-	{
-	  total_size = DB_ALIGN (bitmap_size, INT_ALIGNMENT);
-	}
-    }
-
-  /* phase 2: calculate how many bytes need */
-  total_size =
-    set_midxkey_get_vals_size (dbvals_domain_list, dbvals, total_size);
-
-  /* phase 3: initialize new_IDXbuf */
-  new_IDXbuf = db_private_alloc (NULL, total_size);
-  if (new_IDXbuf == NULL)
-    {
-      goto error;
-    }
-
-  /* phase 4: copy new_IDXbuf from old */
-  if (midxkey->ncolumns > 0 && midxkey->size > 0)
-    {
-      memcpy (new_IDXbuf, midxkey->buf, midxkey->size);
-      new_valptr = new_IDXbuf + midxkey->size;
-    }
-  else
-    {
-      /* bound bits */
-      (void) init_boundbits (new_IDXbuf, bitmap_size);
-      new_valptr = new_IDXbuf + bitmap_size;
-    }
-
-  OR_BUF_INIT (buf, new_valptr, -1);
-  for (i = 0, dom = dbvals_domain_list; i < num_dbvals; i++, dom = dom->next)
-    {
-      /* check for added val is NULL */
-      if (DB_IS_NULL (&dbvals[i]))
-	{
-	  continue;		/* skip and go ahead */
-	}
-
-      if (TP_IS_DOUBLE_ALIGN_TYPE (dom->type->id))
-	{
-	  or_get_align64 (&buf);
-	}
-      else
-	{
-	  or_get_align32 (&buf);
-	}
-
-      (*((dom->type)->writeval)) (&buf, &dbvals[i]);
-
-      OR_ENABLE_BOUND_BIT (new_IDXbuf, midxkey->ncolumns + i);
-    }				/* for (i = 0, ...) */
-
-  assert (total_size == CAST_BUFLEN (buf.ptr - new_IDXbuf));
-
-  /* phase 5: make new mulitIDX */
-  if (midxkey->size > 0)
-    {
-      db_private_free_and_init (NULL, midxkey->buf);
-      midxkey->buf = NULL;
-    }
-
-  midxkey->buf = new_IDXbuf;
-  midxkey->size = CAST_BUFLEN (buf.ptr - new_IDXbuf);
-  midxkey->ncolumns += num_dbvals;
-
-  /* phase 6: set domain */
-  midxkey->domain = domain;
-
-  return NO_ERROR;
-
-error:
-
-  if (midxkey->buf)
-    {
-      db_private_free_and_init (NULL, midxkey->buf);
-      midxkey->buf = NULL;
-    }
-  return ER_FAILED;
 }
 
 /* call this when you know the elements are ok */
@@ -6759,144 +6543,40 @@ setobj_gc (SETOBJ * set, void (*gcmarker) (MOP))
 #endif
 
 /*
- * setobj_midxkey_get_element()
- *      return:
- *  midxkey(in) :
- *  index(in) :
- *  value(in) :
- *  copy(in) :
- *  prev_indexp(in) :
- *  prev_ptrp(in) :
+ * setobj_build_domain_from_col() - builds a set domain (a chained list of 
+ *				    domains) from a collection object
+ *  return: new domain constructed from the domains in the collection or NULL
+ *	    if the domain couldn't be build
+ *  col(in): input collection
+ *  set_domain(in/out): set domain to be build, requires an already created
+ *			domain
  */
-
 int
-setobj_midxkey_get_element (const DB_MIDXKEY * midxkey, int index,
-			    DB_VALUE * value, bool copy,
-			    int *prev_indexp, char **prev_ptrp)
+setobj_build_domain_from_col (COL * col, TP_DOMAIN ** set_domain)
 {
-  int num_atts = 0, i;
-  int advance_size;
-  int error = NO_ERROR;
-  int status = NO_ERROR;
+  int i;
+  int error_status = NO_ERROR;
 
-  TP_DOMAIN *domain;
-
-  OR_BUF buf_space;
-  OR_BUF *buf;
-  char *bitptr;
-
-  /* get bit-mask */
-  bitptr = midxkey->buf;
-  /* get domain list, attr number */
-  domain = midxkey->domain->setdomain;	/* first element's domain */
-  num_atts = midxkey->ncolumns;
-
-  if (index >= num_atts)
+  if (col->domain != NULL && set_domain != NULL)
     {
-      goto exit_on_error;
+      for (i = 0; i < col->size; i++)
+	{
+	  DB_VALUE *curr_value = INDEX (col, i);
+	  /* force copy of component set domains: domains are chained by next
+	   * in the set domain, so cached/primary domain should not be
+	   * included in this chain; component domain is not cached - it
+	   * should be freed when collection domain is freed */
+	  TP_DOMAIN *curr_domain =
+	    tp_domain_copy (tp_domain_resolve_value (curr_value, NULL),
+			    false);
+
+	  error_status = tp_domain_add (set_domain, curr_domain);
+	  if (error_status != NO_ERROR)
+	    {
+	      return error_status;
+	    }
+	}
     }
 
-  if (OR_MULTI_ATT_IS_UNBOUND (bitptr, index))
-    {
-      DB_MAKE_NULL (value);
-    }
-  else
-    {
-      buf = NULL;		/* init */
-      i = 0;			/* init */
-
-      /* 1st phase: check for prev info */
-      if (prev_indexp && prev_ptrp)
-	{
-	  int j, offset;
-
-	  j = *prev_indexp;
-	  offset = CAST_BUFLEN (*prev_ptrp - midxkey->buf);
-	  if (j <= 0 || j > index || offset <= 0)
-	    {			/* invalid info */
-	      /* nop */
-	    }
-	  else
-	    {
-	      buf = &buf_space;
-	      or_init (buf, *prev_ptrp, midxkey->size - offset);
-
-	      /* consume prev domain */
-	      for (; i < j; i++)
-		{
-		  domain = domain->next;
-		}
-	    }
-	}
-
-      /* 2nd phase: need to set buf info */
-      if (buf == NULL)
-	{
-	  buf = &buf_space;
-	  or_init (buf, midxkey->buf, midxkey->size);
-
-	  advance_size = OR_MULTI_BOUND_BIT_BYTES (num_atts);
-	  if (or_advance (buf, advance_size) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-
-      for (; i < index; i++, domain = domain->next)
-	{
-	  /* check for element is NULL */
-	  if (OR_MULTI_ATT_IS_UNBOUND (bitptr, i))
-	    {
-	      continue;		/* skip and go ahead */
-	    }
-
-	  if (TP_IS_DOUBLE_ALIGN_TYPE (domain->type->id))
-	    {
-	      or_get_align64 (buf);
-	    }
-	  else
-	    {
-	      or_get_align32 (buf);
-	    }
-
-	  advance_size = pr_writemem_disk_size (buf->ptr, domain);
-	  or_advance (buf, advance_size);
-	}
-
-      if (TP_IS_DOUBLE_ALIGN_TYPE (domain->type->id))
-	{
-	  or_get_align64 (buf);
-	}
-      else
-	{
-	  or_get_align32 (buf);
-	}
-
-      status = (*(domain->type->readval)) (buf, value, domain, -1, copy,
-					   NULL, 0);
-      if (status != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-
-      /* save the next index info */
-      if (prev_indexp && prev_ptrp)
-	{
-	  *prev_indexp = index + 1;
-	  *prev_ptrp = buf->ptr;
-	}
-    }				/* else */
-
-exit_on_end:
-
-  return error;
-
-exit_on_error:
-
-  if (error == NO_ERROR)
-    {
-      error = -1;		/* set error */
-    }
-
-  goto exit_on_end;
+  return error_status;
 }

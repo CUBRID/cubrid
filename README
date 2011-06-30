@@ -1,44 +1,57 @@
 CUBRID Database Management System
-=====================================
-
-1. Overview
-
+==========================
 CUBRID is a DBMS being supported by an active community of open source developers 
 and provides better performance and features necessary for Web services. 
 
-For more information, visit the web site: 
-http://dev.naver.com/projects/cubrid/
-
-2. Projects
-
-CUBRID and the related tools are developed with open source projects listed below:
-
-CUBRID(Database engine and APIs): http://dev.naver.com/projects/cubrid/
-CUBRID-Manager(GUI tool): http://dev.naver.com/projects/cubrid-manager/
-NBench(DBMS Benchmarking tool): http://dev.naver.com/projects/cubrid-nbench/
-
-For more information, visit the web site:
-http://dev.naver.com/wiki/cubrid/index.php/projects
-
-3. License
 CUBRID is distributed under two licenses, 
 Database engine is under GPL v2 or later and the APIs are under BSD license.
+Copyright and license information can be found in the file COPYING.
+For more information about CUBRID, visit http://www.cubrid.org/about
 
-Copyright and license information can be found in the
-file COPYING.
+Below You will see the brief list of sections to guide You to easily get started. 
 
-For more information, visit the web site:
-http://dev.naver.com/wiki/cubrid/index.php/license
+MAJOR REFERENCES
+================
+- CUBRID Community Site in English: http://www.cubrid.org
+- CUBRID Community Site in Korean: http://www.cubrid.com
+- CUBRID Development Site(Global): http://sourceforge.net/projects/cubrid
+- CUBRID Development Site(Korea) : http://dev.naver.com/projects/cubrid
 
-4. Build
+HOW TO BUILD/INSTALL CUBRID
+=====================
+- CUBRID Source Build Guide
+    http://www.cubrid.org/download_source_and_build
+- CUBRID Installation Guide for Windows Users
+	http://wiki.cubrid.org/index.php/Install_CUBRID_on_Windows
+- CUBRID Installation Guide for Linux Users
+	http://wiki.cubrid.org/index.php/Install_CUBRID_on_Linux
 
-The latest version of CUBRID can be found at: 
-http://dev.naver.com/projects/cubrid/download
+GETTING STARTED
+===============
+- Absolute Beginners' Guide to CUBRID
+	http://wiki.cubrid.org/index.php/Absolute_Beginners'_Guide_to_CUBRID
+- Tutorial for CUBRID Manager(GUI Management Tool)
+	http://wiki.cubrid.org/index.php/CUBRID_Manager
+- Tutorial for CSQL Interpreter(Command Line SQL tool)
+	http://wiki.cubrid.org/index.php/CSQL_Interpreter
 
-More detailed build manual can be found at: 
-http://dev.naver.com/wiki/cubrid/index.php/download_build
+CUBRID ARCHITECTURE & ADMINISTRATION
+=============
+- Architecture of CUBRID
+	http://blog.cubrid.org/cubrid-story/architecture-of-cubrid/
+- Database Administrators' Guide
+	http://wiki.cubrid.org/index.php/Database_Administrators'_Guide
 
-5. Source modules
+PROGRAMMING APIs and APPLICATIONs
+================
+- CUBRID APIs and Applications 
+	http://www.cubrid.org/apps_and_tools
 
-CUBRID source modules and its structure can be found at: 
-http://dev.naver.com/wiki/cubrid/index.php/src_struct
+GETTING HELP
+============
+If You encounter any difficulties with getting started, or just have some
+questions, or find bugs, or have some suggestions, we kindly ask You to 
+post your thoughts on CUBRID Forum at http://forum.cubrid.org.
+
+Sincerely,
+Your CUBRID Development Team.
