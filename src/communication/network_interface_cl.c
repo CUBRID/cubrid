@@ -7689,7 +7689,11 @@ serial_get_next_value (DB_VALUE * value, DB_VALUE * oid,
 
   ENTER_SERVER ();
 
-  error = xserial_get_next_value (NULL, value, oid, is_auto_increment);
+  /*
+   * If a client wants to generate AUTO_INCREMENT value during client-side
+   * insertion, a server should update LAST_INSERT_ID on a session.
+   */
+  error = xserial_get_next_value (NULL, value, oid, is_auto_increment, true);
 
   EXIT_SERVER ();
 

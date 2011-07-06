@@ -81,6 +81,13 @@ bool obt_Check_uniques = true;
 bool obt_Enable_autoincrement = true;
 
 /*
+ * State variable used when generating AUTO_INCREMENT value,
+ * to set the first generated AUTO_INCREMENT value as LAST_INSERT_ID.
+ * It is only for client-side insertion.
+ */
+bool obt_Last_insert_id_generated = false;
+
+/*
  *                            OBJECT MANAGER AREAS
  */
 
@@ -1165,10 +1172,21 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 
 		      DB_MAKE_NULL (&val);
 		      /* Do not update LAST_INSERT_ID during executing a trigger. */
-		      error = serial_get_next_value (&val, &oid_str_val,
-		                                     do_Trigger_involved ?
-		                                     GENERATE_SERIAL :
-						     GENERATE_AUTO_INCREMENT);
+		      if (do_Trigger_involved == true
+			  || obt_Last_insert_id_generated == true)
+			{
+			  error = serial_get_next_value (&val, &oid_str_val,
+							 GENERATE_SERIAL);
+			}
+		      else
+			{
+			  error = serial_get_next_value (&val, &oid_str_val,
+							 GENERATE_AUTO_INCREMENT);
+			  if (error == NO_ERROR)
+			    {
+			      obt_Last_insert_id_generated = true;
+			    }
+			}
 		      if (error != NO_ERROR)
 			{
 			  goto auto_increment_error;
@@ -2968,4 +2986,16 @@ obt_populate_known_arguments (OBJ_TEMPLATE * template_ptr)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * obt_begin_insert_values -
+ *
+ *    return: none
+ *
+ */
+void
+obt_begin_insert_values (void)
+{
+  obt_Last_insert_id_generated = false;
 }

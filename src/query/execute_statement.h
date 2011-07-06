@@ -123,7 +123,7 @@ extern int do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 			       PT_NODE * statement, PT_NODE * values_list,
 			       const char **savepoint_name,
-			       int *row_count_ptr);
+			       int *row_count_ptr, bool is_first_value);
 
 extern int do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern void do_print_classname_on_method (DB_OBJECT * self,

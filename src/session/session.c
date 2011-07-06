@@ -77,6 +77,7 @@ struct prepared_statement
 typedef struct session_state
 {
   SESSION_ID session_id;
+  bool is_last_insert_id_generated;
   DB_VALUE last_insert_id;
   int row_count;
   SESSION_VARIABLE *session_variables;
@@ -297,6 +298,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * session_id)
 
   session_p->session_id = DB_EMPTY_SESSION;
   DB_MAKE_NULL (&session_p->last_insert_id);
+  session_p->is_last_insert_id_generated = false;
   session_p->row_count = -1;
   session_p->session_variables = NULL;
   session_p->statements = NULL;
@@ -942,13 +944,15 @@ session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value)
  *   return  : NO_ERROR or error code
  *   thread_p (in) : thread that identifies the session
  *   value (in)	   : the value of the last inserted id
+ *   force (in)    : update the value unconditionally
  *
  * Note: Even though we allow other data types for serial columns, the session
  * keeps the value of the last insert id as a DB_TYPE_NUMERIC. This function
  * performs a coercion here if needed.
  */
 int
-session_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value)
+session_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
+			    bool force)
 {
   SESSION_ID id;
   SESSION_STATE *state_p = NULL;
@@ -987,6 +991,11 @@ session_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value)
       csect_exit (CSECT_SESSION_STATE);
       return ER_FAILED;
     }
+  if (force == false && state_p->is_last_insert_id_generated == true)
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      return NO_ERROR;
+    }
   if (!need_coercion)
     {
       pr_clone_value ((DB_VALUE *) value, &state_p->last_insert_id);
@@ -1005,6 +1014,48 @@ session_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value)
 	}
     }
 
+  state_p->is_last_insert_id_generated = true;
+  csect_exit (CSECT_SESSION_STATE);
+
+  return NO_ERROR;
+}
+
+/*
+ * session_begin_insert_values  () - set is_last_insert_id_generated to false
+ *                                  in the session associated with a thread
+ *   return  : NO_ERROR or error code
+ *   thread_p (in) : thread that identifies the session
+ */
+int
+session_begin_insert_values (THREAD_ENTRY * thread_p)
+{
+  SESSION_ID id;
+  SESSION_STATE *state_p = NULL;
+
+  if (session_get_session_id (thread_p, &id) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (csect_enter (thread_p, CSECT_SESSION_STATE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (!is_sessions_states_table_initialized ())
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      return ER_FAILED;
+    }
+
+  state_p = mht_get (sessions.sessions_table, &id);
+  if (state_p == NULL)
+    {
+      csect_exit (CSECT_SESSION_STATE);
+      return ER_FAILED;
+    }
+
+  state_p->is_last_insert_id_generated = false;
   csect_exit (CSECT_SESSION_STATE);
 
   return NO_ERROR;

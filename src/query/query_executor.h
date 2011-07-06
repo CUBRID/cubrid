@@ -378,6 +378,7 @@ struct insert_proc_node
   int dup_key_oid_var_index;	/* hostvariable index for the OID required by
 				 * ON DUPLICATE KEY UPDATE processing
 				 */
+  int is_first_value;   /* Indicates whether the first value of VALUES clause. */
   struct xasl_partition_info *partition;	/* partition information */
 };
 

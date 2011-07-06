@@ -321,10 +321,12 @@ exit_on_error:
  *   result_num(out)     :
  *   oid_str_val(in)    :
  *   is_auto_increment(in)    :
+ *   force_set_last_insert_id(in):
  */
 int
 xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
-			const DB_VALUE * oid_str_val, int is_auto_increment)
+			const DB_VALUE * oid_str_val, int is_auto_increment,
+			bool force_set_last_insert_id)
 {
   int ret = NO_ERROR, granted;
   const char *oid_str = NULL;
@@ -420,7 +422,8 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
     {
       /* we update last insert id for this session here */
       /* Note that we ignore an error during updating last insert id. */
-      (void) xsession_set_last_insert_id (thread_p, result_num);
+      (void) xsession_set_last_insert_id (thread_p, result_num,
+					  force_set_last_insert_id);
     }
 
   return ret;

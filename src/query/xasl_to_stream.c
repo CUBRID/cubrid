@@ -3255,6 +3255,8 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 
   ptr = or_pack_int (ptr, insert_info->dup_key_oid_var_index);
 
+  ptr = or_pack_int (ptr, insert_info->is_first_value);
+
   offset = xts_save_partition_info (insert_info->partition);
   if (offset == ER_FAILED)
     {

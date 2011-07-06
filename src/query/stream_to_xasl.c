@@ -3110,6 +3110,7 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr,
   ptr = or_unpack_int (ptr, &insert_info->release_lock);
   ptr = or_unpack_int (ptr, &insert_info->do_replace);
   ptr = or_unpack_int (ptr, &insert_info->dup_key_oid_var_index);
+  ptr = or_unpack_int (ptr, &insert_info->is_first_value);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

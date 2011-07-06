@@ -36,7 +36,8 @@ extern int xserial_get_current_value (THREAD_ENTRY * thread_p,
 extern int xserial_get_next_value (THREAD_ENTRY * thread_p,
 				   DB_VALUE * result_num,
 				   const DB_VALUE * oid_str_val,
-				   int is_auto_increment);
+				   int is_auto_increment,
+				   bool force_set_last_insert_id);
 extern void serial_finalize_cache_pool (void);
 extern int serial_initialize_cache_pool (THREAD_ENTRY * thread_p);
 extern void xserial_decache (OID * oidp);

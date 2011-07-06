@@ -9366,7 +9366,8 @@ static int do_insert_at_server (PARSER_CONTEXT * parser,
 				PT_NODE * non_null_attrs,
 				PT_NODE ** upd_non_null_attrs,
 				const int has_uniques,
-				const int upd_has_uniques);
+				const int upd_has_uniques,
+				bool is_first_value);
 static int insert_subquery_results (PARSER_CONTEXT * parser,
 				    PT_NODE * statement,
 				    PT_NODE * values_list,
@@ -9463,6 +9464,7 @@ insert_object_attr (const PARSER_CONTEXT * parser,
  *   values_list(in): The list of values to insert.
  *   non_null_attrs(in):
  *   has_uniques(in):
+ *   is_first_value(in): True if the first value of VALUE clause.
  *
  * Note: Build an xasl tree for a server insert and execute it.
  *
@@ -9481,7 +9483,8 @@ static int
 do_insert_at_server (PARSER_CONTEXT * parser,
 		     PT_NODE * statement, PT_NODE * values_list,
 		     PT_NODE * non_null_attrs, PT_NODE ** upd_non_null_attrs,
-		     const int has_uniques, const int upd_has_uniques)
+		     const int has_uniques, const int upd_has_uniques,
+		     bool is_first_value)
 {
   int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
@@ -9502,7 +9505,7 @@ do_insert_at_server (PARSER_CONTEXT * parser,
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
   xasl = pt_to_insert_xasl (parser, statement, values_list, has_uniques,
-			    non_null_attrs);
+			    non_null_attrs, is_first_value);
 
   if (xasl)
     {
@@ -10520,11 +10523,14 @@ is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed)
  *   statement(in): Parse tree of an insert statement
  *   values_list(in): The list of values to insert.
  *   savepoint_name(in):
+ *   is_first_value(in): True if the first value of VALUE clause. This will be
+ *                       used for server-side insertion.
  */
 int
 do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 		    PT_NODE * statement, PT_NODE * values_list,
-		    const char **savepoint_name, int *row_count_ptr)
+		    const char **savepoint_name, int *row_count_ptr,
+		    bool is_first_value)
 {
   const char *into_label;
   DB_VALUE *ins_val, *val, db_value, partcol;
@@ -10631,7 +10637,8 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
     {
       error = do_insert_at_server (parser, statement, values_list,
 				   non_null_attrs, &upd_non_null_attrs,
-				   has_uniques, upd_has_uniques);
+				   has_uniques, upd_has_uniques,
+				   is_first_value);
       if (error >= 0)
 	{
 	  row_count = error;
@@ -10735,7 +10742,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 		}
 	      error = do_insert_template (parser, &temp, vc,
 					  vc->info.insert.value_clauses,
-					  savepoint_name, NULL);
+					  savepoint_name, NULL, true);
 	      if (error >= NO_ERROR)
 		{
 		  if (!vc->info.insert.spec)
@@ -11701,13 +11708,16 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_DISABLE (save);
   parser->au_save = save;
 
+  obt_begin_insert_values ();
+
   for (row_count_total = 0; crt_list != NULL; crt_list = crt_list->next)
     {
       DB_OTMPL *otemplate = NULL;
       int row_count = 0;
 
       error = do_insert_template (parser, &otemplate, statement, crt_list,
-				  &savepoint_name, &row_count);
+				  &savepoint_name, &row_count,
+				  (row_count_total == 0 ? true : false));
 
       if (error < NO_ERROR)
 	{
@@ -11965,10 +11975,22 @@ insert_predefined_values_into_partition (const PARSER_CONTEXT * parser,
 		  db_make_string (&oid_str_val, oid_str);
 
 		  /* Do not update LAST_INSERT_ID during executing a trigger. */
-		  error = serial_get_next_value (&next_val, &oid_str_val,
-		                                 do_Trigger_involved ?
-		                                 GENERATE_SERIAL :
-						 GENERATE_AUTO_INCREMENT);
+                  if (do_Trigger_involved == true
+                        || obt_Last_insert_id_generated == true)
+                      {
+                        error = serial_get_next_value (&next_val, &oid_str_val,
+                                                       GENERATE_SERIAL);
+                      }
+                    else
+                      {
+                        error = serial_get_next_value (&next_val, &oid_str_val,
+                                                       GENERATE_AUTO_INCREMENT);
+                        if (error == NO_ERROR)
+                          {
+                            obt_Last_insert_id_generated = true;
+                          }
+                      }
+
 		  if (error == NO_ERROR)
 		    {
 		      db_value_domain_init (&auto_inc_val, dbattr->type->id,

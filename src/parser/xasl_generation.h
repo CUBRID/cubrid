@@ -134,7 +134,8 @@ extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser,
 				     bool used_to_update);
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node,
 				     PT_NODE * values_list, int has_uniques,
-				     PT_NODE * non_null_attrs);
+				     PT_NODE * non_null_attrs,
+				     bool is_first_value);
 extern XASL_NODE *pt_to_update_xasl (PARSER_CONTEXT * parser,
 				     PT_NODE * statement,
 				     PT_NODE * select_names,

@@ -6266,8 +6266,12 @@ sserial_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid,
   p = or_unpack_value (request, &oid);
   p = or_unpack_int (p, &is_auto_increment);
 
+  /*
+   * If a client wants to generate AUTO_INCREMENT value during client-side
+   * insertion, a server should update LAST_INSERT_ID on a session.
+   */
   errid = xserial_get_next_value (thread_p, &next_val, &oid,
-				  is_auto_increment);
+				  is_auto_increment, true);
   db_value_clear (&oid);
 
   if (errid != NO_ERROR)

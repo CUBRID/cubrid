@@ -98,16 +98,18 @@ xsession_get_row_count (THREAD_ENTRY * thread_p, int *row_count)
  *  return	  : error code
  *  thread_p (in) : worker thread
  *  value (in)	  : the value of last insert id
+ *  force (in)    : update the value unconditionally
  *
  */
 int
-xsession_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value)
+xsession_set_last_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value,
+			     bool force)
 {
   int err = NO_ERROR;
 
   assert (value != NULL);
 
-  err = session_set_last_insert_id (thread_p, value);
+  err = session_set_last_insert_id (thread_p, value, force);
 
   return err;
 }

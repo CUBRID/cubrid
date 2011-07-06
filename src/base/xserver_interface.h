@@ -433,7 +433,7 @@ extern int xsession_end_session (THREAD_ENTRY * thread,
 extern int xsession_set_row_count (THREAD_ENTRY * thread_p, int row_count);
 extern int xsession_get_row_count (THREAD_ENTRY * thread_p, int *row_count);
 extern int xsession_set_last_insert_id (THREAD_ENTRY * thread_p,
-					const DB_VALUE * value);
+					const DB_VALUE * value, bool force);
 extern int xsession_get_last_insert_id (THREAD_ENTRY * thread_p,
 					DB_VALUE * value);
 

@@ -8428,6 +8428,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       scan_cache_op_type = SINGLE_ROW_INSERT;
     }
+
+  if (insert->is_first_value)
+    {
+      (void) session_begin_insert_values (thread_p);
+    }
+
   if (specp)
     {
       /* we are inserting multiple values ...
@@ -14626,12 +14632,12 @@ exit_on_error:
     {
       if (lfscan_id.list_id.tfile_vfid == listfile1->tfile_vfid)
 	{
-          if (lfscan_id.curr_pgptr != NULL)
-            {
-              qmgr_free_old_page (thread_p, lfscan_id.curr_pgptr,
-                                  lfscan_id.list_id.tfile_vfid);
-              lfscan_id.curr_pgptr = NULL;
-            }
+	  if (lfscan_id.curr_pgptr != NULL)
+	    {
+	      qmgr_free_old_page (thread_p, lfscan_id.curr_pgptr,
+				  lfscan_id.list_id.tfile_vfid);
+	      lfscan_id.curr_pgptr = NULL;
+	    }
 
 	  lfscan_id.list_id.tfile_vfid = NULL;
 	}
@@ -14645,12 +14651,12 @@ exit_on_error:
     {
       if (lfscan_id.list_id.tfile_vfid == listfile2->tfile_vfid)
 	{
-          if (lfscan_id.curr_pgptr != NULL)
-            {
-              qmgr_free_old_page (thread_p, lfscan_id.curr_pgptr,
-                                  lfscan_id.list_id.tfile_vfid);
-              lfscan_id.curr_pgptr = NULL;
-            }
+	  if (lfscan_id.curr_pgptr != NULL)
+	    {
+	      qmgr_free_old_page (thread_p, lfscan_id.curr_pgptr,
+				  lfscan_id.list_id.tfile_vfid);
+	      lfscan_id.curr_pgptr = NULL;
+	    }
 
 	  lfscan_id.list_id.tfile_vfid = NULL;
 	}

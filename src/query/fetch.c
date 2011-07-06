@@ -2050,7 +2050,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 
     case T_NEXT_VALUE:
       if (xserial_get_next_value (thread_p, arithptr->value, peek_right,
-				  false) != NO_ERROR)
+				  false, false) != NO_ERROR)
 	{
 	  goto error;
 	}

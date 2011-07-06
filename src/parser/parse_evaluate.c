@@ -1095,7 +1095,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser,
 	     allow vclass objects in sets. */
 	  error = do_insert_template (parser, &temp, tree,
 				      tree->info.insert.value_clauses,
-				      &savepoint_name, NULL);
+				      &savepoint_name, NULL, true);
 	  if (error >= 0)
 	    {
 	      db_make_pointer (db_value, temp);
@@ -1655,7 +1655,7 @@ pt_evaluate_tree_having_serial_internal (PARSER_CONTEXT * parser,
 	     allow vclass objects in sets. */
 	  error = do_insert_template (parser, &temp, tree,
 				      tree->info.insert.value_clauses,
-				      &savepoint_name, NULL);
+				      &savepoint_name, NULL, true);
 	  if (error >= 0)
 	    {
 	      db_make_pointer (db_value, temp);

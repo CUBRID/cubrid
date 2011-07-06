@@ -18219,7 +18219,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 	      || (att->type == DB_TYPE_BIGINT))
 	    {
 	      if (xserial_get_next_value (thread_p, &dbvalue_numeric,
-					  &oid_str_val, true) != NO_ERROR)
+					  &oid_str_val, true,
+					  false) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -18234,7 +18235,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p,
 	  else if (att->type == DB_TYPE_NUMERIC)
 	    {
 	      if (xserial_get_next_value (thread_p, dbvalue, &oid_str_val,
-					  true) != NO_ERROR)
+					  true, false) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}

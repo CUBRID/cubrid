@@ -14620,11 +14620,12 @@ outofmem:
  *   values_list(in): the list of values ot insert
  *   has_uniques(in):
  *   non_null_attrs(in):
+ *   bool is_first_value(in):
  */
 XASL_NODE *
 pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 		   PT_NODE * values_list, int has_uniques,
-		   PT_NODE * non_null_attrs)
+		   PT_NODE * non_null_attrs, bool is_first_value)
 {
   XASL_NODE *xasl = NULL;
   INSERT_PROC_NODE *insert = NULL;
@@ -14712,6 +14713,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       insert->release_lock = (statement->info.insert.hint & PT_HINT_REL_LOCK);
       insert->do_replace = (statement->info.insert.do_replace ? 1 : 0);
       insert->dup_key_oid_var_index = -1;
+      insert->is_first_value = is_first_value;
 
       if (error >= 0 && (no_vals > 0))
 	{

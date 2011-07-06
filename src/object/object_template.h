@@ -171,6 +171,13 @@ extern bool obt_Check_uniques;
  */
 extern bool obt_Enable_autoincrement;
 
+/*
+ * State variable used when generating AUTO_INCREMENT value,
+ * to set the first generated AUTO_INCREMENT value as LAST_INSERT_ID.
+ * It is only for client-side insertion.
+ */
+extern bool obt_Last_insert_id_generated;
+
 
 /* OBJECT TEMPLATE FUNCTIONS */
 
@@ -209,5 +216,5 @@ extern int obt_populate_known_arguments (OBJ_TEMPLATE * template_ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void obt_retain_after_finish (OBJ_TEMPLATE * template_ptr);
 #endif
-
+extern void obt_begin_insert_values (void);
 #endif /* _OBJECT_TEMPLATE_H_ */
