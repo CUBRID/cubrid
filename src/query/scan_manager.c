@@ -1133,7 +1133,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 	    {
 	      goto err_exit;
 	    }
-
 	  val_dom->is_desc = idx_dom->is_desc;
 
 	  /* make a new setdomain */
@@ -1175,7 +1174,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
   if (need_new_setdomain == true)
     {
       assert (dom != NULL);
-      for (; idx_dom != NULL; idx_dom = idx_dom->next)
+      if (idx_dom != NULL)
 	{
 	  val_dom = tp_domain_copy (idx_dom, false);
 	  if (val_dom == NULL)
@@ -1183,9 +1182,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 	      goto err_exit;
 	    }
 
-	  val_dom->is_desc = idx_dom->is_desc;
 	  dom->next = val_dom;
-	  dom = val_dom;
 	}
     }
 
