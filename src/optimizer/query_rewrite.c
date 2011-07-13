@@ -5368,7 +5368,18 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   int nullable_cnt;		/* nullable terms count */
 
   if (node->node_type != PT_SELECT)
-    return node;
+    {
+      return node;
+    }
+
+  if (node->info.query.q.select.connect_by)
+    {
+      /* don't rewrite if the query is hierarchical because
+       * conditions in 'where' must be applied after HQ evaluation;
+       * HQ uses as input the result of joins
+       */
+      return node;
+    }
 
   /* traverse spec list */
   prev_spec = NULL;
@@ -5503,7 +5514,18 @@ qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   RESET_LOCATION_INFO info;	/* spec location reset info */
 
   if (node->node_type != PT_SELECT)
-    return node;
+    {
+      return node;
+    }
+
+  if (node->info.query.q.select.connect_by)
+    {
+      /* don't rewrite if the query is hierarchical because
+       * conditions in 'where' must be applied after HQ evaluation;
+       * HQ uses as input the result of joins
+       */
+      return node;
+    }
 
   if (node->info.query.q.select.hint & PT_HINT_ORDERED)
     {
