@@ -211,13 +211,11 @@ obt_find_attribute (OBJ_TEMPLATE * template_ptr, int use_base_class,
        */
       if (!template_ptr->write_lock)
 	{
-	  classobj =
-	    (use_base_class) ? template_ptr->base_classobj : template_ptr->
-	    classobj;
+	  classobj = ((use_base_class)
+		      ? template_ptr->base_classobj : template_ptr->classobj);
 
-	  error =
-	    au_fetch_class (classobj, &upgrade_class, AU_FETCH_UPDATE,
-			    AU_ALTER);
+	  error = au_fetch_class (classobj, &upgrade_class, AU_FETCH_UPDATE,
+				  AU_ALTER);
 	  template_ptr->write_lock = !error;
 
 	  /*
@@ -234,10 +232,12 @@ obt_find_attribute (OBJ_TEMPLATE * template_ptr, int use_base_class,
     }
 
   if (error == NO_ERROR && att == NULL)
-    ERROR1 (error, ER_OBJ_INVALID_ATTRIBUTE, name);
+    {
+      ERROR1 (error, ER_OBJ_INVALID_ATTRIBUTE, name);
+    }
 
   *attp = att;
-  return (error);
+  return error;
 }
 
 /*
@@ -298,6 +298,7 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
 	  (void) pr_free_ext_value (value);
 	}
     }
+
   if (status != DOMAIN_COMPATIBLE)
     {
       switch (status)
@@ -332,10 +333,12 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
 		  att->header.name);
 	  break;
 	}
+
       /* return NULL if incompatible */
       value = NULL;
     }
-  return (value);
+
+  return value;
 }
 
 /*
@@ -390,7 +393,7 @@ check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value)
 	}
     }
 
-  return (error);
+  return error;
 }
 
 /*
@@ -416,7 +419,6 @@ quick_validate (SM_VALIDATION * valid, DB_VALUE * value)
 
   switch (type)
     {
-
     case DB_TYPE_OBJECT:
       {
 	DB_OBJECT *obj, *class_;
@@ -428,7 +430,9 @@ quick_validate (SM_VALIDATION * valid, DB_VALUE * value)
 	    if (class_ != NULL)
 	      {
 		if (class_ == valid->last_class)
-		  is_valid = 1;
+		  {
+		    is_valid = 1;
+		  }
 		else
 		  {
 		    /* wasn't on the first level cache, check the list */
@@ -464,44 +468,36 @@ quick_validate (SM_VALIDATION * valid, DB_VALUE * value)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
-      {
-	if (type == valid->last_type
-	    && DB_GET_STRING_PRECISION (value) == valid->last_precision)
-	  {
-	    is_valid = 1;
-	  }
-      }
+      if (type == valid->last_type
+	  && DB_GET_STRING_PRECISION (value) == valid->last_precision)
+	{
+	  is_valid = 1;
+	}
       break;
 
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      {
-	if (type == valid->last_type
-	    && DB_GET_BIT_PRECISION (value) == valid->last_precision)
-	  {
-	    is_valid = 1;
-	  }
-      }
+      if (type == valid->last_type
+	  && DB_GET_BIT_PRECISION (value) == valid->last_precision)
+	{
+	  is_valid = 1;
+	}
       break;
 
     case DB_TYPE_NUMERIC:
-      {
-	if (type == valid->last_type
-	    && DB_GET_NUMERIC_PRECISION (value) == valid->last_precision
-	    && DB_GET_NUMERIC_SCALE (value) == valid->last_scale)
-	  {
-	    is_valid = 1;
-	  }
-      }
+      if (type == valid->last_type
+	  && DB_GET_NUMERIC_PRECISION (value) == valid->last_precision
+	  && DB_GET_NUMERIC_SCALE (value) == valid->last_scale)
+	{
+	  is_valid = 1;
+	}
       break;
 
     default:
-      {
-	if (type == valid->last_type)
-	  {
-	    is_valid = 1;
-	  }
-      }
+      if (type == valid->last_type)
+	{
+	  is_valid = 1;
+	}
       break;
     }
 
@@ -527,13 +523,13 @@ cache_validation (SM_VALIDATION * valid, DB_VALUE * value)
   DB_TYPE type;
 
   if (valid == NULL || value == NULL)
-    return;
+    {
+      return;
+    }
 
   type = DB_VALUE_TYPE (value);
-
   switch (type)
     {
-
     case DB_TYPE_OBJECT:
       {
 	DB_OBJECT *obj, *class_;
@@ -574,27 +570,21 @@ cache_validation (SM_VALIDATION * valid, DB_VALUE * value)
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      {
-	valid->last_type = type;
-	valid->last_precision = db_value_precision (value);
-	valid->last_scale = 0;
-      }
+      valid->last_type = type;
+      valid->last_precision = db_value_precision (value);
+      valid->last_scale = 0;
       break;
 
     case DB_TYPE_NUMERIC:
-      {
-	valid->last_type = type;
-	valid->last_precision = db_value_precision (value);
-	valid->last_scale = db_value_scale (value);
-      }
+      valid->last_type = type;
+      valid->last_precision = db_value_precision (value);
+      valid->last_scale = db_value_scale (value);
       break;
 
     default:
-      {
-	valid->last_type = type;
-	valid->last_precision = 0;
-	valid->last_scale = 0;
-      }
+      valid->last_type = type;
+      valid->last_precision = 0;
+      valid->last_scale = 0;
       break;
     }
 }
@@ -677,7 +667,8 @@ obt_check_assignment (SM_ATTRIBUTE * att,
 	    }
 	}
     }
-  return (value);
+
+  return value;
 }
 
 /*
@@ -709,7 +700,9 @@ begin_template_traversal (void)
 
   /* don't let it be zero */
   if (obj_Template_traversal == 0)
-    obj_Template_traversal++;
+    {
+      obj_Template_traversal++;
+    }
 }
 
 
@@ -730,7 +723,8 @@ reset_template (OBJ_TEMPLATE * template_ptr)
   template_ptr->is_old_template = 0;
   template_ptr->uniques_were_modified = 0;
   template_ptr->shared_was_modified = 0;
-  template_ptr->is_fkeys_were_modified = 0;
+  template_ptr->fkeys_were_modified = 0;
+  template_ptr->force_flush = 0;
 }
 
 /*
@@ -777,8 +771,11 @@ make_template (MOP object, MOP classobj)
       mode = AU_FETCH_UPDATE;
       auth = AU_ALTER;
     }
+
   if (au_fetch_class (classobj, &class_, mode, auth))
-    return NULL;
+    {
+      return NULL;
+    }
 
 
   /*
@@ -813,7 +810,9 @@ make_template (MOP object, MOP classobj)
 	}
 
       if (au_fetch_class (base_classobj, &base_class, AU_FETCH_READ, auth))
-	return NULL;
+	{
+	  return NULL;
+	}
 
       /* get the associated base object (if this isn't a proxy) */
       if (object != NULL && !vid_is_base_instance (object))
@@ -833,7 +832,10 @@ make_template (MOP object, MOP classobj)
   if (object != NULL && object != classobj)
     {
       if (au_fetch_instance (object, &obj, AU_FETCH_UPDATE, AU_UPDATE))
-	return NULL;
+	{
+	  return NULL;
+	}
+
       /*
        * Could cache the object memory pointer this in the template as
        * well but that would require that it be pinned for a long
@@ -871,17 +873,25 @@ make_template (MOP object, MOP classobj)
       template_ptr->uniques_were_modified = 0;
       template_ptr->shared_was_modified = 0;
       template_ptr->discard_on_finish = 1;
-      template_ptr->is_fkeys_were_modified = 0;
+      template_ptr->fkeys_were_modified = 0;
+      template_ptr->force_flush = 0;
 
       /*
        * Don't do this until we've initialized the other stuff;
        * OTMPL_NASSIGNS relies on the "class" attribute of the template.
        */
 
-      template_ptr->nassigns = template_ptr->is_class_update ?
-	template_ptr->class_->class_attribute_count :
-	(template_ptr->class_->att_count +
-	 template_ptr->class_->shared_count);
+      if (template_ptr->is_class_update)
+	{
+	  template_ptr->nassigns =
+	    template_ptr->class_->class_attribute_count;
+	}
+      else
+	{
+	  template_ptr->nassigns = (template_ptr->class_->att_count
+				    + template_ptr->class_->shared_count);
+	}
+
       vec = NULL;
       if (template_ptr->nassigns)
 	{
@@ -898,6 +908,7 @@ make_template (MOP object, MOP classobj)
 	      vec[i] = NULL;
 	    }
 	}
+
       template_ptr->assignments = vec;
     }
 
@@ -962,14 +973,14 @@ obt_make_assignment (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att)
 	  template_ptr->shared_was_modified = 1;
 	}
 
-      if (classobj_get_cached_constraint
-	  (att->constraints, SM_CONSTRAINT_FOREIGN_KEY, NULL))
+      if (classobj_get_cached_constraint (att->constraints,
+					  SM_CONSTRAINT_FOREIGN_KEY, NULL))
 	{
-	  template_ptr->is_fkeys_were_modified = 1;
+	  template_ptr->fkeys_were_modified = 1;
 	}
     }
 
-  return (assign);
+  return assign;
 }
 
 /*
@@ -1027,6 +1038,7 @@ obt_free_assignment (OBJ_TEMPASSIGN * assign)
 		    }
 		}
 	    }
+
 	  (void) pr_free_ext_value (assign->variable);
 
 	  if (assign->old_value != NULL)
@@ -1034,6 +1046,7 @@ obt_free_assignment (OBJ_TEMPASSIGN * assign)
 	      (void) pr_free_ext_value (assign->old_value);
 	    }
 	}
+
       area_free (Assignment_area, assign);
     }
 }
@@ -1060,21 +1073,28 @@ obt_free_template (OBJ_TEMPLATE * template_ptr)
   if (!template_ptr->traversed)
     {
       template_ptr->traversed = 1;
+
       for (i = 0; i < template_ptr->nassigns; i++)
 	{
 	  a = template_ptr->assignments[i];
 	  if (a == NULL)
-	    continue;
+	    {
+	      continue;
+	    }
+
 	  if (a->obj != NULL)
 	    {
 	      obt_free_template (a->obj);
 	    }
+
 	  obt_free_assignment (a);
 	}
+
       if (template_ptr->assignments)
 	{
 	  free_and_init (template_ptr->assignments);
 	}
+
       area_free (Template_area, template_ptr);
     }
 }
@@ -1458,6 +1478,7 @@ obt_quit (OBJ_TEMPLATE * template_ptr)
     {
       obt_free_template (template_ptr);
     }
+
   return NO_ERROR;
 }
 
@@ -1707,7 +1728,8 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 	    }
 	}
     }
-  return (error);
+
+  return error;
 }
 
 /*
@@ -1912,7 +1934,7 @@ create_template_object (OBJ_TEMPLATE * template_ptr)
 	}
     }
 
-  return (mop);
+  return mop;
 }
 
 /*
@@ -1984,7 +2006,8 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
 
   if (mop != NULL)
     {
-      if (!(error = au_fetch_instance_force (mop, &obj, AU_FETCH_UPDATE)))
+      error = au_fetch_instance_force (mop, &obj, AU_FETCH_UPDATE);
+      if (error == NO_ERROR)
 	{
 	  /* must call this when updating instances */
 	  ws_class_has_object_dependencies (classobj);
@@ -2001,7 +2024,7 @@ access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr)
       *objptr = obj;
     }
 
-  return (error);
+  return error;
 }
 
 /*
@@ -2051,7 +2074,8 @@ obt_convert_set_templates (SETREF * setref, int check_uniques)
 	    }
 	}
     }
-  return (error);
+
+  return error;
 }
 
 /*
@@ -2094,7 +2118,8 @@ obt_final_check_set (SETREF * setref, int *has_uniques)
 	    }
 	}
     }
-  return (error);
+
+  return error;
 }
 
 /*
@@ -2123,7 +2148,6 @@ obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr)
 
   if (template_ptr->object == NULL)
     {
-
       /* use the base_class if this is a virtual class insert */
       class_ = OBT_BASE_CLASS (template_ptr);
 
@@ -2151,7 +2175,8 @@ obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr)
 	    }
 	}
     }
-  return (error);
+
+  return error;
 }
 
 /*
@@ -2277,12 +2302,12 @@ obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null,
 	  else
 	    {
 	      DB_TYPE av_type;
+
 	      av_type = DB_VALUE_TYPE (a->variable);
 	      if (TP_IS_SET_TYPE (av_type))
 		{
-		  error =
-		    obt_final_check_set (DB_GET_SET (a->variable),
-					 has_uniques);
+		  error = obt_final_check_set (DB_GET_SET (a->variable),
+					       has_uniques);
 		}
 	    }
 	}
@@ -2327,15 +2352,15 @@ obt_apply_assignment (MOP op, SM_ATTRIBUTE * att,
   else
     {
       /* for sets, first apply any templates in the set */
-      if ((error =
-	   obt_convert_set_templates (DB_GET_SET (value),
-				      check_uniques)) == NO_ERROR)
+      error = obt_convert_set_templates (DB_GET_SET (value), check_uniques);
+      if (error == NO_ERROR)
 	{
 
 	  /* BE VERY CAREFUL HERE, IN THE OLD VERSION THE SET WAS BEING COPIED ? */
 	  error = obj_assign_value (op, att, mem, value);
 	}
     }
+
   return error;
 }
 
@@ -2378,12 +2403,16 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 
   /* have we already been here ? */
   if (template_ptr->traversal == obj_Template_traversal)
-    return NO_ERROR;
+    {
+      return NO_ERROR;
+    }
   template_ptr->traversal = obj_Template_traversal;
 
   /* make sure we have a good template */
   if (validate_template (template_ptr))
-    return er_errid ();
+    {
+      return er_errid ();
+    }
 
   /* perform all operations on the base class */
   class_ = OBT_BASE_CLASS (template_ptr);
@@ -2397,6 +2426,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
     {
       return er_errid ();
     }
+
   event = TR_EVENT_NULL;
   if (trigstate)
     {
@@ -2425,7 +2455,9 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	    {
 	      a = template_ptr->assignments[i];
 	      if (a == NULL)
-		continue;
+		{
+		  continue;
+		}
 	      if (tr_prepare_class (&trstate, a->att->triggers, event))
 		{
 		  tr_abort (trstate);
@@ -2449,8 +2481,8 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
   else
     {
       /* make the temporary object for the template */
-      temp =
-	make_temp_object (OBT_BASE_CLASSOBJ (template_ptr), template_ptr);
+      temp = make_temp_object (OBT_BASE_CLASSOBJ (template_ptr),
+			       template_ptr);
       if (temp == NULL)
 	{
 	  error = er_errid ();
@@ -2526,8 +2558,8 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
       if (db_get_client_type () != DB_CLIENT_TYPE_LOG_APPLIER)
 	{
 
-	  if (a->att->type->id == DB_TYPE_BLOB ||
-	      a->att->type->id == DB_TYPE_CLOB)
+	  if (a->att->type->id == DB_TYPE_BLOB
+	      || a->att->type->id == DB_TYPE_CLOB)
 	    {
 	      DB_VALUE old;
 	      DB_TYPE value_type;
@@ -2538,8 +2570,8 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 		  DB_ELO *elo;
 
 		  value_type = db_value_type (&old);
-		  assert (value_type == DB_TYPE_BLOB ||
-			  value_type == DB_TYPE_CLOB);
+		  assert (value_type == DB_TYPE_BLOB
+			  || value_type == DB_TYPE_CLOB);
 		  elo = db_get_elo (&old);
 		  if (elo)
 		    {
@@ -2581,9 +2613,9 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	  if (a->obj != NULL)
 	    {
 	      /* this is a template assignment, recurse on this template */
-	      if ((error =
-		   obt_apply_assignments (a->obj, check_uniques,
-					  level + 1)) == NO_ERROR)
+	      error = obt_apply_assignments (a->obj, check_uniques,
+					     level + 1);
+	      if (error == NO_ERROR)
 		{
 		  DB_MAKE_OBJECT (&val, a->obj->object);
 		  error = obt_apply_assignment (object, a->att, mem,
@@ -2598,12 +2630,17 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
 	    }
 	}
     }
+
   if ((error == NO_ERROR) && (object != NULL))
-    ws_dirty (object);
+    {
+      ws_dirty (object);
+    }
 
   /* if we updated any shared attributes, we need to mark the class dirty */
   if (template_ptr->shared_was_modified)
-    ws_dirty (OBT_BASE_CLASSOBJ (template_ptr));
+    {
+      ws_dirty (OBT_BASE_CLASSOBJ (template_ptr));
+    }
 
   /* unpin the object */
   if (pin != -1)
@@ -2670,19 +2707,20 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques,
    */
   if (error == NO_ERROR)
     {
-      if ((check_uniques && template_ptr->uniques_were_modified) ||
-	  template_ptr->is_fkeys_were_modified)
+      if ((check_uniques && template_ptr->uniques_were_modified)
+	  || template_ptr->fkeys_were_modified || template_ptr->force_flush)
 	{
-	  if ((locator_flush_class (OBT_BASE_CLASSOBJ (template_ptr)) !=
-	       NO_ERROR)
-	      || (locator_flush_instance (OBT_BASE_OBJECT (template_ptr)) !=
-		  NO_ERROR))
+	  if ((locator_flush_class (OBT_BASE_CLASSOBJ (template_ptr))
+	       != NO_ERROR)
+	      || (locator_flush_instance (OBT_BASE_OBJECT (template_ptr))
+		  != NO_ERROR))
 	    {
 	      error = er_errid ();
 	    }
 	}
     }
-  return (error);
+
+  return error;
 }
 
 /*
@@ -2740,8 +2778,37 @@ bool
 obt_enable_unique_checking (bool new_state)
 {
   bool old_state = obt_Check_uniques;
+
   obt_Check_uniques = new_state;
   return (old_state);
+}
+
+/*
+ * obj_set_force_flush - set force_flush flag of the template
+ * 
+ * return : void
+ * template_ptr (in/out)
+ */
+void
+obt_set_force_flush (OBJ_TEMPLATE * template_ptr)
+{
+  assert (template_ptr != NULL);
+
+  template_ptr->force_flush = 1;
+}
+
+/*
+ * obj_reset_force_flush - reset force_flush flag of the template
+ * 
+ * return : void
+ * template_ptr (in/out)
+ */
+void
+obt_reset_force_flush (OBJ_TEMPLATE * template_ptr)
+{
+  assert (template_ptr != NULL);
+
+  template_ptr->force_flush = 0;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -2786,8 +2853,8 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 	{
 	  /* allocate a new traversal counter for the check pass */
 	  begin_template_traversal ();
-	  error =
-	    obt_final_check (template_ptr, check_non_null, &has_uniques);
+	  error = obt_final_check (template_ptr, check_non_null,
+				   &has_uniques);
 	  if (error == NO_ERROR)
 	    {
 
@@ -2799,7 +2866,8 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
 	       * obt_apply_assignments().
 	       */
 	      if ((template_ptr->check_uniques && has_uniques)
-		  || template_ptr->is_fkeys_were_modified)
+		  || template_ptr->fkeys_were_modified
+		  || template_ptr->force_flush)
 		{
 		  sprintf (savepoint_name, "%s-%d",
 			   OBJ_INTERNAL_SAVEPOINT_NAME,
@@ -2845,7 +2913,7 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj,
       (void) tran_abort_upto_savepoint (savepoint_name);
     }
 
-  return (error);
+  return error;
 }
 
 /*
@@ -2918,7 +2986,8 @@ make_temp_object (DB_OBJECT * class_, OBJ_TEMPLATE * object)
 	    }
 	}
     }
-  return (obj);
+
+  return obj;
 }
 
 /*

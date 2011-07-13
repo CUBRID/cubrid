@@ -5795,6 +5795,9 @@ do_get_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
  *
  */
 
+typedef enum
+{ NORMAL_UPDATE, UPDATE_OBJECT, ON_DUPLICATE_KEY_UPDATE } UPDATE_TYPE;
+
 #define DB_VALUE_STACK_MAX 40
 
 /* It is used to generate unique savepoint names */
@@ -5821,9 +5824,11 @@ static int update_object_tuple (PARSER_CONTEXT * parser, DB_OBJECT * object,
 				DB_ATTDESC ** list_attr_descs,
 				DB_ATTDESC ** const_attr_descs,
 				PT_NODE * class_, PT_NODE * check_where,
-				const int turn_off_unique_check);
+				const int turn_off_unique_check,
+				UPDATE_TYPE update_type);
 static int update_object_by_oid (PARSER_CONTEXT * parser,
-				 PT_NODE * statement);
+				 PT_NODE * statement,
+				 UPDATE_TYPE update_type);
 static int update_objs_for_list_file (PARSER_CONTEXT * parser,
 				      QFILE_LIST_ID * list_id,
 				      PT_NODE * list_column_names,
@@ -6002,7 +6007,8 @@ update_object_tuple (PARSER_CONTEXT * parser, DB_OBJECT * object,
 		     PT_NODE * const_column_names, DB_VALUE * const_values,
 		     DB_ATTDESC ** list_attr_descs,
 		     DB_ATTDESC ** const_attr_descs, PT_NODE * class_,
-		     PT_NODE * check_where, const int turn_off_unique_check)
+		     PT_NODE * check_where, const int turn_off_unique_check,
+		     UPDATE_TYPE update_type)
 {
   int error = NO_ERROR;
   DB_OTMPL *otemplate, *otmpl;
@@ -6148,10 +6154,19 @@ update_object_tuple (PARSER_CONTEXT * parser, DB_OBJECT * object,
 	{
 	  return er_errid ();
 	}
+
       i = 0;
       if (turn_off_unique_check)
 	{
 	  obt_disable_unique_checking (otemplate);
+	}
+
+      /* If this update came from INSERT ON DUPLICATE KEY UPDATE, 
+       * flush the object on updating it.
+       */
+      if (update_type == ON_DUPLICATE_KEY_UPDATE)
+	{
+	  obt_set_force_flush (otemplate);
 	}
 
       for (name = list_column_names; list_attr_descs != NULL && name != NULL;
@@ -6256,11 +6271,14 @@ update_object_tuple (PARSER_CONTEXT * parser, DB_OBJECT * object,
  *   return: 1 if success, otherwise returns error code
  *   parser(in): Parser context
  *   statement(in): Parse tree of a update statement
+ *   update_type(in): denote whether the update comes from normal update stmt,
+ *		      update object stmt or insert on duplicate key update stmt.
  *
  * Note:
  */
 static int
-update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement)
+update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement,
+		      UPDATE_TYPE update_type)
 {
   PT_NODE *list_column_names;
   PT_NODE *list_column_values;
@@ -6350,10 +6368,11 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* allocate attribute descriptors */
 	  if (list_columns)
 	    {
-	      list_attr_descs = (DB_ATTDESC **) malloc ((list_columns)
-							*
-							sizeof (DB_ATTDESC
-								*));
+	      size_t size;
+
+	      size = list_columns * sizeof (DB_ATTDESC *);
+
+	      list_attr_descs = (DB_ATTDESC **) malloc (size);
 	      if (!list_attr_descs)
 		{
 		  error = ER_REGU_NO_SPACE;
@@ -6368,10 +6387,11 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  if (const_columns)
 	    {
-	      const_attr_descs = (DB_ATTDESC **) malloc ((const_columns)
-							 *
-							 sizeof (DB_ATTDESC
-								 *));
+	      size_t size;
+
+	      size = const_columns * sizeof (DB_ATTDESC *);
+
+	      const_attr_descs = (DB_ATTDESC **) malloc (size);
 	      if (!const_attr_descs)
 		{
 		  error = ER_REGU_NO_SPACE;
@@ -6436,7 +6456,7 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement)
 					   list_attr_descs, const_attr_descs,
 					   class_,
 					   statement->info.update.check_where,
-					   0);
+					   0, update_type);
 	    }
 
 	}
@@ -6703,7 +6723,8 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id,
 				   list_column_names, list_db_value_list,
 				   const_column_names, const_db_value_list,
 				   list_attr_descs, const_attr_descs, class_,
-				   check_where, turn_off_unique_check);
+				   check_where, turn_off_unique_check,
+				   NORMAL_UPDATE);
 
       if (error < NO_ERROR)
 	{
@@ -7661,7 +7682,7 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
       else if (statement->info.update.object != NULL)
 	{
 	  /* this is a update object if it has an object */
-	  error = update_object_by_oid (parser, statement);
+	  error = update_object_by_oid (parser, statement, UPDATE_OBJECT);
 	}
       else
 	{
@@ -8085,7 +8106,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
        */
       if (statement->info.update.object)
 	{
-	  err = update_object_by_oid (parser, statement);
+	  err = update_object_by_oid (parser, statement, UPDATE_OBJECT);
 	  continue;		/* continue to next UPDATE statement */
 	}
 
@@ -10374,7 +10395,8 @@ do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
       update_stmt->info.update.search_cond = NULL;
       update_stmt->info.update.object = oid.data.op;
 
-      ret_code = update_object_by_oid (parser, update_stmt);
+      ret_code = update_object_by_oid (parser, update_stmt,
+				       ON_DUPLICATE_KEY_UPDATE);
 
       /* restore initial update parse tree */
       update_stmt->info.update.object = NULL;
@@ -11975,21 +11997,21 @@ insert_predefined_values_into_partition (const PARSER_CONTEXT * parser,
 		  db_make_string (&oid_str_val, oid_str);
 
 		  /* Do not update LAST_INSERT_ID during executing a trigger. */
-                  if (do_Trigger_involved == true
-                        || obt_Last_insert_id_generated == true)
-                      {
-                        error = serial_get_next_value (&next_val, &oid_str_val,
-                                                       GENERATE_SERIAL);
-                      }
-                    else
-                      {
-                        error = serial_get_next_value (&next_val, &oid_str_val,
-                                                       GENERATE_AUTO_INCREMENT);
-                        if (error == NO_ERROR)
-                          {
-                            obt_Last_insert_id_generated = true;
-                          }
-                      }
+		  if (do_Trigger_involved == true
+		      || obt_Last_insert_id_generated == true)
+		    {
+		      error = serial_get_next_value (&next_val, &oid_str_val,
+						     GENERATE_SERIAL);
+		    }
+		  else
+		    {
+		      error = serial_get_next_value (&next_val, &oid_str_val,
+						     GENERATE_AUTO_INCREMENT);
+		      if (error == NO_ERROR)
+			{
+			  obt_Last_insert_id_generated = true;
+			}
+		    }
 
 		  if (error == NO_ERROR)
 		    {

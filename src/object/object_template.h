@@ -155,7 +155,12 @@ typedef struct obj_template
    * true if we ever make an assignment for an attribute that has the
    * FOREIGN KEY constraint.  Speeds up a common test.
    */
-  unsigned is_fkeys_were_modified:1;
+  unsigned fkeys_were_modified:1;
+
+  /* Set if we want to flush the object to the server regardless of
+   * updating the PRIMARY KEY/UNIQUE constraint.
+   */
+  unsigned force_flush:1;
 } OBJ_TEMPLATE, *OBT;
 
 /*
@@ -193,6 +198,8 @@ extern int obt_set_obt (OBJ_TEMPLATE * template_ptr, const char *attname,
 extern void obt_set_label (OBJ_TEMPLATE * template_ptr, DB_VALUE * label);
 extern void obt_disable_unique_checking (OBJ_TEMPLATE * template_ptr);
 extern bool obt_enable_unique_checking (bool new_state);
+extern void obt_set_force_flush (OBJ_TEMPLATE * template_ptr);
+extern void obt_reset_force_flush (OBJ_TEMPLATE * template_ptr);
 extern int obt_update (OBJ_TEMPLATE * template_ptr, MOP * newobj);
 extern int obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att,
 		       int base_assignment, DB_VALUE * value,
