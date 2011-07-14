@@ -2239,8 +2239,8 @@ disk_to_metharg (OR_BUF * buf)
       arg->index = or_get_int (buf, &rc);
       arg->domain =
 	(TP_DOMAIN *) get_substructure_set (buf, (LREADER) disk_to_domain,
-					    vars
-					    [ORC_METHARG_DOMAIN_INDEX].length);
+					    vars[ORC_METHARG_DOMAIN_INDEX].
+					    length);
     }
   free_var_table (vars);
 
@@ -2397,13 +2397,15 @@ disk_to_methsig (OR_BUF * buf)
 							 (LREADER)
 							 disk_to_metharg,
 							 vars
-							 [ORC_METHSIG_RETURN_VALUE_INDEX].length);
+							 [ORC_METHSIG_RETURN_VALUE_INDEX].
+							 length);
 	  sig->args =
 	    (SM_METHOD_ARGUMENT *) get_substructure_set (buf,
 							 (LREADER)
 							 disk_to_metharg,
 							 vars
-							 [ORC_METHSIG_ARGUMENTS_INDEX].length);
+							 [ORC_METHSIG_ARGUMENTS_INDEX].
+							 length);
 	}
       free_var_table (vars);
     }
@@ -3860,221 +3862,227 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   if (vars == NULL)
     {
       or_abort (buf);
+      return NULL;
     }
-  else
+
+  class_ = *class_ptr = classobj_make_class (NULL);
+  if (class_ == NULL)
     {
-      class_ = *class_ptr = classobj_make_class (NULL);
-      if (class_ == NULL)
-	{
-	  if (vars != NULL)
-	    {
-	      free_var_table (vars);
-	    }
-	  or_abort (buf);
-	  return NULL;
-	}
-      else
-	{
-	  class_->att_ids = or_get_int (buf, &rc);
-	  class_->method_ids = or_get_int (buf, &rc);
-	  (void) or_get_int (buf, &rc);	/* unused */
-
-	  class_->header.heap.vfid.fileid = or_get_int (buf, &rc);
-	  class_->header.heap.vfid.volid = or_get_int (buf, &rc);
-	  class_->header.heap.hpgid = or_get_int (buf, &rc);
-
-	  class_->repid = or_get_int (buf, &rc);
-	  class_->fixed_count = or_get_int (buf, &rc);
-	  class_->variable_count = or_get_int (buf, &rc);
-	  class_->fixed_size = or_get_int (buf, &rc);
-	  class_->att_count = or_get_int (buf, &rc);
-	  class_->object_size = or_get_int (buf, &rc);
-	  class_->object_size = 0;	/* calculated later */
-	  class_->shared_count = or_get_int (buf, &rc);
-	  class_->method_count = or_get_int (buf, &rc);
-	  class_->class_method_count = or_get_int (buf, &rc);
-	  class_->class_attribute_count = or_get_int (buf, &rc);
-	  class_->flags = or_get_int (buf, &rc);
-	  class_->class_type = (SM_CLASS_TYPE) or_get_int (buf, &rc);
-
-	  /* owner object */
-	  (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
-	  class_->owner = db_get_object (&value);
-
-	  /* variable 0 */
-	  class_->header.name = get_string (buf, vars[ORC_NAME_INDEX].length);
-
-	  /* variable 1 */
-	  class_->loader_commands =
-	    get_string (buf, vars[ORC_LOADER_COMMANDS_INDEX].length);
-
-	  /* REPRESENTATIONS */
-	  /* variable 2 */
-	  class_->representations = (SM_REPRESENTATION *)
-	    get_substructure_set (buf, (LREADER) disk_to_representation,
-				  vars[ORC_REPRESENTATIONS_INDEX].length);
-
-	  /* variable 3 */
-	  class_->users =
-	    get_object_set (buf, vars[ORC_SUBCLASSES_INDEX].length);
-	  /* variable 4 */
-	  class_->inheritance =
-	    get_object_set (buf, vars[ORC_SUPERCLASSES_INDEX].length);
-
-	  class_->attributes = (SM_ATTRIBUTE *)
-	    classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE),
-					   class_->att_count);
-	  if (class_->att_count && class_->attributes == NULL)
-	    {
-	      or_abort (buf);
-	      return NULL;
-	    }
-
-	  class_->shared = (SM_ATTRIBUTE *)
-	    classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE),
-					   class_->shared_count);
-	  if (class_->shared_count && class_->shared == NULL)
-	    {
-	      or_abort (buf);
-	      return NULL;
-	    }
-
-	  class_->class_attributes = (SM_ATTRIBUTE *)
-	    classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE),
-					   class_->class_attribute_count);
-	  if (class_->class_attribute_count
-	      && class_->class_attributes == NULL)
-	    {
-	      or_abort (buf);
-	      return NULL;
-	    }
-
-	  class_->methods = (SM_METHOD *)
-	    classobj_alloc_threaded_array (sizeof (SM_METHOD),
-					   class_->method_count);
-	  if (class_->method_count && class_->methods == NULL)
-	    {
-	      or_abort (buf);
-	      return NULL;
-	    }
-
-	  class_->class_methods = (SM_METHOD *)
-	    classobj_alloc_threaded_array (sizeof (SM_METHOD),
-					   class_->class_method_count);
-	  if (class_->class_method_count && class_->class_methods == NULL)
-	    {
-	      or_abort (buf);
-	      return NULL;
-	    }
-
-	  /* variable 5 */
-	  install_substructure_set (buf, (DB_LIST *) class_->attributes,
-				    (VREADER) disk_to_attribute,
-				    vars[ORC_ATTRIBUTES_INDEX].length);
-	  /* variable 6 */
-	  install_substructure_set (buf, (DB_LIST *) class_->shared,
-				    (VREADER) disk_to_attribute,
-				    vars[ORC_SHARED_ATTRS_INDEX].length);
-	  /* variable 7 */
-	  install_substructure_set (buf, (DB_LIST *) class_->class_attributes,
-				    (VREADER) disk_to_attribute,
-				    vars[ORC_CLASS_ATTRS_INDEX].length);
-
-	  /* variable 8 */
-	  install_substructure_set (buf, (DB_LIST *) class_->methods,
-				    (VREADER) disk_to_method,
-				    vars[ORC_METHODS_INDEX].length);
-	  /* variable 9 */
-	  install_substructure_set (buf, (DB_LIST *) class_->class_methods,
-				    (VREADER) disk_to_method,
-				    vars[ORC_CLASS_METHODS_INDEX].length);
-
-	  /*
-	   * fix up the name_space tags, could do this later but easier just
-	   * to assume that they're set up correctly
-	   */
-	  tag_component_namespace ((SM_COMPONENT *) class_->attributes,
-				   ID_ATTRIBUTE);
-	  tag_component_namespace ((SM_COMPONENT *) class_->shared,
-				   ID_SHARED_ATTRIBUTE);
-	  tag_component_namespace ((SM_COMPONENT *) class_->class_attributes,
-				   ID_CLASS_ATTRIBUTE);
-	  tag_component_namespace ((SM_COMPONENT *) class_->methods,
-				   ID_METHOD);
-	  tag_component_namespace ((SM_COMPONENT *) class_->class_methods,
-				   ID_CLASS_METHOD);
-
-	  /* variable 10 */
-	  class_->method_files = (SM_METHOD_FILE *)
-	    get_substructure_set (buf, (LREADER) disk_to_methfile,
-				  vars[ORC_METHOD_FILES_INDEX].length);
-
-	  /* variable 11 */
-	  class_->resolutions = (SM_RESOLUTION *)
-	    get_substructure_set (buf, (LREADER) disk_to_resolution,
-				  vars[ORC_RESOLUTIONS_INDEX].length);
-
-	  /* variable 12 */
-	  class_->query_spec = (SM_QUERY_SPEC *)
-	    get_substructure_set (buf, (LREADER) disk_to_query_spec,
-				  vars[ORC_QUERY_SPEC_INDEX].length);
-
-	  /* variable 13 */
-	  triggers = get_object_set (buf, vars[ORC_TRIGGERS_INDEX].length);
-	  if (triggers != NULL)
-	    {
-	      class_->triggers =
-		tr_make_schema_cache (TR_CACHE_CLASS, triggers);
-	    }
-
-	  /* variable 14 */
-	  class_->properties =
-	    get_property_list (buf, vars[ORC_PROPERTIES_INDEX].length);
-
-	  /* partition_of object */
-	  class_->partition_of = NULL;
-	  if (class_->properties)
-	    {
-	      if (classobj_get_prop (class_->properties,
-				     SM_PROPERTY_PARTITION, &value) > 0)
-		{
-		  class_->partition_of = db_get_object (&value);
-		  classobj_drop_prop (class_->properties,
-				      SM_PROPERTY_PARTITION);
-		  pr_clear_value (&value);
-		}
-	    }
-
-	  /* build the ordered instance/shared instance list */
-	  classobj_fixup_loaded_class (class_);
-
-	  /* set attribute's auto_increment object if any */
-	  for (att = class_->attributes; att != NULL;
-	       att = (SM_ATTRIBUTE *) att->header.next)
-	    {
-	      att->auto_increment = NULL;
-	      if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
-		{
-		  if (serial_class_mop == NULL)
-		    {
-		      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
-		    }
-
-		  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
-						  class_->header.name,
-						  att->header.name);
-		  serial_mop = do_get_serial_obj_id (&serial_obj_id,
-						     serial_class_mop,
-						     auto_increment_name);
-		  if (serial_mop != NULL)
-		    {
-		      att->auto_increment = serial_mop;
-		    }
-		}
-	    }
-	}
       free_var_table (vars);
+      or_abort (buf);
+      return NULL;
     }
+
+  class_->att_ids = or_get_int (buf, &rc);
+  class_->method_ids = or_get_int (buf, &rc);
+  (void) or_get_int (buf, &rc);	/* unused */
+
+  class_->header.heap.vfid.fileid = or_get_int (buf, &rc);
+  class_->header.heap.vfid.volid = or_get_int (buf, &rc);
+  class_->header.heap.hpgid = or_get_int (buf, &rc);
+
+  class_->repid = or_get_int (buf, &rc);
+  class_->fixed_count = or_get_int (buf, &rc);
+  class_->variable_count = or_get_int (buf, &rc);
+  class_->fixed_size = or_get_int (buf, &rc);
+  class_->att_count = or_get_int (buf, &rc);
+  class_->object_size = or_get_int (buf, &rc);
+  class_->object_size = 0;	/* calculated later */
+  class_->shared_count = or_get_int (buf, &rc);
+  class_->method_count = or_get_int (buf, &rc);
+  class_->class_method_count = or_get_int (buf, &rc);
+  class_->class_attribute_count = or_get_int (buf, &rc);
+  class_->flags = or_get_int (buf, &rc);
+  class_->class_type = (SM_CLASS_TYPE) or_get_int (buf, &rc);
+
+  /* owner object */
+  (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+  class_->owner = db_get_object (&value);
+
+  /* variable 0 */
+  class_->header.name = get_string (buf, vars[ORC_NAME_INDEX].length);
+
+  /* variable 1 */
+  class_->loader_commands =
+    get_string (buf, vars[ORC_LOADER_COMMANDS_INDEX].length);
+
+  /* REPRESENTATIONS */
+  /* variable 2 */
+  class_->representations = (SM_REPRESENTATION *)
+    get_substructure_set (buf, (LREADER) disk_to_representation,
+			  vars[ORC_REPRESENTATIONS_INDEX].length);
+
+  /* variable 3 */
+  class_->users = get_object_set (buf, vars[ORC_SUBCLASSES_INDEX].length);
+  /* variable 4 */
+  class_->inheritance =
+    get_object_set (buf, vars[ORC_SUPERCLASSES_INDEX].length);
+
+  class_->attributes = (SM_ATTRIBUTE *)
+    classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE), class_->att_count);
+  if (class_->att_count && class_->attributes == NULL)
+    {
+      db_ws_free (class_);
+      free_var_table (vars);
+      or_abort (buf);
+      return NULL;
+    }
+
+  class_->shared = (SM_ATTRIBUTE *)
+    classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE),
+				   class_->shared_count);
+  if (class_->shared_count && class_->shared == NULL)
+    {
+      db_ws_free (class_);
+      free_var_table (vars);
+      or_abort (buf);
+      return NULL;
+    }
+
+  class_->class_attributes = (SM_ATTRIBUTE *)
+    classobj_alloc_threaded_array (sizeof (SM_ATTRIBUTE),
+				   class_->class_attribute_count);
+  if (class_->class_attribute_count && class_->class_attributes == NULL)
+    {
+      db_ws_free (class_);
+      free_var_table (vars);
+      or_abort (buf);
+      return NULL;
+    }
+
+  class_->methods = (SM_METHOD *)
+    classobj_alloc_threaded_array (sizeof (SM_METHOD), class_->method_count);
+  if (class_->method_count && class_->methods == NULL)
+    {
+      db_ws_free (class_);
+      free_var_table (vars);
+      or_abort (buf);
+      return NULL;
+    }
+
+  class_->class_methods = (SM_METHOD *)
+    classobj_alloc_threaded_array (sizeof (SM_METHOD),
+				   class_->class_method_count);
+  if (class_->class_method_count && class_->class_methods == NULL)
+    {
+      db_ws_free (class_);
+      free_var_table (vars);
+      or_abort (buf);
+      return NULL;
+    }
+
+  /* variable 5 */
+  install_substructure_set (buf, (DB_LIST *) class_->attributes,
+			    (VREADER) disk_to_attribute,
+			    vars[ORC_ATTRIBUTES_INDEX].length);
+  /* variable 6 */
+  install_substructure_set (buf, (DB_LIST *) class_->shared,
+			    (VREADER) disk_to_attribute,
+			    vars[ORC_SHARED_ATTRS_INDEX].length);
+  /* variable 7 */
+  install_substructure_set (buf, (DB_LIST *) class_->class_attributes,
+			    (VREADER) disk_to_attribute,
+			    vars[ORC_CLASS_ATTRS_INDEX].length);
+
+  /* variable 8 */
+  install_substructure_set (buf, (DB_LIST *) class_->methods,
+			    (VREADER) disk_to_method,
+			    vars[ORC_METHODS_INDEX].length);
+  /* variable 9 */
+  install_substructure_set (buf, (DB_LIST *) class_->class_methods,
+			    (VREADER) disk_to_method,
+			    vars[ORC_CLASS_METHODS_INDEX].length);
+
+  /*
+   * fix up the name_space tags, could do this later but easier just
+   * to assume that they're set up correctly
+   */
+  tag_component_namespace ((SM_COMPONENT *) class_->attributes, ID_ATTRIBUTE);
+  tag_component_namespace ((SM_COMPONENT *) class_->shared,
+			   ID_SHARED_ATTRIBUTE);
+  tag_component_namespace ((SM_COMPONENT *) class_->class_attributes,
+			   ID_CLASS_ATTRIBUTE);
+  tag_component_namespace ((SM_COMPONENT *) class_->methods, ID_METHOD);
+  tag_component_namespace ((SM_COMPONENT *) class_->class_methods,
+			   ID_CLASS_METHOD);
+
+  /* variable 10 */
+  class_->method_files = (SM_METHOD_FILE *)
+    get_substructure_set (buf, (LREADER) disk_to_methfile,
+			  vars[ORC_METHOD_FILES_INDEX].length);
+
+  /* variable 11 */
+  class_->resolutions = (SM_RESOLUTION *)
+    get_substructure_set (buf, (LREADER) disk_to_resolution,
+			  vars[ORC_RESOLUTIONS_INDEX].length);
+
+  /* variable 12 */
+  class_->query_spec = (SM_QUERY_SPEC *)
+    get_substructure_set (buf, (LREADER) disk_to_query_spec,
+			  vars[ORC_QUERY_SPEC_INDEX].length);
+
+  /* variable 13 */
+  triggers = get_object_set (buf, vars[ORC_TRIGGERS_INDEX].length);
+  if (triggers != NULL)
+    {
+      class_->triggers = tr_make_schema_cache (TR_CACHE_CLASS, triggers);
+    }
+
+  /* variable 14 */
+  class_->properties =
+    get_property_list (buf, vars[ORC_PROPERTIES_INDEX].length);
+
+  /* partition_of object */
+  class_->partition_of = NULL;
+  if (class_->properties)
+    {
+      if (classobj_get_prop (class_->properties,
+			     SM_PROPERTY_PARTITION, &value) > 0)
+	{
+	  class_->partition_of = db_get_object (&value);
+	  classobj_drop_prop (class_->properties, SM_PROPERTY_PARTITION);
+	  pr_clear_value (&value);
+	}
+    }
+
+  /* build the ordered instance/shared instance list */
+  classobj_fixup_loaded_class (class_);
+
+  /* set attribute's auto_increment object if any */
+  for (att = class_->attributes; att != NULL;
+       att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      att->auto_increment = NULL;
+      if (att->flags & SM_ATTFLAG_AUTO_INCREMENT)
+	{
+	  if (serial_class_mop == NULL)
+	    {
+	      serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+	    }
+
+	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name,
+					  class_->header.name,
+					  att->header.name);
+	  serial_mop = do_get_serial_obj_id (&serial_obj_id,
+					     serial_class_mop,
+					     auto_increment_name);
+
+	  if (serial_mop == NULL)
+	    {
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+		      ER_OBJ_INVALID_ATTRIBUTE, 1, auto_increment_name);
+	      db_ws_free (class_);
+	      free_var_table (vars);
+	      or_abort (buf);
+	      return NULL;
+	    }
+
+	  att->auto_increment = serial_mop;
+	}
+    }
+
+  free_var_table (vars);
+
   return (class_);
 }
 

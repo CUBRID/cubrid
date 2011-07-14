@@ -1550,7 +1550,7 @@ exit_on_error:
  *   dbv2(in)   : ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
  *   answer(out): ptr to a DB_VALUE structure of type DB_TYPE_NUMERIC
  *
- * Note: This routine mulitiplies the numeric values of two DB_VALUE's and
+ * Note: This routine multiplies the numeric values of two DB_VALUE's and
  * returns the results in answer. The answer will be returned as either the
  * common type of dbv1 and dbv2 or as the common type of dbv1 and dbv2 with
  * a extra decimal places of precision if the product requires it to avoid

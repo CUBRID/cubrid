@@ -2413,6 +2413,8 @@ thread_session_control_thread (void *arg_p)
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
   thread_Session_control_thread.is_running = true;
 
+  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+
   while (!tsd_ptr->shutdown)
     {
       er_clear ();
@@ -2805,9 +2807,10 @@ thread_flush_control_thread (void *arg_p)
   tsd_ptr->type = TT_DAEMON;	/* daemon thread */
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
 
+  thread_Flush_control_thread.is_running = true;
+
   thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
 
-  thread_Flush_control_thread.is_running = true;
   rv = fileio_flush_control_initialize ();
   if (rv != NO_ERROR)
     {
@@ -3106,24 +3109,20 @@ thread_log_flush_thread (void *arg_p)
       else
 	{
 	  LOG_CS_ENTER (tsd_ptr);
-	  log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
-	  flushed = logpb_flush_all_append_pages_helper (tsd_ptr);
-	  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
+	  logpb_flush_all_append_pages (tsd_ptr, LOG_FLUSH_DIRECT);
 	  LOG_CS_EXIT ();
 
-	  if (flushed > 0)
-	    {
-	      log_Stat.gc_flush_count++;
-	      gc_elapsed = 0;
-	      log_Stat.total_sync_count++;
+	  log_Stat.gc_flush_count++;
+	  gc_elapsed = 0;
+	  log_Stat.total_sync_count++;
 
-	      if (PRM_SUPPRESS_FSYNC == 0
-		  || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
-		{
-		  (void) fileio_synchronize (tsd_ptr, log_Gl.append.vdes,
-					     log_Name_active);
-		}
+	  if (PRM_SUPPRESS_FSYNC == 0
+	      || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
+	    {
+	      (void) fileio_synchronize (tsd_ptr, log_Gl.append.vdes,
+					 log_Name_active);
 	    }
+
 	  have_wake_up_thread = true;
 	}
 
@@ -3174,19 +3173,7 @@ thread_log_flush_thread (void *arg_p)
 void
 thread_wakeup_log_flush_thread (void)
 {
-  int rv;
-
-  if (thread_Log_flush_thread.is_running)
-    {
-      return;
-    }
-
-  rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
-  if (!thread_Log_flush_thread.is_running)
-    {
-      pthread_cond_signal (&thread_Log_flush_thread.cond);
-    }
-  pthread_mutex_unlock (&thread_Log_flush_thread.lock);
+  pthread_cond_signal (&thread_Log_flush_thread.cond);
 }
 
 

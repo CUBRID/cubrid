@@ -2732,7 +2732,7 @@ qdump_print_xasl (XASL_NODE * xasl_p)
   qdump_print_xasl (xasl_p->next);
   fprintf (foutput, "creator OID:");
   qdump_print_oid (&xasl_p->creator_oid);
-  fprintf (foutput, "\nclass OID/reprid list:%d ", xasl_p->n_oid_list);
+  fprintf (foutput, "\nclass/serial OID list:%d ", xasl_p->n_oid_list);
 
   for (i = 0; i < xasl_p->n_oid_list; ++i)
     {

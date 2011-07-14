@@ -151,6 +151,12 @@ net_pack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->fc_tokens));
   ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->prior_lsa_list_size));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->prior_lsa_list_maxed));
+  ptr += OR_INT64_SIZE;
+  OR_PUT_INT64 (ptr, &(stats->prior_lsa_list_removed));
+  ptr += OR_INT64_SIZE;
   OR_PUT_INT64 (ptr, &(stats->pb_hit_ratio));
   ptr += OR_INT64_SIZE;
 
@@ -276,6 +282,12 @@ net_unpack_stats (char *buf, MNT_SERVER_EXEC_STATS * stats)
   OR_GET_INT64 (ptr, &(stats->fc_num_log_pages));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->fc_tokens));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->prior_lsa_list_size));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->prior_lsa_list_maxed));
+  ptr += OR_INT64_SIZE;
+  OR_GET_INT64 (ptr, &(stats->prior_lsa_list_removed));
   ptr += OR_INT64_SIZE;
   OR_GET_INT64 (ptr, &(stats->pb_hit_ratio));
   ptr += OR_INT64_SIZE;

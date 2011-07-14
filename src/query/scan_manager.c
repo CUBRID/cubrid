@@ -1156,7 +1156,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 
       if (DB_IS_NULL (val))
 	{
-	  /* to fix multi-column index NULL problem */
+	  /* impossible case */
+	  assert (false);
 	  goto end;
 	}
 
@@ -1230,7 +1231,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval,
 
       if (DB_IS_NULL (val))
 	{
-	  /* to fix multi-column index NULL problem */
+	  /* impossible case */
+	  assert (false);
 	  goto end;
 	}
 

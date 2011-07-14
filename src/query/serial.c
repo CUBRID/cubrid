@@ -35,6 +35,7 @@
 #include "arithmetic.h"
 #include "serial.h"
 #include "query_evaluator.h"
+#include "query_executor.h"
 #include "heap_file.h"
 #include "page_buffer.h"
 #include "log_manager.h"
@@ -1332,12 +1333,22 @@ serial_alloc_cache_entry (void)
  * oidp(in) :
  */
 void
-xserial_decache (OID * oidp)
+xserial_decache (THREAD_ENTRY * thread_p, OID * oidp)
 {
   SERIAL_CACHE_ENTRY *entry;
 #if defined (SERVER_MODE)
   int rc;
 #endif /* SERVER_MODE */
+
+  if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0
+      && qexec_remove_xasl_cache_ent_by_class (thread_p, oidp) != NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "xserial_decache:"
+		    " qexec_remove_xasl_cache_ent_by_class"
+		    " failed for serial { %d %d %d }\n",
+		    oidp->pageid, oidp->slotid, oidp->volid);
+    }
 
   rc = pthread_mutex_lock (&serial_Cache_pool.cache_pool_mutex);
   entry = (SERIAL_CACHE_ENTRY *) mht_get (serial_Cache_pool.ht, oidp);

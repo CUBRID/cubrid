@@ -7739,7 +7739,7 @@ serial_decache (OID * oid)
 #else /* CS_MODE */
   ENTER_SERVER ();
 
-  xserial_decache (oid);
+  xserial_decache (NULL, oid);
 
   EXIT_SERVER ();
 

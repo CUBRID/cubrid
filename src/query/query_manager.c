@@ -1335,8 +1335,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, const char *query_string_p,
 	(OID *) db_private_alloc (thread_p, sizeof (OID) * n_oid_list);
       repr_id_list_p =
 	(int *) db_private_alloc (thread_p, sizeof (int) * n_oid_list);
-
-      if (!class_oid_list_p || !repr_id_list_p)
+      if (class_oid_list_p == NULL || repr_id_list_p == NULL)
 	{
 	  goto exit_on_error;
 	}
@@ -1345,7 +1344,6 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, const char *query_string_p,
 	{
 	  p = or_unpack_oid (p, &class_oid_list_p[i]);
 	}
-
       for (i = 0; i < n_oid_list; i++)
 	{
 	  p = or_unpack_int (p, &repr_id_list_p[i]);
@@ -1374,6 +1372,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, const char *query_string_p,
 	db_private_free_and_init (thread_p, class_oid_list_p);
       if (repr_id_list_p)
 	db_private_free_and_init (thread_p, repr_id_list_p);
+
       return NULL;
     }
 
@@ -1993,9 +1992,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 	         or make new one */
 	      list_cache_entry_p =
 		qfile_update_list_cache_entry (thread_p,
-					       &xasl_cache_entry_p->list_ht_no,
-					       &params, list_id_p,
-					       xasl_cache_entry_p->query_string);
+					       &xasl_cache_entry_p->
+					       list_ht_no, &params, list_id_p,
+					       xasl_cache_entry_p->
+					       query_string);
 	      if (list_cache_entry_p == NULL)
 		{
 		  char *s;

@@ -11231,9 +11231,10 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
       if ((p->info.insert.hint & PT_HINT_LK_TIMEOUT)
 	  && p->info.insert.waitsecs_hint)
 	{
+	  PARSER_VARCHAR *vc;
 	  b = pt_append_nulstring (parser, b, " LOCK_TIMEOUT(");
-	  r1 = pt_print_bytes (parser, p->info.insert.waitsecs_hint);
-	  b = pt_append_varchar (parser, b, r1);
+	  vc = pt_print_bytes (parser, p->info.insert.waitsecs_hint);
+	  b = pt_append_varchar (parser, b, vc);
 	  b = pt_append_nulstring (parser, b, ")");
 	}
       if (p->info.insert.hint & PT_HINT_NO_LOGGING)
@@ -11243,6 +11244,14 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.insert.hint & PT_HINT_REL_LOCK)
 	{
 	  b = pt_append_nulstring (parser, b, " RELEASE_LOCK");
+	}
+      if (p->info.insert.hint & PT_HINT_INSERT_MODE)
+	{
+	  PARSER_VARCHAR *vc;
+	  b = pt_append_nulstring (parser, b, " INSERT_EXECUTION_MODE(");
+	  vc = pt_print_bytes (parser, p->info.insert.insert_mode);
+	  b = pt_append_varchar (parser, b, vc);
+	  b = pt_append_nulstring (parser, b, ")");
 	}
       b = pt_append_nulstring (parser, b, " */");
     }

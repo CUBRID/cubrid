@@ -18,7 +18,7 @@
  */
 
 /*
- * cm_mem_cpu_stat.c - 
+ * cm_mem_cpu_stat.c -
  */
 #include "config.h"
 #include "cm_stat.h"
@@ -385,7 +385,7 @@ typedef NTSTATUS (WINAPI *
 		  NT_QUERY_SYSTEM_INFORMATION) (SYSTEM_INFORMATION_CLASS,
 						PVOID, ULONG, PULONG);
 
-/* 
+/*
  * 0 - init_state.
  * 1 - load GetSystemTime.
  * 2 - load NtQuerySystemInformation.
@@ -404,15 +404,15 @@ get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
     {
       /*
        * kernel32.dll and ntdll.dll is essential DLL about user process.
-       * when a process started, that means kernel32.dll and ntdll.dll 
+       * when a process started, that means kernel32.dll and ntdll.dll
        * already load in process memory space.
-       * so call LoadLibrary() and FreeLibrary() function once, only 
-       * increase and decrease dll reference counter. this behavior does 
+       * so call LoadLibrary() and FreeLibrary() function once, only
+       * increase and decrease dll reference counter. this behavior does
        * not cause kernel32.dll or ntdll.dll unload from current process.
        */
 
       /*
-       * first try find function GetSystemTimes(). Windows OS suport this 
+       * first try find function GetSystemTimes(). Windows OS suport this
        * function since Windows XP SP1, Vista, Server 2003 or Server 2008.
        */
       HMODULE module = LoadLibraryA ("kernel32.dll");
@@ -460,7 +460,7 @@ get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
       li.HighPart = idle_time.dwHighDateTime;
       li.LowPart = idle_time.dwLowDateTime;
 
-      /* In win32 system, lk includes "System Idle Process" time, 
+      /* In win32 system, lk includes "System Idle Process" time,
        * so we should exclude it */
       *kernel = lk.QuadPart - li.QuadPart;
       *user = lu.QuadPart;
@@ -476,7 +476,7 @@ get_cpu_time (__int64 * kernel, __int64 * user, __int64 * idle)
       s_pfnNtQuerySystemInformation (SystemProcessorPerformanceInformation,
 				     &sppi, sizeof (sppi), &len);
 
-      /* In win32 system, sppi.KernelTime includes "System Idle Process" 
+      /* In win32 system, sppi.KernelTime includes "System Idle Process"
        * time, so we should exclude it */
       *kernel = sppi.KernelTime.QuadPart - sppi.IdleTime.QuadPart;
       *user = sppi.UserTime.QuadPart;
@@ -978,6 +978,12 @@ static STATDUMP_PROP statdump_offset[] = {
   {"Num_adaptive_flush_log_pages",
    offsetof (T_CM_DB_EXEC_STAT, fc_num_log_pages)},
   {"Num_adaptive_flush_max_pages", offsetof (T_CM_DB_EXEC_STAT, fc_tokens)},
+  {"Num_prior_lsa_list_size",
+   offsetof (T_CM_DB_EXEC_STAT, prior_lsa_list_size)},
+  {"Num_prior_lsa_list_maxed",
+   offsetof (T_CM_DB_EXEC_STAT, prior_lsa_list_maxed)},
+  {"Num_prior_lsa_list_removed",
+   offsetof (T_CM_DB_EXEC_STAT, prior_lsa_list_removed)},
   {"Data_page_buffer_hit_ratio", offsetof (T_CM_DB_EXEC_STAT, pb_hit_ratio)},
 };
 

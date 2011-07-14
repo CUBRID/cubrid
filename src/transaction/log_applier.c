@@ -354,18 +354,19 @@ static char *la_get_zipped_data (char *undo_data, int undo_length,
 static int la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid,
 				 PGLENGTH * offset, bool * is_undo_zip,
 				 char **undo_data, int *undo_length);
-static int la_get_log_data (struct log_rec *lrec, LOG_LSA * lsa,
+static int la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa,
 			    LOG_PAGE * pgptr, unsigned int match_rcvindex,
 			    unsigned int *rcvindex, void **logs,
 			    char **rec_type, char **data, int *d_length);
-static int la_get_overflow_recdes (struct log_rec *lrec, void *logs,
+static int la_get_overflow_recdes (LOG_RECORD_HEADER * lrec, void *logs,
 				   char **area, int *length,
 				   unsigned int rcvindex);
-static int la_get_next_update_log (struct log_rec *prev_lrec,
+static int la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
 				   LOG_PAGE * pgptr, void **logs,
 				   char **rec_type, char **data,
 				   int *d_length);
-static int la_get_relocation_recdes (struct log_rec *lrec, LOG_PAGE * pgptr,
+static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec,
+				     LOG_PAGE * pgptr,
 				     unsigned int match_rcvindex, void **logs,
 				     char **rec_type, char **data,
 				     int *d_length);
@@ -386,7 +387,7 @@ static int la_apply_repl_log (int tranid, int rectype, int *total_rows,
 			      LOG_PAGEID final_pageid);
 static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
 static void la_clear_repl_item_by_tranid (int tranid);
-static int la_log_record_process (struct log_rec *lrec,
+static int la_log_record_process (LOG_RECORD_HEADER * lrec,
 				  LOG_LSA * final, LOG_PAGE * pg_ptr);
 static int la_change_state (void);
 static int la_log_commit (void);
@@ -2425,7 +2426,7 @@ la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
   char *area;
 
   t_pageid = lsa->pageid;
-  target_offset = DB_SIZEOF (struct log_rec) + lsa->offset;
+  target_offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
   length = DB_SIZEOF (struct log_replication);
 
   LA_LOG_READ_ALIGN (error, target_offset, t_pageid, log_pgptr2);
@@ -2590,7 +2591,7 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
   LOG_PAGE *pg;
 
   pageid = lsa->pageid;
-  offset = DB_SIZEOF (struct log_rec) + lsa->offset;
+  offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
 
   pg = pgptr;
 
@@ -3003,7 +3004,7 @@ la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid,
  *              given log record
  */
 static int
-la_get_log_data (struct log_rec *lrec,
+la_get_log_data (LOG_RECORD_HEADER * lrec,
 		 LOG_LSA * lsa, LOG_PAGE * pgptr,
 		 unsigned int match_rcvindex, unsigned int *rcvindex,
 		 void **logs, char **rec_type, char **data, int *d_length)
@@ -3030,7 +3031,7 @@ la_get_log_data (struct log_rec *lrec,
 
   pg = pgptr;
 
-  offset = DB_SIZEOF (struct log_rec) + lsa->offset;
+  offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
   pageid = lsa->pageid;
 
   LA_LOG_READ_ALIGN (error, offset, pageid, pg);
@@ -3251,12 +3252,12 @@ la_get_log_data (struct log_rec *lrec,
  *
  */
 static int
-la_get_overflow_recdes (struct log_rec *log_record, void *logs,
+la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs,
 			char **area, int *length, unsigned int rcvindex)
 {
   LOG_LSA current_lsa;
   LOG_PAGE *current_log_page;
-  struct log_rec *current_log_record;
+  LOG_RECORD_HEADER *current_log_record;
   LA_OVF_PAGE_LIST *ovf_list_head = NULL;
   LA_OVF_PAGE_LIST *ovf_list_tail = NULL;
   LA_OVF_PAGE_LIST *ovf_list_data = NULL;
@@ -3277,9 +3278,8 @@ la_get_overflow_recdes (struct log_rec *log_record, void *logs,
   while (!LSA_ISNULL (&current_lsa))
     {
       current_log_page = la_get_page (current_lsa.pageid);
-      current_log_record =
-	(struct log_rec *) ((char *) current_log_page->area +
-			    current_lsa.offset);
+      current_log_record = LOG_GET_LOG_RECORD_HEADER (current_log_page,
+						      &current_lsa);
 
       if (current_log_record->trid != log_record->trid
 	  || current_log_record->type == LOG_DUMMY_OVF_RECORD)
@@ -3406,7 +3406,7 @@ la_get_overflow_recdes (struct log_rec *log_record, void *logs,
  *      record, it should fetch the real UPDATE log record to be processed.
  */
 static int
-la_get_next_update_log (struct log_rec *prev_lrec,
+la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
 			LOG_PAGE * pgptr, void **logs,
 			char **rec_type, char **data, int *d_length)
 {
@@ -3416,7 +3416,7 @@ la_get_next_update_log (struct log_rec *prev_lrec,
   int length;			/* type change PGLENGTH -> int */
   LOG_PAGEID pageid;
   int error = NO_ERROR;
-  struct log_rec *lrec;
+  LOG_RECORD_HEADER *lrec;
   struct log_undoredo *undoredo;
   struct log_undoredo *prev_log;
   int zip_len = 0;
@@ -3444,14 +3444,14 @@ la_get_next_update_log (struct log_rec *prev_lrec,
     {
       while (pg && pg->hdr.logical_pageid == lsa.pageid)
 	{
-	  lrec = (struct log_rec *) ((char *) pg->area + lsa.offset);
+	  lrec = LOG_GET_LOG_RECORD_HEADER (pg, &lsa);
 	  if (lrec->trid == prev_lrec->trid &&
 	      (lrec->type == LOG_UNDOREDO_DATA
 	       || lrec->type == LOG_DIFF_UNDOREDO_DATA))
 	    {
 	      is_diff = (lrec->type == LOG_DIFF_UNDOREDO_DATA) ? true : false;
 
-	      offset = DB_SIZEOF (struct log_rec) + lsa.offset;
+	      offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa.offset;
 	      pageid = lsa.pageid;
 	      LA_LOG_READ_ALIGN (error, offset, pageid, pg);
 	      length = DB_SIZEOF (struct log_undoredo);
@@ -3558,11 +3558,11 @@ la_get_next_update_log (struct log_rec *prev_lrec,
 }
 
 static int
-la_get_relocation_recdes (struct log_rec *lrec, LOG_PAGE * pgptr,
+la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr,
 			  unsigned int match_rcvindex, void **logs,
 			  char **rec_type, char **data, int *d_length)
 {
-  struct log_rec *tmp_lrec;
+  LOG_RECORD_HEADER *tmp_lrec;
   unsigned int rcvindex;
   LOG_PAGE *pg = pgptr;
   LOG_LSA lsa;
@@ -3572,7 +3572,7 @@ la_get_relocation_recdes (struct log_rec *lrec, LOG_PAGE * pgptr,
   if (!LSA_ISNULL (&lsa))
     {
       pg = la_get_page (lsa.pageid);
-      tmp_lrec = (struct log_rec *) ((char *) pg->area + lsa.offset);
+      tmp_lrec = LOG_GET_LOG_RECORD_HEADER (pg, &lsa);
       if (tmp_lrec->trid != lrec->trid)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED,
@@ -3617,7 +3617,7 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr,
 	       RECDES * recdes, unsigned int *rcvindex,
 	       char *log_data, char *rec_type, bool * ovfyn)
 {
-  struct log_rec *lrec;
+  LOG_RECORD_HEADER *lrec;
   LOG_PAGE *pg;
   int length;
   int error = NO_ERROR;
@@ -3625,7 +3625,7 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr,
   void *logs = NULL;
 
   pg = pgptr;
-  lrec = (struct log_rec *) ((char *) pg->area + lsa->offset);
+  lrec = LOG_GET_LOG_RECORD_HEADER (pg, lsa);
 
   error = la_get_log_data (lrec, lsa, pg, 0, rcvindex,
 			   &logs, &rec_type, &log_data, &length);
@@ -4622,7 +4622,7 @@ la_clear_repl_item_by_tranid (int tranid)
 }
 
 static int
-la_log_record_process (struct log_rec *lrec,
+la_log_record_process (LOG_RECORD_HEADER * lrec,
 		       LOG_LSA * final, LOG_PAGE * pg_ptr)
 {
   LA_APPLY *apply = NULL;
@@ -5531,7 +5531,7 @@ check_applied_info_end:
 	}
       else
 	{
-	  struct log_rec *lrec;
+	  LOG_RECORD_HEADER *lrec;
 	  LOG_LSA lsa;
 
 	  if (LA_LOG_IS_IN_ARCHIVE (page_num))
@@ -5556,7 +5556,7 @@ check_applied_info_end:
 
 	  while (lsa.pageid == page_num)
 	    {
-	      lrec = (struct log_rec *) ((char *) logpage->area + lsa.offset);
+	      lrec = LOG_GET_LOG_RECORD_HEADER (logpage, &lsa);
 
 	      printf ("offset:%04d "
 		      "(tid:%d bck p:%lld,o:%d frw p:%lld,o:%d type:%d)\n",
@@ -5697,7 +5697,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
   LOG_LSA final;
   LA_CACHE_BUFFER *log_buf = NULL;
   LOG_PAGE *pg_ptr;
-  struct log_rec *lrec = NULL;
+  LOG_RECORD_HEADER *lrec = NULL;
   LOG_LSA old_lsa = {
     -1, -1
   };
@@ -6085,8 +6085,7 @@ la_apply_log_file (const char *database_name, const char *log_path,
 		  break;
 		}
 
-	      lrec =
-		(struct log_rec *) ((char *) pg_ptr->area + final.offset);
+	      lrec = LOG_GET_LOG_RECORD_HEADER (pg_ptr, &final);
 
 	      if (!LSA_ISNULL (&prev_final)
 		  && !LSA_EQ (&prev_final, &lrec->back_lsa))

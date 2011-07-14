@@ -957,6 +957,7 @@ typedef enum
   PT_HINT_NO_STATS = 0x8000,	/* 1000 0000 0000 0000 *//* no_stats */
   PT_HINT_USE_IDX_DESC = 0x10000,	/* 0001 0000 0000 0000 0000 *//* descending index scan */
   PT_HINT_NO_COVERING_IDX = 0x20000,	/* 0010 0000 0000 0000 0000 *//* do not use covering index scan */
+  PT_HINT_INSERT_MODE = 0x40000,	/* 0100 0000 0000 0000 0000 *//* set insert_executeion_mode */
 } PT_HINT_ENUM;
 
 
@@ -1897,6 +1898,7 @@ struct pt_insert_info
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *on_dup_key_update;	/* ON DUPLICATE KEY UPDATE assignments */
   bool do_replace;		/* REPLACE statement was given */
+  PT_NODE *insert_mode;		/* insert execution mode */
 };
 
 /* Info for Transaction Isolation Level */
@@ -2115,7 +2117,7 @@ struct pt_query_info
   PT_NODE *into_list;		/* PT_VALUE (list) */
   PT_NODE *for_update;		/* PT_EXPR (list) */
   PT_NODE *qcache_hint;		/* enable/disable query cache */
-  PT_NODE *limit;               /* PT_VALUE (list) limit clause parameter(s) */
+  PT_NODE *limit;		/* PT_VALUE (list) limit clause parameter(s) */
   void *xasl;			/* xasl proc pointer */
   UINTPTR id;			/* query unique id # */
   PT_HINT_ENUM hint;		/* hint flag */

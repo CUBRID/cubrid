@@ -1625,8 +1625,10 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 int
 logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  logtb_clear_tdes (thread_p, tdes);
   TR_TABLE_CS_ENTER (thread_p);
+
+  logtb_clear_tdes (thread_p, tdes);
+
   tdes->trid = log_Gl.hdr.next_trid++;
   /* check overflow */
   if (tdes->trid < 0)
@@ -1634,6 +1636,7 @@ logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       tdes->trid = LOG_SYSTEM_TRANID + 1;
       log_Gl.hdr.next_trid = tdes->trid + 1;
     }
+
   TR_TABLE_CS_EXIT ();
 
   return tdes->trid;

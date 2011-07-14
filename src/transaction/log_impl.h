@@ -130,39 +130,23 @@
 /* check if group commit is active */
 #define LOG_IS_GROUP_COMMIT_ACTIVE() (PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS > 0)
 
+#define LOG_RESET_APPEND_LSA(lsa)                \
+  do {                                           \
+    LSA_COPY(&log_Gl.hdr.append_lsa, lsa);       \
+    LSA_COPY(&log_Gl.prior_info.prior_lsa, lsa); \
+  } while(0)
+
+#define LOG_RESET_PREV_LSA(lsa)                \
+  do {                                           \
+    LSA_COPY(&log_Gl.append.prev_lsa, lsa);       \
+    LSA_COPY(&log_Gl.prior_info.prev_lsa, lsa); \
+  } while(0)
+
 #define LOG_APPEND_PTR() ((char *)log_Gl.append.log_pgptr->area +             \
                           log_Gl.hdr.append_lsa.offset)
 
-#define LOG_LAST_APPEND_PTR() ((char *)log_Gl.append.log_pgptr->area +        \
-                               LOGAREA_SIZE)
-
-#define LOG_PREV_APPEND_PTR()                                                 \
-  ((log_Gl.append.delayed_free_log_pgptr != NULL)                             \
-   ? ((char *)log_Gl.append.delayed_free_log_pgptr->area +                    \
-      log_Gl.append.prev_lsa.offset)                                          \
-   : ((char *)log_Gl.append.log_pgptr->area +                                 \
-      log_Gl.append.prev_lsa.offset))
-
-#define LOG_APPEND_ALIGN(thread_p, current_setdirty)                                    \
-  do {                                                                        \
-    if ((current_setdirty) == LOG_SET_DIRTY)                                  \
-      logpb_set_dirty((thread_p), log_Gl.append.log_pgptr, DONT_FREE);        \
-    log_Gl.hdr.append_lsa.offset = DB_ALIGN(log_Gl.hdr.append_lsa.offset, DOUBLE_ALIGNMENT);                    \
-    if (log_Gl.hdr.append_lsa.offset >= (int)LOGAREA_SIZE)                    \
-      logpb_next_append_page((thread_p), LOG_DONT_SET_DIRTY);                               \
-  } while(0)
-
-#define LOG_APPEND_SETDIRTY_ADD_ALIGN(thread_p, add)                                    \
-  do {                                                                        \
-    log_Gl.hdr.append_lsa.offset += (add);                                    \
-    LOG_APPEND_ALIGN((thread_p), LOG_SET_DIRTY);                                          \
-  } while(0)
-
-#define LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT(thread_p, length)                           \
-  do {                                                                        \
-    if (log_Gl.hdr.append_lsa.offset + (int)(length) >= (int)LOGAREA_SIZE)    \
-      logpb_next_append_page((thread_p), LOG_DONT_SET_DIRTY);                               \
-  } while(0)
+#define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa)               \
+     ((LOG_RECORD_HEADER *)((log_page_p)->area + (lsa)->offset))
 
 #define LOG_READ_ALIGN(thread_p, lsa, log_pgptr)                                        \
   do {                                                                        \
@@ -172,8 +156,8 @@
       (lsa)->pageid++;                                                        \
       if ((logpb_fetch_page((thread_p), (lsa)->pageid, log_pgptr)) == NULL)                 \
         logpb_fatal_error((thread_p), true, ARG_FILE_LINE, "LOG_READ_ALIGN");               \
-        (lsa)->offset -= LOGAREA_SIZE;                                        \
-        (lsa)->offset = DB_ALIGN((lsa)->offset, DOUBLE_ALIGNMENT);                               \
+      (lsa)->offset -= LOGAREA_SIZE;                                        \
+      (lsa)->offset = DB_ALIGN((lsa)->offset, DOUBLE_ALIGNMENT);                               \
     }                                                                         \
   } while(0)
 
@@ -438,11 +422,6 @@ enum log_flush_type
 {
   /* flush pages in commit process */
   LOG_FLUSH_NORMAL = 0,
-  /* force to flush pages (chkpt...) */
-  LOG_FLUSH_FORCE,
-  /* caller have to execute flushall append pages directly
-     because some threads can't release log cs. (archive, log buffer replace)
-   */
   LOG_FLUSH_DIRECT
 };
 
@@ -463,7 +442,6 @@ struct log_flush_info
 
   /* A sorted order of log append free pages to flush */
   LOG_PAGE **toflush;
-  LOG_FLUSH_TYPE flush_type;
 
 #if defined(SERVER_MODE)
   /* for protecting LOG_FLUSH_INFO */
@@ -614,7 +592,7 @@ struct log_clientids		/* see BOOT_CLIENT_CREDENTIAL */
 typedef struct modified_class_entry MODIFIED_CLASS_ENTRY;
 struct modified_class_entry
 {
-  struct modified_class_entry *next;
+  MODIFIED_CLASS_ENTRY *next;
   OID class_oid;
   LOG_LSA last_modified_lsa;
   bool need_update_stats;
@@ -1059,7 +1037,8 @@ struct log_repl
 };
 
 /* Description of a log record */
-struct log_rec
+typedef struct log_rec_header LOG_RECORD_HEADER;
+struct log_rec_header
 {
   LOG_LSA prev_tranlsa;		/* Address of previous log record for the
 				 * same transaction
@@ -1348,12 +1327,61 @@ struct background_archiving_info
   int vdes;
 };
 
+typedef struct log_data_addr LOG_DATA_ADDR;
+struct log_data_addr
+{
+  const VFID *vfid;		/* File where the page belong or NULL when the page is not
+				 * associated with a file
+				 */
+  PAGE_PTR pgptr;
+  PGLENGTH offset;		/* Offset or slot */
+};
+
+typedef struct log_prior_node LOG_PRIOR_NODE;
+struct log_prior_node
+{
+  LOG_RECORD_HEADER log_header;
+  LOG_LSA start_lsa;		/* for assertion */
+
+  /* data header info */
+  int data_header_length;
+  char *data_header;
+
+  /* data info */
+  int ulength;
+  char *udata;
+  int rlength;
+  char *rdata;
+
+  LOG_PRIOR_NODE *next;
+};
+
+typedef struct log_prior_lsa_info LOG_PRIOR_LSA_INFO;
+struct log_prior_lsa_info
+{
+  LOG_LSA prior_lsa;
+  LOG_LSA prev_lsa;
+
+  /* list */
+  LOG_PRIOR_NODE *prior_list_header;
+  LOG_PRIOR_NODE *prior_list_tail;
+
+  INT64 list_size;		/* bytes */
+
+  /* flush list */
+  LOG_PRIOR_NODE *prior_flush_list_header;
+  LOG_PRIOR_NODE *prior_flush_list_tail;
+
+  pthread_mutex_t prior_lsa_mutex;
+};
+
 /* Global structure to trantable, log buffer pool, etc */
 typedef struct log_global LOG_GLOBAL;
 struct log_global
 {
   TRANTABLE trantable;		/* Transaction table           */
   struct log_append_info append;	/* The log append info         */
+  LOG_PRIOR_LSA_INFO prior_info;
   struct log_header hdr;	/* The log header              */
   struct log_archives archive;	/* Current archive information */
   LOG_PAGEID run_nxchkpt_atpageid;
@@ -1549,22 +1577,30 @@ extern PGLENGTH logpb_find_header_parameters (THREAD_ENTRY * thread_p,
 					      float *db_compatibility);
 extern LOG_PAGE *logpb_fetch_start_append_page (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p);
-extern void logpb_next_append_page (THREAD_ENTRY * thread_p,
-				    LOG_SETDIRTY current_setdirty);
-extern int logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p);
 extern void logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
 					  LOG_FLUSH_TYPE flush_type);
 extern void logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p);
 extern void logpb_flush_log_for_wal (THREAD_ENTRY * thread_p,
 				     const LOG_LSA * lsa_ptr);
-extern void logpb_force (THREAD_ENTRY * thread_p);
-extern void logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECTYPE rectype,
-				LOG_TDES * tdes);
-extern void logpb_append_data (THREAD_ENTRY * thread_p, int length,
-			       const char *data);
-extern void logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
-				 const LOG_CRUMB * crumbs);
-extern void logpb_end_append (THREAD_ENTRY * thread_p);
+extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p,
+						      LOG_RECTYPE rec_type,
+						      LOG_RCVINDEX rcvindex,
+						      LOG_DATA_ADDR * addr,
+						      int ulength,
+						      char *udata,
+						      int rlength,
+						      char *rdata);
+extern LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *
+							thread_p,
+							LOG_RECTYPE rec_type,
+							LOG_RCVINDEX rcvindex,
+							LOG_DATA_ADDR * addr,
+							int num_ucrumbs,
+							LOG_CRUMB * ucrumbs,
+							int num_rcrumbs,
+							LOG_CRUMB * rcrumbs);
+extern LOG_LSA prior_lsa_next_record (THREAD_ENTRY * thread_p,
+				      LOG_PRIOR_NODE * node, LOG_TDES * tdes);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void logpb_remove_append (LOG_TDES * tdes);
 #endif

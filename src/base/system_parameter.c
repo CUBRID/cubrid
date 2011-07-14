@@ -658,8 +658,8 @@ int PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS = 0;
 static int prm_log_group_commit_interval_msecs_default = 0;
 static int prm_log_group_commit_interval_msecs_lower = 0;
 
-int PRM_LOG_BG_FLUSH_INTERVAL_MSECS = 1000;
-static int prm_log_bg_flush_interval_msecs_default = 1000;
+int PRM_LOG_BG_FLUSH_INTERVAL_MSECS = 0;
+static int prm_log_bg_flush_interval_msecs_default = 0;	/* not used */
 static int prm_log_bg_flush_interval_msecs_lower = 0;
 
 int PRM_LOG_BG_FLUSH_NUM_PAGES = 0;
@@ -960,13 +960,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL},
   {PRM_NAME_LOG_NBUFFERS,
    (PRM_REQUIRED | PRM_INTEGER | PRM_DEFAULT | PRM_FOR_SERVER |
-    PRM_FOR_CLIENT | PRM_DEPRECATED),
+    PRM_DEPRECATED),
    (void *) &prm_log_nbuffers_default,
    (void *) &PRM_LOG_NBUFFERS,
    (void *) NULL, (void *) &prm_log_nbuffers_lower,
    (char *) NULL},
   {PRM_NAME_LOG_BUFFER_SIZE,
-   (PRM_REQUIRED | PRM_SIZE | PRM_DEFAULT | PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   (PRM_REQUIRED | PRM_SIZE | PRM_DEFAULT | PRM_FOR_SERVER),
    (void *) &prm_log_buffer_size_default,
    (void *) &PRM_LOG_BUFFER_SIZE,
    (void *) NULL, (void *) &prm_log_buffer_size_lower,
@@ -1663,7 +1663,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_LOG_COMPRESS,
-   (PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_BOOLEAN | PRM_DEFAULT | PRM_FOR_SERVER),
    (void *) &prm_log_compress_default,
    (void *) &PRM_LOG_COMPRESS,
    (void *) NULL, (void *) NULL,

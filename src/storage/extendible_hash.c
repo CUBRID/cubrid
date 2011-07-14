@@ -4365,42 +4365,51 @@ ehash_hash_string_type (char *key_p, char *original_key_p)
 
   length = strlen (key_p);
 
-  /* Eliminate any traling space characters */
-  if (char_isspace (*(char *) (key_p + length - 1)))
+  if (length > 0)
     {
-      for (p = key_p + length - 1; char_isspace (*p) && (p > key_p); p--)
-	;
-      length = (int) (p - key_p + 1);
-      key_p = new_key_p = (char *) malloc (length + 1);	/* + 1 is for \0 */
-      if (key_p == NULL)
-	return 0;
-      memcpy (key_p, original_key_p, length);
-      *(char *) (key_p + length) = '\0';
-    }
-  times = length / sizeof (EHASH_HASH_KEY);	/* Takes the floor of division */
+      /* Eliminate any traling space characters */
+      if (char_isspace (*(char *) (key_p + length - 1)))
+	{
+	  for (p = key_p + length - 1; char_isspace (*p) && (p > key_p); p--)
+	    {
+	      ;
+	    }
+	  length = (int) (p - key_p + 1);
+	  key_p = new_key_p = (char *) malloc (length + 1);	/* + 1 is for \0 */
+	  if (key_p == NULL)
+	    {
+	      return 0;
+	    }
+	  memcpy (key_p, original_key_p, length);
+	  *(char *) (key_p + length) = '\0';
+	}
 
-  /* Apply Folding method */
-  for (i = 1; i <= times; i++)
-    {
-      memcpy (&Int, key_p, sizeof (int));
-      hash_key += Int;		/* Add next word of original key */
+      /* Takes the floor of division */
+      times = length / sizeof (EHASH_HASH_KEY);
 
-      key_p += sizeof (EHASH_HASH_KEY);
-    }
+      /* Apply Folding method */
+      for (i = 1; i <= times; i++)
+	{
+	  memcpy (&Int, key_p, sizeof (int));
+	  hash_key += Int;	/* Add next word of original key */
 
-  remaining = length - times * sizeof (EHASH_HASH_KEY);
+	  key_p += sizeof (EHASH_HASH_KEY);
+	}
 
-  /* Go over the remaining chars of key */
-  for (i = 1; i <= remaining; i++)
-    {
-      /* shift left to align with previous content */
-      Int = (int) *key_p++ << i;
-      hash_key += Int;
-    }
+      remaining = length - times * sizeof (EHASH_HASH_KEY);
 
-  if (new_key_p)
-    {
-      free_and_init (new_key_p);
+      /* Go over the remaining chars of key */
+      for (i = 1; i <= remaining; i++)
+	{
+	  /* shift left to align with previous content */
+	  Int = (int) *key_p++ << i;
+	  hash_key += Int;
+	}
+
+      if (new_key_p)
+	{
+	  free_and_init (new_key_p);
+	}
     }
 
   /* Copy the hash_key to an aux. area, to be further hashed into

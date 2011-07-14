@@ -894,14 +894,19 @@ tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 		}
 
 	      if (first == NULL)
-		first = new_domain;
+		{
+		  first = new_domain;
+		}
 	      else
-		last->next = new_domain;
+		{
+		  last->next = new_domain;
+		}
 	      last = new_domain;
 	    }
 	}
     }
-  return (first);
+
+  return first;
 }
 
 

@@ -63,7 +63,10 @@
 #if !defined(SERVER_MODE)
 #include "boot_cl.h"
 #include "transaction_cl.h"
-#endif /* !SERVER_MODE */
+#else /* !SERVER_MODE */
+#include "connection_defs.h"
+#include "connection_sr.h"
+#endif
 #include "page_buffer.h"
 #include "file_io.h"
 #include "disk_manager.h"
@@ -86,6 +89,7 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 #include "db.h"			/* for db_Connect_status */
+#include "log_compress.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -135,6 +139,73 @@ static int rv;
   (logpb_to_physical_pageid(pageid) == log_Gl.hdr.nxarv_phy_pageid)
 
 #define ARV_PAGE_INFO_TABLE_SIZE    256
+
+#define LOG_PRIOR_LSA_LIST_MAX_SIZE() \
+  ((INT64) log_Pb.num_buffers * (INT64) LOG_PAGESIZE * 10)	/* 10 is guessing factor */
+
+#if defined(SERVER_MODE)
+#define PRIOR_LSA_MUTEX_LOCK(m)   pthread_mutex_lock (m)
+#define PRIOR_LSA_MUTEX_UNLOCK(m) pthread_mutex_unlock (m)
+#else /* SERVER_MODE */
+#define PRIOR_LSA_MUTEX_LOCK(m)
+#define PRIOR_LSA_MUTEX_UNLOCK(m)
+#endif /* SERVER_MODE */
+
+
+#define LOG_PRIOR_LSA_LAST_APPEND_OFFSET()  LOGAREA_SIZE
+
+#define LOG_PRIOR_LSA_APPEND_ALIGN()                                       \
+  do {                                                                             \
+    log_Gl.prior_info.prior_lsa.offset = DB_ALIGN(log_Gl.prior_info.prior_lsa.offset, DOUBLE_ALIGNMENT); \
+    if (log_Gl.prior_info.prior_lsa.offset >= (int)LOGAREA_SIZE)                    \
+      log_Gl.prior_info.prior_lsa.pageid++, log_Gl.prior_info.prior_lsa.offset = 0;            \
+  } while(0)
+
+#define LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT(length)  \
+  do {                                                                   \
+    if (log_Gl.prior_info.prior_lsa.offset + (int)(length) >= (int)LOGAREA_SIZE)    \
+      log_Gl.prior_info.prior_lsa.pageid++, log_Gl.prior_info.prior_lsa.offset = 0;            \
+  } while(0)
+
+#define LOG_PRIOR_LSA_APPEND_ADD_ALIGN(add)                    \
+  do {                                                                   \
+    log_Gl.prior_info.prior_lsa.offset += (add);                                    \
+    LOG_PRIOR_LSA_APPEND_ALIGN();                              \
+  } while(0)
+
+
+#define LOG_LAST_APPEND_PTR() ((char *)log_Gl.append.log_pgptr->area +        \
+                               LOGAREA_SIZE)
+
+#define LOG_APPEND_ALIGN(thread_p, current_setdirty)                                    \
+  do {                                                                        \
+    if ((current_setdirty) == LOG_SET_DIRTY)                                  \
+      logpb_set_dirty((thread_p), log_Gl.append.log_pgptr, DONT_FREE);        \
+    log_Gl.hdr.append_lsa.offset = DB_ALIGN(log_Gl.hdr.append_lsa.offset, DOUBLE_ALIGNMENT);                    \
+    if (log_Gl.hdr.append_lsa.offset >= (int)LOGAREA_SIZE)                    \
+      logpb_next_append_page((thread_p), LOG_DONT_SET_DIRTY);                               \
+  } while(0)
+
+#define LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT(thread_p, length)                           \
+  do {                                                                        \
+    if (log_Gl.hdr.append_lsa.offset + (int)(length) >= (int)LOGAREA_SIZE)    \
+      logpb_next_append_page((thread_p), LOG_DONT_SET_DIRTY);                               \
+  } while(0)
+
+#define LOG_APPEND_SETDIRTY_ADD_ALIGN(thread_p, add)                                    \
+  do {                                                                        \
+    log_Gl.hdr.append_lsa.offset += (add);                                    \
+    LOG_APPEND_ALIGN((thread_p), LOG_SET_DIRTY);                                          \
+  } while(0)
+
+#define LOG_PREV_APPEND_PTR()                                                 \
+  ((log_Gl.append.delayed_free_log_pgptr != NULL)                             \
+   ? ((char *)log_Gl.append.delayed_free_log_pgptr->area +                    \
+      log_Gl.append.prev_lsa.offset)                                          \
+   : ((char *)log_Gl.append.log_pgptr->area +                                 \
+      log_Gl.append.prev_lsa.offset))
+
+
 
 /* LOG BUFFER STRUCTURE */
 
@@ -207,9 +278,8 @@ typedef struct
 #define SIZEOF_LOG_BUFFER \
   (offsetof(struct log_buffer, logpage) + LOG_PAGESIZE)
 
-#define LOG_CAST_LOGPAGEPTR_TO_BFPTR(bufptr, log_pgptr)                       \
-  ((bufptr) = ((struct log_buffer *)                                          \
-              ((char *)(log_pgptr) - offsetof(struct log_buffer, logpage))))
+#define LOG_GET_LOG_BUFFER_PTR(log_pgptr)                       \
+  ((struct log_buffer *) ((char *)(log_pgptr) - offsetof(struct log_buffer, logpage)))
 
 static const int LOG_BKUP_HASH_NUM_PAGEIDS = 1000;
 /* MIN AND MAX BUFFERS */
@@ -230,6 +300,14 @@ LOG_PB_GLOBAL_DATA log_Pb = {
 
 LOG_LOGGING_STAT log_Stat;
 static ARV_LOG_PAGE_INFO_TABLE logpb_Arv_page_info_table;
+
+static bool log_zip_support = false;
+#if !defined(SERVER_MODE)
+static LOG_ZIP *log_zip_undo = NULL;
+static LOG_ZIP *log_zip_redo = NULL;
+static char *log_data_ptr = NULL;
+static int log_data_length = 0;
+#endif
 
 /*
  * Functions
@@ -331,10 +409,99 @@ static int logpb_add_archive_page_info (THREAD_ENTRY * thread_p,
 					LOG_PAGEID end_page);
 static int logpb_get_archive_num_from_info_table (THREAD_ENTRY * thread_p,
 						  LOG_PAGEID page_id);
+static LOG_ZIP *logpb_get_zip_undo (THREAD_ENTRY * thread_p);
+static LOG_ZIP *logpb_get_zip_redo (THREAD_ENTRY * thread_p);
+static char *logpb_get_data_ptr (THREAD_ENTRY * thread_p);
+static bool logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length);
 
 #if 0
 static FILEIO_BACKUP_LEVEL log_find_most_recent_backup_level (void);
 #endif
+
+static int logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p);
+static int logpb_append_next_record (THREAD_ENTRY * thread_p,
+				     LOG_PRIOR_NODE * ndoe);
+
+static int prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node,
+					     int length, char *data);
+static int prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node,
+					     int length, char *data);
+static int prior_lsa_copy_undo_crumbs_to_node (LOG_PRIOR_NODE * node,
+					       int num_crumbs,
+					       LOG_CRUMB * crumbs);
+static int prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE * node,
+					       int num_crumbs,
+					       LOG_CRUMB * crumbs);
+static void prior_lsa_start_append (THREAD_ENTRY * thread_p,
+				    LOG_PRIOR_NODE * node, LOG_TDES * tdes);
+static void prior_lsa_end_append (THREAD_ENTRY * thread_p,
+				  LOG_PRIOR_NODE * node);
+static void prior_lsa_append_data (int length);
+static void prior_lsa_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
+				     const LOG_CRUMB * crumbs);
+static int prior_lsa_gen_undoredo_record (THREAD_ENTRY * thread_p,
+					  LOG_PRIOR_NODE * node,
+					  LOG_RCVINDEX rcvindex,
+					  LOG_DATA_ADDR * addr,
+					  int undo_length, char *undo_data,
+					  int redo_length, char *redo_data);
+static int prior_lsa_gen_undo_record (THREAD_ENTRY * thread_p,
+				      LOG_PRIOR_NODE * node,
+				      LOG_RCVINDEX rcvindex,
+				      LOG_DATA_ADDR * addr, int length,
+				      char *data);
+static int prior_lsa_gen_redo_record (THREAD_ENTRY * thread_p,
+				      LOG_PRIOR_NODE * node,
+				      LOG_RCVINDEX rcvindex,
+				      LOG_DATA_ADDR * addr, int length,
+				      char *data);
+static int prior_lsa_gen_postpone_record (THREAD_ENTRY * thread_p,
+					  LOG_PRIOR_NODE * node,
+					  LOG_RCVINDEX rcvindex,
+					  LOG_DATA_ADDR * addr, int length,
+					  char *data);
+static int prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p,
+					    LOG_PRIOR_NODE * node,
+					    LOG_RCVINDEX rcvindex, int length,
+					    char *data);
+static int prior_lsa_gen_record (THREAD_ENTRY * thread_p,
+				 LOG_PRIOR_NODE * node, LOG_RECTYPE rec_type,
+				 int length, char *data);
+static int prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p,
+						      LOG_PRIOR_NODE * node,
+						      LOG_RCVINDEX rcvindex,
+						      LOG_DATA_ADDR * addr,
+						      int num_ucrumbs,
+						      LOG_CRUMB * ucrumbs,
+						      int num_rcrumbs,
+						      LOG_CRUMB * rcrumbs);
+static int prior_lsa_gen_undo_record_from_crumbs (THREAD_ENTRY * thread_p,
+						  LOG_PRIOR_NODE * node,
+						  LOG_RCVINDEX rcvindex,
+						  LOG_DATA_ADDR * addr,
+						  int num_crumbs,
+						  LOG_CRUMB * crumbs);
+static int prior_lsa_gen_redo_record_from_crumbs (THREAD_ENTRY * thread_p,
+						  LOG_PRIOR_NODE * node,
+						  LOG_RCVINDEX rcvindex,
+						  LOG_DATA_ADDR * addr,
+						  int num_crumbs,
+						  LOG_CRUMB * crumbs);
+
+static void logpb_start_append (THREAD_ENTRY * thread_p,
+				LOG_RECORD_HEADER * header);
+static void logpb_end_append (THREAD_ENTRY * thread_p,
+			      LOG_RECORD_HEADER * header);
+static void logpb_append_data (THREAD_ENTRY * thread_p, int length,
+			       const char *data);
+static void logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
+				 const LOG_CRUMB * crumbs);
+static void logpb_next_append_page (THREAD_ENTRY * thread_p,
+				    LOG_SETDIRTY current_setdirty);
+static int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
+static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
+static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p,
+					LOG_PRIOR_NODE * list);
 
 
 
@@ -596,6 +763,59 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
+  if (lzo_init () == LZO_E_OK)
+    {				/* lzo library init */
+      if (!PRM_LOG_COMPRESS)
+	{
+	  log_zip_support = false;
+	}
+      else
+	{
+#if defined(SERVER_MODE)
+	  log_zip_support = true;
+#else
+	  log_zip_undo = log_zip_alloc (IO_PAGESIZE, true);
+	  log_zip_redo = log_zip_alloc (IO_PAGESIZE, true);
+	  log_data_length = IO_PAGESIZE * 2;
+	  log_data_ptr = (char *) malloc (log_data_length);
+	  if (log_data_ptr == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, log_data_length);
+	    }
+
+	  if (log_zip_undo == NULL || log_zip_redo == NULL
+	      || log_data_ptr == NULL)
+	    {
+	      log_zip_support = false;
+	      if (log_zip_undo)
+		{
+		  log_zip_free (log_zip_undo);
+		  log_zip_undo = NULL;
+		}
+	      if (log_zip_redo)
+		{
+		  log_zip_free (log_zip_redo);
+		  log_zip_redo = NULL;
+		}
+	      if (log_data_ptr)
+		{
+		  free_and_init (log_data_ptr);
+		  log_data_length = 0;
+		}
+	    }
+	  else
+	    {
+	      log_zip_support = true;
+	    }
+#endif
+	}
+    }
+  else
+    {
+      log_zip_support = false;
+    }
+
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   if (log_Pb.pool != NULL)
@@ -686,6 +906,8 @@ logpb_finalize_pool (void)
 	}
       LSA_SET_NULL (&log_Gl.append.nxio_lsa);
       LSA_SET_NULL (&log_Gl.append.prev_lsa);
+      /* copy log_Gl.append.prev_lsa to log_Gl.prior_info.prev_lsa */
+      LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
 
 #if defined(CUBRID_DEBUG)
       if (logpb_is_any_dirty () == true || logpb_is_any_fix () == true)
@@ -732,6 +954,28 @@ logpb_finalize_pool (void)
   pthread_cond_destroy (&log_Gl.group_commit_info.gc_cond);
 
   logpb_finalize_writer_info ();
+
+  if (log_zip_support)
+    {
+#if defined (SERVER_MODE)
+#else
+      if (log_zip_undo)
+	{
+	  log_zip_free (log_zip_undo);
+	  log_zip_undo = NULL;
+	}
+      if (log_zip_redo)
+	{
+	  log_zip_free (log_zip_redo);
+	  log_zip_redo = NULL;
+	}
+      if (log_data_ptr)
+	{
+	  free_and_init (log_data_ptr);
+	  log_data_length = 0;
+	}
+#endif
+    }
 }
 
 /*
@@ -780,7 +1024,7 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
    * Flush any append dirty buffers at this moment.
    * Then, invalidate any buffer that it is not fixed and dirty
    */
-  logpb_force (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
 
   csect_enter_critical_section (thread_p, &log_Pb.lpb_cs, INF_WAIT);
 
@@ -1077,7 +1321,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int free_page)
   struct log_buffer *bufptr;	/* Log buffer associated with given page */
 
   /* Get the address of the buffer from the page. */
-  LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, log_pgptr);
+  bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
 
 #if defined(CUBRID_DEBUG)
   if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
@@ -1116,7 +1360,7 @@ logpb_is_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
   bool is_dirty;
 
   /* Get the address of the buffer from the page. */
-  LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, log_pgptr);
+  bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
 
   csect_enter_critical_section (thread_p, &log_Pb.lpb_cs, INF_WAIT);
 
@@ -1212,9 +1456,9 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
   struct log_buffer *bufptr;	/* Log buffer associated with given page */
 
   /* Get the address of the buffer from the page. */
-  LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, log_pgptr);
+  bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
 
-  assert (LOG_CS_OWN (thread_p));
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   csect_enter_critical_section (thread_p, &log_Pb.lpb_cs, INF_WAIT);
 
@@ -1247,9 +1491,6 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
       /*
        * The buffer is dirty, flush it
        */
-
-      /* Record number of writes in statistics */
-      mnt_log_iowrites (thread_p);
 
       /*
        * Even when the log has been open with the o_sync option, force a sync
@@ -1319,7 +1560,7 @@ logpb_free_without_mutex (LOG_PAGE * log_pgptr)
   struct log_buffer *bufptr;	/* Log buffer associated with given page */
 
   /* Get the address of the buffer from the page. */
-  LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, log_pgptr);
+  bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
 
   if (bufptr->pageid == NULL_PAGEID)
     {
@@ -1350,7 +1591,7 @@ logpb_get_page_id (LOG_PAGE * log_pgptr)
 {
   struct log_buffer *bufptr;	/* Log buffer associated with given page */
 
-  LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, log_pgptr);
+  bufptr = LOG_GET_LOG_BUFFER_PTR (log_pgptr);
 
   assert (bufptr->fcnt > 0);
   return bufptr->pageid;
@@ -1408,12 +1649,17 @@ logpb_dump_information (FILE * out_fp)
   (void) fprintf (out_fp, "\n\n");
 
   (void) fprintf (out_fp,
-		  " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d,\n"
-		  " Prev append LSA = %lld|%d\n\n",
+		  " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d,"
+		  " Prev append LSA = %lld|%d\n"
+		  " Prior LSA = %lld|%d, Prev prior LSA = %lld|%d\n\n",
 		  log_Gl.append.nxio_lsa.pageid,
 		  log_Gl.append.nxio_lsa.offset, log_Gl.hdr.append_lsa.pageid,
 		  log_Gl.hdr.append_lsa.offset, log_Gl.append.prev_lsa.pageid,
-		  log_Gl.append.prev_lsa.offset);
+		  log_Gl.append.prev_lsa.offset,
+		  log_Gl.prior_info.prior_lsa.pageid,
+		  log_Gl.prior_info.prior_lsa.offset,
+		  log_Gl.prior_info.prev_lsa.pageid,
+		  log_Gl.prior_info.prev_lsa.offset);
 
   (void) fprintf (out_fp,
 		  " Append to_flush array: max = %d, num_active = %d\n"
@@ -1446,7 +1692,7 @@ logpb_dump_to_flush_page (FILE * out_fp)
 
   for (i = 0; i < flush_info->num_toflush; i++)
     {
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (log_bufptr, flush_info->toflush[i]);
+      log_bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[i]);
       if (i != 0)
 	{
 	  if ((i % 10) == 0)
@@ -1491,12 +1737,12 @@ logpb_dump_pages (FILE * out_fp)
 	{
 	  fprintf (out_fp, "%3d %10lld %10d %3d %3d %4d  %p %p-%p"
 		   " %4s %5lld %5d\n",
-		   i, log_bufptr->pageid, log_bufptr->phy_pageid,
+		   i, (long long) log_bufptr->pageid, log_bufptr->phy_pageid,
 		   log_bufptr->dirty, log_bufptr->recently_freed,
 		   log_bufptr->fcnt, (void *) log_bufptr,
 		   (void *) (&log_bufptr->logpage),
 		   (void *) (&log_bufptr->logpage.area[LOGAREA_SIZE - 1]), "",
-		   log_bufptr->logpage.hdr.logical_pageid,
+		   (long long) log_bufptr->logpage.hdr.logical_pageid,
 		   log_bufptr->logpage.hdr.offset);
 	}
     }
@@ -1677,6 +1923,9 @@ logpb_fetch_header (THREAD_ENTRY * thread_p, struct log_header *hdr)
   assert (log_Gl.loghdr_pgptr != NULL);
 
   logpb_fetch_header_with_buffer (thread_p, hdr, log_Gl.loghdr_pgptr);
+
+  /* sync append_lsa to prior_lsa */
+  LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
 }
 
 /*
@@ -1793,6 +2042,16 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   assert (log_pgptr != NULL);
   assert (pageid != NULL_PAGEID);
 
+  if (pageid >= log_Gl.hdr.append_lsa.pageid)
+    {
+      LOG_CS_ENTER (thread_p);
+      if (pageid >= log_Gl.hdr.append_lsa.pageid)	/* retry with mutex */
+	{
+	  logpb_prior_lsa_append_all_list (thread_p);
+	}
+      LOG_CS_EXIT ();
+    }
+
   LOG_CS_ENTER_READ_MODE (thread_p);
 
   csect_enter_critical_section (thread_p, &log_Pb.lpb_cs, INF_WAIT);
@@ -1878,6 +2137,15 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
   return log_pgptr;
 }
 
+/*
+ * logpb_read_page_from_active_log -
+ *
+ *   return:
+ *
+ *   pageid(in):
+ *   num_pages(in):
+ *   log_pgptr(out):
+ */
 int
 logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 				 int num_pages, LOG_PAGE * log_pgptr)
@@ -2244,7 +2512,7 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
     {
       BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
       struct log_buffer *bufptr;
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[0]);
+      bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[0]);
 
       assert (bg_arv_info->current_page_id < 0
 	      || bg_arv_info->current_page_id >= bufptr->pageid);
@@ -2262,7 +2530,7 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 
   if (need_flush)
     {
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_FORCE);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
     }
 
   return log_Gl.append.log_pgptr;
@@ -2318,7 +2586,7 @@ logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p)
  *              location of the desired append page, a set of log pages is
  *              archived, so we can continue the append operations.
  */
-void
+static void
 logpb_next_append_page (THREAD_ENTRY * thread_p,
 			LOG_SETDIRTY current_setdirty)
 {
@@ -2435,8 +2703,8 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
     if (log_Gl.append.delayed_free_log_pgptr != NULL)
       {
 	struct log_buffer *delayed_bufptr;
-	LOG_CAST_LOGPAGEPTR_TO_BFPTR (delayed_bufptr,
-				      log_Gl.append.delayed_free_log_pgptr);
+	delayed_bufptr =
+	  LOG_GET_LOG_BUFFER_PTR (log_Gl.append.delayed_free_log_pgptr);
 	log_Stat.last_delayed_pageid =
 	  log_Gl.append.delayed_free_log_pgptr->hdr.logical_pageid;
 	log_Stat.total_delayed_page_count++;
@@ -2462,7 +2730,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
     {
       BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
       struct log_buffer *bufptr;
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[0]);
+      bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[0]);
 
       assert (bg_arv_info->current_page_id < 0
 	      || bg_arv_info->current_page_id >= bufptr->pageid);
@@ -2479,7 +2747,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p,
 
   if (need_flush)
     {
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+      logpb_flush_all_append_pages_helper (thread_p);
     }
 
 #if defined(CUBRID_DEBUG)
@@ -2544,10 +2812,7 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush,
 
   if (npages > 0)
     {
-      /* Record number of writes in statistics */
-      mnt_log_iowrites (thread_p);
-
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, to_flush[0]);
+      bufptr = LOG_GET_LOG_BUFFER_PTR (to_flush[0]);
       phy_pageid = bufptr->phy_pageid;
 
       if (fileio_writev (thread_p, log_Gl.append.vdes, (void **) to_flush,
@@ -2597,7 +2862,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
-  LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[0]);
+  bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[0]);
 
   assert (PRM_LOG_BACKGROUND_ARCHIVING);
   if (log_Gl.bg_archive_info.vdes == NULL_VOLDES
@@ -2662,7 +2927,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 
       for (i = 0; i < num_toflush; i++)
 	{
-	  LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[i]);
+	  bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[i]);
 
 	  /* calculate real physical page index in archiving volume */
 	  phy_pageid =
@@ -2689,20 +2954,1676 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * prior_lsa_copy_undo_data_to_node -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   length(in):
+ *   data(in):
+ */
+static int
+prior_lsa_copy_undo_data_to_node (LOG_PRIOR_NODE * node,
+				  int length, char *data)
+{
+  if (length <= 0 || data == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  node->udata = (char *) malloc (length);
+  if (node->udata == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  memcpy (node->udata, data, length);
+
+  node->ulength = length;
+
+  return NO_ERROR;
+}
+
+/*
+ * prior_lsa_copy_redo_data_to_node -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   length(in):
+ *   data(in):
+ */
+static int
+prior_lsa_copy_redo_data_to_node (LOG_PRIOR_NODE * node,
+				  int length, char *data)
+{
+  if (length <= 0 || data == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  node->rdata = (char *) malloc (length);
+  if (node->rdata == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  memcpy (node->rdata, data, length);
+
+  node->rlength = length;
+
+  return NO_ERROR;
+}
+
+/*
+ * prior_lsa_copy_undo_crumbs_to_node -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   num_crumbs(in):
+ *   crumbs(in):
+ */
+static int
+prior_lsa_copy_undo_crumbs_to_node (LOG_PRIOR_NODE * node,
+				    int num_crumbs, LOG_CRUMB * crumbs)
+{
+  int i, length;
+  char *ptr;
+
+  for (i = 0, length = 0; i < num_crumbs; i++)
+    {
+      length += crumbs[i].length;
+    }
+
+  node->udata = (char *) malloc (length);
+  if (node->udata == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = node->udata;
+  for (i = 0; i < num_crumbs; i++)
+    {
+      memcpy (ptr, crumbs[i].data, crumbs[i].length);
+      ptr += crumbs[i].length;
+    }
+
+  node->ulength = length;
+
+  return NO_ERROR;
+}
+
+/*
+ * prior_lsa_copy_redo_crumbs_to_node -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   num_crumbs(in):
+ *   crumbs(in):
+ */
+static int
+prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE * node,
+				    int num_crumbs, LOG_CRUMB * crumbs)
+{
+  int i, length;
+  char *ptr;
+
+  for (i = 0, length = 0; i < num_crumbs; i++)
+    {
+      length += crumbs[i].length;
+    }
+
+  node->rdata = (char *) malloc (length);
+  if (node->rdata == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = node->rdata;
+  for (i = 0; i < num_crumbs; i++)
+    {
+      memcpy (ptr, crumbs[i].data, crumbs[i].length);
+      ptr += crumbs[i].length;
+    }
+
+  node->rlength = length;
+
+  return NO_ERROR;
+}
+
+/*
+ * prior_lsa_gen_undoredo_record -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   rcvindex(in):
+ *   addr(in):
+ *   undo_length(in):
+ *   undo_data(in):
+ *   redo_length(in):
+ *   redo_data(in):
+ */
+static int
+prior_lsa_gen_undoredo_record (THREAD_ENTRY * thread_p,
+			       LOG_PRIOR_NODE * node,
+			       LOG_RCVINDEX rcvindex,
+			       LOG_DATA_ADDR * addr, int undo_length,
+			       char *undo_data, int redo_length,
+			       char *redo_data)
+{
+  struct log_undoredo *undoredo;
+  VPID *vpid;
+  int error = NO_ERROR;
+  bool is_diff, is_undo_zip, is_redo_zip;
+  LOG_ZIP *zip_undo, *zip_redo;
+  char *data_ptr = NULL;
+  int ulength, rlength;
+  char *udata = NULL, *rdata = NULL;
+
+  zip_undo = logpb_get_zip_undo (thread_p);
+  zip_redo = logpb_get_zip_redo (thread_p);
+
+  is_diff = false;
+  is_undo_zip = false;
+  is_redo_zip = false;
+
+  /* log compress */
+  if (log_zip_support && zip_undo && zip_redo)
+    {				/* disable_log_compress = 0 in cubrid.conf */
+      if ((undo_length > 0) && (redo_length > 0)
+	  && logpb_realloc_data_ptr (thread_p, redo_length))
+	{
+	  data_ptr = logpb_get_data_ptr (thread_p);
+	}
+
+      if (data_ptr)
+	{
+	  (void) memcpy (data_ptr, redo_data, redo_length);
+	  (void) log_diff (undo_length, undo_data, redo_length, data_ptr);
+
+	  is_undo_zip = log_zip (zip_undo, undo_length, undo_data);
+	  is_redo_zip = log_zip (zip_redo, redo_length, data_ptr);
+
+	  if (is_redo_zip)
+	    {
+	      is_diff = true;	/* log rec type : LOG_DIFF_UNDOREDO_DATA */
+	    }
+	}
+      else
+	{
+	  if (undo_length > 0)
+	    {
+	      is_undo_zip = log_zip (zip_undo, undo_length, undo_data);
+	    }
+	  if (redo_length > 0)
+	    {
+	      is_redo_zip = log_zip (zip_redo, redo_length, redo_data);
+	    }
+	}
+    }
+
+  if (is_diff)
+    {
+      node->log_header.type = LOG_DIFF_UNDOREDO_DATA;
+    }
+  else
+    {
+      node->log_header.type = LOG_UNDOREDO_DATA;
+    }
+
+  /* log data copy */
+  node->data_header_length = sizeof (struct log_undoredo);
+  node->data_header = (char *) malloc (node->data_header_length);
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      node->data_header_length);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  undoredo = (struct log_undoredo *) node->data_header;
+
+  undoredo->data.rcvindex = rcvindex;
+  if (addr->pgptr != NULL)
+    {
+      vpid = pgbuf_get_vpid_ptr (addr->pgptr);
+      undoredo->data.pageid = vpid->pageid;
+      undoredo->data.volid = vpid->volid;
+    }
+  else
+    {
+      undoredo->data.pageid = NULL_PAGEID;
+      undoredo->data.volid = NULL_VOLID;
+    }
+  undoredo->data.offset = addr->offset;
+
+  if (is_undo_zip)
+    {
+      undoredo->ulength = MAKE_ZIP_LEN (zip_undo->data_length);
+      error = prior_lsa_copy_undo_data_to_node (node,
+						zip_undo->data_length,
+						(char *) zip_undo->log_data);
+    }
+  else
+    {
+      undoredo->ulength = undo_length;
+      error = prior_lsa_copy_undo_data_to_node (node, undo_length, undo_data);
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (is_redo_zip)
+    {
+      undoredo->rlength = MAKE_ZIP_LEN (zip_redo->data_length);
+      error = prior_lsa_copy_redo_data_to_node (node,
+						zip_redo->data_length,
+						(char *) zip_redo->log_data);
+    }
+  else
+    {
+      undoredo->rlength = redo_length;
+      error = prior_lsa_copy_redo_data_to_node (node, redo_length, redo_data);
+    }
+
+  return error;
+}
+
+/*
+ * prior_lsa_gen_undoredo_record_from_crumbs -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   rcvindex(in):
+ *   addr(in):
+ *   num_ucrumbs(in):
+ *   ucrumbs(in):
+ *   num_rcrumbs(in):
+ *   rcrumbs(in):
+ */
+static int
+prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p,
+					   LOG_PRIOR_NODE * node,
+					   LOG_RCVINDEX rcvindex,
+					   LOG_DATA_ADDR * addr,
+					   int num_ucrumbs,
+					   LOG_CRUMB * ucrumbs,
+					   int num_rcrumbs,
+					   LOG_CRUMB * rcrumbs)
+{
+  struct log_undoredo *undoredo;
+  VPID *vpid;
+  int error_code = NO_ERROR;
+
+  int i;
+  int ulength, rlength;
+  char *data_ptr = NULL, *tmp_ptr;
+  char *undo_data = NULL, *redo_data = NULL;
+  LOG_ZIP *zip_undo, *zip_redo;
+
+  bool is_undo_zip, is_redo_zip, is_diff;
+
+  is_undo_zip = false;
+  is_redo_zip = false;
+  is_diff = false;
+
+  zip_undo = logpb_get_zip_undo (thread_p);
+  zip_redo = logpb_get_zip_redo (thread_p);
+
+  ulength = 0;
+  for (i = 0; i < num_ucrumbs; i++)
+    {
+      ulength += ucrumbs[i].length;
+    }
+
+  rlength = 0;
+  for (i = 0; i < num_rcrumbs; i++)
+    {
+      rlength += rcrumbs[i].length;
+    }
+
+  if (log_zip_support && zip_undo && zip_redo)
+    {
+      if (logpb_realloc_data_ptr (thread_p, ulength + rlength))
+	{
+	  data_ptr = logpb_get_data_ptr (thread_p);
+	}
+
+      if (data_ptr)
+	{
+	  if (ulength > 0)
+	    {
+	      undo_data = data_ptr;
+	      tmp_ptr = undo_data;
+
+	      for (i = 0; i < num_ucrumbs; i++)
+		{
+		  memcpy (tmp_ptr, (char *) ucrumbs[i].data,
+			  ucrumbs[i].length);
+		  tmp_ptr += ucrumbs[i].length;
+		}
+	    }
+
+	  if (rlength > 0)
+	    {
+	      redo_data = data_ptr + ulength;
+	      tmp_ptr = redo_data;
+
+	      for (i = 0; i < num_rcrumbs; i++)
+		{
+		  (void) memcpy (tmp_ptr, (char *) rcrumbs[i].data,
+				 rcrumbs[i].length);
+		  tmp_ptr += rcrumbs[i].length;
+		}
+	    }
+
+	  if (ulength > 0 && rlength > 0)
+	    {
+	      (void) log_diff (ulength, undo_data, rlength, redo_data);
+
+	      is_undo_zip = log_zip (zip_undo, ulength, undo_data);
+	      is_redo_zip = log_zip (zip_redo, rlength, redo_data);
+
+	      if (is_redo_zip)
+		{
+		  is_diff = true;
+		}
+	    }
+	  else
+	    {
+	      if (ulength > 0)
+		{
+		  is_undo_zip = log_zip (zip_undo, ulength, undo_data);
+		}
+	      if (rlength > 0)
+		{
+		  is_redo_zip = log_zip (zip_redo, rlength, redo_data);
+		}
+	    }
+	}
+    }
+
+  if (is_diff)
+    {
+      node->log_header.type = LOG_DIFF_UNDOREDO_DATA;
+    }
+  else
+    {
+      node->log_header.type = LOG_UNDOREDO_DATA;
+    }
+
+  node->data_header = (char *) malloc (sizeof (struct log_undoredo));
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (struct log_undoredo));
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
+    }
+  node->data_header_length = sizeof (struct log_undoredo);
+
+  undoredo = (struct log_undoredo *) node->data_header;
+
+  undoredo->data.rcvindex = rcvindex;
+  if (addr->pgptr != NULL)
+    {
+      vpid = pgbuf_get_vpid_ptr (addr->pgptr);
+      undoredo->data.pageid = vpid->pageid;
+      undoredo->data.volid = vpid->volid;
+    }
+  else
+    {
+      undoredo->data.pageid = NULL_PAGEID;
+      undoredo->data.volid = NULL_VOLID;
+    }
+  undoredo->data.offset = addr->offset;
+  undoredo->ulength = ulength;
+  undoredo->rlength = rlength;
+
+  if (is_undo_zip)
+    {
+      undoredo->ulength = MAKE_ZIP_LEN (zip_undo->data_length);
+      error_code = prior_lsa_copy_undo_data_to_node (node,
+						     zip_undo->data_length,
+						     (char *) zip_undo->
+						     log_data);
+    }
+  else
+    {
+      error_code = prior_lsa_copy_undo_crumbs_to_node (node,
+						       num_ucrumbs, ucrumbs);
+    }
+  if (is_redo_zip)
+    {
+      undoredo->rlength = MAKE_ZIP_LEN (zip_redo->data_length);
+      error_code = prior_lsa_copy_redo_data_to_node (node,
+						     zip_redo->data_length,
+						     (char *) zip_redo->
+						     log_data);
+    }
+  else
+    {
+      error_code = prior_lsa_copy_redo_crumbs_to_node (node,
+						       num_rcrumbs, rcrumbs);
+    }
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  return error_code;
+
+error:
+  if (node->data_header != NULL)
+    {
+      free_and_init (node->data_header);
+    }
+  if (node->udata != NULL)
+    {
+      free_and_init (node->udata);
+    }
+  if (node->rdata != NULL)
+    {
+      free_and_init (node->rdata);
+    }
+
+  return error_code;
+}
+
+/*
+ * prior_lsa_gen_undo_record -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   rcvindex(in):
+ *   addr(in):
+ *   length(in):
+ *   data(in):
+ */
+static int
+prior_lsa_gen_undo_record (THREAD_ENTRY * thread_p,
+			   LOG_PRIOR_NODE * node,
+			   LOG_RCVINDEX rcvindex,
+			   LOG_DATA_ADDR * addr, int length, char *data)
+{
+  struct log_undo *undo;
+  VPID *vpid;
+  int error = NO_ERROR;
+  bool is_zipped = false;
+  LOG_ZIP *zip_undo;
+
+  /* Log compress Process */
+  zip_undo = logpb_get_zip_undo (thread_p);
+
+  if (log_zip_support && zip_undo && (length > 0))
+    {
+      is_zipped = log_zip (zip_undo, length, data);
+    }
+
+  node->data_header_length = sizeof (struct log_undo);
+  node->data_header = (char *) malloc (node->data_header_length);
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, node->data_header_length);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  undo = (struct log_undo *) node->data_header;
+
+  undo->data.rcvindex = rcvindex;
+  if (addr->pgptr != NULL)
+    {
+      vpid = pgbuf_get_vpid_ptr (addr->pgptr);
+      undo->data.pageid = vpid->pageid;
+      undo->data.volid = vpid->volid;
+    }
+  else
+    {
+      undo->data.pageid = NULL_PAGEID;
+      undo->data.volid = NULL_VOLID;
+    }
+  undo->data.offset = addr->offset;
+
+  if (is_zipped)
+    {
+      undo->length = MAKE_ZIP_LEN (zip_undo->data_length);
+      error = prior_lsa_copy_undo_data_to_node (node, zip_undo->data_length,
+						(char *) zip_undo->log_data);
+    }
+  else
+    {
+      undo->length = length;
+      error = prior_lsa_copy_undo_data_to_node (node, length, data);
+    }
+
+  return error;
+}
+
+/*
+ * prior_lsa_gen_undo_record_from_crumbs -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   rcvindex(in):
+ *   addr(in):
+ *   num_crumbs(in):
+ *   crumbs(in):
+ */
+static int
+prior_lsa_gen_undo_record_from_crumbs (THREAD_ENTRY * thread_p,
+				       LOG_PRIOR_NODE * node,
+				       LOG_RCVINDEX rcvindex,
+				       LOG_DATA_ADDR * addr,
+				       int num_crumbs, LOG_CRUMB * crumbs)
+{
+  struct log_undo *undo;
+  VPID *vpid;
+  int error_code = NO_ERROR;
+  int i = 0;
+  char *tmp_ptr;
+  char *undo_data = NULL;
+  bool is_zipped = false;
+  int total_length = 0;
+  LOG_ZIP *zip_undo;
+  char *data_ptr = NULL;
+
+  zip_undo = logpb_get_zip_undo (thread_p);
+
+  for (i = 0; i < num_crumbs; i++)
+    {
+      total_length += crumbs[i].length;
+    }
+
+  if (log_zip_support && zip_undo)
+    {
+      if (total_length > 0 && logpb_realloc_data_ptr (thread_p, total_length))
+	{
+	  data_ptr = logpb_get_data_ptr (thread_p);
+	}
+
+      if (data_ptr)
+	{
+	  undo_data = data_ptr;
+	  tmp_ptr = undo_data;
+	  for (i = 0; i < num_crumbs; i++)
+	    {
+	      memcpy (tmp_ptr, (char *) crumbs[i].data, crumbs[i].length);
+	      tmp_ptr += crumbs[i].length;
+	    }
+
+	  is_zipped = log_zip (zip_undo, total_length, undo_data);
+	}
+    }
+
+  node->data_header = (char *) malloc (sizeof (struct log_undo));
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (struct log_undo));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  node->data_header_length = sizeof (struct log_undo);
+
+  undo = (struct log_undo *) node->data_header;
+
+  undo->data.rcvindex = rcvindex;
+  if (addr->pgptr != NULL)
+    {
+      vpid = pgbuf_get_vpid_ptr (addr->pgptr);
+      undo->data.pageid = vpid->pageid;
+      undo->data.volid = vpid->volid;
+    }
+  else
+    {
+      undo->data.pageid = NULL_PAGEID;
+      undo->data.volid = NULL_VOLID;
+    }
+  undo->data.offset = addr->offset;
+
+  if (is_zipped)
+    {
+      undo->length = MAKE_ZIP_LEN (zip_undo->data_length);
+
+      prior_lsa_copy_undo_data_to_node (node, zip_undo->data_length,
+					(char *) zip_undo->log_data);
+    }
+  else
+    {
+      undo->length = total_length;
+
+      error_code = prior_lsa_copy_undo_crumbs_to_node (node, num_crumbs,
+						       crumbs);
+    }
+
+  return error_code;
+}
+
+/*
+ * prior_lsa_gen_redo_record -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   rcvindex(in):
+ *   addr(in):
+ *   length(in):
+ *   data(in):
+ */
+static int
+prior_lsa_gen_redo_record (THREAD_ENTRY * thread_p,
+			   LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
+			   LOG_DATA_ADDR * addr, int length, char *data)
+{
+  struct log_redo *redo;
+  VPID *vpid;
+  int error = NO_ERROR;
+  bool is_zipped = false;
+  LOG_ZIP *zip_redo;
+
+  zip_redo = logpb_get_zip_redo (thread_p);
+
+  if (log_zip_support && zip_redo && (length > 0))
+    {
+      is_zipped = log_zip (zip_redo, length, data);
+    }
+
+  node->data_header_length = sizeof (struct log_redo);
+  node->data_header = (char *) malloc (node->data_header_length);
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  redo = (struct log_redo *) node->data_header;
+
+  redo->data.rcvindex = rcvindex;
+  if (addr->pgptr != NULL)
+    {
+      vpid = pgbuf_get_vpid_ptr (addr->pgptr);
+      redo->data.pageid = vpid->pageid;
+      redo->data.volid = vpid->volid;
+    }
+  else
+    {
+      redo->data.pageid = NULL_PAGEID;
+      redo->data.volid = NULL_VOLID;
+    }
+  redo->data.offset = addr->offset;
+
+  if (is_zipped)
+    {
+      redo->length = MAKE_ZIP_LEN (zip_redo->data_length);
+      error = prior_lsa_copy_redo_data_to_node (node, zip_redo->data_length,
+						(char *) zip_redo->log_data);
+    }
+  else
+    {
+      redo->length = length;
+      error = prior_lsa_copy_redo_data_to_node (node, redo->length, data);
+    }
+
+  return error;
+}
+
+/*
+ * prior_lsa_gen_postpone_record -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   rcvindex(in):
+ *   addr(in):
+ *   length(in):
+ *   data(in):
+ */
+static int
+prior_lsa_gen_postpone_record (THREAD_ENTRY * thread_p,
+			       LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
+			       LOG_DATA_ADDR * addr, int length, char *data)
+{
+  struct log_redo *redo;
+  VPID *vpid;
+  int error_code = NO_ERROR;
+
+  node->data_header_length = sizeof (struct log_redo);
+  node->data_header = (char *) malloc (node->data_header_length);
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  redo = (struct log_redo *) node->data_header;
+
+  redo->data.rcvindex = rcvindex;
+  if (addr->pgptr != NULL)
+    {
+      vpid = pgbuf_get_vpid_ptr (addr->pgptr);
+      redo->data.pageid = vpid->pageid;
+      redo->data.volid = vpid->volid;
+    }
+  else
+    {
+      redo->data.pageid = NULL_PAGEID;
+      redo->data.volid = NULL_VOLID;
+    }
+  redo->data.offset = addr->offset;
+
+  redo->length = length;
+  error_code = prior_lsa_copy_redo_data_to_node (node, redo->length, data);
+
+  return error_code;
+}
+
+/*
+ * prior_lsa_gen_dbout_redo_record -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   rcvindex(in):
+ *   length(in):
+ *   data(in):
+ */
+static int
+prior_lsa_gen_dbout_redo_record (THREAD_ENTRY * thread_p,
+				 LOG_PRIOR_NODE * node, LOG_RCVINDEX rcvindex,
+				 int length, char *data)
+{
+  struct log_dbout_redo *dbout_redo;
+  int error_code = NO_ERROR;
+
+  node->data_header_length = sizeof (struct log_dbout_redo);
+  node->data_header = (char *) malloc (node->data_header_length);
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  dbout_redo = (struct log_dbout_redo *) node->data_header;
+
+  dbout_redo->rcvindex = rcvindex;
+  dbout_redo->length = length;
+
+  error_code =
+    prior_lsa_copy_redo_data_to_node (node, dbout_redo->length, data);
+
+  return error_code;
+}
+
+/*
+ * prior_lsa_gen_user_client_record -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   rcvindex(in):
+ *   length(in):
+ *   data(in):
+ */
+static int
+prior_lsa_gen_user_client_record (THREAD_ENTRY * thread_p,
+				  LOG_PRIOR_NODE * node,
+				  LOG_RCVINDEX rcvindex, int length,
+				  char *data)
+{
+  struct log_client *client_data;
+  int error_code = NO_ERROR;
+
+  node->data_header_length = sizeof (struct log_client);
+  node->data_header = (char *) malloc (node->data_header_length);
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  client_data = (struct log_client *) node->data_header;
+
+  client_data->rcvclient_index = rcvindex;
+  client_data->length = length;
+
+  error_code =
+    prior_lsa_copy_undo_data_to_node (node, client_data->length, data);
+
+  return error_code;
+}
+
+/*
+ * prior_lsa_gen_2pc_prepare_record -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   gtran_length(in):
+ *   gtran_data(in):
+ *   lock_length(in):
+ *   lock_data(in):
+ */
+static int
+prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY * thread_p,
+				  LOG_PRIOR_NODE * node, int gtran_length,
+				  char *gtran_data, int lock_length,
+				  char *lock_data)
+{
+  int error_code = NO_ERROR;
+
+  node->data_header_length = sizeof (struct log_2pc_prepcommit);
+  node->data_header = (char *) malloc (node->data_header_length);
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  if (gtran_length > 0)
+    {
+      error_code = prior_lsa_copy_undo_data_to_node (node, gtran_length,
+						     gtran_data);
+    }
+  if (lock_length > 0)
+    {
+      error_code = prior_lsa_copy_redo_data_to_node (node, lock_length,
+						     lock_data);
+    }
+
+  return error_code;
+}
+
+/*
+ * prior_lsa_gen_end_chkpt_record -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   tran_length(in):
+ *   tran_data(in):
+ *   topop_length(in):
+ *   topop_data(in):
+ */
+static int
+prior_lsa_gen_end_chkpt_record (THREAD_ENTRY * thread_p,
+				LOG_PRIOR_NODE * node, int tran_length,
+				char *tran_data, int topop_length,
+				char *topop_data)
+{
+  int error_code = NO_ERROR;
+
+  node->data_header_length = sizeof (struct log_chkpt);
+  node->data_header = (char *) malloc (node->data_header_length);
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  if (tran_length > 0)
+    {
+      error_code = prior_lsa_copy_undo_data_to_node (node, tran_length,
+						     tran_data);
+    }
+  if (topop_length > 0)
+    {
+      error_code = prior_lsa_copy_redo_data_to_node (node, topop_length,
+						     topop_data);
+    }
+
+  return error_code;
+}
+
+/*
+ * prior_lsa_gen_record -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   rec_type(in):
+ *   length(in):
+ *   data(in):
+ */
+static int
+prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+		      LOG_RECTYPE rec_type, int length, char *data)
+{
+  int error_code = NO_ERROR;
+
+  node->data_header_length = 0;
+  switch (rec_type)
+    {
+    case LOG_DUMMY_HEAD_POSTPONE:
+    case LOG_DUMMY_FILLPAGE_FORARCHIVE:
+    case LOG_DUMMY_CRASH_RECOVERY:
+    case LOG_DUMMY_OVF_RECORD:
+    case LOG_2PC_COMMIT_DECISION:
+    case TRAN_UNACTIVE_2PC_ABORT_DECISION:
+    case LOG_UNLOCK_COMMIT:
+    case LOG_2PC_COMMIT_INFORM_PARTICPS:
+    case LOG_2PC_ABORT_INFORM_PARTICPS:
+    case LOG_START_CHKPT:
+      assert (length == 0 && data == NULL);
+      break;
+
+    case LOG_RUN_POSTPONE:
+      node->data_header_length = sizeof (struct log_run_postpone);
+      break;
+
+    case LOG_COMPENSATE:
+      node->data_header_length = sizeof (struct log_compensate);
+      break;
+
+    case LOG_LCOMPENSATE:
+      assert (length == 0 && data == NULL);
+      node->data_header_length = sizeof (struct log_logical_compensate);
+      break;
+
+    case LOG_DUMMY_HA_SERVER_STATE:
+      assert (length == 0 && data == NULL);
+      node->data_header_length = sizeof (struct log_ha_server_state);
+      break;
+
+    case LOG_CLIENT_NAME:
+      assert (length == 0 && data == NULL);
+      node->data_header_length = LOG_USERNAME_MAX;
+      break;
+
+    case LOG_SAVEPOINT:
+      node->data_header_length = sizeof (struct log_savept);
+      break;
+
+    case LOG_COMMIT_WITH_POSTPONE:
+      node->data_header_length = sizeof (struct log_start_postpone);
+      break;
+
+    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
+      node->data_header_length = sizeof (struct log_topope_start_postpone);
+      break;
+
+    case LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS:
+    case LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS:
+      node->data_header_length = sizeof (struct log_start_client);
+      break;
+
+    case LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
+    case LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
+      assert (length == 0 && data == NULL);
+      node->data_header_length = sizeof (struct log_topope_start_client);
+      break;
+
+    case LOG_COMMIT:
+    case LOG_ABORT:
+      assert (length == 0 && data == NULL);
+      node->data_header_length = sizeof (struct log_donetime);
+      break;
+
+    case LOG_COMMIT_TOPOPE:
+    case LOG_ABORT_TOPOPE:
+      assert (length == 0 && data == NULL);
+      node->data_header_length = sizeof (struct log_topop_result);
+      break;
+
+    case LOG_RUN_NEXT_CLIENT_POSTPONE:
+    case LOG_RUN_NEXT_CLIENT_UNDO:
+      assert (length == 0 && data == NULL);
+      node->data_header_length = sizeof (struct log_run_client);
+      break;
+
+    case LOG_REPLICATION_DATA:
+    case LOG_REPLICATION_SCHEMA:
+      node->data_header_length = sizeof (struct log_replication);
+      break;
+
+    case LOG_2PC_START:
+      node->data_header_length = sizeof (struct log_2pc_start);
+      break;
+
+    case LOG_END_CHKPT:
+      node->data_header_length = sizeof (struct log_chkpt);
+      break;
+
+    default:
+      break;
+    }
+
+  if (node->data_header_length > 0)
+    {
+      node->data_header = (char *) malloc (node->data_header_length);
+      if (node->data_header == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+
+  if (length > 0)
+    {
+      error_code = prior_lsa_copy_undo_data_to_node (node, length, data);
+    }
+
+  return error_code;
+}
+
+/*
+ * prior_lsa_gen_redo_record_from_crumbs -
+ *
+ * return: error code or NO_ERROR
+ *
+ *   node(in/out):
+ *   rcvindex(in):
+ *   addr(in):
+ *   num_crumbs(in):
+ *   crumbs(in):
+ */
+static int
+prior_lsa_gen_redo_record_from_crumbs (THREAD_ENTRY * thread_p,
+				       LOG_PRIOR_NODE * node,
+				       LOG_RCVINDEX rcvindex,
+				       LOG_DATA_ADDR * addr,
+				       int num_crumbs, LOG_CRUMB * crumbs)
+{
+  struct log_redo *redo;
+  VPID *vpid;
+  int error = NO_ERROR;
+  int i = 0;
+  char *tmp_ptr;
+  char *redo_data = NULL;
+  bool is_zipped = false;
+  int total_length = 0;
+  LOG_ZIP *zip_redo;
+  char *data_ptr = NULL;
+
+  zip_redo = logpb_get_zip_redo (thread_p);
+
+  for (i = 0; i < num_crumbs; i++)
+    {
+      total_length += crumbs[i].length;
+    }
+
+  if (log_zip_support && zip_redo)
+    {
+      if (total_length > 0 && logpb_realloc_data_ptr (thread_p, total_length))
+	{
+	  data_ptr = logpb_get_data_ptr (thread_p);
+	}
+
+      if (data_ptr)
+	{
+	  redo_data = data_ptr;
+	  tmp_ptr = redo_data;
+	  for (i = 0; i < num_crumbs; i++)
+	    {
+	      memcpy (tmp_ptr, (char *) crumbs[i].data, crumbs[i].length);
+	      tmp_ptr += crumbs[i].length;
+	    }
+	  is_zipped = log_zip (zip_redo, total_length, redo_data);
+	}
+    }
+
+  node->data_header_length = sizeof (struct log_redo);
+  node->data_header = (char *) malloc (node->data_header_length);
+  if (node->data_header == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, node->data_header_length);
+
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  redo = (struct log_redo *) node->data_header;
+
+  redo->data.rcvindex = rcvindex;
+  if (addr->pgptr != NULL)
+    {
+      vpid = pgbuf_get_vpid_ptr (addr->pgptr);
+      redo->data.pageid = vpid->pageid;
+      redo->data.volid = vpid->volid;
+    }
+  else
+    {
+      redo->data.pageid = NULL_PAGEID;
+      redo->data.volid = NULL_VOLID;
+    }
+  redo->data.offset = addr->offset;
+
+  if (is_zipped)
+    {
+      redo->length = MAKE_ZIP_LEN (zip_redo->data_length);
+      error = prior_lsa_copy_redo_data_to_node (node, zip_redo->data_length,
+						(char *) zip_redo->log_data);
+    }
+  else
+    {
+      redo->length = total_length;
+      error = prior_lsa_copy_redo_crumbs_to_node (node, num_crumbs, crumbs);
+    }
+
+  return error;
+}
+
+/*
+ * prior_lsa_alloc_and_copy_data -
+ *
+ * return: new node
+ *
+ *   rec_type(in):
+ *   rcvindex(in):
+ *   addr(in):
+ *   ulength(in):
+ *   udata(in):
+ *   rlength(in):
+ *   rdata(in):
+ */
+LOG_PRIOR_NODE *
+prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p,
+			       LOG_RECTYPE rec_type,
+			       LOG_RCVINDEX rcvindex,
+			       LOG_DATA_ADDR * addr,
+			       int ulength, char *udata,
+			       int rlength, char *rdata)
+{
+  LOG_PRIOR_NODE *node;
+  VPID *vpid;
+  int error_code = NO_ERROR;
+
+  node = (LOG_PRIOR_NODE *) malloc (sizeof (LOG_PRIOR_NODE));
+  if (node == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (LOG_PRIOR_NODE));
+
+      return NULL;
+    }
+
+  node->log_header.type = rec_type;
+
+  node->data_header = NULL;
+  node->ulength = 0;
+  node->udata = NULL;
+  node->rlength = 0;
+  node->rdata = NULL;
+  node->next = NULL;
+
+  switch (rec_type)
+    {
+    case LOG_UNDOREDO_DATA:
+    case LOG_DIFF_UNDOREDO_DATA:
+      error_code = prior_lsa_gen_undoredo_record (thread_p, node,
+						  rcvindex,
+						  addr, ulength,
+						  udata, rlength, rdata);
+      break;
+
+    case LOG_UNDO_DATA:
+      error_code = prior_lsa_gen_undo_record (thread_p, node, rcvindex,
+					      addr, ulength, udata);
+      break;
+
+    case LOG_REDO_DATA:
+      error_code = prior_lsa_gen_redo_record (thread_p, node,
+					      rcvindex, addr, rlength, rdata);
+      break;
+
+    case LOG_DBEXTERN_REDO_DATA:
+      error_code = prior_lsa_gen_dbout_redo_record (thread_p, node,
+						    rcvindex, rlength, rdata);
+      break;
+
+    case LOG_POSTPONE:
+      assert (ulength == 0 && udata == NULL);
+
+      error_code = prior_lsa_gen_postpone_record (thread_p, node,
+						  rcvindex, addr,
+						  rlength, rdata);
+      break;
+
+    case LOG_CLIENT_USER_UNDO_DATA:
+    case LOG_CLIENT_USER_POSTPONE_DATA:
+      assert (rlength == 0 && rdata == NULL);
+      error_code = prior_lsa_gen_user_client_record (thread_p, node,
+						     rcvindex, ulength,
+						     udata);
+      break;
+
+    case LOG_2PC_PREPARE:
+      assert (addr == NULL);
+      error_code = prior_lsa_gen_2pc_prepare_record (thread_p, node,
+						     ulength, udata,
+						     rlength, rdata);
+      break;
+    case LOG_END_CHKPT:
+      assert (addr == NULL);
+      error_code = prior_lsa_gen_end_chkpt_record (thread_p, node,
+						   ulength, udata,
+						   rlength, rdata);
+      break;
+
+    case LOG_RUN_POSTPONE:
+    case LOG_COMPENSATE:
+    case LOG_SAVEPOINT:
+
+    case LOG_DUMMY_HEAD_POSTPONE:
+    case LOG_DUMMY_FILLPAGE_FORARCHIVE:
+    case LOG_DUMMY_CRASH_RECOVERY:
+    case LOG_DUMMY_HA_SERVER_STATE:
+    case LOG_DUMMY_OVF_RECORD:
+
+    case LOG_2PC_COMMIT_DECISION:
+    case TRAN_UNACTIVE_2PC_ABORT_DECISION:
+    case LOG_LCOMPENSATE:
+    case LOG_CLIENT_NAME:
+    case LOG_COMMIT_WITH_POSTPONE:
+    case LOG_COMMIT_TOPOPE_WITH_POSTPONE:
+    case LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS:
+    case LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS:
+    case LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
+    case LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS:
+    case LOG_UNLOCK_COMMIT:
+    case LOG_COMMIT:
+    case LOG_ABORT:
+    case LOG_2PC_COMMIT_INFORM_PARTICPS:
+    case LOG_2PC_ABORT_INFORM_PARTICPS:
+    case LOG_COMMIT_TOPOPE:
+    case LOG_ABORT_TOPOPE:
+    case LOG_RUN_NEXT_CLIENT_POSTPONE:
+    case LOG_RUN_NEXT_CLIENT_UNDO:
+    case LOG_REPLICATION_DATA:
+    case LOG_REPLICATION_SCHEMA:
+    case LOG_2PC_START:
+    case LOG_START_CHKPT:
+      assert (rlength == 0 && rdata == NULL);
+
+      error_code = prior_lsa_gen_record (thread_p, node, rec_type,
+					 ulength, udata);
+      break;
+
+    default:
+      break;
+    }
+
+  if (error_code == NO_ERROR)
+    {
+      return node;
+    }
+  else
+    {
+      if (node != NULL)
+	{
+	  if (node->data_header != NULL)
+	    {
+	      free_and_init (node->data_header);
+	    }
+	  if (node->udata != NULL)
+	    {
+	      free_and_init (node->udata);
+	    }
+	  if (node->rdata != NULL)
+	    {
+	      free_and_init (node->rdata);
+	    }
+	  free_and_init (node);
+	}
+
+      return NULL;
+    }
+}
+
+/*
+ * prior_lsa_alloc_and_copy_crumbs -
+ *
+ * return: new node
+ *
+ *   rec_type(in):
+ *   rcvindex(in):
+ *   addr(in):
+ *   num_ucrumbs(in):
+ *   ucrumbs(in):
+ *   num_rcrumbs(in):
+ *   rcrumbs(in):
+ */
+LOG_PRIOR_NODE *
+prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p,
+				 LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
+				 LOG_DATA_ADDR * addr, int num_ucrumbs,
+				 LOG_CRUMB * ucrumbs,
+				 int num_rcrumbs, LOG_CRUMB * rcrumbs)
+{
+  LOG_PRIOR_NODE *node;
+  VPID *vpid;
+  int node_size;
+  int error = NO_ERROR;
+
+  node = (LOG_PRIOR_NODE *) malloc (sizeof (LOG_PRIOR_NODE));
+  if (node == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+	      1, sizeof (LOG_PRIOR_NODE));
+
+      return NULL;
+    }
+
+  node->log_header.type = rec_type;
+
+  node->data_header_length = 0;
+  node->data_header = NULL;
+  node->ulength = 0;
+  node->udata = NULL;
+  node->rlength = 0;
+  node->rdata = NULL;
+  node->next = NULL;
+
+  switch (rec_type)
+    {
+    case LOG_UNDOREDO_DATA:
+    case LOG_DIFF_UNDOREDO_DATA:
+      error = prior_lsa_gen_undoredo_record_from_crumbs (thread_p,
+							 node,
+							 rcvindex,
+							 addr,
+							 num_ucrumbs,
+							 ucrumbs,
+							 num_rcrumbs,
+							 rcrumbs);
+      break;
+
+    case LOG_UNDO_DATA:
+      error = prior_lsa_gen_undo_record_from_crumbs (thread_p, node,
+						     rcvindex, addr,
+						     num_ucrumbs, ucrumbs);
+      break;
+
+    case LOG_REDO_DATA:
+      error = prior_lsa_gen_redo_record_from_crumbs (thread_p, node,
+						     rcvindex, addr,
+						     num_rcrumbs, rcrumbs);
+      break;
+
+    default:
+      break;
+    }
+
+  if (error == NO_ERROR)
+    {
+      return node;
+    }
+  else
+    {
+      if (node != NULL)
+	{
+	  if (node->data_header != NULL)
+	    {
+	      free_and_init (node->data_header);
+	    }
+	  if (node->udata != NULL)
+	    {
+	      free_and_init (node->udata);
+	    }
+	  if (node->rdata != NULL)
+	    {
+	      free_and_init (node->rdata);
+	    }
+	  free_and_init (node);
+	}
+      return NULL;
+    }
+}
+
+/*
+ * prior_lsa_next_record -
+ *
+ * return: start lsa of log record
+ *
+ *   node(in/out):
+ *   tdes(in/out):
+ */
+LOG_LSA
+prior_lsa_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+		       LOG_TDES * tdes)
+{
+  LOG_LSA start_lsa;
+
+  PRIOR_LSA_MUTEX_LOCK (&log_Gl.prior_info.prior_lsa_mutex);
+
+  prior_lsa_start_append (thread_p, node, tdes);
+
+  LSA_COPY (&start_lsa, &node->start_lsa);
+
+  LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT (node->data_header_length);
+  LOG_PRIOR_LSA_APPEND_ADD_ALIGN (node->data_header_length);
+
+  if (node->ulength > 0)
+    {
+      prior_lsa_append_data (node->ulength);
+    }
+
+  if (node->rlength > 0)
+    {
+      prior_lsa_append_data (node->rlength);
+    }
+
+  /* END append */
+  prior_lsa_end_append (thread_p, node);
+
+  if (log_Gl.prior_info.prior_list_tail == NULL)
+    {
+      log_Gl.prior_info.prior_list_header = node;
+      log_Gl.prior_info.prior_list_tail = node;
+    }
+  else
+    {
+      log_Gl.prior_info.prior_list_tail->next = node;
+      log_Gl.prior_info.prior_list_tail = node;
+    }
+
+  log_Gl.prior_info.list_size += (sizeof (LOG_PRIOR_NODE) + node->data_header_length + node->ulength + node->rlength);	/* bytes */
+
+  PRIOR_LSA_MUTEX_UNLOCK (&log_Gl.prior_info.prior_lsa_mutex);
+
+  if (log_Gl.prior_info.list_size >= LOG_PRIOR_LSA_LIST_MAX_SIZE ())
+    {
+      mnt_prior_lsa_list_maxed (thread_p);
+#if defined(SERVER_MODE)
+      thread_wakeup_log_flush_thread ();
+#else
+      LOG_CS_ENTER (thread_p);
+      logpb_prior_lsa_append_all_list (thread_p);
+      LOG_CS_EXIT ();
+#endif
+    }
+
+  return start_lsa;
+}
+
+/*
+ * logpb_append_next_record -
+ *
+ * return: NO_ERROR
+ *
+ *   node(in):
+ */
+static int
+logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
+{
+  if (!LSA_EQ (&node->start_lsa, &log_Gl.hdr.append_lsa))
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "logpb_append_next_record");
+    }
+
+  logpb_start_append (thread_p, &node->log_header);
+
+  if (node->data_header != NULL)
+    {
+      LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p,
+					   node->data_header_length);
+      logpb_append_data (thread_p, node->data_header_length,
+			 node->data_header);
+    }
+
+  if (node->udata != NULL)
+    {
+      logpb_append_data (thread_p, node->ulength, node->udata);
+    }
+
+  if (node->rdata != NULL)
+    {
+      logpb_append_data (thread_p, node->rlength, node->rdata);
+    }
+
+  logpb_end_append (thread_p, &node->log_header);
+
+  return NO_ERROR;
+}
+
+/*
+ * logpb_append_prior_lsa_list -
+ *
+ * return: NO_ERROR
+ *
+ *   list(in/out):
+ */
+static int
+logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
+{
+  LOG_PRIOR_NODE *node;
+
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  /* append prior_flush_list */
+  if (log_Gl.prior_info.prior_flush_list_header == NULL)
+    {
+      log_Gl.prior_info.prior_flush_list_header = list;
+      log_Gl.prior_info.prior_flush_list_tail = list;
+    }
+  else
+    {
+      log_Gl.prior_info.prior_flush_list_tail->next = list;
+      log_Gl.prior_info.prior_flush_list_tail = list;
+    }
+
+  /* append log buffer */
+  while (log_Gl.prior_info.prior_flush_list_header != NULL)
+    {
+      node = log_Gl.prior_info.prior_flush_list_header;
+      log_Gl.prior_info.prior_flush_list_header = node->next;
+
+      logpb_append_next_record (thread_p, node);
+
+      if (node->data_header != NULL)
+	{
+	  free_and_init (node->data_header);
+	}
+      if (node->udata != NULL)
+	{
+	  free_and_init (node->udata);
+	}
+      if (node->rdata != NULL)
+	{
+	  free_and_init (node->rdata);
+	}
+
+      free_and_init (node);
+    }
+
+  log_Gl.prior_info.prior_flush_list_tail = NULL;
+
+  return NO_ERROR;
+}
+
+/*
+ * prior_lsa_remove_prior_list:
+ *
+ * return: prior list
+ *
+ */
+static LOG_PRIOR_NODE *
+prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p)
+{
+  LOG_PRIOR_NODE *prior_list;
+
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  prior_list = log_Gl.prior_info.prior_list_header;
+
+  log_Gl.prior_info.prior_list_header = NULL;
+  log_Gl.prior_info.prior_list_tail = NULL;
+  log_Gl.prior_info.list_size = 0;
+
+  return prior_list;
+}
+
+/*
+ * logpb_prior_lsa_append_all_list:
+ *
+ * return: NO_ERROR
+ *
+ */
+int
+logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
+{
+  LOG_PRIOR_NODE *prior_list;
+  INT64 current_size;
+
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  PRIOR_LSA_MUTEX_LOCK (&log_Gl.prior_info.prior_lsa_mutex);
+  current_size = log_Gl.prior_info.list_size;
+  prior_list = prior_lsa_remove_prior_list (thread_p);
+  PRIOR_LSA_MUTEX_UNLOCK (&log_Gl.prior_info.prior_lsa_mutex);
+
+  mnt_prior_lsa_list_size (thread_p, current_size / ONE_K);	/* kbytes */
+  mnt_prior_lsa_list_removed (thread_p);
+
+  logpb_append_prior_lsa_list (thread_p, prior_list);
+
+  return NO_ERROR;
+}
+
+/*
  * logpb_flush_all_append_pages_helper - Flush log append pages
  *
  * return: 1 : log flushed, 0 : do not need log flush, < 0 : error code
  *
- *   from_commit(in):
- *
  */
-int
+static int
 logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 {
   LOG_RECTYPE save_type = LOG_SMALLER_LOGREC_TYPE;	/* Save type of last
 							 * record
 							 */
-  struct log_rec *eof;		/* End of log record */
+  LOG_RECORD_HEADER *eof;	/* End of log record */
   struct log_buffer *bufptr;	/* The current buffer log append page
 				 * scanned
 				 */
@@ -2742,7 +4663,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   LOGWR_ENTRY *entry;
 #endif /* SERVER_MODE */
 
-  assert (LOG_CS_OWN (thread_p));
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
 #if defined(CUBRID_DEBUG)
   er_log_debug (ARG_FILE_LINE, "logpb_flush_all_append_pages: start\n");
@@ -2759,7 +4680,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
     {
       BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
       struct log_buffer *bufptr;
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[0]);
+      bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[0]);
 
       assert (bg_arv_info->current_page_id < 0
 	      || bg_arv_info->current_page_id >= bufptr->pageid);
@@ -2779,7 +4700,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
        * end of file log when it is not needed at all.
        */
 
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[0]);
+      bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[0]);
       assert (bufptr->fcnt > 0);
 
       if (!logpb_is_dirty (thread_p, flush_info->toflush[0]))
@@ -2869,7 +4790,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 	}
 #endif /* CUBRID_DEBUG */
 
-      eof = (struct log_rec *) LOG_PREV_APPEND_PTR ();
+      eof = (LOG_RECORD_HEADER *) LOG_PREV_APPEND_PTR ();
       save_type = eof->type;
 
       /* Overwrite it with an end of log marker */
@@ -2887,7 +4808,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
        * log address, the log end of file is overwritten at a later point.
        */
       LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*eof));
-      eof = (struct log_rec *) LOG_APPEND_PTR ();
+      eof = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
 
       eof->trid = LOG_READ_NEXT_TRANID;
       LSA_SET_NULL (&eof->prev_tranlsa);
@@ -2947,9 +4868,12 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   er_log_debug (ARG_FILE_LINE, "\n");
 #endif /* CUBRID_DEBUG */
 
+  /* Record number of writes in statistics */
+  mnt_log_iowrites (thread_p, flush_info->num_toflush);
+
   for (i = 0; i < flush_info->num_toflush; i++)
     {
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[i]);
+      bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[i]);
 
       /*
        * Make sure that we have found the smallest dirty append page to flush
@@ -3141,7 +5065,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 
   for (i = 0; i < flush_info->num_toflush; i++)
     {
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[i]);
+      bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[i]);
 #if defined(CUBRID_DEBUG)
       if (bufptr->dirty)
 	{
@@ -3216,7 +5140,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 	{
 	  BACKGROUND_ARCHIVING_INFO *bg_arv_info = &log_Gl.bg_archive_info;
 	  struct log_buffer *bufptr;
-	  LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[0]);
+	  bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[0]);
 
 	  assert (bg_arv_info->current_page_id < 0
 		  || bg_arv_info->current_page_id >= bufptr->pageid);
@@ -3328,7 +5252,6 @@ error:
  *              cannot release log cs.
  *              There are 3 types of flushing.
  *              LOG_FLUSH_NORMAL : normal threads's flush request.
- *              LOG_FLUSH_FORCE : have to wait LFT's flushall_append_pages.
  *              LOG_FLUSH_DIRECT : have to flushall_append_pages by itself.
  */
 void
@@ -3336,7 +5259,10 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
 			      LOG_FLUSH_TYPE flush_type)
 {
 #if !defined(SERVER_MODE)
+  LOG_CS_ENTER (thread_p);
+  logpb_prior_lsa_append_all_list (thread_p);
   (void) logpb_flush_all_append_pages_helper (thread_p);
+  LOG_CS_EXIT ();
 #else /* SERVER_MODE */
   int rv;
   int ret;
@@ -3347,29 +5273,23 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p,
     0, 0
   };
   double elapsed;
-  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
-
-direct_flush:
-
-  assert (LOG_CS_OWN (thread_p));
 
   /* While archiving,
    * log_Gl.append.log_pgptr == NULL
    * So, log_cs must not be released.
    */
-  if (flush_info->flush_type == LOG_FLUSH_DIRECT
-      || flush_type == LOG_FLUSH_DIRECT || !LOG_ISRESTARTED ())
+  if (flush_type == LOG_FLUSH_DIRECT || !LOG_ISRESTARTED ())
     {
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
 		    "logpb_flush_all_append_pages: "
 		    "[%d]flush direct\n", (int) THREAD_ID ());
 #endif /* CUBRID_DEBUG */
-      flush_type = flush_info->flush_type;
-      flush_info->flush_type = LOG_FLUSH_DIRECT;
+      assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+      logpb_prior_lsa_append_all_list (thread_p);
       (void) logpb_flush_all_append_pages_helper (thread_p);
-      flush_info->flush_type = flush_type;
       log_Stat.direct_flush_count++;
 
       log_Stat.total_sync_count++;
@@ -3380,13 +5300,15 @@ direct_flush:
 				     log_Name_active);
 	}
 
+
       return;
     }
 
   assert (LOG_ISRESTARTED ());
+  assert (!LOG_CS_OWN_WRITE_MODE (thread_p));
+  assert (flush_type == LOG_FLUSH_NORMAL);
 
-  if (PRM_LOG_ASYNC_COMMIT && LOG_IS_GROUP_COMMIT_ACTIVE ()
-      && (flush_type != LOG_FLUSH_FORCE))
+  if (PRM_LOG_ASYNC_COMMIT && LOG_IS_GROUP_COMMIT_ACTIVE ())
     {
       log_Stat.async_commit_request_count++;
       return;
@@ -3397,19 +5319,30 @@ direct_flush:
 #endif /* CUBRID_DEBUG */
     }
 
-  LOG_CS_EXIT ();
-
   rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
 
   if (thread_Log_flush_thread.is_valid == false)
     {
-      flush_type = LOG_FLUSH_DIRECT;
       pthread_mutex_unlock (&thread_Log_flush_thread.lock);
+
       LOG_CS_ENTER (thread_p);
-      goto direct_flush;
+      logpb_prior_lsa_append_all_list (thread_p);
+      (void) logpb_flush_all_append_pages_helper (thread_p);
+      log_Stat.direct_flush_count++;
+
+      log_Stat.total_sync_count++;
+      if (PRM_SUPPRESS_FSYNC == 0
+	  || (log_Stat.total_sync_count % PRM_SUPPRESS_FSYNC == 0))
+	{
+	  (void) fileio_synchronize (thread_p, log_Gl.append.vdes,
+				     log_Name_active);
+	}
+      LOG_CS_EXIT ();
+
+      return;
     }
 
-  if (!LOG_IS_GROUP_COMMIT_ACTIVE () || (flush_type == LOG_FLUSH_FORCE))
+  if (!LOG_IS_GROUP_COMMIT_ACTIVE ())
     {
       thread_Log_flush_thread.is_log_flush_force = true;
       pthread_cond_signal (&thread_Log_flush_thread.cond);
@@ -3424,7 +5357,7 @@ direct_flush:
   rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
   pthread_mutex_unlock (&thread_Log_flush_thread.lock);
 
-  if (!PRM_LOG_ASYNC_COMMIT || (flush_type == LOG_FLUSH_FORCE))
+  if (!PRM_LOG_ASYNC_COMMIT)
     {
       ++(group_commit_info->waiters);
 #if defined(CUBRID_DEBUG)
@@ -3442,7 +5375,7 @@ direct_flush:
       ret = pthread_cond_wait (&group_commit_info->gc_cond,
 			       &group_commit_info->gc_mutex);
 
-      if (LOG_IS_GROUP_COMMIT_ACTIVE () && (flush_type != LOG_FLUSH_FORCE))
+      if (LOG_IS_GROUP_COMMIT_ACTIVE ())
 	{
 	  gettimeofday (&end_time, NULL);
 	  elapsed = LOG_GET_ELAPSED_TIME (end_time, start_time);
@@ -3467,7 +5400,6 @@ direct_flush:
     }
 
   pthread_mutex_unlock (&group_commit_info->gc_mutex);
-  LOG_CS_ENTER (thread_p);
 #endif /* SERVER_MODE */
 }
 
@@ -3525,12 +5457,11 @@ logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
 {
   if (LSA_LE (&log_Gl.append.nxio_lsa, lsa_ptr))
     {
-
-      /* Need to set a latch since an end of log marker may be appended */
+      mnt_log_wals (thread_p);
 
       LOG_CS_ENTER (thread_p);
-
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_FORCE);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+      LOG_CS_EXIT ();
 
 #if defined(CUBRID_DEBUG)
       if (LSA_LE (&log_Gl.append.nxio_lsa, lsa_ptr)
@@ -3541,27 +5472,6 @@ logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
 	  logpb_dump (stdout);
 	}
 #endif /* CUBRID_DEBUG */
-
-      LOG_CS_EXIT ();
-    }
-}
-
-/*
- * logpb_force - FORCE THE LOG
- *
- * return: nothing
- *
- * NOTE:Force the log.
- */
-void
-logpb_force (THREAD_ENTRY * thread_p)
-{
-  /* Need to set a latch since an end of log marker may be appended */
-  assert (LOG_CS_OWN (thread_p));
-
-  if (log_Pb.pool != NULL)
-    {
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_FORCE);
     }
 }
 
@@ -3576,17 +5486,14 @@ logpb_force (THREAD_ENTRY * thread_p)
  *
  * return: nothing
  *
- *   rectype(in): Type of the log record
- *               (e.g., LOG_BEFORE_AFTER_DATA, LOG_COMMIT)
- *   tdes(in/out): State structure of transaction of the log record
+ *   header(in):
  *
- * NOTE:Start appending a new log record of the given type.
+ * NOTE:
  */
-void
-logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECTYPE rectype,
-		    LOG_TDES * tdes)
+static void
+logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 {
-  struct log_rec *log_rec;	/* Log record */
+  LOG_RECORD_HEADER *log_rec;	/* Log record */
   LOG_PAGEID initial_pageid;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -3595,38 +5502,18 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECTYPE rectype,
   mnt_log_appendrecs (thread_p);
 
   /* Does the new log record fit in this page ? */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*log_rec));
+  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
+
+  if (!LSA_EQ (&header->back_lsa, &log_Gl.append.prev_lsa))
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_start_append");
+    }
 
   initial_pageid = log_Gl.hdr.append_lsa.pageid;
   assert (log_Gl.append.log_pgptr != NULL);
-  log_rec = (struct log_rec *) LOG_APPEND_PTR ();
 
-  log_rec->trid = tdes->trid;
-  log_rec->type = rectype;
-
-  /*
-   * Link the record with the previous transaction record for quick undos.
-   * Link the record backward for backward traversal of the log.
-   */
-  LSA_COPY (&log_rec->prev_tranlsa, &tdes->tail_lsa);
-  LSA_COPY (&log_rec->back_lsa, &log_Gl.append.prev_lsa);
-  LSA_SET_NULL (&log_rec->forw_lsa);
-
-  /*
-   * Remember the address of new append record
-   */
-
-  LSA_COPY (&tdes->tail_lsa, &log_Gl.hdr.append_lsa);
-  LSA_COPY (&tdes->undo_nxlsa, &log_Gl.hdr.append_lsa);
-
-  /*
-   * Is this the first log record of transaction ?
-   */
-
-  if (LSA_ISNULL (&tdes->head_lsa))
-    {
-      LSA_COPY (&tdes->head_lsa, &tdes->tail_lsa);
-    }
+  log_rec = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
+  *log_rec = *header;
 
   /*
    * If the header of the append page does not have the offset set to the
@@ -3643,9 +5530,9 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECTYPE rectype,
   /*
    * Set the page dirty, increase and align the append offset
    */
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*log_rec));
+  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER));
 
-  log_rec = (struct log_rec *) LOG_PREV_APPEND_PTR ();
+  log_rec = (LOG_RECORD_HEADER *) LOG_PREV_APPEND_PTR ();
   if (log_rec->type == LOG_DUMMY_FILLPAGE_FORARCHIVE)
     {
       /*
@@ -3660,6 +5547,65 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECTYPE rectype,
 }
 
 /*
+ * prior_lsa_start_append:
+ *
+ *   node(in/out):
+ *   tdes(in):
+ */
+static void
+prior_lsa_start_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
+			LOG_TDES * tdes)
+{
+  /* Does the new log record fit in this page ? */
+  LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT (sizeof (LOG_RECORD_HEADER));
+
+  node->log_header.trid = tdes->trid;
+
+  /*
+   * Link the record with the previous transaction record for quick undos.
+   * Link the record backward for backward traversal of the log.
+   */
+  LSA_COPY (&node->start_lsa, &log_Gl.prior_info.prior_lsa);
+
+  LSA_COPY (&node->log_header.prev_tranlsa, &tdes->tail_lsa);
+  LSA_COPY (&node->log_header.back_lsa, &log_Gl.prior_info.prev_lsa);
+  LSA_SET_NULL (&node->log_header.forw_lsa);
+
+  /*
+   * Remember the address of new append record
+   */
+  LSA_COPY (&tdes->tail_lsa, &log_Gl.prior_info.prior_lsa);
+  LSA_COPY (&tdes->undo_nxlsa, &log_Gl.prior_info.prior_lsa);
+
+  /*
+   * Is this the first log record of transaction ?
+   */
+
+  if (LSA_ISNULL (&tdes->head_lsa))
+    {
+      LSA_COPY (&tdes->head_lsa, &tdes->tail_lsa);
+    }
+
+  LSA_COPY (&log_Gl.prior_info.prev_lsa, &log_Gl.prior_info.prior_lsa);
+  /*
+   * Set the page dirty, increase and align the append offset
+   */
+  LOG_PRIOR_LSA_APPEND_ADD_ALIGN (sizeof (LOG_RECORD_HEADER));
+
+  if (node->log_header.type == LOG_DUMMY_FILLPAGE_FORARCHIVE)
+    {
+      /*
+       * Get to start of next page if not already advanced ... Note
+       * this record type is only safe during backups.
+       */
+      if (node->start_lsa.pageid == log_Gl.prior_info.prev_lsa.pageid)
+	{
+	  LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT (LOG_PAGESIZE);
+	}
+    }
+}
+
+/*
  * logpb_append_data - Append data
  *
  * return: nothing
@@ -3669,7 +5615,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECTYPE rectype,
  *
  * NOTE:Append data as part of current log record.
  */
-void
+static void
 logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
 {
   int copy_length;		/* Amount of contiguos data that can be copied        */
@@ -3734,6 +5680,67 @@ logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
     }
 }
 
+static void
+prior_lsa_append_data (int length)
+{
+  int copy_length;		/* Amount of contiguos data that can be copied        */
+  int current_offset;
+  int last_offset;
+
+  if (length != 0)
+    {
+      /*
+       * Align if needed,
+       * don't set it dirty since this function has not updated
+       */
+      LOG_PRIOR_LSA_APPEND_ALIGN ();
+
+      current_offset = log_Gl.prior_info.prior_lsa.offset;
+      last_offset = LOG_PRIOR_LSA_LAST_APPEND_OFFSET ();
+
+      /* Does data fit completely in current page ? */
+      if ((current_offset + length) >= last_offset)
+	{
+	  while (length > 0)
+	    {
+	      if (current_offset >= last_offset)
+		{
+		  /*
+		   * Get next page and set the current one dirty
+		   */
+		  log_Gl.prior_info.prior_lsa.pageid++;
+		  log_Gl.prior_info.prior_lsa.offset = 0;
+
+		  current_offset = 0;
+		  last_offset = LOG_PRIOR_LSA_LAST_APPEND_OFFSET ();
+		}
+	      /* Find the amount of contiguous data that can be copied */
+	      if (current_offset + length >= last_offset)
+		{
+		  copy_length = CAST_BUFLEN (last_offset - current_offset);
+		}
+	      else
+		{
+		  copy_length = length;
+		}
+
+	      current_offset += copy_length;
+	      length -= copy_length;
+	      log_Gl.prior_info.prior_lsa.offset += copy_length;
+	    }
+	}
+      else
+	{
+	  log_Gl.prior_info.prior_lsa.offset += length;
+	}
+      /*
+       * Align the data for future appends.
+       * Indicate that modifications were done
+       */
+      LOG_PRIOR_LSA_APPEND_ALIGN ();
+    }
+}
+
 /*
  * logpb_append_crumbs - Append crumbs of data
  *
@@ -3745,7 +5752,7 @@ logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
  * NOTE: Append crumbs of data by gluing them. After this the log
  *              manager will lose track of what was glued.
  */
-void
+static void
 logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
 		     const LOG_CRUMB * crumbs)
 {
@@ -3819,13 +5826,80 @@ logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
     }
 }
 
+static void
+prior_lsa_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
+			 const LOG_CRUMB * crumbs)
+{
+  const char *data;		/* Data to copy                                 */
+  int current_offset;
+  int last_offset;
+  int copy_length;		/* Amount of contiguos data that can be copied  */
+  int length;
+  int i;
+
+  if (num_crumbs != 0)
+    {
+      /*
+       * Align if needed,
+       * don't set it dirty since this function has not updated
+       */
+      LOG_PRIOR_LSA_APPEND_ALIGN ();
+
+      current_offset = log_Gl.prior_info.prior_lsa.offset;
+      last_offset = LOG_PRIOR_LSA_LAST_APPEND_OFFSET ();
+
+      for (i = 0; i < num_crumbs; i++)
+	{
+	  length = crumbs[i].length;
+
+	  /* Does data fit completely in current page ? */
+	  if ((current_offset + length) >= last_offset)
+	    while (length > 0)
+	      {
+		if (current_offset >= last_offset)
+		  {
+		    /*
+		     * Get next page and set the current one dirty
+		     */
+		    log_Gl.prior_info.prior_lsa.pageid++;
+		    log_Gl.prior_info.prior_lsa.offset = 0;
+
+		    current_offset = 0;
+		    last_offset = LOG_PRIOR_LSA_LAST_APPEND_OFFSET ();
+		  }
+		/* Find the amount of contiguous data that can be copied */
+		if ((current_offset + length) >= last_offset)
+		  {
+		    copy_length = CAST_BUFLEN (last_offset - current_offset);
+		  }
+		else
+		  {
+		    copy_length = length;
+		  }
+		current_offset += copy_length;
+		length -= copy_length;
+		log_Gl.prior_info.prior_lsa.offset += copy_length;
+	      }
+	  else
+	    {
+	      current_offset += length;
+	      log_Gl.prior_info.prior_lsa.offset += length;
+	    }
+	}
+      /*
+       * Align the data for future appends.
+       * Indicate that modifications were done
+       */
+      LOG_PRIOR_LSA_APPEND_ALIGN ();
+    }
+}
+
 /*
  * logpb_end_append - Finish appending a log record
  *
  * return: nothing
  *
  *   flush(in): Is it a requirement to flush the log ?
- *   from_commit(in): called from normal commit ?
  *   force_flush(in):
  *
  * NOTE:  Finish appending a log record. If the log record was appended
@@ -3835,17 +5909,13 @@ logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
  *              is not flushed unless the caller requested flushing (e.g.,
  *              for a log_commit record).
  */
-void
-logpb_end_append (THREAD_ENTRY * thread_p)
+static void
+logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 {
-  struct log_rec *log_rec;	/* The log record */
-  LOG_PAGEID initial_pageid;	/* remember starting log page */
-
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  initial_pageid = log_Gl.hdr.append_lsa.pageid;
   LOG_APPEND_ALIGN (thread_p, LOG_DONT_SET_DIRTY);
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*log_rec));
+  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
 
   /*
    * Find the log_rec portion of the append record, it may not be in the
@@ -3855,14 +5925,12 @@ logpb_end_append (THREAD_ENTRY * thread_p)
    * that cannot have a forward lsa and must waste the remaining space
    * on the current page.
    */
-
-  log_rec = (struct log_rec *) LOG_PREV_APPEND_PTR ();
-  LSA_COPY (&log_rec->forw_lsa, &log_Gl.hdr.append_lsa);
+  assert (LSA_EQ (&header->forw_lsa, &log_Gl.hdr.append_lsa));
 
   if (log_Gl.append.delayed_free_log_pgptr != NULL)
     {
-      assert (logpb_is_dirty
-	      (thread_p, log_Gl.append.delayed_free_log_pgptr));
+      assert (logpb_is_dirty (thread_p,
+			      log_Gl.append.delayed_free_log_pgptr));
 
       logpb_set_dirty (thread_p, log_Gl.append.delayed_free_log_pgptr, FREE);
       log_Gl.append.delayed_free_log_pgptr = NULL;
@@ -3873,73 +5941,22 @@ logpb_end_append (THREAD_ENTRY * thread_p)
     }
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
- * logpb_remove_append - Remove the appending of current log record
+ * prior_lsa_end_append -
  *
- * return: nothing
+ * return:
  *
- *   tdes(in/out): State structure of transaction of the log record
- *
- * NOTE: Remove the current log record. This function is called when an
- *              error is found during the appending of a log record.
+ *   node(in/out):
  */
-void
-logpb_remove_append (LOG_TDES * tdes)
+static void
+prior_lsa_end_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
 {
-  struct log_rec *log_rec;	/* The log record */
-  int i;
-  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
+  LOG_PRIOR_LSA_APPEND_ALIGN ();
+  LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT (sizeof (LOG_RECORD_HEADER));
 
-  assert (0);
-
-  /*
-   * Find the log_rec portion of the append record, it may not be in the
-   * current append buffer since we may have gone quite far appending the
-   * the record before the failure
-   */
-
-  if (log_Gl.append.delayed_free_log_pgptr != NULL)
-    {
-      /* Go back to such buffer */
-      LSA_COPY (&log_Gl.hdr.append_lsa, &log_Gl.append.prev_lsa);
-
-      logpb_free_page (NULL, log_Gl.append.log_pgptr);
-      log_Gl.append.log_pgptr = log_Gl.append.delayed_free_log_pgptr;
-      log_Gl.append.delayed_free_log_pgptr = NULL;
-      /*
-       * Remove all the pages to flush ahead of current append
-       */
-      for (i = flush_info->num_toflush - 1; i > 0; i--)
-	{
-	  if (flush_info->toflush[i] == log_Gl.append.log_pgptr)
-	    break;
-	  flush_info->num_toflush--;
-	}
-    }
-  else
-    {
-      log_Gl.hdr.append_lsa.offset = log_Gl.append.prev_lsa.offset;
-    }
-
-  /*
-   * The following is correct since we are in the middle of a critical
-   * section, therefore, the record that we are removing must belong to
-   * current transaction
-   */
-  log_rec = (struct log_rec *) LOG_APPEND_PTR ();
-
-  LSA_COPY (&tdes->tail_lsa, &log_rec->prev_tranlsa);
-  LSA_COPY (&tdes->undo_nxlsa, &log_rec->prev_tranlsa);
-
-  if (LSA_ISNULL (&tdes->tail_lsa))
-    {
-      LSA_SET_NULL (&tdes->head_lsa);
-    }
-
-  LSA_COPY (&log_Gl.append.prev_lsa, &log_rec->back_lsa);
+  LSA_COPY (&node->log_header.forw_lsa, &log_Gl.prior_info.prior_lsa);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
+
 
 /*
  *
@@ -5122,16 +7139,11 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
   int rv;
 #endif /* SERVER_MODE */
   int error_code = NO_ERROR;
-  LOG_FLUSH_TYPE old_flush_type;
-  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   int num_pages = 0;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-
-  old_flush_type = flush_info->flush_type;
-  flush_info->flush_type = LOG_FLUSH_DIRECT;
 
 #if defined(SERVER_MODE)
   thread_wakeup_purge_archive_logs_thread ();
@@ -5144,7 +7156,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
       er_log_debug (ARG_FILE_LINE, "log_archive_active_log: WARNING "
 		    "Trying to archive ONLY the append page"
 		    " which is incomplete\n");
-      flush_info->flush_type = old_flush_type;
       return;
     }
 
@@ -5167,7 +7178,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
   memset (malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE);
 
   /* Must force the log here to avoid nasty side effects */
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+  logpb_flush_all_append_pages_helper (thread_p);
 
   malloc_arv_hdr_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
   malloc_arv_hdr_pgptr->hdr.offset = NULL_OFFSET;
@@ -5249,7 +7260,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	  smallest_lsa.offset = 0;
 
 #if !defined(SERVER_MODE)
-	  pgbuf_flush_check_point (thread_p, &smallest_lsa, &newsmallest_lsa);
+	  pgbuf_flush_checkpoint (thread_p, &smallest_lsa, &newsmallest_lsa);
 	  if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
 	    {
 	      LSA_SET_NULL (&newsmallest_lsa);
@@ -5257,12 +7268,12 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 #else /* !SERVER_MODE */
 	  /* if archiving occurs during restart recovery
 	   * log_Gl.flushed_lsa_lower_bound becomes NULL_LSA,
-	   * So, we need to call pgbuf_flush_check_point()
+	   * So, we need to call pgbuf_flush_checkpoint()
 	   */
 	  if (!BO_IS_SERVER_RESTARTED ())
 	    {
-	      pgbuf_flush_check_point (thread_p, &smallest_lsa,
-				       &newsmallest_lsa);
+	      pgbuf_flush_checkpoint (thread_p, &smallest_lsa,
+				      &newsmallest_lsa);
 	      if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
 		{
 		  LSA_SET_NULL (&newsmallest_lsa);
@@ -5309,7 +7320,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	      log_Gl.hdr.nxarv_phy_pageid =
 		logpb_to_physical_pageid (log_Gl.hdr.nxarv_pageid);
 
-
 	      if (!LSA_ISNULL (&newsmallest_lsa)
 		  && LSA_LT (&newsmallest_lsa, &smallest_lsa))
 		{
@@ -5337,7 +7347,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 
 	      logpb_flush_header (thread_p);
 	      free_and_init (malloc_arv_hdr_pgptr);
-	      flush_info->flush_type = old_flush_type;
 
 	      return;
 	    }
@@ -5405,9 +7414,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
     {
 #endif
 
-      /* Record number of writes in statistics */
-      mnt_log_iowrites (thread_p);
-
       er_log_debug (ARG_FILE_LINE,
 		    "logpb_archive_active_log, arvhdr->fpageid = %lld\n",
 		    arvhdr->fpageid);
@@ -5452,8 +7458,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	      goto error;
 	    }
 
-	  /* Record number of writes in statistics */
-	  mnt_log_iowrites (thread_p);
 	  if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr,
 				  ar_phy_pageid, num_pages,
 				  LOG_PAGESIZE) == NULL)
@@ -5645,14 +7649,12 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 		"arvhdr->npages = %d\n", arvhdr->fpageid, arvhdr->npages);
 
   free_and_init (malloc_arv_hdr_pgptr);
-  flush_info->flush_type = old_flush_type;
 
   return;
 
   /* ********* */
 error:
 
-  flush_info->flush_type = old_flush_type;
   if (malloc_arv_hdr_pgptr != NULL)
     {
       free_and_init (malloc_arv_hdr_pgptr);
@@ -5854,7 +7856,7 @@ logpb_remove_archive_to_page_id (THREAD_ENTRY * thread_p,
   flush_upto_lsa.pageid = LOGPB_NEXT_ARCHIVE_PAGE_ID;
   flush_upto_lsa.offset = NULL_OFFSET;
 
-  pgbuf_flush_check_point (thread_p, &flush_upto_lsa, &newflush_upto_lsa);
+  pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, &newflush_upto_lsa);
 
   if ((!LSA_ISNULL (&newflush_upto_lsa)
        && LSA_LT (&newflush_upto_lsa, &flush_upto_lsa))
@@ -6596,18 +8598,19 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
   int error_code = NO_ERROR;
-  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   LOG_PAGEID smallest_pageid;
   int first_arv_num_not_needed;
   int last_arv_num_not_needed;
+  LOG_PRIOR_NODE *node;
+#if !defined(NDEBUG)
+  CSS_CONN_ENTRY *conn = NULL;
+#endif
 
   LOG_CS_ENTER (thread_p);
-  flush_info->flush_type = LOG_FLUSH_DIRECT;
 
 #if defined(SERVER_MODE)
   if (BO_IS_SERVER_RESTARTED () && log_Gl.run_nxchkpt_atpageid == NULL_PAGEID)
     {
-      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       return NULL_PAGEID;
     }
@@ -6634,7 +8637,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (LOG_SYSTEM_TRAN_INDEX);
   if (tdes == NULL)
     {
-      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       return NULL_PAGEID;
     }
@@ -6673,12 +8675,19 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call logpb_force()\n");
-  logpb_force (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
 
   /* MARK THE CHECKPOINT PROCESS */
-  logpb_start_append (thread_p, LOG_START_CHKPT, tdes);
-  logpb_end_append (thread_p);
+  node = prior_lsa_alloc_and_copy_data (thread_p,
+					LOG_START_CHKPT,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      LOG_CS_EXIT ();
+      return NULL_PAGEID;
+    }
+
+  prior_lsa_next_record (thread_p, node, tdes);
 
   /*
    * Modify log header to record present checkpoint. The header is flushed
@@ -6687,12 +8696,11 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   LSA_COPY (&newchkpt_lsa, &tdes->tail_lsa);
 
-  flush_info->flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 
   er_log_debug (ARG_FILE_LINE,
-		"logpb_checkpoint: call pbbuf_flush_check_point()\n");
-  pgbuf_flush_check_point (thread_p, &flush_upto_lsa, &tmp_chkpt.redo_lsa);
+		"logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
+  pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, &tmp_chkpt.redo_lsa);
 
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call fileio_synchronize_all()\n");
@@ -6703,7 +8711,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     }
 
   LOG_CS_ENTER (thread_p);
-  flush_info->flush_type = LOG_FLUSH_DIRECT;
 
   if (LSA_ISNULL (&tmp_chkpt.redo_lsa))
     {
@@ -6730,7 +8737,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   if (chkpt_trans == NULL)
     {
       TR_TABLE_CS_EXIT ();
-      flush_info->flush_type = LOG_FLUSH_NORMAL;
       goto error_cannot_chkpt;
     }
 
@@ -6749,6 +8755,10 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  continue;
 	}
       act_tdes = LOG_FIND_TDES (i);
+#if !defined(NDEBUG) && defined(SERVER_MODE)
+      conn = css_find_conn_by_tran_index (i);
+      assert (act_tdes->trid == NULL_TRANID || conn->status == CONN_OPEN);
+#endif
       if (act_tdes != NULL && act_tdes->trid != NULL_TRANID
 	  && !LSA_ISNULL (&act_tdes->tail_lsa))
 	{
@@ -6828,7 +8838,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	{
 	  free_and_init (chkpt_trans);
 	  TR_TABLE_CS_EXIT ();
-	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  goto error_cannot_chkpt;
 	}
 
@@ -6881,27 +8890,27 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   TR_TABLE_CS_EXIT ();
 
-  /* NOW DO THE APPEND */
-  logpb_start_append (thread_p, LOG_END_CHKPT, tdes);
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_END_CHKPT, 0, NULL,
+					length_all_chkpt_trans,
+					(char *) chkpt_trans,
+					length_all_tops,
+					(char *) chkpt_topops);
+  if (node == NULL)
+    {
+      LOG_CS_EXIT ();
+      return NULL_PAGEID;
+    }
 
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*chkpt));
-
-  chkpt = (struct log_chkpt *) LOG_APPEND_PTR ();
+  chkpt = (struct log_chkpt *) node->data_header;
   *chkpt = tmp_chkpt;
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*chkpt));
+  prior_lsa_next_record (thread_p, node, tdes);
 
-  /* INSERT data */
-  logpb_append_data (thread_p, length_all_chkpt_trans,
-		     (const char *) chkpt_trans);
   free_and_init (chkpt_trans);
 
   /* Any topops to log ? */
   if (chkpt_topops != NULL)
     {
-      logpb_append_data (thread_p, length_all_tops,
-			 (const char *) chkpt_topops);
       free_and_init (chkpt_topops);
     }
 
@@ -6910,12 +8919,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * Flush the page since we are going to flush the log header which
    * reflects the new location of the last checkpoint log record
    */
-
-  logpb_end_append (thread_p);
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
   er_log_debug (ARG_FILE_LINE,
 		"logpb_checkpoint: call logpb_flush_all_append_pages()\n");
-  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   /*
    * Flush the log data header and update all checkpoints in volumes to
@@ -6926,7 +8932,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   nobj_locks = lock_get_number_object_locks ();
   log_Gl.hdr.avg_ntrans = (log_Gl.hdr.avg_ntrans + ntrans) >> 1;
   log_Gl.hdr.avg_nlocks = (log_Gl.hdr.avg_nlocks + nobj_locks) >> 1;
-
 
   /* Flush the header */
   rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
@@ -6956,7 +8961,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * module which may be blocked on a lock.
    */
 
-  flush_info->flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 
   /*
@@ -7297,7 +9301,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid,
     }
 
   LOG_CS_ENTER (thread_p);
-  logpb_force (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
   LOG_CS_EXIT ();
 
   error_code = pgbuf_flush_all_unfixed (thread_p, volid);
@@ -7400,7 +9404,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
   char old_bkpath[PATH_MAX];
   const char *str_tmp;
   time_t tmp_time;
-  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
 
   memset (&session, 0, sizeof (FILEIO_BACKUP_SESSION));
 
@@ -7838,8 +9841,6 @@ loop:
     }
 #endif
 
-  flush_info->flush_type = LOG_FLUSH_DIRECT;
-
   /*
    * Remember the previous backup arv range, in order to delete or tag
    * archives from the previous backup which are no longer needed.
@@ -7861,7 +9862,6 @@ loop:
 					 LOG_DBLOG_INFO_VOLID, -1, false);
       if (error_code != NO_ERROR)
 	{
-	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  LOG_CS_EXIT ();
 	  goto error;
 	}
@@ -7878,7 +9878,6 @@ loop:
   error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
   if (error_code != NO_ERROR)
     {
-      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       goto error;
     }
@@ -7918,7 +9917,6 @@ loop:
 					 LOG_DBLOG_ACTIVE_VOLID, -1, false);
       if (error_code != NO_ERROR)
 	{
-	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  LOG_CS_EXIT ();
 	  goto error;
 	}
@@ -7926,7 +9924,6 @@ loop:
 
   if (fileio_finish_backup (thread_p, &session) == NULL)
     {
-      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       error_code = ER_FAILED;
       goto error;
@@ -8021,14 +10018,12 @@ loop:
 	    }
 	  if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
 	    {
-	      flush_info->flush_type = LOG_FLUSH_NORMAL;
 	      LOG_CS_EXIT ();
 	      goto error;
 	    }
 	}
     }
 
-  flush_info->flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 
   error_code = logpb_update_backup_volume_info (log_Name_bkupinfo);
@@ -8244,7 +10239,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   int error_code = NO_ERROR, success = NO_ERROR;
   bool printtoc;
   const char *verbose_file;
-  LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   char format_string[64];
   INT64 backup_time;
   REL_COMPATIBILITY compat;
@@ -8255,7 +10249,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   memset (lgat_tmpname, 0, PATH_MAX);
 
   LOG_CS_ENTER (thread_p);
-  flush_info->flush_type = LOG_FLUSH_DIRECT;
   pages_cache.ht = NULL;
   pages_cache.heap_id = HL_NULL_HEAPID;
 
@@ -8281,7 +10274,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
       if (lgat_vdes == NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
-	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  LOG_CS_EXIT ();
 	  goto error;
 	}
@@ -8304,7 +10296,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   if (pages_cache.ht == NULL)
     {
       error_code = ER_FAILED;
-      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       goto error;
     }
@@ -8313,7 +10304,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
   if (pages_cache.heap_id == HL_NULL_HEAPID)
     {
       error_code = ER_FAILED;
-      flush_info->flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       goto error;
     }
@@ -8396,7 +10386,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		      ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
 	      error_expected = true;
 	      error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
-	      flush_info->flush_type = LOG_FLUSH_NORMAL;
 	      LOG_CS_EXIT ();
 	      goto error;
 
@@ -8410,7 +10399,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 			  ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
 		  error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
-		  flush_info->flush_type = LOG_FLUSH_NORMAL;
 		  LOG_CS_EXIT ();
 		  goto error;
 		}
@@ -8452,7 +10440,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	      fclose (backup_volinfo_fp);
 	      backup_volinfo_fp = NULL;
 	      error_code = ER_FAILED;
-	      flush_info->flush_type = LOG_FLUSH_NORMAL;
 	      LOG_CS_EXIT ();
 	      goto error;
 	    }
@@ -8475,7 +10462,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 					    &bkdb_compatibility, try_level,
 					    r_args->newvolpath);
 
-	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  mht_destroy (pages_cache.ht);
 	  db_destroy_fixed_heap (pages_cache.heap_id);
 	  LOG_CS_EXIT ();
@@ -8497,7 +10483,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		      ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
 	    }
 	  error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
-	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  LOG_CS_EXIT ();
 	  goto error;
 	}
@@ -8529,7 +10514,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		{
 		  error_code = fileio_finish_restore (thread_p, session);
 
-		  flush_info->flush_type = LOG_FLUSH_NORMAL;
 		  mht_destroy (pages_cache.ht);
 		  db_destroy_fixed_heap (pages_cache.heap_id);
 		  LOG_CS_EXIT ();
@@ -8555,7 +10539,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		  NO_ERROR)
 		{
 		  error_code = ER_FAILED;
-		  flush_info->flush_type = LOG_FLUSH_NORMAL;
 		  LOG_CS_EXIT ();
 		  goto error;
 		}
@@ -8563,7 +10546,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	      error_code = logtb_define_trantable_log_latch (thread_p, -1);
 	      if (error_code != NO_ERROR)
 		{
-		  flush_info->flush_type = LOG_FLUSH_NORMAL;
 		  LOG_CS_EXIT ();
 		  goto error;
 		}
@@ -8582,7 +10564,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 		  ER_LOG_BKUP_INCOMPATIBLE, 2,
 		  rel_name (), rel_release_string ());
 	  error_code = ER_LOG_BKUP_INCOMPATIBLE;
-	  flush_info->flush_type = LOG_FLUSH_NORMAL;
 	  LOG_CS_EXIT ();
 	  goto error;
 	}
@@ -8681,7 +10662,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 			{
 			  success = ER_FAILED;
 			  error_code = ER_FAILED;
-			  flush_info->flush_type = LOG_FLUSH_NORMAL;
 			  LOG_CS_EXIT ();
 			  goto error;
 			}
@@ -8737,7 +10717,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 						bkuphdr->end_time) !=
 		   NO_ERROR)
 	    {
-	      flush_info->flush_type = LOG_FLUSH_NORMAL;
 	      LOG_CS_EXIT ();
 	      error_code = ER_FAILED;
 	      goto error;
@@ -8797,7 +10776,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 	}
     }
 
-  flush_info->flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 
   mht_destroy (pages_cache.ht);
@@ -9176,7 +11154,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid,
   from_vdes = fileio_get_volume_descriptor (from_volid);
 
   /* Flush all dirty pages */
-  logpb_force (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
 
   error_code = pgbuf_flush_all_unfixed (thread_p, from_volid);
   if (error_code != NO_ERROR)
@@ -9208,7 +11186,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid,
 			    db_creation, to_volchkpt_lsa, false,
 			    DISK_DONT_FLUSH);
 
-  logpb_force (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
   (void) pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p,
 						      LOG_DBCOPY_VOLID);
 
@@ -9277,7 +11255,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 		     const char *to_prefix_logname, const char *toext_path,
 		     const char *fileof_vols_and_copypaths)
 {
-  struct log_rec *eof;		/* End of log record       */
+  LOG_RECORD_HEADER *eof;	/* End of log record       */
   char from_volname[PATH_MAX];	/* Name of new volume      */
   FILE *fromfile_paths_fp = NULL;	/* Pointer to open file for
 					 * location of copy files
@@ -9399,7 +11377,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   to_malloc_log_pgptr->hdr.logical_pageid = 0;
   to_malloc_log_pgptr->hdr.offset = NULL_OFFSET;
 
-  eof = (struct log_rec *) to_malloc_log_pgptr->area;
+  eof = (LOG_RECORD_HEADER *) to_malloc_log_pgptr->area;
   eof->trid = LOG_SYSTEM_TRANID + 1;
   LSA_SET_NULL (&eof->prev_tranlsa);
   LSA_SET_NULL (&eof->back_lsa);
@@ -9408,9 +11386,6 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 
   log_Gl.hdr.eof_lsa.pageid = to_malloc_log_pgptr->hdr.logical_pageid;
   log_Gl.hdr.eof_lsa.offset = 0;
-
-  /* Record number of writes in statistics */
-  mnt_log_iowrites (thread_p);
 
   if (fileio_write (thread_p, to_vdes, to_malloc_log_pgptr, phy_pageid,
 		    LOG_PAGESIZE) == NULL)
@@ -9439,9 +11414,6 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
       fileio_dismount (thread_p, to_vdes);
       goto error;
     }
-
-  /* Record number of writes in statistics */
-  mnt_log_iowrites (thread_p);
 
   /* Now write the log header */
   phy_pageid =
@@ -9547,7 +11519,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 		  fileio_dismount (thread_p, to_vdes);
 		  goto error;
 		}
-	      logpb_force (thread_p);
+	      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
 	      error_code =
 		pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p,
 							     LOG_DBCOPY_VOLID);
@@ -9872,7 +11844,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
   LSA_SET_NULL (&log_Gl.hdr.bkup_level2_lsa);
   strcpy (log_Gl.hdr.prefix_name, to_prefix_logname);
 
-  logpb_force (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
   logpb_flush_header (thread_p);
 
   if (extern_rename == true)
@@ -10040,7 +12012,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
        * Now flush every single page of this volume, dismount the volume, rename
        * the volume, and mount the volume
        */
-      logpb_force (thread_p);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
       error_code = pgbuf_flush_all (thread_p, volid);
       if (error_code != NO_ERROR)
 	{
@@ -10564,7 +12536,7 @@ logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit,
 	   * Flush as much as you can without forcing the current unfinish log
 	   * record.
 	   */
-	  pgbuf_flush_check_point (thread_p, &tmp_lsa1, &tmp_lsa2);
+	  pgbuf_flush_checkpoint (thread_p, &tmp_lsa1, &tmp_lsa2);
 	  infatal = false;
 	}
     }
@@ -10760,21 +12732,10 @@ end:
 static int
 logpb_must_archive_last_log_page (THREAD_ENTRY * thread_p)
 {
-  LOG_TDES *tdes;
-  int tran_index;
-
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-      return ER_LOG_UNKNOWN_TRANINDEX;
-    }
+  log_append_empty_record (thread_p, LOG_DUMMY_FILLPAGE_FORARCHIVE);
 
-  log_append_dummy_record (thread_p, tdes, LOG_DUMMY_FILLPAGE_FORARCHIVE);
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
 
   return NO_ERROR;
@@ -10984,7 +12945,7 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  assert (LOG_CS_OWN (thread_p));
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   assert (flush_info->toflush != NULL);
 
@@ -11010,7 +12971,7 @@ logpb_flush_pages_background (THREAD_ENTRY * thread_p)
   find_first = false;
   for (loop = 0; loop != flush_info->num_toflush; ++loop)
     {
-      LOG_CAST_LOGPAGEPTR_TO_BFPTR (bufptr, flush_info->toflush[loop]);
+      bufptr = LOG_GET_LOG_BUFFER_PTR (flush_info->toflush[loop]);
 
       if (!bufptr->dirty || bufptr->fcnt > 0)
 	{
@@ -11146,8 +13107,6 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      /* Record number of writes in statistics */
-      mnt_log_iowrites (thread_p);
       if (fileio_write_pages (thread_p, vdes, (char *) log_pgptr, phy_pageid,
 			      num_pages, LOG_PAGESIZE) == NULL)
 	{
@@ -11374,4 +13333,168 @@ xlogpb_dump_stat (FILE * outfp)
   logpb_dump_parameter (outfp);
   logpb_dump_log_header (outfp);
   logpb_dump_runtime (outfp);
+}
+
+/*
+ * logpb_realloc_data_ptr -
+ *
+ * return:
+ *
+ *   data_length(in):
+ *   length(in):
+ *
+ * NOTE:
+ */
+static bool
+logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length)
+{
+  char *data_ptr;
+  int alloc_len;
+#if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p == NULL)
+    {
+      return false;
+    }
+
+  if (thread_p->log_data_length < length)
+    {
+      alloc_len = ((int) CEIL_PTVDIV (length, IO_PAGESIZE)) * IO_PAGESIZE;
+
+      data_ptr = (char *) realloc (thread_p->log_data_ptr, alloc_len);
+      if (data_ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_len);
+	  if (thread_p->log_data_ptr)
+	    {
+	      free_and_init (thread_p->log_data_ptr);
+	    }
+	  thread_p->log_data_length = 0;
+	  return false;
+	}
+      else
+	{
+	  thread_p->log_data_ptr = data_ptr;
+	  thread_p->log_data_length = alloc_len;
+	}
+    }
+  return true;
+#else
+  if (log_data_length < length)
+    {
+      alloc_len = ((int) CEIL_PTVDIV (length, IO_PAGESIZE)) * IO_PAGESIZE;
+
+      data_ptr = (char *) realloc (log_data_ptr, alloc_len);
+      if (data_ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, alloc_len);
+	  if (log_data_ptr)
+	    {
+	      free_and_init (log_data_ptr);
+	    }
+	  log_data_length = 0;
+	  return false;
+	}
+      else
+	{
+	  log_data_ptr = data_ptr;
+	  log_data_length = alloc_len;
+	}
+    }
+
+  return true;
+#endif
+}
+
+static LOG_ZIP *
+logpb_get_zip_undo (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p == NULL)
+    {
+      return NULL;
+    }
+  else
+    {
+      if (thread_p->log_zip_undo == NULL)
+	{
+	  thread_p->log_zip_undo = log_zip_alloc (IO_PAGESIZE, true);
+	}
+      return thread_p->log_zip_undo;
+    }
+#else
+  return log_zip_undo;
+#endif
+}
+
+static LOG_ZIP *
+logpb_get_zip_redo (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p == NULL)
+    {
+      return NULL;
+    }
+  else
+    {
+      if (thread_p->log_zip_redo == NULL)
+	{
+	  thread_p->log_zip_redo = log_zip_alloc (IO_PAGESIZE, true);
+	}
+      return thread_p->log_zip_redo;
+    }
+#else
+  return log_zip_redo;
+#endif
+}
+
+static char *
+logpb_get_data_ptr (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p == NULL)
+    {
+      return NULL;
+    }
+  else
+    {
+      if (thread_p->log_data_ptr == NULL)
+	{
+	  thread_p->log_data_length = IO_PAGESIZE * 2;
+	  thread_p->log_data_ptr =
+	    (char *) malloc (thread_p->log_data_length);
+
+	  if (thread_p->log_data_ptr == NULL)
+	    {
+	      thread_p->log_data_length = 0;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, thread_p->log_data_length);
+	    }
+	}
+      return thread_p->log_data_ptr;
+    }
+#else
+  return log_data_ptr;
+#endif
 }

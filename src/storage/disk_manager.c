@@ -2496,7 +2496,7 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid,
   /* Forcing the log here to be safer, especially in the case of
      permanent temp volumes. */
   LOG_CS_ENTER (thread_p);
-  logpb_force (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
   LOG_CS_EXIT ();
 
   pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);

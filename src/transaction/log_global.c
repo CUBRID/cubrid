@@ -46,6 +46,9 @@ LOG_GLOBAL log_Gl = {
   /* append */
   {NULL_VOLDES, {NULL_PAGEID, NULL_OFFSET},
    {NULL_PAGEID, NULL_OFFSET}, NULL, NULL},
+  /* prior info */
+  {{NULL_PAGEID, NULL_OFFSET}, {NULL_PAGEID, NULL_OFFSET},
+   NULL, NULL, 0, NULL, NULL, PTHREAD_MUTEX_INITIALIZER},
   /* hdr */
   {{'0'}, 0, 0, {'0'}, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
    {NULL_PAGEID, NULL_OFFSET},
@@ -88,7 +91,7 @@ LOG_GLOBAL log_Gl = {
   NULL,
 
   /* flush info */
-  {0, 0, NULL, LOG_FLUSH_NORMAL
+  {0, 0, NULL
 #if defined(SERVER_MODE)
    , PTHREAD_MUTEX_INITIALIZER
 #endif /* SERVER_MODE */

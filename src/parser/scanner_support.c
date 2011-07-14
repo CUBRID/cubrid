@@ -298,6 +298,14 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  node->info.query.q.select.hint |= hint_table[i].hint;
 		}
 	      break;
+	    case PT_HINT_INSERT_MODE:
+	      if (node->node_type == PT_INSERT)
+		{
+		  node->info.insert.hint |= hint_table[i].hint;
+		  node->info.insert.insert_mode = hint_table[i].arg_list;
+		  hint_table[i].arg_list = NULL;
+		}
+	      break;
 	    default:
 	      break;
 	    }

@@ -378,7 +378,7 @@ struct insert_proc_node
   int dup_key_oid_var_index;	/* hostvariable index for the OID required by
 				 * ON DUPLICATE KEY UPDATE processing
 				 */
-  int is_first_value;   /* Indicates whether the first value of VALUES clause. */
+  int is_first_value;		/* Indicates whether the first value of VALUES clause. */
   struct xasl_partition_info *partition;	/* partition information */
 };
 
@@ -537,8 +537,9 @@ struct xasl_node
   /* XASL cache related information */
   OID creator_oid;		/* OID of the user who created this XASL */
   int projected_size;		/* # of bytes per result tuple */
-  int n_oid_list;		/* size of the class OID list */
-  OID *class_oid_list;		/* list of class OIDs referenced in the XASL */
+  int n_oid_list;		/* size of the referenced OID list */
+  OID *class_oid_list;		/* list of class/serial OIDs referenced
+				 * in the XASL */
   int *repr_id_list;		/* representation ids of the classes in the class OID list */
   const char *qstmt;
   int dbval_cnt;		/* number of host variables in this XASL */
@@ -630,7 +631,8 @@ struct xasl_cache_ent
   size_t last_ta_idx;		/* index of the last element in TIDs array */
 #endif
   OID creator_oid;		/* OID of the user who created this XASL */
-  const OID *class_oid_list;	/* list of class OIDs referenced in the XASL */
+  const OID *class_oid_list;	/* list of class/serial OIDs referenced
+				 * in the XASL */
   const int *repr_id_list;	/* representation ids of the classes in the class OID list */
   struct timeval time_created;	/* when this entry created */
   struct timeval time_last_used;	/* when this entry used lastly */

@@ -169,14 +169,14 @@ extern int pgbuf_flush_victim_candidate_debug (THREAD_ENTRY * thread_p,
 					       const char *caller_file,
 					       int caller_line);
 
-#define pgbuf_flush_check_point(thread_p, last_chkpt_lsa, smallest_lsa) \
-	pgbuf_flush_check_point_debug(thread_p, last_chkpt_lsa, smallest_lsa, \
+#define pgbuf_flush_checkpoint(thread_p, last_chkpt_lsa, smallest_lsa) \
+	pgbuf_flush_checkpoint_debug(thread_p, last_chkpt_lsa, smallest_lsa, \
 				      __FILE__, __LINE__)
-extern void pgbuf_flush_check_point_debug (THREAD_ENTRY * thread_p,
-					   const LOG_LSA * last_chkpt_lsa,
-					   LOG_LSA * smallest_lsa,
-					   const char *caller_file,
-					   int caller_line);
+extern void pgbuf_flush_checkpoint_debug (THREAD_ENTRY * thread_p,
+					  const LOG_LSA * last_chkpt_lsa,
+					  LOG_LSA * smallest_lsa,
+					  const char *caller_file,
+					  int caller_line);
 #else /* NDEBUG */
 extern int pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid);
@@ -185,9 +185,9 @@ extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null (THREAD_ENTRY *
 							VOLID volid);
 extern int pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p,
 					 float flush_ratio);
-extern void pgbuf_flush_check_point (THREAD_ENTRY * thread_p,
-				     const LOG_LSA * last_chkpt_lsa,
-				     LOG_LSA * smallest_lsa);
+extern void pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
+				    const LOG_LSA * last_chkpt_lsa,
+				    LOG_LSA * smallest_lsa);
 #endif /* NDEBUG */
 extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid,
 				 int start_offset, int length, void *area,

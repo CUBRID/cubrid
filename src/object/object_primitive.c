@@ -9066,7 +9066,7 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals,
 
   assert (total_size == CAST_BUFLEN (buf.ptr - buf.buffer));
 
-  /* phase 5: make new mulitIDX */
+  /* phase 5: make new multiIDX */
   if (midxkey->size > 0)
     {
       db_private_free_and_init (NULL, midxkey->buf);

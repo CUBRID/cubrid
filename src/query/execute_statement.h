@@ -115,11 +115,9 @@ extern int do_alter_user (const PARSER_CONTEXT * parser,
 			  const PT_NODE * statement);
 
 extern int do_insert (PARSER_CONTEXT * parser, PT_NODE * statement);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int do_prepare_insert (const PARSER_CONTEXT * parser,
-			      const PT_NODE * statement);
+extern int do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement);
-#endif
+
 extern int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 			       PT_NODE * statement, PT_NODE * values_list,
 			       const char **savepoint_name,

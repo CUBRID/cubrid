@@ -434,14 +434,14 @@ repl_log_insert (THREAD_ENTRY * thread_p, OID * class_oid, OID * inst_oid,
        * for the update case, this function is called before the heap
        * file update, so we don't need to LSA for update log here.
        */
-      LSA_COPY (&repl_rec->lsa, &log_Gl.hdr.append_lsa);
+      LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
       break;
     case RVREPL_DATA_DELETE:
       /*
        * for the delete case, we don't need to find out the target
        * LSA. Delete is operation is possible without "After Image"
        */
-      LSA_COPY (&repl_rec->lsa, &log_Gl.hdr.append_lsa);
+      LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
       break;
     default:
       break;
@@ -551,7 +551,7 @@ repl_log_insert_schema (THREAD_ENTRY * thread_p,
 		" repl_schema { type %d, name %s, ddl %s, user %s }\n",
 		repl_schema->statement_type, repl_schema->name,
 		repl_schema->ddl, tdes->client.db_user);
-  LSA_COPY (&repl_rec->lsa, &log_Gl.hdr.append_lsa);
+  LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
 
   tdes->cur_repl_record++;
 

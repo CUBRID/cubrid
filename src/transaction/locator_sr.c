@@ -4877,7 +4877,7 @@ error3:
 }
 
 /*
- * locator_insert_force () - Insert the given object on is heap
+ * locator_insert_force () - Insert the given object on this heap
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
@@ -4892,7 +4892,7 @@ error3:
  *              between heap changes.
  *   force_count(in):
  *
- * Note: The given object is inserted on his heap and all appropiate
+ * Note: The given object is inserted on this heap and all appropiate
  *              index entries are inserted.
  */
 static int
@@ -4992,18 +4992,6 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	  error_code = ER_FAILED;
 	  goto error1;
 	}
-
-      /* remove XASL cache entries which are relevant with this class */
-      if (!OID_IS_ROOTOID (oid)
-	  && PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0
-	  && qexec_remove_xasl_cache_ent_by_class (thread_p, oid) != NO_ERROR)
-	{
-	  er_log_debug (ARG_FILE_LINE,
-			"locator_insert_force:"
-			" xs_remove_xasl_cache_ent_by_class"
-			" failed for class { %d %d %d }\n",
-			oid->pageid, oid->slotid, oid->volid);
-	}
     }
   else
     {
@@ -5084,7 +5072,7 @@ error2:
  *   force_count(in):
  *   not_check_fk(in):
  *
- * Note: The given object is updated on his heap and all appropiate
+ * Note: The given object is updated on this heap and all appropiate
  *              index entries are updated.
  */
 static int
@@ -5250,7 +5238,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"locator_update_force:"
-			" xs_remove_xasl_cache_ent_by_class"
+			" qexec_remove_xasl_cache_ent_by_class"
 			" failed for class { %d %d %d }\n",
 			oid->pageid, oid->slotid, oid->volid);
 	}
@@ -5401,7 +5389,7 @@ error:
  *                   between heap changes.
  *   force_count(in):
  *
- * Note: The given object is deleted on his heap and all appropiate
+ * Note: The given object is deleted on this heap and all appropiate
  *              index entries are deleted.
  */
 static int
@@ -5530,7 +5518,8 @@ locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid,
 	  && qexec_remove_xasl_cache_ent_by_class (thread_p, oid) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"locator_delete_force: xs_remove_xasl_cache_ent_by_class"
+			"locator_delete_force:"
+			" qexec_remove_xasl_cache_ent_by_class"
 			" failed for class { %d %d %d }\n",
 			oid->pageid, oid->slotid, oid->volid);
 	}

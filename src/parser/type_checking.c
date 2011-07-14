@@ -6205,8 +6205,12 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
 		  && PT_IS_HOSTVAR (v->info.expr.arg2)
 		  && v->info.expr.arg2->expected_domain == NULL)
 		{
-		  sc_info->unbound_hostvar = true;
-		  break;
+		  DB_DOMAIN *d;
+
+		  d = pt_node_to_db_domain (parser, v->info.expr.arg1, NULL);
+		  d = tp_domain_cache (d);
+		  SET_EXPECTED_DOMAIN (v, d);
+		  pt_preset_hostvar (parser, v);
 		}
 	    }
 	}
@@ -6328,16 +6332,23 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node,
 	{
 	  PT_NODE *v = NULL;
 	  PT_NODE *list = NULL;
+	  PT_NODE *attr = NULL;
 
 	  for (list = node->info.insert.value_clauses; list != NULL;
 	       list = list->next)
 	    {
-	      for (v = list->info.node_list.list; v != NULL; v = v->next)
+	      attr = node->info.insert.attr_list;
+	      for (v = list->info.node_list.list; v != NULL && attr != NULL;
+		   v = v->next, attr = attr->next)
 		{
 		  if (PT_IS_HOSTVAR (v) && v->expected_domain == NULL)
 		    {
-		      sc_info->unbound_hostvar = true;
-		      break;
+		      DB_DOMAIN *d;
+
+		      d = pt_node_to_db_domain (parser, attr, NULL);
+		      d = tp_domain_cache (d);
+		      SET_EXPECTED_DOMAIN (v, d);
+		      pt_preset_hostvar (parser, v);
 		    }
 		}
 	    }

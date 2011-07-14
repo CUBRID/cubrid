@@ -213,6 +213,11 @@ struct mnt_server_exec_stats
   UINT64 fc_num_log_pages;
   UINT64 fc_tokens;
 
+  /* prior lsa info */
+  UINT64 prior_lsa_list_size;	/* kbytes */
+  UINT64 prior_lsa_list_maxed;
+  UINT64 prior_lsa_list_removed;
+
   /* Other statistics */
   UINT64 pb_hit_ratio;
   /* ((pb_num_fetches - pb_num_ioreads) x 100 / pb_num_fetches) x 100 */
@@ -221,7 +226,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of field of MNT_SERVER_EXEC_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_STATS 54
+#define MNT_SIZE_OF_SERVER_EXEC_STATS 57
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
 				   FILE * stream, const char *substr);
@@ -419,8 +424,8 @@ extern int mnt_Num_tran_exec_stats;
  */
 #define mnt_log_ioreads(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_ioreads(thread_p)
-#define mnt_log_iowrites(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_iowrites(thread_p)
+#define mnt_log_iowrites(thread_p, num_log_pages) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_iowrites(thread_p, num_log_pages)
 #define mnt_log_appendrecs(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_appendrecs(thread_p)
 #define mnt_log_archives(thread_p) \
@@ -508,6 +513,14 @@ extern int mnt_Num_tran_exec_stats;
 #define mnt_qm_objfetches(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_qm_objfetches(thread_p)
 
+/* Prior LSA */
+#define mnt_prior_lsa_list_size(thread_p, list_size) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_prior_lsa_list_size(thread_p, list_size)
+#define mnt_prior_lsa_list_maxed(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_prior_lsa_list_maxed(thread_p)
+#define mnt_prior_lsa_list_removed(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_prior_lsa_list_removed(thread_p)
+
 /* Statistics at Flush Control */
 #define mnt_fc_stats(thread_p, num_pages, num_overflows, tokens) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_fc_stats(thread_p, num_pages, num_overflows, tokens)
@@ -537,7 +550,7 @@ extern void mnt_x_pb_iowrites (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_victims (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_replacements (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_ioreads (THREAD_ENTRY * thread_p);
-extern void mnt_x_log_iowrites (THREAD_ENTRY * thread_p);
+extern void mnt_x_log_iowrites (THREAD_ENTRY * thread_p, int num_log_pages);
 extern void mnt_x_log_appendrecs (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_archives (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_checkpoints (THREAD_ENTRY * thread_p);
@@ -576,6 +589,10 @@ extern void mnt_x_qm_mjoins (THREAD_ENTRY * thread_p);
 extern void mnt_x_qm_objfetches (THREAD_ENTRY * thread_p);
 extern void mnt_x_net_requests (THREAD_ENTRY * thread_p);
 
+extern void mnt_x_prior_lsa_list_size (THREAD_ENTRY * thread_p,
+				       unsigned int list_size);
+extern void mnt_x_prior_lsa_list_maxed (THREAD_ENTRY * thread_p);
+extern void mnt_x_prior_lsa_list_removed (THREAD_ENTRY * thread_p);
 extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
 			    unsigned int num_log_pages, unsigned int tokens);
 
@@ -595,7 +612,7 @@ extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
 #define mnt_pb_replacements(thread_p)
 
 #define mnt_log_ioreads(thread_p)
-#define mnt_log_iowrites(thread_p)
+#define mnt_log_iowrites(thread_p, num_log_pages)
 #define mnt_log_appendrecs(thread_p)
 #define mnt_log_archives(thread_p)
 #define mnt_log_checkpoints(thread_p)
@@ -639,6 +656,9 @@ extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
 
 #define mnt_net_requests(hread_p)
 
+#define mnt_prior_lsa_list_size (thread_p, list_size)
+#define mnt_prior_lsa_list_maxed (thread_p)
+#define mnt_prior_lsa_list_removed (thread_p)
 #define mnt_fc_stats (thread_p, num_pages, num_log_pages, num_tokens)
 #endif /* CS_MODE */
 

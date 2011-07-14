@@ -283,7 +283,8 @@ typedef struct xasl_supp_info
   PT_NODE *query_list;		/* ??? */
 
   /* XASL cache related information */
-  OID *class_oid_list;		/* list of class OIDs referenced in the XASL */
+  OID *class_oid_list;		/* list of class/serial OIDs referenced
+				 * in the XASL */
   int *repr_id_list;		/* representation ids of the classes
 				   in the class OID list */
   int n_oid_list;		/* number OIDs in the list */
@@ -415,6 +416,10 @@ static PT_NODE *parser_generate_xasl_pre (PARSER_CONTEXT * parser,
 static int pt_spec_to_xasl_class_oid_list (const PT_NODE * spec,
 					   OID ** oid_listp, int **rep_listp,
 					   int *nump, int *sizep);
+static int pt_serial_to_xasl_class_oid_list (const PT_NODE * serial,
+					     OID ** oid_listp,
+					     int **rep_listp, int *nump,
+					     int *sizep);
 static PT_NODE *parser_generate_xasl_post (PARSER_CONTEXT * parser,
 					   PT_NODE * node, void *arg,
 					   int *continue_walk);
@@ -8312,6 +8317,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    serial_mop = do_get_serial_obj_id (&serial_obj_id,
 						       serial_class_mop,
 						       serial_name);
+
 		    if (serial_mop != NULL)
 		      {
 			if (do_get_serial_cached_num (&cached_num,
@@ -8381,6 +8387,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    serial_mop = do_get_serial_obj_id (&serial_obj_id,
 						       serial_class_mop,
 						       serial_name);
+
 		    if (serial_mop != NULL)
 		      {
 			if (do_get_serial_cached_num (&cached_num,
@@ -9355,7 +9362,6 @@ pt_to_single_key (PARSER_CONTEXT * parser,
       op_type = term_exprs[i]->info.expr.op;
       lhs = term_exprs[i]->info.expr.arg1;
       rhs = term_exprs[i]->info.expr.arg2;
-      /* only PT_EQ */
 
       /* incidentally we may have a term with only one range left out by
          pt_to_index_info(), which semantically is the same as PT_EQ */
@@ -9382,7 +9388,7 @@ pt_to_single_key (PARSER_CONTEXT * parser,
 	}
       if (!VALIDATE_REGU_KEY (regu_var))
 	{
-	  /* correlared join index case swap LHS and RHS */
+	  /* correlated join index case swap LHS and RHS */
 	  tmp = rhs;
 	  rhs = lhs;
 	  lhs = tmp;
@@ -9512,7 +9518,7 @@ pt_to_range_key (PARSER_CONTEXT * parser,
 	    }
 	  if (!VALIDATE_REGU_KEY (regu_var1))
 	    {
-	      /* correlared join index case swap LHS and RHS */
+	      /* correlated join index case swap LHS and RHS */
 	      tmp = rhs;
 	      rhs = lhs;
 	      lhs = tmp;
@@ -9837,7 +9843,7 @@ pt_to_list_key (PARSER_CONTEXT * parser,
 	    }
 	  if (!VALIDATE_REGU_KEY (regu_var))
 	    {
-	      /* correlared join index case swap LHS and RHS */
+	      /* correlated join index case swap LHS and RHS */
 	      tmp = rhs;
 	      rhs = lhs;
 	      lhs = tmp;
@@ -10134,7 +10140,7 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser,
 	    }
 	  if (!VALIDATE_REGU_KEY (regu_var))
 	    {
-	      /* correlared join index case swap LHS and RHS */
+	      /* correlated join index case swap LHS and RHS */
 	      tmp = rhs;
 	      rhs = lhs;
 	      lhs = tmp;
@@ -14301,14 +14307,14 @@ pt_spec_to_xasl_class_oid_list (const PT_NODE * spec,
   size_t t_num, t_size, prev_t_num;
 #endif
 
-  if (!*oid_listp || !*rep_listp)
+  if (*oid_listp == NULL || *rep_listp == NULL)
     {
       *oid_listp = (OID *) malloc (sizeof (OID) * OID_LIST_GROWTH);
       *rep_listp = (int *) malloc (sizeof (int) * OID_LIST_GROWTH);
       *sizep = OID_LIST_GROWTH;
     }
 
-  if (!*oid_listp || !*rep_listp || *nump >= *sizep)
+  if (*oid_listp == NULL || *rep_listp == NULL || *nump >= *sizep)
     {
       goto error;
     }
@@ -14325,40 +14331,161 @@ pt_spec_to_xasl_class_oid_list (const PT_NODE * spec,
       for (flat = spec->info.spec.flat_entity_list; flat; flat = flat->next)
 	{
 	  /* get the OID of the class object which is fetched before */
-	  if (flat->info.name.db_object
-	      && (oid = ws_identifier (flat->info.name.db_object)) != NULL)
+	  if (flat->info.name.db_object)
 	    {
-	      prev_t_num = t_num;
-	      (void) lsearch (oid, o_list, &t_num, sizeof (OID), oid_compare);
-	      if (t_num > prev_t_num && t_num > (size_t) * nump)
+	      oid = ws_identifier (flat->info.name.db_object);
+	      if (oid != NULL)
 		{
-		  *(r_list + t_num - 1) =
-		    sm_get_class_repid (flat->info.name.db_object);
-		}
-	      if (t_num >= t_size)
-		{
-		  t_size += OID_LIST_GROWTH;
-		  oldptr = (void *) o_list;
-		  o_list = (OID *) realloc (o_list, t_size * sizeof (OID));
-		  if (o_list == NULL)
+		  prev_t_num = t_num;
+		  (void) lsearch (oid, o_list, &t_num, sizeof (OID),
+				  oid_compare);
+
+		  if (t_num > prev_t_num && t_num > (size_t) * nump)
 		    {
-		      free_and_init (oldptr);
-		      *oid_listp = NULL;
-		      goto error;
+		      *(r_list + t_num - 1) = -1;	/* dummy repr_id */
 		    }
 
-		  oldptr = (void *) r_list;
-		  r_list = (int *) realloc (r_list, t_size * sizeof (int));
-		  if (r_list == NULL)
+		  if (t_num >= t_size)
 		    {
-		      free_and_init (oldptr);
-		      free_and_init (o_list);
-		      *oid_listp = NULL;
-		      *rep_listp = NULL;
-		      goto error;
+		      t_size += OID_LIST_GROWTH;
+		      oldptr = (void *) o_list;
+		      o_list =
+			(OID *) realloc (o_list, t_size * sizeof (OID));
+		      if (o_list == NULL)
+			{
+			  free_and_init (oldptr);
+			  goto error;
+			}
+
+		      oldptr = (void *) r_list;
+		      r_list =
+			(int *) realloc (r_list, t_size * sizeof (int));
+		      if (r_list == NULL)
+			{
+			  free_and_init (oldptr);
+			  free_and_init (o_list);
+			  goto error;
+			}
 		    }
 		}
 	    }
+	}
+    }
+
+  *nump = t_num;
+  *sizep = t_size;
+  *oid_listp = o_list;
+  *rep_listp = r_list;
+
+  return t_num;
+
+error:
+  if (*oid_listp)
+    {
+      free_and_init (*oid_listp);
+    }
+
+  if (*rep_listp)
+    {
+      free_and_init (*rep_listp);
+    }
+
+  *nump = *sizep = 0;
+
+  return -1;
+}
+
+
+/*
+ * pt_serial_to_xasl_class_oid_list () - get serial OID list
+ *                                     from the node
+ *   return:
+ *   serial(in):
+ *   oid_listp(out):
+ *   nump(out):
+ *   sizep(out):
+ */
+static int
+pt_serial_to_xasl_class_oid_list (const PT_NODE * serial,
+				  OID ** oid_listp, int **rep_listp,
+				  int *nump, int *sizep)
+{
+  char *serial_name = NULL, *t = NULL;
+  MOP serial_class_mop, serial_mop;
+  OID serial_obj_id;
+  OID *o_list;
+  int *r_list;
+  void *oldptr;
+#if defined(WINDOWS)
+  int t_num, t_size, prev_t_num;
+#else
+  size_t t_num, t_size, prev_t_num;
+#endif
+
+  assert (PT_IS_EXPR_NODE (serial) && PT_IS_SERIAL (serial->info.expr.op));
+
+  if (*oid_listp == NULL || *rep_listp == NULL)
+    {
+      *oid_listp = (OID *) malloc (sizeof (OID) * OID_LIST_GROWTH);
+      *rep_listp = (int *) malloc (sizeof (int) * OID_LIST_GROWTH);
+      *sizep = OID_LIST_GROWTH;
+    }
+
+  if (*oid_listp == NULL || *rep_listp == NULL || *nump >= *sizep)
+    {
+      goto error;
+    }
+
+  t_num = *nump;
+  t_size = *sizep;
+  o_list = *oid_listp;
+  r_list = *rep_listp;
+
+  /* get the OID of the serial object which is fetched before */
+
+  /* convert node->info.expr.arg1 into serial object's OID */
+  serial_name =
+    (char *) serial->info.expr.arg1->info.value.data_value.str->bytes;
+  t = strchr (serial_name, '.');	/* FIXME */
+  serial_name = (t != NULL) ? t + 1 : serial_name;
+
+  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
+  serial_mop = do_get_serial_obj_id (&serial_obj_id,
+				     serial_class_mop, serial_name);
+
+  if (serial_mop == NULL)
+    {
+      goto error;
+    }
+
+  prev_t_num = t_num;
+  (void) lsearch (&serial_obj_id, o_list, &t_num, sizeof (OID), oid_compare);
+  if (t_num > prev_t_num && t_num > (size_t) * nump)
+    {
+      *(r_list + t_num - 1) = -1;	/* dummy repr_id */
+    }
+
+  if (t_num >= t_size)
+    {
+      t_size += OID_LIST_GROWTH;
+      oldptr = (void *) o_list;
+      o_list = (OID *) realloc (o_list, t_size * sizeof (OID));
+      if (o_list == NULL)
+	{
+	  free_and_init (oldptr);
+	  *oid_listp = NULL;
+	  goto error;
+	}
+
+      oldptr = (void *) r_list;
+      r_list = (int *) realloc (r_list, t_size * sizeof (int));
+      if (r_list == NULL)
+	{
+	  free_and_init (oldptr);
+	  free_and_init (o_list);
+	  *oid_listp = NULL;
+	  *rep_listp = NULL;
+	  goto error;
 	}
     }
 
@@ -14443,6 +14570,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node,
 		{
 		  namelist = pt_get_select_list (parser, node);
 		}
+
 	      aptr->next = (XASL_NODE *) 0;
 	      xasl->aptr_list = aptr;
 	      xasl->val_list = pt_make_val_list (namelist);
@@ -14475,6 +14603,21 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
       else
 	{
+	  /* collect serial oid list in values */
+	  XASL_SUPP_INFO info = { NULL, NULL, NULL, 0, 0 };
+
+	  info.n_oid_list = xasl->n_oid_list;
+	  info.class_oid_list = xasl->class_oid_list;
+	  info.oid_list_size = xasl->n_oid_list;
+
+	  node =
+	    parser_walk_tree (parser, node, NULL, NULL,
+			      parser_generate_xasl_post, &info);
+
+	  xasl->class_oid_list = info.class_oid_list;
+	  xasl->repr_id_list = info.repr_id_list;
+	  xasl->n_oid_list = info.n_oid_list;
+
 	  /* set the outptr and vall lists from a list of expressions */
 	  xasl->outptr_list = pt_to_outlist (parser, node,
 					     &xasl->selected_upd_list,
@@ -14684,11 +14827,13 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   xasl = pt_make_aptr_parent_node (parser, value_clause, INSERT_PROC);
   if (xasl)
     {
-      insert = &xasl->proc.insert;
-    }
+      int n_oid_size = xasl->n_oid_list + 1;
+      pt_spec_to_xasl_class_oid_list (statement->info.insert.spec,
+				      &xasl->class_oid_list,
+				      &xasl->repr_id_list, &xasl->n_oid_list,
+				      &n_oid_size);
 
-  if (xasl)
-    {
+      insert = &xasl->proc.insert;
       insert->class_hfid = *hfid;
       class_oid = ws_identifier (class_obj);
       if (class_oid)
@@ -14699,6 +14844,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  error = ER_HEAP_UNKNOWN_OBJECT;
 	}
+
       insert->has_uniques = has_uniques;
       insert->waitsecs = XASL_WAITSECS_NOCHANGE;
       hint_arg = statement->info.insert.waitsecs_hint;
@@ -14783,17 +14929,34 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 	  OID_SET_NULL (&xasl->creator_oid);
 	}
 
-
       /* list of class OIDs used in this XASL */
       if (xasl->aptr_list != NULL)
 	{
-	  xasl->n_oid_list = xasl->aptr_list->n_oid_list;
-	  xasl->aptr_list->n_oid_list = 0;
-	  xasl->class_oid_list = xasl->aptr_list->class_oid_list;
-	  xasl->aptr_list->class_oid_list = NULL;
-	  xasl->repr_id_list = xasl->aptr_list->repr_id_list;
-	  xasl->aptr_list->repr_id_list = NULL;
-	  xasl->dbval_cnt = xasl->aptr_list->dbval_cnt;
+	  int i = 0;
+	  XASL_NODE *aptr = xasl->aptr_list;
+
+	  xasl->class_oid_list =
+	    (OID *) realloc (xasl->class_oid_list,
+			     sizeof (OID) * (xasl->n_oid_list +
+					     aptr->n_oid_list));
+
+	  memcpy (&xasl->class_oid_list[xasl->n_oid_list],
+		  aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
+
+	  xasl->repr_id_list =
+	    (OID *) realloc (xasl->repr_id_list,
+			     sizeof (int) * (xasl->n_oid_list +
+					     aptr->n_oid_list));
+
+	  memcpy (&xasl->repr_id_list[xasl->n_oid_list],
+		  aptr->repr_id_list, sizeof (int) * aptr->n_oid_list);
+
+	  xasl->n_oid_list += aptr->n_oid_list;
+	  xasl->dbval_cnt += aptr->dbval_cnt;
+
+	  aptr->n_oid_list = 0;
+	  aptr->class_oid_list = NULL;
+	  aptr->repr_id_list = NULL;
 	}
     }
 
@@ -15601,6 +15764,22 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       switch (node->node_type)
 	{
+	case PT_EXPR:
+	  if (PT_IS_SERIAL (node->info.expr.op))
+	    {
+	      /* fill in XASL cache related information;
+	         serial OID used in this XASL */
+	      if (pt_serial_to_xasl_class_oid_list
+		  (node, &(info->class_oid_list), &(info->repr_id_list),
+		   &(info->n_oid_list), &(info->oid_list_size)) < 0)
+		{
+		  /* might be memory allocation error */
+		  PT_INTERNAL_ERROR (parser, "generate xasl");
+		  xasl = NULL;
+		}
+	    }
+	  break;
+
 	case PT_SELECT:
 	case PT_UNION:
 	case PT_DIFFERENCE:
@@ -15614,10 +15793,10 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node,
 	         list of class OIDs used in this XASL */
 	      if (xasl
 		  &&
-		  (pt_spec_to_xasl_class_oid_list
-		   (node->info.query.q.select.from, &(info->class_oid_list),
-		    &(info->repr_id_list), &(info->n_oid_list),
-		    &(info->oid_list_size)) < 0))
+		  pt_spec_to_xasl_class_oid_list
+		  (node->info.query.q.select.from, &(info->class_oid_list),
+		   &(info->repr_id_list), &(info->n_oid_list),
+		   &(info->oid_list_size)) < 0)
 		{
 		  /* might be memory allocation error */
 		  PT_INTERNAL_ERROR (parser, "generate xasl");
@@ -15625,6 +15804,7 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node,
 		}
 	    }
 	  break;
+
 	default:
 	  break;
 	}
@@ -15715,10 +15895,12 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      free_and_init (xasl_Supp_info.class_oid_list);
 	    }
+
 	  if (xasl_Supp_info.repr_id_list)
 	    {
 	      free_and_init (xasl_Supp_info.repr_id_list);
 	    }
+
 	  xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
 
 	  node =
@@ -15743,13 +15925,18 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   /* fill in XASL cache related information */
   if (xasl)
     {
-      OID *oid;
+      OID *oid = NULL;
       int n;
       DB_OBJECT *user = NULL;
 
       /* OID of the user who is creating this XASL */
-      if ((user = db_get_user ()) != NULL
-	  && (oid = ws_identifier (user)) != NULL)
+      user = db_get_user ();
+      if (user != NULL)
+	{
+	  oid = ws_identifier (user);
+	}
+
+      if (user != NULL && oid != NULL)
 	{
 	  COPY_OID (&xasl->creator_oid, oid);
 	}
@@ -15782,10 +15969,12 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       free_and_init (xasl_Supp_info.class_oid_list);
     }
+
   if (xasl_Supp_info.repr_id_list)
     {
       free_and_init (xasl_Supp_info.repr_id_list);
     }
+
   xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
 
   if (xasl)

@@ -681,6 +681,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id,
 
   pr_clear_value (&val);
   free_and_init (p);
+
   return mop;
 }
 
@@ -2758,9 +2759,7 @@ do_prepare_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_prepare_delete (parser, statement);
       break;
     case PT_INSERT:
-#if 0				/* disabled until implementation completed */
       err = do_prepare_insert (parser, statement);
-#endif
       break;
     case PT_UPDATE:
       err = do_prepare_update (parser, statement);
@@ -2952,11 +2951,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_check_delete_trigger (parser, statement, do_execute_delete);
       break;
     case PT_INSERT:
-#if 0				/* disabled until implementation completed */
-      err = do_check_insert_trigger (parser, statement, do_execute_insert);
-#else
-      err = do_check_insert_trigger (parser, statement, do_insert);
-#endif
+      err = do_execute_insert (parser, statement);
       break;
     case PT_UPDATE:
       err = do_check_update_trigger (parser, statement, do_execute_update);
@@ -8355,7 +8350,6 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p,
 					    0 /* not server update */ ,
 					    false)) != NULL))
     {
-
       /* If we are updating a proxy, the select is not yet fully translated.
          if we are updating anything else, this is a no-op. */
       statement = mq_translate (parser, statement);
@@ -9363,9 +9357,6 @@ typedef enum
 /* used to generate unique savepoint names */
 static int insert_savepoint_number = 0;
 
-/* 0 for no server inserts, a bit vector otherwise */
-static int server_preference = -1;
-
 static int insert_object_attr (const PARSER_CONTEXT * parser,
 			       DB_OTMPL * otemplate, DB_VALUE * value,
 			       PT_NODE * name, DB_ATTDESC * attr_desc);
@@ -9391,8 +9382,7 @@ static int do_insert_at_server (PARSER_CONTEXT * parser,
 				bool is_first_value);
 static int insert_subquery_results (PARSER_CONTEXT * parser,
 				    PT_NODE * statement,
-				    PT_NODE * values_list,
-				    PT_NODE * class_,
+				    PT_NODE * values_list, PT_NODE * class_,
 				    const char **savepoint_name);
 static int is_attr_not_in_insert_list (const PARSER_CONTEXT * parser,
 				       PT_NODE * name_list, const char *name);
@@ -9476,6 +9466,174 @@ insert_object_attr (const PARSER_CONTEXT * parser,
 
   return error;
 }
+
+
+static int
+do_prepare_insert_internal (PARSER_CONTEXT * parser,
+			    PT_NODE * statement, PT_NODE * values_list,
+			    PT_NODE * non_null_attrs,
+			    PT_NODE ** upd_non_null_attrs,
+			    const int has_uniques, const int upd_has_uniques)
+{
+  int error = NO_ERROR;
+  XASL_NODE *xasl = NULL;
+  int size = 0;
+  char *stream = NULL;
+  int i = 0;
+  int j = 0;
+  XASL_ID *xasl_id;
+  const char *qstr;
+  PT_NODE *val, *head = NULL, *prev = NULL;
+
+  if (!parser || !statement || !values_list
+      || statement->node_type != PT_INSERT)
+    {
+      assert (false);
+      return ER_GENERIC_ERROR;
+    }
+
+  assert (statement->info.insert.do_replace == false);
+  assert (statement->info.insert.on_dup_key_update == NULL);
+
+  /* insert value auto parameterize */
+  val = statement->info.insert.value_clauses->info.node_list.list;
+  for (; val != NULL; val = val->next)
+    {
+      if (pt_is_const_not_hostvar (val) && !PT_IS_NULL_NODE (val))
+	{
+	  val = pt_rewrite_to_auto_param (parser, val);
+	  if (prev != NULL)
+	    {
+	      prev->next = val;
+	    }
+	}
+
+      if (head == NULL)
+	{
+	  head = val;
+	}
+
+      prev = val;
+    }
+
+  statement->info.insert.value_clauses->info.node_list.list = head;
+
+
+  /* make query string */
+  parser->dont_prt_long_string = 1;
+  parser->long_string_skipped = 0;
+  parser->print_type_ambiguity = 0;
+  PT_NODE_PRINT_TO_ALIAS (parser, statement,
+			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES));
+  qstr = statement->alias_print;
+  parser->dont_prt_long_string = 0;
+  if (parser->long_string_skipped || parser->print_type_ambiguity)
+    {
+      statement->cannot_prepare = 1;
+      return NO_ERROR;
+    }
+
+  /* look up server's XASL cache for this query string
+     and get XASL file id (XASL_ID) returned if found */
+  if (statement->recompile == 0)
+    {
+      error = query_prepare (qstr, NULL, 0, &xasl_id);
+      if (error != NO_ERROR)
+	{
+	  error = er_errid ();
+	}
+    }
+  else
+    {
+      error = qmgr_drop_query_plan (qstr,
+				    ws_identifier (db_get_user ()), NULL,
+				    true);
+    }
+
+
+
+  if (!xasl_id && error == NO_ERROR)
+    {
+      /* mark the beginning of another level of xasl packing */
+      pt_enter_packing_buf ();
+      xasl = pt_to_insert_xasl (parser, statement, values_list, has_uniques,
+				non_null_attrs, true);
+
+      if (xasl)
+	{
+	  INSERT_PROC_NODE *insert = &xasl->proc.insert;
+
+	  assert (xasl->dptr_list == NULL);
+
+	  if (error == NO_ERROR)
+	    {
+	      error = xts_map_xasl_to_stream (xasl, &stream, &size);
+	      if (error != NO_ERROR)
+		{
+		  PT_ERRORm (parser, statement,
+			     MSGCAT_SET_PARSER_RUNTIME,
+			     MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+		}
+	    }
+
+	  if (insert->partition)
+	    {
+	      for (i = 0; i < insert->partition->no_parts; i++)
+		{
+		  pr_clear_value (insert->partition->parts[i]->vals);
+		}
+	    }
+	}
+      else
+	{
+	  error = er_errid ();
+	}
+
+
+      /* mark the end of another level of xasl packing */
+      pt_exit_packing_buf ();
+
+      if (stream && (error >= NO_ERROR))
+	{
+	  error = query_prepare (qstr, stream, size, &xasl_id);
+	  if (error != NO_ERROR)
+	    {
+	      error = er_errid ();
+	    }
+	}
+
+      /* As a result of query preparation of the server,
+         the XASL cache for this query will be created or updated. */
+
+      /* free 'stream' that is allocated inside of xts_map_xasl_to_stream() */
+      if (stream)
+	{
+	  free_and_init (stream);
+	}
+
+      statement->use_plan_cache = 0;
+    }
+  else
+    {
+      if (error == NO_ERROR)
+	{
+	  statement->use_plan_cache = 1;
+	}
+      else
+	{
+	  statement->use_plan_cache = 0;
+	}
+    }
+
+  /* save the XASL_ID that is allocated and returned by
+     query_prepare() into 'statement->xasl_id'
+     to be used by do_execute_update() */
+  statement->xasl_id = xasl_id;
+
+  return NO_ERROR;
+}
+
+
 
 /*
  * do_insert_at_server() - Brief description of this function
@@ -9834,6 +9992,9 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
   int trigger_involved;
   PT_NODE *attrs, *attr;
   PT_NODE *vals, *val;
+  /* set lock timeout hint if specified */
+  PT_NODE *hint_arg;
+  int server_preference;
 
   *server_allowed = 0;
 
@@ -9875,10 +10036,17 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
       return error;
     }
 
-  if (server_preference < 0)
+  server_preference = PRM_INSERT_MODE;
+
+  if (statement->info.insert.hint & PT_HINT_INSERT_MODE)
     {
-      server_preference = PRM_INSERT_MODE;
+      PT_NODE *mode = statement->info.insert.insert_mode;
+      if (mode && mode->node_type == PT_NAME)
+	{
+	  server_preference = atoi (mode->info.name.original);
+	}
     }
+
   /* check the insert form against the preference */
   if (statement->info.insert.do_replace)
     {
@@ -10726,7 +10894,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
       if (attr)
 	{
 	  attr_descs = (DB_ATTDESC **) calloc (degree, sizeof (DB_ATTDESC *));
-	  if (!attr_descs)
+	  if (attr_descs == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_ATTDESC *));
@@ -11881,7 +12049,6 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
   return error;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * do_prepare_insert () - Prepare the INSERT statement
  *   return: Error code
@@ -11889,12 +12056,105 @@ do_insert (PARSER_CONTEXT * parser, PT_NODE * root_statement)
  *   statement(in):
  */
 int
-do_prepare_insert (const PARSER_CONTEXT * parser, const PT_NODE * statement)
+do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int err;
-  err = NO_ERROR;
-  return err;
-}				/* do_prepare_insert() */
+  int error = NO_ERROR;
+  PT_NODE *class_;
+  int save;
+  int has_check_option = 0;
+  PT_NODE *values = NULL;
+  PT_NODE *non_null_attrs = NULL;
+  PT_NODE *upd_non_null_attrs = NULL;
+  int server_allowed = 0;
+  int has_uniques = 0;
+  int has_trigger = 0;
+  int upd_has_uniques = 0;
+  bool has_default_values_list = false;
+  PT_NODE *flat;
+  PT_NODE *attr_list;
+
+  if (statement == NULL ||
+      statement->node_type != PT_INSERT ||
+      statement->info.insert.spec == NULL ||
+      statement->info.insert.spec->info.spec.flat_entity_list == NULL)
+    {
+      assert (false);
+      return ER_GENERIC_ERROR;
+    }
+
+  statement->etc = NULL;
+  class_ = statement->info.insert.spec->info.spec.flat_entity_list;
+  values = statement->info.insert.value_clauses;
+
+  /* prepare only when simple insert clause are used */
+  if (values->info.node_list.list_type != PT_IS_VALUE)
+    {
+      return NO_ERROR;
+    }
+
+  /* prevent multi statements */
+  /* prevent multi values insert */
+  /* prevent do replace */
+  /* prevent dup key update */
+  if (pt_length_of_list (statement) > 1 ||
+      pt_length_of_list (values) > 1 ||
+      statement->info.insert.do_replace ||
+      statement->info.insert.on_dup_key_update != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  /* prevent blob, clob plan cache */
+  for (attr_list = statement->info.insert.attr_list; attr_list != NULL;
+       attr_list = attr_list->next)
+    {
+      if (attr_list->type_enum == PT_TYPE_BLOB ||
+	  attr_list->type_enum == PT_TYPE_CLOB)
+
+	return NO_ERROR;
+    }
+
+  /* check non null attrs */
+  if (values->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
+    {
+      has_default_values_list = true;
+    }
+
+  error = check_missing_non_null_attrs (parser, statement,
+					has_default_values_list);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = is_server_insert_allowed (parser, &non_null_attrs,
+				    &has_uniques, &server_allowed,
+				    statement, values, class_);
+
+  if (error != NO_ERROR || !server_allowed)
+    {
+      return error;
+    }
+
+  error = do_prepare_insert_internal (parser, statement, values,
+				      non_null_attrs,
+				      &upd_non_null_attrs, has_uniques,
+				      upd_has_uniques);
+
+  if (non_null_attrs != NULL)
+    {
+      parser_free_tree (parser, non_null_attrs);
+      non_null_attrs = NULL;
+    }
+
+  if (upd_non_null_attrs != NULL)
+    {
+      parser_free_tree (parser, upd_non_null_attrs);
+      upd_non_null_attrs = NULL;
+    }
+
+  return error;
+}
 
 /*
  * do_execute_insert () - Execute the prepared INSERT statement
@@ -11905,11 +12165,62 @@ do_prepare_insert (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 int
 do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int err;
-  err = NO_ERROR;
+  int err, result;
+  PT_NODE *flat;
+  DB_OBJECT *class_obj;
+  QFILE_LIST_ID *list_id;
+  int au_save;
+  QUERY_FLAG query_flag;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  if (statement->xasl_id == NULL)
+    {
+      return do_check_insert_trigger (parser, statement, do_insert);
+    }
+
+
+  flat = statement->info.insert.spec->info.spec.flat_entity_list;
+  class_obj = (flat) ? flat->info.name.db_object : NULL;
+
+  query_flag = parser->exec_mode | ASYNC_UNEXECUTABLE;
+
+  if (statement->do_not_keep == 0)
+    {
+      query_flag |= KEEP_PLAN_CACHE;
+    }
+  query_flag |= NOT_FROM_RESULT_CACHE;
+  query_flag |= RESULT_CACHE_INHIBITED;
+
+  list_id = NULL;
+  parser->query_id = -1;
+
+  err = query_execute (statement->xasl_id, &parser->query_id,
+		       parser->host_var_count +
+		       parser->auto_param_count,
+		       parser->host_variables, &list_id, query_flag,
+		       NULL, NULL);
+
+  /* free returned QFILE_LIST_ID */
+  if (list_id)
+    {
+      /* set as result */
+      err = list_id->tuple_cnt;
+      regu_free_listid (list_id);
+    }
+
+  /* end the query; reset query_id and call qmgr_end_query() */
+  pt_end_query (parser);
+
+  if ((err < NO_ERROR) && er_errid () != NO_ERROR)
+    {
+      pt_record_error (parser, parser->statement_number,
+		       statement->line_number, statement->column_number,
+		       er_msg ());
+    }
+
   return err;
-}				/* do_execute_insert() */
-#endif
+}
 
 /*
  * insert_predefined_values_into_partition () - Execute the prepared INSERT
@@ -11980,10 +12291,17 @@ insert_predefined_values_into_partition (const PARSER_CONTEXT * parser,
 		  serial_mop = do_get_serial_obj_id (&serial_obj_id,
 						     serial_class_mop,
 						     auto_increment_name);
-		  if (serial_mop != NULL)
+
+		  if (serial_mop == NULL)
 		    {
-		      dbattr->auto_increment = serial_mop;
+		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+			      ER_OBJ_INVALID_ATTRIBUTE, 1,
+			      auto_increment_name);
+		      return ER_OBJ_INVALID_ATTRIBUTE;
 		    }
+
+		  dbattr->auto_increment = serial_mop;
+
 		}
 
 	      if (dbattr->auto_increment != NULL)

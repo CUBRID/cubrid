@@ -208,13 +208,15 @@ static void btree_print_space (FILE * fp, int n);
 static int btree_delete_from_leaf (THREAD_ENTRY * thread_p,
 				   int *key_deleted, BTID_INT * btid,
 				   VPID * leaf_vpid, DB_VALUE * key,
-				   OID * class_oid, OID * oid);
+				   OID * class_oid, OID * oid,
+				   INT16 leaf_slot_id);
 static int btree_insert_into_leaf (THREAD_ENTRY * thread_p,
 				   int *key_added, BTID_INT * btid,
 				   PAGE_PTR page_ptr, DB_VALUE * key,
 				   OID * cls_oid, OID * oid,
 				   VPID * nearp_vpid,
-				   int do_unique_check, int op_type);
+				   int do_unique_check, int op_type,
+				   bool key_found, INT16 slot_id);
 static int btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid,
 			     PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R,
 			     VPID * P_vpid, VPID * Q_vpid, VPID * R_vpid,
@@ -5187,6 +5189,7 @@ btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid)
  *   key(in):
  *   class_oid(in):
  *   oid(in):
+ *   leaf_slot_id(in):
  *
  * LOGGING Note: When the btree is new, splits and merges will
  * not be committed, but will be attached.  If the transaction
@@ -5231,7 +5234,7 @@ btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid)
 static int
 btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
 			BTID_INT * btid, VPID * leaf_vpid, DB_VALUE * key,
-			OID * class_oid, OID * oid)
+			OID * class_oid, OID * oid, INT16 leaf_slot_id)
 {
   char *keyvalp;
   OID last_oid, last_class_oid;
@@ -5240,7 +5243,7 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
   VPID update_vpid, last_vpid, prev_vpid, next_ovfl_vpid;
   int del_oid_offset, oid_list_offset, oid_cnt, keyval_len;
   bool dummy;
-  INT16 leaf_slot_id, slot_id;
+  INT16 slot_id;
   char *header_ptr;
   RECDES peek_rec;
   INT16 key_cnt;
@@ -5292,15 +5295,19 @@ btree_delete_from_leaf (THREAD_ENTRY * thread_p, int *key_deleted,
   last_vpid = *leaf_vpid;
 
   /* find the slot for the key */
-  if (!btree_search_leaf_page (thread_p, btid, leaf_pg, key, &leaf_slot_id))
+  if (leaf_slot_id == NULL_SLOTID)
     {
-      /* key does not exist */
-      log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->sys_btid->vfid,
-			     leaf_pg, -1, 0, NULL);
-      pgbuf_set_dirty (thread_p, leaf_pg, DONT_FREE);
-      btree_set_unknown_key_error (thread_p, btid, key,
-				   "btree_delete_from_leaf: btree_search_leaf_page fails.");
-      goto exit_on_error;
+      if (!btree_search_leaf_page (thread_p, btid, leaf_pg,
+				   key, &leaf_slot_id))
+	{
+	  /* key does not exist */
+	  log_append_redo_data2 (thread_p, RVBT_NOOP, &btid->sys_btid->vfid,
+				 leaf_pg, -1, 0, NULL);
+	  pgbuf_set_dirty (thread_p, leaf_pg, DONT_FREE);
+	  btree_set_unknown_key_error (thread_p, btid, key,
+				       "btree_delete_from_leaf: btree_search_leaf_page fails.");
+	  goto exit_on_error;
+	}
     }
 
   copy_rec.area_size = DB_PAGESIZE;
@@ -7542,6 +7549,8 @@ start_point:
       P_vpid = Q_vpid;
     }
 
+  p_slot_id = NULL_SLOTID;
+
   /* keys(the number of keyvals) of the leaf page is valid */
 
   if (nextkey_lock_request == false)
@@ -8128,7 +8137,8 @@ key_deletion:
   /* a leaf page is reached, perform the deletion */
   key_deleted = 0;
   if (btree_delete_from_leaf (thread_p, &key_deleted, &btid_int,
-			      &P_vpid, key, &class_oid, oid) != NO_ERROR)
+			      &P_vpid, key, &class_oid, oid,
+			      p_slot_id) != NO_ERROR)
     {
       goto error;
     }
@@ -8236,6 +8246,9 @@ error:
  *   nearp_vpid(in): Near page identifier that may be used in allocating a new
  *                   overflow page. (Note: it may be ignored.)
  *   do_unique_check(in):
+ *   op_type(in):
+ *   key_found(in):
+ *   slot_id(in):
  *
  * Note: Insert the given < key, oid > pair into the leaf page
  * specified. If the key is a new one, it assumes that there is
@@ -8294,13 +8307,13 @@ static int
 btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
 			BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
 			OID * cls_oid, OID * oid, VPID * nearp_vpid,
-			int do_unique_check, int op_type)
+			int do_unique_check, int op_type,
+			bool key_found, INT16 slot_id)
 {
   PAGE_PTR ovfp = NULL, newp = NULL;
   VPID ovfl_vpid, new_vpid;
   char *header_ptr;
   INT16 key_cnt;
-  INT16 slot_id;
   RECDES peek_rec;
   RECDES rec;
   RECDES orec;			/* overflow record */
@@ -8388,15 +8401,20 @@ btree_insert_into_leaf (THREAD_ENTRY * thread_p, int *key_added,
   max_free = spage_max_space_for_new_record (thread_p, page_ptr);
   key_len = btree_get_key_length (key);
 
-  if (!btree_search_leaf_page (thread_p, btid, page_ptr, key, &slot_id))
+  if (slot_id == NULL_SLOTID)
     {
-      /* key does not exist */
-      *key_added = 1;
-
+      key_found = btree_search_leaf_page (thread_p, btid,
+					  page_ptr, key, &slot_id);
       if (slot_id == NULL_SLOTID)
 	{
 	  goto exit_on_error;
 	}
+    }
+
+  if (!key_found)
+    {
+      /* key does not exist */
+      *key_added = 1;
 
       /* form a new leaf record */
       if (key_len >= BTREE_MAX_KEYLEN_INPAGE)
@@ -11089,6 +11107,8 @@ start_point:
       BTREE_GET_NODE_NEXT_VPID (header_ptr, &next_vpid);
     }				/* while */
 
+  p_slot_id = NULL_SLOTID;
+
   /* find next OID for range locking */
   if (nextkey_lock_request == false)
     {
@@ -11463,9 +11483,8 @@ curr_key_locking:
       COPY_OID (&saved_pseudo_class_oid, &pseudo_class_oid);
 
       /* UNCONDITIONAL lock request */
-      ret_val =
-	lock_object (thread_p, &pseudo_oid, &pseudo_class_oid, NS_LOCK,
-		     LK_UNCOND_LOCK);
+      ret_val = lock_object (thread_p, &pseudo_oid, &pseudo_class_oid,
+			     NS_LOCK, LK_UNCOND_LOCK);
       if (ret_val != LK_GRANTED)
 	{
 	  goto error;
@@ -11533,7 +11552,8 @@ key_insertion:
 
   if (btree_insert_into_leaf (thread_p, &key_added, &btid_int,
 			      P, key, &class_oid, oid, &P_vpid,
-			      do_unique_check, op_type) != NO_ERROR)
+			      do_unique_check, op_type, key_found,
+			      p_slot_id) != NO_ERROR)
     {
       goto error;
     }
@@ -12611,7 +12631,7 @@ btree_initialize_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
    */
   /* to fix multi-column index NULL problem */
 
-  /* only used for mulit-column index with PRM_ORACLE_STYLE_EMPTY_STRING,
+  /* only used for multi-column index with PRM_ORACLE_STYLE_EMPTY_STRING,
    * otherwise set as zero
    */
 

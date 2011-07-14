@@ -6230,8 +6230,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		      return;
 		    }
 
-
-		  size = sizeof (BITSET) * nseg_idx;
+		  size = sizeof (BITSET) * index_entryp->nsegs;
 		  index_entryp->seg_equal_terms = (BITSET *) malloc (size);
 		  if (index_entryp->seg_equal_terms == NULL)
 		    {

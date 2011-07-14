@@ -2444,7 +2444,10 @@ catcls_reorder_attributes_by_repr (THREAD_ENTRY * thread_p,
 	{
 	  if (fixed_p[i].id == attrs[j].id.attrid)
 	    {
-	      EXCHANGE_OR_VALUE (attrs[i], attrs[j]);
+	      if (i != j)
+		{		/* need to exchange */
+		  EXCHANGE_OR_VALUE (attrs[i], attrs[j]);
+		}
 	      break;
 	    }
 	}
@@ -2457,7 +2460,10 @@ catcls_reorder_attributes_by_repr (THREAD_ENTRY * thread_p,
 	{
 	  if (variable_p[i].id == var_attrs[j].id.attrid)
 	    {
-	      EXCHANGE_OR_VALUE (var_attrs[i], var_attrs[j]);
+	      if (i != j)
+		{		/* need to exchange */
+		  EXCHANGE_OR_VALUE (var_attrs[i], var_attrs[j]);
+		}
 	      break;
 	    }
 	}

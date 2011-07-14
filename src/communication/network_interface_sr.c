@@ -5361,7 +5361,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
 		  1, sizeof (DB_VALUE) * dbval_cnt);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  return;
+	  return;		/* error */
 	}
 
       /* receive parameter values (DB_VALUE) from the client */
@@ -5373,17 +5373,20 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid,
 		  ER_NET_SERVER_DATA_RECEIVE, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  if (data)
-	    free_and_init (data);
+	    {
+	      free_and_init (data);
+	    }
 	  db_private_free_and_init (thread_p, dbvals);
-	  return;
+	  return;		/* error */
 	}
-      else
+
+      /* unpack DB_VALUEs from the received data */
+      ptr = data;
+      for (i = 0, dbval = dbvals; i < dbval_cnt; i++, dbval++)
 	{
-	  /* unpack DB_VALUEs from the received data */
-	  ptr = data;
-	  for (i = 0, dbval = dbvals; i < dbval_cnt; i++, dbval++)
-	    ptr = or_unpack_db_value (ptr, dbval);
+	  ptr = or_unpack_db_value (ptr, dbval);
 	}
+
       if (data)
 	{
 	  free_and_init (data);
@@ -6334,7 +6337,7 @@ sserial_decache (THREAD_ENTRY * thread_p, unsigned int rid,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   (void) or_unpack_oid (request, &oid);
-  xserial_decache (&oid);
+  xserial_decache (thread_p, &oid);
 
   (void) or_pack_int (reply, NO_ERROR);
   css_send_data_to_client (thread_p->conn_entry, rid, reply,

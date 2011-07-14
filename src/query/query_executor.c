@@ -245,7 +245,7 @@ struct xasl_cache_ent_info
   MHT_TABLE *xid_ht;		/* memory hash table for XASL stream cache
 				   referencing by xasl file id (XASL_ID) */
   MHT_TABLE *oid_ht;		/* memory hash table for XASL stream cache
-				   referencing by class oid */
+				   referencing by class/serial oid */
   XASL_CACHE_ENT_CV_INFO cv_info;	/* candidate/victim info */
 };
 
@@ -349,9 +349,10 @@ static XASL_CACHE_ENTRY_POOL xasl_cache_entry_pool = { NULL, 0, -1 };
  *  XASL_CACHE_ENTRY memory structure :=
  *      [|ent structure itself|TRANID array(tran_id_array)
  *       |OID array(class_oid_ilst)|int array(repr_id_list)
- *       |char array(query_string)|]
+ *	 |char array(query_string)|]
  *  ; malloc all in one memory block
 */
+
 #if defined(SERVER_MODE)
 
 #define XASL_CACHE_ENTRY_ALLOC_SIZE(qlen, noid) \
@@ -8532,6 +8533,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 			  continue;
 			}
 		    }
+
+
 		  rc = heap_attrinfo_set (NULL, insert->att_id[k],
 					  insert->vals[k], &attr_info);
 		  if (rc != NO_ERROR)
@@ -11545,7 +11548,7 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
 					  xasl_ent_cache.max_entries,
 					  xasl_id_hash, xasl_id_hash_cmpeq);
     }
-  /* memory hash table for XASL stream cache referencing by class oid */
+  /* memory hash table for XASL stream cache referencing by class/serial oid */
   if (xasl_ent_cache.oid_ht)
     {
       /* if the hash table already exist, clear it out */
@@ -11684,7 +11687,7 @@ qexec_finalize_xasl_cache (THREAD_ENTRY * thread_p)
       xasl_ent_cache.xid_ht = NULL;
     }
 
-  /* memory hash table for XASL stream cache referencing by class oid */
+  /* memory hash table for XASL stream cache referencing by class/serial oid */
   if (xasl_ent_cache.oid_ht)
     {
       mht_destroy (xasl_ent_cache.oid_ht);
@@ -11788,6 +11791,7 @@ qexec_print_xasl_cache_ent (FILE * fp, const void *key, void *data,
 	       ent->class_oid_list[i].slotid, ent->class_oid_list[i].volid);
     }
   fprintf (fp, " ]\n");
+
   fprintf (fp, "  repr_id_list = [");
   for (i = 0; i < ent->n_oid_list; i++)
     {
@@ -12404,6 +12408,7 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 	  ent = NULL;
 	}
 
+#if 0
       /* check referenced classes using representation id - validation */
       if (ent)
 	{
@@ -12421,6 +12426,7 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 		}
 	    }
 	}
+#endif
 
       /* finally, we found an useful cache entry to reuse */
       if (ent)
@@ -13114,7 +13120,7 @@ qexec_check_xasl_cache_ent_by_xasl (THREAD_ENTRY * thread_p,
 
 /*
  * qexec_remove_xasl_cache_ent_by_class () - Remove the XASL cache entries by
- *                                        class OID
+ *                                        class/serial OID
  *   return: NO_ERROR, or ER_code
  *   class_oid(in)      :
  */
@@ -13135,7 +13141,7 @@ qexec_remove_xasl_cache_ent_by_class (THREAD_ENTRY * thread_p,
       return ER_FAILED;
     }
 
-  /* for all entries in the class oid hash table
+  /* for all entries in the class/serial oid hash table
      Note that mht_put2() allows mutiple data with the same key,
      so we have to use mht_get2() */
   last = NULL;
@@ -13295,7 +13301,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 			ent->xasl_id.temp_vfid.fileid,
 			ent->xasl_id.temp_vfid.volid);
 	}
-      /* remove the entries from class oid hash table */
+      /* remove the entries from class/serial oid hash table */
       for (i = 0, o = ent->class_oid_list; i < ent->n_oid_list; i++, o++)
 	{
 	  if (mht_rem2 (xasl_ent_cache.oid_ht, o, ent, NULL, NULL) !=

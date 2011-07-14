@@ -129,8 +129,8 @@ static int rv;
 #define LOG_ISUNSAFE_TO_SKIP_RCVINDEX(RCVI) \
    ((RCVI) == RVDK_LINK_PERM_VOLEXT)
 
-#define LOG_IS_NO_NEED_TO_SET_LSA(RCVI, PGPTR) \
-   ((RCVI) == RVDK_LINK_PERM_VOLEXT && pgbuf_is_lsa_temporary(PGPTR))
+#define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
+   ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR))
 
 #define LOG_TOPOP_STACK_INIT_SIZE 1024
 
@@ -187,14 +187,6 @@ static const int LOG_REC_UNDO_MAX_ATTEMPTS = 3;
 /* true: Skip logging, false: Don't skip logging */
 static bool log_No_logging = false;
 
-static bool log_zip_support = false;
-#if !defined(SERVER_MODE)
-static LOG_ZIP *log_zip_undo = NULL;
-static LOG_ZIP *log_zip_redo = NULL;
-static char *log_data_ptr = NULL;
-static int log_data_length = 0;
-#endif
-
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid,
 				   const INT64 * log_dbcreation);
 static void log_create_internal (THREAD_ENTRY * thread_p,
@@ -235,8 +227,7 @@ static void log_append_topope_abort_client_loose_ends (THREAD_ENTRY *
 						       LOG_TDES * tdes);
 static void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				  bool is_commit);
-static void log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-				   LOG_RECTYPE iscommitted);
+static void log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				 LOG_RECTYPE iscommitted);
 static void log_rollback_classrepr_cache (THREAD_ENTRY * thread_p,
@@ -350,9 +341,9 @@ static LOG_PAGE *log_dump_record_abort_client_loose_end (THREAD_ENTRY *
 							 LOG_LSA * lsa_p,
 							 LOG_PAGE *
 							 log_page_p);
-static LOG_PAGE *log_dump_record_check_point (THREAD_ENTRY * thread_p,
-					      FILE * out_fp, LOG_LSA * lsa_p,
-					      LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_checkpoint (THREAD_ENTRY * thread_p,
+					     FILE * out_fp, LOG_LSA * lsa_p,
+					     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_save_point (THREAD_ENTRY * thread_p,
 					     FILE * out_fp, LOG_LSA * lsa_p,
 					     LOG_PAGE * log_page_p);
@@ -388,15 +379,10 @@ static int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 static int log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 				LOG_PAGE * log_pgptr);
 static void log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa);
-static bool log_realloc_data_ptr (THREAD_ENTRY * thread_p, int length);
 static TRAN_STATE
 log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		    LOG_RESULT_TOPOP result);
 static void log_complete_topop_attach (LOG_TDES * tdes);
-
-static LOG_ZIP *log_get_zip_undo (THREAD_ENTRY * thread_p);
-static LOG_ZIP *log_get_zip_redo (THREAD_ENTRY * thread_p);
-static char *log_get_data_ptr (THREAD_ENTRY * thread_p);
 
 static int log_is_valid_locator (const char *locator);
 static int log_add_to_modified_class_list_internal (THREAD_ENTRY * thread_p,
@@ -867,7 +853,6 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   VOLID volid1, volid2;
 
   LOG_CS_ENTER (thread_p);
-  log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
 
   /* Make sure that we are starting from a clean state */
   if (log_Gl.trantable.area != NULL)
@@ -902,7 +887,6 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
     {
       logpb_finalize_pool ();
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_create");
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       return;
     }
@@ -922,18 +906,19 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
     {
       logpb_finalize_pool ();
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_create");
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       return;
     }
   LSA_SET_NULL (&log_Gl.append.prev_lsa);
+  /* copy log_Gl.append.prev_lsa to log_Gl.prior_info.prev_lsa */
+  LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
 
   /*
    * Flush the append page, so that the end of the log mark is written.
    * Then, free the page, same for the header page.
    */
   logpb_set_dirty (thread_p, log_Gl.append.log_pgptr, DONT_FREE);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_FORCE);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
 
   log_Gl.chkpt_every_npages = PRM_LOG_CHECKPOINT_NPAGES;
 
@@ -1025,7 +1010,6 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 
   logpb_finalize_pool ();
 
-  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 }
 
@@ -1095,59 +1079,6 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname,
 		const char *logpath, const char *prefix_logname,
 		int ismedia_crash, time_t * stopat)
 {
-  if (lzo_init () == LZO_E_OK)
-    {				/* lzo library init */
-      if (!PRM_LOG_COMPRESS)
-	{
-	  log_zip_support = false;
-	}
-      else
-	{
-#if defined(SERVER_MODE)
-	  log_zip_support = true;
-#else
-	  log_zip_undo = log_zip_alloc (IO_PAGESIZE, true);
-	  log_zip_redo = log_zip_alloc (IO_PAGESIZE, true);
-	  log_data_length = IO_PAGESIZE * 2;
-	  log_data_ptr = (char *) malloc (log_data_length);
-	  if (log_data_ptr == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, log_data_length);
-	    }
-
-	  if (log_zip_undo == NULL || log_zip_redo == NULL
-	      || log_data_ptr == NULL)
-	    {
-	      log_zip_support = false;
-	      if (log_zip_undo)
-		{
-		  log_zip_free (log_zip_undo);
-		  log_zip_undo = NULL;
-		}
-	      if (log_zip_redo)
-		{
-		  log_zip_free (log_zip_redo);
-		  log_zip_redo = NULL;
-		}
-	      if (log_data_ptr)
-		{
-		  free_and_init (log_data_ptr);
-		  log_data_length = 0;
-		}
-	    }
-	  else
-	    {
-	      log_zip_support = true;
-	    }
-#endif
-	}
-    }
-  else
-    {
-      log_zip_support = false;
-    }
-
   (void) log_initialize_internal (thread_p, db_fullname, logpath,
 				  prefix_logname, ismedia_crash, stopat,
 				  false);
@@ -1181,7 +1112,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 			 int ismedia_crash, time_t * stopat,
 			 bool init_emergency)
 {
-  struct log_rec *eof;		/* End of log record */
+  LOG_RECORD_HEADER *eof;	/* End of log record */
   REL_FIXUP_FUNCTION *disk_compatibility_functions = NULL;
   REL_COMPATIBILITY compat;
   int i;
@@ -1198,7 +1129,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
   LOG_CS_ENTER (thread_p);
-  log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
 
   if (log_Gl.trantable.area != NULL)
     {
@@ -1257,6 +1187,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 	    }
 	  log_Gl.hdr.fpageid = LOGPAGEID_MAX;
 	  log_Gl.hdr.append_lsa.pageid = LOGPAGEID_MAX;
+	  log_Gl.hdr.append_lsa.offset = 0;
+
+	  /* sync append_lsa to prior_lsa */
+	  LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+
 	  LSA_SET_NULL (&log_Gl.hdr.chkpt_lsa);
 	  log_Gl.hdr.nxarv_pageid = LOGPAGEID_MAX;
 	  log_Gl.hdr.nxarv_num = DB_INT32_MAX;
@@ -1316,7 +1251,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
       log_Gl.append.vdes = NULL_VOLDES;
 
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
 
       error_code =
@@ -1484,8 +1418,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 	}
 
       /* Read the End of file record to find out the previous address */
-      eof = (struct log_rec *) LOG_APPEND_PTR ();
-      LSA_COPY (&log_Gl.append.prev_lsa, &eof->back_lsa);
+      eof = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
+      LOG_RESET_PREV_LSA (&eof->back_lsa);
 
 #if defined(SERVER_MODE)
       /* fix flushed_lsa_lower_bound become NULL_LSA */
@@ -1530,7 +1464,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname,
 
   logpb_initialize_arv_page_info_table ();
   logpb_initialize_logging_statistics ();
-  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
 
   if (PRM_LOG_BACKGROUND_ARCHIVING)
     {
@@ -1583,7 +1516,6 @@ error:
       free_and_init (log_Gl.loghdr_pgptr);
     }
 
-  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 
   logpb_fatal_error (thread_p, !init_emergency, ARG_FILE_LINE, "log_init");
@@ -1804,11 +1736,9 @@ log_final (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
 
   LOG_CS_ENTER (thread_p);
-  log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
 
   if (log_Gl.trantable.area == NULL)
     {
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       return;
     }
@@ -1818,7 +1748,6 @@ log_final (THREAD_ENTRY * thread_p)
   if (!logpb_is_initialize_pool ())
     {
       logtb_undefine_trantable (thread_p);
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       return;
     }
@@ -1827,7 +1756,6 @@ log_final (THREAD_ENTRY * thread_p)
     {
       logpb_finalize_pool ();
       logtb_undefine_trantable (thread_p);
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       return;
     }
@@ -1911,29 +1839,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   free_and_init (log_Gl.loghdr_pgptr);
 
-  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
-  if (log_zip_support)
-    {
-#if defined (SERVER_MODE)
-#else
-      if (log_zip_undo)
-	{
-	  log_zip_free (log_zip_undo);
-	  log_zip_undo = NULL;
-	}
-      if (log_zip_redo)
-	{
-	  log_zip_free (log_zip_redo);
-	  log_zip_redo = NULL;
-	}
-      if (log_data_ptr)
-	{
-	  free_and_init (log_data_ptr);
-	  log_data_length = 0;
-	}
-#endif
-    }
 }
 
 /*
@@ -1993,17 +1899,12 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 			   int undo_length, int redo_length,
 			   const void *undo_data, const void *redo_data)
 {
-  struct log_undoredo *undoredo;	/* Undo_redo log record               */
-  VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
-  bool is_diff;
-  bool is_undo_zip;
-  bool is_redo_zip;
   LOG_DATA_ADDR addr;
   int error_code = NO_ERROR;
-  LOG_ZIP *zip_undo, *zip_redo;
-  char *data_ptr = NULL;
+  LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   addr.vfid = vfid;
   addr.pgptr = pgptr;
@@ -2081,122 +1982,29 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       return;
     }
 
-  vpid = pgbuf_get_vpid_ptr (addr.pgptr);
-
-  zip_undo = log_get_zip_undo (thread_p);
-  zip_redo = log_get_zip_redo (thread_p);
-
-  is_diff = false;
-  is_undo_zip = false;
-  is_redo_zip = false;
-
-  if (log_zip_support && zip_undo && zip_redo)
-    {				/* disable_log_compress = 0 in cubrid.conf */
-      if ((undo_length > 0) && (redo_length > 0)
-	  && log_realloc_data_ptr (thread_p, redo_length))
-	{
-	  data_ptr = log_get_data_ptr (thread_p);
-	}
-
-      if (data_ptr)
-	{
-	  (void) memcpy (data_ptr, redo_data, redo_length);
-	  (void) log_diff (undo_length, undo_data, redo_length, data_ptr);
-
-	  is_undo_zip = log_zip (zip_undo, undo_length, undo_data);
-	  is_redo_zip = log_zip (zip_redo, redo_length, data_ptr);
-
-	  if (is_redo_zip)
-	    {
-	      is_diff = true;	/* log rec type : LOG_DIFF_UNDOREDO_DATA */
-	    }
-	}
-      else
-	{
-	  if (undo_length > 0)
-	    {
-	      is_undo_zip = log_zip (zip_undo, undo_length, undo_data);
-	    }
-	  if (redo_length > 0)
-	    {
-	      is_redo_zip = log_zip (zip_redo, redo_length, redo_data);
-	    }
-	}
-    }
 
   /*
    * Now do the UNDO & REDO portion
    */
-
-  LOG_CS_ENTER (thread_p);
-
-
-  if (!LOG_IS_NO_NEED_TO_SET_LSA (rcvindex, addr.pgptr)
-      && pgbuf_set_lsa (thread_p, addr.pgptr, &log_Gl.hdr.append_lsa) == NULL)
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_UNDOREDO_DATA,
+					rcvindex, &addr,
+					undo_length, (char *) undo_data,
+					redo_length, (char *) redo_data);
+  if (node == NULL)
     {
-      /* Don't need to log */
-      LOG_CS_EXIT ();
-
       return;
     }
 
-  if (is_diff)
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+
+  if (LOG_NEED_TO_SET_LSA (rcvindex, addr.pgptr))
     {
-      logpb_start_append (thread_p, LOG_DIFF_UNDOREDO_DATA, tdes);
+      if (pgbuf_set_lsa (thread_p, addr.pgptr, &start_lsa) == NULL)
+	{
+	  assert (false);
+	  return;
+	}
     }
-  else
-    {
-      logpb_start_append (thread_p, LOG_UNDOREDO_DATA, tdes);
-    }
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*undoredo));
-
-  undoredo = (struct log_undoredo *) LOG_APPEND_PTR ();
-
-  undoredo->data.rcvindex = rcvindex;
-  undoredo->data.pageid = vpid->pageid;
-  undoredo->data.volid = vpid->volid;
-  undoredo->data.offset = addr.offset;
-  undoredo->ulength = undo_length;
-  undoredo->rlength = redo_length;
-
-  if (is_undo_zip)
-    {				/* MSB bit set = 1 ( length | 0x80000000 ) */
-      undoredo->ulength = (int) MAKE_ZIP_LEN (zip_undo->data_length);
-    }
-  if (is_redo_zip)
-    {				/* MSB bit set = 1 ( length | 0x80000000 ) */
-      undoredo->rlength = (int) MAKE_ZIP_LEN (zip_redo->data_length);
-    }
-
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*undoredo));
-
-  /* INSERT data */
-
-  if (is_undo_zip)
-    {
-      logpb_append_data (thread_p, (int) zip_undo->data_length,
-			 (char *) zip_undo->log_data);
-    }
-  else
-    {
-      logpb_append_data (thread_p, undo_length, (char *) undo_data);
-    }
-
-  if (is_redo_zip)
-    {
-      logpb_append_data (thread_p, (int) zip_redo->data_length,
-			 (char *) zip_redo->log_data);
-    }
-  else
-    {
-      logpb_append_data (thread_p, redo_length, (char *) redo_data);
-    }
-
-  /* END append */
-
-  logpb_end_append (thread_p);
 
   if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
@@ -2209,8 +2017,6 @@ log_append_undoredo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
 	}
     }
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -2251,14 +2057,12 @@ log_append_undo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 		       const VFID * vfid, PAGE_PTR pgptr, PGLENGTH offset,
 		       int length, const void *data)
 {
-  struct log_undo *undo;	/* Undo log record                    */
-  VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
-  bool is_zipped = false;
   LOG_DATA_ADDR addr;
   int error_code = NO_ERROR;
-  LOG_ZIP *zip_undo;
+  LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   addr.vfid = vfid;
   addr.pgptr = pgptr;
@@ -2320,79 +2124,24 @@ log_append_undo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       return;
     }
 
-  /* Log compress Process */
-  zip_undo = log_get_zip_undo (thread_p);
-
-  if (log_zip_support && zip_undo && (length > 0))
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_UNDO_DATA,
+					rcvindex, &addr, length,
+					(char *) data, 0, (char *) NULL);
+  if (node == NULL)
     {
-      is_zipped = log_zip (zip_undo, length, data);
-    }
-
-  /*
-   * NOW do the UNDO ...
-   */
-
-  LOG_CS_ENTER (thread_p);
-
-  if (addr.pgptr != NULL
-      && !LOG_IS_NO_NEED_TO_SET_LSA (rcvindex, addr.pgptr)
-      && pgbuf_set_lsa (thread_p, addr.pgptr, &log_Gl.hdr.append_lsa) == NULL)
-    {
-      /* Don't need to log */
-      LOG_CS_EXIT ();
       return;
     }
 
-  /* START appending */
-  logpb_start_append (thread_p, LOG_UNDO_DATA, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*undo));
-
-  undo = (struct log_undo *) LOG_APPEND_PTR ();
-
-  undo->data.rcvindex = rcvindex;
-
-  if (addr.pgptr != NULL)
+  if (addr.pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr.pgptr))
     {
-      vpid = pgbuf_get_vpid_ptr (addr.pgptr);
-      undo->data.pageid = vpid->pageid;
-      undo->data.volid = vpid->volid;
+      if (pgbuf_set_lsa (thread_p, addr.pgptr, &start_lsa) == NULL)
+	{
+	  assert (false);
+	  return;
+	}
     }
-  else
-    {
-      undo->data.pageid = NULL_PAGEID;
-      undo->data.volid = NULL_VOLID;
-    }
-  undo->data.offset = addr.offset;
-
-  if (is_zipped)
-    {
-      /* MSB bit set 1 */
-      undo->length = (int) MAKE_ZIP_LEN (zip_undo->data_length);
-    }
-  else
-    {
-      undo->length = length;
-    }
-
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*undo));
-
-  /* INSERT data */
-
-  if (is_zipped)
-    {
-      logpb_append_data (thread_p, (int) zip_undo->data_length,
-			 (char *) zip_undo->log_data);
-    }
-  else
-    {
-      logpb_append_data (thread_p, length, (char *) data);
-    }
-
-  logpb_end_append (thread_p);
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -2432,14 +2181,12 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 		       const VFID * vfid, PAGE_PTR pgptr, PGLENGTH offset,
 		       int length, const void *data)
 {
-  struct log_redo *redo;	/* A redo log record                  */
-  VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
-  bool is_zipped = false;
   LOG_DATA_ADDR addr;
   int error_code = NO_ERROR;
-  LOG_ZIP *zip_redo;
+  LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   addr.vfid = vfid;
   addr.pgptr = pgptr;
@@ -2498,8 +2245,6 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       return;
     }
 
-  vpid = pgbuf_get_vpid_ptr (addr.pgptr);
-
   /*
    * Now do the REDO portion
    */
@@ -2517,61 +2262,24 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       return;
     }
 
-  zip_redo = log_get_zip_redo (thread_p);
-
-  if (log_zip_support && zip_redo && (length > 0))
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_REDO_DATA,
+					rcvindex, &addr, 0, NULL,
+					length, (char *) data);
+  if (node == NULL)
     {
-      is_zipped = log_zip (zip_redo, length, data);
-    }
-
-  LOG_CS_ENTER (thread_p);
-  if ((!LOG_IS_NO_NEED_TO_SET_LSA (rcvindex, addr.pgptr)
-       && pgbuf_set_lsa (thread_p, addr.pgptr,
-			 &log_Gl.hdr.append_lsa) == NULL))
-    {
-      /* Don't need to log */
-      LOG_CS_EXIT ();
       return;
     }
 
-  /* START appending */
-  logpb_start_append (thread_p, LOG_REDO_DATA, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*redo));
-
-  redo = (struct log_redo *) LOG_APPEND_PTR ();
-
-  redo->data.rcvindex = rcvindex;
-  redo->data.pageid = vpid->pageid;
-  redo->data.volid = vpid->volid;
-  redo->data.offset = addr.offset;
-
-  if (is_zipped)
+  if (LOG_NEED_TO_SET_LSA (rcvindex, addr.pgptr))
     {
-      redo->length = (int) MAKE_ZIP_LEN (zip_redo->data_length);
+      if (pgbuf_set_lsa (thread_p, addr.pgptr, &start_lsa) == NULL)
+	{
+	  assert (false);
+	  return;
+	}
     }
-  else
-    {
-      redo->length = length;
-    }
-
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*redo));
-
-  /* INSERT data */
-
-  if (is_zipped)
-    {
-      logpb_append_data (thread_p, (int) zip_redo->data_length,
-			 (char *) zip_redo->log_data);
-    }
-  else
-    {
-      logpb_append_data (thread_p, length, (char *) data);
-    }
-
-  /* END append */
-  logpb_end_append (thread_p);
 
   if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
@@ -2584,8 +2292,6 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
 	}
     }
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -2612,21 +2318,10 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
-  int i = 0;
-  char *undo_data = NULL;
-  char *redo_data = NULL;
-  char *tmp_ptr;
-
-  bool is_undo_zip;
-  bool is_redo_zip;
-  bool is_diff;
-
-  int undo_length = 0;
-  int redo_length = 0;
   int error_code = NO_ERROR;
+  LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
-  LOG_ZIP *zip_undo, *zip_redo;
-  char *data_ptr = NULL;
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
@@ -2693,160 +2388,29 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       return;
     }
 
-  vpid = pgbuf_get_vpid_ptr (addr->pgptr);
-
-  for (i = 0; i < num_undo_crumbs; i++)
-    {
-      undo_length += undo_crumbs[i].length;
-    }
-
-  for (i = 0; i < num_redo_crumbs; i++)
-    {
-      redo_length += redo_crumbs[i].length;
-    }
-
-  zip_undo = log_get_zip_undo (thread_p);
-  zip_redo = log_get_zip_redo (thread_p);
-
-  is_undo_zip = false;
-  is_redo_zip = false;
-  is_diff = false;
-
-  if (log_zip_support && zip_undo && zip_redo)
-    {
-      if (log_realloc_data_ptr (thread_p, undo_length + redo_length))
-	{
-	  data_ptr = log_get_data_ptr (thread_p);
-	}
-
-      if (data_ptr)
-	{
-	  if (undo_length > 0)
-	    {
-	      undo_data = data_ptr;
-	      tmp_ptr = undo_data;
-
-	      for (i = 0; i < num_undo_crumbs; i++)
-		{
-		  memcpy (tmp_ptr, (char *) undo_crumbs[i].data,
-			  undo_crumbs[i].length);
-		  tmp_ptr += undo_crumbs[i].length;
-		}
-	    }
-
-	  if (redo_length > 0)
-	    {
-	      redo_data = data_ptr + undo_length;
-	      tmp_ptr = redo_data;
-
-	      for (i = 0; i < num_redo_crumbs; i++)
-		{
-		  (void) memcpy (tmp_ptr, (char *) redo_crumbs[i].data,
-				 redo_crumbs[i].length);
-		  tmp_ptr += redo_crumbs[i].length;
-		}
-	    }
-
-	  if (undo_length > 0 && redo_length > 0)
-	    {
-	      (void) log_diff (undo_length, undo_data, redo_length,
-			       redo_data);
-
-	      is_undo_zip = log_zip (zip_undo, undo_length, undo_data);
-	      is_redo_zip = log_zip (zip_redo, redo_length, redo_data);
-
-	      if (is_redo_zip)
-		{
-		  is_diff = true;
-		}
-	    }
-	  else
-	    {
-	      if (undo_length > 0)
-		{
-		  is_undo_zip = log_zip (zip_undo, undo_length, undo_data);
-		}
-	      if (redo_length > 0)
-		{
-		  is_redo_zip = log_zip (zip_redo, redo_length, redo_data);
-		}
-	    }
-	}
-    }
-
   /*
    * Now do the UNDO & REDO portion
    */
 
-  LOG_CS_ENTER (thread_p);
-
-
-  if (!LOG_IS_NO_NEED_TO_SET_LSA (rcvindex, addr->pgptr)
-      && pgbuf_set_lsa (thread_p, addr->pgptr,
-			&log_Gl.hdr.append_lsa) == NULL)
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_UNDOREDO_DATA,
+					  rcvindex, addr, num_undo_crumbs,
+					  undo_crumbs, num_redo_crumbs,
+					  redo_crumbs);
+  if (node == NULL)
     {
-      /* Don't need to log */
-      LOG_CS_EXIT ();
       return;
     }
 
-  if (is_diff)
-    {				/* XOR Success */
-      logpb_start_append (thread_p, LOG_DIFF_UNDOREDO_DATA, tdes);
-    }
-  else
-    {				/* XOR Fail */
-      logpb_start_append (thread_p, LOG_UNDOREDO_DATA, tdes);
-    }
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*undoredo));
-
-  undoredo = (struct log_undoredo *) LOG_APPEND_PTR ();
-
-  undoredo->data.rcvindex = rcvindex;
-  undoredo->data.pageid = vpid->pageid;
-  undoredo->data.volid = vpid->volid;
-  undoredo->data.offset = addr->offset;
-  undoredo->ulength = undo_length;
-  undoredo->rlength = redo_length;
-
-  if (is_undo_zip)
+  if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
     {
-      undoredo->ulength = (int) MAKE_ZIP_LEN (zip_undo->data_length);
+      if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
+	{
+	  assert (false);
+	  return;
+	}
     }
-  if (is_redo_zip)
-    {
-      undoredo->rlength = (int) MAKE_ZIP_LEN (zip_redo->data_length);
-    }
-
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*undoredo));
-
-  /* INSERT data */
-
-  if (is_undo_zip)
-    {
-      logpb_append_data (thread_p, (int) zip_undo->data_length,
-			 (char *) zip_undo->log_data);
-    }
-  else
-    {
-      logpb_append_crumbs (thread_p, num_undo_crumbs, undo_crumbs);
-    }
-
-  if (is_redo_zip)
-    {
-      logpb_append_data (thread_p, (int) zip_redo->data_length,
-			 (char *) zip_redo->log_data);
-    }
-  else
-    {
-      logpb_append_crumbs (thread_p, num_redo_crumbs, redo_crumbs);
-    }
-
-  /* END append */
-
-  logpb_end_append (thread_p);
 
   if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
@@ -2859,8 +2423,6 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
 	}
     }
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -2884,13 +2446,9 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
   int i = 0;
-  char *tmp_ptr;
-  char *undo_data = NULL;
-  bool is_zipped = false;
   int error_code = NO_ERROR;
-  int total_length = 0;
-  LOG_ZIP *zip_undo;
-  char *data_ptr = NULL;
+  LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
 #if defined(CUBRID_DEBUG)
   if (RV_fun[rcvindex].undofun == NULL)
@@ -2948,100 +2506,27 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       return;
     }
 
-  zip_undo = log_get_zip_undo (thread_p);
-
-  for (i = 0; i < num_crumbs; i++)
-    {
-      total_length += crumbs[i].length;
-    }
-
-  if (log_zip_support && zip_undo)
-    {
-      if ((total_length > 0) && log_realloc_data_ptr (thread_p, total_length))
-	{
-	  data_ptr = log_get_data_ptr (thread_p);
-	}
-
-      if (data_ptr)
-	{
-	  undo_data = data_ptr;
-	  tmp_ptr = undo_data;
-	  for (i = 0; i < num_crumbs; i++)
-	    {
-	      memcpy (tmp_ptr, (char *) crumbs[i].data, crumbs[i].length);
-	      tmp_ptr += crumbs[i].length;
-	    }
-
-	  is_zipped = log_zip (zip_undo, total_length, undo_data);
-	}
-    }
-
   /*
    * NOW do the UNDO ...
    */
 
-  LOG_CS_ENTER (thread_p);
-
-  if (addr->pgptr != NULL
-      && !LOG_IS_NO_NEED_TO_SET_LSA (rcvindex, addr->pgptr)
-      && pgbuf_set_lsa (thread_p, addr->pgptr,
-			&log_Gl.hdr.append_lsa) == NULL)
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_UNDO_DATA, rcvindex,
+					  addr, num_crumbs, crumbs, 0, NULL);
+  if (node == NULL)
     {
-      /* Don't need to log */
-      LOG_CS_EXIT ();
       return;
     }
 
-  /* START appending */
-  logpb_start_append (thread_p, LOG_UNDO_DATA, tdes);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*undo));
-
-  undo = (struct log_undo *) LOG_APPEND_PTR ();
-
-  undo->data.rcvindex = rcvindex;
-  if (addr->pgptr != NULL)
+  if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
     {
-      vpid = pgbuf_get_vpid_ptr (addr->pgptr);
-      undo->data.pageid = vpid->pageid;
-      undo->data.volid = vpid->volid;
+      if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
+	{
+	  assert (false);
+	  return;
+	}
     }
-  else
-    {
-      undo->data.pageid = NULL_PAGEID;
-      undo->data.volid = NULL_VOLID;
-    }
-  undo->data.offset = addr->offset;
-  undo->length = 0;
-
-  if (is_zipped)
-    {
-      undo->length = (int) MAKE_ZIP_LEN (zip_undo->data_length);
-    }
-  else
-    {
-      undo->length = total_length;
-    }
-
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*undo));
-
-  /* INSERT data */
-
-  if (is_zipped)
-    {
-      logpb_append_data (thread_p, (int) zip_undo->data_length,
-			 (char *) zip_undo->log_data);
-    }
-  else
-    {
-      logpb_append_crumbs (thread_p, num_crumbs, crumbs);
-    }
-
-  /* END append */
-  logpb_end_append (thread_p);
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -3080,18 +2565,11 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 			LOG_DATA_ADDR * addr, int num_crumbs,
 			const LOG_CRUMB * crumbs)
 {
-  struct log_redo *redo;	/* A redo log record                  */
-  VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
-  int i = 0;
-  char *tmp_ptr;
-  char *redo_data = NULL;
-  bool is_zipped = false;
   int error_code = NO_ERROR;
-  int total_length = 0;
-  LOG_ZIP *zip_redo;
-  char *data_ptr = NULL;
+  LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
@@ -3146,41 +2624,19 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       return;
     }
 
-  vpid = pgbuf_get_vpid_ptr (addr->pgptr);
-
   if (log_can_skip_redo_logging (rcvindex, tdes, addr) == true)
     {
       return;
     }
 
-  zip_redo = log_get_zip_redo (thread_p);
-
-  for (i = 0; i < num_crumbs; i++)
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_REDO_DATA, rcvindex,
+					  addr, 0, NULL, num_crumbs, crumbs);
+  if (node == NULL)
     {
-      total_length += crumbs[i].length;
+      return;
     }
 
-  if (log_zip_support && zip_redo)
-    {
-      if ((total_length > 0) && log_realloc_data_ptr (thread_p, total_length))
-	{
-	  data_ptr = log_get_data_ptr (thread_p);
-	}
-
-      if (data_ptr)
-	{
-	  redo_data = data_ptr;
-	  tmp_ptr = redo_data;
-	  for (i = 0; i < num_crumbs; i++)
-	    {
-	      memcpy (tmp_ptr, (char *) crumbs[i].data, crumbs[i].length);
-	      tmp_ptr += crumbs[i].length;
-	    }
-	  is_zipped = log_zip (zip_redo, total_length, redo_data);
-	}
-    }
-
-  LOG_CS_ENTER (thread_p);
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   /*
    * Set the LSA on the data page of the corresponding log record for page
@@ -3189,56 +2645,14 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
    * Make sure that I should log. Page operational logging is not done for
    * temporary data of temporary files and volumes
    */
-
-  if (!LOG_IS_NO_NEED_TO_SET_LSA (rcvindex, addr->pgptr)
-      && pgbuf_set_lsa (thread_p, addr->pgptr,
-			&log_Gl.hdr.append_lsa) == NULL)
+  if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
     {
-      /* Don't need to log */
-      LOG_CS_EXIT ();
-      return;
+      if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
+	{
+	  assert (false);
+	  return;
+	}
     }
-
-  /* START appending */
-  logpb_start_append (thread_p, LOG_REDO_DATA, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*redo));
-
-  redo = (struct log_redo *) LOG_APPEND_PTR ();
-
-  redo->data.rcvindex = rcvindex;
-  redo->data.pageid = vpid->pageid;
-  redo->data.volid = vpid->volid;
-  redo->data.offset = addr->offset;
-  redo->length = 0;
-
-  if (is_zipped)
-    {
-      redo->length = (int) MAKE_ZIP_LEN (zip_redo->data_length);
-    }
-  else
-    {
-      redo->length = total_length;
-    }
-
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*redo));
-
-  /* INSERT data */
-
-  if (is_zipped)
-    {
-      logpb_append_data (thread_p, (int) zip_redo->data_length,
-			 (char *) zip_redo->log_data);
-    }
-  else
-    {
-      logpb_append_crumbs (thread_p, num_crumbs, crumbs);
-    }
-
-  /* END append */
-
-  logpb_end_append (thread_p);
 
   if (db_Enable_replications > 0 && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
@@ -3251,8 +2665,6 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
 	}
     }
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -3478,10 +2890,10 @@ void
 log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 			   int length, const void *data)
 {
-  struct log_dbout_redo *dbout_redo;	/* A external redo log record */
   LOG_TDES *tdes;		/* Transaction descriptor     */
   int tran_index;
   int error_code = NO_ERROR;
+  LOG_PRIOR_NODE *node;
 
 #if defined(CUBRID_DEBUG)
   if (RV_fun[rcvindex].redofun == NULL)
@@ -3525,28 +2937,15 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       return;
     }
 
-  LOG_CS_ENTER (thread_p);
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_DBEXTERN_REDO_DATA,
+					rcvindex, NULL, 0, NULL, length,
+					(char *) data);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  /* START appending */
-  logpb_start_append (thread_p, LOG_DBEXTERN_REDO_DATA, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*dbout_redo));
-
-  dbout_redo = (struct log_dbout_redo *) LOG_APPEND_PTR ();
-
-  dbout_redo->rcvindex = rcvindex;
-  dbout_redo->length = length;
-
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*dbout_redo));
-
-  /* INSERT data */
-  logpb_append_data (thread_p, length, (char *) data);
-
-  /* END append */
-  logpb_end_append (thread_p);
-
-  LOG_CS_EXIT ();
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 }
 
 /*
@@ -3576,6 +2975,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   LOG_LSA *crash_lsa;
   int tran_index;
   int error_code = NO_ERROR;
+  LOG_PRIOR_NODE *node;
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
@@ -3668,8 +3068,6 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       return;
     }
 
-  LOG_CS_ENTER (thread_p);
-
   /*
    * If the transaction has not logged any record, add a dummy record to
    * start the postpone purposes during the commit.
@@ -3680,8 +3078,18 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 	  && (crash_lsa = log_get_crash_point_lsa ()) != NULL
 	  && LSA_LE (&tdes->tail_lsa, crash_lsa)))
     {
-      log_append_dummy_record (thread_p, tdes, LOG_DUMMY_HEAD_POSTPONE);
+      log_append_empty_record (thread_p, LOG_DUMMY_HEAD_POSTPONE);
     }
+
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_POSTPONE,
+					rcvindex, addr, 0, NULL, length,
+					(char *) data);
+  if (node == NULL)
+    {
+      return;
+    }
+
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
   /* Set address early in case there is a crash, because of skip_head */
   if (tdes->topops.last >= 0)
@@ -3697,35 +3105,10 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       LSA_COPY (&tdes->posp_nxlsa, &tdes->tail_lsa);
     }
 
-  /* START appending */
-  logpb_start_append (thread_p, LOG_POSTPONE, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*redo));
-
-  redo = (struct log_redo *) LOG_APPEND_PTR ();
-
-  vpid = pgbuf_get_vpid_ptr (addr->pgptr);
-  redo->data.rcvindex = rcvindex;
-  redo->data.pageid = vpid->pageid;
-  redo->data.volid = vpid->volid;
-  redo->data.offset = addr->offset;
-  redo->length = length;
-
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*redo));
-
-  /* INSERT data */
-  logpb_append_data (thread_p, length, (char *) data);
-
-  /* END append */
-  logpb_end_append (thread_p);
-
   /*
    * Note: The lsa of the page is not set for postpone log records since
    * the change has not been done (has been postpone) to the page.
    */
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -3764,6 +3147,8 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
   int error_code = NO_ERROR;
+  LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -3789,33 +3174,15 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
   else
     {
-      LOG_CS_ENTER (thread_p);
-
-      /*
-       * Set the LSA on the data page of the corresponding log record for page
-       * operation logging.
-       * Make sure that I should log. Page operational logging is not done for
-       * temporary data of temporary files and volumes
-       */
-
-      if (addr->pgptr != NULL
-	  && !LOG_IS_NO_NEED_TO_SET_LSA (rcvindex, addr->pgptr)
-	  && pgbuf_set_lsa (thread_p, addr->pgptr,
-			    &log_Gl.hdr.append_lsa) == NULL)
+      node = prior_lsa_alloc_and_copy_data (thread_p, LOG_RUN_POSTPONE,
+					    0, NULL,
+					    length, (char *) data, 0, NULL);
+      if (node == NULL)
 	{
-	  /* Don't need to log */
-	  LOG_CS_EXIT ();
 	  return;
 	}
 
-      /* START appending */
-      logpb_start_append (thread_p, LOG_RUN_POSTPONE, tdes);
-
-      /* ADD the data header */
-      LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*run_posp));
-
-      run_posp = (struct log_run_postpone *) LOG_APPEND_PTR ();
-
+      run_posp = (struct log_run_postpone *) node->data_header;
       run_posp->data.rcvindex = rcvindex;
       run_posp->data.pageid = rcv_vpid->pageid;
       run_posp->data.volid = rcv_vpid->volid;
@@ -3823,15 +3190,22 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       LSA_COPY (&run_posp->ref_lsa, ref_lsa);
       run_posp->length = length;
 
-      LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*run_posp));
+      start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-      /* INSERT data */
-      logpb_append_data (thread_p, length, (char *) data);
-
-      /* END append */
-      logpb_end_append (thread_p);
-
-      LOG_CS_EXIT ();
+      /*
+       * Set the LSA on the data page of the corresponding log record for page
+       * operation logging.
+       * Make sure that I should log. Page operational logging is not done for
+       * temporary data of temporary files and volumes
+       */
+      if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+	{
+	  if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
+	    {
+	      assert (false);
+	      return;
+	    }
+	}
     }
 }
 
@@ -3840,8 +3214,6 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
  *
  * return: nothing
  *
- *   compensate_type(in):Type of compensating record. From page operation level
- *                     logging or from logical logging.
  *   rcvindex(in): Index to recovery function
  *   vpid(in): Volume-page address of compensate data
  *   offset(in): Offset of compensate data
@@ -3860,13 +3232,15 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
  *              records are redo log records and thus, they are never undone.
  */
 void
-log_append_compensate (THREAD_ENTRY * thread_p, LOG_RECTYPE compensate_type,
+log_append_compensate (THREAD_ENTRY * thread_p,
 		       LOG_RCVINDEX rcvindex, const VPID * vpid,
 		       PGLENGTH offset, PAGE_PTR pgptr, int length,
 		       const void *data, LOG_TDES * tdes)
 {
   struct log_compensate *compensate;	/* Compensate log record      */
   LOG_LSA prev_lsa;		/* LSA of next record to undo */
+  LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
 
 #if defined(CUBRID_DEBUG)
   int error_code = NO_ERROR;
@@ -3884,31 +3258,17 @@ log_append_compensate (THREAD_ENTRY * thread_p, LOG_RECTYPE compensate_type,
     }
 #endif /* CUBRID_DEBUG */
 
-  LOG_CS_ENTER (thread_p);
-
-  /*
-   * Set the LSA on the data page of the corresponding log record for page
-   * operation logging.
-   * Make sure that I should log. Page operational logging is not done for
-   * temporary data of temporary files and volumes
-   */
-
-  if (pgptr != NULL
-      && pgbuf_set_lsa (thread_p, pgptr, &log_Gl.hdr.append_lsa) == NULL)
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_COMPENSATE,
+					rcvindex, NULL, length, (char *) data,
+					0, (char *) NULL);
+  if (node == NULL)
     {
-      /* Don't need to log */
-      LOG_CS_EXIT ();
       return;
     }
 
   LSA_COPY (&prev_lsa, &tdes->undo_nxlsa);
-  /* START appending */
-  logpb_start_append (thread_p, compensate_type, tdes);
 
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*compensate));
-
-  compensate = (struct log_compensate *) LOG_APPEND_PTR ();
+  compensate = (struct log_compensate *) node->data_header;
 
   compensate->data.rcvindex = rcvindex;
   compensate->data.pageid = vpid->pageid;
@@ -3917,18 +3277,22 @@ log_append_compensate (THREAD_ENTRY * thread_p, LOG_RECTYPE compensate_type,
   LSA_COPY (&compensate->undo_nxlsa, &prev_lsa);
   compensate->length = length;
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*compensate));
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  /* INSERT data */
-  logpb_append_data (thread_p, length, (char *) data);
-
-  /* END append */
-  logpb_end_append (thread_p);
+  /*
+   * Set the LSA on the data page of the corresponding log record for page
+   * operation logging.
+   * Make sure that I should log. Page operational logging is not done for
+   * temporary data of temporary files and volumes
+   */
+  if (pgptr != NULL && pgbuf_set_lsa (thread_p, pgptr, &start_lsa) == NULL)
+    {
+      assert (false);
+      return;
+    }
 
   /* Go back to our undo link */
   LSA_COPY (&tdes->undo_nxlsa, &prev_lsa);
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -3951,54 +3315,53 @@ log_append_logical_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 			       LOG_TDES * tdes, LOG_LSA * undo_nxlsa)
 {
   struct log_logical_compensate *logical_comp;	/* end of a logical undo   */
+  LOG_PRIOR_NODE *node;
 
-  LOG_CS_ENTER (thread_p);
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_LCOMPENSATE,
+					rcvindex, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  /* START appending */
-  logpb_start_append (thread_p, LOG_LCOMPENSATE, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*logical_comp));
-
-  logical_comp = (struct log_logical_compensate *) LOG_APPEND_PTR ();
+  logical_comp = (struct log_logical_compensate *) node->data_header;
 
   logical_comp->rcvindex = rcvindex;
   LSA_COPY (&logical_comp->undo_nxlsa, undo_nxlsa);
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*logical_comp));
-
-  /* END append */
-  logpb_end_append (thread_p);
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
   /* Go back to our undo link */
   LSA_COPY (&tdes->undo_nxlsa, undo_nxlsa);
-
-  LOG_CS_EXIT ();
 }
 
 /*
- * log_append_dummy_record - LOG A DUMMY RECORD
+ * log_append_empty_record -
  *
  * return: nothing
- *
- *   tdes(in/out): State structure of transaction of the log record
- *   logrec_type(in): Type of dummy record. For example:
- *                LOG_DUMMY_HEAD_POSTPONE
- *
- * NOTE: Add a dummy log record. For example, a dummy head postpone is
- *              used when the transaction, add a postpone record as the first
- *              log record of the transaction.
- *
- *       Assume that a critical section has already been entered
  */
 void
-log_append_dummy_record (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-			 LOG_RECTYPE logrec_type)
+log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type)
 {
-  logpb_start_append (thread_p, logrec_type, tdes);
+  int tran_index;
+  LOG_TDES *tdes;
+  LOG_PRIOR_NODE *node;
 
-  /* END append */
-  logpb_end_append (thread_p);
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return;
+    }
+
+  node = prior_lsa_alloc_and_copy_data (thread_p, logrec_type,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
+
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 }
 
 /*
@@ -4012,6 +3375,7 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
   int tran_index;
   LOG_TDES *tdes;
   struct log_ha_server_state *ha_server_state;
+  LOG_PRIOR_NODE *node;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -4020,50 +3384,19 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
       return;
     }
 
-  LOG_CS_ENTER (thread_p);
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_DUMMY_HA_SERVER_STATE,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  /* START appending */
-  logpb_start_append (thread_p, LOG_DUMMY_HA_SERVER_STATE, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*ha_server_state));
-
-  ha_server_state = (struct log_ha_server_state *) LOG_APPEND_PTR ();
+  ha_server_state = (struct log_ha_server_state *) node->data_header;
   ha_server_state->state = state;
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*ha_server_state));
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
-  /* END append */
-  /* need to flush because LWT must deliver the log header page to the remote */
-  logpb_end_append (thread_p);
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-  assert (LOG_CS_OWN (thread_p));
-
-  LOG_CS_EXIT ();
-}
-
-/*
- * log_append_empty_record -
- *
- * return: nothing
- */
-void
-log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type)
-{
-  int tran_index;
-  LOG_TDES *tdes;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL)
-    {
-      return;
-    }
-
-  LOG_CS_ENTER (thread_p);
-  logpb_start_append (thread_p, logrec_type, tdes);
-  logpb_end_append (thread_p);
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -4240,19 +3573,18 @@ log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 static void
 log_append_client_name (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  char *user_name;		/* Name of client user */
+  LOG_PRIOR_NODE *node;
 
-  logpb_start_append (thread_p, LOG_CLIENT_NAME, tdes);
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_CLIENT_NAME,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, LOG_USERNAME_MAX);
+  memcpy (node->data_header, tdes->client.db_user, LOG_USERNAME_MAX);
 
-  user_name = LOG_APPEND_PTR ();
-  memcpy (user_name, tdes->client.db_user, LOG_USERNAME_MAX);
-
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, LOG_USERNAME_MAX);
-
-  /* END append */
-  logpb_end_append (thread_p);
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 }
 
 /*
@@ -4287,6 +3619,7 @@ xlog_append_client_undo (THREAD_ENTRY * thread_p,
 			 void *data)
 {
   struct log_client *client_undo;	/* An undo log client record */
+  LOG_PRIOR_NODE *node;
   LOG_TDES *tdes;		/* Transaction descriptor    */
   int tran_index;
   int error_code = NO_ERROR;
@@ -4312,8 +3645,6 @@ xlog_append_client_undo (THREAD_ENTRY * thread_p,
     }
   else
     {
-      LOG_CS_ENTER (thread_p);
-
       if (LSA_ISNULL (&tdes->client_undo_lsa)
 	  && LSA_ISNULL (&tdes->client_posp_lsa))
 	{
@@ -4324,30 +3655,21 @@ xlog_append_client_undo (THREAD_ENTRY * thread_p,
 	  log_append_client_name (thread_p, tdes);
 	}
 
-      /* START appending */
-      logpb_start_append (thread_p, LOG_CLIENT_USER_UNDO_DATA, tdes);
+      node = prior_lsa_alloc_and_copy_data (thread_p,
+					    LOG_CLIENT_USER_UNDO_DATA,
+					    0, NULL, 0, NULL, 0, NULL);
+      if (node == NULL)
+	{
+	  return;
+	}
 
-      /* ADD the data header */
-      LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*client_undo));
-
-      client_undo = (struct log_client *) LOG_APPEND_PTR ();
-
-      client_undo->rcvclient_index = rcvclient_index;
-      client_undo->length = length;
-
-      LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*client_undo));
-
-      /* INSERT data */
-      logpb_append_data (thread_p, length, (char *) data);
+      (void) prior_lsa_next_record (thread_p, node, tdes);
 
       /*
        * END append. NOTE: We must flush the log since there is not
        * coordination WAL rule for the client. Thus, the log has to be permanent
        */
-
-      logpb_end_append (thread_p);
       logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-      assert (LOG_CS_OWN (thread_p));
 
       if (tdes->topops.last >= 0)
 	{
@@ -4363,8 +3685,6 @@ xlog_append_client_undo (THREAD_ENTRY * thread_p,
 	{
 	  LSA_COPY (&tdes->client_undo_lsa, &tdes->tail_lsa);
 	}
-
-      LOG_CS_EXIT ();
     }
 }
 
@@ -4394,10 +3714,10 @@ xlog_append_client_postpone (THREAD_ENTRY * thread_p,
 			     LOG_RCVCLIENT_INDEX rcvclient_index, int length,
 			     void *data)
 {
-  struct log_client *client_postpone;	/* A postpone log client record */
   LOG_TDES *tdes;		/* Transaction descriptor       */
   int tran_index;
   int error_code = NO_ERROR;
+  LOG_PRIOR_NODE *node;
 
   /* We will log client undo stuff even when we are not logging */
 
@@ -4423,8 +3743,6 @@ xlog_append_client_postpone (THREAD_ENTRY * thread_p,
     }
   else
     {
-      LOG_CS_ENTER (thread_p);
-
       if (LSA_ISNULL (&tdes->client_undo_lsa)
 	  && LSA_ISNULL (&tdes->client_posp_lsa))
 	{
@@ -4435,29 +3753,21 @@ xlog_append_client_postpone (THREAD_ENTRY * thread_p,
 	  log_append_client_name (thread_p, tdes);
 	}
 
-      /* START appending */
-      logpb_start_append (thread_p, LOG_CLIENT_USER_POSTPONE_DATA, tdes);
+      node = prior_lsa_alloc_and_copy_data (thread_p,
+					    LOG_CLIENT_USER_POSTPONE_DATA,
+					    0, NULL, 0, NULL, 0, NULL);
+      if (node == NULL)
+	{
+	  return;
+	}
 
-      /* ADD the data header */
-      LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p,
-					   sizeof (*client_postpone));
-
-      client_postpone = (struct log_client *) LOG_APPEND_PTR ();
-      client_postpone->rcvclient_index = rcvclient_index;
-      client_postpone->length = length;
-
-      LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*client_postpone));
-
-      /* INSERT data */
-      logpb_append_data (thread_p, length, (char *) data);
+      (void) prior_lsa_next_record (thread_p, node, tdes);
 
       /*
        * END append. NOTE: THE LOG does not need to be flushed like in the
        * client_undo since the postpone action does not take effect until
        * the transaction is committed.
        */
-
-      logpb_end_append (thread_p);
 
       if (tdes->topops.last >= 0)
 	{
@@ -4473,8 +3783,6 @@ xlog_append_client_postpone (THREAD_ENTRY * thread_p,
 	{
 	  LSA_COPY (&tdes->client_posp_lsa, &tdes->tail_lsa);
 	}
-
-      LOG_CS_EXIT ();
     }
 }
 
@@ -4509,6 +3817,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
   int length;			/* Length of the name of the save point */
   int tran_index;
   int error_code;
+  LOG_PRIOR_NODE *node;
 
   /* Find transaction descriptor for current logging transaction */
 
@@ -4543,29 +3852,21 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
 
   length = strlen (savept_name) + 1;
 
-  LOG_CS_ENTER (thread_p);
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_SAVEPOINT,
+					0, NULL, length, (char *) savept_name,
+					0, (char *) NULL);
+  if (node == NULL)
+    {
+      return NULL;
+    }
 
-  /* START appending */
-  logpb_start_append (thread_p, LOG_SAVEPOINT, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*savept));
-
-  savept = (struct log_savept *) LOG_APPEND_PTR ();
+  savept = (struct log_savept *) node->data_header;
   savept->length = length;
   LSA_COPY (&savept->prv_savept, &tdes->savept_lsa);
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*savept));
-
-  /* INSERT data */
-  logpb_append_data (thread_p, length, savept_name);
-
-  /* END append */
-  logpb_end_append (thread_p);
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
   LSA_COPY (&tdes->savept_lsa, &tdes->tail_lsa);
-
-  LOG_CS_EXIT ();
 
   mnt_tran_savepoints (thread_p);
 
@@ -4593,7 +3894,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name,
   LOG_PAGE *log_pgptr = NULL;	/* Log page pointer where a
 				 * savepoint log record is located
 				 */
-  struct log_rec *log_rec;	/* Pointer to log record           */
+  LOG_RECORD_HEADER *log_rec;	/* Pointer to log record           */
   struct log_savept *savept;	/* A savepoint log record          */
   LOG_LSA prev_lsa;		/* Previous savepoint              */
   LOG_LSA log_lsa;
@@ -4621,8 +3922,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name,
 	{
 	  /* Find the savepoint record */
 	  savept_lsa->offset = log_lsa.offset = prev_lsa.offset;
-	  log_rec = (struct log_rec *) ((char *) log_pgptr->area
-					+ log_lsa.offset);
+	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 	  if (log_rec->type != LOG_SAVEPOINT && log_rec->trid != tdes->trid)
 	    {
 	      /* System error... */
@@ -5200,25 +4500,24 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			    LOG_LSA * start_postpone_lsa)
 {
   struct log_start_postpone *start_posp;	/* Start postpone actions */
+  LOG_PRIOR_NODE *node;
 
-  LOG_CS_ENTER (thread_p);
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_COMMIT_WITH_POSTPONE,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  logpb_start_append (thread_p, LOG_COMMIT_WITH_POSTPONE, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*start_posp));
-
-  start_posp = (struct log_start_postpone *) LOG_APPEND_PTR ();
+  start_posp = (struct log_start_postpone *) node->data_header;
   LSA_COPY (&start_posp->posp_lsa, start_postpone_lsa);
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*start_posp));
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
-  /* END append */
-  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_FORCE);
-  assert (LOG_CS_OWN (thread_p));
 
+  LOG_CS_ENTER (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
   LOG_CS_EXIT ();
 }
 
@@ -5244,27 +4543,25 @@ log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 							 * of top system
 							 * operations
 							 */
-  LOG_CS_ENTER (thread_p);
+  LOG_PRIOR_NODE *node;
 
-  logpb_start_append (thread_p, LOG_COMMIT_TOPOPE_WITH_POSTPONE, tdes);
+  node = prior_lsa_alloc_and_copy_data (thread_p,
+					LOG_COMMIT_TOPOPE_WITH_POSTPONE,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*top_start_posp));
-
-  top_start_posp = (struct log_topope_start_postpone *) LOG_APPEND_PTR ();
+  top_start_posp = (struct log_topope_start_postpone *) node->data_header;
   LSA_COPY (&top_start_posp->lastparent_lsa,
 	    &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
   LSA_COPY (&top_start_posp->posp_lsa, start_postpone_lsa);
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*top_start_posp));
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
-  /* END append */
-  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-  assert (LOG_CS_OWN (thread_p));
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -5285,26 +4582,23 @@ void
 log_append_commit_client_loose_ends (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   struct log_start_client *start_client;	/* Start client actions */
+  LOG_PRIOR_NODE *node;
 
-  LOG_CS_ENTER (thread_p);
+  node = prior_lsa_alloc_and_copy_data (thread_p,
+					LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  logpb_start_append (thread_p, LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*start_client));
-
-  start_client = (struct log_start_client *) LOG_APPEND_PTR ();
+  start_client = (struct log_start_client *) node->data_header;
   LSA_COPY (&start_client->lsa, &tdes->client_posp_lsa);
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*start_client));
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
-  /* END append */
-  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS;
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-  assert (LOG_CS_OWN (thread_p));
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -5325,26 +4619,23 @@ void
 log_append_abort_client_loose_ends (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   struct log_start_client *start_client;	/* Start client actions */
+  LOG_PRIOR_NODE *node;
 
-  LOG_CS_ENTER (thread_p);
+  node = prior_lsa_alloc_and_copy_data (thread_p,
+					LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  logpb_start_append (thread_p, LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*start_client));
-
-  start_client = (struct log_start_client *) LOG_APPEND_PTR ();
+  start_client = (struct log_start_client *) node->data_header;
   LSA_COPY (&start_client->lsa, &tdes->client_undo_lsa);
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*start_client));
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
-  /* END append */
-  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-  assert (LOG_CS_OWN (thread_p));
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -5367,29 +4658,25 @@ log_append_topope_commit_client_loose_ends (THREAD_ENTRY * thread_p,
 					    LOG_TDES * tdes)
 {
   struct log_topope_start_client *top_start_client;
+  LOG_PRIOR_NODE *node;
 
-  LOG_CS_ENTER (thread_p);
+  node = prior_lsa_alloc_and_copy_data (thread_p,
+					LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  logpb_start_append (thread_p, LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS,
-		      tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*top_start_client));
-
-  top_start_client = (struct log_topope_start_client *) LOG_APPEND_PTR ();
+  top_start_client = (struct log_topope_start_client *) node->data_header;
   LSA_COPY (&top_start_client->lastparent_lsa,
 	    &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
   LSA_COPY (&top_start_client->lsa, &tdes->client_posp_lsa);
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*top_start_client));
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
-  /* END append */
-  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_XTOPOPE_COMMITTED_WITH_CLIENT_USER_LOOSE_ENDS;
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-  assert (LOG_CS_OWN (thread_p));
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -5412,29 +4699,25 @@ log_append_topope_abort_client_loose_ends (THREAD_ENTRY * thread_p,
 					   LOG_TDES * tdes)
 {
   struct log_topope_start_client *top_start_client;
+  LOG_PRIOR_NODE *node;
 
-  LOG_CS_ENTER (thread_p);
+  node = prior_lsa_alloc_and_copy_data (thread_p,
+					LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
+  top_start_client = (struct log_topope_start_client *) node->data_header;
 
-  logpb_start_append (thread_p, LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS,
-		      tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*top_start_client));
-
-  top_start_client = (struct log_topope_start_client *) LOG_APPEND_PTR ();
   LSA_COPY (&top_start_client->lastparent_lsa,
 	    &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
   LSA_COPY (&top_start_client->lsa, &tdes->client_undo_lsa);
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*top_start_client));
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
-  /* END append */
-  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-  assert (LOG_CS_OWN (thread_p));
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -5454,6 +4737,7 @@ log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 {
   LOG_REPL_RECORD *repl_rec;
   struct log_replication *log;
+  LOG_PRIOR_NODE *node;
 
   if (tdes->append_repl_recidx == -1	/* the first time */
       || is_commit)
@@ -5463,9 +4747,6 @@ log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
   if (tdes->append_repl_recidx < tdes->cur_repl_record)
     {
-
-      LOG_CS_ENTER (thread_p);
-
       /* there is any replication info */
       while (tdes->append_repl_recidx < tdes->cur_repl_record)
 	{
@@ -5479,11 +4760,18 @@ log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		&& repl_rec->must_flush != LOG_REPL_DONT_NEED_FLUSH)
 	       || repl_rec->must_flush == LOG_REPL_NEED_FLUSH))
 	    {
-	      logpb_start_append (thread_p, repl_rec->repl_type, tdes);
+	      node = prior_lsa_alloc_and_copy_data (thread_p,
+						    repl_rec->repl_type,
+						    0, NULL, repl_rec->length,
+						    repl_rec->repl_data, 0,
+						    NULL);
+	      if (node == NULL)
+		{
+		  assert (false);
+		  continue;
+		}
 
-	      /* ADD the data header */
-	      LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*log));
-	      log = (struct log_replication *) LOG_APPEND_PTR ();
+	      log = (struct log_replication *) node->data_header;
 	      if (repl_rec->rcvindex == RVREPL_DATA_DELETE
 		  || repl_rec->rcvindex == RVREPL_SCHEMA)
 		{
@@ -5495,21 +4783,14 @@ log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		}
 	      log->length = repl_rec->length;
 	      log->rcvindex = repl_rec->rcvindex;
-	      LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*log));
 
-	      /* insert a data */
-	      logpb_append_data (thread_p, repl_rec->length,
-				 repl_rec->repl_data);
+	      (void) prior_lsa_next_record (thread_p, node, tdes);
 
-	      logpb_end_append (thread_p);
 	      repl_rec->must_flush = LOG_REPL_DONT_NEED_FLUSH;
 	    }
 
 	  tdes->append_repl_recidx++;
 	}
-
-      LOG_CS_EXIT ();
-
     }
 
 }
@@ -5520,22 +4801,22 @@ log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
  * return: nothing
  *
  *   tdes(in):  State structure of transaction being committed/aborted.
- *   iscommitted(in):
  *
  * NOTE:critical section is set by its caller function.
  */
 static void
-log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-		       LOG_RECTYPE iscommitted)
+log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  LOG_CS_ENTER (thread_p);
+  LOG_PRIOR_NODE *node;
 
-  logpb_start_append (thread_p, iscommitted, tdes);
-  log_Gl.writer_info.skip_flush = true;
-  logpb_end_append (thread_p);
-  log_Gl.writer_info.skip_flush = false;
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_UNLOCK_COMMIT,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  LOG_CS_EXIT ();
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 }
 
 /*
@@ -5555,18 +4836,19 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		     LOG_RECTYPE iscommitted)
 {
   struct log_donetime *donetime;
+  LOG_PRIOR_NODE *node;
 
-  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  node = prior_lsa_alloc_and_copy_data (thread_p, iscommitted,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  logpb_start_append (thread_p, iscommitted, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*donetime));
-
-  donetime = (struct log_donetime *) LOG_APPEND_PTR ();
+  donetime = (struct log_donetime *) node->data_header;
   donetime->at_time = time (NULL);
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*donetime));
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
   /* END append */
   if (iscommitted == LOG_COMMIT)
@@ -5575,9 +4857,7 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
       log_Stat.commit_count++;
 
-      logpb_end_append (thread_p);
       logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-      assert (LOG_CS_OWN (thread_p));
 
 #if !defined(NDEBUG)
       if (PRM_LOG_TRACE_DEBUG)
@@ -5595,7 +4875,6 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   else
     {
       tdes->state = TRAN_UNACTIVE_ABORTED;
-      logpb_end_append (thread_p);
 #if !defined(NDEBUG)
       if (PRM_LOG_TRACE_DEBUG)
 	{
@@ -5758,7 +5037,7 @@ log_cleanup_modified_class (THREAD_ENTRY * thread_p,
     {
       er_log_debug (ARG_FILE_LINE,
 		    "log_cleanup_modified_class: "
-		    "xs_remove_xasl_cache_ent_by_class"
+		    "qexec_remove_xasl_cache_ent_by_class"
 		    " failed for class { %d %d %d }\n",
 		    class->class_oid.pageid, class->class_oid.slotid,
 		    class->class_oid.volid);
@@ -6492,7 +5771,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock)
 	  /* for the replication agent guarantee the order of transaction */
 	  log_append_repl_info (thread_p, tdes, true);
 
-	  log_append_unlock_log (thread_p, tdes, LOG_UNLOCK_COMMIT);
+	  log_append_unlock_log (thread_p, tdes);
 	}
 
       if (retain_lock != true)
@@ -6821,8 +6100,9 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
 
   if (log_No_logging)
     {
+      LOG_CS_ENTER (thread_p);
       /* We are not logging */
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_FORCE);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
       (void) pgbuf_flush_all_unfixed (thread_p, NULL_VOLID);
       if (LOG_HAS_LOGGING_BEEN_IGNORED ())
 	{
@@ -6832,6 +6112,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
 	  log_Gl.hdr.has_logging_been_skipped = false;
 	  logpb_flush_header (thread_p);
 	}
+      LOG_CS_EXIT ();
     }
 
   mnt_tran_commits (thread_p);
@@ -7149,6 +6430,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 					 */
   bool all_acks = true;
   int i;
+  LOG_PRIOR_NODE *node;
 
   state = tdes->state;
 
@@ -7177,21 +6459,23 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		if (tdes->state !=
 		    TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
 		  {
-		    LOG_CS_ENTER (thread_p);
+		    node = prior_lsa_alloc_and_copy_data (thread_p,
+							  LOG_2PC_COMMIT_INFORM_PARTICPS,
+							  0, NULL, 0, NULL, 0,
+							  NULL);
+		    if (node == NULL)
+		      {
+			assert (false);
+			return state;
+		      }
 
 		    tdes->state =
 		      TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS;
 		    state = tdes->state;
-		    /* Record that there are missing acknowledgements. */
-		    logpb_start_append (thread_p,
-					LOG_2PC_COMMIT_INFORM_PARTICPS, tdes);
 
-		    /* Finish the append operation and flush the log */
-		    logpb_end_append (thread_p);
+		    (void) prior_lsa_next_record (thread_p, node, tdes);
+
 		    logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-		    assert (LOG_CS_OWN (thread_p));
-
-		    LOG_CS_EXIT ();
 		  }
 	      }
 	    else
@@ -7200,21 +6484,23 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		if (tdes->state !=
 		    TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
 		  {
-		    LOG_CS_ENTER (thread_p);
+		    node = prior_lsa_alloc_and_copy_data (thread_p,
+							  LOG_2PC_ABORT_INFORM_PARTICPS,
+							  0, NULL, 0, NULL, 0,
+							  NULL);
+		    if (node == NULL)
+		      {
+			assert (false);
+			return state;
+		      }
 
 		    tdes->state =
 		      TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS;
 		    state = tdes->state;
-		    /* record that there are missing acknowledgements. */
-		    logpb_start_append (thread_p,
-					LOG_2PC_ABORT_INFORM_PARTICPS, tdes);
 
-		    /* finish the append operation and flush the log */
-		    logpb_end_append (thread_p);
+		    (void) prior_lsa_next_record (thread_p, node, tdes);
+
 		    logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-		    assert (LOG_CS_OWN (thread_p));
-
-		    LOG_CS_EXIT ();
 		  }
 	      }
 	    /*
@@ -7281,7 +6567,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 #endif /* SERVER_MODE */
 	      }
 
-	    return (state);
+	    return state;
 	  }
 
       /*
@@ -7343,18 +6629,8 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       /*
        * Transaction updated data or this is a coordinator
        */
-      LOG_CS_ENTER (thread_p);
-
-      if (iscommitted != LOG_ABORT)
-	{
-	  log_append_donetime (thread_p, tdes, iscommitted);
-	  state = tdes->state;
-	}
-      else
-	{
-	  log_append_donetime (thread_p, tdes, iscommitted);
-	  state = tdes->state;
-	}
+      log_append_donetime (thread_p, tdes, iscommitted);
+      state = tdes->state;
 
       /* If recovery restart operation, or, if this is a coordinator loose end
        * transaction return this index and decrement coordinator loose end
@@ -7384,7 +6660,6 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	}
 
       /* Finish the append operation and flush the log */
-      LOG_CS_EXIT ();
     }
 
   if (LOG_ISCHECKPOINT_TIME ())
@@ -7405,37 +6680,38 @@ log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 {
   TRAN_STATE state;
   struct log_topop_result *top_result;	/* Partial outcome               */
+  LOG_RECTYPE rectype;
+  LOG_PRIOR_NODE *node;
 
   assert (tdes != NULL);
-  LOG_CS_ENTER (thread_p);
 
   if (result == LOG_RESULT_TOPOP_COMMIT)
     {
+      rectype = LOG_COMMIT_TOPOPE;
       state = TRAN_UNACTIVE_COMMITTED;
-      logpb_start_append (thread_p, LOG_COMMIT_TOPOPE, tdes);
     }
   else
     {
+      rectype = LOG_ABORT_TOPOPE;
       state = TRAN_UNACTIVE_ABORTED;
-      logpb_start_append (thread_p, LOG_ABORT_TOPOPE, tdes);
+    }
+  node = prior_lsa_alloc_and_copy_data (thread_p, rectype,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return state;
     }
 
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*top_result));
-  top_result = (struct log_topop_result *) LOG_APPEND_PTR ();
+  top_result = (struct log_topop_result *) node->data_header;
 
   LSA_COPY (&top_result->lastparent_lsa,
 	    &tdes->topops.stack[tdes->topops.last].lastparent_lsa);
   LSA_COPY (&top_result->prv_topresult_lsa, &tdes->tail_topresult_lsa);
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*top_result));
-
-  logpb_end_append (thread_p);
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
   /* Remember last partial result */
   LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
-
-  LOG_CS_EXIT ();
 
   return state;
 }
@@ -7663,7 +6939,7 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_LSA log_lsa;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Pointer to a log page           */
-  struct log_rec *log_rec;	/* Pointer to log record           */
+  LOG_RECORD_HEADER *log_rec;	/* Pointer to log record           */
   struct log_client *client;	/* An undo/postpone client log
 				 * record
 				 */
@@ -7789,8 +7065,7 @@ log_client_find_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
 	      /* Find the log record */
 	      log_lsa.offset = forward_lsa.offset;
-	      log_rec = (struct log_rec *)
-		((char *) log_pgptr->area + log_lsa.offset);
+	      log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 
 	      /* Find the next log record in the log */
 	      LSA_COPY (&forward_lsa, &log_rec->forw_lsa);
@@ -8038,25 +7313,21 @@ log_client_append_done_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				LOG_RECTYPE rectype, LOG_LSA * next_lsa)
 {
   struct log_run_client *run_client;
+  LOG_PRIOR_NODE *node;
 
-  LOG_CS_ENTER (thread_p);
+  node = prior_lsa_alloc_and_copy_data (thread_p, rectype,
+					0, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  /* START appending */
-  logpb_start_append (thread_p, rectype, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*run_client));
-  run_client = (struct log_run_client *) LOG_APPEND_PTR ();
+  run_client = (struct log_run_client *) node->data_header;
   LSA_COPY (&run_client->nxlsa, next_lsa);
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*run_client));
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
-  /* END append */
-  logpb_end_append (thread_p);
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-  assert (LOG_CS_OWN (thread_p));
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -9293,8 +8564,8 @@ log_dump_record_abort_client_loose_end (THREAD_ENTRY * thread_p,
 }
 
 static LOG_PAGE *
-log_dump_record_check_point (THREAD_ENTRY * thread_p, FILE * out_fp,
-			     LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp,
+			    LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   struct log_chkpt *chkpt;	/* check point log record */
   int length_active_tran;
@@ -9586,7 +8857,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp,
 
     case LOG_END_CHKPT:
       log_page_p =
-	log_dump_record_check_point (thread_p, out_fp, log_lsa, log_page_p);
+	log_dump_record_checkpoint (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
     case LOG_SAVEPOINT:
@@ -9692,7 +8963,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
 				 */
   LOG_LSA log_lsa;
   LOG_RECTYPE type;		/* Log record type           */
-  struct log_rec *log_rec;	/* Pointer to log record     */
+  LOG_RECORD_HEADER *log_rec;	/* Pointer to log record     */
 
   LOG_ZIP *log_dump_ptr = NULL;
 
@@ -9709,11 +8980,10 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
 
   /* Flush any dirty log page */
   LOG_CS_ENTER (thread_p);
-  log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
 
   xlogtb_dump_trantable (thread_p, out_fp);
   logpb_dump (out_fp);
-  logpb_force (thread_p);
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
   logpb_flush_header (thread_p);
 
   /* Now start dumping the log */
@@ -9762,7 +9032,6 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
 	   (isforward ? "Forward" : "Backaward"), start_logpageid,
 	   dump_npages, desired_tranid);
 
-  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
@@ -9817,8 +9086,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward,
       while (lsa.pageid == log_lsa.pageid)
 	{
 	  log_lsa.offset = lsa.offset;
-	  log_rec =
-	    (struct log_rec *) ((char *) log_pgptr->area + log_lsa.offset);
+	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 	  type = log_rec->type;
 
 	  {
@@ -10093,7 +9361,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
        */
       if (!RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
 	{
-	  log_append_compensate (thread_p, LOG_COMPENSATE, rcvindex, rcv_vpid,
+	  log_append_compensate (thread_p, rcvindex, rcv_vpid,
 				 rcv->offset, rcv->pgptr, rcv->length,
 				 rcv->data, tdes);
 	  /* Invoke Undo recovery function */
@@ -10187,7 +9455,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
        * Unable to fetch page of volume... May need media recovery on such
        * page... write a CLR anyhow
        */
-      log_append_compensate (thread_p, LOG_COMPENSATE, rcvindex, rcv_vpid,
+      log_append_compensate (thread_p, rcvindex, rcv_vpid,
 			     rcv->offset, NULL, rcv->length, rcv->data, tdes);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY,
 	      1, fileio_get_volume_label (rcv_vpid->volid));
@@ -10272,7 +9540,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				 * record
 				 */
   LOG_LSA log_lsa;
-  struct log_rec *log_rec;	/* The log record                 */
+  LOG_RECORD_HEADER *log_rec;	/* The log record                 */
   struct log_undoredo *undoredo;	/* An undoredo log record         */
   struct log_undo *undo;	/* An undo log record             */
   struct log_compensate *compensate;	/* A compensating log record      */
@@ -10362,8 +9630,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
 	  /* Find the log record to undo */
 	  log_lsa.offset = prev_tranlsa.offset;
-	  log_rec = (struct log_rec *) ((char *) log_pgptr->area
-					+ log_lsa.offset);
+	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 
 	  /*
 	   * Next record to undo.. that is previous record in the chain.
@@ -10572,7 +9839,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
-  struct log_rec *log_rec;
+  LOG_RECORD_HEADER *log_rec;
   LOG_LSA tmp_log_lsa;
   LOG_LSA top_result_lsa;
   LOG_LSA prev_last_parent_lsa;
@@ -10641,21 +9908,21 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    }
 	}
 
-      log_rec =
-	(struct log_rec *) ((char *) log_pgptr->area + top_result_lsa.offset);
+      log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &top_result_lsa);
 
       if (log_rec->type == LOG_COMMIT_TOPOPE
 	  || log_rec->type == LOG_ABORT_TOPOPE)
 	{
 	  /* Read the DATA HEADER */
 	  LSA_COPY (&tmp_log_lsa, &top_result_lsa);
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), &tmp_log_lsa,
-			      log_pgptr);
+	  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER),
+			      &tmp_log_lsa, log_pgptr);
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p,
 					    sizeof (struct log_topop_result),
 					    &tmp_log_lsa, log_pgptr);
-	  top_result = (struct log_topop_result *) ((char *) log_pgptr->area
-						    + tmp_log_lsa.offset);
+	  top_result =
+	    (struct log_topop_result *) ((char *) log_pgptr->area +
+					 tmp_log_lsa.offset);
 	  last_fetch_page_id = tmp_log_lsa.pageid;
 
 	  /*
@@ -10741,7 +10008,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
-  struct log_rec *log_rec;
+  LOG_RECORD_HEADER *log_rec;
   bool isdone;
 
   LOG_TOPOP_RANGE nxtop_array[LOG_TOPOP_STACK_INIT_SIZE];
@@ -10864,9 +10131,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
 	      /* Find the postpone log record to execute */
 	      log_lsa.offset = forward_lsa.offset;
-	      log_rec =
-		(struct log_rec *) ((char *) log_pgptr->area +
-				    log_lsa.offset);
+	      log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 
 	      /* Find the next log record in the log */
 	      LSA_COPY (&forward_lsa, &log_rec->forw_lsa);
@@ -11015,7 +10280,8 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
   LSA_COPY (&ref_lsa, log_lsa);
 
   /* Get the DATA HEADER */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_pgptr);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa,
+		      log_pgptr);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (struct log_redo),
 				    log_lsa, log_pgptr);
 
@@ -11146,7 +10412,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
   LOG_PAGEID pageid;		/* Log page identifier   */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;	/* Pointer to a log page */
-  struct log_rec *eof = NULL;	/* End of log record     */
+  LOG_RECORD_HEADER *eof = NULL;	/* End of log record     */
   LOG_RECTYPE type;		/* Type of a log record  */
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -11180,8 +10446,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 	  if (!(end_lsa->offset == NULL_OFFSET
 		&& (end_lsa->offset = log_pgptr->hdr.offset) == NULL_OFFSET))
 	    {
-	      eof = (struct log_rec *) ((char *) log_pgptr->area
-					+ end_lsa->offset);
+	      eof = LOG_GET_LOG_RECORD_HEADER (log_pgptr, end_lsa);
 	      /*
 	       * If the type is an EOF located at the active portion of the log,
 	       * stop
@@ -11239,7 +10504,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 	   * Reset the log header for future reads, multiple restart crashes,
 	   * and so on
 	   */
-	  LSA_COPY (&log_Gl.hdr.append_lsa, end_lsa);
+	  LOG_RESET_APPEND_LSA (end_lsa);
 	  log_Gl.hdr.next_trid = eof->trid;
 	}
     }
@@ -11347,7 +10612,7 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
        */
 
       LOG_CS_ENTER (thread_p);
-      logpb_force (thread_p);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
       LOG_CS_EXIT ();
 
       (void) pgbuf_flush_all (thread_p, volid);
@@ -11365,7 +10630,7 @@ log_recreate (THREAD_ENTRY * thread_p, VOLID num_perm_vols,
 				&log_Gl.hdr.chkpt_lsa, false,
 				DISK_DONT_FLUSH);
       LOG_CS_ENTER (thread_p);
-      logpb_force (thread_p);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
       LOG_CS_EXIT ();
 
       (void) pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p, volid);
@@ -11534,18 +10799,16 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,
 		    int flush_data_pages)
 {
   LOG_CS_ENTER (thread_p);
-  log_Gl.flush_info.flush_type = LOG_FLUSH_DIRECT;
 
   if (log_Gl.trantable.area == NULL || !logpb_is_initialize_pool ())
     {
-      log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
       LOG_CS_EXIT ();
       return;
     }
 
   if (flush_log != false || flush_data_pages != false)
     {
-      logpb_force (thread_p);
+      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
     }
 
   if (flush_data_pages)
@@ -11559,173 +10822,8 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log,
   logpb_finalize_pool ();
   logtb_undefine_trantable (thread_p);
 
-  log_Gl.flush_info.flush_type = LOG_FLUSH_NORMAL;
   LOG_CS_EXIT ();
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, NULL_TRAN_INDEX);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
-
-/*
- * log_realloc_data_ptr -
- *
- * return:
- *
- *   data_length(in):
- *   length(in):
- *
- * NOTE:
- */
-static bool
-log_realloc_data_ptr (THREAD_ENTRY * thread_p, int length)
-{
-  char *data_ptr;
-  int alloc_len;
-#if defined (SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  if (thread_p == NULL)
-    {
-      return false;
-    }
-
-  if (thread_p->log_data_length < length)
-    {
-      alloc_len = ((int) CEIL_PTVDIV (length, IO_PAGESIZE)) * IO_PAGESIZE;
-
-      data_ptr = (char *) realloc (thread_p->log_data_ptr, alloc_len);
-      if (data_ptr == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_len);
-	  if (thread_p->log_data_ptr)
-	    {
-	      free_and_init (thread_p->log_data_ptr);
-	    }
-	  thread_p->log_data_length = 0;
-	  return false;
-	}
-      else
-	{
-	  thread_p->log_data_ptr = data_ptr;
-	  thread_p->log_data_length = alloc_len;
-	}
-    }
-  return true;
-#else
-  if (log_data_length < length)
-    {
-      alloc_len = ((int) CEIL_PTVDIV (length, IO_PAGESIZE)) * IO_PAGESIZE;
-
-      data_ptr = (char *) realloc (log_data_ptr, alloc_len);
-      if (data_ptr == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, alloc_len);
-	  if (log_data_ptr)
-	    {
-	      free_and_init (log_data_ptr);
-	    }
-	  log_data_length = 0;
-	  return false;
-	}
-      else
-	{
-	  log_data_ptr = data_ptr;
-	  log_data_length = alloc_len;
-	}
-    }
-
-  return true;
-#endif
-}
-
-static LOG_ZIP *
-log_get_zip_undo (THREAD_ENTRY * thread_p)
-{
-#if defined (SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  if (thread_p == NULL)
-    {
-      return NULL;
-    }
-  else
-    {
-      if (thread_p->log_zip_undo == NULL)
-	{
-	  thread_p->log_zip_undo = log_zip_alloc (IO_PAGESIZE, true);
-	}
-      return thread_p->log_zip_undo;
-    }
-#else
-  return log_zip_undo;
-#endif
-}
-
-static LOG_ZIP *
-log_get_zip_redo (THREAD_ENTRY * thread_p)
-{
-#if defined (SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  if (thread_p == NULL)
-    {
-      return NULL;
-    }
-  else
-    {
-      if (thread_p->log_zip_redo == NULL)
-	{
-	  thread_p->log_zip_redo = log_zip_alloc (IO_PAGESIZE, true);
-	}
-      return thread_p->log_zip_redo;
-    }
-#else
-  return log_zip_redo;
-#endif
-}
-
-static char *
-log_get_data_ptr (THREAD_ENTRY * thread_p)
-{
-#if defined (SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  if (thread_p == NULL)
-    {
-      return NULL;
-    }
-  else
-    {
-      if (thread_p->log_data_ptr == NULL)
-	{
-	  thread_p->log_data_length = IO_PAGESIZE * 2;
-	  thread_p->log_data_ptr =
-	    (char *) malloc (thread_p->log_data_length);
-
-	  if (thread_p->log_data_ptr == NULL)
-	    {
-	      thread_p->log_data_length = 0;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		      ER_OUT_OF_VIRTUAL_MEMORY, 1, thread_p->log_data_length);
-	    }
-	}
-      return thread_p->log_data_ptr;
-    }
-#else
-  return log_data_ptr;
-#endif
-}

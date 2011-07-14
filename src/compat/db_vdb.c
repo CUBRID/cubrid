@@ -28,6 +28,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <sys/timeb.h>
+#include <time.h>
 #include "db.h"
 #include "dbi.h"
 #include "db_query.h"
@@ -51,6 +53,8 @@
 
 #define BUF_SIZE 1024
 
+#define MAX_SERVER_TIME_CACHE	60	/* secs */
+
 enum
 {
   StatementInitialStage = 0,
@@ -58,6 +62,9 @@ enum
   StatementPreparedStage,
   StatementExecutedStage,
 };
+
+static struct timeb base_server_timeb = { 0, 0, 0, 0 };
+static struct timeb base_client_timeb = { 0, 0, 0, 0 };
 
 
 static int get_dimension_of (PT_NODE ** array);
@@ -391,6 +398,99 @@ db_open_file_name (const char *name)
   return session;
 }
 
+/*
+ * db_calculate_current_server_time () -
+ * return:
+ * parser(in) :
+ * server_info(in) :
+ */
+static void
+db_calculate_current_server_time (PARSER_CONTEXT * parser,
+				  SERVER_INFO * server_info)
+{
+  if (base_server_timeb.time != 0)
+    {
+      struct tm *c_time_struct;
+      DB_DATETIME datetime;
+
+      struct timeb curr_server_timeb;
+      struct timeb curr_client_timeb;
+      int diff_mtime;
+      int diff_time;
+
+      ftime (&curr_client_timeb);
+      diff_time = curr_client_timeb.time - base_client_timeb.time;
+      diff_mtime = curr_client_timeb.millitm - base_client_timeb.millitm;
+
+      if (diff_time > MAX_SERVER_TIME_CACHE)
+	{
+	  base_server_timeb.time = 0;
+	}
+      else
+	{
+	  curr_server_timeb.time = base_server_timeb.time;
+	  curr_server_timeb.millitm = base_server_timeb.millitm;
+	  curr_server_timeb.time += diff_time;
+	  curr_server_timeb.millitm += diff_mtime;
+
+	  if (curr_server_timeb.millitm < 0)
+	    {
+	      curr_server_timeb.time--;
+	      curr_server_timeb.millitm += 1000;
+	    }
+	  else if (curr_server_timeb.millitm >= 1000)
+	    {
+	      curr_server_timeb.time++;
+	      curr_server_timeb.millitm -= 1000;
+	    }
+
+	  c_time_struct = localtime (&curr_server_timeb.time);
+
+	  db_datetime_encode (&datetime, c_time_struct->tm_mon + 1,
+			      c_time_struct->tm_mday,
+			      c_time_struct->tm_year + 1900,
+			      c_time_struct->tm_hour, c_time_struct->tm_min,
+			      c_time_struct->tm_sec,
+			      curr_server_timeb.millitm);
+
+	  server_info->value[0] = &parser->sys_datetime;
+	  DB_MAKE_DATETIME (server_info->value[0], &datetime);
+	}
+    }
+
+  if (base_server_timeb.time == 0)
+    {
+      server_info->info_bits |= SI_SYS_DATETIME;
+      server_info->value[0] = &parser->sys_datetime;
+    }
+}
+
+/*
+ * db_set_base_server_time() -
+ * return:
+ * server_info(in) :
+ */
+static void
+db_set_base_server_time (SERVER_INFO * server_info)
+{
+  if (server_info->info_bits & SI_SYS_DATETIME)
+    {
+      struct tm c_time_struct;
+      DB_DATETIME *dt = &server_info->value[0]->data.datetime;
+
+      db_datetime_decode (dt, &c_time_struct.tm_mon,
+			  &c_time_struct.tm_mday, &c_time_struct.tm_year,
+			  &c_time_struct.tm_hour, &c_time_struct.tm_min,
+			  &c_time_struct.tm_sec, &base_server_timeb.millitm);
+
+      c_time_struct.tm_year -= 1900;
+      c_time_struct.tm_mon -= 1;
+
+      base_server_timeb.time = mktime (&c_time_struct);
+      ftime (&base_client_timeb);
+    }
+}
+
 
 /*
  * db_compile_statement_local() -
@@ -508,20 +608,11 @@ db_compile_statement_local (DB_SESSION * session)
 
   /* get sys_date, sys_time, sys_timestamp, sys_datetime values from the server */
   server_info.info_bits = 0;	/* init */
-  if (statement->si_datetime)
-    {
-      server_info.info_bits |= SI_SYS_DATETIME;
-      server_info.value[0] = &parser->sys_datetime;
-    }
+
   if (statement->si_tran_id)
     {
       server_info.info_bits |= SI_LOCAL_TRANSACTION_ID;
       server_info.value[1] = &parser->local_transaction_id;
-    }
-  /* request to the server */
-  if (server_info.info_bits)
-    {
-      (void) qp_get_server_info (&server_info);
     }
 
   if (seed == 0)
@@ -1640,12 +1731,11 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
 
   /* get sys_date, sys_time, sys_timestamp, sys_datetime values from the server */
   server_info.info_bits = 0;	/* init */
-  if (statement->si_datetime && DB_IS_NULL (&parser->sys_datetime))
+  if (statement->si_datetime)
     {
-      /* if it was reset in the previous execution step, fills it now */
-      server_info.info_bits |= SI_SYS_DATETIME;
-      server_info.value[0] = &parser->sys_datetime;
+      db_calculate_current_server_time (parser, &server_info);
     }
+
   if (statement->si_tran_id && DB_IS_NULL (&parser->local_transaction_id))
     {
       /* if it was reset in the previous execution step, fills it now */
@@ -1656,6 +1746,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
   if (server_info.info_bits)
     {
       (void) qp_get_server_info (&server_info);
+      db_set_base_server_time (&server_info);
     }
 
   if (statement->node_type == PT_PREPARE_STATEMENT)
@@ -1704,6 +1795,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx,
      the server without touching the XASL cache by calling
      query_prepare_and_execute(). */
   do_Trigger_involved = false;
+
   if (PRM_XASL_MAX_PLAN_CACHE_ENTRIES > 0 && statement->cannot_prepare == 0)
     {
       /* now, execute the statement by calling do_execute_statement() */

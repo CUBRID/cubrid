@@ -396,6 +396,13 @@ mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 		  q->fc_num_log_pages);
   CALC_STAT_DIFF (stats_diff->fc_tokens, p->fc_tokens, q->fc_tokens);
 
+  CALC_STAT_DIFF (stats_diff->prior_lsa_list_size, p->prior_lsa_list_size,
+		  q->prior_lsa_list_size);
+  CALC_STAT_DIFF (stats_diff->prior_lsa_list_maxed, p->prior_lsa_list_maxed,
+		  q->prior_lsa_list_maxed);
+  CALC_STAT_DIFF (stats_diff->prior_lsa_list_removed,
+		  p->prior_lsa_list_removed, q->prior_lsa_list_removed);
+
   CALC_STAT_DIFF (stats_diff->log_num_ioreads, p->log_num_ioreads,
 		  q->log_num_ioreads);
   CALC_STAT_DIFF (stats_diff->log_num_iowrites, p->log_num_iowrites,
@@ -541,6 +548,14 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
   stats_diff->fc_num_log_pages =
     CALC_GLOBAL_STAT_DIFF (p->fc_num_log_pages, q->fc_num_log_pages);
   stats_diff->fc_tokens = CALC_GLOBAL_STAT_DIFF (p->fc_tokens, q->fc_tokens);
+
+  stats_diff->prior_lsa_list_size =
+    CALC_GLOBAL_STAT_DIFF (p->prior_lsa_list_size, q->prior_lsa_list_size);
+  stats_diff->prior_lsa_list_maxed =
+    CALC_GLOBAL_STAT_DIFF (p->prior_lsa_list_maxed, q->prior_lsa_list_maxed);
+  stats_diff->prior_lsa_list_removed =
+    CALC_GLOBAL_STAT_DIFF (p->prior_lsa_list_removed,
+			   q->prior_lsa_list_removed);
 
   stats_diff->log_num_ioreads =
     CALC_GLOBAL_STAT_DIFF (p->log_num_ioreads, q->log_num_ioreads);
@@ -1773,6 +1788,9 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_adaptive_flush_pages",
   "Num_adaptive_flush_log_pages",
   "Num_adaptive_flush_max_pages",
+  "Num_prior_lsa_list_size",
+  "Num_prior_lsa_list_maxed",
+  "Num_prior_lsa_list_removed",
   "Data_page_buffer_hit_ratio"
 };
 
@@ -1790,9 +1808,9 @@ pthread_mutex_t mnt_Num_tran_stats_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define ADD_STATS(STAT,VAR,VALUE)                        \
 do {                                                     \
-  if (STAT->enable_local_stat)                           \
+  if ((STAT)->enable_local_stat)                         \
     {                                                    \
-      STAT->VAR += VALUE;                                \
+      (STAT)->VAR += (VALUE);                            \
     }                                                    \
   ATOMIC_INC(mnt_Server_table.global_stats->VAR, VALUE); \
 } while (0)
@@ -2233,6 +2251,54 @@ mnt_x_pb_replacements (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * mnt_x_prior_lsa_list_size -
+ *   return: none
+ */
+void
+mnt_x_prior_lsa_list_size (THREAD_ENTRY * thread_p, unsigned int list_size)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, prior_lsa_list_size, list_size);
+    }
+}
+
+/*
+ * mnt_x_prior_lsa_list_maxed -
+ *   return: none
+ */
+void
+mnt_x_prior_lsa_list_maxed (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, prior_lsa_list_maxed, 1);
+    }
+}
+
+/*
+ * mnt_x_prior_lsa_list_removed -
+ *   return: none
+ */
+void
+mnt_x_prior_lsa_list_removed (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, prior_lsa_list_removed, 1);
+    }
+}
+
+/*
  * mnt_x_fc_stats -
  *   return: none
  */
@@ -2272,16 +2338,18 @@ mnt_x_log_ioreads (THREAD_ENTRY * thread_p)
  * mnt_x_log_iowrites - Increase log_num_iowrites counter of the current
  *                      transaction index
  *   return: none
+ *
+ *   num_log_pages(in):
  */
 void
-mnt_x_log_iowrites (THREAD_ENTRY * thread_p)
+mnt_x_log_iowrites (THREAD_ENTRY * thread_p, int num_log_pages)
 {
   MNT_SERVER_EXEC_STATS *stats;
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      ADD_STATS (stats, log_num_iowrites, 1);
+      ADD_STATS (stats, log_num_iowrites, num_log_pages);
     }
 }
 

@@ -1473,6 +1473,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   int size;
   int i;
   int tran_index;
+  LOG_PRIOR_NODE *node;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -1589,14 +1590,23 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
    * Indicate that we are willing to commit the transaction
    */
 
-  LOG_CS_ENTER (thread_p);
+  size = 0;
+  if (acq_locks.obj != NULL)
+    {
+      size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
+    }
 
-  logpb_start_append (thread_p, LOG_2PC_PREPARE, tdes);
+  node = prior_lsa_alloc_and_copy_data (thread_p,
+					LOG_2PC_PREPARE,
+					0, NULL, tdes->gtrinfo.info_length,
+					(char *) tdes->gtrinfo.info_data,
+					size, (char *) acq_locks.obj);
+  if (node == NULL)
+    {
+      return TRAN_UNACTIVE_UNKNOWN;
+    }
 
-  /* ADD the data header (i.e., number of locks of each kind) */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*prepared));
-
-  prepared = (struct log_2pc_prepcommit *) LOG_APPEND_PTR ();
+  prepared = (struct log_2pc_prepcommit *) node->data_header;
 
   memcpy (prepared->user_name, tdes->client.db_user, DB_MAX_USER_LENGTH);
   prepared->gtrid = gtrid;
@@ -1605,36 +1615,16 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   /* ignore num_page_locks */
   prepared->num_page_locks = 0;
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*prepared));
-
-  if (tdes->gtrinfo.info_length > 0)
-    {
-      /* Append the global transaction user information data */
-      logpb_append_data (thread_p, tdes->gtrinfo.info_length,
-			 (char *) tdes->gtrinfo.info_data);
-    }
-
-  if (acq_locks.obj != NULL)
-    {
-      /* Append the acquired locks on objects */
-      size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
-      logpb_append_data (thread_p, size, (char *) acq_locks.obj);
-      free_and_init (acq_locks.obj);
-    }
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
   /*
    * END append. The log need to be flushed since we need to guarantee
    * the commitment of the transaction if the coordinator requests commit
    */
-
-  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_2PC_PREPARE;
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-  assert (LOG_CS_OWN (thread_p));
 
-  LOG_CS_EXIT ();
-
-  return (tdes->state);
+  return tdes->state;
 }
 
 /*
@@ -1822,28 +1812,28 @@ static void
 log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   struct log_2pc_start *start_2pc;	/* Start 2PC log record */
+  LOG_PRIOR_NODE *node;
 
-  LOG_CS_ENTER (thread_p);
+  node = prior_lsa_alloc_and_copy_data (thread_p,
+					LOG_2PC_START,
+					0, NULL,
+					(tdes->coord->particp_id_length *
+					 tdes->coord->num_particps),
+					(char *) tdes->coord->
+					block_particps_ids, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
 
-  /* START appending */
-  logpb_start_append (thread_p, LOG_2PC_START, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*start_2pc));
-
-  start_2pc = (struct log_2pc_start *) LOG_APPEND_PTR ();
+  start_2pc = (struct log_2pc_start *) node->data_header;
 
   memcpy (start_2pc->user_name, tdes->client.db_user, DB_MAX_USER_LENGTH);
   start_2pc->gtrid = tdes->gtrid;
   start_2pc->num_particps = tdes->coord->num_particps;
   start_2pc->particp_id_length = tdes->coord->particp_id_length;
 
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*start_2pc));
-
-  /* INSERT data */
-  logpb_append_data (thread_p, (tdes->coord->particp_id_length *
-				tdes->coord->num_particps),
-		     (char *) tdes->coord->block_particps_ids);
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
   /*
    * END append
@@ -1853,13 +1843,8 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
    * always wait for the coordinators. We do not have a full 2PC in which
    * particpants know about each other and the coordiantor.
    */
-
-  logpb_end_append (thread_p);
   tdes->state = TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES;
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-  assert (LOG_CS_OWN (thread_p));
-
-  LOG_CS_EXIT ();
 }
 
 /*
@@ -1886,40 +1871,40 @@ static void
 log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			 LOG_RECTYPE decision)
 {
-  LOG_CS_ENTER (thread_p);
+  LOG_PRIOR_NODE *node;
+
+  node = prior_lsa_alloc_and_copy_data (thread_p, decision, 0, NULL,
+					0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
+
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
   if (decision == LOG_2PC_COMMIT_DECISION)
     {
-      /* DECISION is COMMIT */
+      tdes->state = TRAN_UNACTIVE_2PC_COMMIT_DECISION;
 
-      /* START appending */
-      logpb_start_append (thread_p, LOG_2PC_COMMIT_DECISION, tdes);
       /*
        * END append
        * We need to flush the log so that we can find the decision if a
        * participant needed in the event of a crash. If the decision is not
        * found in the log, we will assume abort
        */
-      logpb_end_append (thread_p);
-      tdes->state = TRAN_UNACTIVE_2PC_COMMIT_DECISION;
       logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
-      assert (LOG_CS_OWN (thread_p));
     }
   else
     {
-      /* DECISION IS ABORT */
+      tdes->state = TRAN_UNACTIVE_2PC_ABORT_DECISION;
 
-      /* START appending */
-      logpb_start_append (thread_p, LOG_2PC_ABORT_DECISION, tdes);
       /*
        * END append
        * We do not need to flush the log since if the decision is not found in
        * the log, abort is assumed.
        */
-      logpb_end_append (thread_p);
-      tdes->state = TRAN_UNACTIVE_2PC_ABORT_DECISION;
     }
-  LOG_CS_EXIT ();
+
 }
 
 /*
@@ -2223,7 +2208,8 @@ log_2pc_recovery_prepare (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
    */
 
   /* Get the DATA HEADER */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa,
+		      log_page_p);
 
   /* The transaction was in prepared_to_commit state at the
    * time of crash. So, read the global transaction identifier
@@ -2269,7 +2255,8 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   int i;
 
   /* Obtain the coordinator information */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa,
+		      log_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_2pc), log_lsa,
 				    log_page_p);
 
@@ -2435,9 +2422,10 @@ log_2pc_recovery_recv_ack (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 {
   struct log_2pc_particp_ack *received_ack;	/* A 2PC recv decision ack   */
 
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (struct log_rec), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*received_ack),
-				    log_lsa, log_page_p);
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa,
+		      log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*received_ack), log_lsa,
+				    log_page_p);
   received_ack =
     ((struct log_2pc_particp_ack *) ((char *) log_page_p->area +
 				     log_lsa->offset));
@@ -2611,7 +2599,7 @@ void
 log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 				LOG_LSA * upto_chain_lsa)
 {
-  struct log_rec *log_rec;	/* Pointer to log record     */
+  LOG_RECORD_HEADER *log_rec;	/* Pointer to log record     */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA
 				 * is located
@@ -2676,8 +2664,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	{
 	  lsa.offset = prev_tranlsa.offset;
 
-	  log_rec =
-	    (struct log_rec *) ((char *) log_page_p->area + lsa.offset);
+	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &lsa);
 	  LSA_COPY (&prev_tranlsa, &log_rec->prev_tranlsa);
 
 	  if (log_2pc_recovery_analysis_record

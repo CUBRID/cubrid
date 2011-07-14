@@ -1051,6 +1051,7 @@ css_get_request_id (CSS_CONN_ENTRY * conn)
 {
   unsigned short old_rid;
   unsigned short request_id;
+
   csect_enter_critical_section (NULL, &conn->csect, INF_WAIT);
 
   old_rid = conn->request_id++;

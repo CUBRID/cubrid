@@ -5290,11 +5290,10 @@ yyuserAction (yyRuleNum yyn, int yyrhslen, yyGLRStackItem * yyvsp,
 	{
 
 	  HOST_VAR *href = NULL;
-	  SYMBOL *sym = pp_findsym (pp_Symbol_table,
-				    (((yyGLRStackItem const *)
-				      yyvsp)[YYFILL ((1) -
-						     (1))].yystate.
-				     yysemantics.yysval.ptr));
+	  SYMBOL *sym =
+	    pp_findsym (pp_Symbol_table,
+			(((yyGLRStackItem const *) yyvsp)[YYFILL ((1) - (1))].
+			 yystate.yysemantics.yysval.ptr));
 	  if (sym == NULL)
 	    {
 	      esql_yyverror (pp_get_msg (EX_ESQLM_SET, MSG_NOT_DECLARED),

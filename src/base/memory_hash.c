@@ -1662,6 +1662,7 @@ mht_rem (MHT_TABLE * ht, const void *key,
  *   return: error code
  *   ht(in): hash table (set as a side effect)
  *   key(in): hashing key
+ *   data(in):
  *   rem_func(in): supplied function to delete the data and key
  *   func_args(in): arguments to be passed to rem_func
  *

@@ -13942,7 +13942,6 @@ path_expression
 				parser_free_node (this_parser, dot);
 				dot = serial_value;
 
-				parser_cannot_prepare = true;
 				parser_cannot_cache = true;
 			      }
 			    else
@@ -13977,7 +13976,6 @@ path_expression
 				parser_free_node (this_parser, dot);
 				dot = serial_value;
 
-				parser_cannot_prepare = true;
 				parser_cannot_cache = true;
 			      }
 			  }
@@ -17824,6 +17822,8 @@ PT_HINT parser_hint_table[] = {
   {"USE_DESC_IDX", NULL, PT_HINT_USE_IDX_DESC}
   ,
   {"NO_COVERING_IDX", NULL, PT_HINT_NO_COVERING_IDX}
+  ,
+  {"INSERT_EXECUTION_MODE", NULL, PT_HINT_INSERT_MODE}
   ,
   {NULL, NULL, -1}		/* mark as end */
 };

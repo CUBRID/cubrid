@@ -1156,10 +1156,16 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 		  serial_mop = do_get_serial_obj_id (&serial_obj_id,
 						     serial_class_mop,
 						     auto_increment_name);
-		  if (serial_mop != NULL)
+
+		  if (serial_mop == NULL)
 		    {
-		      att->auto_increment = serial_mop;
+		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+			      ER_OBJ_INVALID_ATTRIBUTE, 1,
+			      auto_increment_name);
+		      goto auto_increment_error;
 		    }
+
+		  att->auto_increment = serial_mop;
 		}
 
 	      if (att->auto_increment != NULL)

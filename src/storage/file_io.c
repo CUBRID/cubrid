@@ -773,7 +773,7 @@ fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken)
 
   assert (ntoken > 0);
 
-  if (LOG_CS_OWN (thread_p))
+  if (LOG_CS_OWN_WRITE_MODE (thread_p))
     {
       log_cs_own = true;
     }
@@ -6533,7 +6533,7 @@ fileio_start_backup (THREAD_ENTRY * thread_p,
 		     INT64 * db_creation_time_p,
 		     FILEIO_BACKUP_LEVEL backup_level,
 		     LOG_LSA * backup_start_lsa_p,
-		     LOG_LSA * backup_check_point_lsa_p,
+		     LOG_LSA * backup_checkpoint_lsa_p,
 		     FILEIO_BACKUP_RECORD_INFO *
 		     all_levels_info_p,
 		     FILEIO_BACKUP_SESSION * session_p,
@@ -6583,7 +6583,7 @@ fileio_start_backup (THREAD_ENTRY * thread_p,
   backup_header_p->db_compatibility = rel_disk_compatible ();
   backup_header_p->level = backup_level;
   LSA_COPY (&backup_header_p->start_lsa, backup_start_lsa_p);
-  LSA_COPY (&backup_header_p->chkpt_lsa, backup_check_point_lsa_p);
+  LSA_COPY (&backup_header_p->chkpt_lsa, backup_checkpoint_lsa_p);
 
   for (i = FILEIO_BACKUP_FULL_LEVEL; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
     {

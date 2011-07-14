@@ -2172,7 +2172,7 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 }
 
 /*
- * pgbuf_flush_check_point () - Flush any unfixed dirty page whose lsa
+ * pgbuf_flush_checkpoint () - Flush any unfixed dirty page whose lsa
  *                                      is smaller than the last checkpoint lsa
  *   return: void
  *   last_chkpt_lsa(in): Last checkpoint log sequence address
@@ -2186,15 +2186,15 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
  */
 #if !defined(NDEBUG)
 void
-pgbuf_flush_check_point_debug (THREAD_ENTRY * thread_p,
-			       const LOG_LSA * last_chkpt_lsa,
-			       LOG_LSA * smallest_lsa,
-			       const char *caller_file, int caller_line)
+pgbuf_flush_checkpoint_debug (THREAD_ENTRY * thread_p,
+			      const LOG_LSA * last_chkpt_lsa,
+			      LOG_LSA * smallest_lsa,
+			      const char *caller_file, int caller_line)
 #else /* NDEBUG */
 void
-pgbuf_flush_check_point (THREAD_ENTRY * thread_p,
-			 const LOG_LSA * last_chkpt_lsa,
-			 LOG_LSA * smallest_lsa)
+pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p,
+			const LOG_LSA * last_chkpt_lsa,
+			LOG_LSA * smallest_lsa)
 #endif				/* NDEBUG */
 {
   PGBUF_BCB *bufptr;

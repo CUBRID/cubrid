@@ -326,6 +326,10 @@ extern "C"
     unsigned int fc_num_log_pages;
     unsigned int fc_num_pages;
     unsigned int fc_tokens;
+
+    unsigned int prior_lsa_list_size;
+    unsigned int prior_lsa_list_maxed;
+    unsigned int prior_lsa_list_removed;
   } T_CM_DB_EXEC_STAT;
 
   int cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat,

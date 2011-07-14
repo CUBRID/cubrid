@@ -68,17 +68,6 @@
 /* Volid of copies */
 #define LOG_DBCOPY_VOLID         (LOG_DBFIRST_VOLID - 19)
 
-
-typedef struct log_data_addr LOG_DATA_ADDR;
-struct log_data_addr
-{
-  const VFID *vfid;		/* File where the page belong or NULL when the page is not
-				 * associated with a file
-				 */
-  PAGE_PTR pgptr;
-  PGLENGTH offset;		/* Offset or slot */
-};
-
 extern const char *log_to_string (LOG_RECTYPE type);
 extern bool log_is_in_crash_recovery (void);
 extern LOG_LSA *log_get_restart_lsa (void);
@@ -185,7 +174,6 @@ extern void log_append_postpone (THREAD_ENTRY * thread_p,
 				 LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				 int length, const void *data);
 extern void log_append_compensate (THREAD_ENTRY * thread_p,
-				   LOG_RECTYPE compensate_type,
 				   LOG_RCVINDEX rcvindex, const VPID * vpid,
 				   PGLENGTH offset, PAGE_PTR pgptr,
 				   int length, const void *data,
@@ -194,8 +182,6 @@ extern void log_append_logical_compensate (THREAD_ENTRY * thread_p,
 					   LOG_RCVINDEX rcvindex,
 					   LOG_TDES * tdes,
 					   LOG_LSA * undo_nxlsa);
-extern void log_append_dummy_record (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
-				     LOG_RECTYPE logrec_type);
 extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
 extern void log_append_empty_record (THREAD_ENTRY * thread_p,
 				     LOG_RECTYPE logrec_type);
