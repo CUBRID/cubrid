@@ -166,10 +166,12 @@ extern INT16 disk_get_all_total_free_numpages (THREAD_ENTRY * thread_p,
 					       INT16 * nvols,
 					       int *total_pages,
 					       int *free_pages);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern INT16 disk_get_first_total_free_numpages (THREAD_ENTRY * thread_p,
 						 DISK_VOLPURPOSE purpose,
 						 INT32 * ntotal_pages,
 						 INT32 * nfree_pgs);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern INT16 xdisk_get_purpose_and_sys_lastpage (THREAD_ENTRY * thread_p,
 						 INT16 volid,
 						 DISK_VOLPURPOSE *

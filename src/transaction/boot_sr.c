@@ -1413,9 +1413,7 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
   char *temp_path;
   const char *temp_name;
   char temp_path_buf[PATH_MAX];
-  DKNPAGES total_pgs, free_pgs;
   DKNPAGES ext_npages, part_npages;
-  VOLID nvols;
   bool temp_is_added = false;
 
   if (boot_Temp_volumes_max_pages == -2)
@@ -1498,46 +1496,17 @@ boot_add_temp_volume (THREAD_ENTRY * thread_p, DKNPAGES min_npages)
   fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name,
 				temp_volid);
 
-  /*
-   * The heuristic of calculating the size of temporary temp purpose volume
-   * is completely revised.
-   * If the database has a permanent temp purpose volume, use that size.
-   * Otherwise, the average used size of the all volumes except for
-   * temporary temp purpose volume will be applied.
-   */
-  if (disk_get_first_total_free_numpages (thread_p, DISK_PERMVOL_TEMP_PURPOSE,
-					  &total_pgs, &free_pgs) >= 0)
-    {
-      ext_npages = (DKNPAGES) (total_pgs * 0.2);	/* use the size as already created  */
-    }
-  else
-    {
-      VOLID ntemp_vols = 0;
-      DKNPAGES total_temp_pgs = 0, free_temp_pgs = 0;
-
-      if (disk_get_all_total_free_numpages
-	  (thread_p, DISK_UNKNOWN_PURPOSE, &nvols, &total_pgs,
-	   &free_pgs) <= 0)
-	{
-	  csect_exit (CSECT_BOOT_SR_DBPARM);
-
-	  return NULL_VOLID;
-	}
-
-      disk_get_all_total_free_numpages (thread_p, DISK_TEMPVOL_TEMP_PURPOSE,
-					&ntemp_vols, &total_temp_pgs,
-					&free_temp_pgs);
-      ext_npages = ((total_pgs - total_temp_pgs) -
-		    (free_pgs - free_temp_pgs)) / (nvols - ntemp_vols);
-    }
-
   part_npages = (fileio_get_number_of_partition_free_pages (temp_vol_fullname,
 							    IO_PAGESIZE)
 		 - BOOT_LEAVE_SAFE_OSDISK_PARTITION_FREE_SPACE);
 
-  if (ext_npages > part_npages && part_npages >= 0)
+  if (min_npages > part_npages && part_npages >= 0)
     {
       ext_npages = part_npages;
+    }
+  else
+    {
+      ext_npages = min_npages;
     }
 
   /* Do not overpass any limit indicated by system parameters */

@@ -5926,6 +5926,7 @@ disk_rv_dump_set_boot_hfid (FILE * fp, int length_ignore, void *data)
 	   hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * disk_get_first_total_free_numpages () -
  *   return:
@@ -5974,6 +5975,7 @@ disk_get_first_total_free_numpages (THREAD_ENTRY * thread_p,
 
   return -1;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * disk_set_alloctables () -
