@@ -3474,21 +3474,10 @@ disk_alloc_page (THREAD_ENTRY * thread_p, INT16 volid, INT32 sectid,
       sectid = DISK_SECTOR_WITH_ALL_PAGES;
     }
 
-  /*
-   * If the total number of free pages is smaller than the rquested and
-   * the volume is a temporary volume, try to expand the volume before
-   * we continue.
+  /* If this volume does not have enough pages to allocate, we just give up
+   * here. The caller will add a new volume or pick another volume, and then
+   * retry to allocate pages.
    */
-  if (vhdr->free_pages < npages && vol_purpose == DISK_TEMPVOL_TEMP_PURPOSE)
-    {
-      if (npages >= (((vhdr->sys_lastpage - vhdr->page_alloctb_page1 + 1) *
-		      DISK_PAGE_BIT) - vhdr->total_pages))
-	{
-	  /* Likely, we will be able to expand the temporary volume */
-	  (void) boot_add_temp_volume (thread_p, npages);
-	}
-    }
-
   if (vhdr->free_pages < npages)
     {
       pgbuf_unfix_and_init (thread_p, addr.pgptr);

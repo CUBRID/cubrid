@@ -2387,7 +2387,8 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  error = sort_read_area (thread_p,
 						  &sort_param->temp[act],
 						  cur_page[act], read_pages,
-						  sort_param->internal_memory);
+						  sort_param->
+						  internal_memory);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -2760,7 +2761,8 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		      if (sort_param->
 			  file_contents[big_index].num_pages[sort_param->
 							     file_contents
-							     [big_index].first_run])
+							     [big_index].
+							     first_run])
 			{
 			  /* There are still some pages in the current input
 			     run */
@@ -2771,7 +2773,8 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			    sort_param->
 			    file_contents[big_index].num_pages[sort_param->
 							       file_contents
-							       [big_index].first_run];
+							       [big_index].
+							       first_run];
 			  if (in_sectsize < read_pages)
 			    {
 			      read_pages = in_sectsize;
@@ -2797,8 +2800,9 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  sort_param->
 			    file_contents[big_index].num_pages[sort_param->
 							       file_contents
-							       [big_index].first_run]
-			    -= read_pages;
+							       [big_index].
+							       first_run] -=
+			    read_pages;
 			}
 		      else
 			{
@@ -3270,7 +3274,8 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			  error = sort_read_area (thread_p,
 						  &sort_param->temp[act],
 						  cur_page[act], read_pages,
-						  sort_param->internal_memory);
+						  sort_param->
+						  internal_memory);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
@@ -3621,7 +3626,8 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 			    sort_param->
 			    file_contents[big_index].num_pages[sort_param->
 							       file_contents
-							       [big_index].first_run];
+							       [big_index].
+							       first_run];
 			  if (in_sectsize < read_pages)
 			    {
 			      read_pages = in_sectsize;
@@ -4237,27 +4243,38 @@ sort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p,
    * to be log on the page. The pages are initialized at a later time.
    */
 
-  for (i = out_half; i < out_half + sort_param->half_files; i++)
+  /* Files are traversed in reverse order, in order to destroy unnecessary
+   * files first. It is expected that returned pages will be reused by
+   * the next allocation.
+   */
+  for (i = out_half + sort_param->half_files - 1; i >= out_half; i--)
     {
-      contains = file_get_numpages (thread_p, &sort_param->temp[i]);
-      alloc_pages = (needed_pages[i] - contains);
-      if (alloc_pages > 0)
+      if (needed_pages[i] > 0)
 	{
-	  if (contains == 0)
+	  assert (!VFID_ISNULL (&sort_param->temp[i]));
+	  contains = file_get_numpages (thread_p, &sort_param->temp[i]);
+	  alloc_pages = (needed_pages[i] - contains);
+	  if (alloc_pages > 0)
 	    {
 	      (void) file_alloc_pages_as_noncontiguous (thread_p,
-							&sort_param->temp[i],
-							&new_vpid, &nthpg,
-							needed_pages[i], NULL,
-							NULL, NULL, NULL);
-	    }
-	  else
-	    {
-	      (void) file_alloc_pages_as_noncontiguous (thread_p,
-							&sort_param->temp[i],
+							&sort_param->
+							temp[i],
 							&new_vpid, &nthpg,
 							alloc_pages, NULL,
 							NULL, NULL, NULL);
+	    }
+	}
+      else
+	{
+	  /* If there is a file not to be used anymore, destroy it in order to
+	   * reuse spaces.
+	   */
+	  if (!VFID_ISNULL (&sort_param->temp[i]))
+	    {
+	      if (file_destroy (thread_p, &sort_param->temp[i]) == NO_ERROR)
+		{
+		  VFID_SET_NULL (&sort_param->temp[i]);
+		}
 	    }
 	}
     }
