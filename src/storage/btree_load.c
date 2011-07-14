@@ -92,9 +92,8 @@ struct load_args
 {				/* This structure is never written to disk; thus logical
 				   ordering of fields is ok. */
   BTID_INT *btid;
-  int init_pgcnt;		/* Initially allocated page count for index */
+  int allocated_pgcnt;		/* Allocated page count for index */
   int used_pgcnt;		/* Used page count for the index file */
-  int nodup_pgcnt;		/* No duplicate page count estimation for index */
   RECDES out_recdes;
   int max_recsize;		/* maximum record size that can be inserted into
 				   either an empty leaf page or into an empty
@@ -127,6 +126,11 @@ struct load_args
   int n_keys;			/* Number of keys */
 };
 
+/* While loading an index, BTREE_NUM_ALLOC_PAGES number of pages will be
+ * allocated if there is no more page can be used.
+ */
+#define BTREE_NUM_ALLOC_PAGES           (DISK_SECTOR_NPAGES)
+
 static bool btree_save_last_leafrec (THREAD_ENTRY * thread_p,
 				     LOAD_ARGS * load_args);
 static PAGE_PTR btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key,
@@ -140,8 +144,7 @@ static void btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid,
 static PAGE_PTR btree_get_page (THREAD_ENTRY * thread_p, BTID * btid,
 				VPID * page_id, VPID * nearpg,
 				BTREE_NODE_HEADER * header, short node_type,
-				int *init_pgcnt, int *used_pgcnt,
-				int nodup_pgcnt);
+				int *allocated_pgcnt, int *used_pgcnt);
 static PAGE_PTR btree_proceed_leaf (THREAD_ENTRY * thread_p,
 				    LOAD_ARGS * load_args);
 static int btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key,
@@ -200,16 +203,13 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 {
   SORT_ARGS sort_args_info, *sort_args;
   LOAD_ARGS load_args_info, *load_args;
-  int est_obj_cnt, key_len, init_pgcnt, used_pgcnt, i, k, est1, est2;
-  int num_sort_pages, file_created = 0, cur_class, attr_offset;
+  int init_pgcnt, i, first_alloc_nthpage;
+  int file_created = 0, cur_class, attr_offset;
   VPID vpid;
   INT16 save_volid;
   FILE_BTREE_DES btdes;
   BTID_INT btid_int;
   LOG_DATA_ADDR addr;
-  char midxkeybuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
-
-  aligned_midxkey_buf = PTR_ALIGN (midxkeybuf, MAX_ALIGNMENT);
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -322,143 +322,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
     }
   sort_args->attrinfo_inited = 1;
 
-  /* get an estimate of number of index pages to be created
-   * assume that all the objects have distinct keys.
+  /* There is no estimation for the number of pages to be used.
+   * We will allocate pages on demand.
    */
-  for (i = 0, est_obj_cnt = 0; i < sort_args->n_classes; i++)
-    {
-      int obj_cnt;
-      if (!HFID_IS_NULL (&hfids[i]))
-	{
-	  obj_cnt = heap_estimate_num_objects (thread_p, &hfids[i]);
-	  if (obj_cnt == -1)
-	    {
-	      goto error;
-	    }
-	  est_obj_cnt += obj_cnt;
-	}
-    }
-
-  key_len = tp_domain_disk_size (key_type);
-
-  /* set the key length information for index page estimations */
-  if (key_len == -1)
-    {
-      SCAN_CODE hf_scan;	/* Heap file scan result               */
-      OID prev_oid;		/* Previous object identifier          */
-      DB_VALUE *dbvalue_ptr;	/* Pointer to Key dbvalue              */
-      DB_VALUE dbvalue;		/* Key dbvalue                         */
-      int key_cnt;		/* Number of keys considered           */
-      int sum_key_len;		/* Total key length up to now          */
-
-      /* for variable size key types, instead of using a constant value
-       * get the first heap file page and get the average key
-       * length from the first heap file page objects. This makes
-       * an extra page access, but it may prevent allocating many
-       * more pages for the index than is necessary. Moreover, the
-       * first heap file page will very soon be accessed anyway.
-       * It will then already be in the page buffer pool.
-       */
-
-#define BTREE_AVG_STRING_KEY_LEN 25
-
-      key_len = BTREE_AVG_STRING_KEY_LEN;
-      key_cnt = 0;
-      sum_key_len = 0;
-      OID_SET_NULL (&prev_oid);
-      sort_args->in_recdes.area_size = -1;
-      hf_scan = heap_first (thread_p, &sort_args->hfids[cur_class],
-			    &sort_args->class_ids[cur_class],
-			    &sort_args->cur_oid, &sort_args->in_recdes,
-			    &sort_args->hfscan_cache, PEEK);
-      while (hf_scan == S_SUCCESS
-	     && (OID_ISNULL (&prev_oid)
-		 || sort_args->cur_oid.pageid == prev_oid.pageid))
-	{
-	  /* still in first page */
-	  if (sort_args->n_attrs == 1)
-	    {			/* single-column index */
-	      if (heap_attrinfo_read_dbvalues (thread_p, &sort_args->cur_oid,
-					       &sort_args->in_recdes,
-					       &sort_args->attr_info) !=
-		  NO_ERROR)
-		{
-		  hf_scan = S_ERROR;
-		  continue;
-		}
-	    }
-
-	  dbvalue_ptr =
-	    heap_attrinfo_generate_key (thread_p, sort_args->n_attrs,
-					&sort_args->attr_ids[attr_offset],
-					(sort_args->attrs_prefix_length
-					 ?
-					 &sort_args->attrs_prefix_length
-					 [attr_offset] : NULL),
-					&sort_args->attr_info,
-					&sort_args->in_recdes, &dbvalue,
-					aligned_midxkey_buf);
-	  if (dbvalue_ptr == NULL || db_value_is_null (dbvalue_ptr))
-	    {
-	      hf_scan = S_ERROR;
-	      continue;
-	    }
-
-	  key_cnt++;
-	  key_len = btree_get_key_length (dbvalue_ptr);
-	  sum_key_len += key_len;
-
-	  COPY_OID (&prev_oid, &sort_args->cur_oid);
-	  hf_scan =
-	    heap_next (thread_p, &sort_args->hfids[0],
-		       &sort_args->class_ids[0], &sort_args->cur_oid,
-		       &sort_args->in_recdes, &sort_args->hfscan_cache, PEEK);
-
-	  if (dbvalue_ptr == &dbvalue)
-	    {
-	      pr_clear_value (&dbvalue);
-	    }
-	}			/* while */
-
-      /* Note: If there is an error, continue, since this is only for
-       * estimation purposes.
-       */
-
-      if (key_cnt > 0 && sum_key_len > 0)
-	{
-	  key_len = (int) (sum_key_len / key_cnt);
-	}
-
-      /*
-       * Set the current oid for scan cache purpose back to NULL, so we can
-       * start the sort from the first heap object
-       */
-      OID_SET_NULL (&sort_args->cur_oid);
-    }
-
-  /*
-   * estimate number of index pages with no duplicates and 50% duplicates
-   * The calculated number of pages without duplicates is a good estimate
-   * for the first phase of the sort-merge. The 50% duplicates is used
-   * to pre-allocate the pages for the index. If more pages are needed, they
-   * are allocated at a later time in sets.
-   */
-
-  num_sort_pages =
-    btree_estimate_total_numpages (thread_p, est_obj_cnt, key_len,
-				   est_obj_cnt, &est1, &est2);
-
-  if (est_obj_cnt > 100)
-    {
-      init_pgcnt =
-	btree_estimate_total_numpages (thread_p,
-				       (int) (est_obj_cnt * 0.50) + 1,
-				       key_len, est_obj_cnt, &est1, &est2);
-    }
-  else
-    {
-      init_pgcnt = num_sort_pages;
-    }
+  init_pgcnt = BTREE_NUM_ALLOC_PAGES;
 
   if (file_create (thread_p, &btid->vfid, init_pgcnt, FILE_BTREE, &btdes,
 		   &vpid, 1) == NULL)
@@ -476,7 +343,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
    *       since this is a new file.
    *       The pages are initialized in btree_get_page
    */
-  if (file_alloc_pages_as_noncontiguous (thread_p, &btid->vfid, &vpid, &est1,
+  if (file_alloc_pages_as_noncontiguous (thread_p, &btid->vfid, &vpid,
+					 &first_alloc_nthpage,
 					 init_pgcnt, NULL, NULL,
 					 NULL, NULL) == NULL)
     {
@@ -486,11 +354,12 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
       if (init_pgcnt > 0)
 	{
 	  if (file_alloc_pages_as_noncontiguous (thread_p, &btid->vfid, &vpid,
-						 &est1, init_pgcnt, NULL,
+						 &first_alloc_nthpage,
+						 init_pgcnt, NULL,
 						 NULL, NULL, NULL) == NULL)
 	    {
 	      /* allocate pages one by one */
-	      for (k = 0; k < init_pgcnt; k++)
+	      for (i = 0; i < init_pgcnt; i++)
 		{
 		  if (file_alloc_pages (thread_p, &btid->vfid, &vpid, 1,
 					NULL, NULL, NULL) == NULL)
@@ -498,20 +367,17 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
 		      break;
 		    }
 		}
-	      init_pgcnt = k;	/* add also the root page allocated */
+	      init_pgcnt = i;	/* add also the root page allocated */
 	    }
 	}
     }
 
   init_pgcnt++;			/* increment for the root page allocated */
 
-  used_pgcnt = 1;		/* set used page count (first page used for root) */
-
     /** Initialize the fields of loading argument structures **/
   load_args->btid = &btid_int;
-  load_args->init_pgcnt = init_pgcnt;
-  load_args->used_pgcnt = used_pgcnt;
-  load_args->nodup_pgcnt = num_sort_pages;
+  load_args->allocated_pgcnt = init_pgcnt;
+  load_args->used_pgcnt = 1;	/* set used page count (first page used for root) */
   db_make_null (&load_args->current_key);
   VPID_SET_NULL (&load_args->nleaf.vpid);
   load_args->nleaf.pgptr = NULL;
@@ -529,8 +395,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
       goto error;
     }
 
-  /* Build the leaf pages of the btree as the output of the sort */
-  if (btree_index_sort (thread_p, sort_args, num_sort_pages,
+  /* Build the leaf pages of the btree as the output of the sort.
+   * We do not estimate the number of pages required.
+   */
+  if (btree_index_sort (thread_p, sort_args, 0,
 			btree_construct_leafs, load_args) != NO_ERROR)
     {
       goto error;
@@ -580,7 +448,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type,
       pr_clear_value (&load_args->current_key);
 
       /* deallocate unused pages from the index file */
-      if (load_args->used_pgcnt < load_args->init_pgcnt
+      if (load_args->used_pgcnt < load_args->allocated_pgcnt
 	  && file_truncate_to_numpages (thread_p, &btid->vfid,
 					load_args->used_pgcnt) != NO_ERROR)
 	{
@@ -891,8 +759,7 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
 	btree_get_page (thread_p, load_args->btid->sys_btid,
 			&load_args->nleaf.vpid, &load_args->nleaf.vpid,
 			&load_args->nleaf.hdr, BTREE_NON_LEAF_NODE,
-			&load_args->init_pgcnt, &load_args->used_pgcnt,
-			load_args->nodup_pgcnt);
+			&load_args->allocated_pgcnt, &load_args->used_pgcnt);
       if (load_args->nleaf.pgptr == NULL)
 	{
 	  return NULL;
@@ -988,9 +855,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 					   &load_args->nleaf.vpid,
 					   &load_args->nleaf.hdr,
 					   BTREE_NON_LEAF_NODE,
-					   &load_args->init_pgcnt,
-					   &load_args->used_pgcnt,
-					   load_args->nodup_pgcnt);
+					   &load_args->allocated_pgcnt,
+					   &load_args->used_pgcnt);
   if (load_args->nleaf.pgptr == NULL)
     {
       goto exit_on_error;
@@ -1207,8 +1073,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
 	btree_get_page (thread_p, load_args->btid->sys_btid,
 			&load_args->nleaf.vpid, &load_args->nleaf.vpid,
 			&load_args->nleaf.hdr, BTREE_NON_LEAF_NODE,
-			&load_args->init_pgcnt, &load_args->used_pgcnt,
-			load_args->nodup_pgcnt);
+			&load_args->allocated_pgcnt, &load_args->used_pgcnt);
       if (load_args->nleaf.pgptr == NULL)
 	{
 	  goto exit_on_error;
@@ -1384,7 +1249,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
   memcpy (next_pageptr, load_args->nleaf.pgptr, DB_PAGESIZE);
   pgbuf_unfix_and_init (thread_p, load_args->nleaf.pgptr);
 
-  if (load_args->used_pgcnt > load_args->init_pgcnt)
+  if (load_args->used_pgcnt > load_args->allocated_pgcnt)
     {
       /* deallocate this last page of index file
        * Note: If used_pgcnt is less than init_pgcnt, this last page
@@ -1484,9 +1349,8 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr)
  *               (must be NULL if the new page is going to be an overflow page)
  *   node_type(in): type of the node the page will be used as (either 1,
  *                  or 0)
- *   init_pgcnt(in): The number of pages already allocated
+ *   allocated_pgcnt(in): The number of pages already allocated
  *   used_pgcnt(in): The number of in use pages that has been allocated
- *   nodup_pgcnt(in): The number of estimated pages without duplicates keys
  *
  * Note: This function allocates a new page for the B+Tree index.
  * The page is initialized and the node header is inserted before
@@ -1495,7 +1359,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr)
 static PAGE_PTR
 btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
 		VPID * nearpg, BTREE_NODE_HEADER * header, short node_type,
-		int *init_pgcnt, int *used_pgcnt, int nodup_pgcnt)
+		int *allocated_pgcnt, int *used_pgcnt)
 {
   PAGE_PTR page_ptr = NULL;
   VPID ovf_vpid = { NULL_PAGEID, NULL_VOLID };
@@ -1509,7 +1373,7 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
   temp_recdes.data = OR_ALIGNED_BUF_START (a_temp_data);
   temp_recdes.area_size = NODE_HEADER_SIZE;
 
-  if (*used_pgcnt < *init_pgcnt)
+  if (*used_pgcnt < *allocated_pgcnt)
     {				/* index has still unused pages */
       if (file_find_nthpages (thread_p, &btid->vfid, page_id, *used_pgcnt, 1)
 	  <= 0)
@@ -1519,20 +1383,6 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
     }
   else
     {
-
-      if ((num_pages = (int) ((nodup_pgcnt - *init_pgcnt) * 0.20)) < 500)
-	{
-	  num_pages = nodup_pgcnt - *init_pgcnt;
-	  if (num_pages > 500)
-	    {
-	      num_pages = 500;
-	    }
-	  else if (num_pages < 10)
-	    {
-	      num_pages = 10;
-	    }
-	}
-
       /*
        * Note: We do not initialize the allocated pages during the allocation
        *       since they belong to a new file and we do not perform any undo
@@ -1543,10 +1393,11 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
        */
 
       if (file_alloc_pages_as_noncontiguous (thread_p, &btid->vfid, page_id,
-					     &nthpage, num_pages, nearpg,
-					     NULL, NULL, NULL) != NULL)
+					     &nthpage, BTREE_NUM_ALLOC_PAGES,
+					     nearpg, NULL, NULL,
+					     NULL) != NULL)
 	{
-	  *init_pgcnt += num_pages;
+	  *allocated_pgcnt += BTREE_NUM_ALLOC_PAGES;
 	}
       else
 	{
@@ -1557,7 +1408,7 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
 	    }
 	  else
 	    {
-	      *init_pgcnt += 1;
+	      *allocated_pgcnt += 1;
 	    }
 	}
     }
@@ -1645,9 +1496,8 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
 				  &load_args->leaf.vpid,
 				  &new_leafhdr,
 				  BTREE_LEAF_NODE,
-				  &load_args->init_pgcnt,
-				  &load_args->used_pgcnt,
-				  load_args->nodup_pgcnt);
+				  &load_args->allocated_pgcnt,
+				  &load_args->used_pgcnt);
   if (new_leafpgptr == NULL)
     {
       return NULL;
@@ -1851,8 +1701,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 	    btree_get_page (thread_p, load_args->btid->sys_btid,
 			    &load_args->leaf.vpid, &load_args->leaf.vpid,
 			    &load_args->leaf.hdr, BTREE_LEAF_NODE,
-			    &load_args->init_pgcnt, &load_args->used_pgcnt,
-			    load_args->nodup_pgcnt);
+			    &load_args->allocated_pgcnt,
+			    &load_args->used_pgcnt);
 	  if (load_args->leaf.pgptr == NULL)
 	    {
 	      goto error;
@@ -1921,9 +1771,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 			btree_get_page (thread_p, load_args->btid->sys_btid,
 					&new_ovfpgid, &load_args->ovf.vpid,
 					NULL, BTREE_LEAF_NODE,
-					&load_args->init_pgcnt,
-					&load_args->used_pgcnt,
-					load_args->nodup_pgcnt);
+					&load_args->allocated_pgcnt,
+					&load_args->used_pgcnt);
 		      if (new_ovfpgptr == NULL)
 			{
 			  goto error;
@@ -1980,9 +1829,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 					&load_args->ovf.vpid,
 					&load_args->ovf.vpid, NULL,
 					BTREE_LEAF_NODE,
-					&load_args->init_pgcnt,
-					&load_args->used_pgcnt,
-					load_args->nodup_pgcnt);
+					&load_args->allocated_pgcnt,
+					&load_args->used_pgcnt);
 		      if (load_args->ovf.pgptr == NULL)
 			{
 			  goto error;

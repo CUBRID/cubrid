@@ -1229,16 +1229,16 @@ disk_goodvol_find (THREAD_ENTRY * thread_p, INT16 hint_volid,
 	case DISK_NONCONTIGUOUS_SPANVOLS_PAGES:
 	  /*
 	   * Don't need to be contiguous, they can be on several volumes.
-	   * Accept this volume only if it has at least 25 % of the expected
-	   * number of pages are located in one volume, and the number of
-	   * allocated pages are larger than a sector.
+	   *
+	   * We will use this volume only if it has at least 100 free pages.
+	   * This function may be called when creating a file or making a
+	   * new allocset. In this case, we think that it's better to create
+	   * a new volume if a small number of pages can be used on this volume.
+	   * It is expected that free pages will be used by another file located
+	   * on this volume.
 	   */
 	  if (best_volid != NULL_VOLID
-	      && best_numpages < exp_numpages
-	      && (exp_numpages < (DISK_SECTOR_NPAGES / 2)
-		  || best_numpages < (exp_numpages / 4)
-		  || (disk_get_max_numpages (thread_p,
-					     vol_purpose) < exp_numpages)))
+	      && best_numpages < DISK_SECTOR_NPAGES * 10)
 	    {
 	      /* Don't have enough pages */
 	      best_volid = NULL_VOLID;
