@@ -15368,7 +15368,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      continue;
 	    }
 
-	  cl_name_node = node->info.spec.range_var;
+	  cl_name_node = node->info.spec.flat_entity_list;
 	  class_obj = cl_name_node->info.name.db_object;
 	  if (class_obj)
 	    {
