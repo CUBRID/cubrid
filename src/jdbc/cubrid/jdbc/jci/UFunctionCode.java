@@ -85,4 +85,5 @@ abstract class UFunctionCode {
 	final static byte READ_LOB = 37;
 	
 	final static byte END_SESSION = 38;
+	final static byte CURSOR_CLOSE = 41;
 }

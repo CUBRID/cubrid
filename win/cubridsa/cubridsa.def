@@ -612,6 +612,7 @@ EXPORTS
     db_seq_print
     db_seq_put
     db_seq_size
+    db_session_set_holdable
     db_set_add
     db_set_cardinality
     db_set_class_method_arg_domain

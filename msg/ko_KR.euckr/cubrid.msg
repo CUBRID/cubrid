@@ -1501,6 +1501,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 223 LIKE 구문에 이스케이프 문자가 지정되어야 합니다. '%1$s'과 '%2$s' 시스템 파라미터에 대해서는 매뉴얼을 참고하시기 바랍니다.
 224 INDEX NONE 절에서는 KEYLIMIT을 사용할 수 없습니다.
 225 이 구문에서는 세션 변수를 사용할 수 없습니다.
+226 '%s' function can not be used in DEFAULT clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %d 바이트를 할당할 수 없습니다.

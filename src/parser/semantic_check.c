@@ -301,7 +301,7 @@ static int pt_collection_assignable (PARSER_CONTEXT * parser,
 				     const PT_NODE * s_col);
 static PT_NODE *pt_assignment_compatible (PARSER_CONTEXT * parser,
 					  PT_NODE * lhs, PT_NODE * rhs);
-static int pt_check_defaultf (PARSER_CONTEXT * parser, const PT_NODE * node);
+static int pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_vclass_union_spec (PARSER_CONTEXT * parser,
 					    PT_NODE * qry, PT_NODE * attrds);
 static int pt_check_group_concat_order_by (PARSER_CONTEXT * parser,
@@ -7570,33 +7570,19 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
 
       entity = NULL;
-      /* There must be only one entity in the entity spec list.
-         The non-ANSI optional class name does not matter!
-         This is for ansi compliance on guarding updatability. */
-      if (node->info.delete_.spec != NULL
-	  && node->info.delete_.spec->next != NULL)
-	{
-	  PT_ERRORm (parser, node,
-		     MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_DELETE_1_CLASS_ONLY);
-	  break;
-	}
 
-      /* Make sure the class of the delete is not a derived table */
-      if (node->info.delete_.class_name != NULL)
+      /* Make sure that none of the classes that are subject for delete is a
+       * derived table */
+      t_node = node->info.delete_.target_classes;
+      while (t_node)
 	{
-	  for (entity = node->info.delete_.spec;
-	       entity && (entity->info.spec.id !=
-			  node->info.delete_.class_name->info.name.spec_id);)
-	    {
-	      entity = entity->next;
-	    }
+	  entity = pt_find_spec_in_from_list (parser, node, t_node);
 
 	  if (entity == NULL)
 	    {
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 			  MSGCAT_SEMANTIC_RESOLUTION_FAILED,
-			  node->info.delete_.class_name->info.name.original);
+			  t_node->info.name.original);
 	      break;
 	    }
 
@@ -7606,15 +7592,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 			 MSGCAT_SEMANTIC_DELETE_DERIVED_TABLE);
 	      break;
 	    }
-	}
-      else if (node->info.delete_.spec != NULL
-	       && node->info.delete_.spec->info.spec.derived_table != NULL)
-	{
-	  /* There is only one thing in entity list, make sure it is
-	     not a derived table. */
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_DELETE_DERIVED_TABLE);
-	  break;
+
+	  t_node = t_node->next;
 	}
 
       node = pt_semantic_type (parser, node, info);
@@ -7989,7 +7968,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_NAME:
       {
 	if (PT_IS_OID_NAME (node) &&
-	    !PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_GENERATED_OID))
+	    !PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_GENERATED_OID) &&
+	    !PT_NAME_INFO_IS_FLAGED (node, PT_NAME_ALLOW_REUSABLE_OID))
 	  {
 	    PT_NODE *data_type = node->data_type;
 
@@ -8148,8 +8128,8 @@ pt_gen_isnull_preds (PARSER_CONTEXT * parser,
 	  if (arg2->data_type
 	      && ((new_path->data_type = parser_copy_tree_list (parser,
 								arg2->
-								data_type)) ==
-		  NULL))
+								data_type))
+		  == NULL))
 	    {
 	      goto out_of_mem;
 	    }
@@ -11185,7 +11165,7 @@ pt_find_class_of_index (PARSER_CONTEXT * parser, const char *const index_name,
  *   node(in): the node to check
  */
 static int
-pt_check_defaultf (PARSER_CONTEXT * parser, const PT_NODE * node)
+pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *arg;
 
@@ -11200,7 +11180,6 @@ pt_check_defaultf (PARSER_CONTEXT * parser, const PT_NODE * node)
 
   arg = node->info.expr.arg1;
 
-  assert (arg != NULL);
   if (arg == NULL || arg->node_type != PT_NAME)
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
@@ -11236,6 +11215,7 @@ pt_check_defaultf (PARSER_CONTEXT * parser, const PT_NODE * node)
 	{
 	  if ((db_attribute_is_primary_key (db_att) ||
 	       db_attribute_is_non_null (db_att)) &&
+	      arg->info.name.default_value->node_type == PT_VALUE &&
 	      DB_IS_NULL (&
 			  (arg->info.name.default_value->info.value.
 			   db_value)))

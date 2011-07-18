@@ -97,6 +97,7 @@ abstract public class UErrorCode {
 	public static final int CAS_ER_STMT_POOLING = -1024;
 	public static final int CAS_ER_DBSERVER_DISCONNECTED = -1025;
 	public static final int CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED = -1026;
+	public static final int CAS_ER_HOLDABLE_NOT_ALLOWED = -1027;
 	public static final int CAS_ER_NOT_IMPLEMENTED = -1100;
 	public static final int CAS_ER_IS = -1200;
 
@@ -168,7 +169,7 @@ abstract public class UErrorCode {
 	}
 
 	private static void setCASMessageHash() {
-		CASMessageString = new Hashtable(29);
+		CASMessageString = new Hashtable(30);
 
 		CASMessageString.put(new Integer(CAS_ER_DBMS),
 				"Database connection error");
@@ -219,6 +220,8 @@ abstract public class UErrorCode {
 				"DB Server disconnected");
 		CASMessageString.put(new Integer(CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED),
 				"Cannot prepare more than MAX_PREPARED_STMT_COUNT statements");
+		CASMessageString.put(new Integer(CAS_ER_HOLDABLE_NOT_ALLOWED),
+				"Holdable results may not be updatable or sensitive");
 		CASMessageString.put(new Integer(CAS_ER_NOT_IMPLEMENTED),
 				"Attempt to use a not supported service");
 		CASMessageString.put(new Integer(CAS_ER_IS), "Authentication failure");

@@ -512,6 +512,10 @@ struct xasl_node
 				 */
 
   int composite_locking;
+  int upd_del_class_cnt;	/* number of classes affected by update or
+				 * delete (used only in case of UPDATE or
+				 * DELETE in the generated SELECT statement)
+				 */
   LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite
 					 * locking for queries which obtain
 					 * candidate rows for updates/deletes.

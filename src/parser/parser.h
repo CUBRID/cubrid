@@ -559,6 +559,9 @@ extern "C"
 				    void *arg, int *continue_walk);
   extern PT_NODE *pt_find_spec_post (PARSER_CONTEXT * parser, PT_NODE * node,
 				     void *arg, int *continue_walk);
+  extern PT_NODE *pt_find_spec_in_from_list (PARSER_CONTEXT * parser,
+					     const PT_NODE * from,
+					     const PT_NODE * name);
   extern PT_NODE *pt_is_aggregate_node (PARSER_CONTEXT * parser,
 					PT_NODE * tree, void *arg,
 					int *continue_walk);
@@ -767,6 +770,12 @@ extern "C"
   extern bool pt_list_has_logical_nodes (PT_NODE * list);
   extern bool pt_is_pseudo_const (PT_NODE * expr);
   extern bool pt_is_op_hv_late_bind (PT_OP_TYPE op);
+  extern PT_OP_TYPE pt_op_type_from_default_expr (DB_DEFAULT_EXPR_TYPE
+						  expr_type);
+  extern void pt_mark_spec_list_for_update (PARSER_CONTEXT * parser,
+					    PT_NODE * update_statement);
+  extern void pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
+					    PT_NODE * delete_statement);
 
 #ifdef __cplusplus
 }

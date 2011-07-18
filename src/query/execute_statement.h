@@ -186,4 +186,6 @@ extern int do_prepare_session_statement (PARSER_CONTEXT * parser,
 					 PT_NODE * statement);
 extern int do_execute_session_statement (PARSER_CONTEXT * parser,
 					 PT_NODE * statement);
+extern int do_evaluate_default_expr (PARSER_CONTEXT * parser,
+				     PT_NODE * class_name);
 #endif /* _EXECUTE_STATEMENT_H_ */

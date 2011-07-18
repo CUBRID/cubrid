@@ -1050,10 +1050,11 @@ clear_new_unbound (char *obj, SM_CLASS * class_, SM_REPRESENTATION * oldrep)
 	  mem = obj + att->offset;
 	  /* initialize in case there isn't an initial value */
 	  PRIM_INITMEM (att->type, mem);
-	  if (!DB_IS_NULL (&att->original_value))
+	  if (!DB_IS_NULL (&att->default_value.original_value))
 	    {
 	      /* assign the initial value, should check for non-existance ? */
-	      PRIM_SETMEM (att->type, att->domain, mem, &att->original_value);
+	      PRIM_SETMEM (att->type, att->domain, mem,
+			   &att->default_value.original_value);
 	      if (!att->type->variable_p)
 		{
 		  OBJ_SET_BOUND_BIT (obj, att->storage_order);
@@ -2794,12 +2795,13 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   /* initial value variable */
   or_put_offset (buf, offset);
   /* could avoid domain tag here ? */
-  offset += or_packed_value_size (&att->value, 1, 1, 0);
+  offset += or_packed_value_size (&att->default_value.value, 1, 1, 0);
 
   /* original value */
   or_put_offset (buf, offset);
   /* could avoid domain tag here ? */
-  offset += or_packed_value_size (&att->original_value, 1, 1, 0);
+  offset +=
+    or_packed_value_size (&att->default_value.original_value, 1, 1, 0);
 
   /* domain list */
   or_put_offset (buf, offset);
@@ -2839,14 +2841,17 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   or_put_int (buf, NULL_PAGEID);
   or_put_int (buf, 0);
 
+  /* default expression identifier */
+  or_put_int (buf, att->default_value.default_expr);
+
   /* name */
   put_string (buf, att->header.name);
 
   /* value/original value,
    * make sure the flags match the calls to or_packed_value_size above !
    */
-  or_put_value (buf, &att->value, 1, 1, 0);
-  or_put_value (buf, &att->original_value, 1, 1, 0);
+  or_put_value (buf, &att->default_value.value, 1, 1, 0);
+  or_put_value (buf, &att->default_value.original_value, 1, 1, 0);
 
   /* domain */
   put_substructure_set (buf, (DB_LIST *) att->domain,
@@ -2884,8 +2889,8 @@ attribute_size (SM_ATTRIBUTE * att)
     OR_VAR_TABLE_SIZE (tf_Metaclass_attribute.n_variable);
 
   size += string_disk_size (att->header.name);
-  size += or_packed_value_size (&att->value, 1, 1, 0);
-  size += or_packed_value_size (&att->original_value, 1, 1, 0);
+  size += or_packed_value_size (&att->default_value.value, 1, 1, 0);
+  size += or_packed_value_size (&att->default_value.original_value, 1, 1, 0);
   size +=
     substructure_set_size ((DB_LIST *) att->domain, (LSIZER) domain_size);
 
@@ -2963,15 +2968,18 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
       (void) or_get_int (buf, &rc);
       (void) or_get_int (buf, &rc);
 
+      /* default expression identifier */
+      att->default_value.default_expr = or_get_int (buf, &rc);
+
       /* variable attribute 0 : name */
       att->header.name = get_string (buf, vars[ORC_ATT_NAME_INDEX].length);
 
       /* variable attribute 1 : value */
-      or_get_value (buf, &att->value, NULL,
+      or_get_value (buf, &att->default_value.value, NULL,
 		    vars[ORC_ATT_CURRENT_VALUE_INDEX].length, true);
 
       /* variable attribute 2 : original value */
-      or_get_value (buf, &att->original_value, NULL,
+      or_get_value (buf, &att->default_value.original_value, NULL,
 		    vars[ORC_ATT_ORIGINAL_VALUE_INDEX].length, true);
 
       /* variable attribute 3 : domain */

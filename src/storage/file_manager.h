@@ -235,6 +235,8 @@ extern VFID *file_create_queryarea (THREAD_ENTRY * thread_p, VFID * vfid,
 extern int file_create_hint_numpages (THREAD_ENTRY * thread_p,
 				      INT32 exp_numpages,
 				      FILE_TYPE file_type);
+extern int file_preserve_temporary (THREAD_ENTRY * thread_p,
+				    const VFID * vfid);
 extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_mark_as_deleted (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern bool file_does_marked_as_deleted (THREAD_ENTRY * thread_p,

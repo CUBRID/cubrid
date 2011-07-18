@@ -703,6 +703,14 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode,
   char *tmp;
   int result_cache_lifetime;
 
+  if ((flag & CCI_PREPARE_UPDATABLE) && (flag & CCI_PREPARE_HOLDABLE))
+    {
+      /* do not allow updatable, holdable results */
+      err_code = ERROR_INFO_SET (CAS_ER_HOLDABLE_NOT_ALLOWED,
+				 CAS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+
   srv_h_id = hm_new_srv_handle (&srv_handle, query_seq_num);
   if (srv_h_id < 0)
     {
@@ -964,7 +972,16 @@ ux_end_tran (int tran_type, bool reset_con_status)
     }
   else
     {
-      hm_srv_handle_qresult_end_all ();
+      if (tran_type == CCI_TRAN_COMMIT)
+	{
+	  /* do not close holdable results on commit */
+	  hm_srv_handle_qresult_end_all (false);
+	}
+      else
+	{
+	  /* clear all queries */
+	  hm_srv_handle_qresult_end_all (true);
+	}
     }
 
 #else /* !LIBCAS_FOR_JSP */
@@ -1178,6 +1195,16 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size,
       srv_handle->q_result->async_flag = FALSE;
     }
 
+  if ((flag & CCI_EXEC_HOLDABLE)
+      && srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
+    {
+      hm_srv_handle_set_holdable (srv_handle, true);
+    }
+  else
+    {
+      hm_srv_handle_set_holdable (srv_handle, false);
+    }
+  db_session_set_holdable (srv_handle->session, srv_handle->is_holdable);
 #if 0				/* yaw */
   if ((err_code = check_class_chn (srv_handle)) < 0)
     {
@@ -2621,6 +2648,22 @@ cursor_update_error:
       obj_p = NULL;
     }
   return err_code;
+}
+
+void
+ux_cursor_close (T_SRV_HANDLE * srv_handle)
+{
+  int idx = 0;
+  if (srv_handle == NULL)
+    {
+      return;
+    }
+  idx = srv_handle->cur_result_index - 1;
+  if (idx < 0)
+    {
+      return;
+    }
+  db_query_end (srv_handle->q_result[idx].result);
 }
 
 int

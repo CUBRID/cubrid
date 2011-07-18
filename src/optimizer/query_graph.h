@@ -152,6 +152,9 @@ struct qo_index_entry
    */
   bool use_descending;
 
+  /* true if the index can be used as covering index */
+  bool is_iss_candidate;
+
   /*
    * the name of the first indexed attribute in a multi column index
    * the first indexed attribute contain valid statistics

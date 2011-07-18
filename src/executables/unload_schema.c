@@ -787,7 +787,8 @@ export_serial (FILE * outfp)
 	    }
 	}
 
-      fprintf (outfp, "call [find_user]('%s') on class [db_user] to [auser];\n",
+      fprintf (outfp,
+	       "call [find_user]('%s') on class [db_user] to [auser];\n",
 	       DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
       fprintf (outfp, "create serial %s%s%s\n",
 	       PRINT_IDENTIFIER (DB_PULL_STRING (&values[SERIAL_NAME])));
@@ -2229,22 +2230,46 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
     }
 
   default_value = db_attribute_default (attribute);
-  if (default_value != NULL && !DB_IS_NULL (default_value))
+  if ((default_value != NULL && !DB_IS_NULL (default_value))
+      || attribute->default_value.default_expr != DB_DEFAULT_NONE)
     {
       if (qualifier != SHARED_ATTRIBUTE)
 	{
 	  fprintf (output_file, " DEFAULT ");
 	}
 
-      /* these are set during the object load phase */
-      if (ex_contains_object_reference (default_value))
+      switch (attribute->default_value.default_expr)
 	{
-	  fprintf (output_file, "NULL");
-	}
-      else
-	{
-	  /* use the desc_ printer, need to have this in a better place */
-	  desc_value_fprint (output_file, default_value);
+	case DB_DEFAULT_SYSDATE:
+	  fprintf (output_file, "SYS_DATE");
+	  break;
+	case DB_DEFAULT_SYSDATETIME:
+	  fprintf (output_file, "SYS_DATETIME");
+	  break;
+	case DB_DEFAULT_SYSTIMESTAMP:
+	  fprintf (output_file, "SYS_TIMESTAMP");
+	  break;
+	case DB_DEFAULT_UNIX_TIMESTAMP:
+	  fprintf (output_file, "UNIX_TIMESTAMP");
+	  break;
+	case DB_DEFAULT_USER:
+	  fprintf (output_file, "USER");
+	  break;
+	case DB_DEFAULT_CURR_USER:
+	  fprintf (output_file, "CURRENT_USER");
+	  break;
+	default:
+	  /* these are set during the object load phase */
+	  if (ex_contains_object_reference (default_value))
+	    {
+	      fprintf (output_file, "NULL");
+	    }
+	  else
+	    {
+	      /* use the desc_ printer, need to have this in a better place */
+	      desc_value_fprint (output_file, default_value);
+	    }
+	  break;
 	}
     }
 

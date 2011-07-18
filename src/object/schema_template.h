@@ -53,7 +53,8 @@ extern int smt_add_attribute_w_dflt (DB_CTMPL * def,
 				     const char *domain_string,
 				     DB_DOMAIN * domain,
 				     DB_VALUE * default_value,
-				     const SM_NAME_SPACE name_space);
+				     const SM_NAME_SPACE name_space,
+				     DB_DEFAULT_EXPR_TYPE default_expr);
 
 extern int smt_add_attribute_w_dflt_w_order (DB_CTMPL * def,
 					     const char *name,
@@ -62,7 +63,9 @@ extern int smt_add_attribute_w_dflt_w_order (DB_CTMPL * def,
 					     DB_VALUE * default_value,
 					     const SM_NAME_SPACE name_space,
 					     const bool add_first,
-					     const char *add_after_attribute);
+					     const char *add_after_attribute,
+					     DB_DEFAULT_EXPR_TYPE
+					     default_expr);
 
 extern int smt_add_attribute_any (SM_TEMPLATE * template_,
 				  const char *name,
@@ -93,10 +96,13 @@ extern int smt_reset_attribute_domain (SM_TEMPLATE * template_,
 
 extern int smt_set_attribute_default (SM_TEMPLATE * template_,
 				      const char *name,
-				      int class_attribute, DB_VALUE * value);
+				      int class_attribute, DB_VALUE * value,
+				      DB_DEFAULT_EXPR_TYPE default_expr);
 
 static void smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att,
-						  DB_VALUE * new_orig_value);
+						  DB_VALUE * new_orig_value,
+						  DB_DEFAULT_EXPR_TYPE
+						  default_expr);
 
 extern int smt_add_constraint (SM_TEMPLATE * template_,
 			       DB_CONSTRAINT_TYPE constraint_type,
@@ -208,6 +214,8 @@ extern int smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
 						const SM_NAME_SPACE
 						name_space,
 						DB_VALUE * new_default_value,
+						DB_DEFAULT_EXPR_TYPE
+						new_def_expr,
 						const bool change_first,
 						const char
 						*change_after_attribute,

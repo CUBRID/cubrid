@@ -293,6 +293,19 @@ struct xasl_cache_entry_pool
   int free_list;		/* the head(first entry) of the free list */
 };
 
+/* used for unique statistics update in multi-table delete*/
+typedef struct btree_unique_stats_update_info BTREE_UNIQUE_STATS_UPDATE_INFO;
+struct btree_unique_stats_update_info
+{
+  int num_unique_btrees;	/* number of used elements in unique_stat_info
+				 * array */
+  int max_unique_btrees;	/* number of allocated elements in
+				 * unique_stat_info array */
+  bool scan_cache_inited;	/* true if scan_cache member has valid data */
+  HEAP_SCANCACHE scan_cache;	/* scan cache */
+  BTREE_UNIQUE_STATS *unique_stat_info;	/* array of statstical info */
+};
+
 static const int RESERVED_SIZE_FOR_XASL_CACHE_ENTRY =
   (FIXED_SIZE_OF_POOLED_XASL_CACHE_ENTRY -
    ADDITION_FOR_POOLED_XASL_CACHE_ENTRY);
@@ -825,79 +838,92 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_TUPLE_DESCRIPTOR *tdp;
   QFILE_LIST_ID *xlist_id;
   QPROC_TPLDESCR_STATUS tpldescr_status;
-  int ret = NO_ERROR;
+  int ret = NO_ERROR, idx;
 
   if (xasl->composite_locking)
     {
-      /* By convention, the first value in the outptr list is the instance
-       * OID, the second value in the outptr list is the class OID.
+      /* By convention, the first xasl->upd_del_class_cnt pairs
+       * of values must be: instance OID - class OID
        */
+      idx = 0;
       reg_varptr = xasl->outptr_list->valptrp;
-      if (xasl->outptr_list->valptr_cnt < 2)
+      while (reg_varptr && idx < xasl->upd_del_class_cnt)
 	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-      ret = fetch_peek_dbval (thread_p, &reg_varptr->value, &xasl_state->vd,
+	  if (reg_varptr->next == NULL)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  ret =
+	    fetch_peek_dbval (thread_p, &reg_varptr->value, &xasl_state->vd,
 			      NULL, NULL, NULL, &dbval);
-      if (ret != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      typ = db_value_domain_type (dbval);
-      if (typ == DB_TYPE_VOBJ)
-	{
-	  /* grab the real oid */
-	  ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
 	  if (ret != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
-	  dbval = &element;
+
 	  typ = db_value_domain_type (dbval);
-	}
+	  if (typ == DB_TYPE_VOBJ)
+	    {
+	      /* grab the real oid */
+	      ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
+	      if (ret != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      dbval = &element;
+	      typ = db_value_domain_type (dbval);
+	    }
 
-      if (typ != DB_TYPE_OID)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      COPY_OID (&instance_oid, DB_GET_OID (dbval));
-
-      reg_varptr = reg_varptr->next;
-      ret = fetch_peek_dbval (thread_p, &reg_varptr->value, &xasl_state->vd,
-			      NULL, NULL, NULL, &dbval);
-      if (ret != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      typ = db_value_domain_type (dbval);
-      if (typ == DB_TYPE_VOBJ)
-	{
-	  /* grab the real oid */
-	  ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
-	  if (ret != NO_ERROR)
+	  if (typ != DB_TYPE_OID)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
-	  dbval = &element;
-	  typ = db_value_domain_type (dbval);
-	}
 
-      if (typ != DB_TYPE_OID)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
+	  if (!DB_IS_NULL (dbval))
+	    {
+	      COPY_OID (&instance_oid, DB_GET_OID (dbval));
 
-      COPY_OID (&class_oid, DB_GET_OID (dbval));
+	      reg_varptr = reg_varptr->next;
 
-      ret =
-	lock_add_composite_lock (thread_p, &xasl->composite_lock,
-				 &instance_oid, &class_oid);
-      if (ret != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
+	      ret =
+		fetch_peek_dbval (thread_p, &reg_varptr->value,
+				  &xasl_state->vd, NULL, NULL, NULL, &dbval);
+	      if (ret != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      typ = db_value_domain_type (dbval);
+	      if (typ == DB_TYPE_VOBJ)
+		{
+		  /* grab the real oid */
+		  ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
+		  if (ret != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  dbval = &element;
+		  typ = db_value_domain_type (dbval);
+		}
+
+	      if (typ != DB_TYPE_OID)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      COPY_OID (&class_oid, DB_GET_OID (dbval));
+
+	      ret =
+		lock_add_composite_lock (thread_p, &xasl->composite_lock,
+					 &instance_oid, &class_oid);
+	      if (ret != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+
+	  idx++;
+	  reg_varptr = reg_varptr->next;
 	}
     }
 
@@ -7451,6 +7477,82 @@ exit_on_error:
 }
 
 /*
+ * qexec_update_btree_unique_stats_info () - updates statistical information
+ *	structure
+ *   return: NO_ERROR or ER_code
+ *   thread_p(in)   : 
+ *   info(in)     : structure to update
+ */
+static int
+qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p,
+				      BTREE_UNIQUE_STATS_UPDATE_INFO * info)
+{
+  int s, t;
+  BTREE_UNIQUE_STATS *temp_info = NULL;
+  int num_unique_btrees = info->num_unique_btrees;
+  int max_unique_btrees = info->max_unique_btrees;
+  BTREE_UNIQUE_STATS *unique_stat_info = info->unique_stat_info;
+  HEAP_SCANCACHE *scan_cache = &info->scan_cache;
+  int malloc_size;
+  char *ptr;
+
+  for (s = 0; s < scan_cache->num_btids; s++)
+    {
+      temp_info = &(scan_cache->index_stat_info[s]);
+      if (temp_info->num_nulls == 0
+	  && temp_info->num_keys == 0 && temp_info->num_oids == 0)
+	{
+	  continue;
+	}
+      /* non-unique index would be filtered out at above statement. */
+
+      for (t = 0; t < num_unique_btrees; t++)
+	{
+	  if (BTID_IS_EQUAL (&temp_info->btid, &unique_stat_info[t].btid))
+	    {
+	      break;
+	    }
+	}
+      if (t < num_unique_btrees)
+	{
+	  /* The same unique index has been found */
+	  unique_stat_info[t].num_nulls += temp_info->num_nulls;
+	  unique_stat_info[t].num_keys += temp_info->num_keys;
+	  unique_stat_info[t].num_oids += temp_info->num_oids;
+	}
+      else
+	{
+	  /* The same unique index has not been found */
+	  if (num_unique_btrees == max_unique_btrees)
+	    {
+	      /* need more space for storing the local stat info */
+	      max_unique_btrees += UNIQUE_STAT_INFO_INCREMENT;
+	      malloc_size = sizeof (BTREE_UNIQUE_STATS) * max_unique_btrees;
+	      ptr =
+		(char *) db_private_realloc (thread_p,
+					     unique_stat_info, malloc_size);
+	      if (ptr == NULL)
+		{
+		  info->num_unique_btrees = num_unique_btrees;
+		  return ER_FAILED;
+		}
+	      unique_stat_info = (BTREE_UNIQUE_STATS *) ptr;
+	      info->unique_stat_info = unique_stat_info;
+	      info->max_unique_btrees = max_unique_btrees;
+	    }
+	  t = num_unique_btrees;
+	  BTID_COPY (&unique_stat_info[t].btid, &temp_info->btid);
+	  unique_stat_info[t].num_nulls = temp_info->num_nulls;
+	  unique_stat_info[t].num_keys = temp_info->num_keys;
+	  unique_stat_info[t].num_oids = temp_info->num_oids;
+	  num_unique_btrees++;	/* increment */
+	}
+    }				/* for */
+  info->num_unique_btrees = num_unique_btrees;
+  return NO_ERROR;
+}
+
+/*
  * qexec_execute_delete () -
  *   return: NO_ERROR or ER_code
  *   xasl(in)   : XASL Tree block
@@ -7463,49 +7565,60 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 #define MIN_NUM_ROWS_FOR_MULTI_DELETE   20
 
   DELETE_PROC_NODE *delete_ = &xasl->proc.delete_;
-  SCAN_CODE xb_scan;
-  SCAN_CODE ls_scan;
-  XASL_NODE *aptr;
-  DB_VALUE *valp;
+  SCAN_CODE xb_scan = S_END;
+  SCAN_CODE ls_scan = S_END;
+  XASL_NODE *aptr = NULL;
+  DB_VALUE *valp = NULL;
   OID *oid = NULL;
   OID *class_oid = NULL;
-  OID prev_class_oid;
-  HFID *hfid = NULL;
+  OID *prev_class_oid = NULL;
+  HFID *hfid = NULL, **hfid_list = NULL;
   ACCESS_SPEC_TYPE *specp = NULL;
-  SCAN_ID *s_id;
+  SCAN_ID *s_id = NULL;
   LOG_LSA lsa;
   int savepoint_used = 0;
-  HEAP_SCANCACHE scan_cache;
-  bool scan_cache_inited = false;
-  int cl_index;
-  int force_count;
-  int op_type;
-  int s, t;
-  int num_unique_btrees, max_unique_btrees;
-  int malloc_size;
-  BTREE_UNIQUE_STATS *unique_stat_info = NULL;
-  BTREE_UNIQUE_STATS *temp_info;
-  QPROC_DB_VALUE_LIST del_valp_list;
-  char *ptr;
-
-
-  OID_SET_NULL (&prev_class_oid);
+  int class_oid_cnt = 0, class_oid_idx = 0;
+  int cl_index = 0;
+  int force_count = 0;
+  int op_type = SINGLE_ROW_DELETE;
+  int s = 0, t = 0;
+  int malloc_size = 0;
+  BTREE_UNIQUE_STATS_UPDATE_INFO *unique_stats_info = NULL;
+  QPROC_DB_VALUE_LIST val_list = NULL;
+  bool scan_open = false;
 
   aptr = xasl->aptr_list;
+  class_oid_cnt = aptr->upd_del_class_cnt;
 
-  for (specp = aptr->spec_list; specp; specp = specp->next)
+  /* set X_LOCK for deletable classes */
+  for (; aptr; aptr = aptr->scan_ptr)
     {
-      if (specp->type == TARGET_CLASS && specp->access == SEQUENTIAL)
+      for (specp = aptr->spec_list; specp; specp = specp->next)
 	{
-	  if (lock_object (thread_p, &(specp->s.cls_node.cls_oid),
-			   oid_Root_class_oid, X_LOCK,
-			   LK_UNCOND_LOCK) != LK_GRANTED)
+	  if (specp->type == TARGET_CLASS && specp->access == SEQUENTIAL)
 	    {
-	      qexec_failure_line (__LINE__, xasl_state);
-	      return ER_FAILED;
+	      class_oid = &specp->s.cls_node.cls_oid;
+
+	      /* only lock classes that are subject for delete */
+	      for (cl_index = 0; cl_index < delete_->no_classes; ++cl_index)
+		{
+		  if (OID_EQ (&delete_->class_oid[cl_index], class_oid))
+		    {
+		      if (lock_object (thread_p, class_oid,
+				       oid_Root_class_oid, X_LOCK,
+				       LK_UNCOND_LOCK) != LK_GRANTED)
+			{
+			  qexec_failure_line (__LINE__, xasl_state);
+			  return ER_FAILED;
+			}
+
+		      break;
+		    }
+		}
 	    }
 	}
     }
+  aptr = xasl->aptr_list;
 
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state) != NO_ERROR)
     {
@@ -7523,21 +7636,49 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       return ER_FAILED;
     }
 
-  /* Initialize operation type and other necessary things. */
+  /* Allocate array of scan cache and statistical info for each updatable
+   * table */
+  unique_stats_info =
+    (BTREE_UNIQUE_STATS_UPDATE_INFO *) db_private_alloc (thread_p,
+							 class_oid_cnt *
+							 sizeof
+							 (BTREE_UNIQUE_STATS_UPDATE_INFO));
+  if (unique_stats_info == NULL)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      return ER_FAILED;
+    }
+  for (t = 0; t < class_oid_cnt; t++)
+    {
+      unique_stats_info[t].scan_cache_inited = false;
+    }
+
+  /* Allocate and init structures for statistical information */
   if (aptr->list_id->tuple_cnt > MIN_NUM_ROWS_FOR_MULTI_DELETE)
     {
       op_type = MULTI_ROW_DELETE;
 
-      num_unique_btrees = 0;
-      max_unique_btrees = UNIQUE_STAT_INFO_INCREMENT;
-
       malloc_size = sizeof (BTREE_UNIQUE_STATS) * UNIQUE_STAT_INFO_INCREMENT;
-      unique_stat_info = (BTREE_UNIQUE_STATS *) db_private_alloc (thread_p,
-								  malloc_size);
-      if (unique_stat_info == NULL)
+      for (t = 0; t < class_oid_cnt; t++)
 	{
-	  qexec_failure_line (__LINE__, xasl_state);
-	  return ER_FAILED;
+	  unique_stats_info[t].num_unique_btrees = 0;
+	  unique_stats_info[t].max_unique_btrees = UNIQUE_STAT_INFO_INCREMENT;
+
+	  unique_stats_info[t].unique_stat_info =
+	    (BTREE_UNIQUE_STATS *) db_private_alloc (thread_p, malloc_size);
+	  if (unique_stats_info[t].unique_stat_info == NULL)
+	    {
+	      for (--t; t >= 0; t--)
+		{
+		  db_private_free (thread_p,
+				   unique_stats_info[t].unique_stat_info);
+		}
+
+	      db_private_free (thread_p, unique_stats_info);
+
+	      qexec_failure_line (__LINE__, xasl_state);
+	      return ER_FAILED;
+	    }
 	}
     }
   else
@@ -7557,10 +7698,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    */
   if (xtran_server_start_topop (thread_p, &lsa) != NO_ERROR)
     {
-      qexec_failure_line (__LINE__, xasl_state);
-      db_private_free (thread_p, unique_stat_info);
-      return ER_FAILED;
+      GOTO_EXIT_ON_ERROR;
     }
+
   savepoint_used = 1;
 
   specp = xasl->spec_list;
@@ -7572,42 +7712,146 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		       xasl_state->query_id,
 		       xasl->composite_locking) != NO_ERROR)
     {
-      if (savepoint_used)
-	{
-	  xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
-	}
-      qexec_failure_line (__LINE__, xasl_state);
-      db_private_free (thread_p, unique_stat_info);
-      return ER_FAILED;
+      GOTO_EXIT_ON_ERROR;
     }
+
+  scan_open = true;
+
+  /* Allocate memory for oids and hfids of all classes used in delete */
+  prev_class_oid =
+    (OID *) db_private_alloc (thread_p, class_oid_cnt * sizeof (OID));
+  if (!prev_class_oid)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+
+  for (class_oid_idx = 0; class_oid_idx < class_oid_cnt; class_oid_idx++)
+    {
+      OID_SET_NULL (&prev_class_oid[class_oid_idx]);
+    }
+
+  hfid_list =
+    (HFID **) db_private_alloc (thread_p, class_oid_cnt * sizeof (HFID *));
+  if (!hfid_list)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+  memset (hfid_list, 0, class_oid_cnt * sizeof (HFID *));
 
   while ((xb_scan =
 	  qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
     {
-
       s_id = &xasl->curr_spec->s_id;
+
       while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
 	{
+	  val_list = s_id->val_list->valp;
 
-	  valp = s_id->val_list->valp->val;
-	  if (valp == NULL)
+	  class_oid_idx = 0;
+	  for (class_oid_idx = 0; class_oid_idx < class_oid_cnt;
+	       val_list = val_list->next->next, class_oid_idx++)
 	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	  oid = DB_GET_OID (valp);
-	  valp = s_id->val_list->valp->next->val;
-	  if (valp == NULL)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	  class_oid = DB_GET_OID (valp);
+	      valp = val_list->val;
+	      if (valp == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      if (DB_IS_NULL (valp))
+		{
+		  continue;
+		}
+	      oid = DB_GET_OID (valp);
+	      valp = val_list->next->val;
+	      if (valp == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      if (DB_IS_NULL (valp))
+		{
+		  continue;
+		}
+	      class_oid = DB_GET_OID (valp);
 
-	  /* delete blob or clob data files if exist */
-	  /* the val_list consists of of oid, classoid and blob/clob attributes */
-	  del_valp_list = s_id->val_list->valp->next->next;
-	  while (del_valp_list)
+	      if (!OID_EQ (prev_class_oid + class_oid_idx, class_oid))
+		{
+		  for (cl_index = 0, hfid = NULL;
+		       cl_index < delete_->no_classes; ++cl_index)
+		    {
+		      if (OID_EQ (&delete_->class_oid[cl_index], class_oid))
+			{
+			  hfid = hfid_list[class_oid_idx] =
+			    &delete_->class_hfid[cl_index];
+			  break;
+			}
+		    }
+
+		  if (hfid == NULL)
+		    {
+		      /* class oid does not exist... error */
+		      /* er_set(...) needed */
+		      er_log_debug (ARG_FILE_LINE,
+				    "qexec_execute_delete: class OID is not correct\n");
+		      GOTO_EXIT_ON_ERROR;
+		    }
+
+		  if (unique_stats_info[class_oid_idx].scan_cache_inited)
+		    {
+		      if (op_type == MULTI_ROW_DELETE)
+			{
+			  /* In this case, consider class hierarchy as well as single
+			   * class.
+			   * Therefore, construct the local statistical information
+			   * by collecting the statistical information
+			   * during scanning on each class of class hierarchy.
+			   */
+			  if (qexec_update_btree_unique_stats_info
+			      (thread_p,
+			       &unique_stats_info[class_oid_idx]) != NO_ERROR)
+			    {
+			      GOTO_EXIT_ON_ERROR;
+			    }
+			}
+		      (void) locator_end_force_scan_cache (thread_p,
+							   &unique_stats_info
+							   [class_oid_idx].
+							   scan_cache);
+		    }
+		  unique_stats_info[class_oid_idx].scan_cache_inited = false;
+
+		  if (locator_start_force_scan_cache
+		      (thread_p, &unique_stats_info[class_oid_idx].scan_cache,
+		       hfid, class_oid, op_type) != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  unique_stats_info[class_oid_idx].scan_cache_inited = true;
+
+		  COPY_OID (prev_class_oid + class_oid_idx, class_oid);
+		}
+	      else
+		{
+		  hfid = hfid_list[class_oid_idx];
+		}
+
+	      force_count = 0;
+	      if (locator_attribute_info_force
+		  (thread_p, hfid, oid, NULL, NULL, 0, LC_FLUSH_DELETE,
+		   op_type, &unique_stats_info[class_oid_idx].scan_cache,
+		   &force_count, false,
+		   REPL_INFO_TYPE_STMT_NORMAL) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      if (force_count)
+		{
+		  xasl->list_id->tuple_cnt++;
+		}
+	    }
+
+	  while (val_list)
 	    {
-	      valp = del_valp_list->val;
+	      valp = val_list->val;
 	      if (!db_value_is_null (valp))
 		{
 		  DB_ELO *elo;
@@ -7626,133 +7870,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
-	      del_valp_list = del_valp_list->next;
-	    }
 
-	  if (!OID_EQ (&prev_class_oid, class_oid))
-	    {
-	      for (cl_index = 0, hfid = NULL;
-		   cl_index < delete_->no_classes; ++cl_index)
-		{
-		  if (OID_EQ (&delete_->class_oid[cl_index], class_oid))
-		    {
-		      hfid = &delete_->class_hfid[cl_index];
-		      break;
-		    }
-		}
-
-	      if (hfid == NULL)
-		{
-		  /* class oid does not exist... error */
-		  /* er_set(...) needed */
-		  er_log_debug (ARG_FILE_LINE,
-				"qexec_execute_delete: class OID is not correct\n");
-		  GOTO_EXIT_ON_ERROR;
-		}
-
-	      if (scan_cache_inited)
-		{
-		  if (op_type == MULTI_ROW_DELETE)
-		    {
-		      /* In this case, consider class hierarchy as well as single
-		       * class.
-		       * Therefore, construct the local statistical information
-		       * by collecting the statistical information
-		       * during scanning on each class of class hierarchy.
-		       */
-		      for (s = 0; s < scan_cache.num_btids; s++)
-			{
-			  temp_info = &(scan_cache.index_stat_info[s]);
-			  if (temp_info->num_nulls == 0
-			      && temp_info->num_keys == 0
-			      && temp_info->num_oids == 0)
-			    {
-			      continue;
-			    }
-			  /* non-unique index would be filtered out at above statement. */
-
-			  for (t = 0; t < num_unique_btrees; t++)
-			    {
-			      if (BTID_IS_EQUAL
-				  (&temp_info->btid,
-				   &unique_stat_info[t].btid))
-				{
-				  break;
-				}
-			    }
-			  if (t < num_unique_btrees)
-			    {
-			      /* The same unique index has been found */
-			      unique_stat_info[t].num_nulls +=
-				temp_info->num_nulls;
-			      unique_stat_info[t].num_keys +=
-				temp_info->num_keys;
-			      unique_stat_info[t].num_oids +=
-				temp_info->num_oids;
-			    }
-			  else
-			    {
-			      /* The same unique index has not been found */
-			      if (num_unique_btrees == max_unique_btrees)
-				{
-				  /* need more space for storing the local stat info */
-				  max_unique_btrees +=
-				    UNIQUE_STAT_INFO_INCREMENT;
-				  malloc_size =
-				    sizeof (BTREE_UNIQUE_STATS) *
-				    max_unique_btrees;
-				  ptr =
-				    (char *) db_private_realloc (thread_p,
-								 unique_stat_info,
-								 malloc_size);
-				  if (ptr == NULL)
-				    {
-				      GOTO_EXIT_ON_ERROR;
-				    }
-				  unique_stat_info =
-				    (BTREE_UNIQUE_STATS *) ptr;
-				}
-			      t = num_unique_btrees;
-			      BTID_COPY (&unique_stat_info[t].btid,
-					 &temp_info->btid);
-			      unique_stat_info[t].num_nulls =
-				temp_info->num_nulls;
-			      unique_stat_info[t].num_keys =
-				temp_info->num_keys;
-			      unique_stat_info[t].num_oids =
-				temp_info->num_oids;
-			      num_unique_btrees++;	/* increment */
-			    }
-			}	/* for */
-		    }
-		  (void) locator_end_force_scan_cache (thread_p, &scan_cache);
-		}
-	      scan_cache_inited = false;
-
-	      if (locator_start_force_scan_cache (thread_p, &scan_cache, hfid,
-						  class_oid, op_type)
-		  != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	      scan_cache_inited = true;
-
-	      COPY_OID (&prev_class_oid, class_oid);
-	    }
-
-	  force_count = 0;
-	  if (locator_attribute_info_force (thread_p, hfid, oid, NULL, NULL,
-					    0, LC_FLUSH_DELETE, op_type,
-					    &scan_cache, &force_count, false,
-					    REPL_INFO_TYPE_STMT_NORMAL)
-	      != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-
-	  if (force_count)
-	    {
-	      xasl->list_id->tuple_cnt++;
+	      val_list = val_list->next;
 	    }
 	}
       if (ls_scan != S_END)
@@ -7766,90 +7885,78 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   /* reflect local statistical information into the root page */
-  if (op_type == MULTI_ROW_DELETE && scan_cache_inited)
+  if (op_type == MULTI_ROW_DELETE)
     {
-      /* In this case, consider class hierarchy as well as single class.
-       * Therefore, construct the local statistical information
-       * by collecting the statistical information
-       * during scanning on each class of class hierarchy.
-       */
-      for (s = 0; s < scan_cache.num_btids; s++)
+      for (s = 0; s < class_oid_cnt; s++)
 	{
-	  temp_info = &(scan_cache.index_stat_info[s]);
-	  if (temp_info->num_nulls == 0 && temp_info->num_keys == 0
-	      && temp_info->num_oids == 0)
+	  if (unique_stats_info[s].scan_cache_inited)
 	    {
-	      continue;
-	    }
-	  /* non-unique index would be filtered out at above statement. */
+	      BTREE_UNIQUE_STATS *unique_stat_info;
 
-	  for (t = 0; t < num_unique_btrees; t++)
-	    {
-	      if (BTID_IS_EQUAL (&temp_info->btid, &unique_stat_info[t].btid))
+	      /* In this case, consider class hierarchy as well as single class.
+	       * Therefore, construct the local statistical information
+	       * by collecting the statistical information
+	       * during scanning on each class of class hierarchy.
+	       */
+	      if (qexec_update_btree_unique_stats_info
+		  (thread_p, &unique_stats_info[s]) != NO_ERROR)
 		{
-		  break;
+		  GOTO_EXIT_ON_ERROR;
 		}
-	    }
-	  if (t < num_unique_btrees)
-	    {
-	      /* The same unique index has been found */
-	      unique_stat_info[t].num_nulls += temp_info->num_nulls;
-	      unique_stat_info[t].num_keys += temp_info->num_keys;
-	      unique_stat_info[t].num_oids += temp_info->num_oids;
-	    }
-	  else
-	    {
-	      /* The same unique index has not been found */
-	      if (num_unique_btrees == max_unique_btrees)
+
+	      unique_stat_info = unique_stats_info[s].unique_stat_info;
+
+	      /* reflect local statistical information into the root page. */
+	      for (t = 0; t < unique_stats_info[s].num_unique_btrees; t++)
 		{
-		  /* need more space for storing unique index stat info */
-		  max_unique_btrees += UNIQUE_STAT_INFO_INCREMENT;
-		  malloc_size =
-		    sizeof (BTREE_UNIQUE_STATS) * max_unique_btrees;
-		  ptr =
-		    (char *) db_private_realloc (thread_p, unique_stat_info,
-						 malloc_size);
-		  if (ptr == NULL)
+		  if (unique_stat_info[t].num_nulls == 0
+		      && unique_stat_info[t].num_keys == 0
+		      && unique_stat_info[t].num_oids == 0)
+		    {
+		      continue;	/* no modification : non-unique index */
+		    }
+		  if (btree_reflect_unique_statistics
+		      (thread_p, &unique_stat_info[t]) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
-		  unique_stat_info = (BTREE_UNIQUE_STATS *) ptr;
 		}
-	      t = num_unique_btrees;
-	      BTID_COPY (&unique_stat_info[t].btid, &temp_info->btid);
-	      unique_stat_info[t].num_nulls = temp_info->num_nulls;
-	      unique_stat_info[t].num_keys = temp_info->num_keys;
-	      unique_stat_info[t].num_oids = temp_info->num_oids;
-	      num_unique_btrees++;	/* increment */
-	    }
-	}
-      /* reflect local statistical information into the root page. */
-      for (s = 0; s < num_unique_btrees; s++)
-	{
-	  if (unique_stat_info[s].num_nulls == 0
-	      && unique_stat_info[s].num_keys == 0
-	      && unique_stat_info[s].num_oids == 0)
-	    {
-	      continue;		/* no modification : non-unique index */
-	    }
-	  if (btree_reflect_unique_statistics (thread_p, &unique_stat_info[s])
-	      != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
 	    }
 	}
     }
 
   qexec_close_scan (thread_p, specp);
 
-  if (scan_cache_inited)
+  if (unique_stats_info)
     {
-      (void) locator_end_force_scan_cache (thread_p, &scan_cache);
+      for (s = 0; s < class_oid_cnt; s++)
+	{
+	  if (unique_stats_info[s].scan_cache_inited)
+	    {
+	      (void) locator_end_force_scan_cache (thread_p,
+						   &unique_stats_info[s].
+						   scan_cache);
+	    }
+	}
+      if (op_type == MULTI_ROW_DELETE)
+	{
+	  for (t = 0; t < class_oid_cnt; t++)
+	    {
+	      db_private_free (thread_p,
+			       unique_stats_info[t].unique_stat_info);
+	    }
+	}
+      db_private_free (thread_p, unique_stats_info);
     }
 
-  if (unique_stat_info != NULL)
+  if (prev_class_oid)
     {
-      db_private_free_and_init (thread_p, unique_stat_info);
+      db_private_free (thread_p, prev_class_oid);
+    }
+
+  if (hfid_list)
+    {
+      db_private_free (thread_p, hfid_list);
     }
 
   if (savepoint_used)
@@ -7890,23 +7997,51 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   return NO_ERROR;
 
 exit_on_error:
-  qexec_end_scan (thread_p, specp);
-  qexec_close_scan (thread_p, specp);
-
-  if (scan_cache_inited)
+  if (scan_open)
     {
-      (void) locator_end_force_scan_cache (thread_p, &scan_cache);
+      qexec_end_scan (thread_p, specp);
+      qexec_close_scan (thread_p, specp);
     }
 
-  if (unique_stat_info != NULL)
+  if (unique_stats_info)
     {
-      db_private_free_and_init (thread_p, unique_stat_info);
+      for (s = 0; s < class_oid_cnt; s++)
+	{
+	  if (unique_stats_info[s].scan_cache_inited)
+	    {
+	      (void) locator_end_force_scan_cache (thread_p,
+						   &unique_stats_info[s].
+						   scan_cache);
+	    }
+	}
+
+      if (op_type == MULTI_ROW_DELETE)
+	{
+	  for (t = 0; t < class_oid_cnt; t++)
+	    {
+	      db_private_free (thread_p,
+			       unique_stats_info[t].unique_stat_info);
+	    }
+	}
+
+      db_private_free (thread_p, unique_stats_info);
     }
 
   if (savepoint_used)
     {
       xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
     }
+
+  if (prev_class_oid != NULL)
+    {
+      db_private_free (thread_p, prev_class_oid);
+    }
+
+  if (hfid_list != NULL)
+    {
+      db_private_free (thread_p, hfid_list);
+    }
+
   return ER_FAILED;
 }
 
@@ -8368,6 +8503,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   int force_count = 0;
   REGU_VARIABLE *rvsave = NULL;
   bool skip_insertion = false;
+  int no_default_expr = 0;
 
   aptr = xasl->aptr_list;
   val_no = insert->no_vals;
@@ -8418,6 +8554,61 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
   attr_info_inited = true;
+
+  /* first values should be the results of default expressions */
+  no_default_expr = val_no - xasl->val_list->val_cnt;
+  if (no_default_expr < 0)
+    {
+      no_default_expr = 0;
+    }
+  for (k = 0; k < no_default_expr; k++)
+    {
+      OR_ATTRIBUTE *attr;
+      DB_VALUE *new_val;
+
+      attr = heap_locate_last_attrepr (insert->att_id[k], &attr_info);
+      if (attr == NULL)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      if (attr->default_value.default_expr != DB_DEFAULT_NONE)
+	{
+	  new_val = (DB_VALUE *) db_private_alloc (thread_p,
+						   sizeof (DB_VALUE));
+	  insert->vals[k] = new_val;
+	}
+      switch (attr->default_value.default_expr)
+	{
+	case DB_DEFAULT_SYSDATE:
+	  DB_MAKE_DATE (insert->vals[k], 1, 1, 1);
+	  insert->vals[k]->data.date = xasl_state->vd.sys_datetime.date;
+	  break;
+	case DB_DEFAULT_SYSDATETIME:
+	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
+	  break;
+	case DB_DEFAULT_SYSTIMESTAMP:
+	case DB_DEFAULT_UNIX_TIMESTAMP:
+	  DB_MAKE_DATETIME (insert->vals[k], &xasl_state->vd.sys_datetime);
+	  db_unix_timestamp (insert->vals[k], insert->vals[k]);
+	  break;
+	case DB_DEFAULT_USER:
+	case DB_DEFAULT_CURR_USER:
+	  {
+	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	    LOG_TDES *tdes = NULL;
+	    char *temp;
+
+	    tdes = LOG_FIND_TDES (tran_index);
+	    if (tdes != NULL)
+	      {
+		temp = tdes->client.db_user;
+	      }
+	    DB_MAKE_STRING (insert->vals[k], temp);
+	  }
+	  break;
+	}
+    }
 
   specp = xasl->spec_list;
   if (specp || ((insert->do_replace || (xasl->dptr_list != NULL))
@@ -8478,7 +8669,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	    {
 	      skip_insertion = false;
 
-	      for (k = 0, vallist = s_id->val_list->valp;
+	      for (k = no_default_expr, vallist = s_id->val_list->valp;
 		   k < val_no; k++, vallist = vallist->next)
 		{
 		  valp = vallist->val;
@@ -8675,7 +8866,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  regu_list = xasl->outptr_list->valptrp;
 	  vallist = xasl->val_list->valp;
-	  for (k = 0;
+	  for (k = no_default_expr;
 	       k < val_no;
 	       k++, regu_list = regu_list->next, vallist = vallist->next)
 	    {
@@ -8911,9 +9102,19 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 #endif
 
+  for (k = 0; k < no_default_expr; k++)
+    {
+      pr_clear_value (insert->vals[k]);
+      db_private_free_and_init (thread_p, insert->vals[k]);
+    }
   return NO_ERROR;
 
 exit_on_error:
+  for (k = 0; k < no_default_expr; k++)
+    {
+      pr_clear_value (insert->vals[k]);
+      db_private_free_and_init (thread_p, insert->vals[k]);
+    }
   qexec_end_scan (thread_p, specp);
   qexec_close_scan (thread_p, specp);
   if (index_attr_info_inited)

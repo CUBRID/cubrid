@@ -507,6 +507,14 @@ struct sm_component
 
 };
 
+typedef struct sm_default_value SM_DEFAULT_VALUE;
+struct sm_default_value
+{
+  DB_VALUE original_value;	/* initial default value; */
+  DB_VALUE value;		/* current default/shared/class value */
+  DB_DEFAULT_EXPR_TYPE default_expr;	/* identifier for the default
+					 * expression */
+};
 
 typedef struct sm_attribute SM_ATTRIBUTE;
 
@@ -561,8 +569,7 @@ struct sm_attribute
   int id;			/* unique id number */
   int offset;			/* memory offset */
 
-  DB_VALUE original_value;	/* initial default value; see the above */
-  DB_VALUE value;		/* current default/shared/class value */
+  SM_DEFAULT_VALUE default_value;	/* default value */
 
   SM_CONSTRAINT *constraints;	/* cached constraint list */
 

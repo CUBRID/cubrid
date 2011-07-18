@@ -1011,6 +1011,70 @@ css_find_conn_from_fd (SOCKET fd)
 }
 
 /*
+ * css_get_session_ids_for_active_connections () - get active session ids
+ * return : error code or NO_ERROR
+ * session_ids (out)  : holder for session ids
+ * count (out)	      : number of session ids
+ */
+int
+css_get_session_ids_for_active_connections (SESSION_ID ** session_ids,
+					    int *count)
+{
+  CSS_CONN_ENTRY *conn = NULL, *next = NULL;
+  SESSION_ID *sessions_p = NULL;
+  int error = NO_ERROR, i = 0;
+
+  assert (count != NULL);
+  if (count == NULL)
+    {
+      error = ER_FAILED;
+      goto error_return;
+    }
+
+  if (css_Active_conn_anchor == NULL)
+    {
+      *session_ids = NULL;
+      *count = 0;
+      return NO_ERROR;
+    }
+
+  csect_enter_critical_section_as_reader (NULL, &css_Active_conn_csect,
+					  INF_WAIT);
+  *count = css_Num_active_conn;
+  sessions_p =
+    (SESSION_ID *) malloc (css_Num_active_conn * sizeof (SESSION_ID));
+
+  if (sessions_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      css_Num_active_conn * sizeof (SESSION_ID));
+      error = ER_FAILED;
+      csect_exit_critical_section (&css_Active_conn_csect);
+      goto error_return;
+    }
+
+  for (conn = css_Active_conn_anchor; conn != NULL; conn = next)
+    {
+      next = conn->next;
+      sessions_p[i] = conn->session_id;
+      i++;
+    }
+
+  csect_exit_critical_section (&css_Active_conn_csect);
+  *session_ids = sessions_p;
+  return error;
+
+error_return:
+  if (sessions_p != NULL)
+    {
+      free_and_init (sessions_p);
+    }
+  *session_ids = NULL;
+  *count = 0;
+  return error;
+}
+
+/*
  * css_shutdown_conn_by_tran_index() - shutdown connection having given
  *                                     transaction id
  *   return: void

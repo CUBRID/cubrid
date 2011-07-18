@@ -788,7 +788,7 @@ extern DB_SESSION_ERROR *db_get_next_warning (DB_SESSION_WARNING *
 					      errors,
 					      int *linenumber,
 					      int *columnnumber);
-
+extern void db_session_set_holdable (DB_SESSION * session, bool holdable);
 extern DB_PARAMETER *db_get_parameters (DB_SESSION * session,
 					int statement_id);
 extern DB_PARAMETER *db_parameter_next (DB_PARAMETER * param);

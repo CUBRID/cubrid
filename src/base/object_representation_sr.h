@@ -33,6 +33,16 @@
 
 #define OR_ATT_BTID_PREALLOC 8
 
+typedef struct or_default_value OR_DEFAULT_VALUE;
+struct or_default_value
+{
+  /* could this be converted to a server side DB_VALUE ? */
+  void *value;			/* default value */
+  int val_length;		/* default value length */
+  DB_DEFAULT_EXPR_TYPE default_expr;	/* identifier for the pseudo-column
+					 * default expression */
+};
+
 /*
  * OR_ATTRIBUTE
  *
@@ -52,11 +62,9 @@ struct or_attribute
   int position;			/* storage position (list index) */
   OID classoid;			/* source class object id */
 
-  /* could this be converted to a server side DB_VALUE ? */
-  void *value;			/* default value */
+  OR_DEFAULT_VALUE default_value;	/* default value */
   BTID *btids;			/* B-tree ID's for indexes and constraints */
   TP_DOMAIN *domain;		/* full domain of this attribute */
-  int val_length;		/* default value lenght */
   int n_btids;			/* Number of ID's in the btids array */
   BTID index;			/* btree id if indexed */
 

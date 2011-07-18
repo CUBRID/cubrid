@@ -226,7 +226,8 @@ extern int sm_att_constrained (MOP classop, const char *name,
 			       SM_ATTRIBUTE_FLAG cons);
 extern bool sm_att_auto_increment (MOP classop, const char *name);
 extern int sm_att_default_value (MOP classop, const char *name,
-				 DB_VALUE * value);
+				 DB_VALUE * value,
+				 DB_DEFAULT_EXPR_TYPE * default_expr);
 
 extern int sm_class_check_uniques (MOP classop);
 extern BTID *sm_find_index (MOP classop, char **att_names,

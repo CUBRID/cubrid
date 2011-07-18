@@ -1171,6 +1171,71 @@ file_new_destroy_all_tmp (THREAD_ENTRY * thread_p, FILE_TYPE tmp_type)
 }
 
 /*
+ * file_preserve_temporary () - remove temporary file from the control of the
+ *				file manager
+ * return : error code or NO_ERROR
+ * thread_p (in)  : current thread
+ * vfid (in)	  : file identifier
+ */
+int
+file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  FILE_NEW_FILES_HASH_KEY key;
+  FILE_NEWFILE *entry = NULL;
+  int tran_index = NULL_TRAN_INDEX;
+  LOG_TDES *tdes = NULL;
+
+  if (csect_enter (thread_p, CSECT_FILE_NEWFILE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  key.tran_index = tran_index;
+  VFID_COPY (&key.vfid, vfid);
+
+  entry = (FILE_NEWFILE *) mht_get (file_Tracker->newfiles.mht, &key);
+  if (entry == NULL)
+    {
+      csect_exit (CSECT_FILE_NEWFILE);
+      return NO_ERROR;
+    }
+
+  /* decrement temporary files counter */
+  if (entry->file_type == FILE_TMP)
+    {
+      tdes->num_new_tmp_files--;
+    }
+  else if (entry->file_type == FILE_TMP_TMP)
+    {
+      tdes->num_new_tmp_tmp_files--;
+    }
+  tdes->num_new_files--;
+  /* remove it from the table */
+  mht_rem (file_Tracker->newfiles.mht, &key, NULL, NULL);
+
+  /* remove it from the linked list */
+  if (entry->prev != NULL)
+    {
+      entry->prev->next = entry->next;
+    }
+  if (entry->next != NULL)
+    {
+      entry->next->prev = entry->prev;
+    }
+  if (file_Tracker->newfiles.head == entry)
+    {
+      /* mark it as null */
+      file_Tracker->newfiles.head = NULL;
+    }
+  /* we don't need this entry anymore */
+  free_and_init (entry);
+
+  csect_exit (CSECT_FILE_NEWFILE);
+  return NO_ERROR;
+}
+
+/*
  * file_dump_all_newfiles () - Dump all new files
  *   return: NO_ERROR
  *   tmptmp_only(in): Dump only temporary files on temporary volumes ?

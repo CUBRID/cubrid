@@ -84,6 +84,7 @@ struct disk_attribute
   DB_TYPE type;			/* datatype */
   int val_length;		/* default value length >= 0 */
   void *value;			/* default value */
+  DB_DEFAULT_EXPR_TYPE default_expr;	/* default expression identifier */
   int position;			/* storage position (fixed attributes only) */
   OID classoid;			/* source class object id */
   DB_DATA min_value;		/* minimum existing value */

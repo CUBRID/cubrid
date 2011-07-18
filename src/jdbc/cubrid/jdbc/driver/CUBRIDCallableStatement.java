@@ -60,7 +60,7 @@ public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements
 
 	protected CUBRIDCallableStatement(CUBRIDConnection c, UStatement us) {
 		super(c, us, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY,
-				Statement.NO_GENERATED_KEYS);
+				ResultSet.CLOSE_CURSORS_AT_COMMIT, Statement.NO_GENERATED_KEYS);
 	}
 
 	/*

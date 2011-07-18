@@ -194,12 +194,14 @@ db_add_attribute_internal (MOP class_, const char *name, const char *domain,
 	      if (name_space == ID_CLASS || name_space == ID_CLASS_ATTRIBUTE)
 		{
 		  error =
-		    smt_set_attribute_default (def, name, 1, default_value);
+		    smt_set_attribute_default (def, name, 1, default_value,
+					       DB_DEFAULT_NONE);
 		}
 	      else
 		{
 		  error =
-		    smt_set_attribute_default (def, name, 0, default_value);
+		    smt_set_attribute_default (def, name, 0, default_value,
+					       DB_DEFAULT_NONE);
 		}
 	    }
 	  if (error)
@@ -599,7 +601,8 @@ db_change_default (MOP class_, const char *name, DB_VALUE * value)
     }
   else
     {
-      error = smt_set_attribute_default (def, name, false, value);
+      error =
+	smt_set_attribute_default (def, name, false, value, DB_DEFAULT_NONE);
       if (error)
 	{
 	  smt_quit (def);

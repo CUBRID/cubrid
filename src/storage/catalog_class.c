@@ -1237,6 +1237,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 {
   OR_VALUE *attrs;
   DB_VALUE *attr_val_p;
+  DB_VALUE default_expr;
   OR_VARINFO *vars = NULL;
   int size;
   int error = NO_ERROR;
@@ -1303,6 +1304,10 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   /* index_volid_key */
   or_advance (buf_p, OR_INT_SIZE);
 
+  /* default expression identifier */
+  (*(tp_Integer.data_readval)) (buf_p, &default_expr, NULL, -1, true, NULL,
+				0);
+
   /** variable **/
 
   /* name */
@@ -1316,7 +1321,45 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
   attr_val_p = &attrs[8].value;
   or_get_value (buf_p, attr_val_p, NULL,
 		vars[ORC_ATT_CURRENT_VALUE_INDEX].length, true);
-  valcnv_convert_value_to_string (attr_val_p);
+  if (DB_GET_INT (&default_expr) == DB_DEFAULT_NONE)
+    {
+      valcnv_convert_value_to_string (attr_val_p);
+    }
+  else
+    {
+      char *str_val =
+	(char *) db_private_alloc (thread_p, strlen ("UNIX_TIMESTAMP") + 1);
+      if (!str_val)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		  strlen ("UNIX_TIMESTAMP") + 1);
+	  goto error;
+	}
+      switch (DB_GET_INT (&default_expr))
+	{
+	case DB_DEFAULT_SYSDATE:
+	  strcpy (str_val, "SYS_DATE");
+	  break;
+	case DB_DEFAULT_SYSDATETIME:
+	  strcpy (str_val, "SYS_DATETIME");
+	  break;
+	case DB_DEFAULT_SYSTIMESTAMP:
+	  strcpy (str_val, "SYS_TIMESTAMP");
+	  break;
+	case DB_DEFAULT_UNIX_TIMESTAMP:
+	  strcpy (str_val, "UNIX_TIMESTAMP");
+	  break;
+	case DB_DEFAULT_USER:
+	  strcpy (str_val, "USER");
+	  break;
+	case DB_DEFAULT_CURR_USER:
+	  strcpy (str_val, "CURRENT_USER");
+	  break;
+	}
+      DB_MAKE_STRING (attr_val_p, str_val);
+      attr_val_p->need_clear = true;
+    }
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   /* original value */

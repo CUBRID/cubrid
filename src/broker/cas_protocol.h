@@ -160,6 +160,7 @@ enum t_cas_func_code
   CAS_FC_END_SESSION = 38,
   CAS_FC_GET_ROW_COUNT = 39,
   CAS_FC_GET_LAST_INSERT_ID = 40,
+  CAS_FC_CURSOR_CLOSE = 41,
 
   CAS_FC_MAX
 };

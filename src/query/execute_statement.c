@@ -130,6 +130,58 @@
         ((node)->info.serial.cached_num_val)
 
 /*
+ * do_evaluate_default_expr() - evaluates the default expressions, if any, for
+ *				the attributes of a given class
+ *   return: Error code
+ *   parser(in):
+ *   class_name(in):
+ */
+int
+do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
+{
+  SM_ATTRIBUTE *att;
+  SM_CLASS *smclass;
+  int error;
+  assert (class_name->node_type == PT_NAME);
+
+  error = au_fetch_class_force (class_name->info.name.db_object, &smclass,
+				AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  for (att = smclass->attributes; att != NULL;
+       att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (att->default_value.default_expr != DB_DEFAULT_NONE)
+	{
+	  switch (att->default_value.default_expr)
+	    {
+	    case DB_DEFAULT_SYSDATE:
+	      db_value_put_encoded_date (&att->default_value.value,
+					 DB_GET_DATE (&parser->sys_datetime));
+	      break;
+	    case DB_DEFAULT_SYSDATETIME:
+	      pr_clone_value (&parser->sys_datetime,
+			      &att->default_value.value);
+	      break;
+	    case DB_DEFAULT_SYSTIMESTAMP:
+	    case DB_DEFAULT_UNIX_TIMESTAMP:
+	      db_unix_timestamp (&parser->sys_datetime,
+				 &att->default_value.value);
+	      break;
+	    case DB_DEFAULT_USER:
+	    case DB_DEFAULT_CURR_USER:
+	      DB_MAKE_STRING (&att->default_value.value, db_get_user_name ());
+	      break;
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * do_create_serial_internal() -
  *   return: Error code
  *   serial_object(out):
@@ -4606,10 +4658,8 @@ static DB_TRIGGER_STATUS convert_misc_to_tr_status (const PT_MISC_TYPE
 						    pt_status);
 static int convert_speclist_to_objlist (DB_OBJLIST ** triglist,
 					PT_NODE * specnode);
-static int check_trigger (DB_TRIGGER_EVENT event, DB_OBJECT * class_,
-			  const char **attributes, int attribute_count,
-			  PT_DO_FUNC * do_func, PARSER_CONTEXT * parser,
-			  PT_NODE * statement);
+static int check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func,
+			  PARSER_CONTEXT * parser, PT_NODE * statement);
 static char **find_update_columns (int *count_ptr, PT_NODE * statement);
 static void get_activity_info (PARSER_CONTEXT * parser,
 			       DB_TRIGGER_ACTION * type, const char **source,
@@ -4922,36 +4972,92 @@ get_priority (PARSER_CONTEXT * parser, PT_NODE * node)
  * check_trigger() -
  *   return: Error code
  *   event(in): Trigger event type
- *   class(in): Target class
- *   attributes(in): Target attributes
- *   attribute_count(in): Number of target attributes
  *   do_func(in): Function to do
  *   parser(in): Parser context used by do_func
  *   statement(in): Parse tree of a statement used by do_func
  *
  * Note: The function checks if there is any active trigger defined on
- *       the target. If there is one, raise the trigger. Otherwise,
+ *       the targets. If there is one, raise the trigger. Otherwise,
  *       perform the given do_ function.
  */
 static int
-check_trigger (DB_TRIGGER_EVENT event,
-	       DB_OBJECT * class_,
-	       const char **attributes,
-	       int attribute_count,
-	       PT_DO_FUNC * do_func, PARSER_CONTEXT * parser,
-	       PT_NODE * statement)
+check_trigger (DB_TRIGGER_EVENT event, PT_DO_FUNC * do_func,
+	       PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err, result = NO_ERROR;
   TR_STATE *state;
   const char *savepoint_name = NULL;
+  PT_NODE *node = NULL, *flat = NULL;
+  DB_OBJECT *class_ = NULL;
 
   /* Prepare a trigger state for any triggers that must be raised in
      this statement */
 
   state = NULL;
 
-  result = tr_prepare_statement (&state, event, class_,
-				 attribute_count, attributes);
+  switch (event)
+    {
+    case TR_EVENT_STATEMENT_DELETE:
+      node = statement->info.delete_.spec;
+      while (node != NULL)
+	{
+	  if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+	    {
+	      flat = node->info.spec.flat_entity_list;
+	      class_ = (flat ? flat->info.name.db_object : NULL);
+	      if (class_ == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "invalid spec id");
+		  result = ER_FAILED;
+		  goto exit;
+		}
+	      result = tr_prepare_statement (&state, event, class_, 0, NULL);
+	      if (result != NO_ERROR)
+		{
+		  goto exit;
+		}
+	    }
+	  node = node->next;
+	}
+      break;
+
+    case TR_EVENT_STATEMENT_INSERT:
+      flat =
+	(statement->info.insert.spec) ?
+	statement->info.insert.spec->info.spec.flat_entity_list : NULL;
+      class_ = (flat) ? flat->info.name.db_object : NULL;
+      result = tr_prepare_statement (&state, event, class_, 0, NULL);
+      break;
+
+    case TR_EVENT_STATEMENT_UPDATE:
+      {
+	/* If this is an "update object" statement, we may not have a spec
+	   list yet. This may have been fixed due to the recent changes in
+	   pt_exec_trigger_stmt to do name resolution each time. */
+	char **columns;
+	int count;
+	node = (statement->info.update.spec) ?
+	  statement->info.update.spec->info.spec.flat_entity_list :
+	  statement->info.update.object_parameter;
+	class_ = (node) ? node->info.name.db_object : NULL;
+	if (class_ == NULL)
+	  {
+	    return NO_ERROR;
+	  }
+
+	columns = find_update_columns (&count, statement);
+
+	result = tr_prepare_statement (&state, event, class_, count, columns);
+
+	if (columns)
+	  {
+	    free_and_init (columns);
+	  }
+	break;
+      }
+    default:
+      break;
+    }
 
   if (result == NO_ERROR)
     {
@@ -4964,7 +5070,7 @@ check_trigger (DB_TRIGGER_EVENT event,
 	}
       else
 	{
-	  /* the operations perfomed in 'tr_before',
+	  /* the operations performed in 'tr_before',
 	   * 'do_check_internal_statements' and 'tr_after' should be all
 	   * contained in one transaction */
 	  if (tr_Current_depth <= 1)
@@ -4998,6 +5104,7 @@ check_trigger (DB_TRIGGER_EVENT event,
 	      if (result < NO_ERROR)
 		{
 		  tr_abort (state);
+		  state = NULL;	/* state was freed */
 		}
 	      else
 		{
@@ -5007,11 +5114,27 @@ check_trigger (DB_TRIGGER_EVENT event,
 		    {
 		      result = err;
 		    }
+		  if (tr_get_execution_state ())
+		    {
+		      state = NULL;	/* state was freed */
+		    }
+
 		}
+	    }
+	  else
+	    {
+	      state = NULL;
 	    }
 	}
     }
+
 exit:
+  if (state)
+    {
+      /* We need to free state and decrease the tr_Current_depth. */
+      tr_abort (state);
+    }
+
   if (result < NO_ERROR && savepoint_name != NULL
       && (result != ER_LK_UNILATERALLY_ABORTED))
     {
@@ -5037,9 +5160,6 @@ int
 do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
 			 PT_DO_FUNC * do_func)
 {
-  PT_NODE *flat;
-  DB_OBJECT *class_obj;
-
   if (PRM_BLOCK_NOWHERE_STATEMENT
       && statement->info.delete_.search_cond == NULL)
     {
@@ -5048,17 +5168,8 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
       return ER_AU_AUTHORIZATION_FAILURE;
     }
 
-  /* get the delete class */
-  flat = (statement->info.delete_.spec) ?
-    statement->info.delete_.spec->info.spec.flat_entity_list : NULL;
-  class_obj = (flat) ? flat->info.name.db_object : NULL;
-
-  if (class_obj)
-    {
-      return check_trigger (TR_EVENT_STATEMENT_DELETE, class_obj, NULL, 0,
-			    do_func, parser, statement);
-    }
-  return NO_ERROR;
+  return check_trigger (TR_EVENT_STATEMENT_DELETE,
+			do_func, parser, statement);
 }
 
 /*
@@ -5077,20 +5188,8 @@ int
 do_check_insert_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
 			 PT_DO_FUNC * do_func)
 {
-  PT_NODE *flat;
-  DB_OBJECT *class_obj;
-
-  /* get the insert class */
-  flat = (statement->info.insert.spec) ?
-    statement->info.insert.spec->info.spec.flat_entity_list : NULL;
-  class_obj = (flat) ? flat->info.name.db_object : NULL;
-
-  if (class_obj)
-    {
-      return check_trigger (TR_EVENT_STATEMENT_INSERT, class_obj, NULL, 0,
-			    do_func, parser, statement);
-    }
-  return NO_ERROR;
+  return check_trigger (TR_EVENT_STATEMENT_INSERT,
+			do_func, parser, statement);
 }
 
 /*
@@ -5170,10 +5269,6 @@ int
 do_check_update_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
 			 PT_DO_FUNC * do_func)
 {
-  PT_NODE *node;
-  DB_OBJECT *class_obj;
-  char **columns;
-  int count = 0;
   int err;
 
   if (PRM_BLOCK_NOWHERE_STATEMENT
@@ -5184,26 +5279,7 @@ do_check_update_trigger (PARSER_CONTEXT * parser, PT_NODE * statement,
       return ER_AU_AUTHORIZATION_FAILURE;
     }
 
-  /* If this is an "update object" statement, we may not have a spec list
-     yet. This may have been fixed due to the recent changes in
-     pt_exec_trigger_stmt to do name resolution each time. */
-  node = (statement->info.update.spec) ?
-    statement->info.update.spec->info.spec.flat_entity_list :
-    statement->info.update.object_parameter;
-  class_obj = (node) ? node->info.name.db_object : NULL;
-  if (!class_obj)
-    {
-      return NO_ERROR;
-    }
-
-  columns = find_update_columns (&count, statement);
-  err = check_trigger (TR_EVENT_STATEMENT_UPDATE, class_obj,
-		       (const char **) columns, count,
-		       do_func, parser, statement);
-  if (columns)
-    {
-      free_and_init (columns);
-    }
+  err = check_trigger (TR_EVENT_STATEMENT_UPDATE, do_func, parser, statement);
   return err;
 }
 
@@ -8302,9 +8378,8 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 static int delete_savepoint_number = 0;
 
 static int select_delete_list (PARSER_CONTEXT * parser,
-			       QFILE_LIST_ID ** result_p, PT_NODE * from,
-			       PT_NODE * where, PT_NODE * using_index,
-			       PT_NODE * class_specs);
+			       QFILE_LIST_ID ** result_p,
+			       PT_NODE * delete_stmt);
 static int delete_object_tuple (const PARSER_CONTEXT * parser,
 				const DB_VALUE * values);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -8314,41 +8389,32 @@ static int delete_object_by_oid (const PARSER_CONTEXT * parser,
 static int delete_list_by_oids (PARSER_CONTEXT * parser,
 				QFILE_LIST_ID * list_id);
 static int build_xasl_for_server_delete (PARSER_CONTEXT * parser,
-					 const PT_NODE * from,
 					 PT_NODE * statement);
 static int has_unique_constraint (DB_OBJECT * mop);
-static int delete_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
-			      PT_NODE * statement);
+static int delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 /*
  * select_delete_list() -
  *   return: Error code
  *   parser(in/out): Parser context
  *   result(out): QFILE_LIST_ID for query result
- *   from(in): From clause in the query
- *   where(in): Where clause in the query
- *   using_index(in): Using index in the query
- *   class_specs(in): Class spec for the query
+ *   delete_stmt(in): delete statement
  *
  * Note : The list_id is allocated during query execution
  */
 static int
 select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p,
-		    PT_NODE * from,
-		    PT_NODE * where, PT_NODE * using_index,
-		    PT_NODE * class_specs)
+		    PT_NODE * delete_stmt)
 {
   PT_NODE *statement = NULL;
   QFILE_LIST_ID *result = NULL;
-
-  if (from
-      && (from->node_type == PT_SPEC)
-      && from->info.spec.range_var
-      && ((statement = pt_to_upd_del_query (parser, NULL,
-					    from, class_specs,
-					    where, using_index, NULL, NULL,
-					    0 /* not server update */ ,
-					    false)) != NULL))
+  statement =
+    pt_to_upd_del_query (parser, NULL, delete_stmt->info.delete_.spec,
+			 delete_stmt->info.delete_.class_specs,
+			 delete_stmt->info.delete_.search_cond,
+			 delete_stmt->info.delete_.using_index, NULL, NULL,
+			 0 /* not server update */ , false);
+  if (statement != NULL)
     {
       /* If we are updating a proxy, the select is not yet fully translated.
          if we are updating anything else, this is a no-op. */
@@ -8395,12 +8461,6 @@ delete_object_tuple (const PARSER_CONTEXT * parser, const DB_VALUE * values)
   if (values && DB_VALUE_TYPE (values) == DB_TYPE_OBJECT)
     {
       object = DB_GET_OBJECT (values);
-
-      if (db_is_deleted (object))
-	{
-	  /* nested delete trigger may delete the object already */
-	  return NO_ERROR;
-	}
 
       /* authorizations checked in compiler--turn off but remember in
          parser so we can re-enable in case we run out of memory and
@@ -8480,12 +8540,13 @@ delete_list_by_oids (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id)
 {
   int error = NO_ERROR;
   int cursor_status;
-  DB_VALUE oid;
+  DB_VALUE *oids = NULL;
   CURSOR_ID cursor_id;
-  int count = 0;		/* how many objects were deleted? */
+  int count = 0, attrs_cnt = 0, idx;	/* how many objects were deleted? */
   const char *savepoint_name = NULL;
-  int flush_to_server = -1;
+  int *flush_to_server = NULL;
   DB_OBJECT *mop = NULL;
+  bool has_savepoint = false, is_cursor_open = false;
 
   /* if the list file contains more than 1 object we need to savepoint
      the statement to guarantee statement atomicity. */
@@ -8495,73 +8556,120 @@ delete_list_by_oids (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id)
 	mq_generate_name (parser, "UdsP", &delete_savepoint_number);
 
       error = tran_savepoint (savepoint_name, false);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      has_savepoint = true;
     }
 
-  if (error == NO_ERROR)
+  if (!cursor_open (&cursor_id, list_id, false, false))
     {
-      if (!cursor_open (&cursor_id, list_id, false, false))
+      error = ER_GENERIC_ERROR;
+      goto cleanup;
+    }
+  is_cursor_open = true;
+  attrs_cnt = list_id->type_list.type_cnt;
+
+  oids = (DB_VALUE *) db_private_alloc (NULL, attrs_cnt * sizeof (DB_VALUE));
+  if (oids == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+  flush_to_server = (int *) db_private_alloc (NULL, attrs_cnt * sizeof (int));
+  if (flush_to_server == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+  for (idx = 0; idx < attrs_cnt; idx++)
+    {
+      flush_to_server[idx] = -1;
+    }
+
+  cursor_id.query_id = parser->query_id;
+  cursor_status = cursor_next_tuple (&cursor_id);
+
+  while ((error >= NO_ERROR) && cursor_status == DB_CURSOR_SUCCESS)
+    {
+      error = cursor_get_tuple_value_list (&cursor_id, attrs_cnt, oids);
+      /* The select list contains instance OID - class OID pairs */
+      for (idx = 0; idx < attrs_cnt && error >= NO_ERROR; idx++)
 	{
-	  error = ER_GENERIC_ERROR;
+	  if (DB_IS_NULL (&oids[idx]))
+	    {
+	      continue;
+	    }
+
+	  mop = DB_GET_OBJECT (&oids[idx]);
+
+	  if (db_is_deleted (mop))
+	    {
+	      /* if the object is an invalid object (was already deleted) then
+	         skip the delete, instance flush and count steps */
+	      continue;
+	    }
+
+	  if (flush_to_server[idx] == -1)
+	    {
+	      flush_to_server[idx] = has_unique_constraint (mop);
+	    }
+	  error = delete_object_tuple (parser, &oids[idx]);
+	  if (error == ER_HEAP_UNKNOWN_OBJECT && do_Trigger_involved)
+	    {
+	      er_clear ();
+	      error = NO_ERROR;
+	      continue;
+	    }
+
+	  if ((error >= NO_ERROR) && flush_to_server[idx])
+	    {
+	      error = (locator_flush_instance (mop) == NO_ERROR) ?
+		0 : (er_errid () != NO_ERROR ? er_errid () : -1);
+	    }
+
+	  if (error >= NO_ERROR)
+	    {
+	      count++;		/* another object has been deleted */
+	    }
 	}
-      else
+
+      if (error >= NO_ERROR)
 	{
-	  cursor_id.query_id = parser->query_id;
 	  cursor_status = cursor_next_tuple (&cursor_id);
-
-	  while ((error >= NO_ERROR) && cursor_status == DB_CURSOR_SUCCESS)
-	    {
-	      /* the db_value has the oid to delete. */
-	      error = cursor_get_tuple_value_list (&cursor_id, 1, &oid);
-	      if (flush_to_server != 0)
-		{
-		  mop = DB_GET_OBJECT (&oid);
-		  if (flush_to_server == -1)
-		    {
-		      flush_to_server = has_unique_constraint (mop);
-		    }
-		}
-
-	      if (error >= NO_ERROR)
-		{
-		  error = delete_object_tuple (parser, &oid);
-		  if (error == ER_HEAP_UNKNOWN_OBJECT && do_Trigger_involved)
-		    {
-		      er_clear ();
-		      error = NO_ERROR;
-		      cursor_status = cursor_next_tuple (&cursor_id);
-		      continue;
-		    }
-		}
-
-	      if ((error >= NO_ERROR) && flush_to_server)
-		{
-		  error = (locator_flush_instance (mop) == NO_ERROR) ?
-		    0 : (er_errid () != NO_ERROR ? er_errid () : -1);
-		}
-
-	      if (error >= NO_ERROR)
-		{
-		  count++;	/* another object has been deleted */
-		  cursor_status = cursor_next_tuple (&cursor_id);
-		}
-	    }
-
-	  if ((error >= NO_ERROR) && cursor_status != DB_CURSOR_END)
-	    {
-	      error = ER_GENERIC_ERROR;
-	    }
-	  cursor_close (&cursor_id);
-
-	  /* if error and a savepoint was created, rollback to savepoint.
-	     No need to rollback if the TM aborted the transaction
-	     itself.
-	   */
-	  if ((error < NO_ERROR) && savepoint_name
-	      && error != ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      (void) tran_abort_upto_savepoint (savepoint_name);
-	    }
 	}
+    }
+
+  if ((error >= NO_ERROR) && cursor_status != DB_CURSOR_END)
+    {
+      error = ER_GENERIC_ERROR;
+    }
+
+cleanup:
+  if (is_cursor_open)
+    {
+      cursor_close (&cursor_id);
+    }
+
+  /* if error and a savepoint was created, rollback to savepoint.
+     No need to rollback if the TM aborted the transaction
+     itself.
+   */
+  if (has_savepoint && (error < NO_ERROR) && savepoint_name
+      && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_savepoint (savepoint_name);
+    }
+
+  if (oids != NULL)
+    {
+      db_private_free (NULL, oids);
+    }
+
+  if (flush_to_server != NULL)
+    {
+      db_private_free (NULL, flush_to_server);
     }
 
   if (error >= NO_ERROR)
@@ -8579,7 +8687,6 @@ delete_list_by_oids (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id)
  *                                     and execute it.
  *   return: Error code if delete fails
  *   parser(in/out): Parser context
- *   from(in): Class spec to delete
  *   statement(in): Parse tree of a delete statement.
  *
  * Note:
@@ -8596,8 +8703,7 @@ delete_list_by_oids (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id)
  *  decached from the client after the delete is executed.
  */
 static int
-build_xasl_for_server_delete (PARSER_CONTEXT * parser, const PT_NODE * from,
-			      PT_NODE * statement)
+build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
@@ -8606,10 +8712,10 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, const PT_NODE * from,
   char *stream = NULL;
   QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id = NULL;
+  const PT_NODE *node;
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
-  class_obj = from->info.spec.flat_entity_list->info.name.db_object;
 
   xasl = pt_to_delete_xasl (parser, statement);
 
@@ -8657,7 +8763,18 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, const PT_NODE * from,
       count = list_id->tuple_cnt;
       if (count > 0)
 	{
-	  error = sm_flush_and_decache_objects (class_obj, true);
+	  node = statement->info.delete_.spec;
+	  while (node && error == NO_ERROR)
+	    {
+	      if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+		{
+		  class_obj =
+		    node->info.spec.flat_entity_list->info.name.db_object;
+		  error = sm_flush_and_decache_objects (class_obj, true);
+		}
+
+	      node = node->next;
+	    }
 	}
       regu_free_listid (list_id);
     }
@@ -8710,45 +8827,61 @@ has_unique_constraint (DB_OBJECT * mop)
  * delete_real_class() - Deletes objects or rows
  *   return: Error code if delete fails
  *   parser(in/out): Parser context
- *   spec(in): Class spec to delete
  *   statement(in): Delete statement
  */
 static int
-delete_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
-		   PT_NODE * statement)
+delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   QFILE_LIST_ID *oid_list = NULL;
-  int trigger_involved;
+  int trigger_involved = 0;
   MOBJ class_;
   DB_OBJECT *class_obj;
   float waitsecs = -2, old_waitsecs = -2;
-  PT_NODE *hint_arg;
+  PT_NODE *hint_arg = NULL, *node = NULL, *spec = NULL;
+  bool has_virt_object = false;
 
   /* delete a "real" class in this database */
 
-  class_obj = spec->info.spec.flat_entity_list->info.name.db_object;
-  /* The IX lock on the class is sufficient.
-     DB_FETCH_QUERY_WRITE => DB_FETCH_CLREAD_INSTWRITE */
-  class_ = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE);
-  if (!class_)
+  spec = statement->info.delete_.spec;
+  while (spec)
     {
-      return er_errid ();
-    }
+      if (spec->info.spec.flag & PT_SPEC_FLAG_DELETE)
+	{
+	  class_obj = spec->info.spec.flat_entity_list->info.name.db_object;
 
-  error =
-    sm_class_has_triggers (class_obj, &trigger_involved, TR_EVENT_DELETE);
-  if (error != NO_ERROR)
-    {
-      return error;
+	  if (spec->info.spec.flat_entity_list->info.name.virt_object)
+	    {
+	      has_virt_object = true;
+	    }
+	  /* The IX lock on the class is sufficient.
+	     DB_FETCH_QUERY_WRITE => DB_FETCH_CLREAD_INSTWRITE */
+	  class_ = locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE);
+	  if (!class_)
+	    {
+	      return er_errid ();
+	    }
+
+	  if (!trigger_involved)
+	    {
+	      error =
+		sm_class_has_triggers (class_obj, &trigger_involved,
+				       TR_EVENT_DELETE);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	}
+
+      spec = spec->next;
     }
 
   /* do delete on server if there is no trigger involved and the
      class is a real class */
-  if ((!trigger_involved)
-      && (spec->info.spec.flat_entity_list->info.name.virt_object == NULL))
+  if (!trigger_involved && !has_virt_object)
     {
-      error = build_xasl_for_server_delete (parser, spec, statement);
+      error = build_xasl_for_server_delete (parser, statement);
     }
   else
     {
@@ -8766,12 +8899,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * spec,
       if (error >= NO_ERROR)
 	{
 	  /* get the oid's and new values */
-	  error = select_delete_list (parser,
-				      &oid_list,
-				      spec,
-				      statement->info.delete_.search_cond,
-				      statement->info.delete_.using_index,
-				      statement->info.delete_.class_specs);
+	  error = select_delete_list (parser, &oid_list, statement);
 	}
       if (old_waitsecs >= -1)
 	{
@@ -8848,7 +8976,7 @@ do_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       else
 	{
 	  /* the following is the "normal" sql type execution */
-	  error = delete_real_class (parser, spec, statement);
+	  error = delete_real_class (parser, statement);
 	}
 
       result += error;
@@ -8890,8 +9018,9 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *flat;
   DB_OBJECT *class_obj;
   int has_trigger, au_save;
-  bool server_delete;
+  bool server_delete, has_virt_obj;
   XASL_ID *xasl_id;
+  PT_NODE *node = NULL;
 
   if (parser == NULL)
     {
@@ -8927,13 +9056,38 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  continue;		/* continue to next DELETE statement */
 	}
 
-      flat = statement->info.delete_.spec->info.spec.flat_entity_list;
-      class_obj = (flat) ? flat->info.name.db_object : NULL;
       /* the presence of a proxy trigger should force the delete
          to be performed through the workspace  */
       AU_SAVE_AND_DISABLE (au_save);	/* because sm_class_has_trigger() calls
 					   au_fetch_class() */
-      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_DELETE);
+      has_virt_obj = false;
+      has_trigger = 0;
+      node = (PT_NODE *) statement->info.delete_.spec;
+      while (node && err == NO_ERROR && !has_trigger)
+	{
+	  if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+	    {
+	      flat = node->info.spec.flat_entity_list;
+	      if (flat)
+		{
+		  if (flat->info.name.virt_object)
+		    {
+		      has_virt_obj = true;
+		    }
+		  class_obj = flat->info.name.db_object;
+		}
+	      else
+		{
+		  class_obj = NULL;
+		}
+	      err =
+		sm_class_has_triggers (class_obj, &has_trigger,
+				       TR_EVENT_DELETE);
+	    }
+
+	  node = node->next;
+	}
+
       AU_RESTORE (au_save);
       /* err = has_proxy_trigger(flat, &has_trigger); */
       if (err != NO_ERROR)
@@ -8945,8 +9099,8 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       statement->info.delete_.has_trigger = (bool) has_trigger;
 
       /* determine whether it can be server-side or OID list deletion */
-      server_delete = (!has_trigger && (flat != NULL)
-		       && (flat->info.name.virt_object == NULL));
+      server_delete = (!has_trigger && !has_virt_obj);
+
       statement->info.delete_.server_delete = server_delete;
 
       xasl_id = NULL;
@@ -9122,11 +9276,11 @@ int
 do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err, result;
-  PT_NODE *flat;
+  PT_NODE *flat, *node;
   const char *savepoint_name;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
-  int au_save;
+  int au_save, isvirt = 0;
   float waitsecs = -2, old_waitsecs = -2;
   PT_NODE *hint_arg;
   int query_flag;
@@ -9164,18 +9318,31 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* Server-side deletion or OID list deletion case:
          execute the prepared(stored) XASL (DELETE_PROC or SELECT statement) */
 
-      flat = statement->info.delete_.spec->info.spec.flat_entity_list;
-      class_obj = (flat) ? flat->info.name.db_object : NULL;
-      /* The IX lock on the class is sufficient.
-         DB_FETCH_QUERY_WRITE => DB_FETCH_CLREAD_INSTWRITE */
-      if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE) == NULL)
+      node = statement->info.delete_.spec;
+
+      while (node && err == NO_ERROR)
 	{
-	  err = er_errid ();
-	  break;		/* stop while loop if error */
+	  flat = node->info.spec.flat_entity_list;
+	  class_obj = (flat) ? flat->info.name.db_object : NULL;
+
+	  if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+	    {
+	      /* The IX lock on the class is sufficient.
+	         DB_FETCH_QUERY_WRITE => DB_FETCH_CLREAD_INSTWRITE */
+	      if (locator_fetch_class (class_obj, DB_FETCH_CLREAD_INSTWRITE)
+		  == NULL)
+		{
+		  err = er_errid ();
+		  break;	/* stop while loop if error */
+		}
+	    }
+
+	  /* flush necessary objects before execute */
+	  err = sm_flush_objects (class_obj);
+
+	  node = node->next;
 	}
 
-      /* flush necessary objects before execute */
-      err = sm_flush_objects (class_obj);
       if (err != NO_ERROR)
 	{
 	  break;		/* stop while loop if error */
@@ -9209,28 +9376,34 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       AU_RESTORE (au_save);
 
       /* in the case of OID list deletion, now delete the selected OIDs */
-      if (!statement->info.delete_.server_delete
-	  && (err >= NO_ERROR) && list_id)
+      if ((err >= NO_ERROR) && list_id)
 	{
-	  hint_arg = statement->info.delete_.waitsecs_hint;
-	  if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT
-	      && PT_IS_HINT_NODE (hint_arg))
+	  if (statement->info.delete_.server_delete)
 	    {
-	      waitsecs = (float) atof (hint_arg->info.name.original);
-	      if (waitsecs >= -1)
-		{
-		  old_waitsecs = (float) TM_TRAN_WAITSECS ();
-		  (void) tran_reset_wait_times (waitsecs);
-		}
+	      err = list_id->tuple_cnt;
 	    }
-	  AU_SAVE_AND_DISABLE (au_save);	/* this prevents authorization
-						   checking during execution */
-	  /* delete each oid */
-	  err = delete_list_by_oids (parser, list_id);
-	  AU_RESTORE (au_save);
-	  if (old_waitsecs >= -1)
+	  else
 	    {
-	      (void) tran_reset_wait_times (old_waitsecs);
+	      hint_arg = statement->info.delete_.waitsecs_hint;
+	      if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT
+		  && PT_IS_HINT_NODE (hint_arg))
+		{
+		  waitsecs = (float) atof (hint_arg->info.name.original);
+		  if (waitsecs >= -1)
+		    {
+		      old_waitsecs = (float) TM_TRAN_WAITSECS ();
+		      (void) tran_reset_wait_times (waitsecs);
+		    }
+		}
+	      AU_SAVE_AND_DISABLE (au_save);	/* this prevents authorization
+						   checking during execution */
+	      /* delete each oid */
+	      err = delete_list_by_oids (parser, list_id);
+	      AU_RESTORE (au_save);
+	      if (old_waitsecs >= -1)
+		{
+		  (void) tran_reset_wait_times (old_waitsecs);
+		}
 	    }
 	}
 
@@ -9239,11 +9412,25 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (list_id->tuple_cnt > 0 && statement->info.delete_.server_delete)
 	    {
-	      err = sm_flush_and_decache_objects (class_obj, true);
-	    }
-	  if (err >= NO_ERROR)
-	    {
-	      err = list_id->tuple_cnt;	/* as a result */
+	      int err2 = NO_ERROR;
+	      node = statement->info.delete_.spec;
+
+	      while (node && err2 >= NO_ERROR)
+		{
+		  if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+		    {
+		      flat = node->info.spec.flat_entity_list;
+		      class_obj = (flat) ? flat->info.name.db_object : NULL;
+
+		      err2 = sm_flush_and_decache_objects (class_obj, true);
+		    }
+
+		  node = node->next;
+		}
+	      if (err2 != NO_ERROR)
+		{
+		  err = err2;
+		}
 	    }
 	  regu_free_listid (list_id);
 	}
@@ -9261,11 +9448,23 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  result += err;
 	}
 
-      if ((err >= NO_ERROR) && class_obj && db_is_vclass (class_obj))
-	{
-	  err = sm_flush_objects (class_obj);
-	}
+      node = statement->info.delete_.spec;
 
+      while (node && err >= NO_ERROR)
+	{
+	  if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+	    {
+	      flat = node->info.spec.flat_entity_list;
+	      class_obj = (flat) ? flat->info.name.db_object : NULL;
+
+	      if (class_obj && db_is_vclass (class_obj))
+		{
+		  err = sm_flush_objects (class_obj);
+		}
+	    }
+
+	  node = node->next;
+	}
     }
 
   /* If error and a savepoint was created, rollback to savepoint.
@@ -9364,6 +9563,10 @@ static int check_for_cons (PARSER_CONTEXT * parser,
 			   int *has_unique,
 			   PT_NODE ** non_null_attrs,
 			   const PT_NODE * attr_list, DB_OBJECT * class_obj);
+static int check_for_default_expr (PARSER_CONTEXT * parser,
+				   PT_NODE * specified_attrs,
+				   PT_NODE ** default_expr_attrs,
+				   DB_OBJECT * class_obj);
 static int insert_check_for_fk_cache_attr (PARSER_CONTEXT * parser,
 					   const PT_NODE * attr_list,
 					   DB_OBJECT * class_obj);
@@ -9379,6 +9582,7 @@ static int do_insert_at_server (PARSER_CONTEXT * parser,
 				PT_NODE ** upd_non_null_attrs,
 				const int has_uniques,
 				const int upd_has_uniques,
+				PT_NODE * default_expr_attrs,
 				bool is_first_value);
 static int insert_subquery_results (PARSER_CONTEXT * parser,
 				    PT_NODE * statement,
@@ -9554,10 +9758,25 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 
   if (!xasl_id && error == NO_ERROR)
     {
+      PT_NODE *default_expr_attrs = NULL;
+      PT_NODE *class_;
+      
+      class_ = statement->info.insert.spec->info.spec.flat_entity_list;
+      error =
+	check_for_default_expr (parser, statement->info.insert.attr_list,
+				&default_expr_attrs,
+				class_->info.name.db_object);
+      if (error != NO_ERROR)
+	{
+	  statement->use_plan_cache = 0;
+	  statement->xasl_id = NULL;
+	  return error;
+	}
+
       /* mark the beginning of another level of xasl packing */
       pt_enter_packing_buf ();
       xasl = pt_to_insert_xasl (parser, statement, values_list, has_uniques,
-				non_null_attrs, true);
+				non_null_attrs, default_expr_attrs, true);
 
       if (xasl)
 	{
@@ -9663,7 +9882,7 @@ do_insert_at_server (PARSER_CONTEXT * parser,
 		     PT_NODE * statement, PT_NODE * values_list,
 		     PT_NODE * non_null_attrs, PT_NODE ** upd_non_null_attrs,
 		     const int has_uniques, const int upd_has_uniques,
-		     bool is_first_value)
+		     PT_NODE * default_expr_attrs, bool is_first_value)
 {
   int error = NO_ERROR;
   XASL_NODE *xasl = NULL;
@@ -9684,7 +9903,7 @@ do_insert_at_server (PARSER_CONTEXT * parser,
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
   xasl = pt_to_insert_xasl (parser, statement, values_list, has_uniques,
-			    non_null_attrs, is_first_value);
+			    non_null_attrs, default_expr_attrs, is_first_value);
 
   if (xasl)
     {
@@ -9838,6 +10057,84 @@ do_insert_at_server (PARSER_CONTEXT * parser,
     {
       return error;
     }
+}
+
+/*
+ * check_for_default_expr() - Builds a list of attributes that have a default
+ *			      expression and are not found in the specified
+ *			      attributes list
+ *   return: Error code
+ *   parser(in/out): Parser context
+ *   specified_attrs(in): the list of attributes that are not to be considered
+ *   default_expr_attrs(out):
+ *   class_obj(in):
+ */
+static int
+check_for_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs,
+			PT_NODE ** default_expr_attrs, DB_OBJECT * class_obj)
+{
+  SM_CLASS *cls;
+  SM_ATTRIBUTE *att;
+  int error = NO_ERROR;
+
+  error = au_fetch_class_force (class_obj, &cls, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  for (att = cls->attributes; att != NULL;
+       att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (att->default_value.default_expr != DB_DEFAULT_NONE)
+	{
+	  PT_NODE *node = NULL;
+	  /* if a value has already been specified for this attribute,
+	     go to the next one */
+	  for (node = specified_attrs; node != NULL; node = node->next)
+	    {
+	      if (!pt_str_compare (pt_get_name (node),
+				   att->header.name, CASE_INSENSITIVE))
+		{
+		  break;
+		}
+	    }
+	  if (node != NULL)
+	    {
+	      continue;
+	    }
+
+	  if (*default_expr_attrs == NULL)
+	    {
+	      *default_expr_attrs = parser_new_node (parser, PT_NAME);
+	      if (*default_expr_attrs)
+		{
+		  (*default_expr_attrs)->info.name.original =
+		    att->header.name;
+		}
+	      else
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		  return ER_FAILED;
+		}
+	    }
+	  else
+	    {
+	      PT_NODE *new_ = parser_new_node (parser, PT_NAME);
+	      if (new_)
+		{
+		  new_->info.name.original = att->header.name;
+		  *default_expr_attrs =
+		    parser_append_node (*default_expr_attrs, new_);
+		}
+	      else
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		  return ER_FAILED;
+		}
+	    }
+	}
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -10374,7 +10671,7 @@ build_select_statement (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
 			PT_NODE * spec, PT_NODE * class_specs,
 			PT_NODE ** statement, bool for_update)
 {
-  PT_NODE *where = NULL;
+  PT_NODE *where = NULL, *stmt = NULL;
   SM_CLASS_CONSTRAINT *constraint = NULL;
   SM_CLASS *class_ = NULL;
   int error = NO_ERROR;
@@ -10447,10 +10744,26 @@ build_select_statement (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
     }
 
   /* create the select statement */
-  *statement =
-    pt_to_upd_del_query (parser, NULL, spec, class_specs, where, NULL, NULL,
-			 NULL, 1, for_update);
-  if (*statement == NULL)
+  if ((stmt = parser_new_node (parser, PT_SELECT)) != NULL)
+    {
+      stmt->info.query.q.select.from = parser_copy_tree_list (parser, spec);
+
+      /* add in the class specs to the spec list */
+      stmt->info.query.q.select.from =
+	parser_append_node (parser_copy_tree_list (parser, class_specs),
+			    stmt->info.query.q.select.from);
+
+      stmt->info.query.q.select.where = parser_copy_tree_list (parser, where);
+
+      /* add the class and instance OIDs to the select list */
+      stmt = pt_add_row_classoid_name (parser, stmt, 0);
+      stmt = pt_add_row_oid_name (parser, stmt);
+
+      stmt->info.query.composite_locking = (for_update ? 2 : 1);
+
+      *statement = stmt;
+    }
+  else
     {
       error = er_errid ();
       goto error_cleanup;
@@ -10730,6 +11043,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
   PT_NODE *class_;
   PT_NODE *non_null_attrs = NULL;
   PT_NODE *upd_non_null_attrs = NULL;
+  PT_NODE *default_expr_attrs = NULL;
   DB_ATTDESC **attr_descs = NULL;
   int i, degree, row_count = 0;
   int server_allowed = 0;
@@ -10825,10 +11139,18 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate,
 
   if (server_allowed)
     {
+      error =
+	check_for_default_expr (parser, statement->info.insert.attr_list,
+				&default_expr_attrs,
+				class_->info.name.db_object);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
       error = do_insert_at_server (parser, statement, values_list,
 				   non_null_attrs, &upd_non_null_attrs,
 				   has_uniques, upd_has_uniques,
-				   is_first_value);
+				   default_expr_attrs, is_first_value);
       if (error >= 0)
 	{
 	  row_count = error;
@@ -11683,7 +12005,8 @@ check_missing_non_null_attrs (const PARSER_CONTEXT * parser,
 					  statement->info.insert.attr_list,
 					  db_attribute_name (attr))
 	      || (has_default_values_list
-		  && db_value_is_null (db_attribute_default (attr))))
+		  && db_value_is_null (db_attribute_default (attr))
+		  && attr->default_value.default_expr == DB_DEFAULT_NONE))
 	  && !(attr->flags & SM_ATTFLAG_AUTO_INCREMENT))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
@@ -11836,6 +12159,12 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  has_default_values_list = true;
 	  break;
 	}
+    }
+
+  error = do_evaluate_default_expr (parser, class_);
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   error = check_missing_non_null_attrs (parser, statement,
@@ -13063,6 +13392,11 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
     }
 
+  if (parser->is_holdable)
+    {
+      query_flag |= RESULT_HOLDABLE;
+    }
+
   /* flush necessary objects before execute */
   if (ws_has_updated ())
     {
@@ -13227,6 +13561,10 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->info.query.do_not_cache == 1)
     {
       query_flag |= RESULT_CACHE_INHIBITED;
+    }
+  if (parser->is_holdable)
+    {
+      query_flag |= RESULT_HOLDABLE;
     }
 
   /* flush necessary objects before execute */

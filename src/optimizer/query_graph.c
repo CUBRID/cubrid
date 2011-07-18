@@ -302,7 +302,8 @@ static void qo_free_class_info (QO_ENV * env, QO_CLASS_INFO *);
 static QO_CLASS_INFO *qo_get_class_info (QO_ENV * env, QO_NODE * node);
 static QO_SEGMENT *qo_eqclass_wrt (QO_EQCLASS *, BITSET *);
 static void qo_env_dump (QO_ENV *, FILE *);
-
+static bool qo_is_iss_index (QO_ENV * env, QO_NODE * nodep,
+			     QO_INDEX_ENTRY * index_entry);
 
 
 /*
@@ -4265,6 +4266,7 @@ qo_alloc_index (QO_ENV * env, int n)
       bitset_init (&(entryp->terms), env);
       bitset_init (&(entryp->key_filter_terms), env);
       entryp->cover_segments = false;
+      entryp->is_iss_candidate = false;
       entryp->orderby_skip = false;
       entryp->groupby_skip = false;
       entryp->use_descending = false;
@@ -5995,7 +5997,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
 	  continue;
 	}
 
-      /* the segment should belong to the given node */
+      /* the segment  should belong to the given node */
       seg_nodep = QO_SEG_HEAD (seg);
       if (seg_nodep == NULL || seg_nodep != nodep)
 	{
@@ -6038,6 +6040,219 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
 	}
     }
 
+  return true;
+}
+
+/*
+ * qo_is_iss_index () - check if we can use the Index Skip Scan optimization
+ *   return: bool
+ *   env(in): The environment
+ *   nodep(in): The node 
+ *   index_entry(in): The index entry
+ *
+ *   Notes: The Index Skip Scan optimization applies when there is no term
+ *          involving the first index column, but there are other terms that
+ *          refer to the second, third etc columns, and the first column has
+ *          few distinct values: in this case, multiple index scans (one for
+ *          each value of the first column) can be faster than an index scan.
+ */
+static bool
+qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
+{
+  int i, term;
+  bool first_col_present = false;
+  bool second_col_present = false;
+  QO_CLASS_INFO *class_infop = NULL;
+  QO_NODE *seg_nodep = NULL;
+  bool has_count_star = false;
+  BITSET_ITERATOR iter;
+  SM_CLASS_CONSTRAINT *consp;
+  bool first_col_not_null = false;
+
+  if (env == NULL || nodep == NULL || index_entry == NULL)
+    {
+      return false;
+    }
+
+  /* Index skip scan (ISS) candidates:
+   *  - have no range or key filter terms for the first column of the index;
+   *  - DO have range or key filter terms for at least the second column of
+   *    the index (maybe even for further columns, but we are only interested
+   *    in the second column right now);
+   *  - obviously are multi-column indexes
+   */
+
+  /* ISS has no meaning on single column indexes */
+  if (!QO_ENTRY_MULTI_COL (index_entry))
+    {
+      return false;
+    }
+
+  /* CONNECT BY messes with the terms, so just refuse any index skip scan
+   * in this case */
+  if (env->pt_tree->node_type == PT_SELECT &&
+      env->pt_tree->info.query.q.select.connect_by)
+    {
+      return false;
+    }
+
+  /* the first column of the index should be declared NOT NULL. Otherwise, the
+   * Index Skip Scan algorithm (which fetches the first value from the b-tree)
+   * would obtain a NULL dbvalue and use that in further comparisons, which 
+   * would result to FALSE values */
+  first_col_not_null = false;
+
+  if (nodep->info->n != 1)
+    {
+      return false;
+    }
+
+  for (consp = sm_class_constraints (nodep->info->info[0].mop);
+       consp && !first_col_not_null; consp = consp->next)
+    {
+      if (consp->type == SM_CONSTRAINT_NOT_NULL)
+	{
+	  int i = 0;
+	  for (i = 0; consp->attributes[i]; i++)
+	    {
+	      if (consp->attributes[i] ==
+		  index_entry->constraints->attributes[0])
+		{
+		  first_col_not_null = true;
+		  break;
+		}
+	    }
+	}
+    }
+
+  if (first_col_not_null == false)
+    {
+      return false;
+    }
+
+  /* First segment index should be missing */
+  first_col_present = false;
+  if (index_entry->seg_idxs[0] != -1)
+    {
+      /* So there are references to the first of the index's segment. At least
+       * make sure these terms do not qualify as range filter or key filter.*/
+
+      if (bitset_cardinality (&(index_entry->seg_equal_terms[0])) > 0)
+	{
+	  first_col_present = true;
+	}
+      else
+	{
+	  /* make sure there are no REAL terms in seg_other_terms */
+	  for (term =
+	       bitset_iterate (&index_entry->seg_other_terms[0], &iter);
+	       term != -1; term = bitset_next_member (&iter))
+	    {
+	      PT_NODE *pt_expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, term));
+	      if (pt_expr &&
+		  PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE))
+		{
+		  /* do not get fooled by those invented terms, there still
+		   * is no real first col present! */
+		  continue;
+		}
+	      else
+		{
+		  /* Now there is ! */
+		  first_col_present = true;
+		  break;
+		}
+	    }
+
+	  /* we either found a first column, and in this case all is lost,
+	   * or we did not find it in seg_other_terms[0], and must also search
+	   * elsewhere */
+	  if (first_col_present == false)
+	    {
+	      /* Not out of the woods yet: we still need to check all the 
+	       * EQ classes to make sure the segment referring to the first index
+	       * column is not hiding in there. If it DOES belong to any EQ class,
+	       * then there is a risk of chosing Index Skip Scan without it being
+	       * the case. */
+	      for (i = 0; i < env->neqclasses; i++)
+		{
+		  if (BITSET_MEMBER
+		      (env->eqclasses[i].segs, index_entry->seg_idxs[0]))
+		    {
+		      first_col_present = true;
+		      break;
+		    }
+		}
+	    }
+	}
+    }
+
+  if (first_col_present)
+    {
+      return false;
+    }
+
+  second_col_present = false;
+
+  assert (index_entry->nsegs > 1);
+  if (index_entry->seg_idxs[1] != -1)
+    {
+      /* it's not enough to have a reference to a segment in seg_idxs[], we
+       * must make sure there is an indexable term that uses it: this means
+       * either an equal term, or an "other" term that is real (i.e. it is
+       * not a full range scan term "invented" by pt_check_orderby to help
+       * with generating index covering.
+       */
+
+      if (bitset_cardinality (&(index_entry->seg_equal_terms[1])) > 0)
+	{
+	  second_col_present = true;
+	}
+      else
+	{
+	  for (term =
+	       bitset_iterate (&index_entry->seg_other_terms[1], &iter);
+	       term != -1; term = bitset_next_member (&iter))
+	    {
+	      PT_NODE *pt_expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, term));
+	      if (pt_expr &&
+		  PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE))
+		{
+		  /* second col present == still false ! */
+		  continue;
+		}
+	      else
+		{
+		  second_col_present = true;
+		  break;
+		}
+	    }
+	}
+    }
+
+  if (!second_col_present)
+    {
+      return false;
+    }
+
+  /* The first col is missing, and the second col is present and has terms that
+   * can be used in a range search. */
+
+  /* Using count() involves a lot of risks: btree_range_search might decide
+   * it only needs to count the elements, and index skip scan is not supported
+   * in this scenario. So check for count(...) usage */
+  if (nodep->env->pt_tree &&
+      nodep->env->pt_tree->node_type == PT_SELECT &&
+      PT_SELECT_INFO_IS_FLAGED (nodep->env->pt_tree, PT_SELECT_INFO_HAS_AGG))
+    {
+      return false;
+    }
+
+  /* Go ahead and approve the index as a candidate
+   * for index skip scanning. We still have a long way ahead of us (use sta-
+   * tistics to decide whether index skip scan is the best approach) but we've
+   * made the first step.
+   */
   return true;
 }
 
@@ -6285,6 +6500,10 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
 	      index_entryp->cover_segments =
 		qo_is_coverage_index (env, nodep, index_entryp);
+
+	      index_entryp->is_iss_candidate =
+		index_entryp->cover_segments ? false
+		: qo_is_iss_index (env, nodep, index_entryp);
 
 	      index_entryp->statistics_attribute_name = NULL;
 	      if (index_entryp->col_num > 0)

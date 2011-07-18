@@ -222,9 +222,71 @@ xsession_get_session_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name,
   return session_get_variable (thread_p, name, value);
 }
 
+/*
+ * xsession_drop_session_variables () - drop session variables
+ * return : error code or NO_ERROR
+ * thread_p (in) : worker thread
+ * values (in)   : names of the variables to drop
+ * count (in)	 : number of elements in the values array
+ */
 int
 xsession_drop_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values,
 				 const int count)
 {
   return session_drop_session_variables (thread_p, values, count);
+}
+
+/*
+ * xsession_store_query_entry_info () - create a query entry
+ * return : void
+ * thread_p (in) :
+ * qentry_p (in) : query entry
+ */
+void
+xsession_store_query_entry_info (THREAD_ENTRY * thread_p,
+				 QMGR_QUERY_ENTRY * qentry_p)
+{
+  session_store_query_entry_info (thread_p, qentry_p);
+}
+
+/*
+ * xsession_load_query_entry_info () - search for a query entry
+ * return : error code or NO_ERROR
+ * thread_p (in) :
+ * qentry_p (in/out) : query entry
+ */
+int
+xsession_load_query_entry_info (THREAD_ENTRY * thread_p,
+				QMGR_QUERY_ENTRY * qentry_p)
+{
+  return session_load_query_entry_info (thread_p, qentry_p);
+}
+
+/*
+ * xsession_remove_query_entry_info () - remove a query entry from the
+ *					 holdable queries list
+ * return : error code or NO_ERROR
+ * thread_p (in) : active thread
+ * query_id (in) : query id
+ */
+int
+xsession_remove_query_entry_info (THREAD_ENTRY * thread_p,
+				  const QUERY_ID query_id)
+{
+  return session_remove_query_entry_info (thread_p, query_id);
+}
+
+/*
+ * xsession_remove_query_entry_info () - remove a query entry from the
+ *					 holdable queries list but do not
+ *					 close the associated list files
+ * return : error code or NO_ERROR
+ * thread_p (in) : active thread
+ * query_id (in) : query id
+ */
+int
+xsession_clear_query_entry_info (THREAD_ENTRY * thread_p,
+				 const QUERY_ID query_id)
+{
+  return session_clear_query_entry_info (thread_p, query_id);
 }

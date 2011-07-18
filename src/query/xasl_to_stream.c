@@ -2697,6 +2697,8 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->composite_locking);
 
+  ptr = or_pack_int (ptr, xasl->upd_del_class_cnt);
+
   /*
    * NOTE that the composite lock block is strictly a server side block
    * and is not packed.
@@ -3727,6 +3729,23 @@ xts_process_key_info (char *ptr, const KEY_INFO * key_info)
       ptr = or_pack_int (ptr, 0);
     }
 
+  ptr = or_pack_int (ptr, key_info->use_iss);
+
+  if (key_info->use_iss)
+    {
+      ptr = or_pack_int (ptr, (int) key_info->iss_range.range);
+
+      offset = xts_save_regu_variable (key_info->iss_range.key1);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+
+      /* Key 2 is ALWAYS NULL (see pt_create_iss_range(), so we do not
+       * stream it */
+    }
+
   ptr = or_pack_int (ptr, key_info->is_constant);
 
   offset = xts_save_regu_variable (key_info->key_limit_l);
@@ -4462,7 +4481,8 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     OR_INT_SIZE +		/* next_scan_on */
     OR_INT_SIZE +		/* next_scan_block_on */
     OR_INT_SIZE +		/* cat_fetched */
-    OR_INT_SIZE;		/* composite_locking */
+    OR_INT_SIZE +		/* composite_locking */
+    OR_INT_SIZE;		/* upd_del_class_cnt */
 
   size += OR_INT_SIZE;		/* number of access specs in spec_list */
   for (access_spec = xasl->spec_list; access_spec;
@@ -5249,6 +5269,10 @@ xts_sizeof_key_info (const KEY_INFO * key_info)
 
   size += OR_INT_SIZE +		/* key_cnt */
     PTR_SIZE +			/* key_ranges */
+    OR_INT_SIZE +		/* use_iss boolean (int) */
+    OR_INT_SIZE +		/* iss_range's range */
+    PTR_SIZE +			/* iss_range's key1 */
+    PTR_SIZE +			/* iss_range's key2 */
     OR_INT_SIZE +		/* is_constant */
     PTR_SIZE +			/* key_limit_l */
     PTR_SIZE +			/* key_limit_u */

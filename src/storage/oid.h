@@ -45,7 +45,15 @@
 				  (oidp)->slotid = - tm_Tran_index)
 #endif /* !SERVER_MODE */
 
-#define COPY_OID(oid_ptr1, oid_ptr2) *(oid_ptr1) = *(oid_ptr2)
+#define COPY_OID(dest_oid_ptr, src_oid_ptr) do { \
+					     *(dest_oid_ptr)=*(src_oid_ptr);\
+					    } while (0)
+
+#define SAFE_COPY_OID(dest_oid_ptr, src_oid_ptr) \
+  if (src_oid_ptr) \
+    {*(dest_oid_ptr) = *(src_oid_ptr);} \
+  else \
+    { OID_SET_NULL(dest_oid_ptr); }
 
 #define OID_ISTEMP(oidp)        ((oidp)->pageid < NULL_PAGEID)
 #define OID_ISNULL(oidp)        ((oidp)->pageid == NULL_PAGEID)

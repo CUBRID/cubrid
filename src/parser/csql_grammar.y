@@ -546,6 +546,7 @@ void pop_msg (void);
 %type <node> meta_class_spec
 %type <node> only_all_class_spec
 %type <node> class_name
+%type <node> class_name_list
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
@@ -572,7 +573,6 @@ void pop_msg (void);
 %type <node> paren_path_expression_set
 %type <node> path_expression_list
 %type <node> delete_stmt
-%type <node> opt_class_name
 %type <node> author_cmd_list
 %type <node> authorized_cmd
 %type <node> opt_password
@@ -801,6 +801,7 @@ void pop_msg (void);
 %type <c3> ref_rule_list
 %type <c3> opt_ref_rule_list
 %type <c3> of_serial_option
+%type <c3> delete_from_using
 
 %type <c2> extended_table_spec_list
 %type <c2> opt_of_where_cursor
@@ -3513,6 +3514,17 @@ table_spec
 			PT_NODE *ent = $1;
 			if (ent)
 			  {
+			    PT_NODE *del = parser_pop_hint_node ();
+			    if (del && del->node_type == PT_DELETE)
+			      {
+			        PT_NODE *sel = $1;
+			        if (sel && sel->node_type == PT_SELECT)
+			          {
+				    PT_SELECT_INFO_CLEAR_FLAG (sel, PT_SELECT_INFO_DUMMY);
+				  }
+			      }
+			    parser_push_hint_node (del);
+
 			    ent->info.spec.range_var = CONTAINER_AT_0 ($2);
 			    ent->info.spec.as_attr_list = CONTAINER_AT_1 ($2);
 
@@ -3527,6 +3539,17 @@ table_spec
 			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
 			if (ent)
 			  {
+			    PT_NODE *del = parser_pop_hint_node ();
+			    if (del && del->node_type == PT_DELETE)
+			      {
+			        PT_NODE *sel = $1;
+				if (sel && sel->node_type == PT_SELECT)
+				  {
+				    PT_SELECT_INFO_CLEAR_FLAG (sel, PT_SELECT_INFO_DUMMY);
+				  }
+			      }
+			    parser_push_hint_node (del);
+
 			    ent->info.spec.derived_table = $1;
 			    ent->info.spec.derived_table_type = PT_IS_SUBQUERY;
 
@@ -3741,6 +3764,21 @@ class_name
 	| identifier
 		{{
 
+			$$ = $1;
+
+		DBG_PRINT}}
+	;
+
+class_name_list
+	: class_name_list ',' class_name
+		{{
+
+			$$ = parser_make_link($1, $3);
+
+		DBG_PRINT}}
+	| class_name
+		{{
+		
 			$$ = $1;
 
 		DBG_PRINT}}
@@ -5612,6 +5650,36 @@ path_expression_list
 		DBG_PRINT}}
 	;
 
+delete_from_using
+	: class_name_list FROM extended_table_spec_list
+		{{
+
+			container_3 ctn;
+			SET_CONTAINER_3(ctn, $1, CONTAINER_AT_0 ($3), CONTAINER_AT_1 ($3));
+
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| FROM class_name_list USING extended_table_spec_list
+		{{
+
+			container_3 ctn;
+			SET_CONTAINER_3(ctn, $2, CONTAINER_AT_0 ($4), CONTAINER_AT_1 ($4));
+
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| FROM table_spec
+		{{
+
+			container_3 ctn;
+			SET_CONTAINER_3(ctn, NULL, $2, FROM_NUMBER(0));
+
+			$$ = ctn;
+
+		DBG_PRINT}}
+	;
+
 delete_stmt
 	: DELETE_				/* $1 */
 		{				/* $2 */
@@ -5619,78 +5687,98 @@ delete_stmt
 			parser_push_hint_node(node);
 		}
 	  opt_hint_list 			/* $3 */
-	  opt_class_name 			/* $4 */
-	  FROM 					/* $5 */
-	  table_spec_list 			/* $6 */
-	  opt_of_where_cursor 			/* $7 */
-	  opt_using_index_clause 		/* $8 */
-	  opt_upd_del_limit_clause		/* $9 */
+	  delete_from_using			/* $4 */
+	  opt_of_where_cursor 			/* $5 */
+	  opt_using_index_clause 		/* $6 */
+	  opt_upd_del_limit_clause		/* $7 */
 		{{
 
 			PT_NODE *del = parser_pop_hint_node ();
 
 			if (del)
 			  {
-			    del->info.delete_.class_name = $4;
-			    del->info.delete_.spec = $6;
-			    if (TO_NUMBER (CONTAINER_AT_0 ($7)))
-			      del->info.delete_.search_cond = CONTAINER_AT_1 ($7);
-			    else
-			      del->info.delete_.cursor_name = CONTAINER_AT_1 ($7);
+			    PT_NODE *node = NULL;
+			    del->info.delete_.target_classes = CONTAINER_AT_0 ($4);
+			    del->info.delete_.spec = CONTAINER_AT_1 ($4);
 
-			    del->info.delete_.using_index = $8;
-
-			    /* set LIMIT node */
-			    del->info.delete_.limit = $9;
-			    if (del->info.delete_.limit
-				&& del->info.delete_.search_cond)
+			    if (TO_NUMBER (CONTAINER_AT_0 ($5)))
 			      {
-				/* For DELETE statements that have LIMIT clause don't allow
-				 * inst_num in search condition
-				 */
-				bool instnum_flag = false;
-				(void) parser_walk_tree (this_parser, del->info.delete_.search_cond,
-							 pt_check_instnum_pre, NULL,
-							 pt_check_instnum_post, &instnum_flag);
-				if (instnum_flag)
+				del->info.delete_.search_cond = CONTAINER_AT_1 ($5);
+			      }
+			    else
+			      {
+				del->info.delete_.cursor_name = CONTAINER_AT_1 ($5);
+			      }
+
+			    del->info.delete_.using_index = $6;
+			    del->info.delete_.limit = $7;
+
+			    /* In a multi-table case the LIMIT clauses is not allowed. */
+   			    if (del->info.delete_.spec->next)
+   			      {
+   				if (del->info.delete_.limit)
+   				  {
+   				    PT_ERRORmf(this_parser, del->info.delete_.limit,
+   					       MSGCAT_SET_PARSER_SEMANTIC,
+   					       MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "LIMIT");
+   				  }
+			      }
+			    else
+			      {
+				/* if the delete is single-table no need to specify
+				 * the delete table. In this case add the name of supplied
+				 * spec to the target_classes list. */
+				if (!del->info.delete_.target_classes) 
 				  {
+				    if (del->info.delete_.spec->info.spec.range_var)
+				      {
+					del->info.delete_.target_classes =
+					  parser_copy_tree(this_parser, del->info.delete_.spec->info.spec.range_var);
+				      }
+				    else
+				      {
+					del->info.delete_.target_classes =
+					  parser_copy_tree(this_parser, del->info.delete_.spec->info.spec.entity_name);
+				      }
+				  }
+
+				/* set LIMIT node */
+				if (del->info.delete_.limit && del->info.delete_.search_cond)
+				  {
+				    /* For DELETE statements that have LIMIT clause don't
+				     * allow inst_num in search condition */
+				    bool instnum_flag = false;
+				    (void) parser_walk_tree (this_parser, del->info.delete_.search_cond,
+							     pt_check_instnum_pre, NULL,
+							     pt_check_instnum_post, &instnum_flag);
+				    if (instnum_flag)
+				      {
+					PT_ERRORmf(this_parser, del->info.delete_.search_cond,
+						   MSGCAT_SET_PARSER_SEMANTIC,
+						   MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "INST_NUM()/ROWNUM");
+				      }
+				  }
+				else if (del->info.delete_.limit && del->info.delete_.cursor_name)
+				  {
+				    /* It makes no sense to allow LIMIT for DELETE statements
+				     * that use (Oracle style) cursor */
 				    PT_ERRORmf(this_parser, del->info.delete_.search_cond,
 					       MSGCAT_SET_PARSER_SEMANTIC,
-					       MSGCAT_SEMANTIC_NOT_ALLOWED_IN_LIMIT_CLAUSE, "INST_NUM()/ROWNUM");
+					       MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "LIMIT");
 				  }
 			      }
-			    else if (del->info.delete_.limit
-				     && del->info.delete_.cursor_name)
-			      {
-				/* It makes no sense to allow LIMIT for DELETE statements
-				 * that use (Oracle style) cursor
-				 */
-				PT_ERRORmf(this_parser, del->info.delete_.search_cond,
-					   MSGCAT_SET_PARSER_SEMANTIC,
-					   MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "LIMIT");
-			      }
 
+			    node = del->info.delete_.target_classes;
+			    while (node)
+			      {
+				PT_NAME_INFO_SET_FLAG(node, PT_NAME_ALLOW_REUSABLE_OID);
+				node = node->next;
+			      }
 			  }
 			$$ = del;
 
 		DBG_PRINT}}
 	;
-
-opt_class_name
-	: /* empty */
-		{{
-
-			$$ = NULL;
-
-		DBG_PRINT}}
-	| class_name
-		{{
-
-			$$ = $1;
-
-		DBG_PRINT}}
-	;
-
 
 auth_stmt
 	 : grant_head opt_with_grant_option
@@ -7807,13 +7895,49 @@ column_shared_constraint_def
 column_default_constraint_def
 	: DEFAULT expression_
 		{{
+
 			PT_NODE *attr_node;
 			PT_NODE *node = parser_new_node (this_parser, PT_DATA_DEFAULT);
 
 			if (node)
 			  {
+			    PT_NODE *def;
 			    node->info.data_default.default_value = $2;
 			    node->info.data_default.shared = PT_DEFAULT;
+
+			    def = node->info.data_default.default_value;
+
+			    if (def && def->node_type == PT_EXPR)
+			      {
+				switch (def->info.expr.op)
+				  {
+				  case PT_SYS_DATE:
+				    node->info.data_default.default_expr = DB_DEFAULT_SYSDATE;
+				    break;
+				  case PT_SYS_DATETIME:
+				    node->info.data_default.default_expr = DB_DEFAULT_SYSDATETIME;
+				    break;
+				  case PT_SYS_TIMESTAMP:
+				    node->info.data_default.default_expr = DB_DEFAULT_SYSTIMESTAMP;
+				    break;
+				  case PT_USER:
+				    node->info.data_default.default_expr = DB_DEFAULT_USER;
+				    break;
+				  case PT_CURRENT_USER:
+				    node->info.data_default.default_expr = DB_DEFAULT_CURR_USER;
+				    break;
+				  case PT_UNIX_TIMESTAMP:
+				    node->info.data_default.default_expr = DB_DEFAULT_UNIX_TIMESTAMP;
+				    break;
+				  default:
+				    node->info.data_default.default_expr = DB_DEFAULT_NONE;
+				    break;
+				  }
+			      }
+			    else
+			      {
+				node->info.data_default.default_expr = DB_DEFAULT_NONE;
+			      }
 			  }
 
 			attr_node = parser_get_attr_def_one ();

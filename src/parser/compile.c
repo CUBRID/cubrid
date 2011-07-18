@@ -82,6 +82,14 @@ enum pt_order_by_adjustment
   PT_TIMES_TWO
 };
 
+/* structure used for parser_walk_tree in pt_fix_lck_classes_for_delete */
+typedef struct pt_delete_locks_arg PT_DELETE_LOCKS_ARG;
+struct pt_delete_locks_arg
+{
+  PT_CLASS_LOCKS *lcks;		/* locks array */
+  PT_NODE *spec;		/* DELETE spec */
+  PT_NODE *name;		/* name of class to look for */
+};
 
 static PT_NODE *pt_spec_to_oid_attr (PARSER_CONTEXT * parser, PT_NODE * spec,
 				     VIEW_HANDLING how);
@@ -90,8 +98,18 @@ static PT_NODE *pt_add_oid_to_select_list (PARSER_CONTEXT * parser,
 					   VIEW_HANDLING how);
 static PT_NODE *pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node,
 				   void *arg, int *continue_walk);
+static PT_NODE *pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node,
+				void *arg, int *continue_walk);
+static int pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
+			      PT_NODE * spec);
 static PT_NODE *pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 				     void *arg, int *continue_walk);
+static PT_NODE *pt_find_lck_class_from_name (PARSER_CONTEXT * parser,
+					     PT_NODE * node, void *arg,
+					     int *continue_walk);
+static PT_NODE *pt_fix_lck_classes_for_delete (PARSER_CONTEXT * parser,
+					       PT_NODE * node, void *arg,
+					       int *continue_walk);
 static int pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str);
 static PT_NODE *pt_set_trigger_obj_pre (PARSER_CONTEXT * parser,
 					PT_NODE * node, void *arg,
@@ -449,6 +467,15 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
       return statement;		/* caught in semantic check */
     }
 
+  if (statement->node_type == PT_DELETE)
+    {
+      int cnt = 0;
+      /* count names in delete list */
+      (void) parser_walk_tree (parser, statement->info.delete_.target_classes,
+			       pt_count_names, &cnt, NULL, NULL);
+      lcks.num_classes += cnt;
+    }
+
   /* allocate the arrays */
   lcks.classes = (char **) malloc ((lcks.num_classes + 1) * sizeof (char *));
   if (lcks.classes == NULL)
@@ -484,6 +511,20 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   (void) parser_walk_tree (parser, statement, pt_find_lck_classes, &lcks,
 			   NULL, NULL);
+
+  if (statement->node_type == PT_DELETE)
+    {
+      /* set DB_FETCH_CLREAD_INSTWRITE for classes subject to delete */
+      PT_DELETE_LOCKS_ARG delete_lcks_data;
+
+      delete_lcks_data.lcks = &lcks;
+      delete_lcks_data.spec = statement->info.delete_.spec;
+      lcks.lock_type = DB_FETCH_CLREAD_INSTWRITE;
+
+      (void) parser_walk_tree (parser, statement->info.delete_.target_classes,
+			       pt_fix_lck_classes_for_delete,
+			       &delete_lcks_data, NULL, NULL);
+    }
 
   if (!parser->error_msgs
       && locator_lockhint_classes (lcks.num_classes,
@@ -542,6 +583,73 @@ pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node,
   return node;
 }
 
+/*
+ * pt_count_names () - If the node is a PT_NAME node, bump counter
+ *   return:
+ *   parser(in):
+ *   node(in): the node to check, leave node unchanged
+ *   arg(out): count of names
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_count_names (PARSER_CONTEXT * parser, PT_NODE * node,
+		void *arg, int *continue_walk)
+{
+  int *cnt = (int *) arg;
+
+  if (node->node_type == PT_NAME)
+    {
+      (*cnt)++;
+    }
+
+  return node;
+}
+
+/*
+ * pt_add_lock_class () - add class locks in the prefetch structure
+ *   return:
+ *   parser(in):
+ *   lcks(in/out): pointer to PT_CLASS_LOCKS structure
+ *   spec(in): spec to add in locks list.
+ *   continue_walk(in):
+ */
+int
+pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks,
+		   PT_NODE * spec)
+{
+  int len = 0;
+
+  /* need to lowercase the class name so that the lock manager
+   * can find it. */
+  len = strlen (spec->info.spec.entity_name->info.name.original);
+  /* parser->lcks_classes[n] will be freed at parser_free_parser() */
+  lcks->classes[lcks->num_classes] = (char *) calloc (1, len + 1);
+  if (lcks->classes[lcks->num_classes] == NULL)
+    {
+      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME,
+		  MSGCAT_RUNTIME_OUT_OF_MEMORY, len + 1);
+      return MSGCAT_RUNTIME_OUT_OF_MEMORY;
+    }
+
+  sm_downcase_name (spec->info.spec.entity_name->info.name.original,
+		    lcks->classes[lcks->num_classes], len + 1);
+
+  if (spec->info.spec.only_all == PT_ONLY)
+    {
+      lcks->only_all[lcks->num_classes] = 0;
+    }
+  else
+    {
+      lcks->only_all[lcks->num_classes] = 1;
+    }
+
+  lcks->locks[lcks->num_classes] =
+    locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS);
+
+  lcks->num_classes++;
+
+  return NO_ERROR;
+}
 
 /*
  * pt_find_lck_classes () - enters classes in the prefetch structure
@@ -568,7 +676,6 @@ static PT_NODE *
 pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
 		     void *arg, int *continue_walk)
 {
-  int len;
   PT_CLASS_LOCKS *lcks = (PT_CLASS_LOCKS *) arg;
 
   /* Set up the lock type for the first class.  All others will be read
@@ -576,7 +683,7 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
   switch (node->node_type)
     {
     case PT_DELETE:
-      lcks->lock_type = DB_FETCH_CLREAD_INSTWRITE;
+      lcks->lock_type = DB_FETCH_CLREAD_INSTREAD;
       break;
     case PT_UPDATE:
       /* If this is actually an UPDATE OBJECT statement, we only want
@@ -616,32 +723,11 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
   if (!pt_in_lck_array (lcks,
 			node->info.spec.entity_name->info.name.original))
     {
-      /* need to lowercase the class name so that the lock manager
-       * can find it. */
-      len = strlen (node->info.spec.entity_name->info.name.original);
-      /* parser->lcks_classes[n] will be freed at parser_free_parser() */
-      lcks->classes[lcks->num_classes] = (char *) calloc (1, len + 1);
-      if (lcks->classes[lcks->num_classes] == NULL)
+      if (pt_add_lock_class (parser, lcks, node) != NO_ERROR)
 	{
-	  PT_ERROR (parser, node, er_msg ());
 	  *continue_walk = PT_STOP_WALK;
 	  return node;
 	}
-
-      sm_downcase_name (node->info.spec.entity_name->info.name.original,
-			lcks->classes[lcks->num_classes], len + 1);
-
-      if (node->info.spec.only_all == PT_ONLY)
-	{
-	  lcks->only_all[lcks->num_classes] = 0;
-	}
-      else
-	{
-	  lcks->only_all[lcks->num_classes] = 1;
-	}
-
-      lcks->locks[lcks->num_classes] =
-	locator_fetch_mode_to_lock (lcks->lock_type, LC_CLASS);
 
       /*
        * Second and subsequent classes must be read only (see warning
@@ -649,12 +735,154 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node,
        * the next call.
        */
       lcks->lock_type = DB_FETCH_CLREAD_INSTREAD;
-      lcks->num_classes++;
     }
 
   return node;
 }
 
+/*
+ * pt_find_lck_class_from_name () - find class referenced in PT_NAME node
+ *     and add it in the prefetch structure with the correct lock mode
+ *   return:
+ *   parser(in):
+ *   node(in): the node to check, returns node unchanged
+ *   arg(in/out): pointer to PT_DELETE_LOCKS_ARG structure
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_find_lck_class_from_name (PARSER_CONTEXT * parser, PT_NODE * node,
+			     void *arg, int *continue_walk)
+{
+  PT_DELETE_LOCKS_ARG *data = (PT_DELETE_LOCKS_ARG *) arg;
+  PT_CLASS_LOCKS *lcks = data->lcks;
+  const char *class_name = NULL;
+  PT_NODE *found_spec = NULL;
+  int len = 0;
+
+  if (data->name == NULL || data->name->node_type != PT_NAME)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      *continue_walk = PT_LIST_WALK;
+      break;
+
+    case PT_SPEC:
+      class_name = data->name->info.name.original;
+      if (class_name == NULL || class_name[0] == '\0')
+	{
+	  class_name = data->name->info.name.resolved;
+	}
+      if (class_name == NULL)
+	{
+	  break;
+	}
+      if (node->info.spec.range_var != NULL)
+	{
+	  if (pt_str_compare (node->info.spec.range_var->info.name.original,
+			      class_name, CASE_INSENSITIVE) == 0)
+	    {
+	      found_spec = node;
+	      break;
+	    }
+	}
+      else if (node->info.spec.entity_name != NULL)
+	{
+	  if (pt_str_compare (node->info.spec.entity_name->info.name.original,
+			      class_name, CASE_INSENSITIVE) == 0)
+	    {
+	      found_spec = node;
+	      break;
+	    }
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  if (found_spec == NULL || found_spec->info.spec.entity_name == NULL
+      || found_spec->info.spec.entity_name->node_type != PT_NAME)
+    {
+      return node;
+    }
+
+  /* only add to the array, if not there already in this lock mode. */
+  if (!pt_in_lck_array (lcks,
+			found_spec->info.spec.entity_name->info.name.
+			original))
+    {
+      if (pt_add_lock_class (parser, lcks, found_spec) != NO_ERROR)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_fix_lck_classes_for_delete () - add classes referenced in PT_NAME
+ *    nodes in the prefetch structure with the correct lock mode.
+ *   return:
+ *   parser(in):
+ *   node(in): the node to check, returns node unchanged
+ *   arg(in/out): pointer to PT_DELETE_LOCKS_ARG structure
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_fix_lck_classes_for_delete (PARSER_CONTEXT * parser, PT_NODE * node,
+			       void *arg, int *continue_walk)
+{
+  PT_DELETE_LOCKS_ARG *data = (PT_DELETE_LOCKS_ARG *) arg;
+  PT_NODE *found_spec = NULL;
+
+  /* if its not a PT_NAME node, there's nothing left to do */
+  if (node->node_type != PT_NAME)
+    {
+      return node;
+    }
+
+  if (pt_resolved (node))
+    {
+      found_spec = pt_find_spec (parser, data->spec, node);
+      if (found_spec == NULL || found_spec->info.spec.entity_name == NULL
+	  || found_spec->info.spec.entity_name->node_type != PT_NAME)
+	{
+	  return node;
+	}
+
+      /* only add to the array, if not there already in this lock mode. */
+      if (!pt_in_lck_array (data->lcks,
+			    found_spec->info.spec.entity_name->info.name.
+			    original))
+	{
+	  if (pt_add_lock_class (parser, data->lcks, found_spec) != NO_ERROR)
+	    {
+	      *continue_walk = PT_STOP_WALK;
+	      return node;
+	    }
+	}
+    }
+  else
+    {
+      data->name = node;
+      (void) parser_walk_tree (parser, data->spec,
+			       pt_find_lck_class_from_name, data, NULL, NULL);
+    }
+
+  return node;
+}
 
 /*
  * pt_in_lck_array () -

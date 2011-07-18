@@ -124,6 +124,8 @@ typedef struct key_range
 typedef struct key_info
 {
   KEY_RANGE *key_ranges;	/* a list of key ranges */
+  bool use_iss;			/* true if index skip scan optimization */
+  KEY_RANGE iss_range;		/* secondary range, used by index skip scan */
   int key_cnt;			/* key count */
   int is_constant;		/* every key value is a constant */
   struct regu_variable_node *key_limit_l;	/* lower key limit */

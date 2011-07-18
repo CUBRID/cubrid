@@ -226,9 +226,10 @@ re_check:
 	    {
 	      if (att->type->variable_p)
 		{
-		  if (!DB_IS_NULL (&att->value))
+		  if (!DB_IS_NULL (&att->default_value.value))
 		    {
-		      size += pr_data_writeval_disk_size (&att->value);
+		      size += pr_data_writeval_disk_size (&att->default_value.
+							  value);
 		    }
 		}
 	      else
@@ -303,9 +304,10 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size)
 	    {
 	      if (att->type->variable_p)
 		{
-		  if (!DB_IS_NULL (&att->value))
+		  if (!DB_IS_NULL (&att->default_value.value))
 		    {
-		      len = pr_data_writeval_disk_size (&att->value);
+		      len = pr_data_writeval_disk_size (&att->default_value.
+							value);
 		    }
 		}
 	      else
@@ -381,13 +383,13 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
       else
 	{
 	  /* no value, use default if one exists */
-	  if (DB_IS_NULL (&att->value))
+	  if (DB_IS_NULL (&att->default_value.value))
 	    {
 	      or_pad (buf, tp_domain_disk_size (att->domain));
 	    }
 	  else
 	    {
-	      pr_data_writeval (buf, &att->value);
+	      pr_data_writeval (buf, &att->default_value.value);
 	      if (bits != NULL)
 		{
 		  OR_ENABLE_BOUND_BIT (bits, att->storage_order);
@@ -436,9 +438,9 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
 	}
       else
 	{
-	  if (!DB_IS_NULL (&att->value))
+	  if (!DB_IS_NULL (&att->default_value.value))
 	    {
-	      pr_data_writeval (buf, &att->value);
+	      pr_data_writeval (buf, &att->default_value.value);
 	    }
 	}
     }
@@ -937,7 +939,8 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid,
 	       * formerly used copy_value which converted MOP values to OID
 	       * values, is this really necessary ?
 	       */
-	      pr_clone_value (&att->original_value, &obj->values[i]);
+	      pr_clone_value (&att->default_value.original_value,
+			      &obj->values[i]);
 	    }
 	}
 

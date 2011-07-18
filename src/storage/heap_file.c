@@ -2206,15 +2206,17 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp,
        * Dump the default value if any.
        */
       fprintf (fp, " Default disk value format:\n");
-      fprintf (fp, "   length = %d, value = ", attrepr->val_length);
+      fprintf (fp, "   length = %d, value = ",
+	       attrepr->default_value.val_length);
 
-      if (attrepr->val_length <= 0)
+      if (attrepr->default_value.val_length <= 0)
 	{
 	  fprintf (fp, "NULL");
 	}
       else
 	{
-	  or_init (&buf, (char *) attrepr->value, attrepr->val_length);
+	  or_init (&buf, (char *) attrepr->default_value.value,
+		   attrepr->default_value.val_length);
 	  buf.error_abort = 1;
 
 	  switch (_setjmp (buf.env))
@@ -2226,7 +2228,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp,
 	       * string, just use the pointer".
 	       */
 
-	      disk_length = attrepr->val_length;
+	      disk_length = attrepr->default_value.val_length;
 	      copy = (pr_is_set_type (attrepr->type)) ? true : false;
 	      pr_type = PR_TYPE_FROM_ID (attrepr->type);
 	      if (pr_type)
@@ -13121,10 +13123,10 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value,
        * the disk object (recdes), get default value if any...
        */
       attrepr = value->last_attrepr;
-      disk_length = value->last_attrepr->val_length;
+      disk_length = value->last_attrepr->default_value.val_length;
       if (disk_length > 0)
 	{
-	  disk_data = (char *) value->last_attrepr->value;
+	  disk_data = (char *) value->last_attrepr->default_value.value;
 	  disk_bound = true;
 	}
     }
@@ -13316,9 +13318,9 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att,
 	   * In this case, return the default value of the attribute
 	   * if it exists.
 	   */
-	  if (att->val_length > 0)
+	  if (att->default_value.val_length > 0)
 	    {
-	      disk_data = att->value;
+	      disk_data = att->default_value.value;
 	    }
 	}
       else

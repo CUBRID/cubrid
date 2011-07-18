@@ -43,7 +43,7 @@
 #include "file_io.h"
 #include "thread.h"
 #include "replication.h"
-
+#include "query_manager.h"
 extern int
 xboot_initialize_server (THREAD_ENTRY * thread_p,
 			 const BOOT_CLIENT_CREDENTIAL * client_credential,
@@ -456,4 +456,12 @@ extern int xsession_get_session_variable (THREAD_ENTRY * thread_p,
 extern int xsession_drop_session_variables (THREAD_ENTRY * thread_p,
 					    DB_VALUE * values,
 					    const int count);
+extern void xsession_store_query_entry_info (THREAD_ENTRY * thread_p,
+					     QMGR_QUERY_ENTRY * qentry_p);
+extern int xsession_load_query_entry_info (THREAD_ENTRY * thread_p,
+					   QMGR_QUERY_ENTRY * qentry_p);
+extern int xsession_remove_query_entry_info (THREAD_ENTRY * thread_p,
+					     const QUERY_ID query_id);
+extern int xsession_clear_query_entry_info (THREAD_ENTRY * thread_p,
+					    const QUERY_ID query_id);
 #endif /* _XSERVER_INTERFACE_H_ */

@@ -259,6 +259,10 @@ static int pt_check_subplan_and_orderby_correlation (QO_PLAN * plan,
 static PT_NODE *pt_numbering_set_continue_post (PARSER_CONTEXT * parser,
 						PT_NODE * node, void *arg,
 						int *continue_walk);
+static int pt_fix_first_term_expr_for_iss (PARSER_CONTEXT * parser,
+					   QO_INDEX_ENTRY * index_entryp,
+					   PT_NODE ** term_exprs);
+static int pt_create_iss_range (KEY_INFO * key_infop, TP_DOMAIN * domain);
 
 
 #define APPEND_TO_XASL(xasl_head, list, xasl_tail)                      \
@@ -9325,6 +9329,80 @@ op_type_to_range (const PT_OP_TYPE op_type, const int nterms)
     }
 }
 
+/*
+ * pt_create_iss_range () - Create a range to be used by Index Skip Scan 
+ *   return:            NO_ERROR or error code
+ *   key_infop(in,out): the key info structure that holds the special
+ *                      secondary range used by Index Skip Scan
+ *   domain(in):        domain of the first range element
+ *
+ * Note :
+ * Index Skip Scan (ISS) uses an alternative range to scan the btree for 
+ * the next suitable value of the first column. It looks similar to
+ * "col1 > cur_col1_value". Although it is used on the server side, it must
+ * be created on the broker and serialized vias XASL, because the server 
+ * cannot create regu variables.
+ * The actual range (INF_INF, GT_INF, INF_LE) will be changed dynamically
+ * at runtime, as well as the comparison value (left to NULL for now),
+ * but we must create the basic regu var scaffolding here.
+ */
+static int
+pt_create_iss_range (KEY_INFO * key_infop, TP_DOMAIN * domain)
+{
+  KEY_RANGE *kr = &key_infop->iss_range;
+  REGU_VARIABLE *key1, *v1;
+
+  assert (key_infop->use_iss);
+  if (!key_infop->use_iss)
+    {
+      return NO_ERROR;
+    }
+
+  kr->range = INF_INF;
+  key1 = kr->key1 = regu_var_alloc ();
+  if (key1 == NULL)
+    {
+      key_infop->use_iss = false;
+      return ER_FAILED;
+    }
+
+  kr->key2 = NULL;
+
+  key1->type = TYPE_FUNC;
+  key1->domain = tp_domain_resolve_default (DB_TYPE_MIDXKEY);
+  key1->xasl = NULL;
+  key1->hidden_column = 0;
+
+  key1->value.funcp = regu_func_alloc ();
+  if (key1->value.funcp == NULL)
+    {
+      key_infop->use_iss = false;
+      return ER_FAILED;
+    }
+
+  key1->value.funcp->ftype = F_MIDXKEY;
+
+  key1->value.funcp->operand = regu_varlist_alloc ();
+  if (key1->value.funcp->operand == NULL)
+    {
+      key_infop->use_iss = false;
+      return ER_FAILED;
+    }
+
+  key1->value.funcp->operand->next = NULL;
+
+  v1 = &(key1->value.funcp->operand->value);
+
+  v1->type = TYPE_DBVAL;
+
+  v1->domain = domain;
+  v1->hidden_column = 0;
+  DB_MAKE_NULL (&v1->value.dbval);
+
+  v1->vfetch_to = NULL;
+
+  return NO_ERROR;
+}
 
 /*
  * pt_to_single_key () - Create an key information(KEY_INFO) in INDX_INFO
@@ -10670,6 +10748,113 @@ exit_on_error:
 
 
 /*
+ * fix_first_term_expr_for_iss () - allocates needed first term for the index
+ *                                  skip scan optimization (ISS)
+ *   return:
+ *   parser(in):
+ *   index_entryp(in):
+ *   term_exprs(in):
+ *
+ * Notes:
+ * ISS involves using the index when there is no condition (term) on the first
+ * column of the index, by performing multiple btree_range_search() calls, one
+ * for each value of the first column that exists in the database.
+ * For instance for an index on c1,c2,c3 and the condition
+ * ... WHERE C2 = 5 and C3 > 10, we will have to generate a range similar to
+ * [C1=?, C2=5, C3 > 10] and fill up the "?" at each successive run with a
+ * new value for C1. This is taken care of on the server, in 
+ * obtain_next_iss_value() & co. However, the code that generates the range,
+ * here in XASL generation, assumes that there ARE terms for all of C1,C2, C3.
+ * 
+ * Therefore, we must generate a "fake" term [C1=?], and just allow the range
+ * generation code to do its job, knowing that once it gets to the server
+ * side, we will replace the "?" with proper values for C1.
+ * The term that is added is harmless (i.e. it does not show up when printing
+ * the tree etc).
+ */
+static int
+pt_fix_first_term_expr_for_iss (PARSER_CONTEXT * parser,
+				QO_INDEX_ENTRY * index_entryp,
+				PT_NODE ** term_exprs)
+{
+  PT_NODE *expr = NULL;
+  PT_NODE *arg = NULL;
+  PT_NODE *val = NULL;
+  PT_NODE *spec;
+  QO_SEGMENT *seg;
+  QO_NODE *head;
+  DB_VALUE temp_null;
+
+  /* better than leaving it uninitialized */
+  term_exprs[0] = NULL;
+
+  if (index_entryp->nsegs <= 1 || index_entryp->seg_idxs[1] == -1)
+    {
+      assert (index_entryp->nsegs > 1 && index_entryp->seg_idxs[1] != -1);
+      goto exit_error;
+    }
+
+  arg =
+    pt_name (parser, index_entryp->constraints->attributes[0]->header.name);
+  if (arg == NULL)
+    {
+      goto exit_error;
+    }
+
+  /* SEG IDXS [1] is the SECOND column of the index */
+  seg = QO_ENV_SEG (index_entryp->terms.env, index_entryp->seg_idxs[1]);
+  head = QO_SEG_HEAD (seg);
+  spec = head->entity_spec;
+
+  arg->info.name.spec_id = spec->info.spec.id;
+  arg->info.name.meta_class = PT_NORMAL;
+  arg->info.name.resolved = spec->info.spec.range_var->info.name.original;
+
+  arg->data_type = pt_domain_to_data_type (parser,
+					   index_entryp->constraints->
+					   attributes[0]->domain);
+  if (arg->data_type == NULL)
+    {
+      goto exit_error;
+    }
+
+  arg->type_enum = arg->data_type->type_enum;
+
+  db_make_null (&temp_null);
+  val = pt_dbval_to_value (parser, &temp_null);
+  if (val == NULL)
+    {
+      goto exit_error;
+    }
+
+  expr = pt_expression_2 (parser, PT_EQ, arg, val);
+  if (expr == NULL)
+    {
+      goto exit_error;
+    }
+
+  term_exprs[0] = expr;
+
+  return NO_ERROR;
+
+exit_error:
+  if (arg)
+    {
+      parser_free_tree (parser, arg);
+    }
+  if (val)
+    {
+      parser_free_tree (parser, val);
+    }
+  if (expr)
+    {
+      parser_free_tree (parser, expr);
+    }
+
+  return ER_FAILED;
+}
+
+/*
  * pt_to_index_info () - Create an INDX_INFO structure for communication
  * 	to a class access spec for eventual incorporation into an index scan
  *   return:
@@ -10718,10 +10903,18 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
       return NULL;
     }
 
+  /* fabricate the first term_expr, to complete the proper range
+   * search expression */
+  if (index_entryp->is_iss_candidate)
+    {
+      pt_fix_first_term_expr_for_iss (parser, index_entryp, term_exprs);
+    }
+
   if (nterms > 0)
     {
+      int start_column = index_entryp->is_iss_candidate ? 1 : 0;
       rangelist_idx = -1;	/* init */
-      for (i = 0; i < nterms; i++)
+      for (i = start_column; i < nterms; i++)
 	{
 	  pt_expr = term_exprs[i];
 	  assert (pt_expr != NULL);
@@ -10795,6 +10988,13 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
   indx_infop->groupby_desc = 0;
 
   key_infop = &indx_infop->key_info;
+
+  key_infop->use_iss = index_entryp->is_iss_candidate;
+  if (key_infop->use_iss)
+    {
+      pt_create_iss_range (key_infop,
+			   index_entryp->constraints->attributes[0]->domain);
+    }
 
   /* key limits */
   key_limit = qo_xasl_get_key_limit (class_, qo_index_infop);
@@ -14235,16 +14435,30 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node,
       /* Check to see if composite locking needs to be turned on.
        * We do not do composite locking from proxies. */
       if (node->node_type == PT_SELECT
-	  && node->info.query.xasl
-	  && node->info.query.composite_locking
-	  && (spec = node->info.query.q.select.from)
-	  && (spec->info.spec.flat_entity_list ||
-	      (spec->info.spec.derived_table_type == PT_IS_SET_EXPR &&
-	       spec->info.spec.path_entities &&
-	       spec->info.spec.path_entities->node_type == PT_SPEC &&
-	       spec->info.spec.path_entities->info.spec.flat_entity_list)))
+	  && node->info.query.xasl && node->info.query.composite_locking)
 	{
-	  xasl->composite_locking = node->info.query.composite_locking;
+	  spec = node->info.query.q.select.from;
+	  while (spec)
+	    {
+	      if (spec->info.spec.flag & (PT_SPEC_FLAG_DELETE
+					  | PT_SPEC_FLAG_UPDATE)
+		  && (spec->info.spec.flat_entity_list
+		      || (spec->info.spec.derived_table_type == PT_IS_SET_EXPR
+			  && spec->info.spec.path_entities
+			  && spec->info.spec.path_entities->node_type
+			  == PT_SPEC
+			  && spec->info.spec.path_entities->info.spec.
+			  flat_entity_list)))
+		{
+		  break;
+		}
+	      spec = spec->next;
+	    }
+	  if (spec)
+	    {
+	      xasl->composite_locking = node->info.query.composite_locking;
+	    }
+	  xasl->upd_del_class_cnt = node->info.query.upd_del_class_cnt;
 	}
 
       /* set as zero correlation-level; this uncorrelated subquery need to
@@ -14768,7 +14982,7 @@ outofmem:
 XASL_NODE *
 pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 		   PT_NODE * values_list, int has_uniques,
-		   PT_NODE * non_null_attrs, bool is_first_value)
+		   PT_NODE * non_null_attrs, PT_NODE * default_expr_attrs, bool is_first_value)
 {
   XASL_NODE *xasl = NULL;
   INSERT_PROC_NODE *insert = NULL;
@@ -14778,7 +14992,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   OID *class_oid;
   DB_OBJECT *class_obj;
   HFID *hfid;
-  int no_vals;
+  int no_vals, no_default_expr;
   int a;
   int error = NO_ERROR;
   PT_NODE *hint_arg;
@@ -14811,6 +15025,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
     {
       return NULL;
     }
+
+  no_default_expr = pt_length_of_list (default_expr_attrs);
 
   if (values_list->info.node_list.list_type == PT_IS_SUBQUERY)
     {
@@ -14861,13 +15077,27 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       insert->dup_key_oid_var_index = -1;
       insert->is_first_value = is_first_value;
 
-      if (error >= 0 && (no_vals > 0))
+      if (error >= 0 && (no_vals + no_default_expr > 0))
 	{
-	  insert->att_id = regu_int_array_alloc (no_vals);
+	  insert->att_id = regu_int_array_alloc (no_vals + no_default_expr);
 	  if (insert->att_id)
 	    {
-	      for (attr = attrs, a = 0;
-		   error >= 0 && a < no_vals; attr = attr->next, ++a)
+	      /* the identifiers of the attributes that have a default 
+	         expression are placed first
+	       */
+	      for (attr = default_expr_attrs, a = 0; error >= 0 &&
+		   a < no_default_expr; attr = attr->next, ++a)
+		{
+		  if ((insert->att_id[a] =
+		       sm_att_id (class_obj, attr->info.name.original)) < 0)
+		    {
+		      error = er_errid ();
+		    }
+		}
+
+	      for (attr = attrs, a = no_default_expr;
+		   error >= 0 && a < no_default_expr + no_vals;
+		   attr = attr->next, ++a)
 		{
 		  if ((insert->att_id[a] =
 		       sm_att_id (class_obj, attr->info.name.original)) < 0)
@@ -14876,7 +15106,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 		    }
 		}
 	      insert->vals = NULL;
-	      insert->no_vals = no_vals;
+	      insert->no_vals = no_vals + no_default_expr;
 	    }
 	  else
 	    {
@@ -14998,7 +15228,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 		     PT_NODE * order_by, PT_NODE * orderby_for, int server_op,
 		     bool for_update)
 {
-  PT_NODE *statement = NULL;
+  PT_NODE *statement = NULL, *from_temp = NULL, *node = NULL;
+  PT_NODE *next_temp = NULL;
 
   assert (parser != NULL);
 
@@ -15021,8 +15252,36 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 	parser_copy_tree_list (parser, where);
 
       /* add the class and instance OIDs to the select list */
-      statement = pt_add_row_classoid_name (parser, statement, server_op);
-      statement = pt_add_row_oid_name (parser, statement);
+      from_temp = statement->info.query.q.select.from;
+      node = from;
+      statement->info.query.upd_del_class_cnt = 0;
+      while (node)
+	{
+	  if (node->node_type != PT_SPEC)
+	    {
+	      assert (false);
+	      PT_INTERNAL_ERROR (parser, "Invalid node type");
+	      parser_free_tree (parser, statement);
+	      return NULL;
+	    }
+	  if (node->info.spec.
+	      flag & (PT_SPEC_FLAG_UPDATE | PT_SPEC_FLAG_DELETE))
+	    {
+	      next_temp = node->next;
+	      node->next = NULL;
+	      statement->info.query.q.select.from = node;
+	      statement =
+		pt_add_row_classoid_name (parser, statement, server_op);
+	      assert (statement != NULL);
+	      statement = pt_add_row_oid_name (parser, statement);
+	      assert (statement != NULL);
+	      node->next = next_temp;
+
+	      statement->info.query.upd_del_class_cnt++;
+	    }
+	  node = node->next;
+	}
+      statement->info.query.q.select.from = from_temp;
 
       /* don't allow orderby_for without order_by */
       assert (!((orderby_for != NULL) && (order_by == NULL)));
@@ -15037,6 +15296,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 	    {
 	      /* leave the error code set by check_order_by, will be
 	         handled by the calling function */
+	      parser_free_tree (parser, statement);
 	      return NULL;
 	    }
 	}
@@ -15084,7 +15344,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   int no_classes = 0, cl;
   int error = NO_ERROR;
-  PT_NODE *hint_arg;
+  PT_NODE *hint_arg, *node;
   float waitsecs;
 
   assert (parser != NULL && statement != NULL);
@@ -15099,30 +15359,42 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       PT_NODE *select_node, *select_list = NULL;
 
       /* append LOB type attributes to select_list */
-      cl_name_node = from->info.spec.range_var;
-      class_obj = cl_name_node->info.name.db_object;
-      if (class_obj)
+      node = statement->info.delete_.spec;
+      while (node)
 	{
-	  DB_ATTRIBUTE *attr;
-	  attr = db_get_attributes (class_obj);
-	  while (attr)
+	  if (!(node->info.spec.flag & PT_SPEC_FLAG_DELETE))
 	    {
-	      if (attr->type->id == DB_TYPE_BLOB ||
-		  attr->type->id == DB_TYPE_CLOB)
-		{
-		  /* make select list nodes */
-		  select_node = pt_name (parser, attr->header.name);
-		  if (select_node)
-		    {
-		      select_node->info.name.spec_id = from->info.spec.id;
-		      select_node->type_enum =
-			pt_db_to_type_enum (attr->type->id);
-		      select_list =
-			parser_append_node (select_node, select_list);
-		    }
-		}
-	      attr = db_attribute_next (attr);
+	      node = node->next;
+	      continue;
 	    }
+
+	  cl_name_node = node->info.spec.range_var;
+	  class_obj = cl_name_node->info.name.db_object;
+	  if (class_obj)
+	    {
+	      DB_ATTRIBUTE *attr;
+	      attr = db_get_attributes (class_obj);
+	      while (attr)
+		{
+		  if (attr->type->id == DB_TYPE_BLOB ||
+		      attr->type->id == DB_TYPE_CLOB)
+		    {
+		      /* add lob to select list */
+		      select_node = pt_name (parser, attr->header.name);
+		      if (select_node)
+			{
+			  select_node->info.name.spec_id = node->info.spec.id;
+			  select_node->type_enum =
+			    pt_db_to_type_enum (attr->type->id);
+			  select_list =
+			    parser_append_node (select_node, select_list);
+			}
+		    }
+		  attr = db_attribute_next (attr);
+		}
+	    }
+
+	  node = node->next;
 	}
 
       if (((aptr_statement = pt_to_upd_del_query (parser, select_list,
@@ -15158,12 +15430,24 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (xasl != NULL)
     {
+      PT_NODE *node, *flat = NULL;
+
       delete_ = &xasl->proc.delete_;
 
-      for (no_classes = 0, cl_name_node = from->info.spec.flat_entity_list;
-	   cl_name_node; cl_name_node = cl_name_node->next)
+      node = statement->info.delete_.spec;
+      no_classes = 0;
+      while (node != NULL)
 	{
-	  no_classes++;
+	  if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
+	    {
+	      cl_name_node = node->info.spec.flat_entity_list;
+	      for (; cl_name_node; cl_name_node = cl_name_node->next)
+		{
+		  no_classes++;
+		}
+	    }
+
+	  node = node->next;
 	}
 
       if ((delete_->class_oid = regu_oid_array_alloc (no_classes)) == NULL)
@@ -15176,10 +15460,22 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = er_errid ();
 	}
 
-      for (cl = 0, cl_name_node = from->info.spec.flat_entity_list;
+      node = statement->info.delete_.spec;
+
+      for (cl = 0, cl_name_node = NULL;
 	   cl < no_classes && error >= 0;
 	   ++cl, cl_name_node = cl_name_node->next)
 	{
+	  if (!cl_name_node)
+	    {
+	      while (!(node->info.spec.flag & PT_SPEC_FLAG_DELETE))
+		{
+		  node = node->next;
+		}
+	      cl_name_node = node->info.spec.flat_entity_list;
+	      node = node->next;
+	    }
+
 	  class_obj = cl_name_node->info.name.db_object;
 	  class_oid = ws_identifier (class_obj);
 	  if (class_oid == NULL)

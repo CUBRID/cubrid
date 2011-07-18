@@ -5123,7 +5123,8 @@ sm_att_auto_increment (MOP classop, const char *name)
  */
 
 int
-sm_att_default_value (MOP classop, const char *name, DB_VALUE * value)
+sm_att_default_value (MOP classop, const char *name, DB_VALUE * value,
+		      DB_DEFAULT_EXPR_TYPE * function_code)
 {
   SM_CLASS *class_ = NULL;
   SM_ATTRIBUTE *att = NULL;
@@ -5143,11 +5144,13 @@ sm_att_default_value (MOP classop, const char *name, DB_VALUE * value)
       goto error_exit;
     }
 
-  error = db_value_clone (&att->value, value);
+  error = db_value_clone (&att->default_value.value, value);
   if (error != NO_ERROR)
     {
       goto error_exit;
     }
+
+  *function_code = att->default_value.default_expr;
   return error;
 
 error_exit:
@@ -10834,16 +10837,19 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 static void
 save_previous_value (SM_ATTRIBUTE * old, SM_ATTRIBUTE * new_)
 {
-  pr_clear_value (&new_->value);
-  pr_clone_value (&old->value, &new_->value);
+  pr_clear_value (&new_->default_value.value);
+  pr_clone_value (&old->default_value.value, &new_->default_value.value);
 
-  pr_clear_value (&new_->original_value);
+  pr_clear_value (&new_->default_value.original_value);
 
   /* Transfer the current value to the copied definition.
    * Note that older code copied old->value into new->original_value, I don't
    * think thats, right, I changed it to copy the old->original_value
    */
-  pr_clone_value (&old->original_value, &new_->original_value);
+  pr_clone_value (&old->default_value.original_value,
+		  &new_->default_value.original_value);
+
+  new_->default_value.default_expr = old->default_value.default_expr;
 }
 
 /*

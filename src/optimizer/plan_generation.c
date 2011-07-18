@@ -2569,6 +2569,13 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       goto error;
     }
 
+  if (index_entryp->is_iss_candidate)
+    {
+      /* allow space for the first element (NULL actually),for instance
+       * in term_exprs */
+      nterms++;
+    }
+
   if (nterms == 0)
     {
       index_infop->nterms = 0;
@@ -2584,6 +2591,11 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      nterms * sizeof (PT_NODE *));
       goto error;
+    }
+
+  if (index_entryp->is_iss_candidate)
+    {
+      index_infop->term_exprs[0] = NULL;
     }
 
   index_infop->ni_entry = ni_entryp;
@@ -2630,6 +2642,10 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 		  ER_QO_FAILED_ASSERTION, 0);
 	  goto error;
 	}
+
+      /* if the index is Index Skip Scan, the first column should have
+       * never been found in a term */
+      assert (!index_entryp->is_iss_candidate || pos != 0);
 
       index_infop->term_exprs[pos] = QO_TERM_PT_EXPR (termp);
     }				/* for (t = bitset_iterate(...); ...) */

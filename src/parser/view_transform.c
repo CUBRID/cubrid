@@ -3472,6 +3472,9 @@ mq_translate_update (PARSER_CONTEXT * parser, PT_NODE * update_statement)
   if (update_statement)
     {
       mq_check_update (parser, update_statement);
+
+      /* set flags for updatable specs */
+      pt_mark_spec_list_for_update (parser, update_statement);
     }
   if (!update_statement && !parser->error_msgs)
     {
@@ -3708,8 +3711,12 @@ mq_translate_delete (PARSER_CONTEXT * parser, PT_NODE * delete_statement)
 
   delete_statement = mq_translate_tree (parser, delete_statement,
 					from, NULL, DB_AUTH_DELETE);
-
-  if (!delete_statement && !parser->error_msgs)
+  if (delete_statement != NULL)
+    {
+      /* set flags for deletable specs */
+      pt_mark_spec_list_for_delete (parser, delete_statement);
+    }
+  else if (!parser->error_msgs)
     {
       PT_ERRORm (parser, &save, MSGCAT_SET_PARSER_RUNTIME,
 		 MSGCAT_RUNTIME_DELETE_EMPTY);
@@ -8019,6 +8026,22 @@ mq_fix_derived_in_union (PARSER_CONTEXT * parser, PT_NODE * statement,
     {
     case PT_SELECT:
       spec = statement->info.query.q.select.from;
+      while (spec && spec->info.spec.id != spec_id)
+	{
+	  spec = spec->next;
+	}
+      if (spec)
+	{
+	  statement = mq_fix_derived (parser, statement, spec);
+	}
+      else
+	{
+	  PT_INTERNAL_ERROR (parser, "translate");
+	}
+      break;
+
+    case PT_DELETE:
+      spec = statement->info.delete_.spec;
       while (spec && spec->info.spec.id != spec_id)
 	{
 	  spec = spec->next;

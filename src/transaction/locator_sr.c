@@ -4136,6 +4136,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p,
 	  memset ((void *) (&(isid.multi_range_opt)), 0,
 		  sizeof (MULTI_RANGE_OPT));
 
+	  scan_init_iss (&isid.iss);
+
 	  is_upd_scan_init = false;
 	  pr_clone_value (key, &key_val_range.key1);
 	  pr_clone_value (key, &key_val_range.key2);
@@ -4450,6 +4452,8 @@ locator_repair_object_cache (THREAD_ENTRY * thread_p, OR_INDEX * index,
       memset ((void *) (&(isid.multi_range_opt)), 0,
 	      sizeof (MULTI_RANGE_OPT));
 
+      scan_init_iss (&isid.iss);
+
       is_upd_scan_init = false;
       pr_clone_value (key, &key_val_range.key1);
       pr_clone_value (key, &key_val_range.key2);
@@ -4694,6 +4698,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p,
 	  memset ((void *) (&(isid.indx_cov)), 0, sizeof (INDX_COV));
 	  memset ((void *) (&(isid.multi_range_opt)), 0,
 		  sizeof (MULTI_RANGE_OPT));
+
+	  scan_init_iss (&isid.iss);
 
 	  is_upd_scan_init = false;
 	  pr_clone_value (key, &key_val_range.key1);
@@ -7720,6 +7726,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   memset ((void *) (&(isid.indx_cov)), 0, sizeof (INDX_COV));
   memset ((void *) (&(isid.multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
 
+  scan_init_iss (&isid.iss);
+
   if (heap_scancache_start (thread_p, &isid.scan_cache, hfid, class_oid, true,
 			    true, LOCKHINT_NONE) != NO_ERROR)
     {
@@ -7903,6 +7911,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid,
   memset ((void *) (&(isid.indx_cov)), 0, sizeof (INDX_COV));
   memset ((void *) (&(isid.multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
 
+  scan_init_iss (&isid.iss);
   /* get all the heap files associated with this unique btree */
   if ((or_get_unique_hierarchy (thread_p, classrec, attr_ids[0], btid,
 				&class_oids, &hfids,

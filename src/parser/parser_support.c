@@ -678,6 +678,48 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 }
 
 /*
+ * pt_find_spec_in_from_list () - find the node spec in from list
+ *   return: the spec in the from list with same id as the name, or NULL
+ *   parser(in):
+ *   from(in): 
+ *   name(in):
+ */
+PT_NODE *
+pt_find_spec_in_from_list (PARSER_CONTEXT * parser, const PT_NODE * from,
+			   const PT_NODE * name)
+{
+  PT_NODE *spec = NULL;
+
+  switch (from->node_type)
+    {
+    case PT_SPEC:
+      spec = pt_find_spec (parser, from, name);
+      break;
+
+    case PT_DELETE:
+      spec = pt_find_spec (parser, from->info.delete_.spec, name);
+      if (spec == NULL)
+	{
+	  spec = pt_find_spec (parser, from->info.delete_.class_specs, name);
+	}
+      break;
+
+    case PT_UPDATE:
+      spec = pt_find_spec (parser, from->info.update.spec, name);
+      if (spec == NULL)
+	{
+	  spec = pt_find_spec (parser, from->info.update.class_specs, name);
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return (PT_NODE *) spec;
+}
+
+/*
  * pt_find_spec () -
  *   return: the spec in the from list with same id as the name, or NULL
  *   parser(in):
@@ -4098,6 +4140,10 @@ regu_index_init (INDX_INFO * ptr)
   ptr->key_info.key_limit_l = NULL;
   ptr->key_info.key_limit_u = NULL;
   ptr->key_info.key_limit_reset = false;
+  ptr->key_info.use_iss = false;
+  ptr->key_info.iss_range.range = NA_NA;
+  ptr->key_info.iss_range.key1 = NULL;
+  ptr->key_info.iss_range.key2 = NULL;
   ptr->orderby_desc = 0;
   ptr->groupby_desc = 0;
   ptr->use_desc_index = 0;
@@ -7373,10 +7419,9 @@ pt_make_query_show_table (PARSER_CONTEXT * parser,
       assert (sub_query->info.query.q.select.list != NULL);
 
       sub_query->info.query.q.select.list = parser_append_node (if_node,
-								sub_query->info.
-								query.
-								q.select.
-								list);
+								sub_query->
+								info.query.q.
+								select.list);
     }
 
   /*  done with subquery, create the enclosing query : 
@@ -7522,8 +7567,9 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
     /* the dummy query from table is required to print an error when table
      * doens't exist, instead of 'no results' */
     dummy_check_table_query = pt_make_dummy_query_check_table (parser,
-							       original_cls_id->info.
-							       name.original);
+							       original_cls_id->
+							       info.name.
+							       original);
     dummy_val = pt_make_integer_value (parser, -1);
     cond2 = parser_make_expression (PT_EQ, dummy_check_table_query, dummy_val,
 				    NULL);
@@ -8391,8 +8437,9 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
     PT_NODE *dummy_val = NULL;
 
     dummy_check_table_query = pt_make_dummy_query_check_table (parser,
-							       original_cls_id->info.
-							       name.original);
+							       original_cls_id->
+							       info.name.
+							       original);
     dummy_val = pt_make_integer_value (parser, -1);
     cond2 = parser_make_expression (PT_EQ, dummy_check_table_query, dummy_val,
 				    NULL);
@@ -8734,4 +8781,81 @@ pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser, PT_NODE * sort_list,
     }
 
   return (s2 == NULL) ? true : false;
+}
+
+/*
+ * pt_mark_spec_list_for_delete () - mark specs that will be deleted
+ *   return:  none
+ *   parser(in): the parser context
+ *   delete_statement(in): a delete statement
+ */
+void
+pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser,
+			      PT_NODE * delete_statement)
+{
+  PT_NODE *node, *from;
+
+  node = delete_statement->info.delete_.target_classes;
+  while (node != NULL)
+    {
+      from = pt_find_spec_in_from_list (parser, delete_statement, node);
+      if (from == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "invalid spec id");
+	  return;
+	}
+      from->info.spec.flag |= PT_SPEC_FLAG_DELETE;
+
+      node = node->next;
+    }
+}
+
+/*
+ * pt_mark_spec_list_for_update () - mark specs that will be updated
+ *   return:  none
+ *   parser(in): the parser context
+ *   update_statement(in): an update statement
+ */
+void
+pt_mark_spec_list_for_update (PARSER_CONTEXT * parser,
+			      PT_NODE * update_statement)
+{
+  PT_NODE *lhs, *node_tmp, *node;
+
+  /* set flags for updatable specs */
+  node = update_statement->info.update.assignment;
+  while (node != NULL)
+    {
+      lhs = node->info.expr.arg1;
+      if (lhs->node_type == PT_NAME)
+	{
+	  node_tmp =
+	    pt_find_spec_in_from_list (parser, update_statement, lhs);
+	  if (node_tmp == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "invalid spec id");
+	      return;
+	    }
+	  node_tmp->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
+	}
+      else
+	{
+	  lhs = lhs->info.expr.arg1;
+	  while (lhs != NULL)
+	    {
+	      node_tmp =
+		pt_find_spec_in_from_list (parser, update_statement, lhs);
+	      if (node_tmp == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "invalid spec id");
+		  return;
+		}
+	      node_tmp->info.spec.flag |= PT_SPEC_FLAG_UPDATE;
+
+	      lhs = lhs->next;
+	    }
+	}
+
+      node = node->next;
+    }
 }

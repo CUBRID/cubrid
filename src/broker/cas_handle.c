@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -61,6 +62,7 @@ static int current_handle_count = 0;
 static T_SRV_HANDLE **active_handle_table = NULL;
 static int active_handle_table_size = 0;
 static int active_handle_count = 0;
+static int holdable_count = 0;
 
 int
 hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
@@ -118,6 +120,7 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   srv_handle->use_plan_cache = false;
   srv_handle->use_query_cache = false;
   srv_handle->is_fetch_completed = false;
+  srv_handle->is_holdable = false;
 
   *new_handle = srv_handle;
   srv_handle_table[new_handle_id - 1] = srv_handle;
@@ -151,6 +154,10 @@ hm_srv_handle_free (int h_id)
   srv_handle = srv_handle_table[h_id - 1];
   if (srv_handle == NULL)
     return;
+  if (srv_handle->is_holdable)
+    {
+      holdable_count--;
+    }
 
   srv_handle_content_free (srv_handle);
   srv_handle_rm_tmp_file (h_id, srv_handle);
@@ -186,11 +193,12 @@ hm_srv_handle_free_all ()
   max_handle_id = 0;
 #if !defined(LIBCAS_FOR_JSP)
   current_handle_count = 0;
+  holdable_count = 0;
 #endif
 }
 
 void
-hm_srv_handle_qresult_end_all ()
+hm_srv_handle_qresult_end_all (bool end_holdable)
 {
   T_SRV_HANDLE *srv_handle;
   int i;
@@ -206,6 +214,12 @@ hm_srv_handle_qresult_end_all ()
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
       hm_qresult_end (srv_handle, FALSE);
 #else /* CAS_FOR_MYSQL */
+      if (srv_handle->is_holdable && !end_holdable)
+	{
+	  /* do not close holdable results */
+	  continue;
+	}
+
       if (srv_handle->schema_type < 0
 	  || srv_handle->schema_type == CCI_SCH_CLASS
 	  || srv_handle->schema_type == CCI_SCH_VCLASS
@@ -216,6 +230,11 @@ hm_srv_handle_qresult_end_all ()
 	  || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY)
 	{
 	  hm_qresult_end (srv_handle, FALSE);
+	  if (srv_handle->is_holdable)
+	    {
+	      holdable_count--;
+	      srv_handle->is_holdable = false;
+	    }
 	}
 #endif
     }
@@ -485,4 +504,25 @@ void
 hm_srv_handle_reset_active (void)
 {
   active_handle_count = 0;
+}
+
+void
+hm_srv_handle_set_holdable (T_SRV_HANDLE * srv_handle, bool hold)
+{
+  if (srv_handle == NULL)
+    {
+      assert (false);
+      return;
+    }
+  srv_handle->is_holdable = hold;
+  if (hold)
+    {
+      holdable_count++;
+    }
+}
+
+bool
+hm_has_holdable_results ()
+{
+  return (holdable_count != 0);
 }

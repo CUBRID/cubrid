@@ -488,7 +488,7 @@ assign_null_value (MOP op, SM_ATTRIBUTE * att, char *mem)
 
   if (mem == NULL)
     {
-      pr_clear_value (&att->value);
+      pr_clear_value (&att->default_value.value);
     }
   else
     {
@@ -592,7 +592,7 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 	   * remove ownership information in the current set,
 	   * need to be able to free this !!!
 	   */
-	  current_set = DB_GET_SET (&att->value);
+	  current_set = DB_GET_SET (&att->default_value.value);
 	  if (current_set != NULL)
 	    {
 	      error = set_disconnect (current_set);
@@ -608,21 +608,21 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 		    {
 		    case DB_TYPE_SET:
 		    default:
-		      DB_MAKE_SET (&att->value, new_set);
+		      DB_MAKE_SET (&att->default_value.value, new_set);
 		      break;
 
 		    case DB_TYPE_MULTISET:
-		      DB_MAKE_MULTISET (&att->value, new_set);
+		      DB_MAKE_MULTISET (&att->default_value.value, new_set);
 		      break;
 
 		    case DB_TYPE_SEQUENCE:
-		      DB_MAKE_SEQUENCE (&att->value, new_set);
+		      DB_MAKE_SEQUENCE (&att->default_value.value, new_set);
 		      break;
 		    }
 		}
 	      else
 		{
-		  DB_MAKE_NULL (&att->value);
+		  DB_MAKE_NULL (&att->default_value.value);
 		}
 
 	      if (new_set != NULL)
@@ -694,8 +694,8 @@ obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
 		}
 	      else
 		{
-		  pr_clear_value (&att->value);
-		  pr_clone_value (value, &att->value);
+		  pr_clear_value (&att->default_value.value);
+		  pr_clone_value (value, &att->default_value.value);
 		}
 	    }
 	}
@@ -1074,7 +1074,7 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem,
   /* use class/shared value if alternate source isn't provided */
   if (mem == NULL && source == NULL)
     {
-      source = &att->value;
+      source = &att->default_value.value;
     }
 
   current = NULL;
@@ -1203,7 +1203,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem,
   /* use class/shared value if alternate source isn't provided */
   if (mem == NULL && source == NULL)
     {
-      source = &att->value;
+      source = &att->default_value.value;
     }
 
   /* get owner and current value */
@@ -1307,7 +1307,7 @@ obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem,
   /* use class/shared value if alternate source isn't provided */
   if (mem == NULL && source == NULL)
     {
-      source = &att->value;
+      source = &att->default_value.value;
     }
 
   /* first check the bound bits */

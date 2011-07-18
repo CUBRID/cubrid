@@ -78,6 +78,7 @@ static META_ATTRIBUTE att_atts[] = {
   {"index_fileid", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"index_root_pageid", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"index_volid_key", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
+  {"default_expr", DB_TYPE_INTEGER, 0, NULL, 0, 0, NULL},
   {"name", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"value", DB_TYPE_VARIABLE, 1, NULL, 0, 0, NULL},
   {"original_value", DB_TYPE_VARIABLE, 0, NULL, 0, 0, NULL},

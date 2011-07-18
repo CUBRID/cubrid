@@ -6906,11 +6906,24 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	      || node->node_type == PT_DELETE
 	      || node->node_type == PT_UPDATE))
 	{
-	  if (node->node_type == PT_SELECT
-	      && node->info.query.q.select.from->partition_pruned)
+	  if (node->node_type == PT_SELECT)
 	    {
-	      node->partition_pruned = 1;	/* for DELETE/UPDATE */
-	      node->info.query.q.select.where->partition_pruned = 1;
+	      /* check partition pruning */
+	      t_node = node->info.query.q.select.from;
+	      while (t_node != NULL && !t_node->partition_pruned)
+		{
+		  t_node = t_node->next;
+		}
+
+	      if (t_node != NULL)
+		{
+		  node->partition_pruned = 1;	/* for DELETE/UPDATE */
+		  node->info.query.q.select.where->partition_pruned = 1;
+		}
+	      else
+		{
+		  do_apply_partition_pruning (parser, node);
+		}
 	    }
 	  else
 	    {

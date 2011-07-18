@@ -1048,6 +1048,7 @@ pt_new_query_result_descriptor (PARSER_CONTEXT * parser, PT_NODE * query)
   r->res.s.cursor_id.query_id = parser->query_id;
   r->res.s.cursor_id.buffer = NULL;
   r->res.s.cursor_id.tuple_record.tpl = NULL;
+  r->res.s.holdable = parser->is_holdable;
 
   list_id = (QFILE_LIST_ID *) query->etc;
   r->type_cnt = degree;

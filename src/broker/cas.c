@@ -225,7 +225,8 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_lob_read,
   fn_end_session,
   fn_get_row_count,
-  fn_get_last_insert_id
+  fn_get_last_insert_id,
+  fn_cursor_close
 };
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
@@ -270,7 +271,8 @@ static const char *server_func_name[] = {
   "fn_lob_read",
   "fn_end_session",
   "fn_get_row_count",
-  "fn_get_last_insert_id"
+  "fn_get_last_insert_id",
+  "fn_cursor_close"
 };
 #endif /* !LIBCAS_FOR_JSP */
 
@@ -1432,6 +1434,12 @@ set_cas_info_size (void)
 int
 restart_is_needed (void)
 {
+  if (hm_has_holdable_results ())
+    {
+      /* we do not want to restart the CAS when there are open
+         holdable results */
+      return 0;
+    }
 #if defined(WINDOWS)
   if (shm_appl->use_pdh_flag == TRUE)
     {

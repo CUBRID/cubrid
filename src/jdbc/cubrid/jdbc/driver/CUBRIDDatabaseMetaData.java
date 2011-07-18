@@ -565,7 +565,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 	public synchronized boolean supportsOpenCursorsAcrossCommit()
 			throws SQLException {
 		checkIsOpen();
-		return false;
+		return true;
 	}
 
 	public synchronized boolean supportsOpenCursorsAcrossRollback()
@@ -2071,7 +2071,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	public synchronized int getResultSetHoldability() throws SQLException {
 		checkIsOpen();
-		return -1;
+		return ResultSet.HOLD_CURSORS_OVER_COMMIT;
 	}
 
 	public synchronized int getSQLStateType() throws SQLException {
@@ -2103,9 +2103,9 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 	public synchronized boolean supportsResultSetHoldability(int holdability)
 			throws SQLException {
 		checkIsOpen();
-		if (holdability == ResultSet.CLOSE_CURSORS_AT_COMMIT)
+		if (holdability == ResultSet.CLOSE_CURSORS_AT_COMMIT
+				|| holdability == ResultSet.HOLD_CURSORS_OVER_COMMIT)
 			return true;
-		// if (holdability == ResultSet.HOLD_CURSORS_OVER_COMMIT) return true;
 		return false;
 	}
 

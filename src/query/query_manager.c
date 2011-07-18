@@ -751,7 +751,31 @@ qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id,
   query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p,
 				   query_id);
   qmgr_unlock_mutex (&tran_entry_p->lock);
-
+  if (query_p == NULL)
+    {
+      /* Maybe it is a holdable result and we'll find it in the session state
+       * object. In order to be able to use this result, we need to create
+       * a new entry for this query in the transaction query entries and copy
+       * result information from the session. 
+       */
+      query_p = qmgr_allocate_query_entry (thread_p);
+      query_p->query_id = query_id;
+      if (xsession_load_query_entry_info (thread_p, query_p) != NO_ERROR)
+	{
+	  qmgr_free_query_entry (thread_p, query_p);
+	  query_p = NULL;
+	  return NULL;
+	}
+#if defined (SERVER_MODE)
+      /* mark this query as belonging to this transaction */
+      if (thread_p != NULL)
+	{
+	  query_p->tid = thread_p->tid;
+	}
+#endif
+      /* add it to this transaction also */
+      qmgr_add_query_entry (thread_p, query_p, tran_index);
+    }
   return query_p;
 }
 
@@ -1612,6 +1636,11 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
   xasl_cache_entry_p = NULL;
   list_cache_entry_p = NULL;
   is_sync_query = IS_SYNC_EXEC_MODE (*flag_p);
+/*  if (*flag_p & RESULT_HOLDABLE)
+    {
+      is_sync_query = false;
+      *flag_p &= ~ASYNC_EXEC;
+    } */
 #if defined (SERVER_MODE)
   current_thread_p = NULL;
 #endif
@@ -1697,6 +1726,14 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1,
 	      qmgr_Query_table.total_query_entry_count);
       goto error;
+    }
+  if (*flag_p & RESULT_HOLDABLE)
+    {
+      query_p->is_holdable = true;
+    }
+  else
+    {
+      query_p->is_holdable = false;
     }
 
   /* initialize query entry */
@@ -2354,11 +2391,18 @@ xqmgr_end_query (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 				   query_id);
   if (query_p == NULL)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "xqmgr_end_query: unknown query identifier %d\n",
-		    query_id);
+      /* maybe this is a holdable result and we'll find it in the 
+         session state object */
+      xsession_remove_query_entry_info (thread_p, query_id);
       qmgr_unlock_mutex (&tran_entry_p->lock);
       return NO_ERROR;
+    }
+
+  if (query_p->is_holdable)
+    {
+      /* We also need to remove the associated query from the session.
+         The call below will not destroy the associated list files */
+      xsession_clear_query_entry_info (thread_p, query_id);
     }
 
 #if defined (SERVER_MODE)
@@ -2688,7 +2732,25 @@ again:
 
   while (q != NULL)
     {
-
+      if (q->is_holdable && !is_abort && !is_tran_died)
+	{
+	  /* this is a commit and we have to add the result to the holdable
+	     queries list */
+	  if (q->query_mode != QUERY_COMPLETED)
+	    {
+	      er_log_debug (ARG_FILE_LINE, "query %d not completed !\n",
+			    q->query_id);
+	    }
+	  else
+	    {
+	      er_log_debug (ARG_FILE_LINE, "query %d is completed!\n",
+			    q->query_id);
+	    }
+	  xsession_store_query_entry_info (thread_p, q);
+	  /* reset result info */
+	  q->list_id = NULL;
+	  q->temp_vfid = NULL;
+	}
       /* destroy the query result if not destroyed yet */
       if (q->list_id != NULL)
 	{
@@ -3704,6 +3766,69 @@ qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
 #endif
 
 /*
+ * qmgr_free_temp_file_list () - free temporary files in tfile_vfid_p
+ * return : error code or NO_ERROR
+ * thread_p (in) : 
+ * tfile_vfid_p (in)  : temporary files list
+ * query_id (in)      : query id
+ * is_error (in)      : true if query was unsuccessful
+ */
+int
+qmgr_free_temp_file_list (THREAD_ENTRY * thread_p,
+			  QMGR_TEMP_FILE * tfile_vfid_p, QUERY_ID query_id,
+			  bool is_error)
+{
+  QMGR_TEMP_FILE *temp = NULL;
+  int rc = NO_ERROR, fd_ret = NO_ERROR;
+
+  while (tfile_vfid_p)
+    {
+      fd_ret = NO_ERROR;
+      if ((tfile_vfid_p->temp_file_type != FILE_QUERY_AREA || is_error)
+	  && !VFID_ISNULL (&tfile_vfid_p->temp_vfid))
+	{
+	  fd_ret = file_destroy (thread_p, &tfile_vfid_p->temp_vfid);
+	  if (fd_ret != NO_ERROR)
+	    {
+	      /* set error but continue with the destroy process */
+	      rc = ER_FAILED;
+	    }
+	}
+
+      temp = tfile_vfid_p;
+      tfile_vfid_p = tfile_vfid_p->next;
+
+#if defined (SERVER_MODE)
+      pthread_mutex_lock (&temp->membuf_mutex);
+      if (temp->membuf_thread_p)
+	{
+	  if (fd_ret != NO_ERROR)
+	    {
+	      qmgr_set_query_error (thread_p, query_id);
+	    }
+	  thread_wakeup (temp->membuf_thread_p,
+			 THREAD_QMGR_MEMBUF_PAGE_RESUMED);
+	  temp->membuf_thread_p = NULL;
+	}
+
+      pthread_mutex_unlock (&temp->membuf_mutex);
+      pthread_mutex_destroy (&temp->membuf_mutex);
+#endif
+
+      if (temp->temp_file_type != FILE_QUERY_AREA)
+	{
+	  qmgr_put_temp_file_into_list (temp);
+	}
+      else
+	{
+	  free_and_init (temp);
+	}
+    }
+
+  return rc;
+}
+
+/*
  * qmgr_free_query_temp_file_by_query_entry () -
  *   return: int (NO_ERROR or ER_FAILED)
  *   query_entryp(in)   : Query entry ptr to determine what temp file (if any)
@@ -3718,11 +3843,8 @@ qmgr_free_query_temp_file_by_query_entry (THREAD_ENTRY * thread_p,
 					  int tran_index)
 {
   int rc;
-  QMGR_TEMP_FILE *tfile_vfid_p, *temp;
+  QMGR_TEMP_FILE *tfile_vfid_p;
   QMGR_TRAN_ENTRY *tran_entry_p;
-#if defined (SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   if (query_p == NULL || qmgr_Query_table.tran_entries_p == NULL)
     {
@@ -3740,52 +3862,13 @@ qmgr_free_query_temp_file_by_query_entry (THREAD_ENTRY * thread_p,
   rc = NO_ERROR;
   if (query_p->temp_vfid)
     {
+      bool is_error = (query_p->errid < 0);
       tfile_vfid_p = query_p->temp_vfid;
       tfile_vfid_p->prev->next = NULL;
 
-      while (tfile_vfid_p)
-	{
-	  if (!(tfile_vfid_p->temp_file_type == FILE_QUERY_AREA
-		&& query_p->errid >= 0)
-	      && !VFID_ISNULL (&tfile_vfid_p->temp_vfid))
-	    {
-	      if (file_destroy (thread_p, &tfile_vfid_p->temp_vfid) !=
-		  NO_ERROR)
-		{
-		  /* stop; return error */
-		  rc = ER_FAILED;
-		}
-	    }
-	  temp = tfile_vfid_p;
-	  tfile_vfid_p = tfile_vfid_p->next;
+      rc = qmgr_free_temp_file_list (thread_p, tfile_vfid_p,
+				     query_p->query_id, is_error);
 
-#if defined (SERVER_MODE)
-	  rv = pthread_mutex_lock (&temp->membuf_mutex);
-	  if (temp->membuf_thread_p)
-	    {
-	      if (er_errid () != NO_ERROR)
-		{
-		  qmgr_set_query_error (thread_p, query_p->query_id);
-		}
-	      thread_wakeup (temp->membuf_thread_p,
-			     THREAD_QMGR_MEMBUF_PAGE_RESUMED);
-	      temp->membuf_thread_p = NULL;
-	    }
-
-	  pthread_mutex_unlock (&temp->membuf_mutex);
-	  pthread_mutex_destroy (&temp->membuf_mutex);
-#endif
-
-	  if (temp->temp_file_type != FILE_QUERY_AREA)
-	    {
-	      qmgr_put_temp_file_into_list (temp);
-	    }
-	  else if (temp)
-	    {
-	      /* free too many temp_file */
-	      free_and_init (temp);
-	    }
-	}
       query_p->temp_vfid = NULL;
     }
 

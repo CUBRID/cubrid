@@ -526,9 +526,10 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
   if (attribute_p->header.name_space == ID_SHARED_ATTRIBUTE)
     {
       buffer = pt_append_nulstring (parser, buffer, " SHARED ");
-      if (!DB_IS_NULL (&attribute_p->value))
+      if (!DB_IS_NULL (&attribute_p->default_value.value))
 	{
-	  buffer = describe_value (parser, buffer, &attribute_p->value);
+	  buffer = describe_value (parser, buffer,
+				   &attribute_p->default_value.value);
 	}
     }
   else if (attribute_p->header.name_space == ID_ATTRIBUTE)
@@ -537,18 +538,45 @@ obj_print_describe_attribute (MOP class_p, PARSER_CONTEXT * parser,
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " AUTO_INCREMENT ");
 	}
-      if (!DB_IS_NULL (&attribute_p->value))
+      if (!DB_IS_NULL (&attribute_p->default_value.value)
+	  || attribute_p->default_value.default_expr != DB_DEFAULT_NONE)
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " DEFAULT ");
-	  buffer = describe_value (parser, buffer, &attribute_p->value);
+
+	  switch (attribute_p->default_value.default_expr)
+	    {
+	    case DB_DEFAULT_SYSDATE:
+	      buffer = pt_append_nulstring (parser, buffer, "SYS_DATE");
+	      break;
+	    case DB_DEFAULT_SYSDATETIME:
+	      buffer = pt_append_nulstring (parser, buffer, "SYS_DATETIME");
+	      break;
+	    case DB_DEFAULT_SYSTIMESTAMP:
+	      buffer = pt_append_nulstring (parser, buffer, "SYS_TIMESTAMP");
+	      break;
+	    case DB_DEFAULT_UNIX_TIMESTAMP:
+	      buffer = pt_append_nulstring (parser, buffer, "UNIX_TIMESTAMP");
+	      break;
+	    case DB_DEFAULT_USER:
+	      buffer = pt_append_nulstring (parser, buffer, "USER");
+	      break;
+	    case DB_DEFAULT_CURR_USER:
+	      buffer = pt_append_nulstring (parser, buffer, "CURRENT_USER");
+	      break;
+	    default:
+	      buffer = describe_value (parser, buffer,
+				       &attribute_p->default_value.value);
+	      break;
+	    }
 	}
     }
   else if (attribute_p->header.name_space == ID_CLASS_ATTRIBUTE)
     {
-      if (!DB_IS_NULL (&attribute_p->value))
+      if (!DB_IS_NULL (&attribute_p->default_value.value))
 	{
 	  buffer = pt_append_nulstring (parser, buffer, " VALUE ");
-	  buffer = describe_value (parser, buffer, &attribute_p->value);
+	  buffer = describe_value (parser, buffer,
+				   &attribute_p->default_value.value);
 	}
     }
 
@@ -2153,7 +2181,8 @@ help_obj (MOP op)
 			{
 			  buffer =
 			    describe_value (parser, buffer,
-					    &attribute_p->value);
+					    &attribute_p->default_value.
+					    value);
 			}
 		      else
 			{

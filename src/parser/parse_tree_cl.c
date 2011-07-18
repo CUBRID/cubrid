@@ -7294,6 +7294,7 @@ pt_init_data_default (PT_NODE * p)
 {
   p->info.data_default.default_value = 0;
   p->info.data_default.shared = (PT_MISC_TYPE) 0;
+  p->info.data_default.default_expr = DB_DEFAULT_NONE;
   return p;
 }
 
@@ -7470,7 +7471,8 @@ static PT_NODE *
 pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p,
 		 PT_NODE_FUNCTION g, void *arg)
 {
-  p->info.delete_.class_name = g (parser, p->info.delete_.class_name, arg);
+  p->info.delete_.target_classes =
+    g (parser, p->info.delete_.target_classes, arg);
   p->info.delete_.spec = g (parser, p->info.delete_.spec, arg);
   p->info.delete_.search_cond = g (parser, p->info.delete_.search_cond, arg);
   p->info.delete_.using_index = g (parser, p->info.delete_.using_index, arg);
@@ -7508,8 +7510,8 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1, *r2;
 
-  r1 = pt_print_bytes (parser, p->info.delete_.class_name);
-  r2 = pt_print_bytes_l (parser, p->info.delete_.spec);
+  r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
+  r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
 
   q = pt_append_nulstring (parser, q, "delete");
   if (p->info.delete_.hint != PT_HINT_NONE)
@@ -11830,7 +11832,7 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 						  strlen (p->info.name.
 							  original));
 	  intl_mbs_lower (p->info.name.original, lcase_name);
-	  q = pt_append_name (parser, q, intl_mbs_lower);
+	  q = pt_append_name (parser, q, lcase_name);
 	  db_private_free_and_init (NULL, lcase_name);
 	}
       else if (p->info.name.resolved)
@@ -12566,6 +12568,7 @@ pt_init_select (PT_NODE * p)
   p->info.query.order_siblings = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
+  p->info.query.upd_del_class_cnt = 0;
   return p;
 }
 

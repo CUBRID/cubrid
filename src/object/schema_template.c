@@ -1016,7 +1016,8 @@ smt_add_attribute_w_dflt_w_order (DB_CTMPL * def,
 				  DB_VALUE * default_value,
 				  const SM_NAME_SPACE name_space,
 				  const bool add_first,
-				  const char *add_after_attribute)
+				  const char *add_after_attribute,
+				  DB_DEFAULT_EXPR_TYPE default_expr)
 {
   int error = NO_ERROR;
 
@@ -1027,7 +1028,7 @@ smt_add_attribute_w_dflt_w_order (DB_CTMPL * def,
       error = smt_set_attribute_default (def, name,
 					 (name_space ==
 					  ID_CLASS_ATTRIBUTE ? 1 : 0),
-					 default_value);
+					 default_value, default_expr);
     }
 
   return error;
@@ -1049,11 +1050,12 @@ smt_add_attribute_w_dflt (DB_CTMPL * def,
 			  const char *domain_string,
 			  DB_DOMAIN * domain,
 			  DB_VALUE * default_value,
-			  const SM_NAME_SPACE name_space)
+			  const SM_NAME_SPACE name_space,
+			  DB_DEFAULT_EXPR_TYPE default_expr)
 {
   return smt_add_attribute_w_dflt_w_order (def, name, domain_string, domain,
 					   default_value, name_space, false,
-					   NULL);
+					   NULL, default_expr);
 }
 
 /*
@@ -1409,7 +1411,8 @@ smt_delete_set_attribute_domain (SM_TEMPLATE * template_,
 
 int
 smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
-			   int class_attribute, DB_VALUE * proposed_value)
+			   int class_attribute, DB_VALUE * proposed_value,
+			   DB_DEFAULT_EXPR_TYPE default_expr)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE *att;
@@ -1454,7 +1457,8 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
 	  /* check a subset of the integrity constraints, we can't check for
 	     NOT NULL or unique here */
 
-	  if (tp_check_value_size (att->domain, value) != DOMAIN_COMPATIBLE)
+	  if (value != NULL &&
+	      tp_check_value_size (att->domain, value) != DOMAIN_COMPATIBLE)
 	    {
 	      /* need an error message that isn't specific to "string" types */
 	      ERROR2 (error, ER_OBJ_STRING_OVERFLOW, att->header.name,
@@ -1462,8 +1466,9 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
 	    }
 	  else
 	    {
-	      pr_clear_value (&att->value);
-	      pr_clone_value (value, &att->value);
+	      pr_clear_value (&att->default_value.value);
+	      pr_clone_value (value, &att->default_value.value);
+	      att->default_value.default_expr = default_expr;
 
 	      /* if there wasn't an previous original value, take this one.
 	       * This can only happen for new templates OR if this is a new
@@ -1476,7 +1481,8 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name,
 	       */
 	      if (att->flags & SM_ATTFLAG_NEW)
 		{
-		  smt_set_attribute_orig_default_value (att, value);
+		  smt_set_attribute_orig_default_value (att, value,
+							default_expr);
 		}
 	    }
 	}
@@ -1510,13 +1516,15 @@ end:
  */
 static void
 smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att,
-				      DB_VALUE * new_orig_value)
+				      DB_VALUE * new_orig_value,
+				      DB_DEFAULT_EXPR_TYPE default_expr)
 {
   assert (att != NULL);
   assert (new_orig_value != NULL);
 
-  pr_clear_value (&att->original_value);
-  pr_clone_value (new_orig_value, &att->original_value);
+  pr_clear_value (&att->default_value.original_value);
+  pr_clone_value (new_orig_value, &att->default_value.original_value);
+  att->default_value.default_expr = default_expr;
 }
 
 /*
@@ -2217,7 +2225,8 @@ smt_add_constraint (SM_TEMPLATE * template_,
 	{
 	  ERROR0 (error, ER_SM_NOT_NULL_ON_VCLASS);
 	}
-      else if (class_attribute && DB_IS_NULL (&(atts[0]->value)))
+      else if (class_attribute
+	       && DB_IS_NULL (&(atts[0]->default_value.value)))
 	{
 	  ERROR0 (error, ER_SM_INVALID_CONSTRAINT);
 	}
@@ -3990,6 +3999,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
 				     DB_DOMAIN * new_domain,
 				     const SM_NAME_SPACE name_space,
 				     DB_VALUE * new_default_value,
+				     DB_DEFAULT_EXPR_TYPE new_def_expr,
 				     const bool change_first,
 				     const char *change_after_attribute,
 				     SM_ATTRIBUTE ** found_att)
@@ -4014,14 +4024,14 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
       return error;
     }
 
-  if (new_default_value != NULL)
+  if (new_default_value != NULL || new_def_expr != DB_DEFAULT_NONE)
     {
       assert (((*found_att)->flags & SM_ATTFLAG_NEW) == 0);
       error =
 	smt_set_attribute_default (def,
 				   ((new_name != NULL) ? new_name : name),
 				   name_space == (ID_CLASS_ATTRIBUTE) ? 1 : 0,
-				   new_default_value);
+				   new_default_value, new_def_expr);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4037,7 +4047,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
 
   assert (name_space == ID_ATTRIBUTE);
 
-  orig_value = &((*found_att)->original_value);
+  orig_value = &((*found_att)->default_value.original_value);
   if (DB_IS_NULL (orig_value))
     {
       /* the attribute has not set a default original value, so need to 
@@ -4062,7 +4072,8 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def,
   status = db_value_coerce (orig_value, new_orig_value, (*found_att)->domain);
   if (status == DOMAIN_COMPATIBLE)
     {
-      smt_set_attribute_orig_default_value (*found_att, new_orig_value);
+      smt_set_attribute_orig_default_value (*found_att, new_orig_value,
+					    new_def_expr);
     }
   else
     {
@@ -4131,7 +4142,7 @@ smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att,
   TP_DOMAIN_STATUS status;
   int cast_status = NO_ERROR;
   DB_VALUE *new_value = NULL;
-  DB_VALUE *current_value = &(att->value);
+  DB_VALUE *current_value = &(att->default_value.value);
 
   if (DB_IS_NULL (current_value))
     {
@@ -4156,8 +4167,8 @@ smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att,
   cast_status = db_value_coerce (current_value, new_value, new_domain);
   if (cast_status == DOMAIN_COMPATIBLE)
     {
-      pr_clear_value (&att->value);
-      pr_clone_value (new_value, &att->value);
+      pr_clear_value (&att->default_value.value);
+      pr_clone_value (new_value, &att->default_value.value);
 
       att->type = new_domain->type;
       att->domain = new_domain;

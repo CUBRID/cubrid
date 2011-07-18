@@ -1501,6 +1501,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 223 The LIKE predicate requires an escape character to be specified. See the documentation for the '%1$s' and '%2$s' configuration parameters.
 224 KEYLIMIT can not be used in INDEX NONE clause.
 225 Session variable not allowed in this context.
+226 '%s' function can not be used in DEFAULT clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %d bytes.

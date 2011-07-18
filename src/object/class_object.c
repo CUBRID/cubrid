@@ -3516,10 +3516,10 @@ classobj_make_attribute (const char *name, PR_TYPE * type,
   att->flags = 0;
   att->order = 0;
   att->storage_order = 0;
-
+  att->default_value.default_expr = DB_DEFAULT_NONE;
   /* initial values are unbound */
-  db_make_null (&att->original_value);
-  db_make_null (&att->value);
+  db_make_null (&att->default_value.original_value);
+  db_make_null (&att->default_value.value);
 
   att->constraints = NULL;
   att->order_link = NULL;
@@ -3596,6 +3596,7 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
   dest->properties = NULL;
   dest->auto_increment = src->auto_increment;
   dest->is_fk_cache_attr = src->is_fk_cache_attr;
+  dest->default_value.default_expr = src->default_value.default_expr;
 
   if (copy)
     {
@@ -3646,12 +3647,14 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
 	}
 
       /* make a copy of the default value */
-      if (pr_clone_value (&src->value, &dest->value))
+      if (pr_clone_value
+	  (&src->default_value.value, &dest->default_value.value))
 	{
 	  goto memory_error;
 	}
 
-      if (pr_clone_value (&src->original_value, &dest->original_value))
+      if (pr_clone_value (&src->default_value.original_value,
+			  &dest->default_value.original_value))
 	{
 	  goto memory_error;
 	}
@@ -3678,11 +3681,11 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
        * do structure copies on the values and make sure the sources
        * get cleared
        */
-      dest->value = src->value;
-      dest->original_value = src->original_value;
+      dest->default_value.value = src->default_value.value;
+      dest->default_value.original_value = src->default_value.original_value;
 
-      db_value_put_null (&src->value);
-      db_value_put_null (&src->original_value);
+      db_value_put_null (&src->default_value.value);
+      db_value_put_null (&src->default_value.original_value);
     }
 
   return NO_ERROR;
@@ -3879,8 +3882,8 @@ classobj_clear_attribute (SM_ATTRIBUTE * att)
       tr_free_schema_cache (att->triggers);
       att->triggers = NULL;
     }
-  classobj_clear_attribute_value (&att->value);
-  classobj_clear_attribute_value (&att->original_value);
+  classobj_clear_attribute_value (&att->default_value.value);
+  classobj_clear_attribute_value (&att->default_value.original_value);
 
   /* Do this last in case we needed it for default value maintenance or something.
    * This probably isn't necessary, the domain should have been cached at
@@ -3931,8 +3934,8 @@ classobj_attribute_size (SM_ATTRIBUTE * att)
     }
   size +=
     ws_list_total ((DB_LIST *) att->domain, (LTOTALER) classobj_domain_size);
-  size += pr_value_mem_size (&att->value);
-  size += pr_value_mem_size (&att->original_value);
+  size += pr_value_mem_size (&att->default_value.value);
+  size += pr_value_mem_size (&att->default_value.original_value);
 
   if (att->constraints != NULL)
     {
@@ -5506,8 +5509,10 @@ classobj_copy_attribute_like (DB_CTMPL * ctemplate, SM_ATTRIBUTE * attribute,
     }
 
   error = smt_add_attribute_w_dflt (ctemplate, attribute->header.name, NULL,
-				    attribute->domain, &attribute->value,
-				    attribute->header.name_space);
+				    attribute->domain,
+				    &attribute->default_value.value,
+				    attribute->header.name_space,
+				    attribute->default_value.default_expr);
   if (error != NO_ERROR)
     {
       return error;

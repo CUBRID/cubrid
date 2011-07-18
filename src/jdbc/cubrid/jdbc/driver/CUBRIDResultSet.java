@@ -79,7 +79,7 @@ public class CUBRIDResultSet implements ResultSet {
 	protected int number_of_rows;
 	private int current_row;
 	protected UColumnInfo[] column_info;
-	protected HashMap<String, Integer>  col_name_to_index;
+	protected HashMap<String, Integer> col_name_to_index;
 	protected boolean is_closed;
 	private boolean was_null;
 	private boolean close_u_stmt_on_close;
@@ -248,7 +248,9 @@ public class CUBRIDResultSet implements ResultSet {
 						is_closed = true;
 
 						clearCurrentRow();
-
+						if (stmt.getResultSetHoldability() == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
+							u_stmt.closeCursor();
+						}
 						if (complete_on_close) {
 							stmt.complete();
 						}
@@ -1319,7 +1321,7 @@ public class CUBRIDResultSet implements ResultSet {
 
 					UStatement t_u_stmt = con.prepare(sql, (byte) 0);
 					t_u_stmt.execute(false, 0, 0, false, false, false, false,
-							false, null);
+							false, false, null);
 					error = t_u_stmt.getRecentError();
 					t_u_stmt.close();
 					if (error.getErrorCode() != UErrorCode.ER_NO_ERROR)

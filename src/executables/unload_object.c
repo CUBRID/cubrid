@@ -1148,7 +1148,7 @@ process_class (int cl_no)
        attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
 
-      if (DB_VALUE_TYPE (&attribute->value) == DB_TYPE_NULL)
+      if (DB_VALUE_TYPE (&attribute->default_value.value) == DB_TYPE_NULL)
 	{
 	  continue;
 	}
@@ -1181,7 +1181,7 @@ process_class (int cl_no)
   for (attribute = class_ptr->shared; attribute != NULL;
        attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
-      if (DB_VALUE_TYPE (&attribute->value) == DB_TYPE_NULL)
+      if (DB_VALUE_TYPE (&attribute->default_value.value) == DB_TYPE_NULL)
 	{
 	  continue;
 	}
@@ -1189,7 +1189,7 @@ process_class (int cl_no)
 	{
 	  CHECK_PRINT_ERROR (text_print (obj_out, " ", 1, NULL));
 	}
-      error = process_value (&attribute->value);
+      error = process_value (&attribute->default_value.value);
       if (error != NO_ERROR)
 	{
 	  if (!ignore_err_flag)
@@ -1207,7 +1207,7 @@ process_class (int cl_no)
   for (attribute = class_ptr->class_attributes; attribute != NULL;
        attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
-      if (DB_VALUE_TYPE (&attribute->value) == DB_TYPE_NULL)
+      if (DB_VALUE_TYPE (&attribute->default_value.value) == DB_TYPE_NULL)
 	{
 	  continue;
 	}
@@ -1240,7 +1240,7 @@ process_class (int cl_no)
        attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
 
-      if (DB_VALUE_TYPE (&attribute->value) == DB_TYPE_NULL)
+      if (DB_VALUE_TYPE (&attribute->default_value.value) == DB_TYPE_NULL)
 	{
 	  continue;
 	}
@@ -1248,7 +1248,8 @@ process_class (int cl_no)
 	{
 	  CHECK_PRINT_ERROR (text_print (obj_out, " ", 1, NULL));
 	}
-      if ((error = process_value (&attribute->value)) != NO_ERROR)
+      if ((error =
+	   process_value (&attribute->default_value.value)) != NO_ERROR)
 	{
 	  if (!ignore_err_flag)
 	    {

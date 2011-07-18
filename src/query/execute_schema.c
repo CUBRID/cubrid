@@ -6773,6 +6773,8 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	      continue;
 	    }
 
+	  is_all = 0;
+
 	  classop = db_find_class (name->info.name.original);
 	  if (classop != NULL)
 	    {
@@ -9038,6 +9040,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   int meta, shared;
   DB_VALUE stack_value;
   DB_VALUE *default_value = &stack_value;
+  PT_NODE *default_info;
   int error = NO_ERROR;
   DB_DOMAIN *attr_db_domain;
   MOP auto_increment_obj = NULL;
@@ -9111,10 +9114,14 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
       name_space = ID_ATTRIBUTE;
     }
 
+  default_info = attribute->info.attr_def.data_default;
   error = smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL,
 					    attr_db_domain, &stack_value,
 					    name_space, add_first,
-					    add_after_attr);
+					    add_after_attr,
+					    default_info ? default_info->info.
+					    data_default.
+					    default_expr : DB_DEFAULT_NONE);
 
   db_value_clear (&stack_value);
 
@@ -9176,6 +9183,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser,
   int error = NO_ERROR;
   const char *attr_name;
   MOP class_obj = NULL;
+  DB_DEFAULT_EXPR_TYPE default_expr = DB_DEFAULT_NONE;
 
   DB_MAKE_NULL (&default_value);
 
@@ -9224,7 +9232,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser,
 	}
 
       error = sm_att_default_value (class_obj, column->attr_name,
-				    &default_value);
+				    &default_value, &default_expr);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -9233,7 +9241,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser,
 
   error = smt_add_attribute_w_dflt (ctemplate, attr_name, NULL,
 				    column->domain, &default_value,
-				    ID_ATTRIBUTE);
+				    ID_ATTRIBUTE, default_expr);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -11524,6 +11532,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   const char *old_name = NULL;
   const char *new_name = NULL;
   const char *attr_name = NULL;
+  DB_DEFAULT_EXPR_TYPE new_default_expr = DB_DEFAULT_NONE;
 
   assert (attr_chg_prop != NULL);
   assert (change_mode != NULL);
@@ -11616,6 +11625,12 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   /* default_value is either NULL or pointing to address of stack_value */
   assert (default_value == NULL || default_value == &stack_value);
   new_default = default_value;
+  new_default_expr = DB_DEFAULT_NONE;
+  if (attribute->info.attr_def.data_default)
+    {
+      new_default_expr =
+	attribute->info.attr_def.data_default->info.data_default.default_expr;
+    }
 
   attr_db_domain = pt_node_to_db_domain (parser, attribute, ctemplate->name);
   if (attr_db_domain == NULL)
@@ -11635,7 +11650,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
     smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL,
 					 attr_db_domain,
 					 attr_chg_prop->name_space,
-					 new_default,
+					 new_default, new_default_expr,
 					 change_first, change_after_attr,
 					 &found_att);
   if (error != NO_ERROR)
@@ -11670,7 +11685,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   if (is_att_prop_set
       (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_LOST))
     {
-      pr_clear_value (&(found_att->value));
+      pr_clear_value (&(found_att->default_value.value));
     }
 
   /* add or drop NOT NULL constraint */
@@ -11835,7 +11850,8 @@ build_attr_change_map (PARSER_CONTEXT * parser,
     {
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
     }
-  if (!DB_IS_NULL (&(att->original_value)) || !DB_IS_NULL (&(att->value)))
+  if (!DB_IS_NULL (&(att->default_value.original_value)) ||
+      !DB_IS_NULL (&(att->default_value.value)))
     {
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
     }
@@ -13528,8 +13544,11 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute,
   else
     {
       PT_NODE *def_val = NULL;
+      DB_DEFAULT_EXPR_TYPE def_expr;
       PT_TYPE_ENUM desired_type = attribute->type_enum;
 
+      def_expr = attribute->info.attr_def.data_default->info.data_default.
+	default_expr;
       /* try to coerce the default value into the attribute's type */
       def_val =
 	attribute->info.attr_def.data_default->info.data_default.
@@ -13541,14 +13560,39 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute,
 	  return er_errid ();
 	}
 
-      error = pt_coerce_value (parser, def_val, def_val, desired_type,
-			       attribute->data_type);
-      if (error != NO_ERROR)
+      if (def_expr == DB_DEFAULT_NONE)
 	{
-	  return error;
+	  error = pt_coerce_value (parser, def_val, def_val, desired_type,
+				   attribute->data_type);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+      else
+	{
+	  PT_TYPE_ENUM common_type;
+	  def_val = pt_semantic_type (parser, def_val, NULL);
+	  common_type = pt_common_type (def_val->type_enum, desired_type);
+	  if (common_type != desired_type)
+	    {
+	      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			   pt_short_print (parser, def_val),
+			   pt_show_type_enum ((PT_TYPE_ENUM) desired_type));
+	      return ER_IT_INCOMPATIBLE_DATATYPE;
+	    }
 	}
 
-      pt_evaluate_tree (parser, def_val, *default_value);
+      if (def_expr == DB_DEFAULT_NONE)
+	{
+	  pt_evaluate_tree (parser, def_val, *default_value);
+	}
+      else
+	{
+	  *default_value = NULL;
+	}
+
       if (pt_has_error (parser))
 	{
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -14064,7 +14108,9 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate,
   assert (ptr_def == NULL || ptr_def == &def_value);
 
   /* check if the class has a default NULL and a NOT NULL constraint */
-  if (ptr_def && DB_IS_NULL (ptr_def))
+  if (ptr_def && DB_IS_NULL (ptr_def)
+      && attribute->info.attr_def.data_default->info.data_default.
+      default_expr == DB_DEFAULT_NONE)
     {
       for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
 	{

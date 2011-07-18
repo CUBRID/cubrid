@@ -78,13 +78,15 @@ public class CUBRIDStatement implements Statement {
 	private int concurrency;
 	private boolean is_scrollable;
 	private boolean is_updatable;
+	private boolean is_holdable;
 	private boolean is_sensitive;
 	private int fetch_direction;
 	private int fetch_size;
 	private ArrayList batchs;
 	private int result_index;
 
-	protected CUBRIDStatement(CUBRIDConnection c, int t, int concur) {
+	protected CUBRIDStatement(CUBRIDConnection c, int t, int concur,
+                int hold) {
 		con = c;
 		u_con = con.u_con;
 		u_stmt = null;
@@ -101,6 +103,7 @@ public class CUBRIDStatement implements Statement {
 		concurrency = concur;
 		is_scrollable = t != ResultSet.TYPE_FORWARD_ONLY;
 		is_updatable = concur == ResultSet.CONCUR_UPDATABLE;
+		is_holdable = hold == ResultSet.HOLD_CURSORS_OVER_COMMIT;
 		is_sensitive = t == ResultSet.TYPE_SCROLL_SENSITIVE;
 		fetch_direction = ResultSet.FETCH_FORWARD;
 		fetch_size = 0;
@@ -568,7 +571,10 @@ public class CUBRIDStatement implements Statement {
 	}
 
 	public synchronized int getResultSetHoldability() throws SQLException {
-		return ResultSet.CLOSE_CURSORS_AT_COMMIT;
+		if (is_holdable)
+			return ResultSet.HOLD_CURSORS_OVER_COMMIT;
+		else
+			return ResultSet.CLOSE_CURSORS_AT_COMMIT;
 	}
 
 	// 3.0
@@ -786,14 +792,19 @@ public class CUBRIDStatement implements Statement {
 	protected void executeCoreInternal(boolean all,
 			UStatementCacheData cache_data) throws SQLException {
 		CUBRIDCancelQueryThread t = null;
+		boolean is_holdable = false;
 
 		if (query_timeout > 0) {
 			t = new CUBRIDCancelQueryThread(this, query_timeout);
 			t.start();
 		}
 
+		if (getResultSetHoldability() == ResultSet.HOLD_CURSORS_OVER_COMMIT)
+			is_holdable = true;
+
 		u_stmt.execute(false, max_rows, max_field_size, all, is_sensitive,
-				is_scrollable, query_info_flag, only_query_plan, cache_data);
+				is_scrollable, query_info_flag, only_query_plan, is_holdable,
+				cache_data);
 
 		if (query_timeout > 0) {
 			t.queryended();
@@ -902,7 +913,9 @@ public class CUBRIDStatement implements Statement {
 		if (query_info_flag || only_query_plan) {
 			prepareFlag |= UConnection.PREPARE_QUERY_INFO;
 		}
-
+		if (is_holdable){
+			prepareFlag |= UConnection.PREPARE_HOLDABLE;
+		}
 		u_stmt = con.prepare(sql, prepareFlag);
 	}
 

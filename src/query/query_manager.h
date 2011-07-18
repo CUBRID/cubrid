@@ -161,6 +161,7 @@ struct qmgr_query_entry
   pthread_t tid;		/* used in qm_clear_tans_wakeup() */
 #endif
   VPID save_vpid;		/* Save VPID for certain async queries */
+  bool is_holdable;		/* true if this query should be available */
 };
 
 extern QMGR_QUERY_ENTRY *qmgr_get_query_entry (THREAD_ENTRY * thread_p,
@@ -203,6 +204,10 @@ extern int qmgr_free_query_temp_file (THREAD_ENTRY * thread_p,
 extern int qmgr_free_list_temp_file (THREAD_ENTRY * thread_p,
 				     QUERY_ID query_id,
 				     QMGR_TEMP_FILE * tfile_vfidp);
+extern int qmgr_free_temp_file_list (THREAD_ENTRY * thread_p,
+				     QMGR_TEMP_FILE * tfile_vfidp,
+				     QUERY_ID query_id, bool is_error);
+
 #if defined(SERVER_MODE)
 extern bool qmgr_is_thread_executing_async_query (THREAD_ENTRY * thrd_entry);
 #endif

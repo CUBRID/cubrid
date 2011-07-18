@@ -7164,9 +7164,15 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p,
 
   if (fetch_peek_dbval
       (thread_p, &function_p->operand->value, val_desc_p, NULL, obj_oid_p,
-       tuple, &val_p) != NO_ERROR || DB_IS_NULL (val_p))
+       tuple, &val_p) != NO_ERROR)
     {
       return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (val_p))
+    {
+      DB_MAKE_NULL (function_p->value);
+      return NO_ERROR;
     }
 
   type = db_value_domain_type (val_p);

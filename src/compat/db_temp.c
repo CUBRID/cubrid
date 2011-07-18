@@ -230,7 +230,8 @@ dbt_add_attribute (DB_CTMPL * def,
   CHECK_MODIFICATION_ERROR ();
 
   error = smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0,
-				    default_value, ID_ATTRIBUTE);
+				    default_value, ID_ATTRIBUTE,
+				    DB_DEFAULT_NONE);
 
   return (error);
 }
@@ -255,7 +256,8 @@ dbt_add_shared_attribute (DB_CTMPL * def,
   CHECK_MODIFICATION_ERROR ();
 
   error = smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0,
-				    default_value, ID_SHARED_ATTRIBUTE);
+				    default_value, ID_SHARED_ATTRIBUTE,
+				    DB_DEFAULT_NONE);
 
   return (error);
 }
@@ -280,7 +282,8 @@ dbt_add_class_attribute (DB_CTMPL * def,
   CHECK_MODIFICATION_ERROR ();
 
   error = smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0,
-				    default_value, ID_CLASS_ATTRIBUTE);
+				    default_value, ID_CLASS_ATTRIBUTE,
+				    DB_DEFAULT_NONE);
 
   return (error);
 }
@@ -608,7 +611,8 @@ dbt_change_default (DB_CTMPL * def,
   CHECK_2ARGS_ERROR (def, name);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_set_attribute_default (def, name, class_attribute, value);
+  error = smt_set_attribute_default (def, name, class_attribute, value,
+				     DB_DEFAULT_NONE);
 
   return (error);
 }

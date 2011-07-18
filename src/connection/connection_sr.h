@@ -80,6 +80,8 @@ extern void css_register_handler_routines (int (*connect_handler)
 
 extern CSS_CONN_ENTRY *css_find_conn_by_tran_index (int tran_index);
 extern CSS_CONN_ENTRY *css_find_conn_from_fd (SOCKET fd);
+extern int css_get_session_ids_for_active_connections (SESSION_ID ** ids,
+						       int *count);
 extern void css_shutdown_conn_by_tran_index (int tran_index);
 
 extern int css_send_abort_request (CSS_CONN_ENTRY * conn,

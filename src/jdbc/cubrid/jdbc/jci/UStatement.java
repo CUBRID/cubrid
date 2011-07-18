@@ -65,7 +65,7 @@ public class UStatement {
 
 	private final static byte EXEC_FLAG_ASYNC = 0x01,
 			EXEC_FLAG_QUERY_ALL = 0x02, EXEC_FLAG_QUERY_INFO = 0x04,
-			EXEC_FLAG_ONLY_QUERY_PLAN = 0x08;
+			EXEC_FLAG_ONLY_QUERY_PLAN = 0x08, EXEC_FLAG_HOLDABLE_RESULT = 0x20;
 
 	private byte statementType;
 
@@ -580,6 +580,17 @@ public class UStatement {
 			return true;
 	}
 
+	synchronized public void closeCursor(){
+		try{
+			outBuffer.newRequest(UFunctionCode.CURSOR_CLOSE);
+			outBuffer.addInt(serverHandler);
+			relatedConnection.send_recv_msg();
+		} catch (UJciException e) {
+			e.toUError(errorHandler);
+		} catch (IOException e) {
+			errorHandler.setErrorCode(UErrorCode.ER_COMMUNICATION);
+		}
+	}
 	synchronized public void deleteCursor(int cursor) {
 		errorHandler = new UError();
 		if (isClosed == true) {
@@ -609,7 +620,7 @@ public class UStatement {
 	synchronized public void execute(boolean isAsync, int maxRow, int maxField,
 			boolean allExecute, boolean is_sensitive, boolean is_scrollable,
 			boolean query_plan_flag, boolean only_query_plan,
-			UStatementCacheData cache_data) {
+			boolean is_holdable, UStatementCacheData cache_data) {
 		flushLobStreams();
 
 		UInputBuffer inBuffer = null;
@@ -661,6 +672,8 @@ public class UStatement {
 			executeFlag |= EXEC_FLAG_QUERY_INFO;
 		if (only_query_plan)
 			executeFlag |= (EXEC_FLAG_QUERY_INFO | EXEC_FLAG_ONLY_QUERY_PLAN);
+		if (is_holdable)
+			executeFlag |= EXEC_FLAG_HOLDABLE_RESULT;
 
 		currentFirstCursor = -1;
 		fetchedTupleNumber = 0;
@@ -747,7 +760,7 @@ public class UStatement {
 				errorHandler.clear();
 				execute(isAsync, maxRow, maxField, allExecute, is_sensitive,
 						is_scrollable, query_plan_flag, only_query_plan,
-						cache_data);
+						is_holdable, cache_data);
 				return;
 			} else {
 				if (relatedConnection.need_checkcas
@@ -759,7 +772,7 @@ public class UStatement {
 					errorHandler.clear();
 					execute(isAsync, maxRow, maxField, allExecute,
 							is_sensitive, is_scrollable, query_plan_flag,
-							only_query_plan, cache_data);
+							only_query_plan, is_holdable, cache_data);
 				}
 				return;
 			}
@@ -815,7 +828,7 @@ public class UStatement {
 			errorHandler.setErrorCode(UErrorCode.ER_CMD_IS_NOT_INSERT);
 			return null;
 		}
-		execute(isAsync, 0, 0, false, false, false, false, false, null);
+		execute(isAsync, 0, 0, false, false, false, false, false, false, null);
 		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 			return null;
 		if (resultInfo != null && resultInfo[0] != null)

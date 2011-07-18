@@ -418,6 +418,7 @@ static int btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 						OID * nk_pseudo_oid,
 						OID * class_oid,
 						bool * key_added);
+static int btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss);
 
 /*
  * btree_clear_key_value () -
@@ -2848,6 +2849,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid,
   index_scan_id.indx_info = NULL;
   memset ((void *) (&(index_scan_id.multi_range_opt)), 0,
 	  sizeof (MULTI_RANGE_OPT));
+  scan_init_iss (&index_scan_id.iss);
 
   if (key == NULL || db_value_is_null (key)
       || btree_multicol_key_is_null (key))
@@ -2917,6 +2919,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid,
   index_scan_id.indx_info = NULL;
   memset ((void *) (&(index_scan_id.multi_range_opt)), 0,
 	  sizeof (MULTI_RANGE_OPT));
+  scan_init_iss (&index_scan_id.iss);
 
   if (key == NULL || db_value_is_null (key)
       || btree_multicol_key_is_null (key))
@@ -4262,6 +4265,7 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p,
   memset ((void *) (&(isid.indx_cov)), 0, sizeof (INDX_COV));
   isid.indx_info = NULL;
   memset ((void *) (&(isid.multi_range_opt)), 0, sizeof (MULTI_RANGE_OPT));
+  scan_init_iss (&isid.iss);
 
   do
     {
@@ -14952,6 +14956,7 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
   short node_type;
   OID temp_oid;
   bool multi_range_opt_continue = true;
+  bool iss_get_first_result_only = false;
 #if defined(SERVER_MODE)
   int CLS_satisfied = true;
   int lock_ret;
@@ -15134,6 +15139,20 @@ btree_range_search (THREAD_ENTRY * thread_p, BTID * btid,
       pg_oid_cnt = oids_size / OR_OID_SIZE;
       mem_oid_ptr = oids_ptr;
     }
+
+  /* When using Index Skip Scan, this function is sometimes called just to
+   * get the next value for the first column of the index. In this case we
+   * will exit immediateley after the first element is found, returning it.
+   * This will get handled by scan_next_scan_local, which will construct a
+   * real range based on the value we return and call this function again,
+   * this time stating that it wants to perform a regular index scan by
+   * setting isidp->iss.current_op to ISS_OP_PERFORM_REGULAR_SCAN.
+   */
+  iss_get_first_result_only = (index_scan_id_p->iss.use &&
+			       (index_scan_id_p->iss.current_op ==
+				ISS_OP_GET_FIRST_KEY
+				|| index_scan_id_p->iss.current_op ==
+				ISS_OP_SEARCH_NEXT_DISTINCT_KEY));
 
   oids_cnt = 0;			/* # of copied OIDs */
 
@@ -15567,7 +15586,25 @@ start_locking:
 		  if (need_count_only == false)
 		    {
 		      /* normal scan - copy OID */
-		      if (index_scan_id_p->multi_range_opt.use)
+		      if (iss_get_first_result_only)
+			{
+			  /* Context: Read Uncommitted
+			   * Unlock current OID: no, it was not locked
+			   * Where to go: end of scan.
+			   */
+			  btree_leaf_get_oid_from_oidptr (bts, rec_oid_ptr,
+							  offset, node_type,
+							  &temp_oid,
+							  &class_oid);
+			  if (btree_iss_set_key (bts, &index_scan_id_p->iss)
+			      != NO_ERROR)
+			    {
+			      goto error;
+			    }
+
+			  goto end_of_scan;
+			}
+		      else if (index_scan_id_p->multi_range_opt.use)
 			{
 			  btree_leaf_get_oid_from_oidptr (bts, rec_oid_ptr,
 							  offset, node_type,
@@ -15656,7 +15693,21 @@ start_locking:
 		      if (need_count_only == false)
 			{
 			  /* normal scan - copy OID */
-			  if (index_scan_id_p->multi_range_opt.use)
+			  if (iss_get_first_result_only)
+			    {
+			      /* Context: read uncommitted
+			       * Unlock current OID: no, it was not locked
+			       * Where to go: end of scan
+			       */
+			      if (btree_iss_set_key
+				  (bts, &index_scan_id_p->iss) != NO_ERROR)
+				{
+				  goto error;
+				}
+
+			      goto end_of_scan;
+			    }
+			  else if (index_scan_id_p->multi_range_opt.use)
 			    {
 			      if (btree_range_opt_check_add_index_key
 				  (thread_p, bts,
@@ -15801,7 +15852,45 @@ start_locking:
 		      if (need_count_only == false)
 			{
 			  /* normal scan - copy OID */
-			  if (index_scan_id_p->multi_range_opt.use)
+			  if (iss_get_first_result_only)
+			    {
+			      /* Context: OID is already locked and unchanged;
+			       * Unlock current OID: YES
+			       * Save the dbvalue: Yes, as always. */
+
+			      if (btree_iss_set_key
+				  (bts, &index_scan_id_p->iss) != NO_ERROR)
+				{
+				  goto error;
+				}
+			      /* Now unlock the object, because we don't want
+			       * to leave a lock behind, since we are using
+			       * the fake range here. */
+			      lock_unlock_object (thread_p, &inst_oid,
+						  &class_oid, bts->lock_mode,
+						  true);
+
+			      if (!OID_ISNULL (&ck_pseudo_oid))
+				{
+				  lock_unlock_object (thread_p,
+						      &ck_pseudo_oid,
+						      &class_oid,
+						      bts->key_lock_mode,
+						      true);
+				}
+
+			      if (!OID_ISNULL (&nk_pseudo_oid))
+				{
+				  lock_unlock_object (thread_p,
+						      &nk_pseudo_oid,
+						      &class_oid,
+						      bts->key_lock_mode,
+						      true);
+				}
+
+			      goto end_of_scan;
+			    }
+			  else if (index_scan_id_p->multi_range_opt.use)
 			    {
 			      if (btree_range_opt_check_add_index_key
 				  (thread_p, bts,
@@ -16030,12 +16119,25 @@ start_locking:
 	      if (need_count_only == false)
 		{
 		  /* normal scan - copy OID */
-		  if (index_scan_id_p->multi_range_opt.use)
+		  btree_leaf_get_oid_from_oidptr (bts, rec_oid_ptr,
+						  offset, node_type,
+						  &temp_oid, &class_oid);
+		  if (iss_get_first_result_only)
 		    {
-		      btree_leaf_get_oid_from_oidptr (bts, rec_oid_ptr,
-						      offset, node_type,
-						      &temp_oid, &class_oid);
+		      /* Context: lock escalated to class lock
+		       * Unlock current OID: no, the entire class is locked
+		       * Where to go: end of scan, locking is already done
+		       */
+		      if (btree_iss_set_key (bts, &index_scan_id_p->iss) !=
+			  NO_ERROR)
+			{
+			  goto error;
+			}
 
+		      goto end_of_scan;
+		    }
+		  else if (index_scan_id_p->multi_range_opt.use)
+		    {
 		      if (btree_range_opt_check_add_index_key
 			  (thread_p, bts, &(index_scan_id_p->multi_range_opt),
 			   &temp_oid, NULL, NULL, NULL,
@@ -16053,9 +16155,6 @@ start_locking:
 		    }
 		  else if (SCAN_IS_INDEX_COVERED (index_scan_id_p))
 		    {
-		      btree_leaf_get_oid_from_oidptr (bts, rec_oid_ptr,
-						      offset, node_type,
-						      &temp_oid, &class_oid);
 		      if (btree_dump_curr_key (thread_p, bts, filter,
 					       &temp_oid,
 					       index_scan_id_p) != NO_ERROR)
@@ -16065,10 +16164,7 @@ start_locking:
 		    }
 		  else
 		    {
-		      btree_leaf_get_oid_from_oidptr (bts, rec_oid_ptr,
-						      offset, node_type,
-						      mem_oid_ptr,
-						      &class_oid);
+		      COPY_OID (mem_oid_ptr, &temp_oid);
 		      mem_oid_ptr++;
 		    }
 		}
@@ -16162,15 +16258,26 @@ start_locking:
 		      if (need_count_only == false)
 			{
 			  /* normal scan - copy OID */
-			  if (index_scan_id_p->multi_range_opt.use)
-			    {
-			      btree_leaf_get_oid_from_oidptr (bts,
-							      rec_oid_ptr,
-							      offset,
-							      node_type,
-							      &temp_oid,
-							      &class_oid);
+			  btree_leaf_get_oid_from_oidptr (bts, rec_oid_ptr,
+							  offset, node_type,
+							  &temp_oid,
+							  &class_oid);
 
+			  if (iss_get_first_result_only)
+			    {
+			      /* Context: lock escalated to class lock
+			       * Unlock current OID: no
+			       * Where to go: end of scan
+			       */
+			      if (btree_iss_set_key
+				  (bts, &index_scan_id_p->iss) != NO_ERROR)
+				{
+				  goto error;
+				}
+			      goto end_of_scan;
+			    }
+			  else if (index_scan_id_p->multi_range_opt.use)
+			    {
 			      if (btree_range_opt_check_add_index_key
 				  (thread_p, bts,
 				   &(index_scan_id_p->multi_range_opt),
@@ -16189,12 +16296,6 @@ start_locking:
 			    }
 			  else if (SCAN_IS_INDEX_COVERED (index_scan_id_p))
 			    {
-			      btree_leaf_get_oid_from_oidptr (bts,
-							      rec_oid_ptr,
-							      offset,
-							      node_type,
-							      &temp_oid,
-							      &class_oid);
 			      if (btree_dump_curr_key (thread_p, bts, filter,
 						       &temp_oid,
 						       index_scan_id_p)
@@ -16205,12 +16306,7 @@ start_locking:
 			    }
 			  else
 			    {
-			      btree_leaf_get_oid_from_oidptr (bts,
-							      rec_oid_ptr,
-							      offset,
-							      node_type,
-							      mem_oid_ptr,
-							      &class_oid);
+			      COPY_OID (mem_oid_ptr, &temp_oid);
 			      mem_oid_ptr++;
 			    }
 			}
@@ -16321,7 +16417,21 @@ start_locking:
 			  if (need_count_only == false)
 			    {
 			      /* normal scan - copy OID */
-			      if (index_scan_id_p->multi_range_opt.use)
+			      if (iss_get_first_result_only)
+				{
+				  /* Context: lock escalated to class lock
+				   * Unlock current OID: No
+				   * Where to go: end of scan
+				   */
+				  if (btree_iss_set_key
+				      (bts,
+				       &index_scan_id_p->iss) != NO_ERROR)
+				    {
+				      goto error;
+				    }
+				  goto end_of_scan;
+				}
+			      else if (index_scan_id_p->multi_range_opt.use)
 				{
 				  if (btree_range_opt_check_add_index_key
 				      (thread_p, bts,
@@ -16500,7 +16610,39 @@ start_locking:
 		  if (need_count_only == false)
 		    {
 		      /* normal scan - copy OID */
-		      if (index_scan_id_p->multi_range_opt.use)
+		      if (iss_get_first_result_only)
+			{
+			  /* Context: lock granted
+			   * Unlock current OID: yes, it was succesfully locked
+			   * Where to go: end of scan
+			   */
+			  if (btree_iss_set_key (bts, &index_scan_id_p->iss)
+			      != NO_ERROR)
+			    {
+			      goto error;
+			    }
+
+			  lock_unlock_object (thread_p, &inst_oid,
+					      &class_oid, bts->lock_mode,
+					      true);
+
+			  if (!OID_ISNULL (&ck_pseudo_oid))
+			    {
+			      lock_unlock_object (thread_p,
+						  &ck_pseudo_oid, &class_oid,
+						  bts->key_lock_mode, true);
+			    }
+
+			  if (!OID_ISNULL (&nk_pseudo_oid))
+			    {
+			      lock_unlock_object (thread_p,
+						  &nk_pseudo_oid, &class_oid,
+						  bts->key_lock_mode, true);
+			    }
+
+			  goto end_of_scan;
+			}
+		      else if (index_scan_id_p->multi_range_opt.use)
 			{
 			  if (btree_range_opt_check_add_index_key
 			      (thread_p, bts,
@@ -16790,7 +16932,39 @@ start_locking:
 		  if (need_count_only == false)
 		    {
 		      /* normal scan - copy OID */
-		      if (index_scan_id_p->multi_range_opt.use)
+		      if (iss_get_first_result_only)
+			{
+			  /* Context: lock granted
+			   * Unlock current OID: yes, it was succesfully locked
+			   * Where to go: end of scan
+			   */
+			  if (btree_iss_set_key (bts, &index_scan_id_p->iss)
+			      != NO_ERROR)
+			    {
+			      goto error;
+			    }
+
+			  lock_unlock_object (thread_p, &inst_oid,
+					      &class_oid, bts->lock_mode,
+					      true);
+
+			  if (!OID_ISNULL (&ck_pseudo_oid))
+			    {
+			      lock_unlock_object (thread_p,
+						  &ck_pseudo_oid, &class_oid,
+						  bts->key_lock_mode, true);
+			    }
+
+			  if (!OID_ISNULL (&nk_pseudo_oid))
+			    {
+			      lock_unlock_object (thread_p,
+						  &nk_pseudo_oid, &class_oid,
+						  bts->key_lock_mode, true);
+			    }
+
+			  goto end_of_scan;
+			}
+		      else if (index_scan_id_p->multi_range_opt.use)
 			{
 			  if (btree_range_opt_check_add_index_key
 			      (thread_p, bts,
@@ -16909,7 +17083,23 @@ start_locking:
 	      if (need_count_only == false)
 		{
 		  /* normal scan - copy OID */
-		  if (index_scan_id_p->multi_range_opt.use)
+		  if (iss_get_first_result_only)
+		    {
+		      /* Context: we are in stand alone mode. Don't care about locks.
+		       * Unlock current OID: no, it was not locked
+		       * Where to go: end of scan
+		       */
+		      /* do not call get oid from oidptr because we have no
+		       * further need for the oid itself */
+		      if (btree_iss_set_key (bts,
+					     &index_scan_id_p->iss) !=
+			  NO_ERROR)
+			{
+			  goto error;
+			}
+		      goto end_of_scan;
+		    }
+		  else if (index_scan_id_p->multi_range_opt.use)
 		    {
 		      btree_leaf_get_oid_from_oidptr (bts, rec_oid_ptr,
 						      offset, node_type,
@@ -17001,7 +17191,20 @@ start_locking:
 		  if (need_count_only == false)
 		    {
 		      /* normal scan - copy OID */
-		      if (index_scan_id_p->multi_range_opt.use)
+		      if (iss_get_first_result_only)
+			{
+			  /* Context: we are in stand alone mode. Don't care about locks.
+			   * Unlock current OID: no, it was not locked
+			   * Where to go: end of scan
+			   */
+			  if (btree_iss_set_key (bts, &index_scan_id_p->iss)
+			      != NO_ERROR)
+			    {
+			      goto error;
+			    }
+			  goto end_of_scan;
+			}
+		      else if (index_scan_id_p->multi_range_opt.use)
 			{
 			  if (btree_range_opt_check_add_index_key
 			      (thread_p, bts,
@@ -19431,6 +19634,34 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p,
 	  break;
 	}
       compare_id--;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * btree_iss_set_key () - save the current key
+ *
+ *   return: error code
+ *   bts(in):
+ *   iss(in):
+ */
+static int
+btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss)
+{
+  int ret = NO_ERROR;
+
+  if (DB_VALUE_DOMAIN_TYPE (&(bts->cur_key)) != DB_TYPE_MIDXKEY
+      || iss == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* 2. SAVE THE NEW current key */
+  ret = pr_clone_value (&bts->cur_key, &iss->dbval);
+  if (ret != NO_ERROR)
+    {
+      return ret;
     }
 
   return NO_ERROR;

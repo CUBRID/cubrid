@@ -799,6 +799,14 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, bool * is_index_w_prefix)
       equi_nterms = MIN (equi_nterms, index_entryp->rangelist_seg_idx);
     }
 
+  /* we must have the first index column appear as the first sort column, so
+   * we pretend the number of equi columns is zero, to force it to match
+   * the sort list and the index columns one-for-one. */
+  if (index_entryp->is_iss_candidate)
+    {
+      equi_nterms = 0;
+    }
+
   key_type = NULL;		/* init */
   if (asc_or_desc != PT_DESC)
     {				/* is not reverse index */
@@ -1848,6 +1856,8 @@ qo_iscan_cost (QO_PLAN * planp)
       bool is_null_sel = false;
       sel = 0.1;
 
+      assert (!index_entryp->is_iss_candidate);
+
       /* set selectivity limit */
       if (pkeys_num > 0 && cum_statsp->pkeys[0] > 0)
 	{
@@ -1883,6 +1893,22 @@ qo_iscan_cost (QO_PLAN * planp)
   else
     {
       i = 0;
+
+      /* for index skip scan, we should pre-compute the first column's
+       * selectivity and check that we have relevant statistics. */
+      if (index_entryp->is_iss_candidate)
+	{
+	  /* we can't do proper index skip scan analysis without 
+	   * relevant statistics */
+	  if (pkeys_num <= 0 || cum_statsp->pkeys[0] <= 0)
+	    {
+	      qo_worst_cost (planp);
+	      return;
+	    }
+
+	  i = 1;
+	  n--;
+	}
 
       for (t = bitset_iterate (&(planp->plan_un.scan.terms), &iter);
 	   t != -1; t = bitset_next_member (&iter))
@@ -1932,6 +1958,11 @@ qo_iscan_cost (QO_PLAN * planp)
 	  i++;
 	  n--;
 	}
+
+      if (index_entryp->is_iss_candidate)
+	{
+	  sel = sel * (double) cum_statsp->pkeys[0];
+	}
     }
 
   /* number of objects to be selected */
@@ -1946,6 +1977,18 @@ qo_iscan_cost (QO_PLAN * planp)
   opages = (double) QO_NODE_TCARD (nodep);
   /* I/O cost to access B+tree index */
   index_IO = ((ni_entryp)->n * height) + leaves;
+
+  /* Index Skip Scan adds to the index IO cost the K extra BTREE searches
+   * it does to fetch the next value for the following BTRangeScan */
+  if (index_entryp->is_iss_candidate)
+    {
+      /* The btree is scanned an additional K times */
+      index_IO += cum_statsp->pkeys[0] * ((ni_entryp)->n * height);
+
+      /* K leaves are additionally read */
+      index_IO += cum_statsp->pkeys[0];
+    }
+
   /* IO cost to fetch objects */
   if (sel < 0.3)
     {
@@ -2058,6 +2101,12 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
 	}
 
       if (plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->is_iss_candidate)
+	{
+	  fprintf (f, " (index skip scan)");
+	}
+
+      if (plan->plan_un.scan.index
 	  && plan->plan_un.scan.index->head->use_descending)
 	{
 	  fprintf (f, " (desc_index)");
@@ -2150,6 +2199,12 @@ qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 	  && qo_is_prefix_index (plan->plan_un.scan.index->head) == false)
 	{
 	  fprintf (f, " (covers)");
+	}
+
+      if (plan->plan_un.scan.index
+	  && plan->plan_un.scan.index->head->is_iss_candidate)
+	{
+	  fprintf (f, " (index skip scan)");
 	}
 
       if (plan->plan_un.scan.index
@@ -7496,6 +7551,7 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
   BITSET kf_terms;
   BITSET seg_other_terms;
   bool plan_created = false;
+  int start_column = 0;
 
   bitset_init (&range_terms, infop->env);
   bitset_init (&kf_terms, infop->env);
@@ -7503,7 +7559,7 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 
   /* pointer to QO_INDEX_ENTRY structure */
   index_entryp = (ni_entryp)->head;
-
+  start_column = index_entryp->is_iss_candidate ? 1 : 0;
 
   if (QO_ENTRY_MULTI_COL (index_entryp))
     {
@@ -7512,7 +7568,7 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
        * segments. For example: SELECT ... WHERE a = 1 and b = 2 and c > 10
        * chooses all a, b, c for range because the first two are with =
        */
-      for (nsegs = 0; nsegs < index_entryp->nsegs; nsegs++)
+      for (nsegs = start_column; nsegs < index_entryp->nsegs; nsegs++)
 	{
 	  if (bitset_is_empty (&(index_entryp->seg_equal_terms[nsegs])))
 	    {
@@ -7543,7 +7599,7 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 	  goto end;
 	}
 
-      for (i = 0; i < nsegs - 1; i++)
+      for (i = start_column; i < nsegs - 1; i++)
 	{
 	  bitset_add (&range_terms,
 		      bitset_first_member (&
@@ -8014,12 +8070,22 @@ qo_search_planner (QO_PLANNER * planner)
 
 	  for (j = 0; j < QO_NI_N (node_index); j++)
 	    {
+	      /* If the index is a candidate for index skip scan, then it will
+	       * not have any terms for seg_eqal or seg_other[0], so we should
+	       * skip that first column from initial checks. Set the start column
+	       * to 1.
+	       */
+	      int start_column;
+
 	      ni_entry = QO_NI_ENTRY (node_index, j);
-
 	      index_entry = (ni_entry)->head;
+	      start_column = index_entry->is_iss_candidate ? 1 : 0;
 
+	      /* seg_terms will contain all the indexable terms that refer
+	       * segments from this node; stops at the first one that has
+	       * no equals or other terms */
 	      BITSET_CLEAR (seg_terms);
-	      for (k = 0; k < index_entry->nsegs; k++)
+	      for (k = start_column; k < index_entry->nsegs; k++)
 		{
 		  if (bitset_is_empty (&(index_entry->seg_equal_terms[k]))
 		      && bitset_is_empty (&(index_entry->seg_other_terms[k])))
@@ -10210,6 +10276,7 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
   QO_PLAN *planp;
   BITSET range_terms;
   BITSET kf_terms;
+  int start_column = 0;
 
   bitset_init (&range_terms, infop->env);
   bitset_init (&kf_terms, infop->env);
@@ -10228,13 +10295,14 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
   if (QO_ENTRY_MULTI_COL (index_entryp))
     {
       bool plan_created = false;
+      start_column = index_entryp->is_iss_candidate ? 1 : 0;
 
       /* the section below counts the total number of segments including
        * all equal ones + the next non-equal found. These will be the range
        * segments. For example: SELECT ... WHERE a = 1 and b = 2 and c > 10
        * chooses all a, b, c for range because the first two are with =
        */
-      for (nsegs = 0; nsegs < index_entryp->nsegs; nsegs++)
+      for (nsegs = start_column; nsegs < index_entryp->nsegs; nsegs++)
 	{
 	  if (bitset_is_empty (&(index_entryp->seg_equal_terms[nsegs])))
 	    {
@@ -10291,7 +10359,7 @@ qo_generate_index_scan_from_orderby (QO_INFO * infop, QO_NODE * nodep,
 	  goto end;
 	}
 
-      for (i = 0; i < nsegs - 1; i++)
+      for (i = start_column; i < nsegs - 1; i++)
 	{
 	  bitset_add (&range_terms,
 		      bitset_first_member (&
@@ -10949,6 +11017,7 @@ qo_generate_index_scan_from_groupby (QO_INFO * infop, QO_NODE * nodep,
   QO_PLAN *planp;
   BITSET range_terms;
   BITSET kf_terms;
+  int start_column;
 
   bitset_init (&range_terms, infop->env);
   bitset_init (&kf_terms, infop->env);
@@ -10967,13 +11036,14 @@ qo_generate_index_scan_from_groupby (QO_INFO * infop, QO_NODE * nodep,
   if (QO_ENTRY_MULTI_COL (index_entryp))
     {
       bool plan_created = false;
+      start_column = index_entryp->is_iss_candidate ? 1 : 0;
 
       /* the section below counts the total number of segments including
        * all equal ones + the next non-equal found. These will be the range
        * segments. For example: SELECT ... WHERE a = 1 and b = 2 and c > 10
        * chooses all a, b, c for range because the first two are with =
        */
-      for (nsegs = 0; nsegs < index_entryp->nsegs; nsegs++)
+      for (nsegs = start_column; nsegs < index_entryp->nsegs; nsegs++)
 	{
 	  if (bitset_is_empty (&(index_entryp->seg_equal_terms[nsegs])))
 	    {
@@ -11030,7 +11100,7 @@ qo_generate_index_scan_from_groupby (QO_INFO * infop, QO_NODE * nodep,
 	  goto end;
 	}
 
-      for (i = 0; i < nsegs - 1; i++)
+      for (i = start_column; i < nsegs - 1; i++)
 	{
 	  bitset_add (&range_terms,
 		      bitset_first_member (&
@@ -11765,6 +11835,14 @@ qo_plan_compute_iscan_group_sort_list (QO_PLAN * root, PT_NODE ** out_list,
   if (index_entryp->rangelist_seg_idx != -1)
     {
       equi_nterms = MIN (equi_nterms, index_entryp->rangelist_seg_idx);
+    }
+
+  /* we must have the first index column appear as the first sort column, so
+   * we pretend the number of equi columns is zero, to force it to match
+   * the sort list and the index columns one-for-one. */
+  if (index_entryp->is_iss_candidate)
+    {
+      equi_nterms = 0;
     }
 
   key_type = NULL;		/* init */

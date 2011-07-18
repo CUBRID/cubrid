@@ -363,6 +363,10 @@
 #define DB_UTIME_MIN       DB_UINT32_MIN
 #define DB_UTIME_MAX       DB_UINT32_MAX
 
+#define DB_IS_DATETIME_DEFAULT_EXPR(v) ((v) == DB_DEFAULT_SYSDATE || \
+    (v) == DB_DEFAULT_SYSDATETIME || (v) == DB_DEFAULT_SYSTIMESTAMP || \
+    (v) == DB_DEFAULT_UNIX_TIMESTAMP)
+
 /* This defines the basic type identifier constants.  These are used in
    the domain specifications of attributes and method arguments and
    as value type tags in the DB_VALUE structures. */
@@ -760,6 +764,18 @@ struct db_c_date
   int month;
   int day;
 };
+
+/* identifiers for the default expression */
+typedef enum
+{
+  DB_DEFAULT_NONE = 0,
+  DB_DEFAULT_SYSDATE = 1,
+  DB_DEFAULT_SYSDATETIME = 2,
+  DB_DEFAULT_SYSTIMESTAMP = 3,
+  DB_DEFAULT_UNIX_TIMESTAMP = 4,
+  DB_DEFAULT_USER = 5,
+  DB_DEFAULT_CURR_USER = 6
+} DB_DEFAULT_EXPR_TYPE;
 
 typedef DB_DATETIME DB_C_DATETIME;
 typedef DB_TIMESTAMP DB_C_TIMESTAMP;

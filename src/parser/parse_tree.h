@@ -1208,6 +1208,13 @@ typedef enum
   INCLUDE_HIDDEN_COLUMNS
 } PT_INCLUDE_OR_EXCLUDE_HIDDEN_COLUMNS;
 
+/* Flags for spec structures */
+typedef enum
+{
+  PT_SPEC_FLAG_NONE = 0x0,	/* the spec will not be altered */
+  PT_SPEC_FLAG_UPDATE = 0x01,	/* the spec will be updated */
+  PT_SPEC_FLAG_DELETE = 0x02	/* the spec will be deleted */
+} PT_SPEC_FLAG;
 
 /*
  * Type definitions
@@ -1601,6 +1608,8 @@ struct pt_data_default_info
 {
   PT_NODE *default_value;	/*  PT_VALUE (list)   */
   PT_MISC_TYPE shared;		/*  will PT_SHARED or PT_DEFAULT */
+  DB_DEFAULT_EXPR_TYPE default_expr;	/* if it is a pseudocolumn, 
+					 * do not evaluate expr */
 };
 
 /* Info for the AUTO_INCREMENT node */
@@ -1645,7 +1654,7 @@ struct pt_data_type_info
 /* DELETE */
 struct pt_delete_info
 {
-  PT_NODE *class_name;		/* PT_NAME */
+  PT_NODE *target_classes;	/* PT_NAME */
   PT_NODE *spec;		/* PT_SPEC (list) */
   PT_NODE *class_specs;		/* PT_SPEC list */
   PT_NODE *search_cond;		/* PT_EXPR */
@@ -1730,6 +1739,8 @@ struct pt_spec_info
   bool natural;			/* -- does not support natural join */
   DB_AUTH auth_bypass_mask;	/* flag to bypass normal authorization :
 				 * used only by SHOW statements currently */
+  PT_SPEC_FLAG flag;		/* flag wich marks this spec for DELETE or 
+				 * UPDATE operations */
 };
 
 /* Info for an EVALUATE object */
@@ -1976,6 +1987,8 @@ struct pt_name_info
 					   that maps to an OID is generated
 					   internally for statement processing
 					   and execution */
+#define PT_NAME_ALLOW_REUSABLE_OID 512	/* ignore the REUSABLE_OID 
+					   restrictions for this name */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
@@ -2105,6 +2118,8 @@ struct pt_query_info
   char is_view_spec;		/* 0 - normal, 1 - view query spec */
   char oids_included;		/* DB_NO_OIDS/0 DB_ROW_OIDS/1 */
   char composite_locking;	/* 0 - off, 1 - on delete, 2 - on update */
+  int upd_del_class_cnt;	/* number of classes affected by update or
+				 * delete in the generated SELECT statement */
   unsigned has_outer_spec:1;	/* has outer join spec ? */
   unsigned single_tuple:1;	/* is single-tuple query ? */
   unsigned vspec_as_derived:1;	/* is derived from vclass spec ? */
@@ -2693,6 +2708,8 @@ struct parser_context
 				   We need to keep print_and_list because it could
 				   get called before we get a chance to mark the
 				   CNF start nodes. */
+  bool is_holdable;		/* set to true if result must be available across
+				   commits */
 };
 
 

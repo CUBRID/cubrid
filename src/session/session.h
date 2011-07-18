@@ -26,8 +26,9 @@
 #include "dbtype.h"
 #include "thread.h"
 #include "query_list.h"
+#include "query_manager.h"
 
-extern bool is_sessions_states_table_initialized (void);
+extern bool sessions_is_states_table_initialized (void);
 extern int session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
 extern int session_state_create (THREAD_ENTRY * thread_p,
@@ -66,5 +67,13 @@ extern int session_drop_session_variables (THREAD_ENTRY * thread_p,
 					   DB_VALUE * values,
 					   const int count);
 extern void session_states_dump (THREAD_ENTRY * thread_p);
+extern void session_store_query_entry_info (THREAD_ENTRY * thread_p,
+					    QMGR_QUERY_ENTRY * qentry_p);
+extern int session_load_query_entry_info (THREAD_ENTRY * thread_p,
+					  QMGR_QUERY_ENTRY * qentry_p);
+extern int session_remove_query_entry_info (THREAD_ENTRY * thread_p,
+					    const QUERY_ID query_id);
+extern int session_clear_query_entry_info (THREAD_ENTRY * thread_p,
+					   const QUERY_ID query_id);
 
 #endif /* _SESSION_H_ */

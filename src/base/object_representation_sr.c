@@ -259,9 +259,10 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
       att->id = or_att->id;
       att->location = or_att->location;
       att->position = or_att->position;
-      att->val_length = or_att->val_length;
-      att->value = or_att->value;
-      or_att->value = NULL;
+      att->val_length = or_att->default_value.val_length;
+      att->value = or_att->default_value.value;
+      att->default_expr = or_att->default_value.default_expr;
+      or_att->default_value.value = NULL;
       att->classoid = or_att->classoid;
 
       DATA_INIT (&att->min_value, att->type);
@@ -1240,11 +1241,11 @@ or_get_default_value (OR_ATTRIBUTE * attr, char *ptr, int length)
     }
   else
     {
-      attr->val_length = length;
-      attr->value = malloc (length);
-      if (attr->value != NULL)
+      attr->default_value.val_length = length;
+      attr->default_value.value = malloc (length);
+      if (attr->default_value.value != NULL)
 	{
-	  memcpy (attr->value, vptr, length);
+	  memcpy (attr->default_value.value, vptr, length);
 	  success = 1;
 	}
     }
@@ -2062,10 +2063,14 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
       att->position = i;
-      att->val_length = 0;
-      att->value = NULL;
+      att->default_value.val_length = 0;
+      att->default_value.value = NULL;
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;
+
+      /* extract the identifier of the default expression */
+      att->default_value.default_expr =
+	OR_GET_INT (ptr + ORC_ATT_DEFAULT_EXPR_OFFSET);
 
       OID_SET_NULL (&(att->serial_obj));
 
@@ -2138,8 +2143,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
       att->position = i;
-      att->val_length = 0;
-      att->value = NULL;
+      att->default_value.val_length = 0;
+      att->default_value.value = NULL;
+      att->default_value.default_expr = DB_DEFAULT_NONE;
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;	/* structure copy */
 
@@ -2202,8 +2208,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
       att->position = i;
-      att->val_length = 0;
-      att->value = NULL;
+      att->default_value.val_length = 0;
+      att->default_value.value = NULL;
+      att->default_value.default_expr = DB_DEFAULT_NONE;
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;
 
@@ -2437,8 +2444,9 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
       att->type = (DB_TYPE) OR_GET_INT (fixed + ORC_REPATT_TYPE_OFFSET);
       att->position = i;
-      att->val_length = 0;
-      att->value = NULL;
+      att->default_value.val_length = 0;
+      att->default_value.value = NULL;
+      att->default_value.default_expr = DB_DEFAULT_NONE;
 
       /* We won't know if there are any B-tree ID's for unique constraints
          until we read the class property list later on */
@@ -2621,7 +2629,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 
       /* Calculate the offset to the first fixed width attribute in instances
        * of this class.  Save the start of this region so we can calculate the
-       * total fixed witdh size.
+       * total fixed width size.
        */
       start = offset = 0;
 
@@ -2638,8 +2646,9 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
 	  att->type = (DB_TYPE) OR_GET_INT (fixed + ORC_REPATT_TYPE_OFFSET);
 	  att->position = j;
-	  att->val_length = 0;
-	  att->value = NULL;
+	  att->default_value.val_length = 0;
+	  att->default_value.value = NULL;
+	  att->default_value.default_expr = DB_DEFAULT_NONE;
 
 	  /* We won't know if there are any B-tree ID's for unique constraints
 	     until we read the class property list later on */
@@ -2864,9 +2873,9 @@ or_free_classrep (OR_CLASSREP * rep)
 	  for (i = 0, att = rep->attributes; i < rep->n_attributes;
 	       i++, att++)
 	    {
-	      if (att->value != NULL)
+	      if (att->default_value.value != NULL)
 		{
-		  free_and_init (att->value);
+		  free_and_init (att->default_value.value);
 		}
 
 	      if (att->btids != NULL && att->btids != att->btid_pack)
@@ -2882,9 +2891,9 @@ or_free_classrep (OR_CLASSREP * rep)
 	  for (i = 0, att = rep->shared_attrs;
 	       i < rep->n_shared_attrs; i++, att++)
 	    {
-	      if (att->value != NULL)
+	      if (att->default_value.value != NULL)
 		{
-		  free_and_init (att->value);
+		  free_and_init (att->default_value.value);
 		}
 
 	      if (att->btids != NULL && att->btids != att->btid_pack)
@@ -2900,9 +2909,9 @@ or_free_classrep (OR_CLASSREP * rep)
 	  for (i = 0, att = rep->class_attrs; i < rep->n_class_attrs;
 	       i++, att++)
 	    {
-	      if (att->value != NULL)
+	      if (att->default_value.value != NULL)
 		{
-		  free_and_init (att->value);
+		  free_and_init (att->default_value.value);
 		}
 
 	      if (att->btids != NULL && att->btids != att->btid_pack)

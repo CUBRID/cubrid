@@ -1210,7 +1210,7 @@ db_cp_domain_list (SM_DOMAIN ** domain_list, int cnt)
  * notify_server(in) :
  */
 void
-db_clear_client_query_result (int notify_server)
+db_clear_client_query_result (int notify_server, bool end_holdable)
 {
   DB_QUERY_RESULT **qres_ptr;
   int k;
@@ -1219,8 +1219,15 @@ db_clear_client_query_result (int notify_server)
   for (k = 0, qres_ptr = Qres_table.qres_list;
        k < Qres_table.entry_cnt; k++, qres_ptr++)
     {
-      if (*qres_ptr != NULL)
+      if (*qres_ptr == NULL)
 	{
+	  continue;
+	}
+      if (((*qres_ptr)->type == T_SELECT && !(*qres_ptr)->res.s.holdable)
+	  || end_holdable)
+	{
+	  /* if end_holdable is false, only end queries that are not
+	     holdable */
 	  db_query_end_internal (*qres_ptr, notify_server);
 	}
     }

@@ -1289,8 +1289,8 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 		{
 		  if (mq_update_attribute
 		      (template_ptr->classobj, att->header.name,
-		       template_ptr->base_classobj, &att->value, &base_value,
-		       &base_name, DB_AUTH_INSERT))
+		       template_ptr->base_classobj, &att->default_value.value,
+		       &base_value, &base_name, DB_AUTH_INSERT))
 		    {
 		      return er_errid ();
 		    }
@@ -1311,7 +1311,7 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 
 		  if (exists == NULL
 		      && (!DB_IS_NULL (&base_value)
-			  || !DB_IS_NULL (&base_att->value)))
+			  || !DB_IS_NULL (&base_att->default_value.value)))
 		    {
 		      /* who owns base_value ? */
 		      a = obt_make_assignment (template_ptr, base_att);
@@ -1353,7 +1353,7 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 	   * to be coerced
 	   */
 
-	  if (DB_VALUE_TYPE (&att->value) != DB_TYPE_NULL)
+	  if (DB_VALUE_TYPE (&att->default_value.value) != DB_TYPE_NULL)
 	    {
 
 	      exists = template_ptr->assignments[att->order];
@@ -1372,7 +1372,7 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 		      goto memory_error;
 		    }
 		  /* would be nice if we could avoid copying here */
-		  if (pr_clone_value (&att->value, a->variable))
+		  if (pr_clone_value (&att->default_value.value, a->variable))
 		    {
 		      goto memory_error;
 		    }
@@ -2161,7 +2161,9 @@ obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr)
 	   att = att->order_link)
 	{
 
-	  if (((att->flags & SM_ATTFLAG_NON_NULL) && DB_IS_NULL (&att->value))
+	  if (((att->flags & SM_ATTFLAG_NON_NULL)
+	       && DB_IS_NULL (&att->default_value.value)
+	       && att->default_value.default_expr == DB_DEFAULT_NONE)
 	      || (att->flags & SM_ATTFLAG_VID))
 	    {
 	      ass = template_ptr->assignments[att->order];

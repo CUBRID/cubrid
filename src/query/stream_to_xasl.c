@@ -2133,6 +2133,8 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   ptr = or_unpack_int (ptr, &xasl->composite_locking);
 
+  ptr = or_unpack_int (ptr, &xasl->upd_del_class_cnt);
+
   /*
    * Note that the composite lock block is strictly a server side block
    * and was not packed.  We'll simply clear the memory.
@@ -3803,6 +3805,7 @@ static char *
 stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 {
   int offset;
+  int dummy;
   XASL_UNPACK_INFO *xasl_unpack_info =
     stx_get_xasl_unpack_info_ptr (thread_p);
 
@@ -3825,6 +3828,35 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 	  return NULL;
 	}
     }
+
+  ptr = or_unpack_int (ptr, &dummy);
+  key_info->use_iss = (bool) dummy;
+
+  if (key_info->use_iss)
+    {
+      ptr = or_unpack_int (ptr, &dummy);
+      key_info->iss_range.range = (RANGE) dummy;
+
+      ptr = or_unpack_int (ptr, &offset);
+      if (offset == 0)
+	{
+	  key_info->iss_range.key1 = NULL;
+	}
+      else
+	{
+	  key_info->iss_range.key1 =
+	    stx_restore_regu_variable (thread_p,
+				       &xasl_unpack_info->
+				       packed_xasl[offset]);
+	  if (key_info->iss_range.key1 == NULL)
+	    {
+	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	      return NULL;
+	    }
+	}
+
+      key_info->iss_range.key2 = NULL;
+    }				/* end if (use iss) */
 
   ptr = or_unpack_int (ptr, &key_info->is_constant);
 

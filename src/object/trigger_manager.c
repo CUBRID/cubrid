@@ -5094,7 +5094,9 @@ tr_prepare_statement (TR_STATE ** state_p,
   if (cache != NULL)
     {
       if (tr_validate_schema_cache (cache))
-	goto error_return;
+	{
+	  goto error_return;
+	}
 
       if (event < cache->array_length)
 	{
@@ -5128,35 +5130,40 @@ tr_prepare_statement (TR_STATE ** state_p,
 	}
     }
 
+  if (error != NO_ERROR)
+    {
+      error = er_errid ();
+      goto error_return;
+    }
+
   /*
    * Construct a state structure for these events.  If we get to the
    * point where we can cache the trigger list in the parse tree, the
    * list should be returned here and passed to tr_prepare().
    */
-
   if (triggers != NULL)
     {
-      if (error)
+      /* pass in the first trigger name for the recursion error message */
+      state = start_state (state_p, triggers->trigger->name);
+      if (state == NULL)
 	{
-	  tr_free_trigger_list (triggers);
+	  error = er_errid ();
+	  goto error_return;
 	}
       else
 	{
-	  /*
-	   * pass in the first trigger name for the recursion error
-	   * message
-	   */
-	  state = start_state (state_p, triggers->trigger->name);
-	  if (state == NULL)
+	  if (state->triggers == NULL)
 	    {
-	      error = er_errid ();
+	      state->triggers = triggers;
 	    }
 	  else
 	    {
-	      if (state->triggers == NULL)
-		state->triggers = triggers;
-	      else
-		error = merge_trigger_list (&state->triggers, triggers, 1);
+	      error = merge_trigger_list (&state->triggers, triggers, 1);
+	      if (error != NO_ERROR)
+		{
+		  error = er_errid ();
+		  goto error_return;
+		}
 	    }
 	}
     }
@@ -5165,6 +5172,11 @@ tr_prepare_statement (TR_STATE ** state_p,
   return (error);
 
 error_return:
+  if (triggers != NULL)
+    {
+      tr_free_trigger_list (triggers);
+    }
+
   AU_ENABLE (save);
   return er_errid ();
 }

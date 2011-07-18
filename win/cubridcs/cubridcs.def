@@ -283,6 +283,7 @@ EXPORTS
     db_seq_insert
     db_seq_put
     db_seq_size
+    db_session_set_holdable
     db_set_add
     db_set_client_cache_time
     db_set_create_basic

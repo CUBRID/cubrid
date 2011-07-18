@@ -179,6 +179,8 @@ static PT_NODE *pt_undef_names (PARSER_CONTEXT * parser, PT_NODE * node,
 static void fill_in_insert_default_function_arguments (PARSER_CONTEXT *
 						       parser,
 						       PT_NODE * const node);
+static PT_OP_TYPE pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE
+						     expr_type);
 
 /*
  * pt_undef_names () - Set error if name matching spec is found.
@@ -1302,11 +1304,36 @@ static void
 fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser,
 					   PT_NODE * const node)
 {
-  const PT_NODE *crt_attr = NULL;
+  PT_NODE *crt_attr = NULL;
   PT_NODE *crt_value = NULL;
   PT_NODE *crt_list = NULL;
+  SM_CLASS *smclass = NULL;
+  SM_ATTRIBUTE *attr = NULL;
+  PT_NODE *cls_name = NULL;
 
   assert (node->node_type == PT_INSERT);
+
+  /* if an attribute has a default expression as default value
+   * and that expression refers to the current date and time,
+   * then we make sure that we mark this statement as one that
+   * needs the system datetime from the server 
+   */
+  cls_name = node->info.insert.spec->info.spec.entity_name;
+  au_fetch_class_force (cls_name->info.name.db_object, &smclass,
+			AU_FETCH_READ);
+  if (smclass)
+    {
+      for (attr = smclass->attributes; attr != NULL;
+	   attr = (SM_ATTRIBUTE *) attr->header.next)
+	{
+	  if (DB_IS_DATETIME_DEFAULT_EXPR (attr->default_value.default_expr))
+	    {
+	      node->si_datetime = true;
+	      db_make_null (&parser->sys_datetime);
+	      break;
+	    }
+	}
+    }
 
   for (crt_list = node->info.insert.value_clauses;
        crt_list != NULL; crt_list = crt_list->next)
@@ -2929,12 +2956,25 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat,
 	      PT_INTERNAL_ERROR (parser, "resolution");
 	      return 0;
 	    }
-	  attr->info.name.default_value =
-	    pt_dbval_to_value (parser, &att->value);
-	  if (attr->info.name.default_value == NULL)
+	  if (att->default_value.default_expr != DB_DEFAULT_NONE)
 	    {
-	      PT_INTERNAL_ERROR (parser, "resolution");
-	      return 0;
+	      /* if the default value is an expression, make a node for it */
+	      PT_OP_TYPE op =
+		pt_op_type_from_default_expr_type (att->default_value.
+						   default_expr);
+	      assert (op != (PT_OP_TYPE) 0);
+	      attr->info.name.default_value = pt_expression_0 (parser, op);
+	    }
+	  else
+	    {
+	      /* just set the default value */
+	      attr->info.name.default_value =
+		pt_dbval_to_value (parser, &att->default_value.value);
+	      if (attr->info.name.default_value == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "resolution");
+		  return 0;
+		}
 	    }
 	}
 
@@ -3816,6 +3856,11 @@ pt_resolve_correlation (PARSER_CONTEXT * parser,
 	      PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_INFO_GENERATED_OID);
 	    }
 	}
+      if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_ALLOW_REUSABLE_OID))
+	{
+	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_ALLOW_REUSABLE_OID);
+	}
+
       parser_free_tree (parser, in_node);
 
       corr_name->info.name.spec_id = exposed_spec->info.spec.id;
@@ -6756,4 +6801,38 @@ pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser,
     }
 
   return flat_list;
+}
+
+/*
+ * pt_op_type_from_default_expr_type () - returns the corresponding PT_OP_TYPE
+ *					  for the given default expression 
+ *   return: a PT_OP_TYPE (the desired operation)
+ *   expr_type(in): a DB_DEFAULT_EXPR_TYPE (the default expression)
+ */
+static PT_OP_TYPE
+pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
+{
+  switch (expr_type)
+    {
+    case DB_DEFAULT_SYSDATE:
+      return PT_SYS_DATE;
+
+    case DB_DEFAULT_SYSDATETIME:
+      return PT_SYS_DATETIME;
+
+    case DB_DEFAULT_SYSTIMESTAMP:
+      return PT_SYS_TIMESTAMP;
+
+    case DB_DEFAULT_UNIX_TIMESTAMP:
+      return PT_UNIX_TIMESTAMP;
+
+    case DB_DEFAULT_USER:
+      return PT_USER;
+
+    case DB_DEFAULT_CURR_USER:
+      return PT_CURRENT_USER;
+
+    default:
+      return (PT_OP_TYPE) 0;
+    }
 }

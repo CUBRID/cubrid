@@ -67,6 +67,7 @@ typedef struct db_select_result
   int stmt_type;		/* Statement type */
   CURSOR_ID cursor_id;		/* Cursor on the query result */
   CACHE_TIME cache_time;	/* query cache time */
+  bool holdable;		/* true if this result is holdable */
 } DB_SELECT_RESULT;		/* Select query result structure */
 
 typedef struct db_call_result
@@ -237,7 +238,8 @@ extern int db_query_sync_end (DB_QUERY_RESULT * result);
 extern int db_query_end_internal (DB_QUERY_RESULT * result,
 				  bool notify_server);
 
-extern void db_clear_client_query_result (int notify_server);
+extern void db_clear_client_query_result (int notify_server,
+					  bool end_holdable);
 extern void db_init_prepare_info (DB_PREPARE_INFO * info);
 extern int db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer);
 extern int db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer);

@@ -68,6 +68,7 @@ public class UConnection {
 	public final static byte PREPARE_INCLUDE_OID = 0x01;
 	public final static byte PREPARE_UPDATABLE = 0x02;
 	public final static byte PREPARE_QUERY_INFO = 0x04;
+	public final static byte PREPARE_HOLDABLE = 0x08;
 	public final static byte PREPARE_CALL = 0x40;
 
 	public final static byte DROP_BY_OID = 1, IS_INSTANCE = 2,
@@ -1065,6 +1066,9 @@ public class UConnection {
 
 	public void setSessionId(int sessionId) {
 		this.sessionId = sessionId;
+		if (cubridcon != null){
+			cubridcon.setSessionId(sessionId);
+		}
 	}
 
 	public boolean brokerInfoStatementPooling() {
@@ -1605,7 +1609,8 @@ public class UConnection {
 					if (broker_info == null)
 							broker_info = new byte[BROKER_INFO_SIZE];
 					inBuffer.readBytes(broker_info);
-					sessionId = inBuffer.readInt();
+					setSessionId(inBuffer.readInt());
+					
 				}
 			}
 		}

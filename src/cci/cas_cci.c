@@ -3898,6 +3898,9 @@ cci_get_err_msg_low (int err_code)
     case CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED:
       return "Cannot prepare more than MAX_PREPARED_STMT_COUNT statements";
 
+    case CAS_ER_HOLDABLE_NOT_ALLOWED:
+      return "Holdable results may not be updatable or sensitive";
+
     case CAS_ER_IS:
       return "Not used";
 

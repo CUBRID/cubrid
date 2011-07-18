@@ -1030,6 +1030,22 @@ DB_SESSION_WARNING *db_get_next_warning
 }
 
 /*
+ * db_session_set_holdable () - mark session as holdable
+ * return : void
+ * session (in) :
+ * holdable (in) :
+ */
+void
+db_session_set_holdable (DB_SESSION * session, bool holdable)
+{
+  if (session->parser == NULL)
+    {
+      return;
+    }
+  session->parser->is_holdable = holdable;
+}
+
+/*
  * db_get_line_col_of_1st_error() - get the source line & column of first error
  * returns: 1 if there were any query compilation errors, 0, otherwise.
  * session(in) : contains the SQL query that has just been compiled

@@ -1110,7 +1110,7 @@ db_attribute_default (DB_ATTRIBUTE * attribute)
 
   if (attribute != NULL)
     {
-      value = &attribute->value;
+      value = &attribute->default_value.value;
     }
 
   return (value);

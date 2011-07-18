@@ -390,7 +390,7 @@ tran_commit (bool retain_lock)
     }
 
   /* Clear all the queries */
-  db_clear_client_query_result (true);
+  db_clear_client_query_result (true, false);
 
   /* if the commit fails or not, we should clear the clients savepoint list */
   tran_free_savepoint_list ();
@@ -527,7 +527,7 @@ tran_abort (void)
   tran_free_savepoint_list ();
 
   /* Clear any query cursor */
-  db_clear_client_query_result (true);
+  db_clear_client_query_result (true, true);
 
   /* Forward the abort the transaction manager in the server */
   state = tran_server_abort ();
@@ -656,7 +656,7 @@ tran_abort_only_client (bool is_server_down)
   /* Remove any dirty objects and close all open query cursors */
   ws_abort_mops (true);
   ws_filter_dirty ();
-  db_clear_client_query_result (false);
+  db_clear_client_query_result (false, true);
 
   if (is_server_down == false)
     {
@@ -889,7 +889,7 @@ tran_2pc_prepare (void)
   /* clear workspace information and any open query cursors */
   if (error_code == NO_ERROR || BOOT_IS_CLIENT_RESTARTED ())
     {
-      db_clear_client_query_result (true);
+      db_clear_client_query_result (true, true);
       ws_clear_all_hints (false);
       er_stack_clearall ();
     }
@@ -1066,7 +1066,7 @@ tran_2pc_prepare_global_tran (int gtrid)
   /* clear workspace information and any open query cursors */
   if (error_code == NO_ERROR || BOOT_IS_CLIENT_RESTARTED ())
     {
-      db_clear_client_query_result (true);
+      db_clear_client_query_result (true, true);
       ws_clear_all_hints (false);
       er_stack_clearall ();
     }
