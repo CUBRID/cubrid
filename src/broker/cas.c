@@ -143,90 +143,91 @@ T_ERROR_INFO err_info;
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 static T_SERVER_FUNC server_fn_table[] = {
-  fn_end_tran,
-  fn_prepare,
-  fn_execute,
-  fn_not_supported,
-  fn_not_supported,
-  fn_close_req_handle,
-  fn_not_supported,
-  fn_fetch,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_get_db_version,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_execute_array,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_con_close,
-  fn_check_cas,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported,
-  fn_not_supported
+  fn_end_tran,			/* CAS_FC_END_TRAN */
+  fn_prepare,			/* CAS_FC_PREPARE */
+  fn_execute,			/* CAS_FC_EXECUTE */
+  fn_not_supported,		/* CAS_FC_GET_DB_PARAMETER */
+  fn_not_supported,		/* CAS_FC_SET_DB_PARAMETER */
+  fn_close_req_handle,		/* CAS_FC_CLOSE_REQ_HANDLE */
+  fn_not_supported,		/* CAS_FC_CURSOR */
+  fn_fetch,			/* CAS_FC_FETCH */
+  fn_not_supported,		/* CAS_FC_SCHEMA_INFO */
+  fn_not_supported,		/* CAS_FC_OID_GET */
+  fn_not_supported,		/* CAS_FC_OID_SET */
+  fn_not_supported,		/* CAS_FC_DEPRECATED1 */
+  fn_not_supported,		/* CAS_FC_DEPRECATED2 */
+  fn_not_supported,		/* CAS_FC_DEPRECATED3 */
+  fn_get_db_version,		/* CAS_FC_GET_DB_VERSION */
+  fn_not_supported,		/* CAS_FC_GET_CLASS_NUM_OBJS */
+  fn_not_supported,		/* CAS_FC_OID_CMD */
+  fn_not_supported,		/* CAS_FC_COLLECTION */
+  fn_not_supported,		/* CAS_FC_NEXT_RESULT */
+  fn_not_supported,		/* CAS_FC_EXECUTE_BATCH */
+  fn_execute_array,		/* CAS_FC_EXECUTE_ARRAY */
+  fn_not_supported,		/* CAS_FC_CURSOR_UPDATE */
+  fn_not_supported,		/* CAS_FC_GET_ATTR_TYPE_STR */
+  fn_not_supported,		/* CAS_FC_GET_QUERY_INFO */
+  fn_not_supported,		/* CAS_FC_DEPRECATED4 */
+  fn_not_supported,		/* CAS_FC_SAVEPOINT */
+  fn_not_supported,		/* CAS_FC_PARAMETER_INFO */
+  fn_not_supported,		/* CAS_FC_XA_PREPARE */
+  fn_not_supported,		/* CAS_FC_XA_RECOVER */
+  fn_not_supported,		/* CAS_FC_XA_END_TRAN */
+  fn_con_close,			/* CAS_FC_CON_CLOSE */
+  fn_check_cas,			/* CAS_FC_CHECK_CAS */
+  fn_not_supported,		/* CAS_FC_MAKE_OUT_RS */
+  fn_not_supported,		/* CAS_FC_GET_GENERATED_KEYS */
+  fn_not_supported,		/* CAS_FC_LOB_NEW */
+  fn_not_supported,		/* CAS_FC_LOB_WRITE */
+  fn_not_supported,		/* CAS_FC_LOB_READ */
+  fn_not_supported,		/* CAS_FC_END_SESSION */
+  fn_not_supported,		/* CAS_FC_GET_ROW_COUNT */
+  fn_not_supported,		/* CAS_FC_GET_LAST_INSERT_ID */
+  fn_not_supported		/* CAS_FC_CURSOR_CLOSE */
 };
 #else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 static T_SERVER_FUNC server_fn_table[] = {
-  fn_end_tran,
-  fn_prepare,
-  fn_execute,
-  fn_get_db_parameter,
-  fn_set_db_parameter,
-  fn_close_req_handle,
-  fn_cursor,
-  fn_fetch,
-  fn_schema_info,
-  fn_oid_get,
-  fn_oid_put,
-  fn_deprecated,		// fn_glo_new
-  fn_deprecated,		// fn_glo_save
-  fn_deprecated,		// fn_glo_load
-  fn_get_db_version,
-  fn_get_class_num_objs,
-  fn_oid,
-  fn_collection,
-  fn_next_result,
-  fn_execute_batch,
-  fn_execute_array,
-  fn_cursor_update,
-  fn_get_attr_type_str,
-  fn_get_query_info,
-  fn_deprecated,		// fn_glo_cmd
-  fn_savepoint,
-  fn_parameter_info,
-  fn_xa_prepare,
-  fn_xa_recover,
-  fn_xa_end_tran,
-  fn_con_close,
-  fn_check_cas,
-  fn_make_out_rs,
-  fn_get_generated_keys,
-  fn_lob_new,
-  fn_lob_write,
-  fn_lob_read,
-  fn_end_session,
-  fn_get_row_count,
-  fn_get_last_insert_id,
-  fn_cursor_close
+  fn_end_tran,			/* CAS_FC_END_TRAN */
+  fn_prepare,			/* CAS_FC_PREPARE */
+  fn_execute,			/* CAS_FC_EXECUTE */
+  fn_get_db_parameter,		/* CAS_FC_GET_DB_PARAMETER */
+  fn_set_db_parameter,		/* CAS_FC_SET_DB_PARAMETER */
+  fn_close_req_handle,		/* CAS_FC_CLOSE_REQ_HANDLE */
+  fn_cursor,			/* CAS_FC_CURSOR */
+  fn_fetch,			/* CAS_FC_FETCH */
+  fn_schema_info,		/* CAS_FC_SCHEMA_INFO */
+  fn_oid_get,			/* CAS_FC_OID_GET */
+  fn_oid_put,			/* CAS_FC_OID_SET */
+  fn_deprecated,		/* CAS_FC_DEPRECATED1 *//* fn_glo_new */
+  fn_deprecated,		/* CAS_FC_DEPRECATED2 *//* fn_glo_save */
+  fn_deprecated,		/* CAS_FC_DEPRECATED3 *//* fn_glo_load */
+  fn_get_db_version,		/* CAS_FC_GET_DB_VERSION */
+  fn_get_class_num_objs,	/* CAS_FC_GET_CLASS_NUM_OBJS */
+  fn_oid,			/* CAS_FC_OID_CMD */
+  fn_collection,		/* CAS_FC_COLLECTION */
+  fn_next_result,		/* CAS_FC_NEXT_RESULT */
+  fn_execute_batch,		/* CAS_FC_EXECUTE_BATCH */
+  fn_execute_array,		/* CAS_FC_EXECUTE_ARRAY */
+  fn_cursor_update,		/* CAS_FC_CURSOR_UPDATE */
+  fn_get_attr_type_str,		/* CAS_FC_GET_ATTR_TYPE_STR */
+  fn_get_query_info,		/* CAS_FC_GET_QUERY_INFO */
+  fn_deprecated,		/* CAS_FC_DEPRECATED4 *//* fn_glo_cmd */
+  fn_savepoint,			/* CAS_FC_SAVEPOINT */
+  fn_parameter_info,		/* CAS_FC_PARAMETER_INFO */
+  fn_xa_prepare,		/* CAS_FC_XA_PREPARE */
+  fn_xa_recover,		/* CAS_FC_XA_RECOVER */
+  fn_xa_end_tran,		/* CAS_FC_XA_END_TRAN */
+  fn_con_close,			/* CAS_FC_CON_CLOSE */
+  fn_check_cas,			/* CAS_FC_CHECK_CAS */
+  fn_make_out_rs,		/* CAS_FC_MAKE_OUT_RS */
+  fn_get_generated_keys,	/* CAS_FC_GET_GENERATED_KEYS */
+  fn_lob_new,			/* CAS_FC_LOB_NEW */
+  fn_lob_write,			/* CAS_FC_LOB_WRITE */
+  fn_lob_read,			/* CAS_FC_LOB_READ */
+  fn_end_session,		/* CAS_FC_END_SESSION */
+  fn_get_row_count,		/* CAS_FC_GET_ROW_COUNT */
+  fn_get_last_insert_id,	/* CAS_FC_GET_LAST_INSERT_ID */
+  fn_cursor_close		/* CAS_FC_CURSOR_CLOSE */
 };
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
