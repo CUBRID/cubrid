@@ -231,7 +231,18 @@ TP_DOMAIN tp_Multiset_domain = {
 TP_DOMAIN tp_Sequence_domain = {
   NULL, NULL, &tp_Sequence, DOMAIN_INIT3
 };
-TP_DOMAIN tp_Midxkey_domain = { NULL, NULL, &tp_Midxkey, DOMAIN_INIT3 };
+TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
+  {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
+  {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
+  {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
+  {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
+  {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
+  {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
+  {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
+  {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
+  {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3},
+  {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3}
+};
 TP_DOMAIN tp_Elo_domain = { NULL, NULL, &tp_Elo, DOMAIN_INIT };
 TP_DOMAIN tp_Blob_domain = { NULL, NULL, &tp_Blob, DOMAIN_INIT };
 TP_DOMAIN tp_Clob_domain = { NULL, NULL, &tp_Clob, DOMAIN_INIT };
@@ -318,7 +329,7 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_NChar_domain,
   &tp_VarNChar_domain,
   &tp_Null_domain,		/*result set */
-  &tp_Midxkey_domain,
+  &tp_Midxkey_domain_list_heads[0],
   &tp_Null_domain,
   &tp_Bigint_domain,
   &tp_Datetime_domain,
@@ -357,9 +368,20 @@ static TP_DOMAIN *tp_Domains[] = {
  * be located on the head of tp_Midxkey_domains[0] because it is one of
  * built-in domains and is used to make XASL.
  */
-static TP_DOMAIN *tp_Midxkey_domains[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
-  &tp_Midxkey_domain, NULL, NULL, NULL, NULL,
-  NULL, NULL, NULL, NULL, NULL
+static TP_DOMAIN *tp_Midxkey_domains[TP_NUM_MIDXKEY_DOMAIN_LIST + 1] = {
+  &tp_Midxkey_domain_list_heads[0],
+  &tp_Midxkey_domain_list_heads[1],
+  &tp_Midxkey_domain_list_heads[2],
+  &tp_Midxkey_domain_list_heads[3],
+  &tp_Midxkey_domain_list_heads[4],
+  &tp_Midxkey_domain_list_heads[5],
+  &tp_Midxkey_domain_list_heads[6],
+  &tp_Midxkey_domain_list_heads[7],
+  &tp_Midxkey_domain_list_heads[8],
+  &tp_Midxkey_domain_list_heads[9],
+
+  /* end of built-in domain marker */
+  NULL
 };
 
 static TP_DOMAIN *tp_Bigint_conv[] = {
@@ -593,9 +615,18 @@ tp_init (void)
       /* ! need to be adding this to the corresponding list */
     }
 
-  for (i = 1; i < TP_NUM_MIDXKEY_DOMAIN_LIST; i++)
+  /* tp_Midxkey_domains[0] was already initialized by the above codes. */
+  for (i = 1; i < tp_Midxkey_domains[i] != NULL; i++)
     {
-      tp_Midxkey_domains[i] = NULL;
+      d = tp_Midxkey_domains[i];
+      d->next_list = NULL;
+      d->class_mop = NULL;
+      d->self_ref = 0;
+      d->setdomain = NULL;
+      d->class_oid.volid = d->class_oid.pageid = d->class_oid.slotid = -1;
+      d->is_cached = 1;
+      d->built_in_index = tp_Midxkey_domains[0]->built_in_index;
+      d->is_desc = false;
     }
 }
 
@@ -651,16 +682,28 @@ tp_final (void)
 
   /*
    * tp_Midxkey_domains[0] was cleared by the above for-loop.
-   * It holds a pointer of tp_Midxkey_domain on its head.
+   * It holds a pointer of tp_Midxkey_domain_list_heads[0] on its head.
    * The pointer is also stored on tp_Domains[DB_TYPE_MIDXKEY].
    */
-  for (i = 1; i < TP_NUM_MIDXKEY_DOMAIN_LIST; i++)
+  for (i = 1; tp_Midxkey_domains[i] != NULL; i++)
     {
-      for (d = tp_Midxkey_domains[i], next = NULL; d != NULL; d = next)
+      dlist = tp_Midxkey_domains[i];
+
+      for (d = dlist->next_list, prev = dlist, next = NULL; d != NULL;
+	   d = next)
 	{
 	  next = d->next_list;
-	  d->is_cached = 0;
-	  tp_domain_free (d);
+	  if (d->built_in_index)
+	    {
+	      prev = d;
+	    }
+	  else
+	    {
+	      prev->next_list = next;
+
+	      d->is_cached = 0;
+	      tp_domain_free (d);
+	    }
 	}
     }
 }
