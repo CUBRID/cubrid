@@ -57,6 +57,7 @@
 #include "memory_hash.h"
 #include "parser.h"
 #include "set_object.h"
+#include "session.h"
 #if defined(CUBRID_DEBUG)
 #include "environment_variable.h"
 #endif /* CUBRID_DEBUG */
