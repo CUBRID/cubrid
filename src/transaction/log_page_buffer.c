@@ -8680,7 +8680,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   /* MARK THE CHECKPOINT PROCESS */
   node = prior_lsa_alloc_and_copy_data (thread_p,
 					LOG_START_CHKPT,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       LOG_CS_EXIT ();
@@ -8890,13 +8891,21 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   TR_TABLE_CS_EXIT ();
 
-  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_END_CHKPT, 0, NULL,
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_END_CHKPT,
+					RV_NOT_DEFINED, NULL,
 					length_all_chkpt_trans,
 					(char *) chkpt_trans,
 					length_all_tops,
 					(char *) chkpt_topops);
   if (node == NULL)
     {
+      free_and_init (chkpt_trans);
+
+      if (chkpt_topops != NULL)
+	{
+	  free_and_init (chkpt_topops);
+	}
+
       LOG_CS_EXIT ();
       return NULL_PAGEID;
     }

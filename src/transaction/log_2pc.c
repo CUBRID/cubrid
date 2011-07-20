@@ -1596,13 +1596,18 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
       size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
     }
 
-  node = prior_lsa_alloc_and_copy_data (thread_p,
-					LOG_2PC_PREPARE,
-					0, NULL, tdes->gtrinfo.info_length,
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_2PC_PREPARE,
+					RV_NOT_DEFINED, NULL,
+					tdes->gtrinfo.info_length,
 					(char *) tdes->gtrinfo.info_data,
 					size, (char *) acq_locks.obj);
   if (node == NULL)
     {
+      if (acq_locks.obj != NULL)
+	{
+	  free_and_init (acq_locks.obj);
+	}
+
       return TRAN_UNACTIVE_UNKNOWN;
     }
 
@@ -1617,10 +1622,16 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
   (void) prior_lsa_next_record (thread_p, node, tdes);
 
+  if (acq_locks.obj != NULL)
+    {
+      free_and_init (acq_locks.obj);
+    }
+
   /*
    * END append. The log need to be flushed since we need to guarantee
    * the commitment of the transaction if the coordinator requests commit
    */
+
   tdes->state = TRAN_UNACTIVE_2PC_PREPARE;
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
 
@@ -1814,9 +1825,8 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   struct log_2pc_start *start_2pc;	/* Start 2PC log record */
   LOG_PRIOR_NODE *node;
 
-  node = prior_lsa_alloc_and_copy_data (thread_p,
-					LOG_2PC_START,
-					0, NULL,
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_2PC_START,
+					RV_NOT_DEFINED, NULL,
 					(tdes->coord->particp_id_length *
 					 tdes->coord->num_particps),
 					(char *) tdes->coord->
@@ -1873,7 +1883,8 @@ log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 {
   LOG_PRIOR_NODE *node;
 
-  node = prior_lsa_alloc_and_copy_data (thread_p, decision, 0, NULL,
+  node = prior_lsa_alloc_and_copy_data (thread_p, decision,
+					RV_NOT_DEFINED, NULL,
 					0, NULL, 0, NULL);
   if (node == NULL)
     {

@@ -2125,8 +2125,9 @@ log_append_undo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_UNDO_DATA,
-					rcvindex, &addr, length,
-					(char *) data, 0, (char *) NULL);
+					rcvindex, &addr,
+					length, (char *) data,
+					0, (char *) NULL);
   if (node == NULL)
     {
       return;
@@ -2263,8 +2264,8 @@ log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_REDO_DATA,
-					rcvindex, &addr, 0, NULL,
-					length, (char *) data);
+					rcvindex, &addr,
+					0, NULL, length, (char *) data);
   if (node == NULL)
     {
       return;
@@ -2393,9 +2394,9 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
    */
 
   node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_UNDOREDO_DATA,
-					  rcvindex, addr, num_undo_crumbs,
-					  undo_crumbs, num_redo_crumbs,
-					  redo_crumbs);
+					  rcvindex, addr,
+					  num_undo_crumbs, undo_crumbs,
+					  num_redo_crumbs, redo_crumbs);
   if (node == NULL)
     {
       return;
@@ -2510,8 +2511,9 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
    * NOW do the UNDO ...
    */
 
-  node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_UNDO_DATA, rcvindex,
-					  addr, num_crumbs, crumbs, 0, NULL);
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_UNDO_DATA,
+					  rcvindex, addr,
+					  num_crumbs, crumbs, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -2629,8 +2631,9 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
       return;
     }
 
-  node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_REDO_DATA, rcvindex,
-					  addr, 0, NULL, num_crumbs, crumbs);
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_REDO_DATA,
+					  rcvindex, addr,
+					  0, NULL, num_crumbs, crumbs);
   if (node == NULL)
     {
       return;
@@ -2938,8 +2941,8 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_DBEXTERN_REDO_DATA,
-					rcvindex, NULL, 0, NULL, length,
-					(char *) data);
+					rcvindex, NULL,
+					0, NULL, length, (char *) data);
   if (node == NULL)
     {
       return;
@@ -3082,8 +3085,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
     }
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_POSTPONE,
-					rcvindex, addr, 0, NULL, length,
-					(char *) data);
+					rcvindex, addr,
+					0, NULL, length, (char *) data);
   if (node == NULL)
     {
       return;
@@ -3175,7 +3178,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
   else
     {
       node = prior_lsa_alloc_and_copy_data (thread_p, LOG_RUN_POSTPONE,
-					    0, NULL,
+					    RV_NOT_DEFINED, NULL,
 					    length, (char *) data, 0, NULL);
       if (node == NULL)
 	{
@@ -3259,7 +3262,8 @@ log_append_compensate (THREAD_ENTRY * thread_p,
 #endif /* CUBRID_DEBUG */
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_COMPENSATE,
-					rcvindex, NULL, length, (char *) data,
+					rcvindex, NULL,
+					length, (char *) data,
 					0, (char *) NULL);
   if (node == NULL)
     {
@@ -3355,7 +3359,8 @@ log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type)
     }
 
   node = prior_lsa_alloc_and_copy_data (thread_p, logrec_type,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -3385,7 +3390,8 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
     }
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_DUMMY_HA_SERVER_STATE,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -3576,7 +3582,8 @@ log_append_client_name (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LOG_PRIOR_NODE *node;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_CLIENT_NAME,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -3657,7 +3664,8 @@ xlog_append_client_undo (THREAD_ENTRY * thread_p,
 
       node = prior_lsa_alloc_and_copy_data (thread_p,
 					    LOG_CLIENT_USER_UNDO_DATA,
-					    0, NULL, 0, NULL, 0, NULL);
+					    RV_NOT_DEFINED, NULL,
+					    0, NULL, 0, NULL);
       if (node == NULL)
 	{
 	  return;
@@ -3755,7 +3763,8 @@ xlog_append_client_postpone (THREAD_ENTRY * thread_p,
 
       node = prior_lsa_alloc_and_copy_data (thread_p,
 					    LOG_CLIENT_USER_POSTPONE_DATA,
-					    0, NULL, 0, NULL, 0, NULL);
+					    RV_NOT_DEFINED, NULL,
+					    0, NULL, 0, NULL);
       if (node == NULL)
 	{
 	  return;
@@ -3853,7 +3862,8 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
   length = strlen (savept_name) + 1;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_SAVEPOINT,
-					0, NULL, length, (char *) savept_name,
+					RV_NOT_DEFINED, NULL,
+					length, (char *) savept_name,
 					0, (char *) NULL);
   if (node == NULL)
     {
@@ -4503,7 +4513,8 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_PRIOR_NODE *node;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_COMMIT_WITH_POSTPONE,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -4547,7 +4558,8 @@ log_append_topope_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
   node = prior_lsa_alloc_and_copy_data (thread_p,
 					LOG_COMMIT_TOPOPE_WITH_POSTPONE,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -4586,7 +4598,8 @@ log_append_commit_client_loose_ends (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   node = prior_lsa_alloc_and_copy_data (thread_p,
 					LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -4623,7 +4636,8 @@ log_append_abort_client_loose_ends (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   node = prior_lsa_alloc_and_copy_data (thread_p,
 					LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -4662,7 +4676,8 @@ log_append_topope_commit_client_loose_ends (THREAD_ENTRY * thread_p,
 
   node = prior_lsa_alloc_and_copy_data (thread_p,
 					LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -4703,7 +4718,8 @@ log_append_topope_abort_client_loose_ends (THREAD_ENTRY * thread_p,
 
   node = prior_lsa_alloc_and_copy_data (thread_p,
 					LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -4762,9 +4778,10 @@ log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	    {
 	      node = prior_lsa_alloc_and_copy_data (thread_p,
 						    repl_rec->repl_type,
-						    0, NULL, repl_rec->length,
-						    repl_rec->repl_data, 0,
-						    NULL);
+						    RV_NOT_DEFINED, NULL,
+						    repl_rec->length,
+						    repl_rec->repl_data,
+						    0, NULL);
 	      if (node == NULL)
 		{
 		  assert (false);
@@ -4810,7 +4827,8 @@ log_append_unlock_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LOG_PRIOR_NODE *node;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_UNLOCK_COMMIT,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -4839,7 +4857,8 @@ log_append_donetime (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_PRIOR_NODE *node;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, iscommitted,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
@@ -6461,8 +6480,9 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		  {
 		    node = prior_lsa_alloc_and_copy_data (thread_p,
 							  LOG_2PC_COMMIT_INFORM_PARTICPS,
-							  0, NULL, 0, NULL, 0,
-							  NULL);
+							  RV_NOT_DEFINED,
+							  NULL,
+							  0, NULL, 0, NULL);
 		    if (node == NULL)
 		      {
 			assert (false);
@@ -6486,8 +6506,9 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 		  {
 		    node = prior_lsa_alloc_and_copy_data (thread_p,
 							  LOG_2PC_ABORT_INFORM_PARTICPS,
-							  0, NULL, 0, NULL, 0,
-							  NULL);
+							  RV_NOT_DEFINED,
+							  NULL,
+							  0, NULL, 0, NULL);
 		    if (node == NULL)
 		      {
 			assert (false);
@@ -6696,7 +6717,8 @@ log_complete_topop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
       state = TRAN_UNACTIVE_ABORTED;
     }
   node = prior_lsa_alloc_and_copy_data (thread_p, rectype,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return state;
@@ -7316,7 +7338,8 @@ log_client_append_done_actions (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   LOG_PRIOR_NODE *node;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, rectype,
-					0, NULL, 0, NULL, 0, NULL);
+					RV_NOT_DEFINED, NULL,
+					0, NULL, 0, NULL);
   if (node == NULL)
     {
       return;
