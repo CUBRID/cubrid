@@ -1631,7 +1631,8 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p,
       for (pageid = fpageid; pageid >= 0 && pageid <= lpageid; pageid++)
 	{
 	  log_pgptr = (LOG_PAGE *) p;
-	  if (logpb_fetch_page (thread_p, pageid, log_pgptr) == NULL)
+	  if (logpb_copy_page_from_log_buffer (thread_p, pageid,
+					       log_pgptr) == NULL)
 	    {
 	      error_code = ER_FAILED;
 	      goto error;

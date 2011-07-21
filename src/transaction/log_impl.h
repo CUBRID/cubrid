@@ -1560,6 +1560,9 @@ extern void logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p,
 extern void logpb_flush_header (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 				   LOG_PAGE * log_pgptr);
+extern LOG_PAGE *logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p,
+						  LOG_PAGEID pageid,
+						  LOG_PAGE * log_pgptr);
 extern LOG_PAGE *logpb_read_page_from_file (THREAD_ENTRY * thread_p,
 					    LOG_PAGEID pageid,
 					    LOG_PAGE * log_pgptr);

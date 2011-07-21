@@ -502,6 +502,8 @@ static int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p,
 					LOG_PRIOR_NODE * list);
+static LOG_PAGE *logpb_copy_page (THREAD_ENTRY * thread_p,
+				  LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 
 
 
@@ -2036,7 +2038,6 @@ LOG_PAGE *
 logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 		  LOG_PAGE * log_pgptr)
 {
-  register struct log_buffer *log_bufptr = NULL;
   LOG_PAGE *ret_pgptr = NULL;
 
   assert (log_pgptr != NULL);
@@ -2051,6 +2052,56 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
 	}
       LOG_CS_EXIT ();
     }
+
+  ret_pgptr = logpb_copy_page (thread_p, pageid, log_pgptr);
+
+  return ret_pgptr;
+}
+
+/*
+ * logpb_copy_page_from_log_buffer -
+ *
+ * return: Pointer to the page or NULL
+ *
+ */
+LOG_PAGE *
+logpb_copy_page_from_log_buffer (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
+				 LOG_PAGE * log_pgptr)
+{
+  LOG_PAGE *ret_pgptr = NULL;
+
+  assert (log_pgptr != NULL);
+  assert (pageid != NULL_PAGEID);
+  assert (pageid <= log_Gl.hdr.append_lsa.pageid);
+
+  ret_pgptr = logpb_copy_page (thread_p, pageid, log_pgptr);
+
+  return ret_pgptr;
+}
+
+/*
+ * logpb_copy_page - copy a exist_log page using local buffer
+ *
+ * return: Pointer to the page or NULL
+ *
+ *   pageid(in): Page identifier
+ *   log_pgptr(in): Page buffer to copy
+ *
+ * NOTE:Fetch the log page identified by pageid into a log buffer and
+ *              return such buffer.
+ *              If there is the page in hash table, copy it to buffer
+ *              and return it.
+ *              If not, read log page from log.
+ */
+static LOG_PAGE *
+logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
+		 LOG_PAGE * log_pgptr)
+{
+  register struct log_buffer *log_bufptr = NULL;
+  LOG_PAGE *ret_pgptr = NULL;
+
+  assert (log_pgptr != NULL);
+  assert (pageid != NULL_PAGEID);
 
   LOG_CS_ENTER_READ_MODE (thread_p);
 
@@ -2071,6 +2122,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid,
     }
 
   LOG_CS_EXIT ();
+
   return ret_pgptr;
 }
 
