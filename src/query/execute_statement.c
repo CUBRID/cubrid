@@ -9685,7 +9685,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
   char *stream = NULL;
   int i = 0;
   int j = 0;
-  XASL_ID *xasl_id;
+  XASL_ID *xasl_id = NULL;
   const char *qstr;
   PT_NODE *val, *head = NULL, *prev = NULL;
 
@@ -9709,6 +9709,11 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
 	  if (prev != NULL)
 	    {
 	      prev->next = val;
+	    }
+
+	  if (val == NULL)
+	    {
+	      break;
 	    }
 	}
 
@@ -9760,7 +9765,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser,
     {
       PT_NODE *default_expr_attrs = NULL;
       PT_NODE *class_;
-      
+
       class_ = statement->info.insert.spec->info.spec.flat_entity_list;
       error =
 	check_for_default_expr (parser, statement->info.insert.attr_list,
@@ -9892,18 +9897,21 @@ do_insert_at_server (PARSER_CONTEXT * parser,
   QFILE_LIST_ID *list_id = NULL;
   int i = 0;
   int j = 0;
-  PT_NODE *const update_statement = statement->info.insert.on_dup_key_update;
+  PT_NODE *update_statement = NULL;
 
-  if (!parser || !statement || !values_list
+  if (parser == NULL || statement == NULL || values_list == NULL
       || statement->node_type != PT_INSERT)
     {
       return ER_GENERIC_ERROR;
     }
 
+  update_statement = statement->info.insert.on_dup_key_update;
+
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
   xasl = pt_to_insert_xasl (parser, statement, values_list, has_uniques,
-			    non_null_attrs, default_expr_attrs, is_first_value);
+			    non_null_attrs, default_expr_attrs,
+			    is_first_value);
 
   if (xasl)
     {

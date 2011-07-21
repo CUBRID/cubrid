@@ -1069,8 +1069,14 @@ error_return:
     {
       free_and_init (sessions_p);
     }
+
   *session_ids = NULL;
-  *count = 0;
+
+  if (count != NULL)
+    {
+      *count = 0;
+    }
+
   return error;
 }
 

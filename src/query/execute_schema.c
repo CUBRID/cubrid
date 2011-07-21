@@ -13573,6 +13573,12 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute,
 	{
 	  PT_TYPE_ENUM common_type;
 	  def_val = pt_semantic_type (parser, def_val, NULL);
+	  if (pt_has_error (parser) || def_val == NULL)
+	    {
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	      return er_errid ();
+	    }
+
 	  common_type = pt_common_type (def_val->type_enum, desired_type);
 	  if (common_type != desired_type)
 	    {

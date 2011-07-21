@@ -430,31 +430,41 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser,
 	{
 	  curr_server_timeb.time = base_server_timeb.time;
 	  curr_server_timeb.millitm = base_server_timeb.millitm;
-	  curr_server_timeb.time += diff_time;
-	  curr_server_timeb.millitm += diff_mtime;
 
-	  if (curr_server_timeb.millitm < 0)
+	  /* timeb.millitm is unsigned short, so should prevent underflow */
+	  if (diff_mtime < 0)
 	    {
 	      curr_server_timeb.time--;
 	      curr_server_timeb.millitm += 1000;
 	    }
-	  else if (curr_server_timeb.millitm >= 1000)
+
+	  curr_server_timeb.time += diff_time;
+	  curr_server_timeb.millitm += diff_mtime;
+
+	  if (curr_server_timeb.millitm >= 1000)
 	    {
 	      curr_server_timeb.time++;
 	      curr_server_timeb.millitm -= 1000;
 	    }
 
 	  c_time_struct = localtime (&curr_server_timeb.time);
+	  if (c_time_struct == NULL)
+	    {
+	      base_server_timeb.time = 0;
+	    }
+	  else
+	    {
+	      db_datetime_encode (&datetime, c_time_struct->tm_mon + 1,
+				  c_time_struct->tm_mday,
+				  c_time_struct->tm_year + 1900,
+				  c_time_struct->tm_hour,
+				  c_time_struct->tm_min,
+				  c_time_struct->tm_sec,
+				  curr_server_timeb.millitm);
 
-	  db_datetime_encode (&datetime, c_time_struct->tm_mon + 1,
-			      c_time_struct->tm_mday,
-			      c_time_struct->tm_year + 1900,
-			      c_time_struct->tm_hour, c_time_struct->tm_min,
-			      c_time_struct->tm_sec,
-			      curr_server_timeb.millitm);
-
-	  server_info->value[0] = &parser->sys_datetime;
-	  DB_MAKE_DATETIME (server_info->value[0], &datetime);
+	      server_info->value[0] = &parser->sys_datetime;
+	      DB_MAKE_DATETIME (server_info->value[0], &datetime);
+	    }
 	}
     }
 

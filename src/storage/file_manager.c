@@ -1191,6 +1191,12 @@ file_preserve_temporary (THREAD_ENTRY * thread_p, const VFID * vfid)
     }
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
   key.tran_index = tran_index;
   VFID_COPY (&key.vfid, vfid);
 

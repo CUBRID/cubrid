@@ -1329,6 +1329,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
     {
       char *str_val =
 	(char *) db_private_alloc (thread_p, strlen ("UNIX_TIMESTAMP") + 1);
+
       if (!str_val)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -1336,27 +1337,41 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 		  strlen ("UNIX_TIMESTAMP") + 1);
 	  goto error;
 	}
+
       switch (DB_GET_INT (&default_expr))
 	{
 	case DB_DEFAULT_SYSDATE:
 	  strcpy (str_val, "SYS_DATE");
 	  break;
+
 	case DB_DEFAULT_SYSDATETIME:
 	  strcpy (str_val, "SYS_DATETIME");
 	  break;
+
 	case DB_DEFAULT_SYSTIMESTAMP:
 	  strcpy (str_val, "SYS_TIMESTAMP");
 	  break;
+
 	case DB_DEFAULT_UNIX_TIMESTAMP:
 	  strcpy (str_val, "UNIX_TIMESTAMP");
 	  break;
+
 	case DB_DEFAULT_USER:
 	  strcpy (str_val, "USER");
 	  break;
+
 	case DB_DEFAULT_CURR_USER:
 	  strcpy (str_val, "CURRENT_USER");
 	  break;
+
+	default:
+	  assert (false);
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  goto error;
+	  break;
 	}
+
       DB_MAKE_STRING (attr_val_p, str_val);
       attr_val_p->need_clear = true;
     }

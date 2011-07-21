@@ -759,6 +759,11 @@ qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id,
        * result information from the session. 
        */
       query_p = qmgr_allocate_query_entry (thread_p);
+      if (query_p == NULL)
+	{
+	  return NULL;
+	}
+
       query_p->query_id = query_id;
       if (xsession_load_query_entry_info (thread_p, query_p) != NO_ERROR)
 	{
