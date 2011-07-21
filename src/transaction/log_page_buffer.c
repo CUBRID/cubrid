@@ -4634,9 +4634,6 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 static int
 logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 {
-  LOG_RECTYPE save_type = LOG_SMALLER_LOGREC_TYPE;	/* Save type of last
-							 * record
-							 */
   LOG_RECORD_HEADER *eof;	/* End of log record */
   struct log_buffer *bufptr;	/* The current buffer log append page
 				 * scanned
@@ -4671,6 +4668,14 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   bool hold_flush_mutex = false, hold_lpb_cs = false;
   LOG_FLUSH_INFO *flush_info = &log_Gl.flush_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
+
+  LOG_RECORD_HEADER save_record = {
+    {NULL_PAGEID, NULL_OFFSET},	/* prev_tranlsa */
+    {NULL_PAGEID, NULL_OFFSET},	/* back_lsa */
+    {NULL_PAGEID, NULL_OFFSET},	/* forw_lsa */
+    NULL_TRANID,		/* trid */
+    LOG_SMALLER_LOGREC_TYPE	/* type */
+  };				/* Save last record */
 
 #if defined(SERVER_MODE)
   int rv;
@@ -4805,7 +4810,7 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
 #endif /* CUBRID_DEBUG */
 
       eof = (LOG_RECORD_HEADER *) LOG_PREV_APPEND_PTR ();
-      save_type = eof->type;
+      save_record = *eof;
 
       /* Overwrite it with an end of log marker */
       LSA_SET_NULL (&eof->forw_lsa);
@@ -5126,9 +5131,9 @@ logpb_flush_all_append_pages_helper (THREAD_ENTRY * thread_p)
   if (log_Gl.append.delayed_free_log_pgptr != NULL)
     {
       /*
-       * Restore the type of the log append record
+       * Restore the log append record
        */
-      eof->type = save_type;
+      *eof = save_record;
       logpb_set_dirty (thread_p, log_Gl.append.delayed_free_log_pgptr,
 		       DONT_FREE);
 
