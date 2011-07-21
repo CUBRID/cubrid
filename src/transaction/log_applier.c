@@ -4636,8 +4636,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
   if (lrec->trid == NULL_TRANID ||
       LSA_GT (&lrec->prev_tranlsa, final) || LSA_GT (&lrec->back_lsa, final))
     {
-      if (lrec->type != LOG_END_OF_LOG &&
-	  lrec->type != LOG_DUMMY_FILLPAGE_FORARCHIVE)
+      if (lrec->type != LOG_END_OF_LOG && lrec->type != LOG_DUMMY_FILLPAGE_FORARCHIVE)	/* for backward compatibility */
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_HA_LA_INVALID_REPL_LOG_RECORD, 10,
@@ -4679,6 +4678,10 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
   la_Info.is_end_of_record = false;
   switch (lrec->type)
     {
+      /*
+       * This record is not generated no more.
+       * It's kept for backward compatibility.
+       */
     case LOG_DUMMY_FILLPAGE_FORARCHIVE:
       snprintf (buffer, sizeof (buffer),
 		"process log record (type:%d). "

@@ -3923,7 +3923,13 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
   switch (rec_type)
     {
     case LOG_DUMMY_HEAD_POSTPONE:
+#if 0
+      /*
+       * This isn't generated no more
+       * (It was changed in logpb_archive_active_log)
+       */
     case LOG_DUMMY_FILLPAGE_FORARCHIVE:
+#endif
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_2PC_COMMIT_DECISION:
@@ -4235,7 +4241,15 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p,
     case LOG_SAVEPOINT:
 
     case LOG_DUMMY_HEAD_POSTPONE:
+
+#if 0
+      /*
+       * This isn't generated no more
+       * (It was changed in logpb_archive_active_log)
+       */
     case LOG_DUMMY_FILLPAGE_FORARCHIVE:
+#endif
+
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
@@ -5532,6 +5546,13 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
    */
   LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER));
 
+#if 0
+  /*
+   * LOG_DUMMY_FILLPAGE_FORARCHIVE isn't generated no more
+   * (It was changed in logpb_archive_active_log)
+   * so, this check is not required.
+   */
+
   log_rec = (LOG_RECORD_HEADER *) LOG_PREV_APPEND_PTR ();
   if (log_rec->type == LOG_DUMMY_FILLPAGE_FORARCHIVE)
     {
@@ -5544,6 +5565,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 	  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, LOG_PAGESIZE);
 	}
     }
+#endif
 }
 
 /*
@@ -5592,6 +5614,13 @@ prior_lsa_start_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
    */
   LOG_PRIOR_LSA_APPEND_ADD_ALIGN (sizeof (LOG_RECORD_HEADER));
 
+#if 0
+  /*
+   * LOG_DUMMY_FILLPAGE_FORARCHIVE isn't generated no more
+   * (It was changed in logpb_archive_active_log)
+   * so, this check is not required.
+   */
+
   if (node->log_header.type == LOG_DUMMY_FILLPAGE_FORARCHIVE)
     {
       /*
@@ -5603,6 +5632,8 @@ prior_lsa_start_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
 	  LOG_PRIOR_LSA_APPEND_ADVANCE_WHEN_DOESNOT_FIT (LOG_PAGESIZE);
 	}
     }
+#endif
+
 }
 
 /*
@@ -7203,6 +7234,14 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
       arvhdr->fpageid = log_Gl.hdr.nxarv_pageid;
       last_pageid = log_Gl.append.prev_lsa.pageid;
 
+#if 0
+      /*
+       * logpb_must_archive_last_log_page can call logpb_archive_active_log again
+       * and then, log_Gl.hdr could be changed and it make trouble. (assert or shutdown)
+       *
+       * so, new behavior of logpb_backup is fixed as don't copy incomplete last page
+       * as the result, this code block is commented.
+       */
       if (force_archive)
 	{
 	  /*
@@ -7219,16 +7258,20 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p, bool force_archive)
 	      goto error;
 	    }
 	}
-      else if (log_Gl.hdr.append_lsa.pageid == log_Gl.append.prev_lsa.pageid)
+#endif
+
+      if (log_Gl.hdr.append_lsa.pageid == log_Gl.append.prev_lsa.pageid)
 	{
 	  /* Avoid archiving an incomplete page (may lead to a an
 	   * incomplete restore) */
 	  last_pageid--;
 	}
+
       if (last_pageid < arvhdr->fpageid)
 	{
 	  last_pageid = arvhdr->fpageid;
 	}
+
       arvhdr->npages = (DKNPAGES) (last_pageid - arvhdr->fpageid + 1);
     }
   else
@@ -12727,6 +12770,13 @@ end:
   return r;
 }
 
+#if 0
+/*
+ * LOG_DUMMY_FILLPAGE_FORARCHIVE isn't generated no more
+ * (It was changed in logpb_archive_active_log)
+ * so, this check is not required.
+ */
+
 /*
  * logpb_must_archive_last_log_page - Log special record to arv current page
  *
@@ -12749,6 +12799,7 @@ logpb_must_archive_last_log_page (THREAD_ENTRY * thread_p)
 
   return NO_ERROR;
 }
+#endif
 
 /*
  * logpb_check_and_reset_temp_lsa -

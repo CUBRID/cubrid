@@ -998,9 +998,12 @@ enum log_rectype
 					   the start of crash recovery.
 					   No-op
 					 */
+
   LOG_DUMMY_FILLPAGE_FORARCHIVE = 38,	/* Indicates logical end of current
 					   page so it could be archived
 					   safely. No-op
+					   This record is not generated no more.
+					   It's kept for backward compatibility.
 					 */
   LOG_REPLICATION_DATA = 39,	/* Replicaion log for insert, delete or update */
   LOG_REPLICATION_SCHEMA = 40,	/* Replicaion log for schema, index, trigger or system catalog updates */
