@@ -143,6 +143,8 @@ static const char *er_unknown_severity = "Unknown severity level";
 
 #define ER_MALLOC(size)	er_malloc_helper((size), __FILE__, __LINE__)
 
+#define SPEC_CODE_LONGLONG ((char)0x88)
+
 /*
  * Use this macro for freeing msg_area things so that you don't forget
  * and someday accidentally try to free the er_emergency_buf.
@@ -2548,8 +2550,18 @@ er_study_spec (const char *conversion_spec, char *simple_spec,
        * (or 'long double') as the carrier type for any conversion code
        * prefixed by an 'l' (or 'L').
        */
-      class_ = *q;
-      *p++ = *q++;
+      if (*q == 'l' && *(q + 1) == 'l')
+	{
+	  /* long long type */
+	  class_ = SPEC_CODE_LONGLONG;
+	  *p++ = *q++;
+	  *p++ = *q++;
+	}
+      else
+	{
+	  class_ = *q;
+	  *p++ = *q++;
+	}
     }
   else if (*q == 'h')
     {
@@ -3234,25 +3246,28 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
       switch (fmt->spec[i].code)
 	{
 	case 'i':
-	  er_Msg->args[i].i = va_arg (args, int);
+	  er_Msg->args[i].int_value = va_arg (args, int);
 	  break;
 	case 'l':
-	  er_Msg->args[i].l = va_arg (args, int);
+	  er_Msg->args[i].long_value = va_arg (args, int);
+	  break;
+	case SPEC_CODE_LONGLONG:
+	  er_Msg->args[i].longlong_value = va_arg (args, long long);
 	  break;
 	case 'p':
-	  er_Msg->args[i].p = va_arg (args, void *);
+	  er_Msg->args[i].pointer_value = va_arg (args, void *);
 	  break;
 	case 'f':
-	  er_Msg->args[i].f = va_arg (args, double);
+	  er_Msg->args[i].double_value = va_arg (args, double);
 	  break;
 	case 'L':
-	  er_Msg->args[i].lf = va_arg (args, long double);
+	  er_Msg->args[i].longdouble_value = va_arg (args, long double);
 	  break;
 	case 's':
-	  er_Msg->args[i].s = va_arg (args, char *);
-	  if (er_Msg->args[i].s == NULL)
+	  er_Msg->args[i].string_value = va_arg (args, char *);
+	  if (er_Msg->args[i].string_value == NULL)
 	    {
-	      er_Msg->args[i].s = "(null)";
+	      er_Msg->args[i].string_value = "(null)";
 	    }
 	  break;
 	default:
@@ -3323,22 +3338,25 @@ er_vsprintf (ER_FMT * fmt, va_list * ap)
       switch (fmt->spec[n].code)
 	{
 	case 'i':
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].i);
+	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].int_value);
 	  break;
 	case 'l':
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].l);
+	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].long_value);
+	  break;
+	case SPEC_CODE_LONGLONG:
+	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].longlong_value);
 	  break;
 	case 'p':
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].p);
+	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].pointer_value);
 	  break;
 	case 'f':
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].f);
+	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].double_value);
 	  break;
 	case 'L':
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].lf);
+	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].longdouble_value);
 	  break;
 	case 's':
-	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].s);
+	  sprintf (s, fmt->spec[n].spec, er_Msg->args[n].string_value);
 	  break;
 	default:
 	  /*

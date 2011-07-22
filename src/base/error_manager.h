@@ -107,12 +107,13 @@ struct er_copy_area
 typedef union er_va_arg ER_VA_ARG;
 union er_va_arg
 {
-  int i;			/* holders for the values that we actually */
-  int l;			/* retrieve from the va_list. */
-  void *p;
-  double f;
-  long double lf;
-  const char *s;
+  int int_value;		/* holders for the values that we actually */
+  int long_value;		/* retrieve from the va_list. */
+  void *pointer_value;
+  double double_value;
+  long double longdouble_value;
+  const char *string_value;
+  long long longlong_value;
 };
 
 typedef struct er_spec ER_SPEC;
