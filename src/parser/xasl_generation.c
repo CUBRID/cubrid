@@ -14568,6 +14568,7 @@ pt_spec_to_xasl_class_oid_list (const PT_NODE * spec,
 		      if (o_list == NULL)
 			{
 			  free_and_init (oldptr);
+			  *oid_listp = NULL;
 			  goto error;
 			}
 
@@ -14578,6 +14579,8 @@ pt_spec_to_xasl_class_oid_list (const PT_NODE * spec,
 			{
 			  free_and_init (oldptr);
 			  free_and_init (o_list);
+			  *oid_listp = NULL;
+			  *rep_listp = NULL;
 			  goto error;
 			}
 		    }
@@ -14982,7 +14985,8 @@ outofmem:
 XASL_NODE *
 pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 		   PT_NODE * values_list, int has_uniques,
-		   PT_NODE * non_null_attrs, PT_NODE * default_expr_attrs, bool is_first_value)
+		   PT_NODE * non_null_attrs, PT_NODE * default_expr_attrs,
+		   bool is_first_value)
 {
   XASL_NODE *xasl = NULL;
   INSERT_PROC_NODE *insert = NULL;

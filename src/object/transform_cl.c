@@ -4077,7 +4077,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
 
 	  if (serial_mop == NULL)
 	    {
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE,
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		      ER_OBJ_INVALID_ATTRIBUTE, 1, auto_increment_name);
 	      db_ws_free (class_);
 	      free_var_table (vars);
