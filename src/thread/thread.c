@@ -2917,9 +2917,15 @@ thread_get_LFT_min_wait_time (void)
       flush_interval = gc_time;
     }
 
-  return (flush_interval != INT_MAX ? flush_interval : 0);
+  if (flush_interval != INT_MAX)
+    {
+      return flush_interval;
+    }
+  else
+    {
+      return 1;			/* default wake-up time: 1msec */
+    }
 }
-
 
 /*
  * thread_log_flush_thread() - flushed dirty log pages in background
@@ -2958,11 +2964,14 @@ thread_log_flush_thread (void *arg_p)
   int diff_wait_time;
   int min_wait_time;
   int ret;
-  bool have_wake_up_thread;
   int flushed;
   int temp_wait_usec;
   bool is_background_flush = true;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
+#if defined(WINDOWS)
+  int loop;
+#endif
+
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
   /* wait until THREAD_CREATE() finishes */
@@ -3043,39 +3052,24 @@ thread_log_flush_thread (void *arg_p)
       rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
 
       is_background_flush = false;
-      have_wake_up_thread = false;
       if (ret == ETIMEDOUT)
 	{
-	  if (thread_Log_flush_thread.is_log_flush_force)
+	  if (thread_Log_flush_thread.is_log_flush_force
+	      || (LOG_IS_GROUP_COMMIT_ACTIVE ()
+		  && gc_elapsed * 1000 >=
+		  PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS))
 	    {
-	      is_background_flush = false;
+	      ;			/* is normal log flush */
 	    }
-	  else if (!LOG_IS_GROUP_COMMIT_ACTIVE ())
+	  else if (PRM_LOG_BG_FLUSH_INTERVAL_MSECS > 0)
 	    {
 	      is_background_flush = true;
 	    }
-	  else if (PRM_LOG_ASYNC_COMMIT)
-	    {
-	      if (gc_elapsed * 1000 >= PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS)
-		{
-		  is_background_flush = false;
-		}
-	      else
-		{
-		  is_background_flush = true;
-		}
-	    }
 	  else
 	    {
-	      if (gc_elapsed * 1000 >= PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS
-		  && group_commit_info->waiters > 0)
-		{
-		  is_background_flush = false;
-		}
-	      else
-		{
-		  is_background_flush = true;
-		}
+	      /* dummy wake-up */
+	      pthread_mutex_unlock (&group_commit_info->gc_mutex);
+	      continue;
 	    }
 
 #if 0				/* disabled temporarily */
@@ -3123,14 +3117,7 @@ thread_log_flush_thread (void *arg_p)
 					 log_Name_active);
 	    }
 
-	  have_wake_up_thread = true;
-	}
-
-      if (have_wake_up_thread)
-	{
 #if defined(WINDOWS)
-	  int loop;
-
 	  for (loop = 0; loop != group_commit_info->waiters; ++loop)
 	    {
 	      pthread_cond_broadcast (&group_commit_info->gc_cond);
@@ -3147,6 +3134,7 @@ thread_log_flush_thread (void *arg_p)
 #endif /* CUBRID_DEBUG */
 	  group_commit_info->waiters = 0;
 	}
+
       pthread_mutex_unlock (&group_commit_info->gc_mutex);
     }
 
