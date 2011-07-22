@@ -671,6 +671,25 @@ static int pt_check_parent_eq_class_for_ordby_keylimit (QO_PLAN * parent,
 							QO_PLAN * sortplan,
 							int sort_col_seg_idx);
 
+
+static void
+pt_init_xasl_supp_info ()
+{
+  /* XASL cache related information */
+  if (xasl_Supp_info.class_oid_list)
+    {
+      free_and_init (xasl_Supp_info.class_oid_list);
+    }
+
+  if (xasl_Supp_info.repr_id_list)
+    {
+      free_and_init (xasl_Supp_info.repr_id_list);
+    }
+
+  xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
+}
+
+
 /*
  * pt_make_connect_by_proc () - makes the XASL of the CONNECT BY node
  *   return:
@@ -14821,19 +14840,25 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node,
       else
 	{
 	  /* collect serial oid list in values */
-	  XASL_SUPP_INFO info = { NULL, NULL, NULL, 0, 0 };
-
-	  info.n_oid_list = xasl->n_oid_list;
-	  info.class_oid_list = xasl->class_oid_list;
-	  info.oid_list_size = xasl->n_oid_list;
+	  int n;
+	  pt_init_xasl_supp_info ();
 
 	  node =
 	    parser_walk_tree (parser, node, NULL, NULL,
-			      parser_generate_xasl_post, &info);
+			      parser_generate_xasl_post, &xasl_Supp_info);
 
-	  xasl->class_oid_list = info.class_oid_list;
-	  xasl->repr_id_list = info.repr_id_list;
-	  xasl->n_oid_list = info.n_oid_list;
+	  if ((n = xasl_Supp_info.n_oid_list) > 0
+	      && (xasl->class_oid_list = regu_oid_array_alloc (n))
+	      && (xasl->repr_id_list = regu_int_array_alloc (n)))
+	    {
+	      xasl->n_oid_list = n;
+	      (void) memcpy (xasl->class_oid_list,
+			     xasl_Supp_info.class_oid_list, sizeof (OID) * n);
+	      (void) memcpy (xasl->repr_id_list,
+			     xasl_Supp_info.repr_id_list, sizeof (int) * n);
+	    }
+
+	  pt_init_xasl_supp_info ();
 
 	  /* set the outptr and vall lists from a list of expressions */
 	  xasl->outptr_list = pt_to_outlist (parser, node,
@@ -15047,12 +15072,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
   xasl = pt_make_aptr_parent_node (parser, value_clause, INSERT_PROC);
   if (xasl)
     {
-      int n_oid_size = xasl->n_oid_list + 1;
-      pt_spec_to_xasl_class_oid_list (statement->info.insert.spec,
-				      &xasl->class_oid_list,
-				      &xasl->repr_id_list, &xasl->n_oid_list,
-				      &n_oid_size);
-
       insert = &xasl->proc.insert;
       insert->class_hfid = *hfid;
       class_oid = ws_identifier (class_obj);
@@ -15166,31 +15185,63 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
       /* list of class OIDs used in this XASL */
       if (xasl->aptr_list != NULL)
 	{
-	  int i = 0;
 	  XASL_NODE *aptr = xasl->aptr_list;
 
-	  xasl->class_oid_list =
-	    (OID *) realloc (xasl->class_oid_list,
-			     sizeof (OID) * (xasl->n_oid_list +
-					     aptr->n_oid_list));
+	  /*
+	   * in case of 'insert into foo select a from b'
+	   * so there is no serial oid list from values list
+	   */
+	  assert (xasl->n_oid_list == 0);
 
-	  memcpy (&xasl->class_oid_list[xasl->n_oid_list],
-		  aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
+	  /* reserve spec oid space by 1+ */
+	  xasl->class_oid_list = regu_oid_array_alloc (1 + aptr->n_oid_list);
 
-	  xasl->repr_id_list =
-	    (OID *) realloc (xasl->repr_id_list,
-			     sizeof (int) * (xasl->n_oid_list +
-					     aptr->n_oid_list));
+	  xasl->repr_id_list = regu_int_array_alloc (1 + aptr->n_oid_list);
+	  if (xasl->class_oid_list == NULL || xasl->repr_id_list == NULL)
+	    {
+	      return NULL;
+	    }
 
-	  memcpy (&xasl->repr_id_list[xasl->n_oid_list],
-		  aptr->repr_id_list, sizeof (int) * aptr->n_oid_list);
+	  xasl->n_oid_list = 1 + aptr->n_oid_list;
 
-	  xasl->n_oid_list += aptr->n_oid_list;
-	  xasl->dbval_cnt += aptr->dbval_cnt;
+	  /* copy aptr oids to xasl */
+	  (void) memcpy (xasl->class_oid_list + 1,
+			 aptr->class_oid_list,
+			 sizeof (OID) * aptr->n_oid_list);
+	  (void) memcpy (xasl->repr_id_list + 1, aptr->repr_id_list,
+			 sizeof (int) * aptr->n_oid_list);
 
-	  aptr->n_oid_list = 0;
-	  aptr->class_oid_list = NULL;
-	  aptr->repr_id_list = NULL;
+	  /* set spec oid */
+	  xasl->class_oid_list[0] = insert->class_oid;
+	  xasl->repr_id_list[0] = -1;
+
+	  xasl->dbval_cnt = aptr->dbval_cnt;
+	}
+      else
+	{
+	  /* reserve spec oid space by 1+ */
+	  OID *o_list = regu_oid_array_alloc (1 + xasl->n_oid_list);
+	  int *r_list = regu_int_array_alloc (1 + xasl->n_oid_list);
+
+	  if (o_list == NULL || r_list == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  /* copy previous serial oids to new space */
+	  (void) memcpy (o_list + 1,
+			 xasl->class_oid_list,
+			 sizeof (OID) * xasl->n_oid_list);
+	  (void) memcpy (r_list + 1, xasl->repr_id_list,
+			 sizeof (int) * xasl->n_oid_list);
+
+	  xasl->class_oid_list = o_list;
+	  xasl->repr_id_list = r_list;
+
+	  /* set spec oid */
+	  xasl->n_oid_list += 1;
+	  xasl->class_oid_list[0] = insert->class_oid;
+	  xasl->repr_id_list[0] = -1;
 	}
     }
 
@@ -15964,6 +16015,10 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 
       /* list of class OIDs used in this XASL */
+      assert (xasl->aptr_list != NULL);
+      assert (xasl->class_oid_list == NULL);
+      assert (xasl->repr_id_list == NULL);
+
       if (xasl->aptr_list != NULL)
 	{
 	  xasl->n_oid_list = xasl->aptr_list->n_oid_list;
@@ -16191,17 +16246,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 	  xasl_Supp_info.query_list->info.query.xasl = NULL;
 
 	  /* XASL cache related information */
-	  if (xasl_Supp_info.class_oid_list)
-	    {
-	      free_and_init (xasl_Supp_info.class_oid_list);
-	    }
-
-	  if (xasl_Supp_info.repr_id_list)
-	    {
-	      free_and_init (xasl_Supp_info.repr_id_list);
-	    }
-
-	  xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
+	  pt_init_xasl_supp_info ();
 
 	  node =
 	    parser_walk_tree (parser, node, parser_generate_xasl_pre, NULL,
@@ -16265,17 +16310,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   /* free what were allocated in pt_spec_to_xasl_class_oid_list() */
-  if (xasl_Supp_info.class_oid_list)
-    {
-      free_and_init (xasl_Supp_info.class_oid_list);
-    }
-
-  if (xasl_Supp_info.repr_id_list)
-    {
-      free_and_init (xasl_Supp_info.repr_id_list);
-    }
-
-  xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
+  pt_init_xasl_supp_info ();
 
   if (xasl)
     {
