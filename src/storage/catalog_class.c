@@ -1327,10 +1327,12 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
     }
   else
     {
-      char *str_val =
+      char *str_val;
+
+      str_val =
 	(char *) db_private_alloc (thread_p, strlen ("UNIX_TIMESTAMP") + 1);
 
-      if (!str_val)
+      if (str_val == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
@@ -1368,6 +1370,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p,
 	  assert (false);
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  db_private_free_and_init (thread_p, str_val);
 	  goto error;
 	  break;
 	}
