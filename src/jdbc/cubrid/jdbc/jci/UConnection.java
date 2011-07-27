@@ -1064,13 +1064,6 @@ public class UConnection {
 		 */
 	}
 
-	public void setSessionId(int sessionId) {
-		this.sessionId = sessionId;
-		if (cubridcon != null){
-			cubridcon.setSessionId(sessionId);
-		}
-	}
-
 	public boolean brokerInfoStatementPooling() {
 		if (broker_info == null)
 			return false;
@@ -1170,7 +1163,6 @@ public class UConnection {
 
 	public void setCUBRIDConnection(CUBRIDConnection con) {
 		cubridcon = con;
-		cubridcon.setSessionId(sessionId);
 		lastIsolationLevel = CUBRIDIsolationLevel.TRAN_UNKNOWN_ISOLATION;
 		lastLockTimeout = LOCK_TIMEOUT_NOT_USED;
 	}
@@ -1609,7 +1601,7 @@ public class UConnection {
 					if (broker_info == null)
 							broker_info = new byte[BROKER_INFO_SIZE];
 					inBuffer.readBytes(broker_info);
-					setSessionId(inBuffer.readInt());
+					sessionId = inBuffer.readInt();
 					
 				}
 			}
@@ -1691,8 +1683,6 @@ public class UConnection {
 	}
 
 	void checkReconnect() throws IOException, UJciException {
-		if (this.cubridcon != null)
-			this.sessionId = cubridcon.getSessionId();
 		if (dbInfo == null) {
 			// see broker/cas_protocol.h
 			// #define SRV_CON_DBNAME_SIZE 32
@@ -1709,14 +1699,9 @@ public class UConnection {
 			UJCIUtil.copy_byte(dbInfo, 32, 32, user);
 			UJCIUtil.copy_byte(dbInfo, 64, 32, passwd);
 			UJCIUtil.copy_byte(dbInfo, 96, 512, url);
-			UJCIUtil.copy_byte(dbInfo, 608, 20, new Integer(sessionId)
-					.toString());
-			//dbInfo[dbInfo.length - 1] = (byte) 0;
-		} else {
-			// set the session id
-			UJCIUtil.copy_byte(dbInfo, 608, 20, new Integer(sessionId)
-					.toString());
 		}
+		// set the session id
+		UJCIUtil.copy_byte(dbInfo, 608, 20, new Integer(sessionId).toString());
 
 		if (outBuffer == null) {
 			outBuffer = new UOutputBuffer(this);
