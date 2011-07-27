@@ -2758,7 +2758,12 @@ er_estimate_size (ER_FMT * fmt, va_list * ap)
 	  break;
 
 	case 'l':
-	  (void) va_arg (args, int);
+	  (void) va_arg (args, long int);
+	  n = MAX_INT_WIDTH;
+	  break;
+
+	case SPEC_CODE_LONGLONG:
+	  (void) va_arg (args, long long int);
 	  n = MAX_INT_WIDTH;
 	  break;
 
