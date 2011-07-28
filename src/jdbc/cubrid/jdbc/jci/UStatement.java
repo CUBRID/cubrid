@@ -309,10 +309,6 @@ public class UStatement {
 
 	public void registerOutParameter(int index) {
 		errorHandler = new UError();
-		if (isClosed == true) {
-			errorHandler.setErrorCode(UErrorCode.ER_IS_CLOSED);
-			return;
-		}
 		if (index < 0 || index >= parameterNumber) {
 			errorHandler.setErrorCode(UErrorCode.ER_BIND_INDEX);
 			return;
