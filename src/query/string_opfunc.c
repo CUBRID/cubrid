@@ -69,6 +69,13 @@
           || ( ((unsigned char) ch >= (unsigned char) 0xa1)       \
               && ((unsigned char) ch <= (unsigned char) 0xfe) ))
 
+#define IS_EUCKR_BY_PTR(ptr, end_ptr_plus_one) \
+        ( (ptr + 1 < end_ptr_plus_one) \
+	  && ( ((unsigned char) *(ptr) >= (unsigned char) 0xb0)       \
+             && ((unsigned char) *(ptr) <= (unsigned char) 0xc8) )    \
+          && ( ((unsigned char) *(ptr + 1) >= (unsigned char) 0xa1)   \
+             && ((unsigned char) *(ptr + 1) <= (unsigned char) 0xfe) ))
+
 #define ABS(i) ((i) >= 0 ? (i) : -(i))
 
 #define STACK_SIZE        100
@@ -4233,11 +4240,12 @@ qstr_eval_like (const char *tar, int tar_length,
 		       && (((PRM_SINGLE_BYTE_COMPARE || !IS_KOREAN (*tar_ptr))
 			    && *tar_ptr == *expr_ptr)
 			   || (!PRM_SINGLE_BYTE_COMPARE
-			       && IS_KOREAN (*tar_ptr)
+			       && IS_EUCKR_BY_PTR (tar_ptr, end_tar)
 			       && *tar_ptr == *expr_ptr
 			       && *(tar_ptr + 1) == *(expr_ptr + 1))))
 		{
-		  if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*tar_ptr))
+		  if (!PRM_SINGLE_BYTE_COMPARE
+		      && IS_EUCKR_BY_PTR (tar_ptr, end_tar))
 		    {
 		      tar_ptr += 2;
 		    }
@@ -4245,7 +4253,8 @@ qstr_eval_like (const char *tar, int tar_length,
 		    {
 		      tar_ptr++;
 		    }
-		  if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*expr_ptr))
+		  if (!PRM_SINGLE_BYTE_COMPARE
+		      && IS_EUCKR_BY_PTR (expr_ptr, end_expr))
 		    {
 		      expr_ptr += 2;
 		    }
@@ -4270,7 +4279,8 @@ qstr_eval_like (const char *tar, int tar_length,
 		  if (stackp >= 0 && stackp < STACK_SIZE)
 		    {
 		      tar_ptr = tarstack[stackp];
-		      if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*tar_ptr))
+		      if (!PRM_SINGLE_BYTE_COMPARE
+			  && IS_EUCKR_BY_PTR (tar_ptr, end_tar))
 			{
 			  tar_ptr += 2;
 			}
@@ -4306,7 +4316,8 @@ qstr_eval_like (const char *tar, int tar_length,
 		  if (stackp >= 0 && stackp < STACK_SIZE)
 		    {
 		      tar_ptr = tarstack[stackp];
-		      if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*tar_ptr))
+		      if (!PRM_SINGLE_BYTE_COMPARE
+			  && IS_EUCKR_BY_PTR (tar_ptr, end_tar))
 			{
 			  tar_ptr += 2;
 			}
@@ -4337,11 +4348,12 @@ qstr_eval_like (const char *tar, int tar_length,
 		       || ((PRM_SINGLE_BYTE_COMPARE || !IS_KOREAN (*tar_ptr))
 			   && *tar_ptr == *expr_ptr)
 		       || (!PRM_SINGLE_BYTE_COMPARE
-			   && IS_KOREAN (*tar_ptr)
+			   && IS_EUCKR_BY_PTR (tar_ptr, end_tar)
 			   && *tar_ptr == *expr_ptr
 			   && *(tar_ptr + 1) == *(expr_ptr + 1))))
 	    {
-	      if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*tar_ptr))
+	      if (!PRM_SINGLE_BYTE_COMPARE
+		  && IS_EUCKR_BY_PTR (tar_ptr, end_tar))
 		{
 		  tar_ptr += 2;
 		}
@@ -4349,7 +4361,8 @@ qstr_eval_like (const char *tar, int tar_length,
 		{
 		  tar_ptr++;
 		}
-	      if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*expr_ptr))
+	      if (!PRM_SINGLE_BYTE_COMPARE
+		  && IS_EUCKR_BY_PTR (expr_ptr, end_expr))
 		{
 		  expr_ptr += 2;
 		}
@@ -4361,7 +4374,8 @@ qstr_eval_like (const char *tar, int tar_length,
 	  else if (stackp >= 0 && stackp < STACK_SIZE)
 	    {
 	      tar_ptr = tarstack[stackp];
-	      if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*tar_ptr))
+	      if (!PRM_SINGLE_BYTE_COMPARE
+		  && IS_EUCKR_BY_PTR (tar_ptr, end_tar))
 		{
 		  tar_ptr += 2;
 		}
@@ -4417,7 +4431,8 @@ qstr_eval_like (const char *tar, int tar_length,
 	  while ((tar_ptr < end_tar && expr_ptr < end_expr)
 		 && *tar_ptr != *(expr_ptr + 1))
 	    {
-	      if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*tar_ptr))
+	      if (!PRM_SINGLE_BYTE_COMPARE
+		  && IS_EUCKR_BY_PTR (tar_ptr, end_tar))
 		{
 		  tar_ptr += 2;
 		}
@@ -4440,7 +4455,8 @@ qstr_eval_like (const char *tar, int tar_length,
 		  expr_ptr--;
 		}
 	      exprstack[stackp] = expr_ptr;
-	      if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*expr_ptr))
+	      if (!PRM_SINGLE_BYTE_COMPARE
+		  && IS_EUCKR_BY_PTR (expr_ptr, end_expr))
 		{
 		  expr_ptr += 2;
 		}
@@ -4479,7 +4495,8 @@ qstr_eval_like (const char *tar, int tar_length,
 		  if (stackp >= 0 && stackp < STACK_SIZE)
 		    {
 		      tar_ptr = tarstack[stackp];
-		      if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*tar_ptr))
+		      if (!PRM_SINGLE_BYTE_COMPARE
+			  && IS_EUCKR_BY_PTR (tar_ptr, end_tar))
 			{
 			  tar_ptr += 2;
 			}
@@ -4515,7 +4532,8 @@ qstr_eval_like (const char *tar, int tar_length,
 		  if (stackp >= 0 && stackp < STACK_SIZE)
 		    {
 		      tar_ptr = tarstack[stackp];
-		      if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*tar_ptr))
+		      if (!PRM_SINGLE_BYTE_COMPARE
+			  && IS_EUCKR_BY_PTR (tar_ptr, end_tar))
 			{
 			  tar_ptr += 2;
 			}
@@ -4545,11 +4563,13 @@ qstr_eval_like (const char *tar, int tar_length,
 		   && ((*expr_ptr == LIKE_WILDCARD_MATCH_ONE)
 		       || ((PRM_SINGLE_BYTE_COMPARE || !IS_KOREAN (*tar_ptr))
 			   && *tar_ptr == *expr_ptr)
-		       || (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*tar_ptr)
+		       || (!PRM_SINGLE_BYTE_COMPARE
+			   && IS_EUCKR_BY_PTR (tar_ptr, end_tar)
 			   && *tar_ptr == *expr_ptr
 			   && *(tar_ptr + 1) == *(expr_ptr + 1))))
 	    {
-	      if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*tar_ptr))
+	      if (!PRM_SINGLE_BYTE_COMPARE
+		  && IS_EUCKR_BY_PTR (tar_ptr, end_tar))
 		{
 		  tar_ptr += 2;
 		}
@@ -4557,7 +4577,8 @@ qstr_eval_like (const char *tar, int tar_length,
 		{
 		  tar_ptr++;
 		}
-	      if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*expr_ptr))
+	      if (!PRM_SINGLE_BYTE_COMPARE
+		  && IS_EUCKR_BY_PTR (expr_ptr, end_expr))
 		{
 		  expr_ptr += 2;
 		}
@@ -4569,7 +4590,8 @@ qstr_eval_like (const char *tar, int tar_length,
 	  else if (stackp >= 0 && stackp < STACK_SIZE)
 	    {
 	      tar_ptr = tarstack[stackp];
-	      if (!PRM_SINGLE_BYTE_COMPARE && IS_KOREAN (*tar_ptr))
+	      if (!PRM_SINGLE_BYTE_COMPARE
+		  && IS_EUCKR_BY_PTR (tar_ptr, end_tar))
 		{
 		  tar_ptr += 2;
 		}
@@ -4605,6 +4627,10 @@ qstr_eval_like (const char *tar, int tar_length,
 	    {
 	      return V_FALSE;
 	    }
+	}
+      else if (tar_ptr > end_tar)
+	{
+	  return V_FALSE;
 	}
     }
 }
