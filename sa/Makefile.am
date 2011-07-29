@@ -50,13 +50,13 @@ $(PARSER_DIR)/csql_grammar.c $(PARSER_DIR)/csql_grammar.h : $(PARSER_DIR)/csql_g
 	$(BISON) --name-prefix=csql_yy -d -r all -o $@ $<
 
 $(PARSER_DIR)/csql_lexer.c : $(PARSER_DIR)/csql_lexer.l
-	$(FLEX) --prefix=csql_yy -o $@ $<
+	$(FLEX) --never-interactive --prefix=csql_yy -o $@ $<
 
 $(EXECUTABLE_DIR)/loader_grammar.c : $(EXECUTABLE_DIR)/loader_grammar.y
 	$(BISON) --name-prefix=loader_yy -d -r all -o $@ $<
 
 $(EXECUTABLE_DIR)/loader_lexer.c : $(EXECUTABLE_DIR)/loader_lexer.l
-	$(FLEX) --prefix=loader_yy -o $@ $<
+	$(FLEX) --never-interactive --prefix=loader_yy -o $@ $<
 
 #AM_LFLAGS = -8 -L -S$(COMPAT_DIR)/flex.skel -t
 #cnvlex.c: $(COMPAT_DIR)/cnvlex.l
