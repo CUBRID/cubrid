@@ -76,7 +76,7 @@ then
 else
 	BIT_MODEL="-m32"
 	CC="$CC $BIT_MODEL"
-	CXX="$CC $BIT_MODEL"
+	CXX="$CXX $BIT_MODEL"
 	case "$build_cpu" in
 		i?86)
 			CC="$CC -march=$build_cpu"
