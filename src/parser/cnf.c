@@ -901,8 +901,10 @@ pt_cnf (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *list, *cnf, *next, *last;
   CNF_MODE mode;
 
-  if (!node || node->node_type != PT_EXPR)
-    return node;
+  if (node == NULL)
+    {
+      return node;
+    }
 
   list = last = NULL;
   do
@@ -911,15 +913,25 @@ pt_cnf (PARSER_CONTEXT * parser, PT_NODE * node)
       next = node->next;
       node->next = NULL;
 
-      if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CNF_DONE))
+      if (node->node_type == PT_VALUE
+	  || PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CNF_DONE))
 	{
+	  /* if it is a value, it should be a const value which was a const
+	   * expression and folded as a const value.
+	   * if the case, skip this node and go ahead.
+	   */
+
 	  /* if it is already in CNF */
 	  cnf = node;
 	  /* and then link it to the CNF list */
 	  if (last)
-	    last->next = cnf;
+	    {
+	      last->next = cnf;
+	    }
 	  else
-	    list = last = cnf;
+	    {
+	      list = last = cnf;
+	    }
 
 	  /* adjust last pointer */
 	  for (last = cnf; last->next; last = last->next)
@@ -943,9 +955,13 @@ pt_cnf (PARSER_CONTEXT * parser, PT_NODE * node)
 				  pt_transform_cnf_post, &mode);
 	  /* and then link it to the CNF list */
 	  if (last)
-	    last->next = cnf;
+	    {
+	      last->next = cnf;
+	    }
 	  else
-	    list = last = cnf;
+	    {
+	      list = last = cnf;
+	    }
 
 	  /* adjust last pointer and mark that they have been transformed */
 	  for (last = cnf; last->next; last = last->next)
