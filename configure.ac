@@ -75,13 +75,19 @@ then
 	BIT_MODEL="-m64"
 else
 	BIT_MODEL="-m32"
-	CC="$CC -m32"
-	CXX="$CXX -m32"
-
-	case $MACHINE_TYPE in
-		x86_64*)	CC="$CC -march=i686"
-				CXX="$CXX -march=i686" ;;
-		*)		;;
+	CC="$CC $BIT_MODEL"
+	CXX="$CC $BIT_MODEL"
+	case "$build_cpu" in
+		i?86)
+			CC="$CC -march=$build_cpu"
+			CXX="$CXX -march=$build_cpu"
+			;;
+		x86_64|amd64)
+			CC="$CC -march=i686"
+			CXX="$CXX -march=i686"
+			;;
+		*)
+			;;
 	esac
 fi
 AM_CONDITIONAL([BUILD_64], [test "$enable_64bit" = "yes"])
