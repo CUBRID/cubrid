@@ -308,6 +308,7 @@ libcubridsa_la_SOURCES = \
 #	$(API_SOURCES)
 libcubridsa_la_LDFLAGS = -version-number @LT_VERSION@
 libcubridsa_la_LIBADD = @CAS_LIB@ @EXT_LIBS@ @SYS_LIBS@ $(LIBADD_DL)
+libcubridsa_la_DEPENDENCIES = @CAS_LIB@ @EXT_LIBS@
 libcubridsa_la_LINK = $(LINK)
 
 VERSIONED_FILES = \
