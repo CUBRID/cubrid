@@ -23,6 +23,8 @@ JDBC_SRC_DIR = $(SRC)/jdbc
 
 DRIVER = jspserver.jar
 
+EXTRA_DIST = build.xml
+
 javadir = @CUBRID_JAVADIR@
 java_DATA = $(DRIVER) ${JDBC_SRC_DIR}/logging.properties
 

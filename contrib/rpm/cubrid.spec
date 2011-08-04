@@ -12,9 +12,7 @@ Release:       %{release}%{?dist}
 License:       GPLv2+/BSD
 Group:         Applications/Databases
 URL:           http://www.cubrid.com
-Source0:       %{name}-%{cubrid_version}.tar.gz
-Source1:       cubrid.sh
-Source2:       cubrid.csh
+Source0:       cubrid-%{cubrid_version}.tar.gz
 Provides:      cubrid
 Vendor:        %{cubrid_vendor}
 Packager:      cubrid developer <cubrid@nhn.com>
@@ -36,37 +34,26 @@ Please see the documentation and the manual
 or visit http://www.cubrid.org/documentation for more information.
 
 %prep
-%setup -q -n %{name}-%{version}
+%setup -q -n cubrid-%{version}
 
 
 %build
 CUBRID_COMMON_CONFIGURE="--prefix=%{buildroot}/opt/cubrid"
-CUBRIDMANAGER_COMMON_CONFIGURE="--prefix=%{buildroot}/opt/cubrid --with-cubrid-libdir=$RPM_BUILD_DIR/%{name}-%{version}/cm_common --with-cubrid-includedir=$RPM_BUILD_DIR/%{name}-%{version}/src/cm_common --with-cubrid-jdbcdir=$RPM_BUILD_DIR/%{name}-%{version}/jdbc"
 %ifarch x86_64
-        CUBRID_COMMON_CONFIGURE="${CUBRID_COMMON_CONFIGURE} --enable-64bit"
-        CUBRIDMANAGER_COMMON_CONFIGURE="${CUBRIDMANAGER_COMMON_CONFIGURE} --enable-64bit"
+    CUBRID_COMMON_CONFIGURE="${CUBRID_COMMON_CONFIGURE} --enable-64bit"
 %endif
 
 ./configure $CUBRID_COMMON_CONFIGURE
-make
-
-cd cubridmanager/server
-./configure $CUBRIDMANAGER_COMMON_CONFIGURE
-make
-cd -
+make -j
 
 %install
 rm -rf %{buildroot}
 
 make install
 
-cd cubridmanager/server
-make install
-cd -
-
 install -d %{buildroot}%{_sysconfdir}/profile.d
-install -c -m 755 %{SOURCE1} %{buildroot}%{_sysconfdir}/profile.d/cubrid.sh
-install -c -m 755 %{SOURCE2} %{buildroot}%{_sysconfdir}/profile.d/cubrid.csh
+install -c -m 755 contrib/rpm/cubrid.sh %{buildroot}%{_sysconfdir}/profile.d/cubrid.sh
+install -c -m 755 contrib/rpm/cubrid.csh %{buildroot}%{_sysconfdir}/profile.d/cubrid.csh
 
 # include
 #install -d %{buildroot}%{_includedir}

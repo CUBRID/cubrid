@@ -68,7 +68,7 @@ utility_csql_usage (void)
       return;
     }
   message = (*csql_get_message) (CSQL_MSG_USAGE);
-  fprintf (stderr, message, VERSION, UTIL_CSQL_NAME);
+  fprintf (stderr, message, PRODUCT_STRING, UTIL_CSQL_NAME);
 }
 
 /*
@@ -248,7 +248,7 @@ main (int argc, char *argv[])
 
 	case VERSION_S:
 	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME,
-			      VERSION);
+			      PRODUCT_STRING);
 	  goto exit_on_end;
 
 	default:

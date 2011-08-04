@@ -103,7 +103,7 @@ util_admin_usage (const char *argv0)
   exec_name = basename ((char *) argv0);
   fprintf (stderr,
 	   utility_get_generic_message (MSGCAT_UTIL_GENERIC_ADMIN_USAGE),
-	   VERSION, exec_name, exec_name, exec_name);
+	   PRODUCT_STRING, exec_name, exec_name, exec_name);
 }
 
 /*
@@ -120,7 +120,7 @@ util_admin_version (const char *argv0)
 
   exec_name = basename ((char *) argv0);
   fprintf (stderr, utility_get_generic_message (MSGCAT_UTIL_GENERIC_VERSION),
-	   exec_name, VERSION);
+	   exec_name, PRODUCT_STRING);
 }
 
 

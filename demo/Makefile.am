@@ -19,8 +19,8 @@
 
 
 demodir = @CUBRID_DEMODIR@
-demo_DATA = demodb_objects demodb_schema
-demo_SCRIPTS =  make_cubrid_demo.sh
+dist_demo_DATA = demodb_objects demodb_schema
+dist_demo_SCRIPTS =  make_cubrid_demo.sh
 
 databasedir = ${localstatedir}
 database_DATA = # EMPTY

@@ -17,20 +17,21 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
+EXTRA_DIST = php4 php5 adodotnet hibernate python ruby collectd-plugin msg
 
 initdir = ${datadir}/init.d
-init_SCRIPTS = init.d/cubrid-ha init.d/cubrid
+dist_init_SCRIPTS = init.d/cubrid-ha init.d/cubrid
 
 rpmdir = ${datadir}/rpm
-rpm_SCRIPTS = rpm/cubrid.csh rpm/cubrid.sh
-rpm_DATA = rpm/cubrid.spec
+dist_rpm_SCRIPTS = rpm/cubrid.csh rpm/cubrid.sh
+dist_rpm_DATA = rpm/cubrid.spec
 
 scriptsdir = ${datadir}/scripts
-scripts_SCRIPTS = scripts/check_reserved.sql
+dist_scripts_SCRIPTS = scripts/check_reserved.sql
 
 hascriptsdir = ${datadir}/scripts/ha
-hascripts_SCRIPTS = scripts/ha/ha_make_slavedb.sh
-hascripts_DATA = scripts/ha/README
+dist_hascripts_SCRIPTS = scripts/ha/ha_make_slavedb.sh
+dist_hascripts_DATA = scripts/ha/README
 
 hafuncdir = ${hascriptsdir}/functions
-hafunc_SCRIPTS = scripts/ha/functions/ha_repl_copylog.sh scripts/ha/functions/ha_repl_reset.sh scripts/ha/functions/ha_repl_resume.sh scripts/ha/functions/ha_repl_suspend.sh scripts/ha/functions/ha_set_apply_info.sh
+dist_hafunc_SCRIPTS = scripts/ha/functions/ha_repl_copylog.sh scripts/ha/functions/ha_repl_reset.sh scripts/ha/functions/ha_repl_resume.sh scripts/ha/functions/ha_repl_suspend.sh scripts/ha/functions/ha_set_apply_info.sh

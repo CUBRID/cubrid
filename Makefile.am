@@ -21,7 +21,20 @@ AUTOMAKE_OPTIONS = foreign
 
 SUBDIRS = external include cas sa cs cubrid util broker cas4mysql cas4oracle cm_common conf msg demo contrib @OPTIONAL_DIR@
 
-EXTRA_DIST = BUILD_NUMBER COPYING CREDITS README
+EXTRA_DIST = BUILD_NUMBER COPYING CREDITS README \
+	     autogen.sh debian win src
+
+if BUILD_CMSERVER
+  BUILD_CMSERVER="--with-cmserver"
+endif
+
+dist-hook: 
+	@list='@EXTERNAL_PKGS@'; for subdir in $$list; do \
+	  if [ -f $(top_srcdir)/external/$$subdir/configure.gnu ]; then \
+	    cp $(top_srcdir)/external/$$subdir/configure.gnu $(distdir)/external/$$subdir; \
+	  fi; \
+	done;
+	@rm -rf `find $(distdir) -type d -name .svn` 
 
 logdir = @CUBRID_LOGDIR@
 log_DATA = # EMPTY

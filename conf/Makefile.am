@@ -19,4 +19,4 @@
 
 
 confdir = @CUBRID_CONFDIR@
-conf_DATA = cubrid.conf cubrid_broker.conf cubrid_ha.conf cubrid.conf.small cubrid.conf.large
+dist_conf_DATA = cubrid.conf cubrid_broker.conf cubrid_ha.conf cubrid.conf.small cubrid.conf.large

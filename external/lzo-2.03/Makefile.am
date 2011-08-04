@@ -15,10 +15,10 @@ EXTRA_DIST = BUGS
 # ************************************************************************/
 
 dist-hook:
-	-rm -rf "./$(distdir)/autoconf/"
+	-rm -rf "$(distdir)/autoconf/"
 	cp -pR $(srcdir)/B/ $(srcdir)/asm/ $(srcdir)/autoconf/ $(srcdir)/doc/ $(srcdir)/util/ "$(distdir)/"
-	-rm -f `find "./$(distdir)/" -type l -print`
-	-rm -f ./$(distdir)/util/*.dat
+	-rm -f `find "$(distdir)/" -type l -print`
+	-rm -f $(distdir)/util/*.dat
 
 check-local: all-am
 	./lzotest/lzotest -mlzo -n2 -q $(top_srcdir)/COPYING

@@ -20,8 +20,16 @@ AUTOMAKE_OPTIONS = foreign -Wno-override
 
 SUBDIRS = @EXTERNAL_PKGS@
 
+EXTRA_DIST = @EXTERNAL_DIST@
+
 install: all-am
 	@echo "Nothing to be installed for external packages."
+
+uninstall: clean-local-check
+	@list='$(SUBDIRS)'; for subdir in $$list; do \
+	  echo "Making install in $$subdir"; \
+	  (cd $$subdir && $(MAKE) $(AM_MAKEFLAGS) DESTDIR="" uninstall) \
+	done;
 
 all-local:
 	@list='$(SUBDIRS)'; for subdir in $$list; do \
@@ -29,15 +37,13 @@ all-local:
 	    echo "Skip install in $$subdir"; continue; \
 	  fi; \
 	  echo "Making install in $$subdir"; \
-	  (cd $$subdir && $(MAKE) $(AM_MAKEFLAGS) install) \
+	  (cd $$subdir && $(MAKE) $(AM_MAKEFLAGS) DESTDIR="" install) \
 	  && touch $$subdir/.installed || exit 1; \
 	done;
 
 clean-local: clean-local-check
-uninstall-local: clean-local-check
 .PHONY: clean-local-check
 clean-local-check:
 	@list='$(SUBDIRS)'; for subdir in $$list; do \
 	  (cd $$subdir && rm -f .installed) \
 	done;
-

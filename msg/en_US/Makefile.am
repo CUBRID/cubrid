@@ -19,8 +19,8 @@
 
 
 en_USdir = @CUBRID_LOCALEDIR@/en_US
-en_US_DATA = cubrid.msg cubrid.cat csql.msg csql.cat utils.msg utils.cat \
-	esql.msg esql.cat syntax.txt
+dist_en_US_DATA = cubrid.msg csql.msg utils.msg esql.msg syntax.txt
+en_US_DATA = cubrid.cat csql.cat utils.cat esql.cat
 
 GENCAT = $(top_builddir)/util/gencat
 
@@ -28,3 +28,6 @@ SUFFIXES = .msg.cat
 
 .msg.cat:
 	$(GENCAT) $@ $<
+
+distclean-local:
+	-rm -f $(en_US_DATA)

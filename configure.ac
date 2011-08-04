@@ -20,12 +20,12 @@
 #
 
 AC_PREREQ(2.59)
-AC_INIT([CUBRID 2008], RELEASE, , cubrid)
+AC_INIT([CUBRID],BUILD_NUMBER_STRING,,cubrid)
 AC_CONFIG_SRCDIR([src/executables/server.c])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_HEADERS([config.h])
 
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE([1.9 tar-pax])
 
 # Checks for programs.
 remember_CFLAGS="$CFLAGS"
@@ -312,6 +312,8 @@ NOWARN="-Wno-unused"
 CFLAGS="$CFLAGS $WARN $NOWARN"
 CXXFLAGS="$CCCFLAGS $WARN $NOWARN"
 
+EXTERNAL_DIST="hoard-371"
+
 AC_ARG_ENABLE([hoard],
 	[AS_HELP_STRING([--enable-hoard],
 		[enable to use Hoard as memory allocator @<:@default=no (C library)@:>@])],
@@ -423,6 +425,7 @@ else
 		AC_MSG_ERROR([Unsupported bison version($BISON_VERSION). It should be $BISON_EXPECTED_VERSION.])
 	fi
 	AC_MSG_RESULT([$BISON_VERSION])
+	EXTERNAL_DIST="$EXTERNAL_DIST bison-2.3"
 fi
 
 AC_MSG_CHECKING([for libedit library])
@@ -441,6 +444,7 @@ then
 else
 	LIBEDIT_LIBS="-L$with_libedit/lib -ledit"
 	LIBEDIT_INC="-I$with_libedit/include"
+	EXTERNAL_DIST="$EXTERNAL_DIST libedit-20100424-3.0"
 fi
 AC_MSG_RESULT([$with_libedit])
 
@@ -460,6 +464,7 @@ then
 else
 	LZO_LIBS="-L$with_lzo2/lib -llzo2"
 	LZO_INC="-I$with_lzo2/include/lzo"
+	EXTERNAL_DIST="$EXTERNAL_DIST lzo-2.03"
 fi
 AC_MSG_RESULT([$with_lzo2])
 
@@ -479,6 +484,7 @@ then
 else
 	GC_LIBS="-L$with_gc/lib -lgc"
 	GC_INC="-I$with_gc/include/gc"
+	EXTERNAL_DIST="$EXTERNAL_DIST gc6.7"
 fi
 AC_MSG_RESULT([$with_gc])
 
@@ -504,7 +510,7 @@ AC_ARG_WITH([mysql],
 	[with_mysql=builtin])
 
 case "$with_mysql" in
-	"builtin")
+	yes|builtin)
 		if test -d "$srcdir/external/mysqlclient" && test "$enable_64bit" == "yes"; then
 			AC_CONFIG_SUBDIRS([external/mysqlclient])
 			MYSQL_LIB_PATH="-L\$(top_builddir)/external/lib"
@@ -513,7 +519,7 @@ case "$with_mysql" in
 			with_mysql=no
 		fi
 		;;
-	"no")
+	no)
 		;;
 	*)
 		MYSQL_LIB_PATH="-L$with_mysql/lib"
@@ -531,7 +537,7 @@ AC_ARG_WITH([oracle],
 	[with_oracle=builtin])
 
 case "$with_oracle" in
-	"builtin")
+	yes|builtin)
 		if test -d "$srcdir/external/oracleclient" && test "$enable_64bit" == "yes"; then
 			AC_CONFIG_SUBDIRS([external/oracleclient])
 			ORACLE_LIB_PATH="-L\$(top_builddir)/external/lib"
@@ -540,7 +546,7 @@ case "$with_oracle" in
 			with_oracle=no
 		fi
 		;;
-	"no")
+	no)
 		;;
 	*)
 		ORACLE_LIB_PATH="-L$with_oracle/lib"
@@ -550,28 +556,55 @@ esac
 AM_CONDITIONAL([BUILD_CAS_FOR_ORACLE], [test "$with_oracle" != "no"])
 AC_MSG_RESULT([$with_oracle])
 
+AC_MSG_CHECKING([for cubrid manager server])
+AC_ARG_WITH([cmserver],
+	AS_HELP_STRING([--with-cmserver=PATH],
+		[for CUBRID Manager Server@<:@default=check@:>@]),
+	[with_cmserver=$withval],
+	[with_cmserver=check])
+
+case "$with_cmserver" in
+	yes|builtin|check)
+		if test -d "$srcdir/cubridmanager/server"; then
+		  if test ! -x "$srcdir/cubridmanager/server/configure"; then
+		    (cd "$srcdir/cubridmanager/server" && sh ./autogen.sh)
+		  fi
+		    cm_common_libdir=`readlink -f $PWD/cm_common`
+		    cm_common_includedir=`readlink -f $srcdir/src/cm_common`
+		    ac_configure_args="$ac_configure_args --with-cubrid-libdir=$cm_common_libdir --with-cubrid-includedir=$cm_common_includedir" AC_CONFIG_SUBDIRS([cubridmanager/server])
+		    OPTIONAL_DIR="$OPTIONAL_DIR cubridmanager/server"
+		    with_cmserver=builtin
+		else
+		  if test "$with_cmserver" != "check"; then
+		    AC_MSG_ERROR([there is no server in $srcdir/cubridmanager])
+		  else
+		    with_cmserver=no
+		  fi
+		fi
+		;;
+	no)
+		;;
+	*)
+		AC_MSG_ERROR([not supported yet])
+		;;
+esac
+AM_CONDITIONAL([BUILD_CMSERVER], [test "$with_cmserver" != "no"])
+AC_MSG_RESULT([$with_cmserver])
+
 AC_PREFIX_DEFAULT("$HOME/cubrid")
 
-BUILD_NUMBER=`cat $srcdir/BUILD_NUMBER`
-RELEASE_STRING=`echo $BUILD_NUMBER | sed -e "s|\.[[0-9]]*$||"`
-MAJOR_RELEASE_STRING=`echo $RELEASE_STRING | sed -e "s|\.[[0-9]]*$||"`
-MAJOR_VERSION=`echo $RELEASE_STRING | cut -d \. -f 1`
-MINOR_VERSION=`echo $RELEASE_STRING | cut -d \. -f 2`
-PATCH_VERSION=`echo $RELEASE_STRING | cut -d \. -f 3`
+BUILD_NUMBER=BUILD_NUMBER_STRING
 BUILD_OS=`echo $build_os | sed -e "s|-|_|"`
-#AC_SUBST(RELEASE_STRING)
-#AC_SUBST(MAJOR_RELEASE_STRING)
-#AC_SUBST(BUILD_NUMBER)
-AC_SUBST(LT_VERSION,$MAJOR_VERSION:$MINOR_VERSION:$PATCH_VERSION)
+AC_SUBST(LT_VERSION,MAJOR_VERSION:MINOR_VERSION:PATCH_VERSION)
 AC_SUBST([CONFIG_STATUS_DEPENDENCIES], ['$(top_srcdir)/BUILD_NUMBER'])
 
 SERVER_DEFS="-DSERVER_MODE"
 CS_DEFS="-DCS_MODE"
 SA_DEFS="-DSA_MODE"
 COMMON_DEFS="-DANSI=1 -DSYSV -DMAXPATHLEN=1024 -D_REENTRANT"
-VERSION_DEFS="-DMAJOR_VERSION=$MAJOR_VERSION -DMINOR_VERSION=$MINOR_VERSION \
--DPATCH_VERSION=$PATCH_VERSION -DRELEASE_STRING=$RELEASE_STRING \
--DMAJOR_RELEASE_STRING=$MAJOR_RELEASE_STRING -DBUILD_NUMBER=$BUILD_NUMBER \
+VERSION_DEFS="-DMAJOR_VERSION=MAJOR_VERSION -DMINOR_VERSION=MINOR_VERSION \
+-DPATCH_VERSION=PATCH_VERSION -DRELEASE_STRING=RELEASE_STRING \
+-DMAJOR_RELEASE_STRING=MAJOR_RELEASE_STRING -DBUILD_NUMBER=BUILD_NUMBER_STRING \
 -DBUILD_OS='$BUILD_OS'"
 
 SRC_INC="-I\$(top_srcdir)/include"
@@ -781,8 +814,14 @@ AC_ARG_WITH([tmpdir],
 AC_MSG_RESULT($CUBRID_TMPDIR)
 DIR_DEFS="$DIR_DEFS -DCUBRID_TMPDIR=\\\"$CUBRID_TMPDIR\\\""
 
+# change PACKAGE_STRING to official version string
+PACKAGE_STRING='CUBRID VERSION_STRING'
+AC_DEFINE([PRODUCT_STRING], ["VERSION_STRING"], [official version string])
+
 AC_SUBST([BUILD_NUMBER])
+AC_SUBST([PRODUCT_STRING])
 AC_SUBST([EXTERNAL_PKGS])
+AC_SUBST([EXTERNAL_DIST])
 AC_SUBST([SYS_DEFS])
 AC_SUBST([SYS_LIBS])
 AC_SUBST([EXT_LIBS])

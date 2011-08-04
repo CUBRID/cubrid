@@ -3262,8 +3262,8 @@ of_select_lp
 #define UCI_OPT_UNSAFE_NULL     0x0001
 #define makestring1(x) #x
 #define makestring(x) makestring1(x)
-#if !defined(VERSION)
-#define VERSION makestring(RELEASE_STRING)
+#if !defined(PRODUCT_STRING)
+#define PRODUCT_STRING makestring(RELEASE_STRING)
 #endif
 
 #define ESQL_MSG_CATALOG        "esql.cat"
@@ -3631,7 +3631,7 @@ main (int argc, char **argv)
   prog_name = argv[0];
   if (pp_announce_version)
     {
-      printf (pp_get_msg (EX_ESQLMMAIN_SET, MSG_VERSION), argv[0], VERSION);
+      printf (pp_get_msg (EX_ESQLMMAIN_SET, MSG_VERSION), argv[0], PRODUCT_STRING);
     }
 
   if (pp_varchar2)

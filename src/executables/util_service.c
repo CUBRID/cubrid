@@ -524,7 +524,7 @@ util_service_usage (int util_type)
 
   exec_name = basename ((char *) Argv[0]);
   print_message (stdout, MSGCAT_UTIL_GENERIC_CUBRID_USAGE + util_type,
-		 VERSION, exec_name, exec_name, exec_name);
+		 PRODUCT_STRING, exec_name, exec_name, exec_name);
 }
 
 /*

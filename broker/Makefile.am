@@ -50,7 +50,7 @@ bin_PROGRAMS = cub_broker cubrid_broker cub_cas \
 	broker_monitor broker_changer \
 	broker_log_converter broker_log_runner broker_log_top
 
-compat_SCRIPTS = uc
+dist_compat_SCRIPTS = uc
 
 cub_broker_SOURCES = \
 	$(BROKER_DIR)/broker.c \

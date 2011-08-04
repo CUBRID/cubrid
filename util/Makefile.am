@@ -41,6 +41,8 @@ DBMT_DIR = $(SRC)/dbmt
 
 FLEX = flex
 
+EXTRA_DIST = start_cubrid stop_cubrid
+
 AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ \
 	@SYS_DEFS@ @COMMON_DEFS@ @VERSION_DEFS@ \
 	-DPRODUCE_ANSI_CODE -DUCI_TEMPORARY

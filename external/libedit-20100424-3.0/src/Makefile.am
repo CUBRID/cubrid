@@ -8,31 +8,31 @@ AHDR= vi.h emacs.h common.h
 ASRC= $(srcdir)/vi.c $(srcdir)/emacs.c $(srcdir)/common.c
 
 vi.h: Makefile $(srcdir)/vi.c
-	sh $(srcdir)/makelist -h $(srcdir)/vi.c > $@
+	AWK=$(AWK) sh $(srcdir)/makelist -h $(srcdir)/vi.c > $@
 
 emacs.h: Makefile $(srcdir)/emacs.c
-	sh $(srcdir)/makelist -h $(srcdir)/emacs.c > $@
+	AWK=$(AWK) sh $(srcdir)/makelist -h $(srcdir)/emacs.c > $@
 
 common.h: Makefile $(srcdir)/common.c
-	sh $(srcdir)/makelist -h $(srcdir)/common.c > $@
+	AWK=$(AWK) sh $(srcdir)/makelist -h $(srcdir)/common.c > $@
 
 fcns.h: Makefile $(AHDR)
-	sh $(srcdir)/makelist -fh $(AHDR) > $@
+	AWK=$(AWK) sh $(srcdir)/makelist -fh $(AHDR) > $@
 
 help.h: Makefile $(ASRC)
-	sh $(srcdir)/makelist -bh $(ASRC) > $@
+	AWK=$(AWK) sh $(srcdir)/makelist -bh $(ASRC) > $@
 
 fcns.c: Makefile $(AHDR)
-	sh $(srcdir)/makelist -fc $(AHDR) > $@
+	AWK=$(AWK) sh $(srcdir)/makelist -fc $(AHDR) > $@
 
 help.c: Makefile $(ASRC)
-	sh $(srcdir)/makelist -bc $(ASRC) > $@
+	AWK=$(AWK) sh $(srcdir)/makelist -bc $(ASRC) > $@
 
 tokenizern.c: Makefile $(srcdir)/tokenizer.c
-	sh $(srcdir)/makelist -n $(srcdir)/tokenizer.c > $@
+	AWK=$(AWK) sh $(srcdir)/makelist -n $(srcdir)/tokenizer.c > $@
 
 historyn.c: Makefile $(srcdir)/history.c
-	sh $(srcdir)/makelist -n $(srcdir)/history.c > $@
+	AWK=$(AWK) sh $(srcdir)/makelist -n $(srcdir)/history.c > $@
 
 CLEANFILES = $(BUILT_SOURCES)
 
