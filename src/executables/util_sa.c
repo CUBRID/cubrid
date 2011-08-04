@@ -389,12 +389,12 @@ createdb (UTIL_FUNCTION_ARG * arg)
   if (db_volume_pages != -1)
     {
       util_print_deprecated ("--" CREATE_PAGES_L);
-      db_volume_size = db_volume_pages * db_page_size;
     }
   else
     {
       db_volume_pages = db_volume_size / db_page_size;
     }
+  db_volume_size = (UINT64) db_volume_pages *(UINT64) db_page_size;
 
   log_page_str =
     utility_get_option_string_value (arg_map, CREATE_LOG_PAGE_SIZE_S, 0);

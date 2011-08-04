@@ -666,7 +666,7 @@ util_redirect_stdout_to_null (void)
  *
  */
 static int
-util_size_to_byte (UINT64 * pre, char post)
+util_size_to_byte (double *pre, char post)
 {
   switch (post)
     {
@@ -677,27 +677,27 @@ util_size_to_byte (UINT64 * pre, char post)
     case 'k':
     case 'K':
       /* kilo */
-      *pre = *pre * 1024ULL;
+      *pre = *pre * 1024.0;
       break;
     case 'm':
     case 'M':
       /* mega */
-      *pre = *pre * 1048576ULL;
+      *pre = *pre * 1048576.0;
       break;
     case 'g':
     case 'G':
       /* giga */
-      *pre = *pre * 1073741824ULL;
+      *pre = *pre * 1073741824.0;
       break;
     case 't':
     case 'T':
       /* tera */
-      *pre = *pre * 1099511627776ULL;
+      *pre = *pre * 1099511627776.0;
       break;
     case 'p':
     case 'P':
       /* peta */
-      *pre = *pre * 1125899906842624ULL;
+      *pre = *pre * 1125899906842624.0;
       break;
     default:
       return ER_FAILED;
@@ -724,7 +724,7 @@ util_byte_to_size_string (UINT64 size_num, char *buf, size_t len)
       return ER_FAILED;
     }
 
-  while (pow < 6 && v > 1024.0)
+  while (pow < 6 && v >= 1024.0)
     {
       pow++;
       v /= 1024.0;
@@ -748,7 +748,7 @@ int
 util_size_string_to_byte (char *size_str, UINT64 * size_num)
 {
   int len;
-  UINT64 val;
+  double val;
   char c = 'B';
   char *end;
 
@@ -758,7 +758,7 @@ util_size_string_to_byte (char *size_str, UINT64 * size_num)
     }
   len = strlen (size_str);
 
-  val = strtoll (size_str, &end, 10);
+  val = strtod (size_str, &end);
   if (end == size_str)
     {
       return ER_FAILED;
@@ -775,7 +775,9 @@ util_size_string_to_byte (char *size_str, UINT64 * size_num)
       return ER_FAILED;
     }
 
-  *size_num = val;
+  *size_num = (UINT64) val;
+  *size_num /= 1024ULL;
+  *size_num *= 1024ULL;
   return NO_ERROR;
 }
 
