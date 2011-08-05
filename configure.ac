@@ -618,7 +618,7 @@ CUBRID_LIB="\$(top_builddir)/cubrid/libcubrid.la"
 CS_LIB="\$(top_builddir)/cs/libcubridcs.la"
 SA_LIB="\$(top_builddir)/sa/libcubridsa.la"
 CAS_LIB="\$(top_builddir)/cas/libcas.la"
-CCI_LIB="\$(top_builddir)/cas/libcascci.la"
+CCI_LIB="\$(top_builddir)/cci/libcascci.la"
 ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
 BROKER_ADMIN_LIB="\$(top_builddir)/broker/libbrokeradmin.la"
 
@@ -884,6 +884,7 @@ AC_CONFIG_FILES([Makefile
 	contrib/Makefile
 	jdbc/Makefile
 	java/Makefile
+	cci/Makefile
 	cas4mysql/Makefile
 	cas4oracle/Makefile
 	])

@@ -19,20 +19,11 @@
 
 
 SRC = $(top_srcdir)/src
-CCI_DIR = $(SRC)/cci
-EXEC_DIR = $(SRC)/executables
 COMPAT_DIR = $(SRC)/compat
-BROKER_DIR = $(SRC)/broker
-CM_COMMON_DIR = $(SRC)/cm_common
 
 noinst_HEADERS = system.h
 
 include_HEADERS = \
-	$(CCI_DIR)/cas_cci.h \
-	$(EXEC_DIR)/cubrid_esql.h \
-	$(BROKER_DIR)/cas_error.h \
-	$(CM_COMMON_DIR)/cm_stat.h \
-	$(CM_COMMON_DIR)/cm_dep.h \
 	$(COMPAT_DIR)/dbi.h
 
 install-data-hook:

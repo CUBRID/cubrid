@@ -25,6 +25,9 @@ AM_CPPFLAGS = @SRC_INC@ \
 	@SYS_DEFS@ @VERSION_DEFS@ @COMMON_DEFS@ @DIR_DEFS@
 #AM_LIBADD = @SYS_LIBS@
 
+include_HEADERS = \
+	$(CM_COMMON_DIR)/cm_stat.h \
+	$(CM_COMMON_DIR)/cm_dep.h
 
 bin_PROGRAMS = cub_jobsa cub_sainfo 
 

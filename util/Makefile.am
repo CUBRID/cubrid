@@ -62,6 +62,8 @@ $(EXECUTABLE_DIR)/loader_old_lexer.c : $(EXECUTABLE_DIR)/loader_old_lexer.l
 	$(FLEX) --prefix=loader_yy -o $@ $<
 
 
+include_HEADERS = $(EXECUTABLE_DIR)/cubrid_esql.h
+
 bin_PROGRAMS = \
 	csql cub_master cub_server cubrid cub_admin cub_commdb \
 	cubrid_esql cubrid_rel loadjava 

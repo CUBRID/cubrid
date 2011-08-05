@@ -19,33 +19,26 @@
 
 
 SRC = $(top_srcdir)/src
-BROKER_DIR = $(SRC)/broker
+CCI_DIR = $(SRC)/cci
 
-AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ \
-	@SYS_DEFS@ @VERSION_DEFS@ @DIR_DEFS@
+AM_CPPFLAGS = @SRC_INC@ @SYS_DEFS@ @VERSION_DEFS@
 
-noinst_LTLIBRARIES = libcas.la
-libcas_la_SOURCES = \
-	$(BROKER_DIR)/cas.c \
-	$(BROKER_DIR)/cas_network.c \
-	$(BROKER_DIR)/cas_net_buf.c \
-	$(BROKER_DIR)/cas_function.c \
-	$(BROKER_DIR)/cas_execute.c \
-	$(BROKER_DIR)/cas_handle.c \
-	$(BROKER_DIR)/cas_util.c \
-	$(BROKER_DIR)/cas_str_like.c \
-	$(BROKER_DIR)/cas_xa.c \
-	$(BROKER_DIR)/cas_schema_info.c \
-	$(BROKER_DIR)/cas_log.c \
-	$(BROKER_DIR)/cas_sql_log2.c \
-	$(BROKER_DIR)/broker_filename.c \
-	$(BROKER_DIR)/broker_util.c \
-	$(BROKER_DIR)/cas_error.c
-libcas_la_CFLAGS = $(AM_CFLAGS) -fPIC
-libcas_la_CPPFLAGS = $(AM_CPPFLAGS) -DLIBCAS_FOR_JSP
-libcas_la_LDFLAGS = -static
+include_HEADERS = $(CCI_DIR)/cas_cci.h
+
+lib_LTLIBRARIES = libcascci.la
+libcascci_la_SOURCES = \
+	$(CCI_DIR)/cas_cci.c \
+	$(CCI_DIR)/cci_util.c \
+	$(CCI_DIR)/cci_query_execute.c \
+	$(CCI_DIR)/cci_net_buf.c \
+	$(CCI_DIR)/cci_network.c \
+	$(CCI_DIR)/cci_handle_mng.c \
+	$(CCI_DIR)/cci_t_set.c \
+	$(CCI_DIR)/cci_t_lob.c
+libcascci_la_LDFLAGS = -version-number @LT_VERSION@
 
 VERSIONED_FILES = \
-	$(BROKER_DIR)/cas.c
+	$(CCI_DIR)/cas_cci.c \
+	$(CCI_DIR)/cci_network.c
 $(VERSIONED_FILES): $(top_srcdir)/BUILD_NUMBER
 	touch $@
