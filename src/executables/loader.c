@@ -168,6 +168,12 @@ extern int loader_yylineno;
 	  strncasecmp ((class_name), "glo_name", MAX(strlen(class_name), 8)) == 0  || \
 	  strncasecmp ((class_name), "glo_holder", MAX(strlen(class_name), 10)) == 0)
 
+#define FREE_STRING(s) \
+do { \
+  if ((s)->need_free_val) free_and_init ((s)->val); \
+  if ((s)->need_free_self) free_and_init ((s)); \
+} while (0)
+
 typedef int (*LDR_SETTER) (LDR_CONTEXT *, const char *, int, SM_ATTRIBUTE *);
 typedef int (*LDR_ELEM) (LDR_CONTEXT *, const char *, int, DB_VALUE *);
 
@@ -316,6 +322,7 @@ struct LDR_CONTEXT
   int commit_counter;		/* periodic commit counter            */
   int default_count;		/* the number of instances with       */
   /* values                             */
+  LDR_CONSTANT *cons;		/* constant list for instance line */
 };
 
 char **ignoreClasslist = NULL;
@@ -621,6 +628,7 @@ static int add_argument (LDR_CONTEXT * context);
 static void invalid_class_id_error (LDR_CONTEXT * context, int id);
 static int ldr_init_loader (LDR_CONTEXT * context);
 static void ldr_abort (void);
+static void ldr_process_object_ref (LDR_OBJECT_REF * ref, int type);
 
 /* default action */
 void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len,
@@ -1140,6 +1148,7 @@ ldr_clear_context (LDR_CONTEXT * context)
 
   context->id_class = NULL;
   context->attribute_type = LDR_ATTRIBUTE_ANY;
+  context->cons = NULL;
 }
 
 /*
@@ -4238,10 +4247,71 @@ ldr_act_finish_line (LDR_CONTEXT * context)
     }
 
   if (context->partition_of)
-    {				/* partition table load */
-      /* partitioned parent class-not allowed
-         partition key column must be specified */
-      if (!context->psi || context->key_attr_idx < 0)
+    {
+      int is_partition = NOT_PARTITION_CLASS;
+
+      err =
+	do_is_partitioned_classobj (&is_partition, context->cls, NULL, NULL);
+
+      if (err == NO_ERROR && is_partition == PARTITIONED_CLASS)
+	{
+	  /* partitioned parent class */
+	  MOP sub_table;
+	  DB_VALUE key_value, key_attname;
+
+	  db_make_null (&key_value);
+	  db_make_null (&key_attname);
+
+	  err = set_get_element (DB_GET_SET (context->psi->pattr),
+				 0, &key_attname);
+
+	  if (err == NO_ERROR)
+	    {
+	      err = db_get (context->obj, DB_GET_STRING (&key_attname),
+			    &key_value);
+	    }
+
+	  if (err == NO_ERROR)
+	    {
+	      err = do_select_partition (context->psi, &key_value,
+					 &sub_table);
+	    }
+
+	  if (err == NO_ERROR)
+	    {
+	      ldr_restore_pin_and_drop_obj (context, true);
+	      context->obj_pin = 0;
+	      context->class_pin = 0;
+	      context->obj = db_create_internal (sub_table);
+
+	      if (context->obj != NULL)
+		{
+		  ws_release_instance (context->obj);
+
+		  err =
+		    au_fetch_instance (context->obj, &context->mobj,
+				       AU_FETCH_UPDATE, AU_UPDATE);
+		  if (err == NO_ERROR)
+		    {
+		      context->next_attr = 0;
+		      ldr_process_constants (context->cons);
+
+		      err =
+			locator_flush_all_instances (context->obj->class_mop,
+						     DECACHE);
+		    }
+		}
+	      else
+		{
+		  err = ER_PARTITION_WORK_FAILED;
+		}
+	    }
+
+	  db_value_clear (&key_value);
+	  db_value_clear (&key_attname);
+	}
+
+      if (err != NO_ERROR)
 	{
 	  err = ER_PARTITION_WORK_FAILED;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
@@ -4380,7 +4450,7 @@ static int
 ldr_partition_info (LDR_CONTEXT * context)
 {
   SM_CLASS *smclass;
-  DB_VALUE pclassof, pname, classobj;
+  DB_VALUE pclassof, classobj;
   int error = NO_ERROR;
   int au_save;
 
@@ -4403,7 +4473,6 @@ ldr_partition_info (LDR_CONTEXT * context)
       context->psi = NULL;
       context->key_attr_idx = -1;
       DB_MAKE_NULL (&pclassof);
-      DB_MAKE_NULL (&pname);
       DB_MAKE_NULL (&classobj);
 
       error = db_get (smclass->partition_of, PARTITION_ATT_CLASSOF,
@@ -4412,23 +4481,15 @@ ldr_partition_info (LDR_CONTEXT * context)
 	{
 	  goto error_return;
 	}
-      error = db_get (smclass->partition_of, PARTITION_ATT_PNAME, &pname);
+      error = db_get (db_get_object (&pclassof), PARTITION_ATT_CLASSOF,
+		      &classobj);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
 	}
-      if (!DB_IS_NULL (&pname))
-	{
-	  error = db_get (db_get_object (&pclassof), PARTITION_ATT_CLASSOF,
-			  &classobj);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_return;
-	    }
 
-	  error = do_init_partition_select (db_get_object (&classobj),
-					    &context->psi);
-	}
+      error = do_init_partition_select (db_get_object (&classobj),
+					&context->psi);
     }
   else
     {
@@ -4440,7 +4501,6 @@ ldr_partition_info (LDR_CONTEXT * context)
 error_return:
   AU_ENABLE (au_save);
   pr_clear_value (&pclassof);
-  pr_clear_value (&pname);
   pr_clear_value (&classobj);
 
   return error;
@@ -4758,8 +4818,9 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
 	}
       if (invalid_attr)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_INVALID_CLASS_ATTR,
-		  2, ldr_attr_name (context), ldr_class_name (context));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_LDR_INVALID_CLASS_ATTR, 2, ldr_attr_name (context),
+		  ldr_class_name (context));
 	  CHECK_ERR (err, ER_LDR_INVALID_CLASS_ATTR);
 	}
       goto error_exit;
@@ -4952,7 +5013,8 @@ ldr_refresh_attrs (LDR_CONTEXT * context)
       attdesc = &(context->attrs[i]);
       CHECK_ERR (err, db_get_attribute_descriptor (context->cls,
 						   attdesc->attdesc->name,
-						   context->attribute_type ==
+						   context->
+						   attribute_type ==
 						   LDR_ATTRIBUTE_CLASS,
 						   true, &db_attdesc));
       /* Free existing descriptor */
@@ -5175,13 +5237,17 @@ error_exit:
  *    This is called when a new instance if found by the parser.
  */
 void
-ldr_act_start_instance (LDR_CONTEXT * context, int id)
+ldr_act_start_instance (LDR_CONTEXT * context, int id, LDR_CONSTANT * cons)
 {
   CHECK_SKIP ();
   if (context->valid)
     {
 
       context->inst_num = id;
+      if (cons)
+	{
+	  context->cons = cons;
+	}
 
       if (ldr_reset_context (context) != NO_ERROR)
 	display_error (-1);
@@ -5304,7 +5370,8 @@ insert_meth_instance (LDR_CONTEXT * context)
 	      if (inst == NULL || !(inst->flags & INST_FLAG_RESERVED))
 		{
 		  CHECK_ERR (err,
-			     otable_insert (context->table, WS_OID (real_obj),
+			     otable_insert (context->table,
+					    WS_OID (real_obj),
 					    context->inst_num));
 		  CHECK_PTR (err, inst =
 			     otable_find (context->table, context->inst_num));
@@ -6051,4 +6118,153 @@ ldr_is_ignore_class (char *classname, size_t size)
     }
 
   return false;
+}
+
+
+void
+ldr_process_constants (LDR_CONSTANT * cons)
+{
+  LDR_CONSTANT *c, *save;
+
+  for (c = cons; c; c = save)
+    {
+      save = c->next;
+
+      switch (c->type)
+	{
+	case LDR_NULL:
+	  (*ldr_act) (ldr_Current_context, NULL, 0, LDR_NULL);
+	  break;
+
+	case LDR_INT:
+	case LDR_FLOAT:
+	case LDR_DOUBLE:
+	case LDR_NUMERIC:
+	case LDR_MONETARY:
+	case LDR_DATE:
+	case LDR_TIME:
+	case LDR_TIMESTAMP:
+	case LDR_DATETIME:
+	case LDR_STR:
+	case LDR_NSTR:
+	  {
+	    LDR_STRING *str = (LDR_STRING *) c->val;
+
+	    (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
+	    FREE_STRING (str);
+	  }
+	  break;
+
+	case LDR_BSTR:
+	case LDR_XSTR:
+	case LDR_ELO_INT:
+	case LDR_ELO_EXT:
+	case LDR_SYS_USER:
+	case LDR_SYS_CLASS:
+	  {
+	    LDR_STRING *str = (LDR_STRING *) c->val;
+
+	    (*ldr_act) (ldr_Current_context, str->val, strlen (str->val),
+			c->type);
+	    FREE_STRING (str);
+	  }
+	  break;
+
+	case LDR_OID:
+	case LDR_CLASS_OID:
+	  ldr_process_object_ref ((LDR_OBJECT_REF *) c->val, c->type);
+	  break;
+
+	case LDR_COLLECTION:
+	  (*ldr_act) (ldr_Current_context, "{", 1, LDR_COLLECTION);
+	  ldr_process_constants ((LDR_CONSTANT *) c->val);
+	  ldr_act_attr (ldr_Current_context, NULL, 0, LDR_COLLECTION);
+	  break;
+
+	default:
+	  break;
+	}
+
+      if (c->need_free)
+	{
+	  free_and_init (c);
+	}
+    }
+}
+
+static void
+ldr_process_object_ref (LDR_OBJECT_REF * ref, int type)
+{
+  bool ignore_class = false;
+  char *class_name;
+  DB_OBJECT *ref_class = NULL;
+
+  if (ref->class_id && ref->class_id->val)
+    {
+      ldr_act_set_ref_class_id (ldr_Current_context,
+				atoi (ref->class_id->val));
+    }
+  else
+    {
+      ldr_act_set_ref_class (ldr_Current_context, ref->class_name->val);
+    }
+
+  if (ref->instance_number && ref->instance_number->val)
+    {
+      ldr_act_set_instance_id (ldr_Current_context,
+			       atoi (ref->instance_number->val));
+    }
+  else
+    {
+      /*ldr_act_set_instance_id(ldr_Current_context, 0); *//* right?? */
+    }
+
+  ref_class = ldr_act_get_ref_class (ldr_Current_context);
+  if (ref_class != NULL)
+    {
+      class_name = db_get_class_name (ref_class);
+      ignore_class = ldr_is_ignore_class (class_name, strlen (class_name));
+    }
+
+  if (type == LDR_OID)
+    {
+      (*ldr_act) (ldr_Current_context, ref->instance_number->val,
+		  (ref->instance_number == NULL
+		   && ref->instance_number->val) ? 0 : ref->
+		  instance_number->size, (ignore_class) ? LDR_NULL : LDR_OID);
+    }
+  else
+    {
+      /* right ?? */
+      if (ref->class_name)
+	{
+	  (*ldr_act) (ldr_Current_context, ref->class_name->val,
+		      ref->class_name->size,
+		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
+	}
+      else
+	{
+	  (*ldr_act) (ldr_Current_context, ref->class_id->val,
+		      (ref->class_id == NULL
+		       && ref->class_id->val) ? 0 : ref->class_id->size,
+		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
+	}
+    }
+
+  if (ref->class_id)
+    {
+      FREE_STRING (ref->class_id);
+    }
+
+  if (ref->class_name)
+    {
+      FREE_STRING (ref->class_name);
+    }
+
+  if (ref->instance_number)
+    {
+      FREE_STRING (ref->instance_number);
+    }
+
+  free_and_init (ref);
 }

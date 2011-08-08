@@ -38,54 +38,55 @@
 # define YYTOKENTYPE
    /* Put the tokens into the symbol table, so that GDB and other debuggers
       know about them.  */
-   enum yytokentype {
-     NL = 258,
-     NULL_ = 259,
-     CLASS = 260,
-     SHARED = 261,
-     DEFAULT = 262,
-     DATE_ = 263,
-     TIME = 264,
-     UTIME = 265,
-     TIMESTAMP = 266,
-     DATETIME = 267,
-     CMD_ID = 268,
-     CMD_CLASS = 269,
-     CMD_CONSTRUCTOR = 270,
-     REF_ELO_INT = 271,
-     REF_ELO_EXT = 272,
-     REF_USER = 273,
-     REF_CLASS = 274,
-     OBJECT_REFERENCE = 275,
-     OID_DELIMETER = 276,
-     SET_START_BRACE = 277,
-     SET_END_BRACE = 278,
-     START_PAREN = 279,
-     END_PAREN = 280,
-     REAL_LIT = 281,
-     INT_LIT = 282,
-     OID_ = 283,
-     TIME_LIT4 = 284,
-     TIME_LIT42 = 285,
-     TIME_LIT3 = 286,
-     TIME_LIT31 = 287,
-     TIME_LIT2 = 288,
-     TIME_LIT1 = 289,
-     DATE_LIT2 = 290,
-     YEN_SYMBOL = 291,
-     WON_SYMBOL = 292,
-     BACKSLASH = 293,
-     DOLLAR_SYMBOL = 294,
-     IDENTIFIER = 295,
-     Quote = 296,
-     DQuote = 297,
-     NQuote = 298,
-     BQuote = 299,
-     XQuote = 300,
-     SQS_String_Body = 301,
-     DQS_String_Body = 302,
-     COMMA = 303
-   };
+enum yytokentype
+{
+  NL = 258,
+  NULL_ = 259,
+  CLASS = 260,
+  SHARED = 261,
+  DEFAULT = 262,
+  DATE_ = 263,
+  TIME = 264,
+  UTIME = 265,
+  TIMESTAMP = 266,
+  DATETIME = 267,
+  CMD_ID = 268,
+  CMD_CLASS = 269,
+  CMD_CONSTRUCTOR = 270,
+  REF_ELO_INT = 271,
+  REF_ELO_EXT = 272,
+  REF_USER = 273,
+  REF_CLASS = 274,
+  OBJECT_REFERENCE = 275,
+  OID_DELIMETER = 276,
+  SET_START_BRACE = 277,
+  SET_END_BRACE = 278,
+  START_PAREN = 279,
+  END_PAREN = 280,
+  REAL_LIT = 281,
+  INT_LIT = 282,
+  OID_ = 283,
+  TIME_LIT4 = 284,
+  TIME_LIT42 = 285,
+  TIME_LIT3 = 286,
+  TIME_LIT31 = 287,
+  TIME_LIT2 = 288,
+  TIME_LIT1 = 289,
+  DATE_LIT2 = 290,
+  YEN_SYMBOL = 291,
+  WON_SYMBOL = 292,
+  BACKSLASH = 293,
+  DOLLAR_SYMBOL = 294,
+  IDENTIFIER = 295,
+  Quote = 296,
+  DQuote = 297,
+  NQuote = 298,
+  BQuote = 299,
+  XQuote = 300,
+  SQS_String_Body = 301,
+  DQS_String_Body = 302,
+  COMMA = 303
+};
 #endif
 /* Tokens.  */
 #define NL 258
@@ -140,22 +141,21 @@
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 79 "../../src/executables/loader_grammar.y"
+#line 77 "../../src/executables/loader_grammar.y"
 {
-	int 	intval;
-	LDR_STRING	*string;
-	LDR_CLASS_COMMAND_SPEC *cmd_spec;
-	LDR_CONSTRUCTOR_SPEC *ctor_spec;
-	LDR_CONSTANT *constant;
-	LDR_OBJECT_REF *obj_ref;
+  int intval;
+  LDR_STRING *string;
+  LDR_CLASS_COMMAND_SPEC *cmd_spec;
+  LDR_CONSTRUCTOR_SPEC *ctor_spec;
+  LDR_CONSTANT *constant;
+  LDR_OBJECT_REF *obj_ref;
 }
 /* Line 1529 of yacc.c.  */
 #line 154 "../../src/executables/loader_grammar.h"
-	YYSTYPE;
-# define yystype YYSTYPE /* obsolescent; will be withdrawn */
+YYSTYPE;
+# define yystype YYSTYPE	/* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1
 #endif
 
 extern YYSTYPE loader_yylval;
-

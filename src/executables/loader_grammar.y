@@ -69,8 +69,6 @@ static LDR_STRING *loader_append_string_list(LDR_STRING *head, LDR_STRING *str);
 static LDR_CLASS_COMMAND_SPEC *loader_make_class_command_spec(int qualifier, LDR_STRING *attr_list, LDR_CONSTRUCTOR_SPEC *ctor_spec);
 static LDR_CONSTANT* loader_make_constant(int type, void *val);
 static LDR_CONSTANT *loader_append_constant_list(LDR_CONSTANT *head, LDR_CONSTANT *tail);
-static void loader_process_constants (LDR_CONSTANT *c);
-static void loader_process_object_ref (LDR_OBJECT_REF * ref, int type);
 
 %}
 
@@ -451,19 +449,19 @@ argument_name :
 instance_line :
   object_id
   {
-    ldr_act_start_instance (ldr_Current_context, $1);
+    ldr_act_start_instance (ldr_Current_context, $1, NULL);
   }
   |
   object_id constant_list
   {
-    ldr_act_start_instance (ldr_Current_context, $1);
-    loader_process_constants ($2);
+    ldr_act_start_instance (ldr_Current_context, $1, $2);
+    ldr_process_constants ($2);
   }
   |
   constant_list
   {
-    ldr_act_start_instance (ldr_Current_context, -1);
-    loader_process_constants ($1);
+    ldr_act_start_instance (ldr_Current_context, -1, $1);
+    ldr_process_constants ($1);
   }
   ;
 
@@ -814,159 +812,6 @@ loader_append_constant_list (LDR_CONSTANT * head, LDR_CONSTANT * tail)
 
   head->last = tail;
   return head;
-}
-
-static void
-loader_process_object_ref (LDR_OBJECT_REF * ref, int type)
-{
-  bool ignore_class = false;
-  char *class_name;
-  DB_OBJECT *ref_class = NULL;
-
-  assert (ref != NULL);
-  if (ref == NULL)
-    {
-      return;
-    }
-
-  if (ref->class_id && ref->class_id->val)
-    {
-      ldr_act_set_ref_class_id (ldr_Current_context,
-				atoi (ref->class_id->val));
-    }
-  else
-    {
-      ldr_act_set_ref_class (ldr_Current_context, ref->class_name->val);
-    }
-
-  if (ref->instance_number && ref->instance_number->val)
-    {
-      ldr_act_set_instance_id (ldr_Current_context,
-			       atoi (ref->instance_number->val));
-    }
-  else
-    {
-      /*ldr_act_set_instance_id(ldr_Current_context, 0); *//* right?? */
-    }
-
-  ref_class = ldr_act_get_ref_class (ldr_Current_context);
-  if (ref_class != NULL)
-    {
-      class_name = db_get_class_name (ref_class);
-      ignore_class = ldr_is_ignore_class (class_name, strlen (class_name));
-    }
-
-  if (type == LDR_OID)
-    {
-      (*ldr_act) (ldr_Current_context, ref->instance_number->val,
-		  (ref->instance_number == NULL
-		   && ref->instance_number->val) ? 0 : ref->
-		  instance_number->size, (ignore_class) ? LDR_NULL : LDR_OID);
-    }
-  else
-    {
-      /* right ?? */
-      if (ref->class_name)
-	{
-	  (*ldr_act) (ldr_Current_context, ref->class_name->val,
-		      ref->class_name->size,
-		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
-	}
-      else
-	{
-	  (*ldr_act) (ldr_Current_context, ref->class_id->val,
-		      (ref->class_id == NULL
-		       && ref->class_id->val) ? 0 : ref->class_id->size,
-		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
-	}
-    }
-
-  if (ref->class_id)
-    {
-      FREE_STRING (ref->class_id);
-    }
-
-  if (ref->class_name)
-    {
-      FREE_STRING (ref->class_name);
-    }
-
-  if (ref->instance_number)
-    {
-      FREE_STRING (ref->instance_number);
-    }
-
-  free_and_init (ref);
-}
-
-static void
-loader_process_constants (LDR_CONSTANT * cons)
-{
-  LDR_CONSTANT *c, *save;
-
-  for (c = cons; c; c = save)
-    {
-      save = c->next;
-
-      switch (c->type)
-	{
-	case LDR_NULL:
-	  (*ldr_act) (ldr_Current_context, NULL, 0, LDR_NULL);
-	  break;
-
-	case LDR_INT:
-	case LDR_FLOAT:
-	case LDR_DOUBLE:
-	case LDR_NUMERIC:
-	case LDR_MONETARY:
-	case LDR_DATE:
-	case LDR_TIME:
-	case LDR_TIMESTAMP:
-	case LDR_DATETIME:
-	case LDR_STR:
-	case LDR_NSTR:
-	  {
-	    LDR_STRING *str = (LDR_STRING *) c->val;
-	     
-	    (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
-	    FREE_STRING (str);
-	  }
-	  break;
-
-	case LDR_BSTR:
-	case LDR_XSTR:
-	case LDR_ELO_INT:
-	case LDR_ELO_EXT:
-	case LDR_SYS_USER:
-	case LDR_SYS_CLASS:
-	  {
-	    LDR_STRING *str = (LDR_STRING *) c->val;
-	     
-	    (*ldr_act) (ldr_Current_context, str->val, strlen(str->val), c->type);
-	    FREE_STRING (str);
-	  }
-	  break;
-
-	case LDR_OID:
-	case LDR_CLASS_OID:
-	  loader_process_object_ref ((LDR_OBJECT_REF *) c->val, c->type);
-	  break;
-
-	case LDR_COLLECTION:
-	  (*ldr_act) (ldr_Current_context, "{", 1, LDR_COLLECTION);
-	  loader_process_constants ((LDR_CONSTANT *) c->val);
-	  ldr_act_attr (ldr_Current_context, NULL, 0, LDR_COLLECTION);
-	  break;
-
-	default:
-	  break;
-	}
-
-      if (c->need_free)
-	{
-	  free_and_init (c);
-	}
-    }
 }
 
 void do_loader_parse(FILE *fp)

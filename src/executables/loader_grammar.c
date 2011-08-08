@@ -73,54 +73,55 @@
 # define YYTOKENTYPE
    /* Put the tokens into the symbol table, so that GDB and other debuggers
       know about them.  */
-   enum yytokentype {
-     NL = 258,
-     NULL_ = 259,
-     CLASS = 260,
-     SHARED = 261,
-     DEFAULT = 262,
-     DATE_ = 263,
-     TIME = 264,
-     UTIME = 265,
-     TIMESTAMP = 266,
-     DATETIME = 267,
-     CMD_ID = 268,
-     CMD_CLASS = 269,
-     CMD_CONSTRUCTOR = 270,
-     REF_ELO_INT = 271,
-     REF_ELO_EXT = 272,
-     REF_USER = 273,
-     REF_CLASS = 274,
-     OBJECT_REFERENCE = 275,
-     OID_DELIMETER = 276,
-     SET_START_BRACE = 277,
-     SET_END_BRACE = 278,
-     START_PAREN = 279,
-     END_PAREN = 280,
-     REAL_LIT = 281,
-     INT_LIT = 282,
-     OID_ = 283,
-     TIME_LIT4 = 284,
-     TIME_LIT42 = 285,
-     TIME_LIT3 = 286,
-     TIME_LIT31 = 287,
-     TIME_LIT2 = 288,
-     TIME_LIT1 = 289,
-     DATE_LIT2 = 290,
-     YEN_SYMBOL = 291,
-     WON_SYMBOL = 292,
-     BACKSLASH = 293,
-     DOLLAR_SYMBOL = 294,
-     IDENTIFIER = 295,
-     Quote = 296,
-     DQuote = 297,
-     NQuote = 298,
-     BQuote = 299,
-     XQuote = 300,
-     SQS_String_Body = 301,
-     DQS_String_Body = 302,
-     COMMA = 303
-   };
+enum yytokentype
+{
+  NL = 258,
+  NULL_ = 259,
+  CLASS = 260,
+  SHARED = 261,
+  DEFAULT = 262,
+  DATE_ = 263,
+  TIME = 264,
+  UTIME = 265,
+  TIMESTAMP = 266,
+  DATETIME = 267,
+  CMD_ID = 268,
+  CMD_CLASS = 269,
+  CMD_CONSTRUCTOR = 270,
+  REF_ELO_INT = 271,
+  REF_ELO_EXT = 272,
+  REF_USER = 273,
+  REF_CLASS = 274,
+  OBJECT_REFERENCE = 275,
+  OID_DELIMETER = 276,
+  SET_START_BRACE = 277,
+  SET_END_BRACE = 278,
+  START_PAREN = 279,
+  END_PAREN = 280,
+  REAL_LIT = 281,
+  INT_LIT = 282,
+  OID_ = 283,
+  TIME_LIT4 = 284,
+  TIME_LIT42 = 285,
+  TIME_LIT3 = 286,
+  TIME_LIT31 = 287,
+  TIME_LIT2 = 288,
+  TIME_LIT1 = 289,
+  DATE_LIT2 = 290,
+  YEN_SYMBOL = 291,
+  WON_SYMBOL = 292,
+  BACKSLASH = 293,
+  DOLLAR_SYMBOL = 294,
+  IDENTIFIER = 295,
+  Quote = 296,
+  DQuote = 297,
+  NQuote = 298,
+  BQuote = 299,
+  XQuote = 300,
+  SQS_String_Body = 301,
+  DQS_String_Body = 302,
+  COMMA = 303
+};
 #endif
 /* Tokens.  */
 #define NL 258
@@ -210,21 +211,25 @@ do { \
 extern bool loader_In_instance_line;
 extern FILE *loader_yyin;
 
-extern int loader_yylex(void);
-extern void loader_yyerror(char* s);
+extern int loader_yylex (void);
+extern void loader_yyerror (char *s);
 extern void loader_reset_string_pool (void);
 extern void loader_initialize_lexer (void);
-extern void do_loader_parse(FILE *fp);
+extern void do_loader_parse (FILE * fp);
 
 static LDR_CONSTANT constant_Pool[CONSTANT_POOL_SIZE];
 static int constant_Pool_idx = 0;
 
-static LDR_STRING *loader_append_string_list(LDR_STRING *head, LDR_STRING *str);
-static LDR_CLASS_COMMAND_SPEC *loader_make_class_command_spec(int qualifier, LDR_STRING *attr_list, LDR_CONSTRUCTOR_SPEC *ctor_spec);
-static LDR_CONSTANT* loader_make_constant(int type, void *val);
-static LDR_CONSTANT *loader_append_constant_list(LDR_CONSTANT *head, LDR_CONSTANT *tail);
-static void loader_process_constants (LDR_CONSTANT *c);
-static void loader_process_object_ref (LDR_OBJECT_REF * ref, int type);
+static LDR_STRING *loader_append_string_list (LDR_STRING * head,
+					      LDR_STRING * str);
+static LDR_CLASS_COMMAND_SPEC *loader_make_class_command_spec (int qualifier,
+							       LDR_STRING *
+							       attr_list,
+							       LDR_CONSTRUCTOR_SPEC
+							       * ctor_spec);
+static LDR_CONSTANT *loader_make_constant (int type, void *val);
+static LDR_CONSTANT *loader_append_constant_list (LDR_CONSTANT * head,
+						  LDR_CONSTANT * tail);
 
 
 
@@ -248,19 +253,19 @@ static void loader_process_object_ref (LDR_OBJECT_REF * ref, int type);
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 79 "../../src/executables/loader_grammar.y"
+#line 77 "../../src/executables/loader_grammar.y"
 {
-	int 	intval;
-	LDR_STRING	*string;
-	LDR_CLASS_COMMAND_SPEC *cmd_spec;
-	LDR_CONSTRUCTOR_SPEC *ctor_spec;
-	LDR_CONSTANT *constant;
-	LDR_OBJECT_REF *obj_ref;
+  int intval;
+  LDR_STRING *string;
+  LDR_CLASS_COMMAND_SPEC *cmd_spec;
+  LDR_CONSTRUCTOR_SPEC *ctor_spec;
+  LDR_CONSTANT *constant;
+  LDR_OBJECT_REF *obj_ref;
 }
 /* Line 193 of yacc.c.  */
-#line 262 "../../src/executables/loader_grammar.c"
-	YYSTYPE;
-# define yystype YYSTYPE /* obsolescent; will be withdrawn */
+#line 260 "../../src/executables/loader_grammar.c"
+YYSTYPE;
+# define yystype YYSTYPE	/* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1
 #endif
@@ -271,7 +276,7 @@ typedef union YYSTYPE
 
 
 /* Line 216 of yacc.c.  */
-#line 275 "../../src/executables/loader_grammar.c"
+#line 273 "../../src/executables/loader_grammar.c"
 
 #ifdef short
 # undef short
@@ -311,7 +316,7 @@ typedef short int yytype_int16;
 #  define YYSIZE_T size_t
 # elif ! defined YYSIZE_T && (defined __STDC__ || defined __C99__FUNC__ \
      || defined __cplusplus || defined _MSC_VER)
-#  include <stddef.h> /* INFRINGES ON USER NAME SPACE */
+#  include <stddef.h>		/* INFRINGES ON USER NAME SPACE */
 #  define YYSIZE_T size_t
 # else
 #  define YYSIZE_T unsigned int
@@ -323,7 +328,7 @@ typedef short int yytype_int16;
 #ifndef YY_
 # if YYENABLE_NLS
 #  if ENABLE_NLS
-#   include <libintl.h> /* INFRINGES ON USER NAME SPACE */
+#   include <libintl.h>		/* INFRINGES ON USER NAME SPACE */
 #   define YY_(msgid) dgettext ("bison-runtime", msgid)
 #  endif
 # endif
@@ -336,7 +341,7 @@ typedef short int yytype_int16;
 #if ! defined lint || defined __GNUC__
 # define YYUSE(e) ((void) (e))
 #else
-# define YYUSE(e) /* empty */
+# define YYUSE(e)		/* empty */
 #endif
 
 /* Identity function, used to suppress warnings about constant conditions.  */
@@ -350,7 +355,7 @@ YYID (int i)
 #else
 static int
 YYID (i)
-    int i;
+     int i;
 #endif
 {
   return i;
@@ -366,17 +371,17 @@ YYID (i)
 #   ifdef __GNUC__
 #    define YYSTACK_ALLOC __builtin_alloca
 #   elif defined __BUILTIN_VA_ARG_INCR
-#    include <alloca.h> /* INFRINGES ON USER NAME SPACE */
+#    include <alloca.h>		/* INFRINGES ON USER NAME SPACE */
 #   elif defined _AIX
 #    define YYSTACK_ALLOC __alloca
 #   elif defined _MSC_VER
-#    include <malloc.h> /* INFRINGES ON USER NAME SPACE */
+#    include <malloc.h>		/* INFRINGES ON USER NAME SPACE */
 #    define alloca _alloca
 #   else
 #    define YYSTACK_ALLOC alloca
 #    if ! defined _ALLOCA_H && ! defined _STDLIB_H && (defined __STDC__ || defined __C99__FUNC__ \
      || defined __cplusplus || defined _MSC_VER)
-#     include <stdlib.h> /* INFRINGES ON USER NAME SPACE */
+#     include <stdlib.h>	/* INFRINGES ON USER NAME SPACE */
 #     ifndef _STDLIB_H
 #      define _STDLIB_H 1
 #     endif
@@ -393,7 +398,7 @@ YYID (i)
        and a page size can be as small as 4096 bytes.  So we cannot safely
        invoke alloca (N) if N exceeds 4096.  Use a slightly smaller number
        to allow for a few compiler-allocated temporary stack slots.  */
-#   define YYSTACK_ALLOC_MAXIMUM 4032 /* reasonable circa 2006 */
+#   define YYSTACK_ALLOC_MAXIMUM 4032	/* reasonable circa 2006 */
 #  endif
 # else
 #  define YYSTACK_ALLOC YYMALLOC
@@ -404,7 +409,7 @@ YYID (i)
 #  if (defined __cplusplus && ! defined _STDLIB_H \
        && ! ((defined YYMALLOC || defined malloc) \
 	     && (defined YYFREE || defined free)))
-#   include <stdlib.h> /* INFRINGES ON USER NAME SPACE */
+#   include <stdlib.h>		/* INFRINGES ON USER NAME SPACE */
 #   ifndef _STDLIB_H
 #    define _STDLIB_H 1
 #   endif
@@ -413,14 +418,14 @@ YYID (i)
 #   define YYMALLOC malloc
 #   if ! defined malloc && ! defined _STDLIB_H && (defined __STDC__ || defined __C99__FUNC__ \
      || defined __cplusplus || defined _MSC_VER)
-void *malloc (YYSIZE_T); /* INFRINGES ON USER NAME SPACE */
+void *malloc (YYSIZE_T);	/* INFRINGES ON USER NAME SPACE */
 #   endif
 #  endif
 #  ifndef YYFREE
 #   define YYFREE free
 #   if ! defined free && ! defined _STDLIB_H && (defined __STDC__ || defined __C99__FUNC__ \
      || defined __cplusplus || defined _MSC_VER)
-void free (void *); /* INFRINGES ON USER NAME SPACE */
+void free (void *);		/* INFRINGES ON USER NAME SPACE */
 #   endif
 #  endif
 # endif
@@ -436,7 +441,7 @@ union yyalloc
 {
   yytype_int16 yyss;
   YYSTYPE yyvs;
-  };
+};
 
 /* The size of the maximum gap between one aligned stack and the next.  */
 # define YYSTACK_GAP_MAXIMUM (sizeof (union yyalloc) - 1)
@@ -505,109 +510,104 @@ union yyalloc
   ((unsigned int) (YYX) <= YYMAXUTOK ? yytranslate[YYX] : YYUNDEFTOK)
 
 /* YYTRANSLATE[YYLEX] -- Bison symbol number corresponding to YYLEX.  */
-static const yytype_uint8 yytranslate[] =
-{
-       0,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     1,     2,     3,     4,
-       5,     6,     7,     8,     9,    10,    11,    12,    13,    14,
-      15,    16,    17,    18,    19,    20,    21,    22,    23,    24,
-      25,    26,    27,    28,    29,    30,    31,    32,    33,    34,
-      35,    36,    37,    38,    39,    40,    41,    42,    43,    44,
-      45,    46,    47,    48
+static const yytype_uint8 yytranslate[] = {
+  0, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 1, 2, 3, 4,
+  5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+  15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+  25, 26, 27, 28, 29, 30, 31, 32, 33, 34,
+  35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
+  45, 46, 47, 48
 };
 
 #if YYDEBUG
 /* YYPRHS[YYN] -- Index of the first RHS symbol of rule number YYN in
    YYRHS.  */
-static const yytype_uint8 yyprhs[] =
-{
-       0,     0,     3,     4,     7,     9,    12,    15,    17,    19,
-      21,    23,    25,    29,    33,    35,    38,    41,    45,    47,
-      49,    51,    54,    58,    60,    63,    67,    69,    73,    76,
-      80,    82,    85,    89,    91,    93,    96,    98,   100,   102,
-     105,   107,   109,   111,   113,   115,   117,   119,   121,   123,
-     125,   127,   129,   131,   133,   135,   137,   139,   141,   143,
-     145,   147,   149,   151,   154,   157,   160,   164,   168,   172,
-     176,   180,   183,   186,   189,   193,   195,   197,   200,   203,
-     207,   209,   212,   216,   220,   225,   229,   231,   233,   235,
-     237,   239,   241,   243,   245
+static const yytype_uint8 yyprhs[] = {
+  0, 0, 3, 4, 7, 9, 12, 15, 17, 19,
+  21, 23, 25, 29, 33, 35, 38, 41, 45, 47,
+  49, 51, 54, 58, 60, 63, 67, 69, 73, 76,
+  80, 82, 85, 89, 91, 93, 96, 98, 100, 102,
+  105, 107, 109, 111, 113, 115, 117, 119, 121, 123,
+  125, 127, 129, 131, 133, 135, 137, 139, 141, 143,
+  145, 147, 149, 151, 154, 157, 160, 164, 168, 172,
+  176, 180, 183, 186, 189, 193, 195, 197, 200, 203,
+  207, 209, 212, 216, 220, 225, 229, 231, 233, 235,
+  237, 239, 241, 243, 245
 };
 
 /* YYRHS -- A `-1'-separated list of the rules' RHS.  */
-static const yytype_int8 yyrhs[] =
-{
-      50,     0,    -1,    -1,    51,    52,    -1,    53,    -1,    52,
-      53,    -1,    54,     3,    -1,     3,    -1,    55,    -1,    67,
-      -1,    57,    -1,    56,    -1,    13,    40,    27,    -1,    14,
-      40,    58,    -1,    60,    -1,    60,    63,    -1,    59,    60,
-      -1,    59,    60,    63,    -1,     5,    -1,     6,    -1,     7,
-      -1,    24,    25,    -1,    24,    61,    25,    -1,    62,    -1,
-      61,    62,    -1,    61,    48,    62,    -1,    40,    -1,    15,
-      40,    64,    -1,    24,    25,    -1,    24,    65,    25,    -1,
-      66,    -1,    65,    66,    -1,    65,    48,    66,    -1,    40,
-      -1,    68,    -1,    68,    69,    -1,    69,    -1,    28,    -1,
-      70,    -1,    69,    70,    -1,    71,    -1,    73,    -1,    72,
-      -1,    79,    -1,    74,    -1,    75,    -1,    76,    -1,    77,
-      -1,    78,    -1,     4,    -1,    29,    -1,    30,    -1,    31,
-      -1,    32,    -1,    33,    -1,    34,    -1,    27,    -1,    26,
-      -1,    35,    -1,    88,    -1,    80,    -1,    83,    -1,    85,
-      -1,    41,    46,    -1,    43,    46,    -1,    42,    47,    -1,
-       8,    41,    46,    -1,     9,    41,    46,    -1,    11,    41,
-      46,    -1,    10,    41,    46,    -1,    12,    41,    46,    -1,
-      44,    46,    -1,    45,    46,    -1,    20,    81,    -1,    20,
-      81,    82,    -1,    27,    -1,    40,    -1,    21,    27,    -1,
-      22,    23,    -1,    22,    84,    23,    -1,    70,    -1,    84,
-      70,    -1,    84,    48,    70,    -1,    84,     3,    70,    -1,
-      84,    48,     3,    70,    -1,    86,    41,    46,    -1,    16,
-      -1,    17,    -1,    18,    -1,    19,    -1,    39,    -1,    36,
-      -1,    37,    -1,    38,    -1,    87,    26,    -1
+static const yytype_int8 yyrhs[] = {
+  50, 0, -1, -1, 51, 52, -1, 53, -1, 52,
+  53, -1, 54, 3, -1, 3, -1, 55, -1, 67,
+  -1, 57, -1, 56, -1, 13, 40, 27, -1, 14,
+  40, 58, -1, 60, -1, 60, 63, -1, 59, 60,
+  -1, 59, 60, 63, -1, 5, -1, 6, -1, 7,
+  -1, 24, 25, -1, 24, 61, 25, -1, 62, -1,
+  61, 62, -1, 61, 48, 62, -1, 40, -1, 15,
+  40, 64, -1, 24, 25, -1, 24, 65, 25, -1,
+  66, -1, 65, 66, -1, 65, 48, 66, -1, 40,
+  -1, 68, -1, 68, 69, -1, 69, -1, 28, -1,
+  70, -1, 69, 70, -1, 71, -1, 73, -1, 72,
+  -1, 79, -1, 74, -1, 75, -1, 76, -1, 77,
+  -1, 78, -1, 4, -1, 29, -1, 30, -1, 31,
+  -1, 32, -1, 33, -1, 34, -1, 27, -1, 26,
+  -1, 35, -1, 88, -1, 80, -1, 83, -1, 85,
+  -1, 41, 46, -1, 43, 46, -1, 42, 47, -1,
+  8, 41, 46, -1, 9, 41, 46, -1, 11, 41,
+  46, -1, 10, 41, 46, -1, 12, 41, 46, -1,
+  44, 46, -1, 45, 46, -1, 20, 81, -1, 20,
+  81, 82, -1, 27, -1, 40, -1, 21, 27, -1,
+  22, 23, -1, 22, 84, 23, -1, 70, -1, 84,
+  70, -1, 84, 48, 70, -1, 84, 3, 70, -1,
+  84, 48, 3, 70, -1, 86, 41, 46, -1, 16,
+  -1, 17, -1, 18, -1, 19, -1, 39, -1, 36,
+  -1, 37, -1, 38, -1, 87, 26, -1
 };
 
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
-static const yytype_uint16 yyrline[] =
-{
-       0,   172,   172,   172,   183,   188,   195,   201,   208,   215,
-     225,   230,   237,   250,   309,   315,   321,   327,   335,   341,
-     347,   355,   360,   367,   373,   379,   387,   394,   413,   418,
-     425,   431,   437,   445,   452,   457,   463,   471,   478,   484,
-     492,   493,   494,   495,   496,   497,   498,   499,   500,   501,
-     502,   503,   504,   505,   506,   507,   508,   509,   524,   525,
-     526,   527,   528,   532,   539,   546,   553,   560,   567,   574,
-     581,   588,   593,   600,   605,   613,   632,   653,   660,   665,
-     672,   678,   684,   690,   696,   704,   711,   713,   715,   717,
-     721,   721,   721,   721,   724
+static const yytype_uint16 yyrline[] = {
+  0, 170, 170, 170, 181, 186, 193, 199, 206, 213,
+  223, 228, 235, 248, 307, 313, 319, 325, 333, 339,
+  345, 353, 358, 365, 371, 377, 385, 392, 411, 416,
+  423, 429, 435, 443, 450, 455, 461, 469, 476, 482,
+  490, 491, 492, 493, 494, 495, 496, 497, 498, 499,
+  500, 501, 502, 503, 504, 505, 506, 507, 522, 523,
+  524, 525, 526, 530, 537, 544, 551, 558, 565, 572,
+  579, 586, 591, 598, 603, 611, 630, 651, 658, 663,
+  670, 676, 682, 688, 694, 702, 709, 711, 713, 715,
+  719, 719, 719, 719, 722
 };
 #endif
 
 #if YYDEBUG || YYERROR_VERBOSE || YYTOKEN_TABLE
 /* YYTNAME[SYMBOL-NUM] -- String name of the symbol SYMBOL-NUM.
    First, the terminals, then, starting at YYNTOKENS, nonterminals.  */
-static const char *const yytname[] =
-{
+static const char *const yytname[] = {
   "$end", "error", "$undefined", "NL", "NULL_", "CLASS", "SHARED",
   "DEFAULT", "DATE_", "TIME", "UTIME", "TIMESTAMP", "DATETIME", "CMD_ID",
   "CMD_CLASS", "CMD_CONSTRUCTOR", "REF_ELO_INT", "REF_ELO_EXT", "REF_USER",
@@ -633,104 +633,97 @@ static const char *const yytname[] =
 # ifdef YYPRINT
 /* YYTOKNUM[YYLEX-NUM] -- Internal token number corresponding to
    token YYLEX-NUM.  */
-static const yytype_uint16 yytoknum[] =
-{
-       0,   256,   257,   258,   259,   260,   261,   262,   263,   264,
-     265,   266,   267,   268,   269,   270,   271,   272,   273,   274,
-     275,   276,   277,   278,   279,   280,   281,   282,   283,   284,
-     285,   286,   287,   288,   289,   290,   291,   292,   293,   294,
-     295,   296,   297,   298,   299,   300,   301,   302,   303
+static const yytype_uint16 yytoknum[] = {
+  0, 256, 257, 258, 259, 260, 261, 262, 263, 264,
+  265, 266, 267, 268, 269, 270, 271, 272, 273, 274,
+  275, 276, 277, 278, 279, 280, 281, 282, 283, 284,
+  285, 286, 287, 288, 289, 290, 291, 292, 293, 294,
+  295, 296, 297, 298, 299, 300, 301, 302, 303
 };
 # endif
 
 /* YYR1[YYN] -- Symbol number of symbol that rule YYN derives.  */
-static const yytype_uint8 yyr1[] =
-{
-       0,    49,    51,    50,    52,    52,    53,    53,    54,    54,
-      55,    55,    56,    57,    58,    58,    58,    58,    59,    59,
-      59,    60,    60,    61,    61,    61,    62,    63,    64,    64,
-      65,    65,    65,    66,    67,    67,    67,    68,    69,    69,
-      70,    70,    70,    70,    70,    70,    70,    70,    70,    70,
-      70,    70,    70,    70,    70,    70,    70,    70,    70,    70,
-      70,    70,    70,    71,    72,    73,    74,    75,    76,    77,
-      78,    79,    79,    80,    80,    81,    81,    82,    83,    83,
-      84,    84,    84,    84,    84,    85,    86,    86,    86,    86,
-      87,    87,    87,    87,    88
+static const yytype_uint8 yyr1[] = {
+  0, 49, 51, 50, 52, 52, 53, 53, 54, 54,
+  55, 55, 56, 57, 58, 58, 58, 58, 59, 59,
+  59, 60, 60, 61, 61, 61, 62, 63, 64, 64,
+  65, 65, 65, 66, 67, 67, 67, 68, 69, 69,
+  70, 70, 70, 70, 70, 70, 70, 70, 70, 70,
+  70, 70, 70, 70, 70, 70, 70, 70, 70, 70,
+  70, 70, 70, 71, 72, 73, 74, 75, 76, 77,
+  78, 79, 79, 80, 80, 81, 81, 82, 83, 83,
+  84, 84, 84, 84, 84, 85, 86, 86, 86, 86,
+  87, 87, 87, 87, 88
 };
 
 /* YYR2[YYN] -- Number of symbols composing right hand side of rule YYN.  */
-static const yytype_uint8 yyr2[] =
-{
-       0,     2,     0,     2,     1,     2,     2,     1,     1,     1,
-       1,     1,     3,     3,     1,     2,     2,     3,     1,     1,
-       1,     2,     3,     1,     2,     3,     1,     3,     2,     3,
-       1,     2,     3,     1,     1,     2,     1,     1,     1,     2,
-       1,     1,     1,     1,     1,     1,     1,     1,     1,     1,
-       1,     1,     1,     1,     1,     1,     1,     1,     1,     1,
-       1,     1,     1,     2,     2,     2,     3,     3,     3,     3,
-       3,     2,     2,     2,     3,     1,     1,     2,     2,     3,
-       1,     2,     3,     3,     4,     3,     1,     1,     1,     1,
-       1,     1,     1,     1,     2
+static const yytype_uint8 yyr2[] = {
+  0, 2, 0, 2, 1, 2, 2, 1, 1, 1,
+  1, 1, 3, 3, 1, 2, 2, 3, 1, 1,
+  1, 2, 3, 1, 2, 3, 1, 3, 2, 3,
+  1, 2, 3, 1, 1, 2, 1, 1, 1, 2,
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 2, 2, 2, 3, 3, 3, 3,
+  3, 2, 2, 2, 3, 1, 1, 2, 2, 3,
+  1, 2, 3, 3, 4, 3, 1, 1, 1, 1,
+  1, 1, 1, 1, 2
 };
 
 /* YYDEFACT[STATE-NAME] -- Default rule to reduce with in state
    STATE-NUM when YYTABLE doesn't specify something else to do.  Zero
    means the default is an error.  */
-static const yytype_uint8 yydefact[] =
-{
-       2,     0,     0,     1,     7,    49,     0,     0,     0,     0,
-       0,     0,     0,    86,    87,    88,    89,     0,     0,    57,
-      56,    37,    50,    51,    52,    53,    54,    55,    58,    91,
-      92,    93,    90,     0,     0,     0,     0,     0,     3,     4,
-       0,     8,    11,    10,     9,    34,    36,    38,    40,    42,
-      41,    44,    45,    46,    47,    48,    43,    60,    61,    62,
-       0,     0,    59,     0,     0,     0,     0,     0,     0,     0,
-      75,    76,    73,    78,    80,     0,    63,    65,    64,    71,
-      72,     5,     6,    35,    39,     0,    94,    66,    67,    69,
-      68,    70,    12,    18,    19,    20,     0,    13,     0,    14,
-       0,    74,     0,    79,     0,    81,    85,    21,    26,     0,
-      23,    16,     0,    15,    77,    83,     0,    82,    22,     0,
-      24,    17,     0,    84,    25,     0,    27,    28,    33,     0,
-      30,    29,     0,    31,    32
+static const yytype_uint8 yydefact[] = {
+  2, 0, 0, 1, 7, 49, 0, 0, 0, 0,
+  0, 0, 0, 86, 87, 88, 89, 0, 0, 57,
+  56, 37, 50, 51, 52, 53, 54, 55, 58, 91,
+  92, 93, 90, 0, 0, 0, 0, 0, 3, 4,
+  0, 8, 11, 10, 9, 34, 36, 38, 40, 42,
+  41, 44, 45, 46, 47, 48, 43, 60, 61, 62,
+  0, 0, 59, 0, 0, 0, 0, 0, 0, 0,
+  75, 76, 73, 78, 80, 0, 63, 65, 64, 71,
+  72, 5, 6, 35, 39, 0, 94, 66, 67, 69,
+  68, 70, 12, 18, 19, 20, 0, 13, 0, 14,
+  0, 74, 0, 79, 0, 81, 85, 21, 26, 0,
+  23, 16, 0, 15, 77, 83, 0, 82, 22, 0,
+  24, 17, 0, 84, 25, 0, 27, 28, 33, 0,
+  30, 29, 0, 31, 32
 };
 
 /* YYDEFGOTO[NTERM-NUM].  */
-static const yytype_int16 yydefgoto[] =
-{
-      -1,     1,     2,    38,    39,    40,    41,    42,    43,    97,
-      98,    99,   109,   110,   113,   126,   129,   130,    44,    45,
-      46,    47,    48,    49,    50,    51,    52,    53,    54,    55,
-      56,    57,    72,   101,    58,    75,    59,    60,    61,    62
+static const yytype_int16 yydefgoto[] = {
+  -1, 1, 2, 38, 39, 40, 41, 42, 43, 97,
+  98, 99, 109, 110, 113, 126, 129, 130, 44, 45,
+  46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
+  56, 57, 72, 101, 58, 75, 59, 60, 61, 62
 };
 
 /* YYPACT[STATE-NUM] -- Index in YYTABLE of the portion describing
    STATE-NUM.  */
 #define YYPACT_NINF -105
-static const yytype_int16 yypact[] =
-{
-    -105,     2,    91,  -105,  -105,  -105,   -34,   -28,   -17,   -16,
-      11,    14,    18,  -105,  -105,  -105,  -105,   -26,   176,  -105,
-    -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,
-    -105,  -105,  -105,    13,    17,    20,    24,    25,    91,  -105,
-      57,  -105,  -105,  -105,  -105,   218,   218,  -105,  -105,  -105,
-    -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,
-      26,    46,  -105,    27,    28,    29,    30,    31,    51,    44,
-    -105,  -105,    58,  -105,  -105,     0,  -105,  -105,  -105,  -105,
-    -105,  -105,  -105,   218,  -105,    34,  -105,  -105,  -105,  -105,
-    -105,  -105,  -105,  -105,  -105,  -105,   -19,  -105,    59,    66,
-      55,  -105,   218,  -105,   134,  -105,  -105,  -105,  -105,    15,
-    -105,    66,    45,  -105,  -105,  -105,   218,  -105,  -105,    47,
-    -105,  -105,    64,  -105,  -105,    22,  -105,  -105,  -105,    21,
-    -105,  -105,    49,  -105,  -105
+static const yytype_int16 yypact[] = {
+  -105, 2, 91, -105, -105, -105, -34, -28, -17, -16,
+  11, 14, 18, -105, -105, -105, -105, -26, 176, -105,
+  -105, -105, -105, -105, -105, -105, -105, -105, -105, -105,
+  -105, -105, -105, 13, 17, 20, 24, 25, 91, -105,
+  57, -105, -105, -105, -105, 218, 218, -105, -105, -105,
+  -105, -105, -105, -105, -105, -105, -105, -105, -105, -105,
+  26, 46, -105, 27, 28, 29, 30, 31, 51, 44,
+  -105, -105, 58, -105, -105, 0, -105, -105, -105, -105,
+  -105, -105, -105, 218, -105, 34, -105, -105, -105, -105,
+  -105, -105, -105, -105, -105, -105, -19, -105, 59, 66,
+  55, -105, 218, -105, 134, -105, -105, -105, -105, 15,
+  -105, 66, 45, -105, -105, -105, 218, -105, -105, 47,
+  -105, -105, 64, -105, -105, 22, -105, -105, -105, 21,
+  -105, -105, 49, -105, -105
 };
 
 /* YYPGOTO[NTERM-NUM].  */
-static const yytype_int8 yypgoto[] =
-{
-    -105,  -105,  -105,  -105,    52,  -105,  -105,  -105,  -105,  -105,
-    -105,    -7,  -105,  -104,   -15,  -105,  -105,   -76,  -105,  -105,
-      48,   -18,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,
-    -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105,  -105
+static const yytype_int8 yypgoto[] = {
+  -105, -105, -105, -105, 52, -105, -105, -105, -105, -105,
+  -105, -7, -105, -104, -15, -105, -105, -76, -105, -105,
+  48, -18, -105, -105, -105, -105, -105, -105, -105, -105,
+  -105, -105, -105, -105, -105, -105, -105, -105, -105, -105
 };
 
 /* YYTABLE[YYPACT[STATE-NUM]].  What to do in state STATE-NUM.  If
@@ -738,86 +731,83 @@ static const yytype_int8 yypgoto[] =
    number is the opposite.  If zero, do what YYDEFACT says.
    If YYTABLE_NINF, syntax error.  */
 #define YYTABLE_NINF -1
-static const yytype_uint8 yytable[] =
-{
-      74,    70,     3,   102,     5,   120,   107,    63,     6,     7,
-       8,     9,    10,    64,    71,   124,    13,    14,    15,    16,
-      17,   108,    18,   103,    65,    66,    19,    20,    84,    22,
-      23,    24,    25,    26,    27,    28,    29,    30,    31,    32,
-     118,    33,    34,    35,    36,    37,   131,   127,   104,    93,
-      94,    95,    67,   133,    68,   108,   134,   105,    69,    76,
-      82,   128,   128,   119,    77,    84,    78,    85,    96,   132,
-      79,    80,    86,    87,    88,    89,    90,    91,    92,   100,
-     106,   112,   114,    96,   115,   122,   117,   108,   125,   128,
-      81,   111,     0,    83,     4,     5,   121,     0,   123,     6,
-       7,     8,     9,    10,    11,    12,     0,    13,    14,    15,
-      16,    17,     0,    18,     0,     0,     0,    19,    20,    21,
-      22,    23,    24,    25,    26,    27,    28,    29,    30,    31,
-      32,     0,    33,    34,    35,    36,    37,   116,     5,     0,
-       0,     0,     6,     7,     8,     9,    10,     0,     0,     0,
-      13,    14,    15,    16,    17,     0,    18,     0,     0,     0,
-      19,    20,     0,    22,    23,    24,    25,    26,    27,    28,
-      29,    30,    31,    32,     0,    33,    34,    35,    36,    37,
-       5,     0,     0,     0,     6,     7,     8,     9,    10,     0,
-       0,     0,    13,    14,    15,    16,    17,     0,    18,    73,
-       0,     0,    19,    20,     0,    22,    23,    24,    25,    26,
-      27,    28,    29,    30,    31,    32,     0,    33,    34,    35,
-      36,    37,     5,     0,     0,     0,     6,     7,     8,     9,
-      10,     0,     0,     0,    13,    14,    15,    16,    17,     0,
-      18,     0,     0,     0,    19,    20,     0,    22,    23,    24,
-      25,    26,    27,    28,    29,    30,    31,    32,     0,    33,
-      34,    35,    36,    37
+static const yytype_uint8 yytable[] = {
+  74, 70, 3, 102, 5, 120, 107, 63, 6, 7,
+  8, 9, 10, 64, 71, 124, 13, 14, 15, 16,
+  17, 108, 18, 103, 65, 66, 19, 20, 84, 22,
+  23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+  118, 33, 34, 35, 36, 37, 131, 127, 104, 93,
+  94, 95, 67, 133, 68, 108, 134, 105, 69, 76,
+  82, 128, 128, 119, 77, 84, 78, 85, 96, 132,
+  79, 80, 86, 87, 88, 89, 90, 91, 92, 100,
+  106, 112, 114, 96, 115, 122, 117, 108, 125, 128,
+  81, 111, 0, 83, 4, 5, 121, 0, 123, 6,
+  7, 8, 9, 10, 11, 12, 0, 13, 14, 15,
+  16, 17, 0, 18, 0, 0, 0, 19, 20, 21,
+  22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+  32, 0, 33, 34, 35, 36, 37, 116, 5, 0,
+  0, 0, 6, 7, 8, 9, 10, 0, 0, 0,
+  13, 14, 15, 16, 17, 0, 18, 0, 0, 0,
+  19, 20, 0, 22, 23, 24, 25, 26, 27, 28,
+  29, 30, 31, 32, 0, 33, 34, 35, 36, 37,
+  5, 0, 0, 0, 6, 7, 8, 9, 10, 0,
+  0, 0, 13, 14, 15, 16, 17, 0, 18, 73,
+  0, 0, 19, 20, 0, 22, 23, 24, 25, 26,
+  27, 28, 29, 30, 31, 32, 0, 33, 34, 35,
+  36, 37, 5, 0, 0, 0, 6, 7, 8, 9,
+  10, 0, 0, 0, 13, 14, 15, 16, 17, 0,
+  18, 0, 0, 0, 19, 20, 0, 22, 23, 24,
+  25, 26, 27, 28, 29, 30, 31, 32, 0, 33,
+  34, 35, 36, 37
 };
 
-static const yytype_int16 yycheck[] =
-{
-      18,    27,     0,     3,     4,   109,    25,    41,     8,     9,
-      10,    11,    12,    41,    40,   119,    16,    17,    18,    19,
-      20,    40,    22,    23,    41,    41,    26,    27,    46,    29,
-      30,    31,    32,    33,    34,    35,    36,    37,    38,    39,
-      25,    41,    42,    43,    44,    45,    25,    25,    48,     5,
-       6,     7,    41,   129,    40,    40,   132,    75,    40,    46,
-       3,    40,    40,    48,    47,    83,    46,    41,    24,    48,
-      46,    46,    26,    46,    46,    46,    46,    46,    27,    21,
-      46,    15,    27,    24,   102,    40,   104,    40,    24,    40,
-      38,    98,    -1,    45,     3,     4,   111,    -1,   116,     8,
-       9,    10,    11,    12,    13,    14,    -1,    16,    17,    18,
-      19,    20,    -1,    22,    -1,    -1,    -1,    26,    27,    28,
-      29,    30,    31,    32,    33,    34,    35,    36,    37,    38,
-      39,    -1,    41,    42,    43,    44,    45,     3,     4,    -1,
-      -1,    -1,     8,     9,    10,    11,    12,    -1,    -1,    -1,
-      16,    17,    18,    19,    20,    -1,    22,    -1,    -1,    -1,
-      26,    27,    -1,    29,    30,    31,    32,    33,    34,    35,
-      36,    37,    38,    39,    -1,    41,    42,    43,    44,    45,
-       4,    -1,    -1,    -1,     8,     9,    10,    11,    12,    -1,
-      -1,    -1,    16,    17,    18,    19,    20,    -1,    22,    23,
-      -1,    -1,    26,    27,    -1,    29,    30,    31,    32,    33,
-      34,    35,    36,    37,    38,    39,    -1,    41,    42,    43,
-      44,    45,     4,    -1,    -1,    -1,     8,     9,    10,    11,
-      12,    -1,    -1,    -1,    16,    17,    18,    19,    20,    -1,
-      22,    -1,    -1,    -1,    26,    27,    -1,    29,    30,    31,
-      32,    33,    34,    35,    36,    37,    38,    39,    -1,    41,
-      42,    43,    44,    45
+static const yytype_int16 yycheck[] = {
+  18, 27, 0, 3, 4, 109, 25, 41, 8, 9,
+  10, 11, 12, 41, 40, 119, 16, 17, 18, 19,
+  20, 40, 22, 23, 41, 41, 26, 27, 46, 29,
+  30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+  25, 41, 42, 43, 44, 45, 25, 25, 48, 5,
+  6, 7, 41, 129, 40, 40, 132, 75, 40, 46,
+  3, 40, 40, 48, 47, 83, 46, 41, 24, 48,
+  46, 46, 26, 46, 46, 46, 46, 46, 27, 21,
+  46, 15, 27, 24, 102, 40, 104, 40, 24, 40,
+  38, 98, -1, 45, 3, 4, 111, -1, 116, 8,
+  9, 10, 11, 12, 13, 14, -1, 16, 17, 18,
+  19, 20, -1, 22, -1, -1, -1, 26, 27, 28,
+  29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+  39, -1, 41, 42, 43, 44, 45, 3, 4, -1,
+  -1, -1, 8, 9, 10, 11, 12, -1, -1, -1,
+  16, 17, 18, 19, 20, -1, 22, -1, -1, -1,
+  26, 27, -1, 29, 30, 31, 32, 33, 34, 35,
+  36, 37, 38, 39, -1, 41, 42, 43, 44, 45,
+  4, -1, -1, -1, 8, 9, 10, 11, 12, -1,
+  -1, -1, 16, 17, 18, 19, 20, -1, 22, 23,
+  -1, -1, 26, 27, -1, 29, 30, 31, 32, 33,
+  34, 35, 36, 37, 38, 39, -1, 41, 42, 43,
+  44, 45, 4, -1, -1, -1, 8, 9, 10, 11,
+  12, -1, -1, -1, 16, 17, 18, 19, 20, -1,
+  22, -1, -1, -1, 26, 27, -1, 29, 30, 31,
+  32, 33, 34, 35, 36, 37, 38, 39, -1, 41,
+  42, 43, 44, 45
 };
 
 /* YYSTOS[STATE-NUM] -- The (internal number of the) accessing
    symbol of state STATE-NUM.  */
-static const yytype_uint8 yystos[] =
-{
-       0,    50,    51,     0,     3,     4,     8,     9,    10,    11,
-      12,    13,    14,    16,    17,    18,    19,    20,    22,    26,
-      27,    28,    29,    30,    31,    32,    33,    34,    35,    36,
-      37,    38,    39,    41,    42,    43,    44,    45,    52,    53,
-      54,    55,    56,    57,    67,    68,    69,    70,    71,    72,
-      73,    74,    75,    76,    77,    78,    79,    80,    83,    85,
-      86,    87,    88,    41,    41,    41,    41,    41,    40,    40,
-      27,    40,    81,    23,    70,    84,    46,    47,    46,    46,
-      46,    53,     3,    69,    70,    41,    26,    46,    46,    46,
-      46,    46,    27,     5,     6,     7,    24,    58,    59,    60,
-      21,    82,     3,    23,    48,    70,    46,    25,    40,    61,
-      62,    60,    15,    63,    27,    70,     3,    70,    25,    48,
-      62,    63,    40,    70,    62,    24,    64,    25,    40,    65,
-      66,    25,    48,    66,    66
+static const yytype_uint8 yystos[] = {
+  0, 50, 51, 0, 3, 4, 8, 9, 10, 11,
+  12, 13, 14, 16, 17, 18, 19, 20, 22, 26,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
+  37, 38, 39, 41, 42, 43, 44, 45, 52, 53,
+  54, 55, 56, 57, 67, 68, 69, 70, 71, 72,
+  73, 74, 75, 76, 77, 78, 79, 80, 83, 85,
+  86, 87, 88, 41, 41, 41, 41, 41, 40, 40,
+  27, 40, 81, 23, 70, 84, 46, 47, 46, 46,
+  46, 53, 3, 69, 70, 41, 26, 46, 46, 46,
+  46, 46, 27, 5, 6, 7, 24, 58, 59, 60,
+  21, 82, 3, 23, 48, 70, 46, 25, 40, 61,
+  62, 60, 15, 63, 27, 70, 3, 70, 25, 48,
+  62, 63, 40, 70, 62, 24, 64, 25, 40, 65,
+  66, 25, 48, 66, 66
 };
 
 #define yyerrok		(yyerrstatus = 0)
@@ -914,7 +904,7 @@ while (YYID (0))
 #if YYDEBUG
 
 # ifndef YYFPRINTF
-#  include <stdio.h> /* INFRINGES ON USER NAME SPACE */
+#  include <stdio.h>		/* INFRINGES ON USER NAME SPACE */
 #  define YYFPRINTF fprintf
 # endif
 
@@ -940,17 +930,18 @@ do {									  \
 | Print this symbol on YYOUTPUT.  |
 `--------------------------------*/
 
-/*ARGSUSED*/
+ /*ARGSUSED*/
 #if (defined __STDC__ || defined __C99__FUNC__ \
      || defined __cplusplus || defined _MSC_VER)
-static void
-yy_symbol_value_print (FILE *yyoutput, int yytype, YYSTYPE const * const yyvaluep)
+  static void
+yy_symbol_value_print (FILE * yyoutput, int yytype,
+		       YYSTYPE const *const yyvaluep)
 #else
-static void
+  static void
 yy_symbol_value_print (yyoutput, yytype, yyvaluep)
-    FILE *yyoutput;
-    int yytype;
-    YYSTYPE const * const yyvaluep;
+     FILE *yyoutput;
+     int yytype;
+     YYSTYPE const *const yyvaluep;
 #endif
 {
   if (!yyvaluep)
@@ -963,8 +954,8 @@ yy_symbol_value_print (yyoutput, yytype, yyvaluep)
 # endif
   switch (yytype)
     {
-      default:
-	break;
+    default:
+      break;
     }
 }
 
@@ -976,13 +967,13 @@ yy_symbol_value_print (yyoutput, yytype, yyvaluep)
 #if (defined __STDC__ || defined __C99__FUNC__ \
      || defined __cplusplus || defined _MSC_VER)
 static void
-yy_symbol_print (FILE *yyoutput, int yytype, YYSTYPE const * const yyvaluep)
+yy_symbol_print (FILE * yyoutput, int yytype, YYSTYPE const *const yyvaluep)
 #else
 static void
 yy_symbol_print (yyoutput, yytype, yyvaluep)
-    FILE *yyoutput;
-    int yytype;
-    YYSTYPE const * const yyvaluep;
+     FILE *yyoutput;
+     int yytype;
+     YYSTYPE const *const yyvaluep;
 #endif
 {
   if (yytype < YYNTOKENS)
@@ -1002,12 +993,12 @@ yy_symbol_print (yyoutput, yytype, yyvaluep)
 #if (defined __STDC__ || defined __C99__FUNC__ \
      || defined __cplusplus || defined _MSC_VER)
 static void
-yy_stack_print (yytype_int16 *bottom, yytype_int16 *top)
+yy_stack_print (yytype_int16 * bottom, yytype_int16 * top)
 #else
 static void
 yy_stack_print (bottom, top)
-    yytype_int16 *bottom;
-    yytype_int16 *top;
+     yytype_int16 *bottom;
+     yytype_int16 *top;
 #endif
 {
   YYFPRINTF (stderr, "Stack now");
@@ -1030,12 +1021,12 @@ do {								\
 #if (defined __STDC__ || defined __C99__FUNC__ \
      || defined __cplusplus || defined _MSC_VER)
 static void
-yy_reduce_print (YYSTYPE *yyvsp, int yyrule)
+yy_reduce_print (YYSTYPE * yyvsp, int yyrule)
 #else
 static void
 yy_reduce_print (yyvsp, yyrule)
-    YYSTYPE *yyvsp;
-    int yyrule;
+     YYSTYPE *yyvsp;
+     int yyrule;
 #endif
 {
   int yynrhs = yyr2[yyrule];
@@ -1048,8 +1039,7 @@ yy_reduce_print (yyvsp, yyrule)
     {
       fprintf (stderr, "   $%d = ", yyi + 1);
       yy_symbol_print (stderr, yyrhs[yyprhs[yyrule] + yyi],
-		       &(yyvsp[(yyi + 1) - (yynrhs)])
-		       		       );
+		       &(yyvsp[(yyi + 1) - (yynrhs)]));
       fprintf (stderr, "\n");
     }
 }
@@ -1086,8 +1076,8 @@ int yydebug;
 #ifndef YYMAXDEPTH
 # define YYMAXDEPTH 10000
 #endif
-
 
+
 
 #if YYERROR_VERBOSE
 
@@ -1103,7 +1093,7 @@ yystrlen (const char *yystr)
 #else
 static YYSIZE_T
 yystrlen (yystr)
-    const char *yystr;
+     const char *yystr;
 #endif
 {
   YYSIZE_T yylen;
@@ -1127,8 +1117,8 @@ yystpcpy (char *yydest, const char *yysrc)
 #else
 static char *
 yystpcpy (yydest, yysrc)
-    char *yydest;
-    const char *yysrc;
+     char *yydest;
+     const char *yysrc;
 #endif
 {
   char *yyd = yydest;
@@ -1180,10 +1170,10 @@ yytnamerr (char *yyres, const char *yystr)
 	      yyres[yyn] = '\0';
 	    return yyn;
 	  }
-    do_not_strip_quotes: ;
+    do_not_strip_quotes:;
     }
 
-  if (! yyres)
+  if (!yyres)
     return yystrlen (yystr);
 
   return yystpcpy (yyres, yystr) - yyres;
@@ -1202,7 +1192,7 @@ yysyntax_error (char *yyresult, int yystate, int yychar)
 {
   int yyn = yypact[yystate];
 
-  if (! (YYPACT_NINF < yyn && yyn <= YYLAST))
+  if (!(YYPACT_NINF < yyn && yyn <= YYLAST))
     return 0;
   else
     {
@@ -1211,18 +1201,19 @@ yysyntax_error (char *yyresult, int yystate, int yychar)
       YYSIZE_T yysize = yysize0;
       YYSIZE_T yysize1;
       int yysize_overflow = 0;
-      enum { YYERROR_VERBOSE_ARGS_MAXIMUM = 5 };
+      enum
+      { YYERROR_VERBOSE_ARGS_MAXIMUM = 5 };
       char const *yyarg[YYERROR_VERBOSE_ARGS_MAXIMUM];
       int yyx;
 
 # if 0
       /* This is so xgettext sees the translatable formats that are
-	 constructed on the fly.  */
-      YY_("syntax error, unexpected %s");
-      YY_("syntax error, unexpected %s, expecting %s");
-      YY_("syntax error, unexpected %s, expecting %s or %s");
-      YY_("syntax error, unexpected %s, expecting %s or %s or %s");
-      YY_("syntax error, unexpected %s, expecting %s or %s or %s or %s");
+         constructed on the fly.  */
+      YY_ ("syntax error, unexpected %s");
+      YY_ ("syntax error, unexpected %s, expecting %s");
+      YY_ ("syntax error, unexpected %s, expecting %s or %s");
+      YY_ ("syntax error, unexpected %s, expecting %s or %s or %s");
+      YY_ ("syntax error, unexpected %s, expecting %s or %s or %s or %s");
 # endif
       char *yyfmt;
       char const *yyf;
@@ -1236,7 +1227,7 @@ yysyntax_error (char *yyresult, int yystate, int yychar)
       char const *yyprefix = yyexpecting;
 
       /* Start YYX at -YYN if negative to avoid negative indexes in
-	 YYCHECK.  */
+         YYCHECK.  */
       int yyxbegin = yyn < 0 ? -yyn : 0;
 
       /* Stay within bounds of both yycheck and yytname.  */
@@ -1265,7 +1256,7 @@ yysyntax_error (char *yyresult, int yystate, int yychar)
 	    yyprefix = yyor;
 	  }
 
-      yyf = YY_(yyformat);
+      yyf = YY_ (yyformat);
       yysize1 = yysize + yystrlen (yyf);
       yysize_overflow |= (yysize1 < yysize);
       yysize = yysize1;
@@ -1304,17 +1295,17 @@ yysyntax_error (char *yyresult, int yystate, int yychar)
 | Release the memory associated to this symbol.  |
 `-----------------------------------------------*/
 
-/*ARGSUSED*/
+ /*ARGSUSED*/
 #if (defined __STDC__ || defined __C99__FUNC__ \
      || defined __cplusplus || defined _MSC_VER)
-static void
-yydestruct (const char *yymsg, int yytype, YYSTYPE *yyvaluep)
+  static void
+yydestruct (const char *yymsg, int yytype, YYSTYPE * yyvaluep)
 #else
-static void
+  static void
 yydestruct (yymsg, yytype, yyvaluep)
-    const char *yymsg;
-    int yytype;
-    YYSTYPE *yyvaluep;
+     const char *yymsg;
+     int yytype;
+     YYSTYPE *yyvaluep;
 #endif
 {
   YYUSE (yyvaluep);
@@ -1326,8 +1317,8 @@ yydestruct (yymsg, yytype, yyvaluep)
   switch (yytype)
     {
 
-      default:
-	break;
+    default:
+      break;
     }
 }
 
@@ -1373,7 +1364,7 @@ yyparse (void *YYPARSE_PARAM)
 #else
 int
 yyparse (YYPARSE_PARAM)
-    void *YYPARSE_PARAM;
+     void *YYPARSE_PARAM;
 #endif
 #else /* ! YYPARSE_PARAM */
 #if (defined __STDC__ || defined __C99__FUNC__ \
@@ -1383,11 +1374,10 @@ yyparse (void)
 #else
 int
 yyparse ()
-
 #endif
 #endif
 {
-  
+
   int yystate;
   int yyn;
   int yyresult;
@@ -1455,12 +1445,12 @@ yyparse ()
 /*------------------------------------------------------------.
 | yynewstate -- Push a new state, which is found in yystate.  |
 `------------------------------------------------------------*/
- yynewstate:
+yynewstate:
   /* In all cases, when you get here, the value and location stacks
      have just been pushed.  So pushing a state here evens the stacks.  */
   yyssp++;
 
- yysetstate:
+yysetstate:
   *yyssp = yystate;
 
   if (yyss + yystacksize - 1 <= yyssp)
@@ -1481,11 +1471,9 @@ yyparse ()
 	   data in use in that stack, in bytes.  This used to be a
 	   conditional around just the two extra args, but that might
 	   be undefined if yyoverflow is a macro.  */
-	yyoverflow (YY_("memory exhausted"),
+	yyoverflow (YY_ ("memory exhausted"),
 		    &yyss1, yysize * sizeof (*yyssp),
-		    &yyvs1, yysize * sizeof (*yyvsp),
-
-		    &yystacksize);
+		    &yyvs1, yysize * sizeof (*yyvsp), &yystacksize);
 
 	yyss = yyss1;
 	yyvs = yyvs1;
@@ -1505,7 +1493,7 @@ yyparse ()
 	yytype_int16 *yyss1 = yyss;
 	union yyalloc *yyptr =
 	  (union yyalloc *) YYSTACK_ALLOC (YYSTACK_BYTES (yystacksize));
-	if (! yyptr)
+	if (!yyptr)
 	  goto yyexhaustedlab;
 	YYSTACK_RELOCATE (yyss);
 	YYSTACK_RELOCATE (yyvs);
@@ -1625,726 +1613,915 @@ yyreduce:
      users should not rely upon it.  Assigning to YYVAL
      unconditionally makes the parser a bit smaller, and it avoids a
      GCC warning that YYVAL may be used uninitialized.  */
-  yyval = yyvsp[1-yylen];
+  yyval = yyvsp[1 - yylen];
 
 
   YY_REDUCE_PRINT (yyn);
   switch (yyn)
     {
-        case 2:
-#line 172 "../../src/executables/loader_grammar.y"
-    {
-    loader_initialize_lexer ();
-    constant_Pool_idx = 0;
-  ;}
-    break;
-
-  case 3:
-#line 177 "../../src/executables/loader_grammar.y"
-    {
-    ldr_act_finish (ldr_Current_context, 0);
-  ;}
-    break;
-
-  case 4:
-#line 184 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("line");
-  ;}
-    break;
-
-  case 5:
-#line 189 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("line_list line");
-  ;}
-    break;
-
-  case 6:
-#line 196 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("one_line");
-    loader_In_instance_line = true;
-  ;}
-    break;
-
-  case 7:
-#line 202 "../../src/executables/loader_grammar.y"
-    {
-    loader_In_instance_line = true;
-  ;}
-    break;
-
-  case 8:
-#line 209 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("command_line");
-    loader_reset_string_pool ();
-    constant_Pool_idx = 0;
-  ;}
-    break;
-
-  case 9:
-#line 216 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("instance_line");
-    ldr_act_finish_line (ldr_Current_context);
-    loader_reset_string_pool ();
-    constant_Pool_idx = 0;
-  ;}
-    break;
-
-  case 10:
-#line 226 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("class_command");
-  ;}
-    break;
-
-  case 11:
-#line 231 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("id_command");
-  ;}
-    break;
-
-  case 12:
-#line 238 "../../src/executables/loader_grammar.y"
-    {
-    skipCurrentclass = false;
-
-    ldr_act_start_id (ldr_Current_context, (yyvsp[(2) - (3)].string)->val);
-    ldr_act_set_id (ldr_Current_context, atoi ((yyvsp[(3) - (3)].string)->val));
-
-    FREE_STRING ((yyvsp[(2) - (3)].string));
-    FREE_STRING ((yyvsp[(3) - (3)].string));
-  ;}
-    break;
-
-  case 13:
-#line 251 "../../src/executables/loader_grammar.y"
-    {
-    LDR_CLASS_COMMAND_SPEC *cmd_spec;
-    LDR_STRING *class_name;
-    LDR_STRING *attr, *save, *args;
-
-    DBG_PRINT ("class_commamd_spec");
-
-    class_name = (yyvsp[(2) - (3)].string);
-    cmd_spec = (yyvsp[(3) - (3)].cmd_spec);
-
-    ldr_act_set_skipCurrentclass (class_name->val, class_name->size);
-    ldr_act_init_context (ldr_Current_context, class_name->val,
-                          class_name->size);
-
-    if (cmd_spec->qualifier != LDR_ATTRIBUTE_ANY)
+    case 2:
+#line 170 "../../src/executables/loader_grammar.y"
       {
-        ldr_act_restrict_attributes (ldr_Current_context, cmd_spec->qualifier);
+	loader_initialize_lexer ();
+	constant_Pool_idx = 0;
+	;
       }
+      break;
 
-    for (attr = cmd_spec->attr_list; attr; attr = attr->next)
+    case 3:
+#line 175 "../../src/executables/loader_grammar.y"
       {
-        ldr_act_add_attr (ldr_Current_context, attr->val, attr->size);
+	ldr_act_finish (ldr_Current_context, 0);
+	;
       }
+      break;
 
-    ldr_act_check_missing_non_null_attrs (ldr_Current_context);
-
-    if (cmd_spec->ctor_spec)
+    case 4:
+#line 182 "../../src/executables/loader_grammar.y"
       {
-        ldr_act_set_constructor (ldr_Current_context,
-                                 cmd_spec->ctor_spec->idname->val);
-
-        for (args = cmd_spec->ctor_spec->arg_list; args; args = args->next)
-          {
-            ldr_act_add_argument (ldr_Current_context, args->val);
-          }
-
-        for (args = cmd_spec->ctor_spec->arg_list; args; args = save)
-          {
-            save = args->next;
-            FREE_STRING (args);
-          }
-
-        FREE_STRING (cmd_spec->ctor_spec->idname);
-        free_and_init (cmd_spec->ctor_spec);
+	DBG_PRINT ("line");
+	;
       }
+      break;
 
-    for (attr = cmd_spec->attr_list; attr; attr = save)
+    case 5:
+#line 187 "../../src/executables/loader_grammar.y"
       {
-        save = attr->next;
-        FREE_STRING (attr);
+	DBG_PRINT ("line_list line");
+	;
       }
+      break;
 
-    FREE_STRING (class_name);
-    free_and_init (cmd_spec);
-  ;}
-    break;
-
-  case 14:
-#line 310 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("attribute_list");
-    (yyval.cmd_spec) = loader_make_class_command_spec (LDR_ATTRIBUTE_ANY, (yyvsp[(1) - (1)].string), NULL);
-  ;}
-    break;
-
-  case 15:
-#line 316 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("attribute_list constructor_spec");
-    (yyval.cmd_spec) = loader_make_class_command_spec (LDR_ATTRIBUTE_ANY, (yyvsp[(1) - (2)].string), (yyvsp[(2) - (2)].ctor_spec));
-  ;}
-    break;
-
-  case 16:
-#line 322 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("attribute_list_qualifier attribute_list");
-    (yyval.cmd_spec) = loader_make_class_command_spec ((yyvsp[(1) - (2)].intval), (yyvsp[(2) - (2)].string), NULL);
-  ;}
-    break;
-
-  case 17:
-#line 328 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("attribute_list_qualifier attribute_list constructor_spec");
-    (yyval.cmd_spec) = loader_make_class_command_spec ((yyvsp[(1) - (3)].intval), (yyvsp[(2) - (3)].string), (yyvsp[(3) - (3)].ctor_spec));
-  ;}
-    break;
-
-  case 18:
-#line 336 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("CLASS");
-    (yyval.intval) = LDR_ATTRIBUTE_CLASS;
-  ;}
-    break;
-
-  case 19:
-#line 342 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("SHARED");
-    (yyval.intval) = LDR_ATTRIBUTE_SHARED;
-  ;}
-    break;
-
-  case 20:
-#line 348 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("DEFAULT");
-    (yyval.intval) = LDR_ATTRIBUTE_DEFAULT;
-  ;}
-    break;
-
-  case 21:
-#line 356 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.string) = NULL;
-  ;}
-    break;
-
-  case 22:
-#line 361 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.string) = (yyvsp[(2) - (3)].string);
-  ;}
-    break;
-
-  case 23:
-#line 368 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("attribute_name");
-    (yyval.string) = loader_append_string_list (NULL, (yyvsp[(1) - (1)].string));
-  ;}
-    break;
-
-  case 24:
-#line 374 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("attribute_names attribute_name");
-    (yyval.string) = loader_append_string_list ((yyvsp[(1) - (2)].string), (yyvsp[(2) - (2)].string));
-  ;}
-    break;
-
-  case 25:
-#line 380 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("attribute_names COMMA attribute_name");
-    (yyval.string) = loader_append_string_list ((yyvsp[(1) - (3)].string), (yyvsp[(3) - (3)].string));
-  ;}
-    break;
-
-  case 26:
-#line 388 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.string) = (yyvsp[(1) - (1)].string);
-  ;}
-    break;
-
-  case 27:
-#line 395 "../../src/executables/loader_grammar.y"
-    {
-    LDR_CONSTRUCTOR_SPEC *spec;
-
-    spec = (LDR_CONSTRUCTOR_SPEC *) malloc (sizeof (LDR_CONSTRUCTOR_SPEC));
-    if (spec == NULL)
+    case 6:
+#line 194 "../../src/executables/loader_grammar.y"
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	        ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CONSTRUCTOR_SPEC));
-	YYABORT;
+	DBG_PRINT ("one_line");
+	loader_In_instance_line = true;
+	;
       }
+      break;
 
-    spec->idname = (yyvsp[(2) - (3)].string);
-    spec->arg_list = (yyvsp[(3) - (3)].string);
-    (yyval.ctor_spec) = spec;
-  ;}
-    break;
+    case 7:
+#line 200 "../../src/executables/loader_grammar.y"
+      {
+	loader_In_instance_line = true;
+	;
+      }
+      break;
 
-  case 28:
-#line 414 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.string) = NULL;
-  ;}
-    break;
+    case 8:
+#line 207 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("command_line");
+	loader_reset_string_pool ();
+	constant_Pool_idx = 0;
+	;
+      }
+      break;
 
-  case 29:
-#line 419 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.string) = (yyvsp[(2) - (3)].string);
-  ;}
-    break;
+    case 9:
+#line 214 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("instance_line");
+	ldr_act_finish_line (ldr_Current_context);
+	loader_reset_string_pool ();
+	constant_Pool_idx = 0;
+	;
+      }
+      break;
 
-  case 30:
-#line 426 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("argument_name");
-    (yyval.string) = loader_append_string_list (NULL, (yyvsp[(1) - (1)].string));
-  ;}
-    break;
+    case 10:
+#line 224 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("class_command");
+	;
+      }
+      break;
 
-  case 31:
-#line 432 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("argument_names argument_name");
-    (yyval.string) = loader_append_string_list ((yyvsp[(1) - (2)].string), (yyvsp[(2) - (2)].string));
-  ;}
-    break;
+    case 11:
+#line 229 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("id_command");
+	;
+      }
+      break;
 
-  case 32:
-#line 438 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("argument_names COMMA argument_name");
-    (yyval.string) = loader_append_string_list ((yyvsp[(1) - (3)].string), (yyvsp[(3) - (3)].string));
-  ;}
-    break;
+    case 12:
+#line 236 "../../src/executables/loader_grammar.y"
+      {
+	skipCurrentclass = false;
 
-  case 33:
-#line 446 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.string) = (yyvsp[(1) - (1)].string);
-  ;}
-    break;
+	ldr_act_start_id (ldr_Current_context,
+			  (yyvsp[(2) - (3)].string)->val);
+	ldr_act_set_id (ldr_Current_context,
+			atoi ((yyvsp[(3) - (3)].string)->val));
 
-  case 34:
-#line 453 "../../src/executables/loader_grammar.y"
-    {
-    ldr_act_start_instance (ldr_Current_context, (yyvsp[(1) - (1)].intval));
-  ;}
-    break;
+	FREE_STRING ((yyvsp[(2) - (3)].string));
+	FREE_STRING ((yyvsp[(3) - (3)].string));
+	;
+      }
+      break;
 
-  case 35:
-#line 458 "../../src/executables/loader_grammar.y"
-    {
-    ldr_act_start_instance (ldr_Current_context, (yyvsp[(1) - (2)].intval));
-    loader_process_constants ((yyvsp[(2) - (2)].constant));
-  ;}
-    break;
+    case 13:
+#line 249 "../../src/executables/loader_grammar.y"
+      {
+	LDR_CLASS_COMMAND_SPEC *cmd_spec;
+	LDR_STRING *class_name;
+	LDR_STRING *attr, *save, *args;
 
-  case 36:
-#line 464 "../../src/executables/loader_grammar.y"
-    {
-    ldr_act_start_instance (ldr_Current_context, -1);
-    loader_process_constants ((yyvsp[(1) - (1)].constant));
-  ;}
-    break;
+	DBG_PRINT ("class_commamd_spec");
 
-  case 37:
-#line 472 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.intval) = (yyvsp[(1) - (1)].intval);
-  ;}
-    break;
+	class_name = (yyvsp[(2) - (3)].string);
+	cmd_spec = (yyvsp[(3) - (3)].cmd_spec);
 
-  case 38:
-#line 479 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("constant");
-    (yyval.constant) = loader_append_constant_list (NULL, (yyvsp[(1) - (1)].constant));
-  ;}
-    break;
+	ldr_act_set_skipCurrentclass (class_name->val, class_name->size);
+	ldr_act_init_context (ldr_Current_context, class_name->val,
+			      class_name->size);
 
-  case 39:
-#line 485 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("constant_list constant");
-    (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (2)].constant), (yyvsp[(2) - (2)].constant));
-  ;}
-    break;
+	if (cmd_spec->qualifier != LDR_ATTRIBUTE_ANY)
+	  {
+	    ldr_act_restrict_attributes (ldr_Current_context,
+					 cmd_spec->qualifier);
+	  }
 
-  case 40:
+	for (attr = cmd_spec->attr_list; attr; attr = attr->next)
+	  {
+	    ldr_act_add_attr (ldr_Current_context, attr->val, attr->size);
+	  }
+
+	ldr_act_check_missing_non_null_attrs (ldr_Current_context);
+
+	if (cmd_spec->ctor_spec)
+	  {
+	    ldr_act_set_constructor (ldr_Current_context,
+				     cmd_spec->ctor_spec->idname->val);
+
+	    for (args = cmd_spec->ctor_spec->arg_list; args;
+		 args = args->next)
+	      {
+		ldr_act_add_argument (ldr_Current_context, args->val);
+	      }
+
+	    for (args = cmd_spec->ctor_spec->arg_list; args; args = save)
+	      {
+		save = args->next;
+		FREE_STRING (args);
+	      }
+
+	    FREE_STRING (cmd_spec->ctor_spec->idname);
+	    free_and_init (cmd_spec->ctor_spec);
+	  }
+
+	for (attr = cmd_spec->attr_list; attr; attr = save)
+	  {
+	    save = attr->next;
+	    FREE_STRING (attr);
+	  }
+
+	FREE_STRING (class_name);
+	free_and_init (cmd_spec);
+	;
+      }
+      break;
+
+    case 14:
+#line 308 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("attribute_list");
+	(yyval.cmd_spec) =
+	  loader_make_class_command_spec (LDR_ATTRIBUTE_ANY,
+					  (yyvsp[(1) - (1)].string), NULL);
+	;
+      }
+      break;
+
+    case 15:
+#line 314 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("attribute_list constructor_spec");
+	(yyval.cmd_spec) =
+	  loader_make_class_command_spec (LDR_ATTRIBUTE_ANY,
+					  (yyvsp[(1) - (2)].string),
+					  (yyvsp[(2) - (2)].ctor_spec));
+	;
+      }
+      break;
+
+    case 16:
+#line 320 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("attribute_list_qualifier attribute_list");
+	(yyval.cmd_spec) =
+	  loader_make_class_command_spec ((yyvsp[(1) - (2)].intval),
+					  (yyvsp[(2) - (2)].string), NULL);
+	;
+      }
+      break;
+
+    case 17:
+#line 326 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT
+	  ("attribute_list_qualifier attribute_list constructor_spec");
+	(yyval.cmd_spec) =
+	  loader_make_class_command_spec ((yyvsp[(1) - (3)].intval),
+					  (yyvsp[(2) - (3)].string),
+					  (yyvsp[(3) - (3)].ctor_spec));
+	;
+      }
+      break;
+
+    case 18:
+#line 334 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("CLASS");
+	(yyval.intval) = LDR_ATTRIBUTE_CLASS;
+	;
+      }
+      break;
+
+    case 19:
+#line 340 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("SHARED");
+	(yyval.intval) = LDR_ATTRIBUTE_SHARED;
+	;
+      }
+      break;
+
+    case 20:
+#line 346 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("DEFAULT");
+	(yyval.intval) = LDR_ATTRIBUTE_DEFAULT;
+	;
+      }
+      break;
+
+    case 21:
+#line 354 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.string) = NULL;
+	;
+      }
+      break;
+
+    case 22:
+#line 359 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.string) = (yyvsp[(2) - (3)].string);
+	;
+      }
+      break;
+
+    case 23:
+#line 366 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("attribute_name");
+	(yyval.string) =
+	  loader_append_string_list (NULL, (yyvsp[(1) - (1)].string));
+	;
+      }
+      break;
+
+    case 24:
+#line 372 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("attribute_names attribute_name");
+	(yyval.string) =
+	  loader_append_string_list ((yyvsp[(1) - (2)].string),
+				     (yyvsp[(2) - (2)].string));
+	;
+      }
+      break;
+
+    case 25:
+#line 378 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("attribute_names COMMA attribute_name");
+	(yyval.string) =
+	  loader_append_string_list ((yyvsp[(1) - (3)].string),
+				     (yyvsp[(3) - (3)].string));
+	;
+      }
+      break;
+
+    case 26:
+#line 386 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.string) = (yyvsp[(1) - (1)].string);
+	;
+      }
+      break;
+
+    case 27:
+#line 393 "../../src/executables/loader_grammar.y"
+      {
+	LDR_CONSTRUCTOR_SPEC *spec;
+
+	spec =
+	  (LDR_CONSTRUCTOR_SPEC *) malloc (sizeof (LDR_CONSTRUCTOR_SPEC));
+	if (spec == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		    ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		    sizeof (LDR_CONSTRUCTOR_SPEC));
+	    YYABORT;
+	  }
+
+	spec->idname = (yyvsp[(2) - (3)].string);
+	spec->arg_list = (yyvsp[(3) - (3)].string);
+	(yyval.ctor_spec) = spec;
+	;
+      }
+      break;
+
+    case 28:
+#line 412 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.string) = NULL;
+	;
+      }
+      break;
+
+    case 29:
+#line 417 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.string) = (yyvsp[(2) - (3)].string);
+	;
+      }
+      break;
+
+    case 30:
+#line 424 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("argument_name");
+	(yyval.string) =
+	  loader_append_string_list (NULL, (yyvsp[(1) - (1)].string));
+	;
+      }
+      break;
+
+    case 31:
+#line 430 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("argument_names argument_name");
+	(yyval.string) =
+	  loader_append_string_list ((yyvsp[(1) - (2)].string),
+				     (yyvsp[(2) - (2)].string));
+	;
+      }
+      break;
+
+    case 32:
+#line 436 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("argument_names COMMA argument_name");
+	(yyval.string) =
+	  loader_append_string_list ((yyvsp[(1) - (3)].string),
+				     (yyvsp[(3) - (3)].string));
+	;
+      }
+      break;
+
+    case 33:
+#line 444 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.string) = (yyvsp[(1) - (1)].string);
+	;
+      }
+      break;
+
+    case 34:
+#line 451 "../../src/executables/loader_grammar.y"
+      {
+	ldr_act_start_instance (ldr_Current_context,
+				(yyvsp[(1) - (1)].intval), NULL);
+	;
+      }
+      break;
+
+    case 35:
+#line 456 "../../src/executables/loader_grammar.y"
+      {
+	ldr_act_start_instance (ldr_Current_context,
+				(yyvsp[(1) - (2)].intval),
+				(yyvsp[(2) - (2)].constant));
+	ldr_process_constants ((yyvsp[(2) - (2)].constant));
+	;
+      }
+      break;
+
+    case 36:
+#line 462 "../../src/executables/loader_grammar.y"
+      {
+	ldr_act_start_instance (ldr_Current_context, -1,
+				(yyvsp[(1) - (1)].constant));
+	ldr_process_constants ((yyvsp[(1) - (1)].constant));
+	;
+      }
+      break;
+
+    case 37:
+#line 470 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.intval) = (yyvsp[(1) - (1)].intval);
+	;
+      }
+      break;
+
+    case 38:
+#line 477 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("constant");
+	(yyval.constant) =
+	  loader_append_constant_list (NULL, (yyvsp[(1) - (1)].constant));
+	;
+      }
+      break;
+
+    case 39:
+#line 483 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("constant_list constant");
+	(yyval.constant) =
+	  loader_append_constant_list ((yyvsp[(1) - (2)].constant),
+				       (yyvsp[(2) - (2)].constant));
+	;
+      }
+      break;
+
+    case 40:
+#line 490 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
+      }
+      break;
+
+    case 41:
+#line 491 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
+      }
+      break;
+
+    case 42:
 #line 492 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
+      {
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
+      }
+      break;
 
-  case 41:
+    case 43:
 #line 493 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
+      {
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
+      }
+      break;
 
-  case 42:
+    case 44:
 #line 494 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
+      {
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
+      }
+      break;
 
-  case 43:
+    case 45:
 #line 495 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
+      {
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
+      }
+      break;
 
-  case 44:
+    case 46:
 #line 496 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
+      {
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
+      }
+      break;
 
-  case 45:
+    case 47:
 #line 497 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
+      {
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
+      }
+      break;
 
-  case 46:
+    case 48:
 #line 498 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
+      {
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
+      }
+      break;
 
-  case 47:
+    case 49:
 #line 499 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
+      {
+	(yyval.constant) = loader_make_constant (LDR_NULL, NULL);;
+      }
+      break;
 
-  case 48:
+    case 50:
 #line 500 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_TIME, (yyvsp[(1) - (1)].string));;
+      }
+      break;
 
-  case 49:
+    case 51:
 #line 501 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = loader_make_constant(LDR_NULL, NULL); ;}
-    break;
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_TIME, (yyvsp[(1) - (1)].string));;
+      }
+      break;
 
-  case 50:
+    case 52:
 #line 502 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
-    break;
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_TIME, (yyvsp[(1) - (1)].string));;
+      }
+      break;
 
-  case 51:
+    case 53:
 #line 503 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
-    break;
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_TIME, (yyvsp[(1) - (1)].string));;
+      }
+      break;
 
-  case 52:
+    case 54:
 #line 504 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
-    break;
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_TIME, (yyvsp[(1) - (1)].string));;
+      }
+      break;
 
-  case 53:
+    case 55:
 #line 505 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
-    break;
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_TIME, (yyvsp[(1) - (1)].string));;
+      }
+      break;
 
-  case 54:
+    case 56:
 #line 506 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
-    break;
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_INT, (yyvsp[(1) - (1)].string));;
+      }
+      break;
 
-  case 55:
-#line 507 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = loader_make_constant(LDR_TIME, (yyvsp[(1) - (1)].string)); ;}
-    break;
-
-  case 56:
+    case 57:
 #line 508 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = loader_make_constant(LDR_INT, (yyvsp[(1) - (1)].string)); ;}
-    break;
+      {
+	if (strchr ((yyvsp[(1) - (1)].string)->val, 'F') != NULL
+	    || strchr ((yyvsp[(1) - (1)].string)->val, 'f') != NULL)
+	  {
+	    (yyval.constant) =
+	      loader_make_constant (LDR_FLOAT, (yyvsp[(1) - (1)].string));
+	  }
+	else if (strchr ((yyvsp[(1) - (1)].string)->val, 'E') != NULL
+		 || strchr ((yyvsp[(1) - (1)].string)->val, 'e') != NULL)
+	  {
+	    (yyval.constant) =
+	      loader_make_constant (LDR_DOUBLE, (yyvsp[(1) - (1)].string));
+	  }
+	else
+	  {
+	    (yyval.constant) =
+	      loader_make_constant (LDR_NUMERIC, (yyvsp[(1) - (1)].string));
+	  }
+	;
+      }
+      break;
 
-  case 57:
-#line 510 "../../src/executables/loader_grammar.y"
-    {
-    if (strchr ((yyvsp[(1) - (1)].string)->val, 'F') != NULL || strchr ((yyvsp[(1) - (1)].string)->val, 'f') != NULL)
+    case 58:
+#line 522 "../../src/executables/loader_grammar.y"
       {
-        (yyval.constant) = loader_make_constant (LDR_FLOAT, (yyvsp[(1) - (1)].string));
+	(yyval.constant) =
+	  loader_make_constant (LDR_DATE, (yyvsp[(1) - (1)].string));;
       }
-    else if (strchr ((yyvsp[(1) - (1)].string)->val, 'E') != NULL || strchr ((yyvsp[(1) - (1)].string)->val, 'e') != NULL)
-      {
-        (yyval.constant) = loader_make_constant (LDR_DOUBLE, (yyvsp[(1) - (1)].string));
-      }
-    else
-      {
-        (yyval.constant) = loader_make_constant (LDR_NUMERIC, (yyvsp[(1) - (1)].string));
-      }
-  ;}
-    break;
+      break;
 
-  case 58:
+    case 59:
+#line 523 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
+      }
+      break;
+
+    case 60:
 #line 524 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = loader_make_constant(LDR_DATE, (yyvsp[(1) - (1)].string)); ;}
-    break;
+      {
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
+      }
+      break;
 
-  case 59:
+    case 61:
 #line 525 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
+      {
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
+      }
+      break;
 
-  case 60:
+    case 62:
 #line 526 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
-
-  case 61:
-#line 527 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
-
-  case 62:
-#line 528 "../../src/executables/loader_grammar.y"
-    { (yyval.constant) = (yyvsp[(1) - (1)].constant); ;}
-    break;
-
-  case 63:
-#line 533 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_STR, (yyvsp[(2) - (2)].string));
-  ;}
-    break;
-
-  case 64:
-#line 540 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_NSTR, (yyvsp[(2) - (2)].string));
-  ;}
-    break;
-
-  case 65:
-#line 547 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_STR, (yyvsp[(2) - (2)].string));
-  ;}
-    break;
-
-  case 66:
-#line 554 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_DATE, (yyvsp[(3) - (3)].string));
-  ;}
-    break;
-
-  case 67:
-#line 561 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_TIME, (yyvsp[(3) - (3)].string));
-  ;}
-    break;
-
-  case 68:
-#line 568 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_TIMESTAMP, (yyvsp[(3) - (3)].string));
-  ;}
-    break;
-
-  case 69:
-#line 575 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_TIMESTAMP, (yyvsp[(3) - (3)].string));
-  ;}
-    break;
-
-  case 70:
-#line 582 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_DATETIME, (yyvsp[(3) - (3)].string));
-  ;}
-    break;
-
-  case 71:
-#line 589 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_BSTR, (yyvsp[(2) - (2)].string));
-  ;}
-    break;
-
-  case 72:
-#line 594 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_XSTR, (yyvsp[(2) - (2)].string));
-  ;}
-    break;
-
-  case 73:
-#line 601 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_CLASS_OID, (yyvsp[(2) - (2)].obj_ref));
-  ;}
-    break;
-
-  case 74:
-#line 606 "../../src/executables/loader_grammar.y"
-    {
-    (yyvsp[(2) - (3)].obj_ref)->instance_number = (yyvsp[(3) - (3)].string);
-    (yyval.constant) = loader_make_constant (LDR_OID, (yyvsp[(2) - (3)].obj_ref));
-  ;}
-    break;
-
-  case 75:
-#line 614 "../../src/executables/loader_grammar.y"
-    {
-    LDR_OBJECT_REF *ref;
-
-    ref = (LDR_OBJECT_REF *) malloc (sizeof (LDR_OBJECT_REF));
-    if (ref == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	        ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_OBJECT_REF));
-	YYABORT;
+	(yyval.constant) = (yyvsp[(1) - (1)].constant);;
       }
+      break;
 
-    ref->class_id = (yyvsp[(1) - (1)].string);
-    ref->class_name = NULL;
-    ref->instance_number = NULL;
-    
-    (yyval.obj_ref) = ref;
-  ;}
-    break;
-
-  case 76:
-#line 633 "../../src/executables/loader_grammar.y"
-    {
-    LDR_OBJECT_REF *ref;
-
-    ref = (LDR_OBJECT_REF *) malloc (sizeof (LDR_OBJECT_REF));
-    if (ref == NULL)
+    case 63:
+#line 531 "../../src/executables/loader_grammar.y"
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	        ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_OBJECT_REF));
-      	YYABORT;
+	(yyval.constant) =
+	  loader_make_constant (LDR_STR, (yyvsp[(2) - (2)].string));
+	;
       }
+      break;
 
-    ref->class_id = NULL;
-    ref->class_name = (yyvsp[(1) - (1)].string);
-    ref->instance_number = NULL;
-    
-    (yyval.obj_ref) = ref;
-  ;}
-    break;
+    case 64:
+#line 538 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_NSTR, (yyvsp[(2) - (2)].string));
+	;
+      }
+      break;
 
-  case 77:
-#line 654 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.string) = (yyvsp[(2) - (2)].string);
-  ;}
-    break;
+    case 65:
+#line 545 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_STR, (yyvsp[(2) - (2)].string));
+	;
+      }
+      break;
 
-  case 78:
-#line 661 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_COLLECTION, NULL);
-  ;}
-    break;
+    case 66:
+#line 552 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_DATE, (yyvsp[(3) - (3)].string));
+	;
+      }
+      break;
 
-  case 79:
-#line 666 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_COLLECTION, (yyvsp[(2) - (3)].constant));
-  ;}
-    break;
+    case 67:
+#line 559 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_TIME, (yyvsp[(3) - (3)].string));
+	;
+      }
+      break;
 
-  case 80:
-#line 673 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("constant");
-    (yyval.constant) = loader_append_constant_list (NULL, (yyvsp[(1) - (1)].constant));
-  ;}
-    break;
+    case 68:
+#line 566 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_TIMESTAMP, (yyvsp[(3) - (3)].string));
+	;
+      }
+      break;
 
-  case 81:
-#line 679 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("set_elements constant");
-    (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (2)].constant), (yyvsp[(2) - (2)].constant));
-  ;}
-    break;
+    case 69:
+#line 573 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_TIMESTAMP, (yyvsp[(3) - (3)].string));
+	;
+      }
+      break;
 
-  case 82:
-#line 685 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("set_elements COMMA constant");
-    (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (3)].constant), (yyvsp[(3) - (3)].constant));
-  ;}
-    break;
+    case 70:
+#line 580 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_DATETIME, (yyvsp[(3) - (3)].string));
+	;
+      }
+      break;
 
-  case 83:
-#line 691 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("set_elements NL constant");
-    (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (3)].constant), (yyvsp[(3) - (3)].constant));
-  ;}
-    break;
+    case 71:
+#line 587 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_BSTR, (yyvsp[(2) - (2)].string));
+	;
+      }
+      break;
 
-  case 84:
-#line 697 "../../src/executables/loader_grammar.y"
-    {
-    DBG_PRINT ("set_elements COMMA NL constant");
-    (yyval.constant) = loader_append_constant_list ((yyvsp[(1) - (4)].constant), (yyvsp[(4) - (4)].constant));
-  ;}
-    break;
+    case 72:
+#line 592 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_XSTR, (yyvsp[(2) - (2)].string));
+	;
+      }
+      break;
 
-  case 85:
-#line 705 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant ((yyvsp[(1) - (3)].intval), (yyvsp[(3) - (3)].string));
-  ;}
-    break;
+    case 73:
+#line 599 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_CLASS_OID, (yyvsp[(2) - (2)].obj_ref));
+	;
+      }
+      break;
 
-  case 86:
+    case 74:
+#line 604 "../../src/executables/loader_grammar.y"
+      {
+	(yyvsp[(2) - (3)].obj_ref)->instance_number =
+	  (yyvsp[(3) - (3)].string);
+	(yyval.constant) =
+	  loader_make_constant (LDR_OID, (yyvsp[(2) - (3)].obj_ref));
+	;
+      }
+      break;
+
+    case 75:
+#line 612 "../../src/executables/loader_grammar.y"
+      {
+	LDR_OBJECT_REF *ref;
+
+	ref = (LDR_OBJECT_REF *) malloc (sizeof (LDR_OBJECT_REF));
+	if (ref == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		    ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_OBJECT_REF));
+	    YYABORT;
+	  }
+
+	ref->class_id = (yyvsp[(1) - (1)].string);
+	ref->class_name = NULL;
+	ref->instance_number = NULL;
+
+	(yyval.obj_ref) = ref;
+	;
+      }
+      break;
+
+    case 76:
+#line 631 "../../src/executables/loader_grammar.y"
+      {
+	LDR_OBJECT_REF *ref;
+
+	ref = (LDR_OBJECT_REF *) malloc (sizeof (LDR_OBJECT_REF));
+	if (ref == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		    ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_OBJECT_REF));
+	    YYABORT;
+	  }
+
+	ref->class_id = NULL;
+	ref->class_name = (yyvsp[(1) - (1)].string);
+	ref->instance_number = NULL;
+
+	(yyval.obj_ref) = ref;
+	;
+      }
+      break;
+
+    case 77:
+#line 652 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.string) = (yyvsp[(2) - (2)].string);
+	;
+      }
+      break;
+
+    case 78:
+#line 659 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) = loader_make_constant (LDR_COLLECTION, NULL);
+	;
+      }
+      break;
+
+    case 79:
+#line 664 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_COLLECTION, (yyvsp[(2) - (3)].constant));
+	;
+      }
+      break;
+
+    case 80:
+#line 671 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("constant");
+	(yyval.constant) =
+	  loader_append_constant_list (NULL, (yyvsp[(1) - (1)].constant));
+	;
+      }
+      break;
+
+    case 81:
+#line 677 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("set_elements constant");
+	(yyval.constant) =
+	  loader_append_constant_list ((yyvsp[(1) - (2)].constant),
+				       (yyvsp[(2) - (2)].constant));
+	;
+      }
+      break;
+
+    case 82:
+#line 683 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("set_elements COMMA constant");
+	(yyval.constant) =
+	  loader_append_constant_list ((yyvsp[(1) - (3)].constant),
+				       (yyvsp[(3) - (3)].constant));
+	;
+      }
+      break;
+
+    case 83:
+#line 689 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("set_elements NL constant");
+	(yyval.constant) =
+	  loader_append_constant_list ((yyvsp[(1) - (3)].constant),
+				       (yyvsp[(3) - (3)].constant));
+	;
+      }
+      break;
+
+    case 84:
+#line 695 "../../src/executables/loader_grammar.y"
+      {
+	DBG_PRINT ("set_elements COMMA NL constant");
+	(yyval.constant) =
+	  loader_append_constant_list ((yyvsp[(1) - (4)].constant),
+				       (yyvsp[(4) - (4)].constant));
+	;
+      }
+      break;
+
+    case 85:
+#line 703 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant ((yyvsp[(1) - (3)].intval),
+				(yyvsp[(3) - (3)].string));
+	;
+      }
+      break;
+
+    case 86:
+#line 709 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.intval) = LDR_ELO_INT;;
+      }
+      break;
+
+    case 87:
 #line 711 "../../src/executables/loader_grammar.y"
-    { (yyval.intval) = LDR_ELO_INT; ;}
-    break;
+      {
+	(yyval.intval) = LDR_ELO_EXT;;
+      }
+      break;
 
-  case 87:
+    case 88:
 #line 713 "../../src/executables/loader_grammar.y"
-    { (yyval.intval) = LDR_ELO_EXT; ;}
-    break;
+      {
+	(yyval.intval) = LDR_SYS_USER;;
+      }
+      break;
 
-  case 88:
+    case 89:
 #line 715 "../../src/executables/loader_grammar.y"
-    { (yyval.intval) = LDR_SYS_USER; ;}
-    break;
+      {
+	(yyval.intval) = LDR_SYS_CLASS;;
+      }
+      break;
 
-  case 89:
-#line 717 "../../src/executables/loader_grammar.y"
-    { (yyval.intval) = LDR_SYS_CLASS; ;}
-    break;
-
-  case 94:
-#line 725 "../../src/executables/loader_grammar.y"
-    {
-    (yyval.constant) = loader_make_constant (LDR_MONETARY, (yyvsp[(2) - (2)].string));
-  ;}
-    break;
+    case 94:
+#line 723 "../../src/executables/loader_grammar.y"
+      {
+	(yyval.constant) =
+	  loader_make_constant (LDR_MONETARY, (yyvsp[(2) - (2)].string));
+	;
+      }
+      break;
 
 
 /* Line 1267 of yacc.c.  */
-#line 2347 "../../src/executables/loader_grammar.c"
-      default: break;
+#line 2345 "../../src/executables/loader_grammar.c"
+    default:
+      break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
 
@@ -2379,14 +2556,14 @@ yyerrlab:
     {
       ++yynerrs;
 #if ! YYERROR_VERBOSE
-      yyerror (YY_("syntax error"));
+      yyerror (YY_ ("syntax error"));
 #else
       {
 	YYSIZE_T yysize = yysyntax_error (0, yystate, yychar);
 	if (yymsg_alloc < yysize && yymsg_alloc < YYSTACK_ALLOC_MAXIMUM)
 	  {
 	    YYSIZE_T yyalloc = 2 * yysize;
-	    if (! (yysize <= yyalloc && yyalloc <= YYSTACK_ALLOC_MAXIMUM))
+	    if (!(yysize <= yyalloc && yyalloc <= YYSTACK_ALLOC_MAXIMUM))
 	      yyalloc = YYSTACK_ALLOC_MAXIMUM;
 	    if (yymsg != yymsgbuf)
 	      YYSTACK_FREE (yymsg);
@@ -2407,7 +2584,7 @@ yyerrlab:
 	  }
 	else
 	  {
-	    yyerror (YY_("syntax error"));
+	    yyerror (YY_ ("syntax error"));
 	    if (yysize != 0)
 	      goto yyexhaustedlab;
 	  }
@@ -2420,7 +2597,7 @@ yyerrlab:
   if (yyerrstatus == 3)
     {
       /* If just tried and failed to reuse look-ahead token after an
-	 error, discard it.  */
+         error, discard it.  */
 
       if (yychar <= YYEOF)
 	{
@@ -2430,8 +2607,7 @@ yyerrlab:
 	}
       else
 	{
-	  yydestruct ("Error: discarding",
-		      yytoken, &yylval);
+	  yydestruct ("Error: discarding", yytoken, &yylval);
 	  yychar = YYEMPTY;
 	}
     }
@@ -2449,8 +2625,8 @@ yyerrorlab:
   /* Pacify compilers like GCC when the user code never invokes
      YYERROR and the label yyerrorlab therefore never appears in user
      code.  */
-  if (/*CONSTCOND*/ 0)
-     goto yyerrorlab;
+  if ( /*CONSTCOND*/ 0)
+    goto yyerrorlab;
 
   /* Do not reclaim the symbols of the rule which action triggered
      this YYERROR.  */
@@ -2465,7 +2641,7 @@ yyerrorlab:
 | yyerrlab1 -- common code for both syntax error and YYERROR.  |
 `-------------------------------------------------------------*/
 yyerrlab1:
-  yyerrstatus = 3;	/* Each real token shifted decrements this.  */
+  yyerrstatus = 3;		/* Each real token shifted decrements this.  */
 
   for (;;)
     {
@@ -2486,8 +2662,7 @@ yyerrlab1:
 	YYABORT;
 
 
-      yydestruct ("Error: popping",
-		  yystos[yystate], yyvsp);
+      yydestruct ("Error: popping", yystos[yystate], yyvsp);
       YYPOPSTACK (1);
       yystate = *yyssp;
       YY_STACK_PRINT (yyss, yyssp);
@@ -2525,23 +2700,21 @@ yyabortlab:
 | yyexhaustedlab -- memory exhaustion comes here.  |
 `-------------------------------------------------*/
 yyexhaustedlab:
-  yyerror (YY_("memory exhausted"));
+  yyerror (YY_ ("memory exhausted"));
   yyresult = 2;
   /* Fall through.  */
 #endif
 
 yyreturn:
   if (yychar != YYEOF && yychar != YYEMPTY)
-     yydestruct ("Cleanup: discarding lookahead",
-		 yytoken, &yylval);
+    yydestruct ("Cleanup: discarding lookahead", yytoken, &yylval);
   /* Do not reclaim the symbols of the rule which action triggered
      this YYABORT or YYACCEPT.  */
   YYPOPSTACK (yylen);
   YY_STACK_PRINT (yyss, yyssp);
   while (yyssp != yyss)
     {
-      yydestruct ("Cleanup: popping",
-		  yystos[*yyssp], yyvsp);
+      yydestruct ("Cleanup: popping", yystos[*yyssp], yyvsp);
       YYPOPSTACK (1);
     }
 #ifndef yyoverflow
@@ -2557,7 +2730,7 @@ yyreturn:
 }
 
 
-#line 729 "../../src/executables/loader_grammar.y"
+#line 727 "../../src/executables/loader_grammar.y"
 
 
 static LDR_STRING *
@@ -2581,7 +2754,7 @@ loader_append_string_list (LDR_STRING * head, LDR_STRING * tail)
 
 static LDR_CLASS_COMMAND_SPEC *
 loader_make_class_command_spec (int qualifier, LDR_STRING * attr_list,
-			        LDR_CONSTRUCTOR_SPEC * ctor_spec)
+				LDR_CONSTRUCTOR_SPEC * ctor_spec)
 {
   LDR_CLASS_COMMAND_SPEC *spec;
 
@@ -2616,8 +2789,8 @@ loader_make_constant (int type, void *val)
       con = (LDR_CONSTANT *) malloc (sizeof (LDR_CONSTANT));
       if (con == NULL)
 	{
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	          ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CONSTANT));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CONSTANT));
 	  return NULL;
 	}
       con->need_free = true;
@@ -2648,165 +2821,13 @@ loader_append_constant_list (LDR_CONSTANT * head, LDR_CONSTANT * tail)
   return head;
 }
 
-static void
-loader_process_object_ref (LDR_OBJECT_REF * ref, int type)
-{
-  bool ignore_class = false;
-  char *class_name;
-  DB_OBJECT *ref_class = NULL;
-
-  assert (ref != NULL);
-  if (ref == NULL)
-    {
-      return;
-    }
-
-  if (ref->class_id && ref->class_id->val)
-    {
-      ldr_act_set_ref_class_id (ldr_Current_context,
-				atoi (ref->class_id->val));
-    }
-  else
-    {
-      ldr_act_set_ref_class (ldr_Current_context, ref->class_name->val);
-    }
-
-  if (ref->instance_number && ref->instance_number->val)
-    {
-      ldr_act_set_instance_id (ldr_Current_context,
-			       atoi (ref->instance_number->val));
-    }
-  else
-    {
-      /*ldr_act_set_instance_id(ldr_Current_context, 0); *//* right?? */
-    }
-
-  ref_class = ldr_act_get_ref_class (ldr_Current_context);
-  if (ref_class != NULL)
-    {
-      class_name = db_get_class_name (ref_class);
-      ignore_class = ldr_is_ignore_class (class_name, strlen (class_name));
-    }
-
-  if (type == LDR_OID)
-    {
-      (*ldr_act) (ldr_Current_context, ref->instance_number->val,
-		  (ref->instance_number == NULL
-		   && ref->instance_number->val) ? 0 : ref->
-		  instance_number->size, (ignore_class) ? LDR_NULL : LDR_OID);
-    }
-  else
-    {
-      /* right ?? */
-      if (ref->class_name)
-	{
-	  (*ldr_act) (ldr_Current_context, ref->class_name->val,
-		      ref->class_name->size,
-		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
-	}
-      else
-	{
-	  (*ldr_act) (ldr_Current_context, ref->class_id->val,
-		      (ref->class_id == NULL
-		       && ref->class_id->val) ? 0 : ref->class_id->size,
-		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
-	}
-    }
-
-  if (ref->class_id)
-    {
-      FREE_STRING (ref->class_id);
-    }
-
-  if (ref->class_name)
-    {
-      FREE_STRING (ref->class_name);
-    }
-
-  if (ref->instance_number)
-    {
-      FREE_STRING (ref->instance_number);
-    }
-
-  free_and_init (ref);
-}
-
-static void
-loader_process_constants (LDR_CONSTANT * cons)
-{
-  LDR_CONSTANT *c, *save;
-
-  for (c = cons; c; c = save)
-    {
-      save = c->next;
-
-      switch (c->type)
-	{
-	case LDR_NULL:
-	  (*ldr_act) (ldr_Current_context, NULL, 0, LDR_NULL);
-	  break;
-
-	case LDR_INT:
-	case LDR_FLOAT:
-	case LDR_DOUBLE:
-	case LDR_NUMERIC:
-	case LDR_MONETARY:
-	case LDR_DATE:
-	case LDR_TIME:
-	case LDR_TIMESTAMP:
-	case LDR_DATETIME:
-	case LDR_STR:
-	case LDR_NSTR:
-	  {
-	    LDR_STRING *str = (LDR_STRING *) c->val;
-	     
-	    (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
-	    FREE_STRING (str);
-	  }
-	  break;
-
-	case LDR_BSTR:
-	case LDR_XSTR:
-	case LDR_ELO_INT:
-	case LDR_ELO_EXT:
-	case LDR_SYS_USER:
-	case LDR_SYS_CLASS:
-	  {
-	    LDR_STRING *str = (LDR_STRING *) c->val;
-	     
-	    (*ldr_act) (ldr_Current_context, str->val, strlen(str->val), c->type);
-	    FREE_STRING (str);
-	  }
-	  break;
-
-	case LDR_OID:
-	case LDR_CLASS_OID:
-	  loader_process_object_ref ((LDR_OBJECT_REF *) c->val, c->type);
-	  break;
-
-	case LDR_COLLECTION:
-	  (*ldr_act) (ldr_Current_context, "{", 1, LDR_COLLECTION);
-	  loader_process_constants ((LDR_CONSTANT *) c->val);
-	  ldr_act_attr (ldr_Current_context, NULL, 0, LDR_COLLECTION);
-	  break;
-
-	default:
-	  break;
-	}
-
-      if (c->need_free)
-	{
-	  free_and_init (c);
-	}
-    }
-}
-
-void do_loader_parse(FILE *fp)
+void
+do_loader_parse (FILE * fp)
 {
   loader_In_instance_line = true;
 
   loader_yyin = fp;
-  loader_yyparse();
+  loader_yyparse ();
 }
 
 #ifdef PARSER_DEBUG
@@ -2817,4 +2838,3 @@ void do_loader_parse(FILE *fp)
 }
 */
 #endif
-

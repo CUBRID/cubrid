@@ -161,6 +161,8 @@ extern void ldr_act_init_context (LDR_CONTEXT * context,
 				  const char *class_name, int len);
 extern void ldr_increment_err_total (LDR_CONTEXT * context);
 
+extern void ldr_process_constants (LDR_CONSTANT * c);
+
 /*
  * Action to deal with instance attributes, arguments for
  * constructors and set elements
@@ -215,7 +217,8 @@ extern int ldr_act_add_argument (LDR_CONTEXT * context, const char *name);
 
 /* Action to start a new instance */
 
-extern void ldr_act_start_instance (LDR_CONTEXT * context, int id);
+extern void ldr_act_start_instance (LDR_CONTEXT * context, int id,
+				    LDR_CONSTANT * cons);
 
 /* Statistics updating/retrieving functions */
 
