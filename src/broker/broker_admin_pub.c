@@ -84,6 +84,7 @@
 	} while (0)
 
 #define ACCESS_FILE_DELIMITER ":"
+#define IP_FILE_DELIMITER ","
 
 static int br_activate (T_BROKER_INFO *, int, T_SHM_BROKER *);
 static int br_inactivate (T_BROKER_INFO *);
@@ -1660,7 +1661,7 @@ admin_broker_acl_status_cmd (int master_shm_id, const char *broker_name)
 	    {
 	      fprintf (stdout, "%s:%s:%s\n", shm_appl->access_info[j].dbname,
 		       shm_appl->access_info[j].dbuser,
-		       shm_appl->access_info[j].ip_filename);
+		       shm_appl->access_info[j].ip_files);
 	      for (k = 0; k < shm_appl->access_info[j].ip_info.num_list; k++)
 		{
 		  int address_index = k * IP_BYTE_COUNT;
@@ -1708,7 +1709,7 @@ admin_broker_acl_status_cmd (int master_shm_id, const char *broker_name)
 	{
 	  fprintf (stdout, "%s:%s:%s\n", shm_appl->access_info[j].dbname,
 		   shm_appl->access_info[j].dbuser,
-		   shm_appl->access_info[j].ip_filename);
+		   shm_appl->access_info[j].ip_files);
 	  for (k = 0; k < shm_appl->access_info[j].ip_info.num_list; k++)
 	    {
 	      int address_index = k * IP_BYTE_COUNT;
@@ -2434,13 +2435,31 @@ get_appl_server_name (int appl_server_type, char **env, int env_num)
   return APPL_SERVER_CAS_NAME;
 }
 
+static ACCESS_INFO *
+find_access_info (ACCESS_INFO ai[], int size, char *dbname, char *dbuser)
+{
+  int i;
+
+  for (i = 0; i < size; i++)
+    {
+      if (strcmp (ai[i].dbname, dbname) == 0
+	  && strcmp (ai[i].dbuser, dbuser) == 0)
+	{
+	  return &ai[i];
+	}
+    }
+
+  return NULL;
+}
+
 static int
 read_from_access_control_file (T_SHM_APPL_SERVER * shm_appl, char *filename)
 {
-  char buf[1024];
+  char buf[1024], path_buf[256], *files, *token, *save;
   FILE *fd_access_list;
-  int num_access_list = 0;
+  int num_access_list = 0, line = 0;
   ACCESS_INFO new_access_info[ACL_MAX_ITEM_COUNT];
+  ACCESS_INFO *access_info;
   bool is_current_broker_section;
 #if defined(WINDOWS)
   char acl_sem_name[BROKER_NAME_LEN];
@@ -2464,6 +2483,7 @@ read_from_access_control_file (T_SHM_APPL_SERVER * shm_appl, char *filename)
     {
       char *dbname, *dbuser, *ip_file, *p;
 
+      line++;
       p = strchr (buf, '#');
       if (p != NULL)
 	{
@@ -2511,20 +2531,22 @@ read_from_access_control_file (T_SHM_APPL_SERVER * shm_appl, char *filename)
 	}
 
       dbname = strtok (buf, ACCESS_FILE_DELIMITER);
-      if (dbname == NULL)
+      if (dbname == NULL || strlen (dbname) > (ACL_MAX_DBNAME_LENGTH - 1))
 	{
 	  sprintf (admin_err_msg,
-		   "%s: error while loading access control file(%s).",
-		   shm_appl->broker_name, filename);
+		   "%s: error while loading access control file(%s:%d)"
+		   " - Database name is empty or too long.",
+		   shm_appl->broker_name, filename, line);
 	  goto error;
 	}
 
       dbuser = strtok (NULL, ACCESS_FILE_DELIMITER);
-      if (dbuser == NULL)
+      if (dbuser == NULL || strlen (dbuser) > (ACL_MAX_DBUSER_LENGTH - 1))
 	{
 	  sprintf (admin_err_msg,
-		   "%s: error while loading access control file(%s).",
-		   shm_appl->broker_name, filename);
+		   "%s: error while loading access control file(%s:%d)"
+		   " - Database user is empty or too long.",
+		   shm_appl->broker_name, filename, line);
 	  goto error;
 	}
 
@@ -2532,26 +2554,51 @@ read_from_access_control_file (T_SHM_APPL_SERVER * shm_appl, char *filename)
       if (ip_file == NULL)
 	{
 	  sprintf (admin_err_msg,
-		   "%s: error while loading access control file(%s).",
-		   shm_appl->broker_name, filename);
+		   "%s: error while loading access control file(%s:%d)"
+		   " - IP list file paths are empty.",
+		   shm_appl->broker_name, filename, line);
 	  goto error;
 	}
 
-      access_control_file_repath (ip_file);
-
-      if (read_ip_info
-	  (&(new_access_info[num_access_list].ip_info), ip_file) < 0)
+      access_info = find_access_info (new_access_info, num_access_list,
+				      dbname, dbuser);
+      if (access_info == NULL)
 	{
-	  goto error;
+	  access_info = &new_access_info[num_access_list];
+	  strncpy (access_info->dbname, dbname, ACL_MAX_DBNAME_LENGTH);
+	  strncpy (access_info->dbuser, dbuser, ACL_MAX_DBUSER_LENGTH);
+	  num_access_list++;
 	}
 
-      strncpy (new_access_info[num_access_list].dbname,
-	       dbname, ACL_MAX_DBNAME_LENGTH);
-      strncpy (new_access_info[num_access_list].dbuser,
-	       dbuser, ACL_MAX_DBUSER_LENGTH);
-      strcpy (new_access_info[num_access_list].ip_filename, ip_file);
+      if (access_info->ip_files[0] != '\0')
+	{
+	  strncat (access_info->ip_files, ",", LINE_MAX);
+	}
+      strncat (access_info->ip_files, ip_file, LINE_MAX);
+      for (files = ip_file;; files = NULL)
+	{
+	  token = strtok_r (files, IP_FILE_DELIMITER, &save);
+	  if (token == NULL)
+	    {
+	      break;
+	    }
 
-      num_access_list++;
+	  if (strlen (token) > 255)
+	    {
+	      sprintf (admin_err_msg,
+		       "%s: error while loading access control file(%s)"
+		       " - a IP file path(%s) is too long",
+		       shm_appl->broker_name, filename, token);
+	      goto error;
+	    }
+
+	  strncpy (path_buf, token, 256);
+	  access_control_file_repath (path_buf);
+	  if (read_ip_info (&(access_info->ip_info), path_buf) < 0)
+	    {
+	      goto error;
+	    }
+	}
     }
 
   fclose (fd_access_list);
@@ -2604,25 +2651,31 @@ access_control_file_repath (char *path)
 static int
 read_ip_info (IP_INFO * ip_info, char *filename)
 {
-  char buf[32];
+  char buf[LINE_MAX];
   FILE *fd_ip_list;
-  unsigned char i;
+  unsigned char i, ln = 0;
 
   fd_ip_list = fopen (filename, "r");
 
   if (fd_ip_list == NULL)
     {
-      sprintf (admin_err_msg,
-	       "Error while loading ip info file(%s).", filename);
+      sprintf (admin_err_msg, "Could not open ip info file(%s)", filename);
       return -1;
     }
 
-  ip_info->num_list = 0;
-
-  while (fgets (buf, 32, fd_ip_list))
+  buf[LINE_MAX - 2] = 0;
+  while (fgets (buf, LINE_MAX, fd_ip_list))
     {
       char *token, *p;
       int address_index;
+
+      ln++;
+      if (buf[LINE_MAX - 2] != 0 && buf[LINE_MAX - 2] != '\n')
+	{
+	  sprintf (admin_err_msg, "Error while loading ip info file(%s)"
+		   " - %d line is too long", filename, ln);
+	  goto error;
+	}
 
       p = strchr (buf, '#');
       if (p != NULL)

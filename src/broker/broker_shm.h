@@ -177,7 +177,7 @@ struct access_list
 {
   char dbname[ACL_MAX_DBNAME_LENGTH];
   char dbuser[ACL_MAX_DBUSER_LENGTH];
-  char ip_filename[256];
+  char ip_files[LINE_MAX];
   IP_INFO ip_info;
 };
 
