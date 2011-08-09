@@ -259,7 +259,8 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
       if (is_first)
 	{
 	  bind_with_size = is_bind_with_size (buf, &tot_val_size, &info_size);
-	  if (tot_val_size < 0)
+	  if (tot_val_size < 0
+	      || (tot_val_size + info_size) > INT_MAX)
 	    {
 	      fprintf (stderr, "log error\n");
 	      return -1;
@@ -269,7 +270,7 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
 
       if (bind_with_size)
 	{
-	  int rlen;
+	  size_t rlen;
 	  char *value = NULL;
 
 	  value = (char *) MALLOC (info_size + tot_val_size + 1);
