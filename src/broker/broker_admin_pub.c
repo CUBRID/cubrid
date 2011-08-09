@@ -2585,7 +2585,7 @@ read_from_access_control_file (T_SHM_APPL_SERVER * shm_appl, char *filename)
 
 	  if (strlen (token) > 255)
 	    {
-	      sprintf (admin_err_msg,
+	      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
 		       "%s: error while loading access control file(%s)"
 		       " - a IP file path(%s) is too long",
 		       shm_appl->broker_name, filename, token);
