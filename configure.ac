@@ -815,7 +815,9 @@ AC_MSG_RESULT($CUBRID_TMPDIR)
 DIR_DEFS="$DIR_DEFS -DCUBRID_TMPDIR=\\\"$CUBRID_TMPDIR\\\""
 
 # change PACKAGE_STRING to official version string
-PACKAGE_STRING='CUBRID VERSION_STRING'
+PACKAGE_STRING="CUBRID VERSION_STRING"
+sed < confdefs.h > confdefs.h-2 "s/^#define PACKAGE_STRING .*$"/"#define PACKAGE_STRING \"$PACKAGE_STRING\"/"
+mv confdefs.h-2 confdefs.h
 AC_DEFINE([PRODUCT_STRING], ["VERSION_STRING"], [official version string])
 
 AC_SUBST([BUILD_NUMBER])
