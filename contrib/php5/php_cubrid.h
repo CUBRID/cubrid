@@ -57,6 +57,8 @@ extern zend_module_entry cubrid_module_entry;
 
 ZEND_MINIT_FUNCTION(cubrid);
 ZEND_MSHUTDOWN_FUNCTION(cubrid);
+ZEND_RINIT_FUNCTION(cubrid);
+ZEND_RSHUTDOWN_FUNCTION(cubrid);
 ZEND_MINFO_FUNCTION(cubrid);
 
 ZEND_FUNCTION(cubrid_version);

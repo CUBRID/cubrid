@@ -865,8 +865,8 @@ zend_module_entry cubrid_module_entry = {
     cubrid_functions,
     ZEND_MINIT(cubrid),
     ZEND_MSHUTDOWN(cubrid),
-    NULL,
-    NULL,
+    ZEND_RINIT(cubrid),
+    ZEND_RSHUTDOWN(cubrid),
     ZEND_MINFO(cubrid),
     NO_VERSION_YET,
     STANDARD_MODULE_PROPERTIES
@@ -975,6 +975,25 @@ ZEND_MSHUTDOWN_FUNCTION(cubrid)
     cci_end();
 
     return SUCCESS;
+}
+
+ZEND_RINIT_FUNCTION(cubrid)
+{
+	CUBRID_G(last_connect_id) = -1;
+	CUBRID_G(last_request_id) = -1;
+	CUBRID_G(last_request_stmt_type) = 0;
+	CUBRID_G(last_request_affected_rows) = 0;
+
+	CUBRID_G(recent_error).code = 0;
+	CUBRID_G(recent_error).facility = 0;
+	CUBRID_G(recent_error).msg[0] = 0;
+
+	return SUCCESS;
+}
+
+ZEND_RSHUTDOWN_FUNCTION(cubrid)
+{
+	return SUCCESS;
 }
 
 ZEND_MINFO_FUNCTION(cubrid)
