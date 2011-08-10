@@ -6,7 +6,7 @@ CUBRID PHP Library
 CUBRID PHP Library is the official PHP Extension to connect to CUBRID Database.
 
 For more information about CUBRID PHP Library, visit the web site:
-http://sourceforge.net/projects/cubridinterface/
+http://www.cubrid.org/php_api_for_cubrid
 
 For more information about CUBRID, visit the web site: 
 http://www.cubrid.org
@@ -23,8 +23,8 @@ http://sourceforge.net/projects/cubrid/
 
 3. License
 
-CUBRID is distributed under two licenses, 
-Database engine is under GPL v2 or later and the APIs are under BSD license.
+CUBRID is distributed under two licenses, Database engine is under GPL v2 or
+later and the APIs are under BSD license.
 
 For more information, visit the web site:
 http://www.cubrid.org/license

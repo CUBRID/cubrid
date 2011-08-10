@@ -74,7 +74,6 @@
 #endif
 
 #define CUBRID_LOB_READ_BUF_SIZE    8192
-#define MAX_SERIAL_PRECISION        38
 
 /* EXECUTE */
 #define CUBRID_INCLUDE_OID	    1
@@ -286,7 +285,6 @@ static const DB_TYPE_INFO db_type_info[] = {
 /* DB parameters */
 #define CUBRID_PARAM_ISOLATION_LEVEL    CCI_PARAM_ISOLATION_LEVEL
 #define CUBRID_PARAM_LOCK_TIMEOUT       CCI_PARAM_LOCK_TIMEOUT
-#define CUBRID_PARAM_MAX_STRING_LENGTH  CCI_PARAM_MAX_STRING_LENGTH
 
 #define CUBRID_AUTOCOMMIT_FALSE    CCI_AUTOCOMMIT_FALSE
 #define CUBRID_AUTOCOMMIT_TRUE     CCI_AUTOCOMMIT_TRUE
@@ -326,13 +324,17 @@ typedef struct
     php_cubrid_int64_t size;
 } T_CUBRID_LOB;
 
+typedef struct cubrid_request T_CUBRID_REQUEST;
+
 typedef struct
 {
     T_CUBRID_ERROR recent_error;
     int handle;
+    int req_count;
+    T_CUBRID_REQUEST **req_list;
 } T_CUBRID_CONNECT;
 
-typedef struct
+struct cubrid_request
 {
     T_CUBRID_CONNECT *conn;
 
@@ -350,7 +352,7 @@ typedef struct
     T_CCI_CUBRID_STMT sql_type;
     T_CCI_COL_INFO *col_info;
     T_CUBRID_LOB *lob;
-} T_CUBRID_REQUEST;
+};
 
 /************************************************************************
 * PRIVATE FUNCTION PROTOTYPES
@@ -371,6 +373,7 @@ static int handle_error(int err_code, T_CCI_ERROR * error, T_CUBRID_CONNECT *con
 static T_CUBRID_CONNECT *new_cubrid_connect(void);
 static T_CUBRID_REQUEST *new_cubrid_request(void);
 static T_CUBRID_LOB *new_cubrid_lob(void);
+static void register_cubrid_request(T_CUBRID_CONNECT *conn, T_CUBRID_REQUEST *req);
 
 static void php_cubrid_set_default_conn(int id TSRMLS_DC);
 static void php_cubrid_set_default_req(int id TSRMLS_DC);
@@ -388,9 +391,9 @@ static int get_cubrid_u_type_by_name(const char *type_name);
 static int get_cubrid_u_type_len(T_CCI_U_TYPE type);
 
 static int cubrid_lob_new(int con_h_id, T_CCI_LOB *lob, T_CCI_U_TYPE type, T_CCI_ERROR *err_buf);
-static long long cubrid_lob_size(T_CCI_LOB lob, T_CCI_U_TYPE type);
-static int cubrid_lob_write(int con_h_id, T_CCI_LOB lob, T_CCI_U_TYPE type, long long start_pos, int length, const char *buf, T_CCI_ERROR *err_buf);
-static int cubrid_lob_read(int con_h_id, T_CCI_LOB lob, T_CCI_U_TYPE type, long long start_pos, int length, char *buf, T_CCI_ERROR *err_buf);
+static php_cubrid_int64_t cubrid_lob_size(T_CCI_LOB lob, T_CCI_U_TYPE type);
+static int cubrid_lob_write(int con_h_id, T_CCI_LOB lob, T_CCI_U_TYPE type, php_cubrid_int64_t start_pos, int length, const char *buf, T_CCI_ERROR *err_buf);
+static int cubrid_lob_read(int con_h_id, T_CCI_LOB lob, T_CCI_U_TYPE type, php_cubrid_int64_t start_pos, int length, char *buf, T_CCI_ERROR *err_buf);
 static int cubrid_lob_free(T_CCI_LOB lob, T_CCI_U_TYPE type);
 
 static char *php_cubrid_int64_to_str(php_cubrid_int64_t i64 TSRMLS_DC);
@@ -928,7 +931,6 @@ ZEND_MINIT_FUNCTION(cubrid)
 
     REGISTER_LONG_CONSTANT("CUBRID_PARAM_ISOLATION_LEVEL", CUBRID_PARAM_ISOLATION_LEVEL, CONST_CS | CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("CUBRID_PARAM_LOCK_TIMEOUT", CUBRID_PARAM_LOCK_TIMEOUT, CONST_CS | CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("CUBRID_PARAM_MAX_STRING_LENGTH", CUBRID_PARAM_MAX_STRING_LENGTH, CONST_CS | CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("CUBRID_AUTOCOMMIT_FALSE", CUBRID_AUTOCOMMIT_FALSE, CONST_CS | CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("CUBRID_AUTOCOMMIT_TRUE", CUBRID_AUTOCOMMIT_TRUE, CONST_CS | CONST_PERSISTENT);
 
@@ -1006,7 +1008,6 @@ ZEND_FUNCTION(cubrid_connect)
     int host_len, dbname_len, userid_len, passwd_len;
 
     int cubrid_conn, cubrid_retval = 0;
-    int isolation_level;
 
     T_CUBRID_CONNECT *connect;
     T_CCI_ERROR error;
@@ -1036,12 +1037,6 @@ ZEND_FUNCTION(cubrid_connect)
     CUBRID_G(last_request_stmt_type) = 0;
     CUBRID_G(last_request_affected_rows) = 0;
 
-    if ((cubrid_retval = cci_get_db_parameter(cubrid_conn, CCI_PARAM_ISOLATION_LEVEL, &isolation_level, &error)) < 0) {
-	handle_error(cubrid_retval, &error, NULL);
-	cci_disconnect(cubrid_conn, &error);
-	RETURN_FALSE;
-    }
-
     if ((cubrid_retval = cci_end_tran(cubrid_conn, CCI_TRAN_COMMIT, &error)) < 0) {
 	handle_error(cubrid_retval, &error, NULL);
 	cci_disconnect(cubrid_conn, &error);
@@ -1061,7 +1056,6 @@ ZEND_FUNCTION(cubrid_connect_with_url)
     int url_len, userid_len, passwd_len;
 
     int cubrid_conn, cubrid_retval = 0;
-    int isolation_level;
 
     T_CUBRID_CONNECT *connect = NULL;
     T_CCI_ERROR error;
@@ -1089,12 +1083,6 @@ ZEND_FUNCTION(cubrid_connect_with_url)
     CUBRID_G(last_request_id) = -1;
     CUBRID_G(last_request_stmt_type) = 0;
     CUBRID_G(last_request_affected_rows) = 0;
-
-    if ((cubrid_retval = cci_get_db_parameter(cubrid_conn, CCI_PARAM_ISOLATION_LEVEL, &isolation_level, &error)) < 0) {
-	handle_error(cubrid_retval, &error, NULL);
-	cci_disconnect(cubrid_conn, &error);
-	RETURN_FALSE;
-    }
 
     if ((cubrid_retval = cci_end_tran(cubrid_conn, CCI_TRAN_COMMIT, &error)) < 0) {
 	handle_error(cubrid_retval, &error, NULL);
@@ -1234,6 +1222,7 @@ ZEND_FUNCTION(cubrid_prepare)
 
     ZEND_REGISTER_RESOURCE(return_value, request, le_request);
     php_cubrid_set_default_req(Z_LVAL_P(return_value) TSRMLS_CC);
+    register_cubrid_request(connect, request);
 }
 
 ZEND_FUNCTION(cubrid_bind)
@@ -1624,6 +1613,7 @@ ZEND_FUNCTION(cubrid_execute)
     } else {
         ZEND_REGISTER_RESOURCE(return_value, request, le_request);
         php_cubrid_set_default_req(Z_LVAL_P(return_value) TSRMLS_CC);
+        register_cubrid_request(connect, request);
 	return;
     }
 
@@ -1652,9 +1642,6 @@ ZEND_FUNCTION(cubrid_next_result)
 
     init_error_link(request->conn);
    
-    cci_fetch_buffer_clear(request->handle);
-    cci_close_req_handle(request->handle);
-
     cubrid_retval = cci_next_result(request->handle, &error);
     if (cubrid_retval == CAS_ER_NO_MORE_RESULT_SET) {
         RETURN_FALSE;
@@ -3847,6 +3834,7 @@ ZEND_FUNCTION (cubrid_unbuffered_query)
 
     request = new_cubrid_request();
     req_id = ZEND_REGISTER_RESOURCE(return_value, request, le_request);
+    register_cubrid_request(connect, request);
 
     request->conn = connect;
     request->async_mode = 1;
@@ -3950,6 +3938,7 @@ ZEND_FUNCTION (cubrid_query)
     request = new_cubrid_request();
     req_id = ZEND_REGISTER_RESOURCE(return_value, request, le_request);
     php_cubrid_set_default_req(Z_LVAL_P(return_value) TSRMLS_CC);
+    register_cubrid_request(connect, request);
 
     request->conn = connect;
     request->async_mode = 0;
@@ -4959,13 +4948,46 @@ static void php_cubrid_set_default_req(int id TSRMLS_DC)
 static void close_cubrid_connect(T_CUBRID_CONNECT *conn)
 {
     T_CCI_ERROR error;
+    int i;
+
+    /* When calling cci_disconnect, all request handle in cci will be released,
+     * just like calling cci_close_req_handle. So we must prevent the PHP
+     * garbage collector calling cci_close_req_handle again in close_cubrid_request.
+     */
+    for (i = 0; i < conn->req_count; i++) {
+        if (conn->req_list[i]) {
+            conn->req_list[i]->handle = 0; 
+            conn->req_list[i]->conn = NULL;
+        }
+    }
+
     cci_disconnect(conn->handle, &error);
+
+    if (conn->req_count) {
+        efree(conn->req_list);
+    }
     efree(conn);
 }
 
 static void close_cubrid_request(T_CUBRID_REQUEST * req)
 {
-    cci_close_req_handle(req->handle);
+    int i;
+
+    if (req->conn) {
+        for (i = 0; i < req->conn->req_count; i++) {
+            if (!req->conn->req_list[i]) {
+                continue;
+            }
+
+            if (req->conn->req_list[i]->handle == req->handle) {
+                req->conn->req_list[i] = NULL;
+            }    
+        }
+    }
+
+    if (req->handle) {
+        cci_close_req_handle(req->handle);
+    }
 
     if (req->params) {
         zend_hash_destroy(req->params);
@@ -5216,6 +5238,8 @@ static T_CUBRID_CONNECT *new_cubrid_connect(void)
     connect->recent_error.code = 0;
     connect->recent_error.msg[0] = 0;
     connect->handle = 0;
+    connect->req_count = 0;
+    connect->req_list = NULL;
 
     return connect;
 }
@@ -5250,6 +5274,13 @@ static T_CUBRID_LOB *new_cubrid_lob(void)
     lob->type = CCI_U_TYPE_BLOB;
 
     return lob;
+}
+
+static void register_cubrid_request(T_CUBRID_CONNECT *conn, T_CUBRID_REQUEST *req)
+{
+    conn->req_list = erealloc(conn->req_list, sizeof(T_CUBRID_REQUEST *)*(conn->req_count + 1));
+    conn->req_list[conn->req_count] = req;
+    conn->req_count++;
 }
 
 static int cubrid_add_index_array(zval *arg, uint index, T_CCI_SET in_set TSRMLS_DC)
@@ -5558,19 +5589,19 @@ static int cubrid_lob_new(int con_h_id, T_CCI_LOB *lob, T_CCI_U_TYPE type, T_CCI
         cci_blob_new(con_h_id, lob, err_buf) : cci_clob_new(con_h_id, lob, err_buf);
 }
 
-static long long cubrid_lob_size(T_CCI_LOB lob, T_CCI_U_TYPE type)
+static php_cubrid_int64_t cubrid_lob_size(T_CCI_LOB lob, T_CCI_U_TYPE type)
 {
     return (type == CCI_U_TYPE_BLOB) ? cci_blob_size(lob) : cci_clob_size(lob);
 }
 
-static int cubrid_lob_write(int con_h_id, T_CCI_LOB lob, T_CCI_U_TYPE type, long long start_pos, int length, const char *buf, T_CCI_ERROR *err_buf)
+static int cubrid_lob_write(int con_h_id, T_CCI_LOB lob, T_CCI_U_TYPE type, php_cubrid_int64_t start_pos, int length, const char *buf, T_CCI_ERROR *err_buf)
 {
     return (type == CCI_U_TYPE_BLOB) ? 
         cci_blob_write(con_h_id, lob, start_pos, length, buf, err_buf) : 
         cci_clob_write(con_h_id, lob, start_pos, length, buf, err_buf);
 }
 
-static int cubrid_lob_read(int con_h_id, T_CCI_LOB lob, T_CCI_U_TYPE type, long long start_pos, int length, char *buf, T_CCI_ERROR *err_buf)
+static int cubrid_lob_read(int con_h_id, T_CCI_LOB lob, T_CCI_U_TYPE type, php_cubrid_int64_t start_pos, int length, char *buf, T_CCI_ERROR *err_buf)
 {
     return (type == CCI_U_TYPE_BLOB) ?
         cci_blob_read(con_h_id, lob, start_pos, length, buf, err_buf) :
