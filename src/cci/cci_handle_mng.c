@@ -251,6 +251,12 @@ hm_con_handle_free (int con_id)
   if (con_handle == NULL)
     return CCI_ER_CON_HANDLE;
 
+  if (!IS_INVALID_SOCKET (con_handle->sock_fd))
+    {
+      CLOSE_SOCKET (con_handle->sock_fd);
+      con_handle->sock_fd = INVALID_SOCKET;
+    }
+
   con_handle_content_free (con_handle);
   FREE_MEM (con_handle);
   con_handle_table[con_id - 1] = NULL;
