@@ -1394,13 +1394,15 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_CALL_STACK_DUMP_ACTIVATION,
-   (PRM_ERROR_LIST | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   (PRM_ERROR_LIST | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_SERVER |
+    PRM_USER_CHANGE),
    (void *) &prm_call_stack_dump_activation_default,
    (void *) &PRM_CALL_STACK_DUMP_ACTIVATION,
    (void *) NULL, (void *) NULL,
    (char *) NULL},
   {PRM_NAME_CALL_STACK_DUMP_DEACTIVATION,
-   (PRM_ERROR_LIST | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   (PRM_ERROR_LIST | PRM_DEFAULT | PRM_FOR_CLIENT | PRM_FOR_SERVER |
+    PRM_USER_CHANGE),
    (void *) &prm_call_stack_dump_deactivation_default,
    (void *) &PRM_CALL_STACK_DUMP_DEACTIVATION,
    (void *) NULL, (void *) NULL,
@@ -3187,22 +3189,31 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, bool print_name)
       error_list = PRM_GET_ERROR_LIST (prm->value);
       if (error_list)
 	{
+	  bool is_empty_list = true;
 	  s = buf;
-	  n = snprintf (s, len, "%s= ", prm->name);
-	  n -= 1;		/* to overwrite at the position of " " */
+	  n = snprintf (s, len, "%s=", prm->name);
 	  s += n;
 	  len -= n;
 	  for (err_id = 1; err_id <= -(ER_LAST_ERROR); err_id++)
 	    {
 	      if (error_list[err_id])
 		{
-		  n = snprintf (s, len, "%d,", err_id);
-		  n -= 1;	/* to overwrite at the position of "," */
+		  n = snprintf (s, len, "%d,", -err_id);
 		  s += n;
 		  len -= n;
+		  is_empty_list = false;
 		}
 	    }
-	  snprintf (s, len, " ");
+	  if (is_empty_list == false)
+	    {
+	      /* remove last "," */
+	      s -= 1;
+	      len += 1;
+	    }
+	  if (len > 0)
+	    {
+	      *s = '\0';
+	    }
 	}
       else
 	{
@@ -3219,18 +3230,25 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, bool print_name)
 	{
 	  list_size = int_list[0];
 	  s = buf;
-	  n = snprintf (s, len, "%s= ", prm->name);
-	  n -= 1;		/* to overwrite at the position of " " */
+	  n = snprintf (s, len, "%s=", prm->name);
 	  s += n;
 	  len -= n;
 	  for (i = 1; i <= list_size; i++)
 	    {
 	      n = snprintf (s, len, "%d,", int_list[i]);
-	      n -= 1;		/* to overwrite at the position of "," */
 	      s += n;
 	      len -= n;
 	    }
-	  snprintf (s, len, " ");
+	  if (list_size > 0)
+	    {
+	      /* remove last "," */
+	      s -= 1;
+	      len += 1;
+	    }
+	  if (len > 0)
+	    {
+	      *s = '\0';
+	    }
 	}
       else
 	{
