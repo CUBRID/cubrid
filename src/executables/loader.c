@@ -6223,15 +6223,17 @@ ldr_process_object_ref (LDR_OBJECT_REF * ref, int type)
   if (ref_class != NULL)
     {
       class_name = db_get_class_name (ref_class);
-      ignore_class = ldr_is_ignore_class (class_name, strlen (class_name));
+      ignore_class = ldr_is_ignore_class (class_name,
+					  ((class_name) ?
+					   strlen (class_name) : 0));
     }
 
   if (type == LDR_OID)
     {
       (*ldr_act) (ldr_Current_context, ref->instance_number->val,
-		  (ref->instance_number == NULL
-		   && ref->instance_number->val) ? 0 : ref->
-		  instance_number->size, (ignore_class) ? LDR_NULL : LDR_OID);
+		  ((ref->instance_number->val == NULL) ?
+		   0 : ref->instance_number->size),
+		  (ignore_class) ? LDR_NULL : LDR_OID);
     }
   else
     {
@@ -6245,8 +6247,8 @@ ldr_process_object_ref (LDR_OBJECT_REF * ref, int type)
       else
 	{
 	  (*ldr_act) (ldr_Current_context, ref->class_id->val,
-		      (ref->class_id == NULL
-		       && ref->class_id->val) ? 0 : ref->class_id->size,
+		      ((ref->class_id->val == NULL) ?
+		       0 : ref->class_id->size),
 		      (ignore_class) ? LDR_NULL : LDR_CLASS_OID);
 	}
     }
