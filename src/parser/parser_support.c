@@ -2553,12 +2553,15 @@ pt_collect_host_info (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_HOST_IN:	/* an input host variable */
 	  hvars->inputs = pt_insert_host_var (parser, node, hvars->inputs);
 	  break;
+
 	case PT_HOST_OUT:	/* an output host variable */
 	  hvars->outputs = pt_insert_host_var (parser, node, hvars->outputs);
 	  break;
+
 	case PT_HOST_OUT_DESCR:	/* an output host descriptor */
 	  hvars->out_descr = parser_copy_tree (parser, node);
 	  break;
+
 	default:
 	  break;
 	}
@@ -2579,6 +2582,7 @@ pt_collect_host_info (PARSER_CONTEXT * parser, PT_NODE * node,
 	    parser_copy_tree (parser, node->info.update.cursor_name);
 	}
       break;
+
     default:
       break;
     }

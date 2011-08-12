@@ -5321,7 +5321,7 @@ error:
  *                O           O         : async & group commit, just return
  *              Some thread have to flush log pages by itself, because they
  *              cannot release log cs.
- *              There are 3 types of flushing.
+ *              There are 2 types of flushing.
  *              LOG_FLUSH_NORMAL : normal threads's flush request.
  *              LOG_FLUSH_DIRECT : have to flushall_append_pages by itself.
  */

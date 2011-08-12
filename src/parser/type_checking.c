@@ -5169,12 +5169,15 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 	case PT_EXPR:
 	  location = cnf_node->info.expr.location;
 	  break;
+
 	case PT_VALUE:
 	  location = cnf_node->info.value.location;
 	  break;
+
 	case PT_HOST_VAR:
 	  /* TRUE/FALSE can be bound */
 	  break;
+
 	default:
 	  /* stupid where cond. treat it as false condition
 	   * example: SELECT * FROM foo WHERE id;

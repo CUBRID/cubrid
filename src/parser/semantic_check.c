@@ -6759,7 +6759,7 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   /* check that all constraints look valid */
-  if (!parser->error_msgs)
+  if (!pt_has_error (parser))
     {
       (void) pt_check_constraints (parser, node);
     }
@@ -7609,7 +7609,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	  node->info.insert.value_clauses->next != NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DO_INSERT_TOO_MANY, 0);
-	  if (!parser->error_msgs)
+	  if (!pt_has_error (parser))
 	    {
 	      PT_ERRORc (parser, node, db_error_string (3));
 	    }
@@ -7696,8 +7696,10 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
 
       /* semantic check {union|intersection|difference} operands */
-      if (parser->error_msgs)
-	break;
+      if (pt_has_error (parser))
+	{
+	  break;
+	}
 
       pt_check_into_clause (parser, node);
 
@@ -8015,7 +8017,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node,
       node->next = next;
     }
 
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       if (node)
 	{
@@ -8341,7 +8343,7 @@ pt_expand_isnull_preds_helper (PARSER_CONTEXT * parser, PT_NODE * node,
 
       /* now that we have the chain, we need to construct the new
        * "IS NULL" disjuncts. */
-      if (!parser->error_msgs && chain_info.chain_length > 1)
+      if (!pt_has_error (parser) && chain_info.chain_length > 1)
 	{
 	  node = pt_gen_isnull_preds (parser, node, &chain_info);
 	}
@@ -8711,7 +8713,7 @@ pt_check_with_info (PARSER_CONTEXT * parser,
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       pt_register_orphan (parser, node);
       return NULL;
@@ -8896,6 +8898,7 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
   else
     {
       int p = 0, s = 0;
+
       if (lhs->data_type)
 	{
 	  p = lhs->data_type->info.data_type.precision;
@@ -8935,8 +8938,11 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs,
 	{
 	  if (rhs->type_enum == PT_TYPE_MAYBE)
 	    {
-	      DB_TYPE lhs_dbtype = pt_type_enum_to_db (lhs->type_enum);
-	      TP_DOMAIN *d = tp_domain_resolve_default (lhs_dbtype);
+	      DB_TYPE lhs_dbtype;
+	      TP_DOMAIN *d;
+
+	      lhs_dbtype = pt_type_enum_to_db (lhs->type_enum);
+	      d = tp_domain_resolve_default (lhs_dbtype);
 	      pt_set_expected_domain (rhs, d);
 	      if (rhs->node_type == PT_HOST_VAR)
 		{
@@ -9279,7 +9285,9 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
 
   /* find the variable and return if none */
   if (pt_find_var (name_expr, &tmp) != 1 || tmp == NULL)
-    return NULL;
+    {
+      return NULL;
+    }
 
   /* walk through the expression, inverting as you go */
   while (name_expr)
@@ -9700,7 +9708,7 @@ pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result)
       result->next = parser_copy_tree (parser, name_expr);
     }
 
-  if (parser->error_msgs)
+  if (pt_has_error (parser))
     {
       /* if we got an error just indicate not-invertible, end return with
        * previous error state. */
@@ -10467,11 +10475,14 @@ pt_cast_select_list_to_arg_list (PARSER_CONTEXT * parser, PT_NODE * query,
 	     val != NULL && arg != NULL;
 	     prev = val, val = val->next, arg = arg->next)
 	  {
-	    PT_NODE *new_node = pt_assignment_compatible (parser, arg, val);
+	    PT_NODE *new_node;
+
+	    new_node = pt_assignment_compatible (parser, arg, val);
 	    if (new_node == NULL)
 	      {
 		return ER_FAILED;
 	      }
+
 	    if (new_node != val)
 	      {
 		val = new_node;
@@ -10588,7 +10599,9 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * ins)
 	   prev = v, v = v->next, a = a->next)
 	{
 	  /* test assignment compatibility. This sets parser->error_msgs */
-	  PT_NODE *new_node = pt_assignment_compatible (parser, a, v);
+	  PT_NODE *new_node;
+
+	  new_node = pt_assignment_compatible (parser, a, v);
 	  if (new_node == NULL)
 	    {
 	      /* this in an error and the message was set by the call to
@@ -10596,6 +10609,7 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * ins)
 	       */
 	      continue;
 	    }
+
 	  if (new_node != v)
 	    {
 	      v = new_node;

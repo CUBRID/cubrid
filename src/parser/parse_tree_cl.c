@@ -11255,7 +11255,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_varchar (parser, b, vc);
 	  b = pt_append_nulstring (parser, b, ")");
 	}
-      b = pt_append_nulstring (parser, b, " */");
+      b = pt_append_nulstring (parser, b, " */ ");
     }
   b = pt_append_nulstring (parser, b, "into ");
   b = pt_append_varchar (parser, b, r1);

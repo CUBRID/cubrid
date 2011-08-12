@@ -4079,7 +4079,7 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp,
 {
   /* outer -> left scan, inner -> right scan */
 
-  /* pre-defined vars */
+  /* pre-defined vars: */
   QFILE_LIST_ID *list_idp = NULL;
   int nvals;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
@@ -4826,11 +4826,12 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid,
 
       /* values of the outer and inner are equal, do a scan group processing
        */
+      merge_cnt = 0;
       if (direction == S_FORWARD)
 	{
 	  /* move forwards within a group
 	   */
-	  merge_cnt = cnt = 0;
+	  cnt = 0;
 	  /* group_cnt has the number of tuples in the group */
 	  while (1)
 	    {
@@ -4942,6 +4943,20 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid,
 		{		/* group_cnt > 0 */
 		  if (cnt >= group_cnt)
 		    {
+		      if (merge_cnt == 0)
+			{	/* not merged */
+			  /* depending on the join type, join with a NULL
+			     opposite row when a NULL or a not-qualified is
+			     encountered, or skip it. */
+			  if (all_lefts)
+			    {
+			      /* merge the fetched tuple(left) and NULL
+			         tuple(right) */
+			      QEXEC_MERGE_ADD_MERGETUPLE (thread_p,
+							  &outer_tplrec,
+							  NULL);
+			    }
+			}
 		      break;	/* reached the bottom of the group */
 		    }
 
@@ -5053,12 +5068,27 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid,
 		  /* merge the fetched tuples(left and right) */
 		  QEXEC_MERGE_ADD_MERGETUPLE (thread_p, &outer_tplrec,
 					      &inner_tplrec);
+
+		  merge_cnt++;	/* increase the counter of merged tuples */
 		}
 
 	      cnt--;		/* decrease the counter of the processed tuples */
 
 	      if (cnt <= 0)
 		{
+		  if (merge_cnt == 0)
+		    {		/* not merged */
+		      /* depending on the join type, join with a NULL
+		         opposite row when a NULL or a not-qualified is
+		         encountered, or skip it. */
+		      if (all_lefts)
+			{
+			  /* merge the fetched tuple(left) and NULL
+			     tuple(right) */
+			  QEXEC_MERGE_ADD_MERGETUPLE (thread_p,
+						      &outer_tplrec, NULL);
+			}
+		    }
 		  break;	/* finish the group */
 		}
 

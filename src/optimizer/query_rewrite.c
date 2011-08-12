@@ -695,8 +695,10 @@ qo_get_next_oid_pred (PT_NODE * pred)
 static int
 qo_is_oid_const (PT_NODE * node)
 {
-  if (!node)
-    return 0;
+  if (node == NULL)
+    {
+      return 0;
+    }
 
   switch (node->node_type)
     {

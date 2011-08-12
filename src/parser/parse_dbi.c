@@ -2623,6 +2623,7 @@ pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv)
 	  val = &parser->host_variables[idx];
 	}
     }
+
   return val;
 }
 

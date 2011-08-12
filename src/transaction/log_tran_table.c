@@ -2169,6 +2169,7 @@ logtb_find_wait_secs (int tran_index)
     }
   else
     {
+      assert (false);
       return 0;
     }
 }
