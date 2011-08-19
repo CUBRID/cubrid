@@ -4531,9 +4531,7 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
-  LOG_CS_EXIT ();
+  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
 }
 
 /*
@@ -4737,6 +4735,7 @@ log_append_topope_abort_client_loose_ends (THREAD_ENTRY * thread_p,
   (void) prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_TOPOPE_ABORTED_WITH_CLIENT_USER_LOOSE_ENDS;
+
   logpb_flush_all_append_pages (thread_p, LOG_FLUSH_NORMAL);
 }
 
@@ -6091,28 +6090,6 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
 	}
     }
 
-  if (log_Gl.archive.vdes != NULL_VOLDES
-      && !logpb_is_smallest_lsa_in_archive (thread_p))
-    {
-      LOG_CS_ENTER (thread_p);
-      logpb_decache_archive_info (thread_p);
-      LOG_CS_EXIT ();
-
-#if 0				/* temporarily disabled */
-      /*
-       * Checkpoint to flush data pages. This will alleviate the use of
-       * the log archive in the event of a system crash.
-       * However, the log archive may be needed in the event of a media crash
-       */
-
-#if defined(SERVER_MODE)
-      logpb_do_checkpoint ();
-#else /* SERVER_MODE */
-      (void) logpb_checkpoint (thread_p);
-#endif /* SERVER_MODE */
-#endif
-    }
-
 #if defined (CUBRID_DEBUG)
   if (logtb_get_number_assigned_tran_indices () <= 2)
     {
@@ -6254,27 +6231,6 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
 	{
 	  state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID);
 	}
-    }
-
-  if (log_Gl.archive.vdes != NULL_VOLDES
-      && !logpb_is_smallest_lsa_in_archive (thread_p))
-    {
-      LOG_CS_ENTER (thread_p);
-      logpb_decache_archive_info (thread_p);
-      LOG_CS_EXIT ();
-
-#if 0				/* temporarily disabled */
-      /*
-       * Checkpoint to flush datapages. This will alleviate the use of the log
-       * archive in the event of a system crash. The log archive may be needed
-       * in the event of a media crash
-       */
-#if defined(SERVER_MODE)
-      logpb_do_checkpoint ();
-#else /* SERVER_MODE */
-      (void) logpb_checkpoint (thread_p);
-#endif /* SERVER_MODE */
-#endif
     }
 
 #if defined (CUBRID_DEBUG)
