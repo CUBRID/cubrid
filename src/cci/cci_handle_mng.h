@@ -150,6 +150,7 @@ typedef struct
   T_CCI_QUERY_RESULT *qr;
   int num_query_res;
   int valid;
+  int query_timeout;
 } T_REQ_HANDLE;
 
 typedef struct
@@ -198,6 +199,11 @@ typedef struct
   int rc_time;			/* failback try duration */
   T_CCI_DATASOURCE *datasource;
   MHT_TABLE *stmt_pool;
+  int login_timeout;
+  int query_timeout;
+  char disconnect_on_query_timeout;
+  struct timeval start_time;	/* function start time to check timeout */
+  int current_timeout;		/* login_timeout or query_timeout */
 } T_CON_HANDLE;
 
 /************************************************************************

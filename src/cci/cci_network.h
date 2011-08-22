@@ -83,10 +83,13 @@ extern int net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
 			    char *db_user, char *db_passwd, char is_first,
 			    T_CCI_ERROR * err_buf, char *broker_info,
 			    char *cas_info, int *cas_pid, SOCKET * ret_sock,
-			    T_CCI_SESSION_ID * session_id);
+			    T_CCI_SESSION_ID * session_id, int login_timeout);
 extern int net_send_msg (T_CON_HANDLE * con_handle, char *msg, int size);
 extern int net_recv_msg (T_CON_HANDLE * con_handle, char **msg, int *size,
 			 T_CCI_ERROR * err_buf);
+extern int net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg,
+				 int *msg_size, T_CCI_ERROR * err_buf,
+				 int timeout);
 extern int net_send_file (SOCKET sock_fd, char *filename, int filesize);
 extern int net_recv_file (SOCKET sock_fd, int file_size, int out_fd);
 

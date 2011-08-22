@@ -954,3 +954,10 @@ mht_put (MHT_TABLE * ht, void *key, void *data)
   assert (ht != NULL && key != NULL);
   return mht_put_internal (ht, key, data, MHT_OPT_DEFAULT);
 }
+
+void *
+mht_put_data (MHT_TABLE * ht, void *key, void *data)
+{
+  assert (ht != NULL && key != NULL);
+  return mht_put_internal (ht, key, data, MHT_OPT_KEEP_KEY);
+}

@@ -177,6 +177,26 @@
         } while(0)
 #endif
 
+#define SET_START_TIME(CON_HANDLE, TIME_TO_CHECK) \
+  do {\
+    if ((CON_HANDLE) && (TIME_TO_CHECK) > 0) {\
+      cci_gettimeofday(&((CON_HANDLE)->start_time), NULL);\
+      (CON_HANDLE)->current_timeout = (TIME_TO_CHECK);\
+    }\
+  } while (0)
+
+#define START_TIME_IS_SET(CON_HANDLE) \
+  (((CON_HANDLE)->current_timeout > 0) && \
+   ((CON_HANDLE)->start_time.tv_sec != 0 || (CON_HANDLE)->start_time.tv_usec != 0))
+
+#define RESET_START_TIME(CON_HANDLE) \
+  do {\
+    if (CON_HANDLE) {\
+      (CON_HANDLE)->start_time.tv_sec = 0; (CON_HANDLE)->start_time.tv_usec = 0;\
+      (CON_HANDLE)->current_timeout = 0; \
+    }\
+  } while (0)
+
 #if defined(WINDOWS)
 #define IS_INVALID_SOCKET(socket) ((socket) == INVALID_SOCKET)
 typedef int socklen_t;
@@ -331,9 +351,8 @@ struct mht_table
 /************************************************************************
  * PUBLIC FUNCTION PROTOTYPES						*
  ************************************************************************/
-#if defined(WINDOWS)
+#if defined (WINDOWS)
 extern cci_mutex_t cci_Internal_mutex_for_mutex_initialize;
-
 extern int cci_mutex_init (cci_mutex_t * mutex, cci_mutexattr_t * attr);
 extern int cci_mutex_destroy (cci_mutex_t * mutex);
 
@@ -388,6 +407,7 @@ extern int cci_cond_broadcast (cci_cond_t * cond);
 #define cci_gettimeofday gettimeofday
 #endif
 
+extern int get_elapsed_time (struct timeval *start_time);
 #if defined(WINDOWS)
 extern int cci_gettimeofday (struct timeval *tp, void *tzp);
 #endif
@@ -400,6 +420,7 @@ extern MHT_TABLE *mht_create (char *name, int est_size, HASH_FUNC hash_func,
 extern void mht_destroy (MHT_TABLE * ht, bool free_key, bool free_data);
 extern void *mht_get (MHT_TABLE * ht, void *key);
 extern void *mht_put (MHT_TABLE * ht, void *key, void *data);
+extern void *mht_put_data (MHT_TABLE * ht, void *key, void *data);
 
 /************************************************************************
  * PUBLIC VARIABLES							*

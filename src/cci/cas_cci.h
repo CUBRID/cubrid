@@ -364,6 +364,9 @@ extern "C"
     CCI_ER_DATASOURCE_TIMEOUT = -36,
     CCI_ER_DATASOURCE_TIMEDWAIT = -37,
 
+    CCI_ER_LOGIN_TIMEOUT = -38,
+    CCI_ER_QUERY_TIMEOUT = -39,
+
     CCI_ER_NOT_IMPLEMENTED = -99
   } T_CCI_ERROR_CODE;
 
@@ -784,7 +787,6 @@ extern "C"
 			    T_CCI_ERROR * err_buf);
   extern int cci_last_insert_id (int con_h_id, void *value,
 				 T_CCI_ERROR * err_buf);
-
   extern T_CCI_PROPERTIES *cci_property_create (void);
   extern void cci_property_destroy (T_CCI_PROPERTIES * properties);
   extern int cci_property_set (T_CCI_PROPERTIES * properties, char *key,
@@ -800,6 +802,8 @@ extern "C"
 					   T_CCI_ERROR * err);
   extern int cci_datasource_release (T_CCI_DATASOURCE * date_source,
 				     T_CCI_CONN conn, T_CCI_ERROR * err);
+  extern int cci_set_query_timeout (int req_h_id, int timeout);
+  extern int cci_get_query_timeout (int req_h_id);
 #endif
 
 /************************************************************************

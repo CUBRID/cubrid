@@ -292,6 +292,7 @@ hm_req_handle_alloc (int con_id, T_REQ_HANDLE ** ret_req_handle)
 
   memset (req_handle, 0, sizeof (T_REQ_HANDLE));
   req_handle->fetch_size = 100;
+  req_handle->query_timeout = con_handle->query_timeout;
 
   con_handle->req_handle_table[req_handle_id - 1] = req_handle;
   ++(con_handle->req_handle_count);
@@ -515,7 +516,6 @@ req_handle_col_info_free (T_REQ_HANDLE * req_handle)
     }
 }
 
-
 void
 req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
 {
@@ -690,6 +690,12 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->alter_host_id = -1;
   con_handle->rc_time = 600;
   con_handle->datasource = NULL;
+  con_handle->login_timeout = 0;
+  con_handle->query_timeout = 0;
+  con_handle->disconnect_on_query_timeout = false;
+  con_handle->start_time.tv_sec = 0;
+  con_handle->start_time.tv_usec = 0;
+  con_handle->current_timeout = 0;
 
   return 0;
 }

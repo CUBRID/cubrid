@@ -44,6 +44,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <assert.h>
 #ifdef CCI_DEBUG
 #include <stdarg.h>
 #endif
@@ -171,6 +172,12 @@ static int cci_parse_url_rctime (T_CON_HANDLE * con_handle, char *rctime);
 static int cci_parse_url_autocommit (T_CON_HANDLE * con_handle, char *mode);
 static int cci_get_new_handle_id (char *ip, int port, char *db_name,
 				  char *db_user, char *dbpasswd);
+static int cci_parse_url_login_timeout (T_CON_HANDLE * con_handle,
+					char *login_timeout);
+static int cci_parse_url_query_timeout (T_CON_HANDLE * con_handle,
+					char *query_timeout);
+static int cci_parse_url_disconnect_on_query_timeout (T_CON_HANDLE *
+						      con_handle, char *mode);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -224,6 +231,27 @@ DllMain (HANDLE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
   return TRUE;
 }
 #endif
+
+int
+get_elapsed_time (struct timeval *start_time)
+{
+  long start_time_milli, end_time_milli;
+  struct timeval end_time;
+
+  assert (start_time);
+
+  if (start_time->tv_sec == 0 && start_time->tv_usec == 0)
+    {
+      return 0;
+    }
+
+  cci_gettimeofday (&end_time, NULL);
+
+  start_time_milli = start_time->tv_sec * 1000 + start_time->tv_usec / 1000;
+  end_time_milli = end_time.tv_sec * 1000 + end_time.tv_usec / 1000;
+
+  return (int) (end_time_milli - start_time_milli);
+}
 
 void
 cci_init ()
@@ -307,6 +335,8 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
       con_handle = hm_find_con_handle (con_handle_id);
       if (con_handle != NULL)
 	{
+	  SET_START_TIME (con_handle, con_handle->login_timeout);
+
 	  con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
 	  error = cci_get_db_version (con_handle_id, NULL, 0);
 	  con_handle->autocommit_mode =
@@ -319,6 +349,8 @@ CCI_CONNECT_INTERNAL_FUNC_NAME (char *ip, int port, char *db_name,
 	      hm_con_handle_free (con_handle_id);
 	      con_handle_id = error;
 	    }
+
+	  RESET_START_TIME (con_handle);
 	}
       else
 	{
@@ -431,19 +463,6 @@ cci_connect_with_url (char *url, char *user, char *password)
 	  goto ret;
 	}
 
-      con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
-      error = cci_get_db_version (con_handle_id, NULL, 0);
-      con_handle->autocommit_mode =
-	con_handle->
-	cas_info[CAS_INFO_ADDITIONAL_FLAG] & CAS_INFO_FLAG_MASK_AUTOCOMMIT;
-
-      if (error < 0)
-	{
-	  hm_con_handle_free (con_handle_id);
-	  con_handle_id = error;
-	  goto ret;
-	}
-
       if (property != NULL)
 	{
 	  error = cci_parse_url_property (con_handle, property);
@@ -459,6 +478,23 @@ cci_connect_with_url (char *url, char *user, char *password)
 	      con_handle->alter_host_id =
 		hm_get_ha_connected_host (con_handle);
 	    }
+	}
+
+      SET_START_TIME (con_handle, con_handle->login_timeout);
+
+      con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
+      error = cci_get_db_version (con_handle_id, NULL, 0);
+      con_handle->autocommit_mode =
+	con_handle->
+	cas_info[CAS_INFO_ADDITIONAL_FLAG] & CAS_INFO_FLAG_MASK_AUTOCOMMIT;
+
+      RESET_START_TIME (con_handle);
+
+      if (error < 0)
+	{
+	  hm_con_handle_free (con_handle_id);
+	  con_handle_id = error;
+	  goto ret;
 	}
     }
 
@@ -498,6 +534,27 @@ cci_parse_url_property (T_CON_HANDLE * con_handle, char *property)
       else if (strncasecmp (p, "autocommit", 10) == 0)
 	{
 	  if (cci_parse_url_autocommit (con_handle, p) < 0)
+	    {
+	      return CCI_ER_INVALID_URL;
+	    }
+	}
+      else if (strncasecmp (p, "login_timeout", 13) == 0)
+	{
+	  if (cci_parse_url_login_timeout (con_handle, p) < 0)
+	    {
+	      return CCI_ER_INVALID_URL;
+	    }
+	}
+      else if (strncasecmp (p, "query_timeout", 13) == 0)
+	{
+	  if (cci_parse_url_query_timeout (con_handle, p) < 0)
+	    {
+	      return CCI_ER_INVALID_URL;
+	    }
+	}
+      else if (strncasecmp (p, "disconnect_on_query_timeout", 27) == 0)
+	{
+	  if (cci_parse_url_disconnect_on_query_timeout (con_handle, p) < 0)
 	    {
 	      return CCI_ER_INVALID_URL;
 	    }
@@ -569,6 +626,54 @@ cci_parse_url_alter_host (T_CON_HANDLE * con_handle, char *alter_host)
 }
 
 static int
+cci_parse_url_login_timeout (T_CON_HANDLE * con_handle, char *str)
+{
+  char *p, *q = NULL, *end;
+  int login_timeout;
+
+  p = strtok_r (str, "=", &q);
+  if (p == NULL || q == NULL || q[0] == '\0')
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  end = NULL;
+  login_timeout = (int) strtol (q, &end, 10);
+  if (login_timeout < 0 || (end != NULL && end[0] != '\0'))
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  con_handle->login_timeout = login_timeout;
+
+  return CCI_ER_NO_ERROR;
+}
+
+static int
+cci_parse_url_query_timeout (T_CON_HANDLE * con_handle, char *str)
+{
+  char *p, *q = NULL, *end;
+  int query_timeout;
+
+  p = strtok_r (str, "=", &q);
+  if (p == NULL || q == NULL || q[0] == '\0')
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  end = NULL;
+  query_timeout = (int) strtol (q, &end, 10);
+  if (query_timeout < 0 || (end != NULL && end[0] != '\0'))
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  con_handle->query_timeout = query_timeout;
+
+  return CCI_ER_NO_ERROR;
+}
+
+static int
 cci_parse_url_rctime (T_CON_HANDLE * con_handle, char *rctime)
 {
   char *p, *q = NULL, *end;
@@ -588,6 +693,50 @@ cci_parse_url_rctime (T_CON_HANDLE * con_handle, char *rctime)
     }
 
   con_handle->rc_time = rc_time;
+
+  return CCI_ER_NO_ERROR;
+}
+
+static int
+cci_parse_url_disconnect_on_query_timeout (T_CON_HANDLE * con_handle,
+					   char *mode)
+{
+  char *p, *q = NULL;
+
+  p = strtok_r (mode, "=", &q);
+  if (p == NULL || q == NULL || q[0] == '\0')
+    {
+      return CCI_ER_INVALID_URL;
+    }
+
+  if (strncasecmp (q, "true", 4) == 0)
+    {
+      con_handle->disconnect_on_query_timeout = true;
+    }
+  else if (strncasecmp (q, "on", 2) == 0)
+    {
+      con_handle->disconnect_on_query_timeout = true;
+    }
+  else if (strncasecmp (q, "yes", 3) == 0)
+    {
+      con_handle->disconnect_on_query_timeout = true;
+    }
+  else if (strncasecmp (q, "false", 5) == 0)
+    {
+      con_handle->disconnect_on_query_timeout = false;
+    }
+  else if (strncasecmp (q, "off", 3) == 0)
+    {
+      con_handle->disconnect_on_query_timeout = false;
+    }
+  else if (strncasecmp (q, "no", 2) == 0)
+    {
+      con_handle->disconnect_on_query_timeout = false;
+    }
+  else
+    {
+      return CCI_ER_INVALID_URL;
+    }
 
   return CCI_ER_NO_ERROR;
 }
@@ -875,6 +1024,8 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
       goto prepare_error;
     }
 
+  SET_START_TIME (con_handle, con_handle->query_timeout);
+
   err_code = qe_prepare (req_handle, con_handle, sql_stmt, flag, err_buf, 0);
 
   if (err_code < 0)
@@ -922,12 +1073,17 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
     }
 
 prepare_end:
+  RESET_START_TIME (con_handle);
   con_handle->ref_count = 0;
   return req_handle_id;
 
 prepare_error:
+  RESET_START_TIME (con_handle);
+
   if (req_handle)
-    hm_req_handle_free (con_handle, req_handle_id, req_handle);
+    {
+      hm_req_handle_free (con_handle, req_handle_id, req_handle);
+    }
   con_handle->ref_count = 0;
   return (err_code);
 }
@@ -1241,6 +1397,8 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
       flag |= CCI_EXEC_QUERY_INFO;
     }
 
+  SET_START_TIME (con_handle, con_handle->query_timeout);
+
   if (IS_STMT_POOL (con_handle) && !req_handle->valid)
     {
       err_code = connect_prepare_again (con_handle, req_handle, err_buf);
@@ -1251,6 +1409,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
       if (flag & CCI_EXEC_THREAD)
 	{
 	  T_THREAD thrid;
+
 	  err_buf_reset (&(con_handle->thr_arg.err_buf));
 	  con_handle->thr_arg.req_handle = req_handle;
 	  con_handle->thr_arg.flag = flag ^ CCI_EXEC_THREAD;
@@ -1308,7 +1467,18 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
     }
 
 execute_end:
+  RESET_START_TIME (con_handle);
+
   con_handle->ref_count = 0;
+
+  if (err_code == CCI_ER_QUERY_TIMEOUT &&
+      con_handle->disconnect_on_query_timeout)
+    {
+      CLOSE_SOCKET (con_handle->sock_fd);
+      con_handle->sock_fd = INVALID_SOCKET;
+      con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+    }
+
   return err_code;
 }
 
@@ -1385,6 +1555,8 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 	}
     }
 
+  SET_START_TIME (con_handle, con_handle->query_timeout);
+
   if (IS_STMT_POOL (con_handle) && !req_handle->valid)
     {
       err_code = connect_prepare_again (con_handle, req_handle, err_buf);
@@ -1431,7 +1603,18 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
     }
 
 execute_end:
+  RESET_START_TIME (con_handle);
+
   con_handle->ref_count = 0;
+
+  if (err_code == CCI_ER_QUERY_TIMEOUT &&
+      con_handle->disconnect_on_query_timeout)
+    {
+      CLOSE_SOCKET (con_handle->sock_fd);
+      con_handle->sock_fd = INVALID_SOCKET;
+      con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+    }
+
   return err_code;
 }
 
@@ -2120,6 +2303,7 @@ cci_get_db_version (int con_h_id, char *out_buf, int buf_size)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
+  bool need_to_reset_start_time = false;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_get_db_version %d", con_h_id));
@@ -2152,6 +2336,12 @@ cci_get_db_version (int con_h_id, char *out_buf, int buf_size)
 	}
     }
 
+  if (!START_TIME_IS_SET (con_handle))
+    {
+      SET_START_TIME (con_handle, con_handle->query_timeout);
+      need_to_reset_start_time = true;
+    }
+
   if (IS_OUT_TRAN_STATUS (con_handle))
     {
       err_code = cas_connect (con_handle, NULL);
@@ -2160,6 +2350,11 @@ cci_get_db_version (int con_h_id, char *out_buf, int buf_size)
   if (err_code >= 0)
     {
       err_code = qe_get_db_version (con_handle, out_buf, buf_size);
+    }
+
+  if (need_to_reset_start_time)
+    {
+      RESET_START_TIME (con_handle);
     }
 
   con_handle->ref_count = 0;
@@ -2601,6 +2796,8 @@ cci_execute_batch (int con_h_id, int num_query, char **sql_stmt,
 	}
     }
 
+  SET_START_TIME (con_handle, con_handle->query_timeout);
+
   if (IS_OUT_TRAN_STATUS (con_handle))
     {
       err_code = cas_connect (con_handle, err_buf);
@@ -2612,7 +2809,18 @@ cci_execute_batch (int con_h_id, int num_query, char **sql_stmt,
 				   err_buf);
     }
 
+  if (err_code == CCI_ER_QUERY_TIMEOUT &&
+      con_handle->disconnect_on_query_timeout)
+    {
+      CLOSE_SOCKET (con_handle->sock_fd);
+      con_handle->sock_fd = INVALID_SOCKET;
+      con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+    }
+
   con_handle->ref_count = 0;
+
+  RESET_START_TIME (con_handle);
+
   return err_code;
 }
 
@@ -3032,6 +3240,51 @@ cci_param_info_free (T_CCI_PARAM_INFO * param)
 
   qe_param_info_free (param);
   return 0;
+}
+
+int
+cci_set_query_timeout (int req_h_id, int timeout)
+{
+  T_REQ_HANDLE *req_handle;
+  int old_value;
+
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg
+		   ("cci_set_query_timeout %d", req_h_id, timeout));
+#endif
+
+  MUTEX_LOCK (con_handle_table_mutex);
+  req_handle = hm_find_req_handle (req_h_id, NULL);
+  if (req_handle == NULL)
+    {
+      MUTEX_UNLOCK (con_handle_table_mutex);
+      return CCI_ER_REQ_HANDLE;
+    }
+  MUTEX_UNLOCK (con_handle_table_mutex);
+
+  old_value = req_handle->query_timeout;
+  req_handle->query_timeout = timeout;
+
+  return old_value;
+}
+
+int
+cci_get_query_timeout (int req_h_id)
+{
+  T_REQ_HANDLE *req_handle;
+#ifdef CCI_DEBUG
+  CCI_DEBUG_PRINT (print_debug_msg ("cci_get_query_timeout %d", req_h_id));
+#endif
+  MUTEX_LOCK (con_handle_table_mutex);
+  req_handle = hm_find_req_handle (req_h_id, NULL);
+  if (req_handle == NULL)
+    {
+      MUTEX_UNLOCK (con_handle_table_mutex);
+      return CCI_ER_REQ_HANDLE;
+    }
+  MUTEX_UNLOCK (con_handle_table_mutex);
+
+  return req_handle->query_timeout;
 }
 
 static int
@@ -4166,7 +4419,6 @@ cas_connect_with_ret (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
   return err_code;
 }
 
-
 static int
 cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 		 int *connect)
@@ -4175,8 +4427,21 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
   int error;
   int i;
   int host_id;
+  int remained_time = 0;
 
   *connect = 0;
+
+  if (START_TIME_IS_SET (con_handle))
+    {
+      remained_time =
+	con_handle->current_timeout -
+	get_elapsed_time (&con_handle->start_time);
+
+      if (remained_time <= 0)
+	{
+	  return CCI_ER_LOGIN_TIMEOUT;
+	}
+    }
 
   if (net_check_cas_request (con_handle) != 0)
     {
@@ -4204,7 +4469,7 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 			       err_buf, con_handle->broker_info,
 			       con_handle->cas_info,
 			       &(con_handle->cas_pid), &sock_fd,
-			       &(con_handle->session_id));
+			       &(con_handle->session_id), remained_time);
     }
   else
     {
@@ -4218,7 +4483,7 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 			       err_buf, con_handle->broker_info,
 			       con_handle->cas_info,
 			       &(con_handle->cas_pid), &sock_fd,
-			       &(con_handle->session_id));
+			       &(con_handle->session_id), remained_time);
     }
 
   if (error == CCI_ER_NO_ERROR && !IS_INVALID_SOCKET (sock_fd))
@@ -4239,7 +4504,7 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 			       err_buf, con_handle->broker_info,
 			       con_handle->cas_info,
 			       &(con_handle->cas_pid), &sock_fd,
-			       &(con_handle->session_id));
+			       &(con_handle->session_id), remained_time);
 
       if (error == CCI_ER_NO_ERROR && !IS_INVALID_SOCKET (sock_fd))
 	{
@@ -4247,6 +4512,11 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 	  *connect = 1;
 	  return CCI_ER_NO_ERROR;
 	}
+    }
+
+  if (error == CCI_ER_QUERY_TIMEOUT)
+    {
+      error = CCI_ER_LOGIN_TIMEOUT;
     }
 
   return error;
@@ -4594,6 +4864,9 @@ execute_thread (void *arg)
 {
   T_EXEC_THR_ARG *exec_arg = (T_EXEC_THR_ARG *) arg;
   T_CON_HANDLE *curr_con_handle = (T_CON_HANDLE *) (exec_arg->con_handle);
+
+  /* Do not support timeout feature in thread execute. */
+  RESET_START_TIME (curr_con_handle);
 
   exec_arg->ret_code = qe_execute (exec_arg->req_handle, curr_con_handle,
 				   exec_arg->flag,

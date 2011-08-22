@@ -369,6 +369,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   char *result_msg = NULL;
   int result_msg_size;
   int result_code;
+  int remained_time = 0;
 
   if (!reuse)
     {
@@ -406,8 +407,21 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
       return err_code;
     }
 
-  result_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
-			      err_buf);
+  if (START_TIME_IS_SET (con_handle))
+    {
+      remained_time =
+	con_handle->current_timeout -
+	get_elapsed_time (&con_handle->start_time);
+
+      if (remained_time <= 0)
+	{
+	  return CCI_ER_QUERY_TIMEOUT;
+	}
+    }
+
+  result_code =
+    net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size, err_buf,
+			  remained_time);
   if (result_code < 0)
     {
       return result_code;
@@ -510,6 +524,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   char fetch_flag;
   char forward_only_cursor;
   int remain_msg_size;
+  int remained_time = 0;
 
   QUERY_RESULT_FREE (req_handle);
 
@@ -576,8 +591,21 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 
   net_buf_clear (&net_buf);
 
-  res_count = net_recv_msg (con_handle, &result_msg, &result_msg_size,
-			    err_buf);
+  if (START_TIME_IS_SET (con_handle))
+    {
+      remained_time =
+	con_handle->current_timeout -
+	get_elapsed_time (&con_handle->start_time);
+
+      if (remained_time <= 0)
+	{
+	  return CCI_ER_QUERY_TIMEOUT;
+	}
+    }
+
+  res_count = net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size,
+				    err_buf, remained_time);
+
   if (res_count < 0)
     {
       err_code = res_count;
@@ -1508,7 +1536,7 @@ qe_get_db_version (T_CON_HANDLE * con_handle, char *out_buf, int buf_size)
   char func_code = CAS_FC_GET_DB_VERSION;
   char *result_msg = NULL;
   int result_msg_size;
-  int err_code;
+  int err_code, remained_time = 0;
 
   net_buf_init (&net_buf);
   net_buf_cp_str (&net_buf, &func_code, 1);
@@ -1522,12 +1550,29 @@ qe_get_db_version (T_CON_HANDLE * con_handle, char *out_buf, int buf_size)
       return err_code;
     }
 
+  if (START_TIME_IS_SET (con_handle))
+    {
+      remained_time =
+	con_handle->current_timeout -
+	get_elapsed_time (&con_handle->start_time);
+
+      if (remained_time <= 0)
+	{
+	  return CCI_ER_QUERY_TIMEOUT;
+	}
+    }
+
   err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
-  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size, NULL);
+
+  err_code = net_recv_msg_timeout (con_handle, &result_msg,
+				   &result_msg_size, NULL, remained_time);
+
   result_msg_size -= 4;
 
   if (err_code >= 0)
@@ -2074,6 +2119,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   char *result_msg = NULL;
   int result_msg_size;
   int remain_size;
+  int remained_time = 0;
 
   net_buf_init (&net_buf);
 
@@ -2228,12 +2274,28 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
   net_buf_clear (&net_buf);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
-  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
-			   err_buf);
+  if (START_TIME_IS_SET (con_handle))
+    {
+      remained_time =
+	con_handle->current_timeout -
+	get_elapsed_time (&con_handle->start_time);
+
+      if (remained_time <= 0)
+	{
+	  return CCI_ER_QUERY_TIMEOUT;
+	}
+    }
+
+  err_code = net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size,
+				   err_buf, remained_time);
   if (err_code < 0)
-    return err_code;
+    {
+      return err_code;
+    }
 
   err_code = execute_array_info_decode (result_msg + 4, result_msg_size - 4,
 					EXECUTE_ARRAY, qr, &remain_size);
@@ -2378,6 +2440,7 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
   int sql_len;
   int i;
   int remain_size;
+  int remained_time = 0;
 
   net_buf_init (&net_buf);
 
@@ -2406,8 +2469,20 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
       return err_code;
     }
 
-  err_code = net_recv_msg (con_handle, &result_msg, &result_msg_size,
-			   err_buf);
+  if (START_TIME_IS_SET (con_handle))
+    {
+      remained_time =
+	con_handle->current_timeout -
+	get_elapsed_time (&con_handle->start_time);
+
+      if (remained_time <= 0)
+	{
+	  return CCI_ER_QUERY_TIMEOUT;
+	}
+    }
+
+  err_code = net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size,
+				   err_buf, remained_time);
   if (err_code < 0)
     {
       return err_code;
