@@ -612,12 +612,17 @@ extern "C"
 
   typedef void *T_CCI_CLOB;
 
+  /* memory allocators */
+  typedef void *(*CCI_MALLOC_FUNCTION) (size_t);
+  typedef void *(*CCI_CALLOC_FUNCTION) (size_t, size_t);
+  typedef void *(*CCI_REALLOC_FUNCTION) (void *, size_t);
+  typedef void (*CCI_FREE_FUNCTION) (void *);
+
 /************************************************************************
  * EXPORTED FUNCTION PROTOTYPES						*
  ************************************************************************/
 
 #if !defined(CAS)
-
   extern void cci_init (void);
   extern void cci_end (void);
 
@@ -802,8 +807,14 @@ extern "C"
 					   T_CCI_ERROR * err);
   extern int cci_datasource_release (T_CCI_DATASOURCE * date_source,
 				     T_CCI_CONN conn, T_CCI_ERROR * err);
+
   extern int cci_set_query_timeout (int req_h_id, int timeout);
   extern int cci_get_query_timeout (int req_h_id);
+
+  extern int cci_set_allocators (CCI_MALLOC_FUNCTION malloc_func,
+				 CCI_FREE_FUNCTION free_func,
+				 CCI_REALLOC_FUNCTION realloc_func,
+				 CCI_CALLOC_FUNCTION calloc_func);
 #endif
 
 /************************************************************************

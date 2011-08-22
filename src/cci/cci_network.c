@@ -239,7 +239,7 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
 
   memcpy (cas_info, msg_header.info_ptr, MSG_HEADER_INFO_SIZE);
 
-  msg_buf = (char *) malloc (*(msg_header.msg_body_size_ptr));
+  msg_buf = (char *) MALLOC (*(msg_header.msg_body_size_ptr));
   if (msg_buf == NULL)
     {
       err_code = CCI_ER_NO_MORE_MEMORY;

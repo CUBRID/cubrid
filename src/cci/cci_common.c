@@ -631,7 +631,7 @@ mht_create (char *name, int est_size, HASH_FUNC hash_func, CMP_FUNC cmp_func)
   ht_estsize = mht_calculate_htsize ((unsigned int) est_size);
 
   /* Allocate the header information for hash table */
-  ht = (MHT_TABLE *) malloc (sizeof (MHT_TABLE));
+  ht = (MHT_TABLE *) MALLOC (sizeof (MHT_TABLE));
   if (ht == NULL)
     {
       return NULL;
@@ -639,10 +639,10 @@ mht_create (char *name, int est_size, HASH_FUNC hash_func, CMP_FUNC cmp_func)
 
   /* Allocate the hash table entry pointers */
   size = ht_estsize * sizeof (HENTRY_PTR);
-  hvector = (HENTRY_PTR *) malloc (size);
+  hvector = (HENTRY_PTR *) MALLOC (size);
   if (hvector == NULL)
     {
-      free (ht);
+      FREE (ht);
       return NULL;
     }
 
@@ -704,7 +704,7 @@ mht_rehash (MHT_TABLE * ht)
 
   /* Allocate a new vector to keep the estimated hash entries */
   size = est_size * sizeof (HENTRY_PTR);
-  new_hvector = (HENTRY_PTR *) malloc (size);
+  new_hvector = (HENTRY_PTR *) MALLOC (size);
   if (new_hvector == NULL)
     {
       return CCI_ER_NO_MORE_MEMORY;
@@ -739,7 +739,7 @@ mht_rehash (MHT_TABLE * ht)
     }
 
   /* Now move to new vector of entries */
-  free (ht->table);
+  FREE (ht->table);
 
   ht->table = new_hvector;
   ht->size = est_size;
@@ -772,15 +772,15 @@ mht_destroy (MHT_TABLE * ht, bool free_key, bool free_data)
 	{
 	  next_hentry = hentry->next;
 	  if (free_key)
-	    free (hentry->key);
+	    FREE (hentry->key);
 	  if (free_data)
-	    free (hentry->data);
-	  free (hentry);
+	    FREE (hentry->data);
+	  FREE (hentry);
 	}
     }
 
-  free (ht->table);
-  free (ht);
+  FREE (ht->table);
+  FREE (ht);
 }
 
 /*
@@ -881,7 +881,7 @@ mht_put_internal (MHT_TABLE * ht, void *key, void *data, MHT_PUT_OPT opt)
     }
   else
     {
-      hentry = (HENTRY_PTR) malloc (sizeof (HENTRY));
+      hentry = (HENTRY_PTR) MALLOC (sizeof (HENTRY));
       if (hentry == NULL)
 	{
 	  return NULL;

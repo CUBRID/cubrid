@@ -509,7 +509,7 @@ str2wstr (char *str, UINT CodePage)
     return NULL;
 
   len = (int) strlen (str) + 1;
-  wstr = (WCHAR *) malloc (sizeof (WCHAR) * len);
+  wstr = (WCHAR *) MALLOC (sizeof (WCHAR) * len);
   if (wstr == NULL)
     return NULL;
   memset (wstr, 0, sizeof (WCHAR) * len);
@@ -529,7 +529,7 @@ wstr2str (WCHAR * wstr, UINT CodePage)
 
   len = wcslen (wstr) + 1;
   buf_len = len * 2 + 10;
-  str = (char *) malloc (buf_len);
+  str = (char *) MALLOC (buf_len);
   if (str == NULL)
     return NULL;
   memset (str, 0, buf_len);

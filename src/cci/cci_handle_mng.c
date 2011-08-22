@@ -312,18 +312,18 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id)
     {
       return CCI_ER_NO_MORE_MEMORY;
     }
-  data = malloc (sizeof (int));
+  data = MALLOC (sizeof (int));
   if (data == NULL)
     {
-      free (key);
+      FREE (key);
       return CCI_ER_NO_MORE_MEMORY;
     }
 
   *data = req_id;
   if (!mht_put_data (con->stmt_pool, key, data))
     {
-      free (key);
-      free (data);
+      FREE (key);
+      FREE (data);
       return CCI_ER_NO_MORE_MEMORY;
     }
   return CCI_ER_NO_ERROR;

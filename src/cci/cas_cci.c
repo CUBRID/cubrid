@@ -102,15 +102,9 @@ int wsa_initialize ();
 #define CCI_DEBUG_PRINT(DEBUG_MSG_FUNC)
 #endif
 
-#if defined(WINDOWS)
-#define snprintf	_snprintf
-#endif
-
 #define IS_OUT_TRAN_STATUS(CON_HANDLE) \
         (IS_INVALID_SOCKET((CON_HANDLE)->sock_fd) || \
          ((CON_HANDLE)->con_status == CCI_CON_STATUS_OUT_TRAN))
-
-#define CCI_FREE(p) if (p) { free(p); p = NULL; }
 
 #define IS_STMT_POOL(c) ((c)->datasource && (c)->datasource->using_stmt_pool)
 #define IS_OUT_TRAN(c) ((c)->con_status == CCI_CON_STATUS_OUT_TRAN)
@@ -215,6 +209,11 @@ static const char *datasource_key[] = {
   "login_timeout",
   "query_timeout"
 };
+
+CCI_MALLOC_FUNCTION cci_malloc = malloc;
+CCI_CALLOC_FUNCTION cci_calloc = calloc;
+CCI_REALLOC_FUNCTION cci_realloc = realloc;
+CCI_FREE_FUNCTION cci_free = free;
 
 /************************************************************************
  * IMPLEMENTATION OF INTERFACE FUNCTIONS 				*
@@ -5024,7 +5023,7 @@ cci_property_create ()
 {
   T_CCI_PROPERTIES *prop;
 
-  prop = malloc (sizeof (T_CCI_PROPERTIES));
+  prop = MALLOC (sizeof (T_CCI_PROPERTIES));
   if (prop == NULL)
     {
       return NULL;
@@ -5032,10 +5031,10 @@ cci_property_create ()
 
   prop->capacity = 10;
   prop->size = 0;
-  prop->pair = malloc (prop->capacity * sizeof (T_CCI_PROPERTIES_PAIR));
+  prop->pair = MALLOC (prop->capacity * sizeof (T_CCI_PROPERTIES_PAIR));
   if (prop->pair == NULL)
     {
-      CCI_FREE (prop);
+      FREE_MEM (prop);
       return NULL;
     }
 
@@ -5054,15 +5053,15 @@ cci_property_destroy (T_CCI_PROPERTIES * properties)
 
   for (i = 0; i < properties->size; i++)
     {
-      CCI_FREE (properties->pair[i].key);
-      CCI_FREE (properties->pair[i].value);
+      FREE_MEM (properties->pair[i].key);
+      FREE_MEM (properties->pair[i].value);
     }
 
   if (properties->pair)
     {
-      CCI_FREE (properties->pair);
+      FREE_MEM (properties->pair);
     }
-  CCI_FREE (properties);
+  FREE_MEM (properties);
 }
 
 int
@@ -5080,7 +5079,7 @@ cci_property_set (T_CCI_PROPERTIES * properties, char *key, char *value)
       T_CCI_PROPERTIES_PAIR *tmp;
       int new_capa = properties->capacity + 10;
       tmp =
-	realloc (properties->pair, sizeof (T_CCI_PROPERTIES_PAIR) * new_capa);
+	REALLOC (properties->pair, sizeof (T_CCI_PROPERTIES_PAIR) * new_capa);
       if (tmp == NULL)
 	{
 	  return 0;
@@ -5097,7 +5096,7 @@ cci_property_set (T_CCI_PROPERTIES * properties, char *key, char *value)
   pvalue = strdup (value);
   if (pvalue == NULL)
     {
-      CCI_FREE (pkey);
+      FREE_MEM (pkey);
       return 0;
     }
 
@@ -5364,16 +5363,17 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err)
       goto create_datasource_error;
     }
 
-  ds = malloc (sizeof (T_CCI_DATASOURCE));
-  con_handles = calloc (pool_size, sizeof (T_CCI_CONN));
-  mutex = malloc (sizeof (cci_mutex_t));
-  cond = malloc (sizeof (cci_cond_t));
+  ds = MALLOC (sizeof (T_CCI_DATASOURCE));
+  con_handles = CALLOC (pool_size, sizeof (T_CCI_CONN));
+  mutex = MALLOC (sizeof (cci_mutex_t));
+  cond = MALLOC (sizeof (cci_cond_t));
   if (!ds || !con_handles || !mutex || !cond)
     {
       err->err_code = CCI_ER_NO_MORE_MEMORY;
       if (err->err_msg)
 	{
-	  snprintf (err->err_msg, 1023, "malloc: %s", strerror (errno));
+	  snprintf (err->err_msg, 1023, "memory allocation error: %s",
+		    strerror (errno));
 	}
       goto create_datasource_error;
     }
@@ -5426,13 +5426,13 @@ create_datasource_error:
 	  cci_disconnect_force (con_handles[i], true);
 	}
     }
-  CCI_FREE (user);
-  CCI_FREE (pass);
-  CCI_FREE (url);
-  CCI_FREE (mutex);
-  CCI_FREE (cond);
-  CCI_FREE (con_handles);
-  CCI_FREE (ds);
+  FREE_MEM (user);
+  FREE_MEM (pass);
+  FREE_MEM (url);
+  FREE_MEM (mutex);
+  FREE_MEM (cond);
+  FREE_MEM (con_handles);
+  FREE_MEM (ds);
   return NULL;
 }
 
@@ -5446,14 +5446,14 @@ cci_datasource_destroy (T_CCI_DATASOURCE * datasource)
       return;
     }
 
-  CCI_FREE (datasource->user);
-  CCI_FREE (datasource->pass);
-  CCI_FREE (datasource->url);
+  FREE_MEM (datasource->user);
+  FREE_MEM (datasource->pass);
+  FREE_MEM (datasource->url);
 
   cci_mutex_destroy ((cci_mutex_t *) datasource->mutex);
-  CCI_FREE (datasource->mutex);
+  FREE_MEM (datasource->mutex);
   cci_cond_destroy ((cci_cond_t *) datasource->cond);
-  CCI_FREE (datasource->cond);
+  FREE_MEM (datasource->cond);
 
   if (datasource->con_handles)
     {
@@ -5476,10 +5476,10 @@ cci_datasource_destroy (T_CCI_DATASOURCE * datasource)
 	      cci_disconnect_force (id, true);
 	    }
 	}
-      CCI_FREE (datasource->con_handles);
+      FREE_MEM (datasource->con_handles);
     }
 
-  CCI_FREE (datasource);
+  FREE_MEM (datasource);
 }
 
 T_CCI_CONN
@@ -5584,4 +5584,37 @@ cci_datasource_release (T_CCI_DATASOURCE * datasource, T_CCI_CONN conn,
   /* critical section end */
 
   return 1;
+}
+
+int
+cci_set_allocators (CCI_MALLOC_FUNCTION malloc_func,
+		    CCI_FREE_FUNCTION free_func,
+		    CCI_REALLOC_FUNCTION realloc_func,
+		    CCI_CALLOC_FUNCTION calloc_func)
+{
+  /* none or all should be set */
+  if (malloc_func == NULL && free_func == NULL
+      && realloc_func == NULL && calloc_func == NULL)
+    {
+      /* use default allocators */
+      cci_malloc = malloc;
+      cci_free = free;
+      cci_realloc = realloc;
+      cci_calloc = calloc;
+    }
+  else if (malloc_func == NULL || free_func == NULL
+	   || realloc_func == NULL || calloc_func == NULL)
+    {
+      return CCI_ER_NOT_IMPLEMENTED;
+    }
+  else
+    {
+      /* use user defined allocators */
+      cci_malloc = malloc_func;
+      cci_free = free_func;
+      cci_realloc = realloc_func;
+      cci_calloc = calloc_func;
+    }
+
+  return CCI_ER_NO_ERROR;
 }

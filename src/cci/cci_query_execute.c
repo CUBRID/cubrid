@@ -2330,7 +2330,7 @@ qe_query_result_copy (T_REQ_HANDLE * req_handle, T_CCI_QUERY_RESULT ** res_qr)
     return 0;
 
   qr =
-    (T_CCI_QUERY_RESULT *) malloc (sizeof (T_CCI_QUERY_RESULT) * num_query);
+    (T_CCI_QUERY_RESULT *) MALLOC (sizeof (T_CCI_QUERY_RESULT) * num_query);
   if (qr == NULL)
     return CCI_ER_NO_MORE_MEMORY;
   memset (qr, 0, sizeof (T_CCI_QUERY_RESULT) * num_query);
@@ -3052,7 +3052,7 @@ qe_get_query_info (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   if (out_buf)
     {
       char *tmp_buf;
-      tmp_buf = (char *) malloc (result_msg_size - 4);
+      tmp_buf = (char *) MALLOC (result_msg_size - 4);
       if (tmp_buf == NULL)
 	{
 	  FREE_MEM (result_msg);
@@ -3176,7 +3176,7 @@ qe_set_charset (T_CON_HANDLE * con_handle, char *charset)
 {
   if (con_handle->charset)
     {
-      free (con_handle->charset);
+      FREE (con_handle->charset);
     }
   con_handle->charset = strdup (charset);
 
@@ -3510,7 +3510,7 @@ encode_string (char *str, int size, char **target, char *charset)
 
   nLength =
     WideCharToMultiByte (wincode, 0, bstrCode, -1, NULL, 0, NULL, NULL);
-  tmp_string = (char *) malloc (sizeof (char) * (nLength + 1));
+  tmp_string = (char *) MALLOC (sizeof (char) * (nLength + 1));
   if (tmp_string == NULL)
     {
       return CCI_ER_NO_MORE_MEMORY;
@@ -3554,7 +3554,7 @@ decode_result_col (char *column_p, int size, char **target, char *charset)
 
   nLength =
     WideCharToMultiByte (CP_ACP, 0, bstrCode, -1, NULL, 0, NULL, NULL);
-  new_column_p = (char *) malloc (sizeof (char) * (nLength + 4));
+  new_column_p = (char *) MALLOC (sizeof (char) * (nLength + 4));
   if (new_column_p == NULL)
     {
       return CCI_ER_NO_MORE_MEMORY;
@@ -4957,7 +4957,7 @@ execute_array_info_decode (char *buf, int size, char flag,
   cur_p += 4;
 
   qr =
-    (T_CCI_QUERY_RESULT *) malloc (sizeof (T_CCI_QUERY_RESULT) * num_query);
+    (T_CCI_QUERY_RESULT *) MALLOC (sizeof (T_CCI_QUERY_RESULT) * num_query);
   if (qr == NULL)
     {
       return CCI_ER_NO_MORE_MEMORY;
@@ -5075,7 +5075,7 @@ parameter_info_decode (char *buf, int size, int num_param,
   T_CCI_PARAM_INFO *param;
   int i;
 
-  param = (T_CCI_PARAM_INFO *) malloc (sizeof (T_CCI_PARAM_INFO) * num_param);
+  param = (T_CCI_PARAM_INFO *) MALLOC (sizeof (T_CCI_PARAM_INFO) * num_param);
   if (param == NULL)
     return CCI_ER_NO_MORE_MEMORY;
   memset (param, 0, sizeof (T_CCI_PARAM_INFO) * num_param);

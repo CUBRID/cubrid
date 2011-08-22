@@ -52,6 +52,7 @@
  * OTHER IMPORTED HEADER FILES						*
  ************************************************************************/
 #include "system.h"
+#include "cas_cci.h"
 
 /************************************************************************
  * PUBLIC DEFINITIONS							*
@@ -102,15 +103,14 @@
 #endif
 
 #ifdef AIX
-#define MALLOC(SIZE)            malloc(((SIZE) == 0) ? 1 : SIZE)
+#define MALLOC(SIZE)            cci_malloc(((SIZE) == 0) ? 1 : SIZE)
 #else
-#define MALLOC(SIZE)            malloc(SIZE)
+#define MALLOC(SIZE)            cci_malloc(SIZE)
 #endif
-
+#define CALLOC(NUM, SIZE)       cci_calloc(NUM, SIZE)
 #define REALLOC(PTR, SIZE)      \
-        ((PTR == NULL) ? malloc(SIZE) : realloc(PTR, SIZE))
-#define FREE(PTR)               free(PTR)
-
+        ((PTR == NULL) ? cci_malloc(SIZE) : cci_realloc(PTR, SIZE))
+#define FREE(PTR)               cci_free(PTR)
 #define FREE_MEM(PTR)		\
 	do {			\
 	  if (PTR) {		\
@@ -425,5 +425,9 @@ extern void *mht_put_data (MHT_TABLE * ht, void *key, void *data);
 /************************************************************************
  * PUBLIC VARIABLES							*
  ************************************************************************/
+extern CCI_MALLOC_FUNCTION cci_malloc;
+extern CCI_FREE_FUNCTION cci_free;
+extern CCI_REALLOC_FUNCTION cci_realloc;
+extern CCI_CALLOC_FUNCTION cci_calloc;
 
 #endif /* _CCI_COMMON_H_ */
