@@ -358,6 +358,12 @@ extern "C"
     CCI_ER_INVALID_LOB_READ_POS = -31,
     CCI_ER_INVALID_LOB_HANDLE = -32,
 
+    CCI_ER_NO_PROPERTY = -33,
+    CCI_ER_PROPERTY_TYPE = -34,
+    CCI_ER_INVALID_DATASOURCE = -35,
+    CCI_ER_DATASOURCE_TIMEOUT = -36,
+    CCI_ER_DATASOURCE_TIMEDWAIT = -37,
+
     CCI_ER_NOT_IMPLEMENTED = -99
   } T_CCI_ERROR_CODE;
 
@@ -414,6 +420,11 @@ extern "C"
     CUBRID_STMT_DROP_USER,
     CUBRID_STMT_ALTER_USER
   } T_CCI_CUBRID_STMT;
+
+  typedef int T_CCI_CONN;
+  typedef struct PROPERTIES_T T_CCI_PROPERTIES;
+  typedef struct DATASOURCE_T T_CCI_DATASOURCE;
+
 #endif
 #endif
 #define CUBRID_STMT_CALL_SP	0x7e
@@ -536,6 +547,18 @@ extern "C"
     CCI_SP_ROLLBACK = 2,
     CCI_SP_CMD_LAST = CCI_SP_ROLLBACK
   } T_CCI_SAVEPOINT_CMD;
+
+  typedef enum
+  {
+    CCI_DS_KEY_USER,
+    CCI_DS_KEY_PASSWORD,
+    CCI_DS_KEY_URL,
+    CCI_DS_KEY_POOL_SIZE,
+    CCI_DS_KEY_MAX_WAIT,
+    CCI_DS_KEY_USING_STMT_POOL,
+    CCI_DS_KEY_LOGIN_TIMEOUT,
+    CCI_DS_KEY_QUERY_TIMEOUT
+  } T_CCI_DATASOURCE_KEY;
 
 #if !defined(CAS)
 #ifdef DBDEF_HEADER_
@@ -761,6 +784,22 @@ extern "C"
 			    T_CCI_ERROR * err_buf);
   extern int cci_last_insert_id (int con_h_id, void *value,
 				 T_CCI_ERROR * err_buf);
+
+  extern T_CCI_PROPERTIES *cci_property_create (void);
+  extern void cci_property_destroy (T_CCI_PROPERTIES * properties);
+  extern int cci_property_set (T_CCI_PROPERTIES * properties, char *key,
+			       char *value);
+  extern char *cci_property_get (T_CCI_PROPERTIES * properties,
+				 const char *key);
+
+  extern T_CCI_DATASOURCE *cci_datasource_create (T_CCI_PROPERTIES *
+						  properties,
+						  T_CCI_ERROR * err);
+  extern void cci_datasource_destroy (T_CCI_DATASOURCE * data_source);
+  extern T_CCI_CONN cci_datasource_borrow (T_CCI_DATASOURCE * date_source,
+					   T_CCI_ERROR * err);
+  extern int cci_datasource_release (T_CCI_DATASOURCE * date_source,
+				     T_CCI_CONN conn, T_CCI_ERROR * err);
 #endif
 
 /************************************************************************

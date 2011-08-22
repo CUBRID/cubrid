@@ -109,6 +109,17 @@ int wsa_initialize ();
         (IS_INVALID_SOCKET((CON_HANDLE)->sock_fd) || \
          ((CON_HANDLE)->con_status == CCI_CON_STATUS_OUT_TRAN))
 
+#define CCI_FREE(p) if (p) { free(p); p = NULL; }
+
+#define IS_STMT_POOL(c) ((c)->datasource && (c)->datasource->using_stmt_pool)
+#define IS_OUT_TRAN(c) ((c)->con_status == CCI_CON_STATUS_OUT_TRAN)
+#define IS_ER_COMMUNICATION(e) \
+  ((e) == CCI_ER_COMMUNICATION || (e) == CAS_ER_COMMUNICATION)
+
+#define CCI_DS_DEFAULT_POOL_SIZE 10
+#define CCI_DS_DEFAULT_MAX_WAIT 1000
+#define CCI_DS_DEFAULT_USING_STMT_POOL false
+
 /************************************************************************
  * PRIVATE FUNCTION PROTOTYPES						*
  ************************************************************************/
@@ -186,6 +197,17 @@ static char cci_init_flag = 1;
 #if !defined(WINDOWS)
 static int cci_SIGPIPE_ignore = 0;
 #endif
+
+static const char *datasource_key[] = {
+  "user",
+  "password",
+  "url",
+  "pool_size",
+  "max_wait",
+  "using_stmt_pool",
+  "login_timeout",
+  "query_timeout"
+};
 
 /************************************************************************
  * IMPLEMENTATION OF INTERFACE FUNCTIONS 				*
@@ -639,7 +661,6 @@ cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
 {
   int err_code = 0;
   T_CON_HANDLE *con_handle;
-  bool close_flag = true;
 
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_disconnect %d", con_h_id));
@@ -671,10 +692,16 @@ cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
 	}
     }
 
-  if (con_handle->broker_info[BROKER_INFO_CCI_PCONNECT]
-      && hm_put_con_to_pool (con_h_id) >= 0)
+  if (con_handle->datasource)
     {
-      close_flag = false;
+      con_handle->ref_count = 0;
+      cci_end_tran (con_h_id, CCI_TRAN_ROLLBACK, err_buf);
+      cas_end_session (con_handle, err_buf);
+      cci_datasource_release (con_handle->datasource, con_h_id, err_buf);
+    }
+  else if (con_handle->broker_info[BROKER_INFO_CCI_PCONNECT]
+	   && hm_put_con_to_pool (con_h_id) >= 0)
+    {
       con_handle->ref_count = 0;
       cci_end_tran (con_h_id, CCI_TRAN_ROLLBACK, err_buf);
 
@@ -684,8 +711,7 @@ cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
        */
       cas_end_session (con_handle, err_buf);
     }
-
-  if (close_flag)
+  else
     {
       /* We have to call end session for connection pool also.
        * cas_end_session might return an error but there's nothing we can
@@ -794,10 +820,8 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
   int err_code = 0;
   int con_err_code = 0;
   int connect_done;
-  int victim_request_id;
   T_CON_HANDLE *con_handle = NULL;
   T_REQ_HANDLE *req_handle = NULL;
-  T_REQ_HANDLE *victim_req_handle;
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
 		   ("cci_prepare %d %d %s", con_id, flag,
@@ -830,6 +854,17 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 	  con_handle->ref_count = 1;
 	  MUTEX_UNLOCK (con_handle_table_mutex);
 	  break;
+	}
+    }
+
+  if (IS_STMT_POOL (con_handle))
+    {
+      req_handle_id = hm_req_get_from_pool (con_handle, sql_stmt);
+      if (req_handle_id != CCI_ER_REQ_HANDLE)
+	{
+	  cci_set_query_timeout (req_handle_id,
+				 con_handle->datasource->query_timeout);
+	  goto prepare_end;
 	}
     }
 
@@ -877,9 +912,17 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 	}
     }
 
+  if (IS_STMT_POOL (con_handle))
+    {
+      err_code = hm_req_add_to_pool (con_handle, sql_stmt, req_handle_id);
+      if (err_code != CCI_ER_NO_ERROR)
+	{
+	  goto prepare_error;
+	}
+    }
+
 prepare_end:
   con_handle->ref_count = 0;
-
   return req_handle_id;
 
 prepare_error:
@@ -1198,16 +1241,13 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
       flag |= CCI_EXEC_QUERY_INFO;
     }
 
-  if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
-      CAS_STATEMENT_POOLING_ON)
+  if (IS_STMT_POOL (con_handle) && !req_handle->valid)
     {
-
       err_code = connect_prepare_again (con_handle, req_handle, err_buf);
     }
 
   if (err_code >= 0)
     {
-
       if (flag & CCI_EXEC_THREAD)
 	{
 	  T_THREAD thrid;
@@ -1225,39 +1265,28 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
 	qe_execute (req_handle, con_handle, flag, max_col_size, err_buf);
     }
 
-  if (err_code < 0)
+  if (IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
     {
-      if (con_handle->con_status == CCI_CON_STATUS_OUT_TRAN &&
-	  (err_code == CCI_ER_COMMUNICATION
-	   || err_code == CAS_ER_COMMUNICATION))
-	{
-	  int con_err_code = 0;
-	  int connect_done;
+      int connect_done;
 
-	  con_err_code =
-	    cas_connect_with_ret (con_handle, err_buf, &connect_done);
-	  if (con_err_code < 0)
+      err_code = cas_connect_with_ret (con_handle, err_buf, &connect_done);
+      if (err_code < 0)
+	{
+	  goto execute_end;
+	}
+
+      if (connect_done)
+	{
+	  /* error is caused by connection fail */
+	  req_handle_content_free (req_handle, 1);
+	  err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+				 req_handle->prepare_flag, err_buf, 1);
+	  if (err_code < 0)
 	    {
-	      err_code = con_err_code;
 	      goto execute_end;
 	    }
-
-	  if (connect_done)
-	    {
-	      /* error is caused by connection fail */
-	      req_handle_content_free (req_handle, 1);
-	      err_code = qe_prepare (req_handle,
-				     con_handle,
-				     req_handle->sql_text,
-				     req_handle->prepare_flag, err_buf, 1);
-	      if (err_code < 0)
-		{
-		  goto execute_end;
-		}
-	      err_code =
-		qe_execute (req_handle, con_handle, flag, max_col_size,
-			    err_buf);
-	    }
+	  err_code = qe_execute (req_handle, con_handle, flag, max_col_size,
+				 err_buf);
 	}
     }
 
@@ -1265,22 +1294,17 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
      the error, CAS_ER_STMT_POOLING, is returned.
      In this case, prepare and execute have to be executed again.
    */
-  if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
-      CAS_STATEMENT_POOLING_ON)
+  if (err_code == CAS_ER_STMT_POOLING && IS_STMT_POOL (con_handle))
     {
-      while (err_code == CAS_ER_STMT_POOLING)
+      req_handle_content_free (req_handle, 1);
+      err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+			     req_handle->prepare_flag, err_buf, 1);
+      if (err_code < 0)
 	{
-	  req_handle_content_free (req_handle, 1);
-	  err_code =
-	    qe_prepare (req_handle, con_handle, req_handle->sql_text,
-			req_handle->prepare_flag, err_buf, 1);
-	  if (err_code < 0)
-	    {
-	      goto execute_end;
-	    }
-	  err_code =
-	    qe_execute (req_handle, con_handle, flag, max_col_size, err_buf);
+	  goto execute_end;
 	}
+      err_code = qe_execute (req_handle, con_handle, flag, max_col_size,
+			     err_buf);
     }
 
 execute_end:
@@ -1361,10 +1385,8 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 	}
     }
 
-  if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
-      CAS_STATEMENT_POOLING_ON)
+  if (IS_STMT_POOL (con_handle) && !req_handle->valid)
     {
-
       err_code = connect_prepare_again (con_handle, req_handle, err_buf);
     }
 
@@ -1373,46 +1395,17 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
       err_code = qe_execute_array (req_handle, con_handle, qr, err_buf);
     }
 
-  if (err_code < 0)
+  if (IS_OUT_TRAN (con_handle) && IS_ER_COMMUNICATION (err_code))
     {
-      if (con_handle->con_status == CCI_CON_STATUS_OUT_TRAN &&
-	  (err_code == CCI_ER_COMMUNICATION
-	   || err_code == CAS_ER_COMMUNICATION))
+      int connect_done;
+
+      err_code = cas_connect_with_ret (con_handle, err_buf, &connect_done);
+      if (err_code < 0)
 	{
-
-	  int con_err_code = 0;
-	  int connect_done;
-
-	  con_err_code =
-	    cas_connect_with_ret (con_handle, err_buf, &connect_done);
-	  if (con_err_code < 0)
-	    {
-	      err_code = con_err_code;
-	      goto execute_end;
-	    }
-
-	  if (connect_done)
-	    {
-	      req_handle_content_free (req_handle, 1);
-	      err_code = qe_prepare (req_handle,
-				     con_handle,
-				     req_handle->sql_text,
-				     req_handle->prepare_flag, err_buf, 1);
-	      if (err_code < 0)
-		{
-		  goto execute_end;
-		}
-	      err_code =
-		qe_execute_array (req_handle, con_handle, qr, err_buf);
-	    }
+	  goto execute_end;
 	}
-    }
 
-  if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
-      CAS_STATEMENT_POOLING_ON)
-    {
-
-      while (err_code == CAS_ER_STMT_POOLING)
+      if (connect_done)
 	{
 	  req_handle_content_free (req_handle, 1);
 	  err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
@@ -1423,6 +1416,18 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 	    }
 	  err_code = qe_execute_array (req_handle, con_handle, qr, err_buf);
 	}
+    }
+
+  if (err_code == CAS_ER_STMT_POOLING && IS_STMT_POOL (con_handle))
+    {
+      req_handle_content_free (req_handle, 1);
+      err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+			     req_handle->prepare_flag, err_buf, 1);
+      if (err_code < 0)
+	{
+	  goto execute_end;
+	}
+      err_code = qe_execute_array (req_handle, con_handle, qr, err_buf);
     }
 
 execute_end:
@@ -1577,6 +1582,12 @@ cci_close_req_handle (int req_h_id)
 	}
     }
 
+  if (IS_STMT_POOL (con_handle))
+    {
+      con_handle->ref_count = 0;
+      return err_code;
+    }
+
   if (req_handle->handle_type == HANDLE_PREPARE
       || req_handle->handle_type == HANDLE_SCHEMA_INFO)
     {
@@ -1584,9 +1595,7 @@ cci_close_req_handle (int req_h_id)
     }
   hm_req_handle_free (con_handle, req_h_id, req_handle);
 
-close_end:
   con_handle->ref_count = 0;
-
   return err_code;
 }
 
@@ -4149,11 +4158,8 @@ cas_connect_with_ret (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
   err_code = cas_connect_low (con_handle, err_buf, connect);
 
   /* req_handle_table should be managed by list too. */
-  if ((*connect) &&
-      (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
-       CAS_STATEMENT_POOLING_ON))
+  if ((*connect) && IS_STMT_POOL (con_handle))
     {
-
       hm_invalidate_all_req_handle (con_handle);
     }
 
@@ -4627,8 +4633,7 @@ execute_thread (void *arg)
 					   &(exec_arg->err_buf));
 	}
     }
-  if (curr_con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] ==
-      CAS_STATEMENT_POOLING_ON)
+  if (IS_STMT_POOL (curr_con_handle))
     {
       while (exec_arg->ret_code == CAS_ER_STMT_POOLING)
 	{
@@ -4675,31 +4680,29 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
 {
   int err_code = 0;
 
-  if (!req_handle->valid)
+  if (req_handle->valid)
     {
-      req_handle_content_free (req_handle, 1);
-      err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
-			     req_handle->prepare_flag, err_buf, 1);
+      return err_code;
+    }
 
-      if (con_handle->con_status == CCI_CON_STATUS_OUT_TRAN &&
-	  (err_code == CCI_ER_COMMUNICATION
-	   || err_code == CAS_ER_COMMUNICATION))
+  req_handle_content_free (req_handle, 1);
+  err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+			 req_handle->prepare_flag, err_buf, 1);
+
+  if (con_handle->con_status == CCI_CON_STATUS_OUT_TRAN &&
+      (err_code == CCI_ER_COMMUNICATION || err_code == CAS_ER_COMMUNICATION))
+    {
+      int connect_done;
+
+      err_code = cas_connect_with_ret (con_handle, err_buf, &connect_done);
+      if (err_code < 0)
 	{
-	  int connect_done;
-
-	  err_code =
-	    cas_connect_with_ret (con_handle, err_buf, &connect_done);
-	  if (err_code < 0)
-	    {
-	      return err_code;
-	    }
-	  if (connect_done)
-	    {
-	      err_code = qe_prepare (req_handle,
-				     con_handle,
-				     req_handle->sql_text,
-				     req_handle->prepare_flag, err_buf, 1);
-	    }
+	  return err_code;
+	}
+      if (connect_done)
+	{
+	  err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
+				 req_handle->prepare_flag, err_buf, 1);
 	}
     }
   return err_code;
@@ -4741,4 +4744,571 @@ cci_get_new_handle_id (char *ip, int port, char *db_name,
 #endif
 
   return con_handle_id;
+}
+
+T_CCI_PROPERTIES *
+cci_property_create ()
+{
+  T_CCI_PROPERTIES *prop;
+
+  prop = malloc (sizeof (T_CCI_PROPERTIES));
+  if (prop == NULL)
+    {
+      return NULL;
+    }
+
+  prop->capacity = 10;
+  prop->size = 0;
+  prop->pair = malloc (prop->capacity * sizeof (T_CCI_PROPERTIES_PAIR));
+  if (prop->pair == NULL)
+    {
+      CCI_FREE (prop);
+      return NULL;
+    }
+
+  return prop;
+}
+
+void
+cci_property_destroy (T_CCI_PROPERTIES * properties)
+{
+  int i;
+
+  if (properties == NULL)
+    {
+      return;
+    }
+
+  for (i = 0; i < properties->size; i++)
+    {
+      CCI_FREE (properties->pair[i].key);
+      CCI_FREE (properties->pair[i].value);
+    }
+
+  if (properties->pair)
+    {
+      CCI_FREE (properties->pair);
+    }
+  CCI_FREE (properties);
+}
+
+int
+cci_property_set (T_CCI_PROPERTIES * properties, char *key, char *value)
+{
+  char *pkey, *pvalue;
+
+  if (properties == NULL || key == NULL || value == NULL)
+    {
+      return 0;
+    }
+
+  if (properties->capacity == properties->size)
+    {
+      T_CCI_PROPERTIES_PAIR *tmp;
+      int new_capa = properties->capacity + 10;
+      tmp =
+	realloc (properties->pair, sizeof (T_CCI_PROPERTIES_PAIR) * new_capa);
+      if (tmp == NULL)
+	{
+	  return 0;
+	}
+      properties->capacity = new_capa;
+      properties->pair = tmp;
+    }
+
+  pkey = strdup (key);
+  if (pkey == NULL)
+    {
+      return 0;
+    }
+  pvalue = strdup (value);
+  if (pvalue == NULL)
+    {
+      CCI_FREE (pkey);
+      return 0;
+    }
+
+  properties->pair[properties->size].key = pkey;
+  properties->pair[properties->size].value = pvalue;
+  properties->size++;
+
+  return 1;
+}
+
+char *
+cci_property_get (T_CCI_PROPERTIES * properties, const char *key)
+{
+  int i;
+
+  if (properties == NULL || key == NULL)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < properties->size; i++)
+    {
+      if (strcasecmp (properties->pair[i].key, key) == 0)
+	{
+	  return properties->pair[i].value;
+	}
+    }
+
+  return NULL;
+}
+
+static int
+cci_strtol (long *val, char *str, int base)
+{
+  long v;
+  char *end;
+
+  v = strtol (str, &end, base);
+  if ((errno == ERANGE && (v == LONG_MAX || v == LONG_MIN))
+      || (errno != 0 && v == 0))
+    {
+      /* perror ("strtol"); */
+      return false;
+    }
+
+  if (end == str)
+    {
+      /* No digits were found. */
+      return false;
+    }
+
+  *val = v;
+  return true;
+}
+
+static bool
+cci_property_get_int (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
+		      int *out_value, int default_value, T_CCI_ERROR * err)
+{
+  char *tmp;
+  long val;
+
+  tmp = cci_property_get (prop, datasource_key[key]);
+  if (tmp == NULL)
+    {
+      *out_value = default_value;
+    }
+  else
+    {
+      if (cci_strtol (&val, tmp, 10))
+	{
+	  *out_value = (int) val;
+	}
+      else
+	{
+	  err->err_code = CCI_ER_PROPERTY_TYPE;
+	  snprintf (err->err_msg, 1023, "strtol: %s", strerror (errno));
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+static bool
+cci_property_get_bool (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
+		       bool * out_value, int default_value, T_CCI_ERROR * err)
+{
+  char *tmp;
+
+  tmp = cci_property_get (prop, datasource_key[key]);
+  if (tmp == NULL)
+    {
+      *out_value = default_value;
+    }
+  else
+    {
+      if (strcmp (tmp, "true") == 0)
+	{
+	  *out_value = (bool) true;
+	}
+      else if (strcmp (tmp, "false") == 0)
+	{
+	  *out_value = (bool) false;
+	}
+      else
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+static bool
+cci_check_property (char **property, T_CCI_ERROR * err)
+{
+  if (*property)
+    {
+      *property = strdup (*property);
+      if (*property == NULL)
+	{
+	  err->err_code = CCI_ER_NO_MORE_MEMORY;
+	  if (err->err_msg)
+	    {
+	      snprintf (err->err_msg, 1023, "strdup: %s", strerror (errno));
+	    }
+	  return false;
+	}
+    }
+  else
+    {
+      err->err_code = CCI_ER_NO_PROPERTY;
+      if (err->err_msg)
+	{
+	  snprintf (err->err_msg, 1023,
+		    "Could not found user property for connection");
+	}
+      return false;
+    }
+
+  return true;
+}
+
+static void
+cci_disconnect_force (int con_h_id, bool try_close)
+{
+  T_CON_HANDLE *con_handle;
+
+  if (con_h_id <= 0)
+    {
+      return;
+    }
+
+  con_handle = hm_find_con_handle (con_h_id);
+  if (con_handle == NULL)
+    {
+      return;
+    }
+
+  if (try_close)
+    {
+      qe_con_close (con_handle);
+    }
+
+  hm_req_handle_free_all (con_handle);
+  CLOSE_SOCKET (con_handle->sock_fd);
+  con_handle->sock_fd = INVALID_SOCKET;
+  hm_con_handle_free (con_h_id);
+  if (IS_STMT_POOL (con_handle))
+    {
+      mht_destroy (con_handle->stmt_pool, true, false);
+    }
+}
+
+static void
+cci_make_url (char *buf, char *url, int login, int query)
+{
+  const char *c;
+  const char *str_login = datasource_key[CCI_DS_KEY_LOGIN_TIMEOUT];
+
+  if (strchr (url, '?'))
+    {
+      c = "&";
+    }
+  else
+    {
+      c = "?";
+    }
+  snprintf (buf, LINE_MAX, "%s%s%s=%d", url, c, str_login, login);
+}
+
+T_CCI_DATASOURCE *
+cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err)
+{
+  char *user, *pass, *url;
+  cci_mutex_t *mutex;
+  cci_cond_t *cond;
+  int pool_size, max_wait;
+  int login_timeout, query_timeout;
+  bool using_stmt_pool;
+  T_CCI_DATASOURCE *ds;
+  T_CCI_CONN *con_handles;
+  int i;
+
+  user = pass = url = NULL;
+  mutex = NULL;
+  cond = NULL;
+  ds = NULL;
+  con_handles = NULL;
+
+  user = cci_property_get (prop, datasource_key[CCI_DS_KEY_USER]);
+  if (!cci_check_property (&user, err))
+    {
+      goto create_datasource_error;
+    }
+
+  pass = cci_property_get (prop, datasource_key[CCI_DS_KEY_PASSWORD]);
+  if (pass == NULL)
+    {
+      /* a pass may be null */
+      pass = strdup ("");
+      if (pass == NULL)
+	{
+	  goto create_datasource_error;
+	}
+    }
+
+  url = cci_property_get (prop, datasource_key[CCI_DS_KEY_URL]);
+  if (!cci_check_property (&url, err))
+    {
+      goto create_datasource_error;
+    }
+
+  if (!cci_property_get_int (prop, CCI_DS_KEY_POOL_SIZE, &pool_size,
+			     CCI_DS_DEFAULT_POOL_SIZE, err))
+    {
+      goto create_datasource_error;
+    }
+
+  if (!cci_property_get_int (prop, CCI_DS_KEY_MAX_WAIT, &max_wait,
+			     CCI_DS_DEFAULT_MAX_WAIT, err))
+    {
+      goto create_datasource_error;
+    }
+
+  if (!cci_property_get_bool (prop, CCI_DS_KEY_USING_STMT_POOL,
+			      &using_stmt_pool,
+			      CCI_DS_DEFAULT_USING_STMT_POOL, err))
+    {
+      goto create_datasource_error;
+    }
+
+  login_timeout = query_timeout = -1;
+  if (!cci_property_get_int (prop, CCI_DS_KEY_LOGIN_TIMEOUT, &login_timeout,
+			     login_timeout, err))
+    {
+      goto create_datasource_error;
+    }
+
+  if (!cci_property_get_int (prop, CCI_DS_KEY_QUERY_TIMEOUT, &query_timeout,
+			     query_timeout, err))
+    {
+      goto create_datasource_error;
+    }
+
+  ds = malloc (sizeof (T_CCI_DATASOURCE));
+  con_handles = calloc (pool_size, sizeof (T_CCI_CONN));
+  mutex = malloc (sizeof (cci_mutex_t));
+  cond = malloc (sizeof (cci_cond_t));
+  if (!ds || !con_handles || !mutex || !cond)
+    {
+      err->err_code = CCI_ER_NO_MORE_MEMORY;
+      if (err->err_msg)
+	{
+	  snprintf (err->err_msg, 1023, "malloc: %s", strerror (errno));
+	}
+      goto create_datasource_error;
+    }
+
+  ds->user = user;
+  ds->pass = pass;
+  ds->url = url;
+  ds->pool_size = pool_size;
+  ds->max_wait = max_wait;
+  ds->using_stmt_pool = using_stmt_pool;
+  ds->login_timeout = login_timeout;
+  ds->query_timeout = query_timeout;
+  ds->mutex = mutex;
+  ds->cond = cond;
+  ds->con_handles = con_handles;
+
+  cci_mutex_init ((cci_mutex_t *) ds->mutex, NULL);
+  cci_cond_init ((cci_cond_t *) ds->cond, NULL);
+
+  ds->num_idle = pool_size;
+  for (i = 0; i < pool_size; i++)
+    {
+      T_CON_HANDLE *handle;
+      T_CCI_CONN id;
+      char tmp_url[LINE_MAX];
+      cci_make_url (tmp_url, url, login_timeout, query_timeout);
+      id = cci_connect_with_url (url, user, pass);
+      if (id < 0)
+	{
+	  err->err_code = CCI_ER_CONNECT;
+	  if (err->err_msg)
+	    {
+	      snprintf (err->err_msg, 1023, "Could not connect to database");
+	    }
+	  goto create_datasource_error;
+	}
+      handle = hm_find_con_handle (id);
+      handle->datasource = ds;
+      ds->con_handles[i] = id;
+    }
+
+  ds->is_init = 1;
+  return ds;
+
+create_datasource_error:
+  for (i = 0; i < pool_size; i++)
+    {
+      if (con_handles[i] > 0)
+	{
+	  cci_disconnect_force (con_handles[i], true);
+	}
+    }
+  CCI_FREE (user);
+  CCI_FREE (pass);
+  CCI_FREE (url);
+  CCI_FREE (mutex);
+  CCI_FREE (cond);
+  CCI_FREE (con_handles);
+  CCI_FREE (ds);
+  return NULL;
+}
+
+void
+cci_datasource_destroy (T_CCI_DATASOURCE * datasource)
+{
+  int i;
+
+  if (datasource == NULL)
+    {
+      return;
+    }
+
+  CCI_FREE (datasource->user);
+  CCI_FREE (datasource->pass);
+  CCI_FREE (datasource->url);
+
+  cci_mutex_destroy ((cci_mutex_t *) datasource->mutex);
+  CCI_FREE (datasource->mutex);
+  cci_cond_destroy ((cci_cond_t *) datasource->cond);
+  CCI_FREE (datasource->cond);
+
+  if (datasource->con_handles)
+    {
+      for (i = 0; i < datasource->pool_size; i++)
+	{
+	  T_CCI_CONN id = datasource->con_handles[i];
+	  if (id == 0)
+	    {
+	      /* uninitialized */
+	      continue;
+	    }
+	  if (id < 0)
+	    {
+	      /* The id has been using */
+	      id = -id;
+	      cci_disconnect_force (id, false);
+	    }
+	  else
+	    {
+	      cci_disconnect_force (id, true);
+	    }
+	}
+      CCI_FREE (datasource->con_handles);
+    }
+
+  CCI_FREE (datasource);
+}
+
+T_CCI_CONN
+cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err)
+{
+  T_CCI_CONN id;
+  int i;
+
+  if (ds == NULL || !ds->is_init)
+    {
+      err->err_code = CCI_ER_INVALID_DATASOURCE;
+      snprintf (err->err_msg, 1023, "CCI data source is invalid");
+      return -1;
+    }
+
+  /* critical section begin */
+  cci_mutex_lock ((cci_mutex_t *) ds->mutex);
+  if (ds->num_idle == 0)
+    {
+      /* wait max_wait msecs */
+      struct timespec ts;
+      struct timeval tv;
+      int r;
+
+      cci_gettimeofday (&tv, NULL);
+      ts.tv_sec = tv.tv_sec + (ds->max_wait / 1000);
+      ts.tv_nsec = (tv.tv_usec + (ds->max_wait % 1000) * 1000) * 1000;
+      if (ts.tv_nsec > 1000000000)
+	{
+	  ts.tv_sec += 1;
+	  ts.tv_nsec -= 1000000000;
+	}
+      r = cci_cond_timedwait ((cci_cond_t *) ds->cond,
+			      (cci_mutex_t *) ds->mutex, &ts);
+      if (r == ETIMEDOUT)
+	{
+	  err->err_code = CCI_ER_DATASOURCE_TIMEOUT;
+	  snprintf (err->err_msg, 1023, "All connections are used");
+	  cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
+	  return -1;
+	}
+      else if (r != 0)
+	{
+	  err->err_code = CCI_ER_DATASOURCE_TIMEDWAIT;
+	  snprintf (err->err_msg, 1023, "pthread_cond_timedwait : %d", r);
+	  cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
+	  return -1;
+	}
+    }
+
+  ds->num_idle--;
+  for (i = 0; i < ds->pool_size; i++)
+    {
+      if (ds->con_handles[i] > 0)
+	{
+	  id = ds->con_handles[i];
+	  ds->con_handles[i] = -id;
+	  break;
+	}
+    }
+  cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
+  /* critical section end */
+
+  return id;
+}
+
+int
+cci_datasource_release (T_CCI_DATASOURCE * datasource, T_CCI_CONN conn,
+			T_CCI_ERROR * err)
+{
+  int i;
+
+  if (datasource == NULL || !datasource->is_init)
+    {
+      err->err_code = CCI_ER_INVALID_DATASOURCE;
+      snprintf (err->err_msg, 1023, "CCI data source is invalid");
+      return 0;
+    }
+
+  /* critical section begin */
+  cci_mutex_lock ((cci_mutex_t *) datasource->mutex);
+  for (i = 0; i < datasource->pool_size; i++)
+    {
+      if (datasource->con_handles[i] == -conn)
+	{
+	  T_CCI_ERROR err;
+	  cci_end_tran (conn, CCI_TRAN_ROLLBACK, &err);
+	  datasource->con_handles[i] = conn;
+	  break;
+	}
+    }
+  if (i == datasource->pool_size)
+    {
+      /* could not found con_handles */
+      cci_mutex_unlock ((cci_mutex_t *) datasource->mutex);
+      return 0;
+    }
+
+  datasource->num_idle++;
+  cci_cond_signal ((cci_cond_t *) datasource->cond);
+  cci_mutex_unlock ((cci_mutex_t *) datasource->mutex);
+  /* critical section end */
+
+  return 1;
 }

@@ -59,7 +59,6 @@
  * OTHER IMPORTED HEADER FILES						*
  ************************************************************************/
 
-#include "porting.h"
 #include "cci_common.h"
 #include "cas_cci.h"
 #include "cci_network.h"

@@ -96,7 +96,7 @@ T_MUTEX ha_status_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 static int conn_pool[CCI_MAX_CONNECTION_POOL];
-static int num_conn_pool = 0;
+static unsigned int num_conn_pool = 0;
 
 
 /************************************************************************
@@ -155,7 +155,7 @@ hm_get_con_from_pool (unsigned char *ip_addr, int port, char *dbname,
 		      char *dbuser, char *dbpasswd)
 {
   int con = -1;
-  int i;
+  unsigned int i;
 
   for (i = 0; i < num_conn_pool; i++)
     {
@@ -298,6 +298,49 @@ hm_req_handle_alloc (int con_id, T_REQ_HANDLE ** ret_req_handle)
 
   *ret_req_handle = req_handle;
   return (con_id * CON_HANDLE_ID_FACTOR + req_handle_id);
+}
+
+int
+hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id)
+{
+  char *key;
+  int *data;
+
+  key = strdup (sql);
+  if (key == NULL)
+    {
+      return CCI_ER_NO_MORE_MEMORY;
+    }
+  data = malloc (sizeof (int));
+  if (data == NULL)
+    {
+      free (key);
+      return CCI_ER_NO_MORE_MEMORY;
+    }
+
+  *data = req_id;
+  if (!mht_put_data (con->stmt_pool, key, data))
+    {
+      free (key);
+      free (data);
+      return CCI_ER_NO_MORE_MEMORY;
+    }
+  return CCI_ER_NO_ERROR;
+}
+
+int
+hm_req_get_from_pool (T_CON_HANDLE * con, char *sql)
+{
+  int req_id;
+  void *data = mht_get (con->stmt_pool, sql);
+
+  if (data == NULL)
+    {
+      return CCI_ER_REQ_HANDLE;
+    }
+  req_id = *((int *) data);
+  /* TODO : set query timeout */
+  return req_id;
 }
 
 T_CON_HANDLE *
@@ -621,6 +664,16 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
       return CCI_ER_NO_MORE_MEMORY;
     }
 
+  con_handle->stmt_pool = mht_create (0, 100, mht_5strhash, mht_strcasecmpeq);
+  if (con_handle->stmt_pool == NULL)
+    {
+      FREE_MEM (con_handle->db_name);
+      FREE_MEM (con_handle->db_user);
+      FREE_MEM (con_handle->db_passwd);
+      FREE_MEM (con_handle->req_handle_table);
+      return CCI_ER_NO_MORE_MEMORY;
+    }
+
   memset (con_handle->req_handle_table,
 	  0, sizeof (T_REQ_HANDLE *) * con_handle->max_req_handle);
   con_handle->req_handle_count = 0;
@@ -636,6 +689,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->alter_host_count = 0;
   con_handle->alter_host_id = -1;
   con_handle->rc_time = 600;
+  con_handle->datasource = NULL;
 
   return 0;
 }

@@ -34,7 +34,8 @@ libcascci_la_SOURCES = \
 	$(CCI_DIR)/cci_network.c \
 	$(CCI_DIR)/cci_handle_mng.c \
 	$(CCI_DIR)/cci_t_set.c \
-	$(CCI_DIR)/cci_t_lob.c
+	$(CCI_DIR)/cci_t_lob.c \
+	$(CCI_DIR)/cci_common.c
 libcascci_la_LDFLAGS = -version-number @LT_VERSION@
 
 VERSIONED_FILES = \

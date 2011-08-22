@@ -54,8 +54,8 @@
  * OTHER IMPORTED HEADER FILES						*
  ************************************************************************/
 
-#include "cas_cci.h"
 #include "cci_common.h"
+#include "cas_cci.h"
 #include "cci_net_buf.h"
 
 /************************************************************************

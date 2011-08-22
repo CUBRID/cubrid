@@ -322,6 +322,10 @@
 					RelativePath="..\..\src\cci\cci_wsa_init.c"
 					>
 				</File>
+				<File
+					RelativePath="..\..\src\cci\cci_common.c"
+					>
+				</File>
 			</Filter>
 		</Filter>
 		<Filter

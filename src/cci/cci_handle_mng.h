@@ -52,6 +52,7 @@
  * OTHER IMPORTED HEADER FILES						*
  ************************************************************************/
 
+#include "cci_common.h"
 #include "cas_cci.h"
 #include "cas_protocol.h"
 
@@ -195,6 +196,8 @@ typedef struct
   int alter_host_count;
   int alter_host_id;		/* current connected alternative host id */
   int rc_time;			/* failback try duration */
+  T_CCI_DATASOURCE *datasource;
+  MHT_TABLE *stmt_pool;
 } T_CON_HANDLE;
 
 /************************************************************************
@@ -230,6 +233,8 @@ extern void hm_set_ha_status (T_CON_HANDLE * con_handle, bool reset_rctime);
 extern int hm_get_ha_connected_host (T_CON_HANDLE * con_handle);
 extern time_t hm_get_ha_last_rc_time (T_CON_HANDLE * con_handle);
 
+extern int hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id);
+extern int hm_req_get_from_pool (T_CON_HANDLE * con, char *sql);
 /************************************************************************
  * PUBLIC VARIABLES							*
  ************************************************************************/

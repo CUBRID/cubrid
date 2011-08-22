@@ -85,6 +85,15 @@ EXPORTS
 	cci_last_insert_id
 	cci_get_autocommit
 	cci_set_autocommit
+
+	cci_property_create
+	cci_property_destroy
+	cci_property_set
+	cci_property_get
+	cci_datasource_create
+	cci_datasource_destroy
+	cci_datasource_borrow
+	cci_datasource_release
 	
 ;          WEP PRIVATE
 ; To implement your own Windows Exit Procedure add the following
