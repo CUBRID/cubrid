@@ -781,7 +781,7 @@ static int prm_session_timeout_upper = 60 * 60 * 24 * 365;	/* 1 nonleap year */
 int PRM_MULTI_RANGE_OPT_LIMIT = 100;
 static int prm_multi_range_opt_limit_default = 100;
 static int prm_multi_range_opt_limit_lower = 0;	/*disabled */
-static int prm_multi_range_opt_limit_upper = 100;
+static int prm_multi_range_opt_limit_upper = 10000;
 
 UINT64 PRM_DB_VOLUME_SIZE = 536870912ULL;
 static UINT64 prm_db_volume_size_default = 536870912ULL;	/* 512M */
