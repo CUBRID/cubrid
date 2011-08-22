@@ -196,6 +196,7 @@ struct t_appl_server_info
   time_t psize_time;
   int session_id;		/* the session id (uw,v3) */
   int cas_log_reset;
+  int cas_slow_log_reset;
   char service_flag;
   char reset_flag;
   char uts_status;		/* flag whether the uts is busy or idle */
@@ -208,6 +209,7 @@ struct t_appl_server_info
   char cur_keep_con;
   char cur_sql_log_mode;
   char cur_sql_log2;
+  char cur_slow_log_mode;
   char cur_statement_pooling;
 #if defined(WINDOWS)
   char close_flag;
@@ -256,6 +258,7 @@ struct t_shm_appl_server
 {
   char access_log;
   char sql_log_mode;
+  char slow_log_mode;
   char stripped_column_name;
   char keep_connection;
   char cache_user_info;
@@ -276,6 +279,7 @@ struct t_shm_appl_server
   int use_pdh_flag;
 #endif
   char log_dir[PATH_MAX];
+  char slow_log_dir[PATH_MAX];
   char err_log_dir[PATH_MAX];
   char broker_name[BROKER_NAME_LEN];
   char appl_server_name[APPL_SERVER_NAME_MAX_SIZE];

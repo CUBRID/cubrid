@@ -427,6 +427,9 @@ broker_config_read_internal (const char *conf_file,
       strcpy (br_info[num_brs].log_dir,
 	      ini_getstr (ini, sec_name, "LOG_DIR", DEFAULT_LOG_DIR,
 			  &lineno));
+      strcpy (br_info[num_brs].slow_log_dir,
+	      ini_getstr (ini, sec_name, "SLOW_LOG_DIR", DEFAULT_SLOW_LOG_DIR,
+			  &lineno));
       strcpy (br_info[num_brs].err_log_dir,
 	      ini_getstr (ini, sec_name, "ERROR_LOG_DIR", DEFAULT_ERR_DIR,
 			  &lineno));
@@ -460,6 +463,15 @@ broker_config_read_internal (const char *conf_file,
 				     (ini, sec_name, "SQL_LOG",
 				      DEFAULT_SQL_LOG_MODE, &lineno));
       if (br_info[num_brs].sql_log_mode < 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
+      br_info[num_brs].slow_log_mode =
+	conf_get_value_table_on_off (ini_getstr (ini, sec_name, "SLOW_LOG",
+						 "ON", &lineno));
+      if (br_info[num_brs].slow_log_mode < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
@@ -923,6 +935,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	       br_info[i].appl_server_max_size / 1204);
       fprintf (fp, "SESSION_TIMEOUT\t\t=%d\n", br_info[i].session_timeout);
       fprintf (fp, "LOG_DIR\t\t\t=%s\n", br_info[i].log_dir);
+      fprintf (fp, "SLOW_LOG_DIR\t\t\t=%s\n", br_info[i].slow_log_dir);
       fprintf (fp, "ERROR_LOG_DIR\t\t=%s\n", br_info[i].err_log_dir);
       tmp_str = get_conf_string (br_info[i].log_backup, tbl_on_off);
       if (tmp_str)
@@ -934,6 +947,11 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
       if (tmp_str)
 	{
 	  fprintf (fp, "SQL_LOG\t\t\t=%s\n", tmp_str);
+	}
+      tmp_str = get_conf_string (br_info[i].slow_log_mode, tbl_on_off);
+      if (tmp_str)
+	{
+	  fprintf (fp, "SLOW_LOG\t\t=%s\n", tmp_str);
 	}
       fprintf (fp, "SQL_LOG_MAX_SIZE\t=%d\n", br_info[i].sql_log_max_size);
       fprintf (fp, "LONG_QUERY_TIME\t\t=%.2f\n",

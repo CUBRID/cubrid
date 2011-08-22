@@ -86,6 +86,14 @@ enum t_sql_log_mode_value
   SQL_LOG_MODE_DEFAULT = SQL_LOG_MODE_ERROR
 };
 
+typedef enum t_slow_log_value T_SLOW_LOG_VALUE;
+enum t_slow_log_value
+{
+  SLOW_LOG_MODE_OFF = 0,
+  SLOW_LOG_MODE_ON = 1,
+  SLOW_LOG_MODE_DEFAULT = SLOW_LOG_MODE_ON
+};
+
 typedef enum t_keep_con_value T_KEEP_CON_VALUE;
 enum t_keep_con_value
 {
@@ -113,6 +121,7 @@ struct t_broker_info
   char log_backup;
   char access_log;
   char sql_log_mode;
+  char slow_log_mode;
   char stripped_column_name;
   char keep_connection;
   char cache_user_info;
@@ -148,6 +157,7 @@ struct t_broker_info
   int num_busy_count;
   int max_prepared_stmt_count;
   char log_dir[CONF_LOG_FILE_LEN];
+  char slow_log_dir[CONF_LOG_FILE_LEN];
   char err_log_dir[CONF_LOG_FILE_LEN];
   char access_log_file[CONF_LOG_FILE_LEN];
   char error_log_file[CONF_LOG_FILE_LEN];

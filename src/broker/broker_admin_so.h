@@ -124,11 +124,13 @@ struct t_br_info
   char status;
   char auto_add_flag;
   char sql_log_mode;
+  char slow_log_mode;
   char access_mode;
   char log_backup_flag;
   char source_env_flag;
   char access_list_flag;
   char log_dir[128];
+  char slow_log_dir[128];
 };
 
 typedef struct t_uc_conf_item T_UC_CONF_ITEM;

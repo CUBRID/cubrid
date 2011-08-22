@@ -58,4 +58,14 @@ extern void cas_log_debug (const char *file_name, const int line_no,
 
 extern char *cas_log_query_plan_file (int id);
 extern void cas_log_query_info_init (int id, char is_only_query_plan);
+
+extern void cas_slow_log_open (char *br_name, int as_index);
+extern void cas_slow_log_reset (char *br_name, int as_index);
+extern void cas_slow_log_close (void);
+extern void cas_slow_log_end (void);
+extern void cas_slow_log_write (unsigned int seq_num, bool unit_start,
+				const char *fmt, ...);
+extern void cas_slow_log_write2 (const char *fmt, ...);
+extern void cas_slow_log_write_value_string (char *value, int size);
+extern void cas_slow_log_write_query_string (char *query, int size);
 #endif /* _CAS_LOG_H_ */

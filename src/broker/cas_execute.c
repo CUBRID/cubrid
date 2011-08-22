@@ -8212,7 +8212,7 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       req_info->need_rollback = FALSE;
     }
 
-  tran_timeout = ut_check_timeout (&tran_start_time,
+  tran_timeout = ut_check_timeout (&tran_start_time, NULL,
 				   shm_appl->long_transaction_time,
 				   &elapsed_sec, &elapsed_msec);
   if (tran_timeout >= 0)

@@ -653,6 +653,16 @@ appl_monitor (char *br_vector)
 		  str_out (", SQL_LOG_MODE:%s:%d", "ALL",
 			   shm_appl->sql_log_max_size);
 		}
+
+	      if (shm_br->br_info[i].slow_log_mode == SLOW_LOG_MODE_ON)
+		{
+		  str_out (", SLOW_LOG:%s", "ON");
+		}
+	      else
+		{
+		  str_out (", SLOW_LOG:%s", "OFF");
+		}
+
 	      print_newline ();
 
 	      str_out (" LONG_TRANSACTION_TIME:%.2f",

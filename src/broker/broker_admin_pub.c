@@ -214,6 +214,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
   broker_create_dir (get_cubrid_file (FID_CAS_TMP_DIR, path));
   broker_create_dir (get_cubrid_file (FID_AS_PID_DIR, path));
   broker_create_dir (get_cubrid_file (FID_SQL_LOG_DIR, path));
+  broker_create_dir (get_cubrid_file (FID_SLOW_LOG_DIR, path));
   broker_create_dir (get_cubrid_file (FID_CUBRID_ERR_DIR, path));
 #if !defined(WINDOWS)
   broker_create_dir (get_cubrid_file (FID_SQL_LOG2_DIR, path));
@@ -230,6 +231,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id,
   for (i = 0; i < br_num; i++)
     {
       broker_create_dir (br_info[i].log_dir);
+      broker_create_dir (br_info[i].slow_log_dir);
       broker_create_dir (br_info[i].err_log_dir);
     }
   chdir (envvar_bindir_file (path, PATH_MAX, ""));
@@ -1250,6 +1252,36 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
 	  shm_appl->as_info[as_number - 1].cur_sql_log_mode = sql_log_mode;
 	}
     }
+  else if (strcasecmp (conf_name, "SLOW_LOG") == 0)
+    {
+      int slow_log_mode;
+
+      slow_log_mode = conf_get_value_table_on_off (conf_value);
+      if (slow_log_mode < 0)
+	{
+	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
+	  goto set_broker_conf_error;
+	}
+
+      if (as_number <= 0)
+	{
+	  shm_br->br_info[br_index].slow_log_mode = slow_log_mode;
+	  shm_appl->slow_log_mode = slow_log_mode;
+	  for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
+	    {
+	      shm_appl->as_info[i].cur_sql_log_mode = slow_log_mode;
+	    }
+	}
+      else
+	{
+	  if (as_number > shm_appl->num_appl_server)
+	    {
+	      sprintf (admin_err_msg, "Invalid cas number : %d", as_number);
+	      goto set_broker_conf_error;
+	    }
+	  shm_appl->as_info[as_number - 1].cur_slow_log_mode = slow_log_mode;
+	}
+    }
   else if (strcasecmp (conf_name, "ACCESS_MODE") == 0)
     {
       char access_mode = conf_get_value_access_mode (conf_value);
@@ -1908,6 +1940,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
   shm_appl->job_queue[0].id = 0;	/* initialize max heap */
   shm_appl->max_prepared_stmt_count = br_info->max_prepared_stmt_count;
   strcpy (shm_appl->log_dir, br_info->log_dir);
+  strcpy (shm_appl->slow_log_dir, br_info->slow_log_dir);
   strcpy (shm_appl->err_log_dir, br_info->err_log_dir);
   strcpy (shm_appl->broker_name, br_info->name);
   shm_appl->access_control = shm_br->access_control;
@@ -2049,6 +2082,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 
   shm_appl->num_appl_server = br_info->appl_server_num;
   shm_appl->sql_log_mode = br_info->sql_log_mode;
+  shm_appl->slow_log_mode = br_info->slow_log_mode;
   shm_appl->sql_log_max_size = br_info->sql_log_max_size;
   shm_appl->long_query_time = br_info->long_query_time;
   shm_appl->long_transaction_time = br_info->long_transaction_time;
@@ -2101,6 +2135,7 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
       shm_appl->as_info[i].database_host[0] = '\0';
       shm_appl->as_info[i].last_connect_time = 0;
       shm_appl->as_info[i].cur_sql_log_mode = br_info->sql_log_mode;
+      shm_appl->as_info[i].cur_slow_log_mode = br_info->slow_log_mode;
       CON_STATUS_LOCK_INIT (&(shm_appl->as_info[i]));
     }
 
@@ -2272,6 +2307,7 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
   as_info->clt_req_path_info[0] = '\0';
   as_info->clt_ip_addr[0] = '\0';
   as_info->cur_sql_log_mode = shm_appl->sql_log_mode;
+  as_info->cur_slow_log_mode = shm_appl->slow_log_mode;
 
 #if defined(WINDOWS)
   as_info->pdh_pid = 0;

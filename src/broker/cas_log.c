@@ -56,19 +56,20 @@
 #endif
 
 
-static char *make_sql_log_filename (char *filename_buf,
+static char *make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
 				    size_t buf_size, const char *br_name,
 				    int as_index);
-static void cas_log_backup (void);
+static void cas_log_backup (T_CUBRID_FILE_ID fid);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void cas_log_rename (int run_time, time_t cur_time, char *br_name,
 			    int as_index);
 #endif
-static void cas_log_write_internal (unsigned int seq_num, bool do_flush,
-				    const char *fmt, va_list ap);
-static void cas_log_write2_internal (bool do_flush, const char *fmt,
-				     va_list ap);
+static void cas_log_write_internal (FILE * fp, unsigned int seq_num,
+				    bool do_flush, const char *fmt,
+				    va_list ap);
+static void cas_log_write2_internal (FILE * fp, bool do_flush,
+				     const char *fmt, va_list ap);
 
 static FILE *sql_log_open (char *log_file_name);
 
@@ -76,21 +77,34 @@ static FILE *sql_log_open (char *log_file_name);
 static int error_file_offset;
 static char cas_log_error_flag;
 #endif
-static FILE *log_fp = NULL;
-static char log_filepath[PATH_MAX];
+static FILE *log_fp = NULL, *slow_log_fp = NULL;
+static char log_filepath[PATH_MAX], slow_log_filepath[PATH_MAX];
 static long saved_log_fpos = 0;
 
 static char *
-make_sql_log_filename (char *filename_buf,
+make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf,
 		       size_t buf_size, const char *br_name, int as_index)
 {
   char dirname[PATH_MAX];
 
   assert (filename_buf != NULL);
 
-  get_cubrid_file (FID_SQL_LOG_DIR, dirname);
-  snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name,
-	    (as_index) + 1);
+  get_cubrid_file (fid, dirname);
+  switch (fid)
+    {
+    case FID_SQL_LOG_DIR:
+      snprintf (filename_buf, buf_size, "%s%s_%d.sql.log", dirname, br_name,
+		(as_index) + 1);
+      break;
+    case FID_SLOW_LOG_DIR:
+      snprintf (filename_buf, buf_size, "%s%s_%d.slow.log", dirname, br_name,
+		(as_index) + 1);
+      break;
+    default:
+      assert (0);
+      snprintf (filename_buf, buf_size, "unknown.log");
+      break;
+    }
   return filename_buf;
 }
 
@@ -98,7 +112,6 @@ void
 cas_log_open (char *br_name, int as_index)
 {
 #ifndef LIBCAS_FOR_JSP
-
   if (log_fp != NULL)
     {
       cas_log_close (true);
@@ -108,7 +121,8 @@ cas_log_open (char *br_name, int as_index)
     {
       if (br_name != NULL)
 	{
-	  make_sql_log_filename (log_filepath, PATH_MAX, br_name, as_index);
+	  make_sql_log_filename (FID_SQL_LOG_DIR, log_filepath, PATH_MAX,
+				 br_name, as_index);
 	}
 
       /* note: in "a+" mode, output is always appended */
@@ -172,16 +186,29 @@ cas_log_close (bool flag)
 }
 
 static void
-cas_log_backup (void)
+cas_log_backup (T_CUBRID_FILE_ID fid)
 {
   char backup_filepath[PATH_MAX];
+  char *filepath = NULL;
 
   assert (log_filepath[0] != '\0');
 
-  snprintf (backup_filepath, PATH_MAX, "%s.bak", log_filepath);
+  switch (fid)
+    {
+    case FID_SQL_LOG_DIR:
+      filepath = log_filepath;
+      break;
+    case FID_SLOW_LOG_DIR:
+      filepath = slow_log_filepath;
+      break;
+    default:
+      assert (0);
+      return;
+    }
 
+  snprintf (backup_filepath, PATH_MAX, "%s.bak", filepath);
   unlink (backup_filepath);
-  rename (log_filepath, backup_filepath);
+  rename (filepath, backup_filepath);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -266,7 +293,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 
       if (abandon)
 	{
-	  cas_log_write_internal (0, false, "END OF LOG\n\n", "");
+	  cas_log_write_internal (log_fp, 0, false, "END OF LOG\n\n", "");
 	  fseek (log_fp, saved_log_fpos, SEEK_SET);
 	}
       else
@@ -281,12 +308,12 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	  if ((saved_log_fpos / 1000) > shm_appl->sql_log_max_size)
 	    {
 	      cas_log_close (true);
-	      cas_log_backup ();
+	      cas_log_backup (FID_SQL_LOG_DIR);
 	      cas_log_open (NULL, 0);
 	    }
 	  else
 	    {
-	      cas_log_write_internal (0, true, "END OF LOG\n\n", "");
+	      cas_log_write_internal (log_fp, 0, true, "END OF LOG\n\n", "");
 	      fseek (log_fp, saved_log_fpos, SEEK_SET);
 	    }
 	}
@@ -295,8 +322,8 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 }
 
 static void
-cas_log_write_internal (unsigned int seq_num, bool do_flush, const char *fmt,
-			va_list ap)
+cas_log_write_internal (FILE * fp, unsigned int seq_num, bool do_flush,
+			const char *fmt, va_list ap)
 {
   char buf[LINE_MAX], *p;
   int len, n;
@@ -318,11 +345,11 @@ cas_log_write_internal (unsigned int seq_num, bool do_flush, const char *fmt,
 	  p += n;
 	}
     }
-  fwrite (buf, (p - buf), 1, log_fp);
+  fwrite (buf, (p - buf), 1, fp);
 
   if (do_flush == true)
     {
-      fflush (log_fp);
+      fflush (fp);
     }
 }
 
@@ -345,7 +372,7 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt,
 	  saved_log_fpos = ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (seq_num,
+      cas_log_write_internal (log_fp, seq_num,
 			      (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL),
 			      fmt, ap);
       va_end (ap);
@@ -371,7 +398,7 @@ cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 	  saved_log_fpos = ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (seq_num,
+      cas_log_write_internal (log_fp, seq_num,
 			      (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL),
 			      fmt, ap);
       va_end (ap);
@@ -399,7 +426,7 @@ cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt,
 	  saved_log_fpos = ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (seq_num,
+      cas_log_write_internal (log_fp, seq_num,
 			      (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL),
 			      fmt, ap);
       va_end (ap);
@@ -410,7 +437,8 @@ cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt,
 }
 
 static void
-cas_log_write2_internal (bool do_flush, const char *fmt, va_list ap)
+cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt,
+			 va_list ap)
 {
   char buf[LINE_MAX], *p;
   int len, n;
@@ -420,11 +448,11 @@ cas_log_write2_internal (bool do_flush, const char *fmt, va_list ap)
   n = vsnprintf (p, len, fmt, ap);
   len -= n;
   p += n;
-  fwrite (buf, (p - buf), 1, log_fp);
+  fwrite (buf, (p - buf), 1, fp);
 
   if (do_flush == true)
     {
-      fflush (log_fp);
+      fflush (fp);
     }
 }
 
@@ -442,8 +470,8 @@ cas_log_write2_nonl (const char *fmt, ...)
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write2_internal ((as_info->cur_sql_log_mode ==
-				SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write2_internal (log_fp, (as_info->cur_sql_log_mode ==
+					SQL_LOG_MODE_ALL), fmt, ap);
       va_end (ap);
     }
 #endif /* LIBCAS_FOR_JSP */
@@ -463,8 +491,8 @@ cas_log_write2 (const char *fmt, ...)
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write2_internal ((as_info->cur_sql_log_mode ==
-				SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write2_internal (log_fp, (as_info->cur_sql_log_mode ==
+					SQL_LOG_MODE_ALL), fmt, ap);
       va_end (ap);
       fputc ('\n', log_fp);
     }
@@ -773,4 +801,183 @@ sql_log_open (char *log_file_name)
 	}
     }
   return fp;
+}
+
+void
+cas_slow_log_open (char *br_name, int as_index)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (slow_log_fp != NULL)
+    {
+      cas_slow_log_close ();
+    }
+
+  if (as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
+    {
+      if (br_name != NULL)
+	{
+	  make_sql_log_filename (FID_SLOW_LOG_DIR, slow_log_filepath,
+				 PATH_MAX, br_name, as_index);
+	}
+
+      /* note: in "a+" mode, output is always appended */
+      slow_log_fp = fopen (slow_log_filepath, "a+");
+      if (slow_log_fp == NULL)
+	{
+	  assert (0);
+	}
+    }
+  else
+    {
+      slow_log_fp = NULL;
+    }
+  as_info->cas_slow_log_reset = 0;
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_slow_log_reset (char *br_name, int as_index)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (as_info->cas_slow_log_reset)
+    {
+      if (slow_log_fp != NULL)
+	{
+	  cas_slow_log_close ();
+	}
+      if ((as_info->cas_slow_log_reset & CAS_LOG_RESET_REMOVE) != 0)
+	{
+	  unlink (slow_log_filepath);
+	}
+
+      cas_slow_log_open (br_name, as_index);
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_slow_log_close ()
+{
+#ifndef LIBCAS_FOR_JSP
+  if (slow_log_fp != NULL)
+    {
+      fclose (slow_log_fp);
+      slow_log_fp = NULL;
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_slow_log_end ()
+{
+#ifndef LIBCAS_FOR_JSP
+  if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
+    {
+      cas_slow_log_open (shm_appl->broker_name, shm_as_index);
+    }
+
+  if (slow_log_fp != NULL)
+    {
+      long slow_log_fpos;
+      slow_log_fpos = ftell (slow_log_fp);
+
+      if ((slow_log_fpos / 1000) > shm_appl->sql_log_max_size)
+	{
+	  cas_slow_log_close ();
+	  cas_log_backup (FID_SLOW_LOG_DIR);
+	  cas_slow_log_open (NULL, 0);
+	}
+      else
+	{
+	  fputc ('\n', slow_log_fp);
+	  fflush (slow_log_fp);
+	}
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_slow_log_write (unsigned int seq_num, bool unit_start, const char *fmt,
+		    ...)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
+    {
+      cas_slow_log_open (shm_appl->broker_name, shm_as_index);
+    }
+
+  if (slow_log_fp != NULL)
+    {
+      va_list ap;
+
+      va_start (ap, fmt);
+      cas_log_write_internal (slow_log_fp, seq_num, false, fmt, ap);
+      va_end (ap);
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_slow_log_write2 (const char *fmt, ...)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
+    {
+      cas_slow_log_open (shm_appl->broker_name, shm_as_index);
+    }
+
+  if (slow_log_fp != NULL)
+    {
+      va_list ap;
+
+      va_start (ap, fmt);
+      cas_log_write2_internal (slow_log_fp, false, fmt, ap);
+      va_end (ap);
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_slow_log_write_value_string (char *value, int size)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
+    {
+      cas_slow_log_open (shm_appl->broker_name, shm_as_index);
+    }
+
+  if (slow_log_fp != NULL)
+    {
+      fwrite (value, size, 1, slow_log_fp);
+    }
+#endif /* LIBCAS_FOR_JSP */
+}
+
+void
+cas_slow_log_write_query_string (char *query, int size)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
+    {
+      cas_slow_log_open (shm_appl->broker_name, shm_as_index);
+    }
+
+  if (slow_log_fp != NULL && query != NULL)
+    {
+      char *s;
+
+      for (s = query; *s; s++)
+	{
+	  if (*s == '\n' || *s == '\r')
+	    {
+	      fputc (' ', slow_log_fp);
+	    }
+	  else
+	    {
+	      fputc (*s, slow_log_fp);
+	    }
+	}
+      fputc ('\n', slow_log_fp);
+    }
+#endif /* LIBCAS_FOR_JSP */
 }

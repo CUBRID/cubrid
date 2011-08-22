@@ -392,6 +392,7 @@ main (int argc, char *argv[])
   net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
 
   cas_log_open (broker_name, shm_as_index);
+  cas_slow_log_open (broker_name, shm_as_index);
   cas_log_write_and_end (0, true, "CAS STARTED pid %d", getpid ());
 
 #if defined(WINDOWS)
@@ -487,6 +488,7 @@ main (int argc, char *argv[])
 	net_timeout_set (NET_DEFAULT_TIMEOUT);
 
 	cas_log_open (broker_name, shm_as_index);
+	cas_slow_log_open (broker_name, shm_as_index);
 	as_info->cur_sql_log2 = shm_appl->sql_log2;
 	sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2,
 		       false);
@@ -825,6 +827,7 @@ main (int argc, char *argv[])
 	cas_log_write2 (sql_log2_get_filename ());
 	cas_log_write_and_end (0, false, "STATE idle");
 	cas_log_close (true);
+	cas_slow_log_close ();
 	sql_log2_end (true);
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 	cas_error_log_close (true);
@@ -925,6 +928,7 @@ cleanup (int signo)
 
   cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
   cas_log_close (true);
+  cas_slow_log_close ();
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   cas_error_log_close (true);
 #endif
@@ -1153,6 +1157,10 @@ process_request (SOCKET clt_sock_fd, T_NET_BUF * net_buf,
 	    {
 	      cas_log_reset (broker_name, shm_as_index);
 	    }
+	  if (as_info->cas_slow_log_reset)
+	    {
+	      cas_slow_log_reset (broker_name, shm_as_index);
+	    }
 	  if (!ux_is_database_connected ())
 	    {
 	      fn_ret = FN_CLOSE_CONN;
@@ -1311,6 +1319,7 @@ cas_init ()
   as_info = &(shm_appl->as_info[shm_as_index]);
 
   set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
+  set_cubrid_file (FID_SLOW_LOG_DIR, shm_appl->slow_log_dir);
   set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
 
   as_pid_file_create (broker_name, shm_as_index);
@@ -1345,6 +1354,10 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd,
       if (as_info->cas_log_reset)
 	{
 	  cas_log_reset (broker_name, shm_as_index);
+	}
+      if (as_info->cas_slow_log_reset)
+	{
+	  cas_slow_log_reset (broker_name, shm_as_index);
 	}
 
       if (as_info->con_status == CON_STATUS_CLOSE

@@ -62,11 +62,13 @@
 #define UC_CONF_PARAM_APPL_SERVER_SHM_ID	"APPL_SERVER_SHM_ID"
 #define UC_CONF_PARAM_APPL_SERVER_MAX_SIZE	"APPL_SERVER_MAX_SIZE"
 #define UC_CONF_PARAM_LOG_DIR			"LOG_DIR"
+#define UC_CONF_PARAM_SLOW_LOG_DIR		"SLOW_LOG_DIR"
 #define UC_CONF_PARAM_ERROR_LOG_DIR		"ERROR_LOG_DIR"
 #define UC_CONF_PARAM_LOG_BACKUP		"LOG_BACKUP"
 #define UC_CONF_PARAM_SOURCE_ENV		"SOURCE_ENV"
 #define UC_CONF_PARAM_ACCESS_LOG		"ACCESS_LOG"
 #define UC_CONF_PARAM_SQL_LOG			"SQL_LOG"
+#define UC_CONF_PARAM_SLOW_LOG			"SLOW_LOG"
 #define UC_CONF_PARAM_LONG_QUERY_TIME           "LONG_QUERY_TIME"
 #define UC_CONF_PARAM_LONG_TRANSACTION_TIME     "LONG_TRANSACTION_TIME"
 #define UC_CONF_PARAM_TIME_TO_KILL		"TIME_TO_KILL"
@@ -961,6 +963,7 @@ uc_br_info (T_BR_INFO ** ret_br_info, char *err_msg)
 	  br_info[i].auto_add_flag =
 	    SET_FLAG (shm_br->br_info[i].auto_add_appl_server);
 	  br_info[i].sql_log_mode = shm_br->br_info[i].sql_log_mode;
+	  br_info[i].slow_log_mode = shm_br->br_info[i].slow_log_mode;
 	  br_info[i].access_mode = shm_br->br_info[i].access_mode;
 	  br_info[i].long_query_time = shm_br->br_info[i].long_query_time;
 	  br_info[i].long_transaction_time =
@@ -1278,6 +1281,8 @@ conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf,
 			 br_conf[i].appl_server_max_size / 1024, FMT_D);
       SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_LOG_DIR,
 			 br_conf[i].log_dir);
+      SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_SLOW_LOG_DIR,
+			 br_conf[i].slow_log_dir);
       SET_CONF_ITEM_STR (conf_item, n, UC_CONF_PARAM_ERROR_LOG_DIR,
 			 br_conf[i].err_log_dir);
       SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_LOG_BACKUP,
@@ -1288,6 +1293,8 @@ conf_copy_broker (T_UC_CONF * unicas_conf, T_BROKER_INFO * br_conf,
 			   br_conf[i].access_log);
       SET_CONF_ITEM_SQL_LOG_MODE (conf_item, n, UC_CONF_PARAM_SQL_LOG,
 				  br_conf[i].sql_log_mode);
+      SET_CONF_ITEM_ONOFF (conf_item, n, UC_CONF_PARAM_SLOW_LOG,
+			   br_conf[i].slow_log_mode);
       SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_SESSION_TIMEOUT,
 			 br_conf[i].session_timeout, FMT_D);
       SET_CONF_ITEM_INT (conf_item, n, UC_CONF_PARAM_SQL_LOG_MAX_SIZE,

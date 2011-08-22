@@ -122,16 +122,20 @@ ut_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec,
 }
 
 int
-ut_check_timeout (struct timeval *start_time, int timeout_msec, int *res_sec,
-		  int *res_msec)
+ut_check_timeout (struct timeval *start_time, struct timeval *end_time,
+		  int timeout_msec, int *res_sec, int *res_msec)
 {
   struct timeval cur_time;
   int diff_msec;
 
   assert (start_time != NULL && res_sec != NULL && res_msec != NULL);
 
-  gettimeofday (&cur_time, NULL);
-  ut_timeval_diff (start_time, &cur_time, res_sec, res_msec);
+  if (end_time == NULL)
+    {
+      end_time = &cur_time;
+      gettimeofday (end_time, NULL);
+    }
+  ut_timeval_diff (start_time, end_time, res_sec, res_msec);
   diff_msec = *res_sec * 1000 + *res_msec;
 
   return (diff_msec >= timeout_msec) ? diff_msec : -1;

@@ -58,11 +58,12 @@
 
 static const char *get_schema_type_str (int schema_type);
 static const char *get_tran_type_str (int tran_type);
-static void bind_value_print (char type, void *net_value);
+static void bind_value_print (char type, void *net_value, bool slow_log);
 static char *get_error_log_eids (int err);
 #ifndef LIBCAS_FOR_JSP
-static void bind_value_log (int start, int argc, void **argv, int, char *,
-			    unsigned int);
+static void bind_value_log (int start, int argc, void **argv, int param_size,
+			    char *param_mode, unsigned int query_seq_num,
+			    bool slow_log);
 #endif /* !LIBCAS_FOR_JSP */
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
@@ -182,7 +183,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
 #ifndef LIBCAS_FOR_JSP
-  timeout = ut_check_timeout (&tran_start_time,
+  timeout = ut_check_timeout (&tran_start_time, &end_tran_end,
 			      shm_appl->long_transaction_time,
 			      &elapsed_sec, &elapsed_msec);
   if (timeout >= 0)
@@ -217,6 +218,10 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       if (as_info->cas_log_reset)
 	{
 	  cas_log_reset (broker_name, shm_as_index);
+	}
+      if (as_info->cas_slow_log_reset)
+	{
+	  cas_slow_log_reset (broker_name, shm_as_index);
 	}
       if (shm_appl->sql_log2 != as_info->cur_sql_log2)
 	{
@@ -332,7 +337,8 @@ fn_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   query_timeout = 0;
 #endif /* !LIBCAS_FOR_JSP */
 
-  cas_log_write (QUERY_SEQ_NUM_NEXT_VALUE (), false, "prepare %d ", flag);
+  cas_log_write_nonl (QUERY_SEQ_NUM_NEXT_VALUE (), false, "prepare %d ",
+		      flag);
   cas_log_write_query_string (sql_stmt, sql_size - 1);
 
 #ifndef LIBCAS_FOR_JSP
@@ -406,6 +412,7 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   int client_cache_reusable = FALSE;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval exec_begin, exec_end;
+  char *eid_string;
 
   bind_value_index = 9;
   argc_mod_2 = 1;
@@ -495,9 +502,12 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 forward_only_cursor ? "forward_only_cursor " : "");
 
 #ifndef LIBCAS_FOR_JSP
-  bind_value_log (bind_value_index, argc, argv,
-		  param_mode_size, param_mode,
-		  SRV_HANDLE_QUERY_SEQ_NUM (srv_handle));
+  if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
+    {
+      bind_value_log (bind_value_index, argc, argv,
+		      param_mode_size, param_mode,
+		      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false);
+    }
 #endif /* !LIBCAS_FOR_JSP */
 
 #ifndef LIBCAS_FOR_JSP
@@ -538,6 +548,7 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   gettimeofday (&exec_end, NULL);
   ut_timeval_diff (&exec_begin, &exec_end, &elapsed_sec, &elapsed_msec);
 
+  eid_string = get_error_log_eids (err_info.err_number);
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		 "%s %s%d tuple %d time %d.%03d%s%s%s",
 		 exec_func_name, (ret_code < 0) ? "error:" : "",
@@ -546,22 +557,50 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 elapsed_sec, elapsed_msec,
 		 (client_cache_reusable == TRUE) ? " (CC)" : "",
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "",
-		 get_error_log_eids (err_info.err_number));
+		 eid_string);
 
 #ifndef LIBCAS_FOR_JSP
-  query_timeout = ut_check_timeout (&query_start_time,
+  query_timeout = ut_check_timeout (&query_start_time, &exec_end,
 				    shm_appl->long_query_time,
 				    &elapsed_sec, &elapsed_msec);
 
-  if (query_timeout >= 0)
+  if (query_timeout >= 0 || ret_code < 0)
     {
-      as_info->num_long_queries %= MAX_DIAG_DATA_VALUE;
-      as_info->num_long_queries++;
-    }
-  if (ret_code < 0)
-    {
-      as_info->num_error_queries %= MAX_DIAG_DATA_VALUE;
-      as_info->num_error_queries++;
+      if (query_timeout >= 0)
+	{
+	  as_info->num_long_queries %= MAX_DIAG_DATA_VALUE;
+	  as_info->num_long_queries++;
+	}
+
+      if (ret_code < 0)
+	{
+	  as_info->num_error_queries %= MAX_DIAG_DATA_VALUE;
+	  as_info->num_error_queries++;
+	}
+
+      if (as_info->cur_slow_log_mode == SLOW_LOG_MODE_ON)
+	{
+	  cas_slow_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			      "%s srv_h_id %d ", exec_func_name, srv_h_id);
+	  if (srv_handle->sql_stmt != NULL)
+	    {
+	      cas_slow_log_write_query_string (srv_handle->sql_stmt,
+					       strlen (srv_handle->sql_stmt));
+	      bind_value_log (bind_value_index, argc, argv,
+			      param_mode_size, param_mode,
+			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
+	    }
+	  cas_slow_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			      "%s %s%d tuple %d time %d.%03d%s%s%s\n",
+			      exec_func_name, (ret_code < 0) ? "error:" : "",
+			      err_info.err_number,
+			      get_tuple_count (srv_handle),
+			      elapsed_sec, elapsed_msec,
+			      (client_cache_reusable == TRUE) ? " (CC)" : "",
+			      (srv_handle->use_query_cache ==
+			       true) ? " (QC)" : "", eid_string);
+	  cas_slow_log_end ();
+	}
     }
 #endif /* !LIBCAS_FOR_JSP */
 
@@ -1341,6 +1380,10 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
+  int ret_code;
+  int elapsed_sec = 0, elapsed_msec = 0;
+  struct timeval exec_begin, exec_end;
+  char *eid_string;
 
   /* argv[0] : service handle
      argv[1] : auto commit flag */
@@ -1355,14 +1398,91 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   srv_handle = hm_find_srv_handle (srv_h_id);
 
 #ifndef LIBCAS_FOR_JSP
-  bind_value_log (2, argc - 1, argv, 0, NULL,
-		  SRV_HANDLE_QUERY_SEQ_NUM (srv_handle));
+  if (srv_handle->is_pooled)
+    {
+      gettimeofday (&query_start_time, NULL);
+      query_timeout = 0;
+    }
 #endif /* !LIBCAS_FOR_JSP */
 
-  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-		 "execute_array : srv_h_id %d %d", srv_h_id, (argc - 2) / 2);
+  cas_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+		      "execute_array srv_h_id %d %d ", srv_h_id,
+		      (argc - 2) / 2);
+  if (srv_handle->sql_stmt != NULL)
+    {
+      cas_log_write_query_string (srv_handle->sql_stmt,
+				  strlen (srv_handle->sql_stmt));
+    }
+#ifndef LIBCAS_FOR_JSP
+  if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
+    {
+      bind_value_log (2, argc - 1, argv, 0, NULL,
+		      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false);
+    }
+#endif /* !LIBCAS_FOR_JSP */
 
-  ux_execute_array (srv_handle, argc, argv, net_buf, req_info);
+  gettimeofday (&exec_begin, NULL);
+
+  ret_code = ux_execute_array (srv_handle, argc, argv, net_buf, req_info);
+
+  gettimeofday (&exec_end, NULL);
+  ut_timeval_diff (&exec_begin, &exec_end, &elapsed_sec, &elapsed_msec);
+
+  eid_string = get_error_log_eids (err_info.err_number);
+  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+		 "execute_array %s%d tuple %d time %d.%03d%s%s%s",
+		 (ret_code < 0) ? "error:" : "",
+		 err_info.err_number,
+		 get_tuple_count (srv_handle),
+		 elapsed_sec, elapsed_msec,
+		 "",
+		 (srv_handle->use_query_cache == true) ? " (QC)" : "",
+		 eid_string);
+
+#ifndef LIBCAS_FOR_JSP
+  query_timeout = ut_check_timeout (&query_start_time, &exec_end,
+				    shm_appl->long_query_time,
+				    &elapsed_sec, &elapsed_msec);
+
+  if (query_timeout >= 0 || ret_code < 0)
+    {
+      if (query_timeout >= 0)
+	{
+	  as_info->num_long_queries %= MAX_DIAG_DATA_VALUE;
+	  as_info->num_long_queries++;
+	}
+
+      if (ret_code < 0)
+	{
+	  as_info->num_error_queries %= MAX_DIAG_DATA_VALUE;
+	  as_info->num_error_queries++;
+	}
+
+      if (as_info->cur_slow_log_mode == SLOW_LOG_MODE_ON)
+	{
+	  cas_slow_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			      "execute_array srv_h_id %d %d ", srv_h_id,
+			      (argc - 2) / 2);
+	  if (srv_handle->sql_stmt != NULL)
+	    {
+	      cas_slow_log_write_query_string (srv_handle->sql_stmt,
+					       strlen (srv_handle->sql_stmt));
+	      bind_value_log (2, argc - 1, argv, 0, NULL,
+			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
+	    }
+	  cas_slow_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			      "execute_array %s%d tuple %d time %d.%03d%s%s%s\n",
+			      (ret_code < 0) ? "error:" : "",
+			      err_info.err_number,
+			      get_tuple_count (srv_handle),
+			      elapsed_sec, elapsed_msec,
+			      "",
+			      (srv_handle->use_query_cache ==
+			       true) ? " (QC)" : "", eid_string);
+	  cas_slow_log_end ();
+	}
+    }
+#endif /* !LIBCAS_FOR_JSP */
 
   return FN_KEEP_CONN;
 }
@@ -1720,55 +1840,79 @@ get_tran_type_str (int tran_type)
 #ifndef LIBCAS_FOR_JSP
 static void
 bind_value_log (int start, int argc, void **argv, int param_size,
-		char *param_mode, unsigned int query_seq_num)
+		char *param_mode, unsigned int query_seq_num, bool slow_log)
 {
   int idx;
   char type;
   int num_bind;
   void *net_value;
   const char *param_mode_str;
+  void (*write_func) (unsigned int, bool, const char *, ...);
+  void (*write2_func) (const char *, ...);
 
-  if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
+  if (slow_log)
     {
-      num_bind = 1;
-      idx = start;
-      while (idx < argc)
+      write_func = cas_slow_log_write;
+      write2_func = cas_slow_log_write2;
+    }
+  else
+    {
+      write_func = cas_log_write_nonl;
+      write2_func = cas_log_write2_nonl;
+    }
+
+  num_bind = 1;
+  idx = start;
+
+  while (idx < argc)
+    {
+      net_arg_get_char (type, argv[idx++]);
+      net_value = argv[idx++];
+
+      param_mode_str = "";
+      if (param_mode != NULL && param_size >= num_bind)
 	{
-	  net_arg_get_char (type, argv[idx++]);
-	  net_value = argv[idx++];
-
-	  param_mode_str = "";
-	  if (param_mode != NULL && param_size >= num_bind)
-	    {
-	      if (param_mode[num_bind - 1] == CCI_PARAM_MODE_IN)
-		param_mode_str = "(IN) ";
-	      else if (param_mode[num_bind - 1] == CCI_PARAM_MODE_OUT)
-		param_mode_str = "(OUT) ";
-	      else if (param_mode[num_bind - 1] == CCI_PARAM_MODE_INOUT)
-		param_mode_str = "(INOUT) ";
-	    }
-
-	  cas_log_write_nonl (query_seq_num, false, "bind %d %s: ",
-			      num_bind++, param_mode_str);
-	  if (type > CCI_U_TYPE_FIRST && type <= CCI_U_TYPE_LAST)
-	    {
-	      cas_log_write2_nonl ("%s ", type_str_tbl[(int) type]);
-	      bind_value_print (type, net_value);
-	    }
-	  else
-	    {
-	      cas_log_write2_nonl ("NULL");
-	    }
-	  cas_log_write2 ("");
+	  if (param_mode[num_bind - 1] == CCI_PARAM_MODE_IN)
+	    param_mode_str = "(IN) ";
+	  else if (param_mode[num_bind - 1] == CCI_PARAM_MODE_OUT)
+	    param_mode_str = "(OUT) ";
+	  else if (param_mode[num_bind - 1] == CCI_PARAM_MODE_INOUT)
+	    param_mode_str = "(INOUT) ";
 	}
+
+      write_func (query_seq_num, false, "bind %d %s: ",
+		  num_bind++, param_mode_str);
+      if (type > CCI_U_TYPE_FIRST && type <= CCI_U_TYPE_LAST)
+	{
+	  write2_func ("%s ", type_str_tbl[(int) type]);
+	  bind_value_print (type, net_value, slow_log);
+	}
+      else
+	{
+	  write2_func ("NULL");
+	}
+      write2_func ("\n");
     }
 }
 #endif /* !LIBCAS_FOR_JSP */
 
 static void
-bind_value_print (char type, void *net_value)
+bind_value_print (char type, void *net_value, bool slow_log)
 {
   int data_size;
+  void (*write2_func) (const char *, ...);
+  void (*fwrite_func) (char *value, int size);
+
+  if (slow_log)
+    {
+      write2_func = cas_slow_log_write2;
+      fwrite_func = cas_slow_log_write_value_string;
+    }
+  else
+    {
+      write2_func = cas_log_write2_nonl;
+      fwrite_func = cas_log_write_value_string;
+    }
 
   net_arg_get_size (&data_size, net_value);
   if (data_size <= 0)
@@ -1792,30 +1936,30 @@ bind_value_print (char type, void *net_value)
 	net_arg_get_str (&str_val, &val_size, net_value);
 	if (type != CCI_U_TYPE_NUMERIC)
 	  {
-	    cas_log_write2_nonl ("(%d)", val_size);
+	    write2_func ("(%d)", val_size);
 	  }
-	cas_log_write_value_string (str_val, val_size - 1);
+	fwrite_func (str_val, val_size - 1);
       }
       break;
     case CCI_U_TYPE_BIGINT:
       {
 	DB_BIGINT bi_val;
 	net_arg_get_bigint (&bi_val, net_value);
-	cas_log_write2_nonl ("%lld", (long long) bi_val);
+	write2_func ("%lld", (long long) bi_val);
       }
       break;
     case CCI_U_TYPE_INT:
       {
 	int i_val;
 	net_arg_get_int (&i_val, net_value);
-	cas_log_write2_nonl ("%d", i_val);
+	write2_func ("%d", i_val);
       }
       break;
     case CCI_U_TYPE_SHORT:
       {
 	short s_val;
 	net_arg_get_short (&s_val, net_value);
-	cas_log_write2_nonl ("%d", s_val);
+	write2_func ("%d", s_val);
       }
       break;
     case CCI_U_TYPE_MONETARY:
@@ -1823,14 +1967,14 @@ bind_value_print (char type, void *net_value)
       {
 	double d_val;
 	net_arg_get_double (&d_val, net_value);
-	cas_log_write2_nonl ("%.15e", d_val);
+	write2_func ("%.15e", d_val);
       }
       break;
     case CCI_U_TYPE_FLOAT:
       {
 	float f_val;
 	net_arg_get_float (&f_val, net_value);
-	cas_log_write2_nonl ("%.6e", f_val);
+	write2_func ("%.6e", f_val);
       }
       break;
     case CCI_U_TYPE_DATE:
@@ -1841,14 +1985,14 @@ bind_value_print (char type, void *net_value)
 	short yr, mon, day, hh, mm, ss, ms;
 	net_arg_get_datetime (&yr, &mon, &day, &hh, &mm, &ss, &ms, net_value);
 	if (type == CCI_U_TYPE_DATE)
-	  cas_log_write2_nonl ("%d/%d/%d", yr, mon, day);
+	  write2_func ("%d/%d/%d", yr, mon, day);
 	else if (type == CCI_U_TYPE_TIME)
-	  cas_log_write2_nonl ("%d:%d:%d", hh, mm, ss);
+	  write2_func ("%d:%d:%d", hh, mm, ss);
 	else if (type == CCI_U_TYPE_TIMESTAMP)
-	  cas_log_write2_nonl ("%d/%d/%d %d:%d:%d", yr, mon, day, hh, mm, ss);
+	  write2_func ("%d/%d/%d %d:%d:%d", yr, mon, day, hh, mm, ss);
 	else
-	  cas_log_write2_nonl ("%d/%d/%d %d:%d:%d.%03d",
-			       yr, mon, day, hh, mm, ss, ms);
+	  write2_func ("%d/%d/%d %d:%d:%d.%03d",
+		       yr, mon, day, hh, mm, ss, ms);
       }
       break;
     case CCI_U_TYPE_SET:
@@ -1869,7 +2013,7 @@ bind_value_print (char type, void *net_value)
 	if (ele_type <= CCI_U_TYPE_FIRST || ele_type > CCI_U_TYPE_LAST)
 	  break;
 
-	cas_log_write2_nonl ("(%s) {", type_str_tbl[(int) ele_type]);
+	write2_func ("(%s) {", type_str_tbl[(int) ele_type]);
 
 	while (remain_size > 0)
 	  {
@@ -1877,16 +2021,16 @@ bind_value_print (char type, void *net_value)
 	    if (ele_size + 4 > remain_size)
 	      break;
 	    if (print_comma)
-	      cas_log_write2_nonl (", ");
+	      write2_func (", ");
 	    else
 	      print_comma = 1;
-	    bind_value_print (ele_type, cur_p);
+	    bind_value_print (ele_type, cur_p, slow_log);
 	    ele_size += 4;
 	    cur_p += ele_size;
 	    remain_size -= ele_size;
 	  }
 
-	cas_log_write2_nonl ("}");
+	write2_func ("}");
       }
       break;
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -1896,7 +2040,7 @@ bind_value_print (char type, void *net_value)
 	short slotid, volid;
 
 	net_arg_get_cci_object (&pageid, &slotid, &volid, net_value);
-	cas_log_write2_nonl ("%d|%d|%d", pageid, slotid, volid);
+	write2_func ("%d|%d|%d", pageid, slotid, volid);
       }
       break;
     case CCI_U_TYPE_BLOB:
@@ -1908,14 +2052,14 @@ bind_value_print (char type, void *net_value)
 	db_elo = db_get_elo (&db_val);
 	if (db_elo)
 	  {
-	    cas_log_write2_nonl ("%s|%lld|%s|%s|%d",
-				 (type == CCI_U_TYPE_BLOB) ? "BLOB" : "CLOB",
-				 db_elo->size, db_elo->locator,
-				 db_elo->meta_data, db_elo->type);
+	    write2_func ("%s|%lld|%s|%s|%d",
+			 (type == CCI_U_TYPE_BLOB) ? "BLOB" : "CLOB",
+			 db_elo->size, db_elo->locator,
+			 db_elo->meta_data, db_elo->type);
 	  }
 	else
 	  {
-	    cas_log_write2_nonl ("invalid LOB");
+	    write2_func ("invalid LOB");
 	  }
 
 	db_value_clear (&db_val);
@@ -1923,7 +2067,7 @@ bind_value_print (char type, void *net_value)
       break;
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
     default:
-      cas_log_write2_nonl ("NULL");
+      write2_func ("NULL");
       break;
     }
 }

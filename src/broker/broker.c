@@ -386,6 +386,7 @@ main (int argc, char *argv[])
 #endif
 
   set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
+  set_cubrid_file (FID_SLOW_LOG_DIR, shm_appl->slow_log_dir);
 
   while (shm_br->br_info[br_index].ready_to_service != true)
     {
@@ -1609,21 +1610,45 @@ check_cas_log (char *br_name, int as_index)
   char log_filename[PATH_MAX], dirname[PATH_MAX];
 
   if (IS_NOT_APPL_SERVER_TYPE_CAS (shm_br->br_info[br_index].appl_server))
-    return;
-  if (shm_appl->as_info[as_index].cur_sql_log_mode == SQL_LOG_MODE_NONE)
-    return;
-
-  get_cubrid_file (FID_SQL_LOG_DIR, dirname);
-  snprintf (log_filename, PATH_MAX, "%s%s_%d.sql.log", dirname,
-	    br_name, as_index + 1);
-
-  if (access (log_filename, F_OK) < 0)
     {
-      FILE *fp;
-      fp = fopen (log_filename, "a");
-      if (fp != NULL)
-	fclose (fp);
-      shm_appl->as_info[as_index].cas_log_reset = CAS_LOG_RESET_REOPEN;
+      return;
+    }
+
+  if (shm_appl->as_info[as_index].cur_sql_log_mode != SQL_LOG_MODE_NONE)
+    {
+      get_cubrid_file (FID_SQL_LOG_DIR, dirname);
+      snprintf (log_filename, PATH_MAX, "%s%s_%d.sql.log", dirname,
+		br_name, as_index + 1);
+
+      if (access (log_filename, F_OK) < 0)
+	{
+	  FILE *fp;
+	  fp = fopen (log_filename, "a");
+	  if (fp != NULL)
+	    {
+	      fclose (fp);
+	    }
+	  shm_appl->as_info[as_index].cas_log_reset = CAS_LOG_RESET_REOPEN;
+	}
+    }
+
+  if (shm_appl->as_info[as_index].cur_slow_log_mode != SLOW_LOG_MODE_OFF)
+    {
+      get_cubrid_file (FID_SLOW_LOG_DIR, dirname);
+      snprintf (log_filename, PATH_MAX, "%s%s_%d.slow.log", dirname,
+		br_name, as_index + 1);
+
+      if (access (log_filename, F_OK) < 0)
+	{
+	  FILE *fp;
+	  fp = fopen (log_filename, "a");
+	  if (fp != NULL)
+	    {
+	      fclose (fp);
+	    }
+	  shm_appl->as_info[as_index].cas_slow_log_reset =
+	    CAS_LOG_RESET_REOPEN;
+	}
     }
 }
 

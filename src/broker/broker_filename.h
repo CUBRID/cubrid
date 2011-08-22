@@ -48,6 +48,7 @@
 
 /* default values */
 #define DEFAULT_LOG_DIR			"log/broker/sql_log/"
+#define DEFAULT_SLOW_LOG_DIR		DEFAULT_LOG_DIR
 #define DEFAULT_ERR_DIR			"log/broker/error_log/"
 
 typedef enum t_cubrid_file_id T_CUBRID_FILE_ID;
@@ -70,7 +71,8 @@ enum t_cubrid_file_id
   FID_CUBRID_ERR_DIR,
   FID_CAS_FOR_ORACLE_DBINFO,
   FID_CAS_FOR_MYSQL_DBINFO,
-  FID_ACCESS_CONTROL_FILE
+  FID_ACCESS_CONTROL_FILE,
+  FID_SLOW_LOG_DIR
 };
 
 typedef struct t_cubrid_file_info T_CUBRID_FILE_INFO;

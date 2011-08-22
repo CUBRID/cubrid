@@ -45,7 +45,7 @@
 
 static char cubrid_Dir[PATH_MAX] = "";
 
-#define NUM_CUBRID_FILE		18
+#define NUM_CUBRID_FILE		19
 static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_CUBRID_BROKER_CONF, ""},
   {FID_UV_ERR_MSG, ""},
@@ -64,7 +64,8 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_CUBRID_ERR_DIR, ""},
   {FID_CAS_FOR_ORACLE_DBINFO, ""},
   {FID_CAS_FOR_MYSQL_DBINFO, ""},
-  {FID_ACCESS_CONTROL_FILE, ""}
+  {FID_ACCESS_CONTROL_FILE, ""},
+  {FID_SLOW_LOG_DIR, ""}
 };
 
 void
@@ -120,6 +121,7 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
     case FID_AS_PID_DIR:
     case FID_SQL_LOG_DIR:
     case FID_SQL_LOG2_DIR:
+    case FID_SLOW_LOG_DIR:
     case FID_CUBRID_ERR_DIR:
       value_len = strlen (value);
       if (value[value_len] == '/' || value[value_len] == '\\')
@@ -242,6 +244,10 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf)
       break;
     case FID_SQL_LOG2_DIR:
       envvar_logdir_file (buf, PATH_MAX, "broker/sql_log/query/");
+      snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
+      break;
+    case FID_SLOW_LOG_DIR:
+      envvar_logdir_file (buf, PATH_MAX, "broker/sql_log/");
       snprintf (cubrid_file[fid].file_name, PATH_MAX, buf);
       break;
     case FID_ADMIND_LOG:
