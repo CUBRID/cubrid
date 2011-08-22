@@ -114,30 +114,31 @@ int wsa_initialize ();
 #define CCI_DS_DEFAULT_POOL_SIZE 10
 #define CCI_DS_DEFAULT_MAX_WAIT 1000
 #define CCI_DS_DEFAULT_USING_STMT_POOL false
+#define CCI_DS_DEFAULT_DISCONNECT_ON_QUERY_TIMEOUT false
 
 /************************************************************************
  * PRIVATE FUNCTION PROTOTYPES						*
  ************************************************************************/
 
-static void err_buf_reset (T_CCI_ERROR * err_buf);
+static void err_buf_reset (T_CCI_ERROR *err_buf);
 static int col_set_add_drop (int con_h_id, char col_cmd, char *oid_str,
 			     char *col_attr, char *value,
-			     T_CCI_ERROR * err_buf);
+			     T_CCI_ERROR *err_buf);
 static int col_seq_op (int con_h_id, char col_cmd, char *oid_str,
 		       char *col_attr, int index, const char *value,
-		       T_CCI_ERROR * err_buf);
-static int fetch_cmd (int reg_h_id, char flag, T_CCI_ERROR * err_buf);
-static int cas_connect (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf);
-static int cas_connect_with_ret (T_CON_HANDLE * con_handle,
-				 T_CCI_ERROR * err_buf, int *connect);
-static int cas_connect_low (T_CON_HANDLE * con_handle,
-			    T_CCI_ERROR * err_buf, int *connect);
-static void cas_connect_set_info (T_CON_HANDLE * con_handle, SOCKET sock_fd,
-				  int alt_host_id, T_CCI_ERROR * err_buf);
+		       T_CCI_ERROR *err_buf);
+static int fetch_cmd (int reg_h_id, char flag, T_CCI_ERROR *err_buf);
+static int cas_connect (T_CON_HANDLE *con_handle, T_CCI_ERROR *err_buf);
+static int cas_connect_with_ret (T_CON_HANDLE *con_handle,
+				 T_CCI_ERROR *err_buf, int *connect);
+static int cas_connect_low (T_CON_HANDLE *con_handle,
+			    T_CCI_ERROR *err_buf, int *connect);
+static void cas_connect_set_info (T_CON_HANDLE *con_handle, SOCKET sock_fd,
+				  int alt_host_id, T_CCI_ERROR *err_buf);
 static int get_query_info (int req_h_id, char log_type, char **out_buf);
-static int next_result_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf);
+static int next_result_cmd (int req_h_id, char flag, T_CCI_ERROR *err_buf);
 
-static int cas_end_session (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf);
+static int cas_end_session (T_CON_HANDLE *con_handle, T_CCI_ERROR *err_buf);
 
 #ifdef CCI_DEBUG
 static void print_debug_msg (const char *format, ...);
@@ -152,26 +153,27 @@ static const char *dbg_isolation_str (T_CCI_TRAN_ISOLATION isol_level);
 #endif
 
 static THREAD_FUNC execute_thread (void *arg);
-static int get_thread_result (T_CON_HANDLE * con_handle,
-			      T_CCI_ERROR * err_buf);
-static int connect_prepare_again (T_CON_HANDLE * con_handle,
-				  T_REQ_HANDLE * req_handle,
-				  T_CCI_ERROR * err_buf);
+static int get_thread_result (T_CON_HANDLE *con_handle,
+			      T_CCI_ERROR *err_buf);
+static int connect_prepare_again (T_CON_HANDLE *con_handle,
+				  T_REQ_HANDLE *req_handle,
+				  T_CCI_ERROR *err_buf);
 static const char *cci_get_err_msg_low (int err_code);
 
-static int cci_parse_url_property (T_CON_HANDLE * con_handle, char *property);
-static int cci_parse_url_alter_host (T_CON_HANDLE * con_handle,
+static int cci_parse_url_property (T_CON_HANDLE *con_handle, char *property);
+static int cci_parse_url_alter_host (T_CON_HANDLE *con_handle,
 				     char *alter_host);
-static int cci_parse_url_rctime (T_CON_HANDLE * con_handle, char *rctime);
-static int cci_parse_url_autocommit (T_CON_HANDLE * con_handle, char *mode);
+static int cci_parse_url_rctime (T_CON_HANDLE *con_handle, char *rctime);
+static int cci_parse_url_autocommit (T_CON_HANDLE *con_handle, char *mode);
 static int cci_get_new_handle_id (char *ip, int port, char *db_name,
 				  char *db_user, char *dbpasswd);
-static int cci_parse_url_login_timeout (T_CON_HANDLE * con_handle,
+static int cci_parse_url_login_timeout (T_CON_HANDLE *con_handle,
 					char *login_timeout);
-static int cci_parse_url_query_timeout (T_CON_HANDLE * con_handle,
+static int cci_parse_url_query_timeout (T_CON_HANDLE *con_handle,
 					char *query_timeout);
 static int cci_parse_url_disconnect_on_query_timeout (T_CON_HANDLE *
 						      con_handle, char *mode);
+static bool cci_make_url (T_CCI_PROPERTIES *prop, char *buf, char *url, T_CCI_ERROR *err_buf);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -207,7 +209,8 @@ static const char *datasource_key[] = {
   "max_wait",
   "using_stmt_pool",
   "login_timeout",
-  "query_timeout"
+  "query_timeout",
+  "disconnect_on_query_timeout"
 };
 
 CCI_MALLOC_FUNCTION cci_malloc = malloc;
@@ -508,7 +511,7 @@ ret:
 }
 
 static int
-cci_parse_url_property (T_CON_HANDLE * con_handle, char *property)
+cci_parse_url_property (T_CON_HANDLE *con_handle, char *property)
 {
   char *p, *q = NULL;
 
@@ -570,7 +573,7 @@ cci_parse_url_property (T_CON_HANDLE * con_handle, char *property)
 }
 
 static int
-cci_parse_url_alter_host (T_CON_HANDLE * con_handle, char *alter_host)
+cci_parse_url_alter_host (T_CON_HANDLE *con_handle, char *alter_host)
 {
   char *p, *q = NULL, *end;
   int count = 0;
@@ -625,7 +628,7 @@ cci_parse_url_alter_host (T_CON_HANDLE * con_handle, char *alter_host)
 }
 
 static int
-cci_parse_url_login_timeout (T_CON_HANDLE * con_handle, char *str)
+cci_parse_url_login_timeout (T_CON_HANDLE *con_handle, char *str)
 {
   char *p, *q = NULL, *end;
   int login_timeout;
@@ -649,7 +652,7 @@ cci_parse_url_login_timeout (T_CON_HANDLE * con_handle, char *str)
 }
 
 static int
-cci_parse_url_query_timeout (T_CON_HANDLE * con_handle, char *str)
+cci_parse_url_query_timeout (T_CON_HANDLE *con_handle, char *str)
 {
   char *p, *q = NULL, *end;
   int query_timeout;
@@ -673,7 +676,7 @@ cci_parse_url_query_timeout (T_CON_HANDLE * con_handle, char *str)
 }
 
 static int
-cci_parse_url_rctime (T_CON_HANDLE * con_handle, char *rctime)
+cci_parse_url_rctime (T_CON_HANDLE *con_handle, char *rctime)
 {
   char *p, *q = NULL, *end;
   int rc_time;
@@ -697,7 +700,7 @@ cci_parse_url_rctime (T_CON_HANDLE * con_handle, char *rctime)
 }
 
 static int
-cci_parse_url_disconnect_on_query_timeout (T_CON_HANDLE * con_handle,
+cci_parse_url_disconnect_on_query_timeout (T_CON_HANDLE *con_handle,
 					   char *mode)
 {
   char *p, *q = NULL;
@@ -741,7 +744,7 @@ cci_parse_url_disconnect_on_query_timeout (T_CON_HANDLE * con_handle,
 }
 
 static int
-cci_parse_url_autocommit (T_CON_HANDLE * con_handle, char *mode)
+cci_parse_url_autocommit (T_CON_HANDLE *con_handle, char *mode)
 {
   char *p, *q = NULL;
 
@@ -784,7 +787,7 @@ cci_parse_url_autocommit (T_CON_HANDLE * con_handle, char *mode)
 }
 
 static int
-cas_end_session (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
+cas_end_session (T_CON_HANDLE *con_handle, T_CCI_ERROR *err_buf)
 {
   int err = qe_end_session (con_handle, err_buf);
   if (con_handle->con_status == CCI_CON_STATUS_OUT_TRAN &&
@@ -805,7 +808,7 @@ cas_end_session (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
 }
 
 int
-cci_disconnect (int con_h_id, T_CCI_ERROR * err_buf)
+cci_disconnect (int con_h_id, T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
   T_CON_HANDLE *con_handle;
@@ -914,7 +917,7 @@ cci_cancel (int con_h_id)
 }
 
 int
-cci_end_tran (int con_h_id, char type, T_CCI_ERROR * err_buf)
+cci_end_tran (int con_h_id, char type, T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
   T_CON_HANDLE *con_handle;
@@ -962,7 +965,7 @@ cci_end_tran (int con_h_id, char type, T_CCI_ERROR * err_buf)
 }
 
 int
-cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
+cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR *err_buf)
 {
   int req_handle_id = -1;
   int err_code = 0;
@@ -1011,7 +1014,7 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
       if (req_handle_id != CCI_ER_REQ_HANDLE)
 	{
 	  cci_set_query_timeout (req_handle_id,
-				 con_handle->datasource->query_timeout);
+				 con_handle->query_timeout);
 	  goto prepare_end;
 	}
     }
@@ -1142,7 +1145,7 @@ cci_is_updatable (int req_h_id)
 }
 
 T_CCI_COL_INFO *
-cci_get_result_info (int req_h_id, T_CCI_CUBRID_STMT * cmd_type, int *num)
+cci_get_result_info (int req_h_id, T_CCI_CUBRID_STMT *cmd_type, int *num)
 {
   T_REQ_HANDLE *req_handle;
   T_CCI_COL_INFO *col_info;
@@ -1354,7 +1357,7 @@ cci_bind_param_array (int req_h_id, int index, T_CCI_A_TYPE a_type,
 }
 
 int
-cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
+cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR *err_buf)
 {
   T_REQ_HANDLE *req_handle;
   T_CON_HANDLE *con_handle;
@@ -1452,7 +1455,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
      the error, CAS_ER_STMT_POOLING, is returned.
      In this case, prepare and execute have to be executed again.
    */
-  if (err_code == CAS_ER_STMT_POOLING && IS_STMT_POOL (con_handle))
+  while (err_code == CAS_ER_STMT_POOLING && IS_STMT_POOL (con_handle))
     {
       req_handle_content_free (req_handle, 1);
       err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
@@ -1482,7 +1485,7 @@ execute_end:
 }
 
 int
-cci_get_thread_result (int con_id, T_CCI_ERROR * err_buf)
+cci_get_thread_result (int con_id, T_CCI_ERROR *err_buf)
 {
   int err_code;
   T_CON_HANDLE *con_handle;
@@ -1506,7 +1509,7 @@ cci_get_thread_result (int con_id, T_CCI_ERROR * err_buf)
 }
 
 int
-cci_next_result (int req_h_id, T_CCI_ERROR * err_buf)
+cci_next_result (int req_h_id, T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_next_result %d", req_h_id));
@@ -1516,8 +1519,8 @@ cci_next_result (int req_h_id, T_CCI_ERROR * err_buf)
 }
 
 int
-cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
-		   T_CCI_ERROR * err_buf)
+cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT **qr,
+		   T_CCI_ERROR *err_buf)
 {
   T_REQ_HANDLE *req_handle;
   T_CON_HANDLE *con_handle;
@@ -1589,7 +1592,7 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 	}
     }
 
-  if (err_code == CAS_ER_STMT_POOLING && IS_STMT_POOL (con_handle))
+  while (err_code == CAS_ER_STMT_POOLING && IS_STMT_POOL (con_handle))
     {
       req_handle_content_free (req_handle, 1);
       err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
@@ -1619,7 +1622,7 @@ execute_end:
 
 int
 cci_get_db_parameter (int con_h_id, T_CCI_DB_PARAM param_name, void *value,
-		      T_CCI_ERROR * err_buf)
+		      T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -1677,7 +1680,7 @@ cci_get_db_parameter (int con_h_id, T_CCI_DB_PARAM param_name, void *value,
 
 int
 cci_set_db_parameter (int con_h_id, T_CCI_DB_PARAM param_name, void *value,
-		      T_CCI_ERROR * err_buf)
+		      T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -1783,7 +1786,7 @@ cci_close_req_handle (int req_h_id)
 
 int
 cci_cursor (int req_h_id, int offset, T_CCI_CURSOR_POS origin,
-	    T_CCI_ERROR * err_buf)
+	    T_CCI_ERROR *err_buf)
 {
   T_REQ_HANDLE *req_handle;
   T_CON_HANDLE *con_handle;
@@ -1858,7 +1861,7 @@ cci_fetch_size (int req_h_id, int fetch_size)
 }
 
 int
-cci_fetch (int req_h_id, T_CCI_ERROR * err_buf)
+cci_fetch (int req_h_id, T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_fetch %d", req_h_id));
@@ -1868,7 +1871,7 @@ cci_fetch (int req_h_id, T_CCI_ERROR * err_buf)
 }
 
 int
-cci_fetch_sensitive (int req_h_id, T_CCI_ERROR * err_buf)
+cci_fetch_sensitive (int req_h_id, T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_fetch_sensitive %d", req_h_id));
@@ -1924,7 +1927,7 @@ cci_get_data (int req_h_id, int col_no, int a_type, void *value,
 
 int
 cci_schema_info (int con_h_id, T_CCI_SCH_TYPE type, char *arg1,
-		 char *arg2, char flag, T_CCI_ERROR * err_buf)
+		 char *arg2, char flag, T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   T_REQ_HANDLE *req_handle = NULL;
@@ -2037,7 +2040,7 @@ cci_get_cur_oid (int req_h_id, char *oid_str_buf)
 
 int
 cci_oid_get (int con_h_id, char *oid_str, char **attr_name,
-	     T_CCI_ERROR * err_buf)
+	     T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   T_REQ_HANDLE *req_handle = NULL;
@@ -2105,7 +2108,7 @@ cci_oid_get (int con_h_id, char *oid_str, char **attr_name,
 
 int
 cci_oid_put (int con_h_id, char *oid_str, char **attr_name, char **new_val,
-	     T_CCI_ERROR * err_buf)
+	     T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -2154,7 +2157,7 @@ cci_oid_put (int con_h_id, char *oid_str, char **attr_name, char **new_val,
 
 int
 cci_oid_put2 (int con_h_id, char *oid_str, char **attr_name, void **new_val,
-	      int *a_type, T_CCI_ERROR * err_buf)
+	      int *a_type, T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -2362,7 +2365,7 @@ cci_get_db_version (int con_h_id, char *out_buf, int buf_size)
 
 int
 cci_get_class_num_objs (int con_h_id, char *class_name, int flag,
-			int *num_objs, int *num_pages, T_CCI_ERROR * err_buf)
+			int *num_objs, int *num_pages, T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -2412,7 +2415,7 @@ cci_get_class_num_objs (int con_h_id, char *class_name, int flag,
 
 int
 cci_oid (int con_h_id, T_CCI_OID_CMD cmd, char *oid_str,
-	 T_CCI_ERROR * err_buf)
+	 T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -2465,7 +2468,7 @@ cci_oid (int con_h_id, T_CCI_OID_CMD cmd, char *oid_str,
 
 int
 cci_oid_get_class_name (int con_h_id, char *oid_str, char *out_buf,
-			int out_buf_size, T_CCI_ERROR * err_buf)
+			int out_buf_size, T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -2517,7 +2520,7 @@ cci_oid_get_class_name (int con_h_id, char *oid_str, char *out_buf,
 
 int
 cci_col_get (int con_h_id, char *oid_str, char *col_attr, int *col_size,
-	     int *col_type, T_CCI_ERROR * err_buf)
+	     int *col_type, T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
   int req_handle_id = -1;
@@ -2581,7 +2584,7 @@ cci_col_get (int con_h_id, char *oid_str, char *col_attr, int *col_size,
 
 int
 cci_col_size (int con_h_id, char *oid_str, char *col_attr, int *col_size,
-	      T_CCI_ERROR * err_buf)
+	      T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
   T_CON_HANDLE *con_handle = NULL;
@@ -2633,7 +2636,7 @@ cci_col_size (int con_h_id, char *oid_str, char *col_attr, int *col_size,
 
 int
 cci_col_set_drop (int con_h_id, char *oid_str, char *col_attr, char *value,
-		  T_CCI_ERROR * err_buf)
+		  T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_col_set_drop %d", con_h_id));
@@ -2645,7 +2648,7 @@ cci_col_set_drop (int con_h_id, char *oid_str, char *col_attr, char *value,
 
 int
 cci_col_set_add (int con_h_id, char *oid_str, char *col_attr, char *value,
-		 T_CCI_ERROR * err_buf)
+		 T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_col_set_add %d", con_h_id));
@@ -2657,7 +2660,7 @@ cci_col_set_add (int con_h_id, char *oid_str, char *col_attr, char *value,
 
 int
 cci_col_seq_drop (int con_h_id, char *oid_str, char *col_attr, int index,
-		  T_CCI_ERROR * err_buf)
+		  T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_coil_seq_drop %d", con_h_id));
@@ -2670,7 +2673,7 @@ cci_col_seq_drop (int con_h_id, char *oid_str, char *col_attr, int index,
 
 int
 cci_col_seq_insert (int con_h_id, char *oid_str, char *col_attr, int index,
-		    char *value, T_CCI_ERROR * err_buf)
+		    char *value, T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_col_seq_insert %d", con_h_id));
@@ -2683,7 +2686,7 @@ cci_col_seq_insert (int con_h_id, char *oid_str, char *col_attr, int index,
 
 int
 cci_col_seq_put (int con_h_id, char *oid_str, char *col_attr, int index,
-		 char *value, T_CCI_ERROR * err_buf)
+		 char *value, T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_col_seq_put %d", con_h_id));
@@ -2695,7 +2698,7 @@ cci_col_seq_put (int con_h_id, char *oid_str, char *col_attr, int index,
 }
 
 int
-cci_query_result_free (T_CCI_QUERY_RESULT * qr, int num_q)
+cci_query_result_free (T_CCI_QUERY_RESULT *qr, int num_q)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_query_result_free"));
@@ -2707,7 +2710,7 @@ cci_query_result_free (T_CCI_QUERY_RESULT * qr, int num_q)
 
 int
 cci_cursor_update (int req_h_id, int cursor_pos, int index,
-		   T_CCI_A_TYPE a_type, void *value, T_CCI_ERROR * err_buf)
+		   T_CCI_A_TYPE a_type, void *value, T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
   T_REQ_HANDLE *req_handle;
@@ -2755,7 +2758,7 @@ cci_cursor_update (int req_h_id, int cursor_pos, int index,
 
 int
 cci_execute_batch (int con_h_id, int num_query, char **sql_stmt,
-		   T_CCI_QUERY_RESULT ** qr, T_CCI_ERROR * err_buf)
+		   T_CCI_QUERY_RESULT **qr, T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle = NULL;
   int err_code = 0;
@@ -2866,8 +2869,8 @@ cci_fetch_buffer_clear (int req_h_id)
 }
 
 int
-cci_execute_result (int req_h_id, T_CCI_QUERY_RESULT ** qr,
-		    T_CCI_ERROR * err_buf)
+cci_execute_result (int req_h_id, T_CCI_QUERY_RESULT **qr,
+		    T_CCI_ERROR *err_buf)
 {
   T_REQ_HANDLE *req_handle = NULL;
   T_CON_HANDLE *con_handle;
@@ -2913,7 +2916,7 @@ cci_execute_result (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 
 int
 cci_set_isolation_level (int con_id, T_CCI_TRAN_ISOLATION val,
-			 T_CCI_ERROR * err_buf)
+			 T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -3009,7 +3012,7 @@ cci_set_get (T_CCI_SET set, int index, T_CCI_A_TYPE a_type, void *value,
 }
 
 int
-cci_set_make (T_CCI_SET * set, T_CCI_U_TYPE u_type, int size, void *value,
+cci_set_make (T_CCI_SET *set, T_CCI_U_TYPE u_type, int size, void *value,
 	      int *ind)
 {
   T_SET *tmp_set;
@@ -3035,7 +3038,7 @@ cci_set_make (T_CCI_SET * set, T_CCI_U_TYPE u_type, int size, void *value,
 
 int
 cci_get_attr_type_str (int con_h_id, char *class_name, char *attr_name,
-		       char *buf, int buf_size, T_CCI_ERROR * err_buf)
+		       char *buf, int buf_size, T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -3132,7 +3135,7 @@ cci_set_max_row (int req_h_id, int max_row)
 
 int
 cci_savepoint (int con_h_id, T_CCI_SAVEPOINT_CMD cmd, char *savepoint_name,
-	       T_CCI_ERROR * err_buf)
+	       T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -3183,8 +3186,8 @@ cci_savepoint (int con_h_id, T_CCI_SAVEPOINT_CMD cmd, char *savepoint_name,
 }
 
 int
-cci_get_param_info (int req_h_id, T_CCI_PARAM_INFO ** param,
-		    T_CCI_ERROR * err_buf)
+cci_get_param_info (int req_h_id, T_CCI_PARAM_INFO **param,
+		    T_CCI_ERROR *err_buf)
 {
   T_REQ_HANDLE *req_handle;
   T_CON_HANDLE *con_handle;
@@ -3231,7 +3234,7 @@ cci_get_param_info (int req_h_id, T_CCI_PARAM_INFO ** param,
 }
 
 int
-cci_param_info_free (T_CCI_PARAM_INFO * param)
+cci_param_info_free (T_CCI_PARAM_INFO *param)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_param_info_free"));
@@ -3247,6 +3250,10 @@ cci_set_query_timeout (int req_h_id, int timeout)
   T_REQ_HANDLE *req_handle;
   int old_value;
 
+  if (timeout < 0)
+    {
+      timeout = 0;
+    }
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg
 		   ("cci_set_query_timeout %d", req_h_id, timeout));
@@ -3288,7 +3295,7 @@ cci_get_query_timeout (int req_h_id)
 
 static int
 cci_lob_new (int con_h_id, void *lob, T_CCI_U_TYPE type,
-	     T_CCI_ERROR * err_buf)
+	     T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -3355,7 +3362,7 @@ cci_lob_new (int con_h_id, void *lob, T_CCI_U_TYPE type,
 }
 
 int
-cci_blob_new (int con_h_id, T_CCI_BLOB * blob, T_CCI_ERROR * err_buf)
+cci_blob_new (int con_h_id, T_CCI_BLOB *blob, T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_blob_new %d", con_h_id));
@@ -3364,7 +3371,7 @@ cci_blob_new (int con_h_id, T_CCI_BLOB * blob, T_CCI_ERROR * err_buf)
 }
 
 int
-cci_clob_new (int con_h_id, T_CCI_CLOB * clob, T_CCI_ERROR * err_buf)
+cci_clob_new (int con_h_id, T_CCI_CLOB *clob, T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_clob_new %d", con_h_id));
@@ -3405,7 +3412,7 @@ cci_clob_size (T_CCI_CLOB clob)
 
 static int
 cci_lob_write (int con_h_id, void *lob, long long start_pos,
-	       int length, const char *buf, T_CCI_ERROR * err_buf)
+	       int length, const char *buf, T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -3480,7 +3487,7 @@ cci_lob_write (int con_h_id, void *lob, long long start_pos,
 
 int
 cci_blob_write (int con_h_id, T_CCI_BLOB blob, long long start_pos,
-		int length, const char *buf, T_CCI_ERROR * err_buf)
+		int length, const char *buf, T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_blob_write %d lob %p pos %d len %d",
@@ -3491,7 +3498,7 @@ cci_blob_write (int con_h_id, T_CCI_BLOB blob, long long start_pos,
 
 int
 cci_clob_write (int con_h_id, T_CCI_CLOB clob, long long start_pos,
-		int length, const char *buf, T_CCI_ERROR * err_buf)
+		int length, const char *buf, T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_clob_write %d lob %p pos %d len %d",
@@ -3502,7 +3509,7 @@ cci_clob_write (int con_h_id, T_CCI_CLOB clob, long long start_pos,
 
 static int
 cci_lob_read (int con_h_id, void *lob, long long start_pos,
-	      int length, char *buf, T_CCI_ERROR * err_buf)
+	      int length, char *buf, T_CCI_ERROR *err_buf)
 {
   T_CON_HANDLE *con_handle;
   int err_code = 0;
@@ -3584,7 +3591,7 @@ cci_lob_read (int con_h_id, void *lob, long long start_pos,
 
 int
 cci_blob_read (int con_h_id, T_CCI_BLOB blob, long long start_pos,
-	       int length, char *buf, T_CCI_ERROR * err_buf)
+	       int length, char *buf, T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_blob_read %d lob %p pos %d len %d",
@@ -3596,7 +3603,7 @@ cci_blob_read (int con_h_id, T_CCI_BLOB blob, long long start_pos,
 
 int
 cci_clob_read (int con_h_id, T_CCI_CLOB clob, long long start_pos,
-	       int length, char *buf, T_CCI_ERROR * err_buf)
+	       int length, char *buf, T_CCI_ERROR *err_buf)
 {
 #ifdef CCI_DEBUG
   CCI_DEBUG_PRINT (print_debug_msg ("cci_clob_read %d lob %p pos %d len %d",
@@ -3639,7 +3646,7 @@ cci_clob_free (T_CCI_CLOB clob)
 
 #ifdef CCI_XA
 int
-cci_xa_prepare (int con_id, XID * xid, T_CCI_ERROR * err_buf)
+cci_xa_prepare (int con_id, XID *xid, T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
   T_CON_HANDLE *con_handle;
@@ -3688,7 +3695,7 @@ cci_xa_prepare (int con_id, XID * xid, T_CCI_ERROR * err_buf)
 }
 
 int
-cci_xa_recover (int con_id, XID * xid, int num_xid, T_CCI_ERROR * err_buf)
+cci_xa_recover (int con_id, XID *xid, int num_xid, T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
   T_CON_HANDLE *con_handle;
@@ -3738,7 +3745,7 @@ cci_xa_recover (int con_id, XID * xid, int num_xid, T_CCI_ERROR * err_buf)
 }
 
 int
-cci_xa_end_tran (int con_id, XID * xid, char type, T_CCI_ERROR * err_buf)
+cci_xa_end_tran (int con_id, XID *xid, char type, T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
   T_CON_HANDLE *con_handle;
@@ -3856,7 +3863,7 @@ cci_set_charset (int con_h_id, char *charset)
 }
 
 int
-cci_row_count (int con_h_id, int *row_count, T_CCI_ERROR * err_buf)
+cci_row_count (int con_h_id, int *row_count, T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
   int req_handle_id = -1;
@@ -3917,7 +3924,7 @@ cci_row_count (int con_h_id, int *row_count, T_CCI_ERROR * err_buf)
 }
 
 int
-cci_last_insert_id (int con_h_id, void *value, T_CCI_ERROR * err_buf)
+cci_last_insert_id (int con_h_id, void *value, T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
   int req_handle_id = -1;
@@ -4174,7 +4181,7 @@ cci_get_err_msg_low (int err_code)
   Called by PRINT_CCI_ERROR()
 */
 int
-cci_get_error_msg (int err_code, T_CCI_ERROR * error, char *buf, int bufsize)
+cci_get_error_msg (int err_code, T_CCI_ERROR *error, char *buf, int bufsize)
 {
   const char *err_msg;
 
@@ -4251,7 +4258,7 @@ cci_get_err_msg (int err_code, char *buf, int bufsize)
  ************************************************************************/
 
 static void
-err_buf_reset (T_CCI_ERROR * err_buf)
+err_buf_reset (T_CCI_ERROR *err_buf)
 {
   err_buf->err_code = 0;
   err_buf->err_msg[0] = '\0';
@@ -4259,7 +4266,7 @@ err_buf_reset (T_CCI_ERROR * err_buf)
 
 static int
 col_set_add_drop (int con_h_id, char col_cmd, char *oid_str, char *col_attr,
-		  char *value, T_CCI_ERROR * err_buf)
+		  char *value, T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
   T_CON_HANDLE *con_handle = NULL;
@@ -4307,7 +4314,7 @@ col_set_add_drop (int con_h_id, char col_cmd, char *oid_str, char *col_attr,
 
 static int
 col_seq_op (int con_h_id, char col_cmd, char *oid_str, char *col_attr,
-	    int index, const char *value, T_CCI_ERROR * err_buf)
+	    int index, const char *value, T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
   T_CON_HANDLE *con_handle = NULL;
@@ -4354,7 +4361,7 @@ col_seq_op (int con_h_id, char col_cmd, char *oid_str, char *col_attr,
 }
 
 static int
-fetch_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf)
+fetch_cmd (int req_h_id, char flag, T_CCI_ERROR *err_buf)
 {
   T_REQ_HANDLE *req_handle;
   T_CON_HANDLE *con_handle;
@@ -4396,14 +4403,14 @@ fetch_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf)
 }
 
 static int
-cas_connect (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
+cas_connect (T_CON_HANDLE *con_handle, T_CCI_ERROR *err_buf)
 {
   int connect;
   return cas_connect_with_ret (con_handle, err_buf, &connect);
 }
 
 static int
-cas_connect_with_ret (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
+cas_connect_with_ret (T_CON_HANDLE *con_handle, T_CCI_ERROR *err_buf,
 		      int *connect)
 {
   int err_code;
@@ -4419,7 +4426,7 @@ cas_connect_with_ret (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 }
 
 static int
-cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
+cas_connect_low (T_CON_HANDLE *con_handle, T_CCI_ERROR *err_buf,
 		 int *connect)
 {
   SOCKET sock_fd;
@@ -4522,8 +4529,8 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 }
 
 static void
-cas_connect_set_info (T_CON_HANDLE * con_handle, SOCKET sock_fd,
-		      int alt_host_id, T_CCI_ERROR * err_buf)
+cas_connect_set_info (T_CON_HANDLE *con_handle, SOCKET sock_fd,
+		      int alt_host_id, T_CCI_ERROR *err_buf)
 {
   con_handle->sock_fd = sock_fd;
   con_handle->alter_host_id = alt_host_id;
@@ -4584,7 +4591,7 @@ get_query_info (int req_h_id, char log_type, char **out_buf)
 }
 
 static int
-next_result_cmd (int req_h_id, char flag, T_CCI_ERROR * err_buf)
+next_result_cmd (int req_h_id, char flag, T_CCI_ERROR *err_buf)
 {
   T_REQ_HANDLE *req_handle;
   T_CON_HANDLE *con_handle;
@@ -4937,7 +4944,7 @@ execute_end:
 }
 
 static int
-get_thread_result (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
+get_thread_result (T_CON_HANDLE *con_handle, T_CCI_ERROR *err_buf)
 {
   if (con_handle->ref_count > 0)
     return CCI_ER_THREAD_RUNNING;
@@ -4947,8 +4954,8 @@ get_thread_result (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
 }
 
 static int
-connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
-		       T_CCI_ERROR * err_buf)
+connect_prepare_again (T_CON_HANDLE *con_handle, T_REQ_HANDLE *req_handle,
+		       T_CCI_ERROR *err_buf)
 {
   int err_code = 0;
 
@@ -5042,7 +5049,7 @@ cci_property_create ()
 }
 
 void
-cci_property_destroy (T_CCI_PROPERTIES * properties)
+cci_property_destroy (T_CCI_PROPERTIES *properties)
 {
   int i;
 
@@ -5065,7 +5072,7 @@ cci_property_destroy (T_CCI_PROPERTIES * properties)
 }
 
 int
-cci_property_set (T_CCI_PROPERTIES * properties, char *key, char *value)
+cci_property_set (T_CCI_PROPERTIES *properties, char *key, char *value)
 {
   char *pkey, *pvalue;
 
@@ -5108,7 +5115,7 @@ cci_property_set (T_CCI_PROPERTIES * properties, char *key, char *value)
 }
 
 char *
-cci_property_get (T_CCI_PROPERTIES * properties, const char *key)
+cci_property_get (T_CCI_PROPERTIES *properties, const char *key)
 {
   int i;
 
@@ -5153,8 +5160,8 @@ cci_strtol (long *val, char *str, int base)
 }
 
 static bool
-cci_property_get_int (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
-		      int *out_value, int default_value, T_CCI_ERROR * err)
+cci_property_get_int (T_CCI_PROPERTIES *prop, T_CCI_DATASOURCE_KEY key,
+		      int *out_value, int default_value, T_CCI_ERROR *err_buf)
 {
   char *tmp;
   long val;
@@ -5162,18 +5169,20 @@ cci_property_get_int (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
   tmp = cci_property_get (prop, datasource_key[key]);
   if (tmp == NULL)
     {
+      err_buf->err_code = CCI_ER_NOT_BIND;
       *out_value = default_value;
     }
   else
     {
       if (cci_strtol (&val, tmp, 10))
 	{
+	  err_buf->err_code = CCI_ER_NO_ERROR;
 	  *out_value = (int) val;
 	}
       else
 	{
-	  err->err_code = CCI_ER_PROPERTY_TYPE;
-	  snprintf (err->err_msg, 1023, "strtol: %s", strerror (errno));
+	  err_buf->err_code = CCI_ER_PROPERTY_TYPE;
+	  snprintf (err_buf->err_msg, 1023, "strtol: %s", strerror (errno));
 	  return false;
 	}
     }
@@ -5182,23 +5191,32 @@ cci_property_get_int (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
 }
 
 static bool
-cci_property_get_bool (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
-		       bool * out_value, int default_value, T_CCI_ERROR * err)
+cci_property_get_bool (T_CCI_PROPERTIES *prop, T_CCI_DATASOURCE_KEY key,
+		       bool *out_value, int default_value, T_CCI_ERROR *err_buf)
 {
   char *tmp;
 
   tmp = cci_property_get (prop, datasource_key[key]);
   if (tmp == NULL)
     {
+      err_buf->err_code = CCI_ER_NOT_BIND;
       *out_value = default_value;
     }
   else
     {
-      if (strcmp (tmp, "true") == 0)
+      if (strcasecmp (tmp, "true") == 0)
 	{
 	  *out_value = (bool) true;
 	}
-      else if (strcmp (tmp, "false") == 0)
+      else if (strcasecmp (tmp, "yes") == 0)
+	{
+	  *out_value = (bool) true;
+	}
+      else if (strcasecmp (tmp, "false") == 0)
+	{
+	  *out_value = (bool) false;
+	}
+      else if (strcasecmp (tmp, "no") == 0)
 	{
 	  *out_value = (bool) false;
 	}
@@ -5206,33 +5224,34 @@ cci_property_get_bool (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
 	{
 	  return false;
 	}
+      err_buf->err_code = CCI_ER_NO_ERROR;
     }
 
   return true;
 }
 
 static bool
-cci_check_property (char **property, T_CCI_ERROR * err)
+cci_check_property (char **property, T_CCI_ERROR *err_buf)
 {
   if (*property)
     {
       *property = strdup (*property);
       if (*property == NULL)
 	{
-	  err->err_code = CCI_ER_NO_MORE_MEMORY;
-	  if (err->err_msg)
+	  err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
+	  if (err_buf->err_msg)
 	    {
-	      snprintf (err->err_msg, 1023, "strdup: %s", strerror (errno));
+	      snprintf (err_buf->err_msg, 1023, "strdup: %s", strerror (errno));
 	    }
 	  return false;
 	}
     }
   else
     {
-      err->err_code = CCI_ER_NO_PROPERTY;
-      if (err->err_msg)
+      err_buf->err_code = CCI_ER_NO_PROPERTY;
+      if (err_buf->err_msg)
 	{
-	  snprintf (err->err_msg, 1023,
+	  snprintf (err_buf->err_msg, 1023,
 		    "Could not found user property for connection");
 	}
       return false;
@@ -5272,31 +5291,102 @@ cci_disconnect_force (int con_h_id, bool try_close)
     }
 }
 
-static void
-cci_make_url (char *buf, char *url, int login, int query)
+static bool
+cci_make_url (T_CCI_PROPERTIES *prop, char *buf, char *url, T_CCI_ERROR *err_buf)
 {
-  const char *c;
-  const char *str_login = datasource_key[CCI_DS_KEY_LOGIN_TIMEOUT];
+  const char *c, *str;
+  char append_str[LINE_MAX];
+  int login_timeout = -1, query_timeout = -1;
+  bool disconnect_on_query_timeout;
 
-  if (strchr (url, '?'))
+  assert (buf && url);
+
+  if (!buf || !url)
     {
-      c = "&";
+      return false;
     }
-  else
+
+  strncpy (buf, url, LINE_MAX);
+
+  if (!cci_property_get_int (prop, CCI_DS_KEY_LOGIN_TIMEOUT, &login_timeout,
+			     login_timeout, err_buf))
     {
-      c = "?";
+      return false;
     }
-  snprintf (buf, LINE_MAX, "%s%s%s=%d", url, c, str_login, login);
+  else if (err_buf->err_code != CCI_ER_NOT_BIND)
+    {
+      str = datasource_key[CCI_DS_KEY_LOGIN_TIMEOUT];
+
+      if (strchr (buf, '?'))
+	{
+	  c = "&";
+	}
+      else
+	{
+	  c = "?";
+	}
+
+      snprintf (append_str, LINE_MAX, "%s%s=%d", c, str, login_timeout);
+      strncat (buf, append_str, LINE_MAX);
+    }
+
+  if (!cci_property_get_int (prop, CCI_DS_KEY_QUERY_TIMEOUT, &query_timeout,
+			     query_timeout, err_buf))
+    {
+      return false;
+    }
+  else if (err_buf->err_code != CCI_ER_NOT_BIND)
+    {
+      str = datasource_key[CCI_DS_KEY_QUERY_TIMEOUT];
+
+      if (strchr (buf, '?'))
+	{
+	  c = "&";
+	}
+      else
+	{
+	  c = "?";
+	}
+
+      snprintf (append_str, LINE_MAX, "%s%s=%d", c, str, query_timeout);
+      strncat (buf, append_str, LINE_MAX);
+    }
+
+  if (!cci_property_get_bool (prop, CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT,
+			      &disconnect_on_query_timeout,
+			      CCI_DS_DEFAULT_DISCONNECT_ON_QUERY_TIMEOUT,
+			      err_buf))
+    {
+      return false;
+    }
+  else if (err_buf->err_code != CCI_ER_NOT_BIND)
+    {
+      str = datasource_key[CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT];
+
+      if (strchr (buf, '?'))
+	{
+	  c = "&";
+	}
+      else
+	{
+	  c = "?";
+	}
+      snprintf (append_str, LINE_MAX, "%s%s=%s", c,
+	  str, cci_property_get (prop, str));
+      strncat (buf, append_str, LINE_MAX);
+    }
+
+  err_buf->err_code = CCI_ER_NO_ERROR;
+  return true;
 }
 
 T_CCI_DATASOURCE *
-cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err)
+cci_datasource_create (T_CCI_PROPERTIES *prop, T_CCI_ERROR *err_buf)
 {
   char *user, *pass, *url;
   cci_mutex_t *mutex;
   cci_cond_t *cond;
   int pool_size, max_wait;
-  int login_timeout, query_timeout;
   bool using_stmt_pool;
   T_CCI_DATASOURCE *ds;
   T_CCI_CONN *con_handles;
@@ -5309,7 +5399,7 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err)
   con_handles = NULL;
 
   user = cci_property_get (prop, datasource_key[CCI_DS_KEY_USER]);
-  if (!cci_check_property (&user, err))
+  if (!cci_check_property (&user, err_buf))
     {
       goto create_datasource_error;
     }
@@ -5326,39 +5416,26 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err)
     }
 
   url = cci_property_get (prop, datasource_key[CCI_DS_KEY_URL]);
-  if (!cci_check_property (&url, err))
+  if (!cci_check_property (&url, err_buf))
     {
       goto create_datasource_error;
     }
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_POOL_SIZE, &pool_size,
-			     CCI_DS_DEFAULT_POOL_SIZE, err))
+			     CCI_DS_DEFAULT_POOL_SIZE, err_buf))
     {
       goto create_datasource_error;
     }
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_MAX_WAIT, &max_wait,
-			     CCI_DS_DEFAULT_MAX_WAIT, err))
+			     CCI_DS_DEFAULT_MAX_WAIT, err_buf))
     {
       goto create_datasource_error;
     }
 
   if (!cci_property_get_bool (prop, CCI_DS_KEY_USING_STMT_POOL,
 			      &using_stmt_pool,
-			      CCI_DS_DEFAULT_USING_STMT_POOL, err))
-    {
-      goto create_datasource_error;
-    }
-
-  login_timeout = query_timeout = -1;
-  if (!cci_property_get_int (prop, CCI_DS_KEY_LOGIN_TIMEOUT, &login_timeout,
-			     login_timeout, err))
-    {
-      goto create_datasource_error;
-    }
-
-  if (!cci_property_get_int (prop, CCI_DS_KEY_QUERY_TIMEOUT, &query_timeout,
-			     query_timeout, err))
+			      CCI_DS_DEFAULT_USING_STMT_POOL, err_buf))
     {
       goto create_datasource_error;
     }
@@ -5369,10 +5446,10 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err)
   cond = MALLOC (sizeof (cci_cond_t));
   if (!ds || !con_handles || !mutex || !cond)
     {
-      err->err_code = CCI_ER_NO_MORE_MEMORY;
-      if (err->err_msg)
+      err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
+      if (err_buf->err_msg)
 	{
-	  snprintf (err->err_msg, 1023, "memory allocation error: %s",
+	  snprintf (err_buf->err_msg, 1023, "memory allocation error: %s",
 		    strerror (errno));
 	}
       goto create_datasource_error;
@@ -5384,8 +5461,6 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err)
   ds->pool_size = pool_size;
   ds->max_wait = max_wait;
   ds->using_stmt_pool = using_stmt_pool;
-  ds->login_timeout = login_timeout;
-  ds->query_timeout = query_timeout;
   ds->mutex = mutex;
   ds->cond = cond;
   ds->con_handles = con_handles;
@@ -5399,17 +5474,23 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err)
       T_CON_HANDLE *handle;
       T_CCI_CONN id;
       char tmp_url[LINE_MAX];
-      cci_make_url (tmp_url, url, login_timeout, query_timeout);
-      id = cci_connect_with_url (url, user, pass);
+
+      if (!cci_make_url (prop, tmp_url, url, err_buf))
+	{
+	  goto create_datasource_error;
+	}
+      id = cci_connect_with_url (tmp_url, user, pass);
+
       if (id < 0)
 	{
-	  err->err_code = CCI_ER_CONNECT;
-	  if (err->err_msg)
+	  err_buf->err_code = CCI_ER_CONNECT;
+	  if (err_buf->err_msg)
 	    {
-	      snprintf (err->err_msg, 1023, "Could not connect to database");
+	      snprintf (err_buf->err_msg, 1023, "Could not connect to database");
 	    }
 	  goto create_datasource_error;
 	}
+
       handle = hm_find_con_handle (id);
       handle->datasource = ds;
       ds->con_handles[i] = id;
@@ -5419,11 +5500,14 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err)
   return ds;
 
 create_datasource_error:
-  for (i = 0; i < pool_size; i++)
+  if (con_handles != NULL)
     {
-      if (con_handles[i] > 0)
+      for (i = 0; i < pool_size; i++)
 	{
-	  cci_disconnect_force (con_handles[i], true);
+	  if (con_handles[i] > 0)
+	    {
+	      cci_disconnect_force (con_handles[i], true);
+	    }
 	}
     }
   FREE_MEM (user);
@@ -5437,7 +5521,7 @@ create_datasource_error:
 }
 
 void
-cci_datasource_destroy (T_CCI_DATASOURCE * datasource)
+cci_datasource_destroy (T_CCI_DATASOURCE *datasource)
 {
   int i;
 
@@ -5483,15 +5567,15 @@ cci_datasource_destroy (T_CCI_DATASOURCE * datasource)
 }
 
 T_CCI_CONN
-cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err)
+cci_datasource_borrow (T_CCI_DATASOURCE *ds, T_CCI_ERROR *err_buf)
 {
   T_CCI_CONN id;
   int i;
 
   if (ds == NULL || !ds->is_init)
     {
-      err->err_code = CCI_ER_INVALID_DATASOURCE;
-      snprintf (err->err_msg, 1023, "CCI data source is invalid");
+      err_buf->err_code = CCI_ER_INVALID_DATASOURCE;
+      snprintf (err_buf->err_msg, 1023, "CCI data source is invalid");
       return -1;
     }
 
@@ -5516,15 +5600,15 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err)
 			      (cci_mutex_t *) ds->mutex, &ts);
       if (r == ETIMEDOUT)
 	{
-	  err->err_code = CCI_ER_DATASOURCE_TIMEOUT;
-	  snprintf (err->err_msg, 1023, "All connections are used");
+	  err_buf->err_code = CCI_ER_DATASOURCE_TIMEOUT;
+	  snprintf (err_buf->err_msg, 1023, "All connections are used");
 	  cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
 	  return -1;
 	}
       else if (r != 0)
 	{
-	  err->err_code = CCI_ER_DATASOURCE_TIMEDWAIT;
-	  snprintf (err->err_msg, 1023, "pthread_cond_timedwait : %d", r);
+	  err_buf->err_code = CCI_ER_DATASOURCE_TIMEDWAIT;
+	  snprintf (err_buf->err_msg, 1023, "pthread_cond_timedwait : %d", r);
 	  cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
 	  return -1;
 	}
@@ -5547,15 +5631,15 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err)
 }
 
 int
-cci_datasource_release (T_CCI_DATASOURCE * datasource, T_CCI_CONN conn,
-			T_CCI_ERROR * err)
+cci_datasource_release (T_CCI_DATASOURCE *datasource, T_CCI_CONN conn,
+			T_CCI_ERROR *err_buf)
 {
   int i;
 
   if (datasource == NULL || !datasource->is_init)
     {
-      err->err_code = CCI_ER_INVALID_DATASOURCE;
-      snprintf (err->err_msg, 1023, "CCI data source is invalid");
+      err_buf->err_code = CCI_ER_INVALID_DATASOURCE;
+      snprintf (err_buf->err_msg, 1023, "CCI data source is invalid");
       return 0;
     }
 
@@ -5565,8 +5649,8 @@ cci_datasource_release (T_CCI_DATASOURCE * datasource, T_CCI_CONN conn,
     {
       if (datasource->con_handles[i] == -conn)
 	{
-	  T_CCI_ERROR err;
-	  cci_end_tran (conn, CCI_TRAN_ROLLBACK, &err);
+	  T_CCI_ERROR err_buf;
+	  cci_end_tran (conn, CCI_TRAN_ROLLBACK, &err_buf);
 	  datasource->con_handles[i] = conn;
 	  break;
 	}

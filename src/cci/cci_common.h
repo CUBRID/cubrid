@@ -249,9 +249,6 @@ struct DATASOURCE_T
 
   char using_stmt_pool;		/* default : false */
 
-  int login_timeout;		/* default : infinite */
-  int query_timeout;		/* default : infinite */
-
   int num_idle;
   int *con_handles;		/* realloc by pool_size */
 };

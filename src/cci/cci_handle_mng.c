@@ -340,7 +340,7 @@ hm_req_get_from_pool (T_CON_HANDLE * con, char *sql)
       return CCI_ER_REQ_HANDLE;
     }
   req_id = *((int *) data);
-  /* TODO : set query timeout */
+
   return req_id;
 }
 
