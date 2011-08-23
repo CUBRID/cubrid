@@ -1673,6 +1673,7 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer,
     }
 
   parser->strings_have_no_escapes = strings_have_no_escapes;
+  parser->dont_collect_exec_stats = false;
 
   /* reset parser node stack and line/column info */
   parser->stack_top = 0;
@@ -1773,6 +1774,7 @@ parser_parse_file (PARSER_CONTEXT * parser, FILE * file)
 
   parser->strings_have_no_escapes = false;
   parser->is_in_and_list = false;
+  parser->dont_collect_exec_stats = false;
 
   /* reset parser node stack and line/column info */
   parser->stack_top = 0;
@@ -3294,6 +3296,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "evaluate_variable";
     case PT_DEFINE_VARIABLE:
       return "define_variable";
+    case PT_EXEC_STATS:
+      return "exec_stats";
     default:
       return "unknown opcode";
     }
@@ -10591,6 +10595,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " := ");
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
       q = pt_append_varchar (parser, q, r2);
+      break;
+    case PT_EXEC_STATS:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " exec_stats(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
     }
 

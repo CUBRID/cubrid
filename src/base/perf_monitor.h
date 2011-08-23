@@ -532,6 +532,7 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_net_requests(thread_p)
 
 extern MNT_SERVER_EXEC_STATS *mnt_server_get_stats (THREAD_ENTRY * thread_p);
+extern bool mnt_server_is_stats_on (THREAD_ENTRY * thread_p);
 
 extern int mnt_server_init (int num_tran_indices);
 extern void mnt_server_final (void);
@@ -595,7 +596,8 @@ extern void mnt_x_prior_lsa_list_maxed (THREAD_ENTRY * thread_p);
 extern void mnt_x_prior_lsa_list_removed (THREAD_ENTRY * thread_p);
 extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
 			    unsigned int num_log_pages, unsigned int tokens);
-
+extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p,
+					 const char *stat_name);
 #else /* SERVER_MODE || SA_MODE */
 
 #define mnt_file_creates(thread_p)
@@ -654,7 +656,7 @@ extern void mnt_x_fc_stats (THREAD_ENTRY * thread_p, unsigned int num_pages,
 #define mnt_qm_mjoins(thread_p)
 #define mnt_qm_objfetches(thread_p)
 
-#define mnt_net_requests(hread_p)
+#define mnt_net_requests(thread_p)
 
 #define mnt_prior_lsa_list_size (thread_p, list_size)
 #define mnt_prior_lsa_list_maxed (thread_p)

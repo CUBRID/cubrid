@@ -3739,6 +3739,8 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 	  (void) xtran_server_abort (thread_p);
 	}
 
+      xmnt_server_stop_stats (thread_p);
+
       /* Release the transaction index */
       logtb_release_tran_index (thread_p, tran_index);
 

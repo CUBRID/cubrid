@@ -43,6 +43,8 @@
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #endif
+#include "xserver_interface.h"
+
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
@@ -704,6 +706,18 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name,
   name_str = DB_GET_CHAR (name, &len);
 
   assert (name_str != NULL);
+
+  if (strncasecmp (name_str, "collect_exec_stats", len) == 0)
+    {
+      if (DB_GET_INT (value) == 1)
+	{
+	  xmnt_server_start_stats (NULL, false);
+	}
+      else if (DB_GET_INT (value) == 0)
+	{
+	  xmnt_server_stop_stats (NULL);
+	}
+    }
 
   current = state_p->session_variables;
   while (current)
@@ -1859,6 +1873,31 @@ session_drop_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values,
     }
 
   csect_exit (CSECT_SESSION_STATE);
+
+  return NO_ERROR;
+}
+
+/*
+ * session_get_exec_stats_and_clear () - get execution statistics
+ * return : error code
+ * thread_p (in)  : worker thread
+ * name (in)      : name of the stats
+ * result (out)   : stats value
+ */
+int
+session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p,
+				  const DB_VALUE * name, DB_VALUE * result)
+{
+  int name_len = 0;
+  const char *name_str;
+  UINT64 stat_val;
+
+  assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
+
+  name_str = DB_GET_CHAR (name, &name_len);
+
+  stat_val = mnt_x_get_stats_and_clear (thread_p, name_str);
+  DB_MAKE_BIGINT (result, stat_val);
 
   return NO_ERROR;
 }

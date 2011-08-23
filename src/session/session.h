@@ -76,4 +76,7 @@ extern int session_remove_query_entry_info (THREAD_ENTRY * thread_p,
 extern int session_clear_query_entry_info (THREAD_ENTRY * thread_p,
 					   const QUERY_ID query_id);
 
+extern int session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p,
+					     const DB_VALUE * name,
+					     DB_VALUE * result);
 #endif /* _SESSION_H_ */

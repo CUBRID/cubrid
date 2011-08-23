@@ -648,7 +648,8 @@ enum
   NOT_FROM_RESULT_CACHE = 0x08,
   RESULT_CACHE_REQUIRED = 0x10,
   RESULT_CACHE_INHIBITED = 0x20,
-  RESULT_HOLDABLE = 0x40
+  RESULT_HOLDABLE = 0x40,
+  DONT_COLLECT_EXEC_STATS = 0x80
 };
 
 #define IS_SYNC_EXEC_MODE(flag) (!((flag) & ASYNC_EXEC))
@@ -659,6 +660,8 @@ enum
 
 #define DO_KEEP_PLAN_CACHE(flag)        ((flag) & KEEP_PLAN_CACHE)
 #define DO_NOT_KEEP_PLAN_CACHE(flag)    !((flag) & KEEP_PLAN_CACHE)
+
+#define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
 
 typedef int QUERY_FLAG;
 

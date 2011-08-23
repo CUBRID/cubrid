@@ -1174,7 +1174,8 @@ typedef enum
   PT_FUNCTION_HOLDER,		/* special operator : wrapper for PT_FUNCTION node */
   PT_INDEX_CARDINALITY,
   PT_DEFINE_VARIABLE,
-  PT_EVALUATE_VARIABLE
+  PT_EVALUATE_VARIABLE,
+  PT_EXEC_STATS
 } PT_OP_TYPE;
 
 
@@ -2710,6 +2711,7 @@ struct parser_context
 				   CNF start nodes. */
   bool is_holdable;		/* set to true if result must be available across
 				   commits */
+  bool dont_collect_exec_stats:1;
 };
 
 

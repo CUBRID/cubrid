@@ -5899,7 +5899,7 @@ error_exit:
 }
 
 /*
- * pt_node_list_to_array() - returns an array of nodes(PT_NODE) from a 
+ * pt_node_list_to_array() - returns an array of nodes(PT_NODE) from a
  *			     PT_NODE list. Used mainly to convert a list of
  *			     argument nodes to an array of argument nodes
  *   return: NO_ERROR on success, ER_GENERIC_ERROR on failure
@@ -5944,7 +5944,7 @@ pt_node_list_to_array (PARSER_CONTEXT * parser, PT_NODE * arg_list,
  *
  *   return: node with constructed identifier, NULL if construction fails
  *   parser(in): Parser context
- *   identifier_str(in): string containing full identifier name. Dots ('.') 
+ *   identifier_str(in): string containing full identifier name. Dots ('.')
  *			 are used to delimit class names and column
  *			 names; for this reason, column and class names should
  *			 not contain dots.
@@ -5957,17 +5957,17 @@ pt_make_dotted_identifier (PARSER_CONTEXT * parser,
 }
 
 /*
- * pt_make_dotted_identifier_internal() - builds an identifier node 
+ * pt_make_dotted_identifier_internal() - builds an identifier node
  *				    (type PT_NAME) or tree (type PT_DOT)
  *
  *   return: node with constructed identifier, NULL if construction fails
  *   parser(in): Parser context
  *   identifier_str(in): string containing full identifier name (with dots);
- *			 length must be smaller than maximum allowed 
+ *			 length must be smaller than maximum allowed
  *			 identifier length
  *   depth(in): depth of current constructed node relative to PT_DOT subtree
- * 
- *  Note : the depth argument is used to flag the PT_NAME node corresponding 
+ *
+ *  Note : the depth argument is used to flag the PT_NAME node corresponding
  *	   to the first scoping name as 'meta_class = PT_NORMAL'.
  *	   This applies only to dotted identifier names.
  */
@@ -6043,7 +6043,7 @@ pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser,
 }
 
 /*
- * pt_add_name_col_to_sel_list() - builds a corresponding node for a table 
+ * pt_add_name_col_to_sel_list() - builds a corresponding node for a table
  *				   column and adds it to the end of the select
  *				   list of a SELECT node
  *
@@ -6076,7 +6076,7 @@ pt_add_name_col_to_sel_list (PARSER_CONTEXT * parser, PT_NODE * select,
 }
 
 /*
- * pt_add_table_name_to_from_list() - builds a corresponding node for a table 
+ * pt_add_table_name_to_from_list() - builds a corresponding node for a table
  *				'spec' and adds it to the end of the FROM list
  *                              of a SELECT node
  *
@@ -6132,8 +6132,8 @@ pt_add_table_name_to_from_list (PARSER_CONTEXT * parser, PT_NODE * select,
 }
 
 /*
- * pt_make_pred_name_int_val() - builds a predicate node (PT_EXPR) using a 
- *			    column identifier on LHS and a integer value on 
+ * pt_make_pred_name_int_val() - builds a predicate node (PT_EXPR) using a
+ *			    column identifier on LHS and a integer value on
  *			    RHS
  *
  *   return: newly build node (PT_NODE)
@@ -6161,8 +6161,8 @@ pt_make_pred_name_int_val (PARSER_CONTEXT * parser, PT_OP_TYPE op_type,
 }
 
 /*
- * pt_make_pred_name_string_val() - builds a predicate node (PT_EXPR) using an 
- *			            identifier on LHS and a string value on 
+ * pt_make_pred_name_string_val() - builds a predicate node (PT_EXPR) using an
+ *			            identifier on LHS and a string value on
  *			            RHS
  *
  *   return: newly build node (PT_NODE)
@@ -6192,8 +6192,8 @@ pt_make_pred_name_string_val (PARSER_CONTEXT * parser, PT_OP_TYPE op_type,
 }
 
 /*
- * pt_make_pred_with_identifiers() - builds a predicate node (PT_EXPR) using 
- *			    an identifier on LHS and another identifier on 
+ * pt_make_pred_with_identifiers() - builds a predicate node (PT_EXPR) using
+ *			    an identifier on LHS and another identifier on
  *			    RHS
  *
  *   return: newly build node (PT_NODE)
@@ -6225,8 +6225,8 @@ pt_make_pred_with_identifiers (PARSER_CONTEXT * parser, PT_OP_TYPE op_type,
 }
 
 /*
- * pt_make_if_with_expressions() - builds an IF (pred, expr_true, expr_false) 
- *				operator node (PT_EXPR) given two expression 
+ * pt_make_if_with_expressions() - builds an IF (pred, expr_true, expr_false)
+ *				operator node (PT_EXPR) given two expression
  *				nodes for true/false values
  *
  *   return: newly build node (PT_NODE)
@@ -6253,7 +6253,7 @@ pt_make_if_with_expressions (PARSER_CONTEXT * parser, PT_NODE * pred,
 }
 
 /*
- * pt_make_if_with_strings() - builds an IF (pred, expr_true, expr_false) 
+ * pt_make_if_with_strings() - builds an IF (pred, expr_true, expr_false)
  *			       operator node (PT_EXPR) using two strings as
  *			       true/false values
  *
@@ -6282,7 +6282,7 @@ pt_make_if_with_strings (PARSER_CONTEXT * parser, PT_NODE * pred,
 }
 
 /*
- * pt_make_like_col_expr() - builds a LIKE operator node (PT_EXPR) using 
+ * pt_make_like_col_expr() - builds a LIKE operator node (PT_EXPR) using
  *			    an identifier on LHS an expression node on RHS
  *			    '<col_name> LIKE <rhs_expr>'
  *
@@ -6305,7 +6305,7 @@ pt_make_like_col_expr (PARSER_CONTEXT * parser, PT_NODE * rhs_expr,
 }
 
 /*
- * pt_make_outer_select_for_show_stmt() - builds a SELECT node and wrap the 
+ * pt_make_outer_select_for_show_stmt() - builds a SELECT node and wrap the
  *				      inner supplied SELECT node
  *		'SELECT * FROM (<inner_select>) <select_alias>'
  *
@@ -6370,7 +6370,7 @@ pt_make_outer_select_for_show_stmt (PARSER_CONTEXT * parser,
 }
 
 /*
- * pt_make_select_count_star() - builds a 'SELECT COUNT(*)' node 
+ * pt_make_select_count_star() - builds a 'SELECT COUNT(*)' node
  *
  *   return: newly build node (PT_NODE), NULL if construnction fails
  *   parser(in): Parser context
@@ -6404,14 +6404,14 @@ pt_make_select_count_star (PARSER_CONTEXT * parser)
  * pt_make_field_type_expr_node() - builds the node required to print the type
  *                                  of column in SHOW COLUMNS
  *
- *    CONCAT(type_name, IF (type_id=27 OR 
- *			      type_id=26 OR 
- *			      type_id=25 OR 
- *			      type_id=24 OR 
- *			      type_id=23 OR 
- * 			      type_id=4  OR 
- *			      type_id=22,  
- *			    CONCAT( '(', 
+ *    CONCAT(type_name, IF (type_id=27 OR
+ *			      type_id=26 OR
+ *			      type_id=25 OR
+ *			      type_id=24 OR
+ *			      type_id=23 OR
+ * 			      type_id=4  OR
+ *			      type_id=22,
+ *			    CONCAT( '(',
  *				    prec ,
  *				    IF (type_id=22,
  *					CONCAT( ',',
@@ -6424,11 +6424,11 @@ pt_make_select_count_star (PARSER_CONTEXT * parser)
  *				    type_id=8 ,
  *				  CONCAT( ' OF ',
  *					  Types_t.Composed_types),
- *				  '')  
+ *				  '')
  *			  )
- *	      ) AS Type 
+ *	      ) AS Type
  *
- *  - type_id values are defined in dbtype.h in DB_TYPE 
+ *  - type_id values are defined in dbtype.h in DB_TYPE
  *
  *
  *   return: newly build node (PT_NODE)
@@ -6506,9 +6506,9 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
     if_node = NULL;
   }
 
-  /* IF (type_id=27 OR type_id=26 OR type_id=25 OR type_id=24 OR 
+  /* IF (type_id=27 OR type_id=26 OR type_id=25 OR type_id=24 OR
      type_id=23 OR type_id=4 or type_id=22,
-     CONCAT(...)  , 
+     CONCAT(...)  ,
      '' )  */
   {
     PT_NODE *cond_item1 = NULL;
@@ -6632,16 +6632,16 @@ pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
 
 
 /*
- * pt_make_field_extra_expr_node() - builds the 'Extra' field for the 
+ * pt_make_field_extra_expr_node() - builds the 'Extra' field for the
  *				SHOW COLUMNS statment
  *
  *   return: newly build node (PT_NODE), NULL if construction fails
  *   parser(in): Parser context
  *
- *    IF( (SELECT count(*)  
- *	      FROM db_serial S 
- *	      WHERE S.att_name = A.attr_name AND 
- *		    S.class_name =  C.class_name 
+ *    IF( (SELECT count(*)
+ *	      FROM db_serial S
+ *	      WHERE S.att_name = A.attr_name AND
+ *		    S.class_name =  C.class_name
  *	    ) >= 1 ,
  *	  'auto_increment',
  *	  '' )
@@ -6699,18 +6699,18 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
 }
 
 /*
- * pt_make_field_key_type_expr_node() - builds the 'Key' field for the 
+ * pt_make_field_key_type_expr_node() - builds the 'Key' field for the
  *				SHOW COLUMNS statment
  *
  *   return: newly build node (PT_NODE), NULL if construction fails
  *   parser(in): Parser context
  *
  *     IF ( pri_key_count > 0,
- *	  'PRI' , 
+ *	  'PRI' ,
  *	  IF (uni_key_count > 0 ,
- *	      'UNI',  
+ *	      'UNI',
  *	      IF (mul_count > 0 ,
- *		  'MUL', 
+ *		  'MUL',
  *		  '')
  *	      )
  *	  )
@@ -6733,15 +6733,15 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
 
   {
     /* pri_key_count  :
-       (SELECT count (*)  
-       FROM (SELECT  IK.key_attr_name ATTR,  I.is_primary_key PRI_KEY  
-       FROM  _db_index_key IK , _db_index I   
-       WHERE IK IN I.key_attrs AND 
-       IK.key_attr_name = A.attr_name AND 
-       I.class_of = A.class_of AND 
-       A.class_of.class_name=C.class_name) 
-       constraints_pri_key  
-       WHERE PRI_KEY=1) 
+       (SELECT count (*)
+       FROM (SELECT  IK.key_attr_name ATTR,  I.is_primary_key PRI_KEY
+       FROM  _db_index_key IK , _db_index I
+       WHERE IK IN I.key_attrs AND
+       IK.key_attr_name = A.attr_name AND
+       I.class_of = A.class_of AND
+       A.class_of.class_name=C.class_name)
+       constraints_pri_key
+       WHERE PRI_KEY=1)
      */
     PT_NODE *sub_query = NULL;
     PT_NODE *from_item = NULL;
@@ -6751,9 +6751,9 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
 
     /* SELECT  IK.key_attr_name ATTR,  I.is_primary_key PRI_KEY
        FROM  _db_index_key IK , _db_index I
-       WHERE IK IN I.key_attrs AND 
-       IK.key_attr_name = A.attr_name AND 
-       I.class_of = A.class_of AND 
+       WHERE IK IN I.key_attrs AND
+       IK.key_attr_name = A.attr_name AND
+       I.class_of = A.class_of AND
        A.class_of.class_name = C.class_name */
     sub_query = parser_new_node (parser, PT_SELECT);
     if (sub_query == NULL)
@@ -6829,15 +6829,15 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
 
   {
     /* uni_key_count  :
-       (SELECT count (*)  
-       FROM (SELECT  IK.key_attr_name ATTR, I.is_unique UNI_KEY  
-       FROM  _db_index_key IK , _db_index I   
-       WHERE IK IN I.key_attrs AND 
-       IK.key_attr_name = A.attr_name AND 
-       I.class_of = A.class_of AND 
-       A.class_of.class_name = C.class_name) 
-       constraints_pri_key  
-       WHERE UNI_KEY=1) 
+       (SELECT count (*)
+       FROM (SELECT  IK.key_attr_name ATTR, I.is_unique UNI_KEY
+       FROM  _db_index_key IK , _db_index I
+       WHERE IK IN I.key_attrs AND
+       IK.key_attr_name = A.attr_name AND
+       I.class_of = A.class_of AND
+       A.class_of.class_name = C.class_name)
+       constraints_pri_key
+       WHERE UNI_KEY=1)
      */
     PT_NODE *sub_query = NULL;
     PT_NODE *from_item = NULL;
@@ -6845,11 +6845,11 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     PT_NODE *where_item2 = NULL;
     PT_NODE *alias_subquery = NULL;
 
-    /* SELECT  IK.key_attr_name ATTR,  I.is_unique UNI_KEY   
-       FROM  _db_index_key IK , _db_index I   
-       WHERE IK IN I.key_attrs AND 
-       IK.key_attr_name = A.attr_name AND 
-       I.class_of = A.class_of AND 
+    /* SELECT  IK.key_attr_name ATTR,  I.is_unique UNI_KEY
+       FROM  _db_index_key IK , _db_index I
+       WHERE IK IN I.key_attrs AND
+       IK.key_attr_name = A.attr_name AND
+       I.class_of = A.class_of AND
        A.class_of.class_name = C.class_name */
     sub_query = parser_new_node (parser, PT_SELECT);
     if (sub_query == NULL)
@@ -6928,16 +6928,16 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
 
   {
     /* mul_count  :
-       (SELECT count (*)  
-       FROM (SELECT  IK.key_attr_name ATTR  
-       FROM  _db_index_key IK , _db_index I   
-       WHERE IK IN I.key_attrs AND 
-       IK.key_attr_name = A.attr_name AND 
-       I.class_of = A.class_of AND 
+       (SELECT count (*)
+       FROM (SELECT  IK.key_attr_name ATTR
+       FROM  _db_index_key IK , _db_index I
+       WHERE IK IN I.key_attrs AND
+       IK.key_attr_name = A.attr_name AND
+       I.class_of = A.class_of AND
        A.class_of.class_name = C.class_name AND
-       IK.key_order = 0) 
-       constraints_no_index  
-       ) 
+       IK.key_order = 0)
+       constraints_no_index
+       )
      */
     PT_NODE *sub_query = NULL;
     PT_NODE *from_item = NULL;
@@ -6945,11 +6945,11 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     PT_NODE *where_item2 = NULL;
     PT_NODE *alias_subquery = NULL;
 
-    /* SELECT  IK.key_attr_name ATTR    
-       FROM  _db_index_key IK , _db_index I   
-       WHERE IK IN I.key_attrs AND 
-       IK.key_attr_name = A.attr_name AND 
-       I.class_of = A.class_of AND 
+    /* SELECT  IK.key_attr_name ATTR
+       FROM  _db_index_key IK , _db_index I
+       WHERE IK IN I.key_attrs AND
+       IK.key_attr_name = A.attr_name AND
+       I.class_of = A.class_of AND
        A.class_of.class_name = C.class_name AND
        IK.key_order = 0 */
     sub_query = parser_new_node (parser, PT_SELECT);
@@ -7020,12 +7020,12 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
     /* mul_count   query is done */
   }
 
-  /* IF ( pri_key_count > 0, 
+  /* IF ( pri_key_count > 0,
      'PRI' ,
      IF (uni_key_count > 0 ,
-     'UNI',  
+     'UNI',
      IF (mul_count > 0 ,
-     'MUL', 
+     'MUL',
      '')
      )
      )
@@ -7090,7 +7090,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
  *
  *   return: newly build node (PT_NODE), NULL if construction fails
  *   parser(in): Parser context
- *   identifier(in): full name of identifier 
+ *   identifier(in): full name of identifier
  *   sort_mode(in): sorting ascendint or descending; if this parameter is not
  *		    PT_ASC or PT_DESC, the function will return NULL
  */
@@ -7127,7 +7127,7 @@ pt_make_sort_spec_with_identifier (PARSER_CONTEXT * parser,
  *
  *   return: newly build node (PT_NODE), NULL if construction fails
  *   parser(in): Parser context
- *   number_pos(in): position number for ORDER BY 
+ *   number_pos(in): position number for ORDER BY
  *   sort_mode(in): sorting ascendint or descending; if this parameter is not
  *		    PT_ASC or PT_DESC, the function will return NULL
  */
@@ -7164,18 +7164,18 @@ pt_make_sort_spec_with_number (PARSER_CONTEXT * parser,
  *					used to build SHOW COLUMNS statement
  *
  *
- *	  SELECT AA.attr_name ATTR,  
- *		  GROUP_CONCAT( TT.type_name ORDER BY 1 SEPARATOR ',') 
- *			Composed_types 
- *	     FROM _db_attribute AA, _db_domain DD , _db_data_type TT  
- *	     WHERE AA.class_of.class_name = '<table_name>' AND 
- *		   DD.data_type = TT.type_id AND 
- *		   DD.object_of IN AA.domains 
- *	     GROUP BY AA.attr_name) 
+ *	  SELECT AA.attr_name ATTR,
+ *		  GROUP_CONCAT( TT.type_name ORDER BY 1 SEPARATOR ',')
+ *			Composed_types
+ *	     FROM _db_attribute AA, _db_domain DD , _db_data_type TT
+ *	     WHERE AA.class_of.class_name = '<table_name>' AND
+ *		   DD.data_type = TT.type_id AND
+ *		   DD.object_of IN AA.domains
+ *	     GROUP BY AA.attr_name)
  *
  *   return: newly build node (PT_NODE), NULL if construction fails
  *   parser(in): Parser context
- *   table_name(in): name of table to filter by ; only the columns from this 
+ *   table_name(in): name of table to filter by ; only the columns from this
  *		     table are checked for their type
  *
  */
@@ -7285,8 +7285,8 @@ pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser,
 
 /*
  * pt_make_dummy_query_check_table() - builds a SELECT subquery used check
- *				  if the table exists; when attached to 
- *				  the SHOW statement, it should cause an 
+ *				  if the table exists; when attached to
+ *				  the SHOW statement, it should cause an
  *				  execution error, instead of displaying
  *				  'no results';
  *				  used to build SHOW COLUMNS statement
@@ -7313,9 +7313,9 @@ pt_make_dummy_query_check_table (PARSER_CONTEXT * parser,
    * on a non-existing table or when the user doesn't have SELECT privilege on
    * that table; A simpler query like:
    *      SELECT 1 FROM <table_name> WHERE FALSE;
-   * is removed during parse tree optimizations, and no error is printed when 
+   * is removed during parse tree optimizations, and no error is printed when
    * user has insuficient privileges.
-   * We need a query which will not be removed on translation (in order to be 
+   * We need a query which will not be removed on translation (in order to be
    * kept up to the authentication stage, but also with low impact on
    * performance.
    */
@@ -7340,10 +7340,10 @@ pt_make_dummy_query_check_table (PARSER_CONTEXT * parser,
  * pt_make_query_show_table() - builds the query used for SHOW TABLES
  *
  *    SELECT * FROM (SELECT C.class_name AS tables_in_<dbname>,
- *			    IF(class_type='CLASS','VIEW','BASE TABLE') 
- *				AS table_type 
- *		     FROM db_class C 
- *		     WHERE is_system_class='NO') show_tables 
+ *			    IF(class_type='CLASS','VIEW','BASE TABLE')
+ *				AS table_type
+ *		     FROM db_class C
+ *		     WHERE is_system_class='NO') show_tables
  *    ORDER BY 1;
  *
  *   return: newly build node (PT_NODE), NULL if construnction fails
@@ -7390,7 +7390,7 @@ pt_make_query_show_table (PARSER_CONTEXT * parser,
 			       tables_col_name);
 
   /* ------ SELECT ... FROM   ------- */
-  /* db_class is a view on the _db_class table; we are selecting from the 
+  /* db_class is a view on the _db_class table; we are selecting from the
    * view, to avoid checking the authorization as this check is already
    * performed by the view
    */
@@ -7428,7 +7428,7 @@ pt_make_query_show_table (PARSER_CONTEXT * parser,
 								select.list);
     }
 
-  /*  done with subquery, create the enclosing query : 
+  /*  done with subquery, create the enclosing query :
    * SELECT * from ( SELECT .... ) show_tables;  */
 
   node = pt_make_outer_select_for_show_stmt (parser, sub_query,
@@ -7481,36 +7481,36 @@ pt_make_query_show_table (PARSER_CONTEXT * parser,
  * pt_make_query_show_columns() - builds the query used for SHOW TABLES
  *
  *  SELECT * FROM (
- *  SELECT A.attr_name AS Field,  
+ *  SELECT A.attr_name AS Field,
  *  <Type_field_query> AS Type,
- *  IF (A.is_nullable = 1 OR 
+ *  IF (A.is_nullable = 1 OR
  *	(SELECT COUNT(*) FROM <tbl_name> LIMIT 1) = -1,
  *     'YES','NO') AS Null ,
  *  <Key_field_query> AS Key,
  *  A.default_value AS Default ,
- *  IF( (SELECT count(*)  
- *       FROM db_serial S 
- *	 WHERE S.att_name = A.attr_name AND 
- *	       S.class_name =  C.class_name ) >= 1 , 
- *     'auto_increment', '' ) AS Extra  
+ *  IF( (SELECT count(*)
+ *       FROM db_serial S
+ *	 WHERE S.att_name = A.attr_name AND
+ *	       S.class_name =  C.class_name ) >= 1 ,
+ *     'auto_increment', '' ) AS Extra
  *  FROM  db_class CC, _db_class  C , _db_domain D ,
- *	  _db_data_type T , _db_attribute A 
- *  LEFT JOIN 
- *     (SELECT AA.attr_name ATTR,  
+ *	  _db_data_type T , _db_attribute A
+ *  LEFT JOIN
+ *     (SELECT AA.attr_name ATTR,
  *	       GROUP_CONCAT( TT.type_name ORDER BY 1 SEPARATOR ',')
- *		    Composed_types 
- *	FROM _db_attribute AA, _db_domain DD , _db_data_type TT  
- *	WHERE AA.class_of.class_name = <tbl_name> AND 
- *	      DD.data_type = TT.type_id AND 
+ *		    Composed_types
+ *	FROM _db_attribute AA, _db_domain DD , _db_data_type TT
+ *	WHERE AA.class_of.class_name = <tbl_name> AND
+ *	      DD.data_type = TT.type_id AND
  *	      DD.object_of IN AA.domains
- *	GROUP BY AA.attr_name) Types_t 
- *  ON Types_t.ATTR = A.attr_name 
- *  WHERE  A.class_of = C  AND  
- *  A.data_type = T.type_id  AND  
- *  D.object_of = A AND 
+ *	GROUP BY AA.attr_name) Types_t
+ *  ON Types_t.ATTR = A.attr_name
+ *  WHERE  A.class_of = C  AND
+ *  A.data_type = T.type_id  AND
+ *  D.object_of = A AND
  *  C.class_name = <tbl_name> AND
  *  C.class_name = CC.class_name
- *  ORDER BY A.attr_type DESC, A.def_order) show_columns 
+ *  ORDER BY A.attr_type DESC, A.def_order) show_columns
  *
  *   return: newly build node (PT_NODE), NULL if construnction fails
  *   parser(in): Parser context
@@ -7554,9 +7554,9 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
   sub_query->info.query.q.select.list =
     parser_append_node (sel_item, sub_query->info.query.q.select.list);
 
-  /* create  
-   * IF (is_nullable = 1 OR 
-   *      (SELECT 1 FROM <table_name> WHERE false)=-1,'YES','NO') AS Null 
+  /* create
+   * IF (is_nullable = 1 OR
+   *      (SELECT 1 FROM <table_name> WHERE false)=-1,'YES','NO') AS Null
    */
   {
     PT_NODE *cond1 = NULL;
@@ -7611,7 +7611,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
   from_item = pt_add_table_name_to_from_list (parser, sub_query,
 					      "_db_data_type", "T",
 					      DB_AUTH_SELECT);
-  /* _db_attribute MUST be added last before types subsquery in order 
+  /* _db_attribute MUST be added last before types subsquery in order
    * to corrrectly resolve the JOIN condition */
   from_item = pt_add_table_name_to_from_list (parser, sub_query,
 					      "_db_attribute", "A",
@@ -7693,7 +7693,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
       parser_append_node (where_item1, sub_query->info.query.q.select.where);
   }
 
-  /* ORDER BY A.attr_type DESC, A.def_order  (type of attribute, 
+  /* ORDER BY A.attr_type DESC, A.def_order  (type of attribute,
    * order defined in table) */
   {
     PT_NODE *order_by_item = NULL;
@@ -7711,7 +7711,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
       parser_append_node (order_by_item, sub_query->info.query.order_by);
   }
 
-  /*  --- done with subquery, create primary query -- : 
+  /*  --- done with subquery, create primary query -- :
    * SELECT * from ( SELECT .... ) show_columns;  */
   node =
     pt_make_outer_select_for_show_stmt (parser, sub_query, "show_columns");
@@ -7766,11 +7766,11 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser,
  *
  *  Note : The first column in query (name of view = QS.class_of.class_name)
  *	   is wrapped with IF, in order to accomodate a dummy query, which has
- *	   the role to trigger the apropiate error if the view doesn't exist 
+ *	   the role to trigger the apropiate error if the view doesn't exist
  *	   or the user doesn't have the privilege to SELECT it; the condition
- *	   in IF expression (QS.class_of.class_name = '') is supposed to 
+ *	   in IF expression (QS.class_of.class_name = '') is supposed to
  *	   always evaluate to false (class name cannot be empty), in order for
- *	   the query to always print what it is supposed to (view name); 
+ *	   the query to always print what it is supposed to (view name);
  *	   second purpose of the condition is to avoid optimisation (otherwise
  *	   the IF will evalute to <QS.class_of.class_name>)
  *
@@ -7796,7 +7796,7 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser,
 
   /* ------ SELECT list    ------- */
   {
-    /* View name : IF( QS.class_of.class_name = '',  
+    /* View name : IF( QS.class_of.class_name = '',
      *                 (SELECT COUNT(*) FROM <view_name> LIMIT 1),
      *                  QS.class_of.class_name  )
      *             AS View
@@ -7844,12 +7844,102 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser,
   return node;
 }
 
+PT_NODE *
+pt_make_query_show_exec_stats (PARSER_CONTEXT * parser)
+{
+  PT_NODE **node = NULL;
+  const char *query =
+    "(SELECT 'data_page_fetches' as [variable] , exec_stats('Num_data_page_fetches') as [value])"
+    "UNION ALL (SELECT 'data_page_dirties' as [variable] , exec_stats('Num_data_page_dirties') as [value])"
+    "UNION ALL (SELECT 'data_page_ioreads' as [variable] , exec_stats('Num_data_page_ioreads') as [value])"
+    "UNION ALL (SELECT 'data_page_iowrites' as [variable] , exec_stats('Num_data_page_iowrites') as [value]);";
+
+  node = parser_parse_string (parser, query);
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  parser->dont_collect_exec_stats = true;
+
+  return node[0];
+}
+
+PT_NODE *
+pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
+{
+  PT_NODE **node = NULL;
+  const char *query =
+    "(SELECT 'file_creates' as [variable] , exec_stats('Num_file_creates') as [value])"
+    "UNION ALL (SELECT 'file_removes' as [variable] , exec_stats('Num_file_removes') as [value])"
+    "UNION ALL (SELECT 'file_ioreads' as [variable] , exec_stats('Num_file_ioreads') as [value])"
+    "UNION ALL (SELECT 'file_iowrites' as [variable] , exec_stats('Num_file_iowrites') as [value])"
+    "UNION ALL (SELECT 'file_iosynches' as [variable] , exec_stats('Num_file_iosynches') as [value])"
+    "UNION ALL (SELECT 'data_page_fetches' as [variable] , exec_stats('Num_data_page_fetches') as [value])"
+    "UNION ALL (SELECT 'data_page_dirties' as [variable] , exec_stats('Num_data_page_dirties') as [value])"
+    "UNION ALL (SELECT 'data_page_ioreads' as [variable] , exec_stats('Num_data_page_ioreads') as [value])"
+    "UNION ALL (SELECT 'data_page_iowrites' as [variable] , exec_stats('Num_data_page_iowrites') as [value])"
+    "UNION ALL (SELECT 'data_page_victims' as [variable] , exec_stats('Num_data_page_victims') as [value])"
+    "UNION ALL (SELECT 'data_page_iowrites_for_replacement' as [variable] , exec_stats('Num_data_page_iowrites_for_replacement') as [value])"
+    "UNION ALL (SELECT 'log_page_ioreads' as [variable] , exec_stats('Num_log_page_ioreads') as [value])"
+    "UNION ALL (SELECT 'log_page_iowrites' as [variable] , exec_stats('Num_log_page_iowrites') as [value])"
+    "UNION ALL (SELECT 'log_append_records' as [variable] , exec_stats('Num_log_append_records') as [value])"
+    "UNION ALL (SELECT 'log_checkpoints' as [variable] , exec_stats('Num_log_checkpoints') as [value])"
+    "UNION ALL (SELECT 'log_wals' as [variable] , exec_stats('Num_log_wals') as [value])"
+    "UNION ALL (SELECT 'page_locks_acquired' as [variable] , exec_stats('Num_page_locks_acquired') as [value])"
+    "UNION ALL (SELECT 'object_locks_acquired' as [variable] , exec_stats('Num_object_locks_acquired') as [value])"
+    "UNION ALL (SELECT 'page_locks_converted' as [variable] , exec_stats('Num_page_locks_converted') as [value])"
+    "UNION ALL (SELECT 'object_locks_converted' as [variable] , exec_stats('Num_object_locks_converted') as [value])"
+    "UNION ALL (SELECT 'page_locks_re-requested' as [variable] , exec_stats('Num_page_locks_re-requested') as [value])"
+    "UNION ALL (SELECT 'object_locks_re-requested' as [variable] , exec_stats('Num_object_locks_re-requested') as [value])"
+    "UNION ALL (SELECT 'page_locks_waits' as [variable] , exec_stats('Num_page_locks_waits') as [value])"
+    "UNION ALL (SELECT 'object_locks_waits' as [variable] , exec_stats('Num_object_locks_waits') as [value])"
+    "UNION ALL (SELECT 'tran_commits' as [variable] , exec_stats('Num_tran_commits') as [value])"
+    "UNION ALL (SELECT 'tran_rollbacks' as [variable] , exec_stats('Num_tran_rollbacks') as [value])"
+    "UNION ALL (SELECT 'tran_savepoints' as [variable] , exec_stats('Num_tran_savepoints') as [value])"
+    "UNION ALL (SELECT 'tran_start_topops' as [variable] , exec_stats('Num_tran_start_topops') as [value])"
+    "UNION ALL (SELECT 'tran_end_topops' as [variable] , exec_stats('Num_tran_end_topops') as [value])"
+    "UNION ALL (SELECT 'tran_interrupts' as [variable] , exec_stats('Num_tran_interrupts') as [value])"
+    "UNION ALL (SELECT 'btree_inserts' as [variable] , exec_stats('Num_btree_inserts') as [value])"
+    "UNION ALL (SELECT 'btree_deletes' as [variable] , exec_stats('Num_btree_deletes') as [value])"
+    "UNION ALL (SELECT 'btree_updates' as [variable] , exec_stats('Num_btree_updates') as [value])"
+    "UNION ALL (SELECT 'btree_covered' as [variable] , exec_stats('Num_btree_covered') as [value])"
+    "UNION ALL (SELECT 'btree_noncovered' as [variable] , exec_stats('Num_btree_noncovered') as [value])"
+    "UNION ALL (SELECT 'btree_resumes' as [variable] , exec_stats('Num_btree_resumes') as [value])"
+    "UNION ALL (SELECT 'query_selects' as [variable] , exec_stats('Num_query_selects') as [value])"
+    "UNION ALL (SELECT 'query_inserts' as [variable] , exec_stats('Num_query_inserts') as [value])"
+    "UNION ALL (SELECT 'query_deletes' as [variable] , exec_stats('Num_query_deletes') as [value])"
+    "UNION ALL (SELECT 'query_updates' as [variable] , exec_stats('Num_query_updates') as [value])"
+    "UNION ALL (SELECT 'query_sscans' as [variable] , exec_stats('Num_query_sscans') as [value])"
+    "UNION ALL (SELECT 'query_iscans' as [variable] , exec_stats('Num_query_iscans') as [value])"
+    "UNION ALL (SELECT 'query_lscans' as [variable] , exec_stats('Num_query_lscans') as [value])"
+    "UNION ALL (SELECT 'query_setscans' as [variable] , exec_stats('Num_query_setscans') as [value])"
+    "UNION ALL (SELECT 'query_methscans' as [variable] , exec_stats('Num_query_methscans') as [value])"
+    "UNION ALL (SELECT 'query_nljoins' as [variable] , exec_stats('Num_query_nljoins') as [value])"
+    "UNION ALL (SELECT 'query_mjoins' as [variable] , exec_stats('Num_query_mjoins') as [value])"
+    "UNION ALL (SELECT 'query_objfetches' as [variable] , exec_stats('Num_query_objfetches') as [value])"
+    "UNION ALL (SELECT 'network_requests' as [variable] , exec_stats('Num_network_requests') as [value])"
+    "UNION ALL (SELECT 'adaptive_flush_pages' as [variable] , exec_stats('Num_adaptive_flush_pages') as [value])"
+    "UNION ALL (SELECT 'adaptive_flush_log_pages' as [variable] , exec_stats('Num_adaptive_flush_log_pages') as [value])"
+    "UNION ALL (SELECT 'adaptive_flush_max_pages' as [variable] , exec_stats('Num_adaptive_flush_max_pages') as [value]);";
+
+  node = parser_parse_string (parser, query);
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  parser->dont_collect_exec_stats = true;
+
+  return node[0];
+}
+
 /*
- * pt_make_query_user_groups() - builds the query to return the SET of DB 
+ * pt_make_query_user_groups() - builds the query to return the SET of DB
  *				 groups to which a DB user belongs to.
  *
- *    SELECT SUM(SET{t.g.name}) 
- *    FROM db_user U, TABLE(groups) AS t(g) 
+ *    SELECT SUM(SET{t.g.name})
+ *    FROM db_user U, TABLE(groups) AS t(g)
  *    WHERE U.name=<user_name>
  *
  *
@@ -7954,7 +8044,7 @@ pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name)
 }
 
 /*
- * pt_make_query_show_grants_curr_usr() - builds the query used for 
+ * pt_make_query_show_grants_curr_usr() - builds the query used for
  *					  SHOW GRANTS for current user
  *
  *   return: newly build node (PT_NODE), NULL if construnction fails
@@ -7989,15 +8079,15 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
  *	 	    IF (AU.is_grantable=1,
  *	 	       ' WITH GRANT OPTION',
  *	 	       '')
- *		 ) AS GRANTS 
- *   FROM db_class C, _db_auth AU 
+ *		 ) AS GRANTS
+ *   FROM db_class C, _db_auth AU
  *   WHERE AU.class_of.class_name = C.class_name AND
  *	    C.is_system_class='NO' AND
  *	    ( AU.grantee.name=<user_name> OR
- *	      SET{ AU.grantee.name} SUBSETEQ ( 
- *		       SELECT SUM(SET{t.g.name}) 
- *		       FROM db_user U, TABLE(groups) AS t(g) 
- *		       WHERE U.name=<user_name>) 
+ *	      SET{ AU.grantee.name} SUBSETEQ (
+ *		       SELECT SUM(SET{t.g.name})
+ *		       FROM db_user U, TABLE(groups) AS t(g)
+ *		       WHERE U.name=<user_name>)
  *	     )
  *   GROUP BY AU.grantee, AU.class_of, AU.is_grantable
  *   ORDER BY 1;
@@ -8007,7 +8097,7 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
  *	   privileges for the user but also for all groups to which the user
  *	   belongs to : these privileges are shown in separate lines. Multiple
  *	   privileges for the same table are displayed on the same line,
- *	   except when 'WITH GRANT OPTION' is present, case when these 
+ *	   except when 'WITH GRANT OPTION' is present, case when these
  *	   privileges are displayed on another line.
  *
  *   return: newly build node (PT_NODE), NULL if construnction fails
@@ -8029,7 +8119,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser,
   assert (original_user_name != NULL);
   assert (strlen (original_user_name) < SM_MAX_IDENTIFIER_LENGTH);
 
-  /* conversion to uppercase can cause <original_user_name> to double size, if 
+  /* conversion to uppercase can cause <original_user_name> to double size, if
    * internationalization is used : size <user_name> accordingly */
   toupper_string (original_user_name, user_name);
 
@@ -8050,7 +8140,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser,
    *                IF (AU.is_grantable=1,
    *                   ' WITH GRANT OPTION',
    *                   '')
-   *             ) AS GRANTS 
+   *             ) AS GRANTS
    */
   {
     PT_NODE *concat_arg_list = NULL;
@@ -8145,7 +8235,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser,
    * WHERE AU.class_of.class_name = C.class_name AND
    *    C.is_system_class='NO' AND
    *    ( AU.grantee.name=<user_name> OR
-   *      SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> ) 
+   *      SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> )
    *           )
    */
   {
@@ -8288,7 +8378,7 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser,
 }
 
 /*
- * pt_make_query_show_index() - builds the query used for 
+ * pt_make_query_show_index() - builds the query used for
  *				SHOW INDEX IN <table>
  *
  *   return: newly built node (PT_NODE), NULL if construnction fails
@@ -8303,10 +8393,10 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser,
  *	     (IK.key_order + 1) AS Seq_in_index,
  *	     IK.key_attr_name AS Column_name,
  *	     IF (IK.asc_desc = 1, 'D', 'A') AS Collation,
- *	     INDEX_CARDINALITY (I.class_of.class_name, 
+ *	     INDEX_CARDINALITY (I.class_of.class_name,
  *				  I.index_name,
  *				  IK.key_order) AS Cardinality,
- *	     IF (IK.key_prefix_length > -1 OR 
+ *	     IF (IK.key_prefix_length > -1 OR
  *		      ((SELECT COUNT(*) FROM <table_name> LIMIT 1) = -1),
  *		 IK.key_prefix_length,
  *		 NULL ) AS Sub_part,
@@ -8385,7 +8475,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   pt_add_name_col_to_sel_list (parser, sub_query, "IK.key_attr_name",
 			       "Column_name");
 
-  /* IF (IK.asc_desc = 1, 'D', 'A') AS Collation 
+  /* IF (IK.asc_desc = 1, 'D', 'A') AS Collation
    * A = ASC ; D = DESC*/
   {
     PT_NODE *cond = NULL;
@@ -8405,7 +8495,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
       parser_append_node (if_node, sub_query->info.query.q.select.list);
   }
 
-  /* Cardinality : a function (PT_EXPR) to get the 
+  /* Cardinality : a function (PT_EXPR) to get the
    * cardinality of the index :
    * INDEX_CARDINALITY(I.class_of.class_name, I.index_name, IK.key_order)*/
   {
@@ -8423,10 +8513,10 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
       parser_append_node (card_expr, sub_query->info.query.q.select.list);
   }
 
-  /* IF ( (IK.key_prefix_length > -1) OR 
+  /* IF ( (IK.key_prefix_length > -1) OR
    *        ((SELECT COUNT(*) FROM <table_name> LIMIT 1) = -1),
    *       IK.key_prefix_length,
-   *       NULL) AS Sub_part 
+   *       NULL) AS Sub_part
    *
    * The dummy query is included to force an error when the SHOW INDEX table
    * argument doesn't exist. The condition (query result = -1) is always false,
@@ -8551,7 +8641,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
       parser_append_node (where_item1, sub_query->info.query.q.select.where);
   }
 
-  /*  --- done with subquery, create primary query -- : 
+  /*  --- done with subquery, create primary query -- :
    * SELECT * from ( SELECT .... ) show_index;  */
   node = pt_make_outer_select_for_show_stmt (parser, sub_query, "show_index");
   if (node == NULL)

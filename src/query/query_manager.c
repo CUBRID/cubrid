@@ -1632,6 +1632,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
   THREAD_ENTRY *current_thread_p;
 #endif
   XASL_CACHE_CLONE *cache_clone_p;
+  bool saved_is_stats_on;
 
   error_flag = false;
   cached_result = false;
@@ -1650,6 +1651,12 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
   current_thread_p = NULL;
 #endif
 
+  saved_is_stats_on = mnt_server_is_stats_on (thread_p);
+  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
+    {
+      xmnt_server_stop_stats (thread_p);
+    }
+
   /* Check the existance of the given XASL. If someone marked it
      to be deleted, then remove it if possible. */
   cache_clone_p = NULL;		/* mark as pop */
@@ -1659,6 +1666,11 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 							   &cache_clone_p);
   if (xasl_cache_entry_p == NULL)
     {
+      if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
+	{
+	  xmnt_server_start_stats (thread_p, false);
+	}
+
       /* It doesn't be there or was marked to be deleted. */
       er_log_debug (ARG_FILE_LINE,
 		    "xqm_query_execute: xs_check_xasl_cache_ent_by_xasl failed"
@@ -1849,7 +1861,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
       else if (qmgr_has_unresolved_types (query_p->xasl))
 	{
 	  /* if this query has unresolved types and we want to delay sending
-	   * the results to the client until those types have been resolved 
+	   * the results to the client until those types have been resolved
 	   */
 	  is_sync_query = true;
 	  *flag_p &= ~ASYNC_EXEC;
@@ -2129,6 +2141,11 @@ end:
       *query_id_p = 0;
     }
 
+  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
+    {
+      xmnt_server_start_stats (thread_p, false);
+    }
+
   return list_id_p;
 }
 
@@ -2160,6 +2177,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
   QFILE_LIST_ID *list_id_p;
   int tran_index;
   QMGR_TRAN_ENTRY *tran_entry_p;
+  bool saved_is_stats_on;
 
   list_id_p = NULL;
   query_p = NULL;
@@ -2172,6 +2190,12 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
   tran_entry_p->trans_stat = QMGR_TRAN_RUNNING;
   qmgr_unlock_mutex (&tran_entry_p->lock);
 #endif
+
+  saved_is_stats_on = mnt_server_is_stats_on (thread_p);
+  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
+    {
+      xmnt_server_stop_stats (thread_p);
+    }
 
   query_p = qmgr_allocate_query_entry (thread_p);
   if (query_p == NULL)
@@ -2325,6 +2349,11 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
 #endif
     }
 
+  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
+    {
+      xmnt_server_start_stats (thread_p, false);
+    }
+
   return list_id_p;
 
 error:
@@ -2351,6 +2380,11 @@ async_error:
   if (list_id_p)
     {
       free_and_init (list_id_p);
+    }
+
+  if (DO_NOT_COLLECT_EXEC_STATS (*flag_p) && saved_is_stats_on == true)
+    {
+      xmnt_server_start_stats (thread_p, false);
     }
 
   return NULL;

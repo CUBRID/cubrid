@@ -130,6 +130,7 @@ static FUNCTION_MAP functions[] = {
   {"degrees", PT_DEGREES},
   {"drand", PT_DRAND},
   {"drandom", PT_DRANDOM},
+  {"exec_stats", PT_EXEC_STATS},
   {"exp", PT_EXP},
   {"field", PT_FIELD},
   {"floor", PT_FLOOR},
@@ -5254,6 +5255,24 @@ show_stmt
 
 			$$ = node;
 		DBG_PRINT}}
+	| SHOW EXEC STATISTICS ALL
+		{{
+			PT_NODE *node = NULL;
+			
+			node = pt_make_query_show_exec_stats_all (this_parser);
+
+			$$ = node;
+
+		DBG_PRINT}}						
+	| SHOW EXEC STATISTICS
+		{{
+			PT_NODE *node = NULL;
+			
+			node = pt_make_query_show_exec_stats (this_parser);
+
+			$$ = node;
+
+		DBG_PRINT}}						
 	;
 
 opt_full
@@ -18102,6 +18121,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_TIMETOSEC:
     case PT_SECTOTIME:
     case PT_QUARTERF:
+    case PT_EXEC_STATS:
       if (c != 1)
         {
 	  return NULL;

@@ -636,6 +636,7 @@ static FUNCTION_MAP functions[] = {
   {"degrees", PT_DEGREES},
   {"drand", PT_DRAND},
   {"drandom", PT_DRANDOM},
+  {"exec_stats", PT_EXEC_STATS},
   {"exp", PT_EXP},
   {"field", PT_FIELD},
   {"floor", PT_FLOOR},
@@ -947,7 +948,7 @@ void pop_msg (void);
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 448 "../../src/parser/csql_grammar.y"
+#line 449 "../../src/parser/csql_grammar.y"
 {
   int number;
   bool boolean;
@@ -958,8 +959,8 @@ typedef union YYSTYPE
   container_4 c4;
   container_10 c10;
 }
-/* Line 2604 of glr.c.  */
-#line 963 "../../src/parser/csql_grammar.h"
+/* Line 2616 of glr.c.  */
+#line 964 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

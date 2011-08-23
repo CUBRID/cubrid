@@ -1905,6 +1905,11 @@ xmnt_server_start_stats (THREAD_ENTRY * thread_p, bool for_all_trans)
       return ER_FAILED;
     }
 
+  if (mnt_Server_table.stats[tran_index].enable_local_stat == true)
+    {
+      return NO_ERROR;
+    }
+
   memset (&mnt_Server_table.stats[tran_index], '\0',
 	  sizeof (MNT_SERVER_EXEC_STATS));
   mnt_Server_table.stats[tran_index].enable_local_stat = true;
@@ -1938,6 +1943,11 @@ xmnt_server_stop_stats (THREAD_ENTRY * thread_p)
       return;
     }
 
+  if (mnt_Server_table.stats[tran_index].enable_local_stat == false)
+    {
+      return;
+    }
+
   mnt_Server_table.stats[tran_index].enable_local_stat = false;
 
 #if defined (HAVE_ATOMIC_BUILTINS)
@@ -1947,6 +1957,27 @@ xmnt_server_stop_stats (THREAD_ENTRY * thread_p)
   mnt_Num_tran_exec_stats--;
   pthread_mutex_unlock (&mnt_Num_tran_stats_lock);
 #endif
+}
+
+/*
+ * xmnt_server_is_stats_on - Is collecting server execution statistics
+ *                           for the current transaction index
+ *   return: bool
+ */
+bool
+mnt_server_is_stats_on (THREAD_ENTRY * thread_p)
+{
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0);
+
+  if (tran_index >= mnt_Server_table.num_tran_indices)
+    {
+      return false;
+    }
+
+  return mnt_Server_table.stats[tran_index].enable_local_stat;
 }
 
 /*
@@ -2980,6 +3011,32 @@ mnt_x_net_requests (THREAD_ENTRY * thread_p)
     {
       ADD_STATS (stats, net_num_requests, 1);
     }
+}
+
+UINT64
+mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+  unsigned int i;
+  UINT64 *stats_ptr;
+  UINT64 copied;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      stats_ptr = (UINT64 *) stats;
+      for (i = 0; i < MNT_SIZE_OF_SERVER_EXEC_STATS - 1; i++)
+	{
+	  if (strcmp (mnt_Stats_name[i], stat_name) == 0)
+	    {
+	      copied = stats_ptr[i];
+	      stats_ptr[i] = 0;
+	      return copied;
+	    }
+	}
+    }
+
+  return 0;
 }
 #endif /* SERVER_MODE || SA_MODE */
 

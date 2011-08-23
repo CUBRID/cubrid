@@ -2834,7 +2834,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
     case PT_LT_INF:
     case PT_GT_INF:
       /* these expressions are introduced during query rewriting and
-         are used in the range operator. we should set the return type 
+         are used in the range operator. we should set the return type
          to the type of the argument */
 
       num = 0;
@@ -3086,6 +3086,20 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads_count = num;
       break;
 
+    case PT_EXEC_STATS:
+      num = 0;
+
+      /* one overload */
+
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_BIGINT;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     default:
       return false;
     }
@@ -3094,7 +3108,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 }
 
 /*
- * pt_get_equivalent_type () - get the type to which a node should be 
+ * pt_get_equivalent_type () - get the type to which a node should be
  *			       converted to in order to match an expression
  *			       definition
  *   return	  : the new type
@@ -3113,7 +3127,7 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type,
 
   if (!def_type.is_generic)
     {
-      /* if the definition does not have a generic type, 
+      /* if the definition does not have a generic type,
          return the definition type
        */
       return def_type.val.type;
@@ -3195,7 +3209,7 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type,
 }
 
 /*
- * pt_coerce_expression_argument () - check if arg has the correct type and 
+ * pt_coerce_expression_argument () - check if arg has the correct type and
  *				      wrap arg with a cast node to def_type
  *				      if needed.
  *   return	  : NO_ERROR on success, ER_FAILED on error
@@ -3387,7 +3401,7 @@ pt_are_unmatchable_types (const PT_ARG_TYPE def_type,
 }
 
 /*
- * pt_are_equivalent_types () - check if a node type is equivalent with a 
+ * pt_are_equivalent_types () - check if a node type is equivalent with a
  *				definition type
  * return	: true if the types are equivalent, false otherwise
  * def_type(in)	: the definition type
@@ -3409,7 +3423,7 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type,
 	  /* return true if both have the same type */
 	  return true;
 	}
-      /* if def_type is a PT_TYPE_ENUM and the conditions above did not hold 
+      /* if def_type is a PT_TYPE_ENUM and the conditions above did not hold
          then the two types are not equivalent. */
       return false;
     }
@@ -3429,7 +3443,7 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type,
     case PT_GENERIC_TYPE_DISCRETE_NUMBER:
       if (PT_IS_DISCRETE_NUMBER_TYPE (op_type))
 	{
-	  /* PT_GENERIC_TYPE_DISCRETE_NUMBER is equivalent with 
+	  /* PT_GENERIC_TYPE_DISCRETE_NUMBER is equivalent with
 	     SHORT, INTEGER and BIGINT */
 	  return true;
 	}
@@ -3527,7 +3541,7 @@ pt_evaluate_new_data_type (const PT_TYPE_ENUM old_type,
 
 /*
  * pt_infer_common_type - get the common type of the three arguments
- *		
+ *
  *  return	  : the common type
  *  op(in)	  : expression identifier
  *  arg1(in/out)  : type of the first argument
@@ -3536,13 +3550,13 @@ pt_evaluate_new_data_type (const PT_TYPE_ENUM old_type,
  *
  * Notes: Unlike pt_common_type_op, this function infers a type for host
  *	  variables also. We can do this here because this function is called
- *	  after the expression signature has been applied. This means that 
+ *	  after the expression signature has been applied. This means that
  *	  a type is left as PT_TYPE_MAYBE because the expression is symmetric
  *	  and the signature defines PT_GENERIC_TYPE_ANY or
  *	  PT_GENERIC_TYPE_PRIMITIVE for this argument.
  *	  There are some issues with collection types that this function does
- *	  not address. Collections are composed types so it's not enough to 
- *	  decide that the common type is a collection type. We should also 
+ *	  not address. Collections are composed types so it's not enough to
+ *	  decide that the common type is a collection type. We should also
  *	  infer the common type of the collection elements. This should be
  *	  done in the calling function because we have access to the actual
  *	  arguments there.
@@ -3561,7 +3575,7 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1,
 
   /* We ignore PT_TYPE_NONE arguments because, in the context of this
      function, if an argument is of type PT_TYPE_NONE then it is not defined
-     in the signature that we have decided to use. 
+     in the signature that we have decided to use.
    */
 
   if (expected_domain != NULL)
@@ -3579,7 +3593,7 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1,
 	  common_type = pt_common_type_op (arg1_eq_type, op, arg2_eq_type);
 	  if (common_type == PT_TYPE_MAYBE && op != PT_COALESCE)
 	    {
-	      /* "mirror" the known argument type to the other argument if 
+	      /* "mirror" the known argument type to the other argument if
 	       * the later is PT_TYPE_MAYBE*/
 	      if (!pt_is_op_hv_late_bind (op))
 		{
@@ -3605,7 +3619,7 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1,
       common_type = pt_common_type_op (common_type, op, arg3_eq_type);
       if (common_type == PT_TYPE_MAYBE)
 	{
-	  /* either arg3_eq_type is PT_TYPE_MABYE or arg1, arg2 and 
+	  /* either arg3_eq_type is PT_TYPE_MABYE or arg1, arg2 and
 	     common_type were PT_TYPE_MABYE */
 	  if (arg3_eq_type == PT_TYPE_MAYBE)
 	    {
@@ -3636,7 +3650,7 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1,
     {
       common_type = PT_TYPE_DOUBLE;
     }
-  /* final check : 
+  /* final check :
    * common_type should be PT_TYPE_MAYBE at this stage only for a small number
    * of operators (PLUS, MINUS,..) and only when at least one of the arguments
    * is PT_TYPE_MAYBE;
@@ -3655,13 +3669,13 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1,
 }
 
 /*
- * pt_get_common_collection_type - get the common type of the elements in a 
+ * pt_get_common_collection_type - get the common type of the elements in a
  *				   collection
  *  return	: the common type
  *  set(in)	: the collection
- *  is_multitype : specifies that there are at least two different types in 
+ *  is_multitype : specifies that there are at least two different types in
  *  collection's elements.
- *  
+ *
  *  Note: The PT_TYPE_MAYBE is ignored and all numeric types
  *  are counted as one.
  */
@@ -3710,8 +3724,8 @@ pt_get_common_collection_type (const PT_NODE * set, bool * is_multitype)
 }
 
 /*
- * pt_is_collection_of_type - check if a node is of type 
- *			      collection_type of element_type 
+ * pt_is_collection_of_type - check if a node is of type
+ *			      collection_type of element_type
  *  return	: true if the node is of type collection of element_type
  *  node(in)		: the node to be checked
  *  collection_type(in)	: the type of the collection (SET, MULTISET, etc)
@@ -3751,7 +3765,7 @@ pt_is_collection_of_type (const PT_NODE * node,
 }
 
 /*
- * pt_coerce_range_expr_arguments - apply signature sig to the arguments of the 
+ * pt_coerce_range_expr_arguments - apply signature sig to the arguments of the
  *				 logical expression expr
  *  return	: the (possibly modified) expr or NULL on error
  *  parser(in)	: the parser context
@@ -3760,7 +3774,7 @@ pt_is_collection_of_type (const PT_NODE * node,
  *  arg2(in)	: second argument of the expression
  *  arg3(in)	: third argument of the expression
  *  sig(in)	: the expression signature
- *  
+ *
  */
 static PT_NODE *
 pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
@@ -3803,11 +3817,11 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
   arg2_eq_type = pt_get_equivalent_type (sig.arg2_type, arg2_type);
   arg3_eq_type = pt_get_equivalent_type (sig.arg3_type, arg3_type);
 
-  /* for range expressions the second argument may be a collection or a 
+  /* for range expressions the second argument may be a collection or a
      query. */
   if (PT_IS_QUERY_NODE_TYPE (arg2->node_type))
     {
-      /* the select list must have only one element and the first argument 
+      /* the select list must have only one element and the first argument
          has to be of the same type as the argument from the select list */
       PT_NODE *arg2_list = NULL;
 
@@ -3876,13 +3890,13 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
        * 1. SELECT * FROM tbl WHERE int_col in {integer, set, object, date}
        * 2. SELECT * FROM tbl WHERE int_col in {str, str, str}
        * 3. SELECT * FROM tbl WHERE int_col in {integer, integer, integer}
-       * We will only coerce arg2 if there is a common type between arg1 
+       * We will only coerce arg2 if there is a common type between arg1
        * and all elements from the collection arg2.
        * We do not consider the case in which we cannot discern a common type
        * to be a semantic error and we rely on the functionality of the
        * comparison operators to be applied correctly on the expression during
        * expression evaluation. This means that we consider that the user knew
-       * what he was doing in the first case but wanted to write something 
+       * what he was doing in the first case but wanted to write something
        * else in the second case.
        */
       PT_TYPE_ENUM collection_type = PT_TYPE_NONE;
@@ -3963,7 +3977,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
       /* verify if we should cast arg2 to appropriate type */
       if (common_type == PT_TYPE_NONE	/* check if there is a valid common type
 					   between members of arg2 and arg1. */
-	  || (!should_cast	/* check if there are at least two different 
+	  || (!should_cast	/* check if there are at least two different
 				   types in arg2 */
 	      && (collection_type == common_type
 		  || (PT_IS_NUMERIC_TYPE (collection_type)
@@ -4053,7 +4067,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 		  }
 		case PT_TYPE_NUMERIC:
 		  {
-		    /* either all elements are numeric or all are 
+		    /* either all elements are numeric or all are
 		       discrete numbers */
 		    if (temp->type_enum == PT_TYPE_NUMERIC)
 		      {
@@ -4124,7 +4138,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 }
 
 /*
- * pt_coerce_expr_arguments - apply signature sig to the arguments of the 
+ * pt_coerce_expr_arguments - apply signature sig to the arguments of the
  *			      expression expr
  *  return	: the (possibly modified) expr or NULL on error
  *  parser(in)	: the parser context
@@ -4263,7 +4277,7 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 
       if (PT_IS_COLLECTION_TYPE (common_type))
 	{
-	  /* We do not perform implicit casts on collection types. The 
+	  /* We do not perform implicit casts on collection types. The
 	     following code will only handle constant arguments.
 	   */
 	  if ((arg1_eq_type != PT_TYPE_NONE
@@ -4437,7 +4451,7 @@ pt_is_range_or_comp (PT_OP_TYPE op)
 /*
  *  pt_apply_expressions_definition () - evaluate which expression signature
  *					 best matches the received arguments
- *					 and cast arguments to the types 
+ *					 and cast arguments to the types
  *					 described in the signature
  *  return	: NO_ERROR or error code
  *  parser(in)	: the parser context
@@ -4544,7 +4558,7 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
   sig = def.overloads[best_match];
   if (pt_is_range_expression (op))
     {
-      /* Range expressions are expressions that compare an argument with 
+      /* Range expressions are expressions that compare an argument with
          a subquery or a collection. We handle these expressions separately */
       expr =
 	pt_coerce_range_expr_arguments (parser, expr, arg1, arg2, arg3, sig);
@@ -4595,7 +4609,7 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
  *  Remarks: This function is called after the expression signature has been
  *	     decided and the expression arguments have been wrapped with CASTs
  *	     to the type described in the signature. At this point we can
- *	     decide the return type based on the argument types which are 
+ *	     decide the return type based on the argument types which are
  *	     proper CUBRID types (i.e.: not generic types)
  */
 static PT_TYPE_ENUM
@@ -4777,7 +4791,7 @@ pt_expr_get_return_type (PT_NODE * expr, const EXPRESSION_SIGNATURE sig)
       break;
     }
 
-  /* we might reach this point on expressions with a single argument 
+  /* we might reach this point on expressions with a single argument
      of value null */
   if (arg1_type == PT_TYPE_NULL)
     {
@@ -4983,6 +4997,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_LIKE_ESCAPE:
     case PT_EVALUATE_VARIABLE:
     case PT_DEFINE_VARIABLE:
+    case PT_EXEC_STATS:
       return false;
 
     default:
@@ -6059,7 +6074,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node,
  *
  *   parser(in)	: the parser context
  *   node(in)	: the node to be folded
- *   arg(in)	: 
+ *   arg(in)	:
  *   continue_walk(in):
  */
 static PT_NODE *
@@ -6445,7 +6460,7 @@ pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_wrap_select_list_with_cast_op () - cast the nodes of a select list to 
+ * pt_wrap_select_list_with_cast_op () - cast the nodes of a select list to
  *					 the type new_type
  *   return	  : NO_ERROR on success, error code on failure
  *   parser(in)	  : parser context
@@ -6530,7 +6545,7 @@ pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query,
 }
 
 /*
- * pt_wrap_collection_with_cast_op  () - wrap a node with a cast to a 
+ * pt_wrap_collection_with_cast_op  () - wrap a node with a cast to a
  *					 collection type
  *
  *   return: the wrapped node or null on error
@@ -7117,7 +7132,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
 	/* PT_PLUS has four overloads for which we cannot apply symmetric rule
 	   1. DATE/TIME type + NUMBER
-	   2. NUMBER + DATE/TIME type 
+	   2. NUMBER + DATE/TIME type
 	   3. DATE/TIME type + STRING
 	   4. STRING + DATE/TIME type
 	   STRING/NUMBER operand involved is coerced to BIGINT.
@@ -7224,7 +7239,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	/* between and rage operators are written like:
 	   PT_BETWEEN(arg1, PT_BETWEEN_AND(arg2,arg3))
 	   We convert it to PT_BETWEEN(arg1, arg2, arg2) to be able to
-	   decide the correct common type of all arguments and we will 
+	   decide the correct common type of all arguments and we will
 	   convert it back once we apply the correct casts */
 	if (pt_is_between_range_op (arg2->info.expr.op))
 	  {
@@ -7366,7 +7381,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    /* between and rage operators are written like:
 	       PT_BETWEEN(arg1, PT_BETWEEN_AND(arg2,arg3))
 	       We convert it to PT_BETWEEN(arg1, arg2, arg2) to be able to
-	       decide the correct common type of all arguments and we will 
+	       decide the correct common type of all arguments and we will
 	       convert it back once we apply the correct casts */
 	    if (pt_is_between_range_op (arg2->info.expr.op))
 	      {
@@ -7978,7 +7993,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
 	else
 	  {
-	    /* We have to decide a common type for arg2 and arg3. 
+	    /* We have to decide a common type for arg2 and arg3.
 	       We cannot use pt_common_type_op because this function is designed
 	       mostly for arithmetic expression. This is why we use the
 	       tp_is_more_general_type here.
@@ -7996,7 +8011,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
 	if (common_type == PT_TYPE_LOGICAL)
 	  {
-	    /* we will end up with logical here if arg3 and arg2 are 
+	    /* we will end up with logical here if arg3 and arg2 are
 	       logical */
 	    common_type = PT_TYPE_INTEGER;
 	  }
@@ -8352,7 +8367,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 
 	  /* TODO : this requires a generic fix: maybe 'arg1_hv' should never be set
-	   * to arg1->info.expr.arg1; 
+	   * to arg1->info.expr.arg1;
 	   * arg1 may not be necessarely a HV node, but arg1_hv may be a direct
 	   * link to argument of arg1 (in case arg1 is an expression with
 	   * unary operator)- see code at beginning of function when arguments
@@ -8454,7 +8469,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 			  goto error;
 			}
 		      nextcase->info.expr.arg1 = arg1;
-		      /* nextcase was already evaluated and may have a 
+		      /* nextcase was already evaluated and may have a
 		         data_type set. We need to replace it with the cast
 		         data_type */
 		      nextcase->type_enum = common_type;
@@ -9784,7 +9799,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
     case PT_VERSION:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
-      /* Set a large enough precision so that CUBRID is able to handle 
+      /* Set a large enough precision so that CUBRID is able to handle
          versions like 'xxx.xxx.xxx.xxxx'. */
       dt->info.data_type.precision = 16;
       break;
@@ -9852,7 +9867,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
       if (PT_IS_HOSTVAR (arg1))
 	{
 	  /* we resolved the node type to a variable char type
-	   * (VARCHAR orVARNCHAR) but we have to set an unknown precision 
+	   * (VARCHAR orVARNCHAR) but we have to set an unknown precision
 	   * here
 	   */
 	  dt = pt_make_prim_data_type (parser, node->type_enum);
@@ -9871,6 +9886,11 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
 	dt = pt_make_prim_data_type_fortonum (parser, prec, scale);
 	break;
       }
+
+    case PT_EXEC_STATS:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_BIGINT);
+      break;
 
     default:
       break;
@@ -10173,7 +10193,7 @@ pt_coerce_3args (PARSER_CONTEXT * parser,
   return result;
 }
 
-/* pt_character_length_for_type() - 
+/* pt_character_length_for_type() -
     return: number of characters that a value of the given type can possibly
 	    occuppy when cast to a CHAR type.
     node(in): node with type whose character length is to be returned.
@@ -10939,7 +10959,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    arg_type = PT_TYPE_NONE;
 
 	    /* validate and/or convert arguments */
-	    /* arg1 should be VAR-str, but compatible with arg4 
+	    /* arg1 should be VAR-str, but compatible with arg4
 	     * (except when arg4 is BIT - no casting to bit on arg1) */
 	    if (!(PT_IS_STRING_TYPE (arg1_type)))
 	      {
@@ -11966,7 +11986,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	case DB_TYPE_VARNCHAR:
 	  domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 	  db_make_null (&tmp_val);
-	  /*force explicit cast ; scenario : 
+	  /*force explicit cast ; scenario :
 	   * INSERT INTO t VALUE(-?) , USING '10', column is INTEGER*/
 	  if (tp_value_cast (arg1, &tmp_val, domain, false) !=
 	      DOMAIN_COMPATIBLE)
@@ -12709,7 +12729,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  if (typ1 != typ)
 	    {
 	      db_make_null (&tmp_val);
-	      /*force explicit cast ; scenario : 
+	      /*force explicit cast ; scenario :
 	       * INSERT INTO t VALUE(''1''+?) , USING 10, column is INTEGER*/
 	      if (tp_value_cast (arg1, &tmp_val, domain, false) !=
 		  DOMAIN_COMPATIBLE)
@@ -12731,7 +12751,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  if (typ2 != typ)
 	    {
 	      db_make_null (&tmp_val);
-	      /* force explicit cast ; scenario: 
+	      /* force explicit cast ; scenario:
 	       * INSERT INTO t VALUE(? + ''1'') , USING 10, column is INTEGER*/
 	      if (tp_value_cast (arg2, &tmp_val, domain, false) !=
 		  DOMAIN_COMPATIBLE)
@@ -13259,6 +13279,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 		  DB_MAKE_MONETARY (result, dtmp);
 		break;
 	      }
+
 
 	    case DB_TYPE_TIME:
 	      {
@@ -15696,7 +15717,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
       break;
 
     case PT_INDEX_CARDINALITY:
-      /* constant folding for this expression is never performed : 
+      /* constant folding for this expression is never performed :
        * is always resolved on server*/
       return 0;
     case PT_LIST_DBS:
@@ -15853,7 +15874,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       || op == PT_BLOB_FROM_FILE || op == PT_BLOB_TO_BIT
       || op == PT_BLOB_LENGTH || op == PT_CHAR_TO_CLOB
       || op == PT_CLOB_FROM_FILE || op == PT_CLOB_TO_CHAR
-      || op == PT_CLOB_LENGTH)
+      || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS)
     {
       goto end;
     }
@@ -16750,9 +16771,9 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
 	}
       else if (result->node_type == PT_VALUE)
 	{
-	  /* temporary set location to a 0 
+	  /* temporary set location to a 0
 	   * the location will be updated after const folding at the upper
-	   * level : the parent node is a PT_EXPR node with a 
+	   * level : the parent node is a PT_EXPR node with a
 	   * PT_FUNCTION_HOLDER operator type */
 	  result->info.value.location = location;
 	  if (result->info.value.text == NULL)
@@ -16824,7 +16845,7 @@ pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func,
     }
 
   /* convert all operands to DB_VALUE arguments */
-  /* for some functions this may not be necessary : 
+  /* for some functions this may not be necessary :
    * you need to break from this loop and solve them at next steps */
   all_args_const = true;
   operand = func->info.function.arg_list;
@@ -17915,9 +17936,9 @@ pt_between_to_comp_op (PT_OP_TYPE between,
 }
 
 /*
- * pt_get_equivalent_type_with_op () - get the type to which a node should be 
+ * pt_get_equivalent_type_with_op () - get the type to which a node should be
  *			       converted to in order to match an expression
- *			       definition; 
+ *			       definition;
  *   return	  : the new type
  *   def_type(in) : the type defined in the expression signature
  *   arg_type(in) : the type of the received expression argument
@@ -17949,7 +17970,7 @@ pt_get_equivalent_type_with_op (const PT_ARG_TYPE def_type,
  *
  *  Note: this functions is used by type inference algorithm to check if an
  *	  expression should leave its HV arguments as TYPE_MAYBE (the default
- *	  type inference behavior would be to match it with a concrete type 
+ *	  type inference behavior would be to match it with a concrete type
  *	  according to one of its signatures). Also, such expression is
  *	  wrapped with cast rather then its result type be forced to an
  *	  "expected domain" dictated by the expression context.

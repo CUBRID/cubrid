@@ -451,6 +451,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_RANDOM:
     case T_DRANDOM:
     case T_TYPEOF:
+    case T_EXEC_STATS:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr,
 			    vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
@@ -2984,6 +2985,16 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_EXEC_STATS:
+      {
+	if (session_get_exec_stats_and_clear (thread_p, peek_right,
+					      arithptr->value) != NO_ERROR)
+	  {
+	    goto error;
+	  }
+      }
+      break;
+
     default:
       break;
     }
@@ -3406,8 +3417,8 @@ fetch_init_val_list (REGU_VARIABLE_LIST regu_list)
 }
 
 /*
- * is_argument_wrapped_with_cast_op () - check if regu_var is a cast 
- *					 expression 
+ * is_argument_wrapped_with_cast_op () - check if regu_var is a cast
+ *					 expression
  *   return: true/false
  *   regu_list(in/out): Regulator Variable list
  *   vd(in): Value Descriptor

@@ -6232,7 +6232,7 @@ update_object_tuple (PARSER_CONTEXT * parser, DB_OBJECT * object,
 	  obt_disable_unique_checking (otemplate);
 	}
 
-      /* If this update came from INSERT ON DUPLICATE KEY UPDATE, 
+      /* If this update came from INSERT ON DUPLICATE KEY UPDATE,
        * flush the object on updating it.
        */
       if (update_type == ON_DUPLICATE_KEY_UPDATE)
@@ -13084,6 +13084,11 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
     }
 
+  if (parser->dont_collect_exec_stats == true)
+    {
+      query_flag |= DONT_COLLECT_EXEC_STATS;
+    }
+
 #if defined(CUBRID_DEBUG)
   PT_NODE_PRINT_TO_ALIAS (parser, statement, PT_CONVERT_RANGE);
 #endif
@@ -13549,23 +13554,28 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       query_flag = SYNC_EXEC | ASYNC_UNEXECUTABLE;
     }
+
   if (statement->do_not_keep == 0)
     {
       query_flag |= KEEP_PLAN_CACHE;
     }
+
   if (statement->si_datetime == 1 || statement->si_tran_id == 1)
     {
       statement->info.query.reexecute = 1;
       statement->info.query.do_not_cache = 1;
     }
+
   if (statement->info.query.reexecute == 1)
     {
       query_flag |= NOT_FROM_RESULT_CACHE;
     }
+
   if (statement->info.query.do_cache == 1)
     {
       query_flag |= RESULT_CACHE_REQUIRED;
     }
+
   if (statement->info.query.do_not_cache == 1)
     {
       query_flag |= RESULT_CACHE_INHIBITED;
@@ -13573,6 +13583,11 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (parser->is_holdable)
     {
       query_flag |= RESULT_HOLDABLE;
+    }
+
+  if (parser->dont_collect_exec_stats == true)
+    {
+      query_flag |= DONT_COLLECT_EXEC_STATS;
     }
 
   /* flush necessary objects before execute */

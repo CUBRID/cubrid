@@ -7364,6 +7364,19 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      goto end_expr_op_switch;
 		    }
 		}
+              else if (node->info.expr.op == PT_EXEC_STATS)
+                {
+                  r1 = NULL;
+                  r2 = pt_to_regu_variable (parser,
+                                            node->info.expr.arg1, unbox);
+                  r3 = NULL;
+
+                  domain = pt_xasl_node_to_domain (parser, node);
+                  if (domain == NULL)
+                    {
+                      goto end_expr_op_switch;
+                    }
+                }
 
 	      switch (node->info.expr.op)
 		{
@@ -8638,6 +8651,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    pt_make_regu_arith (r1, r2, r3, T_INDEX_CARDINALITY,
 					domain);
 		  break;
+
+                case PT_EXEC_STATS:
+                  regu =
+                    pt_make_regu_arith (r1, r2, r3, T_EXEC_STATS, domain);
+                  break;
 
 		default:
 		  break;
@@ -10976,7 +10994,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_,
 	     a = ? AND b RANGE (r1=, r2=, ...) AND c RANGE (r1)
 
 	     but, the following is not permitted.
-	     a = ? AND b RANGE (r1=, r2=, ...) AND c RANGE (r1, r2, ...) 
+	     a = ? AND b RANGE (r1=, r2=, ...) AND c RANGE (r1, r2, ...)
 	   */
 	  op_type = PT_RANGE;
 	}

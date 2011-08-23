@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -332,7 +332,8 @@ typedef enum
   T_INDEX_CARDINALITY,
   T_EVALUATE_VARIABLE,
   T_DEFINE_VARIABLE,
-  T_PREDICATE
+  T_PREDICATE,
+  T_EXEC_STATS
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;
@@ -352,7 +353,7 @@ struct arith_list_node
   PRED_EXPR *pred;		/* predicate expression */
 
   /* NOTE: The following member is only used on server internally. */
-  struct drand48_data *rand_seed;	/* seed to be used to generate 
+  struct drand48_data *rand_seed;	/* seed to be used to generate
 					 * pseudo-random sequence */
 };
 
