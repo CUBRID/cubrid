@@ -1396,6 +1396,11 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   net_arg_get_int (&srv_h_id, argv[0]);
 
   srv_handle = hm_find_srv_handle (srv_h_id);
+  if (srv_handle == NULL)
+    {
+      net_buf_cp_int (net_buf, CAS_ER_ARGS, NULL);
+      return FN_KEEP_CONN;
+    }
 
 #ifndef LIBCAS_FOR_JSP
   if (srv_handle->is_pooled)
