@@ -5397,68 +5397,66 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url,
 T_CCI_DATASOURCE *
 cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
 {
-  char *user, *pass, *url;
-  cci_mutex_t *mutex;
-  cci_cond_t *cond;
-  int pool_size, max_wait;
-  bool using_stmt_pool;
-  T_CCI_DATASOURCE *ds;
-  T_CCI_CONN *con_handles;
+  T_CCI_DATASOURCE *ds = NULL;
   int i;
 
-  user = pass = url = NULL;
-  mutex = NULL;
-  cond = NULL;
-  ds = NULL;
-  con_handles = NULL;
+  ds = MALLOC (sizeof (T_CCI_DATASOURCE));
+  if (ds == NULL)
+    {
+      err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
+      if (err_buf->err_msg)
+	{
+	  snprintf (err_buf->err_msg, 1023, "memory allocation error: %s",
+		    strerror (errno));
+	}
+      return NULL;
+    }
+  memset (ds, 0x0, sizeof (T_CCI_DATASOURCE));
 
-  user = cci_property_get (prop, datasource_key[CCI_DS_KEY_USER]);
-  if (!cci_check_property (&user, err_buf))
+  ds->user = cci_property_get (prop, datasource_key[CCI_DS_KEY_USER]);
+  if (!cci_check_property (&ds->user, err_buf))
     {
       goto create_datasource_error;
     }
 
-  pass = cci_property_get (prop, datasource_key[CCI_DS_KEY_PASSWORD]);
-  if (pass == NULL)
+  ds->pass = cci_property_get (prop, datasource_key[CCI_DS_KEY_PASSWORD]);
+  if (ds->pass == NULL)
     {
       /* a pass may be null */
-      pass = strdup ("");
-      if (pass == NULL)
+      ds->pass = strdup ("");
+      if (ds->pass == NULL)
 	{
 	  goto create_datasource_error;
 	}
     }
 
-  url = cci_property_get (prop, datasource_key[CCI_DS_KEY_URL]);
-  if (!cci_check_property (&url, err_buf))
+  ds->url = cci_property_get (prop, datasource_key[CCI_DS_KEY_URL]);
+  if (!cci_check_property (&ds->url, err_buf))
     {
       goto create_datasource_error;
     }
 
-  if (!cci_property_get_int (prop, CCI_DS_KEY_POOL_SIZE, &pool_size,
+  if (!cci_property_get_int (prop, CCI_DS_KEY_POOL_SIZE, &ds->pool_size,
 			     CCI_DS_DEFAULT_POOL_SIZE, err_buf))
     {
       goto create_datasource_error;
     }
 
-  if (!cci_property_get_int (prop, CCI_DS_KEY_MAX_WAIT, &max_wait,
+  if (!cci_property_get_int (prop, CCI_DS_KEY_MAX_WAIT, &ds->max_wait,
 			     CCI_DS_DEFAULT_MAX_WAIT, err_buf))
     {
       goto create_datasource_error;
     }
 
   if (!cci_property_get_bool (prop, CCI_DS_KEY_USING_STMT_POOL,
-			      &using_stmt_pool,
+			      &ds->using_stmt_pool,
 			      CCI_DS_DEFAULT_USING_STMT_POOL, err_buf))
     {
       goto create_datasource_error;
     }
 
-  ds = MALLOC (sizeof (T_CCI_DATASOURCE));
-  con_handles = CALLOC (pool_size, sizeof (T_CCI_CONN));
-  mutex = MALLOC (sizeof (cci_mutex_t));
-  cond = MALLOC (sizeof (cci_cond_t));
-  if (!ds || !con_handles || !mutex || !cond)
+  ds->con_handles = CALLOC (ds->pool_size, sizeof (T_CCI_CONN));
+  if (ds->con_handles == NULL)
     {
       err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
       if (err_buf->err_msg)
@@ -5469,31 +5467,44 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
       goto create_datasource_error;
     }
 
-  ds->user = user;
-  ds->pass = pass;
-  ds->url = url;
-  ds->pool_size = pool_size;
-  ds->max_wait = max_wait;
-  ds->using_stmt_pool = using_stmt_pool;
-  ds->mutex = mutex;
-  ds->cond = cond;
-  ds->con_handles = con_handles;
-
+  ds->mutex = MALLOC (sizeof (cci_mutex_t));
+  if (ds->mutex == NULL)
+    {
+      err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
+      if (err_buf->err_msg)
+	{
+	  snprintf (err_buf->err_msg, 1023, "memory allocation error: %s",
+		    strerror (errno));
+	}
+      goto create_datasource_error;
+    }
   cci_mutex_init ((cci_mutex_t *) ds->mutex, NULL);
+
+  ds->cond = MALLOC (sizeof (cci_cond_t));
+  if (ds->cond == NULL)
+    {
+      err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
+      if (err_buf->err_msg)
+	{
+	  snprintf (err_buf->err_msg, 1023, "memory allocation error: %s",
+		    strerror (errno));
+	}
+      goto create_datasource_error;
+    }
   cci_cond_init ((cci_cond_t *) ds->cond, NULL);
 
-  ds->num_idle = pool_size;
-  for (i = 0; i < pool_size; i++)
+  ds->num_idle = ds->pool_size;
+  for (i = 0; i < ds->pool_size; i++)
     {
       T_CON_HANDLE *handle;
       T_CCI_CONN id;
       char new_url[LINE_MAX];
 
-      if (!cci_datasource_make_url (prop, new_url, url, err_buf))
+      if (!cci_datasource_make_url (prop, new_url, ds->url, err_buf))
 	{
 	  goto create_datasource_error;
 	}
-      id = cci_connect_with_url (new_url, user, pass);
+      id = cci_connect_with_url (new_url, ds->user, ds->pass);
 
       if (id < 0)
 	{
@@ -5515,50 +5526,58 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
   return ds;
 
 create_datasource_error:
-  if (con_handles != NULL)
+  if (ds->con_handles != NULL)
     {
-      for (i = 0; i < pool_size; i++)
+      for (i = 0; i < ds->pool_size; i++)
 	{
-	  if (con_handles[i] > 0)
+	  if (ds->con_handles[i] > 0)
 	    {
-	      cci_disconnect_force (con_handles[i], true);
+	      cci_disconnect_force (ds->con_handles[i], true);
 	    }
 	}
     }
   FREE_MEM (ds->user);
   FREE_MEM (ds->pass);
   FREE_MEM (ds->url);
-  FREE_MEM (ds->mutex);
-  FREE_MEM (ds->cond);
+  if (ds->mutex != NULL)
+    {
+      cci_mutex_destroy ((cci_mutex_t *) ds->mutex);
+      FREE (ds->mutex);
+    }
+  if (ds->cond != NULL)
+    {
+      cci_cond_destroy ((cci_cond_t *) ds->cond);
+      FREE (ds->cond);
+    }
   FREE_MEM (ds->con_handles);
   FREE_MEM (ds);
   return NULL;
 }
 
 void
-cci_datasource_destroy (T_CCI_DATASOURCE * datasource)
+cci_datasource_destroy (T_CCI_DATASOURCE * ds)
 {
   int i;
 
-  if (datasource == NULL)
+  if (ds == NULL)
     {
       return;
     }
 
-  FREE_MEM (datasource->user);
-  FREE_MEM (datasource->pass);
-  FREE_MEM (datasource->url);
+  FREE_MEM (ds->user);
+  FREE_MEM (ds->pass);
+  FREE_MEM (ds->url);
 
-  cci_mutex_destroy ((cci_mutex_t *) datasource->mutex);
-  FREE_MEM (datasource->mutex);
-  cci_cond_destroy ((cci_cond_t *) datasource->cond);
-  FREE_MEM (datasource->cond);
+  cci_mutex_destroy ((cci_mutex_t *) ds->mutex);
+  FREE_MEM (ds->mutex);
+  cci_cond_destroy ((cci_cond_t *) ds->cond);
+  FREE_MEM (ds->cond);
 
-  if (datasource->con_handles)
+  if (ds->con_handles)
     {
-      for (i = 0; i < datasource->pool_size; i++)
+      for (i = 0; i < ds->pool_size; i++)
 	{
-	  T_CCI_CONN id = datasource->con_handles[i];
+	  T_CCI_CONN id = ds->con_handles[i];
 	  if (id == 0)
 	    {
 	      /* uninitialized */
@@ -5575,10 +5594,10 @@ cci_datasource_destroy (T_CCI_DATASOURCE * datasource)
 	      cci_disconnect_force (id, true);
 	    }
 	}
-      FREE_MEM (datasource->con_handles);
+      FREE_MEM (ds->con_handles);
     }
 
-  FREE_MEM (datasource);
+  FREE_MEM (ds);
 }
 
 T_CCI_CONN
@@ -5652,12 +5671,12 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
 }
 
 int
-cci_datasource_release (T_CCI_DATASOURCE * datasource, T_CCI_CONN conn,
+cci_datasource_release (T_CCI_DATASOURCE * ds, T_CCI_CONN conn,
 			T_CCI_ERROR * err_buf)
 {
   int i;
 
-  if (datasource == NULL || !datasource->is_init)
+  if (ds == NULL || !ds->is_init)
     {
       err_buf->err_code = CCI_ER_INVALID_DATASOURCE;
       snprintf (err_buf->err_msg, 1023, "CCI data source is invalid");
@@ -5665,27 +5684,27 @@ cci_datasource_release (T_CCI_DATASOURCE * datasource, T_CCI_CONN conn,
     }
 
   /* critical section begin */
-  cci_mutex_lock ((cci_mutex_t *) datasource->mutex);
-  for (i = 0; i < datasource->pool_size; i++)
+  cci_mutex_lock ((cci_mutex_t *) ds->mutex);
+  for (i = 0; i < ds->pool_size; i++)
     {
-      if (datasource->con_handles[i] == -conn)
+      if (ds->con_handles[i] == -conn)
 	{
 	  T_CCI_ERROR err_buf;
 	  cci_end_tran (conn, CCI_TRAN_ROLLBACK, &err_buf);
-	  datasource->con_handles[i] = conn;
+	  ds->con_handles[i] = conn;
 	  break;
 	}
     }
-  if (i == datasource->pool_size)
+  if (i == ds->pool_size)
     {
       /* could not found con_handles */
-      cci_mutex_unlock ((cci_mutex_t *) datasource->mutex);
+      cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
       return 0;
     }
 
-  datasource->num_idle++;
-  cci_cond_signal ((cci_cond_t *) datasource->cond);
-  cci_mutex_unlock ((cci_mutex_t *) datasource->mutex);
+  ds->num_idle++;
+  cci_cond_signal ((cci_cond_t *) ds->cond);
+  cci_mutex_unlock ((cci_mutex_t *) ds->mutex);
   /* critical section end */
 
   return 1;

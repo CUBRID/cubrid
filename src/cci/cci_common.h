@@ -247,7 +247,7 @@ struct DATASOURCE_T
   /* default pool size : 10 */
   /* default max wait : 1000 miliseconds */
 
-  char using_stmt_pool;		/* default : false */
+  bool using_stmt_pool;		/* default : false */
 
   int num_idle;
   int *con_handles;		/* realloc by pool_size */
