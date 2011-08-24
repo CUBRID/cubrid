@@ -5304,10 +5304,12 @@ static bool
 cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url,
 			 T_CCI_ERROR * err_buf)
 {
-  const char *c, *str;
+  char delim;
+  const char *str;
   char append_str[LINE_MAX];
   int login_timeout = -1, query_timeout = -1;
   bool disconnect_on_query_timeout;
+  int rlen, n;
 
   assert (new_url && url);
 
@@ -5320,6 +5322,18 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url,
   if (strlen (url) >= LINE_MAX)
     {
       new_url[LINE_MAX] = '\0';
+      err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
+      return false;
+    }
+  rlen = LINE_MAX - strlen (new_url);
+
+  if (strchr (new_url, '?'))
+    {
+      delim = '&';
+    }
+  else
+    {
+      delim = '?';
     }
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_LOGIN_TIMEOUT, &login_timeout,
@@ -5331,17 +5345,15 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url,
     {
       str = datasource_key[CCI_DS_KEY_LOGIN_TIMEOUT];
 
-      if (strchr (new_url, '?'))
-	{
-	  c = "&";
-	}
-      else
-	{
-	  c = "?";
-	}
-
-      snprintf (append_str, LINE_MAX, "%s%s=%d", c, str, login_timeout);
-      strncat (new_url, append_str, LINE_MAX - 1);
+      n = snprintf (append_str, rlen, "%c%s=%d", delim, str, login_timeout);
+      rlen -= n;
+      if (rlen <= 0 || n <  0)
+      {
+	err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
+	return false;
+      }
+      strncat (new_url, append_str, rlen);
+      delim = '&';
     }
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_QUERY_TIMEOUT, &query_timeout,
@@ -5353,17 +5365,15 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url,
     {
       str = datasource_key[CCI_DS_KEY_QUERY_TIMEOUT];
 
-      if (strchr (new_url, '?'))
-	{
-	  c = "&";
-	}
-      else
-	{
-	  c = "?";
-	}
-
-      snprintf (append_str, LINE_MAX, "%s%s=%d", c, str, query_timeout);
-      strncat (new_url, append_str, LINE_MAX - 1);
+      n = snprintf (append_str, rlen, "%c%s=%d", delim, str, query_timeout);
+      rlen -= n;
+      if (rlen <= 0 || n <  0)
+      {
+	err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
+	return false;
+      }
+      strncat (new_url, append_str, rlen);
+      delim = '&';
     }
 
   if (!cci_property_get_bool (prop, CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT,
@@ -5377,17 +5387,16 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url,
     {
       str = datasource_key[CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT];
 
-      if (strchr (new_url, '?'))
-	{
-	  c = "&";
-	}
-      else
-	{
-	  c = "?";
-	}
-      snprintf (append_str, LINE_MAX, "%s%s=%s", c,
+      n = snprintf (append_str, rlen, "%c%s=%s", delim,
 		str, cci_property_get (prop, str));
-      strncat (new_url, append_str, LINE_MAX - 1);
+      rlen -= n;
+      if (rlen <= 0 || n <  0)
+      {
+	err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
+	return false;
+      }
+      strncat (new_url, append_str, rlen);
+      delim = '&';
     }
 
   err_buf->err_code = CCI_ER_NO_ERROR;
