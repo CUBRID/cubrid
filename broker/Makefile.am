@@ -46,8 +46,6 @@ AM_CPPFLAGS = @SRC_INC@ @EXT_INC@ \
 BROKER_CAS_LIBS = @CS_LIB@
 LOG_RUNNER_LIBS = @CS_LIB@ @CCI_LIB@
 
-include_HEADERS = $(BROKER_DIR)/cas_error.h
-
 bin_PROGRAMS = cub_broker cubrid_broker cub_cas \
 	broker_monitor broker_changer \
 	broker_log_converter broker_log_runner broker_log_top

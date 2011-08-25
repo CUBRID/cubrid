@@ -19,11 +19,14 @@
 
 
 SRC = $(top_srcdir)/src
+BROKER_DIR = $(SRC)/broker
 CCI_DIR = $(SRC)/cci
 
 AM_CPPFLAGS = @SRC_INC@ @SYS_DEFS@ @VERSION_DEFS@
 
-include_HEADERS = $(CCI_DIR)/cas_cci.h
+include_HEADERS = \
+	$(BROKER_DIR)/cas_error.h \
+	$(CCI_DIR)/cas_cci.h
 
 lib_LTLIBRARIES = libcascci.la
 libcascci_la_SOURCES = \
