@@ -5291,13 +5291,16 @@ cci_disconnect_force (int con_h_id, bool try_close)
     }
 
   hm_req_handle_free_all (con_handle);
-  CLOSE_SOCKET (con_handle->sock_fd);
-  con_handle->sock_fd = INVALID_SOCKET;
-  hm_con_handle_free (con_h_id);
-  if (IS_STMT_POOL (con_handle))
+  if (!IS_INVALID_SOCKET (con_handle->sock_fd))
+    {
+      CLOSE_SOCKET (con_handle->sock_fd);
+      con_handle->sock_fd = INVALID_SOCKET;
+    }
+  if (con_handle != NULL)
     {
       mht_destroy (con_handle->stmt_pool, true, false);
     }
+  hm_con_handle_free (con_h_id);
 }
 
 static bool
@@ -5347,11 +5350,11 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url,
 
       n = snprintf (append_str, rlen, "%c%s=%d", delim, str, login_timeout);
       rlen -= n;
-      if (rlen <= 0 || n <  0)
-      {
-	err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
-	return false;
-      }
+      if (rlen <= 0 || n < 0)
+	{
+	  err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
+	  return false;
+	}
       strncat (new_url, append_str, rlen);
       delim = '&';
     }
@@ -5367,11 +5370,11 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url,
 
       n = snprintf (append_str, rlen, "%c%s=%d", delim, str, query_timeout);
       rlen -= n;
-      if (rlen <= 0 || n <  0)
-      {
-	err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
-	return false;
-      }
+      if (rlen <= 0 || n < 0)
+	{
+	  err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
+	  return false;
+	}
       strncat (new_url, append_str, rlen);
       delim = '&';
     }
@@ -5388,13 +5391,13 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url,
       str = datasource_key[CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT];
 
       n = snprintf (append_str, rlen, "%c%s=%s", delim,
-		str, cci_property_get (prop, str));
+		    str, cci_property_get (prop, str));
       rlen -= n;
-      if (rlen <= 0 || n <  0)
-      {
-	err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
-	return false;
-      }
+      if (rlen <= 0 || n < 0)
+	{
+	  err_buf->err_code = CCI_ER_NO_MORE_MEMORY;
+	  return false;
+	}
       strncat (new_url, append_str, rlen);
       delim = '&';
     }
@@ -5434,6 +5437,13 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
       /* a pass may be null */
       ds->pass = strdup ("");
       if (ds->pass == NULL)
+	{
+	  goto create_datasource_error;
+	}
+    }
+  else
+    {
+      if (!cci_check_property (&ds->pass, err_buf))
 	{
 	  goto create_datasource_error;
 	}
