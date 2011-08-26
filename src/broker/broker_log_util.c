@@ -221,6 +221,10 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
   if (tot_val_size)
     {
       *tot_val_size = atoi (size);
+      if (*tot_val_size < 0)
+	{
+	  goto error_on_val_size;
+	}
     }
   return true;
 
