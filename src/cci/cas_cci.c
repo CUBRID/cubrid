@@ -4437,7 +4437,7 @@ cas_connect_low (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
 
   *connect = 0;
 
-  if (START_TIME_IS_SET (con_handle))
+  if (TIMEOUT_IS_SET (con_handle))
     {
       remained_time =
 	con_handle->current_timeout -

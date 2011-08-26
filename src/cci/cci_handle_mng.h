@@ -203,6 +203,7 @@ typedef struct
   int query_timeout;
   char disconnect_on_query_timeout;
   struct timeval start_time;	/* function start time to check timeout */
+  char start_time_is_set;
   int current_timeout;		/* login_timeout or query_timeout */
 } T_CON_HANDLE;
 

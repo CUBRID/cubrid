@@ -407,7 +407,7 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
       return err_code;
     }
 
-  if (START_TIME_IS_SET (con_handle))
+  if (TIMEOUT_IS_SET (con_handle))
     {
       remained_time =
 	con_handle->current_timeout -
@@ -591,7 +591,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 
   net_buf_clear (&net_buf);
 
-  if (START_TIME_IS_SET (con_handle))
+  if (TIMEOUT_IS_SET (con_handle))
     {
       remained_time =
 	con_handle->current_timeout -
@@ -1550,7 +1550,7 @@ qe_get_db_version (T_CON_HANDLE * con_handle, char *out_buf, int buf_size)
       return err_code;
     }
 
-  if (START_TIME_IS_SET (con_handle))
+  if (TIMEOUT_IS_SET (con_handle))
     {
       remained_time =
 	con_handle->current_timeout -
@@ -2278,7 +2278,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
       return err_code;
     }
 
-  if (START_TIME_IS_SET (con_handle))
+  if (TIMEOUT_IS_SET (con_handle))
     {
       remained_time =
 	con_handle->current_timeout -
@@ -2469,7 +2469,7 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
       return err_code;
     }
 
-  if (START_TIME_IS_SET (con_handle))
+  if (TIMEOUT_IS_SET (con_handle))
     {
       remained_time =
 	con_handle->current_timeout -

@@ -179,21 +179,29 @@
 
 #define SET_START_TIME(CON_HANDLE, TIME_TO_CHECK) \
   do {\
-    if ((CON_HANDLE) && (TIME_TO_CHECK) > 0) {\
-      cci_gettimeofday(&((CON_HANDLE)->start_time), NULL);\
-      (CON_HANDLE)->current_timeout = (TIME_TO_CHECK);\
+    if (CON_HANDLE) {\
+      if (TIME_TO_CHECK > 0) {\
+        cci_gettimeofday(&((CON_HANDLE)->start_time), NULL);\
+        (CON_HANDLE)->current_timeout = (TIME_TO_CHECK);\
+      }\
+      (CON_HANDLE)->start_time_is_set = 1; \
     }\
   } while (0)
 
-#define START_TIME_IS_SET(CON_HANDLE) \
-  (((CON_HANDLE)->current_timeout > 0) && \
+#define START_TIME_IS_SET(CON_HANDLE)   \
+  ((CON_HANDLE) && (CON_HANDLE)->start_time_is_set)
+
+#define TIMEOUT_IS_SET(CON_HANDLE) \
+  ((CON_HANDLE) && ((CON_HANDLE)->current_timeout > 0) && \
    ((CON_HANDLE)->start_time.tv_sec != 0 || (CON_HANDLE)->start_time.tv_usec != 0))
 
 #define RESET_START_TIME(CON_HANDLE) \
   do {\
     if (CON_HANDLE) {\
-      (CON_HANDLE)->start_time.tv_sec = 0; (CON_HANDLE)->start_time.tv_usec = 0;\
+      (CON_HANDLE)->start_time.tv_sec = 0;\
+      (CON_HANDLE)->start_time.tv_usec = 0;\
       (CON_HANDLE)->current_timeout = 0; \
+      (CON_HANDLE)->start_time_is_set = 0;\
     }\
   } while (0)
 
