@@ -400,13 +400,6 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
       return err_code;
     }
 
-  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
-  net_buf_clear (&net_buf);
-  if (err_code < 0)
-    {
-      return err_code;
-    }
-
   if (TIMEOUT_IS_SET (con_handle))
     {
       remained_time =
@@ -415,8 +408,16 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
       if (remained_time <= 0)
 	{
+	  net_buf_clear (&net_buf);
 	  return CCI_ER_QUERY_TIMEOUT;
 	}
+    }
+
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
+  net_buf_clear (&net_buf);
+  if (err_code < 0)
+    {
+      return err_code;
     }
 
   result_code =
@@ -583,14 +584,6 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       goto execute_error;
     }
 
-  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
-  if (err_code < 0)
-    {
-      goto execute_error;
-    }
-
-  net_buf_clear (&net_buf);
-
   if (TIMEOUT_IS_SET (con_handle))
     {
       remained_time =
@@ -599,13 +592,21 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 
       if (remained_time <= 0)
 	{
-	  return CCI_ER_QUERY_TIMEOUT;
+	  err_code = CCI_ER_QUERY_TIMEOUT;
+	  goto execute_error;
 	}
     }
 
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
+  if (err_code < 0)
+    {
+      goto execute_error;
+    }
+
+  net_buf_clear (&net_buf);
+
   res_count = net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size,
 				    err_buf, remained_time);
-
   if (res_count < 0)
     {
       err_code = res_count;
@@ -1558,6 +1559,7 @@ qe_get_db_version (T_CON_HANDLE * con_handle, char *out_buf, int buf_size)
 
       if (remained_time <= 0)
 	{
+	  net_buf_clear (&net_buf);
 	  return CCI_ER_QUERY_TIMEOUT;
 	}
     }
@@ -2271,13 +2273,6 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
       return err_code;
     }
 
-  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
-  net_buf_clear (&net_buf);
-  if (err_code < 0)
-    {
-      return err_code;
-    }
-
   if (TIMEOUT_IS_SET (con_handle))
     {
       remained_time =
@@ -2286,8 +2281,16 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
       if (remained_time <= 0)
 	{
+	  net_buf_clear (&net_buf);
 	  return CCI_ER_QUERY_TIMEOUT;
 	}
+    }
+
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
+  net_buf_clear (&net_buf);
+  if (err_code < 0)
+    {
+      return err_code;
     }
 
   err_code = net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size,
@@ -2462,13 +2465,6 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
       return err_code;
     }
 
-  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
-  net_buf_clear (&net_buf);
-  if (err_code < 0)
-    {
-      return err_code;
-    }
-
   if (TIMEOUT_IS_SET (con_handle))
     {
       remained_time =
@@ -2477,8 +2473,16 @@ qe_execute_batch (T_CON_HANDLE * con_handle, int num_query, char **sql_stmt,
 
       if (remained_time <= 0)
 	{
+	  net_buf_clear (&net_buf);
 	  return CCI_ER_QUERY_TIMEOUT;
 	}
+    }
+
+  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
+  net_buf_clear (&net_buf);
+  if (err_code < 0)
+    {
+      return err_code;
     }
 
   err_code = net_recv_msg_timeout (con_handle, &result_msg, &result_msg_size,
@@ -4953,8 +4957,20 @@ execute_array_info_decode (char *buf, int size, char flag,
     }
 
   NET_STR_TO_INT (num_query, cur_p);
+  if (num_query < 0)
+    {
+      assert (0);
+      return CCI_ER_COMMUNICATION;
+    }
+
   remain_size -= 4;
   cur_p += 4;
+
+  if (num_query < 0)
+    {
+      assert (0);
+      return CCI_ER_COMMUNICATION;
+    }
 
   qr =
     (T_CCI_QUERY_RESULT *) MALLOC (sizeof (T_CCI_QUERY_RESULT) * num_query);

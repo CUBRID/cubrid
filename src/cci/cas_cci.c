@@ -1087,6 +1087,15 @@ prepare_error:
       hm_req_handle_free (con_handle, req_handle_id, req_handle);
     }
   con_handle->ref_count = 0;
+
+  if (err_code == CCI_ER_QUERY_TIMEOUT &&
+      con_handle->disconnect_on_query_timeout)
+    {
+      CLOSE_SOCKET (con_handle->sock_fd);
+      con_handle->sock_fd = INVALID_SOCKET;
+      con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
+    }
+
   return (err_code);
 }
 

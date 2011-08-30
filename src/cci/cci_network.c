@@ -471,7 +471,6 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
   result_code = net_recv_stream (con_handle->sock_fd, tmp_p,
 				 *(recv_msg_header.msg_body_size_ptr),
 				 timeout);
-
   if (result_code < 0)
     {
       FREE_MEM (tmp_p);
@@ -504,12 +503,18 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
     }
 
   if (msg)
-    *msg = tmp_p;
+    {
+      *msg = tmp_p;
+    }
   else
-    FREE_MEM (tmp_p);
+    {
+      FREE_MEM (tmp_p);
+    }
 
   if (msg_size)
-    *msg_size = *(recv_msg_header.msg_body_size_ptr);
+    {
+      *msg_size = *(recv_msg_header.msg_body_size_ptr);
+    }
 
   if (con_handle->cas_info[CAS_INFO_STATUS] == CAS_INFO_STATUS_INACTIVE)
     {
@@ -658,6 +663,7 @@ net_recv_stream (SOCKET sock_fd, char *buf, int size, int timeout)
 	      timeout -= SOCKET_TIMEOUT;
 	      if (timeout <= 0)
 		{
+		  assert (tot_read_len == 0 || size == tot_read_len);
 		  return CCI_ER_QUERY_TIMEOUT;
 		}
 	      else
