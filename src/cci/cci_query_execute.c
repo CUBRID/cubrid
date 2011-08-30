@@ -523,7 +523,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
   T_CCI_QUERY_RESULT *qr = NULL;
   char fetch_flag;
   char forward_only_cursor;
-  int remain_msg_size;
+  int remain_msg_size = 0;
   int remained_time = 0;
 
   QUERY_RESULT_FREE (req_handle);
@@ -614,7 +614,7 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 
   err_code = execute_array_info_decode (result_msg + 4, result_msg_size - 4,
 					EXECUTE_EXEC, &qr, &remain_msg_size);
-  if (qr == NULL)
+  if (err_code < 0 || qr == NULL)
     {
       req_handle->num_query_res = 0;
       req_handle->qr = NULL;
@@ -3679,7 +3679,7 @@ fetch_info_decode (char *buf, int size, int num_cols,
 {
   int remain_size = size;
   char *cur_p = buf;
-  int err_code;
+  int err_code = 0;
   int num_tuple, i, j;
   T_TUPLE_VALUE *tmp_tuple_value = NULL;
 

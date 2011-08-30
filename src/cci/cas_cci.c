@@ -5296,10 +5296,6 @@ cci_disconnect_force (int con_h_id, bool try_close)
       CLOSE_SOCKET (con_handle->sock_fd);
       con_handle->sock_fd = INVALID_SOCKET;
     }
-  if (con_handle != NULL)
-    {
-      mht_destroy (con_handle->stmt_pool, true, false);
-    }
   hm_con_handle_free (con_h_id);
 }
 

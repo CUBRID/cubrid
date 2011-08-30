@@ -756,6 +756,10 @@ con_handle_content_free (T_CON_HANDLE * con_handle)
   FREE_MEM (con_handle->db_user);
   FREE_MEM (con_handle->db_passwd);
   FREE_MEM (con_handle->req_handle_table);
+  if (con_handle->stmt_pool != NULL)
+    {
+      mht_destroy (con_handle->stmt_pool, true, false);
+    }
 }
 
 static void

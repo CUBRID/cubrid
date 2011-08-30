@@ -739,7 +739,7 @@ mht_rehash (MHT_TABLE * ht)
     }
 
   /* Now move to new vector of entries */
-  FREE (ht->table);
+  FREE_MEM (ht->table);
 
   ht->table = new_hvector;
   ht->size = est_size;
@@ -772,15 +772,19 @@ mht_destroy (MHT_TABLE * ht, bool free_key, bool free_data)
 	{
 	  next_hentry = hentry->next;
 	  if (free_key)
-	    FREE (hentry->key);
+	    {
+	      FREE (hentry->key);
+	    }
 	  if (free_data)
-	    FREE (hentry->data);
+	    {
+	      FREE (hentry->data);
+	    }
 	  FREE (hentry);
 	}
     }
 
-  FREE (ht->table);
-  FREE (ht);
+  FREE_MEM (ht->table);
+  FREE_MEM (ht);
 }
 
 /*
