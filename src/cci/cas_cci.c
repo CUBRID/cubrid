@@ -107,6 +107,8 @@ int wsa_initialize ();
          ((CON_HANDLE)->con_status == CCI_CON_STATUS_OUT_TRAN))
 
 #define IS_STMT_POOL(c) ((c)->datasource && (c)->datasource->using_stmt_pool)
+#define IS_BROKER_STMT_POOL(c) \
+  ((c)->broker_info[BROKER_INFO_STATEMENT_POOLING] == CAS_STATEMENT_POOLING_ON)
 #define IS_OUT_TRAN(c) ((c)->con_status == CCI_CON_STATUS_OUT_TRAN)
 #define IS_ER_COMMUNICATION(e) \
   ((e) == CCI_ER_COMMUNICATION || (e) == CAS_ER_COMMUNICATION)
@@ -791,8 +793,8 @@ static int
 cas_end_session (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf)
 {
   int err = qe_end_session (con_handle, err_buf);
-  if (con_handle->con_status == CCI_CON_STATUS_OUT_TRAN &&
-      (err == CCI_ER_COMMUNICATION || err == CAS_ER_COMMUNICATION))
+  if (IS_ER_COMMUNICATION (err) &&
+      con_handle->con_status == CCI_CON_STATUS_OUT_TRAN)
     {
       int connect_done;
       err = cas_connect_with_ret (con_handle, err_buf, &connect_done);
@@ -1032,9 +1034,8 @@ cci_prepare (int con_id, char *sql_stmt, char flag, T_CCI_ERROR * err_buf)
 
   if (err_code < 0)
     {
-      if (con_handle->con_status == CCI_CON_STATUS_OUT_TRAN &&
-	  (err_code == CCI_ER_COMMUNICATION
-	   || err_code == CAS_ER_COMMUNICATION))
+      if (IS_ER_COMMUNICATION (err_code) &&
+	  con_handle->con_status == CCI_CON_STATUS_OUT_TRAN)
 	{
 	  con_err_code = cas_connect_with_ret (con_handle, err_buf,
 					       &connect_done);
@@ -1410,7 +1411,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
 
   SET_START_TIME (con_handle, con_handle->query_timeout);
 
-  if (IS_STMT_POOL (con_handle) && !req_handle->valid)
+  if (IS_BROKER_STMT_POOL (con_handle))
     {
       err_code = connect_prepare_again (con_handle, req_handle, err_buf);
     }
@@ -1464,7 +1465,7 @@ cci_execute (int req_h_id, char flag, int max_col_size, T_CCI_ERROR * err_buf)
      the error, CAS_ER_STMT_POOLING, is returned.
      In this case, prepare and execute have to be executed again.
    */
-  while (err_code == CAS_ER_STMT_POOLING && IS_STMT_POOL (con_handle))
+  while (err_code == CAS_ER_STMT_POOLING && IS_BROKER_STMT_POOL (con_handle))
     {
       req_handle_content_free (req_handle, 1);
       err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
@@ -1568,7 +1569,7 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 
   SET_START_TIME (con_handle, con_handle->query_timeout);
 
-  if (IS_STMT_POOL (con_handle) && !req_handle->valid)
+  if (IS_BROKER_STMT_POOL (con_handle))
     {
       err_code = connect_prepare_again (con_handle, req_handle, err_buf);
     }
@@ -1601,7 +1602,7 @@ cci_execute_array (int req_h_id, T_CCI_QUERY_RESULT ** qr,
 	}
     }
 
-  while (err_code == CAS_ER_STMT_POOLING && IS_STMT_POOL (con_handle))
+  while (err_code == CAS_ER_STMT_POOLING && IS_BROKER_STMT_POOL (con_handle))
     {
       req_handle_content_free (req_handle, 1);
       err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
@@ -4426,7 +4427,7 @@ cas_connect_with_ret (T_CON_HANDLE * con_handle, T_CCI_ERROR * err_buf,
   err_code = cas_connect_low (con_handle, err_buf, connect);
 
   /* req_handle_table should be managed by list too. */
-  if ((*connect) && IS_STMT_POOL (con_handle))
+  if ((*connect) && IS_BROKER_STMT_POOL (con_handle))
     {
       hm_invalidate_all_req_handle (con_handle);
     }
@@ -4921,7 +4922,7 @@ execute_thread (void *arg)
 					   &(exec_arg->err_buf));
 	}
     }
-  if (IS_STMT_POOL (curr_con_handle))
+  if (IS_BROKER_STMT_POOL (curr_con_handle))
     {
       while (exec_arg->ret_code == CAS_ER_STMT_POOLING)
 	{
@@ -4977,8 +4978,8 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
   err_code = qe_prepare (req_handle, con_handle, req_handle->sql_text,
 			 req_handle->prepare_flag, err_buf, 1);
 
-  if (con_handle->con_status == CCI_CON_STATUS_OUT_TRAN &&
-      (err_code == CCI_ER_COMMUNICATION || err_code == CAS_ER_COMMUNICATION))
+  if (IS_ER_COMMUNICATION (err_code) &&
+      con_handle->con_status == CCI_CON_STATUS_OUT_TRAN)
     {
       int connect_done;
 
