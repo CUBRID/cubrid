@@ -590,7 +590,8 @@ static int qexec_update_connect_by_lists (THREAD_ENTRY * thread_p,
 					  QFILE_TUPLE_RECORD * tplrec);
 static void qexec_end_connect_by_lists (THREAD_ENTRY * thread_p,
 					XASL_NODE * xasl);
-static void qexec_clear_connect_by_lists (XASL_NODE * xasl);
+static void qexec_clear_connect_by_lists (THREAD_ENTRY * thread_p,
+					  XASL_NODE * xasl);
 static int qexec_execute_connect_by (THREAD_ENTRY * thread_p,
 				     XASL_NODE * xasl,
 				     XASL_STATE * xasl_state,
@@ -11123,7 +11124,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 		}
 
 	      /* clear CONNECT BY internal lists */
-	      qexec_clear_connect_by_lists (xasl->connect_by_ptr);
+	      qexec_clear_connect_by_lists (thread_p, xasl->connect_by_ptr);
 	    }
 	}
 
@@ -11318,7 +11319,7 @@ exit_on_error:
 
   if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
     {
-      qexec_clear_connect_by_lists (xasl->connect_by_ptr);
+      qexec_clear_connect_by_lists (thread_p, xasl->connect_by_ptr);
     }
 
   xasl->status = XASL_FAILURE;
@@ -16245,12 +16246,15 @@ qexec_end_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
  *  xasl(in): CONNECT BY xasl
  */
 static void
-qexec_clear_connect_by_lists (XASL_NODE * xasl)
+qexec_clear_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
 
-  qfile_clear_list_id (connect_by->input_list_id);
-  qfile_clear_list_id (connect_by->start_with_list_id);
+  qfile_close_list (thread_p, connect_by->start_with_list_id);
+  qfile_destroy_list (thread_p, connect_by->start_with_list_id);
+
+  qfile_close_list (thread_p, connect_by->input_list_id);
+  qfile_destroy_list (thread_p, connect_by->input_list_id);
 }
 
 /*
