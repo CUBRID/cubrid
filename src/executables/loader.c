@@ -1475,9 +1475,16 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 	      if (retobj == NULL
 		  || ws_mop_compare (context->cls, retobj) != 0)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			  ER_PARTITION_WORK_FAILED, 0);
-		  CHECK_ERR (err, ER_PARTITION_WORK_FAILED);
+		  int is_partition;
+		  if (do_is_partitioned_classobj (&is_partition,
+						  context->cls, NULL,
+						  NULL) != NO_ERROR
+		      || is_partition != PARTITIONED_CLASS)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_PARTITION_WORK_FAILED, 0);
+		      CHECK_ERR (err, ER_PARTITION_WORK_FAILED);
+		    }
 		}
 	    }
 	}
