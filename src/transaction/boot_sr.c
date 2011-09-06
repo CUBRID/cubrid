@@ -3613,7 +3613,7 @@ xboot_register_client (THREAD_ENTRY * thread_p,
     {
       /* the connection is going down. stop it */
       logtb_release_tran_index (thread_p, tran_index);
-      tran_index = -1;
+      tran_index = NULL_TRAN_INDEX;
     }
 #endif /* SERVER_MODE */
 

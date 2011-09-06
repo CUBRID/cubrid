@@ -213,7 +213,9 @@ static int css_send_magic (CSS_CONN_ENTRY * conn);
 static int
 css_get_next_client_id (void)
 {
-  int next_client_id, rv;
+  static bool overflow = false;
+  int next_client_id, rv, i;
+  bool retry;
 
   rv = pthread_mutex_lock (&css_Client_id_lock);
   if (rv != 0)
@@ -223,11 +225,27 @@ css_get_next_client_id (void)
       return ER_FAILED;
     }
 
-  css_Client_id++;
-  if (css_Client_id == CSS_MAX_CLIENT_ID)
+  do
     {
-      css_Client_id = 1;
+      css_Client_id++;
+      if (css_Client_id == CSS_MAX_CLIENT_ID)
+	{
+	  css_Client_id = 1;
+	  overflow = true;
+	}
+
+      retry = false;
+      for (i = 0; overflow && i < PRM_CSS_MAX_CLIENTS; i++)
+	{
+	  if (css_Conn_array[i].client_id == css_Client_id)
+	    {
+	      retry = true;
+	      break;
+	    }
+	}
     }
+  while (retry);
+
   next_client_id = css_Client_id;
 
   rv = pthread_mutex_unlock (&css_Client_id_lock);
