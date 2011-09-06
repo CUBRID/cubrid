@@ -109,7 +109,7 @@ typedef struct wait_queue_search_arg
   int remove_entry;
 } CSS_WAIT_QUEUE_SEARCH_ARG;
 
-static const int CSS_MAX_CLIENT_ID = 32766;
+static const int CSS_MAX_CLIENT_ID = INT_MAX - 1;
 
 static int css_Client_id = 0;
 static pthread_mutex_t css_Client_id_lock = PTHREAD_MUTEX_INITIALIZER;
