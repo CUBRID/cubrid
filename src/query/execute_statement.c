@@ -10911,6 +10911,8 @@ do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
   parser_free_tree (parser, select);
   db_value_clear (&oid);
 
+  pt_end_query (parser);
+
   return retval;
 
 error_cleanup:
@@ -10929,6 +10931,9 @@ error_cleanup:
     {
       parser_free_tree (parser, select);
     }
+
+  pt_end_query (parser);
+
   return retval;
 }
 
@@ -10981,11 +10986,15 @@ do_replace_into (PARSER_CONTEXT * parser, DB_OTMPL * tmpl,
   AU_RESTORE (au_save);
   regu_free_listid ((QFILE_LIST_ID *) select->etc);
 
+  pt_end_query (parser);
+
 cleanup:
   if (select != NULL)
     {
       parser_free_tree (parser, select);
     }
+  pt_end_query (parser);
+
   return retval;
 }
 
