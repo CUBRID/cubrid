@@ -6778,9 +6778,8 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  classop = db_find_class (name->info.name.original);
 	  if (classop != NULL)
 	    {
-	      if (au_fetch_class
-		  (classop, &pi.smclass, AU_FETCH_READ,
-		   AU_SELECT) != NO_ERROR)
+	      if (au_fetch_class (classop, &pi.smclass, AU_FETCH_READ, 
+				  AU_SELECT) != NO_ERROR)
 		{
 		  goto work_failed;
 		}
@@ -6797,9 +6796,8 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  db_make_null (&attr);
 	  db_make_null (&hashsize);
 
-	  if (db_get
-	      (name->info.name.partition_of, PARTITION_ATT_PNAME,
-	       &pname) != NO_ERROR)
+	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PNAME, 
+		      &pname) != NO_ERROR)
 	    {
 	      continue;
 	    }
@@ -6808,16 +6806,14 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	      goto clear_loop;	/* partitioned sub-class */
 	    }
 
-	  if (db_get
-	      (name->info.name.partition_of, PARTITION_ATT_PTYPE,
-	       &ptype) != NO_ERROR)
+	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PTYPE, 
+		      &ptype) != NO_ERROR)
 	    {
 	      goto clear_loop;
 	    }
 
-	  if (db_get
-	      (name->info.name.partition_of, PARTITION_ATT_PEXPR,
-	       &pexpr) != NO_ERROR)
+	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PEXPR, 
+		      &pexpr) != NO_ERROR)
 	    {
 	      goto clear_loop;
 	    }
@@ -6826,9 +6822,8 @@ do_apply_partition_pruning (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	      goto clear_loop;
 	    }
 
-	  if (db_get
-	      (name->info.name.partition_of, PARTITION_ATT_PVALUES,
-	       &pattr) != NO_ERROR)
+	  if (db_get (name->info.name.partition_of, PARTITION_ATT_PVALUES, 
+		      &pattr) != NO_ERROR)
 	    {
 	      goto clear_loop;
 	    }
