@@ -757,7 +757,7 @@ area_info (AREA * area, FILE * fp)
 {
   AREA_BLOCK *block;
   AREA_FREE_LIST *free;
-  size_t blocks, bytes, elements, unallocated, used, freed;
+  size_t nblocks, bytes, elements, unallocated, used, freed;
   size_t overhead, element_size;
 #if defined (SERVER_MODE)
   size_t nallocs = 0, nfrees = 0;
@@ -765,7 +765,7 @@ area_info (AREA * area, FILE * fp)
 
   assert (area != NULL && fp != NULL);
 
-  blocks = bytes = elements = unallocated = used = freed = 0;
+  nblocks = bytes = elements = unallocated = used = freed = 0;
 
   overhead = 0;
   if (area_Check_free)
@@ -783,20 +783,19 @@ area_info (AREA * area, FILE * fp)
 	{
 	  for (block = area->blocks[i]; block != NULL; block = block->next)
 	    {
-	      blocks++;
-	      bytes +=
-		(element_size * area->alloc_count) + sizeof (AREA_BLOCK);
+	      nblocks++;
+	      bytes += ((element_size * area->alloc_count)
+			+ sizeof (AREA_BLOCK));
+	      unallocated += (int) ((block->max - block->pointer)
+				    / element_size);
 	    }
 
-	  elements += (blocks * area->alloc_count);
+	  elements += (nblocks * area->alloc_count);
 
-	  for (free = area->free[i]; free != NULL; free = free->next, freed++)
+	  for (free = area->free[i]; free != NULL; free = free->next)
 	    {
-	      ;
+	      freed++;
 	    }
-
-	  unallocated += (int) ((area->blocks[i]->max -
-				 area->blocks[i]->pointer) / element_size);
 
 	  used += (elements - unallocated - freed);
 
@@ -806,20 +805,20 @@ area_info (AREA * area, FILE * fp)
 #else /* SERVER_MODE */
       for (block = area->blocks; block != NULL; block = block->next)
 	{
-	  blocks++;
+	  nblocks++;
 	  bytes += (element_size * area->alloc_count) + sizeof (AREA_BLOCK);
 	}
 
-      elements = blocks * area->alloc_count;
+      elements = nblocks * area->alloc_count;
 
-      for (free = area->free, freed = 0; free != NULL;
-	   free = free->next, freed++)
+      freed = 0;
+      for (free = area->free; free != NULL; free = free->next)
 	{
-	  ;
+	  freed++;
 	}
 
-      unallocated = (int) (area->blocks->max - area->blocks->pointer)
-	/ element_size;
+      unallocated = (int) ((area->blocks->max - area->blocks->pointer)
+			   / element_size);
 
       used = elements - unallocated - freed;
 #endif /* SERVER_MODE */
@@ -834,7 +833,7 @@ area_info (AREA * area, FILE * fp)
   fprintf (fp, "%lld elements/block\n", (long long) area->alloc_count);
   fprintf (fp, "  %lld blocks, %lld bytes, %lld elements,"
 	   " %lld unallocated, %lld free, %lld in use\n",
-	   (long long) blocks, (long long) bytes, (long long) elements,
+	   (long long) nblocks, (long long) bytes, (long long) elements,
 	   (long long) unallocated, (long long) freed, (long long) used);
 #if defined (SERVER_MODE)
   fprintf (fp, "  %lld total allocs, %lld total frees\n",
