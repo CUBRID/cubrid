@@ -638,7 +638,6 @@ css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer,
 				    buffer, size);
       if (css_Errno == NO_ERRORS)
 	{
-	  css_test_for_server_errors (entry, eid);
 	  errid = css_test_for_server_errors (entry, eid);
 	  if (errid == ER_DB_NO_MODIFICATIONS)
 	    {
