@@ -3940,7 +3940,6 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement,
 	    }
 	}
 
-
       mq_push_paths_select (parser, statement,
 			    statement->info.query.q.select.from);
       break;
@@ -4061,24 +4060,18 @@ mq_translate_local (PARSER_CONTEXT * parser,
       switch (statement->node_type)
 	{
 	case PT_SELECT:
-	  {
-	    indexp = statement->info.query.q.select.using_index;
-	    spec = statement->info.query.q.select.from;
-	  }
+	  indexp = statement->info.query.q.select.using_index;
+	  spec = statement->info.query.q.select.from;
 	  break;
 
 	case PT_UPDATE:
-	  {
-	    indexp = statement->info.update.using_index;
-	    spec = statement->info.update.spec;
-	  }
+	  indexp = statement->info.update.using_index;
+	  spec = statement->info.update.spec;
 	  break;
 
 	case PT_DELETE:
-	  {
-	    indexp = statement->info.delete_.using_index;
-	    spec = statement->info.delete_.spec;
-	  }
+	  indexp = statement->info.delete_.using_index;
+	  spec = statement->info.delete_.spec;
 	  break;
 
 	default:
@@ -4116,7 +4109,9 @@ mq_fetch_subqueries (PARSER_CONTEXT * parser, PT_NODE * class_)
 
   if (!class_ || !(class_object = class_->info.name.db_object)
       || db_is_class (class_object))
-    return NULL;
+    {
+      return NULL;
+    }
 
   query_cache = sm_virtual_queries (class_object);
 
@@ -4131,10 +4126,12 @@ mq_fetch_subqueries (PARSER_CONTEXT * parser, PT_NODE * class_)
 	}
 
       if (parser)
-	parser->error_msgs =
-	  parser_append_node (parser_copy_tree_list
-			      (parser, query_cache->error_msgs),
-			      parser->error_msgs);
+	{
+	  parser->error_msgs =
+	    parser_append_node (parser_copy_tree_list
+				(parser, query_cache->error_msgs),
+				parser->error_msgs);
+	}
 
       return query_cache->view_cache->vquery_for_query_in_gdb;
     }
@@ -4208,206 +4205,207 @@ mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec,
   PT_NODE *attr_class;
   PT_NODE *flat = NULL;
 
-  if (query_spec)
-    switch (query_spec->node_type)
-      {
-      case PT_SELECT:
-	if (query_spec->info.query.q.select.from != NULL)
-	  {
-	    flat = query_spec->info.query.q.select.from->info.spec.
-	      flat_entity_list;
-	  }
-	else
-	  {
-	    flat = NULL;
-	  }
-	if (cascaded_check)
-	  {
-	    /* the piecemeal local check option list we have accumulated is
-	     * now pointless. The user requested an honest to god
-	     * useful check option, instead.
-	     */
-	    parser_free_tree (parser,
-			      query_spec->info.query.q.select.check_where);
-	    query_spec->info.query.q.select.check_where =
-	      parser_copy_tree_list (parser,
-				     query_spec->info.query.q.select.where);
-	  }
-	while (flat)
-	  {
-	    flat->info.name.virt_object = vclass_object;
-	    flat = flat->next;
-	  }
+  if (query_spec == NULL)
+    {
+      return NULL;
+    }
 
-	attr = attributes;
-	col = query_spec->info.query.q.select.list;
-	prev_col = NULL;
-	while (col && attr)
-	  {
-	    /* should check type compatibility here */
-
-	    if (attr->info.name.meta_class == PT_SHARED)
-	      {
-		/* this should not get lambda replaced during translation.
-		 * An easy way to emulate this is to simply overwrite the
-		 * column that would be replacing this.
-		 */
-		next_col = col->next;
-		col->next = NULL;
-		parser_free_tree (parser, col);
-
-		new_col = parser_copy_tree (parser, attr);
-		new_col->info.name.db_object = vclass_object;
-		new_col->next = next_col;
-
-		if (prev_col == NULL)
-		  {
-		    query_spec->info.query.q.select.list = new_col;
-		    query_spec->type_enum = new_col->type_enum;
-		    if (query_spec->data_type)
-		      {
-			parser_free_tree (parser, query_spec->data_type);
-		      }
-		    query_spec->data_type = parser_copy_tree_list (parser,
-								   new_col->
-								   data_type);
-		  }
-		else
-		  {
-		    prev_col->next = new_col;
-		  }
-
-		col = new_col;
-	      }
-	    else if (col->type_enum == PT_TYPE_NA ||
-		     col->type_enum == PT_TYPE_NULL)
-	      {
-		/* These are compatible with anything */
-	      }
-	    else if (attr->type_enum == PT_TYPE_OBJECT)
-	      {
-		if ((attr_type = attr->data_type))
-		  {
-		    if (attr->info.name.meta_class == PT_OID_ATTR)
-		      {
-			/* re-classify OID_ATTR as VID_ATTR */
-			if (col->node_type == PT_NAME)
-			  col->info.name.meta_class = PT_VID_ATTR;
-		      }
-
-		    /* don't raise an error for the oid placeholder
-		     * the column may not be an object for non-updatable views
-		     */
-		    if (!(col_type = col->data_type) ||
-			col->type_enum != PT_TYPE_OBJECT)
-		      {
-			if (attr != attributes)
-			  {
-			    PT_ERRORmf (parser, col,
-					MSGCAT_SET_PARSER_RUNTIME,
-					MSGCAT_RUNTIME_QSPEC_INCOMP_W_ATTR,
-					attr->info.name.original);
-			    return NULL;
-			  }
-		      }
-		    else
-		      {
-			/*
-			 * col_type->info.data_type.virt_type_enum
-			 * IS ALREADY SET!. Don't muck with it.
-			 */
-			if ((attr_class = attr_type->info.data_type.entity))
-			  {
-			    if (db_is_vclass
-				(attr_class->info.name.db_object))
-			      {
-				col_type->info.data_type.virt_object =
-				  attr_class->info.name.db_object;
-			      }
-			  }
-		      }
-		  }
-	      }
-	    else if (col->type_enum != attr->type_enum)
-	      {
-		if (col->node_type == PT_VALUE)
-		  {
-		    (void) pt_coerce_value (parser, col, col,
-					    attr->type_enum, NULL);
-		    /* this should also set an error code if it fails */
-		  }
-		else
-		  {		/* need to CAST */
-		    new_col = pt_type_cast_vclass_query_spec_column (parser,
-								     attr,
-								     col);
-		    if (new_col != col)
-		      {
-			if (prev_col == NULL)
-			  {
-			    query_spec->info.query.q.select.list = new_col;
-			    query_spec->type_enum = new_col->type_enum;
-			    if (query_spec->data_type)
-			      {
-				parser_free_tree (parser,
-						  query_spec->data_type);
-			      }
-			    query_spec->data_type =
-			      parser_copy_tree_list (parser,
-						     new_col->data_type);
-			  }
-			else
-			  {
-			    prev_col->next = new_col;
-			  }
-
-			col = new_col;
-		      }
-		  }
-	      }
-
-	    /* save previous link */
-	    prev_col = col;
-
-	    /* advance to next attribute and column */
-	    attr = attr->next;
-	    col = col->next;
-	  }
-
-	if (col)
-	  {
-	    PT_ERRORmf (parser, query_spec, MSGCAT_SET_PARSER_RUNTIME,
-			MSGCAT_RUNTIME_QSPEC_COLS_GT_ATTRS,
-			db_get_class_name (vclass_object));
-	    return NULL;
-	  }
-
-	if (attr)
-	  {
-	    PT_ERRORmf (parser, query_spec, MSGCAT_SET_PARSER_RUNTIME,
-			MSGCAT_RUNTIME_ATTRS_GT_QSPEC_COLS,
-			db_get_class_name (vclass_object));
-	    return NULL;
-	  }
-
-	break;
-
-      case PT_UNION:
-      case PT_DIFFERENCE:
-      case PT_INTERSECTION:
+  switch (query_spec->node_type)
+    {
+    case PT_SELECT:
+      if (query_spec->info.query.q.select.from != NULL)
 	{
-	  mq_set_types (parser, query_spec->info.query.q.union_.arg1,
-			attributes, vclass_object, cascaded_check);
-	  mq_set_types (parser, query_spec->info.query.q.union_.arg2,
-			attributes, vclass_object, cascaded_check);
+	  flat = query_spec->info.query.q.select.from->info.spec.
+	    flat_entity_list;
 	}
-	break;
+      else
+	{
+	  flat = NULL;
+	}
 
-      default:
-	/* could flag an error here, this should not happen */
-	break;
+      if (cascaded_check)
+	{
+	  /* the piecemeal local check option list we have accumulated is
+	   * now pointless. The user requested an honest to god
+	   * useful check option, instead.
+	   */
+	  parser_free_tree (parser,
+			    query_spec->info.query.q.select.check_where);
+	  query_spec->info.query.q.select.check_where =
+	    parser_copy_tree_list (parser,
+				   query_spec->info.query.q.select.where);
+	}
 
-      }
+      while (flat)
+	{
+	  flat->info.name.virt_object = vclass_object;
+	  flat = flat->next;
+	}
+
+      attr = attributes;
+      col = query_spec->info.query.q.select.list;
+      prev_col = NULL;
+      while (col && attr)
+	{
+	  /* should check type compatibility here */
+
+	  if (attr->info.name.meta_class == PT_SHARED)
+	    {
+	      /* this should not get lambda replaced during translation.
+	       * An easy way to emulate this is to simply overwrite the
+	       * column that would be replacing this.
+	       */
+	      next_col = col->next;
+	      col->next = NULL;
+	      parser_free_tree (parser, col);
+
+	      new_col = parser_copy_tree (parser, attr);
+	      new_col->info.name.db_object = vclass_object;
+	      new_col->next = next_col;
+
+	      if (prev_col == NULL)
+		{
+		  query_spec->info.query.q.select.list = new_col;
+		  query_spec->type_enum = new_col->type_enum;
+		  if (query_spec->data_type)
+		    {
+		      parser_free_tree (parser, query_spec->data_type);
+		    }
+		  query_spec->data_type = parser_copy_tree_list (parser,
+								 new_col->
+								 data_type);
+		}
+	      else
+		{
+		  prev_col->next = new_col;
+		}
+
+	      col = new_col;
+	    }
+	  else if (col->type_enum == PT_TYPE_NA ||
+		   col->type_enum == PT_TYPE_NULL)
+	    {
+	      /* These are compatible with anything */
+	    }
+	  else if (attr->type_enum == PT_TYPE_OBJECT)
+	    {
+	      if ((attr_type = attr->data_type))
+		{
+		  if (attr->info.name.meta_class == PT_OID_ATTR)
+		    {
+		      /* re-classify OID_ATTR as VID_ATTR */
+		      if (col->node_type == PT_NAME)
+			col->info.name.meta_class = PT_VID_ATTR;
+		    }
+
+		  /* don't raise an error for the oid placeholder
+		   * the column may not be an object for non-updatable views
+		   */
+		  if (!(col_type = col->data_type) ||
+		      col->type_enum != PT_TYPE_OBJECT)
+		    {
+		      if (attr != attributes)
+			{
+			  PT_ERRORmf (parser, col,
+				      MSGCAT_SET_PARSER_RUNTIME,
+				      MSGCAT_RUNTIME_QSPEC_INCOMP_W_ATTR,
+				      attr->info.name.original);
+			  return NULL;
+			}
+		    }
+		  else
+		    {
+		      /*
+		       * col_type->info.data_type.virt_type_enum
+		       * IS ALREADY SET!. Don't muck with it.
+		       */
+		      if ((attr_class = attr_type->info.data_type.entity))
+			{
+			  if (db_is_vclass (attr_class->info.name.db_object))
+			    {
+			      col_type->info.data_type.virt_object =
+				attr_class->info.name.db_object;
+			    }
+			}
+		    }
+		}
+	    }
+	  else if (col->type_enum != attr->type_enum)
+	    {
+	      if (col->node_type == PT_VALUE)
+		{
+		  (void) pt_coerce_value (parser, col, col,
+					  attr->type_enum, NULL);
+		  /* this should also set an error code if it fails */
+		}
+	      else
+		{		/* need to CAST */
+		  new_col = pt_type_cast_vclass_query_spec_column (parser,
+								   attr, col);
+		  if (new_col != col)
+		    {
+		      if (prev_col == NULL)
+			{
+			  query_spec->info.query.q.select.list = new_col;
+			  query_spec->type_enum = new_col->type_enum;
+			  if (query_spec->data_type)
+			    {
+			      parser_free_tree (parser,
+						query_spec->data_type);
+			    }
+			  query_spec->data_type =
+			    parser_copy_tree_list (parser,
+						   new_col->data_type);
+			}
+		      else
+			{
+			  prev_col->next = new_col;
+			}
+
+		      col = new_col;
+		    }
+		}
+	    }
+
+	  /* save previous link */
+	  prev_col = col;
+
+	  /* advance to next attribute and column */
+	  attr = attr->next;
+	  col = col->next;
+	}
+
+      if (col)
+	{
+	  PT_ERRORmf (parser, query_spec, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_QSPEC_COLS_GT_ATTRS,
+		      db_get_class_name (vclass_object));
+	  return NULL;
+	}
+
+      if (attr)
+	{
+	  PT_ERRORmf (parser, query_spec, MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_ATTRS_GT_QSPEC_COLS,
+		      db_get_class_name (vclass_object));
+	  return NULL;
+	}
+
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      mq_set_types (parser, query_spec->info.query.q.union_.arg1,
+		    attributes, vclass_object, cascaded_check);
+      mq_set_types (parser, query_spec->info.query.q.union_.arg2,
+		    attributes, vclass_object, cascaded_check);
+      break;
+
+    default:
+      /* could flag an error here, this should not happen */
+      break;
+    }
 
   return query_spec;
 }
@@ -4460,8 +4458,6 @@ mq_add_dummy_from_pre (PARSER_CONTEXT * parser, PT_NODE * node,
   return node;
 }
 
-
-
 /*
  * mq_add_dummy_from_post () - restore the PT_CONTINUE_WALK flag so that
  *			       subquery sibilings are also visited.
@@ -4481,17 +4477,16 @@ mq_add_dummy_from_post (PARSER_CONTEXT * parser, PT_NODE * node,
    * below replicate the ones in that function: only select nodes without
    * from and that are sub-queries.
    */
-  if (node &&
-      node->node_type == PT_SELECT &&
-      node->info.query.q.select.from == NULL &&
-      node->info.query.is_subquery == PT_IS_SUBQUERY)
+  if (node
+      && node->node_type == PT_SELECT
+      && node->info.query.q.select.from == NULL
+      && node->info.query.is_subquery == PT_IS_SUBQUERY)
     {
       *continue_walk = PT_CONTINUE_WALK;
     }
 
   return node;
 }
-
 
 /*
  * mq_translate_subqueries() - Translates virtual instance population
@@ -4518,7 +4513,9 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
   int local_check;
 
   if (db_is_class (class_object))
-    return NULL;
+    {
+      return NULL;
+    }
 
   /* get query spec's */
   db_query_spec = db_get_query_specs (class_object);
@@ -4533,7 +4530,6 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
 
   while (db_query_spec)
     {
-
       /* parse and compile the next query spec */
       query_spec_string = db_query_spec_string (db_query_spec);
       result = parser_parse_string (parser, query_spec_string);
@@ -4543,7 +4539,9 @@ mq_translate_subqueries (PARSER_CONTEXT * parser,
        * provided by parser_parse_string.
        */
       if (!result)
-	return NULL;
+	{
+	  return NULL;
+	}
 
       query_spec = *result;
 
@@ -4731,12 +4729,15 @@ mq_set_non_updatable_oid (PARSER_CONTEXT * parser, PT_NODE * stmt,
   PT_NODE *select_list;
 
   if (!parser || !stmt)
-    return;
+    {
+      return;
+    }
 
   switch (stmt->node_type)
     {
     case PT_SELECT:
-      if ((select_list = stmt->info.query.q.select.list) != NULL)
+      select_list = stmt->info.query.q.select.list;
+      if (select_list != NULL)
 	{
 	  DB_VALUE vid;
 
@@ -4783,16 +4784,22 @@ static bool
 mq_check_cycle (DB_OBJECT * class_object)
 {
   unsigned int i, max, enter;
+
   enter = top_cycle % MAX_CYCLE;
   max = top_cycle < MAX_CYCLE ? top_cycle : MAX_CYCLE;
+
   for (i = 0; i < max; i++)
     {
       if (cycle_buffer[i] == class_object)
-	return true;
+	{
+	  return true;
+	}
     }
+
   /* otherwise increment top cycle and enter object in buffer */
   cycle_buffer[enter] = class_object;
   top_cycle++;
+
   return false;
 }
 
@@ -4869,11 +4876,13 @@ mq_virtual_queries (DB_OBJECT * class_object)
     }
 
   if (statements)
-    if (mq_check_cycle (class_object))
-      {
-	PT_ERRORmf (parser, statements[0], MSGCAT_SET_PARSER_RUNTIME,
-		    MSGCAT_RUNTIME_CYCLIC_QUERY_SPEC, cname);
-      }
+    {
+      if (mq_check_cycle (class_object))
+	{
+	  PT_ERRORmf (parser, statements[0], MSGCAT_SET_PARSER_RUNTIME,
+		      MSGCAT_RUNTIME_CYCLIC_QUERY_SPEC, cname);
+	}
+    }
 
   if (statements && !parser->error_msgs)
     {
@@ -4898,19 +4907,19 @@ mq_virtual_queries (DB_OBJECT * class_object)
 	      AU_SET_USER (owner);
 	    }
 
-	  symbols->vquery_for_query = mq_translate_subqueries
-	    (parser, class_object, symbols->attrs, &symbols->authorization);
+	  symbols->vquery_for_query =
+	    mq_translate_subqueries (parser, class_object, symbols->attrs,
+				     &symbols->authorization);
 
 	  /* no need to recheck authorizations */
-	  symbols->vquery_for_query_in_gdb = mq_translate_subqueries
-	    (parser, class_object, symbols->attrs, NULL);
-
+	  symbols->vquery_for_query_in_gdb =
+	    mq_translate_subqueries (parser, class_object, symbols->attrs,
+				     NULL);
 
 	  if (!parser->error_msgs && symbols->vquery_for_query)
 	    {
 	      if (mq_updatable (parser, symbols->vquery_for_query))
 		{
-
 		  symbols->vquery_for_update =
 		    parser_copy_tree_list (parser, symbols->vquery_for_query);
 		  symbols->vquery_for_update =
@@ -4927,23 +4936,23 @@ mq_virtual_queries (DB_OBJECT * class_object)
 		    parser_copy_tree_list (parser,
 					   symbols->vquery_for_update_in_gdb);
 
-		  mq_invert_subqueries
-		    (parser, symbols->inverted_vquery_for_update,
-		     symbols->attrs);
+		  mq_invert_subqueries (parser,
+					symbols->inverted_vquery_for_update,
+					symbols->attrs);
 
 		  symbols->inverted_vquery_for_update_in_gdb =
 		    parser_copy_tree_list (parser,
 					   symbols->vquery_for_update_in_gdb);
 
-		  mq_invert_subqueries
-		    (parser, symbols->inverted_vquery_for_update_in_gdb,
-		     symbols->attrs);
-
+		  mq_invert_subqueries (parser,
+					symbols->
+					inverted_vquery_for_update_in_gdb,
+					symbols->attrs);
 		}
 	      else
 		{
-		  PT_NODE *virt_class =
-		    parser_copy_tree (parser, symbols->attrs);
+		  PT_NODE *virt_class = parser_copy_tree (parser,
+							  symbols->attrs);
 		  if (virt_class == NULL)
 		    {
 		      PT_INTERNAL_ERROR (parser, "parser_copy_tree");
@@ -4952,11 +4961,12 @@ mq_virtual_queries (DB_OBJECT * class_object)
 
 		  virt_class->info.name.db_object = class_object;
 
-		  mq_set_non_updatable_oid
-		    (parser, symbols->vquery_for_query, virt_class);
+		  mq_set_non_updatable_oid (parser, symbols->vquery_for_query,
+					    virt_class);
+		  mq_set_non_updatable_oid (parser,
+					    symbols->vquery_for_query_in_gdb,
+					    virt_class);
 
-		  mq_set_non_updatable_oid
-		    (parser, symbols->vquery_for_query_in_gdb, virt_class);
 		  parser_free_tree (parser, virt_class);
 		}
 	    }
@@ -4979,7 +4989,6 @@ mq_virtual_queries (DB_OBJECT * class_object)
     {
       top_cycle = 0;
     }
-
 
   return parser;
 }
@@ -5026,10 +5035,12 @@ mq_mark_location (PARSER_CONTEXT * parser, PT_NODE * node,
 		}		/* switch (spec->info.spec.join_type) */
 
 	      /* ON cond will be moved at optimize_queries */
-	    }			/* if (on_cond) */
+	    }
+
 	  if (spec->info.spec.entity_name)
 	    {
 	      PT_NODE *node = spec->info.spec.entity_name;
+
 	      if (node->node_type == PT_NAME)
 		{
 		  node->info.name.location = spec->info.spec.location;
@@ -5044,20 +5055,26 @@ mq_mark_location (PARSER_CONTEXT * parser, PT_NODE * node,
 		  assert (0);
 		}
 	    }
-	}			/* for (spec = ...) */
+	}
     }
   else if (locp)
     {
       if (node->node_type == PT_EXPR)
-	node->info.expr.location = *locp;
+	{
+	  node->info.expr.location = *locp;
+	}
       else if (node->node_type == PT_NAME)
-	node->info.name.location = *locp;
+	{
+	  node->info.name.location = *locp;
+	}
       else if (node->node_type == PT_VALUE)
-	node->info.value.location = *locp;
+	{
+	  node->info.value.location = *locp;
+	}
     }
 
   return node;
-}				/* mq_mark_location() */
+}
 
 /*
  * mq_check_non_updatable_vclass_oid() -
@@ -5124,7 +5141,6 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
   next = node->next;
   node->next = NULL;
 
-
   switch (node->node_type)
     {
       /* only translate translatable statements */
@@ -5146,7 +5162,7 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (node)
 	{
-	  node->info.query.is_subquery = (PT_MISC_TYPE) - 1;
+	  node->info.query.is_subquery = (PT_MISC_TYPE) (-1);
 	  if (node->node_type != PT_SELECT)
 	    {
 	      mq_set_union_query (parser, node->info.query.q.union_.arg1,
@@ -5166,7 +5182,9 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  /* repeat for constant folding */
 	  if (node)
-	    node = pt_semantic_type (parser, node, &sc_info);
+	    {
+	      node = pt_semantic_type (parser, node, &sc_info);
+	    }
 	}
       break;
 
@@ -5189,7 +5207,9 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node = mq_optimize (parser, node);
 	  /* repeat for constant folding */
 	  if (node)
-	    node = pt_semantic_type (parser, node, &sc_info);
+	    {
+	      node = pt_semantic_type (parser, node, &sc_info);
+	    }
 	}
       break;
 
@@ -5199,7 +5219,9 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* restore link */
   if (node)
-    node->next = next;
+    {
+      node->next = next;
+    }
 
   if (pt_has_error (parser))
     {
@@ -5225,7 +5247,9 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * node)
   volatile PT_NODE *return_node = NULL;
 
   if (!node)
-    return NULL;
+    {
+      return NULL;
+    }
 
   /* set up an environment for longjump to return to if there is an out
    * of memory error in pt_memory.c. DO NOT RETURN unless PT_CLEAR_JMP_ENV
