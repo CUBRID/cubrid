@@ -7699,9 +7699,12 @@ start_point:
 	      COPY_OID (&N_class_oid, &class_oid);
 	    }
 
-	  (void) btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid,
-					N_oid.volid, btid_int.sys_btid,
-					&N_oid);
+	  if (btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid,
+				     N_oid.volid, btid_int.sys_btid,
+				     &N_oid) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
     }
   else
@@ -7756,8 +7759,11 @@ start_point:
 	  COPY_OID (&N_class_oid, &class_oid);
 	}
 
-      (void) btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
-				    btid_int.sys_btid, &N_oid);
+      if (btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
+				 btid_int.sys_btid, &N_oid) != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   if (next_lock_flag == true)
@@ -7894,10 +7900,14 @@ curr_key_locking:
     {
       COPY_OID (&pseudo_class_oid, &class_oid);
     }
-  (void) btree_make_pseudo_oid (curr_key_first_oid.pageid,
-				curr_key_first_oid.slotid,
-				curr_key_first_oid.volid, btid_int.sys_btid,
-				&pseudo_oid);
+
+  if (btree_make_pseudo_oid (curr_key_first_oid.pageid,
+			     curr_key_first_oid.slotid,
+			     curr_key_first_oid.volid, btid_int.sys_btid,
+			     &pseudo_oid) != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (curr_lock_flag == true)
     {
@@ -8116,10 +8126,14 @@ new_curr_key_locking:
 	    }
 	}
 
-      (void) btree_make_pseudo_oid (curr_key_second_oid.pageid,
-				    curr_key_second_oid.slotid,
-				    curr_key_second_oid.volid,
-				    btid_int.sys_btid, &new_pseudo_oid);
+      if (btree_make_pseudo_oid (curr_key_second_oid.pageid,
+				 curr_key_second_oid.slotid,
+				 curr_key_second_oid.volid,
+				 btid_int.sys_btid, 
+				 &new_pseudo_oid) != NO_ERROR)
+	{
+	  goto error;
+	}
 
       ret_val = lock_object (thread_p, &new_pseudo_oid, &pseudo_class_oid,
 			     NX_LOCK, LK_COND_LOCK);
@@ -11255,9 +11269,12 @@ start_point:
 	    }
 
 	  /* make an pseudo oid associated with next key */
-	  (void) btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid,
-					N_oid.volid, btid_int.sys_btid,
-					&N_oid);
+	  if (btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid,
+				     N_oid.volid, btid_int.sys_btid,
+				     &N_oid) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
     }
   else
@@ -11303,8 +11320,11 @@ start_point:
 	  COPY_OID (&N_class_oid, &class_oid);
 	}
 
-      (void) btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
-				    btid_int.sys_btid, &N_oid);
+      if (btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
+				 btid_int.sys_btid, &N_oid) != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   if (next_lock_flag == true)
@@ -11451,9 +11471,12 @@ curr_key_locking:
       COPY_OID (&pseudo_oid, oid);
     }
 
-  (void) btree_make_pseudo_oid (pseudo_oid.pageid, pseudo_oid.slotid,
-				pseudo_oid.volid, btid_int.sys_btid,
-				&pseudo_oid);
+  if (btree_make_pseudo_oid (pseudo_oid.pageid, pseudo_oid.slotid,
+			     pseudo_oid.volid, btid_int.sys_btid,
+			     &pseudo_oid) != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (curr_lock_flag == true)
     {
@@ -14440,8 +14463,11 @@ btree_lock_current_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
       COPY_OID (&class_oid, &bts->cls_oid);
     }
 
-  (void) btree_make_pseudo_oid (oid.pageid, oid.slotid, oid.volid,
-				bts->btid_int.sys_btid, &oid);
+  if (btree_make_pseudo_oid (oid.pageid, oid.slotid, oid.volid,
+			     bts->btid_int.sys_btid, &oid) != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (OID_EQ (ck_pseudo_oid, &oid))
     {
@@ -14701,8 +14727,11 @@ start_point:
       COPY_OID (&N_class_oid, &bts->cls_oid);
     }
 
-  (void) btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
-				bts->btid_int.sys_btid, &N_oid);
+  if (btree_make_pseudo_oid (N_oid.pageid, N_oid.slotid, N_oid.volid,
+			     bts->btid_int.sys_btid, &N_oid) != NO_ERROR)
+    {
+      goto error;
+    }
 
 start_locking:
   if (OID_EQ (nk_pseudo_oid, &N_oid))
@@ -14876,30 +14905,20 @@ error:
 static int
 btree_make_pseudo_oid (int p, short s, short v, BTID * btid, OID * oid)
 {
-  short catp, cp, pos, cb;
+  short catp, cp, pos;
+
   if (oid == NULL || btid == NULL)
     {
+      assert (false);
       return ER_FAILED;
     }
 
   pos = btid->root_pageid % DISK_PAGE_BITS;
-  if (db_page_size () <= IO_DEFAULT_PAGE_SIZE - RESERVED_SIZE_IN_PAGE)
-    {
-      catp = (btid->root_pageid / DISK_PAGE_BITS) & 0x07;
-      cp = -(2 + pos);
-      oid->volid = cp;
-      oid->pageid = p;
-      oid->slotid = s + ((v & 0x1f) << 8) + (catp << 13);
-    }
-  else
-    {
-      catp = (btid->root_pageid / DISK_PAGE_BITS) & 0x01;
-      cb = (pos / 32767) & 0x03;
-      cp = -(2 + pos % 32767);
-      oid->volid = cp;
-      oid->pageid = p;
-      oid->slotid = s + ((v & 0x1f) << 8) + (catp << 13) + (cb << 14);
-    }
+  catp = (btid->root_pageid / DISK_PAGE_BITS) & 0x07;
+  cp = -(2 + pos);
+  oid->volid = cp;
+  oid->pageid = p;
+  oid->slotid = s + ((v & 0x1f) << 8) + (catp << 13);
 
   return NO_ERROR;
 }
@@ -15800,9 +15819,13 @@ start_locking:
       oids_equal = false;
       if (is_condition_satisfied == false && saved_inst_oid.volid < -1)
 	{
-	  (void) btree_make_pseudo_oid (inst_oid.pageid, inst_oid.slotid,
-					inst_oid.volid,
-					bts->btid_int.sys_btid, &pseudo_oid);
+	  if (btree_make_pseudo_oid (inst_oid.pageid, inst_oid.slotid,
+				     inst_oid.volid,
+				     bts->btid_int.sys_btid, 
+				     &pseudo_oid) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	  oids_equal = OID_EQ (&saved_inst_oid, &pseudo_oid);
 	}
       else
@@ -16484,11 +16507,14 @@ start_locking:
 	    {
 	      if (bts->C_vpid.pageid != NULL_PAGEID)
 		{
-		  (void) btree_make_pseudo_oid (inst_oid.pageid,
-						inst_oid.slotid,
-						inst_oid.volid,
-						bts->btid_int.sys_btid,
-						&inst_oid);
+		  if (btree_make_pseudo_oid (inst_oid.pageid,
+					     inst_oid.slotid,
+					     inst_oid.volid,
+					     bts->btid_int.sys_btid,
+					     &inst_oid) != NO_ERROR)
+		    {
+		      goto error;
+		    }
 		}
 
 	      lock_pseudo_oid = true;
