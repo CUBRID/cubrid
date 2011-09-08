@@ -32,6 +32,14 @@
 #include "master_util.h"
 #include "heartbeat.h"
 
+/* ping result */
+enum HB_PING_RESULT
+{
+  HB_PING_SUCCESS = 0,
+  HB_PING_USELESS_HOST = 1,
+  HB_PING_SYS_ERR = 2,
+  HB_PING_FAILURE = 3
+};
 
 /* heartbeat cluster jobs */
 enum HB_CLUSTER_JOB
@@ -41,6 +49,8 @@ enum HB_CLUSTER_JOB
   HB_CJOB_CALC_SCORE = 2,
   HB_CJOB_CHECK_PING = 3,
   HB_CJOB_FAILOVER = 4,
+  HB_CJOB_FAILBACK = 5,
+  HB_CJOB_CHECK_VALID_PING_SERVER = 6,
   HB_CJOB_MAX
 };
 
@@ -50,13 +60,15 @@ enum HB_NODE_STATE
   HB_NSTATE_UNKNOWN = 0,
   HB_NSTATE_SLAVE = 1,
   HB_NSTATE_TO_BE_MASTER = 2,
-  HB_NSTATE_MASTER = 3,
-  HB_NSTATE_REPLICA = 4,
+  HB_NSTATE_TO_BE_SLAVE = 3,
+  HB_NSTATE_MASTER = 4,
+  HB_NSTATE_REPLICA = 5,
   HB_NSTATE_MAX
 };
 #define HB_NSTATE_UNKNOWN_STR   "unknown"
 #define HB_NSTATE_SLAVE_STR     "slave"
 #define HB_NSTATE_TO_BE_MASTER_STR    "to-be-master"
+#define HB_NSTATE_TO_BE_SLAVE_STR "to-be-slave"
 #define HB_NSTATE_MASTER_STR    "master"
 #define HB_NSTATE_REPLICA_STR   "replica"
 #define HB_NSTATE_STR_SZ        (8)
@@ -117,6 +129,13 @@ enum HB_PROC_STATE
 #define HB_CMD_DEREGISTER_STR                   "deregister"
 #define HB_CMD_RELOAD_STR                       "reload"
 
+/* time related macro */
+#define HB_GET_ELAPSED_TIME(end_time, start_time) \
+            ((double)(end_time.tv_sec - start_time.tv_sec) * 1000 + \
+             (end_time.tv_usec - start_time.tv_usec)/1000.0)
+
+#define HB_IS_INITIALIZED_TIME(arg_time) \
+            ((arg_time.tv_sec == 0 && arg_time.tv_usec == 0) ? 1 : 0)
 
 /* heartbeat list */
 typedef struct hb_list HB_LIST;
@@ -140,6 +159,7 @@ struct hb_node_entry
   short score;
   short heartbeat_gap;
 
+  struct timeval last_recv_hbtime;	/* last received heartbeat time */
 };
 
 /* herartbeat cluster */

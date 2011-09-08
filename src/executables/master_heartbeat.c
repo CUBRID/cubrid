@@ -107,7 +107,9 @@ static void hb_cluster_job_init (HB_JOB_ARG * arg);
 static void hb_cluster_job_heartbeat (HB_JOB_ARG * arg);
 static void hb_cluster_job_calc_score (HB_JOB_ARG * arg);
 static void hb_cluster_job_failover (HB_JOB_ARG * arg);
+static void hb_cluster_job_failback (HB_JOB_ARG * arg);
 static void hb_cluster_job_check_ping (HB_JOB_ARG * arg);
+static void hb_cluster_job_check_valid_ping_server (HB_JOB_ARG * arg);
 
 static void hb_cluster_request_heartbeat_to_all (void);
 static void hb_cluster_send_heartbeat (bool is_req, char *host_name);
@@ -122,6 +124,9 @@ static void hb_set_net_header (HBP_HEADER * header, unsigned char type,
 			       unsigned int seq, char *dest_host_name);
 static int hb_sockaddr (const char *host, int port, struct sockaddr *saddr,
 			socklen_t * slen);
+
+/* common */
+static int hb_check_ping (const char *host);
 
 /* cluster jobs queue */
 static HB_JOB_ENTRY *hb_cluster_job_dequeue (void);
@@ -227,6 +232,8 @@ static HB_JOB_FUNC hb_cluster_jobs[] = {
   hb_cluster_job_calc_score,
   hb_cluster_job_check_ping,
   hb_cluster_job_failover,
+  hb_cluster_job_failback,
+  hb_cluster_job_check_valid_ping_server,
   NULL
 };
 
@@ -586,6 +593,11 @@ hb_cluster_job_init (HB_JOB_ARG * arg)
 				HB_JOB_TIMER_IMMEDIATELY);
   assert (error == NO_ERROR);
 
+  error =
+    hb_cluster_job_queue (HB_CJOB_CHECK_VALID_PING_SERVER, NULL,
+			  HB_JOB_TIMER_IMMEDIATELY);
+  assert (error == NO_ERROR);
+
   error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
 				PRM_HA_INIT_TIMER_IN_MSECS);
   assert (error == NO_ERROR);
@@ -632,8 +644,10 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 {
   int error, rv;
   int num_master;
+  bool is_master_isolated = true;
   HB_JOB_ARG *job_arg;
   HB_CLUSTER_JOB_ARG *clst_arg;
+  HB_NODE_ENTRY *node;
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
 
@@ -641,6 +655,41 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
   if (hb_Cluster->state == HB_NSTATE_REPLICA)
     {
       goto calc_end;
+    }
+
+  /* case : check whether master has been isolated */
+  if (hb_Cluster->state == HB_NSTATE_MASTER)
+    {
+      for (node = hb_Cluster->nodes; node; node = node->next)
+	{
+	  if (hb_Cluster->myself != node && node->state != HB_NSTATE_UNKNOWN)
+	    {
+	      is_master_isolated = false;
+	    }
+	}
+      if (is_master_isolated)
+	{
+	  /*check ping if Ping host exist */
+	  pthread_mutex_unlock (&hb_Cluster->lock);
+
+	  job_arg = (HB_JOB_ARG *) malloc (sizeof (HB_JOB_ARG));
+	  if (job_arg)
+	    {
+	      clst_arg = &(job_arg->cluster_job_arg);
+	      clst_arg->ping_check_count = 0;
+
+	      error = hb_cluster_job_queue (HB_CJOB_CHECK_PING, job_arg,
+					    HB_JOB_TIMER_IMMEDIATELY);
+	      assert (error == NO_ERROR);
+	    }
+
+	  if (arg)
+	    {
+	      free_and_init (arg);
+	    }
+
+	  return;
+	}
     }
 
   /* case : split-brain */
@@ -739,89 +788,111 @@ calc_end:
 static void
 hb_cluster_job_check_ping (HB_JOB_ARG * arg)
 {
-
-#define PING_COMMAND_FORMAT \
-"ping -w 1 -c 1 %s >/dev/null 2>&1; " \
-"echo $?"
-
-  int error;
+  int error, rv;
+  int ping_try_count = 0;
   bool ping_success = false;
   char *host_list = NULL;
   char *host_list_p, *host_p, *host_pp;
-  char ping_command[256], result_str[16];
-  long result_val;
-  FILE *fp;
+  int ping_result;
   HB_CLUSTER_JOB_ARG *clst_arg = (arg) ? &(arg->cluster_job_arg) : NULL;
+
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
 
   if (clst_arg == NULL || PRM_HA_PING_HOSTS == NULL
       || *PRM_HA_PING_HOSTS == '\0')
     {
-      goto failover_confirm;
-    }
-
-  host_list = strdup (PRM_HA_PING_HOSTS);
-  if (host_list == NULL)
-    {
-      goto failover_cancel;
-    }
-
-  for (host_list_p = host_list;; host_list_p = NULL)
-    {
-      host_p = strtok_r (host_list_p, " :\t\n", &host_pp);
-      if (host_p == NULL)
+      /* If Ping Host is empty, MASTER->MASTER, SLAVE->MASTER.
+       * It may cause split-brain problem.
+       */
+      if (hb_Cluster->state == HB_NSTATE_MASTER)
 	{
-	  break;
-	}
-
-      snprintf (ping_command, sizeof (ping_command), PING_COMMAND_FORMAT,
-		host_p);
-      fp = popen (ping_command, "r");
-      if (fp == NULL)
-	{
-	  continue;
-	}
-
-      if (fgets (result_str, sizeof (result_str), fp) == NULL)
-	{
-	  pclose (fp);
-	  continue;
-	}
-      result_str[sizeof (result_str) - 1] = 0;
-
-      pclose (fp);
-
-      result_val = strtol (result_str, (char **) NULL, 10);
-      if (result_val == 0)
-	{
-	  ping_success = true;
-	  break;
+	  goto ping_check_cancel;
 	}
     }
-
-  if (ping_success == false)
+  else
     {
-      goto failover_cancel;
+      host_list = strdup (PRM_HA_PING_HOSTS);
+      if (host_list == NULL)
+	{
+	  goto ping_check_cancel;
+	}
+
+      for (host_list_p = host_list;; host_list_p = NULL)
+	{
+	  host_p = strtok_r (host_list_p, " :\t\n", &host_pp);
+	  if (host_p == NULL)
+	    {
+	      break;
+	    }
+
+	  ping_result = hb_check_ping (host_p);
+
+	  if (ping_result == HB_PING_SUCCESS)
+	    {
+	      ping_try_count++;
+	      ping_success = true;
+	      break;
+	    }
+	  else if (ping_result == HB_PING_FAILURE)
+	    {
+	      ping_try_count++;
+	    }
+	}
+
+      if (hb_Cluster->state == HB_NSTATE_MASTER)
+	{
+	  if (ping_try_count == 0 || ping_success == true)
+	    {
+	      goto ping_check_cancel;
+	    }
+	}
+      else
+	{
+	  if (ping_try_count > 0 && ping_success == false)
+	    {
+	      goto ping_check_cancel;
+	    }
+	}
+
+      if ((++clst_arg->ping_check_count) < HB_MAX_PING_CHECK)
+	{
+	  /* Try ping test again */
+	  pthread_mutex_unlock (&hb_Cluster->lock);
+
+	  error =
+	    hb_cluster_job_queue (HB_CJOB_CHECK_PING, arg,
+				  HB_JOB_TIMER_WAIT_A_SECOND);
+	  assert (error == NO_ERROR);
+
+	  if (host_list)
+	    {
+	      free_and_init (host_list);
+	    }
+
+	  return;
+	}
     }
 
-  if ((++clst_arg->ping_check_count) < HB_MAX_PING_CHECK)
+  /* Now, we have tried ping test over HB_MAX_PING_CHECK times. (or Slave's ping host is empty.)
+   * So, we can determine this node's next job (failover or failback).
+   */
+
+  pthread_mutex_unlock (&hb_Cluster->lock);
+  if (hb_Cluster->state == HB_NSTATE_MASTER)
     {
+      /* If this node is Master, do failback */
       error =
-	hb_cluster_job_queue (HB_CJOB_CHECK_PING, arg,
-			      HB_JOB_TIMER_WAIT_A_SECOND);
+	hb_cluster_job_queue (HB_CJOB_FAILBACK, NULL,
+			      HB_JOB_TIMER_IMMEDIATELY);
       assert (error == NO_ERROR);
-
-      if (host_list)
-	{
-	  free_and_init (host_list);
-	}
-
-      return;
     }
-
-failover_confirm:
-  error = hb_cluster_job_queue (HB_CJOB_FAILOVER, NULL,
-				PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS);
-  assert (error == NO_ERROR);
+  else
+    {
+      /* If this node is Slave, do failover */
+      error = hb_cluster_job_queue (HB_CJOB_FAILOVER, NULL,
+				    PRM_HA_FAILOVER_WAIT_TIME_IN_MSECS);
+      assert (error == NO_ERROR);
+    }
 
   if (arg)
     {
@@ -832,17 +903,28 @@ failover_confirm:
     {
       free_and_init (host_list);
     }
-
   return;
 
-failover_cancel:
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
-	  "Failover cancelled");
-  hb_Cluster->state = HB_NSTATE_SLAVE;
+ping_check_cancel:
+  if (hb_Cluster->state == HB_NSTATE_MASTER)
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+	      "Failback cancelled");
+    }
+  else
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+	      "Failover cancelled");
+      hb_Cluster->state = HB_NSTATE_SLAVE;
+    }
   hb_cluster_request_heartbeat_to_all ();
 
-  error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
-				PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS);
+  pthread_mutex_unlock (&hb_Cluster->lock);
+
+  /* do calc_score job again */
+  error =
+    hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
+			  PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS);
   assert (error == NO_ERROR);
 
   if (arg)
@@ -854,7 +936,6 @@ failover_cancel:
     {
       free_and_init (host_list);
     }
-
   return;
 }
 
@@ -904,6 +985,94 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
   return;
 }
 
+/*
+ * hb_cluster_job_failback () -
+ *   return: none
+ *
+ *   jobs(in):
+ */
+static void
+hb_cluster_job_failback (HB_JOB_ARG * arg)
+{
+  int error, rv;
+  int num_master;
+
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
+
+  hb_Cluster->state = HB_NSTATE_TO_BE_SLAVE;
+  hb_Resource->state = HB_NSTATE_TO_BE_SLAVE;
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1,
+	  "Master will be slave");
+
+  pthread_mutex_unlock (&hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Cluster->lock);
+
+  error = hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL,
+				PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS);
+  assert (error == NO_ERROR);
+
+  if (arg)
+    {
+      free_and_init (arg);
+    }
+  return;
+}
+
+/*
+ * hb_cluster_job_check_valid_ping_server() -
+ *   return: none
+ *
+ *   jobs(in):
+ */
+static void
+hb_cluster_job_check_valid_ping_server (HB_JOB_ARG * arg)
+{
+  int error, rv;
+  char *host_list = NULL;
+  char *host_list_p, *host_p, **host_pp;
+  int ping_result;
+
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
+  if (PRM_HA_PING_HOSTS == NULL || *PRM_HA_PING_HOSTS == '\0')
+    {
+      pthread_mutex_unlock (&hb_Cluster->lock);
+      return;
+    }
+
+  host_list = strdup (PRM_HA_PING_HOSTS);
+
+  if (host_list == NULL)
+    {
+      pthread_mutex_unlock (&hb_Cluster->lock);
+      return;
+    }
+
+  for (host_list_p = host_list;; host_list_p = NULL)
+    {
+      host_p = strtok_r (host_list_p, " :\t\n", &host_pp);
+      if (host_p == NULL)
+	{
+	  break;
+	}
+
+      hb_check_ping (host_p);
+    }
+  pthread_mutex_unlock (&hb_Cluster->lock);
+
+  error =
+    hb_cluster_job_queue (HB_CJOB_CHECK_VALID_PING_SERVER, NULL,
+			  HB_DEFAULT_CHECK_VALID_PING_SERVER_INTERVAL_IN_MSECS);
+
+  assert (error == NO_ERROR);
+
+  if (host_list)
+    {
+      free_and_init (host_list);
+    }
+  return;
+}
 
 /*
  * cluster common
@@ -920,6 +1089,8 @@ hb_cluster_calc_score (void)
   short min_index = -1;
   short min_score = HB_NODE_SCORE_UNKNOWN;
   HB_NODE_ENTRY *node;
+  struct timeval now;
+  double hb_recv_elapsed_time;
 
   if (hb_Cluster == NULL)
     {
@@ -928,18 +1099,31 @@ hb_cluster_calc_score (void)
     }
 
   hb_Cluster->myself->state = hb_Cluster->state;
+  gettimeofday (&now, NULL);
 
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      if (node->heartbeat_gap > PRM_HA_MAX_HEARTBEAT_GAP)
+      /* If this node does not receive heartbeat message over 
+       * than PRM_HA_MAX_HEARTBEAT_GAP times,
+       * (or sufficient time has been elapsed from 
+       * the last received heartbeat message time),  
+       * this node does not know what other node state is. 
+       */
+      if (node->heartbeat_gap > PRM_HA_MAX_HEARTBEAT_GAP
+	  || (!HB_IS_INITIALIZED_TIME (node->last_recv_hbtime)
+	      && HB_GET_ELAPSED_TIME (now, node->last_recv_hbtime)
+	      > PRM_HA_CALC_SCORE_INTERVAL_IN_MSECS))
 	{
 	  node->heartbeat_gap = 0;
+	  node->last_recv_hbtime.tv_sec = 0;
+	  node->last_recv_hbtime.tv_usec = 0;
 	  node->state = HB_NSTATE_UNKNOWN;
 	}
 
       switch (node->state)
 	{
 	case HB_NSTATE_MASTER:
+	case HB_NSTATE_TO_BE_SLAVE:
 	  {
 	    node->score = node->priority | HB_NODE_SCORE_MASTER;
 	  }
@@ -1160,7 +1344,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from,
 	  {
 	    node->state = (unsigned short) state;
 	    node->heartbeat_gap = MAX (0, (node->heartbeat_gap - 1));
-
+	    gettimeofday (&node->last_recv_hbtime, NULL);
 	  }
 	else
 	  {
@@ -1405,6 +1589,8 @@ hb_add_node_to_cluster (char *host_name, unsigned short priority)
       p->state = HB_NSTATE_UNKNOWN;
       p->score = 0;
       p->heartbeat_gap = 0;
+      p->last_recv_hbtime.tv_sec = 0;
+      p->last_recv_hbtime.tv_usec = 0;
 
       p->next = NULL;
       p->prev = NULL;
@@ -2050,45 +2236,43 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
   int i, error, rv;
   HB_PROC_ENTRY *proc;
 
-  if (hb_Resource->state == HB_NSTATE_MASTER)
+#if !defined(WINDOWS)
+  rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
+#endif
+  rv = pthread_mutex_lock (&hb_Resource->lock);
+  for (proc = hb_Resource->procs; proc; proc = proc->next)
     {
-#if !defined(WINDOWS)
-      rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
-#endif
-      rv = pthread_mutex_lock (&hb_Resource->lock);
-      for (proc = hb_Resource->procs; proc; proc = proc->next)
+      if ((proc->type != HB_PTYPE_SERVER)
+	  || (hb_Resource->state == HB_NSTATE_MASTER
+	      && proc->state != HB_PSTATE_REGISTERED)
+	  || (hb_Resource->state == HB_NSTATE_TO_BE_SLAVE
+	      && proc->state != HB_PSTATE_REGISTERED_AND_ACTIVE))
 	{
-	  if (proc->type != HB_PTYPE_SERVER
-	      || proc->state != HB_PSTATE_REGISTERED)
-	    {
-	      continue;
-	    }
-
-	  /* TODO : send heartbeat changemode request */
-	  er_log_debug (ARG_FILE_LINE,
-			"send change-mode request. "
-			"(node_state:%d, pid:%d, proc_state:%d). \n",
-			hb_Resource->state, proc->pid, proc->state);
-
-	  error = hb_resource_send_changemode (proc);
-	  if (NO_ERROR != error)
-	    {
-	      /* TODO : if error */
-	    }
-
-	  ++proc->changemode_gap;
+	  continue;
 	}
 
-      if (hb_Resource->procs)
-	{
-	  hb_print_procs ();
-	}
+      /* TODO : send heartbeat changemode request */
+      er_log_debug (ARG_FILE_LINE,
+		    "send change-mode request. "
+		    "(node_state:%d, pid:%d, proc_state:%d). \n",
+		    hb_Resource->state, proc->pid, proc->state);
 
-      pthread_mutex_unlock (&hb_Resource->lock);
-#if !defined(WINDOWS)
-      pthread_mutex_unlock (&css_Master_socket_anchor_lock);
-#endif
+      error = hb_resource_send_changemode (proc);
+      if (NO_ERROR != error)
+	{
+	  /* TODO : if error */
+	}
     }
+
+  if (hb_Resource->procs)
+    {
+      hb_print_procs ();
+    }
+
+  pthread_mutex_unlock (&hb_Resource->lock);
+#if !defined(WINDOWS)
+  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
+#endif
 
   error = hb_resource_job_queue (HB_RJOB_CHANGE_MODE, NULL,
 				 PRM_HA_CHANGEMODE_INTERVAL_IN_MSECS);
@@ -2612,6 +2796,11 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
 	state = HA_SERVER_STATE_ACTIVE;
       }
       break;
+    case HB_NSTATE_TO_BE_SLAVE:
+      {
+	state = HA_SERVER_STATE_STANDBY;
+      }
+      break;
     case HB_NSTATE_SLAVE:
     default:
       {
@@ -2664,12 +2853,14 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
   state = ntohl (state);
 
   sfd = conn->fd;
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
   rv = pthread_mutex_lock (&hb_Resource->lock);
   proc = hb_return_proc_by_fd (sfd);
   if (proc == NULL)
     {
       er_log_debug (ARG_FILE_LINE, "cannot find process. (fd:%d). \n", sfd);
       pthread_mutex_unlock (&hb_Resource->lock);
+      pthread_mutex_unlock (&hb_Cluster->lock);
       return;
     }
 
@@ -2685,6 +2876,10 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
     case HA_SERVER_STATE_TO_BE_ACTIVE:
       proc->state = HB_PSTATE_REGISTERED_AND_ACTIVE;
       break;
+    case HA_SERVER_STATE_STANDBY:
+      proc->state = HB_PSTATE_REGISTERED;
+      hb_Cluster->state = HB_NSTATE_SLAVE;
+      hb_Resource->state = HB_NSTATE_SLAVE;
     default:
       break;
     }
@@ -2692,6 +2887,7 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
   proc->changemode_gap = 0;
 
   pthread_mutex_unlock (&hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Cluster->lock);
 
   return;
 }
@@ -3458,6 +3654,8 @@ hb_node_state_string (int nstate)
       return HB_NSTATE_SLAVE_STR;
     case HB_NSTATE_TO_BE_MASTER:
       return HB_NSTATE_TO_BE_MASTER_STR;
+    case HB_NSTATE_TO_BE_SLAVE:
+      return HB_NSTATE_TO_BE_SLAVE_STR;
     case HB_NSTATE_MASTER:
       return HB_NSTATE_MASTER_STR;
     case HB_NSTATE_REPLICA:
@@ -3587,6 +3785,10 @@ hb_reload_config (void)
 	  new_node->state = old_node->state;
 	  new_node->score = old_node->score;
 	  new_node->heartbeat_gap = old_node->heartbeat_gap;
+	  new_node->last_recv_hbtime.tv_sec =
+	    old_node->last_recv_hbtime.tv_sec;
+	  new_node->last_recv_hbtime.tv_usec =
+	    old_node->last_recv_hbtime.tv_usec;
 	}
     }
   if (old_nodes)
@@ -4133,6 +4335,80 @@ hb_activate_heartbeat (char **str)
 }
 
 
+/*
+ * common
+ */
+
+/*
+ * hb_check_ping -
+ *   return : int
+ *
+ */
+
+static int
+hb_check_ping (const char *host)
+{
+#define PING_COMMAND_FORMAT \
+"ping -w 1 -c 1 %s >/dev/null 2>&1; " \
+"echo $?"
+
+  char ping_command[256], result_str[16];
+  char buf[128];
+  long ping_result;
+  FILE *fp;
+  HB_NODE_ENTRY *node;
+
+  /* If host_p is in the cluster node, then skip to check */
+
+  for (node = hb_Cluster->nodes; node; node = node->next)
+    {
+      if (strcmp (host, node->host_name) == 0)
+	{
+	  /* PING Host is same as cluster's host name */
+	  snprintf (buf, sizeof (buf), "Useless PING host name %s", host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+	  return HB_PING_USELESS_HOST;
+	}
+    }
+
+  snprintf (ping_command, sizeof (ping_command), PING_COMMAND_FORMAT, host);
+  fp = popen (ping_command, "r");
+  if (fp == NULL)
+    {
+      /* ping open fail */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HB_NODE_EVENT, 1, "PING command pork failed");
+      return HB_PING_SYS_ERR;
+    }
+
+  if (fgets (result_str, sizeof (result_str), fp) == NULL)
+    {
+      pclose (fp);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HB_NODE_EVENT, 1, "Can't get PING result");
+      return HB_PING_SYS_ERR;
+    }
+
+  result_str[sizeof (result_str) - 1] = 0;
+
+  pclose (fp);
+
+  ping_result = strtol (result_str, (char **) NULL, 10);
+  if (ping_result != NO_ERROR)
+    {
+      /* ping failed */
+      snprintf (buf, sizeof (buf), "PING failed for host %s", host);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+
+      return HB_PING_FAILURE;
+
+    }
+  /* ping success */
+  snprintf (buf, sizeof (buf), "PING success for host %s", host);
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+
+  return HB_PING_SUCCESS;
+}
 
 
 /* 
