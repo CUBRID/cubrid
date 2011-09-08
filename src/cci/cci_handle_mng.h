@@ -182,7 +182,8 @@ typedef struct
   char *db_passwd;
   SOCKET sock_fd;
   int ref_count;
-  int default_isolation_level;
+  T_CCI_TRAN_ISOLATION isolation_level;
+  int lock_timeout;
   int max_req_handle;
   T_EXEC_THR_ARG thr_arg;
   T_REQ_HANDLE **req_handle_table;

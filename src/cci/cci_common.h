@@ -256,6 +256,10 @@ struct DATASOURCE_T
   /* default max wait : 1000 miliseconds */
 
   bool using_stmt_pool;		/* default : false */
+  bool default_autocommit;	/* default : true */
+  T_CCI_TRAN_ISOLATION default_isolation;
+  /* default : TRAN_REP_CLASS_UNCOMMIT_INSTANCE */
+  int default_lock_timeout;	/* default : CCI_LOCK_TIMEOUT_INFINITE */
 
   int num_idle;
   int *con_handles;		/* realloc by pool_size */

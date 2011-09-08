@@ -185,6 +185,19 @@ extern "C"
 #define SSIZEOF(val) ((ssize_t) sizeof(val))
 #endif
 
+#define CCI_DS_PROPERTY_USER				"user"
+#define CCI_DS_PROPERTY_PASSWORD			"password"
+#define CCI_DS_PROPERTY_URL				"url"
+#define CCI_DS_PROPERTY_POOL_SIZE			"pool_size"
+#define CCI_DS_PROPERTY_MAX_WAIT			"max_wait"
+#define CCI_DS_PROPERTY_USING_STMT_POOL			"using_stmt_pool"
+#define CCI_DS_PROPERTY_LOGIN_TIMEOUT			"login_timeout"
+#define CCI_DS_PROPERTY_QUERY_TIMEOUT			"query_timeout"
+#define CCI_DS_PROPERTY_DISCONNECT_ON_QUERY_TIMEOUT	"disconnect_on_query_timeout"
+#define CCI_DS_PROPERTY_DEFAULT_AUTOCOMMIT		"default_autocommit"
+#define CCI_DS_PROPERTY_DEFAULT_ISOLATION		"default_isolation"
+#define CCI_DS_PROPERTY_DEFAULT_LOCK_TIMEOUT		"default_lock_timeout"
+
 /* for cci auto_comit mode support */
   typedef enum
   {
@@ -559,7 +572,10 @@ extern "C"
     CCI_DS_KEY_USING_STMT_POOL,
     CCI_DS_KEY_LOGIN_TIMEOUT,
     CCI_DS_KEY_QUERY_TIMEOUT,
-    CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT
+    CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT,
+    CCI_DS_KEY_DEFAULT_AUTOCOMMIT,
+    CCI_DS_KEY_DEFAULT_ISOLATION,
+    CCI_DS_KEY_DEFAULT_LOCK_TIMEOUT
   } T_CCI_DATASOURCE_KEY;
 
 #if !defined(CAS)
@@ -568,6 +584,7 @@ extern "C"
 #else
   typedef enum
   {
+    TRAN_UNKNOWN_ISOLATION = 0,
     TRAN_ISOLATION_MIN = 1,
 
     TRAN_COMMIT_CLASS_UNCOMMIT_INSTANCE = 1,
@@ -733,6 +750,8 @@ extern "C"
   extern int cci_set_isolation_level (int con_id,
 				      T_CCI_TRAN_ISOLATION val,
 				      T_CCI_ERROR * err_buf);
+  extern int cci_set_lock_timeout (int con_id, int val,
+				   T_CCI_ERROR * err_buf);
 
   extern void cci_set_free (T_CCI_SET set);
   extern int cci_set_size (T_CCI_SET set);

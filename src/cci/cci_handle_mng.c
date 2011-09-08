@@ -646,7 +646,8 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   ALLOC_COPY (con_handle->db_passwd, db_passwd);
   con_handle->sock_fd = -1;
   con_handle->ref_count = 0;
-  con_handle->default_isolation_level = 0;
+  con_handle->isolation_level = TRAN_UNKNOWN_ISOLATION;
+  con_handle->lock_timeout = CCI_LOCK_TIMEOUT_DEFAULT;
   con_handle->is_retry = 0;
   con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
   con_handle->autocommit_mode = CCI_AUTOCOMMIT_FALSE;
