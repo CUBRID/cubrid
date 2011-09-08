@@ -513,6 +513,12 @@ util_make_ha_conf (HA_CONF * ha_conf)
   const char *ha_node_list, *ha_db_list;
   const char *ha_copy_log_base, *ha_copy_sync_mode;
 
+  /* variables for change copylogdb default mode to async */
+  bool is_replica_node = false;
+  char local_host_name[MAXHOSTNAMELEN];
+  const char *ha_replica_list;
+  char **replica_names;
+
   HA_NODE_CONF *nc = NULL;
 
   ha_port_id = PRM_HA_PORT_ID;
@@ -548,8 +554,54 @@ util_make_ha_conf (HA_CONF * ha_conf)
       return false;
     }
 
+  ha_replica_list = PRM_HA_REPLICA_LIST;
+  if (ha_replica_list != NULL && ha_replica_list[0] != 0)
+    {
+      replica_names = util_split_ha_node (ha_replica_list);
+      if (replica_names != NULL &&
+	  (GETHOSTNAME (local_host_name, sizeof (local_host_name)) == 0))
+	{
+	  for (i = 0; replica_names[i] != NULL; i++)
+	    {
+	      if (strcmp (replica_names[i], local_host_name) == 0)
+		{
+		  is_replica_node = true;
+		  break;
+		}
+	    }
+	}
+      if (replica_names)
+	{
+	  util_free_string_array (replica_names);
+	}
+    }
+
   ha_conf->node_syncs = NULL;
-  if (ha_copy_sync_mode == NULL || ha_copy_sync_mode[0] == 0)
+  if (is_replica_node)	
+    {
+      for (i = 0, nodes = ha_conf->node_names; nodes[i] != NULL; i++)
+	{
+	  ha_conf->node_syncs = (char **) realloc (ha_conf->node_syncs,
+						   sizeof (char *) * (i + 2));
+	  if (ha_conf->node_syncs == NULL)
+	    {
+	      const char *message =
+		utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+	      fprintf (stderr, message);
+	      return false;
+	    }
+	  ha_conf->node_syncs[i] = strdup ("async");
+	  if (ha_conf->node_syncs[i] == NULL)
+	    {
+	      const char *message =
+		utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
+	      fprintf (stderr, message);
+	      return false;
+	    }
+	  ha_conf->node_syncs[i + 1] = NULL;
+	}
+    }
+  else if (ha_copy_sync_mode == NULL || ha_copy_sync_mode[0] == 0)
     {
       for (i = 0, nodes = ha_conf->node_names; nodes[i] != NULL; i++)
 	{

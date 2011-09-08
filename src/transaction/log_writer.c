@@ -1774,14 +1774,6 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 	  goto error;
 	}
 
-      error_code = xlog_send_log_pages_to_client (thread_p, logpg_area,
-						  logpg_used_size, mode);
-      if (error_code != NO_ERROR)
-	{
-	  status = LOGWR_STATUS_ERROR;
-	  goto error;
-	}
-
       /* In case of async mode, unregister the writer and wakeup LFT to finish */
       /*
          The result mode is the following.
@@ -1810,6 +1802,14 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 	      pthread_cond_signal (&writer_info->flush_end_cond);
 	    }
 	  pthread_mutex_unlock (&writer_info->flush_end_mutex);
+	}
+
+      error_code = xlog_send_log_pages_to_client (thread_p, logpg_area,
+						  logpg_used_size, mode);
+      if (error_code != NO_ERROR)
+	{
+	  status = LOGWR_STATUS_ERROR;
+	  goto error;
 	}
 
       /* Get the next request from the client and reset the arguments */
