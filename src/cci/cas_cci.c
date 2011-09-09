@@ -5223,6 +5223,7 @@ cci_strtol (long *val, char *str, int base)
   long v;
   char *end;
 
+  errno = 0; /* To distinguish success/failure after call */
   v = strtol (str, &end, base);
   if ((errno == ERANGE && (v == LONG_MAX || v == LONG_MIN))
       || (errno != 0 && v == 0))
