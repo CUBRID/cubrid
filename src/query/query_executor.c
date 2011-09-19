@@ -12678,7 +12678,6 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 #endif
 	  (void) gettimeofday (&ent->time_last_used, NULL);
 	  ent->ref_count++;
-
 	}
     }
 
@@ -13049,6 +13048,8 @@ qexec_update_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 			     &num_elements);
       ent->last_ta_idx = num_elements;
     }
+
+  assert (ent->last_ta_idx == 1);
 #endif
 
   /* insert (or update) the entry into the query string hash table */
@@ -13110,28 +13111,38 @@ qexec_remove_my_transaction_id (THREAD_ENTRY * thread_p,
   int tran_index, *p, *r;
   int num_elements;
 
+  if (ent->last_ta_idx <= 0)
+    {
+      return NO_ERROR;
+    }
+
   /* remove my transaction id from the entry and do compaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   r = &ent->tran_index_array[ent->last_ta_idx];
-  do
+
+  /* find my tran_id */
+  num_elements = (int) ent->last_ta_idx;
+  p = tranid_lfind (&tran_index, ent->tran_index_array, &num_elements);
+
+  if (p)
     {
-      /* find my tran_id */
-      num_elements = (int) ent->last_ta_idx;
-      p = tranid_lfind (&tran_index, ent->tran_index_array, &num_elements);
-      ent->last_ta_idx = num_elements;
-      if (p)
+      if (p == r - 1)
 	{
+	  /* I'm the last one. Just shrink the array. */
 	  *p = 0;
-	  /* do compaction */
-	  if (p + 1 < r)
-	    {
-	      (void) memcpy (p, p + 1, sizeof (int) * (r - p - 1));
-	    }
-	  ent->last_ta_idx--;
-	  r--;
 	}
+      else
+	{
+	  /* I'm not the last one. Replace it with the last one. */
+	  assert (ent->last_ta_idx > 1);
+
+	  *p = *(r - 1);
+	  *(r - 1) = 0;
+	}
+
+      ent->last_ta_idx--;	/* shrink */
+      assert (ent->last_ta_idx >= 0);
     }
-  while (p && p < r);
 
   return NO_ERROR;
 }
@@ -13494,7 +13505,7 @@ static int
 qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 {
   XASL_CACHE_ENTRY *ent = (XASL_CACHE_ENTRY *) data;
-  int rc = ER_FAILED;
+  int rc;
   const OID *o;
   int i;
 
@@ -13562,6 +13573,7 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
 	{
 	  (void) qfile_clear_list_cache (thread_p, ent->list_ht_no, true);
 	}
+
       rc = qexec_free_xasl_cache_ent (thread_p, ent, NULL);
       xasl_ent_cache.num--;	/* counter */
     }
@@ -13569,12 +13581,14 @@ qexec_delete_xasl_cache_ent (THREAD_ENTRY * thread_p, void *data, void *args)
     {
       /* remove from the query string hash table to allow
          new XASL with the same query string to be registered */
+      rc = NO_ERROR;
       if (mht_rem2 (xasl_ent_cache.qstr_ht, ent->query_string, ent,
 		    NULL, NULL) != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"qexec_delete_xasl_cache_ent: mht_rem2 failed for qstr %s\n",
 			ent->query_string);
+	  rc = ER_FAILED;
 	}
     }
 
@@ -14024,7 +14038,7 @@ tranid_lsearch (const int *key, int *base, int *nmemb)
   result = tranid_lfind (key, base, nmemb);
   if (result == NULL)
     {
-      result = &base[*nmemb++];
+      result = &base[(*nmemb)++];
       *result = *key;
     }
 
