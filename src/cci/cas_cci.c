@@ -1784,6 +1784,13 @@ cci_close_req_handle (int req_h_id)
 
   if (IS_STMT_POOL (con_handle))
     {
+      if (con_handle->autocommit_mode == CCI_AUTOCOMMIT_TRUE &&
+	  con_handle->con_status != CCI_CON_STATUS_OUT_TRAN)
+	{
+	  T_CCI_ERROR err_buf;
+	  qe_end_tran (con_handle, CCI_TRAN_ROLLBACK, &err_buf);
+	}
+
       con_handle->ref_count = 0;
       return err_code;
     }
@@ -5223,7 +5230,7 @@ cci_strtol (long *val, char *str, int base)
   long v;
   char *end;
 
-  errno = 0; /* To distinguish success/failure after call */
+  errno = 0;			/* To distinguish success/failure after call */
   v = strtol (str, &end, base);
   if ((errno == ERANGE && (v == LONG_MAX || v == LONG_MIN))
       || (errno != 0 && v == 0))
