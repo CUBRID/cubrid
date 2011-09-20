@@ -106,20 +106,22 @@ int wsa_initialize ();
         (IS_INVALID_SOCKET((CON_HANDLE)->sock_fd) || \
          ((CON_HANDLE)->con_status == CCI_CON_STATUS_OUT_TRAN))
 
-#define IS_STMT_POOL(c) ((c)->datasource && (c)->datasource->using_stmt_pool)
+#define IS_STMT_POOL(c) \
+  ((c)->datasource && (c)->datasource->pool_prepared_statement)
 #define IS_BROKER_STMT_POOL(c) \
   ((c)->broker_info[BROKER_INFO_STATEMENT_POOLING] == CAS_STATEMENT_POOLING_ON)
 #define IS_OUT_TRAN(c) ((c)->con_status == CCI_CON_STATUS_OUT_TRAN)
 #define IS_ER_COMMUNICATION(e) \
   ((e) == CCI_ER_COMMUNICATION || (e) == CAS_ER_COMMUNICATION)
 
-#define CCI_DS_DEFAULT_POOL_SIZE 10
-#define CCI_DS_DEFAULT_MAX_WAIT 1000
-#define CCI_DS_DEFAULT_USING_STMT_POOL false
-#define CCI_DS_DEFAULT_DISCONNECT_ON_QUERY_TIMEOUT false
-#define CCI_DS_DEFAULT_AUTOCOMMIT true
-#define CCI_DS_DEFAULT_ISOLATION TRAN_UNKNOWN_ISOLATION
-#define CCI_DS_DEFAULT_LOCK_TIMEOUT CCI_LOCK_TIMEOUT_DEFAULT
+/* default value of each datesource property */
+#define CCI_DS_POOL_SIZE_DEFAULT 			10
+#define CCI_DS_MAX_WAIT_DEFAULT 			1000
+#define CCI_DS_POOL_PREPARED_STATEMENT_DEFAULT 		false
+#define CCI_DS_DISCONNECT_ON_QUERY_TIMEOUT_DEFAULT	false
+#define CCI_DS_DEFAULT_AUTOCOMMIT_DEFAULT 		-1
+#define CCI_DS_DEFAULT_ISOLATION_DEFAULT 		TRAN_UNKNOWN_ISOLATION
+#define CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT 		CCI_LOCK_TIMEOUT_DEFAULT
 
 /************************************************************************
  * PRIVATE FUNCTION PROTOTYPES						*
@@ -213,7 +215,7 @@ static const char *datasource_key[] = {
   CCI_DS_PROPERTY_URL,
   CCI_DS_PROPERTY_POOL_SIZE,
   CCI_DS_PROPERTY_MAX_WAIT,
-  CCI_DS_PROPERTY_USING_STMT_POOL,
+  CCI_DS_PROPERTY_POOL_PREPARED_STATEMENT,
   CCI_DS_PROPERTY_LOGIN_TIMEOUT,
   CCI_DS_PROPERTY_QUERY_TIMEOUT,
   CCI_DS_PROPERTY_DISCONNECT_ON_QUERY_TIMEOUT,
@@ -5282,9 +5284,9 @@ cci_property_get_int (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
 }
 
 static bool
-cci_property_get_bool (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
-		       bool * out_value, int default_value,
-		       T_CCI_ERROR * err_buf)
+cci_property_get_bool_internal (T_CCI_PROPERTIES * prop,
+				T_CCI_DATASOURCE_KEY key, int *out_value,
+				int default_value, T_CCI_ERROR * err_buf)
 {
   char *tmp;
 
@@ -5321,6 +5323,25 @@ cci_property_get_bool (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
       err_buf->err_code = CCI_ER_NO_ERROR;
     }
 
+  return true;
+}
+
+static bool
+cci_property_get_bool (T_CCI_PROPERTIES * prop, T_CCI_DATASOURCE_KEY key,
+		       bool * out_value, bool default_value,
+		       T_CCI_ERROR * err_buf)
+{
+  int retval, tmp_out;
+
+  retval =
+    cci_property_get_bool_internal (prop, key, &tmp_out, default_value,
+				    err_buf);
+  if (!retval)
+    {
+      return false;
+    }
+
+  *out_value = (tmp_out ? true : false);
   return true;
 }
 
@@ -5525,7 +5546,7 @@ cci_datasource_make_url (T_CCI_PROPERTIES * prop, char *new_url, char *url,
 
   if (!cci_property_get_bool (prop, CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT,
 			      &disconnect_on_query_timeout,
-			      CCI_DS_DEFAULT_DISCONNECT_ON_QUERY_TIMEOUT,
+			      CCI_DS_DISCONNECT_ON_QUERY_TIMEOUT_DEFAULT,
 			      err_buf))
     {
       return false;
@@ -5600,41 +5621,43 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
     }
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_POOL_SIZE, &ds->pool_size,
-			     CCI_DS_DEFAULT_POOL_SIZE, err_buf))
+			     CCI_DS_POOL_SIZE_DEFAULT, err_buf))
     {
       goto create_datasource_error;
     }
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_MAX_WAIT, &ds->max_wait,
-			     CCI_DS_DEFAULT_MAX_WAIT, err_buf))
+			     CCI_DS_MAX_WAIT_DEFAULT, err_buf))
     {
       goto create_datasource_error;
     }
 
-  if (!cci_property_get_bool (prop, CCI_DS_KEY_USING_STMT_POOL,
-			      &ds->using_stmt_pool,
-			      CCI_DS_DEFAULT_USING_STMT_POOL, err_buf))
+  if (!cci_property_get_bool (prop, CCI_DS_KEY_POOL_PREPARED_STATEMENT,
+			      &ds->pool_prepared_statement,
+			      CCI_DS_POOL_PREPARED_STATEMENT_DEFAULT,
+			      err_buf))
     {
       goto create_datasource_error;
     }
 
-  if (!cci_property_get_bool (prop, CCI_DS_KEY_DEFAULT_AUTOCOMMIT,
-			      &ds->default_autocommit,
-			      CCI_DS_DEFAULT_AUTOCOMMIT, err_buf))
+  if (!cci_property_get_bool_internal (prop, CCI_DS_KEY_DEFAULT_AUTOCOMMIT,
+				       &ds->default_autocommit,
+				       CCI_DS_DEFAULT_AUTOCOMMIT_DEFAULT,
+				       err_buf))
     {
       goto create_datasource_error;
     }
 
   if (!cci_property_get_isolation (prop, CCI_DS_KEY_DEFAULT_ISOLATION,
 				   &ds->default_isolation,
-				   CCI_DS_DEFAULT_ISOLATION, err_buf))
+				   CCI_DS_DEFAULT_ISOLATION_DEFAULT, err_buf))
     {
       goto create_datasource_error;
     }
 
   if (!cci_property_get_int (prop, CCI_DS_KEY_DEFAULT_LOCK_TIMEOUT,
 			     &ds->default_lock_timeout,
-			     CCI_DS_DEFAULT_LOCK_TIMEOUT, err_buf))
+			     CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT, err_buf))
     {
       goto create_datasource_error;
     }
@@ -5852,15 +5875,16 @@ cci_datasource_borrow (T_CCI_DATASOURCE * ds, T_CCI_ERROR * err_buf)
     }
   else
     {
-      if (ds->default_autocommit != CCI_DS_DEFAULT_AUTOCOMMIT)
+      /* reset to default value when default_xxx property is set by user */
+      if (ds->default_autocommit != CCI_DS_DEFAULT_AUTOCOMMIT_DEFAULT)
 	{
 	  cci_set_autocommit (id, ds->default_autocommit);
 	}
-      if (ds->default_lock_timeout != CCI_DS_DEFAULT_LOCK_TIMEOUT)
+      if (ds->default_lock_timeout != CCI_DS_DEFAULT_LOCK_TIMEOUT_DEFAULT)
 	{
 	  cci_set_lock_timeout (id, ds->default_lock_timeout, err_buf);
 	}
-      if (ds->default_isolation != CCI_DS_DEFAULT_ISOLATION)
+      if (ds->default_isolation != CCI_DS_DEFAULT_ISOLATION_DEFAULT)
 	{
 	  cci_set_isolation_level (id, ds->default_isolation, err_buf);
 	}

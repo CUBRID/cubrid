@@ -250,16 +250,12 @@ struct DATASOURCE_T
   char *pass;
   char *url;
 
-  int pool_size;		/* size of initial, min and max are same */
-  int max_wait;			/* when there are no available connections */
-  /* default pool size : 10 */
-  /* default max wait : 1000 miliseconds */
-
-  bool using_stmt_pool;		/* default : false */
-  bool default_autocommit;	/* default : true */
+  int pool_size;
+  int max_wait;
+  bool pool_prepared_statement;
+  int default_autocommit;
   T_CCI_TRAN_ISOLATION default_isolation;
-  /* default : TRAN_REP_CLASS_UNCOMMIT_INSTANCE */
-  int default_lock_timeout;	/* default : CCI_LOCK_TIMEOUT_INFINITE */
+  int default_lock_timeout;
 
   int num_idle;
   int *con_handles;		/* realloc by pool_size */

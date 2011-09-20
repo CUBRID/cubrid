@@ -185,17 +185,30 @@ extern "C"
 #define SSIZEOF(val) ((ssize_t) sizeof(val))
 #endif
 
+/* database user */
 #define CCI_DS_PROPERTY_USER				"user"
+/* password for a specified user */
 #define CCI_DS_PROPERTY_PASSWORD			"password"
+/* database connection URL */
 #define CCI_DS_PROPERTY_URL				"url"
+
+/* number of connection that are created when the pool is started */
 #define CCI_DS_PROPERTY_POOL_SIZE			"pool_size"
+/* max wait msec for a connection to be returned, or -1 to wait indefinitely */
 #define CCI_DS_PROPERTY_MAX_WAIT			"max_wait"
-#define CCI_DS_PROPERTY_USING_STMT_POOL			"using_stmt_pool"
+/* enable prepared statement pooling */
+#define CCI_DS_PROPERTY_POOL_PREPARED_STATEMENT		"pool_prepared_statement"
+/* timeout in msec for datebase login or -1 to wait indefinitely */
 #define CCI_DS_PROPERTY_LOGIN_TIMEOUT			"login_timeout"
+/* timeout in msec for slow query or -1 to wait indefinitely */
 #define CCI_DS_PROPERTY_QUERY_TIMEOUT			"query_timeout"
+/* disconnect a released socket when query timeout is occurred */
 #define CCI_DS_PROPERTY_DISCONNECT_ON_QUERY_TIMEOUT	"disconnect_on_query_timeout"
+/* default autocommit state for connections created by pool*/
 #define CCI_DS_PROPERTY_DEFAULT_AUTOCOMMIT		"default_autocommit"
+/* default isolation state for connections created by pool*/
 #define CCI_DS_PROPERTY_DEFAULT_ISOLATION		"default_isolation"
+/* default lock timeout in sec for connections created by pool*/
 #define CCI_DS_PROPERTY_DEFAULT_LOCK_TIMEOUT		"default_lock_timeout"
 
 /* for cci auto_comit mode support */
@@ -569,7 +582,7 @@ extern "C"
     CCI_DS_KEY_URL,
     CCI_DS_KEY_POOL_SIZE,
     CCI_DS_KEY_MAX_WAIT,
-    CCI_DS_KEY_USING_STMT_POOL,
+    CCI_DS_KEY_POOL_PREPARED_STATEMENT,
     CCI_DS_KEY_LOGIN_TIMEOUT,
     CCI_DS_KEY_QUERY_TIMEOUT,
     CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT,
