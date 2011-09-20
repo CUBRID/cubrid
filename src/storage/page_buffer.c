@@ -5007,7 +5007,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
 #if 0
 #if defined(SERVER_MODE)
-	  thread_sleep (0, 1000);	/* 10 msec */
+	  thread_sleep (0, 1000);	/* 1 msec */
 #endif /* SERVER_MODE */
 #endif
 	}

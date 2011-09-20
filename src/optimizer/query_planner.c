@@ -177,8 +177,9 @@ static int qo_generate_join_index_scan (QO_INFO *, JOIN_TYPE, QO_PLAN *,
 					QO_INFO *, QO_NODE *,
 					QO_NODE_INDEX_ENTRY *, BITSET *,
 					BITSET *, BITSET *, BITSET *);
-static void qo_generate_index_scan (QO_INFO *, QO_NODE *,
-				    QO_NODE_INDEX_ENTRY *);
+static void qo_generate_seq_scan (QO_INFO *, QO_NODE *);
+static int qo_generate_index_scan (QO_INFO *, QO_NODE *,
+				   QO_NODE_INDEX_ENTRY *);
 
 static void qo_plan_add_to_free_list (QO_PLAN *, void *ignore);
 static void qo_nljoin_cost (QO_PLAN *);
@@ -7531,13 +7532,35 @@ qo_generate_join_index_scan (QO_INFO * infop,
 }
 
 /*
- * qo_generate_index_scan () - With index information, generates index scan plan
+ * qo_generate_seq_scan () - Generates sequential scan plan
  *   return: nothing
+ *   infop(in): pointer to QO_INFO (environment info node which holds plans)
+ *   nodep(in): pointer to QO_NODE (node in the join graph)
+ */
+static void
+qo_generate_seq_scan (QO_INFO * infop, QO_NODE * nodep)
+{
+  int n;
+  QO_PLAN *planp;
+  bool plan_created = false;
+
+  planp = qo_seq_scan_new (infop, nodep, &QO_NODE_SUBQUERIES (nodep));
+
+  n = qo_check_plan_on_info (infop, planp);
+  if (n)
+    {
+      plan_created = true;
+    }
+}
+
+/*
+ * qo_generate_index_scan () - With index information, generates index scan plan
+ *   return: num of index scan plans
  *   infop(in): pointer to QO_INFO (environment info node which holds plans)
  *   nodep(in): pointer to QO_NODE (node in the join graph)
  *   ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
  */
-static void
+static int
 qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 			QO_NODE_INDEX_ENTRY * ni_entryp)
 {
@@ -7545,7 +7568,7 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
   BITSET_ITERATOR iter;
   QO_TERM *term;
   PT_NODE *pt_expr;
-  int i, t, nsegs, n;
+  int i, t, nsegs, n, normal_index_plan_n = 0;
   QO_PLAN *planp;
   BITSET range_terms;
   BITSET kf_terms;
@@ -7594,6 +7617,13 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 					 &QO_NODE_SUBQUERIES (nodep));
 
 	      n = qo_check_plan_on_info (infop, planp);
+	      if (n)
+		{
+		  if (start_column == 0)
+		    {
+		      normal_index_plan_n++;
+		    }
+		}
 	    }
 
 	  goto end;
@@ -7621,6 +7651,13 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 				     &kf_terms, &QO_NODE_SUBQUERIES (nodep));
 
 	  n = qo_check_plan_on_info (infop, planp);
+	  if (n)
+	    {
+	      if (start_column == 0)
+		{
+		  normal_index_plan_n++;
+		}
+	    }
 
 /* the following bug fix cause Performance Regression. so, temporary disable it
  * DO NOT DELETE ME
@@ -7677,6 +7714,13 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 				     &kf_terms, &QO_NODE_SUBQUERIES (nodep));
 
 	  n = qo_check_plan_on_info (infop, planp);
+	  if (n)
+	    {
+	      if (start_column == 0)
+		{
+		  normal_index_plan_n++;
+		}
+	    }
 
 /* the following bug fix cause Performance Regression. so, temporary disable it
  * DO NOT DELETE ME
@@ -7725,10 +7769,13 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 					 &QO_NODE_SUBQUERIES (nodep));
 
 	      n = qo_check_plan_on_info (infop, planp);
-
 	      if (n)
 		{
 		  plan_created = true;
+		  if (start_column == 0)
+		    {
+		      normal_index_plan_n++;
+		    }
 		}
 
 	      /*if (envvar_get("ENABLE_TEMP_JOIN")) */
@@ -7782,10 +7829,13 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 					 &QO_NODE_SUBQUERIES (nodep));
 
 	      n = qo_check_plan_on_info (infop, planp);
-
 	      if (n)
 		{
 		  plan_created = true;
+		  if (start_column == 0)
+		    {
+		      normal_index_plan_n++;
+		    }
 		}
 
 	      /*if (envvar_get("ENABLE_TEMP_JOIN")) */
@@ -7828,10 +7878,13 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep,
 					 &QO_NODE_SUBQUERIES (nodep));
 
 	      n = qo_check_plan_on_info (infop, planp);
-
 	      if (n)
 		{
 		  plan_created = true;
+		  if (start_column == 0)
+		    {
+		      normal_index_plan_n++;
+		    }
 		}
 	    }
 	}
@@ -7841,6 +7894,8 @@ end:
   bitset_delset (&seg_other_terms);
   bitset_delset (&kf_terms);
   bitset_delset (&range_terms);
+
+  return normal_index_plan_n;
 }
 
 /*
@@ -7931,6 +7986,7 @@ qo_search_planner (QO_PLANNER * planner)
   BITSET nodes, subqueries, remaining_subqueries;
   int join_info_bytes;
   int have_range_terms = 0;
+  int normal_index_plan_n;
 
   bitset_init (&nodes, planner->env);
   bitset_init (&subqueries, planner->env);
@@ -8008,7 +8064,7 @@ qo_search_planner (QO_PLANNER * planner)
       node = &planner->node[i];
       BITSET_CLEAR (nodes);
       bitset_add (&nodes, i);
-      planner->node_info[i] = info =
+      planner->node_info[i] =
 	qo_alloc_info (planner,
 		       &nodes,
 		       &QO_NODE_SARGS (node),
@@ -8016,7 +8072,7 @@ qo_search_planner (QO_PLANNER * planner)
 		       QO_NODE_SELECTIVITY (node) *
 		       (double) QO_NODE_NCARD (node));
 
-      if (info == NULL)
+      if (planner->node_info[i] == NULL)
 	{
 	  plan = NULL;
 	  goto end;
@@ -8036,19 +8092,11 @@ qo_search_planner (QO_PLANNER * planner)
 	    }
 	}
       bitset_assign (&(QO_NODE_SUBQUERIES (node)), &subqueries);
-
-      /*
-       * Start with a sequential scan plan for each node.
-       */
-      (void) qo_check_plan_on_info (info,
-				    qo_seq_scan_new (info, node,
-						     &subqueries));
     }
 
   /*
    * Check all of the terms to determine which are eligible to serve as
-   * index scans, try them to see if they are cheaper than any of the
-   * segment scans we just created.
+   * index scans.
    */
   for (i = 0; i < (signed) planner->N; i++)
     {
@@ -8063,6 +8111,7 @@ qo_search_planner (QO_PLANNER * planner)
        *  There is no purpose looking for index scans for a node without
        *  indexes so skip the search in this case.
        */
+      normal_index_plan_n = 0;
 
       if (node_index != NULL)
 	{
@@ -8122,7 +8171,8 @@ qo_search_planner (QO_PLANNER * planner)
 		       || qo_has_is_not_null_term (node))))
 #endif
 		{
-		  qo_generate_index_scan (info, node, ni_entry);
+		  normal_index_plan_n =
+		    qo_generate_index_scan (info, node, ni_entry);
 		}
 
 	      /* if the index didn't normally skipped the order by, we try
@@ -8152,6 +8202,21 @@ qo_search_planner (QO_PLANNER * planner)
 	    }
 
 	  bitset_delset (&seg_terms);
+	}
+
+      /*
+       * Create a sequential scan plan for each node.
+       */
+      if (normal_index_plan_n > 0 && QO_NODE_TCARD (node) <= 1)
+	{
+	  /* Already generate some index scans for one-page heap.
+	   * Skip sequential scan plan for the node.
+	   */
+	  ;			/* nop */
+	}
+      else
+	{
+	  qo_generate_seq_scan (info, node);
 	}
 
       pv = &info->best_no_order;
@@ -8829,7 +8894,9 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
   sort_partitions (planner);
 
   for (i = 0; i < (signed) planner->P; ++i)
-    (QO_PARTITION_PLAN (&planner->partition[i]))->refcount--;
+    {
+      (QO_PARTITION_PLAN (&planner->partition[i]))->refcount--;
+    }
 
   /*
    * DON'T initialize these until after the sorting is done.

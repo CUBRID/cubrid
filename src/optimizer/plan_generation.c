@@ -2571,7 +2571,7 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
 
   if (index_entryp->is_iss_candidate)
     {
-      /* allow space for the first element (NULL actually),for instance
+      /* allow space for the first element (NULL actually), for instance
        * in term_exprs */
       nterms++;
     }
