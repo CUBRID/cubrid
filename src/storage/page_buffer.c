@@ -2559,6 +2559,7 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
   PGBUF_BCB *bufptr;
 
   DEBUG_CHECK_INVALID_PAGE (pgptr, NULL);
+  assert (lsa_ptr != NULL);
 
   /* NOTE: Does not need to hold BCB_mutex since the page is fixed */
 

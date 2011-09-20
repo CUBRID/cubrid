@@ -2172,8 +2172,7 @@ disk_reinit (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
     }
   vhdr = (DISK_VAR_HEADER *) pgptr;
 
-  if (vhdr->purpose != DISK_TEMPVOL_TEMP_PURPOSE
-      && vhdr->purpose != DISK_PERMVOL_TEMP_PURPOSE)
+  if (vhdr->purpose != DISK_PERMVOL_TEMP_PURPOSE)
     {
       /* Cannot reinitialize bitmaps of storage purposes other than temporary */
       pgbuf_unfix_and_init (thread_p, pgptr);
@@ -2181,15 +2180,11 @@ disk_reinit (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
     }
 
   /*
-   * If this is a permanent volume for temporary storage purposes, indicate
+   * indicate
    * so to page buffer manager, so that fetches of new pages can be
    * initialized with temporary lsa..which will avoid logging.
    */
-
-  if (vhdr->purpose == DISK_PERMVOL_TEMP_PURPOSE)
-    {
-      pgbuf_cache_permanent_volume_for_temporary (volid);
-    }
+  pgbuf_cache_permanent_volume_for_temporary (volid);
 
   vhdr->free_pages = vhdr->total_pages - vhdr->sys_lastpage - 1;
   vhdr->free_sects = (vhdr->total_sects -
@@ -2234,9 +2229,8 @@ disk_reinit (THREAD_ENTRY * thread_p, INT16 volid, void *ignore)
     }
   else
     {
-      pgbuf_set_lsa (thread_p, pgptr, NULL);
-      pgbuf_set_dirty (thread_p, pgptr, FREE);
-      pgptr = NULL;
+      pgbuf_set_lsa_as_temporary (thread_p, pgptr);
+      pgbuf_unfix_and_init (thread_p, pgptr);
     }
 
   return true;
