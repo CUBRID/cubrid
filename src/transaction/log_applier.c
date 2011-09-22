@@ -4434,7 +4434,7 @@ la_apply_repl_log (int tranid, int rectype, int *total_rows,
   LA_ITEM *item, *multi_update_item = NULL;
   int error = NO_ERROR;
   LA_APPLY *apply;
-  int update_cnt = 0;
+  int apply_repl_log_cnt = 0;
   bool multi_update_mode = false;
   char error_string[1024];
   char buf[256];
@@ -4519,11 +4519,9 @@ la_apply_repl_log (int tranid, int rectype, int *total_rows,
 			item->log_type, item->item_type);
 	}
 
-      if (error == NO_ERROR)
-	{
-	  update_cnt++;
-	}
-      else
+      apply_repl_log_cnt++;
+
+      if (error != NO_ERROR)
 	{
 	  help_sprint_value (&item->key, buf, 255);
 	  sprintf (error_string, "[%s,%s] %s",
@@ -4542,10 +4540,7 @@ la_apply_repl_log (int tranid, int rectype, int *total_rows,
     }
 
 end:
-  if (error == NO_ERROR)
-    {
-      *total_rows += update_cnt;
-    }
+  *total_rows += apply_repl_log_cnt;
 
   la_clear_repl_item (apply, clear_item_only);
 
