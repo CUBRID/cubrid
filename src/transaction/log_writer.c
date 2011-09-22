@@ -859,6 +859,8 @@ logwr_flush_header_page (void)
       return;
     }
 
+  logwr_Gl.hdr.is_shutdown = true;
+
   /* flush current archiving status */
   logwr_Gl.hdr.nxarv_num = logwr_Gl.last_arv_num;
   logwr_Gl.hdr.nxarv_pageid = logwr_Gl.last_arv_fpageid;
