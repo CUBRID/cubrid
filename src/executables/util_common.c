@@ -411,19 +411,19 @@ util_split_ha_node (const char *str)
   char *start_node;
 
   start_node = strchr (str, '@');
-  return util_split_string (start_node + 1, ":");
+  return util_split_string (start_node + 1, " ,:");
 }
 
 static char **
 util_split_ha_db (const char *str)
 {
-  return util_split_string (str, ",");
+  return util_split_string (str, " ,:");
 }
 
 static char **
 util_split_ha_sync (const char *str)
 {
-  return util_split_string (str, ":");
+  return util_split_string (str, " ,:");
 }
 
 /*

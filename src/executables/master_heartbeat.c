@@ -819,7 +819,7 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
 
       for (host_list_p = host_list;; host_list_p = NULL)
 	{
-	  host_p = strtok_r (host_list_p, " :\t\n", &host_pp);
+	  host_p = strtok_r (host_list_p, " ,:", &host_pp);
 	  if (host_p == NULL)
 	    {
 	      break;
@@ -1712,8 +1712,8 @@ hb_cluster_load_group_and_node_list (char *ha_node_list,
   hb_Cluster->myself = NULL;
 
   strncpy (tmp_string, ha_node_list, LINE_MAX);
-  for (priority = 0, p = strtok_r (tmp_string, "@\r\n", &savep);
-       p; priority++, p = strtok_r (NULL, ",:\r\n", &savep))
+  for (priority = 0, p = strtok_r (tmp_string, "@", &savep);
+       p; priority++, p = strtok_r (NULL, " ,:", &savep))
     {
 
       if (priority == 0)
@@ -1761,8 +1761,8 @@ hb_cluster_load_group_and_node_list (char *ha_node_list,
     {
       tmp_string[0] = '\0';
     }
-  for (priority = 0, p = strtok_r (tmp_string, "@\r\n", &savep);
-       p; priority++, p = strtok_r (NULL, ",:\r\n", &savep))
+  for (priority = 0, p = strtok_r (tmp_string, "@", &savep);
+       p; priority++, p = strtok_r (NULL, " ,:", &savep))
     {
 
       if (priority == 0)
