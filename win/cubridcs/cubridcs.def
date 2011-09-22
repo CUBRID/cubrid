@@ -381,6 +381,7 @@ EXPORTS
     tran_reset_wait_times
     utility_get_generic_message
     util_make_ha_conf
+    util_get_ha_mode
     util_is_localhost
     util_free_ha_conf
     utility_initialize

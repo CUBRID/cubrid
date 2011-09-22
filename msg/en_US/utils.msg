@@ -213,6 +213,7 @@ Available command:\n\
 33 %s: Such option is deprecated.\n
 34 Invalid Parameter. %s %s\n
 35 Cannot allocate memory.\n
+36 The server was not set to HA mode.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n

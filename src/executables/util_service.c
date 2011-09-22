@@ -1959,6 +1959,13 @@ process_heartbeat (int command_type, char *name)
   int master_port = prm_get_master_port_id ();
   HA_CONF ha_conf;
 
+  if (util_get_ha_mode () == HA_MODE_OFF)
+    {
+      print_message (stderr, MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
+      print_result (PRINT_HEARTBEAT_NAME, ER_FAILED, command_type);
+      return ER_FAILED;
+    }
+
   if (util_make_ha_conf (&ha_conf) == false)
     {
       print_message (stderr, MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);

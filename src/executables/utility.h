@@ -101,7 +101,8 @@ typedef enum
   MSGCAT_UTIL_GENERIC_MISS_DBNAME = 32,
   MSGCAT_UTIL_GENERIC_DEPRECATED = 33,
   MSGCAT_UTIL_GENERIC_INVALID_PARAMETER = 34,
-  MSGCAT_UTIL_GENERIC_NO_MEM = 35
+  MSGCAT_UTIL_GENERIC_NO_MEM = 35,
+  MSGCAT_UTIL_GENERIC_NOT_HA_MODE = 36
 } MSGCAT_UTIL_GENERIC_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DELETEDB */
@@ -1182,6 +1183,7 @@ extern bool util_is_localhost (char *host);
 
 extern void util_free_ha_conf (HA_CONF * ha_conf);
 extern int util_make_ha_conf (HA_CONF * ha_conf);
+extern int util_get_ha_mode (void);
 #if !defined(WINDOWS)
 extern void util_redirect_stdout_to_null (void);
 #endif /* !defined(WINDOWS) */

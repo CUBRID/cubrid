@@ -686,6 +686,19 @@ util_make_ha_conf (HA_CONF * ha_conf)
   return true;
 }
 
+/*
+ * util_get_ha_mode - 
+ * 
+ * return:
+ *
+ * NOTE:
+ */
+int
+util_get_ha_mode (void)
+{
+  return PRM_HA_MODE;
+}
+
 #if !defined(WINDOWS)
 /*
  * util_redirect_stdout_to_null - redirect stdout/stderr to /dev/null
