@@ -88,6 +88,17 @@ static GENERIC_FUNCTION_RECORD pt_Generic_functions[] = {
 };
 #endif /* ENABLE_UNUSED_FUNCTION */
 
+/* Two types are comparable if they are NUMBER types or same CHAR type */
+#define PT_ARE_COMPARABLE(typ1, typ2)					      \
+  ((typ1 == typ2) ||							      \
+   (PT_IS_SIMPLE_CHAR_STRING_TYPE (typ1) &&				      \
+    PT_IS_SIMPLE_CHAR_STRING_TYPE (typ2)) ||				      \
+   (PT_IS_NATIONAL_CHAR_STRING_TYPE (typ1) &&				      \
+    PT_IS_NATIONAL_CHAR_STRING_TYPE (typ2)) ||				      \
+   (PT_IS_NUMERIC_TYPE (typ1) && PT_IS_NUMERIC_TYPE (typ2)) ||		      \
+   (PT_IS_NUMERIC_TYPE (typ1) && typ2 == PT_TYPE_MAYBE) ||		      \
+   (typ1 == PT_TYPE_MAYBE && PT_IS_NUMERIC_TYPE (typ2)))
+
 typedef struct compare_between_operator
 {
   PT_OP_TYPE left;
@@ -4208,22 +4219,17 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 
       if (pt_is_comp_op (op))
 	{
-	  /* do not cast between numeric types for comparison operators */
-	  if (PT_IS_NUMERIC_TYPE (arg1_eq_type)
-	      && (PT_IS_NUMERIC_TYPE (arg1_type)
-		  || arg1_type == PT_TYPE_MAYBE))
+	  /* do not cast between numeric types or char types for comparison
+	     operators */
+	  if (PT_ARE_COMPARABLE (arg1_eq_type, arg1_type))
 	    {
 	      arg1_eq_type = arg1_type;
 	    }
-	  if (PT_IS_NUMERIC_TYPE (arg2_eq_type)
-	      && (PT_IS_NUMERIC_TYPE (arg2_type)
-		  || arg2_type == PT_TYPE_MAYBE))
+	  if (PT_ARE_COMPARABLE (arg2_eq_type, arg2_type))
 	    {
 	      arg2_eq_type = arg2_type;
 	    }
-	  if (PT_IS_NUMERIC_TYPE (arg3_eq_type)
-	      && (PT_IS_NUMERIC_TYPE (arg3_type)
-		  || arg3_type == PT_TYPE_MAYBE))
+	  if (PT_ARE_COMPARABLE (arg3_eq_type, arg3_type))
 	    {
 	      arg3_eq_type = arg3_type;
 	    }

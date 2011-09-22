@@ -193,6 +193,10 @@
         ( (((t) == PT_TYPE_NCHAR)      || \
 	   ((t) == PT_TYPE_VARNCHAR)) ? true : false )
 
+#define PT_IS_SIMPLE_CHAR_STRING_TYPE(t) \
+        ( (((t) == PT_TYPE_CHAR)      || \
+	   ((t) == PT_TYPE_VARCHAR)) ? true : false )
+
 #define PT_IS_CHAR_STRING_TYPE(t) \
         ( (((t) == PT_TYPE_CHAR)      || \
 	   ((t) == PT_TYPE_VARCHAR)   || \
