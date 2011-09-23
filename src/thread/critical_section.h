@@ -69,6 +69,7 @@ enum
   CSECT_COMPACTDB_ONE_INSTANCE,	/* Latch for compactdb */
   CSECT_SESSION_STATE,		/* Latch for session state table */
   CSECT_ACL,			/* Latch for accessible IP list table */
+  CSECT_LOG_RUN_POSTPONE,	/* Latch for running postpone log */
   CSECT_LAST
 };
 

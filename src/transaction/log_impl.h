@@ -80,6 +80,13 @@
 #define LOG_ARCHIVE_CS_EXIT() \
         csect_exit_critical_section (&log_Gl.archive.archives_cs)
 
+#define LOG_POSTPONE_CS_ENTER(thread_p) \
+        csect_enter((thread_p), CSECT_LOG_RUN_POSTPONE, INF_WAIT)
+#define LOG_POSTPONE_CS_ENTER_READ_MODE(thread_p) \
+        csect_enter_as_reader((thread_p), CSECT_LOG_RUN_POSTPONE, INF_WAIT)
+#define LOG_POSTPONE_CS_EXIT() \
+        csect_exit(CSECT_LOG_RUN_POSTPONE)
+
 #else /* SERVER_MODE */
 #define LOG_CS_ENTER(thread_p)
 #define LOG_CS_ENTER_READ_MODE(thread_p)
@@ -94,6 +101,10 @@
 #define LOG_ARCHIVE_CS_ENTER(thread_p)
 #define LOG_ARCHIVE_CS_ENTER_READ_MODE(thread_p)
 #define LOG_ARCHIVE_CS_EXIT()
+
+#define LOG_POSTPONE_CS_ENTER(thread_p)
+#define LOG_POSTPONE_CS_ENTER_READ_MODE(thread_p)
+#define LOG_POSTPONE_CS_EXIT()
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
@@ -110,6 +121,13 @@
 #define LOG_ARCHIVE_CS_OWN_READ_MODE(thread_p)      \
        (csect_check_own_critical_section (thread_p, \
            &log_Gl.archive.archives_cs) == 2)
+#define LOG_POSTPONE_CS_OWN(thread_p) \
+       (csect_check_own(thread_p, CSECT_LOG_RUN_POSTPONE) >= 1)
+#define LOG_POSTPONE_CS_OWN_WRITE_MODE(thread_p) \
+       (csect_check_own(thread_p, CSECT_LOG_RUN_POSTPONE) == 1)
+#define LOG_POSTPONE_CS_OWN_READ_MODE(thread_p) \
+       (csect_check_own(thread_p, CSECT_LOG_RUN_POSTPONE) == 2)
+
 #else /* SERVER_MODE */
 #define LOG_CS_OWN(thread_p) (true)
 #define LOG_CS_OWN_WRITE_MODE(thread_p) (true)
@@ -118,6 +136,10 @@
 #define LOG_ARCHIVE_CS_OWN(thread_p) (true)
 #define LOG_ARCHIVE_CS_OWN_WRITE_MODE(thread_p) (true)
 #define LOG_ARCHIVE_CS_OWN_READ_MODE(thread_p) (true)
+
+#define LOG_POSTPONE_CS_OWN(thread) (true)
+#define LOG_POSTPONE_CS_OWN_WRITE_MODE(thread) (true)
+#define LOG_POSTPONE_CS_OWN_READ_MODE(thread) (true)
 #endif /* !SERVER_MODE */
 
 

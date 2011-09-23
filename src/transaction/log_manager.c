@@ -10034,6 +10034,8 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   nxtop_count = log_get_next_nested_top (thread_p, tdes, start_postpone_lsa,
 					 &nxtop_stack);
 
+  LOG_POSTPONE_CS_ENTER_READ_MODE (thread_p);
+
   while (!LSA_ISNULL (&next_start_seek_lsa))
     {
       LSA_COPY (&start_seek_lsa, &next_start_seek_lsa);
@@ -10244,6 +10246,8 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     }
 
 end:
+  LOG_POSTPONE_CS_EXIT ();
+
   if (nxtop_stack != nxtop_array && nxtop_stack != NULL)
     {
       free_and_init (nxtop_stack);
