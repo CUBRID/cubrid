@@ -577,7 +577,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
     }
 
   ha_conf->node_syncs = NULL;
-  if (is_replica_node)	
+  if (is_replica_node)
     {
       for (i = 0, nodes = ha_conf->node_names; nodes[i] != NULL; i++)
 	{
@@ -687,16 +687,16 @@ util_make_ha_conf (HA_CONF * ha_conf)
 }
 
 /*
- * util_get_ha_mode - 
+ * util_get_ha_mode_for_sa_utils - 
  * 
  * return:
  *
  * NOTE:
  */
 int
-util_get_ha_mode (void)
+util_get_ha_mode_for_sa_utils (void)
 {
-  return PRM_HA_MODE;
+  return PRM_HA_MODE_FOR_SA_UTILS_ONLY;
 }
 
 #if !defined(WINDOWS)

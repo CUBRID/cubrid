@@ -560,6 +560,7 @@ int PRM_HA_MODE = HA_MODE_OFF;
 static int prm_ha_mode_default = HA_MODE_OFF;
 static int prm_ha_mode_upper = HA_MODE_REPLICA;
 static int prm_ha_mode_lower = HA_MODE_OFF;
+int PRM_HA_MODE_FOR_SA_UTILS_ONLY = HA_MODE_OFF;
 
 int PRM_HA_SERVER_STATE = HA_SERVER_STATE_IDLE;
 static int prm_ha_server_state_default = HA_SERVER_STATE_IDLE;
@@ -4447,6 +4448,9 @@ prm_tune_parameters (void)
     }
 
 #if defined (SA_MODE)
+  /* we should save original PRM_HA_MODE value before tuning */
+  PRM_HA_MODE_FOR_SA_UTILS_ONLY = PRM_HA_MODE;
+
   /* reset to default 'active mode' for SA */
   (void) prm_set_default (ha_mode_prm);
   (void) prm_set (ha_server_state_prm, HA_SERVER_STATE_ACTIVE_STR, false);

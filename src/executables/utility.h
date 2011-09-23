@@ -1183,7 +1183,7 @@ extern bool util_is_localhost (char *host);
 
 extern void util_free_ha_conf (HA_CONF * ha_conf);
 extern int util_make_ha_conf (HA_CONF * ha_conf);
-extern int util_get_ha_mode (void);
+extern int util_get_ha_mode_for_sa_utils (void);
 #if !defined(WINDOWS)
 extern void util_redirect_stdout_to_null (void);
 #endif /* !defined(WINDOWS) */

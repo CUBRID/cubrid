@@ -388,6 +388,9 @@ extern bool PRM_REPLICATION_MODE;
 
 #define PRM_NAME_HA_MODE "ha_mode"
 extern int PRM_HA_MODE;
+extern int PRM_HA_MODE_FOR_SA_UTILS_ONLY;	/* this is for SA mode cubrid 
+						 * utilities only, such as 
+						 * 'cubrid heartbeat' */
 
 #define PRM_NAME_HA_SERVER_STATE "ha_server_state"
 extern int PRM_HA_SERVER_STATE;

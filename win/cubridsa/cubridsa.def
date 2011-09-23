@@ -107,7 +107,7 @@ EXPORTS
     sysprm_get_range
     utility_get_generic_message
     util_make_ha_conf
-    util_get_ha_mode
+    util_get_ha_mode_for_sa_utils
     util_is_localhost
     util_free_ha_conf
     utility_initialize
