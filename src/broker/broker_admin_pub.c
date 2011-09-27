@@ -2355,8 +2355,15 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
       putenv (error_log_lock_file);
 
 #if !defined(WINDOWS)
-      snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d",
-		br_info->name, appl_name, as_index);
+      if (br_info->appl_server == APPL_SERVER_CAS_ORACLE)
+	{
+	  snprintf (process_name, sizeof (process_name) - 1, "%s", appl_name);
+	}
+      else
+	{
+	  snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d",
+		    br_info->name, appl_name, as_index);
+	}
       uw_shm_detach (shm_appl);
       uw_shm_detach (shm_br);
 #endif /* !WINDOWS */
@@ -2622,9 +2629,9 @@ read_from_access_control_file (T_SHM_APPL_SERVER * shm_appl, char *filename)
 	  if (strlen (token) > 255)
 	    {
 	      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
-		       "%s: error while loading access control file(%s)"
-		       " - a IP file path(%s) is too long",
-		       shm_appl->broker_name, filename, token);
+			"%s: error while loading access control file(%s)"
+			" - a IP file path(%s) is too long",
+			shm_appl->broker_name, filename, token);
 	      goto error;
 	    }
 

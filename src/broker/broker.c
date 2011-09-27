@@ -1198,8 +1198,15 @@ run_appl_server (int as_index)
 	       shm_br->br_info[br_index].error_log_file);
       putenv (error_log_env_str);
 
-      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d",
-		shm_br->br_info[br_index].name, appl_name, as_index + 1);
+      if (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS_ORACLE)
+	{
+	  snprintf (argv0, sizeof (argv0) - 1, "%s", appl_name);
+	}
+      else
+	{
+	  snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d",
+		    shm_br->br_info[br_index].name, appl_name, as_index + 1);
+	}
 
 #if defined(WINDOWS)
       pid = run_child (appl_name);
