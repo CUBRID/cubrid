@@ -213,7 +213,7 @@ Available command:\n\
 33 %s: Such option is deprecated.\n
 34 Invalid Parameter. %s %s\n
 35 Cannot allocate memory.\n
-36 The server was not set to HA mode.\n
+36 The server was not configured for HA.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
@@ -824,7 +824,7 @@ $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 21 Enter DBA password:
 22 The server `%s''s current HA running mode is %s.\n
 23 The server `%s''s HA running mode is changed to \"%s\".\n
-24 The server was not set to HA mode.\n
+24 The server was not configured for HA.\n
 58 HA feature is not supported in this platform.\n
 59 changemode cannot run as standalone mode.\n
 60 \
@@ -838,7 +838,7 @@ valid options:\n\
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
 11 Worng value \"%s\" for the copylogdb's running mode.\n
 21 Enter DBA password:
-22 The server was not set to HA mode.\n
+22 The server was not configured for HA.\n
 58 HA feature is not supported in this platform.\n
 59 copylogdb cannot run as standalone mode.\n
 60 \
@@ -852,7 +852,7 @@ valid options:\n\
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Enter DBA password:
-22 The server was not set to HA mode.\n
+22 The server was not configured for HA.\n
 58 HA feature is not supported in this platform.\n
 59 applylogdb cannot run as standalone mode.\n
 60 \
@@ -878,7 +878,7 @@ valid options:\n\
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Enter DBA password:
-22 The server was not set to HA mode.\n
+22 The server was not configured for HA.\n
 58 HA feature is not supported in this platform.\n
 59 applyinfo cannot run as standlone mode.\n
 60 \
