@@ -413,6 +413,7 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval exec_begin, exec_end;
   char *eid_string;
+  int err_number_execute;
 
   bind_value_index = 9;
   argc_mod_2 = 1;
@@ -547,23 +548,27 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 			      clt_cache_time_ptr, &client_cache_reusable);
   gettimeofday (&exec_end, NULL);
   ut_timeval_diff (&exec_begin, &exec_end, &elapsed_sec, &elapsed_msec);
-
   eid_string = get_error_log_eids (err_info.err_number);
+  err_number_execute = err_info.err_number;
+
+  if (fetch_flag && ret_code >= 0 && client_cache_reusable == FALSE)
+    {
+      ux_fetch (srv_handle, 1, 50, 0, 0, net_buf, req_info);
+    }
+
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 		 "%s %s%d tuple %d time %d.%03d%s%s%s",
 		 exec_func_name, (ret_code < 0) ? "error:" : "",
-		 err_info.err_number,
+		 err_number_execute,
 		 get_tuple_count (srv_handle),
 		 elapsed_sec, elapsed_msec,
 		 (client_cache_reusable == TRUE) ? " (CC)" : "",
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "",
 		 eid_string);
-
 #ifndef LIBCAS_FOR_JSP
   query_timeout = ut_check_timeout (&query_start_time, &exec_end,
 				    shm_appl->long_query_time,
 				    &elapsed_sec, &elapsed_msec);
-
   if (query_timeout >= 0 || ret_code < 0)
     {
       if (query_timeout >= 0)
@@ -593,7 +598,7 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  cas_slow_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 			      "%s %s%d tuple %d time %d.%03d%s%s%s\n",
 			      exec_func_name, (ret_code < 0) ? "error:" : "",
-			      err_info.err_number,
+			      err_number_execute,
 			      get_tuple_count (srv_handle),
 			      elapsed_sec, elapsed_msec,
 			      (client_cache_reusable == TRUE) ? " (CC)" : "",
@@ -603,11 +608,6 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	}
     }
 #endif /* !LIBCAS_FOR_JSP */
-
-  if (fetch_flag && ret_code >= 0 && client_cache_reusable == FALSE)
-    {
-      ux_fetch (srv_handle, 1, 50, 0, 0, net_buf, req_info);
-    }
 
 #ifndef LIBCAS_FOR_JSP
   /* set is_pooled */
