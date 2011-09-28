@@ -614,8 +614,8 @@ fix_log_header (const char *vol_path)
   LSA_SET_NULL (&ga_hdr->bkup_level1_lsa);
   LSA_SET_NULL (&ga_hdr->bkup_level2_lsa);
   memcpy (ga_hdr->prefix_name, beta_hdr->prefix_name, MAXLOGNAME);
-  ga_hdr->lowest_arv_num_for_backup = -1;
-  ga_hdr->highest_arv_num_for_backup = -1;
+  ga_hdr->reserved_int_1 = -1;
+  ga_hdr->reserved_int_2 = -1;
   ga_hdr->perm_status = LOG_PSTAT_CLEAR;
 
   for (i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)

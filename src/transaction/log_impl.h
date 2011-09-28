@@ -879,14 +879,10 @@ struct log_header
   LOG_LSA bkup_level2_lsa;	/* Lsa of backup level 2                    */
   char prefix_name[MAXLOGNAME];	/* Log prefix name                          */
   bool has_logging_been_skipped;	/* Has logging been skipped ?       */
-  int lowest_arv_num_for_backup;	/* Last log archive needed to guarantee
-					 * a consistent restore for the most
-					 * recent backup
-					 */
-  int highest_arv_num_for_backup;	/* with 'lowest' above, forms a range
-					 * of all needed archives to make the
-					 * most recent backup consistent.
-					 */
+  int reserved_int_1;		/* for backward compitablity
+				 * - previously used for lowest_arv_num_for_backup */
+  int reserved_int_2;		/* for backward compitablity
+				 * - previously used for highest_arv_num_for_backup */
   int perm_status;		/* Reserved for future expansion and
 				 * permanent status indicators,
 				 * e.g. to mark RESTORE_IN_PROGRESS

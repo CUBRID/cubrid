@@ -338,19 +338,13 @@ static void logpb_set_unavailable_archive (int arv_num);
 static bool logpb_is_archive_available (int arv_num);
 static void logpb_archive_active_log (THREAD_ENTRY * thread_p,
 				      bool force_archive);
-static void logpb_remove_archive_to_page_id (THREAD_ENTRY * thread_p,
-					     const char *info_reason,
-					     LOG_PAGEID safe_pageid);
 static int logpb_get_remove_archive_num (THREAD_ENTRY * thread_p,
 					 LOG_PAGEID safe_pageid,
 					 int archive_num);
 static int
 logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p,
 				    int first, int last,
-				    const char *info_reason,
-				    bool check_backup,
-				    int lowest_arv_num_for_backup,
-				    int highest_arv_num_for_backup);
+				    const char *info_reason);
 static void logpb_append_archives_removed_to_log_info (int first, int last,
 						       const char
 						       *info_reason);
@@ -1881,8 +1875,8 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, struct log_header *loghdr,
     {
       loghdr->prefix_name[0] = '\0';
     }
-  loghdr->lowest_arv_num_for_backup = -1;
-  loghdr->highest_arv_num_for_backup = -1;
+  loghdr->reserved_int_1 = -1;
+  loghdr->reserved_int_2 = -1;
   loghdr->perm_status = LOG_PSTAT_CLEAR;
 
   logpb_initialize_backup_info ();
@@ -7785,8 +7779,6 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
 {
   int first_arv_num_to_delete = -1;
   int last_arv_num_to_delete = -1;
-  int lowest_arv_num_for_backup = -1;
-  int highest_arv_num_for_backup = -1;
 #if defined(SERVER_MODE)
   LOG_PAGEID min_copied_pageid;
   int min_copied_arv_num;
@@ -7868,8 +7860,6 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
 	  log_Gl.hdr.last_deleted_arv_num = last_arv_num_to_delete;
 	  logpb_flush_header (thread_p);	/* to get rid of archives */
 	}
-      lowest_arv_num_for_backup = log_Gl.hdr.lowest_arv_num_for_backup;
-      highest_arv_num_for_backup = log_Gl.hdr.highest_arv_num_for_backup;
     }
 
   LOG_CS_EXIT ();
@@ -7888,9 +7878,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
       deleted_count = logpb_remove_archive_logs_internal (thread_p,
 							  first_arv_num_to_delete,
 							  last_arv_num_to_delete,
-							  catmsg, true,
-							  lowest_arv_num_for_backup,
-							  highest_arv_num_for_backup);
+							  catmsg);
     }
 
   return deleted_count;
@@ -7910,24 +7898,6 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p,
  */
 void
 logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
-{
-  logpb_remove_archive_to_page_id (thread_p, info_reason, NULL_PAGEID);
-}
-
-/*
- * logpb_remove_archive_to_page_id -
- *
- * return:
- *
- *   info_reason(in):
- *   safe_pageid(in):
- *
- * NOTE:
- */
-static void
-logpb_remove_archive_to_page_id (THREAD_ENTRY * thread_p,
-				 const char *info_reason,
-				 LOG_PAGEID safe_pageid)
 {
 #if !defined(SERVER_MODE)
   LOG_LSA flush_upto_lsa;	/* Flush data pages up to LSA */
@@ -7995,24 +7965,10 @@ logpb_remove_archive_to_page_id (THREAD_ENTRY * thread_p,
     }
 
   first_deleted_arv_num = log_Gl.hdr.last_deleted_arv_num + 1;
-
-  if (safe_pageid != NULL_PAGEID)
-    {
-      last_deleted_arv_num = MIN (last_deleted_arv_num,
-				  logpb_get_remove_archive_num (thread_p,
-								safe_pageid,
-								last_deleted_arv_num));
-    }
-
   if (last_deleted_arv_num >= 0)
     {
       logpb_remove_archive_logs_internal (thread_p, first_deleted_arv_num,
-					  last_deleted_arv_num, info_reason,
-					  true,
-					  log_Gl.hdr.
-					  lowest_arv_num_for_backup,
-					  log_Gl.hdr.
-					  highest_arv_num_for_backup);
+					  last_deleted_arv_num, info_reason);
 
       log_Gl.hdr.last_deleted_arv_num = last_deleted_arv_num;
       logpb_flush_header (thread_p);	/* to get rid of archives */
@@ -8178,44 +8134,15 @@ logpb_get_remove_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID safe_pageid,
  */
 static int
 logpb_remove_archive_logs_internal (THREAD_ENTRY * thread_p, int first,
-				    int last, const char *info_reason,
-				    bool check_backup,
-				    int lowest_arv_num_for_backup,
-				    int highest_arv_num_for_backup)
+				    int last, const char *info_reason)
 {
   char logarv_name[PATH_MAX];
   int i;
   bool append_log_info = false;
   int deleted_count = 0;
-  int last_bkup_arv_inrange;
-
-  last_bkup_arv_inrange = MIN (highest_arv_num_for_backup, last);
 
   for (i = first; i <= last; i++)
     {
-      if (check_backup
-	  && lowest_arv_num_for_backup <= i
-	  && i <= highest_arv_num_for_backup)
-	{
-
-	  /* mark the previous range (if any) deleted */
-	  if (append_log_info)
-	    {
-	      logpb_append_archives_removed_to_log_info (first, i,
-							 info_reason);
-	    }
-
-	  /* mark the captured range */
-	  logpb_append_archives_delete_pend_to_log_info (i,
-							 last_bkup_arv_inrange);
-
-	  /* Continue with more deletions after the deleted range */
-	  i = last_bkup_arv_inrange;
-	  first = last_bkup_arv_inrange;
-	  append_log_info = false;
-	  continue;
-	}
-
       fileio_make_log_archive_name (logarv_name, log_Archive_path, log_Prefix,
 				    i);
 #if defined(SERVER_MODE)
@@ -9497,7 +9424,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
   FILEIO_BACKUP_RECORD_INFO all_bkup_info[FILEIO_BACKUP_UNDEFINED_LEVEL];
   int first_arv_needed = -1;	/* for self contained, consistent */
   int last_arv_needed = -1;	/* backups, some arv are needed   */
-  int unneeded_arv_low = -1, unneeded_arv_high = -1;
   bool beenwarned;
   bool isincremental = false;	/* Assume full backups */
   char logarv_name[PATH_MAX];
@@ -9950,21 +9876,6 @@ loop:
     }
 #endif
 
-  /*
-   * Remember the previous backup arv range, in order to delete or tag
-   * archives from the previous backup which are no longer needed.
-   */
-  unneeded_arv_low = log_Gl.hdr.lowest_arv_num_for_backup;
-  unneeded_arv_high = log_Gl.hdr.highest_arv_num_for_backup;
-
-  /*
-   * Remember the range of archives needed for complete restore of
-   * this backup.
-   */
-
-  log_Gl.hdr.lowest_arv_num_for_backup = first_arv_needed;
-  log_Gl.hdr.highest_arv_num_for_backup = last_arv_needed;
-
   if (fileio_is_volume_exist (log_Name_info) == true)
     {
       error_code = fileio_backup_volume (thread_p, &session, log_Name_info,
@@ -10045,91 +9956,7 @@ loop:
 			       MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN);
       if (catmsg)
 	{
-	  logpb_remove_archive_to_page_id (thread_p, catmsg, NULL_PAGEID);
-	}
-    }
-
-  /*
-   * May need to delete the archives which were "captured" by the
-   * previous backup, if they are not within the current deletion range,
-   * (The normal deletion range doesn't handle gaps.)
-   */
-  if (unneeded_arv_high > -1
-      && unneeded_arv_low <= log_Gl.hdr.last_deleted_arv_num)
-    {
-
-      /*
-       * Only necessary to "release" the archives up to the regular
-       * deletion range.
-       */
-      unneeded_arv_high = MIN (unneeded_arv_high,
-			       log_Gl.hdr.last_deleted_arv_num);
-
-      if (PRM_LOG_MEDIA_FAILURE_SUPPORT == false)
-	{
-	  /* Remove the log archives at this point */
-	  catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
-				   MSGCAT_SET_LOG,
-				   MSGCAT_LOG_LOGINFO_PENDING_ARCHIVES_RELEASED);
-	  if (catmsg)
-	    {
-	      logpb_remove_archive_logs_internal (thread_p, unneeded_arv_low,
-						  unneeded_arv_high, catmsg,
-						  false,
-						  log_Gl.hdr.
-						  lowest_arv_num_for_backup,
-						  log_Gl.hdr.
-						  highest_arv_num_for_backup);
-	    }
-	}
-      else
-	{
-	  /* Mark the range of archive logs as not needed by restore anymore */
-	  if (unneeded_arv_high == unneeded_arv_low)
-	    {
-	      fileio_make_log_archive_name (logarv_name, log_Archive_path,
-					    log_Prefix, unneeded_arv_low);
-	      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_LOG,
-				       MSGCAT_LOG_LOGINFO_NOTPENDING_ARCHIVE_COMMENT);
-	      if (catmsg == NULL)
-		{
-		  catmsg = "COMMENT: Log archive %s is not DELETE POSTPONED"
-		    " any longer due to more recent\n"
-		    "backup and therefore is not needed unless a database media"
-		    " crash occurs.\n";
-		}
-	      error_code = log_dump_log_info (log_Name_info, true,
-					      catmsg, logarv_name);
-	    }
-	  else
-	    {
-	      fileio_make_log_archive_name (logarv_name_first,
-					    log_Archive_path, log_Prefix,
-					    log_Gl.hdr.
-					    last_arv_num_for_syscrashes);
-	      fileio_make_log_archive_name (logarv_name, log_Archive_path,
-					    log_Prefix,
-					    log_Gl.hdr.nxarv_num - 1);
-
-	      catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID,
-				       MSGCAT_SET_LOG,
-				       MSGCAT_LOG_LOGINFO_MULT_NOTPENDING_ARCHIVES_COMMENT);
-	      if (catmsg == NULL)
-		{
-		  catmsg = "COMMENT: Log archives from %s to %s"
-		    " are not DELETE POSTPONED any longer due to\n"
-		    "more recent backup and therefore are not needed unless"
-		    " a database media\ncrash occurs.\n";
-		}
-	      error_code = log_dump_log_info (log_Name_info, false, catmsg,
-					      logarv_name_first, logarv_name);
-	    }
-	  if (error_code != NO_ERROR && error_code != ER_LOG_MOUNT_FAIL)
-	    {
-	      LOG_CS_EXIT ();
-	      goto error;
-	    }
+	  logpb_remove_archive_logs (thread_p, catmsg);
 	}
     }
 
@@ -13310,12 +13137,6 @@ logpb_dump_log_header (FILE * outfp)
   fprintf (outfp, "\tbackup level 2 lsa : (%lld, %d)\n",
 	   log_Gl.hdr.bkup_level2_lsa.pageid,
 	   log_Gl.hdr.bkup_level2_lsa.offset);
-
-  fprintf (outfp, "\tlowest log archive number for backup : %d\n",
-	   log_Gl.hdr.lowest_arv_num_for_backup);
-
-  fprintf (outfp, "\thighest log archive number for backup : %d\n",
-	   log_Gl.hdr.highest_arv_num_for_backup);
 }
 
 /*
