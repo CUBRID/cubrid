@@ -1622,6 +1622,7 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p,
 {
   int r;
   int old_status;
+  int error = NO_ERROR;
 
   assert (thread_p != NULL);
   old_status = thread_p->status;
@@ -1654,11 +1655,11 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p,
       r = pthread_cond_timedwait (&thread_p->wakeup_cond, mutex_p, to);
     }
 
+  /* we should restore thread's status */
   if (r != NO_ERROR)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-			   ER_CSS_PTHREAD_COND_WAIT, 0);
-      return ER_CSS_PTHREAD_COND_WAIT;
+      error = ER_CSS_PTHREAD_COND_WAIT;
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
     }
 
   r = pthread_mutex_lock (&thread_p->th_entry_lock);
@@ -1679,7 +1680,7 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p,
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
-  return NO_ERROR;
+  return error;
 }
 
 /*

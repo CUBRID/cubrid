@@ -55,6 +55,8 @@
 #endif
 #include "log_applier.h"
 
+#define LOGWR_THREAD_SUSPEND_TIMEOUT 	10
+
 static int prev_ha_server_state = HA_SERVER_STATE_NA;
 static bool logwr_need_shutdown = false;
 
@@ -1693,9 +1695,11 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
   LOG_PAGEID next_fpageid;
   LOGWR_MODE next_mode;
   int status;
+  int timeout;
   int rv;
   int error_code;
   bool check_cs_own = false;
+  struct timespec to;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
 
   logpg_used_size = 0;
@@ -1736,10 +1740,42 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 	{
 	  bool continue_checking = true;
 
-	  thread_suspend_with_other_mutex (thread_p,
-					   &writer_info->flush_start_mutex,
-					   INF_WAIT, NULL,
-					   THREAD_LOGWR_SUSPENDED);
+	  if (mode == LOGWR_MODE_ASYNC)
+	    {
+	      timeout = LOGWR_THREAD_SUSPEND_TIMEOUT;
+	      to.tv_sec = time (NULL) + timeout;
+	      to.tv_nsec = 0;
+	    }
+	  else
+	    {
+	      timeout = INF_WAIT;
+	      to.tv_sec = to.tv_nsec = 0;
+	    }
+
+	  rv = thread_suspend_with_other_mutex (thread_p,
+						&writer_info->
+						flush_start_mutex, timeout,
+						&to, THREAD_LOGWR_SUSPENDED);
+	  if (rv == ER_CSS_PTHREAD_COND_WAIT)
+	    {
+	      pthread_mutex_unlock (&writer_info->flush_start_mutex);
+
+	      rv = pthread_mutex_lock (&writer_info->flush_end_mutex);
+	      if (logwr_unregister_writer_entry (entry, LOGWR_STATUS_DELAY))
+		{
+		  pthread_cond_signal (&writer_info->flush_end_cond);
+		}
+	      pthread_mutex_unlock (&writer_info->flush_end_mutex);
+
+	      continue;
+	    }
+	  else if (rv == ER_CSS_PTHREAD_MUTEX_LOCK
+		   || rv == ER_CSS_PTHREAD_MUTEX_UNLOCK)
+	    {
+	      error_code = ER_FAILED;
+	      status = LOGWR_STATUS_ERROR;
+	      goto error;
+	    }
 
 	  pthread_mutex_unlock (&writer_info->flush_start_mutex);
 
