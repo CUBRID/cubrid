@@ -650,7 +650,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->lock_timeout = CCI_LOCK_TIMEOUT_DEFAULT;
   con_handle->is_retry = 0;
   con_handle->con_status = CCI_CON_STATUS_OUT_TRAN;
-  con_handle->autocommit_mode = CCI_AUTOCOMMIT_FALSE;
+  con_handle->autocommit_mode = CCI_AUTOCOMMIT_TRUE;
   con_handle->session_id = CCI_EMPTY_SESSION;
 
   con_handle->max_req_handle = REQ_HANDLE_ALLOC_SIZE;

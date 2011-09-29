@@ -361,7 +361,7 @@ broker_config_read_internal (const char *conf_file,
       br_info[num_brs].cci_default_autocommit =
 	conf_get_value_table_on_off (ini_getstr
 				     (ini, sec_name, "CCI_DEFAULT_AUTOCOMMIT",
-				      "OFF", &lineno));
+				      "ON", &lineno));
       if (br_info[num_brs].cci_default_autocommit < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
