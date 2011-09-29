@@ -2264,7 +2264,9 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
 
   if (fetch_count <= 0)
-    fetch_count = 100;
+    {
+      fetch_count = 100;
+    }
 
   err_code =
     (*(fetch_func[fetch_func_index])) (srv_handle, cursor_pos,

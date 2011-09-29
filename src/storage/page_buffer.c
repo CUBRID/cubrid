@@ -3857,6 +3857,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3,
 	      bufptr->iopage_buffer->iopage.page, bufptr->vpid.pageid,
 	      fileio_get_volume_label (bufptr->vpid.volid));
+      assert (false);
       bufptr->fcnt = 0;
     }
 
@@ -3868,6 +3869,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3,
 	      bufptr->iopage_buffer->iopage.page, bufptr->vpid.pageid,
 	      fileio_get_volume_label (bufptr->vpid.volid));
+      assert (false);
       return ER_FAILED;
     }
 
@@ -3881,6 +3883,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3,
 		  bufptr->iopage_buffer->iopage.page, bufptr->vpid.pageid,
 		  fileio_get_volume_label (bufptr->vpid.volid));
+	  assert (false);
 	  return ER_FAILED;
 	}
     }

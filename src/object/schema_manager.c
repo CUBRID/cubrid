@@ -10325,19 +10325,26 @@ allocate_disk_structure_helper (MOP classop, SM_CLASS * class_,
 	{
 	  return error;
 	}
+
+      /* check for safe guard */
+      if (BTID_IS_NULL (&con->index))
+	{
+	  return ER_FAILED;	/* unknown error */
+	}
     }
 
   /* Whether we allocated a BTID or not, always write the contraint info
    * back out to the property list.  This is where the promotion of
    * attribute name references to ids references happens.
    */
-  if (classobj_put_index_id (&(class_->properties), con->type,
-			     con->name, con->attributes,
-			     con->asc_desc,
-			     con->attrs_prefix_length,
-			     &(con->index), con->fk_info, NULL) != NO_ERROR)
+  error = classobj_put_index_id (&(class_->properties), con->type,
+				 con->name, con->attributes,
+				 con->asc_desc,
+				 con->attrs_prefix_length,
+				 &(con->index), con->fk_info, NULL);
+  if (error != NO_ERROR)
     {
-      return er_errid ();
+      return error;
     }
 
   return NO_ERROR;

@@ -7364,19 +7364,19 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      goto end_expr_op_switch;
 		    }
 		}
-              else if (node->info.expr.op == PT_EXEC_STATS)
-                {
-                  r1 = NULL;
-                  r2 = pt_to_regu_variable (parser,
-                                            node->info.expr.arg1, unbox);
-                  r3 = NULL;
+	      else if (node->info.expr.op == PT_EXEC_STATS)
+		{
+		  r1 = NULL;
+		  r2 = pt_to_regu_variable (parser,
+					    node->info.expr.arg1, unbox);
+		  r3 = NULL;
 
-                  domain = pt_xasl_node_to_domain (parser, node);
-                  if (domain == NULL)
-                    {
-                      goto end_expr_op_switch;
-                    }
-                }
+		  domain = pt_xasl_node_to_domain (parser, node);
+		  if (domain == NULL)
+		    {
+		      goto end_expr_op_switch;
+		    }
+		}
 
 	      switch (node->info.expr.op)
 		{
@@ -8652,10 +8652,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 					domain);
 		  break;
 
-                case PT_EXEC_STATS:
-                  regu =
-                    pt_make_regu_arith (r1, r2, r3, T_EXEC_STATS, domain);
-                  break;
+		case PT_EXEC_STATS:
+		  regu =
+		    pt_make_regu_arith (r1, r2, r3, T_EXEC_STATS, domain);
+		  break;
 
 		default:
 		  break;
@@ -15306,7 +15306,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_list,
 
   assert (parser != NULL);
 
-  if ((statement = parser_new_node (parser, PT_SELECT)) != NULL)
+  statement = parser_new_node (parser, PT_SELECT);
+  if (statement != NULL)
     {
       statement->info.query.q.select.list =
 	parser_copy_tree_list (parser, select_list);

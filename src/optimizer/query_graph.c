@@ -5997,7 +5997,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep,
 	  continue;
 	}
 
-      /* the segment  should belong to the given node */
+      /* the segment should belong to the given node */
       seg_nodep = QO_SEG_HEAD (seg);
       if (seg_nodep == NULL || seg_nodep != nodep)
 	{

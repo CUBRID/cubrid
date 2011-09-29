@@ -6268,7 +6268,7 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
   if (outptr > aid_ptr)
     {
-      length = CAST_BUFLEN (outptr - aid_ptr) + 1;
+      length = CAST_BUFLEN (outptr - aid_ptr);
       length = (int) (sizeof (npages) * MIN (npages, length));
       log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr, length, logdata);
     }
@@ -6331,8 +6331,8 @@ file_allocset_add_pageids (THREAD_ENTRY * thread_p, PAGE_PTR fhdr_pgptr,
 
 	  if (outptr > aid_ptr)
 	    {
-	      length = (int) ((npages > (outptr - aid_ptr) + 1) ?
-			      ((outptr - aid_ptr) + 1) : (npages - i));
+	      length = (int) ((npages > (outptr - aid_ptr)) ?
+			      (outptr - aid_ptr) : (npages - i));
 	      log_append_undo_data (thread_p, RVFL_IDSTABLE, &addr,
 				    sizeof (npages) * length, logdata);
 	    }

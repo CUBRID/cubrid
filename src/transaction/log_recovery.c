@@ -218,7 +218,7 @@ static void log_recovery_resetlog (THREAD_ENTRY * thread_p,
  * return: nothing
  *
  *   log_lsa(in/out): Log address identifier containing the log record
- *   log_pgptr(in/out): Pointer to page where data starts (Set as a side
+ *   log_page_p(in/out): Pointer to page where data starts (Set as a side
  *              effect to the page where data ends)
  *   rcvindex(in): Index to recovery functions
  *   rcv_vpid(in): Address of page to recover
@@ -241,7 +241,7 @@ static void log_recovery_resetlog (THREAD_ENTRY * thread_p,
  */
 static void
 log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
-		    LOG_PAGE * log_pape_p, LOG_RCVINDEX rcvindex,
+		    LOG_PAGE * log_page_p, LOG_RCVINDEX rcvindex,
 		    const VPID * rcv_vpid, LOG_RCV * rcv,
 		    const LOG_LSA * rcv_undo_lsa, LOG_TDES * tdes,
 		    LOG_ZIP * undo_unzip_ptr)
@@ -289,7 +289,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 
   if (log_lsa->offset + rcv->length < (int) LOGAREA_SIZE)
     {
-      rcv->data = (char *) log_pape_p->area + log_lsa->offset;
+      rcv->data = (char *) log_page_p->area + log_lsa->offset;
       log_lsa->offset += rcv->length;
     }
   else
@@ -307,7 +307,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 	  return;
 	}
       /* Copy the data */
-      logpb_copy_from_log (thread_p, area, rcv->length, log_lsa, log_pape_p);
+      logpb_copy_from_log (thread_p, area, rcv->length, log_lsa, log_page_p);
       rcv->data = area;
     }
 
@@ -443,7 +443,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
  * return: nothing
  *
  *   log_lsa(in/out): Log address identifier containing the log record
- *   log_pgptr(in/out): Pointer to page where data starts (Set as a side
+ *   log_page_p(in/out): Pointer to page where data starts (Set as a side
  *               effect to the page where data ends)
  *   redofun(in): Function to invoke to redo the data
  *   rcv(in/out): Recovery structure for recovery function(Set as a side
@@ -581,7 +581,7 @@ log_rv_find_checkpoint (THREAD_ENTRY * thread_p, VOLID volid,
  *
  *   length(in): log data size
  *   log_lsa(in/out): Log address identifier containing the log record
- *   log_pgptr(in): Log page pointer where LSA is located
+ *   log_page_p(in): Log page pointer where LSA is located
  *   undo_unzip_ptr(in):
  *
  * NOTE:if log_data is unzip data return LOG_ZIP data
