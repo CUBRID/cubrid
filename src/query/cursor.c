@@ -97,6 +97,12 @@ static void cursor_allocate_oid_buffer (CURSOR_ID * cursor_id_p);
 static void
 cursor_initialize_current_tuple_value_position (CURSOR_ID * cursor_id_p)
 {
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return;
+    }
+
   cursor_id_p->current_tuple_value_index = -1;
   cursor_id_p->current_tuple_value_p = NULL;
 }
@@ -472,6 +478,12 @@ cursor_get_tuple_value_from_list (CURSOR_ID * cursor_id_p, int index,
   OR_BUF buffer;
   int i;
 
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
   type_list_p = &cursor_id_p->list_id.type_list;
 
   assert (index >= 0 && index < type_list_p->type_cnt);
@@ -553,6 +565,12 @@ cursor_get_list_file_page (CURSOR_ID * cursor_id_p, VPID * vpid_p)
   int page_size;
   char *page_p;
 
+  if (cursor_id_p == NULL || vpid_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
   /* find page at buffer area */
   if (VPID_EQ (vpid_p, &cursor_id_p->current_vpid))
     {
@@ -610,14 +628,16 @@ cursor_get_list_file_page (CURSOR_ID * cursor_id_p, VPID * vpid_p)
   /* if not found, get the page from server */
   if (cursor_id_p->buffer == NULL)
     {
-      if (qfile_get_list_file_page (cursor_id_p->query_id,
-				    vpid_p->volid,
-				    vpid_p->pageid,
-				    cursor_id_p->buffer_area,
-				    &cursor_id_p->buffer_filled_size) !=
-	  NO_ERROR)
+      int ret_val = qfile_get_list_file_page (cursor_id_p->query_id,
+					      vpid_p->volid,
+					      vpid_p->pageid,
+					      cursor_id_p->buffer_area,
+					      &cursor_id_p->
+					      buffer_filled_size);
+
+      if (ret_val != NO_ERROR)
 	{
-	  return er_errid ();
+	  return ret_val;
 	}
 
       cursor_id_p->buffer = cursor_id_p->buffer_area;
@@ -678,6 +698,12 @@ cursor_get_oid_from_tuple (char *tuple_p, DB_TYPE type)
 static int
 cursor_allocate_tuple_area (CURSOR_ID * cursor_id_p, int tuple_length)
 {
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
   if (cursor_id_p->tuple_record.size == 0)
     {
       cursor_id_p->tuple_record.tpl = (char *) malloc (tuple_length);
@@ -705,6 +731,12 @@ cursor_construct_tuple_from_overflow_pages (CURSOR_ID * cursor_id_p,
   char *buffer_p;
   char *tmp_tuple_p, *tuple_p;
   int tuple_length, offset, tuple_page_size;
+
+  if (cursor_id_p == NULL || vpid_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
 
   /* get tuple length and allocate space for the tuple */
   tmp_tuple_p = cursor_id_p->buffer + QFILE_PAGE_HEADER_SIZE;
@@ -759,6 +791,12 @@ cursor_construct_tuple_from_overflow_pages (CURSOR_ID * cursor_id_p,
 static bool
 cursor_has_first_hidden_oid (CURSOR_ID * cursor_id_p)
 {
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return false;
+    }
+
   return (cursor_id_p->is_oid_included
 	  && cursor_id_p->oid_ent_count > 0
 	  && cursor_id_p->list_id.type_list.domp
@@ -774,6 +812,12 @@ cursor_fetch_oids (CURSOR_ID * cursor_id_p, int oid_index,
   int i;
   OID tmp_oid;
   MOBJ mobj;
+
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
 
   if (oid_index == 0)
     {
@@ -816,6 +860,12 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
   QFILE_TUPLE current_tuple;
   int tupel_count, oid_index = 0, current_tuple_length, i;
   DB_TYPE type;
+
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
 
   /* set tuple count and point to the first tuple */
   tupel_count = QFILE_GET_TUPLE_COUNT (cursor_id_p->buffer);
@@ -867,6 +917,12 @@ cursor_prefetch_column_oids (CURSOR_ID * cursor_id_p)
   int tuple_count, oid_index = 0, current_tuple_length;
   int j, tuple_index, col_index, col_num;
   DB_TYPE type;
+
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
 
   /* set tuple count and point to the first tuple */
   tuple_count = QFILE_GET_TUPLE_COUNT (cursor_id_p->buffer);
@@ -930,6 +986,12 @@ cursor_prefetch_column_oids (CURSOR_ID * cursor_id_p)
 static int
 cursor_point_current_tuple (CURSOR_ID * cursor_id_p, int position, int offset)
 {
+  if (cursor_id_p == NULL || cursor_id_p->buffer == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
   cursor_id_p->buffer_tuple_count =
     QFILE_GET_TUPLE_COUNT (cursor_id_p->buffer);
   cursor_id_p->current_tuple_length =
@@ -962,9 +1024,20 @@ cursor_point_current_tuple (CURSOR_ID * cursor_id_p, int position, int offset)
 static int
 cursor_buffer_last_page (CURSOR_ID * cursor_id_p, VPID * vpid_p)
 {
+  if (cursor_id_p == NULL || vpid_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
   if (cursor_id_p->list_id.last_pgptr
       && VPID_EQ (&(cursor_id_p->list_id.first_vpid), vpid_p))
     {
+      if (cursor_id_p->buffer == NULL)
+	{
+	  return ER_FAILED;
+	}
+
       memcpy (cursor_id_p->buffer, cursor_id_p->list_id.last_pgptr,
 	      CURSOR_BUFFER_SIZE);
     }
@@ -1005,6 +1078,12 @@ int
 cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id_p, VPID * vpid_p,
 				int position, int offset)
 {
+  if (cursor_id_p == NULL || vpid_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
   cursor_initialize_current_tuple_value_position (cursor_id_p);
 
   if (!VPID_EQ (&(cursor_id_p->current_vpid), vpid_p))
@@ -1013,6 +1092,11 @@ cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id_p, VPID * vpid_p,
 	{
 	  return ER_FAILED;
 	}
+    }
+
+  if (cursor_id_p->buffer == NULL)
+    {
+      return ER_FAILED;
     }
 
   if (cursor_point_current_tuple (cursor_id_p, position, offset) != NO_ERROR)
@@ -1075,6 +1159,12 @@ cursor_print_list (QUERY_ID query_id, QFILE_LIST_ID * list_id_p)
   CURSOR_ID cursor_id;
   DB_VALUE *value_list_p, *value_p;
   int count, i, status;
+
+  if (list_id_p == NULL)
+    {
+      assert (0);
+      return;
+    }
 
   count = list_id_p->type_list.type_cnt;
   value_list_p = (DB_VALUE *) malloc (count * sizeof (DB_VALUE));
@@ -1151,6 +1241,12 @@ cursor_allocate_oid_buffer (CURSOR_ID * cursor_id_p)
 {
   size_t oids_size, mops_size;
 
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return;
+    }
+
   /*
    * NOTE: Currently assume a PAGESIZE. In fact, since we can
    * find average tuple count per page from the LIST FILE
@@ -1199,6 +1295,12 @@ cursor_open (CURSOR_ID * cursor_id_p, QFILE_LIST_ID * list_id_p,
 	     bool updatable, bool is_oid_included)
 {
   static QFILE_LIST_ID empty_list_id;	/* TODO: remove static empty_list_id */
+
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return false;
+    }
 
   QFILE_CLEAR_LIST_ID (&empty_list_id);
 
@@ -1263,7 +1365,15 @@ cursor_open (CURSOR_ID * cursor_id_p, QFILE_LIST_ID * list_id_p,
 DB_FETCH_MODE
 cursor_set_prefetch_lock_mode (CURSOR_ID * cursor_id_p, DB_FETCH_MODE mode)
 {
-  DB_FETCH_MODE old = cursor_id_p->prefetch_lock_mode;
+  DB_FETCH_MODE old;
+
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return mode;
+    }
+
+  old = cursor_id_p->prefetch_lock_mode;
 
   cursor_id_p->prefetch_lock_mode = mode;
 
@@ -1279,7 +1389,15 @@ cursor_set_prefetch_lock_mode (CURSOR_ID * cursor_id_p, DB_FETCH_MODE mode)
 bool
 cursor_set_copy_tuple_value (CURSOR_ID * cursor_id_p, bool is_copy)
 {
-  bool old = cursor_id_p->is_copy_tuple_value;
+  bool old;
+
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return false;
+    }
+
+  old = cursor_id_p->is_copy_tuple_value;
 
   cursor_id_p->is_copy_tuple_value = is_copy;
 
@@ -1326,6 +1444,12 @@ cursor_free (CURSOR_ID * cursor_id_p)
 {
   int i;
 
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return;
+    }
+
   cursor_free_list_id (&cursor_id_p->list_id, false);
 
   if (cursor_id_p->buffer_area != NULL)
@@ -1357,6 +1481,12 @@ cursor_free (CURSOR_ID * cursor_id_p)
 void
 cursor_close (CURSOR_ID * cursor_id_p)
 {
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return;
+    }
+
   /* free the cursor allocated area */
   cursor_free (cursor_id_p);
 
@@ -1389,6 +1519,12 @@ cursor_close (CURSOR_ID * cursor_id_p)
 static char *
 cursor_peek_tuple (CURSOR_ID * cursor_id_p)
 {
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return NULL;
+    }
+
   if (cursor_id_p->position != C_ON)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_CRSPOS, 0);
@@ -1413,6 +1549,12 @@ int
 cursor_get_current_oid (CURSOR_ID * cursor_id_p, DB_VALUE * value_p)
 {
   char *tuple_p;
+
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
 
   assert (cursor_id_p->is_oid_included == true);
 
@@ -1441,6 +1583,12 @@ cursor_get_current_oid (CURSOR_ID * cursor_id_p, DB_VALUE * value_p)
 int
 cursor_next_tuple (CURSOR_ID * cursor_id_p)
 {
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return DB_CURSOR_ERROR;
+    }
+
   cursor_initialize_current_tuple_value_position (cursor_id_p);
 
   if (cursor_id_p->position == C_BEFORE)
@@ -1528,6 +1676,12 @@ cursor_next_tuple (CURSOR_ID * cursor_id_p)
 int
 cursor_prev_tuple (CURSOR_ID * cursor_id_p)
 {
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return DB_CURSOR_ERROR;
+    }
+
   cursor_initialize_current_tuple_value_position (cursor_id_p);
 
   if (cursor_id_p->position == C_BEFORE)
@@ -1613,6 +1767,12 @@ cursor_prev_tuple (CURSOR_ID * cursor_id_p)
 int
 cursor_first_tuple (CURSOR_ID * cursor_id_p)
 {
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return DB_CURSOR_ERROR;
+    }
+
   if (VPID_ISNULL (&(cursor_id_p->list_id.first_vpid)))
     {
       return DB_CURSOR_END;
@@ -1654,6 +1814,12 @@ cursor_first_tuple (CURSOR_ID * cursor_id_p)
 int
 cursor_last_tuple (CURSOR_ID * cursor_id_p)
 {
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return DB_CURSOR_ERROR;
+    }
+
   if (VPID_ISNULL (&(cursor_id_p->list_id.first_vpid)))
     {
       return DB_CURSOR_END;
@@ -1687,29 +1853,36 @@ cursor_last_tuple (CURSOR_ID * cursor_id_p)
  *       returned.
  */
 int
-cursor_get_tuple_value (CURSOR_ID * curor_id_p, int index, DB_VALUE * value_p)
+cursor_get_tuple_value (CURSOR_ID * cursor_id_p, int index,
+			DB_VALUE * value_p)
 {
   char *tuple_p;
 
-  if (curor_id_p->is_oid_included == true)
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
+
+  if (cursor_id_p->is_oid_included == true)
     {
       index++;
     }
 
-  if (index < 0 || index >= curor_id_p->list_id.type_list.type_cnt)
+  if (index < 0 || index >= cursor_id_p->list_id.type_list.type_cnt)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_TPLVAL_INDEX,
 	      1, index);
       return ER_FAILED;
     }
 
-  tuple_p = cursor_peek_tuple (curor_id_p);
+  tuple_p = cursor_peek_tuple (cursor_id_p);
   if (tuple_p == NULL)
     {
       return ER_FAILED;
     }
 
-  return cursor_get_tuple_value_from_list (curor_id_p, index, value_p,
+  return cursor_get_tuple_value_from_list (cursor_id_p, index, value_p,
 					   tuple_p);
 }
 
@@ -1732,6 +1905,12 @@ cursor_get_tuple_value_list (CURSOR_ID * cursor_id_p, int size,
 {
   DB_VALUE *value_p;
   int index;
+
+  if (cursor_id_p == NULL)
+    {
+      assert (0);
+      return ER_FAILED;
+    }
 
   index = 0;
   value_p = value_list_p;

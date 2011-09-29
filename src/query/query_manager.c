@@ -4388,7 +4388,7 @@ xqmgr_sync_query (THREAD_ENTRY * thread_p, QUERY_ID query_id, int wait,
 {
   QMGR_QUERY_ENTRY *query_p = NULL;
   QMGR_TRAN_ENTRY *tran_entry_p;
-  int trans_ind, rv;
+  int trans_ind, rv, prev_error;
 
   if (qmgr_Query_table.tran_entries_p == NULL)
     {
@@ -4447,12 +4447,16 @@ xqmgr_sync_query (THREAD_ENTRY * thread_p, QUERY_ID query_id, int wait,
 	}
     }
 
-  /* check if query has error. */
+  prev_error = er_errid ();
+
+  /* check if query has error.
+   * A new error in the query_entry will be set */
   if (qmgr_get_query_error_with_id (thread_p, query_id) < 0)
     {
       if (wait != true && er_errid () == ER_INTERRUPTED)
 	{
-	  if (call_from_server)
+	  /* If there was a previous error, do not call er_clear. */
+	  if (call_from_server && prev_error == NO_ERROR)
 	    {
 	      er_clear ();
 	    }
