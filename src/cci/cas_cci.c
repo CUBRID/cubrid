@@ -2276,9 +2276,9 @@ cci_set_autocommit (int con_h_id, CCI_AUTOCOMMIT_MODE autocommit_mode)
   if (err_code == 0)
     {
       con_handle->autocommit_mode = autocommit_mode;
-      con_handle->ref_count = 0;
     }
 
+  con_handle->ref_count = 0;
   return err_code;
 }
 
@@ -2942,111 +2942,14 @@ int
 cci_set_isolation_level (int con_id, T_CCI_TRAN_ISOLATION val,
 			 T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
-  int err_code = 0;
-
-#ifdef CCI_DEBUG
-  CCI_DEBUG_PRINT (print_debug_msg
-		   ("cci_set_isolation_level %d %s", con_id,
-		    dbg_isolation_str));
-#endif
-
-  err_buf_reset (err_buf);
-
-  if (val < TRAN_ISOLATION_MIN || val > TRAN_ISOLATION_MAX)
-    return CCI_ER_ISOLATION_LEVEL;
-
-  while (1)
-    {
-      MUTEX_LOCK (con_handle_table_mutex);
-
-      con_handle = hm_find_con_handle (con_id);
-      if (con_handle == NULL)
-	{
-	  MUTEX_UNLOCK (con_handle_table_mutex);
-	  return CCI_ER_CON_HANDLE;
-	}
-
-      if (con_handle->ref_count > 0)
-	{
-	  MUTEX_UNLOCK (con_handle_table_mutex);
-	  SLEEP_MILISEC (0, 100);
-	}
-      else
-	{
-	  con_handle->ref_count = 1;
-	  MUTEX_UNLOCK (con_handle_table_mutex);
-	  break;
-	}
-    }
-
-  if (!IS_INVALID_SOCKET (con_handle->sock_fd) &&
-      con_handle->isolation_level != val)
-    {
-      err_code = qe_set_db_parameter (con_handle, CCI_PARAM_ISOLATION_LEVEL,
-				      &val, err_buf);
-      if (err_code == CCI_ER_NO_ERROR)
-	{
-	  con_handle->isolation_level = val;
-	}
-    }
-
-  con_handle->ref_count = 0;
-
-  return err_code;
+  return cci_set_db_parameter (con_id, CCI_PARAM_ISOLATION_LEVEL, &val,
+			       err_buf);
 }
 
 int
 cci_set_lock_timeout (int con_id, int val, T_CCI_ERROR * err_buf)
 {
-  T_CON_HANDLE *con_handle;
-  int err_code = 0;
-
-#ifdef CCI_DEBUG
-  CCI_DEBUG_PRINT (print_debug_msg ("cci_set_lock_timeout %d %s", con_id,
-				    dbg_isolation_str));
-#endif
-
-  err_buf_reset (err_buf);
-
-  while (1)
-    {
-      MUTEX_LOCK (con_handle_table_mutex);
-
-      con_handle = hm_find_con_handle (con_id);
-      if (con_handle == NULL)
-	{
-	  MUTEX_UNLOCK (con_handle_table_mutex);
-	  return CCI_ER_CON_HANDLE;
-	}
-
-      if (con_handle->ref_count > 0)
-	{
-	  MUTEX_UNLOCK (con_handle_table_mutex);
-	  SLEEP_MILISEC (0, 100);
-	}
-      else
-	{
-	  con_handle->ref_count = 1;
-	  MUTEX_UNLOCK (con_handle_table_mutex);
-	  break;
-	}
-    }
-
-  if (!IS_INVALID_SOCKET (con_handle->sock_fd) &&
-      con_handle->lock_timeout != val)
-    {
-      err_code = qe_set_db_parameter (con_handle, CCI_PARAM_LOCK_TIMEOUT,
-				      &val, err_buf);
-      if (err_code == CCI_ER_NO_ERROR)
-	{
-	  con_handle->lock_timeout = val;
-	}
-    }
-
-  con_handle->ref_count = 0;
-
-  return err_code;
+  return cci_set_db_parameter (con_id, CCI_PARAM_LOCK_TIMEOUT, &val, err_buf);
 }
 
 void

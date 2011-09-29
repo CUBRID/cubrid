@@ -640,9 +640,10 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv,
     {
       int isol_level;
 
-      cas_log_write (0, true, "get_db_parameter isolation_level");
-
       ux_get_tran_setting (NULL, &isol_level);
+      cas_log_write (0, true, "get_db_parameter isolation_level %d",
+		     isol_level);
+
       net_buf_cp_int (net_buf, 0, NULL);	/* res code */
       net_buf_cp_int (net_buf, isol_level, NULL);	/* res msg */
     }
@@ -650,9 +651,10 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv,
     {
       int lock_timeout;
 
-      cas_log_write (0, true, "get_db_parameter lock_timeout");
-
       ux_get_tran_setting (&lock_timeout, NULL);
+      cas_log_write (0, true, "get_db_parameter lock_timeout %d",
+		     lock_timeout);
+
       net_buf_cp_int (net_buf, 0, NULL);
       net_buf_cp_int (net_buf, lock_timeout, NULL);
     }
