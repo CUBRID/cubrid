@@ -8422,9 +8422,15 @@ retain_former_ids (SM_TEMPLATE * flat)
       if (flat->current->partition_of != NULL &&
 	  !(flat->current->partition_of->deleted))
 	{
+	  int save;
+
 	  db_make_null (&pname);
+
+	  AU_DISABLE (save);
 	  error = db_get (flat->current->partition_of, PARTITION_ATT_PNAME,
 			  &pname);
+	  AU_ENABLE (save);
+
 	  if (error != NO_ERROR)
 	    {
 	      pr_clear_value (&pname);
