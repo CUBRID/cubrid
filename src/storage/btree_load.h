@@ -58,7 +58,10 @@
 /* each index page is supposed to be left empty as indicated by the
  * UNFILL FACTOR during index loading phase.
  */
-#define LOAD_FIXED_EMPTY (DB_PAGESIZE * PRM_BT_UNFILL_FACTOR + DISK_VPID_SIZE)
+#define LOAD_FIXED_EMPTY_FOR_LEAF \
+  (DB_PAGESIZE * PRM_BT_UNFILL_FACTOR + DISK_VPID_SIZE)
+#define LOAD_FIXED_EMPTY_FOR_NONLEAF \
+  (DB_PAGESIZE * MAX (PRM_BT_UNFILL_FACTOR, 0.1) + DISK_VPID_SIZE)
 
 /* each page is supposed to have around 30% blank area during merge
    considerations of a delete operation */
@@ -453,7 +456,7 @@ extern DISK_ISVALID btree_verify_tree (THREAD_ENTRY * thread_p,
 				       BTID_INT * btid, const char *btname);
 extern int btree_get_prefix (const DB_VALUE * key1, const DB_VALUE * key2,
 			     DB_VALUE * prefix_key, int is_reverse,
-			     TP_DOMAIN *key_domain);
+			     TP_DOMAIN * key_domain);
 extern char *btree_get_header_ptr (PAGE_PTR page_ptr, char **header_ptrptr);
 
 extern int btree_leaf_append_vpid_for_overflow_oids (RECDES * rec,

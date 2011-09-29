@@ -589,7 +589,8 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
 
       cur_maxspace =
 	spage_max_space_for_new_record (thread_p, load_args->leaf.pgptr);
-      if (((cur_maxspace - load_args->out_recdes.length) < LOAD_FIXED_EMPTY)
+      if (((cur_maxspace - load_args->out_recdes.length) <
+	   LOAD_FIXED_EMPTY_FOR_LEAF)
 	  && (spage_number_of_records (load_args->leaf.pgptr) > 1))
 	{
 
@@ -677,7 +678,7 @@ exit_on_error:
  * parent level a new record is prepared with the given & pageid
  * parameters and inserted into current non-leaf page being
  * filled up. If the record does not fit into this page within
- * the given threshold boundaries (LOAD_FIXED_EMPTY bytes of each
+ * the given threshold boundaries (LOAD_FIXED_EMPTY_FOR_NONLEAF bytes of each
  * page are reserved for future insertions) then this page is
  * flushed to disk and a new page is allocated to become the
  * current non-leaf page.
@@ -721,7 +722,8 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len,
       return NULL;
     }
 
-  if ((cur_maxspace - load_args->out_recdes.length) < LOAD_FIXED_EMPTY)
+  if ((cur_maxspace - load_args->out_recdes.length) <
+      LOAD_FIXED_EMPTY_FOR_NONLEAF)
     {
 
       /* New record does not fit into the current non-leaf page (within
@@ -1902,7 +1904,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes,
 						    load_args->leaf.pgptr);
 
 		  if (((cur_maxspace - load_args->out_recdes.length)
-		       < LOAD_FIXED_EMPTY)
+		       < LOAD_FIXED_EMPTY_FOR_LEAF)
 		      && (spage_number_of_records (load_args->leaf.pgptr) >
 			  1))
 		    {
