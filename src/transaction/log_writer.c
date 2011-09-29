@@ -1772,6 +1772,8 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid,
 	  else if (rv == ER_CSS_PTHREAD_MUTEX_LOCK
 		   || rv == ER_CSS_PTHREAD_MUTEX_UNLOCK)
 	    {
+	      pthread_mutex_unlock (&writer_info->flush_start_mutex);
+
 	      error_code = ER_FAILED;
 	      status = LOGWR_STATUS_ERROR;
 	      goto error;
