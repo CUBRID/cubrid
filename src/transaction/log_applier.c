@@ -70,6 +70,8 @@
 
 #define LA_QUERY_BUF_SIZE                       1024
 
+#define LA_MAX_REPL_ITEMS                       1000
+
 #define LA_LOG_IS_IN_ARCHIVE(pageid) \
   ((pageid) < la_Info.act_log.log_hdr->nxarv_pageid)
 
@@ -167,19 +169,24 @@ struct la_arv_log
 typedef struct la_item LA_ITEM;
 struct la_item
 {
+  LA_ITEM *next;
+  LA_ITEM *prev;
+
   int log_type;
   int item_type;
   char *class_name;
   char *db_user;
   DB_VALUE key;
-  LOG_LSA lsa;
-  LA_ITEM *next;
+  LOG_LSA lsa;			/* the LSA of the replication log record */
+  LOG_LSA target_lsa;		/* the LSA of the target log record */
 };
 
 typedef struct la_apply LA_APPLY;
 struct la_apply
 {
   int tranid;
+  int num_items;
+  bool is_long_trans;
   LOG_LSA start_lsa;
   LA_ITEM *head;
   LA_ITEM *tail;
@@ -335,7 +342,17 @@ static LA_APPLY *la_find_apply_list (int tranid);
 static void la_log_copy_fromlog (char *rec_type, char *area, int length,
 				 LOG_PAGEID log_pageid, PGLENGTH log_offset,
 				 LOG_PAGE * log_pgptr);
-static int la_add_repl_item (LA_APPLY * apply, LOG_LSA lsa);
+static LA_ITEM *la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa);
+static void la_add_repl_item (LA_APPLY * apply, LA_ITEM * item);
+
+static LA_ITEM *la_make_repl_item (LOG_PAGE * log_pgptr, int log_type,
+				   int tranid, LOG_LSA * lsa);
+static void la_unlink_repl_item (LA_APPLY * apply, LA_ITEM * item);
+static void la_free_repl_item (LA_APPLY * apply, LA_ITEM * item);
+static void la_free_all_repl_items_except_head (LA_APPLY * apply);
+static void la_free_all_repl_items (LA_APPLY * apply);
+static void la_clear_applied_info (LA_APPLY * apply);
+
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 			    LOG_LSA * lsa);
 static int la_add_unlock_commit_log (int tranid, LOG_LSA * lsa);
@@ -382,11 +399,10 @@ static int la_update_query_execute_with_values (const char *sql,
 						DB_VALUE * vals,
 						bool au_disable);
 static int la_apply_schema_log (LA_ITEM * item);
-static void la_clear_repl_item (LA_APPLY * repl_list, bool clear_item_only);
 static int la_apply_repl_log (int tranid, int rectype, int *total_rows,
 			      LOG_PAGEID final_pageid);
 static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
-static void la_clear_repl_item_by_tranid (int tranid);
+static void la_free_repl_items_by_tranid (int tranid);
 static int la_log_record_process (LOG_RECORD_HEADER * lrec,
 				  LOG_LSA * final, LOG_PAGE * pg_ptr);
 static int la_change_state (void);
@@ -403,6 +419,10 @@ static void la_shutdown (void);
 
 static int la_remove_archive_logs (const char *db_name,
 				   int last_deleted_arv_num, int nxarv_num);
+
+static LA_ITEM *la_get_next_repl_item (LA_ITEM * item, bool is_long_trans);
+static LA_ITEM *la_get_next_repl_item_from_list (LA_ITEM * item);
+static LA_ITEM *la_get_next_repl_item_from_log (LA_ITEM * item);
 
 /*
  * la_shutdown_by_signal() - When the process catches the SIGTERM signal,
@@ -2172,6 +2192,8 @@ la_init_repl_lists (bool need_realloc)
 	  break;
 	}
       la_Info.repl_lists[i]->tranid = 0;
+      la_Info.repl_lists[i]->num_items = 0;
+      la_Info.repl_lists[i]->is_long_trans = false;
       LSA_SET_NULL (&la_Info.repl_lists[i]->start_lsa);
       la_Info.repl_lists[i]->head = NULL;
       la_Info.repl_lists[i]->tail = NULL;
@@ -2357,6 +2379,31 @@ la_log_copy_fromlog (char *rec_type, char *area, int length,
     }
 }
 
+static LA_ITEM *
+la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa)
+{
+  LA_ITEM *item;
+
+  item = malloc (DB_SIZEOF (LA_ITEM));
+  if (item == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (LA_ITEM));
+      return NULL;
+    }
+
+  item->log_type = -1;
+  item->item_type = -1;
+  item->class_name = NULL;
+  item->db_user = NULL;
+  LSA_COPY (&item->lsa, lsa);
+  LSA_COPY (&item->target_lsa, target_lsa);
+  item->next = NULL;
+  item->prev = NULL;
+
+  return item;
+}
+
 /*
  * la_add_repl_item() - add the replication item into the apply list
  *   return: NO_ERROR or error code
@@ -2365,35 +2412,271 @@ la_log_copy_fromlog (char *rec_type, char *area, int length,
  *
  * Note:
  */
-static int
-la_add_repl_item (LA_APPLY * apply, LOG_LSA lsa)
+static void
+la_add_repl_item (LA_APPLY * apply, LA_ITEM * item)
 {
-  LA_ITEM *item;
-  int error = NO_ERROR;
+  assert (apply);
+  assert (item);
 
-  item = malloc (DB_SIZEOF (LA_ITEM));
-  if (item == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (LA_ITEM));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  LSA_COPY (&item->lsa, &lsa);
   item->next = NULL;
+  item->prev = apply->tail;
 
-  if (apply->head == NULL)
+  if (apply->tail)
     {
-      apply->head = apply->tail = item;
+      apply->tail->next = item;
     }
   else
     {
-      apply->tail->next = item;
-      apply->tail = item;
+      apply->head = item;
+    }
+  apply->tail = item;
+
+  apply->num_items++;
+  return;
+}
+
+static LA_ITEM *
+la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid,
+		   LOG_LSA * lsa)
+{
+  int error = NO_ERROR;
+  LA_ITEM *item = NULL;
+  struct log_replication *repl_log;
+  LOG_PAGE *repl_log_pgptr;
+  PGLENGTH offset;
+  int pageid;
+  int length;			/* type change PGLENGTH -> int */
+  char *ptr;
+
+  char *str_value;
+  char *area;
+
+  repl_log_pgptr = log_pgptr;
+  pageid = lsa->pageid;
+  offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
+  length = DB_SIZEOF (struct log_replication);
+
+  LA_LOG_READ_ALIGN (error, offset, pageid, repl_log_pgptr);
+  if (error != NO_ERROR)
+    {
+      return NULL;
     }
 
-  return error;
+  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, length, offset, pageid,
+				       repl_log_pgptr);
+  if (error != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  repl_log =
+    (struct log_replication *) ((char *) repl_log_pgptr->area + offset);
+  offset += length;
+  length = repl_log->length;
+
+  LA_LOG_READ_ALIGN (error, offset, pageid, repl_log_pgptr);
+  if (error != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  area = (char *) malloc (length);
+  if (area == NULL)
+    {
+      return NULL;
+    }
+
+  (void) la_log_copy_fromlog (NULL, area, length, pageid, offset,
+			      repl_log_pgptr);
+
+  item = la_new_repl_item (lsa, &repl_log->lsa);
+  if (item == NULL)
+    {
+      goto error_return;
+    }
+
+  switch (log_type)
+    {
+    case LOG_REPLICATION_DATA:
+      ptr = or_unpack_string (area, &item->class_name);
+      ptr = or_unpack_mem_value (ptr, &item->key);
+      item->item_type = repl_log->rcvindex;
+
+      break;
+
+    case LOG_REPLICATION_SCHEMA:
+      ptr = or_unpack_int (area, &item->item_type);
+      ptr = or_unpack_string (ptr, &item->class_name);
+      ptr = or_unpack_string (ptr, &str_value);
+      db_make_string (&item->key, str_value);
+      item->key.need_clear = true;
+      ptr = or_unpack_string (ptr, &item->db_user);
+
+      break;
+
+    default:
+      /* unknown log type */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto error_return;
+    }
+
+  item->log_type = log_type;
+
+  if (area)
+    {
+      free_and_init (area);
+    }
+
+  return item;
+
+error_return:
+  if (area)
+    {
+      free_and_init (area);
+    }
+
+  if (item)
+    {
+      if (item->class_name != NULL)
+	{
+	  db_private_free_and_init (NULL, item->class_name);
+	  pr_clear_value (&item->key);
+	}
+
+      if (item->db_user != NULL)
+	{
+	  db_private_free_and_init (NULL, item->db_user);
+	}
+
+      free_and_init (item);
+    }
+
+  return NULL;
 }
+
+static void
+la_unlink_repl_item (LA_APPLY * apply, LA_ITEM * item)
+{
+  assert (apply);
+  assert (item);
+
+  /* Long transaction case, replication item does not make link */
+  if ((item->prev == NULL && apply->head != item)
+      || (item->next == NULL && apply->tail != item))
+    {
+      return;
+    }
+
+  if (item->next)
+    {
+      item->next->prev = item->prev;
+    }
+  else
+    {
+      apply->tail = item->prev;
+    }
+
+  if (item->prev)
+    {
+      item->prev->next = item->next;
+    }
+  else
+    {
+      apply->head = item->next;
+    }
+
+  if ((--apply->num_items) < 0)
+    {
+      apply->num_items = 0;
+    }
+
+  return;
+}
+
+static void
+la_free_repl_item (LA_APPLY * apply, LA_ITEM * item)
+{
+  assert (apply);
+  assert (item);
+
+  la_unlink_repl_item (apply, item);
+
+  if (item->class_name != NULL)
+    {
+      db_private_free_and_init (NULL, item->class_name);
+      pr_clear_value (&item->key);
+    }
+
+  if (item->db_user != NULL)
+    {
+      db_private_free_and_init (NULL, item->db_user);
+    }
+
+  free_and_init (item);
+
+  return;
+}
+
+static void
+la_free_all_repl_items_except_head (LA_APPLY * apply)
+{
+  LA_ITEM *item, *next_item;
+
+  assert (apply);
+
+  if (apply->head)
+    {
+      item = apply->head->next;
+    }
+  else
+    {
+      return;
+    }
+
+  for (; item; item = next_item)
+    {
+      next_item = item->next;
+
+      la_free_repl_item (apply, item);
+      item = NULL;
+    }
+
+  return;
+}
+
+static void
+la_free_all_repl_items (LA_APPLY * apply)
+{
+  assert (apply);
+
+  la_free_all_repl_items_except_head (apply);
+
+  if (apply->head)
+    {
+      la_free_repl_item (apply, apply->head);
+    }
+
+  apply->num_items = 0;
+  apply->is_long_trans = false;
+  apply->head = NULL;
+  apply->tail = NULL;
+
+  return;
+}
+
+static void
+la_clear_applied_info (LA_APPLY * apply)
+{
+  assert (apply);
+
+  la_free_all_repl_items (apply);
+
+  LSA_SET_NULL (&apply->start_lsa);
+  apply->tranid = 0;
+
+  return;
+}
+
 
 /*
  * la_set_repl_log() - insert the replication item into the apply list
@@ -2413,108 +2696,41 @@ static int
 la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid,
 		 LOG_LSA * lsa)
 {
-  struct log_replication *repl_log;
-  LOG_PAGE *log_pgptr2 = log_pgptr;
-  PGLENGTH target_offset;
-  char *ptr;
-  LA_APPLY *apply;
   int error = NO_ERROR;
-  int length;			/* type change PGLENGTH -> int */
-  int t_pageid;
-  char *class_name;
-  char *str_value;
-  char *area;
-
-  t_pageid = lsa->pageid;
-  target_offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
-  length = DB_SIZEOF (struct log_replication);
-
-  LA_LOG_READ_ALIGN (error, target_offset, t_pageid, log_pgptr2);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, length, target_offset, t_pageid,
-				       log_pgptr2);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  repl_log =
-    (struct log_replication *) ((char *) log_pgptr2->area + target_offset);
-  target_offset += length;
-  length = repl_log->length;
-
-  LA_LOG_READ_ALIGN (error, target_offset, t_pageid, log_pgptr2);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  area = (char *) malloc (length);
-  if (area == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, length);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  la_log_copy_fromlog (NULL, area, length, t_pageid, target_offset,
-		       log_pgptr2);
+  LA_APPLY *apply;
+  LA_ITEM *item = NULL;
 
   apply = la_find_apply_list (tranid);
   if (apply == NULL)
     {
-      free_and_init (area);
       er_log_debug (ARG_FILE_LINE,
 		    "fail to find out %d transaction in apply list", tranid);
       return NO_ERROR;
     }
 
-  switch (log_type)
+  if (apply->is_long_trans)
     {
-    case LOG_REPLICATION_DATA:
-      {
-	ptr = or_unpack_string (area, &class_name);
-
-	error = la_add_repl_item (apply, repl_log->lsa);
-	if (error != NO_ERROR)
-	  {
-	    free_and_init (area);
-	    return error;
-	  }
-	ptr = or_unpack_mem_value (ptr, &apply->tail->key);
-	apply->tail->class_name = class_name;
-	apply->tail->item_type = repl_log->rcvindex;
-	break;
-      }
-    case LOG_REPLICATION_SCHEMA:
-      {
-	error = la_add_repl_item (apply, repl_log->lsa);
-	if (error != NO_ERROR)
-	  {
-	    free_and_init (area);
-	    return error;
-	  }
-	ptr = or_unpack_int (area, &apply->tail->item_type);
-	ptr = or_unpack_string (ptr, &apply->tail->class_name);
-	ptr = or_unpack_string (ptr, &str_value);
-	db_make_string (&apply->tail->key, str_value);
-	ptr = or_unpack_string (ptr, &apply->tail->db_user);
-	apply->tail->key.need_clear = true;
-	break;
-      }
-    default:
-      /* unknown log type */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      free_and_init (area);
-      return ER_GENERIC_ERROR;
+      return NO_ERROR;
     }
-  apply->tail->log_type = log_type;
 
-  free_and_init (area);
-  return error;
+  if (apply->num_items >= LA_MAX_REPL_ITEMS)
+    {
+      la_free_all_repl_items_except_head (apply);
+      apply->is_long_trans = true;
+      return NO_ERROR;
+    }
+
+  item = la_make_repl_item (log_pgptr, log_type, tranid, lsa);
+  if (item == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (LA_ITEM));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  la_add_repl_item (apply, item);
+
+  return NO_ERROR;
 }
 
 /*
@@ -3832,7 +4048,7 @@ la_apply_update_log (LA_ITEM * item)
   char buf[256];
 
   /* get the target log page */
-  old_pageid = item->lsa.pageid;
+  old_pageid = item->target_lsa.pageid;
   pgptr = la_get_page (old_pageid);
   if (pgptr == NULL)
     {
@@ -3840,7 +4056,7 @@ la_apply_update_log (LA_ITEM * item)
     }
 
   /* retrieve the target record description */
-  error = la_get_recdes (&item->lsa, pgptr, &recdes, &rcvindex,
+  error = la_get_recdes (&item->target_lsa, pgptr, &recdes, &rcvindex,
 			 la_Info.log_data, la_Info.rec_type, &ovfyn);
   if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
     {
@@ -4021,7 +4237,7 @@ la_apply_insert_log (LA_ITEM * item)
   char buf[256];
 
   /* get the target log page */
-  old_pageid = item->lsa.pageid;
+  old_pageid = item->target_lsa.pageid;
   pgptr = la_get_page (old_pageid);
   if (pgptr == NULL)
     {
@@ -4029,7 +4245,7 @@ la_apply_insert_log (LA_ITEM * item)
     }
 
   /* retrieve the target record description */
-  error = la_get_recdes (&item->lsa, pgptr, &recdes, &rcvindex,
+  error = la_get_recdes (&item->target_lsa, pgptr, &recdes, &rcvindex,
 			 la_Info.log_data, la_Info.rec_type, &ovfyn);
   if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT)
     {
@@ -4379,44 +4595,6 @@ la_apply_schema_log (LA_ITEM * item)
 }
 
 /*
- * la_clear_repl_item() - clear replication item
- *   return: none
- *   repl_list : the target list already applied.
- *   clear_item_only : clear item only
- *
- * Note:
- *       clear the applied list area after processing ..
- */
-static void
-la_clear_repl_item (LA_APPLY * repl_list, bool clear_item_only)
-{
-  LA_ITEM *repl_item;
-
-  repl_item = repl_list->head;
-
-  while (repl_item != NULL)
-    {
-      repl_list->head = repl_item->next;
-      if (repl_item->class_name != NULL)
-	{
-	  db_private_free_and_init (NULL, repl_item->class_name);
-	  pr_clear_value (&repl_item->key);
-	}
-      free_and_init (repl_item);
-      repl_item = repl_list->head;
-    }
-  repl_list->tail = NULL;
-
-  if (clear_item_only)
-    {
-      return;
-    }
-
-  LSA_SET_NULL (&repl_list->start_lsa);
-  repl_list->tranid = 0;	/* set "free" for the reuse */
-}
-
-/*
  * la_apply_repl_log() - apply the log to the target slave
  *   return: NO_ERROR or error code
  *   tranid: the target transaction id
@@ -4431,21 +4609,15 @@ static int
 la_apply_repl_log (int tranid, int rectype, int *total_rows,
 		   LOG_PAGEID final_pageid)
 {
-  LA_ITEM *item, *multi_update_item = NULL;
+  LA_ITEM *item;
+  LA_ITEM *next_item;
   int error = NO_ERROR;
   LA_APPLY *apply;
   int apply_repl_log_cnt = 0;
-  bool multi_update_mode = false;
   char error_string[1024];
   char buf[256];
   static unsigned int total_repl_items = 0;
-  bool clear_item_only = false;
   bool release_pb = false;
-
-  if (rectype == LOG_COMMIT_TOPOPE)
-    {
-      clear_item_only = true;
-    }
 
   apply = la_find_apply_list (tranid);
   if (apply == NULL)
@@ -4455,7 +4627,15 @@ la_apply_repl_log (int tranid, int rectype, int *total_rows,
 
   if (apply->head == NULL)
     {
-      la_clear_repl_item (apply, clear_item_only);
+      if (rectype == LOG_COMMIT_TOPOPE)
+	{
+	  la_free_all_repl_items (apply);
+	}
+      else
+	{
+	  la_clear_applied_info (apply);
+	}
+
       return NO_ERROR;
     }
 
@@ -4471,37 +4651,29 @@ la_apply_repl_log (int tranid, int rectype, int *total_rows,
 	  la_release_all_page_buffers (final_pageid);
 	}
 
+      if ((total_repl_items % LA_MAX_REPL_ITEMS) == 0)
+	{
+	  db_commit_transaction ();
+	}
+
       if (item->log_type == LOG_REPLICATION_DATA)
 	{
 	  switch (item->item_type)
 	    {
 	    case RVREPL_DATA_UPDATE_START:
-	      multi_update_mode = true;
-	      multi_update_item = item;
-	      break;
-	    case RVREPL_DATA_UPDATE:
-	      if (!multi_update_mode)
-		{
-		  error = la_apply_update_log (item);
-		}
-	      break;
 	    case RVREPL_DATA_UPDATE_END:
-	      if (multi_update_item != NULL)
-		{
-		  while (multi_update_item != item->next)
-		    {
-		      error = la_apply_update_log (multi_update_item);
-		      multi_update_item = multi_update_item->next;
-		    }
-		  multi_update_mode = false;
-		}
+	    case RVREPL_DATA_UPDATE:
+	      error = la_apply_update_log (item);
 	      break;
+
 	    case RVREPL_DATA_INSERT:
 	      error = la_apply_insert_log (item);
 	      break;
+
 	    case RVREPL_DATA_DELETE:
 	      error = la_apply_delete_log (item);
 	      break;
+
 	    default:
 	      er_log_debug (ARG_FILE_LINE,
 			    "apply_repl_log : log_type %d item_type %d\n",
@@ -4536,13 +4708,23 @@ la_apply_repl_log (int tranid, int rectype, int *total_rows,
 	      goto end;
 	    }
 	}
-      item = item->next;
+
+      next_item = la_get_next_repl_item (item, apply->is_long_trans);
+      la_free_repl_item (apply, item);
+      item = next_item;
     }
 
 end:
   *total_rows += apply_repl_log_cnt;
 
-  la_clear_repl_item (apply, clear_item_only);
+  if (rectype == LOG_COMMIT_TOPOPE)
+    {
+      la_free_all_repl_items (apply);
+    }
+  else
+    {
+      la_clear_applied_info (apply);
+    }
 
   return error;
 }
@@ -4600,9 +4782,8 @@ la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid)
   return error;
 }
 
-
 /*
- * la_clear_repl_item_by_tranid() - clear replication item using tranid
+ * la_free_repl_items_by_tranid() - clear replication item using tranid
  *   return: none
  *   tranid: transaction id
  *
@@ -4611,20 +4792,20 @@ la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid)
  *       When we meet the LOG_ABORT_TOPOPE or LOG_ABORT record,
  *       we have to clear the replication items of the target transaction.
  *       In case of LOG_ABORT_TOPOPE, the apply list should be preserved
- *       for the later use (so call la_clear_repl_item() using
+ *       for the later use (so call la_clear_applied_info() using
  *       false as the second argument).
  */
 static void
-la_clear_repl_item_by_tranid (int tranid)
+la_free_repl_items_by_tranid (int tranid)
 {
-  LA_APPLY *repl_list;
+  LA_APPLY *apply;
   LA_COMMIT **commit;
   LA_COMMIT *tmp;
 
-  repl_list = la_find_apply_list (tranid);
-  if (repl_list != NULL)
+  apply = la_find_apply_list (tranid);
+  if (apply)
     {
-      la_clear_repl_item (repl_list, false);
+      la_clear_applied_info (apply);
     }
 
   commit = &la_Info.commit_head;
@@ -4651,6 +4832,91 @@ la_clear_repl_item_by_tranid (int tranid)
       la_Info.commit_tail = NULL;
     }
 }
+
+static LA_ITEM *
+la_get_next_repl_item (LA_ITEM * item, bool is_long_trans)
+{
+  if (is_long_trans)
+    {
+      return la_get_next_repl_item_from_log (item);
+    }
+  else
+    {
+      return la_get_next_repl_item_from_list (item);
+    }
+}
+
+static LA_ITEM *
+la_get_next_repl_item_from_list (LA_ITEM * item)
+{
+  return (item->next);
+}
+
+static LA_ITEM *
+la_get_next_repl_item_from_log (LA_ITEM * item)
+{
+  LOG_LSA prev_repl_lsa;
+  LOG_LSA curr_lsa;
+  LOG_PAGE *curr_log_page;
+  LOG_RECORD_HEADER *prev_repl_log_record = NULL;
+  LOG_RECORD_HEADER *curr_log_record;
+  LA_ITEM *next_item = NULL;
+
+  LSA_COPY (&prev_repl_lsa, &item->lsa);
+  LSA_COPY (&curr_lsa, &item->lsa);
+
+  while (!LSA_ISNULL (&curr_lsa))
+    {
+      curr_log_page = la_get_page (curr_lsa.pageid);
+      curr_log_record = LOG_GET_LOG_RECORD_HEADER (curr_log_page, &curr_lsa);
+
+      if (prev_repl_log_record == NULL)
+	{
+	  prev_repl_log_record =
+	    (LOG_RECORD_HEADER *) malloc (sizeof (LOG_RECORD_HEADER));
+	  if (prev_repl_log_record == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  memcpy (prev_repl_log_record, curr_log_record,
+		  sizeof (LOG_RECORD_HEADER));
+	}
+      if (!LSA_EQ (&curr_lsa, &prev_repl_lsa)
+	  && prev_repl_log_record->trid == curr_log_record->trid)
+	{
+	  if (curr_log_record->type == LOG_COMMIT
+	      || curr_log_record->type == LOG_ABORT
+	      || curr_log_record->type == LOG_COMMIT_TOPOPE
+	      || LSA_GE (&curr_lsa, &la_Info.act_log.log_hdr->eof_lsa))
+	    {
+	      break;
+	    }
+
+	  if (curr_log_record->type == LOG_REPLICATION_DATA
+	      || curr_log_record->type == LOG_REPLICATION_SCHEMA)
+	    {
+	      next_item =
+		la_make_repl_item (curr_log_page, curr_log_record->type,
+				   curr_log_record->trid, &curr_lsa);
+	      assert (next_item);
+
+	      break;
+	    }
+
+	}
+      la_release_page_buffer (curr_lsa.pageid);
+      LSA_COPY (&curr_lsa, &curr_log_record->forw_lsa);
+    }
+
+  if (prev_repl_log_record)
+    {
+      free_and_init (prev_repl_log_record);
+    }
+
+  return next_item;
+}
+
 
 static int
 la_log_record_process (LOG_RECORD_HEADER * lrec,
@@ -4797,7 +5063,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	      er_log_debug (ARG_FILE_LINE,
 			    "Cannot find commit list with Trid %d LSA[%d:%d]",
 			    lrec->trid, final->pageid, final->offset);
-	      la_clear_repl_item_by_tranid (lrec->trid);
+	      la_free_repl_items_by_tranid (lrec->trid);
 	      break;
 	    }
 
@@ -4840,7 +5106,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
 	}
       else
 	{
-	  la_clear_repl_item_by_tranid (lrec->trid);
+	  la_free_repl_items_by_tranid (lrec->trid);
 	}
       break;
 
@@ -4849,7 +5115,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec,
       break;
 
     case LOG_ABORT:
-      la_clear_repl_item_by_tranid (lrec->trid);
+      la_free_repl_items_by_tranid (lrec->trid);
       break;
 
     case LOG_DUMMY_CRASH_RECOVERY:
