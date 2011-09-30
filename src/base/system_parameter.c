@@ -229,6 +229,11 @@ int PRM_PB_NBUFFERS = 32768;
 static int prm_pb_nbuffers_default = 32768;
 static int prm_pb_nbuffers_lower = 1;
 
+float PRM_PB_BUFFER_FLUSH_RATIO = 0.1f;
+static float prm_pb_buffer_flush_ratio_default = 0.1f;
+static float prm_pb_buffer_flush_ratio_lower = 0.01f;
+static float prm_pb_buffer_flush_ratio_upper = 0.95f;
+
 UINT64 PRM_PAGE_BUFFER_SIZE = 536870912;
 static UINT64 prm_page_buffer_size_default = 536870912;
 static UINT64 prm_page_buffer_size_lower = 65536;
@@ -886,6 +891,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_pb_nbuffers_default,
    (void *) &PRM_PB_NBUFFERS,
    (void *) NULL, (void *) &prm_pb_nbuffers_lower,
+   (char *) NULL},
+  {PRM_NAME_PB_BUFFER_FLUSH_RATIO,
+   (PRM_REQUIRED | PRM_FLOAT | PRM_DEFAULT | PRM_FOR_SERVER | PRM_HIDDEN |
+    PRM_USER_CHANGE),
+   (void *) &prm_pb_buffer_flush_ratio_default,
+   (void *) &PRM_PB_BUFFER_FLUSH_RATIO,
+   (void *) &prm_pb_buffer_flush_ratio_upper,
+   (void *) &prm_pb_buffer_flush_ratio_lower,
    (char *) NULL},
   {PRM_NAME_PAGE_BUFFER_SIZE,
    (PRM_REQUIRED | PRM_SIZE | PRM_DEFAULT | PRM_FOR_SERVER),
@@ -3455,7 +3468,7 @@ prm_make_size (UINT64 * pre, char post)
 
 /*
  * sysprm_get_range -
- *   return: 
+ *   return:
  *   pname (in): parameter name
  *   value (in): parameter value
  */
@@ -3541,7 +3554,7 @@ sysprm_get_range (const char *pname, void *min, void *max)
 
 /*
  * sysprm_check_range -
- *   return: 
+ *   return:
  *   pname (in): parameter name
  *   value (in): parameter value
  */

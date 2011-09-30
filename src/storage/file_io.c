@@ -494,7 +494,6 @@ static bool fileio_synchronize_sys_volume (THREAD_ENTRY * thread_p,
 static bool fileio_synchronize_volume (THREAD_ENTRY * thread_p,
 				       FILEIO_VOLUME_INFO * vol_info_p,
 				       APPLY_ARG * arg);
-static int fileio_synchronize_bg_archive_volume (THREAD_ENTRY * thread_p);
 static int fileio_cache (VOLID volid, const char *vlabel, int vdes,
 			 FILEIO_LOCKF_TYPE lockf_type);
 static void fileio_decache (THREAD_ENTRY * thread_p, int vdes);
@@ -664,7 +663,6 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
   if (need_sync)
     {
       fileio_synchronize_all (thread_p, false);
-      fileio_synchronize_bg_archive_volume (thread_p);
     }
 #endif /* SERVER_MODE */
 }
@@ -3603,7 +3601,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p,
 #endif
 
   fileio_compensate_flush (thread_p, vol_fd, 1);
-  mnt_file_iowrites (thread_p);
+  mnt_file_iowrites (thread_p, 1);
   return io_page_p;
 }
 
@@ -3900,7 +3898,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p,
     }
 
   fileio_compensate_flush (thread_p, vol_fd, num_pages);
-  mnt_file_iowrites (thread_p);
+  mnt_file_iowrites (thread_p, num_pages);
   return io_pages_p;
 }
 
@@ -4036,21 +4034,6 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 }
 
 /*
- * fileio_synchronize_bg_archive_volume () -
- *   return:
- */
-static int
-fileio_synchronize_bg_archive_volume (THREAD_ENTRY * thread_p)
-{
-  APPLY_ARG arg = { 0 };
-
-  arg.vol_id = LOG_DBLOG_BG_ARCHIVE_VOLID;
-  (void) fileio_traverse_system_volume (thread_p,
-					fileio_synchronize_sys_volume, &arg);
-  return NO_ERROR;
-}
-
-/*
  * fileio_synchronize_sys_volume () -
  *   return:
  *   vol_info_p(in):
@@ -4098,12 +4081,32 @@ static bool
 fileio_synchronize_volume (THREAD_ENTRY * thread_p,
 			   FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG * arg)
 {
+  bool found = false;
+
   if (vol_info_p->vdes != NULL_VOLDES)
     {
+      /* sync when match is found or
+       * arg.vol_id is given as NULL_VOLID for all sys volumes.
+       */
+      if (arg->vol_id == NULL_VOLID)
+	{
+	  /* fall through */
+	  ;
+	}
+      else if (vol_info_p->volid == arg->vol_id)
+	{
+	  found = true;
+	}
+      else
+	{
+	  /* irrelevant volume */
+	  return false;
+	}
+
       fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel);
     }
 
-  return false;
+  return found;
 }
 
 /*
@@ -4117,9 +4120,10 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
   int success = NO_ERROR;
   APPLY_ARG arg = { 0 };
 
+  arg.vol_id = NULL_VOLID;
+
   if (is_include)
     {
-      arg.vol_id = NULL_VOLID;
       (void) fileio_traverse_system_volume (thread_p,
 					    fileio_synchronize_sys_volume,
 					    &arg);
@@ -4438,7 +4442,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id,
     }
 
   fileio_compensate_flush (thread_p, vol_fd, 1);
-  mnt_file_iowrites (thread_p);
+  mnt_file_iowrites (thread_p, 1);
   return area_p;
 }
 #endif

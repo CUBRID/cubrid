@@ -1143,7 +1143,8 @@ $ LOADDB
 1075 Descending index scan aborted because of lower priority on B+tree with index identifier: (vfid = (%1$d, %2$d), rt_pgid: %3$d).
 1076 Could not load system parameter.
 1077 The '%s' parameter at line %d in file '%s' : Unknown parameter
-1078 Last Error
+1078 All page buffers are dirty (LRU: %1$d).
+1079 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %d):

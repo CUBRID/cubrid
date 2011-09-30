@@ -2108,8 +2108,7 @@ disk_expand_tmp (THREAD_ENTRY * thread_p, INT16 volid, INT32 min_pages,
 			     npages_toadd, true);
 
   /* Set dirty header page, free it, and unlock it */
-  pgbuf_set_dirty (thread_p, hdr_pgptr, DONT_FREE);
-  (void) pgbuf_flush (thread_p, hdr_pgptr, FREE);
+  pgbuf_set_dirty (thread_p, hdr_pgptr, FREE);
 
   return npages_toadd;
 
@@ -2399,6 +2398,7 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid,
 
   if (flush == DISK_FLUSH)
     {
+      assert (false);
       pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
       (void) pgbuf_flush (thread_p, addr.pgptr, FREE);
     }

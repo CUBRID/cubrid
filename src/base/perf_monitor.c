@@ -411,8 +411,10 @@ mnt_calc_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
 		  q->log_num_appendrecs);
   CALC_STAT_DIFF (stats_diff->log_num_archives, p->log_num_archives,
 		  q->log_num_archives);
-  CALC_STAT_DIFF (stats_diff->log_num_checkpoints, p->log_num_checkpoints,
-		  q->log_num_checkpoints);
+  CALC_STAT_DIFF (stats_diff->log_num_start_checkpoints,
+		  p->log_num_start_checkpoints, q->log_num_start_checkpoints);
+  CALC_STAT_DIFF (stats_diff->log_num_end_checkpoints,
+		  p->log_num_end_checkpoints, q->log_num_end_checkpoints);
   CALC_STAT_DIFF (stats_diff->log_num_wals, p->log_num_wals, q->log_num_wals);
 
   CALC_STAT_DIFF (stats_diff->lk_num_acquired_on_pages,
@@ -565,8 +567,12 @@ mnt_calc_global_diff_stats (MNT_SERVER_EXEC_STATS * stats_diff,
     CALC_GLOBAL_STAT_DIFF (p->log_num_appendrecs, q->log_num_appendrecs);
   stats_diff->log_num_archives =
     CALC_GLOBAL_STAT_DIFF (p->log_num_archives, q->log_num_archives);
-  stats_diff->log_num_checkpoints =
-    CALC_GLOBAL_STAT_DIFF (p->log_num_checkpoints, q->log_num_checkpoints);
+  stats_diff->log_num_start_checkpoints =
+    CALC_GLOBAL_STAT_DIFF (p->log_num_start_checkpoints,
+			   q->log_num_start_checkpoints);
+  stats_diff->log_num_end_checkpoints =
+    CALC_GLOBAL_STAT_DIFF (p->log_num_end_checkpoints,
+			   q->log_num_end_checkpoints);
   stats_diff->log_num_wals =
     CALC_GLOBAL_STAT_DIFF (p->log_num_wals, q->log_num_wals);
 
@@ -1750,7 +1756,8 @@ static const char *mnt_Stats_name[MNT_SIZE_OF_SERVER_EXEC_STATS] = {
   "Num_log_page_iowrites",
   "Num_log_append_records",
   "Num_log_archives",
-  "Num_log_checkpoints",
+  "Num_log_start_checkpoints",
+  "Num_log_end_checkpoints",
   "Num_log_wals",
   "Num_page_locks_acquired",
   "Num_object_locks_acquired",
@@ -2151,14 +2158,14 @@ mnt_x_file_ioreads (THREAD_ENTRY * thread_p)
  *   return: none
  */
 void
-mnt_x_file_iowrites (THREAD_ENTRY * thread_p)
+mnt_x_file_iowrites (THREAD_ENTRY * thread_p, int num_pages)
 {
   MNT_SERVER_EXEC_STATS *stats;
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      ADD_STATS (stats, file_num_iowrites, 1);
+      ADD_STATS (stats, file_num_iowrites, num_pages);
     }
 }
 
@@ -2236,14 +2243,14 @@ mnt_x_pb_ioreads (THREAD_ENTRY * thread_p)
  *   return: none
  */
 void
-mnt_x_pb_iowrites (THREAD_ENTRY * thread_p)
+mnt_x_pb_iowrites (THREAD_ENTRY * thread_p, int num_pages)
 {
   MNT_SERVER_EXEC_STATS *stats;
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      ADD_STATS (stats, pb_num_iowrites, 1);
+      ADD_STATS (stats, pb_num_iowrites, num_pages);
     }
 }
 
@@ -2419,19 +2426,36 @@ mnt_x_log_archives (THREAD_ENTRY * thread_p)
 }
 
 /*
- * mnt_x_log_checkpoints - Increase log_num_checkpoints counter of the current
+ * mnt_x_log_start_checkpoints - Increase log_num_start_checkpoints counter of the current
  *                      transaction index
  *   return: none
  */
 void
-mnt_x_log_checkpoints (THREAD_ENTRY * thread_p)
+mnt_x_log_start_checkpoints (THREAD_ENTRY * thread_p)
 {
   MNT_SERVER_EXEC_STATS *stats;
 
   stats = mnt_server_get_stats (thread_p);
   if (stats != NULL)
     {
-      ADD_STATS (stats, log_num_checkpoints, 1);
+      ADD_STATS (stats, log_num_start_checkpoints, 1);
+    }
+}
+
+/*
+ * mnt_x_log_end_checkpoints - Increase log_num_end_checkpoints counter of the current
+ *                      transaction index
+ *   return: none
+ */
+void
+mnt_x_log_end_checkpoints (THREAD_ENTRY * thread_p)
+{
+  MNT_SERVER_EXEC_STATS *stats;
+
+  stats = mnt_server_get_stats (thread_p);
+  if (stats != NULL)
+    {
+      ADD_STATS (stats, log_num_end_checkpoints, 1);
     }
 }
 

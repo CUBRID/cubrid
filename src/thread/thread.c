@@ -2740,7 +2740,7 @@ thread_page_flush_thread (void *arg_p)
 	  break;
 	}
 
-      pgbuf_flush_victim_candidate (tsd_ptr, PGBUF_VICTIM_FLUSH_MIN_RATIO);
+      pgbuf_flush_victim_candidate (tsd_ptr, PRM_PB_BUFFER_FLUSH_RATIO);
     }
 
   er_clear ();

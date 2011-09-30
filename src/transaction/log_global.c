@@ -63,7 +63,7 @@ LOG_GLOBAL log_Gl = {
    {NULL_PAGEID, NULL_OFFSET},
    {NULL_PAGEID, NULL_OFFSET}},
   /* archive */
-  {NULL_VOLDES, {{'0'}, 0, 0, 0, 0, 0, 0},
+  {NULL_VOLDES, {{'0'}, 0, 0, 0, 0, 0, 0, 0},
    0, 0, NULL, CSS_CRITICAL_SECTION_INITIALIZER},
   /* run_nxchkpt_atpageid */
   NULL_PAGEID,

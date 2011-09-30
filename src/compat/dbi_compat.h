@@ -1340,7 +1340,13 @@
 
 #define ER_DESC_ISCAN_ABORTED                       -1075
 
-#define ER_LAST_ERROR                               -1076
+#define ER_BO_CANT_LOAD_SYSPRM                      -1076
+
+#define ER_PRM_UNKNOWN_SYSPRM                       -1077
+
+#define ER_PB_ALL_BUFFERS_DIRTY                     -1078
+
+#define ER_LAST_ERROR                               -1079
 
 #define DB_TRUE 1
 #define DB_FALSE 0

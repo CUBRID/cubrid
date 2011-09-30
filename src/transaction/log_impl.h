@@ -142,6 +142,7 @@
 #define LOG_POSTPONE_CS_OWN_READ_MODE(thread) (true)
 #endif /* !SERVER_MODE */
 
+#define LOG_NEED_WAL(lsa) (LSA_LE((&log_Gl.append.nxio_lsa), (lsa)))
 
 #define LOG_ESTIMATE_NACTIVE_TRANS      100	/* Estimate num of trans */
 #define LOG_ESTIMATE_NOBJ_LOCKS         977	/* Estimate num of locks */

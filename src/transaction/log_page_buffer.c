@@ -141,7 +141,7 @@ static int rv;
 #define ARV_PAGE_INFO_TABLE_SIZE    256
 
 #define LOG_PRIOR_LSA_LIST_MAX_SIZE() \
-  ((INT64) log_Pb.num_buffers * (INT64) LOG_PAGESIZE * 10)	/* 10 is guessing factor */
+  ((INT64) log_Pb.num_buffers * (INT64) LOG_PAGESIZE)	/* 1 is guessing factor */
 
 #if defined(SERVER_MODE)
 #define PRIOR_LSA_MUTEX_LOCK(m)   pthread_mutex_lock (m)
@@ -2996,6 +2996,8 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
        * (which will be written at next time)
        */
       bg_arv_info->current_page_id = last_page->hdr.logical_pageid;
+
+      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive);
     }
 }
 
@@ -4514,8 +4516,11 @@ prior_lsa_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node,
   if (log_Gl.prior_info.list_size >= LOG_PRIOR_LSA_LIST_MAX_SIZE ())
     {
       mnt_prior_lsa_list_maxed (thread_p);
+
 #if defined(SERVER_MODE)
       thread_wakeup_log_flush_thread ();
+
+      thread_sleep (0, 1000);	/* 1msec */
 #else
       LOG_CS_ENTER (thread_p);
       logpb_prior_lsa_append_all_list (thread_p);
@@ -5520,17 +5525,19 @@ logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p)
 void
 logpb_flush_log_for_wal (THREAD_ENTRY * thread_p, const LOG_LSA * lsa_ptr)
 {
-  if (LSA_LE (&log_Gl.append.nxio_lsa, lsa_ptr))
+  if (LOG_NEED_WAL (lsa_ptr))
     {
       mnt_log_wals (thread_p);
 
       LOG_CS_ENTER (thread_p);
-      logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+      if (LOG_NEED_WAL (lsa_ptr))
+	{
+	  logpb_flush_all_append_pages (thread_p, LOG_FLUSH_DIRECT);
+	}
       LOG_CS_EXIT ();
 
 #if defined(CUBRID_DEBUG)
-      if (LSA_LE (&log_Gl.append.nxio_lsa, lsa_ptr)
-	  && !LSA_EQ (&log_Gl.rcv_phase_lsa, lsa_ptr))
+      if (LOG_NEED_WAL (lsa_ptr) && !LSA_EQ (&log_Gl.rcv_phase_lsa, lsa_ptr))
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"log_wal: SYSTEM ERROR.. DUMP LOG BUFFER\n");
@@ -8648,7 +8655,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    */
 #endif /* SERVER_MODE */
 
-  mnt_log_checkpoints (thread_p);
+  mnt_log_start_checkpoints (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_STARTED,
 	  1, log_Gl.hdr.chkpt_lsa.pageid);
@@ -9163,6 +9170,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   /* have to sync log vol, data vol */
   fileio_synchronize_all (thread_p, true /* include_log */ );
 #endif
+
+  mnt_log_end_checkpoints (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_FINISHED,
 	  1, log_Gl.hdr.chkpt_lsa.pageid);

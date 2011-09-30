@@ -681,7 +681,7 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
  * pt_find_spec_in_from_list () - find the node spec in from list
  *   return: the spec in the from list with same id as the name, or NULL
  *   parser(in):
- *   from(in): 
+ *   from(in):
  *   name(in):
  */
 PT_NODE *
@@ -7884,7 +7884,8 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'log_page_ioreads' as [variable] , exec_stats('Num_log_page_ioreads') as [value])"
     "UNION ALL (SELECT 'log_page_iowrites' as [variable] , exec_stats('Num_log_page_iowrites') as [value])"
     "UNION ALL (SELECT 'log_append_records' as [variable] , exec_stats('Num_log_append_records') as [value])"
-    "UNION ALL (SELECT 'log_checkpoints' as [variable] , exec_stats('Num_log_checkpoints') as [value])"
+    "UNION ALL (SELECT 'log_start_checkpoints' as [variable] , exec_stats('Num_log_start_checkpoints') as [value])"
+    "UNION ALL (SELECT 'log_end_checkpoints' as [variable] , exec_stats('Num_log_end_checkpoints') as [value])"
     "UNION ALL (SELECT 'log_wals' as [variable] , exec_stats('Num_log_wals') as [value])"
     "UNION ALL (SELECT 'page_locks_acquired' as [variable] , exec_stats('Num_page_locks_acquired') as [value])"
     "UNION ALL (SELECT 'object_locks_acquired' as [variable] , exec_stats('Num_object_locks_acquired') as [value])"

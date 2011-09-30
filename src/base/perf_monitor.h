@@ -162,7 +162,8 @@ struct mnt_server_exec_stats
   UINT64 log_num_iowrites;
   UINT64 log_num_appendrecs;
   UINT64 log_num_archives;
-  UINT64 log_num_checkpoints;
+  UINT64 log_num_start_checkpoints;
+  UINT64 log_num_end_checkpoints;
   UINT64 log_num_wals;
 
   /* Execution statistics for the lock manager */
@@ -226,7 +227,7 @@ struct mnt_server_exec_stats
 };
 
 /* number of field of MNT_SERVER_EXEC_STATS structure */
-#define MNT_SIZE_OF_SERVER_EXEC_STATS 57
+#define MNT_SIZE_OF_SERVER_EXEC_STATS 58
 
 extern void mnt_server_dump_stats (const MNT_SERVER_EXEC_STATS * stats,
 				   FILE * stream, const char *substr);
@@ -398,8 +399,8 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_file_removes(thread_p)
 #define mnt_file_ioreads(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_file_ioreads(thread_p)
-#define mnt_file_iowrites(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_iowrites(thread_p)
+#define mnt_file_iowrites(thread_p, num_pages) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_file_iowrites(thread_p, num_pages)
 #define mnt_file_iosynches(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_file_iosynches(thread_p)
 
@@ -412,8 +413,8 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_dirties(thread_p)
 #define mnt_pb_ioreads(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_ioreads(thread_p)
-#define mnt_pb_iowrites(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_iowrites(thread_p)
+#define mnt_pb_iowrites(thread_p, num_pages) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_iowrites(thread_p, num_pages)
 #define mnt_pb_victims(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_pb_victims(thread_p)
 #define mnt_pb_replacements(thread_p) \
@@ -430,8 +431,10 @@ extern int mnt_Num_tran_exec_stats;
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_appendrecs(thread_p)
 #define mnt_log_archives(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_archives(thread_p)
-#define mnt_log_checkpoints(thread_p) \
-  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_checkpoints(thread_p)
+#define mnt_log_start_checkpoints(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_start_checkpoints(thread_p)
+#define mnt_log_end_checkpoints(thread_p) \
+  if (mnt_Num_tran_exec_stats > 0) mnt_x_log_end_checkpoints(thread_p)
 #define mnt_log_wals(thread_p) \
   if (mnt_Num_tran_exec_stats > 0) mnt_x_log_wals(thread_p)
 
@@ -542,19 +545,20 @@ extern void mnt_server_print_stats (THREAD_ENTRY * thread_p, FILE * stream);
 extern void mnt_x_file_creates (THREAD_ENTRY * thread_p);
 extern void mnt_x_file_removes (THREAD_ENTRY * thread_p);
 extern void mnt_x_file_ioreads (THREAD_ENTRY * thread_p);
-extern void mnt_x_file_iowrites (THREAD_ENTRY * thread_p);
+extern void mnt_x_file_iowrites (THREAD_ENTRY * thread_p, int num_pages);
 extern void mnt_x_file_iosynches (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_fetches (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_dirties (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_ioreads (THREAD_ENTRY * thread_p);
-extern void mnt_x_pb_iowrites (THREAD_ENTRY * thread_p);
+extern void mnt_x_pb_iowrites (THREAD_ENTRY * thread_p, int num_pages);
 extern void mnt_x_pb_victims (THREAD_ENTRY * thread_p);
 extern void mnt_x_pb_replacements (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_ioreads (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_iowrites (THREAD_ENTRY * thread_p, int num_log_pages);
 extern void mnt_x_log_appendrecs (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_archives (THREAD_ENTRY * thread_p);
-extern void mnt_x_log_checkpoints (THREAD_ENTRY * thread_p);
+extern void mnt_x_log_start_checkpoints (THREAD_ENTRY * thread_p);
+extern void mnt_x_log_end_checkpoints (THREAD_ENTRY * thread_p);
 extern void mnt_x_log_wals (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_acquired_on_pages (THREAD_ENTRY * thread_p);
 extern void mnt_x_lk_acquired_on_objects (THREAD_ENTRY * thread_p);
@@ -603,13 +607,13 @@ extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p,
 #define mnt_file_creates(thread_p)
 #define mnt_file_removes(thread_p)
 #define mnt_file_ioreads(thread_p)
-#define mnt_file_iowrites(thread_p)
+#define mnt_file_iowrites(thread_p, num_pages)
 #define mnt_file_iosynches(thread_p)
 
 #define mnt_pb_fetches(thread_p)
 #define mnt_pb_dirties(thread_p)
 #define mnt_pb_ioreads(thread_p)
-#define mnt_pb_iowrites(thread_p)
+#define mnt_pb_iowrites(thread_p, num_pages)
 #define mnt_pb_victims(thread_p)
 #define mnt_pb_replacements(thread_p)
 
@@ -617,7 +621,8 @@ extern UINT64 mnt_x_get_stats_and_clear (THREAD_ENTRY * thread_p,
 #define mnt_log_iowrites(thread_p, num_log_pages)
 #define mnt_log_appendrecs(thread_p)
 #define mnt_log_archives(thread_p)
-#define mnt_log_checkpoints(thread_p)
+#define mnt_log_start_checkpoints(thread_p)
+#define mnt_log_end_checkpoints(thread_p)
 #define mnt_log_wals(thread_p)
 
 #define mnt_lk_acquired_on_pages(thread_p)

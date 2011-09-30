@@ -84,9 +84,6 @@ typedef enum
 } PGBUF_LATCH_CONDITION;
 
 
-#define PGBUF_VICTIM_FLUSH_MIN_RATIO (0.01f)	/* victimize  1% of page buffer */
-#define PGBUF_VICTIM_FLUSH_MAX_RATIO (0.1f)	/* victimize 10% of page buffer */
-
 extern unsigned int pgbuf_hash_vpid (const void *key_vpid,
 				     unsigned int htsize);
 extern int pgbuf_compare_vpid (const void *key_vpid1, const void *key_vpid2);

@@ -117,6 +117,9 @@ extern UINT64 PRM_SORT_BUFFER_SIZE;
 #define PRM_NAME_PB_NBUFFERS "data_buffer_pages"
 extern int PRM_PB_NBUFFERS;
 
+#define PRM_NAME_PB_BUFFER_FLUSH_RATIO "data_buffer_flush_ratio"
+extern float PRM_PB_BUFFER_FLUSH_RATIO;
+
 #define PRM_NAME_PAGE_BUFFER_SIZE "data_buffer_size"
 extern UINT64 PRM_PAGE_BUFFER_SIZE;
 

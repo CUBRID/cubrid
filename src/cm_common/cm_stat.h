@@ -276,7 +276,8 @@ extern "C"
     unsigned int log_num_iowrites;
     unsigned int log_num_appendrecs;
     unsigned int log_num_archives;
-    unsigned int log_num_checkpoints;
+    unsigned int log_num_start_checkpoints;
+    unsigned int log_num_end_checkpoints;
     unsigned int log_num_wals;
 
     /* Execution statistics for the lock manager */

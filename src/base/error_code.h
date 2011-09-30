@@ -1340,7 +1340,9 @@
 
 #define ER_PRM_UNKNOWN_SYSPRM                       -1077
 
-#define ER_LAST_ERROR                               -1078
+#define ER_PB_ALL_BUFFERS_DIRTY                     -1078
+
+#define ER_LAST_ERROR                               -1079
 
 /*
  * CAUTION!
