@@ -702,6 +702,10 @@ exit_on_error:
 
   if (indx_cov->type_list != NULL)
     {
+      if (indx_cov->type_list->domp != NULL)
+	{
+	  db_private_free_and_init (thread_p, indx_cov->type_list->domp);
+	}
       db_private_free_and_init (thread_p, indx_cov->type_list);
     }
 
@@ -713,6 +717,10 @@ exit_on_error:
 
   if (indx_cov->tplrec != NULL)
     {
+      if (indx_cov->tplrec->tpl != NULL)
+	{
+	  db_private_free_and_init (thread_p, indx_cov->tplrec->tpl);
+	}
       db_private_free_and_init (thread_p, indx_cov->tplrec);
     }
 
@@ -3020,34 +3028,44 @@ exit_on_error:
 
   if (isidp->key_vals)
     {
-      db_private_free (thread_p, isidp->key_vals);
+      db_private_free_and_init (thread_p, isidp->key_vals);
     }
   if (isidp->bt_attr_ids)
     {
-      db_private_free (thread_p, isidp->bt_attr_ids);
+      db_private_free_and_init (thread_p, isidp->bt_attr_ids);
     }
   if (isidp->vstr_ids)
     {
-      db_private_free (thread_p, isidp->vstr_ids);
+      db_private_free_and_init (thread_p, isidp->vstr_ids);
     }
   if (isidp->oid_list.oidp)
     {
-      db_private_free (thread_p, isidp->oid_list.oidp);
+      db_private_free_and_init (thread_p, isidp->oid_list.oidp);
     }
   if (isidp->copy_buf)
     {
-      db_private_free (thread_p, isidp->copy_buf);
+      db_private_free_and_init (thread_p, isidp->copy_buf);
     }
   if (isidp->indx_cov.type_list != NULL)
     {
+      if (isidp->indx_cov.type_list->domp != NULL)
+	{
+	  db_private_free_and_init (thread_p,
+				    isidp->indx_cov.type_list->domp);
+	}
       db_private_free_and_init (thread_p, isidp->indx_cov.type_list);
     }
   if (isidp->indx_cov.list_id != NULL)
     {
       qfile_free_list_id (isidp->indx_cov.list_id);
+      isidp->indx_cov.list_id = NULL;
     }
   if (isidp->indx_cov.tplrec != NULL)
     {
+      if (isidp->indx_cov.tplrec->tpl != NULL)
+	{
+	  db_private_free_and_init (thread_p, isidp->indx_cov.tplrec->tpl);
+	}
       db_private_free_and_init (thread_p, isidp->indx_cov.tplrec);
     }
   if (isidp->indx_cov.lsid != NULL)
@@ -3448,6 +3466,8 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	}
       else
 	{
+	  INDX_COV *indx_cov_p;
+
 	  s_id->s.isid.curr_oidno = -1;
 	  s_id->s.isid.curr_keyno = -1;
 	  s_id->position = S_BEFORE;
@@ -3466,20 +3486,22 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	    }
 
 	  /* reset index covering */
-	  if (s_id->s.isid.indx_cov.lsid != NULL)
+	  indx_cov_p = &(s_id->s.isid.indx_cov);
+	  if (indx_cov_p->lsid != NULL)
 	    {
-	      qfile_close_scan (thread_p, s_id->s.isid.indx_cov.lsid);
+	      qfile_close_scan (thread_p, indx_cov_p->lsid);
 	    }
 
-	  if (s_id->s.isid.indx_cov.list_id != NULL)
+	  if (indx_cov_p->list_id != NULL)
 	    {
-	      qfile_destroy_list (thread_p, s_id->s.isid.indx_cov.list_id);
+	      qfile_destroy_list (thread_p, indx_cov_p->list_id);
+	      qfile_free_list_id (indx_cov_p->list_id);
 
-	      qfile_free_list_id (s_id->s.isid.indx_cov.list_id);
-	      s_id->s.isid.indx_cov.list_id =
-		qfile_open_list (thread_p, s_id->s.isid.indx_cov.type_list,
-				 NULL, s_id->s.isid.indx_cov.query_id, 0);
-	      if (s_id->s.isid.indx_cov.list_id == NULL)
+	      indx_cov_p->list_id = qfile_open_list (thread_p,
+						     indx_cov_p->type_list,
+						     NULL,
+						     indx_cov_p->query_id, 0);
+	      if (indx_cov_p->list_id == NULL)
 		{
 		  status = S_ERROR;
 		}
@@ -3846,6 +3868,9 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  db_private_free_and_init (thread_p,
 				    isidp->multi_range_opt.top_n_items);
 	  isidp->multi_range_opt.top_n_items = NULL;
+	  db_private_free_and_init (thread_p,
+				    isidp->multi_range_opt.tplrec.tpl);
+	  isidp->multi_range_opt.tplrec.tpl = 0;
 	}
       memset ((void *) (&(isidp->multi_range_opt)), 0,
 	      sizeof (MULTI_RANGE_OPT));
@@ -4294,35 +4319,70 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  else
 	    {
 	      /* non-grouped, regular index scan */
-	      if (scan_id->position == S_BEFORE || scan_id->position == S_ON)
+	      if (scan_id->position == S_BEFORE)
 		{
-		  if (scan_id->position == S_BEFORE)
-		    {
-		      SCAN_CODE ret;
+		  SCAN_CODE ret;
 
-		      /* Either we are not using ISS, or we are using it, and
-		       * in this case, we are supposed to be here for the
-		       * first time */
-		      assert (!isidp->iss.use
-			      || isidp->iss.current_op == ISS_OP_NONE);
+		  /* Either we are not using ISS, or we are using it, and
+		   * in this case, we are supposed to be here for the
+		   * first time */
+		  assert (!isidp->iss.use
+			  || isidp->iss.current_op == ISS_OP_NONE);
 
-		      ret =
-			call_get_next_index_oidset (thread_p, scan_id, isidp,
+		  ret = call_get_next_index_oidset (thread_p, scan_id, isidp,
 						    true);
+		  if (ret != S_SUCCESS)
+		    {
+		      return ret;
+		    }
 
-		      if (ret != S_SUCCESS)
+		  if (isidp->need_count_only == true)
+		    {
+		      /* no more scan is needed. just return */
+		      return S_SUCCESS;
+		    }
+
+		  scan_id->position = S_ON;
+		  isidp->curr_oidno = 0;	/* first oid number */
+		  if (isidp->multi_range_opt.use)
+		    {
+		      assert (isidp->curr_oidno < isidp->multi_range_opt.cnt);
+		      assert (isidp->multi_range_opt.
+			      top_n_items[isidp->curr_oidno] != NULL);
+
+		      isidp->curr_oidp =
+			&(isidp->multi_range_opt.
+			  top_n_items[isidp->curr_oidno]->inst_oid);
+		    }
+		  else
+		    {
+		      isidp->curr_oidp =
+			GET_NTH_OID (isidp->oid_list.oidp, isidp->curr_oidno);
+		    }
+
+		  if (SCAN_IS_INDEX_COVERED (isidp))
+		    {
+		      qfile_close_list (thread_p, isidp->indx_cov.list_id);
+		      if (qfile_open_list_scan (isidp->indx_cov.list_id,
+						isidp->indx_cov.lsid) !=
+			  NO_ERROR)
 			{
-			  return ret;
+			  return S_ERROR;
 			}
+		    }
+		}
+	      else if (scan_id->position == S_ON)
+		{
+		  int oids_cnt;
+		  /* we are in the S_ON case */
 
-		      if (isidp->need_count_only == true)
-			{
-			  /* no more scan is needed. just return */
-			  return S_SUCCESS;
-			}
+		  oids_cnt = isidp->multi_range_opt.use ?
+		    isidp->multi_range_opt.cnt : isidp->oid_list.oid_cnt;
 
-		      scan_id->position = S_ON;
-		      isidp->curr_oidno = 0;	/* first oid number */
+		  /* if there are OIDs left */
+		  if (isidp->curr_oidno < oids_cnt - 1)
+		    {
+		      isidp->curr_oidno++;
 		      if (isidp->multi_range_opt.use)
 			{
 			  assert (isidp->curr_oidno <
@@ -4340,139 +4400,92 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			    GET_NTH_OID (isidp->oid_list.oidp,
 					 isidp->curr_oidno);
 			}
-
-		      if (SCAN_IS_INDEX_COVERED (isidp))
-			{
-			  qfile_close_list (thread_p,
-					    isidp->indx_cov.list_id);
-			  if (qfile_open_list_scan (isidp->indx_cov.list_id,
-						    isidp->indx_cov.lsid) !=
-			      NO_ERROR)
-			    {
-			      return S_ERROR;
-			    }
-			}
 		    }
 		  else
 		    {
-		      int oids_cnt;
-		      /* we are in the S_ON case */
+		      /* there are no more OIDs left. Decide what to do */
 
-		      oids_cnt = isidp->multi_range_opt.use ?
-			isidp->multi_range_opt.cnt : isidp->oid_list.oid_cnt;
-
-		      /* if there are OIDs left */
-		      if (isidp->curr_oidno < oids_cnt - 1)
+		      /* We can ignore the END OF SCAN signal if we're
+		       * certain there can be more results, for instance
+		       * if we have a multiple range scan, or if we have
+		       * the "index skip scan" optimization on */
+		      if (BTREE_END_OF_SCAN (&isidp->bt_scan)
+			  && isidp->indx_info->range_type != R_RANGELIST
+			  && isidp->indx_info->range_type != R_KEYLIST
+			  && !isidp->iss.use)
 			{
-			  isidp->curr_oidno++;
-			  if (isidp->multi_range_opt.use)
-			    {
-			      assert (isidp->curr_oidno <
-				      isidp->multi_range_opt.cnt);
-			      assert (isidp->multi_range_opt.
-				      top_n_items[isidp->curr_oidno] != NULL);
-
-			      isidp->curr_oidp =
-				&(isidp->multi_range_opt.
-				  top_n_items[isidp->curr_oidno]->inst_oid);
-			    }
-			  else
-			    {
-			      isidp->curr_oidp =
-				GET_NTH_OID (isidp->oid_list.oidp,
-					     isidp->curr_oidno);
-			    }
+			  return S_END;
 			}
 		      else
 			{
-			  /* there are no more OIDs left. Decide what to do */
+			  SCAN_CODE ret;
+			  bool go_to_next_iss_value;
 
-			  /* We can ignore the END OF SCAN signal if we're
-			   * certain there can be more results, for instance
-			   * if we have a multiple range scan, or if we have
-			   * the "index skip scan" optimization on */
-			  if (BTREE_END_OF_SCAN (&isidp->bt_scan)
-			      && isidp->indx_info->range_type != R_RANGELIST
-			      && isidp->indx_info->range_type != R_KEYLIST
-			      && !isidp->iss.use)
+			  /* a list in a range is exhausted */
+			  if (isidp->multi_range_opt.use)
 			    {
+			      /* for "on the fly" case (multi range opt),
+			       * all ranges are exhausted from first
+			       * shoot, force exit */
+			      isidp->oid_list.oid_cnt = 0;
 			      return S_END;
 			    }
-			  else
+
+			  if (SCAN_IS_INDEX_COVERED (isidp))
 			    {
-			      SCAN_CODE ret;
-			      bool go_to_next_iss_value;
-
-			      /* a list in a range is exhausted */
-			      if (isidp->multi_range_opt.use)
+			      /* close current list and start a new one */
+			      qfile_close_scan (thread_p,
+						isidp->indx_cov.lsid);
+			      qfile_destroy_list (thread_p,
+						  isidp->indx_cov.list_id);
+			      qfile_free_list_id (isidp->indx_cov.list_id);
+			      isidp->indx_cov.list_id =
+				qfile_open_list (thread_p,
+						 isidp->indx_cov.type_list,
+						 NULL,
+						 isidp->indx_cov.query_id, 0);
+			      if (isidp->indx_cov.list_id == NULL)
 				{
-				  /* for "on the fly" case (multi range opt),
-				   * all ranges are exhausted from first
-				   * shoot, force exit */
-				  isidp->oid_list.oid_cnt = 0;
-				  return S_END;
+				  return S_ERROR;
 				}
+			    }
+			  /* if this the current scan is not done (i.e.
+			   * the buffer was full and we need to fetch 
+			   * more rows, do not go to the next value */
+			  go_to_next_iss_value =
+			    BTREE_END_OF_SCAN (&isidp->bt_scan) &&
+			    (isidp->indx_info->range_type == R_KEY
+			     || isidp->indx_info->range_type == R_RANGE);
+			  ret =
+			    call_get_next_index_oidset (thread_p, scan_id,
+							isidp,
+							go_to_next_iss_value);
+			  if (ret != S_SUCCESS)
+			    {
+			      return ret;
+			    }
 
-			      if (SCAN_IS_INDEX_COVERED (isidp))
-				{
-				  /* close current list and start a new one */
-				  qfile_close_scan (thread_p,
-						    isidp->indx_cov.lsid);
-				  qfile_destroy_list (thread_p,
-						      isidp->indx_cov.
-						      list_id);
-				  qfile_free_list_id (isidp->indx_cov.
-						      list_id);
-				  isidp->indx_cov.list_id =
-				    qfile_open_list (thread_p,
-						     isidp->indx_cov.
-						     type_list, NULL,
-						     isidp->indx_cov.query_id,
-						     0);
-				  if (isidp->indx_cov.list_id == NULL)
-				    {
-				      return S_ERROR;
-				    }
-				}
-			      /* if this the current scan is not done (i.e.
-			       * the buffer was full and we need to fetch 
-			       * more rows, do not go to the next value */
-			      go_to_next_iss_value =
-				BTREE_END_OF_SCAN (&isidp->bt_scan) &&
-				(isidp->indx_info->range_type == R_KEY
-				 || isidp->indx_info->range_type == R_RANGE);
-			      ret =
-				call_get_next_index_oidset (thread_p, scan_id,
-							    isidp,
-							    go_to_next_iss_value);
-			      if (ret != S_SUCCESS)
-				{
-				  return ret;
-				}
+			  if (isidp->need_count_only == true)
+			    {
+			      /* no more scan is needed. just return */
+			      return S_SUCCESS;
+			    }
 
-			      if (isidp->need_count_only == true)
-				{
-				  /* no more scan is needed. just return */
-				  return S_SUCCESS;
-				}
+			  isidp->curr_oidno = 0;	/* first oid number */
+			  isidp->curr_oidp = isidp->oid_list.oidp;
 
-			      isidp->curr_oidno = 0;	/* first oid number */
-			      isidp->curr_oidp = isidp->oid_list.oidp;
-
-			      if (SCAN_IS_INDEX_COVERED (isidp))
+			  if (SCAN_IS_INDEX_COVERED (isidp))
+			    {
+			      qfile_close_list (thread_p,
+						isidp->indx_cov.list_id);
+			      if (qfile_open_list_scan
+				  (isidp->indx_cov.list_id,
+				   isidp->indx_cov.lsid) != NO_ERROR)
 				{
-				  qfile_close_list (thread_p,
-						    isidp->indx_cov.list_id);
-				  if (qfile_open_list_scan
-				      (isidp->indx_cov.list_id,
-				       isidp->indx_cov.lsid) != NO_ERROR)
-				    {
-				      return S_ERROR;
-				    }
+				  return S_ERROR;
 				}
 			    }
 			}
-
 		    }
 		}
 	      else if (scan_id->position == S_AFTER)
@@ -4728,10 +4741,13 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 							      curr_oidno]->
 						  index_value),
 						isidp->curr_oidp,
-						&tplrec) != NO_ERROR)
+						&isidp->multi_range_opt.
+						tplrec) != NO_ERROR)
 		    {
 		      return S_ERROR;
 		    }
+		  tplrec.tpl = isidp->multi_range_opt.tplrec.tpl;
+		  tplrec.size = isidp->multi_range_opt.tplrec.size;
 		}
 	      else
 		{
@@ -5717,8 +5733,6 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p,
 
   if (use_range_opt)
     {
-      int i = 0;
-
       multi_range_opt->size = max_size;
       /* we don't have sort information here, just set an invalid value */
       multi_range_opt->sort_att_idx = -1;
@@ -5735,6 +5749,9 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p,
 	}
       memset (multi_range_opt->top_n_items, 0,
 	      max_size * sizeof (RANGE_OPT_ITEM *));
+
+      multi_range_opt->tplrec.size = 0;
+      multi_range_opt->tplrec.tpl = NULL;
     }
 
   return err;

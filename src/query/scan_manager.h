@@ -121,6 +121,7 @@ struct multi_range_opt
   bool is_desc_order;		/* sorting in descending order */
   int sort_att_idx;		/* index of MIDXKEY attribute on which the
 				   sort is performed */
+  QFILE_TUPLE_RECORD tplrec;	/* tuple record to dump MIDXKEYs into */
   TP_DOMAIN *sort_col_dom;
   RANGE_OPT_ITEM **top_n_items;	/* array with top n items */
 };
