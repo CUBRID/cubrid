@@ -1087,8 +1087,8 @@ netval_to_oraval (void *net_type, void *net_value, DB_VALUE * out_val,
 	net_arg_get_timestamp (&year, &month, &day, &hh, &mm, &ss, net_value);
 	out_val->size = 7;
 	out_val->db_type = SQLT_DAT;
-	OCIDateSetDate (val, year, month, day);
-	OCIDateSetTime (val, hh, mm, ss);
+	set_date_to_ora_date ((char *) val, year, month, day);
+	set_time_to_ora_date ((char *) val, hh, mm, ss);
 	out_val->buf = (void *) &(out_val->data.date);
 	break;
       }
@@ -1100,8 +1100,8 @@ netval_to_oraval (void *net_type, void *net_value, DB_VALUE * out_val,
 			      net_value);
 	out_val->size = 7;
 	out_val->db_type = SQLT_DAT;
-	OCIDateSetDate (val, year, month, day);
-	OCIDateSetTime (val, hh, mm, ss);
+	set_date_to_ora_date ((char *) val, year, month, day);
+	set_time_to_ora_date ((char *) val, hh, mm, ss);
 	out_val->buf = (void *) &(out_val->data.date);
 	break;
       }
