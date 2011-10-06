@@ -10625,7 +10625,9 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  CHECK_MODIFICATION_NO_RETURN (error);
 	  if (error != NO_ERROR)
-	    return error;
+	    {
+	      return error;
+	    }
 	}
 
       old_waitsecs = XASL_WAITSECS_NOCHANGE;
@@ -10652,7 +10654,9 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  CHECK_MODIFICATION_NO_RETURN (error);
 	  if (error != NO_ERROR)
-	    return error;
+	    {
+	      return error;
+	    }
 	}
 
       old_waitsecs = XASL_WAITSECS_NOCHANGE;
@@ -10679,7 +10683,9 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	{
 	  CHECK_MODIFICATION_NO_RETURN (error);
 	  if (error != NO_ERROR)
-	    return error;
+	    {
+	      return error;
+	    }
 	}
 
       old_waitsecs = XASL_WAITSECS_NOCHANGE;
@@ -10710,6 +10716,19 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       break;
 
     default:
+
+      /* click counter check */
+      if (xasl->selected_upd_list)
+	{
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p))
+	    {
+	      CHECK_MODIFICATION_NO_RETURN (error);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	}
 
       if (xasl->composite_locking)
 	{

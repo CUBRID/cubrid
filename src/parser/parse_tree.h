@@ -2593,6 +2593,7 @@ struct parser_node
 					   ON DUPLICATE KEY UPDATE */
   unsigned do_not_fold:1;	/* disables constant folding on the node */
   unsigned is_cnf_start:1;
+  unsigned is_click_counter:1;	/* INCR/DECR(click counter) */
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 

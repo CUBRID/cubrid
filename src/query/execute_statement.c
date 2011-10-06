@@ -13077,6 +13077,12 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   error = NO_ERROR;
 
+  /* click counter check */
+  if ((statement != NULL) && (statement->is_click_counter))
+    {
+      CHECK_MODIFICATION_ERROR ();
+    }
+
   AU_DISABLE (save);
   parser->au_save = save;
 
@@ -13233,6 +13239,12 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS,
 	      0);
       return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  /* click counter check */
+  if (statement->is_click_counter)
+    {
+      CHECK_MODIFICATION_ERROR ();
     }
 
   /* there can be no results, this is a compile time false where clause */

@@ -18023,6 +18023,7 @@ PT_NODE *
 parser_keyword_func (const char *name, PT_NODE * args)
 {
   PT_NODE *node;
+  PT_NODE *top_node;
   PT_NODE *a1, *a2, *a3;
   FUNCTION_MAP *key;
   int c;
@@ -18419,6 +18420,13 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	a1->info.name.tag_click_counter = 1;
       else if (a1->node_type == PT_DOT_)
 	a1->info.dot.tag_click_counter = 1;
+
+      top_node = parser_top_select_stmt_node (); 
+      if (top_node) 
+      {
+	  top_node->is_click_counter = 1;
+      }
+
       return a1;
       break;
 
