@@ -2461,8 +2461,10 @@ redo:
   start_code = ntohl (start_code);
 
   if (start_code == 0x08)
-    {				/* jdbc call */
-      libcas_main (sockfd);
+    {
+      tran_begin_libcas_function ();
+      libcas_main (sockfd);     /* jdbc call */
+      tran_end_libcas_function ();
       goto redo;
     }
 

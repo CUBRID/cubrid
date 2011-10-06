@@ -770,6 +770,8 @@ struct log_tdes
 
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or
 					   delete during a transaction */
+
+  long query_timeout;           /* a query should be executed before query_timeout time. */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -1537,6 +1539,11 @@ extern int log_Tran_index;	/* Index onto transaction table for
 extern LOG_GLOBAL log_Gl;
 
 extern LOG_LOGGING_STAT log_Stat;
+
+#if defined(HAVE_ATOMIC_BUILTINS)
+/* Current time in seconds */
+extern long log_Clock;
+#endif  /* HAVE_ATOMIC_BUILTINS */
 
 /* Name of the database and logs */
 extern char log_Path[];

@@ -53,6 +53,7 @@
 
 #define DEFAULT_ADMIN_LOG_FILE		"log/broker/cubrid_broker.log"
 #define DEFAULT_SESSION_TIMEOUT		300	/* seconds */
+#define DEFAULT_MAX_QUERY_TIMEOUT       0	/* seconds */
 #define DEFAULT_JOB_QUEUE_SIZE		500
 #define DEFAULT_APPL_SERVER		"CAS"
 #define DEFAULT_EMPTY_STRING		"\0"
@@ -668,6 +669,17 @@ broker_config_read_internal (const char *conf_file,
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
+
+      br_info[num_brs].query_timeout =
+	ini_getint (ini, sec_name, "MAX_QUERY_TIMEOUT",
+		    DEFAULT_MAX_QUERY_TIMEOUT, &lineno);
+      if (br_info[num_brs].query_timeout < 0
+	  || br_info[num_brs].query_timeout > MAX_QUERY_TIMEOUT_LIMIT)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
       num_brs++;
     }
 
@@ -993,6 +1005,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info,
 	{
 	  fprintf (fp, "ACCESS_MODE\t\t=%s\n", tmp_str);
 	}
+      fprintf (fp, "MAX_QUERY_TIMEOUT\t\t=%d\n", br_info[i].query_timeout);
       fprintf (fp, "\n");
     }
 

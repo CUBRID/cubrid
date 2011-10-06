@@ -48,7 +48,6 @@
 #include "broker_wsa_init.h"
 #endif /* WINDOWS */
 
-
 #define UC_CONF_PARAM_MASTER_SHM_ID		"MASTER_SHM_ID"
 #define UC_CONF_PARAM_ADMIN_LOG_FILE		"ADMIN_LOG_FILE"
 
@@ -681,6 +680,7 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
   int br_index, i, appl_shm_key;
   int num_as;
   T_AS_INFO *as_info = NULL;
+  char client_ip_str[16];
 
 
   if (admin_common (br_info, &num_broker, &master_shm_id,
@@ -798,15 +798,17 @@ uc_as_info (const char *br_name, T_AS_INFO ** ret_as_info,
       as_info[i].num_error_queries = shm_appl->as_info[i].num_error_queries;
       as_info[i].num_interrupts = shm_appl->as_info[i].num_interrupts;
 
+      ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str),
+			  shm_appl->as_info[i].cas_clt_ip);
+      strncpy (as_info[i].clt_ip_addr, client_ip_str,
+	       sizeof (as_info[i].clt_ip_addr) - 1);
+
       strncpy (as_info[i].database_host,
 	       shm_appl->as_info[i].database_host,
 	       sizeof (as_info[i].database_host) - 1);
       strncpy (as_info[i].database_name,
 	       shm_appl->as_info[i].database_name,
 	       sizeof (as_info[i].database_name) - 1);
-      strncpy (as_info[i].clt_ip_addr,
-	       shm_appl->as_info[i].clt_ip_addr,
-	       sizeof (as_info[i].clt_ip_addr) - 1);
       strncpy (as_info[i].clt_appl_name,
 	       shm_appl->as_info[i].clt_appl_name,
 	       sizeof (as_info[i].clt_appl_name) - 1);

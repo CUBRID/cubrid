@@ -99,6 +99,13 @@ static int net_send_msg_header (SOCKET sock_fd, MSG_HEADER * header);
 static int net_recv_msg_header (SOCKET sock_fd, MSG_HEADER * header,
 				int timeout);
 static bool net_peer_alive (SOCKET sd, int timeout);
+static int net_cancel_request_internal (unsigned char *ip_addr, int port,
+					char *msg, int msglen);
+static int net_cancel_request_w_local_port (unsigned char *ip_addr, int port,
+					    int pid,
+					    unsigned short local_port);
+static int net_cancel_request_wo_local_port (unsigned char *ip_addr, int port,
+					     int pid);
 
 /************************************************************************
  * INTERFACE VARIABLES							*
@@ -150,9 +157,9 @@ net_connect_srv (unsigned char *ip_addr, int port, char *db_name,
 
   strncpy (client_info, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN);
   client_info[SRV_CON_MSG_IDX_CLIENT_TYPE] = cci_client_type;
-  client_info[SRV_CON_MSG_IDX_MAJOR_VER] = MAJOR_VERSION;
-  client_info[SRV_CON_MSG_IDX_MINOR_VER] = MINOR_VERSION;
-  client_info[SRV_CON_MSG_IDX_PATCH_VER] = PATCH_VERSION;
+  client_info[SRV_CON_MSG_IDX_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
+  client_info[SRV_CON_MSG_IDX_RESERVED1] = 0;
+  client_info[SRV_CON_MSG_IDX_RESERVED2] = 0;
 
   if (db_name)
     {
@@ -303,24 +310,19 @@ connect_srv_error:
   return err_code;
 }
 
-int
-net_cancel_request (unsigned char *ip_addr, int port, int pid)
+static int
+net_cancel_request_internal (unsigned char *ip_addr, int port,
+			     char *msg, int msglen)
 {
-  char msg[10];
   SOCKET srv_sock_fd;
   int err_code;
-
-  memset (msg, 0, sizeof (msg));
-  strcpy (msg, "CANCEL");
-  pid = htonl (pid);
-  memcpy (msg + 6, (char *) &pid, 4);
 
   if (connect_srv (ip_addr, port, 0, &srv_sock_fd, 0) < 0)
     {
       return CCI_ER_CONNECT;
     }
 
-  if (net_send_stream (srv_sock_fd, msg, sizeof (msg)) < 0)
+  if (net_send_stream (srv_sock_fd, msg, msglen) < 0)
     {
       err_code = CCI_ER_COMMUNICATION;
       goto cancel_error;
@@ -342,6 +344,67 @@ net_cancel_request (unsigned char *ip_addr, int port, int pid)
 cancel_error:
   CLOSE_SOCKET (srv_sock_fd);
   return err_code;
+}
+
+static int
+net_cancel_request_w_local_port (unsigned char *ip_addr, int port, int pid,
+				 unsigned short local_port)
+{
+  char msg[10];
+
+  memset (msg, 0, sizeof (msg));
+  strcpy (msg, "QC");
+  pid = htonl (pid);
+  memcpy (msg + 2, (char *) &pid, 4);
+  local_port = htons (local_port);
+  memcpy (msg + 6, (char *) &local_port, 2);
+
+  return net_cancel_request_internal (ip_addr, port, msg, sizeof (msg));
+}
+
+static int
+net_cancel_request_wo_local_port (unsigned char *ip_addr, int port, int pid)
+{
+  char msg[10];
+
+  memset (msg, 0, sizeof (msg));
+  strcpy (msg, "CANCEL");
+  pid = htonl (pid);
+  memcpy (msg + 6, (char *) &pid, 4);
+
+  return net_cancel_request_internal (ip_addr, port, msg, sizeof (msg));
+}
+
+int
+net_cancel_request (T_CON_HANDLE * con_handle)
+{
+  struct sockaddr_in local_sockaddr;
+  socklen_t local_sockaddr_len;
+  unsigned short local_port = 0;
+  int error;
+
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (1))
+    {
+      local_sockaddr_len = sizeof (local_sockaddr);
+      error = getsockname (con_handle->sock_fd,
+			   (struct sockaddr *) &local_sockaddr,
+			   &local_sockaddr_len);
+      if (error == 0)
+	{
+	  local_port = ntohs (local_sockaddr.sin_port);
+	}
+
+      return net_cancel_request_w_local_port (con_handle->ip_addr,
+					      con_handle->port,
+					      con_handle->cas_pid,
+					      local_port);
+    }
+  else
+    {
+      return net_cancel_request_wo_local_port (con_handle->ip_addr,
+					       con_handle->port,
+					       con_handle->cas_pid);
+    }
 }
 
 int
@@ -439,8 +502,7 @@ net_recv_msg_timeout (T_CON_HANDLE * con_handle, char **msg, int *msg_size,
       if (result_code == CCI_ER_QUERY_TIMEOUT)
 	{
 	  /* send cancel message */
-	  net_cancel_request (con_handle->ip_addr, con_handle->port,
-			      con_handle->cas_pid);
+	  net_cancel_request (con_handle);
 
 	  if (con_handle->disconnect_on_query_timeout == true)
 	    {

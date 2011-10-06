@@ -39,6 +39,7 @@
 #include "server_interface.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
+#include "transaction_cl.h"
 
 /*
  * query_prepare () - Prepares a query for later (and repetitive)
@@ -120,6 +121,7 @@ query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 	       CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time)
 {
   int level;
+  int query_timeout;
 
   *list_idp = NULL;
   /* if QO_PARAM_LEVEL indicate no execution, just return */
@@ -130,9 +132,11 @@ query_execute (const XASL_ID * xasl_id, QUERY_ID * query_idp,
       return NO_ERROR;
     }
 
+  query_timeout = tran_get_query_timeout ();
   /* send XASL file id and host variables to the server and get QFILE_LIST_ID */
   *list_idp = qmgr_execute_query (xasl_id, query_idp, var_cnt, varptr, flag,
-				  clt_cache_time, srv_cache_time);
+				  clt_cache_time, srv_cache_time,
+				  query_timeout);
 
   if (!*list_idp)
     {
@@ -166,6 +170,7 @@ query_prepare_and_execute (char *stream, int size, QUERY_ID * query_id,
 {
   QFILE_LIST_ID *list_idptr;
   int level;
+  int query_timeout;
 
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
 
@@ -175,8 +180,10 @@ query_prepare_and_execute (char *stream, int size, QUERY_ID * query_id,
     }
   else
     {
+      query_timeout = tran_get_query_timeout ();
       list_idptr = qmgr_prepare_and_execute_query (stream, size, query_id,
-						   var_cnt, varptr, flag);
+						   var_cnt, varptr, flag,
+						   query_timeout);
       if (list_idptr == NULL)
 	{
 	  return er_errid ();

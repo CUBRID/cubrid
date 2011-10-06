@@ -640,7 +640,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
   FILE *fp;
   char *access_log_file = getenv (ACCESS_LOG_ENV_STR);
   char *script = NULL;
-  char *clt_ip;
+  char clt_ip_str[16];
   char *clt_appl = NULL;
   struct tm ct1, ct2;
   time_t t1, t2;
@@ -673,7 +673,9 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
     script = (char *) "-";
   if (clt_appl == NULL || clt_appl[0] == '\0')
     clt_appl = (char *) "-";
-  clt_ip = ut_uchar2ipstr ((unsigned char *) (&client_ip_addr));
+
+  ut_get_ipv4_string (clt_ip_str, sizeof (clt_ip_str),
+		      (unsigned char *) (&client_ip_addr));
 
   for (p = clt_appl; *p; p++)
     {
@@ -692,7 +694,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
   fprintf (fp,
 	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
 	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %s %s %s\n",
-	   as_index + 1, clt_ip, clt_appl, script,
+	   as_index + 1, clt_ip_str, clt_appl, script,
 	   (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
 	   (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
 	   ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,
@@ -704,7 +706,7 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr,
   fprintf (fp,
 	   "%d %s %s %s %d.%03d %d.%03d %02d/%02d/%02d %02d:%02d:%02d ~ "
 	   "%02d/%02d/%02d %02d:%02d:%02d %d %s %d %s %s %s\n",
-	   as_index + 1, clt_ip, clt_appl, script,
+	   as_index + 1, clt_ip_str, clt_appl, script,
 	   (int) start_time->tv_sec, (int) (start_time->tv_usec / 1000),
 	   (int) end_time.tv_sec, (int) (end_time.tv_usec / 1000),
 	   ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min,

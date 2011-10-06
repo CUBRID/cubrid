@@ -65,6 +65,15 @@ static void bind_value_log (int start, int argc, void **argv, int param_size,
 			    char *param_mode, unsigned int query_seq_num,
 			    bool slow_log);
 #endif /* !LIBCAS_FOR_JSP */
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+static void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
+
+/* functions implemented in transaction_cl.c */
+extern void tran_set_query_timeout (int);
+#ifndef LIBCAS_FOR_JSP
+extern bool tran_is_in_libcas (void);
+#endif /* !LIBCAS_FOR_JSP */
+#endif
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
 
@@ -412,11 +421,23 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   int client_cache_reusable = FALSE;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval exec_begin, exec_end;
+  int app_query_timeout;
+  bool client_supports_query_timeout = false;
   char *eid_string;
   int err_number_execute;
 
   bind_value_index = 9;
-  argc_mod_2 = 1;
+  /*
+   * query timeout is transferred from a driver only if protocol version 1
+   * or above.
+   */
+  if (req_info->client_version >= CAS_PROTO_MAKE_VER (1))
+    {
+      client_supports_query_timeout = true;
+      bind_value_index++;
+    }
+
+  argc_mod_2 = bind_value_index % 2;
 
   if ((argc < bind_value_index) || (argc % 2 != argc_mod_2))
     {
@@ -438,6 +459,15 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   clt_cache_time_ptr = &clt_cache_time;
   net_arg_get_cache_time (clt_cache_time_ptr, argv[8]);
 
+  if (client_supports_query_timeout == true)
+    {
+      net_arg_get_int (&app_query_timeout, argv[9]);
+    }
+  else
+    {
+      app_query_timeout = 0;
+    }
+
 #ifndef LIBCAS_FOR_JSP
   if (shm_appl->max_string_length >= 0)
     {
@@ -457,6 +487,11 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_CONN;
     }
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  set_query_timeout (srv_handle, app_query_timeout);
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
   srv_handle->auto_commit_mode = auto_commit_mode;
   srv_handle->forward_only_cursor = forward_only_cursor;
 
@@ -2285,3 +2320,46 @@ fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   return FN_KEEP_CONN;
 }
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
+
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+void
+set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
+{
+#ifndef LIBCAS_FOR_JSP
+  if (tran_is_in_libcas () == false)
+    {
+      if (query_timeout == 0 || shm_appl->query_timeout == 0)
+	{
+	  tran_set_query_timeout (query_timeout + shm_appl->query_timeout);
+	  if (query_timeout == 0 && shm_appl->query_timeout == 0)
+	    {
+	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			     "set query timeout to 0 (no limit)");
+	    }
+	  else
+	    {
+	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			     "set query timeout to %d (from %s)",
+			     (query_timeout + shm_appl->query_timeout),
+			     (query_timeout > 0 ? "app" : "broker"));
+	    }
+	}
+      else if (query_timeout > shm_appl->query_timeout)
+	{
+	  tran_set_query_timeout (shm_appl->query_timeout);
+	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			 "set query timeout to %d (from broker)",
+			 shm_appl->query_timeout);
+	}
+      else
+	{
+	  tran_set_query_timeout (query_timeout);
+	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			 "set query timeout to %d (from app)", query_timeout);
+	}
+    }
+#else
+  tran_set_query_timeout (-1);
+#endif
+}
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */

@@ -14049,7 +14049,7 @@ do_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *assignment = NULL;
 
   assert (statement != NULL);
-  assert (statement->node_type = PT_SET_SESSION_VARIABLES);
+  assert (statement->node_type == PT_SET_SESSION_VARIABLES);
 
   count = 0;
   /* count assignments */

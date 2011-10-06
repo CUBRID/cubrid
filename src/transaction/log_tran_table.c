@@ -545,6 +545,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes->client_id = -1;
   logtb_set_client_ids_all (&tdes->client, -1, NULL, NULL, NULL, NULL, NULL,
 			    -1);
+  tdes->query_timeout = 0;
 
   return NO_ERROR;
 }
@@ -1568,6 +1569,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->num_new_files = 0;
   tdes->num_new_tmp_files = 0;
   tdes->num_new_tmp_tmp_files = 0;
+  tdes->query_timeout = 0;
 }
 
 /*
@@ -1613,6 +1615,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->num_new_tmp_tmp_files = 0;
   tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
+  tdes->query_timeout = 0;
 }
 
 /*
@@ -2382,6 +2385,10 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			   bool clear, bool * continue_checking)
 {
   int interrupt;
+  long now;
+#if !defined(HAVE_ATOMIC_BUILTINS)
+  struct timeval tv;
+#endif  /* !HAVE_ATOMIC_BUILTINS */
 
   interrupt = tdes->interrupt;
   if (!LOG_ISTRAN_ACTIVE (tdes))
@@ -2413,7 +2420,27 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	}
       TR_TABLE_CS_EXIT ();
     }
-
+  else if (interrupt == false && tdes->query_timeout > 0)
+    {
+      /* In order to prevent performance degradation, we use log_Clock
+       * set by thread_log_clock_thread instead of calling gettimeofday here
+       * if the system supports atomic built-ins.
+       */
+#if defined(HAVE_ATOMIC_BUILTINS)
+      now = log_Clock;
+#else /* HAVE_ATOMIC_BUILTINS */
+      gettimeofday (&tv, NULL);
+      now = tv.tv_sec;
+#endif /* HAVE_ATOMIC_BUILTINS */
+      if (tdes->query_timeout < now)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"logtb_is_interrupted_tdes: timeout %d seconds delayed (expected=%d, now=%d)",
+			(now - tdes->query_timeout), tdes->query_timeout,
+			now);
+	  interrupt = true;
+	}
+    }
   return interrupt;
 }
 

@@ -569,6 +569,12 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
 
   ADD_ARG_CACHE_TIME (&net_buf, 0, 0);
 
+  if (hm_get_broker_version (con_handle) >= CAS_PROTO_MAKE_VER (1))
+    {
+      /* query timeout - CCI does not support query timeout by itself. */
+      ADD_ARG_INT (&net_buf, 0);
+    }
+
   for (i = 0; i < req_handle->num_bind; i++)
     {
       bind_value_to_net_buf (&net_buf,

@@ -65,6 +65,11 @@
 #include "broker_wsa_init.h"
 #endif
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#include "dbdef.h"
+#else /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#define DB_EMPTY_SESSION        (0)
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #ifdef WIN_FW
 #if !defined(WINDOWS)
@@ -477,13 +482,18 @@ main (int argc, char *argv[])
 	      if (pid > 0)
 		{
 		  shm_appl->as_info[add_as_index].pid = pid;
-		  shm_appl->as_info[add_as_index].session_id = 0;
 		  shm_appl->as_info[add_as_index].psize = getsize (pid);
 		  shm_appl->as_info[add_as_index].psize_time = time (NULL);
 		  shm_appl->as_info[add_as_index].uts_status =
 		    UTS_STATUS_IDLE;
 		  shm_appl->as_info[add_as_index].service_flag = SERVICE_ON;
 		  shm_appl->as_info[add_as_index].reset_flag = FALSE;
+
+		  memset (&shm_appl->as_info[add_as_index].cas_clt_ip[0], 0x0,
+			  sizeof (shm_appl->as_info[add_as_index].
+				  cas_clt_ip));
+		  shm_appl->as_info[add_as_index].cas_clt_port = 0;
+
 		  (shm_br->br_info[br_index].appl_server_num)++;
 		  (shm_appl->num_appl_server)++;
 		}
@@ -597,6 +607,7 @@ receiver_thr_f (void *arg)
   int one = 1;
   char cas_req_header[SRV_CON_CLIENT_INFO_SIZE];
   char cas_client_type;
+  char driver_version;
   job_queue_size = shm_appl->job_queue_size;
   job_queue = shm_appl->job_queue;
   job_count = 1;
@@ -629,6 +640,7 @@ receiver_thr_f (void *arg)
 
       cas_client_type = CAS_CLIENT_NONE;
 
+      /* read header */
       read_len = read_nbytes_from_client (clt_sock_fd,
 					  cas_req_header,
 					  SRV_CON_CLIENT_INFO_SIZE);
@@ -646,16 +658,40 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 
-      if (strncmp (cas_req_header, "CANCEL", 6) == 0)
+      /*
+       * Query cancel message (size in bytes)
+       *
+       * - For client version 8.4.0 patch 1 or below:
+       *   |COMMAND("CANCEL",6)|PID(4)|
+       *
+       * - For CAS protocol version 1 or above:
+       *   |COMMAND("QC",2)|PID(4)|CLIENT_PORT(2)|RESERVED(2)|
+       *
+       *   CLIENT_PORT can be 0 if the client failed to get its local port.
+       */
+      if (strncmp (cas_req_header, "QC", 2) == 0
+	  || strncmp (cas_req_header, "CANCEL", 6) == 0)
 	{
 	  int ret_code = 0;
 #if !defined(WINDOWS)
 	  int pid, i;
+	  unsigned short client_port;
 #endif
 
 #if !defined(WINDOWS)
-	  memcpy ((char *) &pid, cas_req_header + 6, 4);
-	  pid = ntohl (pid);
+	  if (cas_req_header[0] == 'Q')
+	    {
+	      memcpy ((char *) &pid, cas_req_header + 2, 4);
+	      memcpy ((char *) &client_port, cas_req_header + 6, 2);
+	      pid = ntohl (pid);
+	      client_port = ntohs (client_port);
+	    }
+	  else
+	    {
+	      memcpy ((char *) &pid, cas_req_header + 6, 4);
+	      pid = ntohl (pid);
+	    }
+
 	  ret_code = CAS_ER_QUERY_CANCEL;
 	  for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
 	    {
@@ -663,6 +699,15 @@ receiver_thr_f (void *arg)
 		  && shm_appl->as_info[i].pid == pid
 		  && shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY)
 		{
+		  if (cas_req_header[0] == 'Q'
+		      && client_port > 0
+		      && shm_appl->as_info[i].cas_clt_port != client_port
+		      && memcmp (&shm_appl->as_info[i].cas_clt_ip,
+				 &clt_sock_addr.sin_addr, 4) != 0)
+		    {
+		      continue;
+		    }
+
 		  ret_code = 0;
 		  kill (pid, SIGUSR1);
 		  break;
@@ -717,13 +762,25 @@ receiver_thr_f (void *arg)
       new_job.recv_time = time (NULL);
       new_job.priority = 0;
       new_job.script[0] = '\0';
-      new_job.clt_major_version = cas_req_header[SRV_CON_MSG_IDX_MAJOR_VER];
-      new_job.clt_minor_version = cas_req_header[SRV_CON_MSG_IDX_MINOR_VER];
-      new_job.clt_patch_version = cas_req_header[SRV_CON_MSG_IDX_PATCH_VER];
       new_job.cas_client_type = cas_client_type;
+      new_job.port = ntohs (clt_sock_addr.sin_port);
       memcpy (new_job.ip_addr, &(clt_sock_addr.sin_addr), 4);
       strcpy (new_job.prg_name, cas_client_type_str[(int) cas_client_type]);
 
+      driver_version = cas_req_header[SRV_CON_MSG_IDX_PROTO_VERSION];
+      if (driver_version & CAS_PROTO_INDICATOR)
+	{
+	  /* Protocol version */
+	  new_job.clt_version = CAS_PROTO_UNPACK_NET_VER (driver_version);
+	}
+      else
+	{
+	  /* Build version; major, minor, and patch */
+	  new_job.clt_version =
+	    CAS_MAKE_VER (cas_req_header[SRV_CON_MSG_IDX_MAJOR_VER],
+			  cas_req_header[SRV_CON_MSG_IDX_MINOR_VER],
+			  cas_req_header[SRV_CON_MSG_IDX_PATCH_VER]);
+	}
       while (1)
 	{
 	  pthread_mutex_lock (&clt_table_mutex);
@@ -813,15 +870,11 @@ dispatch_thr_f (void *arg)
       hold_job = 0;
 
 #if !defined(WIN_FW)
-      shm_appl->as_info[as_index].clt_major_version =
-	cur_job.clt_major_version;
-      shm_appl->as_info[as_index].clt_minor_version =
-	cur_job.clt_minor_version;
-      shm_appl->as_info[as_index].clt_patch_version =
-	cur_job.clt_patch_version;
+      shm_appl->as_info[as_index].clt_version = cur_job.clt_version;
       shm_appl->as_info[as_index].cas_client_type = cur_job.cas_client_type;
-#if defined(WINDOWS)
       memcpy (shm_appl->as_info[as_index].cas_clt_ip, cur_job.ip_addr, 4);
+      shm_appl->as_info[as_index].cas_clt_port = cur_job.port;
+#if defined(WINDOWS)
       shm_appl->as_info[as_index].uts_status = UTS_STATUS_BUSY_WAIT;
       CAS_SEND_ERROR_CODE (cur_job.clt_sock_fd,
 			   shm_appl->as_info[as_index].as_port);

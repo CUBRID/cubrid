@@ -110,6 +110,11 @@ LOG_GLOBAL log_Gl = {
   {NULL_PAGEID, NULL_PAGEID, NULL_VOLDES}
 };
 
+#if defined(HAVE_ATOMIC_BUILTINS)
+/* Current time in seconds */
+long log_Clock = 0;
+#endif  /* HAVE_ATOMIC_BUILTINS */
+
 /* Name of the database and logs */
 char log_Path[PATH_MAX];
 char log_Archive_path[PATH_MAX];

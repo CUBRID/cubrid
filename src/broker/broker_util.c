@@ -31,6 +31,7 @@
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -451,4 +452,17 @@ ut_time_string (char *buf)
   buf[18] = '\0';
 
   return 18;
+}
+
+char *
+ut_get_ipv4_string (char *ip_str, int len, unsigned char *ip_addr)
+{
+  assert (ip_addr != NULL);
+  assert (ip_str != NULL);
+  assert (len >= 16);    /* xxx.xxx.xxx.xxx\0 */
+
+  snprintf (ip_str, len, "%d.%d.%d.%d", (unsigned char) ip_addr[0],
+	    (unsigned char) ip_addr[1],
+	    (unsigned char) ip_addr[2], (unsigned char) ip_addr[3]);
+  return (ip_str);
 }

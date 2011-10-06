@@ -300,7 +300,7 @@ main (int argc, char *argv[])
   SOCKET br_sock_fd, client_sock_fd;
   char read_buf[1024];
   int err_code;
-  char *db_name, *db_user, *db_passwd, *t, *db_sessionid;
+  char *db_name, *db_user, *db_passwd, *db_sessionid;
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   SESSION_ID session_id = DB_EMPTY_SESSION;
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
@@ -317,6 +317,7 @@ main (int argc, char *argv[])
     CAS_INFO_RESERVED_DEFAULT
   };
   FN_RETURN fn_ret = FN_KEEP_CONN;
+  char client_ip_str[16];
 
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
@@ -349,21 +350,24 @@ main (int argc, char *argv[])
 
   memset (broker_info, 0, sizeof (broker_info));
 #if defined(CAS_FOR_ORACLE)
-  broker_info[BROKER_INFO_DBMS_TYPE] = DBMS_ORACLE;
+  broker_info[BROKER_INFO_DBMS_TYPE] = CCI_DBMS_ORACLE;
 #elif defined(CAS_FOR_MYSQL)
-  broker_info[BROKER_INFO_DBMS_TYPE] = DBMS_MYSQL;
+  broker_info[BROKER_INFO_DBMS_TYPE] = CCI_DBMS_MYSQL;
 #else /* CAS_FOR_MYSQL */
   broker_info[BROKER_INFO_DBMS_TYPE] = CCI_DBMS_CUBRID;
 #endif /* CAS_FOR_MYSQL */
 
-  broker_info[BROKER_INFO_MAJOR_VERSION] = MAJOR_VERSION;
-  broker_info[BROKER_INFO_MINOR_VERSION] = MINOR_VERSION;
-  broker_info[BROKER_INFO_PATCH_VERSION] = PATCH_VERSION;
+  broker_info[BROKER_INFO_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
+  broker_info[BROKER_INFO_RESERVED1] = 0;
+  broker_info[BROKER_INFO_RESERVED2] = 0;
+  broker_info[BROKER_INFO_RESERVED3] = 0;
 
   set_cubrid_home ();
 
   if (cas_init () < 0)
-    return -1;
+    {
+      return -1;
+    }
 
 #if defined(WINDOWS)
   if (shm_appl->as_port > 0)
@@ -425,10 +429,7 @@ main (int argc, char *argv[])
 	    goto error1;
 	  }
 
-	req_info.client_version =
-	  CAS_MAKE_VER (as_info->clt_major_version,
-			as_info->clt_minor_version,
-			as_info->clt_patch_version);
+	req_info.client_version = as_info->clt_version;
 
 	set_cas_info_size ();
 
@@ -495,9 +496,9 @@ main (int argc, char *argv[])
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 	cas_error_log_open (broker_name, shm_as_index);
 #endif
-	t = ut_uchar2ipstr ((unsigned char *) (&client_ip_addr));
-	cas_log_write_and_end (0, false, "CLIENT IP %s", t);
-	strncpy (as_info->clt_ip_addr, t, 19);
+	ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str),
+			    (unsigned char *) (&client_ip_addr));
+	cas_log_write_and_end (0, false, "CLIENT IP %s", client_ip_str);
 	setsockopt (client_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one,
 		    sizeof (one));
 
@@ -516,10 +517,7 @@ main (int argc, char *argv[])
 	      }
 	  }
 #endif
-	req_info.client_version =
-	  CAS_MAKE_VER (as_info->clt_major_version,
-			as_info->clt_minor_version,
-			as_info->clt_patch_version);
+	req_info.client_version = as_info->clt_version;
 	cas_client_type = as_info->cas_client_type;
 
 	if (req_info.client_version < CAS_MAKE_VER (8, 2, 0))
@@ -619,7 +617,9 @@ main (int argc, char *argv[])
 
 		    sprintf (err_msg,
 			     "Authorization error.(Address %s is rejected)",
-			     as_info->clt_ip_addr);
+			     ut_get_ipv4_string (client_ip_str,
+						 sizeof (client_ip_str),
+						 as_info->cas_clt_ip));
 
 		    NET_WRITE_ERROR_CODE_WITH_MSG (client_sock_fd,
 						   req_info.client_version,
@@ -821,8 +821,9 @@ main (int argc, char *argv[])
 #if defined(WINDOWS)
 	as_info->close_flag = 1;
 #endif /* WINDOWS */
+	memset (as_info->cas_clt_ip, 0x0, sizeof (as_info->cas_clt_ip));
+	as_info->cas_clt_port = 0;
 
-	as_info->clt_ip_addr[0] = '\0';
 	cas_log_write_and_end (0, true, "disconnect");
 	cas_log_write2 (sql_log2_get_filename ());
 	cas_log_write_and_end (0, false, "STATE idle");
@@ -867,7 +868,7 @@ libcas_main (SOCKET jsp_sock_fd)
 
   memset (&req_info, 0, sizeof (req_info));
 
-  req_info.client_version = CAS_CUR_VERSION;
+  req_info.client_version = CAS_PROTO_CURRENT_VER;
   client_sock_fd = jsp_sock_fd;
 
   net_buf_init (&net_buf);
@@ -952,6 +953,7 @@ cleanup (int signo)
 static void
 query_cancel (int signo)
 {
+  char client_ip_str[16];
 #if defined(CAS_FOR_ORACLE)
   signal (signo, SIG_IGN);
   cas_oracle_query_cancel ();
@@ -962,7 +964,19 @@ query_cancel (int signo)
 #endif /* CAS_FOR_ORACLE */
   as_info->num_interrupts %= MAX_DIAG_DATA_VALUE;
   as_info->num_interrupts++;
-  cas_log_write (0, false, "query_cancel");
+
+  if (as_info->clt_version >= CAS_PROTO_MAKE_VER (1))
+    {
+      cas_log_write (0, false, "query_cancel client ip %s port %u",
+		     ut_get_ipv4_string (client_ip_str,
+					 sizeof (client_ip_str),
+					 as_info->cas_clt_ip),
+		     as_info->cas_clt_port);
+    }
+  else
+    {
+      cas_log_write (0, false, "query_cancel");
+    }
 }
 #endif /* !LIBCAS_FOR_JSP */
 
@@ -1429,16 +1443,12 @@ void
 set_cas_info_size (void)
 {
 #ifndef LIBCAS_FOR_JSP
-  if (CAS_MAKE_VER (as_info->clt_major_version,
-		    as_info->clt_minor_version,
-		    as_info->clt_patch_version) <= CAS_MAKE_VER (8, 1, 5))
-#else /* !LIBCAS_FOR_JSP */
-  if (CAS_CUR_VERSION <= CAS_MAKE_VER (8, 1, 5))
-#endif /* !LIBCAS_FOR_JSP */
+  if (as_info->clt_version <= CAS_MAKE_VER (8, 1, 5))
     {
       cas_info_size = 0;
     }
   else
+#endif /* !LIBCAS_FOR_JSP */
     {
       cas_info_size = CAS_INFO_SIZE;
     }

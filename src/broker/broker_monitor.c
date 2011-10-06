@@ -539,7 +539,7 @@ appl_monitor (char *br_vector)
   T_SHM_APPL_SERVER *shm_appl;
   int i, j, k, appl_offset;
   int col_len;
-  char line_buf[1024];
+  char line_buf[1024], ip_str[16];
   static time_t time_old;
 
   static APPL_MONITORING_ITEM *appl_mnt_olds;
@@ -702,6 +702,7 @@ appl_monitor (char *br_vector)
 		{
 		  str_out (", ACCESS_MODE:%s", "SO");
 		}
+	      str_out (", MAX_QUERY_TIMEOUT:%d", shm_appl->query_timeout);
 	      print_newline ();
 
 #if defined (WINDOWS)
@@ -899,9 +900,12 @@ appl_monitor (char *br_vector)
 			    sprintf (line_buf + col_len, "%16c %16c %19c ",
 				     '-', '-', '-');
 			}
+
 		      col_len +=
 			sprintf (line_buf + col_len, "%15.15s ",
-				 shm_appl->as_info[j].clt_ip_addr);
+				 ut_get_ipv4_string (ip_str, sizeof (ip_str),
+						     shm_appl->as_info[j].
+						     cas_clt_ip));
 
 		      strncpy (sql_log_mode_string, "-",
 			       sizeof (sql_log_mode_string));

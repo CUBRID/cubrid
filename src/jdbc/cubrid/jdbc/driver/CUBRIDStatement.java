@@ -792,11 +792,17 @@ public class CUBRIDStatement implements Statement {
 	protected void executeCoreInternal(boolean all,
 			UStatementCacheData cache_data) throws SQLException {
 		CUBRIDCancelQueryThread t = null;
-		boolean is_holdable = false;
 
-		if (query_timeout > 0) {
+		boolean is_holdable = false;
+		boolean isQueryCancelThreadStarted = false;
+
+		if (query_timeout > 0
+				&& (u_con.isConnectedToCubrid() == false || 
+						u_con.protoVersionIsAbove(1) == false)) {
 			t = new CUBRIDCancelQueryThread(this, query_timeout);
 			t.start();
+
+			isQueryCancelThreadStarted = true;
 		}
 
 		if (getResultSetHoldability() == ResultSet.HOLD_CURSORS_OVER_COMMIT)
@@ -804,9 +810,9 @@ public class CUBRIDStatement implements Statement {
 
 		u_stmt.execute(false, max_rows, max_field_size, all, is_sensitive,
 				is_scrollable, query_info_flag, only_query_plan, is_holdable,
-				cache_data);
+				cache_data, query_timeout);
 
-		if (query_timeout > 0) {
+		if (isQueryCancelThreadStarted) {
 			t.queryended();
 		}
 
@@ -930,4 +936,3 @@ public class CUBRIDStatement implements Statement {
 		}
 	}
 }
-

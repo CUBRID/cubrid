@@ -53,5 +53,5 @@ extern void as_db_err_log_set (char *br_name, int as_index);
 #endif
 
 extern int ut_time_string (char *buf);
-
+extern char *ut_get_ipv4_string (char *ip_str, int len, unsigned char *ip_addr);
 #endif /* _BROKER_UTIL_H_ */

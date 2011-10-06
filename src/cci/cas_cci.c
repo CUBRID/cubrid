@@ -899,9 +899,6 @@ int
 cci_cancel (int con_h_id)
 {
   T_CON_HANDLE *con_handle;
-  unsigned char ip_addr[4];
-  int port;
-  int cas_pid;
   int ref_count;
 
   MUTEX_LOCK (con_handle_table_mutex);
@@ -913,17 +910,16 @@ cci_cancel (int con_h_id)
       return CCI_ER_CON_HANDLE;
     }
 
-  memcpy (ip_addr, con_handle->ip_addr, 4);
-  port = con_handle->port;
-  cas_pid = con_handle->cas_pid;
   ref_count = con_handle->ref_count;
 
   MUTEX_UNLOCK (con_handle_table_mutex);
 
   if (ref_count <= 0)
-    return 0;
+    {
+      return 0;
+    }
 
-  return (net_cancel_request (ip_addr, port, cas_pid));
+  return net_cancel_request (con_handle);
 }
 
 int

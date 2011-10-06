@@ -77,11 +77,15 @@ public class UConnection {
 
 	public final static int OID_BYTE_SIZE = 8;
 
+	/*
+	 * The followings are also defined in broker/cas_protocol.h
+	 */
 	private final static String magicString = "CUBRK";
-	private final static byte CAS_CLIENT_JDBC = 3; /*
-													 * this value is defined in
-													 * broker/cas_protocol.h
-													 */
+	private final static byte CAS_CLIENT_JDBC = 3;
+	/* Current protocol version */
+	private final static byte CAS_PROTOCOL_VERSION = 0x01;
+	private final static byte CAS_PROTO_INDICATOR = 0x40;
+	private final static byte CAS_PROTO_VER_MASK = 0x3F;
 
 	private final static byte GET_COLLECTION_VALUE = 1,
 			GET_SIZE_OF_COLLECTION = 2, DROP_ELEMENT_IN_SET = 3,
@@ -120,10 +124,15 @@ public class UConnection {
 	private final static int BROKER_INFO_KEEP_CONNECTION = 1;
 	private final static int BROKER_INFO_STATEMENT_POOLING = 2;
 	private final static int BROKER_INFO_CCI_PCONNECT = 3;
-	private final static int BROKER_INFO_MAJOR_VERSION = 4;
-	private final static int BROKER_INFO_MINOR_VERSION = 5;
-	private final static int BROKER_INFO_PATCH_VERSION = 6;
-	private final static int BROKER_INFO_RESERVED = 7;
+	private final static int BROKER_INFO_PROTO_VERSION = 4;
+	private final static int BROKER_INFO_RESERVED1 = 5;
+	private final static int BROKER_INFO_RESERVED2 = 6;
+	private final static int BROKER_INFO_RESERVED3 = 7;
+	/* For backward compatibility */
+	private final static int BROKER_INFO_MAJOR_VERSION = BROKER_INFO_PROTO_VERSION;
+	private final static int BROKER_INFO_MINOR_VERSION = BROKER_INFO_RESERVED1;
+	private final static int BROKER_INFO_PATCH_VERSION = BROKER_INFO_RESERVED2;
+	private final static int BROKER_INFO_RESERVED = BROKER_INFO_RESERVED3;
 
 	String conCharsetName;
 	UOutputBuffer outBuffer;
@@ -153,6 +162,7 @@ public class UConnection {
 	// jci 3.0
 	private byte[] broker_info = null;
 	private byte[] casinfo = null;
+	private int brokerVersion = 0;
 
 	private boolean isServerSideJdbc = false;
 	private byte[] checkCasMsg = null;
@@ -174,9 +184,8 @@ public class UConnection {
 		driverInfo = new byte[10];
 		UJCIUtil.copy_byte(driverInfo, 0, 5, magicString);
 		driverInfo[5] = CAS_CLIENT_JDBC;
-		driverInfo[6] = (byte) CUBRIDDriver.major_version;
-		driverInfo[7] = (byte) CUBRIDDriver.minor_version;
-		driverInfo[8] = (byte) CUBRIDDriver.patch_version;
+		driverInfo[6] = CAS_PROTO_INDICATOR | CAS_PROTOCOL_VERSION;
+		driverInfo[7] = driverInfo[8] = 0; /* reserved */
 	}
 
 	/*
@@ -427,9 +436,8 @@ public class UConnection {
 				if (client != null)
 					clientSocketClose();
 			} catch (IOException e) {
-				errorHandler.setErrorMessage(UErrorCode.ER_COMMUNICATION, e
-						.getMessage()
-						+ "in close");
+				errorHandler.setErrorMessage(UErrorCode.ER_COMMUNICATION,
+						e.getMessage() + "in close");
 			}
 		}
 		// System.gc();
@@ -1053,7 +1061,7 @@ public class UConnection {
 		this.casinfo = casinfo;
 	}
 
-	synchronized public byte getDbmsType() {
+	public byte getDbmsType() {
 		// jci 3.0
 		if (broker_info == null)
 			return DBMS_CUBRID;
@@ -1062,6 +1070,10 @@ public class UConnection {
 		/*
 		 * jci 2.x return DBMS_CUBRID;
 		 */
+	}
+
+	public boolean isConnectedToCubrid() {
+		return getDbmsType() == DBMS_CUBRID ? true : false;
 	}
 
 	public boolean brokerInfoStatementPooling() {
@@ -1477,16 +1489,28 @@ public class UConnection {
 		try {
 			conCancel = new UConnection(CASIp, CASPort);
 
-			String cancel_msg = "CANCEL";
-			conCancel.output.write(cancel_msg.getBytes());
-			conCancel.output.writeInt(processId);
+			if (protoVersionIsAbove(1) == true) {
+				String cancelCommand = "QC";
+				int localPort = client.getLocalPort();
+				if (localPort < 0)
+					localPort = 0;
+				conCancel.output.write(cancelCommand.getBytes());
+				conCancel.output.writeInt(processId);
+				conCancel.output.writeShort((short) localPort);
+				conCancel.output.writeShort(0); /* reserved */
+			} else {
+				String cancelCommand = "CANCEL";
+				conCancel.output.write(cancelCommand.getBytes());
+				conCancel.output.writeInt(processId);
+			}
+
 			conCancel.output.flush();
 
 			int error = conCancel.input.readInt();
 
 			if (error < 0) {
-				int err_code = conCancel.input.readInt();
-				throw new UJciException(UErrorCode.ER_DBMS, error, err_code,
+				int errorCode = conCancel.input.readInt();
+				throw new UJciException(UErrorCode.ER_DBMS, error, errorCode,
 						null);
 			}
 		} finally {
@@ -1587,6 +1611,35 @@ public class UConnection {
 			return false;
 	}
 
+	private int makeBrokerVersion(int major, int minor, int patch) {
+		int version = 0;
+		if ((major < 0 || major > Byte.MAX_VALUE)
+				|| (minor < 0 || minor > Byte.MAX_VALUE)
+				|| (patch < 0 || patch > Byte.MAX_VALUE)) {
+			return 0;
+		}
+
+		version = ((int) major << 24) | ((int) minor << 16)
+				| ((int) patch << 8);
+		return version;
+	}
+
+	private int makeProtoVersion(int ver) {
+		return ((int) CAS_PROTO_INDICATOR << 24) | ver;
+	}
+
+	public int brokerInfoVersion() {
+		return brokerVersion;
+	}
+
+	public boolean protoVersionIsAbove(int ver) {
+		if (isServerSideJdbc()
+				|| (brokerInfoVersion() >= makeProtoVersion(ver))) {
+			return true;
+		}
+		return false;
+	}
+
 	private void connectDB() throws IOException, UJciException {
 		UInputBuffer inBuffer;
 
@@ -1599,12 +1652,22 @@ public class UConnection {
 					inBuffer = new UInputBuffer(in, this);
 					processId = inBuffer.getResCode();
 					if (broker_info == null)
-							broker_info = new byte[BROKER_INFO_SIZE];
+						broker_info = new byte[BROKER_INFO_SIZE];
 					inBuffer.readBytes(broker_info);
 					sessionId = inBuffer.readInt();
-					
 				}
 			}
+		}
+
+		/* synchronize with broker_info */
+		byte version = broker_info[BROKER_INFO_PROTO_VERSION];
+		if ((version & CAS_PROTO_INDICATOR) == CAS_PROTO_INDICATOR) {
+			brokerVersion = makeProtoVersion(version & CAS_PROTO_VER_MASK);
+		} else {
+			brokerVersion = makeBrokerVersion(
+					(int) broker_info[BROKER_INFO_MAJOR_VERSION],
+					(int) broker_info[BROKER_INFO_MINOR_VERSION],
+					(int) broker_info[BROKER_INFO_PATCH_VERSION]);
 		}
 	}
 
@@ -1622,7 +1685,8 @@ public class UConnection {
 		CASPort = Integer.valueOf(st.nextToken()).intValue();
 	}
 
-	private void initConnection(String ip, int port, boolean setInfo) throws UJciException {
+	private void initConnection(String ip, int port, boolean setInfo)
+			throws UJciException {
 		try {
 			client = new Socket(InetAddress.getByName(ip), port);
 			client.setTcpNoDelay(true);
@@ -1634,7 +1698,8 @@ public class UConnection {
 			output.flush();
 
 			in = new UTimedInputStream(client.getInputStream(), ip, CASPort);
-			input = new UTimedDataInputStream(client.getInputStream(), ip, CASPort);
+			input = new UTimedDataInputStream(client.getInputStream(), ip,
+					CASPort);
 
 			if (setInfo) {
 				CUBRIDDriver.setLastConnectInfo(url, makeConnectInfo(ip, port));

@@ -296,8 +296,7 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator,
 
   net_buf_clear (net_buf);
 #ifndef LIBCAS_FOR_JSP
-  ver = CAS_MAKE_VER (as_info->clt_major_version,
-		      as_info->clt_minor_version, as_info->clt_patch_version);
+  ver = as_info->clt_version;
   if (ver >= CAS_MAKE_VER (8, 2, 2))
     {
       net_buf_cp_int (net_buf, err_indicator, NULL);

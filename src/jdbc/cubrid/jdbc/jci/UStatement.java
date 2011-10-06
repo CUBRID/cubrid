@@ -616,7 +616,8 @@ public class UStatement {
 	synchronized public void execute(boolean isAsync, int maxRow, int maxField,
 			boolean allExecute, boolean is_sensitive, boolean is_scrollable,
 			boolean query_plan_flag, boolean only_query_plan,
-			boolean is_holdable, UStatementCacheData cache_data) {
+			boolean is_holdable, UStatementCacheData cache_data, int queryTimeout) {
+
 		flushLobStreams();
 
 		UInputBuffer inBuffer = null;
@@ -711,6 +712,13 @@ public class UStatement {
 				/* cache info - jci 3.7 */
 				outBuffer.addCacheTime(cache_data);
 
+				/*
+				 * query timeout support only if protocol version 1 or above
+				 */
+				if (relatedConnection.protoVersionIsAbove(1)) {
+					outBuffer.addInt(queryTimeout);
+				}
+
 				if (bindParameter != null) {
 					synchronized (bindParameter) {
 						bindParameter.writeParameter(outBuffer);
@@ -756,7 +764,7 @@ public class UStatement {
 				errorHandler.clear();
 				execute(isAsync, maxRow, maxField, allExecute, is_sensitive,
 						is_scrollable, query_plan_flag, only_query_plan,
-						is_holdable, cache_data);
+						is_holdable, cache_data, queryTimeout);
 				return;
 			} else {
 				if (relatedConnection.need_checkcas
@@ -768,7 +776,7 @@ public class UStatement {
 					errorHandler.clear();
 					execute(isAsync, maxRow, maxField, allExecute,
 							is_sensitive, is_scrollable, query_plan_flag,
-							only_query_plan, is_holdable, cache_data);
+							only_query_plan, is_holdable, cache_data, queryTimeout);
 				}
 				return;
 			}
@@ -824,7 +832,7 @@ public class UStatement {
 			errorHandler.setErrorCode(UErrorCode.ER_CMD_IS_NOT_INSERT);
 			return null;
 		}
-		execute(isAsync, 0, 0, false, false, false, false, false, false, null);
+		execute(isAsync, 0, 0, false, false, false, false, false, false, null, 0);
 		if (errorHandler.getErrorCode() != UErrorCode.ER_NO_ERROR)
 			return null;
 		if (resultInfo != null && resultInfo[0] != null)
@@ -1052,7 +1060,7 @@ public class UStatement {
 		errorHandler = localError;
 		return colNameToIndex;
 	}
-	
+
 	synchronized public CUBRIDOID getColumnOID(int index) {
 		errorHandler = new UError();
 
@@ -1802,7 +1810,7 @@ public class UStatement {
 					columnInfo[i] = null;
 			}
 			columnInfo = null;
-			
+
 			colNameToIndex.clear();
 			colNameToIndex = null;
 		}
@@ -2014,12 +2022,12 @@ public class UStatement {
 		numQueriesExecuted = inBuffer.readInt();
 		resultInfo = new UResultInfo[numQueriesExecuted];
 		for (int i = 0; i < resultInfo.length; i++) {
-			resultInfo[i] = new UResultInfo(inBuffer.readByte(), inBuffer
-					.readInt());
+			resultInfo[i] = new UResultInfo(inBuffer.readByte(),
+					inBuffer.readInt());
 			resultInfo[i].setResultOid(inBuffer
 					.readOID(relatedConnection.cubridcon));
-			resultInfo[i].setSrvCacheTime(inBuffer.readInt(), inBuffer
-					.readInt());
+			resultInfo[i].setSrvCacheTime(inBuffer.readInt(),
+					inBuffer.readInt());
 		}
 	}
 

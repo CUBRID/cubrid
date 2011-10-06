@@ -6869,6 +6869,7 @@ qmgr_prepare_query (const char *query_str, const OID * user_oid,
  *   flag(in):
  *   clt_cache_time(in):
  *   srv_cache_time(in):
+ *   query_timeout(in):
  *
  * NOTE:
  */
@@ -6876,7 +6877,7 @@ QFILE_LIST_ID *
 qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
 		    int dbval_cnt, const DB_VALUE * dbvals,
 		    QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
-		    CACHE_TIME * srv_cache_time)
+		    CACHE_TIME * srv_cache_time, int query_timeout)
 {
 #if defined(CS_MODE)
   QFILE_LIST_ID *list_id = NULL;
@@ -6884,7 +6885,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   char *request, *reply, *senddata = NULL;
   char *replydata1 = NULL, *replydata2 = NULL, *ptr;
   OR_ALIGNED_BUF (OR_XASL_ID_SIZE + OR_INT_SIZE * 3 +
-		  OR_CACHE_TIME_SIZE) a_request;
+		  OR_CACHE_TIME_SIZE + OR_INT_SIZE) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_PTR_ALIGNED_SIZE
 		  + OR_CACHE_TIME_SIZE) a_reply;
   int i;
@@ -6924,6 +6925,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   ptr = or_pack_int (ptr, senddata_size);
   ptr = or_pack_int (ptr, flag);
   OR_PACK_CACHE_TIME (ptr, clt_cache_time);
+  ptr = or_pack_int (ptr, query_timeout);
 
   req_error = net_client_request_with_callback (NET_SERVER_QM_QUERY_EXECUTE,
 						request,
@@ -6977,7 +6979,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
   /* call the server routine of query execute */
   list_id = xqmgr_execute_query (NULL, xasl_id, query_idp, dbval_cnt,
 				 dbvals, &flag, clt_cache_time,
-				 srv_cache_time);
+				 srv_cache_time, query_timeout);
 
   EXIT_SERVER ();
 
@@ -6996,13 +6998,15 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp,
  *   dbval_cnt(in):
  *   dbval_ptr(in):
  *   flag(in):
+ *   query_timeout(in):
  *
  * NOTE:
  */
 QFILE_LIST_ID *
 qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
 				QUERY_ID * query_idp, int dbval_cnt,
-				DB_VALUE * dbval_ptr, QUERY_FLAG flag)
+				DB_VALUE * dbval_ptr, QUERY_FLAG flag,
+				int query_timeout)
 {
 #if defined(CS_MODE)
   QFILE_LIST_ID *regu_result = NULL;
@@ -7010,7 +7014,7 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
   int i, size;
   char *ptr, *senddata, *replydata;
   DB_VALUE *dbval;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE * 3 + OR_PTR_ALIGNED_SIZE) a_reply;
   char *reply;
@@ -7041,6 +7045,7 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
   ptr = or_pack_int (request, dbval_cnt);
   ptr = or_pack_int (ptr, senddata_size);
   ptr = or_pack_int (ptr, flag);
+  ptr = or_pack_int (ptr, query_timeout);
 
   ptr = senddata;
   for (i = 0, dbval = dbval_ptr; i < dbval_cnt; i++, dbval++)
@@ -7101,7 +7106,8 @@ qmgr_prepare_and_execute_query (char *xasl_buffer, int xasl_size,
 
   regu_result = xqmgr_prepare_and_execute_query (NULL, xasl_buffer, xasl_size,
 						 query_idp, dbval_cnt,
-						 dbval_ptr, &flag);
+						 dbval_ptr, &flag,
+						 query_timeout);
 
   EXIT_SERVER ();
 

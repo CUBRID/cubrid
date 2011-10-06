@@ -617,6 +617,29 @@ hm_set_ha_status (T_CON_HANDLE * con_handle, bool reset_rctime)
   MUTEX_UNLOCK (ha_status_mutex);
 }
 
+T_BROKER_VERSION
+hm_get_broker_version (T_CON_HANDLE * con_handle)
+{
+  T_BROKER_VERSION version = 0;
+
+  if (con_handle->broker_info[BROKER_INFO_PROTO_VERSION]
+      & CAS_PROTO_INDICATOR)
+    {
+      version =
+	CAS_PROTO_UNPACK_NET_VER (con_handle->
+				  broker_info[BROKER_INFO_PROTO_VERSION]);
+    }
+  else
+    {
+      version =
+	CAS_MAKE_VER (con_handle->broker_info[BROKER_INFO_MAJOR_VERSION],
+		      con_handle->broker_info[BROKER_INFO_MINOR_VERSION],
+		      con_handle->broker_info[BROKER_INFO_PATCH_VERSION]);
+    }
+
+  return version;
+}
+
 /************************************************************************
  * IMPLEMENTATION OF PRIVATE FUNCTIONS	 				*
  ************************************************************************/

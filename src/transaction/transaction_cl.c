@@ -69,6 +69,19 @@ bool tm_Tran_async_ws = false;
 int tm_Tran_waitsecs = TRAN_LOCK_INFINITE_WAIT;
 int tm_Tran_ID = -1;
 
+/* Timeout(seconds) for queries.
+ *
+ * JDBC can send a bundle of queries to a CAS by setting CCI_EXEC_QUERY_ALL flag.
+ * In this case, we will apply this timeout to all of queries.
+ * So, every queries should be executed within this timeout.
+ *
+ * 0 means "unlimited", and negative value means "do not calculate timeout".
+ *
+ * tm_Is_libcas indicates fn_xxx functions called by libcas_main(i.e, JSP).
+ */
+static int tm_Query_timeout = 0;
+static bool tm_Is_libcas = false;
+
 /* this is a local list of user-defined savepoints.  It may be updated upon
  * the following calls:
  *    tran_savepoint()		-> tm_add_savepoint()
@@ -1539,4 +1552,62 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name,
     }
 
   return error_code;
+}
+
+/*
+ * tran_set_query_timeout() -
+ *   return: void
+ *   query_timeout(in): timeout seconds to be shipped to "query_execute_query"
+ *                      and "query_prepare_and_execute_query"
+ */
+void
+tran_set_query_timeout (int query_timeout)
+{
+  tm_Query_timeout = query_timeout;
+}
+
+/*
+ * tran_get_query_timeout() -
+ *   return: timeout (seconds)
+ */
+int
+tran_get_query_timeout (void)
+{
+  int timeout = tm_Query_timeout;
+
+  /* Send timeout only for the first execution. -1 will be shipped to
+   * the following executions.
+   */
+  tm_Query_timeout = -1;
+
+  return timeout;
+}
+
+/*
+ * tran_begin_libcas_function() -
+ */
+void
+tran_begin_libcas_function (void)
+{
+  tm_Is_libcas = true;
+}
+
+/*
+ * tran_end_libcas_function() -
+ *   return: void
+ */
+void
+tran_end_libcas_function (void)
+{
+  tm_Is_libcas = false;
+}
+
+/*
+ * tran_is_in_libcas() -
+ *   return: bool
+ */
+bool
+tran_is_in_libcas (void)
+{
+  return tm_Is_libcas;
 }

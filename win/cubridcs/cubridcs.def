@@ -379,6 +379,8 @@ EXPORTS
     sysprm_check_range
     sysprm_get_range
     tran_reset_wait_times
+    tran_is_in_libcas
+    tran_set_query_timeout
     utility_get_generic_message
     util_make_ha_conf
     util_get_ha_mode_for_sa_utils

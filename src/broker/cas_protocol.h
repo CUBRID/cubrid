@@ -31,9 +31,17 @@
 #define SRV_CON_CLIENT_MAGIC_LEN	5
 #define SRV_CON_CLIENT_MAGIC_STR	"CUBRK"
 #define SRV_CON_MSG_IDX_CLIENT_TYPE	5
-#define SRV_CON_MSG_IDX_MAJOR_VER	6
-#define SRV_CON_MSG_IDX_MINOR_VER	7
-#define SRV_CON_MSG_IDX_PATCH_VER	8
+
+/* 8th and 9th-byte (index 7 and 8) are reserved for backward compatibility.
+ * 8.4.0 patch 1 or earlier versions hold minor and patch version on them.
+ */
+#define SRV_CON_MSG_IDX_PROTO_VERSION   6
+#define SRV_CON_MSG_IDX_RESERVED1       7
+#define SRV_CON_MSG_IDX_RESERVED2       8
+/* For backward compatibility */
+#define SRV_CON_MSG_IDX_MAJOR_VER	(SRV_CON_MSG_IDX_PROTO_VERSION)
+#define SRV_CON_MSG_IDX_MINOR_VER	(SRV_CON_MSG_IDX_RESERVED1)
+#define SRV_CON_MSG_IDX_PATCH_VER	(SRV_CON_MSG_IDX_RESERVED2)
 
 #define SRV_CON_DBNAME_SIZE		32
 #define SRV_CON_DBUSER_SIZE		32
@@ -90,10 +98,15 @@ typedef enum
 #define BROKER_INFO_KEEP_CONNECTION             1
 #define BROKER_INFO_STATEMENT_POOLING           2
 #define BROKER_INFO_CCI_PCONNECT                3
-#define BROKER_INFO_MAJOR_VERSION               4
-#define BROKER_INFO_MINOR_VERSION               5
-#define BROKER_INFO_PATCH_VERSION               6
-#define BROKER_INFO_RESERVED                    7
+#define BROKER_INFO_PROTO_VERSION               4
+#define BROKER_INFO_RESERVED1                   5
+#define BROKER_INFO_RESERVED2                   6
+#define BROKER_INFO_RESERVED3                   7
+/* For backward compatibility */
+#define BROKER_INFO_MAJOR_VERSION               (BROKER_INFO_PROTO_VERSION)
+#define BROKER_INFO_MINOR_VERSION               (BROKER_INFO_RESERVED1)
+#define BROKER_INFO_PATCH_VERSION               (BROKER_INFO_RESERVED2)
+#define BROKER_INFO_RESERVED                    (BROKER_INFO_RESERVED3)
 
 #define CAS_PID_SIZE                            4
 #define SESSION_ID_SIZE                         4
@@ -169,8 +182,27 @@ enum t_cas_func_code
   CAS_FC_MAX
 };
 
-#define CAS_CUR_VERSION                 \
-	CAS_MAKE_VER(MAJOR_VERSION, MINOR_VERSION, PATCH_VERSION)
+/* Current protocol version */
+#define CAS_PROTOCOL_VERSION    (0x01)
+
+/* Indicates version variable holds CAS protocol version. */
+#define CAS_PROTO_INDICATOR     (0x40)
+
+/* Make a version to be used in CAS. */
+#define CAS_PROTO_MAKE_VER(VER)         \
+        ((T_BROKER_VERSION) (CAS_PROTO_INDICATOR << 24 | (VER)))
+#define CAS_PROTO_CURRENT_VER           \
+        ((T_BROKER_VERSION) CAS_PROTO_MAKE_VER(CAS_PROTOCOL_VERSION))
+
+/* Pack/unpack CAS protocol version to/from network. */
+#define CAS_PROTO_VER_MASK      (0x3F)
+#define CAS_PROTO_PACK_NET_VER(VER)         \
+        (char)((char)CAS_PROTO_INDICATOR | (char)(VER))
+#define CAS_PROTO_UNPACK_NET_VER(VER)       \
+        (CAS_PROTO_MAKE_VER(CAS_PROTO_VER_MASK & (char)(VER)))
+#define CAS_PROTO_PACK_CURRENT_NET_VER      \
+        CAS_PROTO_PACK_NET_VER(CAS_PROTOCOL_VERSION)
+
 #define CAS_MAKE_VER(MAJOR, MINOR, PATCH)       \
 	((T_BROKER_VERSION) (((MAJOR) << 16) | ((MINOR) << 8) | (PATCH)))
 typedef int T_BROKER_VERSION;

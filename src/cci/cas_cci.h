@@ -173,7 +173,8 @@ extern "C"
 	CCI_CONNECT_INTERNAL_FUNC_NAME(IP,PORT,DBNAME,DBUSER,DBPASSWD)
 
 #define CCI_DBMS_CUBRID			1
-#define CCI_DBMS_CUBRID_MMDB		2
+#define CCI_DBMS_MYSQL                  2
+#define CCI_DBMS_ORACLE                 3
 
 /* schema_info CONSTRAINT */
 #define CCI_CONSTRAINT_TYPE_UNIQUE	0

@@ -62,6 +62,12 @@
 #include "broker_error.h"
 #include "cas_sql_log2.h"
 
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#include "dbdef.h"
+#else /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#define DB_EMPTY_SESSION        (0)
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
 #define ADMIN_ERR_MSG_SIZE	1024
 
 #define MAKE_VERSION(MAJOR, MINOR)	(((MAJOR) << 8) | (MINOR))
@@ -595,7 +601,6 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
   shm_appl->as_info[as_index].uts_status = UTS_STATUS_IDLE;
   shm_appl->as_info[as_index].pid = pid;
 
-  shm_appl->as_info[as_index].session_id = 0;
   shm_appl->as_info[as_index].reset_flag = FALSE;
   shm_appl->as_info[as_index].psize =
     getsize (shm_appl->as_info[as_index].pid);
@@ -603,10 +608,13 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
   shm_appl->as_info[as_index].last_access_time = time (NULL);
   shm_appl->as_info[as_index].clt_appl_name[0] = '\0';
   shm_appl->as_info[as_index].clt_req_path_info[0] = '\0';
-  shm_appl->as_info[as_index].clt_ip_addr[0] = '\0';
   shm_appl->as_info[as_index].database_name[0] = '\0';
   shm_appl->as_info[as_index].database_host[0] = '\0';
   shm_appl->as_info[as_index].last_connect_time = 0;
+
+  memset (&shm_appl->as_info[as_index].cas_clt_ip[0], 0x0,
+	  sizeof (shm_appl->as_info[as_index].cas_clt_ip));
+  shm_appl->as_info[as_index].cas_clt_port = 0;
 
   /* mutex exit section */
   shm_appl->as_info[as_index].mutex_flag[SHM_MUTEX_ADMIN] = FALSE;
@@ -1503,6 +1511,19 @@ admin_broker_conf_change (int master_shm_id, const char *br_name,
       shm_br->br_info[br_index].select_auto_commit = val;
       shm_appl->select_auto_commit = val;
     }
+  else if (strcasecmp (conf_name, "MAX_QUERY_TIMEOUT") == 0)
+    {
+      int val;
+
+      val = atoi (conf_value);
+      if (val < 0 || val > MAX_QUERY_TIMEOUT_LIMIT)
+	{
+	  sprintf (admin_err_msg, "invalid value: %s", conf_value);
+	  goto set_broker_conf_error;
+	}
+      shm_br->br_info[br_index].query_timeout = val;
+      shm_appl->query_timeout = val;
+    }
   else
     {
       sprintf (admin_err_msg, "unknown keyword %s", conf_name);
@@ -2109,6 +2130,8 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id,
 
   strcpy (shm_appl->preferred_hosts, br_info->preferred_hosts);
 
+  shm_appl->query_timeout = br_info->query_timeout;
+
   for (i = 0; i < shm_appl->num_appl_server; i++)
     {
       shm_appl->as_info[i].last_access_time = time (NULL);
@@ -2300,14 +2323,16 @@ as_activate (T_APPL_SERVER_INFO * as_info, int as_index,
   CON_STATUS_LOCK_INIT (as_info);
 
   as_info->num_request = 0;
-  as_info->session_id = 0;
   as_info->uts_status = UTS_STATUS_START;
   as_info->reset_flag = FALSE;
   as_info->clt_appl_name[0] = '\0';
   as_info->clt_req_path_info[0] = '\0';
-  as_info->clt_ip_addr[0] = '\0';
   as_info->cur_sql_log_mode = shm_appl->sql_log_mode;
   as_info->cur_slow_log_mode = shm_appl->slow_log_mode;
+
+  memset (&shm_appl->as_info[as_index].cas_clt_ip[0], 0x0,
+          sizeof (shm_appl->as_info[as_index].cas_clt_ip));
+  shm_appl->as_info[as_index].cas_clt_port = 0;
 
 #if defined(WINDOWS)
   as_info->pdh_pid = 0;

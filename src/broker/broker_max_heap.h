@@ -31,6 +31,7 @@
 
 #include "cas_common.h"
 #include "broker_msg.h"
+#include "cas_protocol.h"
 
 typedef struct t_max_heap_node T_MAX_HEAP_NODE;
 struct t_max_heap_node
@@ -40,11 +41,10 @@ struct t_max_heap_node
   SOCKET clt_sock_fd;
   time_t recv_time;
   unsigned char ip_addr[4];
+  unsigned short port;
   char script[PRE_SEND_SCRIPT_SIZE];
   char prg_name[PRE_SEND_PRG_NAME_SIZE];
-  char clt_major_version;
-  char clt_minor_version;
-  char clt_patch_version;
+  T_BROKER_VERSION clt_version;
   char cas_client_type;
 };
 

@@ -38,6 +38,7 @@
 #include "porting.h"
 #include "broker_config.h"
 #include "broker_max_heap.h"
+#include "cas_protocol.h"
 
 #define 	STATE_KEEP_TRUE		1
 #define		STATE_KEEP_FALSE	0
@@ -147,6 +148,8 @@
 #define ACL_MAX_DBNAME_LENGTH	32
 #define ACL_MAX_DBUSER_LENGTH	32
 
+#define MAX_QUERY_TIMEOUT_LIMIT         86400   /* seconds; 1 day */
+
 #if defined (WINDOWS)
 #define MAKE_ACL_SEM_NAME(BUF, BROKER_NAME)  \
   snprintf(BUF, BROKER_NAME_LEN, "%s_acl_sem", BROKER_NAME)
@@ -194,15 +197,12 @@ struct t_appl_server_info
   int pid;			/* the process id */
   int psize;
   time_t psize_time;
-  int session_id;		/* the session id (uw,v3) */
   int cas_log_reset;
   int cas_slow_log_reset;
   char service_flag;
   char reset_flag;
   char uts_status;		/* flag whether the uts is busy or idle */
-  char clt_major_version;
-  char clt_minor_version;
-  char clt_patch_version;
+  T_BROKER_VERSION clt_version;
   char cas_client_type;
   char service_ready_flag;
   char con_status;
@@ -218,8 +218,9 @@ struct t_appl_server_info
 #ifdef UNIXWARE711
   int clt_sock_fd;
 #endif
-#if defined(WINDOWS)
   unsigned char cas_clt_ip[4];
+  unsigned short cas_clt_port;
+#if defined(WINDOWS)
   int as_port;
   int pdh_pid;
   int pdh_workset;
@@ -228,7 +229,6 @@ struct t_appl_server_info
 #endif
   char clt_appl_name[APPL_NAME_LENGTH];
   char clt_req_path_info[APPL_NAME_LENGTH];
-  char clt_ip_addr[20];
   char mutex_flag[2];		/* for mutex */
   char mutex_turn;
 #if defined (WINDOWS)
@@ -290,6 +290,7 @@ struct t_shm_appl_server
   int magic;
   int appl_server_max_size;
   int session_timeout;
+  int query_timeout;
   int num_appl_server;
   int suspend_mode;
   int max_string_length;

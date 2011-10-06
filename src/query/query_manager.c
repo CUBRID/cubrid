@@ -249,6 +249,8 @@ static void qmgr_finalize_temp_file_list (QMGR_TEMP_FILE_LIST *
 static QMGR_TEMP_FILE *qmgr_get_temp_file_from_list (QMGR_TEMP_FILE_LIST *
 						     temp_file_list_p);
 static void qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p);
+static void qmgr_set_query_timeout_to_tdes (int tran_index,
+					    int query_timeout);
 
 static bool
 qmgr_is_page_in_temp_file_buffer (PAGE_PTR page_p,
@@ -1617,7 +1619,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
 		     QUERY_ID * query_id_p, int dbval_count,
 		     const DB_VALUE * dbvals_p, QUERY_FLAG * flag_p,
 		     CACHE_TIME * client_cache_time_p,
-		     CACHE_TIME * server_cache_time_p)
+		     CACHE_TIME * server_cache_time_p, int query_timeout)
 {
   XASL_CACHE_ENTRY *xasl_cache_entry_p;
   QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
@@ -1734,6 +1736,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
       *flag_p &= ~ASYNC_EXEC;
     }
   qmgr_unlock_mutex (&tran_entry_p->lock);
+
+  /* set a timeout if necessary */
+  qmgr_set_query_timeout_to_tdes (tran_index, query_timeout);
 #endif
 
   /* allocate a new query entry */
@@ -2159,6 +2164,7 @@ end:
  *   dbval_count(in)      : Number of positional values
  *   dbval_p(in)      : List of positional values
  *   flag(in)   :
+ *   query_timeout(in): set a timeout only if it is positive
  *
  * Note: The specified query is executed and the query result structure
  * which will be basically used for client side cursor operations
@@ -2171,7 +2177,7 @@ QFILE_LIST_ID *
 xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
 				 int xasl_size, QUERY_ID * query_id_p,
 				 int dbval_count, DB_VALUE * dbval_p,
-				 QUERY_FLAG * flag_p)
+				 QUERY_FLAG * flag_p, int query_timeout)
 {
   QMGR_QUERY_ENTRY *query_p;
   QFILE_LIST_ID *list_id_p;
@@ -2189,6 +2195,9 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_p,
   qmgr_lock_mutex (thread_p, &tran_entry_p->lock);
   tran_entry_p->trans_stat = QMGR_TRAN_RUNNING;
   qmgr_unlock_mutex (&tran_entry_p->lock);
+
+  /* set a timeout if necessary */
+  qmgr_set_query_timeout_to_tdes (tran_index, query_timeout);
 #endif
 
   saved_is_stats_on = mnt_server_is_stats_on (thread_p);
@@ -5159,4 +5168,51 @@ qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p)
       return -1;
     }
   return temp_file_p->membuf_npages;
+}
+
+/*
+ * qmgr_set_query_timeout_to_tdes () - calculate timeout and set to transaction
+ *                                     descriptor
+ *   return: void
+ *   tran_index(in):
+ *   query_timeout(in): in seconds
+ */
+void
+qmgr_set_query_timeout_to_tdes (int tran_index, int query_timeout)
+{
+  LOG_TDES *tdes_p;
+#if !defined(HAVE_ATOMIC_BUILTINS)
+  struct timeval tv;
+#endif /* !HAVE_ATOMIC_BUILTINS */
+
+  tdes_p = LOG_FIND_TDES (tran_index);
+  assert (tdes_p != NULL);
+  if (tdes_p != NULL)
+    {
+      if (query_timeout > 0)
+	{
+	  /* We use log_Clock instead of calling gettimeofday
+	   * if the system supports atomic built-ins.
+	   */
+#if defined(HAVE_ATOMIC_BUILTINS)
+          tdes_p->query_timeout = log_Clock + query_timeout;
+#else /* HAVE_ATOMIC_BUILTINS */
+	  gettimeofday (&tv, NULL);
+	  tdes_p->query_timeout = tv.tv_sec + query_timeout;
+#endif /* HAVE_ATOMIC_BUILTINS */
+	}
+      else if (query_timeout == 0)
+	{
+	  tdes_p->query_timeout = 0;
+	}
+      else
+	{
+	  /*
+	   * This means that the query is not the first of a bundle of queries.
+	   * We will apply a timeout to the bundle, not each query.
+	   * Actually CAS always sends -1 in this case.
+	   */
+	  assert (query_timeout == -1);
+	}
+    }
 }

@@ -140,6 +140,7 @@ struct t_broker_info
   int appl_server_shm_id;
   int appl_server_max_size;
   int session_timeout;
+  int query_timeout;
   int job_queue_size;
   int time_to_kill;
   int err_code;

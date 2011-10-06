@@ -240,6 +240,7 @@ extern int hm_put_con_to_pool (int con);
 extern void hm_set_ha_status (T_CON_HANDLE * con_handle, bool reset_rctime);
 extern int hm_get_ha_connected_host (T_CON_HANDLE * con_handle);
 extern time_t hm_get_ha_last_rc_time (T_CON_HANDLE * con_handle);
+extern T_BROKER_VERSION hm_get_broker_version (T_CON_HANDLE * con_handle);
 
 extern int hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id);
 extern int hm_req_get_from_pool (T_CON_HANDLE * con, char *sql);
