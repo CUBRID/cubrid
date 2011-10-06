@@ -827,7 +827,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1,
 	  ;
 	}
 
-      if (!is_reverse || !key_domain->is_desc)
+      if (!is_reverse && !key_domain->is_desc)
 	{			/* normal index */
 	  if (result_size == size1 || result_size == size2 - 1)
 	    {
