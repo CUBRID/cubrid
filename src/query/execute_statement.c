@@ -13078,7 +13078,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   error = NO_ERROR;
 
   /* click counter check */
-  if ((statement != NULL) && (statement->is_click_counter))
+  if (statement->is_click_counter)
     {
       CHECK_MODIFICATION_ERROR ();
     }

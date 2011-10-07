@@ -675,7 +675,7 @@ receiver_thr_f (void *arg)
 	  int ret_code = 0;
 #if !defined(WINDOWS)
 	  int pid, i;
-	  unsigned short client_port;
+	  unsigned short client_port = 0;
 #endif
 
 #if !defined(WINDOWS)
