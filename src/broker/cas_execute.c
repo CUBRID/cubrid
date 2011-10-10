@@ -2218,12 +2218,17 @@ ux_set_isolation_level (int new_isol_level, T_NET_BUF * net_buf)
 void
 ux_set_lock_timeout (int lock_timeout)
 {
-#if 1				/* yaw */
-  extern float tran_reset_wait_times (float waitsecs);
-  (void) tran_reset_wait_times ((float) lock_timeout / 1000);
-#else
-  db_set_lock_timeout (lock_timeout);
-#endif
+  extern float tran_reset_wait_times (float);
+  if (lock_timeout > 0)
+    {
+      /* set lock timeout in milliseconds */
+      (void) tran_reset_wait_times ((float) lock_timeout / 1000);
+    }
+  else
+    {
+      /* special value like -1 (LK_INFINITE_WAIT) */
+      (void) tran_reset_wait_times ((float) lock_timeout);
+    }
 }
 
 int
