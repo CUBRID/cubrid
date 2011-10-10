@@ -1117,7 +1117,7 @@ spage_compact (PAGE_PTR page_p)
   if (page_header_p->num_records > 0)
     {
       slot_array = (SPAGE_SLOT **)
-	calloc ((unsigned int) (page_header_p->num_records),
+	calloc ((unsigned int) (page_header_p->num_slots),
 		sizeof (SPAGE_SLOT *));
       if (slot_array == NULL)
 	{
@@ -1135,7 +1135,24 @@ spage_compact (PAGE_PTR page_p)
 	    }
 	}
 
-      assert (page_header_p->num_records == j);
+      if (page_header_p->num_records != j)
+	{
+	  VPID vpid;
+
+	  pgbuf_get_vpid (page_p, &vpid);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_SP_WRONG_NUM_SLOTS, 4,
+		  vpid.pageid, vpid.volid, j, page_header_p->num_records);
+
+	  assert (false);
+
+	  free_and_init (slot_array);
+
+	  /* will exit here */
+	  logpb_fatal_error_exit_immediately_wo_flush (NULL, ARG_FILE_LINE,
+						       "spage_compact");
+	  return ER_FAILED;
+	}
 
       qsort ((void *) slot_array, page_header_p->num_records,
 	     sizeof (SPAGE_SLOT *), spage_compare_slot_offset);

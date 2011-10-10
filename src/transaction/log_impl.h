@@ -771,7 +771,7 @@ struct log_tdes
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or
 					   delete during a transaction */
 
-  long query_timeout;           /* a query should be executed before query_timeout time. */
+  long query_timeout;		/* a query should be executed before query_timeout time. */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -1543,7 +1543,7 @@ extern LOG_LOGGING_STAT log_Stat;
 #if defined(HAVE_ATOMIC_BUILTINS)
 /* Current time in seconds */
 extern long log_Clock;
-#endif  /* HAVE_ATOMIC_BUILTINS */
+#endif /* HAVE_ATOMIC_BUILTINS */
 
 /* Name of the database and logs */
 extern char log_Path[];
@@ -1721,13 +1721,20 @@ extern int logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p,
 extern void logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit,
 			       const char *file_name, const int lineno,
 			       const char *fmt, ...);
+extern void logpb_fatal_error_exit_immediately_wo_flush (THREAD_ENTRY *
+							 thread_p,
+							 const char
+							 *file_name,
+							 const int lineno,
+							 const char *fmt,
+							 ...);
 extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p,
 					   VOLID volid);
 extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
 extern void logpb_flush_pages_background (THREAD_ENTRY * thread_p);
 extern int logpb_background_archiving (THREAD_ENTRY * thread_p);
-void xlogpb_dump_stat (FILE * outfp);
+extern void xlogpb_dump_stat (FILE * outfp);
 
 extern void logpb_dump (FILE * out_fp);
 

@@ -107,7 +107,7 @@ $set 5 MSGCAT_SET_ERROR
 40 내부 에러: %1$d expected pages, %2$d found pages for file VFID %3$d|%4$d(volume "%5$s").
 41 내부 에러: Page %1$d|%2$d(volume "%3$s") is not part of file VFID %4$d|%5$d(volume "%6$s").
 42 Cannot reorder anchored records on page %1$d of volume "%2$s".
-43 내부 에러: incorrect number (%1$d) of slots passed for reordering records on page %2$d of volume "%3$s". There are actually %4$d slots.
+43 내부 에러: The page %1$d of volume "%2$s" may be corrupted. %3$d records was found when %4$d was expected.
 44 "%2$s" 볼륨의 %1$d 페이지에 사용할 수 있는 스페이스가 없습니다.
 45 "%3$s" 볼륨의 %2$d 페이지의 %1$d 슬롯은 anchored record로 할당되었습니다.  이 위치에 새로운 레코드를 삽입할 수 없습니다. 
 46 내부 에러: slot %1$d on page %2$d of volume "%3$s" is not allocated.

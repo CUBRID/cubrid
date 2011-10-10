@@ -92,7 +92,7 @@
 #define ER_FILE_PAGE_ISNOT_PARTOF                    -41
 
 #define ER_SP_CANNOT_REORDER_ANCHORED                -42
-#define ER_SP_WRONG_NUM_SLOTS_IN_NEWORDER            -43
+#define ER_SP_WRONG_NUM_SLOTS                        -43
 #define ER_SP_NOSPACE_IN_PAGE                        -44
 #define ER_SP_BAD_INSERTION_SLOT                     -45
 #define ER_SP_UNKNOWN_SLOTID                         -46

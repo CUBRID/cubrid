@@ -499,7 +499,11 @@ static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p,
 static LOG_PAGE *logpb_copy_page (THREAD_ENTRY * thread_p,
 				  LOG_PAGEID pageid, LOG_PAGE * log_pgptr);
 
-
+static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p,
+					bool log_exit, bool need_flush,
+					const char *file_name,
+					const int lineno, const char *fmt,
+					va_list ap);
 
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -12425,7 +12429,7 @@ logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p,
  *
  * return: nothing
  *
- *   logexit(in):
+ *   log_exit(in):
  *   file_name(in):
  *   lineno(in):
  *   fmt(in):
@@ -12436,9 +12440,36 @@ logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p,
  *              database is exited.
  */
 void
-logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit,
+logpb_fatal_error (THREAD_ENTRY * thread_p, bool log_exit,
 		   const char *file_name, const int lineno,
 		   const char *fmt, ...)
+{
+  va_list ap;
+
+  va_start (ap, fmt);
+  logpb_fatal_error_internal (thread_p, log_exit, true, file_name, lineno,
+			      fmt, ap);
+  va_end (ap);
+}
+
+void
+logpb_fatal_error_exit_immediately_wo_flush (THREAD_ENTRY * thread_p,
+					     const char *file_name,
+					     const int lineno,
+					     const char *fmt, ...)
+{
+  va_list ap;
+
+  va_start (ap, fmt);
+  logpb_fatal_error_internal (thread_p, true, false, file_name, lineno,
+			      fmt, ap);
+  va_end (ap);
+}
+
+static void
+logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit,
+			    bool need_flush, const char *file_name,
+			    const int lineno, const char *fmt, va_list ap)
 {
   const char *msglog;
 
@@ -12451,17 +12482,18 @@ logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit,
    * committed.
    */
 
-  if (logexit != false && log_Gl.append.log_pgptr != NULL)
+  if (log_exit == true && need_flush == true
+      && log_Gl.append.log_pgptr != NULL)
     {
       /* Flush up to the smaller of the previous LSA record or the
        * previous flushed append page.
        */
       LOG_LSA tmp_lsa1, tmp_lsa2;
-      static int infatal = false;
+      static int in_fatal = false;
 
-      if (infatal == false)
+      if (in_fatal == false)
 	{
-	  infatal = true;
+	  in_fatal = true;
 
 	  if (log_Gl.append.prev_lsa.pageid < log_Gl.append.nxio_lsa.pageid)
 	    {
@@ -12482,52 +12514,46 @@ logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit,
 	   * record.
 	   */
 	  pgbuf_flush_checkpoint (thread_p, &tmp_lsa1, &tmp_lsa2);
-	  infatal = false;
+	  in_fatal = false;
 	}
     }
 
-  (void) fileio_synchronize_all (thread_p, false);
+  fileio_synchronize_all (thread_p, false);
 
-  (void) fflush (stderr);
-  (void) fflush (stdout);
+  fflush (stderr);
+  fflush (stdout);
 
 #if defined(CUBRID_DEBUG)
-  {
-    va_list ap;			/* Point to each unnamed arg in turn */
-
-    (void) fprintf (stderr,
-		    "\n--->>>\n*** LOG FATAL ERROR *** file %s - line %d\n",
-		    file_name, lineno);
-    /* Print out remainder of message */
-    va_start (ap, fmt);
-    (void) vfprintf (stderr, fmt, ap);
-    (void) fprintf (stderr, "\n");
-    va_end (ap);
-  }
+  fprintf (stderr,
+	   "\n--->>>\n*** LOG FATAL ERROR *** file %s - line %d\n",
+	   file_name, lineno);
+  /* Print out remainder of message */
+  vfprintf (stderr, fmt, ap);
+  fprintf (stderr, "\n");
 #else /* CUBRID_DEBUG */
-  (void) fprintf (stderr, "\n--->>>\n*** FATAL ERROR *** \n");
+  fprintf (stderr, "\n--->>>\n*** FATAL ERROR *** \n");
 #endif /* CUBRID_DEBUG */
 
-  (void) fprintf (stderr, "%s\n", er_msg ());
+  fprintf (stderr, "%s\n", er_msg ());
 
   /*
    * If error message log is different from terminal or /dev/null..indicate
    * that additional information can be found in the error log file
    */
-  if ((msglog = er_msglog_filename ()) != NULL
-      && strcmp (msglog, "/dev/null") != 0)
+  msglog = er_msglog_filename ();
+  if (msglog != NULL && strcmp (msglog, "/dev/null") != 0)
     {
-      (void) fprintf (stderr,
-		      "Please consult error_log file = %s for additional"
-		      " information\n", msglog);
+      fprintf (stderr,
+	       "Please consult error_log file = %s for additional"
+	       " information\n", msglog);
     }
 
-  (void) fflush (stderr);
-  (void) fflush (stdout);
+  fflush (stderr);
+  fflush (stdout);
 
-  if (logexit != false)
+  if (log_exit == true)
     {
-      (void) fprintf (stderr, "... ABORT/EXIT IMMEDIATELY ...<<<---\n");
+      fprintf (stderr, "... ABORT/EXIT IMMEDIATELY ...<<<---\n");
 
 #if defined(SERVER_MODE)
       boot_donot_shutdown_server_at_exit ();

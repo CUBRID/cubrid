@@ -107,7 +107,7 @@ $set 5 MSGCAT_SET_ERROR
 40 Internal error: %1$d expected pages, %2$d found pages for file VFID %3$d|%4$d(volume "%5$s").
 41 Internal error: Page %1$d|%2$d(volume "%3$s") is not part of file VFID %4$d|%5$d(volume "%6$s").
 42 Cannot reorder anchored records on page %1$d of volume "%2$s".
-43 Internal error: incorrect number (%1$d) of slots passed for reordering records on page %2$d of volume "%3$s". There are actually %4$d slots.
+43 Internal error: The page %1$d of volume "%2$s" may be corrupted. %3$d records was found when %4$d was expected.
 44 No space available in slotted page %1$d of volume "%2$s".
 45 Slot %1$d on page %2$d of volume "%3$s" is allocated to an anchored record. A new record cannot be inserted here.
 46 Internal error: slot %1$d on page %2$d of volume "%3$s" is not allocated.
