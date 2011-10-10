@@ -42,7 +42,7 @@
 
 
 /* Line 317 of lalr1.cc.  */
-#line 46 "../../../../../external/bison-2.3/examples/calc++/calc++-parser.cc"
+#line 46 "./calc++-parser.cc"
 
 #ifndef YY_
 # if YYENABLE_NLS
@@ -172,17 +172,17 @@ namespace yy
         case 4: /* "\"identifier\"" */
 #line 7531 "../../doc/bison.texinfo"
 	{ debug_stream () << *(yyvaluep->sval); };
-#line 176 "../../../../../external/bison-2.3/examples/calc++/calc++-parser.cc"
+#line 176 "./calc++-parser.cc"
 	break;
       case 5: /* "\"number\"" */
 #line 7534 "../../doc/bison.texinfo"
 	{ debug_stream () << (yyvaluep->ival); };
-#line 181 "../../../../../external/bison-2.3/examples/calc++/calc++-parser.cc"
+#line 181 "./calc++-parser.cc"
 	break;
       case 6: /* "\"expression\"" */
 #line 7534 "../../doc/bison.texinfo"
 	{ debug_stream () << (yyvaluep->ival); };
-#line 186 "../../../../../external/bison-2.3/examples/calc++/calc++-parser.cc"
+#line 186 "./calc++-parser.cc"
 	break;
        default:
 	  break;
@@ -217,7 +217,7 @@ namespace yy
         case 4: /* "\"identifier\"" */
 #line 7532 "../../doc/bison.texinfo"
 	{ delete (yyvaluep->sval); };
-#line 221 "../../../../../external/bison-2.3/examples/calc++/calc++-parser.cc"
+#line 221 "./calc++-parser.cc"
 	break;
 
 	default:
@@ -299,7 +299,7 @@ namespace yy
   yylloc.begin.filename = yylloc.end.filename = &driver.file;
 }
   /* Line 555 of yacc.c.  */
-#line 303 "../../../../../external/bison-2.3/examples/calc++/calc++-parser.cc"
+#line 303 "./calc++-parser.cc"
     /* Initialize the stacks.  The initial state will be pushed in
        yynewstate, since the latter expects the semantical and the
        location values to have been already stored, initialize these
@@ -466,7 +466,7 @@ namespace yy
 
 
     /* Line 675 of lalr1.cc.  */
-#line 470 "../../../../../external/bison-2.3/examples/calc++/calc++-parser.cc"
+#line 470 "./calc++-parser.cc"
 	default: break;
       }
     YY_SYMBOL_PRINT ("-> $$ =", yyr1_[yyn], &yyval, &yyloc);

@@ -64,8 +64,8 @@ typedef struct lk_acquisition_history LK_ACQUISITION_HISTORY;
 struct lk_acquisition_history
 {
   LOCK req_mode;
-  LK_ACQUISITION_HISTORY *next;
-  LK_ACQUISITION_HISTORY *prev;
+  struct lk_acquisition_history *next;
+  struct lk_acquisition_history *prev;
 };
 
 /*****************************/
@@ -81,10 +81,9 @@ struct lk_entry
   LOCK granted_mode;		/* granted lock mode                */
   LOCK blocked_mode;		/* blocked lock mode                */
   int count;			/* number of lock requests          */
-  LK_ENTRY *next;		/* next entry                       */
-  LK_ENTRY *tran_next;		/* list of locks that trans. holds  */
-  LK_ENTRY *tran_prev;		/* list of locks that trans. holds  */
-  LK_ENTRY *class_entry;	/* ptr. to class lk_entry           */
+  struct lk_entry *next;	/* next entry                       */
+  struct lk_entry *tran_next;	/* list of locks that trans. holds  */
+  struct lk_entry *class_entry;	/* ptr. to class lk_entry           */
   LK_ACQUISITION_HISTORY *history;	/* lock acquisition history         */
   LK_ACQUISITION_HISTORY *recent;	/* last node of history list        */
   int ngranules;		/* number of finer granules         */

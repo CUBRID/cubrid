@@ -4214,6 +4214,7 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr,
 	{
 	  /* this is an error */
 	  return NULL;
+
 	}
 
       if (pt_is_comp_op (op))

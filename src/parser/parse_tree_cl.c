@@ -2603,34 +2603,6 @@ parser_append_node (PT_NODE * node, PT_NODE * list)
   return list;
 }
 
-/*
- * parser_append_node_with_tail() -
- *   return:
- *   node(in/out):
- *   list(in):
- */
-PT_NODE *
-parser_append_node_with_tail (PT_NODE * node, PT_NODE * tail)
-{
-  if (tail)
-    {
-      assert (tail->next == NULL);
-
-      while (tail->next)
-	{
-	  tail = tail->next;
-	}
-
-      tail->next = node;
-    }
-  else
-    {
-      tail = node;
-    }
-
-  /* Please note that this function returns the TAIL of the list. */
-  return node;
-}
 
 /*
  * parser_append_node_or() -
