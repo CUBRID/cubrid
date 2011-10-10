@@ -81,6 +81,7 @@ extern "C"
   extern PT_NODE *parser_copy_tree_diff (PARSER_CONTEXT * parser,
 					 PT_NODE * tree1, PT_NODE * tree2);
   extern PT_NODE *parser_append_node (PT_NODE * node, PT_NODE * list);
+  extern PT_NODE *parser_append_node_with_tail (PT_NODE * node, PT_NODE * tail);
   extern PT_NODE *parser_append_node_or (PT_NODE * node, PT_NODE * list);
   extern PT_NODE *pt_point (PARSER_CONTEXT * parser, const PT_NODE * tree);
   extern PT_NODE *pt_point_l (PARSER_CONTEXT * parser, const PT_NODE * tree);

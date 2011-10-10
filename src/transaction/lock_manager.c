@@ -636,6 +636,7 @@ lock_initialize_entry (LK_ENTRY * entry_ptr)
   entry_ptr->blocked_mode = NULL_LOCK;
   entry_ptr->next = NULL;
   entry_ptr->tran_next = NULL;
+  entry_ptr->tran_prev = NULL;
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->history = NULL;
@@ -655,6 +656,7 @@ lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index,
   entry_ptr->count = 1;
   entry_ptr->next = NULL;
   entry_ptr->tran_next = NULL;
+  entry_ptr->tran_prev = NULL;
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->history = NULL;
@@ -676,6 +678,7 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr,
   entry_ptr->count = 1;
   entry_ptr->next = NULL;
   entry_ptr->tran_next = NULL;
+  entry_ptr->tran_prev = NULL;
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->history = NULL;
@@ -695,6 +698,7 @@ lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index,
   entry_ptr->count = 0;
   entry_ptr->next = NULL;
   entry_ptr->tran_next = NULL;
+  entry_ptr->tran_prev = NULL;
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->history = NULL;
@@ -1780,6 +1784,7 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr)
       entry_ptr->tran_next = tran_lock->root_class_hold;
       tran_lock->root_class_hold = entry_ptr;
       break;
+
     case LOCK_RESOURCE_CLASS:
 #if defined(CUBRID_DEBUG)
       if (tran_lock->class_hold_list != (LK_ENTRY *) NULL)
@@ -1801,10 +1806,15 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr)
 	    }
 	}
 #endif /* CUBRID_DEBUG */
+      if (tran_lock->class_hold_list != NULL)
+	{
+	  tran_lock->class_hold_list->tran_prev = entry_ptr;
+	}
       entry_ptr->tran_next = tran_lock->class_hold_list;
       tran_lock->class_hold_list = entry_ptr;
-      tran_lock->class_hold_count += 1;
+      tran_lock->class_hold_count++;
       break;
+
     case LOCK_RESOURCE_INSTANCE:
 #if defined(CUBRID_DEBUG)
       if (tran_lock->inst_hold_list != (LK_ENTRY *) NULL)
@@ -1826,13 +1836,19 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr)
 	    }
 	}
 #endif /* CUBRID_DEBUG */
+      if (tran_lock->inst_hold_list != NULL)
+	{
+	  tran_lock->inst_hold_list->tran_prev = entry_ptr;
+	}
       entry_ptr->tran_next = tran_lock->inst_hold_list;
       tran_lock->inst_hold_list = entry_ptr;
-      tran_lock->inst_hold_count += 1;
+      tran_lock->inst_hold_count++;
       break;
+
     default:
       break;
     }
+
   pthread_mutex_unlock (&tran_lock->hold_mutex);
 }
 #endif /* SERVER_MODE */
@@ -1853,7 +1869,9 @@ static int
 lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr)
 {
   LK_TRAN_LOCK *tran_lock;
+#if defined(CUBRID_DEBUG)
   LK_ENTRY *prev, *curr;
+#endif
   int rv;
   int error_code = NO_ERROR;
 
@@ -1883,6 +1901,7 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr)
       break;
 
     case LOCK_RESOURCE_CLASS:
+#if defined(CUBRID_DEBUG)
       /* find the given class lock entry in the class lock hold list */
       prev = (LK_ENTRY *) NULL;
       curr = tran_lock->class_hold_list;
@@ -1916,8 +1935,32 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr)
 	  tran_lock->class_hold_count -= 1;
 	}
       break;
+#else
+      if (tran_lock->class_hold_list == entry_ptr)
+	{
+	  tran_lock->class_hold_list = entry_ptr->tran_next;
+	  if (entry_ptr->tran_next)
+	    {
+	      entry_ptr->tran_next->tran_prev = NULL;
+	    }
+	}
+      else
+	{
+	  if (entry_ptr->tran_prev)
+	    {
+	      entry_ptr->tran_prev->tran_next = entry_ptr->tran_next;
+	    }
+	  if (entry_ptr->tran_next)
+	    {
+	      entry_ptr->tran_next->tran_prev = entry_ptr->tran_prev;
+	    }
+	}
+      tran_lock->class_hold_count--;
+      break;
+#endif
 
     case LOCK_RESOURCE_INSTANCE:
+#if defined(CUBRID_DEBUG)
       /* find the given instance lock entry in the instance lock hold list */
       prev = (LK_ENTRY *) NULL;
       curr = tran_lock->inst_hold_list;
@@ -1951,6 +1994,29 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr)
 	  tran_lock->inst_hold_count -= 1;
 	}
       break;
+#else
+      if (tran_lock->inst_hold_list == entry_ptr)
+	{
+	  tran_lock->inst_hold_list = entry_ptr->tran_next;
+	  if (entry_ptr->tran_next)
+	    {
+	      entry_ptr->tran_next->tran_prev = NULL;
+	    }
+	}
+      else
+	{
+	  if (entry_ptr->tran_prev)
+	    {
+	      entry_ptr->tran_prev->tran_next = entry_ptr->tran_next;
+	    }
+	  if (entry_ptr->tran_next)
+	    {
+	      entry_ptr->tran_next->tran_prev = entry_ptr->tran_prev;
+	    }
+	}
+      tran_lock->inst_hold_count--;
+      break;
+#endif
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_INVALID_OBJECT_TYPE, 4,

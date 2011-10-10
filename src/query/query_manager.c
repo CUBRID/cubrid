@@ -1400,17 +1400,25 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, const char *query_string_p,
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       if (class_oid_list_p)
-	db_private_free_and_init (thread_p, class_oid_list_p);
+	{
+	  db_private_free_and_init (thread_p, class_oid_list_p);
+	}
       if (repr_id_list_p)
-	db_private_free_and_init (thread_p, repr_id_list_p);
+	{
+	  db_private_free_and_init (thread_p, repr_id_list_p);
+	}
 
       return NULL;
     }
 
   if (class_oid_list_p)
-    db_private_free_and_init (thread_p, class_oid_list_p);
+    {
+      db_private_free_and_init (thread_p, class_oid_list_p);
+    }
   if (repr_id_list_p)
-    db_private_free_and_init (thread_p, repr_id_list_p);
+    {
+      db_private_free_and_init (thread_p, repr_id_list_p);
+    }
 
   /* check whether qexec_update_xasl_cache_ent() changed the XASL_ID */
   if (!XASL_ID_EQ (&temp_xasl_id, xasl_id_p))
@@ -1432,9 +1440,13 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, const char *query_string_p,
 exit_on_end:
 
   if (class_oid_list_p)
-    db_private_free_and_init (thread_p, class_oid_list_p);
+    {
+      db_private_free_and_init (thread_p, class_oid_list_p);
+    }
   if (repr_id_list_p)
-    db_private_free_and_init (thread_p, repr_id_list_p);
+    {
+      db_private_free_and_init (thread_p, repr_id_list_p);
+    }
 
   return xasl_id_p;
 

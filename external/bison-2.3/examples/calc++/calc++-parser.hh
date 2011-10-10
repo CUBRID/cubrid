@@ -55,7 +55,7 @@ class calcxx_driver;
 
 
 /* Line 303 of lalr1.cc.  */
-#line 59 "./calc++-parser.hh"
+#line 59 "../../../../../external/bison-2.3/examples/calc++/calc++-parser.hh"
 
 #include "location.hh"
 
@@ -112,7 +112,7 @@ namespace yy
   std::string *sval;
 }
 /* Line 303 of lalr1.cc.  */
-#line 116 "./calc++-parser.hh"
+#line 116 "../../../../../external/bison-2.3/examples/calc++/calc++-parser.hh"
 	;
 #else
     typedef YYSTYPE semantic_type;

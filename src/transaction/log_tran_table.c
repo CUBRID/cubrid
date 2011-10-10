@@ -1547,9 +1547,13 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (tdes->interrupt == true)
     {
       tdes->interrupt = false;
+#if defined (HAVE_ATOMIC_BUILTINS)
+      ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, -1);
+#else
       TR_TABLE_CS_ENTER (thread_p);
       log_Gl.trantable.num_interrupts--;
       TR_TABLE_CS_EXIT ();
+#endif
     }
   tdes->modified_class_list = NULL;
 
@@ -1628,9 +1632,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 int
 logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  TR_TABLE_CS_ENTER (thread_p);
-
   logtb_clear_tdes (thread_p, tdes);
+
+  TR_TABLE_CS_ENTER (thread_p);
 
   tdes->trid = log_Gl.hdr.next_trid++;
   /* check overflow */
@@ -2331,6 +2335,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
 				int set)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
+  int increment;
 
   if (log_Gl.trantable.area != NULL)
     {
@@ -2339,19 +2344,16 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index,
 	{
 	  if (tdes->interrupt != set)
 	    {
-	      TR_TABLE_CS_ENTER (thread_p);
-
 	      tdes->interrupt = set;
-	      if (set == true)
-		{
-		  log_Gl.trantable.num_interrupts++;
-		}
-	      else
-		{
-		  log_Gl.trantable.num_interrupts--;
-		}
+	      increment = (set == true) ? 1 : -1;
 
+#if defined (HAVE_ATOMIC_BUILTINS)
+	      ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, increment);
+#else
+	      TR_TABLE_CS_ENTER (thread_p);
+	      log_Gl.trantable.num_interrupts += increment;
 	      TR_TABLE_CS_EXIT ();
+#endif
 	    }
 
 	  if (set == true)
@@ -2408,8 +2410,13 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
     {
       tdes->interrupt = false;
 
+#if defined (HAVE_ATOMIC_BUILTINS)
+      ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, -1);
+#else
       TR_TABLE_CS_ENTER (thread_p);
       log_Gl.trantable.num_interrupts--;
+      TR_TABLE_CS_EXIT ();
+#endif
       if (log_Gl.trantable.num_interrupts > 0)
 	{
 	  *continue_checking = true;
@@ -2418,7 +2425,6 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 	{
 	  *continue_checking = false;
 	}
-      TR_TABLE_CS_EXIT ();
     }
   else if (interrupt == false && tdes->query_timeout > 0)
     {
@@ -2561,18 +2567,14 @@ logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p,
 	{
 	  if (tdes->suppress_replication != set)
 	    {
-	      TR_TABLE_CS_ENTER (thread_p);
-
 	      tdes->suppress_replication = set;
-
-	      TR_TABLE_CS_EXIT ();
 	    }
 	  return true;
 	}
     }
+
   return false;
 }
-
 
 /*
  * logtb_is_active - is transaction active ?
