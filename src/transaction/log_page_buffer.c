@@ -8640,9 +8640,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int first_arv_num_not_needed;
   int last_arv_num_not_needed;
   LOG_PRIOR_NODE *node;
-#if !defined(NDEBUG)
-  CSS_CONN_ENTRY *conn = NULL;
-#endif
 
   LOG_CS_ENTER (thread_p);
 
@@ -8794,10 +8791,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  continue;
 	}
       act_tdes = LOG_FIND_TDES (i);
-#if !defined(NDEBUG) && defined(SERVER_MODE)
-      conn = css_find_conn_by_tran_index (i);
-      assert (act_tdes->trid == NULL_TRANID || conn->status == CONN_OPEN);
-#endif
+
       if (act_tdes != NULL && act_tdes->trid != NULL_TRANID
 	  && !LSA_ISNULL (&act_tdes->tail_lsa))
 	{
