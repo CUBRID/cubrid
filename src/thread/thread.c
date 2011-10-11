@@ -181,7 +181,7 @@ thread_log_clock_thread (void *);
 static int css_initialize_sync_object (void);
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason,
 				   bool had_mutex);
-static int thread_get_LFT_min_wait_time (void);
+static int thread_get_LFT_min_wait_time_in_msec (void);
 
 /*
  * Thread Specific Data management
@@ -2914,14 +2914,14 @@ thread_wakeup_flush_control_thread (void)
 }
 
 /*
- * thread_get_LFT_min_wait_time() - get LFT's minimum wait time
+ * thread_get_LFT_min_wait_time_in_msec() - get LFT's minimum wait time
  *  return:
  *
  * Note: LFT can wakeup in 3 cases: group commit, bg flush, log hdr flush
  *       If they are not on, LFT has to be waked up by signal only.
  */
 static int
-thread_get_LFT_min_wait_time (void)
+thread_get_LFT_min_wait_time_in_msec (void)
 {
   int flush_interval;
   int gc_time = PRM_LOG_GROUP_COMMIT_INTERVAL_MSECS;
@@ -2949,7 +2949,7 @@ thread_get_LFT_min_wait_time (void)
     }
   else
     {
-      return 1;			/* default wake-up time: 1msec */
+      return 1000;		/* default wake-up time: 1000 msec */
     }
 }
 
@@ -2986,9 +2986,9 @@ thread_log_flush_thread (void *arg_p)
 #if 0				/* disabled temporarily */
   double repl_elapsed = 0;
 #endif
-  double work_elapsed = 0;
-  int diff_wait_time;
-  int min_wait_time;
+  int elapsed_msec;
+  int remained_msec;
+  int wakeup_interval;
   int ret;
   int flushed;
   int temp_wait_usec;
@@ -3021,18 +3021,18 @@ thread_log_flush_thread (void *arg_p)
       er_clear ();
 
       gettimeofday (&work_time, NULL);
-      work_elapsed = LOG_GET_ELAPSED_TIME (work_time, start_time);
+      elapsed_msec = LOG_GET_ELAPSED_TIME (work_time, start_time) * 1000;
 
-      min_wait_time = thread_get_LFT_min_wait_time ();
-      diff_wait_time = (int) (min_wait_time - work_elapsed * 1000);
-      if (diff_wait_time < 0)
+      wakeup_interval = thread_get_LFT_min_wait_time_in_msec ();
+      remained_msec = (int) (wakeup_interval - elapsed_msec);
+      if (remained_msec < 0)
 	{
-	  diff_wait_time = 0;
+	  remained_msec = 0;
 	}
 
-      LFT_wait_time.tv_sec = work_time.tv_sec + (diff_wait_time / 1000);
+      LFT_wait_time.tv_sec = work_time.tv_sec + (remained_msec / 1000);
 
-      temp_wait_usec = work_time.tv_usec + ((diff_wait_time % 1000) * 1000);
+      temp_wait_usec = work_time.tv_usec + ((remained_msec % 1000) * 1000);
 
       if (temp_wait_usec >= 1000000)
 	{
@@ -3069,10 +3069,10 @@ thread_log_flush_thread (void *arg_p)
 #if defined(CUBRID_DEBUG)
       er_log_debug (ARG_FILE_LINE,
 		    "css_log_flush_thread: "
-		    "[%d]curr_elapsed(%f) gc_elapsed(%f) repl_elapsed(%f) work_elapsed(%f) diff_wait_time(%d)\n",
-		    (int) THREAD_ID (),
-		    curr_elapsed,
-		    gc_elapsed, repl_elapsed, work_elapsed, diff_wait_time);
+		    "[%d]curr_elapsed(%f) gc_elapsed(%f) repl_elapsed(%f) "
+		    "elapsed_msec(%d) remained_msec(%d)\n",
+		    (int) THREAD_ID (), curr_elapsed, gc_elapsed,
+		    repl_elapsed, elapsed_msec, remained_msec);
 #endif /* CUBRID_DEBUG */
 
       rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
