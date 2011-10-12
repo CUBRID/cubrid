@@ -4465,6 +4465,8 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
       log_lsa.pageid = lsa_ptr->pageid;
       if (logpb_fetch_page (thread_p, log_lsa.pageid, log_pgptr) == NULL)
 	{
+	  log_zip_free (undo_unzip_ptr);
+
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
 			     "log_recovery_undo");
 	  return;

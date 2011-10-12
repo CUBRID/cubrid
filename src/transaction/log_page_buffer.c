@@ -9984,10 +9984,10 @@ loop:
 	       ctime (&backup_end_time));
       switch (backup_level)
 	{
-	case 0:
+	case FILEIO_BACKUP_FULL_LEVEL:
 	  str_tmp = "Full";
 	  break;
-	case 1:
+	case FILEIO_BACKUP_BIG_INCREMENT_LEVEL:
 	  str_tmp = "Incremental Level 1";
 	  break;
 	default:
