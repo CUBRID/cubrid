@@ -935,4 +935,14 @@ public class CUBRIDStatement implements Statement {
 			throw new CUBRIDException(cpErr);
 		}
 	}
+
+	/* JDK 1.7 */
+	public void closeOnCompletion() throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
+	}
+
+	/* JDK 1.7 */
+	public boolean isCloseOnCompletion() throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
+	}
 }

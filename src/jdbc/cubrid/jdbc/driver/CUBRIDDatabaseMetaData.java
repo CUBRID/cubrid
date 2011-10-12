@@ -2256,4 +2256,16 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 		throw new java.lang.UnsupportedOperationException();
 	}
 
+	/* JDK 1.7 */
+	public ResultSet getPseudoColumns(String catalog, String schemaPattern,
+			String tableNamePattern, String columnNamePattern)
+			throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
+	}
+
+	/* JDK 1.7 */
+	public boolean generatedKeyAlwaysReturned() throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
+	}
+
 }

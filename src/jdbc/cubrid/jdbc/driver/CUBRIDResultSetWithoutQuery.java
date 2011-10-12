@@ -1321,4 +1321,15 @@ class CUBRIDResultSetWithoutQuery implements ResultSet {
 		throw new java.lang.UnsupportedOperationException();
 	}
 
+	/* JDK 1.7 */
+	public <T> T getObject(int columnIndex, Class<T> type) throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
+	}
+
+	/* JDK 1.7 */
+	public <T> T getObject(String columnLabel, Class<T> type)
+			throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
+	}
+
 }

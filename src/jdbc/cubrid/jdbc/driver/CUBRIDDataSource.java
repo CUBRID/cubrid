@@ -32,6 +32,7 @@ package cubrid.jdbc.driver;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.logging.Logger;
 
 import javax.naming.NamingException;
 import javax.naming.Reference;
@@ -117,6 +118,11 @@ public class CUBRIDDataSource extends CUBRIDDataSourceBase implements
 
 	/* JDK 1.6 */
 	public <T> T unwrap(Class<T> iface) throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
+	}
+
+	/* JDK 1.7 */
+	public Logger getParentLogger() throws SQLException {
 		throw new java.lang.UnsupportedOperationException();
 	}
 }

@@ -49,6 +49,7 @@ import java.sql.Struct;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.Executor;
 
 import cubrid.jdbc.jci.CUBRIDIsolationLevel;
 import cubrid.jdbc.jci.UConnection;
@@ -902,6 +903,32 @@ public class CUBRIDConnection implements Connection {
 
 	/* JDK 1.6 */
 	public <T> T unwrap(Class<T> arg0) throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
+	}
+
+	/* JDK 1.7 */
+	public void setSchema(String schema) throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
+	}
+
+	/* JDK 1.7 */
+	public String getSchema() throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
+	}
+
+	/* JDK 1.7 */
+	public void abort(Executor executor) throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
+	}
+
+	/* JDK 1.7 */
+	public void setNetworkTimeout(Executor executor, int milliseconds)
+			throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
+	}
+
+	/* JDK 1.7 */
+	public int getNetworkTimeout() throws SQLException {
 		throw new java.lang.UnsupportedOperationException();
 	}
 

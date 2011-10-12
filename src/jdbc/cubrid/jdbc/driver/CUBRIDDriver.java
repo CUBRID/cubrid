@@ -45,6 +45,7 @@ import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.Properties;
 import java.util.StringTokenizer;
+import java.util.logging.Logger;
 
 import cubrid.jdbc.jci.UConnection;
 import cubrid.jdbc.jci.UJCIManager;
@@ -422,5 +423,10 @@ public class CUBRIDDriver implements Driver {
 		} while (paramStr != null);
 
 		return paramInfo;
+	}
+
+	/* JDK 1.7 */
+	public Logger getParentLogger() throws SQLException {
+		throw new java.lang.UnsupportedOperationException();
 	}
 }

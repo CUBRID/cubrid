@@ -807,4 +807,26 @@ public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements
 		throw new java.lang.UnsupportedOperationException();
 	}
 
+	/* JDK 1.7 */
+	public void closeOnCompletion() throws SQLException {
+		throw new UnsupportedOperationException();
+	}
+
+	/* JDK 1.7 */
+	public boolean isCloseOnCompletion() throws SQLException {
+		throw new UnsupportedOperationException();
+	}
+
+	/* JDK 1.7 */
+	public <T> T getObject(int parameterIndex, Class<T> type)
+			throws SQLException {
+		throw new UnsupportedOperationException();
+	}
+
+	/* JDK 1.7 */
+	public <T> T getObject(String parameterName, Class<T> type)
+			throws SQLException {
+		throw new UnsupportedOperationException();
+	}
+
 }
