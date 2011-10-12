@@ -84,7 +84,7 @@ public class CUBRIDXADataSource extends CUBRIDPoolDataSourceBase implements
 	}
 
 	/* JDK 1.7 */
-	public Logger getParentLogger() throws SQLException {
+	public Logger getParentLogger() {
 		throw new java.lang.UnsupportedOperationException();
 	}
 }
