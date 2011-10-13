@@ -2319,14 +2319,11 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 			    const LOG_CRUMB * undo_crumbs,
 			    const LOG_CRUMB * redo_crumbs)
 {
-  struct log_undoredo *undoredo;	/* Undo_redo log record               */
-  VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
   int error_code = NO_ERROR;
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
-
 
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
@@ -2446,8 +2443,6 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 			LOG_DATA_ADDR * addr, int num_crumbs,
 			const LOG_CRUMB * crumbs)
 {
-  struct log_undo *undo;	/* Undo log record                    */
-  VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   int tran_index;
   int i = 0;
@@ -2974,8 +2969,6 @@ void
 log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
 		     LOG_DATA_ADDR * addr, int length, const void *data)
 {
-  struct log_redo *redo;	/* A redo log record                  */
-  VPID *vpid;			/* Volume_page identifier for the data */
   LOG_TDES *tdes;		/* Transaction descriptor             */
   LOG_RCV rcv;			/* Recovery structure for execution   */
   bool skipredo;
@@ -3629,7 +3622,6 @@ xlog_append_client_undo (THREAD_ENTRY * thread_p,
 			 LOG_RCVCLIENT_INDEX rcvclient_index, int length,
 			 void *data)
 {
-  struct log_client *client_undo;	/* An undo log client record */
   LOG_PRIOR_NODE *node;
   LOG_TDES *tdes;		/* Transaction descriptor    */
   int tran_index;

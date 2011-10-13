@@ -28,6 +28,7 @@
 #include "cm_defines.h"
 #include "utility.h"
 #include "environment_variable.h"
+#include "cm_utils.h"
 
 
 #include <string.h>

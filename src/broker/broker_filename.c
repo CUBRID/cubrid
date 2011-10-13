@@ -284,7 +284,7 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf)
 const char *
 getenv_cubrid_broker ()
 {
-  char *p;
+  const char *p;
 
   p = envvar_root ();
 

@@ -598,14 +598,14 @@ extern int sysprm_reload_and_init (const char *db_name,
 				   const char *conf_file);
 extern void sysprm_final (void);
 extern void sysprm_dump_parameters (FILE * fp);
-extern void sysprm_set_er_log_file (char *base_db_name);
+extern void sysprm_set_er_log_file (const char *base_db_name);
 extern void sysprm_dump_server_parameters (FILE * fp);
 extern int sysprm_change_parameters (const char *data);
 extern int sysprm_obtain_parameters (char *data, int len);
 extern int sysprm_change_server_parameters (const char *data);
 extern int sysprm_obtain_server_parameters (char *data, int len);
 extern void sysprm_tune_client_parameters (void);
-extern bool sysprm_prm_change_should_clear_cache (char *data);
+extern bool sysprm_prm_change_should_clear_cache (const char *data);
 #if !defined (CS_MODE)
 extern int xsysprm_change_server_parameters (const char *data);
 extern int xsysprm_obtain_server_parameters (char *data, int len);

@@ -60,10 +60,11 @@ extern int db_restart (const char *program,
 extern int db_restart_ex (const char *program, const char *db_name,
 			  const char *db_user, const char *db_password,
 			  const char *hosts, int client_type);
-extern SESSION_ID db_get_session_id ();
+extern SESSION_ID db_get_session_id (void);
 extern void db_set_session_id (const SESSION_ID session_id);
 extern int db_end_session (void);
-extern int db_get_row_count_cache ();
+extern int db_check_session (void);
+extern int db_get_row_count_cache (void);
 extern void db_update_row_count_cache (const int row_count);
 extern int db_get_row_count (int *row_count);
 extern int db_get_last_insert_id (DB_VALUE * value);
@@ -968,9 +969,10 @@ extern int db_decode_object (const char *string, DB_OBJECT ** object);
 
 extern int db_set_system_parameters (const char *data);
 extern int db_get_system_parameters (char *data, int len);
+
 extern char *db_get_host_connected (void);
 extern int db_get_ha_server_state (char *buffer, int maxlen);
 
-extern void db_clear_host_connected ();
+extern void db_clear_host_connected (void);
 extern char *db_get_database_version (void);
 #endif /* _DBI_H_ */

@@ -8129,7 +8129,7 @@ new_curr_key_locking:
       if (btree_make_pseudo_oid (curr_key_second_oid.pageid,
 				 curr_key_second_oid.slotid,
 				 curr_key_second_oid.volid,
-				 btid_int.sys_btid, 
+				 btid_int.sys_btid,
 				 &new_pseudo_oid) != NO_ERROR)
 	{
 	  goto error;
@@ -9548,9 +9548,9 @@ btree_split_find_pivot (int total, BTREE_NODE_SPLIT_INFO * split_info)
     }
   else
     {
-      split_point = total * MAX (MIN (split_info->pivot,
-				      BTREE_SPLIT_MAX_PIVOT),
-				 BTREE_SPLIT_MIN_PIVOT);
+      split_point = (int) (total * MAX (MIN (split_info->pivot,
+					     BTREE_SPLIT_MAX_PIVOT),
+					BTREE_SPLIT_MIN_PIVOT));
     }
 
   return split_point;
@@ -15821,7 +15821,7 @@ start_locking:
 	{
 	  if (btree_make_pseudo_oid (inst_oid.pageid, inst_oid.slotid,
 				     inst_oid.volid,
-				     bts->btid_int.sys_btid, 
+				     bts->btid_int.sys_btid,
 				     &pseudo_oid) != NO_ERROR)
 	    {
 	      goto error;

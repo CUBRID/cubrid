@@ -2989,7 +2989,6 @@ thread_log_flush_thread (void *arg_p)
   int remained_msec;
   int wakeup_interval;
   int ret;
-  int flushed;
   int temp_wait_usec;
   bool is_background_flush = true;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
@@ -3020,7 +3019,8 @@ thread_log_flush_thread (void *arg_p)
       er_clear ();
 
       gettimeofday (&work_time, NULL);
-      elapsed_msec = LOG_GET_ELAPSED_TIME (work_time, start_time) * 1000;
+      elapsed_msec =
+	(int) (LOG_GET_ELAPSED_TIME (work_time, start_time) * 1000);
 
       wakeup_interval = thread_get_LFT_min_wait_time_in_msec ();
       remained_msec = (int) (wakeup_interval - elapsed_msec);

@@ -3502,7 +3502,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid,
   best_pages_hint_p = heap_hdr->estimates.best;
 
   num_iterations = 0;
-  max_iterations = MIN (heap_hdr->estimates.num_pages * 0.2,
+  max_iterations = MIN ((int) (heap_hdr->estimates.num_pages * 0.2),
 			heap_Find_best_page_limit);
   max_iterations = MAX (max_iterations, HEAP_NUM_BEST_SPACESTATS);
 

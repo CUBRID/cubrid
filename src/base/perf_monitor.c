@@ -1995,7 +1995,6 @@ MNT_SERVER_EXEC_STATS *
 mnt_server_get_stats (THREAD_ENTRY * thread_p)
 {
   int tran_index;
-  MNT_SERVER_EXEC_STATS *p;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0);

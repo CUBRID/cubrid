@@ -509,7 +509,7 @@ sigfpe_handler (int sig)
  * db_clear_host_connected() -
  */
 void
-db_clear_host_connected ()
+db_clear_host_connected (void)
 {
   boot_clear_host_connected ();
 }
@@ -2490,7 +2490,7 @@ db_get_ha_server_state (char *buffer, int maxlen)
  * return : session id
  */
 SESSION_ID
-db_get_session_id ()
+db_get_session_id (void)
 {
   return db_Session_id;
 }
@@ -2514,11 +2514,12 @@ db_set_session_id (const SESSION_ID session_id)
  *	 create a new one if needed
  */
 int
-db_check_session ()
+db_check_session (void)
 {
   int err = NO_ERROR;
   SESSION_ID sess_id = db_get_session_id ();
   int row_count = DB_ROW_COUNT_NOT_SET;
+
   err = csession_check_session (&sess_id, &row_count);
   if (err != NO_ERROR)
     {
@@ -2526,8 +2527,10 @@ db_check_session ()
       db_update_row_count_cache (DB_ROW_COUNT_NOT_SET);
       return err;
     }
+
   db_set_session_id (sess_id);
   db_update_row_count_cache (row_count);
+
   return NO_ERROR;
 }
 
@@ -2536,7 +2539,7 @@ db_check_session ()
  * return : row count
  */
 int
-db_get_row_count_cache ()
+db_get_row_count_cache (void)
 {
   return db_Row_count;
 }

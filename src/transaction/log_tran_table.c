@@ -2450,7 +2450,7 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 			   bool clear, bool * continue_checking)
 {
   int interrupt;
-  long now;
+  UINT64 now;
 #if !defined(HAVE_ATOMIC_BUILTINS)
   struct timeval tv;
 #endif /* !HAVE_ATOMIC_BUILTINS */

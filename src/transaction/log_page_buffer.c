@@ -3183,7 +3183,6 @@ prior_lsa_gen_undoredo_record (THREAD_ENTRY * thread_p,
   bool is_diff, is_undo_zip, is_redo_zip;
   LOG_ZIP *zip_undo, *zip_redo;
   char *data_ptr = NULL;
-  int ulength, rlength;
   char *udata = NULL, *rdata = NULL;
 
   zip_undo = logpb_get_zip_undo (thread_p);
@@ -4213,7 +4212,6 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p,
 			       int rlength, char *rdata)
 {
   LOG_PRIOR_NODE *node;
-  VPID *vpid;
   int error_code = NO_ERROR;
 
   node = (LOG_PRIOR_NODE *) malloc (sizeof (LOG_PRIOR_NODE));
@@ -4387,8 +4385,6 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY * thread_p,
 				 int num_rcrumbs, LOG_CRUMB * rcrumbs)
 {
   LOG_PRIOR_NODE *node;
-  VPID *vpid;
-  int node_size;
   int error = NO_ERROR;
 
   node = (LOG_PRIOR_NODE *) malloc (sizeof (LOG_PRIOR_NODE));
@@ -5923,7 +5919,6 @@ static void
 prior_lsa_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs,
 			 const LOG_CRUMB * crumbs)
 {
-  const char *data;		/* Data to copy                                 */
   int current_offset;
   int last_offset;
   int copy_length;		/* Amount of contiguos data that can be copied  */
@@ -9433,8 +9428,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols,
   int last_arv_needed = -1;	/* backups, some arv are needed   */
   bool beenwarned;
   bool isincremental = false;	/* Assume full backups */
-  char logarv_name[PATH_MAX];
-  char logarv_name_first[PATH_MAX];
   bool bkup_in_progress = false;
 #if defined(SERVER_MODE)
   int rv;

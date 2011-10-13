@@ -1368,7 +1368,7 @@ btree_get_page (THREAD_ENTRY * thread_p, BTID * btid, VPID * page_id,
   RECDES temp_recdes;		/* Temporary record descriptor; */
   VPID vpid;
   LOG_DATA_ADDR addr;
-  int num_pages, nthpage;
+  int nthpage;
   OR_ALIGNED_BUF (NODE_HEADER_SIZE) a_temp_data;
   unsigned short alignment;
 

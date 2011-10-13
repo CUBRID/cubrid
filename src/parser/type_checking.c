@@ -51,6 +51,7 @@
 #include "language_support.h"
 #include "schema_manager.h"
 #include "system_parameter.h"
+#include "network_interface_cl.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

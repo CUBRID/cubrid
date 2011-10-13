@@ -14591,7 +14591,7 @@ pt_spec_to_xasl_class_oid_list (const PT_NODE * spec,
 		  (void) lsearch (oid, o_list, &t_num, sizeof (OID),
 				  oid_compare);
 
-		  if (t_num > prev_t_num && t_num > (size_t) * nump)
+		  if (t_num > prev_t_num && t_num > (ssize_t) (*nump))
 		    {
 		      *(r_list + t_num - 1) = -1;	/* dummy repr_id */
 		    }
@@ -14714,7 +14714,7 @@ pt_serial_to_xasl_class_oid_list (const PT_NODE * serial,
 
   prev_t_num = t_num;
   (void) lsearch (&serial_obj_id, o_list, &t_num, sizeof (OID), oid_compare);
-  if (t_num > prev_t_num && t_num > (size_t) * nump)
+  if (t_num > prev_t_num && t_num > (ssize_t) (*nump))
     {
       *(r_list + t_num - 1) = -1;	/* dummy repr_id */
     }

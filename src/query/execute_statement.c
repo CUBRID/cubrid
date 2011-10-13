@@ -10298,7 +10298,6 @@ is_server_insert_allowed (PARSER_CONTEXT * parser,
   PT_NODE *attrs, *attr;
   PT_NODE *vals, *val;
   /* set lock timeout hint if specified */
-  PT_NODE *hint_arg;
   int server_preference;
 
   *server_allowed = 0;
@@ -12406,7 +12405,6 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   PT_NODE *class_;
-  int save;
   int has_check_option = 0;
   PT_NODE *values = NULL;
   PT_NODE *non_null_attrs = NULL;
@@ -12416,7 +12414,6 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   int has_trigger = 0;
   int upd_has_uniques = 0;
   bool has_default_values_list = false;
-  PT_NODE *flat;
   PT_NODE *attr_list;
 
   if (statement == NULL ||
@@ -12511,11 +12508,10 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int err, result;
+  int err;
   PT_NODE *flat;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
-  int au_save;
   QUERY_FLAG query_flag;
 
   CHECK_MODIFICATION_ERROR ();
@@ -12524,7 +12520,6 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       return do_check_insert_trigger (parser, statement, do_insert);
     }
-
 
   flat = statement->info.insert.spec->info.spec.flat_entity_list;
   class_obj = (flat) ? flat->info.name.db_object : NULL;

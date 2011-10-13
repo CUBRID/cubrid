@@ -616,7 +616,7 @@ tp_init (void)
     }
 
   /* tp_Midxkey_domains[0] was already initialized by the above codes. */
-  for (i = 1; i < tp_Midxkey_domains[i] != NULL; i++)
+  for (i = 1; tp_Midxkey_domains[i] != NULL; i++)
     {
       d = tp_Midxkey_domains[i];
       d->next_list = NULL;

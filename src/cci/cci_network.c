@@ -889,9 +889,11 @@ connect_srv (unsigned char *ip_addr, int port, char is_retry,
   int retry_count = 0;
   int con_retry_count;
   struct timeval timeout_val;
-  int sock_flags;
   fd_set rset, wset;
-  int flags, ret;
+  int ret;
+#if !defined (WINDOWS)
+  int flags;
+#endif
 
   con_retry_count = (is_retry) ? 10 : 0;
 
@@ -922,8 +924,8 @@ connect_retry:
   flags = (sock_fd, F_GETFL);
   fcntl (sock_fd, F_SETFL, flags | O_NONBLOCK);
 #endif
-  ret = connect (sock_fd, (struct sockaddr *) &sock_addr, sock_addr_len);
 
+  ret = connect (sock_fd, (struct sockaddr *) &sock_addr, sock_addr_len);
   if (ret < 0)
     {
 #if defined (WINDOWS)

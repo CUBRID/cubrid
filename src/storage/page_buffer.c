@@ -2050,7 +2050,6 @@ pgbuf_flush_victim_candidate (THREAD_ENTRY * thread_p, float flush_ratio)
 #endif				/* NDEBUG */
 {
   PGBUF_BCB *bufptr;
-  PGBUF_BCB *prev_bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_cand_list;
   int i, victim_cand_count, check_count, total_flushed_count;
   int lru_idx, start_lru_idx;
@@ -5083,7 +5082,6 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 #endif				/* NDEBUG */
 {
 #if defined(SERVER_MODE)
-  int rv;
   THREAD_ENTRY *cur_thrd_entry;
 
   if (thread_p == NULL)

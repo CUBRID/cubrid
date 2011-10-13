@@ -487,11 +487,13 @@ db_set_base_server_time (SERVER_INFO * server_info)
     {
       struct tm c_time_struct;
       DB_DATETIME *dt = &server_info->value[0]->data.datetime;
+      int msecs;
 
       db_datetime_decode (dt, &c_time_struct.tm_mon,
 			  &c_time_struct.tm_mday, &c_time_struct.tm_year,
 			  &c_time_struct.tm_hour, &c_time_struct.tm_min,
-			  &c_time_struct.tm_sec, &base_server_timeb.millitm);
+			  &c_time_struct.tm_sec, &msecs);
+      base_server_timeb.millitm = (unsigned short) msecs;
 
       c_time_struct.tm_year -= 1900;
       c_time_struct.tm_mon -= 1;
@@ -2134,7 +2136,7 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list,
 	{
 	  /* this is a session variable */
 	  DB_VALUE val;
-	  const DB_VALUE *name;
+	  DB_VALUE *name;
 
 	  assert (current_value->info.expr.arg1->node_type == PT_VALUE);
 

@@ -112,8 +112,8 @@ LOG_GLOBAL log_Gl = {
 
 #if defined(HAVE_ATOMIC_BUILTINS)
 /* Current time in seconds */
-long log_Clock = 0;
-#endif  /* HAVE_ATOMIC_BUILTINS */
+UINT64 log_Clock = 0;
+#endif /* HAVE_ATOMIC_BUILTINS */
 
 /* Name of the database and logs */
 char log_Path[PATH_MAX];

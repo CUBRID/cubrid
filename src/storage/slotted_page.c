@@ -1142,7 +1142,7 @@ spage_compact (PAGE_PTR page_p)
 	  pgbuf_get_vpid (page_p, &vpid);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_SP_WRONG_NUM_SLOTS, 4,
-		  vpid.pageid, fileio_get_volume_label (vpid.volid), 
+		  vpid.pageid, fileio_get_volume_label (vpid.volid),
 		  j, page_header_p->num_records);
 
 	  assert (false);
@@ -3773,7 +3773,7 @@ spage_dump_record (FILE * fp, PAGE_PTR page_p, PGSLOTID slot_id,
 
 	default:
 	  record_p = (char *) page_p + slot_p->offset_to_record;
-	  for (i = 0; i < slot_p->record_length; i++)
+	  for (i = 0; i < (int) slot_p->record_length; i++)
 	    {
 	      (void) fprintf (fp, "%02X ", (unsigned char) (*record_p++));
 	      if (i % 20 == 19)

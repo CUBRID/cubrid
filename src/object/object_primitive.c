@@ -2144,7 +2144,7 @@ pr_free_ext_value (DB_VALUE * value)
  *    The contents are copied.
  */
 int
-pr_clone_value (DB_VALUE * src, DB_VALUE * dest)
+pr_clone_value (const DB_VALUE * src, DB_VALUE * dest)
 {
   PR_TYPE *type;
   DB_TYPE src_dbtype;
@@ -2160,10 +2160,11 @@ pr_clone_value (DB_VALUE * src, DB_VALUE * dest)
 	  src_dbtype = DB_VALUE_DOMAIN_TYPE (src);
 
 	  if (DB_IS_NULL (src))
-	    db_value_domain_init (dest, src_dbtype,
-				  DB_VALUE_PRECISION (src),
-				  DB_VALUE_SCALE (src));
-
+	    {
+	      db_value_domain_init (dest, src_dbtype,
+				    DB_VALUE_PRECISION (src),
+				    DB_VALUE_SCALE (src));
+	    }
 	  else if (src != dest)
 	    {
 	      type = PR_TYPE_FROM_ID (src_dbtype);
@@ -2187,6 +2188,7 @@ pr_clone_value (DB_VALUE * src, DB_VALUE * dest)
 	    }
 	}
     }
+
   return NO_ERROR;
 }
 

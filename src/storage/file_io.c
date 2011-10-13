@@ -911,9 +911,10 @@ fileio_flush_control_get_desired_rate (TOKEN_BUCKET * tb)
     {
       if (fc_Stats.num_log_pages == 0)
 	{
-	  return (fc_Stats.num_tokens
-		  + MAX (FILEIO_MIN_FLUSH_PAGES_PER_SEC,
-			 fc_Stats.num_tokens * FILEIO_PAGE_FLUSH_RATE));
+	  return (int) ((fc_Stats.num_tokens
+			 + MAX (FILEIO_MIN_FLUSH_PAGES_PER_SEC,
+				(fc_Stats.num_tokens *
+				 FILEIO_PAGE_FLUSH_RATE))));
 	}
       else
 	{
@@ -7813,7 +7814,7 @@ fileio_backup_volume (THREAD_ENTRY * thread_p,
     }
 
   /* print the number divided by volume pagesize */
-  npages = CEIL_PTVDIV (session_p->dbfile.nbytes, IO_PAGESIZE);
+  npages = (int) CEIL_PTVDIV (session_p->dbfile.nbytes, IO_PAGESIZE);
   backup_header_p = session_p->bkup.bkuphdr;
   if (session_p->verbose_fp)
     {
@@ -7829,8 +7830,8 @@ fileio_backup_volume (THREAD_ENTRY * thread_p,
     }
   else
     {
-      from_npages =
-	CEIL_PTVDIV (session_p->dbfile.nbytes, backup_header_p->bkpagesize);
+      from_npages = (int) CEIL_PTVDIV (session_p->dbfile.nbytes,
+				       backup_header_p->bkpagesize);
     }
 
   /* Write a backup file header which identifies this volume/file on the
@@ -9896,9 +9897,9 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
   int i;
   char *buffer_p;
 
-  npages = CEIL_PTVDIV (session_p->dbfile.nbytes, IO_PAGESIZE);
+  npages = (int) CEIL_PTVDIV (session_p->dbfile.nbytes, IO_PAGESIZE);
   session_p->dbfile.vlabel = to_vol_label_p;
-  nbytes = MIN (backup_header_p->bkpagesize, session_p->dbfile.nbytes);
+  nbytes = (int) MIN (backup_header_p->bkpagesize, session_p->dbfile.nbytes);
   unit = nbytes / IO_PAGESIZE;
   if (nbytes % IO_PAGESIZE)
     {
@@ -9955,8 +9956,8 @@ fileio_restore_volume (THREAD_ENTRY * thread_p,
   /* For some volumes we do not keep track of the individual pages restored. */
   cache_p = (is_remember_pages) ? pages_cache_p : NULL;
   /* Read all file pages until the end of the volume/file. */
-  from_npages = CEIL_PTVDIV (session_p->dbfile.nbytes,
-			     backup_header_p->bkpagesize);
+  from_npages = (int) CEIL_PTVDIV (session_p->dbfile.nbytes,
+				   backup_header_p->bkpagesize);
   nbytes = FILEIO_RESTORE_DBVOLS_IO_PAGE_SIZE (session_p);
 
   while (true)

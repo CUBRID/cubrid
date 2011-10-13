@@ -13161,7 +13161,6 @@ sm_produce_constraint_name_mop (MOP classop,
 				const char **att_names,
 				const int *asc_desc, const char *given_name)
 {
-
   return sm_produce_constraint_name (sm_class_name (classop), constraint_type,
 				     att_names, asc_desc, given_name);
 }
@@ -13182,7 +13181,6 @@ sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl,
 				 const char **att_names,
 				 const int *asc_desc, const char *given_name)
 {
-
   return sm_produce_constraint_name (template_classname (tmpl),
 				     constraint_type, att_names, asc_desc,
 				     given_name);

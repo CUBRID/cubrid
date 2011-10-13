@@ -12611,10 +12611,12 @@ qexec_lookup_xasl_cache_ent (THREAD_ENTRY * thread_p, const char *qstr,
 			     const OID * user_oid)
 {
   XASL_CACHE_ENTRY *ent;
+#if 0
   const OID *oidp;
   const int *rep_idp;
   int id;
   int i;
+#endif
 #if defined(SERVER_MODE)
   int tran_index;
   int num_elements;

@@ -75,6 +75,7 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 #include "heartbeat.h"
+#include "utility.h"
 
 
 #define ER_LOG_FILE_DIR	"server"
@@ -2265,7 +2266,7 @@ sysprm_dump_parameters (FILE * fp)
  *
  */
 void
-sysprm_set_er_log_file (char *db_name)
+sysprm_set_er_log_file (const char *db_name)
 {
   char *s, *base_db_name;
   char local_db_name[DB_MAX_IDENTIFIER_LENGTH];
@@ -2716,7 +2717,7 @@ prm_calc_pages_by_size (const char *size, const char *page, PGLENGTH len)
   if (PRM_IS_SET (size_prm->flag))
     {
       size_value = PRM_GET_SIZE (size_prm->value);
-      page_value = size_value / len;
+      page_value = (int) (size_value / len);
       snprintf (newval, LINE_MAX, "%d", page_value);
       if (prm_set (page_prm, newval, false) != NO_ERROR)
 	{
@@ -3040,7 +3041,7 @@ sysprm_change_parameters (const char *data)
  *   data(in): parameter setting line: "name1=value1; name2 = value2;..."
  */
 bool
-sysprm_prm_change_should_clear_cache (char *data)
+sysprm_prm_change_should_clear_cache (const char *data)
 {
   char buf[256], *p = NULL, *name = NULL, *value = NULL;
   SYSPRM_PARAM *prm;

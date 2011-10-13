@@ -198,7 +198,7 @@ static int scan_init_multi_range_optimization (THREAD_ENTRY * thread_p,
 					       MULTI_RANGE_OPT *
 					       multi_range_opt,
 					       bool use_range_opt,
-					       int max_size);
+					       DB_BIGINT max_size);
 static int scan_dump_key_into_tuple (THREAD_ENTRY * thread_p,
 				     INDX_SCAN_ID * iscan_id, DB_VALUE * key,
 				     OID * oid, QFILE_TUPLE_RECORD * tplrec);
@@ -5717,7 +5717,7 @@ resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var,
 static int
 scan_init_multi_range_optimization (THREAD_ENTRY * thread_p,
 				    MULTI_RANGE_OPT * multi_range_opt,
-				    bool use_range_opt, int max_size)
+				    bool use_range_opt, DB_BIGINT max_size)
 {
   int err = NO_ERROR;
 

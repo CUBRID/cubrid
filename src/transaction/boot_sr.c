@@ -1594,7 +1594,7 @@ boot_get_temp_temp_vol_max_npages (void)
 {
   if (PRM_BOSR_MAXTMP_PAGES < 0)
     {
-      return ((20LL * 1024LL * 1024LL * 1024LL) / IO_PAGESIZE);
+      return (DKNPAGES) (((20LL * 1024LL * 1024LL * 1024LL) / IO_PAGESIZE));
     }
   else
     {

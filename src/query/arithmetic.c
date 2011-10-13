@@ -3691,7 +3691,8 @@ int
 db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
 {
   DB_TYPE type;
-  char *type_name, buf[128];
+  const char *type_name;
+  char buf[128];
 
   type = DB_VALUE_TYPE (value);
   type_name = pr_type_name (type);
