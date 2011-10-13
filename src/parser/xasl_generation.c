@@ -6912,6 +6912,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_LOG
 		  || node->info.expr.op == PT_TRUNC
 		  || node->info.expr.op == PT_POSITION
+		  || node->info.expr.op == PT_FINDINSET
 		  || node->info.expr.op == PT_LPAD
 		  || node->info.expr.op == PT_RPAD
 		  || node->info.expr.op == PT_REPLACE
@@ -6951,6 +6952,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_REPEAT
 		  || node->info.expr.op == PT_WEEKF
 		  || node->info.expr.op == PT_MAKEDATE
+		  || node->info.expr.op == PT_ADDTIME
 		  || node->info.expr.op == PT_DEFINE_VARIABLE)
 		{
 		  r1 = pt_to_regu_variable (parser,
@@ -7077,6 +7079,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_EXTRACT
 		       || node->info.expr.op == PT_ENCRYPT
 		       || node->info.expr.op == PT_DECRYPT
+		       || node->info.expr.op == PT_BIN
 		       || node->info.expr.op == PT_MD5
 		       || node->info.expr.op == PT_SPACE
 		       || node->info.expr.op == PT_PRIOR
@@ -7619,6 +7622,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, r3, T_MAKETIME, domain);
 		  break;
 
+		case PT_ADDTIME:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_ADDTIME, domain);
+		  break;
+
 		case PT_WEEKF:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_WEEK, domain);
 		  break;
@@ -7897,6 +7904,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    pt_make_regu_arith (r1, r2, NULL, T_POSITION, domain);
 		  break;
 
+		case PT_FINDINSET:
+		  regu =
+		    pt_make_regu_arith (r1, r2, NULL, T_FINDINSET, domain);
+		  break;
+
 		case PT_SUBSTRING:
 		  regu = pt_make_regu_arith (r1, r2, r3, T_SUBSTRING, domain);
 		  pt_to_misc_operand (regu, node->info.expr.qualifier);
@@ -7929,6 +7941,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_UPPER:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_UPPER, domain);
+		  break;
+
+		case PT_BIN:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_BIN, domain);
 		  break;
 
 		case PT_MD5:

@@ -94,9 +94,11 @@ struct function_map
 static FUNCTION_MAP functions[] = {
   {"abs", PT_ABS},
   {"acos", PT_ACOS},
+  {"addtime", PT_ADDTIME}, 
   {"asin", PT_ASIN},
   {"atan", PT_ATAN},
   {"atan2", PT_ATAN2},
+  {"bin", PT_BIN},
   {"bit_count", PT_BIT_COUNT},
   {"bit_to_blob", PT_BIT_TO_BLOB},
   {"blob_from_file", PT_BLOB_FROM_FILE},
@@ -186,6 +188,7 @@ static FUNCTION_MAP functions[] = {
   {"strcmp", PT_STRCMP},
   {"substr", PT_SUBSTRING},
   {"substring_index", PT_SUBSTRING_INDEX},
+  {"find_in_set", PT_FINDINSET},
   {"md5", PT_MD5},
   {"substrb", PT_SUBSTRING},
   {"tan", PT_TAN},
@@ -18091,6 +18094,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
       /* arg 1 */
     case PT_ABS:
+    case PT_BIN:
     case PT_CEIL:
     case PT_CHAR_LENGTH:	/* char_length, length, lengthb */
     case PT_CHR:
@@ -18159,6 +18163,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_TIMEDIFF:
     case PT_REPEAT:
     case PT_MAKEDATE:
+    case PT_ADDTIME:
+    case PT_FINDINSET:
       if (c != 2)
 	return NULL;
       a1 = args;

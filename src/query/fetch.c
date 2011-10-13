@@ -137,6 +137,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_DIV:
     case T_MOD:
     case T_POSITION:
+    case T_FINDINSET:
     case T_ADD_MONTHS:
     case T_MONTHS_BETWEEN:
     case T_TRIM:
@@ -332,6 +333,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
       break;
 
     case T_MAKEDATE:
+    case T_ADDTIME:
     case T_WEEK:
     case T_DEFINE_VARIABLE:
       /* fetch both lhs and rhs value */
@@ -417,6 +419,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
     case T_UPPER:
     case T_SPACE:
     case T_MD5:
+    case T_BIN:
     case T_CAST:
     case T_CAST_NOFAIL:
     case T_EXTRACT:
@@ -1059,6 +1062,18 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	}
       break;
 
+    case T_FINDINSET:
+      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_find_string_in_in_set (peek_left, peek_right,
+					 arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     case T_SUBSTRING:
       if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right)
 	  || (arithptr->thirdptr && PRIM_IS_NULL (peek_third)))
@@ -1198,6 +1213,18 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	  PRIM_SET_NULL (arithptr->value);
 	}
       else if (db_string_upper (peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_BIN:
+      if (PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_bigint_to_binary_string (peek_right, arithptr->value)
+	       != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1570,6 +1597,21 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 	{
 	  if (db_add_days_to_year (peek_left, peek_right, arithptr->value)
 	      != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_ADDTIME:
+      if (PRIM_IS_NULL (peek_left) || PRIM_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_add_time (peek_left, peek_right, arithptr->value,
+			   regu_var->domain) != NO_ERROR)
 	    {
 	      goto error;
 	    }

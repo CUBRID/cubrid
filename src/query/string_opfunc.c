@@ -5410,6 +5410,436 @@ db_string_make_empty_typed_string (THREAD_ENTRY * thread_p, DB_VALUE * db_val,
   return status;
 }
 
+/*
+ * db_find_string_in_in_set () - find the position of a string token in
+ *				 a string containing comma separated tokens
+ * return : error code or NO_ERROR
+ * needle (in)	: the token to look for
+ * stack (in)	: the set of tokens
+ * result (in/out) : will hold the position of the token
+ */
+int
+db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack,
+			  DB_VALUE * result)
+{
+  int err = NO_ERROR;
+  DB_TYPE needle_type, stack_type;
+  int position = 1;
+  int stack_len = 0, needle_len = 0;
+  const char *stack_str = NULL;
+  const char *needle_str = NULL;
+  int i = 0, j = 0;
+
+  if (DB_IS_NULL (needle) || DB_IS_NULL (stack))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  /*
+   *  Categorize the parameters into respective code sets.
+   *  Verify that the parameters are both character strings.
+   *  Verify that the input strings belong to compatible code sets.
+   */
+  needle_type = DB_VALUE_DOMAIN_TYPE (needle);
+  stack_type = DB_VALUE_DOMAIN_TYPE (stack);
+
+  if (!QSTR_IS_ANY_CHAR_OR_BIT (needle_type)
+      || !QSTR_IS_ANY_CHAR_OR_BIT (stack_type))
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      err = ER_QSTR_INVALID_DATA_TYPE;
+      goto error_return;
+    }
+
+  if (qstr_get_category (needle) != qstr_get_category (stack))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_QSTR_INCOMPATIBLE_CODE_SETS, 0);
+      err = ER_QSTR_INCOMPATIBLE_CODE_SETS;
+      goto error_return;
+    }
+
+  /* Loop through stack and search for ',' character. After each ',', start
+   * comparing characters from needle to stack using j.
+   *  - If they match and we're at the end of stack or the next char in stack
+   *    is ',' then we found it.
+   *  - If they don't match, reset j to -1 because we won't find it in this
+   *    token
+   * We're looking for exact matches so we don't care about code sets at this
+   * point, it's enough to perform a byte comparison. This is why we're using
+   * DB_GET_STRING_SIZE instead of DB_GET_STRING_LENGTH
+   */
+  stack_str = DB_PULL_STRING (stack);
+  stack_len = DB_GET_STRING_SIZE (stack);
+  needle_str = DB_PULL_STRING (needle);
+  needle_len = DB_GET_STRING_SIZE (needle);
+
+  for (i = 0; i < stack_len; i++)
+    {
+      int char_size = 0;
+      if (j != -1 && needle_str[j] == stack_str[i])
+	{
+	  if ((i == stack_len - 1 || stack_str[i + 1] == ',')
+	      && j == needle_len - 1)
+	    {
+	      /* if we're at the end of the stack or at the end of a
+	         token and we found only matches so far, this is the
+	         position we're looking for */
+	      DB_MAKE_INT (result, position);
+	      return NO_ERROR;
+	    }
+
+	  j++;
+	  if (j == needle_len)
+	    {
+	      /* reached end of needle and we didn't find a ',' or end of
+	         stack */
+	      j = -1;
+	    }
+	}
+      else
+	{
+	  /* needle cannot not match this token */
+	  j = -1;
+	}
+      if (stack_str[i] == ',')
+	{
+	  /* found begining of a new token */
+	  position++;
+	  j = 0;
+	}
+    }
+  /* if we didn't find it in the loop above, then there is no match */
+  DB_MAKE_INTEGER (result, 0);
+  return NO_ERROR;
+
+error_return:
+  DB_MAKE_NULL (result);
+  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+    {
+      er_clear ();
+      return NO_ERROR;
+    }
+  return err;
+}
+
+/*
+ * db_bigint_to_binary_string () - compute the string representation of a
+ *				   binary a value
+ * return : error code or NO_ERROR
+ * src_bigint (in)  : the binary value
+ * result (out)	    : the string representation of the binary value
+ */
+int
+db_bigint_to_binary_string (const DB_VALUE * src_bigint, DB_VALUE * result)
+{
+  int error = NO_ERROR;
+  int i = 0;
+  DB_BIGINT bigint_val = 0;
+  int digits_count = 0;
+  char *binary_form = NULL;
+
+  if (DB_IS_NULL (src_bigint))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+
+  if (DB_VALUE_TYPE (src_bigint) != DB_TYPE_BIGINT)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      error = ER_QSTR_INVALID_DATA_TYPE;
+      goto error_return;
+    }
+
+  bigint_val = DB_GET_BIGINT (src_bigint);
+
+  /* count the number of digits in bigint_val */
+  if (bigint_val < (DB_BIGINT) 0)
+    {
+      /* MSB is the sign bit */
+      digits_count = sizeof (DB_BIGINT) * 8;
+    }
+  else if (bigint_val == 0)
+    {
+      digits_count = 1;
+    }
+  else
+    {
+      i = 0;
+      /* positive numbers have at most 8 * sizeof(DB_BIGINT) - 1 digits */
+      while ((DB_BIGINT) 1 << i <= bigint_val
+	     && i < sizeof (DB_BIGINT) * 8 - 1)
+	{
+	  i++;
+	}
+      digits_count = i;
+    }
+
+  binary_form = (char *) db_private_alloc (NULL, digits_count + 1);
+  if (binary_form == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      digits_count);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error_return;
+    }
+  memset (binary_form, 0, digits_count + 1);
+
+  for (i = 0; i < digits_count; i++)
+    {
+      binary_form[digits_count - i - 1] =
+	((DB_BIGINT) 1 << i) & bigint_val ? '1' : '0';
+    }
+
+  DB_MAKE_VARCHAR (result, digits_count, binary_form, digits_count);
+  result->need_clear = true;
+  return error;
+
+error_return:
+  if (binary_form != NULL)
+    {
+      db_private_free (NULL, binary_form);
+    }
+  pr_clear_value (result);
+  DB_MAKE_NULL (result);
+  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+    {
+      er_clear ();
+      return NO_ERROR;
+    }
+  return error;
+}
+
+/*
+ * db_add_time () - add the time represented by right to the value left
+ * return : error code or NO_ERROR
+ * left (in)	: left operand
+ * right (in)	: right operand
+ * result (out) : result
+ * domain (in)	: the domain of the return type
+ */
+int
+db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result,
+	     const TP_DOMAIN * domain)
+{
+  int error = NO_ERROR;
+  DB_DATETIME ldatetime = { 0, 0 }, result_datetime =
+  {
+  0, 0};
+  bool left_is_datetime = false;
+  int rsecond = 0, rminute = 0, rhour = 0, rms = 0;
+  DB_TIME ltime = 0, rtime = 0;
+  int lms = 0;
+  char *res_s = NULL;
+  DB_TYPE result_type = DB_TYPE_NULL;
+
+  if (DB_IS_NULL (left) || DB_IS_NULL (right))
+    {
+      DB_MAKE_NULL (result);
+      return NO_ERROR;
+    }
+  switch (DB_VALUE_TYPE (left))
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      {
+	bool is_explicit_time = false;
+	error =
+	  db_date_parse_datetime_parts (DB_PULL_STRING (left),
+					DB_GET_STRING_SIZE (left),
+					&ldatetime, &is_explicit_time, NULL,
+					NULL, NULL);
+	if (error != NO_ERROR || !is_explicit_time)
+	  {
+	    /* not a DATETIME, maybe it's a TIME */
+	    er_clear ();
+	    error =
+	      db_date_parse_time (DB_PULL_STRING (left),
+				  DB_GET_STRING_SIZE (left), &ltime, &lms);
+	    if (error != NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION,
+			0);
+		error = ER_TIME_CONVERSION;
+		goto error_return;
+	      }
+	    left_is_datetime = false;
+	  }
+	else
+	  {
+	    left_is_datetime = true;
+	  }
+	result_type = DB_TYPE_VARCHAR;
+	break;
+      }
+
+    case DB_TYPE_DATETIME:
+      ldatetime = *(DB_GET_DATETIME (left));
+      left_is_datetime = true;
+      result_type = DB_TYPE_DATETIME;
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      db_timestamp_to_datetime (DB_GET_TIMESTAMP (left), &ldatetime);
+      left_is_datetime = true;
+      result_type = DB_TYPE_DATETIME;
+      break;
+
+    case DB_TYPE_DATE:
+      ldatetime.date = *(DB_GET_DATE (left));
+      left_is_datetime = true;
+      result_type = DB_TYPE_DATETIME;
+      break;
+
+    case DB_TYPE_TIME:
+      ltime = *(DB_GET_TIME (left));
+      left_is_datetime = false;
+      result_type = DB_TYPE_TIME;
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      error = ER_QSTR_INVALID_DATA_TYPE;
+      goto error_return;
+      break;
+    }
+
+  if (db_get_time_from_dbvalue (right, &rhour, &rminute, &rsecond, &rms)
+      != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      error = ER_QSTR_INVALID_DATA_TYPE;
+      goto error_return;
+    }
+
+  if (left_is_datetime)
+    {
+      /* add a datetime to a time */
+      int month = 0, day = 0, year = 0;
+      int lsecond = 0, lminute = 0, lhour = 0, lms = 0;
+      db_datetime_decode (&ldatetime, &month, &day, &year, &lhour, &lminute,
+			  &lsecond, &lms);
+      error =
+	add_and_normalize_date_time (&year, &month, &day, &lhour, &lminute,
+				     &lsecond, &lms, 0, 0, 0, rhour, rminute,
+				     rsecond, 0);
+      if (error != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+	  error = ER_DATE_CONVERSION;
+	  goto error_return;
+	}
+      db_datetime_encode (&result_datetime, month, day, year, lhour, lminute,
+			  lsecond, lms);
+    }
+  else
+    {
+      /* add two time values */
+      int lsecond = 0, lminute = 0, lhour = 0, lms = 0;
+      int seconds = 0;
+      db_time_decode (&ltime, &lhour, &lminute, &lsecond);
+      seconds =
+	(lhour + rhour) * 3600 + (lminute + rminute) * 60 + lsecond + rsecond;
+      rhour = seconds / 3600;
+      if (rhour > 23)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+	  error = ER_TIME_CONVERSION;
+	  goto error_return;
+	}
+      rminute = (seconds - rhour * 3600) / 60;
+      rsecond = seconds % 60;
+    }
+
+  /* depending on the first argument, the result is either result_date or 
+     result_time */
+
+  if (domain != NULL)
+    {
+      assert (domain->type->id == result_type);
+    }
+
+  switch (result_type)
+    {
+    case DB_TYPE_DATETIME:
+      if (!left_is_datetime)
+	{
+	  /* the result type can be DATETIME only if the first argument
+	     is a DATE or a DATETIME */
+	  assert (false);
+	  DB_MAKE_NULL (result);
+	}
+      DB_MAKE_DATETIME (result, &result_datetime);
+      break;
+
+    case DB_TYPE_TIME:
+      if (left_is_datetime)
+	{
+	  /* the result type can be DATETIME only if the first argument
+	     is a TIME */
+	  assert (false);
+	  DB_MAKE_NULL (result);
+	}
+      DB_MAKE_TIME (result, rhour, rminute, rsecond);
+      break;
+
+    case DB_TYPE_VARCHAR:
+      if (left_is_datetime)
+	{
+	  res_s = (char *) db_private_alloc (NULL, QSTR_DATETIME_LENGTH + 1);
+	  if (res_s == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, QSTR_DATETIME_LENGTH + 1);
+	      error = ER_DATE_CONVERSION;
+	      goto error_return;
+	    }
+
+	  db_datetime_to_string (res_s, QSTR_DATETIME_LENGTH + 1,
+				 &result_datetime);
+	  DB_MAKE_VARCHAR (result, strlen (res_s), res_s, strlen (res_s));
+	}
+      else
+	{
+	  res_s = (char *) db_private_alloc (NULL, QSTR_TIME_LENGTH + 1);
+	  if (res_s == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_OUT_OF_VIRTUAL_MEMORY, 1, QSTR_TIME_LENGTH + 1);
+	      error = ER_TIME_CONVERSION;
+	      goto error_return;
+	    }
+	  db_time_encode (&rtime, rhour, rminute, rsecond);
+	  db_time_to_string (res_s, QSTR_TIME_LENGTH + 1, &rtime);
+	  DB_MAKE_VARCHAR (result, strlen (res_s), res_s, strlen (res_s));
+	}
+      result->need_clear = true;
+      break;
+    }
+
+  return NO_ERROR;
+
+error_return:
+  if (res_s != NULL)
+    {
+      db_private_free (NULL, res_s);
+    }
+  DB_MAKE_NULL (result);
+  if (PRM_RETURN_NULL_ON_FUNCTION_ERRORS)
+    {
+      /* clear error and return NULL */
+      er_clear ();
+      return NO_ERROR;
+    }
+  return error;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * db_string_convert () -

@@ -115,7 +115,7 @@ extern int db_string_compare (const DB_VALUE * string1,
 extern int db_string_unique_prefix (const DB_VALUE * db_string1,
 				    const DB_VALUE * db_string2,
 				    DB_VALUE * db_result, int is_reverse,
-				    TP_DOMAIN *key_domain);
+				    TP_DOMAIN * key_domain);
 extern int db_string_concatenate (const DB_VALUE * string1,
 				  const DB_VALUE * string2,
 				  DB_VALUE * result,
@@ -192,6 +192,13 @@ extern int db_string_make_empty_typed_string (THREAD_ENTRY * thread_p,
 					      DB_VALUE * db_val,
 					      const DB_TYPE db_type,
 					      int precision);
+extern int db_find_string_in_in_set (const DB_VALUE * needle,
+				     const DB_VALUE * stack,
+				     DB_VALUE * result);
+extern int db_bigint_to_binary_string (const DB_VALUE * src_bigint,
+				       DB_VALUE * result);
+extern int db_add_time (const DB_VALUE * left, const DB_VALUE * right,
+			DB_VALUE * result, const TP_DOMAIN * domain);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int db_string_convert (const DB_VALUE * src_string,
 			      DB_VALUE * dest_string);

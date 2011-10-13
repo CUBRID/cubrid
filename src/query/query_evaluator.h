@@ -333,7 +333,10 @@ typedef enum
   T_EVALUATE_VARIABLE,
   T_DEFINE_VARIABLE,
   T_PREDICATE,
-  T_EXEC_STATS
+  T_EXEC_STATS,
+  T_ADDTIME,
+  T_BIN,
+  T_FINDINSET
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef struct pred_expr PRED_EXPR;

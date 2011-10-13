@@ -4009,6 +4009,7 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_TIMEDIFF:
     case PT_MODULUS:
     case PT_POSITION:
+    case PT_FINDINSET:
     case PT_SUBSTRING:
     case PT_SUBSTRING_INDEX:
     case PT_OCTET_LENGTH:
@@ -4016,6 +4017,7 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_CHAR_LENGTH:
     case PT_LOWER:
     case PT_UPPER:
+    case PT_BIN:
     case PT_MD5:
     case PT_TRIM:
     case PT_LTRIM:
@@ -4065,6 +4067,7 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_WEEKF:
     case PT_MAKEDATE:
     case PT_MAKETIME:
+    case PT_ADDTIME:
     case PT_UNIX_TIMESTAMP:
     case PT_FROM_UNIXTIME:
     case PT_EXTRACT:

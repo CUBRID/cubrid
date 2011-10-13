@@ -3022,6 +3022,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "greatest ";
     case PT_POSITION:
       return "position ";
+    case PT_FINDINSET:
+      return "find_in_set ";
     case PT_SUBSTRING:
       return "substring ";
     case PT_SUBSTRING_INDEX:
@@ -3118,6 +3120,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "upper ";
     case PT_MD5:
       return "md5 ";
+    case PT_BIN:
+      return "bin ";
     case PT_TRIM:
       return "trim ";
     case PT_LTRIM:
@@ -3204,6 +3208,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "makedate ";
     case PT_MAKETIME:
       return "maketime ";
+    case PT_ADDTIME:
+      return "addtime ";
     case PT_WEEKF:
       return "week ";
     case PT_SCHEMA:
@@ -8783,6 +8789,15 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r2);
       q = pt_append_nulstring (parser, q, ")");
       break;
+    case PT_FINDINSET:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_nulstring (parser, q, " find_in_set(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
     case PT_SUBSTRING:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
@@ -8855,6 +8870,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_UPPER:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " upper(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_BIN:
+      q = pt_append_nulstring (parser, q, " bin(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
@@ -9450,6 +9471,16 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ", ");
       r3 = pt_print_bytes (parser, p->info.expr.arg3);
       q = pt_append_varchar (parser, q, r3);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_ADDTIME:
+      q = pt_append_nulstring (parser, q, " addtime(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r2);
       q = pt_append_nulstring (parser, q, ")");
       break;
 
@@ -15003,6 +15034,7 @@ pt_is_const_expr_node (PT_NODE * node)
 		  && pt_is_const_expr_node (node->info.
 					    expr.arg3)) ? true : false;
 	case PT_POSITION:
+	case PT_FINDINSET:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.
 					    expr.arg2)) ? true : false;
@@ -15024,6 +15056,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_BIT_LENGTH:
 	case PT_LOWER:
 	case PT_UPPER:
+	case PT_BIN:
 	case PT_MD5:
 	case PT_REVERSE:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
@@ -15109,6 +15142,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_STR_TO_DATE:
 	case PT_REPEAT:
 	case PT_MAKEDATE:
+	case PT_ADDTIME:
 	case PT_WEEKF:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.

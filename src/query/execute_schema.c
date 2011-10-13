@@ -5219,6 +5219,7 @@ convert_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_DIVIDE:
 	case PT_UNARY_MINUS:
 	case PT_POSITION:
+	case PT_FINDINSET:
 	case PT_SUBSTRING:
 	case PT_SUBSTRING_INDEX:
 	case PT_OCTET_LENGTH:
@@ -5226,6 +5227,8 @@ convert_expr_to_constant (PARSER_CONTEXT * parser, PT_NODE * node,
 	case PT_CHAR_LENGTH:
 	case PT_LOWER:
 	case PT_UPPER:
+	case PT_BIN:
+	case PT_ADDTIME:
 	case PT_MD5:
 	case PT_TRIM:
 	case PT_LTRIM:

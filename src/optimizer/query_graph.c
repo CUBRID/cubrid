@@ -3001,6 +3001,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_SECTOTIME:
     case PT_MAKEDATE:
     case PT_MAKETIME:
+    case PT_ADDTIME:
     case PT_WEEKF:
 
     case PT_SCHEMA:
@@ -3015,6 +3016,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_TYPEOF:
     case PT_EVALUATE_VARIABLE:
     case PT_DEFINE_VARIABLE:
+    case PT_BIN:
       return RANK_EXPR_LIGHT;
 
       /* Group 2 -- medium */
@@ -3028,6 +3030,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_SUBSETEQ:
 
     case PT_POSITION:
+    case PT_FINDINSET:
     case PT_SUBSTRING:
     case PT_SUBSTRING_INDEX:
     case PT_OCTET_LENGTH:
@@ -3489,6 +3492,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 		  && pt_is_pseudo_const (expr->info.
 					 expr.arg3)) ? true : false;
 	case PT_POSITION:
+	case PT_FINDINSET:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && pt_is_pseudo_const (expr->info.
 					 expr.arg2)) ? true : false;
@@ -3508,6 +3512,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_REVERSE:
 	case PT_SPACE:
 	case PT_MD5:
+	case PT_BIN:
 	  return pt_is_pseudo_const (expr->info.expr.arg1);
 	case PT_TRIM:
 	case PT_LTRIM:
@@ -3576,6 +3581,7 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_DATEDIFF:
 	case PT_TIMEDIFF:
 	case PT_MAKEDATE:
+	case PT_ADDTIME:
 	case PT_WEEKF:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && pt_is_pseudo_const (expr->info.

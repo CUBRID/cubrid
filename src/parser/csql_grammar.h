@@ -600,9 +600,11 @@ struct function_map
 static FUNCTION_MAP functions[] = {
   {"abs", PT_ABS},
   {"acos", PT_ACOS},
+  {"addtime", PT_ADDTIME}, 
   {"asin", PT_ASIN},
   {"atan", PT_ATAN},
   {"atan2", PT_ATAN2},
+  {"bin", PT_BIN},
   {"bit_count", PT_BIT_COUNT},
   {"bit_to_blob", PT_BIT_TO_BLOB},
   {"blob_from_file", PT_BLOB_FROM_FILE},
@@ -692,6 +694,7 @@ static FUNCTION_MAP functions[] = {
   {"strcmp", PT_STRCMP},
   {"substr", PT_SUBSTRING},
   {"substring_index", PT_SUBSTRING_INDEX},
+  {"find_in_set", PT_FINDINSET},
   {"md5", PT_MD5},
   {"substrb", PT_SUBSTRING},
   {"tan", PT_TAN},
@@ -948,7 +951,7 @@ void pop_msg (void);
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE 
-#line 449 "../../src/parser/csql_grammar.y"
+#line 452 "../../src/parser/csql_grammar.y"
 {
   int number;
   bool boolean;
@@ -959,8 +962,8 @@ typedef union YYSTYPE
   container_4 c4;
   container_10 c10;
 }
-/* Line 2616 of glr.c.  */
-#line 964 "../../src/parser/csql_grammar.h"
+/* Line 2604 of glr.c.  */
+#line 967 "../../src/parser/csql_grammar.h"
 	YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

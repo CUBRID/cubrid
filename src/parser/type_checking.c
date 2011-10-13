@@ -870,6 +870,85 @@ pt_get_expression_definition (const PT_OP_TYPE op,
       def->overloads_count = num;
       break;
 
+    case PT_BIN:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_BIGINT;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_ADDTIME:
+      num = 0;
+
+      /* 3 overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATETIME;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIME;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIMESTAMP;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIME;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_DATE;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_DATETIME;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_TIME;
+      /* arg2 */
+      sig.arg2_type.is_generic = false;
+      sig.arg2_type.val.type = PT_TYPE_TIME;
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_TIME;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_TRIM:
     case PT_LTRIM:
     case PT_RTRIM:
@@ -1510,6 +1589,7 @@ pt_get_expression_definition (const PT_OP_TYPE op,
 
     case PT_POSITION:
     case PT_STRCMP:
+    case PT_FINDINSET:
       num = 0;
 
       /* two overloads */
@@ -4874,11 +4954,13 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_IS_NULL:
     case PT_IS_NOT_NULL:
     case PT_POSITION:
+    case PT_FINDINSET:
     case PT_SUBSTRING:
     case PT_SUBSTRING_INDEX:
     case PT_OCTET_LENGTH:
     case PT_BIT_LENGTH:
     case PT_CHAR_LENGTH:
+    case PT_BIN:
     case PT_TRIM:
     case PT_LTRIM:
     case PT_RTRIM:
@@ -4944,6 +5026,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_WEEKF:
     case PT_MAKETIME:
     case PT_MAKEDATE:
+    case PT_ADDTIME:
     case PT_SCHEMA:
     case PT_DATABASE:
     case PT_VERSION:
@@ -6806,6 +6889,7 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_TO_TIMESTAMP:
     case PT_TO_DATETIME:
     case PT_POSITION:
+    case PT_FINDINSET:
     case PT_OCTET_LENGTH:
     case PT_BIT_LENGTH:
     case PT_CHAR_LENGTH:
@@ -6888,6 +6972,7 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_WEEKF:
     case PT_MAKEDATE:
     case PT_MAKETIME:
+    case PT_BIN:
     case PT_CASE:
     case PT_DECODE:
     case PT_LIKE:
@@ -9826,6 +9911,32 @@ pt_upd_domain_info (PARSER_CONTEXT * parser,
       dt->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
       dt->info.data_type.dec_precision = 0;
       break;
+
+    case PT_BIN:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, node->type_enum);
+      if (dt == NULL)
+	{
+	  break;
+	}
+      /* bin returns the binary representation of a BIGINT */
+      dt->info.data_type.precision = (sizeof (DB_BIGINT) * 8);
+      break;
+
+    case PT_ADDTIME:
+      if (node->type_enum == PT_TYPE_VARCHAR)
+	{
+	  assert (dt == NULL);
+	  dt = pt_make_prim_data_type (parser, node->type_enum);
+	  if (dt == NULL)
+	    {
+	      break;
+	    }
+	  /* holds at most a DATETIME type */
+	  dt->info.data_type.precision = 26;
+	}
+      break;
+
     case PT_TRIM:
     case PT_LTRIM:
     case PT_RTRIM:
@@ -14099,6 +14210,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
 	  return 1;
 	}
 
+    case PT_FINDINSET:
+      error = db_find_string_in_in_set (arg1, arg2, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
     case PT_SUBSTRING:
       if (DB_IS_NULL (arg1) || DB_IS_NULL (arg2) || (o3 && DB_IS_NULL (arg3)))
 	{
@@ -14263,6 +14386,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
     case PT_UPPER:
       error = db_string_upper (arg1, result);
       if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_BIN:
+      error = db_bigint_to_binary_string (arg1, result);
+      if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
 	  return 0;
@@ -14639,6 +14774,20 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser,
     case PT_MAKETIME:
       {
 	error = db_convert_to_time (arg1, arg2, arg3, result);
+	if (error < 0)
+	  {
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	else
+	  {
+	    return 1;
+	  }
+      }
+
+    case PT_ADDTIME:
+      {
+	error = db_add_time (arg1, arg2, result, NULL);
 	if (error < 0)
 	  {
 	    PT_ERRORc (parser, o1, er_msg ());
@@ -18000,6 +18149,7 @@ pt_is_op_hv_late_bind (PT_OP_TYPE op)
     case PT_UNARY_MINUS:
     case PT_EVALUATE_VARIABLE:
     case PT_DEFINE_VARIABLE:
+    case PT_ADDTIME:
       return true;
     default:
       return false;
