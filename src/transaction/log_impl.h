@@ -771,7 +771,7 @@ struct log_tdes
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or
 					   delete during a transaction */
 
-  long query_timeout;		/* a query should be executed before query_timeout time. */
+  INT64 query_timeout;		/* a query should be executed before query_timeout time. */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -1878,6 +1878,7 @@ extern int
 logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p);
 extern int logtb_find_client_type (int tran_index);
 extern char *logtb_find_client_name (int tran_index);
+extern char *logtb_find_client_hostname (int tran_index);
 extern int logtb_find_client_name_host_pid (int tran_index,
 					    char **client_prog_name,
 					    char **client_user_name,
@@ -1886,6 +1887,7 @@ extern int logtb_find_client_name_host_pid (int tran_index,
 
 extern int logtb_find_current_client_type (THREAD_ENTRY * thread_p);
 extern char *logtb_find_current_client_name (THREAD_ENTRY * thread_p);
+extern char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_secs (int tran_index);
