@@ -1171,6 +1171,7 @@ extern char *or_get_varbit (OR_BUF * buf, int *length_ptr);
 #endif
 extern int or_get_varbit_length (OR_BUF * buf, int *intval);
 
+extern char *or_unpack_var_table (char *ptr, int nvars, OR_VARINFO * vars);
 extern OR_VARINFO *or_get_var_table (OR_BUF * buf, int nvars,
 				     char *(*allocator) (int));
 

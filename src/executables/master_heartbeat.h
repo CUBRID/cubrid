@@ -293,9 +293,23 @@ extern HB_RESOURCE *hb_Resource;
 extern HB_JOB *cluster_Jobs;
 extern HB_JOB *resource_Jobs;
 
-
 extern int hb_master_init (void);
 extern void hb_resource_shutdown_and_cleanup (void);
 extern void hb_cluster_shutdown_and_cleanup (void);
+
+extern void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn,
+					       SOCKET sfd);
+
+extern void hb_get_node_info_string (char **str, bool verbose_yn);
+extern void hb_get_process_info_string (char **str, bool verbose_yn);
+extern void hb_kill_all_heartbeat_process (char **str);
+extern void hb_dereg_process (pid_t pid, char **str);
+extern void hb_reconfig_heartbeat (char **str);
+extern void hb_deactivate_heartbeat (char **str);
+extern void hb_activate_heartbeat (char **str);
+
+extern int hb_is_registered_process (CSS_CONN_ENTRY * conn, void *buffer);
+extern void hb_register_new_process (CSS_CONN_ENTRY * conn);
+extern void hb_resource_receive_changemode (CSS_CONN_ENTRY * conn);
 
 #endif /* _MASTER_HEARTBEAT_H_ */

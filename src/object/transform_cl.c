@@ -198,6 +198,7 @@ static void tag_component_namespace (SM_COMPONENT * components,
 static SM_CLASS *disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr);
 static void root_to_disk (OR_BUF * buf, ROOT_CLASS * root);
 static int root_size (MOBJ rootobj);
+static int tf_class_size (MOBJ classobj);
 static ROOT_CLASS *disk_to_root (OR_BUF * buf);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -3654,13 +3655,12 @@ class_to_disk (OR_BUF * buf, SM_CLASS * class_)
  *    return: disk size of class
  *    classobj(in): pointer to class structure
  */
-int
+static int
 tf_class_size (MOBJ classobj)
 {
   SM_CLASS *class_;
   DB_OBJLIST *triggers;
   int size;
-
 
   class_ = (SM_CLASS *) classobj;
 
@@ -4366,7 +4366,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
    * test - this isn't necessary but we've been having a class size related
    * bug that I want to try to catch - take this out when we're sure
    */
-  if (class_ == (SM_CLASS *) & sm_Root_class)
+  if (class_ == (SM_CLASS *) (&sm_Root_class))
     {
       expected_size = root_size (classobj);
     }

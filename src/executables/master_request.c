@@ -54,31 +54,12 @@
 #include "wintcp.h"
 #endif /* ! WINDOWS */
 #include "master_util.h"
+#include "master_request.h"
 
 #if !defined(WINDOWS)
 #include "master_heartbeat.h"
 #endif
 
-
-/* TODO: move to header file */
-extern int css_Master_socket_fd[2];
-extern struct timeval *css_Master_timeout;
-extern time_t css_Start_time;
-extern int css_Total_request_count;
-extern SOCKET_QUEUE_ENTRY *css_Master_socket_anchor;
-
-extern void css_process_info_request (CSS_CONN_ENTRY * conn);
-extern void css_process_heartbeat_request (CSS_CONN_ENTRY * conn);
-
-extern void css_process_stop_shutdown (void);
-extern void css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p,
-				      SOCKET_QUEUE_ENTRY ** anchor_p);
-
-extern void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn,
-					       SOCKET sfd);
-
-extern void css_process_start_shutdown (SOCKET_QUEUE_ENTRY * sock_entq,
-					int timeout, char *buffer);
 
 #define IS_MASTER_SOCKET_FD(FD)         \
       ((FD) == css_Master_socket_fd[0] || (FD) == css_Master_socket_fd[1])
@@ -143,19 +124,6 @@ static void css_process_activate_heartbeat (CSS_CONN_ENTRY * conn,
 
 static void css_process_register_ha_process (CSS_CONN_ENTRY * conn);
 static void css_process_change_ha_mode (CSS_CONN_ENTRY * conn);
-
-#if !defined(WINDOWS)
-extern void hb_get_node_info_string (char **str, bool verbose_yn);
-extern void hb_get_process_info_string (char **str, bool verbose_yn);
-extern void hb_kill_all_heartbeat_process (char **str);
-extern void hb_dereg_process (pid_t pid, char **str);
-extern void hb_reconfig_heartbeat (char **str);
-extern void hb_deactivate_heartbeat (char **str);
-extern void hb_activate_heartbeat (char **str);
-
-extern void hb_register_new_process (CSS_CONN_ENTRY * conn);
-extern void hb_resource_receive_changemode (CSS_CONN_ENTRY * conn);
-#endif
 
 /*
  * css_send_command_to_server()

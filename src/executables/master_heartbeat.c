@@ -52,39 +52,11 @@
 #include "connection_cl.h"
 #include "master_util.h"
 #include "master_heartbeat.h"
+#include "master_request.h"
 #include "heartbeat.h"
 #include "message_catalog.h"
 #include "utility.h"
 
-
-/* externs */
-extern void css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p,
-				      SOCKET_QUEUE_ENTRY ** anchor_p);
-extern void css_master_cleanup (int sig);
-extern void css_process_start_shutdown (SOCKET_QUEUE_ENTRY * sock_entq,
-					int timeout, char *buffer);
-extern int css_Master_timeout_value_in_seconds;
-extern int css_Master_timeout_value_in_microseconds;
-
-extern SOCKET_QUEUE_ENTRY *css_add_request_to_socket_queue (CSS_CONN_ENTRY *
-							    conn_p,
-							    int info_p,
-							    char *name_p,
-							    SOCKET fd,
-							    int fd_type,
-							    int pid,
-							    SOCKET_QUEUE_ENTRY
-							    ** anchor_p);
-
-extern SOCKET_QUEUE_ENTRY *css_return_entry_by_conn (CSS_CONN_ENTRY * conn_p,
-						     SOCKET_QUEUE_ENTRY **
-						     anchor_p);
-
-
-extern SOCKET_QUEUE_ENTRY *css_Master_socket_anchor;
-#if !defined(WINDOWS)
-extern pthread_mutex_t css_Master_socket_anchor_lock;
-#endif
 
 /* list */
 static void hb_list_add (HB_LIST ** p, HB_LIST * n);
@@ -94,7 +66,8 @@ static void hb_list_move (HB_LIST ** dest_pp, HB_LIST ** source_pp);
 /* jobs */
 static void hb_add_timeval (struct timeval *tv_p, unsigned int msec);
 static int hb_compare_timeval (struct timeval *arg1, struct timeval *arg2);
-const char *hb_strtime (char *s, unsigned int max, struct timeval *tv_p);
+static const char *hb_strtime (char *s, unsigned int max,
+			       struct timeval *tv_p);
 
 static int hb_job_queue (HB_JOB * jobs, unsigned int job_type,
 			 HB_JOB_ARG * arg, unsigned int msec);
@@ -171,11 +144,7 @@ static HB_PROC_ENTRY *hb_return_proc_by_fd (int sfd);
 static void hb_proc_make_arg (char **arg, char *argv);
 
 /* resource process connection */
-void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd);
 static int hb_resource_send_changemode (HB_PROC_ENTRY * proc);
-extern int hb_is_registered_process (CSS_CONN_ENTRY * conn, void *buffer);
-extern void hb_register_new_process (CSS_CONN_ENTRY * conn);
-extern void hb_resource_receive_changemode (CSS_CONN_ENTRY * conn);
 
 /* cluster/resource threads */
 #if defined(WINDOW)
@@ -194,7 +163,7 @@ static int hb_cluster_initialize (const char *nodes, const char *replicas);
 static int hb_cluster_job_initialize (void);
 static int hb_resource_initialize (void);
 static int hb_resource_job_initialize (void);
-extern int hb_thread_initialize (void);
+static int hb_thread_initialize (void);
 
 /* terminator */
 static void hb_resource_cleanup (void);
@@ -204,13 +173,6 @@ static void hb_cluster_cleanup (void);
 static const char *hb_node_state_string (int nstate);
 static const char *hb_process_state_string (int pstate);
 static int hb_reload_config (void);
-void hb_get_node_info_string (char **str, bool verbose_yn);
-void hb_get_process_info_string (char **str, bool verbose_yn);
-void hb_dereg_process (pid_t pid, char **str);
-void hb_reconfig_heartbeat (char **str);
-void hb_deactivate_heartbeat (char **str);
-void hb_activate_heartbeat (char **str);
-
 
 /* debug and test */
 static void hb_print_nodes (void);
@@ -418,7 +380,7 @@ hb_compare_timeval (struct timeval *arg1, struct timeval *arg2)
  *   max(in):
  *   tv_p(in):
  */
-const char *
+static const char *
 hb_strtime (char *s, unsigned int max, struct timeval *tv_p)
 {
   struct tm hb_tm, *hb_tm_p = &hb_tm;
@@ -1031,7 +993,7 @@ hb_cluster_job_check_valid_ping_server (HB_JOB_ARG * arg)
 {
   int error, rv;
   char *host_list = NULL;
-  char *host_list_p, *host_p, **host_pp;
+  char *host_list_p, *host_p, *host_pp;
   int ping_result;
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
@@ -3285,7 +3247,7 @@ hb_resource_job_initialize ()
  *   return: NO_ERROR or ER_FAILED
  *
  */
-int
+static int
 hb_thread_initialize (void)
 {
   int rv;

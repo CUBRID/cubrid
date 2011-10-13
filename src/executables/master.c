@@ -66,6 +66,7 @@
 #include "tcp.h"
 #endif /* ! WINDOWS */
 #include "master_util.h"
+#include "master_request.h"
 #if !defined(WINDOWS)
 #include "master_heartbeat.h"
 #endif
@@ -73,15 +74,9 @@
 #include "message_catalog.h"
 #include "dbi.h"
 
-/* TODO: move to header file */
-extern void css_process_info_request (CSS_CONN_ENTRY * conn);
-extern void css_process_heartbeat_request (CSS_CONN_ENTRY * conn);
-extern void css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p,
-				      SOCKET_QUEUE_ENTRY ** anchor_p);
 
 static void css_master_error (const char *error_string);
 static int css_master_timeout (void);
-void css_master_cleanup (int sig);
 static int css_master_init (int cport, SOCKET * clientfd);
 static void css_reject_client_request (CSS_CONN_ENTRY * conn,
 				       unsigned short rid, int reason);
@@ -121,20 +116,9 @@ static void css_check_master_socket_output (void);
 static int css_check_master_socket_exception (fd_set * fd_var);
 static void css_master_loop (void);
 static void css_free_entry (SOCKET_QUEUE_ENTRY * entry_p);
-SOCKET_QUEUE_ENTRY *css_add_request_to_socket_queue (CSS_CONN_ENTRY *
-						     conn_p,
-						     int info_p,
-						     char *name_p,
-						     SOCKET fd,
-						     int fd_type,
-						     int pid,
-						     SOCKET_QUEUE_ENTRY
-						     ** anchor_p);
 static SOCKET_QUEUE_ENTRY *css_return_entry_of_server (char *name_p,
 						       SOCKET_QUEUE_ENTRY *
 						       anchor_p);
-SOCKET_QUEUE_ENTRY *css_return_entry_by_conn (CSS_CONN_ENTRY * conn_p,
-					      SOCKET_QUEUE_ENTRY ** anchor_p);
 
 #if !defined(WINDOWS)
 static void css_daemon_start (void);

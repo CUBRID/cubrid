@@ -61,14 +61,15 @@ static char *or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *unpack_str_array (char *buffer, char ***string_array, int count);
 #endif
-static int
-or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align);
+static int or_put_varchar_internal (OR_BUF * buf, char *string, int charlen,
+				    int align);
 static int or_varbit_length_internal (int bitlen, int align);
 static int or_varchar_length_internal (int charlen, int align);
-static int
-or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align);
-char *or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars,
-				    int offset_size);
+static int or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen,
+				   int align);
+static char *or_unpack_var_table_internal (char *ptr, int nvars,
+					   OR_VARINFO * vars,
+					   int offset_size);
 
 /*
  * classobj_get_prop - searches a property list for a value with the given name
@@ -2093,7 +2094,7 @@ or_unpack_var_table (char *ptr, int nvars, OR_VARINFO * vars)
  *    in the table and have previously allocated an array of OR_VARINFO
  *    structures that will be filled in.
  */
-char *
+static char *
 or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars,
 			      int offset_size)
 {

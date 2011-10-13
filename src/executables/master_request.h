@@ -27,18 +27,41 @@
 
 #ident "$Id$"
 
-extern int css_Master_socket_fd[2];
+#include "connection_defs.h"
+#include "master_util.h"
+
+extern SOCKET css_Master_socket_fd[2];
 extern struct timeval *css_Master_timeout;
+extern int css_Master_timeout_value_in_seconds;
+extern int css_Master_timeout_value_in_microseconds;
 extern time_t css_Start_time;
 extern int css_Total_server_count;
-extern MSG_CAT Msg_catalog;
+extern int css_Total_request_count;
+extern SOCKET_QUEUE_ENTRY *css_Master_socket_anchor;
+#if !defined(WINDOWS)
+extern pthread_mutex_t css_Master_socket_anchor_lock;
+#endif
 
-#define MASTER_GET_MSG(msgnum) \
-    util_get_message(Msg_catalog, MSG_SET_MASTER, msgnum)
-
-extern void css_process_info_request (CSS_CONN * conn);
+extern void css_process_info_request (CSS_CONN_ENTRY * conn);
 extern void css_process_stop_shutdown (void);
 extern void css_process_start_shutdown (SOCKET_QUEUE_ENTRY * sock_entq,
 					int timeout, char *buffer);
+extern void css_process_heartbeat_request (CSS_CONN_ENTRY * conn);
 
+extern void css_remove_entry_by_conn (CSS_CONN_ENTRY * conn_p,
+				      SOCKET_QUEUE_ENTRY ** anchor_p);
+
+extern void css_master_cleanup (int sig);
+extern SOCKET_QUEUE_ENTRY *css_add_request_to_socket_queue (CSS_CONN_ENTRY *
+							    conn_p,
+							    int info_p,
+							    char *name_p,
+							    SOCKET fd,
+							    int fd_type,
+							    int pid,
+							    SOCKET_QUEUE_ENTRY
+							    ** anchor_p);
+extern SOCKET_QUEUE_ENTRY *css_return_entry_by_conn (CSS_CONN_ENTRY * conn_p,
+						     SOCKET_QUEUE_ENTRY **
+						     anchor_p);
 #endif /* _MASTER_REQUEST_H_ */

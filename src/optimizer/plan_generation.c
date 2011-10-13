@@ -3141,6 +3141,9 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred,
       /* leave node value as it is */
       *lower = regu_ptr_list_add_regu (rhs, *lower);
       break;
+
+    default:
+      break;
     }
 
   if (node_one)

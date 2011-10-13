@@ -4794,7 +4794,7 @@ boot_get_lob_path (void)
  * boot_clear_host_connected () -
  */
 void
-boot_clear_host_connected ()
+boot_clear_host_connected (void)
 {
 #if defined(CS_MODE)
   boot_Host_connected[0] = '\0';

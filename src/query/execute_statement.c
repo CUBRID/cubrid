@@ -175,9 +175,13 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	    case DB_DEFAULT_CURR_USER:
 	      DB_MAKE_STRING (&att->default_value.value, db_get_user_name ());
 	      break;
+
+	    default:
+	      break;
 	    }
 	}
     }
+
   return NO_ERROR;
 }
 
