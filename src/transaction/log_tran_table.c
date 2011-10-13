@@ -701,6 +701,7 @@ logtb_set_number_of_total_tran_indices (int num_total_trans)
   log_Gl.trantable.num_total_indices = num_total_trans;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * logtb_am_i_sole_tran - Check if no other transactions are running
  *
@@ -737,6 +738,7 @@ logtb_i_am_not_sole_tran (void)
 {
   TR_TABLE_CS_EXIT ();
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 bool
 logtb_am_i_dba_client (THREAD_ENTRY * thread_p)
@@ -1880,6 +1882,38 @@ logtb_count_clients (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logtb_count_not_allowed_clients_in_maintenance_mode -
+ *                        count number of transaction indices 
+ *                        connection not allowed client in maintenancemode. 
+ *   return: number of clients
+ */
+int
+logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;
+  int i, count;
+
+  TR_TABLE_CS_ENTER_READ_MODE (thread_p);
+
+  count = 0;
+  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      tdes = log_Gl.trantable.all_tdes[i];
+      if (tdes != NULL && tdes->trid != NULL_TRANID)
+	{
+	  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE
+	      (tdes->client.host_name, boot_Host_name,
+	       tdes->client.client_type))
+	    {
+	      count++;
+	    }
+	}
+    }
+  TR_TABLE_CS_EXIT ();
+  return count;
+}
+
+/*
   * logtb_find_client_type - find client type of transaction index
    *
    * return: client type
@@ -1915,6 +1949,26 @@ logtb_find_client_name (int tran_index)
   if (tdes != NULL && tdes->trid != NULL_TRANID)
     {
       return tdes->client.db_user;
+    }
+  return NULL;
+}
+
+/*
+ * logtb_find_client_hostname - find client hostname of transaction index
+ *
+ * return: client hostname
+ *
+ *   tran_index(in): Index of transaction
+ */
+char *
+logtb_find_client_hostname (int tran_index)
+{
+  LOG_TDES *tdes;
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL && tdes->trid != NULL_TRANID)
+    {
+      return tdes->client.host_name;
     }
   return NULL;
 }
@@ -2077,6 +2131,17 @@ char *
 logtb_find_current_client_name (THREAD_ENTRY * thread_p)
 {
   return logtb_find_client_name (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+}
+
+/*
+ * logtb_find_current_client_hostname - find client hostname of current transaction
+ *
+ * return: client hostname
+ */
+char *
+logtb_find_current_client_hostname (THREAD_ENTRY * thread_p)
+{
+  return logtb_find_client_hostname (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 }
 
 /*
@@ -2388,7 +2453,7 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
   long now;
 #if !defined(HAVE_ATOMIC_BUILTINS)
   struct timeval tv;
-#endif  /* !HAVE_ATOMIC_BUILTINS */
+#endif /* !HAVE_ATOMIC_BUILTINS */
 
   interrupt = tdes->interrupt;
   if (!LOG_ISTRAN_ACTIVE (tdes))

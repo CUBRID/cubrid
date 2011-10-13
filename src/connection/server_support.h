@@ -101,7 +101,7 @@ extern int css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p,
 						 int whence);
 extern int css_change_ha_server_state (THREAD_ENTRY * thread_p,
 				       HA_SERVER_STATE state, bool force,
-				       bool heartbeat);
+				       int timeout, bool heartbeat);
 extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p,
 					    HA_LOG_APPLIER_STATE state);
 

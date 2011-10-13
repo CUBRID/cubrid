@@ -256,7 +256,7 @@ extern int boot_copy (const char *from_dbname, const char *new_db_name,
 extern int boot_emergency_patch (const char *db_name, bool recreate_log,
 				 DKNPAGES log_npages, FILE * out_fp);
 extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state,
-					    bool force);
+					    bool force, int timeout);
 extern int boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state);
 extern LOID *largeobjmgr_create (LOID * loid, int length, char *buffer,
 				 int est_lo_length, OID * oid);
@@ -487,7 +487,8 @@ extern int net_client_request_recv_stream (int request, char *argbuf,
 					   int replybuf_size, char *databuf,
 					   int datasize, FILE * outfp);
 extern int net_client_ping_server (int client_val, int *server_val);
-extern int net_client_ping_server_with_handshake (bool check_capabilities);
+extern int net_client_ping_server_with_handshake (int client_type,
+						  bool check_capabilities);
 
 /* Startup/Shutdown */
 #if defined(ENABLE_UNUSED_FUNCTION)

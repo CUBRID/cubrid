@@ -73,6 +73,23 @@ enum boot_client_type
 	|| (client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
 	|| (client_type) == BOOT_CLIENT_ADMIN_CSQL)
 
+#define BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE(client_type) \
+        ((client_type) == BOOT_CLIENT_DEFAULT \
+         || (client_type) == BOOT_CLIENT_BROKER \
+	 || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
+         || (client_type) == BOOT_CLIENT_PH_READ_ONLY_BROKER \
+	 || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER)
+
+/* 
+ * BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE()
+ * ((broker_default type || (remote && csql or broker_default type)) ? 0 : 1)
+ */
+#define BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE(host1, host2, client_type) \
+        ((BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE(client_type) || \
+          ((host1 != NULL && strcmp (host1, host2)) && \
+           (BOOT_CSQL_CLIENT_TYPE(client_type) \
+            || BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE(client_type)))) ? 0 : 1)
+
 typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
 struct boot_client_credential
 {

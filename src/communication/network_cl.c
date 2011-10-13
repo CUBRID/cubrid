@@ -118,7 +118,8 @@ static QUERY_ID save_query_id = NULL_QUERY_ID;
 
 static void return_error_to_server (char *host, unsigned int eid);
 static int client_capabilities (void);
-static int check_server_capabilities (int server_cap, int rel_compare,
+static int check_server_capabilities (int server_cap, int client_type,
+				      int rel_compare,
 				      REL_COMPATIBILITY * compatibility,
 				      const char *server_host);
 static void set_alloc_err_and_read_expected_packets (int *err, int rc,
@@ -128,11 +129,11 @@ static void set_alloc_err_and_read_expected_packets (int *err, int rc,
 static int compare_size_and_buffer (int *replysize, int size, char **replybuf,
 				    char *buf, const char *file,
 				    const int line);
-static int net_client_request_internal (int request,
-					char *argbuf, int argsize,
-					char *replybuf, int replysize,
-					char *databuf, int datasize,
-					char *replydata, int replydatasize);
+static int net_client_request_internal (int request, char *argbuf,
+					int argsize, char *replybuf,
+					int replysize, char *databuf,
+					int datasize, char *replydata,
+					int replydatasize);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int net_client_request_buffer (unsigned int rc, char **buf_ptr,
 				      int expected_size);
@@ -258,7 +259,7 @@ client_capabilities (void)
  * return:
  */
 static int
-check_server_capabilities (int server_cap, int rel_compare,
+check_server_capabilities (int server_cap, int client_type, int rel_compare,
 			   REL_COMPATIBILITY * compatibility,
 			   const char *server_host)
 {
@@ -312,7 +313,8 @@ check_server_capabilities (int server_cap, int rel_compare,
 
   /* remote connection capability */
   if ((server_cap & NET_CAP_REMOTE_DISABLED)
-      && server_host != NULL && strcmp (server_host, boot_Host_name))
+      && !BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (server_host, boot_Host_name,
+						  client_type))
     {
       er_log_debug (ARG_FILE_LINE,
 		    "NET_CAP_REMOTE_DISABLED client %s %d server %s %d\n",
@@ -4161,7 +4163,8 @@ net_client_ping_server (int client_val, int *server_val)
  * return:
  */
 int
-net_client_ping_server_with_handshake (bool check_capabilities)
+net_client_ping_server_with_handshake (int client_type,
+				       bool check_capabilities)
 {
   const char *client_release;
   char *server_release, *server_host, *server_handshake, *ptr;
@@ -4251,10 +4254,12 @@ net_client_ping_server_with_handshake (bool check_capabilities)
    * 3. check if the server has a capability to make it compatible.
    */
   compat = rel_is_net_compatible (client_release, server_release);
-  if (check_capabilities == true &&
-      check_server_capabilities (server_capabilities,
-				 rel_compare (client_release, server_release),
-				 &compat, server_host) != server_capabilities)
+  if ((check_capabilities == true
+       || server_capabilities & NET_CAP_REMOTE_DISABLED)
+      && check_server_capabilities (server_capabilities, client_type,
+				    rel_compare (client_release,
+						 server_release), &compat,
+				    server_host) != server_capabilities)
     {
       error = ER_NET_SERVER_HAND_SHAKE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, net_Server_host);

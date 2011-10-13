@@ -169,6 +169,7 @@ extern int thread_stop_active_workers (unsigned short stop_phase);
 extern int thread_stop_active_daemons (void);
 extern int thread_kill_all_workers (void);
 extern void thread_final_manager (void);
+extern void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 
 extern int thread_lock_entry (THREAD_ENTRY * entry);
 #if defined (ENABLE_UNUSED_FUNCTION)

@@ -819,7 +819,7 @@ valid options:\n\
   -C, --CS-mode                client-server mode execution\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
-11 Worng value \"%s\" for the server's HA running mode.\n
+11 Wrong value \"%s\" for the server's HA running mode.\n
 12 Cannot change the server's HA running mode.\n
 21 Enter DBA password:
 22 The server `%s''s current HA running mode is %s.\n
@@ -832,11 +832,14 @@ changemode: Display or change the server's HA running mode.\n\
 usage: %s changemode [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -m, --mode=MODE             change the server mode to MODE; default; none\n\
-  -f, --force                 force to change\n
+  -m, --mode=MODE             change the server mode to MODE; default: none\n\
+  -f, --force                 force to change\n\
+  -t, --timeout=S             waiting S second while active transaction is terminated normally\n\
+                              -t option is effective only when the user changes server mode to maintenance\n\
+                              default: 5\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
-11 Worng value \"%s\" for the copylogdb's running mode.\n
+11 Wrong value \"%s\" for the copylogdb's running mode.\n
 21 Enter DBA password:
 22 The server was not configured for HA.\n
 58 HA feature is not supported in this platform.\n

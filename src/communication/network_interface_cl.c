@@ -5418,10 +5418,11 @@ boot_emergency_patch (const char *db_name, bool recreate_log,
  *   return: new state
  */
 HA_SERVER_STATE
-boot_change_ha_mode (HA_SERVER_STATE state, bool force)
+boot_change_ha_mode (HA_SERVER_STATE state, bool force, int timeout)
 {
 #if defined(CS_MODE)
-  int req_error, i;
+  int req_error;
+  int server_state;
   HA_SERVER_STATE cur_state = HA_SERVER_STATE_NA;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
@@ -5434,6 +5435,7 @@ boot_change_ha_mode (HA_SERVER_STATE state, bool force)
 
   ptr = or_pack_int (request, (int) state);
   ptr = or_pack_int (ptr, (int) force);
+  ptr = or_pack_int (ptr, (int) timeout);
 
   req_error = net_client_request (NET_SERVER_BO_CHANGE_HA_MODE,
 				  request, OR_ALIGNED_BUF_SIZE (a_request),
@@ -5441,8 +5443,8 @@ boot_change_ha_mode (HA_SERVER_STATE state, bool force)
 				  NULL, 0, NULL, 0);
   if (!req_error)
     {
-      or_unpack_int (reply, &i);
-      cur_state = (HA_SERVER_STATE) i;
+      or_unpack_int (reply, &server_state);
+      cur_state = (HA_SERVER_STATE) server_state;
     }
 
   return cur_state;

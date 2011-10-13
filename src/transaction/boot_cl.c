@@ -154,7 +154,8 @@ static int boot_client (int tran_index, int lock_wait,
 			TRAN_ISOLATION tran_isolation);
 static void boot_shutdown_client_at_exit (void);
 #if defined(CS_MODE)
-static int boot_client_initialize_css (DB_INFO * db, bool check_capabilities,
+static int boot_client_initialize_css (DB_INFO * db, int client_type,
+				       bool check_capabilities,
 				       bool discriminative);
 #endif /* CS_MODE */
 static int boot_define_class (MOP class_mop);
@@ -505,7 +506,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential,
 
 #if defined(CS_MODE)
   /* Initialize the communication subsystem */
-  error_code = boot_client_initialize_css (db, false, false);
+  error_code =
+    boot_client_initialize_css (db, client_credential->client_type, false,
+				false);
   if (error_code != NO_ERROR)
     {
       cfg_free_directory (db);
@@ -837,7 +840,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	}
 
       boot_Host_connected[0] = '\0';
-      error_code = boot_client_initialize_css (tmp_db, false, false);
+      error_code =
+	boot_client_initialize_css (tmp_db, client_credential->client_type,
+				    false, false);
       util_free_string_array (hosts);
       cfg_free_directory (tmp_db);
     }
@@ -849,26 +854,36 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
   else if (BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))
     {
-      error_code = boot_client_initialize_css (db, false, false);
+      error_code =
+	boot_client_initialize_css (db, client_credential->client_type, false,
+				    false);
     }
   else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
     {
-      error_code = boot_client_initialize_css (db, true, false);
+      error_code =
+	boot_client_initialize_css (db, client_credential->client_type, true,
+				    false);
 
       if (error_code == ER_NET_SERVER_HAND_SHAKE)
 	{
 	  er_log_debug (ARG_FILE_LINE, "boot_restart_client: "
 			"boot_client_initialize_css () ER_NET_SERVER_HAND_SHAKE\n");
-	  error_code = boot_client_initialize_css (db, false, false);
+	  error_code =
+	    boot_client_initialize_css (db, client_credential->client_type,
+					false, false);
 	}
     }
   else if (client_credential->client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
     {
-      error_code = boot_client_initialize_css (db, true, false);
+      error_code =
+	boot_client_initialize_css (db, client_credential->client_type, true,
+				    false);
     }
   else
     {
-      error_code = boot_client_initialize_css (db, false, false);
+      error_code =
+	boot_client_initialize_css (db, client_credential->client_type, false,
+				    false);
     }
 
   if (error_code != NO_ERROR)
@@ -1318,8 +1333,8 @@ boot_client_all_finalize (bool is_er_final)
  *       in hostlist until success or the end of list is reached.
  */
 static int
-boot_client_initialize_css (DB_INFO * db, bool check_capabilities,
-			    bool discriminative)
+boot_client_initialize_css (DB_INFO * db, int client_type,
+			    bool check_capabilities, bool discriminative)
 {
   int error = ER_NET_NO_SERVER_HOST;
   int hn, tn, n;
@@ -1376,7 +1391,8 @@ boot_client_initialize_css (DB_INFO * db, bool check_capabilities,
 	      /* ping to validate availability and to check compatibility */
 	      er_clear ();
 	      error =
-		net_client_ping_server_with_handshake (check_capabilities);
+		net_client_ping_server_with_handshake (client_type,
+						       check_capabilities);
 	    }
 
 	  /* connect error to the db at the host */

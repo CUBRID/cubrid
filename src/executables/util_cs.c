@@ -2149,6 +2149,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
   char *mode_name;
   int mode = -1, error;
   bool force;
+  int timeout;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2164,6 +2165,12 @@ changemode (UTIL_FUNCTION_ARG * arg)
 
   mode_name = utility_get_option_string_value (arg_map, CHANGEMODE_MODE_S, 0);
   force = utility_get_option_bool_value (arg_map, CHANGEMODE_FORCE_S);
+  timeout = utility_get_option_int_value (arg_map, CHANGEMODE_TIMEOUT_S);
+
+  if (timeout == -1)
+    {
+      timeout = HA_CHANGE_MODE_DEFAULT_TIMEOUT_IN_SECS;
+    }
 
   if (check_database_name (database_name))
     {
@@ -2226,12 +2233,12 @@ changemode (UTIL_FUNCTION_ARG * arg)
   if (mode_name == NULL)
     {
       /* display the value of current mode */
-      mode = boot_change_ha_mode (HA_SERVER_MODE_NA, false);
+      mode = boot_change_ha_mode (HA_SERVER_MODE_NA, false, timeout);
     }
   else
     {
       /* change server's HA mode */
-      mode = boot_change_ha_mode (mode, force);
+      mode = boot_change_ha_mode (mode, force, timeout);
     }
   if (mode != HA_SERVER_MODE_NA)
     {

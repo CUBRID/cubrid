@@ -1834,8 +1834,10 @@ extern int logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p,
 extern void logtb_undefine_trantable (THREAD_ENTRY * thread_p);
 extern int logtb_get_number_assigned_tran_indices (void);
 extern int logtb_get_number_of_total_tran_indices (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern bool logtb_am_i_sole_tran (THREAD_ENTRY * thread_p);
 extern void logtb_i_am_not_sole_tran (void);
+#endif
 extern bool logtb_am_i_dba_client (THREAD_ENTRY * thread_p);
 extern int
 logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid,
@@ -1872,6 +1874,8 @@ extern int logtb_count_clients_with_type (THREAD_ENTRY * thread_p,
 					  int client_type);
 #endif
 extern int logtb_count_clients (THREAD_ENTRY * thread_p);
+extern int
+logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p);
 extern int logtb_find_client_type (int tran_index);
 extern char *logtb_find_client_name (int tran_index);
 extern int logtb_find_client_name_host_pid (int tran_index,

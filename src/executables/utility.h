@@ -1122,6 +1122,8 @@ typedef struct _ha_config
 #define CHANGEMODE_MODE_L                       "mode"
 #define CHANGEMODE_FORCE_S                      'f'
 #define CHANGEMODE_FORCE_L                      "force"
+#define CHANGEMODE_TIMEOUT_S			't'
+#define CHANGEMODE_TIMEOUT_L			"timeout"
 
 /* copylogdb option list */
 #define COPYLOG_LOG_PATH_S                      'L'

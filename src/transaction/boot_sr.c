@@ -3399,7 +3399,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart,
   /* set number of hosts */
   css_set_ha_num_of_hosts (db->num_hosts);
   /* set server's starting mode for HA according to the 'ha_mode' parameter */
-  css_change_ha_server_state (thread_p, PRM_HA_SERVER_STATE, false, true);
+  css_change_ha_server_state (thread_p, PRM_HA_SERVER_STATE, false,
+			      HA_CHANGE_MODE_IMMEDIATELY, true);
 #endif
 
   cfg_free_directory (dir);

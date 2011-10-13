@@ -80,9 +80,9 @@ static int server_capabilities (void);
 static int check_client_capabilities (int client_cap, int rel_compare,
 				      REL_COMPATIBILITY * compatibility,
 				      const char *client_host);
-static void
-sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid,
-			     char *request, int reqlen, bool is_replication);
+static void sbtree_find_unique_internal (THREAD_ENTRY * thread_p,
+					 unsigned int rid, char *request,
+					 int reqlen, bool is_replication);
 
 /*
  * return_error_to_client -
@@ -199,14 +199,13 @@ check_client_capabilities (int client_cap, int rel_compare,
 	}
     }
   /* remote connection capability */
-  if ((server_cap & NET_CAP_REMOTE_DISABLED)
-      && client_host != NULL && strcmp (client_host, boot_Host_name))
+  if (server_cap & NET_CAP_REMOTE_DISABLED)
     {
+      /* do capability check on client side */
       er_log_debug (ARG_FILE_LINE,
 		    "NET_CAP_REMOTE_DISABLED server %s %d client %s %d\n",
 		    boot_Host_name, server_cap & NET_CAP_REMOTE_DISABLED,
 		    client_host, client_cap & NET_CAP_REMOTE_DISABLED);
-      client_cap ^= NET_CAP_REMOTE_DISABLED;
     }
 
   return client_cap;
@@ -2674,6 +2673,7 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid,
   char *ptr;
   HA_SERVER_STATE ha_state;
   int client_type;
+  char *hostname;
   bool has_updated;
   int row_count = DB_ROW_COUNT_NOT_SET;
 
@@ -2701,6 +2701,7 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid,
 
   ptr = or_pack_int (reply, (int) state);
   client_type = logtb_find_current_client_type (thread_p);
+  hostname = logtb_find_current_client_hostname (thread_p);
   ha_state = css_ha_server_state ();
   if (has_updated
       && ha_state == HA_SERVER_STATE_TO_BE_STANDBY
@@ -2744,6 +2745,16 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid,
 		    "(standby && read-write broker) "
 		    "DB_CONNECTION_STATUS_RESET\n");
     }
+  else if (ha_state == HA_SERVER_STATE_MAINTENANCE
+	   && !BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (hostname,
+						       boot_Host_name,
+						       client_type))
+    {
+      reset_on_commit = true;
+      er_log_debug (ARG_FILE_LINE, "stran_server_commit(): "
+		    "(maintenance && remote normal client type) "
+		    "DB_CONNECTION_STATUS_RESET\n");
+    }
   else
     {
       reset_on_commit = false;
@@ -2776,6 +2787,7 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid,
   char *ptr;
   HA_SERVER_STATE ha_state;
   int client_type;
+  char *hostname;
   bool has_updated;
 
   has_updated = logtb_has_updated (thread_p);
@@ -2794,6 +2806,7 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid,
 
   ptr = or_pack_int (reply, state);
   client_type = logtb_find_current_client_type (thread_p);
+  hostname = logtb_find_current_client_hostname (thread_p);
   ha_state = css_ha_server_state ();
   if (has_updated
       && ha_state == HA_SERVER_STATE_TO_BE_STANDBY
@@ -2835,6 +2848,16 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid,
       reset_on_commit = true;
       er_log_debug (ARG_FILE_LINE, "stran_server_abort(): "
 		    "(standby && read-write broker) "
+		    "DB_CONNECTION_STATUS_RESET\n");
+    }
+  else if (ha_state == HA_SERVER_STATE_MAINTENANCE
+	   && !BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (hostname,
+						       boot_Host_name,
+						       client_type))
+    {
+      reset_on_commit = true;
+      er_log_debug (ARG_FILE_LINE, "stran_server_abort(): "
+		    "(maintenance && remote normal client type) "
 		    "DB_CONNECTION_STATUS_RESET\n");
     }
   else
@@ -3880,29 +3903,21 @@ void
 sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid,
 		      char *request, int reqlen)
 {
-  int i, force;
+  int req_state, force, timeout;
   HA_SERVER_STATE state;
   DB_INFO *db;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_int (request, &i);
-  state = (HA_SERVER_STATE) i;
+  ptr = or_unpack_int (request, &req_state);
+  state = (HA_SERVER_STATE) req_state;
   ptr = or_unpack_int (ptr, &force);
-
-  if (state == HA_SERVER_STATE_MAINTENANCE)
-    {
-      if (!logtb_am_i_sole_tran (thread_p))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_SOLE_TRAN, 0);
-	  return_error_to_client (thread_p, rid);
-	}
-    }
+  ptr = or_unpack_int (ptr, &timeout);
 
   if (state > HA_SERVER_STATE_IDLE && state < HA_SERVER_STATE_DEAD)
     {
-      if (css_change_ha_server_state (thread_p, state, force, false)
+      if (css_change_ha_server_state (thread_p, state, force, timeout, false)
 	  != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER,
@@ -3919,11 +3934,6 @@ sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid,
 	      cfg_free_directory (db);
 	    }
 	}
-    }
-
-  if (state == HA_SERVER_STATE_MAINTENANCE)
-    {
-      logtb_i_am_not_sole_tran ();
     }
 
   state = css_ha_server_state ();

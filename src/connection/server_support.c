@@ -979,8 +979,9 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 
   if (state == HA_SERVER_STATE_ACTIVE || state == HA_SERVER_STATE_STANDBY)
     {
-      if (css_change_ha_server_state (thread_p, state, false, true)
-	  != NO_ERROR)
+      if (css_change_ha_server_state
+	  (thread_p, state, false, HA_CHANGE_MODE_IMMEDIATELY,
+	   true) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER,
 		  1, "Cannot change server HA mode");
@@ -2684,13 +2685,15 @@ css_check_ha_log_applier_working (void)
  *   return: NO_ERROR or ER_FAILED
  *   state(in): new state for server to be
  *   force(in): force to change
+ *   timeout(in): timeout (standby to maintenance)
  *   heartbeat(in): from heartbeat master 
  */
 int
 css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
-			    bool force, bool heartbeat)
+			    bool force, int timeout, bool heartbeat)
 {
   HA_SERVER_STATE orig_state;
+  int i;
 
   er_log_debug (ARG_FILE_LINE,
 		"css_change_ha_server_state: ha_Server_state %s "
@@ -2827,6 +2830,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 	{
 	  break;
 	}
+
       if (state == HA_SERVER_STATE_MAINTENANCE)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: "
@@ -2836,6 +2840,41 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state,
 	  logtb_disable_replication (thread_p);
 
 	  boot_server_status (BOOT_SERVER_MAINTENANCE);
+	}
+
+      for (i = 0; i < timeout; i++)
+	{
+	  /* waiting timeout second while transaction terminated normally. */
+	  if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p)
+	      == 0)
+	    {
+	      break;
+	    }
+	  thread_sleep (1, 0);
+	}
+
+      if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) != 0)
+	{
+	  LOG_TDES *tdes;
+
+	  /* try to kill transaction. */
+	  TR_TABLE_CS_ENTER (thread_p);
+	  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+	    {
+	      tdes = log_Gl.trantable.all_tdes[i];
+	      if (tdes != NULL && tdes->trid != NULL_TRANID)
+		{
+		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE
+		      (tdes->client.host_name, boot_Host_name,
+		       tdes->client.client_type))
+		    {
+		      thread_slam_tran_index (thread_p, tdes->tran_index);
+		    }
+		}
+	    }
+	  TR_TABLE_CS_EXIT ();
+
+	  thread_sleep (2, 0);
 	}
       break;
 

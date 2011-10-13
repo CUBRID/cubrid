@@ -157,7 +157,6 @@ static int thread_initialize_entry (THREAD_ENTRY * entry_ptr);
 static int thread_finalize_entry (THREAD_ENTRY * entry_ptr);
 
 static THREAD_ENTRY *thread_find_entry_by_tran_index (int tran_index);
-static void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_deadlock_detect_thread (void *);
@@ -3244,7 +3243,7 @@ thread_log_clock_thread (void *arg_p)
  *   return:
  *   tran_index(in):
  */
-static void
+void
 thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 {
   logtb_set_tran_index_interrupt (thread_p, tran_index, true);
