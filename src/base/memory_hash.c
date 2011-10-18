@@ -539,6 +539,20 @@ mht_numhash (const void *key, const unsigned int ht_size)
 }
 
 /*
+ * mht_logpageidhash - hash a LOG_PAGEID key
+ *   return: hash value
+ *   key(in): void pointer to LOG_PAGEID key to hash
+ *   ht_size(in): size of hash table
+ */
+unsigned int
+mht_logpageidhash (const void *key, unsigned int htsize)
+{
+  assert (key != NULL);
+
+  return (*(const LOG_PAGEID *) key) % htsize;
+}
+
+/*
  * mht_ptrhash - hash a pointer key (hash memory pointers)
  *   return: hash value
  *   key(in): pointer value key to hash
@@ -703,19 +717,27 @@ mht_valhash (const void *key, const unsigned int ht_size)
  */
 
 /*
- * mht_numcmpeq - compare two integer keys
+ * mht_compare_ints_are_equal - compare two integer keys
  *   return: 0 or 1 (key1 == key2)
  *   key1(in): pointer to integer key1
  *   key2(in): pointer to integer key2
  */
 int
-mht_numcmpeq (const void *key1, const void *key2)
+mht_compare_ints_are_equal (const void *key1, const void *key2)
 {
-  if (*(const int *) key1 == *(const int *) key2)
-    {
-      return TRUE;
-    }
-  return FALSE;
+  return ((*(const int *) key1 == *(const int *) key2));
+}
+
+/*
+ * mht_logpageid_compare_equal - compare two LOG_PAGEID keys
+ *   return: 0 or 1 (key1 == key2)
+ *   key1(in): pointer to LOG_PAGEID key1
+ *   key2(in): pointer to LOG_PAGEID key2
+ */
+int
+mht_compare_logpageids_are_equal (const void *key1, const void *key2)
+{
+  return ((*(const LOG_PAGEID *) key1 == *(const LOG_PAGEID *) key2));
 }
 
 /*
@@ -725,70 +747,50 @@ mht_numcmpeq (const void *key1, const void *key2)
  *   key2(in): pointer to string key2
  */
 int
-mht_strcasecmpeq (const void *key1, const void *key2)
+mht_compare_strings_are_case_insensitively_equal (const void *key1,
+						  const void *key2)
 {
-  if ((intl_mbs_casecmp ((const char *) key1, (const char *) key2)) == 0)
-    {
-      return TRUE;
-    }
-  return FALSE;
+  return ((intl_mbs_casecmp ((const char *) key1, (const char *) key2)) == 0);
 }
 
 /*
- * mht_strcmpeq - compare two string keys (case sensitive)
+ * mht_compare_strings_are_equal - compare two string keys (case sensitive)
  *   return: 0 or 1 (key1 == key2)
  *   key1(in): pointer to string key1
  *   key2(in): pointer to string key2
  */
 int
-mht_strcmpeq (const void *key1, const void *key2)
+mht_compare_strings_are_equal (const void *key1, const void *key2)
 {
-  if ((strcmp ((const char *) key1, (const char *) key2)) == 0)
-    {
-      return TRUE;
-    }
-  return FALSE;
+  return ((strcmp ((const char *) key1, (const char *) key2)) == 0);
 }
 
 /*
- * mht_ptrcmpeq - compare two pointer keys
+ * mht_compare_ptrs_are_equal - compare two pointer keys
  *   return: 0 or 1 (key1 == key2)
  *   key1(in): pointer key1
  *   key2(in): pointer key2
  */
 int
-mht_ptrcmpeq (const void *key1, const void *key2)
+mht_compare_ptrs_are_equal (const void *key1, const void *key2)
 {
-  if (key1 == key2)
-    {
-      return TRUE;
-    }
-
-  return FALSE;
+  return (key1 == key2);
 }
 
 /*
- * mht_valcmpeq - compare two DB_VALUEs
+ * mht_compare_dbvalues_are_equal - compare two DB_VALUEs
  *   return: 0 or 1 (key1 == key2)
  *   key1(in): pointer to DB_VALUE key1
  *   key2(in): pointer to DB_VALUE key2
  */
 int
-mht_valcmpeq (const void *key1, const void *key2)
+mht_compare_dbvalues_are_equal (const void *key1, const void *key2)
 {
   int result;
 
-  if (key1 == key2)
-    {
-      result = TRUE;
-    }
-  else
-    {
-      result = (tp_value_compare ((DB_VALUE *) key1, (DB_VALUE *) key2, 0, 1)
-		== DB_EQ);
-    }
-
-  return result;
+  return ((key1 == key2)
+	  || (tp_value_compare ((DB_VALUE *) key1, (DB_VALUE *) key2, 0, 1) ==
+	      DB_EQ));
 }
 
 /*

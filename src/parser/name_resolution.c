@@ -5076,7 +5076,8 @@ pt_make_subclass_list (PARSER_CONTEXT * parser,
   if (names_mht == NULL && dbl)
     {
       if ((names_mht = mht_create ("Pt_Names_Hash_Table", PT_NAMES_HASH_SIZE,
-				   mht_4strhash, mht_strcmpeq)) != NULL)
+				   mht_4strhash,
+				   mht_compare_strings_are_equal)) != NULL)
 	{
 	  ismymht = true;
 	  /* Have to stick the first name node created above into the hash */

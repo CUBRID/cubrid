@@ -283,7 +283,8 @@ locator_initialize (THREAD_ENTRY * thread_p, EHID * classname_table)
     {
       locator_Mht_classnames = mht_create ("Memory hash Classname to OID",
 					   CLASSNAME_CACHE_SIZE,
-					   mht_1strhash, mht_strcmpeq);
+					   mht_1strhash,
+					   mht_compare_strings_are_equal);
     }
 
   csect_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);

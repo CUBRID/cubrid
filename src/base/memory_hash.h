@@ -87,15 +87,22 @@ extern unsigned int mht_4strhash (const void *key,
 extern unsigned int mht_5strhash (const void *key,
 				  const unsigned int ht_size);
 extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
+extern unsigned int mht_logpageidhash (const void *key, unsigned int htsize);
+
 extern unsigned int mht_get_hash_number (const int ht_size,
 					 const DB_VALUE * val);
 extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size);
 extern unsigned int mht_valhash (const void *key, const unsigned int ht_size);
-extern int mht_strcasecmpeq (const void *key1, const void *key2);
-extern int mht_strcmpeq (const void *key1, const void *key2);
-extern int mht_numcmpeq (const void *key1, const void *key2);
-extern int mht_ptrcmpeq (const void *key1, const void *key2);
-extern int mht_valcmpeq (const void *key1, const void *key2);
+extern int mht_compare_strings_are_case_insensitively_equal (const void *key1,
+							     const void
+							     *key2);
+extern int mht_compare_strings_are_equal (const void *key1, const void *key2);
+extern int mht_compare_ints_are_equal (const void *key1, const void *key2);
+extern int mht_compare_logpageids_are_equal (const void *key1,
+					     const void *key2);
+extern int mht_compare_ptrs_are_equal (const void *key1, const void *key2);
+extern int mht_compare_dbvalues_are_equal (const void *key1,
+					   const void *key2);
 
 extern MHT_TABLE *mht_create (const char *name, int est_size,
 			      unsigned int (*hash_func) (const void *key,

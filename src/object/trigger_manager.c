@@ -7085,7 +7085,7 @@ tr_init (void)
 
   /* create the object map */
   tr_object_map = mht_create ("Trigger object map", TR_EST_MAP_SIZE,
-			      mht_ptrhash, mht_ptrcmpeq);
+			      mht_ptrhash, mht_compare_ptrs_are_equal);
 }
 
 /* Helper routine for tr_final */

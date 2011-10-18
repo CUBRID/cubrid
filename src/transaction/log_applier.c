@@ -49,6 +49,7 @@
 #include "transform.h"
 #include "object_print.h"
 #include "file_io.h"
+#include "memory_hash.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -327,8 +328,6 @@ static int la_find_last_applied_lsa (LOG_LSA * lsa, LOG_LSA * required_lsa,
 				     LA_ACT_LOG * act_log);
 static int la_update_last_applied_lsa (LOG_LSA * lsa);
 static int la_update_applier_status (void);
-static unsigned int la_pid_hash (const void *key_pid, unsigned int htsize);
-static int la_pid_hash_cmpeq (const void *key_pid1, const void *key_pid2);
 static LA_CACHE_PB *la_init_cache_pb (void);
 static int la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt,
 				     int slb_size);
@@ -1824,32 +1823,6 @@ la_update_applier_status (void)
 }
 
 /*
- * la_pid_hash() - hash a page identifier
- *   return: hash value
- *   key_pid : page id to hash
- *   htsize: Size of hash table
- */
-static unsigned int
-la_pid_hash (const void *key_pid, unsigned int htsize)
-{
-  const LOG_PAGEID *pid = (LOG_PAGEID *) key_pid;
-
-  return (*pid) % htsize;
-}
-
-/*
- * la_pid_hash_cmpeq() - Compare two pageid keys for hashing.
- *   return: int (key_pid1 == ey_vpid2 ?)
- *   key_pid1: First key
- *   key_pid2: Second key
- */
-static int
-la_pid_hash_cmpeq (const void *key_pid1, const void *key_pid2)
-{
-  return (*((LOG_PAGEID *) key_pid1) == *((LOG_PAGEID *) key_pid2));
-}
-
-/*
  * la_init_cache_pb() - initialize the cache page buffer area
  *   return: the allocated pointer to a cache page buffer
  *
@@ -1902,7 +1875,8 @@ la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size)
 
   cache_pb->hash_table =
     mht_create ("log applier cache log buffer hash table",
-		cache_pb->num_buffers * 8, la_pid_hash, la_pid_hash_cmpeq);
+		cache_pb->num_buffers * 8, mht_logpageidhash,
+		mht_compare_logpageids_are_equal);
   if (cache_pb->hash_table == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,

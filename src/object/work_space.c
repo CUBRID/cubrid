@@ -2484,7 +2484,8 @@ ws_init (void)
 
   /* build the classname cache */
   Classname_cache = mht_create ("Workspace class name cache",
-				256, mht_1strhash, mht_strcmpeq);
+				256, mht_1strhash,
+				mht_compare_strings_are_equal);
 
   if (Classname_cache == NULL)
     {

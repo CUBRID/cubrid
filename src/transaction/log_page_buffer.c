@@ -842,7 +842,8 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
     }
 
   log_Pb.ht = mht_create ("Log buffer pool hash table",
-			  log_Pb.num_buffers * 8, mht_numhash, mht_numcmpeq);
+			  log_Pb.num_buffers * 8, mht_logpageidhash,
+			  mht_compare_logpageids_are_equal);
   if (log_Pb.ht == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;

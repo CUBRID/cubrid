@@ -511,7 +511,8 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
   if (!pt_Label_table)
     {
       pt_Label_table = mht_create ("Interpreter labels", 70,
-				   mht_1strlowerhash, mht_strcasecmpeq);
+				   mht_1strlowerhash,
+				   mht_compare_strings_are_case_insensitively_equal);
 
       if (!pt_Label_table)
 	{

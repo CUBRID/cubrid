@@ -5101,7 +5101,7 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
   for (i = 0, val1 = array1->vals, val2 = array2->vals;
        i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
-      if (mht_valcmpeq (val1, val2) == false)
+      if (mht_compare_dbvalues_are_equal (val1, val2) == false)
 	{
 	  return false;
 	}
@@ -5110,7 +5110,7 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
   for (i = 1, val1 = array1->vals + 1, val2 = array2->vals + 1;
        i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
-      if (mht_valcmpeq (val1, val2) == false)
+      if (mht_compare_dbvalues_are_equal (val1, val2) == false)
 	{
 	  return false;
 	}
@@ -5119,7 +5119,7 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
   for (i = 2, val1 = array1->vals + 2, val2 = array2->vals + 2;
        i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
-      if (mht_valcmpeq (val1, val2) == false)
+      if (mht_compare_dbvalues_are_equal (val1, val2) == false)
 	{
 	  return false;
 	}

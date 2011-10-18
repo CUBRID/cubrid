@@ -11784,7 +11784,8 @@ qexec_initialize_xasl_cache (THREAD_ENTRY * thread_p)
       /* create */
       xasl_ent_cache.qstr_ht = mht_create ("XASL stream cache (query string)",
 					   xasl_ent_cache.max_entries,
-					   mht_1strhash, mht_strcmpeq);
+					   mht_1strhash,
+					   mht_compare_strings_are_equal);
     }
   /* memory hash table for XASL stream cache referencing by xasl file id */
   if (xasl_ent_cache.xid_ht)
