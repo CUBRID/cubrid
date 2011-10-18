@@ -390,7 +390,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_to_default (PRM_NAME_PB_NBUFFERS, true);
+  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1000");
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   AU_DISABLE_PASSWORDS ();
@@ -833,7 +833,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* tuning system parameters */
-  sysprm_set_to_default (PRM_NAME_PB_NBUFFERS, true);
+  sysprm_set_force (PRM_NAME_PB_NBUFFERS, "1000");
   sysprm_set_force (PRM_NAME_JAVA_STORED_PROCEDURE, "no");
 
   /* should have little copyright herald message ? */
